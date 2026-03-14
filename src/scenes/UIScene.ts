@@ -232,6 +232,9 @@ export class UIScene extends Phaser.Scene {
       this.player = data.player;
       this.zone = data.zone;
     });
+    EventBus.on(GameEvents.AUTOLOOT_CHANGED, (data: { mode: 'off' | 'all' | 'magic' | 'rare' }) => {
+      this.autoLootMode = data.mode;
+    });
   }
 
   private updateLogDisplay(): void {

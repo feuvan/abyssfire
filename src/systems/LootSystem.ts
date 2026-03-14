@@ -78,7 +78,7 @@ export class LootSystem {
       level,
       affixes: [],
       sockets: [],
-      identified: quality === 'normal',
+      identified: true,
       quantity: 1,
       stats: {},
     };
@@ -140,7 +140,7 @@ export class LootSystem {
       item.name = legendaryDef.name;
       item.affixes = [...legendaryDef.fixedAffixes];
       item.legendaryEffect = legendaryDef.specialEffectDescription;
-      item.identified = false;
+      item.identified = true;
     } else {
       // Generic legendary if no specific one exists
       this.addRandomAffixes(item, item.level, 3, 5);

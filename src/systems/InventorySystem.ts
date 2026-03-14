@@ -60,7 +60,15 @@ export class InventorySystem {
     const base = getItemBase(item.baseId);
     if (!base || !base.slot) return false;
 
-    const slot = base.slot as EquipSlot;
+    let slot = base.slot as EquipSlot;
+
+    // Rings: if target slot is occupied, try the other ring slot
+    if (slot === 'ring1' && this.equipment['ring1'] && !this.equipment['ring2']) {
+      slot = 'ring2';
+    } else if (slot === 'ring2' && this.equipment['ring2'] && !this.equipment['ring1']) {
+      slot = 'ring1';
+    }
+
     const current = this.equipment[slot];
 
     // Unequip current
