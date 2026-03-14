@@ -15,6 +15,7 @@ import { QuestSystem } from '../systems/QuestSystem';
 import { HomesteadSystem } from '../systems/HomesteadSystem';
 import { AchievementSystem } from '../systems/AchievementSystem';
 import { SaveSystem } from '../systems/SaveSystem';
+import { audioSystem } from '../systems/AudioSystem';
 import { AllClasses } from '../data/classes/index';
 import { AllMaps } from '../data/maps/index';
 import { MonstersByZone, getMonsterDef } from '../data/monsters/index';
@@ -117,7 +118,7 @@ export class ZoneScene extends Phaser.Scene {
 
     // Camera
     this.cameras.main.startFollow(this.player.sprite, true, 0.08, 0.08);
-    this.cameras.main.setZoom(1.5);
+    this.cameras.main.setZoom(1.2);
 
     // Input
     if (this.input.keyboard) {
@@ -453,15 +454,30 @@ export class ZoneScene extends Phaser.Scene {
     const container = this.add.container(worldPos.x, worldPos.y);
     container.setDepth(worldPos.y + 30);
 
-    const color = this.getQualityColor(item.quality);
-    const bg = this.add.rectangle(0, 0, 10, 10, color);
-    bg.setStrokeStyle(1, 0xffffff);
-    container.add(bg);
+    // Use loot bag sprite or colored rectangle
+    if (this.textures.exists('loot_bag')) {
+      const bag = this.add.image(0, 0, 'loot_bag');
+      const tintColor = this.getQualityColor(item.quality);
+      if (item.quality !== 'normal') bag.setTint(tintColor);
+      container.add(bag);
+    } else {
+      const color = this.getQualityColor(item.quality);
+      const bg = this.add.rectangle(0, 0, 16, 16, color);
+      bg.setStrokeStyle(1, 0xffffff);
+      container.add(bg);
+    }
+
+    // Quality glow for rare+
+    if (item.quality !== 'normal' && item.quality !== 'magic') {
+      const glow = this.add.circle(0, 0, 14, this.getQualityColor(item.quality), 0.15);
+      container.add(glow);
+      container.sendToBack(glow);
+    }
 
     // Floating animation
     this.tweens.add({
       targets: container,
-      y: container.y - 3,
+      y: container.y - 5,
       duration: 800,
       yoyo: true,
       repeat: -1,
@@ -492,6 +508,7 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     if (this.inventorySystem.addItem(lootDrop.item)) {
+      EventBus.emit(GameEvents.ITEM_PICKED, { item: lootDrop.item });
       if (lootDrop.item.quality === 'legendary') {
         this.achievementSystem.update('collect');
       }
@@ -600,17 +617,23 @@ export class ZoneScene extends Phaser.Scene {
         tile.setDepth(pos.y);
         this.mapLayer.add(tile);
         if (tileType === 5) {
-          const flag = this.add.rectangle(pos.x, pos.y - 16, 4, 12, 0xf1c40f);
+          const flag = this.add.rectangle(pos.x, pos.y - 24, 5, 18, 0xf1c40f);
           flag.setDepth(pos.y + 1);
           this.mapLayer.add(flag);
         }
         // Exit markers
         const exit = this.mapData.exits.find(e => e.col === col && e.row === row);
         if (exit) {
-          const marker = this.add.text(pos.x, pos.y - 14, '>>>', {
-            fontSize: '8px', color: '#00ff00', fontFamily: 'monospace',
-          }).setOrigin(0.5).setDepth(pos.y + 2);
-          this.mapLayer.add(marker);
+          if (this.textures.exists('exit_portal')) {
+            const portal = this.add.image(pos.x, pos.y - 16, 'exit_portal');
+            portal.setDepth(pos.y + 2);
+            this.mapLayer.add(portal);
+          } else {
+            const marker = this.add.text(pos.x, pos.y - 16, '>>>', {
+              fontSize: '12px', color: '#00ff00', fontFamily: '"Cinzel", serif',
+            }).setOrigin(0.5).setDepth(pos.y + 2);
+            this.mapLayer.add(marker);
+          }
         }
       }
     }
@@ -711,18 +734,21 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private showDamageText(x: number, y: number, damage: number, isCrit: boolean, isDodged = false, isPlayer = false): void {
-    let text: string, color: string, size = '14px';
-    if (isDodged) { text = 'MISS'; color = '#95a5a6'; }
-    else if (isPlayer) { text = `-${damage}`; color = isCrit ? '#ff6b6b' : '#e74c3c'; if (isCrit) size = '18px'; }
-    else { text = `${damage}`; color = isCrit ? '#f1c40f' : '#ffffff'; if (isCrit) size = '18px'; }
-    const t = this.add.text(x + randomInt(-10, 10), y - 20, text, {
-      fontSize: size, color, fontFamily: 'monospace', fontStyle: isCrit ? 'bold' : 'normal', stroke: '#000000', strokeThickness: 2,
+    let text: string, color: string, size = '16px';
+    if (isDodged) { text = 'MISS'; color = '#7f8c8d'; size = '14px'; }
+    else if (isPlayer) { text = `-${damage}`; color = isCrit ? '#ff6b6b' : '#e74c3c'; if (isCrit) size = '22px'; }
+    else { text = `${damage}`; color = isCrit ? '#ffd700' : '#ffffff'; if (isCrit) size = '22px'; }
+    const t = this.add.text(x + randomInt(-12, 12), y - 30, text, {
+      fontSize: size, color, fontFamily: '"Cinzel", serif', fontStyle: isCrit ? 'bold' : 'normal', stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(2000);
-    this.tweens.add({ targets: t, y: t.y - 40, alpha: 0, duration: 1200, ease: 'Power2', onComplete: () => t.destroy() });
+    // Emit combat event for audio
+    EventBus.emit(GameEvents.COMBAT_DAMAGE, { isCrit, isDodged, isPlayer });
+    this.tweens.add({ targets: t, y: t.y - 50, alpha: 0, duration: 1200, ease: 'Power2', onComplete: () => t.destroy() });
   }
 
   private showSkillEffect(x: number, y: number, color: number): void {
-    const c = this.add.circle(x, y - 10, 5, color, 0.8).setDepth(1500);
-    this.tweens.add({ targets: c, scaleX: 4, scaleY: 4, alpha: 0, duration: 400, ease: 'Power2', onComplete: () => c.destroy() });
+    audioSystem.playSFX('skill');
+    const c = this.add.circle(x, y - 16, 8, color, 0.7).setDepth(1500);
+    this.tweens.add({ targets: c, scaleX: 5, scaleY: 5, alpha: 0, duration: 500, ease: 'Power2', onComplete: () => c.destroy() });
   }
 }

@@ -59,36 +59,36 @@ export class Monster {
     this.sprite = scene.add.container(worldPos.x, worldPos.y);
     this.sprite.setDepth(worldPos.y + 50);
 
-    // Use generated pixel sprite if available
+    // Use generated HD sprite if available
     const spriteKey = definition.spriteKey;
     const hasTexture = scene.textures.exists(spriteKey);
-    const size = definition.elite ? 24 : 18;
+    const size = definition.elite ? 48 : 36;
 
     if (hasTexture) {
-      const img = scene.add.image(0, -12, spriteKey);
+      const img = scene.add.image(0, -24, spriteKey);
       this.sprite.add(img);
-      this.body = scene.add.rectangle(0, -10, size, size, 0x000000, 0).setVisible(false);
+      this.body = scene.add.rectangle(0, -20, size, size, 0x000000, 0).setVisible(false);
     } else {
       const color = definition.elite ? 0xe74c3c : this.getMonsterColor(definition.id);
-      this.body = scene.add.rectangle(0, -10, size, size, color);
+      this.body = scene.add.rectangle(0, -20, size, size, color);
       this.body.setStrokeStyle(1, 0x000000);
       this.sprite.add(this.body);
-      const shadow = scene.add.ellipse(0, 2, size, 6, 0x000000, 0.3);
+      const shadow = scene.add.ellipse(0, 4, size, 10, 0x000000, 0.3);
       this.sprite.add(shadow);
       this.sprite.sendToBack(shadow);
     }
 
     // HP bar background
-    this.hpBarBg = scene.add.rectangle(0, -size - 6, 24, 3, 0x333333);
+    this.hpBarBg = scene.add.rectangle(0, -size - 10, 40, 4, 0x333333);
     this.sprite.add(this.hpBarBg);
 
     // HP bar
-    this.hpBar = scene.add.rectangle(0, -size - 6, 24, 3, 0x2ecc71);
+    this.hpBar = scene.add.rectangle(0, -size - 10, 40, 4, 0x2ecc71);
     this.sprite.add(this.hpBar);
 
     // Elite crown indicator
     if (definition.elite) {
-      const crown = scene.add.rectangle(0, -size - 12, 8, 4, 0xf1c40f);
+      const crown = scene.add.rectangle(0, -size - 16, 12, 5, 0xf1c40f);
       this.sprite.add(crown);
     }
   }

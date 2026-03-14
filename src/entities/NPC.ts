@@ -21,37 +21,57 @@ export class NPC {
     this.sprite.setDepth(worldPos.y + 80);
 
     const color = this.getNPCColor();
-    const body = scene.add.rectangle(0, -12, 18, 22, color);
-    body.setStrokeStyle(1, 0x000000);
+    // Shadow
+    const shadow = scene.add.ellipse(0, 6, 32, 10, 0x000000, 0.3);
+    this.sprite.add(shadow);
+
+    // Body
+    const body = scene.add.rectangle(0, -20, 28, 38, color);
+    body.setStrokeStyle(1.5, Phaser.Display.Color.IntegerToColor(color).darken(20).color);
     this.sprite.add(body);
 
+    // Head
+    const headColor = Phaser.Display.Color.IntegerToColor(color).lighten(15).color;
+    const head = scene.add.circle(0, -44, 12, 0xffcc80);
+    this.sprite.add(head);
+
     // Hat/identifier
-    const hat = scene.add.rectangle(0, -25, 12, 6, this.getHatColor());
+    const hatColor = this.getHatColor();
+    const hat = scene.add.rectangle(0, -54, 20, 8, hatColor);
+    hat.setStrokeStyle(1, Phaser.Display.Color.IntegerToColor(hatColor).darken(15).color);
     this.sprite.add(hat);
 
-    // Shadow
-    const shadow = scene.add.ellipse(0, 2, 18, 7, 0x000000, 0.3);
-    this.sprite.add(shadow);
-    this.sprite.sendToBack(shadow);
+    // Eyes
+    const eye1 = scene.add.circle(-4, -46, 1.5, 0x2c3e50);
+    const eye2 = scene.add.circle(4, -46, 1.5, 0x2c3e50);
+    this.sprite.add(eye1);
+    this.sprite.add(eye2);
 
     // Exclamation mark for quest NPCs
     if (definition.type === 'quest') {
-      const marker = scene.add.text(0, -34, '!', {
-        fontSize: '14px',
+      const marker = scene.add.text(0, -68, '!', {
+        fontSize: '18px',
         color: '#f1c40f',
-        fontFamily: 'monospace',
+        fontFamily: '"Cinzel", serif',
         fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 3,
       }).setOrigin(0.5);
       this.sprite.add(marker);
+      // Bounce animation
+      scene.tweens.add({
+        targets: marker, y: marker.y - 4, duration: 600,
+        yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+      });
     }
 
     // Name label
-    this.nameLabel = scene.add.text(0, 6, definition.name, {
-      fontSize: '8px',
+    this.nameLabel = scene.add.text(0, 12, definition.name, {
+      fontSize: '11px',
       color: '#ffffff',
-      fontFamily: 'monospace',
+      fontFamily: '"Noto Sans SC", sans-serif',
       stroke: '#000000',
-      strokeThickness: 2,
+      strokeThickness: 3,
     }).setOrigin(0.5);
     this.sprite.add(this.nameLabel);
   }
@@ -60,7 +80,7 @@ export class NPC {
     switch (this.definition.type) {
       case 'blacksmith': return 0x8b4513;
       case 'merchant': return 0x2e86c1;
-      case 'quest': return 0xf1c40f;
+      case 'quest': return 0xd4a017;
       case 'stash': return 0x7d3c98;
       default: return 0x95a5a6;
     }

@@ -58,18 +58,18 @@ export class Player {
     this.sprite = scene.add.container(worldPos.x, worldPos.y);
     this.sprite.setDepth(worldPos.y + 100);
 
-    // Use generated pixel art sprite
+    // Use generated HD sprite
     const spriteKey = `player_${classData.id}`;
     const hasTexture = scene.textures.exists(spriteKey);
     if (hasTexture) {
-      const img = scene.add.image(0, -16, spriteKey);
+      const img = scene.add.image(0, -32, spriteKey);
       this.sprite.add(img);
-      this.body = scene.add.rectangle(0, -12, 20, 24, 0x000000, 0).setVisible(false);
+      this.body = scene.add.rectangle(0, -24, 40, 48, 0x000000, 0).setVisible(false);
     } else {
-      this.body = scene.add.rectangle(0, -12, 20, 24, 0x3498db);
+      this.body = scene.add.rectangle(0, -24, 40, 48, 0x3498db);
       this.body.setStrokeStyle(1, 0x2980b9);
       this.sprite.add(this.body);
-      const shadow = scene.add.ellipse(0, 2, 20, 8, 0x000000, 0.3);
+      const shadow = scene.add.ellipse(0, 4, 36, 10, 0x000000, 0.3);
       this.sprite.add(shadow);
       this.sprite.sendToBack(shadow);
     }
