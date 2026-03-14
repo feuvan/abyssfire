@@ -62,7 +62,7 @@ export class ZoneScene extends Phaser.Scene {
     super({ key: 'ZoneScene' });
   }
 
-  init(data: { classId: string; mapId: string; saveData?: SaveData }): void {
+  init(data: { classId: string; mapId: string; saveData?: SaveData; playerStats?: any }): void {
     this.currentMapId = data.mapId || 'emerald_plains';
     if (!AllMaps[this.currentMapId]) this.currentMapId = 'emerald_plains';
     this.mapData = AllMaps[this.currentMapId];
@@ -70,7 +70,7 @@ export class ZoneScene extends Phaser.Scene {
     this._pendingSaveData = data.saveData ?? null;
   }
 
-  create(data: { classId: string; mapId: string; saveData?: SaveData }): void {
+  create(data: { classId: string; mapId: string; saveData?: SaveData; playerStats?: any }): void {
     this.monsters = [];
     this.npcs = [];
     this.lootDrops = [];
@@ -97,23 +97,24 @@ export class ZoneScene extends Phaser.Scene {
     this.visibleTiles = new Set();
     this.decorSprites = new Map();
 
-    // Create or reposition player
-    if (!this.player || !this.player.sprite.scene) {
-      const classData = AllClasses[data.classId] || AllClasses['warrior'];
-      this.player = new Player(this, classData, this.mapData.playerStart.col, this.mapData.playerStart.row);
-      this.player.recalcDerived();
-    } else {
-      const oldStats = {
-        level: this.player.level, exp: this.player.exp, gold: this.player.gold,
-        hp: this.player.hp, mana: this.player.mana, stats: { ...this.player.stats },
-        freeStatPoints: this.player.freeStatPoints, freeSkillPoints: this.player.freeSkillPoints,
-        skillLevels: new Map(this.player.skillLevels), buffs: [...this.player.buffs],
-        autoCombat: this.player.autoCombat,
-      };
-      this.player = new Player(this, this.player.classData, this.mapData.playerStart.col, this.mapData.playerStart.row);
-      Object.assign(this.player, oldStats);
-      this.player.recalcDerived();
+    // Create player — restore stats from zone transition if available
+    const classData = AllClasses[data.classId] || AllClasses['warrior'];
+    this.player = new Player(this, classData, this.mapData.playerStart.col, this.mapData.playerStart.row);
+    if (data.playerStats) {
+      const s = data.playerStats;
+      this.player.level = s.level;
+      this.player.exp = s.exp;
+      this.player.gold = s.gold;
+      this.player.hp = s.hp;
+      this.player.mana = s.mana;
+      this.player.stats = s.stats;
+      this.player.freeStatPoints = s.freeStatPoints;
+      this.player.freeSkillPoints = s.freeSkillPoints;
+      this.player.skillLevels = new Map(s.skillLevels);
+      this.player.buffs = s.buffs;
+      this.player.autoCombat = s.autoCombat;
     }
+    this.player.recalcDerived();
 
     // Restore from save (first load only, not zone transitions)
     if (isFirstLoad && this._pendingSaveData) {
@@ -821,7 +822,23 @@ export class ZoneScene extends Phaser.Scene {
   private changeZone(targetMap: string, targetCol: number, targetRow: number): void {
     this.fogData[this.currentMapId] = this.fogOfWar.getExploredData();
     this.autoSave();
-    this.scene.restart({ classId: this.player.classData.id, mapId: targetMap });
+    this.scene.restart({
+      classId: this.player.classData.id,
+      mapId: targetMap,
+      playerStats: {
+        level: this.player.level,
+        exp: this.player.exp,
+        gold: this.player.gold,
+        hp: this.player.hp,
+        mana: this.player.mana,
+        stats: { ...this.player.stats },
+        freeStatPoints: this.player.freeStatPoints,
+        freeSkillPoints: this.player.freeSkillPoints,
+        skillLevels: Array.from(this.player.skillLevels.entries()),
+        buffs: [...this.player.buffs],
+        autoCombat: this.player.autoCombat,
+      },
+    });
   }
 
   private checkExitProximity(): void {
