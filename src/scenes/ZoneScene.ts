@@ -110,14 +110,15 @@ export class ZoneScene extends Phaser.Scene {
       this.player.stats = s.stats;
       this.player.freeStatPoints = s.freeStatPoints;
       this.player.freeSkillPoints = s.freeSkillPoints;
-      this.player.skillLevels = new Map(s.skillLevels);
+      const zsl = s.skillLevels;
+      this.player.skillLevels = new Map(Array.isArray(zsl) ? zsl : Object.entries(zsl));
       this.player.buffs = s.buffs;
       this.player.autoCombat = s.autoCombat;
     }
     this.player.recalcDerived();
 
-    // Restore from save (first load only, not zone transitions)
-    if (isFirstLoad && this._pendingSaveData) {
+    // Restore from save (when loading from menu, not zone transitions)
+    if (this._pendingSaveData) {
       this.restoreFromSave(this._pendingSaveData);
       this._pendingSaveData = null;
     }
@@ -161,6 +162,7 @@ export class ZoneScene extends Phaser.Scene {
         H: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H),
         C: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C),
         J: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
+        ESC: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
       };
     }
 
@@ -211,6 +213,8 @@ export class ZoneScene extends Phaser.Scene {
     } else {
       EventBus.emit('ui:refresh', { player: this.player, zone: this });
     }
+    // Sync UI settings after UIScene is active
+    EventBus.emit(GameEvents.AUTOLOOT_CHANGED, { mode: this.autoLootMode });
 
     EventBus.removeAllListeners(GameEvents.PLAYER_DIED);
     EventBus.on(GameEvents.PLAYER_DIED, () => {
@@ -431,6 +435,9 @@ export class ZoneScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.wasd.J)) {
       EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'quest' });
     }
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.ESC)) {
+      this.returnToMenu();
+    }
 
     const skillKeys = [this.wasd.ONE, this.wasd.TWO, this.wasd.THREE, this.wasd.FOUR, this.wasd.FIVE, this.wasd.SIX];
     const skills = this.player.classData.skills;
@@ -457,6 +464,16 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     this.player.useSkill(skillId, time);
+    if (skill.buff || skill.aoe || skill.range > 2) {
+      this.player.playCast();
+    } else {
+      const animTarget = this.findNearestAliveMonster();
+      if (animTarget) {
+        this.player.playAttack(animTarget.sprite.x, animTarget.sprite.y);
+      } else {
+        this.player.playCast();
+      }
+    }
     const level = this.player.getSkillLevel(skillId);
     audioSystem.playSFX('skill');
 
@@ -473,7 +490,7 @@ export class ZoneScene extends Phaser.Scene {
       );
       for (const t of aoeTargets) {
         const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), t.toCombatEntity(), skill, level);
-        t.takeDamage(result.damage);
+        t.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
         this.showDamageText(t.sprite.x, t.sprite.y, result.damage, result.isCrit);
         if (!t.isAlive()) this.onMonsterKilled(t);
       }
@@ -487,7 +504,7 @@ export class ZoneScene extends Phaser.Scene {
       }
     } else if (target) {
       const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), target.toCombatEntity(), skill, level);
-      target.takeDamage(result.damage);
+      target.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
       this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit);
       if (!target.isAlive()) this.onMonsterKilled(target);
       this.skillEffects.play(skillId, this.player.sprite.x, this.player.sprite.y,
@@ -502,6 +519,7 @@ export class ZoneScene extends Phaser.Scene {
       if (!monster.isAlive() || monster.state !== 'attack') continue;
       if (time - monster.lastAttackTime >= monster.definition.attackSpeed) {
         monster.lastAttackTime = time;
+        monster.playAttack(this.player.sprite.x, this.player.sprite.y);
         const result = this.combatSystem.calculateDamage(monster.toCombatEntity(), this.player.toCombatEntity());
         if (result.isDodged) {
           this.showDamageText(this.player.sprite.x, this.player.sprite.y, 0, false, true);
@@ -509,6 +527,7 @@ export class ZoneScene extends Phaser.Scene {
           const diffMult = this.difficulty === 'hell' ? 2 : this.difficulty === 'nightmare' ? 1.5 : 1;
           const finalDmg = Math.floor(result.damage * diffMult);
           this.player.hp = Math.max(0, this.player.hp - finalDmg);
+          this.player.playHurt(monster.sprite.x, monster.sprite.y);
           this.showDamageText(this.player.sprite.x, this.player.sprite.y, finalDmg, result.isCrit, false, true);
           this.skillEffects.playMonsterAttack(this.player.sprite.x, this.player.sprite.y);
           if (this.player.hp <= 0) this.player.die();
@@ -525,8 +544,9 @@ export class ZoneScene extends Phaser.Scene {
       const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, target.tileCol, target.tileRow);
       if (dist <= this.player.attackRange && time - this.player.lastAttackTime >= this.player.attackSpeed) {
         this.player.lastAttackTime = time;
+        this.player.playAttack(target.sprite.x, target.sprite.y);
         const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), target.toCombatEntity());
-        target.takeDamage(result.damage);
+        target.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
         this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit);
         this.skillEffects.playAttack(this.player.sprite.x, this.player.sprite.y, target.sprite.x, target.sprite.y, true);
         if (!target.isAlive()) { this.onMonsterKilled(target); this.player.attackTarget = null; }
@@ -834,7 +854,7 @@ export class ZoneScene extends Phaser.Scene {
         stats: { ...this.player.stats },
         freeStatPoints: this.player.freeStatPoints,
         freeSkillPoints: this.player.freeSkillPoints,
-        skillLevels: Array.from(this.player.skillLevels.entries()),
+        skillLevels: Object.fromEntries(this.player.skillLevels),
         buffs: [...this.player.buffs],
         autoCombat: this.player.autoCombat,
       },
@@ -849,6 +869,12 @@ export class ZoneScene extends Phaser.Scene {
         return;
       }
     }
+  }
+
+  private async returnToMenu(): Promise<void> {
+    await this.autoSave();
+    this.scene.stop('UIScene');
+    this.scene.start('MenuScene');
   }
 
   private async autoSave(): Promise<void> {
@@ -891,16 +917,23 @@ export class ZoneScene extends Phaser.Scene {
     this.player.stats = { ...save.player.stats };
     this.player.freeStatPoints = save.player.freeStatPoints;
     this.player.freeSkillPoints = save.player.freeSkillPoints;
-    this.player.skillLevels = new Map(Object.entries(save.player.skillLevels));
+    const sl = save.player.skillLevels;
+    this.player.skillLevels = new Map(Array.isArray(sl) ? sl : Object.entries(sl));
     this.player.recalcDerived();
     this.player.hp = Math.min(save.player.hp, this.player.maxHp);
     this.player.mana = Math.min(save.player.mana, this.player.maxMana);
     this.player.moveTo(save.player.tileCol, save.player.tileRow);
 
-    // 2. Inventory
+    // 2. Inventory (mark all items identified as temp fix)
+    const identifyAll = (items: ItemInstance[]) => { for (const i of items) i.identified = true; };
     this.inventorySystem.inventory = save.inventory ?? [];
+    identifyAll(this.inventorySystem.inventory);
     this.inventorySystem.equipment = (save.equipment ?? {}) as any;
+    for (const item of Object.values(this.inventorySystem.equipment)) {
+      if (item) item.identified = true;
+    }
     this.inventorySystem.stash = save.stash ?? [];
+    identifyAll(this.inventorySystem.stash);
 
     // 3. Quests
     if (save.quests) this.questSystem.loadProgress(save.quests);
@@ -963,8 +996,18 @@ export class ZoneScene extends Phaser.Scene {
   private respawnMonster(dead: Monster): void {
     const idx = this.monsters.indexOf(dead);
     if (idx === -1) return;
-    const c = dead.spawnCol + randomInt(-1, 1);
-    const r = dead.spawnRow + randomInt(-1, 1);
+    // Try random offsets, fall back to spawn point
+    let c = dead.spawnCol;
+    let r = dead.spawnRow;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const tc = dead.spawnCol + randomInt(-2, 2);
+      const tr = dead.spawnRow + randomInt(-2, 2);
+      if (tc >= 0 && tc < this.mapData.cols && tr >= 0 && tr < this.mapData.rows && this.mapData.collisions[tr][tc]) {
+        c = tc;
+        r = tr;
+        break;
+      }
+    }
     this.monsters[idx] = new Monster(this, dead.definition, c, r);
   }
 
