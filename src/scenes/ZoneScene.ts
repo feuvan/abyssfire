@@ -22,7 +22,7 @@ import { AllMaps } from '../data/maps/index';
 import { MonstersByZone, getMonsterDef } from '../data/monsters/index';
 import { NPCDefinitions } from '../data/npcs';
 import { AllQuests } from '../data/quests/all_quests';
-import type { MapData, ClassDefinition, ItemInstance } from '../data/types';
+import type { MapData, ClassDefinition, ItemInstance, SaveData } from '../data/types';
 
 const TILE_KEYS = ['tile_grass', 'tile_dirt', 'tile_stone', 'tile_water', 'tile_wall', 'tile_camp'];
 
@@ -50,22 +50,27 @@ export class ZoneScene extends Phaser.Scene {
   private campPositions: { col: number; row: number }[] = [];
   private lootDrops: { sprite: Phaser.GameObjects.Container; item: ItemInstance; col: number; row: number }[] = [];
   private difficulty: 'normal' | 'nightmare' | 'hell' = 'normal';
+  private autoLootMode: 'off' | 'all' | 'magic' | 'rare' = 'off';
+  private lastAutoLootCheck = 0;
   private totalKills = 0;
   private exploredZones: Set<string> = new Set();
   private fogData: Record<string, boolean[][]> = {};
   private lastTileUpdate = 0;
+  private _pendingSaveData: SaveData | null = null;
 
   constructor() {
     super({ key: 'ZoneScene' });
   }
 
-  init(data: { classId: string; mapId: string }): void {
+  init(data: { classId: string; mapId: string; saveData?: SaveData }): void {
     this.currentMapId = data.mapId || 'emerald_plains';
+    if (!AllMaps[this.currentMapId]) this.currentMapId = 'emerald_plains';
     this.mapData = AllMaps[this.currentMapId];
     this.campPositions = this.mapData.camps.map(c => ({ col: c.col, row: c.row }));
+    this._pendingSaveData = data.saveData ?? null;
   }
 
-  create(data: { classId: string; mapId: string }): void {
+  create(data: { classId: string; mapId: string; saveData?: SaveData }): void {
     this.monsters = [];
     this.npcs = [];
     this.lootDrops = [];
@@ -74,7 +79,8 @@ export class ZoneScene extends Phaser.Scene {
     this.lootSystem = new LootSystem();
     this.skillEffects = new SkillEffectSystem(this);
 
-    if (!this.inventorySystem) {
+    const isFirstLoad = !this.inventorySystem;
+    if (isFirstLoad) {
       this.inventorySystem = new InventorySystem();
       this.questSystem = new QuestSystem();
       this.homesteadSystem = new HomesteadSystem();
@@ -107,6 +113,12 @@ export class ZoneScene extends Phaser.Scene {
       this.player = new Player(this, this.player.classData, this.mapData.playerStart.col, this.mapData.playerStart.row);
       Object.assign(this.player, oldStats);
       this.player.recalcDerived();
+    }
+
+    // Restore from save (first load only, not zone transitions)
+    if (isFirstLoad && this._pendingSaveData) {
+      this.restoreFromSave(this._pendingSaveData);
+      this._pendingSaveData = null;
     }
 
     this.pathfinding = new PathfindingSystem(this.mapData.collisions, this.mapData.cols, this.mapData.rows);
@@ -212,6 +224,11 @@ export class ZoneScene extends Phaser.Scene {
       this.tryUseSkill(data.skillId, this.time.now);
     });
 
+    EventBus.removeAllListeners(GameEvents.AUTOLOOT_CHANGED);
+    EventBus.on(GameEvents.AUTOLOOT_CHANGED, (data: { mode: 'off' | 'all' | 'magic' | 'rare' }) => {
+      this.autoLootMode = data.mode;
+    });
+
     this.exploredZones.add(this.currentMapId);
     this.achievementSystem.update('explore', this.currentMapId);
 
@@ -238,6 +255,12 @@ export class ZoneScene extends Phaser.Scene {
     this.handleCombat(time);
 
     if (this.player.autoCombat) this.handleAutoCombat(time);
+
+    // Auto-loot
+    if (this.autoLootMode !== 'off' && time - this.lastAutoLootCheck > 300) {
+      this.lastAutoLootCheck = time;
+      this.handleAutoLoot();
+    }
 
     this.checkExitProximity();
 
@@ -537,6 +560,26 @@ export class ZoneScene extends Phaser.Scene {
     }
   }
 
+  private handleAutoLoot(): void {
+    const qualityRank: Record<string, number> = { normal: 0, magic: 1, rare: 2, legendary: 3, set: 3 };
+    const minRank = this.autoLootMode === 'all' ? 0 : this.autoLootMode === 'magic' ? 1 : 2;
+    for (let i = this.lootDrops.length - 1; i >= 0; i--) {
+      const loot = this.lootDrops[i];
+      const rank = qualityRank[loot.item.quality] ?? 0;
+      if (rank < minRank) continue;
+      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, loot.col, loot.row);
+      if (dist > 2) continue;
+      if (this.inventorySystem.addItem(loot.item)) {
+        EventBus.emit(GameEvents.ITEM_PICKED, { item: loot.item });
+        if (loot.item.quality === 'legendary') this.achievementSystem.update('collect');
+        loot.sprite.destroy();
+        this.lootDrops.splice(i, 1);
+      } else {
+        break; // inventory full
+      }
+    }
+  }
+
   private updateNPCQuestMarkers(): void {
     for (const npc of this.npcs) {
       const def = npc.definition;
@@ -816,11 +859,52 @@ export class ZoneScene extends Phaser.Scene {
           activePet: this.homesteadSystem.activePet ?? undefined,
         },
         achievements: this.achievementSystem.getUnlockedData(),
-        settings: { autoCombat: this.player.autoCombat, musicVolume: 0.5, sfxVolume: 0.7 },
+        settings: { autoCombat: this.player.autoCombat, musicVolume: 0.5, sfxVolume: 0.7, autoLootMode: this.autoLootMode },
         difficulty: this.difficulty,
         completedDifficulties: [],
       });
     } catch (_e) { /* silent fail */ }
+  }
+
+  private restoreFromSave(save: SaveData): void {
+    // 1. Player stats
+    this.player.level = save.player.level;
+    this.player.exp = save.player.exp;
+    this.player.gold = save.player.gold;
+    this.player.stats = { ...save.player.stats };
+    this.player.freeStatPoints = save.player.freeStatPoints;
+    this.player.freeSkillPoints = save.player.freeSkillPoints;
+    this.player.skillLevels = new Map(Object.entries(save.player.skillLevels));
+    this.player.recalcDerived();
+    this.player.hp = Math.min(save.player.hp, this.player.maxHp);
+    this.player.mana = Math.min(save.player.mana, this.player.maxMana);
+    this.player.moveTo(save.player.tileCol, save.player.tileRow);
+
+    // 2. Inventory
+    this.inventorySystem.inventory = save.inventory ?? [];
+    this.inventorySystem.equipment = (save.equipment ?? {}) as any;
+    this.inventorySystem.stash = save.stash ?? [];
+
+    // 3. Quests
+    if (save.quests) this.questSystem.loadProgress(save.quests);
+
+    // 4. Homestead
+    if (save.homestead) {
+      this.homesteadSystem.buildings = save.homestead.buildings ?? {};
+      this.homesteadSystem.pets = save.homestead.pets ?? [];
+      this.homesteadSystem.activePet = save.homestead.activePet ?? null;
+    }
+
+    // 5. Achievements
+    if (save.achievements) this.achievementSystem.loadData(save.achievements);
+
+    // 6. Exploration fog data (restored into fogData, picked up by fog init)
+    if (save.exploration) this.fogData = save.exploration;
+
+    // 7. Settings
+    this.player.autoCombat = save.settings?.autoCombat ?? false;
+    this.autoLootMode = save.settings?.autoLootMode ?? 'off';
+    this.difficulty = save.difficulty ?? 'normal';
   }
 
   private spawnMonsters(): void {

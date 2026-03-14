@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config';
+import { SaveSystem } from '../systems/SaveSystem';
+import { AllClasses } from '../data/classes/index';
+import type { SaveData } from '../data/types';
 
 export class MenuScene extends Phaser.Scene {
+  private menuContainer: Phaser.GameObjects.Container | null = null;
+  private classContainer: Phaser.GameObjects.Container | null = null;
+
   constructor() {
     super({ key: 'MenuScene' });
   }
@@ -65,12 +71,76 @@ export class MenuScene extends Phaser.Scene {
     lineGfx2.lineTo(cx + 160, 215);
     lineGfx2.strokePath();
 
-    // Class selection label
-    this.add.text(cx, 260, '选 择 职 业', {
+    // Version
+    this.add.text(cx, GAME_HEIGHT - 20, 'v0.6.0 - HD', {
+      fontSize: '11px',
+      color: '#333340',
+      fontFamily: '"Cinzel", serif',
+    }).setOrigin(0.5);
+
+    this.checkForSaves();
+  }
+
+  private async checkForSaves(): Promise<void> {
+    const saveSystem = new SaveSystem();
+    const save = await saveSystem.loadAutoSave();
+    this.showMainMenu(save ?? null);
+  }
+
+  private showMainMenu(save: SaveData | null): void {
+    if (this.menuContainer) { this.menuContainer.destroy(); }
+    this.menuContainer = this.add.container(0, 0);
+
+    const cx = GAME_WIDTH / 2;
+    let y = save ? 300 : 340;
+
+    if (save) {
+      // "Continue" button — shows class name + level
+      const classData = AllClasses[save.classId];
+      const className = classData?.name ?? save.classId;
+      const label = `继续游戏 - ${className} Lv.${save.player.level}`;
+
+      const bg = this.add.rectangle(cx, y, 320, 65, 0x12121e, 0.9)
+        .setStrokeStyle(1.5, 0xc0934a, 0.8).setInteractive({ useHandCursor: true });
+      bg.on('pointerover', () => { bg.setStrokeStyle(2, 0xc0934a, 1); bg.setFillStyle(0x1a1a2e, 0.95); });
+      bg.on('pointerout', () => { bg.setStrokeStyle(1.5, 0xc0934a, 0.8); bg.setFillStyle(0x12121e, 0.9); });
+      bg.on('pointerdown', () => this.loadGame(save));
+      this.menuContainer.add(bg);
+
+      this.menuContainer.add(this.add.text(cx, y - 6, label, {
+        fontSize: '16px', color: '#e8e0d4', fontFamily: '"Cinzel", "Noto Sans SC", serif',
+      }).setOrigin(0.5));
+      this.menuContainer.add(this.add.text(cx, y + 16, '继续你的冒险', {
+        fontSize: '11px', color: '#c0934a', fontFamily: '"Noto Sans SC", sans-serif',
+      }).setOrigin(0.5));
+
+      y += 90;
+    }
+
+    // "New Game" button
+    const newBg = this.add.rectangle(cx, y, 320, 55, 0x12121e, 0.9)
+      .setStrokeStyle(1.5, 0x555566, 0.6).setInteractive({ useHandCursor: true });
+    newBg.on('pointerover', () => { newBg.setStrokeStyle(2, 0x888899, 1); newBg.setFillStyle(0x1a1a2e, 0.95); });
+    newBg.on('pointerout', () => { newBg.setStrokeStyle(1.5, 0x555566, 0.6); newBg.setFillStyle(0x12121e, 0.9); });
+    newBg.on('pointerdown', () => {
+      this.menuContainer?.destroy(); this.menuContainer = null;
+      this.showClassSelection();
+    });
+    this.menuContainer.add(newBg);
+    this.menuContainer.add(this.add.text(cx, y, '新的旅程', {
+      fontSize: '16px', color: '#a0907a', fontFamily: '"Cinzel", "Noto Sans SC", serif',
+    }).setOrigin(0.5));
+  }
+
+  private showClassSelection(): void {
+    this.classContainer = this.add.container(0, 0);
+    const cx = GAME_WIDTH / 2;
+
+    this.classContainer.add(this.add.text(cx, 260, '选 择 职 业', {
       fontSize: '18px',
       color: '#a0907a',
       fontFamily: '"Noto Sans SC", sans-serif',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5));
 
     const classes = [
       { id: 'warrior', name: '战士 Warrior', desc: '钢铁意志,剑盾无双', color: 0xc0392b, accent: '#e74c3c' },
@@ -88,19 +158,21 @@ export class MenuScene extends Phaser.Scene {
       const spriteKey = `player_${cls.id}`;
       if (this.textures.exists(spriteKey)) {
         const preview = this.add.image(cx - 130, y, spriteKey).setScale(0.7);
+        this.classContainer!.add(preview);
       }
 
-      this.add.text(cx, y - 12, cls.name, {
+      this.classContainer!.add(bg);
+      this.classContainer!.add(this.add.text(cx, y - 12, cls.name, {
         fontSize: '18px',
         color: '#e8e0d4',
         fontFamily: '"Cinzel", "Noto Sans SC", serif',
-      }).setOrigin(0.5);
+      }).setOrigin(0.5));
 
-      this.add.text(cx, y + 12, cls.desc, {
+      this.classContainer!.add(this.add.text(cx, y + 12, cls.desc, {
         fontSize: '12px',
         color: cls.accent,
         fontFamily: '"Noto Sans SC", sans-serif',
-      }).setOrigin(0.5);
+      }).setOrigin(0.5));
 
       bg.on('pointerover', () => {
         bg.setStrokeStyle(2, cls.color, 1);
@@ -113,12 +185,23 @@ export class MenuScene extends Phaser.Scene {
       bg.on('pointerdown', () => this.startGame(cls.id));
     });
 
-    // Version
-    this.add.text(cx, GAME_HEIGHT - 20, 'v0.6.0 - HD', {
-      fontSize: '11px',
-      color: '#333340',
-      fontFamily: '"Cinzel", serif',
-    }).setOrigin(0.5);
+    // Back button
+    const backBtn = this.add.text(cx, 570, '← 返回', {
+      fontSize: '12px', color: '#888', fontFamily: '"Noto Sans SC", sans-serif',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => {
+      this.classContainer?.destroy(); this.classContainer = null;
+      this.checkForSaves();
+    });
+    this.classContainer.add(backBtn);
+  }
+
+  private loadGame(save: SaveData): void {
+    this.scene.start('ZoneScene', {
+      classId: save.classId,
+      mapId: save.player.currentMap,
+      saveData: save,
+    });
   }
 
   private startGame(classId: string): void {
