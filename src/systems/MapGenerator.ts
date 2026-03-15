@@ -7,6 +7,7 @@ const TILE_STONE = 2;
 const TILE_WATER = 3;
 const TILE_WALL = 4;
 const TILE_CAMP = 5;
+const TILE_CAMP_WALL = 6;
 
 /** Simple LCG (Linear Congruential Generator) for seeded randomness */
 class SeededRandom {
@@ -136,7 +137,7 @@ function drunkWalk(
     steps++;
     // Set current position to path tile (but not if it's a camp or border wall)
     if (col > 0 && col < cols - 1 && row > 0 && row < rows - 1) {
-      if (tiles[row][col] !== TILE_CAMP) {
+      if (!isCampTile(tiles[row][col])) {
         tiles[row][col] = pathTile;
       }
       // Widen the path slightly
@@ -144,7 +145,7 @@ function drunkWalk(
         const adjacentCol = col + rng.nextInt(-1, 1);
         const adjacentRow = row + rng.nextInt(-1, 1);
         if (adjacentCol > 0 && adjacentCol < cols - 1 && adjacentRow > 0 && adjacentRow < rows - 1) {
-          if (tiles[adjacentRow][adjacentCol] !== TILE_CAMP) {
+          if (!isCampTile(tiles[adjacentRow][adjacentCol])) {
             tiles[adjacentRow][adjacentCol] = pathTile;
           }
         }
@@ -174,7 +175,7 @@ function drunkWalk(
 
   // Ensure final position is set
   if (toCol > 0 && toCol < cols - 1 && toRow > 0 && toRow < rows - 1) {
-    if (tiles[toRow][toCol] !== TILE_CAMP) {
+    if (!isCampTile(tiles[toRow][toCol])) {
       tiles[toRow][toCol] = pathTile;
     }
   }
@@ -197,6 +198,11 @@ function clearArea(
       }
     }
   }
+}
+
+/** Returns true if tile is any camp tile (ground or wall) */
+function isCampTile(tile: number): boolean {
+  return tile === TILE_CAMP || tile === TILE_CAMP_WALL;
 }
 
 /** Run cellular automata to create organic shapes (used for water bodies) */
@@ -335,18 +341,44 @@ export class MapGenerator {
       }
     }
 
-    // (c) Place camp tiles at camp positions (5x5 camp area with 7x7 clearance)
+    // (c) Place camp tiles at camp positions (11x11 encampment with palisade walls)
     for (const camp of map.camps) {
-      // Clear a 7x7 walkable area around camp center
-      clearArea(tiles, camp.col, camp.row, 3, config.primaryTile, cols, rows);
-      // Place 5x5 camp tiles
-      for (let dr = -2; dr <= 2; dr++) {
-        for (let dc = -2; dc <= 2; dc++) {
+      const halfSize = 5; // half of 11
+      // Clear a 13x13 walkable area around camp center first
+      clearArea(tiles, camp.col, camp.row, halfSize + 1, config.primaryTile, cols, rows);
+      // Place 11x11 camp ground tiles
+      for (let dr = -halfSize; dr <= halfSize; dr++) {
+        for (let dc = -halfSize; dc <= halfSize; dc++) {
           const r = camp.row + dr;
           const c = camp.col + dc;
           if (r > 0 && r < rows - 1 && c > 0 && c < cols - 1) {
             tiles[r][c] = TILE_CAMP;
           }
+        }
+      }
+      // Place palisade walls: top row (with 2-tile gate gap at dc=-1 and dc=0)
+      for (let dc = -halfSize; dc <= halfSize; dc++) {
+        if (dc === -1 || dc === 0) continue; // gate opening
+        const r = camp.row - halfSize;
+        const c = camp.col + dc;
+        if (r > 0 && r < rows - 1 && c > 0 && c < cols - 1) {
+          tiles[r][c] = TILE_CAMP_WALL;
+        }
+      }
+      // Place palisade walls: left column from top row down to (halfSize-2) leaving bottom 2 rows open
+      for (let dr = -halfSize; dr <= -(halfSize - 2); dr++) {
+        const r = camp.row + dr;
+        const c = camp.col - halfSize;
+        if (r > 0 && r < rows - 1 && c > 0 && c < cols - 1) {
+          tiles[r][c] = TILE_CAMP_WALL;
+        }
+      }
+      // Place palisade walls: right column from top row down to (halfSize-2) leaving bottom 2 rows open
+      for (let dr = -halfSize; dr <= -(halfSize - 2); dr++) {
+        const r = camp.row + dr;
+        const c = camp.col + halfSize;
+        if (r > 0 && r < rows - 1 && c > 0 && c < cols - 1) {
+          tiles[r][c] = TILE_CAMP_WALL;
         }
       }
     }
@@ -433,7 +465,7 @@ export class MapGenerator {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const tile = tiles[r][c];
-        collisions[r][c] = tile !== TILE_WALL && tile !== TILE_WATER;
+        collisions[r][c] = tile !== TILE_WALL && tile !== TILE_WATER && tile !== TILE_CAMP_WALL;
       }
     }
 
@@ -441,7 +473,7 @@ export class MapGenerator {
     const decorations: { col: number; row: number; type: string }[] = [];
     for (let r = 2; r < rows - 2; r++) {
       for (let c = 2; c < cols - 2; c++) {
-        if (collisions[r][c] && tiles[r][c] !== TILE_CAMP && tiles[r][c] !== TILE_DIRT) {
+        if (collisions[r][c] && !isCampTile(tiles[r][c]) && tiles[r][c] !== TILE_DIRT) {
           if (rng.chance(config.decorDensity)) {
             const decorType = config.decorTypes[rng.nextInt(0, config.decorTypes.length - 1)];
             decorations.push({ col: c, row: r, type: decorType });
