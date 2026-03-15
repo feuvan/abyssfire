@@ -982,6 +982,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private closeDialogue(): void {
+    EventBus.emit(GameEvents.DIALOGUE_CLOSE);
     if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
     if (this.dialoguePanel) { this.dialoguePanel.destroy(); this.dialoguePanel = null; }
   }

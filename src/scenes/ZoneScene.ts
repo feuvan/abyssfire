@@ -1044,6 +1044,7 @@ export class ZoneScene extends Phaser.Scene {
         }
 
         EventBus.emit(GameEvents.NPC_INTERACT, {
+          npcId: def.id,
           npcName: def.name,
           dialogue: dialogueText,
           actions,
@@ -1051,7 +1052,7 @@ export class ZoneScene extends Phaser.Scene {
         break;
       }
       case 'stash':
-        EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'stash' });
+        EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'stash', npcId: def.id });
         break;
     }
   }

@@ -19,6 +19,7 @@ export const GameEvents = {
   NPC_INTERACT: 'npc:interact',
   SHOP_OPEN: 'shop:open',
   SHOP_CLOSE: 'shop:close',
+  DIALOGUE_CLOSE: 'dialogue:close',
   INVENTORY_OPEN: 'inventory:open',
   INVENTORY_CLOSE: 'inventory:close',
   INVENTORY_CHANGED: 'inventory:changed',
