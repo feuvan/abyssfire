@@ -1322,17 +1322,94 @@ export class SpriteGenerator {
   private makeNPCSheet(npc: NPCConfig): void {
     const s = TEXTURE_SCALE;
     const fw = 48 * s, fh = 80 * s;
-    const frames = 4;
+    const frames = 8;
     const [canvas, ctx] = this.createCanvas(fw * frames, fh);
     const skin = npc.skinColor ?? 0xb08960;
     const hair = npc.hairColor ?? 0x3a2a1a;
     const acc = npc.accessory ?? 'none';
-    const bw = npc.bulky ? 1.15 : 1; // wider body for bulky NPCs
+    const bw = npc.bulky ? 1.15 : 1;
 
     for (let f = 0; f < frames; f++) {
       const ox = f * fw;
       const phase = (f / frames) * Math.PI * 2;
-      const bob = Math.sin(phase) * 1.0 * s;
+
+      // Per-accessory animation curves
+      let bob = Math.sin(phase) * 1.0 * s;
+      let leftArmY = 0;   // offset from default arm position
+      let rightArmY = 0;
+      let headTilt = 0;    // head rotation in radians
+      let bodyLean = 0;    // horizontal lean
+
+      switch (acc) {
+        case 'hammer': {
+          // Hammering: right arm raises then strikes down
+          bob = Math.sin(phase) * 0.5 * s;
+          const strike = Math.sin(phase);
+          rightArmY = strike > 0 ? -strike * 10 : strike * 4; // raise high, come down hard
+          leftArmY = Math.sin(phase + 0.5) * 1.5;
+          bodyLean = strike > 0 ? -0.5 : 0.5;
+          break;
+        }
+        case 'pickaxe': {
+          // Similar to hammer but with more body lean
+          bob = Math.sin(phase) * 0.5 * s;
+          const dig = Math.sin(phase);
+          rightArmY = dig > 0 ? -dig * 12 : dig * 3;
+          leftArmY = Math.sin(phase + 0.3) * 2;
+          bodyLean = dig > 0 ? -1 : 1;
+          headTilt = dig * 0.05;
+          break;
+        }
+        case 'coinbag': {
+          // Weighing coins: gentle bounce of right hand, shift weight
+          bob = Math.sin(phase) * 1.5 * s;
+          rightArmY = Math.sin(phase * 2) * 3;
+          leftArmY = Math.sin(phase + 1) * 1;
+          bodyLean = Math.sin(phase) * 0.5;
+          break;
+        }
+        case 'staff': {
+          // Leaning on staff: gentle sway, slight lean
+          bob = Math.sin(phase) * 0.8 * s;
+          rightArmY = Math.sin(phase) * 1;
+          leftArmY = Math.sin(phase + 2) * 2;
+          bodyLean = Math.sin(phase) * 0.8;
+          headTilt = Math.sin(phase + 1) * 0.03;
+          break;
+        }
+        case 'sword': {
+          // Alert stance: subtle weight shift, sword steady
+          bob = Math.sin(phase) * 0.5 * s;
+          rightArmY = Math.sin(phase) * 1;
+          leftArmY = Math.sin(phase + Math.PI) * 2;
+          bodyLean = Math.sin(phase) * 0.3;
+          headTilt = Math.sin(phase * 2) * 0.02;
+          break;
+        }
+        case 'lantern': {
+          // Lantern sway: right arm swings gently, body shifts
+          bob = Math.sin(phase) * 1.0 * s;
+          rightArmY = Math.sin(phase) * 4;
+          leftArmY = Math.sin(phase + 1.5) * 1.5;
+          bodyLean = Math.sin(phase + 0.5) * 0.6;
+          break;
+        }
+        case 'book': {
+          // Reading: looking down, subtle page turn motion
+          bob = Math.sin(phase) * 0.6 * s;
+          rightArmY = Math.sin(phase * 2) * 1.5;
+          leftArmY = Math.sin(phase) * 0.5;
+          headTilt = 0.06 + Math.sin(phase) * 0.02; // always slightly tilted down
+          break;
+        }
+        default: {
+          // Generic idle
+          bob = Math.sin(phase) * 1.0 * s;
+          leftArmY = Math.sin(phase) * 2;
+          rightArmY = Math.sin(phase + Math.PI) * 2;
+          break;
+        }
+      }
 
       ctx.save();
       ctx.translate(ox, 0);
@@ -1355,142 +1432,156 @@ export class SpriteGenerator {
 
       // Cloak (behind body)
       if (npc.cloakColor) {
-        this.drawPart(ctx, cx - (bodyW + 2) * s, by - 38 * s, (bodyW * 2 + 4) * s, 28 * s, npc.cloakColor, 3 * s);
+        this.drawPart(ctx, cx - (bodyW + 2) * s + bodyLean * s, by - 38 * s, (bodyW * 2 + 4) * s, 28 * s, npc.cloakColor, 3 * s);
       }
 
-      // Body
-      this.drawPart(ctx, cx - bodyW * s, by - 36 * s, bodyW * 2 * s, 22 * s, npc.bodyColor, 3 * s);
+      // Body (with lean)
+      this.drawPart(ctx, cx - bodyW * s + bodyLean * s, by - 36 * s, bodyW * 2 * s, 22 * s, npc.bodyColor, 3 * s);
       // Belt
-      this.drawPart(ctx, cx - bodyW * s, by - 18 * s, bodyW * 2 * s, 4 * s, darkenHex(npc.bodyColor, 20), 1 * s);
+      this.drawPart(ctx, cx - bodyW * s + bodyLean * s, by - 18 * s, bodyW * 2 * s, 4 * s, darkenHex(npc.bodyColor, 20), 1 * s);
 
-      // Arms
-      const armBob = Math.sin(phase) * 3;
-      this.drawPart(ctx, cx - (bodyW + 4) * s, by - 34 * s, 5 * s, 12 * s, npc.bodyColor, 2 * s);
-      this.drawPart(ctx, cx + (bodyW - 1) * s, by - 34 * s, 5 * s, 12 * s, npc.bodyColor, 2 * s);
-      // Hands
+      // Left arm
+      const laX = cx - (bodyW + 4) * s + bodyLean * s;
+      const laY = by - 34 * s;
+      this.drawPart(ctx, laX, laY, 5 * s, 12 * s, npc.bodyColor, 2 * s);
+      // Left hand
       ctx.fillStyle = this.rgb(skin);
-      this.fillCircle(ctx, cx - (bodyW + 1.5) * s, by - 22 * s + armBob * s, 2.5 * s);
-      this.fillCircle(ctx, cx + (bodyW + 1.5) * s, by - 22 * s - armBob * s, 2.5 * s);
+      this.fillCircle(ctx, laX + 2.5 * s, laY + 12 * s + leftArmY * s, 2.5 * s);
 
-      // Accessory in hand
+      // Right arm
+      const raX = cx + (bodyW - 1) * s + bodyLean * s;
+      const raY = by - 34 * s;
+      this.drawPart(ctx, raX, raY, 5 * s, 12 * s, npc.bodyColor, 2 * s);
+      // Right hand
+      ctx.fillStyle = this.rgb(skin);
+      const rhX = raX + 2.5 * s;
+      const rhY = raY + 12 * s + rightArmY * s;
+      this.fillCircle(ctx, rhX, rhY, 2.5 * s);
+
+      // Accessory in right hand
       ctx.fillStyle = this.rgb(npc.itemColor);
-      const handX = cx + (bodyW + 1) * s;
-      const handY = by - 22 * s - armBob * s;
       switch (acc) {
         case 'hammer':
-          ctx.fillRect(handX - 1 * s, handY - 8 * s, 2 * s, 14 * s);
-          this.drawPart(ctx, handX - 3 * s, handY - 11 * s, 6 * s, 4 * s, npc.itemColor, 1 * s);
+          ctx.fillRect(rhX - 1 * s, rhY - 8 * s, 2 * s, 14 * s);
+          this.drawPart(ctx, rhX - 3 * s, rhY - 11 * s, 6 * s, 4 * s, npc.itemColor, 1 * s);
           break;
         case 'coinbag':
-          this.fillCircle(ctx, handX, handY - 4 * s, 4 * s);
+          this.fillCircle(ctx, rhX, rhY - 4 * s, 4 * s);
           ctx.fillStyle = this.rgb(0x8a7020);
-          this.fillCircle(ctx, handX, handY - 4 * s, 2 * s);
+          this.fillCircle(ctx, rhX, rhY - 4 * s, 2 * s);
           break;
         case 'staff':
           ctx.fillStyle = this.rgb(0x4a3018);
-          ctx.fillRect(handX - 1 * s, handY - 16 * s, 2.5 * s, 22 * s);
+          ctx.fillRect(rhX - 1 * s, rhY - 16 * s, 2.5 * s, 22 * s);
           ctx.fillStyle = this.rgb(npc.itemColor);
-          this.fillCircle(ctx, handX + 0.5 * s, handY - 17 * s, 3 * s);
+          this.fillCircle(ctx, rhX + 0.5 * s, rhY - 17 * s, 3 * s);
           break;
         case 'sword':
           ctx.fillStyle = this.rgb(0x888898);
-          ctx.fillRect(handX - 0.5 * s, handY - 14 * s, 2 * s, 16 * s);
+          ctx.fillRect(rhX - 0.5 * s, rhY - 14 * s, 2 * s, 16 * s);
           ctx.fillStyle = this.rgb(0x5a4020);
-          ctx.fillRect(handX - 2 * s, handY, 5 * s, 2 * s);
+          ctx.fillRect(rhX - 2 * s, rhY, 5 * s, 2 * s);
           break;
         case 'pickaxe':
           ctx.fillStyle = this.rgb(0x4a3018);
-          ctx.fillRect(handX - 1 * s, handY - 10 * s, 2 * s, 16 * s);
+          ctx.fillRect(rhX - 1 * s, rhY - 10 * s, 2 * s, 16 * s);
           ctx.fillStyle = this.rgb(npc.itemColor);
           ctx.beginPath();
-          ctx.moveTo(handX - 4 * s, handY - 10 * s);
-          ctx.lineTo(handX + 4 * s, handY - 12 * s);
-          ctx.lineTo(handX + 4 * s, handY - 9 * s);
+          ctx.moveTo(rhX - 4 * s, rhY - 10 * s);
+          ctx.lineTo(rhX + 4 * s, rhY - 12 * s);
+          ctx.lineTo(rhX + 4 * s, rhY - 9 * s);
           ctx.closePath(); ctx.fill();
           break;
-        case 'lantern':
+        case 'lantern': {
           ctx.fillStyle = this.rgb(0x4a4a50);
-          ctx.fillRect(handX - 1.5 * s, handY - 8 * s, 3 * s, 2 * s);
+          ctx.fillRect(rhX - 1.5 * s, rhY - 8 * s, 3 * s, 2 * s);
           ctx.fillStyle = this.rgb(0xffaa30);
-          this.roundRect(ctx, handX - 2.5 * s, handY - 6 * s, 5 * s, 6 * s, 1 * s);
+          this.roundRect(ctx, rhX - 2.5 * s, rhY - 6 * s, 5 * s, 6 * s, 1 * s);
           ctx.fill();
-          ctx.fillStyle = 'rgba(255,200,50,0.3)';
-          this.fillCircle(ctx, handX, handY - 3 * s, 5 * s);
+          // Lantern glow flickers per frame
+          const glowAlpha = 0.2 + Math.sin(phase * 2) * 0.1;
+          ctx.fillStyle = `rgba(255,200,50,${glowAlpha})`;
+          this.fillCircle(ctx, rhX, rhY - 3 * s, 5 * s);
           break;
+        }
         case 'scroll':
           ctx.fillStyle = this.rgb(0xd4c8a0);
-          this.roundRect(ctx, handX - 2 * s, handY - 6 * s, 5 * s, 8 * s, 1.5 * s);
+          this.roundRect(ctx, rhX - 2 * s, rhY - 6 * s, 5 * s, 8 * s, 1.5 * s);
           ctx.fill();
           ctx.fillStyle = this.rgb(0x8a3020);
-          ctx.fillRect(handX - 2.5 * s, handY - 6 * s, 6 * s, 1.5 * s);
-          ctx.fillRect(handX - 2.5 * s, handY + 1 * s, 6 * s, 1.5 * s);
+          ctx.fillRect(rhX - 2.5 * s, rhY - 6 * s, 6 * s, 1.5 * s);
+          ctx.fillRect(rhX - 2.5 * s, rhY + 1 * s, 6 * s, 1.5 * s);
           break;
         case 'book':
           ctx.fillStyle = this.rgb(npc.itemColor);
-          this.roundRect(ctx, handX - 3 * s, handY - 5 * s, 6 * s, 7 * s, 1 * s);
+          this.roundRect(ctx, rhX - 3 * s, rhY - 5 * s, 6 * s, 7 * s, 1 * s);
           ctx.fill();
           ctx.fillStyle = this.rgb(lightenHex(npc.itemColor, 40));
-          ctx.fillRect(handX - 2 * s, handY - 4 * s, 4 * s, 5 * s);
+          ctx.fillRect(rhX - 2 * s, rhY - 4 * s, 4 * s, 5 * s);
           break;
       }
 
       // Neck
       ctx.fillStyle = this.rgb(skin);
-      ctx.fillRect(cx - 3 * s, by - 42 * s, 6 * s, 6 * s);
+      ctx.fillRect(cx - 3 * s + bodyLean * s, by - 42 * s, 6 * s, 6 * s);
 
-      // Head
+      // Head (with tilt)
+      ctx.save();
+      ctx.translate(cx + bodyLean * s, by - 46 * s);
+      ctx.rotate(headTilt);
       ctx.fillStyle = this.rgb(skin);
-      this.roundRect(ctx, cx - 8 * s, by - 54 * s, 16 * s, 16 * s, 5 * s);
+      this.roundRect(ctx, -8 * s, -8 * s, 16 * s, 16 * s, 5 * s);
       ctx.fill();
 
       // Eyes
       ctx.fillStyle = '#1a1a22';
-      this.fillEllipse(ctx, cx - 3 * s, by - 46 * s, 1.5 * s, 2 * s);
-      this.fillEllipse(ctx, cx + 3 * s, by - 46 * s, 1.5 * s, 2 * s);
+      this.fillEllipse(ctx, -3 * s, 0, 1.5 * s, 2 * s);
+      this.fillEllipse(ctx, 3 * s, 0, 1.5 * s, 2 * s);
 
-      // Hair
+      // Hair (drawn in head-local rotated space, origin = head center)
       const hs = npc.hairStyle ?? 'none';
       ctx.fillStyle = this.rgb(hair);
       if (hs === 'short') {
-        this.roundRect(ctx, cx - 8 * s, by - 56 * s, 16 * s, 8 * s, 3 * s);
+        this.roundRect(ctx, -8 * s, -10 * s, 16 * s, 8 * s, 3 * s);
         ctx.fill();
       } else if (hs === 'long') {
-        this.roundRect(ctx, cx - 9 * s, by - 57 * s, 18 * s, 10 * s, 3 * s);
+        this.roundRect(ctx, -9 * s, -11 * s, 18 * s, 10 * s, 3 * s);
         ctx.fill();
         // Side hair
-        ctx.fillRect(cx - 9 * s, by - 50 * s, 3 * s, 12 * s);
-        ctx.fillRect(cx + 6 * s, by - 50 * s, 3 * s, 12 * s);
+        ctx.fillRect(-9 * s, -4 * s, 3 * s, 12 * s);
+        ctx.fillRect(6 * s, -4 * s, 3 * s, 12 * s);
       } else if (hs === 'hood') {
         ctx.fillStyle = this.rgb(npc.cloakColor ?? hair);
         ctx.beginPath();
-        ctx.moveTo(cx, by - 60 * s);
-        ctx.lineTo(cx - 11 * s, by - 42 * s);
-        ctx.lineTo(cx + 11 * s, by - 42 * s);
+        ctx.moveTo(0, -14 * s);
+        ctx.lineTo(-11 * s, 4 * s);
+        ctx.lineTo(11 * s, 4 * s);
         ctx.closePath(); ctx.fill();
         // Hood rim
         ctx.fillStyle = this.rgb(darkenHex(npc.cloakColor ?? hair, 15));
         ctx.beginPath();
-        ctx.arc(cx, by - 44 * s, 10 * s, Math.PI, 0);
+        ctx.arc(0, 2 * s, 10 * s, Math.PI, 0);
         ctx.closePath(); ctx.fill();
       }
-      // bald = no hair drawn
 
-      // Beard
+      // Beard (head-local space)
       if (npc.beard) {
         ctx.fillStyle = this.rgb(hair);
         ctx.beginPath();
-        ctx.moveTo(cx - 5 * s, by - 42 * s);
-        ctx.lineTo(cx + 5 * s, by - 42 * s);
-        ctx.lineTo(cx + 3 * s, by - 34 * s);
-        ctx.lineTo(cx, by - 32 * s);
-        ctx.lineTo(cx - 3 * s, by - 34 * s);
+        ctx.moveTo(-5 * s, 4 * s);
+        ctx.lineTo(5 * s, 4 * s);
+        ctx.lineTo(3 * s, 12 * s);
+        ctx.lineTo(0, 14 * s);
+        ctx.lineTo(-3 * s, 12 * s);
         ctx.closePath(); ctx.fill();
       }
 
-      // Hat (drawn on top of hair, only for non-hood styles)
+      // Hat (on top of hair, non-hood only; head-local space)
       if (hs !== 'hood') {
-        this.drawPart(ctx, cx - 9 * s, by - 58 * s, 18 * s, 6 * s, npc.hatColor, 2 * s);
+        this.drawPart(ctx, -9 * s, -12 * s, 18 * s, 6 * s, npc.hatColor, 2 * s);
       }
+
+      ctx.restore(); // end head rotation
 
       ctx.restore();
     }
@@ -1887,14 +1978,19 @@ export class SpriteGenerator {
     for (const cfg of MONSTER_CONFIGS) {
       registerSet(cfg.textureKey, false);
     }
-    // NPC idle animations
+    // NPC idle animations (8 frames, varied frameRate per accessory)
     for (const npc of NPC_CONFIGS) {
       const animKey = `${npc.key}_idle`;
       if (anims.exists(animKey)) anims.remove(animKey);
+      // Hammering/pickaxe: faster; staff/book: slower; others: moderate
+      let rate = 5;
+      if (npc.accessory === 'hammer' || npc.accessory === 'pickaxe') rate = 6;
+      else if (npc.accessory === 'staff' || npc.accessory === 'book') rate = 3;
+      else if (npc.accessory === 'lantern') rate = 4;
       anims.create({
         key: animKey,
-        frames: anims.generateFrameNumbers(npc.key, { start: 0, end: 3 }),
-        frameRate: 4,
+        frames: anims.generateFrameNumbers(npc.key, { start: 0, end: 7 }),
+        frameRate: rate,
         repeat: -1,
       });
     }
