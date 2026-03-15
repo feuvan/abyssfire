@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT } from '../config';
+import { TILE_WIDTH, TILE_HEIGHT, TEXTURE_SCALE } from '../config';
 import { cartToIso } from '../utils/IsometricUtils';
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { ClassDefinition, SkillDefinition, Stats } from '../data/types';
@@ -64,7 +64,7 @@ export class Player {
     const spriteKey = `player_${classData.id}`;
     const hasTexture = scene.textures.exists(spriteKey);
     if (hasTexture) {
-      const img = scene.add.image(0, -32, spriteKey);
+      const img = scene.add.image(0, -32, spriteKey).setScale(1 / TEXTURE_SCALE);
       this.sprite.add(img);
       this.body = scene.add.rectangle(0, -24, 40, 48, 0x000000, 0).setVisible(false);
     } else {

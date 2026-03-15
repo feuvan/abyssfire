@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT } from '../config';
+import { GAME_WIDTH, GAME_HEIGHT, TEXTURE_SCALE } from '../config';
 import { SaveSystem } from '../systems/SaveSystem';
 import { AllClasses } from '../data/classes/index';
 import type { SaveData } from '../data/types';
@@ -157,7 +157,7 @@ export class MenuScene extends Phaser.Scene {
       // Class icon preview
       const spriteKey = `player_${cls.id}`;
       if (this.textures.exists(spriteKey)) {
-        const preview = this.add.image(cx - 130, y, spriteKey).setScale(0.7);
+        const preview = this.add.image(cx - 130, y, spriteKey).setScale(0.7 / TEXTURE_SCALE);
         this.classContainer!.add(preview);
       }
 

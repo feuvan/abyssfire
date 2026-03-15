@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { TEXTURE_SCALE } from '../config';
 import { cartToIso } from '../utils/IsometricUtils';
 import { euclideanDistance } from '../utils/IsometricUtils';
 import { randomInt } from '../utils/MathUtils';
@@ -67,7 +68,7 @@ export class Monster {
     const size = definition.elite ? 48 : 36;
 
     if (hasTexture) {
-      const img = scene.add.image(0, -24, spriteKey);
+      const img = scene.add.image(0, -24, spriteKey).setScale(1 / TEXTURE_SCALE);
       this.sprite.add(img);
       this.body = scene.add.rectangle(0, -20, size, size, 0x000000, 0).setVisible(false);
     } else {

@@ -8,6 +8,8 @@ export const MAP_ROWS = 80;
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
 
+export const TEXTURE_SCALE = 2;
+
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game-container',

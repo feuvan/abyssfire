@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT, GAME_WIDTH, GAME_HEIGHT } from '../config';
+import { TILE_WIDTH, TILE_HEIGHT, GAME_WIDTH, GAME_HEIGHT, TEXTURE_SCALE } from '../config';
 import { cartToIso, worldToTile, euclideanDistance } from '../utils/IsometricUtils';
 import { randomInt } from '../utils/MathUtils';
 import { EventBus, GameEvents } from '../utils/EventBus';
@@ -320,7 +320,7 @@ export class ZoneScene extends Phaser.Scene {
           if (!this.tileSprites[row][col]) {
             const tileType = this.mapData.tiles[row][col];
             const tileKey = TILE_KEYS[tileType] || 'tile_grass';
-            const tile = this.add.image(pos.x, pos.y, tileKey);
+            const tile = this.add.image(pos.x, pos.y, tileKey).setScale(1 / TEXTURE_SCALE);
             tile.setDepth(pos.y);
             this.tileSprites[row][col] = tile;
 
@@ -332,7 +332,7 @@ export class ZoneScene extends Phaser.Scene {
             const exit = this.mapData.exits.find(e => e.col === col && e.row === row);
             if (exit) {
               if (this.textures.exists('exit_portal')) {
-                const portal = this.add.image(pos.x, pos.y - 8, 'exit_portal');
+                const portal = this.add.image(pos.x, pos.y - 8, 'exit_portal').setScale(1 / TEXTURE_SCALE);
                 portal.setDepth(pos.y + 2);
               }
             }
@@ -381,7 +381,7 @@ export class ZoneScene extends Phaser.Scene {
         if (!this.decorSprites.has(key)) {
           const texKey = `decor_${decor.type}`;
           if (this.textures.exists(texKey)) {
-            const sprite = this.add.image(pos.x, pos.y - 6, texKey);
+            const sprite = this.add.image(pos.x, pos.y - 6, texKey).setScale(1 / TEXTURE_SCALE);
             sprite.setDepth(pos.y + 20);
             this.decorSprites.set(key, sprite);
           }
@@ -735,7 +735,7 @@ export class ZoneScene extends Phaser.Scene {
     container.setDepth(worldPos.y + 30);
 
     if (this.textures.exists('loot_bag')) {
-      const bag = this.add.image(0, 0, 'loot_bag');
+      const bag = this.add.image(0, 0, 'loot_bag').setScale(1 / TEXTURE_SCALE);
       const tintColor = this.getQualityColor(item.quality);
       if (item.quality !== 'normal') bag.setTint(tintColor);
       container.add(bag);

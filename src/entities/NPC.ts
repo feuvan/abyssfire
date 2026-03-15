@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { TEXTURE_SCALE } from '../config';
 import { cartToIso } from '../utils/IsometricUtils';
 import type { NPCDefinition } from '../data/types';
 
@@ -25,7 +26,7 @@ export class NPC {
     // Use loaded sprite texture if available, otherwise draw procedural fallback
     const spriteKey = `npc_${definition.type}`;
     if (scene.textures.exists(spriteKey)) {
-      const img = scene.add.image(0, -32, spriteKey);
+      const img = scene.add.image(0, -32, spriteKey).setScale(1 / TEXTURE_SCALE);
       this.sprite.add(img);
     } else {
       this.drawProceduralNPC(scene);

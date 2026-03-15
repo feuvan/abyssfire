@@ -110,12 +110,18 @@ export class UIScene extends Phaser.Scene {
   private createSkillBar(): void {
     const slotSize = 42, gap = 5;
     const skills = this.player.classData.skills;
-    const totalW = skills.length * (slotSize + gap) - gap;
-    const startX = (GAME_WIDTH - totalW) / 2 - 50;
-    const y = GAME_HEIGHT - 50;
+    const totalSkillW = skills.length * (slotSize + gap) - gap;
 
-    // Skill bar background
-    this.add.rectangle(GAME_WIDTH / 2 + 8, y, totalW + 196, slotSize + 10, 0x0a0a14, 0.7)
+    const utilBtnW = 50, utilGap = 6, utilCount = 3;
+    const totalUtilW = utilCount * utilBtnW + (utilCount - 1) * utilGap;
+    const skillUtilGap = gap + 4;
+    const fullBarW = totalSkillW + skillUtilGap + totalUtilW;
+    const startX = (GAME_WIDTH - fullBarW) / 2;
+    const y = GAME_HEIGHT - 50;
+    const bgPad = 8;
+
+    // Skill bar background — centered around all elements
+    this.add.rectangle(GAME_WIDTH / 2, y, fullBarW + bgPad * 2, slotSize + 10, 0x0a0a14, 0.7)
       .setStrokeStyle(1, 0x333344).setDepth(2999);
 
     this.skillSlots = [];
@@ -141,9 +147,12 @@ export class UIScene extends Phaser.Scene {
       this.skillSlots.push(container);
     }
 
+    // Utility buttons — evenly spaced after skill slots
+    const utilStartX = startX + totalSkillW + skillUtilGap;
+
     // Auto combat button
-    const acX = startX + totalW + gap + 24;
-    const acBg = this.add.rectangle(acX, y, 50, slotSize, 0x1a1a2e)
+    const acX = utilStartX + utilBtnW / 2;
+    const acBg = this.add.rectangle(acX, y, utilBtnW, slotSize, 0x1a1a2e)
       .setStrokeStyle(1.5, 0x555566).setInteractive({ useHandCursor: true }).setDepth(3000);
     this.autoCombatText = this.add.text(acX, y, 'AUTO\nOFF', {
       fontSize: '10px', color: '#666680', fontFamily: FONT, align: 'center',
@@ -154,8 +163,8 @@ export class UIScene extends Phaser.Scene {
     });
 
     // Auto-loot button
-    const alX = acX + 56;
-    const alBg = this.add.rectangle(alX, y, 50, slotSize, 0x1a1a2e)
+    const alX = acX + utilBtnW + utilGap;
+    const alBg = this.add.rectangle(alX, y, utilBtnW, slotSize, 0x1a1a2e)
       .setStrokeStyle(1.5, 0x555566).setInteractive({ useHandCursor: true }).setDepth(3000);
     this.autoLootText = this.add.text(alX, y, '拾取\nOFF', {
       fontSize: '10px', color: '#666680', fontFamily: FONT, align: 'center',
@@ -168,8 +177,8 @@ export class UIScene extends Phaser.Scene {
     });
 
     // Inventory button
-    const invX = alX + 56;
-    const invBg = this.add.rectangle(invX, y, 50, slotSize, 0x1a1a2e)
+    const invX = alX + utilBtnW + utilGap;
+    const invBg = this.add.rectangle(invX, y, utilBtnW, slotSize, 0x1a1a2e)
       .setStrokeStyle(1.5, 0x8e44ad).setInteractive({ useHandCursor: true }).setDepth(3000);
     this.add.text(invX, y, '背包\n(I)', {
       fontSize: '10px', color: '#b08cce', fontFamily: FONT, align: 'center',
