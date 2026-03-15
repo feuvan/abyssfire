@@ -171,7 +171,7 @@ export interface LegendaryDefinition {
 
 export interface TileData {
   walkable: boolean;
-  type: 'grass' | 'dirt' | 'stone' | 'water' | 'wall' | 'camp';
+  type: 'grass' | 'dirt' | 'stone' | 'water' | 'wall' | 'camp' | 'camp_wall';
 }
 
 export type MapTheme = 'plains' | 'forest' | 'mountain' | 'desert' | 'abyss';
@@ -192,6 +192,19 @@ export interface MapData {
   theme?: MapTheme;
   seed?: number;
   decorations?: { col: number; row: number; type: string }[];
+  safeZoneRadius?: number;
+}
+
+export interface CampTheme {
+  wallColor: string;
+  wallDark: string;
+  wallLight: string;
+  wallTop: string;
+  groundColor: string;
+  bannerColor: string;
+  bannerDark: string;
+  torchFlame: number;
+  tentColor: string;
 }
 
 export interface QuestDefinition {
