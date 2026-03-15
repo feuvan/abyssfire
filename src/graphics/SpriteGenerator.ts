@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { TEXTURE_SCALE } from '../config';
+import { CAMP_THEMES } from '../data/camp-themes';
 
 // ── Frame Layout Constants ──────────────────────────────────────────────────
 const IDLE_START = 0, IDLE_COUNT = 4;
@@ -183,9 +184,10 @@ export class SpriteGenerator {
     '#0b1820', // 3 = water
     '#1a1a1e', // 4 = wall
     '#2c2010', // 5 = camp
+    '#4a3520', // 6 = camp_wall
   ];
 
-  private static readonly TILE_NAMES = ['grass', 'dirt', 'stone', 'water', 'wall', 'camp'];
+  private static readonly TILE_NAMES = ['grass', 'dirt', 'stone', 'water', 'wall', 'camp', 'camp_wall'];
 
   /**
    * Generate a blended tile that smoothly transitions to neighboring terrain types.
@@ -264,6 +266,7 @@ export class SpriteGenerator {
     this.generateMonsterSheets();
     this.generateNPCSprites();
     this.generateDecorations();
+    this.generateCampDecorations();
     this.generateEffects();
     this.registerAnimations();
   }
@@ -393,6 +396,28 @@ export class SpriteGenerator {
     this.makeTile('tile_water', this.drawWater.bind(this));
     this.makeTile('tile_wall', this.drawWall.bind(this));
     this.makeTile('tile_camp', this.drawCamp.bind(this));
+
+    // Default camp wall (plains theme)
+    const plainsTheme = CAMP_THEMES['plains'];
+    this.makeTile('tile_camp_wall', (ctx, w, h) =>
+      this.drawCampWall(ctx, w, h, plainsTheme.wallColor, plainsTheme.wallDark, plainsTheme.wallLight, plainsTheme.wallTop),
+    );
+
+    // Themed variants for each camp theme
+    for (const [themeName, theme] of Object.entries(CAMP_THEMES)) {
+      const tWall = theme.wallColor;
+      const tWallDark = theme.wallDark;
+      const tWallLight = theme.wallLight;
+      const tWallTop = theme.wallTop;
+      const tGround = theme.groundColor;
+
+      this.makeTile(`tile_camp_wall_${themeName}`, (ctx, w, h) =>
+        this.drawCampWall(ctx, w, h, tWall, tWallDark, tWallLight, tWallTop),
+      );
+      this.makeTile(`tile_camp_ground_${themeName}`, (ctx, w, h) =>
+        this.drawCampGroundThemed(ctx, w, h, tGround),
+      );
+    }
   }
 
   private makeTile(key: string, drawFn: (ctx: CanvasRenderingContext2D, w: number, h: number) => void): void {
@@ -577,6 +602,92 @@ export class SpriteGenerator {
     const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.4);
     glow.addColorStop(0, 'rgba(160,90,20,0.1)');
     glow.addColorStop(0.6, 'rgba(100,45,10,0.05)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  private drawCampWall(
+    ctx: CanvasRenderingContext2D, w: number, h: number,
+    wallColor: string, wallDark: string, wallLight: string, wallTop: string,
+  ): void {
+    ctx.fillStyle = wallDark;
+    ctx.fillRect(0, 0, w, h);
+
+    const wallH = h * 0.45;
+
+    // Front face (left-side isometric face) with gradient
+    const fGrad = ctx.createLinearGradient(0, h / 2, w / 2, h);
+    fGrad.addColorStop(0, wallLight);
+    fGrad.addColorStop(1, wallDark);
+    ctx.fillStyle = fGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2); ctx.lineTo(w / 2, h);
+    ctx.lineTo(w / 2, h - wallH); ctx.lineTo(0, h / 2 - wallH);
+    ctx.closePath(); ctx.fill();
+
+    // Right face with gradient
+    const rGrad = ctx.createLinearGradient(w / 2, h / 2, w, h / 2);
+    rGrad.addColorStop(0, wallLight);
+    rGrad.addColorStop(1, wallColor);
+    ctx.fillStyle = rGrad;
+    ctx.beginPath();
+    ctx.moveTo(w / 2, h); ctx.lineTo(w, h / 2);
+    ctx.lineTo(w, h / 2 - wallH); ctx.lineTo(w / 2, h - wallH);
+    ctx.closePath(); ctx.fill();
+
+    // Top face
+    ctx.fillStyle = wallTop;
+    ctx.beginPath();
+    ctx.moveTo(w / 2, h / 2 - wallH); ctx.lineTo(w, h / 2 - wallH);
+    ctx.lineTo(w / 2, h - wallH); ctx.lineTo(0, h / 2 - wallH);
+    ctx.closePath(); ctx.fill();
+
+    // Vertical plank/line details
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.lineWidth = 0.7;
+    for (let i = 1; i < 3; i++) {
+      const ly = h / 2 + i * (wallH / 3);
+      ctx.beginPath();
+      ctx.moveTo(0 + i * 2, h / 2 - wallH + ly * 0.3);
+      ctx.lineTo(w / 2 - i * 2, h - wallH + ly * 0.3);
+      ctx.stroke();
+    }
+
+    // Edge highlight along top ridge
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, h / 2 - wallH); ctx.lineTo(w / 2, h / 2 - wallH);
+    ctx.lineTo(w, h / 2 - wallH);
+    ctx.stroke();
+
+    this.applyNoiseToRegion(ctx, 0, 0, w, h, 5);
+  }
+
+  private drawCampGroundThemed(
+    ctx: CanvasRenderingContext2D, w: number, h: number,
+    groundColor: string,
+  ): void {
+    ctx.fillStyle = groundColor;
+    ctx.fillRect(0, 0, w, h);
+
+    this.applyNoiseToRegion(ctx, 0, 0, w, h, 6);
+
+    // Plank lines
+    const cx = w / 2, cy = h / 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 0.6;
+    for (let i = -4; i <= 4; i++) {
+      const ly = cy + i * h * 0.1;
+      const inset = Math.abs(i) * w * 0.06;
+      ctx.beginPath(); ctx.moveTo(cx - w * 0.4 + inset, ly); ctx.lineTo(cx + w * 0.4 - inset, ly); ctx.stroke();
+    }
+
+    // Subtle warm glow
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.4);
+    glow.addColorStop(0, 'rgba(160,90,20,0.08)');
+    glow.addColorStop(0.6, 'rgba(100,45,10,0.04)');
     glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, w, h);
@@ -1357,6 +1468,241 @@ export class SpriteGenerator {
       if (this.scene.textures.exists(key)) this.scene.textures.remove(key);
       this.scene.textures.addCanvas(key, canvas);
     }
+  }
+
+  // ── Sprite Helper ────────────────────────────────────────────────────
+
+  private makeSprite(
+    key: string, w: number, h: number,
+    drawFn: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
+  ): void {
+    if (this.scene.textures.exists(key)) return;
+    const [canvas, ctx] = this.createCanvas(w, h);
+    drawFn(ctx, w, h);
+    this.scene.textures.addCanvas(key, canvas);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ██ CAMP DECORATION SPRITES ██
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private generateCampDecorations(): void {
+    const s = TEXTURE_SCALE;
+
+    // camp_campfire — 32x32: stone ring base, crossed logs, triangular fire
+    this.makeSprite('camp_campfire', 32 * s, 32 * s, (ctx, w, h) => {
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      this.fillEllipse(ctx, w / 2, h - 2 * s, 10 * s, 3 * s);
+      // Stone ring base
+      ctx.fillStyle = '#555560';
+      this.fillEllipse(ctx, w / 2, h * 0.72, 10 * s, 4 * s);
+      ctx.fillStyle = '#404045';
+      this.fillEllipse(ctx, w / 2, h * 0.72, 7 * s, 2.5 * s);
+      // Crossed logs
+      ctx.strokeStyle = '#3a2010';
+      ctx.lineWidth = 2.5 * s;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(w * 0.25, h * 0.75); ctx.lineTo(w * 0.75, h * 0.55); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(w * 0.75, h * 0.75); ctx.lineTo(w * 0.25, h * 0.55); ctx.stroke();
+      // Outer fire (orange)
+      ctx.fillStyle = 'rgba(220,100,20,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.15);
+      ctx.lineTo(w * 0.72, h * 0.65);
+      ctx.lineTo(w * 0.28, h * 0.65);
+      ctx.closePath(); ctx.fill();
+      // Inner fire (yellow)
+      ctx.fillStyle = 'rgba(255,220,50,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.28);
+      ctx.lineTo(w * 0.60, h * 0.62);
+      ctx.lineTo(w * 0.40, h * 0.62);
+      ctx.closePath(); ctx.fill();
+      // Bright core
+      ctx.fillStyle = 'rgba(255,255,180,0.7)';
+      this.fillEllipse(ctx, w / 2, h * 0.5, 3 * s, 4 * s);
+    });
+
+    // camp_torch — 16x24: vertical pole, triangular flame on top
+    this.makeSprite('camp_torch', 16 * s, 24 * s, (ctx, w, h) => {
+      // Pole
+      ctx.fillStyle = '#3a2010';
+      ctx.fillRect(w / 2 - 1.5 * s, h * 0.35, 3 * s, h * 0.6);
+      // Bracket at top
+      ctx.fillStyle = '#555560';
+      ctx.fillRect(w / 2 - 2.5 * s, h * 0.32, 5 * s, 2 * s);
+      // Outer flame (orange)
+      ctx.fillStyle = 'rgba(220,100,20,0.85)';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.02);
+      ctx.lineTo(w * 0.78, h * 0.32);
+      ctx.lineTo(w * 0.22, h * 0.32);
+      ctx.closePath(); ctx.fill();
+      // Inner flame (yellow)
+      ctx.fillStyle = 'rgba(255,220,50,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.10);
+      ctx.lineTo(w * 0.65, h * 0.30);
+      ctx.lineTo(w * 0.35, h * 0.30);
+      ctx.closePath(); ctx.fill();
+    });
+
+    // camp_tent — 40x36: triangular pitched tent shape
+    this.makeSprite('camp_tent', 40 * s, 36 * s, (ctx, w, h) => {
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      this.fillEllipse(ctx, w / 2, h - 2 * s, 16 * s, 3 * s);
+      // Tent body (dark base)
+      ctx.fillStyle = '#3a2a1a';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.08);
+      ctx.lineTo(w * 0.95, h * 0.85);
+      ctx.lineTo(w * 0.05, h * 0.85);
+      ctx.closePath(); ctx.fill();
+      // Tent facing panel (lighter)
+      ctx.fillStyle = '#5a4028';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.15);
+      ctx.lineTo(w * 0.78, h * 0.85);
+      ctx.lineTo(w * 0.22, h * 0.85);
+      ctx.closePath(); ctx.fill();
+      // Inner flap / door shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.45);
+      ctx.lineTo(w * 0.60, h * 0.85);
+      ctx.lineTo(w * 0.40, h * 0.85);
+      ctx.closePath(); ctx.fill();
+      // Ridge seam highlight
+      ctx.strokeStyle = 'rgba(200,170,120,0.3)';
+      ctx.lineWidth = s;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.08); ctx.lineTo(w / 2, h * 0.45);
+      ctx.stroke();
+      // Pole tip
+      ctx.fillStyle = '#808080';
+      this.fillCircle(ctx, w / 2, h * 0.05, 1.5 * s);
+    });
+
+    // camp_barrel — 16x20: rectangular body, horizontal band lines, elliptical top
+    this.makeSprite('camp_barrel', 16 * s, 20 * s, (ctx, w, h) => {
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      this.fillEllipse(ctx, w / 2, h - s, 6 * s, 1.5 * s);
+      // Body
+      const bGrad = ctx.createLinearGradient(w * 0.15, 0, w * 0.85, 0);
+      bGrad.addColorStop(0, '#3a2a18');
+      bGrad.addColorStop(0.4, '#5a4028');
+      bGrad.addColorStop(1, '#2a1a0a');
+      ctx.fillStyle = bGrad;
+      this.roundRect(ctx, w * 0.15, h * 0.12, w * 0.7, h * 0.78, 2 * s);
+      ctx.fill();
+      // Metal band lines
+      ctx.strokeStyle = '#707880';
+      ctx.lineWidth = 1.2 * s;
+      for (const band of [0.25, 0.5, 0.75]) {
+        ctx.beginPath();
+        ctx.moveTo(w * 0.15, h * band);
+        ctx.lineTo(w * 0.85, h * band);
+        ctx.stroke();
+      }
+      // Elliptical top
+      ctx.fillStyle = '#4a3820';
+      this.fillEllipse(ctx, w / 2, h * 0.14, w * 0.35, h * 0.07);
+      ctx.strokeStyle = '#707880';
+      ctx.lineWidth = 0.8 * s;
+      ctx.beginPath();
+      ctx.ellipse(w / 2, h * 0.14, w * 0.35, h * 0.07, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+
+    // camp_crate — 18x16: box with cross-plank detail, flat top
+    this.makeSprite('camp_crate', 18 * s, 16 * s, (ctx, w, h) => {
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      this.fillEllipse(ctx, w / 2, h - s, 7 * s, 1.5 * s);
+      // Box body
+      const cGrad = ctx.createLinearGradient(0, h * 0.1, 0, h * 0.9);
+      cGrad.addColorStop(0, '#7a6040');
+      cGrad.addColorStop(1, '#4a3820');
+      ctx.fillStyle = cGrad;
+      this.roundRect(ctx, w * 0.05, h * 0.1, w * 0.9, h * 0.82, s);
+      ctx.fill();
+      // Cross-plank detail
+      ctx.strokeStyle = 'rgba(30,18,8,0.5)';
+      ctx.lineWidth = s;
+      // Horizontal center line
+      ctx.beginPath(); ctx.moveTo(w * 0.05, h * 0.5); ctx.lineTo(w * 0.95, h * 0.5); ctx.stroke();
+      // Vertical center line
+      ctx.beginPath(); ctx.moveTo(w / 2, h * 0.1); ctx.lineTo(w / 2, h * 0.92); ctx.stroke();
+      // Flat top face
+      ctx.fillStyle = '#8a7050';
+      this.roundRect(ctx, w * 0.05, h * 0.06, w * 0.9, h * 0.1, s);
+      ctx.fill();
+    });
+
+    // camp_banner — 12x32: vertical pole, triangular flag hanging from top
+    this.makeSprite('camp_banner', 12 * s, 32 * s, (ctx, w, h) => {
+      // Pole
+      ctx.fillStyle = '#3a2a10';
+      ctx.fillRect(w / 2 - s, 0, 2 * s, h);
+      // Metal tip
+      ctx.fillStyle = '#909090';
+      ctx.beginPath();
+      ctx.moveTo(w / 2, 0);
+      ctx.lineTo(w / 2 - 1.5 * s, 3 * s);
+      ctx.lineTo(w / 2 + 1.5 * s, 3 * s);
+      ctx.closePath(); ctx.fill();
+      // Flag / banner (triangular, hangs from top)
+      ctx.fillStyle = '#2a6a1a';
+      ctx.beginPath();
+      ctx.moveTo(w / 2 + s, h * 0.06);
+      ctx.lineTo(w * 0.92, h * 0.38);
+      ctx.lineTo(w / 2 + s, h * 0.38);
+      ctx.closePath(); ctx.fill();
+      // Banner highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.beginPath();
+      ctx.moveTo(w / 2 + s, h * 0.06);
+      ctx.lineTo(w * 0.75, h * 0.22);
+      ctx.lineTo(w / 2 + s, h * 0.22);
+      ctx.closePath(); ctx.fill();
+    });
+
+    // camp_well — 28x24: stone ring base, dark inner hole, two posts, crossbar
+    this.makeSprite('camp_well', 28 * s, 24 * s, (ctx, w, h) => {
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      this.fillEllipse(ctx, w / 2, h - 1.5 * s, 10 * s, 2.5 * s);
+      // Stone ring base
+      ctx.fillStyle = '#585860';
+      this.fillEllipse(ctx, w / 2, h * 0.62, 11 * s, 5 * s);
+      // Inner dark hole
+      ctx.fillStyle = '#0a0a12';
+      this.fillEllipse(ctx, w / 2, h * 0.60, 7 * s, 3 * s);
+      // Subtle water sheen inside
+      ctx.fillStyle = 'rgba(30,70,120,0.25)';
+      this.fillEllipse(ctx, w / 2, h * 0.60, 5 * s, 2 * s);
+      // Left post
+      ctx.fillStyle = '#3a2a10';
+      ctx.fillRect(w * 0.18, h * 0.15, 2.5 * s, h * 0.5);
+      // Right post
+      ctx.fillRect(w * 0.72, h * 0.15, 2.5 * s, h * 0.5);
+      // Crossbar
+      ctx.fillStyle = '#4a3a18';
+      ctx.fillRect(w * 0.14, h * 0.12, w * 0.72, 2 * s);
+      // Rope
+      ctx.strokeStyle = '#8a7040';
+      ctx.lineWidth = s;
+      ctx.beginPath();
+      ctx.moveTo(w / 2, h * 0.14); ctx.lineTo(w / 2, h * 0.58);
+      ctx.stroke();
+      // Bucket
+      ctx.fillStyle = '#4a3820';
+      this.roundRect(ctx, w / 2 - 2 * s, h * 0.5, 4 * s, 4 * s, s);
+      ctx.fill();
+    });
   }
 
   private generateEffects(): void {
