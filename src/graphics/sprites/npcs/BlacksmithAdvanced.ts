@@ -150,7 +150,7 @@ export const BlacksmithAdvancedDrawer: EntityDrawer = {
     // ── Ornate hammer (drawn so handle extends AWAY from body) ──
     ctx.save();
     ctx.translate(armEndX, armEndY);
-    ctx.rotate(hammerRot + 0.8);
+    ctx.rotate(hammerRot + 0.5);
     // Handle — extends upward-right from hand, away from body
     ctx.fillStyle = utils.rgb(WOOD_HANDLE);
     ctx.fillRect(-1.5 * s, -22 * s, 3 * s, 22 * s);
@@ -166,11 +166,11 @@ export const BlacksmithAdvancedDrawer: EntityDrawer = {
     ctx.moveTo(-5 * s, -28 * s); ctx.lineTo(5 * s, -28 * s);
     ctx.stroke();
     // Ornate orb accent on hammer
-    const orbGrad = ctx.createRadialGradient(0, -35 * s, 0, 0, -35 * s, 3 * s);
+    const orbGrad = ctx.createRadialGradient(0, -32 * s, 0, 0, -32 * s, 2.5 * s);
     orbGrad.addColorStop(0, utils.rgb(utils.lighten(ORB_COLOR, 40)));
     orbGrad.addColorStop(1, utils.rgb(ORB_COLOR));
     ctx.fillStyle = orbGrad;
-    utils.fillCircle(ctx, 0, -35 * s, 3 * s);
+    utils.fillCircle(ctx, 0, -32 * s, 2.5 * s);
     ctx.restore();
 
     // ── Neck ──

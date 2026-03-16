@@ -150,7 +150,7 @@ export const BlacksmithDrawer: EntityDrawer = {
     // ── Hammer in right hand (handle extends upward, not through body) ──
     ctx.save();
     ctx.translate(armEndX, armEndY);
-    ctx.rotate(hammerRot + 0.8);
+    ctx.rotate(hammerRot + 0.5);
     // Handle — extends upward-right from hand, away from body
     ctx.fillStyle = utils.rgb(WOOD_HANDLE);
     ctx.fillRect(-1.5 * s, -20 * s, 3 * s, 20 * s);
