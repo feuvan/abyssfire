@@ -35,6 +35,17 @@ import { ForestHermitDrawer } from './sprites/npcs/ForestHermit';
 import { QuestDwarfDrawer } from './sprites/npcs/QuestDwarf';
 import { QuestNomadDrawer } from './sprites/npcs/QuestNomad';
 import { QuestWardenDrawer } from './sprites/npcs/QuestWarden';
+import { TreeDrawer } from './sprites/decorations/Tree';
+import { BushDrawer } from './sprites/decorations/Bush';
+import { RockDrawer } from './sprites/decorations/Rock';
+import { FlowerDrawer } from './sprites/decorations/Flower';
+import { MushroomDrawer } from './sprites/decorations/Mushroom';
+import { CactusDrawer } from './sprites/decorations/Cactus';
+import { BoulderDrawer } from './sprites/decorations/Boulder';
+import { CrystalDrawer } from './sprites/decorations/Crystal';
+import { BonesDrawer } from './sprites/decorations/Bones';
+import { LootBagDrawer } from './sprites/effects/LootBag';
+import { ExitPortalDrawer } from './sprites/effects/ExitPortal';
 
 // ── Frame Layout Constants ──────────────────────────────────────────────────
 const IDLE_START = 0, IDLE_COUNT = 4;
@@ -1397,6 +1408,20 @@ export class SpriteGenerator {
     }
   }
 
+  /** Generate a single-frame static texture from an EntityDrawer (decorations, effects). */
+  private generateFromStaticDrawer(drawer: EntityDrawer): void {
+    if (this.shouldSkipGeneration(drawer.key)) return;
+
+    const s = TEXTURE_SCALE;
+    const w = drawer.frameW * s, h = drawer.frameH * s;
+    const [canvas, ctx] = this.utils.createCanvas(w, h);
+
+    drawer.drawFrame(ctx, 0, 'idle', w, h, this.utils);
+
+    if (this.scene.textures.exists(drawer.key)) this.scene.textures.remove(drawer.key);
+    this.scene.textures.addCanvas(drawer.key, canvas);
+  }
+
   private makeNPCSheet(npc: NPCConfig): void {
     if (this.shouldSkipGeneration(npc.key)) return;
     const s = TEXTURE_SCALE;
@@ -1996,99 +2021,13 @@ export class SpriteGenerator {
   // ═══════════════════════════════════════════════════════════════════════
 
   private generateDecorations(): void {
-    const s = TEXTURE_SCALE;
-    const defs: [string, number, number, (ctx: CanvasRenderingContext2D, w: number, h: number) => void][] = [
-      ['decor_tree', 24, 36, (ctx, w, h) => {
-        ctx.fillStyle = 'rgba(0,0,0,0.2)'; this.fillEllipse(ctx, w / 2, h - 2 * s, 8 * s, 2 * s);
-        this.drawPart(ctx, w / 2 - 2 * s, h * 0.55, 4 * s, h * 0.4, 0x2a1a0a, s);
-        const grad = ctx.createRadialGradient(w / 2, h * 0.35, 0, w / 2, h * 0.35, w * 0.45);
-        grad.addColorStop(0, '#1a4a18'); grad.addColorStop(1, '#0f2a0e');
-        ctx.fillStyle = grad;
-        this.fillEllipse(ctx, w / 2, h * 0.35, w * 0.45, h * 0.35);
-        ctx.fillStyle = 'rgba(30,70,25,0.4)';
-        this.fillEllipse(ctx, w * 0.4, h * 0.28, w * 0.25, h * 0.22);
-      }],
-      ['decor_bush', 16, 12, (ctx, w, h) => {
-        ctx.fillStyle = 'rgba(0,0,0,0.15)'; this.fillEllipse(ctx, w / 2, h - s, 7 * s, 1.5 * s);
-        const grad = ctx.createRadialGradient(w / 2, h * 0.5, 0, w / 2, h * 0.5, w * 0.45);
-        grad.addColorStop(0, '#1a4a18'); grad.addColorStop(1, '#0f2a0e');
-        ctx.fillStyle = grad;
-        this.fillEllipse(ctx, w / 2, h * 0.5, w * 0.45, h * 0.45);
-      }],
-      ['decor_rock', 16, 12, (ctx, w, h) => {
-        ctx.fillStyle = 'rgba(0,0,0,0.15)'; this.fillEllipse(ctx, w / 2, h - s, 6 * s, 1.5 * s);
-        const grad = ctx.createRadialGradient(w * 0.4, h * 0.4, 0, w / 2, h * 0.5, w * 0.45);
-        grad.addColorStop(0, '#505558'); grad.addColorStop(1, '#303538');
-        ctx.fillStyle = grad;
-        this.fillEllipse(ctx, w / 2, h * 0.5, w * 0.45, h * 0.42);
-      }],
-      ['decor_flower', 8, 10, (ctx, w, h) => {
-        ctx.fillStyle = '#1a3a18'; ctx.fillRect(w / 2 - s, h * 0.5, 2 * s, h * 0.45);
-        const colors = ['#6a1a1a', '#6a5a0a', '#5a1a4a', '#4a1a5a'];
-        ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-        this.fillCircle(ctx, w / 2, h * 0.35, 3 * s);
-        ctx.fillStyle = 'rgba(180,160,40,0.6)';
-        this.fillCircle(ctx, w / 2, h * 0.35, 1.5 * s);
-      }],
-      ['decor_mushroom', 10, 12, (ctx, w, h) => {
-        ctx.fillStyle = '#706050'; ctx.fillRect(w / 2 - 1.5 * s, h * 0.5, 3 * s, h * 0.4);
-        ctx.fillStyle = '#6a1a10';
-        this.fillEllipse(ctx, w / 2, h * 0.38, 5 * s, 4 * s);
-        ctx.fillStyle = 'rgba(200,200,180,0.4)';
-        this.fillCircle(ctx, w * 0.35, h * 0.32, 1.2 * s);
-        this.fillCircle(ctx, w * 0.6, h * 0.28, 0.8 * s);
-      }],
-      ['decor_cactus', 12, 20, (ctx, w, h) => {
-        ctx.fillStyle = 'rgba(0,0,0,0.15)'; this.fillEllipse(ctx, w / 2, h - s, 5 * s, 1.5 * s);
-        this.drawPart(ctx, w / 2 - 2.5 * s, h * 0.2, 5 * s, h * 0.7, 0x1a4a1a, 2 * s);
-        this.drawPart(ctx, 0, h * 0.4, 5 * s, h * 0.15, 0x1a4a1a, 2 * s);
-        this.drawPart(ctx, w - 4 * s, h * 0.3, 4 * s, h * 0.15, 0x1a4a1a, 2 * s);
-      }],
-      ['decor_boulder', 20, 16, (ctx, w, h) => {
-        ctx.fillStyle = 'rgba(0,0,0,0.2)'; this.fillEllipse(ctx, w / 2, h - s, 9 * s, 2 * s);
-        const grad = ctx.createRadialGradient(w * 0.4, h * 0.35, 0, w / 2, h * 0.5, w * 0.45);
-        grad.addColorStop(0, '#4a4a50'); grad.addColorStop(1, '#2a2a30');
-        ctx.fillStyle = grad;
-        this.fillEllipse(ctx, w / 2, h * 0.5, w * 0.45, h * 0.45);
-        ctx.fillStyle = 'rgba(70,70,80,0.3)';
-        this.fillEllipse(ctx, w * 0.38, h * 0.4, w * 0.2, h * 0.18);
-      }],
-      ['decor_crystal', 10, 16, (ctx, w, h) => {
-        ctx.fillStyle = 'rgba(0,0,0,0.15)'; this.fillEllipse(ctx, w / 2, h - s, 4 * s, 1.5 * s);
-        ctx.fillStyle = '#3a1a5a';
-        ctx.beginPath();
-        ctx.moveTo(w / 2, 0); ctx.lineTo(w - s, h * 0.85); ctx.lineTo(s, h * 0.85);
-        ctx.closePath(); ctx.fill();
-        ctx.fillStyle = 'rgba(140,80,200,0.4)';
-        ctx.beginPath();
-        ctx.moveTo(w / 2, h * 0.1); ctx.lineTo(w * 0.65, h * 0.75); ctx.lineTo(w * 0.25, h * 0.75);
-        ctx.closePath(); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.beginPath();
-        ctx.moveTo(w * 0.4, h * 0.25); ctx.lineTo(w * 0.5, h * 0.55); ctx.lineTo(w * 0.3, h * 0.55);
-        ctx.closePath(); ctx.fill();
-      }],
-      ['decor_bones', 14, 10, (ctx, w, h) => {
-        ctx.fillStyle = 'rgba(180,170,150,0.7)';
-        this.roundRect(ctx, s, h * 0.3, w - 2 * s, 2 * s, s);
-        ctx.fill();
-        this.roundRect(ctx, w * 0.3, s, 2 * s, h - 2 * s, s);
-        ctx.fill();
-        this.fillCircle(ctx, s + s, h * 0.35, 1.5 * s);
-        this.fillCircle(ctx, w - 2 * s, h * 0.35, 1.5 * s);
-        this.fillCircle(ctx, w * 0.35, s + s, 1.2 * s);
-        this.fillCircle(ctx, w * 0.35, h - 2 * s, 1.2 * s);
-      }],
+    // Custom drawers — richer art, replace old template implementations
+    const decorDrawers = [
+      TreeDrawer, BushDrawer, RockDrawer, FlowerDrawer, MushroomDrawer,
+      CactusDrawer, BoulderDrawer, CrystalDrawer, BonesDrawer,
     ];
-
-    for (const [key, bw, bh, drawFn] of defs) {
-      if (this.shouldSkipGeneration(key)) continue;
-      const w = bw * s, h = bh * s;
-      const [canvas, ctx] = this.createCanvas(w, h);
-      drawFn(ctx, w, h);
-      this.applyNoiseToRegion(ctx, 0, 0, w, h, 3);
-      if (this.scene.textures.exists(key)) this.scene.textures.remove(key);
-      this.scene.textures.addCanvas(key, canvas);
+    for (const drawer of decorDrawers) {
+      this.generateFromStaticDrawer(drawer);
     }
   }
 
@@ -2303,41 +2242,9 @@ export class SpriteGenerator {
   }
 
   private generateEffects(): void {
-    const s = TEXTURE_SCALE;
-
-    // Loot bag
-    if (!this.shouldSkipGeneration('loot_bag')) {
-      const lbW = 24 * s, lbH = 24 * s;
-      const [lbCanvas, lbCtx] = this.createCanvas(lbW, lbH);
-      lbCtx.fillStyle = 'rgba(0,0,0,0.2)';
-      this.fillEllipse(lbCtx, lbW / 2, lbH - 2 * s, 8 * s, 2.5 * s);
-      this.drawPart(lbCtx, lbW / 2 - 6 * s, 4 * s, 12 * s, 14 * s, 0x4a3020, 2 * s);
-      this.drawPart(lbCtx, lbW / 2 - 5 * s, 2 * s, 10 * s, 4 * s, 0x5a4030, 2 * s);
-      lbCtx.fillStyle = this.rgb(0x3a2010);
-      lbCtx.fillRect(lbW / 2 - 5.5 * s, 6 * s, 11 * s, 2 * s);
-      lbCtx.fillStyle = this.rgb(0x8a7020, 0.8);
-      this.fillCircle(lbCtx, lbW / 2, 12 * s, 2.5 * s);
-      if (this.scene.textures.exists('loot_bag')) this.scene.textures.remove('loot_bag');
-      this.scene.textures.addCanvas('loot_bag', lbCanvas);
-    }
-
-    // Exit portal
-    if (!this.shouldSkipGeneration('exit_portal')) {
-      const pW = 32 * s, pH = 32 * s;
-      const [pCanvas, pCtx] = this.createCanvas(pW, pH);
-      const pGrad = pCtx.createRadialGradient(pW / 2, pH / 2, 0, pW / 2, pH / 2, pW * 0.45);
-      pGrad.addColorStop(0, 'rgba(255,255,255,0.3)');
-      pGrad.addColorStop(0.3, 'rgba(100,220,140,0.5)');
-      pGrad.addColorStop(0.6, 'rgba(0,180,80,0.3)');
-      pGrad.addColorStop(1, 'rgba(0,80,40,0)');
-      pCtx.fillStyle = pGrad;
-      this.fillCircle(pCtx, pW / 2, pH / 2, pW * 0.45);
-      pCtx.strokeStyle = 'rgba(0,220,100,0.4)';
-      pCtx.lineWidth = 1.5 * s;
-      pCtx.beginPath(); pCtx.arc(pW / 2, pH / 2, pW * 0.35, 0, Math.PI * 2); pCtx.stroke();
-      if (this.scene.textures.exists('exit_portal')) this.scene.textures.remove('exit_portal');
-      this.scene.textures.addCanvas('exit_portal', pCanvas);
-    }
+    // Custom drawers — richer art, replace old template implementations
+    this.generateFromStaticDrawer(LootBagDrawer);
+    this.generateFromStaticDrawer(ExitPortalDrawer);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
