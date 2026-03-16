@@ -1399,59 +1399,56 @@ export class UIScene extends Phaser.Scene {
     }).setOrigin(0.5, 0));
 
     const settings = audioManager.getSettings();
-    const sliderW = 160, sliderH = 8, sliderX = 90, labelX = 14;
+    const sliderW = 160, sliderH = 10, sliderX = 90, labelX = 14;
+    const hitH = 28; // tall hit area for easy clicking
 
-    // BGM volume
-    const bgmY = 46;
-    this.audioPanel.add(this.add.text(labelX, bgmY, '背景音乐', { fontSize: '11px', color: '#e0d8cc', fontFamily: '"Noto Sans SC", sans-serif' }));
-    const bgmTrack = this.add.rectangle(sliderX, bgmY + 4, sliderW, sliderH, 0x333344).setOrigin(0, 0.5);
-    const bgmFill = this.add.rectangle(sliderX, bgmY + 4, sliderW * settings.bgmVolume, sliderH, 0xc0934a).setOrigin(0, 0.5);
-    const bgmHandle = this.add.rectangle(sliderX + sliderW * settings.bgmVolume, bgmY + 4, 12, 16, 0xe0d8cc).setInteractive({ draggable: true, useHandCursor: true });
-    this.audioPanel.add([bgmTrack, bgmFill, bgmHandle]);
-    bgmHandle.on('drag', (_p: Phaser.Input.Pointer, dragX: number) => {
-      const localX = Math.max(0, Math.min(dragX - px - sliderX, sliderW));
-      const v = localX / sliderW;
-      bgmHandle.x = sliderX + localX;
-      bgmFill.width = localX;
-      audioManager.setMusicVolume(v);
-    });
+    const makeSlider = (y: number, label: string, initial: number, muted: boolean,
+      onVolume: (v: number) => void, onMute: () => boolean) => {
+      this.audioPanel!.add(this.add.text(labelX, y, label, { fontSize: '12px', color: '#e0d8cc', fontFamily: '"Noto Sans SC", sans-serif' }));
+      const track = this.add.rectangle(sliderX, y + 6, sliderW, sliderH, 0x333344).setOrigin(0, 0.5);
+      const fill = this.add.rectangle(sliderX, y + 6, sliderW * initial, sliderH, 0xc0934a).setOrigin(0, 0.5);
+      const handle = this.add.circle(sliderX + sliderW * initial, y + 6, 7, 0xe0d8cc);
+      const pctText = this.add.text(sliderX + sliderW + 8, y + 1, `${Math.round(initial * 100)}%`, {
+        fontSize: '10px', color: '#aaa', fontFamily: '"Noto Sans SC", sans-serif',
+      });
+      // Invisible hit area covering the full track height
+      const hitArea = this.add.rectangle(sliderX + sliderW / 2, y + 6, sliderW + 14, hitH, 0x000000, 0)
+        .setInteractive({ useHandCursor: true });
+      this.audioPanel!.add([track, fill, handle, pctText, hitArea]);
 
-    // BGM mute
-    const bgmMuteBtn = this.add.text(sliderX + sliderW + 10, bgmY, settings.bgmMuted ? '静音' : '播放', {
-      fontSize: '10px', color: settings.bgmMuted ? '#c0392b' : '#27ae60', fontFamily: '"Noto Sans SC", sans-serif',
-    }).setInteractive({ useHandCursor: true });
-    bgmMuteBtn.on('pointerdown', () => {
-      audioManager.toggleMusicMute();
-      const s = audioManager.getSettings();
-      bgmMuteBtn.setText(s.bgmMuted ? '静音' : '播放').setColor(s.bgmMuted ? '#c0392b' : '#27ae60');
-    });
-    this.audioPanel.add(bgmMuteBtn);
+      let dragging = false;
+      const updateSlider = (pointerX: number) => {
+        const localX = Math.max(0, Math.min(pointerX - px - sliderX, sliderW));
+        const v = localX / sliderW;
+        handle.x = sliderX + localX;
+        fill.width = localX;
+        pctText.setText(`${Math.round(v * 100)}%`);
+        onVolume(v);
+      };
+      hitArea.on('pointerdown', (p: Phaser.Input.Pointer) => { dragging = true; updateSlider(p.x); });
+      this.input.on('pointermove', (p: Phaser.Input.Pointer) => { if (dragging) updateSlider(p.x); });
+      this.input.on('pointerup', () => { dragging = false; });
 
-    // SFX volume
-    const sfxY = 86;
-    this.audioPanel.add(this.add.text(labelX, sfxY, '音效', { fontSize: '11px', color: '#e0d8cc', fontFamily: '"Noto Sans SC", sans-serif' }));
-    const sfxTrack = this.add.rectangle(sliderX, sfxY + 4, sliderW, sliderH, 0x333344).setOrigin(0, 0.5);
-    const sfxFill = this.add.rectangle(sliderX, sfxY + 4, sliderW * settings.sfxVolume, sliderH, 0xc0934a).setOrigin(0, 0.5);
-    const sfxHandle = this.add.rectangle(sliderX + sliderW * settings.sfxVolume, sfxY + 4, 12, 16, 0xe0d8cc).setInteractive({ draggable: true, useHandCursor: true });
-    this.audioPanel.add([sfxTrack, sfxFill, sfxHandle]);
-    sfxHandle.on('drag', (_p: Phaser.Input.Pointer, dragX: number) => {
-      const localX = Math.max(0, Math.min(dragX - px - sliderX, sliderW));
-      const v = localX / sliderW;
-      sfxHandle.x = sliderX + localX;
-      sfxFill.width = localX;
-      audioManager.setSFXVolume(v);
-    });
+      // Mute button
+      const muteBtn = this.add.text(sliderX + sliderW + 42, y, muted ? '[静音]' : '[开启]', {
+        fontSize: '10px', color: muted ? '#c0392b' : '#27ae60', fontFamily: '"Noto Sans SC", sans-serif',
+      }).setInteractive({ useHandCursor: true });
+      muteBtn.on('pointerdown', () => {
+        const nowMuted = onMute();
+        muteBtn.setText(nowMuted ? '[静音]' : '[开启]').setColor(nowMuted ? '#c0392b' : '#27ae60');
+      });
+      this.audioPanel!.add(muteBtn);
+    };
 
-    // SFX mute
-    const sfxMuteBtn = this.add.text(sliderX + sliderW + 10, sfxY, settings.sfxMuted ? '静音' : '播放', {
-      fontSize: '10px', color: settings.sfxMuted ? '#c0392b' : '#27ae60', fontFamily: '"Noto Sans SC", sans-serif',
-    }).setInteractive({ useHandCursor: true });
-    sfxMuteBtn.on('pointerdown', () => {
-      audioManager.toggleSFXMute();
-      const s = audioManager.getSettings();
-      sfxMuteBtn.setText(s.sfxMuted ? '静音' : '播放').setColor(s.sfxMuted ? '#c0392b' : '#27ae60');
-    });
-    this.audioPanel.add(sfxMuteBtn);
+    // BGM slider
+    makeSlider(46, '背景音乐', settings.bgmVolume, settings.bgmMuted,
+      (v) => audioManager.setMusicVolume(v),
+      () => { audioManager.toggleMusicMute(); return audioManager.getSettings().bgmMuted; });
+
+    // SFX slider
+    makeSlider(90, '音效', settings.sfxVolume, settings.sfxMuted,
+      (v) => audioManager.setSFXVolume(v),
+      () => { audioManager.toggleSFXMute(); return audioManager.getSettings().sfxMuted; });
 
     // Close button
     const closeBtn = this.add.text(pw - 12, 8, 'X', {
