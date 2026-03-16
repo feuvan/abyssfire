@@ -301,6 +301,11 @@ export class ZoneScene extends Phaser.Scene {
       }
     }
 
+    // Update NPC state machines
+    for (const npc of this.npcs) {
+      npc.update(this.player.tileCol, this.player.tileRow);
+    }
+
     this.handleCombat(time);
     if (this.mobileControls) this.mobileControls.update(time, delta);
 
