@@ -49,7 +49,6 @@ export class UIScene extends Phaser.Scene {
   private inventoryPage = 0;
   private shopInventoryPage = 0;
   private autoLootText!: Phaser.GameObjects.Text;
-  private autoLootMode: 'off' | 'all' | 'magic' | 'rare' = 'off';
   private contextPopup: Phaser.GameObjects.Container | null = null;
   private audioPanel: Phaser.GameObjects.Container | null = null;
 
@@ -71,6 +70,7 @@ export class UIScene extends Phaser.Scene {
     this.createQuestTracker();
     this.createMinimap();
     this.setupEventListeners();
+    this.events.on('shutdown', this.shutdown, this);
   }
 
   private createHPManaBar(): void {
@@ -172,9 +172,8 @@ export class UIScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(3001);
     alBg.on('pointerdown', () => {
       const modes: Array<'off' | 'all' | 'magic' | 'rare'> = ['off', 'all', 'magic', 'rare'];
-      const idx = modes.indexOf(this.autoLootMode);
-      this.autoLootMode = modes[(idx + 1) % modes.length];
-      EventBus.emit(GameEvents.AUTOLOOT_CHANGED, { mode: this.autoLootMode });
+      const idx = modes.indexOf(this.player.autoLootMode);
+      this.player.autoLootMode = modes[(idx + 1) % modes.length];
     });
 
     // Inventory button
@@ -242,9 +241,6 @@ export class UIScene extends Phaser.Scene {
     EventBus.on('ui:refresh', (data: { player: Player; zone: ZoneScene }) => {
       this.player = data.player;
       this.zone = data.zone;
-    });
-    EventBus.on(GameEvents.AUTOLOOT_CHANGED, (data: { mode: 'off' | 'all' | 'magic' | 'rare' }) => {
-      this.autoLootMode = data.mode;
     });
   }
 
@@ -1484,6 +1480,14 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
+  shutdown(): void {
+    EventBus.removeAllListeners(GameEvents.LOG_MESSAGE);
+    EventBus.removeAllListeners(GameEvents.SHOP_OPEN);
+    EventBus.removeAllListeners(GameEvents.NPC_INTERACT);
+    EventBus.removeAllListeners(GameEvents.UI_TOGGLE_PANEL);
+    EventBus.removeAllListeners('ui:refresh');
+  }
+
   update(time: number): void {
     if (!this.player) return;
     const barW = 198;
@@ -1503,8 +1507,8 @@ export class UIScene extends Phaser.Scene {
     // Auto-loot button update
     const alLabels: Record<string, string> = { off: '拾取\nOFF', all: '拾取\n全部', magic: '拾取\n魔法+', rare: '拾取\n稀有+' };
     const alColors: Record<string, string> = { off: '#666680', all: '#e0d8cc', magic: '#2471a3', rare: '#c0934a' };
-    this.autoLootText.setText(alLabels[this.autoLootMode] ?? '拾取\nOFF')
-      .setColor(alColors[this.autoLootMode] ?? '#666680');
+    this.autoLootText.setText(alLabels[this.player.autoLootMode] ?? '拾取\nOFF')
+      .setColor(alColors[this.player.autoLootMode] ?? '#666680');
 
     if (this.zone && (this.zone as any).currentMapId) {
       const map = AllMaps[(this.zone as any).currentMapId];

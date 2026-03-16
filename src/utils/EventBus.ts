@@ -28,7 +28,6 @@ export const GameEvents = {
   QUEST_TURNED_IN: 'quest:turned_in',
   ACHIEVEMENT_UNLOCKED: 'achievement:unlocked',
   HOMESTEAD_UPGRADED: 'homestead:upgraded',
-  AUTOLOOT_CHANGED: 'autoloot:changed',
   ITEM_DISCARDED: 'item:discarded',
   SAVE_GAME: 'save:game',
   LOAD_GAME: 'load:game',

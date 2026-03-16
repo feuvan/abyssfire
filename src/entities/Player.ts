@@ -41,6 +41,7 @@ export class Player {
   defense: number = 5;
 
   autoCombat: boolean = false;
+  autoLootMode: 'off' | 'all' | 'magic' | 'rare' = 'off';
   autoSkillPriority: string[] = [];
 
   constructor(scene: Phaser.Scene, classData: ClassDefinition, col: number, row: number) {
