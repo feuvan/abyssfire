@@ -1330,6 +1330,8 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    for (const npc of this.npcs) npc.destroy();
+    this.npcs = [];
     for (const sprite of this.campDecorSprites.values()) sprite.destroy();
     this.campDecorSprites.clear();
     for (const emitter of this.campParticles.values()) emitter.destroy();

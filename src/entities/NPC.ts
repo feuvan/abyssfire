@@ -21,6 +21,8 @@ export class NPC {
   private alertTimer: Phaser.Time.TimerEvent | null = null;
   private stashOpen = false;
   private emitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private boundListeners: { event: string; fn: (...args: any[]) => void }[] = [];
 
   constructor(scene: Phaser.Scene, definition: NPCDefinition, col: number, row: number) {
     this.scene = scene;
@@ -224,20 +226,26 @@ export class NPC {
     return colorMap[this.definition.id] ?? 0xb8860b;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private addListener(event: string, fn: (...args: any[]) => void): void {
+    EventBus.on(event, fn);
+    this.boundListeners.push({ event, fn });
+  }
+
   private setupEventListeners(): void {
-    EventBus.on(GameEvents.NPC_INTERACT, (data: { npcId?: string }) => {
+    this.addListener(GameEvents.NPC_INTERACT, (data: { npcId?: string }) => {
       if (data.npcId === this.definition.id) this.setState('talking');
     });
-    EventBus.on(GameEvents.SHOP_OPEN, (data: { npcId?: string }) => {
+    this.addListener(GameEvents.SHOP_OPEN, (data: { npcId?: string }) => {
       if (data.npcId === this.definition.id) this.setState('talking');
     });
-    EventBus.on(GameEvents.DIALOGUE_CLOSE, () => {
+    this.addListener(GameEvents.DIALOGUE_CLOSE, () => {
       if (this.state === 'talking') this.setState('alert');
     });
-    EventBus.on(GameEvents.SHOP_CLOSE, () => {
+    this.addListener(GameEvents.SHOP_CLOSE, () => {
       if (this.state === 'talking') this.setState('alert');
     });
-    EventBus.on(GameEvents.UI_TOGGLE_PANEL, (data: { panel: string; npcId?: string }) => {
+    this.addListener(GameEvents.UI_TOGGLE_PANEL, (data: { panel: string; npcId?: string }) => {
       if (data.panel === 'stash' && data.npcId === this.definition.id) {
         this.stashOpen = !this.stashOpen;
         this.setState(this.stashOpen ? 'talking' : 'alert');
@@ -285,11 +293,10 @@ export class NPC {
   }
 
   destroy(): void {
-    EventBus.off(GameEvents.NPC_INTERACT);
-    EventBus.off(GameEvents.SHOP_OPEN);
-    EventBus.off(GameEvents.DIALOGUE_CLOSE);
-    EventBus.off(GameEvents.SHOP_CLOSE);
-    EventBus.off(GameEvents.UI_TOGGLE_PANEL);
+    for (const { event, fn } of this.boundListeners) {
+      EventBus.off(event, fn);
+    }
+    this.boundListeners = [];
     if (this.alertTimer) { this.alertTimer.destroy(); this.alertTimer = null; }
     if (this.emitter) { this.emitter.destroy(); this.emitter = null; }
     this.sprite.destroy();
