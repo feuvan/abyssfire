@@ -43,6 +43,10 @@ export class FogOfWarSystem {
     const viewH = cam.height / cam.zoom / 2;
     const margin = 4;
 
+    // Gradient edge band: tiles within this range of the view radius get partial fog
+    const edgeBand = 3;
+    const innerEdge = this.viewRadius - edgeBand;
+
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const pos = cartToIso(c, r);
@@ -53,12 +57,27 @@ export class FogOfWarSystem {
 
         const dist = Math.sqrt((c - playerCol) ** 2 + (r - playerRow) ** 2);
 
-        if (dist > this.viewRadius && !this.explored[r][c]) {
-          this.fogLayer.fillStyle(0x000000, 0.85);
-          this.drawIsoTile(pos.x, pos.y);
-        } else if (dist > this.viewRadius && this.explored[r][c]) {
-          this.fogLayer.fillStyle(0x000000, 0.45);
-          this.drawIsoTile(pos.x, pos.y);
+        if (dist > this.viewRadius) {
+          if (!this.explored[r][c]) {
+            // Unexplored: near-opaque
+            this.fogLayer.fillStyle(0x000000, 0.85);
+            this.drawIsoTile(pos.x, pos.y);
+          } else {
+            // Explored but out of view: semi-transparent with gradient near edge
+            const edgeFade = dist < this.viewRadius + edgeBand
+              ? 0.25 + (dist - this.viewRadius) / edgeBand * 0.2
+              : 0.45;
+            this.fogLayer.fillStyle(0x000000, edgeFade);
+            this.drawIsoTile(pos.x, pos.y);
+          }
+        } else if (dist > innerEdge) {
+          // Gradient edge: partial fog fading from 0 to light fog
+          const t = (dist - innerEdge) / edgeBand;
+          const alpha = t * 0.15;
+          if (alpha > 0.01) {
+            this.fogLayer.fillStyle(0x000000, alpha);
+            this.drawIsoTile(pos.x, pos.y);
+          }
         }
       }
     }

@@ -327,11 +327,18 @@ export class MenuScene extends Phaser.Scene {
         .setStrokeStyle(1.5, cls.color, 0.6)
         .setInteractive({ useHandCursor: true });
 
-      // Class icon preview
+      // Animated class icon preview
       const spriteKey = `player_${cls.id}`;
       if (this.textures.exists(spriteKey)) {
-        const preview = this.add.image(cx - 130, y, spriteKey).setScale(0.7 / TEXTURE_SCALE);
+        const preview = this.add.sprite(cx - 130, y, spriteKey, 0).setScale(0.7 / TEXTURE_SCALE);
+        const idleKey = `${spriteKey}_idle`;
+        if (this.anims.exists(idleKey)) preview.play(idleKey);
         this.classContainer!.add(preview);
+        // Subtle breathing animation
+        this.tweens.add({
+          targets: preview, scaleY: (0.7 / TEXTURE_SCALE) * 1.04,
+          duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
+        });
       }
 
       this.classContainer!.add(bg);
@@ -350,6 +357,18 @@ export class MenuScene extends Phaser.Scene {
       bg.on('pointerover', () => {
         bg.setStrokeStyle(2, cls.color, 1);
         bg.setFillStyle(0x1a1a2e, 0.95);
+        // Play attack anim on hover
+        const atkKey = `${spriteKey}_attack`;
+        const spr = this.classContainer?.list.find(
+          c => c instanceof Phaser.GameObjects.Sprite && (c as Phaser.GameObjects.Sprite).texture.key === spriteKey
+        ) as Phaser.GameObjects.Sprite | undefined;
+        if (spr && this.anims.exists(atkKey)) {
+          spr.play(atkKey);
+          spr.once('animationcomplete', () => {
+            const idleAnim = `${spriteKey}_idle`;
+            if (this.anims.exists(idleAnim)) spr.play(idleAnim);
+          });
+        }
       });
       bg.on('pointerout', () => {
         bg.setStrokeStyle(1.5, cls.color, 0.6);
