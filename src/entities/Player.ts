@@ -178,6 +178,8 @@ export class Player {
       this.tileRow = target.row;
       this.sprite.setPosition(targetWorld.x, targetWorld.y);
       this.sprite.setDepth(targetWorld.y + 100);
+      // Footstep dust puff on tile arrival
+      this.spawnFootDust(targetWorld.x, targetWorld.y);
       this.path.shift();
       if (this.path.length === 0) {
         this.isMoving = false;
@@ -192,6 +194,29 @@ export class Player {
       // Approximate tile position
       this.tileCol += (target.col - this.tileCol) * (step / dist);
       this.tileRow += (target.row - this.tileRow) * (step / dist);
+    }
+  }
+
+  private footDustCount = 0;
+  private spawnFootDust(x: number, y: number): void {
+    // Only every other step to avoid spam
+    if (++this.footDustCount % 2 !== 0) return;
+    for (let i = 0; i < 3; i++) {
+      const p = this.scene.add.circle(
+        x + (Math.random() - 0.5) * 10,
+        y + 2 + Math.random() * 4,
+        1 + Math.random() * 1.5,
+        0x888877, 0.3,
+      ).setDepth(this.sprite.depth - 1);
+      this.scene.tweens.add({
+        targets: p,
+        alpha: 0, y: p.y - 6 - Math.random() * 4,
+        x: p.x + (Math.random() - 0.5) * 8,
+        scale: 0.3,
+        duration: 300 + Math.random() * 200,
+        ease: 'Power2',
+        onComplete: () => p.destroy(),
+      });
     }
   }
 

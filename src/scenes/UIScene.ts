@@ -27,6 +27,7 @@ export class UIScene extends Phaser.Scene {
   private autoCombatText!: Phaser.GameObjects.Text;
   private skillSlots: Phaser.GameObjects.Container[] = [];
   private skillCooldownOverlays: Phaser.GameObjects.Rectangle[] = [];
+  private skillCooldownTexts: Phaser.GameObjects.Text[] = [];
   private logTexts: Phaser.GameObjects.Text[] = [];
   private logMessages: { text: string; type: string }[] = [];
   private questTracker!: Phaser.GameObjects.Text;
@@ -143,6 +144,12 @@ export class UIScene extends Phaser.Scene {
       const cdOverlay = this.add.rectangle(0, 0, slotSize, slotSize, 0x000000, 0.6).setVisible(false);
       container.add(cdOverlay);
       this.skillCooldownOverlays.push(cdOverlay);
+      const cdText = this.add.text(0, 0, '', {
+        fontSize: '12px', color: '#ffffff', fontFamily: FONT, fontStyle: 'bold',
+        stroke: '#000000', strokeThickness: 2,
+      }).setOrigin(0.5).setVisible(false);
+      container.add(cdText);
+      this.skillCooldownTexts.push(cdText);
       bg.setInteractive({ useHandCursor: true });
       bg.on('pointerdown', () => EventBus.emit(GameEvents.UI_SKILL_CLICK, { index: i, skillId: skill.id }));
       this.skillSlots.push(container);
@@ -269,6 +276,7 @@ export class UIScene extends Phaser.Scene {
     if (this.inventoryPage >= totalPages) this.inventoryPage = totalPages - 1;
 
     this.inventoryPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.inventoryPanel);
     const bg = this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0xc0934a);
     this.inventoryPanel.add(bg);
 
@@ -419,6 +427,7 @@ export class UIScene extends Phaser.Scene {
     const pw = 700, ph = 460, px = (GAME_WIDTH - pw) / 2, py = 40;
     const dividerX = 320;
     this.shopPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.shopPanel);
     this.shopPanel.add(this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0xc0934a));
     const title = data.type === 'blacksmith' ? '铁匠铺' : '商店';
     this.shopPanel.add(this.add.text(pw / 2, 12, title, {
@@ -603,6 +612,7 @@ export class UIScene extends Phaser.Scene {
     this.closeAllPanels();
     const pw = 480, ph = 220, px = (GAME_WIDTH - pw) / 2, py = 80;
     this.mapPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.mapPanel);
     this.mapPanel.add(this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0x27ae60));
     this.mapPanel.add(this.add.text(pw / 2, 10, '渊火', {
       fontSize: '16px', color: '#27ae60', fontFamily: TITLE_FONT, fontStyle: 'bold',
@@ -643,6 +653,7 @@ export class UIScene extends Phaser.Scene {
     this.closeAllPanels();
     const pw = 480, ph = 420, px = (GAME_WIDTH - pw) / 2, py = 10;
     this.skillPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.skillPanel);
     this.skillPanel.add(this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0x8e44ad));
     this.skillPanel.add(this.add.text(pw / 2, 10, `技能树 - ${this.player.classData.name}`, {
       fontSize: '15px', color: '#b08cce', fontFamily: TITLE_FONT, fontStyle: 'bold',
@@ -708,6 +719,7 @@ export class UIScene extends Phaser.Scene {
     this.closeAllPanels();
     const pw = 320, ph = 380, px = (GAME_WIDTH - pw) / 2, py = 30;
     this.charPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.charPanel);
     this.charPanel.add(this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0x2471a3));
     this.charPanel.add(this.add.text(pw / 2, 10, `角色属性 - ${this.player.classData.name}`, {
       fontSize: '15px', color: '#5dade2', fontFamily: TITLE_FONT, fontStyle: 'bold',
@@ -779,6 +791,7 @@ export class UIScene extends Phaser.Scene {
     this.closeAllPanels();
     const pw = 420, ph = 400, px = (GAME_WIDTH - pw) / 2, py = 20;
     this.homesteadPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.homesteadPanel);
     this.homesteadPanel.add(this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0xc0934a));
     this.homesteadPanel.add(this.add.text(pw / 2, 10, '家园', {
       fontSize: '16px', color: '#c0934a', fontFamily: TITLE_FONT, fontStyle: 'bold',
@@ -958,6 +971,7 @@ export class UIScene extends Phaser.Scene {
     const pw = 360, ph = 60 + data.actions.length * 32 + 30;
     const px = (GAME_WIDTH - pw) / 2, py = GAME_HEIGHT / 2 - ph / 2;
     this.dialoguePanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.dialoguePanel);
     const bg = this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0xc0934a);
     this.dialoguePanel.add(bg);
 
@@ -1014,6 +1028,7 @@ export class UIScene extends Phaser.Scene {
     const pw = 700, ph = 480;
     const px = (GAME_WIDTH - pw) / 2, py = (GAME_HEIGHT - ph) / 2;
     this.questLogPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.questLogPanel);
 
     // Background
     const bg = this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0xc0934a);
@@ -1403,6 +1418,7 @@ export class UIScene extends Phaser.Scene {
     this.closeAllPanels();
     const pw = 360, ph = 180, px = (GAME_WIDTH - pw) / 2, py = (GAME_HEIGHT - ph) / 2;
     this.audioPanel = this.add.container(px, py).setDepth(4000);
+    this.animatePanelOpen(this.audioPanel);
     this.audioPanel.add(this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(2, 0xc0934a));
     this.audioPanel.add(this.add.text(pw / 2, 12, '音频设置', {
       fontSize: '14px', color: '#c0934a', fontFamily: '"Cinzel", "Noto Sans SC", serif', fontStyle: 'bold',
@@ -1470,6 +1486,17 @@ export class UIScene extends Phaser.Scene {
     this.audioPanel.add(closeBtn);
   }
 
+  /** Animate a panel container opening with scale + alpha pop-in */
+  private animatePanelOpen(panel: Phaser.GameObjects.Container): void {
+    panel.setScale(0.92, 0.92).setAlpha(0);
+    this.tweens.add({
+      targets: panel,
+      scaleX: 1, scaleY: 1, alpha: 1,
+      duration: 150,
+      ease: 'Back.easeOut',
+    });
+  }
+
   private closeAllPanels(): void {
     if (this.inventoryPanel) { this.inventoryPanel.destroy(); this.inventoryPanel = null; }
     if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; }
@@ -1502,14 +1529,44 @@ export class UIScene extends Phaser.Scene {
     EventBus.removeAllListeners('ui:refresh');
   }
 
+  /** Interpolate HP bar color: green -> yellow -> red based on ratio */
+  private hpColor(ratio: number): number {
+    if (ratio > 0.5) {
+      // green to yellow (0x2ecc71 -> 0xf1c40f)
+      const t = (ratio - 0.5) * 2;
+      const r = Math.round(0xf1 + (0x2e - 0xf1) * t);
+      const g = Math.round(0xc4 + (0xcc - 0xc4) * t);
+      const b = Math.round(0x0f + (0x71 - 0x0f) * t);
+      return (r << 16) | (g << 8) | b;
+    }
+    // yellow to red (0xf1c40f -> 0xc0392b)
+    const t = ratio * 2;
+    const r = Math.round(0xc0 + (0xf1 - 0xc0) * t);
+    const g = Math.round(0x39 + (0xc4 - 0x39) * t);
+    const b = Math.round(0x2b + (0x0f - 0x2b) * t);
+    return (r << 16) | (g << 8) | b;
+  }
+
   update(time: number): void {
     if (!this.player) return;
     const barW = 198;
-    const hpR = this.player.hp / this.player.maxHp;
-    this.hpBar.width = barW * Math.max(0, hpR);
+    const hpR = Math.max(0, this.player.hp / this.player.maxHp);
+    const targetHpW = barW * hpR;
+    // Smooth bar interpolation
+    this.hpBar.width += (targetHpW - this.hpBar.width) * 0.15;
+    this.hpBar.fillColor = this.hpColor(hpR);
     this.hpText.setText(`${Math.ceil(this.player.hp)}/${this.player.maxHp}`);
-    const manaR = this.player.mana / this.player.maxMana;
-    this.manaBar.width = barW * Math.max(0, manaR);
+    // Low HP pulse
+    if (hpR < 0.3 && hpR > 0) {
+      const pulse = 0.6 + Math.sin(time * 0.008) * 0.4;
+      this.hpBar.alpha = pulse;
+    } else {
+      this.hpBar.alpha = 1;
+    }
+
+    const manaR = Math.max(0, this.player.mana / this.player.maxMana);
+    const targetManaW = barW * manaR;
+    this.manaBar.width += (targetManaW - this.manaBar.width) * 0.15;
     this.manaText.setText(`${Math.ceil(this.player.mana)}/${this.player.maxMana}`);
     const expN = this.player.expToNextLevel();
     this.expBar.width = (GAME_WIDTH - 32) * (this.player.exp / expN);
@@ -1532,7 +1589,19 @@ export class UIScene extends Phaser.Scene {
     const skills = this.player.classData.skills;
     for (let i = 0; i < Math.min(skills.length, this.skillCooldownOverlays.length); i++) {
       const cd = this.player.skillCooldowns.get(skills[i].id) ?? 0;
-      this.skillCooldownOverlays[i].setVisible(time < cd);
+      const remaining = cd - time;
+      const onCd = remaining > 0;
+      this.skillCooldownOverlays[i].setVisible(onCd);
+      // Show remaining seconds on cooldown
+      if (onCd) {
+        const secs = Math.ceil(remaining / 1000);
+        this.skillCooldownTexts[i].setVisible(true).setText(`${secs}`);
+        // Fade overlay alpha based on cooldown progress
+        const totalCd = skills[i].cooldown * 1000;
+        this.skillCooldownOverlays[i].alpha = 0.3 + 0.4 * (remaining / totalCd);
+      } else {
+        this.skillCooldownTexts[i].setVisible(false);
+      }
     }
 
     if (Math.floor(time / 200) % 2 === 0) this.updateMinimap();

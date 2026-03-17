@@ -226,6 +226,22 @@ export class Monster {
 
     this.animator.playHurt(sourceX ?? this.sprite.x, sourceY ?? (this.sprite.y - 40));
 
+    // Knockback recoil: push sprite away from damage source briefly
+    const sx = sourceX ?? this.sprite.x;
+    const sy = sourceY ?? this.sprite.y;
+    const dx = this.sprite.x - sx;
+    const dy = this.sprite.y - sy;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const knockDist = 3;
+    this.scene.tweens.add({
+      targets: this.sprite,
+      x: this.sprite.x + (dx / dist) * knockDist,
+      y: this.sprite.y + (dy / dist) * knockDist,
+      duration: 60,
+      yoyo: true,
+      ease: 'Power2',
+    });
+
     if (this.hp <= 0) {
       this.die();
     }

@@ -12,12 +12,53 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     const { width, height } = this.cameras.main;
-    const barW = 400, barH = 12;
-    const barY = height / 2;
+
+    // Dark vignette background
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x0a0a14, 0x0a0a14, 0x1a1020, 0x1a1020, 1);
+    bg.fillRect(0, 0, width, height);
+
+    // Game title with glow
+    const titleText = this.add.text(width / 2, height / 2 - 70, '渊  火', {
+      fontSize: '36px', color: '#c0934a', fontFamily: '"Cinzel", serif', fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 4,
+    }).setOrigin(0.5).setAlpha(0);
+    const subtitleText = this.add.text(width / 2, height / 2 - 36, 'A B Y S S F I R E', {
+      fontSize: '12px', color: '#8a7060', fontFamily: '"Cinzel", serif',
+    }).setOrigin(0.5).setAlpha(0);
+
+    // Fade in title
+    this.tweens.add({ targets: titleText, alpha: 1, duration: 600, ease: 'Power2' });
+    this.tweens.add({ targets: subtitleText, alpha: 0.7, duration: 800, delay: 200, ease: 'Power2' });
+    // Title breathing pulse
+    this.tweens.add({ targets: titleText, alpha: 0.75, yoyo: true, repeat: -1, duration: 1500, ease: 'Sine.easeInOut' });
+
+    // Floating ember particles during load
+    for (let i = 0; i < 15; i++) {
+      const ember = this.add.circle(
+        width * 0.2 + Math.random() * width * 0.6,
+        height + 10,
+        1 + Math.random() * 2,
+        Phaser.Display.Color.RandomRGB(180, 220).color,
+      ).setAlpha(0);
+      this.tweens.add({
+        targets: ember,
+        y: -10, alpha: { from: 0, to: 0.4 + Math.random() * 0.4 },
+        x: `+=${-30 + Math.random() * 60}`,
+        duration: 3000 + Math.random() * 4000,
+        delay: Math.random() * 2000,
+        repeat: -1,
+        ease: 'Sine.easeIn',
+      });
+    }
+
+    // Progress bar
+    const barW = 300, barH = 6;
+    const barY = height / 2 + 10;
     this.add.rectangle(width / 2, barY, barW, barH, 0x1a1a2e).setStrokeStyle(1, 0x333344);
-    const fill = this.add.rectangle((width - barW) / 2 + 2, barY, 0, barH - 4, 0xc0934a).setOrigin(0, 0.5);
-    const loadingText = this.add.text(width / 2, barY - 24, '锻造渊火...', {
-      fontSize: '14px', color: '#c0934a', fontFamily: '"Cinzel", serif',
+    const fill = this.add.rectangle((width - barW) / 2 + 2, barY, 0, barH - 2, 0xc0934a).setOrigin(0, 0.5);
+    const loadingText = this.add.text(width / 2, barY + 18, '锻造渊火...', {
+      fontSize: '11px', color: '#8a7060', fontFamily: '"Cinzel", serif',
     }).setOrigin(0.5);
     this.load.on('progress', (v: number) => { fill.width = (barW - 4) * v; });
     this.load.on('complete', () => { loadingText.setText('准备就绪!'); });
