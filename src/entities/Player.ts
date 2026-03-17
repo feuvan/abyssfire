@@ -279,8 +279,16 @@ export class Player {
     this.sprite.setAlpha(1);
     this.sprite.setScale(1);
     this.sprite.setAngle(0);
+    // Reset all child transforms that death animation may have modified
+    for (const child of this.sprite.list) {
+      const go = child as any;
+      if (go.setAlpha) go.setAlpha(1);
+      if (go.setScale) go.setScale(1);
+      if (go.setAngle) go.setAngle(0);
+    }
     this.animator.cleanup();
     this.animator = new CharacterAnimator(this.scene, this.sprite, getAnimConfig(this.classData.id), `player_${this.classData.id}`);
+    this.animator.forceIdle();
     EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.hp, maxHp: this.maxHp });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
       text: '你在营地复活了。',

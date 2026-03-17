@@ -198,6 +198,15 @@ export class CharacterAnimator {
     this.resetTransform(150);
   }
 
+  /** Force idle state unconditionally — used after respawn to reset from death */
+  forceIdle(): void {
+    this.dead = false;
+    this.cancelTweens();
+    this.state = 'idle';
+    this.playFrameAnim('idle');
+    this.resetTransform(0);
+  }
+
   setWalk(): void {
     if (this.dead || this.state === 'walk') return;
     if (this.state === 'attack' || this.state === 'cast' || this.state === 'hurt') return;

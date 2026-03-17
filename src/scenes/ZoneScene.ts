@@ -115,6 +115,8 @@ export class ZoneScene extends Phaser.Scene {
     }
     this.visibleTiles = new Set();
     this.decorSprites = new Map();
+    this.campDecorSprites = new Map();
+    this.campParticles = new Map();
 
     // Create player — restore stats from zone transition if available
     const classData = AllClasses[data.classId] || AllClasses['warrior'];

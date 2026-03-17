@@ -410,10 +410,10 @@ export class UIScene extends Phaser.Scene {
   }
 
   // --- Shop Panel (Diablo-style split) ---
-  private openShop(data: { npcId: string; shopItems: string[]; type: string }): void {
+  private openShop(data: { npcId: string; shopItems: string[]; type: string }, keepPage = false): void {
     this.closeAllPanels();
     audioManager.playSFX('click');
-    this.shopInventoryPage = 0;
+    if (!keepPage) this.shopInventoryPage = 0;
 
     // Backdrop for outside-click dismiss
     this.dialogueBackdrop = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.3)
@@ -476,7 +476,7 @@ export class UIScene extends Phaser.Scene {
             if (item) { item.identified = true; this.zone.inventorySystem.addItem(item); }
             this.shopPanel?.destroy(); this.shopPanel = null;
             if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
-            this.openShop(data);
+            this.openShop(data, true);
           }
         });
         this.shopPanel!.add(buyBtn);
@@ -532,7 +532,7 @@ export class UIScene extends Phaser.Scene {
           audioManager.playSFX('click');
           this.shopPanel?.destroy(); this.shopPanel = null;
           if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
-          this.openShop(data);
+          this.openShop(data, true);
         }
       });
     });
@@ -548,7 +548,7 @@ export class UIScene extends Phaser.Scene {
           this.shopInventoryPage--;
           this.shopPanel?.destroy(); this.shopPanel = null;
           if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
-          this.openShop(data);
+          this.openShop(data, true);
         });
         this.shopPanel.add(prevBtn);
       }
@@ -563,7 +563,7 @@ export class UIScene extends Phaser.Scene {
           this.shopInventoryPage++;
           this.shopPanel?.destroy(); this.shopPanel = null;
           if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
-          this.openShop(data);
+          this.openShop(data, true);
         });
         this.shopPanel.add(nextBtn);
       }
@@ -596,7 +596,7 @@ export class UIScene extends Phaser.Scene {
       this.hideContextPopup();
       this.shopPanel?.destroy(); this.shopPanel = null;
       if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
-      this.openShop(shopData);
+      this.openShop(shopData, true);
     });
     this.contextPopup.add(yesBtn);
     const noBtn = this.add.text(popW / 2 + 30, 38, '[取消]', {
@@ -1597,14 +1597,15 @@ export class UIScene extends Phaser.Scene {
       const onCd = remaining > 0;
       this.skillCooldownOverlays[i].setVisible(onCd);
       // Show remaining seconds on cooldown
+      const cdText = this.skillCooldownTexts[i];
       if (onCd) {
         const secs = Math.ceil(remaining / 1000);
-        this.skillCooldownTexts[i].setVisible(true).setText(`${secs}`);
+        if (cdText?.active) cdText.setVisible(true).setText(`${secs}`);
         // Fade overlay alpha based on cooldown progress
-        const totalCd = skills[i].cooldown * 1000;
+        const totalCd = (skills[i].cooldown ?? 1) * 1000;
         this.skillCooldownOverlays[i].alpha = 0.3 + 0.4 * (remaining / totalCd);
       } else {
-        this.skillCooldownTexts[i].setVisible(false);
+        if (cdText?.active) cdText.setVisible(false);
       }
     }
 
