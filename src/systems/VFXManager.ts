@@ -13,6 +13,10 @@ export class VFXManager {
   private lastShakeTime = 0;
   private lastFlashTime = 0;
 
+  // Low HP vignette
+  private dangerVignette: Phaser.FX.Vignette | null = null;
+  private dangerActive = false;
+
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.isWebGL = scene.renderer.type === Phaser.WEBGL;
@@ -300,6 +304,34 @@ export class VFXManager {
     this.burstParticles(x, y, 20, 'particle_star',
       [0xffd700, 0xff8800, 0xffcc33, 0xffffff],
       { speedMin: 30, speedMax: 70, scaleStart: 0.8, duration: 800, gravityY: 40 });
+  }
+
+  // ── Low HP Danger Vignette ──────────────────────────────
+
+  updateDangerVignette(hpRatio: number): void {
+    if (!this.isWebGL) return;
+    const cam = this.scene.cameras.main;
+
+    if (hpRatio < 0.3 && hpRatio > 0) {
+      if (!this.dangerActive) {
+        this.dangerActive = true;
+        // Add a red-tinted vignette that intensifies as HP drops
+        this.dangerVignette = cam.postFX.addVignette(0.5, 0.5, 0.85, 0.35);
+      }
+      if (this.dangerVignette) {
+        // Pulse the vignette strength based on HP
+        const severity = 1 - (hpRatio / 0.3); // 0 at 30%, 1 at 0%
+        const pulse = Math.sin(this.scene.time.now * 0.005) * 0.05;
+        this.dangerVignette.strength = 0.2 + severity * 0.25 + pulse;
+        this.dangerVignette.radius = 0.7 + severity * 0.15;
+      }
+    } else if (this.dangerActive) {
+      this.dangerActive = false;
+      if (this.dangerVignette) {
+        cam.postFX.remove(this.dangerVignette);
+        this.dangerVignette = null;
+      }
+    }
   }
 
   // ── Cleanup ─────────────────────────────────────────────

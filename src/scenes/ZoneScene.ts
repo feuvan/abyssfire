@@ -386,6 +386,7 @@ export class ZoneScene extends Phaser.Scene {
     this.handleCombat(time);
     this.updateCombatState();
     this.updateTargetIndicator();
+    if (this.vfx) this.vfx.updateDangerVignette(this.player.hp / this.player.maxHp);
     if (this.mobileControls) this.mobileControls.update(time, delta);
 
     if (this.player.autoCombat) this.handleAutoCombat(time);
@@ -907,7 +908,7 @@ export class ZoneScene extends Phaser.Scene {
       for (const t of aoeTargets) {
         const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), t.toCombatEntity(), skill, level);
         t.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
-        this.showDamageText(t.sprite.x, t.sprite.y, result.damage, result.isCrit);
+        this.showDamageText(t.sprite.x, t.sprite.y, result.damage, result.isCrit, false, false, skill.damageType);
         if (!t.isAlive()) this.onMonsterKilled(t);
         // Bloom impact on AoE skill hit
         if (this.vfx && skill.damageType !== 'physical') {
@@ -933,7 +934,7 @@ export class ZoneScene extends Phaser.Scene {
     } else if (target) {
       const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), target.toCombatEntity(), skill, level);
       target.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
-      this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit);
+      this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit, false, false, skill.damageType);
       if (!target.isAlive()) this.onMonsterKilled(target);
       this.skillEffects.play(skillId, this.player.sprite.x, this.player.sprite.y,
         target.sprite.x, target.sprite.y);
@@ -1671,11 +1672,19 @@ export class ZoneScene extends Phaser.Scene {
     }
   }
 
-  private showDamageText(x: number, y: number, damage: number, isCrit: boolean, isDodged = false, isPlayer = false): void {
+  private showDamageText(x: number, y: number, damage: number, isCrit: boolean, isDodged = false, isPlayer = false, damageType?: string): void {
     let text: string, color: string, size = '16px';
+    const elementColors: Record<string, string> = {
+      fire: '#ff6600', ice: '#66ccff', lightning: '#a8e6ff',
+      poison: '#66ff66', arcane: '#cc66ff',
+    };
     if (isDodged) { text = 'MISS'; color = '#7f8c8d'; size = '13px'; }
     else if (isPlayer) { text = `-${damage}`; color = isCrit ? '#ff4444' : '#e74c3c'; if (isCrit) size = '24px'; }
-    else { text = `${damage}`; color = isCrit ? '#ffd700' : '#ffffff'; if (isCrit) size = '26px'; }
+    else {
+      text = `${damage}`;
+      color = isCrit ? '#ffd700' : (damageType && elementColors[damageType]) || '#ffffff';
+      if (isCrit) size = '26px';
+    }
     const t = this.add.text(x + randomInt(-15, 15), y - 30, text, {
       fontSize: size, color, fontFamily: '"Cinzel", serif', fontStyle: isCrit ? 'bold' : 'normal',
       stroke: '#000000', strokeThickness: isCrit ? 4 : 3,
