@@ -145,6 +145,11 @@ export class Player {
   }
 
   update(time: number, delta: number): void {
+    if (this.hp <= 0) {
+      this.path = [];
+      this.isMoving = false;
+      return;
+    }
     this.updateMovement(delta);
     // Mana regen
     if (this.mana < this.maxMana) {

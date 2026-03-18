@@ -12,6 +12,7 @@ import type { ItemInstance, WeaponBase, ArmorBase } from '../data/types';
 const FONT = '"Noto Sans SC", sans-serif';
 const TITLE_FONT = '"Cinzel", "Noto Sans SC", serif';
 const LOG_MAX_LINES = 8;
+const GLOBE_R = 40;
 
 export class UIScene extends Phaser.Scene {
   private player!: Player;
@@ -75,29 +76,89 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createHPManaBar(): void {
-    const x = 16, barW = 200, barH = 16;
-    // Portrait frame
-    const portrait = this.add.rectangle(x + 18, 24, 36, 36, 0x1a1a2e)
-      .setStrokeStyle(2, 0xc0934a).setDepth(3000);
-    const classLetter = this.player.classData.id === 'warrior' ? 'W' : this.player.classData.id === 'mage' ? 'M' : 'R';
-    this.add.text(x + 18, 24, classLetter, {
-      fontSize: '16px', color: '#c0934a', fontFamily: TITLE_FONT, fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(3001);
+    // Compute skill bar width to position globes adjacent to it
+    const slotSize = 42, gap = 5;
+    const skills = this.player.classData.skills;
+    const totalSkillW = skills.length * (slotSize + gap) - gap;
+    const utilBtnW = 50, utilGap = 6, utilCount = 3;
+    const totalUtilW = utilCount * utilBtnW + (utilCount - 1) * utilGap;
+    const skillUtilGap = gap + 4;
+    const fullBarW = totalSkillW + skillUtilGap + totalUtilW;
+    const bgPad = 8;
+    const y = GAME_HEIGHT - 50;
 
-    const hpX = x + 42, hpY = 14;
-    // HP bar background
-    this.add.rectangle(hpX, hpY, barW, barH, 0x1a1212).setOrigin(0, 0.5).setStrokeStyle(1, 0x333333).setDepth(3000);
-    this.hpBar = this.add.rectangle(hpX + 1, hpY, barW - 2, barH - 2, 0xc0392b).setOrigin(0, 0.5).setDepth(3001);
-    this.hpText = this.add.text(hpX + barW / 2, hpY, '', {
-      fontSize: '11px', color: '#fff', fontFamily: FONT,
-    }).setOrigin(0.5).setDepth(3002);
+    const barBgLeft = (GAME_WIDTH - fullBarW) / 2 - bgPad;
+    const barBgRight = (GAME_WIDTH + fullBarW) / 2 + bgPad;
+    const globeGap = 14;
+    const hpGlobeX = barBgLeft - globeGap - GLOBE_R;
+    const mpGlobeX = barBgRight + globeGap + GLOBE_R;
 
-    const manaY = hpY + barH + 4;
-    this.add.rectangle(hpX, manaY, barW, barH, 0x121226).setOrigin(0, 0.5).setStrokeStyle(1, 0x333333).setDepth(3000);
-    this.manaBar = this.add.rectangle(hpX + 1, manaY, barW - 2, barH - 2, 0x2471a3).setOrigin(0, 0.5).setDepth(3001);
-    this.manaText = this.add.text(hpX + barW / 2, manaY, '', {
-      fontSize: '11px', color: '#fff', fontFamily: FONT,
-    }).setOrigin(0.5).setDepth(3002);
+    // Extended bottom panel background connecting globes and skill bar
+    const panelLeft = hpGlobeX - GLOBE_R - 6;
+    const panelRight = mpGlobeX + GLOBE_R + 6;
+    this.add.rectangle(
+      (panelLeft + panelRight) / 2, y,
+      panelRight - panelLeft, slotSize + 12,
+      0x0a0a14, 0.7,
+    ).setStrokeStyle(1, 0x333344).setDepth(2998);
+
+    // HP Globe (left)
+    const hp = this.createGlobe(hpGlobeX, y, GLOBE_R, 0x1a0808, 0xaa2222);
+    this.hpBar = hp.fill;
+    this.hpText = hp.text;
+
+    // Mana Globe (right)
+    const mp = this.createGlobe(mpGlobeX, y, GLOBE_R, 0x08081a, 0x2244aa);
+    this.manaBar = mp.fill;
+    this.manaText = mp.text;
+  }
+
+  private createGlobe(
+    cx: number, cy: number, radius: number,
+    bgColor: number, fillColor: number,
+  ): { fill: Phaser.GameObjects.Rectangle; text: Phaser.GameObjects.Text } {
+    const d = 3000;
+
+    // Outer glow
+    const glow = this.add.graphics().setDepth(d - 2);
+    glow.fillStyle(fillColor, 0.06);
+    glow.fillCircle(cx, cy, radius + 8);
+
+    // Dark background
+    const bg = this.add.graphics().setDepth(d - 1);
+    bg.fillStyle(bgColor, 1);
+    bg.fillCircle(cx, cy, radius);
+
+    // Geometry mask for fill
+    const maskGfx = this.make.graphics({});
+    maskGfx.fillStyle(0xffffff);
+    maskGfx.fillCircle(cx, cy, radius - 2);
+    const mask = maskGfx.createGeometryMask();
+
+    // Fill rectangle (height animates, anchored at bottom via update)
+    const fill = this.add.rectangle(cx, cy - radius, radius * 2, radius * 2, fillColor)
+      .setOrigin(0.5, 0).setDepth(d);
+    fill.setMask(mask);
+
+    // Glass highlight
+    const hl = this.add.graphics().setDepth(d + 1);
+    hl.fillStyle(0xffffff, 0.08);
+    hl.fillEllipse(cx - radius * 0.1, cy - radius * 0.3, radius * 0.65, radius * 0.35);
+
+    // Gold frame
+    const frame = this.add.graphics().setDepth(d + 2);
+    frame.lineStyle(2.5, 0x6a5630, 1);
+    frame.strokeCircle(cx, cy, radius);
+    frame.lineStyle(1, 0xc0934a, 0.6);
+    frame.strokeCircle(cx, cy, radius + 2);
+
+    // Value text
+    const text = this.add.text(cx, cy + 2, '', {
+      fontSize: '11px', color: '#ffffff', fontFamily: FONT, fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(d + 3);
+
+    return { fill, text };
   }
 
   private createExpBar(): void {
@@ -1534,33 +1595,16 @@ export class UIScene extends Phaser.Scene {
   }
 
   /** Interpolate HP bar color: green -> yellow -> red based on ratio */
-  private hpColor(ratio: number): number {
-    if (ratio > 0.5) {
-      // green to yellow (0x2ecc71 -> 0xf1c40f)
-      const t = (ratio - 0.5) * 2;
-      const r = Math.round(0xf1 + (0x2e - 0xf1) * t);
-      const g = Math.round(0xc4 + (0xcc - 0xc4) * t);
-      const b = Math.round(0x0f + (0x71 - 0x0f) * t);
-      return (r << 16) | (g << 8) | b;
-    }
-    // yellow to red (0xf1c40f -> 0xc0392b)
-    const t = ratio * 2;
-    const r = Math.round(0xc0 + (0xf1 - 0xc0) * t);
-    const g = Math.round(0x39 + (0xc4 - 0x39) * t);
-    const b = Math.round(0x2b + (0x0f - 0x2b) * t);
-    return (r << 16) | (g << 8) | b;
-  }
-
   update(time: number): void {
     if (!this.player) return;
-    const barW = 198;
+    const globeH = GLOBE_R * 2;
+    const globeBottom = (GAME_HEIGHT - 50) + GLOBE_R;
+
     const hpR = Math.max(0, this.player.hp / this.player.maxHp);
-    const targetHpW = barW * hpR;
-    // Smooth bar interpolation
-    this.hpBar.width += (targetHpW - this.hpBar.width) * 0.15;
-    this.hpBar.fillColor = this.hpColor(hpR);
+    const targetHpH = globeH * hpR;
+    this.hpBar.height += (targetHpH - this.hpBar.height) * 0.15;
+    this.hpBar.y = globeBottom - this.hpBar.height;
     this.hpText.setText(`${Math.ceil(this.player.hp)}/${this.player.maxHp}`);
-    // Low HP pulse
     if (hpR < 0.3 && hpR > 0) {
       const pulse = 0.6 + Math.sin(time * 0.008) * 0.4;
       this.hpBar.alpha = pulse;
@@ -1569,8 +1613,9 @@ export class UIScene extends Phaser.Scene {
     }
 
     const manaR = Math.max(0, this.player.mana / this.player.maxMana);
-    const targetManaW = barW * manaR;
-    this.manaBar.width += (targetManaW - this.manaBar.width) * 0.15;
+    const targetManaH = globeH * manaR;
+    this.manaBar.height += (targetManaH - this.manaBar.height) * 0.15;
+    this.manaBar.y = globeBottom - this.manaBar.height;
     this.manaText.setText(`${Math.ceil(this.player.mana)}/${this.player.maxMana}`);
     const expN = this.player.expToNextLevel();
     this.expBar.width = (GAME_WIDTH - 32) * (this.player.exp / expN);

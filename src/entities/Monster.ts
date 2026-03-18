@@ -86,11 +86,11 @@ export class Monster {
     }
 
     // HP bar background (hidden until damaged)
-    this.hpBarBg = scene.add.rectangle(0, -size - 10, 40, 4, 0x333333).setAlpha(0);
+    this.hpBarBg = scene.add.rectangle(-20, -size - 10, 40, 4, 0x333333).setOrigin(0, 0.5).setAlpha(0);
     this.sprite.add(this.hpBarBg);
 
-    // HP bar (hidden until damaged)
-    this.hpBar = scene.add.rectangle(0, -size - 10, 40, 4, 0x2ecc71).setAlpha(0);
+    // HP bar (hidden until damaged, scales from left edge)
+    this.hpBar = scene.add.rectangle(-20, -size - 10, 40, 4, 0x2ecc71).setOrigin(0, 0.5).setAlpha(0);
     this.sprite.add(this.hpBar);
 
     // Monster name label (visible on aggro/damage)

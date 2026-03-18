@@ -58,6 +58,7 @@ export class ZoneScene extends Phaser.Scene {
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private campPositions: { col: number; row: number }[] = [];
   private lootDrops: { sprite: Phaser.GameObjects.Container; item: ItemInstance; col: number; row: number }[] = [];
+  private potionDrops: { sprite: Phaser.GameObjects.Container; type: 'hp' | 'mp'; amount: number; col: number; row: number }[] = [];
   private difficulty: 'normal' | 'nightmare' | 'hell' = 'normal';
   private lastAutoLootCheck = 0;
   private totalKills = 0;
@@ -93,6 +94,7 @@ export class ZoneScene extends Phaser.Scene {
     this.monsters = [];
     this.npcs = [];
     this.lootDrops = [];
+    this.potionDrops = [];
 
     this.combatSystem = new CombatSystem();
     this.lootSystem = new LootSystem();
@@ -247,6 +249,7 @@ export class ZoneScene extends Phaser.Scene {
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (pointer.rightButtonDown()) return;
+      if (this.player.hp <= 0) return;
       const tile = worldToTile(pointer.worldX, pointer.worldY);
 
       const loot = this.findLootAt(tile.col, tile.row);
@@ -392,6 +395,30 @@ export class ZoneScene extends Phaser.Scene {
     if (this.mobileControls) this.mobileControls.update(time, delta);
 
     if (this.player.autoCombat) this.handleAutoCombat(time);
+
+    // Auto-collect potions
+    for (let i = this.potionDrops.length - 1; i >= 0; i--) {
+      const pot = this.potionDrops[i];
+      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, pot.col, pot.row);
+      if (dist <= 2) {
+        if (pot.type === 'hp') {
+          this.player.hp = Math.min(this.player.maxHp, this.player.hp + pot.amount);
+          EventBus.emit(GameEvents.LOG_MESSAGE, { text: `恢复 ${pot.amount} 生命`, type: 'combat' });
+        } else {
+          this.player.mana = Math.min(this.player.maxMana, this.player.mana + pot.amount);
+          EventBus.emit(GameEvents.LOG_MESSAGE, { text: `恢复 ${pot.amount} 法力`, type: 'info' });
+        }
+        this.tweens.killTweensOf(pot.sprite);
+        this.tweens.add({
+          targets: pot.sprite,
+          x: this.player.sprite.x,
+          y: this.player.sprite.y - 20,
+          scale: 0.3, alpha: 0, duration: 250, ease: 'Power2',
+          onComplete: () => pot.sprite.destroy(),
+        });
+        this.potionDrops.splice(i, 1);
+      }
+    }
 
     // Auto-loot
     if (this.player.autoLootMode !== 'off' && time - this.lastAutoLootCheck > 300) {
@@ -791,6 +818,7 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private handleKeyboardMovement(delta: number): void {
+    if (this.player.hp <= 0) return;
     let dx = 0, dy = 0;
 
     // Keyboard input
@@ -860,6 +888,7 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private tryUseSkill(skillId: string, time: number): void {
+    if (this.player.hp <= 0) return;
     const skill = this.player.getSkill(skillId);
     if (!skill) return;
     if (!this.player.isSkillReady(skillId, time)) return;
@@ -972,7 +1001,16 @@ export class ZoneScene extends Phaser.Scene {
           this.player.hp = Math.max(0, this.player.hp - finalDmg);
           this.player.playHurt(monster.sprite.x, monster.sprite.y);
           this.showDamageText(this.player.sprite.x, this.player.sprite.y, finalDmg, result.isCrit, false, true);
-          this.skillEffects.playMonsterAttack(this.player.sprite.x, this.player.sprite.y);
+          if (monster.definition.attackRange > 2.5) {
+            const projColor = monster.definition.spriteKey.includes('fire') || monster.definition.spriteKey.includes('phoenix')
+              ? 0xff6600 : monster.definition.spriteKey.includes('ice') ? 0x4488ff : 0xcc44cc;
+            this.skillEffects.playMonsterRangedAttack(
+              monster.sprite.x, monster.sprite.y,
+              this.player.sprite.x, this.player.sprite.y, projColor,
+            );
+          } else {
+            this.skillEffects.playMonsterAttack(this.player.sprite.x, this.player.sprite.y);
+          }
           EventBus.emit(GameEvents.COMBAT_DAMAGE, {
             targetId: 'player', damage: finalDmg, isDodged: false,
             isCrit: result.isCrit, isPlayerTarget: true,
@@ -1017,6 +1055,7 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private handleAutoCombat(time: number): void {
+    if (this.player.hp <= 0) return;
     if (!this.player.attackTarget) {
       const nearest = this.findNearestAliveMonster();
       if (nearest) {
@@ -1228,8 +1267,20 @@ export class ZoneScene extends Phaser.Scene {
 
     const luckBonus = this.player.stats.lck + (homeBonus['magicFind'] ?? 0);
     const loot = this.lootSystem.generateLoot(monster.definition, luckBonus);
+    const potionAmounts: Record<string, { type: 'hp' | 'mp'; amount: number }> = {
+      c_hp_potion_s: { type: 'hp', amount: 50 },
+      c_hp_potion_m: { type: 'hp', amount: 150 },
+      c_hp_potion_l: { type: 'hp', amount: 400 },
+      c_mp_potion_s: { type: 'mp', amount: 30 },
+      c_mp_potion_m: { type: 'mp', amount: 80 },
+    };
     for (const item of loot) {
-      this.dropLoot(item, monster.tileCol, monster.tileRow);
+      const pot = potionAmounts[item.baseId];
+      if (pot) {
+        this.dropPotion(pot.type, pot.amount, monster.tileCol, monster.tileRow);
+      } else {
+        this.dropLoot(item, monster.tileCol, monster.tileRow);
+      }
     }
 
     EventBus.emit(GameEvents.LOG_MESSAGE, {
@@ -1300,6 +1351,48 @@ export class ZoneScene extends Phaser.Scene {
       if (idx !== -1) {
         this.lootDrops[idx].sprite.destroy();
         this.lootDrops.splice(idx, 1);
+      }
+    });
+  }
+
+  private dropPotion(type: 'hp' | 'mp', amount: number, col: number, row: number): void {
+    const worldPos = cartToIso(col + Math.random() * 0.5, row + Math.random() * 0.5);
+    const container = this.add.container(worldPos.x, worldPos.y);
+    container.setDepth(worldPos.y + 30);
+
+    const color = type === 'hp' ? 0xcc2222 : 0x2244cc;
+    const glowColor = type === 'hp' ? 0xff4444 : 0x4466ff;
+
+    // Glow
+    const glow = this.add.circle(0, 0, 12, glowColor, 0.25);
+    container.add(glow);
+
+    // Bottle body
+    const body = this.add.rectangle(0, 1, 8, 10, color);
+    body.setStrokeStyle(1, 0xffffff, 0.5);
+    container.add(body);
+    // Bottle cap
+    const cap = this.add.circle(0, -5, 3, color);
+    cap.setStrokeStyle(1, 0xffffff, 0.3);
+    container.add(cap);
+
+    // Bobbing animation
+    this.tweens.add({
+      targets: container,
+      y: container.y - 5,
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    this.potionDrops.push({ sprite: container, type, amount, col, row });
+
+    this.time.delayedCall(30000, () => {
+      const idx = this.potionDrops.findIndex(p => p.sprite === container);
+      if (idx !== -1) {
+        this.potionDrops[idx].sprite.destroy();
+        this.potionDrops.splice(idx, 1);
       }
     });
   }

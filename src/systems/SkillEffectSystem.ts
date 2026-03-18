@@ -258,6 +258,55 @@ export class SkillEffectSystem {
     }
   }
 
+  playMonsterRangedAttack(sx: number, sy: number, tx: number, ty: number, color: number = 0xff6600): void {
+    const startX = sx, startY = sy - 16;
+    const endX = tx, endY = ty - 16;
+    const dist = Phaser.Math.Distance.Between(startX, startY, endX, endY);
+    const duration = Math.max(150, Math.min(400, dist * 2));
+
+    // Projectile
+    const proj = this.scene.add.circle(startX, startY, 5, color, 0.9).setDepth(EFFECT_DEPTH);
+    const glow = this.scene.add.circle(startX, startY, 9, color, 0.3).setDepth(EFFECT_DEPTH);
+
+    // Trail particles during flight
+    const trailTimer = this.scene.time.addEvent({
+      delay: 30,
+      repeat: Math.floor(duration / 30),
+      callback: () => {
+        const p = this.scene.add.circle(proj.x, proj.y, 3, color, 0.6).setDepth(EFFECT_DEPTH);
+        this.scene.tweens.add({
+          targets: p, alpha: 0, scale: 0.1, duration: 200,
+          onComplete: () => p.destroy(),
+        });
+      },
+    });
+
+    // Flight
+    this.scene.tweens.add({
+      targets: [proj, glow],
+      x: endX, y: endY,
+      duration,
+      ease: 'Power1',
+      onComplete: () => {
+        proj.destroy();
+        glow.destroy();
+        trailTimer.destroy();
+        // Impact burst
+        for (let i = 0; i < 6; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = 5 + Math.random() * 10;
+          const p = this.scene.add.circle(endX, endY, 3, color, 0.8).setDepth(EFFECT_DEPTH);
+          this.scene.tweens.add({
+            targets: p,
+            x: endX + Math.cos(a) * d, y: endY + Math.sin(a) * d,
+            alpha: 0, scale: 0.1, duration: 250,
+            onComplete: () => p.destroy(),
+          });
+        }
+      },
+    });
+  }
+
   // ══════════════════════════════════════════════════════════
   // WARRIOR EFFECTS
   // ══════════════════════════════════════════════════════════
