@@ -42,16 +42,16 @@ const HUMANOID_CONFIG: AnimConfig = {
   idleScalePulse: 0.02,
   idleSwayX: 0,
 
-  walkBobAmount: 4,
-  walkBobSpeed: 280,
-  walkTilt: 5,
-  walkSquash: 0.05,
+  walkBobAmount: 6,
+  walkBobSpeed: 240,
+  walkTilt: 8,
+  walkSquash: 0.10,
 
-  attackLunge: 12,
-  attackDuration: 300,
-  attackSquash: 0.15,
-  attackWindup: 100,
-  attackShake: false,
+  attackLunge: 14,
+  attackDuration: 500,
+  attackSquash: 0.25,
+  attackWindup: 150,
+  attackShake: true,
 
   castLean: 5,
   castDuration: 350,
@@ -295,19 +295,23 @@ export class CharacterAnimator {
   private updateWalk(): void {
     const phase = (this.animTime / this.config.walkBobSpeed) * Math.PI * 2;
 
-    const newBobY = -Math.abs(Math.sin(phase)) * this.config.walkBobAmount;
+    // Asymmetric bob: sharp drop, slow rise
+    const rawBob = Math.sin(phase);
+    const asymBob = rawBob < 0 ? rawBob : rawBob * 0.6;
+    const newBobY = -Math.abs(asymBob) * this.config.walkBobAmount;
     this.container.y += newBobY - this.baseY;
     this.baseY = newBobY;
 
+    // Body tilt with direction lean
     this.container.angle = Math.sin(phase) * this.config.walkTilt;
 
+    // Squash/stretch on contact
     const sinVal = Math.abs(Math.sin(phase));
-
     if (this.config.deathStyle === 'splat') {
       const stretch = sinVal * this.config.walkSquash;
       this.container.scaleX = 1 + stretch;
       this.container.scaleY = 1 - stretch;
-    } else if (sinVal < 0.15) {
+    } else if (sinVal < 0.2) {
       this.container.scaleX = 1 + this.config.walkSquash;
       this.container.scaleY = 1 - this.config.walkSquash;
     } else {
@@ -323,8 +327,6 @@ export class CharacterAnimator {
     this.cancelTweens();
     this.prevState = this.state;
     this.state = 'attack';
-
-    // Play frame animation
     this.playFrameAnim('attack');
 
     const originX = this.container.x;
@@ -339,61 +341,82 @@ export class CharacterAnimator {
     const targetAngle = Math.atan2(dy, dx) * (180 / Math.PI);
     const tiltAngle = targetAngle * 0.05;
 
-    const windupMs = this.config.attackWindup;
-    const lungeMs = 100;
-    const impactMs = 50;
-    const recoverMs = Math.max(50, this.config.attackDuration - windupMs - lungeMs - impactMs);
+    const total = this.config.attackDuration;
+    const anticipateMs = this.config.attackWindup;
+    const strikeMs = 80;
+    const impactMs = 40;
+    const followMs = Math.max(60, (total - anticipateMs - strikeMs - impactMs) * 0.5);
+    const settleMs = Math.max(50, total - anticipateMs - strikeMs - impactMs - followMs);
 
-    const pullbackX = originX - nx * this.config.attackLunge * 0.3;
-    const pullbackY = originY - ny * this.config.attackLunge * 0.3;
-
+    const pullbackX = originX - nx * this.config.attackLunge * 0.4;
+    const pullbackY = originY - ny * this.config.attackLunge * 0.4;
     const lungeX = originX + nx * this.config.attackLunge;
     const lungeY = originY + ny * this.config.attackLunge;
+    const overshootX = originX + nx * this.config.attackLunge * 0.3;
+    const overshootY = originY + ny * this.config.attackLunge * 0.3;
 
-    // 1. Windup: pull back
+    // Phase 1: Anticipation — pull back, compress
     this.addTween({
       targets: this.container,
       x: pullbackX,
       y: pullbackY,
-      scaleY: 0.92,
+      scaleY: 0.88,
+      scaleX: 1.06,
       angle: -tiltAngle,
-      duration: windupMs,
-      ease: 'Quad.easeOut',
+      duration: anticipateMs,
+      ease: 'Back.easeIn',
       onComplete: () => {
-        // 2. Lunge: snap toward target
+        // Phase 2: Strike — fast snap forward
         this.addTween({
           targets: this.container,
           x: lungeX,
           y: lungeY,
-          angle: tiltAngle,
-          duration: lungeMs,
-          ease: 'Quad.easeIn',
+          scaleY: 1.05,
+          scaleX: 0.95,
+          angle: tiltAngle * 1.5,
+          duration: strikeMs,
+          ease: 'Expo.easeOut',
           onComplete: () => {
-            // 3. Impact
+            // Phase 3: Impact — squash + screen shake
             this.container.scaleX = 1 + this.config.attackSquash;
             this.container.scaleY = 1 - this.config.attackSquash;
 
             if (this.config.attackShake && this.scene.cameras?.main) {
-              this.scene.cameras.main.shake(80, 0.003);
+              this.scene.cameras.main.shake(60, 0.004);
             }
 
-            // 4. Recover
-            this.addTween({
-              targets: this.container,
-              x: originX,
-              y: originY,
-              scaleX: 1,
-              scaleY: 1,
-              angle: 0,
-              duration: recoverMs + impactMs,
-              ease: 'Quad.easeOut',
-              onComplete: () => {
-                this.state = 'idle';
-                this.animTime = 0;
-                this.baseY = 0;
-                this.baseX = 0;
-                this.playFrameAnim('idle');
-              },
+            // Phase 4: Follow-through — overshoot
+            this.scene.time.delayedCall(impactMs, () => {
+              this.addTween({
+                targets: this.container,
+                x: overshootX,
+                y: overshootY,
+                scaleX: 1.02,
+                scaleY: 0.98,
+                angle: tiltAngle * 0.5,
+                duration: followMs,
+                ease: 'Quad.easeOut',
+                onComplete: () => {
+                  // Phase 5: Settle — elastic return
+                  this.addTween({
+                    targets: this.container,
+                    x: originX,
+                    y: originY,
+                    scaleX: 1,
+                    scaleY: 1,
+                    angle: 0,
+                    duration: settleMs,
+                    ease: 'Elastic.easeOut',
+                    onComplete: () => {
+                      this.state = 'idle';
+                      this.animTime = 0;
+                      this.baseY = 0;
+                      this.baseX = 0;
+                      this.playFrameAnim('idle');
+                    },
+                  });
+                },
+              });
             });
           },
         });
