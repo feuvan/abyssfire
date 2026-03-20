@@ -7,14 +7,15 @@ export const MAP_ROWS = 80;
 
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
+export const DPR = Math.min(window.devicePixelRatio || 1, 2);
 
-export const TEXTURE_SCALE = 2;
+export const TEXTURE_SCALE = 3;
 
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game-container',
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  width: GAME_WIDTH * DPR,
+  height: GAME_HEIGHT * DPR,
   pixelArt: false,
   antialias: true,
   backgroundColor: '#0f0f1a',
