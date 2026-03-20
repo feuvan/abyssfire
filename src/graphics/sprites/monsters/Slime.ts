@@ -65,6 +65,9 @@ export const SlimeDrawer: EntityDrawer = {
     const bodyRy = 14 * s * squishY;
     const bodyCy = baseY - bodyRy * 0.6 + offsetY;
 
+    // Soft green glow outline around body
+    utils.softOutline(ctx, 'rgba(30, 180, 60, 0.3)', 6);
+
     const grad = ctx.createRadialGradient(
       cx - bodyRx * 0.15, bodyCy - bodyRy * 0.2, 0,
       cx, bodyCy, bodyRx
@@ -83,6 +86,12 @@ export const SlimeDrawer: EntityDrawer = {
     glowGrad.addColorStop(1, 'rgba(18,85,34,0)');
     ctx.fillStyle = glowGrad;
     utils.fillEllipse(ctx, cx - 2 * s, bodyCy - 2 * s, bodyRx * 0.65, bodyRy * 0.6);
+
+    // End soft outline
+    utils.softOutlineEnd(ctx);
+
+    // Rim light on body edge
+    utils.rimLight(ctx, cx, bodyCy, bodyRx, bodyRy, 'rgba(100,255,120,0.12)');
 
     // Internal particles
     ctx.fillStyle = 'rgba(7,63,18,0.4)';

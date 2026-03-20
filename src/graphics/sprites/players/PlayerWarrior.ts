@@ -119,6 +119,9 @@ export const PlayerWarriorDrawer: EntityDrawer = {
 
     // Body armor (plate chest) — wide, beefy
     utils.drawMetalSurface(ctx, torsoX - 16 * s, torsoY - 14 * s, 32 * s, 30 * s, ARMOR_BASE);
+    // Volume gradient for chest depth
+    utils.volumeGradient(ctx, torsoX - 16 * s, torsoY - 14 * s, 32 * s, 30 * s,
+      'rgba(42,53,66,0)', 'rgba(0,0,0,0.3)', 'rgba(255,255,255,0.08)');
     // Chest highlight plate
     utils.drawMetalSurface(ctx, torsoX - 12 * s, torsoY - 12 * s, 24 * s, 18 * s, ARMOR_LIGHT);
     // Chest center crease
@@ -279,6 +282,9 @@ export const PlayerWarriorDrawer: EntityDrawer = {
           ctx.restore();
         }
 
+        // Soft metallic glow on sword
+        utils.softOutline(ctx, 'rgba(200, 200, 220, 0.2)', 3);
+
         // Blade
         ctx.strokeStyle = utils.rgb(BLADE_COLOR);
         ctx.lineWidth = 2.5 * s;
@@ -294,6 +300,8 @@ export const PlayerWarriorDrawer: EntityDrawer = {
         ctx.moveTo(swX - 0.5 * s, swY);
         ctx.lineTo(tipX - 0.5 * s, tipY);
         ctx.stroke();
+
+        utils.softOutlineEnd(ctx);
 
         // Crossguard (rect perpendicular to blade)
         const perpAngle = bladeAngle + Math.PI * 0.5;
@@ -327,6 +335,9 @@ export const PlayerWarriorDrawer: EntityDrawer = {
     helmGrad.addColorStop(1, utils.rgb(ARMOR_DARK));
     ctx.fillStyle = helmGrad;
     utils.fillEllipse(ctx, headX, headY - 2 * s, 10 * s, 10 * s);
+
+    // Rim light on helm
+    utils.rimLight(ctx, headX, headY - 2 * s, 10 * s, 10 * s, 'rgba(180,190,200,0.1)');
 
     // Visor / face opening — skin visible
     const faceGrad = ctx.createLinearGradient(headX - 5 * s, headY + 1 * s, headX + 5 * s, headY + 6 * s);
