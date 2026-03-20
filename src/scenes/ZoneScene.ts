@@ -201,11 +201,11 @@ export class ZoneScene extends Phaser.Scene {
     if (this.renderer.type === Phaser.WEBGL) {
       const cam = this.cameras.main;
 
-      // Subtle bloom for bright elements (magic, loot, fire)
-      cam.postFX.addBloom(0xffffff, 1, 1, 1.2, 1.5);
+      // Very subtle bloom — only affects brightest elements (loot, magic, fire)
+      cam.postFX.addBloom(0xffffff, 0.5, 0.5, 0.4, 0.5);
 
-      // Vignette for cinematic focus
-      cam.postFX.addVignette(0.5, 0.5, 0.88, 0.35);
+      // Subtle vignette for cinematic focus
+      cam.postFX.addVignette(0.5, 0.5, 0.92, 0.2);
     }
 
     // Ambient dust particles
