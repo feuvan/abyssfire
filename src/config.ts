@@ -7,7 +7,7 @@ export const MAP_ROWS = 80;
 
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
-export const DPR = Math.min(window.devicePixelRatio || 1, 2);
+export const DPR = 2;
 
 export const TEXTURE_SCALE = 3;
 

@@ -23,6 +23,18 @@ function fs(basePx: number): string {
 
 const px = (n: number) => Math.round(n * DPR);
 
+function getDirection(dc: number, dr: number): string {
+  const angle = Math.atan2(dr, dc) * 180 / Math.PI;
+  if (angle >= -22.5 && angle < 22.5) return '东';
+  if (angle >= 22.5 && angle < 67.5) return '东南';
+  if (angle >= 67.5 && angle < 112.5) return '南';
+  if (angle >= 112.5 && angle < 157.5) return '西南';
+  if (angle >= 157.5 || angle < -157.5) return '西';
+  if (angle >= -157.5 && angle < -112.5) return '西北';
+  if (angle >= -112.5 && angle < -67.5) return '北';
+  return '东北';
+}
+
 export class UIScene extends Phaser.Scene {
   private player!: Player;
   private zone!: ZoneScene;
@@ -40,7 +52,8 @@ export class UIScene extends Phaser.Scene {
   private skillCooldownTexts: Phaser.GameObjects.Text[] = [];
   private logTexts: Phaser.GameObjects.Text[] = [];
   private logMessages: { text: string; type: string }[] = [];
-  private questTracker!: Phaser.GameObjects.Text;
+  private questTracker!: Phaser.GameObjects.Container;
+  private questTrackerTexts: Phaser.GameObjects.Text[] = [];
   private zoneLabel!: Phaser.GameObjects.Text;
 
   private inventoryPanel: Phaser.GameObjects.Container | null = null;
@@ -289,9 +302,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createQuestTracker(): void {
-    this.questTracker = this.add.text(W - px(16), px(52), '', {
-      fontSize: fs(12), color: '#c0934a', fontFamily: FONT, align: 'right', wordWrap: { width: px(220) },
-    }).setOrigin(1, 0).setDepth(3000);
+    this.questTracker = this.add.container(px(16), px(52)).setDepth(3000);
   }
 
   private setupEventListeners(): void {
@@ -1668,26 +1679,69 @@ export class UIScene extends Phaser.Scene {
 
     if (this.zone?.questSystem) {
       const active = this.zone.questSystem.getActiveQuests();
-      const lines: string[] = [];
       // Sort: main quests first
       const sorted = active.sort((a, b) => {
         if (a.quest.category === 'main' && b.quest.category !== 'main') return -1;
         if (a.quest.category !== 'main' && b.quest.category === 'main') return 1;
         return 0;
       });
+
+      // Build line entries
+      const entries: { text: string; isTitle: boolean; isMain: boolean; isDone: boolean }[] = [];
+      const playerCol = this.zone?.player ? Math.round(this.zone.player.tileCol) : 0;
+      const playerRow = this.zone?.player ? Math.round(this.zone.player.tileRow) : 0;
       for (const { quest, progress } of sorted) {
         const tag = quest.category === 'main' ? '[主线]' : '[支线]';
-        const statusTag = progress.status === 'completed' ? ' [完成]' : '';
-        lines.push(`${tag} ${quest.name}${statusTag}`);
+        const statusTag = progress.status === 'completed' ? ' \u2713' : '';
+        entries.push({ text: `${tag} ${quest.name}${statusTag}`, isTitle: true, isMain: quest.category === 'main', isDone: progress.status === 'completed' });
         for (let i = 0; i < quest.objectives.length; i++) {
           const obj = quest.objectives[i];
           const cur = progress.objectives[i]?.current ?? 0;
           const done = cur >= obj.required;
           const mark = done ? '\u2713' : `${cur}/${obj.required}`;
-          lines.push(`  ${obj.targetName} ${mark}`);
+          let locHint = '';
+          if (obj.type === 'explore' && !done && obj.location) {
+            const dc = obj.location.col - playerCol;
+            const dr = obj.location.row - playerRow;
+            const dist = Math.sqrt(dc * dc + dr * dr);
+            if (dist > 3) {
+              const dir = getDirection(dc, dr);
+              const distLabel = dist > 30 ? '很远' : dist > 15 ? '较远' : '附近';
+              locHint = ` (${dir} ${distLabel})`;
+            }
+          }
+          entries.push({ text: `  ${obj.targetName} ${mark}${locHint}`, isTitle: false, isMain: quest.category === 'main', isDone: done });
         }
       }
-      this.questTracker.setText(lines.join('\n'));
+
+      // Reuse or create text objects
+      let y = 0;
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        let t = this.questTrackerTexts[i];
+        if (!t) {
+          t = this.add.text(0, 0, '', { fontFamily: FONT }).setOrigin(0, 0);
+          this.questTracker.add(t);
+          this.questTrackerTexts.push(t);
+        }
+        t.setVisible(true);
+        t.setText(e.text);
+        t.setY(y);
+        if (e.isTitle) {
+          t.setFontSize(fs(13));
+          t.setColor(e.isMain ? '#e8c252' : '#a89060');
+          t.setFontStyle('bold');
+        } else {
+          t.setFontSize(fs(10));
+          t.setColor(e.isDone ? '#66aa66' : '#aaaaaa');
+          t.setFontStyle('');
+        }
+        y += e.isTitle ? px(18) : px(14);
+      }
+      // Hide unused text objects
+      for (let i = entries.length; i < this.questTrackerTexts.length; i++) {
+        this.questTrackerTexts[i].setVisible(false);
+      }
     }
   }
 }

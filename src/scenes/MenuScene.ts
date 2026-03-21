@@ -17,6 +17,7 @@ const H = GAME_HEIGHT * DPR;
 export class MenuScene extends Phaser.Scene {
   private menuContainer: Phaser.GameObjects.Container | null = null;
   private classContainer: Phaser.GameObjects.Container | null = null;
+  private helpContainer: Phaser.GameObjects.Container | null = null;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -311,6 +312,19 @@ export class MenuScene extends Phaser.Scene {
     this.menuContainer.add(this.add.text(cx, y, '新的旅程', {
       fontSize: fs(20), color: '#a0907a', fontFamily: '"Cinzel", "Noto Sans SC", serif',
     }).setOrigin(0.5));
+
+    y += px(70);
+
+    // "Help" button
+    const helpBg = this.add.rectangle(cx, y, px(320), px(45), 0x12121e, 0.9)
+      .setStrokeStyle(1.5, 0x555566, 0.4).setInteractive({ useHandCursor: true });
+    helpBg.on('pointerover', () => { helpBg.setStrokeStyle(2, 0x888899, 0.8); helpBg.setFillStyle(0x1a1a2e, 0.95); });
+    helpBg.on('pointerout', () => { helpBg.setStrokeStyle(1.5, 0x555566, 0.4); helpBg.setFillStyle(0x12121e, 0.9); });
+    helpBg.on('pointerdown', () => this.showHelp());
+    this.menuContainer.add(helpBg);
+    this.menuContainer.add(this.add.text(cx, y, '帮助', {
+      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", sans-serif',
+    }).setOrigin(0.5));
   }
 
   private showClassSelection(): void {
@@ -394,6 +408,110 @@ export class MenuScene extends Phaser.Scene {
       this.checkForSaves();
     });
     this.classContainer.add(backBtn);
+  }
+
+  private showHelp(): void {
+    if (this.helpContainer) { this.helpContainer.destroy(); }
+    this.helpContainer = this.add.container(0, 0).setDepth(20);
+
+    const cx = W / 2;
+    const panelW = px(460);
+    const panelH = px(520);
+    const panelX = cx;
+    const panelY = H / 2;
+
+    // Dimmed backdrop
+    const backdrop = this.add.rectangle(cx, H / 2, W, H, 0x000000, 0.6).setInteractive();
+    this.helpContainer.add(backdrop);
+
+    // Panel background
+    const panel = this.add.rectangle(panelX, panelY, panelW, panelH, 0x0e0e1a, 0.95)
+      .setStrokeStyle(1.5, 0xc0934a, 0.6);
+    this.helpContainer.add(panel);
+
+    // Title
+    this.helpContainer.add(this.add.text(panelX, panelY - panelH / 2 + px(24), '快捷键', {
+      fontSize: fs(22), color: '#c0934a', fontFamily: '"Cinzel", "Noto Sans SC", serif', fontStyle: 'bold',
+    }).setOrigin(0.5));
+
+    // Decorative line
+    const lineGfx = this.add.graphics();
+    lineGfx.lineStyle(1, 0xc0934a, 0.4);
+    lineGfx.beginPath();
+    lineGfx.moveTo(panelX - px(160), panelY - panelH / 2 + px(44));
+    lineGfx.lineTo(panelX + px(160), panelY - panelH / 2 + px(44));
+    lineGfx.strokePath();
+    this.helpContainer.add(lineGfx);
+
+    const categories: { title: string; keys: [string, string][] }[] = [
+      {
+        title: '移动',
+        keys: [
+          ['W / A / S / D', '上 / 左 / 下 / 右移动'],
+          ['鼠标左键', '点击移动 / 攻击 / 交互'],
+        ],
+      },
+      {
+        title: '战斗',
+        keys: [
+          ['1 - 6', '使用技能'],
+          ['TAB', '切换自动战斗'],
+          ['R / 右键', '传送回营地'],
+        ],
+      },
+      {
+        title: '界面',
+        keys: [
+          ['I', '背包'],
+          ['C', '角色属性'],
+          ['K', '技能树'],
+          ['J', '任务日志'],
+          ['M', '地图'],
+          ['H', '家园'],
+          ['O', '音频设置'],
+          ['ESC', '返回主菜单'],
+        ],
+      },
+    ];
+
+    let y = panelY - panelH / 2 + px(60);
+    const leftX = panelX - panelW / 2 + px(30);
+    const rightX = panelX + panelW / 2 - px(30);
+
+    for (const cat of categories) {
+      // Category title
+      this.helpContainer.add(this.add.text(leftX, y, cat.title, {
+        fontSize: fs(14), color: '#d4a84b', fontFamily: '"Noto Sans SC", sans-serif', fontStyle: 'bold',
+      }).setOrigin(0, 0.5));
+      y += px(22);
+
+      for (const [key, desc] of cat.keys) {
+        // Key label
+        this.helpContainer.add(this.add.text(leftX + px(8), y, key, {
+          fontSize: fs(12), color: '#e0d8cc', fontFamily: '"Noto Sans SC", sans-serif',
+        }).setOrigin(0, 0.5));
+        // Description
+        this.helpContainer.add(this.add.text(rightX, y, desc, {
+          fontSize: fs(12), color: '#888880', fontFamily: '"Noto Sans SC", sans-serif',
+        }).setOrigin(1, 0.5));
+        y += px(18);
+      }
+      y += px(10);
+    }
+
+    // Close button
+    const closeBtn = this.add.text(panelX, panelY + panelH / 2 - px(24), '← 返回', {
+      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", sans-serif',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => {
+      this.helpContainer?.destroy();
+      this.helpContainer = null;
+    });
+    backdrop.on('pointerdown', () => {
+      this.helpContainer?.destroy();
+      this.helpContainer = null;
+    });
+    this.helpContainer.add(closeBtn);
   }
 
   private loadGame(save: SaveData): void {

@@ -7,7 +7,6 @@ import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { NPC } from '../entities/NPC';
 import { PathfindingSystem } from '../systems/PathfindingSystem';
-import { FogOfWarSystem } from '../systems/FogOfWarSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { LootSystem } from '../systems/LootSystem';
 import { InventorySystem } from '../systems/InventorySystem';
@@ -21,6 +20,7 @@ import { LightingSystem } from '../systems/LightingSystem';
 import { VFXManager } from '../systems/VFXManager';
 import { WeatherSystem } from '../systems/WeatherSystem';
 import { TrailRenderer } from '../systems/TrailRenderer';
+import { audioManager } from '../systems/audio/AudioManager';
 import { applyColorGrading } from '../graphics/ColorGradePipeline';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
 import { AllClasses } from '../data/classes/index';
@@ -46,7 +46,6 @@ export class ZoneScene extends Phaser.Scene {
   private mapData!: MapData;
   private currentMapId!: string;
   private pathfinding!: PathfindingSystem;
-  private fogOfWar!: FogOfWarSystem;
   private combatSystem!: CombatSystem;
   private skillEffects!: SkillEffectSystem;
   lootSystem!: LootSystem;
@@ -81,6 +80,7 @@ export class ZoneScene extends Phaser.Scene {
   private trails!: TrailRenderer;
   private inCombat = false;
   private isTransitioning = false;
+  private isPortaling = false;
   private combatDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private targetIndicator: Phaser.GameObjects.Ellipse | null = null;
   private currentTargetId: string | null = null;
@@ -155,12 +155,6 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     this.pathfinding = new PathfindingSystem(this.mapData.collisions, this.mapData.cols, this.mapData.rows);
-
-    this.fogOfWar = new FogOfWarSystem(this, this.mapData.cols, this.mapData.rows, 10);
-    if (this.fogData[this.currentMapId]) {
-      this.fogOfWar.loadExploredData(this.fogData[this.currentMapId]);
-    }
-    this.fogOfWar.update(this.player.tileCol, this.player.tileRow);
 
     this.spawnMonsters();
     this.spawnNPCs();
@@ -239,6 +233,7 @@ export class ZoneScene extends Phaser.Scene {
         C: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.C),
         J: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
         O: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O),
+        R: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R),
         ESC: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
       };
     }
@@ -260,8 +255,13 @@ export class ZoneScene extends Phaser.Scene {
       this.mobileControls = new MobileControlsSystem(this, this.player);
     }
 
+    this.game.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown()) return;
+      if (pointer.rightButtonDown()) {
+        this.useTownPortal();
+        return;
+      }
       if (this.player.hp <= 0) return;
       const tile = worldToTile(pointer.worldX, pointer.worldY);
 
@@ -317,7 +317,8 @@ export class ZoneScene extends Phaser.Scene {
         this.vfx.deathBurst(this.player.sprite.x, this.player.sprite.y - 16, 0xcc2222);
       }
       // "YOU DIED" text overlay
-      const deathText = this.add.text(W / 2, H * 0.4, '你已死亡', {
+      const dp = this.screenPos(0.5, 0.4);
+      const deathText = this.add.text(dp.x, dp.y, '你已死亡', {
         fontSize: fs(36), color: '#cc2222', fontFamily: '"Cinzel", serif',
         fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(6 * DPR),
       }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
@@ -447,11 +448,6 @@ export class ZoneScene extends Phaser.Scene {
       this.updateVisibleTiles();
     }
 
-    // Throttled fog update
-    if (Math.floor(time / 200) !== Math.floor((time - delta) / 200)) {
-      this.fogOfWar.update(Math.round(this.player.tileCol), Math.round(this.player.tileRow));
-    }
-
     // Throttled explore quest check + NPC quest marker update
     if (Math.floor(time / 500) !== Math.floor((time - delta) / 500)) {
       this.checkExploreQuests();
@@ -478,10 +474,11 @@ export class ZoneScene extends Phaser.Scene {
   // --- Viewport culling tile rendering ---
   private updateVisibleTiles(): void {
     const cam = this.cameras.main;
-    const camCX = cam.scrollX + cam.width / 2 / cam.zoom;
-    const camCY = cam.scrollY + cam.height / 2 / cam.zoom;
-    const viewW = cam.width / cam.zoom / 2;
-    const viewH = cam.height / cam.zoom / 2;
+    const wv = cam.worldView;
+    const camCX = wv.centerX;
+    const camCY = wv.centerY;
+    const viewW = wv.width / 2;
+    const viewH = wv.height / 2;
     const margin = 4;
 
     const newVisible = new Set<string>();
@@ -561,10 +558,11 @@ export class ZoneScene extends Phaser.Scene {
   private updateVisibleDecorations(): void {
     const decorations = this.mapData.decorations ?? [];
     const cam = this.cameras.main;
-    const camCX = cam.scrollX + cam.width / 2 / cam.zoom;
-    const camCY = cam.scrollY + cam.height / 2 / cam.zoom;
-    const viewW = cam.width / cam.zoom / 2;
-    const viewH = cam.height / cam.zoom / 2;
+    const wv = cam.worldView;
+    const camCX = wv.centerX;
+    const camCY = wv.centerY;
+    const viewW = wv.width / 2;
+    const viewH = wv.height / 2;
     const margin = 5;
 
     const visibleDecorKeys = new Set<string>();
@@ -719,10 +717,11 @@ export class ZoneScene extends Phaser.Scene {
 
   private updateCampDecorations(): void {
     const cam = this.cameras.main;
-    const camCX = cam.scrollX + cam.width / 2 / cam.zoom;
-    const camCY = cam.scrollY + cam.height / 2 / cam.zoom;
-    const viewW = cam.width / cam.zoom / 2;
-    const viewH = cam.height / cam.zoom / 2;
+    const wv = cam.worldView;
+    const camCX = wv.centerX;
+    const camCY = wv.centerY;
+    const viewW = wv.width / 2;
+    const viewH = wv.height / 2;
     const margin = TILE_WIDTH * 4;
     const visibleKeys = new Set<string>();
 
@@ -888,6 +887,9 @@ export class ZoneScene extends Phaser.Scene {
     }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.O)) {
       EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'audio' });
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.R)) {
+      this.useTownPortal();
     }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.ESC)) {
       this.returnToMenu();
@@ -1522,7 +1524,6 @@ export class ZoneScene extends Phaser.Scene {
   private changeZone(targetMap: string, targetCol: number, targetRow: number): void {
     if (this.isTransitioning) return;
     this.isTransitioning = true;
-    this.fogData[this.currentMapId] = this.fogOfWar.getExploredData();
     this.autoSave();
 
     const doRestart = () => {
@@ -1814,13 +1815,83 @@ export class ZoneScene extends Phaser.Scene {
     }
   }
 
+  /** Convert a desired screen-fraction position to scrollFactor(0) object position, accounting for camera zoom. */
+  private screenPos(fracX: number, fracY: number): { x: number; y: number } {
+    const cam = this.cameras.main;
+    const ox = cam.width * cam.originX;
+    const oy = cam.height * cam.originY;
+    return {
+      x: ox + (fracX * cam.width - ox) / cam.zoom,
+      y: oy + (fracY * cam.height - oy) / cam.zoom,
+    };
+  }
+
+  private useTownPortal(): void {
+    if (this.player.hp <= 0 || this.isPortaling || this.isTransitioning) return;
+    const camp = this.campPositions[0];
+    if (!camp) return;
+
+    // Check if player is already inside the main camp safe zone
+    const safeRadius = this.mapData.safeZoneRadius ?? 9;
+    if (euclideanDistance(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadius) {
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '你已在营地中，无法使用传送门。', type: 'system' });
+      return;
+    }
+
+    this.isPortaling = true;
+    this.player.path = [];
+    this.player.isMoving = false;
+    this.player.attackTarget = null;
+
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: '正在开启传送门...', type: 'system' });
+
+    // Portal VFX — expanding ring at player's feet
+    const px = this.player.sprite.x;
+    const py = this.player.sprite.y + 8;
+    const ring = this.add.circle(px, py, 4, 0x4488ff, 0).setDepth(900);
+    const ring2 = this.add.circle(px, py, 4, 0x66aaff, 0).setDepth(900);
+    const glow = this.add.circle(px, py, 2, 0x2266cc, 0).setDepth(899);
+
+    this.tweens.add({
+      targets: ring, radius: 28, alpha: 0.7, duration: 1200, ease: 'Sine.easeOut',
+    });
+    this.tweens.add({
+      targets: ring2, radius: 20, alpha: 0.5, duration: 1200, ease: 'Sine.easeOut', delay: 200,
+    });
+    this.tweens.add({
+      targets: glow, radius: 30, alpha: 0.3, duration: 1200, ease: 'Sine.easeOut',
+    });
+
+    // Player flicker during cast
+    this.tweens.add({
+      targets: this.player.sprite, alpha: 0.5, duration: 200, yoyo: true, repeat: 3,
+    });
+
+    this.time.delayedCall(1500, () => {
+      // Flash & teleport
+      if (this.vfx) this.vfx.cameraFlash(200, 0.5, 0x4488ff);
+      audioManager.playSFX('zone_transition');
+
+      ring.destroy();
+      ring2.destroy();
+      glow.destroy();
+
+      this.player.moveTo(camp.col, camp.row);
+      this.player.sprite.setAlpha(1);
+      this.isPortaling = false;
+
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '已传送回营地。', type: 'system' });
+    });
+  }
+
   private showLevelUpBanner(level: number): void {
-    const text = this.add.text(W / 2, H * 0.28, '升级!', {
+    const p = this.screenPos(0.5, 0.28);
+    const text = this.add.text(p.x, p.y, '升级!', {
       fontSize: fs(32), color: '#ffd700', fontFamily: '"Cinzel", serif',
       fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(5 * DPR),
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0).setScale(0.5);
 
-    const lvlText = this.add.text(W / 2, H * 0.28 + 38, `等级 ${level}`, {
+    const lvlText = this.add.text(p.x, p.y + 38 * DPR / this.cameras.main.zoom, `等级 ${level}`, {
       fontSize: fs(20), color: '#ffcc00', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(3 * DPR),
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
@@ -1840,12 +1911,14 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private showQuestCompleteBanner(questName: string): void {
-    const label = this.add.text(W / 2, H * 0.22, '任务完成!', {
+    const p = this.screenPos(0.5, 0.22);
+    const z = this.cameras.main.zoom;
+    const label = this.add.text(p.x, p.y, '任务完成!', {
       fontSize: fs(20), color: '#f1c40f', fontFamily: '"Cinzel", serif',
       fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(4 * DPR),
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
 
-    const name = this.add.text(W / 2, H * 0.22 + 28, questName, {
+    const name = this.add.text(p.x, p.y + 28 * DPR / z, questName, {
       fontSize: fs(16), color: '#e0d8cc', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(3 * DPR),
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
@@ -1860,22 +1933,24 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private showZoneBanner(): void {
-    const banner = this.add.text(W / 2, H * 0.32, this.mapData.name, {
+    const p = this.screenPos(0.5, 0.32);
+    const z = this.cameras.main.zoom;
+    const banner = this.add.text(p.x, p.y, this.mapData.name, {
       fontSize: fs(28), color: '#c0934a', fontFamily: '"Cinzel", serif',
       fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(5 * DPR),
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
 
-    const subtitle = this.add.text(W / 2, H * 0.32 + 36,
+    const subtitle = this.add.text(p.x, p.y + 32 * DPR / z,
       `Lv.${this.mapData.levelRange[0]}-${this.mapData.levelRange[1]}`, {
       fontSize: fs(16), color: '#8a7a5a', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(3 * DPR),
     }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
 
     // Decorative lines
-    const lineW = 120;
-    const lineY = H * 0.32 + 18;
-    const lineL = this.add.rectangle(W / 2 - 80, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(2500);
-    const lineR = this.add.rectangle(W / 2 + 80, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(2500);
+    const lineW = 120 * DPR;
+    const lineY = p.y + 20 * DPR / z;
+    const lineL = this.add.rectangle(p.x - 80 * DPR / z, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(2500);
+    const lineR = this.add.rectangle(p.x + 80 * DPR / z, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(2500);
 
     this.tweens.add({
       targets: [banner, subtitle, lineL, lineR],

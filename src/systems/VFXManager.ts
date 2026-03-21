@@ -67,8 +67,9 @@ export class VFXManager {
       // Delayed particle burst (after flash starts)
       this.scene.time.delayedCall(100, () => {
         const cam = this.scene.cameras.main;
-        const centerX = cam.scrollX + cam.width / 2 / cam.zoom;
-        const centerY = cam.scrollY + cam.height / 2 / cam.zoom;
+        const wv = cam.worldView;
+        const centerX = wv.centerX;
+        const centerY = wv.centerY;
         this.levelUpBurst(centerX, centerY);
       });
     });
