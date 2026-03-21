@@ -40,6 +40,7 @@
 - `BootScene` 现在只生成地形 tile、营地装饰和少量公共 effect/particle 纹理，不再一次性烘焙全部角色类 sheet。
 - 玩家、怪物、NPC 和普通地图装饰改成首次实际使用时再生成，并在进入新 zone 后按内容逐步补齐。
 - zone 关闭时会额外释放怪物 / NPC / 装饰 / loot / portal 等程序纹理，避免跨 zone 常驻累计。
+- 补充修正：释放 monster / NPC 纹理时同步清理对应动画定义；若纹理是重新生成出来的，动画会强制重新注册，避免继续游戏时命中 stale frame。
 
 ### 3. ZoneScene 生命周期清理不完整
 
@@ -59,6 +60,10 @@
 
 - 必须把 `shutdown` 正式挂到 Phaser 场景生命周期。
 - 所有 `EventBus` / `input` / DOM 监听都要做精确解绑，不能再用 `removeAllListeners` 这种全局清空。
+
+实际修复（2026-03-21）：
+
+- `UIScene` 在 `stop -> launch` 之后会显式清空 `skillCooldownTexts`、`logTexts`、`questTrackerTexts` 等缓存数组，并把 `shutdown` 绑定改成 `once`，避免继续游戏时复用已经被 Phaser 销毁的 `Text` 引用。
 
 ### 4. 运行时纹理缓存和对象回收不完整
 

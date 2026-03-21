@@ -90,6 +90,15 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.skillSlots = [];
+    this.skillCooldownOverlays = [];
+    this.skillCooldownTexts = [];
+    this.logTexts = [];
+    this.logMessages = [];
+    this.questTrackerTexts = [];
+    this.nextMinimapRefreshAt = 0;
+    this.nextQuestTrackerRefreshAt = 0;
+    this.lastQuestTrackerSignature = '';
     this.createHPManaBar();
     this.createExpBar();
     this.createSkillBar();
@@ -98,7 +107,7 @@ export class UIScene extends Phaser.Scene {
     this.createQuestTracker();
     this.createMinimap();
     this.setupEventListeners();
-    this.events.on('shutdown', this.shutdown, this);
+    this.events.once('shutdown', this.shutdown, this);
   }
 
   private createHPManaBar(): void {
@@ -215,6 +224,7 @@ export class UIScene extends Phaser.Scene {
 
     this.skillSlots = [];
     this.skillCooldownOverlays = [];
+    this.skillCooldownTexts = [];
 
     for (let i = 0; i < skills.length; i++) {
       const x = startX + i * (slotSize + gap);
@@ -281,6 +291,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createLogPanel(): void {
+    this.logTexts = [];
     const panelW = px(300), panelH = px(140), x = px(10), y = H - px(210);
     this.add.rectangle(x, y, panelW, panelH, 0x000000, 0.55)
       .setOrigin(0, 0).setStrokeStyle(Math.round(1 * DPR), 0x222233).setDepth(2999);
@@ -306,6 +317,8 @@ export class UIScene extends Phaser.Scene {
   }
 
   private createQuestTracker(): void {
+    this.questTrackerTexts = [];
+    this.lastQuestTrackerSignature = '';
     this.questTracker = this.add.container(px(16), px(52)).setDepth(3000);
   }
 
@@ -1650,6 +1663,14 @@ export class UIScene extends Phaser.Scene {
     EventBus.off(GameEvents.NPC_INTERACT, this.handleNpcInteract, this);
     EventBus.off(GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
     EventBus.off('ui:refresh', this.handleUiRefresh, this);
+    this.skillSlots = [];
+    this.skillCooldownOverlays = [];
+    this.skillCooldownTexts = [];
+    this.logTexts = [];
+    this.questTrackerTexts = [];
+    this.nextMinimapRefreshAt = 0;
+    this.nextQuestTrackerRefreshAt = 0;
+    this.lastQuestTrackerSignature = '';
   }
 
   /** Interpolate HP bar color: green -> yellow -> red based on ratio */

@@ -341,6 +341,8 @@ export class SpriteGenerator {
         key === 'exit_portal';
       if (!shouldRelease) continue;
       if (this.isExternalTexture(scene, key)) continue;
+      if (key.startsWith('monster_')) this.clearEntityAnimations(scene, key, false);
+      if (key.startsWith('npc_')) this.clearNPCAnimations(scene, key);
       scene.textures.remove(key);
     }
   }
@@ -349,8 +351,13 @@ export class SpriteGenerator {
     const drawer = ENTITY_DRAWER_BY_KEY.get(key);
     if (!drawer) return;
     const generator = new SpriteGenerator(scene);
-    if (!scene.textures.exists(key)) {
+    const generatedNow = !scene.textures.exists(key);
+    if (generatedNow) {
       generator.generateFromDrawer(drawer);
+    }
+    if (generatedNow) {
+      generator.registerEntityAnimations(key, PLAYER_DRAWER_BY_KEY.has(key));
+      return;
     }
     generator.ensureEntityAnimationsRegistered(key, PLAYER_DRAWER_BY_KEY.has(key));
   }
@@ -359,8 +366,13 @@ export class SpriteGenerator {
     const drawer = NPC_DRAWER_BY_KEY.get(key);
     if (!drawer) return;
     const generator = new SpriteGenerator(scene);
-    if (!scene.textures.exists(key)) {
+    const generatedNow = !scene.textures.exists(key);
+    if (generatedNow) {
       generator.generateFromNPCDrawer(drawer);
+    }
+    if (generatedNow) {
+      generator.registerNPCAnimations(key, NPC_WORK_RATES.get(key) ?? 4);
+      return;
     }
     generator.ensureNPCAnimationsRegistered(key, NPC_WORK_RATES.get(key) ?? 4);
   }
@@ -369,6 +381,23 @@ export class SpriteGenerator {
     if (!scene.textures.exists(key)) return false;
     const tex = scene.textures.get(key);
     return tex.source[0]?.source instanceof HTMLImageElement;
+  }
+
+  private static clearEntityAnimations(scene: Phaser.Scene, key: string, isPlayer: boolean): void {
+    const actions = isPlayer
+      ? ['idle', 'walk', 'attack', 'hurt', 'death', 'cast']
+      : ['idle', 'walk', 'attack', 'hurt', 'death'];
+    for (const action of actions) {
+      const animKey = `${key}_${action}`;
+      if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
+    }
+  }
+
+  private static clearNPCAnimations(scene: Phaser.Scene, key: string): void {
+    for (const action of ['working', 'alert', 'idle', 'talking']) {
+      const animKey = `${key}_${action}`;
+      if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
+    }
   }
 
   /** Returns true if the texture was loaded from an external image file (HTMLImageElement),
