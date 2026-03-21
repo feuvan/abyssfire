@@ -181,7 +181,7 @@ export class SpriteGenerator {
     const w = 64 * s, h = 32 * s;
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
 
     // Draw the base tile
     const baseTexKey = `tile_${SpriteGenerator.TILE_NAMES[baseTileType]}`;
@@ -223,7 +223,7 @@ export class SpriteGenerator {
         const srcImg = scene.textures.get(nTexKey).getSourceImage();
         const tc = document.createElement('canvas');
         tc.width = w; tc.height = h;
-        const tctx = tc.getContext('2d')!;
+        const tctx = tc.getContext('2d', { willReadFrequently: true })!;
         tctx.drawImage(srcImg as CanvasImageSource, 0, 0);
         nCanvas = tc;
       }
@@ -233,7 +233,7 @@ export class SpriteGenerator {
       const d = imgData.data;
       let nData: Uint8ClampedArray | null = null;
       if (nCanvas) {
-        nData = nCanvas.getContext('2d')!.getImageData(0, 0, w, h).data;
+        nData = nCanvas.getContext('2d', { willReadFrequently: true })!.getImageData(0, 0, w, h).data;
       }
 
       for (let py = 0; py < h; py++) {

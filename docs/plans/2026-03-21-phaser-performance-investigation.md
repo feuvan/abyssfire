@@ -94,6 +94,7 @@
 - `LightingSystem` 没有切到新的 DynamicTexture 实现，而是在现有 CanvasTexture 路径上加 `50ms` 节流和脏标记；这样风险更低，且已经能显著减少每秒画布重绘和 GPU 上传次数。
 - `TrailRenderer` 没有上完整对象池，而是改成复用离屏 image stamp，替代高频临时 `Graphics` / `Image` 分配。
 - 额外修复了一个未在初版规划里写出的热点：campfire glow 使用了错误的可见性 key，导致可见 campfire 会反复创建并销毁 glow/tween。
+- 控制台里的 `Canvas2D: Multiple readback operations using getImageData...` 告警也已单独收口：对会频繁 `getImageData()` 的程序纹理 canvas 显式启用 `willReadFrequently: true`，避免浏览器反复提示并让 readback 路径走到更合适的实现。
 
 ## P0 实施范围
 

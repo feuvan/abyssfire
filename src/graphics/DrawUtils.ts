@@ -58,7 +58,7 @@ export class DrawUtils {
   createCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
-    return [c, c.getContext('2d')!];
+    return [c, c.getContext('2d', { willReadFrequently: true })!];
   }
 
   roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
