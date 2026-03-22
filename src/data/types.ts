@@ -183,6 +183,7 @@ export interface SetDefinition {
   name: string;
   nameEn: string;
   pieces: string[];
+  pieceAffixes?: Record<string, ItemAffix[]>;
   bonuses: { count: number; description: string; stats: Partial<Record<string, number>> }[];
 }
 
@@ -193,6 +194,7 @@ export interface LegendaryDefinition {
   nameEn: string;
   fixedAffixes: ItemAffix[];
   specialEffect: string;
+  specialEffectValue?: number;
   specialEffectDescription: string;
 }
 

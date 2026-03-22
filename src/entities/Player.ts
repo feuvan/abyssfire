@@ -3,7 +3,7 @@ import { TILE_WIDTH, TILE_HEIGHT, TEXTURE_SCALE } from '../config';
 import { cartToIso } from '../utils/IsometricUtils';
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { ClassDefinition, SkillDefinition, Stats } from '../data/types';
-import type { CombatEntity, ActiveBuff } from '../systems/CombatSystem';
+import type { CombatEntity, ActiveBuff, EquipStats } from '../systems/CombatSystem';
 import { getSkillManaCost, getSkillCooldown } from '../systems/CombatSystem';
 import { CharacterAnimator, getAnimConfig } from '../systems/CharacterAnimator';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
@@ -103,11 +103,32 @@ export class Player {
     return 30 + this.stats.spi * 8 + this.stats.int * 3 + (this.level - 1) * 8;
   }
 
-  recalcDerived(): void {
-    this.maxHp = this.calcMaxHp();
-    this.maxMana = this.calcMaxMana();
-    this.baseDamage = 8 + this.stats.str * 0.8 + this.level * 2;
-    this.defense = 3 + this.stats.vit * 0.5 + this.level;
+  recalcDerived(equipStats?: EquipStats): void {
+    let hp = this.calcMaxHp();
+    let mp = this.calcMaxMana();
+    let dmg = 8 + this.stats.str * 0.8 + this.level * 2;
+    let def = 3 + this.stats.vit * 0.5 + this.level;
+    let spd = 120;
+    let aspd = 1000;
+
+    if (equipStats) {
+      // Flat bonuses from primary stats on gear
+      hp += equipStats.maxHp;
+      hp = Math.floor(hp * (1 + equipStats.maxHpPercent / 100));
+      mp += equipStats.maxMana;
+      mp = Math.floor(mp * (1 + equipStats.maxManaPercent / 100));
+      // Move speed percent bonus
+      spd = Math.floor(spd * (1 + equipStats.moveSpeed / 100));
+      // Attack speed percent bonus (lower is faster, so reduce)
+      aspd = Math.max(200, Math.floor(aspd * (1 - equipStats.attackSpeed / 100)));
+    }
+
+    this.maxHp = hp;
+    this.maxMana = mp;
+    this.baseDamage = dmg;
+    this.defense = def;
+    this.moveSpeed = spd;
+    this.attackSpeed = aspd;
   }
 
   getManaRegenPerSecond(): number {
@@ -162,6 +183,7 @@ export class Player {
     time: number,
     delta: number,
     recovery: { hpRegenMultiplier?: number; manaRegenMultiplier?: number } = {},
+    equipStats?: EquipStats,
   ): void {
     if (this.hp <= 0) {
       this.path = [];
@@ -171,14 +193,16 @@ export class Player {
     this.updateMovement(delta);
     const manaRegenMultiplier = recovery.manaRegenMultiplier ?? 1;
     const hpRegenMultiplier = recovery.hpRegenMultiplier ?? 1;
+    const bonusHpRegen = equipStats?.hpRegen ?? 0;
+    const bonusManaRegen = equipStats?.manaRegen ?? 0;
 
     // Mana regen
     if (this.mana < this.maxMana) {
-      this.mana = Math.min(this.maxMana, this.mana + this.getManaRegenPerSecond() * manaRegenMultiplier * delta / 1000);
+      this.mana = Math.min(this.maxMana, this.mana + (this.getManaRegenPerSecond() + bonusManaRegen) * manaRegenMultiplier * delta / 1000);
     }
     // Hp regen (slow)
     if (this.hp < this.maxHp && this.hp > 0) {
-      this.hp = Math.min(this.maxHp, this.hp + this.getHpRegenPerSecond() * hpRegenMultiplier * delta / 1000);
+      this.hp = Math.min(this.maxHp, this.hp + (this.getHpRegenPerSecond() + bonusHpRegen) * hpRegenMultiplier * delta / 1000);
     }
     this.animator.update(delta);
   }
@@ -264,17 +288,17 @@ export class Player {
     return now >= cd;
   }
 
-  useSkill(id: string, now: number, level?: number): void {
+  useSkill(id: string, now: number, level?: number, cdr = 0): void {
     const skill = this.getSkill(id);
     if (!skill) return;
     const slevel = level ?? this.getSkillLevel(id);
-    this.skillCooldowns.set(id, now + getSkillCooldown(skill, slevel));
+    this.skillCooldowns.set(id, now + getSkillCooldown(skill, slevel, cdr));
     this.mana = Math.max(0, this.mana - getSkillManaCost(skill, slevel));
     EventBus.emit(GameEvents.SKILL_USED, { skillId: id, damageType: skill.damageType });
     EventBus.emit(GameEvents.PLAYER_MANA_CHANGED, { mana: this.mana, maxMana: this.maxMana });
   }
 
-  toCombatEntity(): CombatEntity {
+  toCombatEntity(equipStats?: EquipStats): CombatEntity {
     return {
       id: 'player',
       name: this.classData.name,
@@ -289,6 +313,7 @@ export class Player {
       attackSpeed: this.attackSpeed,
       attackRange: this.attackRange,
       buffs: this.buffs,
+      equipStats,
     };
   }
 

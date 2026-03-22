@@ -1,6 +1,8 @@
 import { EventBus, GameEvents } from '../utils/EventBus';
 import { getItemBase } from '../data/items/bases';
+import { SetDefinitions } from '../data/items/sets';
 import type { ItemInstance, EquipSlot, WeaponBase, ArmorBase } from '../data/types';
+import { emptyEquipStats, type EquipStats } from './CombatSystem';
 
 const MAX_INVENTORY = 100;
 const MAX_STASH = 80;
@@ -133,6 +135,45 @@ export class InventorySystem {
       // Affix stats
       for (const [stat, value] of Object.entries(item.stats)) {
         stats[stat] = (stats[stat] ?? 0) + (value ?? 0);
+      }
+    }
+
+    // Set bonuses
+    const setBonusStats = this.getSetBonusStats();
+    for (const [stat, value] of Object.entries(setBonusStats)) {
+      stats[stat] = (stats[stat] ?? 0) + (value ?? 0);
+    }
+
+    return stats;
+  }
+
+  /** Return typed EquipStats for combat calculations. */
+  getTypedEquipStats(): EquipStats {
+    const raw = this.getEquipmentStats();
+    const eq = emptyEquipStats();
+    for (const key of Object.keys(eq) as (keyof EquipStats)[]) {
+      if (key in raw) {
+        eq[key] = raw[key];
+      }
+    }
+    return eq;
+  }
+
+  /** Count equipped set pieces and return aggregated set bonus stats. */
+  private getSetBonusStats(): Record<string, number> {
+    const stats: Record<string, number> = {};
+    const equippedIds = new Set<string>();
+    for (const item of Object.values(this.equipment)) {
+      if (item && item.setId) equippedIds.add(item.baseId);
+    }
+    for (const setDef of SetDefinitions) {
+      const count = setDef.pieces.filter(p => equippedIds.has(p)).length;
+      for (const bonus of setDef.bonuses) {
+        if (count >= bonus.count) {
+          for (const [stat, value] of Object.entries(bonus.stats)) {
+            stats[stat] = (stats[stat] ?? 0) + (value ?? 0);
+          }
+        }
       }
     }
     return stats;

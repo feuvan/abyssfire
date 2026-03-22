@@ -110,11 +110,18 @@ export class LootSystem {
     const usedIds = new Set<string>();
     let prefixCount = 0;
     let suffixCount = 0;
+    const base = getItemBase(item.baseId);
+    const itemSlot = base?.slot;
 
     for (let i = 0; i < count; i++) {
       const wantPrefix = prefixCount <= suffixCount;
       const pool = (wantPrefix ? Prefixes : Suffixes)
-        .filter(a => a.levelReq <= level + 5 && !usedIds.has(a.id));
+        .filter(a => {
+          if (a.levelReq > level + 5) return false;
+          if (usedIds.has(a.id)) return false;
+          if (a.allowedSlots && itemSlot && !a.allowedSlots.includes(itemSlot)) return false;
+          return true;
+        });
 
       if (pool.length === 0) continue;
 

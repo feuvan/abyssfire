@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, DPR } from '../config';
 import { EventBus, GameEvents } from '../utils/EventBus';
 import { getItemBase } from '../data/items/bases';
+import { STAT_DISPLAY } from '../data/items/affixes';
 import { AllMaps, MapOrder } from '../data/maps/index';
 import { getSkillManaCost, getSkillCooldown, getSkillDamageMultiplier, getSkillBuffValue, getSkillBuffDuration, getSkillAoeRadius } from '../systems/CombatSystem';
 import { NPCDefinitions } from '../data/npcs';
@@ -526,7 +527,14 @@ export class UIScene extends Phaser.Scene {
 
     // Equipment stats at bottom
     const eqStats = this.zone.inventorySystem.getEquipmentStats();
-    const statText = Object.entries(eqStats).map(([k, v]) => `${k}: +${v}`).join('  ');
+    const statText = Object.entries(eqStats)
+      .filter(([, v]) => v !== 0)
+      .map(([k, v]) => {
+        const disp = STAT_DISPLAY[k];
+        const label = disp ? disp.label : k;
+        const suffix = disp?.isPercent ? '%' : '';
+        return `${label}+${v}${suffix}`;
+      }).join('  ');
     this.inventoryPanel.add(this.add.text(px(14), ph - px(22), `装备加成: ${statText || '无'}`, {
       fontSize: fs(12), color: '#777788', fontFamily: FONT, wordWrap: { width: pw - px(28) },
     }));
@@ -1260,11 +1268,13 @@ export class UIScene extends Phaser.Scene {
 
     const dy = px(50) + stats.length * px(40) + px(8);
     const eqStats = this.zone.inventorySystem.getEquipmentStats();
+    const critPct = (this.player.stats.dex * 0.2 + this.player.stats.lck * 0.5 + (eqStats['critRate'] ?? 0)).toFixed(1);
     const derived = [
       `HP: ${Math.ceil(this.player.hp)}/${this.player.maxHp}`,
       `MP: ${Math.ceil(this.player.mana)}/${this.player.maxMana}`,
-      `攻击: ${Math.floor(this.player.baseDamage)}${eqStats['damage'] ? ` (+${eqStats['damage']})` : ''}`,
+      `攻击: ${Math.floor(this.player.baseDamage)}${eqStats['damage'] ? ` (+${eqStats['damage']})` : ''}${eqStats['damagePercent'] ? ` +${eqStats['damagePercent']}%` : ''}`,
       `防御: ${Math.floor(this.player.defense)}${eqStats['defense'] ? ` (+${eqStats['defense']})` : ''}`,
+      `暴击率: ${critPct}%  暴击伤害: ${150 + (eqStats['critDamage'] ?? 0)}%`,
       `金币: ${this.player.gold}G`,
     ];
     derived.forEach((line, i) => {
@@ -1777,7 +1787,10 @@ export class UIScene extends Phaser.Scene {
       lines.push({ text: '[未鉴定]', color: '#e74c3c', size: 12 });
     } else {
       for (const affix of item.affixes) {
-        lines.push({ text: `${affix.name}: +${affix.value}`, color: '#5dade2', size: 12 });
+        const disp = STAT_DISPLAY[affix.stat];
+        const label = disp ? disp.label : affix.name;
+        const suffix = disp?.isPercent ? '%' : '';
+        lines.push({ text: `+${affix.value}${suffix} ${label}`, color: '#5dade2', size: 12 });
       }
     }
     if (item.legendaryEffect) {

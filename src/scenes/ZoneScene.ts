@@ -7,7 +7,7 @@ import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { NPC } from '../entities/NPC';
 import { PathfindingSystem } from '../systems/PathfindingSystem';
-import { CombatSystem, getSkillManaCost, getSkillAoeRadius, getSkillBuffValue, getSkillBuffDuration, getSkillCooldown } from '../systems/CombatSystem';
+import { CombatSystem, getSkillManaCost, getSkillAoeRadius, getSkillBuffValue, getSkillBuffDuration, getSkillCooldown, type EquipStats } from '../systems/CombatSystem';
 import { LootSystem } from '../systems/LootSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { QuestSystem } from '../systems/QuestSystem';
@@ -76,6 +76,8 @@ export class ZoneScene extends Phaser.Scene {
   private lootDrops: { sprite: Phaser.GameObjects.Container; item: ItemInstance; col: number; row: number }[] = [];
   private potionDrops: { sprite: Phaser.GameObjects.Container; type: 'hp' | 'mp'; amount: number; col: number; row: number }[] = [];
   private difficulty: 'normal' | 'nightmare' | 'hell' = 'normal';
+  private cachedEquipStats: EquipStats | null = null;
+  private _deathSaveUsed = false;
   private lastAutoLootCheck = 0;
   private totalKills = 0;
   private exploredZones: Set<string> = new Set();
@@ -385,10 +387,13 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    this.cachedEquipStats = null;
     const recovery = this.getPlayerRecoveryModifiers();
     this.handleKeyboardMovement(delta);
     this.handleSkillInput(time);
-    this.player.update(time, delta, recovery);
+    const eqStats = this.getEquipStats();
+    this.player.recalcDerived(eqStats);
+    this.player.update(time, delta, recovery, eqStats);
 
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
     for (const monster of this.monsters) {
@@ -1002,7 +1007,7 @@ export class ZoneScene extends Phaser.Scene {
       if (dist > skill.range + 1) return;
     }
 
-    this.player.useSkill(skillId, time, level);
+    this.player.useSkill(skillId, time, level, this.getEquipStats().cooldownReduction);
     if (skill.buff || skill.aoe || skill.range > 2) {
       this.player.playCast();
     } else {
@@ -1035,8 +1040,9 @@ export class ZoneScene extends Phaser.Scene {
         m.isAlive() && euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledAoeRadius
       );
       for (const t of aoeTargets) {
-        const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), t.toCombatEntity(), skill, level, this.player.skillLevels);
+        const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(this.getEquipStats()), t.toCombatEntity(), skill, level, this.player.skillLevels);
         t.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
+        this.applySteal(result);
         this.showDamageText(t.sprite.x, t.sprite.y, result.damage, result.isCrit, false, false, skill.damageType);
         if (!t.isAlive()) this.onMonsterKilled(t);
         if (this.vfx && skill.damageType !== 'physical') {
@@ -1059,8 +1065,9 @@ export class ZoneScene extends Phaser.Scene {
           this.player.sprite.x, this.player.sprite.y);
       }
     } else if (target) {
-      const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), target.toCombatEntity(), skill, level, this.player.skillLevels);
+      const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(this.getEquipStats()), target.toCombatEntity(), skill, level, this.player.skillLevels);
       target.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
+      this.applySteal(result);
       this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit, false, false, skill.damageType);
       if (!target.isAlive()) this.onMonsterKilled(target);
       this.skillEffects.play(skillId, this.player.sprite.x, this.player.sprite.y,
@@ -1087,13 +1094,21 @@ export class ZoneScene extends Phaser.Scene {
       if (time - monster.lastAttackTime >= monster.definition.attackSpeed) {
         monster.lastAttackTime = time;
         monster.playAttack(this.player.sprite.x, this.player.sprite.y);
-        const result = this.combatSystem.calculateDamage(monster.toCombatEntity(), this.player.toCombatEntity());
+        const result = this.combatSystem.calculateDamage(monster.toCombatEntity(), this.player.toCombatEntity(this.getEquipStats()));
         if (result.isDodged) {
           this.showDamageText(this.player.sprite.x, this.player.sprite.y, 0, false, true);
         } else {
           const diffMult = this.difficulty === 'hell' ? 2 : this.difficulty === 'nightmare' ? 1.5 : 1;
           const finalDmg = Math.floor(result.damage * diffMult);
           this.player.hp = Math.max(0, this.player.hp - finalDmg);
+
+          // Thorns heal (set bonus: recover % maxHp on hit taken)
+          const eq = this.getEquipStats();
+          if (eq.thornsHeal > 0 && this.player.hp > 0) {
+            const heal = Math.floor(this.player.maxHp * eq.thornsHeal / 100);
+            this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+          }
+
           this.player.playHurt(monster.sprite.x, monster.sprite.y);
           this.showDamageText(this.player.sprite.x, this.player.sprite.y, finalDmg, result.isCrit, false, true);
           if (monster.definition.attackRange > 2.5) {
@@ -1111,7 +1126,19 @@ export class ZoneScene extends Phaser.Scene {
             isCrit: result.isCrit, isPlayerTarget: true,
             targetMaxHP: this.player.maxHp,
           });
-          if (this.player.hp <= 0) { this.player.die(); break; }
+          if (this.player.hp <= 0) {
+            // Death save check (set bonus / legendary)
+            const eqDs = this.getEquipStats();
+            if (eqDs.deathSave > 0 && !this._deathSaveUsed) {
+              this.player.hp = Math.floor(this.player.maxHp * 0.3);
+              this._deathSaveUsed = true;
+              this.time.delayedCall(60000, () => { this._deathSaveUsed = false; });
+              EventBus.emit(GameEvents.LOG_MESSAGE, { text: '死亡豁免触发！恢复30%生命', type: 'system' });
+              if (this.vfx) this.vfx.healBurst(this.player.sprite.x, this.player.sprite.y - 16, 20);
+            } else {
+              this.player.die(); break;
+            }
+          }
         }
       }
     }
@@ -1126,8 +1153,9 @@ export class ZoneScene extends Phaser.Scene {
       if (dist <= this.player.attackRange && time - this.player.lastAttackTime >= this.player.attackSpeed) {
         this.player.lastAttackTime = time;
         this.player.playAttack(target.sprite.x, target.sprite.y);
-        const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(), target.toCombatEntity());
+        const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(this.getEquipStats()), target.toCombatEntity());
         target.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
+        this.applySteal(result);
         this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit);
         this.skillEffects.playAttack(this.player.sprite.x, this.player.sprite.y, target.sprite.x, target.sprite.y, true);
         // VFX for player attacks — crit flash + hit sparks
@@ -1205,6 +1233,31 @@ export class ZoneScene extends Phaser.Scene {
     } else if (this.targetIndicator) {
       this.targetIndicator.setVisible(false);
       this.currentTargetId = null;
+    }
+  }
+
+  /** Lazily refresh and return the cached equipment stats. Invalidated on equip/unequip. */
+  private getEquipStats(): EquipStats {
+    if (!this.cachedEquipStats) {
+      this.cachedEquipStats = this.inventorySystem.getTypedEquipStats();
+    }
+    return this.cachedEquipStats;
+  }
+
+  /** Call whenever equipment changes to invalidate the cache. */
+  invalidateEquipStats(): void {
+    this.cachedEquipStats = null;
+  }
+
+  /** Apply life/mana steal from a damage result back to the player. */
+  private applySteal(result: { lifeStolen: number; manaStolen: number }): void {
+    if (result.lifeStolen > 0 && this.player.hp > 0) {
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + result.lifeStolen);
+      EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.player.hp, maxHp: this.player.maxHp });
+    }
+    if (result.manaStolen > 0) {
+      this.player.mana = Math.min(this.player.maxMana, this.player.mana + result.manaStolen);
+      EventBus.emit(GameEvents.PLAYER_MANA_CHANGED, { mana: this.player.mana, maxMana: this.player.maxMana });
     }
   }
 
@@ -1321,11 +1374,20 @@ export class ZoneScene extends Phaser.Scene {
   private onMonsterKilled(monster: Monster): void {
     const diffMult = this.difficulty === 'hell' ? 3 : this.difficulty === 'nightmare' ? 2 : 1;
     const homeBonus = this.homesteadSystem.getTotalBonuses();
-    const expBonus = 1 + (homeBonus['expBonus'] ?? 0) / 100;
+    const eq = this.getEquipStats();
+    const expBonus = 1 + (homeBonus['expBonus'] ?? 0) / 100 + (eq.expBonus ?? 0) / 100;
     const exp = Math.floor(monster.definition.expReward * diffMult * expBonus);
     const gold = randomInt(monster.definition.goldReward[0], monster.definition.goldReward[1]) * diffMult;
     this.player.addExp(exp);
     this.player.gold += gold;
+
+    // Kill heal (set bonus / legendary)
+    if (eq.killHealPercent > 0 && this.player.hp > 0) {
+      const heal = Math.floor(this.player.maxHp * eq.killHealPercent / 100);
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+      EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.player.hp, maxHp: this.player.maxHp });
+      if (this.vfx) this.vfx.healBurst(this.player.sprite.x, this.player.sprite.y - 16, 8);
+    }
 
     // Death particles + gold burst at monster death location
     if (this.vfx) {
