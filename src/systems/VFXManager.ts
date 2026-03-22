@@ -59,7 +59,7 @@ export class VFXManager {
     });
   };
   private readonly handlePlayerDied = (): void => {
-    this.cameraFade(600, 80, 10, 10);
+    this.cameraFade(220, 80, 10, 10);
   };
   private readonly handleItemDropped = (data: { item: { quality: string } }): void => {
     if (data.item.quality === 'legendary' || data.item.quality === 'set') {

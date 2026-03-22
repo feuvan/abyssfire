@@ -31,6 +31,11 @@ import { AllQuests } from '../data/quests/all_quests';
 import type { MapData, ClassDefinition, ItemInstance, SaveData } from '../data/types';
 
 const TILE_KEYS = ['tile_grass', 'tile_dirt', 'tile_stone', 'tile_water', 'tile_wall', 'tile_camp', 'tile_camp_wall'];
+const CAMPFIRE_RECOVERY_RADIUS = 5;
+const CAMPFIRE_HP_REGEN_MULTIPLIER = 50;
+const CAMPFIRE_MANA_REGEN_MULTIPLIER = 50;
+const ZONE_FLOATING_TEXT_DEPTH = 4500;
+const ZONE_SCREEN_UI_DEPTH = 5000;
 
 function fs(basePx: number): string {
   return `${Math.round(basePx * DPR)}px`;
@@ -108,6 +113,10 @@ export class ZoneScene extends Phaser.Scene {
 
   create(data: { classId: string; mapId: string; saveData?: SaveData; playerStats?: any }): void {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    // `scene.restart()` reuses the same scene instance, so transient guards must
+    // be cleared explicitly when entering a new zone.
+    this.isTransitioning = false;
+    this.isPortaling = false;
     this.monsters = [];
     this.npcs = [];
     this.lootDrops = [];
@@ -349,17 +358,17 @@ export class ZoneScene extends Phaser.Scene {
     const deathText = this.add.text(dp.x, dp.y, '你已死亡', {
       fontSize: fs(36), color: '#cc2222', fontFamily: '"Cinzel", serif',
       fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(6 * DPR),
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH).setAlpha(0);
     this.tweens.add({
-      targets: deathText, alpha: 1, duration: 600, ease: 'Power2',
+      targets: deathText, alpha: 1, duration: 250, ease: 'Power2',
     });
-    this.time.delayedCall(2000, () => {
+    this.time.delayedCall(1100, () => {
       this.tweens.add({
-        targets: deathText, alpha: 0, duration: 400, onComplete: () => deathText.destroy(),
+        targets: deathText, alpha: 0, duration: 250, onComplete: () => deathText.destroy(),
       });
       const camp = this.campPositions[0];
       this.player.respawnAtCamp(camp.col, camp.row);
-      this.cameras.main.fadeIn(500);
+      this.cameras.main.fadeIn(300);
     });
   }
 
@@ -376,9 +385,10 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    const recovery = this.getPlayerRecoveryModifiers();
     this.handleKeyboardMovement(delta);
     this.handleSkillInput(time);
-    this.player.update(time, delta);
+    this.player.update(time, delta, recovery);
 
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
     for (const monster of this.monsters) {
@@ -481,6 +491,18 @@ export class ZoneScene extends Phaser.Scene {
 
     EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.player.hp, maxHp: this.player.maxHp });
     EventBus.emit(GameEvents.PLAYER_MANA_CHANGED, { mana: this.player.mana, maxMana: this.player.maxMana });
+  }
+
+  private getPlayerRecoveryModifiers(): { hpRegenMultiplier?: number; manaRegenMultiplier?: number } {
+    for (const camp of this.campPositions) {
+      if (euclideanDistance(this.player.tileCol, this.player.tileRow, camp.col, camp.row) <= CAMPFIRE_RECOVERY_RADIUS) {
+        return {
+          hpRegenMultiplier: CAMPFIRE_HP_REGEN_MULTIPLIER,
+          manaRegenMultiplier: CAMPFIRE_MANA_REGEN_MULTIPLIER,
+        };
+      }
+    }
+    return {};
   }
 
   private rebuildWorldCaches(): void {
@@ -1314,13 +1336,13 @@ export class ZoneScene extends Phaser.Scene {
     const expText = this.add.text(monster.sprite.x, monster.sprite.y - 40, `+${exp} EXP`, {
       fontSize: fs(13), color: '#b39ddb', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(2 * DPR),
-    }).setOrigin(0.5).setDepth(2000);
+    }).setOrigin(0.5).setDepth(ZONE_FLOATING_TEXT_DEPTH);
     this.tweens.add({ targets: expText, y: expText.y - 35, alpha: 0, duration: 1500, ease: 'Power2', onComplete: () => expText.destroy() });
 
     const goldText = this.add.text(monster.sprite.x + 15, monster.sprite.y - 28, `+${gold}G`, {
       fontSize: fs(13), color: '#ffd700', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(2 * DPR),
-    }).setOrigin(0.5).setDepth(2000);
+    }).setOrigin(0.5).setDepth(ZONE_FLOATING_TEXT_DEPTH);
     this.tweens.add({ targets: goldText, y: goldText.y - 30, alpha: 0, duration: 1200, ease: 'Power2', onComplete: () => goldText.destroy() });
 
     this.totalKills++;
@@ -1864,7 +1886,7 @@ export class ZoneScene extends Phaser.Scene {
     const t = this.add.text(x + randomInt(-15, 15), y - 30, text, {
       fontSize: size, color, fontFamily: '"Cinzel", serif', fontStyle: isCrit ? 'bold' : 'normal',
       stroke: '#000000', strokeThickness: Math.round((isCrit ? 4 : 3) * DPR),
-    }).setOrigin(0.5).setDepth(2000);
+    }).setOrigin(0.5).setDepth(ZONE_FLOATING_TEXT_DEPTH);
     if (isCrit) {
       t.setScale(1.5);
       this.tweens.add({ targets: t, scale: 1, duration: 200, ease: 'Back.easeOut' });
@@ -1948,12 +1970,12 @@ export class ZoneScene extends Phaser.Scene {
     const text = this.add.text(p.x, p.y, '升级!', {
       fontSize: fs(32), color: '#ffd700', fontFamily: '"Cinzel", serif',
       fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(5 * DPR),
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0).setScale(0.5);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH).setAlpha(0).setScale(0.5);
 
     const lvlText = this.add.text(p.x, p.y + 38 * DPR / this.cameras.main.zoom, `等级 ${level}`, {
       fontSize: fs(20), color: '#ffcc00', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(3 * DPR),
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH).setAlpha(0);
 
     this.tweens.add({
       targets: text, alpha: 1, scale: 1, duration: 400, ease: 'Back.easeOut',
@@ -1975,12 +1997,12 @@ export class ZoneScene extends Phaser.Scene {
     const label = this.add.text(p.x, p.y, '任务完成!', {
       fontSize: fs(20), color: '#f1c40f', fontFamily: '"Cinzel", serif',
       fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(4 * DPR),
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH).setAlpha(0);
 
     const name = this.add.text(p.x, p.y + 28 * DPR / z, questName, {
       fontSize: fs(16), color: '#e0d8cc', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(3 * DPR),
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH).setAlpha(0);
 
     this.tweens.add({ targets: [label, name], alpha: 1, duration: 500, ease: 'Power2' });
     this.time.delayedCall(2500, () => {
@@ -1997,19 +2019,19 @@ export class ZoneScene extends Phaser.Scene {
     const banner = this.add.text(p.x, p.y, this.mapData.name, {
       fontSize: fs(28), color: '#c0934a', fontFamily: '"Cinzel", serif',
       fontStyle: 'bold', stroke: '#000000', strokeThickness: Math.round(5 * DPR),
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH).setAlpha(0);
 
     const subtitle = this.add.text(p.x, p.y + 32 * DPR / z,
       `Lv.${this.mapData.levelRange[0]}-${this.mapData.levelRange[1]}`, {
       fontSize: fs(16), color: '#8a7a5a', fontFamily: '"Cinzel", serif',
       stroke: '#000000', strokeThickness: Math.round(3 * DPR),
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(2500).setAlpha(0);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH).setAlpha(0);
 
     // Decorative lines
     const lineW = 120 * DPR;
     const lineY = p.y + 20 * DPR / z;
-    const lineL = this.add.rectangle(p.x - 80 * DPR / z, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(2500);
-    const lineR = this.add.rectangle(p.x + 80 * DPR / z, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(2500);
+    const lineL = this.add.rectangle(p.x - 80 * DPR / z, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH);
+    const lineR = this.add.rectangle(p.x + 80 * DPR / z, lineY, lineW, 1, 0xc0934a, 0).setScrollFactor(0).setDepth(ZONE_SCREEN_UI_DEPTH);
 
     this.tweens.add({
       targets: [banner, subtitle, lineL, lineR],
@@ -2033,6 +2055,8 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    this.isTransitioning = false;
+    this.isPortaling = false;
     this.input.off('pointerdown', this.handlePointerDown, this);
     EventBus.off(GameEvents.PLAYER_DIED, this.handlePlayerDied, this);
     EventBus.off(GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);

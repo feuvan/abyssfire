@@ -25,10 +25,13 @@ const ZONE_AMBIENTS: Record<string, ZoneAmbient> = {
   abyss_rift:        { color: 0x040004, alpha: 0.32, fogColor: 0x100010, fogAlpha: 0.06 },
 };
 
+const LIGHTING_OVERLAY_DEPTH = 3000;
+const LIGHTING_DEBUG_DEPTH = LIGHTING_OVERLAY_DEPTH + 1;
+
 /**
  * Fixed-viewport lighting overlay using setScrollFactor(0).
  *
- * The canvas is dynamically resized to match cam.width/2 × cam.height/2
+ * The canvas is dynamically resized to match cam.width / 2 x cam.height / 2
  * each frame (Phaser's Scale manager may resize the game after construction).
  *
  * Position and scale counter the camera zoom transform so the overlay always
@@ -72,7 +75,6 @@ export class LightingSystem {
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d')!;
 
-    // Initial sizing (will be corrected in first update if cam resized)
     const cam = scene.cameras.main;
     this.resizeCanvas(cam.width, cam.height);
 
@@ -82,22 +84,29 @@ export class LightingSystem {
     this.overlay = scene.add.image(0, 0, this.texKey);
     this.overlay.setOrigin(0, 0);
     this.overlay.setScrollFactor(0);
-    this.overlay.setDepth(999);
+    this.overlay.setDepth(LIGHTING_OVERLAY_DEPTH);
     this.overlay.setBlendMode(Phaser.BlendModes.MULTIPLY);
 
-    // Debug graphics object (NORMAL blend) to visualize overlay bounds
     this.debugGfx = scene.add.graphics();
     this.debugGfx.setScrollFactor(0);
-    this.debugGfx.setDepth(1001);
+    this.debugGfx.setDepth(LIGHTING_DEBUG_DEPTH);
     this.debugGfx.setVisible(false);
 
-    // Debug HUD toggled by backtick
     this.debugEl = document.createElement('div');
     Object.assign(this.debugEl.style, {
-      position: 'fixed', top: '4px', left: '4px', zIndex: '9999',
-      background: 'rgba(0,0,0,0.75)', color: '#0f0', fontSize: '11px',
-      fontFamily: 'monospace', padding: '6px 8px', pointerEvents: 'none',
-      whiteSpace: 'pre', display: 'none', lineHeight: '1.4',
+      position: 'fixed',
+      top: '4px',
+      left: '4px',
+      zIndex: '9999',
+      background: 'rgba(0,0,0,0.75)',
+      color: '#0f0',
+      fontSize: '11px',
+      fontFamily: 'monospace',
+      padding: '6px 8px',
+      pointerEvents: 'none',
+      whiteSpace: 'pre',
+      display: 'none',
+      lineHeight: '1.4',
     });
     document.body.appendChild(this.debugEl);
     window.addEventListener('keydown', this.keydownHandler);
@@ -147,13 +156,11 @@ export class LightingSystem {
     const zoom = cam.zoom;
     let resized = false;
 
-    // Resize canvas if the game was resized by Scale manager
     const needW = Math.ceil(cam.width / 2);
     const needH = Math.ceil(cam.height / 2);
     if (needW !== this.renderW || needH !== this.renderH) {
       resized = true;
       this.resizeCanvas(cam.width, cam.height);
-      // Re-register the canvas texture so Phaser picks up the new size
       if (this.scene.textures.exists(this.texKey)) this.scene.textures.remove(this.texKey);
       this.scene.textures.addCanvas(this.texKey, this.canvas);
       this.overlay.setTexture(this.texKey);
@@ -164,10 +171,6 @@ export class LightingSystem {
     const w = this.renderW;
     const h = this.renderH;
 
-    // Position & scale to fill viewport despite camera zoom.
-    // Camera zoom transforms scrollFactor(0) objects around originPx:
-    //   screenPos = (objectPos - originPx) * zoom + originPx
-    // We want screen TL at (0,0) and BR at (cam.width, cam.height).
     const originPxX = cam.width * cam.originX;
     const originPxY = cam.height * cam.originY;
     this.overlay.setPosition(
@@ -180,7 +183,6 @@ export class LightingSystem {
       return;
     }
 
-    // --- Ambient fill ---
     const ar = (this.ambientColor >> 16) & 0xff;
     const ag = (this.ambientColor >> 8) & 0xff;
     const ab = this.ambientColor & 0xff;
@@ -195,7 +197,6 @@ export class LightingSystem {
     ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
     ctx.fillRect(0, 0, w, h);
 
-    // --- Atmospheric fog ---
     if (this.fogAlpha > 0) {
       const fr = (this.fogColor >> 16) & 0xff;
       const fg = (this.fogColor >> 8) & 0xff;
@@ -215,19 +216,24 @@ export class LightingSystem {
       ctx.fillRect(0, 0, w, h);
     }
 
-    // --- Light holes (additive) ---
-    // World→screen: screen = (world - scrollX - originPx) * zoom + originPx
-    // Screen→canvas: canvas = screen * (w / cam.width)
     ctx.globalCompositeOperation = 'lighter';
     const canvasPerScreenX = w / cam.width;
     const canvasPerScreenY = h / cam.height;
 
     for (const light of this.lights) {
+      if (!Number.isFinite(light.x) || !Number.isFinite(light.y) || !Number.isFinite(light.radius) || light.radius <= 0) {
+        continue;
+      }
+
       const screenLX = (light.x - cam.scrollX - originPxX) * zoom + originPxX;
       const screenLY = (light.y - cam.scrollY - originPxY) * zoom + originPxY;
       const cx = screenLX * canvasPerScreenX;
       const cy = screenLY * canvasPerScreenY;
       const radius = light.radius * zoom * canvasPerScreenX;
+
+      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || radius <= 0) {
+        continue;
+      }
 
       if (cx + radius < 0 || cx - radius > w ||
           cy + radius < 0 || cy - radius > h) continue;
@@ -273,24 +279,17 @@ export class LightingSystem {
     this.lastRenderTime = this.time;
     this.renderDirty = false;
 
-    // Debug: draw visible border using a separate Graphics object (NORMAL blend)
     if (this.debugVisible) {
       this.debugGfx.clear();
       const ox = this.overlay.x;
       const oy = this.overlay.y;
       const ow = w * this.overlay.scaleX;
       const oh = h * this.overlay.scaleY;
-      // Red border around overlay bounds
       this.debugGfx.lineStyle(3, 0xff0000, 1);
       this.debugGfx.strokeRect(ox, oy, ow, oh);
-      // Yellow crosshairs at center
       this.debugGfx.lineStyle(1, 0xffff00, 1);
       this.debugGfx.lineBetween(ox + ow / 2, oy, ox + ow / 2, oy + oh);
       this.debugGfx.lineBetween(ox, oy + oh / 2, ox + ow, oy + oh / 2);
-      // Cyan border at actual viewport edges for comparison
-      this.debugGfx.lineStyle(2, 0x00ffff, 1);
-      this.debugGfx.strokeRect(0, 0, cam.width, cam.height);
-      // Show each light's screen position as a small circle
       for (const light of this.lights) {
         const sx = (light.x - cam.scrollX - originPxX) * zoom + originPxX;
         const sy = (light.y - cam.scrollY - originPxY) * zoom + originPxY;
@@ -299,7 +298,6 @@ export class LightingSystem {
       }
     }
 
-    // Debug HUD
     if (this.debugVisible && this.debugEl) {
       const wv = cam.worldView;
       const ovX = this.overlay.x.toFixed(1);

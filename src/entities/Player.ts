@@ -109,6 +109,14 @@ export class Player {
     this.defense = 3 + this.stats.vit * 0.5 + this.level;
   }
 
+  getManaRegenPerSecond(): number {
+    return 1 + this.stats.spi * 0.1;
+  }
+
+  getHpRegenPerSecond(): number {
+    return 0.5 + this.stats.vit * 0.05;
+  }
+
   addExp(amount: number): void {
     this.exp += amount;
     const needed = this.expToNextLevel();
@@ -149,20 +157,27 @@ export class Player {
     this.isMoving = newPath.length > 0;
   }
 
-  update(time: number, delta: number): void {
+  update(
+    time: number,
+    delta: number,
+    recovery: { hpRegenMultiplier?: number; manaRegenMultiplier?: number } = {},
+  ): void {
     if (this.hp <= 0) {
       this.path = [];
       this.isMoving = false;
       return;
     }
     this.updateMovement(delta);
+    const manaRegenMultiplier = recovery.manaRegenMultiplier ?? 1;
+    const hpRegenMultiplier = recovery.hpRegenMultiplier ?? 1;
+
     // Mana regen
     if (this.mana < this.maxMana) {
-      this.mana = Math.min(this.maxMana, this.mana + (1 + this.stats.spi * 0.1) * delta / 1000);
+      this.mana = Math.min(this.maxMana, this.mana + this.getManaRegenPerSecond() * manaRegenMultiplier * delta / 1000);
     }
     // Hp regen (slow)
     if (this.hp < this.maxHp && this.hp > 0) {
-      this.hp = Math.min(this.maxHp, this.hp + (0.5 + this.stats.vit * 0.05) * delta / 1000);
+      this.hp = Math.min(this.maxHp, this.hp + this.getHpRegenPerSecond() * hpRegenMultiplier * delta / 1000);
     }
     this.animator.update(delta);
   }
