@@ -36,14 +36,20 @@ npm run build    # production build to dist/
 
 | Key | Action |
 |-----|--------|
-| WASD / Click | Move |
-| 1–6 | Use skills |
-| I | Inventory |
-| K | Skill tree |
-| M | Map |
-| H | Homestead |
-| C | Character stats |
-| Space | Toggle auto-combat |
+| `WASD` / Arrow Keys | Move |
+| Left Click | Move / attack / interact |
+| Right Click / `R` | Return to camp |
+| `1-6` | Use skills |
+| `TAB` | Toggle auto-combat |
+| `I` | Inventory |
+| `C` | Character stats |
+| `K` | Skill tree |
+| `J` | Quest log |
+| `M` | Map |
+| `H` | Homestead |
+| `O` | Audio settings |
+| `ESC` | Return to main menu |
+| `Ctrl` + `Shift` + `E` | Export generated textures (dev builds only) |
 
 ## Credits
 
