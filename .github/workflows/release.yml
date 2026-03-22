@@ -46,6 +46,17 @@ jobs:
 
       - run: npm ci
 
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting version to $VERSION"
+          # Update tauri.conf.json
+          cd src-tauri
+          sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" tauri.conf.json && rm -f tauri.conf.json.bak
+          # Update Cargo.toml (only the package version, not dependency versions)
+          sed -i.bak "0,/^version = \".*\"/s//version = \"$VERSION\"/" Cargo.toml && rm -f Cargo.toml.bak
+        shell: bash
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
