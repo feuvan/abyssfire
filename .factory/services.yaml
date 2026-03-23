@@ -1,0 +1,14 @@
+commands:
+  install: npm install
+  build: npm run build
+  typecheck: npx tsc --noEmit
+  test: npx vitest run
+  dev: npm run dev
+
+services:
+  web:
+    start: npx vite --port 5173 &
+    stop: lsof -ti :5173 | xargs kill -9
+    healthcheck: curl -sf http://localhost:5173
+    port: 5173
+    depends_on: []
