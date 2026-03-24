@@ -312,6 +312,40 @@ export interface PetDefinition {
   feedItem: string;
 }
 
+export type MercenaryType = 'tank' | 'melee' | 'ranged' | 'healer' | 'mage';
+
+export interface MercenaryDefinition {
+  type: MercenaryType;
+  name: string;
+  description: string;
+  hireCost: number;
+  reviveCost: number;
+  baseStats: Stats;
+  statGrowth: Stats;
+  baseHp: number;
+  baseMana: number;
+  baseDamage: number;
+  baseDefense: number;
+  attackRange: number;
+  attackSpeed: number;
+  aiRole: 'tank' | 'melee_dps' | 'ranged_dps' | 'healer' | 'aoe_mage';
+  allowedWeaponTypes: string[];
+  allowedArmorSlots: string[];
+}
+
+export interface MercenarySaveData {
+  type: MercenaryType;
+  level: number;
+  exp: number;
+  hp: number;
+  mana: number;
+  equipment: {
+    weapon?: ItemInstance;
+    armor?: ItemInstance;
+  };
+  alive: boolean;
+}
+
 export interface SaveData {
   id: string;
   version: number;
@@ -352,4 +386,5 @@ export interface SaveData {
   };
   difficulty: 'normal' | 'nightmare' | 'hell';
   completedDifficulties: string[];
+  mercenary?: MercenarySaveData;
 }

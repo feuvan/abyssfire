@@ -10,6 +10,8 @@ import { audioManager } from '../systems/audio/AudioManager';
 import type { Player } from '../entities/Player';
 import type { ZoneScene } from './ZoneScene';
 import type { ItemInstance, WeaponBase, ArmorBase } from '../data/types';
+import { MercenarySystem, MERCENARY_DEFS, MERCENARY_TYPES } from '../systems/MercenarySystem';
+import type { MercenaryState } from '../systems/MercenarySystem';
 
 const FONT = '"Noto Sans SC", sans-serif';
 const TITLE_FONT = '"Cinzel", "Noto Sans SC", serif';
@@ -78,6 +80,7 @@ export class UIScene extends Phaser.Scene {
   private contextPopup: Phaser.GameObjects.Container | null = null;
   private audioPanel: Phaser.GameObjects.Container | null = null;
   private audioPanelInputCleanup: Array<() => void> = [];
+  private companionPanel: Phaser.GameObjects.Container | null = null;
   private nextMinimapRefreshAt = 0;
   private nextQuestTrackerRefreshAt = 0;
   private lastQuestTrackerSignature = '';
@@ -360,6 +363,7 @@ export class UIScene extends Phaser.Scene {
     if (data.panel === 'homestead') this.toggleHomestead();
     if (data.panel === 'quest') this.toggleQuestLog();
     if (data.panel === 'audio') this.toggleAudioSettings();
+    if (data.panel === 'companion') this.toggleCompanion();
   }
 
   private handleUiRefresh(data: { player: Player; zone: ZoneScene }): void {
@@ -1919,6 +1923,392 @@ export class UIScene extends Phaser.Scene {
     if (this.inventoryPanel) { this.inventoryPanel.destroy(); this.inventoryPanel = null; this.toggleInventory(); }
   }
 
+  // --- Companion Panel (P) ---
+  private toggleCompanion(): void {
+    if (this.companionPanel) { this.companionPanel.destroy(); this.companionPanel = null; return; }
+    this.closeAllPanels();
+    audioManager.playSFX('click');
+    this.buildCompanionPanel();
+  }
+
+  private buildCompanionPanel(): void {
+    const pw = px(480), ph = px(440), panelX = (W - pw) / 2, panelY = px(20);
+    this.companionPanel = this.add.container(panelX, panelY).setDepth(4000);
+    this.animatePanelOpen(this.companionPanel);
+
+    // Background
+    this.companionPanel.add(
+      this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(Math.round(2 * DPR), 0x27ae60)
+    );
+
+    // Title
+    this.companionPanel.add(this.add.text(pw / 2, px(10), '佣兵伙伴', {
+      fontSize: fs(18), color: '#27ae60', fontFamily: TITLE_FONT, fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    // Close button
+    const closeBtn = this.add.text(pw - px(16), px(8), 'X', {
+      fontSize: fs(18), color: '#e74c3c', fontFamily: FONT,
+    }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => this.toggleCompanion());
+    this.companionPanel.add(closeBtn);
+
+    const mercSys = this.zone?.mercenarySystem;
+    if (!mercSys) return;
+
+    const merc = mercSys.getMercenary();
+
+    if (!merc) {
+      // No mercenary — show hire panel
+      this.renderHirePanel(pw, ph, mercSys);
+    } else {
+      // Has mercenary — show info panel
+      this.renderMercenaryInfo(pw, ph, merc, mercSys);
+    }
+
+    // Footer
+    this.companionPanel.add(this.add.text(pw / 2, ph - px(14), '按 P 关闭', {
+      fontSize: fs(10), color: '#3a3a4a', fontFamily: FONT,
+    }).setOrigin(0.5));
+  }
+
+  private renderHirePanel(pw: number, ph: number, mercSys: MercenarySystem): void {
+    if (!this.companionPanel) return;
+
+    this.companionPanel.add(this.add.text(pw / 2, px(36), '─ 可雇佣佣兵 ─', {
+      fontSize: fs(14), color: '#c0934a', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+
+    // Check if player is near camp
+    const safeRadius = (this.zone as any)?.mapData?.safeZoneRadius ?? 9;
+    const campPositions: { col: number; row: number }[] = (this.zone as any)?.campPositions ?? [];
+    let isNearCamp = false;
+    for (const camp of campPositions) {
+      const dx = this.player.tileCol - camp.col;
+      const dy = this.player.tileRow - camp.row;
+      if (Math.sqrt(dx * dx + dy * dy) < safeRadius) {
+        isNearCamp = true;
+        break;
+      }
+    }
+
+    if (!isNearCamp) {
+      this.companionPanel.add(this.add.text(pw / 2, px(60), '需要在营地NPC附近才能雇佣佣兵', {
+        fontSize: fs(13), color: '#888', fontFamily: FONT,
+      }).setOrigin(0.5, 0));
+      return;
+    }
+
+    const typeNames: Record<string, string> = {
+      tank: '坦克', melee: '近战输出', ranged: '远程输出', healer: '治疗', mage: '法师',
+    };
+    const roleColors: Record<string, number> = {
+      tank: 0x2471a3, melee: 0xc0392b, ranged: 0x27ae60, healer: 0xf1c40f, mage: 0x8e44ad,
+    };
+
+    const cardH = px(68);
+    const startY = px(58);
+
+    MERCENARY_TYPES.forEach((type, i) => {
+      const def = MERCENARY_DEFS[type];
+      const cy = startY + i * (cardH + px(6));
+      const roleColor = roleColors[type] ?? 0x888888;
+      const canAfford = this.player.gold >= def.hireCost;
+
+      // Card bg
+      const cardBg = this.add.rectangle(pw / 2, cy + cardH / 2, pw - px(24), cardH, 0x111122, 0.95)
+        .setStrokeStyle(Math.round(1 * DPR), roleColor, 0.6);
+      this.companionPanel!.add(cardBg);
+
+      // Color indicator
+      this.companionPanel!.add(
+        this.add.rectangle(px(16), cy + cardH / 2, px(6), cardH - px(8), roleColor).setOrigin(0, 0.5)
+      );
+
+      // Type name + Chinese label
+      this.companionPanel!.add(this.add.text(px(30), cy + px(6), `${def.name} (${typeNames[type]})`, {
+        fontSize: fs(14), color: '#e0d8cc', fontFamily: FONT, fontStyle: 'bold',
+      }));
+
+      // Description
+      this.companionPanel!.add(this.add.text(px(30), cy + px(24), def.description, {
+        fontSize: fs(11), color: '#888', fontFamily: FONT, wordWrap: { width: pw - px(180) },
+      }));
+
+      // Stats preview
+      const statsStr = `HP:${def.baseHp}  伤害:${def.baseDamage}  防御:${def.baseDefense}  范围:${def.attackRange}`;
+      this.companionPanel!.add(this.add.text(px(30), cy + px(42), statsStr, {
+        fontSize: fs(10), color: '#666', fontFamily: FONT,
+      }));
+
+      // Cost + Hire button
+      this.companionPanel!.add(this.add.text(pw - px(80), cy + px(10), `${def.hireCost}G`, {
+        fontSize: fs(14), color: canAfford ? '#f1c40f' : '#555', fontFamily: FONT, fontStyle: 'bold',
+      }).setOrigin(0.5, 0));
+
+      const hireBtnBg = this.add.rectangle(pw - px(80), cy + px(38), px(80), px(22), canAfford ? 0x1a3a1a : 0x1a1a1a)
+        .setStrokeStyle(Math.round(1 * DPR), canAfford ? 0x27ae60 : 0x333333);
+      this.companionPanel!.add(hireBtnBg);
+
+      const hireBtnText = this.add.text(pw - px(80), cy + px(38), '雇佣', {
+        fontSize: fs(13), color: canAfford ? '#27ae60' : '#555', fontFamily: FONT,
+      }).setOrigin(0.5);
+      this.companionPanel!.add(hireBtnText);
+
+      if (canAfford) {
+        hireBtnBg.setInteractive({ useHandCursor: true });
+        hireBtnBg.on('pointerdown', () => {
+          const result = mercSys.hire(type, this.player.gold);
+          if (result.success) {
+            this.player.gold -= result.cost;
+            // Spawn mercenary sprite in zone
+            const zoneScene = this.zone as any;
+            if (zoneScene?.spawnMercenarySprite) {
+              zoneScene.spawnMercenarySprite();
+            }
+            // Rebuild panel
+            this.companionPanel?.destroy();
+            this.companionPanel = null;
+            this.buildCompanionPanel();
+          }
+        });
+        hireBtnBg.on('pointerover', () => hireBtnBg.setFillStyle(0x225522));
+        hireBtnBg.on('pointerout', () => hireBtnBg.setFillStyle(0x1a3a1a));
+      }
+    });
+  }
+
+  private renderMercenaryInfo(pw: number, ph: number, merc: MercenaryState, mercSys: MercenarySystem): void {
+    if (!this.companionPanel) return;
+    const def = MERCENARY_DEFS[merc.type];
+    const roleColors: Record<string, number> = {
+      tank: 0x2471a3, melee: 0xc0392b, ranged: 0x27ae60, healer: 0xf1c40f, mage: 0x8e44ad,
+    };
+    const typeNames: Record<string, string> = {
+      tank: '坦克', melee: '近战输出', ranged: '远程输出', healer: '治疗', mage: '法师',
+    };
+    const roleColor = roleColors[merc.type] ?? 0x888888;
+
+    // Merc name + level
+    this.companionPanel.add(this.add.text(pw / 2, px(36), `${def.name} (${typeNames[merc.type]})`, {
+      fontSize: fs(16), color: '#e0d8cc', fontFamily: FONT, fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    // Alive/dead status
+    const statusText = merc.alive ? `Lv.${merc.level}  状态: 存活` : `Lv.${merc.level}  状态: 阵亡`;
+    const statusColor = merc.alive ? '#27ae60' : '#e74c3c';
+    this.companionPanel.add(this.add.text(pw / 2, px(56), statusText, {
+      fontSize: fs(13), color: statusColor, fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+
+    // Description
+    this.companionPanel.add(this.add.text(px(14), px(80), def.description, {
+      fontSize: fs(12), color: '#888', fontFamily: FONT,
+    }));
+
+    // Stats section
+    let sy = px(102);
+    this.companionPanel.add(this.add.text(px(14), sy, '─ 属性 ─', {
+      fontSize: fs(13), color: '#c0934a', fontFamily: FONT,
+    }));
+    sy += px(20);
+
+    // HP/Mana bars
+    const barW = px(140), barH = px(8);
+    // HP bar
+    this.companionPanel.add(this.add.text(px(14), sy, 'HP', {
+      fontSize: fs(11), color: '#e74c3c', fontFamily: FONT,
+    }));
+    this.companionPanel.add(
+      this.add.rectangle(px(50), sy + px(4), barW, barH, 0x1a1a1a).setOrigin(0, 0.5)
+        .setStrokeStyle(Math.round(1 * DPR), 0x333333)
+    );
+    const hpFillW = merc.alive ? Math.max(0, barW * (merc.hp / merc.maxHp)) : 0;
+    if (hpFillW > 0) {
+      this.companionPanel.add(
+        this.add.rectangle(px(50), sy + px(4), hpFillW, barH, 0xe74c3c).setOrigin(0, 0.5)
+      );
+    }
+    this.companionPanel.add(this.add.text(px(200), sy, `${Math.ceil(merc.hp)}/${merc.maxHp}`, {
+      fontSize: fs(11), color: '#aaa', fontFamily: FONT,
+    }));
+    sy += px(18);
+
+    // Mana bar
+    this.companionPanel.add(this.add.text(px(14), sy, 'MP', {
+      fontSize: fs(11), color: '#2471a3', fontFamily: FONT,
+    }));
+    this.companionPanel.add(
+      this.add.rectangle(px(50), sy + px(4), barW, barH, 0x1a1a1a).setOrigin(0, 0.5)
+        .setStrokeStyle(Math.round(1 * DPR), 0x333333)
+    );
+    const manaFillW = merc.alive ? Math.max(0, barW * (merc.mana / merc.maxMana)) : 0;
+    if (manaFillW > 0) {
+      this.companionPanel.add(
+        this.add.rectangle(px(50), sy + px(4), manaFillW, barH, 0x2471a3).setOrigin(0, 0.5)
+      );
+    }
+    this.companionPanel.add(this.add.text(px(200), sy, `${Math.ceil(merc.mana)}/${merc.maxMana}`, {
+      fontSize: fs(11), color: '#aaa', fontFamily: FONT,
+    }));
+    sy += px(18);
+
+    // EXP
+    const expNeeded = mercSys.expToNextLevel(merc.level);
+    this.companionPanel.add(this.add.text(px(14), sy, `经验: ${merc.exp}/${expNeeded}`, {
+      fontSize: fs(11), color: '#b08cce', fontFamily: FONT,
+    }));
+    sy += px(18);
+
+    // Base stats
+    const statRow = [
+      `攻击: ${merc.baseDamage}`,
+      `防御: ${merc.defense}`,
+      `范围: ${merc.attackRange}`,
+    ].join('  |  ');
+    this.companionPanel.add(this.add.text(px(14), sy, statRow, {
+      fontSize: fs(11), color: '#aaa', fontFamily: FONT,
+    }));
+    sy += px(18);
+
+    // Primary stats
+    const primaryStats = `力:${Math.floor(merc.stats.str)}  敏:${Math.floor(merc.stats.dex)}  体:${Math.floor(merc.stats.vit)}  智:${Math.floor(merc.stats.int)}  精:${Math.floor(merc.stats.spi)}  幸:${Math.floor(merc.stats.lck)}`;
+    this.companionPanel.add(this.add.text(px(14), sy, primaryStats, {
+      fontSize: fs(11), color: '#888', fontFamily: FONT,
+    }));
+    sy += px(22);
+
+    // Equipment section
+    this.companionPanel.add(this.add.text(px(14), sy, '─ 装备 ─', {
+      fontSize: fs(13), color: '#c0934a', fontFamily: FONT,
+    }));
+    sy += px(20);
+
+    const slotSize = px(36);
+
+    // Weapon slot
+    const weaponItem = merc.equipment.weapon;
+    const weaponBg = this.add.rectangle(px(14) + slotSize / 2, sy + slotSize / 2, slotSize, slotSize,
+      weaponItem ? this.getQualityColorNum(weaponItem.quality) : 0x222233)
+      .setStrokeStyle(Math.round(1 * DPR), roleColor, 0.5);
+    this.companionPanel.add(weaponBg);
+    this.companionPanel.add(this.add.text(px(14) + slotSize / 2, sy + slotSize + px(2), '武器', {
+      fontSize: fs(10), color: '#777788', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+    if (weaponItem) {
+      this.companionPanel.add(this.add.text(px(14) + slotSize / 2, sy + slotSize / 2, weaponItem.name.charAt(0), {
+        fontSize: fs(14), color: '#fff', fontFamily: FONT, fontStyle: 'bold',
+      }).setOrigin(0.5));
+    }
+
+    // Armor slot
+    const armorItem = merc.equipment.armor;
+    const armorBg = this.add.rectangle(px(14) + slotSize * 2, sy + slotSize / 2, slotSize, slotSize,
+      armorItem ? this.getQualityColorNum(armorItem.quality) : 0x222233)
+      .setStrokeStyle(Math.round(1 * DPR), roleColor, 0.5);
+    this.companionPanel.add(armorBg);
+    this.companionPanel.add(this.add.text(px(14) + slotSize * 2, sy + slotSize + px(2), '护甲', {
+      fontSize: fs(10), color: '#777788', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+    if (armorItem) {
+      this.companionPanel.add(this.add.text(px(14) + slotSize * 2, sy + slotSize / 2, armorItem.name.charAt(0), {
+        fontSize: fs(14), color: '#fff', fontFamily: FONT, fontStyle: 'bold',
+      }).setOrigin(0.5));
+    }
+
+    sy += slotSize + px(22);
+
+    // Action buttons
+    const btnY = sy + px(6);
+
+    if (merc.alive) {
+      // Dismiss button
+      const dismissBg = this.add.rectangle(px(60), btnY, px(100), px(26), 0x2a1a1a)
+        .setStrokeStyle(Math.round(1 * DPR), 0xc0392b).setInteractive({ useHandCursor: true });
+      dismissBg.on('pointerdown', () => {
+        mercSys.dismiss();
+        const zoneScene = this.zone as any;
+        if (zoneScene?.destroyMercenarySprite) {
+          zoneScene.destroyMercenarySprite();
+        }
+        this.companionPanel?.destroy();
+        this.companionPanel = null;
+        this.buildCompanionPanel();
+      });
+      this.companionPanel.add(dismissBg);
+      this.companionPanel.add(this.add.text(px(60), btnY, '解雇', {
+        fontSize: fs(13), color: '#e74c3c', fontFamily: FONT,
+      }).setOrigin(0.5));
+    } else {
+      // Revive button
+      const reviveCost = def.reviveCost;
+      const canRevive = this.player.gold >= reviveCost;
+
+      // Check if near camp
+      const safeRadius = (this.zone as any)?.mapData?.safeZoneRadius ?? 9;
+      const campPositions: { col: number; row: number }[] = (this.zone as any)?.campPositions ?? [];
+      let isNearCamp = false;
+      for (const camp of campPositions) {
+        const dx = this.player.tileCol - camp.col;
+        const dy = this.player.tileRow - camp.row;
+        if (Math.sqrt(dx * dx + dy * dy) < safeRadius) {
+          isNearCamp = true;
+          break;
+        }
+      }
+
+      if (!isNearCamp) {
+        this.companionPanel.add(this.add.text(pw / 2, btnY, '在营地NPC处复活佣兵', {
+          fontSize: fs(12), color: '#888', fontFamily: FONT,
+        }).setOrigin(0.5));
+      } else {
+        const reviveBg = this.add.rectangle(px(100), btnY, px(160), px(26), canRevive ? 0x1a3a1a : 0x1a1a1a)
+          .setStrokeStyle(Math.round(1 * DPR), canRevive ? 0x27ae60 : 0x333333);
+        this.companionPanel.add(reviveBg);
+        this.companionPanel.add(this.add.text(px(100), btnY, `复活 (${reviveCost}G)`, {
+          fontSize: fs(13), color: canRevive ? '#27ae60' : '#555', fontFamily: FONT,
+        }).setOrigin(0.5));
+
+        if (canRevive) {
+          reviveBg.setInteractive({ useHandCursor: true });
+          reviveBg.on('pointerdown', () => {
+            const result = mercSys.revive(this.player.gold);
+            if (result.success) {
+              this.player.gold -= result.cost;
+              // Set position near player
+              mercSys.setPosition(this.player.tileCol + 1, this.player.tileRow + 1);
+              const zoneScene = this.zone as any;
+              if (zoneScene?.spawnMercenarySprite) {
+                zoneScene.spawnMercenarySprite();
+              }
+              this.companionPanel?.destroy();
+              this.companionPanel = null;
+              this.buildCompanionPanel();
+            }
+          });
+        }
+      }
+
+      // Dismiss button (even when dead, can dismiss to hire a new one)
+      const dismissBg2 = this.add.rectangle(pw - px(80), btnY, px(100), px(26), 0x2a1a1a)
+        .setStrokeStyle(Math.round(1 * DPR), 0xc0392b).setInteractive({ useHandCursor: true });
+      dismissBg2.on('pointerdown', () => {
+        mercSys.dismiss();
+        const zoneScene = this.zone as any;
+        if (zoneScene?.destroyMercenarySprite) {
+          zoneScene.destroyMercenarySprite();
+        }
+        this.companionPanel?.destroy();
+        this.companionPanel = null;
+        this.buildCompanionPanel();
+      });
+      this.companionPanel.add(dismissBg2);
+      this.companionPanel.add(this.add.text(pw - px(80), btnY, '解雇', {
+        fontSize: fs(13), color: '#e74c3c', fontFamily: FONT,
+      }).setOrigin(0.5));
+    }
+  }
+
   // --- Audio Settings Panel ---
   private toggleAudioSettings(): void {
     if (this.audioPanel) {
@@ -2022,6 +2412,7 @@ export class UIScene extends Phaser.Scene {
     if (this.charPanel) { this.charPanel.destroy(); this.charPanel = null; }
     if (this.homesteadPanel) { this.homesteadPanel.destroy(); this.homesteadPanel = null; }
     if (this.questLogPanel) { this.questLogPanel.destroy(); this.questLogPanel = null; }
+    if (this.companionPanel) { this.companionPanel.destroy(); this.companionPanel = null; }
     if (this.audioPanel) {
       this.cleanupAudioPanelInputHandlers();
       this.audioPanel.destroy();

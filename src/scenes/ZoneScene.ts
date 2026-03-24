@@ -23,6 +23,8 @@ import { TrailRenderer } from '../systems/TrailRenderer';
 import { StatusEffectSystem } from '../systems/StatusEffectSystem';
 import type { StatusEffectType } from '../systems/StatusEffectSystem';
 import { EliteAffixSystem } from '../systems/EliteAffixSystem';
+import { MercenarySystem, MERCENARY_DEFS } from '../systems/MercenarySystem';
+import type { MercenaryAIAction } from '../systems/MercenarySystem';
 import { audioManager } from '../systems/audio/AudioManager';
 import { applyColorGrading } from '../graphics/ColorGradePipeline';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
@@ -96,6 +98,11 @@ export class ZoneScene extends Phaser.Scene {
   private trails!: TrailRenderer;
   statusEffects!: StatusEffectSystem;
   eliteAffixSystem!: EliteAffixSystem;
+  mercenarySystem!: MercenarySystem;
+  private mercenarySprite: Phaser.GameObjects.Container | null = null;
+  private mercenaryHpBar: Phaser.GameObjects.Rectangle | null = null;
+  private mercenaryHpBarBg: Phaser.GameObjects.Rectangle | null = null;
+  private mercenaryNameLabel: Phaser.GameObjects.Text | null = null;
   private inCombat = false;
   private isTransitioning = false;
   private isPortaling = false;
@@ -146,6 +153,7 @@ export class ZoneScene extends Phaser.Scene {
       this.homesteadSystem = new HomesteadSystem();
       this.achievementSystem = new AchievementSystem();
       this.saveSystem = new SaveSystem();
+      this.mercenarySystem = new MercenarySystem();
       this.questSystem.registerQuests(AllQuests);
     }
 
@@ -192,6 +200,7 @@ export class ZoneScene extends Phaser.Scene {
 
     this.spawnMonsters();
     this.spawnNPCs();
+    this.spawnMercenarySprite();
     this.buildCampDecorations();
     this.rebuildWorldCaches();
     for (const decor of this.campDecorPositions) {
@@ -269,6 +278,7 @@ export class ZoneScene extends Phaser.Scene {
         J: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.J),
         O: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O),
         R: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R),
+        P: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P),
         ESC: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
       };
     }
@@ -502,6 +512,8 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     this.handleCombat(time);
+    this.handleMercenaryCombat(time);
+    this.updateMercenary(time, delta);
     this.updateEliteAffixBehaviors(time);
     this.updateStatusEffects(time);
     this.updateCombatState();
@@ -1049,6 +1061,9 @@ export class ZoneScene extends Phaser.Scene {
     }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.R)) {
       this.useTownPortal();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.P)) {
+      EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'companion' });
     }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.ESC)) {
       this.returnToMenu();
@@ -1720,6 +1735,12 @@ export class ZoneScene extends Phaser.Scene {
     this.player.addExp(exp);
     this.player.gold += gold;
 
+    // Mercenary exp share
+    if (this.mercenarySystem?.isAlive()) {
+      const trainingBonus = homeBonus['expBonus'] ?? 0;
+      this.mercenarySystem.addExp(exp, trainingBonus);
+    }
+
     // Kill heal (set bonus / legendary)
     if (eq.killHealPercent > 0 && this.player.hp > 0) {
       const heal = Math.floor(this.player.maxHp * eq.killHealPercent / 100);
@@ -2087,6 +2108,7 @@ export class ZoneScene extends Phaser.Scene {
         settings: { autoCombat: this.player.autoCombat, musicVolume: 0.5, sfxVolume: 0.7, autoLootMode: this.player.autoLootMode },
         difficulty: this.difficulty,
         completedDifficulties: [],
+        mercenary: this.mercenarySystem?.toSaveData(),
       });
     } catch (_e) { /* silent fail */ }
   }
@@ -2137,6 +2159,11 @@ export class ZoneScene extends Phaser.Scene {
     this.player.autoCombat = save.settings?.autoCombat ?? false;
     this.player.autoLootMode = save.settings?.autoLootMode ?? 'off';
     this.difficulty = save.difficulty ?? 'normal';
+
+    // 8. Mercenary
+    if (save.mercenary) {
+      this.mercenarySystem.loadFromSave(save.mercenary);
+    }
   }
 
   private spawnMonsters(): void {
@@ -2789,9 +2816,305 @@ export class ZoneScene extends Phaser.Scene {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Mercenary System integration
+  // ---------------------------------------------------------------------------
+
+  /** Create or update the mercenary sprite in the game world. */
+  spawnMercenarySprite(): void {
+    this.destroyMercenarySprite();
+    if (!this.mercenarySystem?.isAlive()) return;
+    const merc = this.mercenarySystem.getMercenary()!;
+    const def = MERCENARY_DEFS[merc.type];
+
+    // Position near player
+    merc.tileCol = this.player.tileCol + 1;
+    merc.tileRow = this.player.tileRow + 1;
+    const worldPos = cartToIso(merc.tileCol, merc.tileRow);
+
+    this.mercenarySprite = this.add.container(worldPos.x, worldPos.y);
+    this.mercenarySprite.setDepth(worldPos.y + 60);
+
+    // Simple colored rectangle body with role color
+    const colorMap: Record<string, number> = {
+      tank: 0x2471a3, melee: 0xc0392b, ranged: 0x27ae60, healer: 0xf1c40f, mage: 0x8e44ad,
+    };
+    const color = colorMap[merc.type] ?? 0x888888;
+    const body = this.add.rectangle(0, -20, 32, 40, color);
+    body.setStrokeStyle(1.5, 0xffffff, 0.6);
+    this.mercenarySprite.add(body);
+
+    // Shadow
+    const shadow = this.add.ellipse(0, 4, 30, 8, 0x000000, 0.25);
+    this.mercenarySprite.add(shadow);
+    this.mercenarySprite.sendToBack(shadow);
+
+    // Friendly indicator (small green diamond above)
+    const indicator = this.add.rectangle(0, -48, 6, 6, 0x27ae60);
+    indicator.setAngle(45);
+    this.mercenarySprite.add(indicator);
+
+    // HP bar
+    this.mercenaryHpBarBg = this.add.rectangle(0, -46, 28, 4, 0x1a1a1a);
+    this.mercenaryHpBarBg.setStrokeStyle(0.5, 0x333333);
+    this.mercenarySprite.add(this.mercenaryHpBarBg);
+
+    this.mercenaryHpBar = this.add.rectangle(-14, -46, 28, 4, 0x27ae60);
+    this.mercenaryHpBar.setOrigin(0, 0.5);
+    this.mercenarySprite.add(this.mercenaryHpBar);
+
+    // Name label
+    this.mercenaryNameLabel = this.add.text(0, -56, `${def.name} Lv.${merc.level}`, {
+      fontSize: fs(10), color: '#88cc88', fontFamily: '"Noto Sans SC", sans-serif',
+      stroke: '#000000', strokeThickness: Math.round(2 * DPR),
+    }).setOrigin(0.5);
+    this.mercenarySprite.add(this.mercenaryNameLabel);
+  }
+
+  destroyMercenarySprite(): void {
+    if (this.mercenarySprite) {
+      this.mercenarySprite.destroy();
+      this.mercenarySprite = null;
+      this.mercenaryHpBar = null;
+      this.mercenaryHpBarBg = null;
+      this.mercenaryNameLabel = null;
+    }
+  }
+
+  /** Update mercenary following, combat AI, and sprite position each frame. */
+  private updateMercenary(time: number, delta: number): void {
+    if (!this.mercenarySystem?.isAlive() || !this.mercenarySprite) return;
+    const merc = this.mercenarySystem.getMercenary()!;
+    const def = MERCENARY_DEFS[merc.type];
+
+    // Mana regen
+    this.mercenarySystem.regenMana(delta);
+
+    // Check safe zone
+    const safeRadius = this.mapData.safeZoneRadius ?? 9;
+    let inSafeZone = false;
+    for (const camp of this.campPositions) {
+      if (euclideanDistance(merc.tileCol, merc.tileRow, camp.col, camp.row) < safeRadius) {
+        inSafeZone = true;
+        break;
+      }
+    }
+
+    // Gather nearby monster info
+    let nearestMonsterCol: number | null = null;
+    let nearestMonsterRow: number | null = null;
+    let nearestMonsterDist = Infinity;
+    const monstersInRange: { col: number; row: number; dist: number }[] = [];
+
+    for (const m of this.monsters) {
+      if (!m.isAlive()) continue;
+      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
+      if (dist < 10) {
+        monstersInRange.push({ col: m.tileCol, row: m.tileRow, dist });
+        if (dist < nearestMonsterDist) {
+          nearestMonsterDist = dist;
+          nearestMonsterCol = m.tileCol;
+          nearestMonsterRow = m.tileRow;
+        }
+      }
+    }
+
+    const playerHpRatio = this.player.hp / this.player.maxHp;
+    const action = this.mercenarySystem.getAIAction(
+      time, this.player.tileCol, this.player.tileRow, playerHpRatio,
+      nearestMonsterCol, nearestMonsterRow, nearestMonsterDist,
+      monstersInRange, inSafeZone,
+    );
+
+    this.executeMercenaryAction(action, time);
+
+    // Update sprite position
+    const worldPos = cartToIso(merc.tileCol, merc.tileRow);
+    this.mercenarySprite.setPosition(worldPos.x, worldPos.y);
+    this.mercenarySprite.setDepth(worldPos.y + 60);
+
+    // Update HP bar
+    if (this.mercenaryHpBar) {
+      const hpRatio = merc.hp / merc.maxHp;
+      this.mercenaryHpBar.width = Math.max(0, 28 * hpRatio);
+      this.mercenaryHpBar.fillColor = hpRatio > 0.5 ? 0x27ae60 : hpRatio > 0.25 ? 0xf39c12 : 0xe74c3c;
+    }
+
+    // Update name label
+    if (this.mercenaryNameLabel) {
+      this.mercenaryNameLabel.setText(`${def.name} Lv.${merc.level}`);
+    }
+
+    // Update buffs
+    merc.buffs = merc.buffs.filter(b => time - b.startTime < b.duration);
+  }
+
+  /** Execute the mercenary AI action. */
+  private executeMercenaryAction(action: MercenaryAIAction, time: number): void {
+    if (!this.mercenarySystem?.isAlive()) return;
+    const merc = this.mercenarySystem.getMercenary()!;
+
+    switch (action.type) {
+      case 'follow':
+      case 'move_to_target':
+      case 'reposition': {
+        if (action.targetCol === undefined || action.targetRow === undefined) break;
+        // Simple movement toward target
+        const dx = action.targetCol - merc.tileCol;
+        const dy = action.targetRow - merc.tileRow;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0.3) {
+          const speed = 0.06; // tiles per frame
+          const nx = dx / dist;
+          const ny = dy / dist;
+          let newCol = merc.tileCol + nx * speed;
+          let newRow = merc.tileRow + ny * speed;
+          // Clamp to map bounds
+          newCol = Math.max(1, Math.min(this.mapData.cols - 2, newCol));
+          newRow = Math.max(1, Math.min(this.mapData.rows - 2, newRow));
+          const checkCol = Math.round(newCol);
+          const checkRow = Math.round(newRow);
+          if (this.mapData.collisions[checkRow]?.[checkCol]) {
+            merc.tileCol = newCol;
+            merc.tileRow = newRow;
+          }
+        }
+        break;
+      }
+      case 'attack': {
+        if (action.targetCol === undefined || action.targetRow === undefined) break;
+        // Find the monster at that position
+        const target = this.findMonsterNear(action.targetCol, action.targetRow);
+        if (target && target.isAlive()) {
+          merc.lastAttackTime = time;
+          const entity = this.mercenarySystem.toCombatEntity();
+          if (entity) {
+            const result = this.combatSystem.calculateDamage(entity, target.toCombatEntity());
+            target.takeDamage(result.damage, this.mercenarySprite?.x ?? 0, this.mercenarySprite?.y ?? 0);
+            this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit);
+            if (!target.isAlive()) {
+              this.onMonsterKilled(target);
+            }
+          }
+        }
+        break;
+      }
+      case 'aoe_attack': {
+        if (action.targetCol === undefined || action.targetRow === undefined) break;
+        const radius = action.radius ?? 3;
+        merc.lastAttackTime = time;
+        merc.mana = Math.max(0, merc.mana - 10);
+        const entity = this.mercenarySystem.toCombatEntity();
+        if (entity) {
+          for (const m of this.monsters) {
+            if (!m.isAlive()) continue;
+            const dist = euclideanDistance(action.targetCol, action.targetRow, m.tileCol, m.tileRow);
+            if (dist <= radius) {
+              const result = this.combatSystem.calculateDamage(entity, m.toCombatEntity());
+              const dmg = Math.floor(result.damage * 0.7); // AoE damage reduction
+              m.takeDamage(dmg, this.mercenarySprite?.x ?? 0, this.mercenarySprite?.y ?? 0);
+              this.showDamageText(m.sprite.x, m.sprite.y, dmg, result.isCrit);
+              if (!m.isAlive()) this.onMonsterKilled(m);
+            }
+          }
+        }
+        break;
+      }
+      case 'heal': {
+        const healAmount = this.mercenarySystem.performHeal(this.player.maxHp);
+        if (healAmount > 0) {
+          merc.lastHealTime = time;
+          this.player.hp = Math.min(this.player.maxHp, this.player.hp + healAmount);
+          EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.player.hp, maxHp: this.player.maxHp });
+          EventBus.emit(GameEvents.LOG_MESSAGE, {
+            text: `${MERCENARY_DEFS[merc.type].name} 治疗了你! +${healAmount} HP`,
+            type: 'combat',
+          });
+          if (this.vfx) {
+            this.vfx.healBurst(this.player.sprite.x, this.player.sprite.y - 16, 8);
+          }
+        }
+        break;
+      }
+      case 'idle':
+      default:
+        break;
+    }
+  }
+
+  /** Handle monsters attacking the mercenary (tank aggro). */
+  private handleMercenaryCombat(time: number): void {
+    if (!this.mercenarySystem?.isAlive() || !this.mercenarySprite) return;
+    const merc = this.mercenarySystem.getMercenary()!;
+    const def = MERCENARY_DEFS[merc.type];
+
+    // Only tank mercenaries absorb hits
+    if (def.aiRole !== 'tank') return;
+
+    // Monsters that are close to the mercenary may target it
+    for (const monster of this.monsters) {
+      if (!monster.isAlive() || monster.state !== 'attack') continue;
+      if (this.statusEffects.isImmobilized(monster.id)) continue;
+
+      const distToMerc = euclideanDistance(monster.tileCol, monster.tileRow, merc.tileCol, merc.tileRow);
+      const distToPlayer = euclideanDistance(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
+
+      // If mercenary is closer and within monster's attack range, monster hits mercenary
+      if (distToMerc < distToPlayer && distToMerc <= monster.definition.attackRange + 0.5) {
+        if (time - monster.lastAttackTime >= monster.definition.attackSpeed) {
+          monster.lastAttackTime = time;
+          const result = this.combatSystem.calculateDamage(monster.toCombatEntity(), this.mercenarySystem.toCombatEntity()!);
+          const diffMult = this.difficulty === 'hell' ? 2 : this.difficulty === 'nightmare' ? 1.5 : 1;
+          const finalDmg = Math.floor(result.damage * diffMult);
+          const { died } = this.mercenarySystem.takeDamage(finalDmg);
+          this.showDamageText(
+            this.mercenarySprite.x, this.mercenarySprite.y - 10,
+            finalDmg, result.isCrit, false, true,
+          );
+          if (died) {
+            this.handleMercenaryDeath();
+          }
+        }
+      }
+    }
+  }
+
+  /** Handle mercenary death: animation and removal from targeting. */
+  private handleMercenaryDeath(): void {
+    if (!this.mercenarySprite) return;
+    // Death animation: fade out and scale down
+    this.tweens.add({
+      targets: this.mercenarySprite,
+      alpha: 0,
+      scaleX: 0.5,
+      scaleY: 0.5,
+      duration: 600,
+      ease: 'Power2',
+      onComplete: () => {
+        this.destroyMercenarySprite();
+      },
+    });
+    if (this.vfx) {
+      this.vfx.deathBurst(this.mercenarySprite.x, this.mercenarySprite.y - 16, 0x666666);
+    }
+  }
+
+  /** Find the nearest alive monster to a given tile position. */
+  private findMonsterNear(col: number, row: number): Monster | null {
+    let best: Monster | null = null;
+    let bestDist = 3; // max search radius
+    for (const m of this.monsters) {
+      if (!m.isAlive()) continue;
+      const d = euclideanDistance(m.tileCol, m.tileRow, col, row);
+      if (d < bestDist) { bestDist = d; best = m; }
+    }
+    return best;
+  }
+
   shutdown(): void {
     this.isTransitioning = false;
     this.isPortaling = false;
+    this.destroyMercenarySprite();
     this.input.off('pointerdown', this.handlePointerDown, this);
     EventBus.off(GameEvents.PLAYER_DIED, this.handlePlayerDied, this);
     EventBus.off(GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);
