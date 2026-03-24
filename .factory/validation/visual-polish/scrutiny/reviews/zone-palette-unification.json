@@ -1,0 +1,51 @@
+{
+  "featureId": "zone-palette-unification",
+  "reviewedAt": "2026-03-24T20:01:36Z",
+  "commitId": "34ea11b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The implementation standardizes entity outline and rim colors, but it does not fulfill the feature's core palette-unification scope for tiles, camp/decoration colors, or the required test coverage. ZonePalette only carries outline/rim fields, while ground/camp/decorations still use hardcoded colors and no palette-focused tests or hue-distance helper were added.",
+    "issues": [
+      {
+        "file": "src/graphics/SpriteGenerator.ts",
+        "line": 518,
+        "severity": "blocking",
+        "description": "Ground tile generation still uses hardcoded base colors (`#1b3715`, `#30221a`, `#2a2e33`, `#281e10`) in `drawGrass`, `drawDirt`, `drawStone`, and `drawCamp` instead of deriving tile/camp colors from a shared per-zone palette config. The feature explicitly required unifying procedural palette generation across tiles and camp colors."
+      },
+      {
+        "file": "src/graphics/sprites/decorations/Tree.ts",
+        "line": 33,
+        "severity": "blocking",
+        "description": "Decoration sprites still render with fixed hardcoded colors (for example trunk/canopy values in `TreeDrawer`, with similar hardcoded palettes across other decoration drawers) and merely had outlines removed. The feature required decoration sprite generators to derive colors from the shared zone palette and stay within the specified hue-distance constraint; this runtime wiring is missing."
+      },
+      {
+        "file": "src/graphics/ZonePalette.ts",
+        "line": 11,
+        "severity": "blocking",
+        "description": "The shared palette module does not define the required config shape from the feature spec (`dominantHue`, `accentHue`, `shadowTint`, `outlineColor`, `campColor`) or any helper to verify hue-distance constraints. It only exposes precomputed entity/NPC/player outline and rim strings, so the palette cannot drive tiles, decorations, or camp generation as specified."
+      },
+      {
+        "file": "src/__tests__",
+        "line": 1,
+        "severity": "blocking",
+        "description": "No unit tests were added for zone palette configs or hue-distance enforcement, despite the feature explicitly requiring tests plus a helper to verify the ±30° hue constraint. A grep across `src/__tests__` shows no new palette-related tests or helper usage."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The UI worker skill says sprite-generation changes should keep zone palette hues within 30° and that tests should be written where applicable, but it does not explicitly require checking tile/camp/decor generators or adding palette-config tests/helpers from the feature spec. The worker followed the skill yet still shipped an incomplete implementation focused on entity outlines.",
+      "evidence": ".factory/skills/ui-worker/SKILL.md step 5 mentions entity outlines and hue bounds, while the reviewed diff left `SpriteGenerator` tiles/camp and decoration drawers on hardcoded colors and added no tests."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The mission library documents the procedural art pipeline around `DrawUtils`, but it does not capture that terrain/camp colors live in `SpriteGenerator.ts` and camp theme colors live separately in `src/data/camp-themes.ts`. That split is directly relevant for palette-unification work and likely contributed to the implementation missing those surfaces.",
+      "evidence": ".factory/library/architecture.md only notes `SpriteGenerator.ts` and `DrawUtils.ts` at a high level; the reviewed feature needed to touch `SpriteGenerator.ts` and `src/data/camp-themes.ts`, yet both remained outside the new palette system."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed transcript skeleton, handoff, skill, diff, and shared-state docs for commit `34ea11b`. Result: fail. The change successfully unifies entity outline/rim helpers, but it does not implement the requested shared zone palette across ground tiles, camp/decoration generators, or palette-specific tests/helper, so the feature is materially incomplete."
+}

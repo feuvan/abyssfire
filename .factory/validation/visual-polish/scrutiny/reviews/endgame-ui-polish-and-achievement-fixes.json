@@ -1,0 +1,45 @@
+{
+  "featureId": "endgame-ui-polish-and-achievement-fixes",
+  "reviewedAt": "2026-03-24T20:05:40Z",
+  "commitId": "6fa462a1aad66fd84c6fb94cb6da51091381def6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Reviewed the assigned worker session evidence and commit 6fa462a. The commit only fixes AchievementSystem progress deduplication and adds cross-area integration tests; it does not implement or modify the achievement panel UI, difficulty selector UI, gem socket UI, achievement toast behavior, or save/load reward persistence required by the endgame UI polish feature. It also leaves AchievementSystem unit tests asserting the pre-fix double-counting behavior, which conflicts with the shipped implementation.",
+    "issues": [
+      {
+        "file": "src/systems/AchievementSystem.ts",
+        "line": 23,
+        "severity": "blocking",
+        "description": "The reviewed commit only changes shared achievement progress counting. It does not implement the requested endgame UI polish scope (achievement panel accessibility/alignment, difficulty selector Chinese state UI persistence, gem socket panel styling/persistence, unlock toasts, or endgame UI console-error/styling work), so the assigned feature is materially uncovered by this diff."
+      },
+      {
+        "file": "src/__tests__/cross-area-integration.test.ts",
+        "line": 819,
+        "severity": "blocking",
+        "description": "The new tests labeled as UI coverage are only pure data/string assertions and do not exercise UIScene/MenuScene helper logic for the achievement panel, unlock toasts, difficulty selector states, or socket panel behavior required by the feature description. The feature explicitly called for extending tests around achievement reward idempotency, difficulty selector state, and endgame UI helper logic, but this commit adds none of those targeted tests."
+      },
+      {
+        "file": "src/__tests__/AchievementSystem.test.ts",
+        "line": 31,
+        "severity": "blocking",
+        "description": "The existing AchievementSystem test file still documents and validates the old shared-key double-counting semantics (for example the comments and assertions around generic kill progress), while the implementation was changed to increment each shared key once. This leaves the dedicated unit test suite semantically out of sync with the shipped behavior and undermines regression coverage for the actual bug fix."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The reviewed worker session executed the systems-worker skill even though the assigned endgame UI polish work spans UIScene/MenuScene panel behavior and the mission feature definitions for achievement-panel and gem-socketing-ui assign ui-worker. The transcript indicates the session actually worked on a different feature (cross-area-integration), so the skill-to-feature routing/procedure evidence is inconsistent.",
+      "evidence": "worker-transcripts.jsonl entry for session e8570e40-5e16-40b6-8a03-f60d7020dbda shows featureId 'cross-area-integration' and a Skill call to systems-worker; features.json defines achievement-panel and gem-socketing-ui with skillName 'ui-worker'."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Architecture notes mention that achievement panels need wheel-listener cleanup, but the dedicated AchievementSystem unit tests still encode the obsolete double-counting contract. Shared-state docs currently do not capture that the behavior was corrected in code and tests must be updated accordingly.",
+      "evidence": ".factory/library/architecture.md documents achievement/UI cleanup patterns, while src/__tests__/AchievementSystem.test.ts:31-44 still comments that update() increments once per matching achievement key."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. Evidence for the requested feature does not match the assigned feature: the reviewed session/commit is for cross-area integration, not endgame UI polish, and its diff does not implement the required UI/state work. Additionally, dedicated AchievementSystem tests remain aligned to the old bugged counting semantics rather than the new implementation."
+}

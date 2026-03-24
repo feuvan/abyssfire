@@ -1,0 +1,45 @@
+{
+  "featureId": "sprite-render-hud-polish",
+  "reviewedAt": "2026-03-24T20:01:02Z",
+  "commitId": "9eca614",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The reviewed commit is a narrow font-family/DPR cleanup in ZoneScene, but it does not implement or verify the broad sprite/tile/HUD/VFX/test coverage promised by the assigned feature. The code change itself looks safe, but the feature scope is materially underdelivered.",
+    "issues": [
+      {
+        "file": "src/scenes/ZoneScene.ts",
+        "line": 912,
+        "severity": "blocking",
+        "description": "The implementation only adjusts text font family and fs() usage for a handful of ZoneScene labels. It does not add or modify any sprite rendering, tile transition, fog-of-war, loot bag, portal animation, HUD/minimap layout, missing-texture handling, death animation, or VFX cleanup code required by the feature description."
+      },
+      {
+        "file": "src/scenes/ZoneScene.ts",
+        "line": 2007,
+        "severity": "blocking",
+        "description": "The feature required adding tests where feasible for layout/scaling helpers and sprite registry completeness, but this commit adds no tests at all and touches no test files. The handoff explicitly states 'No new tests needed', which conflicts with the requested scope."
+      },
+      {
+        "file": "src/scenes/ZoneScene.ts",
+        "line": 2124,
+        "severity": "blocking",
+        "description": "The worker reports broad manual verification of all sprites, tiles, HUD, minimap, fog states, and VFX cleanup, but the transcript shows only static code inspection plus build/test runs; there is no browser/session evidence of the required runtime verification across classes/zones/DPR modes."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The ui-worker skill tells workers to do critical browser-based visual verification, but it does not emphasize that visual-regression features must produce concrete runtime evidence rather than code-only inspection. This allowed the worker to mark a broad visual audit complete with no actual browser interaction recorded in the transcript skeleton.",
+      "evidence": "Skill file `.factory/skills/ui-worker/SKILL.md` says visual verification is critical, but transcript for worker session `958831a5-823c-42a4-af97-5d5b95a03c65` contains only file reads/greps/build/tests and no browser tool usage before EndFeatureRun."
+    },
+    {
+      "area": "knowledge",
+      "observation": "A codebase convention emerged during the worker's audit: Chinese player-facing text outside UIScene also needs the Noto Sans SC stack, not bare Arial/sans-serif. This is only partially captured in AGENTS/ui-worker guidance and may be worth documenting in shared knowledge so future visual work checks non-UIScene labels too.",
+      "evidence": "Commit `9eca614` changes `src/scenes/ZoneScene.ts` labels from `Arial`/`sans-serif` to `\"Noto Sans SC\", sans-serif`; AGENTS.md and the skill mention Chinese UI text generally, but not this specific font-stack convention for runtime world labels."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff `2026-03-24T19-41-29-939Z__visual-regression-check__958831a5-823c-42a4-af97-5d5b95a03c65.json`, commit `9eca614`, the transcript skeleton, AGENTS/services/library docs, and the ui-worker skill. The commit safely normalizes several ZoneScene text labels, but it falls far short of the assigned sprite/tile/HUD polish feature and lacks the requested tests and runtime verification evidence, so the review fails."
+}

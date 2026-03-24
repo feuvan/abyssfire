@@ -1,0 +1,39 @@
+{
+  "featureId": "skilltree-homestead-visual-upgrade",
+  "reviewedAt": "2026-03-24T20:01:22Z",
+  "commitId": "b6bf94f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The UIScene rewrite delivers much of the requested visual polish for both panels, including tabs, scrolling, stronger visual states, larger icons, building art, and pet presentation. But it does not fully satisfy the feature contract: no tests/helpers were added for the state-mapping logic, and the skill-tree connection rendering is not based on real dependencies.",
+    "issues": [
+      {
+        "file": "src/scenes/UIScene.ts",
+        "line": 979,
+        "severity": "blocking",
+        "description": "The prerequisite connector rendering loops over adjacent skills in sorted order and draws a vertical line between every neighboring pair, rather than connecting actual dependent skills. This does not implement the requested prerequisite lines between dependent skills and can visually imply dependencies that do not exist."
+      },
+      {
+        "file": "src/scenes/UIScene.ts",
+        "line": 870,
+        "severity": "blocking",
+        "description": "The feature explicitly called for tests/helpers for skill card state mapping and homestead button/icon state generation where feasible, but no tests or extracted pure helpers were added. The state-selection logic remains embedded inside large rendering methods, so the requested verifiable logic was left undone."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `ui-worker` skill requires browser visual verification for UI work, but this worker skipped that procedure and relied only on static validators.",
+      "evidence": "In `handoffs/2026-03-24T19-31-52-487Z__skill-tree-homestead-polish__b3e243ec-79f2-4f2d-97ce-0f148eb46367.json`, `skillFeedback.deviations` says visual browser verification was not completed."
+    },
+    {
+      "area": "knowledge",
+      "observation": "There is a feature-id naming mismatch between the parent scrutiny assignment and the mission metadata, which forced manual correlation through the handoff/commit rather than direct lookup.",
+      "evidence": "The task asked for `skilltree-homestead-visual-upgrade`, but `features.json` defines the completed feature as `skill-tree-homestead-polish` (lines 1403-1428)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the handoff, transcript skeleton, ui-worker skill, mission shared-state docs, commit `b6bf94f`, and `src/scenes/UIScene.ts`. The feature fails review because it omitted the requested helper/test coverage and its skill-tree connectors are generic sequential lines rather than true dependency/prerequisite links."
+}

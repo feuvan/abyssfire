@@ -1,0 +1,1331 @@
+{
+  "groupId": "endgame-crossarea",
+  "testedAt": "2026-03-25T00:00:00Z",
+  "isolation": {
+    "appUrl": "http://localhost:5173",
+    "browserSession": "681429e79854__crossend",
+    "freshBrowserOnly": true,
+    "usedExistingSaves": false
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "code/runtime inspection",
+    "curl"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-STORY-001",
+      "title": "VAL-STORY-001",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-002",
+      "title": "VAL-STORY-002",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-003",
+      "title": "VAL-STORY-003",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-004",
+      "title": "VAL-STORY-004",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-005",
+      "title": "VAL-STORY-005",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-006",
+      "title": "VAL-STORY-006",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-007",
+      "title": "VAL-STORY-007",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-008",
+      "title": "VAL-STORY-008",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-009",
+      "title": "VAL-STORY-009",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-010",
+      "title": "VAL-STORY-010",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-STORY-011",
+      "title": "VAL-STORY-011",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-001",
+      "title": "VAL-END-001",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-002",
+      "title": "VAL-END-002",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-003",
+      "title": "VAL-END-003",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-004",
+      "title": "VAL-END-004",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-005",
+      "title": "VAL-END-005",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-006",
+      "title": "VAL-END-006",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-007",
+      "title": "VAL-END-007",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-008",
+      "title": "VAL-END-008",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-009",
+      "title": "VAL-END-009",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-010",
+      "title": "VAL-END-010",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-END-012",
+      "title": "VAL-END-012",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "VAL-CROSS-001",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "VAL-CROSS-002",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "VAL-CROSS-003",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "VAL-CROSS-004",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "title": "VAL-CROSS-005",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "VAL-CROSS-006",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-007",
+      "title": "VAL-CROSS-007",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-008",
+      "title": "VAL-CROSS-008",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-009",
+      "title": "VAL-CROSS-009",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-010",
+      "title": "VAL-CROSS-010",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-011",
+      "title": "VAL-CROSS-011",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-012",
+      "title": "VAL-CROSS-012",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-013",
+      "title": "VAL-CROSS-013",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    },
+    {
+      "id": "VAL-CROSS-014",
+      "title": "VAL-CROSS-014",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Read validation contract and mission guidance",
+          "expected": "Understand required browser-visible behavior and evidence",
+          "observed": "Completed."
+        },
+        {
+          "action": "Start fresh isolated browser session 681429e79854__crossend",
+          "expected": "Browser launches and app becomes testable at http://localhost:5173",
+          "observed": "agent-browser failed before navigation with 'Daemon failed to start (socket: /Users/feuvan/.agent-browser/681429e79854__crossend.sock)'."
+        },
+        {
+          "action": "Attempt non-disruptive recovery",
+          "expected": "Session starts after cleanup/retry",
+          "observed": "Still blocked after closing stale sessions, installing Chromium, killing stale task daemons, removing stale socket/pid files, and retrying temporary sessions."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not available; browser session never launched",
+        "network": "curl -sf http://localhost:5173 succeeded; browser automation blocked before page navigation",
+        "runtimeChecks": [
+          "Reviewed mission guidance in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/AGENTS.md",
+          "Reviewed browser isolation rules in /Users/feuvan/src/abyssfire/.factory/library/user-testing.md",
+          "Reviewed assigned assertions in /Users/feuvan/.factory/missions/fbe7c561-846e-470a-ac23-7d0e1c4a21da/validation-contract.md",
+          "Inspected source for relevant runtime surfaces via ripgrep (difficulty, dungeon, achievement, socket, lore, quest, panel hooks)"
+        ]
+      },
+      "issues": "Blocked by browser automation infrastructure; required real user surface could not be exercised."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "agent-browser could not start any fresh isolated session; every attempt failed with 'Daemon failed to start (socket: ...)' before the app could be exercised.",
+      "resolved": false,
+      "resolution": "Tried closing stale sessions, verifying lingering PIDs, killing only the task's stale agent-browser daemons, removing stale socket/pid files, installing Chromium, and retrying with both assigned and temporary session names. Browser automation still could not start.",
+      "affectedAssertions": [
+        "VAL-STORY-001",
+        "VAL-STORY-002",
+        "VAL-STORY-003",
+        "VAL-STORY-004",
+        "VAL-STORY-005",
+        "VAL-STORY-006",
+        "VAL-STORY-007",
+        "VAL-STORY-008",
+        "VAL-STORY-009",
+        "VAL-STORY-010",
+        "VAL-STORY-011",
+        "VAL-END-001",
+        "VAL-END-002",
+        "VAL-END-003",
+        "VAL-END-004",
+        "VAL-END-005",
+        "VAL-END-006",
+        "VAL-END-007",
+        "VAL-END-008",
+        "VAL-END-009",
+        "VAL-END-010",
+        "VAL-END-012",
+        "VAL-CROSS-001",
+        "VAL-CROSS-002",
+        "VAL-CROSS-003",
+        "VAL-CROSS-004",
+        "VAL-CROSS-005",
+        "VAL-CROSS-006",
+        "VAL-CROSS-007",
+        "VAL-CROSS-008",
+        "VAL-CROSS-009",
+        "VAL-CROSS-010",
+        "VAL-CROSS-011",
+        "VAL-CROSS-012",
+        "VAL-CROSS-013",
+        "VAL-CROSS-014"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Required real-user-surface browser validation was blocked because agent-browser could not create the mandated fresh isolated session.",
+      "affectedAssertions": [
+        "VAL-STORY-001",
+        "VAL-STORY-002",
+        "VAL-STORY-003",
+        "VAL-STORY-004",
+        "VAL-STORY-005",
+        "VAL-STORY-006",
+        "VAL-STORY-007",
+        "VAL-STORY-008",
+        "VAL-STORY-009",
+        "VAL-STORY-010",
+        "VAL-STORY-011",
+        "VAL-END-001",
+        "VAL-END-002",
+        "VAL-END-003",
+        "VAL-END-004",
+        "VAL-END-005",
+        "VAL-END-006",
+        "VAL-END-007",
+        "VAL-END-008",
+        "VAL-END-009",
+        "VAL-END-010",
+        "VAL-END-012",
+        "VAL-CROSS-001",
+        "VAL-CROSS-002",
+        "VAL-CROSS-003",
+        "VAL-CROSS-004",
+        "VAL-CROSS-005",
+        "VAL-CROSS-006",
+        "VAL-CROSS-007",
+        "VAL-CROSS-008",
+        "VAL-CROSS-009",
+        "VAL-CROSS-010",
+        "VAL-CROSS-011",
+        "VAL-CROSS-012",
+        "VAL-CROSS-013",
+        "VAL-CROSS-014"
+      ],
+      "quickFixAttempted": "Verified dev server availability with curl, invoked the agent-browser skill, closed stale sessions, installed Chromium, killed stale agent-browser PIDs for the affected session, removed stale socket/pid files, and retried with multiple session names."
+    }
+  ],
+  "summary": "All 37 assigned assertions are blocked for this run because the required isolated browser session could not be started; only mission guidance, contract review, local dev-server healthcheck, and code/runtime surface inspection were completed."
+}
