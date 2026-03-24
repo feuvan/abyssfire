@@ -20,6 +20,8 @@ import { LightingSystem } from '../systems/LightingSystem';
 import { VFXManager } from '../systems/VFXManager';
 import { WeatherSystem } from '../systems/WeatherSystem';
 import { TrailRenderer } from '../systems/TrailRenderer';
+import { StatusEffectSystem } from '../systems/StatusEffectSystem';
+import type { StatusEffectType } from '../systems/StatusEffectSystem';
 import { audioManager } from '../systems/audio/AudioManager';
 import { applyColorGrading } from '../graphics/ColorGradePipeline';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
@@ -91,6 +93,7 @@ export class ZoneScene extends Phaser.Scene {
   private vfx!: VFXManager;
   private weather!: WeatherSystem;
   private trails!: TrailRenderer;
+  statusEffects!: StatusEffectSystem;
   private inCombat = false;
   private isTransitioning = false;
   private isPortaling = false;
@@ -128,6 +131,7 @@ export class ZoneScene extends Phaser.Scene {
     this.combatSystem = new CombatSystem();
     this.lootSystem = new LootSystem();
     this.skillEffects = new SkillEffectSystem(this);
+    this.statusEffects = new StatusEffectSystem();
 
     const isFirstLoad = !this.inventorySystem;
     if (isFirstLoad) {
@@ -353,6 +357,9 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private handlePlayerDied(): void {
+    // Clear status effects on player death
+    this.statusEffects.clearEntity('player');
+
     if (this.vfx) {
       this.vfx.cameraFlash(80, 0.6, 0xffffff);
       this.vfx.deathBurst(this.player.sprite.x, this.player.sprite.y - 16, 0xcc2222);
@@ -399,6 +406,14 @@ export class ZoneScene extends Phaser.Scene {
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
     for (const monster of this.monsters) {
       if (!monster.isAlive()) continue;
+
+      // Status effects: immobilized monsters skip update entirely
+      if (this.statusEffects.isImmobilized(monster.id)) {
+        // Still update animator for visual state
+        monster.animator.update(delta);
+        continue;
+      }
+
       // Safe zone: repel aggro monsters
       let monsterInSafe = false;
       for (const camp of this.campPositions) {
@@ -431,6 +446,7 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     this.handleCombat(time);
+    this.updateStatusEffects(time);
     this.updateCombatState();
     this.updateTargetIndicator();
     if (this.vfx) this.vfx.updateDangerVignette(this.player.hp / this.player.maxHp);
@@ -1055,6 +1071,8 @@ export class ZoneScene extends Phaser.Scene {
         t.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
         this.applySteal(result);
         this.showDamageText(t.sprite.x, t.sprite.y, result.damage, result.isCrit, false, false, skill.damageType);
+        // Apply status effects from skill damage type
+        this.applySkillStatusEffect(t, skill, result.damage, time);
         if (!t.isAlive()) this.onMonsterKilled(t);
         if (this.vfx && skill.damageType !== 'physical') {
           const impactColor = skillId.includes('fire') || skillId === 'meteor' ? 0xff6600
@@ -1080,6 +1098,8 @@ export class ZoneScene extends Phaser.Scene {
       target.takeDamage(result.damage, this.player.sprite.x, this.player.sprite.y);
       this.applySteal(result);
       this.showDamageText(target.sprite.x, target.sprite.y, result.damage, result.isCrit, false, false, skill.damageType);
+      // Apply status effects from skill damage type
+      this.applySkillStatusEffect(target, skill, result.damage, time);
       if (!target.isAlive()) this.onMonsterKilled(target);
       this.skillEffects.play(skillId, this.player.sprite.x, this.player.sprite.y,
         target.sprite.x, target.sprite.y);
@@ -1102,6 +1122,8 @@ export class ZoneScene extends Phaser.Scene {
 
     for (const monster of this.monsters) {
       if (!monster.isAlive() || monster.state !== 'attack') continue;
+      // Immobilized monsters cannot attack
+      if (this.statusEffects.isImmobilized(monster.id)) continue;
       if (time - monster.lastAttackTime >= monster.definition.attackSpeed) {
         monster.lastAttackTime = time;
         monster.playAttack(this.player.sprite.x, this.player.sprite.y);
@@ -1143,6 +1165,10 @@ export class ZoneScene extends Phaser.Scene {
             isCrit: result.isCrit, isPlayerTarget: true,
             targetMaxHP: this.player.maxHp,
           });
+
+          // Monster applies status effects to player based on monster type
+          this.applyMonsterStatusEffect(monster, time);
+
           if (this.player.hp <= 0) {
             // Death save check (set bonus / legendary)
             const eqDs = this.getEquipStats();
@@ -1430,6 +1456,9 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private onMonsterKilled(monster: Monster): void {
+    // Clear status effects on death
+    this.statusEffects.clearEntity(monster.id);
+
     const diffMult = this.difficulty === 'hell' ? 3 : this.difficulty === 'nightmare' ? 2 : 1;
     const homeBonus = this.homesteadSystem.getTotalBonuses();
     const eq = this.getEquipStats();
@@ -2175,6 +2204,166 @@ export class ZoneScene extends Phaser.Scene {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Status Effect System integration
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Tick and expire status effects on all tracked entities.
+   * Apply DoT damage and visual indicators.
+   */
+  private updateStatusEffects(time: number): void {
+    if (!this.statusEffects) return;
+
+    const tracked = this.statusEffects.getTrackedEntities();
+    for (const entityId of tracked) {
+      // Tick DoTs
+      const ticks = this.statusEffects.tick(entityId, time);
+      for (const tick of ticks) {
+        if (entityId === 'player') {
+          // DoT damage to player
+          if (this.player.hp <= 0) continue;
+          // Poison heal reduction: halve healing while poisoned (handled in regen)
+          this.player.hp = Math.max(0, this.player.hp - tick.damage);
+          this.showDamageText(
+            this.player.sprite.x, this.player.sprite.y,
+            tick.damage, false, false, true,
+            tick.type === 'burn' ? 'fire' : tick.type === 'poison' ? 'poison' : undefined,
+          );
+          EventBus.emit(GameEvents.COMBAT_DAMAGE, {
+            targetId: 'player', damage: tick.damage, isDodged: false,
+            isCrit: false, isPlayerTarget: true, targetMaxHP: this.player.maxHp,
+          });
+          if (this.player.hp <= 0) {
+            this.player.die();
+          }
+        } else {
+          // DoT damage to monster
+          const monster = this.monsters.find(m => m.id === entityId && m.isAlive());
+          if (monster) {
+            // Bleed ignores defense (damage applied directly via takeDamage)
+            monster.takeDamage(tick.damage);
+            this.showDamageText(
+              monster.sprite.x, monster.sprite.y,
+              tick.damage, false, false, false,
+              tick.type === 'burn' ? 'fire' : tick.type === 'poison' ? 'poison' : undefined,
+            );
+            if (!monster.isAlive()) {
+              this.onMonsterKilled(monster);
+            }
+          }
+        }
+      }
+
+      // Expire effects
+      const expired = this.statusEffects.expire(entityId, time);
+      if (expired.length > 0) {
+        const effectNames: Record<string, string> = {
+          burn: '灼烧', freeze: '冰冻', poison: '中毒',
+          bleed: '流血', slow: '减速', stun: '眩晕',
+        };
+        for (const type of expired) {
+          EventBus.emit(GameEvents.LOG_MESSAGE, {
+            text: `${effectNames[type] ?? type}效果已消失`,
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Apply status effects from monster attacks to the player.
+   * Fire-type monsters apply Burn, poison-type apply Poison, ice-type apply Freeze, etc.
+   */
+  private applyMonsterStatusEffect(monster: Monster, time: number): void {
+    const spriteKey = monster.definition.spriteKey;
+    const monsterId = monster.definition.id;
+    const damage = monster.definition.damage;
+
+    // Fire monsters (fire_elemental, phoenix, lava_golem, etc.) apply Burn
+    if (spriteKey.includes('fire') || spriteKey.includes('phoenix') ||
+        spriteKey.includes('lava') || monsterId.includes('fire') ||
+        monsterId.includes('phoenix') || monsterId.includes('lava')) {
+      // 30% chance to apply burn on hit
+      if (Math.random() < 0.3) {
+        const burnDamage = Math.floor(damage * 0.2); // 20% of monster damage per tick
+        this.statusEffects.apply('player', 'burn', Math.max(1, burnDamage), 3000, monster.id, time);
+      }
+    }
+
+    // Poison monsters (poison_spider, venom types, etc.) apply Poison
+    if (spriteKey.includes('poison') || spriteKey.includes('venom') ||
+        spriteKey.includes('spider') || monsterId.includes('poison') ||
+        monsterId.includes('venom') || monsterId.includes('spider')) {
+      if (Math.random() < 0.25) {
+        const poisonDamage = Math.floor(damage * 0.15);
+        this.statusEffects.apply('player', 'poison', Math.max(1, poisonDamage), 4000, monster.id, time);
+      }
+    }
+
+    // Ice monsters apply Slow
+    if (spriteKey.includes('ice') || spriteKey.includes('frost') ||
+        monsterId.includes('ice') || monsterId.includes('frost')) {
+      if (Math.random() < 0.2) {
+        this.statusEffects.apply('player', 'slow', 30, 3000, monster.id, time);
+      }
+    }
+  }
+
+  /**
+   * Apply status effects from player skills to monsters.
+   * Based on skill damage type: fire → Burn, ice → Freeze (for freeze-tagged skills),
+   * poison → Poison, physical with bleed tag → Bleed.
+   */
+  private applySkillStatusEffect(
+    target: Monster,
+    skill: import('../data/types').SkillDefinition,
+    damage: number,
+    time: number,
+  ): void {
+    if (!target.isAlive()) return;
+    const skillId = skill.id;
+    const dmgType = skill.damageType;
+
+    // Fire skills apply Burn (50% chance, or guaranteed for heavy fire skills)
+    if (dmgType === 'fire') {
+      const burnChance = skillId.includes('meteor') || skillId.includes('fireball') ? 0.6 : 0.4;
+      if (Math.random() < burnChance) {
+        const burnDamage = Math.max(1, Math.floor(damage * 0.15));
+        this.statusEffects.apply(target.id, 'burn', burnDamage, 3000, 'player', time);
+      }
+    }
+
+    // Ice skills: apply Freeze if skill has stunDuration or is a 'freeze' skill, otherwise Slow
+    if (dmgType === 'ice') {
+      if (skill.stunDuration || skillId.includes('freeze') || skillId === 'blizzard') {
+        const freezeDuration = skill.stunDuration ?? 2000;
+        this.statusEffects.apply(target.id, 'freeze', 1, freezeDuration, 'player', time);
+      } else {
+        if (Math.random() < 0.35) {
+          this.statusEffects.apply(target.id, 'slow', 40, 3000, 'player', time);
+        }
+      }
+    }
+
+    // Poison skills apply Poison
+    if (dmgType === 'poison') {
+      const poisonDamage = Math.max(1, Math.floor(damage * 0.2));
+      this.statusEffects.apply(target.id, 'poison', poisonDamage, 4000, 'player', time);
+    }
+
+    // Physical skills with 'bleed' in the name apply Bleed
+    if (skillId.includes('bleed') || skillId.includes('lacerate') || skillId.includes('rend')) {
+      const bleedDamage = Math.max(1, Math.floor(damage * 0.25));
+      this.statusEffects.apply(target.id, 'bleed', bleedDamage, 5000, 'player', time);
+    }
+
+    // War Stomp stun uses StatusEffectSystem too (in addition to existing buff-based stun)
+    if (skill.stunDuration && dmgType === 'physical') {
+      this.statusEffects.apply(target.id, 'stun', 1, skill.stunDuration, 'player', time);
+    }
+  }
+
   shutdown(): void {
     this.isTransitioning = false;
     this.isPortaling = false;
@@ -2225,6 +2414,7 @@ export class ZoneScene extends Phaser.Scene {
     if (this.lighting) this.lighting.destroy();
     if (this.weather) this.weather.destroy();
     if (this.trails) this.trails.destroy();
+    if (this.statusEffects) this.statusEffects.clearAll();
     for (const key of this.textures.getTextureKeys()) {
       if (key.startsWith('tile_t_')) this.textures.remove(key);
     }
