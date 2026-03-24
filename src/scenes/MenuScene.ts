@@ -312,8 +312,13 @@ export class MenuScene extends Phaser.Scene {
       bg.on('pointerover', () => { bg.setStrokeStyle(2, 0xc0934a, 1); bg.setFillStyle(0x1a1a2e, 0.95); });
       bg.on('pointerout', () => { bg.setStrokeStyle(1.5, 0xc0934a, 0.8); bg.setFillStyle(0x12121e, 0.9); });
       bg.on('pointerdown', () => {
-        const hasCompletedDiffs = Array.isArray(save.completedDifficulties) && save.completedDifficulties.length > 0;
-        if (hasCompletedDiffs) {
+        // Show difficulty selector when save has non-normal difficulty OR completed difficulties.
+        // Also derive completedDifficulties from persisted difficulty for migrated saves.
+        save.completedDifficulties = DifficultySystem.deriveCompletedDifficulties(
+          (save.difficulty as any) ?? 'normal',
+          save.completedDifficulties,
+        );
+        if (DifficultySystem.shouldShowDifficultySelector(save.difficulty, save.completedDifficulties)) {
           this.menuContainer?.destroy(); this.menuContainer = null;
           this.showDifficultySelector(save);
         } else {

@@ -96,6 +96,44 @@ export class DifficultySystem {
   }
 
   /**
+   * Derive completedDifficulties from the persisted difficulty when the array
+   * is empty or missing. Migrated saves may have `difficulty: 'hell'` but
+   * `completedDifficulties: []`. In that case we infer the prerequisite
+   * difficulties must have been completed.
+   *
+   * Returns a new array (never mutates the input).
+   */
+  static deriveCompletedDifficulties(
+    difficulty: Difficulty,
+    completedDifficulties: string[] | undefined | null,
+  ): string[] {
+    const existing = Array.isArray(completedDifficulties) ? [...completedDifficulties] : [];
+    if (existing.length > 0) return existing;
+
+    // Infer from persisted difficulty
+    if (difficulty === 'nightmare') {
+      return ['normal'];
+    }
+    if (difficulty === 'hell') {
+      return ['normal', 'nightmare'];
+    }
+    return existing;
+  }
+
+  /**
+   * Determine whether the difficulty selector should be shown for a save.
+   * Shows when the save has a non-normal difficulty or has completed difficulties.
+   */
+  static shouldShowDifficultySelector(
+    difficulty: string | undefined,
+    completedDifficulties: string[] | undefined | null,
+  ): boolean {
+    if (difficulty && difficulty !== 'normal') return true;
+    if (Array.isArray(completedDifficulties) && completedDifficulties.length > 0) return true;
+    return false;
+  }
+
+  /**
    * Get the availability state for each difficulty based on completed difficulties.
    * 'completed' — difficulty cleared (checkmark ✓)
    * 'available' — selectable but not yet cleared
