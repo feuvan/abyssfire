@@ -426,4 +426,8 @@ export interface SaveData {
   mercenary?: MercenarySaveData;
   /** Tracks visited dialogue nodes and choices made per NPC. */
   dialogueState?: Record<string, { visitedNodes: string[]; choicesMade: Record<string, string> }>;
+  /** Mini-boss IDs whose pre-fight dialogue has been seen (does not repeat). */
+  miniBossDialogueSeen?: string[];
+  /** Lore collectible IDs that have been discovered. */
+  loreCollected?: string[];
 }

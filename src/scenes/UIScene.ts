@@ -12,6 +12,8 @@ import type { ZoneScene } from './ZoneScene';
 import type { ItemInstance, WeaponBase, ArmorBase, DialogueTree, DialogueNode, DialogueChoice } from '../data/types';
 import { MercenarySystem, MERCENARY_DEFS, MERCENARY_TYPES } from '../systems/MercenarySystem';
 import type { MercenaryState } from '../systems/MercenarySystem';
+import { LoreByZone, AllLoreEntries, getLoreCountByZone } from '../data/loreCollectibles';
+import type { LoreEntry } from '../data/loreCollectibles';
 
 const FONT = '"Noto Sans SC", sans-serif';
 const TITLE_FONT = '"Cinzel", "Noto Sans SC", serif';
@@ -88,6 +90,14 @@ export class UIScene extends Phaser.Scene {
   private dialogueTreeState: Record<string, { visitedNodes: string[]; choicesMade: Record<string, string> }> = {};
   /** Current dialogue tree scroll offset for long text. */
   private dialogueScrollY = 0;
+  /** Mini-boss cinematic dialogue panel. */
+  private miniBossDialoguePanel: Phaser.GameObjects.Container | null = null;
+  private miniBossDialogueBackdrop: Phaser.GameObjects.Rectangle | null = null;
+  /** Lore text popup panel. */
+  private loreTextPanel: Phaser.GameObjects.Container | null = null;
+  private loreTextBackdrop: Phaser.GameObjects.Rectangle | null = null;
+  /** Lore log sub-tab in quest log. */
+  private questLogLoreTab = false;
 
   constructor() {
     super({ key: 'UIScene' });
@@ -342,6 +352,8 @@ export class UIScene extends Phaser.Scene {
     EventBus.on(GameEvents.SHOP_OPEN, this.handleShopOpen, this);
     EventBus.on(GameEvents.NPC_INTERACT, this.handleNpcInteract, this);
     EventBus.on(GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
+    EventBus.on(GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
+    EventBus.on(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
     EventBus.on('ui:refresh', this.handleUiRefresh, this);
   }
 
@@ -381,6 +393,16 @@ export class UIScene extends Phaser.Scene {
     this.nextMinimapRefreshAt = 0;
     this.nextQuestTrackerRefreshAt = 0;
     this.lastQuestTrackerSignature = '';
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private handleMiniBossDialogue(data: any): void {
+    this.showMiniBossDialogue(data.bossName, data.dialogueTree, data.onDismiss);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private handleLoreCollected(data: any): void {
+    this.showLoreText(data.entry);
   }
 
   private cleanupAudioPanelInputHandlers(): void {
@@ -1860,24 +1882,36 @@ export class UIScene extends Phaser.Scene {
 
     // Tab buttons
     const tabY = px(38);
-    const activeTab = this.add.rectangle(px(100), tabY, px(160), px(24), this.questLogTab === 'active' ? 0x1a2a3a : 0x111122)
+    const activeTab = this.add.rectangle(px(80), tabY, px(130), px(24), this.questLogTab === 'active' && !this.questLogLoreTab ? 0x1a2a3a : 0x111122)
       .setStrokeStyle(Math.round(1 * DPR), 0x2471a3).setInteractive({ useHandCursor: true });
-    activeTab.on('pointerdown', () => { this.questLogTab = 'active'; this.questLogPage = 0; this.questLogSelectedIndex = 0; this.refreshQuestLog(); });
+    activeTab.on('pointerdown', () => { this.questLogTab = 'active'; this.questLogLoreTab = false; this.questLogPage = 0; this.questLogSelectedIndex = 0; this.refreshQuestLog(); });
     this.questLogPanel.add(activeTab);
-    this.questLogPanel.add(this.add.text(px(100), tabY, '进行中', {
-      fontSize: fs(14), color: this.questLogTab === 'active' ? '#5dade2' : '#666', fontFamily: FONT,
+    this.questLogPanel.add(this.add.text(px(80), tabY, '进行中', {
+      fontSize: fs(14), color: this.questLogTab === 'active' && !this.questLogLoreTab ? '#5dade2' : '#666', fontFamily: FONT,
     }).setOrigin(0.5));
 
-    const completedTab = this.add.rectangle(px(270), tabY, px(160), px(24), this.questLogTab === 'completed' ? 0x1a2a3a : 0x111122)
+    const completedTab = this.add.rectangle(px(220), tabY, px(130), px(24), this.questLogTab === 'completed' && !this.questLogLoreTab ? 0x1a2a3a : 0x111122)
       .setStrokeStyle(Math.round(1 * DPR), 0x2471a3).setInteractive({ useHandCursor: true });
-    completedTab.on('pointerdown', () => { this.questLogTab = 'completed'; this.questLogPage = 0; this.questLogSelectedIndex = 0; this.refreshQuestLog(); });
+    completedTab.on('pointerdown', () => { this.questLogTab = 'completed'; this.questLogLoreTab = false; this.questLogPage = 0; this.questLogSelectedIndex = 0; this.refreshQuestLog(); });
     this.questLogPanel.add(completedTab);
-    this.questLogPanel.add(this.add.text(px(270), tabY, '已完成', {
-      fontSize: fs(14), color: this.questLogTab === 'completed' ? '#5dade2' : '#666', fontFamily: FONT,
+    this.questLogPanel.add(this.add.text(px(220), tabY, '已完成', {
+      fontSize: fs(14), color: this.questLogTab === 'completed' && !this.questLogLoreTab ? '#5dade2' : '#666', fontFamily: FONT,
     }).setOrigin(0.5));
 
-    // Render quest content
-    this.renderQuestLogContent();
+    const loreTab = this.add.rectangle(px(360), tabY, px(130), px(24), this.questLogLoreTab ? 0x1a2a3a : 0x111122)
+      .setStrokeStyle(Math.round(1 * DPR), 0xDAA520).setInteractive({ useHandCursor: true });
+    loreTab.on('pointerdown', () => { this.questLogLoreTab = true; this.refreshQuestLog(); });
+    this.questLogPanel.add(loreTab);
+    this.questLogPanel.add(this.add.text(px(360), tabY, '传说', {
+      fontSize: fs(14), color: this.questLogLoreTab ? '#DAA520' : '#666', fontFamily: FONT,
+    }).setOrigin(0.5));
+
+    // Render content based on active tab
+    if (this.questLogLoreTab) {
+      this.renderLoreLogContent();
+    } else {
+      this.renderQuestLogContent();
+    }
   }
 
   private refreshQuestLog(): void {
@@ -2903,6 +2937,234 @@ export class UIScene extends Phaser.Scene {
     this.audioPanel.add(closeBtn);
   }
 
+  // ─── Mini-Boss Cinematic Dialogue ─────────────────────────────────────
+
+  /** Show a cinematic pre-fight dialogue panel for a mini-boss. */
+  private showMiniBossDialogue(bossName: string, dialogueTree: DialogueTree, onDismiss: () => void): void {
+    this.closeAllPanels();
+    audioManager.playSFX('click');
+
+    // Full-screen dark backdrop
+    this.miniBossDialogueBackdrop = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.55)
+      .setInteractive().setDepth(4499);
+
+    const pw = px(500), ph = px(260);
+    const panelX = (W - pw) / 2, panelY = (H - ph) / 2;
+    this.miniBossDialoguePanel = this.add.container(panelX, panelY).setDepth(4500);
+    this.animatePanelOpen(this.miniBossDialoguePanel);
+
+    // Background with special cinematic border
+    const bg = this.add.rectangle(0, 0, pw, ph, 0x0a0a18, 0.96).setOrigin(0, 0)
+      .setStrokeStyle(Math.round(3 * DPR), 0xe74c3c);
+    this.miniBossDialoguePanel.add(bg);
+
+    // Boss name header
+    this.miniBossDialoguePanel.add(this.add.text(pw / 2, px(16), `⚔ ${bossName} ⚔`, {
+      fontSize: fs(20), color: '#e74c3c', fontFamily: TITLE_FONT, fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    // Separator line
+    this.miniBossDialoguePanel.add(
+      this.add.rectangle(pw / 2, px(42), pw - px(40), Math.round(1 * DPR), 0x660000).setOrigin(0.5, 0)
+    );
+
+    // Collect all dialogue lines from the tree
+    const lines: string[] = [];
+    let nodeId: string | undefined = dialogueTree.startNodeId;
+    while (nodeId) {
+      const node: DialogueNode | undefined = dialogueTree.nodes[nodeId];
+      if (!node) break;
+      lines.push(node.text);
+      if (node.isEnd) break;
+      nodeId = node.nextNodeId;
+    }
+
+    // Display lines with typewriter-style presentation
+    let dy = px(52);
+    for (const line of lines) {
+      this.miniBossDialoguePanel.add(this.add.text(px(20), dy, line, {
+        fontSize: fs(13), color: '#ddd', fontFamily: FONT,
+        wordWrap: { width: pw - px(40) }, lineSpacing: px(3),
+      }));
+      dy += px(50);
+    }
+
+    // Dismiss button
+    const btnY = ph - px(30);
+    const btn = this.add.text(pw / 2, btnY, '[ 开战 ]', {
+      fontSize: fs(16), color: '#e74c3c', fontFamily: FONT, fontStyle: 'bold',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    btn.on('pointerover', () => btn.setColor('#ff6666'));
+    btn.on('pointerout', () => btn.setColor('#e74c3c'));
+    btn.on('pointerdown', () => {
+      this.closeMiniBossDialogue();
+      onDismiss();
+    });
+    this.miniBossDialoguePanel.add(btn);
+
+    // Also allow backdrop click to dismiss
+    this.miniBossDialogueBackdrop.on('pointerdown', () => {
+      this.closeMiniBossDialogue();
+      onDismiss();
+    });
+  }
+
+  private closeMiniBossDialogue(): void {
+    if (this.miniBossDialoguePanel) {
+      this.miniBossDialoguePanel.destroy();
+      this.miniBossDialoguePanel = null;
+    }
+    if (this.miniBossDialogueBackdrop) {
+      this.miniBossDialogueBackdrop.destroy();
+      this.miniBossDialogueBackdrop = null;
+    }
+  }
+
+  // ─── Lore Text Popup ─────────────────────────────────────────────────
+
+  /** Show a lore text popup when a collectible is picked up. */
+  private showLoreText(entry: LoreEntry): void {
+    // Close existing lore panel if open
+    if (this.loreTextPanel) { this.loreTextPanel.destroy(); this.loreTextPanel = null; }
+    if (this.loreTextBackdrop) { this.loreTextBackdrop.destroy(); this.loreTextBackdrop = null; }
+
+    audioManager.playSFX('click');
+
+    // Semi-transparent backdrop
+    this.loreTextBackdrop = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.4)
+      .setInteractive().setDepth(4499);
+
+    const pw = px(440), ph = px(240);
+    const panelX = (W - pw) / 2, panelY = (H - ph) / 2;
+    this.loreTextPanel = this.add.container(panelX, panelY).setDepth(4500);
+    this.animatePanelOpen(this.loreTextPanel);
+
+    // Background
+    const bg = this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.96).setOrigin(0, 0)
+      .setStrokeStyle(Math.round(2 * DPR), 0xDAA520);
+    this.loreTextPanel.add(bg);
+
+    // Header icon + name
+    this.loreTextPanel.add(this.add.text(pw / 2, px(14), `📜 ${entry.name}`, {
+      fontSize: fs(17), color: '#DAA520', fontFamily: TITLE_FONT, fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    // Zone name
+    const zoneNames: Record<string, string> = {
+      emerald_plains: '翡翠平原', twilight_forest: '暮色森林',
+      anvil_mountains: '铁砧山脉', scorching_desert: '灼热沙漠', abyss_rift: '深渊裂隙',
+    };
+    this.loreTextPanel.add(this.add.text(pw / 2, px(36), zoneNames[entry.zone] ?? entry.zone, {
+      fontSize: fs(11), color: '#888', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+
+    // Separator
+    this.loreTextPanel.add(
+      this.add.rectangle(pw / 2, px(52), pw - px(40), Math.round(1 * DPR), 0x333344).setOrigin(0.5, 0)
+    );
+
+    // Lore text
+    this.loreTextPanel.add(this.add.text(px(20), px(60), entry.text, {
+      fontSize: fs(12), color: '#ccc', fontFamily: FONT,
+      wordWrap: { width: pw - px(40) }, lineSpacing: px(3),
+    }));
+
+    // Close button
+    const closeBtn = this.add.text(pw - px(16), px(10), '✕', {
+      fontSize: fs(18), color: '#c0392b', fontFamily: FONT,
+    }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => this.closeLoreText());
+    this.loreTextPanel.add(closeBtn);
+
+    // Dismiss on backdrop click
+    this.loreTextBackdrop.on('pointerdown', () => this.closeLoreText());
+
+    // Auto-close after 8 seconds
+    this.time.delayedCall(8000, () => this.closeLoreText());
+  }
+
+  private closeLoreText(): void {
+    if (this.loreTextPanel) { this.loreTextPanel.destroy(); this.loreTextPanel = null; }
+    if (this.loreTextBackdrop) { this.loreTextBackdrop.destroy(); this.loreTextBackdrop = null; }
+  }
+
+  // ─── Lore Log Panel (Sub-tab in Quest Log) ───────────────────────────
+
+  /** Render the lore log content inside the quest log panel. */
+  private renderLoreLogContent(): void {
+    if (!this.questLogPanel || !this.zone) return;
+
+    const pw = px(700);
+    const zoneNames: Record<string, string> = {
+      emerald_plains: '翡翠平原', twilight_forest: '暮色森林',
+      anvil_mountains: '铁砧山脉', scorching_desert: '灼热沙漠', abyss_rift: '深渊裂隙',
+    };
+    const zoneOrder = ['emerald_plains', 'twilight_forest', 'anvil_mountains', 'scorching_desert', 'abyss_rift'];
+
+    const collected = this.zone.getLoreCollected();
+
+    let dy = px(58);
+
+    for (const zoneId of zoneOrder) {
+      const zoneLore = LoreByZone[zoneId] ?? [];
+      if (zoneLore.length === 0) continue;
+
+      const discoveredCount = zoneLore.filter(l => collected.has(l.id)).length;
+      const totalCount = zoneLore.length;
+      const zoneName = zoneNames[zoneId] ?? zoneId;
+      const progressColor = discoveredCount >= totalCount ? '#27ae60' : '#c0934a';
+
+      // Zone header with progress
+      this.questLogPanel.add(this.add.text(px(20), dy, `${zoneName}  —  ${discoveredCount}/${totalCount} 收集`, {
+        fontSize: fs(15), color: progressColor, fontFamily: TITLE_FONT, fontStyle: 'bold',
+      }));
+      dy += px(24);
+
+      // Progress bar
+      const barX = px(20), barW = pw - px(60), barH = px(5);
+      this.questLogPanel.add(this.add.rectangle(barX, dy, barW, barH, 0x1a1a2e).setOrigin(0, 0)
+        .setStrokeStyle(Math.round(1 * DPR), 0x333344));
+      if (discoveredCount > 0) {
+        const fillW = Math.round(barW * (discoveredCount / totalCount));
+        this.questLogPanel.add(this.add.rectangle(barX, dy, fillW, barH, discoveredCount >= totalCount ? 0x27ae60 : 0xDAA520).setOrigin(0, 0));
+      }
+      dy += px(12);
+
+      // Lore entries
+      for (const entry of zoneLore) {
+        const found = collected.has(entry.id);
+        const icon = found ? '✦' : '?';
+        const nameText = found ? entry.name : '未发现';
+        const color = found ? '#e0d8cc' : '#444';
+
+        this.questLogPanel.add(this.add.text(px(30), dy, `${icon}  ${nameText}`, {
+          fontSize: fs(12), color, fontFamily: FONT,
+        }));
+
+        if (found) {
+          // Show truncated lore text
+          const truncText = entry.text.length > 40 ? entry.text.substring(0, 40) + '...' : entry.text;
+          this.questLogPanel.add(this.add.text(px(50), dy + px(16), truncText, {
+            fontSize: fs(10), color: '#777', fontFamily: FONT,
+            wordWrap: { width: pw - px(80) },
+          }));
+          dy += px(36);
+        } else {
+          dy += px(20);
+        }
+      }
+
+      dy += px(8);
+    }
+
+    // No lore message
+    if (collected.size === 0) {
+      this.questLogPanel.add(this.add.text(pw / 2, px(120), '尚未发现任何传说', {
+        fontSize: fs(14), color: '#555', fontFamily: FONT,
+      }).setOrigin(0.5, 0));
+    }
+  }
+
   /** Animate a panel container opening with scale + alpha pop-in */
   private animatePanelOpen(panel: Phaser.GameObjects.Container): void {
     panel.setScale(0.92, 0.92).setAlpha(0);
@@ -2924,6 +3186,8 @@ export class UIScene extends Phaser.Scene {
     if (this.homesteadPanel) { this.homesteadPanel.destroy(); this.homesteadPanel = null; }
     if (this.questLogPanel) { this.questLogPanel.destroy(); this.questLogPanel = null; }
     if (this.companionPanel) { this.companionPanel.destroy(); this.companionPanel = null; }
+    if (this.loreTextPanel) { this.loreTextPanel.destroy(); this.loreTextPanel = null; }
+    if (this.loreTextBackdrop) { this.loreTextBackdrop.destroy(); this.loreTextBackdrop = null; }
     if (this.audioPanel) {
       this.cleanupAudioPanelInputHandlers();
       this.audioPanel.destroy();
@@ -2951,6 +3215,8 @@ export class UIScene extends Phaser.Scene {
     EventBus.off(GameEvents.SHOP_OPEN, this.handleShopOpen, this);
     EventBus.off(GameEvents.NPC_INTERACT, this.handleNpcInteract, this);
     EventBus.off(GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
+    EventBus.off(GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
+    EventBus.off(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
     EventBus.off('ui:refresh', this.handleUiRefresh, this);
     this.skillSlots = [];
     this.skillCooldownOverlays = [];

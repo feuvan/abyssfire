@@ -34,4 +34,6 @@ export const GameEvents = {
   UI_SKILL_CLICK: 'ui:skill_click',
   UI_TOGGLE_PANEL: 'ui:toggle_panel',
   COMBAT_STATE_CHANGED: 'combat:state_changed',
+  MINIBOSS_DIALOGUE: 'miniboss:dialogue',
+  LORE_COLLECTED: 'lore:collected',
 } as const;

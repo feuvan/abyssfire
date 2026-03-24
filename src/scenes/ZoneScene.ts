@@ -31,6 +31,9 @@ import { SpriteGenerator } from '../graphics/SpriteGenerator';
 import { AllClasses } from '../data/classes/index';
 import { AllMaps } from '../data/maps/index';
 import { MonstersByZone, getMonsterDef } from '../data/monsters/index';
+import { MiniBossByZone, MiniBossDialogues, MiniBossSpawns } from '../data/miniBosses';
+import { LoreByZone } from '../data/loreCollectibles';
+import type { LoreEntry } from '../data/loreCollectibles';
 import { NPCDefinitions } from '../data/npcs';
 import { AllQuests } from '../data/quests/all_quests';
 import type { MapData, ClassDefinition, ItemInstance, SaveData } from '../data/types';
@@ -112,6 +115,16 @@ export class ZoneScene extends Phaser.Scene {
   private inCombat = false;
   private isTransitioning = false;
   private isPortaling = false;
+  /** Mini-boss monster reference per zone (spawned at a fixed position). */
+  private miniBossMonster: Monster | null = null;
+  /** Set of mini-boss IDs whose pre-fight dialogue has been seen (persisted in save). */
+  private miniBossDialogueSeen: Set<string> = new Set();
+  /** Whether the mini-boss dialogue is currently being shown. */
+  private miniBossDialogueActive = false;
+  /** Lore collectible sprites placed in the current zone. */
+  private loreSprites: { sprite: Phaser.GameObjects.Container; entry: LoreEntry }[] = [];
+  /** Set of lore entry IDs that have been collected (persisted in save). */
+  private loreCollected: Set<string> = new Set();
   /** Track which entities have status tints applied (entityId -> Set of applied tint types) */
   private statusTintApplied: Map<string, Set<string>> = new Map();
   private combatDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -134,12 +147,13 @@ export class ZoneScene extends Phaser.Scene {
     this._pendingSaveData = data.saveData ?? null;
   }
 
-  create(data: { classId: string; mapId: string; saveData?: SaveData; playerStats?: any }): void {
+  create(data: { classId: string; mapId: string; saveData?: SaveData; playerStats?: any; miniBossDialogueSeen?: string[]; loreCollected?: string[] }): void {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
     // `scene.restart()` reuses the same scene instance, so transient guards must
     // be cleared explicitly when entering a new zone.
     this.isTransitioning = false;
     this.isPortaling = false;
+    this.miniBossDialogueActive = false;
     this.monsters = [];
     this.npcs = [];
     this.lootDrops = [];
@@ -196,6 +210,14 @@ export class ZoneScene extends Phaser.Scene {
     }
     this.player.recalcDerived();
 
+    // Restore mini-boss/lore state from zone transitions
+    if (data.miniBossDialogueSeen) {
+      this.miniBossDialogueSeen = new Set(data.miniBossDialogueSeen);
+    }
+    if (data.loreCollected) {
+      this.loreCollected = new Set(data.loreCollected);
+    }
+
     // Restore from save (when loading from menu, not zone transitions)
     if (this._pendingSaveData) {
       this.restoreFromSave(this._pendingSaveData);
@@ -207,6 +229,8 @@ export class ZoneScene extends Phaser.Scene {
     this.spawnMonsters();
     this.spawnNPCs();
     this.spawnRarePets();
+    this.spawnMiniBoss();
+    this.spawnLoreCollectibles();
     this.spawnMercenarySprite();
     this.spawnPetSprite();
     this.buildCampDecorations();
@@ -474,9 +498,18 @@ export class ZoneScene extends Phaser.Scene {
 
     this.player.update(time, delta, recovery, eqStats);
 
+    // ── Mini-boss pre-fight dialogue check ──────────────────
+    this.checkMiniBossDialogue();
+
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
     for (const monster of this.monsters) {
       if (!monster.isAlive()) continue;
+
+      // Freeze mini-boss during dialogue
+      if (this.miniBossDialogueActive && monster === this.miniBossMonster) {
+        monster.animator.update(delta);
+        continue;
+      }
 
       // Status effects: immobilized monsters skip update entirely
       if (this.statusEffects.isImmobilized(monster.id)) {
@@ -565,6 +598,7 @@ export class ZoneScene extends Phaser.Scene {
 
     this.checkExitProximity();
     this.checkRarePetPickup();
+    this.checkLorePickup();
 
     // Throttled viewport tile update
     if (time - this.lastTileUpdate > 100) {
@@ -1834,7 +1868,12 @@ export class ZoneScene extends Phaser.Scene {
       type: 'loot',
     });
 
-    this.time.delayedCall(15000, () => this.respawnMonster(monster));
+    // Don't respawn mini-bosses
+    if (this.miniBossMonster === monster) {
+      this.miniBossMonster = null;
+    } else {
+      this.time.delayedCall(15000, () => this.respawnMonster(monster));
+    }
   }
 
   private dropLoot(item: ItemInstance, col: number, row: number): void {
@@ -2083,6 +2122,8 @@ export class ZoneScene extends Phaser.Scene {
       this.scene.restart({
         classId: this.player.classData.id,
         mapId: targetMap,
+        miniBossDialogueSeen: [...this.miniBossDialogueSeen],
+        loreCollected: [...this.loreCollected],
         playerStats: {
           level: this.player.level,
           exp: this.player.exp,
@@ -2155,6 +2196,8 @@ export class ZoneScene extends Phaser.Scene {
         completedDifficulties: [],
         mercenary: this.mercenarySystem?.toSaveData(),
         dialogueState: this.getDialogueState(),
+        miniBossDialogueSeen: [...this.miniBossDialogueSeen],
+        loreCollected: [...this.loreCollected],
       });
     } catch (_e) { /* silent fail */ }
   }
@@ -2219,6 +2262,16 @@ export class ZoneScene extends Phaser.Scene {
     // 9. Dialogue tree state
     if (save.dialogueState) {
       this.setDialogueState(save.dialogueState);
+    }
+
+    // 10. Mini-boss dialogue seen
+    if (save.miniBossDialogueSeen) {
+      this.miniBossDialogueSeen = new Set(save.miniBossDialogueSeen);
+    }
+
+    // 11. Lore collectibles collected
+    if (save.loreCollected) {
+      this.loreCollected = new Set(save.loreCollected);
     }
   }
 
@@ -2379,6 +2432,247 @@ export class ZoneScene extends Phaser.Scene {
         this.petSpawnSprites.splice(i, 1);
       }
     }
+  }
+
+  // ─── Mini-Boss System ─────────────────────────────────────────────────
+
+  /** Spawn the zone's mini-boss at its fixed position. */
+  private spawnMiniBoss(): void {
+    this.miniBossMonster = null;
+    const miniBossDef = MiniBossByZone[this.currentMapId];
+    const spawnPos = MiniBossSpawns[this.currentMapId];
+    if (!miniBossDef || !spawnPos) return;
+
+    const c = spawnPos.col;
+    const r = spawnPos.row;
+    if (c < 0 || c >= this.mapData.cols || r < 0 || r >= this.mapData.rows) return;
+
+    const monster = new Monster(this, miniBossDef, c, r);
+    // Apply elite affixes
+    const affixes = this.eliteAffixSystem.rollAffixes(this.currentMapId, true);
+    if (affixes.length > 0) {
+      monster.applyEliteAffixes(affixes, this.eliteAffixSystem);
+    }
+    this.monsters.push(monster);
+    this.miniBossMonster = monster;
+  }
+
+  /** Check if the player is within aggro range of the mini-boss and trigger dialogue. */
+  private checkMiniBossDialogue(): void {
+    if (this.miniBossDialogueActive) return;
+    if (!this.miniBossMonster || !this.miniBossMonster.isAlive()) return;
+
+    const mb = this.miniBossMonster;
+    const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, mb.tileCol, mb.tileRow);
+    if (dist > mb.definition.aggroRange) return;
+
+    // Already seen dialogue for this mini-boss?
+    if (this.miniBossDialogueSeen.has(mb.definition.id)) return;
+
+    // Freeze monster state — prevent chase/attack until dialogue dismissed
+    mb.state = 'idle';
+    this.miniBossDialogueActive = true;
+    this.miniBossDialogueSeen.add(mb.definition.id);
+
+    // Get dialogue tree
+    const dialogueTree = MiniBossDialogues[mb.definition.id];
+    if (!dialogueTree) {
+      this.miniBossDialogueActive = false;
+      return;
+    }
+
+    // Show cinematic dialogue via EventBus → UIScene
+    EventBus.emit(GameEvents.MINIBOSS_DIALOGUE, {
+      bossName: mb.definition.name,
+      dialogueTree,
+      onDismiss: () => {
+        this.miniBossDialogueActive = false;
+        // Force aggro after dialogue
+        mb.state = 'chase';
+      },
+    });
+  }
+
+  // ─── Lore Collectibles System ─────────────────────────────────────────
+
+  /** Spawn lore collectible visual sprites for the current zone. */
+  private spawnLoreCollectibles(): void {
+    // Clean up previous zone lore sprites
+    for (const ls of this.loreSprites) {
+      ls.sprite.destroy();
+    }
+    this.loreSprites = [];
+
+    const loreEntries = LoreByZone[this.currentMapId];
+    if (!loreEntries) return;
+
+    for (const entry of loreEntries) {
+      // Skip already-collected entries
+      if (this.loreCollected.has(entry.id)) continue;
+
+      const { x: worldX, y: worldY } = cartToIso(entry.col, entry.row);
+      const container = this.add.container(worldX, worldY);
+      container.setDepth(worldY + 80);
+
+      // Distinct visual per sprite type
+      const visual = this.createLoreVisual(entry.spriteType);
+      container.add(visual.elements);
+
+      // Floating label
+      const label = this.add.text(0, -28 * DPR, `✦ ${entry.name}`, {
+        fontFamily: '"Noto Sans SC", sans-serif',
+        fontSize: fs(9),
+        color: this.getLoreSpriteColor(entry.spriteType),
+        stroke: '#000000',
+        strokeThickness: 2 * DPR,
+      }).setOrigin(0.5, 1);
+      container.add(label);
+
+      // Pulsing glow animation
+      if (visual.glow) {
+        this.tweens.add({
+          targets: visual.glow,
+          alpha: { from: 0.3, to: 0.7 },
+          scaleX: { from: 0.9, to: 1.1 },
+          scaleY: { from: 0.9, to: 1.1 },
+          duration: 1500,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+      }
+
+      this.loreSprites.push({ sprite: container, entry });
+    }
+  }
+
+  /** Create distinct visual elements for a lore sprite type. */
+  private createLoreVisual(spriteType: string): { elements: Phaser.GameObjects.GameObject[]; glow: Phaser.GameObjects.GameObject | null } {
+    const elements: Phaser.GameObjects.GameObject[] = [];
+    let glow: Phaser.GameObjects.GameObject | null = null;
+
+    switch (spriteType) {
+      case 'ancient_tablet': {
+        const base = this.add.rectangle(0, -6 * DPR, 16 * DPR, 20 * DPR, 0x8B7355);
+        base.setStrokeStyle(1, 0x5C4033);
+        elements.push(base);
+        const rune = this.add.rectangle(0, -8 * DPR, 8 * DPR, 3 * DPR, 0xDAA520);
+        elements.push(rune);
+        glow = this.add.ellipse(0, 0, 24 * DPR, 12 * DPR, 0xDAA520, 0.4);
+        elements.push(glow);
+        break;
+      }
+      case 'old_scroll': {
+        const scroll = this.add.rectangle(0, -6 * DPR, 18 * DPR, 12 * DPR, 0xF5DEB3);
+        scroll.setStrokeStyle(1, 0xA0522D);
+        elements.push(scroll);
+        const rod1 = this.add.rectangle(-8 * DPR, -6 * DPR, 3 * DPR, 14 * DPR, 0x8B4513);
+        elements.push(rod1);
+        const rod2 = this.add.rectangle(8 * DPR, -6 * DPR, 3 * DPR, 14 * DPR, 0x8B4513);
+        elements.push(rod2);
+        glow = this.add.ellipse(0, 0, 24 * DPR, 12 * DPR, 0xF5DEB3, 0.3);
+        elements.push(glow);
+        break;
+      }
+      case 'crystal_shard': {
+        const crystal = this.add.triangle(0, -10 * DPR, 0, 16 * DPR, 8 * DPR, 0, -8 * DPR, 0, 0x66CCFF);
+        elements.push(crystal);
+        glow = this.add.ellipse(0, 0, 22 * DPR, 11 * DPR, 0x66CCFF, 0.5);
+        elements.push(glow);
+        break;
+      }
+      case 'carved_stone': {
+        const stone = this.add.rectangle(0, -4 * DPR, 20 * DPR, 14 * DPR, 0x808080);
+        stone.setStrokeStyle(1, 0x505050);
+        elements.push(stone);
+        const carving = this.add.rectangle(0, -5 * DPR, 12 * DPR, 6 * DPR, 0xA9A9A9);
+        elements.push(carving);
+        glow = this.add.ellipse(0, 0, 26 * DPR, 13 * DPR, 0xB0C4DE, 0.3);
+        elements.push(glow);
+        break;
+      }
+      case 'torn_journal': {
+        const book = this.add.rectangle(0, -6 * DPR, 14 * DPR, 16 * DPR, 0xDEB887);
+        book.setStrokeStyle(1, 0x8B4513);
+        elements.push(book);
+        const spine = this.add.rectangle(-6 * DPR, -6 * DPR, 3 * DPR, 16 * DPR, 0x654321);
+        elements.push(spine);
+        glow = this.add.ellipse(0, 0, 20 * DPR, 10 * DPR, 0xDEB887, 0.3);
+        elements.push(glow);
+        break;
+      }
+      case 'rune_pillar': {
+        const pillar = this.add.rectangle(0, -10 * DPR, 10 * DPR, 24 * DPR, 0x4B0082);
+        pillar.setStrokeStyle(1, 0x2F0060);
+        elements.push(pillar);
+        const rune1 = this.add.rectangle(0, -14 * DPR, 6 * DPR, 3 * DPR, 0x9370DB);
+        elements.push(rune1);
+        const rune2 = this.add.rectangle(0, -6 * DPR, 6 * DPR, 3 * DPR, 0x9370DB);
+        elements.push(rune2);
+        glow = this.add.ellipse(0, 0, 20 * DPR, 10 * DPR, 0x9370DB, 0.5);
+        elements.push(glow);
+        break;
+      }
+      default: {
+        const defaultObj = this.add.rectangle(0, -6 * DPR, 14 * DPR, 14 * DPR, 0xCCCCCC);
+        elements.push(defaultObj);
+        glow = this.add.ellipse(0, 0, 20 * DPR, 10 * DPR, 0xCCCCCC, 0.3);
+        elements.push(glow);
+        break;
+      }
+    }
+
+    return { elements, glow };
+  }
+
+  /** Get display color for a lore sprite type label. */
+  private getLoreSpriteColor(spriteType: string): string {
+    switch (spriteType) {
+      case 'ancient_tablet': return '#DAA520';
+      case 'old_scroll': return '#DEB887';
+      case 'crystal_shard': return '#66CCFF';
+      case 'carved_stone': return '#B0C4DE';
+      case 'torn_journal': return '#D2B48C';
+      case 'rune_pillar': return '#9370DB';
+      default: return '#CCCCCC';
+    }
+  }
+
+  /** Check if the player is close enough to a lore collectible to interact. */
+  private checkLorePickup(): void {
+    for (let i = this.loreSprites.length - 1; i >= 0; i--) {
+      const ls = this.loreSprites[i];
+      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, ls.entry.col, ls.entry.row);
+      if (dist <= 2) {
+        // Collect the lore entry
+        this.loreCollected.add(ls.entry.id);
+
+        // Show lore text via EventBus → UIScene
+        EventBus.emit(GameEvents.LORE_COLLECTED, {
+          entry: ls.entry,
+        });
+
+        EventBus.emit(GameEvents.LOG_MESSAGE, {
+          text: `发现传说: ${ls.entry.name}`,
+          type: 'system',
+        });
+
+        // Fade out and destroy sprite
+        this.tweens.add({
+          targets: ls.sprite,
+          alpha: 0,
+          scaleX: 1.3, scaleY: 1.3,
+          duration: 500,
+          onComplete: () => { ls.sprite.destroy(); },
+        });
+        this.loreSprites.splice(i, 1);
+      }
+    }
+  }
+
+  /** Get lore collected IDs — used by UIScene for lore log. */
+  getLoreCollected(): Set<string> {
+    return this.loreCollected;
   }
 
   private respawnMonster(dead: Monster): void {
@@ -3466,6 +3760,13 @@ export class ZoneScene extends Phaser.Scene {
       ps.sprite.destroy();
     }
     this.petSpawnSprites = [];
+    // Clean up lore sprites
+    for (const ls of this.loreSprites) {
+      ls.sprite.destroy();
+    }
+    this.loreSprites = [];
+    this.miniBossMonster = null;
+    this.miniBossDialogueActive = false;
     this.input.off('pointerdown', this.handlePointerDown, this);
     EventBus.off(GameEvents.PLAYER_DIED, this.handlePlayerDied, this);
     EventBus.off(GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);
