@@ -149,7 +149,7 @@ export const MageClass: ClassDefinition = {
       range: 0,
       damageMultiplier: 0,
       damageType: 'arcane',
-      buff: { stat: 'damageReduction', value: 0.3, duration: 8000 },
+      buff: { stat: 'manaShield', value: 0.3, duration: 8000 },
       icon: 'skill_manashield',
       scaling: {
         damagePerLevel: 0,
