@@ -33,6 +33,13 @@ export interface EquipStats {
   expBonus: number;
   cooldownReduction: number;
   knockback: number;
+  // Primary stat bonuses (from gems, affixes)
+  str: number;
+  dex: number;
+  int: number;
+  vit: number;
+  spi: number;
+  lck: number;
   // Special effects (from set bonuses / legendaries)
   killHealPercent: number;
   deathSave: number;
@@ -58,6 +65,7 @@ export function emptyEquipStats(): EquipStats {
     fireDamage: 0, iceDamage: 0, lightningDamage: 0, poisonDamage: 0,
     fireResist: 0, iceResist: 0, lightningResist: 0, poisonResist: 0, allResist: 0,
     moveSpeed: 0, magicFind: 0, expBonus: 0, cooldownReduction: 0, knockback: 0,
+    str: 0, dex: 0, int: 0, vit: 0, spi: 0, lck: 0,
     killHealPercent: 0, deathSave: 0, critDoubleStrike: 0, doubleShot: 0,
     freeCast: 0, elementalDamagePercent: 0, ignoreDefense: 0, damageReduction: 0,
     thornsHeal: 0, dodgeCounter: 0,

@@ -94,14 +94,45 @@ export const Consumables: ItemBase[] = [
 ];
 
 export const Gems: ItemBase[] = [
+  // Ruby — +STR
   { id: 'g_ruby_1', name: '碎裂红宝石', nameEn: 'Chipped Ruby', description: '+5 力量', type: 'gem', icon: 'g_ruby', levelReq: 1, sellPrice: 10, stackable: true, maxStack: 10 },
   { id: 'g_ruby_2', name: '红宝石', nameEn: 'Ruby', description: '+12 力量', type: 'gem', icon: 'g_ruby', levelReq: 15, sellPrice: 30, stackable: true, maxStack: 10 },
+  { id: 'g_ruby_3', name: '完美红宝石', nameEn: 'Perfect Ruby', description: '+20 力量', type: 'gem', icon: 'g_ruby', levelReq: 30, sellPrice: 60, stackable: true, maxStack: 10 },
+  // Sapphire — +INT
   { id: 'g_sapphire_1', name: '碎裂蓝宝石', nameEn: 'Chipped Sapphire', description: '+5 智力', type: 'gem', icon: 'g_sapphire', levelReq: 1, sellPrice: 10, stackable: true, maxStack: 10 },
   { id: 'g_sapphire_2', name: '蓝宝石', nameEn: 'Sapphire', description: '+12 智力', type: 'gem', icon: 'g_sapphire', levelReq: 15, sellPrice: 30, stackable: true, maxStack: 10 },
+  { id: 'g_sapphire_3', name: '完美蓝宝石', nameEn: 'Perfect Sapphire', description: '+20 智力', type: 'gem', icon: 'g_sapphire', levelReq: 30, sellPrice: 60, stackable: true, maxStack: 10 },
+  // Emerald — +DEX
   { id: 'g_emerald_1', name: '碎裂翡翠', nameEn: 'Chipped Emerald', description: '+5 敏捷', type: 'gem', icon: 'g_emerald', levelReq: 1, sellPrice: 10, stackable: true, maxStack: 10 },
+  { id: 'g_emerald_2', name: '翡翠', nameEn: 'Emerald', description: '+12 敏捷', type: 'gem', icon: 'g_emerald', levelReq: 15, sellPrice: 30, stackable: true, maxStack: 10 },
+  { id: 'g_emerald_3', name: '完美翡翠', nameEn: 'Perfect Emerald', description: '+20 敏捷', type: 'gem', icon: 'g_emerald', levelReq: 30, sellPrice: 60, stackable: true, maxStack: 10 },
+  // Topaz — +MF (magicFind)
   { id: 'g_topaz_1', name: '碎裂黄玉', nameEn: 'Chipped Topaz', description: '+5% 掉宝率', type: 'gem', icon: 'g_topaz', levelReq: 1, sellPrice: 10, stackable: true, maxStack: 10 },
+  { id: 'g_topaz_2', name: '黄玉', nameEn: 'Topaz', description: '+10% 掉宝率', type: 'gem', icon: 'g_topaz', levelReq: 15, sellPrice: 30, stackable: true, maxStack: 10 },
+  { id: 'g_topaz_3', name: '完美黄玉', nameEn: 'Perfect Topaz', description: '+18% 掉宝率', type: 'gem', icon: 'g_topaz', levelReq: 30, sellPrice: 60, stackable: true, maxStack: 10 },
+  // Diamond — +all stats
   { id: 'g_diamond_1', name: '碎裂钻石', nameEn: 'Chipped Diamond', description: '+3 全属性', type: 'gem', icon: 'g_diamond', levelReq: 10, sellPrice: 20, stackable: true, maxStack: 10 },
 ];
+
+/**
+ * Gem stat mapping: base ID → { stat, value, tier, name }.
+ * Used when socketing a gem to create a GemInstance.
+ */
+export const GEM_STAT_MAP: Record<string, { stat: string; value: number; tier: number }> = {
+  g_ruby_1:    { stat: 'str', value: 5, tier: 1 },
+  g_ruby_2:    { stat: 'str', value: 12, tier: 2 },
+  g_ruby_3:    { stat: 'str', value: 20, tier: 3 },
+  g_sapphire_1: { stat: 'int', value: 5, tier: 1 },
+  g_sapphire_2: { stat: 'int', value: 12, tier: 2 },
+  g_sapphire_3: { stat: 'int', value: 20, tier: 3 },
+  g_emerald_1: { stat: 'dex', value: 5, tier: 1 },
+  g_emerald_2: { stat: 'dex', value: 12, tier: 2 },
+  g_emerald_3: { stat: 'dex', value: 20, tier: 3 },
+  g_topaz_1:   { stat: 'magicFind', value: 5, tier: 1 },
+  g_topaz_2:   { stat: 'magicFind', value: 10, tier: 2 },
+  g_topaz_3:   { stat: 'magicFind', value: 18, tier: 3 },
+  g_diamond_1: { stat: 'allStats', value: 3, tier: 1 },
+};
 
 export const AllItemBases: (ItemBase | WeaponBase | ArmorBase | AccessoryBase)[] = [
   ...Weapons, ...Armors, ...Accessories, ...Consumables, ...Gems,

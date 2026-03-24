@@ -1,7 +1,7 @@
 import { EventBus, GameEvents } from '../utils/EventBus';
-import { getItemBase } from '../data/items/bases';
+import { getItemBase, GEM_STAT_MAP } from '../data/items/bases';
 import { SetDefinitions } from '../data/items/sets';
-import type { ItemInstance, EquipSlot, WeaponBase, ArmorBase } from '../data/types';
+import type { ItemInstance, EquipSlot, WeaponBase, ArmorBase, GemInstance } from '../data/types';
 import { emptyEquipStats, type EquipStats } from './CombatSystem';
 
 const MAX_INVENTORY = 100;
@@ -144,6 +144,15 @@ export class InventorySystem {
       stats[stat] = (stats[stat] ?? 0) + (value ?? 0);
     }
 
+    // Expand allStats into individual primary stats
+    if (stats['allStats']) {
+      const bonus = stats['allStats'];
+      for (const s of ['str', 'dex', 'int', 'vit', 'spi', 'lck']) {
+        stats[s] = (stats[s] ?? 0) + bonus;
+      }
+      delete stats['allStats'];
+    }
+
     return stats;
   }
 
@@ -215,6 +224,147 @@ export class InventorySystem {
     item.identified = true;
     EventBus.emit(GameEvents.LOG_MESSAGE, { text: `鉴定了 ${item.name}`, type: 'info' });
     return true;
+  }
+
+  /**
+   * Socket a gem from inventory into an equipped item.
+   * @param equipSlot The equipment slot containing the item to socket into
+   * @param gemUid The UID of the gem item in inventory
+   * @returns true on success
+   */
+  socketGem(equipSlot: EquipSlot, gemUid: string): boolean {
+    const equipItem = this.equipment[equipSlot];
+    if (!equipItem) return false;
+
+    const base = getItemBase(equipItem.baseId);
+    if (!base) return false;
+
+    // Determine max sockets from base
+    const maxSockets = ('sockets' in base && typeof (base as WeaponBase | ArmorBase).sockets === 'number')
+      ? (base as WeaponBase | ArmorBase).sockets
+      : 0;
+
+    if (equipItem.sockets.length >= maxSockets) {
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '没有空余插槽', type: 'system' });
+      return false;
+    }
+
+    // Find gem in inventory
+    const gemItem = this.inventory.find(i => i.uid === gemUid);
+    if (!gemItem) return false;
+
+    const gemBase = getItemBase(gemItem.baseId);
+    if (!gemBase || gemBase.type !== 'gem') return false;
+
+    // Get gem stat mapping
+    const gemStats = GEM_STAT_MAP[gemItem.baseId];
+    if (!gemStats) return false;
+
+    // Create GemInstance
+    const gemInstance: GemInstance = {
+      gemId: gemItem.baseId,
+      name: gemBase.name,
+      stat: gemStats.stat,
+      value: gemStats.value,
+      tier: gemStats.tier,
+    };
+
+    // Remove gem from inventory (1 unit)
+    gemItem.quantity--;
+    if (gemItem.quantity <= 0) {
+      const idx = this.inventory.findIndex(i => i.uid === gemUid);
+      if (idx !== -1) this.inventory.splice(idx, 1);
+    }
+
+    // Insert into sockets
+    equipItem.sockets.push(gemInstance);
+
+    // Recompute item stats (affix stats + gem stats)
+    this.recomputeItemStats(equipItem);
+
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: `镶嵌了 ${gemBase.name}`, type: 'info' });
+    return true;
+  }
+
+  /**
+   * Remove a gem from an equipped item's socket back to inventory.
+   * @param equipSlot The equipment slot containing the item
+   * @param socketIndex The index of the gem in the sockets array
+   * @returns true on success
+   */
+  unsocketGem(equipSlot: EquipSlot, socketIndex: number): boolean {
+    const equipItem = this.equipment[equipSlot];
+    if (!equipItem) return false;
+
+    if (socketIndex < 0 || socketIndex >= equipItem.sockets.length) return false;
+
+    const gem = equipItem.sockets[socketIndex];
+
+    // Check inventory space
+    if (this.inventory.length >= MAX_INVENTORY) {
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '背包已满，无法取出宝石!', type: 'system' });
+      return false;
+    }
+
+    // Remove gem from socket
+    equipItem.sockets.splice(socketIndex, 1);
+
+    // Create an inventory item for the gem
+    const gemBase = getItemBase(gem.gemId);
+    const gemItem: ItemInstance = {
+      uid: `gem_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      baseId: gem.gemId,
+      name: gem.name,
+      quality: 'normal',
+      level: 1,
+      affixes: [],
+      sockets: [],
+      identified: true,
+      quantity: 1,
+      stats: {},
+    };
+
+    // Try stacking with existing gem in inventory
+    const existing = this.inventory.find(i => i.baseId === gem.gemId && i.quantity < (gemBase?.maxStack ?? 10));
+    if (existing) {
+      existing.quantity++;
+    } else {
+      this.inventory.push(gemItem);
+    }
+
+    // Recompute item stats
+    this.recomputeItemStats(equipItem);
+
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: `取出了 ${gem.name}`, type: 'info' });
+    return true;
+  }
+
+  /**
+   * Get the maximum number of sockets for an equipped item.
+   */
+  getMaxSockets(equipSlot: EquipSlot): number {
+    const equipItem = this.equipment[equipSlot];
+    if (!equipItem) return 0;
+    const base = getItemBase(equipItem.baseId);
+    if (!base) return 0;
+    if ('sockets' in base && typeof (base as WeaponBase | ArmorBase).sockets === 'number') {
+      return (base as WeaponBase | ArmorBase).sockets;
+    }
+    return 0;
+  }
+
+  /**
+   * Recompute item.stats from affixes + socketed gems.
+   */
+  private recomputeItemStats(item: ItemInstance): void {
+    const stats: Record<string, number> = {};
+    for (const affix of item.affixes) {
+      stats[affix.stat] = (stats[affix.stat] ?? 0) + affix.value;
+    }
+    for (const gem of item.sockets) {
+      stats[gem.stat] = (stats[gem.stat] ?? 0) + gem.value;
+    }
+    item.stats = stats;
   }
 
   useConsumable(uid: string): { effect: string; value: number } | null {

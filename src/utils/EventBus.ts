@@ -47,4 +47,5 @@ export const GameEvents = {
   DUNGEON_FLOOR_CHANGE: 'dungeon:floor_change',
   DUNGEON_EXIT: 'dungeon:exit',
   DUNGEON_BOSS_KILLED: 'dungeon:boss_killed',
+  GEM_SOCKET_OPEN: 'gem_socket:open',
 } as const;

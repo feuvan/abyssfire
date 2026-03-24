@@ -104,10 +104,16 @@ export class Player {
   }
 
   recalcDerived(equipStats?: EquipStats): void {
-    let hp = this.calcMaxHp();
-    let mp = this.calcMaxMana();
-    let dmg = 8 + this.stats.str * 0.8 + this.level * 2;
-    let def = 3 + this.stats.vit * 0.5 + this.level;
+    // Effective primary stats include gear/gem bonuses
+    const eStr = this.stats.str + (equipStats?.str ?? 0);
+    const eVit = this.stats.vit + (equipStats?.vit ?? 0);
+    const eSpi = this.stats.spi + (equipStats?.spi ?? 0);
+    const eInt = this.stats.int + (equipStats?.int ?? 0);
+
+    let hp = 50 + eVit * 10 + (this.level - 1) * 15;
+    let mp = 30 + eSpi * 8 + eInt * 3 + (this.level - 1) * 8;
+    let dmg = 8 + eStr * 0.8 + this.level * 2;
+    let def = 3 + eVit * 0.5 + this.level;
     let spd = 120;
     let aspd = 1000;
 

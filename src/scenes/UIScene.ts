@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, DPR } from '../config';
 import { EventBus, GameEvents } from '../utils/EventBus';
-import { getItemBase } from '../data/items/bases';
+import { getItemBase, GEM_STAT_MAP } from '../data/items/bases';
 import { STAT_DISPLAY } from '../data/items/affixes';
 import { AllMaps, MapOrder } from '../data/maps/index';
 import { getSkillManaCost, getSkillCooldown, getSkillDamageMultiplier, getSkillBuffValue, getSkillBuffDuration, getSkillAoeRadius } from '../systems/CombatSystem';
@@ -9,7 +9,7 @@ import { NPCDefinitions } from '../data/npcs';
 import { audioManager } from '../systems/audio/AudioManager';
 import type { Player } from '../entities/Player';
 import type { ZoneScene } from './ZoneScene';
-import type { ItemInstance, WeaponBase, ArmorBase, DialogueTree, DialogueNode, DialogueChoice } from '../data/types';
+import type { ItemInstance, WeaponBase, ArmorBase, DialogueTree, DialogueNode, DialogueChoice, EquipSlot } from '../data/types';
 import { MercenarySystem, MERCENARY_DEFS, MERCENARY_TYPES } from '../systems/MercenarySystem';
 import { QUEST_TYPE_LABELS } from '../systems/QuestSystem';
 import type { MercenaryState } from '../systems/MercenarySystem';
@@ -84,6 +84,8 @@ export class UIScene extends Phaser.Scene {
   private audioPanel: Phaser.GameObjects.Container | null = null;
   private audioPanelInputCleanup: Array<() => void> = [];
   private companionPanel: Phaser.GameObjects.Container | null = null;
+  private socketPanel: Phaser.GameObjects.Container | null = null;
+  private socketPanelSlot: string | null = null;
   private nextMinimapRefreshAt = 0;
   private nextQuestTrackerRefreshAt = 0;
   private lastQuestTrackerSignature = '';
@@ -494,13 +496,27 @@ export class UIScene extends Phaser.Scene {
         this.inventoryPanel!.add(this.add.text(sx + eqSlotSize / 2, sy + eqSlotSize / 2, eq.name.charAt(0), {
           fontSize: fs(14), color: '#fff', fontFamily: FONT, fontStyle: 'bold',
         }).setOrigin(0.5));
+        // Socket indicator: small diamond on items with sockets
+        const maxSock = this.zone.inventorySystem.getMaxSockets(slot as any);
+        if (maxSock > 0) {
+          const sockLabel = `◆${eq.sockets.length}/${maxSock}`;
+          this.inventoryPanel!.add(this.add.text(sx + eqSlotSize - px(2), sy + px(2), sockLabel, {
+            fontSize: fs(9), color: '#8be9fd', fontFamily: FONT,
+          }).setOrigin(1, 0));
+        }
         slotBg.on('pointerover', (pointer: Phaser.Input.Pointer) => {
           this.showItemTooltip(eq, pointer.x, pointer.y);
         });
         slotBg.on('pointerout', () => this.hideItemTooltip());
         slotBg.on('pointerdown', () => {
-          this.zone.inventorySystem.unequip(slot as any);
-          this.refreshInventory();
+          const ms = this.zone.inventorySystem.getMaxSockets(slot as any);
+          if (ms > 0) {
+            this.hideItemTooltip();
+            this.openSocketPanel(slot as any);
+          } else {
+            this.zone.inventorySystem.unequip(slot as any);
+            this.refreshInventory();
+          }
         });
       }
     });
@@ -1266,7 +1282,7 @@ export class UIScene extends Phaser.Scene {
     closeBtn.on('pointerdown', () => this.toggleCharacter());
     this.charPanel.add(closeBtn);
 
-    const stats: [string, keyof typeof this.player.stats, string][] = [
+    const statKeys: [string, keyof typeof this.player.stats, string][] = [
       ['力量 STR', 'str', '物理伤害/负重'],
       ['敏捷 DEX', 'dex', '闪避/暴击率/攻速'],
       ['体质 VIT', 'vit', '生命值/物理抗性'],
@@ -1274,14 +1290,17 @@ export class UIScene extends Phaser.Scene {
       ['精神 SPI', 'spi', '法力值/法力回复'],
       ['幸运 LCK', 'lck', '掉宝率/暴击倍率'],
     ];
-    stats.forEach(([label, key, desc], i) => {
+    const eqStatsRaw = this.zone.inventorySystem.getEquipmentStats();
+    statKeys.forEach(([label, key, desc], i) => {
       const sy = px(50) + i * px(40);
-      const val = this.player.stats[key];
+      const base = this.player.stats[key];
+      const bonus = eqStatsRaw[key] ?? 0;
       this.charPanel!.add(this.add.text(px(14), sy, label, {
         fontSize: fs(14), color: '#e0d8cc', fontFamily: FONT,
       }));
-      this.charPanel!.add(this.add.text(px(140), sy, `${val}`, {
-        fontSize: fs(14), color: '#fff', fontFamily: FONT, fontStyle: 'bold',
+      const valStr = bonus > 0 ? `${base} (+${bonus})` : `${base}`;
+      this.charPanel!.add(this.add.text(px(140), sy, valStr, {
+        fontSize: fs(14), color: bonus > 0 ? '#8be9fd' : '#fff', fontFamily: FONT, fontStyle: 'bold',
       }));
       this.charPanel!.add(this.add.text(px(14), sy + px(16), desc, {
         fontSize: fs(11), color: '#666', fontFamily: FONT,
@@ -1302,9 +1321,11 @@ export class UIScene extends Phaser.Scene {
       }
     });
 
-    const dy = px(50) + stats.length * px(40) + px(8);
+    const dy = px(50) + statKeys.length * px(40) + px(8);
     const eqStats = this.zone.inventorySystem.getEquipmentStats();
-    const critPct = (this.player.stats.dex * 0.2 + this.player.stats.lck * 0.5 + (eqStats['critRate'] ?? 0)).toFixed(1);
+    const effectiveDex = this.player.stats.dex + (eqStats['dex'] ?? 0);
+    const effectiveLck = this.player.stats.lck + (eqStats['lck'] ?? 0);
+    const critPct = (effectiveDex * 0.2 + effectiveLck * 0.5 + (eqStats['critRate'] ?? 0)).toFixed(1);
     const derived = [
       `HP: ${Math.ceil(this.player.hp)}/${this.player.maxHp}`,
       `MP: ${Math.ceil(this.player.mana)}/${this.player.maxMana}`,
@@ -2243,6 +2264,24 @@ export class UIScene extends Phaser.Scene {
     if (item.legendaryEffect) {
       lines.push({ text: item.legendaryEffect, color: '#e67e22', size: 12 });
     }
+    // Socketed gems
+    if (item.sockets && item.sockets.length > 0) {
+      lines.push({ text: '── 宝石 ──', color: '#8be9fd', size: 11 });
+      for (const gem of item.sockets) {
+        const disp = STAT_DISPLAY[gem.stat];
+        const label = disp ? disp.label : gem.stat;
+        const suffix = disp?.isPercent ? '%' : '';
+        lines.push({ text: `◆ ${gem.name}: +${gem.value}${suffix} ${label}`, color: '#8be9fd', size: 11 });
+      }
+    }
+    // Socket count (if base has sockets)
+    if (base && 'sockets' in base) {
+      const maxSock = (base as WeaponBase | ArmorBase).sockets;
+      if (maxSock > 0) {
+        const filled = item.sockets?.length ?? 0;
+        lines.push({ text: `插槽: ${filled}/${maxSock}`, color: '#666', size: 11 });
+      }
+    }
     if (base) {
       lines.push({ text: `售价: ${base.sellPrice}G`, color: '#f1c40f', size: 12 });
     }
@@ -2360,6 +2399,221 @@ export class UIScene extends Phaser.Scene {
     }).setInteractive({ useHandCursor: true });
     noBtn.on('pointerdown', () => this.hideContextPopup());
     this.contextPopup.add(noBtn);
+  }
+
+  // --- Socket Panel ---
+  private openSocketPanel(equipSlot: EquipSlot): void {
+    // Close existing socket panel
+    if (this.socketPanel) { this.socketPanel.destroy(); this.socketPanel = null; this.socketPanelSlot = null; }
+
+    const equipItem = this.zone.inventorySystem.equipment[equipSlot];
+    if (!equipItem) return;
+
+    const base = getItemBase(equipItem.baseId);
+    if (!base) return;
+
+    const maxSockets = this.zone.inventorySystem.getMaxSockets(equipSlot);
+    if (maxSockets === 0) return;
+
+    this.socketPanelSlot = equipSlot;
+    audioManager.playSFX('click');
+
+    const pw = px(360), ph = px(380), panelX = (W - pw) / 2, panelY = px(60);
+    this.socketPanel = this.add.container(panelX, panelY).setDepth(4001);
+    this.animatePanelOpen(this.socketPanel);
+
+    // Background
+    this.socketPanel.add(
+      this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95)
+        .setOrigin(0, 0)
+        .setStrokeStyle(Math.round(2 * DPR), 0x8be9fd)
+    );
+
+    // Title
+    this.socketPanel.add(this.add.text(pw / 2, px(12), '宝石镶嵌', {
+      fontSize: fs(18), color: '#8be9fd', fontFamily: TITLE_FONT, fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    // Close button
+    const closeBtn = this.add.text(pw - px(16), px(10), 'X', {
+      fontSize: fs(16), color: '#e74c3c', fontFamily: FONT,
+    }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => {
+      if (this.socketPanel) { this.socketPanel.destroy(); this.socketPanel = null; this.socketPanelSlot = null; }
+    });
+    this.socketPanel.add(closeBtn);
+
+    // Item name
+    const qualityColors: Record<string, string> = {
+      normal: '#cccccc', magic: '#5dade2', rare: '#f1c40f', legendary: '#e67e22', set: '#2ecc71',
+    };
+    this.socketPanel.add(this.add.text(pw / 2, px(36), equipItem.name, {
+      fontSize: fs(15), color: qualityColors[equipItem.quality] ?? '#ccc', fontFamily: FONT, fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    // Socket slots display
+    const sockStartY = px(62);
+    const sockSize = px(48);
+    const sockGap = px(12);
+    const totalW = maxSockets * sockSize + (maxSockets - 1) * sockGap;
+    const sockStartX = (pw - totalW) / 2;
+
+    this.socketPanel.add(this.add.text(pw / 2, sockStartY, `插槽 (${equipItem.sockets.length}/${maxSockets})`, {
+      fontSize: fs(13), color: '#aaa', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+
+    const GEM_COLORS: Record<string, number> = {
+      g_ruby: 0xcc3333, g_sapphire: 0x3366cc, g_emerald: 0x33aa33, g_topaz: 0xccaa33, g_diamond: 0xaaddff,
+    };
+    const GEM_LABELS: Record<string, string> = {
+      g_ruby: '红', g_sapphire: '蓝', g_emerald: '绿', g_topaz: '黄', g_diamond: '钻',
+    };
+
+    for (let i = 0; i < maxSockets; i++) {
+      const sx = sockStartX + i * (sockSize + sockGap);
+      const sy = sockStartY + px(22);
+      const filled = i < equipItem.sockets.length;
+      const gem = filled ? equipItem.sockets[i] : null;
+
+      // Slot background
+      const gemIconKey = gem ? gem.gemId.replace(/_\d+$/, '') : '';
+      const slotColor = gem ? (GEM_COLORS[gemIconKey] ?? 0x333366) : 0x1a1a2e;
+      const slotBg = this.add.rectangle(sx + sockSize / 2, sy + sockSize / 2, sockSize, sockSize, slotColor, gem ? 0.7 : 0.4)
+        .setStrokeStyle(Math.round(2 * DPR), gem ? 0x8be9fd : 0x444466);
+      this.socketPanel!.add(slotBg);
+
+      if (gem) {
+        // Gem icon text
+        const gemLabel = GEM_LABELS[gemIconKey] ?? '◆';
+        this.socketPanel!.add(this.add.text(sx + sockSize / 2, sy + sockSize / 2 - px(4), gemLabel, {
+          fontSize: fs(18), color: '#fff', fontFamily: FONT, fontStyle: 'bold',
+        }).setOrigin(0.5));
+
+        // Tier indicator
+        this.socketPanel!.add(this.add.text(sx + sockSize / 2, sy + sockSize / 2 + px(12), `T${gem.tier}`, {
+          fontSize: fs(10), color: '#aaa', fontFamily: FONT,
+        }).setOrigin(0.5));
+
+        // Gem name below slot
+        this.socketPanel!.add(this.add.text(sx + sockSize / 2, sy + sockSize + px(4), gem.name, {
+          fontSize: fs(10), color: '#8be9fd', fontFamily: FONT,
+        }).setOrigin(0.5, 0));
+
+        // Remove button
+        const removeBtn = this.add.text(sx + sockSize / 2, sy + sockSize + px(18), '[取出]', {
+          fontSize: fs(11), color: '#e74c3c', fontFamily: FONT,
+        }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
+        const socketIndex = i;
+        removeBtn.on('pointerdown', () => {
+          this.zone.inventorySystem.unsocketGem(equipSlot, socketIndex);
+          this.zone.invalidateEquipStats();
+          this.refreshSocketPanel(equipSlot);
+          this.refreshInventory();
+        });
+        this.socketPanel!.add(removeBtn);
+      } else {
+        // Empty slot indicator
+        this.socketPanel!.add(this.add.text(sx + sockSize / 2, sy + sockSize / 2, '◇', {
+          fontSize: fs(20), color: '#333366', fontFamily: FONT,
+        }).setOrigin(0.5));
+
+        // Empty label below
+        this.socketPanel!.add(this.add.text(sx + sockSize / 2, sy + sockSize + px(4), '空插槽', {
+          fontSize: fs(10), color: '#555', fontFamily: FONT,
+        }).setOrigin(0.5, 0));
+      }
+    }
+
+    // Divider
+    const divY = sockStartY + px(22) + sockSize + px(40);
+    this.socketPanel.add(this.add.rectangle(pw / 2, divY, pw - px(20), Math.round(1 * DPR), 0x333344));
+
+    // Available gems from inventory
+    this.socketPanel.add(this.add.text(pw / 2, divY + px(8), '背包中的宝石', {
+      fontSize: fs(14), color: '#c0934a', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+
+    const gemsInInventory = this.zone.inventorySystem.inventory.filter(item => {
+      const b = getItemBase(item.baseId);
+      return b && b.type === 'gem';
+    });
+
+    const gemGridY = divY + px(30);
+    const gemSlotSize = px(40);
+    const gemGap = px(6);
+    const gemCols = 7;
+    const hasEmptySlots = equipItem.sockets.length < maxSockets;
+
+    if (gemsInInventory.length === 0) {
+      this.socketPanel.add(this.add.text(pw / 2, gemGridY + px(20), '没有宝石', {
+        fontSize: fs(13), color: '#555', fontFamily: FONT,
+      }).setOrigin(0.5));
+    } else {
+      gemsInInventory.forEach((gemItem, i) => {
+        const gx = px(14) + (i % gemCols) * (gemSlotSize + gemGap);
+        const gy = gemGridY + Math.floor(i / gemCols) * (gemSlotSize + gemGap + px(2));
+
+        const gemIconKey = gemItem.baseId.replace(/_\d+$/, '');
+        const gemColor = GEM_COLORS[gemIconKey] ?? 0x333366;
+        const gemBg = this.add.rectangle(gx + gemSlotSize / 2, gy + gemSlotSize / 2, gemSlotSize, gemSlotSize, gemColor, 0.5)
+          .setStrokeStyle(Math.round(1 * DPR), hasEmptySlots ? 0x8be9fd : 0x444466)
+          .setInteractive({ useHandCursor: hasEmptySlots });
+        this.socketPanel!.add(gemBg);
+
+        // Gem label
+        const label = GEM_LABELS[gemIconKey] ?? '◆';
+        this.socketPanel!.add(this.add.text(gx + gemSlotSize / 2, gy + gemSlotSize / 2 - px(2), label, {
+          fontSize: fs(14), color: '#fff', fontFamily: FONT, fontStyle: 'bold',
+        }).setOrigin(0.5));
+
+        // Quantity
+        if (gemItem.quantity > 1) {
+          this.socketPanel!.add(this.add.text(gx + gemSlotSize - px(2), gy + gemSlotSize - px(2), `${gemItem.quantity}`, {
+            fontSize: fs(10), color: '#ffd700', fontFamily: FONT,
+          }).setOrigin(1, 1));
+        }
+
+        // Tooltip on hover
+        gemBg.on('pointerover', (pointer: Phaser.Input.Pointer) => {
+          this.showItemTooltip(gemItem, pointer.x, pointer.y);
+        });
+        gemBg.on('pointerout', () => this.hideItemTooltip());
+
+        // Click to socket
+        if (hasEmptySlots) {
+          gemBg.on('pointerdown', () => {
+            this.hideItemTooltip();
+            const success = this.zone.inventorySystem.socketGem(equipSlot, gemItem.uid);
+            if (success) {
+              this.zone.invalidateEquipStats();
+              this.refreshSocketPanel(equipSlot);
+              this.refreshInventory();
+            }
+          });
+        }
+      });
+    }
+
+    // Unequip button at bottom
+    const unequipBtn = this.add.text(pw / 2, ph - px(22), '[卸下装备]', {
+      fontSize: fs(13), color: '#e74c3c', fontFamily: FONT,
+    }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true });
+    unequipBtn.on('pointerdown', () => {
+      if (this.socketPanel) { this.socketPanel.destroy(); this.socketPanel = null; this.socketPanelSlot = null; }
+      this.zone.inventorySystem.unequip(equipSlot);
+      this.refreshInventory();
+    });
+    this.socketPanel.add(unequipBtn);
+  }
+
+  /** Refresh the socket panel for the current slot. */
+  private refreshSocketPanel(equipSlot: EquipSlot): void {
+    if (this.socketPanel) {
+      this.socketPanel.destroy();
+      this.socketPanel = null;
+      this.socketPanelSlot = null;
+      this.openSocketPanel(equipSlot);
+    }
   }
 
   private refreshInventory(): void {
@@ -3287,6 +3541,7 @@ export class UIScene extends Phaser.Scene {
     if (this.homesteadPanel) { this.homesteadPanel.destroy(); this.homesteadPanel = null; }
     if (this.questLogPanel) { this.questLogPanel.destroy(); this.questLogPanel = null; }
     if (this.companionPanel) { this.companionPanel.destroy(); this.companionPanel = null; }
+    if (this.socketPanel) { this.socketPanel.destroy(); this.socketPanel = null; this.socketPanelSlot = null; }
     if (this.loreTextPanel) { this.loreTextPanel.destroy(); this.loreTextPanel = null; }
     if (this.loreTextBackdrop) { this.loreTextBackdrop.destroy(); this.loreTextBackdrop = null; }
     if (this.audioPanel) {
