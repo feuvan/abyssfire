@@ -15,7 +15,7 @@ Architectural decisions, patterns, and conventions discovered during the mission
 ## System Lifecycle
 
 **Per-zone (recreated on zone change):**
-- CombatSystem, SkillEffectSystem, LightingSystem, VFXManager, WeatherSystem, TrailRenderer, PathfindingSystem
+- CombatSystem, SkillEffectSystem, LightingSystem, VFXManager, WeatherSystem, TrailRenderer, PathfindingSystem, StatusEffectSystem
 
 **Persistent (survive zone transitions):**
 - InventorySystem, QuestSystem, HomesteadSystem, AchievementSystem, SaveSystem
@@ -43,6 +43,29 @@ Architectural decisions, patterns, and conventions discovered during the mission
 - Map data defines anchor points (camps, exits, spawns); terrain is procedural
 - Viewport culling renders only visible tiles (~300-500 at a time)
 - Tile types: 0=grass, 1=dirt, 2=stone, 3=water, 4=wall, 5=camp
+
+## PathfindingSystem Internals
+
+- Uses binary min-heap (`MinHeap` internal class) for A* open list — O(log n) insert/extractMin/decreaseKey
+- Flat-array cost tracking: `Float64Array` for gCost, `Uint8Array` for closed-set bits — O(1) lookups
+- Octile distance heuristic consistent with diagonal movement costs (1.414)
+- `heapIndex` stored on nodes for efficient decrease-key operations
+
+## Status Effect System
+
+- Pure-logic class (`StatusEffectSystem.ts`) — no Phaser dependencies, fully testable in Node
+- 6 effect types: Burn, Freeze, Poison, Bleed, Slow, Stun
+- Each has apply/tick/expire lifecycle
+- Freeze and Stun have diminishing returns (50% duration on rapid reapply, immunity window after 2nd application)
+- Multiple Poison stacks refresh duration keeping stronger damage
+- `clearAll()` called on zone shutdown; instantiated in `ZoneScene.create()`
+- **Authoritative for CC diminishing returns** — CombatSystem has a parallel `applyStun()` with its own DR tracking but it is unused (dead code as of milestone foundation)
+
+## Map Exit Coordinate Convention
+
+- Exits sit on map borders (col=0/119 or row=0/119)
+- Target coordinates (`targetCol`/`targetRow`) should point to walkable interior tiles in the destination map — **not** border walls (row/col 0 or 119)
+- Currently `changeZone()` ignores target coordinates (player spawns at `playerStart`), but this may change
 
 ## Performance Patterns
 

@@ -1,0 +1,51 @@
+{
+  "featureId": "pathfinding-upgrade-map-expansion",
+  "reviewedAt": "2026-03-24T03:15:00.000Z",
+  "commitId": "4641d970e6fb25da1540f6ab93a8d5208cbbd2ef",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation. PathfindingSystem correctly replaces array.sort() with a binary min-heap (MinHeap class) providing O(log n) insert/extractMin/decreaseKey. The heap maintains heapIndex on nodes for efficient decrease-key. Flat-array cost tracking (Float64Array gCost, Uint8Array closedBits) replaces Set<string> for O(1) lookups. Octile distance heuristic is consistent with diagonal movement costs (1.414). All 5 zone maps expanded to 120×120 with spawns distributed across 4 quadrants, exits on border positions, and camps repositioned for the larger space. 69 comprehensive tests cover correctness, edge cases, performance, and map validation. One non-blocking issue found with cross-zone exit target coordinates.",
+    "issues": [
+      {
+        "file": "src/data/maps/anvil_mountains.ts",
+        "line": 39,
+        "severity": "non_blocking",
+        "description": "targetRow: 119 is a border wall tile (always unwalkable). Three 'backward' exits (anvil→twilight, scorching→anvil, abyss→scorching) all use targetRow: 119. While targetCol/targetRow are currently unused by changeZone() (player always spawns at playerStart), these values are semantically wrong and would cause a bug if zone-transition player positioning is ever wired up. Should be targetRow: 118 (or another interior coordinate)."
+      },
+      {
+        "file": "src/data/maps/scorching_desert.ts",
+        "line": 39,
+        "severity": "non_blocking",
+        "description": "Same targetRow: 119 issue — backward exit to anvil_mountains targets a border wall tile."
+      },
+      {
+        "file": "src/data/maps/abyss_rift.ts",
+        "line": 39,
+        "severity": "non_blocking",
+        "description": "Same targetRow: 119 issue — backward exit to scorching_desert targets a border wall tile."
+      },
+      {
+        "file": "src/__tests__/PathfindingAndMaps.test.ts",
+        "line": 441,
+        "severity": "non_blocking",
+        "description": "Cross-zone exit coordinate test only validates that target coords are within [0, 120) bounds. It does not verify that target coordinates point to walkable tiles in the destination map. This allowed the targetRow: 119 (wall) values to pass. A stronger test would check collisions[targetRow][targetCol] === true in the generated destination map."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The architecture.md library file documents PathfindingSystem as 'per-zone (recreated on zone change)' but doesn't document the new binary heap implementation or the O(1) flat-array lookup pattern. Future workers modifying PathfindingSystem should know about the MinHeap internal class and the nodeMap/gCost/closedBits flat-array pattern.",
+      "evidence": "src/systems/PathfindingSystem.ts uses MinHeap class (not exported), Float64Array gCost, Uint8Array closedBits — internal implementation detail but useful for future perf work."
+    },
+    {
+      "area": "conventions",
+      "observation": "AGENTS.md correctly notes maps are 'being expanded to 120x120' but doesn't document the exit coordinate convention: exits must be on border (col=0/119 or row=0/119), target coordinates should point to walkable interior tiles in the destination map (not border walls).",
+      "evidence": "Three map files use targetRow: 119 (border wall). The convention for target coords should be explicitly documented to prevent this pattern from recurring."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The PathfindingSystem binary heap upgrade is well-implemented with correct heap operations, octile heuristic, and flat-array lookups for O(1) performance. All 5 zone maps properly expanded to 120×120 with 4-quadrant spawn distribution and border exits. 69 tests provide good coverage of correctness, edge cases, performance (100 paths in ~40ms vs 2000ms budget), and map validation. One non-blocking issue: three backward exit target coordinates use row 119 (a border wall), which is semantically incorrect but currently has no runtime impact since changeZone() doesn't use target coordinates for player placement. The test suite could be strengthened to validate target coordinates land on walkable tiles."
+}
