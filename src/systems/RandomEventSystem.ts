@@ -437,4 +437,44 @@ export class RandomEventSystem {
   static getZoneAvgLevel(levelRange: [number, number]): number {
     return Math.floor((levelRange[0] + levelRange[1]) / 2);
   }
+
+  /**
+   * Find a walkable tile near a preferred position.
+   * collisions[r][c] === true means the tile IS walkable.
+   * If the preferred position is blocked, search outward in expanding rings.
+   * Returns the position if found, or null if no walkable tile within maxRadius.
+   */
+  static findWalkableTile(
+    preferredCol: number,
+    preferredRow: number,
+    collisions: boolean[][],
+    cols: number,
+    rows: number,
+    maxRadius = 5,
+  ): { col: number; row: number } | null {
+    // Clamp to valid range
+    const pc = Math.max(1, Math.min(cols - 2, preferredCol));
+    const pr = Math.max(1, Math.min(rows - 2, preferredRow));
+
+    // Check the preferred position first
+    if (collisions[pr]?.[pc]) {
+      return { col: pc, row: pr };
+    }
+
+    // Search outward in expanding rings
+    for (let radius = 1; radius <= maxRadius; radius++) {
+      for (let dr = -radius; dr <= radius; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+          if (Math.abs(dr) !== radius && Math.abs(dc) !== radius) continue; // only ring edges
+          const nr = pr + dr;
+          const nc = pc + dc;
+          if (nr >= 1 && nr < rows - 1 && nc >= 1 && nc < cols - 1 && collisions[nr]?.[nc]) {
+            return { col: nc, row: nr };
+          }
+        }
+      }
+    }
+
+    return null;
+  }
 }

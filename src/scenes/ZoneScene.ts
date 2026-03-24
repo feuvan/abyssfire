@@ -1841,11 +1841,15 @@ export class ZoneScene extends Phaser.Scene {
       const dist = 3 + Math.random() * 2;
       const sc = Math.round(event.col + Math.cos(angle) * dist);
       const sr = Math.round(event.row + Math.sin(angle) * dist);
-      const c = Math.max(1, Math.min(this.mapData.cols - 2, sc));
-      const r = Math.max(1, Math.min(this.mapData.rows - 2, sr));
+      const preferredCol = Math.max(1, Math.min(this.mapData.cols - 2, sc));
+      const preferredRow = Math.max(1, Math.min(this.mapData.rows - 2, sr));
 
-      if (this.mapData.collisions[r]?.[c]) {
-        const monster = new Monster(this, def, c, r);
+      // Find walkable tile (with fallback search if preferred position is blocked)
+      const walkable = RandomEventSystem.findWalkableTile(
+        preferredCol, preferredRow, this.mapData.collisions, this.mapData.cols, this.mapData.rows,
+      );
+      if (walkable) {
+        const monster = new Monster(this, def, walkable.col, walkable.row);
         // Immediately aggro to player
         monster.state = 'chase';
         this.monsters.push(monster);
@@ -1894,12 +1898,12 @@ export class ZoneScene extends Phaser.Scene {
 
   private handleWanderingMerchantEvent(event: ActiveEvent): void {
     // Emit a shop event so UIScene can show the shop panel
-    // The wandering merchant uses a special NPC definition
+    // The wandering merchant uses the correct SHOP_OPEN payload contract: {npcId, shopItems, type}
     const merchantItems = (event.context.merchantItems as string[]) ?? [];
     EventBus.emit(GameEvents.SHOP_OPEN, {
-      npcName: '流浪商人',
-      items: merchantItems,
-      isWanderingMerchant: true,
+      npcId: 'wandering_merchant',
+      shopItems: merchantItems,
+      type: 'merchant',
     });
     EventBus.emit(GameEvents.LOG_MESSAGE, { text: '流浪商人出现了! 看看他的商品吧。', type: 'info' });
 
@@ -1914,8 +1918,28 @@ export class ZoneScene extends Phaser.Scene {
     const rescueNpcName = (event.context.rescueNpcName as string) ?? '被困的旅人';
     const reward = event.context.reward as { gold: number; exp: number } | undefined;
 
-    // Spawn hostile monsters around the event location
-    let spawnedCount = 0;
+    // Spawn a stranded NPC sprite at the event location
+    const npcWalkable = RandomEventSystem.findWalkableTile(
+      Math.round(event.col), Math.round(event.row),
+      this.mapData.collisions, this.mapData.cols, this.mapData.rows,
+    );
+    const npcCol = npcWalkable?.col ?? Math.round(event.col);
+    const npcRow = npcWalkable?.row ?? Math.round(event.row);
+    const { x: npcX, y: npcY } = cartToIso(npcCol, npcRow);
+    const rescueNpcSprite = this.add.container(npcX, npcY);
+    rescueNpcSprite.setDepth(npcY + 10);
+    // Simple visual: a circle with a help indicator
+    const body = this.add.circle(0, -12 * DPR, 8 * DPR, 0x44aaff);
+    const helpMark = this.add.text(0, -28 * DPR, '!', {
+      fontSize: `${Math.round(14 * DPR)}px`, color: '#ff4444', fontFamily: 'Arial', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const nameLabel = this.add.text(0, 4 * DPR, rescueNpcName, {
+      fontSize: `${Math.round(10 * DPR)}px`, color: '#aaddff', fontFamily: 'Arial',
+    }).setOrigin(0.5, 0);
+    rescueNpcSprite.add([body, helpMark, nameLabel]);
+
+    // Spawn hostile monsters around the NPC
+    const rescueMonsters: Monster[] = [];
     for (let i = 0; i < count; i++) {
       const mId = monsterIds && monsterIds.length > 0
         ? monsterIds[Math.floor(Math.random() * monsterIds.length)]
@@ -1927,18 +1951,58 @@ export class ZoneScene extends Phaser.Scene {
 
       const angle = Math.random() * Math.PI * 2;
       const dist = 2 + Math.random() * 3;
-      const c = Math.max(1, Math.min(this.mapData.cols - 2, Math.round(event.col + Math.cos(angle) * dist)));
-      const r = Math.max(1, Math.min(this.mapData.rows - 2, Math.round(event.row + Math.sin(angle) * dist)));
+      const preferredCol = Math.max(1, Math.min(this.mapData.cols - 2, Math.round(npcCol + Math.cos(angle) * dist)));
+      const preferredRow = Math.max(1, Math.min(this.mapData.rows - 2, Math.round(npcRow + Math.sin(angle) * dist)));
 
-      if (this.mapData.collisions[r]?.[c]) {
-        const monster = new Monster(this, def, c, r);
+      const walkable = RandomEventSystem.findWalkableTile(
+        preferredCol, preferredRow, this.mapData.collisions, this.mapData.cols, this.mapData.rows,
+      );
+      if (walkable) {
+        const monster = new Monster(this, def, walkable.col, walkable.row);
         monster.state = 'chase';
         this.monsters.push(monster);
-        spawnedCount++;
+        rescueMonsters.push(monster);
       }
     }
 
-    // Grant reward immediately and log (simplified: no NPC entity for now)
+    // Track rescue event: store monsters to track and check completion each frame
+    // We do NOT resolve the event yet — only when all hostiles are defeated
+    const monsterIds2 = new Set(rescueMonsters.map(m => m.id));
+    event.context.rescueMonsterIds = Array.from(monsterIds2);
+    event.context.rescueNpcSpriteRef = rescueNpcSprite;
+    event.context.rescueNpcCol = npcCol;
+    event.context.rescueNpcRow = npcRow;
+    event.context.rescueNpcName = rescueNpcName;
+    event.context.reward = reward;
+
+    // Set up a periodic check for when all rescue hostiles are defeated
+    this.time.addEvent({
+      delay: 500,
+      loop: true,
+      callback: () => {
+        if (event.resolved) return;
+        const trackedIds = event.context.rescueMonsterIds as string[];
+        if (!trackedIds || trackedIds.length === 0) {
+          // No monsters spawned — auto-complete
+          this.completeRescueEvent(event);
+          return;
+        }
+        // Check if all tracked monsters are dead (no longer in this.monsters)
+        const aliveIds = new Set(this.monsters.map(m => m.id));
+        const allDefeated = trackedIds.every(id => !aliveIds.has(id));
+        if (allDefeated) {
+          this.completeRescueEvent(event);
+        }
+      },
+    });
+  }
+
+  private completeRescueEvent(event: ActiveEvent): void {
+    if (event.resolved) return;
+    const reward = event.context.reward as { gold: number; exp: number } | undefined;
+    const rescueNpcName = (event.context.rescueNpcName as string) ?? '被困的旅人';
+
+    // Grant reward now that all hostiles are defeated
     if (reward) {
       this.player.gold += reward.gold;
       this.player.exp += reward.exp;
@@ -1946,6 +2010,12 @@ export class ZoneScene extends Phaser.Scene {
         text: `你救出了${rescueNpcName}! 获得 ${reward.gold} 金币和 ${reward.exp} 经验`,
         type: 'info',
       });
+    }
+
+    // Remove the NPC sprite
+    const npcSprite = event.context.rescueNpcSpriteRef as Phaser.GameObjects.Container | undefined;
+    if (npcSprite && npcSprite.scene) {
+      npcSprite.destroy();
     }
 
     this.randomEventSystem.resolveActiveEvent();
@@ -1962,8 +2032,87 @@ export class ZoneScene extends Phaser.Scene {
     // Show puzzle prompt in combat log
     EventBus.emit(GameEvents.LOG_MESSAGE, { text: `谜题: ${puzzle.prompt}`, type: 'info' });
 
-    // Auto-solve the puzzle (simplified interaction — future UI could present choices)
-    this.time.delayedCall(2000, () => {
+    // Spawn an interactable puzzle object near the event position
+    const walkable = RandomEventSystem.findWalkableTile(
+      Math.round(event.col), Math.round(event.row),
+      this.mapData.collisions, this.mapData.cols, this.mapData.rows,
+    );
+    const puzzleCol = walkable?.col ?? Math.round(event.col);
+    const puzzleRow = walkable?.row ?? Math.round(event.row);
+    const { x: px2, y: py2 } = cartToIso(puzzleCol, puzzleRow);
+
+    const puzzleSprite = this.add.container(px2, py2);
+    puzzleSprite.setDepth(py2 + 10);
+    // Visual: a glowing rune circle
+    const glow = this.add.circle(0, -8 * DPR, 12 * DPR, 0xaa66ff, 0.4);
+    const icon = this.add.text(0, -14 * DPR, '?', {
+      fontSize: `${Math.round(16 * DPR)}px`, color: '#ffcc00', fontFamily: 'Arial', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const label = this.add.text(0, 8 * DPR, '谜题装置', {
+      fontSize: `${Math.round(10 * DPR)}px`, color: '#ccaaff', fontFamily: 'Arial',
+    }).setOrigin(0.5, 0);
+    puzzleSprite.add([glow, icon, label]);
+    puzzleSprite.setSize(24 * DPR, 32 * DPR);
+    puzzleSprite.setInteractive({ useHandCursor: true });
+
+    // Add pulsing animation to draw attention
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.4, to: 0.8 },
+      duration: 800,
+      yoyo: true,
+      repeat: -1,
+    });
+
+    // On click: show a choice/prompt overlay
+    puzzleSprite.on('pointerdown', () => {
+      if (event.resolved) return;
+      this.showPuzzleChoicePrompt(event, puzzle, puzzleSprite);
+    });
+  }
+
+  private showPuzzleChoicePrompt(
+    event: ActiveEvent,
+    puzzle: { prompt: string; solution: string; reward: string; rewardGold: number; rewardExp: number },
+    puzzleSprite: Phaser.GameObjects.Container,
+  ): void {
+    // Emit a puzzle interaction event to the UI
+    // We'll create a simple in-world popup with two choices
+    const { x: sx, y: sy } = puzzleSprite;
+    const popW = 200 * DPR;
+    const popH = 100 * DPR;
+    const popup = this.add.container(sx, sy - 50 * DPR);
+    popup.setDepth(10000);
+
+    const bg = this.add.rectangle(0, 0, popW, popH, 0x0a0a18, 0.95)
+      .setOrigin(0.5)
+      .setStrokeStyle(Math.round(1 * DPR), 0xc0934a);
+    popup.add(bg);
+
+    const promptText = this.add.text(0, -30 * DPR, puzzle.prompt, {
+      fontSize: `${Math.round(11 * DPR)}px`, color: '#e0d8cc', fontFamily: 'Arial',
+      wordWrap: { width: popW - 20 * DPR },
+      align: 'center',
+    }).setOrigin(0.5, 0.5);
+    popup.add(promptText);
+
+    // Correct choice button (the solution)
+    const correctBtn = this.add.text(-40 * DPR, 20 * DPR, puzzle.solution, {
+      fontSize: `${Math.round(10 * DPR)}px`, color: '#44ff44', fontFamily: 'Arial',
+      wordWrap: { width: 80 * DPR },
+      align: 'center',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    popup.add(correctBtn);
+
+    // Wrong choice button
+    const wrongBtn = this.add.text(40 * DPR, 20 * DPR, '离开', {
+      fontSize: `${Math.round(10 * DPR)}px`, color: '#ff4444', fontFamily: 'Arial',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    popup.add(wrongBtn);
+
+    correctBtn.on('pointerdown', () => {
+      if (event.resolved) { popup.destroy(); return; }
+      // Grant reward
       EventBus.emit(GameEvents.LOG_MESSAGE, { text: `${puzzle.solution} — ${puzzle.reward}`, type: 'info' });
       this.player.gold += puzzle.rewardGold;
       this.player.exp += puzzle.rewardExp;
@@ -1971,10 +2120,17 @@ export class ZoneScene extends Phaser.Scene {
         text: `获得 ${puzzle.rewardGold} 金币和 ${puzzle.rewardExp} 经验`,
         type: 'info',
       });
+      popup.destroy();
+      puzzleSprite.destroy();
+      this.randomEventSystem.resolveActiveEvent();
+      EventBus.emit(GameEvents.RANDOM_EVENT_RESOLVED, { type: 'environmental_puzzle' });
     });
 
-    this.randomEventSystem.resolveActiveEvent();
-    EventBus.emit(GameEvents.RANDOM_EVENT_RESOLVED, { type: 'environmental_puzzle' });
+    wrongBtn.on('pointerdown', () => {
+      // Dismiss without reward; puzzle remains for retry
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '你离开了谜题装置。', type: 'info' });
+      popup.destroy();
+    });
   }
 
   /** Helper: drop a loot item at a specific tile position (used by treasure cache events). */
