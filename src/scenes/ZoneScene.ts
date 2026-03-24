@@ -22,6 +22,7 @@ import { WeatherSystem } from '../systems/WeatherSystem';
 import { TrailRenderer } from '../systems/TrailRenderer';
 import { StatusEffectSystem } from '../systems/StatusEffectSystem';
 import type { StatusEffectType } from '../systems/StatusEffectSystem';
+import { EliteAffixSystem } from '../systems/EliteAffixSystem';
 import { audioManager } from '../systems/audio/AudioManager';
 import { applyColorGrading } from '../graphics/ColorGradePipeline';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
@@ -94,6 +95,7 @@ export class ZoneScene extends Phaser.Scene {
   private weather!: WeatherSystem;
   private trails!: TrailRenderer;
   statusEffects!: StatusEffectSystem;
+  eliteAffixSystem!: EliteAffixSystem;
   private inCombat = false;
   private isTransitioning = false;
   private isPortaling = false;
@@ -132,6 +134,7 @@ export class ZoneScene extends Phaser.Scene {
     this.lootSystem = new LootSystem();
     this.skillEffects = new SkillEffectSystem(this);
     this.statusEffects = new StatusEffectSystem();
+    this.eliteAffixSystem = new EliteAffixSystem();
 
     const isFirstLoad = !this.inventorySystem;
     if (isFirstLoad) {
@@ -496,6 +499,7 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     this.handleCombat(time);
+    this.updateEliteAffixBehaviors(time);
     this.updateStatusEffects(time);
     this.updateCombatState();
     this.updateTargetIndicator();
@@ -1369,6 +1373,38 @@ export class ZoneScene extends Phaser.Scene {
           // Monster applies status effects to player based on monster type
           this.applyMonsterStatusEffect(monster, time);
 
+          // ── Elite Affix: on-hit effects ──
+          if (monster.eliteAffixes.length > 0) {
+            const affixStats = this.eliteAffixSystem.getCombinedStats(monster.eliteAffixes);
+
+            // Fire Enhanced: extra fire damage
+            if (affixStats.extraFireDamage > 0) {
+              const fireDmg = Math.floor(finalDmg * affixStats.extraFireDamage);
+              if (fireDmg > 0) {
+                this.player.hp = Math.max(0, this.player.hp - fireDmg);
+                this.showDamageText(this.player.sprite.x + 10, this.player.sprite.y - 5, fireDmg, false, false, true, 'fire');
+                EventBus.emit(GameEvents.COMBAT_DAMAGE, {
+                  targetId: 'player', damage: fireDmg, isDodged: false,
+                  isCrit: false, isPlayerTarget: true, targetMaxHP: this.player.maxHp,
+                });
+              }
+            }
+
+            // Vampiric: lifesteal on hit
+            if (affixStats.lifestealFraction > 0) {
+              const heal = Math.floor(finalDmg * affixStats.lifestealFraction);
+              if (heal > 0) {
+                monster.hp = Math.min(monster.maxHp, monster.hp + heal);
+              }
+            }
+
+            // Frozen: chance to apply slow on hit
+            if (affixStats.freezeChance > 0 && Math.random() < affixStats.freezeChance) {
+              this.statusEffects.apply('player', 'slow', 30, 2500, monster.id, time);
+              EventBus.emit(GameEvents.LOG_MESSAGE, { text: '冰封减速！', type: 'combat' });
+            }
+          }
+
           if (this.player.hp <= 0) {
             // Death save check (set bonus / legendary)
             const eqDs = this.getEquipStats();
@@ -1725,7 +1761,11 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     const luckBonus = this.player.stats.lck + (homeBonus['magicFind'] ?? 0);
-    const loot = this.lootSystem.generateLoot(monster.definition, luckBonus);
+    // Elite affix loot quality bonus
+    const affixLootBonus = monster.eliteAffixes.length > 0
+      ? this.eliteAffixSystem.getCombinedStats(monster.eliteAffixes).lootQualityBonus
+      : 0;
+    const loot = this.lootSystem.generateLoot(monster.definition, luckBonus, affixLootBonus);
     const potionAmounts: Record<string, { type: 'hp' | 'mp'; amount: number }> = {
       c_hp_potion_s: { type: 'hp', amount: 50 },
       c_hp_potion_m: { type: 'hp', amount: 150 },
@@ -2108,7 +2148,15 @@ export class ZoneScene extends Phaser.Scene {
             }
           }
           if (inSafeZone) continue;
-          this.monsters.push(new Monster(this, def, c, r));
+          const monster = new Monster(this, def, c, r);
+          // Apply elite affixes
+          if (def.elite) {
+            const affixes = this.eliteAffixSystem.rollAffixes(this.currentMapId, true);
+            if (affixes.length > 0) {
+              monster.applyEliteAffixes(affixes, this.eliteAffixSystem);
+            }
+          }
+          this.monsters.push(monster);
         }
       }
     }
@@ -2159,6 +2207,13 @@ export class ZoneScene extends Phaser.Scene {
       }
     }
     this.monsters[idx] = new Monster(this, dead.definition, c, r);
+    // Re-apply elite affixes on respawn
+    if (dead.definition.elite) {
+      const affixes = this.eliteAffixSystem.rollAffixes(this.currentMapId, true);
+      if (affixes.length > 0) {
+        this.monsters[idx].applyEliteAffixes(affixes, this.eliteAffixSystem);
+      }
+    }
   }
 
   private findNearestAliveMonster(): Monster | null {
@@ -2408,6 +2463,93 @@ export class ZoneScene extends Phaser.Scene {
         },
       });
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Elite Affix Behavior Updates
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Process per-tick elite affix behaviors: teleporting blink, curse aura debuff.
+   */
+  private updateEliteAffixBehaviors(time: number): void {
+    for (const monster of this.monsters) {
+      if (!monster.isAlive() || monster.eliteAffixes.length === 0) continue;
+
+      // ── Teleporting: periodic blink near player ──
+      const teleAffix = this.eliteAffixSystem.getTeleportingAffix(monster.eliteAffixes);
+      if (teleAffix && monster.isAggro()) {
+        if (this.eliteAffixSystem.shouldTeleport(teleAffix, time)) {
+          teleAffix.lastTeleportTime = time;
+          const dist = euclideanDistance(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
+          if (dist > 2 && dist < 15) {
+            // Blink to a random walkable tile near the player
+            const offsetCol = this.player.tileCol + (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random());
+            const offsetRow = this.player.tileRow + (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random());
+            const tc = Math.round(Math.max(1, Math.min(this.mapData.cols - 2, offsetCol)));
+            const tr = Math.round(Math.max(1, Math.min(this.mapData.rows - 2, offsetRow)));
+            if (this.mapData.collisions[tr]?.[tc]) {
+              // VFX: vanish at old position
+              const oldPos = cartToIso(monster.tileCol, monster.tileRow);
+              if (this.vfx) {
+                const puff = this.add.circle(oldPos.x, oldPos.y - 16, 12, 0xaa44ff, 0.6);
+                puff.setDepth(oldPos.y + 100);
+                this.tweens.add({
+                  targets: puff, scaleX: 2.5, scaleY: 2.5, alpha: 0, duration: 400,
+                  onComplete: () => puff.destroy(),
+                });
+              }
+              // Move monster
+              monster.tileCol = tc;
+              monster.tileRow = tr;
+              const newPos = cartToIso(tc, tr);
+              monster.sprite.setPosition(newPos.x, newPos.y);
+              monster.sprite.setDepth(newPos.y + 50);
+              // VFX: appear at new position
+              if (this.vfx) {
+                const flash = this.add.circle(newPos.x, newPos.y - 16, 12, 0xaa44ff, 0.6);
+                flash.setDepth(newPos.y + 100);
+                this.tweens.add({
+                  targets: flash, scaleX: 2.5, scaleY: 2.5, alpha: 0, duration: 400,
+                  onComplete: () => flash.destroy(),
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // ── Curse Aura: debuff player stats when in proximity ──
+      const curseAffix = this.eliteAffixSystem.getCurseAuraAffix(monster.eliteAffixes);
+      if (curseAffix) {
+        const dist = euclideanDistance(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
+        if (dist <= curseAffix.definition.curseAuraRadius) {
+          // Apply curse debuff as a timed buff on the player (amplifies damage taken)
+          const reduction = curseAffix.definition.curseAuraReduction;
+          const existingCurse = this.player.buffs.find(
+            b => b.stat === 'damageAmplify' && (b as any)._curseAura,
+          );
+          if (!existingCurse) {
+            const curseBuff: any = {
+              stat: 'damageAmplify',
+              value: reduction, // e.g. 0.15 = 15% more damage taken
+              duration: 2000,
+              startTime: time,
+              _curseAura: true, // tag so we can find and refresh it
+            };
+            this.player.buffs.push(curseBuff);
+          } else {
+            // Refresh duration
+            existingCurse.startTime = time;
+          }
+          // Visual: purple tint on player periodically
+          if (time - (curseAffix.lastCurseTickTime ?? 0) > 2000) {
+            curseAffix.lastCurseTickTime = time;
+            EventBus.emit(GameEvents.LOG_MESSAGE, { text: '诅咒光环：属性降低！', type: 'combat' });
+          }
+        }
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

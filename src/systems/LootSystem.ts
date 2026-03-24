@@ -8,7 +8,7 @@ let uidCounter = 0;
 function genUid(): string { return `item_${Date.now()}_${uidCounter++}`; }
 
 export class LootSystem {
-  generateLoot(monster: MonsterDefinition, playerLuck: number): ItemInstance[] {
+  generateLoot(monster: MonsterDefinition, playerLuck: number, affixLootBonus = 0): ItemInstance[] {
     const items: ItemInstance[] = [];
     const level = monster.level;
     const baseDropRate = monster.elite ? 80 : 40;
@@ -17,14 +17,21 @@ export class LootSystem {
     // Gold is handled separately in ZoneScene
     // Equipment drop
     if (chance(baseDropRate + luckBonus)) {
-      const quality = this.rollQuality(level, playerLuck, monster.elite ?? false);
+      const quality = this.rollQuality(level, playerLuck, monster.elite ?? false, affixLootBonus);
       const item = this.generateEquipment(level, quality);
       if (item) items.push(item);
     }
 
     // Second drop for elites
     if (monster.elite && chance(50 + luckBonus)) {
-      const quality = this.rollQuality(level, playerLuck, true);
+      const quality = this.rollQuality(level, playerLuck, true, affixLootBonus);
+      const item = this.generateEquipment(level, quality);
+      if (item) items.push(item);
+    }
+
+    // Third drop for affix elites with high bonus
+    if (affixLootBonus >= 10 && chance(30 + luckBonus + affixLootBonus)) {
+      const quality = this.rollQuality(level, playerLuck, true, affixLootBonus);
       const item = this.generateEquipment(level, quality);
       if (item) items.push(item);
     }
@@ -35,8 +42,8 @@ export class LootSystem {
       if (potion) items.push(potion);
     }
 
-    // Gem drop (rare)
-    if (chance(5 + luckBonus * 0.2)) {
+    // Gem drop (rare, improved for affix elites)
+    if (chance(5 + luckBonus * 0.2 + affixLootBonus * 0.3)) {
       const gem = this.generateGem(level);
       if (gem) items.push(gem);
     }
@@ -44,15 +51,16 @@ export class LootSystem {
     return items;
   }
 
-  private rollQuality(level: number, luck: number, isElite: boolean): ItemQuality {
+  private rollQuality(level: number, luck: number, isElite: boolean, affixBonus = 0): ItemQuality {
     const roll = Math.random() * 100;
     const luckMod = luck * 0.3;
     const eliteMod = isElite ? 15 : 0;
+    const afxMod = affixBonus;
 
-    if (roll < 0.5 + luckMod * 0.1 + (level > 20 ? 1 : 0)) return 'legendary';
-    if (roll < 2 + luckMod * 0.2 + eliteMod * 0.5) return 'set';
-    if (roll < 15 + luckMod + eliteMod) return 'rare';
-    if (roll < 45 + luckMod) return 'magic';
+    if (roll < 0.5 + luckMod * 0.1 + (level > 20 ? 1 : 0) + afxMod * 0.15) return 'legendary';
+    if (roll < 2 + luckMod * 0.2 + eliteMod * 0.5 + afxMod * 0.3) return 'set';
+    if (roll < 15 + luckMod + eliteMod + afxMod) return 'rare';
+    if (roll < 45 + luckMod + afxMod * 0.5) return 'magic';
     return 'normal';
   }
 

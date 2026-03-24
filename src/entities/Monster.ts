@@ -7,6 +7,7 @@ import type { MonsterDefinition, Stats } from '../data/types';
 import type { CombatEntity, ActiveBuff } from '../systems/CombatSystem';
 import { CharacterAnimator, getAnimConfig } from '../systems/CharacterAnimator';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
+import type { EliteAffixInstance } from '../systems/EliteAffixSystem';
 
 function fs(basePx: number): string {
   return `${Math.round(basePx * DPR)}px`;
@@ -30,6 +31,11 @@ export class Monster {
   maxMana: number = 0;
   stats: Stats;
   buffs: ActiveBuff[] = [];
+
+  /** Elite affixes assigned to this monster (empty for non-elite / non-affix monsters). */
+  eliteAffixes: EliteAffixInstance[] = [];
+  /** Affix aura visual (repeating tween or particle, destroyed on death). */
+  private affixAuraVisuals: Phaser.GameObjects.GameObject[] = [];
 
   tileCol: number;
   tileRow: number;
@@ -278,6 +284,7 @@ export class Monster {
     this.hpBar.setAlpha(0);
     this.hpBarBg.setAlpha(0);
     this.nameLabel.setAlpha(0);
+    this.cleanupAffixVisuals();
     this.animator.playDeath(() => {
       this.sprite.destroy();
     });
@@ -290,7 +297,7 @@ export class Monster {
   toCombatEntity(): CombatEntity {
     return {
       id: this.id,
-      name: this.definition.name,
+      name: this.nameLabel.text,
       hp: this.hp,
       maxHp: this.maxHp,
       mana: this.mana,
@@ -311,5 +318,188 @@ export class Monster {
 
   isAggro(): boolean {
     return this.state === 'chase' || this.state === 'attack';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Elite Affix Support
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Apply elite affixes to this monster: modify stats, update name label,
+   * and add visual aura indicators.
+   */
+  applyEliteAffixes(affixes: EliteAffixInstance[], affixSystem: import('../systems/EliteAffixSystem').EliteAffixSystem): void {
+    this.eliteAffixes = affixes;
+    if (affixes.length === 0) return;
+
+    const stats = affixSystem.getCombinedStats(affixes);
+
+    // Apply stat multipliers
+    this.maxHp = Math.floor(this.maxHp * stats.hpMult);
+    this.hp = this.maxHp;
+    this.definition = {
+      ...this.definition,
+      damage: Math.floor(this.definition.damage * stats.damageMult),
+      speed: Math.floor(this.definition.speed * stats.speedMult),
+      defense: Math.floor(this.definition.defense * stats.defenseMult),
+    };
+    // Update internal stats
+    this.stats.str = Math.floor(this.definition.damage * 0.8);
+
+    // Update name label to show affix names in Chinese
+    const newName = affixSystem.buildAffixName(this.definition.name, affixes);
+    this.nameLabel.setText(newName);
+    this.nameLabel.setColor('#ff6600'); // Orange for affix elites
+    // Always show name label for affix elites
+    this.nameLabel.setAlpha(1);
+
+    // Add visual aura indicators per affix
+    this.createAffixVisuals(affixes);
+  }
+
+  /**
+   * Create visual indicators for each affix on this monster.
+   */
+  private createAffixVisuals(affixes: EliteAffixInstance[]): void {
+    const size = this.definition.elite ? 48 : 36;
+
+    for (const affix of affixes) {
+      const color = affix.definition.vfxColor;
+      const type = affix.definition.type;
+
+      // Aura ring underneath the monster
+      const aura = this.scene.add.ellipse(0, 4, size + 8, (size + 8) / 3, color, 0.25);
+      aura.setStrokeStyle(1, color, 0.6);
+      this.sprite.add(aura);
+      this.sprite.sendToBack(aura);
+      this.affixAuraVisuals.push(aura);
+
+      // Pulsing aura animation
+      this.scene.tweens.add({
+        targets: aura,
+        scaleX: 1.2,
+        scaleY: 1.2,
+        alpha: 0.1,
+        duration: 1200,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+
+      // Type-specific extra visuals
+      if (type === 'fire_enhanced') {
+        // Fire particles above the monster
+        const fireGlow = this.scene.add.circle(0, -size / 2, 6, 0xff4400, 0.4);
+        this.sprite.add(fireGlow);
+        this.affixAuraVisuals.push(fireGlow);
+        this.scene.tweens.add({
+          targets: fireGlow,
+          y: -size / 2 - 8,
+          alpha: 0.1,
+          scaleX: 0.5,
+          scaleY: 0.5,
+          duration: 800,
+          yoyo: true,
+          repeat: -1,
+        });
+      } else if (type === 'swift') {
+        // Speed lines behind the monster
+        const speedLine = this.scene.add.rectangle(-size / 2, -16, 8, 2, 0x44ff88, 0.5);
+        this.sprite.add(speedLine);
+        this.sprite.sendToBack(speedLine);
+        this.affixAuraVisuals.push(speedLine);
+        this.scene.tweens.add({
+          targets: speedLine,
+          x: -size / 2 - 10,
+          alpha: 0,
+          duration: 600,
+          yoyo: true,
+          repeat: -1,
+        });
+      } else if (type === 'teleporting') {
+        // Arcane shimmer
+        const shimmer = this.scene.add.circle(0, -20, 4, 0xaa44ff, 0.5);
+        this.sprite.add(shimmer);
+        this.affixAuraVisuals.push(shimmer);
+        this.scene.tweens.add({
+          targets: shimmer,
+          scaleX: 2,
+          scaleY: 2,
+          alpha: 0,
+          duration: 1000,
+          yoyo: true,
+          repeat: -1,
+        });
+      } else if (type === 'curse_aura') {
+        // Dark purple mist
+        const mist = this.scene.add.ellipse(0, 0, size * 2, size, 0x8844aa, 0.08);
+        this.sprite.add(mist);
+        this.sprite.sendToBack(mist);
+        this.affixAuraVisuals.push(mist);
+        this.scene.tweens.add({
+          targets: mist,
+          scaleX: 1.3,
+          scaleY: 1.3,
+          alpha: 0.03,
+          duration: 1500,
+          yoyo: true,
+          repeat: -1,
+        });
+      } else if (type === 'vampiric') {
+        // Blood drip indicator
+        const bloodGlow = this.scene.add.circle(0, -size / 2, 5, 0xcc0000, 0.4);
+        this.sprite.add(bloodGlow);
+        this.affixAuraVisuals.push(bloodGlow);
+        this.scene.tweens.add({
+          targets: bloodGlow,
+          y: -size / 2 + 4,
+          alpha: 0.15,
+          duration: 1000,
+          yoyo: true,
+          repeat: -1,
+        });
+      } else if (type === 'frozen') {
+        // Ice crystals
+        const ice = this.scene.add.circle(6, -size / 2, 4, 0x4488ff, 0.5);
+        this.sprite.add(ice);
+        this.affixAuraVisuals.push(ice);
+        this.scene.tweens.add({
+          targets: ice,
+          scaleX: 1.5,
+          scaleY: 1.5,
+          alpha: 0.2,
+          duration: 900,
+          yoyo: true,
+          repeat: -1,
+        });
+      } else if (type === 'extra_strong') {
+        // Red power glow
+        const powerGlow = this.scene.add.circle(0, -20, 8, 0xff2222, 0.2);
+        this.sprite.add(powerGlow);
+        this.affixAuraVisuals.push(powerGlow);
+        this.scene.tweens.add({
+          targets: powerGlow,
+          scaleX: 1.8,
+          scaleY: 1.8,
+          alpha: 0.05,
+          duration: 700,
+          yoyo: true,
+          repeat: -1,
+        });
+      }
+    }
+  }
+
+  /**
+   * Clean up all affix-related visuals (called on death or despawn).
+   */
+  private cleanupAffixVisuals(): void {
+    for (const visual of this.affixAuraVisuals) {
+      if (visual && (visual as any).destroy) {
+        this.scene.tweens.killTweensOf(visual);
+        (visual as any).destroy();
+      }
+    }
+    this.affixAuraVisuals = [];
   }
 }
