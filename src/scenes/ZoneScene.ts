@@ -418,6 +418,7 @@ export class ZoneScene extends Phaser.Scene {
         O: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O),
         R: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R),
         P: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P),
+        V: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V),
         ESC: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
       };
     }
@@ -1257,6 +1258,9 @@ export class ZoneScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.wasd.P)) {
       EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'companion' });
     }
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.V)) {
+      EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'achievement' });
+    }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.ESC)) {
       this.returnToMenu();
     }
@@ -1782,7 +1786,15 @@ export class ZoneScene extends Phaser.Scene {
   /** Lazily refresh and return the cached equipment stats. Invalidated on equip/unequip. */
   private getEquipStats(): EquipStats {
     if (!this.cachedEquipStats) {
-      this.cachedEquipStats = this.inventorySystem.getTypedEquipStats();
+      const eq = this.inventorySystem.getTypedEquipStats();
+      // Merge achievement bonuses into equipment stats (idempotent — getBonuses() is pure)
+      const achBonuses = this.achievementSystem.getBonuses();
+      for (const [stat, value] of Object.entries(achBonuses)) {
+        if (stat in eq) {
+          eq[stat as keyof EquipStats] += value;
+        }
+      }
+      this.cachedEquipStats = eq;
     }
     return this.cachedEquipStats;
   }

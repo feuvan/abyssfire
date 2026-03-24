@@ -86,6 +86,7 @@ export class UIScene extends Phaser.Scene {
   private companionPanel: Phaser.GameObjects.Container | null = null;
   private socketPanel: Phaser.GameObjects.Container | null = null;
   private socketPanelSlot: string | null = null;
+  private achievementPanel: Phaser.GameObjects.Container | null = null;
   private nextMinimapRefreshAt = 0;
   private nextQuestTrackerRefreshAt = 0;
   private lastQuestTrackerSignature = '';
@@ -357,6 +358,7 @@ export class UIScene extends Phaser.Scene {
     EventBus.on(GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
     EventBus.on(GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
     EventBus.on(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
+    EventBus.on(GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
     EventBus.on('ui:refresh', this.handleUiRefresh, this);
   }
 
@@ -388,6 +390,7 @@ export class UIScene extends Phaser.Scene {
     if (data.panel === 'quest') this.toggleQuestLog();
     if (data.panel === 'audio') this.toggleAudioSettings();
     if (data.panel === 'companion') this.toggleCompanion();
+    if (data.panel === 'achievement') this.toggleAchievement();
   }
 
   private handleUiRefresh(data: { player: Player; zone: ZoneScene }): void {
@@ -3209,6 +3212,261 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
+  // --- Achievement Unlock Toast ---
+  private handleAchievementUnlocked(data: { achievement: import('../data/types').AchievementDefinition }): void {
+    const ach = data.achievement;
+    const toastW = px(320), toastH = px(60);
+    const toastX = (W - toastW) / 2, toastY = px(60);
+    const toast = this.add.container(toastX, toastY).setDepth(6000).setAlpha(0);
+
+    // Background with gold border
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1a1a0a, 0.95);
+    bg.fillRoundedRect(0, 0, toastW, toastH, px(6));
+    bg.lineStyle(Math.round(2 * DPR), 0xf1c40f, 0.9);
+    bg.strokeRoundedRect(0, 0, toastW, toastH, px(6));
+    toast.add(bg);
+
+    // Gold star icon
+    toast.add(this.add.text(px(14), toastH / 2, '★', {
+      fontSize: fs(22), color: '#f1c40f', fontFamily: FONT,
+    }).setOrigin(0, 0.5));
+
+    // Achievement name and description
+    toast.add(this.add.text(px(42), px(10), `成就解锁: ${ach.name}`, {
+      fontSize: fs(14), color: '#f1c40f', fontFamily: FONT, fontStyle: 'bold',
+    }));
+    const rewardParts: string[] = [];
+    if (ach.reward) {
+      const statDisp = STAT_DISPLAY[ach.reward.stat];
+      const label = statDisp ? statDisp.label : ach.reward.stat;
+      rewardParts.push(`${label}+${ach.reward.value}`);
+    }
+    if (ach.title) rewardParts.push(`称号: ${ach.title}`);
+    const subText = rewardParts.length > 0 ? `${ach.description}  |  ${rewardParts.join('  ')}` : ach.description;
+    toast.add(this.add.text(px(42), px(32), subText, {
+      fontSize: fs(11), color: '#e0d8cc', fontFamily: FONT,
+      wordWrap: { width: toastW - px(56) },
+    }));
+
+    // Animate in
+    this.tweens.add({
+      targets: toast,
+      alpha: 1,
+      y: toastY + px(10),
+      duration: 400,
+      ease: 'Back.easeOut',
+    });
+
+    // Auto-dismiss after 3.5s
+    this.time.delayedCall(3500, () => {
+      this.tweens.add({
+        targets: toast,
+        alpha: 0,
+        y: toastY - px(20),
+        duration: 300,
+        ease: 'Power2',
+        onComplete: () => toast.destroy(),
+      });
+    });
+  }
+
+  // --- Achievement Panel (V) ---
+  private toggleAchievement(): void {
+    if (this.achievementPanel) { this.achievementPanel.destroy(); this.achievementPanel = null; return; }
+    this.closeAllPanels();
+    audioManager.playSFX('click');
+
+    const pw = px(520), ph = px(500), panelX = (W - pw) / 2, panelY = px(10);
+    this.achievementPanel = this.add.container(panelX, panelY).setDepth(4000);
+    this.animatePanelOpen(this.achievementPanel);
+
+    // Background
+    this.achievementPanel.add(
+      this.add.rectangle(0, 0, pw, ph, 0x0f0f1e, 0.95).setOrigin(0, 0).setStrokeStyle(Math.round(2 * DPR), 0xc0934a)
+    );
+
+    // Title
+    this.achievementPanel.add(this.add.text(pw / 2, px(10), '成 就', {
+      fontSize: fs(20), color: '#c0934a', fontFamily: TITLE_FONT, fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    // Close button
+    const closeBg = this.add.circle(pw - px(18), px(18), px(12), 0x331111, 0.6).setInteractive({ useHandCursor: true });
+    const closeX = this.add.text(pw - px(18), px(18), '\u2715', {
+      fontSize: fs(14), color: '#e74c3c', fontFamily: FONT, fontStyle: 'bold',
+    }).setOrigin(0.5);
+    closeBg.on('pointerdown', () => this.toggleAchievement());
+    closeBg.on('pointerover', () => closeBg.setFillStyle(0x551111, 0.9));
+    closeBg.on('pointerout', () => closeBg.setFillStyle(0x331111, 0.6));
+    this.achievementPanel.add(closeBg);
+    this.achievementPanel.add(closeX);
+
+    // Unlocked title display
+    const achSystem = this.zone?.achievementSystem;
+    if (!achSystem) return;
+    const achievements = achSystem.getAll();
+    const unlockedTitles = achievements.filter(a => a.isUnlocked && a.title).map(a => a.title!);
+    if (unlockedTitles.length > 0) {
+      this.achievementPanel.add(this.add.text(pw / 2, px(34), `当前称号: ${unlockedTitles[unlockedTitles.length - 1]}`, {
+        fontSize: fs(12), color: '#f1c40f', fontFamily: FONT,
+      }).setOrigin(0.5, 0));
+    }
+
+    // Summary line
+    const unlocked = achievements.filter(a => a.isUnlocked).length;
+    this.achievementPanel.add(this.add.text(pw / 2, px(48), `已解锁: ${unlocked}/${achievements.length}`, {
+      fontSize: fs(12), color: '#888', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+
+    // Achievement list
+    const listTop = px(68);
+    const rowH = px(56);
+    const listH = ph - listTop - px(22);
+    const maxVisible = Math.floor(listH / rowH);
+
+    // Create scrollable content
+    for (let i = 0; i < Math.min(achievements.length, maxVisible); i++) {
+      const ach = achievements[i];
+      const ry = listTop + i * rowH;
+      this.renderAchievementRow(ach, px(10), ry, pw - px(20), rowH - px(4));
+    }
+
+    // Scroll support if more than visible
+    if (achievements.length > maxVisible) {
+      let scrollOffset = 0;
+      const rebuildList = () => {
+        // Remove old list items (keep bg, title, close, summary)
+        const keepCount = 6 + (unlockedTitles.length > 0 ? 1 : 0);
+        while (this.achievementPanel && this.achievementPanel.list.length > keepCount) {
+          const child = this.achievementPanel.list[this.achievementPanel.list.length - 1];
+          if (child && 'destroy' in child) (child as Phaser.GameObjects.GameObject).destroy();
+          this.achievementPanel.remove(child);
+        }
+        const start = scrollOffset;
+        const end = Math.min(start + maxVisible, achievements.length);
+        for (let i = start; i < end; i++) {
+          const ach = achievements[i];
+          const ry = listTop + (i - start) * rowH;
+          this.renderAchievementRow(ach, px(10), ry, pw - px(20), rowH - px(4));
+        }
+        // Scroll indicator
+        if (this.achievementPanel) {
+          this.achievementPanel.add(this.add.text(pw - px(14), ph - px(16), `${scrollOffset + 1}-${end}/${achievements.length}`, {
+            fontSize: fs(10), color: '#555', fontFamily: FONT,
+          }).setOrigin(1, 1));
+        }
+      };
+      // Mouse wheel scroll
+      this.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gx: number[], _gy: number[], _gz: number[], _gw: number, _gh: number, dy: number) => {
+        if (!this.achievementPanel) return;
+        if (dy > 0 && scrollOffset < achievements.length - maxVisible) { scrollOffset++; rebuildList(); }
+        if (dy < 0 && scrollOffset > 0) { scrollOffset--; rebuildList(); }
+      });
+    }
+
+    // Footer
+    this.achievementPanel.add(this.add.text(pw / 2, ph - px(14), '按 V 关闭', {
+      fontSize: fs(10), color: '#3a3a4a', fontFamily: FONT,
+    }).setOrigin(0.5));
+  }
+
+  private renderAchievementRow(
+    ach: import('../data/types').AchievementDefinition & { current: number; isUnlocked: boolean },
+    x: number, y: number, w: number, h: number
+  ): void {
+    if (!this.achievementPanel) return;
+    const isUnlocked = ach.isUnlocked;
+
+    // Row background
+    const rowBg = this.add.graphics();
+    const bgColor = isUnlocked ? 0x1a1a0a : 0x0c0c18;
+    const borderColor = isUnlocked ? 0xc0934a : 0x2a2a3e;
+    const borderAlpha = isUnlocked ? 0.8 : 0.4;
+    rowBg.fillStyle(bgColor, 0.9);
+    rowBg.fillRoundedRect(x, y, w, h, px(4));
+    rowBg.lineStyle(Math.round(1.5 * DPR), borderColor, borderAlpha);
+    rowBg.strokeRoundedRect(x, y, w, h, px(4));
+    // Unlocked glow
+    if (isUnlocked) {
+      rowBg.lineStyle(Math.round(1 * DPR), 0xf1c40f, 0.15);
+      rowBg.strokeRoundedRect(x - px(1), y - px(1), w + px(2), h + px(2), px(5));
+    }
+    this.achievementPanel.add(rowBg);
+
+    // Icon area
+    const iconSize = px(36);
+    const iconX = x + px(6);
+    const iconY = y + (h - iconSize) / 2;
+    const iconGfx = this.add.graphics();
+    iconGfx.fillStyle(isUnlocked ? 0x2a2a0a : 0x080810, 0.9);
+    iconGfx.fillRoundedRect(iconX, iconY, iconSize, iconSize, px(3));
+    iconGfx.lineStyle(Math.round(1 * DPR), isUnlocked ? 0xf1c40f : 0x333344, 0.6);
+    iconGfx.strokeRoundedRect(iconX, iconY, iconSize, iconSize, px(3));
+    this.achievementPanel.add(iconGfx);
+
+    // Star icon (gold for unlocked, grey for locked)
+    const starColor = isUnlocked ? '#f1c40f' : '#444455';
+    this.achievementPanel.add(this.add.text(iconX + iconSize / 2, iconY + iconSize / 2, isUnlocked ? '★' : '☆', {
+      fontSize: fs(18), color: starColor, fontFamily: FONT,
+    }).setOrigin(0.5));
+
+    // Text area
+    const textX = iconX + iconSize + px(8);
+    const textAreaW = w - iconSize - px(20);
+
+    // Name
+    const nameColor = isUnlocked ? '#f1c40f' : '#777788';
+    this.achievementPanel.add(this.add.text(textX, y + px(4), ach.name, {
+      fontSize: fs(13), color: nameColor, fontFamily: FONT, fontStyle: 'bold',
+    }));
+
+    // Description
+    this.achievementPanel.add(this.add.text(textX, y + px(20), ach.description, {
+      fontSize: fs(10), color: isUnlocked ? '#e0d8cc' : '#555566', fontFamily: FONT,
+      wordWrap: { width: textAreaW - px(100) },
+    }));
+
+    // Progress bar
+    const barW = px(80), barH = px(8);
+    const barX = x + w - barW - px(8);
+    const barY = y + px(8);
+    const progress = Math.min(ach.current / ach.required, 1);
+
+    const barGfx = this.add.graphics();
+    barGfx.fillStyle(0x1a1a2e, 1);
+    barGfx.fillRoundedRect(barX, barY, barW, barH, px(2));
+    const fillW = Math.round(progress * barW);
+    if (fillW > 0) {
+      barGfx.fillStyle(isUnlocked ? 0xf1c40f : 0x555577, 0.8);
+      barGfx.fillRoundedRect(barX, barY, fillW, barH, px(2));
+    }
+    barGfx.lineStyle(Math.round(1 * DPR), isUnlocked ? 0xf1c40f : 0x333344, 0.3);
+    barGfx.strokeRoundedRect(barX, barY, barW, barH, px(2));
+    this.achievementPanel.add(barGfx);
+
+    // Progress text
+    const progText = isUnlocked ? `${ach.required}/${ach.required}` : `${Math.min(ach.current, ach.required)}/${ach.required}`;
+    this.achievementPanel.add(this.add.text(barX + barW / 2, barY + barH + px(2), progText, {
+      fontSize: fs(9), color: isUnlocked ? '#f1c40f' : '#555566', fontFamily: FONT,
+    }).setOrigin(0.5, 0));
+
+    // Reward info
+    const rewardParts: string[] = [];
+    if (ach.reward) {
+      const statDisp = STAT_DISPLAY[ach.reward.stat];
+      const label = statDisp ? statDisp.label : ach.reward.stat;
+      rewardParts.push(`${label}+${ach.reward.value}`);
+    }
+    if (ach.title) rewardParts.push(`称号: ${ach.title}`);
+    if (rewardParts.length > 0) {
+      const rewardColor = isUnlocked ? '#8be9fd' : '#444455';
+      this.achievementPanel.add(this.add.text(barX + barW / 2, barY + barH + px(14), rewardParts.join('  '), {
+        fontSize: fs(9), color: rewardColor, fontFamily: FONT,
+      }).setOrigin(0.5, 0));
+    }
+  }
+
   // --- Audio Settings Panel ---
   private toggleAudioSettings(): void {
     if (this.audioPanel) {
@@ -3542,6 +3800,7 @@ export class UIScene extends Phaser.Scene {
     if (this.questLogPanel) { this.questLogPanel.destroy(); this.questLogPanel = null; }
     if (this.companionPanel) { this.companionPanel.destroy(); this.companionPanel = null; }
     if (this.socketPanel) { this.socketPanel.destroy(); this.socketPanel = null; this.socketPanelSlot = null; }
+    if (this.achievementPanel) { this.achievementPanel.destroy(); this.achievementPanel = null; }
     if (this.loreTextPanel) { this.loreTextPanel.destroy(); this.loreTextPanel = null; }
     if (this.loreTextBackdrop) { this.loreTextBackdrop.destroy(); this.loreTextBackdrop = null; }
     if (this.audioPanel) {
@@ -3573,6 +3832,7 @@ export class UIScene extends Phaser.Scene {
     EventBus.off(GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
     EventBus.off(GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
     EventBus.off(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
+    EventBus.off(GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
     EventBus.off('ui:refresh', this.handleUiRefresh, this);
     this.skillSlots = [];
     this.skillCooldownOverlays = [];
