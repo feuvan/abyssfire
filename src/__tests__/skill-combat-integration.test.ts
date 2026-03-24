@@ -382,8 +382,9 @@ describe('Elemental Damage through Resistance', () => {
     const defenderNoResist = makeDefender({ stats: { str: 10, dex: 0, vit: 10, int: 5, spi: 5, lck: 0 } });
     const defenderWithResist = makeDefender({ stats: { str: 10, dex: 0, vit: 10, int: 5, spi: 5, lck: 0 }, equipStats: eq });
 
-    const dmg1 = combat.calculateDamage(attacker, defenderNoResist, skill, 5);
-    const dmg2 = combat.calculateDamage(attacker, defenderWithResist, skill, 5);
+    // Use forceCrit to ensure deterministic results (eliminates crit RNG variance between calls)
+    const dmg1 = combat.calculateDamage(attacker, defenderNoResist, skill, 5, undefined, true);
+    const dmg2 = combat.calculateDamage(attacker, defenderWithResist, skill, 5, undefined, true);
     // Physical damage should NOT be affected by elemental resists
     expect(dmg1.damage).toBe(dmg2.damage);
     expect(dmg1.damageType).toBe('physical');

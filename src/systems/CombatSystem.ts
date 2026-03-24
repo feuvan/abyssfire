@@ -339,8 +339,8 @@ export class CombatSystem {
       finalDamage *= 1 + damageAmplify;
     }
 
-    // Elemental resistance reduces non-physical damage
-    if (damageType !== 'physical') {
+    // Elemental resistance reduces elemental damage only — physical/undefined are never reduced
+    if (damageType && damageType !== 'physical') {
       const resist = getResistance(defEq, damageType);
       finalDamage *= 1 - resist / 100;
     }
