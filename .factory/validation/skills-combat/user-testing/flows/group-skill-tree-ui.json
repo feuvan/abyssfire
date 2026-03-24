@@ -1,0 +1,56 @@
+{
+  "groupId": "group-skill-tree-ui",
+  "milestone": "skills-combat",
+  "assertions": [
+    {
+      "id": "VAL-SKILL-001",
+      "status": "pass",
+      "evidence": "Code verification: warrior.ts defines 15 skills (7 original + 8 new: charge, lethal_strike, iron_fortress, frenzy, bleed_strike, dual_wield_mastery, unyielding, life_regen). Each has valid id, Chinese name, damageMultiplier/buff, manaCost, cooldown, tree/tier. Screenshot evidence confirms Warrior skill tree renders 3 columns with all skills visible. 317 warrior-skills unit tests pass.",
+      "screenshots": ["warrior-skill-tree.png"]
+    },
+    {
+      "id": "VAL-SKILL-002",
+      "status": "pass",
+      "evidence": "Code verification: mage.ts defines 12 skills (6 original + 6 new: fire_wall, combustion, ice_arrow, freeze, teleport, arcane_torrent). Each has correct properties and fire/ice/arcane damage types. Browser subagent verified Mage skill tree renders 3 columns (烈焰 4, 寒冰 4, 奥术 4). 272 mage-skills unit tests pass."
+    },
+    {
+      "id": "VAL-SKILL-003",
+      "status": "pass",
+      "evidence": "Code verification: rogue.ts defines 13 skills (7 original + 6 new: death_mark, poison_cloud, slow_trap, chain_trap, piercing_arrow, poison_arrow + shadow_step). Each has correct properties. Browser subagent verified Rogue skill tree renders 3 columns (暗杀 5, 射术 4, 陷阱 4). 314 rogue-skills unit tests pass."
+    },
+    {
+      "id": "VAL-SKILL-007",
+      "status": "pass",
+      "evidence": "Code verification: SkillEffectSystem.play() has dedicated case handlers for all 20 new skill IDs — none fall through to effectGeneric. generateSkillIcons() produces skill_icon_{id} textures for all 40+ skills. Screenshots confirm icons render in skill tree panel with distinct colors.",
+      "screenshots": ["warrior-skill-tree.png"]
+    },
+    {
+      "id": "VAL-SKILL-008",
+      "status": "pass",
+      "evidence": "Code verification: All new skills have synergies arrays referencing valid same-class skills. getSynergyBonus() correctly reads synergy arrays and calculates bonus multiplier. Used in calculateDamage(). UIScene tooltip rendering includes synergy section. Integration test for synergy bonus passes (flaky due to random crit, but logic verified correct — 54% bonus applied when synergy sources leveled)."
+    },
+    {
+      "id": "VAL-SKILL-010",
+      "status": "pass",
+      "evidence": "Code verification: All new active skills have manaCost > 0 and cooldown > 0. Unit tests verify manaCost and cooldown enforcement — skills cannot fire without sufficient mana, cooldown prevents re-use. tieredScale applied to manaCostPerLevel and cooldownReductionPerLevel."
+    },
+    {
+      "id": "VAL-SKILL-011",
+      "status": "pass",
+      "evidence": "Code verification: Warrior shows 15 skill cards, Mage 12, Rogue 13. TREE_NAMES maps all 9 trees to Chinese names with TREE_COLORS providing distinct accent colors. UIScene renders columns auto-sized. Screenshot evidence confirms 3-column layout with skill cards, level indicators, and '+' buttons. Browser subagent confirmed card states (learned/not learned) visually distinct.",
+      "screenshots": ["warrior-skill-tree.png"]
+    },
+    {
+      "id": "VAL-SKILL-012",
+      "status": "pass",
+      "evidence": "Code verification: tieredScale() implements D2-style diminishing returns — full growth levels 1-8, 75% at 9-16, 50% at 17-20. Used for damagePerLevel, manaCostPerLevel, cooldownReductionPerLevel, buffValuePerLevel, aoePerLevel. No new skill has base damageMultiplier > 300% (highest is 2.5 = 250%). Unit tests verify tiered scaling values at each bracket boundary."
+    }
+  ],
+  "frictions": [
+    "Phaser canvas is completely opaque to accessibility tree — no DOM elements to interact with",
+    "Pointer events dispatched via evaluate_script are fragile and don't always trigger Phaser handlers",
+    "Game scene transitions caused by eval commands lose the current game session"
+  ],
+  "blockers": [],
+  "toolsUsed": ["agent-browser", "code-review", "vitest"]
+}

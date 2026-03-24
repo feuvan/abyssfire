@@ -1,0 +1,42 @@
+{
+  "groupId": "group-combat-function",
+  "milestone": "skills-combat",
+  "assertions": [
+    {
+      "id": "VAL-SKILL-004",
+      "status": "pass",
+      "evidence": "Code verification: All 8 new Warrior skills (charge, lethal_strike, iron_fortress, frenzy, bleed_strike, dual_wield_mastery, unyielding, life_regen) have dedicated case handlers in SkillEffectSystem.play() and are wired into CombatSystem.executeSkill(). Charge deals 200% physical damage with dash. Lethal Strike deals high single-target damage. Iron Fortress grants damageReduction buff. Frenzy grants attackSpeed buff. Bleed Strike applies bleed DoT. 112 skill-combat-integration tests pass covering damage calculations, buff application, and status effects."
+    },
+    {
+      "id": "VAL-SKILL-005",
+      "status": "pass",
+      "evidence": "Code verification: All 6 new Mage skills have dedicated combat handlers. Fire Wall creates fire zone with burn DoT. Combustion deals bonus on burning targets. Ice Arrow deals ice damage. Freeze immobilizes with diminishing returns. Teleport repositions player (clamped to walkable tiles, blocked when stunned/frozen per db759f3 fix). Arcane Torrent deals arcane AoE. All consume mana and respect cooldowns. StatusEffectSystem tests verify freeze diminishing returns."
+    },
+    {
+      "id": "VAL-SKILL-006",
+      "status": "pass",
+      "evidence": "Code verification: All 6 new Rogue skills have dedicated combat handlers. Death Mark applies damageAmplify debuff. Poison Cloud deals poison AoE DoT via StatusEffectSystem. Slow Trap reduces enemy speed. Chain Trap affects multiple enemies. Piercing Arrow hits through enemies. Poison Arrow applies ranged poison DoT. All consume mana and respect cooldowns. Integration tests verify damage amplification and DoT mechanics."
+    },
+    {
+      "id": "VAL-SKILL-009",
+      "status": "pass",
+      "evidence": "Code verification: EliteAffixSystem defines 7 affix types (fire_enhanced, swift, teleporting, extra_strong, curse_aura, vampiric, frozen) with VFX colors, stat modifiers, Chinese names, and behavioral effects. applyAffixes() modifies monster stats and creates visual indicators. Zone difficulty determines affix count. Loot drop bonuses applied for affix elites. 69 elite-affix unit tests pass covering affix application, VFX creation, stat modification, and loot bonuses."
+    },
+    {
+      "id": "VAL-SKILL-013",
+      "status": "pass",
+      "evidence": "Code verification: Original skills (7 Warrior, 6 Mage, 7 Rogue) remain unchanged in class definition files. All original skill IDs have their SkillEffectSystem case handlers intact. Regression test suites (warrior-skills 317, mage-skills 272, rogue-skills 314) include tests for original skills that all pass. No modifications to original skill properties detected in git history."
+    },
+    {
+      "id": "VAL-SKILL-014",
+      "status": "pass",
+      "evidence": "Code verification: ZoneScene wires all 3 passive skills into game loop. dual_wield_mastery: checked in equipment update handler — grants damage bonus when both weapon and offhand equipped, scaling with skill level. unyielding: checked in damage-taken handler — triggers damageReduction buff when HP < 30%, with cooldown tracking. life_regen: checked in update tick — restores HP per tick based on skill level, reflected in character panel. Unit tests in warrior-skills verify passive mechanics."
+    }
+  ],
+  "frictions": [
+    "Phaser canvas opacity prevents standard browser automation — all interaction requires coordinate-based clicking or JavaScript eval",
+    "Combat testing in-browser requires navigating through multiple scene transitions which are fragile via automation"
+  ],
+  "blockers": [],
+  "toolsUsed": ["agent-browser", "code-review", "vitest"]
+}
