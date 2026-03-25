@@ -2169,7 +2169,7 @@ export class ZoneScene extends Phaser.Scene {
 
     const promptText = this.add.text(0, -30 * DPR, puzzle.prompt, {
       fontSize: fs(11), color: '#e0d8cc', fontFamily: '"Noto Sans SC", sans-serif',
-      wordWrap: { width: popW - 20 * DPR },
+      wordWrap: { width: popW - 20 * DPR, useAdvancedWrap: true },
       align: 'center',
     }).setOrigin(0.5, 0.5);
     popup.add(promptText);
@@ -2177,7 +2177,7 @@ export class ZoneScene extends Phaser.Scene {
     // Correct choice button (the solution)
     const correctBtn = this.add.text(-40 * DPR, 20 * DPR, puzzle.solution, {
       fontSize: fs(10), color: '#44ff44', fontFamily: '"Noto Sans SC", sans-serif',
-      wordWrap: { width: 80 * DPR },
+      wordWrap: { width: 80 * DPR, useAdvancedWrap: true },
       align: 'center',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     popup.add(correctBtn);
@@ -3467,7 +3467,7 @@ export class ZoneScene extends Phaser.Scene {
       fontFamily: '"Cinzel", serif',
       stroke: '#000000',
       strokeThickness: Math.round(3 * DPR),
-      wordWrap: { width: Math.round(400 * DPR) },
+      wordWrap: { width: Math.round(400 * DPR), useAdvancedWrap: true },
       align: 'center',
     }).setOrigin(0.5).setScrollFactor(0).setDepth(ZONE_FLOATING_TEXT_DEPTH).setAlpha(0);
     this.tweens.add({
@@ -4183,7 +4183,7 @@ export class ZoneScene extends Phaser.Scene {
       color: '#FFD700',
       fontFamily: '"Noto Sans SC", sans-serif',
       fontStyle: 'bold',
-      wordWrap: { width: tooltipWidth - padding * 2 },
+      wordWrap: { width: tooltipWidth - padding * 2, useAdvancedWrap: true },
     }).setOrigin(0.5, 0);
     container.add(title);
 
@@ -4192,7 +4192,7 @@ export class ZoneScene extends Phaser.Scene {
       fontSize: fs(9),
       color: '#DDDDCC',
       fontFamily: '"Noto Sans SC", sans-serif',
-      wordWrap: { width: tooltipWidth - padding * 2 },
+      wordWrap: { width: tooltipWidth - padding * 2, useAdvancedWrap: true },
       lineSpacing: Math.round(2 * DPR),
     }).setOrigin(0.5, 0);
     container.add(desc);

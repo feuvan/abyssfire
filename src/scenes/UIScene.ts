@@ -371,7 +371,7 @@ export class UIScene extends Phaser.Scene {
     for (let i = 0; i < LOG_MAX_LINES; i++) {
       this.logTexts.push(
         this.add.text(x + px(8), y + px(18) + i * px(14), '', {
-          fontSize: fs(12), color: '#aaa', fontFamily: FONT, wordWrap: { width: panelW - px(16) },
+          fontSize: fs(12), color: '#aaa', fontFamily: FONT, wordWrap: { width: panelW - px(16), useAdvancedWrap: true },
         }).setDepth(3000)
       );
     }
@@ -627,7 +627,7 @@ export class UIScene extends Phaser.Scene {
         return `${label}+${v}${suffix}`;
       }).join('  ');
     this.inventoryPanel.add(this.add.text(px(14), ph - px(22), `装备加成: ${statText || '无'}`, {
-      fontSize: fs(12), color: '#777788', fontFamily: FONT, wordWrap: { width: pw - px(28) },
+      fontSize: fs(12), color: '#777788', fontFamily: FONT, wordWrap: { width: pw - px(28), useAdvancedWrap: true },
     }));
   }
 
@@ -800,7 +800,7 @@ export class UIScene extends Phaser.Scene {
     this.contextPopup = this.add.container(popX, popY).setDepth(PANEL_STYLE.depth.confirmDialog);
     this.contextPopup.add(this.add.rectangle(0, 0, popW, popH, 0x0a0a18, 0.95).setOrigin(0, 0).setStrokeStyle(Math.round(1 * DPR), PANEL_STYLE.border.color));
     this.contextPopup.add(this.add.text(popW / 2, px(8), `卖出 ${item.name} (${sellPrice}G)?`, {
-      fontSize: fs(12), color: '#e0d8cc', fontFamily: FONT, wordWrap: { width: popW - px(16) },
+      fontSize: fs(12), color: '#e0d8cc', fontFamily: FONT, wordWrap: { width: popW - px(16), useAdvancedWrap: true },
     }).setOrigin(0.5, 0));
     const yesBtn = this.add.text(popW / 2 - px(30), px(38), '[确定]', {
       fontSize: fs(13), color: '#27ae60', fontFamily: FONT,
@@ -2130,7 +2130,7 @@ export class UIScene extends Phaser.Scene {
 
     // Dialogue text
     this.dialoguePanel.add(this.add.text(pw / 2, px(32), data.dialogue, {
-      fontSize: fs(14), color: '#e0d8cc', fontFamily: FONT, wordWrap: { width: pw - px(30) },
+      fontSize: fs(14), color: '#e0d8cc', fontFamily: FONT, wordWrap: { width: pw - px(30), useAdvancedWrap: true },
     }).setOrigin(0.5, 0));
 
     // Action buttons
@@ -2243,7 +2243,7 @@ export class UIScene extends Phaser.Scene {
     // Measure text height
     const textMeasure = this.add.text(0, 0, displayText, {
       fontSize: fs(13), color: '#e0d8cc', fontFamily: FONT,
-      wordWrap: { width: pw - px(36) },
+      wordWrap: { width: pw - px(36), useAdvancedWrap: true },
       lineSpacing: px(3),
     });
     const textHeight = textMeasure.height;
@@ -2301,7 +2301,7 @@ export class UIScene extends Phaser.Scene {
 
     const npcText = this.add.text(0, -this.dialogueScrollY, displayText, {
       fontSize: fs(13), color: '#e0d8cc', fontFamily: FONT,
-      wordWrap: { width: pw - px(36) },
+      wordWrap: { width: pw - px(36), useAdvancedWrap: true },
       lineSpacing: px(3),
     });
     textContainer.add(npcText);
@@ -2353,7 +2353,7 @@ export class UIScene extends Phaser.Scene {
 
       // Truncate long choice text
       if (btnText.width > pw - px(56)) {
-        btnText.setStyle({ wordWrap: { width: pw - px(56) } });
+        btnText.setStyle({ wordWrap: { width: pw - px(56), useAdvancedWrap: true } });
       }
 
       btnBg.on('pointerover', () => {
@@ -2668,7 +2668,7 @@ export class UIScene extends Phaser.Scene {
 
     // Description
     this.questLogPanel.add(this.add.text(detailX + px(5), dy, selected.quest.description, {
-      fontSize: fs(13), color: '#bbb', fontFamily: FONT, wordWrap: { width: detailW - px(20) },
+      fontSize: fs(13), color: '#bbb', fontFamily: FONT, wordWrap: { width: detailW - px(20), useAdvancedWrap: true },
     }));
     dy += px(40);
 
@@ -2855,7 +2855,7 @@ export class UIScene extends Phaser.Scene {
     let ly = px(6);
     for (const line of lines) {
       this.tooltipContainer.add(this.add.text(px(8), ly, line.text, {
-        fontSize: fs(line.size), color: line.color, fontFamily: PANEL_STYLE.tooltip.font, wordWrap: { width: tipW - px(16) },
+        fontSize: fs(line.size), color: line.color, fontFamily: PANEL_STYLE.tooltip.font, wordWrap: { width: tipW - px(16), useAdvancedWrap: true },
       }));
       ly += px(line.size) + px(4);
     }
@@ -3279,7 +3279,7 @@ export class UIScene extends Phaser.Scene {
 
       // Description
       this.companionPanel!.add(this.add.text(px(30), cy + px(24), def.description, {
-        fontSize: fs(11), color: '#888', fontFamily: FONT, wordWrap: { width: pw - px(180) },
+        fontSize: fs(11), color: '#888', fontFamily: FONT, wordWrap: { width: pw - px(180), useAdvancedWrap: true },
       }));
 
       // Stats preview
@@ -3572,7 +3572,7 @@ export class UIScene extends Phaser.Scene {
     if (hs.pets.length === 0) {
       this.companionPanel.add(this.add.text(px(14), petStartY + px(22), '暂无宠物。可通过击杀BOSS、完成任务或探索获得。', {
         fontSize: fs(11), color: '#888', fontFamily: FONT,
-        wordWrap: { width: pw - px(28) },
+        wordWrap: { width: pw - px(28), useAdvancedWrap: true },
       }));
       return;
     }
@@ -3618,7 +3618,7 @@ export class UIScene extends Phaser.Scene {
       // Description
       this.companionPanel!.add(this.add.text(px(32), cy + px(20), def.description, {
         fontSize: fs(10), color: '#888', fontFamily: FONT,
-        wordWrap: { width: pw - px(200) },
+        wordWrap: { width: pw - px(200), useAdvancedWrap: true },
       }));
 
       // EXP bar
@@ -3774,7 +3774,7 @@ export class UIScene extends Phaser.Scene {
     const subText = rewardParts.length > 0 ? `${ach.description}  |  ${rewardParts.join('  ')}` : ach.description;
     toast.add(this.add.text(px(42), px(32), subText, {
       fontSize: fs(11), color: '#e0d8cc', fontFamily: FONT,
-      wordWrap: { width: toastW - px(56) },
+      wordWrap: { width: toastW - px(56), useAdvancedWrap: true },
     }));
 
     // Animate in
@@ -3950,7 +3950,7 @@ export class UIScene extends Phaser.Scene {
     // Description
     this.achievementPanel.add(this.add.text(textX, y + px(20), ach.description, {
       fontSize: fs(10), color: isUnlocked ? '#e0d8cc' : '#555566', fontFamily: FONT,
-      wordWrap: { width: textAreaW - px(100) },
+      wordWrap: { width: textAreaW - px(100), useAdvancedWrap: true },
     }));
 
     // Progress bar
@@ -4118,7 +4118,7 @@ export class UIScene extends Phaser.Scene {
     for (const line of lines) {
       this.miniBossDialoguePanel.add(this.add.text(px(20), dy, line, {
         fontSize: fs(13), color: '#ddd', fontFamily: FONT,
-        wordWrap: { width: pw - px(40) }, lineSpacing: px(3),
+        wordWrap: { width: pw - px(40), useAdvancedWrap: true }, lineSpacing: px(3),
       }));
       dy += px(50);
     }
@@ -4198,7 +4198,7 @@ export class UIScene extends Phaser.Scene {
     // Lore text
     this.loreTextPanel.add(this.add.text(px(20), px(60), entry.text, {
       fontSize: fs(12), color: '#ccc', fontFamily: FONT,
-      wordWrap: { width: pw - px(40) }, lineSpacing: px(3),
+      wordWrap: { width: pw - px(40), useAdvancedWrap: true }, lineSpacing: px(3),
     }));
 
     // Close button
@@ -4274,7 +4274,7 @@ export class UIScene extends Phaser.Scene {
           const truncText = entry.text.length > 40 ? entry.text.substring(0, 40) + '...' : entry.text;
           this.questLogPanel.add(this.add.text(px(50), dy + px(16), truncText, {
             fontSize: fs(10), color: '#777', fontFamily: FONT,
-            wordWrap: { width: pw - px(80) },
+            wordWrap: { width: pw - px(80), useAdvancedWrap: true },
           }));
           dy += px(36);
         } else {
