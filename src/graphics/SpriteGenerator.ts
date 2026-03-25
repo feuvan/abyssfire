@@ -46,6 +46,8 @@ import { ForestHermitDrawer } from './sprites/npcs/ForestHermit';
 import { QuestDwarfDrawer } from './sprites/npcs/QuestDwarf';
 import { QuestNomadDrawer } from './sprites/npcs/QuestNomad';
 import { QuestWardenDrawer } from './sprites/npcs/QuestWarden';
+import { WanderingMerchantDrawer } from './sprites/npcs/WanderingMerchant';
+import { RescueNPCDrawer } from './sprites/npcs/RescueNPC';
 import { TreeDrawer } from './sprites/decorations/Tree';
 import { BushDrawer } from './sprites/decorations/Bush';
 import { RockDrawer } from './sprites/decorations/Rock';
@@ -65,6 +67,10 @@ import { CollapsedPillarDrawer } from './sprites/decorations/CollapsedPillar';
 import { RitualCircleDrawer } from './sprites/decorations/RitualCircle';
 import { FrozenCorpseDrawer } from './sprites/decorations/FrozenCorpse';
 import { SandBuriedStructureDrawer } from './sprites/decorations/SandBuriedStructure';
+import { TreasureChestDrawer } from './sprites/decorations/TreasureChest';
+import { GoldPileDrawer } from './sprites/decorations/GoldPile';
+import { LoreScrollDrawer } from './sprites/decorations/LoreScroll';
+import { PuzzleStoneDrawer } from './sprites/decorations/PuzzleStone';
 import { LootBagDrawer } from './sprites/effects/LootBag';
 import { ExitPortalDrawer } from './sprites/effects/ExitPortal';
 
@@ -133,6 +139,8 @@ const NPC_DRAWERS: EntityDrawer[] = [
   QuestDwarfDrawer,
   QuestNomadDrawer,
   QuestWardenDrawer,
+  WanderingMerchantDrawer,
+  RescueNPCDrawer,
 ];
 
 const NPC_WORK_RATES = new Map<string, number>([
@@ -147,6 +155,8 @@ const NPC_WORK_RATES = new Map<string, number>([
   [QuestDwarfDrawer.key, 6],
   [QuestNomadDrawer.key, 4],
   [QuestWardenDrawer.key, 5],
+  [WanderingMerchantDrawer.key, 5],
+  [RescueNPCDrawer.key, 3],
 ]);
 
 const DECOR_DRAWERS: EntityDrawer[] = [
@@ -169,6 +179,10 @@ const DECOR_DRAWERS: EntityDrawer[] = [
   RitualCircleDrawer,
   FrozenCorpseDrawer,
   SandBuriedStructureDrawer,
+  TreasureChestDrawer,
+  GoldPileDrawer,
+  LoreScrollDrawer,
+  PuzzleStoneDrawer,
 ];
 
 const EFFECT_DRAWERS: EntityDrawer[] = [

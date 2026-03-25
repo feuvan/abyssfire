@@ -2909,6 +2909,16 @@ export class UIScene extends Phaser.Scene {
     if (item.legendaryEffect) {
       lines.push({ text: item.legendaryEffect, color: '#e67e22', size: 12 });
     }
+    // Gem socketing effect (when hovering a gem item)
+    if (base?.type === 'gem') {
+      const gemInfo = GEM_STAT_MAP[item.baseId];
+      if (gemInfo) {
+        const disp = STAT_DISPLAY[gemInfo.stat];
+        const label = disp ? disp.label : gemInfo.stat;
+        const suffix = disp?.isPercent ? '%' : '';
+        lines.push({ text: `镶嵌效果: +${gemInfo.value}${suffix} ${label}`, color: '#8be9fd', size: 12 });
+      }
+    }
     // Socketed gems
     if (item.sockets && item.sockets.length > 0) {
       lines.push({ text: '── 宝石 ──', color: '#8be9fd', size: 11 });
@@ -3153,7 +3163,10 @@ export class UIScene extends Phaser.Scene {
         }).setOrigin(0.5));
 
         // Gem name below slot
-        this.socketPanel!.add(this.add.text(sx + sockSize / 2, sy + sockSize + px(4), gem.name, {
+        const gemDisp = STAT_DISPLAY[gem.stat];
+        const gemStatLabel = gemDisp ? gemDisp.label : gem.stat;
+        const gemSuffix = gemDisp?.isPercent ? '%' : '';
+        this.socketPanel!.add(this.add.text(sx + sockSize / 2, sy + sockSize + px(4), `${gem.name} (+${gem.value}${gemSuffix}${gemStatLabel})`, {
           fontSize: fs(10), color: '#8be9fd', fontFamily: FONT,
         }).setOrigin(0.5, 0));
 
@@ -3229,6 +3242,17 @@ export class UIScene extends Phaser.Scene {
           this.socketPanel!.add(this.add.text(gx + gemSlotSize - px(2), gy + gemSlotSize - px(2), `${gemItem.quantity}`, {
             fontSize: fs(10), color: '#ffd700', fontFamily: FONT,
           }).setOrigin(1, 1));
+        }
+
+        // Stat label below gem slot
+        const gInfo = GEM_STAT_MAP[gemItem.baseId];
+        if (gInfo) {
+          const gDisp = STAT_DISPLAY[gInfo.stat];
+          const gLabel = gDisp ? gDisp.label : gInfo.stat;
+          const gSuffix = gDisp?.isPercent ? '%' : '';
+          this.socketPanel!.add(this.add.text(gx + gemSlotSize / 2, gy + gemSlotSize + px(1), `+${gInfo.value}${gSuffix}${gLabel}`, {
+            fontSize: fs(9), color: '#8be9fd', fontFamily: FONT,
+          }).setOrigin(0.5, 0));
         }
 
         // Tooltip on hover

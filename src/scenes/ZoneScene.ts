@@ -2528,7 +2528,7 @@ export class ZoneScene extends Phaser.Scene {
     const affixLootBonus = (monster.eliteAffixes.length > 0
       ? this.eliteAffixSystem.getCombinedStats(monster.eliteAffixes).lootQualityBonus
       : 0) + dungeonLootBonus;
-    const loot = this.lootSystem.generateLoot(monster.definition, luckBonus, affixLootBonus);
+    const loot = this.lootSystem.generateLoot(monster.definition, luckBonus, affixLootBonus, this.difficulty);
     const potionAmounts: Record<string, { type: 'hp' | 'mp'; amount: number }> = {
       c_hp_potion_s: { type: 'hp', amount: 50 },
       c_hp_potion_m: { type: 'hp', amount: 150 },

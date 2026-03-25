@@ -4,6 +4,7 @@ import { Prefixes, Suffixes } from '../data/items/affixes';
 import { LegendaryItems, SetDefinitions, SetPieceBases } from '../data/items/sets';
 import { DUNGEON_EXCLUSIVE_LEGENDARIES, DUNGEON_EXCLUSIVE_SETS, DUNGEON_SET_PIECE_BASES } from '../data/dungeonData';
 import type { ItemInstance, ItemQuality, ItemAffix, AffixDefinition, MonsterDefinition, WeaponBase, ArmorBase } from '../data/types';
+import type { Difficulty } from './DifficultySystem';
 
 let uidCounter = 0;
 function genUid(): string { return `item_${Date.now()}_${uidCounter++}`; }
@@ -17,31 +18,41 @@ export class LootSystem {
     return LootSystem.QUALITY_ORDER.indexOf(quality) >= LootSystem.QUALITY_ORDER.indexOf(floor);
   }
 
-  generateLoot(monster: MonsterDefinition, playerLuck: number, affixLootBonus = 0): ItemInstance[] {
+  /** Difficulty-based loot modifiers: item level bonus, quality bonus, extra affix count. */
+  private static getDifficultyLootMods(difficulty: Difficulty): { levelBonus: number; qualityBonus: number; extraAffixes: number } {
+    switch (difficulty) {
+      case 'nightmare': return { levelBonus: 3, qualityBonus: 5, extraAffixes: 1 };
+      case 'hell': return { levelBonus: 6, qualityBonus: 12, extraAffixes: 2 };
+      default: return { levelBonus: 0, qualityBonus: 0, extraAffixes: 0 };
+    }
+  }
+
+  generateLoot(monster: MonsterDefinition, playerLuck: number, affixLootBonus = 0, difficulty: Difficulty = 'normal'): ItemInstance[] {
     const items: ItemInstance[] = [];
-    const level = monster.level;
+    const diffMods = LootSystem.getDifficultyLootMods(difficulty);
+    const level = monster.level + diffMods.levelBonus;
     const baseDropRate = monster.elite ? 80 : 40;
     const luckBonus = playerLuck * 0.5;
 
     // Gold is handled separately in ZoneScene
     // Equipment drop
     if (chance(baseDropRate + luckBonus)) {
-      const quality = this.rollQuality(level, playerLuck, monster.elite ?? false, affixLootBonus);
-      const item = this.generateEquipment(level, quality);
+      const quality = this.rollQuality(level, playerLuck, monster.elite ?? false, affixLootBonus + diffMods.qualityBonus);
+      const item = this.generateEquipment(level, quality, diffMods.extraAffixes);
       if (item) items.push(item);
     }
 
     // Second drop for elites
     if (monster.elite && chance(50 + luckBonus)) {
-      const quality = this.rollQuality(level, playerLuck, true, affixLootBonus);
-      const item = this.generateEquipment(level, quality);
+      const quality = this.rollQuality(level, playerLuck, true, affixLootBonus + diffMods.qualityBonus);
+      const item = this.generateEquipment(level, quality, diffMods.extraAffixes);
       if (item) items.push(item);
     }
 
     // Third drop for affix elites with high bonus
     if (affixLootBonus >= 10 && chance(30 + luckBonus + affixLootBonus)) {
-      const quality = this.rollQuality(level, playerLuck, true, affixLootBonus);
-      const item = this.generateEquipment(level, quality);
+      const quality = this.rollQuality(level, playerLuck, true, affixLootBonus + diffMods.qualityBonus);
+      const item = this.generateEquipment(level, quality, diffMods.extraAffixes);
       if (item) items.push(item);
     }
 
@@ -122,7 +133,7 @@ export class LootSystem {
     return 'normal';
   }
 
-  generateEquipment(level: number, quality: ItemQuality): ItemInstance | null {
+  generateEquipment(level: number, quality: ItemQuality, extraAffixes = 0): ItemInstance | null {
     // For set quality, directly pick a random set piece to avoid the base-matching problem
     if (quality === 'set') {
       return this.generateSetPiece(level);
@@ -134,7 +145,7 @@ export class LootSystem {
     if (allEquip.length === 0) return null;
 
     const base = allEquip[randomInt(0, allEquip.length - 1)];
-    return this.createItem(base.id, level, quality);
+    return this.createItem(base.id, level, quality, extraAffixes);
   }
 
   private generateSetPiece(level: number): ItemInstance | null {
@@ -178,11 +189,13 @@ export class LootSystem {
     if (pieceAffixes) {
       item.affixes = [...pieceAffixes];
     }
+    // Add 1-2 random affixes for variety (avoid stats already used by fixed affixes)
+    this.addRandomAffixes(item, level, 1, 2);
     this.computeStats(item);
     return item;
   }
 
-  createItem(baseId: string, level: number, quality: ItemQuality): ItemInstance | null {
+  createItem(baseId: string, level: number, quality: ItemQuality, extraAffixes = 0): ItemInstance | null {
     const base = getItemBase(baseId);
     if (!base) return null;
 
@@ -199,13 +212,13 @@ export class LootSystem {
       stats: {},
     };
 
-    // Generate affixes based on quality
+    // Generate affixes based on quality (extraAffixes from difficulty add to count)
     switch (quality) {
       case 'magic':
-        this.addRandomAffixes(item, level, 1, 2);
+        this.addRandomAffixes(item, level, 1, 2 + extraAffixes);
         break;
       case 'rare':
-        this.addRandomAffixes(item, level, 3, 4);
+        this.addRandomAffixes(item, level, 3, 4 + extraAffixes);
         break;
       case 'legendary':
         this.makeLegendary(item, baseId);
@@ -223,6 +236,10 @@ export class LootSystem {
   private addRandomAffixes(item: ItemInstance, level: number, min: number, max: number): void {
     const count = randomInt(min, max);
     const usedIds = new Set<string>();
+    // Pre-populate with existing affix IDs (e.g. from set piece fixed affixes)
+    for (const existing of item.affixes) {
+      usedIds.add(existing.affixId);
+    }
     let prefixCount = 0;
     let suffixCount = 0;
     const base = getItemBase(item.baseId);
