@@ -959,7 +959,7 @@ export class UIScene extends Phaser.Scene {
     this.skillPanel.add(scrollContainer);
 
     // Clip mask for scroll area
-    const clipMask = this.add.graphics();
+    const clipMask = this.make.graphics({});
     clipMask.fillStyle(0xffffff);
     clipMask.fillRect(panelX + px(10), panelY + contentTop, pw - px(20), contentH);
     const mask = clipMask.createGeometryMask();
