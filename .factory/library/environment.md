@@ -38,3 +38,7 @@ Environment variables, external dependencies, and setup notes.
 - WebGL required for `ColorGradePipeline` post-processing
 - Web Audio API for procedural SFX
 - AudioContext auto-resume handled on first user gesture
+
+## Test Environment Quirks
+
+- Importing `src/utils/IsometricUtils.ts` in Vitest also pulls in `src/config.ts`, which depends on Phaser constants/types. Tests that use `IsometricUtils` production helpers must ensure the Phaser mock covers `AUTO`, `Scale.FIT`, `Scale.CENTER_BOTH`, and `Geom.Point` for the import chain to resolve cleanly.

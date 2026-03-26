@@ -1,0 +1,21 @@
+{
+  "featureId": "perf-scrutiny-fix-integration-tests",
+  "reviewedAt": "2026-03-26T12:00:00Z",
+  "commitId": "6c6ed10",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix commit resolves both prior blocking review findings. PerformanceIntegration.test.ts now imports the production distanceSq utility and replaces the fake zone-transition scenario with focused integration checks against the real FogOfWarCore, SpatialGrid, and distanceSq behaviors used during transitions.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Importing src/utils/IsometricUtils.ts in tests pulls in src/config.ts and therefore Phaser constants; unit tests need the Phaser mock to cover AUTO, Scale, and Geom.Point for this import chain to work.",
+      "evidence": "Fix commit 6c6ed10 had to extend src/__mocks__/phaser.ts with AUTO, Scale.FIT, Scale.CENTER_BOTH, and Geom.Point so src/__tests__/PerformanceIntegration.test.ts could import distanceSq from src/utils/IsometricUtils.ts. This test-import caveat is not documented in .factory/library/environment.md or architecture.md."
+    }
+  ],
+  "addressesFailureFrom": "/Users/feuvan/src/abyssfire/.factory/validation/performance/scrutiny/reviews/perf-integration-verification.json",
+  "summary": "Pass. I reviewed the prior failed review, the original commit 831e336, and the fix commit 6c6ed10. The fix removes the local distanceSq duplicate, uses production imports throughout, and rewrites the zone-transition coverage into meaningful production-module integration tests for fog save/load, spatial-grid rebuild, and post-reset proximity checks, which adequately addresses the original failures."
+}

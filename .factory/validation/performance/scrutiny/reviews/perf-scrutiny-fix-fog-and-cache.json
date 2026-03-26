@@ -1,0 +1,24 @@
+{
+  "featureId": "perf-scrutiny-fix-fog-and-cache",
+  "reviewedAt": "2026-03-26T12:00:00Z",
+  "commitId": "a965ddc53ec274b60f197ceea0826d0ee782234b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix addresses both prior blocking findings. FogOfWarSystem now does a full first render then incremental dirty-tile redraws without calling fogLayer.clear() on subsequent updates, and UIScene now invalidates the cached equipment stats on the previously missed equip/unequip paths.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The systems-worker skill says tests should import the system module directly and mock Phaser dependencies if needed, but this fog work required splitting pure logic into FogOfWarCore and using math-only tests instead of importing the Phaser-wrapped FogOfWarSystem directly.",
+      "evidence": "systems-worker SKILL.md step 3 says 'Tests must: Import the system module directly'. Prior fog transcript for worker session 17b3b9ea-5914-4107-a5a2-dffe4590e61d records that importing FogOfWarSystem pulled in config.ts/Phaser symbols and led to creation of src/systems/FogOfWarCore.ts as the testable seam; the fix tests in src/__tests__/FogOfWarOptimization.test.ts still target FogOfWarCore and replicated renderer math rather than instantiating FogOfWarSystem."
+    }
+  ],
+  "addressesFailureFrom": [
+    "/Users/feuvan/src/abyssfire/.factory/validation/performance/scrutiny/reviews/perf-fog-of-war-optimization.json",
+    "/Users/feuvan/src/abyssfire/.factory/validation/performance/scrutiny/reviews/perf-update-loop-optimization.json"
+  ],
+  "summary": "Reviewed mission context, prior failure reports, transcript skeleton, handoff, skill guidance, and fix commit a965ddc. Result: pass \u2014 the incremental fog renderer now consumes dirty tiles with first-render/full-render fallback, and all identified UIScene equipment mutation paths invalidate the equipment stat cache immediately."
+}

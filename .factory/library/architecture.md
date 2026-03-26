@@ -110,3 +110,8 @@ Architectural decisions, patterns, and conventions discovered during the mission
 - Throttled quest/NPC marker checks (500ms)
 - World position pre-computation on zone load
 - BGM lazy-loading per zone
+
+## Performance Milestone Validation Notes
+
+- `ZoneScene` does not currently instantiate or call `FogOfWarSystem`; active gameplay fog/exploration state is handled inside `ZoneScene` via its own `fogData` and numeric `exploredTiles` structures. Work on fog save/load or exploration behavior should verify `ZoneScene` runtime callsites instead of assuming `FogOfWarSystem` is wired into gameplay.
+- Equipment stat caching crosses scene boundaries: `ZoneScene` owns the cached aggregation and `UIScene` must call `zone.invalidateEquipStats()` after every equipment mutation path (equip, unequip, swap, socket-related changes) so combat/runtime stats do not stay stale.

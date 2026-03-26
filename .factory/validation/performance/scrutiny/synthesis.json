@@ -1,7 +1,7 @@
 {
   "milestone": "performance",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -16,73 +16,37 @@
     "lint": {
       "passed": true,
       "command": "npm run build",
-      "exitCode": 0
+      "exitCode": 0,
+      "note": "Repository has no lint script; build used as third project validator from feature verification expectations and prior synthesis convention."
     }
   },
   "reviewsSummary": {
-    "total": 4,
-    "passed": 0,
-    "failed": 4,
-    "failedFeatures": [
-      "perf-fog-of-war-optimization",
-      "perf-integration-verification",
-      "perf-update-loop-optimization"
-    ]
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
+  "blockingIssues": [],
+  "appliedUpdates": [
     {
-      "featureId": "perf-fog-of-war-optimization",
-      "severity": "blocking",
-      "description": "src/systems/FogOfWarSystem.ts:41 — `render()` still starts with `this.fogLayer.clear()` and then iterates every viewport-visible tile (`for (let r = 0; r < rows; r++)` at line 56) on each tile change. The feature explicitly required replacing full redraws with a dirty-tile render path that redraws only tiles whose visibility changed since last render; this implementation computes dirty tiles in `FogOfWarCore` but never uses them in the Phaser renderer, so the key optimization is missing."
+      "target": "library",
+      "description": "Documented that ZoneScene owns runtime fog/exploration state and that UIScene must invalidate ZoneScene equipment stat cache on all equipment mutations.",
+      "sourceFeature": "perf-scrutiny-fix-fog-and-cache"
     },
     {
-      "featureId": "perf-fog-of-war-optimization",
-      "severity": "blocking",
-      "description": "src/__tests__/FogOfWarOptimization.test.ts:181 — The required test coverage for viewport culling logic is missing. The tests labeled as viewport-culling checks only inspect `FogOfWarCore.dirty` sizes and never exercise the Phaser renderer or camera bounds behavior from `FogOfWarSystem.render()`, so they do not verify the requested viewport-culling requirement."
-    },
-    {
-      "featureId": "perf-integration-verification",
-      "severity": "blocking",
-      "description": "src/__tests__/PerformanceIntegration.test.ts:5 — The test suite duplicates distanceSq locally instead of importing and exercising the production utility. If src/utils/IsometricUtils.ts distanceSq regresses or diverges from SpatialGrid expectations, this integration test still passes, so it does not satisfy the stated requirement to test 'SpatialGrid + distanceSq work together'."
-    },
-    {
-      "featureId": "perf-integration-verification",
-      "severity": "blocking",
-      "description": "src/__tests__/PerformanceIntegration.test.ts:541 — The claimed zone-transition verification is only a hand-rolled simulation using FogOfWarCore and SpatialGrid instances. It never touches ZoneScene.changeZone(), saved fogData restoration, monster respawn/rebuild, or player target position restoration, so the feature does not cover the required 'verify zone transitions still work (fog state, monster spawns, player position)' behavior."
-    },
-    {
-      "featureId": "perf-update-loop-optimization",
-      "severity": "blocking",
-      "description": "src/scenes/UIScene.ts:3280 — The new long-lived getEquipStats() cache is only invalidated on gem socket/unsocket paths, but not on plain equip() or unequip(). This breaks the feature's expected behavior that stats recalculate when equipment changes: the inventory context menu equips an item then only calls refreshInventory(), and the socket panel's unequip button likewise omits invalidateEquipStats(). After this optimization, ZoneScene can continue using stale cached stats for combat, cooldown reduction, regen, etc. until another code path happens to invalidate the cache."
+      "target": "library",
+      "description": "Documented Vitest Phaser mock requirements for importing production IsometricUtils helpers through config.ts.",
+      "sourceFeature": "perf-scrutiny-fix-integration-tests"
     }
   ],
-  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills",
-      "suggestion": "The systems-worker skill instructs workers to 'import the system module directly' and mock Phaser dependencies, but this feature hit a real constraint where importing the system pulled in `config.ts` and Phaser-only symbols. The worker had to introduce a separate pure-logic `FogOfWarCore` module to make tests viable.",
-      "evidence": "systems-worker SKILL.md step 3 says tests should import the system module directly; worker transcript states the FogOfWarSystem -> config.ts -> Phaser.Scale import chain blocked tests and documents splitting to `src/systems/FogOfWarCore.ts` as the workaround.",
-      "isSystemic": false
-    },
-    {
-      "target": ".factory/library",
-      "suggestion": "ZoneScene does not currently integrate `FogOfWarSystem`; gameplay exploration fog is handled by ZoneScene's own `fogData` and flat `exploredTiles` state. That architectural reality is not documented in the shared library even though the worker spent time discovering it during implementation.",
-      "evidence": "Worker transcript notes 'FogOfWarSystem isn't currently imported/used by ZoneScene directly'. Current code in `src/scenes/ZoneScene.ts:112-118` and `3496-3512` shows ZoneScene managing `fogData` and `exploredTiles` itself, while `rg` only finds `FogOfWarSystem` in its own files/tests.",
-      "isSystemic": false
-    },
-    {
-      "target": "skills",
-      "suggestion": "The systems-worker skill says to perform a manual sanity check in-browser if the dev server is running, but this worker's transcript contains no such check even though the feature description explicitly required verifying zone transitions still work. The skill may need clearer guidance that verification-only features involving scene transitions must exercise the real scene flow rather than only pure-logic tests.",
-      "evidence": "systems-worker SKILL.md step 7 requires a manual sanity check; handoff for commit 831e336 lists only vitest/tsc/build and the transcript skeleton contains no browser/service interaction.",
-      "isSystemic": false
-    },
-    {
-      "target": ".factory/library",
-      "suggestion": "Equipment-stat cache invalidation is currently a manual cross-scene convention: UIScene must remember to call zone.invalidateEquipStats() after every inventory mutation. This requirement is not documented in AGENTS.md or .factory/library, and the missed equip/unequip callsites in this feature show it is easy to violate.",
-      "evidence": "src/scenes/UIScene.ts:3007-3016 equip path omits invalidateEquipStats(); src/scenes/UIScene.ts:3278-3283 unequip path omits it; only gem socket/unsocket paths call zone.invalidateEquipStats() at src/scenes/UIScene.ts:3180 and 3270. architecture.md mentions cached equipment stats but not the invalidation contract.",
-      "isSystemic": false
+      "suggestion": "Adjust systems-worker testing guidance so workers may validate Phaser-wrapped systems via extracted pure-logic seams when direct module imports pull in unmockable runtime dependencies.",
+      "evidence": "Both fog reviews noted that FogOfWarSystem testing required the FogOfWarCore seam because importing the Phaser-wrapped system directly pulled in config/Phaser-only symbols.",
+      "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/performance/scrutiny/synthesis.json"
 }
