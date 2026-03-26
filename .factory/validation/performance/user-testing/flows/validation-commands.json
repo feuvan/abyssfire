@@ -1,0 +1,404 @@
+{
+  "groupId": "validation-commands",
+  "testedAt": "2026-03-26T12:17:00.895469+00:00",
+  "isolation": {
+    "repoRoot": "/Users/feuvan/src/abyssfire",
+    "missionDir": "/Users/feuvan/.factory/missions/b8d07ee0-0693-4661-a441-0be966388ed0",
+    "evidenceDir": "/Users/feuvan/.factory/missions/b8d07ee0-0693-4661-a441-0be966388ed0/evidence/performance/validation-commands",
+    "scope": "repo and designated evidence/report paths only",
+    "appCodeModified": false
+  },
+  "toolsUsed": [
+    "Read",
+    "Grep",
+    "Glob",
+    "Execute"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-PERF-002",
+      "title": "Fog updates only on player tile change",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect contract-linked fog tests and source references",
+          "expected": "Coverage proves same-tile updates do not recalculate fog",
+          "observed": "FogOfWarOptimization.test.ts verifies update() returns false and keeps dirty set empty for repeated same-tile calls; PerformanceIntegration.test.ts confirms dirty tiles refresh only on new tile movement."
+        },
+        {
+          "action": "Run targeted fog/performance tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed including FogOfWarOptimization.test.ts and PerformanceIntegration.test.ts."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/FogOfWarOptimization.test.ts",
+          "src/__tests__/PerformanceIntegration.test.ts",
+          "src/systems/FogOfWarCore.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-003",
+      "title": "Fog explored state persists across sessions",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect persistence tests for FogOfWarCore save/load",
+          "expected": "Coverage proves explored tiles survive save/load/zone transition",
+          "observed": "FogOfWarOptimization.test.ts and PerformanceIntegration.test.ts contain round-trip save/load assertions and zone-transition persistence checks."
+        },
+        {
+          "action": "Run targeted fog/performance tests",
+          "expected": "Relevant persistence tests pass",
+          "observed": "Targeted vitest run passed all persistence-related fog tests."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/FogOfWarOptimization.test.ts",
+          "src/__tests__/PerformanceIntegration.test.ts",
+          "src/systems/FogOfWarCore.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-004",
+      "title": "No per-frame object allocations in update loop",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect optimization coverage and source references",
+          "expected": "Tests/code review show in-place buff mutation, numeric explored storage, and cached equip stats",
+          "observed": "UpdateLoopOptimization.test.ts covers in-place splice, numeric Uint8Array explored tiles, and equip-stat caching semantics; ZoneScene.ts uses buffs.splice in reverse iteration and getEquipStats() cache path."
+        },
+        {
+          "action": "Run targeted optimization tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed UpdateLoopOptimization.test.ts and integration coverage."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/UpdateLoopOptimization.test.ts",
+          "src/scenes/ZoneScene.ts:1641",
+          "src/scenes/ZoneScene.ts:1887",
+          "src/systems/FogOfWarCore.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-005",
+      "title": "Distance comparisons use squared distance",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect squared-distance utility/tests and call sites",
+          "expected": "distanceSq utility exists and threshold-comparison call sites use it",
+          "observed": "UpdateLoopOptimization.test.ts and PerformanceIntegration.test.ts validate distanceSq semantics; IsometricUtils.ts exports distanceSq and ZoneScene.ts uses distanceSq across proximity checks."
+        },
+        {
+          "action": "Run targeted optimization/spatial tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed UpdateLoopOptimization.test.ts, SpatialGrid.test.ts, and PerformanceIntegration.test.ts."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/utils/IsometricUtils.ts",
+          "src/__tests__/UpdateLoopOptimization.test.ts",
+          "src/__tests__/PerformanceIntegration.test.ts",
+          "src/scenes/ZoneScene.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-006",
+      "title": "EventBus health/mana events fire only on change",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect update-loop event emission tests and source references",
+          "expected": "Tests show health/mana events emit only when values change",
+          "observed": "UpdateLoopOptimization.test.ts covers change-only event emission semantics; relevant event emit sites are in Player.ts and ZoneScene.ts."
+        },
+        {
+          "action": "Run targeted update-loop tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed UpdateLoopOptimization.test.ts."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/UpdateLoopOptimization.test.ts",
+          "src/entities/Player.ts",
+          "src/scenes/ZoneScene.ts",
+          "src/utils/EventBus.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-007",
+      "title": "Combat targeting still works correctly",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect integration coverage for target selection and AoE queries",
+          "expected": "Tests prove targeting correctness after spatial/distance changes",
+          "observed": "PerformanceIntegration.test.ts covers nearest targeting, AoE target selection, and integrated proximity checks."
+        },
+        {
+          "action": "Run targeted spatial/performance integration tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed PerformanceIntegration.test.ts and SpatialGrid.test.ts."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/PerformanceIntegration.test.ts",
+          "src/__tests__/SpatialGrid.test.ts",
+          "src/scenes/ZoneScene.ts",
+          "src/systems/SpatialGrid.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-008",
+      "title": "Safe zone monster behavior preserved",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect safe-zone behavior coverage",
+          "expected": "Tests verify monsters/player safe-zone proximity logic is unchanged",
+          "observed": "PerformanceIntegration.test.ts contains safe-zone query checks; SpatialGrid.test.ts includes safe-zone pre-filtering coverage."
+        },
+        {
+          "action": "Run targeted spatial/performance tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed all safe-zone related tests."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/PerformanceIntegration.test.ts",
+          "src/__tests__/SpatialGrid.test.ts",
+          "src/scenes/ZoneScene.ts:737",
+          "src/scenes/ZoneScene.ts:748"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-009",
+      "title": "Spatial index returns correct nearby monsters",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect spatial-grid correctness tests",
+          "expected": "Spatial queries match brute-force results",
+          "observed": "SpatialGrid.test.ts explicitly labels VAL-PERF-009 and compares queryRadius results with brute-force scans; PerformanceIntegration.test.ts cross-checks queries with distanceSq."
+        },
+        {
+          "action": "Run targeted spatial tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed SpatialGrid.test.ts and PerformanceIntegration.test.ts."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/SpatialGrid.test.ts",
+          "src/__tests__/PerformanceIntegration.test.ts",
+          "src/systems/SpatialGrid.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-010",
+      "title": "Spatial index updates on monster movement",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect movement/update spatial-grid tests",
+          "expected": "Movement across cells updates index state",
+          "observed": "SpatialGrid.test.ts explicitly labels VAL-PERF-010 and covers same-cell moves, cross-cell transfer, sequential moves, and auto-insert on update; PerformanceIntegration.test.ts also verifies movement updates."
+        },
+        {
+          "action": "Run targeted spatial tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed movement-related spatial tests."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/SpatialGrid.test.ts",
+          "src/__tests__/PerformanceIntegration.test.ts",
+          "src/systems/SpatialGrid.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-011",
+      "title": "Monster spawn and death updates spatial index",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect lifecycle spatial-grid tests",
+          "expected": "Spawn insertions and death removals leave no stale entries",
+          "observed": "SpatialGrid.test.ts explicitly labels VAL-PERF-011 and covers spawn, removal, stale-entry cleanup, and respawn at new position."
+        },
+        {
+          "action": "Run targeted spatial tests",
+          "expected": "Relevant tests pass",
+          "observed": "Targeted vitest run passed lifecycle-related spatial tests."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/targeted-vitest.txt"
+        ],
+        "codeReferences": [
+          "src/__tests__/SpatialGrid.test.ts",
+          "src/systems/SpatialGrid.ts"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERF-013",
+      "title": "All existing tests pass",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Run full test suite (npx vitest run)",
+          "expected": "Zero test failures across the suite",
+          "observed": "Full vitest run reported 1 failed file / 1 failed test: FogOfWarOptimization.test.ts > 'dirty tiles contain correct column and row within bounds' timed out at 5000ms; 2762 tests passed."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/full-vitest.txt"
+        ]
+      },
+      "issues": "Full test suite does not currently meet the contract because one fog-of-war test times out after 5000ms."
+    },
+    {
+      "id": "VAL-PERF-014",
+      "title": "Build succeeds",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run npx tsc --noEmit",
+          "expected": "Type check completes without errors",
+          "observed": "Command exited successfully with no diagnostic output."
+        },
+        {
+          "action": "Run npm run build",
+          "expected": "Production build completes without errors",
+          "observed": "Build succeeded; Vite emitted only a large chunk size warning."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (command-based validation)",
+        "network": "n/a",
+        "terminal": [
+          "performance/validation-commands/tsc-noemit.txt",
+          "performance/validation-commands/npm-build.txt"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The shared user-testing guidance file at /Users/feuvan/.factory/library/user-testing.md was not present, so validation relied on mission-local AGENTS.md and validation-contract.md only.",
+      "resolved": true,
+      "resolution": "Continued with available mission guidance and project instructions.",
+      "affectedAssertions": [
+        "VAL-PERF-002",
+        "VAL-PERF-003",
+        "VAL-PERF-004",
+        "VAL-PERF-005",
+        "VAL-PERF-006",
+        "VAL-PERF-007",
+        "VAL-PERF-008",
+        "VAL-PERF-009",
+        "VAL-PERF-010",
+        "VAL-PERF-011",
+        "VAL-PERF-013",
+        "VAL-PERF-014"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 12 assigned performance assertions via code/test inspection and command evidence. Targeted performance tests passed, typecheck passed, and build passed; full vitest failed due to one timeout in FogOfWarOptimization.test.ts, so VAL-PERF-013 is fail while the other assigned assertions pass."
+}

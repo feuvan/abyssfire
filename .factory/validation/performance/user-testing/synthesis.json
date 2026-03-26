@@ -1,0 +1,45 @@
+{
+  "milestone": "performance",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 15,
+    "passed": 11,
+    "failed": 4,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-PERF-002",
+    "VAL-PERF-003",
+    "VAL-PERF-004",
+    "VAL-PERF-005",
+    "VAL-PERF-006",
+    "VAL-PERF-007",
+    "VAL-PERF-008",
+    "VAL-PERF-009",
+    "VAL-PERF-010",
+    "VAL-PERF-011",
+    "VAL-PERF-014"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-PERF-001",
+      "reason": "Browser flow validator subagent failed to produce any report, so fog rendering correctness was not validated through the user surface in this round."
+    },
+    {
+      "id": "VAL-PERF-012",
+      "reason": "Browser flow validator subagent failed to produce any report, so menu-to-gameplay smoke validation through the user surface was not completed in this round."
+    },
+    {
+      "id": "VAL-PERF-013",
+      "reason": "Full `npx vitest run` reported 1 failed test: `src/__tests__/FogOfWarOptimization.test.ts > dirty tiles contain correct column and row within bounds` timed out after 5000ms."
+    },
+    {
+      "id": "VAL-PERF-015",
+      "reason": "Browser flow validator subagent failed to produce any report, so zone transition behavior was not validated through the user surface in this round."
+    }
+  ],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
