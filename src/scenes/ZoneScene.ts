@@ -44,6 +44,7 @@ import { AllSubDungeons, SubDungeonMiniBosses } from '../data/subDungeons';
 import { DungeonSystem } from '../systems/DungeonSystem';
 import type { DungeonRunState, DungeonFloorConfig } from '../systems/DungeonSystem';
 import { DifficultySystem, DIFFICULTY_UNLOCK_MESSAGES } from '../systems/DifficultySystem';
+import { SpatialGrid } from '../systems/SpatialGrid';
 import { DungeonBossDef, DungeonMidBossDef } from '../data/dungeonData';
 import type { UIScene } from './UIScene';
 
@@ -65,6 +66,8 @@ const H = GAME_HEIGHT * DPR;
 export class ZoneScene extends Phaser.Scene {
   player!: Player;
   private monsters: Monster[] = [];
+  /** Grid-based spatial index for efficient proximity queries on monsters. */
+  private monsterGrid!: SpatialGrid<Monster>;
   private npcs: NPC[] = [];
   private mapData!: MapData;
   private currentMapId!: string;
@@ -258,6 +261,7 @@ export class ZoneScene extends Phaser.Scene {
     this.isPortaling = false;
     this.miniBossDialogueActive = false;
     this.monsters = [];
+    this.monsterGrid = new SpatialGrid<Monster>(this.mapData.cols, this.mapData.rows, 16);
     this.npcs = [];
     this.lootDrops = [];
     this.potionDrops = [];
@@ -754,6 +758,8 @@ export class ZoneScene extends Phaser.Scene {
       } else {
         monster.update(time, delta, this.player.tileCol, this.player.tileRow, this.mapData.collisions, speedMult);
       }
+      // Keep spatial index in sync after movement
+      this.monsterGrid.update(monster);
     }
 
     // Update NPC state machines
@@ -1503,10 +1509,8 @@ export class ZoneScene extends Phaser.Scene {
     // ── Slow Trap: apply slow status effect to enemies in AoE, not buff to player ──
     if (skillId === 'slow_trap') {
       const scaledRadius = getSkillAoeRadius(skill, level);
-      const scaledRadiusSq = scaledRadius * scaledRadius;
-      const aoeTargets = this.monsters.filter(m =>
-        m.isAlive() && distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledRadiusSq
-      );
+      const aoeTargets = this.monsterGrid.queryRadius(this.player.tileCol, this.player.tileRow, scaledRadius)
+        .filter(m => m.isAlive());
       // Apply damage
       for (const t of aoeTargets) {
         if (skill.damageMultiplier > 0) {
@@ -1544,10 +1548,8 @@ export class ZoneScene extends Phaser.Scene {
       // monsters in AoE range switch aggro target to player
       if (skillId === 'taunt_roar' && skill.aoe && skill.aoeRadius) {
         const scaledTauntRadius = getSkillAoeRadius(skill, level);
-        const scaledTauntRadiusSq = scaledTauntRadius * scaledTauntRadius;
-        const tauntTargets = this.monsters.filter(m =>
-          m.isAlive() && distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledTauntRadiusSq
-        );
+        const tauntTargets = this.monsterGrid.queryRadius(this.player.tileCol, this.player.tileRow, scaledTauntRadius)
+          .filter(m => m.isAlive());
         for (const m of tauntTargets) {
           // Add taunted buff to monster
           m.buffs.push({ stat: 'taunted', value: 1, duration: buffDuration, startTime: time });
@@ -1569,10 +1571,8 @@ export class ZoneScene extends Phaser.Scene {
 
     const scaledAoeRadius = getSkillAoeRadius(skill, level);
     if (skill.aoe && scaledAoeRadius > 0) {
-      const scaledAoeRadiusSq = scaledAoeRadius * scaledAoeRadius;
-      const aoeTargets = this.monsters.filter(m =>
-        m.isAlive() && distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledAoeRadiusSq
-      );
+      const aoeTargets = this.monsterGrid.queryRadius(this.player.tileCol, this.player.tileRow, scaledAoeRadius)
+        .filter(m => m.isAlive());
       for (const t of aoeTargets) {
         const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(this.getEquipStats()), t.toCombatEntity(), skill, level, this.player.skillLevels);
         // Combustion: +50% damage on burning targets
@@ -1642,7 +1642,9 @@ export class ZoneScene extends Phaser.Scene {
       }
     }
 
-    for (const monster of this.monsters) {
+    // Use spatial pre-filter: only check monsters near the player (max aggro range ~10 tiles)
+    const nearbyAttackers = this.monsterGrid.queryRadius(this.player.tileCol, this.player.tileRow, 12);
+    for (const monster of nearbyAttackers) {
       if (!monster.isAlive() || monster.state !== 'attack') continue;
       // Immobilized monsters cannot attack
       if (this.statusEffects.isImmobilized(monster.id)) continue;
@@ -2019,6 +2021,7 @@ export class ZoneScene extends Phaser.Scene {
         // Immediately aggro to player
         monster.state = 'chase';
         this.monsters.push(monster);
+        this.monsterGrid.insert(monster);
       }
     }
 
@@ -2129,6 +2132,7 @@ export class ZoneScene extends Phaser.Scene {
         const monster = new Monster(this, def, walkable.col, walkable.row);
         monster.state = 'chase';
         this.monsters.push(monster);
+        this.monsterGrid.insert(monster);
         rescueMonsters.push(monster);
       }
     }
@@ -3085,6 +3089,7 @@ export class ZoneScene extends Phaser.Scene {
             }
           }
           this.monsters.push(monster);
+          this.monsterGrid.insert(monster);
         }
       }
     }
@@ -3224,6 +3229,7 @@ export class ZoneScene extends Phaser.Scene {
               monster.applyEliteAffixes(affixes, this.eliteAffixSystem);
             }
             this.monsters.push(monster);
+            this.monsterGrid.insert(monster);
             this.miniBossMonster = monster;
           }
         }
@@ -3250,9 +3256,9 @@ export class ZoneScene extends Phaser.Scene {
       monster.applyEliteAffixes(affixes, this.eliteAffixSystem);
     }
     this.monsters.push(monster);
+    this.monsterGrid.insert(monster);
     this.miniBossMonster = monster;
   }
-
   /** Check if the player is within aggro range of the mini-boss and trigger dialogue. */
   private checkMiniBossDialogue(): void {
     if (this.miniBossDialogueActive) return;
@@ -4350,7 +4356,9 @@ export class ZoneScene extends Phaser.Scene {
       }
     }
     // Use originalDefinition to avoid compounding affix stat inflation
+    this.monsterGrid.remove(dead);
     this.monsters[idx] = new Monster(this, dead.originalDefinition, c, r);
+    this.monsterGrid.insert(this.monsters[idx]);
     // Re-apply elite affixes on respawn
     if (dead.originalDefinition.elite) {
       const affixes = this.eliteAffixSystem.rollAffixes(this.currentMapId, true);
@@ -4361,27 +4369,24 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private findNearestAliveMonster(): Monster | null {
-    let best: Monster | null = null, bestDist = Infinity;
-    for (const m of this.monsters) {
-      if (!m.isAlive()) continue;
-      const d = distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
-      if (d < bestDist) { bestDist = d; best = m; }
-    }
-    return best;
+    return this.monsterGrid.findNearest(
+      this.player.tileCol, this.player.tileRow,
+      Math.max(this.mapData.cols, this.mapData.rows),
+      m => m.isAlive(),
+    );
   }
 
   private findNearestAggroMonster(): Monster | null {
-    let best: Monster | null = null, bestDist = Infinity;
-    for (const m of this.monsters) {
-      if (!m.isAlive() || !m.isAggro()) continue;
-      const d = distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
-      if (d < bestDist) { bestDist = d; best = m; }
-    }
-    return best;
+    return this.monsterGrid.findNearest(
+      this.player.tileCol, this.player.tileRow,
+      Math.max(this.mapData.cols, this.mapData.rows),
+      m => m.isAlive() && m.isAggro(),
+    );
   }
 
   private findMonsterAt(col: number, row: number): Monster | null {
-    for (const m of this.monsters) {
+    const nearby = this.monsterGrid.queryRadius(col, row, 2);
+    for (const m of nearby) {
       if (!m.isAlive()) continue;
       if (Math.abs(m.tileCol - col) < 1.5 && Math.abs(m.tileRow - row) < 1.5) return m;
     }
@@ -4674,6 +4679,7 @@ export class ZoneScene extends Phaser.Scene {
               // Move monster
               monster.tileCol = tc;
               monster.tileRow = tr;
+              this.monsterGrid.update(monster);
               const newPos = cartToIso(tc, tr);
               monster.sprite.setPosition(newPos.x, newPos.y);
               monster.sprite.setDepth(newPos.y + 50);
@@ -5035,13 +5041,14 @@ export class ZoneScene extends Phaser.Scene {
       }
     }
 
-    // Gather nearby monster info
+    // Gather nearby monster info via spatial index
     let nearestMonsterCol: number | null = null;
     let nearestMonsterRow: number | null = null;
     let nearestMonsterDist = Infinity;
     const monstersInRange: { col: number; row: number; dist: number }[] = [];
 
-    for (const m of this.monsters) {
+    const nearbyMonsters = this.monsterGrid.queryRadius(this.player.tileCol, this.player.tileRow, 10);
+    for (const m of nearbyMonsters) {
       if (!m.isAlive()) continue;
       const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
       if (dist < 10) {
@@ -5141,16 +5148,14 @@ export class ZoneScene extends Phaser.Scene {
         merc.mana = Math.max(0, merc.mana - 10);
         const entity = this.mercenarySystem.toCombatEntity();
         if (entity) {
-          for (const m of this.monsters) {
+          const aoeMonsters = this.monsterGrid.queryRadius(action.targetCol, action.targetRow, radius);
+          for (const m of aoeMonsters) {
             if (!m.isAlive()) continue;
-            const dSq = distanceSq(action.targetCol, action.targetRow, m.tileCol, m.tileRow);
-            if (dSq <= radius * radius) {
-              const result = this.combatSystem.calculateDamage(entity, m.toCombatEntity());
-              const dmg = Math.floor(result.damage * 0.7); // AoE damage reduction
-              m.takeDamage(dmg, this.mercenarySprite?.x ?? 0, this.mercenarySprite?.y ?? 0);
-              this.showDamageText(m.sprite.x, m.sprite.y, dmg, result.isCrit);
-              if (!m.isAlive()) this.onMonsterKilled(m);
-            }
+            const result = this.combatSystem.calculateDamage(entity, m.toCombatEntity());
+            const dmg = Math.floor(result.damage * 0.7); // AoE damage reduction
+            m.takeDamage(dmg, this.mercenarySprite?.x ?? 0, this.mercenarySprite?.y ?? 0);
+            this.showDamageText(m.sprite.x, m.sprite.y, dmg, result.isCrit);
+            if (!m.isAlive()) this.onMonsterKilled(m);
           }
         }
         break;
@@ -5186,8 +5191,9 @@ export class ZoneScene extends Phaser.Scene {
     // Only tank mercenaries absorb hits
     if (def.aiRole !== 'tank') return;
 
-    // Monsters that are close to the mercenary may target it
-    for (const monster of this.monsters) {
+    // Use spatial pre-filter: only check monsters near the mercenary (within ~12 tiles)
+    const nearbyMercMonsters = this.monsterGrid.queryRadius(merc.tileCol, merc.tileRow, 12);
+    for (const monster of nearbyMercMonsters) {
       if (!monster.isAlive() || monster.state !== 'attack') continue;
       if (this.statusEffects.isImmobilized(monster.id)) continue;
 
@@ -5583,6 +5589,7 @@ export class ZoneScene extends Phaser.Scene {
       const monster = new Monster(this, scaledDef, clampedCol, clampedRow);
       monster.state = 'chase';
       this.monsters.push(monster);
+      this.monsterGrid.insert(monster);
       this.defendWaveMonsters.push(monster);
     }
   }
@@ -5659,14 +5666,7 @@ export class ZoneScene extends Phaser.Scene {
 
   /** Find the nearest alive monster to a given tile position. */
   private findMonsterNear(col: number, row: number): Monster | null {
-    let best: Monster | null = null;
-    let bestDist = 9; // max search radius squared (3²)
-    for (const m of this.monsters) {
-      if (!m.isAlive()) continue;
-      const d = distanceSq(m.tileCol, m.tileRow, col, row);
-      if (d < bestDist) { bestDist = d; best = m; }
-    }
-    return best;
+    return this.monsterGrid.findNearest(col, row, 3, m => m.isAlive());
   }
 
   // ---------------------------------------------------------------------------
@@ -5913,6 +5913,7 @@ export class ZoneScene extends Phaser.Scene {
       if (monster.sprite.active) monster.sprite.destroy();
     }
     this.monsters = [];
+    this.monsterGrid.clear();
     if (this.player?.sprite?.active) this.player.sprite.destroy();
     for (const loot of this.lootDrops) loot.sprite.destroy();
     this.lootDrops = [];
