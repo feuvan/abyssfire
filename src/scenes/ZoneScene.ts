@@ -2066,6 +2066,41 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private handleWanderingMerchantEvent(event: ActiveEvent): void {
+    // Spawn a visible wandering merchant NPC sprite at the event location
+    const merchantCol = Math.round(event.col);
+    const merchantRow = Math.round(event.row);
+    const walkable = RandomEventSystem.findWalkableTile(
+      merchantCol, merchantRow,
+      this.mapData.collisions, this.mapData.cols, this.mapData.rows,
+    );
+    const spawnCol = walkable?.col ?? merchantCol;
+    const spawnRow = walkable?.row ?? merchantRow;
+    const { x: merchantX, y: merchantY } = cartToIso(spawnCol, spawnRow);
+
+    const merchantContainer = this.add.container(merchantX, merchantY);
+    merchantContainer.setDepth(merchantY + 10);
+
+    // Use the procedural wandering merchant texture
+    SpriteGenerator.ensureEffect(this, 'npc_wandering_merchant');
+    if (this.textures.exists('npc_wandering_merchant')) {
+      const sprite = this.add.image(0, -16, 'npc_wandering_merchant').setScale(1 / TEXTURE_SCALE);
+      merchantContainer.add(sprite);
+    } else {
+      // Fallback: simple circle if texture generation failed
+      const body = this.add.circle(0, -12 * DPR, 8 * DPR, 0x8a7a60);
+      merchantContainer.add(body);
+    }
+
+    // Name label
+    const nameLabel = this.add.text(0, 4 * DPR, '流浪商人', {
+      fontSize: fs(10),
+      color: '#c0934a',
+      fontFamily: '"Noto Sans SC", sans-serif',
+      stroke: '#000000',
+      strokeThickness: Math.round(2 * DPR),
+    }).setOrigin(0.5, 0);
+    merchantContainer.add(nameLabel);
+
     // Emit a shop event so UIScene can show the shop panel
     // The wandering merchant uses the correct SHOP_OPEN payload contract: {npcId, shopItems, type}
     const merchantItems = (event.context.merchantItems as string[]) ?? [];
@@ -2075,6 +2110,25 @@ export class ZoneScene extends Phaser.Scene {
       type: 'merchant',
     });
     EventBus.emit(GameEvents.LOG_MESSAGE, { text: '流浪商人出现了! 看看他的商品吧。', type: 'info' });
+
+    // Despawn the merchant sprite when the shop closes
+    const despawnMerchant = () => {
+      if (!merchantContainer.scene) return;
+      this.tweens.add({
+        targets: merchantContainer,
+        alpha: 0,
+        duration: 500,
+        onComplete: () => {
+          merchantContainer.destroy();
+        },
+      });
+    };
+    EventBus.once(GameEvents.SHOP_CLOSE, despawnMerchant);
+    // Also despawn on zone exit to avoid stale sprites
+    EventBus.once(GameEvents.ZONE_EXIT, () => {
+      EventBus.off(GameEvents.SHOP_CLOSE, despawnMerchant);
+      if (merchantContainer.scene) merchantContainer.destroy();
+    });
 
     this.randomEventSystem.resolveActiveEvent();
     EventBus.emit(GameEvents.RANDOM_EVENT_RESOLVED, { type: 'wandering_merchant' });
@@ -3594,14 +3648,17 @@ export class ZoneScene extends Phaser.Scene {
     container.setDepth(worldY + 100);
 
     if (reward.type === 'chest') {
-      // Treasure chest sprite (golden rectangle)
-      const chest = this.add.rectangle(0, -12, Math.round(20 * DPR), Math.round(14 * DPR), 0xDAA520);
-      chest.setStrokeStyle(Math.round(2 * DPR), 0x8B6914);
-      container.add(chest);
-      // Chest lid
-      const lid = this.add.rectangle(0, -20, Math.round(22 * DPR), Math.round(6 * DPR), 0xCD853F);
-      lid.setStrokeStyle(Math.round(1 * DPR), 0x8B6914);
-      container.add(lid);
+      // Treasure chest sprite using procedural texture
+      SpriteGenerator.ensureEffect(this, 'decor_treasure_chest');
+      if (this.textures.exists('decor_treasure_chest')) {
+        const chest = this.add.image(0, -12, 'decor_treasure_chest').setScale(1 / TEXTURE_SCALE);
+        container.add(chest);
+      } else {
+        // Fallback: simple rectangle if texture generation failed
+        const chest = this.add.rectangle(0, -12, Math.round(20 * DPR), Math.round(14 * DPR), 0xDAA520);
+        chest.setStrokeStyle(Math.round(2 * DPR), 0x8B6914);
+        container.add(chest);
+      }
       // Glow effect
       const glow = this.add.ellipse(0, 0, Math.round(36 * DPR), Math.round(18 * DPR), 0xFFD700, 0.3);
       container.add(glow);

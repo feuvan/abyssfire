@@ -12,6 +12,14 @@ class EventEmitter {
     return this;
   }
 
+  once(event: string, fn: (...args: unknown[]) => void): this {
+    const wrapper = (...args: unknown[]) => {
+      this.off(event, wrapper);
+      fn(...args);
+    };
+    return this.on(event, wrapper);
+  }
+
   off(event: string, fn: (...args: unknown[]) => void): this {
     const arr = this._listeners[event];
     if (arr) {

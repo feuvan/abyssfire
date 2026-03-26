@@ -651,7 +651,7 @@ export class UIScene extends Phaser.Scene {
       .setInteractive().setDepth(PANEL_STYLE.depth.backdrop);
     this.dialogueBackdrop.on('pointerdown', () => {
       this.hideItemTooltip();
-      if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; }
+      if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; EventBus.emit(GameEvents.SHOP_CLOSE); }
       if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
     });
 
@@ -664,7 +664,7 @@ export class UIScene extends Phaser.Scene {
     this.shopPanel.add(this.createPanelTitle(pw, title));
     this.shopPanel.add(this.createPanelCloseBtn(pw, () => {
       this.hideItemTooltip();
-      if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; }
+      if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; EventBus.emit(GameEvents.SHOP_CLOSE); }
       if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
     }));
 
@@ -4497,7 +4497,7 @@ export class UIScene extends Phaser.Scene {
 
   private closeAllPanels(): void {
     if (this.inventoryPanel) { this.inventoryPanel.destroy(); this.inventoryPanel = null; }
-    if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; }
+    if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; EventBus.emit(GameEvents.SHOP_CLOSE); }
     if (this.mapPanel) { this.mapPanel.destroy(); this.mapPanel = null; }
     if (this.skillPanel) {
       if (this.skillTreeWheelHandler) { this.input.off('wheel', this.skillTreeWheelHandler); this.skillTreeWheelHandler = null; }
