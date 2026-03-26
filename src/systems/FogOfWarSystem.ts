@@ -6,26 +6,89 @@ import { FogOfWarCore } from './FogOfWarCore';
 // Re-export FogOfWarCore for consumers that need the pure-logic class
 export { FogOfWarCore } from './FogOfWarCore';
 
+// ── Pre-rendered fog tile textures ──────────────────────────────────────
+// We quantise alpha into discrete steps and pre-render an isometric diamond
+// tile at each level during BootScene (via `generateFogTileTextures`).
+// The renderer then stamps these textures via Image objects instead of
+// calling Graphics.fillPoints() per tile, eliminating repeated Graphics
+// overhead.
+
+/**
+ * Number of discrete alpha steps for pre-rendered fog tiles.
+ * Higher = smoother gradients but more textures.  16 gives sub-6%
+ * alpha steps which is imperceptible.
+ */
+export const FOG_ALPHA_STEPS = 16;
+
+/** Texture key prefix for pre-rendered fog tiles. */
+export const FOG_TILE_KEY_PREFIX = '_fog_tile_';
+
+/**
+ * Generate pre-rendered fog tile textures at discrete alpha levels.
+ * Call once during BootScene.create().  Creates FOG_ALPHA_STEPS textures
+ * named `_fog_tile_0` … `_fog_tile_15` where index 0 is fully transparent
+ * (not drawn) and index 15 is alpha ≈ 0.85 (unexplored).
+ */
+export function generateFogTileTextures(scene: Phaser.Scene): void {
+  const hw = TILE_WIDTH / 2;
+  const hh = TILE_HEIGHT / 2;
+  const texW = TILE_WIDTH + 2; // +2 for anti-alias margin
+  const texH = TILE_HEIGHT + 2;
+  const cx = texW / 2;
+  const cy = texH / 2;
+
+  for (let step = 1; step <= FOG_ALPHA_STEPS; step++) {
+    const key = `${FOG_TILE_KEY_PREFIX}${step}`;
+    if (scene.textures.exists(key)) continue;
+
+    const alpha = (step / FOG_ALPHA_STEPS) * 0.85;
+    const g = scene.add.graphics();
+    g.fillStyle(0x000000, alpha);
+    g.fillPoints([
+      new Phaser.Geom.Point(cx, cy - hh),
+      new Phaser.Geom.Point(cx + hw, cy),
+      new Phaser.Geom.Point(cx, cy + hh),
+      new Phaser.Geom.Point(cx - hw, cy),
+    ], true);
+    g.generateTexture(key, texW, texH);
+    g.destroy();
+  }
+}
+
+/**
+ * Map a floating-point alpha (0..0.85) to the nearest pre-rendered
+ * fog tile step index (0..FOG_ALPHA_STEPS).  0 means "no fog drawn".
+ */
+export function alphaToFogStep(alpha: number): number {
+  if (alpha < 0.01) return 0;
+  const step = Math.round((alpha / 0.85) * FOG_ALPHA_STEPS);
+  return Math.min(FOG_ALPHA_STEPS, Math.max(1, step));
+}
+
 /**
  * Phaser-integrated fog of war renderer.
  *
- * Uses `FogOfWarCore` for the logic and a `Phaser.GameObjects.Graphics`
- * layer for rendering.  Only triggers render when the player moves to a
- * new tile (throttled via dirty-tile approach in the core).  Preserves
- * the gradient edge band (3 tiles) and camera viewport culling.
+ * Uses `FogOfWarCore` for the logic and pre-rendered fog tile textures
+ * (generated via `generateFogTileTextures` in BootScene) for rendering.
+ * Individual Image objects are recycled per tile — only dirty tiles are
+ * updated.  This eliminates the per-frame Graphics.clear() + fillPoints()
+ * overhead of the previous implementation.
  */
 export class FogOfWarSystem {
   private scene: Phaser.Scene;
-  private fogLayer: Phaser.GameObjects.Graphics;
   readonly core: FogOfWarCore;
   /** Tracks whether a full render pass has been done yet. */
   private hasRendered = false;
+  /** Per-tile fog Image objects (flat: row * cols + col). null if no fog sprite exists. */
+  private fogSprites: (Phaser.GameObjects.Image | null)[];
+  /** Per-tile last-rendered fog step, for diffing. */
+  private renderedStep: Uint8Array;
 
   constructor(scene: Phaser.Scene, cols: number, rows: number, viewRadius = 10) {
     this.scene = scene;
     this.core = new FogOfWarCore(cols, rows, viewRadius);
-    this.fogLayer = scene.add.graphics();
-    this.fogLayer.setDepth(1000);
+    this.fogSprites = new Array(rows * cols).fill(null);
+    this.renderedStep = new Uint8Array(rows * cols);
   }
 
   /** Convenience getters delegating to core */
@@ -38,20 +101,18 @@ export class FogOfWarSystem {
     if (!changed) return;
 
     if (!this.hasRendered) {
-      this.renderFull(playerCol, playerRow);
+      this.renderFull();
       this.hasRendered = true;
     } else {
-      this.renderDirty(playerCol, playerRow);
+      this.renderDirty();
     }
   }
 
   /**
-   * Full render pass — clears the entire fog layer and redraws all
-   * viewport-visible tiles.  Used only on the very first render.
+   * Full render pass — stamps fog Images for all viewport-visible tiles.
+   * Used only on the very first render.
    */
-  private renderFull(playerCol: number, playerRow: number): void {
-    this.fogLayer.clear();
-
+  private renderFull(): void {
     const cam = this.scene.cameras.main;
     const camCX = cam.scrollX + cam.width / 2 / cam.zoom;
     const camCY = cam.scrollY + cam.height / 2 / cam.zoom;
@@ -71,16 +132,16 @@ export class FogOfWarSystem {
         // Viewport culling
         if (dx > viewW + TILE_WIDTH * margin || dy > viewH + TILE_HEIGHT * margin) continue;
 
-        this.drawTileFog(c, r, playerCol, playerRow, pos);
+        this.stampFogTile(c, r, pos);
       }
     }
   }
 
   /**
-   * Incremental render — only erases and redraws tiles whose visibility
-   * state changed (dirty tiles from FogOfWarCore).  No fogLayer.clear().
+   * Incremental render — only updates tiles whose visibility
+   * state changed (dirty tiles from FogOfWarCore).
    */
-  private renderDirty(playerCol: number, playerRow: number): void {
+  private renderDirty(): void {
     const dirty = this.core.dirty;
     if (dirty.size === 0) return;
 
@@ -103,54 +164,46 @@ export class FogOfWarSystem {
       // Viewport culling — skip tiles outside camera bounds
       if (dx > viewW + TILE_WIDTH * margin || dy > viewH + TILE_HEIGHT * margin) continue;
 
-      // Erase the old tile by drawing fully transparent over it
-      this.fogLayer.fillStyle(0x000000, 0);
-      this.drawIsoTile(pos.x, pos.y);
-
-      // Redraw with new fog alpha
-      this.drawTileFog(c, r, playerCol, playerRow, pos);
+      this.stampFogTile(c, r, pos);
     }
   }
 
   /**
-   * Draw fog for a single tile at the given position.
-   * Shared by both full and incremental render paths.
+   * Stamp or update the fog Image for a single tile.
+   * Uses pre-rendered fog tile textures keyed by alpha step.
    */
-  private drawTileFog(c: number, r: number, playerCol: number, playerRow: number, pos: { x: number; y: number }): void {
-    const edgeBand = 3;
-    const innerEdge = this.core.viewRadius - edgeBand;
-    const dist = Math.sqrt((c - playerCol) ** 2 + (r - playerRow) ** 2);
+  private stampFogTile(c: number, r: number, pos: { x: number; y: number }): void {
+    const alpha = this.core.getAlpha(c, r);
+    const step = alphaToFogStep(alpha);
+    const idx = r * this.core.cols + c;
 
-    if (dist > this.core.viewRadius) {
-      if (!this.core.isExplored(c, r)) {
-        this.fogLayer.fillStyle(0x000000, 0.85);
-        this.drawIsoTile(pos.x, pos.y);
-      } else {
-        const edgeFade = dist < this.core.viewRadius + edgeBand
-          ? 0.18 + (dist - this.core.viewRadius) / edgeBand * 0.15
-          : 0.35;
-        this.fogLayer.fillStyle(0x000000, edgeFade);
-        this.drawIsoTile(pos.x, pos.y);
+    // If the step hasn't changed, skip
+    if (this.renderedStep[idx] === step && this.fogSprites[idx]) return;
+
+    if (step === 0) {
+      // No fog — destroy existing sprite if any
+      if (this.fogSprites[idx]) {
+        this.fogSprites[idx]!.destroy();
+        this.fogSprites[idx] = null;
       }
-    } else if (dist > innerEdge) {
-      const t = (dist - innerEdge) / edgeBand;
-      const alpha = t * 0.15;
-      if (alpha > 0.01) {
-        this.fogLayer.fillStyle(0x000000, alpha);
-        this.drawIsoTile(pos.x, pos.y);
-      }
+      this.renderedStep[idx] = 0;
+      return;
     }
-  }
 
-  private drawIsoTile(x: number, y: number): void {
-    const hw = TILE_WIDTH / 2;
-    const hh = TILE_HEIGHT / 2;
-    this.fogLayer.fillPoints([
-      new Phaser.Geom.Point(x, y - hh),
-      new Phaser.Geom.Point(x + hw, y),
-      new Phaser.Geom.Point(x, y + hh),
-      new Phaser.Geom.Point(x - hw, y),
-    ], true);
+    const texKey = `${FOG_TILE_KEY_PREFIX}${step}`;
+    const existing = this.fogSprites[idx];
+
+    if (existing) {
+      // Reuse existing sprite, just swap texture
+      existing.setTexture(texKey);
+    } else {
+      // Create new Image at tile world position
+      const img = this.scene.add.image(pos.x, pos.y, texKey);
+      img.setDepth(1000);
+      this.fogSprites[idx] = img;
+    }
+
+    this.renderedStep[idx] = step;
   }
 
   isExplored(col: number, row: number): boolean {
@@ -164,10 +217,23 @@ export class FogOfWarSystem {
   loadExploredData(data: boolean[][]): void {
     this.core.loadExploredData(data);
     this.hasRendered = false;
+    // Reset rendered state so all tiles re-render on next update
+    this.renderedStep.fill(0);
   }
 
   /** Expose gradient info for testing */
   getGradientInfo(playerCol: number, playerRow: number): { col: number; row: number; alpha: number }[] {
     return this.core.getGradientInfo(playerCol, playerRow);
+  }
+
+  /** Clean up all fog sprites. Call on zone cleanup. */
+  destroy(): void {
+    for (let i = 0; i < this.fogSprites.length; i++) {
+      if (this.fogSprites[i]) {
+        this.fogSprites[i]!.destroy();
+        this.fogSprites[i] = null;
+      }
+    }
+    this.renderedStep.fill(0);
   }
 }

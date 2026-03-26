@@ -218,6 +218,13 @@ export class ZoneScene extends Phaser.Scene {
   private static readonly ABYSS_ENTRANCE_COL = 15;
   private static readonly ABYSS_ENTRANCE_ROW = 22;
 
+  // ─── Performance Pools ─────────────────────────────────────────────
+  /** Pool of floating damage text objects to avoid per-hit allocation. */
+  private floatingTextPool: Phaser.GameObjects.Text[] = [];
+
+  /** Squared distance beyond which monster AI updates are skipped (monsters still render). */
+  private static readonly MONSTER_AI_CULL_DIST_SQ = 30 * 30;
+
   private readonly contextMenuHandler = (e: Event): void => {
     e.preventDefault();
   };
@@ -718,6 +725,14 @@ export class ZoneScene extends Phaser.Scene {
     for (const monster of this.monsters) {
       if (!monster.isAlive()) continue;
 
+      // ── Performance: skip full AI update for far-away monsters ────────
+      const monsterDistSq = distanceSq(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
+      if (monsterDistSq > ZoneScene.MONSTER_AI_CULL_DIST_SQ && !monster.isAggro()) {
+        // Still update animator for visual state (idle animation)
+        monster.animator.update(delta);
+        continue;
+      }
+
       // Freeze mini-boss during dialogue
       if (this.miniBossDialogueActive && monster === this.miniBossMonster) {
         monster.animator.update(delta);
@@ -978,7 +993,9 @@ export class ZoneScene extends Phaser.Scene {
             tileKey = this.textures.exists(variantKey) ? variantKey : (TILE_KEYS[tileType] || 'tile_grass');
           }
           const tile = this.add.image(pos.x, pos.y, tileKey).setScale(1 / TEXTURE_SCALE);
-          tile.setDepth(pos.y);
+          // Depth batching: use row-based depth so all tiles in the same row
+          // share the same depth value, reducing Phaser's depth sort overhead.
+          tile.setDepth(row);
           this.tileSprites[row][col] = tile;
 
           const exit = this.exitLookup.get(key);
@@ -4500,16 +4517,35 @@ export class ZoneScene extends Phaser.Scene {
       color = isCrit ? '#ffd700' : (damageType && elementColors[damageType]) || '#ffffff';
       if (isCrit) size = fs(32);
     }
-    const t = this.add.text(x + randomInt(-15, 15), y - 30, text, {
-      fontSize: size, color, fontFamily: '"Cinzel", serif', fontStyle: isCrit ? 'bold' : 'normal',
-      stroke: '#000000', strokeThickness: Math.round((isCrit ? 4 : 3) * DPR),
-    }).setOrigin(0.5).setDepth(ZONE_FLOATING_TEXT_DEPTH);
+
+    // Acquire from pool or create new
+    let t: Phaser.GameObjects.Text;
+    const poolIdx = this.floatingTextPool.findIndex(obj => !obj.active);
+    if (poolIdx !== -1) {
+      t = this.floatingTextPool[poolIdx];
+      t.setActive(true).setVisible(true);
+      t.setPosition(x + randomInt(-15, 15), y - 30);
+      t.setText(text);
+      t.setStyle({ fontSize: size, color, fontFamily: '"Cinzel", serif', fontStyle: isCrit ? 'bold' : 'normal', stroke: '#000000', strokeThickness: Math.round((isCrit ? 4 : 3) * DPR) });
+      t.setAlpha(1);
+      t.setScale(1);
+    } else {
+      t = this.add.text(x + randomInt(-15, 15), y - 30, text, {
+        fontSize: size, color, fontFamily: '"Cinzel", serif', fontStyle: isCrit ? 'bold' : 'normal',
+        stroke: '#000000', strokeThickness: Math.round((isCrit ? 4 : 3) * DPR),
+      });
+      this.floatingTextPool.push(t);
+    }
+    t.setOrigin(0.5).setDepth(ZONE_FLOATING_TEXT_DEPTH);
+
+    const releaseToPool = (): void => { t.setActive(false).setVisible(false); };
+
     if (isCrit) {
       t.setScale(1.5);
       this.tweens.add({ targets: t, scale: 1, duration: 200, ease: 'Back.easeOut' });
-      this.tweens.add({ targets: t, y: t.y - 70, alpha: 0, duration: 1500, ease: 'Power2', onComplete: () => t.destroy() });
+      this.tweens.add({ targets: t, y: t.y - 70, alpha: 0, duration: 1500, ease: 'Power2', onComplete: releaseToPool });
     } else {
-      this.tweens.add({ targets: t, y: t.y - 50, alpha: 0, duration: 1200, ease: 'Power2', onComplete: () => t.destroy() });
+      this.tweens.add({ targets: t, y: t.y - 50, alpha: 0, duration: 1200, ease: 'Power2', onComplete: releaseToPool });
     }
   }
 
@@ -5976,6 +6012,9 @@ export class ZoneScene extends Phaser.Scene {
     this.lootDrops = [];
     for (const potion of this.potionDrops) potion.sprite.destroy();
     this.potionDrops = [];
+    // Clean up floating text pool
+    for (const t of this.floatingTextPool) t.destroy();
+    this.floatingTextPool = [];
     for (const sprite of this.campDecorSprites.values()) sprite.destroy();
     this.campDecorSprites.clear();
     for (const emitter of this.campParticles.values()) emitter.destroy();

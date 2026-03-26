@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { DPR } from '../config';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
 import { SkillEffectSystem } from '../systems/SkillEffectSystem';
+import { generateFogTileTextures } from '../systems/FogOfWarSystem';
 // import { buildFrameSizeRegistry } from '../graphics/sprites/types';
 // import { TEXTURE_SCALE } from '../config';
 
@@ -101,6 +102,9 @@ export class BootScene extends Phaser.Scene {
     SkillEffectSystem.generateTextures(this);
     // Skill icon textures (64×64 per skill)
     SkillEffectSystem.generateSkillIcons(this);
+
+    // Pre-rendered fog tile textures (discrete alpha steps)
+    generateFogTileTextures(this);
 
     this.scene.start('MenuScene');
   }
