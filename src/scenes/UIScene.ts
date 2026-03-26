@@ -108,6 +108,7 @@ export class UIScene extends Phaser.Scene {
 
   private inventoryPanel: Phaser.GameObjects.Container | null = null;
   private shopPanel: Phaser.GameObjects.Container | null = null;
+  private shopNpcId: string | null = null;
   private mapPanel: Phaser.GameObjects.Container | null = null;
   private skillPanel: Phaser.GameObjects.Container | null = null;
   private charPanel: Phaser.GameObjects.Container | null = null;
@@ -643,6 +644,7 @@ export class UIScene extends Phaser.Scene {
 
   private openShop(data: { npcId: string; shopItems: string[]; type: string }, keepPage = false): void {
     this.closeAllPanels();
+    this.shopNpcId = data.npcId;
     audioManager.playSFX('click');
     if (!keepPage) this.shopInventoryPage = 0;
 
@@ -651,7 +653,7 @@ export class UIScene extends Phaser.Scene {
       .setInteractive().setDepth(PANEL_STYLE.depth.backdrop);
     this.dialogueBackdrop.on('pointerdown', () => {
       this.hideItemTooltip();
-      if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; EventBus.emit(GameEvents.SHOP_CLOSE); }
+      if (this.shopPanel) { const closedNpcId = this.shopNpcId; this.shopPanel.destroy(); this.shopPanel = null; this.shopNpcId = null; EventBus.emit(GameEvents.SHOP_CLOSE, { npcId: closedNpcId }); }
       if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
     });
 
@@ -664,7 +666,7 @@ export class UIScene extends Phaser.Scene {
     this.shopPanel.add(this.createPanelTitle(pw, title));
     this.shopPanel.add(this.createPanelCloseBtn(pw, () => {
       this.hideItemTooltip();
-      if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; EventBus.emit(GameEvents.SHOP_CLOSE); }
+      if (this.shopPanel) { const closedNpcId = this.shopNpcId; this.shopPanel.destroy(); this.shopPanel = null; this.shopNpcId = null; EventBus.emit(GameEvents.SHOP_CLOSE, { npcId: closedNpcId }); }
       if (this.dialogueBackdrop) { this.dialogueBackdrop.destroy(); this.dialogueBackdrop = null; }
     }));
 
@@ -4497,7 +4499,7 @@ export class UIScene extends Phaser.Scene {
 
   private closeAllPanels(): void {
     if (this.inventoryPanel) { this.inventoryPanel.destroy(); this.inventoryPanel = null; }
-    if (this.shopPanel) { this.shopPanel.destroy(); this.shopPanel = null; EventBus.emit(GameEvents.SHOP_CLOSE); }
+    if (this.shopPanel) { const closedNpcId = this.shopNpcId; this.shopPanel.destroy(); this.shopPanel = null; this.shopNpcId = null; EventBus.emit(GameEvents.SHOP_CLOSE, { npcId: closedNpcId }); }
     if (this.mapPanel) { this.mapPanel.destroy(); this.mapPanel = null; }
     if (this.skillPanel) {
       if (this.skillTreeWheelHandler) { this.input.off('wheel', this.skillTreeWheelHandler); this.skillTreeWheelHandler = null; }

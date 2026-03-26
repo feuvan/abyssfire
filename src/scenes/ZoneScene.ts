@@ -2140,10 +2140,17 @@ export class ZoneScene extends Phaser.Scene {
         },
       });
     };
-    EventBus.once(GameEvents.SHOP_CLOSE, despawnMerchant);
+    // Only despawn when the wandering merchant's own shop panel closes
+    const filteredDespawn = (data?: { npcId?: string }) => {
+      if (data?.npcId === 'wandering_merchant') {
+        despawnMerchant();
+        EventBus.off(GameEvents.SHOP_CLOSE, filteredDespawn);
+      }
+    };
+    EventBus.on(GameEvents.SHOP_CLOSE, filteredDespawn);
     // Also despawn on zone exit to avoid stale sprites
     EventBus.once(GameEvents.ZONE_EXIT, () => {
-      EventBus.off(GameEvents.SHOP_CLOSE, despawnMerchant);
+      EventBus.off(GameEvents.SHOP_CLOSE, filteredDespawn);
       if (merchantContainer.scene) merchantContainer.destroy();
     });
 
