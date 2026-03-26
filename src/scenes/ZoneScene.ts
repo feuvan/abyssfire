@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT, GAME_WIDTH, GAME_HEIGHT, TEXTURE_SCALE, DPR } from '../config';
-import { cartToIso, isoToCart, worldToTile, euclideanDistance } from '../utils/IsometricUtils';
+import { cartToIso, isoToCart, worldToTile, euclideanDistance, distanceSq } from '../utils/IsometricUtils';
 import { randomInt } from '../utils/MathUtils';
 import { EventBus, GameEvents } from '../utils/EventBus';
 import { Player } from '../entities/Player';
@@ -49,6 +49,7 @@ import type { UIScene } from './UIScene';
 
 const TILE_KEYS = ['tile_grass', 'tile_dirt', 'tile_stone', 'tile_water', 'tile_wall', 'tile_camp', 'tile_camp_wall'];
 const CAMPFIRE_RECOVERY_RADIUS = 5;
+const CAMPFIRE_RECOVERY_RADIUS_SQ = CAMPFIRE_RECOVERY_RADIUS * CAMPFIRE_RECOVERY_RADIUS;
 const CAMPFIRE_HP_REGEN_MULTIPLIER = 50;
 const CAMPFIRE_MANA_REGEN_MULTIPLIER = 50;
 const ZONE_FLOATING_TEXT_DEPTH = 4500;
@@ -99,10 +100,17 @@ export class ZoneScene extends Phaser.Scene {
   private _dodgeCounterReady = false;
   private lastAutoLootCheck = 0;
   private totalKills = 0;
+  /** Previous HP/mana values for change-only event emission. */
+  private _lastEmittedHp = -1;
+  private _lastEmittedMaxHp = -1;
+  private _lastEmittedMana = -1;
+  private _lastEmittedMaxMana = -1;
   private exploredZones: Set<string> = new Set();
   private fogData: Record<string, boolean[][]> = {};
-  /** Set of tile coordinates (as "col,row") that the player has explored (within view radius). */
-  private exploredTiles: Set<string> = new Set();
+  /** Flat Uint8Array tracking explored tiles (row * mapCols + col → 1 if explored). */
+  private exploredTiles!: Uint8Array;
+  /** Column count used to compute flat index for exploredTiles. */
+  private exploredTilesCols = 0;
   /** View radius used for fog-of-war exploration tracking (matches FogOfWarSystem default). */
   private static readonly EXPLORE_VIEW_RADIUS = 10;
   private lastTileUpdate = 0;
@@ -259,7 +267,8 @@ export class ZoneScene extends Phaser.Scene {
     this.subDungeonEntranceSprites = [];
     this.storyDecorationSprites = [];
     this.storyDecorationTooltip = null;
-    this.exploredTiles = new Set();
+    this.exploredTilesCols = this.mapData.cols;
+    this.exploredTiles = new Uint8Array(this.mapData.rows * this.mapData.cols);
 
     this.combatSystem = new CombatSystem();
     this.lootSystem = new LootSystem();
@@ -499,20 +508,20 @@ export class ZoneScene extends Phaser.Scene {
 
     // Sub-dungeon entrance interaction
     const subEntrance = this.findSubDungeonEntranceAt(tile.col, tile.row);
-    if (subEntrance && euclideanDistance(this.player.tileCol, this.player.tileRow, subEntrance.col, subEntrance.row) <= 3) {
+    if (subEntrance && distanceSq(this.player.tileCol, this.player.tileRow, subEntrance.col, subEntrance.row) <= 9) {
       this.enterSubDungeon(subEntrance);
       return;
     }
 
     // Random dungeon portal interaction
-    if (this.findDungeonPortalAt(tile.col, tile.row) && euclideanDistance(this.player.tileCol, this.player.tileRow, ZoneScene.DUNGEON_PORTAL_COL, ZoneScene.DUNGEON_PORTAL_ROW) <= 3) {
+    if (this.findDungeonPortalAt(tile.col, tile.row) && distanceSq(this.player.tileCol, this.player.tileRow, ZoneScene.DUNGEON_PORTAL_COL, ZoneScene.DUNGEON_PORTAL_ROW) <= 9) {
       this.enterDungeon();
       return;
     }
 
     // Hidden area reward chest interaction
     const hiddenChest = this.findHiddenAreaChestAt(tile.col, tile.row);
-    if (hiddenChest && euclideanDistance(this.player.tileCol, this.player.tileRow, hiddenChest.col, hiddenChest.row) <= 2) {
+    if (hiddenChest && distanceSq(this.player.tileCol, this.player.tileRow, hiddenChest.col, hiddenChest.row) <= 4) {
       this.collectHiddenAreaReward(hiddenChest);
       return;
     }
@@ -643,7 +652,6 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    this.cachedEquipStats = null;
     const recovery = this.getPlayerRecoveryModifiers();
     this.handleKeyboardMovement(delta);
     this.handleSkillInput(time);
@@ -702,6 +710,7 @@ export class ZoneScene extends Phaser.Scene {
     this.checkMiniBossDialogue();
 
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
+    const safeRadiusSq = safeRadius * safeRadius;
     for (const monster of this.monsters) {
       if (!monster.isAlive()) continue;
 
@@ -721,7 +730,7 @@ export class ZoneScene extends Phaser.Scene {
       // Safe zone: repel aggro monsters
       let monsterInSafe = false;
       for (const camp of this.campPositions) {
-        if (euclideanDistance(monster.tileCol, monster.tileRow, camp.col, camp.row) < safeRadius) {
+        if (distanceSq(monster.tileCol, monster.tileRow, camp.col, camp.row) < safeRadiusSq) {
           monsterInSafe = true;
           break;
         }
@@ -732,7 +741,7 @@ export class ZoneScene extends Phaser.Scene {
       // Player in safe zone: suppress aggro by passing fake coordinates
       let playerInSafe = false;
       for (const camp of this.campPositions) {
-        if (euclideanDistance(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadius) {
+        if (distanceSq(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadiusSq) {
           playerInSafe = true;
           break;
         }
@@ -772,8 +781,8 @@ export class ZoneScene extends Phaser.Scene {
     // Auto-collect potions
     for (let i = this.potionDrops.length - 1; i >= 0; i--) {
       const pot = this.potionDrops[i];
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, pot.col, pot.row);
-      if (dist <= 2) {
+      const distSq = distanceSq(this.player.tileCol, this.player.tileRow, pot.col, pot.row);
+      if (distSq <= 4) {
         if (pot.type === 'hp') {
           this.player.hp = Math.min(this.player.maxHp, this.player.hp + pot.amount);
           EventBus.emit(GameEvents.LOG_MESSAGE, { text: `恢复 ${pot.amount} 生命`, type: 'combat' });
@@ -832,13 +841,22 @@ export class ZoneScene extends Phaser.Scene {
       this.lighting.update(delta);
     }
 
-    EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.player.hp, maxHp: this.player.maxHp });
-    EventBus.emit(GameEvents.PLAYER_MANA_CHANGED, { mana: this.player.mana, maxMana: this.player.maxMana });
+    // Only emit HP/mana events when values actually change
+    if (this.player.hp !== this._lastEmittedHp || this.player.maxHp !== this._lastEmittedMaxHp) {
+      this._lastEmittedHp = this.player.hp;
+      this._lastEmittedMaxHp = this.player.maxHp;
+      EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.player.hp, maxHp: this.player.maxHp });
+    }
+    if (this.player.mana !== this._lastEmittedMana || this.player.maxMana !== this._lastEmittedMaxMana) {
+      this._lastEmittedMana = this.player.mana;
+      this._lastEmittedMaxMana = this.player.maxMana;
+      EventBus.emit(GameEvents.PLAYER_MANA_CHANGED, { mana: this.player.mana, maxMana: this.player.maxMana });
+    }
   }
 
   private getPlayerRecoveryModifiers(): { hpRegenMultiplier?: number; manaRegenMultiplier?: number } {
     for (const camp of this.campPositions) {
-      if (euclideanDistance(this.player.tileCol, this.player.tileRow, camp.col, camp.row) <= CAMPFIRE_RECOVERY_RADIUS) {
+      if (distanceSq(this.player.tileCol, this.player.tileRow, camp.col, camp.row) <= CAMPFIRE_RECOVERY_RADIUS_SQ) {
         return {
           hpRegenMultiplier: CAMPFIRE_HP_REGEN_MULTIPLIER,
           manaRegenMultiplier: CAMPFIRE_MANA_REGEN_MULTIPLIER,
@@ -1360,8 +1378,8 @@ export class ZoneScene extends Phaser.Scene {
     if (!target && !skill.buff) return;
 
     if (target && !skill.buff) {
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, target.tileCol, target.tileRow);
-      if (dist > skill.range + 1) return;
+      const dSq = distanceSq(this.player.tileCol, this.player.tileRow, target.tileCol, target.tileRow);
+      if (dSq > (skill.range + 1) * (skill.range + 1)) return;
     }
 
     this.player.useSkill(skillId, time, level, this.getEquipStats().cooldownReduction);
@@ -1485,8 +1503,9 @@ export class ZoneScene extends Phaser.Scene {
     // ── Slow Trap: apply slow status effect to enemies in AoE, not buff to player ──
     if (skillId === 'slow_trap') {
       const scaledRadius = getSkillAoeRadius(skill, level);
+      const scaledRadiusSq = scaledRadius * scaledRadius;
       const aoeTargets = this.monsters.filter(m =>
-        m.isAlive() && euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledRadius
+        m.isAlive() && distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledRadiusSq
       );
       // Apply damage
       for (const t of aoeTargets) {
@@ -1525,8 +1544,9 @@ export class ZoneScene extends Phaser.Scene {
       // monsters in AoE range switch aggro target to player
       if (skillId === 'taunt_roar' && skill.aoe && skill.aoeRadius) {
         const scaledTauntRadius = getSkillAoeRadius(skill, level);
+        const scaledTauntRadiusSq = scaledTauntRadius * scaledTauntRadius;
         const tauntTargets = this.monsters.filter(m =>
-          m.isAlive() && euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledTauntRadius
+          m.isAlive() && distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledTauntRadiusSq
         );
         for (const m of tauntTargets) {
           // Add taunted buff to monster
@@ -1549,8 +1569,9 @@ export class ZoneScene extends Phaser.Scene {
 
     const scaledAoeRadius = getSkillAoeRadius(skill, level);
     if (skill.aoe && scaledAoeRadius > 0) {
+      const scaledAoeRadiusSq = scaledAoeRadius * scaledAoeRadius;
       const aoeTargets = this.monsters.filter(m =>
-        m.isAlive() && euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledAoeRadius
+        m.isAlive() && distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow) <= scaledAoeRadiusSq
       );
       for (const t of aoeTargets) {
         const result = this.combatSystem.calculateDamage(this.player.toCombatEntity(this.getEquipStats()), t.toCombatEntity(), skill, level, this.player.skillLevels);
@@ -1614,7 +1635,12 @@ export class ZoneScene extends Phaser.Scene {
 
   private handleCombat(time: number): void {
     if (this.player.hp <= 0) return;
-    this.player.buffs = this.player.buffs.filter(b => time - b.startTime < b.duration);
+    // In-place reverse-iteration splice to avoid per-frame array allocation
+    for (let i = this.player.buffs.length - 1; i >= 0; i--) {
+      if (time - this.player.buffs[i].startTime >= this.player.buffs[i].duration) {
+        this.player.buffs.splice(i, 1);
+      }
+    }
 
     for (const monster of this.monsters) {
       if (!monster.isAlive() || monster.state !== 'attack') continue;
@@ -1721,8 +1747,8 @@ export class ZoneScene extends Phaser.Scene {
       : this.findNearestAggroMonster();
 
     if (target && target.isAlive()) {
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, target.tileCol, target.tileRow);
-      if (dist <= this.player.attackRange && time - this.player.lastAttackTime >= this.player.attackSpeed) {
+      const dSq = distanceSq(this.player.tileCol, this.player.tileRow, target.tileCol, target.tileRow);
+      if (dSq <= this.player.attackRange * this.player.attackRange && time - this.player.lastAttackTime >= this.player.attackSpeed) {
         this.player.lastAttackTime = time;
         this.player.playAttack(target.sprite.x, target.sprite.y);
         const eq = this.getEquipStats();
@@ -1809,10 +1835,10 @@ export class ZoneScene extends Phaser.Scene {
       if (this.player.isMoving) return;
       const nearest = this.findNearestAliveMonster();
       if (nearest) {
-        const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, nearest.tileCol, nearest.tileRow);
-        if (dist <= nearest.definition.aggroRange) {
+        const dSq = distanceSq(this.player.tileCol, this.player.tileRow, nearest.tileCol, nearest.tileRow);
+        if (dSq <= nearest.definition.aggroRange * nearest.definition.aggroRange) {
           this.player.attackTarget = nearest.id;
-          if (dist > this.player.attackRange) {
+          if (dSq > this.player.attackRange * this.player.attackRange) {
             const path = this.pathfinding.findPath(
               Math.round(this.player.tileCol), Math.round(this.player.tileRow),
               Math.round(nearest.tileCol), Math.round(nearest.tileRow),
@@ -2311,8 +2337,8 @@ export class ZoneScene extends Phaser.Scene {
       const loot = this.lootDrops[i];
       const rank = qualityRank[loot.item.quality] ?? 0;
       if (rank < minRank) continue;
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, loot.col, loot.row);
-      if (dist > 2) continue;
+      const dSq = distanceSq(this.player.tileCol, this.player.tileRow, loot.col, loot.row);
+      if (dSq > 4) continue;
       if (this.inventorySystem.addItem(loot.item)) {
         EventBus.emit(GameEvents.ITEM_PICKED, { item: loot.item });
         if (loot.item.quality === 'legendary') this.achievementSystem.update('collect');
@@ -2666,8 +2692,8 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private pickupLoot(lootDrop: { sprite: Phaser.GameObjects.Container; item: ItemInstance; col: number; row: number }): void {
-    const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, lootDrop.col, lootDrop.row);
-    if (dist > 2) {
+    const dSq = distanceSq(this.player.tileCol, this.player.tileRow, lootDrop.col, lootDrop.row);
+    if (dSq > 4) {
       const path = this.pathfinding.findPath(
         Math.round(this.player.tileCol), Math.round(this.player.tileRow),
         Math.round(lootDrop.col), Math.round(lootDrop.row),
@@ -2839,8 +2865,8 @@ export class ZoneScene extends Phaser.Scene {
 
   private checkExitProximity(): void {
     for (const exit of this.mapData.exits) {
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, exit.col, exit.row);
-      if (dist < 1.5) {
+      const dSq = distanceSq(this.player.tileCol, this.player.tileRow, exit.col, exit.row);
+      if (dSq < 2.25) {
         if (this.isInDungeon) {
           // In dungeon: either advance to next floor or exit dungeon
           if (this.dungeonFloorConfig?.isBossFloor) {
@@ -3024,6 +3050,7 @@ export class ZoneScene extends Phaser.Scene {
   private spawnMonsters(): void {
     const monsterDefs = MonstersByZone[this.currentMapId] || [];
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
+    const safeRadiusSq = safeRadius * safeRadius;
     for (const spawn of this.mapData.spawns) {
       let def = monsterDefs.find(m => m.id === spawn.monsterId) || getMonsterDef(spawn.monsterId);
       if (!def) continue;
@@ -3043,7 +3070,7 @@ export class ZoneScene extends Phaser.Scene {
           // Reject spawns inside camp safe zones
           let inSafeZone = false;
           for (const camp of this.campPositions) {
-            if (euclideanDistance(c, r, camp.col, camp.row) < safeRadius) {
+            if (distanceSq(c, r, camp.col, camp.row) < safeRadiusSq) {
               inSafeZone = true;
               break;
             }
@@ -3151,8 +3178,8 @@ export class ZoneScene extends Phaser.Scene {
   private checkRarePetPickup(): void {
     for (let i = this.petSpawnSprites.length - 1; i >= 0; i--) {
       const ps = this.petSpawnSprites[i];
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, ps.col, ps.row);
-      if (dist <= 2) {
+      const dSq = distanceSq(this.player.tileCol, this.player.tileRow, ps.col, ps.row);
+      if (dSq <= 4) {
         const success = this.homesteadSystem.addPet(ps.petId);
         if (success) {
           EventBus.emit(GameEvents.LOG_MESSAGE, {
@@ -3232,8 +3259,8 @@ export class ZoneScene extends Phaser.Scene {
     if (!this.miniBossMonster || !this.miniBossMonster.isAlive()) return;
 
     const mb = this.miniBossMonster;
-    const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, mb.tileCol, mb.tileRow);
-    if (dist > mb.definition.aggroRange) return;
+    const dSq = distanceSq(this.player.tileCol, this.player.tileRow, mb.tileCol, mb.tileRow);
+    if (dSq > mb.definition.aggroRange * mb.definition.aggroRange) return;
 
     // Already seen dialogue for this mini-boss?
     if (this.miniBossDialogueSeen.has(mb.definition.id)) return;
@@ -3411,8 +3438,8 @@ export class ZoneScene extends Phaser.Scene {
   private checkLorePickup(): void {
     for (let i = this.loreSprites.length - 1; i >= 0; i--) {
       const ls = this.loreSprites[i];
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, ls.entry.col, ls.entry.row);
-      if (dist <= 2) {
+      const dSq = distanceSq(this.player.tileCol, this.player.tileRow, ls.entry.col, ls.entry.row);
+      if (dSq <= 4) {
         // Collect the lore entry
         this.loreCollected.add(ls.entry.id);
 
@@ -3464,15 +3491,18 @@ export class ZoneScene extends Phaser.Scene {
     const pc = this.player.tileCol;
     const pr = this.player.tileRow;
     const vr = ZoneScene.EXPLORE_VIEW_RADIUS;
+    const vrSq = vr * vr;
+    const cols = this.exploredTilesCols;
     const minC = Math.max(0, Math.floor(pc - vr));
     const maxC = Math.min(this.mapData.cols - 1, Math.ceil(pc + vr));
     const minR = Math.max(0, Math.floor(pr - vr));
     const maxR = Math.min(this.mapData.rows - 1, Math.ceil(pr + vr));
     for (let r = minR; r <= maxR; r++) {
       for (let c = minC; c <= maxC; c++) {
-        const dist = Math.sqrt((c - pc) ** 2 + (r - pr) ** 2);
-        if (dist <= vr) {
-          this.exploredTiles.add(`${c},${r}`);
+        const dc = c - pc;
+        const dr = r - pr;
+        if (dc * dc + dr * dr <= vrSq) {
+          this.exploredTiles[r * cols + c] = 1;
         }
       }
     }
@@ -3499,7 +3529,7 @@ export class ZoneScene extends Phaser.Scene {
       { c: bounds.endCol, r: bounds.endRow },        // bottom-right
       { c: area.col, r: area.row },                  // center
     ];
-    return checkPoints.every(p => this.exploredTiles.has(`${p.c},${p.r}`));
+    return checkPoints.every(p => this.exploredTiles[p.r * this.exploredTilesCols + p.c] === 1);
   }
 
   /** Check if player has explored the fog over any hidden area bounds and reveal rewards. */
@@ -4203,9 +4233,9 @@ export class ZoneScene extends Phaser.Scene {
     let closestDist = Infinity;
 
     for (const sd of this.storyDecorationSprites) {
-      const dist = euclideanDistance(this.player.tileCol, this.player.tileRow, sd.col, sd.row);
-      if (dist <= 3 && dist < closestDist) {
-        closestDist = dist;
+      const dSq = distanceSq(this.player.tileCol, this.player.tileRow, sd.col, sd.row);
+      if (dSq <= 9 && dSq < closestDist) {
+        closestDist = dSq;
         closestDecor = sd;
       }
     }
@@ -4298,6 +4328,7 @@ export class ZoneScene extends Phaser.Scene {
     const idx = this.monsters.indexOf(dead);
     if (idx === -1) return;
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
+    const safeRadiusSq = safeRadius * safeRadius;
     // Try random offsets, fall back to spawn point
     let c = dead.spawnCol;
     let r = dead.spawnRow;
@@ -4307,7 +4338,7 @@ export class ZoneScene extends Phaser.Scene {
       if (tc >= 0 && tc < this.mapData.cols && tr >= 0 && tr < this.mapData.rows && this.mapData.collisions[tr][tc]) {
         let inSafeZone = false;
         for (const camp of this.campPositions) {
-          if (euclideanDistance(tc, tr, camp.col, camp.row) < safeRadius) {
+          if (distanceSq(tc, tr, camp.col, camp.row) < safeRadiusSq) {
             inSafeZone = true;
             break;
           }
@@ -4333,7 +4364,7 @@ export class ZoneScene extends Phaser.Scene {
     let best: Monster | null = null, bestDist = Infinity;
     for (const m of this.monsters) {
       if (!m.isAlive()) continue;
-      const d = euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
+      const d = distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
       if (d < bestDist) { bestDist = d; best = m; }
     }
     return best;
@@ -4343,7 +4374,7 @@ export class ZoneScene extends Phaser.Scene {
     let best: Monster | null = null, bestDist = Infinity;
     for (const m of this.monsters) {
       if (!m.isAlive() || !m.isAggro()) continue;
-      const d = euclideanDistance(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
+      const d = distanceSq(this.player.tileCol, this.player.tileRow, m.tileCol, m.tileRow);
       if (d < bestDist) { bestDist = d; best = m; }
     }
     return best;
@@ -4361,9 +4392,9 @@ export class ZoneScene extends Phaser.Scene {
     let best: NPC | null = null;
     let bestDist = Infinity;
     for (const npc of this.npcs) {
-      const dist = Math.sqrt((npc.tileCol - col) ** 2 + (npc.tileRow - row) ** 2);
-      if (dist < 1.8 && dist < bestDist) {
-        bestDist = dist;
+      const dSq = (npc.tileCol - col) ** 2 + (npc.tileRow - row) ** 2;
+      if (dSq < 3.24 && dSq < bestDist) {
+        bestDist = dSq;
         best = npc;
       }
     }
@@ -4448,7 +4479,7 @@ export class ZoneScene extends Phaser.Scene {
       arrivalMsg = this.isInSubDungeon ? '已传送至副本入口。' : '已传送至楼层出口。';
 
       // Already near exit?
-      if (euclideanDistance(this.player.tileCol, this.player.tileRow, destCol, destRow) < 3) {
+      if (distanceSq(this.player.tileCol, this.player.tileRow, destCol, destRow) < 9) {
         EventBus.emit(GameEvents.LOG_MESSAGE, { text: '你已在出口附近。', type: 'system' });
         return;
       }
@@ -4461,7 +4492,7 @@ export class ZoneScene extends Phaser.Scene {
 
       // Already near camp?
       const safeRadius = this.mapData.safeZoneRadius ?? 9;
-      if (euclideanDistance(this.player.tileCol, this.player.tileRow, destCol, destRow) < safeRadius) {
+      if (distanceSq(this.player.tileCol, this.player.tileRow, destCol, destRow) < safeRadius * safeRadius) {
         EventBus.emit(GameEvents.LOG_MESSAGE, { text: '你已在营地中，无法使用传送门。', type: 'system' });
         return;
       }
@@ -4622,8 +4653,8 @@ export class ZoneScene extends Phaser.Scene {
       if (teleAffix && monster.isAggro()) {
         if (this.eliteAffixSystem.shouldTeleport(teleAffix, time)) {
           teleAffix.lastTeleportTime = time;
-          const dist = euclideanDistance(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
-          if (dist > 2 && dist < 15) {
+          const dSq = distanceSq(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
+          if (dSq > 4 && dSq < 225) {
             // Blink to a random walkable tile near the player
             const offsetCol = this.player.tileCol + (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random());
             const offsetRow = this.player.tileRow + (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random());
@@ -4663,8 +4694,8 @@ export class ZoneScene extends Phaser.Scene {
       // ── Curse Aura: debuff player stats when in proximity ──
       const curseAffix = this.eliteAffixSystem.getCurseAuraAffix(monster.eliteAffixes);
       if (curseAffix) {
-        const dist = euclideanDistance(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
-        if (dist <= curseAffix.definition.curseAuraRadius) {
+        const dSq = distanceSq(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
+        if (dSq <= curseAffix.definition.curseAuraRadius * curseAffix.definition.curseAuraRadius) {
           // Apply curse debuff as a timed buff on the player (amplifies damage taken)
           const reduction = curseAffix.definition.curseAuraReduction;
           const existingCurse = this.player.buffs.find(
@@ -4995,9 +5026,10 @@ export class ZoneScene extends Phaser.Scene {
 
     // Check safe zone
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
+    const safeRadiusSq = safeRadius * safeRadius;
     let inSafeZone = false;
     for (const camp of this.campPositions) {
-      if (euclideanDistance(merc.tileCol, merc.tileRow, camp.col, camp.row) < safeRadius) {
+      if (distanceSq(merc.tileCol, merc.tileRow, camp.col, camp.row) < safeRadiusSq) {
         inSafeZone = true;
         break;
       }
@@ -5111,8 +5143,8 @@ export class ZoneScene extends Phaser.Scene {
         if (entity) {
           for (const m of this.monsters) {
             if (!m.isAlive()) continue;
-            const dist = euclideanDistance(action.targetCol, action.targetRow, m.tileCol, m.tileRow);
-            if (dist <= radius) {
+            const dSq = distanceSq(action.targetCol, action.targetRow, m.tileCol, m.tileRow);
+            if (dSq <= radius * radius) {
               const result = this.combatSystem.calculateDamage(entity, m.toCombatEntity());
               const dmg = Math.floor(result.damage * 0.7); // AoE damage reduction
               m.takeDamage(dmg, this.mercenarySprite?.x ?? 0, this.mercenarySprite?.y ?? 0);
@@ -5159,11 +5191,11 @@ export class ZoneScene extends Phaser.Scene {
       if (!monster.isAlive() || monster.state !== 'attack') continue;
       if (this.statusEffects.isImmobilized(monster.id)) continue;
 
-      const distToMerc = euclideanDistance(monster.tileCol, monster.tileRow, merc.tileCol, merc.tileRow);
-      const distToPlayer = euclideanDistance(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
+      const distToMercSq = distanceSq(monster.tileCol, monster.tileRow, merc.tileCol, merc.tileRow);
+      const distToPlayerSq = distanceSq(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
 
       // If mercenary is closer and within monster's attack range, monster hits mercenary
-      if (distToMerc < distToPlayer && distToMerc <= monster.definition.attackRange + 0.5) {
+      if (distToMercSq < distToPlayerSq && distToMercSq <= (monster.definition.attackRange + 0.5) * (monster.definition.attackRange + 0.5)) {
         if (time - monster.lastAttackTime >= monster.definition.attackSpeed) {
           monster.lastAttackTime = time;
           const result = this.combatSystem.calculateDamage(monster.toCombatEntity(), this.mercenarySystem.toCombatEntity()!);
@@ -5305,8 +5337,8 @@ export class ZoneScene extends Phaser.Scene {
     // Nearby monsters attack escort NPC (aggro if within 4 tiles)
     for (const monster of this.monsters) {
       if (!monster.isAlive()) continue;
-      const md = euclideanDistance(monster.tileCol, monster.tileRow, this.escortNpcTileCol, this.escortNpcTileRow);
-      if (md < 4 && monster.isAggro() && time - (monster as unknown as { lastEscortAttack?: number }).lastEscortAttack! > 2000) {
+      const md = distanceSq(monster.tileCol, monster.tileRow, this.escortNpcTileCol, this.escortNpcTileRow);
+      if (md < 16 && monster.isAggro() && time - (monster as unknown as { lastEscortAttack?: number }).lastEscortAttack! > 2000) {
         const dmg = Math.max(1, Math.floor(monster.definition.damage * 0.3));
         this.escortNpcHp -= dmg;
         (monster as unknown as { lastEscortAttack?: number }).lastEscortAttack = time;
@@ -5333,11 +5365,11 @@ export class ZoneScene extends Phaser.Scene {
     // Check if escort NPC has arrived at destination (gate on NPC proximity, not just player)
     const escortDx = this.escortNpcTileCol - this.escortDestCol;
     const escortDy = this.escortNpcTileRow - this.escortDestRow;
-    const escortDist = Math.sqrt(escortDx * escortDx + escortDy * escortDy);
-    if (escortDist <= 5) {
+    const escortDistSq = escortDx * escortDx + escortDy * escortDy;
+    if (escortDistSq <= 25) {
       // Also check player is nearby
-      const playerDist = euclideanDistance(this.player.tileCol, this.player.tileRow, this.escortDestCol, this.escortDestRow);
-      if (playerDist <= 6) {
+      const playerDistSq = distanceSq(this.player.tileCol, this.player.tileRow, this.escortDestCol, this.escortDestRow);
+      if (playerDistSq <= 36) {
         // Escort complete
         const quest = this.questSystem.quests.get(this.escortQuestId);
         if (quest) {
@@ -5461,10 +5493,10 @@ export class ZoneScene extends Phaser.Scene {
       return;
     }
 
-    const playerDist = euclideanDistance(this.player.tileCol, this.player.tileRow, this.defendTargetCol, this.defendTargetRow);
+    const playerDistSq = distanceSq(this.player.tileCol, this.player.tileRow, this.defendTargetCol, this.defendTargetRow);
 
     // Start next wave when player is within 15 tiles and no wave is active
-    if (!this.defendWaveActive && playerDist < 15) {
+    if (!this.defendWaveActive && playerDistSq < 225) {
       if (this.defendWaveTimer === 0) {
         this.defendWaveTimer = time;
       }
@@ -5497,8 +5529,8 @@ export class ZoneScene extends Phaser.Scene {
       } else {
         // Wave monsters attack defend target
         for (const monster of aliveWaveMonsters) {
-          const md = euclideanDistance(monster.tileCol, monster.tileRow, this.defendTargetCol, this.defendTargetRow);
-          if (md < 3 && time - ((monster as unknown as { lastDefendAttack?: number }).lastDefendAttack ?? 0) > 2000) {
+          const md = distanceSq(monster.tileCol, monster.tileRow, this.defendTargetCol, this.defendTargetRow);
+          if (md < 9 && time - ((monster as unknown as { lastDefendAttack?: number }).lastDefendAttack ?? 0) > 2000) {
             const dmg = Math.max(1, Math.floor(monster.definition.damage * 0.2));
             this.defendTargetHp -= dmg;
             (monster as unknown as { lastDefendAttack?: number }).lastDefendAttack = time;
@@ -5628,10 +5660,10 @@ export class ZoneScene extends Phaser.Scene {
   /** Find the nearest alive monster to a given tile position. */
   private findMonsterNear(col: number, row: number): Monster | null {
     let best: Monster | null = null;
-    let bestDist = 3; // max search radius
+    let bestDist = 9; // max search radius squared (3²)
     for (const m of this.monsters) {
       if (!m.isAlive()) continue;
-      const d = euclideanDistance(m.tileCol, m.tileRow, col, row);
+      const d = distanceSq(m.tileCol, m.tileRow, col, row);
       if (d < bestDist) { bestDist = d; best = m; }
     }
     return best;
@@ -5761,8 +5793,9 @@ export class ZoneScene extends Phaser.Scene {
 
     // Disable in safe zones
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
+    const safeRadiusSq = safeRadius * safeRadius;
     for (const camp of this.campPositions) {
-      if (euclideanDistance(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadius) {
+      if (distanceSq(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadiusSq) {
         return;
       }
     }
