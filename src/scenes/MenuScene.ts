@@ -6,8 +6,9 @@ import { EventBus, GameEvents } from '../utils/EventBus';
 import { audioManager } from '../systems/audio/AudioManager';
 import type { SaveData } from '../data/types';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
-import { DifficultySystem, DIFFICULTY_ORDER, DIFFICULTY_LABELS } from '../systems/DifficultySystem';
+import { DifficultySystem, DIFFICULTY_ORDER } from '../systems/DifficultySystem';
 import type { Difficulty } from '../systems/DifficultySystem';
+import { t, setLocale, getLocale } from '../i18n';
 
 function fs(basePx: number): string {
   return `${Math.round(basePx * DPR)}px`;
@@ -18,17 +19,17 @@ const W = GAME_WIDTH * DPR;
 const H = GAME_HEIGHT * DPR;
 
 const JUKEBOX_TRACKS = [
-  { title: '渊火 · 序章', zoneId: 'menu', state: 'explore' as const, duration: 120 },
-  { title: '翠绿平原 · 探索', zoneId: 'emerald_plains', state: 'explore' as const, duration: 180 },
-  { title: '翠绿平原 · 战斗', zoneId: 'emerald_plains', state: 'combat' as const, duration: 150 },
-  { title: '暮光森林 · 探索', zoneId: 'twilight_forest', state: 'explore' as const, duration: 210 },
-  { title: '暮光森林 · 战斗', zoneId: 'twilight_forest', state: 'combat' as const, duration: 150 },
-  { title: '铁砧山脉 · 探索', zoneId: 'anvil_mountains', state: 'explore' as const, duration: 180 },
-  { title: '铁砧山脉 · 战斗', zoneId: 'anvil_mountains', state: 'combat' as const, duration: 150 },
-  { title: '灼热荒漠 · 探索', zoneId: 'scorching_desert', state: 'explore' as const, duration: 180 },
-  { title: '灼热荒漠 · 战斗', zoneId: 'scorching_desert', state: 'combat' as const, duration: 150 },
-  { title: '深渊裂隙 · 探索', zoneId: 'abyss_rift', state: 'explore' as const, duration: 210 },
-  { title: '深渊裂隙 · 战斗', zoneId: 'abyss_rift', state: 'combat' as const, duration: 180 },
+  { titleKey: 'menu.jukebox.track.menu', zoneId: 'menu', state: 'explore' as const, duration: 120 },
+  { titleKey: 'menu.jukebox.track.emerald_plains.explore', zoneId: 'emerald_plains', state: 'explore' as const, duration: 180 },
+  { titleKey: 'menu.jukebox.track.emerald_plains.combat', zoneId: 'emerald_plains', state: 'combat' as const, duration: 150 },
+  { titleKey: 'menu.jukebox.track.twilight_forest.explore', zoneId: 'twilight_forest', state: 'explore' as const, duration: 210 },
+  { titleKey: 'menu.jukebox.track.twilight_forest.combat', zoneId: 'twilight_forest', state: 'combat' as const, duration: 150 },
+  { titleKey: 'menu.jukebox.track.anvil_mountains.explore', zoneId: 'anvil_mountains', state: 'explore' as const, duration: 180 },
+  { titleKey: 'menu.jukebox.track.anvil_mountains.combat', zoneId: 'anvil_mountains', state: 'combat' as const, duration: 150 },
+  { titleKey: 'menu.jukebox.track.scorching_desert.explore', zoneId: 'scorching_desert', state: 'explore' as const, duration: 180 },
+  { titleKey: 'menu.jukebox.track.scorching_desert.combat', zoneId: 'scorching_desert', state: 'combat' as const, duration: 150 },
+  { titleKey: 'menu.jukebox.track.abyss_rift.explore', zoneId: 'abyss_rift', state: 'explore' as const, duration: 210 },
+  { titleKey: 'menu.jukebox.track.abyss_rift.combat', zoneId: 'abyss_rift', state: 'combat' as const, duration: 180 },
 ];
 
 function fmtTime(sec: number): string {
@@ -43,6 +44,14 @@ export class MenuScene extends Phaser.Scene {
   private helpContainer: Phaser.GameObjects.Container | null = null;
   private jukeboxContainer: Phaser.GameObjects.Container | null = null;
   private difficultyContainer: Phaser.GameObjects.Container | null = null;
+  private creditsContainer: Phaser.GameObjects.Container | null = null;
+  private langContainer: Phaser.GameObjects.Container | null = null;
+  private titleContainer: Phaser.GameObjects.Container | null = null;
+
+  /** Tracks current save for re-rendering main menu after locale change */
+  private currentSave: SaveData | null = null;
+  /** Tracks which panel is visible for LOCALE_CHANGED reactivity */
+  private activePanel: 'menu' | 'class' | 'help' | 'jukebox' | 'credits' | 'difficulty' | 'lang' = 'menu';
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -55,7 +64,53 @@ export class MenuScene extends Phaser.Scene {
     this.buildTitle(cx);
     this.startBGM();
     this.checkForSaves();
+
+    // Listen for locale changes to re-render the active panel
+    EventBus.on(GameEvents.LOCALE_CHANGED, this.onLocaleChanged, this);
+    this.events.once('shutdown', () => {
+      EventBus.off(GameEvents.LOCALE_CHANGED, this.onLocaleChanged, this);
+    });
   }
+
+  private onLocaleChanged = (): void => {
+    // Re-render title (subtitle changes per locale)
+    this.rebuildTitle();
+
+    // Re-render whichever panel is currently active
+    switch (this.activePanel) {
+      case 'menu':
+        this.showMainMenu(this.currentSave);
+        break;
+      case 'class':
+        this.classContainer?.destroy(); this.classContainer = null;
+        this.showClassSelection();
+        break;
+      case 'help':
+        this.helpContainer?.destroy(); this.helpContainer = null;
+        this.showHelp();
+        break;
+      case 'jukebox':
+        // Jukebox has internal timer state; full re-render would lose playback position.
+        // Just close and re-open to keep it simple.
+        this.jukeboxContainer?.destroy(); this.jukeboxContainer = null;
+        this.showJukebox();
+        break;
+      case 'credits':
+        this.creditsContainer?.destroy(); this.creditsContainer = null;
+        this.showCredits();
+        break;
+      case 'difficulty':
+        if (this.currentSave) {
+          this.difficultyContainer?.destroy(); this.difficultyContainer = null;
+          this.showDifficultySelector(this.currentSave);
+        }
+        break;
+      case 'lang':
+        this.langContainer?.destroy(); this.langContainer = null;
+        this.showLanguageSelector();
+        break;
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Background layers
@@ -210,6 +265,8 @@ export class MenuScene extends Phaser.Scene {
   // ---------------------------------------------------------------------------
 
   private buildTitle(cx: number): void {
+    this.titleContainer = this.add.container(0, 0).setDepth(10);
+
     // Decorative line above title
     const lineY = px(80);
     const lineGfx = this.add.graphics();
@@ -221,26 +278,27 @@ export class MenuScene extends Phaser.Scene {
     lineGfx.fillStyle(0xc0934a, 0.5);
     lineGfx.fillCircle(cx - px(200), lineY, px(2));
     lineGfx.fillCircle(cx + px(200), lineY, px(2));
-    lineGfx.setDepth(10);
+    this.titleContainer.add(lineGfx);
 
-    // Title
-    this.add.text(cx, px(130), 'ABYSSFIRE', {
+    // Title — ABYSSFIRE never changes
+    this.titleContainer.add(this.add.text(cx, px(130), t('menu.title'), {
       fontSize: fs(52),
       color: '#c0934a',
       fontFamily: '"Cinzel", serif',
       fontStyle: 'bold',
       stroke: '#3a2a10',
       strokeThickness: Math.round(4 * DPR),
-    }).setOrigin(0.5).setDepth(10);
+    }).setOrigin(0.5));
 
-    this.add.text(cx, px(188), '渊   火', {
+    // Subtitle — locale-dependent
+    this.titleContainer.add(this.add.text(cx, px(188), t('menu.subtitle'), {
       fontSize: fs(32),
       color: '#d4a84b',
-      fontFamily: '"Noto Sans SC", sans-serif',
+      fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
       fontStyle: 'bold',
       stroke: '#2a1a08',
       strokeThickness: Math.round(3 * DPR),
-    }).setOrigin(0.5).setDepth(10);
+    }).setOrigin(0.5));
 
     // Decorative line below title
     const lineGfx2 = this.add.graphics();
@@ -249,14 +307,23 @@ export class MenuScene extends Phaser.Scene {
     lineGfx2.moveTo(cx - px(160), px(215));
     lineGfx2.lineTo(cx + px(160), px(215));
     lineGfx2.strokePath();
-    lineGfx2.setDepth(10);
+    this.titleContainer.add(lineGfx2);
 
     // Version
-    this.add.text(cx, H - px(20), 'v0.6.0 - HD', {
+    this.titleContainer.add(this.add.text(cx, H - px(20), 'v0.22.0', {
       fontSize: fs(13),
       color: '#333340',
       fontFamily: '"Cinzel", serif',
-    }).setOrigin(0.5).setDepth(10);
+    }).setOrigin(0.5));
+  }
+
+  private rebuildTitle(): void {
+    const cx = W / 2;
+    if (this.titleContainer) {
+      this.titleContainer.destroy();
+      this.titleContainer = null;
+    }
+    this.buildTitle(cx);
   }
 
   // ---------------------------------------------------------------------------
@@ -297,6 +364,8 @@ export class MenuScene extends Phaser.Scene {
   private showMainMenu(save: SaveData | null): void {
     if (this.menuContainer) { this.menuContainer.destroy(); }
     this.menuContainer = this.add.container(0, 0).setDepth(10);
+    this.currentSave = save;
+    this.activePanel = 'menu';
 
     const cx = W / 2;
     let y = save ? px(300) : px(340);
@@ -305,7 +374,7 @@ export class MenuScene extends Phaser.Scene {
       // "Continue" button — shows class name + level
       const classData = AllClasses[save.classId];
       const className = classData?.name ?? save.classId;
-      const label = `继续游戏 - ${className} Lv.${save.player.level}`;
+      const label = t('menu.continue', { class: className, level: String(save.player.level) });
 
       const bg = this.add.rectangle(cx, y, px(320), px(65), 0x12121e, 0.9)
         .setStrokeStyle(1.5, 0xc0934a, 0.8).setInteractive({ useHandCursor: true });
@@ -328,10 +397,10 @@ export class MenuScene extends Phaser.Scene {
       this.menuContainer.add(bg);
 
       this.menuContainer.add(this.add.text(cx, y - px(6), label, {
-        fontSize: fs(20), color: '#e8e0d4', fontFamily: '"Cinzel", "Noto Sans SC", serif',
+        fontSize: fs(20), color: '#e8e0d4', fontFamily: '"Cinzel", "Noto Sans SC", "Noto Sans TC", serif',
       }).setOrigin(0.5));
-      this.menuContainer.add(this.add.text(cx, y + px(16), '继续你的冒险', {
-        fontSize: fs(13), color: '#c0934a', fontFamily: '"Noto Sans SC", sans-serif',
+      this.menuContainer.add(this.add.text(cx, y + px(16), t('menu.continueSubtitle'), {
+        fontSize: fs(13), color: '#c0934a', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
       }).setOrigin(0.5));
 
       y += px(90);
@@ -347,8 +416,8 @@ export class MenuScene extends Phaser.Scene {
       this.showClassSelection();
     });
     this.menuContainer.add(newBg);
-    this.menuContainer.add(this.add.text(cx, y, '新的旅程', {
-      fontSize: fs(20), color: '#a0907a', fontFamily: '"Cinzel", "Noto Sans SC", serif',
+    this.menuContainer.add(this.add.text(cx, y, t('menu.newGame'), {
+      fontSize: fs(20), color: '#a0907a', fontFamily: '"Cinzel", "Noto Sans SC", "Noto Sans TC", serif',
     }).setOrigin(0.5));
 
     y += px(70);
@@ -360,38 +429,68 @@ export class MenuScene extends Phaser.Scene {
     helpBg.on('pointerout', () => { helpBg.setStrokeStyle(1.5, 0x555566, 0.4); helpBg.setFillStyle(0x12121e, 0.9); });
     helpBg.on('pointerdown', () => this.showHelp());
     this.menuContainer.add(helpBg);
-    this.menuContainer.add(this.add.text(cx, y, '游戏控制', {
-      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", sans-serif',
+    this.menuContainer.add(this.add.text(cx, y, t('menu.help'), {
+      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5));
 
     y += px(60);
 
-    // "原声音乐" button
+    // "Soundtrack" button
     const ostBg = this.add.rectangle(cx, y, px(320), px(45), 0x12121e, 0.9)
       .setStrokeStyle(1.5, 0x555566, 0.4).setInteractive({ useHandCursor: true });
     ostBg.on('pointerover', () => { ostBg.setStrokeStyle(2, 0x888899, 0.8); ostBg.setFillStyle(0x1a1a2e, 0.95); });
     ostBg.on('pointerout', () => { ostBg.setStrokeStyle(1.5, 0x555566, 0.4); ostBg.setFillStyle(0x12121e, 0.9); });
     ostBg.on('pointerdown', () => this.showJukebox());
     this.menuContainer.add(ostBg);
-    this.menuContainer.add(this.add.text(cx, y, '原声音乐', {
-      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", sans-serif',
+    this.menuContainer.add(this.add.text(cx, y, t('menu.ost'), {
+      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0.5));
+
+    y += px(60);
+
+    // "Credits" button
+    const creditsBg = this.add.rectangle(cx, y, px(320), px(45), 0x12121e, 0.9)
+      .setStrokeStyle(1.5, 0x555566, 0.4).setInteractive({ useHandCursor: true });
+    creditsBg.on('pointerover', () => { creditsBg.setStrokeStyle(2, 0x888899, 0.8); creditsBg.setFillStyle(0x1a1a2e, 0.95); });
+    creditsBg.on('pointerout', () => { creditsBg.setStrokeStyle(1.5, 0x555566, 0.4); creditsBg.setFillStyle(0x12121e, 0.9); });
+    creditsBg.on('pointerdown', () => this.showCredits());
+    this.menuContainer.add(creditsBg);
+    this.menuContainer.add(this.add.text(cx, y, t('menu.credits'), {
+      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0.5));
+
+    y += px(60);
+
+    // "Language" button — after Credits
+    const langBg = this.add.rectangle(cx, y, px(320), px(45), 0x12121e, 0.9)
+      .setStrokeStyle(1.5, 0x555566, 0.4).setInteractive({ useHandCursor: true });
+    langBg.on('pointerover', () => { langBg.setStrokeStyle(2, 0x888899, 0.8); langBg.setFillStyle(0x1a1a2e, 0.95); });
+    langBg.on('pointerout', () => { langBg.setStrokeStyle(1.5, 0x555566, 0.4); langBg.setFillStyle(0x12121e, 0.9); });
+    langBg.on('pointerdown', () => {
+      this.menuContainer?.destroy(); this.menuContainer = null;
+      this.showLanguageSelector();
+    });
+    this.menuContainer.add(langBg);
+    this.menuContainer.add(this.add.text(cx, y, t('menu.language'), {
+      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5));
   }
 
   private showClassSelection(): void {
     this.classContainer = this.add.container(0, 0).setDepth(10);
+    this.activePanel = 'class';
     const cx = W / 2;
 
-    this.classContainer.add(this.add.text(cx, px(260), '选 择 职 业', {
+    this.classContainer.add(this.add.text(cx, px(260), t('menu.classSelect.title'), {
       fontSize: fs(20),
       color: '#a0907a',
-      fontFamily: '"Noto Sans SC", sans-serif',
+      fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5));
 
     const classes = [
-      { id: 'warrior', name: '战士 Warrior', desc: '钢铁意志,剑盾无双', color: 0xc0392b, accent: '#e74c3c' },
-      { id: 'mage', name: '法师 Mage', desc: '奥术之力,毁天灭地', color: 0x6c3483, accent: '#9b59b6' },
-      { id: 'rogue', name: '盗贼 Rogue', desc: '暗影潜行,一击致命', color: 0x1e8449, accent: '#27ae60' },
+      { id: 'warrior', nameKey: 'menu.classSelect.warrior.name', descKey: 'menu.classSelect.warrior.desc', color: 0xc0392b, accent: '#e74c3c' },
+      { id: 'mage', nameKey: 'menu.classSelect.mage.name', descKey: 'menu.classSelect.mage.desc', color: 0x6c3483, accent: '#9b59b6' },
+      { id: 'rogue', nameKey: 'menu.classSelect.rogue.name', descKey: 'menu.classSelect.rogue.desc', color: 0x1e8449, accent: '#27ae60' },
     ];
 
     classes.forEach((cls, i) => {
@@ -416,16 +515,16 @@ export class MenuScene extends Phaser.Scene {
       }
 
       this.classContainer!.add(bg);
-      this.classContainer!.add(this.add.text(cx, y - px(12), cls.name, {
+      this.classContainer!.add(this.add.text(cx, y - px(12), t(cls.nameKey), {
         fontSize: fs(20),
         color: '#e8e0d4',
-        fontFamily: '"Cinzel", "Noto Sans SC", serif',
+        fontFamily: '"Cinzel", "Noto Sans SC", "Noto Sans TC", serif',
       }).setOrigin(0.5));
 
-      this.classContainer!.add(this.add.text(cx, y + px(12), cls.desc, {
+      this.classContainer!.add(this.add.text(cx, y + px(12), t(cls.descKey), {
         fontSize: fs(14),
         color: cls.accent,
-        fontFamily: '"Noto Sans SC", sans-serif',
+        fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
       }).setOrigin(0.5));
 
       bg.on('pointerover', () => {
@@ -452,8 +551,8 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Back button
-    const backBtn = this.add.text(cx, px(570), '← 返回', {
-      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", sans-serif',
+    const backBtn = this.add.text(cx, px(570), t('menu.back'), {
+      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     backBtn.on('pointerdown', () => {
       this.classContainer?.destroy(); this.classContainer = null;
@@ -465,6 +564,7 @@ export class MenuScene extends Phaser.Scene {
   private showHelp(): void {
     if (this.helpContainer) { this.helpContainer.destroy(); }
     this.helpContainer = this.add.container(0, 0).setDepth(20);
+    this.activePanel = 'help';
 
     const cx = W / 2;
     const panelW = px(460);
@@ -482,8 +582,8 @@ export class MenuScene extends Phaser.Scene {
     this.helpContainer.add(panel);
 
     // Title
-    this.helpContainer.add(this.add.text(panelX, panelY - panelH / 2 + px(24), '快捷键', {
-      fontSize: fs(22), color: '#c0934a', fontFamily: '"Cinzel", "Noto Sans SC", serif', fontStyle: 'bold',
+    this.helpContainer.add(this.add.text(panelX, panelY - panelH / 2 + px(24), t('menu.helpPanel.title'), {
+      fontSize: fs(22), color: '#c0934a', fontFamily: '"Cinzel", "Noto Sans SC", "Noto Sans TC", serif', fontStyle: 'bold',
     }).setOrigin(0.5));
 
     // Decorative line
@@ -495,33 +595,33 @@ export class MenuScene extends Phaser.Scene {
     lineGfx.strokePath();
     this.helpContainer.add(lineGfx);
 
-    const categories: { title: string; keys: [string, string][] }[] = [
+    const categories: { titleKey: string; keys: [string, string][] }[] = [
       {
-        title: '移动',
+        titleKey: 'menu.helpPanel.cat.movement',
         keys: [
-          ['W / A / S / D', '上 / 左 / 下 / 右移动'],
-          ['鼠标左键', '点击移动 / 攻击 / 交互'],
+          ['W / A / S / D', t('menu.helpPanel.movement.wasd')],
+          ['Mouse LMB', t('menu.helpPanel.movement.mouse')],
         ],
       },
       {
-        title: '战斗',
+        titleKey: 'menu.helpPanel.cat.combat',
         keys: [
-          ['1 - 6', '使用技能'],
-          ['TAB', '切换自动战斗'],
-          ['R / 右键', '传送回营地'],
+          ['1 - 6', t('menu.helpPanel.combat.skills')],
+          ['TAB', t('menu.helpPanel.combat.autoCombat')],
+          ['R / RMB', t('menu.helpPanel.combat.teleport')],
         ],
       },
       {
-        title: '界面',
+        titleKey: 'menu.helpPanel.cat.ui',
         keys: [
-          ['I', '背包'],
-          ['C', '角色属性'],
-          ['K', '技能树'],
-          ['J', '任务日志'],
-          ['M', '地图'],
-          ['H', '家园'],
-          ['O', '音频设置'],
-          ['ESC', '返回主菜单'],
+          ['I', t('menu.helpPanel.ui.inventory')],
+          ['C', t('menu.helpPanel.ui.character')],
+          ['K', t('menu.helpPanel.ui.skillTree')],
+          ['J', t('menu.helpPanel.ui.questLog')],
+          ['M', t('menu.helpPanel.ui.map')],
+          ['H', t('menu.helpPanel.ui.homestead')],
+          ['O', t('menu.helpPanel.ui.audio')],
+          ['ESC', t('menu.helpPanel.ui.escape')],
         ],
       },
     ];
@@ -532,19 +632,19 @@ export class MenuScene extends Phaser.Scene {
 
     for (const cat of categories) {
       // Category title
-      this.helpContainer.add(this.add.text(leftX, y, cat.title, {
-        fontSize: fs(14), color: '#d4a84b', fontFamily: '"Noto Sans SC", sans-serif', fontStyle: 'bold',
+      this.helpContainer.add(this.add.text(leftX, y, t(cat.titleKey), {
+        fontSize: fs(14), color: '#d4a84b', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif', fontStyle: 'bold',
       }).setOrigin(0, 0.5));
       y += px(22);
 
       for (const [key, desc] of cat.keys) {
         // Key label
         this.helpContainer.add(this.add.text(leftX + px(8), y, key, {
-          fontSize: fs(12), color: '#e0d8cc', fontFamily: '"Noto Sans SC", sans-serif',
+          fontSize: fs(12), color: '#e0d8cc', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
         }).setOrigin(0, 0.5));
         // Description
         this.helpContainer.add(this.add.text(rightX, y, desc, {
-          fontSize: fs(12), color: '#888880', fontFamily: '"Noto Sans SC", sans-serif',
+          fontSize: fs(12), color: '#888880', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
         }).setOrigin(1, 0.5));
         y += px(18);
       }
@@ -552,16 +652,18 @@ export class MenuScene extends Phaser.Scene {
     }
 
     // Close button
-    const closeBtn = this.add.text(panelX, panelY + panelH / 2 - px(24), '← 返回', {
-      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", sans-serif',
+    const closeBtn = this.add.text(panelX, panelY + panelH / 2 - px(24), t('menu.back'), {
+      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => {
       this.helpContainer?.destroy();
       this.helpContainer = null;
+      this.activePanel = 'menu';
     });
     backdrop.on('pointerdown', () => {
       this.helpContainer?.destroy();
       this.helpContainer = null;
+      this.activePanel = 'menu';
     });
     this.helpContainer.add(closeBtn);
   }
@@ -569,6 +671,7 @@ export class MenuScene extends Phaser.Scene {
   private showJukebox(): void {
     if (this.jukeboxContainer) { this.jukeboxContainer.destroy(); }
     this.jukeboxContainer = this.add.container(0, 0).setDepth(20);
+    this.activePanel = 'jukebox';
 
     const cx = W / 2;
     const panelW = px(460);
@@ -597,14 +700,14 @@ export class MenuScene extends Phaser.Scene {
     );
 
     // ---- Header ----
-    this.jukeboxContainer.add(this.add.text(panelX, panelTop + px(20), 'ABYSSFIRE OST', {
+    this.jukeboxContainer.add(this.add.text(panelX, panelTop + px(20), t('menu.jukebox.header'), {
       fontSize: fs(18), color: '#c0934a', fontFamily: '"Cinzel", serif', fontStyle: 'bold',
     }).setOrigin(0.5));
 
-    const totalDur = JUKEBOX_TRACKS.reduce((sum, t) => sum + t.duration, 0);
+    const totalDur = JUKEBOX_TRACKS.reduce((sum, tr) => sum + tr.duration, 0);
     this.jukeboxContainer.add(this.add.text(panelX, panelTop + px(38),
-      `原声音乐集 · ${JUKEBOX_TRACKS.length} 首 · ${fmtTime(totalDur)}`, {
-      fontSize: fs(11), color: '#666660', fontFamily: '"Noto Sans SC", sans-serif',
+      t('menu.jukebox.subtitle', { count: String(JUKEBOX_TRACKS.length), duration: fmtTime(totalDur) }), {
+      fontSize: fs(11), color: '#666660', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5));
 
     const hdrLine = this.add.graphics();
@@ -653,8 +756,8 @@ export class MenuScene extends Phaser.Scene {
       numTexts.push(num);
       this.jukeboxContainer!.add(num);
 
-      const title = this.add.text(innerLeft + px(28), rowY, track.title, {
-        fontSize: fs(13), color: '#999990', fontFamily: '"Noto Sans SC", sans-serif',
+      const title = this.add.text(innerLeft + px(28), rowY, t(track.titleKey), {
+        fontSize: fs(13), color: '#999990', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
       }).setOrigin(0, 0.5);
       titleTexts.push(title);
       this.jukeboxContainer!.add(title);
@@ -753,8 +856,8 @@ export class MenuScene extends Phaser.Scene {
     this.jukeboxContainer.add(timeText);
 
     // ---- Close ----
-    const closeBtn = this.add.text(panelX, panelTop + panelH - px(22), '← 返回', {
-      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", sans-serif',
+    const closeBtn = this.add.text(panelX, panelTop + panelH - px(22), t('menu.back'), {
+      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     closeBtn.on('pointerdown', () => doClose());
     backdrop.on('pointerdown', () => doClose());
@@ -812,6 +915,7 @@ export class MenuScene extends Phaser.Scene {
       EventBus.emit(GameEvents.ZONE_ENTERED, { mapId: 'menu' });
       this.jukeboxContainer?.destroy();
       this.jukeboxContainer = null;
+      this.activePanel = 'menu';
     };
 
     this.events.once('shutdown', () => {
@@ -846,6 +950,137 @@ export class MenuScene extends Phaser.Scene {
     doPlay(0);
   }
 
+  private showCredits(): void {
+    if (this.creditsContainer) { this.creditsContainer.destroy(); }
+    this.creditsContainer = this.add.container(0, 0).setDepth(20);
+    this.activePanel = 'credits';
+
+    const cx = W / 2;
+    const panelW = px(500);
+    const panelH = px(560);
+    const panelX = cx;
+    const panelY = H / 2;
+    const panelTop = panelY - panelH / 2;
+    const panelLeft = panelX - panelW / 2;
+    const innerLeft = panelLeft + px(24);
+    const innerRight = panelLeft + panelW - px(24);
+
+    // Backdrop
+    const backdrop = this.add.rectangle(cx, H / 2, W, H, 0x000000, 0.6).setInteractive();
+    this.creditsContainer.add(backdrop);
+
+    // Panel
+    this.creditsContainer.add(
+      this.add.rectangle(panelX, panelY, panelW, panelH, 0x0e0e1a, 0.95)
+        .setStrokeStyle(1.5, 0xc0934a, 0.6)
+    );
+
+    // Title
+    this.creditsContainer.add(this.add.text(panelX, panelTop + px(24), t('menu.creditsPanel.title'), {
+      fontSize: fs(22), color: '#c0934a', fontFamily: '"Cinzel", "Noto Sans SC", "Noto Sans TC", serif', fontStyle: 'bold',
+    }).setOrigin(0.5));
+
+    // Decorative line
+    const lineGfx = this.add.graphics();
+    lineGfx.lineStyle(1, 0xc0934a, 0.4);
+    lineGfx.beginPath();
+    lineGfx.moveTo(innerLeft, panelTop + px(44));
+    lineGfx.lineTo(innerRight, panelTop + px(44));
+    lineGfx.strokePath();
+    this.creditsContainer.add(lineGfx);
+
+    let y = panelTop + px(60);
+
+    // --- Tile Art ---
+    this.creditsContainer.add(this.add.text(innerLeft, y, t('menu.creditsPanel.tileArt'), {
+      fontSize: fs(14), color: '#d4a84b', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif', fontStyle: 'bold',
+    }).setOrigin(0, 0.5));
+    y += px(22);
+    this.creditsContainer.add(this.add.text(innerLeft + px(8), y, 'Isometric Landscape — Kenney (kenney.nl)', {
+      fontSize: fs(12), color: '#e0d8cc', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0, 0.5));
+    y += px(16);
+    this.creditsContainer.add(this.add.text(innerLeft + px(8), y, t('menu.creditsPanel.tileArt.license'), {
+      fontSize: fs(11), color: '#888880', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0, 0.5));
+
+    y += px(28);
+
+    // --- BGM ---
+    this.creditsContainer.add(this.add.text(innerLeft, y, t('menu.creditsPanel.bgm'), {
+      fontSize: fs(14), color: '#d4a84b', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif', fontStyle: 'bold',
+    }).setOrigin(0, 0.5));
+    y += px(18);
+    this.creditsContainer.add(this.add.text(innerLeft + px(8), y, t('menu.creditsPanel.bgm.source'), {
+      fontSize: fs(12), color: '#e0d8cc', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0, 0.5));
+    y += px(22);
+
+    const bgmCredits: { artist: string; tracks: string; license: string }[] = [
+      { artist: 'DST', tracks: 'GrassLands Theme', license: 'CC0' },
+      { artist: 'cynicmusic', tracks: 'Battle Theme A / B, Dark Forest Theme, Victory Fanfare Short', license: 'CC0' },
+      { artist: 'RandomMind', tracks: 'Medieval: Victory Theme', license: 'CC0' },
+      { artist: 'Zane Little Music', tracks: 'Glizzy Elf Forest RPG Music Pack', license: 'CC0' },
+      { artist: 'Cesar da Rocha', tracks: 'Fantasy Choir 2', license: 'CC0' },
+      { artist: 'Juhani Junkala', tracks: 'Epic Boss Battle', license: 'CC0' },
+      { artist: 'Tarush Singhal', tracks: 'Desert Theme', license: 'CC0' },
+      { artist: 'antonioraymond71', tracks: 'Desert Battle Theme', license: 'GPL 2.0' },
+      { artist: 'JaggedStone', tracks: 'Loopable Dungeon Ambience', license: 'CC0' },
+    ];
+
+    for (const credit of bgmCredits) {
+      this.creditsContainer.add(this.add.text(innerLeft + px(8), y, credit.artist, {
+        fontSize: fs(11), color: '#c0934a', fontFamily: '"Noto Sans SC", sans-serif',
+      }).setOrigin(0, 0.5));
+      this.creditsContainer.add(this.add.text(innerRight, y, credit.license, {
+        fontSize: fs(10), color: '#666660', fontFamily: '"Cinzel", monospace',
+      }).setOrigin(1, 0.5));
+      y += px(16);
+      this.creditsContainer.add(this.add.text(innerLeft + px(16), y, credit.tracks, {
+        fontSize: fs(10), color: '#888880', fontFamily: '"Noto Sans SC", sans-serif',
+        wordWrap: { width: panelW - px(80) },
+      }).setOrigin(0, 0.5));
+      y += px(18);
+    }
+
+    y += px(8);
+
+    // Separator
+    const sepGfx = this.add.graphics();
+    sepGfx.lineStyle(1, 0x333340, 0.5);
+    sepGfx.beginPath();
+    sepGfx.moveTo(innerLeft, y);
+    sepGfx.lineTo(innerRight, y);
+    sepGfx.strokePath();
+    this.creditsContainer.add(sepGfx);
+    y += px(16);
+
+    // Engine credit
+    this.creditsContainer.add(this.add.text(innerLeft, y, t('menu.creditsPanel.engine'), {
+      fontSize: fs(14), color: '#d4a84b', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif', fontStyle: 'bold',
+    }).setOrigin(0, 0.5));
+    y += px(20);
+    this.creditsContainer.add(this.add.text(innerLeft + px(8), y, 'Phaser 3 — phaser.io (MIT License)', {
+      fontSize: fs(12), color: '#e0d8cc', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0, 0.5));
+
+    // Close button
+    const closeBtn = this.add.text(panelX, panelTop + panelH - px(22), t('menu.back'), {
+      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerdown', () => {
+      this.creditsContainer?.destroy();
+      this.creditsContainer = null;
+      this.activePanel = 'menu';
+    });
+    backdrop.on('pointerdown', () => {
+      this.creditsContainer?.destroy();
+      this.creditsContainer = null;
+      this.activePanel = 'menu';
+    });
+    this.creditsContainer.add(closeBtn);
+  }
+
   private loadGame(save: SaveData): void {
     this.scene.start('ZoneScene', {
       classId: save.classId,
@@ -861,17 +1096,30 @@ export class MenuScene extends Phaser.Scene {
   private showDifficultySelector(save: SaveData): void {
     if (this.difficultyContainer) { this.difficultyContainer.destroy(); }
     this.difficultyContainer = this.add.container(0, 0).setDepth(10);
+    this.activePanel = 'difficulty';
 
     const cx = W / 2;
     const completedDiffs = save.completedDifficulties ?? [];
     const states = DifficultySystem.getDifficultyStates(completedDiffs);
     const currentDiff = save.difficulty ?? 'normal';
 
+    // Difficulty locale key map
+    const DIFF_LABEL_KEYS: Record<Difficulty, string> = {
+      normal: 'menu.difficulty.normal',
+      nightmare: 'menu.difficulty.nightmare',
+      hell: 'menu.difficulty.hell',
+    };
+    const DIFF_DESC_KEYS: Record<Difficulty, string> = {
+      normal: 'menu.difficulty.desc.normal',
+      nightmare: 'menu.difficulty.desc.nightmare',
+      hell: 'menu.difficulty.desc.hell',
+    };
+
     // Title
-    this.difficultyContainer.add(this.add.text(cx, px(275), '选 择 难 度', {
+    this.difficultyContainer.add(this.add.text(cx, px(275), t('menu.difficulty.title'), {
       fontSize: fs(22),
       color: '#c0934a',
-      fontFamily: '"Noto Sans SC", sans-serif',
+      fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5));
 
@@ -885,11 +1133,6 @@ export class MenuScene extends Phaser.Scene {
       normal: '#4ade80',
       nightmare: '#ef4444',
       hell: '#ff4444',
-    };
-    const DIFF_DESCS: Record<Difficulty, string> = {
-      normal: '标准难度',
-      nightmare: '怪物伤害×1.5, 经验×2',
-      hell: '怪物伤害×2, 经验×3',
     };
 
     DIFFICULTY_ORDER.forEach((diff, i) => {
@@ -926,7 +1169,7 @@ export class MenuScene extends Phaser.Scene {
       this.difficultyContainer!.add(bg);
 
       // Difficulty label with state indicator
-      let label = DIFFICULTY_LABELS[diff];
+      let label = t(DIFF_LABEL_KEYS[diff]);
       if (isCompleted) {
         label = `✓ ${label}`;
       } else if (isLocked) {
@@ -938,24 +1181,24 @@ export class MenuScene extends Phaser.Scene {
       this.difficultyContainer!.add(this.add.text(cx, y - px(10), label, {
         fontSize: fs(20),
         color: textColor,
-        fontFamily: '"Noto Sans SC", sans-serif',
+        fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
         fontStyle: isCurrent ? 'bold' : 'normal',
       }).setOrigin(0.5));
 
       // Description text
-      const descText = isLocked ? '未解锁 — 需要通关上一难度' : DIFF_DESCS[diff];
+      const descText = isLocked ? t('menu.difficulty.locked') : t(DIFF_DESC_KEYS[diff]);
       this.difficultyContainer!.add(this.add.text(cx, y + px(14), descText, {
         fontSize: fs(13),
         color: isLocked ? '#444444' : '#888880',
-        fontFamily: '"Noto Sans SC", sans-serif',
+        fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
       }).setOrigin(0.5));
 
       // Current difficulty indicator
       if (isCurrent && !isLocked) {
-        this.difficultyContainer!.add(this.add.text(cx + px(140), y - px(10), '当前', {
+        this.difficultyContainer!.add(this.add.text(cx + px(140), y - px(10), t('menu.difficulty.current'), {
           fontSize: fs(11),
           color: '#c0934a',
-          fontFamily: '"Noto Sans SC", sans-serif',
+          fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
         }).setOrigin(0.5));
       }
     });
@@ -971,9 +1214,80 @@ export class MenuScene extends Phaser.Scene {
       this.showMainMenu(save);
     });
     this.difficultyContainer.add(backBg);
-    this.difficultyContainer.add(this.add.text(cx, backY, '返回', {
-      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", sans-serif',
+    this.difficultyContainer.add(this.add.text(cx, backY, t('menu.backShort'), {
+      fontSize: fs(16), color: '#888880', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
     }).setOrigin(0.5));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Language Selector
+  // ---------------------------------------------------------------------------
+
+  private showLanguageSelector(): void {
+    if (this.langContainer) { this.langContainer.destroy(); }
+    this.langContainer = this.add.container(0, 0).setDepth(10);
+    this.activePanel = 'lang';
+
+    const cx = W / 2;
+    const currentLang = getLocale();
+
+    // Title
+    this.langContainer.add(this.add.text(cx, px(300), t('menu.language'), {
+      fontSize: fs(22),
+      color: '#c0934a',
+      fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+      fontStyle: 'bold',
+    }).setOrigin(0.5));
+
+    const options: { key: string; label: string; localeId: string }[] = [
+      { key: 'menu.langSelect.zhCN', label: t('menu.langSelect.zhCN'), localeId: 'zh-CN' },
+      { key: 'menu.langSelect.zhTW', label: t('menu.langSelect.zhTW'), localeId: 'zh-TW' },
+      { key: 'menu.langSelect.en', label: t('menu.langSelect.en'), localeId: 'en' },
+    ];
+
+    options.forEach((opt, i) => {
+      const y = px(370) + i * px(70);
+      const isCurrent = opt.localeId === currentLang;
+      const borderColor = isCurrent ? 0xc0934a : 0x555566;
+      const borderAlpha = isCurrent ? 0.8 : 0.4;
+
+      const bg = this.add.rectangle(cx, y, px(320), px(50), 0x12121e, 0.9)
+        .setStrokeStyle(isCurrent ? 2 : 1.5, borderColor, borderAlpha)
+        .setInteractive({ useHandCursor: true });
+
+      bg.on('pointerover', () => { bg.setStrokeStyle(2, 0xc0934a, 1); bg.setFillStyle(0x1a1a2e, 0.95); });
+      bg.on('pointerout', () => { bg.setStrokeStyle(isCurrent ? 2 : 1.5, borderColor, borderAlpha); bg.setFillStyle(0x12121e, 0.9); });
+      bg.on('pointerdown', () => {
+        // setLocale triggers LOCALE_CHANGED which re-renders via onLocaleChanged
+        setLocale(opt.localeId);
+      });
+
+      this.langContainer!.add(bg);
+      this.langContainer!.add(this.add.text(cx, y, opt.label, {
+        fontSize: fs(18),
+        color: isCurrent ? '#e8e0d4' : '#a0907a',
+        fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+        fontStyle: isCurrent ? 'bold' : 'normal',
+      }).setOrigin(0.5));
+
+      if (isCurrent) {
+        this.langContainer!.add(this.add.text(cx + px(140), y, t('menu.difficulty.current'), {
+          fontSize: fs(11),
+          color: '#c0934a',
+          fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+        }).setOrigin(0.5));
+      }
+    });
+
+    // Back button
+    const backBtn = this.add.text(cx, px(590), t('menu.back'), {
+      fontSize: fs(14), color: '#888', fontFamily: '"Noto Sans SC", "Noto Sans TC", sans-serif',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => {
+      this.langContainer?.destroy(); this.langContainer = null;
+      this.checkForSaves();
+    });
+    this.langContainer.add(backBtn);
   }
 
   private startGame(classId: string): void {

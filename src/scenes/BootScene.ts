@@ -3,6 +3,7 @@ import { DPR } from '../config';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
 import { SkillEffectSystem } from '../systems/SkillEffectSystem';
 import { generateFogTileTextures } from '../systems/FogOfWarSystem';
+import { t } from '../i18n';
 // import { buildFrameSizeRegistry } from '../graphics/sprites/types';
 // import { TEXTURE_SCALE } from '../config';
 
@@ -24,11 +25,11 @@ export class BootScene extends Phaser.Scene {
     bg.fillRect(0, 0, width, height);
 
     // Game title with glow
-    const titleText = this.add.text(width / 2, height / 2 - 70, '渊  火', {
+    const titleText = this.add.text(width / 2, height / 2 - 70, t('boot.title'), {
       fontSize: fs(36), color: '#c0934a', fontFamily: '"Cinzel", serif', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: Math.round(4 * DPR),
     }).setOrigin(0.5).setAlpha(0);
-    const subtitleText = this.add.text(width / 2, height / 2 - 36, 'A B Y S S F I R E', {
+    const subtitleText = this.add.text(width / 2, height / 2 - 36, t('boot.subtitle'), {
       fontSize: fs(14), color: '#8a7060', fontFamily: '"Cinzel", serif',
     }).setOrigin(0.5).setAlpha(0);
 
@@ -62,11 +63,11 @@ export class BootScene extends Phaser.Scene {
     const barY = height / 2 + 10;
     this.add.rectangle(width / 2, barY, barW, barH, 0x1a1a2e).setStrokeStyle(1, 0x333344);
     const fill = this.add.rectangle((width - barW) / 2 + 2, barY, 0, barH - 2, 0xc0934a).setOrigin(0, 0.5);
-    const loadingText = this.add.text(width / 2, barY + 18, '锻造渊火...', {
+    const loadingText = this.add.text(width / 2, barY + 18, t('boot.loading'), {
       fontSize: fs(13), color: '#8a7060', fontFamily: '"Cinzel", serif',
     }).setOrigin(0.5);
     this.load.on('progress', (v: number) => { fill.width = (barW - 4) * v; });
-    this.load.on('complete', () => { loadingText.setText('准备就绪!'); });
+    this.load.on('complete', () => { loadingText.setText(t('boot.ready')); });
 
     // Silently handle missing asset files — procedural fallbacks will fill gaps
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
