@@ -1,0 +1,67 @@
+{
+  "milestone": "i18n-foundation",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "npx vitest run",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "npx tsc --noEmit",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "echo \"no linter configured\"",
+      "exitCode": 0,
+      "note": "Repository lint command in .factory/services.yaml is a no-op placeholder."
+    },
+    "build": {
+      "passed": true,
+      "command": "npm run build",
+      "exitCode": 0,
+      "note": "Additional validation run per repository instructions."
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "fix-i18n-foundation-scrutiny"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "fix-i18n-foundation-scrutiny",
+      "severity": "blocking",
+      "description": "src/i18n/index.ts generates zh-TW by blindly converting every zh-CN string character-by-character, which still emits invalid visible Traditional Chinese such as `钢铁意志,剑盾无双` → `鋼鐵意誌,劍盾無雙` instead of `鋼鐵意志,劍盾無雙`."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated .factory/library/architecture.md to document that zh-TW is generated in memory at module init from zh-CN via src/i18n/index.ts, rather than imported from a checked-in locales/zh-TW.ts snapshot.",
+      "sourceFeature": "fix-i18n-foundation-scrutiny"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "i18n-worker skill",
+      "suggestion": "Update the skill to describe the current runtime zh-TW generation model and stop instructing workers to regenerate or hand off a checked-in src/i18n/locales/zh-TW.ts file.",
+      "evidence": "The fix deleted src/i18n/locales/zh-TW.ts and now derives zh-TW inside src/i18n/index.ts, but .factory/skills/i18n-worker/SKILL.md still tells workers to regenerate and report that file.",
+      "isSystemic": true
+    },
+    {
+      "target": "validation-contract.md",
+      "suggestion": "Align example translation keys with the implemented camelCase key naming convention (for example `menu.newGame` instead of `menu.new_game`) to avoid false-negative manual validation steps.",
+      "evidence": "validation-contract.md still references snake_case keys like `menu.new_game`, while src/i18n/locales/zh-CN.ts and the implementation use camelCase keys such as `menu.newGame`.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/i18n-foundation/scrutiny/synthesis.round1.json"
+}

@@ -1,7 +1,7 @@
 {
   "milestone": "i18n-foundation",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -28,40 +28,32 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "fix-i18n-foundation-scrutiny"
-    ]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "fix-i18n-foundation-scrutiny",
-      "severity": "blocking",
-      "description": "src/i18n/index.ts generates zh-TW by blindly converting every zh-CN string character-by-character, which still emits invalid visible Traditional Chinese such as `钢铁意志,剑盾无双` → `鋼鐵意誌,劍盾無雙` instead of `鋼鐵意志,劍盾無雙`."
-    }
-  ],
-  "appliedUpdates": [
-    {
-      "target": "library",
-      "description": "Updated .factory/library/architecture.md to document that zh-TW is generated in memory at module init from zh-CN via src/i18n/index.ts, rather than imported from a checked-in locales/zh-TW.ts snapshot.",
-      "sourceFeature": "fix-i18n-foundation-scrutiny"
-    }
-  ],
+  "blockingIssues": [],
+  "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
+      "target": "AGENTS.md",
+      "suggestion": "Update the mission guidance to stop documenting a checked-in `src/i18n/locales/zh-TW.ts` file and instead describe the current runtime zh-TW generation in `src/i18n/index.ts`.",
+      "evidence": "The rerun review for `fix-zhtw-context-sensitive` notes that `/Users/feuvan/.factory/missions/49f86335-9c25-4e68-b47b-299dbc676744/AGENTS.md:34-39` still lists `src/i18n/locales/zh-TW.ts`, while the implementation now derives zh-TW in `src/i18n/index.ts:18-29`.",
+      "isSystemic": false
+    },
+    {
       "target": "i18n-worker skill",
-      "suggestion": "Update the skill to describe the current runtime zh-TW generation model and stop instructing workers to regenerate or hand off a checked-in src/i18n/locales/zh-TW.ts file.",
-      "evidence": "The fix deleted src/i18n/locales/zh-TW.ts and now derives zh-TW inside src/i18n/index.ts, but .factory/skills/i18n-worker/SKILL.md still tells workers to regenerate and report that file.",
+      "suggestion": "Update the example handoff in the skill so it no longer claims that `src/i18n/locales/zh-TW.ts` is produced, matching the current runtime zh-TW generation workflow.",
+      "evidence": "The rerun review found that `.factory/skills/i18n-worker/SKILL.md:63` correctly describes runtime generation, but the example handoff at `SKILL.md:73` still mentions `src/i18n/locales/zh-TW.ts (auto-generated)`.",
       "isSystemic": true
     },
     {
       "target": "validation-contract.md",
-      "suggestion": "Align example translation keys with the implemented camelCase key naming convention (for example `menu.newGame` instead of `menu.new_game`) to avoid false-negative manual validation steps.",
-      "evidence": "validation-contract.md still references snake_case keys like `menu.new_game`, while src/i18n/locales/zh-CN.ts and the implementation use camelCase keys such as `menu.newGame`.",
+      "suggestion": "Align example translation keys with the implemented camelCase naming convention (for example `menu.newGame` instead of `menu.new_game`) to avoid false-negative manual validation steps.",
+      "evidence": "The rerun review found `validation-contract.md:12,17,22,47,82` still uses snake_case keys such as `menu.new_game`, while `src/i18n/locales/zh-CN.ts:17` and the implementation use camelCase keys such as `menu.newGame`.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/i18n-foundation/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/i18n-foundation/scrutiny/synthesis.round2.json"
 }

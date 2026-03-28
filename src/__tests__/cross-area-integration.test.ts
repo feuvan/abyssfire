@@ -473,6 +473,7 @@ describe('VAL-CROSS-004: New skills interact with status effects and elite affix
   it('fire skill damage is reduced by defender ice resistance', () => {
     const attacker = makeCombatEntity({ baseDamage: 50 });
     const defender = makeCombatEntity({
+      stats: makeStats({ dex: 0 }),
       equipStats: { ...emptyEquipStats(), iceResist: 40 },
     });
 
@@ -485,6 +486,7 @@ describe('VAL-CROSS-004: New skills interact with status effects and elite affix
     // Fire damage should not be reduced by ice resistance (ice resistance only reduces ice damage)
     // Ice resistance reduces ice type, not fire. Let's check with fire resistance instead.
     const defenderWithFireResist = makeCombatEntity({
+      stats: makeStats({ dex: 0 }),
       equipStats: { ...emptyEquipStats(), fireResist: 40 },
     });
     const resultWithFireResist = combat.calculateDamage(attacker, defenderWithFireResist, {
@@ -493,7 +495,9 @@ describe('VAL-CROSS-004: New skills interact with status effects and elite affix
       range: 5, damageMultiplier: 1.5, damageType: 'fire', icon: '',
     }, 1, undefined, true);
 
-    const resultNoResist = combat.calculateDamage(attacker, makeCombatEntity(), {
+    const resultNoResist = combat.calculateDamage(attacker, makeCombatEntity({
+      stats: makeStats({ dex: 0 }),
+    }), {
       id: 'fireball', name: '火球', nameEn: 'Fireball', description: '',
       tree: 'fire', tier: 1, maxLevel: 20, manaCost: 10, cooldown: 2000,
       range: 5, damageMultiplier: 1.5, damageType: 'fire', icon: '',
@@ -547,6 +551,7 @@ describe('VAL-CROSS-004: New skills interact with status effects and elite affix
   it('elemental damage routes through resistance system correctly', () => {
     const attacker = makeCombatEntity({ baseDamage: 100 });
     const defender = makeCombatEntity({
+      stats: makeStats({ dex: 0 }),
       equipStats: { ...emptyEquipStats(), poisonResist: 50 },
     });
 
@@ -613,7 +618,7 @@ describe('VAL-CROSS-005: Gem stats flow through full combat pipeline', () => {
       equipStats: gemEquipStats,
     });
 
-    const defender = makeCombatEntity();
+    const defender = makeCombatEntity({ stats: makeStats({ dex: 0 }) });
 
     // Force crits on both to compare directly
     const resultNoGem = combat.calculateDamage(attackerNoGem, defender, undefined, 1, undefined, true);
@@ -635,7 +640,7 @@ describe('VAL-CROSS-005: Gem stats flow through full combat pipeline', () => {
       baseDamage: 20,
       equipStats: gemEquipStats,
     });
-    const defender = makeCombatEntity();
+    const defender = makeCombatEntity({ stats: makeStats({ dex: 0 }) });
 
     const result = combat.calculateDamage(attacker, defender, undefined, 1, undefined, true);
     const resultNoGem = combat.calculateDamage(
@@ -700,7 +705,7 @@ describe('VAL-CROSS-006: Mercenary/pet uses standard combat and buff systems', (
     const mercEntity = merc.toCombatEntity()!;
 
     const combat = new CombatSystem();
-    const monster = makeCombatEntity({ id: 'target_monster', defense: 5 });
+    const monster = makeCombatEntity({ id: 'target_monster', defense: 5, stats: makeStats({ dex: 0 }) });
 
     const result = combat.calculateDamage(mercEntity, monster, undefined, 1, undefined, true);
     expect(result.damage).toBeGreaterThan(0);
@@ -1081,7 +1086,7 @@ describe('VAL-CROSS-012: Set+gem+buff stack correctly in damage formula', () => 
       buffs: [{ stat: 'damageBonus', value: 0.1, duration: 10000, startTime: 0 }], // 10% damage bonus buff
     });
 
-    const defender = makeCombatEntity({ defense: 5 });
+    const defender = makeCombatEntity({ defense: 5, stats: makeStats({ dex: 0 }) });
 
     // Force crit to test critDamage contribution
     const result = combat.calculateDamage(attacker, defender, undefined, 1, undefined, true);
@@ -1313,6 +1318,7 @@ describe('VAL-CROSS-014: Elite affixes interact with companions', () => {
 
   it('fire_enhanced elite damages mercenary through standard combat', () => {
     merc.hire('tank', 99999);
+    merc.activeMercenary!.stats.dex = 0;
     const mercEntity = merc.toCombatEntity()!;
     const initialHp = mercEntity.hp;
 

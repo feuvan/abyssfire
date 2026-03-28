@@ -1,0 +1,31 @@
+{
+  "featureId": "fix-zhtw-context-sensitive",
+  "reviewedAt": "2026-03-28T08:51:58Z",
+  "commitId": "bcadbb963b6f1e3e0cfb9d2d11f55dc173c58aef",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the original failed fix commit `ecaeeb4` and the follow-up fix commit `bcadbb9` against the prior scrutiny failure. The original commit introduced a global `志→誌` mapping and a matching test expectation, which caused runtime zh-TW generation to emit invalid visible UI text such as `鋼鐵意誌,劍盾無雙`. The follow-up fix removes that global mapping, applies phrase-level post-conversion fixups in `src/i18n/converter.ts`, and adds targeted tests covering both the warrior description and quest-log strings. I found no remaining blocking or non-blocking implementation issues in the fix itself; it adequately resolves the prior context-sensitive zh-TW failure.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The mission AGENTS file still documents a checked-in `src/i18n/locales/zh-TW.ts` key file even though zh-TW is now generated in memory at runtime.",
+      "evidence": "`/Users/feuvan/.factory/missions/49f86335-9c25-4e68-b47b-299dbc676744/AGENTS.md:34-39` still lists `src/i18n/locales/zh-TW.ts`; current runtime code derives zh-TW in `src/i18n/index.ts:18-29`."
+    },
+    {
+      "area": "skills",
+      "observation": "The `i18n-worker` skill was updated to describe runtime zh-TW generation, but its example handoff still tells future workers that `src/i18n/locales/zh-TW.ts` is produced.",
+      "evidence": "`/Users/feuvan/src/abyssfire/.factory/skills/i18n-worker/SKILL.md:63` correctly says there is no static `zh-TW.ts` file, but the example handoff at `SKILL.md:73` still says `src/i18n/locales/zh-TW.ts (auto-generated)`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The validation contract still references snake_case locale keys such as `menu.new_game`, while the implementation and locale files use camelCase keys such as `menu.newGame`.",
+      "evidence": "`/Users/feuvan/.factory/missions/49f86335-9c25-4e68-b47b-299dbc676744/validation-contract.md:12,17,22,47,82` use `menu.new_game`, while `src/i18n/locales/zh-CN.ts:17` defines `menu.newGame`."
+    }
+  ],
+  "addressesFailureFrom": "/Users/feuvan/src/abyssfire/.factory/validation/i18n-foundation/scrutiny/reviews/fix-i18n-foundation-scrutiny.json",
+  "summary": "Pass. I reviewed the fix handoff/transcript, the prior failed review, and both relevant diffs. The follow-up fix removes the over-broad `志→誌` mapping, adds phrase-level fixups, and adds focused regression tests, which resolves the prior blocking issue where runtime zh-TW generation produced invalid visible UI text like `鋼鐵意誌,劍盾無雙`. Shared-state follow-ups remain in AGENTS.md, the skill example handoff, and the validation contract."
+}
