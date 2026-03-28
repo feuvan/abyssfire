@@ -116,3 +116,52 @@ Architectural decisions, patterns, and conventions discovered during the mission
 
 - `ZoneScene` does not currently instantiate or call `FogOfWarSystem`; active gameplay fog/exploration state is handled inside `ZoneScene` via its own `fogData` and numeric `exploredTiles` structures. Work on fog save/load or exploration behavior should verify `ZoneScene` runtime callsites instead of assuming `FogOfWarSystem` is wired into gameplay.
 - Equipment stat caching crosses scene boundaries: `ZoneScene` owns the cached aggregation and `UIScene` must call `zone.invalidateEquipStats()` after every equipment mutation path (equip, unequip, swap, socket-related changes) so combat/runtime stats do not stay stale.
+
+---
+
+## i18n Architecture
+
+### Overview
+
+Lightweight, built-in i18n system for Abyssfire. No external library. Supports zh-CN, zh-TW, en with parameter interpolation and zh-TW auto-conversion from zh-CN.
+
+### Module Structure
+
+```
+src/i18n/
+  index.ts          # Exports t(), setLocale(), getLocale(), getLocales()
+  types.ts          # TypeScript types for locale keys
+  locales/
+    zh-CN.ts        # Primary locale (Simplified Chinese) — flat key-value object
+    en.ts           # English locale — flat key-value object
+    zh-TW.ts        # Auto-generated from zh-CN via converter
+  converter.ts      # zh-CN → zh-TW character mapping table and conversion function
+```
+
+### Key Design Decisions
+
+1. **Flat namespace keys**: `t('menu.newGame')`, `t('ui.inventory.title')`, `t('zone.enterZone', { name, minLv, maxLv })`
+2. **Parameter interpolation**: Uses `{paramName}` placeholders, replaced at runtime: `t('menu.continue', { class: '战士', level: 5 })` → `"继续游戏 - 战士 Lv.5"`
+3. **Fallback chain**: zh-TW → zh-CN → en → key path (never undefined). en is the final fallback for missing keys.
+4. **Persistence**: `localStorage.getItem('abyssfire_locale')` / `setItem`. Read at boot time (BootScene).
+5. **Default locale**: zh-CN when no localStorage value exists.
+6. **zh-TW auto-conversion**: Character mapping table in `converter.ts`. Processes zh-CN values char-by-char. Non-CJK chars pass through unchanged.
+7. **Reactivity**: When locale changes, scenes must re-render affected text. For Phaser text objects, this means calling `setText()` with the new `t()` value. The i18n module emits an event via EventBus when locale changes.
+8. **No hot-reload of locale files**: Locale data is imported statically. Language switch just changes which locale object `t()` reads from.
+
+### Integration Pattern
+
+- Scenes import `t` from `src/i18n`
+- Replace all hardcoded strings: `this.add.text(x, y, '背包', style)` → `this.add.text(x, y, t('ui.inventory.title'), style)`
+- For reactive updates on locale change: listen to EventBus locale-changed event, re-call `setText` on text objects
+- Data files: Add translation keys or use `nameEn` pattern. For items/monsters that already have `nameEn`, the locale-aware getter reads the appropriate field.
+
+### Data File Strategy
+
+- **Items with existing `nameEn`**: Use a locale-aware accessor `getItemName(item)` that returns `item.name` for zh-CN, `item.nameEn` for en
+- **Items without `nameEn`** (sets, legendaries, quests, dialogue, NPCs, lore): Add translations to the en locale file keyed by ID
+- **Dialogue trees**: Key by dialogueTree ID + node ID, e.g., `t('dialogue.village_elder.greeting')`
+
+### Scene Flow (i18n)
+
+`BootScene` reads locale from `localStorage` → all scenes use `t()` with current locale → `MenuScene` has language selector that calls `setLocale()` → EventBus emits locale change → active scenes re-render text

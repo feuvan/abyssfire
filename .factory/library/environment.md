@@ -9,36 +9,26 @@ Environment variables, external dependencies, and setup notes.
 
 ## Dependencies
 
-- **Phaser 3 v3.90+**: Game engine, provides rendering, physics, input, audio
-- **TypeScript ~5.9**: Strict mode, compiled via Vite
-- **Vite 8**: Build tool and dev server
-- **Dexie.js v4.3**: IndexedDB wrapper for save/load
-- **Tauri v2.10**: Optional desktop wrapper (do not modify)
+- Node.js (tested with system node)
+- npm (package manager)
+- No external API keys or services required (pure client-side game)
 
-## Node Version
+## Fonts
 
-- Node.js 22 (see `.github/workflows/deploy.yml`)
-- npm for package management
+- Google Fonts: `Noto Sans SC` (Simplified Chinese) and `Noto Sans TC` (Traditional Chinese) must be loaded in `index.html`
+- `Cinzel` serif font for title/decorative elements
 
-## Build Pipeline
+## Build
 
-- `npm run build` = `tsc && vite build`
-- TypeScript strict mode compilation
-- Single chunk output to `dist/`
-- Deployed to GitHub Pages via push to `main`
+- Vite bundler
+- TypeScript strict mode
+- Output to `dist/`
+- Base path: `/abyssfire/` (configured in vite.config.ts)
 
-## Audio Assets
+## Browser Compatibility
 
-- 17 MP3 files in `public/assets/audio/bgm/`
-- These are the ONLY external assets — everything else is procedurally generated
-- Do not modify or delete these files
-
-## Browser Requirements
-
-- WebGL required for `ColorGradePipeline` post-processing
-- Web Audio API for procedural SFX
-- AudioContext auto-resume handled on first user gesture
-
-## Test Environment Quirks
-
-- Importing `src/utils/IsometricUtils.ts` in Vitest also pulls in `src/config.ts`, which depends on Phaser constants/types. Tests that use `IsometricUtils` production helpers must ensure the Phaser mock covers `AUTO`, `Scale.FIT`, `Scale.CENTER_BOTH`, and `Geom.Point` for the import chain to resolve cleanly.
+- Modern browsers with ES2020+ support
+- Canvas rendering (Phaser 3)
+- Web Audio API for sound
+- IndexedDB (Dexie.js) for save data
+- localStorage for language preference
