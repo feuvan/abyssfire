@@ -5,6 +5,7 @@ import { LegendaryItems, SetDefinitions, SetPieceBases } from '../data/items/set
 import { DUNGEON_EXCLUSIVE_LEGENDARIES, DUNGEON_EXCLUSIVE_SETS, DUNGEON_SET_PIECE_BASES } from '../data/dungeonData';
 import type { ItemInstance, ItemQuality, ItemAffix, AffixDefinition, MonsterDefinition, WeaponBase, ArmorBase } from '../data/types';
 import type { Difficulty } from './DifficultySystem';
+import { t } from '../i18n';
 
 let uidCounter = 0;
 function genUid(): string { return `item_${Date.now()}_${uidCounter++}`; }
@@ -305,7 +306,7 @@ export class LootSystem {
     } else {
       // Generic legendary if no specific one exists
       this.addRandomAffixes(item, item.level, 3, 5);
-      item.legendaryEffect = '蕴含未知的力量';
+      item.legendaryEffect = t('sys.loot.genericLegendaryEffect');
     }
   }
 

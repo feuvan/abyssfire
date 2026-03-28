@@ -1,5 +1,6 @@
 import { EventBus, GameEvents } from '../utils/EventBus';
 import { clamp } from '../utils/MathUtils';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Status Effect Types & Interfaces
@@ -104,7 +105,7 @@ export class StatusEffectSystem {
         }
         existingPoison.sourceId = sourceId;
         EventBus.emit(GameEvents.LOG_MESSAGE, {
-          text: `中毒效果已刷新`,
+          text: t('sys.statusEffect.refreshed', { effectName: t(`sys.statusEffect.name.${type}`) }),
         });
         return duration;
       }
@@ -149,16 +150,8 @@ export class StatusEffectSystem {
     }
     this.effects.get(targetId)!.push(effect);
 
-    const effectNames: Record<StatusEffectType, string> = {
-      burn: '灼烧',
-      freeze: '冰冻',
-      poison: '中毒',
-      bleed: '流血',
-      slow: '减速',
-      stun: '眩晕',
-    };
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `${effectNames[type]}效果已施加`,
+      text: t('sys.statusEffect.applied', { effectName: t(`sys.statusEffect.name.${type}`) }),
     });
 
     return duration;

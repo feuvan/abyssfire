@@ -1,5 +1,6 @@
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { HomesteadBuilding, PetDefinition } from '../data/types';
+import { t } from '../i18n';
 
 const BUILDINGS: HomesteadBuilding[] = [
   {
@@ -151,7 +152,7 @@ export class HomesteadSystem {
     this.buildings[id] = currentLevel + 1;
     EventBus.emit(GameEvents.HOMESTEAD_UPGRADED, { buildingId: id, level: currentLevel + 1 });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `${def.name} 升级到 Lv.${currentLevel + 1}!`,
+      text: t('sys.homestead.buildingUpgrade', { name: def.name, level: currentLevel + 1 }),
       type: 'system',
     });
     return cost;
@@ -202,13 +203,13 @@ export class HomesteadSystem {
   addPet(petId: string): boolean {
     // Duplicate prevention
     if (this.pets.find(p => p.petId === petId)) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '你已经拥有这只宠物了!', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.homestead.petDuplicate'), type: 'system' });
       return false;
     }
     this.pets.push({ petId, level: 1, exp: 0, evolved: 0 });
     const def = PETS.find(p => p.id === petId);
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `获得宠物: ${def?.name ?? petId}!`,
+      text: t('sys.homestead.petObtained', { name: def?.name ?? petId }),
       type: 'system',
     });
     if (!this.activePet) this.activePet = petId;
@@ -227,7 +228,7 @@ export class HomesteadSystem {
       pet.exp -= needed;
       pet.level++;
       EventBus.emit(GameEvents.LOG_MESSAGE, {
-        text: `${def.name} 升级到 Lv.${pet.level}!`,
+        text: t('sys.homestead.petLevelUp', { name: def.name, level: pet.level }),
         type: 'system',
       });
 
@@ -245,7 +246,7 @@ export class HomesteadSystem {
         pet.evolved = i + 1;
         const evolvedName = def.name + stage.nameSuffix;
         EventBus.emit(GameEvents.LOG_MESSAGE, {
-          text: `${def.name} 进化为 ${evolvedName}! 属性加成提升!`,
+          text: t('sys.homestead.petEvolved', { name: def.name, evolvedName }),
           type: 'system',
         });
       }

@@ -7,6 +7,7 @@
 
 import { QUEST_TYPE_LABELS } from '../systems/QuestSystem';
 import type { QuestDefinition, QuestProgress, QuestObjective } from '../data/types';
+import { t } from '../i18n';
 
 // ─── Display Types ──────────────────────────────────────────────
 
@@ -46,14 +47,19 @@ export const MAX_VISIBLE_QUESTS = 5;
 
 // ─── Objective Labels ───────────────────────────────────────────
 
-const OBJECTIVE_TYPE_LABELS: Record<string, string> = {
-  ...QUEST_TYPE_LABELS,
-  defend_wave: '防守',
-  investigate_clue: '调查',
-  craft_collect: '采集',
-  craft_craft: '制作',
-  craft_deliver: '交付',
-};
+/**
+ * Get locale-aware objective type labels.
+ */
+function getObjectiveTypeLabels(): Record<string, string> {
+  return {
+    ...QUEST_TYPE_LABELS,
+    defend_wave: t('sys.quest.objType.defend_wave'),
+    investigate_clue: t('sys.quest.objType.investigate_clue'),
+    craft_collect: t('sys.quest.objType.craft_collect'),
+    craft_craft: t('sys.quest.objType.craft_craft'),
+    craft_deliver: t('sys.quest.objType.craft_deliver'),
+  };
+}
 
 // ─── Core Logic ─────────────────────────────────────────────────
 
@@ -69,14 +75,15 @@ export function buildProgressSummary(
   progress: QuestProgress,
 ): string {
   if (progress.status === 'completed') {
-    return '已完成 - 返回NPC交付';
+    return t('sys.tracker.completed');
   }
 
   const objs = quest.objectives;
   if (objs.length === 1) {
     const obj = objs[0];
     const cur = progress.objectives[0]?.current ?? 0;
-    const typeLabel = OBJECTIVE_TYPE_LABELS[obj.type] ?? obj.type;
+    const labels = getObjectiveTypeLabels();
+    const typeLabel = labels[obj.type] ?? obj.type;
     return `${typeLabel} ${cur}/${obj.required}`;
   }
 
@@ -87,7 +94,7 @@ export function buildProgressSummary(
       doneCount++;
     }
   }
-  return `${doneCount}/${objs.length} 完成`;
+  return t('sys.tracker.doneCount', { done: doneCount, total: objs.length });
 }
 
 /**
@@ -97,7 +104,8 @@ export function formatTrackerObjective(
   obj: QuestObjective,
   current: number,
 ): TrackerObjectiveLine {
-  const typeLabel = OBJECTIVE_TYPE_LABELS[obj.type] ?? obj.type;
+  const labels = getObjectiveTypeLabels();
+  const typeLabel = labels[obj.type] ?? obj.type;
   const done = current >= obj.required;
   return {
     label: `${typeLabel} ${obj.targetName}`,

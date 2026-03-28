@@ -1,5 +1,6 @@
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { AchievementDefinition } from '../data/types';
+import { t } from '../i18n';
 
 const ACHIEVEMENTS: AchievementDefinition[] = [
   { id: 'ach_first_kill', name: '初出茅庐', description: '击杀第一个怪物', type: 'kill', required: 1, title: '新手冒险者' },
@@ -63,7 +64,9 @@ export class AchievementSystem {
     this.unlocked.add(ach.id);
     EventBus.emit(GameEvents.ACHIEVEMENT_UNLOCKED, { achievement: ach });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `成就解锁: ${ach.name}! ${ach.title ? `(称号: ${ach.title})` : ''}`,
+      text: ach.title
+        ? t('sys.achievement.unlockedWithTitle', { name: ach.name, title: ach.title })
+        : t('sys.achievement.unlocked', { name: ach.name }),
       type: 'system',
     });
   }

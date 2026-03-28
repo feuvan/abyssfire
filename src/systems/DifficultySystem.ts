@@ -15,25 +15,37 @@
  */
 
 import type { MonsterDefinition } from '../data/types';
+import { t } from '../i18n';
 
 export type Difficulty = 'normal' | 'nightmare' | 'hell';
 
 /** Ordered list of difficulties for unlock progression. */
 export const DIFFICULTY_ORDER: readonly Difficulty[] = ['normal', 'nightmare', 'hell'] as const;
 
-/** Chinese labels for difficulty names. */
-export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
-  normal: '普通',
-  nightmare: '噩梦',
-  hell: '地狱',
-};
+/** Locale-aware difficulty labels. */
+export function getDifficultyLabel(difficulty: Difficulty): string {
+  return t(`sys.difficulty.name.${difficulty}`);
+}
 
-/** Chinese labels for unlock messages. */
-export const DIFFICULTY_UNLOCK_MESSAGES: Record<Difficulty, string> = {
-  normal: '',
-  nightmare: '噩梦难度已解锁',
-  hell: '地狱难度已解锁',
-};
+/** Locale-aware difficulty labels (legacy accessor via Proxy for backward compatibility). */
+export const DIFFICULTY_LABELS: Record<Difficulty, string> = new Proxy({} as Record<Difficulty, string>, {
+  get(_target, prop: string) {
+    return t(`sys.difficulty.name.${prop}`);
+  },
+}) as Record<Difficulty, string>;
+
+/** Locale-aware unlock messages. */
+export function getDifficultyUnlockMessage(difficulty: Difficulty): string {
+  return t(`sys.difficulty.unlock.${difficulty}`);
+}
+
+/** Locale-aware difficulty unlock messages (legacy accessor via Proxy for backward compatibility). */
+export const DIFFICULTY_UNLOCK_MESSAGES: Record<Difficulty, string> = new Proxy({} as Record<Difficulty, string>, {
+  get(_target, prop: string) {
+    if (prop === 'normal') return '';
+    return t(`sys.difficulty.unlock.${prop}`);
+  },
+}) as Record<Difficulty, string>;
 
 /** Monster stat multipliers per difficulty. */
 export interface DifficultyMultipliers {

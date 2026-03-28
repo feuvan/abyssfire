@@ -18,6 +18,8 @@
  * Event frequency: 3-8 events per 5 minutes of exploration.
  */
 
+import { t } from '../i18n';
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 export type RandomEventType = 'ambush' | 'treasure_cache' | 'wandering_merchant' | 'rescue' | 'environmental_puzzle';
@@ -362,7 +364,7 @@ export class RandomEventSystem {
    * Create an ActiveEvent instance.
    */
   private createEvent(type: RandomEventType, time: number, col: number, row: number): ActiveEvent {
-    const zoneData = ZONE_EVENT_DATA[this.zoneInfo.zoneId];
+    const zoneData = RandomEventSystem.getZoneEventData(this.zoneInfo.zoneId) ?? ZONE_EVENT_DATA[this.zoneInfo.zoneId];
     const context: Record<string, unknown> = {};
 
     switch (type) {
@@ -393,7 +395,7 @@ export class RandomEventSystem {
         const count = Math.max(2, Math.floor(Math.random() * (maxCount - minCount + 1)) + minCount - 1);
         context.monsterIds = monsters;
         context.monsterCount = count;
-        context.rescueNpcName = zoneData?.rescueNpcName ?? '被困的旅人';
+        context.rescueNpcName = zoneData?.rescueNpcName ?? t('sys.event.rescue.fallback');
         context.reward = zoneData?.rescueReward ?? { gold: 50, exp: 40 };
         break;
       }
@@ -401,7 +403,7 @@ export class RandomEventSystem {
         const puzzles = zoneData?.puzzleDescriptions ?? [];
         const puzzle = puzzles.length > 0
           ? puzzles[Math.floor(Math.random() * puzzles.length)]
-          : { prompt: '一个古老的谜题', solution: '解开谜题', reward: '获得了奖励!', rewardGold: 50, rewardExp: 30 };
+          : { prompt: t('sys.event.puzzle.fallback.prompt'), solution: t('sys.event.puzzle.fallback.solution'), reward: t('sys.event.puzzle.fallback.reward'), rewardGold: 50, rewardExp: 30 };
         context.puzzle = puzzle;
         break;
       }
@@ -418,17 +420,43 @@ export class RandomEventSystem {
   }
 
   /**
-   * Get the event definition (Chinese name/message) for a given event type.
+   * Get the event definition with translated name/message for a given event type.
    */
   static getEventDef(type: RandomEventType): RandomEventDefinition | undefined {
-    return RANDOM_EVENT_DEFS.find(d => d.type === type);
+    const defs = RANDOM_EVENT_DEFS.find(d => d.type === type);
+    if (!defs) return undefined;
+    return {
+      ...defs,
+      name: t(`sys.event.name.${type}`),
+      message: t(`sys.event.msg.${type}`),
+    };
   }
 
   /**
-   * Get zone-specific event data.
+   * Get zone-specific event data with translated strings.
    */
   static getZoneEventData(zoneId: string): ZoneEventData | undefined {
-    return ZONE_EVENT_DATA[zoneId];
+    const data = ZONE_EVENT_DATA[zoneId];
+    if (!data) return undefined;
+    return {
+      ...data,
+      rescueNpcName: t(`sys.event.rescue.${zoneId}`) !== `sys.event.rescue.${zoneId}`
+        ? t(`sys.event.rescue.${zoneId}`)
+        : data.rescueNpcName,
+      puzzleDescriptions: data.puzzleDescriptions.map((_p, _i) => ({
+        prompt: t(`sys.event.puzzle.${zoneId}.prompt`) !== `sys.event.puzzle.${zoneId}.prompt`
+          ? t(`sys.event.puzzle.${zoneId}.prompt`)
+          : _p.prompt,
+        solution: t(`sys.event.puzzle.${zoneId}.solution`) !== `sys.event.puzzle.${zoneId}.solution`
+          ? t(`sys.event.puzzle.${zoneId}.solution`)
+          : _p.solution,
+        reward: t(`sys.event.puzzle.${zoneId}.reward`) !== `sys.event.puzzle.${zoneId}.reward`
+          ? t(`sys.event.puzzle.${zoneId}.reward`)
+          : _p.reward,
+        rewardGold: _p.rewardGold,
+        rewardExp: _p.rewardExp,
+      })),
+    };
   }
 
   /**

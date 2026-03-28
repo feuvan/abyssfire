@@ -1,0 +1,151 @@
+{
+  "groupId": "found-code",
+  "testedAt": "2026-03-28T10:14:58.090255+00:00",
+  "isolation": {
+    "missionDir": "/Users/feuvan/.factory/missions/49f86335-9c25-4e68-b47b-299dbc676744",
+    "repoRoot": "/Users/feuvan/src/abyssfire",
+    "surface": "command-inspection",
+    "guidance": "Flow Validator Guidance: command-inspection"
+  },
+  "toolsUsed": [
+    "Read",
+    "Grep",
+    "Execute"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-FOUND-017",
+      "title": "zh-TW auto-converter uses no external library",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect src/i18n/converter.ts",
+          "expected": "The converter is self-contained and uses an in-repo mapping table instead of an external conversion library.",
+          "observed": "converter.ts defines SC/TC paired mapping strings, builds an internal Map, and exports convertToTraditional() without importing any external conversion package."
+        },
+        {
+          "action": "Inspect package.json dependencies",
+          "expected": "No external zh-CN→zh-TW conversion dependency is declared.",
+          "observed": "package.json lists dexie and phaser in dependencies plus tooling packages in devDependencies; no opencc-style dependency is present."
+        },
+        {
+          "action": "Search the repo for opencc/OpenCC references",
+          "expected": "No application code should reference an external conversion library.",
+          "observed": "The only opencc/OpenCC match was in a validation document, not in app source or manifest files."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not applicable (command-inspection only)",
+        "network": "not applicable (command-inspection only)",
+        "codeInspection": [
+          "src/i18n/converter.ts",
+          "package.json"
+        ],
+        "commands": [
+          "rg 'opencc|OpenCC' /Users/feuvan/src/abyssfire -> only validation-doc match"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-021",
+      "title": "All locale files have matching key sets (zh-CN ⊇ en keys)",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Compare locale key sets extracted from src/i18n/locales/zh-CN.ts and src/i18n/locales/en.ts",
+          "expected": "Every key present in en.ts also exists in zh-CN.ts.",
+          "observed": "Comparison found 76 keys in zh-CN and 77 keys in en; zh-CN is missing the en key 'test.enOnly'."
+        },
+        {
+          "action": "Inspect the missing key location in en.ts",
+          "expected": "No en-only locale keys remain.",
+          "observed": "en.ts includes 'test.enOnly' under the test-only keys section, while zh-CN.ts has no corresponding entry."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not applicable (command-inspection only)",
+        "network": "not applicable (command-inspection only)",
+        "codeInspection": [
+          "src/i18n/locales/zh-CN.ts",
+          "src/i18n/locales/en.ts"
+        ],
+        "commands": [
+          "python3 locale-key comparison script -> {'zhCN_count': 76, 'en_count': 77, 'missing_in_zhCN': ['test.enOnly'], 'extra_in_zhCN': []}"
+        ],
+        "comparison": {
+          "zhCN_count": 76,
+          "en_count": 77,
+          "missing_in_zhCN": [
+            "test.enOnly"
+          ],
+          "extra_in_zhCN": []
+        }
+      },
+      "issues": "zh-CN is not a superset of en because the en-only key 'test.enOnly' is missing from zh-CN."
+    },
+    {
+      "id": "VAL-FOUND-022",
+      "title": "t() is used consistently — no hardcoded Chinese strings remain in MenuScene",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search src/scenes/MenuScene.ts for Han-character literals outside comments",
+          "expected": "No player-facing hardcoded Chinese string literals remain.",
+          "observed": "The grep audit returned no matches for Han characters in MenuScene.ts."
+        },
+        {
+          "action": "Inspect player-facing text creation in MenuScene.ts",
+          "expected": "Visible text is sourced through t().",
+          "observed": "Menu title/subtitle, buttons, class selection, help panel, jukebox, credits, difficulty selector, and language selector all render localized strings via t(...)."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not applicable (command-inspection only)",
+        "network": "not applicable (command-inspection only)",
+        "codeInspection": [
+          "src/scenes/MenuScene.ts"
+        ],
+        "commands": [
+          "rg '[\\p{Han}]' /Users/feuvan/src/abyssfire/src/scenes/MenuScene.ts -> no matches"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-023",
+      "title": "t() is used consistently — no hardcoded Chinese strings remain in BootScene",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Search src/scenes/BootScene.ts for Han-character literals outside comments",
+          "expected": "No player-facing hardcoded Chinese string literals remain.",
+          "observed": "The grep audit returned no matches for Han characters in BootScene.ts."
+        },
+        {
+          "action": "Inspect BootScene text creation",
+          "expected": "Visible boot text is sourced through t().",
+          "observed": "BootScene renders t('boot.title'), t('boot.subtitle'), t('boot.loading'), and updates to t('boot.ready') on load completion."
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "not applicable (command-inspection only)",
+        "network": "not applicable (command-inspection only)",
+        "codeInspection": [
+          "src/scenes/BootScene.ts"
+        ],
+        "commands": [
+          "rg '[\\p{Han}]' /Users/feuvan/src/abyssfire/src/scenes/BootScene.ts -> no matches"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions by command inspection: 3 passed (VAL-FOUND-017, VAL-FOUND-022, VAL-FOUND-023) and 1 failed (VAL-FOUND-021, because zh-CN is missing en key test.enOnly)."
+}

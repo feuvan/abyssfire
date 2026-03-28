@@ -8,6 +8,7 @@
 
 import { QUEST_TYPE_LABELS } from '../systems/QuestSystem';
 import type { QuestDefinition, QuestProgress, QuestReward, QuestObjective } from '../data/types';
+import { t } from '../i18n';
 
 /**
  * Extended objective-type labels.
@@ -17,14 +18,19 @@ import type { QuestDefinition, QuestProgress, QuestReward, QuestObjective } from
  * types).  This lookup falls back through parent types so every objective
  * gets a readable Chinese label.
  */
-const OBJECTIVE_TYPE_LABELS: Record<string, string> = {
-  ...QUEST_TYPE_LABELS,
-  defend_wave: '防守',
-  investigate_clue: '调查',
-  craft_collect: '采集',
-  craft_craft: '制作',
-  craft_deliver: '交付',
-};
+/**
+ * Get locale-aware extended objective-type labels.
+ */
+function getObjectiveTypeLabels(): Record<string, string> {
+  return {
+    ...QUEST_TYPE_LABELS,
+    defend_wave: t('sys.quest.objType.defend_wave'),
+    investigate_clue: t('sys.quest.objType.investigate_clue'),
+    craft_collect: t('sys.quest.objType.craft_collect'),
+    craft_craft: t('sys.quest.objType.craft_craft'),
+    craft_deliver: t('sys.quest.objType.craft_deliver'),
+  };
+}
 
 // ─── Display Types ──────────────────────────────────────────────
 
@@ -161,25 +167,26 @@ export function buildQuestCardData(
 
 /** Format a single objective for display on the card. */
 export function formatObjectiveLabel(obj: QuestObjective): string {
-  const typeLabel = OBJECTIVE_TYPE_LABELS[obj.type] ?? obj.type;
+  const labels = getObjectiveTypeLabels();
+  const typeLabel = labels[obj.type] ?? obj.type;
   return `${typeLabel} ${obj.targetName}`;
 }
 
 /** Format reward summary line. */
 export function formatRewardSummary(rewards: QuestReward): string {
   const parts: string[] = [];
-  if (rewards.exp > 0) parts.push(`${rewards.exp} 经验`);
-  if (rewards.gold > 0) parts.push(`${rewards.gold} 金币`);
+  if (rewards.exp > 0) parts.push(t('sys.questCard.rewardExp', { exp: rewards.exp }));
+  if (rewards.gold > 0) parts.push(t('sys.questCard.rewardGold', { gold: rewards.gold }));
   if (rewards.items && rewards.items.length > 0) {
-    parts.push(`${rewards.items.length} 物品`);
+    parts.push(t('sys.questCard.rewardItems', { count: rewards.items.length }));
   }
-  if (rewards.petReward) parts.push('宠物');
+  if (rewards.petReward) parts.push(t('sys.questCard.rewardPet'));
   return parts.join('  ');
 }
 
 /** Build the toast message after accept / turn-in. */
 export function buildToastMessage(action: 'accept' | 'turn_in', questName: string): string {
   return action === 'accept'
-    ? `已接受: ${questName}`
-    : `已交付: ${questName}`;
+    ? t('sys.questCard.accepted', { name: questName })
+    : t('sys.questCard.turnedIn', { name: questName });
 }

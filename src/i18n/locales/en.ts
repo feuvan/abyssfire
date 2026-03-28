@@ -1935,6 +1935,169 @@ const en: LocaleData = {
   // ─── NPC Dialogue (ZoneScene fallback) ───
   'zone.npc.questTurnedIn': 'Thanks for completing the quest!',
   'zone.npc.acceptQuest': 'Accept: {questName}',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SYSTEM MESSAGES
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── InventorySystem ───
+  'sys.inventory.bagFull': 'Bag is full!',
+  'sys.inventory.stashFull': 'Stash is full!',
+  'sys.inventory.equipped': 'Equipped {name}',
+  'sys.inventory.swapBagFull': 'Bag is full, cannot swap gear!',
+  'sys.inventory.obtained': 'Obtained {name}',
+  'sys.inventory.obtainedQty': 'Obtained {name} x{qty}',
+  'sys.inventory.qualityPrefix.magic': '[Magic] ',
+  'sys.inventory.qualityPrefix.rare': '[Rare] ',
+  'sys.inventory.qualityPrefix.legendary': '[Legendary] ',
+  'sys.inventory.qualityPrefix.set': '[Set] ',
+  'sys.inventory.identify.needScroll': 'Identify scroll required!',
+  'sys.inventory.identify.success': 'Identified {name}',
+  'sys.inventory.gem.socketed': 'Socketed {gemName}',
+  'sys.inventory.gem.noSlots': 'No empty sockets',
+  'sys.inventory.gem.removed': 'Removed {gemName}',
+  'sys.inventory.gem.bagFullRemove': 'Bag is full, cannot remove gem!',
+  'sys.inventory.discarded': 'Discarded {name}',
+  'sys.inventory.bulkDestroy': 'Destroyed {count} normal equipment',
+
+  // ─── QuestSystem ───
+  'sys.quest.type.kill': 'Kill',
+  'sys.quest.type.collect': 'Collect',
+  'sys.quest.type.explore': 'Explore',
+  'sys.quest.type.talk': 'Talk',
+  'sys.quest.type.escort': 'Escort',
+  'sys.quest.type.defend': 'Defend',
+  'sys.quest.type.investigate': 'Investigate',
+  'sys.quest.type.craft': 'Craft & Deliver',
+  'sys.quest.objType.defend_wave': 'Defend',
+  'sys.quest.objType.investigate_clue': 'Investigate',
+  'sys.quest.objType.craft_collect': 'Gather',
+  'sys.quest.objType.craft_craft': 'Craft',
+  'sys.quest.objType.craft_deliver': 'Deliver',
+  'sys.quest.phase.collect': 'Gather Materials',
+  'sys.quest.phase.craft': 'Craft Item',
+  'sys.quest.phase.deliver': 'Deliver Product',
+  'sys.quest.accepted': 'Quest accepted: {name}',
+  'sys.quest.reaccepted': 'Quest re-accepted: {name}',
+  'sys.quest.completed': 'Quest complete: {name}! Return to NPC to turn in.',
+  'sys.quest.failed': 'Quest failed: {name}',
+  'sys.quest.turnedIn': 'Turned in quest: {name} +{exp}EXP +{gold}G',
+
+  // ─── MercenarySystem ───
+  'sys.mercenary.hire': 'Hired {name}!',
+  'sys.mercenary.dismiss': '{name} was dismissed',
+  'sys.mercenary.revive': '{name} has been revived!',
+  'sys.mercenary.death': '{name} has fallen!',
+  'sys.mercenary.levelUp': '{name} leveled up to Lv.{level}!',
+  'sys.mercenary.unknownType': 'Unknown mercenary type',
+  'sys.mercenary.notEnoughGold': 'Not enough gold! Need {cost}G',
+  'sys.mercenary.noMercToRevive': 'No mercenary to revive',
+  'sys.mercenary.mercAlive': 'Mercenary is still alive',
+
+  // ─── HomesteadSystem ───
+  'sys.homestead.buildingUpgrade': '{name} upgraded to Lv.{level}!',
+  'sys.homestead.petLevelUp': '{name} leveled up to Lv.{level}!',
+  'sys.homestead.petEvolved': '{name} evolved into {evolvedName}! Bonus increased!',
+  'sys.homestead.petObtained': 'Obtained pet: {name}!',
+  'sys.homestead.petDuplicate': 'You already own this pet!',
+
+  // ─── AchievementSystem ───
+  'sys.achievement.unlocked': 'Achievement unlocked: {name}!',
+  'sys.achievement.unlockedWithTitle': 'Achievement unlocked: {name}! (Title: {title})',
+
+  // ─── StatusEffectSystem ───
+  'sys.statusEffect.applied': '{effectName} effect applied',
+  'sys.statusEffect.expired': '{effectName} effect expired',
+  'sys.statusEffect.refreshed': '{effectName} effect refreshed',
+  'sys.statusEffect.name.burn': 'Burn',
+  'sys.statusEffect.name.freeze': 'Freeze',
+  'sys.statusEffect.name.poison': 'Poison',
+  'sys.statusEffect.name.bleed': 'Bleed',
+  'sys.statusEffect.name.slow': 'Slow',
+  'sys.statusEffect.name.stun': 'Stun',
+
+  // ─── DifficultySystem ───
+  'sys.difficulty.name.normal': 'Normal',
+  'sys.difficulty.name.nightmare': 'Nightmare',
+  'sys.difficulty.name.hell': 'Hell',
+  'sys.difficulty.unlock.nightmare': 'Nightmare difficulty unlocked',
+  'sys.difficulty.unlock.hell': 'Hell difficulty unlocked',
+
+  // ─── EliteAffixSystem ───
+  'sys.eliteAffix.name.fire_enhanced': 'Fire Enhanced',
+  'sys.eliteAffix.name.swift': 'Swift',
+  'sys.eliteAffix.name.teleporting': 'Teleporting',
+  'sys.eliteAffix.name.extra_strong': 'Extra Strong',
+  'sys.eliteAffix.name.curse_aura': 'Curse Aura',
+  'sys.eliteAffix.name.vampiric': 'Vampiric',
+  'sys.eliteAffix.name.frozen': 'Frozen',
+
+  // ─── RandomEventSystem ───
+  'sys.event.name.ambush': 'Ambush',
+  'sys.event.name.treasure_cache': 'Treasure',
+  'sys.event.name.wandering_merchant': 'Wandering Merchant',
+  'sys.event.name.rescue': 'Rescue',
+  'sys.event.name.environmental_puzzle': 'Puzzle',
+  'sys.event.msg.ambush': 'Ambush!',
+  'sys.event.msg.treasure_cache': 'Discovered a hidden chest!',
+  'sys.event.msg.wandering_merchant': 'A wandering merchant appeared before you.',
+  'sys.event.msg.rescue': 'Someone is surrounded by monsters! Go rescue them!',
+  'sys.event.msg.environmental_puzzle': 'You discovered an ancient puzzle device.',
+  'sys.event.puzzle.emerald_plains.prompt': 'Runes on the stone pillars need to be touched in the correct order.',
+  'sys.event.puzzle.emerald_plains.solution': 'Press the glowing runes',
+  'sys.event.puzzle.emerald_plains.reward': 'Gained EXP and gold!',
+  'sys.event.puzzle.twilight_forest.prompt': 'The roots of the ancient tree form a maze. Find the right path.',
+  'sys.event.puzzle.twilight_forest.solution': 'Follow the glowing moss',
+  'sys.event.puzzle.twilight_forest.reward': 'Gained EXP and gold!',
+  'sys.event.puzzle.anvil_mountains.prompt': 'Three gem slots on the mine wall await to be filled.',
+  'sys.event.puzzle.anvil_mountains.solution': 'Insert gems in color order',
+  'sys.event.puzzle.anvil_mountains.reward': 'Gained EXP and gold!',
+  'sys.event.puzzle.scorching_desert.prompt': 'The sundial in the desert points to a hidden direction.',
+  'sys.event.puzzle.scorching_desert.solution': 'Turn the sundial pointer',
+  'sys.event.puzzle.scorching_desert.reward': 'Gained EXP and gold!',
+  'sys.event.puzzle.abyss_rift.prompt': 'An unstable magic circle flickers in the abyss rift.',
+  'sys.event.puzzle.abyss_rift.solution': 'Activate runes in the correct sequence',
+  'sys.event.puzzle.abyss_rift.reward': 'Gained EXP and gold!',
+  'sys.event.rescue.emerald_plains': 'Lost Traveler',
+  'sys.event.rescue.twilight_forest': 'Wounded Hunter',
+  'sys.event.rescue.anvil_mountains': 'Trapped Miner',
+  'sys.event.rescue.scorching_desert': 'Desert Caravan Guard',
+  'sys.event.rescue.abyss_rift': 'Abyss Explorer',
+  'sys.event.puzzle.fallback.prompt': 'An ancient puzzle',
+  'sys.event.puzzle.fallback.solution': 'Solve the puzzle',
+  'sys.event.puzzle.fallback.reward': 'Gained a reward!',
+  'sys.event.rescue.fallback': 'Stranded Traveler',
+
+  // ─── LootSystem ───
+  'sys.loot.genericLegendaryEffect': 'Contains an unknown power',
+
+  // ─── Player ───
+  'sys.player.levelUp': 'Level Up! Level {level}',
+  'sys.player.death': 'You died. Respawning at camp...',
+  'sys.player.respawn': 'You have respawned at camp.',
+
+  // ─── MobileControlsSystem ───
+  'sys.mobile.autoCombat.off': 'Auto\nOFF',
+  'sys.mobile.autoCombat.on': 'Auto\nON',
+  'sys.mobile.autoCombat.log': 'Auto-combat: {state}',
+  'sys.mobile.panel.inventory': 'Bag',
+  'sys.mobile.panel.character': 'Stats',
+  'sys.mobile.panel.skills': 'Skills',
+  'sys.mobile.panel.map': 'Map',
+  'sys.mobile.panel.homestead': 'Home',
+  'sys.mobile.panel.quest': 'Quest',
+
+  // ─── QuestCardUI ───
+  'sys.questCard.accepted': 'Accepted: {name}',
+  'sys.questCard.turnedIn': 'Turned in: {name}',
+  'sys.questCard.rewardExp': '{exp} EXP',
+  'sys.questCard.rewardGold': '{gold} Gold',
+  'sys.questCard.rewardItems': '{count} Items',
+  'sys.questCard.rewardPet': 'Pet',
+
+  // ─── QuestTrackerHUD ───
+  'sys.tracker.completed': 'Complete - Return to NPC',
+  'sys.tracker.doneCount': '{done}/{total} Done',
 };
 
 export default en;

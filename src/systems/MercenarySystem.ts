@@ -3,6 +3,7 @@ import type { Stats, MercenaryType, MercenaryDefinition, MercenarySaveData, Item
 import type { CombatEntity, ActiveBuff, EquipStats } from './CombatSystem';
 import { emptyEquipStats } from './CombatSystem';
 import { getItemBase } from '../data/items/bases';
+import { t } from '../i18n';
 
 /** Local euclidean distance to avoid importing IsometricUtils (which depends on Phaser config). */
 function euclideanDistance(x1: number, y1: number, x2: number, y2: number): number {
@@ -170,28 +171,29 @@ export class MercenarySystem {
   hire(type: MercenaryType, playerGold: number): { success: boolean; cost: number; message: string } {
     const def = MERCENARY_DEFS[type];
     if (!def) {
-      return { success: false, cost: 0, message: '未知的佣兵类型' };
+      return { success: false, cost: 0, message: t('sys.mercenary.unknownType') };
     }
     if (playerGold < def.hireCost) {
-      return { success: false, cost: 0, message: `金币不足! 需要 ${def.hireCost}G` };
+      return { success: false, cost: 0, message: t('sys.mercenary.notEnoughGold', { cost: def.hireCost }) };
     }
     // Dismiss existing mercenary
     if (this.activeMercenary) {
       this.dismiss();
     }
     this.activeMercenary = this.createMercenary(type, 1);
+    const hireMsg = t('sys.mercenary.hire', { name: def.name });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `雇佣了 ${def.name}!`,
+      text: hireMsg,
       type: 'system',
     });
-    return { success: true, cost: def.hireCost, message: `雇佣了 ${def.name}!` };
+    return { success: true, cost: def.hireCost, message: hireMsg };
   }
 
   dismiss(): void {
     if (!this.activeMercenary) return;
     const def = MERCENARY_DEFS[this.activeMercenary.type];
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `${def.name} 已被解雇`,
+      text: t('sys.mercenary.dismiss', { name: def.name }),
       type: 'system',
     });
     this.activeMercenary = null;
@@ -199,23 +201,24 @@ export class MercenarySystem {
 
   revive(playerGold: number): { success: boolean; cost: number; message: string } {
     if (!this.activeMercenary) {
-      return { success: false, cost: 0, message: '没有佣兵可复活' };
+      return { success: false, cost: 0, message: t('sys.mercenary.noMercToRevive') };
     }
     if (this.activeMercenary.alive) {
-      return { success: false, cost: 0, message: '佣兵还活着' };
+      return { success: false, cost: 0, message: t('sys.mercenary.mercAlive') };
     }
     const def = MERCENARY_DEFS[this.activeMercenary.type];
     if (playerGold < def.reviveCost) {
-      return { success: false, cost: 0, message: `金币不足! 需要 ${def.reviveCost}G` };
+      return { success: false, cost: 0, message: t('sys.mercenary.notEnoughGold', { cost: def.reviveCost }) };
     }
     this.activeMercenary.alive = true;
     this.activeMercenary.hp = Math.floor(this.activeMercenary.maxHp * 0.5);
     this.activeMercenary.mana = Math.floor(this.activeMercenary.maxMana * 0.5);
+    const reviveMsg = t('sys.mercenary.revive', { name: def.name });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `${def.name} 已复活!`,
+      text: reviveMsg,
       type: 'system',
     });
-    return { success: true, cost: def.reviveCost, message: `${def.name} 已复活!` };
+    return { success: true, cost: def.reviveCost, message: reviveMsg };
   }
 
   // ─── Creation & Level ─────────────────────────────────────────────────
@@ -334,7 +337,7 @@ export class MercenarySystem {
       merc.hp = merc.maxHp;
       merc.mana = merc.maxMana;
       EventBus.emit(GameEvents.LOG_MESSAGE, {
-        text: `${def.name} 升级到 Lv.${merc.level}!`,
+        text: t('sys.mercenary.levelUp', { name: def.name, level: merc.level }),
         type: 'system',
       });
     }
@@ -638,7 +641,7 @@ export class MercenarySystem {
       this.activeMercenary.alive = false;
       const def = MERCENARY_DEFS[this.activeMercenary.type];
       EventBus.emit(GameEvents.LOG_MESSAGE, {
-        text: `${def.name} 阵亡了!`,
+        text: t('sys.mercenary.death', { name: def.name }),
         type: 'combat',
       });
       return { died: true };

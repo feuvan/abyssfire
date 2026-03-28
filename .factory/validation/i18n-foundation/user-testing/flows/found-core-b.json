@@ -1,0 +1,158 @@
+{
+  "groupId": "found-core-b",
+  "testedAt": "2026-03-28T09:27:33.343802+00:00",
+  "isolation": {
+    "sessionName": "678739126a5d__foundb",
+    "appUrl": "http://localhost:5173/abyssfire/",
+    "storageKey": "abyssfire_locale",
+    "missionDir": "/Users/feuvan/.factory/missions/49f86335-9c25-4e68-b47b-299dbc676744"
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-FOUND-006",
+      "title": "Missing key falls back to en",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Import /abyssfire/src/i18n/index.ts plus zh-CN/en locale modules and compare key sets",
+          "expected": "Find a real key present only in en if one exists",
+          "observed": "Found en-only key test.enOnly by diffing locale module keys"
+        },
+        {
+          "action": "Set locale to zh-CN and evaluate t('test.enOnly')",
+          "expected": "English fallback string returned",
+          "observed": "Returned 'This key only exists in English'"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A — validated via in-browser runtime module import/eval; no API request involved"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-007",
+      "title": "Completely missing key returns key path or safe fallback",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Evaluate t('nonexistent.totally.fake.key') in the loaded app session",
+          "expected": "No exception and a defined fallback string",
+          "observed": "Returned 'nonexistent.totally.fake.key' without throwing"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A — validated via in-browser runtime module import/eval; no API request involved"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-008",
+      "title": "Locale switching updates t() output immediately",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Set locale to zh-CN and evaluate t('menu.newGame')",
+          "expected": "Simplified Chinese string returned",
+          "observed": "Returned '新的旅程'"
+        },
+        {
+          "action": "Switch locale to en and evaluate t('menu.newGame') again",
+          "expected": "English string returned immediately",
+          "observed": "Returned 'New Journey' in the same session without reload"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A — validated via in-browser runtime module import/eval; no API request involved"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-009",
+      "title": "All three locales (zh-CN, zh-TW, en) are registered",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Evaluate getLocales() from /abyssfire/src/i18n/index.ts",
+          "expected": "Exactly zh-CN, zh-TW, and en are registered",
+          "observed": "Returned ['zh-CN', 'zh-TW', 'en']"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A — validated via in-browser runtime module import/eval; no API request involved"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-015",
+      "title": "zh-TW strings differ from zh-CN where expected",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Compare zh-CN vs zh-TW outputs for keys with convertible characters",
+          "expected": "Traditional Chinese output differs from Simplified Chinese where mappings apply",
+          "observed": "menu.help: '游戏控制' -> '遊戲控製'; menu.language: '语言' -> '語言'"
+        },
+        {
+          "action": "Visually confirm the menu in zh-TW",
+          "expected": "Rendered menu text shows Traditional Chinese variants",
+          "observed": "Screenshot shows zh-TW menu text including '遊戲控製', '原聲音樂', '製作名單', and '語言'"
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "i18n-foundation/found-core-b/VAL-FOUND-015-menu-zh-TW.png"
+        ],
+        "consoleErrors": "none",
+        "network": "N/A — validated via in-browser runtime module import/eval plus rendered menu screenshot; no API request involved"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-018",
+      "title": "zh-TW conversion handles characters not in mapping table",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Evaluate t('menu.continue', { class: t('data.class.warrior.name'), level: 5 }) in zh-CN and zh-TW",
+          "expected": "ASCII, numbers, and punctuation remain unchanged while mapped CJK characters convert",
+          "observed": "zh-CN: '继续游戏 - 战士 Lv.5'; zh-TW: '繼續遊戲 - 戰士 Lv.5'"
+        },
+        {
+          "action": "Check the zh-TW output for unmapped ASCII segments",
+          "expected": "The substring 'Lv.5' and separator ' - ' are preserved exactly",
+          "observed": "Both 'Lv.5' and ' - ' remained unchanged in zh-TW output"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "none",
+        "network": "N/A — validated via in-browser runtime module import/eval; no API request involved"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The validation contract references menu.new_game, but the current runtime key is menu.newGame, and its current value ('新的旅程') is identical in zh-CN and zh-TW, so it could not demonstrate a Traditional/Simplified diff for VAL-FOUND-015.",
+      "resolved": true,
+      "resolution": "Used live runtime outputs for keys with actual convertible characters (menu.help and menu.language) and captured a zh-TW menu screenshot for visual support.",
+      "affectedAssertions": [
+        "VAL-FOUND-008",
+        "VAL-FOUND-015"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 6 assigned assertions in one isolated browser session; all 6 passed. No browser errors were reported during the flow."
+}

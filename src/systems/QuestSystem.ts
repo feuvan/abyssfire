@@ -1,17 +1,44 @@
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { QuestDefinition, QuestProgress, QuestReward } from '../data/types';
+import { t } from '../i18n';
 
-/** Chinese labels for quest types. */
-export const QUEST_TYPE_LABELS: Record<string, string> = {
-  kill: '猎杀',
-  collect: '收集',
-  explore: '探索',
-  talk: '对话',
-  escort: '护送',
-  defend: '防守',
-  investigate: '调查',
-  craft: '制作交付',
-};
+/** Locale-aware quest type labels. Reads from i18n at access time. */
+export function getQuestTypeLabels(): Record<string, string> {
+  return {
+    kill: t('sys.quest.type.kill'),
+    collect: t('sys.quest.type.collect'),
+    explore: t('sys.quest.type.explore'),
+    talk: t('sys.quest.type.talk'),
+    escort: t('sys.quest.type.escort'),
+    defend: t('sys.quest.type.defend'),
+    investigate: t('sys.quest.type.investigate'),
+    craft: t('sys.quest.type.craft'),
+  };
+}
+
+/**
+ * Legacy export: static-looking object, but callers should
+ * prefer getQuestTypeLabels() for locale-reactivity.
+ * Kept for backward compatibility with existing code.
+ */
+export const QUEST_TYPE_LABELS: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get(_target, prop: string) {
+    return getQuestTypeLabels()[prop];
+  },
+  ownKeys() {
+    return Object.keys(getQuestTypeLabels());
+  },
+  getOwnPropertyDescriptor(_target, prop: string) {
+    const labels = getQuestTypeLabels();
+    if (prop in labels) {
+      return { configurable: true, enumerable: true, writable: true, value: labels[prop] };
+    }
+    return undefined;
+  },
+  has(_target, prop: string) {
+    return prop in getQuestTypeLabels();
+  },
+});
 
 export class QuestSystem {
   quests: Map<string, QuestDefinition> = new Map();
@@ -40,7 +67,7 @@ export class QuestSystem {
           objectives: quest.objectives.map(() => ({ current: 0 })),
         });
         EventBus.emit(GameEvents.LOG_MESSAGE, {
-          text: `重新接受任务: ${quest.name}`,
+          text: t('sys.quest.reaccepted', { name: quest.name }),
           type: 'system',
         });
         return true;
@@ -63,7 +90,7 @@ export class QuestSystem {
     });
 
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `接受任务: ${quest.name}`,
+      text: t('sys.quest.accepted', { name: quest.name }),
       type: 'system',
     });
     return true;
@@ -106,7 +133,7 @@ export class QuestSystem {
         prog.status = 'completed';
         EventBus.emit(GameEvents.QUEST_COMPLETED, { questId: quest.id, questName: quest.name });
         EventBus.emit(GameEvents.LOG_MESSAGE, {
-          text: `任务完成: ${quest.name}! 返回NPC交付。`,
+          text: t('sys.quest.completed', { name: quest.name }),
           type: 'system',
         });
       }
@@ -125,7 +152,7 @@ export class QuestSystem {
     prog.status = 'failed';
     EventBus.emit(GameEvents.QUEST_FAILED, { questId: quest.id, questName: quest.name });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `任务失败: ${quest.name}`,
+      text: t('sys.quest.failed', { name: quest.name }),
       type: 'system',
     });
   }
@@ -138,7 +165,7 @@ export class QuestSystem {
 
     prog.status = 'turned_in';
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `交付任务: ${quest.name} +${quest.rewards.exp}经验 +${quest.rewards.gold}金币`,
+      text: t('sys.quest.turnedIn', { name: quest.name, exp: quest.rewards.exp, gold: quest.rewards.gold }),
       type: 'system',
     });
     return quest.rewards;
@@ -242,7 +269,7 @@ export class QuestSystem {
         const idx = quest.objectives.indexOf(o);
         return prog.objectives[idx].current >= o.required;
       });
-    if (!collectDone) return '采集材料';
+    if (!collectDone) return t('sys.quest.phase.collect');
 
     const craftDone = quest.objectives
       .filter(o => o.type === 'craft_craft')
@@ -250,8 +277,8 @@ export class QuestSystem {
         const idx = quest.objectives.indexOf(o);
         return prog.objectives[idx].current >= o.required;
       });
-    if (!craftDone) return '制作物品';
+    if (!craftDone) return t('sys.quest.phase.craft');
 
-    return '交付成品';
+    return t('sys.quest.phase.deliver');
   }
 }

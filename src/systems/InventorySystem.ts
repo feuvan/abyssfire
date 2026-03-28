@@ -4,6 +4,7 @@ import { SetDefinitions } from '../data/items/sets';
 import { DUNGEON_EXCLUSIVE_SETS } from '../data/dungeonData';
 import type { ItemInstance, EquipSlot, WeaponBase, ArmorBase, GemInstance } from '../data/types';
 import { emptyEquipStats, type EquipStats } from './CombatSystem';
+import { t } from '../i18n';
 
 const MAX_INVENTORY = 100;
 const MAX_STASH = 80;
@@ -25,20 +26,20 @@ export class InventorySystem {
         existing.quantity += toAdd;
         item.quantity -= toAdd;
         if (item.quantity <= 0) {
-          EventBus.emit(GameEvents.LOG_MESSAGE, { text: `获得 ${item.name} x${toAdd}`, type: 'loot' });
+          EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.obtainedQty', { name: item.name, qty: toAdd }), type: 'loot' });
           return true;
         }
       }
     }
 
     if (this.inventory.length >= MAX_INVENTORY) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '背包已满!', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.bagFull'), type: 'system' });
       return false;
     }
 
     this.inventory.push(item);
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: `获得 ${this.getQualityPrefix(item.quality)}${item.name}`,
+      text: t('sys.inventory.obtained', { name: `${this.getQualityPrefix(item.quality)}${item.name}` }),
       type: 'loot',
     });
     return true;
@@ -79,7 +80,7 @@ export class InventorySystem {
     // Unequip current
     if (current) {
       if (this.inventory.length >= MAX_INVENTORY) {
-        EventBus.emit(GameEvents.LOG_MESSAGE, { text: '背包已满，无法换装!', type: 'system' });
+        EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.swapBagFull'), type: 'system' });
         return false;
       }
       this.inventory.push(current);
@@ -90,7 +91,7 @@ export class InventorySystem {
     if (idx !== -1) this.inventory.splice(idx, 1);
     this.equipment[slot] = item;
 
-    EventBus.emit(GameEvents.LOG_MESSAGE, { text: `装备了 ${item.name}`, type: 'info' });
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.equipped', { name: item.name }), type: 'info' });
     return true;
   }
 
@@ -99,7 +100,7 @@ export class InventorySystem {
     if (!item) return false;
 
     if (this.inventory.length >= MAX_INVENTORY) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '背包已满!', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.bagFull'), type: 'system' });
       return false;
     }
 
@@ -129,7 +130,7 @@ export class InventorySystem {
     if (index < 0 || index >= this.buybackItems.length) return null;
     const entry = this.buybackItems[index];
     if (this.inventory.length >= MAX_INVENTORY) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '背包已满!', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.bagFull'), type: 'system' });
       return null;
     }
     this.buybackItems.splice(index, 1);
@@ -224,7 +225,7 @@ export class InventorySystem {
 
   moveToStash(uid: string): boolean {
     if (this.stash.length >= MAX_STASH) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '仓库已满!', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.stashFull'), type: 'system' });
       return false;
     }
     const item = this.removeItem(uid, Infinity);
@@ -250,13 +251,13 @@ export class InventorySystem {
     // Check for ID scroll
     const scroll = this.inventory.find(i => i.baseId === 'c_id_scroll' && i.quantity > 0);
     if (!scroll) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '需要鉴定卷轴!', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.identify.needScroll'), type: 'system' });
       return false;
     }
     scroll.quantity--;
     if (scroll.quantity <= 0) this.removeItem(scroll.uid);
     item.identified = true;
-    EventBus.emit(GameEvents.LOG_MESSAGE, { text: `鉴定了 ${item.name}`, type: 'info' });
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.identify.success', { name: item.name }), type: 'info' });
     return true;
   }
 
@@ -279,7 +280,7 @@ export class InventorySystem {
       : 0;
 
     if (equipItem.sockets.length >= maxSockets) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '没有空余插槽', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.gem.noSlots'), type: 'system' });
       return false;
     }
 
@@ -316,7 +317,7 @@ export class InventorySystem {
     // Recompute item stats (affix stats + gem stats)
     this.recomputeItemStats(equipItem);
 
-    EventBus.emit(GameEvents.LOG_MESSAGE, { text: `镶嵌了 ${gemBase.name}`, type: 'info' });
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.gem.socketed', { gemName: gemBase.name }), type: 'info' });
     return true;
   }
 
@@ -336,7 +337,7 @@ export class InventorySystem {
 
     // Check inventory space
     if (this.inventory.length >= MAX_INVENTORY) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: '背包已满，无法取出宝石!', type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.gem.bagFullRemove'), type: 'system' });
       return false;
     }
 
@@ -369,7 +370,7 @@ export class InventorySystem {
     // Recompute item stats
     this.recomputeItemStats(equipItem);
 
-    EventBus.emit(GameEvents.LOG_MESSAGE, { text: `取出了 ${gem.name}`, type: 'info' });
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.gem.removed', { gemName: gem.name }), type: 'info' });
     return true;
   }
 
@@ -449,7 +450,7 @@ export class InventorySystem {
     if (idx === -1) return false;
     const item = this.inventory[idx];
     this.inventory.splice(idx, 1);
-    EventBus.emit(GameEvents.LOG_MESSAGE, { text: `丢弃了 ${item.name}`, type: 'system' });
+    EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.discarded', { name: item.name }), type: 'system' });
     EventBus.emit(GameEvents.ITEM_DISCARDED, { item });
     return true;
   }
@@ -468,7 +469,7 @@ export class InventorySystem {
       if (idx !== -1) this.inventory.splice(idx, 1);
     }
     if (toRemove.length > 0) {
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: `销毁了 ${toRemove.length} 件普通装备`, type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('sys.inventory.bulkDestroy', { count: toRemove.length }), type: 'system' });
     }
     return toRemove.length;
   }
@@ -485,10 +486,10 @@ export class InventorySystem {
 
   private getQualityPrefix(quality: string): string {
     switch (quality) {
-      case 'magic': return '[魔法] ';
-      case 'rare': return '[稀有] ';
-      case 'legendary': return '[传奇] ';
-      case 'set': return '[套装] ';
+      case 'magic': return t('sys.inventory.qualityPrefix.magic');
+      case 'rare': return t('sys.inventory.qualityPrefix.rare');
+      case 'legendary': return t('sys.inventory.qualityPrefix.legendary');
+      case 'set': return t('sys.inventory.qualityPrefix.set');
       default: return '';
     }
   }

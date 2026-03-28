@@ -7,6 +7,7 @@ import type { CombatEntity, ActiveBuff, EquipStats } from '../systems/CombatSyst
 import { getSkillManaCost, getSkillCooldown } from '../systems/CombatSystem';
 import { CharacterAnimator, getAnimConfig } from '../systems/CharacterAnimator';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
+import { t } from '../i18n';
 
 export class Player {
   scene: Phaser.Scene;
@@ -158,7 +159,7 @@ export class Player {
       this.mana = this.maxMana;
       EventBus.emit(GameEvents.PLAYER_LEVEL_UP, { level: this.level });
       EventBus.emit(GameEvents.LOG_MESSAGE, {
-        text: `升级! 等级 ${this.level}`,
+        text: t('sys.player.levelUp', { level: this.level }),
         type: 'system',
       });
     }
@@ -328,7 +329,7 @@ export class Player {
     this.playDeath();
     EventBus.emit(GameEvents.PLAYER_DIED, {});
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: '你已死亡，将在营地复活...',
+      text: t('sys.player.death'),
       type: 'system',
     });
   }
@@ -355,7 +356,7 @@ export class Player {
     this.animator.forceIdle();
     EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.hp, maxHp: this.maxHp });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
-      text: '你在营地复活了。',
+      text: t('sys.player.respawn'),
       type: 'system',
     });
   }

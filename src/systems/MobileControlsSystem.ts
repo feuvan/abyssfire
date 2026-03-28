@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config';
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { Player } from '../entities/Player';
+import { t } from '../i18n';
 
 const FONT = '"Noto Sans SC", sans-serif';
 
@@ -208,7 +209,7 @@ export class MobileControlsSystem {
       .setStrokeStyle(1.5, 0x555588, 0.7);
     this.autoCombatBtn.add(bg);
 
-    this.autoCombatLabel = this.scene.add.text(0, 0, '自动\n关闭', {
+    this.autoCombatLabel = this.scene.add.text(0, 0, t('sys.mobile.autoCombat.off'), {
       fontSize: `${Math.round(10 * this.scale)}px`,
       color: '#666680',
       fontFamily: FONT,
@@ -221,7 +222,7 @@ export class MobileControlsSystem {
     bg.on('pointerdown', () => {
       this.player.autoCombat = !this.player.autoCombat;
       EventBus.emit(GameEvents.LOG_MESSAGE, {
-        text: `自动战斗: ${this.player.autoCombat ? '开启' : '关闭'}`,
+        text: t('sys.mobile.autoCombat.log', { state: this.player.autoCombat ? t('zone.combat.autoCombatOn') : t('zone.combat.autoCombatOff') }),
         type: 'system',
       });
     });
@@ -231,12 +232,12 @@ export class MobileControlsSystem {
     const btnSize = 36 * this.scale;
     const gap = 4 * this.scale;
     const panels: { label: string; panel: string }[] = [
-      { label: '背包', panel: 'inventory' },
-      { label: '角色', panel: 'character' },
-      { label: '技能', panel: 'skills' },
-      { label: '地图', panel: 'map' },
-      { label: '家园', panel: 'homestead' },
-      { label: '任务', panel: 'quest' },
+      { label: t('sys.mobile.panel.inventory'), panel: 'inventory' },
+      { label: t('sys.mobile.panel.character'), panel: 'character' },
+      { label: t('sys.mobile.panel.skills'), panel: 'skills' },
+      { label: t('sys.mobile.panel.map'), panel: 'map' },
+      { label: t('sys.mobile.panel.homestead'), panel: 'homestead' },
+      { label: t('sys.mobile.panel.quest'), panel: 'quest' },
     ];
 
     // Top-right horizontal row
@@ -272,7 +273,7 @@ export class MobileControlsSystem {
     // Update auto-combat label
     if (this.autoCombatLabel) {
       const on = this.player.autoCombat;
-      this.autoCombatLabel.setText(`自动\n${on ? '开启' : '关闭'}`);
+      this.autoCombatLabel.setText(on ? t('sys.mobile.autoCombat.on') : t('sys.mobile.autoCombat.off'));
       this.autoCombatLabel.setColor(on ? '#27ae60' : '#666680');
     }
 

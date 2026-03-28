@@ -1,0 +1,6 @@
+{
+  "overridden": true,
+  "justification": "User-testing validator for i18n-foundation milestone was overridden after 4 failed worker spawns due to persistent factoryd connectivity/crash issues. All pending assertions from this milestone's features (VAL-FOUND-*, VAL-BOOT-*, VAL-MENU-*) are deferred to the full-game-i18n milestone's i18n-cross-area-verification feature, which will validate them alongside the rest of the game's i18n. Scrutiny validation passed cleanly (round 3). All 3009 tests pass.",
+  "deferredAssertions": "All i18n-foundation assertions remain pending in validation-state.json and will be tested during full-game-i18n user-testing validation.",
+  "timestamp": "2026-03-28T09:30:00Z"
+}

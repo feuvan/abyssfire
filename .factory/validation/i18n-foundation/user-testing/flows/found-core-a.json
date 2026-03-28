@@ -1,0 +1,149 @@
+{
+  "groupId": "found-core-a",
+  "testedAt": "2026-03-28T09:19:41.801694Z",
+  "isolation": {
+    "appUrl": "http://localhost:5173/abyssfire/",
+    "sessionName": "678739126a5d__founda",
+    "missionDir": "/Users/feuvan/.factory/missions/49f86335-9c25-4e68-b47b-299dbc676744",
+    "repoRoot": "/Users/feuvan/src/abyssfire",
+    "localStorageKey": "abyssfire_locale"
+  },
+  "toolsUsed": [
+    "agent-browser"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-FOUND-001",
+      "title": "t() returns correct zh-CN string",
+      "status": "pass",
+      "reasoning": "Using the runtime i18n module (`/abyssfire/src/i18n/index.ts`), `setLocale('zh-CN')` followed by `t('menu.newGame')` returned `新的旅程`. The rendered menu also displayed the zh-CN New Game label correctly.",
+      "steps": [
+        {
+          "action": "Import the i18n runtime module and call `setLocale('zh-CN'); t('menu.newGame')`.",
+          "expected": "Return the zh-CN New Game string.",
+          "observed": "Returned `新的旅程` with locale `zh-CN`."
+        },
+        {
+          "action": "Inspect the rendered menu in the browser.",
+          "expected": "The main menu shows the zh-CN New Game label.",
+          "observed": "The top menu button rendered as `新的旅程`."
+        }
+      ],
+      "evidence": {
+        "consoleEval": "{\"locale\":\"zh-CN\",\"value\":\"新的旅程\"}",
+        "screenshots": [
+          "i18n-foundation/found-core-a/VAL-FOUND-001-zh-CN-menu.png"
+        ],
+        "consoleErrors": "none; browser console showed only non-blocking AudioContext autoplay warnings before user gesture",
+        "network": "N/A — no assertion-specific network/API calls"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-002",
+      "title": "t() returns correct en string",
+      "status": "pass",
+      "reasoning": "After `setLocale('en')`, `t('menu.newGame')` returned `New Journey`, and the rendered menu switched fully to English with `NEW JOURNEY`, `Controls`, and `Language` visible.",
+      "steps": [
+        {
+          "action": "Call `setLocale('en'); t('menu.newGame')` in the runtime i18n module.",
+          "expected": "Return a non-empty English New Game string.",
+          "observed": "Returned `New Journey`."
+        },
+        {
+          "action": "Inspect the rendered menu after switching to English.",
+          "expected": "Visible menu labels update to English without reload.",
+          "observed": "Menu rendered in English with `NEW JOURNEY`, `Controls`, `Soundtrack`, `Credits`, and `Language`."
+        }
+      ],
+      "evidence": {
+        "consoleEval": "{\"locale\":\"en\",\"value\":\"New Journey\"}",
+        "screenshots": [
+          "i18n-foundation/found-core-a/VAL-FOUND-002-en-menu.png"
+        ],
+        "consoleErrors": "none; browser console showed only non-blocking AudioContext autoplay warnings before user gesture",
+        "network": "N/A — no assertion-specific network/API calls"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-003",
+      "title": "t() returns correct zh-TW string",
+      "status": "pass",
+      "reasoning": "With `setLocale('zh-TW')`, `t('menu.newGame')` returned `新的旅程`. This specific string uses characters that are identical in simplified and traditional Chinese, so the runtime and rendered zh-TW state were confirmed using adjacent zh-TW menu labels and supplemental `t('menu.help')` output (`遊戲控製`).",
+      "steps": [
+        {
+          "action": "Call `setLocale('zh-TW'); t('menu.newGame')` in the runtime i18n module.",
+          "expected": "Return the zh-TW New Game string.",
+          "observed": "Returned `新的旅程`; the value is valid for zh-TW because the characters in this phrase do not change between scripts."
+        },
+        {
+          "action": "Inspect the rendered menu after switching to zh-TW.",
+          "expected": "The menu is visibly in Traditional Chinese.",
+          "observed": "The menu showed zh-TW labels including `語言` and `遊戲控製`, confirming the zh-TW locale state while `新的旅程` remained script-identical."
+        }
+      ],
+      "evidence": {
+        "consoleEval": "{\"locale\":\"zh-TW\",\"value\":\"新的旅程\",\"help\":\"遊戲控製\"}",
+        "screenshots": [
+          "i18n-foundation/found-core-a/VAL-FOUND-003-zh-TW-menu.png"
+        ],
+        "consoleErrors": "none; browser console showed only non-blocking AudioContext autoplay warnings before user gesture",
+        "network": "N/A — no assertion-specific network/API calls"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-004",
+      "title": "t() parameter interpolation works",
+      "status": "pass",
+      "reasoning": "In English locale, `t('menu.continue', { class: 'Warrior', level: 5 })` returned `Continue - Warrior Lv.5`, so both parameters were interpolated and no raw placeholders remained.",
+      "steps": [
+        {
+          "action": "Call `setLocale('en'); t('menu.continue', { class: 'Warrior', level: 5 })`.",
+          "expected": "Return a string containing `Warrior` and `5` with no `{class}` or `{level}` placeholders left.",
+          "observed": "Returned `Continue - Warrior Lv.5`."
+        }
+      ],
+      "evidence": {
+        "consoleEval": "{\"locale\":\"en\",\"value\":\"Continue - Warrior Lv.5\"}",
+        "screenshots": [],
+        "consoleErrors": "none; browser console showed only non-blocking AudioContext autoplay warnings before user gesture",
+        "network": "N/A — no assertion-specific network/API calls"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-FOUND-005",
+      "title": "t() parameter interpolation with zh-CN class names",
+      "status": "pass",
+      "reasoning": "In zh-CN locale, `t('menu.continue', { class: '战士', level: 10 })` returned `继续游戏 - 战士 Lv.10`, confirming correct interpolation of the Chinese class name and numeric level.",
+      "steps": [
+        {
+          "action": "Call `setLocale('zh-CN'); t('menu.continue', { class: '战士', level: 10 })`.",
+          "expected": "Return a zh-CN string containing `战士` and `10` with no raw placeholders left.",
+          "observed": "Returned `继续游戏 - 战士 Lv.10`."
+        }
+      ],
+      "evidence": {
+        "consoleEval": "{\"locale\":\"zh-CN\",\"value\":\"继续游戏 - 战士 Lv.10\"}",
+        "screenshots": [],
+        "consoleErrors": "none; browser console showed only non-blocking AudioContext autoplay warnings before user gesture",
+        "network": "N/A — no assertion-specific network/API calls"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "`menu.newGame` renders identically in zh-CN and zh-TW (`新的旅程`), so zh-TW rendered confirmation required checking adjacent menu labels and a supplemental runtime translation value.",
+      "resolved": true,
+      "resolution": "Used the zh-TW screenshot (`語言`, `遊戲控製`) plus runtime `t('menu.help')` output to confirm the locale switch while leaving the tested key unchanged.",
+      "affectedAssertions": [
+        "VAL-FOUND-003"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assertions (VAL-FOUND-001 through VAL-FOUND-005): all 5 passed. Runtime translation calls returned the expected zh-CN, English, and zh-TW/interpolated strings, and the rendered menu screenshots confirmed zh-CN, English, and zh-TW states. No page errors were present; the browser console only emitted non-blocking AudioContext autoplay warnings before user interaction."
+}

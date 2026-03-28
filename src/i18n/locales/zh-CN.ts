@@ -1880,6 +1880,169 @@ const zhCN: LocaleData = {
   // ─── NPC Dialogue (ZoneScene fallback) ───
   'zone.npc.questTurnedIn': '感谢你完成了任务！',
   'zone.npc.acceptQuest': '接受: {questName}',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // SYSTEM MESSAGES
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ─── InventorySystem ───
+  'sys.inventory.bagFull': '背包已满!',
+  'sys.inventory.stashFull': '仓库已满!',
+  'sys.inventory.equipped': '装备了 {name}',
+  'sys.inventory.swapBagFull': '背包已满，无法换装!',
+  'sys.inventory.obtained': '获得 {name}',
+  'sys.inventory.obtainedQty': '获得 {name} x{qty}',
+  'sys.inventory.qualityPrefix.magic': '[魔法] ',
+  'sys.inventory.qualityPrefix.rare': '[稀有] ',
+  'sys.inventory.qualityPrefix.legendary': '[传奇] ',
+  'sys.inventory.qualityPrefix.set': '[套装] ',
+  'sys.inventory.identify.needScroll': '需要鉴定卷轴!',
+  'sys.inventory.identify.success': '鉴定了 {name}',
+  'sys.inventory.gem.socketed': '镶嵌了 {gemName}',
+  'sys.inventory.gem.noSlots': '没有空余插槽',
+  'sys.inventory.gem.removed': '取出了 {gemName}',
+  'sys.inventory.gem.bagFullRemove': '背包已满，无法取出宝石!',
+  'sys.inventory.discarded': '丢弃了 {name}',
+  'sys.inventory.bulkDestroy': '销毁了 {count} 件普通装备',
+
+  // ─── QuestSystem ───
+  'sys.quest.type.kill': '猎杀',
+  'sys.quest.type.collect': '收集',
+  'sys.quest.type.explore': '探索',
+  'sys.quest.type.talk': '对话',
+  'sys.quest.type.escort': '护送',
+  'sys.quest.type.defend': '防守',
+  'sys.quest.type.investigate': '调查',
+  'sys.quest.type.craft': '制作交付',
+  'sys.quest.objType.defend_wave': '防守',
+  'sys.quest.objType.investigate_clue': '调查',
+  'sys.quest.objType.craft_collect': '采集',
+  'sys.quest.objType.craft_craft': '制作',
+  'sys.quest.objType.craft_deliver': '交付',
+  'sys.quest.phase.collect': '采集材料',
+  'sys.quest.phase.craft': '制作物品',
+  'sys.quest.phase.deliver': '交付成品',
+  'sys.quest.accepted': '接受任务: {name}',
+  'sys.quest.reaccepted': '重新接受任务: {name}',
+  'sys.quest.completed': '任务完成: {name}! 返回NPC交付。',
+  'sys.quest.failed': '任务失败: {name}',
+  'sys.quest.turnedIn': '交付任务: {name} +{exp}经验 +{gold}金币',
+
+  // ─── MercenarySystem ───
+  'sys.mercenary.hire': '雇佣了 {name}!',
+  'sys.mercenary.dismiss': '{name} 已被解雇',
+  'sys.mercenary.revive': '{name} 已复活!',
+  'sys.mercenary.death': '{name} 阵亡了!',
+  'sys.mercenary.levelUp': '{name} 升级到 Lv.{level}!',
+  'sys.mercenary.unknownType': '未知的佣兵类型',
+  'sys.mercenary.notEnoughGold': '金币不足! 需要 {cost}G',
+  'sys.mercenary.noMercToRevive': '没有佣兵可复活',
+  'sys.mercenary.mercAlive': '佣兵还活着',
+
+  // ─── HomesteadSystem ───
+  'sys.homestead.buildingUpgrade': '{name} 升级到 Lv.{level}!',
+  'sys.homestead.petLevelUp': '{name} 升级到 Lv.{level}!',
+  'sys.homestead.petEvolved': '{name} 进化为 {evolvedName}! 属性加成提升!',
+  'sys.homestead.petObtained': '获得宠物: {name}!',
+  'sys.homestead.petDuplicate': '你已经拥有这只宠物了!',
+
+  // ─── AchievementSystem ───
+  'sys.achievement.unlocked': '成就解锁: {name}!',
+  'sys.achievement.unlockedWithTitle': '成就解锁: {name}! (称号: {title})',
+
+  // ─── StatusEffectSystem ───
+  'sys.statusEffect.applied': '{effectName}效果已施加',
+  'sys.statusEffect.expired': '{effectName}效果已消失',
+  'sys.statusEffect.refreshed': '{effectName}效果已刷新',
+  'sys.statusEffect.name.burn': '灼烧',
+  'sys.statusEffect.name.freeze': '冰冻',
+  'sys.statusEffect.name.poison': '中毒',
+  'sys.statusEffect.name.bleed': '流血',
+  'sys.statusEffect.name.slow': '减速',
+  'sys.statusEffect.name.stun': '眩晕',
+
+  // ─── DifficultySystem ───
+  'sys.difficulty.name.normal': '普通',
+  'sys.difficulty.name.nightmare': '噩梦',
+  'sys.difficulty.name.hell': '地狱',
+  'sys.difficulty.unlock.nightmare': '噩梦难度已解锁',
+  'sys.difficulty.unlock.hell': '地狱难度已解锁',
+
+  // ─── EliteAffixSystem ───
+  'sys.eliteAffix.name.fire_enhanced': '炎魔',
+  'sys.eliteAffix.name.swift': '迅捷',
+  'sys.eliteAffix.name.teleporting': '瞬移',
+  'sys.eliteAffix.name.extra_strong': '狂暴',
+  'sys.eliteAffix.name.curse_aura': '诅咒',
+  'sys.eliteAffix.name.vampiric': '吸血',
+  'sys.eliteAffix.name.frozen': '冰封',
+
+  // ─── RandomEventSystem ───
+  'sys.event.name.ambush': '伏击',
+  'sys.event.name.treasure_cache': '宝箱',
+  'sys.event.name.wandering_merchant': '流浪商人',
+  'sys.event.name.rescue': '救援',
+  'sys.event.name.environmental_puzzle': '谜题',
+  'sys.event.msg.ambush': '伏兵出现!',
+  'sys.event.msg.treasure_cache': '发现了一个隐藏的宝箱!',
+  'sys.event.msg.wandering_merchant': '一位流浪商人出现在你面前。',
+  'sys.event.msg.rescue': '有人被怪物包围了! 快去营救!',
+  'sys.event.msg.environmental_puzzle': '你发现了一个古老的谜题装置。',
+  'sys.event.puzzle.emerald_plains.prompt': '石柱上的符文需要按正确顺序触摸。',
+  'sys.event.puzzle.emerald_plains.solution': '按下发光的符文',
+  'sys.event.puzzle.emerald_plains.reward': '获得了经验和金币!',
+  'sys.event.puzzle.twilight_forest.prompt': '古树的树根形成了一个迷宫，需要找到正确的路径。',
+  'sys.event.puzzle.twilight_forest.solution': '沿着发光的苔藓前进',
+  'sys.event.puzzle.twilight_forest.reward': '获得了经验和金币!',
+  'sys.event.puzzle.anvil_mountains.prompt': '矿洞墙壁上有三个宝石插槽等待填入。',
+  'sys.event.puzzle.anvil_mountains.solution': '按颜色顺序放入宝石',
+  'sys.event.puzzle.anvil_mountains.reward': '获得了经验和金币!',
+  'sys.event.puzzle.scorching_desert.prompt': '沙漠中的日晷指向一个隐藏的方向。',
+  'sys.event.puzzle.scorching_desert.solution': '转动日晷指针',
+  'sys.event.puzzle.scorching_desert.reward': '获得了经验和金币!',
+  'sys.event.puzzle.abyss_rift.prompt': '深渊裂缝中闪烁着不稳定的魔法阵。',
+  'sys.event.puzzle.abyss_rift.solution': '按正确的符文序列激活',
+  'sys.event.puzzle.abyss_rift.reward': '获得了经验和金币!',
+  'sys.event.rescue.emerald_plains': '迷路的旅人',
+  'sys.event.rescue.twilight_forest': '受伤的猎人',
+  'sys.event.rescue.anvil_mountains': '被困的矿工',
+  'sys.event.rescue.scorching_desert': '沙漠中的商队护卫',
+  'sys.event.rescue.abyss_rift': '深渊探险家',
+  'sys.event.puzzle.fallback.prompt': '一个古老的谜题',
+  'sys.event.puzzle.fallback.solution': '解开谜题',
+  'sys.event.puzzle.fallback.reward': '获得了奖励!',
+  'sys.event.rescue.fallback': '被困的旅人',
+
+  // ─── LootSystem ───
+  'sys.loot.genericLegendaryEffect': '蕴含未知的力量',
+
+  // ─── Player ───
+  'sys.player.levelUp': '升级! 等级 {level}',
+  'sys.player.death': '你已死亡，将在营地复活...',
+  'sys.player.respawn': '你在营地复活了。',
+
+  // ─── MobileControlsSystem ───
+  'sys.mobile.autoCombat.off': '自动\n关闭',
+  'sys.mobile.autoCombat.on': '自动\n开启',
+  'sys.mobile.autoCombat.log': '自动战斗: {state}',
+  'sys.mobile.panel.inventory': '背包',
+  'sys.mobile.panel.character': '角色',
+  'sys.mobile.panel.skills': '技能',
+  'sys.mobile.panel.map': '地图',
+  'sys.mobile.panel.homestead': '家园',
+  'sys.mobile.panel.quest': '任务',
+
+  // ─── QuestCardUI ───
+  'sys.questCard.accepted': '已接受: {name}',
+  'sys.questCard.turnedIn': '已交付: {name}',
+  'sys.questCard.rewardExp': '{exp} 经验',
+  'sys.questCard.rewardGold': '{gold} 金币',
+  'sys.questCard.rewardItems': '{count} 物品',
+  'sys.questCard.rewardPet': '宠物',
+
+  // ─── QuestTrackerHUD ───
+  'sys.tracker.completed': '已完成 - 返回NPC交付',
+  'sys.tracker.doneCount': '{done}/{total} 完成',
 };
 
 export default zhCN;

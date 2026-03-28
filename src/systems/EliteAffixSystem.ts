@@ -1,4 +1,5 @@
 import { randomInt } from '../utils/MathUtils';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Elite Monster Affix System
@@ -249,11 +250,11 @@ export class EliteAffixSystem {
 
   /**
    * Build the display name for an affix elite monster.
-   * Format: "[affix1·affix2] 原名" — all in Chinese.
+   * Format: "[affix1·affix2] baseName" — uses translated affix names.
    */
   buildAffixName(baseName: string, affixes: EliteAffixInstance[]): string {
     if (affixes.length === 0) return baseName;
-    const affixNames = affixes.map(a => a.definition.name).join('·');
+    const affixNames = affixes.map(a => t(`sys.eliteAffix.name.${a.definition.type}`)).join('·');
     return `[${affixNames}] ${baseName}`;
   }
 
