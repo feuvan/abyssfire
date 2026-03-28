@@ -1,0 +1,33 @@
+{
+  "featureId": "fix-sprite-blocks-and-merchant",
+  "reviewedAt": "2026-03-26T13:40:29.653523+00:00",
+  "commitId": "db607e0",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Chest rendering was updated to use the procedural chest sprite, but the wandering merchant implementation introduces a gameplay regression: emitting the shared SHOP_CLOSE event from UIScene.closeAllPanels() will also close unrelated NPC shops whenever any panel-closing action occurs while a shop is open.",
+    "issues": [
+      {
+        "file": "src/scenes/UIScene.ts",
+        "line": 4500,
+        "severity": "blocking",
+        "description": "`closeAllPanels()` now emits `GameEvents.SHOP_CLOSE` whenever `shopPanel` exists. This method is used by unrelated panel toggles (for example opening inventory/map/skill panels), so opening another panel while talking to any normal merchant will fire the global shop-close event and trigger all `SHOP_CLOSE` listeners. Because the wandering merchant cleanup is keyed only on this global event, the merchant despawns when any panel action closes the shop, not specifically when the player ends the merchant interaction. This changes existing shop behavior and makes SHOP_CLOSE semantics broader than 'shop interaction closed'."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The systems-worker skill says to write tests first and cover expected behavior, but for scene/rendering fixes the worker ended up using contract-only tests that never exercised the modified ZoneScene/UIScene methods. The skill could explicitly distinguish when scene-level changes require lightweight integration seams or source-level assertions instead of pure module tests.",
+      "evidence": "src/__tests__/SpriteBlocksAndMerchant.test.ts only checks drawer keys and EventBus behavior; it does not call `spawnHiddenAreaRewardSprite()`, `handleWanderingMerchantEvent()`, or any UIScene close paths referenced in the feature."
+    },
+    {
+      "area": "knowledge",
+      "observation": "There is now an important runtime convention that `SHOP_CLOSE` is emitted from UIScene close paths and consumed by scene/NPC cleanup logic, but this coupling is not captured in AGENTS.md or the library notes.",
+      "evidence": "src/scenes/UIScene.ts:654,667,4500 now emit `GameEvents.SHOP_CLOSE`; src/scenes/ZoneScene.ts:2143 and src/entities/NPC.ts listen for that event, while AGENTS.md and .factory/library/architecture.md do not mention the contract."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, skill guidance, and commit `db607e0`. The chest sprite change looks correct, but the feature fails review because the new global `SHOP_CLOSE` emission in `closeAllPanels()` can fire during unrelated UI transitions and prematurely trigger wandering-merchant cleanup / alter existing merchant-shop behavior."
+}

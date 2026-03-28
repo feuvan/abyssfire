@@ -1,0 +1,34 @@
+{
+  "featureId": "quest-compact-card-ui",
+  "reviewedAt": "2026-03-26T15:00:00Z",
+  "commitId": "34159f6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The compact quest card routing, prioritization, lore fallback, and unit-tested formatting helpers are implemented, but the feature is incomplete in two blocking ways: the card does not display reward items with icons as required, and turn-in from the new card does not grant item rewards even though the old dialogue flow handled them.",
+    "issues": [
+      {
+        "file": "src/scenes/UIScene.ts",
+        "line": 2399,
+        "severity": "blocking",
+        "description": "The card renders rewards as a plain summary string via `formatRewardSummary(...)` and never creates any item icon visuals, so it does not satisfy the requirement to display rewards as exp/gold/items with icons."
+      },
+      {
+        "file": "src/scenes/UIScene.ts",
+        "line": 2483,
+        "severity": "blocking",
+        "description": "On turn-in, the compact quest card only applies exp, gold, pet reward, and achievement updates after `questSystem.turnInQuest(...)`; it never creates or adds `reward.items` to the inventory. This regresses quest reward delivery compared with the existing dialogue reward handling in the same file around the choice reward path (`createItem` + `inventorySystem.addItem`)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `ui-worker` skill says visual verification in browser is critical for UI work, but mission `AGENTS.md` explicitly says command-only validation and no browser-based validation. The worker followed the mission constraints, so the skill guidance is out of sync with mission reality.",
+      "evidence": "`src/abyssfire/.factory/skills/ui-worker/SKILL.md` section 'Visual verification in browser. This is critical for UI work' vs mission `AGENTS.md` line stating '**NO browser-based validation** — user explicitly opted for command-only validation'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, transcript skeleton, commit 34159f6 diff, and relevant UIScene/QuestCardUI code. The feature correctly routes quest NPC interactions to a compact card with prioritization and lore access, but it fails the spec because reward item icons are not shown and turn-in through the new card drops item rewards entirely."
+}

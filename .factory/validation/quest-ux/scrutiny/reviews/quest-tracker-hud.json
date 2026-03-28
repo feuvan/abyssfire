@@ -1,0 +1,34 @@
+{
+  "featureId": "quest-tracker-hud",
+  "reviewedAt": "2026-03-26T14:57:57Z",
+  "commitId": "2ffa510",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds a right-side persistent quest tracker HUD with compact/expanded rendering, capped visibility, and event-driven refreshes, but it does not fully meet the real-time progress requirement because UIScene never listens to a quest-progress event and the QuestSystem does not emit one. As implemented, progress-only changes can remain stale until the next 250ms polling refresh instead of updating immediately on objective advancement as the feature description requires.",
+    "issues": [
+      {
+        "file": "src/scenes/UIScene.ts",
+        "line": 450,
+        "severity": "blocking",
+        "description": "The tracker only marks itself dirty on QUEST_ACCEPTED / QUEST_COMPLETED / QUEST_TURNED_IN / QUEST_FAILED and never subscribes to a quest-progress event, so ordinary objective increments are not pushed to the HUD in real time as required by the feature."
+      },
+      {
+        "file": "src/systems/QuestSystem.ts",
+        "line": 105,
+        "severity": "blocking",
+        "description": "QuestSystem emits QUEST_COMPLETED and QUEST_FAILED but does not emit any QUEST_PROGRESS event when objective counters advance, leaving the new HUD without the event source required by the spec for immediate progress updates."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The ui-worker skill still instructs workers to do browser-based visual verification, but this mission explicitly forbids browser validation and relies on command-only checks. The worker had to reconcile that mismatch from AGENTS.md instead of following the skill as written.",
+      "evidence": "/Users/feuvan/src/abyssfire/.factory/skills/ui-worker/SKILL.md section 'Visual verification in browser' vs /Users/feuvan/.factory/missions/b8d07ee0-0693-4661-a441-0be966388ed0/AGENTS.md 'NO browser-based validation'. The worker handoff also suggests updating the skill for this mission context."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the handoff, transcript skeleton, and commit 2ffa510 for quest-tracker-hud. The tracker UI and tests are substantial, but the implementation misses the spec's required QUEST_PROGRESS-driven real-time updates, so objective-progress changes are not event-driven and the feature should fail scrutiny until that wiring exists."
+}

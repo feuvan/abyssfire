@@ -1,0 +1,40 @@
+{
+  "featureId": "quest-ux-integration-verification",
+  "reviewedAt": "2026-03-26T14:51:49Z",
+  "commitId": "ab7e595e6714cd4157c4ffd9b909740152170703",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The change only adds pure utility integration tests and does not verify the full quest UX feature against the actual runtime integrations required by the feature description. The most important save/load preservation path is not exercised against the production save/load implementation, and the full-suite validation requirement was not satisfied because the worker left known failing tests unfixed.",
+    "issues": [
+      {
+        "file": "src/__tests__/QuestUXIntegration.test.ts",
+        "line": 424,
+        "severity": "blocking",
+        "description": "The save/load coverage is only a JSON round-trip of an in-memory progress map, so it never exercises the real persistence path (`ZoneScene.saveGameState()` / `ZoneScene.restoreFromSave()` / `QuestSystem.loadProgress()`) that the feature explicitly required to verify. This test would still pass even if production save serialization omitted quest data or restored it incorrectly."
+      },
+      {
+        "file": "src/__tests__/QuestUXIntegration.test.ts",
+        "line": 547,
+        "severity": "blocking",
+        "description": "The zone-transition verification rebuilds tracker state from the same local data structures instead of covering the production zone-transition behavior in `ZoneScene`, so it does not meaningfully verify the required runtime integration that tracker state and NPC indicators persist/recompute correctly across scene restarts."
+      },
+      {
+        "file": "src/__tests__/QuestUXIntegration.test.ts",
+        "line": 1,
+        "severity": "blocking",
+        "description": "The feature required fixing any integration issues found and running the full test suite successfully, but the handoff records `npx vitest run` exiting with code 1 and leaves three failures unresolved. Marking the feature complete without resolving or quarantining those failures does not satisfy the feature requirement."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `ui-worker` skill still instructs workers to perform browser-based visual verification, but this mission explicitly disallows browser validation and AGENTS.md says command-only validation is required. The worker followed mission guidance rather than the skill, so the skill procedure does not match reality for this repo/mission setup.",
+      "evidence": "`src/abyssfire/.factory/skills/ui-worker/SKILL.md` step 7 requires browser verification, while `/Users/feuvan/.factory/missions/b8d07ee0-0693-4661-a441-0be966388ed0/AGENTS.md` says \"NO browser-based validation — user explicitly opted for command-only validation\"."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: the commit adds substantial utility-level integration tests, but it does not verify the production save/load and zone-transition integrations required by the feature, and the full test-suite requirement remains unmet because the recorded full suite still fails."
+}

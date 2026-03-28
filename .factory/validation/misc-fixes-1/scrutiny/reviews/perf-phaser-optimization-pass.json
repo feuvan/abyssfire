@@ -1,0 +1,45 @@
+{
+  "featureId": "perf-phaser-optimization-pass",
+  "reviewedAt": "2026-03-26T13:42:18Z",
+  "commitId": "2c7a4d2",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit lands useful optimizations, but two feature requirements were not actually implemented in the shipped game code and the added tests largely validate helper logic rather than the integrated runtime behavior.",
+    "issues": [
+      {
+        "file": "src/scenes/ZoneScene.ts",
+        "line": 729,
+        "severity": "blocking",
+        "description": "The feature required disabling physics on far monsters while keeping AI running, but the implementation instead skips monster.update() entirely for non-aggro monsters beyond 30 tiles. This changes gameplay semantics by freezing far idle monsters and does not implement the requested optimization target."
+      },
+      {
+        "file": "src/systems/FogOfWarSystem.ts",
+        "line": 73,
+        "severity": "blocking",
+        "description": "The new pre-rendered fog renderer is not wired into the actual gameplay scene. ZoneScene continues to use its own exploredTiles/LightingSystem path and never constructs FogOfWarSystem, so the primary fog-rendering optimization described in the feature is not exercised in-game."
+      },
+      {
+        "file": "src/__tests__/PhaserOptimizationPass.test.ts",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "Validation coverage is weak for this feature: the new tests mostly exercise local helper logic and simplified pool/culling simulations, but they do not verify the real ZoneScene integration for fog rendering, floating text pooling, depth batching, or far-monster behavior."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker skill says to write tests first and to run full verification cleanly, but the transcript shows implementation edits before tests and records `npx vitest run` as effectively passing despite a known failing test remaining. The skill/procedure may need to be stricter about treating existing failing validators as blockers unless the feature explicitly scopes them out.",
+      "evidence": "systems-worker SKILL.md steps 3 and 6 vs transcript skeleton for session 5d22c0f4-20ba-4346-8c1f-9fd3e07ed322 and handoff verification noting `2807 tests passed, 1 failed`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "A key codebase fact is that `FogOfWarSystem` is currently not used by `ZoneScene`; gameplay fog relies on separate `exploredTiles` and `LightingSystem` logic. That architectural reality was discovered during implementation but is not captured in shared project knowledge, making future fog-related tasks easier to mis-scope.",
+      "evidence": "Transcript notes the discovery explicitly; code search shows `FogOfWarSystem` only in `src/systems/FogOfWarSystem.ts` and a comment in `src/scenes/ZoneScene.ts`, with no runtime instantiation in scenes."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: the commit improves some internals, but the headline fog optimization is not integrated into runtime gameplay and the far-monster change alters behavior instead of implementing the requested physics-only optimization. Report written for scrutiny triage."
+}

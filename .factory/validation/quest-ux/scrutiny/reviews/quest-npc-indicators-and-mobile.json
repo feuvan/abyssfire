@@ -1,0 +1,28 @@
+{
+  "featureId": "quest-npc-indicators-and-mobile",
+  "reviewedAt": "2026-03-26T14:54:18Z",
+  "commitId": "6f71ee6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature partially implements NPC indicators and mobile tap-target adjustments, but it misses immediate indicator updates on quest completion and changes the required available-quest indicator color from yellow to grey for side quests.",
+    "issues": [
+      {
+        "file": "src/scenes/ZoneScene.ts",
+        "line": 490,
+        "severity": "blocking",
+        "description": "NPC markers are only refreshed on QUEST_ACCEPTED and QUEST_TURNED_IN plus the 500ms polling path; there is no QUEST_COMPLETED listener, so completing objectives does not trigger the required event-driven immediate change from '!' to '?' when quest state flips to completed."
+      },
+      {
+        "file": "src/ui/QuestNPCIndicators.ts",
+        "line": 84,
+        "severity": "blocking",
+        "description": "Available side quests return a grey '!' (#95a5a6), but the feature explicitly requires a floating yellow '!' for NPCs with available quests. This changes the specified UI behavior rather than preserving it."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the feature's mission metadata, handoff, transcript skeleton, ui-worker skill, and commit 6f71ee6. The implementation adds a pure NPC-indicator helper, broadens marker support to any quest-bearing NPC, and increases some tap targets, but it does not fully satisfy the feature because quest completion does not update indicators via EventBus immediately and available side quests use a grey indicator instead of the required yellow one."
+}

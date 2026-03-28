@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-sprite-test-timeout",
+  "reviewedAt": "2026-03-26T13:45:00Z",
+  "commitId": "4e87ed5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix removes the heavy SpriteGenerator module import from the timeout-prone test block and replaces it with direct drawer imports that still validate the required texture-key contracts. This addresses the test-timeout root cause without changing production code.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Review passed: commit 4e87ed5 rewrites the slow SpriteBlocksAndMerchant tests to use lightweight drawer imports, keeping coverage on the required texture-key contracts while eliminating the timeout source."
+}
