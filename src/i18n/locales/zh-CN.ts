@@ -1391,6 +1391,180 @@ const zhCN: LocaleData = {
   'data.lore.lore_ar_04.text': '一个残破的魔法阵，仍然闪烁着微弱的光芒。这是远古贤者设置的五道封印之一。阵法的中心刻着铭文："以我之血为锁，以我之魂为钥。唯有五阵齐亮，深渊之门方可永封。"阵法已经破碎大半，修复之路遥遥无期。',
   'data.lore.lore_ar_05.name': '恶魔契约石板',
   'data.lore.lore_ar_05.text': '一块刻满恶魔文字的石板。虽然大部分无法辨认，但其中一段被翻译过的文字清晰可见："与深渊签订契约者，将获得无尽的力量，代价是灵魂的永恒沉沦。虚空先驱是第一个接受契约的人间生灵，也是魔王最忠实的仆从。"',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Inventory Panel
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.inventory.title': '背包 ({count}/{max})',
+  'ui.inventory.sort': '[整理]',
+  'ui.inventory.destroy': '[销毁]',
+  'ui.inventory.slot.helmet': '头盔',
+  'ui.inventory.slot.armor': '铠甲',
+  'ui.inventory.slot.gloves': '手套',
+  'ui.inventory.slot.boots': '鞋子',
+  'ui.inventory.slot.weapon': '武器',
+  'ui.inventory.slot.offhand': '副手',
+  'ui.inventory.slot.necklace': '项链',
+  'ui.inventory.slot.ring1': '戒指1',
+  'ui.inventory.slot.ring2': '戒指2',
+  'ui.inventory.slot.belt': '腰带',
+  'ui.inventory.prevPage': '< 上一页',
+  'ui.inventory.nextPage': '下一页 >',
+  'ui.inventory.pageLabel': '第{current}/{total}页',
+  'ui.inventory.equipBonus': '装备加成: {stats}',
+  'ui.inventory.equipBonusNone': '装备加成: 无',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Shop Panel
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.shop.blacksmith': '铁匠铺',
+  'ui.shop.shop': '商店',
+  'ui.shop.itemList': '商品列表',
+  'ui.shop.yourBag': '你的背包',
+  'ui.shop.buy': '[买]',
+  'ui.shop.buyback': '回购',
+  'ui.shop.buybackBtn': '[回购]',
+  'ui.shop.gold': '金币: {gold}G',
+  'ui.shop.prevPage': '< 上页',
+  'ui.shop.nextPage': '下页 >',
+  'ui.shop.sellHint': '右键快速卖出',
+  'ui.shop.sellConfirm': '卖出 {name} ({price}G)?',
+  'ui.shop.confirm': '[确定]',
+  'ui.shop.cancel': '[取消]',
+  'ui.shop.buybackLog': '回购了 {name}',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Character Stats Panel
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.character.title': '角色属性 - {className}',
+  'ui.character.subtitle': 'Lv.{level}  剩余属性点: {points}',
+  'ui.character.stat.str': '力量 STR',
+  'ui.character.stat.dex': '敏捷 DEX',
+  'ui.character.stat.vit': '体质 VIT',
+  'ui.character.stat.int': '智力 INT',
+  'ui.character.stat.spi': '精神 SPI',
+  'ui.character.stat.lck': '幸运 LCK',
+  'ui.character.stat.str.desc': '物理伤害/负重',
+  'ui.character.stat.dex.desc': '闪避/暴击率/攻速',
+  'ui.character.stat.vit.desc': '生命值/物理抗性',
+  'ui.character.stat.int.desc': '魔法伤害/法术抗性',
+  'ui.character.stat.spi.desc': '法力值/法力回复',
+  'ui.character.stat.lck.desc': '掉宝率/暴击倍率',
+  'ui.character.computed.attack': '攻击',
+  'ui.character.computed.defense': '防御',
+  'ui.character.computed.critRate': '暴击率',
+  'ui.character.computed.critDamage': '暴击伤害',
+  'ui.character.computed.gold': '金币',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Item Tooltip
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.tooltip.quality.normal': '普通',
+  'ui.tooltip.quality.magic': '魔法',
+  'ui.tooltip.quality.rare': '稀有',
+  'ui.tooltip.quality.legendary': '传奇',
+  'ui.tooltip.quality.set': '套装',
+  'ui.tooltip.type.weapon': '武器',
+  'ui.tooltip.type.armor': '护甲',
+  'ui.tooltip.type.accessory': '饰品',
+  'ui.tooltip.type.consumable': '消耗品',
+  'ui.tooltip.type.gem': '宝石',
+  'ui.tooltip.type.material': '材料',
+  'ui.tooltip.type.scroll': '卷轴',
+  'ui.tooltip.slot.helmet': '头盔',
+  'ui.tooltip.slot.armor': '铠甲',
+  'ui.tooltip.slot.gloves': '手套',
+  'ui.tooltip.slot.boots': '鞋子',
+  'ui.tooltip.slot.weapon': '武器',
+  'ui.tooltip.slot.offhand': '副手',
+  'ui.tooltip.slot.necklace': '项链',
+  'ui.tooltip.slot.ring1': '戒指',
+  'ui.tooltip.slot.ring2': '戒指',
+  'ui.tooltip.slot.belt': '腰带',
+  'ui.tooltip.damage': '伤害: {min}-{max}',
+  'ui.tooltip.defense': '防御: {value}',
+  'ui.tooltip.unidentified': '[未鉴定]',
+  'ui.tooltip.gemEffect': '镶嵌效果: +{value}{suffix} {label}',
+  'ui.tooltip.gemHeader': '── 宝石 ──',
+  'ui.tooltip.socketCount': '插槽: {filled}/{max}',
+  'ui.tooltip.sellPrice': '售价: {price}G',
+  'ui.tooltip.legendaryEffect': '蕴含未知的力量',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Context Menu
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.context.equip': '装备',
+  'ui.context.use': '使用',
+  'ui.context.discard': '丢弃',
+  'ui.context.discardConfirmTitle': '确定丢弃?',
+  'ui.context.confirmYes': '[确定]',
+  'ui.context.confirmNo': '[取消]',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — STAT_DISPLAY translations
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.stat.damage': '伤害',
+  'ui.stat.damagePercent': '伤害',
+  'ui.stat.defense': '防御',
+  'ui.stat.defensePercent': '防御',
+  'ui.stat.str': '力量',
+  'ui.stat.dex': '敏捷',
+  'ui.stat.int': '智力',
+  'ui.stat.vit': '体力',
+  'ui.stat.spi': '精神',
+  'ui.stat.lck': '幸运',
+  'ui.stat.maxHp': '生命',
+  'ui.stat.maxHpPercent': '生命',
+  'ui.stat.maxMana': '法力',
+  'ui.stat.maxManaPercent': '法力',
+  'ui.stat.lifeSteal': '生命偷取',
+  'ui.stat.manaSteal': '法力偷取',
+  'ui.stat.hpRegen': '生命回复/秒',
+  'ui.stat.manaRegen': '法力回复/秒',
+  'ui.stat.critRate': '暴击率',
+  'ui.stat.critDamage': '暴击伤害',
+  'ui.stat.attackSpeed': '攻击速度',
+  'ui.stat.fireDamage': '火焰伤害',
+  'ui.stat.iceDamage': '冰霜伤害',
+  'ui.stat.lightningDamage': '闪电伤害',
+  'ui.stat.poisonDamage': '毒素伤害',
+  'ui.stat.fireResist': '火焰抗性',
+  'ui.stat.iceResist': '冰霜抗性',
+  'ui.stat.lightningResist': '闪电抗性',
+  'ui.stat.poisonResist': '毒素抗性',
+  'ui.stat.allResist': '全部抗性',
+  'ui.stat.moveSpeed': '移动速度',
+  'ui.stat.magicFind': '掉宝率',
+  'ui.stat.expBonus': '经验加成',
+  'ui.stat.cooldownReduction': '冷却缩减',
+  'ui.stat.knockback': '击退',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — HUD elements
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.hud.combatLog': '战斗日志',
+  'ui.hud.autoCombat.on': 'AUTO\nON',
+  'ui.hud.autoCombat.off': 'AUTO\nOFF',
+  'ui.hud.autoLoot.off': '拾取\nOFF',
+  'ui.hud.autoLoot.all': '拾取\n全部',
+  'ui.hud.autoLoot.magic': '拾取\n魔法+',
+  'ui.hud.autoLoot.rare': '拾取\n稀有+',
+  'ui.hud.autoLoot.legendary': '拾取\n传奇+',
+  'ui.hud.inventoryBtn': '背包\n(I)',
+  'ui.hud.autoCombatLog.on': '自动战斗: 开启',
+  'ui.hud.autoCombatLog.off': '自动战斗: 关闭',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Compass directions
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.compass.east': '东',
+  'ui.compass.southeast': '东南',
+  'ui.compass.south': '南',
+  'ui.compass.southwest': '西南',
+  'ui.compass.west': '西',
+  'ui.compass.northwest': '西北',
+  'ui.compass.north': '北',
+  'ui.compass.northeast': '东北',
 };
 
 export default zhCN;

@@ -21,6 +21,8 @@ import type { NpcQuestEntry, QuestCardData } from '../ui/QuestCardUI';
 import type { MercenaryState } from '../systems/MercenarySystem';
 import { LoreByZone, AllLoreEntries, getLoreCountByZone } from '../data/loreCollectibles';
 import type { LoreEntry } from '../data/loreCollectibles';
+import { t, getLocale } from '../i18n';
+import { getItemDisplayName, getItemBaseName, getItemBaseDesc, getAffixName, getStatLabel, isStatPercent, getQualityLabel, getSetName, getSetBonusDesc, getClassName, getDirection as getLocalizedDirection } from '../i18n/gameAccessors';
 
 const FONT = '"Noto Sans SC", sans-serif';
 const TITLE_FONT = '"Cinzel", "Noto Sans SC", serif';
@@ -78,15 +80,7 @@ function fs(basePx: number): string {
 const px = (n: number) => Math.round(n * DPR);
 
 function getDirection(dc: number, dr: number): string {
-  const angle = Math.atan2(dr, dc) * 180 / Math.PI;
-  if (angle >= -22.5 && angle < 22.5) return '东';
-  if (angle >= 22.5 && angle < 67.5) return '东南';
-  if (angle >= 67.5 && angle < 112.5) return '南';
-  if (angle >= 112.5 && angle < 157.5) return '西南';
-  if (angle >= 157.5 || angle < -157.5) return '西';
-  if (angle >= -157.5 && angle < -112.5) return '西北';
-  if (angle >= -112.5 && angle < -67.5) return '北';
-  return '东北';
+  return getLocalizedDirection(dc, dr);
 }
 
 export class UIScene extends Phaser.Scene {
@@ -354,19 +348,19 @@ export class UIScene extends Phaser.Scene {
     const acX = utilStartX + utilBtnW / 2;
     const acBg = this.add.rectangle(acX, y, utilBtnW, slotSize, 0x1a1a2e)
       .setStrokeStyle(1.5 * DPR, 0x555566).setInteractive({ useHandCursor: true }).setDepth(3000);
-    this.autoCombatText = this.add.text(acX, y, 'AUTO\nOFF', {
+    this.autoCombatText = this.add.text(acX, y, t('ui.hud.autoCombat.off'), {
       fontSize: fs(12), color: '#666680', fontFamily: FONT, align: 'center',
     }).setOrigin(0.5).setDepth(3001);
     acBg.on('pointerdown', () => {
       this.player.autoCombat = !this.player.autoCombat;
-      EventBus.emit(GameEvents.LOG_MESSAGE, { text: `自动战斗: ${this.player.autoCombat ? '开启' : '关闭'}`, type: 'system' });
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: this.player.autoCombat ? t('ui.hud.autoCombatLog.on') : t('ui.hud.autoCombatLog.off'), type: 'system' });
     });
 
     // Auto-loot button
     const alX = acX + utilBtnW + utilGap;
     const alBg = this.add.rectangle(alX, y, utilBtnW, slotSize, 0x1a1a2e)
       .setStrokeStyle(1.5 * DPR, 0x555566).setInteractive({ useHandCursor: true }).setDepth(3000);
-    this.autoLootText = this.add.text(alX, y, '拾取\nOFF', {
+    this.autoLootText = this.add.text(alX, y, t('ui.hud.autoLoot.off'), {
       fontSize: fs(12), color: '#666680', fontFamily: FONT, align: 'center',
     }).setOrigin(0.5).setDepth(3001);
     alBg.on('pointerdown', () => {
@@ -379,7 +373,7 @@ export class UIScene extends Phaser.Scene {
     const invX = alX + utilBtnW + utilGap;
     const invBg = this.add.rectangle(invX, y, utilBtnW, slotSize, 0x1a1a2e)
       .setStrokeStyle(1.5 * DPR, 0x8e44ad).setInteractive({ useHandCursor: true }).setDepth(3000);
-    this.add.text(invX, y, '背包\n(I)', {
+    this.add.text(invX, y, t('ui.hud.inventoryBtn'), {
       fontSize: fs(12), color: '#b08cce', fontFamily: FONT, align: 'center',
     }).setOrigin(0.5).setDepth(3001);
     invBg.on('pointerdown', () => this.toggleInventory());
@@ -390,7 +384,7 @@ export class UIScene extends Phaser.Scene {
     const panelW = px(300), panelH = px(140), x = px(10), y = H - px(210);
     this.add.rectangle(x, y, panelW, panelH, 0x000000, 0.55)
       .setOrigin(0, 0).setStrokeStyle(Math.round(1 * DPR), 0x222233).setDepth(2999);
-    this.add.text(x + px(8), y + px(4), '战斗日志', {
+    this.add.text(x + px(8), y + px(4), t('ui.hud.combatLog'), {
       fontSize: fs(12), color: '#c0934a', fontFamily: FONT,
     }).setDepth(3000);
     for (let i = 0; i < LOG_MAX_LINES; i++) {
@@ -446,6 +440,7 @@ export class UIScene extends Phaser.Scene {
     EventBus.on(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
     EventBus.on(GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
     EventBus.on('ui:refresh', this.handleUiRefresh, this);
+    EventBus.on(GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
     // Quest events — force immediate tracker refresh
     EventBus.on(GameEvents.QUEST_ACCEPTED, this.handleQuestTrackerDirty, this);
     EventBus.on(GameEvents.QUEST_COMPLETED, this.handleQuestTrackerDirty, this);
@@ -517,6 +512,19 @@ export class UIScene extends Phaser.Scene {
     this.lastQuestTrackerSignature = '';
   }
 
+  /** Handle locale change: refresh all open panels so text updates in-place. */
+  private handleLocaleChanged(): void {
+    // Refresh inventory panel if open
+    if (this.inventoryPanel) { this.refreshInventory(); }
+    // Refresh character panel if open
+    if (this.charPanel) { this.toggleCharacter(); this.toggleCharacter(); }
+    // Refresh shop panel — requires reopening since it needs data
+    // (shop is backdrop-modal, complex to refresh in-place; re-open is acceptable)
+    // Refresh quest tracker
+    this.lastQuestTrackerSignature = '';
+    this.nextQuestTrackerRefreshAt = 0;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private handleMiniBossDialogue(data: any): void {
     this.showMiniBossDialogue(data.bossName, data.dialogueTree, data.onDismiss);
@@ -561,12 +569,12 @@ export class UIScene extends Phaser.Scene {
     this.inventoryPanel.add(this.createPanelBg(pw, ph));
 
     // Title with item count and page
-    this.inventoryPanel.add(this.add.text(px(14), px(12), `背包 (${inv.length}/${100})`, {
+    this.inventoryPanel.add(this.add.text(px(14), px(12), t('ui.inventory.title', { count: String(inv.length), max: '100' }), {
       fontSize: fs(PANEL_STYLE.header.fontSize), color: PANEL_STYLE.header.color, fontFamily: PANEL_STYLE.header.font, fontStyle: 'bold',
     }));
 
     // Sort button
-    const sortBtn = this.add.text(pw - px(120), px(10), '[整理]', {
+    const sortBtn = this.add.text(pw - px(120), px(10), t('ui.inventory.sort'), {
       fontSize: fs(14), color: '#5dade2', fontFamily: FONT,
     }).setInteractive({ useHandCursor: true });
     sortBtn.on('pointerdown', () => {
@@ -576,7 +584,7 @@ export class UIScene extends Phaser.Scene {
     this.inventoryPanel.add(sortBtn);
 
     // Destroy normal items button
-    const destroyBtn = this.add.text(pw - px(68), px(10), '[销毁]', {
+    const destroyBtn = this.add.text(pw - px(68), px(10), t('ui.inventory.destroy'), {
       fontSize: fs(14), color: '#e74c3c', fontFamily: FONT,
     }).setInteractive({ useHandCursor: true });
     destroyBtn.on('pointerdown', () => {
@@ -591,7 +599,7 @@ export class UIScene extends Phaser.Scene {
 
     // Equipment slots — 5x2 grid
     const equipSlots = ['helmet', 'armor', 'gloves', 'boots', 'weapon', 'offhand', 'necklace', 'ring1', 'ring2', 'belt'];
-    const slotNames = ['头盔', '铠甲', '手套', '鞋子', '武器', '副手', '项链', '戒指1', '戒指2', '腰带'];
+    const slotNameKeys = ['ui.inventory.slot.helmet', 'ui.inventory.slot.armor', 'ui.inventory.slot.gloves', 'ui.inventory.slot.boots', 'ui.inventory.slot.weapon', 'ui.inventory.slot.offhand', 'ui.inventory.slot.necklace', 'ui.inventory.slot.ring1', 'ui.inventory.slot.ring2', 'ui.inventory.slot.belt'];
     const eqSlotSize = px(36);
     const eqGap = px(6);
     const eqStartX = px(14);
@@ -603,7 +611,7 @@ export class UIScene extends Phaser.Scene {
       const slotBg = this.add.rectangle(sx + eqSlotSize / 2, sy + eqSlotSize / 2, eqSlotSize, eqSlotSize, eq ? this.getQualityColorNum(eq.quality) : 0x222233)
         .setStrokeStyle(Math.round(1 * DPR), 0x444455).setInteractive({ useHandCursor: true });
       this.inventoryPanel!.add(slotBg);
-      this.inventoryPanel!.add(this.add.text(sx + eqSlotSize / 2, sy + eqSlotSize + px(2), slotNames[i], {
+      this.inventoryPanel!.add(this.add.text(sx + eqSlotSize / 2, sy + eqSlotSize + px(2), t(slotNameKeys[i]), {
         fontSize: fs(11), color: '#777788', fontFamily: FONT,
       }).setOrigin(0.5, 0));
       if (eq) {
@@ -674,17 +682,17 @@ export class UIScene extends Phaser.Scene {
     const pageY = gridStartY + 5 * (slotSize + gap) + px(4);
     if (totalPages > 1) {
       if (this.inventoryPage > 0) {
-        const prevBtn = this.add.text(pw / 2 - px(80), pageY, '< 上一页', {
+        const prevBtn = this.add.text(pw / 2 - px(80), pageY, t('ui.inventory.prevPage'), {
           fontSize: fs(13), color: '#5dade2', fontFamily: FONT,
         }).setInteractive({ useHandCursor: true });
         prevBtn.on('pointerdown', () => { this.inventoryPage--; this.refreshInventory(); });
         this.inventoryPanel.add(prevBtn);
       }
-      this.inventoryPanel.add(this.add.text(pw / 2, pageY, `第${this.inventoryPage + 1}/${totalPages}页`, {
+      this.inventoryPanel.add(this.add.text(pw / 2, pageY, t('ui.inventory.pageLabel', { current: String(this.inventoryPage + 1), total: String(totalPages) }), {
         fontSize: fs(13), color: '#888', fontFamily: FONT,
       }).setOrigin(0.5, 0));
       if (this.inventoryPage < totalPages - 1) {
-        const nextBtn = this.add.text(pw / 2 + px(40), pageY, '下一页 >', {
+        const nextBtn = this.add.text(pw / 2 + px(40), pageY, t('ui.inventory.nextPage'), {
           fontSize: fs(13), color: '#5dade2', fontFamily: FONT,
         }).setInteractive({ useHandCursor: true });
         nextBtn.on('pointerdown', () => { this.inventoryPage++; this.refreshInventory(); });
@@ -697,12 +705,11 @@ export class UIScene extends Phaser.Scene {
     const statText = Object.entries(eqStats)
       .filter(([, v]) => v !== 0)
       .map(([k, v]) => {
-        const disp = STAT_DISPLAY[k];
-        const label = disp ? disp.label : k;
-        const suffix = disp?.isPercent ? '%' : '';
+        const label = getStatLabel(k);
+        const suffix = isStatPercent(k) ? '%' : '';
         return `${label}+${v}${suffix}`;
       }).join('  ');
-    this.inventoryPanel.add(this.add.text(px(14), ph - px(22), `装备加成: ${statText || '无'}`, {
+    this.inventoryPanel.add(this.add.text(px(14), ph - px(22), statText ? t('ui.inventory.equipBonus', { stats: statText }) : t('ui.inventory.equipBonusNone'), {
       fontSize: fs(12), color: '#777788', fontFamily: FONT, wordWrap: { width: pw - px(28), useAdvancedWrap: true },
     }));
   }
@@ -734,7 +741,7 @@ export class UIScene extends Phaser.Scene {
     this.shopPanel = this.add.container(panelX, panelY).setDepth(PANEL_STYLE.depth.panel);
     this.animatePanelOpen(this.shopPanel);
     this.shopPanel.add(this.createPanelBg(pw, ph));
-    const title = data.type === 'blacksmith' ? '铁匠铺' : '商店';
+    const title = data.type === 'blacksmith' ? t('ui.shop.blacksmith') : t('ui.shop.shop');
     this.shopPanel.add(this.createPanelTitle(pw, title));
     this.shopPanel.add(this.createPanelCloseBtn(pw, () => {
       this.hideItemTooltip();
@@ -746,7 +753,7 @@ export class UIScene extends Phaser.Scene {
     this.shopPanel.add(this.add.rectangle(dividerX, px(36), Math.round(1 * DPR), ph - px(56), 0x333344).setOrigin(0, 0));
 
     // --- LEFT: Merchant items ---
-    this.shopPanel.add(this.add.text(dividerX / 2, px(38), '商品列表', {
+    this.shopPanel.add(this.add.text(dividerX / 2, px(38), t('ui.shop.itemList'), {
       fontSize: fs(14), color: '#c0934a', fontFamily: FONT,
     }).setOrigin(0.5, 0));
 
@@ -757,14 +764,14 @@ export class UIScene extends Phaser.Scene {
       if (iy > ph - px(50)) return;
       const buyPrice = base.sellPrice * 3;
       const canAfford = this.player.gold >= buyPrice;
-      this.shopPanel!.add(this.add.text(px(14), iy, base.name, {
+      this.shopPanel!.add(this.add.text(px(14), iy, getItemBaseName(itemId), {
         fontSize: fs(13), color: canAfford ? '#e0d8cc' : '#555', fontFamily: FONT,
       }));
       this.shopPanel!.add(this.add.text(dividerX - px(60), iy, `${buyPrice}G`, {
         fontSize: fs(13), color: canAfford ? '#f1c40f' : '#555', fontFamily: FONT,
       }).setOrigin(1, 0));
       if (canAfford) {
-        const buyBtn = this.add.text(dividerX - px(14), iy, '[买]', {
+        const buyBtn = this.add.text(dividerX - px(14), iy, t('ui.shop.buy'), {
           fontSize: fs(13), color: '#27ae60', fontFamily: FONT,
         }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
         buyBtn.on('pointerdown', () => {
@@ -785,7 +792,7 @@ export class UIScene extends Phaser.Scene {
     if (buybackItems.length > 0) {
       const buybackStartY = px(58) + data.shopItems.length * px(28) + px(12);
       this.shopPanel.add(this.add.rectangle(dividerX / 2, buybackStartY - px(4), dividerX - px(28), Math.round(1 * DPR), 0x333344));
-      this.shopPanel.add(this.add.text(dividerX / 2, buybackStartY, '回购', {
+      this.shopPanel.add(this.add.text(dividerX / 2, buybackStartY, t('ui.shop.buyback'), {
         fontSize: fs(13), color: '#c0934a', fontFamily: FONT,
       }).setOrigin(0.5, 0));
       buybackItems.forEach((entry, i) => {
@@ -793,14 +800,14 @@ export class UIScene extends Phaser.Scene {
         if (by > ph - px(50)) return;
         const canAfford = this.player.gold >= entry.buybackPrice;
         const qualColor = this.getQualityTextColor(entry.item.quality);
-        this.shopPanel!.add(this.add.text(px(14), by, entry.item.name, {
+        this.shopPanel!.add(this.add.text(px(14), by, getItemDisplayName(entry.item), {
           fontSize: fs(12), color: canAfford ? qualColor : '#555', fontFamily: FONT,
         }));
         this.shopPanel!.add(this.add.text(dividerX - px(60), by, `${entry.buybackPrice}G`, {
           fontSize: fs(12), color: canAfford ? '#e8a040' : '#555', fontFamily: FONT,
         }).setOrigin(1, 0));
         if (canAfford) {
-          const bbBtn = this.add.text(dividerX - px(14), by, '[回购]', {
+          const bbBtn = this.add.text(dividerX - px(14), by, t('ui.shop.buybackBtn'), {
             fontSize: fs(12), color: '#e8a040', fontFamily: FONT,
           }).setOrigin(1, 0).setInteractive({ useHandCursor: true });
           bbBtn.on('pointerdown', () => {
@@ -809,7 +816,7 @@ export class UIScene extends Phaser.Scene {
               if (result) {
                 this.player.gold -= result.cost;
                 audioManager.playSFX('click');
-                EventBus.emit(GameEvents.LOG_MESSAGE, { text: `回购了 ${result.item.name}`, type: 'loot' });
+                EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('ui.shop.buybackLog', { name: getItemDisplayName(result.item) }), type: 'loot' });
               }
               this.reopenShop(data);
             }
@@ -819,14 +826,14 @@ export class UIScene extends Phaser.Scene {
       });
     }
 
-    this.shopPanel.add(this.add.text(px(14), ph - px(26), `金币: ${this.player.gold}G`, {
+    this.shopPanel.add(this.add.text(px(14), ph - px(26), t('ui.shop.gold', { gold: String(this.player.gold) }), {
       fontSize: fs(13), color: '#f1c40f', fontFamily: FONT,
     }));
 
     // --- RIGHT: Player inventory for selling ---
     const rightX = dividerX + px(10);
     const rightW = pw - dividerX - px(20);
-    this.shopPanel.add(this.add.text(dividerX + rightW / 2 + px(10), px(38), '你的背包', {
+    this.shopPanel.add(this.add.text(dividerX + rightW / 2 + px(10), px(38), t('ui.shop.yourBag'), {
       fontSize: fs(14), color: '#c0934a', fontFamily: FONT,
     }).setOrigin(0.5, 0));
 
@@ -885,7 +892,7 @@ export class UIScene extends Phaser.Scene {
     if (shopTotalPages > 1) {
       const pageY = ph - px(50);
       if (this.shopInventoryPage > 0) {
-        const prevBtn = this.add.text(rightX + rightW / 2 - px(60), pageY, '< 上页', {
+        const prevBtn = this.add.text(rightX + rightW / 2 - px(60), pageY, t('ui.shop.prevPage'), {
           fontSize: fs(12), color: '#5dade2', fontFamily: FONT,
         }).setInteractive({ useHandCursor: true });
         prevBtn.on('pointerdown', () => {
@@ -898,7 +905,7 @@ export class UIScene extends Phaser.Scene {
         fontSize: fs(12), color: '#888', fontFamily: FONT,
       }).setOrigin(0.5, 0));
       if (this.shopInventoryPage < shopTotalPages - 1) {
-        const nextBtn = this.add.text(rightX + rightW / 2 + px(30), pageY, '下页 >', {
+        const nextBtn = this.add.text(rightX + rightW / 2 + px(30), pageY, t('ui.shop.nextPage'), {
           fontSize: fs(12), color: '#5dade2', fontFamily: FONT,
         }).setInteractive({ useHandCursor: true });
         nextBtn.on('pointerdown', () => {
@@ -910,12 +917,12 @@ export class UIScene extends Phaser.Scene {
     }
 
     // Gold on right side too
-    this.shopPanel.add(this.add.text(rightX, ph - px(26), `金币: ${this.player.gold}G`, {
+    this.shopPanel.add(this.add.text(rightX, ph - px(26), t('ui.shop.gold', { gold: String(this.player.gold) }), {
       fontSize: fs(13), color: '#f1c40f', fontFamily: FONT,
     }));
 
     // Hint for right-click selling
-    this.shopPanel.add(this.add.text(rightX, ph - px(12), '右键快速卖出', {
+    this.shopPanel.add(this.add.text(rightX, ph - px(12), t('ui.shop.sellHint'), {
       fontSize: fs(10), color: '#555566', fontFamily: FONT,
     }));
   }
@@ -928,10 +935,10 @@ export class UIScene extends Phaser.Scene {
     const popX = (W - popW) / 2, popY = (H - popH) / 2;
     this.contextPopup = this.add.container(popX, popY).setDepth(PANEL_STYLE.depth.confirmDialog);
     this.contextPopup.add(this.add.rectangle(0, 0, popW, popH, 0x0a0a18, 0.95).setOrigin(0, 0).setStrokeStyle(Math.round(1 * DPR), PANEL_STYLE.border.color));
-    this.contextPopup.add(this.add.text(popW / 2, px(8), `卖出 ${item.name} (${sellPrice}G)?`, {
+    this.contextPopup.add(this.add.text(popW / 2, px(8), t('ui.shop.sellConfirm', { name: getItemDisplayName(item), price: String(sellPrice) }), {
       fontSize: fs(12), color: '#e0d8cc', fontFamily: FONT, wordWrap: { width: popW - px(16), useAdvancedWrap: true },
     }).setOrigin(0.5, 0));
-    const yesBtn = this.add.text(popW / 2 - px(30), px(38), '[确定]', {
+    const yesBtn = this.add.text(popW / 2 - px(30), px(38), t('ui.shop.confirm'), {
       fontSize: fs(13), color: '#27ae60', fontFamily: FONT,
     }).setInteractive({ useHandCursor: true });
     yesBtn.on('pointerdown', () => {
@@ -942,7 +949,7 @@ export class UIScene extends Phaser.Scene {
       this.reopenShop(shopData);
     });
     this.contextPopup.add(yesBtn);
-    const noBtn = this.add.text(popW / 2 + px(30), px(38), '[取消]', {
+    const noBtn = this.add.text(popW / 2 + px(30), px(38), t('ui.shop.cancel'), {
       fontSize: fs(13), color: '#888', fontFamily: FONT,
     }).setInteractive({ useHandCursor: true });
     noBtn.on('pointerdown', () => this.hideContextPopup());
@@ -1604,19 +1611,19 @@ export class UIScene extends Phaser.Scene {
     this.charPanel = this.add.container(panelX, panelY).setDepth(PANEL_STYLE.depth.panel);
     this.animatePanelOpen(this.charPanel);
     this.charPanel.add(this.createPanelBg(pw, ph));
-    this.charPanel.add(this.createPanelTitle(pw, `角色属性 - ${this.player.classData.name}`));
-    this.charPanel.add(this.add.text(pw / 2, px(28), `Lv.${this.player.level}  剩余属性点: ${this.player.freeStatPoints}`, {
+    this.charPanel.add(this.createPanelTitle(pw, t('ui.character.title', { className: getClassName(this.player.classData.id ?? 'warrior') })));
+    this.charPanel.add(this.add.text(pw / 2, px(28), t('ui.character.subtitle', { level: String(this.player.level), points: String(this.player.freeStatPoints) }), {
       fontSize: fs(13), color: '#f1c40f', fontFamily: FONT,
     }).setOrigin(0.5, 0));
     this.charPanel.add(this.createPanelCloseBtn(pw, () => this.toggleCharacter()));
 
     const statKeys: [string, keyof typeof this.player.stats, string][] = [
-      ['力量 STR', 'str', '物理伤害/负重'],
-      ['敏捷 DEX', 'dex', '闪避/暴击率/攻速'],
-      ['体质 VIT', 'vit', '生命值/物理抗性'],
-      ['智力 INT', 'int', '魔法伤害/法术抗性'],
-      ['精神 SPI', 'spi', '法力值/法力回复'],
-      ['幸运 LCK', 'lck', '掉宝率/暴击倍率'],
+      [t('ui.character.stat.str'), 'str', t('ui.character.stat.str.desc')],
+      [t('ui.character.stat.dex'), 'dex', t('ui.character.stat.dex.desc')],
+      [t('ui.character.stat.vit'), 'vit', t('ui.character.stat.vit.desc')],
+      [t('ui.character.stat.int'), 'int', t('ui.character.stat.int.desc')],
+      [t('ui.character.stat.spi'), 'spi', t('ui.character.stat.spi.desc')],
+      [t('ui.character.stat.lck'), 'lck', t('ui.character.stat.lck.desc')],
     ];
     const eqStatsRaw = this.zone.inventorySystem.getEquipmentStats();
     const statRowH = px(36);
@@ -1662,10 +1669,10 @@ export class UIScene extends Phaser.Scene {
     const derived = [
       `HP: ${Math.ceil(this.player.hp)}/${this.player.maxHp}`,
       `MP: ${Math.ceil(this.player.mana)}/${this.player.maxMana}`,
-      `攻击: ${Math.floor(this.player.baseDamage)}${eqStats['damage'] ? ` (+${eqStats['damage']})` : ''}${eqStats['damagePercent'] ? ` +${eqStats['damagePercent']}%` : ''}`,
-      `防御: ${Math.floor(this.player.defense)}${eqStats['defense'] ? ` (+${eqStats['defense']})` : ''}`,
-      `暴击率: ${critPct}%  暴击伤害: ${150 + (eqStats['critDamage'] ?? 0)}%`,
-      `金币: ${this.player.gold}G`,
+      `${t('ui.character.computed.attack')}: ${Math.floor(this.player.baseDamage)}${eqStats['damage'] ? ` (+${eqStats['damage']})` : ''}${eqStats['damagePercent'] ? ` +${eqStats['damagePercent']}%` : ''}`,
+      `${t('ui.character.computed.defense')}: ${Math.floor(this.player.defense)}${eqStats['defense'] ? ` (+${eqStats['defense']})` : ''}`,
+      `${t('ui.character.computed.critRate')}: ${critPct}%  ${t('ui.character.computed.critDamage')}: ${150 + (eqStats['critDamage'] ?? 0)}%`,
+      `${t('ui.character.computed.gold')}: ${this.player.gold}G`,
     ];
     derived.forEach((line, i) => {
       this.charPanel!.add(this.add.text(px(14), dy + i * px(18), line, {
@@ -3238,42 +3245,35 @@ export class UIScene extends Phaser.Scene {
     const qualityColors: Record<string, string> = {
       normal: '#cccccc', magic: '#5dade2', rare: '#f1c40f', legendary: '#e67e22', set: '#2ecc71',
     };
-    const qualityLabels: Record<string, string> = {
-      normal: '普通', magic: '魔法', rare: '稀有', legendary: '传奇', set: '套装',
-    };
-    lines.push({ text: item.name, color: qualityColors[item.quality] ?? '#ccc', size: 14 });
-    lines.push({ text: `${qualityLabels[item.quality] ?? ''} Lv.${item.level}`, color: '#888', size: 12 });
+    lines.push({ text: getItemDisplayName(item), color: qualityColors[item.quality] ?? '#ccc', size: 14 });
+    lines.push({ text: `${getQualityLabel(item.quality)} Lv.${item.level}`, color: '#888', size: 12 });
     if (base) {
-      const typeLabels: Record<string, string> = {
-        weapon: '武器', armor: '护甲', accessory: '饰品', consumable: '消耗品', gem: '宝石', material: '材料', scroll: '卷轴',
-      };
-      const slotLabels: Record<string, string> = {
-        helmet: '头盔', armor: '铠甲', gloves: '手套', boots: '鞋子', weapon: '武器',
-        offhand: '副手', necklace: '项链', ring1: '戒指', ring2: '戒指', belt: '腰带',
-      };
-      let typeLine = typeLabels[base.type] ?? base.type;
-      if (base.slot) typeLine += ` (${slotLabels[base.slot] ?? base.slot})`;
+      let typeLine = t(`ui.tooltip.type.${base.type}`);
+      if (typeLine === `ui.tooltip.type.${base.type}`) typeLine = base.type;
+      if (base.slot) {
+        const slotLabel = t(`ui.tooltip.slot.${base.slot}`);
+        typeLine += ` (${slotLabel !== `ui.tooltip.slot.${base.slot}` ? slotLabel : base.slot})`;
+      }
       lines.push({ text: typeLine, color: '#777', size: 12 });
       // Base item description
       if (base.description) {
-        lines.push({ text: base.description, color: '#8a8a7a', size: 11 });
+        lines.push({ text: getItemBaseDesc(item.baseId), color: '#8a8a7a', size: 11 });
       }
       if ('baseDamage' in base) {
         const wb = base as WeaponBase;
-        lines.push({ text: `伤害: ${wb.baseDamage[0]}-${wb.baseDamage[1]}`, color: '#e0d8cc', size: 12 });
+        lines.push({ text: t('ui.tooltip.damage', { min: String(wb.baseDamage[0]), max: String(wb.baseDamage[1]) }), color: '#e0d8cc', size: 12 });
       }
       if ('baseDefense' in base) {
         const ab = base as ArmorBase;
-        lines.push({ text: `防御: ${ab.baseDefense}`, color: '#e0d8cc', size: 12 });
+        lines.push({ text: t('ui.tooltip.defense', { value: String(ab.baseDefense) }), color: '#e0d8cc', size: 12 });
       }
     }
     if (!item.identified && item.quality !== 'normal') {
-      lines.push({ text: '[未鉴定]', color: '#e74c3c', size: 12 });
+      lines.push({ text: t('ui.tooltip.unidentified'), color: '#e74c3c', size: 12 });
     } else {
       for (const affix of item.affixes) {
-        const disp = STAT_DISPLAY[affix.stat];
-        const label = disp ? disp.label : affix.name;
-        const suffix = disp?.isPercent ? '%' : '';
+        const label = getStatLabel(affix.stat);
+        const suffix = isStatPercent(affix.stat) ? '%' : '';
         lines.push({ text: `+${affix.value}${suffix} ${label}`, color: '#5dade2', size: 12 });
       }
     }
@@ -3284,19 +3284,17 @@ export class UIScene extends Phaser.Scene {
     if (base?.type === 'gem') {
       const gemInfo = GEM_STAT_MAP[item.baseId];
       if (gemInfo) {
-        const disp = STAT_DISPLAY[gemInfo.stat];
-        const label = disp ? disp.label : gemInfo.stat;
-        const suffix = disp?.isPercent ? '%' : '';
-        lines.push({ text: `镶嵌效果: +${gemInfo.value}${suffix} ${label}`, color: '#8be9fd', size: 12 });
+        const label = getStatLabel(gemInfo.stat);
+        const suffix = isStatPercent(gemInfo.stat) ? '%' : '';
+        lines.push({ text: t('ui.tooltip.gemEffect', { value: String(gemInfo.value), suffix, label }), color: '#8be9fd', size: 12 });
       }
     }
     // Socketed gems
     if (item.sockets && item.sockets.length > 0) {
-      lines.push({ text: '── 宝石 ──', color: '#8be9fd', size: 11 });
+      lines.push({ text: t('ui.tooltip.gemHeader'), color: '#8be9fd', size: 11 });
       for (const gem of item.sockets) {
-        const disp = STAT_DISPLAY[gem.stat];
-        const label = disp ? disp.label : gem.stat;
-        const suffix = disp?.isPercent ? '%' : '';
+        const label = getStatLabel(gem.stat);
+        const suffix = isStatPercent(gem.stat) ? '%' : '';
         lines.push({ text: `◆ ${gem.name}: +${gem.value}${suffix} ${label}`, color: '#8be9fd', size: 11 });
       }
     }
@@ -3305,7 +3303,7 @@ export class UIScene extends Phaser.Scene {
       const maxSock = (base as WeaponBase | ArmorBase).sockets;
       if (maxSock > 0) {
         const filled = item.sockets?.length ?? 0;
-        lines.push({ text: `插槽: ${filled}/${maxSock}`, color: '#666', size: 11 });
+        lines.push({ text: t('ui.tooltip.socketCount', { filled: String(filled), max: String(maxSock) }), color: '#666', size: 11 });
       }
     }
 
@@ -3317,18 +3315,19 @@ export class UIScene extends Phaser.Scene {
         const equippedCount = this.zone.inventorySystem.getEquippedSetPieceCount(setDef.id);
         const totalPieces = setDef.pieces.length;
         lines.push({ text: '', color: '#333', size: 4 }); // spacer
-        lines.push({ text: `${setDef.name} (${equippedCount}/${totalPieces})`, color: '#2ecc71', size: 13 });
-        for (const bonus of setDef.bonuses) {
+        lines.push({ text: `${getSetName(setDef.id, setDef.name)} (${equippedCount}/${totalPieces})`, color: '#2ecc71', size: 13 });
+        for (let bi = 0; bi < setDef.bonuses.length; bi++) {
+          const bonus = setDef.bonuses[bi];
           const isActive = equippedCount >= bonus.count;
           const prefix = isActive ? '✓' : '○';
           const color = isActive ? '#2ecc71' : '#555550';
-          lines.push({ text: `${prefix} (${bonus.count}) ${bonus.description}`, color, size: 11 });
+          lines.push({ text: `${prefix} (${bonus.count}) ${getSetBonusDesc(setDef.id, bi, bonus.description)}`, color, size: 11 });
         }
       }
     }
 
     if (base) {
-      lines.push({ text: `售价: ${base.sellPrice}G`, color: '#f1c40f', size: 12 });
+      lines.push({ text: t('ui.tooltip.sellPrice', { price: String(base.sellPrice) }), color: '#f1c40f', size: 12 });
     }
 
     let tipH = px(12);
@@ -3371,14 +3370,14 @@ export class UIScene extends Phaser.Scene {
     const base = getItemBase(item.baseId);
     const actions: { label: string; callback: () => void }[] = [];
     if (base && base.slot) {
-      actions.push({ label: '装备', callback: () => {
+      actions.push({ label: t('ui.context.equip'), callback: () => {
         this.zone.inventorySystem.equip(item.uid);
         this.zone.invalidateEquipStats();
         this.hideContextPopup();
         this.refreshInventory();
       }});
     } else if (base && (base.type === 'consumable' || base.type === 'scroll')) {
-      actions.push({ label: '使用', callback: () => {
+      actions.push({ label: t('ui.context.use'), callback: () => {
         const result = this.zone.inventorySystem.useConsumable(item.uid);
         if (result) {
           if (result.effect === 'heal') this.player.hp = Math.min(this.player.maxHp, this.player.hp + result.value);
@@ -3389,7 +3388,7 @@ export class UIScene extends Phaser.Scene {
       }});
     }
     const needsConfirm = item.quality === 'rare' || item.quality === 'legendary' || item.quality === 'set';
-    actions.push({ label: '丢弃', callback: () => {
+    actions.push({ label: t('ui.context.discard'), callback: () => {
       if (needsConfirm) {
         this.showDiscardConfirm(item);
       } else {
@@ -3416,8 +3415,9 @@ export class UIScene extends Phaser.Scene {
       btnBg.on('pointerover', () => btnBg.setFillStyle(0x2a2a3e));
       btnBg.on('pointerout', () => btnBg.setFillStyle(0x1a1a2e));
       this.contextPopup!.add(btnBg);
+      const isDiscard = action.label === t('ui.context.discard');
       this.contextPopup!.add(this.add.text(popW / 2, by + btnH / 2 - px(1), action.label, {
-        fontSize: fs(13), color: action.label === '丢弃' ? '#e74c3c' : '#e0d8cc', fontFamily: FONT,
+        fontSize: fs(13), color: isDiscard ? '#e74c3c' : '#e0d8cc', fontFamily: FONT,
       }).setOrigin(0.5));
     });
   }
@@ -3432,10 +3432,10 @@ export class UIScene extends Phaser.Scene {
     const popX = (W - popW) / 2, popY = (H - popH) / 2;
     this.contextPopup = this.add.container(popX, popY).setDepth(PANEL_STYLE.depth.confirmDialog);
     this.contextPopup.add(this.add.rectangle(0, 0, popW, popH, 0x0a0a18, 0.95).setOrigin(0, 0).setStrokeStyle(Math.round(1 * DPR), 0xe74c3c));
-    this.contextPopup.add(this.add.text(popW / 2, px(8), '确定丢弃?', {
+    this.contextPopup.add(this.add.text(popW / 2, px(8), t('ui.context.discardConfirmTitle'), {
       fontSize: fs(14), color: '#e74c3c', fontFamily: FONT,
     }).setOrigin(0.5, 0));
-    const yesBtn = this.add.text(popW / 2 - px(30), px(34), '[确定]', {
+    const yesBtn = this.add.text(popW / 2 - px(30), px(34), t('ui.context.confirmYes'), {
       fontSize: fs(13), color: '#e74c3c', fontFamily: FONT,
     }).setInteractive({ useHandCursor: true });
     yesBtn.on('pointerdown', () => {
@@ -3444,7 +3444,7 @@ export class UIScene extends Phaser.Scene {
       this.refreshInventory();
     });
     this.contextPopup.add(yesBtn);
-    const noBtn = this.add.text(popW / 2 + px(30), px(34), '[取消]', {
+    const noBtn = this.add.text(popW / 2 + px(30), px(34), t('ui.context.confirmNo'), {
       fontSize: fs(13), color: '#27ae60', fontFamily: FONT,
     }).setInteractive({ useHandCursor: true });
     noBtn.on('pointerdown', () => this.hideContextPopup());
@@ -4922,6 +4922,7 @@ export class UIScene extends Phaser.Scene {
     EventBus.off(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
     EventBus.off(GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
     EventBus.off('ui:refresh', this.handleUiRefresh, this);
+    EventBus.off(GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
     EventBus.off(GameEvents.QUEST_ACCEPTED, this.handleQuestTrackerDirty, this);
     EventBus.off(GameEvents.QUEST_COMPLETED, this.handleQuestTrackerDirty, this);
     EventBus.off(GameEvents.QUEST_TURNED_IN, this.handleQuestTrackerDirty, this);
@@ -4972,15 +4973,15 @@ export class UIScene extends Phaser.Scene {
     if (this.levelText.text !== levelText) this.levelText.setText(levelText);
     const goldText = `${this.player.gold} G`;
     if (this.goldText.text !== goldText) this.goldText.setText(goldText);
-    const autoCombatText = `AUTO\n${this.player.autoCombat ? 'ON' : 'OFF'}`;
+    const autoCombatText = this.player.autoCombat ? t('ui.hud.autoCombat.on') : t('ui.hud.autoCombat.off');
     const autoCombatColor = this.player.autoCombat ? '#27ae60' : '#666680';
     if (this.autoCombatText.text !== autoCombatText) this.autoCombatText.setText(autoCombatText);
     if (this.autoCombatText.style.color !== autoCombatColor) this.autoCombatText.setColor(autoCombatColor);
 
     // Auto-loot button update
-    const alLabels: Record<string, string> = { off: '拾取\nOFF', all: '拾取\n全部', magic: '拾取\n魔法+', rare: '拾取\n稀有+', legendary: '拾取\n传奇+' };
+    const alLabels: Record<string, string> = { off: t('ui.hud.autoLoot.off'), all: t('ui.hud.autoLoot.all'), magic: t('ui.hud.autoLoot.magic'), rare: t('ui.hud.autoLoot.rare'), legendary: t('ui.hud.autoLoot.legendary') };
     const alColors: Record<string, string> = { off: '#666680', all: '#e0d8cc', magic: '#2471a3', rare: '#c0934a', legendary: '#e67e22' };
-    const autoLootText = alLabels[this.player.autoLootMode] ?? '拾取\nOFF';
+    const autoLootText = alLabels[this.player.autoLootMode] ?? t('ui.hud.autoLoot.off');
     const autoLootColor = alColors[this.player.autoLootMode] ?? '#666680';
     if (this.autoLootText.text !== autoLootText) this.autoLootText.setText(autoLootText);
     if (this.autoLootText.style.color !== autoLootColor) this.autoLootText.setColor(autoLootColor);

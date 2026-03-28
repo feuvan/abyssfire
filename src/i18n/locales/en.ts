@@ -1446,6 +1446,180 @@ const en: LocaleData = {
   'data.damageType.lightning': 'Lightning',
   'data.damageType.poison': 'Poison',
   'data.damageType.arcane': 'Arcane',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Inventory Panel
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.inventory.title': 'Inventory ({count}/{max})',
+  'ui.inventory.sort': '[Sort]',
+  'ui.inventory.destroy': '[Destroy]',
+  'ui.inventory.slot.helmet': 'Helmet',
+  'ui.inventory.slot.armor': 'Armor',
+  'ui.inventory.slot.gloves': 'Gloves',
+  'ui.inventory.slot.boots': 'Boots',
+  'ui.inventory.slot.weapon': 'Weapon',
+  'ui.inventory.slot.offhand': 'Offhand',
+  'ui.inventory.slot.necklace': 'Necklace',
+  'ui.inventory.slot.ring1': 'Ring 1',
+  'ui.inventory.slot.ring2': 'Ring 2',
+  'ui.inventory.slot.belt': 'Belt',
+  'ui.inventory.prevPage': '< Prev',
+  'ui.inventory.nextPage': 'Next >',
+  'ui.inventory.pageLabel': 'Page {current}/{total}',
+  'ui.inventory.equipBonus': 'Equipment Bonus: {stats}',
+  'ui.inventory.equipBonusNone': 'Equipment Bonus: None',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Shop Panel
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.shop.blacksmith': 'Blacksmith',
+  'ui.shop.shop': 'Shop',
+  'ui.shop.itemList': 'Items for Sale',
+  'ui.shop.yourBag': 'Your Inventory',
+  'ui.shop.buy': '[Buy]',
+  'ui.shop.buyback': 'Buyback',
+  'ui.shop.buybackBtn': '[Buyback]',
+  'ui.shop.gold': 'Gold: {gold}G',
+  'ui.shop.prevPage': '< Prev',
+  'ui.shop.nextPage': 'Next >',
+  'ui.shop.sellHint': 'Right-click to quick sell',
+  'ui.shop.sellConfirm': 'Sell {name} ({price}G)?',
+  'ui.shop.confirm': '[Confirm]',
+  'ui.shop.cancel': '[Cancel]',
+  'ui.shop.buybackLog': 'Bought back {name}',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Character Stats Panel
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.character.title': 'Character - {className}',
+  'ui.character.subtitle': 'Lv.{level}  Stat Points: {points}',
+  'ui.character.stat.str': 'STR',
+  'ui.character.stat.dex': 'DEX',
+  'ui.character.stat.vit': 'VIT',
+  'ui.character.stat.int': 'INT',
+  'ui.character.stat.spi': 'SPI',
+  'ui.character.stat.lck': 'LCK',
+  'ui.character.stat.str.desc': 'Physical damage / Carry weight',
+  'ui.character.stat.dex.desc': 'Dodge / Crit rate / Attack speed',
+  'ui.character.stat.vit.desc': 'Hit points / Physical resistance',
+  'ui.character.stat.int.desc': 'Magic damage / Magic resistance',
+  'ui.character.stat.spi.desc': 'Mana / Mana regen',
+  'ui.character.stat.lck.desc': 'Magic find / Crit damage',
+  'ui.character.computed.attack': 'Attack',
+  'ui.character.computed.defense': 'Defense',
+  'ui.character.computed.critRate': 'Crit Rate',
+  'ui.character.computed.critDamage': 'Crit Damage',
+  'ui.character.computed.gold': 'Gold',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Item Tooltip
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.tooltip.quality.normal': 'Normal',
+  'ui.tooltip.quality.magic': 'Magic',
+  'ui.tooltip.quality.rare': 'Rare',
+  'ui.tooltip.quality.legendary': 'Legendary',
+  'ui.tooltip.quality.set': 'Set',
+  'ui.tooltip.type.weapon': 'Weapon',
+  'ui.tooltip.type.armor': 'Armor',
+  'ui.tooltip.type.accessory': 'Accessory',
+  'ui.tooltip.type.consumable': 'Consumable',
+  'ui.tooltip.type.gem': 'Gem',
+  'ui.tooltip.type.material': 'Material',
+  'ui.tooltip.type.scroll': 'Scroll',
+  'ui.tooltip.slot.helmet': 'Helmet',
+  'ui.tooltip.slot.armor': 'Armor',
+  'ui.tooltip.slot.gloves': 'Gloves',
+  'ui.tooltip.slot.boots': 'Boots',
+  'ui.tooltip.slot.weapon': 'Weapon',
+  'ui.tooltip.slot.offhand': 'Offhand',
+  'ui.tooltip.slot.necklace': 'Necklace',
+  'ui.tooltip.slot.ring1': 'Ring',
+  'ui.tooltip.slot.ring2': 'Ring',
+  'ui.tooltip.slot.belt': 'Belt',
+  'ui.tooltip.damage': 'Damage: {min}-{max}',
+  'ui.tooltip.defense': 'Defense: {value}',
+  'ui.tooltip.unidentified': '[Unidentified]',
+  'ui.tooltip.gemEffect': 'Socket Effect: +{value}{suffix} {label}',
+  'ui.tooltip.gemHeader': '── Gems ──',
+  'ui.tooltip.socketCount': 'Sockets: {filled}/{max}',
+  'ui.tooltip.sellPrice': 'Sell: {price}G',
+  'ui.tooltip.legendaryEffect': 'Contains unknown power',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Context Menu
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.context.equip': 'Equip',
+  'ui.context.use': 'Use',
+  'ui.context.discard': 'Discard',
+  'ui.context.discardConfirmTitle': 'Discard item?',
+  'ui.context.confirmYes': '[Confirm]',
+  'ui.context.confirmNo': '[Cancel]',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — STAT_DISPLAY translations
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.stat.damage': 'Damage',
+  'ui.stat.damagePercent': 'Damage',
+  'ui.stat.defense': 'Defense',
+  'ui.stat.defensePercent': 'Defense',
+  'ui.stat.str': 'Strength',
+  'ui.stat.dex': 'Dexterity',
+  'ui.stat.int': 'Intelligence',
+  'ui.stat.vit': 'Vitality',
+  'ui.stat.spi': 'Spirit',
+  'ui.stat.lck': 'Luck',
+  'ui.stat.maxHp': 'Life',
+  'ui.stat.maxHpPercent': 'Life',
+  'ui.stat.maxMana': 'Mana',
+  'ui.stat.maxManaPercent': 'Mana',
+  'ui.stat.lifeSteal': 'Life Steal',
+  'ui.stat.manaSteal': 'Mana Steal',
+  'ui.stat.hpRegen': 'Life Regen/s',
+  'ui.stat.manaRegen': 'Mana Regen/s',
+  'ui.stat.critRate': 'Crit Rate',
+  'ui.stat.critDamage': 'Crit Damage',
+  'ui.stat.attackSpeed': 'Attack Speed',
+  'ui.stat.fireDamage': 'Fire Damage',
+  'ui.stat.iceDamage': 'Ice Damage',
+  'ui.stat.lightningDamage': 'Lightning Damage',
+  'ui.stat.poisonDamage': 'Poison Damage',
+  'ui.stat.fireResist': 'Fire Resistance',
+  'ui.stat.iceResist': 'Ice Resistance',
+  'ui.stat.lightningResist': 'Lightning Resistance',
+  'ui.stat.poisonResist': 'Poison Resistance',
+  'ui.stat.allResist': 'All Resistance',
+  'ui.stat.moveSpeed': 'Move Speed',
+  'ui.stat.magicFind': 'Magic Find',
+  'ui.stat.expBonus': 'EXP Bonus',
+  'ui.stat.cooldownReduction': 'Cooldown Reduction',
+  'ui.stat.knockback': 'Knockback',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — HUD elements
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.hud.combatLog': 'Combat Log',
+  'ui.hud.autoCombat.on': 'AUTO\nON',
+  'ui.hud.autoCombat.off': 'AUTO\nOFF',
+  'ui.hud.autoLoot.off': 'Loot\nOFF',
+  'ui.hud.autoLoot.all': 'Loot\nALL',
+  'ui.hud.autoLoot.magic': 'Loot\nMagic+',
+  'ui.hud.autoLoot.rare': 'Loot\nRare+',
+  'ui.hud.autoLoot.legendary': 'Loot\nLgnd+',
+  'ui.hud.inventoryBtn': 'Bag\n(I)',
+  'ui.hud.autoCombatLog.on': 'Auto-combat: ON',
+  'ui.hud.autoCombatLog.off': 'Auto-combat: OFF',
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // UI — Compass directions
+  // ═══════════════════════════════════════════════════════════════════════
+  'ui.compass.east': 'E',
+  'ui.compass.southeast': 'SE',
+  'ui.compass.south': 'S',
+  'ui.compass.southwest': 'SW',
+  'ui.compass.west': 'W',
+  'ui.compass.northwest': 'NW',
+  'ui.compass.north': 'N',
+  'ui.compass.northeast': 'NE',
 };
 
 export default en;
