@@ -8,6 +8,12 @@ import { emptyEquipStats, type EquipStats } from './CombatSystem';
 const MAX_INVENTORY = 100;
 const MAX_STASH = 80;
 
+function randomHex(bytes: number): string {
+  return Array.from(globalThis.crypto.getRandomValues(new Uint8Array(bytes)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 export class InventorySystem {
   inventory: ItemInstance[] = [];
   equipment: Partial<Record<EquipSlot, ItemInstance>> = {};
@@ -346,7 +352,7 @@ export class InventorySystem {
     // Create an inventory item for the gem
     const gemBase = getItemBase(gem.gemId);
     const gemItem: ItemInstance = {
-      uid: `gem_${Date.now()}_${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2, '0')).join('')}`,
+      uid: `gem_${Date.now()}_${randomHex(4)}`,
       baseId: gem.gemId,
       name: gem.name,
       quality: 'normal',
