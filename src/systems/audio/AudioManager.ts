@@ -170,7 +170,7 @@ export class AudioManager {
   }
 
   private unlock(): Promise<void> {
-    if (this.lifecycle === 'ready') return Promise.resolve();
+    if (this.lifecycle === 'ready' && this.ctx?.state === 'running') return Promise.resolve();
     if (this.unlockPromise) return this.unlockPromise;
     if (typeof AudioContext === 'undefined') {
       this.lifecycle = 'failed';
@@ -179,15 +179,23 @@ export class AudioManager {
 
     this.lifecycle = 'unlocking';
     const attempt = (async () => {
-      this.ctx = new AudioContext();
+      if (!this.ctx || this.ctx.state === 'closed') {
+        this.ctx = new AudioContext();
+        this.ctx.onstatechange = () => {
+          if (this.ctx?.state === 'suspended') {
+            this.lifecycle = 'locked';
+            this.setupUnlockGesture();
+          }
+        };
 
-      this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = this.settings.bgmMuted ? 0 : this.settings.bgmVolume;
-      this.musicGain.connect(this.ctx.destination);
+        this.musicGain = this.ctx.createGain();
+        this.musicGain.gain.value = this.settings.bgmMuted ? 0 : this.settings.bgmVolume;
+        this.musicGain.connect(this.ctx.destination);
 
-      this.sfxGain = this.ctx.createGain();
-      this.sfxGain.gain.value = this.settings.sfxMuted ? 0 : this.settings.sfxVolume;
-      this.sfxGain.connect(this.ctx.destination);
+        this.sfxGain = this.ctx.createGain();
+        this.sfxGain.gain.value = this.settings.sfxMuted ? 0 : this.settings.sfxVolume;
+        this.sfxGain.connect(this.ctx.destination);
+      }
 
       await this.ctx.resume();
       this.lifecycle = this.ctx.state === 'running' ? 'ready' : 'failed';
