@@ -49,6 +49,15 @@ export class AudioManager {
 
   private settings: AudioSettings;
   private zoneMusicRequestId = 0;
+  private lifecycle: 'locked' | 'unlocking' | 'ready' | 'failed' = 'locked';
+  private unlockPromise: Promise<void> | null = null;
+  private desiredZone = 'menu';
+  private desiredState: MusicState = 'explore';
+  private unlockGestureArmed = false;
+  private readonly unlockGestureHandler = (): void => {
+    this.removeUnlockGesture();
+    void this.unlock();
+  };
 
   constructor() {
     this.loader = new AudioLoader();
@@ -57,6 +66,7 @@ export class AudioManager {
 
     this.settings = this.loadSettings();
     this.setupEventListeners();
+    this.setupUnlockGesture();
   }
 
   // ---------------------------------------------------------------------------
@@ -65,13 +75,14 @@ export class AudioManager {
 
   /** Resume AudioContext — call on user gesture to unblock browser autoplay policy. */
   ensureContext(): void {
-    this.getCtx();
+    void this.unlock();
   }
 
   /** Play a sound effect through the sfxGain node (no-op if muted). */
   playSFX(type: SFXType): void {
     if (this.settings.sfxMuted) return;
-    const ctx = this.getCtx();
+    const ctx = this.getReadyContext();
+    if (!ctx) return;
     if (!this.sfxGain) return;
     this.sfxEngine.play(ctx, this.sfxGain, type);
   }
@@ -124,10 +135,9 @@ export class AudioManager {
 
   /** Play a specific zone+state track combination (for jukebox). */
   playTrack(zoneId: string, state: MusicState): void {
-    const ctx = this.getCtx();
-    if (!this.musicGain) return;
-    this.musicEngine.playZoneState(ctx, this.musicGain, zoneId, state);
-    void this.loadZoneMusicBuffers(zoneId, ctx);
+    this.desiredZone = zoneId;
+    this.desiredState = state;
+    void this.unlock().then(() => this.applyDesiredMusic(true));
   }
 
   /** Temporarily mute/unmute music without persisting (for jukebox pause). */
@@ -145,27 +155,67 @@ export class AudioManager {
    * Returns the AudioContext, creating it on first call.
    * Also creates the master gain nodes and resumes a suspended context.
    */
-  private getCtx(): AudioContext {
-    if (!this.ctx) {
+  private setupUnlockGesture(): void {
+    if (typeof window === 'undefined' || this.unlockGestureArmed || this.lifecycle === 'ready') return;
+    this.unlockGestureArmed = true;
+    window.addEventListener('pointerdown', this.unlockGestureHandler, { capture: true });
+    window.addEventListener('keydown', this.unlockGestureHandler, { capture: true });
+  }
+
+  private removeUnlockGesture(): void {
+    if (typeof window === 'undefined' || !this.unlockGestureArmed) return;
+    this.unlockGestureArmed = false;
+    window.removeEventListener('pointerdown', this.unlockGestureHandler, { capture: true });
+    window.removeEventListener('keydown', this.unlockGestureHandler, { capture: true });
+  }
+
+  private unlock(): Promise<void> {
+    if (this.lifecycle === 'ready') return Promise.resolve();
+    if (this.unlockPromise) return this.unlockPromise;
+    if (typeof AudioContext === 'undefined') {
+      this.lifecycle = 'failed';
+      return Promise.resolve();
+    }
+
+    this.lifecycle = 'unlocking';
+    const attempt = (async () => {
       this.ctx = new AudioContext();
 
-      // Music master gain.
       this.musicGain = this.ctx.createGain();
       this.musicGain.gain.value = this.settings.bgmMuted ? 0 : this.settings.bgmVolume;
       this.musicGain.connect(this.ctx.destination);
 
-      // SFX master gain.
       this.sfxGain = this.ctx.createGain();
       this.sfxGain.gain.value = this.settings.sfxMuted ? 0 : this.settings.sfxVolume;
       this.sfxGain.connect(this.ctx.destination);
-    }
 
-    if (this.ctx.state === 'suspended') {
-      // Fire-and-forget resume — subsequent calls will retry if still suspended.
-      this.ctx.resume().catch(() => { /* ignore */ });
-    }
+      await this.ctx.resume();
+      this.lifecycle = this.ctx.state === 'running' ? 'ready' : 'failed';
+      if (this.lifecycle === 'ready') this.applyDesiredMusic(true);
+    })().catch(async () => {
+      this.lifecycle = 'failed';
+      if (this.ctx) await this.ctx.close().catch(() => undefined);
+      this.ctx = null;
+      this.musicGain = null;
+      this.sfxGain = null;
+    }).finally(() => {
+      this.unlockPromise = null;
+      if (this.lifecycle === 'failed') this.setupUnlockGesture();
+    });
+    this.unlockPromise = attempt;
+    return attempt;
+  }
 
-    return this.ctx;
+  private getReadyContext(): AudioContext | null {
+    return this.lifecycle === 'ready' ? this.ctx : null;
+  }
+
+  private applyDesiredMusic(force = false): void {
+    const ctx = this.getReadyContext();
+    if (!ctx || !this.musicGain) return;
+    this.musicEngine.setZone(ctx, this.musicGain, this.desiredZone, force);
+    this.musicEngine.setState(ctx, this.musicGain, this.desiredState);
+    void this.loadZoneMusicBuffers(this.desiredZone, ctx);
   }
 
   // ---------------------------------------------------------------------------
@@ -242,20 +292,14 @@ export class AudioManager {
     // --- Zone / Music ---
     EventBus.on(GameEvents.ZONE_ENTERED, (payload: { mapId?: string }) => {
       if (!payload?.mapId) return;
-      const ctx = this.getCtx();
-      if (!this.musicGain) return;
-      this.musicEngine.setZone(ctx, this.musicGain, payload.mapId);
-      void this.loadZoneMusicBuffers(payload.mapId, ctx);
+      this.desiredZone = payload.mapId;
+      this.desiredState = 'explore';
+      this.applyDesiredMusic();
     });
 
     EventBus.on(GameEvents.COMBAT_STATE_CHANGED, (payload: { inCombat?: boolean }) => {
-      const ctx = this.getCtx();
-      if (!this.musicGain) return;
-      if (payload?.inCombat) {
-        this.musicEngine.setState(ctx, this.musicGain, 'combat');
-      } else {
-        this.musicEngine.setState(ctx, this.musicGain, 'explore');
-      }
+      this.desiredState = payload?.inCombat ? 'combat' : 'explore';
+      this.applyDesiredMusic();
     });
 
     // --- Quests ---
@@ -334,8 +378,11 @@ export class AudioManager {
 
     await Promise.all(
       AudioManager.MUSIC_STATES.map(async (state) => {
-        const key = `bgm_${zoneId}_${state}`;
-        const url = `${import.meta.env.BASE_URL}assets/audio/bgm/${zoneId}_${state}.mp3`;
+        const manifestKey = `${zoneId}_${state}`;
+        const relativeUrl = __BGM_MANIFEST__[manifestKey];
+        if (!relativeUrl) return;
+        const key = `bgm_${manifestKey}`;
+        const url = `${import.meta.env.BASE_URL}${relativeUrl}`;
         await this.loader.loadAudioFromUrl(ctx, key, url);
       }),
     );

@@ -3,6 +3,8 @@ import { GAME_WIDTH, GAME_HEIGHT, TEXTURE_SCALE, DPR } from '../config';
 import { SaveSystem } from '../systems/SaveSystem';
 
 import { EventBus, GameEvents } from '../utils/EventBus';
+import { DisposableScope } from '../utils/DisposableScope';
+import { ensureGameplayScenes } from './GameplayLoader';
 import { audioManager } from '../systems/audio/AudioManager';
 import type { SaveData } from '../data/types';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
@@ -39,6 +41,7 @@ function fmtTime(sec: number): string {
 }
 
 export class MenuScene extends Phaser.Scene {
+  private subscriptions = new DisposableScope();
   private menuContainer: Phaser.GameObjects.Container | null = null;
   private classContainer: Phaser.GameObjects.Container | null = null;
   private helpContainer: Phaser.GameObjects.Container | null = null;
@@ -58,6 +61,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.subscriptions = new DisposableScope();
     const cx = W / 2;
 
     this.buildBackground(cx);
@@ -66,10 +70,8 @@ export class MenuScene extends Phaser.Scene {
     this.checkForSaves();
 
     // Listen for locale changes to re-render the active panel
-    EventBus.on(GameEvents.LOCALE_CHANGED, this.onLocaleChanged, this);
-    this.events.once('shutdown', () => {
-      EventBus.off(GameEvents.LOCALE_CHANGED, this.onLocaleChanged, this);
-    });
+    this.subscriptions.on(EventBus, GameEvents.LOCALE_CHANGED, this.onLocaleChanged, this);
+    this.events.once('shutdown', () => this.subscriptions.dispose());
   }
 
   private onLocaleChanged = (): void => {
@@ -1081,7 +1083,8 @@ export class MenuScene extends Phaser.Scene {
     this.creditsContainer.add(closeBtn);
   }
 
-  private loadGame(save: SaveData): void {
+  private async loadGame(save: SaveData): Promise<void> {
+    await ensureGameplayScenes(this.game);
     this.scene.start('ZoneScene', {
       classId: save.classId,
       mapId: save.player.currentMap,
@@ -1290,7 +1293,8 @@ export class MenuScene extends Phaser.Scene {
     this.langContainer.add(backBtn);
   }
 
-  private startGame(classId: string): void {
+  private async startGame(classId: string): Promise<void> {
+    await ensureGameplayScenes(this.game);
     this.scene.start('ZoneScene', { classId, mapId: 'emerald_plains' });
   }
 }

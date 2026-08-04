@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { RenderQualityProfile } from '../rendering/RenderQuality';
 
 export interface LightSource {
   x: number;
@@ -18,326 +19,162 @@ interface ZoneAmbient {
 }
 
 const ZONE_AMBIENTS: Record<string, ZoneAmbient> = {
-  emerald_plains:    { color: 0x040610, alpha: 0.10, fogColor: 0x112211, fogAlpha: 0.03 },
-  twilight_forest:   { color: 0x020408, alpha: 0.22, fogColor: 0x0a1010, fogAlpha: 0.05 },
-  anvil_mountains:   { color: 0x080608, alpha: 0.18, fogColor: 0x100808, fogAlpha: 0.04 },
-  scorching_desert:  { color: 0x0c0804, alpha: 0.08, fogColor: 0x120e04, fogAlpha: 0.02 },
-  abyss_rift:        { color: 0x040004, alpha: 0.32, fogColor: 0x100010, fogAlpha: 0.06 },
+  emerald_plains: { color: 0x040610, alpha: 0.10, fogColor: 0x112211, fogAlpha: 0.03 },
+  twilight_forest: { color: 0x020408, alpha: 0.22, fogColor: 0x0a1010, fogAlpha: 0.05 },
+  anvil_mountains: { color: 0x080608, alpha: 0.18, fogColor: 0x100808, fogAlpha: 0.04 },
+  scorching_desert: { color: 0x0c0804, alpha: 0.08, fogColor: 0x120e04, fogAlpha: 0.02 },
+  abyss_rift: { color: 0x040004, alpha: 0.32, fogColor: 0x100010, fogAlpha: 0.06 },
 };
 
-const LIGHTING_OVERLAY_DEPTH = 3000;
-const LIGHTING_DEBUG_DEPTH = LIGHTING_OVERLAY_DEPTH + 1;
+const OVERLAY_DEPTH = 3000;
+const LIGHT_TEXTURE = 'lighting_radial_gpu';
 
 /**
- * Fixed-viewport lighting overlay using setScrollFactor(0).
+ * GPU-composited viewport lighting.
  *
- * The canvas is dynamically resized to match cam.width / 2 x cam.height / 2
- * each frame (Phaser's Scale manager may resize the game after construction).
- *
- * Position and scale counter the camera zoom transform so the overlay always
- * fills the entire viewport exactly.
+ * The former implementation rasterized every gradient into a Canvas2D texture
+ * and uploaded that texture repeatedly. This implementation uploads one radial
+ * falloff at startup and thereafter only changes batched sprite transforms.
  */
 export class LightingSystem {
-  private scene: Phaser.Scene;
-  private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private overlay: Phaser.GameObjects.Image;
-  private lights: LightSource[] = [];
-  private ambientColor: number = 0x040610;
-  private ambientAlpha: number = 0.35;
-  private fogColor: number = 0x111111;
-  private fogAlpha: number = 0.03;
-  private time: number = 0;
-  private flickerSeeds: Map<string, number> = new Map();
-  private debugEl: HTMLDivElement | null = null;
-  private debugVisible = false;
-  private debugGfx!: Phaser.GameObjects.Graphics;
+  private readonly scene: Phaser.Scene;
+  private readonly quality: RenderQualityProfile;
+  private readonly ambient: Phaser.GameObjects.Rectangle;
+  private readonly fog: Phaser.GameObjects.Image;
+  private readonly lightSprites: Phaser.GameObjects.Image[] = [];
+  private readonly lights: LightSource[] = [];
+  private readonly flickerSeeds = new Map<string, number>();
+  private ambientAlpha = 0.35;
+  private time = 0;
+  private lastUpdate = Number.NEGATIVE_INFINITY;
 
-  private renderW = 0;
-  private renderH = 0;
-  private readonly texKey = 'lighting_overlay';
-  private readonly keydownHandler = (e: KeyboardEvent): void => {
-    if (e.code === 'Backquote') {
-      e.preventDefault();
-      this.debugVisible = !this.debugVisible;
-      if (this.debugEl) this.debugEl.style.display = this.debugVisible ? 'block' : 'none';
-      this.debugGfx.setVisible(this.debugVisible);
-      this.renderDirty = true;
-    }
-  };
-  private lastRenderTime = Number.NEGATIVE_INFINITY;
-  private renderDirty = true;
-  private static readonly RENDER_INTERVAL_MS = 50;
-
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, quality: RenderQualityProfile) {
     this.scene = scene;
-
-    this.canvas = document.createElement('canvas');
-    this.ctx = this.canvas.getContext('2d')!;
-
+    this.quality = quality;
+    this.ensureRadialTexture();
     const cam = scene.cameras.main;
-    this.resizeCanvas(cam.width, cam.height);
-
-    if (scene.textures.exists(this.texKey)) scene.textures.remove(this.texKey);
-    scene.textures.addCanvas(this.texKey, this.canvas);
-
-    this.overlay = scene.add.image(0, 0, this.texKey);
-    this.overlay.setOrigin(0, 0);
-    this.overlay.setScrollFactor(0);
-    this.overlay.setDepth(LIGHTING_OVERLAY_DEPTH);
-    this.overlay.setBlendMode(Phaser.BlendModes.MULTIPLY);
-
-    this.debugGfx = scene.add.graphics();
-    this.debugGfx.setScrollFactor(0);
-    this.debugGfx.setDepth(LIGHTING_DEBUG_DEPTH);
-    this.debugGfx.setVisible(false);
-
-    this.debugEl = document.createElement('div');
-    Object.assign(this.debugEl.style, {
-      position: 'fixed',
-      top: '4px',
-      left: '4px',
-      zIndex: '9999',
-      background: 'rgba(0,0,0,0.75)',
-      color: '#0f0',
-      fontSize: '11px',
-      fontFamily: 'monospace',
-      padding: '6px 8px',
-      pointerEvents: 'none',
-      whiteSpace: 'pre',
-      display: 'none',
-      lineHeight: '1.4',
-    });
-    document.body.appendChild(this.debugEl);
-    window.addEventListener('keydown', this.keydownHandler);
+    this.ambient = scene.add.rectangle(0, 0, cam.width, cam.height, 0x040610, 1)
+      .setOrigin(0).setScrollFactor(0).setDepth(OVERLAY_DEPTH)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY);
+    this.fog = scene.add.image(cam.width / 2, cam.height / 2, LIGHT_TEXTURE)
+      .setScrollFactor(0).setDepth(OVERLAY_DEPTH + 1)
+      .setBlendMode(Phaser.BlendModes.MULTIPLY).setAlpha(0.03);
+    this.resizeViewport();
   }
 
-  private resizeCanvas(camW: number, camH: number): void {
-    this.renderW = Math.ceil(camW / 2);
-    this.renderH = Math.ceil(camH / 2);
-    this.canvas.width = this.renderW;
-    this.canvas.height = this.renderH;
+  private ensureRadialTexture(): void {
+    if (this.scene.textures.exists(LIGHT_TEXTURE)) return;
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas2D is required to initialize the lighting falloff texture');
+    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.15, 'rgba(255,255,255,0.9)');
+    gradient.addColorStop(0.4, 'rgba(255,255,255,0.6)');
+    gradient.addColorStop(0.7, 'rgba(255,255,255,0.25)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    this.scene.textures.addCanvas(LIGHT_TEXTURE, canvas);
+  }
+
+  private resizeViewport(): void {
+    const cam = this.scene.cameras.main;
+    this.ambient.setSize(cam.width, cam.height).setDisplaySize(cam.width, cam.height);
+    this.fog.setPosition(cam.width / 2, cam.height / 2).setDisplaySize(cam.width * 1.25, cam.height * 1.25);
   }
 
   setZone(zoneId: string): void {
-    const ambient = ZONE_AMBIENTS[zoneId];
-    if (ambient) {
-      this.ambientColor = ambient.color;
-      this.ambientAlpha = ambient.alpha;
-      this.fogColor = ambient.fogColor ?? 0x111111;
-      this.fogAlpha = ambient.fogAlpha ?? 0.03;
-      this.renderDirty = true;
-    }
+    const config = ZONE_AMBIENTS[zoneId];
+    if (!config) return;
+    this.ambientAlpha = config.alpha;
+    this.ambient.setFillStyle(config.color, 1).setAlpha(config.alpha);
+    this.fog.setTint(config.fogColor ?? 0x111111).setAlpha(config.fogAlpha ?? 0.03);
   }
 
   addLight(light: LightSource): void {
     this.lights.push(light);
-    if (light.id && light.flicker) {
-      this.flickerSeeds.set(light.id, Math.random() * 1000);
-    }
-    this.renderDirty = true;
+    if (light.id && light.flicker) this.flickerSeeds.set(light.id, Math.random() * 1000);
   }
 
   removeLight(id: string): void {
-    this.lights = this.lights.filter(l => l.id !== id);
+    const index = this.lights.findIndex(light => light.id === id);
+    if (index >= 0) this.lights.splice(index, 1);
     this.flickerSeeds.delete(id);
-    this.renderDirty = true;
   }
 
   clearLights(): void {
-    this.lights = [];
+    this.lights.length = 0;
     this.flickerSeeds.clear();
-    this.renderDirty = true;
+    this.lightSprites.forEach(sprite => sprite.setVisible(false));
+  }
+
+  private spriteAt(index: number): Phaser.GameObjects.Image {
+    let sprite = this.lightSprites[index];
+    if (!sprite) {
+      sprite = this.scene.add.image(0, 0, LIGHT_TEXTURE)
+        .setScrollFactor(0).setDepth(OVERLAY_DEPTH + 2)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      this.lightSprites.push(sprite);
+    }
+    return sprite;
   }
 
   update(delta: number): void {
     this.time += delta;
+    if (this.time - this.lastUpdate < this.quality.lightingUpdateIntervalMs) return;
+    this.lastUpdate = this.time;
+
     const cam = this.scene.cameras.main;
-    const zoom = cam.zoom;
-    let resized = false;
-
-    const needW = Math.ceil(cam.width / 2);
-    const needH = Math.ceil(cam.height / 2);
-    if (needW !== this.renderW || needH !== this.renderH) {
-      resized = true;
-      this.resizeCanvas(cam.width, cam.height);
-      if (this.scene.textures.exists(this.texKey)) this.scene.textures.remove(this.texKey);
-      this.scene.textures.addCanvas(this.texKey, this.canvas);
-      this.overlay.setTexture(this.texKey);
-      this.renderDirty = true;
-    }
-
-    const ctx = this.ctx;
-    const w = this.renderW;
-    const h = this.renderH;
-
-    const originPxX = cam.width * cam.originX;
-    const originPxY = cam.height * cam.originY;
-    this.overlay.setPosition(
-      originPxX * (zoom - 1) / zoom,
-      originPxY * (zoom - 1) / zoom,
+    this.resizeViewport();
+    this.ambient.setAlpha(Math.max(0, Math.min(1, this.ambientAlpha + Math.sin(this.time * 0.0015) * 0.015)));
+    this.fog.setPosition(
+      cam.width / 2 + Math.sin(this.time * 0.0008) * cam.width * 0.15,
+      cam.height / 2 + Math.cos(this.time * 0.00056) * cam.height * 0.1,
     );
-    this.overlay.setScale(cam.width / (w * zoom), cam.height / (h * zoom));
 
-    if (!resized && !this.renderDirty && (this.time - this.lastRenderTime) < LightingSystem.RENDER_INTERVAL_MS) {
-      return;
-    }
+    const originX = cam.width * cam.originX;
+    const originY = cam.height * cam.originY;
+    const visible = this.lights
+      .map(light => {
+        const x = (light.x - cam.scrollX - originX) * cam.zoom + originX;
+        const y = (light.y - cam.scrollY - originY) * cam.zoom + originY;
+        return { light, x, y, distance: (x - originX) ** 2 + (y - originY) ** 2 };
+      })
+      .filter(({ light, x, y }) => {
+        const radius = light.radius * cam.zoom;
+        return Number.isFinite(radius) && radius > 0 && x + radius >= 0 && x - radius <= cam.width
+          && y + radius >= 0 && y - radius <= cam.height;
+      })
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, this.quality.maxDynamicLights);
 
-    const ar = (this.ambientColor >> 16) & 0xff;
-    const ag = (this.ambientColor >> 8) & 0xff;
-    const ab = this.ambientColor & 0xff;
-
-    const breathe = Math.sin(this.time * 0.0015) * 0.015;
-    const effectiveAlpha = Math.max(0, Math.min(1, this.ambientAlpha + breathe));
-
-    const baseR = Math.round(255 - (255 - ar) * effectiveAlpha);
-    const baseG = Math.round(255 - (255 - ag) * effectiveAlpha);
-    const baseB = Math.round(255 - (255 - ab) * effectiveAlpha);
-
-    ctx.fillStyle = `rgb(${baseR},${baseG},${baseB})`;
-    ctx.fillRect(0, 0, w, h);
-
-    if (this.fogAlpha > 0) {
-      const fr = (this.fogColor >> 16) & 0xff;
-      const fg = (this.fogColor >> 8) & 0xff;
-      const fb = this.fogColor & 0xff;
-      const fogPhase = this.time * 0.0008;
-      const fogX = Math.sin(fogPhase) * w * 0.15;
-      const fogY = Math.cos(fogPhase * 0.7) * h * 0.1;
-      const fogGrad = ctx.createRadialGradient(
-        w / 2 + fogX, h / 2 + fogY, 0,
-        w / 2 + fogX, h / 2 + fogY, w * 0.6,
-      );
-      fogGrad.addColorStop(0, `rgba(${fr},${fg},${fb},0)`);
-      fogGrad.addColorStop(0.5, `rgba(${fr},${fg},${fb},${this.fogAlpha})`);
-      fogGrad.addColorStop(1, `rgba(${fr},${fg},${fb},0)`);
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = fogGrad;
-      ctx.fillRect(0, 0, w, h);
-    }
-
-    ctx.globalCompositeOperation = 'lighter';
-    const canvasPerScreenX = w / cam.width;
-    const canvasPerScreenY = h / cam.height;
-
-    for (const light of this.lights) {
-      if (!Number.isFinite(light.x) || !Number.isFinite(light.y) || !Number.isFinite(light.radius) || light.radius <= 0) {
-        continue;
-      }
-
-      const screenLX = (light.x - cam.scrollX - originPxX) * zoom + originPxX;
-      const screenLY = (light.y - cam.scrollY - originPxY) * zoom + originPxY;
-      const cx = screenLX * canvasPerScreenX;
-      const cy = screenLY * canvasPerScreenY;
-      const radius = light.radius * zoom * canvasPerScreenX;
-
-      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(radius) || radius <= 0) {
-        continue;
-      }
-
-      if (cx + radius < 0 || cx - radius > w ||
-          cy + radius < 0 || cy - radius > h) continue;
-
+    visible.forEach(({ light, x, y }, index) => {
       let intensity = light.intensity;
       if (light.flicker) {
         const seed = this.flickerSeeds.get(light.id ?? '') ?? 0;
-        const t = this.time;
-        const f1 = Math.sin(t * 0.007 + seed) * 0.05;
-        const f2 = Math.sin(t * 0.013 + seed * 2.3) * 0.03;
-        const f3 = Math.sin(t * 0.031 + seed * 0.7) * 0.02;
-        const pop = Math.sin(t * 0.0037 + seed * 1.7);
-        const popIntensity = pop > 0.92 ? (pop - 0.92) * 1.5 : 0;
-        intensity = Math.max(0, Math.min(1, intensity + f1 + f2 + f3 + popIntensity));
+        intensity += Math.sin(this.time * 0.007 + seed) * 0.05
+          + Math.sin(this.time * 0.013 + seed * 2.3) * 0.03;
       }
-
-      const lr = (light.color >> 16) & 0xff;
-      const lg = (light.color >> 8) & 0xff;
-      const lb = light.color & 0xff;
-
-      const addR = Math.round((255 - baseR) * intensity * lr / 255);
-      const addG = Math.round((255 - baseG) * intensity * lg / 255);
-      const addB = Math.round((255 - baseB) * intensity * lb / 255);
-
-      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-      grad.addColorStop(0, `rgb(${addR},${addG},${addB})`);
-      grad.addColorStop(0.15, `rgb(${addR * 0.9 | 0},${addG * 0.9 | 0},${addB * 0.9 | 0})`);
-      grad.addColorStop(0.4, `rgb(${addR * 0.6 | 0},${addG * 0.6 | 0},${addB * 0.6 | 0})`);
-      grad.addColorStop(0.7, `rgb(${addR * 0.25 | 0},${addG * 0.25 | 0},${addB * 0.25 | 0})`);
-      grad.addColorStop(1, 'rgb(0,0,0)');
-
-      ctx.fillStyle = grad;
-      ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
-    }
-
-    ctx.globalCompositeOperation = 'source-over';
-
-    const tex = this.scene.textures.get(this.texKey);
-    if (tex) {
-      const src = tex.source[0];
-      if (src) src.update();
-    }
-    this.lastRenderTime = this.time;
-    this.renderDirty = false;
-
-    if (this.debugVisible) {
-      this.debugGfx.clear();
-      const ox = this.overlay.x;
-      const oy = this.overlay.y;
-      const ow = w * this.overlay.scaleX;
-      const oh = h * this.overlay.scaleY;
-      this.debugGfx.lineStyle(3, 0xff0000, 1);
-      this.debugGfx.strokeRect(ox, oy, ow, oh);
-      this.debugGfx.lineStyle(1, 0xffff00, 1);
-      this.debugGfx.lineBetween(ox + ow / 2, oy, ox + ow / 2, oy + oh);
-      this.debugGfx.lineBetween(ox, oy + oh / 2, ox + ow, oy + oh / 2);
-      for (const light of this.lights) {
-        const sx = (light.x - cam.scrollX - originPxX) * zoom + originPxX;
-        const sy = (light.y - cam.scrollY - originPxY) * zoom + originPxY;
-        this.debugGfx.lineStyle(1, 0xff00ff, 1);
-        this.debugGfx.strokeCircle(sx, sy, 8);
-      }
-    }
-
-    if (this.debugVisible && this.debugEl) {
-      const wv = cam.worldView;
-      const ovX = this.overlay.x.toFixed(1);
-      const ovY = this.overlay.y.toFixed(1);
-      const ovSX = this.overlay.scaleX.toFixed(4);
-      const ovSY = this.overlay.scaleY.toFixed(4);
-      const displayW = (w * this.overlay.scaleX * zoom).toFixed(1);
-      const displayH = (h * this.overlay.scaleY * zoom).toFixed(1);
-      const screenTLx = ((this.overlay.x - originPxX) * zoom + originPxX).toFixed(1);
-      const screenTLy = ((this.overlay.y - originPxY) * zoom + originPxY).toFixed(1);
-      const screenBRx = (((this.overlay.x + w * this.overlay.scaleX) - originPxX) * zoom + originPxX).toFixed(1);
-      const screenBRy = (((this.overlay.y + h * this.overlay.scaleY) - originPxY) * zoom + originPxY).toFixed(1);
-      const gameCanvas = this.scene.game.canvas;
-      this.debugEl.textContent =
-        `[Lighting Debug - \` toggle]\n` +
-        `game canvas : ${gameCanvas.width}x${gameCanvas.height} (CSS ${gameCanvas.style.width}x${gameCanvas.style.height})\n` +
-        `cam         : ${cam.width}x${cam.height}  zoom=${zoom}  origin=(${cam.originX},${cam.originY})\n` +
-        `cam.scroll  : (${cam.scrollX.toFixed(1)}, ${cam.scrollY.toFixed(1)})\n` +
-        `worldView   : (${wv.x.toFixed(1)}, ${wv.y.toFixed(1)}, ${wv.width.toFixed(1)}, ${wv.height.toFixed(1)})\n` +
-        `canvas res  : ${w}x${h}\n` +
-        `overlay pos : (${ovX}, ${ovY})  scale=(${ovSX}, ${ovSY})\n` +
-        `overlay scrn: TL=(${screenTLx}, ${screenTLy})  BR=(${screenBRx}, ${screenBRy})\n` +
-        `display size: ${displayW}x${displayH} (should be ${cam.width}x${cam.height})\n` +
-        `DPR         : ${window.devicePixelRatio}\n` +
-        `lights      : ${this.lights.length}`;
-    }
+      this.spriteAt(index)
+        .setVisible(true).setPosition(x, y)
+        .setDisplaySize(light.radius * cam.zoom * 2, light.radius * cam.zoom * 2)
+        // A light restores only the luminance removed by the ambient layer.
+        // Mapping raw intensity directly to ADD alpha overexposes the scene.
+        .setTint(light.color).setAlpha(Math.max(0, Math.min(1, intensity * this.ambientAlpha)));
+    });
+    for (let i = visible.length; i < this.lightSprites.length; i++) this.lightSprites[i].setVisible(false);
   }
 
   destroy(): void {
-    this.overlay?.destroy();
-    this.debugGfx?.destroy();
-    this.lights = [];
+    this.ambient.destroy();
+    this.fog.destroy();
+    this.lightSprites.forEach(sprite => sprite.destroy());
+    this.lightSprites.length = 0;
+    this.lights.length = 0;
     this.flickerSeeds.clear();
-    window.removeEventListener('keydown', this.keydownHandler);
-    if (this.debugEl) {
-      this.debugEl.remove();
-      this.debugEl = null;
-    }
-    if (this.scene.textures.exists(this.texKey)) {
-      this.scene.textures.remove(this.texKey);
-    }
   }
 }

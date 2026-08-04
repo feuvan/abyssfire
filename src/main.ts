@@ -2,13 +2,15 @@ import Phaser from 'phaser';
 import { gameConfig } from './config';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
-import { ZoneScene } from './scenes/ZoneScene';
-import { UIScene } from './scenes/UIScene';
 import './systems/audio/AudioManager';
+import { getLocale } from './i18n';
+import { initializeFontManager } from './rendering/FontManager';
 
 const config: Phaser.Types.Core.GameConfig = {
   ...gameConfig,
-  scene: [BootScene, MenuScene, ZoneScene, UIScene],
+  scene: [BootScene, MenuScene],
 };
 
-new Phaser.Game(config);
+void initializeFontManager(getLocale()).finally(() => {
+  new Phaser.Game(config);
+});

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '../config';
+import type { RenderQualityProfile } from '../rendering/RenderQuality';
 
 interface WeatherConfig {
   type: 'rain' | 'snow' | 'ember_storm' | 'ash' | 'none';
@@ -17,11 +18,17 @@ const ZONE_WEATHER: Record<string, WeatherConfig> = {
 
 export class WeatherSystem {
   private scene: Phaser.Scene;
+  private readonly quality: RenderQualityProfile;
   private weatherEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private ambienceEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, quality: RenderQualityProfile) {
     this.scene = scene;
+    this.quality = quality;
+  }
+
+  private frequency(base: number): number {
+    return Math.round(base * this.quality.particleFrequencyMultiplier);
   }
 
   setZone(zoneId: string): void {
@@ -63,7 +70,7 @@ export class WeatherSystem {
       angle: { min: 170, max: 180 },
       scale: { min: 0.8, max: 1.2 },
       alpha: { start: 0.5, end: 0.1 },
-      frequency: 8,
+      frequency: this.frequency(8),
       quantity: 3,
       blendMode: Phaser.BlendModes.ADD,
     });
@@ -87,7 +94,7 @@ export class WeatherSystem {
       speedX: { min: -15, max: 15 },
       scale: { start: 0.3, end: 0.6 },
       alpha: { start: 0.7, end: 0 },
-      frequency: 200,
+      frequency: this.frequency(200),
       quantity: 1,
       rotate: { min: 0, max: 360 },
     });
@@ -105,7 +112,7 @@ export class WeatherSystem {
       scale: { start: 0.4, end: 0.1 },
       alpha: { start: 0.7, end: 0 },
       tint: [0xff4400, 0xff6600, 0xff8800, 0xffaa00],
-      frequency: 150,
+      frequency: this.frequency(150),
       quantity: 1,
       blendMode: Phaser.BlendModes.ADD,
       rotate: { min: 0, max: 360 },
@@ -130,7 +137,7 @@ export class WeatherSystem {
       speedX: { min: -10, max: 10 },
       scale: { start: 0.5, end: 1.0 },
       alpha: { start: 0.3, end: 0 },
-      frequency: 400,
+      frequency: this.frequency(400),
       quantity: 1,
     });
     this.weatherEmitter.setScrollFactor(0);
@@ -165,7 +172,7 @@ export class WeatherSystem {
       angle: { min: 0, max: 360 },
       scale: { start: 0.5, end: 0.3 },
       alpha: { start: 0.7, end: 0 },
-      frequency: 500,
+      frequency: this.frequency(500),
       quantity: 1,
       blendMode: Phaser.BlendModes.ADD,
     });
@@ -183,7 +190,7 @@ export class WeatherSystem {
       scale: { start: 0.5, end: 0.8 },
       alpha: { start: 0.1, end: 0 },
       tint: 0xccbb99,
-      frequency: 600,
+      frequency: this.frequency(600),
       quantity: 1,
     });
     this.ambienceEmitter.setScrollFactor(0.3);
@@ -200,7 +207,7 @@ export class WeatherSystem {
       scale: { start: 0.4, end: 0.1 },
       alpha: { start: 0.6, end: 0 },
       tint: [0xff6600, 0xff8800, 0xffaa00],
-      frequency: 800,
+      frequency: this.frequency(800),
       quantity: 1,
       blendMode: Phaser.BlendModes.ADD,
       gravityY: -20,

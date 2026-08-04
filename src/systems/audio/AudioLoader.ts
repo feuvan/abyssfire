@@ -84,6 +84,8 @@ export class AudioLoader {
     const loadPromise = fetch(url, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) return null;
+        const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+        if (!contentType.startsWith('audio/')) return null;
         const arrayBuffer = await response.arrayBuffer();
         const decoded = await ctx.decodeAudioData(arrayBuffer);
         if (!controller.signal.aborted) {

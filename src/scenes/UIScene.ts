@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, DPR } from '../config';
 import { EventBus, GameEvents } from '../utils/EventBus';
+import { DisposableScope } from '../utils/DisposableScope';
 import { getItemBase, GEM_STAT_MAP } from '../data/items/bases';
 import { STAT_DISPLAY } from '../data/items/affixes';
 import { SetDefinitions } from '../data/items/sets';
@@ -84,6 +85,7 @@ function getDirection(dc: number, dr: number): string {
 }
 
 export class UIScene extends Phaser.Scene {
+  private subscriptions = new DisposableScope();
   private player!: Player;
   private zone!: ZoneScene;
 
@@ -168,6 +170,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.subscriptions = new DisposableScope();
     this.skillSlots = [];
     this.skillCooldownOverlays = [];
     this.skillCooldownTexts = [];
@@ -432,20 +435,20 @@ export class UIScene extends Phaser.Scene {
   }
 
   private setupEventListeners(): void {
-    EventBus.on(GameEvents.LOG_MESSAGE, this.handleLogMessage, this);
-    EventBus.on(GameEvents.SHOP_OPEN, this.handleShopOpen, this);
-    EventBus.on(GameEvents.NPC_INTERACT, this.handleNpcInteract, this);
-    EventBus.on(GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
-    EventBus.on(GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
-    EventBus.on(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
-    EventBus.on(GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
-    EventBus.on('ui:refresh', this.handleUiRefresh, this);
-    EventBus.on(GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
+    this.subscriptions.on(EventBus, GameEvents.LOG_MESSAGE, this.handleLogMessage, this);
+    this.subscriptions.on(EventBus, GameEvents.SHOP_OPEN, this.handleShopOpen, this);
+    this.subscriptions.on(EventBus, GameEvents.NPC_INTERACT, this.handleNpcInteract, this);
+    this.subscriptions.on(EventBus, GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
+    this.subscriptions.on(EventBus, GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
+    this.subscriptions.on(EventBus, GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
+    this.subscriptions.on(EventBus, GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
+    this.subscriptions.on(EventBus, 'ui:refresh', this.handleUiRefresh, this);
+    this.subscriptions.on(EventBus, GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
     // Quest events — force immediate tracker refresh
-    EventBus.on(GameEvents.QUEST_ACCEPTED, this.handleQuestTrackerDirty, this);
-    EventBus.on(GameEvents.QUEST_COMPLETED, this.handleQuestTrackerDirty, this);
-    EventBus.on(GameEvents.QUEST_TURNED_IN, this.handleQuestTrackerDirty, this);
-    EventBus.on(GameEvents.QUEST_FAILED, this.handleQuestTrackerDirty, this);
+    this.subscriptions.on(EventBus, GameEvents.QUEST_ACCEPTED, this.handleQuestTrackerDirty, this);
+    this.subscriptions.on(EventBus, GameEvents.QUEST_COMPLETED, this.handleQuestTrackerDirty, this);
+    this.subscriptions.on(EventBus, GameEvents.QUEST_TURNED_IN, this.handleQuestTrackerDirty, this);
+    this.subscriptions.on(EventBus, GameEvents.QUEST_FAILED, this.handleQuestTrackerDirty, this);
   }
 
   private handleLogMessage(data: { text: string; type: string }): void {
@@ -4918,19 +4921,7 @@ export class UIScene extends Phaser.Scene {
   shutdown(): void {
     this.closeAllPanels();
     this.cleanupAudioPanelInputHandlers();
-    EventBus.off(GameEvents.LOG_MESSAGE, this.handleLogMessage, this);
-    EventBus.off(GameEvents.SHOP_OPEN, this.handleShopOpen, this);
-    EventBus.off(GameEvents.NPC_INTERACT, this.handleNpcInteract, this);
-    EventBus.off(GameEvents.UI_TOGGLE_PANEL, this.handlePanelToggle, this);
-    EventBus.off(GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
-    EventBus.off(GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
-    EventBus.off(GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
-    EventBus.off('ui:refresh', this.handleUiRefresh, this);
-    EventBus.off(GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
-    EventBus.off(GameEvents.QUEST_ACCEPTED, this.handleQuestTrackerDirty, this);
-    EventBus.off(GameEvents.QUEST_COMPLETED, this.handleQuestTrackerDirty, this);
-    EventBus.off(GameEvents.QUEST_TURNED_IN, this.handleQuestTrackerDirty, this);
-    EventBus.off(GameEvents.QUEST_FAILED, this.handleQuestTrackerDirty, this);
+    this.subscriptions.dispose();
     this.skillSlots = [];
     this.skillCooldownOverlays = [];
     this.skillCooldownTexts = [];

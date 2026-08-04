@@ -3,6 +3,7 @@ import { TILE_WIDTH, TILE_HEIGHT, GAME_WIDTH, GAME_HEIGHT, TEXTURE_SCALE, DPR } 
 import { cartToIso, isoToCart, worldToTile, euclideanDistance, distanceSq } from '../utils/IsometricUtils';
 import { randomInt } from '../utils/MathUtils';
 import { EventBus, GameEvents } from '../utils/EventBus';
+import { DisposableScope } from '../utils/DisposableScope';
 import { t } from '../i18n';
 import { getMonsterName, getSkillName, getZoneName, getHiddenAreaName, getHiddenAreaDiscoveryText, getStatusEffectName, getEliteAffixName, getPetName, getLoreName, getQuestName, getQuestTargetName, getMercenaryName, getSubDungeonName, getRescueNpcName, getItemDisplayName as getLocalizedItemName, getNpcName, getSubDungeonEntranceName } from '../i18n/gameAccessors';
 import { Player } from '../entities/Player';
@@ -31,6 +32,7 @@ import { RandomEventSystem, RANDOM_EVENT_DEFS, ZONE_EVENT_DATA } from '../system
 import type { ActiveEvent, RandomEventType } from '../systems/RandomEventSystem';
 import { audioManager } from '../systems/audio/AudioManager';
 import { applyColorGrading } from '../graphics/ColorGradePipeline';
+import { profileForQuality, resolveRenderQuality } from '../rendering/RenderQuality';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
 import { setCurrentZonePalette } from '../graphics/ZonePalette';
 import { AllClasses } from '../data/classes/index';
@@ -47,9 +49,11 @@ import { DungeonSystem } from '../systems/DungeonSystem';
 import type { DungeonRunState, DungeonFloorConfig } from '../systems/DungeonSystem';
 import { DifficultySystem } from '../systems/DifficultySystem';
 import { SpatialGrid } from '../systems/SpatialGrid';
+import { SimulationScheduler } from '../systems/SimulationScheduler';
 import { DungeonBossDef, DungeonMidBossDef } from '../data/dungeonData';
 import { computeNPCIndicator } from '../ui/QuestNPCIndicators';
 import type { UIScene } from './UIScene';
+import { GameSession } from '../game/GameSession';
 
 const TILE_KEYS = ['tile_grass', 'tile_dirt', 'tile_stone', 'tile_water', 'tile_wall', 'tile_camp', 'tile_camp_wall'];
 const CAMPFIRE_RECOVERY_RADIUS = 5;
@@ -67,10 +71,14 @@ const W = GAME_WIDTH * DPR;
 const H = GAME_HEIGHT * DPR;
 
 export class ZoneScene extends Phaser.Scene {
+  private session: GameSession | null = null;
+  private subscriptions = new DisposableScope();
   player!: Player;
   private monsters: Monster[] = [];
   /** Grid-based spatial index for efficient proximity queries on monsters. */
   private monsterGrid!: SpatialGrid<Monster>;
+  private activeMonsters: Monster[] = [];
+  private simulationScheduler = new SimulationScheduler();
   private npcs: NPC[] = [];
   private mapData!: MapData;
   private currentMapId!: string;
@@ -93,7 +101,10 @@ export class ZoneScene extends Phaser.Scene {
   private decorWorldPositions: Array<{ key: string; type: string; x: number; y: number }> = [];
   private campDecorWorldPositions: Array<{ key: string; type: string; x: number; y: number }> = [];
   private exitLookup: Map<string, MapData['exits'][number]> = new Map();
-  private visibleTiles: Set<string> = new Set();
+  private visibleTiles: Set<number> = new Set();
+  private tilePool: Phaser.GameObjects.Image[] = [];
+  private lastVisibleTileBounds = '';
+  private exitLabels: Map<string, Phaser.GameObjects.Text> = new Map();
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private campPositions: { col: number; row: number }[] = [];
@@ -264,6 +275,7 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   create(data: { classId: string; mapId: string; saveData?: SaveData; playerStats?: any; miniBossDialogueSeen?: string[]; loreCollected?: string[]; subDungeon?: SubDungeonMapData; parentZoneInfo?: { mapId: string; returnCol: number; returnRow: number }; discoveredHiddenAreas?: string[]; targetCol?: number; targetRow?: number; dungeonRun?: DungeonRunState; dungeonFloor?: DungeonFloorConfig }): void {
+    this.subscriptions = new DisposableScope();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
     // `scene.restart()` reuses the same scene instance, so transient guards must
     // be cleared explicitly when entering a new zone.
@@ -271,6 +283,8 @@ export class ZoneScene extends Phaser.Scene {
     this.isPortaling = false;
     this.miniBossDialogueActive = false;
     this.monsters = [];
+    this.activeMonsters = [];
+    this.simulationScheduler.reset();
     this.monsterGrid = new SpatialGrid<Monster>(this.mapData.cols, this.mapData.rows, 16);
     this.npcs = [];
     this.lootDrops = [];
@@ -284,26 +298,24 @@ export class ZoneScene extends Phaser.Scene {
     this.exploredTilesCols = this.mapData.cols;
     this.exploredTiles = new Uint8Array(this.mapData.rows * this.mapData.cols);
 
-    this.combatSystem = new CombatSystem();
-    this.lootSystem = new LootSystem();
-    this.skillEffects = new SkillEffectSystem(this);
-    this.statusEffects = new StatusEffectSystem();
-    this.eliteAffixSystem = new EliteAffixSystem();
-    this.randomEventSystem = new RandomEventSystem(
-      { zoneId: this.currentMapId, levelRange: this.mapData.levelRange as [number, number] },
-      { safeZoneRadius: this.mapData.safeZoneRadius ?? 9 },
+    if (!this.session) this.session = new GameSession();
+    const zoneRuntime = this.session.beginZone(
+      this.currentMapId,
+      this.mapData.levelRange as [number, number],
+      this.mapData.safeZoneRadius ?? 9,
     );
-
-    const isFirstLoad = !this.inventorySystem;
-    if (isFirstLoad) {
-      this.inventorySystem = new InventorySystem();
-      this.questSystem = new QuestSystem();
-      this.homesteadSystem = new HomesteadSystem();
-      this.achievementSystem = new AchievementSystem();
-      this.saveSystem = new SaveSystem();
-      this.mercenarySystem = new MercenarySystem();
-      this.questSystem.registerQuests(AllQuests);
-    }
+    this.combatSystem = zoneRuntime.combat;
+    this.lootSystem = zoneRuntime.loot;
+    this.skillEffects = new SkillEffectSystem(this);
+    this.statusEffects = zoneRuntime.statusEffects;
+    this.eliteAffixSystem = zoneRuntime.eliteAffixes;
+    this.randomEventSystem = zoneRuntime.randomEvents;
+    this.inventorySystem = this.session.inventory;
+    this.questSystem = this.session.quests;
+    this.homesteadSystem = this.session.homestead;
+    this.achievementSystem = this.session.achievements;
+    this.saveSystem = this.session.saves;
+    this.mercenarySystem = this.session.mercenaries;
 
     // Initialize tile sprite grid
     this.tileSprites = [];
@@ -311,6 +323,9 @@ export class ZoneScene extends Phaser.Scene {
       this.tileSprites.push(new Array(this.mapData.cols).fill(null));
     }
     this.visibleTiles = new Set();
+    this.tilePool = [];
+    this.lastVisibleTileBounds = '';
+    this.exitLabels = new Map();
     this.decorSprites = new Map();
     this.exitSprites = new Map();
     this.campDecorSprites = new Map();
@@ -389,7 +404,8 @@ export class ZoneScene extends Phaser.Scene {
     this.cameras.main.setZoom(1.8);
 
     // Lighting system — ambient darkness + point lights
-    this.lighting = new LightingSystem(this);
+    const renderQuality = profileForQuality(resolveRenderQuality());
+    this.lighting = new LightingSystem(this, renderQuality);
     this.lighting.setZone(this.currentMapId);
     this.registerLightSources();
 
@@ -405,7 +421,7 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     // Weather system — per-zone weather + environmental ambience
-    this.weather = new WeatherSystem(this);
+    this.weather = new WeatherSystem(this, renderQuality);
     this.weather.setZone(this.currentMapId);
 
     // Trail renderer — weapon trails, ground scorch marks
@@ -416,7 +432,7 @@ export class ZoneScene extends Phaser.Scene {
       const cam = this.cameras.main;
 
       // Gentle bloom — brightens highlights (loot glow, magic, fire)
-      cam.postFX.addBloom(0xffffff, 0.6, 0.6, 0.5, 0.8);
+      if (renderQuality.bloom) cam.postFX.addBloom(0xffffff, 0.6, 0.6, 0.5, 0.8);
 
       // Very subtle vignette — barely visible edge darkening
       cam.postFX.addVignette(0.5, 0.5, 0.95, 0.12);
@@ -429,7 +445,7 @@ export class ZoneScene extends Phaser.Scene {
     this.cameras.main.fadeIn(400);
 
     // Color grading shader (WebGL only, no-op on Canvas)
-    applyColorGrading(this);
+    if (renderQuality.colorGrading) applyColorGrading(this);
 
     // Input
     if (this.input.keyboard) {
@@ -477,23 +493,23 @@ export class ZoneScene extends Phaser.Scene {
       this.mobileControls = new MobileControlsSystem(this, this.player);
     }
 
-    this.game.canvas.addEventListener('contextmenu', this.contextMenuHandler);
-    this.input.on('pointerdown', this.handlePointerDown, this);
+    this.subscriptions.onDom(this.game.canvas, 'contextmenu', this.contextMenuHandler);
+    this.subscriptions.on(this.input, 'pointerdown', this.handlePointerDown, this);
 
     if (!this.scene.isActive('UIScene')) {
       this.scene.launch('UIScene', { player: this.player, zone: this });
     } else {
       EventBus.emit('ui:refresh', { player: this.player, zone: this });
     }
-    EventBus.on(GameEvents.PLAYER_DIED, this.handlePlayerDied, this);
-    EventBus.on(GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);
-    EventBus.on(GameEvents.QUEST_COMPLETED, this.handleQuestCompleted, this);
-    EventBus.on(GameEvents.UI_SKILL_CLICK, this.handleUiSkillClick, this);
+    this.subscriptions.on(EventBus, GameEvents.PLAYER_DIED, this.handlePlayerDied, this);
+    this.subscriptions.on(EventBus, GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);
+    this.subscriptions.on(EventBus, GameEvents.QUEST_COMPLETED, this.handleQuestCompleted, this);
+    this.subscriptions.on(EventBus, GameEvents.UI_SKILL_CLICK, this.handleUiSkillClick, this);
     // Update NPC quest indicators immediately when quest state changes
-    EventBus.on(GameEvents.QUEST_ACCEPTED, this.updateNPCQuestMarkers, this);
-    EventBus.on(GameEvents.QUEST_TURNED_IN, this.updateNPCQuestMarkers, this);
+    this.subscriptions.on(EventBus, GameEvents.QUEST_ACCEPTED, this.updateNPCQuestMarkers, this);
+    this.subscriptions.on(EventBus, GameEvents.QUEST_TURNED_IN, this.updateNPCQuestMarkers, this);
     // React to locale changes for persistent UI elements
-    EventBus.on(GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
+    this.subscriptions.on(EventBus, GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
 
     this.exploredZones.add(this.currentMapId);
     this.achievementSystem.update('explore', this.currentMapId);
@@ -795,18 +811,26 @@ export class ZoneScene extends Phaser.Scene {
     // ── Mini-boss pre-fight dialogue check ──────────────────
     this.checkMiniBossDialogue();
 
+    if (this.simulationScheduler.due('active-monsters', time, 250)) {
+      const nearby = this.monsterGrid.queryRadius(
+        this.player.tileCol,
+        this.player.tileRow,
+        Math.sqrt(ZoneScene.MONSTER_AI_CULL_DIST_SQ),
+      );
+      const activeIds = new Set(nearby.map(monster => monster.id));
+      this.activeMonsters = nearby;
+      for (const monster of this.monsters) {
+        if (monster.isAggro() && !activeIds.has(monster.id)) this.activeMonsters.push(monster);
+      }
+    }
+
     const safeRadius = this.mapData.safeZoneRadius ?? 9;
     const safeRadiusSq = safeRadius * safeRadius;
-    for (const monster of this.monsters) {
+    const playerInSafe = this.campPositions.some(camp =>
+      distanceSq(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadiusSq
+    );
+    for (const monster of this.activeMonsters) {
       if (!monster.isAlive()) continue;
-
-      // ── Performance: skip full AI update for far-away monsters ────────
-      const monsterDistSq = distanceSq(monster.tileCol, monster.tileRow, this.player.tileCol, this.player.tileRow);
-      if (monsterDistSq > ZoneScene.MONSTER_AI_CULL_DIST_SQ && !monster.isAggro()) {
-        // Still update animator for visual state (idle animation)
-        monster.animator.update(delta);
-        continue;
-      }
 
       // Freeze mini-boss during dialogue
       if (this.miniBossDialogueActive && monster === this.miniBossMonster) {
@@ -833,13 +857,6 @@ export class ZoneScene extends Phaser.Scene {
         monster.state = 'idle';
       }
       // Player in safe zone: suppress aggro by passing fake coordinates
-      let playerInSafe = false;
-      for (const camp of this.campPositions) {
-        if (distanceSq(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadiusSq) {
-          playerInSafe = true;
-          break;
-        }
-      }
       // Get speed multiplier from StatusEffectSystem (Slow effect)
       const speedMult = this.statusEffects.getSpeedMultiplier(monster.id);
 
@@ -913,13 +930,13 @@ export class ZoneScene extends Phaser.Scene {
     this.checkSubDungeonEntranceProximity();
 
     // Throttled viewport tile update
-    if (time - this.lastTileUpdate > 100) {
+    if (this.simulationScheduler.due('world-visibility', time, 100)) {
       this.lastTileUpdate = time;
       this.updateVisibleTiles();
     }
 
     // Throttled explore quest check + NPC quest marker update
-    if (Math.floor(time / 500) !== Math.floor((time - delta) / 500)) {
+    if (this.simulationScheduler.due('quest-observers', time, 500)) {
       this.checkExploreQuests();
       this.updateNPCQuestMarkers();
     }
@@ -1031,19 +1048,18 @@ export class ZoneScene extends Phaser.Scene {
   // --- Viewport culling tile rendering ---
   private updateVisibleTiles(): void {
     const margin = 4;
-    const { left, right, top, bottom, minCol, maxCol, minRow, maxRow } = this.getVisibleTileBounds(margin);
-    const newVisible = new Set<string>();
+    const { minCol, maxCol, minRow, maxRow } = this.getVisibleTileBounds(margin);
+    const boundsKey = `${minCol}:${maxCol}:${minRow}:${maxRow}`;
+    if (boundsKey === this.lastVisibleTileBounds) return;
+    this.lastVisibleTileBounds = boundsKey;
+    const newVisible = new Set<number>();
 
     for (let row = minRow; row <= maxRow; row++) {
       for (let col = minCol; col <= maxCol; col++) {
         const pos = this.tileWorldPositions[row][col];
-        if (pos.x < left - TILE_WIDTH || pos.x > right + TILE_WIDTH ||
-            pos.y < top - TILE_HEIGHT || pos.y > bottom + TILE_HEIGHT) {
-          continue;
-        }
-
-        const key = `${col},${row}`;
-        newVisible.add(key);
+        const tileIndex = row * this.mapData.cols + col;
+        const exitKey = `${col},${row}`;
+        newVisible.add(tileIndex);
         if (!this.tileSprites[row][col]) {
           const tileType = this.mapData.tiles[row][col];
           const tiles = this.mapData.tiles;
@@ -1067,19 +1083,19 @@ export class ZoneScene extends Phaser.Scene {
             const variantKey = `${TILE_KEYS[tileType] || 'tile_grass'}_${variant}`;
             tileKey = this.textures.exists(variantKey) ? variantKey : (TILE_KEYS[tileType] || 'tile_grass');
           }
-          const tile = this.add.image(pos.x, pos.y, tileKey).setScale(1 / TEXTURE_SCALE);
+          const tile = this.acquireTileImage(pos.x, pos.y, tileKey);
           // Depth batching: use row-based depth so all tiles in the same row
           // share the same depth value, reducing Phaser's depth sort overhead.
           tile.setDepth(row);
           this.tileSprites[row][col] = tile;
 
-          const exit = this.exitLookup.get(key);
+          const exit = this.exitLookup.get(exitKey);
           if (exit) {
             SpriteGenerator.ensureEffect(this, 'exit_portal');
             if (this.textures.exists('exit_portal')) {
               const portal = this.add.image(pos.x, pos.y - 8, 'exit_portal').setScale(1 / TEXTURE_SCALE);
               portal.setDepth(pos.y + 2);
-              this.exitSprites.set(key, portal);
+              this.exitSprites.set(exitKey, portal);
               if (this.vfx) {
                 this.vfx.applyGlow(portal, 0x4488ff, 8, 0.1);
                 this.vfx.applyBloom(portal, 0.8);
@@ -1096,6 +1112,7 @@ export class ZoneScene extends Phaser.Scene {
                   stroke: '#000000',
                   strokeThickness: Math.round(2 * DPR),
                 }).setOrigin(0.5).setDepth(pos.y + 3);
+                this.exitLabels.set(exitKey, exitLabel);
               }
             }
           }
@@ -1104,18 +1121,25 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     // Destroy tiles no longer visible
-    for (const key of this.visibleTiles) {
-      if (!newVisible.has(key)) {
-        const [c, r] = key.split(',').map(Number);
+    for (const tileIndex of this.visibleTiles) {
+      if (!newVisible.has(tileIndex)) {
+        const r = Math.floor(tileIndex / this.mapData.cols);
+        const c = tileIndex % this.mapData.cols;
+        const exitKey = `${c},${r}`;
         const sprite = this.tileSprites[r]?.[c];
         if (sprite) {
-          sprite.destroy();
+          this.releaseTileImage(sprite);
           this.tileSprites[r][c] = null;
         }
-        const exitSprite = this.exitSprites.get(key);
+        const exitSprite = this.exitSprites.get(exitKey);
         if (exitSprite) {
           exitSprite.destroy();
-          this.exitSprites.delete(key);
+          this.exitSprites.delete(exitKey);
+        }
+        const exitLabel = this.exitLabels.get(exitKey);
+        if (exitLabel) {
+          exitLabel.destroy();
+          this.exitLabels.delete(exitKey);
         }
       }
     }
@@ -1124,6 +1148,19 @@ export class ZoneScene extends Phaser.Scene {
     // Update decorations visibility
     this.updateVisibleDecorations();
     this.updateCampDecorations();
+  }
+
+  private acquireTileImage(x: number, y: number, texture: string): Phaser.GameObjects.Image {
+    const tile = this.tilePool.pop();
+    if (tile) {
+      return tile.setTexture(texture).setPosition(x, y).setScale(1 / TEXTURE_SCALE).setVisible(true).setActive(true);
+    }
+    return this.add.image(x, y, texture).setScale(1 / TEXTURE_SCALE);
+  }
+
+  private releaseTileImage(tile: Phaser.GameObjects.Image): void {
+    tile.setVisible(false).setActive(false);
+    this.tilePool.push(tile);
   }
 
   private updateVisibleDecorations(): void {
@@ -6025,14 +6062,7 @@ export class ZoneScene extends Phaser.Scene {
     this.hideStoryDecorationTooltip();
     this.miniBossMonster = null;
     this.miniBossDialogueActive = false;
-    this.input.off('pointerdown', this.handlePointerDown, this);
-    EventBus.off(GameEvents.PLAYER_DIED, this.handlePlayerDied, this);
-    EventBus.off(GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);
-    EventBus.off(GameEvents.QUEST_COMPLETED, this.handleQuestCompleted, this);
-    EventBus.off(GameEvents.UI_SKILL_CLICK, this.handleUiSkillClick, this);
-    EventBus.off(GameEvents.QUEST_ACCEPTED, this.updateNPCQuestMarkers, this);
-    EventBus.off(GameEvents.QUEST_TURNED_IN, this.updateNPCQuestMarkers, this);
-    this.game.canvas.removeEventListener('contextmenu', this.contextMenuHandler);
+    this.subscriptions.dispose();
     if (this.combatDebounceTimer) {
       clearTimeout(this.combatDebounceTimer);
       this.combatDebounceTimer = null;
@@ -6050,10 +6080,15 @@ export class ZoneScene extends Phaser.Scene {
     }
     this.tileSprites = [];
     this.visibleTiles.clear();
+    for (const tile of this.tilePool) tile.destroy();
+    this.tilePool = [];
+    this.lastVisibleTileBounds = '';
     for (const sprite of this.decorSprites.values()) sprite.destroy();
     this.decorSprites.clear();
     for (const sprite of this.exitSprites.values()) sprite.destroy();
     this.exitSprites.clear();
+    for (const label of this.exitLabels.values()) label.destroy();
+    this.exitLabels.clear();
     for (const npc of this.npcs) npc.destroy();
     this.npcs = [];
     for (const monster of this.monsters) {
