@@ -2,9 +2,51 @@
 import type { DrawUtils } from '../DrawUtils';
 
 export type MonsterAction = 'idle' | 'walk' | 'attack' | 'hurt' | 'death';
-export type PlayerAction = MonsterAction | 'cast';
+export type PlayerAction = MonsterAction | 'dodge' | 'cast';
 export type NPCAction = 'working' | 'alert' | 'idle' | 'talking';
 export type EntityAction = MonsterAction | PlayerAction | NPCAction;
+
+/**
+ * Canonical player-sheet layout. Keep generation and Phaser registration
+ * driven by this table so adding poses cannot silently shift later actions.
+ */
+export const PLAYER_ACTION_ORDER = [
+  'idle',
+  'walk',
+  'attack',
+  'hurt',
+  'dodge',
+  'death',
+  'cast',
+] as const satisfies readonly PlayerAction[];
+
+export const PLAYER_ACTION_FRAME_COUNTS: Readonly<Record<PlayerAction, number>> = {
+  idle: 6,
+  walk: 8,
+  attack: 8,
+  hurt: 4,
+  dodge: 6,
+  death: 6,
+  cast: 8,
+};
+
+export const PLAYER_TOTAL_FRAMES = PLAYER_ACTION_ORDER.reduce(
+  (total, action) => total + PLAYER_ACTION_FRAME_COUNTS[action],
+  0,
+);
+
+export function getPlayerActionFrameRange(action: PlayerAction): {
+  start: number;
+  end: number;
+} {
+  let start = 0;
+  for (const candidate of PLAYER_ACTION_ORDER) {
+    const end = start + PLAYER_ACTION_FRAME_COUNTS[candidate] - 1;
+    if (candidate === action) return { start, end };
+    start = end + 1;
+  }
+  return { start: 0, end: 0 };
+}
 
 export interface EntityDrawer {
   readonly key: string;
@@ -28,7 +70,7 @@ export type FrameSizeRegistry = Record<string, { frameWidth: number; frameHeight
 /** Build frame-size registry from the existing configs. Used by BootScene for spritesheet loading. */
 export function buildFrameSizeRegistry(): FrameSizeRegistry {
   return {
-    // Players (64x96, 24 frames)
+    // Players (64x96, PLAYER_TOTAL_FRAMES frames)
     player_warrior: { frameWidth: 64, frameHeight: 96 },
     player_mage: { frameWidth: 64, frameHeight: 96 },
     player_rogue: { frameWidth: 64, frameHeight: 96 },

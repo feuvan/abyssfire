@@ -517,10 +517,10 @@ describe('Fix 7: V1 save migration includes companion defaults', () => {
     expect(migrated.homestead.activePet).toBeUndefined();
   });
 
-  it('migrateV1toV2 bumps version to current', () => {
+  it('migrateV1toV2 stamps the v2 intermediate version', () => {
     const save = makeV1Save();
     const migrated = migrateV1toV2(save);
-    expect(migrated.version).toBe(CURRENT_SAVE_VERSION);
+    expect(migrated.version).toBe(2);
   });
 
   it('migrateV1toV2 preserves all existing player data', () => {

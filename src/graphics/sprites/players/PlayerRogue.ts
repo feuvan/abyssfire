@@ -1,6 +1,11 @@
 // src/graphics/sprites/players/PlayerRogue.ts
 import type { EntityDrawer, PlayerAction } from '../types';
+import {
+  PLAYER_ACTION_FRAME_COUNTS,
+  PLAYER_TOTAL_FRAMES,
+} from '../types';
 import type { DrawUtils } from '../../DrawUtils';
+import { samplePose, sinePulse, smoothstep } from './PlayerMotion';
 
 const LEATHER_BASE = 0x1e2a1e;
 const LEATHER_DARK = 0x131e13;
@@ -17,16 +22,13 @@ export const PlayerRogueDrawer: EntityDrawer = {
   key: 'player_rogue',
   frameW: 64,
   frameH: 96,
-  totalFrames: 24,
+  totalFrames: PLAYER_TOTAL_FRAMES,
 
   drawFrame(ctx, frame, action, w, h, utils) {
     const act = action as PlayerAction;
     const s = w / 64;
 
-    const frameCounts: Record<PlayerAction, number> = {
-      idle: 4, walk: 6, attack: 4, hurt: 2, death: 4, cast: 4,
-    };
-    const count = frameCounts[act] || 4;
+    const count = PLAYER_ACTION_FRAME_COUNTS[act];
     const localFrame = frame % count;
     const t = count > 1 ? localFrame / (count - 1) : 0;
     const phase = (localFrame / count) * Math.PI * 2;
@@ -38,38 +40,133 @@ export const PlayerRogueDrawer: EntityDrawer = {
     let rightDaggerAngle = -Math.PI * 0.3;
     let leftDaggerAngle  = -Math.PI * 0.7;
     let castGlow = 0;
+    let crouch = 0;
+    let stance = 0;
+    let cloakFlow = 0;
+    let rightThrust = 0;
+    let leftThrust = 0;
+    let motionEnergy = 0;
 
     switch (act) {
       case 'idle':
-        // Agile weight-shift
-        bodyOffsetY = Math.sin(phase) * 1.2 * s;
+        // Restless, asymmetric guard with daggers breathing independently.
+        bodyOffsetY = Math.sin(phase) * 0.75 * s;
+        lunge = Math.sin(phase * 0.5) * 0.08;
+        stance = 0.24 + Math.sin(phase) * 0.05;
+        rightDaggerAngle += Math.sin(phase - 0.4) * 0.06;
+        leftDaggerAngle -= Math.sin(phase + 0.7) * 0.05;
+        cloakFlow = Math.sin(phase - 0.8) * 0.35;
         break;
       case 'walk':
-        bodyOffsetY = -Math.abs(Math.sin(phase)) * 1.5 * s;
-        lunge = Math.sin(phase) * 0.3;
+        bodyOffsetY = -Math.abs(Math.sin(phase)) * 1.25 * s;
+        lunge = 0.18 + Math.sin(phase) * 0.18;
+        stance = 0.16;
+        crouch = 0.12 + Math.abs(Math.sin(phase)) * 0.08;
+        cloakFlow = Math.sin(phase - 0.65);
+        globalRotation = Math.sin(phase) * 0.022;
         break;
       case 'attack':
-        // Quick dual stab: both daggers thrust forward
-        lunge = t * 0.6;
-        rightDaggerAngle = -Math.PI * 0.3 + t * Math.PI * 0.4;
-        leftDaggerAngle  = -Math.PI * 0.7 - t * Math.PI * 0.2;
-        bodyOffsetY = -t * 2 * s;
+        // Two-beat dagger combo: lead-hand cut, off-hand finisher, recoil.
+        rightThrust = samplePose(t, [
+          { at: 0, value: 0 },
+          { at: 0.18, value: -0.12 },
+          { at: 0.38, value: 1 },
+          { at: 0.58, value: 0.2 },
+          { at: 1, value: 0 },
+        ]);
+        leftThrust = samplePose(t, [
+          { at: 0, value: 0 },
+          { at: 0.34, value: 0 },
+          { at: 0.68, value: 1 },
+          { at: 0.84, value: 0.55 },
+          { at: 1, value: 0 },
+        ]);
+        lunge = samplePose(t, [
+          { at: 0, value: 0 },
+          { at: 0.18, value: -0.12 },
+          { at: 0.4, value: 0.72 },
+          { at: 0.62, value: 0.28 },
+          { at: 0.72, value: 0.82 },
+          { at: 1, value: 0 },
+        ]);
+        rightDaggerAngle = -Math.PI * 0.3 + rightThrust * Math.PI * 0.48;
+        leftDaggerAngle = -Math.PI * 0.7 + leftThrust * Math.PI * 0.62;
+        bodyOffsetY = -Math.max(rightThrust, leftThrust) * 2.2 * s;
+        crouch = 0.12 + Math.max(rightThrust, leftThrust) * 0.15;
+        stance = 0.2 + sinePulse(t) * 0.16;
+        cloakFlow = -(rightThrust + leftThrust) * 0.55;
+        motionEnergy = Math.max(rightThrust, leftThrust);
         break;
       case 'hurt':
-        bodyOffsetY = t * 4 * s;
-        alpha = 0.7 + t * 0.3;
+        crouch = sinePulse(t);
+        bodyOffsetY = crouch * 4.5 * s;
+        lunge = -crouch * 0.35;
+        globalRotation = -crouch * 0.075;
+        stance = 0.3;
+        cloakFlow = crouch;
+        alpha = 0.68 + smoothstep(t) * 0.32;
+        rightDaggerAngle -= crouch * 0.4;
+        leftDaggerAngle += crouch * 0.25;
+        break;
+      case 'dodge':
+        // Shadow tumble: tuck, pass through the silhouette, spring out.
+        crouch = sinePulse(t);
+        lunge = samplePose(t, [
+          { at: 0, value: -0.08 },
+          { at: 0.34, value: 0.9 },
+          { at: 0.68, value: 0.6 },
+          { at: 1, value: 0 },
+        ]);
+        bodyOffsetY = crouch * 8 * s;
+        globalRotation = -crouch * 0.16;
+        stance = 0.12 + (1 - crouch) * 0.14;
+        cloakFlow = -crouch * 1.5;
+        rightDaggerAngle = -Math.PI * 0.72 - crouch * 0.35;
+        leftDaggerAngle = -Math.PI * 0.88 + crouch * 0.22;
+        rightThrust = crouch * 0.12;
+        leftThrust = crouch * 0.1;
+        castGlow = crouch * 0.75;
+        motionEnergy = crouch;
+        alpha = 1 - crouch * 0.34;
         break;
       case 'death':
-        globalRotation = -t * Math.PI * 0.45; // fall back
-        bodyOffsetY = t * h * 0.38;
-        alpha = 1 - t * 0.8;
+        globalRotation = -smoothstep(t) * Math.PI * 0.45;
+        bodyOffsetY = smoothstep(t) * h * 0.38;
+        crouch = Math.sin(Math.min(1, t * 1.5) * Math.PI) * 0.4;
+        cloakFlow = smoothstep(t);
+        rightDaggerAngle -= smoothstep(t) * 0.6;
+        leftDaggerAngle += smoothstep(t) * 0.45;
+        alpha = 1 - smoothstep(t) * 0.82;
         break;
       case 'cast':
-        // Shadow-step power charge — daggers glow, crouch
-        castGlow = 0.5 + Math.sin(phase) * 0.5;
-        bodyOffsetY = 3 * s + Math.sin(phase) * 1.5 * s;
-        rightDaggerAngle = -Math.PI * 0.3 - Math.sin(phase) * 0.2;
-        leftDaggerAngle  = -Math.PI * 0.7 + Math.sin(phase) * 0.2;
+        // Draw shadow into both blades, cross guard, then burst outward.
+        castGlow = samplePose(t, [
+          { at: 0, value: 0.04 },
+          { at: 0.44, value: 0.78 },
+          { at: 0.68, value: 1 },
+          { at: 0.82, value: 0.9 },
+          { at: 1, value: 0.08 },
+        ]);
+        crouch = samplePose(t, [
+          { at: 0, value: 0.12 },
+          { at: 0.5, value: 0.48 },
+          { at: 0.76, value: 0.24 },
+          { at: 1, value: 0.08 },
+        ]);
+        bodyOffsetY = crouch * 5 * s - sinePulse(t) * 1.5 * s;
+        lunge = samplePose(t, [
+          { at: 0, value: 0 },
+          { at: 0.5, value: -0.18 },
+          { at: 0.8, value: 0.45 },
+          { at: 1, value: 0 },
+        ]);
+        rightDaggerAngle = -Math.PI * 0.3 - castGlow * 0.42;
+        leftDaggerAngle = -Math.PI * 0.7 + castGlow * 0.5;
+        rightThrust = Math.max(0, (t - 0.68) / 0.32) * 0.5;
+        leftThrust = rightThrust;
+        stance = 0.32;
+        cloakFlow = Math.sin(t * Math.PI * 2) * castGlow;
+        motionEnergy = castGlow * 0.8;
         break;
     }
 
@@ -85,16 +182,38 @@ export const PlayerRogueDrawer: EntityDrawer = {
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.24)';
-    utils.fillEllipse(ctx, cx, baseY + 1 * s, 13 * s, 2.8 * s);
+    utils.fillEllipse(
+      ctx,
+      cx - lunge * 2 * s,
+      baseY + 1 * s,
+      (13 + stance * 4) * s,
+      Math.max(1.5, 2.8 - crouch) * s,
+    );
+
+    if (motionEnergy > 0.15) {
+      for (let echo = 1; echo <= 2; echo++) {
+        ctx.save();
+        ctx.globalAlpha = alpha * motionEnergy * (0.13 / echo);
+        ctx.fillStyle = castGlow > 0.4 ? '#44dd66' : '#b4c2b4';
+        utils.fillEllipse(
+          ctx,
+          cx - (8 + echo * 5) * s,
+          baseY - (36 - echo * 2) * s,
+          (9 - echo) * s,
+          (20 - echo * 2) * s,
+        );
+        ctx.restore();
+      }
+    }
 
     // ── Legs / Wrapped Boots ───────────────────────────────────────────────
     for (const side of [-1, 1]) {
       const legPhase = act === 'walk' ? phase + (side === -1 ? 0 : Math.PI) : 0;
-      const hipX = cx + side * 6 * s + lunge * side * 2 * s;
-      const hipY = baseY - 26 * s + bodyOffsetY;
-      const kneeX = hipX + side * 1 * s + Math.sin(legPhase) * 3 * s;
-      const kneeY = hipY + 13 * s;
-      const footX = hipX + side * 2 * s + Math.sin(legPhase) * 2 * s;
+      const hipX = cx + side * (6 + stance * 3) * s + lunge * 2 * s;
+      const hipY = baseY - 26 * s + bodyOffsetY + crouch * 1.5 * s;
+      const kneeX = hipX + side * (1 + stance) * s + Math.sin(legPhase) * 3 * s;
+      const kneeY = hipY + (13 - crouch * 2.2) * s;
+      const footX = hipX + side * (2 + stance) * s + Math.sin(legPhase) * 2 * s;
       const footY = baseY - 2 * s;
 
       utils.drawLimb(ctx, [
@@ -127,7 +246,7 @@ export const PlayerRogueDrawer: EntityDrawer = {
 
     // ── Torso / Leather Armor ──────────────────────────────────────────────
     const torsoX = cx + lunge * 5 * s;
-    const torsoY = baseY - 50 * s + bodyOffsetY;
+    const torsoY = baseY - 50 * s + bodyOffsetY + crouch * 2.2 * s;
 
     // Soft outline glow
     utils.zonePlayerOutline(ctx, w, h);
@@ -177,7 +296,10 @@ export const PlayerRogueDrawer: EntityDrawer = {
     utils.zonePlayerRimLight(ctx, cx + lunge * 2 * s, baseY - 50 * s + bodyOffsetY - 20 * s, 8 * s, 8.5 * s);
 
     // ── Asymmetric Cloak (draped over left shoulder) ───────────────────────
-    const cloakOffsetY = act === 'walk' ? Math.sin(phase) * 2 * s : 0;
+    const cloakOffsetY = (
+      (act === 'walk' ? Math.sin(phase) * 1.5 : 0)
+      + cloakFlow * 2.4
+    ) * s;
     ctx.fillStyle = utils.rgb(CLOAK_COLOR, 0.85);
     ctx.beginPath();
     ctx.moveTo(torsoX - 9 * s, torsoY - 12 * s);              // left shoulder
@@ -202,14 +324,20 @@ export const PlayerRogueDrawer: EntityDrawer = {
       const shoulderY = torsoY - 10 * s;
 
       let elbowX: number, elbowY: number, handX: number, handY: number;
+      const thrust = isRight ? rightThrust : leftThrust;
 
-      if (act === 'attack') {
-        // Quick thrust: both arms forward
-        const thrustOff = t * 8 * s;
+      if (thrust > 0.01) {
+        // Each blade follows its own strike curve.
+        const thrustOff = thrust * 8 * s;
         elbowX = shoulderX + side * 3 * s + thrustOff;
-        elbowY = shoulderY + 5 * s - t * 3 * s;
+        elbowY = shoulderY + 5 * s - thrust * 3 * s;
         handX = elbowX + side * 4 * s + thrustOff * 0.5;
-        handY = elbowY + 5 * s - t * 2 * s;
+        handY = elbowY + 5 * s - thrust * 2 * s;
+      } else if (act === 'dodge') {
+        elbowX = shoulderX - side * crouch * 3 * s;
+        elbowY = shoulderY + (5 - crouch * 3) * s;
+        handX = elbowX - side * crouch * 2 * s;
+        handY = elbowY + (5 - crouch * 2) * s;
       } else {
         elbowX = shoulderX + side * 2 * s + Math.sin(armPhase) * 2 * s;
         elbowY = shoulderY + 8 * s;

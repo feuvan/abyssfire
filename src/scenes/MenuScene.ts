@@ -609,6 +609,8 @@ export class MenuScene extends Phaser.Scene {
         titleKey: 'menu.helpPanel.cat.combat',
         keys: [
           ['1 - 6', t('menu.helpPanel.combat.skills')],
+          ['SPACE', t('menu.helpPanel.combat.dodge')],
+          ['Q', t('menu.helpPanel.combat.target')],
           ['TAB', t('menu.helpPanel.combat.autoCombat')],
           [t('menu.helpPanel.combat.teleportKey'), t('menu.helpPanel.combat.teleport')],
         ],

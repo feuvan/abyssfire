@@ -1178,8 +1178,8 @@ describe('VAL-CROSS-013: Save data migration v1→v2 is graceful', () => {
 
     const migrated = migrateV1toV2(v1Save as SaveData);
 
-    // Version bumped
-    expect(migrated.version).toBe(CURRENT_SAVE_VERSION);
+    // The focused v1→v2 helper stamps the exact intermediate version.
+    expect(migrated.version).toBe(2);
 
     // V2 fields initialized
     expect(migrated.difficulty).toBe('normal');
@@ -1460,7 +1460,7 @@ describe('Cross-area edge cases', () => {
     };
 
     expect(() => migrateV1toV2(minimal as SaveData)).not.toThrow();
-    expect(minimal.version).toBe(CURRENT_SAVE_VERSION);
+    expect(minimal.version).toBe(2);
   });
 
   it('new game starts with clean companion state', () => {

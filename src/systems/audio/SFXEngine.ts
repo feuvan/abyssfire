@@ -51,6 +51,8 @@ export class SFXEngine {
       case 'player_hurt':   this.sfxPlayerHurt(ctx, destination, t); break;
       case 'monster_death': this.sfxMonsterDeath(ctx, destination, t); break;
       case 'player_death':  this.sfxPlayerDeath(ctx, destination, t); break;
+      case 'dodge':          this.sfxDodge(ctx, destination, t); break;
+      case 'resonance':      this.sfxResonance(ctx, destination, t); break;
       // --- Skills ---
       case 'skill_melee':     this.sfxSkillMelee(ctx, destination, t); break;
       case 'skill_fire':      this.sfxSkillFire(ctx, destination, t); break;
@@ -172,6 +174,40 @@ export class SFXEngine {
   // ---------------------------------------------------------------------------
   // Combat SFX
   // ---------------------------------------------------------------------------
+
+  /** Airy phase-shift whoosh for a directional dodge. */
+  private sfxDodge(ctx: AudioContext, destination: AudioNode, t: number): void {
+    const dur = 0.22;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(920, t + dur * 0.7);
+    osc.frequency.exponentialRampToValueAtTime(420, t + dur);
+    this.createADSR(ctx, gain.gain, 0.004, 0.035, 0.18, 0.12, 0.16, t);
+    osc.connect(gain);
+    gain.connect(destination);
+    osc.start(t);
+    osc.stop(t + dur);
+    this.createNoiseBurst(ctx, destination, dur * 0.8, 2600, 'highpass', t, 0.12);
+  }
+
+  /** Short three-note harmonic flare when a Spirit meter enters Resonance. */
+  private sfxResonance(ctx: AudioContext, destination: AudioNode, t: number): void {
+    const notes = [330, 495, 660];
+    notes.forEach((frequency, index) => {
+      this.createTone(
+        ctx,
+        destination,
+        frequency,
+        'sine',
+        0.5,
+        0.09 - index * 0.015,
+        t + index * 0.055,
+      );
+    });
+    this.createNoiseBurst(ctx, destination, 0.28, 3200, 'bandpass', t, 0.08);
+  }
 
   /** Metallic slash — sawtooth sweep 200→80 Hz + highpass noise burst. 0.15 s */
   private sfxHit(ctx: AudioContext, destination: AudioNode, t: number): void {

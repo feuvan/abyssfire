@@ -55,6 +55,8 @@ const en: LocaleData = {
   'menu.helpPanel.movement.mouseKey': 'Mouse LMB',
   'menu.helpPanel.movement.mouse': 'Click to move / attack / interact',
   'menu.helpPanel.combat.skills': 'Use skills',
+  'menu.helpPanel.combat.dodge': 'Dodge with invulnerability',
+  'menu.helpPanel.combat.target': 'Cycle target lock',
   'menu.helpPanel.combat.autoCombat': 'Toggle auto-combat',
   'menu.helpPanel.combat.teleportKey': 'R / RMB',
   'menu.helpPanel.combat.teleport': 'Teleport to camp',
@@ -1608,6 +1610,12 @@ const en: LocaleData = {
   'ui.hud.inventoryBtn': 'Bag\n(I)',
   'ui.hud.autoCombatLog.on': 'Auto-combat: ON',
   'ui.hud.autoCombatLog.off': 'Auto-combat: OFF',
+  'ui.hud.spirit': 'SPIRIT',
+  'ui.hud.resonance': 'RESONANCE {seconds}s',
+  'ui.hud.target': 'TARGET: {targetName}',
+  'ui.hud.targetNone': 'TARGET: none',
+  'ui.hud.dodgeReady': 'DODGE [SPACE]',
+  'ui.hud.dodgeCooldown': 'DODGE {seconds}s',
 
   // ═══════════════════════════════════════════════════════════════════════
   // UI — Compass directions
@@ -1628,6 +1636,10 @@ const en: LocaleData = {
   'ui.skillTree.skillPoints': '{className} · Skill Points: {points}',
   'ui.skillTree.footer': 'Press K to close · Hover for details · Scroll to navigate',
   'ui.skillTree.synergy': 'Synergy',
+  'ui.skillTree.lock.playerLevel': 'Requires player level {level}',
+  'ui.skillTree.lock.treePoints': 'Tree points {current}/{required}',
+  'ui.skillTree.lock.previousTier': 'Learn a previous-tier skill first',
+  'ui.skillTree.lock.noPoints': 'No skill points available',
   'ui.skillTree.tooltip.damage': 'Damage: {value}% {type}',
   'ui.skillTree.tooltip.cost': 'Cost: {value} MP',
   'ui.skillTree.tooltip.cooldown': 'Cooldown: {value}s',
@@ -1845,6 +1857,7 @@ const en: LocaleData = {
   'zone.combat.autoCombatOn': 'ON',
   'zone.combat.autoCombatOff': 'OFF',
   'zone.combat.manaInsufficient': 'Not enough mana!',
+  'zone.combat.skillLocked': 'That skill is not learned yet.',
   'zone.combat.freeCast': 'Free cast! No mana consumed',
   'zone.combat.skillActivated': '{skillName} activated!',
   'zone.combat.deathMarkApplied': '{skillName} marked {targetName}!',
@@ -2086,6 +2099,8 @@ const en: LocaleData = {
   'sys.mobile.panel.map': 'Map',
   'sys.mobile.panel.homestead': 'Home',
   'sys.mobile.panel.quest': 'Quest',
+  'sys.mobile.dodge': 'DODGE',
+  'sys.mobile.target': 'LOCK',
 
   // ─── QuestCardUI ───
   'sys.questCard.accepted': 'Accepted: {name}',

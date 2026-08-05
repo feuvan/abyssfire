@@ -1,8 +1,9 @@
 import Dexie from 'dexie';
 import type { SaveData, ItemInstance } from '../data/types';
+import { SpiritSystem } from './SpiritSystem';
 
 /** Current save format version. New saves are stamped with this. */
-export const CURRENT_SAVE_VERSION = 2;
+export const CURRENT_SAVE_VERSION = 3;
 
 class AbyssfireDB extends Dexie {
   saves!: Dexie.Table<SaveData, string>;
@@ -97,9 +98,29 @@ export function migrateV1toV2(save: SaveData): SaveData {
     if (item && !item.sockets) item.sockets = [];
   }
 
-  // Stamp version
-  save.version = CURRENT_SAVE_VERSION;
+  // Stamp the exact target version so chained migrations can continue.
+  save.version = 2;
 
+  return save;
+}
+
+/**
+ * Migrate v2 saves to v3 by adding the class-specific Spirit resource state.
+ * Existing progress is preserved and malformed values are clamped safely.
+ */
+export function migrateV2toV3(save: SaveData): SaveData {
+  save.player.spirit = new SpiritSystem(
+    save.classId,
+    save.player?.spirit,
+  ).toSaveState();
+  save.version = 3;
+  return save;
+}
+
+/** Run every required migration in order and return a current-version save. */
+export function migrateSaveData(save: SaveData): SaveData {
+  if (save.version < 2) migrateV1toV2(save);
+  if (save.version < 3) migrateV2toV3(save);
   return save;
 }
 
@@ -157,7 +178,7 @@ export class SaveSystem {
   async load(id: string): Promise<SaveData | undefined> {
     const data = await db.saves.get(id);
     if (data && data.version < CURRENT_SAVE_VERSION) {
-      migrateV1toV2(data);
+      migrateSaveData(data);
       // Persist the migrated record so migration only runs once
       await db.saves.put(data);
     }

@@ -55,6 +55,8 @@ const zhCN: LocaleData = {
   'menu.helpPanel.movement.mouseKey': '鼠标左键',
   'menu.helpPanel.movement.mouse': '点击移动 / 攻击 / 交互',
   'menu.helpPanel.combat.skills': '使用技能',
+  'menu.helpPanel.combat.dodge': '带无敌帧的闪避',
+  'menu.helpPanel.combat.target': '循环锁定目标',
   'menu.helpPanel.combat.autoCombat': '切换自动战斗',
   'menu.helpPanel.combat.teleportKey': 'R / 鼠标右键',
   'menu.helpPanel.combat.teleport': '传送回营地',
@@ -1553,6 +1555,12 @@ const zhCN: LocaleData = {
   'ui.hud.inventoryBtn': '背包\n(I)',
   'ui.hud.autoCombatLog.on': '自动战斗: 开启',
   'ui.hud.autoCombatLog.off': '自动战斗: 关闭',
+  'ui.hud.spirit': '灵力',
+  'ui.hud.resonance': '共鸣 {seconds}s',
+  'ui.hud.target': '目标: {targetName}',
+  'ui.hud.targetNone': '目标: 无',
+  'ui.hud.dodgeReady': '闪避 [SPACE]',
+  'ui.hud.dodgeCooldown': '闪避 {seconds}s',
 
   // ═══════════════════════════════════════════════════════════════════════
   // UI — Compass directions
@@ -1573,6 +1581,10 @@ const zhCN: LocaleData = {
   'ui.skillTree.skillPoints': '{className} · 剩余技能点: {points}',
   'ui.skillTree.footer': '按 K 关闭 · 悬停查看详情 · 滚轮翻页',
   'ui.skillTree.synergy': '协同',
+  'ui.skillTree.lock.playerLevel': '需要角色等级 {level}',
+  'ui.skillTree.lock.treePoints': '分支点数 {current}/{required}',
+  'ui.skillTree.lock.previousTier': '请先学习上一层技能',
+  'ui.skillTree.lock.noPoints': '没有可用技能点',
   'ui.skillTree.tooltip.damage': '伤害: {value}% {type}',
   'ui.skillTree.tooltip.cost': '消耗: {value} MP',
   'ui.skillTree.tooltip.cooldown': '冷却: {value}s',
@@ -1790,6 +1802,7 @@ const zhCN: LocaleData = {
   'zone.combat.autoCombatOn': '开启',
   'zone.combat.autoCombatOff': '关闭',
   'zone.combat.manaInsufficient': '法力不足!',
+  'zone.combat.skillLocked': '该技能尚未学习。',
   'zone.combat.freeCast': '免费施法！法力未消耗',
   'zone.combat.skillActivated': '{skillName} 激活!',
   'zone.combat.deathMarkApplied': '{skillName} 标记了 {targetName}!',
@@ -2031,6 +2044,8 @@ const zhCN: LocaleData = {
   'sys.mobile.panel.map': '地图',
   'sys.mobile.panel.homestead': '家园',
   'sys.mobile.panel.quest': '任务',
+  'sys.mobile.dodge': '闪避',
+  'sys.mobile.target': '锁定',
 
   // ─── QuestCardUI ───
   'sys.questCard.accepted': '已接受: {name}',

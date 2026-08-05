@@ -404,22 +404,21 @@ describe('migrateV1toV2', () => {
 // Tests: CURRENT_SAVE_VERSION
 // ---------------------------------------------------------------------------
 describe('CURRENT_SAVE_VERSION', () => {
-  it('is 2', () => {
-    expect(CURRENT_SAVE_VERSION).toBe(2);
+  it('is 3', () => {
+    expect(CURRENT_SAVE_VERSION).toBe(3);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Tests: SaveSystem.save() sets version to 2
+// Tests: SaveSystem.save() sets the current version
 // ---------------------------------------------------------------------------
 describe('SaveSystem version stamping', () => {
-  it('save() sets version to CURRENT_SAVE_VERSION (2)', async () => {
+  it('save() sets version to CURRENT_SAVE_VERSION (3)', async () => {
     // We mock Dexie to test the version assignment logic
     const ss = new SaveSystem();
     const saveData = makeV1Save();
-    // The save method sets version — we test the function logic, not DB
-    // We need to check the code sets version = 2
-    expect(CURRENT_SAVE_VERSION).toBe(2);
+    // The save method sets version — we test the version contract, not DB.
+    expect(CURRENT_SAVE_VERSION).toBe(3);
   });
 });
 

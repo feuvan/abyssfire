@@ -3,7 +3,7 @@ import type { MonsterAnimCategory } from '../data/types';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type AnimState = 'idle' | 'walk' | 'attack' | 'cast' | 'hurt' | 'death';
+export type AnimState = 'idle' | 'walk' | 'attack' | 'cast' | 'hurt' | 'dodge' | 'death';
 
 export interface AnimConfig {
   idleBobAmount: number;
@@ -26,12 +26,22 @@ export interface AnimConfig {
   castDuration: number;
   castGlow: boolean;
 
+  dodgeDuration: number;
+
   hurtKnockback: number;
   hurtDuration: number;
   hurtFlash: boolean;
 
   deathStyle: 'collapse' | 'dissolve' | 'splat';
   deathDuration: number;
+
+  idleFrameRate: number;
+  walkFrameRate: number;
+  attackFrameRate: number;
+  castFrameRate: number;
+  hurtFrameRate: number;
+  dodgeFrameRate: number;
+  deathFrameRate: number;
 }
 
 // ── Preset Configs ─────────────────────────────────────────────────────────
@@ -57,12 +67,22 @@ const HUMANOID_CONFIG: AnimConfig = {
   castDuration: 350,
   castGlow: false,
 
+  dodgeDuration: 260,
+
   hurtKnockback: 8,
   hurtDuration: 200,
   hurtFlash: true,
 
   deathStyle: 'collapse',
   deathDuration: 500,
+
+  idleFrameRate: 6,
+  walkFrameRate: 10,
+  attackFrameRate: 12,
+  castFrameRate: 10,
+  hurtFrameRate: 10,
+  dodgeFrameRate: 20,
+  deathFrameRate: 6,
 };
 
 const PRESETS: Record<string, AnimConfig> = {
@@ -120,26 +140,74 @@ const PRESETS: Record<string, AnimConfig> = {
   warrior: {
     ...HUMANOID_CONFIG,
     attackLunge: 16,
+    attackDuration: 610,
     attackSquash: 0.2,
+    castDuration: 725,
+    dodgeDuration: 300,
+    hurtDuration: 330,
+    deathDuration: 750,
+    idleFrameRate: 6,
+    walkFrameRate: 10,
+    attackFrameRate: 13,
+    castFrameRate: 11,
+    hurtFrameRate: 12,
+    dodgeFrameRate: 20,
+    deathFrameRate: 8,
   },
 
   mage: {
     ...HUMANOID_CONFIG,
     attackLunge: 6,
-    castDuration: 450,
+    attackDuration: 535,
+    castDuration: 500,
     castGlow: true,
+    dodgeDuration: 275,
+    hurtDuration: 310,
+    deathDuration: 670,
+    idleFrameRate: 8,
+    walkFrameRate: 11,
+    attackFrameRate: 15,
+    castFrameRate: 16,
+    hurtFrameRate: 13,
+    dodgeFrameRate: 22,
+    deathFrameRate: 9,
   },
 
   rogue: {
     ...HUMANOID_CONFIG,
-    attackDuration: 200,
+    attackDuration: 445,
+    castDuration: 535,
     walkTilt: 7,
+    dodgeDuration: 240,
+    hurtDuration: 270,
+    deathDuration: 550,
+    idleFrameRate: 9,
+    walkFrameRate: 14,
+    attackFrameRate: 18,
+    castFrameRate: 15,
+    hurtFrameRate: 15,
+    dodgeFrameRate: 25,
+    deathFrameRate: 11,
   },
 };
 
 export function getAnimConfig(category: string): AnimConfig {
   const preset = PRESETS[category] ?? PRESETS['humanoid'];
   return { ...preset };
+}
+
+export function getActionFrameRate(category: string, action: AnimState): number {
+  const config = getAnimConfig(category);
+  const rateKey: Record<AnimState, keyof AnimConfig> = {
+    idle: 'idleFrameRate',
+    walk: 'walkFrameRate',
+    attack: 'attackFrameRate',
+    cast: 'castFrameRate',
+    hurt: 'hurtFrameRate',
+    dodge: 'dodgeFrameRate',
+    death: 'deathFrameRate',
+  };
+  return config[rateKey[action]] as number;
 }
 
 // ── CharacterAnimator Class ────────────────────────────────────────────────
@@ -158,6 +226,11 @@ export class CharacterAnimator {
   private baseX: number = 0;
   private animTime: number = 0;
   private dead: boolean = false;
+  private frameBaseX = 0;
+  private frameBaseY = 0;
+  private frameBaseScaleX = 1;
+  private frameBaseScaleY = 1;
+  private frameBaseAngle = 0;
 
   // Transition blending
   private transitionProgress = 1; // 1 = fully in current state
@@ -171,11 +244,27 @@ export class CharacterAnimator {
   private hitFreezeTimer = 0;
 
   private static readonly TRANSITION_MS: Record<string, number> = {
-    'idle->walk': 80,
-    'walk->idle': 120,
-    'walk->attack': 60,
-    'attack->idle': 150,
-    'idle->attack': 80,
+    'idle->walk': 90,
+    'walk->idle': 110,
+    'idle->attack': 45,
+    'walk->attack': 55,
+    'attack->idle': 75,
+    'attack->walk': 70,
+    'idle->cast': 65,
+    'walk->cast': 70,
+    'attack->cast': 55,
+    'cast->attack': 55,
+    'cast->idle': 85,
+    'cast->walk': 75,
+    'idle->dodge': 35,
+    'walk->dodge': 30,
+    'attack->dodge': 25,
+    'cast->dodge': 25,
+    'hurt->dodge': 40,
+    'dodge->idle': 65,
+    'dodge->walk': 55,
+    'hurt->idle': 105,
+    'hurt->walk': 90,
   };
 
   constructor(scene: Phaser.Scene, container: Phaser.GameObjects.Container, config: AnimConfig, animPrefix?: string) {
@@ -184,6 +273,14 @@ export class CharacterAnimator {
     this.config = config;
     this.animPrefix = animPrefix ?? '';
     this.hasFrameAnims = !!animPrefix && scene.anims.exists(`${animPrefix}_idle`);
+    const sprite = this.getSpriteChild();
+    if (sprite) {
+      this.frameBaseX = sprite.x;
+      this.frameBaseY = sprite.y;
+      this.frameBaseScaleX = sprite.scaleX;
+      this.frameBaseScaleY = sprite.scaleY;
+      this.frameBaseAngle = sprite.angle;
+    }
   }
 
   getState(): AnimState {
@@ -195,6 +292,29 @@ export class CharacterAnimator {
       if (child instanceof Phaser.GameObjects.Sprite) return child;
     }
     return null;
+  }
+
+  private applyFrameMotion(
+    x: number,
+    y: number,
+    scaleX: number,
+    scaleY: number,
+    angle: number,
+  ): void {
+    const sprite = this.getSpriteChild();
+    if (!sprite) return;
+
+    sprite.x = this.frameBaseX + x;
+    sprite.y = this.frameBaseY + y;
+    sprite.scaleX = this.frameBaseScaleX * scaleX;
+    sprite.scaleY = this.frameBaseScaleY * scaleY;
+    sprite.angle = this.frameBaseAngle + angle;
+  }
+
+  private clearFrameMotion(): void {
+    this.applyFrameMotion(0, 0, 1, 1, 0);
+    const sprite = this.getSpriteChild();
+    if (sprite) sprite.setAlpha(1);
   }
 
   private playFrameAnim(action: AnimState): void {
@@ -209,13 +329,20 @@ export class CharacterAnimator {
 
   setIdle(): void {
     if (this.dead || this.state === 'idle') return;
-    if (this.state === 'attack' || this.state === 'cast' || this.state === 'hurt') return;
+    if (
+      this.state === 'attack'
+      || this.state === 'cast'
+      || this.state === 'hurt'
+      || this.state === 'dodge'
+    ) return;
     this.cancelTweens();
     this.startTransition('idle');
     this.prevState = this.state;
     this.state = 'idle';
+    this.animTime = 0;
     this.playFrameAnim('idle');
-    this.resetTransform(150);
+    if (this.hasFrameAnims) this.clearFrameMotion();
+    else this.resetTransform(150);
   }
 
   /** Force idle state unconditionally — used after respawn to reset from death */
@@ -223,13 +350,20 @@ export class CharacterAnimator {
     this.dead = false;
     this.cancelTweens();
     this.state = 'idle';
+    this.animTime = 0;
     this.playFrameAnim('idle');
+    this.clearFrameMotion();
     this.resetTransform(0);
   }
 
   setWalk(): void {
     if (this.dead || this.state === 'walk') return;
-    if (this.state === 'attack' || this.state === 'cast' || this.state === 'hurt') return;
+    if (
+      this.state === 'attack'
+      || this.state === 'cast'
+      || this.state === 'hurt'
+      || this.state === 'dodge'
+    ) return;
     this.cancelTweens();
     this.startTransition('walk');
     this.prevState = this.state;
@@ -238,11 +372,13 @@ export class CharacterAnimator {
     this.baseY = 0;
     this.baseX = 0;
     this.playFrameAnim('walk');
+    if (this.hasFrameAnims) this.clearFrameMotion();
   }
 
   /** Freeze animation for the given duration (ms). Called on damage. */
   triggerHitFreeze(durationMs: number = 35): void {
-    this.hitFreezeTimer = durationMs;
+    this.hitFreezeTimer = Math.max(this.hitFreezeTimer, durationMs);
+    this.getSpriteChild()?.anims.pause();
   }
 
   private startTransition(toState: string): void {
@@ -262,6 +398,10 @@ export class CharacterAnimator {
     // Hit-freeze: skip animation updates
     if (this.hitFreezeTimer > 0) {
       this.hitFreezeTimer -= delta;
+      if (this.hitFreezeTimer <= 0) {
+        this.hitFreezeTimer = 0;
+        this.getSpriteChild()?.anims.resume();
+      }
       return;
     }
 
@@ -311,25 +451,26 @@ export class CharacterAnimator {
 
   private updateIdleLight(): void {
     const phase = (this.animTime / this.config.idleBobSpeed) * Math.PI * 2;
-    // Very subtle Y bob
-    const newBobY = Math.sin(phase) * this.config.idleBobAmount * 0.3;
-    this.container.y += newBobY - this.baseY;
-    this.baseY = newBobY;
-
-    // Flying sway
-    if (this.config.idleSwayX > 0) {
-      const newSwayX = Math.sin(phase * 0.7) * this.config.idleSwayX;
-      this.container.x += newSwayX - this.baseX;
-      this.baseX = newSwayX;
-    }
+    const breath = Math.sin(phase);
+    const bobY = breath * this.config.idleBobAmount * 0.32;
+    const swayX = Math.sin(phase * 0.7) * this.config.idleSwayX * 0.35;
+    const pulse = breath * this.config.idleScalePulse * 0.35;
+    this.applyFrameMotion(swayX, bobY, 1 - pulse * 0.25, 1 + pulse, breath * 0.2);
   }
 
   private updateWalkLight(): void {
     const phase = (this.animTime / this.config.walkBobSpeed) * Math.PI * 2;
-    // Very subtle Y bounce
-    const newBobY = -Math.abs(Math.sin(phase)) * this.config.walkBobAmount * 0.3;
-    this.container.y += newBobY - this.baseY;
-    this.baseY = newBobY;
+    const stride = Math.sin(phase);
+    const contact = Math.abs(stride);
+    const bobY = -contact * this.config.walkBobAmount * 0.28;
+    const lean = stride * this.config.walkTilt * 0.12;
+    this.applyFrameMotion(
+      0,
+      bobY,
+      1 + (1 - contact) * this.config.walkSquash * 0.18,
+      1 - (1 - contact) * this.config.walkSquash * 0.12,
+      lean,
+    );
   }
 
   // ── Full procedural animation (fallback for no sprite sheet) ────────
@@ -390,6 +531,10 @@ export class CharacterAnimator {
 
   playAttack(targetX: number, targetY: number): void {
     if (this.dead) return;
+    if (this.hasFrameAnims) {
+      this.playFrameAttack(targetX, targetY);
+      return;
+    }
     this.cancelTweens();
     this.prevState = this.state;
     this.state = 'attack';
@@ -490,10 +635,81 @@ export class CharacterAnimator {
     });
   }
 
+  private playFrameAttack(targetX: number, targetY: number): void {
+    const sprite = this.getSpriteChild();
+    if (!sprite) return;
+
+    this.cancelTweens();
+    this.clearFrameMotion();
+    this.startTransition('attack');
+    this.prevState = this.state;
+    this.state = 'attack';
+    this.animTime = 0;
+    this.playFrameAnim('attack');
+
+    const dx = targetX - this.container.x;
+    const dy = targetY - this.container.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const nx = dx / distance;
+    const ny = dy / distance;
+    sprite.setFlipX(dx < 0);
+
+    const total = this.config.attackDuration;
+    const windupMs = Math.min(this.config.attackWindup, total * 0.35);
+    const strikeMs = Math.max(55, total * 0.2);
+    const recoverMs = Math.max(80, total - windupMs - strikeMs);
+    const localLunge = Math.min(10, this.config.attackLunge * 0.55);
+
+    this.addTween({
+      targets: sprite,
+      x: this.frameBaseX - nx * localLunge * 0.35,
+      y: this.frameBaseY - ny * localLunge * 0.2 + 1,
+      scaleX: this.frameBaseScaleX * 1.04,
+      scaleY: this.frameBaseScaleY * 0.94,
+      angle: this.frameBaseAngle - Math.sign(dx || 1) * 3,
+      duration: windupMs,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        if (this.state !== 'attack') return;
+        this.addTween({
+          targets: sprite,
+          x: this.frameBaseX + nx * localLunge,
+          y: this.frameBaseY + ny * localLunge * 0.45 - 1,
+          scaleX: this.frameBaseScaleX * 0.97,
+          scaleY: this.frameBaseScaleY * 1.04,
+          angle: this.frameBaseAngle + Math.sign(dx || 1) * 4,
+          duration: strikeMs,
+          ease: 'Expo.easeOut',
+          onComplete: () => {
+            if (this.state !== 'attack') return;
+            if (this.config.attackShake && this.scene.cameras?.main) {
+              this.scene.cameras.main.shake(45, 0.0025);
+            }
+            this.addTween({
+              targets: sprite,
+              x: this.frameBaseX,
+              y: this.frameBaseY,
+              scaleX: this.frameBaseScaleX,
+              scaleY: this.frameBaseScaleY,
+              angle: this.frameBaseAngle,
+              duration: recoverMs,
+              ease: 'Cubic.easeOut',
+              onComplete: () => this.finishFrameAction('attack'),
+            });
+          },
+        });
+      },
+    });
+  }
+
   // ── Cast Animation ────────────────────────────────────────────────────
 
   playCast(): void {
     if (this.dead) return;
+    if (this.hasFrameAnims) {
+      this.playFrameCast();
+      return;
+    }
     this.cancelTweens();
     this.prevState = this.state;
     this.state = 'cast';
@@ -547,11 +763,167 @@ export class CharacterAnimator {
     });
   }
 
+  private playFrameCast(): void {
+    const sprite = this.getSpriteChild();
+    if (!sprite) return;
+
+    this.cancelTweens();
+    this.clearFrameMotion();
+    this.startTransition('cast');
+    this.prevState = this.state;
+    this.state = 'cast';
+    this.animTime = 0;
+    this.playFrameAnim('cast');
+
+    const total = this.config.castDuration;
+    const chargeMs = total * 0.46;
+    const releaseMs = total * 0.2;
+    const recoverMs = total - chargeMs - releaseMs;
+
+    this.addTween({
+      targets: sprite,
+      y: this.frameBaseY + this.config.castLean * 0.45,
+      scaleX: this.frameBaseScaleX * 1.035,
+      scaleY: this.frameBaseScaleY * 0.965,
+      angle: this.frameBaseAngle - 1.5,
+      duration: chargeMs,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        if (this.state !== 'cast') return;
+        if (this.config.castGlow) this.tintFlash(0xb9a5ff, 120);
+        this.addTween({
+          targets: sprite,
+          y: this.frameBaseY - this.config.castLean * 0.8,
+          scaleX: this.frameBaseScaleX * 0.98,
+          scaleY: this.frameBaseScaleY * 1.05,
+          angle: this.frameBaseAngle + 1,
+          duration: releaseMs,
+          ease: 'Expo.easeOut',
+          onComplete: () => {
+            if (this.state !== 'cast') return;
+            this.addTween({
+              targets: sprite,
+              x: this.frameBaseX,
+              y: this.frameBaseY,
+              scaleX: this.frameBaseScaleX,
+              scaleY: this.frameBaseScaleY,
+              angle: this.frameBaseAngle,
+              duration: recoverMs,
+              ease: 'Cubic.easeOut',
+              onComplete: () => this.finishFrameAction('cast'),
+            });
+          },
+        });
+      },
+    });
+  }
+
+  playDodge(directionX: number, directionY: number): void {
+    if (this.dead) return;
+    const sprite = this.getSpriteChild();
+    if (!this.hasFrameAnims || !sprite) {
+      this.playFallbackDodge(directionX, directionY);
+      return;
+    }
+
+    this.cancelTweens();
+    this.clearFrameMotion();
+    this.startTransition('dodge');
+    this.prevState = this.state;
+    this.state = 'dodge';
+    this.animTime = 0;
+    this.playFrameAnim('dodge');
+
+    const distance = Math.hypot(directionX, directionY) || 1;
+    const nx = directionX / distance;
+    const ny = directionY / distance;
+    sprite.setFlipX(nx < 0);
+
+    const tuckMs = this.config.dodgeDuration * 0.3;
+    const releaseMs = this.config.dodgeDuration - tuckMs;
+    this.addTween({
+      targets: sprite,
+      x: this.frameBaseX + nx * 7,
+      y: this.frameBaseY + ny * 3 + 3,
+      scaleX: this.frameBaseScaleX * 1.12,
+      scaleY: this.frameBaseScaleY * 0.72,
+      angle: this.frameBaseAngle + Math.sign(nx || 1) * 7,
+      alpha: 0.68,
+      duration: tuckMs,
+      ease: 'Expo.easeOut',
+      onComplete: () => {
+        if (this.state !== 'dodge') return;
+        this.addTween({
+          targets: sprite,
+          x: this.frameBaseX,
+          y: this.frameBaseY,
+          scaleX: this.frameBaseScaleX,
+          scaleY: this.frameBaseScaleY,
+          angle: this.frameBaseAngle,
+          alpha: 1,
+          duration: releaseMs,
+          ease: 'Cubic.easeOut',
+          onComplete: () => this.finishFrameAction('dodge'),
+        });
+      },
+    });
+  }
+
+  private playFallbackDodge(directionX: number, directionY: number): void {
+    this.cancelTweens();
+    this.prevState = this.state;
+    this.state = 'dodge';
+    const direction = Math.sign(directionX || directionY || 1);
+    this.addTween({
+      targets: this.container,
+      angle: direction * 8,
+      scaleX: 1.12,
+      scaleY: 0.72,
+      alpha: 0.7,
+      duration: this.config.dodgeDuration * 0.3,
+      ease: 'Expo.easeOut',
+      yoyo: true,
+      onComplete: () => {
+        if (this.state !== 'dodge') return;
+        this.container.setAlpha(1).setAngle(0).setScale(1);
+        this.state = 'idle';
+      },
+    });
+  }
+
+  playResonance(color = 0xffc15a): void {
+    if (this.dead) return;
+    const sprite = this.getSpriteChild();
+    if (sprite) this.tintFlash(color, 180);
+
+    const ring = this.scene.add.ellipse(
+      this.container.x,
+      this.container.y + 2,
+      22,
+      8,
+      color,
+      0.22,
+    ).setDepth(this.container.depth - 1);
+    this.scene.tweens.add({
+      targets: ring,
+      scaleX: 1.8,
+      scaleY: 1.5,
+      alpha: 0,
+      duration: 360,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+  }
+
   // ── Hurt Animation ────────────────────────────────────────────────────
 
   playHurt(sourceX: number, sourceY: number): void {
     if (this.dead) return;
     if (this.state === 'death') return;
+    if (this.hasFrameAnims) {
+      this.playFrameHurt(sourceX, sourceY);
+      return;
+    }
 
     const savedState = this.state;
     this.cancelTweens();
@@ -596,6 +968,57 @@ export class CharacterAnimator {
     });
   }
 
+  private playFrameHurt(sourceX: number, sourceY: number): void {
+    const sprite = this.getSpriteChild();
+    if (!sprite) return;
+
+    const savedState = this.state === 'walk' ? 'walk' : 'idle';
+    this.cancelTweens();
+    this.clearFrameMotion();
+    this.prevState = this.state;
+    this.state = 'hurt';
+    this.animTime = 0;
+    this.playFrameAnim('hurt');
+
+    const dx = this.container.x - sourceX;
+    const dy = this.container.y - sourceY;
+    const distance = Math.hypot(dx, dy) || 1;
+    const nx = dx / distance;
+    const ny = dy / distance;
+    const recoil = Math.min(8, this.config.hurtKnockback * 0.65);
+    if (this.config.hurtFlash) this.tintFlash(0xff5b5b, 90);
+
+    this.addTween({
+      targets: sprite,
+      x: this.frameBaseX + nx * recoil,
+      y: this.frameBaseY + ny * recoil * 0.45 + 2,
+      scaleX: this.frameBaseScaleX * 0.9,
+      scaleY: this.frameBaseScaleY * 1.08,
+      angle: this.frameBaseAngle + Math.sign(nx || 1) * 4,
+      duration: this.config.hurtDuration * 0.38,
+      ease: 'Expo.easeOut',
+      onComplete: () => {
+        if (this.state !== 'hurt') return;
+        this.addTween({
+          targets: sprite,
+          x: this.frameBaseX,
+          y: this.frameBaseY,
+          scaleX: this.frameBaseScaleX,
+          scaleY: this.frameBaseScaleY,
+          angle: this.frameBaseAngle,
+          duration: this.config.hurtDuration * 0.62,
+          ease: 'Cubic.easeOut',
+          onComplete: () => {
+            if (this.state !== 'hurt') return;
+            this.state = savedState;
+            this.animTime = 0;
+            this.playFrameAnim(savedState);
+          },
+        });
+      },
+    });
+  }
+
   // ── Death Animation ───────────────────────────────────────────────────
 
   playDeath(onComplete?: () => void): void {
@@ -606,6 +1029,20 @@ export class CharacterAnimator {
     this.playFrameAnim('death');
 
     const duration = this.config.deathDuration;
+    const sprite = this.getSpriteChild();
+    if (this.hasFrameAnims && sprite) {
+      this.clearFrameMotion();
+      this.addTween({
+        targets: sprite,
+        y: this.frameBaseY + 5,
+        alpha: 0.12,
+        duration: duration * 0.75,
+        delay: duration * 0.25,
+        ease: 'Cubic.easeIn',
+        onComplete,
+      });
+      return;
+    }
 
     switch (this.config.deathStyle) {
       case 'collapse':
@@ -673,6 +1110,15 @@ export class CharacterAnimator {
   }
 
   // ── Private Helpers ──────────────────────────────────────────────────
+
+  private finishFrameAction(expectedState: AnimState): void {
+    if (this.dead || this.state !== expectedState) return;
+    this.clearFrameMotion();
+    this.prevState = this.state;
+    this.state = 'idle';
+    this.animTime = 0;
+    this.playFrameAnim('idle');
+  }
 
   private addTween(config: Phaser.Types.Tweens.TweenBuilderConfig): Phaser.Tweens.Tween {
     const tween = this.scene.tweens.add({

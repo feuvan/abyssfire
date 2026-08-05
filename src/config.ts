@@ -20,6 +20,9 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   pixelArt: false,
   antialias: true,
   backgroundColor: '#0f0f1a',
+  input: {
+    gamepad: true,
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

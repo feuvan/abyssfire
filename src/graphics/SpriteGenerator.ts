@@ -1,8 +1,14 @@
 import Phaser from 'phaser';
 import { TEXTURE_SCALE } from '../config';
 import { CAMP_THEMES } from '../data/camp-themes';
+import { getActionFrameRate } from '../systems/CharacterAnimator';
 import { DrawUtils } from './DrawUtils';
-import type { EntityDrawer } from './sprites/types';
+import type { EntityAction, EntityDrawer } from './sprites/types';
+import {
+  PLAYER_ACTION_FRAME_COUNTS,
+  PLAYER_ACTION_ORDER,
+  getPlayerActionFrameRange,
+} from './sprites/types';
 import { SlimeDrawer } from './sprites/monsters/Slime';
 import { SkeletonDrawer } from './sprites/monsters/Skeleton';
 import { WerewolfDrawer } from './sprites/monsters/Werewolf';
@@ -80,8 +86,6 @@ const WALK_START = 4, WALK_COUNT = 6;
 const ATK_START = 10, ATK_COUNT = 4;
 const HURT_START = 14, HURT_COUNT = 2;
 const DEATH_START = 16, DEATH_COUNT = 4;
-const CAST_START = 20, CAST_COUNT = 4;
-const MONSTER_FRAMES = 20;
 
 // NPC frame layout (24 frames total per NPC)
 const NPC_WORK_START = 0, NPC_WORK_COUNT = 8;
@@ -441,7 +445,7 @@ export class SpriteGenerator {
 
   private static clearEntityAnimations(scene: Phaser.Scene, key: string, isPlayer: boolean): void {
     const actions = isPlayer
-      ? ['idle', 'walk', 'attack', 'hurt', 'death', 'cast']
+      ? PLAYER_ACTION_ORDER
       : ['idle', 'walk', 'attack', 'hurt', 'death'];
     for (const action of actions) {
       const animKey = `${key}_${action}`;
@@ -1020,23 +1024,26 @@ export class SpriteGenerator {
     const fw = drawer.frameW * s, fh = drawer.frameH * s;
     const [canvas, ctx] = this.utils.createCanvas(fw * drawer.totalFrames, fh);
 
-    const actions: [string, number, number][] = [
-      ['idle', IDLE_START, IDLE_COUNT],
-      ['walk', WALK_START, WALK_COUNT],
-      ['attack', ATK_START, ATK_COUNT],
-      ['hurt', HURT_START, HURT_COUNT],
-      ['death', DEATH_START, DEATH_COUNT],
-    ];
-    if (drawer.totalFrames > MONSTER_FRAMES) {
-      actions.push(['cast', CAST_START, CAST_COUNT]);
-    }
+    const isPlayer = PLAYER_DRAWER_BY_KEY.has(drawer.key);
+    const actions: [EntityAction, number, number][] = isPlayer
+      ? PLAYER_ACTION_ORDER.map(action => {
+          const range = getPlayerActionFrameRange(action);
+          return [action, range.start, PLAYER_ACTION_FRAME_COUNTS[action]];
+        })
+      : [
+          ['idle', IDLE_START, IDLE_COUNT],
+          ['walk', WALK_START, WALK_COUNT],
+          ['attack', ATK_START, ATK_COUNT],
+          ['hurt', HURT_START, HURT_COUNT],
+          ['death', DEATH_START, DEATH_COUNT],
+        ];
 
     for (const [action, start, count] of actions) {
       for (let f = 0; f < count; f++) {
         const ox = (start + f) * fw;
         ctx.save();
         ctx.translate(ox, 0);
-        drawer.drawFrame(ctx, f, action as any, fw, fh, this.utils);
+        drawer.drawFrame(ctx, f, action, fw, fh, this.utils);
         ctx.restore();
       }
     }
@@ -1349,7 +1356,7 @@ export class SpriteGenerator {
 
   private hasEntityAnimationsRegistered(key: string, isPlayer: boolean): boolean {
     const actions = isPlayer
-      ? ['idle', 'walk', 'attack', 'hurt', 'death', 'cast']
+      ? PLAYER_ACTION_ORDER
       : ['idle', 'walk', 'attack', 'hurt', 'death'];
     return actions.every(action => this.scene.anims.exists(`${key}_${action}`));
   }
@@ -1362,16 +1369,20 @@ export class SpriteGenerator {
 
   private registerEntityAnimations(key: string, isPlayer: boolean): void {
     const anims = this.scene.anims;
-    const defs: [string, number, number, number, number][] = [
-      ['idle', IDLE_START, IDLE_COUNT, 6, -1],
-      ['walk', WALK_START, WALK_COUNT, 10, -1],
-      ['attack', ATK_START, ATK_COUNT, 12, 0],
-      ['hurt', HURT_START, HURT_COUNT, 10, 0],
-      ['death', DEATH_START, DEATH_COUNT, 6, 0],
-    ];
-    if (isPlayer) {
-      defs.push(['cast', CAST_START, CAST_COUNT, 8, 0]);
-    }
+    const defs: [string, number, number, number, number][] = isPlayer
+      ? PLAYER_ACTION_ORDER.map(action => {
+          const range = getPlayerActionFrameRange(action);
+          const rate = getActionFrameRate(key.replace(/^player_/, ''), action);
+          const repeat = action === 'idle' || action === 'walk' ? -1 : 0;
+          return [action, range.start, PLAYER_ACTION_FRAME_COUNTS[action], rate, repeat];
+        })
+      : [
+          ['idle', IDLE_START, IDLE_COUNT, 6, -1],
+          ['walk', WALK_START, WALK_COUNT, 10, -1],
+          ['attack', ATK_START, ATK_COUNT, 12, 0],
+          ['hurt', HURT_START, HURT_COUNT, 10, 0],
+          ['death', DEATH_START, DEATH_COUNT, 6, 0],
+        ];
     for (const [action, start, count, rate, repeat] of defs) {
       const animKey = `${key}_${action}`;
       if (anims.exists(animKey)) anims.remove(animKey);

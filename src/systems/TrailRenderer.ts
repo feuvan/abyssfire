@@ -93,7 +93,20 @@ export class TrailRenderer {
 
   // ── Dash Ghost Trail ────────────────────────────────────
 
-  stampGhost(worldX: number, worldY: number, textureKey: string, alpha: number = 0.4): void {
+  stampGhost(
+    worldX: number,
+    worldY: number,
+    textureKey: string,
+    options: {
+      frame?: string | number;
+      alpha?: number;
+      tint?: number;
+      scaleX?: number;
+      scaleY?: number;
+      flipX?: boolean;
+      angle?: number;
+    } = {},
+  ): void {
     const cam = this.scene.cameras.main;
     const screenX = (worldX - cam.scrollX) * cam.zoom;
     const screenY = (worldY - cam.scrollY) * cam.zoom;
@@ -101,10 +114,16 @@ export class TrailRenderer {
     if (this.scene.textures.exists(textureKey)) {
       this.ghostStamp
         .setTexture(textureKey)
+        .setFrame(options.frame ?? 0)
         .setPosition(screenX, screenY)
-        .setAlpha(alpha)
-        .setTint(0x4444ff)
-        .setScale(1);
+        .setAlpha(options.alpha ?? 0.4)
+        .setTint(options.tint ?? 0x4444ff)
+        .setScale(
+          (options.scaleX ?? 1) * cam.zoom,
+          (options.scaleY ?? options.scaleX ?? 1) * cam.zoom,
+        )
+        .setFlipX(options.flipX ?? false)
+        .setAngle(options.angle ?? 0);
       this.trailRT.draw(this.ghostStamp);
     }
   }

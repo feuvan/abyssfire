@@ -14,6 +14,12 @@ import type { Player } from '../entities/Player';
 import type { ZoneScene } from './ZoneScene';
 import type { ItemInstance, WeaponBase, ArmorBase, DialogueTree, DialogueNode, DialogueChoice, EquipSlot } from '../data/types';
 import { MercenarySystem, MERCENARY_DEFS, MERCENARY_TYPES } from '../systems/MercenarySystem';
+import {
+  getLearnedSkillLoadout,
+  getSkillInvestmentState,
+  investSkillPoint,
+  type SkillInvestmentState,
+} from '../systems/SkillProgressionSystem';
 import { QUEST_TYPE_LABELS } from '../systems/QuestSystem';
 import { gatherNpcQuests, buildQuestCardData, formatRewardSummary, buildToastMessage } from '../ui/QuestCardUI';
 import { buildTrackerState, buildTrackerSignature, MAX_VISIBLE_QUESTS } from '../ui/QuestTrackerHUD';
@@ -93,10 +99,20 @@ export class UIScene extends Phaser.Scene {
   private hpText!: Phaser.GameObjects.Text;
   private manaBar!: Phaser.GameObjects.Rectangle;
   private manaText!: Phaser.GameObjects.Text;
+  private spiritBar!: Phaser.GameObjects.Rectangle;
+  private spiritBarBg!: Phaser.GameObjects.Rectangle;
+  private spiritLabel!: Phaser.GameObjects.Text;
+  private spiritText!: Phaser.GameObjects.Text;
+  private resonanceText!: Phaser.GameObjects.Text;
+  private targetText!: Phaser.GameObjects.Text;
+  private currentTargetId: string | null = null;
+  private currentTargetName: string | null = null;
+  private dodgeText!: Phaser.GameObjects.Text;
   private expBar!: Phaser.GameObjects.Rectangle;
   private levelText!: Phaser.GameObjects.Text;
   private goldText!: Phaser.GameObjects.Text;
   private autoCombatText!: Phaser.GameObjects.Text;
+  private skillLoadout: Player['classData']['skills'] = [];
   private skillSlots: Phaser.GameObjects.Container[] = [];
   private skillCooldownOverlays: Phaser.GameObjects.Rectangle[] = [];
   private skillCooldownTexts: Phaser.GameObjects.Text[] = [];
@@ -167,6 +183,7 @@ export class UIScene extends Phaser.Scene {
   init(data: { player: Player; zone: ZoneScene }): void {
     this.player = data.player;
     this.zone = data.zone;
+    this.refreshSkillLoadout();
   }
 
   create(): void {
@@ -186,6 +203,7 @@ export class UIScene extends Phaser.Scene {
     this.nextQuestTrackerRefreshAt = 0;
     this.lastQuestTrackerSignature = '';
     this.createHPManaBar();
+    this.createCombatFeedback();
     this.createExpBar();
     this.createSkillBar();
     this.createLogPanel();
@@ -199,8 +217,7 @@ export class UIScene extends Phaser.Scene {
   private createHPManaBar(): void {
     // Compute skill bar width to position globes adjacent to it
     const slotSize = px(42), gap = px(5);
-    const skills = this.player.classData.skills;
-    const totalSkillW = skills.length * (slotSize + gap) - gap;
+    const totalSkillW = 6 * (slotSize + gap) - gap;
     const utilBtnW = px(50), utilGap = px(6), utilCount = 3;
     const totalUtilW = utilCount * utilBtnW + (utilCount - 1) * utilGap;
     const skillUtilGap = gap + px(4);
@@ -232,6 +249,17 @@ export class UIScene extends Phaser.Scene {
     const mp = this.createGlobe(mpGlobeX, y, GLOBE_R, 0x08081a, 0x2244aa);
     this.manaBar = mp.fill;
     this.manaText = mp.text;
+  }
+
+  private getSkillLoadout(): typeof this.player.classData.skills {
+    return this.skillLoadout;
+  }
+
+  private refreshSkillLoadout(): void {
+    this.skillLoadout = getLearnedSkillLoadout(
+      this.player.classData.skills,
+      this.player.skillLevels,
+    );
   }
 
   private createGlobe(
@@ -291,10 +319,62 @@ export class UIScene extends Phaser.Scene {
     }).setOrigin(0, 0.5).setDepth(3002);
   }
 
+  private createCombatFeedback(): void {
+    const barX = px(72);
+    const barY = H - px(112);
+    const barW = px(150);
+    const barH = px(8);
+    this.spiritLabel = this.add.text(barX, barY - px(17), t('ui.hud.spirit'), {
+      fontSize: fs(11),
+      color: '#e09a4d',
+      fontFamily: FONT,
+      fontStyle: 'bold',
+    }).setOrigin(0, 0.5).setDepth(3002);
+    this.spiritBarBg = this.add.rectangle(barX, barY, barW, barH, 0x24170e)
+      .setOrigin(0, 0.5)
+      .setStrokeStyle(Math.round(1 * DPR), 0x6a4320)
+      .setDepth(3000);
+    this.spiritBar = this.add.rectangle(
+      barX,
+      barY,
+      0,
+      barH - px(2),
+      this.player.spirit.profile.visualColor,
+    )
+      .setOrigin(0, 0.5)
+      .setDepth(3001);
+    this.spiritText = this.add.text(barX + barW + px(6), barY, '', {
+      fontSize: fs(10),
+      color: '#f0c080',
+      fontFamily: FONT,
+    }).setOrigin(0, 0.5).setDepth(3002);
+    this.resonanceText = this.add.text(barX, barY + px(12), '', {
+      fontSize: fs(10),
+      color: '#ffd27a',
+      fontFamily: FONT,
+      fontStyle: 'bold',
+    }).setOrigin(0, 0.5).setDepth(3002);
+
+    this.targetText = this.add.text(px(16), px(58), t('ui.hud.targetNone'), {
+      fontSize: fs(12),
+      color: '#777788',
+      fontFamily: FONT,
+      stroke: '#000000',
+      strokeThickness: Math.round(2 * DPR),
+    }).setDepth(3000);
+    this.dodgeText = this.add.text(px(16), px(77), t('ui.hud.dodgeReady'), {
+      fontSize: fs(11),
+      color: '#9bd7ff',
+      fontFamily: FONT,
+      stroke: '#000000',
+      strokeThickness: Math.round(2 * DPR),
+    }).setDepth(3000);
+  }
+
   private createSkillBar(): void {
     const slotSize = px(42), gap = px(5);
-    const skills = this.player.classData.skills;
-    const totalSkillW = skills.length * (slotSize + gap) - gap;
+    const skills = this.getSkillLoadout();
+    const totalSkillW = 6 * (slotSize + gap) - gap;
 
     const utilBtnW = px(50), utilGap = px(6), utilCount = 3;
     const totalUtilW = utilCount * utilBtnW + (utilCount - 1) * utilGap;
@@ -312,12 +392,19 @@ export class UIScene extends Phaser.Scene {
     this.skillCooldownOverlays = [];
     this.skillCooldownTexts = [];
 
-    for (let i = 0; i < skills.length; i++) {
+    for (let i = 0; i < 6; i++) {
       const x = startX + i * (slotSize + gap);
       const skill = skills[i];
       const container = this.add.container(x + slotSize / 2, y).setDepth(3000);
       const bg = this.add.rectangle(0, 0, slotSize, slotSize, 0x1a1a2e).setStrokeStyle(1.5 * DPR, 0x555566);
       container.add(bg);
+      if (!skill) {
+        container.add(this.add.text(0, 0, '—', {
+          fontSize: fs(16), color: '#353548', fontFamily: FONT,
+        }).setOrigin(0.5));
+        this.skillSlots.push(container);
+        continue;
+      }
       const iconKey = `skill_icon_${skill.id}`;
       if (this.textures.exists(iconKey)) {
         container.add(this.add.image(0, px(-2), iconKey)
@@ -442,6 +529,8 @@ export class UIScene extends Phaser.Scene {
     this.subscriptions.on(EventBus, GameEvents.MINIBOSS_DIALOGUE, this.handleMiniBossDialogue, this);
     this.subscriptions.on(EventBus, GameEvents.LORE_COLLECTED, this.handleLoreCollected, this);
     this.subscriptions.on(EventBus, GameEvents.ACHIEVEMENT_UNLOCKED, this.handleAchievementUnlocked, this);
+    this.subscriptions.on(EventBus, GameEvents.TARGET_CHANGED, this.handleTargetChanged, this);
+    this.subscriptions.on(EventBus, GameEvents.SKILL_LEVEL_CHANGED, this.handleSkillLevelChanged, this);
     this.subscriptions.on(EventBus, 'ui:refresh', this.handleUiRefresh, this);
     this.subscriptions.on(EventBus, GameEvents.LOCALE_CHANGED, this.handleLocaleChanged, this);
     // Quest events — force immediate tracker refresh
@@ -455,6 +544,27 @@ export class UIScene extends Phaser.Scene {
     this.logMessages.push(data);
     if (this.logMessages.length > LOG_MAX_LINES) this.logMessages.shift();
     this.updateLogDisplay();
+  }
+
+  private handleTargetChanged(data: { targetId: string | null; targetName?: string | null }): void {
+    this.currentTargetId = data.targetId;
+    this.currentTargetName = data.targetName ?? null;
+    this.targetText.setText(
+      data.targetId
+        ? t('ui.hud.target', { targetName: this.currentTargetName ?? data.targetId })
+        : t('ui.hud.targetNone'),
+    );
+    this.targetText.setColor(data.targetId ? '#ff8c72' : '#777788');
+  }
+
+  private handleSkillLevelChanged(data: { level?: number }): void {
+    this.refreshSkillLoadout();
+    if (data.level !== 1) return;
+    this.time.delayedCall(0, () => {
+      if (this.scene.isActive()) {
+        this.scene.restart({ player: this.player, zone: this.zone });
+      }
+    });
   }
 
   private handleShopOpen(data: { npcId: string; shopItems: string[]; type: string }): void {
@@ -504,6 +614,8 @@ export class UIScene extends Phaser.Scene {
   private handleUiRefresh(data: { player: Player; zone: ZoneScene }): void {
     this.player = data.player;
     this.zone = data.zone;
+    this.refreshSkillLoadout();
+    this.handleTargetChanged({ targetId: null, targetName: null });
     this.nextMinimapRefreshAt = 0;
     this.nextQuestTrackerRefreshAt = 0;
     this.lastQuestTrackerSignature = '';
@@ -517,6 +629,11 @@ export class UIScene extends Phaser.Scene {
 
   /** Handle locale change: refresh all open panels so text updates in-place. */
   private handleLocaleChanged(): void {
+    this.spiritLabel.setText(t('ui.hud.spirit'));
+    this.handleTargetChanged({
+      targetId: this.currentTargetId,
+      targetName: this.currentTargetName,
+    });
     // Refresh inventory panel if open
     if (this.inventoryPanel) { this.refreshInventory(); }
     // Refresh character panel if open
@@ -1026,6 +1143,26 @@ export class UIScene extends Phaser.Scene {
 
   private skillTooltip: Phaser.GameObjects.Container | null = null;
 
+  private getSkillLockText(state: SkillInvestmentState): string {
+    switch (state.reason) {
+      case 'player_level':
+        return t('ui.skillTree.lock.playerLevel', {
+          level: state.requiredPlayerLevel,
+        });
+      case 'tree_points':
+        return t('ui.skillTree.lock.treePoints', {
+          current: state.investedTreePoints,
+          required: state.requiredTreePoints,
+        });
+      case 'previous_tier':
+        return t('ui.skillTree.lock.previousTier');
+      case 'no_points':
+        return t('ui.skillTree.lock.noPoints');
+      default:
+        return '';
+    }
+  }
+
   private toggleSkillTree(): void {
     if (this.skillPanel) {
       if (this.skillTreeWheelHandler) {
@@ -1198,7 +1335,14 @@ export class UIScene extends Phaser.Scene {
       // Render skill cards
       sortedSkills.forEach((skill, si) => {
         const level = this.player.getSkillLevel(skill.id);
-        const canLevel = this.player.freeSkillPoints > 0 && level < skill.maxLevel;
+        const investmentState = getSkillInvestmentState(
+          skill,
+          this.player.classData.skills,
+          this.player.skillLevels,
+          this.player.level,
+          this.player.freeSkillPoints,
+        );
+        const canLevel = investmentState.canInvest;
         const isLearned = level > 0;
         const isMaxed = level >= skill.maxLevel;
         const cardX = cardStartX;
@@ -1349,17 +1493,24 @@ export class UIScene extends Phaser.Scene {
         }));
 
         // Stats row
-        const scaledDmg = getSkillDamageMultiplier(skill, level);
-        const scaledMana = getSkillManaCost(skill, level);
-        const scaledCD = getSkillCooldown(skill, level);
+        const displayLevel = Math.max(1, level);
+        const scaledDmg = getSkillDamageMultiplier(skill, displayLevel);
+        const scaledMana = getSkillManaCost(skill, displayLevel);
+        const scaledCD = getSkillCooldown(skill, displayLevel);
         const statsY = cardY + px(54);
-        let statsStr = '';
-        if (skill.damageMultiplier > 0) statsStr += `${Math.round(scaledDmg * 100)}%`;
-        statsStr += `  MP${scaledMana}  CD${(scaledCD / 1000).toFixed(1)}s`;
+        let statsStr = !isLearned && !canLevel
+          ? this.getSkillLockText(investmentState)
+          : '';
         const dmgName = DMG_NAMES[skill.damageType] ?? '';
-        if (dmgName) statsStr += `  ${dmgName}`;
+        if (!statsStr) {
+          if (skill.damageMultiplier > 0) statsStr += `${Math.round(scaledDmg * 100)}%`;
+          statsStr += `  MP${scaledMana}  CD${(scaledCD / 1000).toFixed(1)}s`;
+          if (dmgName) statsStr += `  ${dmgName}`;
+        }
         scrollContainer.add(this.add.text(textX, statsY, statsStr, {
-          fontSize: fs(10), color: '#666680', fontFamily: FONT,
+          fontSize: fs(10),
+          color: !isLearned && !canLevel ? '#a06161' : '#666680',
+          fontFamily: FONT,
         }));
 
         // Synergy badge
@@ -1443,9 +1594,20 @@ export class UIScene extends Phaser.Scene {
             btnText.setColor('#27ae60');
           });
           hitArea.on('pointerdown', () => {
-            if (this.player.freeSkillPoints > 0) {
-              this.player.freeSkillPoints--;
-              this.player.skillLevels.set(skill.id, level + 1);
+            const result = investSkillPoint(
+              skill,
+              this.player.classData.skills,
+              this.player.skillLevels,
+              this.player.level,
+              this.player.freeSkillPoints,
+            );
+            if (result.invested) {
+              this.player.freeSkillPoints = result.freeSkillPoints;
+              this.player.skillLevels = result.skillLevels;
+              EventBus.emit(GameEvents.SKILL_LEVEL_CHANGED, {
+                skillId: skill.id,
+                level: this.player.getSkillLevel(skill.id),
+              });
               this.toggleSkillTree(); this.toggleSkillTree();
             }
           });
@@ -4962,6 +5124,36 @@ export class UIScene extends Phaser.Scene {
     this.manaBar.y = globeBottom - this.manaBar.height;
     const manaText = `${Math.ceil(this.player.mana)}/${this.player.maxMana}`;
     if (this.manaText.text !== manaText) this.manaText.setText(manaText);
+
+    const spiritRatio = this.player.spirit.ratio;
+    const spiritWidth = this.spiritBarBg.width * spiritRatio;
+    if (Math.abs(this.spiritBar.width - spiritWidth) > 0.5) {
+      this.spiritBar.width = spiritWidth;
+    }
+    this.spiritBar.alpha = this.player.spirit.isResonating
+      ? 0.82 + Math.sin(time * 0.012) * 0.18
+      : 1;
+    const spiritText = `${Math.floor(this.player.spirit.value)}/${this.player.spirit.maxValue}`;
+    if (this.spiritText.text !== spiritText) this.spiritText.setText(spiritText);
+    const resonanceText = this.player.spirit.isResonating
+      ? t('ui.hud.resonance', {
+        seconds: (this.player.spirit.resonanceRemainingMs / 1000).toFixed(1),
+      })
+      : '';
+    if (this.resonanceText.text !== resonanceText) this.resonanceText.setText(resonanceText);
+    if (this.resonanceText.visible !== this.player.spirit.isResonating) {
+      this.resonanceText.setVisible(this.player.spirit.isResonating);
+    }
+
+    const dodgeRemaining = this.zone.getDodgeCooldownRemaining();
+    const dodgeReady = dodgeRemaining <= 0;
+    const dodgeText = dodgeReady
+      ? t('ui.hud.dodgeReady')
+      : t('ui.hud.dodgeCooldown', { seconds: (dodgeRemaining / 1000).toFixed(1) });
+    if (this.dodgeText.text !== dodgeText) this.dodgeText.setText(dodgeText);
+    const dodgeColor = dodgeReady ? '#9bd7ff' : '#778899';
+    if (this.dodgeText.style.color !== dodgeColor) this.dodgeText.setColor(dodgeColor);
+
     const expN = this.player.expToNextLevel();
     this.expBar.width = (W - px(32)) * (this.player.exp / expN);
     const levelText = `Lv.${this.player.level} (${this.player.exp}/${expN})`;
@@ -4986,7 +5178,7 @@ export class UIScene extends Phaser.Scene {
       if (map && this.zoneLabel.text !== map.name) this.zoneLabel.setText(map.name);
     }
 
-    const skills = this.player.classData.skills;
+    const skills = this.getSkillLoadout();
     for (let i = 0; i < Math.min(skills.length, this.skillCooldownOverlays.length); i++) {
       const cd = this.player.skillCooldowns.get(skills[i].id) ?? 0;
       const remaining = cd - time;

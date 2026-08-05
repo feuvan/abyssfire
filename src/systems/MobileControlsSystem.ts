@@ -3,6 +3,8 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../config';
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { Player } from '../entities/Player';
 import { t } from '../i18n';
+import { getSkillName } from '../i18n/gameAccessors';
+import { getLearnedSkillLoadout } from './SkillProgressionSystem';
 
 const FONT = '"Noto Sans SC", sans-serif';
 
@@ -38,6 +40,7 @@ export class MobileControlsSystem {
   private joystickCenterY = 0;
 
   // Skill buttons
+  private skillLoadout: Player['classData']['skills'] = [];
   private skillButtons: Phaser.GameObjects.Container[] = [];
 
   // Panel buttons
@@ -46,6 +49,8 @@ export class MobileControlsSystem {
   // Auto-combat button
   private autoCombatBtn!: Phaser.GameObjects.Container;
   private autoCombatLabel!: Phaser.GameObjects.Text;
+  private dodgeBtn!: Phaser.GameObjects.Container;
+  private targetBtn!: Phaser.GameObjects.Container;
 
   // Responsive sizing
   private scale: number;
@@ -70,11 +75,24 @@ export class MobileControlsSystem {
     this.player = player;
     this.scale = Math.min(GAME_WIDTH, GAME_HEIGHT) / 720;
     this.joystickRadius = 50 * this.scale;
+    this.refreshSkillLoadout();
 
     this.createJoystick();
     this.createSkillButtons();
+    this.createCombatButtons();
     this.createAutoCombatButton();
     this.createPanelButtons();
+  }
+
+  private getSkillLoadout(): typeof this.player.classData.skills {
+    return this.skillLoadout;
+  }
+
+  private refreshSkillLoadout(): void {
+    this.skillLoadout = getLearnedSkillLoadout(
+      this.player.classData.skills,
+      this.player.skillLevels,
+    );
   }
 
   /** Current movement direction from joystick (in tile-space dx/dy) */
@@ -144,7 +162,7 @@ export class MobileControlsSystem {
   private createSkillButtons(): void {
     const btnSize = 44 * this.scale;
     const gap = 6 * this.scale;
-    const skills = this.player.classData.skills;
+    const skills = this.getSkillLoadout();
     const count = Math.min(skills.length, 6);
 
     // Layout: 2 columns x 3 rows on right side
@@ -174,7 +192,7 @@ export class MobileControlsSystem {
       }).setOrigin(0.5);
       container.add(label);
 
-      const nameLabel = this.scene.add.text(0, 8, skill.name.slice(0, 2), {
+      const nameLabel = this.scene.add.text(0, 8, getSkillName(skill.id, skill.name).slice(0, 2), {
         fontSize: `${Math.round(9 * this.scale)}px`,
         color: '#aaaacc',
         fontFamily: FONT,
@@ -194,12 +212,65 @@ export class MobileControlsSystem {
     }
   }
 
+  private createCombatButtons(): void {
+    const btnSize = 44 * this.scale;
+    const gap = 6 * this.scale;
+    const skills = this.getSkillLoadout();
+    const rows = Math.ceil(skills.length / 2);
+    const skillTop = GAME_HEIGHT - (rows * (btnSize + gap)) - 20 * this.scale;
+    const y = skillTop - btnSize / 2 - gap;
+    const right = GAME_WIDTH - 20 * this.scale;
+
+    this.targetBtn = this.createCombatButton(
+      right - btnSize / 2,
+      y,
+      btnSize,
+      t('sys.mobile.target'),
+      0x33252a,
+      () => EventBus.emit(GameEvents.UI_TARGET_CYCLE, {}),
+    );
+    this.dodgeBtn = this.createCombatButton(
+      right - btnSize * 1.5 - gap,
+      y,
+      btnSize,
+      t('sys.mobile.dodge'),
+      0x1d3042,
+      () => {
+        const direction = this.getDirection();
+        EventBus.emit(GameEvents.UI_DODGE_REQUEST, direction);
+      },
+    );
+  }
+
+  private createCombatButton(
+    x: number,
+    y: number,
+    size: number,
+    labelText: string,
+    color: number,
+    onPress: () => void,
+  ): Phaser.GameObjects.Container {
+    const container = this.scene.add.container(x, y).setDepth(5000).setScrollFactor(0);
+    const bg = this.scene.add.rectangle(0, 0, size, size, color, 0.72)
+      .setStrokeStyle(1.5 * this.scale, 0x7890aa, 0.75);
+    const label = this.scene.add.text(0, 0, labelText, {
+      fontSize: `${Math.round(10 * this.scale)}px`,
+      color: '#d6e4f2',
+      fontFamily: FONT,
+      align: 'center',
+    }).setOrigin(0.5);
+    container.add([bg, label]);
+    bg.setInteractive({ useHandCursor: false });
+    bg.on('pointerdown', onPress);
+    return container;
+  }
+
   private createAutoCombatButton(): void {
     const btnSize = 44 * this.scale;
     const gap = 6 * this.scale;
     // Place above skill buttons, right-aligned
     const x = GAME_WIDTH - btnSize / 2 - 20 * this.scale - (btnSize + gap);
-    const rows = Math.ceil(Math.min(this.player.classData.skills.length, 6) / 2);
+    const rows = Math.ceil(this.getSkillLoadout().length / 2);
     const skillBlockHeight = rows * (btnSize + gap);
     const y = GAME_HEIGHT - skillBlockHeight - 20 * this.scale - btnSize / 2 - gap;
 
@@ -279,7 +350,7 @@ export class MobileControlsSystem {
 
     // Update skill cooldown overlays
     const now = this.scene.time.now;
-    const skills = this.player.classData.skills;
+    const skills = this.getSkillLoadout();
     for (let i = 0; i < this.skillButtons.length; i++) {
       if (i >= skills.length) break;
       const cd = this.player.skillCooldowns.get(skills[i].id) ?? 0;
@@ -288,10 +359,33 @@ export class MobileControlsSystem {
     }
   }
 
+  refreshSkills(): void {
+    this.refreshSkillLoadout();
+    for (const button of this.skillButtons) button.destroy();
+    this.skillButtons = [];
+    this.autoCombatBtn.destroy();
+    this.dodgeBtn.destroy();
+    this.targetBtn.destroy();
+    this.createSkillButtons();
+    this.createCombatButtons();
+    this.createAutoCombatButton();
+    this.setVisible(this.visible);
+  }
+
+  refreshLocale(): void {
+    this.refreshSkills();
+    for (const button of this.panelButtons) button.destroy();
+    this.panelButtons = [];
+    this.createPanelButtons();
+    this.setVisible(this.visible);
+  }
+
   setVisible(v: boolean): void {
     this.visible = v;
     this.joystickContainer.setVisible(v);
     this.autoCombatBtn.setVisible(v);
+    this.dodgeBtn.setVisible(v);
+    this.targetBtn.setVisible(v);
     for (const btn of this.skillButtons) btn.setVisible(v);
     for (const btn of this.panelButtons) btn.setVisible(v);
   }
@@ -301,6 +395,8 @@ export class MobileControlsSystem {
     this.scene.input.off('pointerup', this.pointerUpHandler);
     this.joystickContainer.destroy();
     this.autoCombatBtn.destroy();
+    this.dodgeBtn.destroy();
+    this.targetBtn.destroy();
     for (const btn of this.skillButtons) btn.destroy();
     for (const btn of this.panelButtons) btn.destroy();
   }

@@ -251,6 +251,14 @@ export class AudioManager {
       this.playSFX('player_death');
     });
 
+    EventBus.on(GameEvents.DODGE_STARTED, () => {
+      this.playSFX('dodge');
+    });
+
+    EventBus.on(GameEvents.SPIRIT_RESONANCE_STARTED, () => {
+      this.playSFX('resonance');
+    });
+
     // --- Monsters ---
     EventBus.on(GameEvents.MONSTER_DIED, () => {
       this.playSFX('monster_death');

@@ -1,5 +1,6 @@
 export type SFXType = 'hit' | 'hit_heavy' | 'crit' | 'miss' | 'block' | 'player_hurt'
   | 'monster_death' | 'player_death'
+  | 'dodge' | 'resonance'
   | 'skill_melee' | 'skill_fire' | 'skill_ice' | 'skill_lightning' | 'skill_heal' | 'skill_buff'
   | 'loot_common' | 'loot_magic' | 'loot_rare' | 'loot_legendary' | 'equip' | 'potion'
   | 'click' | 'panel_open' | 'panel_close' | 'error'

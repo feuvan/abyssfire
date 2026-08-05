@@ -484,6 +484,11 @@ export interface MercenarySaveData {
   alive: boolean;
 }
 
+export interface SpiritSaveState {
+  value: number;
+  resonanceRemainingMs: number;
+}
+
 export interface SaveData {
   id: string;
   version: number;
@@ -501,6 +506,8 @@ export interface SaveData {
     freeStatPoints: number;
     freeSkillPoints: number;
     skillLevels: Record<string, number>;
+    /** Class-specific Spirit meter and active Resonance time (save v3+). */
+    spirit?: SpiritSaveState;
     tileCol: number;
     tileRow: number;
     currentMap: string;

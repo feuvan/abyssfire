@@ -87,6 +87,8 @@ export interface CombatEntity {
   attackRange: number;
   buffs: ActiveBuff[];
   equipStats?: EquipStats;
+  /** Runtime multiplier for temporary class resources such as Spirit Resonance. */
+  outgoingDamageMultiplier?: number;
 }
 
 export interface ActiveBuff {
@@ -330,7 +332,8 @@ export class CombatSystem {
       effectiveDefense *= 1 - ignoreDefPct / 100;
     }
 
-    const rawDamage = baseDmg * multiplier * critMultiplier + elementalFlat;
+    const outgoingMultiplier = clamp(attacker.outgoingDamageMultiplier ?? 1, 0, 10);
+    const rawDamage = (baseDmg * multiplier * critMultiplier + elementalFlat) * outgoingMultiplier;
     const afterDef = Math.max(1, rawDamage - effectiveDefense * 0.5);
     let finalDamage = afterDef * (1 - damageReduction);
 

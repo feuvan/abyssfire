@@ -1,6 +1,11 @@
 // src/graphics/sprites/players/PlayerMage.ts
 import type { EntityDrawer, PlayerAction } from '../types';
+import {
+  PLAYER_ACTION_FRAME_COUNTS,
+  PLAYER_TOTAL_FRAMES,
+} from '../types';
 import type { DrawUtils } from '../../DrawUtils';
+import { samplePose, sinePulse, smoothstep } from './PlayerMotion';
 
 const ROBE_BASE    = 0x1e132a;
 const ROBE_LIGHT   = 0x2d1e3d;
@@ -18,16 +23,13 @@ export const PlayerMageDrawer: EntityDrawer = {
   key: 'player_mage',
   frameW: 64,
   frameH: 96,
-  totalFrames: 24,
+  totalFrames: PLAYER_TOTAL_FRAMES,
 
   drawFrame(ctx, frame, action, w, h, utils) {
     const act = action as PlayerAction;
     const s = w / 64;
 
-    const frameCounts: Record<PlayerAction, number> = {
-      idle: 4, walk: 6, attack: 4, hurt: 2, death: 4, cast: 4,
-    };
-    const count = frameCounts[act] || 4;
+    const count = PLAYER_ACTION_FRAME_COUNTS[act];
     const localFrame = frame % count;
     const t = count > 1 ? localFrame / (count - 1) : 0;
     const phase = (localFrame / count) * Math.PI * 2;
@@ -38,38 +40,114 @@ export const PlayerMageDrawer: EntityDrawer = {
     let staffAngle = -Math.PI * 0.1;
     let castIntensity = 0;
     let wispPhase = 0;
+    let leanX = 0;
+    let crouch = 0;
+    let robeFlow = 0;
+    let motionEnergy = 0;
 
     switch (act) {
       case 'idle':
-        bodyOffsetY = Math.sin(phase) * 1.5 * s;
-        staffAngle = -Math.PI * 0.1 + Math.sin(phase) * 0.05;
+        // Weightless breathing, robe and focus crystal move out of phase.
+        bodyOffsetY = Math.sin(phase) * 1.15 * s;
+        staffAngle = -Math.PI * 0.1 + Math.sin(phase - 0.7) * 0.045;
+        leanX = Math.sin(phase * 0.5) * 0.45;
+        robeFlow = Math.sin(phase - 0.9) * 0.35;
+        castIntensity = 0.08 + (Math.sin(phase) + 1) * 0.04;
+        wispPhase = phase * 0.5;
         break;
       case 'walk':
-        bodyOffsetY = -Math.abs(Math.sin(phase)) * 1.8 * s;
-        staffAngle = -Math.PI * 0.1 + Math.sin(phase) * 0.12;
+        bodyOffsetY = -Math.abs(Math.sin(phase)) * 1.45 * s;
+        staffAngle = -Math.PI * 0.1 + Math.sin(phase) * 0.105;
+        leanX = Math.sin(phase) * 1.1;
+        robeFlow = Math.sin(phase - 0.7);
+        globalRotation = Math.sin(phase) * 0.012;
         break;
       case 'attack':
-        // Staff thrust forward
-        staffAngle = -Math.PI * 0.1 + t * Math.PI * 0.4;
-        bodyOffsetY = -t * 2 * s;
-        castIntensity = t * 0.6;
+        // Compact staff jab followed by an arcane pulse.
+        staffAngle = samplePose(t, [
+          { at: 0, value: -0.1 * Math.PI },
+          { at: 0.24, value: -0.24 * Math.PI },
+          { at: 0.54, value: 0.3 * Math.PI },
+          { at: 0.75, value: 0.22 * Math.PI },
+          { at: 1, value: -0.1 * Math.PI },
+        ]);
+        leanX = samplePose(t, [
+          { at: 0, value: 0 },
+          { at: 0.24, value: -1.5 },
+          { at: 0.56, value: 4.5 },
+          { at: 1, value: 0 },
+        ]);
+        bodyOffsetY = -sinePulse(t) * 2.2 * s;
+        castIntensity = samplePose(t, [
+          { at: 0, value: 0.08 },
+          { at: 0.38, value: 0.25 },
+          { at: 0.58, value: 0.92 },
+          { at: 1, value: 0.05 },
+        ]);
+        wispPhase = t * Math.PI * 2.4;
+        robeFlow = -sinePulse(t) * 0.7;
+        motionEnergy = castIntensity * 0.7;
         break;
       case 'hurt':
-        bodyOffsetY = t * 5 * s;
-        staffAngle = -Math.PI * 0.1 - t * 0.4;
-        alpha = 0.7 + t * 0.3;
+        crouch = sinePulse(t);
+        bodyOffsetY = crouch * 5 * s;
+        leanX = -crouch * 3.2;
+        staffAngle = -Math.PI * 0.1 - crouch * 0.52;
+        globalRotation = -crouch * 0.055;
+        robeFlow = crouch;
+        alpha = 0.68 + smoothstep(t) * 0.32;
+        break;
+      case 'dodge':
+        // Astral slip: collapse into a narrow silhouette and phase forward.
+        crouch = sinePulse(t);
+        leanX = samplePose(t, [
+          { at: 0, value: -0.5 },
+          { at: 0.38, value: 6.5 },
+          { at: 0.7, value: 4 },
+          { at: 1, value: 0 },
+        ]);
+        bodyOffsetY = crouch * 3.5 * s;
+        staffAngle = -Math.PI * 0.1 + crouch * 0.75;
+        robeFlow = -crouch * 1.3;
+        castIntensity = crouch;
+        wispPhase = phase * 1.5;
+        motionEnergy = crouch;
+        alpha = 1 - crouch * 0.28;
         break;
       case 'death':
-        globalRotation = t * Math.PI * 0.45;
-        bodyOffsetY = t * h * 0.4;
-        alpha = 1 - t * 0.85;
+        globalRotation = smoothstep(t) * Math.PI * 0.45;
+        bodyOffsetY = smoothstep(t) * h * 0.4;
+        staffAngle = -Math.PI * 0.1 - smoothstep(t) * 0.65;
+        robeFlow = smoothstep(t);
+        castIntensity = Math.max(0, 1 - t * 1.8) * 0.5;
+        alpha = 1 - smoothstep(t) * 0.86;
         break;
       case 'cast':
-        // Staff raised overhead, arcane wisps spin
-        staffAngle = -Math.PI * 0.5 + Math.sin(phase) * 0.15;
-        castIntensity = 0.6 + Math.sin(phase) * 0.4;
-        wispPhase = phase;
-        bodyOffsetY = Math.sin(phase) * 2 * s;
+        // Gather, suspend, and release with a clear anticipation beat.
+        staffAngle = samplePose(t, [
+          { at: 0, value: -0.1 * Math.PI },
+          { at: 0.38, value: -0.58 * Math.PI },
+          { at: 0.66, value: -0.52 * Math.PI },
+          { at: 0.8, value: 0.12 * Math.PI },
+          { at: 1, value: -0.1 * Math.PI },
+        ]);
+        castIntensity = samplePose(t, [
+          { at: 0, value: 0.05 },
+          { at: 0.42, value: 0.72 },
+          { at: 0.68, value: 1 },
+          { at: 0.82, value: 0.86 },
+          { at: 1, value: 0.08 },
+        ]);
+        wispPhase = t * Math.PI * 3.5;
+        bodyOffsetY = -sinePulse(t) * 3 * s;
+        leanX = samplePose(t, [
+          { at: 0, value: 0 },
+          { at: 0.45, value: -1.5 },
+          { at: 0.8, value: 3 },
+          { at: 1, value: 0 },
+        ]);
+        robeFlow = Math.sin(t * Math.PI * 2) * castIntensity;
+        motionEnergy = castIntensity;
         break;
     }
 
@@ -85,11 +163,28 @@ export const PlayerMageDrawer: EntityDrawer = {
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.23)';
-    utils.fillEllipse(ctx, cx, baseY + 1 * s, 13 * s, 2.5 * s);
+    utils.fillEllipse(
+      ctx,
+      cx - leanX * 0.25 * s,
+      baseY + 1 * s,
+      (13 + crouch * 3) * s,
+      Math.max(1.5, 2.5 - crouch * 0.7) * s,
+    );
+
+    if (motionEnergy > 0.15) {
+      const auraX = cx + leanX * s;
+      const auraY = baseY - 49 * s + bodyOffsetY;
+      const aura = ctx.createRadialGradient(auraX, auraY, 0, auraX, auraY, 23 * s);
+      aura.addColorStop(0, utils.rgb(CRYSTAL_GLOW, motionEnergy * 0.18));
+      aura.addColorStop(0.58, utils.rgb(CRYSTAL, motionEnergy * 0.08));
+      aura.addColorStop(1, utils.rgb(CRYSTAL, 0));
+      ctx.fillStyle = aura;
+      utils.fillCircle(ctx, auraX, auraY, 23 * s);
+    }
 
     // ── Robe (lower — wide trapezoid with wavy hem) ────────────────────────
-    const torsoX = cx;
-    const torsoY = baseY - 50 * s + bodyOffsetY;
+    const torsoX = cx + leanX * s;
+    const torsoY = baseY - 50 * s + bodyOffsetY + crouch * 1.8 * s;
     const robeTopW = 14 * s;
     const robeBotW = 22 * s;
     const robeTop = torsoY + 2 * s;
@@ -110,7 +205,11 @@ export const PlayerMageDrawer: EntityDrawer = {
     ctx.lineTo(torsoX + robeBotW / 2, robeBot);
     // Wavy hem (3 gentle waves)
     const waveY = robeBot;
-    const waveAmp = 2.5 * s * (1 + (act === 'walk' ? Math.abs(Math.sin(phase)) : 0));
+    const waveAmp = 2.5 * s * (
+      1
+      + (act === 'walk' ? Math.abs(Math.sin(phase)) * 0.75 : 0)
+      + Math.abs(robeFlow) * 0.45
+    );
     ctx.quadraticCurveTo(torsoX + robeBotW / 2 - 4 * s, waveY - waveAmp, torsoX + 2 * s, waveY);
     ctx.quadraticCurveTo(torsoX - 4 * s, waveY + waveAmp, torsoX - robeBotW / 2, waveY);
     ctx.closePath();
@@ -127,8 +226,17 @@ export const PlayerMageDrawer: EntityDrawer = {
 
     // Cloth shoes — flat ellipses visible below robe
     for (const side of [-1, 1]) {
+      const shoePhase = act === 'walk'
+        ? phase + (side === -1 ? 0 : Math.PI)
+        : 0;
       ctx.fillStyle = utils.rgb(ROBE_DARK);
-      utils.fillEllipse(ctx, torsoX + side * 5 * s, baseY - 2 * s, 5 * s, 3 * s);
+      utils.fillEllipse(
+        ctx,
+        torsoX + side * 5 * s + Math.sin(shoePhase) * 2 * s,
+        baseY - 2 * s - Math.max(0, Math.sin(shoePhase)) * 1.3 * s,
+        5 * s,
+        3 * s,
+      );
     }
 
     // ── Upper Torso / Chest ───────────────────────────────────────────────
@@ -206,9 +314,11 @@ export const PlayerMageDrawer: EntityDrawer = {
 
       let elbowX: number, elbowY: number, handX: number, handY: number;
 
-      if (isRight && (act === 'attack' || act === 'cast')) {
+      if (isRight && (act === 'attack' || act === 'cast' || act === 'dodge')) {
         // Arm raised to hold staff aloft
-        const castT = act === 'cast' ? 0.8 : t * 0.8;
+        const castT = act === 'cast' ? castIntensity * 0.8
+          : act === 'dodge' ? crouch * 0.65
+            : t * 0.8;
         elbowX = shoulderX + 3 * s;
         elbowY = shoulderY - castT * 8 * s;
         handX = elbowX + 4 * s;

@@ -350,11 +350,11 @@ describe('Fix 7: Dungeon exit returns to Abyss Rift entrance', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('Fix 8: V1 save migration is persisted', () => {
-  it('migrateV1toV2 bumps version to CURRENT_SAVE_VERSION', () => {
+  it('migrateV1toV2 bumps version to v2', () => {
     const save = makeV1Save();
     expect(save.version).toBe(1);
     migrateV1toV2(save);
-    expect(save.version).toBe(CURRENT_SAVE_VERSION);
+    expect(save.version).toBe(2);
   });
 
   it('migrateV1toV2 mutates save in-place (suitable for immediate persistence)', () => {
@@ -362,22 +362,22 @@ describe('Fix 8: V1 save migration is persisted', () => {
     const result = migrateV1toV2(save);
     // Returns the same object (mutated in-place)
     expect(result).toBe(save);
-    // After migration, version is current
-    expect(save.version).toBe(CURRENT_SAVE_VERSION);
+    // After the focused migration, version is v2
+    expect(save.version).toBe(2);
   });
 
   it('SaveSystem.load persists migrated data (integration concept)', () => {
     // This tests the concept: after migrateV1toV2, the data should be
     // written back to Dexie so the migration only runs once.
     // We verify the code path exists by checking that migrateV1toV2
-    // sets the version to CURRENT_SAVE_VERSION, making subsequent loads skip migration.
+    // sets the version to v2; migrateSaveData continues the chain to v3.
     const save = makeV1Save();
     migrateV1toV2(save);
     // A second migration should be a no-op
     const preMigrateVersion = save.version;
     migrateV1toV2(save);
     expect(save.version).toBe(preMigrateVersion);
-    expect(save.version).toBe(CURRENT_SAVE_VERSION);
+    expect(save.version).toBe(2);
   });
 });
 

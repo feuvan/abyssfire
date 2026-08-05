@@ -10,7 +10,13 @@ import { Player } from '../entities/Player';
 import { Monster } from '../entities/Monster';
 import { NPC } from '../entities/NPC';
 import { PathfindingSystem } from '../systems/PathfindingSystem';
-import { CombatSystem, getSkillManaCost, getSkillAoeRadius, getSkillBuffValue, getSkillBuffDuration, getSkillCooldown, type EquipStats } from '../systems/CombatSystem';
+import { CombatSystem, getSkillAoeRadius, getSkillBuffValue, getSkillBuffDuration, getSkillCooldown, type EquipStats } from '../systems/CombatSystem';
+import {
+  CombatInputBuffer,
+  DodgeController,
+  cycleTargetId,
+} from '../systems/CombatInputSystem';
+import { getLearnedSkillLoadout } from '../systems/SkillProgressionSystem';
 import { LootSystem } from '../systems/LootSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { QuestSystem } from '../systems/QuestSystem';
@@ -107,6 +113,15 @@ export class ZoneScene extends Phaser.Scene {
   private exitLabels: Map<string, Phaser.GameObjects.Text> = new Map();
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
+  private readonly combatInput = new CombatInputBuffer(180);
+  private readonly dodgeController = new DodgeController();
+  private skillLoadout: ClassDefinition['skills'] = [];
+  private lastMoveDirection = { dx: 1, dy: -1 };
+  private gamepadButtonState = {
+    dodge: false,
+    target: false,
+    skills: [false, false, false, false],
+  };
   private campPositions: { col: number; row: number }[] = [];
   private lootDrops: { sprite: Phaser.GameObjects.Container; item: ItemInstance; col: number; row: number }[] = [];
   private potionDrops: { sprite: Phaser.GameObjects.Container; type: 'hp' | 'mp'; amount: number; col: number; row: number }[] = [];
@@ -282,6 +297,14 @@ export class ZoneScene extends Phaser.Scene {
     this.isTransitioning = false;
     this.isPortaling = false;
     this.miniBossDialogueActive = false;
+    this.combatInput.clear();
+    this.dodgeController.reset();
+    this.lastMoveDirection = { dx: 1, dy: -1 };
+    this.gamepadButtonState = {
+      dodge: false,
+      target: false,
+      skills: [false, false, false, false],
+    };
     this.monsters = [];
     this.activeMonsters = [];
     this.simulationScheduler.reset();
@@ -349,10 +372,12 @@ export class ZoneScene extends Phaser.Scene {
       this.player.freeSkillPoints = s.freeSkillPoints;
       const zsl = s.skillLevels;
       this.player.skillLevels = new Map(Array.isArray(zsl) ? zsl : Object.entries(zsl));
+      if (s.spirit) this.player.spirit.restore(s.spirit);
       this.player.buffs = s.buffs;
       this.player.autoCombat = s.autoCombat;
       if (s.autoLootMode) this.player.autoLootMode = s.autoLootMode;
     }
+    this.refreshSkillLoadout();
     this.player.recalcDerived();
 
     // Restore mini-boss/lore state from zone transitions
@@ -462,6 +487,8 @@ export class ZoneScene extends Phaser.Scene {
         FIVE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
         SIX: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX),
         TAB: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TAB),
+        Q: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q),
+        SPACE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
         I: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.I),
         K: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K),
         M: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M),
@@ -505,6 +532,9 @@ export class ZoneScene extends Phaser.Scene {
     this.subscriptions.on(EventBus, GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);
     this.subscriptions.on(EventBus, GameEvents.QUEST_COMPLETED, this.handleQuestCompleted, this);
     this.subscriptions.on(EventBus, GameEvents.UI_SKILL_CLICK, this.handleUiSkillClick, this);
+    this.subscriptions.on(EventBus, GameEvents.UI_DODGE_REQUEST, this.handleUiDodgeRequest, this);
+    this.subscriptions.on(EventBus, GameEvents.UI_TARGET_CYCLE, this.cycleCombatTarget, this);
+    this.subscriptions.on(EventBus, GameEvents.SKILL_LEVEL_CHANGED, this.handleSkillLevelChanged, this);
     // Update NPC quest indicators immediately when quest state changes
     this.subscriptions.on(EventBus, GameEvents.QUEST_ACCEPTED, this.updateNPCQuestMarkers, this);
     this.subscriptions.on(EventBus, GameEvents.QUEST_TURNED_IN, this.updateNPCQuestMarkers, this);
@@ -526,6 +556,7 @@ export class ZoneScene extends Phaser.Scene {
 
   /** Update persistent text labels when locale changes. */
   private handleLocaleChanged(): void {
+    this.mobileControls?.refreshLocale();
     // Update sub-dungeon entrance labels
     for (const se of this.subDungeonEntranceSprites) {
       const container = se.sprite;
@@ -630,6 +661,10 @@ export class ZoneScene extends Phaser.Scene {
     const monster = this.findMonsterAt(tile.col, tile.row);
     if (monster && monster.isAlive()) {
       this.player.attackTarget = monster.id;
+      EventBus.emit(GameEvents.TARGET_CHANGED, {
+        targetId: monster.id,
+        targetName: getMonsterName(monster.definition.id, monster.definition.name),
+      });
       const path = this.pathfinding.findPath(
         Math.round(this.player.tileCol), Math.round(this.player.tileRow),
         Math.round(monster.tileCol), Math.round(monster.tileRow),
@@ -662,6 +697,7 @@ export class ZoneScene extends Phaser.Scene {
       if (path.length > 0) {
         this.player.setPath(path);
         this.player.attackTarget = null;
+        EventBus.emit(GameEvents.TARGET_CHANGED, { targetId: null, targetName: null });
       }
     }
   }
@@ -715,20 +751,7 @@ export class ZoneScene extends Phaser.Scene {
           miniBossDialogueSeen: [...this.miniBossDialogueSeen],
           loreCollected: [...this.loreCollected],
           discoveredHiddenAreas: [...this.discoveredHiddenAreas],
-          playerStats: {
-            level: this.player.level,
-            exp: this.player.exp,
-            gold: this.player.gold,
-            hp: this.player.maxHp,
-            mana: this.player.maxMana,
-            stats: { ...this.player.stats },
-            freeStatPoints: this.player.freeStatPoints,
-            freeSkillPoints: this.player.freeSkillPoints,
-            skillLevels: Object.fromEntries(this.player.skillLevels),
-            buffs: [...this.player.buffs],
-            autoCombat: this.player.autoCombat,
-            autoLootMode: this.player.autoLootMode,
-          },
+          playerStats: this.getPlayerTransitionStats(this.player.maxHp, this.player.maxMana),
         });
       } else {
         const camp = this.campPositions[0];
@@ -750,13 +773,24 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   private handleUiSkillClick(data: { index: number; skillId: string }): void {
-    this.tryUseSkill(data.skillId, this.time.now);
+    this.requestSkill(data.skillId, this.time.now);
+  }
+
+  private handleUiDodgeRequest(data?: { dx?: number; dy?: number }): void {
+    this.performDodge(this.time.now, data?.dx, data?.dy);
+  }
+
+  private handleSkillLevelChanged(): void {
+    this.refreshSkillLoadout();
+    this.mobileControls?.refreshSkills();
   }
 
   update(time: number, delta: number): void {
     const recovery = this.getPlayerRecoveryModifiers();
     this.handleKeyboardMovement(delta);
     this.handleSkillInput(time);
+    this.handleGamepadInput(time);
+    this.consumeBufferedSkill(time);
     const eqStats = this.getEquipStats();
     this.player.recalcDerived(eqStats);
 
@@ -1437,10 +1471,22 @@ export class ZoneScene extends Phaser.Scene {
       dy = mobile.dy;
     }
 
+    // Standard gamepad left stick, converted from screen-space to tile-space.
+    if (dx === 0 && dy === 0) {
+      const pad = this.input.gamepad?.getPad(0);
+      const stickX = pad?.leftStick?.x ?? 0;
+      const stickY = pad?.leftStick?.y ?? 0;
+      if (Math.hypot(stickX, stickY) > 0.18) {
+        dx = stickX + stickY;
+        dy = -stickX + stickY;
+      }
+    }
+
     if (dx !== 0 || dy !== 0) {
       this.player.path = [];
       const speed = this.player.moveSpeed * (delta / 1000) * 0.015;
       const len = Math.sqrt(dx * dx + dy * dy);
+      this.lastMoveDirection = { dx: dx / len, dy: dy / len };
       const newCol = this.player.tileCol + (dx / len) * speed;
       const newRow = this.player.tileRow + (dy / len) * speed;
       const checkCol = Math.round(newCol), checkRow = Math.round(newRow);
@@ -1455,6 +1501,12 @@ export class ZoneScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.wasd.TAB)) {
       this.player.autoCombat = !this.player.autoCombat;
       EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.combat.autoCombat', { state: this.player.autoCombat ? t('zone.combat.autoCombatOn') : t('zone.combat.autoCombatOff') }), type: 'system' });
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.Q)) {
+      this.cycleCombatTarget();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.SPACE)) {
+      this.performDodge(time);
     }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.I)) {
       EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'inventory' });
@@ -1491,9 +1543,226 @@ export class ZoneScene extends Phaser.Scene {
     }
 
     const skillKeys = [this.wasd.ONE, this.wasd.TWO, this.wasd.THREE, this.wasd.FOUR, this.wasd.FIVE, this.wasd.SIX];
-    const skills = this.player.classData.skills;
+    const skills = this.getSkillLoadout();
     for (let i = 0; i < Math.min(skillKeys.length, skills.length); i++) {
-      if (Phaser.Input.Keyboard.JustDown(skillKeys[i])) this.tryUseSkill(skills[i].id, time);
+      if (Phaser.Input.Keyboard.JustDown(skillKeys[i])) this.requestSkill(skills[i].id, time);
+    }
+  }
+
+  private getSkillLoadout(): ClassDefinition['skills'] {
+    return this.skillLoadout;
+  }
+
+  private refreshSkillLoadout(): void {
+    this.skillLoadout = getLearnedSkillLoadout(
+      this.player.classData.skills,
+      this.player.skillLevels,
+    );
+  }
+
+  private handleGamepadInput(time: number): void {
+    const pad = this.input.gamepad?.getPad(0);
+    if (!pad) return;
+
+    const dodgePressed = pad.buttons?.[1]?.pressed ?? false;
+    if (dodgePressed && !this.gamepadButtonState.dodge) this.performDodge(time);
+    this.gamepadButtonState.dodge = dodgePressed;
+
+    const targetPressed = pad.buttons?.[4]?.pressed ?? false;
+    if (targetPressed && !this.gamepadButtonState.target) this.cycleCombatTarget();
+    this.gamepadButtonState.target = targetPressed;
+
+    const skillButtonIndices = [0, 2, 3, 5];
+    const skills = this.getSkillLoadout();
+    for (let i = 0; i < skillButtonIndices.length; i++) {
+      const pressed = pad.buttons?.[skillButtonIndices[i]]?.pressed ?? false;
+      if (pressed && !this.gamepadButtonState.skills[i] && skills[i]) {
+        this.requestSkill(skills[i].id, time);
+      }
+      this.gamepadButtonState.skills[i] = pressed;
+    }
+  }
+
+  private canExecuteSkill(skillId: string, time: number): boolean {
+    if (this.player.hp <= 0) return false;
+    const skill = this.player.getSkill(skillId);
+    if (!skill) return false;
+    const level = this.player.getSkillLevel(skillId);
+    if (level <= 0) return false;
+    if (!this.player.isSkillReady(skillId, time)) return false;
+    if (this.player.mana < this.player.getSkillManaCost(skillId, level)) return false;
+    if (skillId === 'teleport' && this.statusEffects.isImmobilized('player')) return false;
+
+    const target = this.findPreferredSkillTarget();
+    if (!target) return !!skill.buff || !!skill.aoe || skillId === 'teleport';
+    if (skill.buff || skill.aoe || skillId === 'teleport') return true;
+    return distanceSq(
+      this.player.tileCol,
+      this.player.tileRow,
+      target.tileCol,
+      target.tileRow,
+    ) <= (skill.range + 1) * (skill.range + 1);
+  }
+
+  private requestSkill(skillId: string, time: number): void {
+    const skill = this.player.getSkill(skillId);
+    if (!skill || this.player.getSkillLevel(skillId) <= 0) {
+      EventBus.emit(GameEvents.LOG_MESSAGE, {
+        text: t('zone.combat.skillLocked'),
+        type: 'combat',
+      });
+      return;
+    }
+
+    const decision = this.combatInput.request(
+      skillId,
+      time,
+      this.canExecuteSkill(skillId, time),
+    );
+    if (decision === 'execute') {
+      this.tryUseSkill(skillId, time);
+      return;
+    }
+
+    const buffered = this.combatInput.peek();
+    EventBus.emit(GameEvents.SKILL_BUFFERED, {
+      skillId,
+      expiresAt: buffered?.expiresAt ?? time,
+    });
+  }
+
+  private consumeBufferedSkill(time: number): void {
+    const buffered = this.combatInput.consumeReady(
+      time,
+      skillId => this.canExecuteSkill(skillId, time),
+    );
+    if (buffered) this.tryUseSkill(buffered.actionId, time);
+  }
+
+  private findPreferredSkillTarget(): Monster | null {
+    if (this.player.attackTarget) {
+      const selected = this.monsters.find(
+        monster => monster.id === this.player.attackTarget && monster.isAlive(),
+      );
+      if (selected) return selected;
+      this.player.attackTarget = null;
+    }
+    return this.findNearestAliveMonster();
+  }
+
+  private cycleCombatTarget(): void {
+    const targetId = cycleTargetId(
+      this.player.attackTarget,
+      this.monsters.map(monster => ({
+        id: monster.id,
+        alive: monster.isAlive(),
+        distanceSq: distanceSq(
+          this.player.tileCol,
+          this.player.tileRow,
+          monster.tileCol,
+          monster.tileRow,
+        ),
+      })),
+      14,
+    );
+    this.player.attackTarget = targetId;
+    const target = targetId
+      ? this.monsters.find(monster => monster.id === targetId) ?? null
+      : null;
+    EventBus.emit(GameEvents.TARGET_CHANGED, {
+      targetId,
+      targetName: target
+        ? getMonsterName(target.definition.id, target.definition.name)
+        : null,
+    });
+  }
+
+  getDodgeCooldownRemaining(): number {
+    return this.dodgeController.cooldownRemaining(this.time.now);
+  }
+
+  private performDodge(time: number, requestedDx?: number, requestedDy?: number): void {
+    if (
+      this.player.hp <= 0
+      || !this.dodgeController.isReady(time)
+      || this.statusEffects.isImmobilized('player')
+    ) return;
+
+    let dx = requestedDx ?? this.lastMoveDirection.dx;
+    let dy = requestedDy ?? this.lastMoveDirection.dy;
+    const length = Math.hypot(dx, dy);
+    if (length <= 0.001) {
+      dx = 1;
+      dy = -1;
+    } else {
+      dx /= length;
+      dy /= length;
+    }
+
+    const dodgeDistance = this.player.classData.id === 'rogue' ? 2.6
+      : this.player.classData.id === 'mage' ? 2.25
+        : 1.8;
+    let destination: { col: number; row: number } | null = null;
+    for (let distance = dodgeDistance; distance >= 0.5; distance -= 0.25) {
+      const col = this.player.tileCol + dx * distance;
+      const row = this.player.tileRow + dy * distance;
+      const checkCol = Math.round(col);
+      const checkRow = Math.round(row);
+      if (
+        checkCol >= 0
+        && checkCol < this.mapData.cols
+        && checkRow >= 0
+        && checkRow < this.mapData.rows
+        && this.mapData.collisions[checkRow]?.[checkCol]
+      ) {
+        destination = { col, row };
+        break;
+      }
+    }
+    if (!destination || !this.dodgeController.tryStart(time)) return;
+
+    const originX = this.player.sprite.x;
+    const originY = this.player.sprite.y;
+    this.player.path = [];
+    this.player.moveTo(destination.col, destination.row);
+    const screenDx = this.player.sprite.x - originX;
+    const screenDy = this.player.sprite.y - originY;
+    this.player.playDodge(screenDx, screenDy);
+    this.spawnDodgeAfterimages(originX, originY, this.player.sprite.x, this.player.sprite.y);
+
+    EventBus.emit(GameEvents.DODGE_STARTED, {
+      cooldownMs: this.dodgeController.config.cooldownMs,
+      invulnerabilityMs: this.dodgeController.config.invulnerabilityMs,
+    });
+  }
+
+  private spawnDodgeAfterimages(
+    originX: number,
+    originY: number,
+    destinationX: number,
+    destinationY: number,
+  ): void {
+    const source = this.player.sprite.list.find(
+      child => child instanceof Phaser.GameObjects.Sprite,
+    );
+    if (!(source instanceof Phaser.GameObjects.Sprite)) return;
+
+    for (let i = 0; i < 2; i++) {
+      const ratio = (i + 1) / 3;
+      this.trails.stampGhost(
+        Phaser.Math.Linear(originX, destinationX, ratio),
+        Phaser.Math.Linear(originY, destinationY, ratio) + source.y,
+        source.texture.key,
+        {
+          frame: source.frame.name,
+          alpha: 0.28 - i * 0.07,
+          tint: this.player.spirit.profile.visualColor,
+          scaleX: source.scaleX * (1 + i * 0.04),
+          scaleY: source.scaleY * (1 - i * 0.05),
+          flipX: source.flipX,
+          angle: source.angle,
+        },
+      );
     }
   }
 
@@ -1501,20 +1770,29 @@ export class ZoneScene extends Phaser.Scene {
     if (this.player.hp <= 0) return;
     const skill = this.player.getSkill(skillId);
     if (!skill) return;
+    if (this.player.getSkillLevel(skillId) <= 0) {
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.combat.skillLocked'), type: 'combat' });
+      return;
+    }
     if (!this.player.isSkillReady(skillId, time)) return;
     const level = this.player.getSkillLevel(skillId);
-    const scaledManaCost = getSkillManaCost(skill, level);
+    const scaledManaCost = this.player.getSkillManaCost(skillId, level);
     if (this.player.mana < scaledManaCost) {
       EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.combat.manaInsufficient'), type: 'combat' });
       return;
     }
 
-    const target = this.findNearestAliveMonster();
-    if (!target && !skill.buff) return;
+    if (skillId === 'teleport' && this.statusEffects.isImmobilized('player')) {
+      EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.teleport.blockedByCC'), type: 'combat' });
+      return;
+    }
 
-    if (target && !skill.buff) {
+    const target = this.findPreferredSkillTarget();
+    if (!target && !skill.buff && !skill.aoe && skillId !== 'teleport') return;
+
+    if (target && !skill.buff && skillId !== 'teleport') {
       const dSq = distanceSq(this.player.tileCol, this.player.tileRow, target.tileCol, target.tileRow);
-      if (dSq > (skill.range + 1) * (skill.range + 1)) return;
+      if (!skill.aoe && dSq > (skill.range + 1) * (skill.range + 1)) return;
     }
 
     this.player.useSkill(skillId, time, level, this.getEquipStats().cooldownReduction);
@@ -1531,7 +1809,7 @@ export class ZoneScene extends Phaser.Scene {
     if (skill.buff || skill.aoe || skill.range > 2) {
       this.player.playCast();
     } else {
-      const animTarget = this.findNearestAliveMonster();
+      const animTarget = this.findPreferredSkillTarget();
       if (animTarget) {
         this.player.playAttack(animTarget.sprite.x, animTarget.sprite.y);
       } else {
@@ -1542,11 +1820,6 @@ export class ZoneScene extends Phaser.Scene {
 
     // ── Teleport: instant reposition to walkable tile near target ──
     if (skillId === 'teleport') {
-      // Block while stunned or frozen
-      if (this.statusEffects.isImmobilized('player')) {
-        EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.teleport.blockedByCC'), type: 'combat' });
-        return;
-      }
       const pointer = this.input.activePointer;
       const tile = worldToTile(pointer.worldX, pointer.worldY);
       let destCol = Math.round(tile.col);
@@ -1570,7 +1843,7 @@ export class ZoneScene extends Phaser.Scene {
         // Abort teleport if no walkable tile found within search radius
         if (!found) {
           EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.teleport.unreachable'), type: 'combat' });
-          // Refund mana since teleport was already deducted
+          // Refund the Spirit-adjusted mana since teleport was already deducted
           this.player.mana = Math.min(this.player.maxMana, this.player.mana + scaledManaCost);
           return;
         }
@@ -1781,7 +2054,21 @@ export class ZoneScene extends Phaser.Scene {
         monster.lastAttackTime = time;
         monster.playAttack(this.player.sprite.x, this.player.sprite.y);
         const result = this.combatSystem.calculateDamage(monster.toCombatEntity(), this.player.toCombatEntity(this.getEquipStats()));
-        if (result.isDodged) {
+        if (this.dodgeController.isInvulnerable(time)) {
+          if (this.dodgeController.claimAvoidanceReward(time)) {
+            this.player.gainSpirit('dodge');
+          }
+          this.showDamageText(this.player.sprite.x, this.player.sprite.y, 0, false, true);
+          EventBus.emit(GameEvents.COMBAT_DAMAGE, {
+            targetId: 'player', damage: 0, isDodged: true,
+            isCrit: false, isPlayerTarget: true,
+            targetMaxHP: this.player.maxHp,
+          });
+          if (this.vfx) {
+            this.vfx.hitSparks(this.player.sprite.x, this.player.sprite.y - 16, 6);
+          }
+        } else if (result.isDodged) {
+          this.player.gainSpirit('dodge');
           this.showDamageText(this.player.sprite.x, this.player.sprite.y, 0, false, true);
           // dodgeCounter: after dodging, next attack is guaranteed crit
           const eqDc = this.getEquipStats();
@@ -1954,7 +2241,11 @@ export class ZoneScene extends Phaser.Scene {
           }
         }
 
-        if (!target.isAlive()) { this.onMonsterKilled(target); this.player.attackTarget = null; }
+        if (!target.isAlive()) {
+          this.onMonsterKilled(target);
+          this.player.attackTarget = null;
+          EventBus.emit(GameEvents.TARGET_CHANGED, { targetId: null, targetName: null });
+        }
       }
     }
   }
@@ -1969,6 +2260,10 @@ export class ZoneScene extends Phaser.Scene {
         const dSq = distanceSq(this.player.tileCol, this.player.tileRow, nearest.tileCol, nearest.tileRow);
         if (dSq <= nearest.definition.aggroRange * nearest.definition.aggroRange) {
           this.player.attackTarget = nearest.id;
+          EventBus.emit(GameEvents.TARGET_CHANGED, {
+            targetId: nearest.id,
+            targetName: getMonsterName(nearest.definition.id, nearest.definition.name),
+          });
           if (dSq > this.player.attackRange * this.player.attackRange) {
             const path = this.pathfinding.findPath(
               Math.round(this.player.tileCol), Math.round(this.player.tileRow),
@@ -1983,8 +2278,12 @@ export class ZoneScene extends Phaser.Scene {
       const skill = this.player.getSkill(skillId);
       if (!skill) continue;
       const sLevel = this.player.getSkillLevel(skillId);
-      if (this.player.isSkillReady(skillId, time) && this.player.mana >= getSkillManaCost(skill, sLevel)) {
-        this.tryUseSkill(skillId, time);
+      if (
+        sLevel > 0
+        && this.player.isSkillReady(skillId, time)
+        && this.player.mana >= this.player.getSkillManaCost(skillId, sLevel)
+      ) {
+        this.requestSkill(skillId, time);
         break;
       }
     }
@@ -1996,6 +2295,18 @@ export class ZoneScene extends Phaser.Scene {
     const target = targetId
       ? this.monsters.find(m => m.id === targetId && m.isAlive())
       : this.findNearestAggroMonster();
+    if (targetId && !target) this.player.attackTarget = null;
+
+    const nextTargetId = target?.id ?? null;
+    if (nextTargetId !== this.currentTargetId) {
+      this.currentTargetId = nextTargetId;
+      EventBus.emit(GameEvents.TARGET_CHANGED, {
+        targetId: nextTargetId,
+        targetName: target
+          ? getMonsterName(target.definition.id, target.definition.name)
+          : null,
+      });
+    }
 
     if (target && target.isAlive()) {
       if (!this.targetIndicator) {
@@ -2005,10 +2316,8 @@ export class ZoneScene extends Phaser.Scene {
       this.targetIndicator.setPosition(target.sprite.x, target.sprite.y + 4);
       this.targetIndicator.setDepth(target.sprite.depth - 1);
       this.targetIndicator.setVisible(true);
-      this.currentTargetId = target.id;
     } else if (this.targetIndicator) {
       this.targetIndicator.setVisible(false);
-      this.currentTargetId = null;
     }
   }
 
@@ -2034,7 +2343,10 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   /** Apply life/mana steal from a damage result back to the player. */
-  private applySteal(result: { lifeStolen: number; manaStolen: number }): void {
+  private applySteal(result: { damage: number; isCrit: boolean; lifeStolen: number; manaStolen: number }): void {
+    if (result.damage > 0) {
+      this.player.gainSpirit('hit', result.isCrit);
+    }
     if (result.lifeStolen > 0 && this.player.hp > 0) {
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + result.lifeStolen);
       EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.player.hp, maxHp: this.player.maxHp });
@@ -2608,6 +2920,7 @@ export class ZoneScene extends Phaser.Scene {
   private onMonsterKilled(monster: Monster): void {
     // Clear status effects on death
     this.statusEffects.clearEntity(monster.id);
+    this.player.gainSpirit('kill');
 
     // Difficulty exp/gold scaling is already applied at monster spawn time via DifficultySystem.scaleMonster
     const homeBonus = this.homesteadSystem.getTotalBonuses();
@@ -3006,20 +3319,7 @@ export class ZoneScene extends Phaser.Scene {
         miniBossDialogueSeen: [...this.miniBossDialogueSeen],
         loreCollected: [...this.loreCollected],
         discoveredHiddenAreas: [...this.discoveredHiddenAreas],
-        playerStats: {
-          level: this.player.level,
-          exp: this.player.exp,
-          gold: this.player.gold,
-          hp: this.player.hp,
-          mana: this.player.mana,
-          stats: { ...this.player.stats },
-          freeStatPoints: this.player.freeStatPoints,
-          freeSkillPoints: this.player.freeSkillPoints,
-          skillLevels: Object.fromEntries(this.player.skillLevels),
-          buffs: [...this.player.buffs],
-          autoCombat: this.player.autoCombat,
-          autoLootMode: this.player.autoLootMode,
-        },
+        playerStats: this.getPlayerTransitionStats(),
       });
     };
 
@@ -3059,6 +3359,27 @@ export class ZoneScene extends Phaser.Scene {
     this.scene.stop();
   }
 
+  private getPlayerTransitionStats(
+    hp = this.player.hp,
+    mana = this.player.mana,
+  ) {
+    return {
+      level: this.player.level,
+      exp: this.player.exp,
+      gold: this.player.gold,
+      hp,
+      mana,
+      stats: { ...this.player.stats },
+      freeStatPoints: this.player.freeStatPoints,
+      freeSkillPoints: this.player.freeSkillPoints,
+      skillLevels: Object.fromEntries(this.player.skillLevels),
+      spirit: this.player.spirit.toSaveState(),
+      buffs: [...this.player.buffs],
+      autoCombat: this.player.autoCombat,
+      autoLootMode: this.player.autoLootMode,
+    };
+  }
+
   private async autoSave(): Promise<void> {
     try {
       // When inside a random dungeon, save returns to Abyss Rift entrance (ephemeral runs)
@@ -3077,6 +3398,7 @@ export class ZoneScene extends Phaser.Scene {
           hp: this.player.hp, maxHp: this.player.maxHp, mana: this.player.mana, maxMana: this.player.maxMana,
           stats: { ...this.player.stats }, freeStatPoints: this.player.freeStatPoints, freeSkillPoints: this.player.freeSkillPoints,
           skillLevels: Object.fromEntries(this.player.skillLevels),
+          spirit: this.player.spirit.toSaveState(),
           tileCol: saveTileCol, tileRow: saveTileRow, currentMap: saveMapId,
         },
         inventory: this.inventorySystem.inventory,
@@ -3112,6 +3434,10 @@ export class ZoneScene extends Phaser.Scene {
     this.player.freeSkillPoints = save.player.freeSkillPoints;
     const sl = save.player.skillLevels;
     this.player.skillLevels = new Map(Array.isArray(sl) ? sl : Object.entries(sl));
+    this.player.spirit.restore(save.player.spirit ?? {
+      value: 0,
+      resonanceRemainingMs: 0,
+    });
     this.player.recalcDerived();
     this.player.hp = Math.min(save.player.hp, this.player.maxHp);
     this.player.mana = Math.min(save.player.mana, this.player.maxMana);
@@ -3957,20 +4283,7 @@ export class ZoneScene extends Phaser.Scene {
         miniBossDialogueSeen: [...this.miniBossDialogueSeen],
         loreCollected: [...this.loreCollected],
         discoveredHiddenAreas: [...this.discoveredHiddenAreas],
-        playerStats: {
-          level: this.player.level,
-          exp: this.player.exp,
-          gold: this.player.gold,
-          hp: this.player.hp,
-          mana: this.player.mana,
-          stats: { ...this.player.stats },
-          freeStatPoints: this.player.freeStatPoints,
-          freeSkillPoints: this.player.freeSkillPoints,
-          skillLevels: Object.fromEntries(this.player.skillLevels),
-          buffs: [...this.player.buffs],
-          autoCombat: this.player.autoCombat,
-          autoLootMode: this.player.autoLootMode,
-        },
+        playerStats: this.getPlayerTransitionStats(),
       });
     };
 
@@ -4005,20 +4318,7 @@ export class ZoneScene extends Phaser.Scene {
         miniBossDialogueSeen: [...this.miniBossDialogueSeen],
         loreCollected: [...this.loreCollected],
         discoveredHiddenAreas: [...this.discoveredHiddenAreas],
-        playerStats: {
-          level: this.player.level,
-          exp: this.player.exp,
-          gold: this.player.gold,
-          hp: this.player.hp,
-          mana: this.player.mana,
-          stats: { ...this.player.stats },
-          freeStatPoints: this.player.freeStatPoints,
-          freeSkillPoints: this.player.freeSkillPoints,
-          skillLevels: Object.fromEntries(this.player.skillLevels),
-          buffs: [...this.player.buffs],
-          autoCombat: this.player.autoCombat,
-          autoLootMode: this.player.autoLootMode,
-        },
+        playerStats: this.getPlayerTransitionStats(),
       });
     };
 
@@ -4053,20 +4353,7 @@ export class ZoneScene extends Phaser.Scene {
         miniBossDialogueSeen: [...this.miniBossDialogueSeen],
         loreCollected: [...this.loreCollected],
         discoveredHiddenAreas: [...this.discoveredHiddenAreas],
-        playerStats: {
-          level: this.player.level,
-          exp: this.player.exp,
-          gold: this.player.gold,
-          hp: this.player.hp,
-          mana: this.player.mana,
-          stats: { ...this.player.stats },
-          freeStatPoints: this.player.freeStatPoints,
-          freeSkillPoints: this.player.freeSkillPoints,
-          skillLevels: Object.fromEntries(this.player.skillLevels),
-          buffs: [...this.player.buffs],
-          autoCombat: this.player.autoCombat,
-          autoLootMode: this.player.autoLootMode,
-        },
+        playerStats: this.getPlayerTransitionStats(),
       });
     };
 
@@ -4166,20 +4453,7 @@ export class ZoneScene extends Phaser.Scene {
         miniBossDialogueSeen: [...this.miniBossDialogueSeen],
         loreCollected: [...this.loreCollected],
         discoveredHiddenAreas: [...this.discoveredHiddenAreas],
-        playerStats: {
-          level: this.player.level,
-          exp: this.player.exp,
-          gold: this.player.gold,
-          hp: this.player.hp,
-          mana: this.player.mana,
-          stats: { ...this.player.stats },
-          freeStatPoints: this.player.freeStatPoints,
-          freeSkillPoints: this.player.freeSkillPoints,
-          skillLevels: Object.fromEntries(this.player.skillLevels),
-          buffs: [...this.player.buffs],
-          autoCombat: this.player.autoCombat,
-          autoLootMode: this.player.autoLootMode,
-        },
+        playerStats: this.getPlayerTransitionStats(),
       });
     };
 
@@ -4211,20 +4485,7 @@ export class ZoneScene extends Phaser.Scene {
         miniBossDialogueSeen: [...this.miniBossDialogueSeen],
         loreCollected: [...this.loreCollected],
         discoveredHiddenAreas: [...this.discoveredHiddenAreas],
-        playerStats: {
-          level: this.player.level,
-          exp: this.player.exp,
-          gold: this.player.gold,
-          hp: this.player.hp,
-          mana: this.player.mana,
-          stats: { ...this.player.stats },
-          freeStatPoints: this.player.freeStatPoints,
-          freeSkillPoints: this.player.freeSkillPoints,
-          skillLevels: Object.fromEntries(this.player.skillLevels),
-          buffs: [...this.player.buffs],
-          autoCombat: this.player.autoCombat,
-          autoLootMode: this.player.autoLootMode,
-        },
+        playerStats: this.getPlayerTransitionStats(),
       });
     };
 

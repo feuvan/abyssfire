@@ -4,7 +4,9 @@ import { cartToIso } from '../utils/IsometricUtils';
 import { EventBus, GameEvents } from '../utils/EventBus';
 import type { ClassDefinition, SkillDefinition, Stats } from '../data/types';
 import type { CombatEntity, ActiveBuff, EquipStats } from '../systems/CombatSystem';
-import { getSkillManaCost, getSkillCooldown } from '../systems/CombatSystem';
+import { getSkillManaCost as getScaledSkillManaCost, getSkillCooldown } from '../systems/CombatSystem';
+import { SpiritSystem, type SpiritCombatSource } from '../systems/SpiritSystem';
+import { getStarterSkillLevels } from '../systems/SkillProgressionSystem';
 import { CharacterAnimator, getAnimConfig } from '../systems/CharacterAnimator';
 import { SpriteGenerator } from '../graphics/SpriteGenerator';
 import { t } from '../i18n';
@@ -28,6 +30,7 @@ export class Player {
   skillLevels: Map<string, number> = new Map();
   skillCooldowns: Map<string, number> = new Map();
   buffs: ActiveBuff[] = [];
+  spirit: SpiritSystem;
   animator!: CharacterAnimator;
 
   tileCol: number;
@@ -61,6 +64,7 @@ export class Player {
     this.hp = this.maxHp;
     this.maxMana = this.calcMaxMana();
     this.mana = this.maxMana;
+    this.spirit = new SpiritSystem(classData.id);
 
     // Create sprite container
     const worldPos = cartToIso(col, row);
@@ -87,9 +91,9 @@ export class Player {
       this.sprite.sendToBack(shadow);
     }
 
-    // Set default skill levels and auto priorities
+    // New characters begin with each tree's tier-one foundation skills.
+    this.skillLevels = getStarterSkillLevels(classData.skills);
     for (const skill of classData.skills) {
-      this.skillLevels.set(skill.id, 1);
       this.skillCooldowns.set(skill.id, 0);
     }
     this.autoSkillPriority = classData.skills.map(s => s.id);
@@ -134,7 +138,7 @@ export class Player {
     this.maxMana = mp;
     this.baseDamage = dmg;
     this.defense = def;
-    this.moveSpeed = spd;
+    this.moveSpeed = Math.floor(spd * this.spirit.moveSpeedMultiplier);
     this.attackSpeed = aspd;
   }
 
@@ -199,6 +203,17 @@ export class Player {
       return;
     }
     this.updateMovement(delta);
+    const spiritUpdate = this.spirit.update(delta);
+    if (spiritUpdate.endedResonance) {
+      EventBus.emit(GameEvents.PLAYER_SPIRIT_CHANGED, {
+        value: 0,
+        maxValue: this.spirit.maxValue,
+        resonating: false,
+      });
+      EventBus.emit(GameEvents.SPIRIT_RESONANCE_ENDED, {
+        profileId: this.spirit.profile.id,
+      });
+    }
     const manaRegenMultiplier = recovery.manaRegenMultiplier ?? 1;
     const hpRegenMultiplier = recovery.hpRegenMultiplier ?? 1;
     const bonusHpRegen = equipStats?.hpRegen ?? 0;
@@ -296,12 +311,42 @@ export class Player {
     return now >= cd;
   }
 
+  getSkillManaCost(id: string, level?: number): number {
+    const skill = this.getSkill(id);
+    if (!skill) return 0;
+    const skillLevel = level ?? this.getSkillLevel(id);
+    return Math.ceil(
+      getScaledSkillManaCost(skill, skillLevel) * this.spirit.manaCostMultiplier,
+    );
+  }
+
+  gainSpirit(source: SpiritCombatSource, isCrit = false): void {
+    const result = this.spirit.gainFromCombat(source, this.stats.spi, isCrit);
+    if (result.gained <= 0) return;
+
+    EventBus.emit(GameEvents.PLAYER_SPIRIT_CHANGED, {
+      value: this.spirit.value,
+      maxValue: this.spirit.maxValue,
+      resonating: this.spirit.isResonating,
+      gained: result.gained,
+      source,
+    });
+    if (result.startedResonance) {
+      this.animator.playResonance(this.spirit.profile.visualColor);
+      EventBus.emit(GameEvents.SPIRIT_RESONANCE_STARTED, {
+        profileId: this.spirit.profile.id,
+        durationMs: this.spirit.profile.resonanceDurationMs,
+      });
+    }
+  }
+
   useSkill(id: string, now: number, level?: number, cdr = 0): void {
     const skill = this.getSkill(id);
     if (!skill) return;
     const slevel = level ?? this.getSkillLevel(id);
+    if (slevel <= 0) return;
     this.skillCooldowns.set(id, now + getSkillCooldown(skill, slevel, cdr));
-    this.mana = Math.max(0, this.mana - getSkillManaCost(skill, slevel));
+    this.mana = Math.max(0, this.mana - this.getSkillManaCost(id, slevel));
     EventBus.emit(GameEvents.SKILL_USED, { skillId: id, damageType: skill.damageType });
     EventBus.emit(GameEvents.PLAYER_MANA_CHANGED, { mana: this.mana, maxMana: this.maxMana });
   }
@@ -322,10 +367,23 @@ export class Player {
       attackRange: this.attackRange,
       buffs: this.buffs,
       equipStats,
+      outgoingDamageMultiplier: this.spirit.damageMultiplier,
     };
   }
 
   die(): void {
+    const wasResonating = this.spirit.isResonating;
+    this.spirit.reset();
+    EventBus.emit(GameEvents.PLAYER_SPIRIT_CHANGED, {
+      value: 0,
+      maxValue: this.spirit.maxValue,
+      resonating: false,
+    });
+    if (wasResonating) {
+      EventBus.emit(GameEvents.SPIRIT_RESONANCE_ENDED, {
+        profileId: this.spirit.profile.id,
+      });
+    }
     this.playDeath();
     EventBus.emit(GameEvents.PLAYER_DIED, {});
     EventBus.emit(GameEvents.LOG_MESSAGE, {
@@ -351,8 +409,6 @@ export class Player {
       if (go.setAlpha) go.setAlpha(1);
       if (go.setAngle) go.setAngle(0);
     }
-    this.animator.cleanup();
-    this.animator = new CharacterAnimator(this.scene, this.sprite, getAnimConfig(this.classData.id), `player_${this.classData.id}`);
     this.animator.forceIdle();
     EventBus.emit(GameEvents.PLAYER_HEALTH_CHANGED, { hp: this.hp, maxHp: this.maxHp });
     EventBus.emit(GameEvents.LOG_MESSAGE, {
@@ -371,6 +427,10 @@ export class Player {
 
   playHurt(sourceX: number, sourceY: number): void {
     this.animator.playHurt(sourceX, sourceY);
+  }
+
+  playDodge(directionX: number, directionY: number): void {
+    this.animator.playDodge(directionX, directionY);
   }
 
   playDeath(): void {

@@ -32,8 +32,10 @@ All tracks sourced from OpenGameArt.org. Most are CC0 (public domain).
 
 - **explore**: "Desert Theme" by Tarush Singhal — CC0
   https://opengameart.org/content/desert-theme-0
-- **combat**: "Desert Battle Theme" by antonioraymond71 — GPL 2.0
-  https://opengameart.org/content/desert-battle-theme
+- **combat**: "Epic Boss Battle [Seamlessly Looping]" by Juhani Junkala (SubspaceAudio) — CC0
+  https://opengameart.org/content/boss-battle-music
+  Reused from the Anvil Mountains combat slot to keep the distributable soundtrack
+  free of copyleft obligations.
 - **victory**: "Medieval: Victory Theme" by RandomMind — CC0 (same as emerald_plains)
 
 ## abyss_rift
