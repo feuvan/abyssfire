@@ -96,8 +96,12 @@ export interface ZoneEventData {
   merchantItems: string[];
   /** Puzzle descriptions per zone. */
   puzzleDescriptions: { prompt: string; solution: string; reward: string; rewardGold: number; rewardExp: number }[];
+  /** Zone-specific puzzle prop texture. */
+  puzzleSpriteKey: string;
   /** Rescue NPC name (Chinese). */
   rescueNpcName: string;
+  /** Zone-specific rescue NPC texture. */
+  rescueNpcSpriteKey: string;
   /** Rescue reward in gold and exp. */
   rescueReward: { gold: number; exp: number };
 }
@@ -110,7 +114,9 @@ export const ZONE_EVENT_DATA: Record<string, ZoneEventData> = {
     puzzleDescriptions: [
       { prompt: '石柱上的符文需要按正确顺序触摸。', solution: '按下发光的符文', reward: '获得了经验和金币!', rewardGold: 50, rewardExp: 30 },
     ],
+    puzzleSpriteKey: 'decor_event_puzzle_rune_pillar',
     rescueNpcName: '迷路的旅人',
+    rescueNpcSpriteKey: 'npc_rescue_lost_traveler',
     rescueReward: { gold: 30, exp: 25 },
   },
   twilight_forest: {
@@ -120,7 +126,9 @@ export const ZONE_EVENT_DATA: Record<string, ZoneEventData> = {
     puzzleDescriptions: [
       { prompt: '古树的树根形成了一个迷宫，需要找到正确的路径。', solution: '沿着发光的苔藓前进', reward: '获得了经验和金币!', rewardGold: 80, rewardExp: 60 },
     ],
+    puzzleSpriteKey: 'decor_event_puzzle_root_altar',
     rescueNpcName: '受伤的猎人',
+    rescueNpcSpriteKey: 'npc_rescue_wounded_hunter',
     rescueReward: { gold: 60, exp: 50 },
   },
   anvil_mountains: {
@@ -130,7 +138,9 @@ export const ZONE_EVENT_DATA: Record<string, ZoneEventData> = {
     puzzleDescriptions: [
       { prompt: '矿洞墙壁上有三个宝石插槽等待填入。', solution: '按颜色顺序放入宝石', reward: '获得了经验和金币!', rewardGold: 120, rewardExp: 100 },
     ],
+    puzzleSpriteKey: 'decor_event_puzzle_gem_lock',
     rescueNpcName: '被困的矿工',
+    rescueNpcSpriteKey: 'npc_rescue_trapped_miner',
     rescueReward: { gold: 100, exp: 80 },
   },
   scorching_desert: {
@@ -140,7 +150,9 @@ export const ZONE_EVENT_DATA: Record<string, ZoneEventData> = {
     puzzleDescriptions: [
       { prompt: '沙漠中的日晷指向一个隐藏的方向。', solution: '转动日晷指针', reward: '获得了经验和金币!', rewardGold: 160, rewardExp: 140 },
     ],
+    puzzleSpriteKey: 'decor_event_puzzle_sundial',
     rescueNpcName: '沙漠中的商队护卫',
+    rescueNpcSpriteKey: 'npc_rescue_caravan_guard',
     rescueReward: { gold: 140, exp: 120 },
   },
   abyss_rift: {
@@ -150,7 +162,9 @@ export const ZONE_EVENT_DATA: Record<string, ZoneEventData> = {
     puzzleDescriptions: [
       { prompt: '深渊裂缝中闪烁着不稳定的魔法阵。', solution: '按正确的符文序列激活', reward: '获得了经验和金币!', rewardGold: 200, rewardExp: 180 },
     ],
+    puzzleSpriteKey: 'decor_event_puzzle_abyss_array',
     rescueNpcName: '深渊探险家',
+    rescueNpcSpriteKey: 'npc_rescue_abyss_explorer',
     rescueReward: { gold: 180, exp: 160 },
   },
 };
@@ -396,6 +410,7 @@ export class RandomEventSystem {
         context.monsterIds = monsters;
         context.monsterCount = count;
         context.rescueNpcName = zoneData?.rescueNpcName ?? t('sys.event.rescue.fallback');
+        context.rescueNpcSpriteKey = zoneData?.rescueNpcSpriteKey ?? 'npc_rescue';
         context.reward = zoneData?.rescueReward ?? { gold: 50, exp: 40 };
         break;
       }
@@ -405,6 +420,7 @@ export class RandomEventSystem {
           ? puzzles[Math.floor(Math.random() * puzzles.length)]
           : { prompt: t('sys.event.puzzle.fallback.prompt'), solution: t('sys.event.puzzle.fallback.solution'), reward: t('sys.event.puzzle.fallback.reward'), rewardGold: 50, rewardExp: 30 };
         context.puzzle = puzzle;
+        context.puzzleSpriteKey = zoneData?.puzzleSpriteKey ?? 'decor_puzzle_stone';
         break;
       }
     }

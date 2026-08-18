@@ -54,6 +54,7 @@ import { QuestNomadDrawer } from './sprites/npcs/QuestNomad';
 import { QuestWardenDrawer } from './sprites/npcs/QuestWarden';
 import { WanderingMerchantDrawer } from './sprites/npcs/WanderingMerchant';
 import { RescueNPCDrawer } from './sprites/npcs/RescueNPC';
+import { EVENT_NPC_DRAWERS } from './sprites/npcs/EventNPCs';
 import { TreeDrawer } from './sprites/decorations/Tree';
 import { BushDrawer } from './sprites/decorations/Bush';
 import { RockDrawer } from './sprites/decorations/Rock';
@@ -77,6 +78,8 @@ import { TreasureChestDrawer } from './sprites/decorations/TreasureChest';
 import { GoldPileDrawer } from './sprites/decorations/GoldPile';
 import { LoreScrollDrawer } from './sprites/decorations/LoreScroll';
 import { PuzzleStoneDrawer } from './sprites/decorations/PuzzleStone';
+import { EVENT_PROP_DRAWERS } from './sprites/decorations/EventProps';
+import { PetSpriteDrawers } from './sprites/decorations/Pets';
 import { LootBagDrawer } from './sprites/effects/LootBag';
 import { ExitPortalDrawer } from './sprites/effects/ExitPortal';
 
@@ -196,8 +199,12 @@ const EFFECT_DRAWERS: EntityDrawer[] = [
 
 const PLAYER_DRAWER_BY_KEY = new Map<string, EntityDrawer>(PLAYER_DRAWERS.map(drawer => [drawer.key, drawer]));
 const ENTITY_DRAWER_BY_KEY = new Map<string, EntityDrawer>([...PLAYER_DRAWERS, ...MONSTER_DRAWERS].map(drawer => [drawer.key, drawer]));
-const NPC_DRAWER_BY_KEY = new Map<string, EntityDrawer>(NPC_DRAWERS.map(drawer => [drawer.key, drawer]));
-const DECOR_DRAWER_BY_KEY = new Map<string, EntityDrawer>(DECOR_DRAWERS.map(drawer => [drawer.key, drawer]));
+const NPC_DRAWER_BY_KEY = new Map<string, EntityDrawer>(
+  [...NPC_DRAWERS, ...EVENT_NPC_DRAWERS].map(drawer => [drawer.key, drawer]),
+);
+const DECOR_DRAWER_BY_KEY = new Map<string, EntityDrawer>(
+  [...DECOR_DRAWERS, ...EVENT_PROP_DRAWERS, ...PetSpriteDrawers].map(drawer => [drawer.key, drawer]),
+);
 const EFFECT_DRAWER_BY_KEY = new Map<string, EntityDrawer>(EFFECT_DRAWERS.map(drawer => [drawer.key, drawer]));
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -378,11 +385,24 @@ export class SpriteGenerator {
     this.ensureNPCKey(scene, `npc_${npcType}`);
   }
 
+  /** Lazily generate an NPC sheet referenced directly by its data-defined texture key. */
+  static ensureNPCSprite(scene: Phaser.Scene, spriteKey: string): void {
+    this.ensureNPCKey(scene, spriteKey);
+  }
+
   static ensureDecoration(scene: Phaser.Scene, decorType: string): void {
-    const key = `decor_${decorType}`;
+    const key = decorType.startsWith('decor_') ? decorType : `decor_${decorType}`;
     const drawer = DECOR_DRAWER_BY_KEY.get(key);
     if (!drawer || scene.textures.exists(key)) return;
     new SpriteGenerator(scene).generateFromStaticDrawer(drawer);
+  }
+
+  static hasNPCSprite(spriteKey: string): boolean {
+    return NPC_DRAWER_BY_KEY.has(spriteKey);
+  }
+
+  static hasDecoration(spriteKey: string): boolean {
+    return DECOR_DRAWER_BY_KEY.has(spriteKey);
   }
 
   static ensureEffect(scene: Phaser.Scene, effectKey: string): void {

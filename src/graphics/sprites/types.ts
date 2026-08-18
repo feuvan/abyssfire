@@ -116,5 +116,18 @@ export function buildFrameSizeRegistry(): FrameSizeRegistry {
     npc_quest_dwarf: { frameWidth: 80, frameHeight: 120 },
     npc_quest_nomad: { frameWidth: 80, frameHeight: 120 },
     npc_quest_warden: { frameWidth: 80, frameHeight: 120 },
+    // Event NPCs are generated lazily when the corresponding event/quest appears.
+    npc_rescue_lost_traveler: { frameWidth: 80, frameHeight: 120 },
+    npc_rescue_wounded_hunter: { frameWidth: 80, frameHeight: 120 },
+    npc_rescue_trapped_miner: { frameWidth: 80, frameHeight: 120 },
+    npc_rescue_caravan_guard: { frameWidth: 80, frameHeight: 120 },
+    npc_rescue_abyss_explorer: { frameWidth: 80, frameHeight: 120 },
+    npc_escort_traveling_merchant: { frameWidth: 80, frameHeight: 120 },
+    npc_escort_wounded_explorer: { frameWidth: 80, frameHeight: 120 },
+    npc_mercenary_tank: { frameWidth: 80, frameHeight: 120 },
+    npc_mercenary_melee: { frameWidth: 80, frameHeight: 120 },
+    npc_mercenary_ranged: { frameWidth: 80, frameHeight: 120 },
+    npc_mercenary_healer: { frameWidth: 80, frameHeight: 120 },
+    npc_mercenary_mage: { frameWidth: 80, frameHeight: 120 },
   };
 }

@@ -339,7 +339,7 @@ export interface QuestDefinition {
   /** Escort quest: NPC to follow player to destination. */
   escortNpc?: { name: string; spriteKey: string; startCol: number; startRow: number; destCol: number; destRow: number };
   /** Defend quest: location/object to protect and enemy wave config. */
-  defendTarget?: { name: string; col: number; row: number; totalWaves: number };
+  defendTarget?: { name: string; spriteKey: string; col: number; row: number; totalWaves: number };
   /** Investigate quest: clue objects to find. */
   clues?: { id: string; name: string; col: number; row: number }[];
   /** Craft quest phase definitions: collect → craft → deliver. */

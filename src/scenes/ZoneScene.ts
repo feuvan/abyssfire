@@ -2506,6 +2506,21 @@ export class ZoneScene extends Phaser.Scene {
     EventBus.emit(GameEvents.RANDOM_EVENT_RESOLVED, { type: 'treasure_cache' });
   }
 
+  private addGeneratedNPCVisual(
+    container: Phaser.GameObjects.Container,
+    spriteKey: string,
+    action: 'working' | 'alert' | 'idle' | 'talking' = 'idle',
+  ): Phaser.GameObjects.Sprite | null {
+    SpriteGenerator.ensureNPCSprite(this, spriteKey);
+    if (!this.textures.exists(spriteKey)) return null;
+
+    const sprite = this.add.sprite(0, -40, spriteKey, 0).setScale(1 / TEXTURE_SCALE);
+    const animationKey = `${spriteKey}_${action}`;
+    if (this.anims.exists(animationKey)) sprite.play(animationKey);
+    container.add(sprite);
+    return sprite;
+  }
+
   private handleWanderingMerchantEvent(event: ActiveEvent): void {
     // Spawn a visible wandering merchant NPC sprite at the event location
     const merchantCol = Math.round(event.col);
@@ -2521,19 +2536,14 @@ export class ZoneScene extends Phaser.Scene {
     const merchantContainer = this.add.container(merchantX, merchantY);
     merchantContainer.setDepth(merchantY + 10);
 
-    // Use the procedural wandering merchant texture
-    SpriteGenerator.ensureEffect(this, 'npc_wandering_merchant');
-    if (this.textures.exists('npc_wandering_merchant')) {
-      const sprite = this.add.image(0, -16, 'npc_wandering_merchant').setScale(1 / TEXTURE_SCALE);
-      merchantContainer.add(sprite);
-    } else {
+    if (!this.addGeneratedNPCVisual(merchantContainer, 'npc_wandering_merchant', 'talking')) {
       // Fallback: simple circle if texture generation failed
       const body = this.add.circle(0, -12 * DPR, 8 * DPR, 0x8a7a60);
       merchantContainer.add(body);
     }
 
     // Name label
-    const nameLabel = this.add.text(0, 4 * DPR, t('zone.event.merchant.label'), {
+    const nameLabel = this.add.text(0, 14 * DPR, t('zone.event.merchant.label'), {
       fontSize: fs(10),
       color: '#c0934a',
       fontFamily: '"Noto Sans SC", sans-serif',
@@ -2587,6 +2597,7 @@ export class ZoneScene extends Phaser.Scene {
     const count = (event.context.monsterCount as number) ?? 2;
     const monsterDefs = MonstersByZone[this.currentMapId] || [];
     const rescueNpcName = (event.context.rescueNpcName as string) ?? t('zone.event.rescue.fallbackName');
+    const rescueNpcSpriteKey = (event.context.rescueNpcSpriteKey as string) ?? 'npc_rescue';
     const reward = event.context.reward as { gold: number; exp: number } | undefined;
 
     // Spawn a stranded NPC sprite at the event location
@@ -2598,16 +2609,19 @@ export class ZoneScene extends Phaser.Scene {
     const npcRow = npcWalkable?.row ?? Math.round(event.row);
     const { x: npcX, y: npcY } = cartToIso(npcCol, npcRow);
     const rescueNpcSprite = this.add.container(npcX, npcY);
-    rescueNpcSprite.setDepth(npcY + 10);
-    // Simple visual: a circle with a help indicator
-    const body = this.add.circle(0, -12 * DPR, 8 * DPR, 0x44aaff);
-    const helpMark = this.add.text(0, -28 * DPR, '!', {
+    rescueNpcSprite.setDepth(npcY + 60);
+    if (!this.addGeneratedNPCVisual(rescueNpcSprite, rescueNpcSpriteKey, 'alert')) {
+      const body = this.add.circle(0, -12 * DPR, 8 * DPR, 0x44aaff);
+      rescueNpcSprite.add(body);
+    }
+    const helpMark = this.add.text(0, -78 * DPR, '!', {
       fontSize: fs(14), color: '#ff4444', fontFamily: '"Noto Sans SC", sans-serif', fontStyle: 'bold',
     }).setOrigin(0.5);
-    const nameLabel2 = this.add.text(0, 4 * DPR, rescueNpcName, {
+    const nameLabel2 = this.add.text(0, 14 * DPR, rescueNpcName, {
       fontSize: fs(10), color: '#aaddff', fontFamily: '"Noto Sans SC", sans-serif',
+      stroke: '#000000', strokeThickness: Math.round(2 * DPR),
     }).setOrigin(0.5, 0);
-    rescueNpcSprite.add([body, helpMark, nameLabel2]);
+    rescueNpcSprite.add([helpMark, nameLabel2]);
 
     // Spawn hostile monsters around the NPC
     const rescueMonsters: Monster[] = [];
@@ -2714,19 +2728,28 @@ export class ZoneScene extends Phaser.Scene {
     const puzzleCol = walkable?.col ?? Math.round(event.col);
     const puzzleRow = walkable?.row ?? Math.round(event.row);
     const { x: px2, y: py2 } = cartToIso(puzzleCol, puzzleRow);
+    const puzzleSpriteKey = (event.context.puzzleSpriteKey as string) ?? 'decor_puzzle_stone';
 
     const puzzleSprite = this.add.container(px2, py2);
     puzzleSprite.setDepth(py2 + 10);
-    // Visual: a glowing rune circle
-    const glow = this.add.circle(0, -8 * DPR, 12 * DPR, 0xaa66ff, 0.4);
-    const icon = this.add.text(0, -14 * DPR, '?', {
-      fontSize: fs(16), color: '#ffcc00', fontFamily: '"Noto Sans SC", sans-serif', fontStyle: 'bold',
-    }).setOrigin(0.5);
-    const label = this.add.text(0, 8 * DPR, t('zone.event.puzzle.label'), {
+    const glow = this.add.ellipse(0, -8 * DPR, 52 * DPR, 22 * DPR, 0x8c62d6, 0.28);
+    puzzleSprite.add(glow);
+    SpriteGenerator.ensureDecoration(this, puzzleSpriteKey);
+    if (this.textures.exists(puzzleSpriteKey)) {
+      const prop = this.add.image(0, -30, puzzleSpriteKey).setScale(1 / TEXTURE_SCALE);
+      puzzleSprite.add(prop);
+    } else {
+      const icon = this.add.text(0, -14 * DPR, '?', {
+        fontSize: fs(16), color: '#ffcc00', fontFamily: '"Noto Sans SC", sans-serif', fontStyle: 'bold',
+      }).setOrigin(0.5);
+      puzzleSprite.add(icon);
+    }
+    const label = this.add.text(0, 10 * DPR, t('zone.event.puzzle.label'), {
       fontSize: fs(10), color: '#ccaaff', fontFamily: '"Noto Sans SC", sans-serif',
+      stroke: '#000000', strokeThickness: Math.round(2 * DPR),
     }).setOrigin(0.5, 0);
-    puzzleSprite.add([glow, icon, label]);
-    puzzleSprite.setSize(24 * DPR, 32 * DPR);
+    puzzleSprite.add(label);
+    puzzleSprite.setSize(64 * DPR, 72 * DPR);
     puzzleSprite.setInteractive({ useHandCursor: true });
 
     // Add pulsing animation to draw attention
@@ -4083,37 +4106,35 @@ export class ZoneScene extends Phaser.Scene {
     const container = this.add.container(worldX, worldY);
     container.setDepth(worldY + 100);
 
+    const rewardSpriteKey = reward.type === 'chest'
+      ? 'decor_treasure_chest'
+      : reward.type === 'gold_pile'
+        ? 'decor_gold_pile'
+        : 'decor_lore_scroll';
+    SpriteGenerator.ensureDecoration(this, rewardSpriteKey);
+    if (this.textures.exists(rewardSpriteKey)) {
+      const rewardVisual = this.add.image(0, -12, rewardSpriteKey).setScale(1 / TEXTURE_SCALE);
+      container.add(rewardVisual);
+    } else if (reward.type === 'chest') {
+      // Keep a minimal resilience fallback for a failed texture context.
+      const chest = this.add.rectangle(0, -12, Math.round(20 * DPR), Math.round(14 * DPR), 0xDAA520);
+      chest.setStrokeStyle(Math.round(2 * DPR), 0x8B6914);
+      container.add(chest);
+    } else if (reward.type === 'gold_pile') {
+      const gold = this.add.ellipse(0, -8, Math.round(18 * DPR), Math.round(8 * DPR), 0xFFD700);
+      gold.setStrokeStyle(Math.round(1 * DPR), 0xDAA520);
+      container.add(gold);
+    } else {
+      const scroll = this.add.rectangle(0, -12, Math.round(14 * DPR), Math.round(18 * DPR), 0xDEB887);
+      scroll.setStrokeStyle(Math.round(1 * DPR), 0x8B7355);
+      container.add(scroll);
+    }
+
     if (reward.type === 'chest') {
-      // Treasure chest sprite using procedural texture
-      SpriteGenerator.ensureEffect(this, 'decor_treasure_chest');
-      if (this.textures.exists('decor_treasure_chest')) {
-        const chest = this.add.image(0, -12, 'decor_treasure_chest').setScale(1 / TEXTURE_SCALE);
-        container.add(chest);
-      } else {
-        // Fallback: simple rectangle if texture generation failed
-        const chest = this.add.rectangle(0, -12, Math.round(20 * DPR), Math.round(14 * DPR), 0xDAA520);
-        chest.setStrokeStyle(Math.round(2 * DPR), 0x8B6914);
-        container.add(chest);
-      }
       // Glow effect
       const glow = this.add.ellipse(0, 0, Math.round(36 * DPR), Math.round(18 * DPR), 0xFFD700, 0.3);
       container.add(glow);
       this.tweens.add({ targets: glow, alpha: 0.1, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    } else if (reward.type === 'gold_pile') {
-      // Gold pile (stacked gold circles)
-      for (let j = 0; j < 5; j++) {
-        const coin = this.add.ellipse(
-          randomInt(-6, 6) * DPR, (-8 - j * 3) * DPR,
-          Math.round(8 * DPR), Math.round(6 * DPR), 0xFFD700
-        );
-        coin.setStrokeStyle(Math.round(1 * DPR), 0xDAA520);
-        container.add(coin);
-      }
-    } else if (reward.type === 'lore') {
-      // Lore scroll visual
-      const scroll = this.add.rectangle(0, -12, Math.round(14 * DPR), Math.round(18 * DPR), 0xDEB887);
-      scroll.setStrokeStyle(Math.round(1 * DPR), 0x8B7355);
-      container.add(scroll);
     }
 
     // Interactable label
@@ -5418,36 +5439,37 @@ export class ZoneScene extends Phaser.Scene {
     this.mercenarySprite = this.add.container(worldPos.x, worldPos.y);
     this.mercenarySprite.setDepth(worldPos.y + 60);
 
-    // Simple colored rectangle body with role color
+    const spriteKey = `npc_mercenary_${merc.type}`;
+    const hasGeneratedVisual = this.addGeneratedNPCVisual(this.mercenarySprite, spriteKey, 'working') !== null;
+
     const colorMap: Record<string, number> = {
       tank: 0x2471a3, melee: 0xc0392b, ranged: 0x27ae60, healer: 0xf1c40f, mage: 0x8e44ad,
     };
     const color = colorMap[merc.type] ?? 0x888888;
-    const body = this.add.rectangle(0, -20, 32, 40, color);
-    body.setStrokeStyle(1.5, 0xffffff, 0.6);
-    this.mercenarySprite.add(body);
-
-    // Shadow
-    const shadow = this.add.ellipse(0, 4, 30, 8, 0x000000, 0.25);
-    this.mercenarySprite.add(shadow);
-    this.mercenarySprite.sendToBack(shadow);
+    if (!hasGeneratedVisual) {
+      const body = this.add.rectangle(0, -20, 32, 40, color);
+      body.setStrokeStyle(1.5, 0xffffff, 0.6);
+      const shadow = this.add.ellipse(0, 4, 30, 8, 0x000000, 0.25);
+      this.mercenarySprite.add([shadow, body]);
+      this.mercenarySprite.sendToBack(shadow);
+    }
 
     // Friendly indicator (small green diamond above)
-    const indicator = this.add.rectangle(0, -48, 6, 6, 0x27ae60);
+    const indicator = this.add.rectangle(0, -64, 6, 6, 0x27ae60);
     indicator.setAngle(45);
     this.mercenarySprite.add(indicator);
 
     // HP bar
-    this.mercenaryHpBarBg = this.add.rectangle(0, -46, 28, 4, 0x1a1a1a);
+    this.mercenaryHpBarBg = this.add.rectangle(0, -74, 32, 4, 0x1a1a1a);
     this.mercenaryHpBarBg.setStrokeStyle(0.5, 0x333333);
     this.mercenarySprite.add(this.mercenaryHpBarBg);
 
-    this.mercenaryHpBar = this.add.rectangle(-14, -46, 28, 4, 0x27ae60);
+    this.mercenaryHpBar = this.add.rectangle(-16, -74, 32, 4, 0x27ae60);
     this.mercenaryHpBar.setOrigin(0, 0.5);
     this.mercenarySprite.add(this.mercenaryHpBar);
 
     // Name label
-    this.mercenaryNameLabel = this.add.text(0, -56, `${def.name} Lv.${merc.level}`, {
+    this.mercenaryNameLabel = this.add.text(0, -86, `${def.name} Lv.${merc.level}`, {
       fontSize: fs(10), color: '#88cc88', fontFamily: '"Noto Sans SC", sans-serif',
       stroke: '#000000', strokeThickness: Math.round(2 * DPR),
     }).setOrigin(0.5);
@@ -5521,7 +5543,7 @@ export class ZoneScene extends Phaser.Scene {
     // Update HP bar
     if (this.mercenaryHpBar) {
       const hpRatio = merc.hp / merc.maxHp;
-      this.mercenaryHpBar.width = Math.max(0, 28 * hpRatio);
+      this.mercenaryHpBar.width = Math.max(0, 32 * hpRatio);
       this.mercenaryHpBar.fillColor = hpRatio > 0.5 ? 0x27ae60 : hpRatio > 0.25 ? 0xf39c12 : 0xe74c3c;
     }
 
@@ -5712,32 +5734,24 @@ export class ZoneScene extends Phaser.Scene {
       this.escortNpcSprite = this.add.container(worldPos.x, worldPos.y);
       this.escortNpcSprite.setDepth(worldPos.y + 60);
 
-      // Body — golden NPC color
-      const body = this.add.rectangle(0, -20, 28, 36, 0xe67e22);
-      body.setStrokeStyle(1.5, 0xffffff, 0.6);
-      this.escortNpcSprite.add(body);
-
-      // Shadow
-      const shadow = this.add.ellipse(0, 4, 26, 7, 0x000000, 0.25);
-      this.escortNpcSprite.add(shadow);
-      this.escortNpcSprite.sendToBack(shadow);
-
-      // Friendly indicator (orange diamond)
-      const indicator = this.add.rectangle(0, -46, 6, 6, 0xe67e22);
-      indicator.setAngle(45);
-      this.escortNpcSprite.add(indicator);
+      if (!this.addGeneratedNPCVisual(this.escortNpcSprite, en.spriteKey, 'working')) {
+        const shadow = this.add.ellipse(0, 4, 26, 7, 0x000000, 0.25);
+        const body = this.add.rectangle(0, -20, 28, 36, 0xe67e22);
+        body.setStrokeStyle(1.5, 0xffffff, 0.6);
+        this.escortNpcSprite.add([shadow, body]);
+      }
 
       // HP bar
-      this.escortNpcHpBarBg = this.add.rectangle(0, -44, 28, 4, 0x1a1a1a);
+      this.escortNpcHpBarBg = this.add.rectangle(0, -74, 32, 4, 0x1a1a1a);
       this.escortNpcHpBarBg.setStrokeStyle(0.5, 0x333333);
       this.escortNpcSprite.add(this.escortNpcHpBarBg);
 
-      this.escortNpcHpBar = this.add.rectangle(-14, -44, 28, 4, 0x27ae60);
+      this.escortNpcHpBar = this.add.rectangle(-16, -74, 32, 4, 0x27ae60);
       this.escortNpcHpBar.setOrigin(0, 0.5);
       this.escortNpcSprite.add(this.escortNpcHpBar);
 
       // Name label
-      this.escortNpcNameLabel = this.add.text(0, -54, en.name, {
+      this.escortNpcNameLabel = this.add.text(0, -86, en.name, {
         fontSize: fs(10), color: '#e67e22', fontFamily: '"Noto Sans SC", sans-serif',
         stroke: '#000000', strokeThickness: Math.round(2 * DPR),
       }).setOrigin(0.5);
@@ -5807,7 +5821,7 @@ export class ZoneScene extends Phaser.Scene {
     // Update HP bar
     if (this.escortNpcHpBar) {
       const hpRatio = this.escortNpcHp / this.escortNpcMaxHp;
-      this.escortNpcHpBar.width = Math.max(0, 28 * hpRatio);
+      this.escortNpcHpBar.width = Math.max(0, 32 * hpRatio);
       this.escortNpcHpBar.fillColor = hpRatio > 0.5 ? 0x27ae60 : hpRatio > 0.25 ? 0xf39c12 : 0xe74c3c;
     }
 
@@ -5886,27 +5900,30 @@ export class ZoneScene extends Phaser.Scene {
       this.defendTargetSprite = this.add.container(worldPos.x, worldPos.y);
       this.defendTargetSprite.setDepth(worldPos.y + 50);
 
-      // Defend target — large red/brown structure
-      const base = this.add.rectangle(0, -16, 40, 48, 0x8b4513);
-      base.setStrokeStyle(2, 0xc0392b);
-      this.defendTargetSprite.add(base);
-
-      // Glow indicator
-      const glow = this.add.ellipse(0, 8, 48, 12, 0xe74c3c, 0.3);
+      const glow = this.add.ellipse(0, 2, 68, 22, 0xe74c3c, 0.24);
       this.defendTargetSprite.add(glow);
       this.defendTargetSprite.sendToBack(glow);
+      SpriteGenerator.ensureDecoration(this, dt.spriteKey);
+      if (this.textures.exists(dt.spriteKey)) {
+        const targetVisual = this.add.image(0, -34, dt.spriteKey).setScale(1 / TEXTURE_SCALE);
+        this.defendTargetSprite.add(targetVisual);
+      } else {
+        const base = this.add.rectangle(0, -16, 40, 48, 0x8b4513);
+        base.setStrokeStyle(2, 0xc0392b);
+        this.defendTargetSprite.add(base);
+      }
 
       // HP bar
-      this.defendTargetHpBarBg = this.add.rectangle(0, -48, 36, 5, 0x1a1a1a);
+      this.defendTargetHpBarBg = this.add.rectangle(0, -78, 40, 5, 0x1a1a1a);
       this.defendTargetHpBarBg.setStrokeStyle(0.5, 0x333333);
       this.defendTargetSprite.add(this.defendTargetHpBarBg);
 
-      this.defendTargetHpBar = this.add.rectangle(-18, -48, 36, 5, 0xe74c3c);
+      this.defendTargetHpBar = this.add.rectangle(-20, -78, 40, 5, 0xe74c3c);
       this.defendTargetHpBar.setOrigin(0, 0.5);
       this.defendTargetSprite.add(this.defendTargetHpBar);
 
       // Name label
-      this.defendTargetNameLabel = this.add.text(0, -58, dt.name, {
+      this.defendTargetNameLabel = this.add.text(0, -90, dt.name, {
         fontSize: fs(10), color: '#e74c3c', fontFamily: '"Noto Sans SC", sans-serif',
         stroke: '#000000', strokeThickness: Math.round(2 * DPR),
       }).setOrigin(0.5);
@@ -5996,7 +6013,7 @@ export class ZoneScene extends Phaser.Scene {
     // Update HP bar
     if (this.defendTargetHpBar) {
       const hpRatio = this.defendTargetHp / this.defendTargetMaxHp;
-      this.defendTargetHpBar.width = Math.max(0, 36 * hpRatio);
+      this.defendTargetHpBar.width = Math.max(0, 40 * hpRatio);
       this.defendTargetHpBar.fillColor = hpRatio > 0.5 ? 0xe74c3c : hpRatio > 0.25 ? 0xf39c12 : 0x7f0000;
     }
   }
@@ -6131,7 +6148,7 @@ export class ZoneScene extends Phaser.Scene {
     this.petSprite = this.add.container(worldPos.x, worldPos.y);
     this.petSprite.setDepth(worldPos.y + 50);
 
-    // Pet body — small colored circle based on rarity
+    const petSpriteKey = `decor_pet_${petDef.id}`;
     const rarityColors: Record<string, number> = {
       common: 0x88cc88,
       rare: 0x5599ff,
@@ -6139,38 +6156,47 @@ export class ZoneScene extends Phaser.Scene {
     };
     const color = rarityColors[petDef.rarity] ?? 0x88cc88;
 
-    // Pet body (small circular shape)
-    const body = this.add.circle(0, -12, 10, color);
-    body.setStrokeStyle(1.5, 0xffffff, 0.5);
-    this.petSprite.add(body);
+    SpriteGenerator.ensureDecoration(this, petSpriteKey);
+    let petVisual: Phaser.GameObjects.Image | null = null;
+    let body: Phaser.GameObjects.Arc | null = null;
+    if (this.textures.exists(petSpriteKey)) {
+      petVisual = this.add.image(0, -20, petSpriteKey).setScale(1 / TEXTURE_SCALE);
+      this.petSprite.add(petVisual);
+    } else {
+      body = this.add.circle(0, -12, 10, color);
+      body.setStrokeStyle(1.5, 0xffffff, 0.5);
+      this.petSprite.add(body);
+    }
 
-    // Shadow
     const shadow = this.add.ellipse(0, 4, 16, 6, 0x000000, 0.2);
     this.petSprite.add(shadow);
     this.petSprite.sendToBack(shadow);
 
     // Friendly indicator (small diamond)
-    const indicator = this.add.rectangle(0, -28, 4, 4, 0x88ccff);
+    const indicator = this.add.rectangle(0, -44, 4, 4, 0x88ccff);
     indicator.setAngle(45);
     this.petSprite.add(indicator);
 
     // Name label with evolution suffix
     const displayName = this.homesteadSystem.getPetDisplayName(petInst);
-    this.petNameLabel = this.add.text(0, -36, `${displayName} Lv.${petInst.level}`, {
+    this.petNameLabel = this.add.text(0, -54, `${displayName} Lv.${petInst.level}`, {
       fontSize: fs(9), color: '#aaddff', fontFamily: '"Noto Sans SC", sans-serif',
       stroke: '#000000', strokeThickness: Math.round(2 * DPR),
     }).setOrigin(0.5);
     this.petSprite.add(this.petNameLabel);
 
     // Idle floating animation
-    this.tweens.add({
-      targets: body,
-      y: body.y - 3,
-      duration: 1200,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-    });
+    const floatingVisual = petVisual ?? body;
+    if (floatingVisual) {
+      this.tweens.add({
+        targets: floatingVisual,
+        y: floatingVisual.y - 3,
+        duration: 1200,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+    }
   }
 
   destroyPetSprite(): void {

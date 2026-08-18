@@ -791,7 +791,7 @@ export const AllQuests: QuestDefinition[] = [
     prereqQuests: ['q_kill_goblins'],
     level: 5,
     questArea: { col: 50, row: 90, radius: 8 },
-    escortNpc: { name: '旅行商人', spriteKey: 'npc_merchant', startCol: 30, startRow: 40, destCol: 50, destRow: 90 },
+    escortNpc: { name: '旅行商人', spriteKey: 'npc_escort_traveling_merchant', startCol: 30, startRow: 40, destCol: 50, destRow: 90 },
     reacceptable: true,
   },
   {
@@ -808,7 +808,7 @@ export const AllQuests: QuestDefinition[] = [
     prereqQuests: ['q_explore_desert'],
     level: 33,
     questArea: { col: 45, row: 22, radius: 10 },
-    escortNpc: { name: '受伤的探险者', spriteKey: 'npc_quest', startCol: 64, startRow: 48, destCol: 45, destRow: 22 },
+    escortNpc: { name: '受伤的探险者', spriteKey: 'npc_escort_wounded_explorer', startCol: 64, startRow: 48, destCol: 45, destRow: 22 },
     reacceptable: true,
   },
 
@@ -829,7 +829,7 @@ export const AllQuests: QuestDefinition[] = [
     prereqQuests: ['q_kill_undead'],
     level: 14,
     questArea: { col: 40, row: 35, radius: 12 },
-    defendTarget: { name: '营地篝火', col: 40, row: 35, totalWaves: 3 },
+    defendTarget: { name: '营地篝火', spriteKey: 'decor_defend_campfire', col: 40, row: 35, totalWaves: 3 },
     reacceptable: true,
   },
   {
@@ -846,7 +846,7 @@ export const AllQuests: QuestDefinition[] = [
     prereqQuests: ['q_collect_demon_essence'],
     level: 46,
     questArea: { col: 38, row: 58, radius: 10 },
-    defendTarget: { name: '封印石', col: 38, row: 58, totalWaves: 5 },
+    defendTarget: { name: '封印石', spriteKey: 'decor_defend_abyss_seal', col: 38, row: 58, totalWaves: 5 },
     reacceptable: true,
   },
 
