@@ -46,6 +46,8 @@ function cutsceneZones(): Map<string, Set<string>> {
   for (const t of STORY_TRIGGERS) {
     if (t.on === 'monster_killed') {
       for (const z of zonesWithMonster(t.monsterId)) add(t.cutscene, z);
+    } else if (t.on === 'zone_entered') {
+      add(t.cutscene, t.zoneId);
     } else {
       const quest = AllQuests.find(q => q.id === t.questId);
       if (quest) add(t.cutscene, quest.zone);
@@ -97,6 +99,7 @@ describe('story script', () => {
     for (const t of STORY_TRIGGERS) {
       expect(CUTSCENES[t.cutscene], t.cutscene).toBeDefined();
       if (t.on === 'monster_killed') expect(getMonsterDef(t.monsterId), t.monsterId).toBeDefined();
+      else if (t.on === 'zone_entered') expect(AllMaps[t.zoneId], t.zoneId).toBeDefined();
       else expect(AllQuests.some(q => q.id === t.questId), t.questId).toBe(true);
     }
   });

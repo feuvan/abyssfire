@@ -78,6 +78,7 @@ export const CUTSCENES: Record<string, Cutscene> = {
       { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_finale.8' },
       { kind: 'whisper', text: 'story.cs_ep_finale.9' },
       { kind: 'narrate', text: 'story.cs_ep_finale.10' },
+      { kind: 'narrate', text: 'story.cs_ep_finale.11' },
     ],
   },
   // Ch.2 — the hermit reveals the sixth sage, Ignaroth (after q_talk_hermit).
@@ -113,6 +114,7 @@ export const CUTSCENES: Record<string, Cutscene> = {
       { kind: 'say', speaker: { npc: 'quest_scout' }, text: 'story.cs_tf_finale.9' },
       { kind: 'whisper', text: 'story.cs_tf_finale.10' },
       { kind: 'narrate', text: 'story.cs_tf_finale.11' },
+      { kind: 'narrate', text: 'story.cs_tf_finale.12' },
     ],
   },
   // Ch.3 — the Hammer of Fate is reforged (after q_reforge_artifact).
@@ -148,6 +150,7 @@ export const CUTSCENES: Record<string, Cutscene> = {
       { kind: 'whisper', text: 'story.cs_am_finale.10' },
       { kind: 'whisper', text: 'story.cs_am_finale.11' },
       { kind: 'narrate', text: 'story.cs_am_finale.12' },
+      { kind: 'narrate', text: 'story.cs_am_finale.13' },
     ],
   },
   // Ch.4 — the oasis vision: the Sun Crown Kingdom and the high priest's betrayal (after q_explore_oasis).
@@ -185,6 +188,7 @@ export const CUTSCENES: Record<string, Cutscene> = {
       { kind: 'whisper', text: 'story.cs_sd_finale.9' },
       { kind: 'shake', intensity: 0.006, ms: 500 },
       { kind: 'narrate', text: 'story.cs_sd_finale.11' },
+      { kind: 'narrate', text: 'story.cs_sd_finale.12' },
     ],
   },
   // Ch.5 — at the gate: Ignaroth names himself; the brand is the key (after q_explore_abyss).
@@ -243,6 +247,60 @@ export const CUTSCENES: Record<string, Cutscene> = {
       { kind: 'say', speaker: { monster: 'demon_lord' }, text: 'story.cs_ar_fall.12' },
       { kind: 'narrate', text: 'story.cs_ar_fall.13' },
       { kind: 'narrate', text: 'story.cs_ar_fall.14' },
+    ],
+  },
+  // Ch.2 — Volgan's cub finds the hero by its father's body (first werewolf_alpha kill; grants pet_storm_wolf).
+  cs_tf_moonfang: {
+    id: 'cs_tf_moonfang',
+    steps: [
+      { kind: 'focus', target: 'player' },
+      { kind: 'narrate', text: 'story.cs_tf_moonfang.2' },
+      { kind: 'narrate', text: 'story.cs_tf_moonfang.3' },
+      { kind: 'title', title: 'story.cs_tf_moonfang.4.title', subtitle: 'story.cs_tf_moonfang.4.subtitle' },
+      { kind: 'narrate', text: 'story.cs_tf_moonfang.5' },
+      { kind: 'say', speaker: 'hero', text: 'story.cs_tf_moonfang.6' },
+      { kind: 'narrate', text: 'story.cs_tf_moonfang.7' },
+    ],
+  },
+  // Ch.4 — Helia leaves one ember behind (after the Sun Seal finale; grants pet_phoenix).
+  cs_sd_helia: {
+    id: 'cs_sd_helia',
+    steps: [
+      { kind: 'focus', target: 'player' },
+      { kind: 'narrate', text: 'story.cs_sd_helia.2' },
+      { kind: 'flash', color: 0xffb347, ms: 500 },
+      { kind: 'narrate', text: 'story.cs_sd_helia.4' },
+      { kind: 'title', title: 'story.cs_sd_helia.5.title', subtitle: 'story.cs_sd_helia.5.subtitle' },
+      { kind: 'focus', target: { npc: 'quest_nomad' } },
+      { kind: 'say', speaker: { npc: 'quest_nomad' }, text: 'story.cs_sd_helia.7' },
+      { kind: 'narrate', text: 'story.cs_sd_helia.8' },
+    ],
+  },
+  // Ch.5 — the warden sends her lamp to light the tower's altar (after q_collect_demon_essence, 以渊为引).
+  cs_ar_altar: {
+    id: 'cs_ar_altar',
+    steps: [
+      { kind: 'focus', target: { npc: 'quest_warden' } },
+      { kind: 'say', speaker: { npc: 'quest_warden' }, text: 'story.cs_ar_altar.2' },
+      { kind: 'say', speaker: { npc: 'quest_warden' }, text: 'story.cs_ar_altar.3' },
+      { kind: 'narrate', text: 'story.cs_ar_altar.4' },
+      { kind: 'say', speaker: { npc: 'quest_warden' }, text: 'story.cs_ar_altar.5' },
+      { kind: 'focus', target: 'player' },
+    ],
+  },
+  // The Ember Tower — first visit home: the elder waits under the tower.
+  cs_tower_home: {
+    id: 'cs_tower_home',
+    steps: [
+      { kind: 'focus', target: { col: 24, row: 18 }, ms: 1400 },
+      { kind: 'title', title: 'story.cs_tower_home.2.title', subtitle: 'story.cs_tower_home.2.subtitle' },
+      { kind: 'narrate', text: 'story.cs_tower_home.3' },
+      { kind: 'focus', target: { npc: 'tower_elder' } },
+      { kind: 'say', speaker: { npc: 'tower_elder' }, text: 'story.cs_tower_home.5' },
+      { kind: 'say', speaker: { npc: 'tower_elder' }, text: 'story.cs_tower_home.6' },
+      { kind: 'say', speaker: { npc: 'tower_elder' }, text: 'story.cs_tower_home.7' },
+      { kind: 'narrate', text: 'story.cs_tower_home.8' },
+      { kind: 'focus', target: 'player' },
     ],
   },
   // Boss intro — goblin_chief.
@@ -351,9 +409,13 @@ export const STORY_TRIGGERS: StoryTrigger[] = [
   { on: 'quest_turned_in', questId: 'q_kill_stone_guardian', cutscene: 'cs_am_finale' },
   { on: 'quest_turned_in', questId: 'q_explore_oasis', cutscene: 'cs_sd_oasis' },
   { on: 'quest_turned_in', questId: 'q_seal_fire_rift', cutscene: 'cs_sd_finale' },
+  { on: 'quest_turned_in', questId: 'q_seal_fire_rift', cutscene: 'cs_sd_helia', grantPet: 'pet_phoenix' },
   { on: 'quest_turned_in', questId: 'q_explore_abyss', cutscene: 'cs_ar_gate' },
+  { on: 'quest_turned_in', questId: 'q_collect_demon_essence', cutscene: 'cs_ar_altar' },
   { on: 'quest_turned_in', questId: 'q_forge_seal', cutscene: 'cs_ar_seal' },
   { on: 'monster_killed', monsterId: 'demon_lord', cutscene: 'cs_ar_fall' },
+  { on: 'monster_killed', monsterId: 'werewolf_alpha', cutscene: 'cs_tf_moonfang', grantPet: 'pet_storm_wolf' },
+  { on: 'zone_entered', zoneId: 'ember_tower', cutscene: 'cs_tower_home' },
 ];
 
 // ─── Epilogue: each land heals; the fate of the brand ───

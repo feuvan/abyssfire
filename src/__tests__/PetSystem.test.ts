@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Mock Phaser before importing modules that depend on it
+// Mock Phaser before importing modules that depend on it (EventBus)
 vi.mock('phaser', () => ({
   default: {
     Events: {
@@ -21,472 +21,446 @@ vi.mock('phaser', () => ({
           if (fns) fns.forEach(fn => fn(...args));
           return true;
         }
-      }
-    }
-  }
+      },
+    },
+  },
 }));
 
-import { HomesteadSystem, type PetInstance } from '../systems/HomesteadSystem';
-import type { PetDefinition } from '../data/types';
+import {
+  PetSystem, petExpToNext, petKillExp, evolutionForLevel, petPassiveValue, petAttackDamage,
+  choosePetAction, abilityUseful, shouldBondRescue, migratePetSave, mergeBonuses, bondMultiplier,
+  BOND_PROGRESS_PER_LEVEL, BOND_RESCUE_COOLDOWN_MS, FEED_EXP, PET_DAMAGE_MAX_FRACTION,
+  type PetDecisionContext,
+} from '../systems/PetSystem';
+import {
+  PETS, PET_MAX_LEVEL, PET_MAX_BOND, getPetDef, unlockedAbilities, primaryAbility, LEY_FRUIT_ID,
+  petNameKey, petDescKey, petOriginKey, petAbilityNameKey, petAbilityDescKey, petRoleKey, petStatKey,
+} from '../data/pets';
+import { EventBus, GameEvents } from '../utils/EventBus';
+import { getItemBase } from '../data/items/bases';
+import zhCN from '../i18n/locales/zh-CN';
+import en from '../i18n/locales/en';
+import type { SaveData } from '../data/types';
 
-describe('PetSystem', () => {
-  let hs: HomesteadSystem;
+const ORIGINAL_IDS = [
+  'pet_sprite', 'pet_dragon', 'pet_owl', 'pet_cat', 'pet_phoenix',
+  'pet_storm_wolf', 'pet_jade_tortoise', 'pet_void_butterfly',
+];
 
-  beforeEach(() => {
-    hs = new HomesteadSystem();
+function levelTo(ps: PetSystem, petId: string, level: number): void {
+  let guard = 0;
+  while (ps.getPetInstance(petId)!.level < level && guard++ < 100) {
+    ps.addExp(petId, petExpToNext(ps.getPetInstance(petId)!.level), { silent: true });
+  }
+}
+
+describe('ley-beast data (src/data/pets.ts)', () => {
+  it('keeps the eight original pet ids (save compatibility)', () => {
+    expect(PETS.map(p => p.id).sort()).toEqual([...ORIGINAL_IDS].sort());
   });
 
-  // ═══ Pet Definitions ════════════════════════════════════════════════
-
-  describe('Pet Definitions', () => {
-    it('has 5 original pets retained', () => {
-      const pets = hs.getAllPets();
-      const originalIds = ['pet_sprite', 'pet_dragon', 'pet_owl', 'pet_cat', 'pet_phoenix'];
-      for (const id of originalIds) {
-        expect(pets.find(p => p.id === id)).toBeDefined();
+  it('every beast has a base ability and one unlocked by 觉醒', () => {
+    for (const def of PETS) {
+      expect(def.abilities.some(a => a.unlock === 0 && a.kind !== 'revive'), def.id).toBe(true);
+      expect(def.abilities.some(a => a.unlock === 1), def.id).toBe(true);
+      expect(primaryAbility(def)?.unlock).toBe(0);
+      for (const a of def.abilities) {
+        expect(a.cooldownMs >= 0).toBe(true);
+        if (a.kind === 'strike' || a.kind === 'bolt' || a.kind === 'cone') expect(a.damage ?? 0).toBeGreaterThan(0);
       }
-    });
-
-    it('has 3 new rare/epic pets', () => {
-      const pets = hs.getAllPets();
-      const newIds = ['pet_storm_wolf', 'pet_jade_tortoise', 'pet_void_butterfly'];
-      for (const id of newIds) {
-        const def = pets.find(p => p.id === id);
-        expect(def).toBeDefined();
-        expect(def!.rarity).toBe('epic');
-      }
-    });
-
-    it('has 8 total pets', () => {
-      expect(hs.getAllPets().length).toBe(8);
-    });
-
-    it('all pets have unique bonusStat among new pets', () => {
-      const newPets = hs.getAllPets().filter(p =>
-        ['pet_storm_wolf', 'pet_jade_tortoise', 'pet_void_butterfly'].includes(p.id)
-      );
-      const stats = newPets.map(p => p.bonusStat);
-      expect(new Set(stats).size).toBe(3);
-      expect(stats).toContain('attackSpeed');
-      expect(stats).toContain('defense');
-      expect(stats).toContain('manaRegen');
-    });
-
-    it('all pets have maxLevel 20', () => {
-      for (const pet of hs.getAllPets()) {
-        expect(pet.maxLevel).toBe(20);
-      }
-    });
-
-    it('all pets have valid feedItem', () => {
-      for (const pet of hs.getAllPets()) {
-        expect(pet.feedItem).toBeTruthy();
-        expect(typeof pet.feedItem).toBe('string');
-      }
-    });
+    }
   });
 
-  // ═══ Pet Acquisition ════════════════════════════════════════════════
-
-  describe('Pet Acquisition', () => {
-    it('adds a pet successfully when capacity available', () => {
-      const result = hs.addPet('pet_sprite');
-      expect(result).toBe(true);
-      expect(hs.pets.length).toBe(1);
-      expect(hs.pets[0].petId).toBe('pet_sprite');
-      expect(hs.pets[0].level).toBe(1);
-      expect(hs.pets[0].exp).toBe(0);
-      expect(hs.pets[0].evolved).toBe(0);
-    });
-
-    it('auto-activates first pet', () => {
-      hs.addPet('pet_sprite');
-      expect(hs.activePet).toBe('pet_sprite');
-    });
-
-    it('prevents duplicate pets', () => {
-      hs.addPet('pet_sprite');
-      const result = hs.addPet('pet_sprite');
-      expect(result).toBe(false);
-      expect(hs.pets.length).toBe(1);
-    });
-
-    it('blocks duplicate pets', () => {
-      hs.addPet('pet_sprite');
-      const result = hs.addPet('pet_sprite');
-      expect(result).toBe(false);
-      expect(hs.pets.length).toBe(1);
-    });
-
-    it('allows all 8 unique pets without capacity limit', () => {
-      const allPetIds = hs.getAllPets().map(p => p.id);
-      expect(allPetIds.length).toBe(8);
-      for (const id of allPetIds) {
-        expect(hs.addPet(id)).toBe(true);
-      }
-      expect(hs.pets.length).toBe(8);
-    });
-
-    it('pet_house provides pet EXP bonus instead of capacity', () => {
-      expect(hs.getPetExpBonus()).toBe(1); // no pet_house
-      hs.buildings['pet_house'] = 1;
-      expect(hs.getPetExpBonus()).toBeCloseTo(1.1);
-      hs.buildings['pet_house'] = 3;
-      expect(hs.getPetExpBonus()).toBeCloseTo(1.3);
-      hs.buildings['pet_house'] = 5;
-      expect(hs.getPetExpBonus()).toBeCloseTo(1.5);
-    });
+  it('ability ids are unique', () => {
+    const ids = PETS.flatMap(p => p.abilities.map(a => a.id));
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
-  // ═══ Feeding and Leveling ═══════════════════════════════════════════
-
-  describe('Feeding and Leveling', () => {
-    beforeEach(() => {
-      hs.addPet('pet_sprite');
-    });
-
-    it('feedPet grants exp', () => {
-      hs.feedPet('pet_sprite');
-      expect(hs.pets[0].exp).toBe(10);
-    });
-
-    it('pet levels up at threshold (level * 20)', () => {
-      // Level 1 needs 20 exp
-      hs.feedPet('pet_sprite'); // +10 => 10
-      hs.feedPet('pet_sprite'); // +10 => 20 => level up, exp resets
-      expect(hs.pets[0].level).toBe(2);
-      expect(hs.pets[0].exp).toBe(0);
-    });
-
-    it('pet levels up correctly at level 2 (needs 40 exp)', () => {
-      // Get to level 2
-      hs.feedPet('pet_sprite');
-      hs.feedPet('pet_sprite');
-      expect(hs.pets[0].level).toBe(2);
-      // Level 2 needs 40 exp
-      for (let i = 0; i < 4; i++) hs.feedPet('pet_sprite');
-      expect(hs.pets[0].level).toBe(3);
-    });
-
-    it('max level (20) prevents further leveling', () => {
-      hs.pets[0].level = 20;
-      const result = hs.feedPet('pet_sprite');
-      expect(result).toBe(false);
-      expect(hs.pets[0].level).toBe(20);
-    });
-
-    it('feedPet returns false for unknown pet', () => {
-      expect(hs.feedPet('nonexistent')).toBe(false);
-    });
-
-    it('feedPet returns false for non-owned pet', () => {
-      expect(hs.feedPet('pet_dragon')).toBe(false);
-    });
+  it('design table: roles, passives and signature abilities', () => {
+    const expectRole = (id: string, role: string, stat: string, kind: string) => {
+      const d = getPetDef(id)!;
+      expect(d.role).toBe(role);
+      expect(d.passive.stat).toBe(stat);
+      expect(primaryAbility(d)!.kind).toBe(kind);
+    };
+    expectRole('pet_sprite', 'support', 'expBonus', 'heal');
+    expectRole('pet_owl', 'scout', 'magicFind', 'mark');
+    expectRole('pet_storm_wolf', 'melee', 'attackSpeed', 'strike');
+    expectRole('pet_cat', 'assassin', 'critRate', 'strike');
+    expectRole('pet_jade_tortoise', 'tank', 'defense', 'taunt');
+    expectRole('pet_dragon', 'ranged', 'damagePercent', 'cone');
+    expectRole('pet_phoenix', 'support', 'hpRegen', 'heal');
+    expectRole('pet_void_butterfly', 'caster', 'manaRegen', 'bolt');
+    expect(getPetDef('pet_storm_wolf')!.abilities[0].bleed).toBeGreaterThan(0);
+    expect(getPetDef('pet_cat')!.abilities[0].crit).toBe(true);
+    expect(getPetDef('pet_phoenix')!.abilities.some(a => a.kind === 'revive')).toBe(true);
+    expect(getPetDef('pet_void_butterfly')!.abilities[0].mana).toBeGreaterThan(0);
   });
 
-  // ═══ Evolution System ═══════════════════════════════════════════════
-
-  describe('Evolution', () => {
-    beforeEach(() => {
-      hs.addPet('pet_sprite');
-    });
-
-    it('pet evolves at level 10 (stage 1: 觉醒)', () => {
-      hs.pets[0].level = 9;
-      hs.pets[0].exp = 9 * 20 - 10; // near level up (need 180, have 170)
-      hs.feedPet('pet_sprite'); // +10 => 180 => level up to 10
-      expect(hs.pets[0].level).toBe(10);
-      expect(hs.pets[0].evolved).toBe(1);
-    });
-
-    it('pet evolves at level 20 (stage 2: 至尊)', () => {
-      hs.pets[0].level = 19;
-      hs.pets[0].exp = 19 * 20 - 10;
-      hs.feedPet('pet_sprite');
-      expect(hs.pets[0].level).toBe(20);
-      expect(hs.pets[0].evolved).toBe(2);
-    });
-
-    it('evolution multiplier is 1.0 at stage 0', () => {
-      expect(hs.getEvolutionMultiplier(hs.pets[0])).toBe(1.0);
-    });
-
-    it('evolution multiplier is 1.5 at stage 1', () => {
-      hs.pets[0].evolved = 1;
-      expect(hs.getEvolutionMultiplier(hs.pets[0])).toBe(1.5);
-    });
-
-    it('evolution multiplier is 2.0 at stage 2', () => {
-      hs.pets[0].evolved = 2;
-      expect(hs.getEvolutionMultiplier(hs.pets[0])).toBe(2.0);
-    });
-
-    it('display name includes evolution suffix', () => {
-      expect(hs.getPetDisplayName(hs.pets[0])).toBe('小精灵');
-      hs.pets[0].evolved = 1;
-      expect(hs.getPetDisplayName(hs.pets[0])).toBe('小精灵·觉醒');
-      hs.pets[0].evolved = 2;
-      expect(hs.getPetDisplayName(hs.pets[0])).toBe('小精灵·至尊');
-    });
-
-    it('evolution boosts stat bonuses via getTotalBonuses', () => {
-      hs.activePet = 'pet_sprite';
-      hs.pets[0].level = 10;
-      hs.pets[0].evolved = 0;
-      const bonusesBase = hs.getTotalBonuses();
-      const baseVal = bonusesBase['expBonus'] ?? 0;
-
-      hs.pets[0].evolved = 1;
-      const bonusesEvolved = hs.getTotalBonuses();
-      const evolvedVal = bonusesEvolved['expBonus'] ?? 0;
-
-      expect(evolvedVal).toBeGreaterThan(baseVal);
-      // Should be ~1.5x
-      expect(evolvedVal / baseVal).toBeCloseTo(1.5, 0);
-    });
+  it('every name / description / ability / role / stat key exists in zh-CN and en', () => {
+    const keys: string[] = [];
+    for (const def of PETS) {
+      keys.push(petNameKey(def.id), petDescKey(def.id), petOriginKey(def.id), petRoleKey(def.role), petStatKey(def.passive.stat));
+      for (const a of def.abilities) keys.push(petAbilityNameKey(a.id), petAbilityDescKey(a.id));
+    }
+    keys.push('data.item.c_ley_fruit.name', 'ui.pet.title', 'sys.pet.evoName.1', 'sys.pet.evoName.2', 'zone.pet.rareLabel');
+    for (const k of keys) {
+      expect(zhCN[k], `zh-CN ${k}`).toBeTruthy();
+      expect(en[k], `en ${k}`).toBeTruthy();
+    }
   });
 
-  // ═══ Active Pet Bonuses ═════════════════════════════════════════════
+  it('灵脉果 is a stackable consumable', () => {
+    const base = getItemBase(LEY_FRUIT_ID);
+    expect(base?.type).toBe('consumable');
+    expect(base?.stackable).toBe(true);
+  });
+});
 
-  describe('Active Pet Bonuses', () => {
-    beforeEach(() => {
-      hs.addPet('pet_sprite');
-    });
+describe('PetSystem ownership', () => {
+  let ps: PetSystem;
+  beforeEach(() => { ps = new PetSystem(); });
 
-    it('active pet bonus included in getTotalBonuses', () => {
-      hs.activePet = 'pet_sprite';
-      const bonuses = hs.getTotalBonuses();
-      expect(bonuses['expBonus']).toBeGreaterThan(0);
-    });
-
-    it('deactivating pet removes bonus', () => {
-      hs.activePet = 'pet_sprite';
-      const withPet = hs.getTotalBonuses();
-      hs.activePet = null;
-      const withoutPet = hs.getTotalBonuses();
-      expect(withPet['expBonus']).toBeGreaterThan(withoutPet['expBonus'] ?? 0);
-    });
-
-    it('changing active pet changes bonus', () => {
-      hs.addPet('pet_dragon');
-      hs.activePet = 'pet_sprite';
-      const spriteBonus = hs.getTotalBonuses();
-      hs.activePet = 'pet_dragon';
-      const dragonBonus = hs.getTotalBonuses();
-      expect(spriteBonus['expBonus']).toBeGreaterThan(0);
-      expect(dragonBonus['damage']).toBeGreaterThan(0);
-      expect(spriteBonus['damage'] ?? 0).toBe(0);
-    });
+  it('starts empty', () => {
+    expect(ps.pets).toEqual([]);
+    expect(ps.activePet).toBeNull();
+    expect(ps.getBonuses()).toEqual({});
+    expect(ps.calculatePetDamage(100)).toBe(0);
   });
 
-  // ═══ Pet Combat Damage ═════════════════════════════════════════════
-
-  describe('Pet Combat Damage', () => {
-    beforeEach(() => {
-      hs.addPet('pet_sprite');
-      hs.activePet = 'pet_sprite';
-    });
-
-    it('calculates pet damage as 5% at level 1', () => {
-      const dmg = hs.calculatePetDamage(100);
-      expect(dmg).toBe(5); // 5% + 1*0.5% = 5.5% => floor(5.5) = 5
-    });
-
-    it('pet damage scales with level', () => {
-      hs.pets[0].level = 10;
-      const dmg = hs.calculatePetDamage(100);
-      // 5% + 10*0.5% = 10%
-      expect(dmg).toBe(10);
-    });
-
-    it('pet damage caps at 15% at level 20', () => {
-      hs.pets[0].level = 20;
-      const dmg = hs.calculatePetDamage(100);
-      // 5% + 20*0.5% = 15% => capped at 15%
-      expect(dmg).toBe(15);
-    });
-
-    it('evolution boosts pet combat damage', () => {
-      hs.pets[0].level = 10;
-      hs.pets[0].evolved = 0;
-      const base = hs.calculatePetDamage(100);
-      hs.pets[0].evolved = 1;
-      const evolved = hs.calculatePetDamage(100);
-      expect(evolved).toBeGreaterThan(base);
-      // 10% * 1.5 = 15%
-      expect(evolved).toBe(15);
-    });
-
-    it('returns 0 when no active pet', () => {
-      hs.activePet = null;
-      expect(hs.calculatePetDamage(100)).toBe(0);
-    });
-
-    it('minimum damage is 1 for reasonable player damage', () => {
-      const dmg = hs.calculatePetDamage(20);
-      expect(dmg).toBeGreaterThanOrEqual(1);
-    });
-
-    it('canPetAttack respects interval', () => {
-      expect(hs.canPetAttack(0)).toBe(true);
-      hs.recordPetAttack(0);
-      expect(hs.canPetAttack(1000)).toBe(false);
-      expect(hs.canPetAttack(3000)).toBe(true);
-    });
+  it('addPet grants a beast, auto-activates the first and emits PET_OBTAINED', () => {
+    const got: unknown[] = [];
+    const fn = (d: unknown) => got.push(d);
+    EventBus.on(GameEvents.PET_OBTAINED, fn);
+    expect(ps.addPet('pet_owl')).toBe(true);
+    expect(ps.addPet('pet_cat', { silent: true })).toBe(true);
+    EventBus.off(GameEvents.PET_OBTAINED, fn);
+    expect(ps.activePet).toBe('pet_owl');
+    expect(ps.getPetInstance('pet_cat')).toMatchObject({ level: 1, exp: 0, evolved: 0, bond: 0, bondProgress: 0 });
+    expect(got).toEqual([{ petId: 'pet_owl', silent: false }, { petId: 'pet_cat', silent: true }]);
   });
 
-  // ═══ Homestead Integration ═════════════════════════════════════════
-
-  describe('Homestead Integration', () => {
-    it('pet_house building provides pet EXP bonus', () => {
-      expect(hs.getPetExpBonus()).toBe(1);
-      hs.buildings['pet_house'] = 3;
-      expect(hs.getPetExpBonus()).toBeCloseTo(1.3);
-    });
-
-    it('training_ground provides mercenary exp bonus', () => {
-      expect(hs.getTrainingGroundBonus()).toBe(0);
-      hs.buildings['training_ground'] = 3;
-      expect(hs.getTrainingGroundBonus()).toBe(15); // 3 * 5%
-    });
-
-    it('pet_house has maxLevel 5', () => {
-      const def = hs.getBuildingDef('pet_house');
-      expect(def).toBeDefined();
-      expect(def!.maxLevel).toBe(5);
-    });
-
-    it('training_ground emits mercExpBonus not expBonus', () => {
-      hs.buildings['training_ground'] = 2;
-      const bonuses = hs.getTotalBonuses();
-      expect(bonuses['mercExpBonus']).toBe(10);
-      expect(bonuses['expBonus'] ?? 0).toBe(0);
-    });
+  it('rejects duplicates and unknown ids', () => {
+    ps.addPet('pet_owl');
+    expect(ps.addPet('pet_owl')).toBe(false);
+    expect(ps.addPet('pet_unicorn')).toBe(false);
+    expect(ps.pets).toHaveLength(1);
   });
 
-  // ═══ Save/Load ═════════════════════════════════════════════════════
-
-  describe('Save/Load', () => {
-    it('pet state round-trips correctly', () => {
-      hs.buildings['pet_house'] = 3;
-      hs.addPet('pet_sprite');
-      hs.addPet('pet_dragon');
-      hs.pets[0].level = 10;
-      hs.pets[0].exp = 50;
-      hs.pets[0].evolved = 1;
-      hs.activePet = 'pet_dragon';
-
-      // Simulate save
-      const saveData = {
-        buildings: { ...hs.buildings },
-        pets: hs.pets.map(p => ({ ...p })),
-        activePet: hs.activePet ?? undefined,
-      };
-
-      // Create fresh system and restore
-      const hs2 = new HomesteadSystem();
-      hs2.buildings = saveData.buildings;
-      hs2.pets = saveData.pets.map(p => ({
-        petId: p.petId,
-        level: p.level,
-        exp: p.exp,
-        evolved: p.evolved ?? 0,
-      }));
-      hs2.activePet = saveData.activePet ?? null;
-
-      expect(hs2.pets.length).toBe(2);
-      expect(hs2.pets[0].level).toBe(10);
-      expect(hs2.pets[0].evolved).toBe(1);
-      expect(hs2.activePet).toBe('pet_dragon');
-      expect(hs2.getPetExpBonus()).toBeCloseTo(1.3); // pet_house level 3
-    });
-
-    it('old saves without evolved field default to 0', () => {
-      const oldPet = { petId: 'pet_sprite', level: 5, exp: 10 } as any;
-      const restored = {
-        petId: oldPet.petId,
-        level: oldPet.level,
-        exp: oldPet.exp,
-        evolved: oldPet.evolved ?? 0,
-      };
-      expect(restored.evolved).toBe(0);
-    });
+  it('setActivePet only accepts owned beasts that are home', () => {
+    ps.addPet('pet_owl');
+    ps.addPet('pet_cat');
+    ps.setActivePet('pet_dragon');
+    expect(ps.activePet).toBe('pet_owl');
+    ps.setAwaySource(id => id === 'pet_cat');
+    ps.setActivePet('pet_cat');
+    expect(ps.activePet).toBe('pet_owl');
+    ps.setActivePet(null);
+    expect(ps.activePet).toBeNull();
   });
 
-  // ═══ Clean State on New Game ═══════════════════════════════════════
+  it('display name carries the evolution suffix', () => {
+    ps.addPet('pet_storm_wolf');
+    const inst = ps.getPetInstance('pet_storm_wolf')!;
+    const base = ps.getPetDisplayName(inst);
+    inst.evolved = 1;
+    expect(ps.getPetDisplayName(inst)).not.toBe(base);
+    expect(ps.getPetDisplayName(inst)).toContain(base);
+  });
+});
 
-  describe('Clean State', () => {
-    it('resetState clears everything', () => {
-      hs.buildings['pet_house'] = 3;
-      hs.addPet('pet_sprite');
-      hs.activePet = 'pet_sprite';
-      hs.petLastAttackTime = 5000;
+describe('PetSystem growth: exp, level, evolution', () => {
+  let ps: PetSystem;
+  beforeEach(() => { ps = new PetSystem(); ps.addPet('pet_sprite', { silent: true }); });
 
-      hs.resetState();
-
-      expect(hs.buildings).toEqual({});
-      expect(hs.pets).toEqual([]);
-      expect(hs.activePet).toBeNull();
-      expect(hs.petLastAttackTime).toBe(-Infinity);
-    });
-
-    it('default state has no pets, no active pet', () => {
-      const fresh = new HomesteadSystem();
-      expect(fresh.pets).toEqual([]);
-      expect(fresh.activePet).toBeNull();
-      expect(fresh.getPetExpBonus()).toBe(1);
-    });
+  it('exp curve and kill exp', () => {
+    expect(petExpToNext(1)).toBe(100);
+    expect(petExpToNext(10)).toBeGreaterThan(petExpToNext(9));
+    expect(petKillExp(20)).toBeGreaterThan(petKillExp(1));
   });
 
-  // ═══ Edge Cases ════════════════════════════════════════════════════
+  it('levels up and carries overflow exp', () => {
+    ps.addExp('pet_sprite', petExpToNext(1) + 5);
+    const inst = ps.getPetInstance('pet_sprite')!;
+    expect(inst.level).toBe(2);
+    expect(inst.exp).toBe(5);
+  });
 
-  describe('Edge Cases', () => {
-    it('getPetDef returns undefined for unknown pet', () => {
-      expect(hs.getPetDef('nonexistent')).toBeUndefined();
+  it('evolves at 10 (觉醒) and 20 (至尊), unlocking the second ability', () => {
+    expect(evolutionForLevel(9)).toBe(0);
+    expect(evolutionForLevel(10)).toBe(1);
+    expect(evolutionForLevel(20)).toBe(2);
+    levelTo(ps, 'pet_sprite', 10);
+    expect(ps.getPetInstance('pet_sprite')!.evolved).toBe(1);
+    expect(ps.getUnlockedAbilities('pet_sprite').map(a => a.id)).toContain('sprite_ley_ward');
+    levelTo(ps, 'pet_sprite', 20);
+    const inst = ps.getPetInstance('pet_sprite')!;
+    expect(inst.level).toBe(PET_MAX_LEVEL);
+    expect(inst.evolved).toBe(2);
+    expect(ps.addExp('pet_sprite', 99999)).toBe(0);
+    expect(inst.level).toBe(PET_MAX_LEVEL);
+  });
+
+  it('base abilities only before evolution', () => {
+    expect(ps.getUnlockedAbilities('pet_sprite').map(a => a.id)).toEqual(['sprite_heal_pulse']);
+    const phoenix = getPetDef('pet_phoenix')!;
+    expect(unlockedAbilities(phoenix, 0).map(a => a.kind)).toEqual(['heal', 'revive']);
+  });
+
+  it('a big exp grant can level several times and evolve at once', () => {
+    let total = 0;
+    for (let l = 1; l < 12; l++) total += petExpToNext(l);
+    expect(ps.addExp('pet_sprite', total, { silent: true })).toBe(11);
+    expect(ps.getPetInstance('pet_sprite')!.evolved).toBe(1);
+  });
+
+  it('kills feed the active beast; resting beasts learn only with the 月井', () => {
+    ps.addPet('pet_owl', { silent: true });
+    let well = 0;
+    ps.setBuildingLevelSource(id => (id === 'pet_house' ? well : 0));
+    ps.onKill(10);
+    expect(ps.getPetInstance('pet_sprite')!.exp).toBe(petKillExp(10));
+    expect(ps.getPetInstance('pet_owl')!.exp).toBe(0);
+    well = 2;
+    ps.onKill(10);
+    expect(ps.getPetInstance('pet_owl')!.exp).toBeGreaterThan(0);
+    // 月井 also speeds up the active beast (+10% per level)
+    expect(ps.getExpMultiplier()).toBeCloseTo(1.2);
+  });
+
+  it('grantRestingExp skips the active beast', () => {
+    ps.addPet('pet_owl', { silent: true });
+    ps.grantRestingExp(40);
+    expect(ps.getPetInstance('pet_sprite')!.exp).toBe(0);
+    expect(ps.getPetInstance('pet_owl')!.exp).toBe(40);
+  });
+
+  it('feeding gives exp and bond', () => {
+    expect(ps.feedPet('pet_sprite')).toBe(true);
+    const inst = ps.getPetInstance('pet_sprite')!;
+    expect(inst.level > 1 || inst.exp >= FEED_EXP - petExpToNext(1)).toBe(true);
+    expect(inst.bondProgress).toBeGreaterThan(0);
+    expect(ps.feedPet('pet_owl')).toBe(false);
+  });
+});
+
+describe('PetSystem bond', () => {
+  let ps: PetSystem;
+  beforeEach(() => { ps = new PetSystem(); ps.addPet('pet_cat', { silent: true }); });
+
+  it('bond is capped at 3 without the 月井, 5 with it', () => {
+    ps.addBond('pet_cat', BOND_PROGRESS_PER_LEVEL * 10);
+    expect(ps.getPetInstance('pet_cat')!.bond).toBe(3);
+    ps.setBuildingLevelSource(id => (id === 'pet_house' ? 2 : 0));
+    expect(ps.getBondCap()).toBe(PET_MAX_BOND);
+    ps.addBond('pet_cat', BOND_PROGRESS_PER_LEVEL * 10);
+    expect(ps.getPetInstance('pet_cat')!.bond).toBe(PET_MAX_BOND);
+    expect(ps.getPetInstance('pet_cat')!.bondProgress).toBe(0);
+  });
+
+  it('active time builds bond', () => {
+    ps.tickActive(60000 * 50);
+    expect(ps.getPetInstance('pet_cat')!.bond).toBe(1);
+  });
+
+  it('a fully fed max-level, max-bond beast refuses more fruit', () => {
+    ps.setBuildingLevelSource(() => 5);
+    levelTo(ps, 'pet_cat', 20);
+    ps.addBond('pet_cat', 1000);
+    expect(ps.canFeed('pet_cat')).toBe(false);
+    expect(ps.feedPet('pet_cat')).toBe(false);
+  });
+
+  it('bond multiplier: +10% per bond level', () => {
+    expect(bondMultiplier(0)).toBe(1);
+    expect(bondMultiplier(5)).toBeCloseTo(1.5);
+  });
+});
+
+describe('PetSystem passive bonuses and damage', () => {
+  it('getBonuses reports only the active beast, scaled by level / evolution / bond', () => {
+    const ps = new PetSystem();
+    ps.addPet('pet_cat', { silent: true });
+    ps.addPet('pet_owl', { silent: true });
+    const cat = getPetDef('pet_cat')!;
+    expect(ps.getBonuses()).toEqual({ critRate: cat.passive.base });
+    const inst = ps.getPetInstance('pet_cat')!;
+    const lv1 = petPassiveValue(cat, inst);
+    inst.level = 10; inst.evolved = 1;
+    const evo = petPassiveValue(cat, inst);
+    expect(evo).toBeGreaterThan(lv1 * 1.5);
+    inst.bond = 5;
+    expect(petPassiveValue(cat, inst)).toBeCloseTo(Math.round(evo * 1.5 * 10) / 10, 1);
+    ps.setActivePet('pet_owl');
+    expect(Object.keys(ps.getBonuses())).toEqual(['magicFind']);
+    ps.setActivePet(null);
+    expect(ps.getBonuses()).toEqual({});
+  });
+
+  it('pet attack: 5% of hero damage at Lv.1, capped at 15% (× evolution)', () => {
+    expect(petAttackDamage(100, { level: 1, evolved: 0 })).toBe(5);
+    expect(petAttackDamage(100, { level: 10, evolved: 0 })).toBe(10);
+    expect(petAttackDamage(100, { level: 20, evolved: 0 })).toBe(100 * PET_DAMAGE_MAX_FRACTION);
+    expect(petAttackDamage(100, { level: 20, evolved: 2 })).toBe(30);
+    expect(petAttackDamage(0, { level: 5, evolved: 0 })).toBe(0);
+    expect(petAttackDamage(3, { level: 1, evolved: 0 })).toBe(0);
+    expect(petAttackDamage(20, { level: 1, evolved: 0 })).toBe(1);
+  });
+
+  it('mergeBonuses adds overlapping stats', () => {
+    expect(mergeBonuses({ a: 1, b: 2 }, { b: 3, c: 4 })).toEqual({ a: 1, b: 5, c: 4 });
+  });
+});
+
+describe('PetSystem save + migration', () => {
+  it('round-trips through toSave / loadSave', () => {
+    const ps = new PetSystem();
+    ps.addPet('pet_dragon', { silent: true });
+    ps.addPet('pet_owl', { silent: true });
+    levelTo(ps, 'pet_dragon', 12);
+    ps.addBond('pet_dragon', 150);
+    ps.setActivePet('pet_owl');
+    const saved = JSON.parse(JSON.stringify({ pets: ps.toSave() }));
+    const ps2 = new PetSystem();
+    ps2.loadSave(saved);
+    expect(ps2.pets).toEqual(ps.pets);
+    expect(ps2.activePet).toBe('pet_owl');
+  });
+
+  it('migrates the old homestead pet list (pre ley-beast saves)', () => {
+    const old = {
+      homestead: {
+        buildings: { pet_house: 2 },
+        pets: [
+          { petId: 'pet_sprite', level: 5, exp: 30 },
+          { petId: 'pet_dragon', level: 12, exp: 50, evolved: 0 },
+          { petId: 'wolf', level: 3, exp: 15 },
+          { petId: 'pet_sprite', level: 9, exp: 1 },
+        ],
+        activePet: 'pet_dragon',
+      },
+    } as Partial<SaveData>;
+    const ps = new PetSystem();
+    ps.loadSave(old);
+    expect(ps.pets.map(p => p.petId)).toEqual(['pet_sprite', 'pet_dragon']);
+    expect(ps.getPetInstance('pet_sprite')).toEqual({ petId: 'pet_sprite', level: 5, exp: 30, evolved: 0, bond: 0, bondProgress: 0 });
+    // evolution re-derived from the level
+    expect(ps.getPetInstance('pet_dragon')!.evolved).toBe(1);
+    expect(ps.activePet).toBe('pet_dragon');
+  });
+
+  it('drops an active pet that is not owned, and clamps junk values', () => {
+    const data = migratePetSave({
+      homestead: { buildings: {}, pets: [{ petId: 'pet_cat', level: 99, exp: -5 }], activePet: 'pet_owl' },
     });
+    expect(data.active).toBeNull();
+    expect(data.owned[0]).toMatchObject({ level: PET_MAX_LEVEL, exp: 0, evolved: 2 });
+  });
 
-    it('getActivePetInstance returns undefined when no active pet', () => {
-      expect(hs.getActivePetInstance()).toBeUndefined();
+  it('prefers the new `pets` field over the legacy block', () => {
+    const data = migratePetSave({
+      homestead: { buildings: {}, pets: [{ petId: 'pet_cat', level: 3, exp: 0 }], activePet: 'pet_cat' },
+      pets: { owned: [{ petId: 'pet_owl', level: 4, exp: 10, evolved: 0, bond: 2, bondProgress: 40 }], active: 'pet_owl' },
     });
+    expect(data.owned.map(p => p.petId)).toEqual(['pet_owl']);
+    expect(data.owned[0].bond).toBe(2);
+    expect(data.active).toBe('pet_owl');
+  });
 
-    it('getPetDisplayName handles unknown pet gracefully', () => {
-      const fakePet: PetInstance = { petId: 'unknown', level: 1, exp: 0, evolved: 0 };
-      expect(hs.getPetDisplayName(fakePet)).toBe('unknown');
-    });
+  it('handles missing data', () => {
+    expect(migratePetSave(undefined)).toEqual({ owned: [], active: null });
+    expect(migratePetSave({ homestead: { buildings: {} } })).toEqual({ owned: [], active: null });
+  });
+});
 
-    it('calculating damage with 0 player damage returns 0', () => {
-      hs.addPet('pet_sprite');
-      hs.activePet = 'pet_sprite';
-      // With 0 base damage but minimum 1
-      const dmg = hs.calculatePetDamage(0);
-      expect(dmg).toBe(0);
-    });
+describe('pet combat decisions (choosePetAction)', () => {
+  const sprite = getPetDef('pet_sprite')!;
+  const owl = getPetDef('pet_owl')!;
+  const tortoise = getPetDef('pet_jade_tortoise')!;
+  const dragon = getPetDef('pet_dragon')!;
 
-    it('multiple pets with different activation', () => {
-      hs.addPet('pet_sprite');
-      hs.addPet('pet_dragon');
-      hs.addPet('pet_owl');
+  const ctx = (over: Partial<PetDecisionContext> = {}): PetDecisionContext => ({
+    now: 10000,
+    abilities: unlockedAbilities(owl, 0),
+    readyAt: {},
+    exhausted: false,
+    peaceful: false,
+    heroDist: 2,
+    heroHpRatio: 1,
+    heroAttackers: 0,
+    targetDist: 3,
+    targetMarked: false,
+    enemiesNearTarget: 1,
+    basicRange: 5,
+    basicReadyAt: 0,
+    ...over,
+  });
 
-      hs.setActivePet('pet_owl');
-      expect(hs.activePet).toBe('pet_owl');
-      const bonuses = hs.getTotalBonuses();
-      expect(bonuses['magicFind']).toBeGreaterThan(0);
-    });
+  it('rests while exhausted and follows in safe zones / when leashed', () => {
+    expect(choosePetAction(ctx({ exhausted: true })).type).toBe('rest');
+    expect(choosePetAction(ctx({ peaceful: true })).type).toBe('follow');
+    expect(choosePetAction(ctx({ heroDist: 20 })).type).toBe('follow');
+    expect(choosePetAction(ctx({ targetDist: null })).type).toBe('follow');
+  });
 
-    it('feedPet at level 19 levels up and evolves to 20 (dual evolution)', () => {
-      hs.addPet('pet_sprite');
-      hs.pets[0].level = 9;
-      hs.pets[0].exp = 9 * 20 - 10; // Will level up to 10 on feed
-      hs.feedPet('pet_sprite');
-      expect(hs.pets[0].level).toBe(10);
-      expect(hs.pets[0].evolved).toBe(1);
+  it('uses a ready ability when useful, then falls back to the basic attack', () => {
+    const a = choosePetAction(ctx());
+    expect(a.type).toBe('ability');
+    if (a.type === 'ability') expect(a.ability.id).toBe('owl_moon_mark');
+    // already marked → basic attack
+    expect(choosePetAction(ctx({ targetMarked: true })).type).toBe('attack');
+    // on cooldown → basic attack
+    expect(choosePetAction(ctx({ readyAt: { owl_moon_mark: 20000 } })).type).toBe('attack');
+    // basic on cooldown → wait
+    expect(choosePetAction(ctx({ targetMarked: true, basicReadyAt: 20000 })).type).toBe('rest');
+  });
 
-      // Now get to level 20
-      hs.pets[0].level = 19;
-      hs.pets[0].exp = 19 * 20 - 10;
-      hs.feedPet('pet_sprite');
-      expect(hs.pets[0].level).toBe(20);
-      expect(hs.pets[0].evolved).toBe(2);
-    });
+  it('closes in when the target is out of reach', () => {
+    expect(choosePetAction(ctx({ targetDist: 12, targetMarked: true })).type).toBe('approach');
+    // mark range is 8: a target at 7 is marked from range
+    const a = choosePetAction(ctx({ targetDist: 7 }));
+    expect(a.type).toBe('ability');
+  });
+
+  it('heals only when the hero needs it', () => {
+    const base = ctx({ abilities: unlockedAbilities(sprite, 1), basicRange: 4.5 });
+    expect(choosePetAction(base).type).toBe('attack');
+    const low = choosePetAction({ ...base, heroHpRatio: 0.4 });
+    expect(low.type === 'ability' && low.ability.kind).toBe('heal');
+    // shield when surrounded
+    const mob = choosePetAction({ ...base, heroHpRatio: 0.8, heroAttackers: 2 });
+    expect(mob.type === 'ability' && mob.ability.kind).toBe('shield');
+    // heal on cooldown while low → shield takes over
+    const cd = choosePetAction({ ...base, heroHpRatio: 0.4, heroAttackers: 1, readyAt: { sprite_heal_pulse: 99999 } });
+    expect(cd.type === 'ability' && cd.ability.kind).toBe('shield');
+  });
+
+  it('the tortoise taunts only when something is hitting the hero', () => {
+    const base = ctx({ abilities: unlockedAbilities(tortoise, 0), basicRange: 1.4, targetDist: 1 });
+    expect(choosePetAction(base).type).toBe('attack');
+    const a = choosePetAction({ ...base, heroAttackers: 1 });
+    expect(a.type === 'ability' && a.ability.kind).toBe('taunt');
+  });
+
+  it('breath needs the target in range', () => {
+    const [breath] = unlockedAbilities(dragon, 0);
+    expect(abilityUseful(breath, ctx({ targetDist: 3 }))).toBe(true);
+    expect(abilityUseful(breath, ctx({ targetDist: 6 }))).toBe(false);
+    expect(abilityUseful(breath, ctx({ targetDist: 3, enemiesNearTarget: 0 }))).toBe(false);
+  });
+
+  it('never picks the passive revive', () => {
+    const phoenix = getPetDef('pet_phoenix')!;
+    const a = choosePetAction(ctx({ abilities: unlockedAbilities(phoenix, 0), heroHpRatio: 0.1, readyAt: { phoenix_ember_mend: 99999 } }));
+    expect(a.type === 'ability' ? a.ability.kind : a.type).not.toBe('revive');
+  });
+
+  it('max bond rescue: below 30% HP, once per minute', () => {
+    expect(shouldBondRescue(5, 0.2, 100000, -Infinity)).toBe(true);
+    expect(shouldBondRescue(4, 0.2, 100000, -Infinity)).toBe(false);
+    expect(shouldBondRescue(5, 0.5, 100000, -Infinity)).toBe(false);
+    expect(shouldBondRescue(5, 0, 100000, -Infinity)).toBe(false);
+    expect(shouldBondRescue(5, 0.2, 100000, 100000 - BOND_RESCUE_COOLDOWN_MS + 1)).toBe(false);
+    expect(shouldBondRescue(5, 0.2, 100000, 100000 - BOND_RESCUE_COOLDOWN_MS)).toBe(true);
   });
 });

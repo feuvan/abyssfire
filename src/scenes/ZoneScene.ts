@@ -21,6 +21,10 @@ import { LootSystem } from '../systems/LootSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { QuestSystem } from '../systems/QuestSystem';
 import { HomesteadSystem } from '../systems/HomesteadSystem';
+import { EmberTower } from '../systems/EmberTower';
+import { PetSystem, mergeBonuses, leyFruitDropChance } from '../systems/PetSystem';
+import { PetCompanion } from '../systems/PetCompanion';
+import { LEY_FRUIT_ID } from '../data/pets';
 import { AchievementSystem } from '../systems/AchievementSystem';
 import { SaveSystem, CURRENT_SAVE_VERSION, findNearestWalkablePosition } from '../systems/SaveSystem';
 import { SkillEffectSystem } from '../systems/SkillEffectSystem';
@@ -139,6 +143,9 @@ export class ZoneScene extends Phaser.Scene {
   storyDirector: StoryDirector | null = null;
   private chapterCardPending = false;
   homesteadSystem!: HomesteadSystem;
+  /** The Ember Tower in this zone (hearthstones, or the tower itself) and the homestead's actions. */
+  emberTower: EmberTower | null = null;
+  petSystem!: PetSystem;
   achievementSystem!: AchievementSystem;
   saveSystem!: SaveSystem;
   private tileSprites: (Phaser.GameObjects.Image | null)[][] = [];
@@ -208,10 +215,8 @@ export class ZoneScene extends Phaser.Scene {
   private mercenaryHpBar: Phaser.GameObjects.Rectangle | null = null;
   private mercenaryHpBarBg: Phaser.GameObjects.Rectangle | null = null;
   private mercenaryNameLabel: Phaser.GameObjects.Text | null = null;
-  private petSprite: Phaser.GameObjects.Container | null = null;
-  private petNameLabel: Phaser.GameObjects.Text | null = null;
-  private petTileCol = 0;
-  private petTileRow = 0;
+  /** The active ley-beast in this zone (PetCompanion). */
+  private petCompanion: PetCompanion | null = null;
   private petSpawnSprites: { sprite: Phaser.GameObjects.Container; col: number; row: number; petId: string }[] = [];
   private inCombat = false;
   private randomEventSystem!: RandomEventSystem;
@@ -406,6 +411,7 @@ export class ZoneScene extends Phaser.Scene {
     this.inventorySystem = this.session.inventory;
     this.questSystem = this.session.quests;
     this.homesteadSystem = this.session.homestead;
+    this.petSystem = this.session.pets;
     this.achievementSystem = this.session.achievements;
     this.saveSystem = this.session.saves;
     this.mercenarySystem = this.session.mercenaries;
@@ -498,10 +504,11 @@ export class ZoneScene extends Phaser.Scene {
           monsters: () => this.monsters,
           setCinematic: (on) => this.setCinematic(on),
           save: () => this.autoSave(),
+          grantPet: (petId) => { this.session?.pets.addPet(petId); },
         });
       }
     }
-    this.spawnPetSprite();
+    this.createPetCompanion();
     this.spawnEscortNpc();
     this.spawnDefendTarget();
     this.questHuntMonsters.clear();
@@ -509,6 +516,36 @@ export class ZoneScene extends Phaser.Scene {
     this.soulEchoVisual = null;
     this.spawnSoulEchoVisual();
     this.buildCampDecorations();
+    this.emberTower?.destroy();
+    this.emberTower = new EmberTower({
+      scene: this,
+      mapId: this.currentMapId,
+      mapData: this.mapData,
+      regularZone: !this.isInDungeon && !this.isInSubDungeon,
+      homestead: this.homesteadSystem,
+      pets: this.session.pets,
+      quests: this.questSystem,
+      inventory: this.inventorySystem,
+      player: () => this.player,
+      spendGold: (n) => { this.player.gold = Math.max(0, this.player.gold - n); },
+      addGold: (n) => { this.player.gold += n; },
+      createItem: (baseId) => {
+        const item = this.lootSystem.createItem(baseId, this.player.level, 'normal');
+        if (item) item.identified = true;
+        return item;
+      },
+      isSafe: () => !this.inCombat && this.player.hp > 0 && !this.storyDirector?.cinematic && !this.isTransitioning,
+      changeZone: (mapId, col, row) => this.changeZone(mapId, col, row),
+      save: () => { void this.autoSave(); },
+      statsChanged: () => this.invalidateEquipStats(),
+      floatText: (x, y, text, color) => {
+        const label = this.add.text(x, y, text, {
+          fontSize: fs(12), color, fontFamily: '"Cinzel", serif', stroke: '#000000', strokeThickness: Math.round(2 * DPR),
+        }).setOrigin(0.5).setDepth(ZONE_FLOATING_TEXT_DEPTH);
+        this.tweens.add({ targets: label, y: y - 30, alpha: 0, duration: 1400, ease: 'Power2', onComplete: () => label.destroy() });
+      },
+    });
+    this.emberTower.retroGrantPets();
     this.rebuildWorldCaches();
     for (const decor of this.campDecorPositions) {
       if (decor.type === 'barrel' || decor.type === 'crate') {
@@ -600,6 +637,7 @@ export class ZoneScene extends Phaser.Scene {
         O: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O),
         R: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R),
         P: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P),
+        U: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U),
         V: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.V),
         ESC: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC),
       };
@@ -631,6 +669,8 @@ export class ZoneScene extends Phaser.Scene {
       EventBus.emit('ui:refresh', { player: this.player, zone: this });
     }
     this.subscriptions.on(EventBus, GameEvents.PLAYER_DIED, this.handlePlayerDied, this);
+    // Ley-beast passives feed the equipment stat cache.
+    this.subscriptions.on(EventBus, GameEvents.PET_CHANGED, this.invalidateEquipStats, this);
     this.subscriptions.on(EventBus, GameEvents.PLAYER_LEVEL_UP, this.handlePlayerLevelUp, this);
     this.subscriptions.on(EventBus, GameEvents.QUEST_COMPLETED, this.handleQuestCompleted, this);
     this.subscriptions.on(EventBus, GameEvents.QUEST_PROGRESS, this.handleQuestProgress, this);
@@ -687,13 +727,11 @@ export class ZoneScene extends Phaser.Scene {
         }
       }
     }
-    // Update pet spawn labels
+    // Update rare ley-beast spawn labels
     for (const ps of this.petSpawnSprites) {
-      const container = ps.sprite;
-      const children = container.list;
-      for (const child of children) {
+      for (const child of ps.sprite.list) {
         if (child instanceof Phaser.GameObjects.Text) {
-          (child as Phaser.GameObjects.Text).setText(t('zone.pet.voidButterfly.label'));
+          child.setText(t('zone.pet.rareLabel', { name: getPetName(ps.petId, ps.petId) }));
         }
       }
     }
@@ -716,14 +754,6 @@ export class ZoneScene extends Phaser.Scene {
       const merc = this.mercenarySystem.getMercenary()!;
       const def = MERCENARY_DEFS[merc.type];
       this.mercenaryNameLabel.setText(`${getMercenaryName(merc.type, def.name)} Lv.${merc.level}`);
-    }
-    // Pet name label
-    if (this.petNameLabel && this.homesteadSystem) {
-      const petInst = this.homesteadSystem.getActivePetInstance();
-      if (petInst) {
-        const displayName = this.homesteadSystem.getPetDisplayName(petInst);
-        this.petNameLabel.setText(`${displayName} Lv.${petInst.level}`);
-      }
     }
     // Escort NPC name label
     if (this.escortNpcNameLabel && this.escortQuestId) {
@@ -760,6 +790,9 @@ export class ZoneScene extends Phaser.Scene {
       this.interactNPC(npc);
       return;
     }
+
+    // Ember Tower: 归炉 hearthstones, the return portal, the wings' plots
+    if (this.emberTower?.handleClick(tile.col, tile.row)) return;
 
     // Sub-dungeon entrance interaction
     const subEntrance = this.findSubDungeonEntranceAt(tile.col, tile.row);
@@ -1175,7 +1208,7 @@ export class ZoneScene extends Phaser.Scene {
       EventBus.emit(GameEvents.COMBAT_DAMAGE, {
         targetId: 'player', damage: dmg, isDodged: false, isCrit: false, isPlayerTarget: true, targetMaxHP: this.player.maxHp,
       });
-      if (this.player.hp <= 0) this.player.die();
+      if (this.player.hp <= 0) this.killPlayer();
     });
   }
 
@@ -1317,6 +1350,10 @@ export class ZoneScene extends Phaser.Scene {
       return;
     }
     if (this.isInDungeon) this.updateDungeonCurse(delta);
+    if (this.emberTower) {
+      this.emberTower.tick(delta);
+      this.emberTower.update(time);
+    }
     const recovery = this.getPlayerRecoveryModifiers();
     this.handleKeyboardMovement(delta);
     this.updateHoldMove();
@@ -1443,8 +1480,7 @@ export class ZoneScene extends Phaser.Scene {
     this.handleCombat(time);
     this.handleMercenaryCombat(time);
     this.updateMercenary(time, delta);
-    this.updatePetFollower(time, delta);
-    this.handlePetCombat(time);
+    this.petCompanion?.update(time, delta);
     this.updateEscortNpc(time, delta);
     this.updateDefendQuest(time, delta);
     this.updateEliteAffixBehaviors(time);
@@ -2156,6 +2192,9 @@ export class ZoneScene extends Phaser.Scene {
       this.useTownPortal();
     }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.P)) {
+      EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'pets' });
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.wasd.U)) {
       EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'companion' });
     }
     if (Phaser.Input.Keyboard.JustDown(this.wasd.V)) {
@@ -2782,6 +2821,8 @@ export class ZoneScene extends Phaser.Scene {
       // Immobilized monsters cannot attack
       if (this.statusEffects.isImmobilized(monster.id)) continue;
       if (time - monster.lastAttackTime >= monster.definition.attackSpeed) {
+        // Taunted by (or closer to) the ley-beast: the swing goes to it instead.
+        if (this.petCompanion?.interceptMonsterAttack(monster, time)) continue;
         monster.lastAttackTime = time;
         const impactDelay = monster.playAttack(this.player.sprite.x, this.player.sprite.y);
         this.time.delayedCall(impactDelay, () => this.resolveMonsterStrike(monster));
@@ -3020,8 +3061,8 @@ export class ZoneScene extends Phaser.Scene {
           this.time.delayedCall(60000, () => { this._deathSaveUsed = false; });
           EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.combat.deathImmunity'), type: 'system' });
           if (this.vfx) this.vfx.healBurst(this.player.sprite.x, this.player.sprite.y - 16, 20);
-        } else {
-          this.player.die(); return;
+        } else if (this.killPlayer()) {
+          return;
         }
       }
     }
@@ -3108,6 +3149,15 @@ export class ZoneScene extends Phaser.Scene {
         if (stat in eq) {
           eq[stat as keyof EquipStats] += value;
         }
+      }
+      // Active ley-beast passive (exp / magic find are applied at the kill instead).
+      for (const [stat, value] of Object.entries(this.petSystem?.getBonuses() ?? {})) {
+        if (stat === 'expBonus' || stat === 'magicFind') continue;
+        if (stat in eq) eq[stat as keyof EquipStats] += value;
+      }
+      // Altar blessing (心焰祭坛) lasts until the next return to the tower.
+      for (const [stat, value] of Object.entries(this.homesteadSystem.tower.blessingStats())) {
+        if (stat in eq) eq[stat as keyof EquipStats] += value as number;
       }
       // Abyss Labyrinth boons last the run.
       if (this.isInDungeon && this.dungeonRunState?.boons) {
@@ -3743,13 +3793,16 @@ export class ZoneScene extends Phaser.Scene {
     this.player.gainSpirit('kill');
 
     // Difficulty exp/gold scaling is already applied at monster spawn time via DifficultySystem.scaleMonster
-    const homeBonus = this.homesteadSystem.getTotalBonuses();
+    const homeBonus = mergeBonuses(this.homesteadSystem.getTotalBonuses(), this.petSystem.getBonuses());
     const eq = this.getEquipStats();
     const expBonus = 1 + (homeBonus['expBonus'] ?? 0) / 100 + (eq.expBonus ?? 0) / 100;
     const exp = Math.floor(monster.definition.expReward * expBonus);
     const gold = randomInt(monster.definition.goldReward[0], monster.definition.goldReward[1]);
     this.player.addExp(exp);
     this.player.gold += gold;
+
+    // Ley-beasts learn from the kill (active beast + resting ones at the 月井)
+    this.petSystem.onKill(monster.definition.level);
 
     // Mercenary exp share
     if (this.mercenarySystem?.isAlive()) {
@@ -3791,6 +3844,7 @@ export class ZoneScene extends Phaser.Scene {
 
     this.questSystem.updateProgress('kill', monster.definition.id);
     this.storyDirector?.onMonsterKilled(monster.definition.id);
+    this.emberTower?.onKill(monster.definition, monster.eliteAffixes.length, monster.sprite);
 
     // Difficulty completion check: killing demon_lord in Abyss Rift completes current difficulty
     if (!this.isInDungeon && DifficultySystem.shouldMarkCompleted(
@@ -3827,9 +3881,10 @@ export class ZoneScene extends Phaser.Scene {
       }
     }
 
-    // Boss pet drops: certain bosses have a chance to drop specific pets
-    if (monster.definition.elite) {
-      this.checkBossPetDrop(monster.definition.id);
+    // 灵脉果 (ley-beast food): rare drop, likelier from elites
+    if (Math.random() < leyFruitDropChance(!!monster.definition.elite)) {
+      const fruit = this.lootSystem.createItem(LEY_FRUIT_ID, this.player.level, 'normal');
+      if (fruit) { fruit.identified = true; this.dropLoot(fruit, monster.tileCol, monster.tileRow); }
     }
 
     this.rollQuestDrops(monster);
@@ -4072,7 +4127,7 @@ export class ZoneScene extends Phaser.Scene {
       EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('zone.quest.rewardItem', { name: getLocalizedItemName(item) }), type: 'loot' });
     }
     this.questSystem.rewardChoiceCache.delete(questId);
-    if (reward.petReward) this.homesteadSystem.addPet(reward.petReward);
+    if (reward.petReward) this.petSystem.addPet(reward.petReward);
     this.achievementSystem.update('quest');
     this.autoSave();
     return true;
@@ -4080,6 +4135,7 @@ export class ZoneScene extends Phaser.Scene {
 
   private interactNPC(npc: NPC): void {
     const def = npc.definition;
+    if (this.emberTower?.interactNpc(def.id)) return;
     EventBus.emit(GameEvents.LOG_MESSAGE, { text: def.dialogue[0], type: 'info' });
 
     // Progress talk quests
@@ -4220,9 +4276,9 @@ export class ZoneScene extends Phaser.Scene {
         exploration: this.fogData,
         homestead: {
           buildings: this.homesteadSystem.buildings,
-          pets: this.homesteadSystem.pets,
-          activePet: this.homesteadSystem.activePet ?? undefined,
+          ...this.homesteadSystem.tower.toSave(),
         },
+        pets: this.petSystem.toSave(),
         achievements: this.achievementSystem.getUnlockedData(),
         settings: { autoCombat: this.player.autoCombat, musicVolume: 0.5, sfxVolume: 0.7, autoLootMode: this.player.autoLootMode },
         difficulty: this.difficulty,
@@ -4302,14 +4358,12 @@ export class ZoneScene extends Phaser.Scene {
     // 4. Homestead
     if (save.homestead) {
       this.homesteadSystem.buildings = save.homestead.buildings ?? {};
-      this.homesteadSystem.pets = (save.homestead.pets ?? []).map(p => ({
-        petId: p.petId,
-        level: p.level,
-        exp: p.exp,
-        evolved: p.evolved ?? 0,
-      }));
-      this.homesteadSystem.activePet = save.homestead.activePet ?? null;
     }
+    // Ember Tower state (embers, garden, expedition, blessing); old saves get defaults.
+    this.homesteadSystem.tower.load(save.homestead);
+
+    // 4b. Ley-beasts (new `pets` field, or migrated from the old homestead block)
+    this.petSystem.loadSave(save);
 
     // 5. Achievements
     if (save.achievements) this.achievementSystem.loadData(save.achievements);
@@ -4445,7 +4499,7 @@ export class ZoneScene extends Phaser.Scene {
       // Low probability roll: skip if not spawned this session
       if (Math.random() >= spawn.chance) continue;
       // Already own this pet? skip
-      if (this.homesteadSystem.pets.some(p => p.petId === spawn.petId)) continue;
+      if (this.petSystem.hasPet(spawn.petId)) continue;
 
       const { x: worldX, y: worldY } = cartToIso(spawn.col, spawn.row);
       const container = this.add.container(worldX, worldY);
@@ -4465,7 +4519,7 @@ export class ZoneScene extends Phaser.Scene {
       container.add(wing);
 
       // Floating label
-      const label = this.add.text(0, -40 * DPR, t('zone.pet.voidButterfly.label'), {
+      const label = this.add.text(0, -40 * DPR, t('zone.pet.rareLabel', { name: getPetName(spawn.petId, spawn.petId) }), {
         fontFamily: 'serif',
         fontSize: fs(10),
         color: '#cc88ff',
@@ -4505,10 +4559,10 @@ export class ZoneScene extends Phaser.Scene {
       const ps = this.petSpawnSprites[i];
       const dSq = distanceSq(this.player.tileCol, this.player.tileRow, ps.col, ps.row);
       if (dSq <= 4) {
-        const success = this.homesteadSystem.addPet(ps.petId);
+        const success = this.petSystem.addPet(ps.petId, { silent: true });
         if (success) {
           EventBus.emit(GameEvents.LOG_MESSAGE, {
-            text: t('zone.pet.discovered', { petName: getPetName(ps.petId, ps.petId) }),
+            text: t('zone.pet.found', { name: getPetName(ps.petId, ps.petId) }),
             type: 'system',
           });
         }
@@ -4743,6 +4797,7 @@ export class ZoneScene extends Phaser.Scene {
     for (const fieldNpc of this.mapData.fieldNpcs) {
       const def = NPCDefinitions[fieldNpc.npcId];
       if (!def) continue;
+      if (!EmberTower.npcPresent(this.currentMapId, def.id, this.homesteadSystem)) continue;
       const npc = new NPC(this, def, fieldNpc.col, fieldNpc.row);
       this.npcs.push(npc);
     }
@@ -6065,7 +6120,7 @@ export class ZoneScene extends Phaser.Scene {
             isCrit: false, isPlayerTarget: true, targetMaxHP: this.player.maxHp,
           });
           if (this.player.hp <= 0) {
-            this.player.die();
+            this.killPlayer();
           }
         } else {
           // DoT damage to monster
@@ -7071,207 +7126,66 @@ export class ZoneScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------------
-  // ─── Pet Visual Follower ────────────────────────────────────────────────────
+  // ─── Ley-beast (PetCompanion) ───────────────────────────────────────────────
   // ---------------------------------------------------------------------------
 
-  /** Create or recreate the pet sprite following the player. */
+  /** Create this zone's ley-beast runtime (follows, fights, soaks, revives). */
+  private createPetCompanion(): void {
+    this.petCompanion?.destroy();
+    this.petCompanion = new PetCompanion({
+      scene: this,
+      pets: this.petSystem,
+      player: this.player,
+      vfx: () => this.vfx ?? null,
+      skillEffects: this.skillEffects,
+      statusEffects: this.statusEffects,
+      isWalkable: (col, row) => !!this.mapData.collisions[row]?.[col],
+      monstersNear: (col, row, radius) => this.monsterGrid.queryRadius(col, row, radius),
+      findMonster: (id) => this.monsters.find(m => m.id === id),
+      heroDamage: () => this.player.baseDamage + (this.getEquipStats().damage ?? 0),
+      inSafeZone: (col, row) => {
+        const r = this.mapData.safeZoneRadius ?? 9;
+        return this.campPositions.some(c => distanceSq(col, row, c.col, c.row) < r * r);
+      },
+      isPaused: () => this.isTransitioning || !!this.storyDirector?.cinematic,
+      showDamage: (x, y, amount, isCrit, onHero, damageType) => this.showDamageText(x, y, amount, isCrit, false, onHero, damageType),
+      onMonsterKilled: (m) => {
+        this.onMonsterKilled(m);
+        if (this.player.attackTarget === m.id) {
+          this.player.attackTarget = null;
+          EventBus.emit(GameEvents.TARGET_CHANGED, { targetId: null, targetName: null });
+        }
+      },
+    });
+  }
+
+  /** Rebuild the ley-beast's look (active beast changed / evolved). */
   spawnPetSprite(): void {
-    this.destroyPetSprite();
-    const petInst = this.homesteadSystem.getActivePetInstance();
-    const petDef = this.homesteadSystem.getActivePetDef();
-    if (!petInst || !petDef) return;
-
-    // Position 2-3 tiles offset from player
-    this.petTileCol = this.player.tileCol - 2;
-    this.petTileRow = this.player.tileRow + 1;
-    const worldPos = cartToIso(this.petTileCol, this.petTileRow);
-
-    this.petSprite = this.add.container(worldPos.x, worldPos.y);
-    this.petSprite.setDepth(worldPos.y + 50);
-
-    const petSpriteKey = `decor_pet_${petDef.id}`;
-    const rarityColors: Record<string, number> = {
-      common: 0x88cc88,
-      rare: 0x5599ff,
-      epic: 0xcc66ff,
-    };
-    const color = rarityColors[petDef.rarity] ?? 0x88cc88;
-
-    SpriteGenerator.ensureDecoration(this, petSpriteKey);
-    let petVisual: Phaser.GameObjects.Image | null = null;
-    let body: Phaser.GameObjects.Arc | null = null;
-    if (this.textures.exists(petSpriteKey)) {
-      petVisual = this.add.image(0, -20, petSpriteKey).setScale(1 / TEXTURE_SCALE);
-      this.petSprite.add(petVisual);
-    } else {
-      body = this.add.circle(0, -12, 10, color);
-      body.setStrokeStyle(1.5, 0xffffff, 0.5);
-      this.petSprite.add(body);
-    }
-
-    const shadow = this.add.ellipse(0, 4, 16, 6, 0x000000, 0.2);
-    this.petSprite.add(shadow);
-    this.petSprite.sendToBack(shadow);
-
-    // Friendly indicator (small diamond)
-    const indicator = this.add.rectangle(0, -44, 4, 4, 0x88ccff);
-    indicator.setAngle(45);
-    this.petSprite.add(indicator);
-
-    // Name label with evolution suffix
-    const displayName = this.homesteadSystem.getPetDisplayName(petInst);
-    this.petNameLabel = this.add.text(0, -54, `${displayName} Lv.${petInst.level}`, {
-      fontSize: fs(9), color: '#aaddff', fontFamily: '"Noto Sans SC", sans-serif',
-      stroke: '#000000', strokeThickness: Math.round(2 * DPR),
-    }).setOrigin(0.5);
-    this.petSprite.add(this.petNameLabel);
-
-    // Idle floating animation
-    const floatingVisual = petVisual ?? body;
-    if (floatingVisual) {
-      this.tweens.add({
-        targets: floatingVisual,
-        y: floatingVisual.y - 3,
-        duration: 1200,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut',
-      });
-    }
+    this.petCompanion?.refresh();
   }
 
-  destroyPetSprite(): void {
-    if (this.petSprite) {
-      this.tweens.killTweensOf(this.petSprite);
-      // Kill tweens on children too
-      for (const child of this.petSprite.list) {
-        this.tweens.killTweensOf(child);
-      }
-      this.petSprite.destroy();
-      this.petSprite = null;
-      this.petNameLabel = null;
-    }
-  }
-
-  /** Update the pet follower position — follows player with 2-3 tile offset. */
-  private updatePetFollower(_time: number, _delta: number): void {
-    if (!this.petSprite) {
-      // Check if we should spawn a pet sprite (e.g., pet was activated mid-game)
-      if (this.homesteadSystem.activePet) {
-        this.spawnPetSprite();
-      }
-      return;
-    }
-    if (!this.homesteadSystem.activePet) {
-      this.destroyPetSprite();
-      return;
-    }
-
-    // Follow player with smooth interpolation at 2 tile offset
-    const targetCol = this.player.tileCol - 2;
-    const targetRow = this.player.tileRow + 1;
-    const dx = targetCol - this.petTileCol;
-    const dy = targetRow - this.petTileRow;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (dist > 0.2) {
-      const speed = 0.05;
-      const nx = dx / dist;
-      const ny = dy / dist;
-      this.petTileCol += nx * Math.min(speed * dist, speed * 3);
-      this.petTileRow += ny * Math.min(speed * dist, speed * 3);
-    }
-
-    const worldPos = cartToIso(this.petTileCol, this.petTileRow);
-    this.petSprite.setPosition(worldPos.x, worldPos.y);
-    this.petSprite.setDepth(worldPos.y + 50);
-
-    // Update name label if pet level changes
-    const petInst = this.homesteadSystem.getActivePetInstance();
-    if (petInst && this.petNameLabel) {
-      const displayName = this.homesteadSystem.getPetDisplayName(petInst);
-      const expected = `${displayName} Lv.${petInst.level}`;
-      if (this.petNameLabel.text !== expected) {
-        this.petNameLabel.setText(expected);
-      }
-    }
-  }
-
-  /** Pet periodic combat attack — 5-15% of player damage scaling with pet level. */
-  private handlePetCombat(time: number): void {
-    if (!this.homesteadSystem.activePet || !this.homesteadSystem.canPetAttack(time)) return;
-
-    // Disable in safe zones
-    const safeRadius = this.mapData.safeZoneRadius ?? 9;
-    const safeRadiusSq = safeRadius * safeRadius;
-    for (const camp of this.campPositions) {
-      if (distanceSq(this.player.tileCol, this.player.tileRow, camp.col, camp.row) < safeRadiusSq) {
-        return;
-      }
-    }
-
-    // Find player's current attack target or nearest aggroed monster
-    const target = this.player.attackTarget
-      ? this.monsters.find(m => m.id === this.player.attackTarget && m.isAlive())
-      : this.findNearestAggroMonster();
-
-    if (!target || !target.isAlive()) return;
-
-    // Calculate pet damage based on player damage
-    const eqStats = this.getEquipStats();
-    const playerDamage = this.player.baseDamage + (eqStats.damage ?? 0);
-    const petDamage = this.homesteadSystem.calculatePetDamage(playerDamage);
-
-    if (petDamage <= 0) return;
-
-    this.homesteadSystem.recordPetAttack(time);
-
-    // Apply damage through CombatSystem for consistency
-    target.takeDamage(petDamage, this.petSprite?.x ?? this.player.sprite.x, this.petSprite?.y ?? this.player.sprite.y);
-    this.showDamageText(target.sprite.x + 10, target.sprite.y - 30, petDamage, false, false, false, 'physical');
-
-    // Brief visual feedback on pet sprite
-    if (this.petSprite) {
-      this.tweens.add({
-        targets: this.petSprite,
-        scaleX: 1.2,
-        scaleY: 1.2,
-        duration: 100,
-        yoyo: true,
-        ease: 'Power2',
-      });
-    }
-
-    if (!target.isAlive()) {
-      this.onMonsterKilled(target);
-    }
-  }
-
-  /** Boss pet drop table: elite bosses have a chance to drop specific pets. */
-  private checkBossPetDrop(monsterId: string): void {
-    const bossDrops: Record<string, { petId: string; chance: number }> = {
-      'werewolf_alpha': { petId: 'pet_cat', chance: 0.15 },
-      'mountain_troll': { petId: 'pet_storm_wolf', chance: 0.12 },
-      'phoenix': { petId: 'pet_phoenix', chance: 0.10 },
-      'demon_lord': { petId: 'pet_dragon', chance: 0.15 },
-      'goblin_chief': { petId: 'pet_owl', chance: 0.20 },
-    };
-    const drop = bossDrops[monsterId];
-    if (!drop) return;
-    if (Math.random() < drop.chance) {
-      this.homesteadSystem.addPet(drop.petId);
-    }
+  /**
+   * The hero hit 0 HP: a beast with 濒死复燃 may rekindle them (once per zone).
+   * Returns true if the hero actually died.
+   */
+  private killPlayer(): boolean {
+    if (this.petCompanion?.tryReviveHero()) return false;
+    this.player.die();
+    return true;
   }
 
   shutdown(): void {
     this.storyDirector?.destroy();
     this.storyDirector = null;
+    this.emberTower?.destroy();
+    this.emberTower = null;
     this.questWorld?.destroy();
     this.questWorld = null;
     this.isTransitioning = false;
     this.isPortaling = false;
     this.destroyMercenarySprite();
-    this.destroyPetSprite();
+    this.petCompanion?.destroy();
+    this.petCompanion = null;
     this.destroyEscortNpc();
     this.destroyDefendTarget();
     // Clean up rare pet spawn sprites

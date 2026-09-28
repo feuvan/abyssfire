@@ -43,7 +43,7 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
     name: '森林隐士',
     type: 'quest',
     dialogue: ['你终于找到我了...亡灵复苏的根源在森林深处的黑暗能量。', '去找到那个黑暗之源，否则整片森林都将沦陷。'],
-    quests: [],
+    quests: ['q_pet_owl'],
   },
   blacksmith_advanced: {
     id: 'blacksmith_advanced',
@@ -57,7 +57,7 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
     name: '矮人长老',
     type: 'quest',
     dialogue: ['这些山脉曾是我族的家园...', '帮助我们夺回先祖的遗迹吧。'],
-    quests: ['q_explore_dwarf_ruins', 'q_kill_gargoyles', 'q_collect_dwarf_relics', 'q_dragon_egg', 'q_reforge_artifact', 'q_kill_stone_guardian', 'q_craft_dwarf_weapon'],
+    quests: ['q_explore_dwarf_ruins', 'q_kill_gargoyles', 'q_collect_dwarf_relics', 'q_dragon_egg', 'q_reforge_artifact', 'q_kill_stone_guardian', 'q_craft_dwarf_weapon', 'q_pet_dragon'],
     dialogueTree: DialogueTrees['quest_dwarf'],
   },
   quest_nomad: {
@@ -129,7 +129,7 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
       '暮色森林的亡灵并非邪恶之物，它们是被黑暗力量困住的可怜灵魂。',
       '在森林深处有一座被遗忘的月光祭坛，也许能净化它们……但那里被强大的亡灵守卫着。',
     ],
-    quests: ['q_spider_nest', 'q_investigate_corruption_forest', 'q_ancient_relic'],
+    quests: ['q_spider_nest', 'q_investigate_corruption_forest', 'q_ancient_relic', 'q_pet_cat'],
   },
 
   // ─── Zone 3: Anvil Mountains — New Field NPCs ────────────────────────
@@ -202,5 +202,57 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
       '东边有一处虚空能量特别集中的区域，那里的空间已经开始扭曲。我放了一些标记，你可以去探索。',
     ],
     quests: ['q_void_crystals'],
+  },
+
+  // ─── 余烬之塔 (Ember Tower): each chapter's ally tends one wing ───────────
+  // Standing in `ember_tower` only once their wing is unlocked (EmberTower);
+  // talking to them opens that wing's page of the homestead panel.
+  tower_elder: {
+    id: 'tower_elder',
+    name: '村长',
+    type: 'quest',
+    spriteId: 'quest_elder',
+    dialogue: ['塔还是那座塔，可如今有了炉火。', '想修哪一翼，跟老头子说。'],
+    quests: [],
+  },
+  tower_herbalist: {
+    id: 'tower_herbalist',
+    name: '药师',
+    type: 'quest',
+    spriteId: 'plains_herbalist',
+    dialogue: ['灵脉回暖，药草长得比平原上还旺。', '你在外头每斩一只怪，园子就多一分生气。'],
+    quests: [],
+  },
+  tower_hermit: {
+    id: 'tower_hermit',
+    name: '森林隐士',
+    type: 'quest',
+    spriteId: 'forest_hermit',
+    dialogue: ['月井的水映着月光，灵兽们爱在这里歇脚。'],
+    quests: [],
+  },
+  tower_dwarf: {
+    id: 'tower_dwarf',
+    name: '矮人工匠',
+    type: 'quest',
+    spriteId: 'quest_dwarf',
+    dialogue: ['三颗碎石头，炉火一吹，就是一颗好宝石。'],
+    quests: [],
+  },
+  tower_nomad: {
+    id: 'tower_nomad',
+    name: '游牧民',
+    type: 'quest',
+    spriteId: 'quest_nomad',
+    dialogue: ['商队的骆驼已经喂饱了。让你的灵兽跟我们走一趟吧。'],
+    quests: [],
+  },
+  tower_warden: {
+    id: 'tower_warden',
+    name: '深渊守望者',
+    type: 'quest',
+    spriteId: 'quest_warden',
+    dialogue: ['心焰的余温还在祭坛里。献上余烬，它会护你一程。'],
+    quests: [],
   },
 };

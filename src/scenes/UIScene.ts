@@ -26,6 +26,7 @@ import { QUEST_TYPE_LABELS } from '../systems/QuestSystem';
 import { gatherNpcQuests, buildQuestCardData, formatRewardSummary, buildToastMessage } from '../ui/QuestCardUI';
 import { buildTrackerState, buildTrackerSignature, MAX_VISIBLE_QUESTS } from '../ui/QuestTrackerHUD';
 import { AbyssRunUI } from '../ui/AbyssRunUI';
+import { PetPanel } from '../ui/PetPanel';
 import type { TrackerQuestEntry, TrackerState } from '../ui/QuestTrackerHUD';
 import type { NpcQuestEntry, QuestCardData } from '../ui/QuestCardUI';
 import type { MercenaryState } from '../systems/MercenarySystem';
@@ -47,6 +48,8 @@ import {
 } from '../ui/UiKit';
 import { getItemDisplayName, getItemBaseName, getItemBaseDesc, getAffixName, getStatLabel, isStatPercent, getQualityLabel, getSetName, getSetBonusDesc, getClassName, getDirection as getLocalizedDirection, getSkillName, getSkillDesc, getSkillTreeName, getDamageTypeName, getQuestName, getQuestDesc, getZoneName, getMercenaryName, getMercenaryDesc, getMercenaryTypeLabel, getBuildingName, getBuildingDesc, getPetName, getPetDesc, getAchievementName, getAchievementDesc, getAchievementTitle, getLoreName, getLoreText, getNpcName, getQuestTargetName, getPetStatLabel } from '../i18n/gameAccessors';
 import { applyScreenCamera } from '../rendering/RenderScalePhaser';
+import { buildHomesteadPanel } from '../ui/HomesteadPanel';
+import type { HomesteadPage } from '../systems/EmberTower';
 
 const FONT = '"Noto Sans SC", sans-serif';
 const TITLE_FONT = '"Cinzel", "Noto Sans SC", serif';
@@ -242,6 +245,8 @@ export class UIScene extends Phaser.Scene {
   private expShown = -1;
   private levelText!: Phaser.GameObjects.Text;
   private goldText!: Phaser.GameObjects.Text;
+  /** Homestead embers (余烬), shown beside the gold once the Ember Tower is open. */
+  private embersText: Phaser.GameObjects.Text | null = null;
   private autoCombatText: Phaser.GameObjects.Text | null = null;
   private skillLoadout: Player['classData']['skills'] = [];
   private skillSlots: Phaser.GameObjects.Container[] = [];
@@ -331,6 +336,8 @@ export class UIScene extends Phaser.Scene {
   private questCardBackdrop: Phaser.GameObjects.Image | null = null;
   /** Abyss Labyrinth panels (tier picker, boon choice, run summary) and run widget. */
   private abyssUI: AbyssRunUI | null = null;
+  /** 灵兽 panel (P) + its HUD medallion. */
+  private petPanelUI: PetPanel | null = null;
   /** Extra downward shift of the desktop quest tracker while the labyrinth widget sits above it. */
   private trackerShift = 0;
 
@@ -384,6 +391,7 @@ export class UIScene extends Phaser.Scene {
     this.createMinimap();
     this.setupEventListeners();
     this.createAbyssUI();
+    this.createPetPanel();
     this.events.once('shutdown', this.shutdown, this);
   }
 
@@ -676,6 +684,10 @@ export class UIScene extends Phaser.Scene {
       fontSize: hfs(13), color: '#ffd35a', fontFamily: FONT, fontStyle: 'bold',
       stroke: '#000000', strokeThickness: Math.round(3 * DPR),
     }).setOrigin(0, 0.5).setDepth(3000);
+    this.embersText = this.add.text(x + w / 2 + px(30), goldY, '', {
+      fontSize: hfs(12), color: '#ff9a4a', fontFamily: FONT, fontStyle: 'bold',
+      stroke: '#000000', strokeThickness: Math.round(3 * DPR),
+    }).setOrigin(0, 0.5).setDepth(3000);
   }
 
   private createQuestTracker(): void {
@@ -836,16 +848,17 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
-  private handlePanelToggle(data: { panel: string; npcId?: string }): void {
+  private handlePanelToggle(data: { panel: string; npcId?: string; page?: HomesteadPage }): void {
     if (this.abyssUI?.blocksPanels()) return; // the boon choice is mandatory
     if (data.panel === 'inventory') this.toggleInventory();
     if (data.panel === 'map') this.toggleMap();
     if (data.panel === 'skills') this.toggleSkillTree();
     if (data.panel === 'character') this.toggleCharacter();
-    if (data.panel === 'homestead') this.toggleHomestead();
+    if (data.panel === 'homestead') this.toggleHomestead(data.page);
     if (data.panel === 'quest') this.toggleQuestLog();
     if (data.panel === 'audio') this.toggleAudioSettings();
     if (data.panel === 'companion') this.toggleCompanion();
+    if (data.panel === 'pets') this.petPanelUI?.toggle();
     if (data.panel === 'achievement') this.toggleAchievement();
     if (data.panel === 'stash') this.toggleStash(data.npcId ?? null);
   }
@@ -853,6 +866,7 @@ export class UIScene extends Phaser.Scene {
   private handleUiRefresh(data: { player: Player; zone: ZoneScene }): void {
     this.player = data.player;
     this.zone = data.zone;
+    this.petPanelUI?.syncHud();
     this.refreshSkillLoadout();
     this.handleTargetChanged({ targetId: null, targetName: null });
     this.nextMinimapRefreshAt = 0;
@@ -886,9 +900,11 @@ export class UIScene extends Phaser.Scene {
     // Refresh skill tree panel if open (toggle off then on)
     if (this.skillPanel) { this.toggleSkillTree(); this.toggleSkillTree(); }
     // Refresh homestead panel if open
-    if (this.homesteadPanel) { this.toggleHomestead(); this.toggleHomestead(); }
+    if (this.homesteadPanel) this.toggleHomestead(this.homesteadPage);
     // Refresh quest log panel if open
     if (this.questLogPanel) { this.toggleQuestLog(); this.toggleQuestLog(); }
+    // Refresh the ley-beast panel if open
+    this.petPanelUI?.rebuild();
     // Refresh companion panel if open
     if (this.companionPanel) { this.toggleCompanion(); this.toggleCompanion(); }
     // Refresh achievement panel if open
@@ -2839,207 +2855,35 @@ export class UIScene extends Phaser.Scene {
     manaRegen: 'manaRegen',
   };
 
-  private toggleHomestead(): void {
-    if (this.homesteadPanel) { this.homesteadPanel.destroy(); this.homesteadPanel = null; return; }
+  /** Homestead panel page last shown (the panel reopens on it). */
+  private homesteadPage: HomesteadPage = 'buildings';
+
+  /** Toggle the homestead panel; with `page`, open (or switch) straight to that page. */
+  private toggleHomestead(page?: HomesteadPage): void {
+    if (this.homesteadPanel) {
+      this.homesteadPanel.destroy();
+      this.homesteadPanel = null;
+      if (!page) return;
+    }
     this.closeAllPanels();
-    const pw = px(520), ph = px(560), panelX = (W - pw) / 2, panelY = px(8);
+    if (page) this.homesteadPage = page;
+    const pw = px(560), ph = px(560), panelX = (W - pw) / 2, panelY = px(8);
     this.homesteadPanel = this.add.container(panelX, panelY).setDepth(PANEL_STYLE.depth.panel);
     const panel = this.homesteadPanel;
-    this.animatePanelOpen(panel);
+    if (!page) this.animatePanelOpen(panel);
     panel.add(this.createPanelBg(pw, ph));
     panel.add(this.createPanelTitle(pw, t('ui.homestead.title')));
     panel.add(this.createPanelCloseBtn(pw, () => this.toggleHomestead()));
-
-    const hs = this.zone.homesteadSystem;
-    const buildings = hs.getAllBuildings();
-    const rowX = px(16), rowW = pw - px(32);
-
-    // === Buildings Section ===
-    const sectionHeaderY = px(52);
-    panel.add(addSectionHeader(this, rowX, sectionHeaderY, rowW, t('ui.homestead.buildingsHeader')));
-
-    const buildingStartY = sectionHeaderY + px(12);
-    const buildingH = px(52);
-    const buildingGap = px(5);
-    const iconAreaSize = px(40);
-
-    buildings.forEach((b, i) => {
-      const sy = buildingStartY + i * (buildingH + buildingGap);
-      const lv = hs.getBuildingLevel(b.id);
-      const maxed = lv >= b.maxLevel;
-      const cost = maxed ? 0 : b.costPerLevel[lv]?.gold ?? 0;
-      const canUpgrade = !maxed && this.player.gold >= cost;
-
-      // Building card background
-      const cardGfx = this.add.graphics();
-      drawCard(cardGfx, rowX, sy, rowW, buildingH, maxed
-        ? { fill: 0x241d12, border: 0xd4a54a, strip: 0xd4a54a }
-        : { border: 0x3f3845 });
-      panel.add(cardGfx);
-
-      // Building icon area
-      const iconX = rowX + px(10);
-      const iconY = sy + (buildingH - iconAreaSize) / 2;
-      const iconGfx = this.add.graphics();
-      drawWell(iconGfx, iconX, iconY, iconAreaSize, iconAreaSize, px(4), maxed ? 0xd4a54a : 0x4a4250);
-      panel.add(iconGfx);
-
-      // Draw building icon (procedural illustration)
-      const iconDrawer = UIScene.BUILDING_ICONS[b.id];
-      if (iconDrawer) {
-        const buildingIconGfx = this.add.graphics();
-        iconDrawer(buildingIconGfx, iconX + iconAreaSize / 2, iconY + iconAreaSize / 2, iconAreaSize, lv, b.maxLevel);
-        panel.add(buildingIconGfx);
-      }
-
-      // Text area
-      const textX = iconX + iconAreaSize + px(12);
-      const textMaxW = rowW - (textX - rowX) - px(104);
-      panel.add(this.add.text(textX, sy + px(6), getBuildingName(b.id, b.name), {
-        fontSize: fs(13), color: maxed ? UI_COLORS.goldBright : UI_COLORS.text, fontFamily: FONT, fontStyle: 'bold',
-      }));
-      const descT = this.add.text(textX, sy + px(23), getBuildingDesc(b.id, b.description), {
-        fontSize: fs(10), color: UI_COLORS.muted, fontFamily: FONT,
-      });
-      if (descT.width > textMaxW) descT.setScale(textMaxW / descT.width, 1);
-      panel.add(descT);
-
-      // Level progress pips
-      const pipY = sy + px(41);
-      const pipGapH = px(11);
-      const on = pipTexture(this, px(8), maxed ? 0xffd98a : 0x6fd35a);
-      const off = pipTexture(this, px(8), null);
-      for (let p = 0; p < b.maxLevel; p++) {
-        panel.add(this.add.image(textX + px(4) + p * pipGapH, pipY, p < lv ? on : off));
-      }
-      // Level text
-      panel.add(this.add.text(textX + b.maxLevel * pipGapH + px(4), pipY, `Lv.${lv}/${b.maxLevel}`, {
-        fontSize: fs(10), color: maxed ? UI_COLORS.goldBright : UI_COLORS.muted, fontFamily: FONT, fontStyle: 'bold',
-      }).setOrigin(0, 0.5));
-
-      // Upgrade button (global style) / max badge
-      const btnCx = rowX + rowW - px(52);
-      const btnCy = sy + buildingH / 2;
-      if (maxed) {
-        const badgeGfx = this.add.graphics();
-        badgeGfx.fillStyle(0x3a2a10, 1);
-        badgeGfx.fillRoundedRect(btnCx - px(34), btnCy - px(11), px(68), px(22), px(11));
-        badgeGfx.lineStyle(1.5, 0xffd98a, 1);
-        badgeGfx.strokeRoundedRect(btnCx - px(34), btnCy - px(11), px(68), px(22), px(11));
-        panel.add(badgeGfx);
-        panel.add(this.add.text(btnCx, btnCy, t('ui.homestead.maxLevel'), {
-          fontSize: fs(11), color: UI_COLORS.goldBright, fontFamily: FONT, fontStyle: 'bold',
-        }).setOrigin(0.5));
-      } else {
-        panel.add(this.makeButton(btnCx, btnCy, px(84), px(28), t('ui.homestead.upgrade', { cost: String(cost) }), () => {
-          const actualCost = hs.upgrade(b.id);
-          this.player.gold -= actualCost;
-          this.toggleHomestead(); this.toggleHomestead();
-        }, { variant: 'success', disabled: !canUpgrade, fontSize: 11 }));
-      }
-    });
-
-    // === Pets Section ===
-    const petSectionY = buildingStartY + buildings.length * (buildingH + buildingGap) + px(14);
-    panel.add(addSectionHeader(this, rowX, petSectionY, rowW, t('ui.homestead.petsHeader', { count: String(hs.pets.length) })));
-
-    const pets = hs.pets;
-    const petStartY = petSectionY + px(12);
-    const petCardH = px(46);
-    const petGap = px(5);
-    const petIconSize = px(34);
-    const footerY = ph - px(18);
-
-    if (pets.length === 0) {
-      panel.add(this.add.text(pw / 2, petStartY + px(14), t('ui.homestead.noPets'), {
-        fontSize: fs(11), color: UI_COLORS.dim, fontFamily: FONT, align: 'center',
-        wordWrap: { width: rowW - px(20), useAdvancedWrap: true },
-      }).setOrigin(0.5, 0));
-    }
-
-    pets.forEach((p, i) => {
-      const pd = hs.getAllPets().find(d => d.id === p.petId);
-      if (!pd) return;
-      const isActive = hs.activePet === p.petId;
-      const py = petStartY + i * (petCardH + petGap);
-      if (py + petCardH > footerY - px(10)) return; // keep inside the panel
-      const rarityColor = UIScene.PET_RARITY_COLORS[pd.rarity] ?? 0x888888;
-
-      // Pet card bg
-      const petCard = this.add.graphics();
-      drawCard(petCard, rowX, py, rowW, petCardH, isActive
-        ? { fill: 0x172414, border: 0x6fd35a, glow: 0x6fd35a, strip: 0x6fd35a }
-        : { border: rarityColor, borderAlpha: 0.7 });
-      panel.add(petCard);
-
-      // Pet icon area with rarity-colored border
-      const petIconX = rowX + px(10);
-      const petIconY = py + (petCardH - petIconSize) / 2;
-      const petIconGfx = this.add.graphics();
-      drawWell(petIconGfx, petIconX, petIconY, petIconSize, petIconSize, px(4), rarityColor);
-      // Simple procedural pet icon based on petId
-      const pcx = petIconX + petIconSize / 2;
-      const pcy = petIconY + petIconSize / 2;
-      petIconGfx.fillStyle(rarityColor, 0.8);
-      petIconGfx.fillCircle(pcx, pcy + petIconSize * 0.08, petIconSize * 0.24);
-      petIconGfx.fillCircle(pcx, pcy - petIconSize * 0.14, petIconSize * 0.18);
-      petIconGfx.fillTriangle(pcx - petIconSize * 0.2, pcy - petIconSize * 0.2, pcx - petIconSize * 0.1, pcy - petIconSize * 0.38, pcx - petIconSize * 0.04, pcy - petIconSize * 0.24);
-      petIconGfx.fillTriangle(pcx + petIconSize * 0.2, pcy - petIconSize * 0.2, pcx + petIconSize * 0.1, pcy - petIconSize * 0.38, pcx + petIconSize * 0.04, pcy - petIconSize * 0.24);
-      petIconGfx.fillStyle(0xffffff, 0.9);
-      petIconGfx.fillCircle(pcx - petIconSize * 0.06, pcy - petIconSize * 0.16, petIconSize * 0.04);
-      petIconGfx.fillCircle(pcx + petIconSize * 0.06, pcy - petIconSize * 0.16, petIconSize * 0.04);
-      panel.add(petIconGfx);
-
-      // Pet name + evolution suffix
-      const evolvedStages = hs.getEvolutionStages();
-      let displayName = getPetName(pd.id, pd.name);
-      if (p.evolved > 0 && evolvedStages[p.evolved - 1]) {
-        displayName += evolvedStages[p.evolved - 1].nameSuffix;
-      }
-      const rarityHex = '#' + rarityColor.toString(16).padStart(6, '0');
-
-      const petTextX = petIconX + petIconSize + px(10);
-      panel.add(this.add.text(petTextX, py + px(5), displayName, {
-        fontSize: fs(12), color: isActive ? '#8ff07a' : rarityHex, fontFamily: FONT, fontStyle: 'bold',
-      }));
-
-      // Bonus stat label
-      const statLabel = getPetStatLabel(pd.bonusStat);
-      const currentBonus = pd.bonusValue + pd.bonusPerLevel * p.level;
-      panel.add(this.add.text(rowX + rowW - px(40), py + px(6), `${statLabel} +${currentBonus.toFixed(1)}`, {
-        fontSize: fs(11), color: UI_COLORS.textSoft, fontFamily: FONT,
-      }).setOrigin(1, 0));
-
-      // Exp bar
-      const expBarX = petTextX;
-      const expBarY = py + px(28);
-      const expBarW = px(140);
-      const expBarH = px(7);
-      const expThreshold = p.level * 20;
-      const expRatio = expThreshold > 0 ? Math.min(1, p.exp / expThreshold) : 1;
-      const expBarGfx = this.add.graphics();
-      drawWell(expBarGfx, expBarX, expBarY, expBarW, expBarH, px(3));
-      drawBarFill(expBarGfx, expBarX + 1, expBarY + 1, Math.round((expBarW - 2) * expRatio), expBarH - 2, isActive ? 0x6fd35a : rarityColor);
-      panel.add(expBarGfx);
-
-      // Level text
-      const isMaxLevel = p.level >= pd.maxLevel;
-      panel.add(this.add.text(expBarX + expBarW + px(8), expBarY + expBarH / 2, isMaxLevel ? `Lv.${p.level} MAX` : `Lv.${p.level} (${p.exp}/${expThreshold})`, {
-        fontSize: fs(10), color: isMaxLevel ? UI_COLORS.goldBright : UI_COLORS.muted, fontFamily: FONT,
-      }).setOrigin(0, 0.5));
-
-      // Active indicator badge
-      if (isActive) {
-        panel.add(this.add.text(rowX + rowW - px(18), py + petCardH / 2, '✦', {
-          fontSize: fs(16), color: '#8ff07a', fontFamily: FONT,
-        }).setOrigin(0.5));
-      }
-    });
-
-    // Footer
-    panel.add(this.add.text(pw / 2, footerY, t(IS_MOBILE ? 'ui.homestead.footerTouch' : 'ui.homestead.footer'), {
-      fontSize: fs(11), color: UI_COLORS.muted, fontFamily: FONT,
-    }).setOrigin(0.5));
+    buildHomesteadPanel({
+      scene: this, panel, pw, ph, px, fs,
+      button: (x, y, w, h, label, onClick, opts) => this.makeButton(x, y, w, h, label, () => onClick(), opts),
+      buildingIcons: UIScene.BUILDING_ICONS,
+      homestead: this.zone.homesteadSystem,
+      tower: this.zone.emberTower,
+      player: this.player,
+      touch: IS_MOBILE,
+      reopen: (p) => this.toggleHomestead(p),
+    }, this.homesteadPage);
   }
 
   // --- Minimap ---
@@ -5108,171 +4952,24 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
-  /** Render the pet section within the companion panel. */
-  private renderPetSection(pw: number, ph: number): void {
+  /** Ley-beast summary within the companion panel; the full list lives in PetPanel (P). */
+  private renderPetSection(pw: number, _ph: number): void {
     if (!this.companionPanel) return;
-    const hs = this.zone?.homesteadSystem;
-    if (!hs) return;
+    const pets = this.zone?.petSystem;
+    if (!pets) return;
     const panel = this.companionPanel;
-
     const petStartY = px(122);
-
-    panel.add(addSectionHeader(this, px(18), petStartY, pw - px(36), t('ui.companion.petHeader', { count: String(hs.pets.length) })));
-
-    if (hs.pets.length === 0) {
-      panel.add(this.add.text(px(18), petStartY + px(16), t('ui.companion.noPets'), {
-        fontSize: fs(12), color: UI_COLORS.muted, fontFamily: FONT,
-        wordWrap: { width: pw - px(36), useAdvancedWrap: true },
-      }));
-      return;
-    }
-
-    const cardH = px(58);
-    const startY = petStartY + px(14);
-    const allPets = hs.getAllPets();
-    const cardX = px(18), cardW = pw - px(36);
-
-    const rarityColors: Record<string, string> = {
-      common: '#a8d8a0', rare: '#7fb0ff', epic: '#d08cff',
-    };
-
-    hs.pets.forEach((pet, i) => {
-      const def = allPets.find(p => p.id === pet.petId);
-      if (!def) return;
-      const cy = startY + i * (cardH + px(6));
-      if (cy + cardH > ph - px(34)) return; // Prevent overflow
-
-      const isActive = hs.activePet === pet.petId;
-      const rarityColor = rarityColors[def.rarity] ?? '#aaa';
-
-      // Card background
-      const cardG = this.add.graphics();
-      drawCard(cardG, cardX, cy, cardW, cardH, isActive
-        ? { fill: 0x172414, border: 0x6fd35a, glow: 0x6fd35a, strip: 0x6fd35a }
-        : { border: 0x3f3845 });
-      panel.add(cardG);
-      const cardBg = this.add.rectangle(cardX, cy, cardW - px(120), cardH, 0x000000, 0).setOrigin(0, 0)
-        .setInteractive({ useHandCursor: true });
-      panel.add(cardBg);
-
-      // Active indicator
-      if (isActive) {
-        panel.add(this.add.text(cardX + px(14), cy + px(14), '★', {
-          fontSize: fs(15), color: '#ffd98a', fontFamily: FONT,
-          stroke: '#000000', strokeThickness: Math.round(2 * DPR),
-        }).setOrigin(0.5));
-      }
-
-      // Pet name with evolution
-      const displayName = hs.getPetDisplayName(pet);
-      panel.add(this.add.text(cardX + px(28), cy + px(6), `${displayName} Lv.${pet.level}`, {
-        fontSize: fs(13), color: rarityColor, fontFamily: FONT, fontStyle: 'bold',
-      }));
-
-      // Description
-      panel.add(this.add.text(cardX + px(28), cy + px(23), getPetDesc(pet.petId, def.description), {
-        fontSize: fs(10), color: UI_COLORS.muted, fontFamily: FONT,
-        wordWrap: { width: cardW - px(170), useAdvancedWrap: true }, maxLines: 1,
-      }));
-
-      // EXP bar
-      const expNeeded = pet.level * 20;
-      const expRatio = pet.level >= def.maxLevel ? 1 : pet.exp / expNeeded;
-      const barW = px(110), barH = px(7);
-      const barX = cardX + px(28), barY = cy + px(42);
-      const barG = this.add.graphics();
-      drawWell(barG, barX, barY, barW, barH, px(3));
-      drawBarFill(barG, barX + 1, barY + 1, Math.round((barW - 2) * Math.max(0, Math.min(1, expRatio))), barH - 2, 0x9b4fd0);
-      panel.add(barG);
-      const expText = pet.level >= def.maxLevel ? 'MAX' : `${pet.exp}/${expNeeded}`;
-      panel.add(this.add.text(barX + barW + px(6), barY + barH / 2, expText, {
-        fontSize: fs(10), color: '#d0b0f0', fontFamily: FONT,
-      }).setOrigin(0, 0.5));
-
-      // Evolution badge
-      if (pet.evolved > 0) {
-        const evoBadge = pet.evolved >= 2 ? t('ui.companion.evoSupreme') : t('ui.companion.evoAwakened');
-        panel.add(this.add.text(barX + barW + px(60), barY + barH / 2, `[${evoBadge}]`, {
-          fontSize: fs(10), color: '#ffd98a', fontFamily: FONT, fontStyle: 'bold',
-        }).setOrigin(0, 0.5));
-      }
-
-      // Bonus stat display
-      const evoMult = hs.getEvolutionMultiplier(pet);
-      const baseBonus = def.bonusValue + def.bonusPerLevel * pet.level;
-      const bonusVal = Math.floor(baseBonus * evoMult);
-      panel.add(this.add.text(cardX + cardW - px(12), cy + px(8), `+${bonusVal} ${getPetStatLabel(def.bonusStat)}`, {
-        fontSize: fs(11), color: UI_COLORS.textSoft, fontFamily: FONT, fontStyle: 'bold',
-      }).setOrigin(1, 0));
-
-      // Activate / deactivate button
-      const btnY = cy + px(40);
-      if (!isActive) {
-        panel.add(this.makeButton(cardX + cardW - px(44), btnY, px(72), px(24), t('ui.companion.activate'), () => {
-          hs.setActivePet(pet.petId);
-          // Respawn pet sprite
-          const zoneScene = this.zone as any;
-          if (zoneScene?.spawnPetSprite) zoneScene.spawnPetSprite();
-          this.companionPanel?.destroy();
-          this.companionPanel = null;
-          this.buildCompanionPanel();
-        }, { variant: 'success', fontSize: 11 }));
-      } else {
-        panel.add(this.makeButton(cardX + cardW - px(44), btnY, px(72), px(24), t('ui.companion.deactivate'), () => {
-          hs.setActivePet(null);
-          // Remove pet sprite
-          const zoneScene = this.zone as any;
-          if (zoneScene?.destroyPetSprite) zoneScene.destroyPetSprite();
-          this.companionPanel?.destroy();
-          this.companionPanel = null;
-          this.buildCompanionPanel();
-        }, { fontSize: 11 }));
-      }
-
-      // Feed button
-      panel.add(this.makeButton(cardX + cardW - px(122), btnY, px(72), px(24), t('ui.companion.feed'), () => {
-        // Check if player has the feed item
-        const inv = this.zone?.inventorySystem;
-        if (!inv) return;
-        const feedItemIdx = inv.inventory.findIndex(it => it.baseId === def.feedItem);
-        if (feedItemIdx === -1) {
-          EventBus.emit(GameEvents.LOG_MESSAGE, { text: t('ui.companion.feedNeeded', { item: def.feedItem }), type: 'system' });
-          return;
-        }
-        // Consume feed item
-        const feedItem = inv.inventory[feedItemIdx];
-        if (feedItem.quantity > 1) {
-          feedItem.quantity--;
-        } else {
-          inv.inventory.splice(feedItemIdx, 1);
-        }
-        hs.feedPet(pet.petId);
-        // Respawn pet sprite to update name if evolved
-        const zoneScene = this.zone as any;
-        if (zoneScene?.spawnPetSprite && hs.activePet === pet.petId) {
-          zoneScene.spawnPetSprite();
-        }
-        this.companionPanel?.destroy();
-        this.companionPanel = null;
-        this.buildCompanionPanel();
-      }, { variant: 'secondary', fontSize: 11, color: '#9fd4ff', disabled: pet.level >= def.maxLevel }));
-
-      // Click card to toggle active
-      cardBg.on('pointerdown', () => {
-        if (isActive) {
-          hs.setActivePet(null);
-          const zoneScene = this.zone as any;
-          if (zoneScene?.destroyPetSprite) zoneScene.destroyPetSprite();
-        } else {
-          hs.setActivePet(pet.petId);
-          const zoneScene = this.zone as any;
-          if (zoneScene?.spawnPetSprite) zoneScene.spawnPetSprite();
-        }
-        this.companionPanel?.destroy();
-        this.companionPanel = null;
-        this.buildCompanionPanel();
-      });
-    });
+    panel.add(addSectionHeader(this, px(18), petStartY, pw - px(36), t('ui.pet.title')));
+    const inst = pets.getActivePetInstance();
+    const line = inst
+      ? `${pets.getPetDisplayName(inst)}  Lv.${inst.level}  · ${t('ui.pet.active')}`
+      : t('ui.pet.owned', { count: String(pets.pets.length), total: String(pets.getAllPets().length) });
+    panel.add(this.add.text(px(18), petStartY + px(22), line, {
+      fontSize: fs(12), color: inst ? '#8ff07a' : UI_COLORS.muted, fontFamily: FONT,
+    }).setOrigin(0, 0.5));
+    panel.add(this.makeButton(pw - px(100), petStartY + px(22), px(150), px(26), t('ui.pet.openPanel'), () => {
+      EventBus.emit(GameEvents.UI_TOGGLE_PANEL, { panel: 'pets' });
+    }, { variant: 'secondary', fontSize: 11 }));
   }
 
   // --- Achievement Unlock Toast ---
@@ -5949,6 +5646,7 @@ export class UIScene extends Phaser.Scene {
     if (this.homesteadPanel) { this.homesteadPanel.destroy(); this.homesteadPanel = null; }
     if (this.questLogPanel) { this.questLogPanel.destroy(); this.questLogPanel = null; }
     if (this.companionPanel) { this.companionPanel.destroy(); this.companionPanel = null; }
+    this.petPanelUI?.close();
     if (this.socketPanel) { this.socketPanel.destroy(); this.socketPanel = null; this.socketPanelSlot = null; }
     if (this.achievementPanel) { this.achievementPanel.destroy(); this.achievementPanel = null; }
     if (this.loreTextPanel) { this.loreTextPanel.destroy(); this.loreTextPanel = null; }
@@ -5963,6 +5661,27 @@ export class UIScene extends Phaser.Scene {
     this.closeDialogue();
     this.closeQuestCard();
     this.abyssUI?.closeDismissable();
+  }
+
+  /** 灵兽 panel + (desktop) a medallion left of the minimap showing the active beast. */
+  private createPetPanel(): void {
+    this.petPanelUI = new PetPanel({
+      scene: this,
+      pets: () => this.zone?.petSystem ?? null,
+      inventory: () => this.zone?.inventorySystem ?? null,
+      isMobile: IS_MOBILE,
+      depth: PANEL_STYLE.depth.panel,
+      closeAllPanels: () => this.closeAllPanels(),
+      createPanelBg: (pw, ph) => this.createPanelBg(pw, ph),
+      createPanelTitle: (pw, title) => this.createPanelTitle(pw, title),
+      createPanelCloseBtn: (pw, onClose) => this.createPanelCloseBtn(pw, onClose),
+      makeButton: (x, y, w, h, label, onClick, opts) => this.makeButton(x, y, w, h, label, () => onClick(), opts),
+      animatePanelOpen: (panel) => this.animatePanelOpen(panel),
+    });
+    if (!IS_MOBILE) {
+      const size = px(34);
+      this.petPanelUI.createHudButton(HUD.minimap.x - px(9) - px(12) - size / 2, HUD.minimap.y + size / 2, size);
+    }
   }
 
   /** A labyrinth modal (tier picker / boon choice / summary) is open: gameplay keys should wait. */
@@ -6014,6 +5733,8 @@ export class UIScene extends Phaser.Scene {
     this.closeAllPanels();
     this.abyssUI?.destroy();
     this.abyssUI = null;
+    this.petPanelUI?.destroy();
+    this.petPanelUI = null;
     this.cleanupAudioPanelInputHandlers();
     this.subscriptions.dispose();
     this.skillSlots = [];
@@ -6123,6 +5844,13 @@ export class UIScene extends Phaser.Scene {
     if (this.levelText.text !== levelText) this.levelText.setText(levelText);
     const goldText = `${this.player.gold}`;
     if (this.goldText.text !== goldText) this.goldText.setText(goldText);
+    if (this.embersText) {
+      const tower = this.zone?.homesteadSystem?.tower;
+      const embersText = tower?.towerUnlocked ? `✦${tower.embers}` : '';
+      if (this.embersText.text !== embersText) this.embersText.setText(embersText);
+      const ex = this.goldText.x + this.goldText.width + px(10);
+      if (this.embersText.x !== ex) this.embersText.setX(ex);
+    }
     const autoCombatText = this.player.autoCombat ? t('ui.hud.autoCombat.on') : t('ui.hud.autoCombat.off');
     const autoCombatColor = this.player.autoCombat ? '#8ff07a' : '#b0a8b4';
     if (this.autoCombatText) {

@@ -76,7 +76,7 @@ interface SkillButton {
  *   bottom-right – big lock-on / attack button in the corner with the skills fanned around it
  *                  (skills 1-4 on the inner ring, dodge + skills 5-6 on the outer ring)
  *   top-left     – auto-combat, auto-loot and combat-log toggles
- *   top-right    – panel buttons (bag, character, skills, map, homestead, quests)
+ *   top-right    – panel buttons (bag, character, skills, map, homestead, ley-beasts, quests)
  * Everything lives in ZoneScene under one counter-zoomed root container; UIScene lays out
  * its HUD around these regions.
  */
@@ -467,6 +467,7 @@ export class MobileControlsSystem {
       { key: 'sys.mobile.panel.skills', panel: 'skills', icon: 'skills' },
       { key: 'sys.mobile.panel.map', panel: 'map', icon: 'map' },
       { key: 'sys.mobile.panel.homestead', panel: 'homestead', icon: 'homestead' },
+      { key: 'sys.mobile.panel.pets', panel: 'pets', icon: 'pets' },
       { key: 'sys.mobile.panel.quest', panel: 'quest', icon: 'quest' },
     ];
 

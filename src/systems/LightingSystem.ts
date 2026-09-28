@@ -8,6 +8,8 @@ import type { MapTheme } from '../data/types';
 /** Map ids → theme, for callers that pass a zone id. Unknown ids use the active zone theme. */
 const ZONE_THEME_BY_ID: Record<string, MapTheme> = {
   emerald_plains: 'plains',
+  // The homestead sits on the plains.
+  ember_tower: 'plains',
   twilight_forest: 'forest',
   anvil_mountains: 'mountain',
   scorching_desert: 'desert',

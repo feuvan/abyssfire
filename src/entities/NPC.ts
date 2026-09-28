@@ -40,8 +40,8 @@ export class NPC {
     this.sprite.setDepth(worldPos.y + 80);
 
     // Use animated sprite sheet: try unique npc_<id> first, fall back to npc_<type>
-    SpriteGenerator.ensureNPCSheet(scene, definition.id, definition.type);
-    const uniqueKey = `npc_${definition.id}`;
+    SpriteGenerator.ensureNPCSheet(scene, definition.spriteId ?? definition.id, definition.type);
+    const uniqueKey = `npc_${definition.spriteId ?? definition.id}`;
     const typeKey = `npc_${definition.type}`;
     this.spriteKey = scene.textures.exists(uniqueKey) ? uniqueKey : typeKey;
     if (scene.textures.exists(this.spriteKey)) {

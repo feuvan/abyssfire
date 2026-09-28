@@ -102,6 +102,7 @@ export const STORY_ZH: LocaleData = {
   'story.cs_ep_finale.8': '我写了封信，托人捎给森林营地的侦察兵。孩子，一路当心，记得回来。',
   'story.cs_ep_finale.9': '一盏灯亮了。还有四盏。',
   'story.cs_ep_finale.10': '向东，是终年不见天日的森林。你的旅程，才刚刚开始。',
+  'story.cs_ep_finale.11': '村长托药师带着种子动身，去往精灵塔的废墟。那片灰烬里，将长出一座药草园。',
 
   // ─── cs_tf_hermit ───
   'story.cs_tf_hermit.1': '营地的篝火噼啪作响，你却仍听得见隐士那沙哑的声音……',
@@ -122,6 +123,7 @@ export const STORY_ZH: LocaleData = {
   'story.cs_tf_finale.9': '月辉之印重燃了。矮人那边刚来了信：铁砧山脉的地底，有东西在翻身。',
   'story.cs_tf_finale.10': '两盏灯了。你走得真快——比她当年还快。',
   'story.cs_tf_finale.11': '你没有回答，只是握紧了发烫的掌心，朝东方的群山走去。',
+  'story.cs_tf_finale.12': '森林隐士收起竹杖，说要去精灵塔下守一口月井，给流离的灵兽留个歇脚处。',
 
   // ─── cs_am_hammer ───
   'story.cs_am_hammer.2': '秘银核心、先祖的符文、布鲁恩王的锤头……齐了！站到炉前来，烙印者。',
@@ -143,6 +145,7 @@ export const STORY_ZH: LocaleData = {
   'story.cs_am_finale.10': '三盏。你知道那个大祭司为什么砸碎封印吗？因为我许了他永恒。',
   'story.cs_am_finale.11': '我从不食言。去看看吧，看看他如今有多永恒。',
   'story.cs_am_finale.12': '南方的地平线上，一道烟柱直冲天际。',
+  'story.cs_am_finale.13': '矮人长老挑了一座小炉，派工匠翻山送往余烬之塔：守火人的家，得有座像样的炉台。',
 
   // ─── cs_sd_oasis ───
   'story.cs_sd_oasis.2': '泉水映出的，是千年前的沙海——不，那是一座王国。',
@@ -165,6 +168,7 @@ export const STORY_ZH: LocaleData = {
   'story.cs_sd_finale.8': '可沙底下的火都在往一个地方流——深渊裂隙。门后的那个人，醒了。',
   'story.cs_sd_finale.9': '四盏灯。够了。来吧，孩子——到门前来，把最后一盏也带来。',
   'story.cs_sd_finale.11': '烙印上四焰齐燃。中央那片空缺，第一次隐隐作痛。',
+  'story.cs_sd_finale.12': '游牧民的驼铃掉头向西。从此余烬之塔下，多了一座商队驿站。',
 
   // ─── cs_ar_gate ───
   'story.cs_ar_gate.2': '你也听见了，对吗？门后那个声音。守望者听了一千年，听着听着，就不再是自己了。',
@@ -252,6 +256,34 @@ export const STORY_ZH: LocaleData = {
   'story.credits.4.text': '每一位走到这里的守火人',
   'story.credits.5.title': '感谢游玩',
   'story.credits.6.text': '深渊之下，还有更深的黑暗。\n噩梦难度，正在等你。',
+  // ─── cs_tf_moonfang (Volgan's cub) ───
+  'story.cs_tf_moonfang.2': '狼王倒下，眼中的渊火一点点熄灭。千年来，它第一次安静下来。',
+  'story.cs_tf_moonfang.3': '尸身旁的蕨丛里钻出一只银灰的幼狼，额上一弯新月似的白纹。',
+  'story.cs_tf_moonfang.4.title': '月牙',
+  'story.cs_tf_moonfang.4.subtitle': '沃尔甘之子',
+  'story.cs_tf_moonfang.5': '它嗅了嗅你掌心的烙印，没有逃走。',
+  'story.cs_tf_moonfang.6': '……跟我走吧。',
+  'story.cs_tf_moonfang.7': '幼狼低低呜了一声，跟在了你的脚边。',
+  // ─── cs_sd_helia (Helia's ember) ───
+  'story.cs_sd_helia.2': '重生的火光散去，沙地上还留着一小团余烬，迟迟不肯熄灭。',
+  'story.cs_sd_helia.4': '余烬里探出一只雏鸟，羽尖燃着金红的火，怯生生地望着你。',
+  'story.cs_sd_helia.5.title': '赫莉娅之烬',
+  'story.cs_sd_helia.5.subtitle': '日冕圣鸟的遗火',
+  'story.cs_sd_helia.7': '圣鸟把最后一点火留给了你。老辈说，这样的雏鸟，一生只认一个人。',
+  'story.cs_sd_helia.8': '雏鸟扑腾着落上你的肩头，暖意透过衣衫，一直暖到掌心。',
+  // ─── cs_ar_altar (the warden's lamp goes to the tower) ───
+  'story.cs_ar_altar.2': '深渊的精华，我收下了。它曾是火，终究也要回到火里。',
+  'story.cs_ar_altar.3': '心焰在你掌中，我替你守不住它。可它的余温，我能替你守。',
+  'story.cs_ar_altar.4': '守望者取下颈间的银灯交给信使，送往余烬之塔，去点亮塔下那座荒了千年的祭坛。',
+  'story.cs_ar_altar.5': '回塔时献上余烬，祭坛会护你一程。这是艾瑟琳的血脉能给你的全部了。',
+  // ─── cs_tower_home (first visit to the Ember Tower) ───
+  'story.cs_tower_home.2.title': '余烬之塔',
+  'story.cs_tower_home.2.subtitle': '守火人的炉膛',
+  'story.cs_tower_home.3': '你在这里的灰烬中醒来。那时塔已倾颓，只剩焦黑的石阶和一地冷灰。',
+  'story.cs_tower_home.5': '孩子，你回来了。老头子先来一步，替大家暖暖屋子。',
+  'story.cs_tower_home.6': '这里曾经是灰烬，现在是你的家。',
+  'story.cs_tower_home.7': '你每点亮一道封印，就会有人循着火光来到塔下，修好一翼。',
+  'story.cs_tower_home.8': '塔基之下，灵脉的余温轻轻一颤，像是在回应。',
 };
 
 export const STORY_EN: LocaleData = {
@@ -351,6 +383,7 @@ export const STORY_EN: LocaleData = {
   'story.cs_ep_finale.8': 'I\'ve sent a letter to the scout at the forest camp. Be careful on the road, child, and come home.',
   'story.cs_ep_finale.9': 'One lamp lit. Four to go.',
   'story.cs_ep_finale.10': 'To the east lies a forest that never sees the sun. Your journey has only begun.',
+  'story.cs_ep_finale.11': 'The elder sends the herbalist off with a bag of seeds, to the ruined elven tower. A garden will grow from those ashes.',
 
   // ─── cs_tf_hermit ───
   'story.cs_tf_hermit.1': 'The campfire crackles, but you can still hear the hermit\'s rasping voice...',
@@ -371,6 +404,7 @@ export const STORY_EN: LocaleData = {
   'story.cs_tf_finale.9': 'The Moon Seal burns again. A letter just came from the dwarves: something is stirring beneath the Anvil Mountains.',
   'story.cs_tf_finale.10': 'Two lamps. You walk so quickly. Faster than she ever did.',
   'story.cs_tf_finale.11': 'You say nothing. You close your burning hand and walk toward the mountains in the east.',
+  'story.cs_tf_finale.12': 'The forest hermit takes up his staff. He will keep a moon well beneath the elven tower, a resting place for stray ley-beasts.',
 
   // ─── cs_am_hammer ───
   'story.cs_am_hammer.2': 'Mithril cores, our ancestors\' runes, King Bruun\'s hammerhead... all here! Step up to the forge, brand-bearer.',
@@ -392,6 +426,7 @@ export const STORY_EN: LocaleData = {
   'story.cs_am_finale.10': 'Three. Do you know why the high priest broke his seal? Because I promised him forever.',
   'story.cs_am_finale.11': 'I always keep my word. Go and see how eternal he is now.',
   'story.cs_am_finale.12': 'On the southern horizon, a column of smoke climbs into the sky.',
+  'story.cs_am_finale.13': 'The dwarf elder picks out a small forge and sends an artisan over the mountains to the Ember Tower: a flamekeeper\'s home needs a proper hearth.',
 
   // ─── cs_sd_oasis ───
   'story.cs_sd_oasis.2': 'The spring shows you the desert of a thousand years ago. No: a kingdom.',
@@ -414,6 +449,7 @@ export const STORY_EN: LocaleData = {
   'story.cs_sd_finale.8': 'But every fire under the sand is flowing to one place: the Abyss Rift. The one behind the gate is awake.',
   'story.cs_sd_finale.9': 'Four lamps. Enough. Come, child. Come to the gate, and bring the last one with you.',
   'story.cs_sd_finale.11': 'Four flames burn on the brand. For the first time, the empty heart of it aches.',
+  'story.cs_sd_finale.12': 'The nomads\' camel bells turn west. From now on, a caravan post stands beneath the Ember Tower.',
 
   // ─── cs_ar_gate ───
   'story.cs_ar_gate.2': 'You heard it too, didn\'t you? The voice behind the gate. Wardens have listened for a thousand years, and listening, stopped being themselves.',
@@ -501,4 +537,32 @@ export const STORY_EN: LocaleData = {
   'story.credits.4.text': 'Every Flamekeeper who made it this far',
   'story.credits.5.title': 'Thank You for Playing',
   'story.credits.6.text': 'Beneath the Abyss lies a deeper dark.\nNightmare difficulty awaits.',
+  // ─── cs_tf_moonfang (Volgan's cub) ───
+  'story.cs_tf_moonfang.2': 'The wolf king falls, and the Abyssfire in its eyes gutters out. For the first time in a thousand years, it is still.',
+  'story.cs_tf_moonfang.3': 'From the ferns beside the body creeps a silver-grey cub, a white crescent on its brow.',
+  'story.cs_tf_moonfang.4.title': 'Moonfang',
+  'story.cs_tf_moonfang.4.subtitle': 'Son of Volgan',
+  'story.cs_tf_moonfang.5': 'It sniffs the brand on your palm, and does not run.',
+  'story.cs_tf_moonfang.6': '...Come with me.',
+  'story.cs_tf_moonfang.7': 'The cub gives a low whine and falls in at your heel.',
+  // ─── cs_sd_helia (Helia's ember) ───
+  'story.cs_sd_helia.2': 'The light of the rebirth fades, but a small ember lingers on the sand and will not go out.',
+  'story.cs_sd_helia.4': 'A chick peeks out of the ember, its feather tips burning red-gold, and looks up at you shyly.',
+  'story.cs_sd_helia.5.title': 'Helia\'s Ember',
+  'story.cs_sd_helia.5.subtitle': 'The sunbird\'s last fire',
+  'story.cs_sd_helia.7': 'The sunbird left its last spark to you. The old ones say a chick like that chooses one person for life.',
+  'story.cs_sd_helia.8': 'The chick flutters onto your shoulder. Its warmth seeps through your clothes, all the way to your palm.',
+  // ─── cs_ar_altar (the warden's lamp goes to the tower) ───
+  'story.cs_ar_altar.2': 'The essence of the abyss is mine to keep now. It was fire once, and it will return to fire.',
+  'story.cs_ar_altar.3': 'I cannot guard the Heartflame for you. But its warmth, that I can keep.',
+  'story.cs_ar_altar.4': 'The warden hands her silver lamp to a messenger, bound for the Ember Tower, to light the altar that has lain cold for a thousand years.',
+  'story.cs_ar_altar.5': 'Offer embers when you are home, and the altar will guard you for a while. It is all Aethelyn\'s blood can give you.',
+  // ─── cs_tower_home (first visit to the Ember Tower) ───
+  'story.cs_tower_home.2.title': 'The Ember Tower',
+  'story.cs_tower_home.2.subtitle': 'The Flamekeeper\'s hearth',
+  'story.cs_tower_home.3': 'You woke in these ashes. Back then the tower lay broken: scorched steps and cold grey ash.',
+  'story.cs_tower_home.5': 'You\'re back, child. This old man came ahead to warm the place up for everyone.',
+  'story.cs_tower_home.6': 'This place was ashes once. Now it is your home.',
+  'story.cs_tower_home.7': 'Every seal you light, someone will follow the glow here and restore a wing.',
+  'story.cs_tower_home.8': 'Beneath the tower, the ley lines\' warmth stirs, as if in answer.',
 };

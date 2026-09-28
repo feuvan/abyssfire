@@ -93,6 +93,7 @@ export const Consumables: ItemBase[] = [
   { id: 'c_mp_potion_m', name: '中型法力药水', nameEn: 'MP Potion', description: '恢复80法力', type: 'consumable', icon: 'c_mp', levelReq: 10, sellPrice: 15, stackable: true, maxStack: 20 },
   { id: 'c_antidote', name: '解毒药水', nameEn: 'Antidote', description: '解除毒性状态', type: 'consumable', icon: 'c_antidote', levelReq: 1, sellPrice: 8, stackable: true, maxStack: 10 },
   { id: 'c_tp_scroll', name: '传送卷轴', nameEn: 'TP Scroll', description: '传送回营地', type: 'scroll', icon: 'c_scroll', levelReq: 1, sellPrice: 10, stackable: true, maxStack: 20 },
+  { id: 'c_ley_fruit', name: '灵脉果', nameEn: 'Ley Fruit', description: '喂给灵兽：增加经验与羁绊', type: 'consumable', icon: 'c_ley_fruit', levelReq: 1, sellPrice: 12, stackable: true, maxStack: 20 },
   { id: 'c_id_scroll', name: '鉴定卷轴', nameEn: 'ID Scroll', description: '鉴定未知装备', type: 'scroll', icon: 'c_scroll', levelReq: 1, sellPrice: 5, stackable: true, maxStack: 20 },
 ];
 

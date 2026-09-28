@@ -6,6 +6,8 @@ import type { LocaleData } from '../types';
 import { STORY_ZH } from './story';
 import { ABYSS_RUN_ZH } from './abyssRun';
 import { QUEST_STORY_ZH } from './questStory';
+import { HOMESTEAD_ZH } from './homestead';
+import { PETS_ZH } from './pets';
 
 const zhCN: LocaleData = {
   // ─── Boot Scene ───
@@ -756,35 +758,19 @@ const zhCN: LocaleData = {
 
   // Homestead
   'data.homestead.herb_garden.name': '药草园',
-  'data.homestead.herb_garden.desc': '自动产出药水材料',
-  'data.homestead.training_ground.name': '训练场',
-  'data.homestead.training_ground.desc': '佣兵经验加成',
-  'data.homestead.gem_workshop.name': '宝石工坊',
-  'data.homestead.gem_workshop.desc': '合成/升级宝石',
-  'data.homestead.pet_house.name': '宠物小屋',
-  'data.homestead.pet_house.desc': '饲养宠物，提升宠物经验加成',
+  'data.homestead.herb_garden.desc': '随击杀产出药水与灵脉果，回塔收获',
+  'data.homestead.training_ground.name': '商队驿站',
+  'data.homestead.training_ground.desc': '佣兵经验加成，可派灵兽远行',
+  'data.homestead.gem_workshop.name': '炉台',
+  'data.homestead.gem_workshop.desc': '3 颗同阶宝石合成 1 颗高阶宝石',
+  'data.homestead.pet_house.name': '月井',
+  'data.homestead.pet_house.desc': '未出战的灵兽在此修养，提升灵兽经验',
   'data.homestead.warehouse.name': '仓库',
-  'data.homestead.warehouse.desc': '扩展存储空间',
-  'data.homestead.altar.name': '祭坛',
-  'data.homestead.altar.desc': '临时Buff',
+  'data.homestead.warehouse.desc': '扩展仓库格子',
+  'data.homestead.altar.name': '心焰祭坛',
+  'data.homestead.altar.desc': '献祭余烬，换取限时祝福',
 
   // Pets
-  'data.pet.pet_sprite.name': '小精灵',
-  'data.pet.pet_sprite.desc': '可爱的精灵，增加经验获取',
-  'data.pet.pet_dragon.name': '小火龙',
-  'data.pet.pet_dragon.desc': '火龙幼崽，增加攻击力',
-  'data.pet.pet_owl.name': '猫头鹰',
-  'data.pet.pet_owl.desc': '智慧的猫头鹰，增加掉宝率',
-  'data.pet.pet_cat.name': '暗影猫',
-  'data.pet.pet_cat.desc': '神秘的黑猫，增加暴击率',
-  'data.pet.pet_phoenix.name': '凤凰雏',
-  'data.pet.pet_phoenix.desc': '凤凰之子，增加生命回复',
-  'data.pet.pet_storm_wolf.name': '雷狼',
-  'data.pet.pet_storm_wolf.desc': '雷暴之子，增加攻击速度（BOSS掉落）',
-  'data.pet.pet_jade_tortoise.name': '玄武龟',
-  'data.pet.pet_jade_tortoise.desc': '远古守护，增加防御力（任务奖励）',
-  'data.pet.pet_void_butterfly.name': '虚空蝶',
-  'data.pet.pet_void_butterfly.desc': '虚空使者，增加法力回复（稀有刷新）',
   'data.petEvolution.awakened': '·觉醒',
   'data.petEvolution.supreme': '·至尊',
 
@@ -1809,14 +1795,14 @@ const zhCN: LocaleData = {
   // ═══════════════════════════════════════════════════════════════════════
   // UI — Homestead Panel
   // ═══════════════════════════════════════════════════════════════════════
-  'ui.homestead.title': '家 园',
+  'ui.homestead.title': '余烬之塔',
   'ui.homestead.buildingsHeader': '── 建筑 ──',
   'ui.homestead.petsHeader': '── 宠物 ({count} 只) ──',
   'ui.homestead.maxLevel': '已满级',
   'ui.homestead.upgrade': '升级 {cost}G',
   'ui.homestead.noPets': '暂无宠物\n击杀Boss·完成任务·稀有刷新可获得',
-  'ui.homestead.footer': '按 H 关闭 · 建筑提供家园加成',
-  'ui.homestead.footerTouch': '建筑提供家园加成',
+  'ui.homestead.footer': '按 H 关闭 · 盟友随剧情来到塔下',
+  'ui.homestead.footerTouch': '盟友随剧情来到塔下',
   'ui.homestead.petStat.expBonus': '经验',
   'ui.homestead.petStat.damage': '攻击',
   'ui.homestead.petStat.magicFind': '掉宝',
@@ -1861,7 +1847,7 @@ const zhCN: LocaleData = {
   'ui.companion.noMerc': '在营地NPC处雇佣佣兵 (详见佣兵面板)',
   'ui.companion.mercStatus': '{name} ({type}) Lv.{level}  HP:{hp}/{maxHp}',
   'ui.companion.mercDead': '{name} ({type}) Lv.{level}  [阵亡]',
-  'ui.companion.footer': '按 P 关闭',
+  'ui.companion.footer': '按 U 关闭',
   'ui.companion.hireHeader': '─ 可雇佣佣兵 ─',
   'ui.companion.needCamp': '需要在营地NPC附近才能雇佣佣兵',
   'ui.companion.hire': '雇佣',
@@ -2254,6 +2240,12 @@ const zhCN: LocaleData = {
 
   // ─── Abyss Labyrinth (boons, curses, floor themes, run UI) ───
   ...ABYSS_RUN_ZH,
+
+  // ─── Ember Tower (余烬之塔): homestead panel, world labels, ley-beast quests ───
+  ...HOMESTEAD_ZH,
+
+  // ─── Ley-beasts (灵兽): names, abilities, pet panel ───
+  ...PETS_ZH,
 };
 
 export default zhCN;

@@ -38,6 +38,11 @@ export const AbyssRiftMap: MapData = {
   exits: [
     { col: 0, row: 58, targetMap: 'scorching_desert', targetCol: 118, targetRow: 118 },
   ],
+  // Rare ley-beast: the void butterfly drifts out of the rift's cracks.
+  petSpawns: [
+    { col: 45, row: 60, petId: 'pet_void_butterfly', chance: 0.08 },
+    { col: 100, row: 35, petId: 'pet_void_butterfly', chance: 0.08 },
+  ],
   levelRange: [38, 48] as [number, number],
 
   // ─── New Content: Field NPCs ──────────────────────────────────────────

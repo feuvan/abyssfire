@@ -79,7 +79,7 @@ export const ITEM_ICON_IDS: readonly string[] = [
   'w_sword', 'w_axe', 'w_mace', 'w_dagger', 'w_bow', 'w_staff', 'w_wand', 'w_shield',
   'a_helm', 'a_armor', 'a_gloves', 'a_boots', 'a_belt', 'j_ring', 'j_amulet',
   'g_ruby', 'g_sapphire', 'g_emerald', 'g_topaz', 'g_diamond',
-  'c_hp', 'c_mp', 'c_antidote', 'c_scroll', 'm_ore', 'm_scrap', 'm_dust', 'm_essence',
+  'c_hp', 'c_mp', 'c_antidote', 'c_scroll', 'c_ley_fruit', 'm_ore', 'm_scrap', 'm_dust', 'm_essence',
 ];
 
 /** Draw an item icon into `ctx` (size × size px, transparent background). */
@@ -303,6 +303,7 @@ function iconSpec(iconId: string, variant?: string): IconSpec {
     case 'c_mp': return potionSpec(0x2f6cf0, (variant && POTION_SIZES[variant]) || 'm', 'round');
     case 'c_antidote': return potionSpec(0x5fd03a, 'm', 'square');
     case 'c_scroll': return scrollSpec(pick(SCROLLS, variant));
+    case 'c_ley_fruit': return { draw: drawLeyFruit, opts: { under: (c) => glow(c, P(48, 56), 40, 0x6ff0c8, 0.6), over: leyFruitSparkles } };
     case 'm_ore': return { draw: drawOre };
     case 'm_scrap': return { draw: drawScrap };
     case 'm_dust': return { draw: drawDust, opts: { under: (c) => glow(c, P(48, 60), 40, 0x5f8cff, 0.55), over: dustSparkles } };
@@ -1796,6 +1797,20 @@ function drawEssence(c: CanvasRenderingContext2D): void {
   // small orbiting shards
   facetGem(c, 22, 72, gemCut('trillion', 7), 0xffd35a, { stroke: 1 });
   facetGem(c, 76, 30, gemCut('trillion', 5.5), 0xffd35a, { stroke: 1 });
+}
+
+/** 灵脉果: a glowing teal fruit with a leaf and a ley-vein seam (pet food). */
+function drawLeyFruit(c: CanvasRenderingContext2D): void {
+  celI(c, () => { c.moveTo(48, 30); c.quadraticCurveTo(50, 20, 56, 14); c.lineTo(59, 17); c.quadraticCurveTo(54, 22, 53, 31); c.closePath(); }, tone(0x6b4428));
+  celI(c, () => { c.moveTo(54, 22); c.bezierCurveTo(62, 10, 78, 12, 82, 20); c.bezierCurveTo(74, 28, 62, 28, 54, 22); c.closePath(); }, tone(0x3fae5c, { light: 0.4 }), { band: 2, hi: 0.9 });
+  celI(c, () => ellipsePath(c, P(48, 58), 27, 28), tone(0x3fd0b0, { light: 0.45 }), { band: 3.4, hi: 1.4 });
+  line(c, [P(40, 36), P(36, 52), P(42, 70), P(50, 82)], 2.2, css(0xc8fff0));
+  line(c, [P(58, 38), P(62, 56), P(56, 76)], 1.6, css(0x9ff6e0));
+}
+
+function leyFruitSparkles(c: CanvasRenderingContext2D): void {
+  sparkle(c, 30, 40, 5, '#e8fff8');
+  sparkle(c, 70, 72, 4, '#bff8ea', 0.9);
 }
 
 function essenceSparkles(c: CanvasRenderingContext2D): void {

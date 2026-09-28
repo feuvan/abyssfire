@@ -44,6 +44,10 @@ export const GameEvents = {
   BOSS_BAR: 'story:boss_bar',
   ACHIEVEMENT_UNLOCKED: 'achievement:unlocked',
   HOMESTEAD_UPGRADED: 'homestead:upgraded',
+  /** Ley-beast state changed (owned / active / level / bond): { petId | null }. */
+  PET_CHANGED: 'pet:changed',
+  /** A ley-beast joined the hero: { petId, silent }. */
+  PET_OBTAINED: 'pet:obtained',
   ITEM_DISCARDED: 'item:discarded',
   SAVE_GAME: 'save:game',
   LOAD_GAME: 'load:game',

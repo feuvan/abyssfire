@@ -136,5 +136,5 @@ describe('frame size registry', () => {
       expect(size, key).not.toBeNull();
       expect({ w: size!.frameW, h: size!.frameH }, key).toEqual({ w: frameWidth, h: frameHeight });
     }
-  });
+  }, 20_000); // importing SpriteGenerator pulls in every drawer; slow under a parallel run
 });

@@ -33,6 +33,8 @@ export interface StoryHost {
   /** Called when the world should freeze/unfreeze (hide HUD, stop input). */
   setCinematic: (on: boolean) => void;
   save: () => void;
+  /** Hand the hero a ley-beast (a trigger's `grantPet`), after its cutscene ends. */
+  grantPet?: (petId: string) => void;
 }
 
 /** Boss intro plays when the boss is this close (tiles). */
@@ -91,8 +93,10 @@ export class StoryDirector {
           this.setCinematic(false);
         }
       });
+      this.fire('zone_entered', this.h.mapId);
       return true;
     }
+    this.fire('zone_entered', this.h.mapId);
     return false;
   }
 
@@ -107,11 +111,13 @@ export class StoryDirector {
     }
   }
 
-  private fire(on: 'quest_turned_in' | 'quest_accepted' | 'monster_killed', key: string): void {
+  private fire(on: 'quest_turned_in' | 'quest_accepted' | 'monster_killed' | 'zone_entered', key: string): void {
     for (const trig of STORY_TRIGGERS) {
       if (trig.on !== on) continue;
-      const match = trig.on === 'monster_killed' ? trig.monsterId === key : trig.questId === key;
-      if (match) this.enqueueCutscene(trig.cutscene, on === 'monster_killed' ? 0 : 650);
+      const match = trig.on === 'monster_killed' ? trig.monsterId === key
+        : trig.on === 'zone_entered' ? trig.zoneId === key
+        : trig.questId === key;
+      if (match) this.enqueueCutscene(trig.cutscene, on === 'monster_killed' ? 0 : on === 'zone_entered' ? 900 : 650, trig.grantPet);
     }
   }
 
@@ -123,12 +129,16 @@ export class StoryDirector {
     void this.pump();
   }
 
-  private enqueueCutscene(id: string, delayMs = 0): void {
+  private enqueueCutscene(id: string, delayMs = 0, grantPet?: string): void {
     const cs = CUTSCENES[id];
     if (!cs) return;
     this.enqueue(id, async () => {
       if (delayMs > 0) await new Promise<void>(res => this.h.scene.time.delayedCall(delayMs, () => res()));
-      await this.cutscene(id);
+      try {
+        await this.cutscene(id);
+      } finally {
+        if (grantPet) this.h.grantPet?.(grantPet);
+      }
     });
   }
 
@@ -253,7 +263,7 @@ export class StoryDirector {
     if (speaker === 'hero') return { key: `player_${this.h.player().classData.id}`, frame: 0 };
     if ('npc' in speaker) {
       const def = NPCDefinitions[speaker.npc];
-      const unique = `npc_${speaker.npc}`;
+      const unique = `npc_${def?.spriteId ?? speaker.npc}`;
       const key = textures.exists(unique) ? unique : `npc_${def?.type ?? 'quest'}`;
       return textures.exists(key) ? { key, frame: 12 } : null;
     }

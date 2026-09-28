@@ -477,8 +477,8 @@ describe('Fix 7: V1 save migration includes companion defaults', () => {
     const save = makeV1Save();
     const migrated = migrateV1toV2(save);
     expect(migrated.homestead.pets).toHaveLength(1);
-    expect(migrated.homestead.pets[0].petId).toBe('wolf');
-    expect(migrated.homestead.pets[0].level).toBe(3);
+    expect(migrated.homestead.pets![0].petId).toBe('wolf');
+    expect(migrated.homestead.pets![0].level).toBe(3);
   });
 
   it('migrateV1toV2 ensures homestead.pets defaults to empty array', () => {
@@ -487,7 +487,7 @@ describe('Fix 7: V1 save migration includes companion defaults', () => {
     });
     const migrated = migrateV1toV2(save);
     expect(Array.isArray(migrated.homestead.pets)).toBe(true);
-    expect(migrated.homestead.pets.length).toBe(0);
+    expect(migrated.homestead.pets!.length).toBe(0);
   });
 
   it('migrateV1toV2 sets mercenary to undefined (no mercenary) for v1 saves', () => {
