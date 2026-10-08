@@ -148,7 +148,7 @@ module, UE 5.8+, macOS first then Windows/Android/iOS with touch UI, Chapter 1 f
 | ID | Decision |
 |---|---|
 | R1 | Walls and palisades 1.4 m; camera pitch −50° (W1) keeps the hero visible behind them; occluding props fade when they cover the hero. |
-| R2 | Height normalisation: warrior 1.80 m, mage 1.74 m, rogue 1.70 m, adult NPCs 1.68–1.82 m by build, goblins 1.05 m, slimes 0.6 m. |
+| R2 | Heights follow art-inventory-ch1.md §1.6 (web proportions, ≈ 4 heads): warrior 1.76 m to the helm crown, mage 1.71 m, rogue 1.62 m; NPCs normalised to 1.70–1.76 m so the hero is never shorter than a townsperson; goblin 0.92 m, chief 1.17 m, shaman 0.95 m, hunt leaders 1.15 m, slime 0.43 × 0.88 m. |
 | R3 | Outline: baked inverted hull (P7); world-space width 1.2–1.8 cm by asset size, darkened local colour. |
 | R4 | Weapons swap via `weapon_r`/`weapon_l` sockets (I6): one mesh per weapon base type family. |
 | R5 | Hero animations: shared idle/run/attack01-03/cast01-02/hurt/death/dodge per class **plus signature montages** for whirlwind, charge, multishot and blizzard/meteor casts; others reuse cast/attack with VFX variation. |
