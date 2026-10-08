@@ -11,7 +11,7 @@ import { ensureItemIcon } from '../graphics/icons/ItemIcons';
 import { ensureGlyph } from '../graphics/icons/UiGlyphs';
 
 export type HudIconId =
-  | 'inventory' | 'character' | 'skills' | 'map' | 'homestead' | 'quest'
+  | 'inventory' | 'character' | 'skills' | 'map' | 'homestead' | 'quest' | 'pets'
   | 'auto' | 'loot' | 'log';
 
 const SIZE = 96;
@@ -67,6 +67,18 @@ const DRAWN: Partial<Record<HudIconId, Draw>> = {
     celI(c, () => roundRectPath(c, 14, 74, 68, 12, 6), tone(0xc9ae7a), { band: 2, hi: 0.8 });
     for (let i = 0; i < 5; i++) line(c, [P(28, 34 + i * 8), P(i % 2 ? 60 : 68, 34 + i * 8)], 2, pt.shade);
   },
+  // Paw print with a ley spark (灵兽 panel)
+  pets: (c) => {
+    const pad = tone(0x6fd8b8, { light: 0.4 });
+    celI(c, () => { c.ellipse(48, 62, 20, 17, 0, 0, Math.PI * 2); }, pad, { band: 3, hi: 1.2 });
+    const toe = (x: number, y: number, rx: number, ry: number, rot: number): void => {
+      celI(c, () => { c.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); }, pad, { band: 2, hi: 0.9 });
+    };
+    toe(22, 42, 8, 10, -0.5);
+    toe(38, 28, 8, 11, -0.15);
+    toe(58, 28, 8, 11, 0.15);
+    toe(74, 42, 8, 10, 0.5);
+  },
   // Circular arrows around a spark (auto-combat)
   auto: (c) => {
     const t = tone(0x8ff07a, { light: 0.4 });
@@ -93,6 +105,7 @@ const DRAWN: Partial<Record<HudIconId, Draw>> = {
 const DRAWN_OPTS: Partial<Record<HudIconId, Parameters<typeof inked>[3]>> = {
   auto: { over: (c) => { sparkle(c, 48, 48, 11, '#ffffff'); glow(c, P(48, 48), 18, 0x8ff07a, 0.5); } },
   homestead: { under: (c) => glow(c, P(48, 64), 30, 0xffc060, 0.25) },
+  pets: { under: (c) => glow(c, P(48, 56), 34, 0x6ff0c8, 0.3), over: (c) => sparkle(c, 48, 62, 7, '#e8fff8') },
 };
 
 /** Texture key for a HUD icon (96×96, transparent), generated on first use. */

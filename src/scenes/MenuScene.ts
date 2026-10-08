@@ -747,6 +747,8 @@ export class MenuScene extends Phaser.Scene {
           ['J', t('menu.helpPanel.ui.questLog')],
           ['M', t('menu.helpPanel.ui.map')],
           ['H', t('menu.helpPanel.ui.homestead')],
+          ['P', t('menu.helpPanel.ui.pets')],
+          ['U', t('menu.helpPanel.ui.companion')],
           ['O', t('menu.helpPanel.ui.audio')],
           ['ESC', t('menu.helpPanel.ui.escape')],
         ],

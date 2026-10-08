@@ -111,6 +111,18 @@ Each zone (`src/data/maps/`) defines: tile grid, spawn points, NPC positions, ex
 - Each floor's exit is sealed until its keeper dies (`sealKeeper`: a themed gatekeeper, the mid-boss, or 卡萨诺尔 on the boss floor). Stepping on the open exit offers 3 boons (`BOONS` in `src/data/abyssRun.ts`, `rollBoonOffer`); boons are `Partial<EquipStats>` merged in `ZoneScene.getEquipStats` for the run. Labyrinth monsters never respawn.
 - UI (`src/ui/AbyssRunUI.ts`) only talks through the EventBus contract at the end of `EventBus.ts` (tier picker, boon cards, run HUD, run summary). The summary is emitted after returning to the rift.
 
+### Ember Tower (余烬之塔, homestead)
+- Design: `docs/homestead-pets.md`. Zone `ember_tower` (`src/data/maps/ember_tower.ts`, hand-authored 48×48, no monsters, not in `MapOrder`): the tower, wing plots (`TOWER_PLOTS`), pet meadow, stash camp, return portal. Opens once 篝火营地 (`TOWER_UNLOCK_QUEST`) is turned in.
+- Data (`src/data/homestead.ts`, pure): `BUILDINGS` (gold + ember costs; `unlockQuest` = the chapter finale that sends that wing's ally, altar = 以渊为引; warehouse always open), garden yields, gem combining (3 → 1, max tier by forge level), `EXPEDITION_OPTIONS`, `BLESSINGS`.
+- State: `HomesteadSystem` (building levels, bonuses, upgrades) owns `tower: HomesteadTower` (embers, story unlocks via `syncUnlocks(turnedInQuests)` — a newly unlocked wing starts at Lv1 — garden stock, one pet expedition, altar blessing, `towerReturn`). Saved flat inside `SaveData.homestead` (all optional → old saves load with defaults).
+- World: `EmberTower` (created by `ZoneScene` per zone) draws an 归炉 hearthstone by each camp or, in the tower, the stage props (`decor_tower_<id>_<0|1|2>`, fallbacks until the art exists), meadow pets and the portal; it also runs the actions (harvest, combine, expedition, blessing, upgrade), embers from kills (`embersForKill`) and quest turn-ins (`rewards.embers`), and ticks timers. Blessing stats merge in `ZoneScene.getEquipStats`; entering the tower ends the blessing.
+- UI: `src/ui/HomesteadPanel.ts` (pages buildings / garden / workshop / caravan / altar; actions that need the wing only work in the tower). Tower allies (`tower_*` NPCs, `spriteId` borrows their chapter selves' look) open their page. Strings: `src/i18n/locales/homestead.ts`.
+- Story: finale cutscenes end with the ally heading to the tower; `cs_tower_home` (`zone_entered` trigger), `cs_tf_moonfang` / `cs_sd_helia` grant 月牙 / 赫莉娅之烬 via a trigger's `grantPet` (old saves get them from `EmberTower.retroGrantPets`).
+
+### Ley-beasts (灵兽, pets)
+- Data `src/data/pets.ts` (8 beasts, role, passive, abilities with `unlock` 0 = base / 1 = 觉醒). State `PetSystem` (`session.pets`: level/exp, evolution at 10/20, bond 0–5 capped by the 月井 level, `getBonuses()` merged in `getEquipStats`; pure AI choice `choosePetAction`). Runtime `PetCompanion` (follows, fights the hero's target, abilities, exhaustion at 0 HP, phoenix revive, max-bond rescue). Saved as `SaveData.pets` (`migratePetSave` reads the old `homestead.pets`).
+- Pets are met through story beats and side quests, not random drops (table in `docs/homestead-pets.md`). Sheets: `SpriteGenerator.ensurePetSheet(scene, petId, stage)` → `beast_<id>[_e1|_e2]`, se + ne views, idle/walk/attack/cast/hurt (`src/graphics/sprites/pets/`). Panel `src/ui/PetPanel.ts` (P; mercenary panel is U).
+
 ### Loot System (D2-style)
 Quality tiers: Normal (white) -> Magic (blue, 1-2 affixes) -> Rare (yellow, 3-4) -> Legendary (orange, fixed) -> Set (green). Affixes have tiers 1-5 scaling with zone difficulty.
 
@@ -137,9 +149,9 @@ Quality tiers: Normal (white) -> Magic (blue, 1-2 affixes) -> Rare (yellow, 3-4)
 - D2-style loot with affixes, identify scrolls, gem sockets, buyback
 - Equipment (10 slots), inventory, stash panel (stash keeper NPC; homestead warehouse adds slots)
 - Quest system with tracking; NPC shops, dialogue trees, quests
-- Fog of war, minimap, homestead (buildings, pets), achievements
+- Fog of war, minimap, Ember Tower homestead and ley-beast companions (see above), achievements
 - Save/load via IndexedDB; audio (BGM + SFX); zh-CN / en localisation (`t()`)
-- Keyboard controls (WASD, 1-6 skills, I/K/M/H/C panels), click or hold-to-move with the mouse (`ZoneScene.updateHoldMove`: the hero keeps walking toward the held pointer, re-pathing as it moves) and mobile touch controls
+- Keyboard controls (WASD, 1-6 skills, I/K/M/H/C/P/U panels), click or hold-to-move with the mouse (`ZoneScene.updateHoldMove`: the hero keeps walking toward the held pointer, re-pathing as it moves) and mobile touch controls
 - Art: all characters, monsters and NPCs are procedural cel-shaded rigs (`src/graphics/sprites/rig/`);
   zone-themed terrain (`src/graphics/terrain/`), props, pooled skill VFX (`src/graphics/vfx/`),
   item/skill icons (`src/graphics/icons/`) and the UI kit (`src/ui/UiKit.ts`) follow

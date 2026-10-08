@@ -3,6 +3,7 @@ import { TwilightForestMap } from './twilight_forest';
 import { AnvilMountainsMap } from './anvil_mountains';
 import { ScorchingDesertMap } from './scorching_desert';
 import { AbyssRiftMap } from './abyss_rift';
+import { EmberTowerMap } from './ember_tower';
 import { MapGenerator } from '../../systems/MapGenerator';
 import type { MapData } from '../types';
 import { LoreByZone } from '../loreCollectibles';
@@ -39,6 +40,8 @@ const rawMaps: Record<string, MapData> = {
   anvil_mountains: AnvilMountainsMap,
   scorching_desert: ScorchingDesertMap,
   abyss_rift: AbyssRiftMap,
+  // The homestead (余烬之塔): hand-authored, outside the zone progression (not in MapOrder).
+  ember_tower: EmberTowerMap,
 };
 
 // Generate tiles/collisions for any map that has empty tile arrays

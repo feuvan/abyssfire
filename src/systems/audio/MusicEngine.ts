@@ -473,7 +473,9 @@ export class MusicEngine {
     }
 
     // Abyss Labyrinth floors are generated per run; they share the rift's score.
-    const theme = ZONE_THEMES[zoneId] ?? (zoneId.startsWith('dungeon_floor_') ? ZONE_THEMES.abyss_rift : undefined);
+    // The Ember Tower (homestead) stands on the plains and plays their score.
+    const theme = ZONE_THEMES[zoneId] ?? (zoneId.startsWith('dungeon_floor_') ? ZONE_THEMES.abyss_rift
+      : zoneId === 'ember_tower' ? ZONE_THEMES.emerald_plains : undefined);
     if (!theme) {
       if (oldSet) this._fadeOutAndDestroy(ctx, oldSet, duration);
       return;

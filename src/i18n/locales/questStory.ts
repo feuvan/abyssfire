@@ -146,6 +146,13 @@ export const QUEST_STORY_ZH: LocaleData = {
   // ─── Zone 5: 深渊裂隙 — 虚空研究者 ───
   'data.quest.q_void_crystals.offer': '裂隙边长出了会“呼吸”的结晶！一呼一吸，空间就皱一下。趁它们还没长成下一道裂口，采五块回来——要活的！',
   'data.quest.q_void_crystals.complete': '看，还在呼吸！频率和裂隙完全同步……我敢打赌，那扇门的心跳就藏在这里面。剩下的交给我。',
+  // ─── Ley-beast quests (灵兽) ───
+  'data.quest.q_pet_owl.offer': '月印碎的那夜，我的老伙计月鸮吓得飞走了。它掉的羽毛会映月光，你顺着找找，它多半躲在哪棵空心老树里。',
+  'data.quest.q_pet_owl.complete': '是它！还是这么爱瞪眼。它认准你了，就跟你去吧。',
+  'data.quest.q_pet_cat.offer': '有只猫的影子被亡灵拖进了生死之间，夜夜在我耳边叫。夺回它的影子碎片，再打倒看守它的缚影者。',
+  'data.quest.q_pet_cat.complete': '影子回来了，它却不肯回阴间，只肯跟着你。随它吧。',
+  'data.quest.q_pet_dragon.offer': '篡座者倒下后，熔炉底下滚出一枚热乎乎的龙蛋！要孵它得有新火。去石魔心口取三团熔炉余烬，送进铁匠的炉子。',
+  'data.quest.q_pet_dragon.complete': '炉火一旺，壳就裂了！瞧这小家伙，一张嘴就喷火星子。它是你的了。',
 };
 
 export const QUEST_STORY_EN: LocaleData = {
@@ -287,4 +294,11 @@ export const QUEST_STORY_EN: LocaleData = {
   // ─── Zone 5: Abyss Rift — Void Researcher ───
   'data.quest.q_void_crystals.offer': 'Crystals that breathe, growing on the rift\'s edge! With every breath, space wrinkles. Harvest five before they grow into the next tear, and bring them back alive!',
   'data.quest.q_void_crystals.complete': 'Look, still breathing! Perfectly in step with the rift... I\'d wager the gate\'s own heartbeat is in here. Leave the rest to me.',
+  // ─── Ley-beast quests ───
+  'data.quest.q_pet_owl.offer': 'The night the Moon Seal broke, my old friend Moonwing fled in fright. Its feathers catch the moonlight. Follow them, and you\'ll likely find it in some hollow tree.',
+  'data.quest.q_pet_owl.complete': 'That\'s him! Still glaring at everything. He has chosen you. Go on, take him along.',
+  'data.quest.q_pet_cat.offer': 'The dead dragged a cat\'s shadow in between life and death, and it cries in my ear every night. Take back its shadow shards, then defeat the Shade Binder who keeps it.',
+  'data.quest.q_pet_cat.complete': 'The shadow is whole again, and it won\'t go back to the dark. It only follows you. Let it.',
+  'data.quest.q_pet_dragon.offer': 'With the usurper gone, a warm dragon egg rolled out from under the old forge! It needs fresh fire to hatch. Take three forge embers from the stone golems\' hearts and feed them to the blacksmith\'s furnace.',
+  'data.quest.q_pet_dragon.complete': 'The fire roared and the shell cracked! Look at the little one, sneezing sparks already. It\'s yours.',
 };

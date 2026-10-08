@@ -413,6 +413,8 @@ export interface QuestReward {
   /** Fixed item base ids (consumables, gems, set pieces). */
   items?: string[];
   petReward?: string;
+  /** Homestead currency (余烬) paid on turn-in. */
+  embers?: number;
   /** Pick-one equipment rewards (class-appropriate, generated at turn-in). */
   choices?: QuestRewardChoice[];
   /** Quality of the generated choices (default: rare for main quests, magic for side). */
@@ -467,6 +469,8 @@ export interface NPCDefinition {
   quests?: string[];
   /** Branching dialogue tree (replaces linear dialogue[] when present). */
   dialogueTree?: DialogueTree;
+  /** Borrow another NPC's look (e.g. the tower's allies wear their chapter selves' sprites). */
+  spriteId?: string;
 }
 
 export interface AchievementDefinition {
@@ -480,12 +484,47 @@ export interface AchievementDefinition {
   title?: string;
 }
 
+/** Ember Tower state (余烬之塔) saved next to the building levels; every field optional for old saves. */
+export interface HomesteadSaveExtras {
+  /** Homestead currency. */
+  embers?: number;
+  /** Herb garden: kills counted toward the next yield, and items waiting to be harvested. */
+  garden?: { progress: number; stock: Record<string, number> };
+  /** Pet expedition from the caravan post (one at a time). */
+  expedition?: HomesteadExpedition | null;
+  /** Altar blessing (lasts until the next return to the tower or until its time runs out). */
+  blessing?: HomesteadBlessing | null;
+  /** Where the tower's return portal sends the hero. */
+  towerReturn?: { mapId: string; col: number; row: number } | null;
+}
+
+export interface HomesteadExpedition {
+  petId: string;
+  /** Expedition option id (short / long). */
+  optionId: string;
+  kills: number;
+  killsRequired: number;
+  /** Play time left (ms); the expedition is back when this or the kill count runs out. */
+  remainingMs: number;
+}
+
+export interface HomesteadBlessing {
+  id: string;
+  /** Altar level it was bought at (scales the stats). */
+  level: number;
+  remainingMs: number;
+}
+
 export interface HomesteadBuilding {
   id: string;
   name: string;
   description: string;
   maxLevel: number;
-  costPerLevel: { gold: number; materials?: Record<string, number> }[];
+  costPerLevel: { gold: number; embers?: number; materials?: Record<string, number> }[];
+  /** Main quest whose turn-in brings this wing's ally to the tower (absent: always open). */
+  unlockQuest?: string;
+  /** NPC who tends this wing in the tower. */
+  allyNpc?: string;
   bonusPerLevel: { stat: string; value: number }[];
 }
 
@@ -499,6 +538,24 @@ export interface PetDefinition {
   bonusPerLevel: number;
   maxLevel: number;
   feedItem: string;
+}
+
+/** One owned ley-beast (PetSystem). */
+export interface PetSaveInstance {
+  petId: string;
+  level: number;
+  exp: number;
+  /** Evolution stage: 0, 1 (觉醒), 2 (至尊). */
+  evolved: number;
+  /** Bond 0–5. */
+  bond: number;
+  /** Progress towards the next bond level (0–99). */
+  bondProgress: number;
+}
+
+export interface PetSaveData {
+  owned: PetSaveInstance[];
+  active: string | null;
 }
 
 export type MercenaryType = 'tank' | 'melee' | 'ranged' | 'healer' | 'mage';
@@ -579,9 +636,13 @@ export interface SaveData {
   exploration: Record<string, boolean[][]>;
   homestead: {
     buildings: Record<string, number>;
-    pets: { petId: string; level: number; exp: number; evolved?: number }[];
+    /** Legacy (pre ley-beast) pet list; read for migration, new saves write `pets`. */
+    pets?: { petId: string; level: number; exp: number; evolved?: number }[];
+    /** Legacy active pet; see `pets`. */
     activePet?: string;
-  };
+  } & HomesteadSaveExtras;
+  /** Ley-beasts (PetSystem). Absent in older saves: migrated from `homestead.pets`. */
+  pets?: PetSaveData;
   achievements: Record<string, number>;
   settings: {
     autoCombat: boolean;

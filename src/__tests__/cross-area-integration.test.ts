@@ -23,6 +23,7 @@ import { CombatSystem, emptyEquipStats, getSkillDamageMultiplier, getSynergyBonu
 import type { CombatEntity, ActiveBuff, EquipStats, DamageResult } from '../systems/CombatSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { HomesteadSystem } from '../systems/HomesteadSystem';
+import { PetSystem } from '../systems/PetSystem';
 import { AchievementSystem } from '../systems/AchievementSystem';
 import { MercenarySystem, MERCENARY_DEFS } from '../systems/MercenarySystem';
 import { StatusEffectSystem } from '../systems/StatusEffectSystem';
@@ -293,30 +294,26 @@ describe('VAL-CROSS-001: Save/load round-trip preserves all system state', () =>
     expect(merc2.activeMercenary!.hp).toBe(0);
   });
 
-  it('HomesteadSystem state roundtrip preserves buildings, pets, and active pet', () => {
+  it('HomesteadSystem + PetSystem state roundtrip preserves buildings, pets, and active pet', () => {
     const hs = new HomesteadSystem();
     hs.buildings = { herb_garden: 3, pet_house: 2 };
-    hs.addPet('pet_sprite');
-    hs.pets[0].level = 5;
-    hs.pets[0].exp = 30;
-    hs.activePet = 'pet_sprite';
+    const pets = new PetSystem();
+    pets.addPet('pet_sprite');
+    pets.pets[0].level = 5;
+    pets.pets[0].exp = 30;
 
     // Serialize (same as autoSave path)
-    const homesteadSave = {
-      buildings: hs.buildings,
-      pets: hs.pets,
-      activePet: hs.activePet ?? undefined,
-    };
+    const save = { homestead: { buildings: hs.buildings }, pets: pets.toSave() };
 
     const hs2 = new HomesteadSystem();
-    hs2.buildings = homesteadSave.buildings;
-    hs2.pets = homesteadSave.pets.map(p => ({ ...p }));
-    hs2.activePet = homesteadSave.activePet ?? null;
+    hs2.buildings = save.homestead.buildings;
+    const pets2 = new PetSystem();
+    pets2.loadSave(JSON.parse(JSON.stringify(save)));
 
     expect(hs2.buildings).toEqual(hs.buildings);
-    expect(hs2.pets[0].petId).toBe('pet_sprite');
-    expect(hs2.pets[0].level).toBe(5);
-    expect(hs2.activePet).toBe('pet_sprite');
+    expect(pets2.pets[0].petId).toBe('pet_sprite');
+    expect(pets2.pets[0].level).toBe(5);
+    expect(pets2.activePet).toBe('pet_sprite');
   });
 
   it('AchievementSystem state roundtrip preserves progress and unlocked', () => {
@@ -443,17 +440,16 @@ describe('VAL-CROSS-003: Companions follow through zone transitions', () => {
     expect(merc2.activeMercenary!.equipment.weapon?.uid).toBe('trans_weap');
   });
 
-  it('HomesteadSystem active pet persists through zone transitions', () => {
-    const hs = new HomesteadSystem();
-    hs.buildings = { pet_house: 3 };
-    hs.addPet('pet_sprite');
-    hs.setActivePet('pet_sprite');
-    hs.pets[0].level = 8;
-    hs.pets[0].exp = 50;
+  it('PetSystem active pet persists through zone transitions', () => {
+    const pets = new PetSystem();
+    pets.addPet('pet_sprite');
+    pets.setActivePet('pet_sprite');
+    pets.pets[0].level = 8;
+    pets.pets[0].exp = 50;
 
-    // Same instance reused across zones
-    expect(hs.activePet).toBe('pet_sprite');
-    expect(hs.pets[0].level).toBe(8);
+    // Same instance (GameSession) reused across zones
+    expect(pets.activePet).toBe('pet_sprite');
+    expect(pets.pets[0].level).toBe(8);
   });
 });
 
@@ -722,25 +718,24 @@ describe('VAL-CROSS-006: Mercenary/pet uses standard combat and buff systems', (
     expect(getBuffValue(target, 'damageReduction')).toBeLessThan(0);
   });
 
-  it('pet passive bonuses aggregate via getTotalBonuses()', () => {
-    const hs = new HomesteadSystem();
-    hs.buildings = { pet_house: 3 };
-    hs.addPet('pet_sprite'); // expBonus
-    hs.setActivePet('pet_sprite');
-    hs.pets[0].level = 10;
+  it('pet passive bonuses come from PetSystem.getBonuses()', () => {
+    const pets = new PetSystem();
+    pets.addPet('pet_sprite'); // expBonus
+    pets.setActivePet('pet_sprite');
+    pets.pets[0].level = 10;
 
-    const bonuses = hs.getTotalBonuses();
+    const bonuses = pets.getBonuses();
     expect(bonuses['expBonus']).toBeDefined();
     expect(bonuses['expBonus']).toBeGreaterThan(0);
   });
 
   it('pet damage calculation uses standard damage scaling', () => {
-    const hs = new HomesteadSystem();
-    hs.addPet('pet_dragon');
-    hs.setActivePet('pet_dragon');
-    hs.pets[0].level = 10;
+    const pets = new PetSystem();
+    pets.addPet('pet_dragon');
+    pets.setActivePet('pet_dragon');
+    pets.pets[0].level = 10;
 
-    const petDmg = hs.calculatePetDamage(100); // 100 player damage
+    const petDmg = pets.calculatePetDamage(100); // 100 player damage
     // At level 10: fraction = 0.05 + 10*0.005 = 0.10 → 10% of 100 = 10
     expect(petDmg).toBeGreaterThan(0);
     expect(petDmg).toBeLessThanOrEqual(15); // max 15% fraction
@@ -938,9 +933,11 @@ describe('VAL-CROSS-010: Homestead building effects propagate to all dependent s
     expect(bonuses['gemBonus']).toBe(8); // 4 * 2
   });
 
-  it('pet house provides pet EXP bonus', () => {
+  it('pet house (月井) provides pet EXP bonus', () => {
     hs.buildings = { pet_house: 3 };
-    expect(hs.getPetExpBonus()).toBeCloseTo(1.3); // 1 + 3*0.1
+    const pets = new PetSystem();
+    pets.setBuildingLevelSource(id => hs.getBuildingLevel(id));
+    expect(pets.getExpMultiplier()).toBeCloseTo(1.3); // 1 + 3*0.1
   });
 
   it('warehouse provides stash slots', () => {
@@ -969,6 +966,9 @@ describe('VAL-CROSS-010: Homestead building effects propagate to all dependent s
   });
 
   it('building effects apply immediately after upgrade', () => {
+    // Story wings open with their chapter finale (herb garden: 灵脉之印).
+    hs.tower.syncUnlocks(['q_secure_plains']);
+    hs.tower.embers = 100;
     const bonusesBefore = hs.getTotalBonuses();
     hs.upgrade('herb_garden');
     const bonusesAfter = hs.getTotalBonuses();
@@ -1000,11 +1000,12 @@ describe('VAL-CROSS-011: Death and respawn preserves all system state', () => {
   it('homestead upgrades preserved after death', () => {
     const hs = new HomesteadSystem();
     hs.buildings = { herb_garden: 3, pet_house: 2 };
-    hs.addPet('pet_sprite');
+    const pets = new PetSystem();
+    pets.addPet('pet_sprite');
 
-    // Simulate death (homestead is persistent system, not affected)
+    // Simulate death (homestead / pets are persistent systems, not affected)
     expect(hs.buildings.herb_garden).toBe(3);
-    expect(hs.pets.length).toBe(1);
+    expect(pets.pets.length).toBe(1);
   });
 
   it('achievement progress unchanged after death', () => {
@@ -1467,8 +1468,10 @@ describe('Cross-area edge cases', () => {
     const hs = new HomesteadSystem();
     hs.resetState();
     expect(hs.buildings).toEqual({});
-    expect(hs.pets).toEqual([]);
-    expect(hs.activePet).toBeNull();
+    const pets = new PetSystem();
+    pets.resetState();
+    expect(pets.pets).toEqual([]);
+    expect(pets.activePet).toBeNull();
 
     const merc = new MercenarySystem();
     expect(merc.activeMercenary).toBeNull();

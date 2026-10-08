@@ -91,11 +91,24 @@ import type { DecorDrawer } from './sprites/decorations/DecorKit';
 import { STATIC_CAMP_DRAWERS, makeTentDrawer, makeBannerDrawer, makeFlameDrawer, FLAME_FRAMES } from './sprites/decorations/CampProps';
 import { EVENT_PROP_DRAWERS } from './sprites/decorations/EventProps';
 import { PetSpriteDrawers } from './sprites/decorations/Pets';
+import { TOWER_PROP_DRAWERS } from './sprites/decorations/TowerProps';
 import { LootBagDrawer } from './sprites/effects/LootBag';
 import { ExitPortalDrawer } from './sprites/effects/ExitPortal';
 import { LORE_PROP_DRAWERS } from './sprites/decorations/LoreProps';
 import { DUNGEON_GATE_DRAWERS } from './sprites/effects/DungeonGates';
 import { PICKUP_DRAWERS } from './sprites/effects/Pickups';
+import {
+  PET_ACTION_ORDER,
+  PET_ACTION_FRAME_COUNTS,
+  PET_FRAME_RATES,
+  PET_VIEWS,
+  getPetDrawer,
+  getPetSheetMeta,
+  petActionFrameRange,
+  petSheetKey,
+  type PetSheetMeta,
+  type PetStage,
+} from './sprites/pets';
 
 // ── Frame Layout Constants ──────────────────────────────────────────────────
 const IDLE_START = 0, IDLE_COUNT = 4;
@@ -244,7 +257,7 @@ const NPC_DRAWER_BY_KEY = new Map<string, EntityDrawer>(
   [...NPC_DRAWERS, ...EVENT_NPC_DRAWERS].map(drawer => [drawer.key, drawer]),
 );
 const DECOR_DRAWER_BY_KEY = new Map<string, EntityDrawer>(
-  [...DECOR_DRAWERS, ...EVENT_PROP_DRAWERS, ...PetSpriteDrawers, ...LORE_PROP_DRAWERS].map(drawer => [drawer.key, drawer]),
+  [...DECOR_DRAWERS, ...EVENT_PROP_DRAWERS, ...PetSpriteDrawers, ...LORE_PROP_DRAWERS, ...TOWER_PROP_DRAWERS].map(drawer => [drawer.key, drawer]),
 );
 // Gates and pickups are generated lazily (ensureEffect) the first time a zone needs them.
 const EFFECT_DRAWER_BY_KEY = new Map<string, EntityDrawer>(
@@ -285,6 +298,31 @@ export class SpriteGenerator {
 
   static ensureMonsterSheet(scene: Phaser.Scene, spriteKey: string): void {
     this.ensureEntitySheet(scene, spriteKey);
+  }
+
+  /**
+   * Lazily generate a ley-beast sheet (`beast_<petId>`, `_e1`, `_e2` for the
+   * evolved stages) and register its animations: `<key>_<action>` for the se
+   * view and `<key>_ne_<action>` for the back view, actions idle / walk /
+   * attack / cast / hurt. Sheets follow the monster cache rules (kept for
+   * `sheetKeepZones` zone changes after their last use). Returns the key.
+   */
+  static ensurePetSheet(scene: Phaser.Scene, petId: string, stage: 0 | 1 | 2): string {
+    const drawer = getPetDrawer(petId, stage);
+    const key = drawer?.key ?? petSheetKey(petId, stage);
+    if (!drawer) return key;
+    this.sheetLastUsed.set(key, this.zoneEpoch);
+    const generator = new SpriteGenerator(scene);
+    if (!scene.textures.exists(key)) {
+      generator.generatePetSheet(drawer);
+    }
+    generator.registerPetAnimations(key);
+    return key;
+  }
+
+  /** Placement / animation metadata for a ley-beast sheet (see `PetSheetMeta`). */
+  static getPetSheetMeta(petId: string, stage: 0 | 1 | 2): PetSheetMeta | null {
+    return getPetSheetMeta(petId, stage as PetStage);
   }
 
   static ensureNPCSheet(scene: Phaser.Scene, npcId: string, npcType: string): void {
@@ -401,19 +439,21 @@ export class SpriteGenerator {
     for (const key of scene.textures.getTextureKeys()) {
       const shouldRelease =
         key.startsWith('monster_') ||
+        key.startsWith('beast_') ||
         key.startsWith('npc_') ||
         key.startsWith('decor_') ||
         key === 'loot_bag' ||
         key === 'exit_portal';
       if (!shouldRelease) continue;
       if (this.isExternalTexture(scene, key)) continue;
-      if (key.startsWith('monster_') || key.startsWith('npc_')) {
+      if (key.startsWith('monster_') || key.startsWith('npc_') || key.startsWith('beast_')) {
         const used = this.sheetLastUsed.get(key) ?? -Infinity;
         if (this.zoneEpoch - used < this.sheetKeepZones) continue;
         this.sheetLastUsed.delete(key);
       }
       if (key.startsWith('monster_')) this.clearEntityAnimations(scene, key, false);
       if (key.startsWith('npc_')) this.clearNPCAnimations(scene, key);
+      if (key.startsWith('beast_')) this.clearPetAnimations(scene, key);
       if (key.startsWith('decor_') && scene.anims.exists(`${key}_anim`)) scene.anims.remove(`${key}_anim`);
       scene.textures.remove(key);
     }
@@ -470,6 +510,15 @@ export class SpriteGenerator {
     }
     for (const view of PLAYER_VIEWS) {
       for (const action of MONSTER_ACTIONS) {
+        const animKey = playerAnimKey(key, view, action);
+        if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
+      }
+    }
+  }
+
+  private static clearPetAnimations(scene: Phaser.Scene, key: string): void {
+    for (const view of PET_VIEWS) {
+      for (const action of PET_ACTION_ORDER) {
         const animKey = playerAnimKey(key, view, action);
         if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
       }
@@ -615,6 +664,49 @@ export class SpriteGenerator {
     for (let i = 0; i < drawer.totalFrames; i++) {
       const cell = sheetFrameOrigin(grid, i);
       canvasTex.add(i, 0, cell.x, cell.y, fw, fh);
+    }
+  }
+
+  /** Ley-beast sheet: every pet action once per view (view-major). */
+  private generatePetSheet(drawer: NonNullable<ReturnType<typeof getPetDrawer>>): void {
+    if (this.shouldSkipGeneration(drawer.key)) return;
+    const s = TEXTURE_SCALE;
+    const fw = drawer.frameW * s, fh = drawer.frameH * s;
+    const grid = computeSheetGrid(fw, fh, drawer.totalFrames);
+    const [canvas, ctx] = this.utils.createCanvas(grid.width, grid.height);
+    for (const view of PET_VIEWS) {
+      for (const action of PET_ACTION_ORDER) {
+        const { start } = petActionFrameRange(view, action);
+        for (let f = 0; f < PET_ACTION_FRAME_COUNTS[action]; f++) {
+          this.drawCell(ctx, grid, start + f, fw, fh, false, c => drawer.drawPose(c, action, f, fw, fh, view));
+        }
+      }
+    }
+    if (this.scene.textures.exists(drawer.key)) this.scene.textures.remove(drawer.key);
+    const tex = this.scene.textures.addCanvas(drawer.key, canvas)!;
+    for (let i = 0; i < drawer.totalFrames; i++) {
+      const cell = sheetFrameOrigin(grid, i);
+      tex.add(i, 0, cell.x, cell.y, fw, fh);
+    }
+  }
+
+  private registerPetAnimations(key: string): void {
+    const anims = this.scene.anims;
+    // An external single-view PNG override only holds the first view.
+    const frames = this.scene.textures.get(key).frameTotal - 1;
+    for (const view of PET_VIEWS) {
+      for (const action of PET_ACTION_ORDER) {
+        const { start, end } = petActionFrameRange(view, action);
+        if (end >= frames) continue;
+        const animKey = playerAnimKey(key, view, action);
+        if (anims.exists(animKey)) continue;
+        anims.create({
+          key: animKey,
+          frames: anims.generateFrameNumbers(key, { start, end }),
+          frameRate: PET_FRAME_RATES[action],
+          repeat: action === 'idle' || action === 'walk' ? -1 : 0,
+        });
+      }
     }
   }
 

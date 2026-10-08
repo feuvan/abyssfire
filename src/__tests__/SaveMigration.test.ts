@@ -289,7 +289,7 @@ describe('migrateV1toV2', () => {
     const v1 = makeV1Save();
     const v2 = migrateV1toV2(v1);
     expect(v2.homestead.buildings).toEqual({ herb_garden: 2, warehouse: 1 });
-    expect(v2.homestead.pets.length).toBe(1);
+    expect(v2.homestead.pets!.length).toBe(1);
     expect(v2.homestead.activePet).toBe('wolf');
   });
 

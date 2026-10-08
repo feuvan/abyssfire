@@ -85,8 +85,13 @@ export interface BossIntro {
   cutscene: string;
 }
 
-/** When a story beat plays. */
+/**
+ * When a story beat plays. `grantPet` hands the hero a ley-beast once the
+ * cutscene ends (the story's pet beats: 月牙, 赫莉娅之烬).
+ */
 export type StoryTrigger =
-  | { on: 'quest_turned_in'; questId: string; cutscene: string }
-  | { on: 'quest_accepted'; questId: string; cutscene: string }
-  | { on: 'monster_killed'; monsterId: string; cutscene: string };
+  | { on: 'quest_turned_in'; questId: string; cutscene: string; grantPet?: string }
+  | { on: 'quest_accepted'; questId: string; cutscene: string; grantPet?: string }
+  | { on: 'monster_killed'; monsterId: string; cutscene: string; grantPet?: string }
+  /** First time the hero enters a zone (after its chapter card, if any). */
+  | { on: 'zone_entered'; zoneId: string; cutscene: string; grantPet?: string };

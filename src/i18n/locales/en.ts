@@ -6,6 +6,8 @@ import type { LocaleData } from '../types';
 import { STORY_EN } from './story';
 import { ABYSS_RUN_EN } from './abyssRun';
 import { QUEST_STORY_EN } from './questStory';
+import { HOMESTEAD_EN } from './homestead';
+import { PETS_EN } from './pets';
 
 const en: LocaleData = {
   // ─── Boot Scene ───
@@ -1372,35 +1374,19 @@ const en: LocaleData = {
   // DATA FILES — Homestead
   // ═══════════════════════════════════════════════════════════════════════
   'data.homestead.herb_garden.name': 'Herb Garden',
-  'data.homestead.herb_garden.desc': 'Automatically produces potion materials',
-  'data.homestead.training_ground.name': 'Training Ground',
-  'data.homestead.training_ground.desc': 'Mercenary EXP bonus',
-  'data.homestead.gem_workshop.name': 'Gem Workshop',
-  'data.homestead.gem_workshop.desc': 'Synthesize/upgrade gems',
-  'data.homestead.pet_house.name': 'Pet House',
-  'data.homestead.pet_house.desc': 'Raise pets, boost pet EXP',
+  'data.homestead.herb_garden.desc': 'Grows potions and ley fruit as you hunt; harvest at the tower',
+  'data.homestead.training_ground.name': 'Caravan Post',
+  'data.homestead.training_ground.desc': 'Mercenary EXP bonus; send ley-beasts on expeditions',
+  'data.homestead.gem_workshop.name': 'Forge',
+  'data.homestead.gem_workshop.desc': 'Combine 3 gems of a tier into 1 of the next',
+  'data.homestead.pet_house.name': 'Moon Well',
+  'data.homestead.pet_house.desc': 'Resting ley-beasts recover here; boosts ley-beast EXP',
   'data.homestead.warehouse.name': 'Warehouse',
-  'data.homestead.warehouse.desc': 'Expand storage space',
-  'data.homestead.altar.name': 'Altar',
-  'data.homestead.altar.desc': 'Temporary buff',
+  'data.homestead.warehouse.desc': 'More stash slots',
+  'data.homestead.altar.name': 'Heartflame Altar',
+  'data.homestead.altar.desc': 'Offer embers for a timed blessing',
 
   // ─── Pets ───
-  'data.pet.pet_sprite.name': 'Sprite',
-  'data.pet.pet_sprite.desc': 'A cute sprite that boosts EXP gain',
-  'data.pet.pet_dragon.name': 'Baby Dragon',
-  'data.pet.pet_dragon.desc': 'A dragon hatchling that boosts attack',
-  'data.pet.pet_owl.name': 'Owl',
-  'data.pet.pet_owl.desc': 'A wise owl that boosts magic find',
-  'data.pet.pet_cat.name': 'Shadow Cat',
-  'data.pet.pet_cat.desc': 'A mysterious black cat that boosts crit rate',
-  'data.pet.pet_phoenix.name': 'Phoenix Chick',
-  'data.pet.pet_phoenix.desc': 'Child of the phoenix, boosts HP regen',
-  'data.pet.pet_storm_wolf.name': 'Storm Wolf',
-  'data.pet.pet_storm_wolf.desc': 'Child of the storm, boosts attack speed (boss drop)',
-  'data.pet.pet_jade_tortoise.name': 'Jade Tortoise',
-  'data.pet.pet_jade_tortoise.desc': 'Ancient guardian, boosts defense (quest reward)',
-  'data.pet.pet_void_butterfly.name': 'Void Butterfly',
-  'data.pet.pet_void_butterfly.desc': 'Void emissary, boosts mana regen (rare spawn)',
 
   // ─── Pet Evolution Suffixes ───
   'data.petEvolution.awakened': '· Awakened',
@@ -1864,14 +1850,14 @@ const en: LocaleData = {
   // ═══════════════════════════════════════════════════════════════════════
   // UI — Homestead Panel
   // ═══════════════════════════════════════════════════════════════════════
-  'ui.homestead.title': 'Homestead',
+  'ui.homestead.title': 'Ember Tower',
   'ui.homestead.buildingsHeader': '── Buildings ──',
   'ui.homestead.petsHeader': '── Pets ({count}) ──',
   'ui.homestead.maxLevel': 'MAX',
   'ui.homestead.upgrade': 'Upgrade {cost}G',
   'ui.homestead.noPets': 'No pets yet\nDefeat bosses · Complete quests · Rare spawns',
-  'ui.homestead.footer': 'Press H to close · Buildings provide bonuses',
-  'ui.homestead.footerTouch': 'Buildings provide bonuses',
+  'ui.homestead.footer': 'Press H to close · Allies come to the tower as the story goes on',
+  'ui.homestead.footerTouch': 'Allies come to the tower as the story goes on',
   'ui.homestead.petStat.expBonus': 'EXP',
   'ui.homestead.petStat.damage': 'ATK',
   'ui.homestead.petStat.magicFind': 'MF',
@@ -1916,7 +1902,7 @@ const en: LocaleData = {
   'ui.companion.noMerc': 'Hire a mercenary at the camp NPC',
   'ui.companion.mercStatus': '{name} ({type}) Lv.{level}  HP:{hp}/{maxHp}',
   'ui.companion.mercDead': '{name} ({type}) Lv.{level}  [Dead]',
-  'ui.companion.footer': 'Press P to close',
+  'ui.companion.footer': 'Press U to close',
   'ui.companion.hireHeader': '─ Available Mercenaries ─',
   'ui.companion.needCamp': 'Must be near camp NPC to hire',
   'ui.companion.hire': 'Hire',
@@ -2309,6 +2295,12 @@ const en: LocaleData = {
 
   // ─── Abyss Labyrinth (boons, curses, floor themes, run UI) ───
   ...ABYSS_RUN_EN,
+
+  // ─── Ember Tower (余烬之塔): homestead panel, world labels, ley-beast quests ───
+  ...HOMESTEAD_EN,
+
+  // ─── Ley-beasts (灵兽): names, abilities, pet panel ───
+  ...PETS_EN,
 };
 
 export default en;

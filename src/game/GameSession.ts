@@ -2,6 +2,7 @@ import { AchievementSystem } from '../systems/AchievementSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { EliteAffixSystem } from '../systems/EliteAffixSystem';
 import { HomesteadSystem } from '../systems/HomesteadSystem';
+import { PetSystem } from '../systems/PetSystem';
 import { InventorySystem } from '../systems/InventorySystem';
 import { LootSystem } from '../systems/LootSystem';
 import { MercenarySystem } from '../systems/MercenarySystem';
@@ -26,6 +27,8 @@ export class GameSession {
   readonly inventory = new InventorySystem();
   readonly quests = new QuestSystem();
   readonly homestead = new HomesteadSystem();
+  /** Ley-beasts (灵兽); reads the tower's 月井 level through the homestead. */
+  readonly pets = new PetSystem();
   readonly achievements = new AchievementSystem();
   readonly saves = new SaveSystem();
   readonly mercenaries = new MercenarySystem();
@@ -36,6 +39,8 @@ export class GameSession {
 
   constructor() {
     this.quests.registerQuests(AllQuests);
+    this.pets.setBuildingLevelSource(id => this.homestead.getBuildingLevel(id));
+    this.pets.setAwaySource(id => this.homestead.tower.isPetAway(id));
   }
 
   beginZone(zoneId: string, levelRange: [number, number], safeZoneRadius: number): ZoneRuntime {
