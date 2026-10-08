@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/SkillProgressionSystem.ts", "src/systems/CombatSystem.ts", "src/scenes/ZoneScene.ts"],
+  "tierPlayerLevel": {"1": 1, "2": 6, "3": 12},
+  "tierTreePoints": {"1": 0, "2": 4, "3": 9},
+  "tierFallback": {
+    "playerLevel": {"base": 1, "perTierAbove1": 6},
+    "treePoints": {"perTierAbove1": 5, "min": 0}
+  },
+  "starterLevels": {"tier1": 1, "other": 0},
+  "loadoutSize": 6,
+  "groundAoeSkills": ["meteor", "blizzard", "fire_wall", "arcane_torrent", "arrow_rain", "poison_cloud"],
+  "scaling": {
+    "tierWeights": [
+      {"fromLevel": 2, "toLevel": 8, "weight": 1},
+      {"fromLevel": 9, "toLevel": 16, "weight": 0.75},
+      {"fromLevel": 17, "toLevel": null, "weight": 0.5}
+    ],
+    "defaults": {
+      "damagePerLevel": 0.05,
+      "manaCostPerLevel": 0.5,
+      "cooldownReductionPerLevel": 0,
+      "aoeRadiusPerLevel": 0,
+      "buffValuePerLevel": 0.02,
+      "buffDurationPerLevel": 0
+    },
+    "cooldownFloorMs": 500,
+    "cooldownReductionCapPercent": 50
+  },
+  "targeting": {"rangeSlackTiles": 1, "groundAnchorReachSlackTiles": 1},
+  "gamepadSkillButtons": [0, 2, 3, 5],
+  "passiveSkills": ["life_regen", "unyielding", "dual_wield_mastery"]
+}

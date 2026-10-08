@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/RandomEventSystem.ts"],
+  "config": {
+    "cooldownMs": 30000,
+    "safeZoneRadius": 9,
+    "minEventsPerWindow": 3,
+    "maxEventsPerWindow": 8,
+    "frequencyWindowMs": 300000
+  },
+  "triggerMoveThresholdTiles": 3,
+  "defs": [
+    {"type": "ambush", "weight": 30, "name": "伏击", "message": "伏兵出现!"},
+    {"type": "treasure_cache", "weight": 25, "name": "宝箱", "message": "发现了一个隐藏的宝箱!"},
+    {"type": "wandering_merchant", "weight": 15, "name": "流浪商人", "message": "一位流浪商人出现在你面前。"},
+    {"type": "rescue", "weight": 20, "name": "救援", "message": "有人被怪物包围了! 快去营救!"},
+    {"type": "environmental_puzzle", "weight": 10, "name": "谜题", "message": "你发现了一个古老的谜题装置。"}
+  ],
+  "zones": {
+    "emerald_plains": {
+      "ambushMonsters": ["slime_green", "goblin"],
+      "ambushCount": [3, 5],
+      "merchantItems": ["iron_sword", "leather_armor", "hp_potion", "mp_potion"],
+      "puzzleDescriptions": [
+        {
+          "prompt": "石柱上的符文需要按正确顺序触摸。",
+          "solution": "按下发光的符文",
+          "reward": "获得了经验和金币!",
+          "rewardGold": 50,
+          "rewardExp": 30
+        }
+      ],
+      "puzzleSpriteKey": "decor_event_puzzle_rune_pillar",
+      "rescueNpcName": "迷路的旅人",
+      "rescueNpcSpriteKey": "npc_rescue_lost_traveler",
+      "rescueReward": {"gold": 30, "exp": 25}
+    },
+    "twilight_forest": {
+      "ambushMonsters": ["wolf", "bandit"],
+      "ambushCount": [4, 6],
+      "merchantItems": ["steel_sword", "chain_armor", "hp_potion", "mp_potion"],
+      "puzzleDescriptions": [
+        {
+          "prompt": "古树的树根形成了一个迷宫，需要找到正确的路径。",
+          "solution": "沿着发光的苔藓前进",
+          "reward": "获得了经验和金币!",
+          "rewardGold": 80,
+          "rewardExp": 60
+        }
+      ],
+      "puzzleSpriteKey": "decor_event_puzzle_root_altar",
+      "rescueNpcName": "受伤的猎人",
+      "rescueNpcSpriteKey": "npc_rescue_wounded_hunter",
+      "rescueReward": {"gold": 60, "exp": 50}
+    },
+    "anvil_mountains": {
+      "ambushMonsters": ["golem", "harpy"],
+      "ambushCount": [4, 7],
+      "merchantItems": ["mithril_sword", "plate_armor", "hp_potion", "mp_potion"],
+      "puzzleDescriptions": [
+        {
+          "prompt": "矿洞墙壁上有三个宝石插槽等待填入。",
+          "solution": "按颜色顺序放入宝石",
+          "reward": "获得了经验和金币!",
+          "rewardGold": 120,
+          "rewardExp": 100
+        }
+      ],
+      "puzzleSpriteKey": "decor_event_puzzle_gem_lock",
+      "rescueNpcName": "被困的矿工",
+      "rescueNpcSpriteKey": "npc_rescue_trapped_miner",
+      "rescueReward": {"gold": 100, "exp": 80}
+    },
+    "scorching_desert": {
+      "ambushMonsters": ["scorpion", "sand_elemental"],
+      "ambushCount": [5, 8],
+      "merchantItems": ["desert_blade", "desert_armor", "hp_potion", "mp_potion"],
+      "puzzleDescriptions": [
+        {
+          "prompt": "沙漠中的日晷指向一个隐藏的方向。",
+          "solution": "转动日晷指针",
+          "reward": "获得了经验和金币!",
+          "rewardGold": 160,
+          "rewardExp": 140
+        }
+      ],
+      "puzzleSpriteKey": "decor_event_puzzle_sundial",
+      "rescueNpcName": "沙漠中的商队护卫",
+      "rescueNpcSpriteKey": "npc_rescue_caravan_guard",
+      "rescueReward": {"gold": 140, "exp": 120}
+    },
+    "abyss_rift": {
+      "ambushMonsters": ["demon_imp", "shadow_fiend"],
+      "ambushCount": [5, 9],
+      "merchantItems": ["abyssal_blade", "demon_armor", "hp_potion", "mp_potion"],
+      "puzzleDescriptions": [
+        {
+          "prompt": "深渊裂缝中闪烁着不稳定的魔法阵。",
+          "solution": "按正确的符文序列激活",
+          "reward": "获得了经验和金币!",
+          "rewardGold": 200,
+          "rewardExp": 180
+        }
+      ],
+      "puzzleSpriteKey": "decor_event_puzzle_abyss_array",
+      "rescueNpcName": "深渊探险家",
+      "rescueNpcSpriteKey": "npc_rescue_abyss_explorer",
+      "rescueReward": {"gold": 180, "exp": 160}
+    }
+  },
+  "port": {"resetMoveCounterAfterEveryRoll": true, "decision": "W6"},
+  "i18n": {
+    "message": "sys.event.msg.<type>",
+    "rescue": "sys.event.rescue.<zone>",
+    "puzzle": "sys.event.puzzle.<zone>.{prompt,solution,reward}"
+  }
+}

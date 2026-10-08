@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/npcs.ts", "src/systems/RandomEventSystem.ts"],
+  "shops": {
+    "blacksmith": [
+      "w_short_sword",
+      "w_broad_sword",
+      "w_dagger",
+      "w_stiletto",
+      "w_short_bow",
+      "w_oak_staff",
+      "w_wooden_shield",
+      "a_leather_helm",
+      "a_leather_armor",
+      "a_leather_gloves",
+      "a_leather_boots",
+      "a_leather_belt"
+    ],
+    "merchant": [
+      "c_hp_potion_s",
+      "c_hp_potion_m",
+      "c_mp_potion_s",
+      "c_mp_potion_m",
+      "c_antidote",
+      "g_ruby_1",
+      "g_sapphire_1",
+      "g_emerald_1",
+      "g_topaz_1"
+    ],
+    "blacksmith_advanced": [
+      "w_battle_axe",
+      "w_arcane_staff",
+      "w_iron_shield",
+      "a_chain_mail",
+      "a_iron_helm",
+      "a_chain_gloves",
+      "a_chain_boots",
+      "a_heavy_belt"
+    ],
+    "merchant_desert": [
+      "c_hp_potion_m",
+      "c_hp_potion_l",
+      "c_mp_potion_m",
+      "c_antidote",
+      "g_ruby_2",
+      "g_sapphire_2",
+      "g_diamond_1"
+    ],
+    "plains_herbalist": ["c_hp_potion_s", "c_hp_potion_m", "c_mp_potion_s", "c_antidote"]
+  },
+  "wanderingMerchant": {
+    "emerald_plains": {
+      "items": ["iron_sword", "leather_armor", "hp_potion", "mp_potion"],
+      "unknownItemIds": ["iron_sword", "leather_armor", "hp_potion", "mp_potion"]
+    },
+    "twilight_forest": {
+      "items": ["steel_sword", "chain_armor", "hp_potion", "mp_potion"],
+      "unknownItemIds": ["steel_sword", "chain_armor", "hp_potion", "mp_potion"]
+    },
+    "anvil_mountains": {
+      "items": ["mithril_sword", "plate_armor", "hp_potion", "mp_potion"],
+      "unknownItemIds": ["mithril_sword", "plate_armor", "hp_potion", "mp_potion"]
+    },
+    "scorching_desert": {
+      "items": ["desert_blade", "desert_armor", "hp_potion", "mp_potion"],
+      "unknownItemIds": ["desert_blade", "desert_armor", "hp_potion", "mp_potion"]
+    },
+    "abyss_rift": {
+      "items": ["abyssal_blade", "demon_armor", "hp_potion", "mp_potion"],
+      "unknownItemIds": ["abyssal_blade", "demon_armor", "hp_potion", "mp_potion"]
+    }
+  },
+  "port": {
+    "removedWares": [
+      {"npcId": "merchant", "itemId": "c_tp_scroll", "decision": "I4"},
+      {"npcId": "merchant", "itemId": "c_id_scroll", "decision": "I2"},
+      {"npcId": "merchant_desert", "itemId": "c_tp_scroll", "decision": "I4"},
+      {"npcId": "merchant_desert", "itemId": "c_id_scroll", "decision": "I2"}
+    ]
+  }
+}

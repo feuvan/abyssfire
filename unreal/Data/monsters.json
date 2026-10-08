@@ -1,0 +1,906 @@
+{
+  "schemaVersion": 1,
+  "source": [
+    "src/data/monsters/*.ts",
+    "src/data/dungeonData.ts",
+    "src/data/miniBosses.ts",
+    "src/data/subDungeons.ts",
+    "src/scenes/ZoneScene.ts"
+  ],
+  "lookupOrder": ["dungeon", "zone"],
+  "byZone": {
+    "emerald_plains": ["slime_green", "goblin", "goblin_chief"],
+    "twilight_forest": ["skeleton", "zombie", "werewolf", "werewolf_alpha"],
+    "anvil_mountains": ["gargoyle", "stone_golem", "mountain_troll"],
+    "scorching_desert": ["fire_elemental", "desert_scorpion", "sandworm", "phoenix"],
+    "abyss_rift": ["imp", "lesser_demon", "succubus", "demon_lord"]
+  },
+  "dungeon": {
+    "exclusive": ["dungeon_shade", "dungeon_fiend"],
+    "boss": "dungeon_abyss_lord",
+    "midBoss": "dungeon_mid_boss",
+    "pool": ["imp", "lesser_demon", "succubus", "dungeon_shade", "dungeon_fiend"]
+  },
+  "defs": {
+    "slime_green": {
+      "id": "slime_green",
+      "name": "绿色史莱姆",
+      "level": 1,
+      "hp": 30,
+      "damage": 5,
+      "defense": 2,
+      "speed": 40,
+      "aggroRange": 4,
+      "attackRange": 1.2,
+      "attackSpeed": 1500,
+      "expReward": 12,
+      "goldReward": [2, 4],
+      "spriteKey": "monster_slime",
+      "animCategory": "slime",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "emerald_plains",
+        "nameKey": "data.monster.slime_green",
+        "sources": ["zone"]
+      }
+    },
+    "goblin": {
+      "id": "goblin",
+      "name": "哥布林",
+      "level": 3,
+      "hp": 55,
+      "damage": 8,
+      "defense": 4,
+      "speed": 55,
+      "aggroRange": 5,
+      "attackRange": 1.5,
+      "attackSpeed": 1200,
+      "expReward": 18,
+      "goldReward": [3, 6],
+      "spriteKey": "monster_goblin",
+      "animCategory": "humanoid",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "emerald_plains",
+        "nameKey": "data.monster.goblin",
+        "sources": ["zone"]
+      }
+    },
+    "goblin_chief": {
+      "id": "goblin_chief",
+      "name": "哥布林首领",
+      "level": 5,
+      "hp": 160,
+      "damage": 14,
+      "defense": 8,
+      "speed": 50,
+      "aggroRange": 6,
+      "attackRange": 1.8,
+      "attackSpeed": 1000,
+      "expReward": 55,
+      "goldReward": [8, 15],
+      "spriteKey": "monster_goblin_chief",
+      "elite": true,
+      "animCategory": "humanoid",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "emerald_plains",
+        "nameKey": "data.monster.goblin_chief",
+        "sources": ["zone"]
+      }
+    },
+    "skeleton": {
+      "id": "skeleton",
+      "name": "骷髅兵",
+      "level": 8,
+      "hp": 100,
+      "damage": 14,
+      "defense": 7,
+      "speed": 70,
+      "aggroRange": 6,
+      "attackRange": 1.5,
+      "attackSpeed": 900,
+      "expReward": 35,
+      "goldReward": [6, 12],
+      "spriteKey": "monster_skeleton",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.4},
+        {"quality": "magic", "dropRate": 0.08}
+      ],
+      "animCategory": "humanoid",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "twilight_forest",
+        "nameKey": "data.monster.skeleton",
+        "sources": ["zone"]
+      }
+    },
+    "zombie": {
+      "id": "zombie",
+      "name": "僵尸",
+      "level": 10,
+      "hp": 180,
+      "damage": 12,
+      "defense": 12,
+      "speed": 30,
+      "aggroRange": 4,
+      "attackRange": 1.2,
+      "attackSpeed": 2000,
+      "expReward": 45,
+      "goldReward": [8, 16],
+      "spriteKey": "monster_zombie",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.45},
+        {"quality": "magic", "dropRate": 0.1}
+      ],
+      "animCategory": "humanoid",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "twilight_forest",
+        "nameKey": "data.monster.zombie",
+        "sources": ["zone"]
+      }
+    },
+    "werewolf": {
+      "id": "werewolf",
+      "name": "狼人",
+      "level": 13,
+      "hp": 240,
+      "damage": 22,
+      "defense": 14,
+      "speed": 80,
+      "aggroRange": 7,
+      "attackRange": 1.8,
+      "attackSpeed": 800,
+      "expReward": 65,
+      "goldReward": [12, 24],
+      "spriteKey": "monster_werewolf",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.35},
+        {"quality": "magic", "dropRate": 0.15},
+        {"quality": "rare", "dropRate": 0.03}
+      ],
+      "animCategory": "beast",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "twilight_forest",
+        "nameKey": "data.monster.werewolf",
+        "sources": ["zone"]
+      }
+    },
+    "werewolf_alpha": {
+      "id": "werewolf_alpha",
+      "name": "狼人首领",
+      "level": 16,
+      "hp": 650,
+      "damage": 35,
+      "defense": 20,
+      "speed": 75,
+      "aggroRange": 8,
+      "attackRange": 2,
+      "attackSpeed": 750,
+      "expReward": 160,
+      "goldReward": [25, 50],
+      "spriteKey": "monster_werewolf_alpha",
+      "elite": true,
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.4},
+        {"quality": "rare", "dropRate": 0.12},
+        {"quality": "legendary", "dropRate": 0.01}
+      ],
+      "animCategory": "beast",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "twilight_forest",
+        "nameKey": "data.monster.werewolf_alpha",
+        "sources": ["zone"]
+      }
+    },
+    "gargoyle": {
+      "id": "gargoyle",
+      "name": "石像鬼",
+      "level": 18,
+      "hp": 320,
+      "damage": 28,
+      "defense": 20,
+      "speed": 65,
+      "aggroRange": 7,
+      "attackRange": 2,
+      "attackSpeed": 1100,
+      "expReward": 110,
+      "goldReward": [18, 35],
+      "spriteKey": "monster_gargoyle",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.35},
+        {"quality": "magic", "dropRate": 0.15},
+        {"quality": "rare", "dropRate": 0.03}
+      ],
+      "animCategory": "flying",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "anvil_mountains",
+        "nameKey": "data.monster.gargoyle",
+        "sources": ["zone"]
+      }
+    },
+    "stone_golem": {
+      "id": "stone_golem",
+      "name": "石魔像",
+      "level": 21,
+      "hp": 550,
+      "damage": 24,
+      "defense": 32,
+      "speed": 25,
+      "aggroRange": 5,
+      "attackRange": 1.5,
+      "attackSpeed": 2200,
+      "expReward": 140,
+      "goldReward": [22, 45],
+      "spriteKey": "monster_stone_golem",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.3},
+        {"quality": "magic", "dropRate": 0.18},
+        {"quality": "rare", "dropRate": 0.05}
+      ],
+      "animCategory": "large",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "anvil_mountains",
+        "nameKey": "data.monster.stone_golem",
+        "sources": ["zone"]
+      }
+    },
+    "mountain_troll": {
+      "id": "mountain_troll",
+      "name": "山岭巨魔",
+      "level": 25,
+      "hp": 1400,
+      "damage": 45,
+      "defense": 30,
+      "speed": 35,
+      "aggroRange": 8,
+      "attackRange": 2.5,
+      "attackSpeed": 1800,
+      "expReward": 280,
+      "goldReward": [40, 80],
+      "spriteKey": "monster_mountain_troll",
+      "elite": true,
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.4},
+        {"quality": "rare", "dropRate": 0.15},
+        {"quality": "legendary", "dropRate": 0.02}
+      ],
+      "animCategory": "large",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "anvil_mountains",
+        "nameKey": "data.monster.mountain_troll",
+        "sources": ["zone"]
+      }
+    },
+    "fire_elemental": {
+      "id": "fire_elemental",
+      "name": "火元素",
+      "level": 28,
+      "hp": 480,
+      "damage": 35,
+      "defense": 22,
+      "speed": 55,
+      "aggroRange": 7,
+      "attackRange": 3.5,
+      "attackSpeed": 1800,
+      "expReward": 180,
+      "goldReward": [30, 60],
+      "spriteKey": "monster_fire_elemental",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.25},
+        {"quality": "magic", "dropRate": 0.2},
+        {"quality": "rare", "dropRate": 0.06}
+      ],
+      "animCategory": "flying",
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [
+          {
+            "status": "burn",
+            "chance": 0.3,
+            "value": {"kind": "monsterDamage", "fraction": 0.2, "min": 1},
+            "durationMs": 3000
+          }
+        ],
+        "projectileColor": 16737792,
+        "homeZone": "scorching_desert",
+        "nameKey": "data.monster.fire_elemental",
+        "sources": ["zone"]
+      }
+    },
+    "desert_scorpion": {
+      "id": "desert_scorpion",
+      "name": "沙漠蝎",
+      "level": 30,
+      "hp": 650,
+      "damage": 40,
+      "defense": 28,
+      "speed": 60,
+      "aggroRange": 6,
+      "attackRange": 1.8,
+      "attackSpeed": 1000,
+      "expReward": 210,
+      "goldReward": [35, 70],
+      "spriteKey": "monster_desert_scorpion",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.25},
+        {"quality": "magic", "dropRate": 0.2},
+        {"quality": "rare", "dropRate": 0.06}
+      ],
+      "animCategory": "beast",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "scorching_desert",
+        "nameKey": "data.monster.desert_scorpion",
+        "sources": ["zone"]
+      }
+    },
+    "sandworm": {
+      "id": "sandworm",
+      "name": "沙虫",
+      "level": 32,
+      "hp": 900,
+      "damage": 36,
+      "defense": 34,
+      "speed": 30,
+      "aggroRange": 5,
+      "attackRange": 2.5,
+      "attackSpeed": 2000,
+      "expReward": 240,
+      "goldReward": [38, 75],
+      "spriteKey": "monster_sandworm",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.2},
+        {"quality": "magic", "dropRate": 0.22},
+        {"quality": "rare", "dropRate": 0.07}
+      ],
+      "animCategory": "serpentine",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "scorching_desert",
+        "nameKey": "data.monster.sandworm",
+        "sources": ["zone"]
+      }
+    },
+    "phoenix": {
+      "id": "phoenix",
+      "name": "凤凰",
+      "level": 36,
+      "hp": 2200,
+      "damage": 58,
+      "defense": 36,
+      "speed": 70,
+      "aggroRange": 9,
+      "attackRange": 3,
+      "attackSpeed": 900,
+      "expReward": 400,
+      "goldReward": [70, 140],
+      "spriteKey": "monster_phoenix",
+      "elite": true,
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.35},
+        {"quality": "rare", "dropRate": 0.2},
+        {"quality": "legendary", "dropRate": 0.04}
+      ],
+      "animCategory": "flying",
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [
+          {
+            "status": "burn",
+            "chance": 0.3,
+            "value": {"kind": "monsterDamage", "fraction": 0.2, "min": 1},
+            "durationMs": 3000
+          }
+        ],
+        "projectileColor": 16737792,
+        "homeZone": "scorching_desert",
+        "nameKey": "data.monster.phoenix",
+        "sources": ["zone"]
+      }
+    },
+    "imp": {
+      "id": "imp",
+      "name": "小恶魔",
+      "level": 38,
+      "hp": 620,
+      "damage": 42,
+      "defense": 26,
+      "speed": 85,
+      "aggroRange": 7,
+      "attackRange": 1.5,
+      "attackSpeed": 700,
+      "expReward": 260,
+      "goldReward": [45, 90],
+      "spriteKey": "monster_imp",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.2},
+        {"quality": "magic", "dropRate": 0.22},
+        {"quality": "rare", "dropRate": 0.06}
+      ],
+      "animCategory": "flying",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "abyss_rift",
+        "nameKey": "data.monster.imp",
+        "sources": ["zone"]
+      }
+    },
+    "lesser_demon": {
+      "id": "lesser_demon",
+      "name": "下级恶魔",
+      "level": 41,
+      "hp": 1000,
+      "damage": 52,
+      "defense": 35,
+      "speed": 50,
+      "aggroRange": 7,
+      "attackRange": 2,
+      "attackSpeed": 1200,
+      "expReward": 320,
+      "goldReward": [55, 110],
+      "spriteKey": "monster_lesser_demon",
+      "lootTable": [
+        {"quality": "normal", "dropRate": 0.15},
+        {"quality": "magic", "dropRate": 0.25},
+        {"quality": "rare", "dropRate": 0.08}
+      ],
+      "animCategory": "demonic",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "abyss_rift",
+        "nameKey": "data.monster.lesser_demon",
+        "sources": ["zone"]
+      }
+    },
+    "succubus": {
+      "id": "succubus",
+      "name": "魅魔",
+      "level": 44,
+      "hp": 850,
+      "damage": 58,
+      "defense": 30,
+      "speed": 60,
+      "aggroRange": 8,
+      "attackRange": 3.5,
+      "attackSpeed": 1100,
+      "expReward": 380,
+      "goldReward": [60, 120],
+      "spriteKey": "monster_succubus",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.25},
+        {"quality": "rare", "dropRate": 0.1},
+        {"quality": "legendary", "dropRate": 0.02}
+      ],
+      "animCategory": "demonic",
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "abyss_rift",
+        "nameKey": "data.monster.succubus",
+        "sources": ["zone"]
+      }
+    },
+    "demon_lord": {
+      "id": "demon_lord",
+      "name": "魔王",
+      "level": 48,
+      "hp": 4500,
+      "damage": 75,
+      "defense": 48,
+      "speed": 45,
+      "aggroRange": 10,
+      "attackRange": 3,
+      "attackSpeed": 1000,
+      "expReward": 500,
+      "goldReward": [120, 250],
+      "spriteKey": "monster_demon_lord",
+      "elite": true,
+      "bossSkills": ["hellfire", "dark_nova", "summon_imps"],
+      "lootTable": [
+        {"quality": "rare", "dropRate": 0.4},
+        {"quality": "legendary", "dropRate": 0.1},
+        {"quality": "set", "dropRate": 0.03}
+      ],
+      "animCategory": "large",
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "abyss_rift",
+        "nameKey": "data.monster.demon_lord",
+        "sources": ["zone"]
+      }
+    },
+    "dungeon_shade": {
+      "id": "dungeon_shade",
+      "name": "深渊暗影",
+      "level": 44,
+      "hp": 750,
+      "damage": 55,
+      "defense": 22,
+      "speed": 80,
+      "aggroRange": 8,
+      "attackRange": 2.5,
+      "attackSpeed": 800,
+      "expReward": 360,
+      "goldReward": [55, 110],
+      "spriteKey": "monster_dungeon_shade",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.25},
+        {"quality": "rare", "dropRate": 0.1}
+      ],
+      "animCategory": "flying",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": null,
+        "nameKey": "data.monster.dungeon_shade",
+        "sources": ["dungeon"]
+      }
+    },
+    "dungeon_fiend": {
+      "id": "dungeon_fiend",
+      "name": "深渊恶鬼",
+      "level": 47,
+      "hp": 1200,
+      "damage": 65,
+      "defense": 40,
+      "speed": 45,
+      "aggroRange": 7,
+      "attackRange": 2,
+      "attackSpeed": 1100,
+      "expReward": 420,
+      "goldReward": [65, 130],
+      "spriteKey": "monster_dungeon_fiend",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.28},
+        {"quality": "rare", "dropRate": 0.12},
+        {"quality": "legendary", "dropRate": 0.03}
+      ],
+      "animCategory": "demonic",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": null,
+        "nameKey": "data.monster.dungeon_fiend",
+        "sources": ["dungeon"]
+      }
+    },
+    "dungeon_abyss_lord": {
+      "id": "dungeon_abyss_lord",
+      "name": "深渊之主·卡萨诺尔",
+      "level": 52,
+      "hp": 8000,
+      "damage": 95,
+      "defense": 55,
+      "speed": 40,
+      "aggroRange": 12,
+      "attackRange": 3.5,
+      "attackSpeed": 900,
+      "expReward": 1200,
+      "goldReward": [200, 400],
+      "spriteKey": "monster_dungeon_boss",
+      "elite": true,
+      "isMiniBoss": true,
+      "isSubDungeonMiniBoss": true,
+      "bossSkills": ["void_nova", "shadow_barrage", "summon_shades", "dark_enrage"],
+      "lootTable": [
+        {"quality": "rare", "dropRate": 1},
+        {"quality": "legendary", "dropRate": 0.3},
+        {"quality": "set", "dropRate": 0.15},
+        {"itemId": "leg_abyss_crown", "quality": "legendary", "dropRate": 0.08},
+        {"itemId": "leg_void_edge", "quality": "legendary", "dropRate": 0.08},
+        {"itemId": "set_aw_crown", "quality": "set", "dropRate": 0.1},
+        {"itemId": "set_aw_blade", "quality": "set", "dropRate": 0.1}
+      ],
+      "animCategory": "large",
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": null,
+        "nameKey": "data.monster.dungeon_abyss_lord",
+        "sources": ["dungeon"]
+      }
+    },
+    "dungeon_mid_boss": {
+      "id": "dungeon_mid_boss",
+      "name": "深渊守卫",
+      "level": 48,
+      "hp": 4000,
+      "damage": 70,
+      "defense": 42,
+      "speed": 50,
+      "aggroRange": 10,
+      "attackRange": 2.5,
+      "attackSpeed": 1000,
+      "expReward": 600,
+      "goldReward": [120, 250],
+      "spriteKey": "monster_dungeon_mid_boss",
+      "elite": true,
+      "isMiniBoss": true,
+      "bossSkills": ["dark_slash", "summon_imps"],
+      "lootTable": [
+        {"quality": "magic", "dropRate": 1},
+        {"quality": "rare", "dropRate": 0.4},
+        {"quality": "legendary", "dropRate": 0.08}
+      ],
+      "animCategory": "demonic",
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": null,
+        "nameKey": "data.monster.dungeon_mid_boss",
+        "sources": ["dungeon"]
+      }
+    },
+    "miniboss_goblin_shaman": {
+      "id": "miniboss_goblin_shaman",
+      "name": "哥布林萨满",
+      "level": 6,
+      "hp": 280,
+      "damage": 16,
+      "defense": 10,
+      "speed": 45,
+      "aggroRange": 7,
+      "attackRange": 3,
+      "attackSpeed": 1300,
+      "expReward": 90,
+      "goldReward": [15, 30],
+      "spriteKey": "monster_goblin_shaman",
+      "elite": true,
+      "isMiniBoss": true,
+      "animCategory": "humanoid",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.8},
+        {"quality": "rare", "dropRate": 0.35},
+        {"quality": "legendary", "dropRate": 0.03}
+      ],
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "emerald_plains",
+        "nameKey": "data.monster.miniboss_goblin_shaman",
+        "sources": ["miniBoss"]
+      }
+    },
+    "miniboss_shadow_weaver": {
+      "id": "miniboss_shadow_weaver",
+      "name": "暗影织者",
+      "level": 14,
+      "hp": 520,
+      "damage": 28,
+      "defense": 16,
+      "speed": 55,
+      "aggroRange": 7,
+      "attackRange": 3,
+      "attackSpeed": 1100,
+      "expReward": 140,
+      "goldReward": [22, 45],
+      "spriteKey": "monster_shadow_weaver",
+      "elite": true,
+      "isMiniBoss": true,
+      "animCategory": "humanoid",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.8},
+        {"quality": "rare", "dropRate": 0.35},
+        {"quality": "legendary", "dropRate": 0.03}
+      ],
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "twilight_forest",
+        "nameKey": "data.monster.miniboss_shadow_weaver",
+        "sources": ["miniBoss"]
+      }
+    },
+    "miniboss_iron_guardian": {
+      "id": "miniboss_iron_guardian",
+      "name": "铁甲守卫",
+      "level": 24,
+      "hp": 1100,
+      "damage": 38,
+      "defense": 35,
+      "speed": 30,
+      "aggroRange": 7,
+      "attackRange": 2,
+      "attackSpeed": 1600,
+      "expReward": 240,
+      "goldReward": [38, 75],
+      "spriteKey": "monster_iron_guardian",
+      "elite": true,
+      "isMiniBoss": true,
+      "animCategory": "large",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.8},
+        {"quality": "rare", "dropRate": 0.4},
+        {"quality": "legendary", "dropRate": 0.04}
+      ],
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "anvil_mountains",
+        "nameKey": "data.monster.miniboss_iron_guardian",
+        "sources": ["miniBoss"]
+      }
+    },
+    "miniboss_sand_wraith": {
+      "id": "miniboss_sand_wraith",
+      "name": "沙漠亡灵",
+      "level": 34,
+      "hp": 1800,
+      "damage": 50,
+      "defense": 30,
+      "speed": 65,
+      "aggroRange": 8,
+      "attackRange": 3,
+      "attackSpeed": 1000,
+      "expReward": 350,
+      "goldReward": [60, 120],
+      "spriteKey": "monster_sand_wraith",
+      "elite": true,
+      "isMiniBoss": true,
+      "animCategory": "demonic",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.7},
+        {"quality": "rare", "dropRate": 0.45},
+        {"quality": "legendary", "dropRate": 0.06}
+      ],
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "scorching_desert",
+        "nameKey": "data.monster.miniboss_sand_wraith",
+        "sources": ["miniBoss"]
+      }
+    },
+    "miniboss_void_herald": {
+      "id": "miniboss_void_herald",
+      "name": "虚空先驱",
+      "level": 44,
+      "hp": 3200,
+      "damage": 65,
+      "defense": 42,
+      "speed": 50,
+      "aggroRange": 8,
+      "attackRange": 3.5,
+      "attackSpeed": 1000,
+      "expReward": 450,
+      "goldReward": [100, 200],
+      "spriteKey": "monster_void_herald",
+      "elite": true,
+      "isMiniBoss": true,
+      "animCategory": "demonic",
+      "lootTable": [
+        {"quality": "rare", "dropRate": 0.7},
+        {"quality": "legendary", "dropRate": 0.1},
+        {"quality": "set", "dropRate": 0.04}
+      ],
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "abyss_rift",
+        "nameKey": "data.monster.miniboss_void_herald",
+        "sources": ["miniBoss"]
+      }
+    },
+    "sub_mine_guardian": {
+      "id": "sub_mine_guardian",
+      "name": "矿道铁卫",
+      "level": 26,
+      "hp": 1300,
+      "damage": 42,
+      "defense": 38,
+      "speed": 28,
+      "aggroRange": 8,
+      "attackRange": 2,
+      "attackSpeed": 1500,
+      "expReward": 280,
+      "goldReward": [45, 90],
+      "spriteKey": "monster_sub_mine_guardian",
+      "elite": true,
+      "isMiniBoss": true,
+      "isSubDungeonMiniBoss": true,
+      "animCategory": "large",
+      "lootTable": [
+        {"quality": "magic", "dropRate": 0.9},
+        {"quality": "rare", "dropRate": 0.5},
+        {"quality": "legendary", "dropRate": 0.05}
+      ],
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": null,
+        "nameKey": "data.monster.sub_mine_guardian",
+        "sources": ["subDungeonBoss"]
+      }
+    },
+    "sub_altar_keeper": {
+      "id": "sub_altar_keeper",
+      "name": "祭坛守卫者",
+      "level": 46,
+      "hp": 3800,
+      "damage": 72,
+      "defense": 45,
+      "speed": 48,
+      "aggroRange": 9,
+      "attackRange": 3,
+      "attackSpeed": 950,
+      "expReward": 520,
+      "goldReward": [120, 240],
+      "spriteKey": "monster_sub_altar_keeper",
+      "elite": true,
+      "isMiniBoss": true,
+      "isSubDungeonMiniBoss": true,
+      "animCategory": "demonic",
+      "lootTable": [
+        {"quality": "rare", "dropRate": 0.8},
+        {"quality": "legendary", "dropRate": 0.12},
+        {"quality": "set", "dropRate": 0.05}
+      ],
+      "derived": {
+        "isRanged": true,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": null,
+        "nameKey": "data.monster.sub_altar_keeper",
+        "sources": ["subDungeonBoss"]
+      }
+    }
+  },
+  "overrides": [
+    {
+      "id": "miniboss_goblin_shaman",
+      "field": "attackRange",
+      "web": 2.5,
+      "port": 3,
+      "decision": "M5",
+      "note": "Goblin Shaman becomes a ranged caster (spirit-fire bolt); web 2.5 was melee (ranged iff > 2.5)"
+    }
+  ]
+}

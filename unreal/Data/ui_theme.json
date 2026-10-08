@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/ui/UiKit.ts", "src/systems/MobileControlsSystem.ts", "src/config.ts", "src/i18n/index.ts"],
+  "display": {
+    "designWidth": 1280,
+    "designHeight": 720,
+    "background": "#0f0f1a",
+    "defaultLocale": "zh-CN",
+    "locales": ["zh-CN", "zh-TW", "en"]
+  },
+  "fonts": {"body": "\"Noto Sans SC\", sans-serif", "title": "\"Cinzel\", \"Noto Sans SC\", serif"},
+  "colors": {
+    "parchment": "#f0dcae",
+    "heading": "#e8c77a",
+    "gold": "#d4a54a",
+    "goldBright": "#ffd98a",
+    "text": "#e0d8cc",
+    "textSoft": "#bfb4a2",
+    "muted": "#9a8f80",
+    "dim": "#6e665c",
+    "faint": "#4f4940",
+    "good": "#7ed36a",
+    "bad": "#ff6b5a",
+    "info": "#7fb6ff",
+    "goldNum": 13935946,
+    "goldDarkNum": 5913104,
+    "ironNum": 3814720,
+    "ironLightNum": 7169395,
+    "cardNum": 1578267,
+    "cardHoverNum": 2235685,
+    "wellNum": 789262
+  },
+  "qualityHex": {"normal": "#c8c8c8", "magic": "#4f8cff", "rare": "#ffd84a", "legendary": "#ff8a2a", "set": "#3ecf6a"},
+  "touch": {
+    "cssPx": {
+      "margin": 12,
+      "joystickR": 58,
+      "cornerR": 36,
+      "skillR": 28,
+      "dodgeR": 25,
+      "ring1": 100,
+      "ring2": 162,
+      "panelBtn": 44,
+      "panelGap": 4,
+      "toggleW": 66,
+      "toggleH": 44,
+      "toggleGap": 6
+    },
+    "scaleClamp": [1, 2],
+    "pointers": 4,
+    "minTouchTargetPt": 44
+  }
+}

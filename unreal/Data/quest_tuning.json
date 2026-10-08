@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "source": [
+    "src/systems/QuestWorld.ts",
+    "src/systems/QuestSystem.ts",
+    "src/systems/QuestRewards.ts",
+    "src/scenes/ZoneScene.ts"
+  ],
+  "levelGateAbove": 5,
+  "gatherRange": 1.3,
+  "clueRange": 2,
+  "guideNear": 2.5,
+  "fallbackCollectChance": 0.25,
+  "itemKindByTarget": {
+    "mat_slime_gel": "gel",
+    "mat_herb": "herb",
+    "mat_pendant": "pendant",
+    "mat_mushroom": "mushroom",
+    "mat_ancient_relic": "relic",
+    "mat_moonlight_herb": "moon_herb",
+    "mat_dwarf_ingot": "ingot",
+    "mat_rune_fragment": "rune",
+    "mat_mithril_core": "mithril",
+    "mat_crystal": "crystal",
+    "mat_dragon_scale": "scale",
+    "mat_water": "water",
+    "mat_venom": "venom",
+    "mat_demon_essence": "essence",
+    "mat_seal_fragment": "seal",
+    "mat_void_crystal": "void_crystal",
+    "mat_wolf_pelt": "pelt",
+    "mat_spider_silk": "silk",
+    "mat_fang": "fang",
+    "mat_ash": "ash",
+    "mat_bone": "bone",
+    "mat_letter": "letter"
+  },
+  "defaultItemKind": "relic",
+  "escort": {
+    "hpBase": 100,
+    "hpPerLevel": 20,
+    "speedDivisor": 38,
+    "speedFactor": 0.9,
+    "catchUpTiles": 14,
+    "arriveEscortSq": 25,
+    "arriveHeroSq": 36,
+    "threatRangeSq": 16,
+    "hitIntervalMs": 2000,
+    "dmgMul": 0.3
+  },
+  "defend": {
+    "hpBase": 200,
+    "hpPerLevel": 30,
+    "startRangeSq": 225,
+    "waveDelayMs": 5000,
+    "hitRangeSq": 9,
+    "hitIntervalMs": 2000,
+    "dmgMul": 0.2
+  },
+  "embers": {"questMain": 2, "questSide": 1, "override": "rewards.embers"},
+  "port": {"dialogueRewardsOncePerChoice": "Q1", "goblinChiefAreaCentredOnSpawn": "Q4", "escortLabelFix": "Q8"}
+}

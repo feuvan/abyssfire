@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/CraftingSystem.ts"],
+  "actions": ["salvage", "reforge", "upgrade", "socket"],
+  "materials": ["m_scrap", "m_dust", "m_essence"],
+  "goldUnit": {"mul": 6, "add": 5, "levelMin": 1, "formula": "6 * (max(1, floor(level)) + 5)"},
+  "costs": {
+    "salvage": {
+      "normal": {
+        "weaponOrArmor": {
+          "goldUnits": 0,
+          "materials": {}
+        },
+        "accessory": {
+          "goldUnits": 0,
+          "materials": {}
+        }
+      },
+      "magic": {
+        "weaponOrArmor": {
+          "goldUnits": 0,
+          "materials": {}
+        },
+        "accessory": {
+          "goldUnits": 0,
+          "materials": {}
+        }
+      },
+      "rare": {
+        "weaponOrArmor": {
+          "goldUnits": 0,
+          "materials": {}
+        },
+        "accessory": {
+          "goldUnits": 0,
+          "materials": {}
+        }
+      },
+      "legendary": {
+        "weaponOrArmor": {
+          "goldUnits": 0,
+          "materials": {}
+        },
+        "accessory": {
+          "goldUnits": 0,
+          "materials": {}
+        }
+      },
+      "set": {
+        "weaponOrArmor": {
+          "goldUnits": 0,
+          "materials": {}
+        },
+        "accessory": {
+          "goldUnits": 0,
+          "materials": {}
+        }
+      }
+    },
+    "reforge": {
+      "normal": {"weaponOrArmor": null, "accessory": null},
+      "magic": {
+        "weaponOrArmor": {
+          "goldUnits": 1,
+          "materials": {"m_scrap": 2, "m_dust": 1}
+        },
+        "accessory": {
+          "goldUnits": 1,
+          "materials": {"m_scrap": 2, "m_dust": 1}
+        }
+      },
+      "rare": {
+        "weaponOrArmor": {
+          "goldUnits": 2,
+          "materials": {"m_dust": 2, "m_essence": 1}
+        },
+        "accessory": {
+          "goldUnits": 2,
+          "materials": {"m_dust": 2, "m_essence": 1}
+        }
+      },
+      "legendary": {"weaponOrArmor": null, "accessory": null},
+      "set": {"weaponOrArmor": null, "accessory": null}
+    },
+    "upgrade": {
+      "normal": {
+        "weaponOrArmor": {
+          "goldUnits": 2,
+          "materials": {"m_scrap": 3, "m_dust": 1}
+        },
+        "accessory": {
+          "goldUnits": 2,
+          "materials": {"m_scrap": 3, "m_dust": 1}
+        }
+      },
+      "magic": {
+        "weaponOrArmor": {
+          "goldUnits": 5,
+          "materials": {"m_dust": 4, "m_essence": 1}
+        },
+        "accessory": {
+          "goldUnits": 5,
+          "materials": {"m_dust": 4, "m_essence": 1}
+        }
+      },
+      "rare": {"weaponOrArmor": null, "accessory": null},
+      "legendary": {"weaponOrArmor": null, "accessory": null},
+      "set": {"weaponOrArmor": null, "accessory": null}
+    },
+    "socket": {
+      "normal": {
+        "weaponOrArmor": {
+          "goldUnits": 3,
+          "materials": {"m_scrap": 4, "m_essence": 1}
+        },
+        "accessory": null
+      },
+      "magic": {
+        "weaponOrArmor": {
+          "goldUnits": 3,
+          "materials": {"m_scrap": 4, "m_essence": 1}
+        },
+        "accessory": null
+      },
+      "rare": {
+        "weaponOrArmor": {
+          "goldUnits": 3,
+          "materials": {"m_scrap": 4, "m_essence": 1}
+        },
+        "accessory": null
+      },
+      "legendary": {
+        "weaponOrArmor": {
+          "goldUnits": 3,
+          "materials": {"m_scrap": 4, "m_essence": 1}
+        },
+        "accessory": null
+      },
+      "set": {
+        "weaponOrArmor": {
+          "goldUnits": 3,
+          "materials": {"m_scrap": 4, "m_essence": 1}
+        },
+        "accessory": null
+      }
+    }
+  },
+  "salvageYield": {
+    "scrap": {"base": 1, "perLevelDiv": 12, "normalBonus": 1},
+    "magic": {
+      "dust": {"base": 1, "perLevelDiv": 20}
+    },
+    "rare": {
+      "dust": {"base": 1, "perLevelDiv": 20},
+      "essence": {"base": 1, "perLevelDiv": null}
+    },
+    "legendaryOrSet": {
+      "dust": {"base": 2, "perLevelDiv": 20},
+      "essence": {"base": 2, "perLevelDiv": 25}
+    }
+  },
+  "rerollAffixCounts": {
+    "magic": [1, 2],
+    "rare": [3, 4]
+  },
+  "upgradeTargets": {"normal": "magic", "magic": "rare"},
+  "maxItemSockets": 3,
+  "maxBonusSockets": 1,
+  "bagCapacity": 100
+}

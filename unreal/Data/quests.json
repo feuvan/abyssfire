@@ -1,0 +1,2687 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/quests/all_quests.ts", "src/systems/QuestWorld.ts", "src/data/npcs.ts"],
+  "quests": [
+    {
+      "id": "q_kill_slimes",
+      "name": "史莱姆之灾",
+      "description": "你在精灵塔废墟的灰烬中醒来，被村长收留。那一夜火柱冲天后，北部湿地的史莱姆疯长，啃食庄稼。消灭它们，报答收留之恩。",
+      "zone": "emerald_plains",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "slime_green", "targetName": "绿色史莱姆", "required": 10, "current": 0}
+      ],
+      "rewards": {"exp": 120, "gold": 25},
+      "level": 1,
+      "questArea": {"col": 32, "row": 12, "radius": 12},
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_slimes.name",
+          "desc": "data.quest.q_kill_slimes.desc",
+          "offer": "data.quest.q_kill_slimes.offer",
+          "complete": "data.quest.q_kill_slimes.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_goblins",
+      "name": "火光之眼",
+      "description": "哥布林的眼中燃起了与你烙印相同的火光，它们成群劫掠村庄。消灭十五只哥布林，挫其锐气，也看看那火光从何而来。",
+      "zone": "emerald_plains",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "goblin", "targetName": "哥布林", "required": 15, "current": 0}
+      ],
+      "rewards": {"exp": 200, "gold": 40},
+      "prereqQuests": ["q_kill_slimes"],
+      "level": 3,
+      "questArea": {"col": 34, "row": 40, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_goblins.name",
+          "desc": "data.quest.q_kill_goblins.desc",
+          "offer": "data.quest.q_kill_goblins.offer",
+          "complete": "data.quest.q_kill_goblins.complete"
+        }
+      }
+    },
+    {
+      "id": "q_explore_goblin_camp",
+      "name": "篝火营地",
+      "description": "哥布林营地的篝火七天七夜不熄，萨满正对着地底举行古老的仪式。潜入侦察，查明他们想唤醒什么。",
+      "zone": "emerald_plains",
+      "type": "explore",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_goblin_camp",
+          "targetName": "哥布林营地",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 40, "row": 52, "radius": 8}
+        }
+      ],
+      "rewards": {"exp": 250, "gold": 35},
+      "prereqQuests": ["q_kill_goblins"],
+      "level": 5,
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_explore_goblin_camp.name",
+          "desc": "data.quest.q_explore_goblin_camp.desc",
+          "offer": "data.quest.q_explore_goblin_camp.offer",
+          "complete": "data.quest.q_explore_goblin_camp.complete"
+        }
+      }
+    },
+    {
+      "id": "q_find_goblin_chief",
+      "name": "碎牙之王",
+      "description": "哥布林首领格罗克受深渊低语驱使，率部落撬动平原之下的封印。击败它，斩断这只伸向封印的手。",
+      "zone": "emerald_plains",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "goblin_chief", "targetName": "哥布林首领", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 500,
+        "gold": 80,
+        "choices": ["weapon", "armor"]
+      },
+      "prereqQuests": ["q_explore_goblin_camp"],
+      "level": 7,
+      "questArea": {"col": 25, "row": 65, "radius": 10},
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_find_goblin_chief.name",
+          "desc": "data.quest.q_find_goblin_chief.desc",
+          "offer": "data.quest.q_find_goblin_chief.offer",
+          "complete": "data.quest.q_find_goblin_chief.complete"
+        }
+      }
+    },
+    {
+      "id": "q_secure_plains",
+      "name": "灵脉之印",
+      "description": "首领已死，但被撬动的灵脉仍在震颤。巡视平原东部与南部，让烙印之火安抚灵脉，稳住第一道封印。",
+      "zone": "emerald_plains",
+      "type": "explore",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_east_plains",
+          "targetName": "平原东部",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 65, "row": 30, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_south_plains",
+          "targetName": "平原南部",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 50, "row": 55, "radius": 10}
+        }
+      ],
+      "rewards": {
+        "exp": 400,
+        "gold": 60,
+        "choices": ["jewelry", "boots", "gloves"],
+        "embers": 5
+      },
+      "prereqQuests": ["q_find_goblin_chief"],
+      "level": 8,
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null, null],
+        "embersOnTurnIn": 5,
+        "i18n": {
+          "name": "data.quest.q_secure_plains.name",
+          "desc": "data.quest.q_secure_plains.desc",
+          "offer": "data.quest.q_secure_plains.offer",
+          "complete": "data.quest.q_secure_plains.complete"
+        }
+      }
+    },
+    {
+      "id": "q_collect_slime_gel",
+      "name": "药师的订单",
+      "description": "平原药师调伤药缺史莱姆凝胶。打史莱姆收集凝胶，亲手送到药师的小摊上。",
+      "zone": "emerald_plains",
+      "type": "talk",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_slime_gel",
+          "targetName": "史莱姆凝胶",
+          "required": 6,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["slime_green"],
+            "chance": 0.5
+          },
+          "itemKind": "gel"
+        },
+        {
+          "type": "talk",
+          "targetId": "plains_herbalist",
+          "targetName": "把凝胶送给平原药师",
+          "required": 1,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 110,
+        "gold": 35,
+        "items": ["c_hp_potion_s", "c_hp_potion_s"]
+      },
+      "level": 2,
+      "questArea": {"col": 25, "row": 20, "radius": 10},
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": ["gel", null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_collect_slime_gel.name",
+          "desc": "data.quest.q_collect_slime_gel.desc",
+          "offer": "data.quest.q_collect_slime_gel.offer",
+          "complete": "data.quest.q_collect_slime_gel.complete"
+        }
+      }
+    },
+    {
+      "id": "q_herb_gathering",
+      "name": "急救草药",
+      "description": "村里的伤员等着草药救命。去西边的草坡上采些翡翠草药回来。",
+      "zone": "emerald_plains",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_herb",
+          "targetName": "翡翠草药",
+          "required": 5,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 22, "row": 26, "radius": 9},
+            "count": 7
+          },
+          "itemKind": "herb"
+        }
+      ],
+      "rewards": {
+        "exp": 70,
+        "gold": 20,
+        "items": ["c_hp_potion_s"]
+      },
+      "level": 2,
+      "questArea": {"col": 20, "row": 25, "radius": 10},
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": ["herb"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_herb_gathering.name",
+          "desc": "data.quest.q_herb_gathering.desc",
+          "offer": "data.quest.q_herb_gathering.offer",
+          "complete": "data.quest.q_herb_gathering.complete"
+        }
+      }
+    },
+    {
+      "id": "q_lost_pendant",
+      "name": "偷挂坠的贼",
+      "description": "有个小个子哥布林摸进村子，偷走了一位老妇人的传家挂坠。顺着它留下的痕迹追下去，把挂坠夺回来。",
+      "zone": "emerald_plains",
+      "type": "investigate",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_pendant_fence",
+          "targetName": "被扒开的篱笆",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 30, "row": 24, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_pendant_cloth",
+          "targetName": "挂在荆棘上的破布",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 42, "row": 34, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_pendant_ashes",
+          "targetName": "还温热的篝火",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 54, "row": 44, "radius": 2}
+        },
+        {"type": "kill", "targetId": "hunt_pendant_thief", "targetName": "小贼斯尼克", "required": 1, "current": 0},
+        {
+          "type": "collect",
+          "targetId": "mat_pendant",
+          "targetName": "传家挂坠",
+          "required": 1,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["hunt_pendant_thief"],
+            "chance": 1
+          },
+          "itemKind": "pendant"
+        }
+      ],
+      "rewards": {
+        "exp": 180,
+        "gold": 40,
+        "choices": ["jewelry"]
+      },
+      "prereqQuests": ["q_kill_slimes"],
+      "level": 4,
+      "questArea": {"col": 54, "row": 44, "radius": 10},
+      "hunts": [
+        {
+          "huntId": "hunt_pendant_thief",
+          "monsterId": "goblin",
+          "name": "小贼斯尼克",
+          "col": 60,
+          "row": 48,
+          "hpMul": 3,
+          "dmgMul": 1.2,
+          "revealAfterPrevious": true,
+          "minions": {"monsterId": "goblin", "count": 2}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null, null, null, null, "pendant"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_lost_pendant.name",
+          "desc": "data.quest.q_lost_pendant.desc",
+          "offer": "data.quest.q_lost_pendant.offer",
+          "complete": "data.quest.q_lost_pendant.complete"
+        }
+      }
+    },
+    {
+      "id": "q_bandit_trouble",
+      "name": "悬赏：红帽格鲁克",
+      "description": "流浪剑客贴出一张悬赏：哥布林劫匪头目“红帽格鲁克”带着手下盘踞在东南的土坡上，专抢过路的货车。取他的红帽来换赏金。",
+      "zone": "emerald_plains",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {"type": "kill", "targetId": "hunt_redcap_gruk", "targetName": "红帽格鲁克", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 260,
+        "gold": 60,
+        "choices": ["weapon"]
+      },
+      "prereqQuests": ["q_kill_goblins"],
+      "level": 7,
+      "questArea": {"col": 80, "row": 75, "radius": 8},
+      "hunts": [
+        {
+          "huntId": "hunt_redcap_gruk",
+          "monsterId": "goblin",
+          "name": "红帽格鲁克",
+          "col": 82,
+          "row": 72,
+          "hpMul": 5,
+          "dmgMul": 1.6,
+          "minions": {"monsterId": "goblin", "count": 4}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "plains_wanderer",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_bandit_trouble.name",
+          "desc": "data.quest.q_bandit_trouble.desc",
+          "offer": "data.quest.q_bandit_trouble.offer",
+          "complete": "data.quest.q_bandit_trouble.complete"
+        }
+      }
+    },
+    {
+      "id": "q_explore_forest",
+      "name": "永夜之林",
+      "description": "暮色森林已在暮光中沉睡数百年，近来亡灵复苏。侦察北部密林、废弃墓地与古老遗迹。",
+      "zone": "twilight_forest",
+      "type": "explore",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_forest_north",
+          "targetName": "森林北部",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 26, "row": 10, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_forest_graveyard",
+          "targetName": "废弃墓地",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 10, "row": 29, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_forest_ruins",
+          "targetName": "古老遗迹",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 58, "row": 26, "radius": 10}
+        }
+      ],
+      "rewards": {"exp": 600, "gold": 60},
+      "level": 10,
+      "derived": {
+        "giverNpcId": "quest_scout",
+        "objectiveItemKinds": [null, null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_explore_forest.name",
+          "desc": "data.quest.q_explore_forest.desc",
+          "offer": "data.quest.q_explore_forest.offer",
+          "complete": "data.quest.q_explore_forest.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_undead",
+      "name": "不安的亡者",
+      "description": "亡灵被黑暗牵引，不得安息。击碎骷髅、焚尽腐尸，让亡者重归泥土。",
+      "zone": "twilight_forest",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "skeleton", "targetName": "骷髅战士", "required": 12, "current": 0},
+        {"type": "kill", "targetId": "zombie", "targetName": "腐尸", "required": 8, "current": 0}
+      ],
+      "rewards": {
+        "exp": 800,
+        "gold": 75,
+        "items": ["c_hp_potion_m"]
+      },
+      "prereqQuests": ["q_explore_forest"],
+      "level": 12,
+      "questArea": {"col": 30, "row": 30, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_scout",
+        "objectiveItemKinds": [null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_undead.name",
+          "desc": "data.quest.q_kill_undead.desc",
+          "offer": "data.quest.q_kill_undead.offer",
+          "complete": "data.quest.q_kill_undead.complete"
+        }
+      }
+    },
+    {
+      "id": "q_talk_hermit",
+      "name": "被抹去的名字",
+      "description": "森林深处的隐士守着一段被遗忘的历史。找到他，问清亡灵复苏与封印的真相。",
+      "zone": "twilight_forest",
+      "type": "talk",
+      "category": "main",
+      "objectives": [
+        {"type": "talk", "targetId": "forest_hermit", "targetName": "森林隐士", "required": 1, "current": 0}
+      ],
+      "rewards": {"exp": 400, "gold": 50},
+      "prereqQuests": ["q_kill_undead"],
+      "level": 14,
+      "questArea": {"col": 100, "row": 62, "radius": 6},
+      "derived": {
+        "giverNpcId": "quest_scout",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_talk_hermit.name",
+          "desc": "data.quest.q_talk_hermit.desc",
+          "offer": "data.quest.q_talk_hermit.offer",
+          "complete": "data.quest.q_talk_hermit.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_werewolf_alpha",
+      "name": "噬月之狼",
+      "description": "月之祭司的圣狼沃尔甘被低语腐化，成了狼人之王，盘踞在通往黑暗之源的路上。击败它，让它解脱。",
+      "zone": "twilight_forest",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "werewolf", "targetName": "狼人", "required": 6, "current": 0},
+        {"type": "kill", "targetId": "werewolf_alpha", "targetName": "狼人首领", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 1500,
+        "gold": 120,
+        "choices": ["weapon", "armor"]
+      },
+      "prereqQuests": ["q_talk_hermit"],
+      "level": 18,
+      "questArea": {"col": 58, "row": 58, "radius": 10},
+      "derived": {
+        "giverNpcId": "quest_scout",
+        "objectiveItemKinds": [null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_werewolf_alpha.name",
+          "desc": "data.quest.q_kill_werewolf_alpha.desc",
+          "offer": "data.quest.q_kill_werewolf_alpha.offer",
+          "complete": "data.quest.q_kill_werewolf_alpha.complete"
+        }
+      }
+    },
+    {
+      "id": "q_seal_dark_source",
+      "name": "月辉之印",
+      "description": "黑暗之源是被腐化的月辉之印，与生命之树纠缠在一起。杀穿尸群，以烙印之火重燃第二道封印。",
+      "zone": "twilight_forest",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_dark_source",
+          "targetName": "黑暗之源",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 19, "row": 64, "radius": 8}
+        },
+        {"type": "kill", "targetId": "zombie", "targetName": "腐尸", "required": 15, "current": 0}
+      ],
+      "rewards": {
+        "exp": 1800,
+        "gold": 150,
+        "choices": ["jewelry", "helmet", "belt"],
+        "embers": 6
+      },
+      "prereqQuests": ["q_kill_werewolf_alpha"],
+      "level": 19,
+      "questArea": {"col": 19, "row": 64, "radius": 10},
+      "derived": {
+        "giverNpcId": "quest_scout",
+        "objectiveItemKinds": [null, null],
+        "embersOnTurnIn": 6,
+        "i18n": {
+          "name": "data.quest.q_seal_dark_source.name",
+          "desc": "data.quest.q_seal_dark_source.desc",
+          "offer": "data.quest.q_seal_dark_source.offer",
+          "complete": "data.quest.q_seal_dark_source.complete"
+        }
+      }
+    },
+    {
+      "id": "q_collect_wolf_pelts",
+      "name": "悬赏：独眼灰鬃",
+      "description": "森林猎人追了一头独眼的狼人整整三个冬天。它叫“灰鬃”，盘踞在西南的狼穴里，咬死过猎人的两个徒弟。剥下它的皮，了结这笔账。",
+      "zone": "twilight_forest",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {"type": "kill", "targetId": "hunt_greymane", "targetName": "独眼灰鬃", "required": 1, "current": 0},
+        {
+          "type": "collect",
+          "targetId": "mat_wolf_pelt",
+          "targetName": "灰鬃的狼皮",
+          "required": 1,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["hunt_greymane"],
+            "chance": 1
+          },
+          "itemKind": "pelt"
+        }
+      ],
+      "rewards": {
+        "exp": 1300,
+        "gold": 110,
+        "choices": ["armor", "helmet"]
+      },
+      "prereqQuests": ["q_kill_undead"],
+      "level": 15,
+      "questArea": {"col": 22, "row": 94, "radius": 8},
+      "hunts": [
+        {
+          "huntId": "hunt_greymane",
+          "monsterId": "werewolf",
+          "name": "独眼灰鬃",
+          "col": 22,
+          "row": 96,
+          "hpMul": 4,
+          "dmgMul": 1.5,
+          "minions": {"monsterId": "werewolf", "count": 2}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "forest_tracker",
+        "objectiveItemKinds": [null, "pelt"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_collect_wolf_pelts.name",
+          "desc": "data.quest.q_collect_wolf_pelts.desc",
+          "offer": "data.quest.q_collect_wolf_pelts.offer",
+          "complete": "data.quest.q_collect_wolf_pelts.complete"
+        }
+      }
+    },
+    {
+      "id": "q_lost_scout",
+      "name": "没回来的斥候",
+      "description": "三天前派出去的斥候再也没有回来。猎人在营地东南发现了他的足迹。跟着痕迹找到他——不管找到的是什么。",
+      "zone": "twilight_forest",
+      "type": "investigate",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_scout_bow",
+          "targetName": "折断的长弓",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 30, "row": 60, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_scout_blood",
+          "targetName": "石头上的血迹",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 36, "row": 70, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_scout_cloak",
+          "targetName": "撕碎的斗篷",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 44, "row": 76, "radius": 2}
+        },
+        {"type": "kill", "targetId": "hunt_scout_ghoul", "targetName": "食尸鬼“裂颚”", "required": 1, "current": 0},
+        {
+          "type": "collect",
+          "targetId": "mat_scout_badge",
+          "targetName": "斥候的徽章",
+          "required": 1,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["hunt_scout_ghoul"],
+            "chance": 1
+          },
+          "itemKind": "pendant"
+        },
+        {
+          "type": "talk",
+          "targetId": "quest_scout",
+          "targetName": "把徽章交给侦察兵队长",
+          "required": 1,
+          "current": 0,
+          "labelKey": "data.questObj.q_lost_scout.badge"
+        }
+      ],
+      "rewards": {
+        "exp": 1100,
+        "gold": 90,
+        "choices": ["boots", "gloves"]
+      },
+      "prereqQuests": ["q_explore_forest"],
+      "level": 14,
+      "questArea": {"col": 44, "row": 76, "radius": 10},
+      "hunts": [
+        {
+          "huntId": "hunt_scout_ghoul",
+          "monsterId": "zombie",
+          "name": "食尸鬼“裂颚”",
+          "col": 48,
+          "row": 80,
+          "hpMul": 3.5,
+          "dmgMul": 1.4,
+          "revealAfterPrevious": true
+        }
+      ],
+      "derived": {
+        "giverNpcId": "forest_tracker",
+        "objectiveItemKinds": [null, null, null, null, "pendant", null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_lost_scout.name",
+          "desc": "data.quest.q_lost_scout.desc",
+          "offer": "data.quest.q_lost_scout.offer",
+          "complete": "data.quest.q_lost_scout.complete"
+        }
+      }
+    },
+    {
+      "id": "q_spider_nest",
+      "name": "安魂灯",
+      "description": "通灵巫女说，墓地里的亡魂不是想害人，只是找不到回去的路。在废弃墓地点亮魂灯，为它们照一条路。",
+      "zone": "twilight_forest",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_soul_lantern",
+          "targetName": "点亮的魂灯",
+          "required": 5,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 12, "row": 30, "radius": 8},
+            "count": 6
+          },
+          "itemKind": "ash"
+        }
+      ],
+      "rewards": {
+        "exp": 900,
+        "gold": 70,
+        "items": ["c_mp_potion_m"]
+      },
+      "prereqQuests": ["q_explore_forest"],
+      "level": 12,
+      "questArea": {"col": 12, "row": 30, "radius": 9},
+      "derived": {
+        "giverNpcId": "forest_spirit_medium",
+        "objectiveItemKinds": ["ash"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_spider_nest.name",
+          "desc": "data.quest.q_spider_nest.desc",
+          "offer": "data.quest.q_spider_nest.offer",
+          "complete": "data.quest.q_spider_nest.complete"
+        }
+      }
+    },
+    {
+      "id": "q_ancient_relic",
+      "name": "给隐士的信",
+      "description": "通灵巫女从亡者那里听来一句话，必须带给森林隐士；隐士听完，又会有话要你转告营地的侦察兵队长。当一回信使。",
+      "zone": "twilight_forest",
+      "type": "talk",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "talk",
+          "targetId": "forest_hermit",
+          "targetName": "把亡者的话带给森林隐士",
+          "required": 1,
+          "current": 0,
+          "labelKey": "data.questObj.q_ancient_relic.hermit"
+        },
+        {
+          "type": "talk",
+          "targetId": "quest_scout",
+          "targetName": "转告侦察兵队长",
+          "required": 1,
+          "current": 0,
+          "labelKey": "data.questObj.q_ancient_relic.scout"
+        }
+      ],
+      "rewards": {
+        "exp": 800,
+        "gold": 80,
+        "items": ["c_hp_potion_m"]
+      },
+      "prereqQuests": ["q_talk_hermit"],
+      "level": 16,
+      "derived": {
+        "giverNpcId": "forest_spirit_medium",
+        "objectiveItemKinds": [null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_ancient_relic.name",
+          "desc": "data.quest.q_ancient_relic.desc",
+          "offer": "data.quest.q_ancient_relic.offer",
+          "complete": "data.quest.q_ancient_relic.complete"
+        }
+      }
+    },
+    {
+      "id": "q_explore_dwarf_ruins",
+      "name": "沉默的铁砧",
+      "description": "百年前一场地震撕裂了铁砧山脉，矮人被迫弃城。探索矿洞入口、锻造大厅与矮人王座，看看故土如今的模样。",
+      "zone": "anvil_mountains",
+      "type": "explore",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_mine_entrance",
+          "targetName": "矿洞入口",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 26, "row": 10, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_forge_hall",
+          "targetName": "锻造大厅",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 48, "row": 38, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_throne_room",
+          "targetName": "矮人王座",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 45, "row": 61, "radius": 10}
+        }
+      ],
+      "rewards": {"exp": 1800, "gold": 150},
+      "level": 20,
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": [null, null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_explore_dwarf_ruins.name",
+          "desc": "data.quest.q_explore_dwarf_ruins.desc",
+          "offer": "data.quest.q_explore_dwarf_ruins.offer",
+          "complete": "data.quest.q_explore_dwarf_ruins.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_gargoyles",
+      "name": "石翼蔽日",
+      "description": "百年前那场“地震”惊醒了石像鬼，它们盘踞山巅，封死了商道。击碎它们，打通通往遗迹的路。",
+      "zone": "anvil_mountains",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "gargoyle", "targetName": "石像鬼", "required": 15, "current": 0}
+      ],
+      "rewards": {"exp": 2200, "gold": 180},
+      "prereqQuests": ["q_explore_dwarf_ruins"],
+      "level": 22,
+      "questArea": {"col": 46, "row": 15, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_gargoyles.name",
+          "desc": "data.quest.q_kill_gargoyles.desc",
+          "offer": "data.quest.q_kill_gargoyles.offer",
+          "complete": "data.quest.q_kill_gargoyles.complete"
+        }
+      }
+    },
+    {
+      "id": "q_collect_dwarf_relics",
+      "name": "先王遗物",
+      "description": "布鲁恩王的秘银锭被石魔像吞入腹中，符文碎片嵌在石像鬼身上。夺回这些遗物，为重铸神器做准备。",
+      "zone": "anvil_mountains",
+      "type": "collect",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_dwarf_ingot",
+          "targetName": "矮人秘银锭",
+          "required": 5,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["stone_golem"],
+            "chance": 0.4
+          },
+          "itemKind": "ingot"
+        },
+        {
+          "type": "collect",
+          "targetId": "mat_rune_fragment",
+          "targetName": "符文碎片",
+          "required": 10,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["gargoyle"],
+            "chance": 0.5
+          },
+          "itemKind": "rune"
+        }
+      ],
+      "rewards": {
+        "exp": 2500,
+        "gold": 200,
+        "choices": ["weapon", "offhand"]
+      },
+      "prereqQuests": ["q_kill_gargoyles"],
+      "level": 25,
+      "questArea": {"col": 35, "row": 40, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": ["ingot", "rune"],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_collect_dwarf_relics.name",
+          "desc": "data.quest.q_collect_dwarf_relics.desc",
+          "offer": "data.quest.q_collect_dwarf_relics.offer",
+          "complete": "data.quest.q_collect_dwarf_relics.complete"
+        }
+      }
+    },
+    {
+      "id": "q_reforge_artifact",
+      "name": "命运之锤",
+      "description": "命运之锤曾锻出五道封印，也能锻出新的钥匙。取回秘银核心，让布鲁恩王的神锤重见天日。",
+      "zone": "anvil_mountains",
+      "type": "collect",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_mithril_core",
+          "targetName": "秘银核心",
+          "required": 3,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["mountain_troll", "stone_golem"],
+            "chance": 0.3
+          },
+          "itemKind": "mithril"
+        }
+      ],
+      "rewards": {"exp": 2800, "gold": 250},
+      "prereqQuests": ["q_collect_dwarf_relics"],
+      "level": 27,
+      "questArea": {"col": 55, "row": 52, "radius": 10},
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": ["mithril"],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_reforge_artifact.name",
+          "desc": "data.quest.q_reforge_artifact.desc",
+          "offer": "data.quest.q_reforge_artifact.offer",
+          "complete": "data.quest.q_reforge_artifact.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_stone_guardian",
+      "name": "篡座者",
+      "description": "巨魔戈尔姆盘踞在矮人王座之上，王座之下正是被低语侵蚀的铁砧之印。击败它，重燃第三道封印。",
+      "zone": "anvil_mountains",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "mountain_troll", "targetName": "山岭巨魔", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 3500,
+        "gold": 300,
+        "choices": ["armor", "helmet", "weapon"],
+        "embers": 8
+      },
+      "prereqQuests": ["q_reforge_artifact"],
+      "level": 28,
+      "questArea": {"col": 45, "row": 61, "radius": 8},
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 8,
+        "i18n": {
+          "name": "data.quest.q_kill_stone_guardian.name",
+          "desc": "data.quest.q_kill_stone_guardian.desc",
+          "offer": "data.quest.q_kill_stone_guardian.offer",
+          "complete": "data.quest.q_kill_stone_guardian.complete"
+        }
+      }
+    },
+    {
+      "id": "q_crystal_mining",
+      "name": "水晶矿脉",
+      "description": "矿工老汉发现北坡露出了一条水晶矿脉，可石像鬼就在头顶盘旋。趁它们不注意，把水晶凿下来。",
+      "zone": "anvil_mountains",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_crystal",
+          "targetName": "山脉水晶",
+          "required": 6,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 58, "row": 16, "radius": 10},
+            "count": 8
+          },
+          "itemKind": "crystal"
+        }
+      ],
+      "rewards": {
+        "exp": 1600,
+        "gold": 130,
+        "items": ["g_sapphire_1"]
+      },
+      "level": 21,
+      "questArea": {"col": 58, "row": 16, "radius": 10},
+      "derived": {
+        "giverNpcId": "mountain_miner",
+        "objectiveItemKinds": ["crystal"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_crystal_mining.name",
+          "desc": "data.quest.q_crystal_mining.desc",
+          "offer": "data.quest.q_crystal_mining.offer",
+          "complete": "data.quest.q_crystal_mining.complete"
+        }
+      }
+    },
+    {
+      "id": "q_trapped_miners",
+      "name": "塌方之后",
+      "description": "南边的矿道塌了，一个矿工被压伤了腿，困在石魔像出没的地方。找到他，护送他回到矿工老汉身边。",
+      "zone": "anvil_mountains",
+      "type": "escort",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "escort",
+          "targetId": "escort_miner",
+          "targetName": "护送受伤的矿工",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 55, "row": 53, "radius": 5}
+        }
+      ],
+      "rewards": {
+        "exp": 2000,
+        "gold": 160,
+        "items": ["c_hp_potion_m", "c_hp_potion_m"]
+      },
+      "prereqQuests": ["q_explore_dwarf_ruins"],
+      "level": 22,
+      "questArea": {"col": 55, "row": 53, "radius": 8},
+      "escortNpc": {
+        "name": "受伤的矿工",
+        "spriteKey": "npc_escort_wounded_explorer",
+        "startCol": 66,
+        "startRow": 84,
+        "destCol": 55,
+        "destRow": 53
+      },
+      "reacceptable": true,
+      "derived": {
+        "giverNpcId": "mountain_miner",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_trapped_miners.name",
+          "desc": "data.quest.q_trapped_miners.desc",
+          "offer": "data.quest.q_trapped_miners.offer",
+          "complete": "data.quest.q_trapped_miners.complete"
+        }
+      }
+    },
+    {
+      "id": "q_mountain_bandits",
+      "name": "悬赏：碎岩者",
+      "description": "一尊古老的石魔像失了控，矮人叫它“碎岩者”。它在东边的山坳里横冲直撞，砸塌了三座矿井。符文学者想要它核心里的符文——前提是有人能把它打碎。",
+      "zone": "anvil_mountains",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {"type": "kill", "targetId": "hunt_rockbreaker", "targetName": "碎岩者", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 2600,
+        "gold": 200,
+        "choices": ["weapon", "offhand"]
+      },
+      "prereqQuests": ["q_kill_gargoyles"],
+      "level": 23,
+      "questArea": {"col": 85, "row": 78, "radius": 8},
+      "hunts": [
+        {
+          "huntId": "hunt_rockbreaker",
+          "monsterId": "stone_golem",
+          "name": "碎岩者",
+          "col": 86,
+          "row": 76,
+          "hpMul": 3.5,
+          "dmgMul": 1.4,
+          "minions": {"monsterId": "gargoyle", "count": 3}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "mountain_rune_scholar",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_mountain_bandits.name",
+          "desc": "data.quest.q_mountain_bandits.desc",
+          "offer": "data.quest.q_mountain_bandits.offer",
+          "complete": "data.quest.q_mountain_bandits.complete"
+        }
+      }
+    },
+    {
+      "id": "q_dragon_egg",
+      "name": "巢母之卵",
+      "description": "矿工们说北峰有“龙蛋”。矮人长老不信，但也想知道那到底是什么。闯进石像鬼的巢穴，击败守巢的巢母，把卵带给符文学者研究。",
+      "zone": "anvil_mountains",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {"type": "kill", "targetId": "hunt_roost_mother", "targetName": "巢母石像鬼", "required": 1, "current": 0},
+        {
+          "type": "collect",
+          "targetId": "mat_dragon_scale",
+          "targetName": "石像鬼之卵",
+          "required": 1,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["hunt_roost_mother"],
+            "chance": 1
+          },
+          "itemKind": "scale"
+        },
+        {
+          "type": "talk",
+          "targetId": "mountain_rune_scholar",
+          "targetName": "把卵交给符文学者",
+          "required": 1,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 2800,
+        "gold": 220,
+        "choices": ["jewelry"]
+      },
+      "prereqQuests": ["q_kill_gargoyles"],
+      "level": 24,
+      "questArea": {"col": 85, "row": 20, "radius": 8},
+      "hunts": [
+        {
+          "huntId": "hunt_roost_mother",
+          "monsterId": "gargoyle",
+          "name": "巢母石像鬼",
+          "col": 86,
+          "row": 18,
+          "hpMul": 4,
+          "dmgMul": 1.4,
+          "minions": {"monsterId": "gargoyle", "count": 3}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": [null, "scale", null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_dragon_egg.name",
+          "desc": "data.quest.q_dragon_egg.desc",
+          "offer": "data.quest.q_dragon_egg.offer",
+          "complete": "data.quest.q_dragon_egg.complete"
+        }
+      }
+    },
+    {
+      "id": "q_explore_desert",
+      "name": "燃烧的沙海",
+      "description": "灼热沙漠曾是日冕王国的疆土，如今烈焰横行。探索烈焰荒地与蝎谷，认清这片沙海。",
+      "zone": "scorching_desert",
+      "type": "explore",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_fire_wastes",
+          "targetName": "烈焰荒地",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 26, "row": 16, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_scorpion_valley",
+          "targetName": "蝎谷",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 51, "row": 32, "radius": 10}
+        }
+      ],
+      "rewards": {"exp": 2800, "gold": 200},
+      "level": 30,
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": [null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_explore_desert.name",
+          "desc": "data.quest.q_explore_desert.desc",
+          "offer": "data.quest.q_explore_desert.offer",
+          "complete": "data.quest.q_explore_desert.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_fire_elementals",
+      "name": "无主之火",
+      "description": "从火焰裂隙中逸出的渊火碎屑化作火焰元素，在沙丘间游荡，所过之处沙化琉璃。扑灭它们，让沙海喘息。",
+      "zone": "scorching_desert",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "fire_elemental", "targetName": "火焰元素", "required": 12, "current": 0}
+      ],
+      "rewards": {
+        "exp": 3800,
+        "gold": 250,
+        "items": ["g_ruby_2"]
+      },
+      "prereqQuests": ["q_explore_desert"],
+      "level": 32,
+      "questArea": {"col": 42, "row": 16, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_fire_elementals.name",
+          "desc": "data.quest.q_kill_fire_elementals.desc",
+          "offer": "data.quest.q_kill_fire_elementals.offer",
+          "complete": "data.quest.q_kill_fire_elementals.complete"
+        }
+      }
+    },
+    {
+      "id": "q_explore_oasis",
+      "name": "泉水的记忆",
+      "description": "隐秘的绿洲曾是日冕王国的皇家花园。前往那里聆听泉水，找寻王国覆灭的真相。",
+      "zone": "scorching_desert",
+      "type": "explore",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_desert_oasis",
+          "targetName": "沙漠绿洲",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 45, "row": 22, "radius": 10}
+        }
+      ],
+      "rewards": {"exp": 3200, "gold": 220},
+      "prereqQuests": ["q_kill_fire_elementals"],
+      "level": 35,
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_explore_oasis.name",
+          "desc": "data.quest.q_explore_oasis.desc",
+          "offer": "data.quest.q_explore_oasis.offer",
+          "complete": "data.quest.q_explore_oasis.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_sandworms",
+      "name": "吞路之虫",
+      "description": "沙虫被地底的热力逼上地面，吞噬了通往南方的商路。清除它们，打开通往火焰裂隙的路。",
+      "zone": "scorching_desert",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "sandworm", "targetName": "沙虫", "required": 8, "current": 0}
+      ],
+      "rewards": {
+        "exp": 5000,
+        "gold": 350,
+        "choices": ["weapon", "armor"]
+      },
+      "prereqQuests": ["q_explore_oasis"],
+      "level": 36,
+      "questArea": {"col": 49, "row": 45, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_sandworms.name",
+          "desc": "data.quest.q_kill_sandworms.desc",
+          "offer": "data.quest.q_kill_sandworms.offer",
+          "complete": "data.quest.q_kill_sandworms.complete"
+        }
+      }
+    },
+    {
+      "id": "q_seal_fire_rift",
+      "name": "日冕之印",
+      "description": "日冕之印已碎，女王的圣鸟赫莉娅被渊火奴役，扇动着裂隙的烈焰。击败它，让它浴火重生，重燃第四道封印。",
+      "zone": "scorching_desert",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "phoenix", "targetName": "凤凰", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 6000,
+        "gold": 400,
+        "choices": ["jewelry", "boots", "helmet"],
+        "embers": 10
+      },
+      "prereqQuests": ["q_kill_sandworms"],
+      "level": 38,
+      "questArea": {"col": 32, "row": 70, "radius": 8},
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 10,
+        "i18n": {
+          "name": "data.quest.q_seal_fire_rift.name",
+          "desc": "data.quest.q_seal_fire_rift.desc",
+          "offer": "data.quest.q_seal_fire_rift.offer",
+          "complete": "data.quest.q_seal_fire_rift.complete"
+        }
+      }
+    },
+    {
+      "id": "q_water_supply",
+      "name": "寻泉",
+      "description": "寻水者的占卜杖在西边的沙地里颤个不停——那下面有泉眼。跟着杖尖的指引找到三处湿沙，泉水就在最后一处。只是，好像有什么东西先占了它。",
+      "zone": "scorching_desert",
+      "type": "investigate",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_spring_1",
+          "targetName": "颤动的沙地",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 30, "row": 62, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_spring_2",
+          "targetName": "湿润的沙层",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 36, "row": 76, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_spring_3",
+          "targetName": "渗水的岩缝",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 48, "row": 82, "radius": 2}
+        },
+        {"type": "kill", "targetId": "hunt_spring_eater", "targetName": "吞泉者", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 3800,
+        "gold": 260,
+        "items": ["c_hp_potion_l"]
+      },
+      "prereqQuests": ["q_explore_desert"],
+      "level": 31,
+      "questArea": {"col": 48, "row": 82, "radius": 10},
+      "hunts": [
+        {
+          "huntId": "hunt_spring_eater",
+          "monsterId": "sandworm",
+          "name": "吞泉者",
+          "col": 52,
+          "row": 84,
+          "hpMul": 3.5,
+          "dmgMul": 1.4,
+          "revealAfterPrevious": true
+        }
+      ],
+      "derived": {
+        "giverNpcId": "desert_water_diviner",
+        "objectiveItemKinds": [null, null, null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_water_supply.name",
+          "desc": "data.quest.q_water_supply.desc",
+          "offer": "data.quest.q_water_supply.offer",
+          "complete": "data.quest.q_water_supply.complete"
+        }
+      }
+    },
+    {
+      "id": "q_scorpion_venom",
+      "name": "悬赏：毒后赛丝",
+      "description": "游牧民的驼队接连在东边的岩谷里出事，每具尸体上都有同一种紫黑色的毒斑。那是蝎群之母“赛丝”的毒。割下她的毒囊，游牧民会用它做解药。",
+      "zone": "scorching_desert",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {"type": "kill", "targetId": "hunt_venom_queen", "targetName": "毒后赛丝", "required": 1, "current": 0},
+        {
+          "type": "collect",
+          "targetId": "mat_venom_sac",
+          "targetName": "毒后的毒囊",
+          "required": 1,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["hunt_venom_queen"],
+            "chance": 1
+          },
+          "itemKind": "venom"
+        }
+      ],
+      "rewards": {
+        "exp": 4200,
+        "gold": 300,
+        "choices": ["armor", "gloves"]
+      },
+      "prereqQuests": ["q_kill_fire_elementals"],
+      "level": 32,
+      "questArea": {"col": 95, "row": 70, "radius": 8},
+      "hunts": [
+        {
+          "huntId": "hunt_venom_queen",
+          "monsterId": "desert_scorpion",
+          "name": "毒后赛丝",
+          "col": 96,
+          "row": 68,
+          "hpMul": 4,
+          "dmgMul": 1.5,
+          "minions": {"monsterId": "desert_scorpion", "count": 3}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": [null, "venom"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_scorpion_venom.name",
+          "desc": "data.quest.q_scorpion_venom.desc",
+          "offer": "data.quest.q_scorpion_venom.offer",
+          "complete": "data.quest.q_scorpion_venom.complete"
+        }
+      }
+    },
+    {
+      "id": "q_buried_treasure",
+      "name": "沙下的石板",
+      "description": "考古学家挖到了一块刻满古字的石板，可它碎成了好几片，散在遗迹周围的沙里。把碎片找齐，拿给游牧民首领——只有他还认得这种字。",
+      "zone": "scorching_desert",
+      "type": "talk",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_tablet_shard",
+          "targetName": "石板碎片",
+          "required": 4,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 64, "row": 48, "radius": 9},
+            "count": 5
+          },
+          "itemKind": "rune"
+        },
+        {"type": "talk", "targetId": "quest_nomad", "targetName": "请游牧民解读石板", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 3600,
+        "gold": 280,
+        "items": ["g_topaz_2"]
+      },
+      "prereqQuests": ["q_explore_desert"],
+      "level": 30,
+      "questArea": {"col": 64, "row": 48, "radius": 10},
+      "derived": {
+        "giverNpcId": "desert_archaeologist",
+        "objectiveItemKinds": ["rune", null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_buried_treasure.name",
+          "desc": "data.quest.q_buried_treasure.desc",
+          "offer": "data.quest.q_buried_treasure.offer",
+          "complete": "data.quest.q_buried_treasure.complete"
+        }
+      }
+    },
+    {
+      "id": "q_mirage_beasts",
+      "name": "蜃景双生",
+      "description": "北边的热浪里常出现两团一模一样的火光，旅人追过去就再没回来。寻水者说那不是幻觉，是一对共生的火灵。走进蜃景，把它们一起熄灭。",
+      "zone": "scorching_desert",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_mirage",
+          "targetName": "走进蜃景",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 85, "row": 16, "radius": 5}
+        },
+        {
+          "type": "kill",
+          "targetId": "hunt_mirage_twin_a",
+          "targetName": "蜃景火灵·昼",
+          "required": 1,
+          "current": 0
+        },
+        {
+          "type": "kill",
+          "targetId": "hunt_mirage_twin_b",
+          "targetName": "蜃景火灵·夜",
+          "required": 1,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 4800,
+        "gold": 340,
+        "choices": ["helmet", "belt"]
+      },
+      "prereqQuests": ["q_kill_fire_elementals"],
+      "level": 34,
+      "questArea": {"col": 85, "row": 16, "radius": 8},
+      "hunts": [
+        {
+          "huntId": "hunt_mirage_twin_a",
+          "monsterId": "fire_elemental",
+          "name": "蜃景火灵·昼",
+          "col": 82,
+          "row": 14,
+          "hpMul": 3,
+          "dmgMul": 1.3,
+          "revealAfterPrevious": true
+        },
+        {
+          "huntId": "hunt_mirage_twin_b",
+          "monsterId": "fire_elemental",
+          "name": "蜃景火灵·夜",
+          "col": 88,
+          "row": 18,
+          "hpMul": 3,
+          "dmgMul": 1.3,
+          "revealAfterPrevious": true
+        }
+      ],
+      "derived": {
+        "giverNpcId": "desert_water_diviner",
+        "objectiveItemKinds": [null, null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_mirage_beasts.name",
+          "desc": "data.quest.q_mirage_beasts.desc",
+          "offer": "data.quest.q_mirage_beasts.offer",
+          "complete": "data.quest.q_mirage_beasts.complete"
+        }
+      }
+    },
+    {
+      "id": "q_explore_abyss",
+      "name": "渊火之门",
+      "description": "五地之火皆汇于此。探索裂隙入口、恶魔尖塔与混沌王座，看清伊格纳罗斯的阵地。",
+      "zone": "abyss_rift",
+      "type": "explore",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "explore",
+          "targetId": "zone_rift_entrance",
+          "targetName": "裂隙入口",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 26, "row": 10, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_demon_spire",
+          "targetName": "恶魔尖塔",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 64, "row": 38, "radius": 10}
+        },
+        {
+          "type": "explore",
+          "targetId": "zone_throne_of_chaos",
+          "targetName": "混沌王座",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 38, "row": 70, "radius": 10}
+        }
+      ],
+      "rewards": {"exp": 6000, "gold": 400},
+      "level": 40,
+      "derived": {
+        "giverNpcId": "quest_warden",
+        "objectiveItemKinds": [null, null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_explore_abyss.name",
+          "desc": "data.quest.q_explore_abyss.desc",
+          "offer": "data.quest.q_explore_abyss.offer",
+          "complete": "data.quest.q_explore_abyss.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_demons",
+      "name": "门缝之潮",
+      "description": "渊火之门每开一寸，便有更多恶魔涌出。驱逐小恶魔与次级恶魔，别让一只越过裂隙。",
+      "zone": "abyss_rift",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "imp", "targetName": "小恶魔", "required": 20, "current": 0},
+        {"type": "kill", "targetId": "lesser_demon", "targetName": "次级恶魔", "required": 10, "current": 0}
+      ],
+      "rewards": {"exp": 8000, "gold": 500},
+      "prereqQuests": ["q_explore_abyss"],
+      "level": 43,
+      "questArea": {"col": 40, "row": 30, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_warden",
+        "objectiveItemKinds": [null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_kill_demons.name",
+          "desc": "data.quest.q_kill_demons.desc",
+          "offer": "data.quest.q_kill_demons.offer",
+          "complete": "data.quest.q_kill_demons.complete"
+        }
+      }
+    },
+    {
+      "id": "q_collect_demon_essence",
+      "name": "以渊为引",
+      "description": "以渊火之物锁渊火之门，这是艾瑟琳留下的法子。猎杀深渊恶魔，收集它们的精华，作为终焉之钥的引子。",
+      "zone": "abyss_rift",
+      "type": "collect",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_demon_essence",
+          "targetName": "恶魔精华",
+          "required": 15,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["imp", "lesser_demon", "succubus"],
+            "chance": 0.45
+          },
+          "itemKind": "essence"
+        }
+      ],
+      "rewards": {
+        "exp": 7500,
+        "gold": 450,
+        "choices": ["helmet", "armor"],
+        "embers": 8
+      },
+      "prereqQuests": ["q_kill_demons"],
+      "level": 45,
+      "questArea": {"col": 45, "row": 45, "radius": 15},
+      "derived": {
+        "giverNpcId": "quest_warden",
+        "objectiveItemKinds": ["essence"],
+        "embersOnTurnIn": 8,
+        "i18n": {
+          "name": "data.quest.q_collect_demon_essence.name",
+          "desc": "data.quest.q_collect_demon_essence.desc",
+          "offer": "data.quest.q_collect_demon_essence.offer",
+          "complete": "data.quest.q_collect_demon_essence.complete"
+        }
+      }
+    },
+    {
+      "id": "q_forge_seal",
+      "name": "终焉之钥",
+      "description": "封印碎片散落在英雄纪念碑附近，是历代守望者以命换来的。收集它们，以命运之锤锻造终焉之钥。",
+      "zone": "abyss_rift",
+      "type": "collect",
+      "category": "main",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_seal_fragment",
+          "targetName": "封印碎片",
+          "required": 5,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 55, "row": 55, "radius": 9},
+            "count": 6
+          },
+          "itemKind": "seal"
+        }
+      ],
+      "rewards": {"exp": 9000, "gold": 550},
+      "prereqQuests": ["q_collect_demon_essence"],
+      "level": 47,
+      "questArea": {"col": 55, "row": 55, "radius": 10},
+      "derived": {
+        "giverNpcId": "quest_warden",
+        "objectiveItemKinds": ["seal"],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_forge_seal.name",
+          "desc": "data.quest.q_forge_seal.desc",
+          "offer": "data.quest.q_forge_seal.offer",
+          "complete": "data.quest.q_forge_seal.complete"
+        }
+      }
+    },
+    {
+      "id": "q_kill_abyss_lord",
+      "name": "焚誓者",
+      "description": "被抹去名字的第六位贤者伊格纳罗斯，化身深渊领主端坐于混沌王座。以终焉之钥与烙印之火，终结这场千年之劫。",
+      "zone": "abyss_rift",
+      "type": "kill",
+      "category": "main",
+      "objectives": [
+        {"type": "kill", "targetId": "demon_lord", "targetName": "深渊领主", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 15000,
+        "gold": 1000,
+        "choices": ["weapon", "armor", "jewelry"],
+        "embers": 15
+      },
+      "prereqQuests": ["q_forge_seal"],
+      "level": 50,
+      "questArea": {"col": 38, "row": 70, "radius": 8},
+      "derived": {
+        "giverNpcId": "quest_warden",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 15,
+        "i18n": {
+          "name": "data.quest.q_kill_abyss_lord.name",
+          "desc": "data.quest.q_kill_abyss_lord.desc",
+          "offer": "data.quest.q_kill_abyss_lord.offer",
+          "complete": "data.quest.q_kill_abyss_lord.complete"
+        }
+      }
+    },
+    {
+      "id": "q_corrupted_souls",
+      "name": "三个背誓者",
+      "description": "堕落骑士当年的三名部下向恶魔献上了誓言，如今在深渊里各据一方。他没有脸面亲手了结他们，只能托付给你。",
+      "zone": "abyss_rift",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "kill",
+          "targetId": "hunt_oathbreaker_karon",
+          "targetName": "背誓者卡隆",
+          "required": 1,
+          "current": 0
+        },
+        {
+          "type": "kill",
+          "targetId": "hunt_oathbreaker_lyss",
+          "targetName": "背誓者莉丝",
+          "required": 1,
+          "current": 0
+        },
+        {
+          "type": "kill",
+          "targetId": "hunt_oathbreaker_gig",
+          "targetName": "背誓者吉格",
+          "required": 1,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 7200,
+        "gold": 450,
+        "choices": ["weapon", "armor"]
+      },
+      "prereqQuests": ["q_explore_abyss"],
+      "level": 42,
+      "questArea": {"col": 70, "row": 38, "radius": 30},
+      "hunts": [
+        {
+          "huntId": "hunt_oathbreaker_karon",
+          "monsterId": "lesser_demon",
+          "name": "背誓者卡隆",
+          "col": 70,
+          "row": 40,
+          "hpMul": 3,
+          "dmgMul": 1.3,
+          "minions": {"monsterId": "imp", "count": 2}
+        },
+        {
+          "huntId": "hunt_oathbreaker_lyss",
+          "monsterId": "succubus",
+          "name": "背誓者莉丝",
+          "col": 96,
+          "row": 58,
+          "hpMul": 3,
+          "dmgMul": 1.3,
+          "minions": {"monsterId": "imp", "count": 2}
+        },
+        {
+          "huntId": "hunt_oathbreaker_gig",
+          "monsterId": "imp",
+          "name": "背誓者吉格",
+          "col": 86,
+          "row": 24,
+          "hpMul": 4,
+          "dmgMul": 1.4,
+          "minions": {"monsterId": "imp", "count": 3}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "abyss_fallen_knight",
+        "objectiveItemKinds": [null, null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_corrupted_souls.name",
+          "desc": "data.quest.q_corrupted_souls.desc",
+          "offer": "data.quest.q_corrupted_souls.offer",
+          "complete": "data.quest.q_corrupted_souls.complete"
+        }
+      }
+    },
+    {
+      "id": "q_fallen_hero",
+      "name": "英雄的遗言",
+      "description": "陨落神殿和英雄纪念碑上各刻着半句遗言，是三百年前封印深渊的人留下的。拓下两处的碑文，带给深渊守望者。",
+      "zone": "abyss_rift",
+      "type": "investigate",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_hero_shrine",
+          "targetName": "神殿残碑",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 26, "row": 58, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_hero_memorial",
+          "targetName": "纪念碑铭文",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 55, "row": 55, "radius": 2}
+        },
+        {"type": "talk", "targetId": "quest_warden", "targetName": "把拓文交给深渊守望者", "required": 1, "current": 0}
+      ],
+      "rewards": {
+        "exp": 6500,
+        "gold": 400,
+        "items": ["g_diamond_2"]
+      },
+      "prereqQuests": ["q_explore_abyss"],
+      "level": 44,
+      "derived": {
+        "giverNpcId": "abyss_fallen_knight",
+        "objectiveItemKinds": [null, null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_fallen_hero.name",
+          "desc": "data.quest.q_fallen_hero.desc",
+          "offer": "data.quest.q_fallen_hero.offer",
+          "complete": "data.quest.q_fallen_hero.complete"
+        }
+      }
+    },
+    {
+      "id": "q_void_crystals",
+      "name": "虚空结晶",
+      "description": "虚空研究者发现裂隙边缘长出了会“呼吸”的水晶。趁它们还没长成下一道裂口，采回来给他研究。",
+      "zone": "abyss_rift",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_void_crystal",
+          "targetName": "虚空结晶",
+          "required": 5,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 80, "row": 44, "radius": 10},
+            "count": 6
+          },
+          "itemKind": "void_crystal"
+        }
+      ],
+      "rewards": {
+        "exp": 6000,
+        "gold": 380,
+        "items": ["c_mp_potion_m", "c_mp_potion_m"]
+      },
+      "level": 42,
+      "questArea": {"col": 80, "row": 44, "radius": 10},
+      "derived": {
+        "giverNpcId": "abyss_void_researcher",
+        "objectiveItemKinds": ["void_crystal"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_void_crystals.name",
+          "desc": "data.quest.q_void_crystals.desc",
+          "offer": "data.quest.q_void_crystals.offer",
+          "complete": "data.quest.q_void_crystals.complete"
+        }
+      }
+    },
+    {
+      "id": "q_demon_weaponry",
+      "name": "军械官莫拉克斯",
+      "description": "恶魔军团的兵器都出自南方的一座军械营，看守它的是军械官莫拉克斯。杀了他，夺下他的兵符，守望者就能看懂恶魔的调兵令。",
+      "zone": "abyss_rift",
+      "type": "kill",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "kill",
+          "targetId": "hunt_quartermaster",
+          "targetName": "军械官莫拉克斯",
+          "required": 1,
+          "current": 0
+        },
+        {
+          "type": "collect",
+          "targetId": "mat_war_sigil",
+          "targetName": "恶魔兵符",
+          "required": 1,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["hunt_quartermaster"],
+            "chance": 1
+          },
+          "itemKind": "seal"
+        }
+      ],
+      "rewards": {
+        "exp": 7600,
+        "gold": 460,
+        "choices": ["weapon", "offhand"]
+      },
+      "prereqQuests": ["q_kill_demons"],
+      "level": 46,
+      "questArea": {"col": 80, "row": 80, "radius": 8},
+      "hunts": [
+        {
+          "huntId": "hunt_quartermaster",
+          "monsterId": "lesser_demon",
+          "name": "军械官莫拉克斯",
+          "col": 80,
+          "row": 82,
+          "hpMul": 4,
+          "dmgMul": 1.4,
+          "minions": {"monsterId": "imp", "count": 4}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "quest_warden",
+        "objectiveItemKinds": [null, "seal"],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_demon_weaponry.name",
+          "desc": "data.quest.q_demon_weaponry.desc",
+          "offer": "data.quest.q_demon_weaponry.offer",
+          "complete": "data.quest.q_demon_weaponry.complete"
+        }
+      }
+    },
+    {
+      "id": "q_pet_jade_tortoise",
+      "name": "玄武的试炼",
+      "description": "矿工老汉说，山里睡着一只远古玄武的魂。把散落在古神龛边的魂片拾回来，它的守魂像就会醒来考验你——赢了，它就跟你走。",
+      "zone": "anvil_mountains",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_tortoise_shard",
+          "targetName": "玄武魂片",
+          "required": 4,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 40, "row": 70, "radius": 8},
+            "count": 5
+          },
+          "itemKind": "crystal"
+        },
+        {"type": "kill", "targetId": "hunt_jade_guardian", "targetName": "玄武守魂像", "required": 1, "current": 0}
+      ],
+      "rewards": {"exp": 3000, "gold": 250, "petReward": "pet_jade_tortoise", "embers": 4},
+      "prereqQuests": ["q_kill_gargoyles"],
+      "level": 22,
+      "questArea": {"col": 40, "row": 70, "radius": 10},
+      "hunts": [
+        {
+          "huntId": "hunt_jade_guardian",
+          "monsterId": "stone_golem",
+          "name": "玄武守魂像",
+          "col": 42,
+          "row": 72,
+          "hpMul": 4,
+          "dmgMul": 1.3,
+          "revealAfterPrevious": true
+        }
+      ],
+      "derived": {
+        "giverNpcId": "mountain_miner",
+        "objectiveItemKinds": ["crystal", null],
+        "embersOnTurnIn": 4,
+        "i18n": {
+          "name": "data.quest.q_pet_jade_tortoise.name",
+          "desc": "data.quest.q_pet_jade_tortoise.desc",
+          "offer": "data.quest.q_pet_jade_tortoise.offer",
+          "complete": "data.quest.q_pet_jade_tortoise.complete"
+        }
+      }
+    },
+    {
+      "id": "q_pet_sprite_friend",
+      "name": "捉迷藏的小精灵",
+      "description": "东北的池塘边住着一只爱玩的小精灵，它说：找到我四次，我就跟你做朋友。留意草丛里一闪一闪的光。",
+      "zone": "emerald_plains",
+      "type": "investigate",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_sprite_1",
+          "targetName": "蘑菇圈里的笑声",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 78, "row": 12, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_sprite_2",
+          "targetName": "会发光的花",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 92, "row": 10, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_sprite_3",
+          "targetName": "树洞里的铃声",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 100, "row": 22, "radius": 2}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_sprite_4",
+          "targetName": "池边的小脚印",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 86, "row": 28, "radius": 2}
+        }
+      ],
+      "rewards": {"exp": 220, "gold": 50, "petReward": "pet_sprite", "embers": 2},
+      "level": 3,
+      "questArea": {"col": 88, "row": 18, "radius": 14},
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null, null, null, null],
+        "embersOnTurnIn": 2,
+        "i18n": {
+          "name": "data.quest.q_pet_sprite_friend.name",
+          "desc": "data.quest.q_pet_sprite_friend.desc",
+          "offer": "data.quest.q_pet_sprite_friend.offer",
+          "complete": "data.quest.q_pet_sprite_friend.complete"
+        }
+      }
+    },
+    {
+      "id": "q_pet_owl",
+      "name": "月鸮",
+      "description": "月印碎裂那夜，隐士养了三十年的猫头鹰“月鸮”受惊飞走了。循着林间泛银光的落羽找下去，找到它藏身的空心古树。",
+      "zone": "twilight_forest",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_moon_feather",
+          "targetName": "银光落羽",
+          "required": 4,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 86, "row": 50, "radius": 8},
+            "count": 5
+          },
+          "itemKind": "silk"
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_owl_hollow",
+          "targetName": "空心古树",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 80, "row": 44, "radius": 2}
+        }
+      ],
+      "rewards": {"exp": 1500, "gold": 120, "petReward": "pet_owl", "embers": 4},
+      "prereqQuests": ["q_talk_hermit"],
+      "level": 14,
+      "questArea": {"col": 84, "row": 48, "radius": 10},
+      "derived": {
+        "giverNpcId": "forest_hermit",
+        "objectiveItemKinds": ["silk", null],
+        "embersOnTurnIn": 4,
+        "i18n": {
+          "name": "data.quest.q_pet_owl.name",
+          "desc": "data.quest.q_pet_owl.desc",
+          "offer": "data.quest.q_pet_owl.offer",
+          "complete": "data.quest.q_pet_owl.complete"
+        }
+      }
+    },
+    {
+      "id": "q_pet_cat",
+      "name": "影猫",
+      "description": "通灵巫女说，有只猫的影子被亡灵拖进了生死之间。从游荡的亡者身上夺回它的影子碎片，再打倒看守它的缚影者。",
+      "zone": "twilight_forest",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_shadow_shard",
+          "targetName": "猫影碎片",
+          "required": 4,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["zombie", "skeleton"],
+            "chance": 0.35
+          },
+          "itemKind": "essence"
+        },
+        {"type": "kill", "targetId": "hunt_shade_binder", "targetName": "缚影者", "required": 1, "current": 0}
+      ],
+      "rewards": {"exp": 1900, "gold": 150, "petReward": "pet_cat", "embers": 4},
+      "prereqQuests": ["q_kill_undead"],
+      "level": 16,
+      "questArea": {"col": 40, "row": 88, "radius": 10},
+      "hunts": [
+        {
+          "huntId": "hunt_shade_binder",
+          "monsterId": "skeleton",
+          "name": "缚影者",
+          "col": 42,
+          "row": 90,
+          "hpMul": 3.5,
+          "dmgMul": 1.3,
+          "revealAfterPrevious": true,
+          "minions": {"monsterId": "zombie", "count": 2}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "forest_spirit_medium",
+        "objectiveItemKinds": ["essence", null],
+        "embersOnTurnIn": 4,
+        "i18n": {
+          "name": "data.quest.q_pet_cat.name",
+          "desc": "data.quest.q_pet_cat.desc",
+          "offer": "data.quest.q_pet_cat.offer",
+          "complete": "data.quest.q_pet_cat.complete"
+        }
+      }
+    },
+    {
+      "id": "q_pet_dragon",
+      "name": "熔岩幼龙",
+      "description": "篡座者倒下后，先王熔炉底下滚出一枚温热的龙蛋。矮人长老说，要孵它，得用山里石魔心口的熔炉余烬重新点火。",
+      "zone": "anvil_mountains",
+      "type": "collect",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "collect",
+          "targetId": "mat_forge_ember",
+          "targetName": "熔炉余烬",
+          "required": 3,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["stone_golem"],
+            "chance": 0.4
+          },
+          "itemKind": "ash"
+        },
+        {
+          "type": "talk",
+          "targetId": "blacksmith_advanced",
+          "targetName": "把余烬送进熔炉",
+          "required": 1,
+          "current": 0
+        }
+      ],
+      "rewards": {"exp": 4200, "gold": 320, "petReward": "pet_dragon", "embers": 6},
+      "prereqQuests": ["q_kill_stone_guardian"],
+      "level": 28,
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": ["ash", null],
+        "embersOnTurnIn": 6,
+        "i18n": {
+          "name": "data.quest.q_pet_dragon.name",
+          "desc": "data.quest.q_pet_dragon.desc",
+          "offer": "data.quest.q_pet_dragon.offer",
+          "complete": "data.quest.q_pet_dragon.complete"
+        }
+      }
+    },
+    {
+      "id": "q_escort_merchant_plains",
+      "name": "护送商人",
+      "description": "一位商人需要穿越翡翠平原前往南方营地，但路途上满是哥布林。护送他安全抵达目的地。",
+      "zone": "emerald_plains",
+      "type": "escort",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "escort",
+          "targetId": "escort_merchant",
+          "targetName": "护送商人到南方营地",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 50, "row": 90, "radius": 5}
+        }
+      ],
+      "rewards": {
+        "exp": 350,
+        "gold": 60,
+        "items": ["c_hp_potion_m"]
+      },
+      "prereqQuests": ["q_kill_goblins"],
+      "level": 5,
+      "questArea": {"col": 50, "row": 90, "radius": 8},
+      "escortNpc": {
+        "name": "旅行商人",
+        "spriteKey": "npc_escort_traveling_merchant",
+        "startCol": 30,
+        "startRow": 40,
+        "destCol": 50,
+        "destRow": 90
+      },
+      "reacceptable": true,
+      "derived": {
+        "giverNpcId": "quest_elder",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_escort_merchant_plains.name",
+          "desc": "data.quest.q_escort_merchant_plains.desc",
+          "offer": "data.quest.q_escort_merchant_plains.offer",
+          "complete": "data.quest.q_escort_merchant_plains.complete"
+        }
+      }
+    },
+    {
+      "id": "q_escort_survivor_desert",
+      "name": "护送幸存者",
+      "description": "一名探险者在沙漠中迷路，伤势严重。护送他穿越蝎谷到达绿洲营地。途中小心沙漠蝎子和火焰元素。",
+      "zone": "scorching_desert",
+      "type": "escort",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "escort",
+          "targetId": "escort_survivor",
+          "targetName": "护送幸存者到绿洲",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 45, "row": 22, "radius": 5}
+        }
+      ],
+      "rewards": {
+        "exp": 4500,
+        "gold": 300,
+        "items": ["c_hp_potion_l"]
+      },
+      "prereqQuests": ["q_explore_desert"],
+      "level": 33,
+      "questArea": {"col": 45, "row": 22, "radius": 10},
+      "escortNpc": {
+        "name": "受伤的探险者",
+        "spriteKey": "npc_escort_wounded_explorer",
+        "startCol": 64,
+        "startRow": 48,
+        "destCol": 45,
+        "destRow": 22
+      },
+      "reacceptable": true,
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_escort_survivor_desert.name",
+          "desc": "data.quest.q_escort_survivor_desert.desc",
+          "offer": "data.quest.q_escort_survivor_desert.offer",
+          "complete": "data.quest.q_escort_survivor_desert.complete"
+        }
+      }
+    },
+    {
+      "id": "q_defend_camp_forest",
+      "name": "守卫营地",
+      "description": "暮色森林营地收到情报，亡灵大军即将来袭！坚守营地篝火，击退三波亡灵攻势。营地篝火若被摧毁，一切将付之东流。",
+      "zone": "twilight_forest",
+      "type": "defend",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "defend_wave",
+          "targetId": "defend_forest_camp",
+          "targetName": "击退亡灵浪潮",
+          "required": 3,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 1200,
+        "gold": 100,
+        "items": ["c_hp_potion_m"]
+      },
+      "prereqQuests": ["q_kill_undead"],
+      "level": 14,
+      "questArea": {"col": 40, "row": 35, "radius": 12},
+      "defendTarget": {"name": "营地篝火", "spriteKey": "decor_defend_campfire", "col": 40, "row": 35, "totalWaves": 3},
+      "reacceptable": true,
+      "derived": {
+        "giverNpcId": "quest_scout",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_defend_camp_forest.name",
+          "desc": "data.quest.q_defend_camp_forest.desc",
+          "offer": "data.quest.q_defend_camp_forest.offer",
+          "complete": "data.quest.q_defend_camp_forest.complete"
+        }
+      }
+    },
+    {
+      "id": "q_defend_seal_abyss",
+      "name": "守护封印",
+      "description": "深渊封印正在被恶魔军团攻击！你必须击退五波恶魔，保护封印石不被摧毁。一旦封印石破碎，深渊将再次扩张。",
+      "zone": "abyss_rift",
+      "type": "defend",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "defend_wave",
+          "targetId": "defend_abyss_seal",
+          "targetName": "击退恶魔浪潮",
+          "required": 5,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 8000,
+        "gold": 500,
+        "items": ["g_ruby_2"]
+      },
+      "prereqQuests": ["q_collect_demon_essence"],
+      "level": 46,
+      "questArea": {"col": 38, "row": 58, "radius": 10},
+      "defendTarget": {"name": "封印石", "spriteKey": "decor_defend_abyss_seal", "col": 38, "row": 58, "totalWaves": 5},
+      "reacceptable": true,
+      "derived": {
+        "giverNpcId": "quest_warden",
+        "objectiveItemKinds": [null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_defend_seal_abyss.name",
+          "desc": "data.quest.q_defend_seal_abyss.desc",
+          "offer": "data.quest.q_defend_seal_abyss.offer",
+          "complete": "data.quest.q_defend_seal_abyss.complete"
+        }
+      }
+    },
+    {
+      "id": "q_investigate_ruins_mountains",
+      "name": "遗迹调查",
+      "description": "矮人长老希望你调查铁砧山脉中散落的古代遗迹。搜索指定区域，找到四处被隐藏的符文石碑，记录上面的铭文。",
+      "zone": "anvil_mountains",
+      "type": "investigate",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_rune_1",
+          "targetName": "北方符文石碑",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 30, "row": 15, "radius": 5}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_rune_2",
+          "targetName": "东方符文石碑",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 60, "row": 30, "radius": 5}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_rune_3",
+          "targetName": "矿洞符文石碑",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 35, "row": 50, "radius": 5}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_rune_4",
+          "targetName": "山顶符文石碑",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 55, "row": 65, "radius": 5}
+        }
+      ],
+      "rewards": {
+        "exp": 2800,
+        "gold": 220,
+        "items": ["g_sapphire_2"]
+      },
+      "prereqQuests": ["q_explore_dwarf_ruins"],
+      "level": 23,
+      "questArea": {"col": 45, "row": 40, "radius": 30},
+      "clues": [
+        {"id": "clue_rune_1", "name": "北方符文石碑", "col": 30, "row": 15},
+        {"id": "clue_rune_2", "name": "东方符文石碑", "col": 60, "row": 30},
+        {"id": "clue_rune_3", "name": "矿洞符文石碑", "col": 35, "row": 50},
+        {"id": "clue_rune_4", "name": "山顶符文石碑", "col": 55, "row": 65}
+      ],
+      "derived": {
+        "giverNpcId": "mountain_rune_scholar",
+        "objectiveItemKinds": [null, null, null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_investigate_ruins_mountains.name",
+          "desc": "data.quest.q_investigate_ruins_mountains.desc",
+          "offer": "data.quest.q_investigate_ruins_mountains.offer",
+          "complete": "data.quest.q_investigate_ruins_mountains.complete"
+        }
+      }
+    },
+    {
+      "id": "q_investigate_corruption_forest",
+      "name": "腐化溯源",
+      "description": "森林中的腐化蔓延不止，通灵巫女怀疑有一个源头在喂养它。追查三处腐化痕迹，找到那个源头，把它根除。",
+      "zone": "twilight_forest",
+      "type": "investigate",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_corrupt_1",
+          "targetName": "腐化树根",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 20, "row": 25, "radius": 5}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_corrupt_2",
+          "targetName": "污染水源",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 50, "row": 40, "radius": 5}
+        },
+        {
+          "type": "investigate_clue",
+          "targetId": "clue_corrupt_3",
+          "targetName": "暗影祭坛",
+          "required": 1,
+          "current": 0,
+          "location": {"col": 15, "row": 60, "radius": 5}
+        },
+        {"type": "kill", "targetId": "hunt_rot_mother", "targetName": "腐化之母", "required": 1, "current": 0}
+      ],
+      "rewards": {"exp": 900, "gold": 80},
+      "prereqQuests": ["q_explore_forest"],
+      "level": 13,
+      "questArea": {"col": 30, "row": 40, "radius": 25},
+      "clues": [
+        {"id": "clue_corrupt_1", "name": "腐化树根", "col": 20, "row": 25},
+        {"id": "clue_corrupt_2", "name": "污染水源", "col": 50, "row": 40},
+        {"id": "clue_corrupt_3", "name": "暗影祭坛", "col": 15, "row": 60}
+      ],
+      "hunts": [
+        {
+          "huntId": "hunt_rot_mother",
+          "monsterId": "zombie",
+          "name": "腐化之母",
+          "col": 18,
+          "row": 62,
+          "hpMul": 4,
+          "dmgMul": 1.4,
+          "revealAfterPrevious": true,
+          "minions": {"monsterId": "zombie", "count": 2}
+        }
+      ],
+      "derived": {
+        "giverNpcId": "forest_spirit_medium",
+        "objectiveItemKinds": [null, null, null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_investigate_corruption_forest.name",
+          "desc": "data.quest.q_investigate_corruption_forest.desc",
+          "offer": "data.quest.q_investigate_corruption_forest.offer",
+          "complete": "data.quest.q_investigate_corruption_forest.complete"
+        }
+      }
+    },
+    {
+      "id": "q_craft_dwarf_weapon",
+      "name": "锻造矮人战锤",
+      "description": "矮人长老希望重铸一把传奇战锤。先收集秘银锭和符文碎片，然后在高级铁匠处锻造，最后将成品交给矮人长老。",
+      "zone": "anvil_mountains",
+      "type": "craft",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "craft_collect",
+          "targetId": "mat_dwarf_ingot",
+          "targetName": "秘银锭",
+          "required": 3,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["stone_golem"],
+            "chance": 0.4
+          },
+          "itemKind": "ingot"
+        },
+        {
+          "type": "craft_collect",
+          "targetId": "mat_rune_fragment",
+          "targetName": "符文碎片",
+          "required": 5,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["gargoyle"],
+            "chance": 0.5
+          },
+          "itemKind": "rune"
+        },
+        {
+          "type": "craft_craft",
+          "targetId": "craft_dwarf_hammer",
+          "targetName": "在铁匠处锻造战锤",
+          "required": 1,
+          "current": 0
+        },
+        {
+          "type": "craft_deliver",
+          "targetId": "deliver_dwarf_hammer",
+          "targetName": "交付给矮人长老",
+          "required": 1,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 3200,
+        "gold": 280,
+        "choices": ["weapon"],
+        "choiceQuality": "rare"
+      },
+      "prereqQuests": ["q_collect_dwarf_relics"],
+      "level": 26,
+      "questArea": {"col": 45, "row": 40, "radius": 15},
+      "craftPhases": {
+        "materials": [
+          {"itemId": "mat_dwarf_ingot", "name": "秘银锭", "required": 3},
+          {"itemId": "mat_rune_fragment", "name": "符文碎片", "required": 5}
+        ],
+        "craftNpc": "blacksmith_advanced",
+        "deliverNpc": "quest_dwarf"
+      },
+      "derived": {
+        "giverNpcId": "quest_dwarf",
+        "objectiveItemKinds": ["ingot", "rune", null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_craft_dwarf_weapon.name",
+          "desc": "data.quest.q_craft_dwarf_weapon.desc",
+          "offer": "data.quest.q_craft_dwarf_weapon.offer",
+          "complete": "data.quest.q_craft_dwarf_weapon.complete"
+        }
+      }
+    },
+    {
+      "id": "q_craft_fire_ward",
+      "name": "制作火焰护符",
+      "description": "沙漠游牧民需要一枚火焰护符来抵御灼热。先收集净化水囊和蝎毒作为材料，在沙漠商人处制作护符，最后交付给游牧民。",
+      "zone": "scorching_desert",
+      "type": "craft",
+      "category": "side",
+      "objectives": [
+        {
+          "type": "craft_collect",
+          "targetId": "mat_water",
+          "targetName": "净化水囊",
+          "required": 3,
+          "current": 0,
+          "source": {
+            "kind": "gather",
+            "area": {"col": 16, "row": 38, "radius": 11},
+            "count": 4
+          },
+          "itemKind": "water"
+        },
+        {
+          "type": "craft_collect",
+          "targetId": "mat_venom",
+          "targetName": "蝎毒",
+          "required": 3,
+          "current": 0,
+          "source": {
+            "kind": "drop",
+            "monsters": ["desert_scorpion"],
+            "chance": 0.6
+          },
+          "itemKind": "venom"
+        },
+        {
+          "type": "craft_craft",
+          "targetId": "craft_fire_ward",
+          "targetName": "在商人处制作护符",
+          "required": 1,
+          "current": 0
+        },
+        {
+          "type": "craft_deliver",
+          "targetId": "deliver_fire_ward",
+          "targetName": "交付给沙漠游牧民",
+          "required": 1,
+          "current": 0
+        }
+      ],
+      "rewards": {
+        "exp": 4000,
+        "gold": 320,
+        "choices": ["jewelry"],
+        "choiceQuality": "rare"
+      },
+      "prereqQuests": ["q_kill_fire_elementals"],
+      "level": 34,
+      "questArea": {"col": 40, "row": 30, "radius": 15},
+      "craftPhases": {
+        "materials": [
+          {"itemId": "mat_water", "name": "净化水囊", "required": 3},
+          {"itemId": "mat_venom", "name": "蝎毒", "required": 3}
+        ],
+        "craftNpc": "merchant_desert",
+        "deliverNpc": "quest_nomad"
+      },
+      "derived": {
+        "giverNpcId": "quest_nomad",
+        "objectiveItemKinds": ["water", "venom", null, null],
+        "embersOnTurnIn": 1,
+        "i18n": {
+          "name": "data.quest.q_craft_fire_ward.name",
+          "desc": "data.quest.q_craft_fire_ward.desc",
+          "offer": "data.quest.q_craft_fire_ward.offer",
+          "complete": "data.quest.q_craft_fire_ward.complete"
+        }
+      }
+    }
+  ]
+}

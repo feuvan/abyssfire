@@ -1,0 +1,1073 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/maps/*.ts", "src/data/maps/index.ts", "src/data/subDungeons.ts", "src/systems/MapGenerator.ts"],
+  "order": ["emerald_plains", "twilight_forest", "anvil_mountains", "scorching_desert", "abyss_rift"],
+  "defaultMap": "emerald_plains",
+  "maps": {
+    "emerald_plains": {
+      "id": "emerald_plains",
+      "name": "翡翠平原",
+      "cols": 120,
+      "rows": 120,
+      "theme": "plains",
+      "seed": 12345,
+      "spawns": [
+        {"col": 25, "row": 20, "monsterId": "slime_green", "count": 8},
+        {"col": 35, "row": 40, "monsterId": "goblin", "count": 6},
+        {"col": 20, "row": 45, "monsterId": "slime_green", "count": 5},
+        {"col": 85, "row": 18, "monsterId": "slime_green", "count": 6},
+        {"col": 95, "row": 35, "monsterId": "goblin", "count": 6},
+        {"col": 75, "row": 50, "monsterId": "goblin", "count": 4},
+        {"col": 30, "row": 80, "monsterId": "goblin", "count": 8},
+        {"col": 15, "row": 95, "monsterId": "goblin_chief", "count": 1},
+        {"col": 80, "row": 75, "monsterId": "goblin", "count": 5},
+        {"col": 95, "row": 90, "monsterId": "goblin", "count": 6}
+      ],
+      "camps": [
+        {
+          "col": 15,
+          "row": 15,
+          "npcs": ["blacksmith", "merchant", "quest_elder", "stash"]
+        },
+        {
+          "col": 95,
+          "row": 100,
+          "npcs": ["merchant"]
+        }
+      ],
+      "playerStart": {"col": 15, "row": 22},
+      "exits": [
+        {"col": 119, "row": 60, "targetMap": "twilight_forest", "targetCol": 2, "targetRow": 58}
+      ],
+      "levelRange": [1, 7],
+      "fieldNpcs": [
+        {"col": 50, "row": 30, "npcId": "plains_herbalist"},
+        {"col": 70, "row": 65, "npcId": "plains_wanderer"}
+      ],
+      "hiddenAreas": [
+        {
+          "id": "hidden_ep_elven_cache",
+          "name": "精灵族秘密宝库",
+          "col": 108,
+          "row": 108,
+          "radius": 6,
+          "discoveryText": "你发现了一处被草丛掩盖的精灵族遗迹！这里似乎是远古精灵用来储存珍贵物品的秘密宝库。",
+          "rewards": [
+            {"type": "chest", "value": "rare", "col": 108, "row": 108},
+            {"type": "gold_pile", "value": "200", "col": 110, "row": 107}
+          ]
+        }
+      ],
+      "storyDecorations": [
+        {
+          "id": "story_ep_ruined_tower",
+          "name": "倒塌的精灵塔",
+          "description": "这座塔楼曾是精灵族的瞭望塔，如今只剩残垣断壁。石块上仍可辨认出精灵族的蔓藤纹饰，诉说着远古文明的辉煌。",
+          "col": 55,
+          "row": 45,
+          "spriteType": "ruins"
+        },
+        {
+          "id": "story_ep_goblin_totem",
+          "name": "哥布林图腾柱",
+          "description": "一根由杂乱骨头和兽皮拼接而成的图腾柱，散发着淡淡的腥臭。这是哥布林部落的领地标记，预示着前方有更强大的哥布林在等待。",
+          "col": 40,
+          "row": 70,
+          "spriteType": "war_banner"
+        },
+        {
+          "id": "story_ep_ancient_well",
+          "name": "干涸的古井",
+          "description": "一口被青苔覆盖的石砌古井，井水早已干涸。井壁上刻着精灵文字——这曾是灵脉能量涌出的泉眼，如今灵脉断裂，泉水不再。",
+          "col": 88,
+          "row": 55,
+          "spriteType": "broken_altar"
+        }
+      ],
+      "port": {
+        "campNpcsAdded": [
+          {
+            "campIndex": 0,
+            "append": ["stash"],
+            "decision": "I7"
+          }
+        ]
+      },
+      "generated": true,
+      "generator": {
+        "theme": "plains",
+        "seed": 12345,
+        "avoid": [
+          {"col": 45, "row": 35, "margin": 2},
+          {"col": 105, "row": 15, "margin": 2},
+          {"col": 15, "row": 108, "margin": 2},
+          {"col": 85, "row": 80, "margin": 2},
+          {"col": 60, "row": 55, "margin": 5},
+          {"col": 32, "row": 12, "margin": 4},
+          {"col": 34, "row": 40, "margin": 4},
+          {"col": 40, "row": 52, "margin": 3},
+          {"col": 25, "row": 65, "margin": 4},
+          {"col": 65, "row": 30, "margin": 3},
+          {"col": 50, "row": 55, "margin": 3},
+          {"col": 25, "row": 20, "margin": 4},
+          {"col": 22, "row": 26, "margin": 3},
+          {"col": 20, "row": 25, "margin": 4},
+          {"col": 30, "row": 24, "margin": 3},
+          {"col": 42, "row": 34, "margin": 3},
+          {"col": 54, "row": 44, "margin": 3},
+          {"col": 54, "row": 44, "margin": 4},
+          {"col": 80, "row": 75, "margin": 4},
+          {"col": 78, "row": 12, "margin": 3},
+          {"col": 92, "row": 10, "margin": 3},
+          {"col": 100, "row": 22, "margin": 3},
+          {"col": 86, "row": 28, "margin": 3},
+          {"col": 88, "row": 18, "margin": 4},
+          {"col": 50, "row": 90, "margin": 3},
+          {"col": 50, "row": 90, "margin": 4},
+          {"col": 30, "row": 40, "margin": 3},
+          {"col": 50, "row": 90, "margin": 3}
+        ],
+        "avoidMarginDefault": 4
+      },
+      "tiles": [],
+      "collisions": [],
+      "decorations": [],
+      "safeZoneRadiusEffective": 9,
+      "nameKey": "data.zone.emerald_plains"
+    },
+    "twilight_forest": {
+      "id": "twilight_forest",
+      "name": "暮色森林",
+      "cols": 120,
+      "rows": 120,
+      "theme": "forest",
+      "seed": 24690,
+      "bgColor": "#141a22",
+      "spawns": [
+        {"col": 25, "row": 15, "monsterId": "skeleton", "count": 8},
+        {"col": 40, "row": 40, "monsterId": "zombie", "count": 6},
+        {"col": 15, "row": 45, "monsterId": "zombie", "count": 8},
+        {"col": 80, "row": 18, "monsterId": "skeleton", "count": 6},
+        {"col": 95, "row": 40, "monsterId": "skeleton", "count": 5},
+        {"col": 30, "row": 70, "monsterId": "werewolf", "count": 6},
+        {"col": 20, "row": 95, "monsterId": "werewolf", "count": 6},
+        {"col": 85, "row": 80, "monsterId": "werewolf", "count": 6},
+        {"col": 90, "row": 90, "monsterId": "werewolf_alpha", "count": 1},
+        {"col": 100, "row": 65, "monsterId": "zombie", "count": 4}
+      ],
+      "camps": [
+        {
+          "col": 18,
+          "row": 52,
+          "npcs": ["blacksmith", "merchant", "quest_scout"]
+        },
+        {
+          "col": 105,
+          "row": 100,
+          "npcs": ["merchant"]
+        },
+        {
+          "col": 100,
+          "row": 62,
+          "npcs": ["forest_hermit"]
+        }
+      ],
+      "playerStart": {"col": 3, "row": 58},
+      "exits": [
+        {"col": 0, "row": 58, "targetMap": "emerald_plains", "targetCol": 118, "targetRow": 60},
+        {"col": 119, "row": 119, "targetMap": "anvil_mountains", "targetCol": 2, "targetRow": 58}
+      ],
+      "petSpawns": [
+        {"col": 70, "row": 35, "petId": "pet_void_butterfly", "chance": 0.08},
+        {"col": 45, "row": 100, "petId": "pet_void_butterfly", "chance": 0.08}
+      ],
+      "levelRange": [8, 17],
+      "fieldNpcs": [
+        {"col": 60, "row": 50, "npcId": "forest_tracker"},
+        {"col": 35, "row": 85, "npcId": "forest_spirit_medium"}
+      ],
+      "hiddenAreas": [
+        {
+          "id": "hidden_tf_moonlight_shrine",
+          "name": "月光祭坛",
+          "col": 110,
+          "row": 15,
+          "radius": 5,
+          "discoveryText": "在茂密的树冠缝隙中，一道银白色的月光照射在一座古老的祭坛上。这就是传说中能净化亡灵的月光祭坛！",
+          "rewards": [
+            {"type": "chest", "value": "rare", "col": 110, "row": 15},
+            {"type": "lore", "col": 112, "row": 14}
+          ]
+        }
+      ],
+      "storyDecorations": [
+        {
+          "id": "story_tf_skeletal_patrol",
+          "name": "巡逻亡灵遗骸",
+          "description": "数具身着铠甲的骷髅散落在林间小道旁。从他们的阵型来看，这曾是一支巡逻队。铠甲上的徽章表明他们是森林守卫骑士团的成员——在暮色降临时，他们是第一批牺牲的人。",
+          "col": 48,
+          "row": 28,
+          "spriteType": "skeletal_remains"
+        },
+        {
+          "id": "story_tf_corrupted_shrine",
+          "name": "被腐蚀的神龛",
+          "description": "一座本应供奉森林之神的小型神龛，如今被黑暗能量彻底腐蚀。神像面目模糊，周围的石板上渗出淡淡的紫色雾气。有人在神龛前留下了枯萎的花束。",
+          "col": 72,
+          "row": 60,
+          "spriteType": "broken_altar"
+        },
+        {
+          "id": "story_tf_ancient_tree_stump",
+          "name": "千年古树残桩",
+          "description": "一棵巨大的古树被拦腰折断，树桩的直径超过十人合抱。年轮中心处散发着微弱的绿光——这是森林生命之树的一部分。即使被摧毁，它仍在顽强地释放着生命能量。",
+          "col": 15,
+          "row": 75,
+          "spriteType": "charred_tree"
+        }
+      ],
+      "generated": true,
+      "generator": {
+        "theme": "forest",
+        "seed": 24690,
+        "avoid": [
+          {"col": 50, "row": 65, "margin": 2},
+          {"col": 109, "row": 24, "margin": 2},
+          {"col": 25, "row": 105, "margin": 2},
+          {"col": 80, "row": 89, "margin": 2},
+          {"col": 55, "row": 30, "margin": 5},
+          {"col": 26, "row": 10, "margin": 3},
+          {"col": 10, "row": 29, "margin": 3},
+          {"col": 58, "row": 26, "margin": 3},
+          {"col": 30, "row": 30, "margin": 4},
+          {"col": 100, "row": 62, "margin": 4},
+          {"col": 58, "row": 58, "margin": 4},
+          {"col": 19, "row": 64, "margin": 3},
+          {"col": 19, "row": 64, "margin": 4},
+          {"col": 22, "row": 94, "margin": 4},
+          {"col": 30, "row": 60, "margin": 3},
+          {"col": 36, "row": 70, "margin": 3},
+          {"col": 44, "row": 76, "margin": 3},
+          {"col": 44, "row": 76, "margin": 4},
+          {"col": 12, "row": 30, "margin": 3},
+          {"col": 12, "row": 30, "margin": 4},
+          {"col": 86, "row": 50, "margin": 3},
+          {"col": 80, "row": 44, "margin": 3},
+          {"col": 84, "row": 48, "margin": 4},
+          {"col": 40, "row": 88, "margin": 4},
+          {"col": 40, "row": 35, "margin": 4},
+          {"col": 40, "row": 35, "margin": 6},
+          {"col": 20, "row": 25, "margin": 3},
+          {"col": 50, "row": 40, "margin": 3},
+          {"col": 15, "row": 60, "margin": 3},
+          {"col": 30, "row": 40, "margin": 4},
+          {"col": 20, "row": 25, "margin": 2},
+          {"col": 50, "row": 40, "margin": 2},
+          {"col": 15, "row": 60, "margin": 2}
+        ],
+        "avoidMarginDefault": 4
+      },
+      "tiles": [],
+      "collisions": [],
+      "decorations": [],
+      "safeZoneRadiusEffective": 9,
+      "nameKey": "data.zone.twilight_forest"
+    },
+    "anvil_mountains": {
+      "id": "anvil_mountains",
+      "name": "铁砧山脉",
+      "cols": 120,
+      "rows": 120,
+      "theme": "mountain",
+      "seed": 37035,
+      "bgColor": "#222228",
+      "spawns": [
+        {"col": 35, "row": 15, "monsterId": "gargoyle", "count": 8},
+        {"col": 28, "row": 38, "monsterId": "stone_golem", "count": 6},
+        {"col": 50, "row": 30, "monsterId": "gargoyle", "count": 5},
+        {"col": 85, "row": 20, "monsterId": "gargoyle", "count": 6},
+        {"col": 95, "row": 42, "monsterId": "gargoyle", "count": 6},
+        {"col": 35, "row": 95, "monsterId": "stone_golem", "count": 6},
+        {"col": 15, "row": 85, "monsterId": "mountain_troll", "count": 1},
+        {"col": 70, "row": 60, "monsterId": "stone_golem", "count": 6},
+        {"col": 65, "row": 90, "monsterId": "stone_golem", "count": 3},
+        {"col": 85, "row": 78, "monsterId": "stone_golem", "count": 4}
+      ],
+      "camps": [
+        {
+          "col": 15,
+          "row": 48,
+          "npcs": ["blacksmith_advanced", "merchant", "stash", "quest_dwarf"]
+        },
+        {
+          "col": 88,
+          "row": 100,
+          "npcs": ["merchant"]
+        }
+      ],
+      "playerStart": {"col": 3, "row": 58},
+      "exits": [
+        {"col": 0, "row": 58, "targetMap": "twilight_forest", "targetCol": 118, "targetRow": 118},
+        {"col": 119, "row": 119, "targetMap": "scorching_desert", "targetCol": 2, "targetRow": 58}
+      ],
+      "levelRange": [18, 27],
+      "fieldNpcs": [
+        {"col": 55, "row": 50, "npcId": "mountain_miner"},
+        {"col": 78, "row": 35, "npcId": "mountain_rune_scholar"}
+      ],
+      "hiddenAreas": [
+        {
+          "id": "hidden_am_dwarf_vault",
+          "name": "矮人秘密金库",
+          "col": 105,
+          "row": 18,
+          "radius": 5,
+          "discoveryText": "你在岩壁上发现了一扇隐蔽的矮人石门！推开后，一间尘封已久的金库出现在眼前。",
+          "rewards": [
+            {"type": "chest", "value": "rare", "col": 105, "row": 18},
+            {"type": "gold_pile", "value": "500", "col": 107, "row": 17}
+          ]
+        }
+      ],
+      "subDungeonEntrances": [
+        {
+          "id": "entrance_dwarf_mine",
+          "name": "废弃矿道入口",
+          "col": 35,
+          "row": 92,
+          "targetSubDungeon": "sub_dwarf_mine"
+        }
+      ],
+      "storyDecorations": [
+        {
+          "id": "story_am_collapsed_bridge",
+          "name": "坍塌的矮人桥",
+          "description": "一座曾横跨峡谷的石桥已经坍塌大半。桥墩上的矮人浮雕依然精美绝伦，描绘着矮人工匠锻造传奇武器的场景。桥下的深渊中传来阵阵寒风。",
+          "col": 60,
+          "row": 25,
+          "spriteType": "collapsed_pillar"
+        },
+        {
+          "id": "story_am_dwarf_statue",
+          "name": "矮人王石像",
+          "description": "一座高达三米的矮人战王石像，手持战锤，身披铠甲。石像基座上刻着铭文：\"铁砧之王布鲁恩——他的锤声永远回荡在山脉深处。\"石像虽残缺，仍散发着庄严的气势。",
+          "col": 40,
+          "row": 65,
+          "spriteType": "ancient_statue"
+        },
+        {
+          "id": "story_am_abandoned_forge",
+          "name": "废弃的锻造炉",
+          "description": "一座巨大的矮人锻造炉，炉火早已熄灭。炉膛中残留着未完成的金属制品——一把只锻造了一半的战斧。旁边散落着矮人工匠的工具，仿佛他们是在匆忙中抛下一切逃离的。",
+          "col": 92,
+          "row": 55,
+          "spriteType": "ruins"
+        }
+      ],
+      "generated": true,
+      "generator": {
+        "theme": "mountain",
+        "seed": 37035,
+        "avoid": [
+          {"col": 45, "row": 30, "margin": 2},
+          {"col": 100, "row": 40, "margin": 2},
+          {"col": 20, "row": 110, "margin": 2},
+          {"col": 75, "row": 15, "margin": 2},
+          {"col": 50, "row": 70, "margin": 5},
+          {"col": 26, "row": 10, "margin": 3},
+          {"col": 48, "row": 38, "margin": 3},
+          {"col": 45, "row": 61, "margin": 3},
+          {"col": 46, "row": 15, "margin": 4},
+          {"col": 35, "row": 40, "margin": 4},
+          {"col": 55, "row": 52, "margin": 4},
+          {"col": 45, "row": 61, "margin": 4},
+          {"col": 58, "row": 16, "margin": 3},
+          {"col": 58, "row": 16, "margin": 4},
+          {"col": 55, "row": 53, "margin": 3},
+          {"col": 55, "row": 53, "margin": 4},
+          {"col": 66, "row": 84, "margin": 3},
+          {"col": 55, "row": 53, "margin": 3},
+          {"col": 85, "row": 78, "margin": 4},
+          {"col": 85, "row": 20, "margin": 4},
+          {"col": 40, "row": 70, "margin": 3},
+          {"col": 40, "row": 70, "margin": 4},
+          {"col": 30, "row": 15, "margin": 3},
+          {"col": 60, "row": 30, "margin": 3},
+          {"col": 35, "row": 50, "margin": 3},
+          {"col": 55, "row": 65, "margin": 3},
+          {"col": 45, "row": 40, "margin": 4},
+          {"col": 30, "row": 15, "margin": 2},
+          {"col": 60, "row": 30, "margin": 2},
+          {"col": 35, "row": 50, "margin": 2},
+          {"col": 55, "row": 65, "margin": 2},
+          {"col": 45, "row": 40, "margin": 4}
+        ],
+        "avoidMarginDefault": 4
+      },
+      "tiles": [],
+      "collisions": [],
+      "decorations": [],
+      "safeZoneRadiusEffective": 9,
+      "nameKey": "data.zone.anvil_mountains"
+    },
+    "scorching_desert": {
+      "id": "scorching_desert",
+      "name": "灼热荒漠",
+      "cols": 120,
+      "rows": 120,
+      "theme": "desert",
+      "seed": 49380,
+      "bgColor": "#2c1810",
+      "spawns": [
+        {"col": 35, "row": 22, "monsterId": "fire_elemental", "count": 8},
+        {"col": 20, "row": 55, "monsterId": "desert_scorpion", "count": 8},
+        {"col": 85, "row": 15, "monsterId": "fire_elemental", "count": 6},
+        {"col": 75, "row": 48, "monsterId": "sandworm", "count": 6},
+        {"col": 65, "row": 30, "monsterId": "fire_elemental", "count": 5},
+        {"col": 45, "row": 85, "monsterId": "sandworm", "count": 6},
+        {"col": 30, "row": 80, "monsterId": "desert_scorpion", "count": 4},
+        {"col": 45, "row": 105, "monsterId": "phoenix", "count": 1},
+        {"col": 95, "row": 70, "monsterId": "desert_scorpion", "count": 6},
+        {"col": 80, "row": 108, "monsterId": "sandworm", "count": 3}
+      ],
+      "camps": [
+        {
+          "col": 15,
+          "row": 15,
+          "npcs": ["blacksmith_advanced", "merchant_desert", "stash", "quest_nomad"]
+        },
+        {
+          "col": 95,
+          "row": 95,
+          "npcs": ["merchant_desert"]
+        }
+      ],
+      "playerStart": {"col": 3, "row": 58},
+      "exits": [
+        {"col": 0, "row": 58, "targetMap": "anvil_mountains", "targetCol": 118, "targetRow": 118},
+        {"col": 119, "row": 119, "targetMap": "abyss_rift", "targetCol": 2, "targetRow": 58}
+      ],
+      "petSpawns": [
+        {"col": 55, "row": 50, "petId": "pet_void_butterfly", "chance": 0.08},
+        {"col": 100, "row": 30, "petId": "pet_void_butterfly", "chance": 0.08}
+      ],
+      "levelRange": [28, 37],
+      "fieldNpcs": [
+        {"col": 60, "row": 40, "npcId": "desert_archaeologist"},
+        {"col": 40, "row": 65, "npcId": "desert_water_diviner"}
+      ],
+      "hiddenAreas": [
+        {
+          "id": "hidden_sd_buried_oasis",
+          "name": "古代绿洲遗址",
+          "col": 15,
+          "row": 110,
+          "radius": 6,
+          "discoveryText": "你在沙丘之间发现了一片被掩埋的古代绿洲遗址！干涸的泉眼周围仍残留着昔日花园的痕迹。",
+          "rewards": [
+            {"type": "chest", "value": "rare", "col": 15, "row": 110},
+            {"type": "gold_pile", "value": "400", "col": 17, "row": 109}
+          ]
+        }
+      ],
+      "storyDecorations": [
+        {
+          "id": "story_sd_half_buried_palace",
+          "name": "半埋的宫殿残垣",
+          "description": "一面精美的宫殿墙壁从沙丘中露出。墙上的壁画描绘着沙漠王国鼎盛时期的繁华景象——喷泉、花园、身着华服的人们在阳光下欢笑。如今一切都被黄沙掩埋。",
+          "col": 70,
+          "row": 20,
+          "spriteType": "sand_buried_structure"
+        },
+        {
+          "id": "story_sd_fire_scarred_ground",
+          "name": "焦灼大地裂痕",
+          "description": "地面上有一道深深的裂痕，边缘呈现出被高温灼烧的痕迹。从裂缝深处偶尔会涌出热气，带着硫磺的气味。这就是当年火焰裂隙撕裂大地时留下的伤痕。",
+          "col": 55,
+          "row": 75,
+          "spriteType": "ritual_circle"
+        },
+        {
+          "id": "story_sd_scorpion_nest_remains",
+          "name": "巨型蝎壳残骸",
+          "description": "一具巨大的沙漠蝎子外壳散落在沙地上，光是蝎钳就有一人多高。这似乎是一只远古巨蝎的遗骸——当年沙漠王国的勇士们曾与这些庞然大物战斗过。",
+          "col": 88,
+          "row": 50,
+          "spriteType": "skeletal_remains"
+        }
+      ],
+      "generated": true,
+      "generator": {
+        "theme": "desert",
+        "seed": 49380,
+        "avoid": [
+          {"col": 50, "row": 25, "margin": 2},
+          {"col": 108, "row": 60, "margin": 2},
+          {"col": 15, "row": 100, "margin": 2},
+          {"col": 90, "row": 105, "margin": 2},
+          {"col": 70, "row": 50, "margin": 5},
+          {"col": 26, "row": 16, "margin": 3},
+          {"col": 51, "row": 32, "margin": 3},
+          {"col": 42, "row": 16, "margin": 4},
+          {"col": 45, "row": 22, "margin": 3},
+          {"col": 49, "row": 45, "margin": 4},
+          {"col": 32, "row": 70, "margin": 4},
+          {"col": 30, "row": 62, "margin": 3},
+          {"col": 36, "row": 76, "margin": 3},
+          {"col": 48, "row": 82, "margin": 3},
+          {"col": 48, "row": 82, "margin": 4},
+          {"col": 95, "row": 70, "margin": 4},
+          {"col": 64, "row": 48, "margin": 3},
+          {"col": 64, "row": 48, "margin": 4},
+          {"col": 85, "row": 16, "margin": 3},
+          {"col": 85, "row": 16, "margin": 4},
+          {"col": 45, "row": 22, "margin": 3},
+          {"col": 45, "row": 22, "margin": 4},
+          {"col": 64, "row": 48, "margin": 3},
+          {"col": 45, "row": 22, "margin": 3},
+          {"col": 16, "row": 38, "margin": 3},
+          {"col": 40, "row": 30, "margin": 4}
+        ],
+        "avoidMarginDefault": 4
+      },
+      "tiles": [],
+      "collisions": [],
+      "decorations": [],
+      "safeZoneRadiusEffective": 9,
+      "nameKey": "data.zone.scorching_desert"
+    },
+    "abyss_rift": {
+      "id": "abyss_rift",
+      "name": "深渊裂谷",
+      "cols": 120,
+      "rows": 120,
+      "theme": "abyss",
+      "seed": 61725,
+      "bgColor": "#1a0a12",
+      "spawns": [
+        {"col": 35, "row": 15, "monsterId": "imp", "count": 10},
+        {"col": 20, "row": 48, "monsterId": "lesser_demon", "count": 6},
+        {"col": 85, "row": 22, "monsterId": "imp", "count": 8},
+        {"col": 70, "row": 38, "monsterId": "lesser_demon", "count": 6},
+        {"col": 95, "row": 55, "monsterId": "succubus", "count": 6},
+        {"col": 35, "row": 85, "monsterId": "succubus", "count": 6},
+        {"col": 20, "row": 95, "monsterId": "succubus", "count": 3},
+        {"col": 55, "row": 105, "monsterId": "demon_lord", "count": 1},
+        {"col": 60, "row": 65, "monsterId": "imp", "count": 6},
+        {"col": 80, "row": 80, "monsterId": "lesser_demon", "count": 4}
+      ],
+      "camps": [
+        {
+          "col": 15,
+          "row": 22,
+          "npcs": ["blacksmith_advanced", "merchant_desert", "stash", "quest_warden"]
+        },
+        {
+          "col": 88,
+          "row": 100,
+          "npcs": ["merchant_desert"]
+        }
+      ],
+      "playerStart": {"col": 3, "row": 58},
+      "exits": [
+        {"col": 0, "row": 58, "targetMap": "scorching_desert", "targetCol": 118, "targetRow": 118}
+      ],
+      "petSpawns": [
+        {"col": 45, "row": 60, "petId": "pet_void_butterfly", "chance": 0.08},
+        {"col": 100, "row": 35, "petId": "pet_void_butterfly", "chance": 0.08}
+      ],
+      "levelRange": [38, 48],
+      "fieldNpcs": [
+        {"col": 50, "row": 37, "npcId": "abyss_fallen_knight"},
+        {"col": 75, "row": 50, "npcId": "abyss_void_researcher"}
+      ],
+      "hiddenAreas": [
+        {
+          "id": "hidden_ar_sealed_chamber",
+          "name": "封印密室",
+          "col": 105,
+          "row": 105,
+          "radius": 5,
+          "discoveryText": "你在扭曲的空间裂缝中发现了一间被封印的密室！这里似乎是远古贤者留下的紧急避难所，其中藏有他们的遗物。",
+          "rewards": [
+            {"type": "chest", "value": "legendary", "col": 105, "row": 105},
+            {"type": "gold_pile", "value": "800", "col": 107, "row": 104}
+          ]
+        }
+      ],
+      "subDungeonEntrances": [
+        {
+          "id": "entrance_demon_altar",
+          "name": "恶魔祭坛入口",
+          "col": 90,
+          "row": 40,
+          "targetSubDungeon": "sub_demon_altar"
+        }
+      ],
+      "storyDecorations": [
+        {
+          "id": "story_ar_corrupted_seal",
+          "name": "破碎的封印法阵",
+          "description": "一个巨大的魔法阵刻在地面上，但已被暗紫色的能量侵蚀得面目全非。法阵边缘仍残留着微弱的金色光芒——那是远古贤者封印力量的余韵。每当虚空能量脉动时，法阵就会发出痛苦的颤鸣。",
+          "col": 55,
+          "row": 45,
+          "spriteType": "ritual_circle"
+        },
+        {
+          "id": "story_ar_frozen_warrior",
+          "name": "时间冻结的战士",
+          "description": "一位身着全副铠甲的战士被某种力量凝固在原地，保持着挥剑劈砍的姿势。他的面容扭曲着恐惧，铠甲上刻着封印守护者的徽章。虚空的时间扭曲力量将他永远定格在了最后一战的瞬间。",
+          "col": 40,
+          "row": 75,
+          "spriteType": "frozen_corpse"
+        },
+        {
+          "id": "story_ar_demon_war_banner",
+          "name": "恶魔军旗",
+          "description": "一面由暗红色皮革制成的巨大旗帜，上面绘着深渊魔王的纹章。旗帜在没有风的虚空中诡异地飘动着，散发着令人不安的低沉嗡鸣。这是恶魔大军入侵人间时插下的战旗。",
+          "col": 85,
+          "row": 65,
+          "spriteType": "war_banner"
+        }
+      ],
+      "generated": true,
+      "generator": {
+        "theme": "abyss",
+        "seed": 61725,
+        "avoid": [
+          {"col": 60, "row": 30, "margin": 2},
+          {"col": 100, "row": 25, "margin": 2},
+          {"col": 30, "row": 100, "margin": 2},
+          {"col": 75, "row": 80, "margin": 2},
+          {"col": 15, "row": 65, "margin": 2},
+          {"col": 45, "row": 55, "margin": 5},
+          {"col": 26, "row": 10, "margin": 3},
+          {"col": 64, "row": 38, "margin": 3},
+          {"col": 38, "row": 70, "margin": 3},
+          {"col": 40, "row": 30, "margin": 4},
+          {"col": 45, "row": 45, "margin": 4},
+          {"col": 55, "row": 55, "margin": 3},
+          {"col": 55, "row": 55, "margin": 4},
+          {"col": 38, "row": 70, "margin": 4},
+          {"col": 70, "row": 38, "margin": 4},
+          {"col": 26, "row": 58, "margin": 3},
+          {"col": 55, "row": 55, "margin": 3},
+          {"col": 80, "row": 44, "margin": 3},
+          {"col": 80, "row": 44, "margin": 4},
+          {"col": 80, "row": 80, "margin": 4},
+          {"col": 38, "row": 58, "margin": 4},
+          {"col": 38, "row": 58, "margin": 6}
+        ],
+        "avoidMarginDefault": 4
+      },
+      "tiles": [],
+      "collisions": [],
+      "decorations": [],
+      "safeZoneRadiusEffective": 9,
+      "nameKey": "data.zone.abyss_rift"
+    },
+    "ember_tower": {
+      "id": "ember_tower",
+      "name": "余烬之塔",
+      "cols": 48,
+      "rows": 48,
+      "theme": "plains",
+      "seed": 4817,
+      "spawns": [],
+      "camps": [
+        {
+          "col": 24,
+          "row": 38,
+          "npcs": ["stash"]
+        }
+      ],
+      "playerStart": {"col": 24, "row": 41},
+      "exits": [],
+      "levelRange": [1, 50],
+      "safeZoneRadius": 40,
+      "fieldNpcs": [
+        {"col": 21, "row": 23, "npcId": "tower_elder"},
+        {"col": 13, "row": 26, "npcId": "tower_herbalist"},
+        {"col": 35, "row": 26, "npcId": "tower_hermit"},
+        {"col": 13, "row": 14, "npcId": "tower_dwarf"},
+        {"col": 35, "row": 14, "npcId": "tower_nomad"},
+        {"col": 27, "row": 8, "npcId": "tower_warden"}
+      ],
+      "generated": false,
+      "generator": null,
+      "tiles": [
+        "444444444444444444444444444444444444444444444444",
+        "444444444444444444444444444444444444444444444444",
+        "440000000000000000000000000000000000000000000044",
+        "440000000000000000000000000000000000000000000044",
+        "440000000000000000000022222000000000000000000044",
+        "440000000000000000000222222200000000000000000044",
+        "440000000000000000000222222200000000000000000044",
+        "440000000000000000000222222200000000000000000044",
+        "440000000000000000000022222000000000000000000044",
+        "440000000022200000000000000000000000222000000044",
+        "440000000222220000000000000000000002222200000044",
+        "440000000222220000000000200000000002222200000044",
+        "440000000222221111111222222211111112222200000044",
+        "440000000022211111122222222222111111222000000044",
+        "440000000000000000222222222222200000000000000044",
+        "440000000000000000222222222222200000000000000044",
+        "440000000000000000222222222222200000000000000044",
+        "440000000000000002222222222222220000000000000044",
+        "440000000000000000222222222222200000000000000044",
+        "440000000000000000222222222222200000000000000044",
+        "440000000000000000222222222222200000000000000044",
+        "440000000000000000022222222222000000000000000044",
+        "440000001111100000000222222200000000022200000044",
+        "440000011111110000000000210000000000222220000044",
+        "440000011111111111111111111111111111222220000044",
+        "440000011111111111111111111111111111222220000044",
+        "440000001111100000000000110000000000022200000044",
+        "440000000000000000000000110000000000000003000044",
+        "440000000000000000000000110000000000000003000044",
+        "440000000000000000000000110000000000000003000044",
+        "440000000000000000000000110000000000000003000044",
+        "440000000000000000000000110000000000000003000044",
+        "440000000002220000000000110000000000000003000044",
+        "440000000022222111111111111111111110000003000044",
+        "440000000022222111111155555111111100000003000044",
+        "440000000022222000005555555550000000000003000044",
+        "440000000002220000005555555550000000000003000044",
+        "440000000000000000055555555555000000000333330044",
+        "440000000000000000055555555555000000003333333044",
+        "440000000000000000055555555555000000033333333344",
+        "440000000000000000005555555550000000033333333344",
+        "440000000000000000005555555550000000033333333344",
+        "440000000000000000000055555000000000003333333044",
+        "440000000000000000000000200000000000000333330044",
+        "440000000000000000000002220000000000000000000044",
+        "440000000000000000000000200000000000000000000044",
+        "444444444444444444444444444444444444444444444444",
+        "444444444444444444444444444444444444444444444444"
+      ],
+      "collisions": [
+        "000000000000000000000000000000000000000000000000",
+        "000000000000000000000000000000000000000000000000",
+        "000010011011111001011010100001010001001101100100",
+        "000100010101111101001011100110000010110011010000",
+        "001011111111111111111111111111111111111111110100",
+        "001111111111111111111110001111111111111111110100",
+        "001111111111111111111110001111111111111111111100",
+        "000111111111111111111111111111111111111111111000",
+        "000111111111111111111111111111111111111111111100",
+        "000011111111111111111111111111111111111111110000",
+        "000011111100011111111111111111111111000111110100",
+        "001111111100011111111111111111111111000111110100",
+        "000011111111111111111111111111111111111111110100",
+        "001011111111111111111111111111111111111111110000",
+        "001111111111111111111111111111111111111111110100",
+        "000011111111111111111100000111111111111111110100",
+        "000111111111111111111100000111111111111111111100",
+        "000111111111111111111100000111111111111111110100",
+        "000011111111111111111100000111111111111111111000",
+        "000011111111111111111111111111111111111111111000",
+        "001111111111111111111111111111111111111111111000",
+        "000011111111111111111111111111111111111111110100",
+        "000111111111111111111111111111111111111111111000",
+        "000111111000111111111111111111111111100011110100",
+        "001011111000111111111111111111111111100011110100",
+        "000011111111111111111111111111111111111111111000",
+        "001111111111111111111111111111111111111111111100",
+        "001011111111111111111111111111111111111110110100",
+        "000111111111111111111111111111111111111110110000",
+        "000111111111111111111111111111111111111110111000",
+        "000111111111111111111111111111111111111110111000",
+        "000011111111111111111111111111111111111110111100",
+        "001111111111111111111111111111111111111110110100",
+        "001011111110001111111111111111111111111110111000",
+        "001011111110001111111111111111111111111110111100",
+        "000111111111111111111111111111111111111110110000",
+        "001011111111111111111111111111111111111110110100",
+        "000011111111111111111111111111111111111000001000",
+        "001111111111111111111111111111111111110000000100",
+        "001011111111111111111111111111111111100000000000",
+        "000111111111111111111111111111111111100000000000",
+        "001111111111111111111111111111111111100000000000",
+        "000111111111111111111111111111111111110000000000",
+        "001111111111111111111111111111111111111000000100",
+        "000011111101100100111111111111100010111100100000",
+        "001101110101001111111111111111100011001111111100",
+        "000000000000000000000000000000000000000000000000",
+        "000000000000000000000000000000000000000000000000"
+      ],
+      "decorations": [
+        {"col": 2, "row": 2, "type": "tree_round"},
+        {"col": 3, "row": 2, "type": "tree_round"},
+        {"col": 5, "row": 2, "type": "tree_round"},
+        {"col": 6, "row": 2, "type": "tree_round"},
+        {"col": 9, "row": 2, "type": "tree"},
+        {"col": 15, "row": 2, "type": "tree_round"},
+        {"col": 16, "row": 2, "type": "tree"},
+        {"col": 18, "row": 2, "type": "tree"},
+        {"col": 21, "row": 2, "type": "tree"},
+        {"col": 23, "row": 2, "type": "tree"},
+        {"col": 25, "row": 2, "type": "tree"},
+        {"col": 26, "row": 2, "type": "tree_round"},
+        {"col": 27, "row": 2, "type": "tree_round"},
+        {"col": 28, "row": 2, "type": "tree_round"},
+        {"col": 30, "row": 2, "type": "tree_round"},
+        {"col": 32, "row": 2, "type": "tree"},
+        {"col": 33, "row": 2, "type": "tree"},
+        {"col": 34, "row": 2, "type": "tree"},
+        {"col": 36, "row": 2, "type": "tree_round"},
+        {"col": 37, "row": 2, "type": "tree_round"},
+        {"col": 40, "row": 2, "type": "tree"},
+        {"col": 43, "row": 2, "type": "tree"},
+        {"col": 44, "row": 2, "type": "tree"},
+        {"col": 2, "row": 3, "type": "tree_round"},
+        {"col": 4, "row": 3, "type": "tree_round"},
+        {"col": 5, "row": 3, "type": "tree_round"},
+        {"col": 6, "row": 3, "type": "tree_round"},
+        {"col": 8, "row": 3, "type": "tree_round"},
+        {"col": 10, "row": 3, "type": "tree"},
+        {"col": 16, "row": 3, "type": "tree_round"},
+        {"col": 18, "row": 3, "type": "tree_round"},
+        {"col": 19, "row": 3, "type": "tree_round"},
+        {"col": 21, "row": 3, "type": "tree_round"},
+        {"col": 25, "row": 3, "type": "tree_round"},
+        {"col": 26, "row": 3, "type": "tree_round"},
+        {"col": 29, "row": 3, "type": "tree_round"},
+        {"col": 30, "row": 3, "type": "tree_round"},
+        {"col": 31, "row": 3, "type": "tree"},
+        {"col": 32, "row": 3, "type": "tree"},
+        {"col": 33, "row": 3, "type": "tree_round"},
+        {"col": 35, "row": 3, "type": "tree"},
+        {"col": 38, "row": 3, "type": "tree"},
+        {"col": 39, "row": 3, "type": "tree"},
+        {"col": 42, "row": 3, "type": "tree"},
+        {"col": 44, "row": 3, "type": "tree_round"},
+        {"col": 45, "row": 3, "type": "tree"},
+        {"col": 3, "row": 4, "type": "tree_round"},
+        {"col": 5, "row": 4, "type": "flower"},
+        {"col": 44, "row": 4, "type": "tree_round"},
+        {"col": 28, "row": 5, "type": "bush"},
+        {"col": 44, "row": 5, "type": "tree"},
+        {"col": 2, "row": 7, "type": "tree"},
+        {"col": 31, "row": 7, "type": "flower"},
+        {"col": 45, "row": 7, "type": "tree"},
+        {"col": 2, "row": 8, "type": "tree_round"},
+        {"col": 2, "row": 9, "type": "tree"},
+        {"col": 3, "row": 9, "type": "tree"},
+        {"col": 16, "row": 9, "type": "flower"},
+        {"col": 44, "row": 9, "type": "tree_round"},
+        {"col": 45, "row": 9, "type": "tree"},
+        {"col": 2, "row": 10, "type": "tree"},
+        {"col": 3, "row": 10, "type": "tree_round"},
+        {"col": 44, "row": 10, "type": "tree"},
+        {"col": 16, "row": 11, "type": "flower"},
+        {"col": 44, "row": 11, "type": "tree_round"},
+        {"col": 2, "row": 12, "type": "tree"},
+        {"col": 3, "row": 12, "type": "tree"},
+        {"col": 44, "row": 12, "type": "tree_round"},
+        {"col": 3, "row": 13, "type": "tree_round"},
+        {"col": 9, "row": 13, "type": "grass"},
+        {"col": 44, "row": 13, "type": "tree"},
+        {"col": 45, "row": 13, "type": "tree"},
+        {"col": 10, "row": 14, "type": "flower"},
+        {"col": 12, "row": 14, "type": "grass"},
+        {"col": 37, "row": 14, "type": "grass"},
+        {"col": 41, "row": 14, "type": "bush"},
+        {"col": 44, "row": 14, "type": "tree"},
+        {"col": 2, "row": 15, "type": "tree_round"},
+        {"col": 3, "row": 15, "type": "tree"},
+        {"col": 34, "row": 15, "type": "bush"},
+        {"col": 44, "row": 15, "type": "tree_round"},
+        {"col": 2, "row": 16, "type": "tree"},
+        {"col": 17, "row": 16, "type": "flower"},
+        {"col": 2, "row": 17, "type": "tree_round"},
+        {"col": 41, "row": 17, "type": "flower"},
+        {"col": 44, "row": 17, "type": "tree"},
+        {"col": 2, "row": 18, "type": "tree_round"},
+        {"col": 3, "row": 18, "type": "tree_round"},
+        {"col": 45, "row": 18, "type": "tree_round"},
+        {"col": 2, "row": 19, "type": "tree"},
+        {"col": 3, "row": 19, "type": "tree_round"},
+        {"col": 39, "row": 19, "type": "bush"},
+        {"col": 45, "row": 19, "type": "tree_round"},
+        {"col": 33, "row": 20, "type": "grass"},
+        {"col": 45, "row": 20, "type": "tree_round"},
+        {"col": 2, "row": 21, "type": "tree"},
+        {"col": 3, "row": 21, "type": "tree"},
+        {"col": 44, "row": 21, "type": "tree_round"},
+        {"col": 2, "row": 22, "type": "tree_round"},
+        {"col": 45, "row": 22, "type": "tree"},
+        {"col": 2, "row": 23, "type": "tree"},
+        {"col": 19, "row": 23, "type": "grass"},
+        {"col": 44, "row": 23, "type": "tree"},
+        {"col": 3, "row": 24, "type": "tree"},
+        {"col": 44, "row": 24, "type": "tree_round"},
+        {"col": 2, "row": 25, "type": "tree_round"},
+        {"col": 3, "row": 25, "type": "tree"},
+        {"col": 45, "row": 25, "type": "tree_round"},
+        {"col": 6, "row": 26, "type": "flower"},
+        {"col": 3, "row": 27, "type": "tree_round"},
+        {"col": 14, "row": 27, "type": "grass"},
+        {"col": 31, "row": 27, "type": "bush"},
+        {"col": 44, "row": 27, "type": "tree"},
+        {"col": 2, "row": 28, "type": "tree"},
+        {"col": 21, "row": 28, "type": "bush"},
+        {"col": 44, "row": 28, "type": "tree"},
+        {"col": 45, "row": 28, "type": "tree_round"},
+        {"col": 2, "row": 29, "type": "tree_round"},
+        {"col": 34, "row": 29, "type": "flower"},
+        {"col": 45, "row": 29, "type": "tree"},
+        {"col": 2, "row": 30, "type": "tree_round"},
+        {"col": 13, "row": 30, "type": "bush"},
+        {"col": 32, "row": 30, "type": "grass"},
+        {"col": 45, "row": 30, "type": "tree"},
+        {"col": 2, "row": 31, "type": "tree_round"},
+        {"col": 3, "row": 31, "type": "tree_round"},
+        {"col": 28, "row": 32, "type": "bush"},
+        {"col": 31, "row": 32, "type": "flower"},
+        {"col": 36, "row": 32, "type": "grass"},
+        {"col": 38, "row": 32, "type": "flower"},
+        {"col": 44, "row": 32, "type": "tree"},
+        {"col": 3, "row": 33, "type": "tree_round"},
+        {"col": 6, "row": 33, "type": "bush"},
+        {"col": 45, "row": 33, "type": "tree"},
+        {"col": 3, "row": 34, "type": "tree"},
+        {"col": 6, "row": 34, "type": "flower"},
+        {"col": 2, "row": 35, "type": "tree"},
+        {"col": 29, "row": 35, "type": "flower"},
+        {"col": 36, "row": 35, "type": "flower"},
+        {"col": 43, "row": 35, "type": "flower"},
+        {"col": 44, "row": 35, "type": "tree"},
+        {"col": 45, "row": 35, "type": "tree"},
+        {"col": 3, "row": 36, "type": "tree_round"},
+        {"col": 4, "row": 36, "type": "flower"},
+        {"col": 44, "row": 36, "type": "tree"},
+        {"col": 2, "row": 37, "type": "tree_round"},
+        {"col": 3, "row": 37, "type": "tree_round"},
+        {"col": 37, "row": 37, "type": "flower"},
+        {"col": 45, "row": 37, "type": "tree"},
+        {"col": 3, "row": 39, "type": "tree"},
+        {"col": 2, "row": 40, "type": "tree_round"},
+        {"col": 5, "row": 40, "type": "bush"},
+        {"col": 35, "row": 40, "type": "flower"},
+        {"col": 2, "row": 42, "type": "tree"},
+        {"col": 19, "row": 42, "type": "grass"},
+        {"col": 27, "row": 42, "type": "bush"},
+        {"col": 45, "row": 42, "type": "tree_round"},
+        {"col": 28, "row": 43, "type": "bush"},
+        {"col": 44, "row": 43, "type": "tree"},
+        {"col": 2, "row": 44, "type": "tree"},
+        {"col": 3, "row": 44, "type": "tree_round"},
+        {"col": 10, "row": 44, "type": "tree"},
+        {"col": 13, "row": 44, "type": "tree"},
+        {"col": 14, "row": 44, "type": "tree_round"},
+        {"col": 16, "row": 44, "type": "tree_round"},
+        {"col": 17, "row": 44, "type": "tree_round"},
+        {"col": 31, "row": 44, "type": "tree"},
+        {"col": 32, "row": 44, "type": "tree_round"},
+        {"col": 33, "row": 44, "type": "tree_round"},
+        {"col": 35, "row": 44, "type": "tree_round"},
+        {"col": 40, "row": 44, "type": "tree"},
+        {"col": 41, "row": 44, "type": "tree"},
+        {"col": 43, "row": 44, "type": "tree_round"},
+        {"col": 44, "row": 44, "type": "tree_round"},
+        {"col": 45, "row": 44, "type": "tree_round"},
+        {"col": 4, "row": 45, "type": "tree"},
+        {"col": 8, "row": 45, "type": "tree_round"},
+        {"col": 10, "row": 45, "type": "tree"},
+        {"col": 12, "row": 45, "type": "tree"},
+        {"col": 13, "row": 45, "type": "tree"},
+        {"col": 31, "row": 45, "type": "tree"},
+        {"col": 32, "row": 45, "type": "tree"},
+        {"col": 33, "row": 45, "type": "tree"},
+        {"col": 36, "row": 45, "type": "tree"},
+        {"col": 37, "row": 45, "type": "tree_round"}
+      ],
+      "safeZoneRadiusEffective": 40,
+      "nameKey": "data.zone.ember_tower"
+    }
+  },
+  "emberTower": {
+    "size": 48,
+    "center": {"col": 24, "row": 18},
+    "portal": {"col": 24, "row": 44},
+    "meadow": {"col": 34, "row": 35, "radius": 4},
+    "plots": {
+      "gem_workshop": {
+        "col": 11,
+        "row": 11,
+        "npc": {"col": 13, "row": 14}
+      },
+      "training_ground": {
+        "col": 37,
+        "row": 11,
+        "npc": {"col": 35, "row": 14}
+      },
+      "altar": {
+        "col": 24,
+        "row": 6,
+        "npc": {"col": 27, "row": 8}
+      },
+      "herb_garden": {
+        "col": 10,
+        "row": 24,
+        "npc": {"col": 13, "row": 26}
+      },
+      "pet_house": {
+        "col": 38,
+        "row": 24,
+        "npc": {"col": 35, "row": 26}
+      },
+      "warehouse": {
+        "col": 12,
+        "row": 34,
+        "npc": {"col": 15, "row": 36}
+      }
+    }
+  },
+  "subDungeons": {
+    "sub_dwarf_mine": {
+      "id": "sub_dwarf_mine",
+      "name": "废弃矮人矿道",
+      "parentZone": "anvil_mountains",
+      "cols": 40,
+      "rows": 40,
+      "theme": "mountain",
+      "seed": 77701,
+      "spawns": [
+        {"col": 12, "row": 10, "monsterId": "gargoyle", "count": 4},
+        {"col": 25, "row": 15, "monsterId": "stone_golem", "count": 3},
+        {"col": 10, "row": 25, "monsterId": "gargoyle", "count": 4},
+        {"col": 30, "row": 28, "monsterId": "stone_golem", "count": 3}
+      ],
+      "miniBoss": {"col": 20, "row": 32, "monsterId": "sub_mine_guardian"},
+      "playerStart": {"col": 5, "row": 5},
+      "exit": {"col": 5, "row": 3, "returnCol": 35, "returnRow": 92},
+      "levelRange": [20, 27],
+      "bgColor": "#161616"
+    },
+    "sub_demon_altar": {
+      "id": "sub_demon_altar",
+      "name": "恶魔祭坛洞窟",
+      "parentZone": "abyss_rift",
+      "cols": 40,
+      "rows": 40,
+      "theme": "abyss",
+      "seed": 88802,
+      "spawns": [
+        {"col": 10, "row": 12, "monsterId": "imp", "count": 6},
+        {"col": 28, "row": 10, "monsterId": "lesser_demon", "count": 4},
+        {"col": 15, "row": 25, "monsterId": "succubus", "count": 3},
+        {"col": 30, "row": 30, "monsterId": "lesser_demon", "count": 4}
+      ],
+      "miniBoss": {"col": 20, "row": 35, "monsterId": "sub_altar_keeper"},
+      "playerStart": {"col": 5, "row": 5},
+      "exit": {"col": 5, "row": 3, "returnCol": 90, "returnRow": 40},
+      "levelRange": [40, 48],
+      "bgColor": "#140810"
+    }
+  },
+  "subDungeonsByZone": {
+    "anvil_mountains": ["sub_dwarf_mine"],
+    "abyss_rift": ["sub_demon_altar"]
+  }
+}

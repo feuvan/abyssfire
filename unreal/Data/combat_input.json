@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/CombatInputSystem.ts", "src/scenes/ZoneScene.ts", "src/systems/SkillEffectSystem.ts"],
+  "inputBufferMs": 180,
+  "dodge": {
+    "cooldownMs": 900,
+    "invulnerabilityMs": 220,
+    "distanceTiles": {"warrior": 1.8, "mage": 2.25, "rogue": 2.6},
+    "stepTiles": 0.25,
+    "minTiles": 0.5,
+    "defaultDirection": [1, -1]
+  },
+  "gamepad": {
+    "dodgeButton": 1,
+    "targetCycleButton": 4,
+    "skillButtons": [0, 2, 3, 5]
+  },
+  "targetCycleRangeTiles": 14,
+  "monsterSwingScanRadiusTiles": 12,
+  "monsterMeleeReach": {"mul": 1.35, "add": 0.5},
+  "monsterRangedThreshold": 2.5,
+  "monsterProjectileMs": {"msPerPx": 2, "minMs": 200, "maxMs": 500},
+  "combatStateOffDebounceMs": 1500,
+  "monsterRespawnMs": 15000,
+  "holdMoveRepathMs": 120
+}

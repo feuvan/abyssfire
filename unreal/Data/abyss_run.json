@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/abyssRun.ts"],
+  "boons": [
+    {
+      "id": "wrath",
+      "rarity": "common",
+      "stats": {"damagePercent": 15},
+      "glyph": "blade"
+    },
+    {
+      "id": "vigor",
+      "rarity": "common",
+      "stats": {"maxHpPercent": 15},
+      "glyph": "heart"
+    },
+    {
+      "id": "bloodthirst",
+      "rarity": "common",
+      "stats": {"lifeSteal": 3},
+      "glyph": "fang"
+    },
+    {
+      "id": "swiftness",
+      "rarity": "common",
+      "stats": {"moveSpeed": 15},
+      "glyph": "wing"
+    },
+    {
+      "id": "precision",
+      "rarity": "common",
+      "stats": {"critRate": 6},
+      "glyph": "eye"
+    },
+    {
+      "id": "bulwark",
+      "rarity": "common",
+      "stats": {"defensePercent": 20, "allResist": 10},
+      "glyph": "shield"
+    },
+    {
+      "id": "fortune",
+      "rarity": "common",
+      "stats": {"magicFind": 40},
+      "glyph": "coin"
+    },
+    {
+      "id": "haste",
+      "rarity": "rare",
+      "stats": {"attackSpeed": 12, "cooldownReduction": 8},
+      "glyph": "hourglass"
+    },
+    {
+      "id": "ruin",
+      "rarity": "rare",
+      "stats": {"critDamage": 40},
+      "glyph": "star"
+    },
+    {
+      "id": "feast",
+      "rarity": "rare",
+      "stats": {"killHealPercent": 4},
+      "glyph": "skull"
+    },
+    {
+      "id": "wildfire",
+      "rarity": "rare",
+      "stats": {"elementalDamagePercent": 20},
+      "glyph": "flame"
+    },
+    {
+      "id": "briar",
+      "rarity": "rare",
+      "stats": {"thornsHeal": 3, "damageReduction": 6},
+      "glyph": "thorn"
+    },
+    {
+      "id": "sunder",
+      "rarity": "epic",
+      "stats": {"ignoreDefense": 25, "damagePercent": 10},
+      "maxStacks": 2,
+      "glyph": "blade"
+    },
+    {
+      "id": "echo",
+      "rarity": "epic",
+      "stats": {"critDoubleStrike": 15},
+      "maxStacks": 2,
+      "glyph": "star"
+    },
+    {
+      "id": "undying",
+      "rarity": "epic",
+      "stats": {"deathSave": 1, "maxHpPercent": 10},
+      "maxStacks": 1,
+      "glyph": "heart"
+    },
+    {
+      "id": "overflow",
+      "rarity": "epic",
+      "stats": {"freeCast": 12, "manaRegen": 4},
+      "maxStacks": 2,
+      "glyph": "hourglass"
+    }
+  ],
+  "boonRarityWeight": {"common": 60, "rare": 30, "epic": 10},
+  "curses": [
+    {"id": "frenzy", "speedMul": 1.35, "damageMul": 1.1, "lootBonus": 6, "magicFind": 25},
+    {"id": "bastion", "hpMul": 1.5, "lootBonus": 6, "magicFind": 25},
+    {"id": "legion", "extraGroups": 3, "lootBonus": 8, "magicFind": 30},
+    {"id": "champions", "eliteChance": 0.25, "lootBonus": 10, "magicFind": 40},
+    {"id": "gloom", "visionMul": 0.55, "lootBonus": 6, "magicFind": 25},
+    {"id": "undying", "regenPerSec": 0.04, "lootBonus": 6, "magicFind": 25},
+    {"id": "volatile", "deathBurst": 0.12, "lootBonus": 8, "magicFind": 30},
+    {"id": "brutal", "damageMul": 1.35, "lootBonus": 10, "magicFind": 35}
+  ],
+  "floorThemes": [
+    {
+      "id": "crypt",
+      "mapTheme": "forest",
+      "monsters": ["skeleton", "zombie", "werewolf"],
+      "gatekeeper": "werewolf_alpha"
+    },
+    {
+      "id": "forge",
+      "mapTheme": "mountain",
+      "monsters": ["gargoyle", "stone_golem"],
+      "gatekeeper": "mountain_troll"
+    },
+    {
+      "id": "tomb",
+      "mapTheme": "desert",
+      "monsters": ["fire_elemental", "desert_scorpion", "sandworm"],
+      "gatekeeper": "sandworm"
+    },
+    {
+      "id": "rift",
+      "mapTheme": "abyss",
+      "monsters": ["imp", "lesser_demon", "succubus", "dungeon_shade", "dungeon_fiend"],
+      "gatekeeper": "dungeon_fiend"
+    }
+  ],
+  "tierBaseLevel": 42,
+  "tierLevelStep": 2
+}

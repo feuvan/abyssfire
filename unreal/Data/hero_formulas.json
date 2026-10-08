@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/entities/Player.ts", "src/systems/CombatSystem.ts", "src/scenes/ZoneScene.ts"],
+  "derived": {
+    "maxHp": {"base": 50, "perVit": 10, "perLevelAbove1": 15},
+    "maxMana": {"base": 30, "perSpi": 8, "perInt": 3, "perLevelAbove1": 8},
+    "baseDamage": {"base": 8, "perStr": 0.8, "perLevel": 2},
+    "defense": {"base": 3, "perVit": 0.5, "perLevel": 1},
+    "moveSpeed": 120,
+    "attackIntervalMs": 1000,
+    "attackIntervalMinMs": 200,
+    "attackRange": 1.5,
+    "gear": {
+      "note": "with gear: hp=floor((hp+eq.maxHp)*(1+eq.maxHpPercent/100)); mp likewise; move=floor(120*(1+eq.moveSpeed/100)); attack=max(200, floor(1000*(1-eq.attackSpeed/100))); moveSpeed then floor(x*spirit.moveSpeedMultiplier)"
+    }
+  },
+  "regen": {
+    "hpPerSecond": {"base": 0.5, "perVit": 0.05},
+    "manaPerSecond": {"base": 1, "perSpi": 0.1},
+    "campfireRadiusTiles": 5,
+    "campfireHpMultiplier": 50,
+    "campfireManaMultiplier": 50,
+    "poisonedHpRegenMultiplier": 0.5
+  },
+  "leveling": {
+    "expToNext": {"a": 3, "b": 25, "formula": "floor(a*L*L + b*L)"},
+    "statPointsPerLevel": 5,
+    "skillPointsPerLevel": 1,
+    "levelCap": null
+  },
+  "damage": {
+    "dodgePerDex": 0.3,
+    "dodgeCapPercent": 30,
+    "critPerDex": 0.2,
+    "critPerLck": 0.5,
+    "critCapPercent": 75,
+    "critMultiplierBase": 1.5,
+    "critMultiplierPerLck": 0.01,
+    "statToDamage": 0.5,
+    "defenseFactor": 0.5,
+    "resistCapPercent": 75,
+    "damageReductionCap": 0.9,
+    "outgoingMultiplierMin": 0,
+    "outgoingMultiplierMax": 10,
+    "minDamage": 1
+  }
+}

@@ -1,0 +1,893 @@
+{
+  "schemaVersion": 1,
+  "source": [
+    "src/data/story/script.ts",
+    "src/data/story/types.ts",
+    "src/scenes/StoryScene.ts",
+    "src/systems/StoryDirector.ts"
+  ],
+  "prologue": {
+    "id": "prologue",
+    "slides": [
+      {
+        "heading": "story.prologue.1.heading",
+        "title": "story.prologue.1.title",
+        "text": "story.prologue.1.text",
+        "mood": "embers"
+      },
+      {
+        "heading": "story.prologue.2.heading",
+        "title": "story.prologue.2.title",
+        "text": "story.prologue.2.text",
+        "mood": "night"
+      },
+      {
+        "heading": "story.prologue.3.heading",
+        "title": "story.prologue.3.title",
+        "text": "story.prologue.3.text",
+        "mood": "abyss"
+      },
+      {
+        "heading": "story.prologue.4.heading",
+        "title": "story.prologue.4.title",
+        "text": "story.prologue.4.text",
+        "mood": "abyss"
+      },
+      {
+        "heading": "story.prologue.5.heading",
+        "title": "story.prologue.5.title",
+        "text": "story.prologue.5.text",
+        "mood": "embers"
+      },
+      {
+        "heading": "story.prologue.6.heading",
+        "title": "story.prologue.6.title",
+        "text": "story.prologue.6.text",
+        "mood": "dawn"
+      }
+    ]
+  },
+  "chapters": [
+    {
+      "zoneId": "emerald_plains",
+      "number": "story.chapter.emerald_plains.number",
+      "title": "story.chapter.emerald_plains.title",
+      "subtitle": "story.chapter.emerald_plains.subtitle",
+      "text": "story.chapter.emerald_plains.text",
+      "mood": "dawn"
+    },
+    {
+      "zoneId": "twilight_forest",
+      "number": "story.chapter.twilight_forest.number",
+      "title": "story.chapter.twilight_forest.title",
+      "subtitle": "story.chapter.twilight_forest.subtitle",
+      "text": "story.chapter.twilight_forest.text",
+      "mood": "night"
+    },
+    {
+      "zoneId": "anvil_mountains",
+      "number": "story.chapter.anvil_mountains.number",
+      "title": "story.chapter.anvil_mountains.title",
+      "subtitle": "story.chapter.anvil_mountains.subtitle",
+      "text": "story.chapter.anvil_mountains.text",
+      "mood": "forge"
+    },
+    {
+      "zoneId": "scorching_desert",
+      "number": "story.chapter.scorching_desert.number",
+      "title": "story.chapter.scorching_desert.title",
+      "subtitle": "story.chapter.scorching_desert.subtitle",
+      "text": "story.chapter.scorching_desert.text",
+      "mood": "sand"
+    },
+    {
+      "zoneId": "abyss_rift",
+      "number": "story.chapter.abyss_rift.number",
+      "title": "story.chapter.abyss_rift.title",
+      "subtitle": "story.chapter.abyss_rift.subtitle",
+      "text": "story.chapter.abyss_rift.text",
+      "mood": "abyss"
+    }
+  ],
+  "cutscenes": {
+    "cs_ep_mark": {
+      "id": "cs_ep_mark",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_elder"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_mark.2"
+        },
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_ep_mark.4"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_mark.5"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_mark.6"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_mark.7"
+        },
+        {"kind": "say", "speaker": "hero", "text": "story.cs_ep_mark.8"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_mark.9"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_mark.10"
+        }
+      ]
+    },
+    "cs_ep_whisper": {
+      "id": "cs_ep_whisper",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"col": 40, "row": 52},
+          "ms": 1400
+        },
+        {"kind": "narrate", "text": "story.cs_ep_whisper.2"},
+        {"kind": "flash", "color": 8011007, "ms": 400},
+        {"kind": "whisper", "text": "story.cs_ep_whisper.4"},
+        {"kind": "whisper", "text": "story.cs_ep_whisper.5"},
+        {"kind": "whisper", "text": "story.cs_ep_whisper.6"},
+        {"kind": "focus", "target": "player"},
+        {"kind": "say", "speaker": "hero", "text": "story.cs_ep_whisper.8"},
+        {"kind": "whisper", "text": "story.cs_ep_whisper.9"},
+        {"kind": "shake", "intensity": 0.006, "ms": 400},
+        {"kind": "narrate", "text": "story.cs_ep_whisper.11"}
+      ]
+    },
+    "cs_ep_finale": {
+      "id": "cs_ep_finale",
+      "steps": [
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_ep_finale.2"},
+        {"kind": "flash", "color": 10354608, "ms": 500},
+        {"kind": "narrate", "text": "story.cs_ep_finale.4"},
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_elder"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_finale.6"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_finale.7"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_ep_finale.8"
+        },
+        {"kind": "whisper", "text": "story.cs_ep_finale.9"},
+        {"kind": "narrate", "text": "story.cs_ep_finale.10"},
+        {"kind": "narrate", "text": "story.cs_ep_finale.11"}
+      ]
+    },
+    "cs_tf_hermit": {
+      "id": "cs_tf_hermit",
+      "steps": [
+        {"kind": "narrate", "text": "story.cs_tf_hermit.1"},
+        {
+          "kind": "focus",
+          "target": {"npc": "forest_hermit"},
+          "ms": 1400
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "forest_hermit"},
+          "text": "story.cs_tf_hermit.3"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "forest_hermit"},
+          "text": "story.cs_tf_hermit.4"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "forest_hermit"},
+          "text": "story.cs_tf_hermit.5"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "forest_hermit"},
+          "text": "story.cs_tf_hermit.6"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "forest_hermit"},
+          "text": "story.cs_tf_hermit.7"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "forest_hermit"},
+          "text": "story.cs_tf_hermit.8"
+        },
+        {"kind": "focus", "target": "player"},
+        {"kind": "whisper", "text": "story.cs_tf_hermit.10"},
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_scout"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_scout"},
+          "text": "story.cs_tf_hermit.12"
+        }
+      ]
+    },
+    "cs_tf_finale": {
+      "id": "cs_tf_finale",
+      "steps": [
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_tf_finale.2"},
+        {"kind": "flash", "color": 14674175, "ms": 600},
+        {"kind": "narrate", "text": "story.cs_tf_finale.4"},
+        {"kind": "narrate", "text": "story.cs_tf_finale.5"},
+        {
+          "kind": "focus",
+          "target": {"npc": "forest_spirit_medium"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "forest_spirit_medium"},
+          "text": "story.cs_tf_finale.7"
+        },
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_scout"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_scout"},
+          "text": "story.cs_tf_finale.9"
+        },
+        {"kind": "whisper", "text": "story.cs_tf_finale.10"},
+        {"kind": "narrate", "text": "story.cs_tf_finale.11"},
+        {"kind": "narrate", "text": "story.cs_tf_finale.12"}
+      ]
+    },
+    "cs_am_hammer": {
+      "id": "cs_am_hammer",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_dwarf"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_dwarf"},
+          "text": "story.cs_am_hammer.2"
+        },
+        {"kind": "narrate", "text": "story.cs_am_hammer.3"},
+        {"kind": "flash", "color": 16752704, "ms": 500},
+        {"kind": "shake", "intensity": 0.004, "ms": 300},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_dwarf"},
+          "text": "story.cs_am_hammer.6"
+        },
+        {"kind": "title", "title": "story.cs_am_hammer.7.title", "subtitle": "story.cs_am_hammer.7.subtitle"},
+        {"kind": "narrate", "text": "story.cs_am_hammer.8"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_dwarf"},
+          "text": "story.cs_am_hammer.9"
+        },
+        {"kind": "whisper", "text": "story.cs_am_hammer.10"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_dwarf"},
+          "text": "story.cs_am_hammer.11"
+        }
+      ]
+    },
+    "cs_am_finale": {
+      "id": "cs_am_finale",
+      "steps": [
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_am_finale.2"},
+        {"kind": "narrate", "text": "story.cs_am_finale.3"},
+        {"kind": "shake", "intensity": 0.008, "ms": 500},
+        {"kind": "flash", "color": 16747066, "ms": 500},
+        {"kind": "narrate", "text": "story.cs_am_finale.6"},
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_dwarf"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_dwarf"},
+          "text": "story.cs_am_finale.8"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_dwarf"},
+          "text": "story.cs_am_finale.9"
+        },
+        {"kind": "whisper", "text": "story.cs_am_finale.10"},
+        {"kind": "whisper", "text": "story.cs_am_finale.11"},
+        {"kind": "narrate", "text": "story.cs_am_finale.12"},
+        {"kind": "narrate", "text": "story.cs_am_finale.13"}
+      ]
+    },
+    "cs_sd_oasis": {
+      "id": "cs_sd_oasis",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_nomad"}
+        },
+        {"kind": "narrate", "text": "story.cs_sd_oasis.2"},
+        {
+          "kind": "focus",
+          "target": {"col": 45, "row": 22},
+          "ms": 1400
+        },
+        {"kind": "title", "title": "story.cs_sd_oasis.4.title", "subtitle": "story.cs_sd_oasis.4.subtitle"},
+        {"kind": "narrate", "text": "story.cs_sd_oasis.5"},
+        {"kind": "narrate", "text": "story.cs_sd_oasis.6"},
+        {"kind": "narrate", "text": "story.cs_sd_oasis.7"},
+        {"kind": "whisper", "text": "story.cs_sd_oasis.8"},
+        {"kind": "shake", "intensity": 0.01, "ms": 700},
+        {"kind": "narrate", "text": "story.cs_sd_oasis.10"},
+        {"kind": "narrate", "text": "story.cs_sd_oasis.11"},
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_nomad"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_nomad"},
+          "text": "story.cs_sd_oasis.13"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_nomad"},
+          "text": "story.cs_sd_oasis.14"
+        }
+      ]
+    },
+    "cs_sd_finale": {
+      "id": "cs_sd_finale",
+      "steps": [
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_sd_finale.2"},
+        {"kind": "flash", "color": 16765802, "ms": 600},
+        {"kind": "narrate", "text": "story.cs_sd_finale.4"},
+        {"kind": "narrate", "text": "story.cs_sd_finale.5"},
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_nomad"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_nomad"},
+          "text": "story.cs_sd_finale.7"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_nomad"},
+          "text": "story.cs_sd_finale.8"
+        },
+        {"kind": "whisper", "text": "story.cs_sd_finale.9"},
+        {"kind": "shake", "intensity": 0.006, "ms": 500},
+        {"kind": "narrate", "text": "story.cs_sd_finale.11"},
+        {"kind": "narrate", "text": "story.cs_sd_finale.12"}
+      ]
+    },
+    "cs_ar_gate": {
+      "id": "cs_ar_gate",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_warden"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_gate.2"
+        },
+        {
+          "kind": "focus",
+          "target": {"col": 38, "row": 70},
+          "ms": 1600
+        },
+        {"kind": "title", "title": "story.cs_ar_gate.4.title", "subtitle": "story.cs_ar_gate.4.subtitle"},
+        {"kind": "narrate", "text": "story.cs_ar_gate.5"},
+        {"kind": "whisper", "text": "story.cs_ar_gate.6"},
+        {"kind": "whisper", "text": "story.cs_ar_gate.7"},
+        {"kind": "shake", "intensity": 0.01, "ms": 600},
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_ar_gate.10"},
+        {"kind": "whisper", "text": "story.cs_ar_gate.11"},
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_warden"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_gate.13"
+        }
+      ]
+    },
+    "cs_ar_seal": {
+      "id": "cs_ar_seal",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_warden"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_seal.2"
+        },
+        {"kind": "narrate", "text": "story.cs_ar_seal.3"},
+        {"kind": "flash", "color": 13220095, "ms": 600},
+        {"kind": "title", "title": "story.cs_ar_seal.5.title", "subtitle": "story.cs_ar_seal.5.subtitle"},
+        {"kind": "narrate", "text": "story.cs_ar_seal.6"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_seal.7"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_seal.8"
+        },
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_ar_seal.10"},
+        {"kind": "say", "speaker": "hero", "text": "story.cs_ar_seal.11"},
+        {"kind": "whisper", "text": "story.cs_ar_seal.12"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_seal.13"
+        }
+      ]
+    },
+    "cs_ar_fall": {
+      "id": "cs_ar_fall",
+      "steps": [
+        {"kind": "shake", "intensity": 0.014, "ms": 900},
+        {"kind": "flash", "color": 16777215, "ms": 500},
+        {
+          "kind": "focus",
+          "target": {"monster": "demon_lord"},
+          "ms": 700
+        },
+        {"kind": "narrate", "text": "story.cs_ar_fall.4"},
+        {
+          "kind": "say",
+          "speaker": {"monster": "demon_lord"},
+          "text": "story.cs_ar_fall.5"
+        },
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_ar_fall.7"},
+        {
+          "kind": "say",
+          "speaker": {"monster": "demon_lord"},
+          "text": "story.cs_ar_fall.8"
+        },
+        {"kind": "narrate", "text": "story.cs_ar_fall.9"},
+        {"kind": "flash", "color": 16767114, "ms": 800},
+        {"kind": "narrate", "text": "story.cs_ar_fall.11"},
+        {
+          "kind": "say",
+          "speaker": {"monster": "demon_lord"},
+          "text": "story.cs_ar_fall.12"
+        },
+        {"kind": "narrate", "text": "story.cs_ar_fall.13"},
+        {"kind": "narrate", "text": "story.cs_ar_fall.14"}
+      ]
+    },
+    "cs_tf_moonfang": {
+      "id": "cs_tf_moonfang",
+      "steps": [
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_tf_moonfang.2"},
+        {"kind": "narrate", "text": "story.cs_tf_moonfang.3"},
+        {
+          "kind": "title",
+          "title": "story.cs_tf_moonfang.4.title",
+          "subtitle": "story.cs_tf_moonfang.4.subtitle"
+        },
+        {"kind": "narrate", "text": "story.cs_tf_moonfang.5"},
+        {"kind": "say", "speaker": "hero", "text": "story.cs_tf_moonfang.6"},
+        {"kind": "narrate", "text": "story.cs_tf_moonfang.7"}
+      ]
+    },
+    "cs_sd_helia": {
+      "id": "cs_sd_helia",
+      "steps": [
+        {"kind": "focus", "target": "player"},
+        {"kind": "narrate", "text": "story.cs_sd_helia.2"},
+        {"kind": "flash", "color": 16757575, "ms": 500},
+        {"kind": "narrate", "text": "story.cs_sd_helia.4"},
+        {"kind": "title", "title": "story.cs_sd_helia.5.title", "subtitle": "story.cs_sd_helia.5.subtitle"},
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_nomad"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_nomad"},
+          "text": "story.cs_sd_helia.7"
+        },
+        {"kind": "narrate", "text": "story.cs_sd_helia.8"}
+      ]
+    },
+    "cs_ar_altar": {
+      "id": "cs_ar_altar",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"npc": "quest_warden"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_altar.2"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_altar.3"
+        },
+        {"kind": "narrate", "text": "story.cs_ar_altar.4"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_warden"},
+          "text": "story.cs_ar_altar.5"
+        },
+        {"kind": "focus", "target": "player"}
+      ]
+    },
+    "cs_tower_home": {
+      "id": "cs_tower_home",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"col": 24, "row": 18},
+          "ms": 1400
+        },
+        {
+          "kind": "title",
+          "title": "story.cs_tower_home.2.title",
+          "subtitle": "story.cs_tower_home.2.subtitle"
+        },
+        {"kind": "narrate", "text": "story.cs_tower_home.3"},
+        {
+          "kind": "focus",
+          "target": {"npc": "tower_elder"}
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "tower_elder"},
+          "text": "story.cs_tower_home.5"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "tower_elder"},
+          "text": "story.cs_tower_home.6"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "tower_elder"},
+          "text": "story.cs_tower_home.7"
+        },
+        {"kind": "narrate", "text": "story.cs_tower_home.8"},
+        {"kind": "focus", "target": "player"}
+      ]
+    },
+    "cs_boss_goblin_chief": {
+      "id": "cs_boss_goblin_chief",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"monster": "goblin_chief"},
+          "ms": 800
+        },
+        {
+          "kind": "title",
+          "title": "story.boss.goblin_chief.name",
+          "subtitle": "story.boss.goblin_chief.epithet"
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "goblin_chief"},
+          "text": "story.cs_boss_goblin_chief.3"
+        },
+        {"kind": "shake", "intensity": 0.006, "ms": 400},
+        {"kind": "whisper", "text": "story.cs_boss_goblin_chief.5"},
+        {"kind": "focus", "target": "player", "ms": 600}
+      ]
+    },
+    "cs_boss_werewolf_alpha": {
+      "id": "cs_boss_werewolf_alpha",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"monster": "werewolf_alpha"},
+          "ms": 800
+        },
+        {"kind": "narrate", "text": "story.cs_boss_werewolf_alpha.2"},
+        {
+          "kind": "title",
+          "title": "story.boss.werewolf_alpha.name",
+          "subtitle": "story.boss.werewolf_alpha.epithet"
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "werewolf_alpha"},
+          "text": "story.cs_boss_werewolf_alpha.4"
+        },
+        {"kind": "whisper", "text": "story.cs_boss_werewolf_alpha.5"},
+        {"kind": "shake", "intensity": 0.006, "ms": 400},
+        {"kind": "focus", "target": "player", "ms": 600}
+      ]
+    },
+    "cs_boss_mountain_troll": {
+      "id": "cs_boss_mountain_troll",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"monster": "mountain_troll"},
+          "ms": 800
+        },
+        {
+          "kind": "title",
+          "title": "story.boss.mountain_troll.name",
+          "subtitle": "story.boss.mountain_troll.epithet"
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "mountain_troll"},
+          "text": "story.cs_boss_mountain_troll.3"
+        },
+        {"kind": "shake", "intensity": 0.01, "ms": 500},
+        {"kind": "whisper", "text": "story.cs_boss_mountain_troll.5"},
+        {"kind": "focus", "target": "player", "ms": 600}
+      ]
+    },
+    "cs_boss_phoenix": {
+      "id": "cs_boss_phoenix",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"monster": "phoenix"},
+          "ms": 900
+        },
+        {"kind": "narrate", "text": "story.cs_boss_phoenix.2"},
+        {"kind": "title", "title": "story.boss.phoenix.name", "subtitle": "story.boss.phoenix.epithet"},
+        {"kind": "whisper", "text": "story.cs_boss_phoenix.4"},
+        {"kind": "narrate", "text": "story.cs_boss_phoenix.5"},
+        {"kind": "flash", "color": 16751162, "ms": 400},
+        {"kind": "shake", "intensity": 0.008, "ms": 500},
+        {"kind": "focus", "target": "player", "ms": 600}
+      ]
+    },
+    "cs_boss_demon_lord": {
+      "id": "cs_boss_demon_lord",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"monster": "demon_lord"},
+          "ms": 1600
+        },
+        {"kind": "narrate", "text": "story.cs_boss_demon_lord.2"},
+        {"kind": "title", "title": "story.boss.demon_lord.name", "subtitle": "story.boss.demon_lord.epithet"},
+        {
+          "kind": "say",
+          "speaker": {"monster": "demon_lord"},
+          "text": "story.cs_boss_demon_lord.4"
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "demon_lord"},
+          "text": "story.cs_boss_demon_lord.5"
+        },
+        {"kind": "say", "speaker": "hero", "text": "story.cs_boss_demon_lord.6"},
+        {
+          "kind": "say",
+          "speaker": {"monster": "demon_lord"},
+          "text": "story.cs_boss_demon_lord.7"
+        },
+        {"kind": "shake", "intensity": 0.012, "ms": 700},
+        {"kind": "flash", "color": 8011007, "ms": 500},
+        {"kind": "focus", "target": "player", "ms": 600}
+      ]
+    },
+    "cs_boss_kassanor": {
+      "id": "cs_boss_kassanor",
+      "steps": [
+        {
+          "kind": "focus",
+          "target": {"monster": "dungeon_abyss_lord"},
+          "ms": 1500
+        },
+        {"kind": "narrate", "text": "story.cs_boss_kassanor.1"},
+        {
+          "kind": "title",
+          "title": "story.boss.dungeon_abyss_lord.name",
+          "subtitle": "story.boss.dungeon_abyss_lord.epithet"
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "dungeon_abyss_lord"},
+          "text": "story.cs_boss_kassanor.2"
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "dungeon_abyss_lord"},
+          "text": "story.cs_boss_kassanor.3"
+        },
+        {"kind": "say", "speaker": "hero", "text": "story.cs_boss_kassanor.4"},
+        {
+          "kind": "say",
+          "speaker": {"monster": "dungeon_abyss_lord"},
+          "text": "story.cs_boss_kassanor.5"
+        },
+        {"kind": "shake", "intensity": 0.01, "ms": 600},
+        {"kind": "flash", "color": 5909759, "ms": 450},
+        {"kind": "focus", "target": "player", "ms": 600}
+      ]
+    }
+  },
+  "bossIntros": [
+    {
+      "monsterId": "goblin_chief",
+      "name": "story.boss.goblin_chief.name",
+      "epithet": "story.boss.goblin_chief.epithet",
+      "cutscene": "cs_boss_goblin_chief"
+    },
+    {
+      "monsterId": "werewolf_alpha",
+      "name": "story.boss.werewolf_alpha.name",
+      "epithet": "story.boss.werewolf_alpha.epithet",
+      "cutscene": "cs_boss_werewolf_alpha"
+    },
+    {
+      "monsterId": "mountain_troll",
+      "name": "story.boss.mountain_troll.name",
+      "epithet": "story.boss.mountain_troll.epithet",
+      "cutscene": "cs_boss_mountain_troll"
+    },
+    {
+      "monsterId": "phoenix",
+      "name": "story.boss.phoenix.name",
+      "epithet": "story.boss.phoenix.epithet",
+      "cutscene": "cs_boss_phoenix"
+    },
+    {
+      "monsterId": "demon_lord",
+      "name": "story.boss.demon_lord.name",
+      "epithet": "story.boss.demon_lord.epithet",
+      "cutscene": "cs_boss_demon_lord"
+    },
+    {
+      "monsterId": "dungeon_abyss_lord",
+      "name": "story.boss.dungeon_abyss_lord.name",
+      "epithet": "story.boss.dungeon_abyss_lord.epithet",
+      "cutscene": "cs_boss_kassanor"
+    }
+  ],
+  "triggers": [
+    {"on": "quest_turned_in", "questId": "q_kill_slimes", "cutscene": "cs_ep_mark"},
+    {"on": "quest_turned_in", "questId": "q_explore_goblin_camp", "cutscene": "cs_ep_whisper"},
+    {"on": "quest_turned_in", "questId": "q_secure_plains", "cutscene": "cs_ep_finale"},
+    {"on": "quest_turned_in", "questId": "q_talk_hermit", "cutscene": "cs_tf_hermit"},
+    {"on": "quest_turned_in", "questId": "q_seal_dark_source", "cutscene": "cs_tf_finale"},
+    {"on": "quest_turned_in", "questId": "q_reforge_artifact", "cutscene": "cs_am_hammer"},
+    {"on": "quest_turned_in", "questId": "q_kill_stone_guardian", "cutscene": "cs_am_finale"},
+    {"on": "quest_turned_in", "questId": "q_explore_oasis", "cutscene": "cs_sd_oasis"},
+    {"on": "quest_turned_in", "questId": "q_seal_fire_rift", "cutscene": "cs_sd_finale"},
+    {
+      "on": "quest_turned_in",
+      "questId": "q_seal_fire_rift",
+      "cutscene": "cs_sd_helia",
+      "grantPet": "pet_phoenix"
+    },
+    {"on": "quest_turned_in", "questId": "q_explore_abyss", "cutscene": "cs_ar_gate"},
+    {"on": "quest_turned_in", "questId": "q_collect_demon_essence", "cutscene": "cs_ar_altar"},
+    {"on": "quest_turned_in", "questId": "q_forge_seal", "cutscene": "cs_ar_seal"},
+    {"on": "monster_killed", "monsterId": "demon_lord", "cutscene": "cs_ar_fall"},
+    {
+      "on": "monster_killed",
+      "monsterId": "werewolf_alpha",
+      "cutscene": "cs_tf_moonfang",
+      "grantPet": "pet_storm_wolf"
+    },
+    {"on": "zone_entered", "zoneId": "ember_tower", "cutscene": "cs_tower_home"}
+  ],
+  "epilogue": {
+    "id": "epilogue",
+    "slides": [
+      {
+        "heading": "story.epilogue.1.heading",
+        "title": "story.epilogue.1.title",
+        "text": "story.epilogue.1.text",
+        "mood": "light"
+      },
+      {"title": "story.epilogue.2.title", "text": "story.epilogue.2.text", "mood": "dawn"},
+      {"title": "story.epilogue.3.title", "text": "story.epilogue.3.text", "mood": "dawn"},
+      {"title": "story.epilogue.4.title", "text": "story.epilogue.4.text", "mood": "light"},
+      {"title": "story.epilogue.5.title", "text": "story.epilogue.5.text", "mood": "dawn"},
+      {"title": "story.epilogue.6.title", "text": "story.epilogue.6.text", "mood": "light"}
+    ]
+  },
+  "credits": {
+    "id": "credits",
+    "credits": true,
+    "slides": [
+      {"title": "story.credits.1.title", "text": "story.credits.1.text", "mood": "embers"},
+      {"heading": "story.credits.2.heading", "title": "story.credits.2.title"},
+      {"heading": "story.credits.3.heading", "text": "story.credits.3.text"},
+      {"heading": "story.credits.4.heading", "text": "story.credits.4.text"},
+      {"title": "story.credits.5.title", "mood": "dawn"},
+      {"text": "story.credits.6.text", "mood": "abyss"}
+    ]
+  },
+  "moods": {
+    "embers": {"top": "#0c0605", "bottom": "#2a0f06", "glow": "rgba(255,120,40,0.35)", "embers": 16751164},
+    "night": {"top": "#03050c", "bottom": "#101a33", "glow": "rgba(120,150,255,0.22)", "embers": 10467583},
+    "abyss": {"top": "#07030a", "bottom": "#260a2c", "glow": "rgba(200,40,120,0.32)", "embers": 13782271},
+    "dawn": {"top": "#15142a", "bottom": "#5a3a30", "glow": "rgba(255,190,120,0.35)", "embers": 16765066},
+    "forge": {"top": "#0e0906", "bottom": "#40200c", "glow": "rgba(255,140,40,0.4)", "embers": 16756800},
+    "sand": {"top": "#1c1208", "bottom": "#5a3c1a", "glow": "rgba(255,200,120,0.3)", "embers": 16766874},
+    "light": {"top": "#1d2636", "bottom": "#8a7550", "glow": "rgba(255,236,180,0.45)", "embers": 16773576}
+  },
+  "timing": {
+    "beatDelayMs": {"quest_turned_in": 650, "quest_accepted": 650, "zone_entered": 900, "monster_killed": 0},
+    "bossSightTiles": 9,
+    "bossBarRangeTiles": 14,
+    "finalBoss": "demon_lord",
+    "cameraPanMs": 450,
+    "letterboxPx": 78,
+    "letterboxMs": 450,
+    "typewriterCps": 38,
+    "chapterHoldMs": 3800,
+    "focusDefaultMs": 900,
+    "creditsPxPerSec": 42,
+    "phases": {
+      "sequence": {
+        "backdropInMs": 900,
+        "moodOutMs": 400,
+        "moodInMs": 500,
+        "slidePartInMs": 900,
+        "slideOutMs": 450,
+        "backdropOutMs": 700
+      },
+      "chapter": {"introMs": 3500, "outroMs": 1600},
+      "narrate": {"inMs": 1100, "outMs": 650},
+      "say": {"inMs": 220, "outMs": 160},
+      "whisper": {"inMs": 1300, "outMs": 600},
+      "title": {"inMs": 980, "holdMs": 2200, "outMs": 450}
+    },
+    "input": "two-tap rule: the first input during a reveal (typewriter, staggered slide parts, fades) completes it on the UE side; UE sends StoryAdvance only for the input that advances (a waiting step, or a title / chapter hold). StorySkip resolves every remaining wait of the beat except the 450 ms camera return.",
+    "clock": "presentation (real time); the sim clock is frozen while a beat plays (DECISIONS S2)",
+    "markSeen": "when the beat finishes; a skipped beat counts as finished (DECISIONS Q7)"
+  }
+}

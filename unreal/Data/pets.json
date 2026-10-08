@@ -1,0 +1,368 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/pets.ts", "src/systems/PetSystem.ts", "src/systems/PetCompanion.ts"],
+  "pets": [
+    {
+      "id": "pet_sprite",
+      "chapter": 1,
+      "role": "support",
+      "rarity": "common",
+      "flying": true,
+      "animCategory": "flying",
+      "combat": {"style": "ranged", "range": 4.5, "attackMs": 1800, "color": 9433280, "element": "arcane"},
+      "passive": {"stat": "expBonus", "base": 3, "perLevel": 0.4},
+      "hpFraction": 0.45,
+      "abilities": [
+        {
+          "id": "sprite_heal_pulse",
+          "kind": "heal",
+          "unlock": 0,
+          "cooldownMs": 12000,
+          "range": 0,
+          "value": 0.08
+        },
+        {
+          "id": "sprite_ley_ward",
+          "kind": "shield",
+          "unlock": 1,
+          "cooldownMs": 20000,
+          "range": 0,
+          "value": 0.2,
+          "durationMs": 5000
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "sprite_heal_pulse",
+        "i18n": {
+          "name": "data.pet.pet_sprite.name",
+          "desc": "data.pet.pet_sprite.desc",
+          "origin": "data.pet.pet_sprite.origin"
+        }
+      }
+    },
+    {
+      "id": "pet_owl",
+      "chapter": 2,
+      "role": "scout",
+      "rarity": "common",
+      "flying": true,
+      "animCategory": "flying",
+      "combat": {"style": "ranged", "range": 5, "attackMs": 1700, "color": 12572927, "element": "physical"},
+      "passive": {"stat": "magicFind", "base": 5, "perLevel": 0.8},
+      "hpFraction": 0.45,
+      "abilities": [
+        {
+          "id": "owl_moon_mark",
+          "kind": "mark",
+          "unlock": 0,
+          "cooldownMs": 10000,
+          "range": 8,
+          "value": 0.15,
+          "durationMs": 6000
+        },
+        {
+          "id": "owl_talon_dive",
+          "kind": "strike",
+          "unlock": 1,
+          "cooldownMs": 9000,
+          "range": 7,
+          "damage": 2.2,
+          "leap": true
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "owl_moon_mark",
+        "i18n": {
+          "name": "data.pet.pet_owl.name",
+          "desc": "data.pet.pet_owl.desc",
+          "origin": "data.pet.pet_owl.origin"
+        }
+      }
+    },
+    {
+      "id": "pet_storm_wolf",
+      "chapter": 2,
+      "role": "melee",
+      "rarity": "epic",
+      "flying": false,
+      "animCategory": "beast",
+      "combat": {"style": "melee", "range": 1.3, "attackMs": 1200, "color": 14674175, "element": "physical"},
+      "passive": {"stat": "attackSpeed", "base": 3, "perLevel": 0.35},
+      "hpFraction": 0.7,
+      "abilities": [
+        {
+          "id": "wolf_pounce",
+          "kind": "strike",
+          "unlock": 0,
+          "cooldownMs": 8000,
+          "range": 5,
+          "damage": 1.5,
+          "leap": true,
+          "bleed": 0.25,
+          "durationMs": 4000
+        },
+        {
+          "id": "wolf_moon_howl",
+          "kind": "buff",
+          "unlock": 1,
+          "cooldownMs": 22000,
+          "range": 0,
+          "value": 0.15,
+          "durationMs": 6000
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "wolf_pounce",
+        "i18n": {
+          "name": "data.pet.pet_storm_wolf.name",
+          "desc": "data.pet.pet_storm_wolf.desc",
+          "origin": "data.pet.pet_storm_wolf.origin"
+        }
+      }
+    },
+    {
+      "id": "pet_cat",
+      "chapter": 2,
+      "role": "assassin",
+      "rarity": "rare",
+      "flying": false,
+      "animCategory": "beast",
+      "combat": {"style": "melee", "range": 1.2, "attackMs": 1100, "color": 11563263, "element": "physical"},
+      "passive": {"stat": "critRate", "base": 2, "perLevel": 0.25},
+      "hpFraction": 0.55,
+      "abilities": [
+        {
+          "id": "cat_backstab",
+          "kind": "strike",
+          "unlock": 0,
+          "cooldownMs": 7000,
+          "range": 1.6,
+          "damage": 2.2,
+          "crit": true
+        },
+        {
+          "id": "cat_shadow_flurry",
+          "kind": "strike",
+          "unlock": 1,
+          "cooldownMs": 12000,
+          "range": 1.6,
+          "damage": 0.9,
+          "hits": 3
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "cat_backstab",
+        "i18n": {
+          "name": "data.pet.pet_cat.name",
+          "desc": "data.pet.pet_cat.desc",
+          "origin": "data.pet.pet_cat.origin"
+        }
+      }
+    },
+    {
+      "id": "pet_jade_tortoise",
+      "chapter": 3,
+      "role": "tank",
+      "rarity": "epic",
+      "flying": false,
+      "animCategory": "large",
+      "combat": {"style": "melee", "range": 1.4, "attackMs": 1700, "color": 7332016, "element": "physical"},
+      "passive": {"stat": "defense", "base": 4, "perLevel": 1.2},
+      "hpFraction": 1.2,
+      "abilities": [
+        {
+          "id": "tortoise_taunt",
+          "kind": "taunt",
+          "unlock": 0,
+          "cooldownMs": 14000,
+          "range": 0,
+          "radius": 4,
+          "value": 0.25,
+          "durationMs": 5000
+        },
+        {
+          "id": "tortoise_quake",
+          "kind": "nova",
+          "unlock": 1,
+          "cooldownMs": 12000,
+          "range": 1.8,
+          "damage": 1,
+          "radius": 2.5,
+          "stunMs": 1200,
+          "self": true
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "tortoise_taunt",
+        "i18n": {
+          "name": "data.pet.pet_jade_tortoise.name",
+          "desc": "data.pet.pet_jade_tortoise.desc",
+          "origin": "data.pet.pet_jade_tortoise.origin"
+        }
+      }
+    },
+    {
+      "id": "pet_dragon",
+      "chapter": 3,
+      "role": "ranged",
+      "rarity": "rare",
+      "flying": true,
+      "animCategory": "flying",
+      "combat": {"style": "ranged", "range": 4.5, "attackMs": 1600, "color": 16742954, "element": "fire"},
+      "passive": {"stat": "damagePercent", "base": 3, "perLevel": 0.45},
+      "hpFraction": 0.6,
+      "abilities": [
+        {
+          "id": "dragon_fire_breath",
+          "kind": "cone",
+          "unlock": 0,
+          "cooldownMs": 9000,
+          "range": 3.5,
+          "damage": 1.3,
+          "radius": 4,
+          "arc": 1.0471975511965976,
+          "element": "fire",
+          "burn": 0.15,
+          "durationMs": 3000
+        },
+        {
+          "id": "dragon_magma_orb",
+          "kind": "bolt",
+          "unlock": 1,
+          "cooldownMs": 8000,
+          "range": 6,
+          "damage": 2,
+          "element": "fire",
+          "radius": 1.5
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "dragon_fire_breath",
+        "i18n": {
+          "name": "data.pet.pet_dragon.name",
+          "desc": "data.pet.pet_dragon.desc",
+          "origin": "data.pet.pet_dragon.origin"
+        }
+      }
+    },
+    {
+      "id": "pet_phoenix",
+      "chapter": 4,
+      "role": "support",
+      "rarity": "epic",
+      "flying": true,
+      "animCategory": "flying",
+      "combat": {"style": "ranged", "range": 4.5, "attackMs": 1800, "color": 16756800, "element": "fire"},
+      "passive": {"stat": "hpRegen", "base": 2, "perLevel": 0.5},
+      "hpFraction": 0.55,
+      "abilities": [
+        {
+          "id": "phoenix_ember_mend",
+          "kind": "heal",
+          "unlock": 0,
+          "cooldownMs": 14000,
+          "range": 0,
+          "value": 0.12
+        },
+        {"id": "phoenix_rekindle", "kind": "revive", "unlock": 0, "cooldownMs": 0, "range": 0, "value": 0.4},
+        {
+          "id": "phoenix_flame_ring",
+          "kind": "nova",
+          "unlock": 1,
+          "cooldownMs": 13000,
+          "range": 2.5,
+          "damage": 1.2,
+          "radius": 2.5,
+          "element": "fire",
+          "burn": 0.12,
+          "durationMs": 3000
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "phoenix_ember_mend",
+        "i18n": {
+          "name": "data.pet.pet_phoenix.name",
+          "desc": "data.pet.pet_phoenix.desc",
+          "origin": "data.pet.pet_phoenix.origin"
+        }
+      }
+    },
+    {
+      "id": "pet_void_butterfly",
+      "chapter": 5,
+      "role": "caster",
+      "rarity": "epic",
+      "flying": true,
+      "animCategory": "flying",
+      "combat": {"style": "ranged", "range": 5, "attackMs": 1700, "color": 13386956, "element": "arcane"},
+      "passive": {"stat": "manaRegen", "base": 1.5, "perLevel": 0.35},
+      "hpFraction": 0.45,
+      "abilities": [
+        {
+          "id": "butterfly_void_bolt",
+          "kind": "bolt",
+          "unlock": 0,
+          "cooldownMs": 6000,
+          "range": 6,
+          "damage": 1.5,
+          "element": "arcane",
+          "mana": 0.05
+        },
+        {
+          "id": "butterfly_void_rift",
+          "kind": "nova",
+          "unlock": 1,
+          "cooldownMs": 12000,
+          "range": 6,
+          "damage": 1.1,
+          "radius": 2.2,
+          "element": "arcane",
+          "slow": 35,
+          "durationMs": 3000
+        }
+      ],
+      "derived": {
+        "primaryAbilityId": "butterfly_void_bolt",
+        "i18n": {
+          "name": "data.pet.pet_void_butterfly.name",
+          "desc": "data.pet.pet_void_butterfly.desc",
+          "origin": "data.pet.pet_void_butterfly.origin"
+        }
+      }
+    }
+  ],
+  "maxLevel": 20,
+  "evolutionLevels": [10, 20],
+  "evolutionMult": [1, 1.5, 2],
+  "maxBond": 5,
+  "leyFruitId": "c_ley_fruit",
+  "system": {
+    "damageBaseFraction": 0.05,
+    "damagePerLevelFraction": 0.005,
+    "damageMaxFraction": 0.15,
+    "bondProgressPerLevel": 100,
+    "bondPerKill": 1,
+    "bondPerActiveMinute": 2,
+    "bondPerFeed": 20,
+    "feedExp": 120,
+    "bondRescueHp": 0.3,
+    "bondRescueCooldownMs": 60000,
+    "baseBondCap": 3,
+    "expToNext": {"base": 60, "perLevel": 40},
+    "killExp": {"base": 10, "perMonsterLevel": 1},
+    "bondMultiplierPerBond": 0.1,
+    "passiveRounding": "round(x*10)/10",
+    "leyFruitDropChance": {"elite": 0.12, "other": 0.015}
+  },
+  "companion": {
+    "exhaustMs": 5000,
+    "straySwingChance": 0.25,
+    "followSpeedTilesPerSec": 4.2,
+    "dashSpeedTilesPerSec": 8.5,
+    "teleportDistanceTiles": 16
+  },
+  "port": {
+    "chapter1Slice": ["pet_sprite"],
+    "decision": "Q3"
+  }
+}

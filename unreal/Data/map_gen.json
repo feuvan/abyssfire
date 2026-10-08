@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/MapGenerator.ts", "src/data/maps/index.ts"],
+  "tileIds": {"grass": 0, "dirt": 1, "stone": 2, "water": 3, "wall": 4, "camp": 5, "campWall": 6},
+  "blockingTiles": [3, 4, 6],
+  "themes": {
+    "plains": {
+      "primaryTile": 0,
+      "secondaryTile": 1,
+      "wallDensity": 0.03,
+      "waterLakeCount": [2, 4],
+      "waterLakeSize": [8, 16],
+      "decorTypes": ["tree", "bush", "flower", "rock"],
+      "decorDensity": 0.06
+    },
+    "forest": {
+      "primaryTile": 0,
+      "secondaryTile": 1,
+      "wallDensity": 0.17,
+      "waterLakeCount": [2, 3],
+      "waterLakeSize": [6, 12],
+      "decorTypes": ["tree", "bush", "mushroom", "rock"],
+      "decorDensity": 0.08
+    },
+    "mountain": {
+      "primaryTile": 2,
+      "secondaryTile": 1,
+      "wallDensity": 0.12,
+      "waterLakeCount": [1, 3],
+      "waterLakeSize": [4, 10],
+      "decorTypes": ["rock", "boulder", "bush"],
+      "decorDensity": 0.05
+    },
+    "desert": {
+      "primaryTile": 1,
+      "secondaryTile": 2,
+      "wallDensity": 0.04,
+      "waterLakeCount": [2, 4],
+      "waterLakeSize": [4, 8],
+      "decorTypes": ["rock", "cactus", "bones"],
+      "decorDensity": 0.04
+    },
+    "abyss": {
+      "primaryTile": 2,
+      "secondaryTile": 1,
+      "wallDensity": 0.1,
+      "waterLakeCount": [3, 5],
+      "waterLakeSize": [6, 14],
+      "decorTypes": ["rock", "crystal", "bones", "mushroom"],
+      "decorDensity": 0.05
+    }
+  },
+  "decorPools": {
+    "plains": {
+      "grove": [
+        ["tree", 5],
+        ["tree_round", 3],
+        ["bush", 3],
+        ["grass", 2]
+      ],
+      "open": [
+        ["grass", 6],
+        ["flower", 4],
+        ["rock", 1.5],
+        ["bush", 1],
+        ["mushroom_red", 0.6],
+        ["boulder", 0.5],
+        ["tree_round", 0.5]
+      ],
+      "tall": ["tree", "tree_round", "boulder"]
+    },
+    "forest": {
+      "grove": [
+        ["tree_forest", 5],
+        ["tree_forest_tall", 3],
+        ["fern", 3],
+        ["mushroom", 2]
+      ],
+      "open": [
+        ["grass_forest", 5],
+        ["fern", 2],
+        ["rock_moss", 2],
+        ["mushroom", 1],
+        ["crystal_blue", 0.3],
+        ["tree_forest_tall", 0.6]
+      ],
+      "tall": ["tree_forest", "tree_forest_tall", "crystal_blue"]
+    },
+    "mountain": {
+      "grove": [
+        ["pine", 5],
+        ["boulder_snow", 1],
+        ["rock_slate", 1]
+      ],
+      "open": [
+        ["rock_slate", 4],
+        ["boulder_snow", 1.5],
+        ["grass_dry", 3],
+        ["dry_shrub", 1.5],
+        ["dead_tree", 0.5],
+        ["pine", 0.6]
+      ],
+      "tall": ["pine", "boulder_snow", "dead_tree"]
+    },
+    "desert": {
+      "grove": [
+        ["cactus", 1.6],
+        ["cactus_barrel", 3],
+        ["dry_shrub", 2.5],
+        ["rock_sand", 2],
+        ["boulder_sand", 0.6]
+      ],
+      "open": [
+        ["rock_sand", 3],
+        ["boulder_sand", 1],
+        ["bones", 1.5],
+        ["grass_dry", 2],
+        ["cactus_barrel", 1],
+        ["dead_tree", 0.4]
+      ],
+      "tall": ["cactus", "boulder_sand", "dead_tree"]
+    },
+    "abyss": {
+      "grove": [
+        ["charred_tree", 4],
+        ["crystal", 3],
+        ["boulder_basalt", 1],
+        ["rock_basalt", 1]
+      ],
+      "open": [
+        ["rock_basalt", 4],
+        ["bones", 2],
+        ["grass_ash", 3],
+        ["mushroom", 1],
+        ["crystal", 0.5]
+      ],
+      "tall": ["charred_tree", "crystal", "boulder_basalt"]
+    }
+  },
+  "defaults": {"theme": "plains", "seed": 42, "avoidMargin": 4},
+  "landmarkRules": {
+    "lore": {"margin": 2},
+    "miniBoss": {"margin": 5},
+    "quest": {
+      "objectiveLocation": 3,
+      "gatherArea": 3,
+      "questArea": 4,
+      "defendTarget": 6,
+      "escortStart": 3,
+      "escortDest": 3,
+      "clue": 2
+    },
+    "order": "lore (LoreByZone order), mini-boss, then quests in AllQuests order: objectives, questArea, defendTarget, escort start/dest, clues"
+  },
+  "rng": {"kind": "Park-Miller minimal standard", "modulus": 2147483647, "multiplier": 16807}
+}

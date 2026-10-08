@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/rendering/RenderQuality.ts"],
+  "profiles": {
+    "low": {
+      "quality": "low",
+      "maxDynamicLights": 8,
+      "lightingUpdateIntervalMs": 100,
+      "particleFrequencyMultiplier": 2,
+      "bloom": false,
+      "colorGrading": false
+    },
+    "balanced": {
+      "quality": "balanced",
+      "maxDynamicLights": 16,
+      "lightingUpdateIntervalMs": 50,
+      "particleFrequencyMultiplier": 1.5,
+      "bloom": true,
+      "colorGrading": true
+    },
+    "high": {
+      "quality": "high",
+      "maxDynamicLights": 32,
+      "lightingUpdateIntervalMs": 16,
+      "particleFrequencyMultiplier": 1,
+      "bloom": true,
+      "colorGrading": true
+    }
+  },
+  "resolutionScale": {"low": 1, "balanced": 1.5, "high": 2},
+  "selection": {
+    "lowPixelBudget": 5000000,
+    "highMaxPixelBudget": 3700000,
+    "highMinDpr": 2,
+    "constrainedCores": 4,
+    "constrainedMemoryGb": 4
+  },
+  "clampResolution": {"step": 0.5, "min": 1, "max": 2}
+}

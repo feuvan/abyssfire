@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/classes/*.ts", "src/scenes/UIScene.ts", "src/i18n/locales/zh-CN.ts"],
+  "trees": [
+    {
+      "id": "combat_master",
+      "classId": "warrior",
+      "tabOrder": 0,
+      "nameKey": "data.skillTree.combat_master",
+      "color": 13934615
+    },
+    {
+      "id": "guardian",
+      "classId": "warrior",
+      "tabOrder": 1,
+      "nameKey": "data.skillTree.guardian",
+      "color": 15844367
+    },
+    {
+      "id": "berserker",
+      "classId": "warrior",
+      "tabOrder": 2,
+      "nameKey": "data.skillTree.berserker",
+      "color": 13382451
+    },
+    {"id": "fire", "classId": "mage", "tabOrder": 0, "nameKey": "data.skillTree.fire", "color": 15158332},
+    {"id": "frost", "classId": "mage", "tabOrder": 1, "nameKey": "data.skillTree.frost", "color": 6139362},
+    {"id": "arcane", "classId": "mage", "tabOrder": 2, "nameKey": "data.skillTree.arcane", "color": 9323693},
+    {
+      "id": "assassination",
+      "classId": "rogue",
+      "tabOrder": 0,
+      "nameKey": "data.skillTree.assassination",
+      "color": 2600544
+    },
+    {
+      "id": "archery",
+      "classId": "rogue",
+      "tabOrder": 1,
+      "nameKey": "data.skillTree.archery",
+      "color": 13404228
+    },
+    {"id": "traps", "classId": "rogue", "tabOrder": 2, "nameKey": "data.skillTree.traps", "color": 16737792}
+  ],
+  "damageTypeColors": {
+    "physical": 13421772,
+    "fire": 16737843,
+    "ice": 6737151,
+    "lightning": 6139362,
+    "poison": 3394611,
+    "arcane": 12285951
+  }
+}

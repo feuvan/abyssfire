@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/InventorySystem.ts", "src/scenes/UIScene.ts", "src/data/homestead.ts"],
+  "buyPriceMultiplier": 3,
+  "buybackPriceMultiplier": 5,
+  "buybackSlots": 5,
+  "sellPrice": "base.sellPrice × quantity (unknown base → 1)",
+  "sellQualityMultiplier": {"normal": 1, "magic": 1.5, "rare": 2.5, "legendary": 4, "set": 4, "decision": "I9"},
+  "bagCapacity": 100,
+  "stashBaseSlots": 80,
+  "stashSlotsPerWarehouseLevel": [10],
+  "shopItemLevel": "player level, quality normal",
+  "sortOrder": {
+    "quality": {"legendary": 0, "set": 1, "rare": 2, "magic": 3, "normal": 4},
+    "type": {"weapon": 0, "armor": 1, "accessory": 2, "consumable": 3, "gem": 4, "material": 5, "scroll": 6}
+  }
+}

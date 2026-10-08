@@ -151,14 +151,14 @@ NDK r27c clang (LLVM 18, libc++ 18, linked statically by UE), GCC/Clang on Linux
 | RNG | Own PRNG (spec'd per area); **never** `<random>` distributions (`uniform_int_distribution` etc. give different sequences on MSVC/libc++/libstdc++), `rand()`, `std::random_device` | Cross-platform reproducibility, golden tests |
 | Hashing / ordering | Never iterate `std::unordered_map/set` where order influences gameplay, RNG draws or saved output; JS `Map`/object iteration is **insertion order** → use `std::vector` of pairs or an insertion-ordered map; `std::hash` values never persisted | STL implementations differ |
 | Sorting | JS `Array.prototype.sort` is **stable** → port with `std::stable_sort` (or `std::ranges::stable_sort`) and the same comparator | `std::sort` order of equal elements differs per STL |
-| Floating point | Put `#pragma STDC FP_CONTRACT OFF` (+ `#pragma clang fp contract(off)` under `__clang__`) in a core-wide header included first by every `.cpp`; CMake adds `-ffp-contract=off`. No `-ffast-math`. Use `std::floor(x + 0.5)` for JS `Math.round` | Clang ≥ 14 contracts `a*b+c` into FMA by default on arm64 (Mac/iOS/Android) while MSVC x64 and JS do not → `.5` rounding boundaries could flip |
+| Floating point | Put `#pragma STDC FP_CONTRACT OFF` (+ `#pragma clang fp contract(off)` under `__clang__`) in a core-wide header included first by every `.cpp`; CMake adds `-ffp-contract=off`. No `-ffast-math`. The pragmas do not survive `-ffp-contract=fast` / `-ffast-math` / `/fp:fast`, so both Build.cs files set `FPSemantics = FPSemanticsMode.Precise` (the public headers' inline math is compiled in the game module too) and `Platform.h` `#error`s in a core TU built with fast-math; MSVC also gets `#pragma float_control(precise, on)`. Use `std::floor(x + 0.5)` for JS `Math.round` | Clang ≥ 14 contracts `a*b+c` into FMA by default on arm64 (Mac/iOS/Android) while MSVC x64 and JS do not → `.5` rounding boundaries could flip |
 | Number parsing | Do not use `strtod`/`atof` (locale-dependent) or floating `std::from_chars` (absent in NDK r27 libc++). Integers: `std::from_chars` OK. Floats: in-house decimal parser (digits/fraction/exponent → double) in the JSON reader | Portability |
 | Formatting | Avoid `<format>` and iostreams in hot paths; i18n templates use the core's own `{name}` substitution | size, availability |
 | Text | All strings UTF-8 `std::string`; **no non-ASCII literals in C++ sources** (all player-facing text is in JSON); never use `u8"..."` (C++20 makes it `char8_t`) | MSVC source charset, C++20 `char8_t` |
 | Integer types | `<cstdint>` fixed widths; never `long` (32-bit on Windows, 64 elsewhere) or `wchar_t` | ABI differences |
 | Statics | No namespace-scope objects with non-trivial constructors; use function-local statics | static-init order, mobile startup |
-| Macro collisions | Core headers are included next to UE headers in the `Abyssfire` module: never name anything `check`, `verify`, `ensure`, `checkf`, `TEXT`, `PI`, `SMALL_NUMBER`, `KINDA_SMALL_NUMBER`, `BIG_NUMBER`, `INDEX_NONE`, `IN`, `OUT`, `TRUE`, `FALSE`, `ERROR`, `DELTA`, `UNLIKELY`, `LIKELY`, `FORCEINLINE`, `min`/`max` macros; prefer `kPascalCase` constants inside `namespace abyss` over `UPPER_SNAKE` | UE / Windows macros |
-| Warnings | Must compile clean with `-Wall -Wextra -Wshadow -Werror -Wno-unused-parameter` (clang/gcc) and `/W4 /WX` (MSVC) in CMake | UE treats shadowing (C4456–C4459, `-Wshadow`) and undefined-identifier-in-`#if` as errors on several platforms |
+| Macro collisions | Core headers are included next to UE headers in the `Abyssfire` module: never name anything `check`, `verify`, `ensure`, `checkf`, `TEXT`, `PI`, `SMALL_NUMBER`, `KINDA_SMALL_NUMBER`, `BIG_NUMBER`, `INDEX_NONE`, `IN`, `OUT`, `TRUE`, `FALSE`, `ERROR`, `DELTA`, `UNLIKELY`, `LIKELY`, `FORCEINLINE`, `min`/`max` macros; prefer `kPascalCase` constants inside `namespace abyss` over `UPPER_SNAKE`; public headers write `(std::min)(a, b)` / `(std::numeric_limits<T>::max)()`. `CoreTests/shim/MacroShim.cpp` compiles every public header after these (and more Windows / UE / Apple) macros | UE / Windows macros |
+| Warnings | Must compile clean with `-Wall -Wextra -Wshadow -Wundef -Werror -Wno-unused-parameter` (clang/gcc) and `/W4 /WX /we4668` (MSVC) in CMake | UE treats shadowing (C4456–C4459, `-Wshadow`) and undefined-identifier-in-`#if` as errors on several platforms |
 | Allowed C++20 | concepts, designated initialisers, `<=>`, `consteval/constexpr`, `using enum`, `[[likely]]`, `<span>`, `<bit>` (`bit_cast`), `<numbers>`, `<concepts>`, `std::ranges` algorithms, `<source_location>`, `<charconv>` (integers), `std::variant` + `std::visit`/`get_if`, `std::optional` (`*`/`has_value`) | supported by all four toolchains |
 | Forbidden C++20 | modules, coroutines, `std::format` (optional later), `<stop_token>`, `<syncstream>`, `<chrono>` calendars/time zones | toolchain gaps |
 | Assertions / logging | core macro `ABYSS_ASSERT(cond, msg)` → user-installable handler; log through a callback the UE module routes to `UE_LOG` | no UE dependency |
@@ -280,7 +280,13 @@ public class AbyssCore : ModuleRules
         CppStandard = CppStandardVersion.Cpp20;
         bEnableExceptions = false;
         bUseRTTI = false;
+        bUseUnity = false;                        // keep UE macros out of the core TUs
+        FPSemantics = FPSemanticsMode.Precise;    // [Verify] 5.8 name; /fp:precise, -ffp-contract=off (§3.3)
+        // ABYSS_API (Platform.h): exported from the core DLL in modular builds, nothing in monolithic ones.
+        PublicDefinitions.Add(Target.LinkType == TargetLinkType.Modular ? "ABYSS_CORE_DLL=1" : "ABYSS_CORE_DLL=0");
+        PrivateDefinitions.Add("ABYSS_CORE_BUILDING=1");
         PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
+        PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "ThirdParty", "rapidjson"));
         // Only Private/UE/AbyssCoreModule.cpp uses this (IMPLEMENT_MODULE). The CMake build has no UE headers,
         // so an accidental UE include anywhere else in the core fails CI.
         PrivateDependencyModuleNames.Add("Core");
@@ -310,6 +316,9 @@ public class Abyssfire : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         CppStandard = CppStandardVersion.Cpp20;
+        // The core's public headers carry inline math (Lerp, DistSq, Vec2::Length, ...) compiled here too: same FP
+        // semantics as AbyssCore (§3.3). [Verify] the 5.8 property name.
+        FPSemantics = FPSemanticsMode.Precise;
         PublicDependencyModuleNames.AddRange(new[] {
             "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
         PrivateDependencyModuleNames.AddRange(new[] {
@@ -345,9 +354,11 @@ Include paths used by this spec (all **[API]**): Enhanced Input `EnhancedInputCo
 
 `unreal/CoreTests/CMakeLists.txt` compiles `../Source/AbyssCore/Public` + `../Source/AbyssCore/Private/**/*.cpp`
 **excluding** `Private/UE/`, with `CMAKE_CXX_STANDARD 20`, `CMAKE_CXX_EXTENSIONS OFF`, `-fno-exceptions -fno-rtti
--ffp-contract=off -Wall -Wextra -Wshadow -Werror -Wno-unused-parameter` (GCC/Clang) or `/W4 /WX /GR- /EHs-c- /D_HAS_EXCEPTIONS=0`
-(MSVC). The test framework (doctest or Catch2) must also be built without exceptions (doctest: `DOCTEST_CONFIG_NO_EXCEPTIONS`).
-Run under ASan/UBSan on Linux CI.
+-ffp-contract=off -Wall -Wextra -Wshadow -Wundef -Werror -Wno-unused-parameter` (GCC/Clang) or `/W4 /WX /we4668 /GR- /EHs-c-
+/D_HAS_EXCEPTIONS=0 /fp:precise` (MSVC), and `ABYSS_CORE_BUILDING=1` on the core target. `ABYSS_SHARED=ON` builds the core as a
+hidden-visibility shared library (`ABYSS_CORE_DLL=1`, `-Wl,--no-undefined`) so a public symbol without `ABYSS_API` fails
+to link; `shim/MacroShim.cpp` is the macro-collision compile check. The test framework (doctest or Catch2) must also be built without exceptions (doctest: `DOCTEST_CONFIG_NO_EXCEPTIONS`).
+Run under ASan/UBSan (+ `-fsanitize=float-cast-overflow`) on Linux CI (`ABYSS_SANITIZE=1 ./run.sh`).
 
 ---
 

@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/items/sets.ts", "src/data/dungeonData.ts"],
+  "legendaries": [
+    {
+      "id": "leg_soulreaver",
+      "baseId": "w_demon_blade",
+      "name": "灵魂收割者",
+      "nameEn": "Soulreaver",
+      "fixedAffixes": [
+        {"affixId": "leg_1", "name": "灵魂收割", "stat": "damage", "value": 45},
+        {"affixId": "leg_2", "name": "噬灵", "stat": "lifeSteal", "value": 8},
+        {"affixId": "leg_2b", "name": "亡灵之力", "stat": "critDamage", "value": 20}
+      ],
+      "specialEffect": "killHealPercent",
+      "specialEffectValue": 5,
+      "specialEffectDescription": "击杀回复5%最大生命",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_frostburn",
+      "baseId": "w_arcane_staff",
+      "name": "霜火之杖",
+      "nameEn": "Frostburn",
+      "fixedAffixes": [
+        {"affixId": "leg_3", "name": "霜火交融", "stat": "fireDamage", "value": 20},
+        {"affixId": "leg_4", "name": "极寒之触", "stat": "iceDamage", "value": 20},
+        {"affixId": "leg_4b", "name": "元素亲和", "stat": "int", "value": 15}
+      ],
+      "specialEffect": "elementalDamagePercent",
+      "specialEffectValue": 25,
+      "specialEffectDescription": "所有元素伤害 +25%",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_windforce",
+      "baseId": "w_war_bow",
+      "name": "风之力",
+      "nameEn": "Windforce",
+      "fixedAffixes": [
+        {"affixId": "leg_9", "name": "疾风箭矢", "stat": "damage", "value": 35},
+        {"affixId": "leg_10", "name": "击退之风", "stat": "knockback", "value": 2},
+        {"affixId": "leg_10b", "name": "风暴之速", "stat": "attackSpeed", "value": 15}
+      ],
+      "specialEffect": "doubleShot",
+      "specialEffectValue": 25,
+      "specialEffectDescription": "普攻25%概率发射双倍箭矢",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_grief",
+      "baseId": "w_broad_sword",
+      "name": "悲伤",
+      "nameEn": "Grief",
+      "fixedAffixes": [
+        {"affixId": "leg_gr1", "name": "悲痛之刃", "stat": "damage", "value": 30},
+        {"affixId": "leg_gr2", "name": "嗜杀如狂", "stat": "attackSpeed", "value": 20},
+        {"affixId": "leg_gr3", "name": "绝望之触", "stat": "lifeSteal", "value": 5}
+      ],
+      "specialEffect": "ignoreDefense",
+      "specialEffectValue": 20,
+      "specialEffectDescription": "攻击忽略目标20%防御",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_shadowstep",
+      "baseId": "a_leather_boots",
+      "name": "暗影之履",
+      "nameEn": "Shadowstep",
+      "fixedAffixes": [
+        {"affixId": "leg_5", "name": "幻影疾步", "stat": "moveSpeed", "value": 25},
+        {"affixId": "leg_6", "name": "暗影闪避", "stat": "dex", "value": 15}
+      ],
+      "specialEffect": "dodgeCounter",
+      "specialEffectValue": 1,
+      "specialEffectDescription": "闪避后下次攻击必定暴击",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_aegis",
+      "baseId": "w_iron_shield",
+      "name": "不灭之盾",
+      "nameEn": "Aegis",
+      "fixedAffixes": [
+        {"affixId": "leg_7", "name": "永恒守护", "stat": "defense", "value": 30},
+        {"affixId": "leg_8", "name": "不屈之心", "stat": "maxHp", "value": 100},
+        {"affixId": "leg_8b", "name": "圣光庇护", "stat": "allResist", "value": 10}
+      ],
+      "specialEffect": "deathDefiance",
+      "specialEffectValue": 10,
+      "specialEffectDescription": "受到致命伤害时10%概率免死并回复30%生命",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_tyrael",
+      "baseId": "a_plate_armor",
+      "name": "大天使之铠",
+      "nameEn": "Tyrael's Might",
+      "fixedAffixes": [
+        {"affixId": "leg_ty1", "name": "神圣之力", "stat": "defense", "value": 35},
+        {"affixId": "leg_ty2", "name": "天使庇佑", "stat": "allResist", "value": 15},
+        {"affixId": "leg_ty3", "name": "光之祝福", "stat": "hpRegen", "value": 8}
+      ],
+      "specialEffect": "damageReduction",
+      "specialEffectValue": 10,
+      "specialEffectDescription": "受到的所有伤害减少10%",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_soj",
+      "baseId": "j_gold_ring",
+      "name": "乔丹之石",
+      "nameEn": "Stone of Jordan",
+      "fixedAffixes": [
+        {"affixId": "leg_soj1", "name": "无尽魔力", "stat": "maxManaPercent", "value": 25},
+        {"affixId": "leg_soj2", "name": "技能增幅", "stat": "damagePercent", "value": 20},
+        {"affixId": "leg_soj3", "name": "智慧之石", "stat": "int", "value": 12}
+      ],
+      "specialEffect": "cooldownReduction",
+      "specialEffectValue": 10,
+      "specialEffectDescription": "所有技能冷却减少10%",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_maras",
+      "baseId": "j_jade_amulet",
+      "name": "玛拉的万花筒",
+      "nameEn": "Mara's Kaleidoscope",
+      "fixedAffixes": [
+        {"affixId": "leg_mk1", "name": "万花绽放", "stat": "allResist", "value": 20},
+        {"affixId": "leg_mk2", "name": "全能之力", "stat": "str", "value": 5},
+        {"affixId": "leg_mk3", "name": "全能之智", "stat": "int", "value": 5},
+        {"affixId": "leg_mk4", "name": "全能之捷", "stat": "dex", "value": 5}
+      ],
+      "specialEffect": "allStatsBonus",
+      "specialEffectValue": 2,
+      "specialEffectDescription": "每次升级额外获得+2全属性",
+      "dungeonExclusive": false
+    },
+    {
+      "id": "leg_abyss_crown",
+      "baseId": "a_dragon_helm",
+      "name": "深渊之冠",
+      "nameEn": "Crown of the Abyss",
+      "fixedAffixes": [
+        {"affixId": "leg_ac1", "name": "虚空之力", "stat": "damagePercent", "value": 25},
+        {"affixId": "leg_ac2", "name": "深渊护佑", "stat": "allResist", "value": 18},
+        {"affixId": "leg_ac3", "name": "暗能灌注", "stat": "maxHp", "value": 120},
+        {"affixId": "leg_ac4", "name": "迷宫统御", "stat": "defense", "value": 30}
+      ],
+      "specialEffect": "dungeonDamageBonus",
+      "specialEffectValue": 15,
+      "specialEffectDescription": "在深渊迷宫中所有伤害额外增加15%",
+      "dungeonExclusive": true
+    },
+    {
+      "id": "leg_void_edge",
+      "baseId": "w_demon_blade",
+      "name": "虚空之刃",
+      "nameEn": "Voidedge",
+      "fixedAffixes": [
+        {"affixId": "leg_ve1", "name": "虚空切割", "stat": "damage", "value": 55},
+        {"affixId": "leg_ve2", "name": "深渊吞噬", "stat": "lifeSteal", "value": 10},
+        {"affixId": "leg_ve3", "name": "暗影灌注", "stat": "critDamage", "value": 30},
+        {"affixId": "leg_ve4", "name": "毁灭之力", "stat": "str", "value": 15}
+      ],
+      "specialEffect": "voidStrike",
+      "specialEffectValue": 20,
+      "specialEffectDescription": "每次攻击20%概率触发虚空打击，造成额外50%暗影伤害",
+      "dungeonExclusive": true
+    }
+  ],
+  "lookup": "first legendary (array order, overworld first) whose baseId matches; none → generic legendary (3–5 random affixes)",
+  "levelScale": {"divisor": 35, "min": 0.6, "max": 1.5, "rounding": "Math.round"},
+  "appliedSpecialEffects": [
+    "killHealPercent",
+    "elementalDamagePercent",
+    "doubleShot",
+    "ignoreDefense",
+    "dodgeCounter",
+    "damageReduction",
+    "cooldownReduction"
+  ],
+  "i18n": {
+    "name": "data.legendary.<id>.name",
+    "effect": "data.legendary.<id>.effect",
+    "affix": "data.legAffix.<affixId>"
+  }
+}

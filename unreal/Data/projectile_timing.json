@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "source": [
+    "src/systems/SkillEffectSystem.ts",
+    "src/scenes/ZoneScene.ts",
+    "src/systems/CharacterAnimator.ts",
+    "src/config.ts"
+  ],
+  "isoPx": {
+    "tileWidth": 64,
+    "tileHeight": 32,
+    "formula": "sqrt(((dc-dr)*tileWidth/2)^2 + ((dc+dr)*tileHeight/2)^2)",
+    "note": "web distances are iso screen px between the two feet points (both raised 16 px, which cancels)"
+  },
+  "portPxPerTile": {"projectileAndArrow": 36, "vfxSize": 45, "decision": "S4"},
+  "skillProjectiles": {
+    "fireball": {"minMs": 300, "maxMs": 600, "msPerPx": 1.5},
+    "ice_arrow": {"minMs": 250, "maxMs": 500, "msPerPx": 1.5},
+    "poison_arrow": {"minMs": 250, "maxMs": 500, "msPerPx": 1.5}
+  },
+  "skillArrowDelay": {
+    "multishot": {"maxMs": 260, "msPerPx": 1.1},
+    "piercing_arrow": {"maxMs": 260, "msPerPx": 1.1}
+  },
+  "skillAoeDelayMs": {"meteor": 300},
+  "monsterProjectile": {"msPerPx": 2, "minMs": 200, "maxMs": 500},
+  "chestHeightPx": 18,
+  "heroBeats": {
+    "warrior": {"contactMsAtSpeed1": 308, "castReleaseMs": 334},
+    "mage": {"contactMsAtSpeed1": 267, "castReleaseMs": 230},
+    "rogue": {"contactMsAtSpeed1": 222, "castReleaseMs": 246}
+  }
+}

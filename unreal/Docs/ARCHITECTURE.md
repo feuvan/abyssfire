@@ -70,11 +70,15 @@ Fonts/                            subset CJK + Latin fonts (OFL licensed)
 namespace abyss {
 class GameSim {
 public:
-  static std::unique_ptr<GameSim> Create(const DataStore& data, const SimConfig& cfg);
+  static std::unique_ptr<GameSim> Create(const DataStore& data, const SimConfig& cfg);  // nullptr: store not finalized
   // Session
-  bool NewGame(ClassId cls, Difficulty diff, uint64_t seed);
-  bool LoadGame(std::string_view saveJson, std::string* err);
-  std::string SaveGame() const;                       // v4 JSON
+  bool NewGame(ClassId cls, Difficulty diff, uint64_t seed, int32_t slot = 0);
+  // None on success; VersionTooNew / ParseFailed / NotAnObject / Invalid leave the current session unchanged.
+  // difficultyOverride = the Continue -> difficulty selector choice (save-ui-input 1.2; SaveSlotInfo carries the rule).
+  SaveError LoadGame(std::string_view saveJson, std::string* err,
+                     std::optional<Difficulty> difficultyOverride = std::nullopt);
+  SaveError LoadGame(const SaveData& save, std::string* err);
+  std::string SaveGame(int64_t unixMs = 0) const;     // v4 JSON
   // Loop (S1): UE accumulates real time and calls Step() with exactly kStepMs per call.
   void Step();                                        // one 60 Hz tick (sim clock may be frozen, S2)
   void Submit(const Command& cmd);                    // queued, applied at the start of the next Step
@@ -90,6 +94,14 @@ public:
   UnequipItem, MoveItem, Buy/Sell/Buyback, StashPut/Take, Craft*, LearnSkill, AllocStat, SetHotbar, DialogueChoose,
   QuestTrack, QuestTurnIn{choice}, StorySkip/Advance, TownPortal, ToggleAutoBattle, SetLock, OpenPanel/ClosePanel
   (for U7 freezes), Settings changes that affect the sim). Every UI action goes through a command.
+* **Panels** (`SimTypes.h` ownership rules): dialogue, quest card, shop / forge, stash, mini-boss dialogue, lore text and
+  puzzle are **core-owned** modals — the owning system opens them and its state is the truth; GameSim derives the S2
+  freeze and the U7 input block from that state (a hero command later in the same batch as the opening interaction is
+  already rejected) and emits `EvPanelRequest` on every change. UE reports only its own panels (HUD panels, system menu,
+  socket, confirm) with `CmdOpenPanel` / `CmdClosePanel`; `CmdClosePanel` on a core-owned modal closes it through the
+  owner. Zone exit and the hero's death close all core-owned modals.
+* **Rewards**: exp, gold and item grants from every area go through `RewardService` (`hero/Rewards.h`: Dying gates,
+  overflow policy, presentation events with the source / reason), never through `Hero::AddExp` / `SetGold` directly.
 * **Events** are plain structs in a `std::variant` and carry everything presentation needs: entity spawned/despawned
   (with art id), animation requests with timing (e.g. `PlayAnim{entity, anim, startMs, contactMs}`), hit landed
   (`Hit{target, amount, weight, crit, element, impactColor}` — the HitFeedback profile is in the event), projectile
@@ -110,12 +122,19 @@ public:
 * All text out of the core is **i18n keys + args**; `I18n` resolves them with the exported locale tables (zh-CN, en).
 * RNG streams per domain (S3); a subsystem receives its stream by reference.
 * Language rules: ue58-platform.md §3.3 (no exceptions/RTTI/iostreams/unordered iteration in gameplay order, stable
-  sort, FP contract off, no non-ASCII literals, no UE macro names).
+  sort, FP contract off, no non-ASCII literals, no UE macro names). Public headers write `(std::min)` / `(std::max)`.
+* Build rules (`Public/abyss/base/Platform.h`): precise FP semantics in both modules (`FPSemantics =
+  FPSemanticsMode.Precise` in AbyssCore.Build.cs and Abyssfire.Build.cs; a fast-math core TU fails to compile);
+  `ABYSS_API` on every public class with out-of-line members and every public free function (`ABYSS_CORE_DLL` public,
+  `ABYSS_CORE_BUILDING` private); `-Wundef` / `/we4668`.
 
 ### 3.3 Tests
 
-* `CoreTests` builds the core with CMake (`-Wall -Wextra -Wshadow -Werror`, `-fno-exceptions -fno-rtti`,
-  `-ffp-contract=off`) on Linux GCC and Clang here, and runs doctest suites.
+* `CoreTests` builds the core with CMake (`-Wall -Wextra -Wshadow -Wundef -Werror`, `-fno-exceptions -fno-rtti`,
+  `-ffp-contract=off`) on Linux GCC and Clang here, and runs doctest suites (`run.sh`). `ABYSS_SHARED=1 ./run.sh`
+  builds the core as a hidden-visibility shared library (a missing `ABYSS_API` fails to link, like a UE modular build);
+  `ABYSS_SANITIZE=1 ./run.sh` adds ASan + UBSan + float-cast-overflow. `shim/MacroShim.cpp` compiles every public
+  header after the Windows / UE / Apple macros a game-module TU sees.
 * Port the relevant web Vitest cases (`src/__tests__/`) as golden tests, plus each spec's "unit-test checklist".
 * A headless **playthrough test** drives `GameSim` through Chapter 1 with scripted commands (new game → every Ch1
   quest → finale → save → load → continue) and asserts quest/story/level/inventory state at checkpoints.

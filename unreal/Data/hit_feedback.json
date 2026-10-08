@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/HitFeedback.ts", "src/scenes/ZoneScene.ts", "src/systems/VFXManager.ts"],
+  "profiles": {
+    "tick": {
+      "targetStopMs": 0,
+      "attackerStopMs": 0,
+      "flashMs": 40,
+      "recoil": 0,
+      "shakeMs": 0,
+      "shakeIntensity": 0,
+      "sparks": 0,
+      "ringRadius": 0
+    },
+    "light": {
+      "targetStopMs": 40,
+      "attackerStopMs": 30,
+      "flashMs": 55,
+      "recoil": 0.6,
+      "shakeMs": 0,
+      "shakeIntensity": 0,
+      "sparks": 4,
+      "ringRadius": 10
+    },
+    "normal": {
+      "targetStopMs": 60,
+      "attackerStopMs": 45,
+      "flashMs": 70,
+      "recoil": 1,
+      "shakeMs": 60,
+      "shakeIntensity": 0.0018,
+      "sparks": 6,
+      "ringRadius": 13
+    },
+    "heavy": {
+      "targetStopMs": 85,
+      "attackerStopMs": 65,
+      "flashMs": 85,
+      "recoil": 1.35,
+      "shakeMs": 90,
+      "shakeIntensity": 0.0032,
+      "sparks": 9,
+      "ringRadius": 17
+    },
+    "crit": {
+      "targetStopMs": 110,
+      "attackerStopMs": 90,
+      "flashMs": 100,
+      "recoil": 1.6,
+      "shakeMs": 120,
+      "shakeIntensity": 0.0045,
+      "sparks": 12,
+      "ringRadius": 22
+    },
+    "kill": {
+      "targetStopMs": 130,
+      "attackerStopMs": 100,
+      "flashMs": 110,
+      "recoil": 2,
+      "shakeMs": 140,
+      "shakeIntensity": 0.005,
+      "sparks": 14,
+      "ringRadius": 24
+    }
+  },
+  "classify": {
+    "order": ["tick", "kill", "crit", "ratio"],
+    "heavyRatio": 0.25,
+    "normalRatio": 0.06
+  },
+  "monsterHitAttackerStopFactor": 0.6,
+  "eliteKillSlowMotion": {"durationMs": 200, "timeScale": 0.4},
+  "classImpactColors": {"warrior": 16767370, "mage": 13084415, "rogue": 10354632},
+  "fallbackImpactColor": 16773824,
+  "aoeHitShake": {"durationMs": 100, "base": 0.004, "perHit": 0.001},
+  "playerHitShake": {
+    "crit": {"durationMs": 150, "intensity": 0.008},
+    "normal": {
+      "intensity": {"perRatio": 0.01, "min": 0.002, "max": 0.006},
+      "durationMs": {"base": 50, "perRatio": 100, "min": 50, "max": 120}
+    }
+  },
+  "shakeThrottleMs": 100,
+  "painTint": {"color": 16739179, "durationMs": 100},
+  "lowHpVignette": {
+    "belowHpRatio": 0.3,
+    "strength": {"base": 0.2, "perSeverity": 0.25, "pulse": 0.05, "pulseRate": 0.005},
+    "radius": {"base": 0.7, "perSeverity": 0.15},
+    "severity": "1 - hpRatio/0.3"
+  }
+}

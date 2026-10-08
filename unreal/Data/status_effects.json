@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/StatusEffectSystem.ts", "src/scenes/ZoneScene.ts"],
+  "types": ["burn", "freeze", "poison", "bleed", "slow", "stun"],
+  "tickIntervalMs": {"burn": 1000, "freeze": 0, "poison": 1000, "bleed": 1000, "slow": 0, "stun": 0},
+  "diminishing": {
+    "appliesTo": ["freeze", "stun"],
+    "factor": 0.5,
+    "immunityMs": 3000,
+    "windowMs": 6000
+  },
+  "slowMinSpeedFactor": 0.2,
+  "stacking": {
+    "burn": "stack",
+    "bleed": "stack",
+    "poison": "refreshKeepStronger",
+    "slow": "refreshKeepStronger",
+    "freeze": "replace",
+    "stun": "replace"
+  },
+  "poisonedHpRegenMultiplier": 0.5,
+  "monsterKeywordRules": [
+    {
+      "keywords": ["fire", "phoenix", "lava"],
+      "status": "burn",
+      "chance": 0.3,
+      "value": {"kind": "monsterDamage", "fraction": 0.2, "min": 1},
+      "durationMs": 3000
+    },
+    {
+      "keywords": ["poison", "venom", "spider"],
+      "status": "poison",
+      "chance": 0.25,
+      "value": {"kind": "monsterDamage", "fraction": 0.15, "min": 1},
+      "durationMs": 4000
+    },
+    {
+      "keywords": ["ice", "frost"],
+      "status": "slow",
+      "chance": 0.2,
+      "value": {"kind": "fixed", "amount": 30},
+      "durationMs": 3000
+    }
+  ],
+  "eliteFrozenOnHit": {"status": "slow", "value": 30, "durationMs": 2500, "chanceFrom": "eliteAffix.freezeChance"},
+  "skillRules": {
+    "war_stomp": [
+      {
+        "status": "stun",
+        "chance": null,
+        "value": {"kind": "fixed", "amount": 1},
+        "durationMs": 2000
+      }
+    ],
+    "bleed_strike": [
+      {
+        "status": "bleed",
+        "chance": null,
+        "value": {"kind": "damage", "fraction": 0.25, "min": 1},
+        "durationMs": 5000
+      }
+    ],
+    "fireball": [
+      {
+        "status": "burn",
+        "chance": 0.6,
+        "value": {"kind": "damage", "fraction": 0.15, "min": 1},
+        "durationMs": 3000
+      }
+    ],
+    "meteor": [
+      {
+        "status": "burn",
+        "chance": 0.6,
+        "value": {"kind": "damage", "fraction": 0.15, "min": 1},
+        "durationMs": 3000
+      }
+    ],
+    "blizzard": [
+      {
+        "status": "freeze",
+        "chance": null,
+        "value": {"kind": "fixed", "amount": 1},
+        "durationMs": 2000
+      }
+    ],
+    "fire_wall": [
+      {
+        "status": "burn",
+        "chance": 0.4,
+        "value": {"kind": "damage", "fraction": 0.15, "min": 1},
+        "durationMs": 3000
+      }
+    ],
+    "combustion": [
+      {
+        "status": "burn",
+        "chance": 0.4,
+        "value": {"kind": "damage", "fraction": 0.15, "min": 1},
+        "durationMs": 3000
+      }
+    ],
+    "ice_arrow": [
+      {
+        "status": "slow",
+        "chance": 0.35,
+        "value": {"kind": "fixed", "amount": 40},
+        "durationMs": 3000
+      }
+    ],
+    "freeze": [
+      {
+        "status": "freeze",
+        "chance": null,
+        "value": {"kind": "fixed", "amount": 1},
+        "durationMs": 2000
+      }
+    ],
+    "poison_arrow": [
+      {
+        "status": "poison",
+        "chance": null,
+        "value": {"kind": "damage", "fraction": 0.2, "min": 1},
+        "durationMs": 4000
+      }
+    ],
+    "explosive_trap": [
+      {
+        "status": "burn",
+        "chance": 0.4,
+        "value": {"kind": "damage", "fraction": 0.15, "min": 1},
+        "durationMs": 3000
+      }
+    ],
+    "poison_cloud": [
+      {
+        "status": "poison",
+        "chance": null,
+        "value": {"kind": "damage", "fraction": 0.2, "min": 1},
+        "durationMs": 4000
+      }
+    ],
+    "slow_trap": [
+      {
+        "status": "slow",
+        "chance": null,
+        "value": {"kind": "buffPercent"},
+        "durationMs": null
+      }
+    ],
+    "chain_trap": [
+      {
+        "status": "stun",
+        "chance": null,
+        "value": {"kind": "fixed", "amount": 1},
+        "durationMs": 1000
+      }
+    ]
+  }
+}

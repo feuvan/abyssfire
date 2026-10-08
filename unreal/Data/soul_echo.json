@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/SoulEcho.ts"],
+  "minLevel": 5,
+  "goldShare": {"normal": 0.1, "nightmare": 0.15, "hell": 0.2},
+  "expShare": {"normal": 0, "nightmare": 0.05, "hell": 0.05},
+  "claimRangeTiles": 1.5
+}

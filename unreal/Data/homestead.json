@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/homestead.ts"],
+  "towerZoneId": "ember_tower",
+  "towerUnlockQuest": "q_explore_goblin_camp",
+  "leyFruitId": "c_ley_fruit",
+  "buildings": [
+    {
+      "id": "herb_garden",
+      "name": "药草园",
+      "description": "随击杀产出药水与灵脉果，回塔收获",
+      "maxLevel": 5,
+      "costPerLevel": [
+        {"gold": 100},
+        {"gold": 250, "embers": 5},
+        {"gold": 500, "embers": 10},
+        {"gold": 1000, "embers": 20},
+        {"gold": 2000, "embers": 35}
+      ],
+      "bonusPerLevel": [
+        {"stat": "potionDiscount", "value": 5}
+      ],
+      "unlockQuest": "q_secure_plains",
+      "allyNpc": "tower_herbalist"
+    },
+    {
+      "id": "pet_house",
+      "name": "月井",
+      "description": "未出战的灵兽在此修养，提升灵兽经验",
+      "maxLevel": 5,
+      "costPerLevel": [
+        {"gold": 300},
+        {"gold": 600, "embers": 8},
+        {"gold": 1200, "embers": 15},
+        {"gold": 2000, "embers": 25},
+        {"gold": 3500, "embers": 40}
+      ],
+      "bonusPerLevel": [
+        {"stat": "petExpBonus", "value": 10}
+      ],
+      "unlockQuest": "q_seal_dark_source",
+      "allyNpc": "tower_hermit"
+    },
+    {
+      "id": "gem_workshop",
+      "name": "炉台",
+      "description": "3 颗同阶宝石合成 1 颗高阶宝石",
+      "maxLevel": 5,
+      "costPerLevel": [
+        {"gold": 200},
+        {"gold": 450, "embers": 8},
+        {"gold": 900, "embers": 15},
+        {"gold": 1800, "embers": 25},
+        {"gold": 3500, "embers": 40}
+      ],
+      "bonusPerLevel": [
+        {"stat": "gemBonus", "value": 2}
+      ],
+      "unlockQuest": "q_kill_stone_guardian",
+      "allyNpc": "tower_dwarf"
+    },
+    {
+      "id": "training_ground",
+      "name": "商队驿站",
+      "description": "佣兵经验加成，可派灵兽远行",
+      "maxLevel": 5,
+      "costPerLevel": [
+        {"gold": 150},
+        {"gold": 350, "embers": 6},
+        {"gold": 700, "embers": 12},
+        {"gold": 1400, "embers": 20},
+        {"gold": 2800, "embers": 30}
+      ],
+      "bonusPerLevel": [
+        {"stat": "mercExpBonus", "value": 5}
+      ],
+      "unlockQuest": "q_seal_fire_rift",
+      "allyNpc": "tower_nomad"
+    },
+    {
+      "id": "altar",
+      "name": "心焰祭坛",
+      "description": "献祭余烬，换取限时祝福",
+      "maxLevel": 3,
+      "costPerLevel": [
+        {"gold": 500, "embers": 10},
+        {"gold": 1500, "embers": 30},
+        {"gold": 4000, "embers": 60}
+      ],
+      "bonusPerLevel": [
+        {"stat": "altarBonus", "value": 3}
+      ],
+      "unlockQuest": "q_collect_demon_essence",
+      "allyNpc": "tower_warden"
+    },
+    {
+      "id": "warehouse",
+      "name": "仓库",
+      "description": "扩展仓库格子",
+      "maxLevel": 5,
+      "costPerLevel": [
+        {"gold": 100},
+        {"gold": 200},
+        {"gold": 400, "embers": 5},
+        {"gold": 800, "embers": 10},
+        {"gold": 1600, "embers": 20}
+      ],
+      "bonusPerLevel": [
+        {"stat": "stashSlots", "value": 10}
+      ]
+    }
+  ],
+  "gemCombineCount": 3,
+  "expeditionOptions": [
+    {"id": "short", "killsRequired": 25, "durationMs": 600000},
+    {"id": "long", "killsRequired": 60, "durationMs": 1500000}
+  ],
+  "blessings": [
+    {
+      "id": "ember_edge",
+      "stats": {"damagePercent": 10, "critRate": 3},
+      "glyph": "blade"
+    },
+    {
+      "id": "hearth_ward",
+      "stats": {"maxHpPercent": 12, "defensePercent": 12},
+      "glyph": "shield"
+    },
+    {
+      "id": "ley_fortune",
+      "stats": {"magicFind": 30, "expBonus": 10},
+      "glyph": "coin"
+    },
+    {
+      "id": "swift_flame",
+      "stats": {"attackSpeed": 8, "moveSpeed": 10},
+      "glyph": "wing"
+    }
+  ],
+  "blessingDurationMs": 1800000,
+  "embers": {
+    "killElite": 5,
+    "killMiniBoss": 3,
+    "killAffixedPerAffix": 1,
+    "killPlain": 0,
+    "questMain": 2,
+    "questSide": 1
+  },
+  "garden": {
+    "intervalByLevel": [16, 14, 12, 10, 8, 6, 6],
+    "capacityByLevel": [0, 8, 12, 16, 20, 24, 28],
+    "interval": {"base": 16, "perLevel": -2, "min": 6},
+    "capacity": {"base": 4, "perLevel": 4, "zeroAtLevel0": true},
+    "yield": {"leyFruitBase": 0.12, "leyFruitPerLevel": 0.03, "hpShare": 0.6}
+  },
+  "port": {"towerHiddenInMilestone1": true, "decision": "Q3"}
+}

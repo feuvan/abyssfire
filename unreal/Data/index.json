@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "source": ["unreal/Tools/export-data"],
+  "generator": "node unreal/Tools/export-data/run.mjs",
+  "files": [
+    {
+      "file": "abyss_run.json",
+      "counts": {"boons": 16, "curses": 8, "floorThemes": 4},
+      "bytes": 3619,
+      "sha256": "8aad8681f05578f6938ecf1a7a45c359c9a12dcda626672998d2f868367f450a"
+    },
+    {
+      "file": "achievements.json",
+      "counts": {"achievements": 12},
+      "bytes": 2741,
+      "sha256": "0f6f0f0d82aa9db0efce68627c3799689006e8ac7b0d187b5003b26198fd283d"
+    },
+    {
+      "file": "affixes.json",
+      "counts": {"prefixes": 29, "suffixes": 39, "statDisplay": 35},
+      "bytes": 20795,
+      "sha256": "bae95d39f76bcdac3783b5eba130756fd2ab638313815b7fa7abe870a3250dc0"
+    },
+    {
+      "file": "anim_timing.json",
+      "counts": {"rigs": 10, "transitions": 21},
+      "bytes": 12304,
+      "sha256": "184c468c07f23dd1c91eaa7277dce4e44ef7e99b82645ddf275f12c531f3b943"
+    },
+    {
+      "file": "audio_cues.json",
+      "counts": {"cues": 35},
+      "bytes": 13347,
+      "sha256": "1921974ef2b0d7d369c5b4de998721a73ae103e1b5b6a8d988fec9be0a13e4d3"
+    },
+    {
+      "file": "buff_caps.json",
+      "counts": {"caps": 7},
+      "bytes": 322,
+      "sha256": "cfe69ff09d314345b9a0aa445c8b8d54f752640bbae2383a71d8e59109dfdf09"
+    },
+    {
+      "file": "classes.json",
+      "counts": {"classes": 3, "skills": 40},
+      "bytes": 68113,
+      "sha256": "8bd43433ccf88337feaa4f1a257f62d98f1000b3f34d02cbc10a91a82240961e"
+    },
+    {
+      "file": "combat_input.json",
+      "counts": {"constants": 12},
+      "bytes": 791,
+      "sha256": "c155884649f4f130dd6ec14f42c845587092b2e8f17164361b3cffee447e9802"
+    },
+    {
+      "file": "crafting.json",
+      "counts": {"actions": 4},
+      "bytes": 4207,
+      "sha256": "6b92ca4eee838e2af3efa773a7f600f9605c8d1770eedf75e9a4ca40aeaf337c"
+    },
+    {
+      "file": "dialogue_trees.json",
+      "counts": {"trees": 10, "nodes": 88},
+      "bytes": 32921,
+      "sha256": "ca6327971e1368d716157ca1bbc03fd2f333525fa85015b202f5d2340ff43cda"
+    },
+    {
+      "file": "difficulty.json",
+      "counts": {"difficulties": 3},
+      "bytes": 867,
+      "sha256": "75240bb9b7b49308419cb05d1157eca2d7aa93ce5755d9b8956bd96c3b6186aa"
+    },
+    {
+      "file": "economy.json",
+      "counts": {"constants": 8},
+      "bytes": 727,
+      "sha256": "7a57f2017889e64cba84389b5a6fe8b4ff4790296d56bc62c454645877071459"
+    },
+    {
+      "file": "elite_affixes.json",
+      "counts": {"affixes": 7, "zones": 5},
+      "bytes": 3779,
+      "sha256": "16120e80d7ccaf479597092f9d5e311de0a85cdf848b2a81f542e21f2d2e28df"
+    },
+    {
+      "file": "hero_formulas.json",
+      "counts": {"formulas": 4},
+      "bytes": 1581,
+      "sha256": "6189bad1e42abd97843bcf44c6483349b4a8585c0b56500e43b35ec32593d38b"
+    },
+    {
+      "file": "hit_feedback.json",
+      "counts": {"profiles": 6},
+      "bytes": 2361,
+      "sha256": "4418e9bd4c2ad6105ea51fc311c0fa45392cfe33c327823aa7ffc9d2f483634b"
+    },
+    {
+      "file": "homestead.json",
+      "counts": {"buildings": 6},
+      "bytes": 4326,
+      "sha256": "33d3ffaadff2083d66a9220a9d6f49b28b732d06d5c841b4228b5cc5959bba5e"
+    },
+    {
+      "file": "i18n_en.json",
+      "counts": {"keys": 2625},
+      "bytes": 214764,
+      "sha256": "3921de30ff4bf9e0fffa22e841df55ff3391b14ded0e1a2db0801b01de1532aa"
+    },
+    {
+      "file": "i18n_zh-CN.json",
+      "counts": {"keys": 2624},
+      "bytes": 207440,
+      "sha256": "9eabd794aad4898f14038da4335aee6c7deb113a866f6ecb629ded9a88c522a7"
+    },
+    {
+      "file": "i18n_zh-TW.json",
+      "counts": {"keys": 2624},
+      "bytes": 207487,
+      "sha256": "2b9fba3c43673403c5eb1b1b8fb332f2db75dc8eccb7c661c0e0056ea5b73aaf"
+    },
+    {
+      "file": "item_bases.json",
+      "counts": {
+        "bases": 97,
+        "weapons": 32,
+        "armors": 29,
+        "accessories": 7,
+        "consumables": 9,
+        "gems": 17,
+        "materials": 3
+      },
+      "bytes": 40810,
+      "sha256": "106d8619bae08e48edd1cb2e1e5038cc3eeb4429a509a66b3d2c424d9deaefba"
+    },
+    {
+      "file": "legendaries.json",
+      "counts": {"legendaries": 11, "overworld": 9, "dungeon": 2},
+      "bytes": 7541,
+      "sha256": "242fbda58cc37e776e22c511ccab0f3de84fffe17cd0282d3c8a73bdb6b064d1"
+    },
+    {
+      "file": "loot_rules.json",
+      "counts": {"qualityThresholds": 4},
+      "bytes": 3331,
+      "sha256": "f928675a95d4e4c29f0cf3978f7afd9018e56c36d66ef6c71e85c9c324d93cd7"
+    },
+    {
+      "file": "lore.json",
+      "counts": {"entries": 21},
+      "bytes": 10789,
+      "sha256": "efe665d0cb0ff9335acc9b71b98c9382d890439120c2be47c604a9f6292a972a"
+    },
+    {
+      "file": "map_gen.json",
+      "counts": {"themes": 5},
+      "bytes": 4030,
+      "sha256": "d7b86783915d659573c352edf303f0fee2c47be5694f42a2b1c72e1447f5a062"
+    },
+    {
+      "file": "maps.json",
+      "counts": {"maps": 6, "subDungeons": 2},
+      "bytes": 45513,
+      "sha256": "098f1a960df4fa7060691de29e408e3ffcad23798479ac50f730ac8c1b1bfd65"
+    },
+    {
+      "file": "minibosses.json",
+      "counts": {"zones": 5, "dialogues": 5},
+      "bytes": 4210,
+      "sha256": "700e9daafc6e86f2a8b2431cf4e189deb07de25bc9cdc0aa612383cc725d3b5b"
+    },
+    {
+      "file": "monster_ai.json",
+      "counts": {"constants": 25},
+      "bytes": 2138,
+      "sha256": "869c25aaadf1dd966ec3158a1718540af8541a09b2204f94165ad6c678496562"
+    },
+    {
+      "file": "monsters.json",
+      "counts": {"defs": 29, "zoneMonsters": 18, "emeraldPlains": 3, "miniBosses": 5},
+      "bytes": 24970,
+      "sha256": "e5caf4c3d3ccdd85c98b5c1af79ef6761c3cffd1d5d20f2e595918969bec35c3"
+    },
+    {
+      "file": "music.json",
+      "counts": {"themes": 6, "scores": 6, "bgmFiles": 15},
+      "bytes": 7924,
+      "sha256": "8a128b1259d41cd5abdde03f879a5bf0808fb7fa807e294b5edf88a6df265626"
+    },
+    {
+      "file": "npcs.json",
+      "counts": {"npcs": 27},
+      "bytes": 13508,
+      "sha256": "c83f8c1e19d85d4afe7e4e44c4049b4fa43d015a31b097a85ba4081dbef1e394"
+    },
+    {
+      "file": "pets.json",
+      "counts": {"pets": 8, "abilities": 17},
+      "bytes": 10095,
+      "sha256": "6dae2496054463fc554359e82cb8d97482be4e7d6b76103172dfdf6d326052cb"
+    },
+    {
+      "file": "projectile_timing.json",
+      "counts": {"projectiles": 3},
+      "bytes": 1188,
+      "sha256": "1c9ecc0a47922e30815c2730acb0bff524370f3c124dd759df064b261f8c5fc8"
+    },
+    {
+      "file": "quest_hunts.json",
+      "counts": {"hunts": 17},
+      "bytes": 15918,
+      "sha256": "c89725c03cee784ddc35e138168b797d7690d554c01b59e9a390962e24397a81"
+    },
+    {
+      "file": "quest_tuning.json",
+      "counts": {"constants": 11},
+      "bytes": 1636,
+      "sha256": "a1e5dc4d269b668761e8faf1e7e2604ee9c7d3b36440fc6f89887ad022c2b228"
+    },
+    {
+      "file": "quests.json",
+      "counts": {"quests": 58, "emeraldPlains": 11, "hunts": 17},
+      "bytes": 89142,
+      "sha256": "5b511357fde681232c3829a1555899e5faa4b9432849f8473f2c7545f9a65295"
+    },
+    {
+      "file": "random_events.json",
+      "counts": {"types": 5, "zones": 5},
+      "bytes": 4530,
+      "sha256": "4ce9ed2beb7fdb56afb603deaaff5ec18cd26e45b28e43b594122d11e52b5bde"
+    },
+    {
+      "file": "render_quality.json",
+      "counts": {"profiles": 3},
+      "bytes": 991,
+      "sha256": "65aba683e77b39bbf78b0ae16590e1eac22d89f67e0a5eb3eaa26cd9e0877a53"
+    },
+    {
+      "file": "sets.json",
+      "counts": {"sets": 6, "pieces": 21},
+      "bytes": 10822,
+      "sha256": "1eeeb4ba447adb03b04297d1c12560eb8527c31d7de024698a22dfe2d20c223c"
+    },
+    {
+      "file": "shops.json",
+      "counts": {"shops": 5},
+      "bytes": 2431,
+      "sha256": "3fbb9f59800790861510f7ec62bfd6e0a38b79eea5a3a1b70817c1423977ac45"
+    },
+    {
+      "file": "skill_rules.json",
+      "counts": {"tiers": 3},
+      "bytes": 1207,
+      "sha256": "0ca4675065e3a80a0bbd67b17dee4885b149ccb28feda20184fd5fd9c72cc66e"
+    },
+    {
+      "file": "skill_trees.json",
+      "counts": {"trees": 9},
+      "bytes": 1524,
+      "sha256": "ce1a314fbf57716a3c279e006c976921765261acec335481e8c54aa12c2fd43e"
+    },
+    {
+      "file": "soul_echo.json",
+      "counts": {"difficulties": 3},
+      "bytes": 235,
+      "sha256": "ccf09e4063447c16d8fad9bd1c516e5a241f757091de03b9fbb38e474232136c"
+    },
+    {
+      "file": "spirit_profiles.json",
+      "counts": {"profiles": 3},
+      "bytes": 1286,
+      "sha256": "22494a2653a61877e196c3bf81b892e2707030e4d7dcb1deea19a1d535d002e1"
+    },
+    {
+      "file": "status_effects.json",
+      "counts": {"types": 6, "skillsWithRules": 14},
+      "bytes": 3868,
+      "sha256": "695973660326c22cfc3d886e831fb3b6c1bf41d937525aaf9758143e803d3ee0"
+    },
+    {
+      "file": "story.json",
+      "counts": {"chapters": 5, "cutscenes": 22, "bossIntros": 6, "triggers": 16},
+      "bytes": 30066,
+      "sha256": "c4275b8b9b71672b9d1eaca1adef9d6d2a27e925dcf3e9614d53b2396612d2b0"
+    },
+    {
+      "file": "terrain_styles.json",
+      "counts": {"themes": 5},
+      "bytes": 18914,
+      "sha256": "0068a59badd188aef0df1c8738e8b3320e17b1284485efcfe077797427845cf9"
+    },
+    {
+      "file": "ui_theme.json",
+      "counts": {"colors": 19},
+      "bytes": 1381,
+      "sha256": "b8f2194f16f382027bc9c1a67e8be4822eb7ad92a5d378cd642672ef920e1873"
+    },
+    {
+      "file": "world_constants.json",
+      "counts": {"constants": 20},
+      "bytes": 1729,
+      "sha256": "e742df6a71d04564d9a831e8d712e6e43f78368b182b5e5839884f43744344de"
+    },
+    {
+      "file": "zone_moods.json",
+      "counts": {"themes": 5},
+      "bytes": 6808,
+      "sha256": "69e3b9bc6df93df83441bde39eb0a73d4656e9c58e6120e0390d2853361ead65"
+    }
+  ],
+  "golden": [
+    {
+      "path": "CoreTests/golden/maps/emerald_plains.json",
+      "sha256": "c734e050e06bf32abc8dc7bd1f65ca22deddd7ed0079902693d564eb2eded56b"
+    },
+    {
+      "path": "CoreTests/golden/maps/twilight_forest.json",
+      "sha256": "1c09ee2b3d837223a57883139193f990515025e0137fee9f9c83cfe9b9d2fe5f"
+    },
+    {
+      "path": "CoreTests/golden/maps/anvil_mountains.json",
+      "sha256": "aa513009044d8da9721b0f7f5cd6f0fdeb8f1f0afa77c7bdb6ffb3d2f3bb0d9e"
+    },
+    {
+      "path": "CoreTests/golden/maps/scorching_desert.json",
+      "sha256": "e2ec931cbe9eacfd5e6d79c049633c9ee417fde1069a5b3b8b3a41265e3fbfdf"
+    },
+    {
+      "path": "CoreTests/golden/maps/abyss_rift.json",
+      "sha256": "3e5463b7ae8856eef535a97d7089fccffad84f08632ea06892cdf68b2340b50c"
+    },
+    {
+      "path": "CoreTests/golden/maps/ember_tower.json",
+      "sha256": "e1f0bf23bd6f5519c96a53be5725ff4f0a2b5eaff981c9411f1bd767b313d78a"
+    },
+    {
+      "path": "CoreTests/golden/maps/_vectors.json",
+      "sha256": "8e4996664ec8cdd303ae37b8935e80dfb74bfc51358a4abc5515abda2ee44074"
+    }
+  ]
+}

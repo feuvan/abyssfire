@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/scenes/ZoneScene.ts", "src/config.ts", "src/systems/MapGenerator.ts"],
+  "tile": {"widthPx": 64, "heightPx": 32, "portUnitsPerTile": 100, "decision": "S4"},
+  "designResolution": [1280, 720],
+  "webCameraZoom": 1.8,
+  "camera": {
+    "yawDeg": 45,
+    "pitchDeg": -50,
+    "fovDeg": 35,
+    "framingTiles": [16, 12],
+    "zoomRange": [0.75, 1.25],
+    "followLagSec": 0.12,
+    "decision": "W1"
+  },
+  "heroSpeed": {
+    "moveSpeed": 120,
+    "pxPerTile": 36,
+    "rampMs": 90,
+    "stopMs": 60,
+    "clickStartsInstantly": true,
+    "decision": "S5"
+  },
+  "holdMoveRepathMs": 120,
+  "exitRadiusSq": 2.25,
+  "exitArmDistance": 2.449489742783178,
+  "exitArmNote": "W8: an exit fires only after the hero was > sqrt(6) tiles from it since entering the zone",
+  "campfire": {"radiusTiles": 5, "hpMul": 50, "mpMul": 50},
+  "safeZoneRadiusDefault": 9,
+  "hiddenAreaExploreRadius": 10,
+  "escortCatchUpTiles": 14,
+  "townPortal": {
+    "channelMs": 1500,
+    "cancelOnMove": true,
+    "cancelOnDamageFraction": 0.1,
+    "destination": "nearest camp",
+    "decision": "W3, U10"
+  },
+  "deathRespawnMs": 1100,
+  "zoneFadeInMs": 400,
+  "interact": {
+    "lootRadiusSq": 4,
+    "hiddenChestRadiusSq": 4,
+    "puzzleRadiusSq": 4,
+    "npcRange": 3,
+    "npcPickRadiusSq": 3.24,
+    "entranceRadiusSq": 9,
+    "touchTalkRange": 2.5,
+    "walkThenAct": true,
+    "decision": "W8, Q6"
+  },
+  "tallDecorBlocks": {
+    "decision": "W5",
+    "note": "trees, boulders, tents, walls, wells, statues block walking; small decor does not"
+  },
+  "sealedChapter2Gate": {
+    "exitTo": "twilight_forest",
+    "messageKey": "zone.exit.sealedChapter2",
+    "decision": "W7 (port string, i18n PORT_STRINGS)"
+  }
+}

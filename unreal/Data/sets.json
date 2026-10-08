@@ -1,0 +1,255 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/data/items/sets.ts", "src/data/dungeonData.ts"],
+  "sets": [
+    {
+      "id": "set_iron_guardian",
+      "name": "铁壁守护者",
+      "nameEn": "Iron Guardian",
+      "pieces": ["set_iron_helm", "set_iron_armor", "set_iron_shield", "set_iron_belt"],
+      "pieceAffixes": {
+        "set_iron_helm": [
+          {"affixId": "set_ig_1", "name": "守护者之坚", "stat": "defense", "value": 15},
+          {"affixId": "set_ig_2", "name": "坚定意志", "stat": "allResist", "value": 8}
+        ],
+        "set_iron_armor": [
+          {"affixId": "set_ig_3", "name": "铁壁之心", "stat": "maxHp", "value": 80},
+          {"affixId": "set_ig_4", "name": "铜皮铁骨", "stat": "defense", "value": 25}
+        ],
+        "set_iron_shield": [
+          {"affixId": "set_ig_5", "name": "不动如山", "stat": "defense", "value": 20},
+          {"affixId": "set_ig_6", "name": "磐石之力", "stat": "str", "value": 10}
+        ],
+        "set_iron_belt": [
+          {"affixId": "set_ig_7", "name": "守卫之韧", "stat": "maxHp", "value": 40},
+          {"affixId": "set_ig_8", "name": "体魄强健", "stat": "vit", "value": 8}
+        ]
+      },
+      "bonuses": [
+        {
+          "count": 2,
+          "description": "+30% 最大生命",
+          "stats": {"maxHpPercent": 30}
+        },
+        {
+          "count": 3,
+          "description": "受击回复2%最大生命，+15 全抗",
+          "stats": {"thornsHeal": 2, "allResist": 15}
+        },
+        {
+          "count": 4,
+          "description": "生命低于30%时免疫一次致死伤害（60秒冷却）",
+          "stats": {"deathSave": 1}
+        }
+      ],
+      "dungeonExclusive": false
+    },
+    {
+      "id": "set_shadow_assassin",
+      "name": "暗影刺客",
+      "nameEn": "Shadow Assassin",
+      "pieces": ["set_shadow_helm", "set_shadow_armor", "set_shadow_gloves", "set_shadow_boots"],
+      "pieceAffixes": {
+        "set_shadow_helm": [
+          {"affixId": "set_sa_1", "name": "鹰眼", "stat": "critRate", "value": 8},
+          {"affixId": "set_sa_2", "name": "暗影潜行", "stat": "dex", "value": 12}
+        ],
+        "set_shadow_armor": [
+          {"affixId": "set_sa_3", "name": "影遁之衣", "stat": "dex", "value": 10},
+          {"affixId": "set_sa_4", "name": "暗杀本能", "stat": "critDamage", "value": 15}
+        ],
+        "set_shadow_gloves": [
+          {"affixId": "set_sa_5", "name": "毒刃", "stat": "poisonDamage", "value": 10},
+          {"affixId": "set_sa_6", "name": "迅捷之手", "stat": "attackSpeed", "value": 8}
+        ],
+        "set_shadow_boots": [
+          {"affixId": "set_sa_7", "name": "无影步", "stat": "moveSpeed", "value": 15},
+          {"affixId": "set_sa_8", "name": "幻影闪避", "stat": "dex", "value": 8}
+        ]
+      },
+      "bonuses": [
+        {
+          "count": 2,
+          "description": "+20% 暴击率，+10% 攻击速度",
+          "stats": {"critRate": 20, "attackSpeed": 10}
+        },
+        {
+          "count": 3,
+          "description": "暴击伤害 +50%，击杀回复5%生命",
+          "stats": {"critDamage": 50, "killHealPercent": 5}
+        },
+        {
+          "count": 4,
+          "description": "暴击时25%概率连击（立即发动额外一次攻击）",
+          "stats": {"critDoubleStrike": 25}
+        }
+      ],
+      "dungeonExclusive": false
+    },
+    {
+      "id": "set_archmage",
+      "name": "大法师",
+      "nameEn": "Archmage",
+      "pieces": ["set_archmage_hat", "set_archmage_robe", "set_archmage_staff", "set_archmage_ring"],
+      "pieceAffixes": {
+        "set_archmage_hat": [
+          {"affixId": "set_am_1", "name": "渊博学识", "stat": "int", "value": 15},
+          {"affixId": "set_am_2", "name": "冥思苦想", "stat": "manaRegen", "value": 5}
+        ],
+        "set_archmage_robe": [
+          {"affixId": "set_am_3", "name": "魔力之泉", "stat": "maxMana", "value": 60},
+          {"affixId": "set_am_4", "name": "奥术屏障", "stat": "allResist", "value": 10}
+        ],
+        "set_archmage_staff": [
+          {"affixId": "set_am_5", "name": "魔力增幅", "stat": "damagePercent", "value": 30},
+          {"affixId": "set_am_6", "name": "元素精通", "stat": "fireDamage", "value": 12}
+        ],
+        "set_archmage_ring": [
+          {"affixId": "set_am_7", "name": "法力虹吸", "stat": "manaSteal", "value": 5},
+          {"affixId": "set_am_8", "name": "智者之环", "stat": "int", "value": 10}
+        ]
+      },
+      "bonuses": [
+        {
+          "count": 2,
+          "description": "+25% 法力上限，法力回复 +3/秒",
+          "stats": {"maxManaPercent": 25, "manaRegen": 3}
+        },
+        {
+          "count": 3,
+          "description": "技能冷却减少20%，+20 火焰/冰霜伤害",
+          "stats": {"cooldownReduction": 20, "fireDamage": 20, "iceDamage": 20}
+        },
+        {
+          "count": 4,
+          "description": "施法时15%概率不消耗法力，所有元素伤害+30%",
+          "stats": {"freeCast": 15, "elementalDamagePercent": 30}
+        }
+      ],
+      "dungeonExclusive": false
+    },
+    {
+      "id": "set_hunter",
+      "name": "荒野猎手",
+      "nameEn": "Wilds Hunter",
+      "pieces": ["set_hunter_helm", "set_hunter_armor", "set_hunter_boots", "set_hunter_bow"],
+      "pieceAffixes": {
+        "set_hunter_helm": [
+          {"affixId": "set_hu_1", "name": "鹰眼视野", "stat": "critRate", "value": 5},
+          {"affixId": "set_hu_2", "name": "猎手直觉", "stat": "dex", "value": 10}
+        ],
+        "set_hunter_armor": [
+          {"affixId": "set_hu_3", "name": "野性皮甲", "stat": "defense", "value": 15},
+          {"affixId": "set_hu_4", "name": "自然恩赐", "stat": "hpRegen", "value": 4}
+        ],
+        "set_hunter_boots": [
+          {"affixId": "set_hu_5", "name": "追风步", "stat": "moveSpeed", "value": 20},
+          {"affixId": "set_hu_6", "name": "丛林行者", "stat": "dex", "value": 8}
+        ],
+        "set_hunter_bow": [
+          {"affixId": "set_hu_7", "name": "穿甲之矢", "stat": "damage", "value": 20},
+          {"affixId": "set_hu_8", "name": "连珠箭法", "stat": "attackSpeed", "value": 12}
+        ]
+      },
+      "bonuses": [
+        {
+          "count": 2,
+          "description": "+15% 攻击速度，+20% 移动速度",
+          "stats": {"attackSpeed": 15, "moveSpeed": 20}
+        },
+        {
+          "count": 3,
+          "description": "+30% 掉宝率，击杀回复3%生命",
+          "stats": {"magicFind": 30, "killHealPercent": 3}
+        },
+        {
+          "count": 4,
+          "description": "普攻30%概率发射双倍箭矢，+20% 暴击伤害",
+          "stats": {"doubleShot": 30, "critDamage": 20}
+        }
+      ],
+      "dungeonExclusive": false
+    },
+    {
+      "id": "set_abyssfire",
+      "name": "渊火之誓",
+      "nameEn": "Abyssfire Oath",
+      "pieces": ["set_abyss_ring", "set_abyss_amulet", "set_abyss_belt"],
+      "pieceAffixes": {
+        "set_abyss_ring": [
+          {"affixId": "set_af_1", "name": "深渊共鸣", "stat": "damagePercent", "value": 15},
+          {"affixId": "set_af_2", "name": "渊火灼烧", "stat": "fireDamage", "value": 15}
+        ],
+        "set_abyss_amulet": [
+          {"affixId": "set_af_3", "name": "渊火庇护", "stat": "allResist", "value": 12},
+          {"affixId": "set_af_4", "name": "不灭意志", "stat": "maxHpPercent", "value": 10}
+        ],
+        "set_abyss_belt": [
+          {"affixId": "set_af_5", "name": "深渊束缚", "stat": "defense", "value": 18},
+          {"affixId": "set_af_6", "name": "渊火之力", "stat": "str", "value": 8}
+        ]
+      },
+      "bonuses": [
+        {
+          "count": 2,
+          "description": "+10% 全抗，+15% 伤害",
+          "stats": {"allResist": 10, "damagePercent": 15}
+        },
+        {
+          "count": 3,
+          "description": "击杀恢复8%最大生命，+10% 冷却缩减",
+          "stats": {"killHealPercent": 8, "cooldownReduction": 10}
+        }
+      ],
+      "dungeonExclusive": false
+    },
+    {
+      "id": "set_abyss_walker",
+      "name": "深渊行者",
+      "nameEn": "Abyss Walker",
+      "pieces": ["set_aw_crown", "set_aw_blade"],
+      "pieceAffixes": {
+        "set_aw_crown": [
+          {"affixId": "set_aw_1", "name": "深渊凝视", "stat": "allResist", "value": 15},
+          {"affixId": "set_aw_2", "name": "虚空感知", "stat": "critRate", "value": 10}
+        ],
+        "set_aw_blade": [
+          {"affixId": "set_aw_3", "name": "深渊之刃", "stat": "damage", "value": 40},
+          {"affixId": "set_aw_4", "name": "虚空切裂", "stat": "critDamage", "value": 25}
+        ]
+      },
+      "bonuses": [
+        {
+          "count": 2,
+          "description": "深渊迷宫中伤害+20%，全抗+15，击杀回复5%生命",
+          "stats": {"damagePercent": 20, "allResist": 15, "killHealPercent": 5}
+        }
+      ],
+      "dungeonExclusive": true
+    }
+  ],
+  "pieceBases": {
+    "set_iron_helm": {"baseId": "a_plate_helm", "dungeonExclusive": false},
+    "set_iron_armor": {"baseId": "a_plate_armor", "dungeonExclusive": false},
+    "set_iron_shield": {"baseId": "w_tower_shield", "dungeonExclusive": false},
+    "set_iron_belt": {"baseId": "a_war_belt", "dungeonExclusive": false},
+    "set_shadow_helm": {"baseId": "a_full_helm", "dungeonExclusive": false},
+    "set_shadow_armor": {"baseId": "a_chain_mail", "dungeonExclusive": false},
+    "set_shadow_gloves": {"baseId": "a_chain_gloves", "dungeonExclusive": false},
+    "set_shadow_boots": {"baseId": "a_chain_boots", "dungeonExclusive": false},
+    "set_archmage_hat": {"baseId": "a_demon_helm", "dungeonExclusive": false},
+    "set_archmage_robe": {"baseId": "a_scale_mail", "dungeonExclusive": false},
+    "set_archmage_staff": {"baseId": "w_arcane_staff", "dungeonExclusive": false},
+    "set_archmage_ring": {"baseId": "j_gold_ring", "dungeonExclusive": false},
+    "set_hunter_helm": {"baseId": "a_leather_helm", "dungeonExclusive": false},
+    "set_hunter_armor": {"baseId": "a_leather_armor", "dungeonExclusive": false},
+    "set_hunter_boots": {"baseId": "a_leather_boots", "dungeonExclusive": false},
+    "set_hunter_bow": {"baseId": "w_war_bow", "dungeonExclusive": false},
+    "set_abyss_ring": {"baseId": "j_platinum_ring", "dungeonExclusive": false},
+    "set_abyss_amulet": {"baseId": "j_arcane_amulet", "dungeonExclusive": false},
+    "set_abyss_belt": {"baseId": "a_plated_belt", "dungeonExclusive": false},
+    "set_aw_crown": {"baseId": "a_dragon_helm", "dungeonExclusive": true},
+    "set_aw_blade": {"baseId": "w_demon_blade", "dungeonExclusive": true}
+  },
+  "i18n": {"name": "data.set.<id>.name", "bonus": "data.set.<id>.bonus.<count>", "affix": "data.setAffix.<affixId>"}
+}

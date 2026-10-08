@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/CombatSystem.ts"],
+  "caps": {
+    "damageReduction": 0.9,
+    "defenseBonus": 2,
+    "damageBonus": 3,
+    "attackSpeed": 1,
+    "poisonDamage": 5,
+    "stealthDamage": 5,
+    "manaShield": 0.9
+  },
+  "uncapped": ["damageAmplify", "critBonus", "slowEffect", "taunted"]
+}

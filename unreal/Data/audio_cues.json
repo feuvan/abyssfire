@@ -1,0 +1,443 @@
+{
+  "schemaVersion": 1,
+  "source": [
+    "src/systems/audio/types.ts",
+    "src/systems/audio/SFXEngine.ts",
+    "src/systems/audio/AudioManager.ts",
+    "unreal/Docs/spec/audio.md"
+  ],
+  "cues": [
+    {
+      "id": "hit",
+      "lengthSec": 0.2,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_Hit_01", "SW_SFX_Hit_02", "SW_SFX_Hit_03", "SW_SFX_Hit_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 8, "rule": "stopOldest", "minRetriggerMs": 20}
+    },
+    {
+      "id": "hit_heavy",
+      "lengthSec": 0.35,
+      "variants": 4,
+      "webReachable": false,
+      "assets": ["SW_SFX_HitHeavy_01", "SW_SFX_HitHeavy_02", "SW_SFX_HitHeavy_03", "SW_SFX_HitHeavy_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "crit",
+      "lengthSec": 0.35,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_Crit_01", "SW_SFX_Crit_02", "SW_SFX_Crit_03", "SW_SFX_Crit_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 8, "rule": "stopOldest", "minRetriggerMs": 20}
+    },
+    {
+      "id": "miss",
+      "lengthSec": 0.2,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_Miss"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 8, "rule": "stopOldest", "minRetriggerMs": 20}
+    },
+    {
+      "id": "block",
+      "lengthSec": 0.2,
+      "variants": 4,
+      "webReachable": false,
+      "assets": ["SW_SFX_Block_01", "SW_SFX_Block_02", "SW_SFX_Block_03", "SW_SFX_Block_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "player_hurt",
+      "lengthSec": 0.25,
+      "variants": 4,
+      "webReachable": false,
+      "assets": ["SW_SFX_PlayerHurt_01", "SW_SFX_PlayerHurt_02", "SW_SFX_PlayerHurt_03", "SW_SFX_PlayerHurt_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "monster_death",
+      "lengthSec": 0.6,
+      "variants": 4,
+      "webReachable": false,
+      "assets": ["SW_SFX_MonsterDeath_01", "SW_SFX_MonsterDeath_02", "SW_SFX_MonsterDeath_03", "SW_SFX_MonsterDeath_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "player_death",
+      "lengthSec": 1.2,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_PlayerDeath"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "dodge",
+      "lengthSec": 0.22,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_Dodge_01", "SW_SFX_Dodge_02", "SW_SFX_Dodge_03", "SW_SFX_Dodge_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "resonance",
+      "lengthSec": 0.61,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_Resonance_01", "SW_SFX_Resonance_02", "SW_SFX_Resonance_03", "SW_SFX_Resonance_04"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "skill_melee",
+      "lengthSec": 0.35,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_SkillMelee_01", "SW_SFX_SkillMelee_02", "SW_SFX_SkillMelee_03", "SW_SFX_SkillMelee_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 4, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "skill_fire",
+      "lengthSec": 0.5,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_SkillFire_01", "SW_SFX_SkillFire_02", "SW_SFX_SkillFire_03", "SW_SFX_SkillFire_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 4, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "skill_ice",
+      "lengthSec": 0.45,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_SkillIce_01", "SW_SFX_SkillIce_02", "SW_SFX_SkillIce_03", "SW_SFX_SkillIce_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 4, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "skill_lightning",
+      "lengthSec": 0.4,
+      "variants": 4,
+      "webReachable": true,
+      "assets": [
+        "SW_SFX_SkillLightning_01",
+        "SW_SFX_SkillLightning_02",
+        "SW_SFX_SkillLightning_03",
+        "SW_SFX_SkillLightning_04"
+      ],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 4, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "skill_heal",
+      "lengthSec": 0.55,
+      "variants": 4,
+      "webReachable": false,
+      "assets": ["SW_SFX_SkillHeal_01", "SW_SFX_SkillHeal_02", "SW_SFX_SkillHeal_03", "SW_SFX_SkillHeal_04"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 4, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "skill_buff",
+      "lengthSec": 0.5,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_SkillBuff"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 4, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "loot_common",
+      "lengthSec": 0.2,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_LootCommon"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 3, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "loot_magic",
+      "lengthSec": 0.3,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_LootMagic"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 3, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "loot_rare",
+      "lengthSec": 0.52,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_LootRare_01", "SW_SFX_LootRare_02", "SW_SFX_LootRare_03", "SW_SFX_LootRare_04"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 3, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "loot_legendary",
+      "lengthSec": 0.79,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_LootLegendary"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 3, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "equip",
+      "lengthSec": 0.1,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_Equip_01", "SW_SFX_Equip_02", "SW_SFX_Equip_03", "SW_SFX_Equip_04"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "potion",
+      "lengthSec": 0.25,
+      "variants": 1,
+      "webReachable": false,
+      "assets": ["SW_SFX_Potion"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "click",
+      "lengthSec": 0.05,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_Click"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "panel_open",
+      "lengthSec": 0.1,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_PanelOpen"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "panel_close",
+      "lengthSec": 0.1,
+      "variants": 1,
+      "webReachable": false,
+      "assets": ["SW_SFX_PanelClose"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "error",
+      "lengthSec": 0.2,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_Error"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "zone_transition",
+      "lengthSec": 1.02,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_ZoneTransition"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "quest_complete",
+      "lengthSec": 0.75,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_QuestComplete"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "quest_progress",
+      "lengthSec": 0.41,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_QuestProgress"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "quest_objective",
+      "lengthSec": 0.52,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_QuestObjective"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "levelup",
+      "lengthSec": 1.02,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_Levelup"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "npc_interact",
+      "lengthSec": 0.19,
+      "variants": 1,
+      "webReachable": true,
+      "assets": ["SW_SFX_NpcInteract"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "anvil",
+      "lengthSec": 1,
+      "variants": 4,
+      "webReachable": true,
+      "assets": ["SW_SFX_Anvil_01", "SW_SFX_Anvil_02", "SW_SFX_Anvil_03", "SW_SFX_Anvil_04"],
+      "bus": "ui",
+      "spatial": "2d",
+      "concurrency": {"max": 2, "rule": "stopOldest", "minRetriggerMs": 0}
+    },
+    {
+      "id": "monster_aggro",
+      "lengthSec": 0.5,
+      "variants": 2,
+      "webReachable": false,
+      "assets": [
+        "SW_SFX_MonsterAggro_Humanoid_01",
+        "SW_SFX_MonsterAggro_Humanoid_02",
+        "SW_SFX_MonsterAggro_Slime_01",
+        "SW_SFX_MonsterAggro_Slime_02"
+      ],
+      "families": ["humanoid", "slime"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 3, "rule": "stopOldest", "minRetriggerMs": 120},
+      "decision": "A7"
+    },
+    {
+      "id": "monster_hurt",
+      "lengthSec": 0.3,
+      "variants": 2,
+      "webReachable": false,
+      "assets": [
+        "SW_SFX_MonsterHurt_Humanoid_01",
+        "SW_SFX_MonsterHurt_Humanoid_02",
+        "SW_SFX_MonsterHurt_Slime_01",
+        "SW_SFX_MonsterHurt_Slime_02"
+      ],
+      "families": ["humanoid", "slime"],
+      "bus": "combat",
+      "spatial": "3d",
+      "concurrency": {"max": 3, "rule": "stopOldest", "minRetriggerMs": 120},
+      "decision": "A7"
+    }
+  ],
+  "rules": {
+    "combatDamage": {"dodged": "miss", "crit": "crit", "hit": "hit"},
+    "itemPickedByQuality": {
+      "normal": "loot_common",
+      "magic": "loot_magic",
+      "rare": "loot_rare",
+      "legendary": "loot_legendary",
+      "set": "loot_legendary"
+    },
+    "skillUsedByDamageType": {
+      "physical": "skill_melee",
+      "fire": "skill_fire",
+      "ice": "skill_ice",
+      "lightning": "skill_lightning",
+      "poison": "skill_buff",
+      "arcane": "skill_buff"
+    },
+    "playerLevelUp": "levelup",
+    "playerDied": "player_death",
+    "dodgeStarted": "dodge",
+    "resonanceStarted": "resonance",
+    "monsterDied": "monster_death",
+    "questCompleted": "quest_complete",
+    "questAccepted": "npc_interact",
+    "questTurnedIn": "quest_complete",
+    "questProgress": {
+      "completesQuest": null,
+      "objectiveDone": "quest_objective",
+      "materialOrClueStep": "quest_progress",
+      "clueStep": "quest_progress",
+      "killStep": null,
+      "progressPrefixes": ["mat_", "clue_"]
+    },
+    "npcInteract": "npc_interact",
+    "shopOpen": "panel_open",
+    "inventoryOpen": "panel_open",
+    "inventoryClose": "panel_close",
+    "uiTogglePanel": "click",
+    "direct": {
+      "townPortalComplete": "zone_transition",
+      "soulEchoReclaimed": "resonance",
+      "forgeSuccess": "anvil",
+      "forgeError": "error"
+    },
+    "port": {
+      "monsterDeathOnEveryKill": "FIX (audio Q1)",
+      "oneClickPerPanelToggle": "FIX (audio Q2)",
+      "heavyHitCue": {
+        "weights": ["heavy", "crit", "kill"],
+        "cue": "hit_heavy",
+        "decision": "A6"
+      },
+      "heroDamageTakenCue": {"cue": "player_hurt", "decision": "A6"},
+      "monsterAggro": {"cue": "monster_aggro", "on": "idle/patrol/returning -> chase (MonsterAggroMsg)", "decision": "A7"},
+      "monsterHurt": {"cue": "monster_hurt", "on": "non-lethal, non-tick hit on a monster", "decision": "A7"},
+      "ueSide": {
+        "footsteps": "Run anim notifies + tile type (grass/dirt/stone)",
+        "ambienceBed": "zone mood",
+        "decision": "A7"
+      }
+    }
+  },
+  "spatial": {"listener": "hero", "spread": 0.25, "decision": "A4"}
+}

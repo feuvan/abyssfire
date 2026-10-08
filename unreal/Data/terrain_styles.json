@@ -1,0 +1,719 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/graphics/terrain/TerrainStyles.ts"],
+  "themes": {
+    "plains": {
+      "ground": {
+        "0": {
+          "base": 7643719,
+          "rank": 4,
+          "lip": 10274396,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [7117379, 8301390, 7117379],
+              "r": [12, 24]
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [8301390, 7643719],
+              "r": [6, 12]
+            },
+            {
+              "kind": "tuft",
+              "count": 20,
+              "color": 5933115,
+              "light": 11127912,
+              "size": [3.2, 5.2]
+            }
+          ],
+          "details": ["flowers", "bigTuft", "flowers", "stones", "bigTuft", "flowers"],
+          "accents": [16176730, 16511964, 15237786, 15771720]
+        },
+        "1": {
+          "base": 12622432,
+          "rank": 1,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [12096090, 13149034],
+              "r": [10, 22]
+            },
+            {
+              "kind": "crack",
+              "count": 2,
+              "color": 11043666,
+              "light": 13939580,
+              "len": [6, 12],
+              "width": 2
+            },
+            {
+              "kind": "pebble",
+              "count": 10,
+              "color": 13808252,
+              "shade": 10254924,
+              "light": 15125656,
+              "size": [1.1, 2.2]
+            }
+          ],
+          "details": ["stones", "straw", "crackStar", "stones"],
+          "accents": [14731408]
+        },
+        "2": {
+          "base": 11117201,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 2,
+              "mortar": 9077619,
+              "mortarW": 0.035,
+              "jitter": 0.06,
+              "bevelLight": 12433059,
+              "bevelShade": 9867392
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [8822866],
+              "r": [3, 7]
+            }
+          ],
+          "details": ["bigTuft", "crackStar", "stones"],
+          "accents": [8822866]
+        },
+        "3": {
+          "base": 4166584,
+          "rank": 0,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [3902128, 4561600],
+              "r": [14, 26]
+            },
+            {
+              "kind": "wave",
+              "count": 5,
+              "color": 11133678,
+              "len": [6, 11],
+              "alpha": 0.7
+            }
+          ],
+          "details": ["lilyPads", "lilyPads"],
+          "accents": [7319114, 16044256],
+          "liquid": {"shallow": 7128015, "foam": 15661554, "bank": 9204808}
+        },
+        "5": {
+          "base": 12096616,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [11570530, 12622960],
+              "r": [10, 20]
+            },
+            {
+              "kind": "leaf",
+              "count": 4,
+              "colors": [13809778, 13216868],
+              "size": [1.6, 3]
+            },
+            {
+              "kind": "pebble",
+              "count": 6,
+              "color": 13281400,
+              "shade": 9729100,
+              "light": 14467218,
+              "size": [1, 1.8]
+            }
+          ],
+          "details": ["straw", "stones", "straw"],
+          "accents": [14863236]
+        }
+      },
+      "outcrop": {
+        "kind": "mossBoulder",
+        "rock": 10262664,
+        "cap": 8170056,
+        "accent": 16176730,
+        "extra": 6265406,
+        "shadow": 3099174
+      },
+      "palisade": {"kind": "stakes", "wood": 10120254, "band": 13215848, "accent": 4164150}
+    },
+    "forest": {
+      "ground": {
+        "0": {
+          "base": 4618860,
+          "rank": 4,
+          "lip": 6725770,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [4288360, 5140336, 4948082],
+              "r": [12, 24]
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [5597318, 5014644],
+              "r": [6, 12]
+            },
+            {
+              "kind": "tuft",
+              "count": 14,
+              "color": 3563866,
+              "light": 6989970,
+              "size": [3, 5],
+              "blades": 4
+            }
+          ],
+          "details": ["mushrooms", "roots", "bigTuft", "mushrooms", "glowSpecks", "bigTuft"],
+          "accents": [8386022, 13214463, 10146047]
+        },
+        "1": {
+          "base": 6705756,
+          "rank": 1,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [6245462, 7232100],
+              "r": [10, 22]
+            },
+            {
+              "kind": "leaf",
+              "count": 9,
+              "colors": [8808018, 7624826, 6126184],
+              "size": [2, 3.4]
+            },
+            {
+              "kind": "pebble",
+              "count": 6,
+              "color": 8284792,
+              "shade": 5127756,
+              "light": 9600650,
+              "size": [1, 1.8]
+            }
+          ],
+          "details": ["roots", "mushrooms", "stones", "roots"],
+          "accents": [8386022, 13214463]
+        },
+        "2": {
+          "base": 6713470,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 2,
+              "mortar": 5133924,
+              "mortarW": 0.04,
+              "jitter": 0.07,
+              "bevelLight": 8029330,
+              "bevelShade": 5791596
+            },
+            {
+              "kind": "patch",
+              "count": 5,
+              "colors": [5209708, 5933684],
+              "r": [4, 9]
+            }
+          ],
+          "details": ["glowSpecks", "roots", "crackStar"],
+          "accents": [8386022]
+        },
+        "3": {
+          "base": 3043194,
+          "rank": 0,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [2844788, 3373184],
+              "r": [14, 26]
+            },
+            {
+              "kind": "wave",
+              "count": 5,
+              "color": 9431268,
+              "len": [6, 10],
+              "alpha": 0.55
+            },
+            {
+              "kind": "speck",
+              "count": 3,
+              "colors": [8386022],
+              "size": [0.8, 1.2],
+              "glow": true
+            }
+          ],
+          "details": ["lilyPads"],
+          "accents": [5212768, 13214463],
+          "liquid": {"shallow": 4625562, "foam": 12580078, "bank": 5127752}
+        },
+        "5": {
+          "base": 7235160,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 7,
+              "colors": [6445646, 8024674],
+              "r": [8, 18]
+            },
+            {
+              "kind": "leaf",
+              "count": 12,
+              "colors": [9071198, 6126184],
+              "size": [2, 3.4]
+            }
+          ],
+          "details": ["straw", "stones", "roots"],
+          "accents": [11049584]
+        }
+      },
+      "outcrop": {
+        "kind": "forestRock",
+        "rock": 6120050,
+        "cap": 5212784,
+        "accent": 8386022,
+        "extra": 5126714,
+        "shadow": 1844784
+      },
+      "palisade": {"kind": "stakes", "wood": 7033928, "band": 9083498, "accent": 10123992}
+    },
+    "mountain": {
+      "ground": {
+        "0": {
+          "base": 8030822,
+          "rank": 3,
+          "lip": 9873022,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 6,
+              "colors": [7241310, 8820078],
+              "r": [10, 20]
+            },
+            {
+              "kind": "tuft",
+              "count": 16,
+              "color": 6122576,
+              "light": 10661510,
+              "size": [2.6, 4.2]
+            },
+            {
+              "kind": "snow",
+              "count": 0.34,
+              "color": 15331575,
+              "shade": 12372960,
+              "r": [5, 9]
+            }
+          ],
+          "details": ["stones", "snowDrift", "bigTuft"],
+          "accents": [15331575]
+        },
+        "1": {
+          "base": 9274752,
+          "rank": 1,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [8748408, 9801096],
+              "r": [10, 20]
+            },
+            {
+              "kind": "pebble",
+              "count": 16,
+              "color": 10459282,
+              "shade": 7432805,
+              "light": 11709349,
+              "size": [1, 2]
+            }
+          ],
+          "details": ["stones", "stones", "crackStar"],
+          "accents": [15331575]
+        },
+        "2": {
+          "base": 8885154,
+          "rank": 2,
+          "lip": 10398392,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 1.34,
+              "mortar": 7700879,
+              "mortarW": 0.022,
+              "jitter": 0.05,
+              "bevelLight": 9806255,
+              "bevelShade": 8161429
+            },
+            {
+              "kind": "patch",
+              "count": 2,
+              "colors": [8490396, 9345704],
+              "r": [12, 22]
+            },
+            {
+              "kind": "pebble",
+              "count": 5,
+              "color": 9871790,
+              "shade": 7108484,
+              "light": 11121856,
+              "size": [0.9, 1.7]
+            },
+            {
+              "kind": "snow",
+              "count": 0.23,
+              "color": 15660025,
+              "shade": 13227493,
+              "r": [11, 18]
+            }
+          ],
+          "details": ["crackStar", "stones", "stones", "crackStar", "snowDrift"],
+          "accents": [16747066, 16760944]
+        },
+        "3": {
+          "base": 5214132,
+          "rank": 0,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [4884654, 5674682],
+              "r": [14, 26]
+            },
+            {
+              "kind": "wave",
+              "count": 5,
+              "color": 13954808,
+              "len": [6, 11],
+              "alpha": 0.65
+            }
+          ],
+          "details": [],
+          "accents": [],
+          "liquid": {"shallow": 8963292, "foam": 15924223, "bank": 7107712}
+        },
+        "5": {
+          "base": 9736330,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 3,
+              "mortar": 7696748,
+              "mortarW": 0.04,
+              "jitter": 0.05,
+              "bevelLight": 11052190,
+              "bevelShade": 8815228
+            }
+          ],
+          "details": ["stones", "crackStar"],
+          "accents": [16747066]
+        }
+      },
+      "outcrop": {
+        "kind": "crag",
+        "rock": 8358554,
+        "cap": 15660025,
+        "accent": 16747066,
+        "extra": 6187128,
+        "shadow": 2502204
+      },
+      "palisade": {"kind": "stoneWall", "wood": 9079954, "band": 6968390, "accent": 16747066}
+    },
+    "desert": {
+      "ground": {
+        "0": {
+          "base": 12102246,
+          "rank": 3,
+          "lip": 13615742,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 6,
+              "colors": [13219703, 11181148],
+              "r": [8, 16]
+            },
+            {
+              "kind": "tuft",
+              "count": 12,
+              "color": 9339974,
+              "light": 14208136,
+              "size": [2.6, 4]
+            }
+          ],
+          "details": ["bigTuft", "stones"],
+          "accents": [14721120]
+        },
+        "1": {
+          "base": 14926985,
+          "rank": 3,
+          "lip": 15916202,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [14466174, 15322774],
+              "r": [14, 26]
+            },
+            {
+              "kind": "ripple",
+              "count": 9,
+              "dark": 13807474,
+              "light": 15916202,
+              "len": [12, 22]
+            },
+            {
+              "kind": "speck",
+              "count": 4,
+              "colors": [13214828, 15917756],
+              "size": [0.6, 1]
+            }
+          ],
+          "details": ["shells", "stones", "bones", "shells"],
+          "accents": [4180152, 15919832]
+        },
+        "2": {
+          "base": 13804658,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 2,
+              "mortar": 11567192,
+              "mortarW": 0.03,
+              "jitter": 0.06,
+              "bevelLight": 15122060,
+              "bevelShade": 12291168
+            },
+            {
+              "kind": "patch",
+              "count": 5,
+              "colors": [14926985],
+              "r": [4, 9]
+            },
+            {
+              "kind": "crack",
+              "count": 3,
+              "color": 11698778,
+              "len": [5, 10],
+              "width": 1.6
+            }
+          ],
+          "details": ["crackStar", "stones", "bones"],
+          "accents": [4180152]
+        },
+        "3": {
+          "base": 3125934,
+          "rank": 0,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [2795688, 3717298],
+              "r": [14, 26]
+            },
+            {
+              "kind": "wave",
+              "count": 5,
+              "color": 13172722,
+              "len": [6, 11],
+              "alpha": 0.7
+            }
+          ],
+          "details": ["lilyPads"],
+          "accents": [7319114, 16048800],
+          "liquid": {"shallow": 7657672, "foam": 16187384, "bank": 12096862}
+        },
+        "5": {
+          "base": 14204046,
+          "rank": 1,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 6,
+              "colors": [13480064, 14994080],
+              "r": [9, 18]
+            },
+            {
+              "kind": "ripple",
+              "count": 8,
+              "dark": 13019256,
+              "light": 15653042,
+              "len": [6, 11]
+            }
+          ],
+          "details": ["straw", "stones"],
+          "accents": [12606010, 4171960]
+        }
+      },
+      "outcrop": {
+        "kind": "mesa",
+        "rock": 13603936,
+        "cap": 15519384,
+        "accent": 4180152,
+        "extra": 11563080,
+        "shadow": 8015414
+      },
+      "palisade": {"kind": "mudbrick", "wood": 13608564, "band": 10119748, "accent": 4171960}
+    },
+    "abyss": {
+      "ground": {
+        "0": {
+          "base": 5655130,
+          "rank": 3,
+          "lip": 7233650,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 6,
+              "colors": [4997714, 6444134],
+              "r": [9, 18]
+            },
+            {
+              "kind": "tuft",
+              "count": 14,
+              "color": 4076612,
+              "light": 8745094,
+              "size": [2.6, 4.2]
+            },
+            {
+              "kind": "speck",
+              "count": 3,
+              "colors": [16732058],
+              "size": [0.8, 1.2],
+              "glow": true
+            }
+          ],
+          "details": ["bones", "glowSpecks", "bigTuft"],
+          "accents": [16732058, 16738874]
+        },
+        "1": {
+          "base": 6180952,
+          "rank": 1,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 7,
+              "colors": [5523536, 7102054],
+              "r": [9, 20]
+            },
+            {
+              "kind": "pebble",
+              "count": 14,
+              "color": 4865608,
+              "shade": 3024434,
+              "light": 7102056,
+              "size": [1, 2]
+            },
+            {
+              "kind": "speck",
+              "count": 1.5,
+              "colors": [16738874, 16752720],
+              "size": [0.6, 1],
+              "glow": true
+            }
+          ],
+          "details": ["bones", "emberVent", "stones"],
+          "accents": [16738874, 16756832]
+        },
+        "2": {
+          "base": 4405834,
+          "rank": 2,
+          "lip": 5786720,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 1.34,
+              "mortar": 3024436,
+              "mortarW": 0.024,
+              "jitter": 0.05,
+              "bevelLight": 5129046,
+              "bevelShade": 3813954
+            },
+            {
+              "kind": "crack",
+              "count": 0.12,
+              "color": 15216716,
+              "core": 16761000,
+              "glow": 16722506,
+              "len": [26, 40],
+              "width": 2.4
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [4734544, 4077126],
+              "r": [8, 16]
+            }
+          ],
+          "details": ["emberVent", "crackStar", "bones", "glowSpecks"],
+          "accents": [16726618, 16747082]
+        },
+        "3": {
+          "base": 15884318,
+          "rank": 0,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [15225884, 16743462],
+              "r": [14, 26]
+            },
+            {
+              "kind": "patch",
+              "count": 1,
+              "colors": [6958628, 8009252],
+              "r": [5, 9]
+            },
+            {
+              "kind": "wave",
+              "count": 5,
+              "color": 16765024,
+              "len": [6, 11],
+              "alpha": 0.85
+            }
+          ],
+          "details": [],
+          "accents": [],
+          "liquid": {"shallow": 16751158, "foam": 16769658, "bank": 2759714, "glow": true}
+        },
+        "5": {
+          "base": 5129296,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 3,
+              "mortar": 3287606,
+              "mortarW": 0.04,
+              "jitter": 0.05,
+              "bevelLight": 6313066,
+              "bevelShade": 4208714
+            }
+          ],
+          "details": ["emberVent", "stones"],
+          "accents": [16738874]
+        }
+      },
+      "outcrop": {
+        "kind": "basalt",
+        "rock": 4076616,
+        "cap": 5917798,
+        "accent": 16726602,
+        "extra": 2629422,
+        "shadow": 1051156
+      },
+      "palisade": {"kind": "darkStakes", "wood": 4863040, "band": 6971504, "accent": 16726586}
+    }
+  }
+}

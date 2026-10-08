@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "source": [
+    "src/graphics/ZonePalette.ts",
+    "src/systems/WeatherSystem.ts",
+    "src/systems/LightingSystem.ts",
+    "src/data/camp-themes.ts",
+    "src/scenes/ZoneScene.ts"
+  ],
+  "themeByZone": {
+    "emerald_plains": "plains",
+    "ember_tower": "plains",
+    "twilight_forest": "forest",
+    "anvil_mountains": "mountain",
+    "scorching_desert": "desert",
+    "abyss_rift": "abyss"
+  },
+  "moods": {
+    "plains": {
+      "ambient": 16773330,
+      "ambientAlpha": 0.22,
+      "vignette": 3023888,
+      "vignetteAlpha": 0.32,
+      "haze": 16770720,
+      "hazeAlpha": 0.05,
+      "saturation": 1.06,
+      "contrast": 1.04,
+      "lift": [0.012, 0.008, -0.004],
+      "gain": [0.03, 0.02, -0.01]
+    },
+    "forest": {
+      "ambient": 10135264,
+      "ambientAlpha": 0.34,
+      "vignette": 1182250,
+      "vignetteAlpha": 0.5,
+      "haze": 8020168,
+      "hazeAlpha": 0.07,
+      "saturation": 1.05,
+      "contrast": 1.05,
+      "lift": [-0.006, 0.014, 0.03],
+      "gain": [0, 0.02, 0.035]
+    },
+    "mountain": {
+      "ambient": 13950706,
+      "ambientAlpha": 0.26,
+      "vignette": 1317932,
+      "vignetteAlpha": 0.4,
+      "haze": 13163760,
+      "hazeAlpha": 0.06,
+      "saturation": 0.96,
+      "contrast": 1.06,
+      "lift": [-0.008, 0.004, 0.022],
+      "gain": [0.02, 0.012, 0]
+    },
+    "desert": {
+      "ambient": 16769712,
+      "ambientAlpha": 0.24,
+      "vignette": 3809292,
+      "vignetteAlpha": 0.34,
+      "haze": 16767120,
+      "hazeAlpha": 0.06,
+      "saturation": 1.04,
+      "contrast": 1.02,
+      "lift": [0.02, 0.01, -0.006],
+      "gain": [0.03, 0.016, -0.014]
+    },
+    "abyss": {
+      "ambient": 11565206,
+      "ambientAlpha": 0.4,
+      "vignette": 1703952,
+      "vignetteAlpha": 0.58,
+      "haze": 16724048,
+      "hazeAlpha": 0.06,
+      "saturation": 1.1,
+      "contrast": 1.07,
+      "lift": [0.024, -0.004, 0.012],
+      "gain": [0.03, 0, 0]
+    }
+  },
+  "palettes": {
+    "plains": {
+      "dominantHue": 120,
+      "accentHues": [90, 150],
+      "hueRange": 30,
+      "saturation": 0.55,
+      "lightness": 0.4,
+      "entityOutlineColor": "rgba(75,170,75,0.22)",
+      "entityRimColor": "rgba(119,187,119,0.11)",
+      "npcOutlineColor": "rgba(143,174,112,0.16)",
+      "npcRimColor": "rgba(163,183,143,0.1)",
+      "playerOutlineColor": "rgba(205,213,205,0.2)",
+      "playerRimColor": "rgba(196,202,196,0.1)"
+    },
+    "forest": {
+      "dominantHue": 260,
+      "accentHues": [230, 280],
+      "hueRange": 25,
+      "saturation": 0.5,
+      "lightness": 0.35,
+      "entityOutlineColor": "rgba(95,70,145,0.22)",
+      "entityRimColor": "rgba(122,98,170,0.11)",
+      "npcOutlineColor": "rgba(94,104,156,0.16)",
+      "npcRimColor": "rgba(120,128,165,0.1)",
+      "playerOutlineColor": "rgba(208,206,213,0.2)",
+      "playerRimColor": "rgba(198,196,202,0.1)"
+    },
+    "mountain": {
+      "dominantHue": 215,
+      "accentHues": [200, 230],
+      "hueRange": 25,
+      "saturation": 0.3,
+      "lightness": 0.45,
+      "entityOutlineColor": "rgba(113,134,162,0.22)",
+      "entityRimColor": "rgba(157,170,187,0.11)",
+      "npcOutlineColor": "rgba(146,165,175,0.16)",
+      "npcRimColor": "rgba(175,186,192,0.1)",
+      "playerOutlineColor": "rgba(207,209,211,0.2)",
+      "playerRimColor": "rgba(197,199,201,0.1)"
+    },
+    "desert": {
+      "dominantHue": 30,
+      "accentHues": [15, 45],
+      "hueRange": 25,
+      "saturation": 0.6,
+      "lightness": 0.45,
+      "entityOutlineColor": "rgba(187,138,88,0.22)",
+      "entityRimColor": "rgba(202,172,142,0.11)",
+      "npcOutlineColor": "rgba(189,146,132,0.16)",
+      "npcRimColor": "rgba(201,175,166,0.1)",
+      "playerOutlineColor": "rgba(213,209,205,0.2)",
+      "playerRimColor": "rgba(202,199,196,0.1)"
+    },
+    "abyss": {
+      "dominantHue": 350,
+      "accentHues": [330, 10],
+      "hueRange": 25,
+      "saturation": 0.55,
+      "lightness": 0.3,
+      "entityOutlineColor": "rgba(127,56,68,0.22)",
+      "entityRimColor": "rgba(153,77,90,0.11)",
+      "npcOutlineColor": "rgba(137,78,107,0.16)",
+      "npcRimColor": "rgba(149,95,122,0.1)",
+      "playerOutlineColor": "rgba(213,205,207,0.2)",
+      "playerRimColor": "rgba(202,196,197,0.1)"
+    }
+  },
+  "weather": {
+    "emerald_plains": {"type": "none", "ambience": "pollen", "tint": 16771232},
+    "twilight_forest": {"type": "none", "ambience": "wisps"},
+    "anvil_mountains": {"type": "snow", "ambience": "dust_motes", "tint": 14477556},
+    "scorching_desert": {"type": "sand", "ambience": "dust_motes", "tint": 15784104},
+    "abyss_rift": {"type": "ember_storm", "ambience": "sparks"}
+  },
+  "weatherByTheme": {
+    "plains": "emerald_plains",
+    "forest": "twilight_forest",
+    "mountain": "anvil_mountains",
+    "desert": "scorching_desert",
+    "abyss": "abyss_rift"
+  },
+  "ambientDustTint": {
+    "emerald_plains": 8965256,
+    "twilight_forest": 6728294,
+    "anvil_mountains": 10061960,
+    "scorching_desert": 16755268,
+    "abyss_rift": 16737826,
+    "fallback": 13421738
+  },
+  "lights": {
+    "hero": {"radiusPx": 80, "color": 16772829, "intensity": 0.4},
+    "campfire": {"radiusPx": 120, "color": 16746496, "intensity": 0.85, "flicker": true, "heightPx": 8},
+    "torch": {"radiusPx": 70, "color": 16737792, "intensity": 0.65, "flicker": true, "heightPx": 40}
+  },
+  "campThemes": {
+    "plains": {
+      "wallColor": "#4a3520",
+      "wallDark": "#2e1f0e",
+      "wallLight": "#6b5030",
+      "wallTop": "#8a6a40",
+      "groundColor": "#2c2010",
+      "bannerColor": "#2a6a1a",
+      "bannerDark": "#1a4a10",
+      "torchFlame": 16746496,
+      "tentColor": "#5a4028"
+    },
+    "forest": {
+      "wallColor": "#2a3a20",
+      "wallDark": "#1a2a10",
+      "wallLight": "#3a5030",
+      "wallTop": "#4a6038",
+      "groundColor": "#2a3028",
+      "bannerColor": "#6a4a8a",
+      "bannerDark": "#4a2a6a",
+      "torchFlame": 11176191,
+      "tentColor": "#3a4a30"
+    },
+    "mountain": {
+      "wallColor": "#4a4a50",
+      "wallDark": "#2a2a30",
+      "wallLight": "#6a6a70",
+      "wallTop": "#8a8a90",
+      "groundColor": "#3a3a3e",
+      "bannerColor": "#8a2a1a",
+      "bannerDark": "#6a1a0a",
+      "torchFlame": 16737792,
+      "tentColor": "#505058"
+    },
+    "desert": {
+      "wallColor": "#6a5a3a",
+      "wallDark": "#4a3a1a",
+      "wallLight": "#8a7a5a",
+      "wallTop": "#aa9a7a",
+      "groundColor": "#4a3a20",
+      "bannerColor": "#c07020",
+      "bannerDark": "#905010",
+      "torchFlame": 16755200,
+      "tentColor": "#7a6a4a"
+    },
+    "abyss": {
+      "wallColor": "#1a1020",
+      "wallDark": "#0a0810",
+      "wallLight": "#2a1a30",
+      "wallTop": "#3a2a40",
+      "groundColor": "#1a1018",
+      "bannerColor": "#8a1a1a",
+      "bannerDark": "#5a0a0a",
+      "torchFlame": 16720384,
+      "tentColor": "#221428"
+    }
+  }
+}

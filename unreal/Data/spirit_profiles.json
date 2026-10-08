@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/SpiritSystem.ts"],
+  "profiles": {
+    "warrior": {
+      "id": "emberheart",
+      "classId": "warrior",
+      "visualColor": 16757852,
+      "maxValue": 100,
+      "hitGain": 8,
+      "killGain": 15,
+      "dodgeGain": 12,
+      "critBonusGain": 4,
+      "resonanceDurationMs": 6000,
+      "resonanceDamageBonus": 0.3,
+      "resonanceManaCostMultiplier": 0.85,
+      "resonanceMoveSpeedBonus": 0.12
+    },
+    "mage": {
+      "id": "astral_focus",
+      "classId": "mage",
+      "visualColor": 11111423,
+      "maxValue": 100,
+      "hitGain": 7,
+      "killGain": 12,
+      "dodgeGain": 16,
+      "critBonusGain": 5,
+      "resonanceDurationMs": 7000,
+      "resonanceDamageBonus": 0.2,
+      "resonanceManaCostMultiplier": 0.6,
+      "resonanceMoveSpeedBonus": 0.08
+    },
+    "rogue": {
+      "id": "shadow_rhythm",
+      "classId": "rogue",
+      "visualColor": 6743434,
+      "maxValue": 100,
+      "hitGain": 6,
+      "killGain": 13,
+      "dodgeGain": 20,
+      "critBonusGain": 7,
+      "resonanceDurationMs": 5500,
+      "resonanceDamageBonus": 0.25,
+      "resonanceManaCostMultiplier": 0.75,
+      "resonanceMoveSpeedBonus": 0.18
+    }
+  },
+  "fallbackClass": "warrior",
+  "spiGainFactor": 0.015,
+  "spiClamp": [0, 200]
+}

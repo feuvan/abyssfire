@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "source": [
+    "src/systems/LootSystem.ts",
+    "src/scenes/ZoneScene.ts",
+    "src/systems/PetSystem.ts",
+    "src/systems/QuestRewards.ts"
+  ],
+  "qualityOrder": ["normal", "magic", "rare", "legendary", "set"],
+  "drops": {
+    "equipmentChance": {"normal": 40, "elite": 80, "luckFactor": 0.5},
+    "eliteSecondChance": {"base": 50, "luckFactor": 0.5},
+    "affixThirdDrop": {"minAffixBonus": 10, "base": 30, "luckFactor": 0.5, "affixFactor": 1},
+    "miniBossFloor": {"zone": "magic", "subDungeon": "rare"},
+    "consumableChance": 30,
+    "gemChance": {"base": 5, "luckFactor": 0.1, "affixFactor": 0.3, "note": "5 + (luck*0.5)*0.2 + affix*0.3"},
+    "leyFruitChance": {"elite": 0.12, "other": 0.015, "itemId": "c_ley_fruit"},
+    "chancesArePercent": true
+  },
+  "luckInput": {
+    "web": ["player.stats.lck (raw)", "homestead + pet magicFind", "labyrinth floor magicFindBonus"],
+    "port": ["gear lck", "gear magicFind"],
+    "decision": "I1 (gear lck / magicFind count, same x0.5 / x0.3 coefficients)"
+  },
+  "qualityRoll": {
+    "luckFactor": 0.3,
+    "eliteBonus": 15,
+    "thresholds": [
+      {"quality": "legendary", "base": 0.5, "lm": 0.1, "em": 0, "affix": 0.15, "levelOver20": 1},
+      {"quality": "set", "base": 2, "lm": 0.2, "em": 0.5, "affix": 0.3, "levelOver20": 0},
+      {"quality": "rare", "base": 15, "lm": 1, "em": 1, "affix": 1, "levelOver20": 0},
+      {"quality": "magic", "base": 45, "lm": 1, "em": 0, "affix": 0.5, "levelOver20": 0}
+    ],
+    "formula": "r=rand*100; lm=luck*0.3; em=elite?15:0; first t with r < base + lm*t.lm + em*t.em + affix*t.affix + (level>20 ? levelOver20 : 0); else normal"
+  },
+  "baseWindows": {
+    "equipment": [-10, 3],
+    "wide": [-20, 5],
+    "setPiece": [-15, 5],
+    "minLevel": 1
+  },
+  "levelGate": {"consumable": 5, "gem": 5, "affix": 5},
+  "affixCounts": {
+    "magic": [1, 2],
+    "rare": [3, 4],
+    "genericLegendary": [3, 5],
+    "setPieceExtra": [1, 2],
+    "genericSet": [2, 3],
+    "difficultyExtraAddsToMax": true
+  },
+  "affixTierBands": [
+    {
+      "belowLevel": 8,
+      "tiers": [1, 2]
+    },
+    {
+      "belowLevel": 18,
+      "tiers": [1, 3]
+    },
+    {
+      "belowLevel": 28,
+      "tiers": [2, 4]
+    },
+    {
+      "belowLevel": 38,
+      "tiers": [3, 5]
+    },
+    {
+      "belowLevel": null,
+      "tiers": [4, 5]
+    }
+  ],
+  "affixTierSlack": 1,
+  "affixWeight": {"inBand": 3, "outOfBand": 1},
+  "affixAlternation": "prefix when prefixCount <= suffixCount, else suffix",
+  "legendaryLevelScale": {"divisor": 35, "min": 0.6, "max": 1.5, "rounding": "Math.round"},
+  "droppedConsumable": {
+    "level": 1,
+    "quantity": [1, 3]
+  },
+  "droppedGem": {"level": 1, "quantity": 1},
+  "groundItemLifetimeMs": 60000,
+  "potionPickupLifetimeMs": 30000,
+  "pickupRadiusSq": 4,
+  "clickHitBoxTiles": 1.5,
+  "autoLootIntervalMs": 300,
+  "questRewards": {
+    "classWeaponTypes": {
+      "warrior": ["sword", "axe", "mace"],
+      "mage": ["staff", "wand"],
+      "rogue": ["dagger", "bow"]
+    },
+    "unknownClassWeaponTypes": ["sword"],
+    "shieldClasses": ["warrior"],
+    "itemLevel": "max(quest.level, min(playerLevel, quest.level + 5))",
+    "levelHeadroom": 2,
+    "topCandidates": 3,
+    "quality": {"main": "rare", "side": "magic", "override": "rewards.choiceQuality"},
+    "fallbackCollectChance": 0.25
+  }
+}

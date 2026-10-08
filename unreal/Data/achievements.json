@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "source": ["src/systems/AchievementSystem.ts"],
+  "achievements": [
+    {
+      "id": "ach_first_kill",
+      "name": "初出茅庐",
+      "description": "击杀第一个怪物",
+      "type": "kill",
+      "required": 1,
+      "title": "新手冒险者"
+    },
+    {
+      "id": "ach_kill_100",
+      "name": "百人斩",
+      "description": "击杀100个怪物",
+      "type": "kill",
+      "required": 100,
+      "reward": {"stat": "damage", "value": 2}
+    },
+    {
+      "id": "ach_kill_500",
+      "name": "屠戮者",
+      "description": "击杀500个怪物",
+      "type": "kill",
+      "required": 500,
+      "reward": {"stat": "damage", "value": 5},
+      "title": "屠戮者"
+    },
+    {
+      "id": "ach_kill_slime",
+      "name": "史莱姆克星",
+      "description": "击杀50个史莱姆",
+      "type": "kill",
+      "targetId": "slime_green",
+      "required": 50,
+      "reward": {"stat": "lck", "value": 2}
+    },
+    {
+      "id": "ach_kill_goblin_chief",
+      "name": "哥布林终结者",
+      "description": "击杀哥布林首领",
+      "type": "kill",
+      "targetId": "goblin_chief",
+      "required": 1,
+      "title": "哥布林终结者"
+    },
+    {
+      "id": "ach_kill_demon_lord",
+      "name": "恶魔猎人",
+      "description": "击杀深渊魔王",
+      "type": "kill",
+      "targetId": "demon_lord",
+      "required": 1,
+      "reward": {"stat": "str", "value": 10},
+      "title": "深渊征服者"
+    },
+    {"id": "ach_level_10", "name": "成长之路", "description": "达到10级", "type": "level", "required": 10},
+    {
+      "id": "ach_level_25",
+      "name": "勇者",
+      "description": "达到25级",
+      "type": "level",
+      "required": 25,
+      "title": "勇者"
+    },
+    {
+      "id": "ach_level_50",
+      "name": "传说",
+      "description": "达到50级",
+      "type": "level",
+      "required": 50,
+      "reward": {"stat": "str", "value": 5},
+      "title": "传说"
+    },
+    {
+      "id": "ach_explore_all",
+      "name": "探索者",
+      "description": "探索所有区域",
+      "type": "explore",
+      "required": 5,
+      "reward": {"stat": "lck", "value": 5},
+      "title": "大陆探索者"
+    },
+    {
+      "id": "ach_quest_10",
+      "name": "任务达人",
+      "description": "完成10个任务",
+      "type": "quest",
+      "required": 10,
+      "reward": {"stat": "lck", "value": 3}
+    },
+    {
+      "id": "ach_collect_legendary",
+      "name": "传奇收藏家",
+      "description": "收集一件传奇装备",
+      "type": "collect",
+      "required": 1,
+      "title": "传奇收藏家"
+    }
+  ],
+  "port": {"killCounting": "one count per kill", "exploreAll": "distinct zones", "decision": "Q2"}
+}

@@ -1,0 +1,11 @@
+{
+  "name": "abyssfire-export-data",
+  "private": true,
+  "type": "module",
+  "description": "Exports the web game's TypeScript data tables to unreal/Data/*.json (uses the repo root's Vite; no own dependencies).",
+  "scripts": {
+    "export": "node run.mjs",
+    "check": "node run.mjs --check",
+    "typecheck": "../../../node_modules/.bin/tsc -p tsconfig.json"
+  }
+}
