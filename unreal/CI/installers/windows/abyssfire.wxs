@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Abyssfire MSI (WiX 3 schema, the subset msitools' wixl supports). Built on Linux by
+  unreal/CI/scripts/windows-installers.sh (see there for the exact commands):
+
+    1. wixl-heat turns the staged Win64 file list into game-files.wxs: component group CG.GameFiles under the
+       directory INSTALLDIR, sources prefixed with $(var.SourceDir), 64-bit components ($(var.Win64) = yes).
+    2. wixl -a x64 -D Version=<AF_MSI_VERSION> -D DisplayVersion=<AF_VERSION> -D SourceDir=<staged>
+            -D AssetsDir=<installer-assets> -D Win64=yes abyssfire.wxs game-files.wxs -o Abyssfire-X.Y.Z-win64.msi
+
+  * Per-machine install into "Program Files\Abyssfire"; Start-menu folder (game + uninstall shortcut), desktop
+    shortcut as its own feature (skip it with: msiexec /i Abyssfire.msi ADDLOCAL=Main), Add/Remove Programs icon.
+  * UpgradeCode is fixed forever (setup.exe looks the MSI up by it); the ProductCode is new for every build, so any
+    newer (or same-version development) build replaces the installed one (MajorUpgrade). Version = AF_MSI_VERSION:
+    X.Y.(Z*100+S) with S = N for vX.Y.Z-pre.N and 99 for the final vX.Y.Z (Windows Installer compares 3 fields only),
+    so 1.2.3-rc.4 = 1.2.304 < 1.2.3 = 1.2.399; 0.0.0 for development builds.
+  * Refuses to install over a setup.exe (NSIS) install: same folder and Start menu, LaunchCondition on its ARP key.
+  * 64-bit: wixl takes the platform from its command line (-a x64), not from Package/@Platform.
+  * Strings are ASCII: Windows Installer has no reliable UTF-8 code page (the NSIS setup.exe is the localised one).
+  * The UE bootstrap Abyssfire.exe installs the VC++ / DirectX prerequisites on first launch when they are missing.
+  * Silent: msiexec /i Abyssfire-X.Y.Z-win64.msi /qn [INSTALLDIR="D:\Games\Abyssfire"]; remove: msiexec /x <msi> /qn
+  * XML comments cannot contain two consecutive hyphens: keep command lines out of this comment.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="Abyssfire"
+           Language="1033"
+           Version="$(var.Version)"
+           Manufacturer="feuvan"
+           UpgradeCode="{6A1F3C52-0B8E-4D27-9E64-2B7C5D1E8A40}">
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="Abyssfire $(var.DisplayVersion)"
+             Comments="Abyssfire - isometric ARPG (Unreal Engine 5.8)"
+             Manufacturer="feuvan" />
+
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of Abyssfire is already installed." />
+
+    <!-- setup.exe (NSIS) writes this Add/Remove Programs key; its install shares our folder and Start menu -->
+    <Property Id="NSISUNINSTALL">
+      <RegistrySearch Id="NsisUninst" Root="HKLM" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\Abyssfire"
+                      Name="UninstallString" Type="raw" Win64="yes" />
+    </Property>
+    <Condition Message="Abyssfire is already installed by setup.exe. Uninstall it first (Settings > Apps), then run this package again.">Installed OR NOT NSISUNINSTALL</Condition>
+    <Media Id="1" Cabinet="abyssfire.cab" EmbedCab="yes" />
+
+    <Icon Id="AbyssfireIcon.ico" SourceFile="$(var.AssetsDir)/Abyssfire.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AbyssfireIcon.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/feuvan/abyssfire" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="Abyssfire" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="AppMenuDir" Name="Abyssfire" />
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+    </Directory>
+
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="InstallRegistry" Guid="{C3E0D6A1-5B47-4F0E-9A8D-71E2B4C69F13}" Win64="yes">
+        <RegistryValue Root="HKLM" Key="Software\feuvan\Abyssfire" Name="InstallDir" Type="string"
+                       Value="[INSTALLDIR]" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\feuvan\Abyssfire" Name="Version" Type="string"
+                       Value="$(var.DisplayVersion)" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="AppMenuDir">
+      <Component Id="StartMenuShortcuts" Guid="{8F27B5D4-1C63-4A9E-B0F7-3D5A62E14C88}" Win64="yes">
+        <Shortcut Id="StartMenuGame" Name="Abyssfire" Description="Abyssfire"
+                  Target="[INSTALLDIR]Abyssfire.exe" WorkingDirectory="INSTALLDIR" Icon="AbyssfireIcon.ico" />
+        <Shortcut Id="StartMenuUninstall" Name="Uninstall Abyssfire" Description="Remove Abyssfire"
+                  Target="[System64Folder]msiexec.exe" Arguments="/x [ProductCode]" />
+        <RemoveFolder Id="RemoveAppMenuDir" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\feuvan\Abyssfire" Name="StartMenuShortcuts" Type="integer"
+                       Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="{2B9C4E71-7D08-4F35-A6E2-95C1F0D3B7A6}" Win64="yes">
+        <Shortcut Id="DesktopGame" Name="Abyssfire" Description="Abyssfire"
+                  Target="[INSTALLDIR]Abyssfire.exe" WorkingDirectory="INSTALLDIR" Icon="AbyssfireIcon.ico" />
+        <RegistryValue Root="HKLM" Key="Software\feuvan\Abyssfire" Name="DesktopShortcut" Type="integer"
+                       Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Feature Id="Main" Title="Abyssfire" Level="1" Absent="disallow" ConfigurableDirectory="INSTALLDIR">
+      <ComponentGroupRef Id="CG.GameFiles" />
+      <ComponentRef Id="InstallRegistry" />
+      <ComponentRef Id="StartMenuShortcuts" />
+    </Feature>
+    <Feature Id="Desktop" Title="Desktop shortcut" Level="1">
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+  </Product>
+</Wix>

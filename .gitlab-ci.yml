@@ -1,0 +1,627 @@
+# Abyssfire - GitLab CI/CD: verification + multi-platform installers for the Unreal Engine 5.8 rebuild (unreal/).
+# Runner setup, every variable, releases and troubleshooting: unreal/Docs/CI.md. Job scripts: unreal/CI/.
+# (The original web game deploys through .github/workflows/deploy.yml and is not touched here.)
+#
+#   verify      version, ci:lint, ci:selftest(-pwsh) (CI script self-tests, on CI changes), core:* (GCC / Clang /
+#               ASan+UBSan / shared-lib export check), data:check, web:vitest (optional)
+#   assets      art:blender-smoke (on unreal/Art/blender changes, else manual), installer-assets (icons, DMG / NSIS art)
+#   content     ue:content          build_content.py on the Mac runner -> unreal/Content (reused by every package job)
+#   package     package:mac, package:win64, package:android (+ package:android-win), package:ios (manual), package-all
+#   installers  installer:mac-dmg (sign, notarise, staple, styled DMG), installer:windows (NSIS .exe + .msi on Linux),
+#               installer:android (zipalign + apksigner, .apk + .aab)
+#   release     release (tags vX.Y.Z[-pre]: package registry uploads + GitLab Release), release:ios (manual)
+#
+# Which pipeline runs what:
+#   merge request          verify (+ art smoke test on art changes)
+#   branch push            verify + art smoke test on art changes; on a protected branch also the manual package-all
+#                          trigger (child pipeline: all packages)
+#   default branch, tags   everything; tags matching vX.Y.Z[-pre] also publish the release
+#   "Run pipeline" with AF_PACKAGE_ALL=1 on a protected branch   everything (no release)
+#
+# Unreal Engine never runs on GitLab SaaS runners (the Epic EULA allows no engine images): UE jobs need the
+# self-hosted runners whose tags are UE_MAC_RUNNER_TAG / UE_WIN_RUNNER_TAG / UE_ANDROID_RUNNER_TAG. Those runners are
+# persistent shell executors registered as *Protected* (unreal/Docs/CI.md 3.1): they only take jobs of protected refs,
+# so the pipeline only creates UE jobs there (a job no runner takes would stay pending for an hour and hold its
+# resource group). Engine-free jobs use Docker images on SaaS Linux runners. Secrets come only from masked + protected
+# CI/CD variables, scoped to the environment of the one job that signs with them (android-signing, mac-signing, ...).
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+    # a branch with an open MR runs the MR pipeline only (no duplicate pipelines)
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+  auto_cancel:
+    on_new_commit: interruptible
+
+stages:
+  - verify
+  - assets
+  - content
+  - package
+  - installers
+  - release
+
+variables:
+  # --- self-hosted Unreal runners (override in Settings > CI/CD > Variables, NOT Protected: unreal/Docs/CI.md 4.1) ---
+  UE_MAC_RUNNER_TAG: "ue5-mac"
+  UE_WIN_RUNNER_TAG: "ue5-win"
+  # Android packages on the Mac by default. Literal on purpose: GitLab expands `tags` in one pass over the raw
+  # variables, a nested "$UE_MAC_RUNNER_TAG" would stay a literal tag. Change it together with UE_MAC_RUNNER_TAG.
+  UE_ANDROID_RUNNER_TAG: "ue5-mac"
+  UE_ANDROID_RUNNER_SHELL: "bash"               # "pwsh" when UE_ANDROID_RUNNER_TAG is a Windows runner
+  UE_ROOT_MAC: "/Users/Shared/Epic Games/UE_5.8"
+  UE_ROOT_WIN: 'C:\Program Files\Epic Games\UE_5.8'
+  # --- build settings ---
+  AF_UE_CLIENT_CONFIG: "Shipping"
+  AF_MAC_ARCH: "arm64"
+  AF_ANDROID_COOK_FLAVOR: "ASTC"
+  AF_ANDROID_BUILD_TOOLS: "36.0.0"
+  AF_REQUIRE_SIGNING: "auto"                    # auto = Mac / Android mandatory on tags; 1 = always, Windows too; 0 = never
+  # --- images for the engine-free jobs (pin digests here if you need reproducible images) ---
+  AF_IMAGE_UBUNTU: "ubuntu:24.04"
+  AF_IMAGE_NODE: "node:22-bookworm"
+  AF_IMAGE_PYTHON: "python:3.12-slim-bookworm"
+  AF_IMAGE_BLENDER: "python:3.11-slim-bookworm"   # bpy 5.0 wheels exist for CPython 3.11 only
+  AF_IMAGE_JDK: "eclipse-temurin:21-jdk-noble"
+  AF_IMAGE_RELEASE: "registry.gitlab.com/gitlab-org/cli:v1.118.0"   # glab (release-cli is deprecated since 18.0)
+  AF_IMAGE_BASH: "bash:5.2"
+  # --- runner behaviour ---
+  GIT_DEPTH: "50"
+  FF_USE_FASTZIP: "true"
+  ARTIFACT_COMPRESSION_LEVEL: "fast"
+  CACHE_COMPRESSION_LEVEL: "fast"
+  DEBIAN_FRONTEND: "noninteractive"
+
+default:
+  interruptible: true
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+
+# ------------------------------------------------------------------------------------------------- rule templates
+.rules-verify:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: never
+    - when: on_success
+
+# Default branch, tags, the package-all child pipeline, or a manual run with AF_PACKAGE_ALL=1; never MRs, and only on
+# protected refs: the self-hosted UE runners are Protected (CI.md 3.1) and would never take the job, which would then sit
+# pending for an hour holding the runner's resource group (every main / tag pipeline would wait behind it).
+# Release tags build from a fully clean working copy (no Binaries / Intermediate kept from earlier jobs).
+.rules-full:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - if: $CI_COMMIT_TAG
+      variables:
+        GIT_CLEAN_FLAGS: "-ffdx"
+    - if: $AF_PACKAGE_ALL == "1"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.rules-full-manual:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: never
+    - if: $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - if: $CI_COMMIT_TAG
+      when: manual
+      allow_failure: true
+      variables:
+        GIT_CLEAN_FLAGS: "-ffdx"
+    - if: $AF_PACKAGE_ALL == "1"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
+
+# ------------------------------------------------------------------------------------------------- job templates
+.apt:
+  before_script:
+    - apt-get update -qq
+    - apt-get install -y -qq --no-install-recommends $AF_APT_PACKAGES >/dev/null
+
+# Persistent shell runners: UBT output (Binaries / Intermediate) is kept between jobs for incremental C++ builds (wiped
+# by af_ue_init when the engine or toolchain changes, and on release tags by the rules above). The DerivedDataCache is
+# NOT a GitLab `cache:` (that would zip and restore gigabytes per job): it lives in the runner's AF_PERSISTENT_DDC
+# directory (mandatory in CI, set in the runner's config.toml; CI.md 3.1).
+.ue-mac:
+  tags:
+    - $UE_MAC_RUNNER_TAG
+  resource_group: ue-$UE_MAC_RUNNER_TAG
+  variables:
+    GIT_STRATEGY: fetch
+    GIT_CLEAN_FLAGS: -ffdx -e unreal/Binaries/ -e unreal/Intermediate/ -e unreal/Plugins/*/Binaries/ -e unreal/Plugins/*/Intermediate/
+
+.ue-win:
+  tags:
+    - $UE_WIN_RUNNER_TAG
+  resource_group: ue-$UE_WIN_RUNNER_TAG
+  variables:
+    GIT_STRATEGY: fetch
+    GIT_CLEAN_FLAGS: -ffdx -e unreal/Binaries/ -e unreal/Intermediate/ -e unreal/Plugins/*/Binaries/ -e unreal/Plugins/*/Intermediate/
+
+.ue-android:
+  tags:
+    - $UE_ANDROID_RUNNER_TAG
+  resource_group: ue-$UE_ANDROID_RUNNER_TAG
+  variables:
+    GIT_STRATEGY: fetch
+    GIT_CLEAN_FLAGS: -ffdx -e unreal/Binaries/ -e unreal/Intermediate/ -e unreal/Plugins/*/Binaries/ -e unreal/Plugins/*/Intermediate/
+
+# =================================================================================================== verify
+version:
+  stage: verify
+  image: $AF_IMAGE_BASH
+  needs: []
+  rules:
+    - when: on_success
+  script:
+    - bash unreal/CI/version.sh --dotenv unreal/CI/out/version.env
+  artifacts:
+    reports:
+      dotenv: unreal/CI/out/version.env
+    paths:
+      - unreal/CI/out/version.env
+    expire_in: 1 week
+  timeout: 5m
+
+ci:lint:
+  stage: verify
+  extends: [.apt, .rules-verify]
+  image: $AF_IMAGE_UBUNTU
+  needs: []
+  variables:
+    AF_APT_PACKAGES: shellcheck python3 python3-yaml git
+  script:
+    - python3 unreal/CI/tools/check_gitlab_ci.py
+    - shellcheck -x -P SCRIPTDIR unreal/CI/version.sh unreal/CI/lib/*.sh unreal/CI/scripts/*.sh unreal/CI/tools/*.sh
+  timeout: 10m
+
+# Self-tests of the CI scripts themselves (no Unreal): real NSIS / MSI builds from a fake staged build with
+# Authenticode signing, APK / AAB signing, the macOS job scripts against stub Apple tools, the PowerShell scripts
+# against a fake RunUAT. Only when the CI scripts change.
+.rules-ci-changes:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: never
+    - changes:
+        - .gitlab-ci.yml
+        - unreal/CI/**/*
+
+ci:selftest:
+  stage: verify
+  extends: [.apt, .rules-ci-changes]
+  image: $AF_IMAGE_UBUNTU
+  needs: []
+  variables:
+    AF_APT_PACKAGES: nsis msitools wixl osslsigncode 7zip zip unzip openssl python3 python3-pil python3-venv apksigner zipalign openjdk-21-jdk-headless ca-certificates
+  script:
+    - unreal/CI/tools/test_windows_installers.sh --sign "$CI_PROJECT_DIR/unreal/CI/out/selftest/windows"
+    - unreal/CI/tools/test_android_sign.sh "$CI_PROJECT_DIR/unreal/CI/out/selftest/android"
+    - unreal/CI/tools/test_mac_scripts.sh "$CI_PROJECT_DIR/unreal/CI/out/selftest/mac"
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/selftest/windows/out/installers/
+      - unreal/CI/out/selftest/mac/*.log
+    expire_in: 1 week
+  timeout: 20m
+
+ci:selftest-pwsh:
+  stage: verify
+  extends: .rules-ci-changes
+  image: mcr.microsoft.com/powershell:7.4-ubuntu-22.04
+  needs: []
+  script:
+    - pwsh -NoProfile -File unreal/CI/tools/test_powershell.ps1
+  timeout: 10m
+
+.core:
+  stage: verify
+  extends: [.apt, .rules-verify]
+  image: $AF_IMAGE_UBUNTU
+  needs: []
+  variables:
+    AF_APT_PACKAGES: g++ clang cmake ninja-build ca-certificates
+  artifacts:
+    when: always
+    reports:
+      junit: unreal/CI/out/reports/core-*.xml
+    paths:
+      - unreal/CI/out/reports/
+    expire_in: 1 week
+  timeout: 45m
+
+core:gcc:
+  extends: .core
+  script:
+    - bash unreal/CI/scripts/core-tests.sh gcc
+
+core:clang:
+  extends: .core
+  script:
+    - bash unreal/CI/scripts/core-tests.sh clang
+
+core:gcc-sanitize:
+  extends: .core
+  script:
+    - bash unreal/CI/scripts/core-tests.sh gcc --sanitize
+  timeout: 60m
+
+core:clang-shared:
+  extends: .core
+  script:
+    - bash unreal/CI/scripts/core-tests.sh clang --shared
+
+.node:
+  stage: verify
+  image: $AF_IMAGE_NODE
+  needs: []
+  variables:
+    npm_config_cache: $CI_PROJECT_DIR/.npm
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+
+data:check:
+  extends: [.node, .rules-verify]
+  script:
+    - bash unreal/CI/scripts/data-check.sh
+  timeout: 20m
+
+web:vitest:
+  extends: .node
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: never
+    - changes:
+        - src/**/*
+        - package.json
+        - package-lock.json
+        - vite.config.*
+        - tsconfig*.json
+      allow_failure: true
+    - when: manual
+      allow_failure: true
+  script:
+    - bash unreal/CI/scripts/web-test.sh
+  artifacts:
+    when: always
+    reports:
+      junit: unreal/CI/out/reports/web-vitest.xml
+    expire_in: 1 week
+  timeout: 30m
+
+# =================================================================================================== assets
+art:blender-smoke:
+  stage: assets
+  extends: .apt
+  image: $AF_IMAGE_BLENDER
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: never
+    # merge requests compare against the target branch, so a reviewed Blender change is smoke-tested before merging
+    - changes:
+        - unreal/Art/blender/**/*
+    - when: manual
+      allow_failure: true
+  variables:
+    AF_APT_PACKAGES: libx11-6 libxrender1 libxfixes3 libxi6 libxkbcommon0 libsm6 libice6 libxext6 libxxf86vm1 libgl1 libegl1 libegl-mesa0 libgl1-mesa-dri
+    AF_BLENDER_PYTHON: python3
+    PIP_CACHE_DIR: $CI_PROJECT_DIR/.pip
+  cache:
+    key: pip-bpy-5.0
+    paths:
+      - .pip/
+  script:
+    - pip install --quiet "bpy==5.0.*"
+    - bash unreal/CI/scripts/blender-smoke.sh
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/blender-previews/
+    expire_in: 2 weeks
+  timeout: 30m
+
+installer-assets:
+  stage: assets
+  extends: .rules-full
+  image: $AF_IMAGE_PYTHON
+  needs: [version]
+  script:
+    - pip install --quiet "pillow>=10,<13"
+    - python3 unreal/CI/installers/assets/make_installer_assets.py --out unreal/CI/out/installer-assets --version "$AF_VERSION"
+  artifacts:
+    paths:
+      - unreal/CI/out/installer-assets/
+    expire_in: 1 week
+  timeout: 10m
+
+# =================================================================================================== content
+ue:content:
+  stage: content
+  extends: [.ue-mac, .rules-full]
+  needs:
+    - job: version
+    - job: core:gcc
+      artifacts: false
+      optional: true
+    - job: core:clang
+      artifacts: false
+      optional: true
+    - job: data:check
+      artifacts: false
+      optional: true
+  script:
+    - bash unreal/CI/scripts/ue-content.sh
+  artifacts:
+    when: always
+    paths:
+      - unreal/Content/
+      - unreal/CI/out/content/
+      - unreal/CI/out/logs/$CI_JOB_NAME_SLUG/
+    expire_in: 3 days
+  timeout: 3h
+
+# =================================================================================================== package
+package:mac:
+  stage: package
+  extends: [.ue-mac, .rules-full]
+  needs: [version, ue:content]
+  script:
+    - bash unreal/CI/scripts/ue-package.sh Mac
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/package/mac/
+      - unreal/CI/out/logs/$CI_JOB_NAME_SLUG/
+    expire_in: 1 week
+  timeout: 4h
+
+package:win64:
+  stage: package
+  extends: [.ue-win, .rules-full]
+  needs: [version, ue:content, installer-assets]
+  script:
+    - '& "$env:CI_PROJECT_DIR/unreal/CI/windows/ue-package.ps1" -Platform Win64; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/package/win64/
+      - unreal/CI/out/logs/$CI_JOB_NAME_SLUG/
+    expire_in: 1 week
+  timeout: 4h
+
+package:android:
+  stage: package
+  extends: .ue-android
+  rules:
+    - if: $UE_ANDROID_RUNNER_SHELL == "pwsh"
+      when: never
+    - !reference [.rules-full, rules]
+  needs: [version, ue:content, installer-assets]
+  script:
+    - bash unreal/CI/scripts/ue-package.sh Android
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/package/android/
+      - unreal/CI/out/logs/$CI_JOB_NAME_SLUG/
+    expire_in: 1 week
+  timeout: 4h
+
+# the same job for a Windows runner (UE_ANDROID_RUNNER_TAG = a Windows tag, UE_ANDROID_RUNNER_SHELL = pwsh)
+package:android-win:
+  stage: package
+  extends: .ue-android
+  rules:
+    - if: $UE_ANDROID_RUNNER_SHELL != "pwsh"
+      when: never
+    - !reference [.rules-full, rules]
+  needs: [version, ue:content, installer-assets]
+  script:
+    - '& "$env:CI_PROJECT_DIR/unreal/CI/windows/ue-package.ps1" -Platform Android; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/package/android/
+      - unreal/CI/out/logs/$CI_JOB_NAME_SLUG/
+    expire_in: 1 week
+  timeout: 4h
+
+package:ios:
+  stage: package
+  extends: [.ue-mac, .rules-full-manual]
+  needs: [version, ue:content]
+  environment:
+    name: ios-signing
+    action: prepare
+  script:
+    - bash unreal/CI/scripts/ue-package.sh IOS
+  after_script:
+    - bash unreal/CI/scripts/mac-keychain-reset.sh
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/package/ios/
+      - unreal/CI/out/logs/$CI_JOB_NAME_SLUG/
+    expire_in: 4 weeks
+  timeout: 4h
+
+# Manual button on protected branches other than the default one (release / hotfix branches): runs this file again
+# as a child pipeline with AF_PACKAGE_ALL=1 (content, every package and installer; no release). Available once the core
+# tests and the data check pass. Never on unprotected refs (the Protected UE runners would not take the jobs).
+#   * AF_PACKAGE_ALL is a rules:variables entry, not a job variable: rules:if sees a job's own variables, so the
+#     "already a package-all run" rule would otherwise always match.
+#   * inherit:variables false: a trigger job forwards what it inherits as *pipeline* variables of the child, which
+#     outrank project variables - the child would build with the YAML defaults instead of the project's overrides.
+package-all:
+  stage: package
+  inherit:
+    default: false
+    variables: false
+  interruptible: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: never
+    - if: $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - if: $AF_PACKAGE_ALL == "1"
+      when: never
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+      variables:
+        AF_PACKAGE_ALL: "1"
+  needs: [core:gcc, core:clang, data:check]
+  trigger:
+    include:
+      - local: .gitlab-ci.yml
+    strategy: depend
+    forward:
+      yaml_variables: true
+      pipeline_variables: true
+
+# =================================================================================================== installers
+installer:mac-dmg:
+  stage: installers
+  extends: .rules-full
+  tags:
+    - $UE_MAC_RUNNER_TAG
+  resource_group: ue-$UE_MAC_RUNNER_TAG
+  environment:
+    name: mac-signing
+    action: prepare
+  variables:
+    GIT_STRATEGY: fetch
+    # the same working copy as the Mac UE jobs: keep their UBT output
+    GIT_CLEAN_FLAGS: -ffdx -e unreal/Binaries/ -e unreal/Intermediate/ -e unreal/Plugins/*/Binaries/ -e unreal/Plugins/*/Intermediate/
+  needs: [version, package:mac, installer-assets]
+  script:
+    - bash unreal/CI/scripts/mac-dmg.sh
+  after_script:
+    - bash unreal/CI/scripts/mac-keychain-reset.sh
+  artifacts:
+    when: always
+    paths:
+      - unreal/CI/out/installers/mac/
+      - unreal/CI/out/logs/$CI_JOB_NAME_SLUG/
+    expire_in: 4 weeks
+  # two notarisations (app, DMG) of up to AF_NOTARY_TIMEOUT (1h) each + signing and the DMG build
+  timeout: 3h
+
+installer:windows:
+  stage: installers
+  extends: [.apt, .rules-full]
+  image: $AF_IMAGE_UBUNTU
+  needs: [version, package:win64, installer-assets]
+  environment:
+    name: windows-signing
+    action: prepare
+  variables:
+    AF_APT_PACKAGES: nsis msitools wixl osslsigncode python3 zip 7zip ca-certificates
+  script:
+    - bash unreal/CI/scripts/windows-installers.sh
+  artifacts:
+    paths:
+      - unreal/CI/out/installers/windows/
+    expire_in: 4 weeks
+  timeout: 1h
+
+installer:android:
+  stage: installers
+  extends: [.apt, .rules-full]
+  image: $AF_IMAGE_JDK
+  needs:
+    - job: version
+    - job: package:android
+      optional: true
+    - job: package:android-win
+      optional: true
+  # the only job that receives the Android upload key (variables scoped to this environment, CI.md 4.2): the UE
+  # packaging job signs with a throw-away key, this ephemeral SaaS job re-signs the APK and the AAB
+  environment:
+    name: android-signing
+    action: prepare
+  variables:
+    AF_APT_PACKAGES: curl unzip python3 ca-certificates
+    ANDROID_HOME: $CI_PROJECT_DIR/.android-sdk
+  cache:
+    key: android-build-tools-$AF_ANDROID_BUILD_TOOLS
+    paths:
+      - .android-sdk/
+  script:
+    - bash unreal/CI/scripts/android-sdk-setup.sh
+    - bash unreal/CI/scripts/android-sign.sh
+  artifacts:
+    paths:
+      - unreal/CI/out/installers/android/
+    expire_in: 4 weeks
+  timeout: 1h
+
+# =================================================================================================== release
+release:
+  stage: release
+  image:
+    name: $AF_IMAGE_RELEASE
+    entrypoint: [""]
+  interruptible: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: never
+    - if: $CI_COMMIT_REF_PROTECTED != "true"   # the installers only exist for protected tags (.rules-full)
+      when: never
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
+  needs: [version, installer:mac-dmg, installer:windows, installer:android]
+  variables:
+    GLAB_ENABLE_CI_AUTOLOGIN: "true"   # glab authenticates with CI_JOB_TOKEN (never set GITLAB_TOKEN for this job)
+  before_script:
+    - command -v bash >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || apk add --no-cache bash curl >/dev/null
+  script:
+    - bash unreal/CI/scripts/release.sh
+  artifacts:
+    paths:
+      - unreal/CI/out/release-notes.md
+    expire_in: 4 weeks
+  timeout: 1h
+
+release:ios:
+  stage: release
+  image:
+    name: $AF_IMAGE_RELEASE
+    entrypoint: [""]
+  interruptible: false
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+      when: never
+    - if: $CI_COMMIT_REF_PROTECTED != "true"   # the installers only exist for protected tags (.rules-full)
+      when: never
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
+      when: manual
+      allow_failure: true
+  needs: [version, package:ios, release]
+  variables:
+    GLAB_ENABLE_CI_AUTOLOGIN: "true"
+  before_script:
+    - command -v bash >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || apk add --no-cache bash curl >/dev/null
+  script:
+    - bash unreal/CI/scripts/release-ios.sh
+  timeout: 30m

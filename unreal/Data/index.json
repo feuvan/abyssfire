@@ -28,6 +28,12 @@
       "sha256": "184c468c07f23dd1c91eaa7277dce4e44ef7e99b82645ddf275f12c531f3b943"
     },
     {
+      "file": "assets.json",
+      "counts": {"entries": 7},
+      "bytes": 22061,
+      "sha256": "f579d95371e247ef28e2fd61012a326d6cc9d8556cfae240b3d9deef981f16ad"
+    },
+    {
       "file": "audio_cues.json",
       "counts": {"cues": 35},
       "bytes": 13347,

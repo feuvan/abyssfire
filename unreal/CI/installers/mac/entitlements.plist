@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the Developer ID build of Abyssfire.app (unreal/CI/scripts/mac-dmg.sh).
+  The game is not sandboxed (direct distribution, saves under ~/Library/Application Support/Epic / Saved).
+  Every Mach-O in the bundle is re-signed with the same Developer ID, so library validation can stay on.
+  Add an exception here only when a runtime failure proves it is needed (Console: "code signature invalid"):
+    com.apple.security.cs.disable-library-validation   third-party dylibs signed by someone else
+    com.apple.security.cs.allow-jit                     a JIT (UE shipping builds do not use one)
+-->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

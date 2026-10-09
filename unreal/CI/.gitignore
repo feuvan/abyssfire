@@ -1,0 +1,3 @@
+# everything the CI scripts produce locally or on a runner (job artifacts are collected from here)
+/out/
+__pycache__/
