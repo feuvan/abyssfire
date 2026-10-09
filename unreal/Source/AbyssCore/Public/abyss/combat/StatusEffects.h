@@ -67,8 +67,11 @@ class ABYSS_API StatusEffectSystem {
                           double nowMs);
 
   // Tick then expire every tracked entity, in tracking order (first application order), effects in list order.
-  // FIX Q21: n = floor((now - lastTick) / interval) limited to MaxTicks() - ticksApplied; lastTick += n * interval.
-  // Ticks of an effect are reported before its expiry in the same call.
+  // FIX Q21: n = floor((now - lastTick) / interval) limited to MaxTicks() - ticksApplied; lastTick += n * interval (a
+  // 1e-6 ms tolerance absorbs the ulp between the step clock and the advanced stamp, so the tick due at the expiry step
+  // is never lost). A refresh restarts the cap with the new window. Ticks of an effect are reported before its expiry
+  // in the same call; an entity whose list empties leaves the tracking order (a later application re-enters at the end,
+  // like the web's Map.delete).
   void Tick(double nowMs, std::vector<StatusTick>& outTicks, std::vector<StatusExpiry>& outExpired);
 
   bool Has(EntityId target, StatusType type) const;

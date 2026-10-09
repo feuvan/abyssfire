@@ -1,36 +1,71 @@
-// Hit classification, contact timing and shake rules (combat-feel.md sections 10-11). STUB: owner area hero+combat.
+// Hit classification, contact timing and shake rules (combat-feel.md sections 10-11; P5, C9, S6).
 #include "abyss/base/Platform.h"
 
 #include "abyss/combat/HitFeedback.h"
 
-#include "abyss/base/Assert.h"
+#include <cmath>
+
+#include "abyss/base/Math.h"
 
 namespace abyss {
 
 HitWeight ClassifyHit(const HitFeedbackTable& t, double damage, double targetMaxHp, bool isCrit, bool killed,
                       bool isTick) {
-  ABYSS_UNIMPLEMENTED();
-  return HitWeight::Normal;
+  if (isTick) return HitWeight::Tick;
+  if (killed) return HitWeight::Kill;
+  if (isCrit) return HitWeight::Crit;
+  const double ratio = targetMaxHp > 0 ? damage / targetMaxHp : 0.0;
+  if (ratio >= t.heavyRatio) return HitWeight::Heavy;
+  if (ratio >= t.normalRatio) return HitWeight::Normal;
+  return HitWeight::Light;
 }
 
 double AttackSpeedScale(const AnimTimingTable& t, double animMs, double attackIntervalMs) {
-  ABYSS_UNIMPLEMENTED();
-  return 1.0;
+  if (!(attackIntervalMs > 0) || !(animMs > 0)) return 1.0;
+  return Clamp(attackIntervalMs * t.attackSpeedIntervalFactor / animMs, t.attackSpeedScaleMin, t.attackSpeedScaleMax);
 }
+
+namespace {
+const AnimClipDef* HitFeedbackFindClip(const AssetManifest& manifest, std::string_view artId, std::string_view clip) {
+  if (!manifest.loaded || artId.empty() || clip.empty()) return nullptr;
+  const AssetEntryDef* asset = manifest.FindByGameId(artId);
+  return asset != nullptr ? asset->FindClip(clip) : nullptr;
+}
+}  // namespace
 
 ActionTiming ComputeAttackTiming(const AnimTimingTable& t, const AssetManifest& manifest, std::string_view artId,
                                  AnimRig rig, double attackIntervalMs, std::string_view clip) {
-  ABYSS_UNIMPLEMENTED();
+  const AnimConfigDef& cfg = t.Preset(rig);
+  const AnimClipDef* c = HitFeedbackFindClip(manifest, artId, clip);
+  // Contact at play rate 1: the authored Contact notify when the manifest has it, else the web's frame rule
+  // round((frames - 1) * attackContact) * 1000 / fps (anim_timing contact table, unrounded).
+  const double contact1 = (c != nullptr && c->hasContactMs) ? c->contactMs : t.Contact(rig).frameContactMs;
   ActionTiming a;
-  a.contactMs = t.Contact(rig).frameContactMs;
+  a.speed = AttackSpeedScale(t, cfg.attackDuration, attackIntervalMs);
+  a.contactMs = JsRound(contact1 * a.speed);
+  a.windupMs = a.contactMs * t.attackWindupOfContact;
+  a.durationMs = cfg.attackDuration * a.speed;
+  a.playRate = a.speed > 0 ? 1.0 / a.speed : 1.0;
   return a;
 }
 
 ActionTiming ComputeCastTiming(const AnimTimingTable& t, const AssetManifest& manifest, std::string_view artId,
                                AnimRig rig, std::string_view clip) {
-  ABYSS_UNIMPLEMENTED();
+  const AnimConfigDef& cfg = t.Preset(rig);
+  const RigContactDef& rc = t.Contact(rig);
+  const AnimClipDef* c = HitFeedbackFindClip(manifest, artId, clip);
   ActionTiming a;
-  a.contactMs = t.Contact(rig).castReleaseMs;
+  if (c != nullptr && c->hasReleaseMs) {
+    a.contactMs = c->releaseMs;
+  } else if (rc.hasCastReleaseMs) {
+    a.contactMs = rc.castReleaseMs;
+  } else {
+    a.contactMs = JsRound(cfg.castDuration * t.castPhaseCharge);
+  }
+  a.windupMs = 0;
+  a.durationMs = cfg.castDuration;
+  a.speed = 1;
+  a.playRate = 1;
   return a;
 }
 
@@ -47,13 +82,18 @@ AnimRig HeroRig(ClassId cls) {
 }
 
 ShakeRequest HeroHitShake(const HitFeedbackTable& t, double damage, double heroMaxHp, bool isCrit) {
-  ABYSS_UNIMPLEMENTED();
-  return {};
+  if (isCrit) return {t.playerHitShakeCritMs, t.playerHitShakeCritIntensity};
+  const double ratio = heroMaxHp > 0 ? damage / heroMaxHp : 0.0;
+  ShakeRequest s;
+  s.durationMs =
+      Clamp(t.playerHitShakeMsBase + ratio * t.playerHitShakeMsPerRatio, t.playerHitShakeMsMin, t.playerHitShakeMsMax);
+  s.intensity = Clamp(ratio * t.playerHitShakePerRatio, t.playerHitShakeMin, t.playerHitShakeMax);
+  return s;
 }
 
 ShakeRequest AoeHitShake(const HitFeedbackTable& t, int32_t hits) {
-  ABYSS_UNIMPLEMENTED();
-  return {};
+  if (hits < 1) return {};
+  return {t.aoeHitShakeDurationMs, t.aoeHitShakeBase + hits * t.aoeHitShakePerHit};
 }
 
 ShakeRequest ProfileShake(const HitFeedbackTable& t, HitWeight w) {
@@ -61,10 +101,14 @@ ShakeRequest ProfileShake(const HitFeedbackTable& t, HitWeight w) {
   return {p.shakeMs, p.shakeIntensity};
 }
 
+// VFXManager throttle (a shake < throttleMs after the last accepted one is ignored) + Phaser's no-override rule (a new
+// shake while one is still running is ignored).
 bool ShakeThrottle::Accept(const ShakeRequest& s, double nowMs, double throttleMs) {
-  ABYSS_UNIMPLEMENTED();
-  (void)lastAcceptedMs_;
-  (void)runningUntilMs_;
+  if (s.Empty()) return false;
+  if (nowMs - lastAcceptedMs_ < throttleMs) return false;
+  if (nowMs < runningUntilMs_) return false;
+  lastAcceptedMs_ = nowMs;
+  runningUntilMs_ = nowMs + s.durationMs;
   return true;
 }
 
@@ -73,8 +117,7 @@ uint32_t ClassImpactColor(const HitFeedbackTable& t, ClassId cls) {
 }
 
 double MonsterAttackerStopMs(const HitFeedbackTable& t, HitWeight w) {
-  ABYSS_UNIMPLEMENTED();
-  return 0;
+  return JsRound(t.Profile(w).attackerStopMs * t.monsterHitAttackerStopFactor);
 }
 
 }  // namespace abyss

@@ -133,6 +133,18 @@ struct MonsterAiDef {
   double patrolTimeoutMs = 4000;                   // M10
   int32_t placementTries = 8;                      // M10
   double yawTurnRateDegPerSec = 720;               // M11 (render)
+  // M6 steering constants. monster_ai.json only names the decision (port.pathfinding text), so these port-only tuning
+  // values live here (not loaded): A* repath interval, the line-of-walk sampling step, the wall-slide rule and the
+  // separation steering (neighbours closer than separationRadius push apart at up to separationMaxSpeed tiles/s;
+  // attacking monsters are never pushed out of their attack range).
+  double repathIntervalMs = 500;
+  double lineOfWalkStep = 0.25;
+  double separationRadius = 0.75;
+  double separationMaxSpeed = 1.0;
+  // Returning (M1) ends on arrival (< arriveEpsilon) or once within this many tiles of the anchor (monsters 3.5 FIX).
+  double returnHomeRadius = 1;
+  // Hero position while hidden by a safe zone (monsters 3.8: update(..., -999, -999)).
+  double hiddenHeroCoord = -999;
 };
 
 struct MonsterOverride {

@@ -1,0 +1,826 @@
+{
+ "assets": {
+  "SK_Hero_Warrior": {
+   "anims": [
+    {
+     "asset": "A_Hero_Warrior_Idle",
+     "fbx": "Characters/A_Hero_Warrior_Idle.fbx",
+     "fps": 60,
+     "frames": 60,
+     "lengthMs": 1000.0,
+     "loop": true,
+     "name": "Idle",
+     "notifies": []
+    },
+    {
+     "asset": "A_Hero_Warrior_Walk",
+     "fbx": "Characters/A_Hero_Warrior_Walk.fbx",
+     "fps": 60,
+     "frames": 60,
+     "lengthMs": 1000.0,
+     "loop": true,
+     "name": "Walk",
+     "notifies": [
+      {
+       "ms": 0.0,
+       "name": "FootL"
+      },
+      {
+       "ms": 500.0,
+       "name": "FootR"
+      }
+     ],
+     "refSpeedCmS": 120.0
+    },
+    {
+     "asset": "A_Hero_Warrior_Run",
+     "fbx": "Characters/A_Hero_Warrior_Run.fbx",
+     "fps": 60,
+     "frames": 42,
+     "lengthMs": 700.0,
+     "loop": true,
+     "name": "Run",
+     "notifies": [
+      {
+       "ms": 0.0,
+       "name": "FootL"
+      },
+      {
+       "ms": 350.0,
+       "name": "FootR"
+      }
+     ],
+     "refSpeedCmS": 333.3
+    },
+    {
+     "asset": "A_Hero_Warrior_Attack01",
+     "contactMs": 308.0,
+     "fbx": "Characters/A_Hero_Warrior_Attack01.fbx",
+     "fps": 60,
+     "frames": 37,
+     "lengthMs": 615.0,
+     "loop": false,
+     "name": "Attack01",
+     "notifies": [
+      {
+       "ms": 308.0,
+       "name": "Contact"
+      }
+     ]
+    },
+    {
+     "asset": "A_Hero_Warrior_Attack02",
+     "contactMs": 308.0,
+     "fbx": "Characters/A_Hero_Warrior_Attack02.fbx",
+     "fps": 60,
+     "frames": 37,
+     "lengthMs": 615.0,
+     "loop": false,
+     "name": "Attack02",
+     "notifies": [
+      {
+       "ms": 308.0,
+       "name": "Contact"
+      }
+     ]
+    },
+    {
+     "asset": "A_Hero_Warrior_Attack03",
+     "contactMs": 308.0,
+     "fbx": "Characters/A_Hero_Warrior_Attack03.fbx",
+     "fps": 60,
+     "frames": 37,
+     "lengthMs": 615.0,
+     "loop": false,
+     "name": "Attack03",
+     "notifies": [
+      {
+       "ms": 308.0,
+       "name": "Contact"
+      }
+     ]
+    },
+    {
+     "asset": "A_Hero_Warrior_Cast01",
+     "fbx": "Characters/A_Hero_Warrior_Cast01.fbx",
+     "fps": 60,
+     "frames": 44,
+     "lengthMs": 727.0,
+     "loop": false,
+     "name": "Cast01",
+     "notifies": [
+      {
+       "ms": 334.0,
+       "name": "Release"
+      }
+     ],
+     "releaseMs": 334.0
+    },
+    {
+     "asset": "A_Hero_Warrior_Cast02",
+     "fbx": "Characters/A_Hero_Warrior_Cast02.fbx",
+     "fps": 60,
+     "frames": 44,
+     "lengthMs": 727.0,
+     "loop": false,
+     "name": "Cast02",
+     "notifies": [
+      {
+       "ms": 334.0,
+       "name": "Release"
+      }
+     ],
+     "releaseMs": 334.0,
+     "skills": [
+      "shield_wall",
+      "iron_fortress",
+      "taunt_roar",
+      "frenzy",
+      "vengeful_wrath",
+      "war_stomp"
+     ]
+    },
+    {
+     "asset": "A_Hero_Warrior_Cast_Whirlwind",
+     "fbx": "Characters/A_Hero_Warrior_Cast_Whirlwind.fbx",
+     "fps": 60,
+     "frames": 44,
+     "lengthMs": 727.0,
+     "loop": false,
+     "name": "Cast_Whirlwind",
+     "notifies": [
+      {
+       "ms": 334.0,
+       "name": "Release"
+      }
+     ],
+     "releaseMs": 334.0,
+     "signature": true,
+     "skill": "whirlwind"
+    },
+    {
+     "asset": "A_Hero_Warrior_Cast_Charge",
+     "fbx": "Characters/A_Hero_Warrior_Cast_Charge.fbx",
+     "fps": 60,
+     "frames": 44,
+     "lengthMs": 727.0,
+     "loop": false,
+     "name": "Cast_Charge",
+     "notifies": [
+      {
+       "ms": 334.0,
+       "name": "Release"
+      }
+     ],
+     "releaseMs": 334.0,
+     "signature": true,
+     "skill": "charge"
+    },
+    {
+     "asset": "A_Hero_Warrior_Hurt",
+     "fbx": "Characters/A_Hero_Warrior_Hurt.fbx",
+     "fps": 60,
+     "frames": 20,
+     "lengthMs": 333.0,
+     "loop": false,
+     "name": "Hurt",
+     "notifies": []
+    },
+    {
+     "additive": true,
+     "additiveBase": {
+      "anim": "A_Hero_Warrior_HurtAdd",
+      "frame": 0,
+      "note": "Local-space additive; base = its own frame 0 (the READY pose)",
+      "type": "LocalAnimFrame"
+     },
+     "asset": "A_Hero_Warrior_HurtAdd",
+     "fbx": "Characters/A_Hero_Warrior_HurtAdd.fbx",
+     "fps": 60,
+     "frames": 20,
+     "lengthMs": 333.0,
+     "loop": false,
+     "name": "HurtAdd",
+     "notifies": []
+    },
+    {
+     "asset": "A_Hero_Warrior_Dodge",
+     "fbx": "Characters/A_Hero_Warrior_Dodge.fbx",
+     "fps": 60,
+     "frames": 18,
+     "lengthMs": 300.0,
+     "loop": false,
+     "name": "Dodge",
+     "notifies": []
+    },
+    {
+     "asset": "A_Hero_Warrior_Death",
+     "fbx": "Characters/A_Hero_Warrior_Death.fbx",
+     "fps": 60,
+     "frames": 45,
+     "lengthMs": 750.0,
+     "loop": false,
+     "name": "Death",
+     "notifies": []
+    },
+    {
+     "asset": "A_Hero_Warrior_Portrait",
+     "fbx": "Characters/A_Hero_Warrior_Portrait.fbx",
+     "fps": 60,
+     "frames": 1,
+     "lengthMs": 16.7,
+     "loop": false,
+     "name": "Portrait",
+     "notifies": [],
+     "staticPose": true
+    }
+   ],
+   "attachments": [
+    {
+     "object": "SM_Hero_Warrior_Sword",
+     "socket": "weapon_r"
+    },
+    {
+     "object": "SM_Hero_Warrior_Shield",
+     "socket": "weapon_l"
+    }
+   ],
+   "blobShadowRadiusCm": 39.0,
+   "bones": 53,
+   "boundsCm": {
+    "max": [
+     40.633,
+     40.076,
+     181.302
+    ],
+    "min": [
+     -42.988,
+     -40.829,
+     -1.774
+    ]
+   },
+   "budget": {
+    "decision": "The \u00a71.9 figures budget the toon surface. The baked outline hull (P7) is a second, cheap draw (same skinning, unlit one-colour pixel shader, front faces culled) budgeted separately at <= 0.5x the toon triangles: hidden or small parts (rivets, seams, mail rows, inner lames, bands inside a neighbour's hull) get no hull or a low-poly hull proxy (Builder.add(hull=...)).",
+    "drawnLod0": 30746,
+    "lod0": {
+     "outline": 7108,
+     "toon": 17836
+    },
+    "lod1": {
+     "outline": 3512,
+     "toon": 6989
+    },
+    "spec": "art-inventory-ch1 \u00a71.9 hero: LOD0 14-18k, LOD1 7k triangles, <= 75 bones per section",
+    "weapons": {
+     "outline": 1734,
+     "toon": 4068
+    }
+   },
+   "category": "Characters",
+   "displayName": {
+    "en": "Abyssfire Knight",
+    "zh-CN": "\u6e0a\u706b\u9a91\u58eb"
+   },
+   "fbx": "Characters/SK_Hero_Warrior.fbx",
+   "fx": {
+    "attackTrail": {
+     "alpha": 0.55,
+     "color": "#DFE8FF",
+     "sampleMs": 13,
+     "samples": 7,
+     "sockets": [
+      "tip",
+      "mid"
+     ]
+    },
+    "castBladeGlow": {
+     "alpha": 0.55,
+     "color": "#FF8A2A",
+     "embers": {
+      "color": "#FFB060",
+      "count": 6
+     },
+     "radiusCm": 33,
+     "tipAlpha": 0.8,
+     "tipColor": "#FFD08A",
+     "tipRadiusCm": 18
+    },
+    "castTrail": {
+     "alpha": 0.55,
+     "color": "#FF8A2A",
+     "sockets": [
+      "tip",
+      "mid"
+     ]
+    },
+    "classColor": "#D0473A",
+    "heroHalo": {
+     "color": "#FFEEDD",
+     "radiusCm": 200
+    },
+    "impactColor": "#FFD98A",
+    "spiritColor": "#FFB45C",
+    "visorGlow": {
+     "alpha": 0.6,
+     "alphaPerFx": 0.25,
+     "color": "#FF8A2A",
+     "offAtDeathFraction": 0.6,
+     "radiusCm": 12.0,
+     "socket": "visor"
+    }
+   },
+   "gameIds": [
+    "player_warrior"
+   ],
+   "heightCm": 176.0,
+   "kind": "SkeletalMesh",
+   "lods": [
+    {
+     "asset": "SK_Hero_Warrior_LOD1",
+     "fbx": "Characters/SK_Hero_Warrior_LOD1.fbx",
+     "import": "same SKEL_Human armature and bind pose; import as LOD index 1 of SK_Hero_Warrior (USkeletalMeshEditorSubsystem::ImportLOD / Interchange LOD import) \u2014 Blender's FBX exporter cannot write an FbxLODGroup, so the LOD ships as its own file",
+     "index": 1,
+     "screenSize": 0.3,
+     "triangles": {
+      "outline": 3512,
+      "toon": 6989
+     }
+    }
+   ],
+   "materialSlots": [
+    {
+     "index": 0,
+     "name": "MI_AF_Toon_Heroes",
+     "palette": "Heroes",
+     "parent": "M_AF_Toon"
+    },
+    {
+     "class": "hero",
+     "index": 1,
+     "name": "M_AF_Outline",
+     "outlineMix": 0.4,
+     "outlinePx1080": 3.5,
+     "palette": "Heroes",
+     "parent": "M_AF_Outline",
+     "px1080AtDefaultDistance": 2.16,
+     "widthCm": 1.8
+    }
+   ],
+   "notes": "Dodge clip is in place; the UE module lerps a mesh offset (1.8 tiles). Cast_Charge is in place; the core dashes the actor (C4).",
+   "portrait": "Portraits/T_UI_Portrait_Hero_Warrior.png",
+   "previews": [
+    "hero_warrior/anim_Attack01.png",
+    "hero_warrior/anim_Attack02.png",
+    "hero_warrior/anim_Attack03.png",
+    "hero_warrior/anim_Cast01.png",
+    "hero_warrior/anim_Cast02.png",
+    "hero_warrior/anim_Cast_Charge.png",
+    "hero_warrior/anim_Cast_Whirlwind.png",
+    "hero_warrior/anim_Death.png",
+    "hero_warrior/anim_Dodge.png",
+    "hero_warrior/anim_Hurt.png",
+    "hero_warrior/anim_HurtAdd.png",
+    "hero_warrior/anim_Idle.png",
+    "hero_warrior/anim_Portrait.png",
+    "hero_warrior/anim_Run.png",
+    "hero_warrior/anim_Walk.png",
+    "hero_warrior/anim_back_Attack01.png",
+    "hero_warrior/anim_back_Attack02.png",
+    "hero_warrior/anim_back_Attack03.png",
+    "hero_warrior/anim_back_Cast01.png",
+    "hero_warrior/anim_back_Cast02.png",
+    "hero_warrior/anim_back_Cast_Charge.png",
+    "hero_warrior/anim_back_Cast_Whirlwind.png",
+    "hero_warrior/anim_back_Death.png",
+    "hero_warrior/anim_back_Dodge.png",
+    "hero_warrior/closeup.png",
+    "hero_warrior/game.png",
+    "hero_warrior/game_1080crop.png",
+    "hero_warrior/game_contacts.png",
+    "hero_warrior/game_poses.png",
+    "hero_warrior/game_visorglow.png",
+    "hero_warrior/lod1.png",
+    "hero_warrior/portrait.png",
+    "hero_warrior/portrait_zoom2x.png",
+    "hero_warrior/poses_attack_cast.png",
+    "hero_warrior/poses_signature_hurt.png",
+    "hero_warrior/turnaround.png",
+    "hero_warrior/weapons.png"
+   ],
+   "scale": 1.0,
+   "skeleton": "SKEL_Human",
+   "sockets": [
+    {
+     "bone": "root",
+     "name": "fx_feet",
+     "relLocCm": [
+      0.0,
+      -0.0,
+      0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      -0.0,
+      0.0
+     ]
+    },
+    {
+     "bone": "spine_03",
+     "name": "fx_chest",
+     "relLocCm": [
+      0.0,
+      21.038,
+      0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      -0.0,
+      96.8
+     ]
+    },
+    {
+     "bone": "head",
+     "name": "fx_head",
+     "relLocCm": [
+      0.0,
+      -12.574,
+      0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      -0.0,
+      155.043
+     ]
+    },
+    {
+     "bone": "head",
+     "name": "fx_overhead",
+     "relLocCm": [
+      0.0,
+      -58.532,
+      0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      -0.0,
+      201.0
+     ]
+    },
+    {
+     "bone": "hand_l",
+     "name": "fx_hand_l",
+     "relLocCm": [
+      0.0,
+      -5.504,
+      0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      56.976,
+      4.677,
+      80.615
+     ]
+    },
+    {
+     "bone": "hand_r",
+     "name": "fx_hand_r",
+     "relLocCm": [
+      -0.0,
+      -5.504,
+      0.0
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      -56.976,
+      4.677,
+      80.615
+     ]
+    },
+    {
+     "bone": "head",
+     "name": "visor",
+     "relLocCm": [
+      0.0,
+      -12.846,
+      19.457
+     ],
+     "relRotDeg": [
+      0,
+      0,
+      0
+     ],
+     "restLocCm": [
+      0.0,
+      19.457,
+      155.315
+     ]
+    }
+   ],
+   "triangles": {
+    "outline": 7108,
+    "toon": 17836
+   }
+  },
+  "SM_Hero_Warrior_Shield": {
+   "attachSocket": "weapon_l",
+   "boundsCm": {
+    "max": [
+     14.966,
+     2.9,
+     28.356
+    ],
+    "min": [
+     -23.966,
+     -15.0,
+     -33.735
+    ]
+   },
+   "category": "Weapons",
+   "faceAxis": "+Y (bone forward)",
+   "fbx": "Weapons/SM_Hero_Warrior_Shield.fbx",
+   "gameIds": [],
+   "heldBy": [
+    "SK_Hero_Warrior"
+   ],
+   "kind": "StaticMesh",
+   "materialSlots": [
+    {
+     "index": 0,
+     "name": "MI_AF_Toon_Heroes",
+     "palette": "Heroes",
+     "parent": "M_AF_Toon"
+    },
+    {
+     "class": "weapon",
+     "index": 1,
+     "name": "M_AF_Outline",
+     "outlinePx1080": 3.5,
+     "palette": "Heroes",
+     "parent": "M_AF_Outline",
+     "widthCm": 1.3
+    }
+   ],
+   "previews": [
+    "hero_warrior/weapons.png"
+   ],
+   "scale": 1.0,
+   "sizeCm": [
+    36.0,
+    60.0
+   ],
+   "sockets": [
+    {
+     "locCm": [
+      -4.5,
+      -13.8,
+      -2.0
+     ],
+     "name": "center",
+     "rotDeg": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "locCm": [
+      -4.5,
+      -14.3,
+      -4.0
+     ],
+     "name": "emblem",
+     "rotDeg": [
+      0,
+      0,
+      0
+     ]
+    }
+   ],
+   "triangles": {
+    "outline": 752,
+    "toon": 2560
+   },
+   "weaponType": "shield"
+  },
+  "SM_Hero_Warrior_Sword": {
+   "attachSocket": "weapon_r",
+   "bladeCm": 80.0,
+   "boundsCm": {
+    "max": [
+     4.597,
+     15.0,
+     15.3
+    ],
+    "min": [
+     -4.597,
+     -92.2,
+     -15.3
+    ]
+   },
+   "category": "Weapons",
+   "fbx": "Weapons/SM_Hero_Warrior_Sword.fbx",
+   "gameIds": [],
+   "guardCm": 28.0,
+   "heldBy": [
+    "SK_Hero_Warrior"
+   ],
+   "kind": "StaticMesh",
+   "lengthCm": 104.2,
+   "materialSlots": [
+    {
+     "index": 0,
+     "name": "MI_AF_Toon_Heroes",
+     "palette": "Heroes",
+     "parent": "M_AF_Toon"
+    },
+    {
+     "class": "weapon",
+     "index": 1,
+     "name": "M_AF_Outline",
+     "outlinePx1080": 3.5,
+     "palette": "Heroes",
+     "parent": "M_AF_Outline",
+     "widthCm": 1.3
+    }
+   ],
+   "previews": [
+    "hero_warrior/weapons.png"
+   ],
+   "scale": 1.0,
+   "sockets": [
+    {
+     "locCm": [
+      0.0,
+      -90.5,
+      0.0
+     ],
+     "name": "tip",
+     "rotDeg": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "locCm": [
+      0.0,
+      -50.5,
+      0.0
+     ],
+     "name": "mid",
+     "rotDeg": [
+      0,
+      0,
+      0
+     ]
+    },
+    {
+     "locCm": [
+      0.0,
+      -10.5,
+      0.0
+     ],
+     "name": "guard",
+     "rotDeg": [
+      0,
+      0,
+      0
+     ]
+    }
+   ],
+   "triangles": {
+    "outline": 982,
+    "toon": 1508
+   },
+   "weaponType": "sword"
+  }
+ },
+ "gameIds": {
+  "player_warrior": "SK_Hero_Warrior"
+ },
+ "generator": "abyssfire blender kit 1.0.0 (Blender 5.0.1)",
+ "palettes": {
+  "Heroes": {
+   "atlasPx": 256,
+   "baseColor": {
+    "file": "Textures/T_AF_Palette_Heroes_BC.png",
+    "name": "T_AF_Palette_Heroes_BC",
+    "srgb": true
+   },
+   "filter": "nearest",
+   "material": "MI_AF_Toon_Heroes",
+   "mips": false,
+   "params": {
+    "channels": {
+     "a": "outlineMix",
+     "b": "emissive",
+     "g": "lightAmt",
+     "r": "shadowAmt"
+    },
+    "file": "Textures/T_AF_Palette_Heroes_P.png",
+    "name": "T_AF_Palette_Heroes_P",
+    "srgb": false
+   },
+   "parent": "M_AF_Toon",
+   "swatchPx": 16
+  }
+ },
+ "schemaVersion": 1,
+ "shading": {
+  "bandWidth": 0.02,
+  "camera": {
+   "defaultDistanceCm": 2537.3,
+   "focusZCm": 50.0,
+   "fovH": 35.0,
+   "pitchUE": -50.0,
+   "yawUE": 45.0
+  },
+  "emissiveBoost": 0.6,
+  "grounding": {
+   "alpha": 0.22,
+   "color": "#0A0818",
+   "fromH": 0.38,
+   "source": "vertex colour AF_Data.r (baked weight, linear)",
+   "toH": 0.05
+  },
+  "ink": "#120C18",
+  "keyLight": {
+   "dirToLightUE": [
+    0.40558,
+    -0.40558,
+    0.819152
+   ],
+   "dirToLightView": {
+    "right": -0.5736,
+    "towardViewer": 0.6275,
+    "up": 0.5265
+   },
+   "elevationDeg": 55.0,
+   "fromYawUE": -45.0
+  },
+  "model": "M_AF_Toon (unlit, custom 3-band half-Lambert, sRGB-space tone)",
+  "rim": {
+   "alpha": 0.55,
+   "color": "#FFECC8",
+   "maskEdge": 0.05,
+   "power": 4.0
+  },
+  "tLight": 0.86,
+  "tShade": 0.42,
+  "toneConstants": {
+   "coolShade": [
+    30.0,
+    20.0,
+    60.0
+   ],
+   "coolShadeMix": 0.35,
+   "lineDarken": 0.55,
+   "lineTint": [
+    20.0,
+    10.0,
+    30.0
+   ],
+   "lineTintMix": 0.5,
+   "warmLight": [
+    255.0,
+    244.0,
+    214.0
+   ]
+  }
+ },
+ "units": {
+  "axes": "UE (X fwd, Y right, Z up)",
+  "blender": "1 BU = 1 m",
+  "characterForward": "+Y (mesh); actor rotates the mesh yaw -90",
+  "fps": 60,
+  "ue": "cm"
+ }
+}

@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+# generated .blend scenes (kit.scene.save_blend) are regenerated from the scripts, not committed
+source/

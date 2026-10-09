@@ -11,6 +11,7 @@
 #include "abyss/base/Platform.h"
 #include "abyss/base/Types.h"
 #include "abyss/data/CombatData.h"
+#include "abyss/sim/SimTypes.h"
 
 namespace abyss {
 
@@ -57,11 +58,13 @@ class ABYSS_API SoulEchoSystem {
  public:
   explicit SoulEchoSystem(SimContext& ctx);
 
-  // Hero death (combat 13.3 step 2): applies the penalty to the hero; overworld -> Leave() + logs + EvEntitySpawned
-  // of the echo prop; dungeon -> permanent loss + zone.soulEcho.lostInDungeon.
+  // Hero death (combat 13.3 step 2): applies the penalty through RewardService (GoldReason::DeathPenalty,
+  // ExpSource::DeathPenalty); overworld -> Leave() + logs (faded / left) + EvEntitySpawned of the echo prop (Prop,
+  // defId "soul_echo", artId = the hero class); dungeon -> permanent loss + zone.soulEcho.lostInDungeon.
   void OnHeroDied(Vec2 pos, bool inDungeon);
-  // Per step while the hero is alive and the echo is in this zone: claim within claimRangeTiles -> gold + exp,
-  // log zone.soulEcho.claimed, SFX resonance, SaveRequestMsg{SoulEchoClaimed}.
+  // Per step while the hero is alive and the echo is in this zone: claim within claimRangeTiles -> gold + exp
+  // (RewardService, SoulEchoClaim), log zone.soulEcho.claimed, SFX resonance, prop despawned (Collected),
+  // SaveRequestMsg{SoulEchoClaimed}. The snapshot carries a MarkerKind::SoulEcho marker (key = gold) for the label.
   void Tick();
   void OnZoneEnter();  // spawns the echo prop when it lies in this zone
   const SoulEchoState& State() const { return state_; }
@@ -71,6 +74,9 @@ class ABYSS_API SoulEchoSystem {
   void ReadSave(const SaveData& in);
 
  private:
+  void SpawnProp();                       // EvEntitySpawned{Prop, "soul_echo", art = hero class} when in this zone
+  void DespawnProp(DespawnReason reason);  // EvEntityDespawned
+
   SimContext& ctx_;
   SoulEchoState state_;
   EntityId propId_ = kNoEntity;

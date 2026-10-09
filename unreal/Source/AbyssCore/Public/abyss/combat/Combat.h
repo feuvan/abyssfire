@@ -12,7 +12,23 @@
 //
 // Kill credit: MonsterSystem::ApplyDamage publishes MonsterKilledMsg exactly once; CombatSystem::OnMonsterKilled is
 // the combat part of the kill pipeline (subscribed first by GameSim): clear statuses, Spirit 'kill', exp and gold
-// through RewardService (ExpSource::Kill, GoldReason::Kill), killHealPercent, floating texts, target cleanup.
+// through RewardService (ExpSource::Kill, GoldReason::Kill), killHealPercent, floating texts, target cleanup
+// (LastKillReward() keeps the exp / gold for MonsterSystem's zone.monsterKill line).
+//
+// Port decisions taken here (beyond the spec text):
+// * C5: a frozen / stunned hero cannot start a basic attack, cast, dodge or teleport, and a strike contact / skill
+//   release that comes due while immobilized fizzles (the monsters' "stun interrupts the swing" rule). Hero slow only
+//   scales movement (HeroLocomotion), like a monster's.
+// * D13 F2 is applied (a cinematic cancels pending monster contacts); S7's "not because of a cinematic" is read as "no
+//   contact-time cinematic check", since the sim clock cannot run during one.
+// * FIX Q7: at the release beat a range-checked skill whose (re)target is beyond range + slack takes the nearest
+//   monster in reach, else fizzles (cost spent).
+// * C4 ground effects: each tick is a full calculateDamage (own rolls) scaled by 1 / ticks (min 1), and evaluates the
+//   skill's status rules per tick (fire wall: same expected burn as the web's one-shot). A Charge whose target already
+//   stands within melee range hits at once (no zero-length dash).
+// * Audio: every hit emits a cue (SfxForCombatHit; hero damage -> the A6 player_hurt cue; the A7 monster_hurt vocal on
+//   non-lethal, non-tick monster hits); the hero's stat dodge stays silent (web).
+// * Life Regen heals inside Hero::TickRegen (hero area); TickPassives does Unyielding and Dual Wield.
 #pragma once
 
 #include <cstdint>
@@ -28,6 +44,10 @@
 #include "abyss/combat/HitFeedback.h"
 #include "abyss/combat/Projectiles.h"
 #include "abyss/combat/SkillTargeting.h"
+#include "abyss/combat/StatusEffects.h"
+#include "abyss/data/AudioData.h"
+#include "abyss/data/SkillData.h"
+#include "abyss/hero/Spirit.h"
 #include "abyss/sim/GameplayBus.h"
 
 namespace abyss {
@@ -43,9 +63,10 @@ enum class CombatTimerKind : uint16_t {
   SkillDelayedHit,        // T4: AoE batch / per-target arrow delay / chain stagger (param = pending hit slot)
   CombatStateOff,         // 9.6: 1500 ms falling-edge debounce (true debounce)
   HeroRespawn,            // T12: 1100 ms after death
-  // C4: Charge = HeroLocomotion::StartDash(to the target's melee reach, SkillPortDef::dashDurationMs) + this timer at
-  // startMs + duration; on fire the hit resolves where the hero stands (a dash interrupted by stun / freeze, C5, hits
-  // only if the target is still within melee reach). Sim clock: a modal freeze holds both (F3).
+  // C4: Charge = HeroLocomotion::StartDash(to attackRange short of the target, SkillPortDef::dashDurationMs) at the
+  // release beat + this timer at startMs + duration (param = pending release slot); on fire the hit resolves where the
+  // hero stands, if the target is within melee reach (attackRange + skill_rules rangeSlackTiles) - a dash interrupted by
+  // stun / freeze (C5) may fall short. Sim clock: a modal freeze holds both (F3).
   ChargeDashEnd,
   DeathSaveRearm,         // T11 bookkeeping (the ready time itself lives in Hero::deathSaveReadyAtMs)
 };
@@ -66,7 +87,9 @@ enum class SkillRequestResult : uint8_t {
   Buffered,   // stored in the 180 ms input buffer (EvSkillBuffered)
 };
 
-// A hit on a monster from any source (pets, status ticks, environment); hero hits use the internal paths.
+// A hit on a monster from any source (pets, status ticks, environment); hero hits use the internal paths, which end
+// here too. Resolved feel (EvHit): attackerStopMs = profile.attackerStopMs for KillSource::HeroBasic, else 0; the
+// impact burst + its profile shake only when `impactBurst`; elite killed by HeroBasic -> S6 slow motion.
 struct MonsterHitRequest {
   EntityId monster = kNoEntity;
   double amount = 0;
@@ -80,6 +103,15 @@ struct MonsterHitRequest {
   uint32_t impactColor = 0;
   std::string skillId;
   HitNumberSlot numberSlot = HitNumberSlot::Primary;  // proc extra hits (double strike / double shot)
+  bool impactBurst = false;  // hero basic attacks and skills (not death_mark / slow_trap / ticks / pets)
+  bool provokes = true;      // M2 (DamageFlags::provokes); false for DoT ticks
+};
+
+// Exp and gold paid by the last kill (kill pipeline step 1), for the zone.monsterKill log written by the last handler.
+struct KillRewardInfo {
+  EntityId monster = kNoEntity;
+  int64_t exp = 0;
+  int64_t gold = 0;
 };
 
 struct HeroHitRequest {
@@ -161,6 +193,10 @@ class ABYSS_API CombatSystem {
   EntityId PreferredTarget() const;   // 9.2
   EntityId IndicatorTarget() const;   // 9.5
   bool InCombat() const { return inCombat_; }
+  // Exp / gold of the last kill credited by OnMonsterKilled (for MonsterSystem's zone.monsterKill log line).
+  const KillRewardInfo& LastKillReward() const { return lastKill_; }
+  // A monster swing is in its wind-up telegraph (0.62 x contact after the swing start, combat 10.3).
+  bool IsWindingUp(EntityId monster) const;
   const DodgeController& Dodge() const { return dodge_; }
   const InputBuffer& Buffer() const { return buffer_; }
   // Combatant views for the damage formula (combat-feel 1.2).
@@ -170,34 +206,120 @@ class ABYSS_API CombatSystem {
   void FillSnapshot(Snapshot& out) const;
 
  private:
+  // A skill waiting for its release beat (T4), or a Charge waiting for its dash end (C4). Slot index = timer param.
   struct PendingRelease {
     int32_t skillIndex = -1;
     int32_t level = 0;
     EntityId target = kNoEntity;
     SkillAim aim;
+    int32_t manaCost = 0;
     bool used = false;
   };
+  // A delayed skill hit (T4): the meteor batch (all targets, then the AoE shake), a per-target arrow delay or one link
+  // of the chain-lightning stagger. Slot index = timer param.
   struct PendingHit {
     int32_t skillIndex = -1;
     int32_t level = 0;
     std::vector<EntityId> targets;
     Vec2 center;
-    bool hasAnchor = false;
+    bool blastFrom = false;  // knock-back from `center` (ground skills), else from the hero
+    bool batchShake = false;
     bool used = false;
   };
+  // A monster swing waiting for its contact beat (T1): telegraph state for the snapshot and the F2 cancel event.
+  struct PendingStrike {
+    EntityId monster = kNoEntity;
+    double startMs = 0;
+    double windupMs = 0;
+    TimerId timer = kNoTimer;
+  };
+  // One hero hit on a monster (basic attack, proc extra hit, skill hit, ground-effect tick).
+  struct HeroHitSpec {
+    EntityId target = kNoEntity;
+    const SkillDef* skill = nullptr;  // nullptr = basic attack
+    int32_t level = 1;
+    bool forceCrit = false;
+    double damageShare = 1.0;         // C4 ground-effect tick share
+    bool applyStatusRules = true;
+    bool impactBurst = true;
+    bool hasFrom = false;
+    Vec2 from;
+    HitNumberSlot numberSlot = HitNumberSlot::Primary;
+  };
+  struct HeroHitOutcome {
+    bool attempted = false;  // the target was alive
+    bool dodged = false;
+    bool killed = false;
+    int32_t damage = 0;
+    bool crit = false;
+    HitWeight weight = HitWeight::Tick;
+  };
+
+  // ---- skills ----
+  int32_t CastManaCost(int32_t skillIndex) const;
+  bool SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget) const;
+  void TryUseSkill(int32_t skillIndex, const SkillAim& aim);
+  void ReleaseSkill(int32_t skillIndex, int32_t level, EntityId target, const SkillAim& aim, int32_t manaCost);
+  void ReleaseTeleport(const SkillDef& s, int32_t level, EntityId target, const SkillAim& aim, int32_t manaCost);
+  void ReleaseShadowStep(const SkillDef& s, int32_t level, EntityId target);
+  void ReleaseDeathMark(const SkillDef& s, int32_t level, EntityId target);
+  void ReleaseBuff(const SkillDef& s, int32_t level);
+  void ReleaseAoe(const SkillDef& s, int32_t level, EntityId target);
+  void ReleaseSingle(const SkillDef& s, int32_t level, EntityId target);
+  void SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, double radius, double share);
+  // Shared single-target / AoE hit (classes 9.7 "apply hit"), true when the target was alive.
+  HeroHitOutcome ApplySkillHit(const SkillDef& s, int32_t level, EntityId target, bool blastFrom, Vec2 center,
+                               double share);
+  void ApplySkillStatuses(const SkillDef& s, int32_t level, EntityId target, double dealt);
+  int32_t AllocRelease(const PendingRelease& r);
+  int32_t AllocHit(PendingHit h);
+  void FireDelayedHit(int32_t slot);
+  void ResolveChargeDash(int32_t slot);
+
+  // ---- hits ----
+  HeroHitOutcome HeroHitMonster(const HeroHitSpec& h);
+  void ResolveHeroStrike(EntityId target);
+  void ResolveMonsterStrike(EntityId monster);
+  void ApplyMonsterHit(EntityId monster, bool ranged);
+  // Raw HP loss with feedback (EvHit, number, SFX, shake, HeroDamagedMsg); no death check.
+  void HurtHero(double amount, bool crit, bool tick, DamageType element, EntityId source, bool melee, HitWeight weight,
+                double attackerStopMs);
+  bool TryDeathSave();
+  void EmitMiss(EntityId target, Faction faction, EntityId source, const std::string& skillId, bool iframe);
+  void ApplySteal(int32_t damage, bool crit, int32_t lifeStolen, int32_t manaStolen);
+  void ConsumeCritBonus();
+  void GainSpirit(SpiritSource source, bool crit);
+  StatusApplyOutcome ApplyStatus(EntityId target, StatusType type, double value, double durationMs,
+                                     EntityId source);
+  void Shake(double durationMs, double intensity);
+  void EmitSfx(SfxId cue, Vec2 pos, EntityId source);
+  void StartEliteSlowMotion();
+
+  // ---- state helpers ----
+  void SetTargetInternal(EntityId target);
+  void UpdateIndicator();
+  void Respawn();
+  void CancelPendingStrikes(bool emitCancelled);
+  bool HeroImmobilized() const;
+  bool HeroAlive() const;
+  double SkillReach(const SkillDef& s) const;  // range + rangeSlackTiles
+  DamageRules Rules() const;
+  std::vector<TargetCandidate> AliveCandidates(Vec2 centre, double radius) const;
+  int32_t HotbarSlotOf(int32_t skillIndex) const;
 
   SimContext& ctx_;
   InputBuffer buffer_;
   DodgeController dodge_;
   ShakeThrottle shake_;
+  SkillAim bufferedAim_;
   std::vector<PendingRelease> releases_;
   std::vector<PendingHit> hits_;
-  bool fighting_ = false;
+  std::vector<PendingStrike> strikes_;
   bool inCombat_ = false;
   TimerId combatOffTimer_ = kNoTimer;
   TimerId respawnTimer_ = kNoTimer;
   EntityId indicator_ = kNoEntity;
-  bool critBonusPending_ = false;  // FIX Q18: shadow_step crit buff consumed by the next hero hit
+  KillRewardInfo lastKill_;
 };
 
 }  // namespace abyss

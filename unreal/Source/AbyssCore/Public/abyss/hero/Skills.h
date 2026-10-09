@@ -73,10 +73,21 @@ class ABYSS_API SkillBook {
   // Synergy factor: 1 + sum(syn.damagePerLevel * level(syn.skillId)).
   double SynergyFactor(const SkillDef& s) const;
 
+  // getLearnedSkillLoadout (7.5) with the C1 fix: learned (level > 0), non-passive skills in definition order, the first
+  // `limit` (limit <= 0 -> empty). This is the default hotbar fill.
+  std::vector<int32_t> LearnedLoadout(int32_t limit) const;
+
   // ---- hotbar (C3) ----
+  // Usable slots: min(kHotbarSlots, skill_rules loadoutSize).
+  int32_t HotbarCapacity() const;
   int32_t HotbarSkill(int32_t slot) const;  // skill index or -1
-  // Binds a learned, non-passive skill (or clears with -1). A skill bound elsewhere moves to this slot.
+  int32_t HotbarSlotOf(int32_t skillIndex) const;  // slot or -1
+  // Binds a learned, non-passive skill (or clears the slot with -1). A skill already bound elsewhere moves to this slot
+  // and the skill it displaces (if any) takes the vacated slot (swap). False (unchanged) for an invalid slot, an
+  // unknown, unlearned or passive skill.
   bool SetHotbar(int32_t slot, int32_t skillIndex);
+  // Clears the hotbar and fills it with LearnedLoadout(HotbarCapacity()) (new game, saves without a `hotbar`).
+  void FillHotbarDefault();
   const std::array<int32_t, kHotbarSlots>& Hotbar() const { return hotbar_; }
 
   // ---- cooldowns (absolute SimClock ready times; reset on zone change, Q23; not saved) ----
@@ -88,12 +99,18 @@ class ABYSS_API SkillBook {
   // ---- save ----
   // skillLevels as {skillId: level} in class definition order.
   std::vector<std::pair<std::string, int32_t>> LevelsForSave() const;
-  // Missing keys = 0; unknown ids ignored.
+  // Missing keys = 0; unknown ids ignored; levels clamped to [0, maxLevel]; a repeated id keeps its last value (JS
+  // object / Map semantics).
   void LoadLevels(const std::vector<std::pair<std::string, int32_t>>& levels);
   std::array<std::string, kHotbarSlots> HotbarForSave() const;  // skill ids ("" = empty)
+  // Restores explicit slot bindings (C3). Call after LoadLevels. Empty, unknown, unlearned, passive and repeated ids
+  // leave their slot empty; no auto-fill (the player may have cleared slots on purpose).
   void LoadHotbar(const std::array<std::string, kHotbarSlots>& ids);
 
  private:
+  // C3: puts a learned, non-passive skill that is not on the hotbar into the first empty usable slot.
+  void AutoFillHotbar(int32_t index);
+
   const DataStore* data_;
   const ClassDef* class_;
   std::vector<int32_t> levels_;

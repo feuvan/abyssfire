@@ -1,0 +1,21 @@
+{
+ "atlasPx": 256,
+ "family": "Test",
+ "grid": 16,
+ "swatchPx": 16,
+ "swatches": [
+  {
+   "e": 0.0,
+   "hex": "#9AA6BA",
+   "i": 0,
+   "l": 0.45098039215686275,
+   "names": [
+    "t_paul_noproxy.steel",
+    "t_paul_proxy.steel",
+    "t_sphere.steel"
+   ],
+   "o": 1.0,
+   "s": 0.4196078431372549
+  }
+ ]
+}

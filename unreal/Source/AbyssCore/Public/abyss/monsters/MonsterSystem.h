@@ -5,7 +5,9 @@
 // 11 (kill hook contract), 12 (spatial grid), 14 (core API proposal); combat-feel.md 17.4 (elite behaviours);
 // DECISIONS M1-M10, W9, D13 T9 (respawn on the sim clock).
 //
-// Owner area: monsters. Runtime system (SimContext). Timers: TimerOwner::Monsters (respawn T9). RNG: RngStream::Ai.
+// Owner area: monsters. Runtime system (SimContext). Timers: TimerOwner::Monsters (respawn T9). RNG: RngStream::Ai
+// (patrol, zone-spawn / respawn / minion placement, elite affix rolls, elite teleports); SpawnAmbush (random-event
+// ambush / rescue contents) draws from RngStream::Events (Rng.h stream rules).
 // Kill credit: ApplyDamage publishes MonsterKilledMsg exactly once, on the alive -> dead transition, synchronously;
 // GameSim's subscriptions run the kill pipeline (monsters-ai 11 order) and MonsterSystem::OnMonsterKilled is the last
 // handler (log zone.monsterKill + respawn decision).
@@ -21,7 +23,9 @@
 #include "abyss/base/Timers.h"
 #include "abyss/base/Types.h"
 #include "abyss/combat/CombatInput.h"
+#include "abyss/monsters/Hunts.h"
 #include "abyss/monsters/Monster.h"
+#include "abyss/monsters/MonsterAI.h"
 #include "abyss/monsters/SpatialGrid.h"
 #include "abyss/sim/GameplayBus.h"
 #include "abyss/sim/SimTypes.h"
@@ -43,6 +47,7 @@ struct MonsterSpawnParams {
   bool startChasing = false;            // ambush / rescue / defend spawns
   std::string huntId;
   double visualScale = 1.0;
+  std::string affixZone;                // zone whose affix count applies ("" = the current zone; sub-dungeons: parent)
 };
 
 struct DamageFlags {
@@ -64,17 +69,31 @@ class ABYSS_API MonsterSystem {
   // M7 story boss (MonsterAiDef storyBoss*): the spawn entries of storyBossId get MonsterRole::StoryBoss (never
   // respawn in the visit) and are skipped when storyBossNotAfterQuestTurnIn is turned in, unless chapterCompleteQuest is
   // turned in too and storyBossFarmableAfterChapter.
+  // Placement per monster (M10, FIX Q16): up to placementTries tiles spawn +/- spawnJitter (2 RngStream::Ai draws each,
+  // col first, clamped to [1, size - 2]; walkable and outside every camp radius), else the anchor when walkable; elites
+  // roll their affixes right after their placement (web draw order).
   void SpawnZonePopulation();
-  void SpawnMiniBoss();  // M7: once per visit; goblin_chief rules
-  void OnZoneExit();     // drops every monster and respawn timer (monsters are not saved)
+  void SpawnMiniBoss();  // M7: once per visit at its fixed tile (bounds check only), always rolls affixes
+  void OnZoneExit();     // drops every monster (EvEntityDespawned ZoneUnload) and respawn timer (monsters are not saved)
 
   // ---- spawning ----
+  // One monster at a tile: difficulty scaling unless alreadyScaled, stats, spawn anchor = tile, role flags (noRespawn
+  // from monster_ai.json port.noRespawn + mini-bosses / seal keepers), optional affixes for the zone, EvEntitySpawned;
+  // startChasing spawns publish MonsterAggroMsg. No walkability check (callers place).
   EntityId Spawn(const MonsterSpawnParams& p);
   // Quest hunts (9.4): spawns every due hunt of the current zone not present. announce -> zone.quest.huntRevealed
   // log + camera shake + EvHuntRevealed. Triggers: zone entry (false), QuestAcceptedMsg (false), QuestProgressMsg (true).
   void SpawnDueHunts(bool announce);
+  // The spawning half of SpawnDueHunts for an already computed due list (HuntsToSpawn order): leader (hunt def,
+  // difficulty, affixes, visual scale), minions (one placement attempt each), announce. Unknown base monsters and
+  // hunts without a walkable spot are skipped (retried on the next trigger).
+  void SpawnHunts(std::span<const DueHunt> due, bool announce);
   // Event spawns (6.4): count monsters picked from ids around `centre` (ring placement + findWalkableTile), chasing,
-  // no affixes, noRespawn (M4/W9). Returns the new ids in spawn order.
+  // no affixes, noRespawn (M4/W9). Returns the new ids in spawn order. Ambush: minDist 3, distRange 2 around the event
+  // point; rescue: minDist 2, distRange 3 around the rescue NPC (the caller passes count = max(2, randomInt - 1)).
+  // Draws (RngStream::Events) per monster: id index floor(rand * len) (an unknown id is skipped before the next two),
+  // angle rand * 2 pi, distance minDist + rand * distRange; tile = round(centre + dir * dist) clamped to [1, size - 2],
+  // else the first walkable tile of rings 1..5 (dr outer, dc inner).
   std::vector<EntityId> SpawnAmbush(std::span<const std::string> monsterIds, int32_t count, Vec2 centre,
                                     double minDist, double distRange, MonsterRole role);
 
@@ -123,6 +142,10 @@ class ABYSS_API MonsterSystem {
   bool IsHuntPresent(std::string_view huntId) const;
 
   const SpatialGrid& Grid() const { return grid_; }
+  // The walkability / A* service the AI and every placement use (built from ZoneRuntime at zone entry).
+  const MonsterWorld& World() const { return world_; }
+  // Test hook: replaces the zone's walkability / A* service (bounds included) until the next zone entry.
+  void SetWorldForTesting(MonsterWorld world);
   void FillSnapshot(Snapshot& out) const;
   // miniBossDialogueSeen (save 3.2).
   void WriteSave(SaveData& out) const;
@@ -131,13 +154,32 @@ class ABYSS_API MonsterSystem {
  private:
   void Respawn(EntityId deadId);
   bool InSafeZone(Vec2 p) const;
+  bool Walkable(int32_t col, int32_t row) const;
+  void PrepareZone();      // zone entry: clears the population, sizes the grid, builds the world service
+  void EnsureZoneGrid();   // lazily sizes the grid / world for the live zone (spawns before SpawnZonePopulation)
+  void BuildWorld();
+  bool RoleNeverRespawns(MonsterRole role) const;
+  bool StoryBossBlocked() const;  // M7: the story boss stays away after its quest (until the chapter is done)
+  // A fresh instance from a final (scaled) definition at a tile (stats, hp, anchor, role flags); not yet listed.
+  MonsterInstance MakeInstance(const MonsterDef& def, TilePos tile, MonsterRole role);
+  void RollAffixesInto(MonsterInstance& m, std::string_view zoneId);
+  EntityId AddInstance(MonsterInstance&& m, bool startChasing);
+  void PublishAggro(const MonsterInstance& m, MonsterState previous);
+  void EmitSpawned(const MonsterInstance& m);
+  std::string CurrentZoneId() const;
 
   SimContext& ctx_;
   std::vector<MonsterInstance> monsters_;  // spawn order; a respawn replaces the dead entry in place (7)
   SpatialGrid grid_;
   std::vector<EntityId> active_;           // activity set (3.8)
   double nextActiveRefreshMs_ = 0;
+  bool activeDue_ = true;                  // the first activity refresh of a zone is immediately due
+  MonsterWorld world_;
+  bool worldOverride_ = false;
+  std::string preparedMapId_;
+  int32_t preparedCols_ = 0, preparedRows_ = 0;
   EntityId miniBoss_ = kNoEntity;
+  EntityId miniBossDialogueMonster_ = kNoEntity;
   bool miniBossSpawnedThisVisit_ = false;
   bool miniBossDialogueActive_ = false;
   std::vector<std::string> miniBossDialogueSeen_;

@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "abyss/base/Platform.h"
@@ -64,7 +65,12 @@ struct GroundEffectSpec {
   Vec2 center;
   double radius = 0;
   double durationMs = 0;
-  int32_t ticks = 1;          // C4: total damage spread over ticks (first tick at startMs + interval)
+  // C4 (SkillData.h GroundTrigger): Periodic = `ticks` ticks, the first at once (inside StartGroundEffect), then every
+  // durationMs / ticks; ends at start + durationMs. Armed = a trap that waits up to durationMs; the first step a living
+  // monster stands inside the radius (TickArmedTraps) it fires its `ticks` ticks (the first at once, then every
+  // durationMs / ticks from the trigger) and ends after the last one; an untriggered trap expires silently.
+  GroundTrigger trigger = GroundTrigger::Periodic;
+  int32_t ticks = 1;
   double damageShare = 1.0;   // fraction of the skill hit each tick deals (1 / ticks)
 };
 
@@ -72,15 +78,19 @@ struct GroundEffect {
   EntityId id = kNoEntity;
   GroundEffectSpec spec;
   double startMs = 0;
+  bool triggered = false;     // Periodic effects count as triggered at start
+  double triggerMs = 0;       // first tick time (start for Periodic, trigger time for Armed)
   int32_t ticksDone = 0;
-  TimerId timer = kNoTimer;
+  TimerId timer = kNoTimer;     // next GroundTick
+  TimerId endTimer = kNoTimer;  // GroundEnd (Periodic end / Armed expiry)
   double TickIntervalMs() const { return spec.ticks > 0 ? spec.durationMs / spec.ticks : spec.durationMs; }
 };
 
 // Monster bolt flight (5.2): clamp(tileDist * 36 * msPerPx, min, max).
 ABYSS_API double MonsterBoltTravelMs(const ProjectileTimingTable& t, Vec2 from, Vec2 to);
 // Skill projectile flight (6.4): clamp(tileDist * 36 * msPerPx, min, max) from SkillDef::projectile; 0 when the skill
-// has no projectile (instant hit). Meteor's fixed fall is min == max.
+// has no projectile (instant hit). Meteor's fixed 300 ms fall is SkillDef::aoeDelayMs (an AoE batch delay, not a
+// projectile).
 ABYSS_API double SkillTravelMs(const SkillDef& s, Vec2 from, Vec2 to);
 // Per-target arrow delay (6.5): min(maxMs, tileDist * 36 * msPerPx) for multishot / piercing_arrow, else 0.
 ABYSS_API double SkillArrowDelayMs(const SkillDef& s, Vec2 from, Vec2 to);
@@ -95,8 +105,14 @@ class ABYSS_API ProjectileSystem {
   EntityId Launch(const ProjectileSpec& spec);
   // Removes a projectile without arrival (fizzle): cancels its timer, emits EvProjectileEnded{hit=false}.
   void Destroy(EntityId projectile);
+  // Spawns the effect (EvGroundEffectStarted). A Periodic effect resolves its first tick synchronously through
+  // CombatSystem::OnGroundEffectTick before returning.
   EntityId StartGroundEffect(const GroundEffectSpec& spec);
+  // Removes an effect (EvGroundEffectEnded{triggered}); cancels its timers.
   void EndGroundEffect(EntityId effect);
+  // Per step (called from CombatSystem::TickCombat): fires every armed trap with a living monster inside its radius
+  // (EvGroundEffectTriggered, first tick at once).
+  void TickArmedTraps();
 
   void OnTimer(const Timer& t);
   // F2 (cinematic only): destroy every MonsterBolt (EvMonsterAttackCancelled{projectile=true} + EvProjectileEnded).
@@ -105,14 +121,19 @@ class ABYSS_API ProjectileSystem {
   void ClearZone();
 
   const Projectile* Find(EntityId id) const;
+  const GroundEffect* FindGroundEffect(EntityId id) const;
   std::span<const Projectile> Projectiles() const { return projectiles_; }
   std::span<const GroundEffect> GroundEffects() const { return ground_; }
   void FillSnapshot(Snapshot& out) const;
 
  private:
+  GroundEffect* FindGround(EntityId id);
+  // Resolves tick `index` of an effect (callback into CombatSystem) and schedules the next one or the end.
+  void FireGroundTick(EntityId id, int32_t index);
+
   SimContext& ctx_;
   std::vector<Projectile> projectiles_;  // launch order
-  std::vector<GroundEffect> ground_;
+  std::vector<GroundEffect> ground_;     // start order
 };
 
 }  // namespace abyss

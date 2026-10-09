@@ -87,7 +87,8 @@ class ABYSS_API Hero {
   void RecalcDerived(const EquipStats& eq);
   const HeroDerived& Derived() const { return derived_; }
   const EquipStats& EquipStatsUsed() const { return eq_; }  // the bag of the last RecalcDerived
-  // Ground speed in tiles/s (S5): moveSpeed / 36, times the status slow multiplier supplied by the caller.
+  // Ground speed in tiles/s (S5): moveSpeed / 36 (spirit Resonance and gear included); the caller multiplies the status
+  // slow factor (C5).
   double GroundSpeedTilesPerSec() const;
 
   // ---- resources ----
@@ -95,7 +96,8 @@ class ABYSS_API Hero {
   double Mana() const { return mana_; }
   double MaxHp() const { return derived_.maxHp; }
   double MaxMana() const { return derived_.maxMana; }
-  // HP/MP gains return the amount applied; 0 unless Alive (save-ui-input 5.1.1).
+  // HP/MP gains return the amount applied; 0 unless Alive (save-ui-input 5.1.1) or amount <= 0. Clamped to the max
+  // like the web's heals; a gain never lowers a value that sits above a lowered max (3: recalc does not clamp).
   double Heal(double amount);
   double RestoreMana(double amount);
   void SpendMana(double amount);       // floor at 0
@@ -124,7 +126,11 @@ class ABYSS_API Hero {
   const Spirit& GetSpirit() const { return spirit_; }
 
   // ---- regen (4.1-4.2) ----
-  // Per-step regen incl. the Life Regen passive; skipped while dead.
+  // Per-step regen, skipped while dead (Dying or hp <= 0), in the web's order: the Life Regen passive (4.2, linear
+  // passiveRule.hpPerSecondPerLevel x level HP/s; ZoneScene step 6) first, then mana regen, then HP regen (4.1). This
+  // is the ONLY place Life Regen is applied (CombatSystem::TickPassives does Unyielding and Dual Wield only). `mods`
+  // carries the campfire x50 and the poisoned x0.5 HP factor (caller-computed). Uses the RAW primaries and the gear
+  // hpRegen / manaRegen of the last RecalcDerived bag.
   void TickRegen(double dtMs, const RegenModifiers& mods);
 
   // CombatEntity view for the damage formula (combat-feel 1.2).
@@ -141,7 +147,10 @@ class ABYSS_API Hero {
 
   // ---- save ----
   void ToSave(SaveHero& out) const;
-  // Restores level/exp/gold/stats/points/skills/hotbar/spirit (no position; GameSim places the hero).
+  // Restores level/exp/gold/stats/points/skills/spirit and the DEFAULT hotbar (GameSim applies SaveData.hotbar after
+  // it when present, C3); clears buffs / cooldowns, life = Alive, derived with the current bag; hp / mana are set raw
+  // (non-finite hp -> 0, mana -> maxMana) for GameSim to clamp after gear (FIX Q8 / Q35). No position (GameSim places
+  // the hero). Normalises level >= 1 and non-negative exp / gold / points.
   void FromSave(const SaveHero& in);
 
  private:

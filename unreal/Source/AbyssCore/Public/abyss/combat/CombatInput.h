@@ -49,10 +49,11 @@ class ABYSS_API DodgeController {
   // tryStart: cooldownEnds = now + cooldown, invulnerableUntil = now + iframes, avoidance reward re-armed.
   void Start(double nowMs);
   bool IsInvulnerable(double nowMs) const { return nowMs < invulnerableUntilMs_; }
-  // claimAvoidanceReward: true once per window (the first hit avoided by i-frames grants Spirit 'dodge').
-  bool ClaimAvoidanceReward();
+  // claimAvoidanceReward(now): true once per window and only while invulnerable at `now` (the first hit avoided by
+  // i-frames grants Spirit 'dodge').
+  bool ClaimAvoidanceReward(double nowMs);
   double CooldownRemainingMs(double nowMs) const;
-  double CooldownProgress(double nowMs) const;  // clamp((now - lastStart) / cooldown, 0, 1)
+  double CooldownProgress(double nowMs) const;  // clamp((now - lastStart) / cooldown, 0, 1); 1 before the first dodge
   double CooldownMs() const { return def_->dodgeCooldownMs; }
   double InvulnerabilityMs() const { return def_->dodgeInvulnerabilityMs; }
   void Reset();
@@ -65,9 +66,10 @@ class ABYSS_API DodgeController {
   bool rewardAvailable_ = false;
 };
 
-// Dodge destination (8.1 + C8): direction = requested (stick/joystick) if longer than 0.001, else the hero facing.
-// Normalised. Tries d = maxDist, maxDist - step, ... >= minDist; the first whose ROUNDED landing tile is in bounds and
-// walkable wins (no line check). Returns false when none (no dodge, cooldown not spent).
+// Dodge destination (8.1 + C8): direction = requested (stick/joystick) if longer than 0.001, else the hero facing (else
+// the data default direction when the facing is zero too). Normalised. Tries d = maxDist, maxDist - step, ... >= minDist
+// (repeated subtraction, like the web loop); the first whose ROUNDED landing tile is walkable wins (`walkable` must
+// return false out of bounds; no line check). Returns false when none (no dodge, cooldown not spent).
 ABYSS_API bool ComputeDodgeDestination(const CombatInputDef& def, ClassId cls, Vec2 heroPos, Vec2 requestedDir, Vec2 facing,
                                        const std::function<bool(int32_t col, int32_t row)>& walkable, Vec2& outDest);
 

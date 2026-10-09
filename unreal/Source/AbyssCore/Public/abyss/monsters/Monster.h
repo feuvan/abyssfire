@@ -62,8 +62,10 @@ struct ABYSS_API MonsterInstance {
   std::vector<MonsterAffix> affixes;
   // position / movement (tile space)
   Vec2 pos;
+  Vec2 prevPos;             // position at the start of the last AI step (render interpolation)
   Vec2 heading{1, 0};       // unit vector; render yaw follows it (M11 turn rate is render-only)
   double moveSpeed = 0;     // current smoothed speed, tiles/s (velocity form of monsters 3.4)
+  double groundSpeed = 0;   // actual displacement speed of the last AI step, tiles/s (locomotion blend)
   TilePos spawnAnchor;      // original zone-entry anchor (M3: respawn and leash use it, never drifts)
   // AI
   MonsterState state = MonsterState::Idle;

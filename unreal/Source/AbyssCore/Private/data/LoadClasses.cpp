@@ -261,6 +261,7 @@ void LoadSkillRulesFile(const JNode& r, ClassTables& out) {
   s.starterLevelTier1 = r.Child("starterLevels").Int("tier1");
   s.starterLevelOther = r.Child("starterLevels").Int("other");
   s.loadoutSize = r.Int("loadoutSize");
+  if (s.loadoutSize < 1) r.Child("loadoutSize").Error("loadoutSize must be >= 1");
   s.groundAoeSkills = r.StrList("groundAoeSkills");
   const JNode sc = r.Child("scaling");
   s.tierWeights.clear();
@@ -273,6 +274,19 @@ void LoadSkillRulesFile(const JNode& r, ClassTables& out) {
     }
     tw.weight = w.Num("weight");
     s.tierWeights.push_back(tw);
+  }
+  // tieredScale walks levels 2..L through these brackets in order: they must start at 2, be contiguous, and only the
+  // last may be open-ended (classes spec 8).
+  if (s.tierWeights.empty() || s.tierWeights.front().fromLevel != 2) {
+    sc.Child("tierWeights").Error("tier weights must start at level 2");
+  }
+  for (size_t i = 0; i < s.tierWeights.size(); ++i) {
+    const SkillTierWeight& tw = s.tierWeights[i];
+    const bool last = i + 1 == s.tierWeights.size();
+    if (!last && (!tw.hasToLevel || s.tierWeights[i + 1].fromLevel != tw.toLevel + 1)) {
+      sc.Child("tierWeights").Error("tier weight brackets must be contiguous (only the last may be open-ended)");
+    }
+    if (tw.hasToLevel && tw.toLevel < tw.fromLevel) sc.Child("tierWeights").Error("bracket toLevel < fromLevel");
   }
   const JNode def = sc.Child("defaults");
   s.scalingDefaults.damagePerLevel = def.Num("damagePerLevel");
@@ -324,6 +338,10 @@ void LoadHeroFormulasFile(const JNode& r, ClassTables& out) {
   f.statPointsPerLevel = l.Int("statPointsPerLevel");
   f.skillPointsPerLevel = l.Int("skillPointsPerLevel");
   f.levelCap = l.Int("levelCap", 0);
+  // addExp levels up while exp >= expToNext(L): a non-positive requirement would level up on every grant.
+  if (!(f.expToNextA + f.expToNextB > 0) || f.expToNextA < 0 || f.expToNextB < 0) {
+    l.Child("expToNext").Error("expToNext must be positive for every level >= 1");
+  }
   const JNode m = r.Child("damage");
   f.dodgePerDex = m.Num("dodgePerDex");
   f.dodgeCapPercent = m.Num("dodgeCapPercent");
@@ -379,6 +397,9 @@ void LoadSpiritProfilesFile(const JNode& r, ClassTables& out) {
     p.resonanceDamageBonus = n.Num("resonanceDamageBonus");
     p.resonanceManaCostMultiplier = n.Num("resonanceManaCostMultiplier");
     p.resonanceMoveSpeedBonus = n.Num("resonanceMoveSpeedBonus");
+    // Spirit::Update drains maxValue / resonanceDurationMs per ms (classes 14.2).
+    if (!(p.maxValue > 0)) n.Child("maxValue").Error("maxValue must be > 0");
+    if (!(p.resonanceDurationMs > 0)) n.Child("resonanceDurationMs").Error("resonanceDurationMs must be > 0");
   }
   t.fallbackClass = r.Enum<ClassId>("fallbackClass");
   t.spiGainFactor = r.Num("spiGainFactor");

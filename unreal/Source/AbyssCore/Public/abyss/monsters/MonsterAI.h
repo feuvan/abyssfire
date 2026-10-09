@@ -55,7 +55,8 @@ ABYSS_API MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef
                                           const MonsterWorld& world, Rng& rng);
 
 // moveToward (3.4) in velocity form: v += (speed * 0.03 * speedMul - v) * 6 * dt_s; pos += dir * v * dt_s; a blocked
-// step slides along the free axis (M6) instead of cancelling both. Returns true when already within arriveEpsilon.
+// step (rounded tile not walkable) slides along the free axis, dominant axis first (M6), instead of cancelling both.
+// heading = the intended direction even when blocked. Returns true (no move) when already within arriveEpsilon.
 ABYSS_API bool MonsterMoveToward(MonsterInstance& m, const MonsterAiDef& ai, Vec2 target, double dtMs, double speedMul,
                                  const MonsterWorld& world);
 

@@ -41,7 +41,8 @@ ABYSS_API std::vector<EntityId> CandidatesInCone(std::span<const TargetCandidate
 
 using WalkableFn = std::function<bool(int32_t col, int32_t row)>;
 
-// Teleport destination (section 10 + FIX Q17 + C8). Aim = pointer tile (desktop) or the touch rule; the point is
+// Teleport destination (section 10 + FIX Q17 + C8). Aim = pointer tile (desktop), else the touch rule (joystick beyond
+// the deadzone x touchJoystickTiles, else the locked target, else touchJoystickTiles ahead along `facing`); the point is
 // clamped to maxRange along the hero->aim ray, rounded, clamped to [1, size - 2], then if not walkable the square
 // rings r = 1..rings are searched row-major (dr = -r..r, dc = -r..r) for the first walkable tile. False = unreachable
 // (caller refunds mana, keeps the cooldown, logs zone.teleport.unreachable).
@@ -51,7 +52,7 @@ struct TeleportAim {
   Vec2 stickDir;           // touch joystick direction (length > deadzone wins)
   bool hasTarget = false;  // locked target position (touch fallback)
   Vec2 targetPos;
-  Vec2 facing{1, 0};       // last fallback: maxRange ahead
+  Vec2 facing{1, 0};       // last fallback: touchJoystickTiles (6) ahead (C8)
 };
 ABYSS_API bool ComputeTeleportDestination(const SkillPortDef& port, Vec2 heroPos, const TeleportAim& aim, int32_t cols,
                                           int32_t rows, const WalkableFn& walkable, TilePos& outTile);
@@ -59,7 +60,8 @@ ABYSS_API bool ComputeTeleportDestination(const SkillPortDef& port, Vec2 heroPos
 // Shadow step (section 10): round(target - unit(hero - target)) clamped to the map; not walkable -> the target tile.
 ABYSS_API TilePos ShadowStepDestination(Vec2 heroPos, Vec2 targetPos, int32_t cols, int32_t rows, const WalkableFn& walkable);
 
-// Charge dash end point (C4): along hero->target, stopping at melee range (attackRange) of the target.
+// Charge dash end point (C4): along hero->target, stopping `stopRange` (the hero's melee attackRange) short of the
+// target; the hero position itself when already within stopRange.
 ABYSS_API Vec2 ChargeDashEnd(Vec2 heroPos, Vec2 targetPos, double stopRange);
 
 }  // namespace abyss
