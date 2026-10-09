@@ -303,6 +303,10 @@ struct EvMiniBossDialogue {
   bool opened = true;
   EntityId monster = kNoEntity;
   std::string monsterId;
+  // opened only (monsters-ai 8.3 / M8): header name key and every line of the linear tree, in order
+  // (start -> nextNodeId until isEnd), as i18n keys data.miniBossDialogue.<monsterId>.<nodeId>.
+  std::string nameKey;
+  std::vector<std::string> lineKeys;
 };
 struct EvLoreCollected {
   std::string loreId;

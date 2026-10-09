@@ -21,6 +21,7 @@
 #include "abyss/combat/HitFeedback.h"
 #include "abyss/combat/StatusEffects.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/data/MapData.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/monsters/EliteAffixes.h"
 #include "abyss/monsters/MonsterDefs.h"
@@ -188,6 +189,10 @@ void MonsterSystem::SpawnMiniBoss() {
   ZoneRuntime* zone = ctx_.sys.zone;
   if (zone == nullptr || !zone->HasZone()) return;
   EnsureZoneGrid();
+  if (const SubDungeonDef* sd = ctx_.data.World().FindSubDungeon(zone->MapId())) {
+    SpawnSubDungeonMiniBoss(*sd);  // 8.5: the sub-dungeon's boss replaces the zone mini-boss
+    return;
+  }
   const MonsterTables& tables = ctx_.data.Monsters();
   const MiniBossEntry* entry = tables.MiniBossFor(zone->MapId());
   if (entry == nullptr || !entry->hasSpawn) return;
@@ -203,6 +208,22 @@ void MonsterSystem::SpawnMiniBoss() {
   p.role = MonsterRole::ZoneMiniBoss;
   p.rollAffixes = true;  // always elite
   miniBoss_ = Spawn(p);
+}
+
+EntityId MonsterSystem::SpawnSubDungeonMiniBoss(const SubDungeonDef& sd) {
+  EnsureZoneGrid();
+  const MonsterDef* def = ctx_.data.Monsters().Find(sd.miniBossId);
+  if (def == nullptr) return kNoEntity;
+  const TilePos tile = sd.miniBossPos;
+  if (tile.col < 0 || tile.col >= sd.cols || tile.row < 0 || tile.row >= sd.rows) return kNoEntity;
+  MonsterSpawnParams p;
+  p.baseDef = def;
+  p.tile = tile;
+  p.role = MonsterRole::SubDungeonMiniBoss;
+  p.rollAffixes = true;
+  p.affixZone = sd.parentZone;  // rolled with the parent zone's affix count
+  miniBoss_ = Spawn(p);
+  return miniBoss_;
 }
 
 void MonsterSystem::OnZoneExit() {
@@ -430,6 +451,82 @@ std::vector<EntityId> MonsterSystem::SpawnAmbush(std::span<const std::string> mo
   return out;
 }
 
+std::vector<EntityId> MonsterSystem::SpawnDefendWave(Vec2 target, int32_t waveIndex) {
+  std::vector<EntityId> out;
+  EnsureZoneGrid();
+  const std::string zoneId = CurrentZoneId();
+  const MonsterTables& tables = ctx_.data.Monsters();
+  const MonsterAiDef& ai = tables.ai;
+  const ZoneMonsterList* zoneList = tables.ZoneList(zoneId);
+  if (zoneList == nullptr || zoneList->monsterIds.empty() || waveIndex < 0) return out;
+  int32_t cols = world_.cols, rows = world_.rows;
+  if ((cols <= 0 || rows <= 0) && ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) {
+    cols = ctx_.sys.zone->Map().cols;
+    rows = ctx_.sys.zone->Map().rows;
+  }
+  Rng& rng = ctx_.Rand(RngStream::Ai);
+  const int32_t n = ai.defendWaveBaseCount + waveIndex;
+  const int32_t lo = ai.defendWaveEdgeMargin;
+  for (int32_t i = 0; i < n; ++i) {
+    const double angle = kTwoPi * static_cast<double>(i) / static_cast<double>(n);
+    const int32_t col = JsRoundInt(target.x + std::cos(angle) * ai.defendWaveRadius);
+    const int32_t row = JsRoundInt(target.y + std::sin(angle) * ai.defendWaveRadius);
+    const int32_t len = static_cast<int32_t>(zoneList->monsterIds.size());
+    const std::string& id = zoneList->monsterIds[static_cast<size_t>(rng.RandomInt(0, len - 1))];
+    const MonsterDef* base = tables.Find(id);
+    if (base == nullptr) continue;
+    const MonsterDef def = ScaleDefendWave(
+        ScaleMonsterForDifficulty(*base, ctx_.data.Combat().difficulty, ctx_.session.difficulty), waveIndex, ai);
+    MonsterSpawnParams p;
+    p.baseDef = &def;
+    p.alreadyScaled = true;
+    p.tile = TilePos{(std::max)(lo, (std::min)(cols - 1 - lo, col)), (std::max)(lo, (std::min)(rows - 1 - lo, row))};
+    p.role = MonsterRole::DefendWave;
+    p.rollAffixes = false;
+    p.startChasing = true;
+    const EntityId e = Spawn(p);
+    if (e != kNoEntity) out.push_back(e);
+  }
+  return out;
+}
+
+double MonsterSystem::ChipEscort(Vec2 target, const ChipApply& apply) {
+  const MonsterAiDef& ai = ctx_.data.Monsters().ai;
+  const double now = ctx_.Now();
+  std::vector<EntityId> ids;
+  for (const MonsterInstance& m : monsters_) ids.push_back(m.id);
+  double total = 0;
+  for (EntityId id : ids) {
+    MonsterInstance* m = Find(id);
+    if (m == nullptr || !m->IsAlive() || !m->IsAggro()) continue;
+    if (!(DistSq(m->pos, target) < ai.escortChipRadiusSq)) continue;
+    if (!(now - m->lastEscortChipMs > ai.escortChipIntervalMs)) continue;
+    const double dmg = (std::max)(1.0, std::floor(m->def.damage * ai.escortChipDamageMul));
+    m->lastEscortChipMs = now;
+    total += dmg;
+    if (apply && !apply(id, dmg)) break;
+  }
+  return total;
+}
+
+double MonsterSystem::ChipDefendTarget(std::span<const EntityId> waveMonsters, Vec2 target, const ChipApply& apply) {
+  const MonsterAiDef& ai = ctx_.data.Monsters().ai;
+  const double now = ctx_.Now();
+  const std::vector<EntityId> ids(waveMonsters.begin(), waveMonsters.end());
+  double total = 0;
+  for (EntityId id : ids) {
+    MonsterInstance* m = Find(id);
+    if (m == nullptr || !m->IsAlive()) continue;
+    if (!(DistSq(m->pos, target) < ai.defendChipRadiusSq)) continue;
+    if (!(now - m->lastDefendChipMs > ai.defendChipIntervalMs)) continue;
+    const double dmg = (std::max)(1.0, std::floor(m->def.damage * ai.defendChipDamageMul));
+    m->lastDefendChipMs = now;
+    total += dmg;
+    if (apply && !apply(id, dmg)) break;
+  }
+  return total;
+}
+
 // =====================================================================================================================
 // per step
 // =====================================================================================================================
@@ -450,10 +547,17 @@ void MonsterSystem::CheckMiniBossDialogue() {
   boss->hasPatrolTarget = false;
   boss->path.clear();
   miniBossDialogueSeen_.push_back(boss->def.id);
-  if (ctx_.data.Monsters().MiniBossDialogue(boss->def.id) == nullptr) return;
+  const DialogueTree* tree = ctx_.data.Monsters().MiniBossDialogue(boss->def.id);
+  if (tree == nullptr) return;
   miniBossDialogueActive_ = true;
   miniBossDialogueMonster_ = boss->id;
-  ctx_.events.Emit(EvMiniBossDialogue{true, boss->id, boss->def.id});
+  EvMiniBossDialogue ev;
+  ev.opened = true;
+  ev.monster = boss->id;
+  ev.monsterId = boss->def.id;
+  ev.nameKey = boss->def.nameKey;  // FIX Q10 / M8: header and lines are i18n keys
+  ev.lineKeys = MiniBossDialogueLineKeys(*tree, boss->def.id);
+  ctx_.events.Emit(std::move(ev));
 }
 
 void MonsterSystem::DismissMiniBossDialogue() {
@@ -462,7 +566,11 @@ void MonsterSystem::DismissMiniBossDialogue() {
   const EntityId id = miniBossDialogueMonster_;
   miniBossDialogueMonster_ = kNoEntity;
   const MonsterInstance* boss = Find(id);
-  ctx_.events.Emit(EvMiniBossDialogue{false, id, boss != nullptr ? boss->def.id : std::string()});
+  EvMiniBossDialogue ev;
+  ev.opened = false;
+  ev.monster = id;
+  if (boss != nullptr) ev.monsterId = boss->def.id;
+  ctx_.events.Emit(std::move(ev));
   if (boss != nullptr && boss->IsAlive()) ForceChase(id);  // onDismiss: force aggro
 }
 
@@ -488,7 +596,7 @@ void MonsterSystem::TickAI(double dtMs) {
       if (MonsterInstance* m = Find(id)) m->active = true;
     }
     for (MonsterInstance& m : monsters_) {
-      if (m.IsAggro() && !m.active) {
+      if ((m.IsAggro() || m.state == MonsterState::Returning) && !m.active) {  // M1: returning monsters reach home
         active_.push_back(m.id);
         m.active = true;
       }
@@ -671,6 +779,13 @@ void MonsterSystem::Teleport(EntityId id, Vec2 to, TeleportReason reason) {
   ctx_.events.Emit(EvEntityTeleported{id, from, to, reason});
 }
 
+bool MonsterSystem::MarkStoryNamed(EntityId id) {
+  MonsterInstance* m = Find(id);
+  if (m == nullptr || !m->IsAlive() || m->storyNameShown) return false;
+  m->storyNameShown = true;
+  return true;
+}
+
 void MonsterSystem::ForceChase(EntityId id) {
   MonsterInstance* m = Find(id);
   if (m == nullptr || !m->IsAlive()) return;
@@ -849,6 +964,7 @@ bool MonsterSystem::IsHuntPresent(std::string_view huntId) const {
 
 void MonsterSystem::FillSnapshot(Snapshot& out) const {
   out.miniBossDialogue = miniBossDialogueActive_;
+  const double now = ctx_.Now();
   for (const MonsterInstance& m : monsters_) {
     MonsterView v;
     v.id = m.id;
@@ -873,6 +989,12 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     for (const MonsterAffix& a : m.affixes) v.affixes.push_back(a.type);
     v.statusMask = ctx_.sys.status != nullptr ? ctx_.sys.status->StatusMask(m.id) : 0u;
     v.visualScale = m.visualScale;
+    // Wind-up telegraph (combat 10.3): 0.62 x contact after the last swing start.
+    if (v.alive && m.lastAttackMs != 0 && now - m.lastAttackMs >= 0) {
+      const ActionTiming timing = ComputeAttackTiming(ctx_.data.Combat().anim, ctx_.data.Assets(), m.def.spriteKey,
+                                                      m.def.animCategory, m.def.attackSpeedMs);
+      v.windingUp = now - m.lastAttackMs < timing.windupMs;
+    }
     out.monsters.push_back(std::move(v));
   }
 }

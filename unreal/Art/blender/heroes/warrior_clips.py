@@ -1053,8 +1053,10 @@ class WarriorAnims:
     # ── Portrait (static, spec §3.4 / §9.5): sword up before the right shoulder, helm toward the viewer ───
     def portrait(self):
         R0 = self.ready()
-        # sword shouldered (blade up-back over the right pauldron) so nothing crosses the ember visor
-        P = self.pose(R0, hand_r=V(-0.30, 0.20, 1.10), elbow_r=V(-0.7, -0.3, -0.8), **self.blade_kw(-28, -0.8),
+        # sword raised beside the helm, blade up and out over the right pauldron so nothing crosses the ember visor;
+        # rolled 45° and the fist a little lower (art review 6, portrait at 2×): the crossguard reads as a bar above
+        # the fist and the pommel cabochon shows under it, instead of a gold hook drooping over the gauntlet
+        P = self.pose(R0, hand_r=V(-0.32, 0.18, 1.04), elbow_r=V(-0.7, -0.3, -0.8), **self.blade_kw(-15, -0.45, 45.0),
                       head_yaw=8.0, head_pitch=3.0, twist=-6.0, hand_l=V(0.08, 0.26, 1.0), clav_r=(6.0, 6.0),
                       flow=0.15)
         keys = [K(0.0, P), K(1.0, P)]

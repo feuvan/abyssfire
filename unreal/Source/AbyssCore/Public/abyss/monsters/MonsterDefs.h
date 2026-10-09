@@ -7,12 +7,16 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "abyss/base/Enums.h"
+#include "abyss/base/I18n.h"
 #include "abyss/base/Platform.h"
 #include "abyss/base/Stats.h"
 #include "abyss/data/CombatData.h"
+#include "abyss/data/DialogueData.h"
 #include "abyss/data/MonsterData.h"
 
 namespace abyss {
@@ -29,8 +33,33 @@ ABYSS_API MonsterDef ScaleMonsterForDifficulty(const MonsterDef& def, const Diff
 ABYSS_API MonsterDef MakeHuntDefinition(const MonsterDef& base, const HuntDef& hunt, const MonsterAiDef& ai,
                                         std::string_view localizedName);
 
-// Defend wave scaling (monsters 6.4, after difficulty): hp floor(hp * (1 + 0.3 w)), damage floor(damage * (1 + 0.2 w)).
-ABYSS_API MonsterDef ScaleDefendWave(const MonsterDef& def, int32_t waveIndex);
+// Defend wave scaling (monsters 6.4, after difficulty): hp floor(hp * (1 + 0.3 w)), damage floor(damage * (1 + 0.2 w))
+// (ai.defendWaveHpPerWave / defendWaveDmgPerWave).
+ABYSS_API MonsterDef ScaleDefendWave(const MonsterDef& def, int32_t waveIndex, const MonsterAiDef& ai);
+
+// ---- Labyrinth scaling (monsters 13.2, later milestone; DungeonSystem.raiseToLevel / scaleMonster / makeGatekeeper) ----
+// raiseToLevel: level <= 0 or def.level >= level - raiseLevelWindow -> unchanged copy; else m = level / max(1, def.level):
+// level = level, hp JsRound(hp m^1.1), damage JsRound(damage m^0.95), defense JsRound(defense m^0.9), expReward
+// JsRound(exp m^1.1), both gold bounds JsRound(gold m).
+ABYSS_API MonsterDef RaiseToLevel(const MonsterDef& def, int32_t level, const MonsterAiDef& ai);
+
+// One labyrinth floor's monster scaling inputs (DungeonFloorConfig + the floor's curse speedMul, 1 without one).
+struct LabyrinthFloorScale {
+  int32_t levelTarget = 0;
+  int32_t floorNumber = 1;
+  double hpMul = 1, damageMul = 1, defenseMul = 1;
+  double curseSpeedMul = 1;
+};
+// scaleMonster (replaces the difficulty step for labyrinth spawns): RaiseToLevel(levelTarget); speed JsRound(speed s),
+// attackSpeed JsRound(attackSpeed / s); hp JsRound(hp hpMul diff.hp), damage / defense likewise; expReward
+// JsRound(exp (1 + (floor - 1) 0.15) diff.exp); gold bounds JsRound(g (1 + (floor - 1) 0.1)) (no difficulty on gold).
+ABYSS_API MonsterDef ScaleLabyrinthMonster(const MonsterDef& def, const LabyrinthFloorScale& floor,
+                                           const DifficultyTable& table, Difficulty difficulty, const MonsterAiDef& ai);
+// makeGatekeeper: the scaled base; hp JsRound(hp (base isMiniBoss || elite ? 1.6 : 4)), damage JsRound(damage 1.3),
+// expReward JsRound(exp 4), gold bounds x 3 (not rounded), aggroRange max(aggro, 8), elite + isMiniBoss, id
+// ai.gatekeeperId, nameKey given (dungeon.gatekeeper.<themeId>).
+ABYSS_API MonsterDef MakeGatekeeper(const MonsterDef& base, const LabyrinthFloorScale& floor, const DifficultyTable& table,
+                                    Difficulty difficulty, const MonsterAiDef& ai, std::string_view nameKey);
 
 // Monster combat stats (monsters 1.2): {str floor(dmg * 0.8), dex floor(speed * 0.1), vit floor(hp * 0.1), 3, 3, 3}.
 ABYSS_API PrimaryStats MonsterBaseStats(const MonsterDef& def, const MonsterAiDef& ai);
@@ -54,8 +83,16 @@ ABYSS_API CombinedAffixStats CombineAffixes(std::span<const EliteAffixType> affi
 ABYSS_API void ApplyEliteAffixes(MonsterInstance& m, std::span<const EliteAffixType> affixes, const EliteAffixTable& table,
                                  const MonsterAiDef& ai);
 
-// Display name key/args for a monster label: "[affix1.affix2] name" (M8: i18n keys data.monster.<id>,
-// data.eliteAffix.<type>.name). Returns the i18n key of the base name; affix keys are appended to `affixKeys`.
+// The i18n key of a monster's base name (M8 / FIX Q11: data.monster.<id>; hunt leaders data.monster.<huntId>).
 ABYSS_API std::string_view MonsterNameKey(const MonsterDef& def);
+// The i18n key of an elite affix name: sys.eliteAffix.name.<type> (combat 17.3).
+ABYSS_API std::string EliteAffixNameKey(EliteAffixType type);
+// buildAffixName (combat 17.3, EliteAffixSystem.buildAffixName) resolved in the current locale: no affix -> the base
+// name; else "[name1<sep>name2] base" with the U+00B7 middle dot separator (the in-world label text, M8).
+ABYSS_API std::string MonsterLabelText(const I18n& i18n, std::string_view nameKey,
+                                       std::span<const EliteAffixType> affixes);
+// The linear mini-boss pre-fight lines (monsters 8.3, Q10 / M8): walk startNodeId -> nextNodeId until isEnd (or a
+// missing / repeated node) and return data.miniBossDialogue.<monsterId>.<nodeId> per node, in order.
+ABYSS_API std::vector<std::string> MiniBossDialogueLineKeys(const DialogueTree& tree, std::string_view monsterId);
 
 }  // namespace abyss

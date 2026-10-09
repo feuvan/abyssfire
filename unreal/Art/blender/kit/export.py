@@ -148,23 +148,37 @@ def export_static_mesh(obj: bpy.types.Object, asset: str, category: str,
 
 # ── manifest ────────────────────────────────────────────────────────────────────────────────────────────
 class Manifest:
-    """``Art/Export/manifest.json``: shading constants, palettes, assets keyed by UE asset name."""
+    """``Art/Export/manifest.json``: shading constants, palettes, assets keyed by UE asset name.
+
+    The file is **shared by every generator** (several may run at once): ``save()`` takes an exclusive lock
+    (``manifest.json.lock``), re-reads the file and **merges** — in ``assets``, ``palettes`` and ``gameIds`` only
+    the keys this instance added, changed (``set_asset`` / ``set_palette`` / direct edits of ``data``) or deleted
+    since it was loaded are written; everything else on disk (other generators' entries) is kept. The kit-owned
+    sections (``shading``, ``units``, ``schemaVersion``, ``generator``) are always rewritten from the kit. The
+    write is atomic (temp file + rename)."""
+
+    MERGED = ("assets", "palettes", "gameIds")
 
     def __init__(self, path: Path | None = None):
         self.path = Path(path) if path else paths.manifest_path()
-        if self.path.exists():
-            self.data = json.loads(self.path.read_text())
-        else:
-            self.data = {}
-        self.data.setdefault("assets", {})
-        self.data.setdefault("palettes", {})
-        self.data.setdefault("gameIds", {})
+        self.data = self._read()
+        for k in self.MERGED:
+            self.data.setdefault(k, {})
+        self._base = json.loads(json.dumps({k: self.data[k] for k in self.MERGED}))
+        self._stamp()
+
+    def _read(self) -> dict:
+        return json.loads(self.path.read_text()) if self.path.exists() else {}
+
+    def _stamp(self) -> None:
         self.data["schemaVersion"] = SCHEMA_VERSION
         self.data["generator"] = f"abyssfire blender kit {KIT_VERSION} (Blender {bpy.app.version_string})"
         self.data["units"] = {"blender": "1 BU = 1 m", "ue": "cm", "axes": "UE (X fwd, Y right, Z up)",
                               "characterForward": "+Y (mesh); actor rotates the mesh yaw -90",
                               "fps": scene.FPS}
-        self.data["shading"] = shading.shading_manifest()
+        sh = shading.shading_manifest()
+        sh["outline"] = outline.outline_manifest()
+        self.data["shading"] = sh
 
     def set_palette(self, pal) -> None:
         self.data["palettes"][pal.family] = pal.manifest_entry()
@@ -175,8 +189,35 @@ class Manifest:
             self.data["gameIds"][gid] = name
 
     def save(self) -> Path:
+        import fcntl
+        import os
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.data, indent=1, sort_keys=True, ensure_ascii=True) + "\n")
+        lock = self.path.with_name(self.path.name + ".lock")
+        with open(lock, "w") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            try:
+                disk = self._read()
+                ours = json.loads(json.dumps({k: self.data[k] for k in self.MERGED}))
+                merged = dict(disk)
+                for sec in self.MERGED:
+                    base, mine, out = self._base.get(sec, {}), ours[sec], dict(disk.get(sec, {}))
+                    for k, v in mine.items():
+                        if k not in base or base[k] != v:
+                            out[k] = v                     # added / changed here
+                    for k in base:
+                        if k not in mine:
+                            out.pop(k, None)               # deleted here
+                    merged[sec] = out
+                for k, v in self.data.items():
+                    if k not in self.MERGED:
+                        merged[k] = v
+                tmp = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
+                tmp.write_text(json.dumps(merged, indent=1, sort_keys=True, ensure_ascii=True) + "\n")
+                os.replace(tmp, self.path)
+            finally:
+                fcntl.flock(lk, fcntl.LOCK_UN)
+        self.data = merged
+        self._base = json.loads(json.dumps({k: merged[k] for k in self.MERGED}))
         return self.path
 
 

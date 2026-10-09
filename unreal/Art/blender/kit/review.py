@@ -229,17 +229,18 @@ def hide_stage(hidden: bool) -> None:
 
 
 # ── core render ─────────────────────────────────────────────────────────────────────────────────────────
-def set_outline_px(meshes: Sequence[bpy.types.Object], px: float | None, at: Vector) -> None:
-    """Make the hull ``px`` pixels wide at point ``at`` for the active camera (None = baked world width)."""
-    sc = bpy.context.scene
+def set_outline_px(meshes: Sequence[bpy.types.Object], px: float | None, at: Vector | None = None) -> None:
+    """Draw the hulls ``px`` pixels wide (pixels of the current render resolution) for the active camera, exactly
+    like UE's M_AF_Outline WPO: screen-space dilation, per-vertex view depth (``outline.set_preview_screen``;
+    refreshed before every render). ``px=None`` = the baked world width alone (mobile low, no WPO). ``at`` is
+    ignored (kept for callers of the old single-depth approximation)."""
     for m in meshes:
         if m.type != "MESH" or "af_outline_width" not in m:
             continue
         if px is None:
             outline.set_preview_width(m, float(m["af_outline_width"]))
         else:
-            wpp = outline.pixel_world_size(sc.camera, at, sc.render.resolution_x)
-            outline.set_preview_width(m, px * wpp)
+            outline.set_preview_screen(m, px=px)
 
 
 def render_array(border: tuple[float, float, float, float] | None = None, exr: bool = False) -> np.ndarray:
@@ -258,6 +259,7 @@ def render_array(border: tuple[float, float, float, float] | None = None, exr: b
         sc.render.use_crop_to_border = True
         sc.render.border_min_x, sc.render.border_min_y, sc.render.border_max_x, sc.render.border_max_y = border
     sc.render.filepath = str(tmp)
+    outline.refresh_preview(sc)          # screen-constant hulls follow the current camera / pose / facing
     bpy.ops.render.render(write_still=True)
     sc.render.use_border = False
     sc.render.use_crop_to_border = False
@@ -361,6 +363,7 @@ def _render_rgba(res: tuple[int, int], samples: int, exr: bool = False, sharp: b
         st.file_format, st.color_mode, st.color_depth = "PNG", "RGBA", "8"
         tmp = TMP_DIR / f"ink_{os.getpid()}.png"
     sc.render.filepath = str(tmp)
+    outline.refresh_preview(sc)
     bpy.ops.render.render(write_still=True)
     if exr:
         img = bpy.data.images.load(str(tmp), check_existing=False)
@@ -612,15 +615,32 @@ def _bilinear(a: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
             + a[y0 + 1, x0 + 1] * fx * fy)
 
 
-INK_GATE = {"minPx": 3.0, "minFrac": 0.90, "darkLum": 40.0, "darkWithinPx": 3, "maxHullLumP95": 40.0}
+class InkGateError(RuntimeError):
+    """Raised by ``Review.assert_ink`` / ``assert_ink_gate`` when a 1080p game-camera cell fails the ink gate."""
+
+
+def ink_gate(outline_class: str = "hero") -> dict:
+    """Gate thresholds for an outline class (``outline.GATE_*``): rim ≥ outlinePx1080 − 0.5 px on ≥ 90 % of the
+    silhouette edge pixels, a pixel darker than the class's dark limit within 3 px of ≥ 90 % of them, and the
+    solid hull pixels' 95th-percentile luminance ≤ that limit (ink classes lum 40, line-tone classes 64)."""
+    px = outline.SCREEN_PX_1080.get(outline_class, 0.0)
+    lim = outline.dark_limit(outline_class)
+    return {"class": outline_class, "minPx": round(max(0.5, px - outline.GATE_SLACK_PX), 2),
+            "minFrac": outline.GATE_FRAC, "darkLum": lim, "darkWithinPx": 3, "maxHullLumP95": lim}
+
+
+INK_GATE = ink_gate("hero")      # {"minPx": 3.0, "minFrac": 0.9, "darkLum": 40, "darkWithinPx": 3, "maxHullLumP95": 40}
 
 
 def ink_stats(body: np.ndarray, hull: np.ndarray, rgb: np.ndarray | None = None, min_px: float = INK_GATE["minPx"],
-              dark_lum: float = INK_GATE["darkLum"], within: int = INK_GATE["darkWithinPx"]) -> dict:
+              dark_lum: float = INK_GATE["darkLum"], within: int = INK_GATE["darkWithinPx"],
+              hull_rgb: np.ndarray | None = None) -> dict:
     """Measure the ink rim on a render: for every silhouette edge pixel (coverage ≥ .5 next to background),
     walk inward along the coverage gradient and integrate the hull coverage until the body is reached = the
-    visible ink width in pixels (sub-pixel exact, AA-independent). Also the review's colour check on ``rgb``:
-    a pixel darker than ``dark_lum`` within ``within`` px of the edge, and the luminance of solid-ink pixels.
+    visible ink width in pixels (sub-pixel exact, AA-independent). Also the review's colour check on ``rgb`` (the
+    final image): a pixel darker than ``dark_lum`` within ``within`` px of the edge; and the 95th-percentile
+    luminance of the solid-ink pixels on ``hull_rgb`` (default ``rgb``; pass the render **before** the bloom /
+    glow-card post: the material colour is checked, not the additive FX lying over it).
     Returns stats + ``edge_ok`` / ``edge_yx`` arrays for the diagnostic map."""
     A = np.clip(body + hull, 0, 1)
     inside = A >= 0.5
@@ -654,13 +674,42 @@ def ink_stats(body: np.ndarray, hull: np.ndarray, rgb: np.ndarray | None = None,
         dark = win.min(axis=(2, 3)) < dark_lum
         out["fracDark"] = round(float(dark[ys, xs].mean()), 4)
         solid = (hull > 0.98) & (body < 0.02)
+        if hull_rgb is not None:
+            lum = hull_rgb[:, :, :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], np.float32)
         out["hullLumP95"] = round(float(np.percentile(lum[solid], 95)), 1) if solid.any() else 0.0
     return out
 
 
-def ink_gate_ok(st: dict) -> bool:
-    return (st.get("edges", 0) > 0 and st["fracRim"] >= INK_GATE["minFrac"]
-            and st.get("fracDark", 1.0) >= INK_GATE["minFrac"] and st.get("hullLumP95", 0.0) <= INK_GATE["maxHullLumP95"])
+def ink_gate_ok(st: dict, gate: dict | None = None) -> bool:
+    g = gate or st.get("gate") or INK_GATE
+    return (st.get("edges", 0) > 0 and st["fracRim"] >= g["minFrac"]
+            and st.get("fracDark", 1.0) >= g["minFrac"] and st.get("hullLumP95", 0.0) <= g["maxHullLumP95"])
+
+
+def ink_verdict(reports: Sequence[dict]) -> dict:
+    """Summary of measured cells (``ink_stats`` results with ``tag``; ``gated: False`` = informative only, e.g.
+    the baked-hull mobile-low cell): pass / failures / worst fractions."""
+    gated = [r for r in reports if r.get("gated", True)]
+    fails = [f"{r.get('tag', '?')}: rim >= {r['minPx']:g}px on {r['fracRim'] * 100:.1f} % (median "
+             f"{r['rimPxMedian']:.2f}px), dark {r.get('fracDark', 0) * 100:.1f} %, hull lum p95 "
+             f"{r.get('hullLumP95', 0):.0f}" for r in gated if not ink_gate_ok(r)]
+    return {"pass": bool(gated) and not fails, "failures": fails, "cells": len(gated),
+            "minFracRim": round(min((r["fracRim"] for r in gated), default=0.0), 4),
+            "minFracDark": round(min((r.get("fracDark", 0.0) for r in gated), default=0.0), 4),
+            "medianRimPx": round(float(np.median([r["rimPxMedian"] for r in gated])) if gated else 0.0, 2),
+            "maxHullLumP95": round(max((r.get("hullLumP95", 0.0) for r in gated), default=0.0), 1),
+            "gate": {k: v for k, v in (gated[0].get("gate") or INK_GATE).items()} if gated else dict(INK_GATE),
+            "baked": [{k: r[k] for k in ("tag", "rimPxMedian", "rimPxP10", "fracRim")} for r in reports
+                      if not r.get("gated", True)]}
+
+
+def assert_ink_gate(reports: Sequence[dict], what: str = "") -> dict:
+    """``ink_verdict`` that **raises** ``InkGateError`` (listing every failing cell) when the gate fails."""
+    v = ink_verdict(reports)
+    if not v["pass"]:
+        msg = "\n  ".join(v["failures"]) or "no gated 1080p cell was measured"
+        raise InkGateError(f"INK GATE FAILED {what}({v['cells']} cells, gate {v['gate']}):\n  {msg}")
+    return v
 
 
 def ink_map(rgb: np.ndarray, st: dict, zoom: int = 3) -> np.ndarray:
@@ -763,12 +812,14 @@ class Review:
     def __init__(self, asset: str, root: bpy.types.Object, meshes: Sequence[bpy.types.Object], height: float,
                  blob_radius: float = 0.39, outline_px: float = 2.5, out_dir: Path | None = None,
                  samples: int = 8, extra_objects: Sequence[bpy.types.Object] = (),
-                 game_outline_px: float | None = None, glows=None, bloom: bool = True):
+                 game_outline_px: float | None = None, glows=None, bloom: bool = True,
+                 outline_class: str | None = None):
         """``game_outline_px``: render the game views with the screen-constant ink width UE draws (the
         manifest ``outlinePx1080``, scaled to the render height) instead of the bare baked hull; close-ups,
         turnarounds and sheets then use the same ink in world units (``ink_world``) — the shipped weight,
         magnified. ``glows(cam, res) → [dict(center_px, radius_px, color, alpha, core, core_alpha, core_frac)]``:
-        runtime glow cards (full-frame pixels) composited into game views; ``bloom``: the emissive bloom pass."""
+        runtime glow cards (full-frame pixels) composited into game views; ``bloom``: the emissive bloom pass.
+        ``outline_class`` picks the ink gate (``ink_gate``; default: the first mesh's ``af_outline_class``)."""
         self.asset = asset
         self.root = root
         self.meshes = list(meshes)
@@ -785,6 +836,9 @@ class Review:
         self.out.mkdir(parents=True, exist_ok=True)
         self.written: list[tuple[Path, int]] = []
         self.ink_reports: list[dict] = []
+        self.outline_class = outline_class or next(
+            (str(m["af_outline_class"]) for m in self.meshes if m.type == "MESH" and "af_outline_class" in m), "hero")
+        self.gate = ink_gate(self.outline_class)
         stage(blob_radius=blob_radius)
 
     def _save(self, name: str, img: np.ndarray) -> Path:
@@ -811,7 +865,7 @@ class Review:
         if self.game_outline_px:
             for m in self.meshes:
                 if m.type == "MESH" and "af_outline_width" in m:
-                    outline.set_preview_width(m, ink_world(self.game_outline_px) * scale)
+                    outline.set_preview_screen(m, world=ink_world(self.game_outline_px) * scale)
         else:
             set_outline_px(self.meshes, (px or self.outline_px) * scale, at if at is not None else Vector((0, 0, 0.9)))
 
@@ -847,16 +901,25 @@ class Review:
         """One game-camera render (active camera, current hull width) → (final image, ink stats or None).
         ``measure``: coverage pass + ``ink_stats`` (measured before the glow/bloom post, colour check after)."""
         cam = bpy.context.scene.camera
-        img = render_array(border)
+        raw = render_array(border)
         st = None
         if measure:
             body, hull = coverage_pass(self.meshes, border)
-        img = self.post(img, cam, res, border, glow=glow, bloom_on=bloom_on)
+        img = self.post(raw, cam, res, border, glow=glow, bloom_on=bloom_on)
         if measure:
-            st = ink_stats(body, hull, img)
+            st = ink_stats(body, hull, img, min_px=self.gate["minPx"], dark_lum=self.gate["darkLum"],
+                           within=self.gate["darkWithinPx"], hull_rgb=raw)
             st["tag"] = tag
+            st["gate"] = self.gate
             self.ink_reports.append(st)
         return img, st
+
+    def ink_verdict(self) -> dict:
+        return ink_verdict(self.ink_reports)
+
+    def assert_ink(self) -> dict:
+        """Fail loudly: raise ``InkGateError`` unless every gated 1080p cell rendered so far passes the gate."""
+        return assert_ink_gate(self.ink_reports, f"{self.asset} ")
 
     @staticmethod
     def ink_label(st: dict | None) -> str:

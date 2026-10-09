@@ -56,7 +56,8 @@ shade = mix(mix(c, (30,20,60)/255, .35), 0, s);  light = mix(c, (255,244,214)/25
 col   = mix(shade, c,     smoothstep(0.41, 0.43, h))              T_shade 0.42, band width 0.02
 col   = mix(col,   light, smoothstep(0.85, 0.87, h))              T_light 0.86
 col   = mix(col, #0A0818, 0.22 * AF_Data.r)                       grounding (baked weight, see below)
-col   = mix(col, #FFECC8, 0.55 * (1 - max(N·V,0))^4 * smoothstep(0, .05, ndl))   rim on the lit half
+col   = mix(col, #FFECC8, 0.55 * smoothstep(.56^4, .62^4, (1 - max(N·V,0))^4) * smoothstep(0, .05, ndl))
+                                                                  banded rim on the lit half (shading.RIM_*)
 col   = mix(col, c, e)                                            emissive regions are unshaded
 out   = srgb_to_linear(col) * (1 + 0.6 e)                         (UE: × shadow attenuation on ndl first)
 ```
@@ -76,21 +77,55 @@ out   = srgb_to_linear(col) * (1 + 0.6 e)                         (UE: × shadow
   R shadowAmt, G lightAmt, B emissive, A outline mix. Unused swatches are magenta. UE import: BC sRGB on,
   P sRGB off, **Filter Nearest, No Mipmaps**, compression UserInterface2D/BC7 (exact swatches).
 * **Outline** (P7, R3): baked **inverted hull** in the same mesh, slot 1 `M_AF_Outline`. Hull vertices are pushed
-  out along an area-weighted smoothed normal shared by every corner at the same position (hard edges and seams
+  out along an angle-weighted smoothed normal shared by every corner at the same position (hard edges and seams
   never split the outline) by the class width (`kit.outline.WIDTH_CM`: hero/boss 1.8 cm, NPC 1.6, monster 1.5,
   small monster 1.4, interactive 1.3, weapon 1.3, decor 1.2), faces flipped, same skin weights (skins with the
-  body), **custom normals = outward smoothed normal**, `AF_Data` = normal×0.5+0.5 with A = 0. Colour:
-  `mix(#120C18 ink, line(c), o)` with `line(c) = mix(mix(c,(20,10,30)/255,.5),0,.55)`; default `o = 1`
-  (darkened local colour, R3). UE: unlit, opaque, default back-face culling (draws the far side = the rim), and
-  for screen-constant width under zoom: `WPO = VertexNormalWS × (OutlinePx × PixelWorldSize − BakedWidth)`.
-  At the default camera distance the baked 1.8 cm is 2.16 px at 1080p (`px1080AtDefaultDistance`) — lighter than
-  the web's heavy ink, so every outline slot also carries **`outlinePx1080`** (`kit.outline.SCREEN_PX_1080`,
-  spec §1.3: hero/boss/weapon 3.5, NPC/monster 3.0, interactive 2.0, decor 1.2; ∝ viewport height) — the
-  `OutlinePx` the UE material instance must use. Heroes ink-weight the hull colour with `o = 0.4` (60 % toward
-  `#120C18`, slot field `outlineMix`). Game-camera previews render at that width (`Review(game_outline_px=)`).
-  Parts with `outline=False` (visor slits, gems, small emissive bits, bands that sit inside a neighbour's hull)
-  get no hull; `Builder.add(part, …, hull=proxy)` bakes the hull from a simpler shape instead (face attribute
-  `af_hullonly`: the proxy's hull copy is kept, its own faces dropped) — mail rows, grooved helms, folded capes.
+  body), **custom normals = outward smoothed normal**, `AF_Data` = normal×0.5+0.5 with A = 0. UE: unlit, opaque,
+  default back-face culling (draws the far side = the rim).
+  * **Colour** `mix(#120C18 ink, line(c), o)`, `line(c) = mix(mix(c,(20,10,30)/255,.5),0,.55)`, `o` = palette
+    `P.a` — never lighter than the region's line tone. Spec §1.3: characters ink, props their line tone →
+    `outline.INK_MIX` (hero/boss/NPC/monster/weapon **0.4** = 60 % ink, hull lum ≤ 33 for any base colour;
+    interactive/decor 1.0). Characters build their regions with `outline.ink_regions(REGIONS, "monster")`
+    (the warrior's `HULL_INK_O`); `finish_mesh` warns about any hull swatch lighter than lum 40.
+  * **Width = screen-constant WPO** (spec §1.3 "extrusion in clip space"). The far side of the hull is the body
+    silhouette **dilated by exactly `OutlinePx1080 × ViewSizeY / 1080` pixels in screen space**:
+    ```
+    P = AbsoluteWorldPosition (excl. material offsets)   N = VertexNormalWS (the imported custom normal)
+    V = normalize(P − CameraPosition)                     depth = TransformPosition(P, World→View).z
+    Np = N − dot(N, V)·V                                  dir = Np / max(length(Np), 0.25)      (INK_EPS)
+    width = OutlinePx1080 · 2 · depth · TanHalfFOV.y / 1080    (ViewSize cancels: ∝ viewport height)
+    WPO = dir · width − N · BakedWidth
+    ```
+    `OutlinePx1080` = slot field **`outlinePx1080`** (`outline.SCREEN_PX_1080`, spec §1.3: hero/boss/weapon 3.5,
+    NPC/monster 3.0, interactive 2.0, decor 1.2), `BakedWidth` = `widthCm`. At the W1 default distance 1 px at
+    1080p = 0.833 cm (hero ink 2.92 cm). Normals within asin(0.25) ≈ 14° of the view ray (interior) fade
+    linearly. A plain push along N (`N × (width − Baked)`, the formula until art review 6) reaches only
+    sin∠(N, V) of the request: sheet edges, rims, blade bevels and plume strands tilted toward the camera lost
+    ~30 % of their ink. **Mobile low** (no WPO): the baked hull alone, hero 1.8 cm = 2.16 px at the default
+    distance (measured median ≈ 2.4 px on the warrior). The whole contract is in `manifest.json →
+    shading.outline` (`outline.outline_manifest()`).
+  * **Preview = the same formula**: `outline.set_preview_screen(obj, px=…|world=…)` (Geometry Nodes, per-vertex
+    view depth, camera position / forward re-aimed before every `review.render_array` by `refresh_preview`, so
+    poses, facings and attached weapons stay exact); `review.set_outline_px(meshes, px)` uses it; `px=None` /
+    `set_preview_width(obj, m)` = the old push along N (the baked hull alone: `set_preview_width(obj, baked)`).
+    `outline.preview_self_test()` checks it (sphere 3.50 px for a 3.5 px request; a 1 cm plate tilted 70°:
+    3.50 px vs 3.15 px along N). **Root cause of the "missing ink" in review 3**: the preview group negated the
+    custom normal (assumed it followed the flipped winding) — game views asked 2.9 cm got 0.7 cm.
+  * **Nothing may stand proud of the ink.** A no-hull trim (band, seam, rivet, crease strip, gem) or a detailed
+    part bulging out of its low-poly hull proxy eats the silhouette ink by its height (each mm = 0.12 px at 1080p).
+    `outline.protrusion_report(obj)` lists them (`finish_mesh` prints every part > 2 mm). Fix with
+    **`Builder.add(part, …, hull=proxy | None, hull_pad=True)`** + **`Builder.add(trim, …, outline=False,
+    covered_by=<id>)`**: at build the proxy (or a copy of the part) is inflated locally (`mesh.pad_proxy`) until it
+    encloses the part and every covered trim (+0.5 mm). Parts with `outline=False` (visor slits, gems, small
+    emissive bits) get no hull; `hull=proxy` alone bakes the hull from a simpler shape (face attribute
+    `af_hullonly`: the proxy's hull copy is kept, its own faces dropped) — mail rows, grooved helms, folded capes.
+  * **Ink gate** (`review.ink_gate(class)`, `outline.GATE_*`): at native 1080p with the shipped width, ≥ 90 % of
+    the silhouette edge pixels carry a rim ≥ `outlinePx1080 − 0.5` px (hero 3.0, NPC/monster 2.5, interactive
+    1.5, decor 0.7) with a pixel darker than lum 40 (line-tone classes 64) within 3 px, and the solid hull pixels'
+    lum p95 ≤ 40 before the bloom / glow-card post. Measured on every game-camera cell (`Review.game_shot(...,
+    measure=True)`; `game_inkgate.png` marks each edge pixel green / red); `Review.assert_ink()` /
+    `review.assert_ink_gate(reports)` raise `InkGateError`; `asset.ship_character` / `ship_static` record
+    `inkGate` in the manifest entry and raise; the warrior ship exits 1.
 * **Camera (W1)**: yaw 45°, pitch −50°, horizontal FOV 35°, focus 50 cm above ground, default distance
   **25.37 m** = 16 × 12 tiles on 16:9 (`shading.CAM_DIST_DEFAULT`).
 
@@ -129,7 +164,8 @@ workhorse) → `tube(points, radii, sides, exp)`, `capsule(a, b, ra, rb)`, `belt
 `skin_tube(points, edges, radii, subdiv)` (Skin modifier). `superellipse(rx, ry, n, exp)` profiles (exp 2 ellipse,
 3–4 rounded box).
 `Builder(asset, palette, prefix, lod_ratio=1, lod_skip=None)`: `.regions(name=Region…)`, `.add(part, region, bind,
-name, outline=True, sub_regions={1: 'lining'}, hull=None)`, `.build(name, grounding_height)` → mesh object with
+name, outline=True, sub_regions={1: 'lining'}, hull=None, hull_pad=False, covered_by=None)` → part id (padded hull
+proxies: see §2 Outline; `pad_proxy(part, points)`), `.build(name, grounding_height)` → mesh object with
 `af_swatch`/`af_part`/`af_nohull`/`af_hullonly` face attributes, palette UVs and `AF_Data`. A reduced LOD is the
 same generator run with `lod_ratio` < 1 (every part and hull proxy collapse-decimated by `decimate(part, ratio)`)
 and `lod_skip(name)` dropping sub-readability details. `tri_count(obj, material_index)`.
@@ -145,8 +181,13 @@ smooth=0)`, `skin(obj, rig, binds)` (inverse-distance-to-bone-segment weights, �
 `add_socket`, `socket_manifest`, `attach_to_bone(obj, rig, bone)` (bone-head attachment = UE socket convention).
 
 **outline** — `bake_hull(obj, width_m, toon_mat, outline_mat)` (honours `af_hullonly` proxies), `WIDTH_CM`,
-`SCREEN_PX_1080`, `set_preview_width(obj, m)` (GN modifier for review only; stripped before export),
-`pixel_world_size`, `default_px_at_game_distance`.
+`SCREEN_PX_1080`, `INK_MIX`, `INK_CLASSES`, `INK_EPS`, `GATE_SLACK_PX` / `GATE_FRAC` / `GATE_DARK_LUM`;
+preview (GN modifier, review only, stripped before export): `set_preview_screen(obj, px= | world=)` (the UE WPO),
+`refresh_preview(scene)`, `set_preview_width(obj, m)` (push along N), `remove_preview`, `preview_self_test()`;
+`screen_k`, `ink_width_world(px1080, depth)` (Python reference of the WPO width), `pixel_world_size`,
+`default_px_at_game_distance`; colour: `hull_rgb(hex, o)`, `lum`, `ink_regions(regions, class)`,
+`dark_limit(class)`, `hull_color_report(obj, pal, class)`; `protrusion_report(obj, min_mm, names)`;
+`outline_manifest()`.
 
 **anim** — `Pose(rig)`: `.rot(bone, pitch, roll, yaw)` (relative to parent, character axes: X left, −Y forward,
 Z up), `.swing/.lift/.spread/.twist` (relative to the bone's rest direction), `.world(...)` / `.aim(bone, dir, up)`
@@ -162,12 +203,23 @@ as JSON on the armature, `.mirror`, `.apply`).
 
 **export** — `export_skeletal_mesh(rig, meshes, asset, category)`, `export_animation(rig, action, category)`,
 `export_static_mesh(obj, asset, category, sockets, collision)`; `Manifest()` (`set_palette`, `set_asset`,
-`save`), `skeletal_entry`, `static_entry`, `clip_entry`, `bounds_ue`.
+`save`), `skeletal_entry`, `static_entry`, `clip_entry`, `bounds_ue`. **`Manifest.save()` merges**: under an
+exclusive lock (`manifest.json.lock`) it re-reads the file and writes only the `assets` / `palettes` / `gameIds`
+keys this instance added, changed or deleted since it was loaded (other generators' entries are kept), atomically;
+`shading` / `units` are rewritten from the kit. Always go through `Manifest`, never write the JSON directly.
 
-**review** — `Review(asset, root, meshes, height, blob_radius)`: `.game_view()` (`game.png` 640×360 at the W1
-camera + `game_1080crop.png` native 1080p pixels), `.closeup()` (front 3/4, outline 2.5 px), `.turnaround()`
-(8 facings, one scale), `.contact_sheet(rig, [(clip, action)], frames=8)` (`anims.png`; notify frames get an orange
-border + label); `game_outline_px=` renders the game views at the UE screen-constant ink width. Offline UI renders
+**review** — `Review(asset, root, meshes, height, blob_radius, game_outline_px=, glows=, bloom=True,
+outline_class=)`: `.game_view()` (`game.png` 640×360 at the W1 camera; `game_1080crop.png` native 1080p pixels —
+shipped look next to the baked hull alone, each with its measured rim; `game_inkgate.png` the 3× edge map),
+`.closeup()` (front 3/4), `.turnaround()` (8 facings, one scale), `.material_ab()` (full toon stack vs no rim / no
+grounding + diff), `.contact_sheet(rig, [(clip, action)], frames=8)` (`anims.png`; notify frames get an orange
+border + label). `game_outline_px=` (`ship_*` pass `SCREEN_PX_1080[class]`) renders game views at the UE
+screen-constant ink and close-ups / sheets with the same ink in world units (`ink_world`: the shipped weight,
+magnified); `.game_shot(border, measure=True, tag=)` = one game-camera cell (+ `post`: emissive **bloom**
+`BLOOM_LOBES` and runtime **glow cards** `glows(cam, res)` with the web falloff `GLOW_STOPS`) measured by the ink
+gate → `.ink_reports`, `.ink_verdict()`, `.assert_ink()`; module level `ink_gate(class)`, `INK_GATE`,
+`ink_stats(body, hull, rgb, …)`, `coverage_pass`, `ink_gate_ok`, `ink_verdict`, `assert_ink_gate`,
+`InkGateError`, `ink_map`, `emissive_pass`, `bloom`, `glow_card`, `blur`. Offline UI renders
 (portraits, icons): `ink_render(meshes, res, silhouette_px, interior_px, depth_step)` — hulls hidden, the web's ink
 drawn in screen space instead (constant-width `#120C18` silhouette + contour lines where a nearer surface overlaps
 a farther one, found on a 2× depth pass; no hull saw-teeth or slivers at 1:1), `composite_glow` (bakes a runtime
@@ -175,9 +227,11 @@ FX sprite such as `visorGlow` into a texture that gets no bloom), `project_px`. 
 `game_camera`, `frame_points`, `mesh_points`, `stage`, `render_array`, `draw_text` (5×7 font), `grid`, `FACINGS`
 (`front`, `se`, `side`, `ne`, `back`, …).
 
-**asset** — `finish_mesh(builder, pal, outline_class, rig=, grounding_height=)` (build → skin → materials → hull);
-`ship_character(asset, token, category, rig, body, pal, clips, outline_class, game_ids, attachments, blob_radius)`
-(bake, `SK_` + one `A_` per clip, manifest, full review set); `ship_static(...)`.
+**asset** — `finish_mesh(builder, pal, outline_class, rig=, grounding_height=)` (build → skin → materials → hull;
+stores `af_parts`, prints `[ink]` hull-colour / protrusion warnings);
+`ship_character(asset, token, category, rig, body, pal, clips, outline_class, game_ids, attachments, blob_radius,
+ink_gate=True)` (bake, `SK_` + one `A_` per clip, manifest, full review set at the shipped ink, ink gate →
+`inkGate` in the entry, raises `InkGateError`); `ship_static(..., ink_gate=True)`.
 
 **pngio** — `write_png` (exact bytes, adaptive filters), `write_png_budget` (≤ 200 KB: truecolour → 256-colour
 palette → downscale), `read_png`.
@@ -215,11 +269,14 @@ animated local transforms, which the smoke test verifies are identical to the so
 ```jsonc
 { "schemaVersion": 1, "generator": "...", "units": {...},
   "shading": { tShade, tLight, bandWidth, toneConstants, rim, grounding, emissiveBoost, ink,
-               keyLight: { fromYawUE, elevationDeg, dirToLightUE, dirToLightView }, camera: {...} },
+               keyLight: { fromYawUE, elevationDeg, dirToLightUE, dirToLightView }, camera: {...},
+               outline: { model, color{formula, ink, lineTint…, inkMixByClass}, bakedWidthCm{class}, outlinePx1080ByClass,
+                          wpo{formula[], eps, params, meaning, atDefaultDistance, mobileLow, preview}, gate } },
   "palettes": { "<Family>": { material, parent, baseColor{name,file,srgb}, params{…channels}, filter, mips } },
   "gameIds": { "player_warrior": "SK_Hero_Warrior", … },
   "assets": { "SK_…": { kind, category, fbx, gameIds, skeleton, scale, heightCm, boundsCm{min,max}, bones,
-      triangles{toon,outline}, materialSlots[{index,name,parent,palette,(class,widthCm,px1080AtDefaultDistance)}],
+      triangles{toon,outline}, materialSlots[{index,name,parent,palette,(class,widthCm,px1080AtDefaultDistance,
+      outlinePx1080,outlineMix)}], inkGate{pass,cells,minFracRim,minFracDark,medianRimPx,maxHullLumP95,gate},
       sockets[{name,bone,relLocCm,relRotDeg,restLocCm}], blobShadowRadiusCm, attachments[{object,socket}],
       anims[{name,asset,fbx,lengthMs,frames,fps,loop,notifies[{name,ms}],contactMs,releaseMs,additive,refSpeedCmS}],
       previews[] },
@@ -267,13 +324,20 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/heroes
 | `heroes/qa.py` | per-frame geometry QA on the deformed meshes: lowest point of body / main-hand / off-hand item, sword × shield, sword × body, shield × body (grip zones excluded only against their own fist), cape × armour (outer skin, interior, below the pinned yoke), visor yaw / pitch on contact frames; `verdict()` against limits |
 | `heroes/warrior.py` | `SK_Hero_Warrior` mesh (+ `lod=1` → `SK_Hero_Warrior_LOD1`), rig spec (cape / tabard / plume chains), `SM_Hero_Warrior_Sword` / `_Shield`, CLI |
 | `heroes/warrior_clips.py` | READY + cloth solver (gravity-aware tabards, ground constraint on every chain, **cape envelope** against the skinned armour) + all 15 clips (Idle, Walk, Run @ 3.333 m/s, Attack01-03, Cast01-02, Cast_Whirlwind, Cast_Charge, Hurt, HurtAdd, Dodge, Death, Portrait); chest-relative authoring helpers (`chest`, `shield_guard`, `shield_at`, `look`) |
-| `heroes/warrior_ship.py` | bake, **QA gate** (`qa.py`, limits `QA_LIMITS` / `QA_CLIP_LIMITS` / `QA_HEAD`: the ship exits 1 when a clip exceeds them), FBX export (SK, LOD1, A_ per clip, weapon SMs), manifest (anims, notifies, `fx` colours, portrait, `lods`, `budget`), re-import verification, review set in `Art/Previews/hero_warrior/` |
+| `heroes/warrior_ship.py` | bake, **QA gate** (`qa.py`, limits `QA_LIMITS` / `QA_CLIP_LIMITS` / `QA_HEAD`: the ship exits 1 when a clip exceeds them), **ink gate** (25 gated 1080p cells, `inkGate` in the manifest; exit 1 on a failure), FBX export (SK, LOD1, A_ per clip, weapon SMs), manifest (anims, notifies, `fx` colours, portrait, `lods`, `budget`), re-import verification, review set in `Art/Previews/hero_warrior/` |
 
 Conventions learnt on the warrior (apply them to the next heroes):
 
 * **Concave details never get a hull.** An inverted hull inks every concave wall that faces away from the camera
   (a visor groove became a thick black bar over the ember). Model grooves with `profile_mesh(disp=…)`, then
   `split_faces` the displaced faces into an `outline=False` part; the hull's front side is culled anyway.
+* **Nothing stands proud of the ink** (art review 6, ink gate): every no-hull trim is `covered_by=` the padded hull
+  of the plate it sits on (`hull_pad=True`) — helm (brow band, seams, rivets, breaths), cuirass (ridge, seams, fauld,
+  sigil), mail skirt (rows, belt), fist (knuckle plate + thumb: they stood 2 cm proud — the sword hand lost 2.5 px
+  of ink), pauldron (rim, rivet), rerebrace (lame), greave (shin ridge), knee cop (rivet), sabaton (lames), plume
+  (strands), cape (hem, creases), tabard (V trim), buckle; the shield has one padded slab hull over the whole heater
+  (the emblem stood 5–8 mm proud of the rims edge-on), the sword's grip / pommel cover the wraps and the cabochon.
+  `outline.protrusion_report` is empty for all three meshes; the cloth proxies' lens rim is `CAPE_LENS` 2 mm.
 * **Cloth angles are world-space** (web `clothChain`): the cape hangs at `max(rest + flow, lean × w_k + 0.8 rest)`;
   `cling` (rolls, falls) wraps it along the curled back and `curl` tucks the hem under the hips. Two modelled crease
   strips per cape read as folds under 3-band shading. **Then the envelope** (`cape_push`): the real armour, skinned
@@ -308,20 +372,26 @@ Conventions learnt on the warrior (apply them to the next heroes):
   too (`weapon_probes`): a forward roll must not drive a forward-pointing blade into the floor — tuck it sideways.
 * **Camera-aware proportions**: pitch −50° foreshortens the body but not the helm; the warrior helm loft is
   × 0.92 (`HELM_K`) with the freed height given to torso/legs (crown still 176 cm): 3.06 → 3.28 heads on screen.
-* **Focal accent**: a *dark* `#0C0A12` slit (4.6 cm, shallow recess) with a thin ember line (1.5 cm, rgb(255,150) +
-  a 5.5 mm rgb(255,210) core) on its lower lip — visible past the upper lip from the −50° camera — and a ≥ 3 cm steel
-  gap under the narrowed brow band, so at 1080p it reads as a glowing eye slit, not a second gold band; the runtime
-  `visorGlow` sprite is 12 cm, α 0.6 (`game_visorglow.png` checks it with/without). Raised sword hands go beside or
+* **Focal accent**: a *dark* `#0C0A12` slit (5.8 cm, shallow recess) holding a 4.2 cm emissive ember graded
+  `#FF8A2A` → `#FFB45C` (2.6 cm) → `#FFD08A` hot core (1.4 cm), and a ≥ 3 cm steel gap under the narrowed brow band,
+  so at 1080p it reads as an ember-lit T-visor, not a second gold band; the runtime `visorGlow` card
+  (manifest `fx.visorGlow`: additive, 10 cm `#FF8A2A` α 0.75 with a 3.5 cm `#FFD08A` core α 0.9, web light falloff,
+  faded by how much the visor faces the camera) + bloom on the emissive regions are in every game-camera preview
+  (`game_visorglow.png` checks with/without). Raised sword hands go beside or
   above the helm (front, se and sw views), never in front of the visor; the Attack01 wind-up holds the fist at
   ≈ 1.8–1.9 m, above and just behind the crown (the arm's full reach while leaning back).
-* **Weapons (spec §3.1)**: sword blade 80 cm guard → tip with a 2.7 → 2.0 cm diamond section and a ridge fuller
-  (edge-on it stays readable), crossguard 28 cm drooping toward the grip; heater 36 × 60 cm.
+* **Weapons (spec §3.1)**: sword blade 80 cm guard → tip with a hollow-ground diamond section (two facets per flat
+  meeting at the fuller ridge, bevelled edges: one facet always faces the key light) and blade `shadowAmt` .15 (the
+  shade band stays mid-light steel, never a dark iron bar), ridge fuller; crossguard 28 cm drooping toward the grip;
+  heater 36 × 60 cm.
 * **Locomotion blade**: carried 35° outward and nearly down (165°) — any forward component cancels the outward one
   in the `se` projection and lays the blade over the near leg.
 * **Portrait** (`T_UI_Portrait_*`, R11): `review.ink_render` (screen-space ink, 4.5 px silhouette at 512²) +
   `composite_glow` for the visor glow — no hull at 1:1; `portrait_zoom2x.png` is the 2× defect check.
-* Previews: `game_poses.png` (key frames at native 1080p, W1 camera, UE ink width) is the readability check,
-  `game_contacts.png` the four strikes' contact / release silhouettes at game size (se + sw);
+* Previews: `game_poses.png` (key frames at native 1080p, W1 camera, UE ink width, bloom, visor card) is the
+  readability check, `game_contacts.png` the four strikes' contact / release silhouettes at game size (se + sw),
+  `game_facings.png` idle / run from front, sw, ne, back — every one of these cells is **ink-gated** (25 cells;
+  the ship exits 1 on a failure, `game_inkgate.png` shows the edge map); `material_ab.png` the rim / grounding A/B;
   `poses_*.png` the intersection check; every clip has `anim_<Clip>.png` (se, notify frames boxed in orange) and every
   attack / cast (+ dodge, death) `anim_back_<Clip>.png` (ne / back / nw at pitch −50°, key poses + contact); `lod1.png`
   LOD0 vs LOD1; `weapons.png` includes a hilt close-up (pommel cabochon, down-swept guard). The ship prints the QA

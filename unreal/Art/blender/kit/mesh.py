@@ -632,6 +632,7 @@ class Builder:
         self.parts: list[dict] = []
         self.lod_ratio = lod_ratio
         self.lod_skip = lod_skip
+        self._pending: dict[int, dict] = {}       # padded hull proxies, appended at build (``hull_pad``)
 
     def region(self, key: str, region: _pal.Region) -> int:
         idx = self.palette.add(f"{self.prefix}.{key}", region)
@@ -643,13 +644,21 @@ class Builder:
             self.region(k, r)
 
     def add(self, part: Part, region: str, bind=None, name: str | None = None, outline: bool = True,
-            sub_regions: dict[int, str] | None = None, hull: Part | None = None) -> int:
+            sub_regions: dict[int, str] | None = None, hull: Part | None = None, hull_pad: bool = False,
+            covered_by: int | None = None) -> int:
         """Merge ``part``; ``sub_regions`` = {af_sub value: region} (e.g. a sheet's {1: 'lining'}).
 
         ``hull``: a simpler closed shape (same frame, same bind) used **only** to bake this part's outline hull
         (face attribute ``af_hullonly``; ``kit.outline.bake_hull`` keeps its hull copy and drops its toon faces),
         so a detailed part (mail rows, a grooved helm, a folded cape) gets a low-poly hull. Returns the part id
-        (−1 when the LOD skips it)."""
+        (−1 when the LOD skips it).
+
+        ``hull_pad`` (outlined parts): the hull is baked from a proxy — ``hull``, or a copy of the part itself — that
+        ``build`` **inflates locally** (``pad_proxy``) until it encloses this part and every part later added with
+        ``covered_by=<this id>``, + 0.5 mm. A low-poly proxy's chords, and no-hull trims, bands, seams, rivets and
+        crease strips standing proud of the plate, otherwise eat the silhouette ink wherever they reach it (each mm
+        proud = 0.12 px of the 1080p ink at the W1 default distance; ``kit.outline.protrusion_report`` lists them).
+        ``covered_by``: this (usually ``outline=False``) part is enclosed by that part's padded proxy."""
         for r in [region, *(sub_regions or {}).values()]:
             if r not in self.swatch:
                 raise KeyError(f"region {r!r} not declared for {self.asset}")
@@ -663,13 +672,28 @@ class Builder:
             if hull is not None:
                 hull = decimate(hull, self.lod_ratio)
         pid = len(self.parts)
+        pad = bool(hull_pad and outline)
         self.parts.append({"name": name or f"part{pid}", "region": region, "bind": bind, "outline": outline,
-                           "tris": part.tris(), "hullProxy": hull is not None})
+                           "tris": part.tris(), "hullProxy": hull is not None or pad})
         subs = {k: self.swatch[v] for k, v in (sub_regions or {}).items()}
-        nohull = 0 if (outline and hull is None) else 1
+        if covered_by is not None and covered_by >= 0:
+            if covered_by not in self._pending:
+                raise ValueError(f"covered_by={covered_by}: part {covered_by} of {self.asset} has no padded hull "
+                                 f"(add it with hull_pad=True)")
+            self._pending[covered_by]["cover"].append(_vert_array(part.bm))
+        if pad:
+            proxy = hull if hull is not None else part.copy()
+            hid = len(self.parts)
+            self.parts.append({"name": f"{name or f'part{pid}'}_hull", "region": region, "bind": bind,
+                               "outline": True, "tris": proxy.tris(), "hullOnly": True, "padded": True})
+            self._pending[pid] = {"hull": proxy, "hid": hid, "region": region, "subs": subs or None,
+                                  "cover": [_vert_array(part.bm)]}
+        nohull = 0 if (outline and hull is None and not pad) else 1
         _append(self.bm, part.bm, {"af_swatch": self.swatch[region], "af_part": pid, "af_nohull": nohull,
                                    "af_hullonly": 0}, subs or None)
         part.bm.free()
+        if pad:
+            return pid
         if hull is not None and outline:
             hid = len(self.parts)
             self.parts.append({"name": f"{name or f'part{pid}'}_hull", "region": region, "bind": bind,
@@ -685,6 +709,13 @@ class Builder:
 
     def build(self, name: str | None = None, grounding_height: float | None = None) -> bpy.types.Object:
         """Create the mesh object: triangulated n-gons, palette UVs, AF_Data colour (grounding weight)."""
+        for pid, pend in sorted(self._pending.items()):      # padded hull proxies (``hull_pad``)
+            mm = pad_proxy(pend["hull"], np.concatenate(pend["cover"]))
+            self.parts[pend["hid"]]["padMm"] = round(mm * 1000.0, 2)
+            _append(self.bm, pend["hull"].bm, {"af_swatch": self.swatch[pend["region"]], "af_part": pend["hid"],
+                                               "af_nohull": 0, "af_hullonly": 1}, pend["subs"])
+            pend["hull"].bm.free()
+        self._pending = {}
         bm = self.bm
         ngons = [f for f in bm.faces if len(f.verts) > 4]
         if ngons:
@@ -699,6 +730,59 @@ class Builder:
         obj = bpy.data.objects.new(name or self.asset, me)
         scene.link(obj)
         return obj
+
+
+def _vert_array(bm: bmesh.types.BMesh) -> np.ndarray:
+    return np.array([v.co[:] for v in bm.verts], np.float64).reshape(-1, 3)
+
+
+def pad_proxy(proxy: Part, pts: np.ndarray, margin: float = 0.0005, iters: int = 12) -> float:
+    """Inflate a closed hull proxy **locally** along its (position-shared, angle-weighted) vertex normals until
+    every point of ``pts`` is inside it by ≥ ``margin``: each point outside pushes the vertices of its nearest
+    proxy face out by its distance + margin, weighted toward the face vertices nearest to it (inverse distance,
+    the nearest vertex at full strength), iterated — the hull grows only where something stands proud of it.
+    Returns the largest vertex offset (m)."""
+    from collections import defaultdict
+    from mathutils.bvhtree import BVHTree
+    bm = proxy.bm
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+    bm.normal_update()
+
+    def key(co):
+        return (round(co.x, 5), round(co.y, 5), round(co.z, 5))
+    acc: dict = defaultdict(lambda: Vector((0.0, 0.0, 0.0)))
+    for f in bm.faces:
+        for lp in f.loops:
+            acc[key(lp.vert.co)] += f.normal * lp.calc_angle()
+    vn = []
+    for v in bm.verts:
+        n = acc[key(v.co)]
+        vn.append(n.normalized() if n.length > 1e-12 else Vector(v.normal))
+    base = [v.co.copy() for v in bm.verts]
+    pad = np.zeros(len(bm.verts))
+    pts = [Vector(p) for p in np.asarray(pts, np.float64).reshape(-1, 3)]
+    for _ in range(iters):
+        bvh = BVHTree.FromBMesh(bm)
+        inc = np.zeros(len(bm.verts))
+        for p in pts:
+            loc, nrm, fi, _d = bvh.find_nearest(p)
+            if loc is None:
+                continue
+            d = (p - loc).dot(nrm)
+            if d > -0.2 * margin:
+                vs = bm.faces[fi].verts
+                w = [1.0 / ((v.co - loc).length + 1e-4) for v in vs]
+                wm = max(w)
+                for v, wi in zip(vs, w):
+                    inc[v.index] = max(inc[v.index], (d + margin) * wi / wm)
+        if not inc.any():
+            break
+        pad += inc
+        for v in bm.verts:
+            v.co = base[v.index] + vn[v.index] * float(pad[v.index])
+        bm.normal_update()
+    return float(pad.max()) if len(pad) else 0.0
 
 
 def set_af_data(me: bpy.types.Mesh, grounding_height: float | None) -> None:

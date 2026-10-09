@@ -140,6 +140,9 @@ def ship(previews: bool = True, verify: bool = True) -> dict:
         for n in (W.SWORD, W.SHIELD):
             man.data["assets"][n]["previews"] = [f"{PREVIEW_DIR_NAME}/weapons.png"]
         man.data["assets"][W.ASSET]["portrait"] = f"Portraits/{PORTRAIT}.png"
+        ink = result["ink"]
+        man.data["assets"][W.ASSET]["inkGate"] = {
+            k: ink[k] for k in ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx", "maxHullLumP95", "gate")}
         man.save()
     if verify:
         result["verify"] = verify_export(Path(sk), clips, src, entry, Path(sk1))
@@ -148,18 +151,10 @@ def ship(previews: bool = True, verify: bool = True) -> dict:
 
 
 def ink_verdict(reports: list) -> dict:
-    """Art review 6 gate: every gated 1080p game-camera cell needs a ≥ 3 px dark rim on ≥ 90 % of its silhouette
-    edge pixels (``review.INK_GATE``)."""
-    fails = [f"{r['tag']}: rim ≥{r['minPx']:g}px on {r['fracRim'] * 100:.1f} %, dark {r.get('fracDark', 0) * 100:.1f} %, "
-             f"hull lum p95 {r.get('hullLumP95', 0):.0f}" for r in reports
-             if r.get("gated", True) and not review.ink_gate_ok(r)]
-    gated = [r for r in reports if r.get("gated", True)]
-    return {"pass": not fails, "failures": fails, "cells": len(gated),
-            "minFracRim": round(min((r["fracRim"] for r in gated), default=0.0), 4),
-            "minFracDark": round(min((r.get("fracDark", 0.0) for r in gated), default=0.0), 4),
-            "medianRimPx": round(float(np.median([r["rimPxMedian"] for r in gated])) if gated else 0.0, 2),
-            "baked": [{k: r[k] for k in ("tag", "rimPxMedian", "rimPxP10", "fracRim")} for r in reports
-                      if not r.get("gated", True)]}
+    """The kit's ink gate (``review.ink_verdict``): every gated 1080p game-camera cell needs a rim of
+    ≥ outlinePx1080 − 0.5 px (hero: 3 px) on ≥ 90 % of its silhouette edge pixels, a dark pixel near ≥ 90 % of
+    them and hull lum p95 ≤ 40."""
+    return review.ink_verdict(reports)
 
 
 # ── per-frame QA (heroes/qa.py) ─────────────────────────────────────────────────────────────────────────
@@ -322,10 +317,15 @@ CONTACT_KEYS = [(n, f, fac) for fac in ("se", "sw") for n, f in (("Attack01", 18
                                                                 ("Attack03", 18), ("Cast01", 20))]
 
 
+# ink gate coverage (art review 6): the idle and run silhouettes from the other camera-relative facings too
+FACING_KEYS = [(n, f, fac) for fac in ("front", "sw", "ne", "back") for n, f in (("Idle", 0), ("Run", 8))]
+
+
 def game_poses(rv, rig, meshes, clips, actions) -> None:
     """Key frames at true in-game size: W1 camera, default distance, native 1080p pixels (crop)."""
     game_sheet(rv, rig, clips, actions, GAME_KEYS, "game_poses.png")
     game_sheet(rv, rig, clips, actions, CONTACT_KEYS, "game_contacts.png")
+    game_sheet(rv, rig, clips, actions, FACING_KEYS, "game_facings.png")
 
 
 def game_sheet(rv, rig, clips, actions, keys, fname) -> None:
@@ -474,11 +474,10 @@ def _game_crop(cx: float, cy: float, hw: float = 0.075) -> tuple[tuple[float, fl
 
 
 def visor_glow_check(rv, rig, meshes, clips, actions) -> None:
-    """Readability of the warrior's focal accent at 1080p (review items 4/7): native 1080p crops at the W1 camera
-    with the UE ink width, each without and with the runtime ``visorGlow`` sprite (manifest colour / radius,
-    alpha 0.45 at fx 0, faded by how much the visor faces the camera like the web ``H.vis``)."""
+    """Readability of the warrior's focal accent at 1080p (art review 6): native 1080p crops at the W1 camera with
+    the UE ink width, each as the bare render (no post) and with the shipped post — emissive bloom + the runtime
+    ``visorGlow`` card (manifest colour / radius / core, faded by how much the visor faces the camera)."""
     acts = dict(zip([c.name for c in clips], actions))
-    vg = FX["visorGlow"]
     cells = []
     review.setup_render((1920, 1080), 8)
     for clip, fr, fac in (("Idle", 0, "se"), ("Idle", 0, "front"), ("Idle", 0, "sw"), ("Run", 8, "front")):
@@ -486,24 +485,14 @@ def visor_glow_check(rv, rig, meshes, clips, actions) -> None:
         anim.assign(rig, acts[clip])
         anim.set_frame(fr)
         cam = review.game_camera()
-        rv.game_outline(1080, Vector((0, 0, 0.9)))
+        rv.game_outline(1080)
         cx, cy = review.project(cam, Vector((0, 0, 0.95)))
-        box, (x0, y0) = _game_crop(cx, cy)
+        box, _ = _game_crop(cx, cy)
         img = review.render_array(box)
-        vp = visor_world(rig)
-        hb = rig.obj.data.bones["head"]
-        pb = rig.obj.pose.bones["head"]
-        n = (rig.obj.matrix_world.to_3x3() @ pb.matrix.to_3x3() @ hb.matrix_local.to_3x3().inverted()
-             @ Vector((0, -1, 0))).normalized()
-        vis = max(0.0, min(1.0, 2.0 * n.dot((cam.matrix_world.translation - vp).normalized()) + 0.3))
-        px, py = review.project_px(cam, vp, (1920, 1080))
-        rad = vg["radiusCm"] / 100.0 / outline.pixel_world_size(cam, vp, 1920)
-        glow = img.copy()
-        review.composite_glow(glow, (px - x0, py - y0), rad, vg["color"], vg["alpha"] * vis)
-        d = np.abs(glow.astype(np.int32) - img.astype(np.int32)).sum(2)
-        print(f"  [visorGlow] {clip} {fac}: {int((d > 6).sum())} px changed, max ΔRGB {int(d.max())} "
-              f"(r {rad:.1f} px, α {vg['alpha'] * vis:.2f})")
-        for im, tag in ((img, ""), (glow, " +VISORGLOW")):
+        lit = rv.post(img, cam, (1920, 1080), box)
+        d = np.abs(lit.astype(np.int32) - img.astype(np.int32)).sum(2)
+        print(f"  [visorGlow] {clip} {fac}: {int((d > 6).sum())} px changed, max ΔRGB {int(d.max())}")
+        for im, tag in ((img, " NO POST"), (lit, " +BLOOM +VISORGLOW")):
             im = im.copy()
             review.draw_text(im, 3, 3, f"{clip} {fac}{tag}")
             cells.append(im)
@@ -708,8 +697,14 @@ def verify_export(sk_fbx: Path, clips, src: dict, entry: dict, lod_fbx: Path | N
 
 def main(argv) -> int:
     res = ship(previews="--no-previews" not in argv, verify="--no-verify" not in argv)
-    out = {k: v for k, v in res.items() if k not in ("previews", "qa")}
+    out = {k: v for k, v in res.items() if k not in ("previews", "qa", "ink")}
+    if res.get("ink"):
+        out["ink"] = {k: v for k, v in res["ink"].items() if k not in ("baked",)}
     out["qa"] = {k: v for k, v in res["qa"].items() if k != "worst"}
     print(json.dumps(out, indent=1)[:3000])
     ok = res.get("verify", {"pass": True})["pass"] and res["qa"]["pass"]
+    ink = res.get("ink")
+    if ink is not None and not ink["pass"]:
+        print("\nINK GATE FAILED (review.INK_GATE, see game_inkgate.png):\n  " + "\n  ".join(ink["failures"]))
+        ok = False
     return 0 if ok else 1

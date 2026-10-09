@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include "abyss/base/Math.h"
 #include "abyss/monsters/Monster.h"
@@ -46,11 +47,60 @@ MonsterDef MakeHuntDefinition(const MonsterDef& base, const HuntDef& hunt, const
   return d;
 }
 
-MonsterDef ScaleDefendWave(const MonsterDef& def, int32_t waveIndex) {
+MonsterDef ScaleDefendWave(const MonsterDef& def, int32_t waveIndex, const MonsterAiDef& ai) {
   MonsterDef out = def;
   const double w = static_cast<double>(waveIndex);
-  out.hp = std::floor(def.hp * (1 + 0.3 * w));
-  out.damage = std::floor(def.damage * (1 + 0.2 * w));
+  out.hp = std::floor(def.hp * (1 + w * ai.defendWaveHpPerWave));
+  out.damage = std::floor(def.damage * (1 + w * ai.defendWaveDmgPerWave));
+  return out;
+}
+
+MonsterDef RaiseToLevel(const MonsterDef& def, int32_t level, const MonsterAiDef& ai) {
+  if (level <= 0 || def.level >= level - ai.raiseLevelWindow) return def;
+  const double m = static_cast<double>(level) / static_cast<double>((std::max)(1, def.level));
+  MonsterDef out = def;
+  out.level = level;
+  out.hp = JsRound(def.hp * std::pow(m, ai.raiseHpExp));
+  out.damage = JsRound(def.damage * std::pow(m, ai.raiseDamageExp));
+  out.defense = JsRound(def.defense * std::pow(m, ai.raiseDefenseExp));
+  out.expReward = JsRound(def.expReward * std::pow(m, ai.raiseExpExp));
+  out.goldMin = JsRound(def.goldMin * m);
+  out.goldMax = JsRound(def.goldMax * m);
+  return out;
+}
+
+MonsterDef ScaleLabyrinthMonster(const MonsterDef& def, const LabyrinthFloorScale& floor, const DifficultyTable& table,
+                                 Difficulty difficulty, const MonsterAiDef& ai) {
+  const MonsterDef base = RaiseToLevel(def, floor.levelTarget, ai);
+  const DifficultyDef& d = table.Def(difficulty);
+  const double depth = static_cast<double>(floor.floorNumber - 1);
+  MonsterDef out = base;
+  out.speed = JsRound(base.speed * floor.curseSpeedMul);
+  out.attackSpeedMs = JsRound(base.attackSpeedMs / floor.curseSpeedMul);
+  out.hp = JsRound(base.hp * floor.hpMul * d.hpMul);
+  out.damage = JsRound(base.damage * floor.damageMul * d.damageMul);
+  out.defense = JsRound(base.defense * floor.defenseMul * d.defenseMul);
+  out.expReward = JsRound(base.expReward * (1 + depth * ai.labyrinthExpPerFloor) * d.expMul);
+  out.goldMin = JsRound(base.goldMin * (1 + depth * ai.labyrinthGoldPerFloor));
+  out.goldMax = JsRound(base.goldMax * (1 + depth * ai.labyrinthGoldPerFloor));
+  return out;
+}
+
+MonsterDef MakeGatekeeper(const MonsterDef& base, const LabyrinthFloorScale& floor, const DifficultyTable& table,
+                          Difficulty difficulty, const MonsterAiDef& ai, std::string_view nameKey) {
+  const MonsterDef scaled = ScaleLabyrinthMonster(base, floor, table, difficulty, ai);
+  const double hpMul = (base.isMiniBoss || base.elite) ? ai.gatekeeperHpMulElite : ai.gatekeeperHpMul;
+  MonsterDef out = scaled;
+  out.id = ai.gatekeeperId;
+  out.nameKey = std::string(nameKey);
+  out.hp = JsRound(scaled.hp * hpMul);
+  out.damage = JsRound(scaled.damage * ai.gatekeeperDamageMul);
+  out.expReward = JsRound(scaled.expReward * ai.gatekeeperExpMul);
+  out.goldMin = scaled.goldMin * ai.gatekeeperGoldMul;  // not rounded (web: [g0 * 3, g1 * 3])
+  out.goldMax = scaled.goldMax * ai.gatekeeperGoldMul;
+  out.aggroRange = (std::max)(scaled.aggroRange, ai.gatekeeperAggroMin);
+  out.elite = true;
+  out.isMiniBoss = true;
   return out;
 }
 
@@ -102,5 +152,34 @@ void ApplyEliteAffixes(MonsterInstance& m, std::span<const EliteAffixType> affix
 }
 
 std::string_view MonsterNameKey(const MonsterDef& def) { return def.nameKey; }
+
+std::string EliteAffixNameKey(EliteAffixType type) { return "sys.eliteAffix.name." + std::string(EnumName(type)); }
+
+std::string MonsterLabelText(const I18n& i18n, std::string_view nameKey, std::span<const EliteAffixType> affixes) {
+  const std::string base = i18n.T(nameKey);
+  if (affixes.empty()) return base;
+  std::string out = "[";
+  for (size_t i = 0; i < affixes.size(); ++i) {
+    if (i > 0) out += "\xC2\xB7";  // U+00B7 MIDDLE DOT (UTF-8), the web's affix separator
+    out += i18n.T(EliteAffixNameKey(affixes[i]));
+  }
+  out += "] ";
+  out += base;
+  return out;
+}
+
+std::vector<std::string> MiniBossDialogueLineKeys(const DialogueTree& tree, std::string_view monsterId) {
+  std::vector<std::string> keys;
+  std::vector<std::string_view> visited;
+  const DialogueNode* n = tree.FindNode(tree.startNodeId);
+  while (n != nullptr) {
+    if (std::find(visited.begin(), visited.end(), std::string_view(n->id)) != visited.end()) break;  // a cycle
+    visited.push_back(n->id);
+    keys.push_back("data.miniBossDialogue." + std::string(monsterId) + "." + n->id);
+    if (n->isEnd || n->nextNodeId.empty()) break;
+    n = tree.FindNode(n->nextNodeId);
+  }
+  return keys;
+}
 
 }  // namespace abyss

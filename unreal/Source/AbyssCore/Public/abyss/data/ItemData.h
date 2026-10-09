@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "abyss/base/Enums.h"
@@ -272,6 +273,16 @@ struct ABYSS_API ItemTables {
   CraftingDef crafting;
   std::vector<ShopDef> shops;
   std::vector<WanderingMerchantDef> wanderingMerchant;
+  // Item bases removed from the port by a decision (shops.json port.removedWares: c_tp_scroll I4, c_id_scroll I2). They
+  // stay in `bases` (lookups, old data) but are never sold, dropped (generateConsumable pool) or usable.
+  std::vector<std::string> removedItemIds;
+
+  bool IsRemovedItem(std::string_view id) const {
+    for (const std::string& r : removedItemIds) {
+      if (r == id) return true;
+    }
+    return false;
+  }
 
   const ItemBaseDef* FindBase(std::string_view id) const;
   int32_t BaseIndex(std::string_view id) const;

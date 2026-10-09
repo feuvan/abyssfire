@@ -382,6 +382,14 @@ void LoadShopsFile(const JNode& r, ItemTables& out) {
   for (const auto& [k, n] : r.Members("wanderingMerchant")) {
     out.wanderingMerchant.push_back(WanderingMerchantDef{k, n.StrList("items")});
   }
+  // port.removedWares: items removed by a decision (I4 TP scroll, I2 ID scroll); one id per distinct item.
+  out.removedItemIds.clear();
+  if (r.Has("port")) {
+    for (const JNode& w : r.Child("port").Items("removedWares", true)) {
+      const std::string id = w.Str("itemId");
+      if (!out.IsRemovedItem(id)) out.removedItemIds.push_back(id);
+    }
+  }
 }
 
 }  // namespace abyss::dataload

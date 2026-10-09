@@ -190,6 +190,11 @@ def skirt_profile() -> Profile:
 # pleat depth at the hem (art review 6: 3.4 cm pleats + rigid chains broke the cape into stacked boards in fast
 # motion; with the smooth chain weights of ``cape_weights`` 2.0 cm keeps the folds readable without separate planks)
 CAPE_PLEAT = 0.020
+# cloth hull proxies (cape, tabards) end in a pinched "lens" rim this far beyond the cloth edge, so the smoothed
+# normals fan round every edge. 7.5 mm (0.9 px) until the outline WPO became a screen-space dilation (art review 6):
+# a push along N needed it to ink a sheet seen at a grazing angle; the screen-space ink does not, and 7.5 mm made
+# the cape / tabard edges read ~0.9 px heavier than the rest of the silhouette
+CAPE_LENS = 0.002
 CAPE_LEN = 0.735
 CAPE_CHAIN_UU = 0.72          # lateral position of the cape_l / cape_r chains (uu)
 
@@ -400,7 +405,9 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
     # hull: the plain helm loft at lower resolution (the slit columns / rows add nothing to the silhouette)
     helm_hull = profile_mesh(hp, list(np.linspace(hp.z0, hp.z1, 11)), 28, cap1="fan", dome1=0.004, cap0="fan",
                              dome0=-0.02)
-    b.add(shell, "steel", Bind.rigid("head"), name="helm", hull=helm_hull)
+    # (art review 6, ink gate) the hull proxy is padded at build time until it encloses the helm and every trim on
+    # it (brow band, seams, rivets, breaths): nothing on the helm stands proud of the silhouette ink
+    helm_id = b.add(shell, "steel", Bind.rigid("head"), name="helm", hull=helm_hull, hull_pad=True)
     b.add(groove, "steel", Bind.rigid("head"), name="helm_visor", outline=False)   # concave: no hull
     # visor slit floors (dark) + the ember line glowing in the horizontal slit (web: rgb(255,150-210,60))
     b.add(C.surface_band(hp, slit_z, slit_h * 0.995, depth + 0.0015, -slit_a - 0.4, slit_a + 0.4, segs=20,
@@ -417,25 +424,26 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
     # gold brow band (web h 2.6, 1.9 u line; raised a little and narrowed so a steel gap separates it from the
     # slit at game size) + steel rivets on it
     b.add(C.surface_band(hp, hc + uh(BROW_Z), uh(BROW_H), TRIM_PROUD, segs=40), "gold", Bind.rigid("head"),
-          name="browband", outline=False)        # 4 mm proud: well inside the helm hull
+          name="browband", outline=False, covered_by=helm_id)
     for a in (-58, -30, 30, 58):
         b.add(C.surface_dot(hp, hc + uh(BROW_Z), a, 0.0075, 0.0085, sides=6), "steel_hi", Bind.rigid("head"),
-              name="brow_rivet", outline=False)
+              name="brow_rivet", outline=False, covered_by=helm_id)
     # crest seam front + back (raised ridge running over the crown), nape rivets
     b.add(C.surface_strip(hp, 0.0, hc + uh(3.5), hp.z1 - 0.004, 0.016, TRIM_PROUD, steps=8, half_round=True),
-          "steel", Bind.rigid("head"), name="seam_f", outline=False)
+          "steel", Bind.rigid("head"), name="seam_f", outline=False, covered_by=helm_id)
     b.add(C.surface_strip(hp, 180.0, hc - uh(6.6), hp.z1 - 0.004, 0.016, TRIM_PROUD, steps=12, half_round=True),
-          "steel", Bind.rigid("head"), name="seam_b", outline=False)
+          "steel", Bind.rigid("head"), name="seam_b", outline=False, covered_by=helm_id)
     for z, a in ((hc - uh(1.5), 150), (hc - uh(1.5), -150), (hc - uh(4.0), 152), (hc - uh(4.0), -152)):
         b.add(C.surface_dot(hp, z, a, 0.009, 0.006, sides=6), "steel_hi", Bind.rigid("head"), name="nape_rivet",
-              outline=False)
+              outline=False, covered_by=helm_id)
     # breaths: three small slots on each cheek
     for sg in (1, -1):
         for i in range(3):
             z = hc - uh(3.1) - i * uh(0.75)
             a0 = sg * (52 + i * 5)
             b.add(C.surface_band(hp, z, uh(0.38), 0.002, min(a0, a0 + sg * 13), max(a0, a0 + sg * 13), segs=3,
-                                 out0=-0.003), "visor", Bind.rigid("head"), name="breath", outline=False)
+                                 out0=-0.003), "visor", Bind.rigid("head"), name="breath", outline=False,
+                  covered_by=helm_id)
     # plume holder + horsehair crest streaming back (web viewPlume blob, ×1.15 fwd / ×1.08 up)
     top = hp.point(hp.z1 - 0.005, 0.0)
     holder = M.lathe([(0.026, -0.03), (0.024, 0.0), (0.020, 0.022), (0.012, 0.03)], sides=10)
@@ -443,9 +451,9 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
           name="plume_holder")
     crest, cpts, chh, cww = plume_crest(hc)
     pbind = Bind.blend("head", "plume_01", "plume_02", "plume_03", falloff=3.0)
-    b.add(crest, "crimson", pbind, name="plume")
+    plume_id = b.add(crest, "crimson", pbind, name="plume", hull_pad=True)
     for st in plume_strands(cpts, chh, cww):
-        b.add(st, "crimson_in", pbind, name="plume_strand", outline=False)
+        b.add(st, "crimson_in", pbind, name="plume_strand", outline=False, covered_by=plume_id)
 
     # ── gorget + cuirass (+ keel, ridge, seams, fauld band, ember sigil)
     b.add(M.loft_z([(D.nz - 0.04, u(4.7), u(3.5)), (D.nz, u(4.2), u(3.1)), (D.nz + u(1.6), u(3.4), u(2.5)),
@@ -460,24 +468,24 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
             return 0.010 * w * max(0.0, math.cos(math.radians(a))) ** 10
         return 0.0
     zs = list(np.linspace(cp.z0, cp.z1, 16))
-    b.add(profile_mesh(cp, zs, 32, disp=keel, cap0="fan", cap1="fan", dome1=0.01), "steel",
+    cuirass_id = b.add(profile_mesh(cp, zs, 32, disp=keel, cap0="fan", cap1="fan", dome1=0.01), "steel",
           Bind.blend(*spine), name="cuirass",
           hull=profile_mesh(cp, list(np.linspace(cp.z0, cp.z1, 10)), 24, disp=keel, cap0="fan", cap1="fan",
-                            dome1=0.01))
+                            dome1=0.01), hull_pad=True)
     # painted line art (art review 6, web viewTorso): the breastplate ridge in the steel light tone, the back ridge
     # and the side seams (where the front and back plates meet) in the shade tone — flat strips ≥ 1.25 cm (1.5 px at
     # 1080p) lying on the plate (keel included), so each line bands with the plate under it
     def on_plate(z, a):
         return keel(z, a) + 0.0022
     b.add(painted_strip(cp, 0.0, D.pz + u(5.6) * D.ts, D.pz + u(15.0) * D.ts, 0.017, on_plate, steps=14),
-          "steel_hi", Bind.blend(*spine), name="ridge", outline=False)
+          "steel_hi", Bind.blend(*spine), name="ridge", outline=False, covered_by=cuirass_id)
     b.add(painted_strip(cp, 180.0, D.pz + u(5.0) * D.ts, D.pz + u(15.0) * D.ts, 0.013, on_plate, steps=10),
-          "steel_seam", Bind.blend(*spine), name="ridge_back", outline=False)
+          "steel_seam", Bind.blend(*spine), name="ridge_back", outline=False, covered_by=cuirass_id)
     for a in (64.0, -64.0):
         b.add(painted_strip(cp, a, D.pz + u(4.4) * D.ts, D.pz + u(13.8) * D.ts, 0.013, on_plate, steps=10),
-              "steel_seam", Bind.blend(*spine), name="side_seam", outline=False)
+              "steel_seam", Bind.blend(*spine), name="side_seam", outline=False, covered_by=cuirass_id)
     b.add(C.surface_band(cp, D.pz + u(4.4), u(0.85), 0.0045, segs=40), "gold", Bind.blend(*spine), name="fauld",
-          outline=False)
+          outline=False, covered_by=cuirass_id)
     # chest ember sigil (web: flame on the breastplate, slightly to the near side)
     flame = C.smooth_closed([(0.0, 0.034), (0.013, 0.008), (0.018, -0.012), (0.006, -0.032), (-0.004, -0.030),
                              (-0.015, -0.014), (-0.012, 0.004), (-0.004, 0.0)], 4)
@@ -486,24 +494,9 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
     sn = cp.normal(sz, -8.0)
     sig = C.plate2d(flame, 0.006).transform(R.frame(sp, Vector((0, 0, 1)), sn))
     # plate2d extrudes along local Z; frame maps local Y → up, Z → surface normal
-    b.add(sig, "sigil", Bind.rigid("spine_02"), name="sigil", outline=False)
+    b.add(sig, "sigil", Bind.rigid("spine_02"), name="sigil", outline=False, covered_by=cuirass_id)
 
-    # ── belt + buckle, mail skirt, tabards
-    bp_ = Profile([(D.pz - 0.03, u(5.2), u(4.0)), (D.pz + 0.04, u(5.15), u(3.95))], exp=2.3)
-    bz = D.pz + u(1.5)
-    b.add(C.surface_band(bp_, bz, u(2.0), 0.016, segs=40, out0=-0.002), "leather", Bind.rigid("pelvis"),
-          name="belt", outline=False)
-    ba = -20.0
-    bpnt = bp_.point(bz, ba, 0.017)
-    bn = bp_.normal(bz, ba)
-    fr = R.frame(bpnt, Vector((0, 0, 1)), bn)
-    buckle = M.box((u(3.0), u(3.2), 0.016), (0, 0, 0.004), bevel=0.004).transform(fr)
-    b.add(buckle, "gold", Bind.rigid("pelvis"), name="buckle")
-    b.add(M.box((u(1.7), u(1.9), 0.012), (0, 0, 0.0075), bevel=0.002).transform(fr), "leather_dark",
-          Bind.rigid("pelvis"), name="buckle_hole", outline=False)
-    b.add(M.box((0.006, u(2.0), 0.01), (0, 0, 0.012), bevel=0.002).transform(fr), "gold",
-          Bind.rigid("pelvis"), name="buckle_tongue", outline=False)
-
+    # ── mail skirt, belt + buckle, tabards
     sk = skirt_profile()
     row_h = u(1.3)
     z_top = D.pz + u(2.4)
@@ -531,10 +524,27 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
         fr = ((z_top - zc) / row_h) % 1.0
         return fr > 1.0 - line_h / row_h
     rows_part, lines_part = C.split_faces(profile_mesh(sk, zs, 28, disp=mail, cap0="fan", cap1="fan"), mail_line)
-    b.add(rows_part, "iron", skirt_bind, name="mailskirt",
-          hull=profile_mesh(sk, list(np.linspace(sk.z0, max(zs), 6)), 20, disp=lambda z, a: 0.003, cap0="fan",
-                            cap1="fan"))          # one smooth hull over the mail rows
-    b.add(lines_part, "iron_seam", skirt_bind, name="mail_rows", outline=False)
+    # one smooth hull over the mail rows, padded to enclose the rows, their shade lines and the belt
+    skirt_id = b.add(rows_part, "iron", skirt_bind, name="mailskirt",
+                     hull=profile_mesh(sk, list(np.linspace(sk.z0, max(zs), 6)), 20, disp=lambda z, a: 0.003,
+                                       cap0="fan", cap1="fan"), hull_pad=True)
+    b.add(lines_part, "iron_seam", skirt_bind, name="mail_rows", outline=False, covered_by=skirt_id)
+    # belt + buckle (inside the skirt's padded hull)
+    bp_ = Profile([(D.pz - 0.03, u(5.2), u(4.0)), (D.pz + 0.04, u(5.15), u(3.95))], exp=2.3)
+    bz = D.pz + u(1.5)
+    b.add(C.surface_band(bp_, bz, u(2.0), 0.016, segs=40, out0=-0.002), "leather", Bind.rigid("pelvis"),
+          name="belt", outline=False, covered_by=skirt_id)
+    ba = -20.0
+    bpnt = bp_.point(bz, ba, 0.017)
+    bn = bp_.normal(bz, ba)
+    fr = R.frame(bpnt, Vector((0, 0, 1)), bn)
+    buckle = M.box((u(3.0), u(3.2), 0.016), (0, 0, 0.004), bevel=0.004).transform(fr)
+    buckle_id = b.add(buckle, "gold", Bind.rigid("pelvis"), name="buckle", hull_pad=True)
+    b.add(M.box((u(1.7), u(1.9), 0.012), (0, 0, 0.0075), bevel=0.002).transform(fr), "leather_dark",
+          Bind.rigid("pelvis"), name="buckle_hole", outline=False, covered_by=buckle_id)
+    b.add(M.box((0.006, u(2.0), 0.01), (0, 0, 0.012), bevel=0.002).transform(fr), "gold",
+          Bind.rigid("pelvis"), name="buckle_tongue", outline=False, covered_by=buckle_id)
+
     # front tabard: pointed V hem, two-sided (crimson / lining), gold V trim
     add_tabard(b, front=True)
     add_tabard(b, front=False)
@@ -549,14 +559,14 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
         cl = f"clavicle_{side}"
         dua = (E - S).normalized()
         b.add(M.tube([S - dua * 0.02, E], [0.084, 0.074], sides=16), "iron", Bind.blend(cl, ua, la), name=f"ua_{side}")
-        b.add(M.tube([S + dua * 0.10, S + dua * 0.25, E - dua * 0.02], [0.089, 0.085, 0.080], sides=16, dome0=0.0,
-                     dome1=0.0), "steel", Bind.rigid(ua), name=f"rerebrace_{side}")
+        rere_id = b.add(M.tube([S + dua * 0.10, S + dua * 0.25, E - dua * 0.02], [0.089, 0.085, 0.080], sides=16,
+                               dome0=0.0, dome1=0.0), "steel", Bind.rigid(ua), name=f"rerebrace_{side}", hull_pad=True)
         lame = C.surface_band(Profile([(-0.02, 0.0895, 0.0895), (0.02, 0.0885, 0.0885)]), 0.0, 0.012, 0.004, segs=24)
         b.add(lame.transform(_axis_frame(S + dua * 0.245, dua)), "iron", Bind.rigid(ua), name=f"rere_lame_{side}",
-              outline=False)
+              outline=False, covered_by=rere_id)
         # couter + wing
         b.add(ell((0.066, 0.066, 0.066), E, sides=14, rings=8), "iron", Bind.blend(ua, la), name=f"couter_{side}",
-              hull=ell((0.066, 0.066, 0.066), E, sides=10, rings=6))
+              hull=ell((0.066, 0.066, 0.066), E, sides=10, rings=6), hull_pad=True)
         wing = ell((0.016, 0.052, 0.058), (0, 0, 0), sides=10, rings=6)
         out = Vector((sx, 0.25, 0)).normalized()
         b.add(wing.transform(Matrix.Translation(E + out * 0.058) @ _rot_to(Vector((1, 0, 0)), out)), "steel",
@@ -584,29 +594,31 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
                                                                        (0.097, 0.087)],
                      sides=18, up=(0, -1, 0), dome0=0.0, dome1=0.0), "steel", Bind.rigid(th), name=f"cuisse_{side}")
         dk = (A - Kn).normalized()
-        b.add(M.tube([Kn + dk * 0.02, A + Vector((0, 0, 0.05))], [(0.090, 0.084), (0.070, 0.066)], sides=18,
-                     up=(0, -1, 0)), "steel", Bind.blend(th, ca, ft, falloff=6.0), name=f"greave_{side}")
+        greave_id = b.add(M.tube([Kn + dk * 0.02, A + Vector((0, 0, 0.05))], [(0.090, 0.084), (0.070, 0.066)],
+                                 sides=18, up=(0, -1, 0)), "steel", Bind.blend(th, ca, ft, falloff=6.0),
+                          name=f"greave_{side}", hull_pad=True)
         b.add(C.surface_strip(_greave_profile(Kn, A), 0.0, A.z + 0.07, Kn.z - 0.05, 0.012, TRIM_PROUD, steps=5,
                               half_round=True), "steel_hi", Bind.blend(ca, ft, falloff=6.0), name=f"shin_ridge_{side}",
-              outline=False)
+              outline=False, covered_by=greave_id)
         # knee cop + side wing + gold rivet
         kc = Kn + Vector((0, -0.05, 0.005))
-        b.add(ell((0.074, 0.056, 0.076), kc, sides=14, rings=8, exp_v=2.2), "steel", Bind.blend(th, ca),
-              name=f"kneecop_{side}")
+        kcop_id = b.add(ell((0.074, 0.056, 0.076), kc, sides=14, rings=8, exp_v=2.2), "steel", Bind.blend(th, ca),
+                        name=f"kneecop_{side}", hull_pad=True)
         b.add(ell((0.016, 0.055, 0.06), Kn + Vector((sx * 0.084, -0.012, 0.0)), sides=10, rings=6), "steel",
               Bind.blend(th, ca), name=f"knee_wing_{side}")
         b.add(ell((0.013, 0.010, 0.013), kc + Vector((0, -0.055, 0.004)), sides=6, rings=4), "gold",
-              Bind.blend(th, ca), name=f"knee_rivet_{side}", outline=False)
+              Bind.blend(th, ca), name=f"knee_rivet_{side}", outline=False, covered_by=kcop_id)
         # sabaton: oversized armoured boot with lames, toe cap on the ball bone
         boot = M.boot(D.spec.foot_len * 1.0, 0.142, 0.118, shaft=0.035, toe_up=0.018)
-        b.add(boot.translate((A.x, 0, 0)), "steel", Bind.blend(ca, ft, bl, falloff=5.0), name=f"sabaton_{side}")
+        boot_id = b.add(boot.translate((A.x, 0, 0)), "steel", Bind.blend(ca, ft, bl, falloff=5.0),
+                        name=f"sabaton_{side}", hull_pad=True)
         for i, yy in enumerate((-0.050, -0.098)):
             hw, hh, cz = _boot_section(yy, D.spec.foot_len, 0.142, 0.118, 0.018)
             ring = M.sweep([(A.x, yy + 0.007, cz), (A.x, yy - 0.007, cz)], M.superellipse(1, 1, 12, 3.0),
                            scales=[(hh * 1.035, hw * 1.035)] * 2, up=(0, 0, 1), cap0="ngon", cap1="ngon")
             ring.deform(lambda co: Vector((co.x, co.y, max(co.z, 0.002))))
             b.add(ring.auto_sharp(50), "iron_dark", Bind.blend(ft, bl, falloff=5.0), name=f"sabaton_lame{i}_{side}",
-                  outline=False)
+                  outline=False, covered_by=boot_id)
     global LAST_PARTS
     LAST_PARTS = list(b.parts)
     names = [p["name"] for p in b.parts]
@@ -723,16 +735,20 @@ def add_fist(b: M.Builder, rig: R.Rig, side: str) -> None:
         fr[i][0], fr[i][1], fr[i][2], fr[i][3] = xx[i], hd[i], zx[i], G[i]
     # fist: chunky rounded box around the grip (web fist r 2.8 × 2.6 u)
     fist = ell((0.063, 0.068, 0.069), (0, 0.014, 0), sides=14, rings=8, exp=2.8, exp_v=2.4)
-    b.add(fist.transform(fr), "iron", Bind.rigid(f"hand_{side}"), name=f"fist_{side}",
-          hull=ell((0.063, 0.068, 0.069), (0, 0.014, 0), sides=10, rings=6, exp=2.8, exp_v=2.4).transform(fr))
+    # one padded hull over the fist, the knuckle plate and the thumb (both stood ~2 cm proud of a fist-only hull:
+    # the sword hand lost 2.5 px of its ink at 1080p)
+    fist_id = b.add(fist.transform(fr), "iron", Bind.rigid(f"hand_{side}"), name=f"fist_{side}",
+                    hull=ell((0.063, 0.068, 0.069), (0, 0.014, 0), sides=10, rings=6, exp=2.8, exp_v=2.4).transform(fr),
+                    hull_pad=True)
     # knuckle plate on the back of the fingers (steel light) + thumb bump over the grip
     dorsal = -palm
     kp = ell((0.020, 0.044, 0.054), (0, 0, 0), sides=12, rings=6, exp=2.6)
     m = Matrix.Translation(G + dorsal * 0.046 + hd * 0.012) @ _basis(dorsal, hd)
-    b.add(kp.transform(m), "steel_hi", Bind.rigid(f"hand_{side}"), name=f"knuckles_{side}", outline=False)
+    b.add(kp.transform(m), "steel_hi", Bind.rigid(f"hand_{side}"), name=f"knuckles_{side}", outline=False,
+          covered_by=fist_id)
     th = M.capsule(G + zx * 0.05 + hd * -0.018 + palm * 0.02, G + zx * 0.062 + hd * 0.03 + palm * 0.0, 0.022, 0.018,
                    sides=8)
-    b.add(th, "iron", Bind.rigid(f"hand_{side}"), name=f"thumb_{side}", outline=False)
+    b.add(th, "iron", Bind.rigid(f"hand_{side}"), name=f"thumb_{side}", outline=False, covered_by=fist_id)
 
 
 def _basis(x_axis: Vector, y_axis: Vector) -> Matrix:
@@ -755,23 +771,24 @@ def add_pauldron(b: M.Builder, rig: R.Rig, side: str) -> None:
         return part.rotate("y", -tilt * sx).translate(center)
     # web: three lames, top biggest (5.6 × 3.6 u), stacked 2.4 u apart, gold edge on the top one
     top_c = S + Vector((sx * 0.050, 0.004, 0.052))
-    b.add(place(ell((0.128, 0.132, 0.094), (0, 0, 0), sides=20, rings=10, exp=2.15, exp_v=2.3), top_c, 20),
-          "steel", Bind.rigid(cl), name=f"pauldron_{side}",
-          hull=place(ell((0.128, 0.132, 0.094), (0, 0, 0), sides=20, rings=8, exp=2.15, exp_v=2.3), top_c, 20))
+    pid = b.add(place(ell((0.128, 0.132, 0.094), (0, 0, 0), sides=20, rings=10, exp=2.15, exp_v=2.3), top_c, 20),
+                "steel", Bind.rigid(cl), name=f"pauldron_{side}",
+                hull=place(ell((0.128, 0.132, 0.094), (0, 0, 0), sides=20, rings=8, exp=2.15, exp_v=2.3), top_c, 20),
+                hull_pad=True)
     rim = C.surface_band(Profile([(-0.03, 0.128, 0.132), (0.03, 0.128, 0.132)], exp=2.15), -0.008, 0.022, 0.0015,
                          segs=24, out0=-0.006)
     # (flush, 1.5 mm proud: the rim runs round the pauldron's equator = its silhouette, where a proud band ate the ink)
-    b.add(place(rim, top_c, 20), "gold", Bind.rigid(cl), name=f"pauldron_rim_{side}", outline=False)
+    b.add(place(rim, top_c, 20), "gold", Bind.rigid(cl), name=f"pauldron_rim_{side}", outline=False, covered_by=pid)
     c2, c3 = S + Vector((sx * 0.084, 0.0, -0.010)), S + Vector((sx * 0.112, 0.0, -0.062))
     b.add(place(ell((0.112, 0.118, 0.058), (0, 0, 0), sides=18, rings=8, exp=2.15), c2, 33), "iron",
           Bind.blend(cl, ua), name=f"lame2_{side}",
-          hull=place(ell((0.112, 0.118, 0.058), (0, 0, 0), sides=12, rings=6, exp=2.15), c2, 33))
+          hull=place(ell((0.112, 0.118, 0.058), (0, 0, 0), sides=12, rings=6, exp=2.15), c2, 33), hull_pad=True)
     b.add(place(ell((0.096, 0.102, 0.050), (0, 0, 0), sides=16, rings=8, exp=2.15), c3, 44), "iron",
           Bind.rigid(ua), name=f"lame3_{side}",
-          hull=place(ell((0.096, 0.102, 0.050), (0, 0, 0), sides=12, rings=6, exp=2.15), c3, 44))
+          hull=place(ell((0.096, 0.102, 0.050), (0, 0, 0), sides=12, rings=6, exp=2.15), c3, 44), hull_pad=True)
     # rivet at the top
     b.add(ell((0.010, 0.010, 0.006), top_c + Vector((sx * 0.02, -0.07, 0.055)), sides=6, rings=4), "gold",
-          Bind.rigid(cl), name=f"pauldron_rivet_{side}", outline=False)
+          Bind.rigid(cl), name=f"pauldron_rivet_{side}", outline=False, covered_by=pid)
 
 
 def add_tabard(b: M.Builder, front: bool) -> None:
@@ -795,14 +812,14 @@ def add_tabard(b: M.Builder, front: bool) -> None:
     part = C.thick_patch(outer, inner, sub_tags=True)
     face, back = ("crimson", "crimson_in") if front else ("crimson_in", "crimson_in")
     # hull proxy with lens edges along the sides and the hem (see ``add_cape``)
-    du, dk = 0.0075 / (half + u(0.4)), 0.0075 / L
+    du, dk = CAPE_LENS / (half + u(0.4)), CAPE_LENS / L
     hu = [(-1 - du, 0.0), (-1 - 0.6 * du, 0.8)] + [(-1 + 2 * c / cols, 1.0) for c in range(cols + 1)] + \
         [(1 + 0.6 * du, 0.8), (1 + du, 0.0)]
     hk = [(r / rows, 1.0) for r in range(rows + 1)] + [(1 + 0.6 * dk, 0.8), (1 + dk, 0.0)]
     hull = C.thick_patch([[P(x, k, t * fx * fk + 1e-4) for x, fx in hu] for k, fk in hk],
                          [[P(x, k, -t * fx * fk - 1e-4) for x, fx in hu] for k, fk in hk])
-    b.add(part, face, Bind.blend("pelvis", f"{chain}_01", f"{chain}_02", falloff=3.0), name=chain,
-          sub_regions={1: face, 2: back}, hull=hull)
+    tid = b.add(part, face, Bind.blend("pelvis", f"{chain}_01", f"{chain}_02", falloff=3.0), name=chain,
+                sub_regions={1: face, 2: back}, hull=hull, hull_pad=True)
     if front:
         # gold V trim parallel to the pointed hem (web: from 8 % up the side edges to just above the point)
         pts = []
@@ -813,7 +830,7 @@ def add_tabard(b: M.Builder, front: bool) -> None:
         o2 = [[P(uu, k - 0.026, t + 0.002) for uu, k in pts], [P(uu, k + 0.026, t + 0.002) for uu, k in pts]]
         i2 = [[P(uu, k - 0.026, t - 0.001) for uu, k in pts], [P(uu, k + 0.026, t - 0.001) for uu, k in pts]]
         b.add(C.thick_patch(o2, i2), "gold", Bind.blend("pelvis", f"{chain}_01", f"{chain}_02", falloff=3.0),
-              name="tabard_trim", outline=False)
+              name="tabard_trim", outline=False, covered_by=tid)
 
 
 CAPE_BONES = ["spine_03"] + [f"cape_{c}_{i:02d}" for c, n in (("c", 4), ("l", 3), ("r", 3)) for i in range(1, n + 1)]
@@ -858,34 +875,34 @@ def add_cape(b: M.Builder) -> None:
     outer = [[CAPE(x, k, t) for x in us] for k in ks]
     inner = [[CAPE(x, k, -t) for x in us] for k in ks]
     bind = Bind.custom(CAPE_BONES, cape_weights)
-    # hull proxy: half the rows (the cape is smooth down its length) and **lens edges** (art review 6): the side
-    # edges and the hem taper to a pinched rim 7.5 mm beyond the cloth, so the smoothed normals fan through 180°
-    # round every edge and the hull inks a thin sheet seen at any angle (a flat 1.5 cm wall left 2 px of ink)
-    du, dk = 0.0075 / (u(7.4) + u(2.2) * 0.5), 0.0075 / CAPE_LEN
+    # hull proxy: half the rows (the cape is smooth down its length) and **lens edges**: the side edges and the
+    # hem taper to a pinched rim ``CAPE_LENS`` beyond the cloth, so the smoothed normals fan through 180° round
+    # every edge; padded (``hull_pad``) over the hem, the crease strips and the clasps' rows
+    du, dk = CAPE_LENS / (u(7.4) + u(2.2) * 0.5), CAPE_LENS / CAPE_LEN
     hu = [(-1 - du, 0.0), (-1 - 0.6 * du, 0.8)] + [(x, 1.0) for x in us] + [(1 + 0.6 * du, 0.8), (1 + du, 0.0)]
     hk = [(k, 1.0) for k in ks[::2]] + [(1 + 0.6 * dk, 0.8), (1 + dk, 0.0)]
     hull = C.thick_patch([[CAPE(x, k, t * max(fx * fk, 0.0) + 1e-4) for x, fx in hu] for k, fk in hk],
                          [[CAPE(x, k, -t * max(fx * fk, 0.0) - 1e-4) for x, fx in hu] for k, fk in hk])
-    b.add(C.thick_patch(outer, inner, sub_tags=True), "crimson", bind, name="cape",
-          sub_regions={1: "crimson", 2: "crimson_in"}, hull=hull)
+    cape_id = b.add(C.thick_patch(outer, inner, sub_tags=True), "crimson", bind, name="cape",
+                    sub_regions={1: "crimson", 2: "crimson_in"}, hull=hull, hull_pad=True)
     # two fold creases down the cape (web: CRIMSON.shade strokes in the fold valleys, u = ±1/3)
     for uc in (-1 / 3, 1 / 3):
         ck = [0.12 + 0.83 * i / 12 for i in range(13)]
         hw = 0.012 / max(0.2, 0.237 + 0.065)
         o3 = [[CAPE(uc - hw, k, t + 0.0018), CAPE(uc + hw, k, t + 0.0018)] for k in ck]
         i3 = [[CAPE(uc - hw, k, t - 0.0015), CAPE(uc + hw, k, t - 0.0015)] for k in ck]
-        b.add(C.thick_patch(o3, i3), "crimson_line", bind, name="cape_crease", outline=False)
+        b.add(C.thick_patch(o3, i3), "crimson_line", bind, name="cape_crease", outline=False, covered_by=cape_id)
     # gold hem
     k0 = 0.955
     hk = [k0, (k0 + 1) / 2, 1.0]
     o2 = [[CAPE(x, k, t + 0.0022) for x in us] for k in hk]
     i2 = [[CAPE(x, k, -t - 0.0022) for x in us] for k in hk]
-    b.add(C.thick_patch(o2, i2), "gold", bind, name="cape_hem", outline=False)
-    # cape clasps: gold discs at the shoulder fronts (where the cape pins under the pauldrons)
+    b.add(C.thick_patch(o2, i2), "gold", bind, name="cape_hem", outline=False, covered_by=cape_id)
+    # cape clasps: gold discs at the shoulder fronts (where the cape pins under the pauldrons); 2 cm proud of the
+    # cloth, so they carry their own small hull (ink ring) instead of standing outside the cape's ink
     for sg in (1, -1):
         p = CAPE(sg * 0.93, 0.02, t + 0.0025)
-        b.add(ell((0.022, 0.007, 0.022), p, sides=8, rings=5), "gold", Bind.rigid("spine_03"), name="clasp",
-              outline=False)
+        b.add(ell((0.022, 0.007, 0.022), p, sides=8, rings=5), "gold", Bind.rigid("spine_03"), name="clasp")
 
 
 # ── weapons ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1006,18 +1023,21 @@ def build_sword(pal: Palette) -> tuple[bpy.types.Object, list]:
     for sg in (1, -1):
         b.add(ell((0.016, 0.016, 0.016), (0, guard_y(zf) - 0.003, sg * zf), sides=10, rings=6), "gold")
     # grip (leather, wrapped look via two raised rings)
-    b.add(M.tube([(0, -0.085, 0), (0, 0.072, 0)], [0.019, 0.0175], sides=12), "leather")
+    grip = b.add(M.tube([(0, -0.085, 0), (0, 0.072, 0)], [0.019, 0.0175], sides=12), "leather", name="grip",
+                 hull_pad=True)
     for yy in (-0.05, 0.0, 0.045):
-        b.add(M.tube([(0, yy - 0.005, 0), (0, yy + 0.005, 0)], [0.0205, 0.0205], sides=12), "leather", outline=False)
+        b.add(M.tube([(0, yy - 0.005, 0), (0, yy + 0.005, 0)], [0.0205, 0.0205], sides=12), "leather",
+              name="grip_ring", outline=False, covered_by=grip)
     # round gold pommel along the grip axis with an ember cabochon set in its end (faces down the grip, so it
     # shows from the high camera whenever the blade points forward-down)
     pom = M.lathe([(0.021, -0.087), (0.029, -0.096), (0.033, -0.111), (0.031, -0.124), (0.024, -0.134),
                    (0.021, -0.137)], sides=16, cap0="fan", cap1="fan")
-    b.add(pom.rotate("x", 180).rotate("x", 90), "gold")         # lathe z → item −Y side (z < 0 → y < 0)
+    pommel = b.add(pom.rotate("x", 180).rotate("x", 90), "gold", name="pommel",   # lathe z → item −Y (z < 0 → y < 0)
+                   hull_pad=True)
     b.add(M.tube([(0, -0.092, 0), (0, -0.082, 0)], [0.022, 0.022], sides=12), "gold")
     cab = M.lathe([(0.0185, 0.0), (0.0175, 0.004), (0.013, 0.009), (0.006, 0.0115), (0.0008, 0.012)], sides=14,
                   cap0="fan", cap1=None)
-    b.add(cab.rotate("x", 90).translate((0, -0.1335, 0)), "gem", outline=False)
+    b.add(cab.rotate("x", 90).translate((0, -0.1335, 0)), "gem", name="pommel_gem", outline=False, covered_by=pommel)
     obj = asset.finish_mesh(b, pal, "weapon")
     obj.name = SWORD
     return obj, [{"name": "tip", "pos": (0, ytip, 0)}, {"name": "mid", "pos": (0, (y0 + ytip) / 2, 0)},
@@ -1063,24 +1083,28 @@ def build_shield(pal: Palette) -> bpy.types.Object:
     # leather board body (behind the field) and the crimson field
     core = C.slab2d(C.offset_closed(out, -0.006), -0.018, 0.002, rings=4)
     core.deform(_bend_shield)
-    b.add(core.auto_sharp(70), "leather", outline=False)        # inside both rims: no hull
+    # the silhouette hull of the whole shield: the heater slab rim-to-rim, padded over the emblem and its core
+    # (they stood 5–8 mm proud of the rims edge-on); the rims keep their own hulls for the rim / field line
+    slab = C.slab2d(out, -0.026, 0.019, rings=4)
+    slab.deform(_bend_shield)
+    body_id = b.add(core.auto_sharp(70), "leather", name="boards", hull=slab, hull_pad=True)
     fld = C.slab2d(field, -0.002, 0.0105, rings=4)
     fld.deform(_bend_shield)
-    b.add(fld.auto_sharp(70), "crimson", outline=False)
+    b.add(fld.auto_sharp(70), "crimson", name="field", outline=False, covered_by=body_id)
     # raised gold rim: frame between the outline and the field edge
     inner = C.offset_closed(field, 0.002)
     rim = C.thick_patch([[Vector((x, 0.019, z)) for x, z in out], [Vector((x, 0.019, z)) for x, z in inner]],
                         [[Vector((x, -0.006, z)) for x, z in out], [Vector((x, -0.006, z)) for x, z in inner]],
                         wrap_u=True)
     rim.deform(_bend_shield)
-    b.add(rim.auto_sharp(50), "gold")
+    b.add(rim.auto_sharp(50), "gold", name="rim")
     # iron back rim
     bo, bi = C.offset_closed(out, -0.001), C.offset_closed(out, -0.032)
     brim = C.thick_patch([[Vector((x, -0.006, z)) for x, z in bo], [Vector((x, -0.006, z)) for x, z in bi]],
                          [[Vector((x, -0.026, z)) for x, z in bo], [Vector((x, -0.026, z)) for x, z in bi]],
                          wrap_u=True)
     brim.deform(_bend_shield)
-    b.add(brim.auto_sharp(50), "iron_dark")
+    b.add(brim.auto_sharp(50), "iron_dark", name="back_rim")
     # gold flame emblem + hot core (web emblem path: tongue flicking up the left side)
     fsrc = [(0.0, -5.4), (2.0, -3.4), (3.2, -0.8), (2.7, 2.4), (1.6, 4.7), (0.0, 5.6), (-1.6, 4.7), (-2.6, 2.4),
             (-2.9, -0.2), (-2.0, -1.8), (-0.9, -2.6), (-0.8, -0.6), (-0.1, 0.5), (0.6, -0.6), (0.7, -2.6)]
@@ -1089,7 +1113,7 @@ def build_shield(pal: Palette) -> bpy.types.Object:
     em = C.plate2d(flame, 0.010)
     em.rotate("x", 90).translate((0, 0.0145, 0))
     em.deform(_bend_shield)
-    b.add(em.auto_sharp(60), "gold", outline=False)
+    b.add(em.auto_sharp(60), "gold", name="emblem", outline=False, covered_by=body_id)
     # hot core: an inner flame tongue (web: core ellipse at (0.2, 2.8)) rising from the bulb along the main
     # tongue, its tip just right of the notch
     csrc = [(0.15, 4.5), (1.35, 3.6), (1.55, 2.4), (1.25, 1.1), (1.05, -0.3), (0.55, 0.9), (-0.35, 1.9),
@@ -1098,16 +1122,16 @@ def build_shield(pal: Palette) -> bpy.types.Object:
     cr = C.plate2d(core, 0.008)
     cr.rotate("x", 90).translate((0, 0.0195, 0))
     cr.deform(_bend_shield)
-    b.add(cr.auto_sharp(60), "core", outline=False)
+    b.add(cr.auto_sharp(60), "core", name="emblem_core", outline=False, covered_by=body_id)
     # back: two leather straps across the boards + the handle loop the fist closes on (at the origin)
     for zz in (0.085, -0.120):
         st = M.box((0.27, 0.010, 0.032), (0.0, -0.022, zz), bevel=0.003)
         st.deform(_bend_shield)
-        b.add(st, "leather_dark", outline=False)
+        b.add(st, "leather_dark", name="strap", outline=False, covered_by=body_id)
     yb = SHIELD_FACE_Y - 0.026
     hdl = M.tube([(0, yb, 0.075), (0, 0.010, 0.050), (0, -0.004, 0.0), (0, 0.010, -0.050), (0, yb, -0.075)],
                  [0.011, 0.012, 0.012, 0.012, 0.011], sides=8)
-    b.add(hdl, "leather_dark")
+    b.add(hdl, "leather_dark", name="handle")
     obj = asset.finish_mesh(b, pal, "weapon")
     obj.name = SHIELD
     return obj

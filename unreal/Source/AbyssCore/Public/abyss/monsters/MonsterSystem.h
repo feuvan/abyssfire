@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -35,6 +36,7 @@ namespace abyss {
 struct SimContext;
 struct Snapshot;
 struct SaveData;
+struct SubDungeonDef;
 
 enum class MonsterTimerKind : uint16_t { Respawn = 1 };
 
@@ -73,7 +75,13 @@ class ABYSS_API MonsterSystem {
   // col first, clamped to [1, size - 2]; walkable and outside every camp radius), else the anchor when walkable; elites
   // roll their affixes right after their placement (web draw order).
   void SpawnZonePopulation();
-  void SpawnMiniBoss();  // M7: once per visit at its fixed tile (bounds check only), always rolls affixes
+  // M7: once per visit at its fixed tile (bounds check only), always rolls affixes. In a sub-dungeon (the zone id is a
+  // world SubDungeonDef id) it spawns that sub-dungeon's boss instead (8.5, later milestone).
+  void SpawnMiniBoss();
+  // Sub-dungeon mini-boss (8.5): the sub-dungeon's fixed tile (bounds check against its size only), difficulty-scaled,
+  // affixes rolled with the PARENT zone's count, MonsterRole::SubDungeonMiniBoss (never respawns, no dialogue tree).
+  // Becomes MiniBoss(). Returns kNoEntity for an unknown boss or an out-of-bounds tile.
+  EntityId SpawnSubDungeonMiniBoss(const SubDungeonDef& sd);
   void OnZoneExit();     // drops every monster (EvEntityDespawned ZoneUnload) and respawn timer (monsters are not saved)
 
   // ---- spawning ----
@@ -96,13 +104,34 @@ class ABYSS_API MonsterSystem {
   // else the first walkable tile of rings 1..5 (dr outer, dc inner).
   std::vector<EntityId> SpawnAmbush(std::span<const std::string> monsterIds, int32_t count, Vec2 centre,
                                     double minDist, double distRange, MonsterRole role);
+  // Defend wave `waveIndex` (0-based; quests 3.10, monsters 6.4) around `target`: n = defendWaveBaseCount + w monsters
+  // at angles 2 pi k / n on a circle of defendWaveRadius, JsRound, clamped to [edgeMargin, size - 1 - edgeMargin], NO
+  // walkability check (web, quests Q8 later); each a uniformly random def of the zone's monster list
+  // (RandomInt(0, len - 1), RngStream::Ai, bosses included), difficulty then ScaleDefendWave, chasing, no affixes,
+  // MonsterRole::DefendWave (never respawns). Returns the ids in spawn order (empty without a zone list).
+  std::vector<EntityId> SpawnDefendWave(Vec2 target, int32_t waveIndex);
+
+  // ---- abstract chip damage for quest actors (monsters 4.4; quests 3.9 / 3.10): no animation, RNG or defense ----
+  // `apply(monster, damage)` receives each hit in order and returns false to stop the loop (the actor died: the web
+  // returns from the update there). The per-monster timer is stamped before `apply` is called.
+  using ChipApply = std::function<bool(EntityId monster, double damage)>;
+  // Escort (vector 20): every alive AGGRO monster in list order with distSq(monster, target) < escortChipRadiusSq and
+  // now - lastEscortChipMs > escortChipIntervalMs (strictly; the first hit is immediate) deals
+  // max(1, floor(def.damage * escortChipDamageMul)). Returns the total dealt.
+  double ChipEscort(Vec2 target, const ChipApply& apply);
+  // Defend target: each alive monster of `waveMonsters` (given order, aggro or not) with distSq < defendChipRadiusSq and
+  // now - lastDefendChipMs > defendChipIntervalMs (lastDefendChipMs starts at 0) deals
+  // max(1, floor(def.damage * defendChipDamageMul)). Returns the total dealt.
+  double ChipDefendTarget(std::span<const EntityId> waveMonsters, Vec2 target, const ChipApply& apply);
 
   // ---- per step (GameSim, monsters 3.9 order) ----
   // 8.3: before the AI loop. Opening the mini-boss panel is a core-owned modal (PanelId::MiniBossDialogue): it blocks
   // hero gameplay input (U7) but does not freeze the sim (D13: it holds only the mini-boss).
   void CheckMiniBossDialogue();
   // 3.8: activity set (250 ms), safe-zone repel, immobilized skip, AI, grid update. Every Idle / Patrol / Returning ->
-  // Chase transition publishes MonsterAggroMsg (A7 aggro vocalisation).
+  // Chase transition publishes MonsterAggroMsg (A7 aggro vocalisation). The activity set is the monsters within
+  // aiCullRadius of the hero (grid order) plus every aggro AND every Returning (M1) monster anywhere (list order), so a
+  // leashed monster always finishes its walk home.
   void TickAI(double dtMs);
   void TickEliteBehaviours();    // 17.4: teleporting + curse aura
   void OnTimer(const Timer& t);
@@ -120,6 +149,10 @@ class ABYSS_API MonsterSystem {
   void Teleport(EntityId id, Vec2 to, TeleportReason reason);
   // Forced state changes from other areas (3.10): taunt (idle/patrol -> chase), ambush spawns, mini-boss dialogue.
   void ForceChase(EntityId id);
+  // Boss intro rename (monsters 10 / story 8.3): the StoryDirector's 250 ms scan marks the nearest live instance of a
+  // story boss within the bar range once; the snapshot then shows the intro name. True when newly marked (the caller
+  // emits EvMonsterRenamed); false for unknown / dead / already renamed monsters. A respawn starts unmarked.
+  bool MarkStoryNamed(EntityId id);
 
   // ---- kill pipeline (last handler) ----
   void OnMonsterKilled(const MonsterKilledMsg& m);

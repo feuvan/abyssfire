@@ -249,31 +249,31 @@
    "bones": 53,
    "boundsCm": {
     "max": [
-     40.633,
-     40.076,
-     181.302
+     41.007,
+     40.125,
+     181.353
     ],
     "min": [
-     -42.988,
-     -40.829,
-     -1.774
+     -42.207,
+     -40.931,
+     -1.914
     ]
    },
    "budget": {
     "decision": "The \u00a71.9 figures budget the toon surface. The baked outline hull (P7) is a second, cheap draw (same skinning, unlit one-colour pixel shader, front faces culled) budgeted separately at <= 0.5x the toon triangles: hidden or small parts (rivets, seams, mail rows, inner lames, bands inside a neighbour's hull) get no hull or a low-poly hull proxy (Builder.add(hull=...)).",
-    "drawnLod0": 30746,
+    "drawnLod0": 32994,
     "lod0": {
-     "outline": 7108,
-     "toon": 17836
+     "outline": 8452,
+     "toon": 17796
     },
     "lod1": {
-     "outline": 3512,
-     "toon": 6989
+     "outline": 4104,
+     "toon": 7293
     },
     "spec": "art-inventory-ch1 \u00a71.9 hero: LOD0 14-18k, LOD1 7k triangles, <= 75 bones per section",
     "weapons": {
-     "outline": 1734,
-     "toon": 4068
+     "outline": 2542,
+     "toon": 4204
     }
    },
    "category": "Characters",
@@ -292,6 +292,21 @@
       "tip",
       "mid"
      ]
+    },
+    "bloom": {
+     "lobesSigmaPx1080": [
+      [
+       3.0,
+       0.55
+      ],
+      [
+       10.0,
+       0.45
+      ]
+     ],
+     "note": "desktop / high mobile; the review previews approximate it",
+     "source": "palette P.b emissive regions",
+     "strength": 0.8
     },
     "castBladeGlow": {
      "alpha": 0.55,
@@ -321,11 +336,38 @@
     "impactColor": "#FFD98A",
     "spiritColor": "#FFB45C",
     "visorGlow": {
-     "alpha": 0.6,
+     "alpha": 0.75,
      "alphaPerFx": 0.25,
+     "blend": "additive",
      "color": "#FF8A2A",
+     "coreAlpha": 0.9,
+     "coreColor": "#FFD08A",
+     "coreRadiusCm": 3.5,
+     "facingFade": "clamp(2 * dot(visorFwd, toCamera) + 0.3, 0, 1)",
+     "falloff": [
+      [
+       0.0,
+       1.0
+      ],
+      [
+       0.15,
+       0.9
+      ],
+      [
+       0.4,
+       0.6
+      ],
+      [
+       0.7,
+       0.25
+      ],
+      [
+       1.0,
+       0.0
+      ]
+     ],
      "offAtDeathFraction": 0.6,
-     "radiusCm": 12.0,
+     "radiusCm": 10.0,
      "socket": "visor"
     }
    },
@@ -333,6 +375,22 @@
     "player_warrior"
    ],
    "heightCm": 176.0,
+   "inkGate": {
+    "cells": 25,
+    "gate": {
+     "class": "hero",
+     "darkLum": 40.0,
+     "darkWithinPx": 3,
+     "maxHullLumP95": 40.0,
+     "minFrac": 0.9,
+     "minPx": 3.0
+    },
+    "maxHullLumP95": 30.0,
+    "medianRimPx": 3.71,
+    "minFracDark": 0.9462,
+    "minFracRim": 0.9359,
+    "pass": true
+   },
    "kind": "SkeletalMesh",
    "lods": [
     {
@@ -340,10 +398,11 @@
      "fbx": "Characters/SK_Hero_Warrior_LOD1.fbx",
      "import": "same SKEL_Human armature and bind pose; import as LOD index 1 of SK_Hero_Warrior (USkeletalMeshEditorSubsystem::ImportLOD / Interchange LOD import) \u2014 Blender's FBX exporter cannot write an FbxLODGroup, so the LOD ships as its own file",
      "index": 1,
-     "screenSize": 0.3,
+     "screenSize": 0.15,
+     "screenSizeNote": "UE screen size of the hero at the W1 camera is 0.21 (default distance) to 0.28 (max zoom-in): LOD0 is the gameplay mesh (what the 1080p previews show); LOD1 only below 0.15 (far zoom-out, small UI/cutscene shots)",
      "triangles": {
-      "outline": 3512,
-      "toon": 6989
+      "outline": 4104,
+      "toon": 7293
      }
     }
    ],
@@ -397,9 +456,12 @@
     "hero_warrior/game.png",
     "hero_warrior/game_1080crop.png",
     "hero_warrior/game_contacts.png",
+    "hero_warrior/game_facings.png",
+    "hero_warrior/game_inkgate.png",
     "hero_warrior/game_poses.png",
     "hero_warrior/game_visorglow.png",
     "hero_warrior/lod1.png",
+    "hero_warrior/material_ab.png",
     "hero_warrior/portrait.png",
     "hero_warrior/portrait_zoom2x.png",
     "hero_warrior/poses_attack_cast.png",
@@ -545,22 +607,22 @@
     }
    ],
    "triangles": {
-    "outline": 7108,
-    "toon": 17836
+    "outline": 8452,
+    "toon": 17796
    }
   },
   "SM_Hero_Warrior_Shield": {
    "attachSocket": "weapon_l",
    "boundsCm": {
     "max": [
-     14.966,
+     14.971,
      2.9,
-     28.356
+     28.347
     ],
     "min": [
-     -23.966,
-     -15.0,
-     -33.735
+     -23.971,
+     -15.581,
+     -33.634
     ]
    },
    "category": "Weapons",
@@ -625,7 +687,7 @@
     }
    ],
    "triangles": {
-    "outline": 752,
+    "outline": 1424,
     "toon": 2560
    },
    "weaponType": "shield"
@@ -635,12 +697,12 @@
    "bladeCm": 80.0,
    "boundsCm": {
     "max": [
-     4.597,
-     15.0,
+     4.648,
+     15.945,
      15.3
     ],
     "min": [
-     -4.597,
+     -4.648,
      -92.2,
      -15.3
     ]
@@ -717,8 +779,8 @@
     }
    ],
    "triangles": {
-    "outline": 982,
-    "toon": 1508
+    "outline": 1118,
+    "toon": 1644
    },
    "weaponType": "sword"
   }
@@ -787,9 +849,98 @@
    "fromYawUE": -45.0
   },
   "model": "M_AF_Toon (unlit, custom 3-band half-Lambert, sRGB-space tone)",
+  "outline": {
+   "bakedWidthCm": {
+    "boss": 1.8,
+    "decor": 1.2,
+    "hero": 1.8,
+    "interactive": 1.3,
+    "monster": 1.5,
+    "none": 0.0,
+    "npc": 1.6,
+    "small_monster": 1.4,
+    "weapon": 1.3
+   },
+   "color": {
+    "formula": "out = srgb_to_linear(mix(ink, line(c), o)); line(c) = mix(mix(c, lineTint, lineTintMix), 0, lineDarken); c = T_AF_Palette_BC(uv) (sRGB values), o = T_AF_Palette_P(uv).a",
+    "ink": "#120C18",
+    "inkMixByClass": {
+     "boss": 0.4,
+     "decor": 1.0,
+     "hero": 0.4,
+     "interactive": 1.0,
+     "monster": 0.4,
+     "none": 1.0,
+     "npc": 0.4,
+     "small_monster": 0.4,
+     "weapon": 0.4
+    },
+    "lineDarken": 0.55,
+    "lineTint": [
+     20.0,
+     10.0,
+     30.0
+    ],
+    "lineTintMix": 0.5,
+    "note": "mix(ink, line(c), o) is never lighter than line(c); ink classes keep hull lum <= 40 (o <= 0.4)"
+   },
+   "gate": {
+    "darkLum": {
+     "ink": 40.0,
+     "line": 64.0
+    },
+    "darkWithinPx": 3,
+    "fracEdges": 0.9,
+    "measuredAt": "native 1080p, W1 camera",
+    "rimPx": "outlinePx1080 - 0.5"
+   },
+   "model": "inverted hull baked into every mesh (P7/R3): material slot 1 M_AF_Outline, unlit, opaque, default back-face culling (the hull's winding is flipped, so its far side draws the rim); same skin weights",
+   "outlinePx1080ByClass": {
+    "boss": 3.5,
+    "decor": 1.2,
+    "hero": 3.5,
+    "interactive": 2.0,
+    "monster": 3.0,
+    "none": 0.0,
+    "npc": 3.0,
+    "small_monster": 3.0,
+    "weapon": 3.5
+   },
+   "wpo": {
+    "atDefaultDistance": {
+     "cmPerPx1080": 0.8333,
+     "depthCm": 2537.3,
+     "heroInkCm": 2.917
+    },
+    "eps": 0.25,
+    "formula": [
+     "P = AbsoluteWorldPosition (excluding material offsets)",
+     "N = VertexNormalWS (imported custom normal)",
+     "V = normalize(P - CameraPosition)",
+     "depth = TransformPosition(P, World->View).z  (= dot(P - CameraPosition, CameraForward))",
+     "Np = N - dot(N, V) * V",
+     "dir = Np / max(length(Np), eps)",
+     "width = OutlinePx1080 * 2 * depth * TanHalfFOV.y / 1080",
+     "WPO = dir * width - N * BakedWidth"
+    ],
+    "meaning": "the hull's far side = the body silhouette dilated by OutlinePx1080 * ViewSizeY / 1080 pixels in screen space (clip-space extrusion along the normalised projected normal)",
+    "mobileLow": "WPO off: the baked width alone (hero 1.8 cm = 2.16 px at the default distance)",
+    "params": {
+     "BakedWidth": "materialSlots[1].widthCm / 100 (m) -> cm in UE",
+     "OutlinePx1080": "materialSlots[1].outlinePx1080 (per asset class)",
+     "TanHalfFOV.y": "ViewProperty 'Tan(0.5 x FieldOfView)'.y = tan(FOVx/2) * ViewSizeY / ViewSizeX"
+    },
+    "preview": "kit.outline.set_preview_screen (Geometry Nodes, same formula per vertex)"
+   }
+  },
   "rim": {
    "alpha": 0.55,
+   "band": [
+    0.098345,
+    0.147763
+   ],
    "color": "#FFECC8",
+   "formula": "alpha * smoothstep(band0, band1, (1 - max(N.V, 0))^power) * smoothstep(0, maskEdge, N.L)",
    "maskEdge": 0.05,
    "power": 4.0
   },

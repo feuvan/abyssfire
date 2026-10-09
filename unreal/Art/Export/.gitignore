@@ -1,0 +1,3 @@
+# kit.export.Manifest.save: lock file + atomic-write temp file
+manifest.json.lock
+.manifest.json.*.tmp

@@ -63,11 +63,11 @@ def build_knight():
     rig = R.build_humanoid(spec)
     J = rig.joints
     b = M.Builder(ASSET, pal, prefix="knight")
-    b.regions(
+    b.regions(**outline.ink_regions(dict(        # character hull colour: 60 % ink (outline.INK_MIX)
         steel=Region("#9AA6BA", .42, .45), iron=Region("#4B5366"), gold=Region("#D9A640", .42, .50),
         crimson=Region("#A82230"), crimson_in=Region("#62131D", .42, .15), leather=Region("#5E3A22"),
         visor=Region("#0C0A12", .30, .10), ember=Region("#FF8A2A", e=1.0), sigil=Region("#FF8A2A", e=0.85),
-    )
+    ), "hero"))
     pz, nzr = J["pelvis"].z, J["neck"].z
     hip_z = J["hip_l"].z
     hc = J["head_center"]
@@ -162,8 +162,9 @@ def build_knight():
 
 def build_sword(pal):
     b = M.Builder("SM_Test_KitKnight_Sword", pal, prefix="knight_sword")
-    b.regions(blade=Region("#C9D3E2", .30, .60), fuller=Region("#465064", .30, .2), gold=Region("#D9A640", .42, .5),
-              leather=Region("#5E3A22"), gem=Region("#FF7A26", e=1.0))
+    b.regions(**outline.ink_regions(dict(blade=Region("#C9D3E2", .30, .60), fuller=Region("#465064", .30, .2),
+                                         gold=Region("#D9A640", .42, .5), leather=Region("#5E3A22"),
+                                         gem=Region("#FF7A26", e=1.0)), "weapon"))
     blade = [(-0.03, 0.0), (0.03, 0.0), (0.026, 0.66), (0.0, 0.80), (-0.026, 0.66)]
     b.add(M.plate(blade, 0.011, bevel=0.003).rotate("y", 90).translate((0, 0.08, 0)), "blade")
     b.add(M.plate([(-0.004, 0.0), (0.004, 0.0), (0.004, 0.52), (-0.004, 0.52)], 0.0125).rotate("y", 90)
@@ -180,8 +181,8 @@ def build_sword(pal):
 
 def build_shield(pal):
     b = M.Builder("SM_Test_KitKnight_Shield", pal, prefix="knight_shield")
-    b.regions(field=Region("#A82230"), gold=Region("#D9A640", .42, .5), core=Region("#FFCF6B", .3, .5, e=0.5),
-              back=Region("#363C4B"))
+    b.regions(**outline.ink_regions(dict(field=Region("#A82230"), gold=Region("#D9A640", .42, .5),
+                                         core=Region("#FFCF6B", .3, .5, e=0.5), back=Region("#363C4B")), "weapon"))
     heater = [(-0.18, -0.30), (0.18, -0.30), (0.18, -0.05), (0.13, 0.12), (0.06, 0.24), (0.0, 0.30),
               (-0.06, 0.24), (-0.13, 0.12), (-0.18, -0.05)]
     field = M.plate(heater, 0.024, bevel=0.004).bend(-28, 0.18, along="x", toward="z")
@@ -499,6 +500,9 @@ def main() -> int:
     previews = "--no-previews" not in sys.argv
     print(f"export root {paths.export_root()}  previews {paths.preview_root()}")
     scene.reset()
+    st = outline.preview_self_test()
+    check(st["ok"], f"outline preview = UE WPO (sphere {st['screenPx']} px, tilted plate {st['sheetPx']} px for 3.5; "
+                    f"push along N {st['sheetPxAlongN']} px)")
     pal, rig, body = build_knight()
     sword, sword_sockets = build_sword(pal)
     shield = build_shield(pal)
@@ -534,6 +538,9 @@ def main() -> int:
           f"Attack01 615 ms / 37 frames / contact 308 ({atk['lengthMs']}, {atk['frames']}, {atk['contactMs']})")
     check(any(s["name"] == "fx_overhead" for s in e["sockets"]), "fx sockets in the manifest")
     check("shading" in man and abs(man["shading"]["tShade"] - 0.42) < 1e-9, "shading block")
+    check("wpo" in man["shading"].get("outline", {}), "shading.outline (UE outline WPO contract)")
+    if previews:
+        check(e.get("inkGate", {}).get("pass") is True, f"ink gate at 1080p ({e.get('inkGate', {}).get('minFracRim')})")
     check("Test" in man["palettes"], "palette entry")
     check(man["assets"]["SM_Test_KitKnight_Sword"]["sockets"][0]["name"] == "tip", "weapon SM entry + sockets")
     expect_bones = {b.name for b in rig.obj.data.bones if b.use_deform}

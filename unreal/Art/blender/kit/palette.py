@@ -77,6 +77,8 @@ class Palette:
         self.swatches: list[dict | None] = []
         self._by_name: dict[str, int] = {}
         self._dirty = False
+        self._touched: set[int] = set()      # swatch indices this instance created / changed (merge-on-save)
+        self._released: set[str] = set()     # names this instance moved off their loaded swatch
         self._load()
 
     # ── registry ────────────────────────────────────────────────────────
@@ -97,6 +99,47 @@ class Palette:
             for n in sw["names"]:
                 self._by_name[n] = sw["i"]
 
+    def _read_disk(self) -> list[dict | None]:
+        """The registry as it is on disk now (another generator may have registered swatches since we loaded)."""
+        p = self.registry_path
+        if not p.exists():
+            return []
+        try:
+            data = json.loads(p.read_text())
+        except (OSError, ValueError):
+            return []
+        out: list[dict | None] = [None] * len(data["swatches"])
+        for sw in data["swatches"]:
+            if not sw.get("free"):
+                out[sw["i"]] = sw
+        return out
+
+    def _adopt(self, disk: list[dict | None]) -> None:
+        """Take over the disk's swatches at every index this instance has not touched (several generators share
+        a family: heroes, monsters …); a name we hold elsewhere stays ours."""
+        n = max(len(disk), len(self.swatches))
+        self.swatches += [None] * (n - len(self.swatches))
+        for i in range(n):
+            if i in self._touched:
+                continue
+            d = disk[i] if i < len(disk) else None
+            if d is not None:
+                d = dict(d, names=[nm for nm in d["names"]
+                                   if nm not in self._released and self._by_name.get(nm, i) == i])
+                if not d["names"]:
+                    d = None
+            old = self.swatches[i]
+            if old is not None:
+                for nm in old["names"]:
+                    if self._by_name.get(nm) == i:
+                        del self._by_name[nm]
+            self.swatches[i] = d
+            if d is not None:
+                for nm in d["names"]:
+                    self._by_name[nm] = i
+        while self.swatches and self.swatches[-1] is None:
+            self.swatches.pop()
+
     def add(self, name: str, region: Region) -> int:
         """Register a named region; returns its swatch index (identical values share a swatch)."""
         key = region.key()
@@ -105,28 +148,82 @@ class Palette:
             return cur
         if cur is not None:  # value changed: detach the name from its old swatch
             sw = self.swatches[cur]
-            sw["names"] = [n for n in sw["names"] if n != name]
+            keep = set(sw["names"])
+            disk = self._read_disk()                 # names other generators joined to it since we loaded
+            d = disk[cur] if cur < len(disk) else None
+            if d is not None and self._swatch_key(d) == self._swatch_key(sw):
+                for nm in d["names"]:
+                    if nm not in self._by_name and nm not in self._released:
+                        keep.add(nm)
+                        self._by_name[nm] = cur
+            keep.discard(name)
+            sw["names"] = sorted(keep)
             if not sw["names"]:
                 self.swatches[cur] = None
             del self._by_name[name]
+            self._released.add(name)
         for sw in self.swatches:
             if sw is not None and self._swatch_key(sw) == key:
                 sw["names"] = sorted(set(sw["names"]) | {name})
                 self._by_name[name] = sw["i"]
                 self._dirty = True
+                self._touched.add(sw["i"])
                 return sw["i"]
-        idx = next((i for i, sw in enumerate(self.swatches) if sw is None), len(self.swatches))
-        if idx >= GRID * GRID:
-            raise RuntimeError(f"palette {self.family} is full ({GRID * GRID} swatches)")
-        sw = {"i": idx, "hex": key[0], "s": key[1] / 255.0, "l": key[2] / 255.0, "e": key[3] / 255.0,
-              "o": key[4] / 255.0, "names": [name]}
-        if idx == len(self.swatches):
-            self.swatches.append(sw)
-        else:
-            self.swatches[idx] = sw
-        self._by_name[name] = idx
-        self._dirty = True
+        # a new swatch: allocated under the registry lock against what is on disk now (other generators of the
+        # family may have registered swatches since we loaded) and reserved on disk at once, so two generators
+        # running together never take the same index; ``save`` merges the rest
+        with self._lock():
+            self._adopt(self._read_disk())
+            for sw in self.swatches:
+                if sw is not None and self._swatch_key(sw) == key:
+                    sw["names"] = sorted(set(sw["names"]) | {name})
+                    self._by_name[name] = sw["i"]
+                    self._dirty = True
+                    self._touched.add(sw["i"])
+                    self._write_registry()
+                    return sw["i"]
+            idx = next((i for i, sw in enumerate(self.swatches) if sw is None), len(self.swatches))
+            if idx >= GRID * GRID:
+                raise RuntimeError(f"palette {self.family} is full ({GRID * GRID} swatches)")
+            sw = {"i": idx, "hex": key[0], "s": key[1] / 255.0, "l": key[2] / 255.0, "e": key[3] / 255.0,
+                  "o": key[4] / 255.0, "names": [name]}
+            if idx == len(self.swatches):
+                self.swatches.append(sw)
+            else:
+                self.swatches[idx] = sw
+            self._by_name[name] = idx
+            self._dirty = True
+            self._touched.add(idx)
+            self._write_registry()
         return idx
+
+    def _lock(self):
+        """Exclusive lock on ``<family>.json.lock`` (context manager)."""
+        import contextlib
+        import fcntl
+
+        @contextlib.contextmanager
+        def cm():
+            rp = self.registry_path
+            rp.parent.mkdir(parents=True, exist_ok=True)
+            with open(rp.with_name(rp.name + ".lock"), "w") as lk:
+                fcntl.flock(lk, fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(lk, fcntl.LOCK_UN)
+        return cm()
+
+    def _write_registry(self) -> None:
+        import os
+        rp = self.registry_path
+        out = []
+        for i, sw in enumerate(self.swatches):
+            out.append(sw if sw is not None else {"i": i, "free": True})
+        tmp = rp.with_name(f".{rp.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"family": self.family, "atlasPx": ATLAS_PX, "swatchPx": SWATCH_PX,
+                                   "grid": GRID, "swatches": out}, indent=1, sort_keys=True) + "\n")
+        os.replace(tmp, rp)
 
     @staticmethod
     def _swatch_key(sw: dict) -> tuple:
@@ -194,18 +291,29 @@ class Palette:
         return bc, pp
 
     def save(self) -> tuple[Path, Path]:
-        """Write the registry JSON and both atlas PNGs."""
-        rp = self.registry_path
-        rp.parent.mkdir(parents=True, exist_ok=True)
-        out = []
-        for i, sw in enumerate(self.swatches):
-            out.append(sw if sw is not None else {"i": i, "free": True})
-        rp.write_text(json.dumps({"family": self.family, "atlasPx": ATLAS_PX, "swatchPx": SWATCH_PX,
-                                  "grid": GRID, "swatches": out}, indent=1, sort_keys=True) + "\n")
-        bc, pp = self.atlas_arrays()
-        pbc, ppp = self.texture_paths()
-        pngio.write_png(pbc, bc)
-        pngio.write_png(ppp, pp)
+        """Write the registry JSON and both atlas PNGs.
+
+        **Merges** (a family is shared by several generators, which may run at the same time): under an exclusive
+        lock (``<family>.json.lock``) the registry is re-read and every swatch this instance did not create or
+        change is taken from disk, so another generator's swatches are never dropped from the JSON or the atlas.
+        Single-writer results are unchanged."""
+        with self._lock():
+            disk = self._read_disk()
+            for i in sorted(self._touched):        # same key on disk at a touched index: keep both name lists
+                mine = self.swatches[i] if i < len(self.swatches) else None
+                d = disk[i] if i < len(disk) else None
+                if mine is not None and d is not None and self._swatch_key(d) == self._swatch_key(mine):
+                    extra = [nm for nm in d["names"] if nm not in self._by_name]
+                    if extra:
+                        mine["names"] = sorted(set(mine["names"]) | set(extra))
+                        for nm in extra:
+                            self._by_name[nm] = i
+            self._adopt(disk)
+            self._write_registry()
+            bc, pp = self.atlas_arrays()
+            pbc, ppp = self.texture_paths()
+            pngio.write_png(pbc, bc)
+            pngio.write_png(ppp, pp)
         self._dirty = False
         return pbc, ppp
 

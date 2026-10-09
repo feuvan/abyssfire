@@ -115,6 +115,23 @@ struct MonsterAiDef {
   // escort / defend chip damage
   double escortChipRadiusSq = 16, escortChipIntervalMs = 2000, escortChipDamageMul = 0.3;
   double defendChipRadiusSq = 9, defendChipIntervalMs = 2000, defendChipDamageMul = 0.2;
+  // Defend waves (quests 3.10, monsters 6.4; ZoneScene.spawnDefendWave constants, not exported, so not loaded):
+  // n = defendWaveBaseCount + w monsters on a circle of defendWaveRadius tiles around the target, rounded and clamped
+  // to [defendWaveEdgeMargin, size - 1 - defendWaveEdgeMargin]; hp floor(hp * (1 + defendWaveHpPerWave * w)),
+  // damage floor(damage * (1 + defendWaveDmgPerWave * w)) after difficulty.
+  int32_t defendWaveBaseCount = 3;
+  double defendWaveRadius = 8;
+  int32_t defendWaveEdgeMargin = 2;
+  double defendWaveHpPerWave = 0.3, defendWaveDmgPerWave = 0.2;
+  // Labyrinth scaling (monsters 13.2, later milestone; DungeonSystem constants, not exported, so not loaded):
+  // raiseToLevel keeps monsters within raiseLevelWindow levels; exponents of m = L / max(1, level); depth bonuses per
+  // floor; gatekeeper multipliers and id.
+  int32_t raiseLevelWindow = 6;
+  double raiseHpExp = 1.1, raiseDamageExp = 0.95, raiseDefenseExp = 0.9, raiseExpExp = 1.1;
+  double labyrinthExpPerFloor = 0.15, labyrinthGoldPerFloor = 0.1;
+  double gatekeeperHpMulElite = 1.6, gatekeeperHpMul = 4, gatekeeperDamageMul = 1.3, gatekeeperExpMul = 4;
+  double gatekeeperGoldMul = 3, gatekeeperAggroMin = 8;
+  std::string gatekeeperId = "dungeon_gatekeeper";
   // port decisions
   LeashMode leashMode = LeashMode::Returning;      // M1
   double leashHealFractionPerSecond = 0.6;         // M1

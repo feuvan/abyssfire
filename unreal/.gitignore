@@ -1,0 +1,22 @@
+# Unreal build / editor output (regenerated; ue58-platform.md 12.1: delete these after an engine upgrade)
+/Binaries/
+/Intermediate/
+/Saved/
+/DerivedDataCache/
+# Build/ holds committed platform resources (icons, plists); only generated files and secrets are ignored.
+/Build/IOS/UBTGenerated/
+/Build/**/*.keystore
+/Build/**/*.jks
+/Build/**/*.mobileprovision
+/Build/**/*.p12
+/.vs/
+/.idea/
+/*.sln
+/*.xcworkspace
+/*.code-workspace
+/.vsconfig
+/Source/*/Intermediate/
+/Plugins/*/Binaries/
+/Plugins/*/Intermediate/
+# Generated content (built by Scripts/build_content.py from Art/Export + Audio/Export) is committed or not by the lead:
+# keep Content/ tracked unless decided otherwise.
