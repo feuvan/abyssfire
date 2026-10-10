@@ -32,28 +32,40 @@ class ABYSS_API ExplorationGrid {
   std::vector<uint8_t> bits_;
 };
 
-// FogOfWarCore (10.2), kept for a later milestone; quantised alpha per tile with a dirty list.
+// FogOfWarCore (10.2, src/systems/FogOfWarCore.ts), kept for a later milestone; quantised alpha per tile with a dirty
+// list (W2: the minimap / world map may use it).
+struct FogGradientTile {
+  int32_t col = 0, row = 0;
+  double alpha = 0;
+};
+
 class ABYSS_API FogOfWarCore {
  public:
   void Reset(int32_t cols, int32_t rows, double viewRadius = 10, int32_t edgeBand = 3);
-  bool Update(double col, double row);  // false when the position equals the last call exactly
-  double Alpha(int32_t col, int32_t row) const;
+  // false when the position equals the last call exactly (the last position starts at (-1, -1), as in the web).
+  bool Update(double col, double row);
+  double Alpha(int32_t col, int32_t row) const;  // 0.85 out of bounds
   bool IsExplored(int32_t col, int32_t row) const;
+  // Tiles whose quantised alpha changed in the last Update, row-major (the web's dirty Set in insertion order).
   const std::vector<int32_t>& Dirty() const { return dirty_; }
   void ClearDirty() { dirty_.clear(); }
+  // getGradientInfo: tiles of the edge band around (col, row) with alpha >= 0.01.
+  std::vector<FogGradientTile> GradientInfo(double col, double row) const;
   std::vector<std::vector<bool>> ExploredData() const;
+  // Rejects wrong dimensions (false, state unchanged); otherwise loads and resets prevAlpha + the last position.
   bool LoadExploredData(const std::vector<std::vector<bool>>& data);
   void Invalidate();
+  int32_t Cols() const { return cols_; }
+  int32_t Rows() const { return rows_; }
 
  private:
   int32_t cols_ = 0, rows_ = 0;
   double viewRadius_ = 10;
   int32_t edgeBand_ = 3;
-  std::vector<uint8_t> explored_;
+  std::vector<uint8_t> explored_;  // 0 unexplored, 1 explored, 2 visible (temporary within Update)
   std::vector<uint8_t> prevAlpha_;
   std::vector<int32_t> dirty_;
-  bool hasLast_ = false;
-  double lastCol_ = 0, lastRow_ = 0;
+  double lastCol_ = -1, lastRow_ = -1;
 };
 
 class ABYSS_API ExplorationSystem {

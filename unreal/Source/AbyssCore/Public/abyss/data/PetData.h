@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "abyss/base/Enums.h"
@@ -94,12 +95,37 @@ struct PetSystemConstants {
   double leyFruitDropElite = 0.12, leyFruitDropOther = 0.015;
 };
 
+// quests-story-ch1.md 18.5.12. The first five come from pets.json "companion"; the others are the web's code constants
+// (src/systems/PetCompanion.ts), kept here as named defaults so the port never scatters magic numbers.
 struct PetCompanionConstants {
   double exhaustMs = 5000;
   double straySwingChance = 0.25;
   double followSpeedTilesPerSec = 4.2;
   double dashSpeedTilesPerSec = 8.5;
   double teleportDistanceTiles = 16;
+  // beast
+  double straySwingReachPad = 0.5;
+  double dashOverTiles = 4;          // follow at dash speed beyond this distance to the goal
+  double followOffsetCol = -1.3, followOffsetRow = 1.3;
+  double followStop = 0.35;
+  double spawnOffsetCol = -1.2, spawnOffsetRow = 1.2;
+  double approachSpeedMul = 1.4;
+  double approachStopMin = 0.8, approachStopRangeFactor = 0.85;
+  double exhaustedSpeedMul = 0.7;
+  double regenPeacefulPerSec = 0.08, regenFieldPerSec = 0.01;
+  double leash = 11;
+  double targetKeepRange = 10, targetScanRange = 7;
+  double attackersRange = 4, nearTargetRange = 3;
+  double stuckHopDistance = 6;       // a walker blocked on both axes hops to the hero beyond this
+  // hits
+  double critChance = 0.08, critMul = 1.6;
+  double takeHitMul = 0.8, takeHitJitterMin = 0.85, takeHitJitterSpan = 0.3;
+  uint32_t defaultImpactColor = 0xfff2c0;
+  // timing
+  double lockAfterRangedMs = 60, lockAfterMeleeMs = 80, lockAfterAbilityMs = 120;
+  double strikeHitSpacingMs = 140, forcedLockMs = 400;
+  double leapStopShort = 0.9, leapMinMs = 120;
+  double hitFreezeScale = 0.6;
 };
 
 struct ABYSS_API PetTables {
@@ -115,6 +141,23 @@ struct ABYSS_API PetTables {
 
   const PetDef* Find(std::string_view id) const;
 };
+
+// unlockedAbilities (pets.ts:187-195): abilities with unlock <= evolved, in array (priority) order, passives included.
+inline std::vector<const PetAbilityDef*> UnlockedPetAbilities(const PetDef& def, int32_t evolved) {
+  std::vector<const PetAbilityDef*> out;
+  for (const PetAbilityDef& a : def.abilities) {
+    if (a.unlock <= evolved) out.push_back(&a);
+  }
+  return out;
+}
+
+// primaryAbility (pets.ts:197-201): the first ability whose kind is not revive (the bond-rescue signature).
+inline const PetAbilityDef* PrimaryPetAbility(const PetDef& def) {
+  for (const PetAbilityDef& a : def.abilities) {
+    if (a.kind != PetAbilityKind::Revive) return &a;
+  }
+  return nullptr;
+}
 
 // homestead.json
 struct BuildingLevelCost {
@@ -157,7 +200,15 @@ struct ABYSS_API HomesteadTables {
   int32_t embersQuestMain = 2, embersQuestSide = 1;
   std::vector<int32_t> gardenIntervalByLevel;
   std::vector<int32_t> gardenCapacityByLevel;
+  // gardenInterval(lv) = max(min, base + perLevel * lv); gardenCapacity(lv) = lv <= 0 ? 0 : base + perLevel * lv
+  // (homestead.ts:102-109; homestead.json garden.interval / garden.capacity).
+  int32_t gardenIntervalBase = 16, gardenIntervalPerLevel = -2, gardenIntervalMin = 6;
+  int32_t gardenCapacityBase = 4, gardenCapacityPerLevel = 4;
   double gardenLeyFruitBase = 0.12, gardenLeyFruitPerLevel = 0.03, gardenHpShare = 0.6;
+  // rollGardenYield potion tiers (homestead.ts:112-117; code constants of the web, not exported).
+  std::string gardenHpPotionS = "c_hp_potion_s", gardenHpPotionM = "c_hp_potion_m", gardenHpPotionL = "c_hp_potion_l";
+  std::string gardenMpPotionS = "c_mp_potion_s", gardenMpPotionM = "c_mp_potion_m";
+  int32_t gardenHpLargeFromLevel = 4, gardenMediumFromLevel = 2;
   bool towerHiddenInMilestone1 = true;  // Q3
 
   const BuildingDef* FindBuilding(std::string_view id) const;

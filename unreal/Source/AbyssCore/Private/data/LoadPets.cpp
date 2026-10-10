@@ -127,6 +127,17 @@ void LoadHomesteadFile(const JNode& r, HomesteadTables& out) {
   const JNode g = r.Child("garden");
   out.gardenIntervalByLevel = g.IntList("intervalByLevel");
   out.gardenCapacityByLevel = g.IntList("capacityByLevel");
+  if (g.Has("interval")) {
+    const JNode gi = g.Child("interval");
+    out.gardenIntervalBase = gi.Int("base");
+    out.gardenIntervalPerLevel = gi.Int("perLevel");
+    out.gardenIntervalMin = gi.Int("min");
+  }
+  if (g.Has("capacity")) {
+    const JNode gc = g.Child("capacity");
+    out.gardenCapacityBase = gc.Int("base");
+    out.gardenCapacityPerLevel = gc.Int("perLevel");
+  }
   out.gardenLeyFruitBase = g.Child("yield").Num("leyFruitBase");
   out.gardenLeyFruitPerLevel = g.Child("yield").Num("leyFruitPerLevel");
   out.gardenHpShare = g.Child("yield").Num("hpShare");

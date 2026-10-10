@@ -80,16 +80,62 @@ struct StoryActorView {
   std::string artId;
 };
 
+// One piece of the started beat's presentation, timed by the core step player (StoryTiming, quests 8.5):
+//   Letterbox      cutscene letterbox in / out (letterboxMs)
+//   StepIn         reveal of a narrate / say / whisper / title step (its phase inMs); StoryAdvance ends the step early
+//   StepWait       narrate / say / whisper waiting for StoryAdvance
+//   StepHold       title hold (titleHoldMs) or StoryAdvance
+//   StepOut        fade after a step (its phase outMs)
+//   StepTimed      focus (pan ms, 0 when the target does not exist), wait (ms), shake / flash (0: fire-and-forget,
+//                  the next step starts in the same frame - web parity, the camera hooks are not awaited)
+//   Backdrop       sequence backdrop in / out
+//   MoodSwap       sequence mood change before a slide (moodOutMs + moodInMs); the slide's EvStoryStep is emitted here
+//   Slide          a sequence slide waiting for StoryAdvance (the staggered parts are UE's reveal, two-tap rule)
+//   SlideOut       slide fade out
+//   Credits        the credits roll: until StoryAdvance (UE sends it when the roll ends) or StorySkip
+//   ChapterIntro / ChapterHold / ChapterOutro   the chapter card (introMs, chapterHoldMs or input, outroMs)
+//   CameraReturn   the 450 ms pan back to the hero at the end of a cutscene (never skipped, D13 T16)
+enum class StorySegmentKind : uint8_t {
+  Letterbox,
+  StepIn,
+  StepWait,
+  StepHold,
+  StepOut,
+  StepTimed,
+  Backdrop,
+  MoodSwap,
+  Slide,
+  SlideOut,
+  Credits,
+  ChapterIntro,
+  ChapterHold,
+  ChapterOutro,
+  CameraReturn,
+};
+
+struct StorySegment {
+  StorySegmentKind kind = StorySegmentKind::StepTimed;
+  double ms = 0;            // < 0: until StoryAdvance / StorySkip
+  int32_t advanceTo = -1;   // segment StoryAdvance jumps to (-1: ignored)
+  int32_t skipTo = -1;      // segment StorySkip jumps to (-1: not skippable; == segment count: the beat ends)
+  int32_t index = -1;       // cutscene step / slide index presented (EvStoryStep emitted when `emit`)
+  bool emit = false;
+  int32_t part = 0;         // sequence part of the beat (the epilogue beat: 0 epilogue, 1 credits)
+};
+
 // Core-side playback of the started beat (real time).
 struct StoryPlayback {
   bool playing = false;
   StoryBeat beat;
   int32_t stepIndex = -1;          // cutscene step / slide index; -1 = intro (letterbox / backdrop)
   int32_t stepCount = 0;
-  bool waitingForInput = false;    // narrate / say / whisper / slides / chapter hold
-  double stepRemainingMs = 0;      // timed steps (focus, shake, flash, wait, title hold, chapter hold)
+  bool waitingForInput = false;    // narrate / say / whisper / slides / credits (until StoryAdvance)
+  double stepRemainingMs = 0;      // the current timed segment's remaining ms (0 while waiting for input)
   bool skipping = false;           // Esc / skip: remaining waits resolve instantly
   bool returningCamera = false;    // cutscene end: 450 ms return pan (not skippable, D13 T16)
+  std::vector<StorySegment> segments;
+  int32_t segment = -1;            // current segment
+  double segmentElapsedMs = 0;
 };
 
 class ABYSS_API StoryDirector {
@@ -110,9 +156,14 @@ class ABYSS_API StoryDirector {
   void OnTimer(const Timer& t);  // T15 delay elapsed -> beat starts, IsCinematic() true
 
   // ---- presentation (real time) ----
+  // Runs the step player: segment timers elapse on real time (leftover time carries into the next segment), zero-length
+  // segments run in the same call, a finished beat ends the cinematic (FinishBeat).
   void AdvanceRealTime(double realMs);
-  void Advance();  // StoryAdvance command (tap / Space / Enter)
-  void Skip();     // StorySkip command (Esc / skip button)
+  void Advance();  // StoryAdvance command (tap / Space / Enter): ends the current reveal / wait / hold
+  void Skip();     // StorySkip command (Esc / skip button): jumps to the beat part's outro (letterbox out, backdrop out)
+  // Debug / test hook: plays every queued beat to its end at once (T15 delays dropped, each beat finished: marked seen,
+  // grantPet sent, STORY_STATE{false} + the autosave request when the queue drains). The world unfreezes.
+  void FinishAllBeats();
 
   // ---- actors ----
   StoryActorView ResolveActor(const StoryActor& actor) const;
@@ -129,20 +180,32 @@ class ABYSS_API StoryDirector {
   void ReadSave(const SaveData& in);
 
  private:
+  // fire(on, key) (8.2): every trigger in script order with that `on` and key -> EnqueueCutscene with the T15 delay.
+  void Fire(StoryTriggerOn on, std::string_view key);
+  void EnqueueCutscene(std::string_view cutsceneId, double delayMs, std::string_view grantPet);
   void Enqueue(StoryBeat beat);
   void Pump();
   void StartBeat();
   void FinishBeat();  // Q7 seen, grantPet (StoryBeatFinishedMsg), next beat or STORY_STATE{false} + SaveRequestMsg
+  void BuildSegments();
+  void AppendSequence(const StorySequence& seq, int32_t part);
+  void EnterSegment(int32_t index);  // index == size: the beat ends
+  void RunPlayer();                  // consumes elapsed time / zero-length segments
+  void EmitStep(const StorySegment& seg);
+  void SetBossBar(const BossIntroDef* intro, EntityId monster, bool killed);
 
   SimContext& ctx_;
   StoryProgress progress_;
   std::vector<StoryBeat> queue_;
-  bool running_ = false;
+  bool running_ = false;      // the pump is active (STORY_STATE true): a beat is delayed / playing or queued
+  bool hasCurrent_ = false;   // `current_` was taken from the queue (waiting on its T15 delay or playing)
+  StoryBeat current_;
   bool cinematic_ = false;
   TimerId delayTimer_ = kNoTimer;
   StoryPlayback playback_;
   double scanAccMs_ = 0;
   std::string bossBarFor_;
+  EntityId bossBarMonster_ = kNoEntity;
   std::vector<EntityId> renamed_;
 };
 

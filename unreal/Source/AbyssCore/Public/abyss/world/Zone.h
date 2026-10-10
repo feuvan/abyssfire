@@ -55,11 +55,14 @@ struct InteractTarget {
   std::string key;  // npc id / area id / ... (for handlers that are not entity based)
 };
 
-// A pending walk-then-act interaction (W8 / Q6 / Q22): fired when the hero arrives within range.
+// A pending walk-then-act interaction (W8 / Q6 / Q22): fired when the hero arrives within range. Abandoned when any
+// other movement order replaces the walk (HeroLocomotion::MoveGeneration), the target disappears, or the walk ends
+// out of range.
 struct PendingInteraction {
   bool active = false;
   InteractTarget target;
   double range = 0;
+  uint32_t moveGeneration = 0;
 };
 
 class ABYSS_API ZoneRuntime {
@@ -89,13 +92,18 @@ class ABYSS_API ZoneRuntime {
   void OnTimer(const Timer& t);
 
   // ---- input ----
-  // Pointer press on a world tile (7.1 chain with the port fixes): loot, NPC, hidden reward, monster, exit, ground.
-  void OnPointerPress(Vec2 tile, PointerButton button);
+  // Pointer press on a world tile (7.1 chain with the port fixes): Secondary = town portal; then (alive hero only)
+  // loot, NPC, hidden reward, event prop, monster, exit, ground (path + hold-to-move start with `pointerId`).
+  // Out-of-range loot / NPCs / hidden rewards / event props are walked to and used on arrival (W5 / W8 / Q6 / Q22);
+  // an exit is walked to and fires by proximity (W6 / W8).
+  void OnPointerPress(Vec2 tile, PointerButton button, int32_t pointerId = 0);
   // Interact action (7.4): nearest in-range target, then its handler.
   bool Interact();
   // Interaction with a specific world entity (CmdInteract with a target): NPC, ground item, hidden reward, event prop;
   // walk-then-act when out of range (W8 / Q6 / Q22).
   bool InteractWith(EntityId target);
+  // FindInteractTarget (7.4): the in-range candidate with the smallest distSq from the hero; ties go to the lower order
+  // (loot, NPC, hidden reward, event puzzle prop), then list order. Kind None when nothing is in range.
   InteractTarget FindInteractTarget() const;
   // Town portal (9.4 + W3).
   PortalRefusal CanUseTownPortal() const;
@@ -111,6 +119,7 @@ class ABYSS_API ZoneRuntime {
   bool Walkable(int32_t col, int32_t row) const { return grid_.Walkable(col, row); }
   std::span<const NpcPlacement> Npcs() const { return npcs_; }
   const NpcPlacement* FindNpc(std::string_view npcId) const;
+  const NpcPlacement* FindNpcEntity(EntityId id) const;
   std::span<const ExitState> Exits() const { return exits_; }
   double SafeZoneRadius() const;
   bool InSafeZone(Vec2 p) const;           // any camp: distSq < safeR^2 (strict)
@@ -120,10 +129,21 @@ class ABYSS_API ZoneRuntime {
   // findNearestWalkablePosition (save 3.7) on the live grid.
   bool NearestWalkableCamp(Vec2 p, Vec2& out) const;
   const PendingInteraction& Pending() const { return pending_; }
+  const InteractTarget& Prompt() const { return prompt_; }
+  Vec2 PortalDestination() const { return portalDestination_; }
 
   void FillSnapshot(Snapshot& out) const;
 
  private:
+  // The live position and interact range of a target; false when it no longer exists.
+  bool ResolveTarget(const InteractTarget& t, Vec2& pos, double& range) const;
+  // Runs the handler of an in-range target (the 7.1 row's action). False when nothing happened.
+  bool ActOn(const InteractTarget& t);
+  // In range -> ActOn now; else walk there and act on arrival (W8). False when neither is possible.
+  bool ActOrWalk(const InteractTarget& t);
+  void TickExits();
+  void TickPending();
+  void TickPrompt();
   SimContext& ctx_;
   const MapDef* map_ = nullptr;
   ZoneGrid grid_;
@@ -133,7 +153,9 @@ class ABYSS_API ZoneRuntime {
   PendingInteraction pending_;
   InteractTarget prompt_;
   TimerId portalTimer_ = kNoTimer;
+  double portalStartMs_ = 0;
   Vec2 portalDestination_;
+  TimerId transitionTimer_ = kNoTimer;
   std::string pendingZone_;
   Vec2 pendingTarget_;
   bool transitionReady_ = false;

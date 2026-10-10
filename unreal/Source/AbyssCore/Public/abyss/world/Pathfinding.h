@@ -24,7 +24,8 @@ class ABYSS_API Pathfinder {
 
   // findWalkableNear (7.2 / monsters 9.4): Chebyshev rings 1..radius, dr outer, dc inner; centre never returned.
   bool FindWalkableNear(TilePos centre, int32_t radius, TilePos& out) const;
-  // findWalkableTile (monsters 6.4): the tile itself when walkable, else rings 1..radius row-major within the ring.
+  // RandomEventSystem.findWalkableTile (world 13.3 / monsters 6.4): the preferred tile clamped to [1, size - 2] when
+  // walkable, else ring edges 1..radius (dr outer, dc inner) inside [1, size - 2].
   bool FindWalkableTile(TilePos preferred, int32_t radius, TilePos& out) const;
 
   const ZoneGrid& Grid() const { return *grid_; }

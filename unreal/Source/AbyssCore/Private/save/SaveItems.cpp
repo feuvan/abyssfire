@@ -6,6 +6,11 @@
 #include "abyss/save/SaveIO.h"
 #include "SaveSections.h"
 
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <limits>
+
 namespace abyss {
 
 namespace {
@@ -194,6 +199,35 @@ void ReadItemList(const JsonValue& v, std::vector<ItemInstance>& out) {
     ItemInstance item;
     if (ReadItemJson(e, item)) out.push_back(std::move(item));
   }
+}
+
+// potionSlots (v4, I4): [hpBaseId, mpBaseId], "" = best available. InventorySystem::ReadSave validates the ids.
+void WritePotionSlots(JsonWriter& w, const std::array<std::string, 2>& slots) {
+  w.StartArray();
+  for (const std::string& s : slots) w.String(s);
+  w.EndArray();
+}
+
+void ReadPotionSlots(const JsonValue& v, std::array<std::string, 2>& out) {
+  out = {};
+  if (!v.IsArray()) return;
+  for (size_t i = 0; i < out.size() && i < v.Size(); ++i) {
+    const JsonValue& e = v.At(i);
+    if (e.IsString()) out[i] = std::string(e.AsString());
+  }
+}
+
+// itemUidCounter (v4): the next ItemUidGenerator value. Missing / non-integral / < 1 -> 1 (InventorySystem::ReadSave
+// also bumps it past every "i<hex>" uid in the save, so a lost counter never re-issues a uid).
+void WriteItemUidCounter(JsonWriter& w, uint64_t counter) {
+  const uint64_t kMax = static_cast<uint64_t>((std::numeric_limits<int64_t>::max)());
+  w.Int(static_cast<int64_t>((std::min)(counter, kMax)));
+}
+
+uint64_t ReadItemUidCounter(const JsonValue& v) {
+  if (!v.IsInteger()) return 1;
+  const int64_t n = v.AsInt64(1);
+  return n >= 1 ? static_cast<uint64_t>(n) : 1;
 }
 
 }  // namespace savejson

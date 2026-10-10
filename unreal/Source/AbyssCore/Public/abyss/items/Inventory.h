@@ -106,9 +106,10 @@ class ABYSS_API Inventory {
   int32_t BagIndex(std::string_view uid) const;
   std::span<const ItemInstance> Bag() const { return bag_; }
   int32_t CountOf(std::string_view baseId) const;  // summed over stacks
-  // sortInventory (7.3): stable by quality order, then type order (economy.json sortOrder), then the stored name
-  // (byte order; the web's zh localeCompare).
-  void SortBag();
+  // sortInventory (7.3): stable by quality order, then type order (economy.json sortOrder), then the localised display
+  // name (ItemDisplayName in `names`' locale, default the data's current locale; the port rule of 7.3 - the web compared
+  // the stored zh name with localeCompare). Names compare by UTF-8 byte order: the core has no collation tables.
+  void SortBag(const I18n* names = nullptr);
   int32_t DestroyNormalItems();  // 7.3: normal weapons / armour / accessories
   int32_t Capacity() const;  // economy.json bagCapacity (100 entries)
   bool IsFull() const { return static_cast<int32_t>(bag_.size()) >= Capacity(); }
@@ -142,7 +143,7 @@ class ABYSS_API Inventory {
   void PushStashOverflow(ItemInstance item);  // quest turn-in / Q5 chest overflow (ignores capacity)
   std::span<const ItemInstance> Stash() const { return stash_; }
   const ItemInstance* FindInStash(std::string_view uid) const;
-  void SortStash();
+  void SortStash(const I18n* names = nullptr);  // sortStash: the bag comparator
 
   // ---- trade (12.4-12.5) ----
   // sellItem: price = ItemSellPrice (I9); pushes buyback (price * 5, FIFO 5); removes the entry. Equipped items cannot be
@@ -189,7 +190,9 @@ class ABYSS_API InventorySystem {
   // Removed items (TP scroll, I4) and items without an effect (ley fruit, ID scroll) are NotUsable and not consumed.
   InvResult UseItem(std::string_view uid);
   InvResult UsePotionSlot(PotionSlot slot);       // I4: ResolvePotionSlot(slot), one unit of the first stack
-  void SetPotionSlot(PotionSlot slot, std::string_view baseId);  // "" = best available (saved: potionSlots)
+  // Binds a quick slot ("" = best available; saved: potionSlots). Only a potion of the slot's kind binds (Hp: a heal
+  // consumable, Mp: a mana one); any other id is refused (false) and the slot keeps its binding.
+  bool SetPotionSlot(PotionSlot slot, std::string_view baseId);
   const std::array<std::string, 2>& PotionSlots() const { return potionSlots_; }
   // The base a quick slot uses now: the bound base, else the bag potion of that kind (Hp = heal, Mp = mana) with the
   // highest restore value (first in bag order on ties); "" when there is none.
@@ -217,9 +220,11 @@ class ABYSS_API InventorySystem {
   ItemGrantOutcome Grant(ItemInstance& item, OverflowPolicy policy, ItemSource source);
 
   void FillSnapshot(Snapshot& out) const;
+  // Bag, equipment, stash, the uid counter and the potion quick slots (I4).
   void WriteSave(SaveData& out) const;
-  // Restores bag / equipment / stash and the uid counter: identified = true, stats recomputed, quantity >= 1, legendaryId
-  // / setPieceId filled when missing, empty or duplicate uids re-issued; buyback and the stash session cleared.
+  // Restores bag / equipment / stash, the uid counter and the potion slots: identified = true, stats recomputed,
+  // quantity >= 1, legendaryId / setPieceId filled when missing, empty or duplicate uids re-issued, invalid potion-slot
+  // ids dropped (best available); buyback and the stash session cleared.
   void ReadSave(const SaveData& in);
 
  private:

@@ -74,6 +74,7 @@ struct SaveHomestead {
 
 struct SavePets {
   bool present = false;
+  bool hasOwned = false;  // `owned` was an array (migratePetSave falls back to homestead.pets when it is missing)
   std::vector<PetInstance> owned;
   std::string active;  // "" = null
 };

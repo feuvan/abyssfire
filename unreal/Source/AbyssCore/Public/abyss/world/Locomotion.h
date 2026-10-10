@@ -27,12 +27,17 @@ struct Snapshot;
 // (sx + sy, -sx + sy): screen direction (x right, y down) to tile direction (save-ui-input 5.2), not normalised.
 ABYSS_API Vec2 ScreenDirToTile(Vec2 screen);
 
-enum class HeroSpeedModel : uint8_t { UniformTiles, IsoPixelParity };  // world 6.4 (S5 = UniformTiles)
+// world 6.4: UniformTiles = S5 (default; moveSpeed / 36 tiles/s for every input mode, click-move instant, keyboard /
+// stick 90 ms ramp and 60 ms stop, axis-separated wall sliding W3 FIX); IsoPixelParity = the web verbatim (6.2 / 6.3:
+// iso-px path speed with first-order acceleration 8/s and decay 12/s, leftover step discarded at a node, keyboard
+// moveSpeed * 0.015 tiles per second with no sliding) for parity tests.
+enum class HeroSpeedModel : uint8_t { UniformTiles, IsoPixelParity };
 
 struct HoldMoveState {
   bool active = false;
   int32_t pointerId = 0;
-  TilePos tile;
+  TilePos tile;     // tile of the last re-path (hold.col / hold.row)
+  TilePos pointer;  // latest picked tile from the input layer (re-projected every frame)
   double repathAtMs = 0;
 };
 
@@ -82,10 +87,17 @@ class ABYSS_API HeroLocomotion {
   void Stop();  // clears path, hold-move, approach and direct input (a running dash finishes)
   // Direct input direction in tile space (keyboard / stick / joystick, already ScreenDirToTile-mapped); zero = none.
   void SetMoveInput(Vec2 tileDir);
-  // Hold-to-move (7.2): the input layer re-sends the picked tile every frame while the pointer is down.
+  // Hold-to-move (7.2): started by the press chain's ground row (7.1 row 12, repathAt = now + 120); the input layer
+  // re-sends the picked tile every frame while the pointer is down (UpdateHold), once with down = false.
   void BeginHold(int32_t pointerId, TilePos tile);
   void UpdateHold(int32_t pointerId, TilePos tile, bool down);
   bool IsHoldMoving() const { return hold_.active; }
+  const HoldMoveState& Hold() const { return hold_; }
+  void SetSpeedModel(HeroSpeedModel m) { model_ = m; }
+  HeroSpeedModel SpeedModel() const { return model_; }
+  // Bumped by every explicit movement order (MoveTo, direct input, hold re-path, Stop, Teleport, dash, approach start):
+  // ZoneRuntime's walk-then-act interaction (W8) is abandoned when it changes.
+  uint32_t MoveGeneration() const { return generation_; }
 
   // Per step (classes 16 step 7): a running dash first (owns the position), then direct input (clears hold + path +
   // approach), then hold re-path, then approach re-goal, then path following.
@@ -105,13 +117,26 @@ class ABYSS_API HeroLocomotion {
   bool TickDash();
   // Re-goals a running approach (or ends it: in range / target gone).
   void TickApproach();
-  // Path request shared by MoveTo (which also cancels an approach) and the approach re-goal.
+  // Path request shared by MoveTo (which also cancels an approach) and the approach re-goal. An unwalkable goal tile
+  // heads for findWalkableNear(goal, 3) (hold-to-move rule 7.2).
   bool PathTo(Vec2 goal, double stopRange);
+  // Direct (keyboard / stick) movement for one step; returns true when it owned the hero this step.
+  bool TickDirect(double dtMs, double speedMul);
+  void TickHold();
+  void TickPath(double dtMs, double speedMul);
+  // Moves by `delta` with the W3 axis-separated retry (UniformTiles) or the destination-only rule (parity).
+  bool TryDirectStep(Vec2 delta, bool slide);
+  void FaceAlongPath();
 
   SimContext& ctx_;
+  HeroSpeedModel model_ = HeroSpeedModel::UniformTiles;
   std::vector<TilePos> path_;
   bool moving_ = false;
-  double speed_ = 0;     // smoothed ground speed (tiles/s)
+  double speed_ = 0;        // actual ground speed of the last step (tiles/s; W2: drive the locomotion blend from it)
+  double directSpeed_ = 0;  // UniformTiles keyboard / stick speed (ramps 90 ms up, 60 ms down)
+  double pathSpeedPx_ = 0;  // IsoPixelParity currentSpeed (iso px/s)
+  double directMoveMs_ = 0; // IsoPixelParity keyboard grace (120 ms)
+  uint32_t generation_ = 0;
   Vec2 input_;           // current direct input (tile space)
   Vec2 lastDir_{1, -1};  // web initial (screen right); dodge falls back to facing (C8)
   HoldMoveState hold_;

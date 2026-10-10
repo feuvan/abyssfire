@@ -93,7 +93,7 @@ void SimImpl::ApplyCommand(const Command& cmd) {
             locomotion->SetMoveInput(c.screenSpace ? ScreenDirToTile(c.dir) : c.dir);
           },
           [this](const CmdStop&) { locomotion->Stop(); },
-          [this](const CmdPointerPress& c) { zone->OnPointerPress(c.tile, c.button); },
+          [this](const CmdPointerPress& c) { zone->OnPointerPress(c.tile, c.button, c.pointerId); },
           [this](const CmdPointerHold& c) { locomotion->UpdateHold(c.pointerId, RoundToTile(c.tile), c.down); },
           // ---- combat ----
           [this](const CmdAttackTarget& c) { combat->SetAttackTarget(c.target, true); },

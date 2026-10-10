@@ -26,9 +26,11 @@ constexpr bool IsWalkableTile(TileType t) {
 // A placed decoration (generator output; render data passed through to UE, plus W5 blocking).
 struct Decoration {
   std::string type;
-  double col = 0, row = 0;  // tile position (generator jitter included)
-  double scale = 1;
-  bool blocking = false;    // W5: tall decoration footprint baked into the collision grid
+  double col = 0, row = 0;              // generator tile (integral; golden decorSha input)
+  double offsetCol = 0, offsetRow = 0;  // world 15.5 deterministic placement jitter in tiles (render only)
+  double scale = 1;                     // world 15.5 scale jitter (0.9 .. 1.1)
+  double yawDeg = 0;                    // world 15.5 yaw (h * 360, new in 3D)
+  bool blocking = false;                // W5: tall decoration footprint baked into the collision grid
 };
 
 class ABYSS_API ZoneGrid {

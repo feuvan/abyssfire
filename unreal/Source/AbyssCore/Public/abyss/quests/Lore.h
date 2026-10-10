@@ -58,10 +58,13 @@ class ABYSS_API LoreSystem {
   // emitting EvEntitySpawned{EntityKind::Prop} for each.
   void OnZoneEnter();
   void OnZoneExit();  // drops the props (no events: the zone is unloading) and closes the lore popup
-  // Per step: lore pickup in range (walk-then-act), hidden-area discovery (world 10.3: all five check points explored
-  // in this visit) -> record, EvHiddenAreaDiscovered, log, banner, SpawnRewardProps.
+  // Per step: lore pickup in range (lore.json pickupRangeSq; collected entries never respawn), hidden-area discovery
+  // (world 10.3: the four bound corners and the area centre explored in this visit) -> record, EvHiddenAreaDiscovered,
+  // log, discovery banner, SpawnRewardProps; story decoration focus (world 12.2: nearest within distSq 9, tooltip within
+  // distSq 2; EvStoryDecorFocus on change).
   void Tick();
-  // Explicit interaction on a pickup / reward prop (pointer chain, touch Use button; ZoneRuntime walks first).
+  // Explicit interaction on a lore pickup (pointer chain, touch Use button; ZoneRuntime walks first, so no range check
+  // here): collects it like the proximity pickup. False for an unknown pickup or a hero that is not alive.
   bool Collect(EntityId pickup);
   // Claims one reward: chest -> RewardService::GrantItem(OverflowPolicy::Stash, ItemSource::HiddenReward), gold pile ->
   // ChangeGold(parseInt(value || "100"), GoldReason::HiddenReward), lore -> log only; records "<areaId>#<index>",
@@ -99,6 +102,9 @@ class ABYSS_API LoreSystem {
   std::vector<LorePickup> pickups_;
   std::vector<HiddenRewardProp> rewardProps_;
   LoreTextState text_;
+  // Story decoration focus (world 12.2): the nearest decoration within 3 tiles and whether its tooltip shows.
+  std::string decorFocus_;
+  bool decorTooltip_ = false;
 };
 
 }  // namespace abyss

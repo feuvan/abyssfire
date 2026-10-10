@@ -71,7 +71,7 @@ ABYSS_API int32_t ItemSocketCapacity(const ItemInstance& item, const DataStore& 
 // Localised display name (getItemDisplayName with the port's FIX Q4, loot 15.1), in `i18n`'s current locale:
 //   unknown base -> stored name; named legendary -> data.legendary.<id>.name; set piece -> data.set.<setId>.name + ' ' +
 //   base name; normal / no affixes -> base name; else prefixes + base + suffixes (en: words joined by spaces; zh: prefix
-//   names concatenated, suffixes after '·'). Every key falls back to the data's zh / en names.
+//   names concatenated, suffixes after a U+00B7 middle dot). Every key falls back to the data's zh / en names.
 ABYSS_API std::string ItemDisplayName(const ItemInstance& item, const DataStore& data, const I18n& i18n);
 
 // A log argument naming an item (loot 15.3: core logs carry ids where they can). Normal-quality items are a KeyArg on

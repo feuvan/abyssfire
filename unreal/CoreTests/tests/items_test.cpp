@@ -1,9 +1,14 @@
 // Items area: item instances, loot generation, bag / equipment / stash, shops, crafting, compare, ground loot, saves.
 // Ports: CraftingSystem.test.ts, GemSocketing.test.ts, ItemCompare.test.ts, smoke.test.ts (LootSystem /
-// InventorySystem), NumericalBalance.test.ts (affix tiers), endgame-scrutiny-fixes.test.ts + story-scrutiny-zones-loot
-// .test.ts (mini-boss floors), QuestEngine.test.ts (QuestRewards); plus loot-items-inventory.md 20 (worked examples),
+// InventorySystem), NumericalBalance.test.ts (affix tiers, item power scaling, gold economy), EliteAffixSystem.test.ts
+// (affix loot bonus), endgame-scrutiny-fixes.test.ts + story-scrutiny-zones-loot.test.ts (mini-boss floors),
+// QuestEngine.test.ts (QuestRewards), ShopCloseMerchantDespawn.test.ts (shop close npcId), SaveMigration.test.ts and
+// cross-area-integration.test.ts (item save fields, gem stat flow); plus loot-items-inventory.md 20 (worked examples),
 // 5.7 (reference probabilities), 5.9 (Chapter 1 pools) and the DECISIONS I1-I11 port rules. Loot distributions use
 // seeded Rng streams.
+#include <algorithm>
+#include <array>
+#include <cstdlib>
 #include <memory>
 #include <set>
 #include <string>
@@ -27,6 +32,15 @@
 #include "abyss/save/SaveIO.h"
 #include "abyss/sim/Snapshot.h"
 #include "doctest/doctest.h"
+
+// The save section readers / writers are internal to the core (not exported): test them only when the core is linked
+// statically (ABYSS_SHARED=1 builds the core as a hidden-visibility shared library), as hero_test.cpp does.
+#if !(defined(ABYSS_CORE_DLL) && ABYSS_CORE_DLL)
+#define ABYSS_ITEMS_TEST_SAVE_SECTIONS 1
+#include "../../Source/AbyssCore/Private/save/SaveSections.h"
+#else
+#define ABYSS_ITEMS_TEST_SAVE_SECTIONS 0
+#endif
 
 using namespace abyss;
 
@@ -1009,6 +1023,27 @@ TEST_SUITE("items") {
     CHECK(order[6] == "c_hp_potion_s");    // consumable
     CHECK(order[7] == "g_ruby_1");         // gem
     CHECK(order[8] == "m_scrap");          // material
+    // Port rule (7.3): ties within quality and type sort by the localised display name, here English.
+    {
+      I18n en = D().Strings();
+      en.SetLocale(LocaleId::En);
+      Inventory names(D());
+      ItemInstance sharp = Itm("w_short_sword", ItemQuality::Magic, 4);
+      sharp.affixes = {FixedAffix("pre_sharp", 2)};  // "Sharp Short Sword"
+      ItemInstance strong = Itm("w_dagger", ItemQuality::Magic, 4);
+      strong.affixes = {FixedAffix("pre_strong", 2)};  // "Strong Dagger"
+      ItemInstance life = Itm("w_rusty_sword", ItemQuality::Magic, 4);
+      life.affixes = {FixedAffix("suf_life", 2)};  // "Rusty Sword of Life"
+      names.MutableBag() = {Itm("w_short_sword"), Itm("w_dagger"), strong, Itm("w_rusty_sword"), life, sharp};
+      names.SortBag(&en);
+      std::vector<std::string> got;
+      for (const ItemInstance& it : names.Bag()) got.push_back(ItemDisplayName(it, D(), en));
+      CHECK(got == std::vector<std::string>{"Rusty Sword of Life", "Sharp Short Sword", "Strong Dagger", "Dagger",
+                                            "Rusty Sword", "Short Sword"});
+      names.MutableStash() = {Itm("w_short_sword"), Itm("w_dagger")};
+      names.SortStash(&en);
+      CHECK(names.Stash()[0].baseId == "w_dagger");
+    }
     CHECK(inv.DestroyNormalItems() == 2);  // the normal sword and cap only
     CHECK(inv.Bag().size() == 7);
     CHECK(inv.CountOf("c_hp_potion_s") == 1);
@@ -2355,5 +2390,302 @@ TEST_SUITE("items") {
     ComputeItemStats(sword);
     w.inv.Items().MutableEquipment()[EnumIndex(EquipSlot::Weapon)] = sword;
     CHECK(w.ground.LootLuck() == base + 10 + 3);
+  }
+
+  // ===================================================================================================================
+  // Save sections owned by items (save-ui-input 3.2; SaveSections.h): equipment, item lists, potionSlots, uid counter
+  // ===================================================================================================================
+#if ABYSS_ITEMS_TEST_SAVE_SECTIONS
+  TEST_CASE("save sections: equipment map, item lists, potion slots, uid counter (lenient readers)") {
+    SaveData s;
+    ItemInstance sword = Itm("w_short_sword", ItemQuality::Magic, 4);
+    sword.affixes = {FixedAffix("pre_sharp", 3)};
+    sword.sockets = {GemOf("g_ruby_1")};
+    ComputeItemStats(sword);
+    ItemInstance ring = Itm("j_copper_ring", ItemQuality::Rare, 6);
+    ring.affixes = {FixedAffix("suf_life", 12)};
+    ComputeItemStats(ring);
+    s.equipment[EnumIndex(EquipSlot::Ring2)] = ring;
+    s.equipment[EnumIndex(EquipSlot::Weapon)] = sword;
+    JsonWriter w;
+    savejson::WriteEquipment(w, s);
+    const std::string text = w.Take();
+    // Partial<Record<EquipSlot, ItemInstance>>: only worn slots, in EquipSlot order.
+    CHECK(text.find("\"weapon\":{") != std::string::npos);
+    CHECK(text.find("\"ring2\":{") != std::string::npos);
+    CHECK(text.find("\"helmet\"") == std::string::npos);
+    CHECK(text.find("\"weapon\"") < text.find("\"ring2\""));
+    JsonValue v;
+    REQUIRE(ParseJson(text, v));
+    SaveData back;
+    back.equipment[EnumIndex(EquipSlot::Helmet)] = Itm("a_leather_helm");  // stale content is cleared
+    savejson::ReadEquipment(v, back);
+    CHECK(back.equipment == s.equipment);
+    // Unknown slot keys and non-object items are skipped; a non-object section reads as nothing worn.
+    JsonValue odd;
+    REQUIRE(ParseJson(R"({"tail":{"uid":"x","baseId":"w_dagger"},"boots":7,"belt":{"uid":"b","baseId":"a_leather_belt"}})",
+                      odd));
+    savejson::ReadEquipment(odd, back);
+    CHECK_FALSE(back.equipment[EnumIndex(EquipSlot::Boots)].has_value());
+    REQUIRE(back.equipment[EnumIndex(EquipSlot::Belt)].has_value());
+    CHECK(back.equipment[EnumIndex(EquipSlot::Belt)]->baseId == "a_leather_belt");
+    int worn = 0;
+    for (const auto& e : back.equipment) worn += e.has_value() ? 1 : 0;
+    CHECK(worn == 1);
+    savejson::ReadEquipment(JsonValue::Array(), back);
+    for (const auto& e : back.equipment) CHECK_FALSE(e.has_value());
+
+    // inventory / stash lists keep order; non-objects are dropped, a non-array is an empty list.
+    const std::vector<ItemInstance> bag = {sword, Stack("c_hp_potion_s", 7), ring};
+    JsonWriter lw;
+    savejson::WriteItemList(lw, bag);
+    JsonValue lv;
+    REQUIRE(ParseJson(lw.Take(), lv));
+    std::vector<ItemInstance> list = {Itm("w_dagger")};
+    savejson::ReadItemList(lv, list);
+    CHECK(list == bag);
+    JsonValue mixed;
+    REQUIRE(ParseJson(R"([1,{"uid":"a","baseId":"w_dagger"},"x",null,{"uid":"b","baseId":"c_antidote","quantity":3}])",
+                      mixed));
+    savejson::ReadItemList(mixed, list);
+    REQUIRE(list.size() == 2);
+    CHECK(list[0].uid == "a");
+    CHECK(list[1].quantity == 3);
+    CHECK(list[0].sockets.empty());  // missing sockets -> [] (SaveMigration.test.ts)
+    savejson::ReadItemList(JsonValue::Object(), list);
+    CHECK(list.empty());
+
+    // potionSlots: [hp, mp] strings; wrong types and missing entries read as "" (best available).
+    JsonWriter pw;
+    savejson::WritePotionSlots(pw, {std::string("c_hp_potion_m"), std::string()});
+    const std::string ptext = pw.Take();
+    CHECK(ptext == R"(["c_hp_potion_m",""])");
+    JsonValue pv;
+    REQUIRE(ParseJson(ptext, pv));
+    std::array<std::string, 2> slots{"x", "y"};
+    savejson::ReadPotionSlots(pv, slots);
+    CHECK(slots[0] == "c_hp_potion_m");
+    CHECK(slots[1].empty());
+    REQUIRE(ParseJson(R"([5])", pv));
+    savejson::ReadPotionSlots(pv, slots);
+    CHECK(slots[0].empty());
+    CHECK(slots[1].empty());
+    REQUIRE(ParseJson(R"(["a","c_mp_potion_s","extra"])", pv));
+    savejson::ReadPotionSlots(pv, slots);
+    CHECK(slots[1] == "c_mp_potion_s");
+    savejson::ReadPotionSlots(JsonValue::Null(), slots);
+    CHECK(slots[0].empty());
+
+    // itemUidCounter: an integer; missing / fractional / < 1 -> 1.
+    JsonWriter cw;
+    cw.StartObject();
+    cw.Key("itemUidCounter");
+    savejson::WriteItemUidCounter(cw, 0x2a);
+    cw.EndObject();
+    JsonValue cv;
+    REQUIRE(ParseJson(cw.Take(), cv));
+    CHECK(savejson::ReadItemUidCounter(cv.Get("itemUidCounter")) == 0x2a);
+    CHECK(savejson::ReadItemUidCounter(cv.Get("missing")) == 1);
+    CHECK(savejson::ReadItemUidCounter(JsonValue::Number(2.5)) == 1);
+    CHECK(savejson::ReadItemUidCounter(JsonValue::Integer(-4)) == 1);
+    CHECK(savejson::ReadItemUidCounter(JsonValue::String("9")) == 1);
+  }
+#endif
+
+  TEST_CASE("potion slot binding (I4): only a potion of the slot's kind binds; saved and validated on load") {
+    ItmWorld w;
+    InventorySystem& inv = w.inv;
+    CHECK(inv.SetPotionSlot(PotionSlot::Hp, "c_hp_potion_l"));
+    CHECK(inv.SetPotionSlot(PotionSlot::Mp, "c_mp_potion_m"));
+    // Wrong kind, non-potions, unknown and removed ids are refused; the binding stays.
+    CHECK_FALSE(inv.SetPotionSlot(PotionSlot::Hp, "c_mp_potion_s"));
+    CHECK_FALSE(inv.SetPotionSlot(PotionSlot::Mp, "c_hp_potion_s"));
+    CHECK_FALSE(inv.SetPotionSlot(PotionSlot::Hp, "c_antidote"));
+    CHECK_FALSE(inv.SetPotionSlot(PotionSlot::Hp, "w_dagger"));
+    CHECK_FALSE(inv.SetPotionSlot(PotionSlot::Hp, "nope"));
+    CHECK_FALSE(inv.SetPotionSlot(PotionSlot::Mp, "c_tp_scroll"));
+    CHECK(inv.PotionSlots()[0] == "c_hp_potion_l");
+    CHECK(inv.PotionSlots()[1] == "c_mp_potion_m");
+    SaveData out;
+    inv.WriteSave(out);
+    CHECK(out.potionSlots[0] == "c_hp_potion_l");
+    CHECK(out.potionSlots[1] == "c_mp_potion_m");
+    // Unbinding.
+    CHECK(inv.SetPotionSlot(PotionSlot::Hp, ""));
+    CHECK(inv.PotionSlots()[0].empty());
+    // Load: valid ids restored, an invalid one falls back to "" (best available).
+    SaveData in;
+    in.potionSlots = {std::string("c_hp_potion_s"), std::string("w_dagger")};
+    inv.ReadSave(in);
+    CHECK(inv.PotionSlots()[0] == "c_hp_potion_s");
+    CHECK(inv.PotionSlots()[1].empty());
+    in.potionSlots = {};
+    inv.ReadSave(in);
+    CHECK(inv.PotionSlots()[0].empty());
+  }
+
+  // ===================================================================================================================
+  // Data balance guards (NumericalBalance.test.ts: item power scaling, gold economy)
+  // ===================================================================================================================
+  TEST_CASE("item power scaling: tiers exist, weapon damage and armour defense rise with levelReq") {
+    const ItemTables& t = D().Items();
+    std::vector<const ItemBaseDef*> weapons;
+    std::vector<const ItemBaseDef*> armors;
+    for (const ItemBaseDef& b : t.bases) {
+      if (b.group == "weapons") weapons.push_back(&b);
+      if (b.group == "armors") armors.push_back(&b);
+    }
+    REQUIRE_FALSE(weapons.empty());
+    REQUIRE_FALSE(armors.empty());
+    auto near = [](const std::vector<const ItemBaseDef*>& list, int tier) {
+      int n = 0;
+      for (const ItemBaseDef* b : list) n += std::abs(b->levelReq - tier) <= 3 ? 1 : 0;
+      return n;
+    };
+    for (int tier : {1, 10, 15, 20, 28, 35}) CHECK_MESSAGE(near(weapons, tier) > 0, "weapon tier " << tier);
+    for (int tier : {1, 10, 15, 20, 30, 35}) CHECK_MESSAGE(near(armors, tier) > 0, "armour tier " << tier);
+    auto byLevel = [](std::vector<const ItemBaseDef*> v) {
+      std::stable_sort(v.begin(), v.end(),
+                       [](const ItemBaseDef* a, const ItemBaseDef* b) { return a->levelReq < b->levelReq; });
+      return v;
+    };
+    for (WeaponType wt : {WeaponType::Sword, WeaponType::Dagger, WeaponType::Bow, WeaponType::Staff}) {
+      std::vector<const ItemBaseDef*> v;
+      for (const ItemBaseDef* b : weapons) {
+        if (b->hasWeaponType && b->weaponType == wt && b->baseDamageMax > 0) v.push_back(b);
+      }
+      v = byLevel(v);
+      CHECK(v.size() >= 2);
+      for (size_t i = 0; i + 1 < v.size(); ++i) {
+        if (v[i + 1]->levelReq <= v[i]->levelReq) continue;
+        const double a = (v[i]->baseDamageMin + v[i]->baseDamageMax) / 2.0;
+        const double b = (v[i + 1]->baseDamageMin + v[i + 1]->baseDamageMax) / 2.0;
+        CHECK_MESSAGE(b >= a, v[i]->id << " -> " << v[i + 1]->id);
+      }
+    }
+    for (EquipSlot slot : {EquipSlot::Helmet, EquipSlot::Armor, EquipSlot::Gloves, EquipSlot::Boots, EquipSlot::Belt}) {
+      std::vector<const ItemBaseDef*> v;
+      for (const ItemBaseDef* b : armors) {
+        if (b->hasSlot && b->slot == slot) v.push_back(b);
+      }
+      v = byLevel(v);
+      CHECK(v.size() >= 2);
+      for (size_t i = 0; i + 1 < v.size(); ++i) {
+        if (v[i + 1]->levelReq > v[i]->levelReq) CHECK_MESSAGE(v[i + 1]->baseDefense >= v[i]->baseDefense, v[i + 1]->id);
+      }
+    }
+  }
+
+  TEST_CASE("gold economy: kill gold rises by zone; a weapon near the hero level costs <= 200 average kills") {
+    const MonsterTables& m = D().Monsters();
+    const std::vector<std::string> zones = {"emerald_plains", "twilight_forest", "anvil_mountains", "scorching_desert",
+                                            "abyss_rift"};
+    auto avgNormalGold = [&](const std::string& zone) {
+      const ZoneMonsterList* list = m.ZoneList(zone);
+      REQUIRE(list != nullptr);
+      double sum = 0;
+      int n = 0;
+      for (const std::string& id : list->monsterIds) {
+        const MonsterDef* def = m.FindForZone(zone, id);
+        REQUIRE(def != nullptr);
+        if (def->elite) continue;
+        sum += (def->goldMin + def->goldMax) / 2.0;
+        ++n;
+      }
+      REQUIRE(n > 0);
+      return sum / n;
+    };
+    for (size_t i = 0; i + 1 < zones.size(); ++i) {
+      CHECK_MESSAGE(avgNormalGold(zones[i + 1]) > avgNormalGold(zones[i]), zones[i + 1]);
+    }
+    const ItemTables& t = D().Items();
+    const int levels[] = {5, 15, 25, 35, 45};
+    for (size_t z = 0; z < zones.size(); ++z) {
+      const int lvl = levels[z];
+      std::vector<const ItemBaseDef*> near;
+      for (const ItemBaseDef& b : t.bases) {
+        if (b.group == "weapons" && b.baseDamageMax > 0 && b.levelReq <= lvl && b.levelReq >= lvl - 10) near.push_back(&b);
+      }
+      if (near.empty()) continue;
+      std::stable_sort(near.begin(), near.end(),
+                       [](const ItemBaseDef* a, const ItemBaseDef* b) { return a->levelReq > b->levelReq; });
+      const double buyPrice = near.front()->sellPrice * t.economy.buyPriceMultiplier;
+      CHECK(t.economy.buyPriceMultiplier == 3);
+      CHECK_MESSAGE(buyPrice <= avgNormalGold(zones[z]) * 200, "level " << lvl << " " << near.front()->id);
+    }
+  }
+
+  TEST_CASE("elite affix loot bonus yields more loot (EliteAffixSystem.test.ts, seeded)") {
+    Rng rng(31);
+    ItemUidGenerator uids;
+    const LootContext lc{&D(), &rng, &uids};
+    LootRollInput in;
+    in.monsterLevel = 20;
+    in.elite = true;
+    in.luck = 10;
+    in.affixLootBonus = 15;
+    for (int i = 0; i < 50; ++i) {
+      for (const ItemInstance& it : GenerateLoot(lc, in)) CHECK(D().Items().FindBase(it.baseId) != nullptr);
+    }
+    in.monsterLevel = 30;
+    size_t with = 0, without = 0;
+    for (int i = 0; i < 500; ++i) {
+      in.affixLootBonus = 20;
+      with += GenerateLoot(lc, in).size();
+      in.affixLootBonus = 0;
+      without += GenerateLoot(lc, in).size();
+    }
+    CHECK(with > without);
+  }
+
+  TEST_CASE("gem stats reach the hero's derived stats (GemSocketing.test.ts recalcDerived)") {
+    const HeroFormulas& f = D().Classes().formulas;
+    Hero hero(D(), ClassId::Warrior);
+    hero.RecalcDerived(EquipStats{});
+    const HeroDerived base = hero.Derived();
+    auto withGem = [&](std::string_view itemBase, EquipSlot slot, std::string_view gemId) {
+      Inventory inv(D());
+      ItemInstance it = Itm(itemBase);
+      inv.MutableEquipment()[EnumIndex(slot)] = it;
+      ItemInstance gem = Stack(gemId, 1);
+      inv.MutableBag().push_back(gem);
+      REQUIRE(inv.SocketGem(slot, gem.uid) == InvResult::Ok);
+      Hero h(D(), ClassId::Warrior);
+      h.RecalcDerived(inv.GearStats());
+      return h.Derived();
+    };
+    using doctest::Approx;
+    const GemInstance ruby = GemOf("g_ruby_1");
+    REQUIRE(ruby.stat == Stat::Str);
+    const HeroDerived str = withGem("w_short_sword", EquipSlot::Weapon, "g_ruby_1");
+    CHECK(str.baseDamage - base.baseDamage == Approx(ruby.value * f.baseDamagePerStr));
+    CHECK(str.baseDamage - base.baseDamage == Approx(4.0));  // 5 str x 0.8
+    CHECK(str.maxHp == base.maxHp);
+    const GemInstance sapphire = GemOf("g_sapphire_2");
+    REQUIRE(sapphire.stat == Stat::Int);
+    const HeroDerived intl = withGem("a_chain_mail", EquipSlot::Armor, "g_sapphire_2");
+    CHECK(intl.maxMana - base.maxMana == sapphire.value * f.maxManaPerInt);
+    CHECK(intl.maxMana - base.maxMana == 36);  // 12 int x 3
+    const GemInstance diamond = GemOf("g_diamond_1");
+    REQUIRE(diamond.stat == Stat::AllStats);
+    const HeroDerived vit = withGem("w_claymore", EquipSlot::Weapon, "g_diamond_1");
+    CHECK(vit.maxHp - base.maxHp == diamond.value * f.maxHpPerVit);
+    CHECK(vit.maxHp - base.maxHp == 30);  // allStats 3 -> vit 3 x 10
+  }
+
+  TEST_CASE("shop close carries the shop's npcId, once (ShopCloseMerchantDespawn.test.ts)") {
+    ItmWorld w;
+    w.shop.Close();  // nothing open: no event
+    CHECK(test::CountEvents<EvShopClosed>(w.h.events) == 0);
+    w.shop.OpenWanderingMerchant({"c_hp_potion_s"}, 1.2);
+    w.shop.Close();
+    w.shop.Close();  // a second close of the same panel does nothing
+    REQUIRE(test::CountEvents<EvShopClosed>(w.h.events) == 1);
+    CHECK(LastEvent<EvShopClosed>(w.h.events)->npcId == kWanderingMerchantShopId);
+    w.shop.Open("merchant", false);
+    w.shop.Close();
+    REQUIRE(test::CountEvents<EvShopClosed>(w.h.events) == 2);
+    CHECK(LastEvent<EvShopClosed>(w.h.events)->npcId == "merchant");
+    CHECK(LastEvent<EvShopOpened>(w.h.events)->npcId == "merchant");
   }
 }

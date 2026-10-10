@@ -39,14 +39,27 @@ InvSortKey InvKeyOf(const DataStore& data, const ItemInstance& it) {
   return k;
 }
 
-void InvSort(const DataStore& data, std::vector<ItemInstance>& list) {
-  std::stable_sort(list.begin(), list.end(), [&data](const ItemInstance& a, const ItemInstance& b) {
-    const InvSortKey ka = InvKeyOf(data, a);
-    const InvSortKey kb = InvKeyOf(data, b);
-    if (ka.quality != kb.quality) return ka.quality < kb.quality;
-    if (ka.type != kb.type) return ka.type < kb.type;
+// Keys are computed once per entry (display names are built strings), then the entries are stably reordered.
+void InvSort(const DataStore& data, const I18n& names, std::vector<ItemInstance>& list) {
+  struct Keyed {
+    InvSortKey key;
+    std::string name;
+    size_t index = 0;
+  };
+  std::vector<Keyed> keyed;
+  keyed.reserve(list.size());
+  for (size_t i = 0; i < list.size(); ++i) {
+    keyed.push_back(Keyed{InvKeyOf(data, list[i]), ItemDisplayName(list[i], data, names), i});
+  }
+  std::stable_sort(keyed.begin(), keyed.end(), [](const Keyed& a, const Keyed& b) {
+    if (a.key.quality != b.key.quality) return a.key.quality < b.key.quality;
+    if (a.key.type != b.key.type) return a.key.type < b.key.type;
     return a.name < b.name;
   });
+  std::vector<ItemInstance> sorted;
+  sorted.reserve(list.size());
+  for (const Keyed& k : keyed) sorted.push_back(std::move(list[k.index]));
+  list = std::move(sorted);
 }
 
 }  // namespace
@@ -147,7 +160,9 @@ int32_t Inventory::CountOf(std::string_view baseId) const {
   return n;
 }
 
-void Inventory::SortBag() { InvSort(*data_, bag_); }
+void Inventory::SortBag(const I18n* names) {
+  InvSort(*data_, names != nullptr ? *names : data_->Strings(), bag_);
+}
 
 int32_t Inventory::DestroyNormalItems() {
   const size_t before = bag_.size();
@@ -362,7 +377,9 @@ const ItemInstance* Inventory::FindInStash(std::string_view uid) const {
   return nullptr;
 }
 
-void Inventory::SortStash() { InvSort(*data_, stash_); }
+void Inventory::SortStash(const I18n* names) {
+  InvSort(*data_, names != nullptr ? *names : data_->Strings(), stash_);
+}
 
 std::optional<int64_t> Inventory::Sell(std::string_view uid) {
   const int32_t idx = BagIndex(uid);
@@ -484,8 +501,17 @@ InvResult InventorySystem::UsePotionSlot(PotionSlot slot) {
   return InvResult::NotUsable;
 }
 
-void InventorySystem::SetPotionSlot(PotionSlot slot, std::string_view baseId) {
-  potionSlots_[static_cast<size_t>(slot)] = std::string(baseId);
+bool InventorySystem::SetPotionSlot(PotionSlot slot, std::string_view baseId) {
+  const size_t i = static_cast<size_t>(slot);
+  if (i >= potionSlots_.size()) return false;
+  if (!baseId.empty()) {
+    const ItemTables& t = ctx_.data.Items();
+    const ItemBaseDef* b = t.FindBase(baseId);
+    const ConsumableEffect wanted = slot == PotionSlot::Hp ? ConsumableEffect::Heal : ConsumableEffect::Mana;
+    if (b == nullptr || b->consumableEffect != wanted || t.IsRemovedItem(b->id)) return false;
+  }
+  potionSlots_[i] = std::string(baseId);
+  return true;
 }
 
 std::string InventorySystem::ResolvePotionSlot(PotionSlot slot) const {
@@ -656,11 +682,16 @@ void InventorySystem::WriteSave(SaveData& out) const {
   out.equipment = inv_.Equipment();
   out.stash.assign(inv_.Stash().begin(), inv_.Stash().end());
   out.itemUidCounter = uids_.Counter();
+  out.potionSlots = potionSlots_;
 }
 
 void InventorySystem::ReadSave(const SaveData& in) {
   inv_.Clear();
   stash_ = StashSession{};
+  potionSlots_ = {};
+  for (size_t i = 0; i < in.potionSlots.size() && i < potionSlots_.size(); ++i) {
+    SetPotionSlot(static_cast<PotionSlot>(i), in.potionSlots[i]);  // an invalid id stays "" (best available)
+  }
   inv_.MutableBag() = in.inventory;
   inv_.MutableEquipment() = in.equipment;
   inv_.MutableStash() = in.stash;

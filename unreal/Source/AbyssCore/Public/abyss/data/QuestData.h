@@ -150,6 +150,9 @@ struct QuestTuningDef {
   double defendHitRangeSq = 9, defendHitIntervalMs = 2000, defendDmgMul = 0.2;
   // embers
   int32_t embersQuestMain = 2, embersQuestSide = 1;
+  // DECISIONS Q8 (quest_tuning.json port.escortLabelFix): the escort objective's label is the quest's own name (the
+  // exported data.questTarget text claims the southern camp, which the destination is not); applied as labelKey.
+  bool escortLabelFix = false;
 };
 
 enum class AchievementType : uint8_t { Kill, Collect, Explore, Level, Quest };

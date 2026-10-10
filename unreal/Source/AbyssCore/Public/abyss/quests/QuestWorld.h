@@ -25,6 +25,7 @@
 #include "abyss/quests/QuestGuide.h"
 #include "abyss/quests/QuestSystem.h"
 #include "abyss/sim/GameplayBus.h"
+#include "abyss/sim/SimTypes.h"
 
 namespace abyss {
 
@@ -33,33 +34,43 @@ struct Snapshot;
 
 enum class QuestTimerKind : uint16_t { ObserverTick = 1, DefendWave = 2 };
 
-// A gather node / clue / quest-item pickup in the world (QuestWorld 3.4-3.5).
+// A gather node / clue mark in the world (QuestWorld 3.4-3.5). Each one is an EntityKind::Prop entity (EvEntitySpawned
+// on creation; EvEntityDespawned{Collected} when gathered / examined, {Removed} when a sync drops it) and a snapshot
+// marker (GatherNode / Clue).
 struct QuestNode {
   EntityId id = kNoEntity;
   std::string questId;
   int32_t objectiveIndex = -1;
-  std::string itemKind;  // icon / node look
+  int32_t spotIndex = -1;  // gather spot index (resolveGatherSpots order); -1 for a clue
+  std::string itemKind;    // icon / node look
   Vec2 pos;
   bool clue = false;
 };
 
+// Escort runtime (3.9; scene-local, not saved: a zone entry / reload respawns it at its start, full HP, not joined).
 struct EscortState {
   bool active = false;
   std::string questId;
-  EntityId entity = kNoEntity;
+  EntityId entity = kNoEntity;  // EntityKind::Escort
   Vec2 pos;
+  TilePos dest;
   double hp = 0, maxHp = 0;
+  bool joined = false;
   std::vector<TilePos> path;
-  double lastChipMs = 0;
+  double repathAtMs = 0;
 };
 
+// Defend runtime (3.10; scene-local, not saved: the wave count resumes from the quest progress).
 struct DefendState {
   bool active = false;
   std::string questId;
-  EntityId entity = kNoEntity;
+  EntityId entity = kNoEntity;  // EntityKind::DefendTarget
   Vec2 pos;
   double hp = 0, maxHp = 0;
   int32_t wave = 0, totalWaves = 0;
+  bool waveActive = false;
+  bool timerStarted = false;    // the web's `defendWaveTimer != 0`
+  double timerMs = 0;
   std::vector<EntityId> waveMonsters;
 };
 
@@ -109,32 +120,57 @@ class ABYSS_API QuestWorld {
   // ---- progress sources ----
   void OnMonsterKilled(const MonsterKilledMsg& m);  // 3.1 kill progress then 3.3 drops (two pipeline slots, see wiring)
   void RollQuestDrops(const MonsterKilledMsg& m);   // 3.3
-  void OnQuestAccepted(const QuestAcceptedMsg& m);  // spawn nodes / escort / defend for this zone
-  void OnQuestProgress(const QuestProgressMsg& m);
-  // Per step (not while cinematic): gather/clue pickups in range, escort / defend runtime, 500 ms observers (explore +
-  // markers), guide refresh.
+  void OnQuestAccepted(const QuestAcceptedMsg& m);  // sync nodes, escort / defend of this zone, guide refresh
+  void OnQuestProgress(const QuestProgressMsg& m);  // Q5 FIX: sync on progress too; completion refreshes the guide
+  // Per step (not while cinematic): escort / defend runtime, gather / clue pickups in range, guide refresh (250 ms or
+  // the next step after a quest change), 500 ms observer (explore objectives).
   void Tick(double dtMs);
-  void OnTimer(const Timer& t);
+  void OnTimer(const Timer& t);  // no timer kinds in use (the runtimes are per-step); ignored
 
   // ---- views ----
   GuideTarget Guide() const { return guide_; }
   std::span<const QuestNode> Nodes() const { return nodes_; }
   const EscortState& Escort() const { return escort_; }
   const DefendState& Defend() const { return defend_; }
+  // Where an open clue's mark sits (3.5 nudge), false without a mark.
+  bool ClueTile(std::string_view questId, int32_t objectiveIndex, Vec2& out) const;
+  // The guide's world queries over the live zone (5.1; also used by tests).
+  GuideWorld MakeGuideWorld() const;
+  // Snapshot: quest card / guide / escort / defend views, gather + clue + escort + defend markers, and per NPC the
+  // overhead quest marker (5.6, live), heroNear (within 3 tiles, 6.4) and talking (its card / dialogue / shop / stash).
   void FillSnapshot(Snapshot& out) const;
 
  private:
   // Generates (RngStream::Loot, loot 5.6) and caches the pick-one gear of a quest once per session.
   const std::vector<ItemInstance>& EnsureRewardChoices(const QuestDef& quest);
+  // sync() (3.4 / 3.5): gather nodes and clue marks of this zone's active quests; drops the unwanted ones.
+  void Sync();
+  const std::vector<TilePos>& SpotsFor(const QuestDef& quest, int32_t objectiveIndex);
+  bool IsGathered(std::string_view questId, int32_t objectiveIndex, int32_t spot) const;
+  void RemoveNode(EntityId id, DespawnReason reason);
+  void TickGatherAndClues();
+  void TickGuide(double dtMs);
+  void CheckExplore();                     // 3.6 (500 ms observer)
+  void AdvanceCraftFromNpc(std::string_view npcId);  // 3.11
+  void SpawnEscort();                      // 3.9
+  void TickEscort(double dtMs);
+  void RemoveEscort(DespawnReason reason);
+  void SpawnDefend();                      // 3.10
+  void TickDefend();
+  void RemoveDefend(DespawnReason reason);
 
   SimContext& ctx_;
   QuestCardState card_;
   std::vector<std::pair<std::string, std::vector<ItemInstance>>> rewardCache_;
   std::vector<QuestNode> nodes_;
-  std::vector<std::string> gatheredSpots_;  // "<questId>:<obj>:<col>,<row>" (session only)
+  // Per zone visit: spot indices gathered per "<questId>:<objectiveIndex>" (3.4) and the resolved spots.
+  std::vector<std::pair<std::string, std::vector<int32_t>>> gathered_;
+  std::vector<std::pair<std::string, std::vector<TilePos>>> spotCache_;
   EscortState escort_;
   DefendState defend_;
   GuideTarget guide_;
+  double guideAccMs_ = 0;
+  std::string guideTracked_;
   double nextObserverMs_ = 0;
 };
 

@@ -1,17 +1,26 @@
-// Audio rules and the music director (audio.md 3, 5, 9.8, 10.4; A2, A4-A6). STUB: owner area world.
+// Audio rules and the music director (audio.md 3, 5, 9.8, 10.4; A2, A4-A6). Owner area: world.
+//
+// MusicDirector priority (10.4): story lock > victory hold > boss > combat > explore. Track keys are
+// "<themeId>_<state>" (explore / combat / victory) and the boss score key (A5 `boss_ch1`). Fades (5.4 effective
+// timings): zone change and forced tracks fade the old music over zoneFadeSec, state changes over stateFadeSec, the new
+// track fades in over fadeInSec. A2: the explore track resumes from its position after combat / boss / victory
+// (restart = false); every other track starts from 0.
 #include "abyss/base/Platform.h"
 
 #include "abyss/audio/Audio.h"
 
-#include "abyss/base/Assert.h"
+#include <algorithm>
+
 #include "abyss/data/DataStore.h"
 #include "abyss/sim/SimContext.h"
 
 namespace abyss {
 
 std::optional<SfxId> SfxForCombatHit(const AudioRulesDef& r, bool dodged, bool crit, HitWeight weight) {
-  ABYSS_UNIMPLEMENTED();
-  return std::nullopt;
+  if (dodged) return r.combatDodged;
+  if (crit) return r.combatCrit;
+  if (weight == HitWeight::Heavy || weight == HitWeight::Crit || weight == HitWeight::Kill) return r.heavyHitCue;  // A6
+  return r.combatHit;
 }
 
 SfxId SfxForSkill(const AudioRulesDef& r, DamageType type) { return r.skillUsedByDamageType[static_cast<size_t>(type)]; }
@@ -20,43 +29,109 @@ SfxId SfxForPickup(const AudioRulesDef& r, ItemQuality q) { return r.itemPickedB
 
 std::optional<SfxId> SfxForQuestProgress(const AudioRulesDef& r, int32_t current, int32_t required,
                                          std::string_view targetId, bool completesQuest) {
-  ABYSS_UNIMPLEMENTED();
-  return std::nullopt;
+  if (completesQuest) return std::nullopt;  // the quest_complete fanfare covers it
+  if (current >= required) return r.questObjectiveDone;
+  for (const std::string& prefix : r.questProgressPrefixes) {
+    if (!prefix.empty() && targetId.substr(0, prefix.size()) == prefix) return r.questMaterialOrClueStep;
+  }
+  return std::nullopt;  // single kills are silent
 }
 
 std::string ResolveMusicTheme(const MusicDirectorDef& def, std::string_view zoneId) {
-  ABYSS_UNIMPLEMENTED();
-  return std::string(zoneId);
+  for (const std::string& z : def.themeZones) {
+    if (z == zoneId) return z;
+  }
+  constexpr std::string_view kDungeonFloorPrefix = "dungeon_floor_";
+  if (zoneId.substr(0, kDungeonFloorPrefix.size()) == kDungeonFloorPrefix) return "abyss_rift";
+  if (zoneId == "ember_tower") return "emerald_plains";
+  return std::string();
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// MusicDirector
+// ---------------------------------------------------------------------------------------------------------------------
 MusicDirector::MusicDirector(const MusicDirectorDef& def) : def_(&def) {}
 
 void MusicDirector::OnZoneEntered(std::string_view zoneId) {
-  ABYSS_UNIMPLEMENTED();
+  const bool zoneChanged = zone_ != zoneId || !started_;
   zone_ = std::string(zoneId);
-  (void)def_;
+  boss_.clear();
+  victoryUntilMs_ = -1;
+  if (storyLock_) {
+    state_ = MusicState::Explore;  // the sequence owns the music; the zone track returns when the lock is released
+    return;
+  }
+  if (zoneChanged) {
+    state_ = MusicState::Explore;  // setZone: a new zone starts in explore with the zone fade
+    Transition(def_->zoneFadeSec, def_->fadeInSec, true);
+    return;
+  }
+  SetState(MusicState::Explore);  // same zone (respawn restart, reload): only a state change if any
 }
 
 void MusicDirector::OnCombatStateChanged(bool inCombat) {
-  ABYSS_UNIMPLEMENTED();
   inCombat_ = inCombat;
+  if (storyLock_ || victoryUntilMs_ >= 0 || state_ == MusicState::Boss) return;  // queued / lower priority
+  SetState(inCombat ? MusicState::Combat : MusicState::Explore);
 }
 
-void MusicDirector::OnBossEngaged(std::string_view bossDefId) { ABYSS_UNIMPLEMENTED(); }
+void MusicDirector::OnBossEngaged(std::string_view bossDefId) {
+  boss_ = std::string(bossDefId);
+  if (storyLock_ || victoryUntilMs_ >= 0 || def_->bossCh1Score.empty()) return;
+  if (state_ == MusicState::Boss) return;
+  state_ = MusicState::Boss;
+  Transition(def_->stateFadeSec, def_->fadeInSec, true);
+}
 
-void MusicDirector::OnBossDisengaged() { ABYSS_UNIMPLEMENTED(); }
+void MusicDirector::OnBossDisengaged() {
+  boss_.clear();
+  if (state_ != MusicState::Boss) return;
+  if (storyLock_) {
+    state_ = inCombat_ ? MusicState::Combat : MusicState::Explore;
+    return;
+  }
+  SetState(inCombat_ ? MusicState::Combat : MusicState::Explore);
+}
 
-void MusicDirector::OnBossDefeated(std::string_view bossDefId) { ABYSS_UNIMPLEMENTED(); }
+void MusicDirector::OnBossDefeated(std::string_view bossDefId) {
+  (void)bossDefId;
+  boss_.clear();
+  if (storyLock_) return;
+  state_ = MusicState::Victory;
+  victoryUntilMs_ = nowMs_ + def_->bossVictoryHoldMs;  // A5: 8000 ms boss-victory hold
+  Transition(def_->stateFadeSec, def_->fadeInSec, true);
+}
 
-void MusicDirector::PlayTrack(std::string_view zoneId, MusicState state) { ABYSS_UNIMPLEMENTED(); }
+void MusicDirector::PlayTrack(std::string_view zoneId, MusicState state) {
+  // Forced (story sequence, jukebox): restarts even when unchanged; plays under the story lock.
+  zone_ = std::string(zoneId);
+  state_ = state;
+  victoryUntilMs_ = state == MusicState::Victory ? nowMs_ + def_->victoryHoldMs : -1;
+  Transition(def_->zoneFadeSec, def_->fadeInSec, true);
+}
 
-void MusicDirector::SetStoryLock(bool locked) { storyLock_ = locked; }
+void MusicDirector::SetStoryLock(bool locked) {
+  const bool released = storyLock_ && !locked;
+  storyLock_ = locked;
+  if (!released) return;
+  // Changes queued under the lock apply now (boss > combat > explore); a forced PlayTrack may follow and wins.
+  if (!boss_.empty() && inCombat_) {
+    OnBossEngaged(boss_);
+  } else if (state_ != MusicState::Victory) {
+    SetState(inCombat_ ? MusicState::Combat : MusicState::Explore);
+  }
+}
 
 void MusicDirector::Tick(double realNowMs) {
   nowMs_ = realNowMs;
-  if (victoryUntilMs_ >= 0 && realNowMs >= victoryUntilMs_) ABYSS_UNIMPLEMENTED();
-  (void)boss_;
-  (void)state_;
+  if (victoryUntilMs_ >= 0 && realNowMs >= victoryUntilMs_) {
+    victoryUntilMs_ = -1;
+    if (storyLock_) {
+      state_ = MusicState::Explore;
+      return;
+    }
+    SetState(inCombat_ ? MusicState::Combat : MusicState::Explore);
+  }
 }
 
 std::optional<MusicCommand> MusicDirector::TakeCommand() {
@@ -65,14 +140,44 @@ std::optional<MusicCommand> MusicDirector::TakeCommand() {
   return out;
 }
 
-void MusicDirector::Transition(double fadeOutSec, double fadeInSec, bool restart) { ABYSS_UNIMPLEMENTED(); }
+void MusicDirector::SetState(MusicState s) {
+  if (s == state_ && started_) return;  // setState: unchanged and playing
+  if (s != MusicState::Victory) victoryUntilMs_ = -1;
+  const MusicState was = state_;
+  state_ = s;
+  // A2: back to explore from a fight resumes the explore track where it left off.
+  const bool resume = s == MusicState::Explore && was != MusicState::Explore && def_->exploreResumesPosition && started_;
+  Transition(def_->stateFadeSec, def_->fadeInSec, !resume);
+}
 
+std::string MusicDirector::TrackKey() const {
+  const std::string theme = ResolveMusicTheme(*def_, zone_);
+  if (state_ == MusicState::Boss) return def_->bossCh1Score;
+  if (theme.empty()) return std::string();  // no theme: fade out and play nothing
+  return theme + "_" + std::string(EnumName(state_));
+}
+
+void MusicDirector::Transition(double fadeOutSec, double fadeInSec, bool restart) {
+  started_ = true;
+  MusicCommand c;
+  c.trackKey = TrackKey();
+  c.fadeOutSec = fadeOutSec;
+  c.fadeInSec = fadeInSec;
+  c.loop = state_ != MusicState::Victory;  // victory recordings / stingers are one-shots
+  c.restart = restart;
+  pending_ = std::move(c);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// AudioDirector
+// ---------------------------------------------------------------------------------------------------------------------
 AudioDirector::AudioDirector(SimContext& ctx) : ctx_(ctx), music_(ctx.data.Audio().music) {}
 
 void AudioDirector::OnZoneEntered(const ZoneEnteredMsg& m) {
   zoneId_ = m.mapId;
   bossBar_ = false;
   bossEngaged_ = false;
+  inCombat_ = false;
   music_.OnZoneEntered(m.mapId);
 }
 
@@ -93,13 +198,16 @@ void AudioDirector::OnMonsterAggro(const MonsterAggroMsg& m) {
 void AudioDirector::OnLevelUp(const HeroLevelUpMsg&) { ctx_.events.Sfx(ctx_.data.Audio().rules.playerLevelUp); }
 
 void AudioDirector::OnStoryState(const StoryStateMsg& m) {
-  music_.SetStoryLock(m.active);
   if (m.active && !m.musicTrack.empty()) {
+    music_.SetStoryLock(true);
     storySequenceMusic_ = true;
     music_.PlayTrack(m.musicTrack, MusicState::Explore);
   } else if (!m.active && storySequenceMusic_) {
     storySequenceMusic_ = false;
-    music_.PlayTrack(zoneId_, MusicState::Explore);
+    music_.SetStoryLock(false);
+    music_.PlayTrack(zoneId_, MusicState::Explore);  // the zone's explore track returns (StoryDirector.ts:195)
+  } else {
+    music_.SetStoryLock(m.active);
   }
 }
 

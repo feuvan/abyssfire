@@ -5,6 +5,17 @@
 namespace abyss::dataload {
 namespace {
 
+// Q8: once both quests.json and quest_tuning.json are loaded (either order), escort objectives without their own label
+// show the quest name instead of the exported "to the southern camp" target text. Idempotent.
+void ApplyEscortLabelFix(QuestTables& out) {
+  if (!out.tuning.escortLabelFix) return;
+  for (QuestDef& q : out.quests) {
+    for (QuestObjectiveDef& o : q.objectives) {
+      if (o.type == ObjectiveType::Escort && o.labelKey.empty() && !q.nameKey.empty()) o.labelKey = q.nameKey;
+    }
+  }
+}
+
 QuestObjectiveDef ReadObjective(const JNode& n) {
   QuestObjectiveDef o;
   o.type = n.Enum<ObjectiveType>("type");
@@ -169,6 +180,7 @@ void LoadQuestsFile(const JNode& r, QuestTables& out) {
     if (!out.questIndex.Add(q.id)) n.Child("id").Error("duplicate quest id '" + q.id + "'");
     out.quests.push_back(std::move(q));
   }
+  ApplyEscortLabelFix(out);
 }
 
 void LoadQuestTuningFile(const JNode& r, QuestTables& out) {
@@ -202,6 +214,8 @@ void LoadQuestTuningFile(const JNode& r, QuestTables& out) {
   t.defendDmgMul = d.Num("dmgMul");
   t.embersQuestMain = r.Child("embers").Int("questMain");
   t.embersQuestSide = r.Child("embers").Int("questSide");
+  t.escortLabelFix = r.Has("port") && r.Child("port").Str("escortLabelFix", "") == "Q8";
+  ApplyEscortLabelFix(out);
 }
 
 void LoadAchievementsFile(const JNode& r, QuestTables& out) {

@@ -1,14 +1,15 @@
 // Lore pickups, the lore popup and hidden-area records / reward props (quests-story-ch1.md 1.9, 10.4; world-map-nav.md
-// 10.3, 12.1-12.2; save-ui-input.md 7.12; Q5). Owner area: quests+story+pets. Zone-entry spawning, reward props,
-// claiming and the save records are implemented; per-step pickup / discovery (Tick) and Collect are STUBS.
+// 10.3, 12.1-12.2; save-ui-input.md 7.12; Q5). Owner area: quests+story+pets.
 #include "abyss/base/Platform.h"
 
 #include "abyss/quests/Lore.h"
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
 
-#include "abyss/base/Assert.h"
+#include "abyss/base/I18n.h"
+#include "abyss/base/Math.h"
 #include "abyss/base/StrUtil.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/hero/Hero.h"
@@ -17,6 +18,7 @@
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/SimContext.h"
 #include "abyss/sim/Snapshot.h"
+#include "abyss/world/Exploration.h"
 #include "abyss/world/Zone.h"
 
 namespace abyss {
@@ -75,6 +77,8 @@ void LoreSystem::OnZoneEnter() {
 void LoreSystem::OnZoneExit() {
   pickups_.clear();
   rewardProps_.clear();
+  decorFocus_.clear();
+  decorTooltip_ = false;
   CloseText();
 }
 
@@ -100,10 +104,91 @@ void LoreSystem::SpawnRewardProps(const HiddenAreaDef& area) {
   }
 }
 
-void LoreSystem::Tick() { ABYSS_UNIMPLEMENTED(); }
+void LoreSystem::Tick() {
+  const ZoneRuntime* zone = ctx_.sys.zone;
+  const Hero* hero = ctx_.sys.hero;
+  if (zone == nullptr || !zone->HasZone() || hero == nullptr) return;
+  const Vec2 hp = hero->Position();
+  const bool alive = hero->Life() == HeroLife::Alive;
 
+  // 12.1 lore pickups: distSq(hero, tile) <= pickupRangeSq (4).
+  if (alive) {
+    const double rangeSq = ctx_.data.Lore().pickupRangeSq;
+    for (size_t i = pickups_.size(); i-- > 0;) {
+      if (i >= pickups_.size()) continue;  // a collection may have shrunk the list
+      if (DistSq(hp, pickups_[i].pos) <= rangeSq) Collect(pickups_[i].id);
+    }
+  }
+
+  // 10.3 hidden areas: the four bound corners and the centre explored during this visit.
+  if (ctx_.sys.exploration != nullptr) {
+    const ExplorationGrid& grid = ctx_.sys.exploration->Grid();
+    for (const HiddenAreaDef& area : zone->Map().hiddenAreas) {
+      if (IsDiscovered(area.id)) continue;
+      double c0 = area.center.col - area.radius, r0 = area.center.row - area.radius;
+      double c1 = area.center.col + area.radius, r1 = area.center.row + area.radius;
+      if (area.hasBounds) {
+        c0 = area.boundsStart.col;
+        r0 = area.boundsStart.row;
+        c1 = area.boundsEnd.col;
+        r1 = area.boundsEnd.row;
+      }
+      // A non-integral point reads as unexplored (the web indexes exploredTiles with it -> undefined).
+      const auto explored = [&grid](double c, double r) {
+        if (c != std::floor(c) || r != std::floor(r)) return false;
+        return grid.IsExplored(static_cast<int32_t>(c), static_cast<int32_t>(r));
+      };
+      if (!explored(c0, r0) || !explored(c1, r0) || !explored(c0, r1) || !explored(c1, r1) ||
+          !explored(area.center.col, area.center.row)) {
+        continue;
+      }
+      discovered_.push_back(area.id);
+      ctx_.events.Emit(EvHiddenAreaDiscovered{area.id});
+      const std::string base = "data.hiddenArea." + area.id;
+      ctx_.events.Log(MakeLoc("zone.hiddenArea.discovered", {KeyArg("areaName", base + ".name")}), LogType::System);
+      ctx_.events.Emit(EvBanner{BannerKind::Discovery, MakeLoc(base + ".discovery"), LocText{}});
+      SpawnRewardProps(area);
+    }
+  }
+
+  // 12.2 story decorations: nearest with distSq <= 9 shows its label; tooltip when that one is within distSq 2.
+  std::string focus;
+  bool tooltip = false;
+  double best = 0;
+  for (const StoryDecorationDef& d : zone->Map().storyDecorations) {
+    const double dsq = DistSq(hp, d.pos.Center());
+    if (dsq > 9) continue;
+    if (focus.empty() || dsq < best) {
+      focus = d.id;
+      best = dsq;
+    }
+  }
+  if (!focus.empty()) tooltip = best <= 2;
+  if (focus != decorFocus_ || tooltip != decorTooltip_) {
+    decorFocus_ = focus;
+    decorTooltip_ = tooltip;
+    ctx_.events.Emit(EvStoryDecorFocus{decorFocus_, decorTooltip_});
+  }
+}
+
+// checkLorePickup (12.1): record (saved), LORE_COLLECTED (popup = the core-owned LoreText modal; Q15: a newer pickup
+// replaces the text), log zone.lore.discovered {loreName} (Q11: key), the prop fades (EvEntityDespawned{Collected}).
 bool LoreSystem::Collect(EntityId pickup) {
-  ABYSS_UNIMPLEMENTED();
+  if (ctx_.sys.hero == nullptr || ctx_.sys.hero->Life() != HeroLife::Alive) return false;
+  for (size_t i = 0; i < pickups_.size(); ++i) {
+    if (pickups_[i].id != pickup) continue;
+    const LorePickup p = pickups_[i];
+    pickups_.erase(pickups_.begin() + static_cast<std::ptrdiff_t>(i));
+    if (!IsCollected(p.loreId)) collected_.push_back(p.loreId);
+    text_.open = true;
+    text_.loreId = p.loreId;
+    ctx_.events.Emit(EvLoreCollected{p.loreId});
+    ctx_.events.Log(MakeLoc("zone.lore.discovered", {KeyArg("loreName", "data.lore." + p.loreId + ".name")}),
+                    LogType::System);
+    ctx_.events.Emit(EvEntityDespawned{p.id, EntityKind::Prop, DespawnReason::Collected});
+    ctx_.bus.Publish(LoreCollectedMsg{p.loreId});
+    return true;
+  }
   return false;
 }
 

@@ -340,6 +340,7 @@ struct EvStoryStep {
   std::string beatId;
   int32_t index = 0;
   bool isSlide = false;
+  std::string sequenceId;  // slides: "prologue" / "epilogue" / "credits" (the epilogue beat plays both), "" otherwise
   CutsceneStep step;   // cutscene steps
   StorySlide slide;    // sequence slides / chapter card text keys
   bool hasFocus = false;
