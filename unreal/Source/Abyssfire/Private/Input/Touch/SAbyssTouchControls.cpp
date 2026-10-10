@@ -23,8 +23,9 @@
 
 namespace
 {
-	// Q6: the touch Talk / Use button appears within 2.5 tiles of the core's interact prompt target.
-	constexpr double AbyssTouch_InteractButtonRange = 2.5;
+	// Q6: the touch Talk / Use button appears within world_constants.json interact.touchTalkRange (2.5 tiles) of the
+	// core's interact prompt target; this value is used only while the data tables are not loaded.
+	constexpr double AbyssTouch_FallbackInteractRange = 2.5;
 
 	int32 AbyssTouch_Index(EAbyssTouchControl Control)
 	{
@@ -513,8 +514,10 @@ void SAbyssTouchControls::UpdateDynamicState(const abyss::Snapshot& Snap, const 
 	if (const TSharedPtr<SAbyssTouchButton> InteractButton = Button(EAbyssTouchControl::Interact))
 	{
 		const abyss::InteractPromptView& Prompt = Snap.prompt;
+		const abyss::DataStore* Data = GameInstance.GetData();
+		const double TalkRange = Data != nullptr ? Data->World().constants.touchTalkRange : AbyssTouch_FallbackInteractRange;
 		const bool bShowInteract = !bDead && Prompt.kind != abyss::InteractKind::None
-			&& abyss::Dist(Hero.pos, Prompt.pos) <= AbyssTouch_InteractButtonRange;
+			&& abyss::Dist(Hero.pos, Prompt.pos) <= TalkRange;
 		InteractButton->SetVisibility(bShowInteract ? EVisibility::Visible : EVisibility::Collapsed);
 		const int32 PromptKind = static_cast<int32>(Prompt.kind);
 		if (bShowInteract && PromptKind != LabelledPromptKind)

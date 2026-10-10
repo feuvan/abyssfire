@@ -17,6 +17,29 @@ namespace AbyssPropPrivate
 	// Web px -> cm for upright motion (world-map-nav.md 1.3: x 2.552).
 	constexpr float UprightPxToCm = 2.552f;
 
+	/** Phaser Bounce.easeOut (Robert Penner). */
+	float BounceOut(float T)
+	{
+		constexpr float N1 = 7.5625f;
+		constexpr float D1 = 2.75f;
+		if (T < 1.f / D1)
+		{
+			return N1 * T * T;
+		}
+		if (T < 2.f / D1)
+		{
+			T -= 1.5f / D1;
+			return N1 * T * T + 0.75f;
+		}
+		if (T < 2.5f / D1)
+		{
+			T -= 2.25f / D1;
+			return N1 * T * T + 0.9375f;
+		}
+		T -= 2.625f / D1;
+		return N1 * T * T + 0.984375f;
+	}
+
 	void ConfigureMesh(UPrimitiveComponent* Component)
 	{
 		Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -311,6 +334,20 @@ FVector AAbyssPropActor::GetAnchorLocation(EAbyssAnchor Anchor) const
 	return Base;
 }
 
+void AAbyssPropActor::BeginFallIn(float HeightWebPx, float DurationSec)
+{
+	using namespace AbyssPropPrivate;
+	const float HeightCm = HeightWebPx * UprightPxToCm;
+	if (HeightCm <= 0.f || DurationSec <= 0.f)
+	{
+		return;
+	}
+	FallHeightCm = HeightCm;
+	FallElapsedSec = 0.f;
+	FallTotalSec = DurationSec;
+	VisualRoot->SetRelativeLocation(FVector(0.0, 0.0, HeightCm));   // first frame before PresentFrame runs
+}
+
 void AAbyssPropActor::PresentFrame(const FVector& GroundLocation, float VisualDeltaSec, double TimeSec)
 {
 	using namespace AbyssPropPrivate;
@@ -349,6 +386,18 @@ void AAbyssPropActor::PresentFrame(const FVector& GroundLocation, float VisualDe
 		}
 	}
 	SetCpd(AbyssCpd::Fade, Fade);
+
+	// Cache-drop fall-in (Phaser Bounce.easeOut from HeightCm to the ground).
+	if (FallTotalSec > 0.f)
+	{
+		FallElapsedSec += VisualDeltaSec;
+		const float U = FMath::Clamp(FallElapsedSec / FallTotalSec, 0.f, 1.f);
+		Offset.Z += FallHeightCm * (1.f - BounceOut(U));
+		if (U >= 1.f)
+		{
+			FallTotalSec = 0.f;
+		}
+	}
 
 	// Static chest fallback: the "Open" is a small hop when there is no lid bone.
 	if (bOpened && !bSkeletal && OpenElapsedSec >= 0.f)

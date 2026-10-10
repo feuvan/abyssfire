@@ -26,7 +26,7 @@ import { LootSystem } from '../../../../../src/systems/LootSystem';
 import * as SoulEchoMod from '../../../../../src/systems/SoulEcho';
 import * as ZoneSceneMod from '../../../../../src/scenes/ZoneScene';
 import { TILE_WIDTH, TILE_HEIGHT } from '../../../../../src/config';
-import { assert, assertSource, plain, type TableResult } from '../util';
+import { assert, assertSource, plain, readSource, type TableResult } from '../util';
 
 const exp = <T>(mod: unknown, name: string): T => {
   const v = (mod as Record<string, unknown>)[`__expose_${name}`];
@@ -345,6 +345,68 @@ function animTables(classes: { id: string; skills: { id: string; derived: Record
 
 // ── hit_feedback.json ───────────────────────────────────────────────────────
 
+/**
+ * Skill-authored camera shakes (combat-feel 11.5): the skill VFX in `SkillEffectSystem` call `FxEngine.shake(ms,
+ * intensity)`, which has its own 120 ms throttle; Phaser's "no new shake while one runs" rule is shared with the
+ * VFXManager shakes. `at`: `vfx` = when the skill's VFX starts (+ `delayMs` for an `e.after(delay, ...)` in the effect),
+ * `impact` = when its projectile / fall lands (the fireball explosion at the end of its flight, the meteor explosion after
+ * METEOR_FALL_MS). Every row is checked against the effect method that holds the call, and the file must contain
+ * exactly these shake calls (a new one fails the export).
+ */
+const SKILL_SHAKES: readonly {
+  skill: string; method: string; durationMs: number; intensity: number; delayMs: number; at: 'vfx' | 'impact';
+  launcher?: string; launchCall?: string;
+}[] = [
+  { skill: 'charge', method: 'effectCharge', durationMs: 150, intensity: 0.008, delayMs: 70, at: 'vfx' },
+  { skill: 'lethal_strike', method: 'effectLethalStrike', durationMs: 160, intensity: 0.008, delayMs: 0, at: 'vfx' },
+  { skill: 'war_stomp', method: 'effectWarStomp', durationMs: 240, intensity: 0.011, delayMs: 0, at: 'vfx' },
+  { skill: 'rampage', method: 'effectRampage', durationMs: 280, intensity: 0.012, delayMs: 0, at: 'vfx' },
+  { skill: 'fireball', method: 'fireballExplosion', durationMs: 90, intensity: 0.003, delayMs: 0, at: 'impact',
+    launcher: 'effectFireball', launchCall: 'this.fireballExplosion(x1, y1, ty, ang);' },
+  { skill: 'meteor', method: 'meteorExplosion', durationMs: 320, intensity: 0.015, delayMs: 0, at: 'impact',
+    launcher: 'effectMeteor', launchCall: 'this.meteorExplosion(cx, cy, R);' },
+  { skill: 'combustion', method: 'effectCombustion', durationMs: 140, intensity: 0.006, delayMs: 60, at: 'vfx' },
+  { skill: 'explosive_trap', method: 'effectExplosiveTrap', durationMs: 200, intensity: 0.009, delayMs: 80, at: 'vfx' },
+  { skill: 'chain_trap', method: 'effectChainTrap', durationMs: 120, intensity: 0.004, delayMs: 0, at: 'vfx' },
+];
+
+function skillShakes(): Record<string, unknown> {
+  const SES = 'src/systems/SkillEffectSystem.ts';
+  const norm = (s: string) => s.replace(/\s+/g, ' ');
+  const src = readSource(SES);
+  // A class method runs from its declaration to the first closing brace at method indentation.
+  const body = (name: string): string => {
+    const start = src.indexOf(`  private ${name}(`);
+    assert(start >= 0, `SkillEffectSystem.${name} not found`);
+    const end = src.indexOf('\n  }\n', start);
+    assert(end > start, `SkillEffectSystem.${name}: end of method not found`);
+    return norm(src.slice(start, end));
+  };
+  for (const r of SKILL_SHAKES) {
+    const b = body(r.method);
+    const call = `this.e.shake(${r.durationMs}, ${r.intensity});`;
+    if (r.delayMs > 0) {
+      assert(b.includes(norm(`this.e.after(${r.delayMs}, () => { ${call}`)), `${r.skill}: ${call} after ${r.delayMs} ms`);
+    } else {
+      const at = b.indexOf(call);
+      const after = b.indexOf('this.e.after(');
+      assert(at >= 0 && (after < 0 || at < after), `${r.skill}: ${call} at the start of ${r.method}`);
+    }
+    const entry = r.at === 'vfx' ? r.method : r.launcher!;
+    assertSource(SES, `case '${r.skill}': this.${entry}(`);
+    if (r.at === 'impact') assert(body(r.launcher!).includes(norm(r.launchCall!)), `${r.skill}: ${r.method} on arrival`);
+  }
+  const calls = src.split('this.e.shake(').length - 1;
+  assert(calls === SKILL_SHAKES.length, `SkillEffectSystem has ${calls} shake calls, SKILL_SHAKES lists ${SKILL_SHAKES.length}`);
+  assertSource('src/graphics/vfx/FxEngine.ts', 'if (this.now - this.lastShake < 120) return;',
+    'this.lastShake = this.now;', 'this.scene.cameras.main.shake(ms, intensity);');
+  return {
+    throttleMs: 120,
+    skills: Object.fromEntries(SKILL_SHAKES.map(r => [r.skill,
+      { durationMs: r.durationMs, intensity: r.intensity, delayMs: r.delayMs, at: r.at }])),
+  };
+}
+
 function hitFeedback(): TableResult {
   for (const [dmg, hp, w] of [[25, 100, 'heavy'], [24.99, 100, 'normal'], [6, 100, 'normal'], [5.99, 100, 'light'], [5, 0, 'light']] as const) {
     assert(classifyHit({ damage: dmg, maxHp: hp }) === w, `classifyHit ${dmg}/${hp}`);
@@ -360,10 +422,13 @@ function hitFeedback(): TableResult {
     'const pulse = Math.sin(this.scene.time.now * 0.005) * 0.05;', 'this.dangerVignette.strength = 0.2 + severity * 0.25 + pulse;',
     'this.dangerVignette.radius = 0.7 + severity * 0.15;', 'this.cameraShake(150, 0.008);',
     'const intensity = Math.max(0.002, Math.min(0.006, ratio * 0.01));',
-    'const duration = Math.max(50, Math.min(120, 50 + ratio * 100));');
+    'const duration = Math.max(50, Math.min(120, 50 + ratio * 100));',
+    // The 100 ms throttle stamps lastShakeTime before Phaser's no-override check (a dropped shake still throttles).
+    'if (now - this.lastShakeTime < 100) return; this.lastShakeTime = now; this.scene.cameras.main.shake(duration, intensity);');
   return {
     file: 'hit_feedback.json',
-    source: ['src/systems/HitFeedback.ts', ZS, 'src/systems/VFXManager.ts'],
+    source: ['src/systems/HitFeedback.ts', ZS, 'src/systems/VFXManager.ts', 'src/systems/SkillEffectSystem.ts',
+      'src/graphics/vfx/FxEngine.ts'],
     data: {
       profiles: plain(HIT_PROFILES),
       classify: { order: ['tick', 'kill', 'crit', 'ratio'], heavyRatio: 0.25, normalRatio: 0.06 },
@@ -377,11 +442,12 @@ function hitFeedback(): TableResult {
         normal: { intensity: { perRatio: 0.01, min: 0.002, max: 0.006 }, durationMs: { base: 50, perRatio: 100, min: 50, max: 120 } },
       },
       shakeThrottleMs: 100,
+      skillShakes: skillShakes(),
       painTint: { color: 0xff6b6b, durationMs: 100 },
       lowHpVignette: { belowHpRatio: 0.3, strength: { base: 0.2, perSeverity: 0.25, pulse: 0.05, pulseRate: 0.005 },
         radius: { base: 0.7, perSeverity: 0.15 }, severity: '1 - hpRatio/0.3' },
     },
-    counts: { profiles: Object.keys(HIT_PROFILES).length },
+    counts: { profiles: Object.keys(HIT_PROFILES).length, skillShakes: SKILL_SHAKES.length },
   };
 }
 

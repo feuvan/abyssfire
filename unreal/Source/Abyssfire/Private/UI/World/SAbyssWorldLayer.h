@@ -53,9 +53,11 @@ private:
 		bool bVisible = false;
 		float Opacity = 1.f;
 		bool bHasFrame = false;
-		// copied from the snapshot
+		// copied from the snapshot (Name only when its signature / the locale changes)
 		bool bPresent = false;
 		FString Name;
+		uint64 NameSignature = 0;
+		bool bNameValid = false;
 		FLinearColor NameColor = FLinearColor::White;
 		bool bAlwaysShowName = true;
 		double Hp = 0.0, MaxHp = 0.0;
@@ -97,6 +99,8 @@ private:
 	TMap<uint32, FLabel> Labels;
 	mutable TArray<FFloat> Floats;
 	mutable TArray<FPopup> Popups;
+	/** Locale the cached label names were built in (-1 = none). */
+	int32 NameLocale = -1;
 	FVector HeroOverhead = FVector::ZeroVector;
 	bool bHeroKnown = false;
 	abyss::EntityId HoveredId = abyss::kNoEntity;

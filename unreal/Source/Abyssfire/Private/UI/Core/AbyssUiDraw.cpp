@@ -277,14 +277,22 @@ void FAbyssPainter::CustomVerts(const TArray<FVector2D>& LocalPoints, const TArr
 	{
 		return;
 	}
-	// The white brush (vertex colours carry the shape colour) or a texture brush (UVs given). The handle stays valid while
-	// the brush lives (style cache / icon cache).
-	const FSlateBrush& SourceBrush = TextureBrush != nullptr ? *TextureBrush : *Style.White();
-	const FSlateResourceHandle Handle = Renderer->GetResourceHandle(SourceBrush, FVector2f::ZeroVector, 1.0f);
-	if (!Handle.IsValid())
+	// A texture brush (UVs given) or the style's texture-backed white brush (vertex colours carry the shape colour). The
+	// handle stays valid while the brush lives (style / icon cache). A colour brush (Style.White()) has no resource proxy,
+	// so GetResourceHandle returns an invalid handle for it: never use it here.
+	const FSlateBrush* SourceBrush = TextureBrush != nullptr ? TextureBrush : Style.SolidTexture();
+	FSlateResourceHandle Handle;
+	if (SourceBrush != nullptr)
 	{
+		Handle = Renderer->GetResourceHandle(*SourceBrush, FVector2f::ZeroVector, 1.0f);
+	}
+	if (!Handle.IsValid() && TextureBrush != nullptr)
+	{
+		// A caller-supplied texture that is not resident yet (streaming / loading): skip this frame.
 		return;
 	}
+	// Untextured shapes are always drawn: with an invalid handle (white texture not created yet) the element has no
+	// resource proxy and the Slate batch samples the default white texture, like MakeBox with a colour brush.
 	const FSlateRenderTransform& Transform = Geometry.GetAccumulatedRenderTransform();
 
 	TArray<FSlateVertex> Vertices;
@@ -296,7 +304,11 @@ void FAbyssPainter::CustomVerts(const TArray<FVector2D>& LocalPoints, const TArr
 		// Custom vertices are in window space: the widget's accumulated render transform maps local -> window.
 		Vertex.Position = Transform.TransformPoint(FVector2f(LocalPoints[Index]));
 		const FVector2D UV = UVs != nullptr && UVs->IsValidIndex(Index) ? (*UVs)[Index] : FVector2D(0.5, 0.5);
-		Vertex.TexCoords = FVector4f(static_cast<float>(UV.X), static_cast<float>(UV.Y), 1.f, 1.f);
+		// FSlateVertex::TexCoords is `float[4]` (xy = UV, zw = UV scale): assign per element.
+		Vertex.TexCoords[0] = static_cast<float>(UV.X);
+		Vertex.TexCoords[1] = static_cast<float>(UV.Y);
+		Vertex.TexCoords[2] = 1.f;
+		Vertex.TexCoords[3] = 1.f;
 		Vertex.MaterialTexCoords = FVector2f(UV);
 		const FLinearColor Color = Tinted(Colors.IsValidIndex(Index) ? Colors[Index] : Colors.Last());
 		Vertex.Color = Color.ToFColor(true);

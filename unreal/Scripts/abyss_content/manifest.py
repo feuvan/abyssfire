@@ -570,6 +570,19 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
             continue
         assets.append(asset)
 
+    # W5: the core bakes a decoration's blocking footprint from the FIRST asset listing its game id (manifest key order),
+    # the UE shows a hash-picked variant among all of them (AAbyssZoneActor::BuildDecorations): every asset sharing a
+    # game id must agree on footprintTiles and blocking, or collision and mesh diverge.
+    by_game_id: dict[str, list[tuple[str, Any, Any]]] = {}
+    for name, raw in (data.get("assets") or {}).items():
+        for gid in raw.get("gameIds") or []:
+            by_game_id.setdefault(str(gid), []).append((name, raw.get("footprintTiles"), raw.get("blocking")))
+    for gid, owners in sorted(by_game_id.items()):
+        shapes = {(json.dumps(fp), json.dumps(bl)) for _, fp, bl in owners}
+        if len(shapes) > 1:
+            detail = ", ".join(f"{n} (footprintTiles {fp}, blocking {bl})" for n, fp, bl in owners)
+            problems.append(Problem("error", f"game id {gid}", f"variants disagree on footprint / blocking: {detail}"))
+
     # Clip names must be unique across assets too (one content folder per category).
     clip_owner: dict[str, str] = {}
     for asset in assets:

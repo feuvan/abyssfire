@@ -82,6 +82,11 @@ public:
 	bool IsFadeFinished() const { return bFadeFinished; }
 	bool IsFading() const { return FadeTotalSec > 0.f; }
 
+	/**
+	 * Treasure-cache drop (loot 6.1 / 18, EvLootDropped::cacheDrop): starts HeightWebPx (web px, upright conversion of
+	 * world-map-nav 1.3) above the ground and falls in with a bounce-out over DurationSec.
+	 */
+	void BeginFallIn(float HeightWebPx, float DurationSec);
 	/** Chest style: plays the Open clip (skeletal) or tilts the lid mesh away (static fallback). */
 	void PlayOpen();
 	/** Interactable hover / story-decoration focus rim (AbyssCpd::Highlight), 0..1. */
@@ -143,6 +148,10 @@ private:
 	float OcclusionFade = 0.f;
 	bool bOpened = false;
 	float OpenElapsedSec = -1.f;
+	// cache-drop fall-in
+	float FallHeightCm = 0.f;
+	float FallElapsedSec = 0.f;
+	float FallTotalSec = 0.f;
 
 	float CpdValues[AbyssCpd::Count] = {};
 	bool bCpdDirty = true;

@@ -27,6 +27,7 @@ namespace AbyssCameraRigPrivate
 	constexpr float SoftFollowSec = 0.6f;       // after a story focus the camera glides back
 	constexpr float SoftFollowLagSec = 0.35f;
 	constexpr float ShakeDecayRate = 4.f;       // exp(-4 t / duration): ~2 % of the peak at the end (C9)
+	constexpr double ShakeThrottleSec = 0.1;    // VFXManager: a shake < 100 ms after the last accepted one is ignored
 }
 
 AAbyssCameraRig::AAbyssCameraRig()
@@ -137,20 +138,26 @@ void AAbyssCameraRig::PulseZoom(float Scale, float InSec, float OutSec)
 	PulseElapsedSec = 0.f;
 }
 
-void AAbyssCameraRig::StartShake(float DurationMs, float Intensity)
+void AAbyssCameraRig::StartShake(float DurationMs, float Intensity, EAbyssShakeSource Source)
 {
 	if (!bShakeEnabled || DurationMs <= 0.f || Intensity <= 0.f)
 	{
 		return;
 	}
-	// The core already applied the web throttle / no-override rules (ShakeThrottle); a later request replaces the current
-	// one only when it is stronger right now.
-	const float Remaining = ShakeDurationSec > 0.f
-		? ShakeIntensity * FMath::Exp(-AbyssCameraRigPrivate::ShakeDecayRate * ShakeElapsedSec / ShakeDurationSec)
-		: 0.f;
-	if (ShakeElapsedSec < ShakeDurationSec && Remaining > Intensity)
+	// combat-feel.md 11.5: Phaser drops a new shake while one runs (no override, whatever its strength) ...
+	if (ShakeDurationSec > 0.f && ShakeElapsedSec < ShakeDurationSec)
 	{
 		return;
+	}
+	// ... and VFXManager drops a shake < 100 ms after its last accepted one. Core shakes passed the core's ShakeThrottle
+	// already (sim clock); they still start this window so UE-side VFXManager shakes (legendary drop) respect it.
+	if (Source == EAbyssShakeSource::Throttled && RigRealClockSec - LastThrottledShakeSec < AbyssCameraRigPrivate::ShakeThrottleSec)
+	{
+		return;
+	}
+	if (Source != EAbyssShakeSource::Direct)
+	{
+		LastThrottledShakeSec = RigRealClockSec;
 	}
 	ShakeDurationSec = DurationMs / 1000.f;
 	ShakeElapsedSec = 0.f;
@@ -314,6 +321,7 @@ void AAbyssCameraRig::UpdateFades(float RealDeltaSec)
 void AAbyssCameraRig::UpdateRig(float RealDeltaSec, const FVector& HeroFocus, bool bHasHero)
 {
 	using namespace AbyssCameraRigPrivate;
+	RigRealClockSec += FMath::Max(0.f, RealDeltaSec);
 	ApplyViewTarget();
 	UpdateFov();
 
@@ -359,9 +367,14 @@ void AAbyssCameraRig::UpdateRig(float RealDeltaSec, const FVector& HeroFocus, bo
 	// ---- shake: uniform jitter re-randomised every frame, exponential decay ----
 	ShakeOffset = FVector::ZeroVector;
 	const float FeelScale = FMath::Max(0.f, CVarAbyssShakeScale.GetValueOnGameThread());
-	if (ShakeDurationSec > 0.f && ShakeElapsedSec < ShakeDurationSec && bShakeEnabled && FeelScale > 0.f)
+	if (ShakeDurationSec > 0.f && ShakeElapsedSec < ShakeDurationSec)
 	{
+		// The clock runs even when the offset is suppressed (setting off / feel scale 0) so a stale shake never blocks
+		// later ones through the no-override rule.
 		ShakeElapsedSec += RealDeltaSec;
+	}
+	if (ShakeDurationSec > 0.f && bShakeEnabled && FeelScale > 0.f)
+	{
 		const float Decay = FMath::Exp(-ShakeDecayRate * FMath::Min(ShakeElapsedSec, ShakeDurationSec) / ShakeDurationSec);
 		// Web: offset within +-I*W (x) / +-I*H (y) at zoom 1.8 and render scale 1 -> I x 3.24 x the visible extent.
 		const float VisibleWidth = 2.f * Distance * FMath::Tan(FMath::DegreesToRadians(CurrentFovH * 0.5f));
@@ -372,10 +385,10 @@ void AAbyssCameraRig::UpdateRig(float RealDeltaSec, const FVector& HeroFocus, bo
 		const FVector Right = FRotationMatrix(ViewRotation).GetUnitAxis(EAxis::Y);
 		const FVector Up = FRotationMatrix(ViewRotation).GetUnitAxis(EAxis::Z);
 		ShakeOffset = Right * (ShakeRandom.FRandRange(-1.f, 1.f) * AmpX) + Up * (ShakeRandom.FRandRange(-1.f, 1.f) * AmpY);
-		if (ShakeElapsedSec >= ShakeDurationSec)
-		{
-			StopShake();
-		}
+	}
+	if (ShakeDurationSec > 0.f && ShakeElapsedSec >= ShakeDurationSec)
+	{
+		StopShake();
 	}
 
 	// ---- place the camera ----

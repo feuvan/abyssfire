@@ -49,8 +49,9 @@ static TAutoConsoleVariable<float> CVarAbyssExposureBias(
 
 static TAutoConsoleVariable<float> CVarAbyssBloom(
 	TEXT("abyss.Bloom"),
-	0.6f,
-	TEXT("Bloom intensity of the zone post-process on balanced / high tiers (web bloom strength 0.8, threshold 1)."),
+	-1.f,
+	TEXT("Bloom intensity of the zone post-process on tiers with bloom (threshold 1). < 0 = the art manifest's hero ")
+	TEXT("fx.bloom.strength (the reviewed emissive bloom, 0.8), 0.6 when the manifest has none."),
 	ECVF_Default);
 
 namespace AbyssZonePrivate
@@ -64,9 +65,12 @@ namespace AbyssZonePrivate
 	constexpr float FadeTimeConstantSec = 0.11f;
 	constexpr float ShadowCasterMinHeightCm = 45.f;
 
-	FName Id(const TCHAR* Format, const FString& A)
+	// Asset / parameter id from a pattern with exactly one "%s" (e.g. TEXT("decor_%s")). Not FString::Printf: with
+	// checked format strings (UE 5.4+, DefaultBuildSettings Latest) the format must be a TCHAR array literal, so a
+	// runtime `const TCHAR*` pattern does not compile.
+	FName Id(const TCHAR* Pattern, const FString& A)
 	{
-		return FName(*FString::Printf(Format, *A));
+		return FName(*FString(Pattern).Replace(TEXT("%s"), *A, ESearchCase::CaseSensitive));
 	}
 
 	FString ToF(std::string_view Text)
@@ -197,6 +201,17 @@ void AAbyssZoneActor::BuildZone(const abyss::Snapshot& Snap, const abyss::DataSt
 	CameraYawDeg = Shading.CameraYawDeg;
 	DirToLight = Shading.DirToLight;
 	RimColor = Shading.RimColor;
+
+	// Emissive bloom strength of the reviewed hero art (manifest fx.bloom; the visor / blade emissive regions).
+	ArtBloomStrength = 0.f;
+	{
+		const FName HeroId(*(FString(TEXT("player_")) + AbyssZonePrivate::ToF(abyss::EnumName(Snap.hero.cls))));
+		const FName HeroIds[] = { HeroId };
+		if (const FAbyssArtAsset* HeroArt = Assets.GetManifest().ResolveFirst(HeroIds); HeroArt != nullptr && HeroArt->Fx.bHasBloom)
+		{
+			ArtBloomStrength = HeroArt->Fx.BloomStrength;
+		}
+	}
 
 	Theme = Snap.zone.theme;
 	ThemeName = std::string(abyss::EnumName(Theme));
@@ -638,7 +653,10 @@ void AAbyssZoneActor::BuildDecorations(const abyss::Snapshot& Snap, const abyss:
 	for (const abyss::Decoration& Decor : Grid->Decorations())
 	{
 		const FString Type = ToF(Decor.type);
-		const FName Ids[] = { Id(TEXT("decor_%s"), Type), FName(*Type) };
+		// Same lookup order as the core's W5 footprint bake (MapGen: FindByGameId(type), then "decor_" + type), so the
+		// mesh shown is the asset whose footprintTiles / blocking the core baked; Scripts/abyss_content/manifest.py
+		// rejects variants of one game id that disagree on footprint or blocking (the hash-picked variant is then safe).
+		const FName Ids[] = { FName(*Type), Id(TEXT("decor_%s"), Type) };
 		const int32 Col = FMath::RoundToInt32(Decor.col);
 		const int32 Row = FMath::RoundToInt32(Decor.row);
 		const uint32 Hash = AbyssWorldUtil::TileHash(Col, Row, 5);
@@ -857,17 +875,11 @@ void AAbyssZoneActor::ApplyQuality(const FAbyssQualityProfile& Quality)
 	QualityProfile = Quality;
 	if (Sun != nullptr)
 	{
-		// P10: CSM 2 cascades desktop (3 high, 1 low), 1 cascade high-tier mobile; blob shadows elsewhere.
-		const bool bShadows = !Quality.bMobile || Quality.Tier >= 1;
-		int32 Cascades = 2;
-		if (Quality.bMobile)
-		{
-			Cascades = Quality.Tier >= 2 ? 2 : 1;
-		}
-		else
-		{
-			Cascades = Quality.Tier <= 0 ? 1 : (Quality.Tier >= 2 ? 3 : 2);
-		}
+		// DECISIONS P10 (binding, overrides ue58-platform.md 6.2 / 6.8): CSM with 2 cascades on desktop (every tier),
+		// 1 cascade on high-tier mobile; low / mid mobile use blob shadows only (no shadow-depth pass at all, matching
+		// UAbyssWorldBuilder's bBlob = mobile && tier < 2). Device profiles cap r.Shadow.CSM.MaxMobileCascades the same way.
+		const bool bShadows = Quality.bMobile ? Quality.Tier >= 2 : true;
+		const int32 Cascades = Quality.bMobile ? 1 : 2;
 		Sun->SetCastShadows(bShadows);
 		Sun->SetDynamicShadowCascades(Cascades);
 		Sun->SetDynamicShadowDistanceMovableLight(3500.f);
@@ -901,14 +913,17 @@ void AAbyssZoneActor::ApplyPostProcess()
 	S.MotionBlurAmount = 0.f;
 	S.bOverride_SceneFringeIntensity = true;
 	S.SceneFringeIntensity = 0.f;
-	S.bOverride_GrainIntensity = true;
-	S.GrainIntensity = 0.f;
+	// Film grain (5.1+ FilmGrain*; the legacy GrainIntensity fields are *_DEPRECATED). 0 is the default; kept explicit.
+	S.bOverride_FilmGrainIntensity = true;
+	S.FilmGrainIntensity = 0.f;
 	S.bOverride_AmbientOcclusionIntensity = true;
 	S.AmbientOcclusionIntensity = 0.f;
 
 	// Bloom (balanced / high only).
 	S.bOverride_BloomIntensity = true;
-	S.BloomIntensity = QualityProfile.bBloom ? CVarAbyssBloom.GetValueOnGameThread() : 0.f;
+	const float BloomOverride = CVarAbyssBloom.GetValueOnGameThread();
+	const float Bloom = BloomOverride >= 0.f ? BloomOverride : (ArtBloomStrength > 0.f ? ArtBloomStrength : 0.6f);
+	S.BloomIntensity = QualityProfile.bBloom ? Bloom : 0.f;
 	S.bOverride_BloomThreshold = true;
 	S.BloomThreshold = 1.f;
 
@@ -1035,9 +1050,11 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, const FV
 			Dirty.Add(Occluder.Component);
 		}
 	}
+	// Incremental instance-data update (5.4+ instance data manager); MarkRenderStateDirty would re-create the decor
+	// proxy every frame of a fade (and reset its TSR history).
 	for (const int32 ComponentIndex : Dirty)
 	{
-		InstanceComponents[ComponentIndex]->MarkRenderStateDirty();
+		InstanceComponents[ComponentIndex]->MarkRenderInstancesDirty();
 	}
 }
 

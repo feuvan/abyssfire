@@ -175,6 +175,7 @@ private:
 	void HandleEquipment(const abyss::EvEquipmentChanged& Event);
 	void HandlePet(const abyss::EvPet& Event);
 	void HandleRenamed(const abyss::EvMonsterRenamed& Event);
+	void HandleEmbersGained(const abyss::EvEmbersGained& Event);
 	void HandleSessionEnded();
 	void HandleVfxShake(float DurationMs, float Intensity);
 

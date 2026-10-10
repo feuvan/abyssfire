@@ -3,6 +3,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "SceneView.h"
 #include "UnrealClient.h"
@@ -10,6 +11,7 @@
 
 #include <string>
 
+#include "abyss/base/I18n.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/pets/PetSystem.h"
 #include "abyss/quests/QuestSystem.h"
@@ -18,6 +20,7 @@
 #include "Framework/AbyssGameInstance.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssText.h"
+#include "Framework/AbyssTypes.h"
 #include "Framework/AbyssUnits.h"
 #include "Framework/AbyssWorldView.h"
 #include "UI/AbyssUiStyle.h"
@@ -25,6 +28,30 @@
 
 namespace
 {
+	const std::string AbyssWorldLayer_EmptyQuestId;
+
+	/** FNV-1a over what a label's name is built from (no allocation): the name is rebuilt only when this changes. */
+	struct FAbyssWorldLayerLabelSignature
+	{
+		uint64 Hash = 14695981039346656037ull;
+
+		void Bytes(const void* Data, size_t Size)
+		{
+			const uint8* Raw = static_cast<const uint8*>(Data);
+			for (size_t Offset = 0; Offset < Size; ++Offset)
+			{
+				Hash ^= Raw[Offset];
+				Hash *= 1099511628211ull;
+			}
+		}
+		void Value(uint64 V) { Bytes(&V, sizeof(V)); }
+		void Str(const std::string& Text)
+		{
+			Bytes(Text.data(), Text.size());
+			Value(static_cast<uint64>(Text.size()));
+		}
+	};
+
 	FLinearColor AbyssWorldLayer_HpColor(double Ratio, uint32 High, uint32 Mid, uint32 Low)
 	{
 		return FAbyssUiStyle::Rgb(Ratio > 0.5 ? High : (Ratio > 0.25 ? Mid : Low));
@@ -147,7 +174,15 @@ void SAbyssWorldLayer::AddFloatingText(const FAbyssFloatingTextRequest& Request)
 		Float.StartOffset = FVector2D(15.0, -28.0);
 		break;
 	case abyss::FloatingTextKind::Embers:
-		return;   // DECISIONS Q3: embers stay hidden in milestone 1
+		// quests-story-ch1.md 4 (OQ10, shown in Ch1; DECISIONS Q3 hides only the tower UI): 12 px Cinzel #ff9a4a, 2 px
+		// stroke, 18 px left / 52 px above the corpse, rises 30 px and fades over 1400 ms (Power2 out).
+		Float.Text = Ctx->LocArgsOrStr("homestead.float.embers", TEXT("+{n} Embers"),
+			{ FAbyssUiContext::Arg("n", static_cast<int64>(FMath::RoundToDouble(Request.Value))) });
+		Float.Color = FAbyssUiStyle::Rgb(0xff9a4a);
+		Float.FontPx = 12.f;
+		Float.Outline = 2;
+		Float.StartOffset = FVector2D(-18.0, -52.0);
+		break;
 	case abyss::FloatingTextKind::Status:
 	case abyss::FloatingTextKind::Custom:
 		Float.Text = Request.Text.Empty() ? FString::Printf(TEXT("+%s"), *FAbyssUiContext::Num(Request.Value)) : Ctx->LocStr(Request.Text);
@@ -219,6 +254,98 @@ FString SAbyssWorldLayer::MonsterLabel(const abyss::MonsterView& Monster) const
 void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 {
 	TargetId = Snap.hero.target;
+
+	// Entity lookups through the driver's per-frame index (O(1)); a linear scan only when the index is not for this
+	// snapshot. Label names are rebuilt only when what they show changes (signature) or the locale changes; HP, presence
+	// and markers are copied every frame.
+	const UAbyssGameInstance* GameInstance = Ctx->GetGameInstance();
+	const UWorld* GameWorld = GameInstance ? GameInstance->GetWorld() : nullptr;
+	const UAbyssSimDriver* Driver = GameWorld ? GameWorld->GetSubsystem<UAbyssSimDriver>() : nullptr;
+	const FAbyssSnapshotIndex* Index = Driver != nullptr && Driver->GetSnapshotIndex().GetSnapshot() == &Snap ? &Driver->GetSnapshotIndex() : nullptr;
+	const auto FindMonster = [&Snap, Index](abyss::EntityId Id) -> const abyss::MonsterView*
+	{
+		if (Index != nullptr)
+		{
+			return Index->FindMonster(Id);
+		}
+		for (const abyss::MonsterView& Monster : Snap.monsters)
+		{
+			if (Monster.id == Id)
+			{
+				return &Monster;
+			}
+		}
+		return nullptr;
+	};
+	const auto FindNpc = [&Snap, Index](abyss::EntityId Id) -> const abyss::NpcView*
+	{
+		if (Index != nullptr)
+		{
+			return Index->FindNpc(Id);
+		}
+		for (const abyss::NpcView& Npc : Snap.npcs)
+		{
+			if (Npc.id == Id)
+			{
+				return &Npc;
+			}
+		}
+		return nullptr;
+	};
+	const auto FindGroundItem = [&Snap, Index](abyss::EntityId Id) -> const abyss::GroundItemView*
+	{
+		if (Index != nullptr)
+		{
+			return Index->FindGroundItem(Id);
+		}
+		for (const abyss::GroundItemView& Item : Snap.groundItems)
+		{
+			if (Item.id == Id)
+			{
+				return &Item;
+			}
+		}
+		return nullptr;
+	};
+	const auto FindMarker = [&Snap, Index](abyss::EntityId Id) -> const abyss::WorldMarkerView*
+	{
+		if (Index != nullptr)
+		{
+			return Index->FindMarker(Id);
+		}
+		for (const abyss::WorldMarkerView& Marker : Snap.markers)
+		{
+			if (Marker.id == Id)
+			{
+				return &Marker;
+			}
+		}
+		return nullptr;
+	};
+
+	// A locale change invalidates every cached name.
+	const abyss::I18n* Strings = Ctx->GetStrings();
+	const int32 Locale = Strings != nullptr ? static_cast<int32>(Strings->Current()) : -1;
+	if (Locale != NameLocale)
+	{
+		NameLocale = Locale;
+		for (TPair<uint32, FLabel>& Pair : Labels)
+		{
+			Pair.Value.bNameValid = false;
+		}
+	}
+	// true when the label's name must be rebuilt for this signature
+	const auto NeedsName = [](FLabel& Label, const FAbyssWorldLayerLabelSignature& Signature)
+	{
+		if (Label.bNameValid && Label.NameSignature == Signature.Hash)
+		{
+			return false;
+		}
+		Label.bNameValid = true;
+		Label.NameSignature = Signature.Hash;
+		return true;
+	};
+
 	for (TPair<uint32, FLabel>& Pair : Labels)
 	{
 		FLabel& Label = Pair.Value;
@@ -229,39 +356,49 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 		switch (Label.Desc.Kind)
 		{
 		case EAbyssWorldWidgetKind::Monster:
-			for (const abyss::MonsterView& Monster : Snap.monsters)
+			if (const abyss::MonsterView* Monster = FindMonster(Id))
 			{
-				if (Monster.id != Id)
+				FAbyssWorldLayerLabelSignature Signature;
+				Signature.Str(Monster->defId);
+				Signature.Str(Monster->nameKey);
+				Signature.Value(Monster->storyNamed ? 1u : 0u);
+				Signature.Value(static_cast<uint64>(Monster->affixes.size()));
+				for (const abyss::EliteAffixType Affix : Monster->affixes)
 				{
-					continue;
+					Signature.Value(static_cast<uint64>(Affix));
 				}
-				Label.bPresent = Monster.alive;
-				Label.Name = MonsterLabel(Monster);
-				Label.Hp = Monster.hp;
-				Label.MaxHp = FMath::Max(1.0, Monster.maxHp);
-				Label.bHpBar = Monster.hp < Monster.maxHp;   // hidden at full HP (monsters-ai 5)
-				Label.NameColor = Monster.storyNamed ? FAbyssUiStyle::Rgb(0xffcf6a)
-					: (!Monster.affixes.empty() ? FAbyssUiStyle::Rgb(0xff6600) : (Monster.elite || Monster.miniBoss ? FAbyssUiStyle::Rgb(0xe74c3c) : FAbyssUiStyle::Rgb(0xcccccc)));
-				Label.bAlwaysShowName = Monster.storyNamed || Monster.elite || Monster.miniBoss || !Monster.affixes.empty();
+				if (NeedsName(Label, Signature))
+				{
+					Label.Name = MonsterLabel(*Monster);
+				}
+				Label.bPresent = Monster->alive;
+				Label.Hp = Monster->hp;
+				Label.MaxHp = FMath::Max(1.0, Monster->maxHp);
+				Label.bHpBar = Monster->hp < Monster->maxHp;   // hidden at full HP (monsters-ai 5)
+				// A story-renamed boss uses the colour of EvMonsterRenamed (carried in the desc); 0xffcf6a only when the
+				// rename happened before this widget existed (core request: MonsterView::nameColor).
+				const FLinearColor StoryColor = Label.Desc.bHasNameColor ? FAbyssUiStyle::Rgb(Label.Desc.NameColorRgb) : FAbyssUiStyle::Rgb(0xffcf6a);
+				Label.NameColor = Monster->storyNamed ? StoryColor
+					: (!Monster->affixes.empty() ? FAbyssUiStyle::Rgb(0xff6600) : (Monster->elite || Monster->miniBoss ? FAbyssUiStyle::Rgb(0xe74c3c) : FAbyssUiStyle::Rgb(0xcccccc)));
+				Label.bAlwaysShowName = Monster->storyNamed || Monster->elite || Monster->miniBoss || !Monster->affixes.empty();
 				Label.NameFontPx = 12;
 				Label.bTitleFont = true;
-				break;
 			}
 			break;
 		case EAbyssWorldWidgetKind::Npc:
-			for (const abyss::NpcView& Npc : Snap.npcs)
+			if (const abyss::NpcView* Npc = FindNpc(Id))
 			{
-				if (Npc.id != Id)
+				FAbyssWorldLayerLabelSignature Signature;
+				Signature.Str(Npc->npcId);
+				if (NeedsName(Label, Signature))
 				{
-					continue;
+					Label.Name = Ctx->NpcName(Npc->npcId);
 				}
 				Label.bPresent = true;
-				Label.Name = Ctx->NpcName(Npc.npcId);
 				Label.NameColor = Ctx->Style().Colors().Parchment;
-				Label.Marker = Npc.marker;
+				Label.Marker = Npc->marker;
 				Label.bAlwaysShowName = true;
 				Label.NameFontPx = 13;
-				break;
 			}
 			break;
 		case EAbyssWorldWidgetKind::Pet:
@@ -275,12 +412,20 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 						Level = Instance->level;
 					}
 				}
-				Label.bPresent = true;
-				Label.Name = FString::Printf(TEXT("%s Lv.%d"), *Ctx->PetName(Snap.pet.petId, Snap.pet.stage), Level);
-				if (Snap.pet.exhausted)
+				FAbyssWorldLayerLabelSignature Signature;
+				Signature.Str(Snap.pet.petId);
+				Signature.Value(static_cast<uint64>(Snap.pet.stage));
+				Signature.Value(static_cast<uint64>(Level));
+				Signature.Value(Snap.pet.exhausted ? 1u : 0u);
+				if (NeedsName(Label, Signature))
 				{
-					Label.Name += FString::Printf(TEXT(" [%s]"), *Ctx->LocOrStr("zone.pet.exhaustedTag", TEXT("Exhausted")));
+					Label.Name = FString::Printf(TEXT("%s Lv.%d"), *Ctx->PetName(Snap.pet.petId, Snap.pet.stage), Level);
+					if (Snap.pet.exhausted)
+					{
+						Label.Name += FString::Printf(TEXT(" [%s]"), *Ctx->LocOrStr("zone.pet.exhaustedTag", TEXT("Exhausted")));
+					}
 				}
+				Label.bPresent = true;
 				Label.NameColor = FAbyssUiStyle::Rgb(0xaaddff);
 				Label.NameFontPx = 9;
 				Label.Hp = Snap.pet.hp;
@@ -294,25 +439,25 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 		case EAbyssWorldWidgetKind::DefendTarget:
 		{
 			const bool bEscort = Label.Desc.Kind == EAbyssWorldWidgetKind::Escort;
-			for (const abyss::WorldMarkerView& Marker : Snap.markers)
+			if (const abyss::WorldMarkerView* Marker = FindMarker(Id))
 			{
-				if (Marker.id != Id)
-				{
-					continue;
-				}
 				Label.bPresent = true;
-				Label.Hp = Marker.hp;
-				Label.MaxHp = FMath::Max(1.0, Marker.maxHp);
-				Label.bHpBar = Marker.maxHp > 0.0;
-				break;
+				Label.Hp = Marker->hp;
+				Label.MaxHp = FMath::Max(1.0, Marker->maxHp);
+				Label.bHpBar = Marker->maxHp > 0.0;
 			}
-			const std::string QuestId = bEscort ? (Snap.escort ? Snap.escort->questId : std::string()) : (Snap.defend ? Snap.defend->questId : std::string());
+			const std::string& QuestId = bEscort ? (Snap.escort ? Snap.escort->questId : AbyssWorldLayer_EmptyQuestId) : (Snap.defend ? Snap.defend->questId : AbyssWorldLayer_EmptyQuestId);
 			if (!QuestId.empty())
 			{
-				const abyss::DataStore* Data = Ctx->GetData();
-				const abyss::QuestDef* Quest = Data ? Data->FindQuest(QuestId) : nullptr;
-				const std::string Raw = Quest ? (bEscort ? Quest->escortNpc.name : Quest->defendTarget.name) : std::string();
-				Label.Name = Ctx->NameOr((bEscort ? "data.escortNpc." : "data.defendTarget.") + QuestId, Raw);
+				FAbyssWorldLayerLabelSignature Signature;
+				Signature.Str(QuestId);
+				if (NeedsName(Label, Signature))
+				{
+					const abyss::DataStore* Data = Ctx->GetData();
+					const abyss::QuestDef* Quest = Data ? Data->FindQuest(QuestId) : nullptr;
+					const std::string Raw = Quest ? (bEscort ? Quest->escortNpc.name : Quest->defendTarget.name) : std::string();
+					Label.Name = Ctx->NameOr((bEscort ? "data.escortNpc." : "data.defendTarget.") + QuestId, Raw);
+				}
 				if (!Label.bPresent)
 				{
 					Label.bPresent = true;
@@ -327,68 +472,76 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 			break;
 		}
 		case EAbyssWorldWidgetKind::GroundItem:
-			for (const abyss::GroundItemView& Item : Snap.groundItems)
+			if (const abyss::GroundItemView* Item = FindGroundItem(Id))
 			{
-				if (Item.id != Id)
+				FAbyssWorldLayerLabelSignature Signature;
+				Signature.Str(Item->baseId);
+				Signature.Value(static_cast<uint64>(Item->quantity));
+				if (NeedsName(Label, Signature))
 				{
-					continue;
+					Label.Name = Ctx->ItemBaseName(Item->baseId);
+					if (Item->quantity > 1)
+					{
+						Label.Name += FString::Printf(TEXT(" x%d"), Item->quantity);
+					}
 				}
 				Label.bPresent = true;
-				Label.Name = Ctx->ItemBaseName(Item.baseId);
-				if (Item.quantity > 1)
-				{
-					Label.Name += FString::Printf(TEXT(" x%d"), Item.quantity);
-				}
-				Label.NameColor = Ctx->Style().QualityColor(Item.quality);
+				Label.NameColor = Ctx->Style().QualityColor(Item->quality);
 				Label.bAlwaysShowName = true;
 				Label.NameFontPx = 11;
-				break;
 			}
 			break;
 		case EAbyssWorldWidgetKind::Lore:
 		case EAbyssWorldWidgetKind::Prop:
 		{
-			const FString DefId = Label.Desc.DefId;
-			FString Text;
-			if (DefId.StartsWith(TEXT("lore:")))
+			const FString& DefId = Label.Desc.DefId;
+			const bool bSoulEcho = DefId == TEXT("soul_echo");
+			const abyss::WorldMarkerView* EchoMarker = nullptr;
+			if (bSoulEcho)
 			{
-				const std::string LoreId = AbyssText::ToStd(DefId.Mid(5));
-				const abyss::DataStore* Data = Ctx->GetData();
-				const abyss::LoreEntryDef* Entry = Data ? Data->Lore().Find(LoreId) : nullptr;
-				Text = Ctx->NameOr("data.lore." + LoreId + ".name", Entry ? Entry->name : LoreId);
+				const abyss::WorldMarkerView* Marker = FindMarker(Id);
+				EchoMarker = Marker != nullptr && Marker->kind == abyss::MarkerKind::SoulEcho ? Marker : nullptr;
 			}
-			else if (DefId.StartsWith(TEXT("hidden_reward:")))
+			FAbyssWorldLayerLabelSignature Signature;
+			if (EchoMarker != nullptr)
 			{
-				Text = DefId.Contains(TEXT("gold")) ? Ctx->LocOrStr("zone.hiddenArea.rewardGoldPile", TEXT("Gold pile"))
-					: Ctx->LocOrStr("zone.hiddenArea.rewardChest", TEXT("Chest"));
+				Signature.Str(EchoMarker->key);
 			}
-			else if (DefId == TEXT("treasure_cache"))
+			if (NeedsName(Label, Signature))
 			{
-				Text = Ctx->LocOrStr("zone.event.treasureChest.label", TEXT("Treasure chest"));
-			}
-			else if (DefId == TEXT("wandering_merchant"))
-			{
-				Text = Ctx->LocOrStr("zone.event.merchant.label", TEXT("Wandering merchant"));
-			}
-			else if (DefId == TEXT("environmental_puzzle"))
-			{
-				Text = Ctx->LocOrStr("zone.event.puzzle.label", TEXT("Puzzle device"));
-			}
-			else if (DefId == TEXT("soul_echo"))
-			{
-				FString Gold = TEXT("?");
-				for (const abyss::WorldMarkerView& Marker : Snap.markers)
+				FString Text;
+				if (DefId.StartsWith(TEXT("lore:")))
 				{
-					if (Marker.id == Id && Marker.kind == abyss::MarkerKind::SoulEcho)
-					{
-						Gold = AbyssText::ToFString(Marker.key);
-						break;
-					}
+					const std::string LoreId = AbyssText::ToStd(DefId.Mid(5));
+					const abyss::DataStore* Data = Ctx->GetData();
+					const abyss::LoreEntryDef* Entry = Data ? Data->Lore().Find(LoreId) : nullptr;
+					Text = Ctx->NameOr("data.lore." + LoreId + ".name", Entry ? Entry->name : LoreId);
 				}
-				Text = Ctx->LocArgsOrStr("zone.soulEcho.label", TEXT("Soul echo - {gold} gold"), { FAbyssUiContext::Arg("gold", Gold) });
+				else if (DefId.StartsWith(TEXT("hidden_reward:")))
+				{
+					Text = DefId.Contains(TEXT("gold")) ? Ctx->LocOrStr("zone.hiddenArea.rewardGoldPile", TEXT("Gold pile"))
+						: Ctx->LocOrStr("zone.hiddenArea.rewardChest", TEXT("Chest"));
+				}
+				else if (DefId == TEXT("treasure_cache"))
+				{
+					Text = Ctx->LocOrStr("zone.event.treasureChest.label", TEXT("Treasure chest"));
+				}
+				else if (DefId == TEXT("wandering_merchant"))
+				{
+					Text = Ctx->LocOrStr("zone.event.merchant.label", TEXT("Wandering merchant"));
+				}
+				else if (DefId == TEXT("environmental_puzzle"))
+				{
+					Text = Ctx->LocOrStr("zone.event.puzzle.label", TEXT("Puzzle device"));
+				}
+				else if (bSoulEcho)
+				{
+					const FString Gold = EchoMarker != nullptr ? AbyssText::ToFString(EchoMarker->key) : FString(TEXT("?"));
+					Text = Ctx->LocArgsOrStr("zone.soulEcho.label", TEXT("Soul echo - {gold} gold"), { FAbyssUiContext::Arg("gold", Gold) });
+				}
+				Label.Name = Text.IsEmpty() ? Text : FString(TEXT("\x25C6 ")) + Text;
 			}
-			Label.bPresent = !Text.IsEmpty();
-			Label.Name = Text.IsEmpty() ? Text : FString(TEXT("\x25C6 ")) + Text;
+			Label.bPresent = !Label.Name.IsEmpty();
 			Label.NameColor = FAbyssUiStyle::Rgb(0xffe7a0);
 			Label.bAlwaysShowName = true;
 			Label.NameFontPx = 11;
@@ -399,10 +552,8 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 
 	// the hero's overhead point (quest progress popups)
 	bHeroKnown = false;
-	if (const UAbyssGameInstance* GameInstance = Ctx->GetGameInstance())
+	if (GameInstance != nullptr)
 	{
-		const UWorld* GameWorld = GameInstance->GetWorld();
-		const UAbyssSimDriver* Driver = GameWorld ? GameWorld->GetSubsystem<UAbyssSimDriver>() : nullptr;
 		const IAbyssWorldView* View = Driver ? Driver->GetWorldView() : nullptr;
 		const abyss::Vec2 Tile = AbyssUnits::LerpTile(Snap.hero.prevPos, Snap.hero.pos, Snap.interpolationAlpha);
 		const FVector Ground = AbyssUnits::TileToWorld(Tile);
@@ -627,6 +778,14 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 		const float U = AbyssEase::Clamp01(static_cast<float>(T / 1.2));
 		Pos.Y -= 30.0 * AbyssEase::QuadOut(U);
 		Alpha = 1.f - AbyssEase::QuadIn(U);
+		break;
+	}
+	case abyss::FloatingTextKind::Embers:
+	{
+		// y -> y - 30 and alpha -> 0 together over 1400 ms, ease-out quad (web tween on both properties).
+		const float U = AbyssEase::QuadOut(AbyssEase::Clamp01(static_cast<float>(T / 1.4)));
+		Pos.Y -= 30.0 * U;
+		Alpha = 1.f - U;
 		break;
 	}
 	case abyss::FloatingTextKind::Status:

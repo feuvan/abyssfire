@@ -257,6 +257,7 @@ private:
 	void HandleGroundTriggered(const abyss::EvGroundEffectTriggered& Event);
 	void HandleGroundEnded(const abyss::EvGroundEffectEnded& Event);
 	void HandleHeroRespawned(const abyss::EvHeroRespawned& Event);
+	void HandleResonance(const abyss::EvResonance& Event);
 
 	// ---- helpers ----
 	bool EnsureRenderer();
@@ -280,6 +281,17 @@ private:
 	void UpdateProjectiles(const FAbyssFrameInfo& Frame);
 	void UpdateStatusLoops(const abyss::Snapshot& Snap);
 	void UpdateLights(float DeltaSec);
+	/**
+	 * Hero attachments from the art manifest fx block (art-inventory-ch1.md 3.1, Art/blender/README.md hero section):
+	 * halo light pool, weapon trail history; plus the spirit-resonance aura kept alive while Snapshot.hero.resonating.
+	 */
+	void UpdateHeroFx(float DeltaSec, const abyss::Snapshot& Snap);
+	/** Visor glow card, weapon trail quads, cast blade glow and embers (called from Render). */
+	void RenderHeroFx();
+	void EmitInstance(int32 PoolIndex, const FTransform& Transform, const FLinearColor& Color, float Alpha, float Variant, float Age);
+	/** Spirit-profile colour of the hero's class (classes 14 / combat-feel 16), the manifest spiritColor when present. */
+	FLinearColor HeroSpiritColor(const abyss::Snapshot* Snap) const;
+	void StartResonanceAura(AActor* Hero, const FLinearColor& Color);
 	void Render();
 	void RequestShake(float DurationMs, float Intensity);
 	FName StatusRecipeId(abyss::StatusType Type) const;
@@ -336,6 +348,21 @@ private:
 	bool bRendererResolved = false;
 	bool bRendererAvailable = false;
 	bool bEventsBound = false;
+
+	// hero attachments (UpdateHeroFx / RenderHeroFx)
+	struct FTrailSample
+	{
+		FVector Tip = FVector::ZeroVector;
+		FVector Mid = FVector::ZeroVector;
+		double TimeSec = 0.0;
+	};
+	TArray<FTrailSample> TrailSamples;
+	bool bTrailIsCast = false;
+	double HeroFxClockSec = 0.0;
+	int32 HeroHaloHandle = 0;
+	TWeakObjectPtr<AActor> HeroHaloActor;
+	int32 ResonanceAuraHandle = 0;
+	TWeakObjectPtr<AActor> ResonanceAuraActor;
 
 	// camera (refreshed every Tick)
 	FVector CameraLocation = FVector::ZeroVector;

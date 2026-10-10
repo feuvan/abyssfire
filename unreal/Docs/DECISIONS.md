@@ -15,7 +15,7 @@ module, UE 5.8+, macOS first then Windows/Android/iOS with touch UI, Chapter 1 f
 | P1 | Pin **UE 5.8** (`EngineAssociation "5.8"`, tested against 5.8.3+ hotfixes). C++20 everywhere. |
 | P2 | Desktop: deferred + TSR (FXAA on low). Mac Apple Silicon Metal SM5; Windows D3D12 SM5. |
 | P3 | Mobile: **forward + MSAA 4×** (opt out of 5.8 multi-pass deferred). Android **Vulkan only** (min API 26, target 36); iOS 17+. |
-| P4 | UI: **Slate in C++**, ScaleToFit design 1280×720 with a phone minimum-scale rule (touch targets ≥ 44 pt), safe zones. No UMG assets. |
+| P4 | UI: **Slate in C++**, ScaleToFit design 1280×720, safe zones. No UMG assets. Touch targets: the **touch HUD controls** (joystick, skill/potion/dodge/portal buttons, Talk/Use) are ≥ 44 pt; panels keep the 720-unit layout with the touch scale and ≥ 32 pt hit areas. A dedicated touch re-layout of panels is a follow-up. |
 | P5 | Animation: no Animation Blueprint. Native `UAbyssAnimInstance` + custom proxy (crossfade + additive), timing owned by the core (spec §7 Option A). |
 | P6 | VFX: code-driven pooled particles on ISM components + generated meshes/materials; no Niagara assets in milestone 1. |
 | P7 | Outline: inverted hull **baked by Blender** into every character/prop mesh (second material slot). |

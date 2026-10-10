@@ -293,8 +293,8 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 		Entry.bCompleted = Progress.status == abyss::QuestStatus::Completed;
 		Entry.bMain = Def.category == abyss::QuestCategory::Main;
 		Entry.bGuided = Def.id == Guided;
-		const FString Tag = Entry.bMain ? Ctx->LocOrStr("ui.questTracker.mainTag", TEXT("[Main]")) : Ctx->LocOrStr("ui.questTracker.sideTag", TEXT("[Side]"));
-		Entry.Title = FString::Printf(TEXT("%s%s %s%s"), Entry.bGuided ? TEXT("\x25B6 ") : TEXT(""), *Tag, *Ctx->QuestName(Def),
+		const FString TagText = Entry.bMain ? Ctx->LocOrStr("ui.questTracker.mainTag", TEXT("[Main]")) : Ctx->LocOrStr("ui.questTracker.sideTag", TEXT("[Side]"));
+		Entry.Title = FString::Printf(TEXT("%s%s %s%s"), Entry.bGuided ? TEXT("\x25B6 ") : TEXT(""), *TagText, *Ctx->QuestName(Def),
 			Entry.bCompleted ? TEXT(" \x2713") : TEXT(""));
 		Entry.TitleColor = Entry.bCompleted ? FAbyssUiStyle::Rgb(0xf1c40f) : (Entry.bMain ? FAbyssUiStyle::Rgb(0xe8c252) : FAbyssUiStyle::Rgb(0xa89060));
 		int32 Done = 0;

@@ -20,6 +20,8 @@
 
 #include "abyss/base/Enums.h"
 
+class UTexture;
+
 namespace abyss
 {
 	struct UiThemeDef;
@@ -116,6 +118,14 @@ public:
 
 	// ---- brushes (stable addresses for the lifetime of the style) ----
 	const FSlateBrush* White() const { return &WhiteBrush; }
+	/**
+	 * A texture-backed white brush (1x1 transient texture created by UAbyssUiSubsystem) for custom-vertex shapes:
+	 * FSlateRenderer::GetResourceHandle has no resource proxy for a colour brush (NAME_None, no resource object), so
+	 * White() cannot give MakeCustomVerts a valid handle. nullptr until SetSolidTexture is called.
+	 */
+	const FSlateBrush* SolidTexture() const { return bHasSolidTexture ? &SolidTextureBrush : nullptr; }
+	/** Texture = a white texture the caller keeps alive for the style's lifetime (nullptr clears). */
+	void SetSolidTexture(UTexture* Texture);
 	const FSlateBrush* None() const { return &NoBrush; }
 	/** Rounded box (Radius px; Radius >= half the size draws a circle / pill). Cached by value. */
 	const FSlateBrush* Rounded(const FLinearColor& Fill, float Radius, const FLinearColor& Outline = FLinearColor::Transparent,
@@ -156,6 +166,8 @@ private:
 	FAbyssButtonColors Buttons[5];
 	abyss::LocaleId Locale = abyss::LocaleId::ZhCN;
 	FSlateBrush WhiteBrush;
+	FSlateBrush SolidTextureBrush;
+	bool bHasSolidTexture = false;
 	FSlateBrush NoBrush;
 	FButtonStyle InvisibleButtonStyle;
 	FScrollBarStyle ScrollBarStyle;

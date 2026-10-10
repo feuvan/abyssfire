@@ -95,9 +95,9 @@
     },
     {
       "file": "hit_feedback.json",
-      "counts": {"profiles": 6},
-      "bytes": 2361,
-      "sha256": "4418e9bd4c2ad6105ea51fc311c0fa45392cfe33c327823aa7ffc9d2f483634b"
+      "counts": {"profiles": 6, "skillShakes": 9},
+      "bytes": 3314,
+      "sha256": "cf76150c424032eac9d8b0e9887903987772b3656eb025702965e89cfea75cd6"
     },
     {
       "file": "homestead.json",
@@ -107,21 +107,21 @@
     },
     {
       "file": "i18n_en.json",
-      "counts": {"keys": 2628},
-      "bytes": 215075,
-      "sha256": "ea0470e3efb3132143c2d30e87bd4850eced624d7b0fbf35e742191083b76652"
+      "counts": {"keys": 2732},
+      "bytes": 224107,
+      "sha256": "0b201b1b8fc311a193dbb72746fab8b1bc5164fd942755d63f18e04130e79558"
     },
     {
       "file": "i18n_zh-CN.json",
-      "counts": {"keys": 2627},
-      "bytes": 207749,
-      "sha256": "37bde7765396d850f6b68c1a88ccb9f0106549aff4016dd763161df1db9d13a5"
+      "counts": {"keys": 2731},
+      "bytes": 216729,
+      "sha256": "c773ca29aacfbbfea3e195ffbbfd8e2fc5b876334d4c0f38978ec179a5089168"
     },
     {
       "file": "i18n_zh-TW.json",
-      "counts": {"keys": 2627},
-      "bytes": 207796,
-      "sha256": "a0050e7df782fe0b98262ea8ae5f559bf663ca5d5b873453c9e001ae8e719df0"
+      "counts": {"keys": 2731},
+      "bytes": 216776,
+      "sha256": "ef80fd82c38c402d881c222f157f78c94351160da6c20d00000f321c75cb6f8a"
     },
     {
       "file": "item_bases.json",

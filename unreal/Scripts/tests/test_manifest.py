@@ -148,6 +148,21 @@ class SyntheticManifestTests(unittest.TestCase):
         self.assertTrue(any("clip FBX missing" in m for m in messages), messages)
         self.assertTrue(any("not a valid UE asset name" in m for m in messages), messages)
 
+    def test_game_id_variants_share_footprint(self):
+        data = copy.deepcopy(self.BASE)
+        oak_b = copy.deepcopy(data["assets"]["SM_Foliage_Plains_Oak_A"])
+        oak_b["fbx"] = "Foliage/SM_Foliage_Plains_Oak_B.fbx"
+        data["assets"]["SM_Foliage_Plains_Oak_B"] = oak_b
+        for name in ("SM_Foliage_Plains_Oak_A", "SM_Foliage_Plains_Oak_B"):
+            data["assets"][name].update({"gameIds": ["tree"], "footprintTiles": [1, 1], "blocking": True})
+        plan = manifest.build_plan(self.make(copy.deepcopy(data)))
+        self.assertFalse(any("game id tree" in str(p) for p in plan.errors), [str(p) for p in plan.problems])
+        # W5: the core bakes the first variant's footprint, the UE may show the other one
+        data["assets"]["SM_Foliage_Plains_Oak_B"]["footprintTiles"] = [2, 2]
+        plan = manifest.build_plan(self.make(data))
+        self.assertTrue(any("game id tree" in str(p) and "disagree" in str(p) for p in plan.errors),
+                        [str(p) for p in plan.problems])
+
     def test_schema_version(self):
         data = copy.deepcopy(self.BASE)
         data["schemaVersion"] = 2

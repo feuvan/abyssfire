@@ -4,6 +4,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
+#include <span>
 #include <string>
 
 #include "abyss/base/Json.h"
@@ -151,6 +152,92 @@ namespace AbyssArtManifestPrivate
 		}
 	}
 
+	int32 JsonInt(const abyss::JsonValue& Value, int32 Default)
+	{
+		return Value.IsNumber() ? FMath::RoundToInt32(Value.AsDouble(static_cast<double>(Default))) : Default;
+	}
+
+	void ParseTrail(const abyss::JsonValue& Json, FAbyssArtTrail& Out, const FAbyssArtTrail* Defaults)
+	{
+		if (!Json.IsObject())
+		{
+			return;
+		}
+		if (Defaults != nullptr && Defaults->bValid)
+		{
+			Out = *Defaults;   // castTrail omits samples / sampleMs: same history as the attack trail
+		}
+		Out.bValid = true;
+		JsonColor(Json.Get("color"), Out.Color);
+		Out.Alpha = JsonFloat(Json.Get("alpha"), Out.Alpha);
+		const std::span<const abyss::JsonValue> Sockets = Json.Get("sockets").Items();
+		if (Sockets.size() >= 2)
+		{
+			Out.TipSocket = JsonName(Sockets[0]);
+			Out.MidSocket = JsonName(Sockets[1]);
+		}
+		Out.Samples = FMath::Clamp(JsonInt(Json.Get("samples"), Out.Samples), 2, 32);
+		Out.SampleMs = FMath::Max(1.f, JsonFloat(Json.Get("sampleMs"), Out.SampleMs));
+	}
+
+	/** assets.<name>.fx attachments (see FAbyssArtFx); colours are sRGB hex in the manifest, linear here. */
+	void ParseFx(const abyss::JsonValue& Fx, FAbyssArtFx& Out)
+	{
+		if (!Fx.IsObject())
+		{
+			return;
+		}
+		const abyss::JsonValue& Visor = Fx.Get("visorGlow");
+		if (Visor.IsObject())
+		{
+			FAbyssArtGlowCard& V = Out.VisorGlow;
+			V.bValid = true;
+			V.Socket = JsonName(Visor.Get("socket"));
+			if (V.Socket.IsNone())
+			{
+				V.Socket = FName(TEXT("visor"));
+			}
+			JsonColor(Visor.Get("color"), V.Color);
+			V.RadiusCm = JsonFloat(Visor.Get("radiusCm"), V.RadiusCm);
+			V.Alpha = JsonFloat(Visor.Get("alpha"), V.Alpha);
+			V.AlphaPerFx = JsonFloat(Visor.Get("alphaPerFx"), V.AlphaPerFx);
+			JsonColor(Visor.Get("coreColor"), V.CoreColor);
+			V.CoreRadiusCm = JsonFloat(Visor.Get("coreRadiusCm"), V.CoreRadiusCm);
+			V.CoreAlpha = JsonFloat(Visor.Get("coreAlpha"), V.CoreAlpha);
+			V.OffAtDeathFraction = FMath::Clamp(JsonFloat(Visor.Get("offAtDeathFraction"), V.OffAtDeathFraction), 0.f, 1.f);
+		}
+		ParseTrail(Fx.Get("attackTrail"), Out.AttackTrail, nullptr);
+		ParseTrail(Fx.Get("castTrail"), Out.CastTrail, &Out.AttackTrail);
+		const abyss::JsonValue& Blade = Fx.Get("castBladeGlow");
+		if (Blade.IsObject())
+		{
+			FAbyssArtBladeGlow& B = Out.CastBladeGlow;
+			B.bValid = true;
+			JsonColor(Blade.Get("color"), B.Color);
+			B.RadiusCm = JsonFloat(Blade.Get("radiusCm"), B.RadiusCm);
+			B.Alpha = JsonFloat(Blade.Get("alpha"), B.Alpha);
+			JsonColor(Blade.Get("tipColor"), B.TipColor);
+			B.TipRadiusCm = JsonFloat(Blade.Get("tipRadiusCm"), B.TipRadiusCm);
+			B.TipAlpha = JsonFloat(Blade.Get("tipAlpha"), B.TipAlpha);
+			const abyss::JsonValue& Embers = Blade.Get("embers");
+			B.EmberCount = FMath::Clamp(JsonInt(Embers.Get("count"), 0), 0, 32);
+			JsonColor(Embers.Get("color"), B.EmberColor);
+		}
+		const abyss::JsonValue& Halo = Fx.Get("heroHalo");
+		if (Halo.IsObject())
+		{
+			Out.bHasHeroHalo = true;
+			JsonColor(Halo.Get("color"), Out.HeroHaloColor);
+			Out.HeroHaloRadiusCm = JsonFloat(Halo.Get("radiusCm"), Out.HeroHaloRadiusCm);
+		}
+		const abyss::JsonValue& Bloom = Fx.Get("bloom");
+		if (Bloom.IsObject() && Bloom.Get("strength").IsNumber())
+		{
+			Out.bHasBloom = true;
+			Out.BloomStrength = FMath::Max(0.f, JsonFloat(Bloom.Get("strength"), 0.f));
+		}
+	}
+
 	void ParseAsset(FName AssetName, const abyss::JsonValue& Json, FAbyssArtAsset& Out)
 	{
 		Out.Name = AssetName;
@@ -221,6 +308,7 @@ namespace AbyssArtManifestPrivate
 		Out.bHasImpactColor = JsonColor(Fx.Get("impactColor"), Out.ImpactColor);
 		Out.bHasClassColor = JsonColor(Fx.Get("classColor"), Out.ClassColor);
 		Out.bHasSpiritColor = JsonColor(Fx.Get("spiritColor"), Out.SpiritColor);
+		ParseFx(Fx, Out.Fx);
 	}
 
 	void ParseShading(const abyss::JsonValue& Json, const abyss::JsonValue& Units, FAbyssArtShading& Out)

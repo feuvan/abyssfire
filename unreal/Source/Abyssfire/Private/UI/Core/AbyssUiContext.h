@@ -87,11 +87,13 @@ public:
 
 	// ---- flow helpers ----
 	/**
-	 * Quest card turn-in (quests-story-ch1.md 5.3, T17): offer the NPC's next card after 900 ms, or 300 ms after the
-	 * story director turns idle when the turn-in queued a cutscene (CmdQuestCardOpen; the core ignores it when a card or
-	 * dialogue is open or the NPC has nothing to offer).
+	 * Quest card turn-in click (quests-story-ch1.md 5.3, T17): remembers the giver; the chain is armed only when the core
+	 * confirms the turn-in (EvQuestUpdate{TurnedIn, QuestId}; the web chains only after a successful turnInQuest) and is
+	 * dropped if the steps that applied the command report none. Then the NPC's next card is offered after 900 ms, or
+	 * 300 ms after the story director turns idle when the turn-in queued a cutscene (CmdQuestCardOpen; the core ignores
+	 * it when a card or dialogue is open or the NPC has nothing to offer).
 	 */
-	virtual void ScheduleQuestChainOffer(const std::string& NpcId) = 0;
+	virtual void RequestQuestChainOffer(const std::string& QuestId, const std::string& NpcId) = 0;
 	/** A UI-side line in the combat log (local feedback the core does not log). */
 	virtual void AddLocalLog(const FString& Text, abyss::LogType Type) = 0;
 	/** The controls reference (menu "Controls", system menu "Controls"). */

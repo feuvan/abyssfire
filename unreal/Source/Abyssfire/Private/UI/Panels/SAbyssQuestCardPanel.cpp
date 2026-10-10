@@ -308,11 +308,12 @@ void SAbyssQuestCardPanel::Refresh(const abyss::Snapshot& Snap)
 			{
 				if (bTurnIn)
 				{
-					Context->Submit(abyss::CmdQuestTurnIn{ QuestId, SelectedChoice });
+					// T17: the host arms the chain offer only once the core reports the turn-in (not on a rejected one).
 					if (IAbyssUiHost* Host = Context->GetHost())
 					{
-						Host->ScheduleQuestChainOffer(Giver);  // T17
+						Host->RequestQuestChainOffer(QuestId, Giver);
 					}
+					Context->Submit(abyss::CmdQuestTurnIn{ QuestId, SelectedChoice });
 				}
 				else
 				{

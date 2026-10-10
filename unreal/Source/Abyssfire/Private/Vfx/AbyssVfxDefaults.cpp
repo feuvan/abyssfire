@@ -88,6 +88,17 @@ namespace AbyssVfxDefaultsPrivate
  "hero.dodge": { "layers": [
   { "emitter": "smoke", "at": "origin", "height": 8, "count": 5, "spawnRadiusCm": 25, "sizeCm": [22, 34], "lifeMs": [380, 560], "alpha": [0.55, 0], "color": "#C8B89A" }
  ] },
+ "hero.resonance": { "palette": "event", "layers": [
+  { "emitter": "flash", "at": "target", "height": "chest", "sizeCm": 90, "grow": 2.4, "lifeMs": 220, "color": "event" },
+  { "emitter": "glow", "orient": "ground", "at": "target", "height": 3, "sizeCm": 60, "grow": 3.5, "lifeMs": 420, "alpha": [0.6, 0], "color": "event" },
+  { "emitter": "ring", "at": "target", "sizeCm": 40, "grow": 6, "lifeMs": 460, "color": "event" },
+  { "emitter": "shock", "at": "target", "sizeCm": 30, "grow": 7, "lifeMs": 380, "alpha": [0.55, 0], "color": "event" },
+  { "emitter": "motes", "sprite": "Spark", "at": "target", "height": "chest", "count": 12, "spawnRadiusCm": 40, "gravityCmS2": -220, "lifeMs": [600, 900], "color": "event", "altEvery": 2, "altColor": "white" }
+ ] },
+ "hero.resonance.aura": { "palette": "event", "layers": [
+  { "emitter": "glow", "orient": "ground", "at": "target", "height": 3, "rate": 1.6, "attach": true, "sizeCm": 120, "grow": 1.15, "lifeMs": 900, "fadeIn": 0.3, "alpha": [0.35, 0], "color": "event" },
+  { "emitter": "motes", "sprite": "Spark", "at": "target", "height": "chest", "rate": 7, "attach": true, "spawnRadiusCm": 35, "spawnHeightJitterCm": 50, "gravityCmS2": -160, "lifeMs": [500, 800], "color": "event", "altEvery": 3, "altColor": "white" }
+ ] },
  "hero.dash": { "palette": "holy", "layers": [
   { "emitter": "streak", "at": "path", "height": "chest", "count": 9, "spawnRadiusCm": 30, "speedCmS": 930, "dir": "blow", "coneDeg": 6, "lifeMs": 180, "sizeCm": 12, "color": "mid", "altEvery": 2, "altColor": "white", "delayMs": 0 },
   { "emitter": "smoke", "at": "path", "height": 8, "count": 5, "sizeCm": [22, 32], "lifeMs": [380, 560], "alpha": [0.5, 0], "color": "#C8B89A" }

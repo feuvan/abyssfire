@@ -54,7 +54,12 @@ namespace AbyssAnimPrivate
 void FAbyssAnimProxy::PreUpdate(UAnimInstance* InAnimInstance, float DeltaSeconds)
 {
 	FAnimInstanceProxy::PreUpdate(InAnimInstance, DeltaSeconds);
-	const UAbyssAnimInstance* Instance = CastChecked<UAbyssAnimInstance>(InAnimInstance);
+	UAbyssAnimInstance* Instance = CastChecked<UAbyssAnimInstance>(InAnimInstance);
+	// UAnimInstance::UpdateAnimation runs PreUpdateAnimation (this copy) BEFORE NativeUpdateAnimation, so the clock is
+	// advanced here, on the game thread, before the layers are copied: the pose evaluated on the worker thread then uses
+	// the same playhead that just fired the Contact / Release / Foot / FX_* notifies (combat-feel contact beat), and a
+	// Play() / hit-stop freeze reaches the pose on the next update instead of one update later.
+	Instance->AdvanceClock(DeltaSeconds);
 	FromLayer = FAbyssAnimLayer{ Instance->FromSeq.Get(), Instance->FromTime, Instance->bFromLoop };
 	ToLayer = FAbyssAnimLayer{ Instance->ToSeq.Get(), Instance->ToTime, Instance->bToLoop };
 	ToWeight = Instance->BlendSec <= 0.f ? 1.f : FMath::Clamp(Instance->BlendElapsedSec / Instance->BlendSec, 0.f, 1.f);
@@ -205,10 +210,9 @@ void UAbyssAnimInstance::FireNotifies(float PrevTimeSec, float NewTimeSec, float
 	}
 }
 
-void UAbyssAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
+void UAbyssAnimInstance::AdvanceClock(float DeltaSeconds)
 {
 	using namespace AbyssAnimPrivate;
-	Super::NativeUpdateAnimation(DeltaSeconds);
 	if (bFrozen || DeltaSeconds <= 0.f)
 	{
 		return;

@@ -150,6 +150,7 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	}
 
 	ArtClips = Art->Clips;
+	ArtFx = Art->Fx;
 	Clips.Reset();
 	for (const FAbyssArtClip& Clip : ArtClips)
 	{
@@ -244,6 +245,8 @@ void AAbyssCharacterActor::ResetPresentation()
 	ActionState = FActionState();
 	LocomotionClip = NAME_None;
 	FreezeRemainingMs = 0.f;
+	ActionBeatSimMs = -1.0;
+	bWorldHold = false;
 	FlashRemainingSec = FlashTotalSec = 0.f;
 	PainRemainingSec = PainTotalSec = 0.f;
 	RecoilElapsedSec = -1.f;
@@ -452,6 +455,8 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	}
 
 	ActionState = FActionState();
+	// The beat the core waits for (T3 / T4): a frozen world holds the clip before it (PresentFrame).
+	ActionBeatSimMs = Event.contactMs > 0.0 ? Event.startMs + Event.contactMs : -1.0;
 	switch (Event.action)
 	{
 	case abyss::AnimAction::Attack: ActionState.Action = EAbyssCharacterAction::Attack; break;
@@ -650,12 +655,15 @@ void AAbyssCharacterActor::BeginDeath(const abyss::EvPlayAnim& Event)
 	ActionState = FActionState();
 	ActionState.Action = EAbyssCharacterAction::Death;
 	FreezeRemainingMs = 0.f;
+	ActionBeatSimMs = -1.0;
+	bWorldHold = false;
 	RecoilElapsedSec = -1.f;
 	if (UAbyssAnimInstance* Anim = GetAnim())
 	{
 		Anim->SetFrozen(false);
 	}
 	const float DurationMs = Event.durationMs > 0.0 ? static_cast<float>(Event.durationMs) : DeathDurationMs;
+	DeathTotalSec = FMath::Max(0.001f, DurationMs / 1000.f);
 	if (const FAbyssArtClip* Death = FindArtClip(FName(TEXT("Death"))))
 	{
 		const float Rate = Death->LengthSec > 0.f ? FMath::Clamp(Death->LengthSec / (DurationMs / 1000.f), 0.5f, 2.f) : 1.f;
@@ -1160,13 +1168,23 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 		if (FreezeRemainingMs <= 0.f)
 		{
 			FreezeRemainingMs = 0.f;
-			if (UAbyssAnimInstance* Anim = GetAnim())
-			{
-				Anim->SetFrozen(false);
-			}
 		}
 	}
-	const bool bFrozen = FreezeRemainingMs > 0.f;
+	// ---- frozen world (classes-stats-skills 19.1, D13): an attack / cast / signature whose Contact / Release the core
+	// is still waiting for holds its pose (play rate 0) until the world unfreezes, so the hit lands on the notify ----
+	const bool bBeatAction = ActionState.Action == EAbyssCharacterAction::Attack || ActionState.Action == EAbyssCharacterAction::Cast
+		|| ActionState.Action == EAbyssCharacterAction::Signature;
+	bWorldHold = Info.bFrozen && !bDying && bBeatAction && ActionBeatSimMs > 0.0 && Info.RenderSimMs < ActionBeatSimMs;
+	const bool bHitStop = FreezeRemainingMs > 0.f;
+	if (UAbyssAnimInstance* Anim = GetAnim())
+	{
+		const bool bAnimFrozen = bHitStop || bWorldHold;
+		if (Anim->IsFrozen() != bAnimFrozen)
+		{
+			Anim->SetFrozen(bAnimFrozen);
+		}
+	}
+	const bool bFrozen = bHitStop || bWorldHold;
 	const float ActionDelta = bFrozen ? 0.f : VisualDeltaSec;
 
 	// ---- root ----
@@ -1191,7 +1209,19 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 		// Dead without a death anim (state restored from a snapshot): stay hidden.
 		SetActorHiddenInGame(true);
 	}
-	UpdateLocomotion(Frame);
+	if (Info.bFrozen && Frame.bMoving)
+	{
+		// 19.1: locomotion stops in a frozen world (the core clears the hero's path); nobody runs in place - idle loops
+		// keep playing on presentation time.
+		FAbyssCharacterFrame Idle = Frame;
+		Idle.bMoving = false;
+		Idle.SpeedCmS = 0.f;
+		UpdateLocomotion(Idle);
+	}
+	else
+	{
+		UpdateLocomotion(Frame);
+	}
 
 	// ---- procedural offsets on the visual root ----
 	UpdateRecoil(ActionDelta);

@@ -1,6 +1,12 @@
 {
   "schemaVersion": 1,
-  "source": ["src/systems/HitFeedback.ts", "src/scenes/ZoneScene.ts", "src/systems/VFXManager.ts"],
+  "source": [
+    "src/systems/HitFeedback.ts",
+    "src/scenes/ZoneScene.ts",
+    "src/systems/VFXManager.ts",
+    "src/systems/SkillEffectSystem.ts",
+    "src/graphics/vfx/FxEngine.ts"
+  ],
   "profiles": {
     "tick": {
       "targetStopMs": 0,
@@ -81,6 +87,20 @@
     }
   },
   "shakeThrottleMs": 100,
+  "skillShakes": {
+    "throttleMs": 120,
+    "skills": {
+      "charge": {"durationMs": 150, "intensity": 0.008, "delayMs": 70, "at": "vfx"},
+      "lethal_strike": {"durationMs": 160, "intensity": 0.008, "delayMs": 0, "at": "vfx"},
+      "war_stomp": {"durationMs": 240, "intensity": 0.011, "delayMs": 0, "at": "vfx"},
+      "rampage": {"durationMs": 280, "intensity": 0.012, "delayMs": 0, "at": "vfx"},
+      "fireball": {"durationMs": 90, "intensity": 0.003, "delayMs": 0, "at": "impact"},
+      "meteor": {"durationMs": 320, "intensity": 0.015, "delayMs": 0, "at": "impact"},
+      "combustion": {"durationMs": 140, "intensity": 0.006, "delayMs": 60, "at": "vfx"},
+      "explosive_trap": {"durationMs": 200, "intensity": 0.009, "delayMs": 80, "at": "vfx"},
+      "chain_trap": {"durationMs": 120, "intensity": 0.004, "delayMs": 0, "at": "vfx"}
+    }
+  },
   "painTint": {"color": 16739179, "durationMs": 100},
   "lowHpVignette": {
     "belowHpRatio": 0.3,

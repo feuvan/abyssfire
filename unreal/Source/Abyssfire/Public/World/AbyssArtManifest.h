@@ -59,6 +59,68 @@ struct FAbyssArtAttachment
 	FName Socket;      // weapon_r / weapon_l
 };
 
+/**
+ * Runtime FX attachments of a hero (manifest assets.<hero>.fx, Art/blender/README.md hero section; art-inventory-ch1.md
+ * 3.1 "FX attachments"). The reviewed game-camera previews include them, so the shipped hero draws them too
+ * (UAbyssVfxSystem hero attachments): the visor glow card, weapon trails, the cast blade glow, the hero halo light pool
+ * and the emissive bloom strength.
+ */
+struct FAbyssArtGlowCard
+{
+	bool bValid = false;
+	FName Socket;                                  // skeletal socket on the body (visor)
+	FLinearColor Color = FLinearColor::White;
+	float RadiusCm = 10.f;
+	float Alpha = 0.75f;
+	float AlphaPerFx = 0.f;                        // + alphaPerFx x fx (1 while attacking / casting)
+	FLinearColor CoreColor = FLinearColor::White;  // hot core card (radius 0 = none)
+	float CoreRadiusCm = 0.f;
+	float CoreAlpha = 0.f;
+	float OffAtDeathFraction = 1.f;                // the card turns off at this fraction of the death clip
+};
+
+struct FAbyssArtTrail
+{
+	bool bValid = false;
+	FLinearColor Color = FLinearColor::White;
+	float Alpha = 0.55f;
+	FName TipSocket = FName(TEXT("tip"));          // static-mesh sockets on the main-hand weapon
+	FName MidSocket = FName(TEXT("mid"));
+	int32 Samples = 7;                             // trail length = Samples x SampleMs of history
+	float SampleMs = 13.f;
+};
+
+struct FAbyssArtBladeGlow
+{
+	bool bValid = false;
+	FLinearColor Color = FLinearColor::White;
+	float RadiusCm = 33.f;
+	float Alpha = 0.55f;
+	FLinearColor TipColor = FLinearColor::White;
+	float TipRadiusCm = 18.f;
+	float TipAlpha = 0.8f;
+	int32 EmberCount = 0;
+	FLinearColor EmberColor = FLinearColor::White;
+};
+
+struct FAbyssArtFx
+{
+	FAbyssArtGlowCard VisorGlow;
+	FAbyssArtTrail AttackTrail;
+	FAbyssArtTrail CastTrail;
+	FAbyssArtBladeGlow CastBladeGlow;
+	bool bHasHeroHalo = false;
+	FLinearColor HeroHaloColor = FLinearColor::White;
+	float HeroHaloRadiusCm = 200.f;
+	bool bHasBloom = false;
+	float BloomStrength = 0.f;
+
+	bool HasAttachments() const
+	{
+		return VisorGlow.bValid || AttackTrail.bValid || CastTrail.bValid || CastBladeGlow.bValid || bHasHeroHalo;
+	}
+};
+
 struct FAbyssArtAsset
 {
 	FName Name;
@@ -88,6 +150,8 @@ struct FAbyssArtAsset
 	FLinearColor ClassColor = FLinearColor::White;
 	bool bHasSpiritColor = false;
 	FLinearColor SpiritColor = FLinearColor::White;
+	/** fx attachments (heroes; empty for everything else). */
+	FAbyssArtFx Fx;
 
 	bool IsSkeletal() const;
 	FSoftObjectPath GetObjectPath() const;

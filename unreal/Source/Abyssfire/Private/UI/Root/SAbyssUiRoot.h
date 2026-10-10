@@ -98,7 +98,7 @@ public:
 	virtual bool IsPanelOpen(abyss::PanelId Panel) const override;
 	virtual void OpenSocketPanel(abyss::EquipSlot Slot) override;
 	virtual void MarkPanelsDirty() override;
-	virtual void ScheduleQuestChainOffer(const std::string& NpcId) override;
+	virtual void RequestQuestChainOffer(const std::string& QuestId, const std::string& NpcId) override;
 	virtual void AddLocalLog(const FString& Text, abyss::LogType Type) override;
 	virtual void ShowHelp() override;
 
@@ -151,7 +151,7 @@ private:
 	void CloseHelp();
 	void CloseError();
 	void RefreshLayerVisibility();
-	void TickQuestChain(double Now, const abyss::Snapshot* Snap);
+	void TickQuestChain(double Now, const abyss::Snapshot* Snap, bool bCommandsApplied);
 	void ApplyLocaleRefresh();
 
 	TSharedPtr<FAbyssUiContext> Ctx;
@@ -200,6 +200,9 @@ private:
 	std::string ChainNpc;
 	double ChainDue = 0.0;
 	bool bChainWaitStory = false;
+	/** Turn-in clicked, waiting for the core's EvQuestUpdate{TurnedIn} (T17 chains only after a successful turn-in). */
+	std::string PendingChainQuest;
+	std::string PendingChainNpc;
 
 	bool bCinematic = false;
 	bool bSession = false;

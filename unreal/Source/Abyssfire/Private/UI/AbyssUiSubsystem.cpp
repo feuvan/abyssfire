@@ -6,6 +6,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Misc/PackageName.h"
+#include "TextureResource.h"
 #include "UObject/UObjectGlobals.h"
 
 #include <string>
@@ -85,6 +86,7 @@ void UAbyssUiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// The theme and locale are applied once the data tables are loaded (GameInstance::Init runs after the subsystems).
 	Style = MakeShared<FAbyssUiStyle>();
+	CreateSolidWhiteTexture();
 	Context = MakeShared<FAbyssUiContext>(*this, Style.ToSharedRef());
 	Minimap = MakeShared<FAbyssMinimapTexture>(*this);
 
@@ -493,6 +495,31 @@ UTexture2D* UAbyssUiSubsystem::FindUiTexture(FName AssetName)
 	UE_LOG(LogAbyss, Verbose, TEXT("UI texture %s not found (fallback glyph)"), *Name);
 	MissingTextures.Add(AssetName);
 	return nullptr;
+}
+
+void UAbyssUiSubsystem::CreateSolidWhiteTexture()
+{
+	// 1x1 white texture behind FAbyssUiStyle::SolidTexture(): the custom-vertex shapes (diamonds, glows, pies, orbs) need
+	// a brush with a real resource proxy for FSlateRenderer::GetResourceHandle (a colour brush has none).
+	UTexture2D* Texture = UTexture2D::CreateTransient(1, 1, PF_B8G8R8A8, FName(TEXT("AbyssUiSolidWhite")));
+	if (Texture == nullptr || Texture->GetPlatformData() == nullptr || Texture->GetPlatformData()->Mips.Num() == 0)
+	{
+		UE_LOG(LogAbyss, Warning, TEXT("UI: could not create the solid white texture; custom-vertex shapes fall back to Slate's default texture"));
+		return;
+	}
+	Texture->Filter = TF_Nearest;
+	Texture->SRGB = true;
+	Texture->AddressX = TA_Clamp;
+	Texture->AddressY = TA_Clamp;
+	Texture->LODGroup = TEXTUREGROUP_UI;
+	FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+	void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
+	const FColor White = FColor::White;
+	FMemory::Memcpy(Data, &White, sizeof(FColor));
+	Mip.BulkData.Unlock();
+	Texture->UpdateResource();
+	KeepAlive(Texture);
+	Style->SetSolidTexture(Texture);
 }
 
 void UAbyssUiSubsystem::KeepAlive(UObject* Object)

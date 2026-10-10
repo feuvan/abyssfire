@@ -2,8 +2,9 @@
 // Blueprint: a native UAnimInstance whose proxy evaluates a crossfade between two sequences plus one additive layer
 // (the HurtAdd "jolt"). Timing belongs to the core: the owning actor starts clips from EvPlayAnim at the play rate and
 // start offset that put the authored Contact / Release beat on the core's contact time; this class only advances time
-// on the game thread (frozen during the actor's hit-stop) and reports the named notifies of the art manifest
-// (Contact, Release, FootL, FootR, FX_*) when the playhead crosses them.
+// on the game thread (in the proxy's PreUpdate, before the layers are copied; frozen during the actor's hit-stop or a
+// frozen-world hold) and reports the named notifies of the art manifest (Contact, Release, FootL, FootR, FX_*) when the
+// playhead crosses them.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -35,7 +36,7 @@ struct FAbyssAnimProxy : public FAnimInstanceProxy
 	}
 
 protected:
-	/** Game thread: copy the layers from the instance. */
+	/** Game thread: advance the instance's clock (UAbyssAnimInstance::AdvanceClock), then copy the layers. */
 	virtual void PreUpdate(UAnimInstance* InAnimInstance, float DeltaSeconds) override;
 	/** Worker thread: sample + blend + additive. Returns true (there is no node graph). */
 	virtual bool Evaluate(FPoseContext& Output) override;
@@ -84,9 +85,14 @@ public:
 protected:
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
 	virtual void DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy) override;
-	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 private:
+	/**
+	 * Advances the playheads, blend and additive fade and fires the crossed notifies. Called by FAbyssAnimProxy::PreUpdate
+	 * (game thread) before the layers are copied for evaluation; not from NativeUpdateAnimation, which UAnimInstance runs
+	 * after PreUpdateAnimation (the copy would always sample the previous update's times).
+	 */
+	void AdvanceClock(float DeltaSeconds);
 	void FireNotifies(float PrevTimeSec, float NewTimeSec, float LengthSec, bool bWrapped);
 
 	UPROPERTY(Transient)

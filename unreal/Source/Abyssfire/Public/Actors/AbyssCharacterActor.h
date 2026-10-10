@@ -151,6 +151,14 @@ public:
 	float GetVisualHeightCm() const { return VisualHeightCm; }
 	float GetBlobRadiusCm() const { return BlobRadiusCm; }
 	USkeletalMeshComponent* GetBody() const { return Body; }
+	/** Main-hand weapon mesh (trail sockets tip / mid / guard), nullptr when nothing is held. */
+	UStaticMeshComponent* GetMainHandMesh() const { return MainHandMesh; }
+	/** fx attachments of the art asset (heroes: visor glow, trails, blade glow, halo, bloom; empty otherwise). */
+	const FAbyssArtFx& GetArtFx() const { return ArtFx; }
+	EAbyssCharacterAction GetCurrentAction() const { return ActionState.Action; }
+	/** Death clip progress 0..1 (0 while alive). */
+	float GetDeathProgress() const { return bDying ? FMath::Clamp(DeathElapsedSec / FMath::Max(0.001f, DeathTotalSec), 0.f, 1.f) : 0.f; }
+	bool IsDying() const { return bDying; }
 	bool IsDeathFinished() const { return bDeathFinished; }
 	float GetPresentationOpacity() const { return 1.f - CpdValues[AbyssCpd::Fade]; }
 	bool HasArt() const { return bHasArt; }
@@ -230,6 +238,7 @@ private:
 	TObjectPtr<UStaticMesh> DefaultOffHand;
 
 	TArray<FAbyssArtClip> ArtClips;
+	FAbyssArtFx ArtFx;
 	const abyss::AnimTimingTable* AnimTiming = nullptr;
 	abyss::EntityId EntityId = abyss::kNoEntity;
 	abyss::EntityKind EntityKind = abyss::EntityKind::None;
@@ -257,6 +266,13 @@ private:
 	const char* CurrentState = "idle";   // anim_timing.json transition state names
 	int32 AttackVariant = 0;
 	float FreezeRemainingMs = 0.f;
+	/**
+	 * Frozen-world hold (classes-stats-skills 19.1, D13): sim time of the current action's Contact / Release beat
+	 * (EvPlayAnim startMs + contactMs; < 0 = none). While the world is frozen before that beat the clip holds at play
+	 * rate 0 and resumes on unfreeze, so the hit still lands on the notify. Separate from the hit-stop timer.
+	 */
+	double ActionBeatSimMs = -1.0;
+	bool bWorldHold = false;
 	float CurrentYawDeg = 0.f;
 	bool bHasYaw = false;
 
@@ -278,6 +294,7 @@ private:
 	bool bDeathFinished = false;
 	bool bHeroDeath = false;
 	float DeathElapsedSec = 0.f;
+	float DeathTotalSec = 0.5f;
 	FVector DeathThrowDir = FVector::ZeroVector;
 	float DeathThrowCm = 0.f;
 	float DeathAirSec = 0.f;

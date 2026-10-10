@@ -4,8 +4,8 @@
 // when the game world exists). The world builder replays the current widgets on registration.
 //
 // The world side decides WHICH entities get a world widget and WHERE they are; the UI side decides what they show and
-// reads the details (names, HP, quest markers, item quality, renames) from the snapshot by entity id each frame, so
-// locale changes and renames need no extra calls:
+// reads the details (names, HP, quest markers, item quality, renames) from the snapshot by entity id, so locale changes
+// need no extra calls (a rename re-sends the desc with the event's nameplate colour):
 //   Monster   -> nameplate + HP bar (monsters-ai.md 5: hidden at full HP; name colour by elite / affix / story boss)
 //   Npc       -> name + quest marker (NpcView::marker)
 //   Pet       -> "{name} Lv.{level}" (+ exhausted)
@@ -48,6 +48,9 @@ struct FAbyssWorldWidgetDesc
 	abyss::EntityKind EntityKind = abyss::EntityKind::None;
 	/** Monster def id / NPC id / pet id / item base id / lore id ("lore:<id>" props carry it after the colon). */
 	FString DefId;
+	/** Story-renamed monster: the nameplate colour of EvMonsterRenamed (0xRRGGBB). */
+	uint32 NameColorRgb = 0;
+	bool bHasNameColor = false;
 };
 
 /** Per-frame placement of one world widget. */

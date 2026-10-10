@@ -301,6 +301,8 @@ void SAbyssUiRoot::OnSessionStarted()
 	MiniBoss = FAbyssMiniBossLines();
 	ChainNpc.clear();
 	bChainWaitStory = false;
+	PendingChainQuest.clear();
+	PendingChainNpc.clear();
 	CoreModalChangedAt.Reset();
 	Hud->OnSessionStarted();
 	Story->Reset();
@@ -320,6 +322,8 @@ void SAbyssUiRoot::OnSessionEnded()
 	bSession = false;
 	bCinematic = false;
 	ChainNpc.clear();
+	PendingChainQuest.clear();
+	PendingChainNpc.clear();
 	Hud->OnSessionEnded();
 	Story->Reset();
 	WorldLayer->ClearWidgets();
@@ -345,7 +349,9 @@ void SAbyssUiRoot::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFrameInfo&
 	Story->Sync(Snap, Frame);
 	ReconcileCoreModals(Snap, Now);
 	TickPanels(Snap, Now);
-	TickQuestChain(Now, &Snap);
+	// GameSim::Frame applies queued commands in every step, and once per frame while the world is frozen (StepOnce
+	// without counting a step: the quest card freezes the world).
+	TickQuestChain(Now, &Snap, Frame.StepsThisFrame > 0 || Frame.bFrozen);
 }
 
 void SAbyssUiRoot::TickPanels(const abyss::Snapshot& Snap, double Now)
@@ -438,6 +444,15 @@ void SAbyssUiRoot::HandleCoreEvent(const abyss::Event& Event, const abyss::Snaps
 		{
 			WorldLayer->HandleQuestUpdate(*Update, *Snap);
 		}
+		if (Update->kind == abyss::EvQuestUpdate::Kind::TurnedIn && !PendingChainQuest.empty() && Update->questId == PendingChainQuest)
+		{
+			// T17: offer the giver's next card 900 ms after the confirmed turn-in (or after its cutscene).
+			ChainNpc = PendingChainNpc;
+			ChainDue = Ctx->Now() + 0.9;
+			bChainWaitStory = false;
+			PendingChainQuest.clear();
+			PendingChainNpc.clear();
+		}
 		MarkPanelsDirty();
 		return;
 	}
@@ -481,6 +496,26 @@ void SAbyssUiRoot::HandleCoreEvent(const abyss::Event& Event, const abyss::Snaps
 				PushPanel(abyss::PanelId::MiniBossDialogue, NpcId, false);
 			}
 		}
+		return;
+	}
+	if (std::holds_alternative<abyss::EvHeroDied>(Event))
+	{
+		// save-ui-input 5.1.1 (port rule): on HeroDied the UE closes its own modal UI - the socket panel, an in-game
+		// confirm and the item context popup (the core closes its modals itself and rejects every command these would
+		// send while Dying). Information panels stay open, read-only through IsHeroDying().
+		ClosePopup();
+		HideTooltip(nullptr);
+		if (bConfirmOpen && AppState == EAbyssAppState::InGame)
+		{
+			CloseConfirm(false);
+		}
+		const int32 SocketIndex = FindPanel(abyss::PanelId::Socket);
+		if (SocketIndex != INDEX_NONE)
+		{
+			RemoveSingle(SocketIndex, true);   // reports CmdClosePanel{Socket}
+			ReturnFocusToGame();
+		}
+		MarkPanelsDirty();
 		return;
 	}
 	if (const abyss::EvCraftPerformed* Craft = std::get_if<abyss::EvCraftPerformed>(&Event))
@@ -1459,15 +1494,20 @@ void SAbyssUiRoot::SetHoveredEntity(abyss::EntityId Id)
 	WorldLayer->SetHovered(Id);
 }
 
-void SAbyssUiRoot::ScheduleQuestChainOffer(const std::string& NpcId)
+void SAbyssUiRoot::RequestQuestChainOffer(const std::string& QuestId, const std::string& NpcId)
 {
-	ChainNpc = NpcId;
-	ChainDue = Ctx->Now() + 0.9;  // T17
-	bChainWaitStory = false;
+	PendingChainQuest = QuestId;
+	PendingChainNpc = NpcId;
 }
 
-void SAbyssUiRoot::TickQuestChain(double Now, const abyss::Snapshot* Snap)
+void SAbyssUiRoot::TickQuestChain(double Now, const abyss::Snapshot* Snap, bool bCommandsApplied)
 {
+	// The step that applied CmdQuestTurnIn was dispatched before this sync: no TurnedIn event -> the core rejected it.
+	if (!PendingChainQuest.empty() && bCommandsApplied)
+	{
+		PendingChainQuest.clear();
+		PendingChainNpc.clear();
+	}
 	if (ChainNpc.empty() || Snap == nullptr || bChainWaitStory || Now < ChainDue)
 	{
 		return;

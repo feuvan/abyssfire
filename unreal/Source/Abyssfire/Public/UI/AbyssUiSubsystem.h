@@ -18,7 +18,8 @@
 //
 // Every player action is an abyss::Command (GI->Submit); panels are driven by the snapshot and EvPanelRequest (core-owned
 // modals) and report the UE-owned ones with CmdOpenPanel / CmdClosePanel (SimTypes.h ownership, U7). All text comes from
-// the core's i18n tables (keys the tables do not have yet show an English fallback; see the report for the key list).
+// the core's i18n tables (port-only UI strings are PORT_STRINGS in Tools/export-data; Scripts/tests/test_ui_i18n_keys.py
+// fails when a literal key used here is missing from Data/i18n_zh-CN.json or i18n_en.json).
 //
 // UI-originated sound cues (clicks, panel toggles) are broadcast as abyss::EvSfx{cue, spatial = false, source =
 // kNoEntity} through the router's EvSfx delegate, so the audio layer has a single SFX path; they never reach the core.
@@ -112,6 +113,7 @@ private:
 	bool HandleUiInputRequest(const FAbyssUiInputRequest& Request);
 	void BindInputHandler();
 	void RefreshStyleLocale();
+	void CreateSolidWhiteTexture();
 
 	TSharedPtr<FAbyssUiContext> Context;
 	TSharedPtr<FAbyssUiStyle> Style;

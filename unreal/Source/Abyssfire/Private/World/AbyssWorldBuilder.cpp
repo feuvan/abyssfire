@@ -225,6 +225,7 @@ void UAbyssWorldBuilder::BindEvents()
 	Router.On<abyss::EvEquipmentChanged>().AddUObject(this, &UAbyssWorldBuilder::HandleEquipment);
 	Router.On<abyss::EvPet>().AddUObject(this, &UAbyssWorldBuilder::HandlePet);
 	Router.On<abyss::EvMonsterRenamed>().AddUObject(this, &UAbyssWorldBuilder::HandleRenamed);
+	Router.On<abyss::EvEmbersGained>().AddUObject(this, &UAbyssWorldBuilder::HandleEmbersGained);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssWorldBuilder::HandleSessionEnded);
 	SettingsHandle = GameInstance->OnSettingsChanged.AddUObject(this, &UAbyssWorldBuilder::ApplySettings);
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
@@ -1803,9 +1804,11 @@ void UAbyssWorldBuilder::HandleCameraShake(const abyss::EvCameraShake& Event)
 
 void UAbyssWorldBuilder::HandleVfxShake(float DurationMs, float Intensity)
 {
+	// Recipe shakes (skills, level-up): FxEngine's 120 ms throttle ran in UAbyssVfxSystem::RequestShake; the rig adds the
+	// no-override rule (combat-feel.md 11.5).
 	if (CameraRig != nullptr && bCameraShakeEnabled)
 	{
-		CameraRig->StartShake(DurationMs, Intensity);
+		CameraRig->StartShake(DurationMs, Intensity, EAbyssShakeSource::Direct);
 	}
 }
 
@@ -1908,15 +1911,28 @@ void UAbyssWorldBuilder::HandleLootDropped(const abyss::EvLootDropped& Event)
 {
 	const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
 	const abyss::Snapshot* Snap = GameInstance != nullptr ? GameInstance->GetSnapshot() : nullptr;
-	// The snapshot may not list the drop yet: the event's quality tints the bag.
-	SpawnProp(Event.drop, abyss::EntityKind::GroundItem, Event.baseId, "loot_bag", Event.pos, Snap, Event.quality);
-	// combat-feel.md 11.8: legendary / set drops flash 220 ms alpha .35 in the quality colour and shake 160 / 0.005.
+	// The snapshot may not list the drop yet: the event's quality tints the bag. The bag sits at its visual position
+	// (pos + visualOffset, as PresentProps places it every frame).
+	AAbyssPropActor* Bag = SpawnProp(Event.drop, abyss::EntityKind::GroundItem, Event.baseId, "loot_bag", Event.pos + Event.visualOffset,
+		Snap, Event.quality);
+	if (Event.cacheDrop)
+	{
+		// loot 6.1 / 18: a treasure-cache drop falls in from 30 px above with a bounce over fallInMs (400 ms) and has no
+		// ITEM_DROPPED feedback (loot 6.5: no legendary / set flash or shake).
+		if (Bag != nullptr && Event.fallInMs > 0.0)
+		{
+			Bag->BeginFallIn(30.f, static_cast<float>(Event.fallInMs / 1000.0));
+		}
+		return;
+	}
+	// combat-feel.md 11.8 / loot 6.5 (ITEM_DROPPED): legendary / set drops flash 220 ms alpha .35 in the quality colour and
+	// shake 160 / 0.005 through VFXManager's throttle.
 	if ((Event.quality == abyss::ItemQuality::Legendary || Event.quality == abyss::ItemQuality::Set) && CameraRig != nullptr)
 	{
 		CameraRig->Flash(AbyssWorldBuilderPrivate::QualityTint(Event.quality), 220.f, 0.35f);
 		if (bCameraShakeEnabled)
 		{
-			CameraRig->StartShake(160.f, 0.005f);
+			CameraRig->StartShake(160.f, 0.005f, EAbyssShakeSource::Throttled);
 		}
 	}
 }
@@ -2023,7 +2039,7 @@ void UAbyssWorldBuilder::HandleStoryStep(const abyss::EvStoryStep& Event)
 		if (bCameraShakeEnabled)
 		{
 			CameraRig->StartShake(static_cast<float>(Event.timedMs),
-				static_cast<float>(Event.step.hasIntensity ? Event.step.intensity : 0.01));
+				static_cast<float>(Event.step.hasIntensity ? Event.step.intensity : 0.01), EAbyssShakeSource::Direct);
 		}
 		break;
 	case abyss::StoryStepKind::Flash:
@@ -2095,14 +2111,38 @@ void UAbyssWorldBuilder::HandlePet(const abyss::EvPet& Event)
 
 void UAbyssWorldBuilder::HandleRenamed(const abyss::EvMonsterRenamed& Event)
 {
-	// Re-send the widget so the UI re-reads the (story) name and colour.
+	// Re-send the widget so the UI re-reads the (story) name; the nameplate colour is the event's (kept in the desc so a
+	// replay to a new world UI keeps it).
 	if (FWidgetEntry* Entry = Widgets.Find(Event.monster))
 	{
+		Entry->Desc.NameColorRgb = Event.color;
+		Entry->Desc.bHasNameColor = true;
 		if (IAbyssWorldUi* Ui = GetWorldUi())
 		{
 			Ui->AddWorldWidget(Entry->Desc);
 		}
 	}
+}
+
+void UAbyssWorldBuilder::HandleEmbersGained(const abyss::EvEmbersGained& Event)
+{
+	// quests-story-ch1.md 4 / OQ10: the "+N embers" kill float is shown in Chapter 1 too (DECISIONS Q3 hides the tower,
+	// its UI and log lines, not this float). Anchored at the corpse like +EXP / +G; the UI offsets it (-18, -52) px.
+	if (!Event.fromKill || Event.amount <= 0)
+	{
+		return;
+	}
+	IAbyssWorldUi* Ui = GetWorldUi();
+	if (Ui == nullptr)
+	{
+		return;
+	}
+	FAbyssFloatingTextRequest Request;
+	Request.Kind = abyss::FloatingTextKind::Embers;
+	Request.Value = static_cast<double>(Event.amount);
+	Request.WorldLocation = GroundAt(Event.pos);
+	Request.OverheadLocation = Request.WorldLocation + FVector(0.0, 0.0, 180.0);
+	Ui->ShowFloatingText(Request);
 }
 
 void UAbyssWorldBuilder::HandleSessionEnded()

@@ -1,9 +1,12 @@
 #include "UI/AbyssUiStyle.h"
 
 #include "Brushes/SlateColorBrush.h"
+#include "Brushes/SlateImageBrush.h"
 #include "Brushes/SlateNoResource.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "Engine/Texture.h"
 #include "Fonts/CompositeFont.h"
+#include "HAL/FileManager.h"
 #include "Misc/Char.h"
 #include "Misc/Paths.h"
 
@@ -13,6 +16,7 @@
 
 #include "abyss/data/UiData.h"
 
+#include "Abyssfire.h"
 #include "Framework/AbyssText.h"
 
 namespace
@@ -49,11 +53,37 @@ namespace
 		SubFont.CharacterRanges.Add(FInt32Range::Inclusive(0x20000, 0x2FFFF)); // CJK extension planes
 	}
 
+	/** Logs an error for every bundled font file that is missing (FreeType would silently render nothing / tofu). */
+	void AbyssUiStyle_VerifyFontFiles()
+	{
+		static bool bVerified = false;
+		if (bVerified)
+		{
+			return;
+		}
+		bVerified = true;
+		static const TCHAR* const Files[] = {
+			TEXT("NotoSansSC-Regular.otf"), TEXT("NotoSansSC-Bold.otf"), TEXT("NotoSansTC-Regular.otf"), TEXT("NotoSansTC-Bold.otf"),
+			TEXT("NotoSerifSC-Regular.otf"), TEXT("NotoSerifSC-Bold.otf"), TEXT("NotoSerifTC-Regular.otf"), TEXT("NotoSerifTC-Bold.otf"),
+			TEXT("Cinzel-Regular.ttf"), TEXT("Cinzel-Bold.ttf"),
+		};
+		for (const TCHAR* File : Files)
+		{
+			const FString Path = AbyssUiStyle_FontPath(File);
+			if (!IFileManager::Get().FileExists(*Path))
+			{
+				UE_LOG(LogAbyss, Error, TEXT("UI font missing: %s (staged from unreal/Fonts; run Scripts/fonts/build_fonts.py). Text in this face will not render."),
+					*Path);
+			}
+		}
+	}
+
 	const FAbyssUiFontFamilies& AbyssUiStyle_Families(bool bTraditional)
 	{
 		const int32 Index = bTraditional ? 1 : 0;
 		if (GAbyssUiFontFamilies[Index] == nullptr)
 		{
+			AbyssUiStyle_VerifyFontFiles();
 			FAbyssUiFontFamilies* Families = new FAbyssUiFontFamilies();
 
 			// Body: the script's Noto Sans; the other script's face fills missing glyphs (per-glyph fallback).
@@ -262,6 +292,18 @@ void FAbyssUiStyle::BuildStyles()
 		.SetNormalThumbImage(Thumb)
 		.SetHoveredThumbImage(ThumbHover)
 		.SetDraggedThumbImage(ThumbHover);
+}
+
+void FAbyssUiStyle::SetSolidTexture(UTexture* Texture)
+{
+	if (Texture == nullptr)
+	{
+		SolidTextureBrush = FSlateBrush();
+		bHasSolidTexture = false;
+		return;
+	}
+	SolidTextureBrush = FSlateImageBrush(Texture, FVector2D(1.0, 1.0));
+	bHasSolidTexture = true;
 }
 
 void FAbyssUiStyle::SetLocale(abyss::LocaleId InLocale)

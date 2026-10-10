@@ -62,7 +62,7 @@ of one id are picked with the web tile hash). Resolution chains:
 | Wall outcrops | `outcrop_<theme>`, `wall_<theme>`, `outcrop`, `wall` (variant by `tileHash(c, r, 3)`) |
 | Camp palisade | `palisade_<theme>`, `palisade`, `camp_wall`; gate posts `palisade_gate_<theme>`, `palisade_gate` |
 | Lily pads (1 in 6 water tiles) | `lily_pad_<theme>`, `decor_lily_pad`, `lily_pad` |
-| Decorations | `decor_<type>`, `<type>` (core jitter, tall types fade for occlusion) |
+| Decorations | `<type>`, `decor_<type>` — the core's W5 footprint lookup order (MapGen); variants of one game id must share `footprintTiles` / `blocking` (checked by Scripts/abyss_content/manifest.py) (core jitter, tall types fade for occlusion) |
 | Camp props | `camp_<type>`, `decor_camp_<type>`, `<type>` (tents / well / barrel / crate face the camp centre) |
 | Exits | `exit_portal`; sealed (W7): `exit_gate_sealed`, `exit_sealed` |
 | Story decorations | `decor_<spriteType>`, `<spriteType>`, `story_<id>` |
@@ -216,6 +216,8 @@ Presets: `glow`, `flash`, `glint`, `sparks`, `streak`, `motes`, `flames`, `smoke
 | Escort died | `death.burst` (#E67E22) |
 | Hero died | `death.burst` (#CC2222) (respawn stops the hero's status loops) |
 | EvLevelUp | `hero.levelup` |
+| EvResonance{started} / while Snapshot.hero.resonating | `hero.resonance` burst (class spirit colour) / loop `hero.resonance.aura` attached to the hero (stops on end, death, zone exit) |
+| Hero art fx (manifest `fx`, every frame) | visor glow card, weapon trail (tip / mid sockets), cast blade glow + embers on the `Glow` pool; hero halo light pool (no recipe) |
 | EvItemPicked / EvPotionPicked | `reward.gold` (8 coins, quality colour) / `reward.mana`, `reward.heal` |
 | EvDodgeStarted / EvHeroDash / elite blink | `hero.dodge` / `hero.dash` / `teleport.blink` |
 | EvTownPortal | `portal.channel` (loop) then `portal.arrive` |

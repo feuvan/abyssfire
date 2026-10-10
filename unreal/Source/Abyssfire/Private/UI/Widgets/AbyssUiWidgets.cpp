@@ -524,6 +524,11 @@ void SAbyssTabBar::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 		TSharedPtr<SButton> TabButton;
 		const TAttribute<int32> Active = ActiveIndex;
 		const auto IsActive = [Active, Index]() { return Active.Get(0) == Index; };
+		// The button content is filled after SAssignNew: the canvas captures a weak pointer to the button, and in
+		// `SAssignNew(...)` (= `MakeTDecl(...).Expose(TabButton) <<= FArguments()...[...]`) the right operand of the
+		// overloaded `<<=` is evaluated before Expose assigns TabButton (C++17 P0145), so capturing it inline would
+		// always capture null (same pattern as SAbyssMainMenu's slot cards).
+		TSharedRef<SOverlay> TabContent = SNew(SOverlay);
 		TSharedRef<SWidget> TabWidget = SAssignNew(TabButton, SButton)
 			.ButtonStyle(&Ctx->Style().InvisibleButton())
 			.ContentPadding(FMargin(0.f))
@@ -537,65 +542,66 @@ void SAbyssTabBar::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 				return FReply::Handled();
 			})
 			[
-				SNew(SOverlay)
-				+ SOverlay::Slot()
-				[
-					SNew(SAbyssCanvas, Ctx, [IsActive, Tab, WeakButton = TWeakPtr<SButton>(TabButton)](FAbyssPainter& P, const FVector2D& Size)
-					{
-						const bool bActive = IsActive();
-						const TSharedPtr<SButton> Pinned = WeakButton.Pin();
-						const bool bHovered = Pinned.IsValid() && Pinned->IsHovered();
-						const float Radius = 6.f;
-						if (bActive)
-						{
-							const FLinearColor Top = FAbyssUiStyle::Lighten(FMath::Lerp(FAbyssUiStyle::Rgb(0x2a2430), Tab.Accent, 0.35f), 0.05f);
-							const FLinearColor Bottom = FMath::Lerp(FAbyssUiStyle::Rgb(0x141117), Tab.Accent, 0.15f);
-							P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), FMath::Lerp(Top, Bottom, 0.5f), Radius);
-							P.VerticalGradient(FVector2D(1.0, Radius), FVector2D(Size.X - 2.0, Size.Y - Radius), Top, Bottom, 6);
-							P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), FLinearColor::Transparent, Radius, Tab.Accent, 1.2f);
-							P.Box(FVector2D(1.0, Size.Y - 2.5), FVector2D(Size.X - 2.0, 2.5), Tab.Accent);
-							P.Box(FVector2D(Radius, 1.5), FVector2D(Size.X - Radius * 2.f, Size.Y * 0.3), FLinearColor(1.f, 0.9f, 0.8f, 0.08f));
-						}
-						else
-						{
-							const FLinearColor Top = bHovered ? FAbyssUiStyle::Rgb(0x221d25) : FAbyssUiStyle::Rgb(0x1a171d);
-							P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), Top, Radius);
-							P.VerticalGradient(FVector2D(1.0, Radius), FVector2D(Size.X - 2.0, Size.Y - Radius), Top, FAbyssUiStyle::Rgb(0x0f0d11), 5);
-							P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), FLinearColor::Transparent, Radius,
-								FAbyssUiStyle::Rgb(0x3a343f), 1.f);
-						}
-					})
-				]
-				+ SOverlay::Slot()
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text(Tab.Label)
-						.Font(Ctx->Style().Body(FontPx, true, 1))
-						.ColorAndOpacity_Lambda([IsActive, Ctx]()
-						{
-							return FSlateColor(IsActive() ? Ctx->Style().Colors().Parchment : FAbyssUiStyle::Rgb(0x8a8290));
-						})
-					]
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(FMargin(6.f, 0.f, 0.f, 0.f))
-					[
-						SNew(STextBlock)
-						.Visibility(Tab.Badge.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible)
-						.Text(Tab.Badge)
-						.Font(Ctx->Style().Body(FontPx * 0.8f, true, 1))
-						.ColorAndOpacity(FSlateColor(Ctx->Style().Colors().GoldBright))
-					]
-				]
+				TabContent
 			];
+		const TWeakPtr<SButton> WeakButton = TabButton;
+		TabContent->AddSlot()
+		[
+			SNew(SAbyssCanvas, Ctx, [IsActive, Tab, WeakButton](FAbyssPainter& P, const FVector2D& Size)
+			{
+				const bool bActive = IsActive();
+				const TSharedPtr<SButton> Pinned = WeakButton.Pin();
+				const bool bHovered = Pinned.IsValid() && Pinned->IsHovered();
+				const float Radius = 6.f;
+				if (bActive)
+				{
+					const FLinearColor Top = FAbyssUiStyle::Lighten(FMath::Lerp(FAbyssUiStyle::Rgb(0x2a2430), Tab.Accent, 0.35f), 0.05f);
+					const FLinearColor Bottom = FMath::Lerp(FAbyssUiStyle::Rgb(0x141117), Tab.Accent, 0.15f);
+					P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), FMath::Lerp(Top, Bottom, 0.5f), Radius);
+					P.VerticalGradient(FVector2D(1.0, Radius), FVector2D(Size.X - 2.0, Size.Y - Radius), Top, Bottom, 6);
+					P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), FLinearColor::Transparent, Radius, Tab.Accent, 1.2f);
+					P.Box(FVector2D(1.0, Size.Y - 2.5), FVector2D(Size.X - 2.0, 2.5), Tab.Accent);
+					P.Box(FVector2D(Radius, 1.5), FVector2D(Size.X - Radius * 2.f, Size.Y * 0.3), FLinearColor(1.f, 0.9f, 0.8f, 0.08f));
+				}
+				else
+				{
+					const FLinearColor Top = bHovered ? FAbyssUiStyle::Rgb(0x221d25) : FAbyssUiStyle::Rgb(0x1a171d);
+					P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), Top, Radius);
+					P.VerticalGradient(FVector2D(1.0, Radius), FVector2D(Size.X - 2.0, Size.Y - Radius), Top, FAbyssUiStyle::Rgb(0x0f0d11), 5);
+					P.RoundBox(FVector2D::ZeroVector, Size + FVector2D(0.0, Radius), FLinearColor::Transparent, Radius,
+						FAbyssUiStyle::Rgb(0x3a343f), 1.f);
+				}
+			})
+		];
+		TabContent->AddSlot()
+		.HAlign(HAlign_Center)
+		.VAlign(VAlign_Center)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(Tab.Label)
+				.Font(Ctx->Style().Body(FontPx, true, 1))
+				.ColorAndOpacity_Lambda([IsActive, Ctx]()
+				{
+					return FSlateColor(IsActive() ? Ctx->Style().Colors().Parchment : FAbyssUiStyle::Rgb(0x8a8290));
+				})
+			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(6.f, 0.f, 0.f, 0.f))
+			[
+				SNew(STextBlock)
+				.Visibility(Tab.Badge.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible)
+				.Text(Tab.Badge)
+				.Font(Ctx->Style().Body(FontPx * 0.8f, true, 1))
+				.ColorAndOpacity(FSlateColor(Ctx->Style().Colors().GoldBright))
+			]
+		];
 		if (InArgs._TabWidth > 0.f)
 		{
 			Row->AddSlot()

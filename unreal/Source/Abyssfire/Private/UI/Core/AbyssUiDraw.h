@@ -4,7 +4,8 @@
 //
 // Primitives: boxes (flat / rounded / outlined via cached brushes), lines, text, strip gradients (stacked boxes, no
 // gradient element so the orientation semantics never matter), and filled convex polygons / pies / circle segments
-// through FSlateDrawElement::MakeCustomVerts with the white brush (the only custom-vertex use; see AbyssUiDraw.cpp).
+// through FSlateDrawElement::MakeCustomVerts with the style's texture-backed white brush (FAbyssUiStyle::SolidTexture;
+// the only custom-vertex use; see AbyssUiDraw.cpp).
 #pragma once
 
 #include "CoreMinimal.h"

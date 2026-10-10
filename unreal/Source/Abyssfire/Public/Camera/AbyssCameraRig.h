@@ -5,7 +5,8 @@
 // * Smooth follow with a 0.12 s time constant (world_constants.json camera.followLagSec); snaps on zone entry and long
 //   teleports. Zoom 0.75x .. 1.25x of the default distance (wheel / pinch through AddZoomInput, input agent).
 // * Shake (EvCameraShake, web units): same peak amplitude as the web (I x 3.24 x visible width / height at the focus),
-//   re-randomised every frame, exponential decay over the duration; honours the camera-shake setting.
+//   re-randomised every frame, exponential decay over the duration; honours the camera-shake setting. The web's
+//   throttles apply to every source (EAbyssShakeSource): no override while a shake runs, 100 ms VFXManager throttle.
 // * Camera fades: zone transitions, hero death, EvCameraFlash, all composed into the player camera manager's manual fade.
 // * Story `focus` steps pan the look-at pivot to a target with Sine in-out over the core's step time.
 // The rig does not tick: UAbyssWorldBuilder updates it from IAbyssWorldView::SyncFrame (before the camera manager).
@@ -24,6 +25,20 @@ namespace abyss
 {
 	struct WorldConstants;
 }
+
+/** Where a camera shake request comes from (combat-feel.md 11.5 throttles). */
+enum class EAbyssShakeSource : uint8
+{
+	/** EvCameraShake: the core's ShakeThrottle already applied the 100 ms / no-override rules on the sim clock. */
+	Core,
+	/** UE-originated VFXManager-style shakes (legendary / set drop): 100 ms throttle shared with Core, no override. */
+	Throttled,
+	/**
+	 * Direct camera shakes outside VFXManager: skill-authored recipe shakes (FxEngine.shake, whose own 120 ms throttle
+	 * UAbyssVfxSystem applies) and story `shake` steps. No override; they do not start the 100 ms window.
+	 */
+	Direct,
+};
 
 UCLASS(NotBlueprintable)
 class ABYSSFIRE_API AAbyssCameraRig : public AActor
@@ -50,8 +65,19 @@ public:
 	void PulseZoom(float Scale, float InSec, float OutSec);
 
 	// ---- shake / fades ----
-	void SetShakeEnabled(bool bEnabled) { bShakeEnabled = bEnabled; }
-	void StartShake(float DurationMs, float Intensity);
+	void SetShakeEnabled(bool bEnabled)
+	{
+		bShakeEnabled = bEnabled;
+		if (!bEnabled)
+		{
+			StopShake();
+		}
+	}
+	/**
+	 * Web rules (combat-feel.md 11.5): a request while a shake is running is dropped (Phaser: no override); a Throttled
+	 * request within 100 ms (real time) of the last accepted Core / Throttled shake is dropped (VFXManager throttle).
+	 */
+	void StartShake(float DurationMs, float Intensity, EAbyssShakeSource Source = EAbyssShakeSource::Core);
 	void StopShake();
 	/** Full-screen colour flash fading Alpha -> 0 over DurationMs (EvCameraFlash). */
 	void Flash(const FLinearColor& Color, float DurationMs, float Alpha);
@@ -123,6 +149,9 @@ private:
 	float ShakeElapsedSec = 0.f;
 	float ShakeIntensity = 0.f;
 	FVector ShakeOffset = FVector::ZeroVector;
+	/** Real-time clock of the rig (UpdateRig deltas) and the last accepted VFXManager-path shake on it. */
+	double RigRealClockSec = 0.0;
+	double LastThrottledShakeSec = -1.0e9;
 	FRandomStream ShakeRandom;
 
 	// fades

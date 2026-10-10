@@ -179,6 +179,8 @@ private:
 	TArray<FIntPoint> ExitTiles;
 
 	FAbyssQualityProfile QualityProfile;
+	/** Art manifest hero fx.bloom.strength (0 = none): the zone bloom intensity unless abyss.Bloom overrides it. */
+	float ArtBloomStrength = 0.f;
 	FAbyssMoodLook Mood;
 	abyss::MapTheme Theme = abyss::MapTheme::Plains;
 	std::string ThemeName;

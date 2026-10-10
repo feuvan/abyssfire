@@ -4,6 +4,8 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture.h"
 #include "Engine/Texture2D.h"
@@ -17,6 +19,7 @@
 #include <string_view>
 
 #include "abyss/base/Enums.h"
+#include "abyss/data/ClassData.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/data/SkillData.h"
 
@@ -223,6 +226,7 @@ void UAbyssVfxSystem::BindEvents()
 	Router.On<abyss::EvGroundEffectStarted>().AddUObject(this, &UAbyssVfxSystem::HandleGroundStarted);
 	Router.On<abyss::EvGroundEffectTriggered>().AddUObject(this, &UAbyssVfxSystem::HandleGroundTriggered);
 	Router.On<abyss::EvGroundEffectEnded>().AddUObject(this, &UAbyssVfxSystem::HandleGroundEnded);
+	Router.On<abyss::EvResonance>().AddUObject(this, &UAbyssVfxSystem::HandleResonance);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssVfxSystem::ClearAll);
 	bEventsBound = true;
 }
@@ -258,6 +262,11 @@ void UAbyssVfxSystem::ClearAll()
 	Anchors.Reset();
 	FreeAnchors.Reset();
 	PortalHandle = 0;
+	TrailSamples.Reset();
+	HeroHaloHandle = 0;
+	HeroHaloActor.Reset();
+	ResonanceAuraHandle = 0;
+	ResonanceAuraActor.Reset();
 	// Hide every instance right away (the next Render would do it too, but a zone teardown may not render again).
 	for (FPool& Pool : Pools)
 	{
@@ -265,8 +274,11 @@ void UAbyssVfxSystem::ClearAll()
 		if (Component != nullptr && Pool.Capacity > 0)
 		{
 			Pool.Transforms.Init(AbyssVfxSystemPrivate::HiddenTransform(), Pool.Capacity);
-			Component->BatchUpdateInstancesTransforms(0, Pool.Transforms, /*bWorldSpace*/ false, /*bMarkRenderStateDirty*/ true,
+			// No proxy recreation: the ISM's instance data manager (5.4+) sends the changed instances as an incremental
+			// update at the end of the frame (MarkRenderInstancesDirty is the explicit, lightweight request for it).
+			Component->BatchUpdateInstancesTransforms(0, Pool.Transforms, /*bWorldSpace*/ false, /*bMarkRenderStateDirty*/ false,
 				/*bTeleport*/ true);
+			Component->MarkRenderInstancesDirty();
 		}
 		Pool.UsedLastFrame = 0;
 	}
@@ -1277,6 +1289,9 @@ void UAbyssVfxSystem::Render()
 		Emit(P.Pool, Transform, P.Color, Alpha, P.Variant, T);
 	}
 
+	// Hero attachments of the art manifest (visor glow card, weapon trail, cast blade glow).
+	RenderHeroFx();
+
 	// Fake light pools (ue58-platform.md 6.2): additive ground glows, nearest to the focus first, capped by the tier.
 	if (Lights.Num() > 0)
 	{
@@ -1352,7 +1367,10 @@ void UAbyssVfxSystem::Render()
 			Component->SetCustomData(Index, TArrayView<const float>(Pool.CustomData.GetData() + Index * AbyssVfxIcd::Count,
 				AbyssVfxIcd::Count), /*bMarkRenderStateDirty*/ false);
 		}
-		Component->MarkRenderStateDirty();
+		// Incremental instance update (FPrimitiveInstanceDataManager, 5.4+), never MarkRenderStateDirty: that would destroy
+		// and re-create the scene proxy of every active pool every frame (full FScene remove / add, instance re-upload,
+		// lost velocity / TSR history).
+		Component->MarkRenderInstancesDirty();
 		Pool.UsedLastFrame = Used;
 	}
 }
@@ -1405,6 +1423,7 @@ void UAbyssVfxSystem::Tick(float VisualDeltaSec, const FAbyssFrameInfo& Frame, c
 	const float DeltaSec = FMath::Clamp(VisualDeltaSec, 0.f, 0.25f);
 	UpdateEmitters(DeltaSec * 1000.f);
 	UpdateParticles(DeltaSec);
+	UpdateHeroFx(DeltaSec, Snap);
 	if ((FrameCounter & 31u) == 0u)
 	{
 		SweepAnchors();
@@ -1793,6 +1812,12 @@ void UAbyssVfxSystem::HandleHeroDied(const abyss::EvHeroDied& Event)
 		Stop(PortalHandle, true);
 		PortalHandle = 0;
 	}
+	if (ResonanceAuraHandle != 0)
+	{
+		Stop(ResonanceAuraHandle);
+		ResonanceAuraHandle = 0;
+		ResonanceAuraActor.Reset();
+	}
 }
 
 void UAbyssVfxSystem::HandleHeroRespawned(const abyss::EvHeroRespawned& Event)
@@ -1803,6 +1828,322 @@ void UAbyssVfxSystem::HandleHeroRespawned(const abyss::EvHeroRespawned& Event)
 		{
 			Stop(It.Value(), true);
 			It.RemoveCurrent();
+		}
+	}
+}
+
+// =====================================================================================================================
+// Spirit resonance (combat-feel.md 16: cast-glow ring in the class colour; classes-stats-skills 14.3 / 17: aura burst on
+// start, aura on the hero while resonating)
+// =====================================================================================================================
+
+FLinearColor UAbyssVfxSystem::HeroSpiritColor(const abyss::Snapshot* Snap) const
+{
+	const UWorld* OwningWorld = GetWorld();
+	const UAbyssGameInstance* GameInstance = OwningWorld ? Cast<UAbyssGameInstance>(OwningWorld->GetGameInstance()) : nullptr;
+	const abyss::DataStore* Data = GameInstance != nullptr ? GameInstance->GetData() : nullptr;
+	if (Snap == nullptr && GameInstance != nullptr)
+	{
+		Snap = GameInstance->GetSnapshot();
+	}
+	if (Data != nullptr && Snap != nullptr)
+	{
+		const uint32 Rgb = Data->Classes().spirit.For(Snap->hero.cls).visualColor;
+		if (Rgb != 0u)
+		{
+			return AbyssWorldUtil::ColorFromRgb(Rgb);
+		}
+	}
+	return AbyssWorldUtil::ColorFromRgb(0xFFB45C);
+}
+
+void UAbyssVfxSystem::StartResonanceAura(AActor* Hero, const FLinearColor& Color)
+{
+	if (Hero == nullptr)
+	{
+		return;
+	}
+	FAbyssVfxContext Context;
+	Context.Origin = Context.Target = Context.Point = Hero->GetActorLocation();
+	Context.OriginActor = Hero;
+	Context.TargetActor = Hero;
+	Context.bHasColor = true;
+	Context.Color = Color;
+	ResonanceAuraHandle = Play(FName(TEXT("hero.resonance.aura")), Context);
+	ResonanceAuraActor = Hero;
+}
+
+void UAbyssVfxSystem::HandleResonance(const abyss::EvResonance& Event)
+{
+	if (!Event.started)
+	{
+		if (ResonanceAuraHandle != 0)
+		{
+			Stop(ResonanceAuraHandle);
+			ResonanceAuraHandle = 0;
+			ResonanceAuraActor.Reset();
+		}
+		return;
+	}
+	AActor* Hero = FindActor(abyss::kHeroEntityId);
+	if (Hero == nullptr)
+	{
+		return;   // UpdateHeroFx starts the aura once the hero actor exists
+	}
+	const FLinearColor Color = HeroSpiritColor(nullptr);
+	FAbyssVfxContext Context;
+	Context.Origin = Context.Target = Context.Point = Hero->GetActorLocation();
+	Context.OriginActor = Hero;
+	Context.TargetActor = Hero;
+	Context.bHasColor = true;
+	Context.Color = Color;
+	Play(FName(TEXT("hero.resonance")), Context);
+	if (ResonanceAuraHandle == 0)
+	{
+		StartResonanceAura(Hero, Color);
+	}
+}
+
+// =====================================================================================================================
+// Hero attachments (art manifest fx: Art/blender/README.md hero section, art-inventory-ch1.md 3.1)
+// =====================================================================================================================
+
+void UAbyssVfxSystem::UpdateHeroFx(float DeltaSec, const abyss::Snapshot& Snap)
+{
+	HeroFxClockSec += static_cast<double>(DeltaSec);
+	AAbyssCharacterActor* Hero = Cast<AAbyssCharacterActor>(FindActor(abyss::kHeroEntityId));
+	const bool bHeroAlive = Snap.hero.life == abyss::HeroLife::Alive && Snap.hero.hp > 0.0;
+
+	// ---- resonance aura: kept alive while the snapshot says the hero resonates (stops on end, death, zone exit) ----
+	const bool bWantAura = Hero != nullptr && Snap.hero.resonating && bHeroAlive;
+	if (ResonanceAuraHandle != 0 && (!bWantAura || ResonanceAuraActor.Get() != Hero || !IsPlaying(ResonanceAuraHandle)))
+	{
+		Stop(ResonanceAuraHandle);
+		ResonanceAuraHandle = 0;
+		ResonanceAuraActor.Reset();
+	}
+	if (bWantAura && ResonanceAuraHandle == 0)
+	{
+		StartResonanceAura(Hero, HeroSpiritColor(&Snap));
+	}
+
+	const bool bHeroVisible = Hero != nullptr && Hero->HasArt() && !Hero->IsHidden();
+	const FAbyssArtFx* Fx = Hero != nullptr ? &Hero->GetArtFx() : nullptr;
+
+	// ---- hero halo (world-map-nav.md 14.1: hero light r 80 px -> fx.heroHalo.radiusCm, #FFEEDD, intensity 0.4) ----
+	const bool bWantHalo = bHeroVisible && Fx->bHasHeroHalo && !Hero->IsDeathFinished();
+	bool bHaloAlive = false;
+	if (HeroHaloHandle != 0)
+	{
+		for (const FLight& Light : Lights)
+		{
+			if (Light.Handle == HeroHaloHandle)
+			{
+				bHaloAlive = true;
+				break;
+			}
+		}
+	}
+	if (HeroHaloHandle != 0 && (!bWantHalo || !bHaloAlive || HeroHaloActor.Get() != Hero))
+	{
+		Stop(HeroHaloHandle);
+		HeroHaloHandle = 0;
+		HeroHaloActor.Reset();
+	}
+	if (bWantHalo && HeroHaloHandle == 0)
+	{
+		const int32 Anchor = AddAnchor(Hero, EAbyssVfxHeight::Ground, 0.f, Hero->GetActorLocation());
+		HeroHaloHandle = NextHandle++;
+		if (NextHandle <= 0)
+		{
+			NextHandle = 1;
+		}
+		FLight& Light = Lights.AddDefaulted_GetRef();
+		Light.Handle = HeroHaloHandle;
+		Light.Anchor = Anchor;
+		Light.RadiusCm = Fx->HeroHaloRadiusCm;
+		Light.Alpha = 0.4f;
+		Light.bFlicker = false;
+		Light.bPersistent = true;
+		Light.Color = Fx->HeroHaloColor;
+		HeroHaloActor = Hero;
+	}
+
+	// ---- weapon trail history: tip / mid sockets of the main-hand weapon over the last Samples x SampleMs ----
+	const FAbyssArtTrail* Trail = nullptr;
+	bool bCast = false;
+	if (bHeroVisible && !Hero->IsDying())
+	{
+		const EAbyssCharacterAction Action = Hero->GetCurrentAction();
+		bCast = Action == EAbyssCharacterAction::Cast || Action == EAbyssCharacterAction::Signature;
+		if (Action == EAbyssCharacterAction::Attack && Fx->AttackTrail.bValid)
+		{
+			Trail = &Fx->AttackTrail;
+		}
+		else if (bCast && Fx->CastTrail.bValid)
+		{
+			Trail = &Fx->CastTrail;
+		}
+	}
+	const UStaticMeshComponent* Weapon = Hero != nullptr ? Hero->GetMainHandMesh() : nullptr;
+	if (Trail != nullptr && Weapon != nullptr && Weapon->IsVisible() && Weapon->GetStaticMesh() != nullptr
+		&& Weapon->DoesSocketExist(Trail->TipSocket) && Weapon->DoesSocketExist(Trail->MidSocket))
+	{
+		if (bTrailIsCast != bCast)
+		{
+			TrailSamples.Reset();
+			bTrailIsCast = bCast;
+		}
+		FTrailSample& Sample = TrailSamples.AddDefaulted_GetRef();
+		Sample.Tip = Weapon->GetSocketLocation(Trail->TipSocket);
+		Sample.Mid = Weapon->GetSocketLocation(Trail->MidSocket);
+		Sample.TimeSec = HeroFxClockSec;
+		const double MaxAgeSec = static_cast<double>(Trail->Samples) * static_cast<double>(Trail->SampleMs) / 1000.0;
+		const double Now = HeroFxClockSec;
+		TrailSamples.RemoveAll([Now, MaxAgeSec](const FTrailSample& Old) { return Now - Old.TimeSec > MaxAgeSec + 1.0e-4; });
+		while (TrailSamples.Num() > Trail->Samples + 1)
+		{
+			TrailSamples.RemoveAt(0);
+		}
+	}
+	else
+	{
+		TrailSamples.Reset();
+	}
+}
+
+void UAbyssVfxSystem::EmitInstance(int32 PoolIndex, const FTransform& Transform, const FLinearColor& Color, float Alpha, float Variant,
+	float Age)
+{
+	if (!Pools.IsValidIndex(PoolIndex))
+	{
+		return;
+	}
+	FPool& Pool = Pools[PoolIndex];
+	Pool.Transforms.Add(Transform);
+	Pool.CustomData.Append({ Color.R, Color.G, Color.B, Alpha, Variant, Age });
+}
+
+void UAbyssVfxSystem::RenderHeroFx()
+{
+	using namespace AbyssVfxSystemPrivate;
+	const AAbyssCharacterActor* Hero = Cast<AAbyssCharacterActor>(FindActor(abyss::kHeroEntityId));
+	if (Hero == nullptr || !Hero->HasArt() || Hero->IsHidden())
+	{
+		return;
+	}
+	const FAbyssArtFx& Fx = Hero->GetArtFx();
+	if (!Fx.VisorGlow.bValid && !Fx.CastBladeGlow.bValid && TrailSamples.Num() < 2)
+	{
+		return;
+	}
+	FAbyssVfxLayer GlowLayer;
+	GlowLayer.Sprite = FName(TEXT("Glow"));
+	GlowLayer.Blend = EAbyssVfxBlend::Additive;
+	const int32 GlowPool = FindOrCreatePool(GlowLayer);
+	if (GlowPool == INDEX_NONE)
+	{
+		return;
+	}
+	const float Opacity = FMath::Clamp(Hero->GetPresentationOpacity(), 0.f, 1.f);
+	const EAbyssCharacterAction Action = Hero->GetCurrentAction();
+	const bool bCast = Action == EAbyssCharacterAction::Cast || Action == EAbyssCharacterAction::Signature;
+	const bool bAction = bCast || Action == EAbyssCharacterAction::Attack;
+	const auto Card = [this, GlowPool](const FVector& Position, float RadiusCm, const FLinearColor& Color, float Alpha)
+	{
+		if (Alpha <= 0.002f || RadiusCm <= 0.f)
+		{
+			return;
+		}
+		// Pulled towards the camera along the view ray (same screen position) so the mesh in front does not clip it.
+		const FVector ToCamera = (CameraLocation - Position).GetSafeNormal();
+		const float Diameter = RadiusCm * 2.f / 100.f;
+		EmitInstance(GlowPool, AxesTransform(Position + ToCamera * RadiusCm, CameraRight, CameraUp, Diameter, Diameter), Color,
+			FMath::Min(Alpha, 1.f), 0.f, 0.f);
+	};
+
+	// ---- visor glow card: additive, faded by how much the visor faces the camera, off at offAtDeathFraction ----
+	const FAbyssArtGlowCard& Visor = Fx.VisorGlow;
+	const USkeletalMeshComponent* Body = Hero->GetBody();
+	if (Visor.bValid && Body != nullptr && Body->DoesSocketExist(Visor.Socket)
+		&& (!Hero->IsDying() || Hero->GetDeathProgress() < Visor.OffAtDeathFraction))
+	{
+		const FVector VisorPos = Body->GetSocketLocation(Visor.Socket);
+		static const FName HeadSocket(TEXT("fx_head"));
+		FVector Forward = Body->DoesSocketExist(HeadSocket) ? VisorPos - Body->GetSocketLocation(HeadSocket) : FVector::ZeroVector;
+		if (Forward.SizeSquared() < 1.0)
+		{
+			Forward = Hero->GetActorForwardVector();
+		}
+		Forward = Forward.GetSafeNormal();
+		const FVector ToCamera = (CameraLocation - VisorPos).GetSafeNormal();
+		const float Facing = FMath::Clamp(2.f * static_cast<float>(FVector::DotProduct(Forward, ToCamera)) + 0.3f, 0.f, 1.f);
+		const float FxAmount = bAction ? 1.f : 0.f;
+		Card(VisorPos, Visor.RadiusCm, Visor.Color, FMath::Clamp(Visor.Alpha + Visor.AlphaPerFx * FxAmount, 0.f, 1.f) * Facing * Opacity);
+		Card(VisorPos, Visor.CoreRadiusCm, Visor.CoreColor, Visor.CoreAlpha * Facing * Opacity);
+	}
+
+	// ---- weapon trail: one soft quad per sample step between the tip / mid lines, newest the most opaque ----
+	const FAbyssArtTrail& Trail = bTrailIsCast ? Fx.CastTrail : Fx.AttackTrail;
+	if (Trail.bValid && TrailSamples.Num() >= 2)
+	{
+		const int32 Count = TrailSamples.Num();
+		for (int32 Index = 0; Index + 1 < Count; ++Index)
+		{
+			const FTrailSample& A = TrailSamples[Index];
+			const FTrailSample& B = TrailSamples[Index + 1];
+			const FVector CenterA = (A.Tip + A.Mid) * 0.5;
+			const FVector CenterB = (B.Tip + B.Mid) * 0.5;
+			const FVector Blade = ((A.Tip - A.Mid) + (B.Tip - B.Mid)) * 0.5;
+			const double BladeLength = Blade.Size();
+			if (BladeLength < 1.0)
+			{
+				continue;
+			}
+			const FVector BladeDir = Blade / BladeLength;
+			FVector Sweep = CenterB - CenterA;
+			Sweep -= BladeDir * FVector::DotProduct(Sweep, BladeDir);
+			const double SweepLength = Sweep.Size();
+			if (SweepLength < 0.5)
+			{
+				continue;
+			}
+			const FVector SweepDir = Sweep / SweepLength;
+			const float Newness = static_cast<float>(Index + 1) / static_cast<float>(Count - 1);
+			EmitInstance(GlowPool, AxesTransform((CenterA + CenterB) * 0.5, SweepDir, BladeDir, static_cast<float>(SweepLength * 1.6 / 100.0),
+				static_cast<float>(BladeLength * 1.3 / 100.0)), Trail.Color, Trail.Alpha * Newness * Opacity, 0.f, 0.f);
+		}
+	}
+
+	// ---- cast blade glow (+ tip glow, embers spiralling up the blade) ----
+	const UStaticMeshComponent* Weapon = Hero->GetMainHandMesh();
+	const FAbyssArtBladeGlow& BladeGlow = Fx.CastBladeGlow;
+	if (bCast && !Hero->IsDying() && BladeGlow.bValid && Weapon != nullptr && Weapon->IsVisible() && Weapon->GetStaticMesh() != nullptr)
+	{
+		static const FName TipSocket(TEXT("tip"));
+		static const FName MidSocket(TEXT("mid"));
+		static const FName GuardSocket(TEXT("guard"));
+		const FVector Base = Weapon->GetComponentLocation();
+		const FVector TipPos = Weapon->DoesSocketExist(TipSocket) ? Weapon->GetSocketLocation(TipSocket) : Base;
+		const FVector MidPos = Weapon->DoesSocketExist(MidSocket) ? Weapon->GetSocketLocation(MidSocket) : (Base + TipPos) * 0.5;
+		const FVector GuardPos = Weapon->DoesSocketExist(GuardSocket) ? Weapon->GetSocketLocation(GuardSocket) : Base;
+		Card(MidPos, BladeGlow.RadiusCm, BladeGlow.Color, BladeGlow.Alpha * Opacity);
+		Card(TipPos, BladeGlow.TipRadiusCm, BladeGlow.TipColor, BladeGlow.TipAlpha * Opacity);
+		const FVector BladeAxis = TipPos - GuardPos;
+		if (BladeGlow.EmberCount > 0 && BladeAxis.SizeSquared() > 1.0)
+		{
+			const FVector AxisDir = BladeAxis.GetSafeNormal();
+			const FVector Side = FVector::CrossProduct(AxisDir, CameraForward).GetSafeNormal(UE_SMALL_NUMBER, CameraRight);
+			const FVector Depth = FVector::CrossProduct(AxisDir, Side);
+			for (int32 Ember = 0; Ember < BladeGlow.EmberCount; ++Ember)
+			{
+				const float U = FMath::Frac(static_cast<float>(HeroFxClockSec * 1.4) + static_cast<float>(Ember) / static_cast<float>(BladeGlow.EmberCount));
+				const float Angle = U * 4.f * UE_PI + static_cast<float>(Ember) * 2.f * UE_PI / static_cast<float>(BladeGlow.EmberCount);
+				const FVector Position = GuardPos + BladeAxis * U + (Side * FMath::Cos(Angle) + Depth * FMath::Sin(Angle)) * 4.0;
+				const float Diameter = 5.f / 100.f;
+				EmitInstance(GlowPool, AxesTransform(Position, CameraRight, CameraUp, Diameter, Diameter), BladeGlow.EmberColor,
+					(1.f - U) * Opacity, 0.f, 0.f);
+			}
 		}
 	}
 }
@@ -1929,7 +2270,8 @@ void UAbyssVfxSystem::HandleLootDropped(const abyss::EvLootDropped& Event)
 		return;
 	}
 	FAbyssVfxContext Context;
-	Context.Origin = Context.Target = Context.Point = TileToGround(Event.pos);
+	// At the bag's visual position (UAbyssWorldBuilder places the loot actor at pos + visualOffset).
+	Context.Origin = Context.Target = Context.Point = TileToGround(Event.pos + Event.visualOffset);
 	Context.bHasColor = true;
 	Context.Color = AbyssVfxSystemPrivate::QualityColor(Event.quality);
 	switch (Event.quality)

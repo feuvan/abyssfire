@@ -229,3 +229,7 @@ python3 unreal/Scripts/tests/fetch_ue_stub.py             # optional: UE Python 
   with *Editor Preferences → Python → Developer Mode*) — prefer the 5.8.3 one once installed.
 * `test_flow.py` runs the whole build twice against `tests/fake_unreal.py` (an in-memory `unreal`) and checks the
   results and that a second run is a no-op. `test_manifest.py` covers the planner, `pngio` and the generated textures.
+* `test_ui_i18n_keys.py` greps `Source/Abyssfire` for every literal i18n key (Loc* / LocalizeOr / NameOr / `{ "key",
+  TEXT("English") }` rows) and fails when one is missing from `Data/i18n_zh-CN.json` or `Data/i18n_en.json` (the UI
+  would silently show the English fallback in the zh-CN build). New UI text goes into `PORT_STRINGS`
+  (`Tools/export-data/src/tables/i18n.ts`); then re-run the exporter and `Scripts/fonts/build_fonts.py`.
