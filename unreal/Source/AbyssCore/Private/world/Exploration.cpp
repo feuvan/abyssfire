@@ -23,15 +23,18 @@ void ExplorationGrid::Reset(int32_t cols, int32_t rows) {
 
 void ExplorationGrid::Reveal(double col, double row, double radius) {
   if (cols_ <= 0 || rows_ <= 0) return;
-  const int32_t r0 = std::max(0, static_cast<int32_t>(std::floor(row - radius)));
-  const int32_t r1 = std::min(rows_ - 1, static_cast<int32_t>(std::ceil(row + radius)));
-  const int32_t c0 = std::max(0, static_cast<int32_t>(std::floor(col - radius)));
-  const int32_t c1 = std::min(cols_ - 1, static_cast<int32_t>(std::ceil(col + radius)));
+  // FloorInt / CeilInt saturate (a non-finite position reveals nothing instead of overflowing).
+  const int32_t r0 = std::max(0, FloorInt(row - radius));
+  const int32_t r1 = std::min(rows_ - 1, CeilInt(row + radius));
+  const int32_t c0 = std::max(0, FloorInt(col - radius));
+  const int32_t c1 = std::min(cols_ - 1, CeilInt(col + radius));
   const double r2 = radius * radius;
   for (int32_t r = r0; r <= r1; ++r) {
     for (int32_t c = c0; c <= c1; ++c) {
       const double dc = c - col, dr = r - row;
-      if (dc * dc + dr * dr <= r2) bits_[static_cast<size_t>(r) * static_cast<size_t>(cols_) + static_cast<size_t>(c)] = 1;
+      if (dc * dc + dr * dr <= r2) {
+        bits_[static_cast<size_t>(r) * static_cast<size_t>(cols_) + static_cast<size_t>(c)] = 1;
+      }
     }
   }
 }
@@ -65,7 +68,9 @@ bool FogOfWarCore::Update(double col, double row) {
   const int32_t maxC = std::min(cols_ - 1, CeilInt(col + vr));
   const int32_t minR = std::max(0, FloorInt(row - vr));
   const int32_t maxR = std::min(rows_ - 1, CeilInt(row + vr));
-  auto at = [this](int32_t c, int32_t r) { return static_cast<size_t>(r) * static_cast<size_t>(cols_) + static_cast<size_t>(c); };
+  auto at = [this](int32_t c, int32_t r) {
+    return static_cast<size_t>(r) * static_cast<size_t>(cols_) + static_cast<size_t>(c);
+  };
   for (int32_t r = minR; r <= maxR; ++r) {
     const double dr = r - row;
     for (int32_t c = minC; c <= maxC; ++c) {

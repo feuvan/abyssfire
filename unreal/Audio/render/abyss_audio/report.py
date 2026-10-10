@@ -1,0 +1,93 @@
+"""Verification reports: per-category contact sheets (waveform envelope + spectrum) and a stats table.
+
+A listening test is impossible where the renders are made; these let a reviewer spot silence, clipping, clicks, DC,
+missing layers or wrong spectral balance at a glance."""
+
+from __future__ import annotations
+
+import math
+import pathlib
+
+import numpy as np
+
+
+def _envelope(x: np.ndarray, bins: int = 600):
+    m = np.max(np.abs(x), axis=0) if x.ndim == 2 else np.abs(x)
+    s = x.mean(axis=0) if x.ndim == 2 else x
+    n = s.shape[0]
+    edges = np.linspace(0, n, bins + 1).astype(int)
+    lo = np.array([s[a:b].min() if b > a else 0 for a, b in zip(edges[:-1], edges[1:])])
+    hi = np.array([s[a:b].max() if b > a else 0 for a, b in zip(edges[:-1], edges[1:])])
+    rms = np.array([math.sqrt(float(np.mean(s[a:b] ** 2))) if b > a else 0 for a, b in zip(edges[:-1], edges[1:])])
+    _ = m
+    return lo, hi, rms
+
+
+def _spectrum(x: np.ndarray, sr: int):
+    from scipy.signal import welch
+
+    s = x.mean(axis=0) if x.ndim == 2 else x
+    nper = min(8192, max(256, 1 << int(math.log2(max(256, s.shape[0] // 4)))))
+    f, p = welch(s, fs=sr, nperseg=nper)
+    return f, 10 * np.log10(np.maximum(p, 1e-16))
+
+
+def write_reports(assets, out_dir: pathlib.Path, sr: int) -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    by_kind: dict[str, list] = {}
+    for a in assets:
+        by_kind.setdefault(a.kind, []).append(a)
+    for kind, group in sorted(by_kind.items()):
+        group = sorted(group, key=lambda a: a.name)
+        # One row per asset (first variant only for multi-variant SFX keeps the sheets small).
+        shown = []
+        seen = set()
+        for a in group:
+            stem = a.name.rsplit("_", 1)[0] if a.name[-3:-2] == "_" and a.name[-2:].isdigit() else a.name
+            if kind in ("sfx",) and stem in seen:
+                continue
+            seen.add(stem)
+            shown.append(a)
+        rows = len(shown)
+        fig, axes = plt.subplots(rows, 2, figsize=(11, 1.15 * rows + 0.6), squeeze=False,
+                                 gridspec_kw={"width_ratios": [2.2, 1]})
+        for i, a in enumerate(shown):
+            x = a.audio
+            lo, hi, rms = _envelope(x)
+            t = np.linspace(0, x.shape[1] / sr, lo.shape[0])
+            ax = axes[i][0]
+            ax.fill_between(t, lo, hi, color="#4a78b5", linewidth=0)
+            ax.plot(t, rms, color="#d9822b", linewidth=0.7)
+            ax.plot(t, -rms, color="#d9822b", linewidth=0.7)
+            ax.set_ylim(-1, 1)
+            ax.set_xlim(0, t[-1] if t[-1] > 0 else 1)
+            st = a.stats
+            ax.set_ylabel(a.name.replace("SW_", ""), rotation=0, ha="right", va="center", fontsize=6)
+            ax.text(0.995, 0.92, f"pk {st.get('peakDbfs')} dBFS  tp {st.get('truePeakDbtp')}  "
+                    f"rms {st.get('rmsDbfs')}  LUFS {st.get('lufs')}  {st.get('lengthSec')} s",
+                    transform=ax.transAxes, ha="right", va="top", fontsize=5.5)
+            ax.tick_params(labelsize=5)
+            f, p = _spectrum(x, sr)
+            ax2 = axes[i][1]
+            ax2.semilogx(np.maximum(f, 10), p, color="#3c8d5a", linewidth=0.7)
+            ax2.set_xlim(20, sr / 2)
+            ax2.set_ylim(-140, -20)
+            ax2.tick_params(labelsize=5)
+            ax2.grid(True, which="both", linewidth=0.2)
+        fig.suptitle(f"{kind}: waveform (min/max, RMS) and spectrum (Welch PSD, dB)", fontsize=8)
+        fig.tight_layout(rect=(0, 0, 1, 0.98))
+        fig.savefig(out_dir / f"{kind}.png", dpi=80)
+        plt.close(fig)
+    lines = ["# Audio render stats", "", "| asset | kind | ch | s | peak dBFS | true peak dBTP | RMS dBFS | LUFS-I | "
+             "LUFS-M max | loop seam | master gain dB | limiter GR dB |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for a in sorted(assets, key=lambda a: (a.kind, a.name)):
+        s = a.stats
+        lines.append(f"| {a.name} | {a.kind} | {a.channels} | {s.get('lengthSec')} | {s.get('peakDbfs')} | "
+                     f"{s.get('truePeakDbtp')} | {s.get('rmsDbfs')} | {s.get('lufs')} | {s.get('momentaryMaxLufs')} | "
+                     f"{s.get('seamRatio', '')} | {a.gain_db:+.2f} | {a.limiter_gr_db:.2f} |")
+    (out_dir / "stats.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

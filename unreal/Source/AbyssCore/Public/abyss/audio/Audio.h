@@ -59,13 +59,22 @@ class ABYSS_API MusicDirector {
   void OnBossDisengaged();
   void OnBossDefeated(std::string_view bossDefId);  // victory, hold 3000 (boss 8000, A5), back to explore
   void PlayTrack(std::string_view zoneId, MusicState state);  // forced (story, jukebox); restarts
-  void SetStoryLock(bool locked);                 // sequences own the music; combat changes queued
-  void Tick(double realNowMs);                    // victory auto-return
+  // Sequences own the music; zone / combat / boss changes are queued and applied on release (a zone entered under the
+  // lock starts its track then, with the zone fade).
+  void SetStoryLock(bool locked);
+  // Victory auto-return (boss victory 8000 ms A5, forced victory 3000 ms); under the story lock the forced victory
+  // still returns to the sequence zone's explore track (web: the MusicEngine timer, StoryDirector epilogue).
+  void Tick(double realNowMs);
   std::optional<MusicCommand> TakeCommand();
 
   MusicState State() const { return state_; }
+  const std::string& Zone() const { return zone_; }
+  bool StoryLocked() const { return storyLock_; }
+  // The key that plays for the current (zone, state): "<themeId>_<state>", the boss score, or "" (silence).
+  std::string TrackKey() const;
 
  private:
+  void SetState(MusicState s);  // setState: no-op when unchanged and playing; cancels the victory hold
   void Transition(double fadeOutSec, double fadeInSec, bool restart);
 
   const MusicDirectorDef* def_;
@@ -73,6 +82,8 @@ class ABYSS_API MusicDirector {
   MusicState state_ = MusicState::Explore;
   bool inCombat_ = false;
   bool storyLock_ = false;
+  bool started_ = false;      // a track (or silence) has been commanded at least once
+  bool zonePending_ = false;  // the zone changed under the story lock: its track starts when the lock is released
   std::string boss_;
   double victoryUntilMs_ = -1;
   double nowMs_ = 0;
@@ -80,7 +91,12 @@ class ABYSS_API MusicDirector {
 };
 
 // Runtime wrapper: bus listeners -> EvSfx (cue + spatial flag A4) and EvMusic. GameSim wiring (SimWiring.cpp):
-// ZoneEnteredMsg, CombatStateChangedMsg, MonsterKilledMsg, MonsterAggroMsg, HeroLevelUpMsg, StoryStateMsg, BossBarMsg.
+// ZoneEnteredMsg, CombatStateChangedMsg, MonsterKilledMsg, MonsterAggroMsg, HeroLevelUpMsg, ItemPickedMsg,
+// QuestAcceptedMsg, QuestProgressMsg, QuestCompletedMsg, QuestTurnedInMsg, NpcInteractedMsg, StoryStateMsg, BossBarMsg.
+// The 3.1 listener rows live here; the 3.2 COMBAT_DAMAGE rows, skill_used, dodge, resonance and player_death are
+// emitted by CombatSystem at the moment they happen, the 3.3 direct calls by their owners (town portal: ZoneRuntime;
+// soul echo: SoulEchoSystem; forge: ShopSystem; wandering merchant shop: RandomEventSystem). UI clicks / panel_open of
+// UE's own panels are UE's (audio 3.3, one click per toggle, FIX Q2).
 class ABYSS_API AudioDirector {
  public:
   explicit AudioDirector(SimContext& ctx);
@@ -90,6 +106,13 @@ class ABYSS_API AudioDirector {
   void OnMonsterKilled(const MonsterKilledMsg& m);  // monster_death (FIX)
   void OnMonsterAggro(const MonsterAggroMsg& m);    // A7 monster_aggro (spatial, source = the monster)
   void OnLevelUp(const HeroLevelUpMsg& m);          // levelup cue
+  void OnItemPicked(const ItemPickedMsg& m);        // loot_* by quality (set -> loot_legendary)
+  void OnQuestAccepted(const QuestAcceptedMsg& m);  // npc_interact
+  void OnQuestProgress(const QuestProgressMsg& m);  // quest_objective / quest_progress / silent (SfxForQuestProgress)
+  void OnQuestCompleted(const QuestCompletedMsg& m);  // quest_complete
+  void OnQuestTurnedIn(const QuestTurnedInMsg& m);    // quest_complete
+  // NPC_INTERACT (quest-type NPCs) -> npc_interact; SHOP_OPEN (merchant / blacksmith) -> panel_open.
+  void OnNpcInteracted(const NpcInteractedMsg& m);
   // Audio 10.4 rule 2: story lock while a beat plays; a sequence's music theme plays under the lock and the zone's
   // explore track returns when the director goes idle.
   void OnStoryState(const StoryStateMsg& m);

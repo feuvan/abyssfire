@@ -30,9 +30,10 @@ namespace AbyssCpd
 /** Per-instance custom data of the world ISMs (decor, outcrops, palisades): read with PerInstanceCustomData[n]. */
 namespace AbyssDecorIcd
 {
-	inline constexpr int32 Fade = 0;    // occlusion fade, 0 = opaque (world-map-nav.md 15.6)
-	inline constexpr int32 Random = 1;  // stable 0..1 per instance (wind phase, colour jitter)
-	inline constexpr int32 Count = 2;
+	inline constexpr int32 Fade = 0;       // occlusion fade, 0 = opaque (world-map-nav.md 15.6)
+	inline constexpr int32 Random = 1;     // stable 0..1 per instance (wind phase, colour jitter)
+	inline constexpr int32 Highlight = 2;  // 0..1 story-decoration focus rim (EvStoryDecorFocus)
+	inline constexpr int32 Count = 3;
 }
 
 /** Per-instance custom data of the VFX particle ISMs (Vfx/): colour, alpha, sprite variant, normalised age. */
@@ -59,6 +60,21 @@ enum class EAbyssAnchor : uint8
 };
 
 ABYSSFIRE_API FName AbyssAnchorSocketName(EAbyssAnchor Anchor);
+
+/** The four-tone camera / world framing of the current zone mood (world-map-nav.md 14.1, zone_moods.json). */
+struct FAbyssMoodLook
+{
+	FLinearColor Ambient = FLinearColor::White;   // multiply colour (linear)
+	float AmbientAlpha = 0.f;
+	FLinearColor Vignette = FLinearColor::Black;
+	float VignetteAlpha = 0.f;
+	FLinearColor Haze = FLinearColor::Black;      // additive haze colour
+	float HazeAlpha = 0.f;
+	float Saturation = 1.f;
+	float Contrast = 1.f;
+	FVector Lift = FVector::ZeroVector;
+	FVector Gain = FVector::ZeroVector;
+};
 
 /** Resolved render tier settings (render_quality.json, ue58-platform.md 6.8). */
 struct FAbyssQualityProfile

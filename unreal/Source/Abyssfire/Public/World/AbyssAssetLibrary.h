@@ -53,6 +53,15 @@ public:
 
 	/** Generic cached load; the class must match. */
 	UObject* LoadObjectAt(const FSoftObjectPath& Path, UClass* ExpectedClass);
+	/**
+	 * The first existing /Game/Abyssfire/<Folder>/<AssetName> of the folder list (silent for the misses; one warning when
+	 * none exists). FX meshes / textures / materials that are not in the art manifest use it.
+	 */
+	UObject* LoadFromFolders(TConstArrayView<const TCHAR*> Folders, FName AssetName, UClass* ExpectedClass);
+	/** A static mesh by asset name: the art manifest entry when it has one, else the FX / Pickups / Props folders. */
+	UStaticMesh* LoadStaticMeshByName(FName AssetName);
+	/** An FX sprite texture T_FX_<Sprite> (FX/Textures, then Textures, then FX). */
+	UTexture2D* LoadFxTexture(FName Sprite);
 	bool DoesAssetExist(const FSoftObjectPath& Path) const;
 
 	// ---- zone retention ----

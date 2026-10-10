@@ -1,7 +1,9 @@
 // World area (+ audio): grid, map generator, pathfinding, exploration, zone runtime, locomotion, random events,
 // music / SFX rules. Spec vectors: world-map-nav.md section 21 (golden maps in CoreTests/golden/maps), audio.md 9.8.
 // Web suites ported: PathfindingAndMaps.test.ts, MapLiquids.test.ts, FogOfWarOptimization.test.ts,
-// RandomEventSystem.test.ts, random-events-scrutiny-fix.test.ts (core parts).
+// RandomEventSystem.test.ts, random-events-scrutiny-fix.test.ts (core parts; the probabilistic web cases become
+// scripted-RNG cases). The web has no hold-move / audio-director suites: world 21 items 4-10 and audio 9.8's list are
+// covered from the spec instead.
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -15,12 +17,16 @@
 #include "abyss/base/Json.h"
 #include "abyss/base/Math.h"
 #include "abyss/hero/Hero.h"
+#include "abyss/hero/Rewards.h"
 #include "abyss/sim/GameSim.h"
+#include "abyss/sim/GameplayBus.h"
 #include "abyss/world/Exploration.h"
 #include "abyss/world/Grid.h"
 #include "abyss/world/Locomotion.h"
 #include "abyss/world/MapGen.h"
 #include "abyss/world/Pathfinding.h"
+#include "abyss/world/RandomEvents.h"
+#include "abyss/world/Zone.h"
 #include "doctest/doctest.h"
 
 using namespace abyss;
@@ -867,5 +873,1252 @@ TEST_SUITE("audio") {
     const AudioRulesDef& r = test::RealData().Audio().rules;
     CHECK(SfxForSkill(r, DamageType::Fire) == SfxId::SkillFire);
     CHECK(SfxForPickup(r, ItemQuality::Set) == SfxId::LootLegendary);
+  }
+}
+
+// =====================================================================================================================
+// Runtime: zone, locomotion, exploration, random events (world 6-7, 9-10, 13; W3, W5-W8, S5) and the audio rules
+// =====================================================================================================================
+namespace {
+
+const DataStore& WD() { return test::RealData(); }
+
+// The world systems around a SimHarness, stepped in the world 17 order (hero update -> combat-state slot (random
+// events) -> exits / exploration).
+struct WorldRig {
+  explicit WorldRig(uint64_t seed = 5, bool milestone1 = true, std::string_view mapId = "", bool hasTarget = false,
+                    Vec2 target = {})
+      : h(seed),
+        hero(std::make_unique<Hero>(h.ctx.data, ClassId::Warrior)),
+        zone(h.ctx),
+        loco(h.ctx),
+        explore(h.ctx),
+        events(h.ctx),
+        rewards(h.ctx),
+        audio(h.ctx) {
+    h.config.milestone1 = milestone1;
+    SimSystems& s = h.ctx.sys;
+    s.hero = hero.get();
+    s.zone = &zone;
+    s.locomotion = &loco;
+    s.exploration = &explore;
+    s.randomEvents = &events;
+    s.rewards = &rewards;
+    h.onTimer = [this](const Timer& t) {
+      if (t.owner != TimerOwner::World) return;
+      if (t.kind >= kRandomEventTimerKindBase) {
+        events.OnTimer(t);
+      } else {
+        zone.OnTimer(t);
+      }
+    };
+    // SimWiring's world hooks (W3: movement input cancels the portal channel).
+    h.bus.Subscribe<HeroMoveInputMsg>([this](const HeroMoveInputMsg&) { zone.CancelTownPortal(); });
+    const std::string map = mapId.empty() ? WD().World().defaultMap : std::string(mapId);
+    h.session.currentMap = map;
+    ok = zone.EnterZone(map, hasTarget, target);
+    hero->Skills().InitStarterLevels();
+    hero->RecalcDerived(h.ctx.equip);
+    hero->FillHpMana();
+    loco.OnZoneEnter();
+    explore.OnZoneEnter();
+    events.OnZoneEnter();
+    h.events.Clear();
+  }
+
+  void Step(int n = 1) {
+    for (int i = 0; i < n; ++i) {
+      h.Step(1);
+      loco.Tick(kSimStepMs);
+      events.Tick();
+      zone.Tick();
+      explore.Tick();
+    }
+  }
+  template <class Pred>
+  bool StepUntil(Pred pred, int maxSteps = 2000) {
+    for (int i = 0; i < maxSteps; ++i) {
+      if (pred()) return true;
+      Step();
+    }
+    return pred();
+  }
+  void Place(Vec2 p) { loco.Teleport(p, TeleportReason::Debug); }
+  template <class E>
+  size_t Count() const {
+    return test::CountEvents<E>(h.events);
+  }
+  template <class E>
+  const E* Last() const {
+    const E* out = nullptr;
+    for (const Event& e : h.events.Items()) {
+      if (const E* p = std::get_if<E>(&e)) out = p;
+    }
+    return out;
+  }
+  size_t SfxCount(SfxId cue) const {
+    size_t n = 0;
+    for (const Event& e : h.events.Items()) {
+      if (const EvSfx* p = std::get_if<EvSfx>(&e); p != nullptr && p->cue == cue) ++n;
+    }
+    return n;
+  }
+  bool Logged(std::string_view key) const {
+    for (const Event& e : h.events.Items()) {
+      if (const EvLog* p = std::get_if<EvLog>(&e); p != nullptr && p->text.key == key) return true;
+    }
+    return false;
+  }
+
+  test::SimHarness h;
+  std::unique_ptr<Hero> hero;
+  ZoneRuntime zone;
+  HeroLocomotion loco;
+  ExplorationSystem explore;
+  RandomEventSystem events;
+  RewardService rewards;
+  AudioDirector audio;
+  bool ok = false;
+};
+
+// A walkable row segment (c .. c + len - 1, r) with walkable rows above and below (rounding slack), out of every
+// camp's safe zone and at least 6 tiles from any NPC, scanning from (fromCol, fromRow): the runtime tests run on the
+// real map, so they look the segment up instead of hardcoding it.
+TilePos WorldClearRow(const ZoneRuntime& z, int32_t len, int32_t fromCol = 30, int32_t fromRow = 30) {
+  for (int32_t r = fromRow; r < z.Grid().Rows() - 2; ++r) {
+    for (int32_t c = fromCol; c + len < z.Grid().Cols() - 1; ++c) {
+      bool clear = true;
+      for (int32_t i = 0; i < len && clear; ++i) {
+        for (int32_t dr = -1; dr <= 1 && clear; ++dr) clear = z.Walkable(c + i, r + dr);
+        const Vec2 p(c + i, r);
+        clear = clear && !z.InSafeZone(p);
+        for (const NpcPlacement& n : z.Npcs()) clear = clear && DistSq(p, n.pos) >= 36.0;
+      }
+      if (clear) return TilePos{c, r};
+    }
+  }
+  return TilePos{-1, -1};
+}
+
+}  // namespace
+
+TEST_SUITE("world") {
+  // ===================================================================================================================
+  // FogOfWarCore (FogOfWarOptimization.test.ts, core logic)
+  // ===================================================================================================================
+  TEST_CASE("FogOfWarCore: updates only on a tile change; dirty list per update") {
+    FogOfWarCore core;
+    core.Reset(30, 30, 5);
+    CHECK(core.Update(10, 10));
+    CHECK(core.IsExplored(10, 10));
+    CHECK(core.IsExplored(11, 10));
+    CHECK(core.IsExplored(10, 11));
+    CHECK_FALSE(core.Update(10, 10));
+    core.ClearDirty();
+    for (int i = 0; i < 3; ++i) {
+      CHECK_FALSE(core.Update(10, 10));
+      CHECK(core.Dirty().empty());  // same position: nothing recomputed
+    }
+    CHECK(core.Update(12, 12));
+    CHECK_FALSE(core.Dirty().empty());
+    // Dirty indices are row-major, in bounds and unique (the web's Set).
+    std::set<int32_t> uniq(core.Dirty().begin(), core.Dirty().end());
+    CHECK(uniq.size() == core.Dirty().size());
+    CHECK(std::is_sorted(core.Dirty().begin(), core.Dirty().end()));
+    for (int32_t idx : core.Dirty()) {
+      CHECK(idx >= 0);
+      CHECK(idx < 30 * 30);
+    }
+  }
+
+  TEST_CASE("FogOfWarCore: explored data export / import, wrong dimensions rejected, out of bounds") {
+    FogOfWarCore core;
+    core.Reset(30, 30, 5);
+    core.Update(5, 5);
+    const std::vector<std::vector<bool>> data = core.ExploredData();
+    REQUIRE(data.size() == 30);
+    REQUIRE(data[0].size() == 30);
+    CHECK(data[5][5]);
+    CHECK_FALSE(data[29][29]);
+    FogOfWarCore other;
+    other.Reset(30, 30, 5);
+    REQUIRE(other.LoadExploredData(data));
+    for (int32_t r = 0; r < 30; ++r) {
+      for (int32_t c = 0; c < 30; ++c) CHECK(other.IsExplored(c, r) == core.IsExplored(c, r));
+    }
+    std::vector<std::vector<bool>> one(30, std::vector<bool>(30, false));
+    one[15][15] = true;
+    REQUIRE(other.LoadExploredData(one));
+    CHECK(other.IsExplored(15, 15));
+    CHECK_FALSE(other.IsExplored(0, 0));
+    CHECK_FALSE(core.LoadExploredData({{true, false}}));  // wrong dimensions: unchanged
+    CHECK(core.IsExplored(5, 5));
+    CHECK_FALSE(core.IsExplored(-1, 0));
+    CHECK_FALSE(core.IsExplored(0, -1));
+    CHECK_FALSE(core.IsExplored(30, 0));
+    CHECK_FALSE(core.IsExplored(0, 30));
+    // After a load the next update recomputes even at the same position.
+    core.Update(10, 10);
+    REQUIRE(core.LoadExploredData(core.ExploredData()));
+    CHECK(core.Update(10, 10));
+  }
+
+  TEST_CASE("FogOfWarCore: alpha bands and the gradient edge (vr 5, edge band 3)") {
+    FogOfWarCore core;
+    core.Reset(30, 30, 5);
+    core.Update(15, 15);
+    CHECK(core.Alpha(15, 15) == 0);
+    CHECK(core.Alpha(16, 15) == 0);  // inside innerEdge 2
+    const std::vector<FogGradientTile> g = core.GradientInfo(15, 15);
+    REQUIRE_FALSE(g.empty());
+    bool found3 = false;
+    for (const FogGradientTile& t : g) {
+      const double dist = std::sqrt((t.col - 15.0) * (t.col - 15.0) + (t.row - 15.0) * (t.row - 15.0));
+      CHECK(dist > 2.0);
+      CHECK(dist <= 5.0);
+      CHECK(t.alpha >= 0.01);
+      if (t.col == 18 && t.row == 15) {
+        found3 = true;
+        CHECK(t.alpha > 0);
+        CHECK(t.alpha < 0.85);
+        CHECK(t.alpha == doctest::Approx(0.05));  // (3 - 2) / 3 * 0.15
+      }
+    }
+    CHECK(found3);
+    // Farther gradient tiles never get less fog.
+    std::vector<FogGradientTile> sorted = g;
+    std::stable_sort(sorted.begin(), sorted.end(), [](const FogGradientTile& a, const FogGradientTile& b) {
+      return (a.col - 15) * (a.col - 15) + (a.row - 15) * (a.row - 15) <
+             (b.col - 15) * (b.col - 15) + (b.row - 15) * (b.row - 15);
+    });
+    CHECK(sorted.back().alpha >= sorted.front().alpha);
+    // Quantised alpha: unexplored 0.85 (round(0.85 * 255) / 255), out of bounds 0.85.
+    CHECK(core.Alpha(29, 29) == doctest::Approx(217.0 / 255.0));
+    CHECK(core.Alpha(-1, 3) == 0.85);
+    // Explored but out of view: 0.18 + (dist - vr) / 3 * 0.15 within the band, 0.35 beyond.
+    core.Update(25, 15);
+    CHECK(core.Alpha(15, 15) == doctest::Approx(JsRound(0.35 * 255) / 255.0));
+    CHECK(core.Alpha(19, 15) == doctest::Approx(JsRound((0.18 + 1.0 / 3.0 * 0.15) * 255) / 255.0));
+  }
+
+  TEST_CASE("FogOfWarCore: incremental updates, corners, 1x1 grid, invalidate") {
+    FogOfWarCore big;
+    big.Reset(120, 120, 10);
+    big.Update(60, 60);
+    const size_t first = big.Dirty().size();
+    big.Update(61, 60);
+    const size_t moved = big.Dirty().size();
+    CHECK(moved > 0);
+    CHECK(moved < first);
+    CHECK(moved < 120 * 120 * 0.2);
+    // load -> update is a full pass again
+    REQUIRE(big.LoadExploredData(big.ExploredData()));
+    big.Update(61, 60);
+    CHECK(static_cast<double>(big.Dirty().size()) >= first * 0.8);
+    FogOfWarCore core;
+    core.Reset(30, 30, 5);
+    core.Update(0, 0);
+    CHECK(core.IsExplored(0, 0));
+    core.Update(29, 29);
+    CHECK(core.IsExplored(29, 29));
+    CHECK(core.IsExplored(0, 0));  // explored tiles accumulate
+    core.Invalidate();
+    CHECK(core.Update(29, 29));
+    CHECK_FALSE(core.Dirty().empty());
+    FogOfWarCore tiny;
+    tiny.Reset(1, 1, 5);
+    tiny.Update(0, 0);
+    CHECK(tiny.ExploredData() == std::vector<std::vector<bool>>{{true}});
+    FogOfWarCore fresh;
+    fresh.Reset(30, 30, 5);
+    bool anyExplored = false;
+    for (int32_t r = 0; r < 30; ++r) {
+      for (int32_t c = 0; c < 30; ++c) anyExplored = anyExplored || fresh.IsExplored(c, r);
+    }
+    CHECK_FALSE(anyExplored);
+  }
+
+  // ===================================================================================================================
+  // Random event rules (world 13.1-13.2; RandomEventSystem.test.ts with a scripted RNG; W6)
+  // ===================================================================================================================
+  TEST_CASE("random events 13.1: exported config, definitions and zone data") {
+    const RandomEventsDef& def = WD().World().randomEvents;
+    CHECK(def.cooldownMs == 30000);
+    CHECK(def.safeZoneRadius == 9);
+    CHECK(def.minEventsPerWindow == 3);
+    CHECK(def.maxEventsPerWindow == 8);
+    CHECK(def.frequencyWindowMs == 300000);
+    CHECK(def.triggerMoveThresholdTiles == 3);
+    CHECK(def.resetMoveCounterAfterEveryRoll);  // W6
+    REQUIRE(def.types.size() == 5);
+    const RandomEventType order[] = {RandomEventType::Ambush, RandomEventType::TreasureCache,
+                                     RandomEventType::WanderingMerchant, RandomEventType::Rescue,
+                                     RandomEventType::EnvironmentalPuzzle};
+    const double weights[] = {30, 25, 15, 20, 10};
+    double total = 0;
+    for (size_t i = 0; i < 5; ++i) {
+      CHECK(def.types[i].type == order[i]);
+      CHECK(def.types[i].weight == weights[i]);
+      total += def.types[i].weight;
+    }
+    CHECK(total == 100);
+    for (const char* z : kWorldZoneIds) CHECK(def.ForZone(z) != nullptr);
+    CHECK(def.ForZone("nonexistent") == nullptr);
+    const ZoneEventDataDef* ep = def.ForZone("emerald_plains");
+    REQUIRE(ep != nullptr);
+    CHECK(ep->ambushMonsters == std::vector<std::string>{"slime_green", "goblin"});
+    CHECK(ep->ambushCountMin == 3);
+    CHECK(ep->ambushCountMax == 5);
+    CHECK(ep->merchantItems == std::vector<std::string>{"iron_sword", "leather_armor", "hp_potion", "mp_potion"});
+    REQUIRE(ep->puzzles.size() == 1);
+    CHECK(ep->puzzles[0].rewardGold == 50);
+    CHECK(ep->puzzles[0].rewardExp == 30);
+    CHECK(ep->rescueRewardGold == 30);
+    CHECK(ep->rescueRewardExp == 25);
+    // Zone scaling: ambush counts and puzzle rewards never shrink along the map order.
+    int32_t prevMax = 0;
+    int64_t prevGold = 0;
+    for (const char* z : kWorldZoneIds) {
+      const ZoneEventDataDef* d = def.ForZone(z);
+      CHECK(d->ambushCountMax >= prevMax);
+      CHECK(d->puzzles.front().rewardGold >= prevGold);
+      prevMax = d->ambushCountMax;
+      prevGold = d->puzzles.front().rewardGold;
+    }
+  }
+
+  TEST_CASE("random events 13.2: chance formula breakpoints and the weighted pick boundaries") {
+    const RandomEventsDef& def = WD().World().randomEvents;
+    CHECK(RandomEventRules::TriggerChance(def, 0, 0) == doctest::Approx(0.07));
+    CHECK(RandomEventRules::TriggerChance(def, 0, 90000) == doctest::Approx(0.07));  // p = 0.3: strict >
+    CHECK(RandomEventRules::TriggerChance(def, 0, 90001) == doctest::Approx(0.07 + 0.05 * 90001.0 / 300000.0));
+    CHECK(RandomEventRules::TriggerChance(def, 2, 600000) == doctest::Approx(0.12));  // p capped at 1
+    CHECK(RandomEventRules::TriggerChance(def, 3, 600000) == doctest::Approx(0.07));  // at the minimum: no ramp
+    CHECK(RandomEventRules::TriggerChance(def, 7, 600000) == doctest::Approx(0.021));  // >= max - 1: x 0.3
+    CHECK(RandomEventRules::PickType(def, 0.0) == RandomEventType::Ambush);
+    CHECK(RandomEventRules::PickType(def, 0.30) == RandomEventType::Ambush);  // 30 - 30 = 0 <= 0
+    CHECK(RandomEventRules::PickType(def, 0.300001) == RandomEventType::TreasureCache);
+    CHECK(RandomEventRules::PickType(def, 0.5499999) == RandomEventType::TreasureCache);
+    CHECK(RandomEventRules::PickType(def, 0.55) == RandomEventType::WanderingMerchant);  // 0.55 * 100 = 55.000...01
+    CHECK(RandomEventRules::PickType(def, 0.70) == RandomEventType::WanderingMerchant);
+    CHECK(RandomEventRules::PickType(def, 0.90) == RandomEventType::Rescue);
+    CHECK(RandomEventRules::PickType(def, 0.95) == RandomEventType::EnvironmentalPuzzle);
+    CHECK(RandomEventRules::PickType(def, 0.9999999) == RandomEventType::EnvironmentalPuzzle);
+  }
+
+  TEST_CASE("random events 13.2: gates (moving, combat, pending, safe zone, cooldown, threshold, window cap)") {
+    const RandomEventsDef& def = WD().World().randomEvents;
+    Rng rng(9);
+    RandomEventType type = RandomEventType::Ambush;
+    auto in = [](double now, Vec2 pos) {
+      RandomEventTriggerInput i;
+      i.nowMs = now;
+      i.dtMs = 500;
+      i.heroPos = pos;
+      return i;
+    };
+    RandomEventRules r;
+    CHECK_FALSE(r.Update(def, in(0, {60, 50}), rng, type));  // primes the position (no jump)
+    CHECK(r.MovementAccum() == 0);
+    CHECK(r.ExplorationMs() == 500);  // the first call counts as a move (lastCol = -1 in the web)
+    CHECK_FALSE(r.Update(def, in(100, {61, 50}), rng, type));
+    CHECK_FALSE(r.Update(def, in(200, {62, 50}), rng, type));
+    CHECK(r.MovementAccum() == 2);
+    // Standing still: no exploration time, no roll.
+    const double explored = r.ExplorationMs();
+    rng.Script({0.0});
+    CHECK_FALSE(r.Update(def, in(300, {62, 50}), rng, type));
+    CHECK(r.ExplorationMs() == explored);
+    CHECK(rng.ScriptedRemaining() == 1);
+    // In combat / pending / safe zone: no roll even with the threshold met.
+    RandomEventTriggerInput c = in(400, {63, 50});
+    c.inCombat = true;
+    CHECK_FALSE(r.Update(def, c, rng, type));
+    RandomEventTriggerInput p = in(500, {64, 50});
+    p.eventPending = true;
+    CHECK_FALSE(r.Update(def, p, rng, type));
+    RandomEventTriggerInput s = in(600, {65, 50});
+    s.inSafeZone = true;
+    CHECK_FALSE(r.Update(def, s, rng, type));
+    CHECK(rng.ScriptedRemaining() == 1);
+    CHECK(r.MovementAccum() == 5);  // movement still accumulates
+    // Threshold met, out of camp: the scripted 0.0 roll triggers; the second draw (0.0) picks ambush.
+    rng.ClearScript();
+    rng.Script({0.0, 0.0});
+    CHECK(r.Update(def, in(700, {66, 50}), rng, type));
+    CHECK(type == RandomEventType::Ambush);
+    CHECK(r.LastEventMs() == 700);
+    CHECK(r.History() == std::vector<double>{700});
+    CHECK(r.MovementAccum() == 0);
+    // Cooldown 30 s: no roll before 30700 even after 10 tiles.
+    for (int i = 1; i <= 10; ++i) CHECK_FALSE(r.Update(def, in(700 + i * 1000, {66.0 + i, 50}), rng, type));
+    CHECK(rng.ScriptedRemaining() == 0);
+    // W6: a failed roll resets the movement counter, so the next roll needs 3 more tiles.
+    RandomEventRules w;
+    w.Update(def, in(0, {60, 50}), rng, type);
+    w.Update(def, in(100, {62, 50}), rng, type);
+    CHECK(w.MovementAccum() == 2);
+    rng.Script({0.99});
+    CHECK_FALSE(w.Update(def, in(200, {64, 50}), rng, type));  // 4 tiles, roll 0.99 > chance
+    CHECK(rng.ScriptedRemaining() == 0);
+    CHECK(w.MovementAccum() == 0);
+    rng.Script({0.0, 0.5});
+    CHECK_FALSE(w.Update(def, in(300, {65, 50}), rng, type));  // 1 tile: below the threshold, no draw
+    CHECK_FALSE(w.Update(def, in(400, {66, 50}), rng, type));  // 2 tiles
+    CHECK(rng.ScriptedRemaining() == 2);
+    CHECK(w.Update(def, in(500, {67, 50}), rng, type));  // 3 tiles again: rolls 0.0, picks 0.5 -> treasure
+    CHECK(type == RandomEventType::TreasureCache);
+    rng.ClearScript();
+  }
+
+  TEST_CASE("random events 13.2: at most maxEventsPerWindow per 300 s; old entries leave the window") {
+    const RandomEventsDef& def = WD().World().randomEvents;
+    Rng rng(4);
+    RandomEventType type = RandomEventType::Ambush;
+    RandomEventRules r;
+    double now = 0;
+    double col = 60;
+    auto move = [&](double ms) {
+      now += ms;
+      col += 1;
+      RandomEventTriggerInput i;
+      i.nowMs = now;
+      i.dtMs = ms;
+      i.heroPos = {col, 50};
+      return r.Update(def, i, rng, type);
+    };
+    move(0);
+    int triggered = 0;
+    for (int i = 0; i < 1000 && now < 290000; ++i) {
+      rng.Script({0.0, 0.0});
+      if (move(500)) ++triggered;
+      rng.ClearScript();
+    }
+    CHECK(triggered == def.maxEventsPerWindow);  // one per 30 s cooldown, capped at 8 inside the window
+    CHECK(r.EventsInWindow(def, now) == 8);
+    // Rolling the window forward frees the oldest entries.
+    for (int i = 0; i < 200 && triggered < 9; ++i) {
+      rng.Script({0.0, 0.0});
+      if (move(500)) ++triggered;
+      rng.ClearScript();
+    }
+    CHECK(triggered == 9);
+    CHECK(now > 300000);
+    CHECK(r.EventsInWindow(def, now) <= def.maxEventsPerWindow);
+  }
+
+  // ===================================================================================================================
+  // Random events runtime (13.3; W10, W11)
+  // ===================================================================================================================
+  TEST_CASE("random events 13.3: environmental puzzle prop, interact range, leave keeps it pending, solve rewards") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const TilePos spot = WorldClearRow(w.zone, 4);
+    REQUIRE(spot.col > 0);
+    w.Place(spot.Center());
+    w.events.TriggerEvent(RandomEventType::EnvironmentalPuzzle, spot.Center());
+    REQUIRE(w.events.Active().size() == 1);
+    const ActiveRandomEvent& ev = w.events.Active().front();
+    CHECK_FALSE(ev.resolved);
+    REQUIRE(ev.prop != kNoEntity);
+    CHECK(ev.propPos == spot.Center());  // walkable: findWalkableTile keeps it
+    CHECK(ev.puzzleIndex == 0);
+    CHECK(w.Logged("sys.event.msg.environmental_puzzle"));
+    CHECK(w.Logged("zone.event.puzzle.prompt"));
+    CHECK(w.Count<EvRandomEvent>() == 1);
+    CHECK(w.events.HasUnresolved());
+    // Interact range distSq <= 4 (7.4 order 7).
+    w.Place(Vec2(spot.col + 2.0, spot.row));
+    InteractTarget t = w.zone.FindInteractTarget();
+    CHECK(t.kind == InteractKind::EventPuzzle);
+    CHECK(t.id == ev.prop);
+    w.Place(Vec2(spot.col + 2.01, spot.row));
+    CHECK(w.zone.FindInteractTarget().kind == InteractKind::None);
+    w.Place(Vec2(spot.col + 1.0, spot.row));
+    REQUIRE(w.zone.Interact());
+    CHECK(w.events.Puzzle().open);
+    CHECK(w.events.Puzzle().prop == ev.prop);
+    // Leave: closed, unresolved, blocks further events.
+    CHECK(w.events.AnswerPuzzle(ev.prop, kPuzzleChoiceLeave));
+    CHECK_FALSE(w.events.Puzzle().open);
+    CHECK(w.events.HasUnresolved());
+    CHECK(w.Logged("zone.event.puzzle.left"));
+    CHECK_FALSE(w.events.AnswerPuzzle(ev.prop, kPuzzleChoiceSolve));  // not open
+    // Solve: gold + exp through the reward service (W11 addExp path), resolved, prop removed.
+    REQUIRE(w.events.OpenPuzzle(ev.prop));
+    const int64_t gold0 = w.hero->Gold();
+    const int64_t exp0 = w.hero->Exp();
+    const int64_t toNext = w.hero->ExpToNext();
+    const int32_t level0 = w.hero->Level();
+    w.h.events.Clear();
+    CHECK(w.events.AnswerPuzzle(ev.prop, kPuzzleChoiceSolve));
+    CHECK(w.hero->Gold() == gold0 + 50);
+    if (exp0 + 30 >= toNext) {  // the normal addExp path levels up (W11)
+      CHECK(w.hero->Level() == level0 + 1);
+      CHECK(w.hero->Exp() == exp0 + 30 - toNext);
+      CHECK(w.Count<EvLevelUp>() == 1);
+    } else {
+      CHECK(w.hero->Exp() == exp0 + 30);
+    }
+    CHECK_FALSE(w.events.HasUnresolved());
+    CHECK(w.Count<EvEntityDespawned>() == 1);
+    REQUIRE(w.Last<EvRandomEvent>() != nullptr);
+    CHECK(w.Last<EvRandomEvent>()->resolved);
+    CHECK(w.events.Active().empty());  // pruned
+    CHECK(w.zone.FindInteractTarget().kind == InteractKind::None);
+  }
+
+  TEST_CASE("random events 13.3: rescue completes once the tracked monsters are gone (M4 / W11), 500 ms poll") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const TilePos spot = WorldClearRow(w.zone, 4);
+    w.Place(spot.Center());
+    w.events.TriggerEvent(RandomEventType::Rescue, spot.Center());
+    REQUIRE(w.events.Active().size() == 1);
+    CHECK_FALSE(w.events.Active().front().resolved);
+    CHECK(w.events.Active().front().monsterCount >= 2);  // max(2, ...): emerald 2-4
+    CHECK(w.events.Active().front().monsterCount <= 4);
+    const int64_t gold0 = w.hero->Gold();
+    w.Step(29);  // 483 ms: the first poll is due at 500 ms
+    CHECK(w.events.HasUnresolved());
+    w.Step(1);
+    // No MonsterSystem in this rig: no tracked monster is alive at the first poll.
+    CHECK_FALSE(w.events.HasUnresolved());
+    CHECK(w.hero->Gold() == gold0 + 30);
+    CHECK(w.Logged("zone.event.rescue.complete"));
+  }
+
+  TEST_CASE("random events 13.3: treasure cache gold (30-60 in emerald_plains) and the chest prop fades after 9.2 s") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const TilePos spot = WorldClearRow(w.zone, 4);
+    w.Place(spot.Center());
+    const int64_t gold0 = w.hero->Gold();
+    w.events.TriggerEvent(RandomEventType::TreasureCache, spot.Center());
+    const int64_t got = w.hero->Gold() - gold0;
+    CHECK(got >= 30);
+    CHECK(got <= 60);
+    REQUIRE(w.events.Active().size() == 1);
+    CHECK(w.events.Active().front().resolved);  // resolved at once
+    CHECK(w.events.Active().front().prop != kNoEntity);
+    CHECK_FALSE(w.events.HasUnresolved());
+    w.Step(551);  // 9183 ms
+    CHECK(w.events.Active().size() == 1);
+    w.Step(1);
+    CHECK(w.events.Active().empty());
+  }
+
+  TEST_CASE("random events: the runtime trigger respects the camp safe zone and fires out of camp") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    Rng& rng = w.h.rng.Get(RngStream::Events);
+    // Walk inside the camp radius (camp 1 at (15,15), radius 9): never rolls.
+    for (int i = 0; i < 6; ++i) {
+      rng.Script({0.0, 0.99});
+      w.Place(Vec2(15.0 + i * 0.6, 21));
+      w.Step();
+    }
+    CHECK(w.events.Active().empty());
+    rng.ClearScript();
+    // Out of camp, after 3 tiles of movement: the forced roll triggers (0.99 -> puzzle).
+    const TilePos spot = WorldClearRow(w.zone, 6);
+    w.Place(spot.Center());
+    w.Step();
+    for (int i = 1; i <= 4 && w.events.Active().empty(); ++i) {
+      rng.Script({0.0, 0.99});
+      w.Place(Vec2(spot.col + i, spot.row));
+      w.Step();
+      rng.ClearScript();
+    }
+    REQUIRE(w.events.Active().size() == 1);
+    CHECK(w.events.Active().front().type == RandomEventType::EnvironmentalPuzzle);
+  }
+
+  // ===================================================================================================================
+  // Zone runtime (world 3.4, 7.1, 7.4, 9.2, 9.4; W3, W5-W8)
+  // ===================================================================================================================
+  TEST_CASE("zone entry: hero at playerStart, camp NPC slots, field NPCs, exits sealed in milestone 1") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const MapDef& map = *WD().FindMap("emerald_plains");
+    CHECK(w.hero->Position() == Vec2(map.playerStart.col, map.playerStart.row));
+    CHECK(w.hero->Position() == Vec2(15, 22));
+    auto at = [&w](const char* id) { return w.zone.FindNpc(id) != nullptr ? w.zone.FindNpc(id)->pos : Vec2(-1, -1); };
+    CHECK(at("blacksmith") == Vec2(12, 13));
+    CHECK(at("merchant") == Vec2(18, 13));  // camp 1 first; camp 2's merchant also exists
+    CHECK(at("quest_elder") == Vec2(12, 17));
+    CHECK(at("stash") == Vec2(18, 17));      // I7: the stash keeper is the 4th camp-1 NPC
+    CHECK(at("plains_herbalist") == Vec2(50, 30));
+    CHECK(at("plains_wanderer") == Vec2(70, 65));
+    size_t merchants = 0;
+    for (const NpcPlacement& n : w.zone.Npcs()) {
+      if (n.npcId == "merchant") {
+        ++merchants;
+        if (merchants == 2) CHECK(n.pos == Vec2(92, 98));
+      }
+    }
+    CHECK(merchants == 2);
+    REQUIRE(w.zone.Exits().size() == 1);
+    CHECK(w.zone.Exits()[0].sealed);  // W7
+    CHECK(w.zone.SafeZoneRadius() == 9);
+    CHECK(w.zone.InSafeZone({15, 22}));
+    CHECK_FALSE(w.zone.InSafeZone({15, 24}));  // distSq 81: strict
+    CHECK(w.zone.NearCampfire({15, 20}));
+    CHECK_FALSE(w.zone.NearCampfire({15, 20.01}));
+    CHECK(w.zone.CampPosition(0) == Vec2(15, 15));
+    CHECK(w.zone.CampPosition(7) == Vec2(15, 22));  // missing camp -> playerStart
+    // Camp blockers (3.4) are baked into the grid.
+    CHECK_FALSE(w.zone.Walkable(13, 15));
+    CHECK_FALSE(w.zone.Walkable(17, 15));
+    CHECK(w.zone.Walkable(15, 15));
+    // Unknown map ids fall back to the default map (9.1 step 1).
+    WorldRig u(5, true, "no_such_zone");
+    CHECK(u.ok);
+    CHECK(u.zone.MapId() == "emerald_plains");
+  }
+
+  TEST_CASE("exits 9.2: strict 1.5-tile trigger, W8 arming, W7 sealed gate message, transition after the fade") {
+    WorldRig w(5, /*milestone1=*/false);
+    REQUIRE(w.ok);
+    REQUIRE_FALSE(w.zone.Exits()[0].sealed);
+    w.Step();  // the hero starts far away: armed
+    CHECK(w.zone.Exits()[0].armed);
+    w.Place({117.5, 60});  // distSq 2.25: not < 2.25
+    w.Step();
+    CHECK_FALSE(w.h.session.transitioning);
+    w.Place({117.5034, 60});  // distSq 2.2398
+    w.h.events.Clear();
+    w.Step();
+    CHECK(w.h.session.transitioning);
+    REQUIRE(w.Last<EvZone>() != nullptr);
+    CHECK(w.Last<EvZone>()->phase == EvZone::Phase::TransitionBegan);
+    CHECK(w.Last<EvZone>()->mapId == "twilight_forest");
+    std::string map;
+    Vec2 target;
+    CHECK_FALSE(w.zone.TakePendingTransition(map, target));
+    w.zone.RequestZoneChange("abyss_rift", {3, 3});  // guarded while transitioning
+    w.Step(23);  // 400 ms fade: due on step 24
+    CHECK_FALSE(w.zone.TakePendingTransition(map, target));
+    w.Step(1);
+    REQUIRE(w.zone.TakePendingTransition(map, target));
+    CHECK(map == "twilight_forest");
+    CHECK(target == Vec2(2, 58));
+    CHECK_FALSE(w.zone.TakePendingTransition(map, target));
+  }
+
+  TEST_CASE("exits W8: arriving inside an exit trigger never bounces; it fires after walking > sqrt(6) away") {
+    WorldRig w(5, /*milestone1=*/false, "emerald_plains", true, Vec2(118, 60));
+    REQUIRE(w.ok);
+    w.Step(30);
+    CHECK_FALSE(w.zone.Exits()[0].armed);
+    CHECK_FALSE(w.h.session.transitioning);
+    w.Place({120.4, 60});  // distSq 1.96... still inside 6 (and inside the trigger)
+    w.Step();
+    CHECK_FALSE(w.h.session.transitioning);
+    w.Place({116.5, 60});  // distSq 6.25 > 6: armed
+    w.Step();
+    CHECK(w.zone.Exits()[0].armed);
+    CHECK_FALSE(w.h.session.transitioning);
+    w.Place({118, 60});
+    w.Step();
+    CHECK(w.h.session.transitioning);
+  }
+
+  TEST_CASE("exits W7: the sealed chapter-2 gate shows the coming-soon line once per approach") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    w.Step();
+    w.Place({118, 60});
+    w.Step(5);
+    CHECK_FALSE(w.h.session.transitioning);
+    CHECK(w.Count<EvBanner>() == 1);
+    CHECK(w.Last<EvBanner>()->kind == BannerKind::ComingSoon);
+    CHECK(w.Last<EvBanner>()->title.key == WD().World().constants.sealedGateMessageKey);
+    CHECK(w.Logged("zone.exit.sealedChapter2"));
+    w.Place({114, 60});
+    w.Step();
+    w.Place({118, 60});
+    w.Step();
+    CHECK(w.Count<EvBanner>() == 2);  // re-armed after leaving
+  }
+
+  TEST_CASE("town portal 9.4 / W3: refusals, 1500 ms channel, nearest camp, cancelled by movement input") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    CHECK(w.zone.CanUseTownPortal() == PortalRefusal::AlreadyAtCamp);  // playerStart is 7 tiles from camp 1
+    CHECK_FALSE(w.zone.UseTownPortal());
+    CHECK(w.Logged("zone.teleport.alreadyAtCamp"));
+    w.Place({15, 15 + std::sqrt(80.99)});
+    CHECK(w.zone.CanUseTownPortal() == PortalRefusal::AlreadyAtCamp);
+    w.Place({15, 24});  // distSq 81
+    CHECK(w.zone.CanUseTownPortal() == PortalRefusal::None);
+    // W3: the nearest camp, not camps[0].
+    w.Place({90, 110});
+    w.h.events.Clear();
+    REQUIRE(w.zone.UseTownPortal());
+    CHECK(w.zone.IsPortaling());
+    CHECK(w.zone.PortalDestination() == Vec2(95, 100));
+    CHECK(w.zone.CanUseTownPortal() == PortalRefusal::Busy);
+    CHECK(w.Logged("zone.teleport.opening"));
+    REQUIRE(w.Last<EvTownPortal>() != nullptr);
+    CHECK(w.Last<EvTownPortal>()->phase == EvTownPortal::Phase::Started);
+    w.Step(89);  // 1483 ms
+    CHECK(w.hero->Position() == Vec2(90, 110));
+    w.Step(1);   // 1500 ms
+    CHECK(w.hero->Position() == Vec2(95, 100));
+    CHECK_FALSE(w.zone.IsPortaling());
+    CHECK(w.Last<EvTownPortal>()->phase == EvTownPortal::Phase::Completed);
+    CHECK(w.SfxCount(SfxId::ZoneTransition) == 1);
+    CHECK(w.Count<EvCameraFlash>() == 1);
+    CHECK(w.Logged("zone.teleport.toCamp"));
+    // Movement input (keyboard / stick / click) cancels the channel.
+    w.Place({60, 40});
+    REQUIRE(w.zone.UseTownPortal());
+    w.Step(10);
+    w.loco.SetMoveInput({1, 0});
+    CHECK_FALSE(w.zone.IsPortaling());
+    CHECK(w.Last<EvTownPortal>()->phase == EvTownPortal::Phase::Cancelled);
+    w.loco.SetMoveInput({});
+    w.Step(120);
+    CHECK(w.hero->Position() == Vec2(60, 40));  // never teleported
+    // Right click (7.1 row 2) uses the portal; a Dying hero is refused.
+    w.Place({60, 40});
+    w.zone.OnPointerPress({30, 30}, PointerButton::Secondary);
+    CHECK(w.zone.IsPortaling());
+    w.zone.CancelTownPortal();
+    w.hero->SetLife(HeroLife::Dying);
+    CHECK(w.zone.CanUseTownPortal() == PortalRefusal::Dead);
+    CHECK_FALSE(w.zone.UseTownPortal());
+  }
+
+  TEST_CASE("interact 7.4: NPC range 3.0 / 3.01, prompt events, nothing in range is a silent no-op") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const NpcPlacement* herb = w.zone.FindNpc("plains_herbalist");
+    REQUIRE(herb != nullptr);
+    w.Place({53, 30});
+    InteractTarget t = w.zone.FindInteractTarget();
+    CHECK(t.kind == InteractKind::Npc);
+    CHECK(t.id == herb->id);
+    CHECK(t.key == "plains_herbalist");
+    w.Place({53.01, 30});
+    CHECK(w.zone.FindInteractTarget().kind == InteractKind::None);
+    w.h.events.Clear();
+    const size_t logs = w.Count<EvLog>();
+    CHECK_FALSE(w.zone.Interact());
+    CHECK(w.Count<EvLog>() == logs);
+    // InteractPrompt follows FindInteractTarget every tick (EvInteractPrompt on change only).
+    w.Place({52, 30});
+    w.Step();
+    REQUIRE(w.Last<EvInteractPrompt>() != nullptr);
+    CHECK(w.Last<EvInteractPrompt>()->kind == InteractKind::Npc);
+    CHECK(w.zone.Prompt().id == herb->id);
+    w.h.events.Clear();
+    w.Step(3);
+    CHECK(w.Count<EvInteractPrompt>() == 0);
+    w.Place({58, 30});
+    w.Step();
+    REQUIRE(w.Last<EvInteractPrompt>() != nullptr);
+    CHECK(w.Last<EvInteractPrompt>()->kind == InteractKind::None);
+    // Nearest wins between two NPCs in range (camp 1: blacksmith (12,13), quest_elder (12,17)).
+    w.Place({12, 14.9});
+    CHECK(w.zone.FindInteractTarget().key == "blacksmith");
+    w.Place({12, 15.1});
+    CHECK(w.zone.FindInteractTarget().key == "quest_elder");
+  }
+
+  TEST_CASE("pointer 7.1 / W8: a far NPC is walked to (walk-then-act), another order abandons it") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const NpcPlacement* herb = w.zone.FindNpc("plains_herbalist");
+    REQUIRE(herb != nullptr);
+    w.zone.OnPointerPress(herb->pos, PointerButton::Primary);
+    CHECK(w.zone.Pending().active);
+    CHECK(w.zone.Pending().target.kind == InteractKind::Npc);
+    CHECK_FALSE(w.loco.Path().empty());
+    REQUIRE(w.StepUntil([&w] { return !w.zone.Pending().active; }, 1200));
+    CHECK(DistSq(w.hero->Position(), herb->pos) <= 9.0 + 1e-9);
+    w.Step();
+    CHECK(w.loco.Path().empty());  // stopped at the 3-tile range
+    // A new click on the ground replaces the pending interaction.
+    w.Place({30, 30});
+    w.zone.OnPointerPress(herb->pos, PointerButton::Primary);
+    REQUIRE(w.zone.Pending().active);
+    const TilePos ground = WorldClearRow(w.zone, 3, 20, 40);
+    w.zone.OnPointerPress(ground.Center(), PointerButton::Primary);
+    CHECK_FALSE(w.zone.Pending().active);
+    CHECK(w.loco.IsHoldMoving());  // row 12 always arms hold-to-move
+  }
+
+  TEST_CASE("pointer 7.1 rows 3 / 5 / 12: dead hero ignored, NPC pick radius distSq < 3.24 (strict), ground else") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const NpcPlacement* herb = w.zone.FindNpc("plains_herbalist");
+    REQUIRE(herb != nullptr);
+    // A far NPC is picked when distSq(npc, tile) < 3.24 (the press walks there: pending interaction).
+    w.Place({30, 30});
+    w.zone.OnPointerPress(Vec2(herb->pos.x + 1.79, herb->pos.y), PointerButton::Primary);
+    CHECK(w.zone.Pending().active);
+    CHECK(w.zone.Pending().target.id == herb->id);
+    CHECK_FALSE(w.loco.IsHoldMoving());  // the NPC row consumed the press
+    w.loco.Stop();
+    w.zone.OnPointerPress(Vec2(herb->pos.x + 1.81, herb->pos.y), PointerButton::Primary);  // distSq > 3.24: ground
+    CHECK_FALSE(w.zone.Pending().active);
+    CHECK(w.loco.IsHoldMoving());
+    // Row 3: a Dying hero's press does nothing (row 2, the portal, is evaluated before it).
+    w.loco.Stop();
+    w.hero->SetLife(HeroLife::Dying);
+    const uint32_t gen = w.loco.MoveGeneration();
+    w.zone.OnPointerPress(Vec2(40, 40), PointerButton::Primary);
+    CHECK(w.loco.MoveGeneration() == gen);
+    CHECK(w.loco.Path().empty());
+    CHECK_FALSE(w.loco.IsHoldMoving());
+  }
+
+  TEST_CASE("pointer W6 / W8: clicking an exit walks to its inner tile; the proximity trigger fires on arrival") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    TilePos near;
+    REQUIRE(w.zone.Paths().FindWalkableNear({108, 60}, 3, near));
+    w.Place(near.Center());
+    w.Step();
+    w.h.events.Clear();
+    w.zone.OnPointerPress({119, 60}, PointerButton::Primary);
+    CHECK(w.Count<EvBanner>() == 0);  // no instant zone change (W6)
+    REQUIRE_FALSE(w.loco.Path().empty());
+    CHECK(w.loco.Path().back() == TilePos{118, 60});
+    REQUIRE(w.StepUntil([&w] { return w.Count<EvBanner>() > 0; }, 600));
+    CHECK(DistSq(w.hero->Position(), Vec2(119, 60)) < 2.25);
+  }
+
+  // ===================================================================================================================
+  // Locomotion (world 6, 7.2; S5, W3, W4)
+  // ===================================================================================================================
+  TEST_CASE("locomotion S5: uniform ground speed moveSpeed / 36 tiles/s for click paths, instant start") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const TilePos a = WorldClearRow(w.zone, 6);
+    REQUIRE(a.col > 0);
+    w.Place(a.Center());
+    CHECK(w.hero->GroundSpeedTilesPerSec() == doctest::Approx(120.0 / 36.0));
+    w.loco.SetPath({TilePos{a.col + 1, a.row}, TilePos{a.col + 2, a.row}});
+    w.Step(9);  // 9 * 16.67 ms * 3.333 tiles/s = 0.5 tiles
+    CHECK(w.hero->Position().x == doctest::Approx(a.col + 0.5));
+    CHECK(w.loco.CurrentSpeedTilesPerSec() == doctest::Approx(120.0 / 36.0));
+    w.Step(9);
+    CHECK(w.hero->Position().x == doctest::Approx(a.col + 1.0));  // the remainder carries over the node
+    CHECK(w.loco.IsMoving());
+    REQUIRE(w.StepUntil([&w] { return !w.loco.IsMoving(); }, 40));
+    CHECK(w.hero->Position() == Vec2(a.col + 2, a.row));  // stops exactly on the last node
+  }
+
+  TEST_CASE("locomotion S5: keyboard / stick ramp 90 ms up and 60 ms stop; dead hero does not move") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const TilePos a = WorldClearRow(w.zone, 6);
+    REQUIRE(a.col > 0);
+    w.Place(a.Center());
+    w.loco.SetMoveInput({1, 0});
+    const double full = 120.0 / 36.0;
+    const double dt = kSimStepMs / 1000.0;
+    double expected = 0;
+    double speed = 0;
+    for (int i = 0; i < 60; ++i) {
+      speed = (std::min)(full, speed + full * kSimStepMs / 90.0);
+      expected += speed * dt;
+    }
+    w.Step(60);
+    CHECK(w.hero->Position().x == doctest::Approx(a.col + expected).epsilon(1e-9));
+    CHECK(expected == doctest::Approx(full * dt * (55 + (1.0 + 2 + 3 + 4 + 5) * kSimStepMs / 90.0)));
+    const double before = w.hero->Position().x;
+    w.loco.SetMoveInput({});
+    w.Step(4);  // 60 ms stop: coasts for at most 4 steps
+    const double coast = w.hero->Position().x - before;
+    CHECK(coast > 0);
+    CHECK(coast < full * 0.06);
+    const double stopped = w.hero->Position().x;
+    w.Step(5);
+    CHECK(w.hero->Position().x == stopped);
+    w.hero->SetHp(0);
+    w.loco.SetMoveInput({1, 0});
+    w.Step(10);
+    CHECK(w.hero->Position().x == stopped);
+  }
+
+  TEST_CASE("locomotion W3: pushing diagonally into a wall slides (UniformTiles) and stops in parity mode") {
+    for (const HeroSpeedModel model : {HeroSpeedModel::UniformTiles, HeroSpeedModel::IsoPixelParity}) {
+      WorldRig w;
+      REQUIRE(w.ok);
+      w.loco.SetSpeedModel(model);
+      int32_t row = -1;
+      for (int32_t r = 40; r < 110 && row < 0; ++r) {
+        if (w.zone.Walkable(1, r) && w.zone.Walkable(1, r + 1) && w.zone.Walkable(1, r + 2)) row = r;
+      }
+      REQUIRE(row > 0);
+      w.Place({0.505, static_cast<double>(row)});
+      w.loco.SetMoveInput({-1, 1});
+      w.Step(3);
+      const Vec2 p = w.hero->Position();
+      if (model == HeroSpeedModel::UniformTiles) {
+        CHECK(p.x == 0.505);  // the col component would round into the border wall
+        CHECK(p.y > row);    // slides along the row axis
+      } else {
+        CHECK(p == Vec2(0.505, row));  // web: only the destination is checked, no sliding
+      }
+    }
+  }
+
+  TEST_CASE("locomotion IsoPixelParity (world 21 item 4): arrival on the tick the iso-px sum reaches 35.777") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    w.loco.SetSpeedModel(HeroSpeedModel::IsoPixelParity);
+    const TilePos a = WorldClearRow(w.zone, 3);
+    w.Place(a.Center());
+    w.loco.SetPath({TilePos{a.col + 1, a.row}});
+    const double dt = kSimStepMs / 1000.0;
+    const double nodePx = std::sqrt(32.0 * 32.0 + 16.0 * 16.0);  // cartToIso(1, 0)
+    double speed = 0, sum = 0;
+    int expectedSteps = 0;
+    while (sum < nodePx) {
+      speed += (120.0 - speed) * 8.0 * dt;
+      sum += speed * dt;
+      ++expectedSteps;
+    }
+    int steps = 0;
+    while (w.loco.IsMoving() && steps < 200) {
+      w.Step();
+      ++steps;
+    }
+    CHECK(steps == expectedSteps);
+    CHECK(w.hero->Position() == Vec2(a.col + 1, a.row));
+  }
+
+  TEST_CASE("hold-to-move 7.2: 120 ms re-path cadence, immediate on a tile change, stand still within 0.6") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    const TilePos a = WorldClearRow(w.zone, 8);
+    REQUIRE(a.col > 0);
+    w.Place(a.Center());
+    const TilePos goal{a.col + 6, a.row};
+    w.zone.OnPointerPress(goal.Center(), PointerButton::Primary, 7);
+    REQUIRE(w.loco.IsHoldMoving());
+    CHECK(w.loco.Hold().pointerId == 7);
+    const uint32_t g0 = w.loco.MoveGeneration();
+    w.loco.UpdateHold(7, goal, true);
+    w.Step(6);  // 100 ms: same tile, path non-empty -> no re-path
+    CHECK(w.loco.MoveGeneration() == g0);
+    w.Step(2);  // past repathAt (120 ms): re-paths even on the same tile
+    CHECK(w.loco.MoveGeneration() == g0 + 1);
+    w.loco.UpdateHold(7, TilePos{a.col + 5, a.row}, true);  // a new tile: immediate
+    w.Step();
+    CHECK(w.loco.MoveGeneration() == g0 + 2);
+    CHECK(w.loco.Path().back() == TilePos{a.col + 5, a.row});
+    w.loco.UpdateHold(3, TilePos{a.col, a.row}, true);  // another pointer: ignored
+    w.Step();
+    CHECK(w.loco.Hold().pointer == TilePos{a.col + 5, a.row});
+    // Pointer on the hero's own tile: stand still.
+    w.loco.UpdateHold(7, RoundToTile(w.hero->Position()), true);
+    w.Step();
+    CHECK(w.loco.Path().empty());
+    // Release: the hold ends; the hero finishes its current path.
+    w.loco.UpdateHold(7, TilePos{a.col + 6, a.row}, true);
+    w.Step();
+    REQUIRE_FALSE(w.loco.Path().empty());
+    w.loco.UpdateHold(7, TilePos{a.col + 6, a.row}, false);
+    CHECK_FALSE(w.loco.IsHoldMoving());
+    REQUIRE(w.StepUntil([&w] { return !w.loco.IsMoving(); }, 200));
+    CHECK(w.hero->Position() == Vec2(a.col + 6, a.row));
+    // Keyboard input clears the hold.
+    w.zone.OnPointerPress(Vec2(a.col + 1, a.row), PointerButton::Primary, 7);
+    REQUIRE(w.loco.IsHoldMoving());
+    w.loco.SetMoveInput({0, 1});
+    w.Step();
+    CHECK_FALSE(w.loco.IsHoldMoving());
+  }
+
+  // ===================================================================================================================
+  // Exploration + hidden areas (10.1, 10.3; world 21 item 9)
+  // ===================================================================================================================
+  TEST_CASE("exploration 10.3: standing at (108,108) sees the whole elven cache; (104,102) misses two corners") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    w.Place({104, 102});
+    w.Step();
+    CHECK_FALSE(w.explore.AreaFullyExplored(102, 102, 114, 114));
+    CHECK_FALSE(w.explore.Grid().IsExplored(102, 114));
+    CHECK_FALSE(w.explore.Grid().IsExplored(114, 114));
+    w.Place({108, 108});
+    w.Step();
+    CHECK(w.explore.AreaFullyExplored(102, 102, 114, 114));
+    // The grid is per visit: a zone re-entry resets it.
+    w.zone.ExitZone();
+    REQUIRE(w.zone.EnterZone("emerald_plains", false, {}));
+    w.explore.OnZoneEnter();
+    CHECK_FALSE(w.explore.Grid().IsExplored(108, 108));
+  }
+}
+
+// =====================================================================================================================
+// Audio rules (audio.md 3, 5.4, 9.8, 10.4; A2, A4-A6)
+// =====================================================================================================================
+TEST_SUITE("audio") {
+  TEST_CASE("3.1 / 3.2 cue rules: combat damage, skills, pickups, quest progress") {
+    const AudioRulesDef& r = WD().Audio().rules;
+    CHECK(SfxForCombatHit(r, true, true, HitWeight::Crit) == SfxId::Miss);  // dodged first
+    CHECK(SfxForCombatHit(r, false, true, HitWeight::Crit) == SfxId::Crit);
+    CHECK(SfxForCombatHit(r, false, false, HitWeight::Normal) == SfxId::Hit);
+    CHECK(SfxForCombatHit(r, false, false, HitWeight::Light) == SfxId::Hit);
+    CHECK(SfxForCombatHit(r, false, false, HitWeight::Tick) == SfxId::Hit);
+    CHECK(SfxForCombatHit(r, false, false, HitWeight::Heavy) == SfxId::HitHeavy);  // A6
+    CHECK(SfxForCombatHit(r, false, false, HitWeight::Kill) == SfxId::HitHeavy);
+    CHECK(SfxForSkill(r, DamageType::Physical) == SfxId::SkillMelee);
+    CHECK(SfxForSkill(r, DamageType::Fire) == SfxId::SkillFire);
+    CHECK(SfxForSkill(r, DamageType::Ice) == SfxId::SkillIce);
+    CHECK(SfxForSkill(r, DamageType::Lightning) == SfxId::SkillLightning);
+    CHECK(SfxForSkill(r, DamageType::Poison) == SfxId::SkillBuff);
+    CHECK(SfxForSkill(r, DamageType::Arcane) == SfxId::SkillBuff);
+    CHECK(SfxForPickup(r, ItemQuality::Normal) == SfxId::LootCommon);
+    CHECK(SfxForPickup(r, ItemQuality::Magic) == SfxId::LootMagic);
+    CHECK(SfxForPickup(r, ItemQuality::Rare) == SfxId::LootRare);
+    CHECK(SfxForPickup(r, ItemQuality::Legendary) == SfxId::LootLegendary);
+    CHECK(SfxForPickup(r, ItemQuality::Set) == SfxId::LootLegendary);
+    CHECK_FALSE(SfxForQuestProgress(r, 5, 5, "goblin", true).has_value());  // the fanfare covers it
+    CHECK(SfxForQuestProgress(r, 5, 5, "goblin", false) == SfxId::QuestObjective);
+    CHECK(SfxForQuestProgress(r, 2, 5, "mat_herb", false) == SfxId::QuestProgress);
+    CHECK(SfxForQuestProgress(r, 1, 3, "clue_bones", false) == SfxId::QuestProgress);
+    CHECK_FALSE(SfxForQuestProgress(r, 1, 5, "goblin", false).has_value());  // single kills are silent
+  }
+
+  TEST_CASE("theme resolution: theme table, dungeon floors -> abyss_rift, ember tower -> plains, else silence") {
+    const MusicDirectorDef& def = WD().Audio().music;
+    CHECK(ResolveMusicTheme(def, "emerald_plains") == "emerald_plains");
+    CHECK(ResolveMusicTheme(def, "menu") == "menu");
+    CHECK(ResolveMusicTheme(def, "abyss_rift") == "abyss_rift");
+    CHECK(ResolveMusicTheme(def, "dungeon_floor_3") == "abyss_rift");
+    CHECK(ResolveMusicTheme(def, "ember_tower") == "emerald_plains");
+    CHECK(ResolveMusicTheme(def, "nowhere").empty());
+    CHECK(def.zoneFadeSec == 2);
+    CHECK(def.stateFadeSec == 1.5);
+    CHECK(def.fadeInSec == 1);
+    CHECK(def.victoryHoldMs == 3000);
+    CHECK(def.bossVictoryHoldMs == 8000);  // A5
+    CHECK(def.bossCh1Score == "boss_ch1");
+  }
+
+  TEST_CASE("5.4 transition table: zone 2.0 / 1.0, state 1.5 / 1.0, A2 explore resumes, unchanged -> nothing") {
+    MusicDirector m(WD().Audio().music);
+    m.OnZoneEntered("emerald_plains");
+    std::optional<MusicCommand> c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "emerald_plains_explore");
+    CHECK(c->fadeOutSec == 2.0);
+    CHECK(c->fadeInSec == 1.0);
+    CHECK(c->loop);
+    CHECK(c->restart);
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.OnCombatStateChanged(false);  // unchanged state: setState returns
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.OnCombatStateChanged(true);
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "emerald_plains_combat");
+    CHECK(c->fadeOutSec == 1.5);
+    CHECK(c->fadeInSec == 1.0);
+    CHECK(c->restart);
+    m.OnCombatStateChanged(false);
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "emerald_plains_explore");
+    CHECK(c->fadeOutSec == 1.5);
+    CHECK_FALSE(c->restart);  // A2: the explore track resumes where it left off
+    // Re-entering the same zone: no zone fade, no command (already exploring).
+    m.OnZoneEntered("emerald_plains");
+    CHECK_FALSE(m.TakeCommand().has_value());
+    // playTrack is forced: restarts even when unchanged.
+    m.PlayTrack("emerald_plains", MusicState::Explore);
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "emerald_plains_explore");
+    CHECK(c->fadeOutSec == 2.0);
+    CHECK(c->restart);
+    // Unknown zone: silence.
+    m.OnZoneEntered("nowhere");
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey.empty());
+    // A zone change while fighting starts the new zone in explore.
+    m.OnZoneEntered("emerald_plains");
+    m.OnCombatStateChanged(true);
+    m.TakeCommand();
+    m.OnZoneEntered("abyss_rift");
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "abyss_rift_explore");
+    CHECK(m.State() == MusicState::Explore);
+  }
+
+  TEST_CASE("10.4 boss precedence and the boss-victory hold (A5 8000 ms); 3000 ms for forced victory tracks") {
+    MusicDirector m(WD().Audio().music);
+    m.Tick(0);
+    m.OnZoneEntered("emerald_plains");
+    m.TakeCommand();
+    m.OnCombatStateChanged(true);
+    m.TakeCommand();
+    m.OnBossEngaged("goblin_chief");
+    std::optional<MusicCommand> c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "boss_ch1");
+    CHECK(c->fadeOutSec == 1.5);
+    CHECK(m.State() == MusicState::Boss);
+    m.OnCombatStateChanged(false);  // boss outranks combat / explore
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.OnCombatStateChanged(true);
+    m.OnBossDefeated("goblin_chief");
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "emerald_plains_victory");
+    CHECK_FALSE(c->loop);  // one-shot
+    m.OnCombatStateChanged(false);  // ignored during the hold
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.Tick(7999);
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.Tick(8000);
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "emerald_plains_explore");  // the queued combat flag (off) applies at the end
+    // Disengaged without a kill: back to the combat flag's state.
+    m.OnCombatStateChanged(true);
+    m.OnBossEngaged("goblin_chief");
+    m.TakeCommand();
+    m.OnBossDisengaged();
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "emerald_plains_combat");
+    // A forced victory (epilogue) holds 3000 ms.
+    m.Tick(10000);
+    m.PlayTrack("abyss_rift", MusicState::Victory);
+    m.TakeCommand();
+    m.OnCombatStateChanged(false);
+    m.Tick(12999);
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.Tick(13000);
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "abyss_rift_explore");
+  }
+
+  TEST_CASE("10.4 story lock: sequence music owns the bed; combat changes are queued and applied on release") {
+    MusicDirector m(WD().Audio().music);
+    m.OnZoneEntered("emerald_plains");
+    m.TakeCommand();
+    m.SetStoryLock(true);
+    m.PlayTrack("abyss_rift", MusicState::Explore);
+    std::optional<MusicCommand> c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "abyss_rift_explore");
+    m.OnCombatStateChanged(true);
+    m.OnBossEngaged("goblin_chief");
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.SetStoryLock(false);
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "boss_ch1");  // boss > combat once the lock is released
+    // A zone entered under the lock starts its track when the lock is released (zone fade).
+    MusicDirector z(WD().Audio().music);
+    z.OnZoneEntered("emerald_plains");
+    z.TakeCommand();
+    z.SetStoryLock(true);
+    z.OnZoneEntered("abyss_rift");
+    CHECK_FALSE(z.TakeCommand().has_value());
+    z.SetStoryLock(false);
+    c = z.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "abyss_rift_explore");
+    CHECK(c->fadeOutSec == 2.0);
+    CHECK(c->restart);
+    // A forced victory under the lock (epilogue) still returns to the sequence zone's explore after 3000 ms, and
+    // combat stays queued meanwhile.
+    MusicDirector e(WD().Audio().music);
+    e.Tick(0);
+    e.OnZoneEntered("emerald_plains");
+    e.SetStoryLock(true);
+    e.PlayTrack("abyss_rift", MusicState::Victory);
+    e.TakeCommand();
+    e.OnCombatStateChanged(true);
+    e.Tick(3000);
+    c = e.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "abyss_rift_explore");
+  }
+
+  TEST_CASE("AudioDirector: bus listeners -> EvSfx / EvMusic (prologue lock, boss bar, kills, quests, NPCs)") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    AudioDirector& a = w.audio;
+    a.OnZoneEntered(ZoneEnteredMsg{"emerald_plains", true});
+    a.OnStoryState(StoryStateMsg{true, "prologue", "abyss_rift"});
+    a.AdvanceRealTime(16);
+    REQUIRE(w.Last<EvMusic>() != nullptr);
+    CHECK(w.Count<EvMusic>() == 1);  // one command per frame: the sequence's track wins
+    CHECK(w.Last<EvMusic>()->trackKey == "abyss_rift_explore");
+    a.OnStoryState(StoryStateMsg{false, "", ""});
+    a.AdvanceRealTime(16);
+    CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_explore");
+    CHECK(w.Last<EvMusic>()->restart);
+    // Boss bar + combat -> boss music; bar cleared by the kill -> victory, 8000 ms -> explore.
+    a.OnBossBar(BossBarMsg{true, 77, "goblin_chief", false});
+    a.AdvanceRealTime(16);
+    CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_explore");  // not engaged until the combat flag
+    a.OnCombatStateChanged(CombatStateChangedMsg{true});
+    a.AdvanceRealTime(16);
+    CHECK(w.Last<EvMusic>()->trackKey == "boss_ch1");
+    a.OnBossBar(BossBarMsg{false, 77, "goblin_chief", true});
+    a.AdvanceRealTime(16);
+    CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_victory");
+    a.OnCombatStateChanged(CombatStateChangedMsg{false});
+    w.h.events.Clear();
+    a.AdvanceRealTime(7000);
+    CHECK(w.Count<EvMusic>() == 0);
+    a.AdvanceRealTime(1000);
+    REQUIRE(w.Last<EvMusic>() != nullptr);
+    CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_explore");
+    // SFX listeners.
+    w.h.events.Clear();
+    MonsterKilledMsg k;
+    k.monster = 12;
+    k.pos = {40, 41};
+    a.OnMonsterKilled(k);
+    REQUIRE(w.Last<EvSfx>() != nullptr);
+    CHECK(w.Last<EvSfx>()->cue == SfxId::MonsterDeath);
+    CHECK(w.Last<EvSfx>()->spatial);  // A4: world SFX are 3D
+    CHECK(w.Last<EvSfx>()->source == 12);
+    a.OnLevelUp(HeroLevelUpMsg{2});
+    CHECK(w.Last<EvSfx>()->cue == SfxId::LevelUp);
+    CHECK_FALSE(w.Last<EvSfx>()->spatial);
+    a.OnItemPicked(ItemPickedMsg{"u", "b", ItemQuality::Set});
+    CHECK(w.Last<EvSfx>()->cue == SfxId::LootLegendary);
+    a.OnQuestAccepted(QuestAcceptedMsg{"q"});
+    CHECK(w.Last<EvSfx>()->cue == SfxId::NpcInteract);
+    QuestProgressMsg qp;
+    qp.current = 1;
+    qp.required = 5;
+    qp.targetId = "goblin";
+    const size_t before = w.Count<EvSfx>();
+    a.OnQuestProgress(qp);
+    CHECK(w.Count<EvSfx>() == before);  // silent kill step
+    qp.targetId = "mat_herb";
+    a.OnQuestProgress(qp);
+    CHECK(w.Last<EvSfx>()->cue == SfxId::QuestProgress);
+    a.OnQuestCompleted(QuestCompletedMsg{"q"});
+    CHECK(w.Last<EvSfx>()->cue == SfxId::QuestComplete);
+    a.OnQuestTurnedIn(QuestTurnedInMsg{"q"});
+    CHECK(w.Last<EvSfx>()->cue == SfxId::QuestComplete);
+    a.OnNpcInteracted(NpcInteractedMsg{"quest_elder", 3});
+    CHECK(w.Last<EvSfx>()->cue == SfxId::NpcInteract);
+    a.OnNpcInteracted(NpcInteractedMsg{"blacksmith", 4});
+    CHECK(w.Last<EvSfx>()->cue == SfxId::PanelOpen);  // SHOP_OPEN
+    const size_t n = w.Count<EvSfx>();
+    a.OnNpcInteracted(NpcInteractedMsg{"stash", 5});
+    CHECK(w.Count<EvSfx>() == n);  // the stash panel's click is UE's
   }
 }

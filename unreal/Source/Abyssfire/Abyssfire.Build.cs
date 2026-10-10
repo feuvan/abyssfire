@@ -30,9 +30,10 @@ public class Abyssfire : ModuleRules
 			"RenderCore", "RHI",           // FUpdateTextureRegion2D, dynamic textures (fog of war, minimap)
 			"DeveloperSettings",           // UDeveloperSettings for project tunables
 			"AudioMixer",                  // runtime audio layer (audio.md)
+			"ProceduralMeshComponent",     // zone terrain / water meshes built at runtime (world agent; plugin enabled in
+			                               // Abyssfire.uproject)
 		});
-		// "UMG" only if UMG widgets are used (9.1); "Niagara" only if Niagara assets are adopted (6.9);
-		// "ProceduralMeshComponent" if trails / ribbons use it (also enable the plugin in Abyssfire.uproject).
+		// "UMG" only if UMG widgets are used (9.1); "Niagara" only if Niagara assets are adopted (6.9).
 
 		// Exported data tables and bundled fonts are staged into the pak / IoStore container (UFS) on every platform and
 		// read at runtime through the pak-aware platform file (ue58-platform.md 10.1). `...` = recursive.

@@ -10,6 +10,7 @@
 #include "abyss/sim/Snapshot.h"
 
 #include "Framework/AbyssActorRegistry.h"
+#include "Framework/AbyssGameInstance.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssTypes.h"
 #include "Framework/AbyssUnits.h"
@@ -99,11 +100,18 @@ namespace AbyssPicking
 		abyss::Vec2& OutTile, int32& OutPriority)
 	{
 		const UAbyssSimDriver* Driver = UAbyssSimDriver::Get(&Controller);
-		if (Driver == nullptr || Driver->GetSnapshotIndex().GetSnapshot() == nullptr)
+		const UAbyssGameInstance* AbyssGame = UAbyssGameInstance::Get(&Controller);
+		if (Driver == nullptr || AbyssGame == nullptr)
 		{
 			return EAbyssPickAction::None;
 		}
 		const FAbyssSnapshotIndex& SnapIndex = Driver->GetSnapshotIndex();
+		// The index is rebuilt by the driver after each GameSim::Frame; a session started / ended by a UI flow call since
+		// then leaves it pointing at another snapshot: pick nothing until the next rebuild.
+		if (SnapIndex.GetSnapshot() == nullptr || SnapIndex.GetSnapshot() != AbyssGame->GetSnapshot())
+		{
+			return EAbyssPickAction::None;
+		}
 		switch (Kind)
 		{
 		case abyss::EntityKind::Monster:

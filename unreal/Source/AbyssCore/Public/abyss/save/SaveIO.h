@@ -1,6 +1,7 @@
 // Save JSON: migration on the generic tree, typed parse with the load normalisations, stable serialisation, the
 // position fallback, and the storage interface UE implements.
-// Spec: save-ui-input.md 3.1 (storage), 3.3 (v1 -> v2 -> v3 migrations; v3 -> v4 adds defaults; refuse version > current),
+// Spec: save-ui-input.md 3.1 (storage), 3.3 (v1 -> v2 -> v3 migrations; v3 -> v4 adds defaults; refuse versions >
+// current),
 // 3.5 (normalisations), 3.7 (findNearestWalkablePosition + test vectors), 3.10 (port design: tmp + rename + .bak),
 // 11 (API proposal); DECISIONS U1 (3 slots), U2 (v4, Saved/SaveGames/abyssfire_slot{N}.json), U3 (RapidJSON via
 // base/Json; own float parser).
@@ -27,9 +28,19 @@ namespace abyss {
 enum class SaveError : uint8_t { None, ParseFailed, NotAnObject, VersionTooNew, Invalid };
 ABYSS_ENUM_STRINGS(SaveError, "none", "parseFailed", "notAnObject", "versionTooNew", "invalid")
 
+class DataStore;
+
 // migrateSaveData on the generic tree (3.3): v1 -> v2 -> v3 -> v4, each step only when version < N; idempotent.
-// Returns false when the root is not an object.
-ABYSS_API bool MigrateRaw(JsonValue& raw);
+// v1 -> v2 fills every falsy collection / flag with its default (JS `if (!field)`), drops a non-object mercenary and
+// gives every item without `sockets` an empty list; v2 -> v3 writes `player.spirit` through SpiritSystem.restore
+// (non-object -> {0, 0}; non-finite -> 0; value clamped to [0, maxValue], remaining to [0, the class profile's
+// resonanceDurationMs]; value <= 0 || remaining <= 0 -> remaining 0). Without `data` only the lower bounds apply here
+// and Spirit::Restore applies the class profile's upper bounds at load (same result). v3 -> v4 adds the v4 defaults
+// (slot 0, potionSlots ["", ""], playTimeMs 0, dialogueOnce [], hiddenRewardsClaimed [], itemUidCounter 1,
+// visitedZones []); `hotbar` and `rng` stay absent (auto-filled hotbar, reseeded streams). A missing / non-numeric
+// version counts as 1.
+// Returns false when the root is not an object (nothing is changed).
+ABYSS_API bool MigrateRaw(JsonValue& raw, const DataStore* data = nullptr);
 
 // ParseSave: JSON -> MigrateRaw -> typed SaveData with every non-version-gated normalisation of 3.3 that does not need
 // game data (identified = true, abyss clamps, soul echo finite check, storySeen default). Data-dependent
@@ -38,7 +49,9 @@ ABYSS_API bool MigrateRaw(JsonValue& raw);
 // hp as a dead save and a non-finite tileCol / tileRow like a dead save's position (camps[0]).
 // Errors: ParseFailed (not JSON / too deep, kMaxJsonDepth), NotAnObject, VersionTooNew (UE shows a message: the save is
 // from a newer build), Invalid (shape errors).
-ABYSS_API SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMessage = nullptr);
+// `data` (optional) is passed to MigrateRaw for the v2 -> v3 class clamps.
+ABYSS_API SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMessage = nullptr,
+                              const DataStore* data = nullptr);
 
 // SerializeSave: stable key order = 3.2 then the v4 fields; numbers via FormatJsonNumber (shortest round trip).
 ABYSS_API std::string SerializeSave(const SaveData& s, bool pretty = false);
@@ -67,7 +80,7 @@ struct SaveSlotInfo {
   int32_t level = 1;
   std::string mapId;
   double playTimeMs = 0;
-  // Continue card line 2 ("<zone> · <difficulty>") and the difficulty selector (save-ui-input 1.2): the saved
+  // Continue card line 2 ("<zone> - <difficulty>") and the difficulty selector (save-ui-input 1.2): the saved
   // difficulty and DeriveCompletedDifficulties(difficulty, save list); showDifficultySelector =
   // ShouldShowDifficultySelector(difficulty, completedDifficulties). The selector's choice goes to
   // GameSim::LoadGame(json, err, difficultyOverride).

@@ -44,7 +44,8 @@ const char* RevPropArt(RandomEventType t, const ZoneEventDataDef* zd) {
     case RandomEventType::TreasureCache: return "decor_treasure_chest";
     case RandomEventType::WanderingMerchant: return "npc_wandering_merchant";
     case RandomEventType::Rescue: return zd != nullptr ? zd->rescueNpcSpriteKey.c_str() : "npc_rescue";
-    case RandomEventType::EnvironmentalPuzzle: return zd != nullptr ? zd->puzzleSpriteKey.c_str() : "decor_puzzle_stone";
+    case RandomEventType::EnvironmentalPuzzle:
+      return zd != nullptr ? zd->puzzleSpriteKey.c_str() : "decor_puzzle_stone";
     case RandomEventType::Ambush: break;
   }
   return "";
@@ -153,7 +154,8 @@ bool RandomEventSystem::HeroInSafeZone(Vec2 p) const {
       return true;
     }
   }
-  const double r = zone->Map().hasSafeZoneRadius ? zone->Map().safeZoneRadius : ctx_.data.World().randomEvents.safeZoneRadius;
+  const double r =
+      zone->Map().hasSafeZoneRadius ? zone->Map().safeZoneRadius : ctx_.data.World().randomEvents.safeZoneRadius;
   for (const MapCampDef& c : zone->Map().camps) {
     const double dx = p.x - c.pos.col, dy = p.y - c.pos.row;
     if (std::sqrt(dx * dx + dy * dy) < r) return true;
@@ -185,7 +187,7 @@ void RandomEventSystem::Tick() {
     if (e.type != RandomEventType::WanderingMerchant || e.prop == kNoEntity) continue;
     const ShopSystem* shop = ctx_.sys.shop;
     const bool open = shop != nullptr && shop->State().open && shop->State().npcId == kWanderingMerchantShopId;
-    if (!open) RemoveProp(e, DespawnReason::Removed);
+    if (!open) DespawnEventProp(e, DespawnReason::Removed);
   }
   PruneFinished();
   if (hero.Life() != HeroLife::Alive || hero.Hp() <= 0) return;  // checkRandomEvents: dead hero
@@ -219,7 +221,7 @@ void RandomEventSystem::SpawnProp(ActiveRandomEvent& e, Vec2 at, const std::stri
   ctx_.events.Emit(EvEntitySpawned{e.prop, EntityKind::Prop, std::string(EnumName(e.type)), art, at, Vec2(1, 0), 1.0});
 }
 
-void RandomEventSystem::RemoveProp(ActiveRandomEvent& e, DespawnReason reason) {
+void RandomEventSystem::DespawnEventProp(ActiveRandomEvent& e, DespawnReason reason) {
   if (e.prop == kNoEntity) return;
   ctx_.events.Emit(EvEntityDespawned{e.prop, EntityKind::Prop, reason});
   if (puzzle_.open && puzzle_.prop == e.prop) ClosePuzzle();
@@ -320,6 +322,7 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
       if (ctx_.sys.shop != nullptr) {
         // W10 parity: the merchant's priceMultiplier 1.2 is never applied by the shop.
         ctx_.sys.shop->OpenWanderingMerchant(zd != nullptr ? zd->merchantItems : noIds, 1.0);
+        ctx_.events.Sfx(ctx_.data.Audio().rules.shopOpen);  // SHOP_OPEN -> panel_open (audio 3.1)
       }
       ctx_.events.Log(MakeLoc("zone.event.merchant.announce"), LogType::Info);
       ctx_.events.Emit(EvRandomEvent{false, ev.type, ev.pos, zoneId, ev.prop});
@@ -367,7 +370,7 @@ void RandomEventSystem::CompleteRescue(ActiveRandomEvent& e) {
                                                          {"exp", ToStr(e.rewardExp)}}),
                   LogType::Info);
   Resolve(e);
-  RemoveProp(e, DespawnReason::Removed);
+  DespawnEventProp(e, DespawnReason::Removed);
 }
 
 void RandomEventSystem::OnTimer(const Timer& t) {
@@ -376,7 +379,7 @@ void RandomEventSystem::OnTimer(const Timer& t) {
     if (e.timer != t.id) continue;
     e.timer = kNoTimer;
     if (t.kind == static_cast<uint16_t>(RandomEventTimerKind::ChestFade)) {
-      RemoveProp(e, DespawnReason::Expired);
+      DespawnEventProp(e, DespawnReason::Expired);
     } else if (t.kind == static_cast<uint16_t>(RandomEventTimerKind::RescuePoll) && !e.resolved) {
       // M4 / W9: event monsters never respawn, so the rescue completes once every tracked monster is dead or gone.
       bool allDefeated = true;
@@ -405,6 +408,7 @@ bool RandomEventSystem::InteractProp(EntityId prop) {
       const ZoneEventDataDef* zd = ctx_.data.World().randomEvents.ForZone(ctx_.session.currentMap);
       const std::vector<std::string> none;
       ctx_.sys.shop->OpenWanderingMerchant(zd != nullptr ? zd->merchantItems : none, 1.0);
+      ctx_.events.Sfx(ctx_.data.Audio().rules.shopOpen);  // SHOP_OPEN -> panel_open (audio 3.1)
       return true;
     }
     case RandomEventType::EnvironmentalPuzzle:
@@ -466,7 +470,7 @@ bool RandomEventSystem::AnswerPuzzle(EntityId prop, int32_t choice) {
                   LogType::Info);
   ClosePuzzle();
   Resolve(*ev);
-  RemoveProp(*ev, DespawnReason::Collected);
+  DespawnEventProp(*ev, DespawnReason::Collected);
   PruneFinished();
   return true;
 }

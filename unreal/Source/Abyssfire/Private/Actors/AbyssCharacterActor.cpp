@@ -208,16 +208,35 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 		BlobShadow->SetMaterial(0, BlobMaterial);
 		BlobShadow->SetRelativeLocation(FVector(0.f, 0.f, 1.5f));
 		BlobShadow->SetRelativeScale3D(FVector(BlobRadiusCm * 2.f / 100.f, BlobRadiusCm * 2.f / 100.f, 1.f));
-		BlobShadow->SetVisibility(true);
+		bHasBlobAssets = true;
+		BlobShadow->SetVisibility(bBlobWanted);
 	}
 	else
 	{
+		bHasBlobAssets = false;
 		BlobShadow->SetVisibility(false);
 	}
 
 	bHasArt = true;
 	ResetPresentation();
 	return true;
+}
+
+void AAbyssCharacterActor::SetShadowMode(bool bBlob, bool bCastDynamic)
+{
+	bBlobWanted = bBlob;
+	if (BlobShadow != nullptr)
+	{
+		BlobShadow->SetVisibility(bBlob && bHasBlobAssets);
+	}
+	for (UPrimitiveComponent* Component : { static_cast<UPrimitiveComponent*>(Body.Get()),
+			 static_cast<UPrimitiveComponent*>(MainHandMesh.Get()), static_cast<UPrimitiveComponent*>(OffHandMesh.Get()) })
+	{
+		if (Component != nullptr)
+		{
+			Component->SetCastShadow(bCastDynamic);
+		}
+	}
 }
 
 void AAbyssCharacterActor::ResetPresentation()
@@ -356,6 +375,10 @@ const FAbyssArtClip* AAbyssCharacterActor::ResolveActionClip(const abyss::EvPlay
 			{
 				Variants.Add(Clip);
 			}
+		}
+		if (Variants.Num() == 0)
+		{
+			return Base;
 		}
 		const FAbyssArtClip* Chosen = Variants[AttackVariant % Variants.Num()];
 		AttackVariant = (AttackVariant + 1) % FMath::Max(1, Variants.Num());

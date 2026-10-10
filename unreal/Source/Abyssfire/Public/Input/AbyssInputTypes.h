@@ -114,8 +114,6 @@ struct FAbyssUiInputRequest
 
 /** Return true when the UI consumed the request (no fallback runs). */
 DECLARE_DELEGATE_RetVal_OneParam(bool, FAbyssUiInputHandler, const FAbyssUiInputRequest& /*Request*/);
-/** Camera zoom input: +1 = one wheel notch toward the hero (zoom in), -1 = out. Pinch / stick deliver fractions. */
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnAbyssCameraZoomInput, float /*ZoomSteps*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAbyssInputDeviceChanged, EAbyssInputDevice /*NewDevice*/);
 /** Desktop hover target changed (kNoEntity = nothing under the cursor). */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnAbyssHoveredEntityChanged, abyss::EntityId /*Entity*/);

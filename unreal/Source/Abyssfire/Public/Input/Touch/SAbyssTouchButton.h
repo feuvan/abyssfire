@@ -58,6 +58,13 @@ public:
 	void SetOutlineColor(const FLinearColor& InColor) { OutlineColor = InColor; }
 	/** Ready pop: scale 1.12 -> 1 over 180 ms. */
 	void PlayReadyPop();
+	/** True when ScreenPosition (absolute) is inside the round / square hit area. */
+	bool IsInsideHitArea(const FGeometry& MyGeometry, const FVector2D& ScreenPosition) const;
+	/**
+	 * A press the layer resolved to this control (it landed in a neighbour's box but inside this hit area): fires like a
+	 * direct press and captures the pointer.
+	 */
+	FReply BeginForwardedPress(const FPointerEvent& Event);
 
 	// ---- SWidget ----
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect,
@@ -73,7 +80,6 @@ public:
 	virtual bool SupportsKeyboardFocus() const override { return false; }
 
 private:
-	bool IsInsideHitArea(const FGeometry& MyGeometry, const FVector2D& ScreenPosition) const;
 	FReply HandlePointerDown(const FGeometry& MyGeometry, const FPointerEvent& Event);
 	FReply HandlePointerUp(const FPointerEvent& Event);
 	float CurrentScale() const;

@@ -56,6 +56,13 @@ public:
 	virtual ~SAbyssTouchControls() override;
 
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
+	/**
+	 * Presses bubble here only when the control under the pointer declined them (outside its circle but inside its box,
+	 * which can overlap a neighbour's circle on the skill rings): the press goes to the control whose hit area contains
+	 * it, else it continues to the world.
+	 */
+	virtual FReply OnTouchStarted(const FGeometry& MyGeometry, const FPointerEvent& InTouchEvent) override;
+	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 	/**
 	 * Rectangles (this widget's local Slate units) of the controls shown with the current layout, for the HUD to keep its
@@ -88,6 +95,7 @@ private:
 	void UpdateDynamicState(const abyss::Snapshot& Snap, const UAbyssGameInstance& GameInstance);
 	void UpdateCooldownButton(EAbyssTouchControl Control, double RemainingMs, double TotalMs, bool bBlocked);
 	void HandleControlPressed(EAbyssTouchControl Control);
+	FReply RouteMissedPress(const FGeometry& MyGeometry, const FPointerEvent& Event);
 	void ResetTransientState();
 
 	/** i18n text of a core key, or the English fallback while the key is missing from the tables. */

@@ -1,6 +1,7 @@
 #include "Input/Touch/SAbyssVirtualJoystick.h"
 
 #include "Layout/Geometry.h"
+#include "InputCoreTypes.h"
 #include "Rendering/DrawElements.h"
 
 #include "Input/AbyssInputSubsystem.h"
@@ -111,6 +112,18 @@ FReply SAbyssVirtualJoystick::HandleDown(const FGeometry& MyGeometry, const FPoi
 	}
 	ActivePointerIndex = static_cast<int32>(Event.GetPointerIndex());
 	UpdateThumb(MyGeometry, FVector2D(Event.GetScreenSpacePosition()));
+	Publish(true);
+	return FReply::Handled().CaptureMouse(SharedThis(this));
+}
+
+FReply SAbyssVirtualJoystick::BeginForwardedPress(const FPointerEvent& Event)
+{
+	if (IsActive())
+	{
+		return FReply::Handled();
+	}
+	ActivePointerIndex = static_cast<int32>(Event.GetPointerIndex());
+	UpdateThumb(GetTickSpaceGeometry(), FVector2D(Event.GetScreenSpacePosition()));
 	Publish(true);
 	return FReply::Handled().CaptureMouse(SharedThis(this));
 }

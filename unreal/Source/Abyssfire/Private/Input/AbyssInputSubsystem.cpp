@@ -54,7 +54,6 @@ void UAbyssInputSubsystem::Deinitialize()
 	DeviceTracker.Reset();
 	UiInputHandler.Unbind();
 	OnInputDeviceChanged.Clear();
-	OnCameraZoomInput.Clear();
 	OnHoveredEntityChanged.Clear();
 	Config = nullptr;
 	Super::Deinitialize();
@@ -80,7 +79,7 @@ void UAbyssInputSubsystem::PressAction(EAbyssInputAction Action, EAbyssInputDevi
 	NotifyInputDevice(Device);
 	if (AAbyssPlayerController* Controller = GetPlayerController())
 	{
-		Controller->InjectAbyssPress(Action);
+		Controller->InjectAbyssPress(Action, Device);
 	}
 }
 
@@ -158,7 +157,7 @@ TSharedRef<SWidget> UAbyssInputSubsystem::CreateTouchControls(const FAbyssTouchV
 }
 
 // =====================================================================================================================
-// Device, camera, hover
+// Device, hover
 // =====================================================================================================================
 
 void UAbyssInputSubsystem::NotifyInputDevice(EAbyssInputDevice Device)
@@ -169,15 +168,6 @@ void UAbyssInputSubsystem::NotifyInputDevice(EAbyssInputDevice Device)
 	}
 	LastDevice = Device;
 	OnInputDeviceChanged.Broadcast(Device);
-}
-
-void UAbyssInputSubsystem::BroadcastZoomInput(float ZoomSteps)
-{
-	if (FMath::IsNearlyZero(ZoomSteps))
-	{
-		return;
-	}
-	OnCameraZoomInput.Broadcast(ZoomSteps);
 }
 
 void UAbyssInputSubsystem::SetHoveredEntity(abyss::EntityId Entity)

@@ -41,6 +41,8 @@ public:
 	bool IsActive() const { return ActivePointerIndex != INDEX_NONE; }
 	/** Current value, screen space (X right, Y down), dead zone applied. */
 	FVector2D GetValue() const;
+	/** A press the layer resolved to the stick (inside the grab circle, under a neighbour's box): grabs like a direct press. */
+	FReply BeginForwardedPress(const FPointerEvent& Event);
 
 	// ---- SWidget ----
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;

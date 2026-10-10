@@ -69,8 +69,12 @@ public:
 	int32 GetNumChunksY() const { return NumChunksY; }
 	/** Ground (and water surface) mesh of one chunk, world space (uu). */
 	void BuildChunkMeshes(int32 ChunkX, int32 ChunkY, FAbyssTerrainMesh& OutGround, FAbyssTerrainMesh& OutWater) const;
-	/** BGRA8 bytes, Cols x Rows: R = tile type, G = detail variant (tileHash(c, r, 7) % 12), B = 255 if walkable, A = 255. */
-	void BuildTileTexture(TArray<uint8>& OutBGRA) const;
+	/**
+	 * BGRA8 bytes, Cols x Rows (M_AF_Terrain contract, WorldContract.md 3.1): R = paint material index (the tile type,
+	 * except walls -> WallPaintTile, the zone's dominant ground, and camp walls -> camp ground 5), G = detail variant
+	 * (tileHash(c, r, 7) % 12), B = 255 if walkable, A = the raw tile type.
+	 */
+	void BuildTileTexture(TArray<uint8>& OutBGRA, uint8 WallPaintTile) const;
 	FBox GetWorldBounds() const;
 
 private:

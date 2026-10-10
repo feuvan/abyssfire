@@ -3,6 +3,7 @@
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformTime.h"
+#include "InputCoreTypes.h"
 #include "Layout/Geometry.h"
 #include "Rendering/DrawElements.h"
 #include "Rendering/SlateRenderer.h"
@@ -113,8 +114,15 @@ FReply SAbyssTouchButton::HandlePointerDown(const FGeometry& MyGeometry, const F
 	}
 	if (!IsInsideHitArea(MyGeometry, FVector2D(Event.GetScreenSpacePosition())))
 	{
-		return FReply::Unhandled();   // outside the circle: the press belongs to the world below
+		// Outside the circle: SAbyssTouchControls (an ancestor) gives it to the control whose hit area contains it, else
+		// the press bubbles on to the world.
+		return FReply::Unhandled();
 	}
+	return BeginForwardedPress(Event);
+}
+
+FReply SAbyssTouchButton::BeginForwardedPress(const FPointerEvent& Event)
+{
 	if (PressedPointerIndex != INDEX_NONE)
 	{
 		return FReply::Handled();     // a second finger on a held button: claim it, fire nothing

@@ -138,6 +138,11 @@ public:
 	void OnHeroRespawned();
 	/** A hard reset of feedback state (zone change for the reused hero actor). */
 	void ResetPresentation();
+	/**
+	 * Shadow presentation of the render tier (DECISIONS P10): blob shadow on low / mid mobile (and whenever the sun
+	 * casts no CSM), dynamic sun shadow casting where CSM is active.
+	 */
+	void SetShadowMode(bool bBlob, bool bCastDynamic);
 
 	// ---- queries ----
 	abyss::EntityId GetEntityId() const { return EntityId; }
@@ -293,4 +298,6 @@ private:
 	// custom primitive data cache (AbyssCpd)
 	float CpdValues[AbyssCpd::Count] = {};
 	bool bCpdDirty = true;
+	bool bBlobWanted = true;
+	bool bHasBlobAssets = false;
 };

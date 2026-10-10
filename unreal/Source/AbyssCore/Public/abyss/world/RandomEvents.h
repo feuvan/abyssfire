@@ -135,7 +135,7 @@ class ABYSS_API RandomEventSystem {
 
  private:
   void Resolve(ActiveRandomEvent& e);
-  void RemoveProp(ActiveRandomEvent& e, DespawnReason reason);
+  void DespawnEventProp(ActiveRandomEvent& e, DespawnReason reason);
   void SpawnProp(ActiveRandomEvent& e, Vec2 at, const std::string& art);
   void CompleteRescue(ActiveRandomEvent& e);
   void PruneFinished();

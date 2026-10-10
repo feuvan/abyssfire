@@ -285,7 +285,9 @@ InteractTarget ZoneRuntime::FindInteractTarget() const {
     bestSq = d;
   };
   if (ctx_.sys.groundLoot != nullptr) {
-    for (const GroundItem& g : ctx_.sys.groundLoot->Items()) consider(InteractKind::Loot, g.id, g.pos, wc.lootRadiusSq, g.item.uid);
+    for (const GroundItem& g : ctx_.sys.groundLoot->Items()) {
+      consider(InteractKind::Loot, g.id, g.pos, wc.lootRadiusSq, g.item.uid);
+    }
   }
   for (const NpcPlacement& n : npcs_) consider(InteractKind::Npc, n.id, n.pos, wc.npcRange * wc.npcRange, n.npcId);
   if (ctx_.sys.lore != nullptr) {
@@ -374,7 +376,9 @@ void ZoneRuntime::OnPointerPress(Vec2 tile, PointerButton button, int32_t pointe
   }
   if (!ZoneHeroAlive(ctx_)) return;  // row 3
   pending_ = PendingInteraction{};
-  auto inBox = [&tile](Vec2 p) { return std::fabs(p.x - tile.x) < kZoneClickBox && std::fabs(p.y - tile.y) < kZoneClickBox; };
+  auto inBox = [&tile](Vec2 p) {
+    return std::fabs(p.x - tile.x) < kZoneClickBox && std::fabs(p.y - tile.y) < kZoneClickBox;
+  };
   // row 4: loot (first in drop order); Q22: an out-of-range drop is walked to and picked up on arrival.
   if (ctx_.sys.groundLoot != nullptr) {
     const EntityId drop = ctx_.sys.groundLoot->LootAt(tile);
@@ -618,7 +622,8 @@ void ZoneRuntime::FillSnapshot(Snapshot& out) const {
   out.prompt.pos = prompt_.pos;
   out.hero.portaling = IsPortaling();
   const double channel = ctx_.data.World().constants.townPortalChannelMs;
-  out.hero.portalProgress = IsPortaling() && channel > 0 ? Clamp((ctx_.Now() - portalStartMs_) / channel, 0.0, 1.0) : 0.0;
+  out.hero.portalProgress =
+      IsPortaling() && channel > 0 ? Clamp((ctx_.Now() - portalStartMs_) / channel, 0.0, 1.0) : 0.0;
   out.hero.portalRefusal = CanUseTownPortal();
 }
 

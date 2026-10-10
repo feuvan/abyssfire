@@ -428,18 +428,23 @@ void FAbyssTerrainField::BuildChunkMeshes(int32 ChunkX, int32 ChunkY, FAbyssTerr
 	}
 }
 
-void FAbyssTerrainField::BuildTileTexture(TArray<uint8>& OutBGRA) const
+void FAbyssTerrainField::BuildTileTexture(TArray<uint8>& OutBGRA, uint8 WallPaintTile) const
 {
+	using namespace AbyssTerrainPrivate;
+	constexpr uint8 TileCamp = 5;
 	OutBGRA.SetNumZeroed(FMath::Max(0, Cols * Rows * 4));
 	for (int32 Row = 0; Row < Rows; ++Row)
 	{
 		for (int32 Col = 0; Col < Cols; ++Col)
 		{
 			const int32 Index = (Row * Cols + Col) * 4;
+			const uint8 Raw = Tiles[Row * Cols + Col];
+			// Walls stand on the zone's dominant ground, camp walls on camp ground (ZoneTerrain.ts:84-102).
+			const uint8 Paint = Raw == TileWall ? WallPaintTile : (Raw == TileCampWall ? TileCamp : Raw);
 			OutBGRA[Index + 0] = Walkable[Row * Cols + Col] ? 255 : 0;                                   // B
 			OutBGRA[Index + 1] = static_cast<uint8>(AbyssWorldUtil::TileHash(Col, Row, 7) % 12u);      // G
-			OutBGRA[Index + 2] = Tiles[Row * Cols + Col];                                               // R
-			OutBGRA[Index + 3] = 255;                                                                   // A
+			OutBGRA[Index + 2] = Paint;                                                                 // R
+			OutBGRA[Index + 3] = Raw;                                                                   // A
 		}
 	}
 }

@@ -23,7 +23,9 @@ std::optional<SfxId> SfxForCombatHit(const AudioRulesDef& r, bool dodged, bool c
   return r.combatHit;
 }
 
-SfxId SfxForSkill(const AudioRulesDef& r, DamageType type) { return r.skillUsedByDamageType[static_cast<size_t>(type)]; }
+SfxId SfxForSkill(const AudioRulesDef& r, DamageType type) {
+  return r.skillUsedByDamageType[static_cast<size_t>(type)];
+}
 
 SfxId SfxForPickup(const AudioRulesDef& r, ItemQuality q) { return r.itemPickedByQuality[static_cast<size_t>(q)]; }
 
@@ -57,8 +59,12 @@ void MusicDirector::OnZoneEntered(std::string_view zoneId) {
   zone_ = std::string(zoneId);
   boss_.clear();
   victoryUntilMs_ = -1;
+  inCombat_ = false;  // a new ZoneScene starts out of combat (desiredState = explore)
   if (storyLock_) {
-    state_ = MusicState::Explore;  // the sequence owns the music; the zone track returns when the lock is released
+    // The sequence owns the music; the zone's track starts when the lock is released (or the sequence's closing
+    // playTrack names it).
+    zonePending_ = zonePending_ || zoneChanged;
+    state_ = MusicState::Explore;
     return;
   }
   if (zoneChanged) {
@@ -106,6 +112,7 @@ void MusicDirector::PlayTrack(std::string_view zoneId, MusicState state) {
   // Forced (story sequence, jukebox): restarts even when unchanged; plays under the story lock.
   zone_ = std::string(zoneId);
   state_ = state;
+  zonePending_ = false;
   victoryUntilMs_ = state == MusicState::Victory ? nowMs_ + def_->victoryHoldMs : -1;
   Transition(def_->zoneFadeSec, def_->fadeInSec, true);
 }
@@ -114,6 +121,12 @@ void MusicDirector::SetStoryLock(bool locked) {
   const bool released = storyLock_ && !locked;
   storyLock_ = locked;
   if (!released) return;
+  if (zonePending_) {  // a zone entered under the lock: its explore track with the zone fade
+    zonePending_ = false;
+    state_ = MusicState::Explore;
+    victoryUntilMs_ = -1;
+    Transition(def_->zoneFadeSec, def_->fadeInSec, true);
+  }
   // Changes queued under the lock apply now (boss > combat > explore); a forced PlayTrack may follow and wins.
   if (!boss_.empty() && inCombat_) {
     OnBossEngaged(boss_);
@@ -126,11 +139,8 @@ void MusicDirector::Tick(double realNowMs) {
   nowMs_ = realNowMs;
   if (victoryUntilMs_ >= 0 && realNowMs >= victoryUntilMs_) {
     victoryUntilMs_ = -1;
-    if (storyLock_) {
-      state_ = MusicState::Explore;
-      return;
-    }
-    SetState(inCombat_ ? MusicState::Combat : MusicState::Explore);
+    // Under the story lock combat stays queued: the (forced) victory returns to the sequence zone's explore track.
+    SetState(!storyLock_ && inCombat_ ? MusicState::Combat : MusicState::Explore);
   }
 }
 
@@ -146,7 +156,8 @@ void MusicDirector::SetState(MusicState s) {
   const MusicState was = state_;
   state_ = s;
   // A2: back to explore from a fight resumes the explore track where it left off.
-  const bool resume = s == MusicState::Explore && was != MusicState::Explore && def_->exploreResumesPosition && started_;
+  const bool resume =
+      s == MusicState::Explore && was != MusicState::Explore && def_->exploreResumesPosition && started_;
   Transition(def_->stateFadeSec, def_->fadeInSec, !resume);
 }
 
@@ -196,6 +207,42 @@ void AudioDirector::OnMonsterAggro(const MonsterAggroMsg& m) {
 }
 
 void AudioDirector::OnLevelUp(const HeroLevelUpMsg&) { ctx_.events.Sfx(ctx_.data.Audio().rules.playerLevelUp); }
+
+void AudioDirector::OnItemPicked(const ItemPickedMsg& m) {
+  ctx_.events.Sfx(SfxForPickup(ctx_.data.Audio().rules, m.quality));
+}
+
+void AudioDirector::OnQuestAccepted(const QuestAcceptedMsg&) { ctx_.events.Sfx(ctx_.data.Audio().rules.questAccepted); }
+
+void AudioDirector::OnQuestProgress(const QuestProgressMsg& m) {
+  if (const std::optional<SfxId> cue =
+          SfxForQuestProgress(ctx_.data.Audio().rules, m.current, m.required, m.targetId, m.completesQuest)) {
+    ctx_.events.Sfx(*cue);
+  }
+}
+
+void AudioDirector::OnQuestCompleted(const QuestCompletedMsg&) {
+  ctx_.events.Sfx(ctx_.data.Audio().rules.questCompleted);
+}
+
+void AudioDirector::OnQuestTurnedIn(const QuestTurnedInMsg&) { ctx_.events.Sfx(ctx_.data.Audio().rules.questTurnedIn); }
+
+void AudioDirector::OnNpcInteracted(const NpcInteractedMsg& m) {
+  const NpcDef* def = ctx_.data.FindNpc(m.npcId);
+  if (def == nullptr) return;
+  const AudioRulesDef& r = ctx_.data.Audio().rules;
+  switch (def->type) {
+    case NpcType::Quest:
+      ctx_.events.Sfx(r.npcInteract);  // NPC_INTERACT (ZoneScene.ts:4159)
+      break;
+    case NpcType::Merchant:
+    case NpcType::Blacksmith:
+      ctx_.events.Sfx(r.shopOpen);  // SHOP_OPEN
+      break;
+    default:
+      break;
+  }
+}
 
 void AudioDirector::OnStoryState(const StoryStateMsg& m) {
   if (m.active && !m.musicTrack.empty()) {

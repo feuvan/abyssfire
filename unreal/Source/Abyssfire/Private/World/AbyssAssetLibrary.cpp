@@ -165,6 +165,68 @@ UTexture2D* UAbyssAssetLibrary::LoadTexture(const TCHAR* TextureName)
 		UTexture2D::StaticClass()));
 }
 
+UObject* UAbyssAssetLibrary::LoadFromFolders(TConstArrayView<const TCHAR*> Folders, FName AssetName, UClass* ExpectedClass)
+{
+	if (AssetName.IsNone())
+	{
+		return nullptr;
+	}
+	for (const TCHAR* Folder : Folders)
+	{
+		const FSoftObjectPath Path = FAbyssArtManifest::MakeObjectPath(Folder, AssetName);
+		const FName Key(*Path.ToString());
+		if (const TObjectPtr<UObject>* Found = Loaded.Find(Key); Found != nullptr && Found->Get() != nullptr)
+		{
+			TouchLoaded(Key);
+			return Found->Get();
+		}
+		if (Path.ResolveObject() == nullptr && !DoesAssetExist(Path))
+		{
+			continue;
+		}
+		if (UObject* Object = LoadObjectAt(Path, ExpectedClass))
+		{
+			return Object;
+		}
+	}
+	const FName MissingKey(*FString::Printf(TEXT("folders:%s"), *AssetName.ToString()));
+	if (!MissingPaths.Contains(MissingKey))
+	{
+		MissingPaths.Add(MissingKey);
+		UE_LOG(LogAbyss, Warning, TEXT("%s not found under %s (run Scripts/build_content.py)"), *AssetName.ToString(),
+			FAbyssArtManifest::ContentRoot());
+	}
+	return nullptr;
+}
+
+UStaticMesh* UAbyssAssetLibrary::LoadStaticMeshByName(FName AssetName)
+{
+	if (AssetName.IsNone())
+	{
+		return nullptr;
+	}
+	if (const FAbyssArtAsset* Asset = Manifest.FindAsset(AssetName); Asset != nullptr && !Asset->IsSkeletal())
+	{
+		if (UStaticMesh* Mesh = LoadStaticMesh(*Asset))
+		{
+			return Mesh;
+		}
+	}
+	static const TCHAR* const Folders[] = { TEXT("FX"), TEXT("FX/Meshes"), TEXT("Pickups"), TEXT("Props") };
+	return Cast<UStaticMesh>(LoadFromFolders(Folders, AssetName, UStaticMesh::StaticClass()));
+}
+
+UTexture2D* UAbyssAssetLibrary::LoadFxTexture(FName Sprite)
+{
+	if (Sprite.IsNone())
+	{
+		return nullptr;
+	}
+	static const TCHAR* const Folders[] = { TEXT("FX/Textures"), TEXT("Textures"), TEXT("FX") };
+	const FName TextureName(*FString::Printf(TEXT("T_FX_%s"), *Sprite.ToString()));
+	return Cast<UTexture2D>(LoadFromFolders(Folders, TextureName, UTexture2D::StaticClass()));
+}
+
 UMaterialParameterCollection* UAbyssAssetLibrary::GetLightingCollection()
 {
 	if (!bLightingCollectionResolved)

@@ -1,5 +1,7 @@
 #include "Input/Touch/SAbyssTouchControls.h"
 
+#include "Framework/Application/SlateApplication.h"
+#include "InputCoreTypes.h"
 #include "Layout/Geometry.h"
 #include "Widgets/Layout/Anchors.h"
 #include "Widgets/Layout/SConstraintCanvas.h"
@@ -12,6 +14,7 @@
 #include "abyss/sim/Snapshot.h"
 
 #include "Framework/AbyssGameInstance.h"
+#include "Framework/AbyssPlayerController.h"
 #include "Framework/AbyssText.h"
 #include "Input/AbyssInputMath.h"
 #include "Input/AbyssInputSubsystem.h"
@@ -155,7 +158,9 @@ void SAbyssTouchControls::Tick(const FGeometry& AllottedGeometry, const double I
 	{
 		return;
 	}
-	if (bResetPending)
+	// App deactivated (phone call, home button, alt-tab while testing): a held stick / button would otherwise keep its
+	// state until the next touch event.
+	if (bResetPending || (FSlateApplication::IsInitialized() && !FSlateApplication::Get().IsActive()))
 	{
 		ResetTransientState();
 		bResetPending = false;
@@ -163,13 +168,28 @@ void SAbyssTouchControls::Tick(const FGeometry& AllottedGeometry, const double I
 
 	// Layout inputs: layer size, k (DPR / DPI scale, clamped) x the U9 size setting, bound hotbar slots, pets (U6), locale.
 	Metrics = FAbyssTouchMetrics::FromTheme(GameInstance->GetData()->UiTheme());
-	const float DpiScale = AllottedGeometry.Scale;
-	const float UnitK = AbyssInputMath::ComputeTouchUnitScale(AbyssInputMath::GetDevicePixelRatio(), DpiScale,
+	const FVector2D LayerSize = FVector2D(AllottedGeometry.GetLocalSize());
+	const float DpiScale = FMath::Max(AllottedGeometry.GetAccumulatedLayoutTransform().GetScale(), KINDA_SMALL_NUMBER);
+	// DPR is measured on the whole game viewport (the layer sits inside the safe zone).
+	FVector2D ViewportPixels = LayerSize * DpiScale;
+	if (const UAbyssInputSubsystem* Subsystem = InputSubsystem.Get())
+	{
+		if (const APlayerController* Controller = Subsystem->GetPlayerController())
+		{
+			int32 ViewportWidth = 0;
+			int32 ViewportHeight = 0;
+			Controller->GetViewportSize(ViewportWidth, ViewportHeight);
+			if (ViewportWidth > 0 && ViewportHeight > 0)
+			{
+				ViewportPixels = FVector2D(ViewportWidth, ViewportHeight);
+			}
+		}
+	}
+	const float UnitK = AbyssInputMath::ComputeTouchUnitScale(AbyssInputMath::EstimateDevicePixelRatio(ViewportPixels), DpiScale,
 		Metrics.ScaleMin, Metrics.ScaleMax);
 	const float UnitScale = UnitK * FMath::Max(0.1f, GameInstance->GetUserSettings().TouchControlScale);
 
 	FLayoutKey Key;
-	const FVector2D LayerSize = FVector2D(AllottedGeometry.GetLocalSize());
 	Key.LayerSize = FIntPoint(FMath::RoundToInt(LayerSize.X), FMath::RoundToInt(LayerSize.Y));
 	Key.UnitScaleCenti = FMath::RoundToInt(UnitScale * 100.0f);
 	for (int32 Slot = 0; Slot < 6; ++Slot)
@@ -417,12 +437,12 @@ void SAbyssTouchControls::UpdateCooldownButton(EAbyssTouchControl Control, doubl
 	Target->SetCooldown(Fraction, AbyssInputMath::FormatCooldown(Remaining));
 	Target->SetDimAlpha(Remaining > 0.0 ? 0.7f : 1.0f);
 	Target->SetBlocked(bBlocked);
-	double& Previous = PreviousRemainingMs[AbyssTouch_Index(Control)];
-	if (Previous > 0.0 && Remaining <= 0.0)
+	double& LastRemaining = PreviousRemainingMs[AbyssTouch_Index(Control)];
+	if (LastRemaining > 0.0 && Remaining <= 0.0)
 	{
 		Target->PlayReadyPop();
 	}
-	Previous = Remaining;
+	LastRemaining = Remaining;
 }
 
 void SAbyssTouchControls::UpdateDynamicState(const abyss::Snapshot& Snap, const UAbyssGameInstance& GameInstance)
@@ -650,6 +670,57 @@ void SAbyssTouchControls::HandleControlPressed(EAbyssTouchControl Control)
 	case EAbyssTouchControl::Count:
 		return;
 	}
+}
+
+FReply SAbyssTouchControls::OnTouchStarted(const FGeometry& MyGeometry, const FPointerEvent& InTouchEvent)
+{
+	return RouteMissedPress(MyGeometry, InTouchEvent);
+}
+
+FReply SAbyssTouchControls::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	if (!MouseEvent.IsTouchEvent() && MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
+	{
+		return FReply::Unhandled();
+	}
+	return RouteMissedPress(MyGeometry, MouseEvent);
+}
+
+FReply SAbyssTouchControls::RouteMissedPress(const FGeometry& MyGeometry, const FPointerEvent& Event)
+{
+	if (!bShown || !bHasLayout)
+	{
+		return FReply::Unhandled();
+	}
+	// The canvas fills this widget, so placements are in this widget's local space. Topmost (last added) first.
+	const FVector2D Local = FVector2D(MyGeometry.AbsoluteToLocal(FVector2D(Event.GetScreenSpacePosition())));
+	for (int32 PlacementIndex = Placements.Num() - 1; PlacementIndex >= 0; --PlacementIndex)
+	{
+		const FAbyssTouchPlacement& Placement = Placements[PlacementIndex];
+		const FVector2D Half = Placement.WidgetSize() * 0.5;
+		const FVector2D Delta = Local - Placement.Center;
+		const bool bInside = Placement.Shape == EAbyssTouchShape::Rect
+			? (FMath::Abs(Delta.X) <= Half.X && FMath::Abs(Delta.Y) <= Half.Y)
+			: Delta.SizeSquared() <= Half.X * Half.X;
+		if (!bInside)
+		{
+			continue;
+		}
+		if (Placement.Control == EAbyssTouchControl::Joystick)
+		{
+			if (Joystick.IsValid())
+			{
+				return Joystick->BeginForwardedPress(Event);
+			}
+			continue;
+		}
+		const TSharedPtr<SAbyssTouchButton> Target = Button(Placement.Control);
+		if (Target.IsValid() && Target->GetVisibility().IsVisible())
+		{
+			return Target->BeginForwardedPress(Event);
+		}
+	}
+	return FReply::Unhandled();
 }
 
 void SAbyssTouchControls::GetOccupiedRects(TArray<FSlateRect>& OutRects) const

@@ -1,0 +1,8 @@
+# Offline audio renderer (unreal/Audio/render). Python >= 3.11.
+# python3 -m venv /opt/venvs/audio && /opt/venvs/audio/bin/pip install -r requirements.txt
+numpy>=2.0
+scipy>=1.13
+soundfile>=0.12      # libsndfile >= 1.1: OGG Vorbis encode, MP3 decode
+numba>=0.60          # optional: JIT for the per-sample kernels (compressor, time-varying biquads); pure Python fallback
+matplotlib>=3.8      # verification plots (waveform / spectrum PNGs)
+pytest>=8

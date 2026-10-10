@@ -76,6 +76,7 @@ void SimImpl::Wire() {
 
   // ---- items ----
   bus.Subscribe<ItemPickedMsg>([this](const ItemPickedMsg& m) { achievements->OnItemPicked(m); });
+  bus.Subscribe<ItemPickedMsg>([this](const ItemPickedMsg& m) { audio->OnItemPicked(m); });  // audio 3.1
 
   // ---- quests / story / pets ----
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg& m) { story->OnQuestAccepted(m); });
@@ -83,6 +84,12 @@ void SimImpl::Wire() {
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg&) { monsters->SpawnDueHunts(false); });
   bus.Subscribe<QuestProgressMsg>([this](const QuestProgressMsg& m) { questWorld->OnQuestProgress(m); });
   bus.Subscribe<QuestProgressMsg>([this](const QuestProgressMsg&) { monsters->SpawnDueHunts(true); });
+  // audio 3.1: quest / NPC cues (npc_interact, quest_objective / quest_progress, quest_complete, panel_open).
+  bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg& m) { audio->OnQuestAccepted(m); });
+  bus.Subscribe<QuestProgressMsg>([this](const QuestProgressMsg& m) { audio->OnQuestProgress(m); });
+  bus.Subscribe<QuestCompletedMsg>([this](const QuestCompletedMsg& m) { audio->OnQuestCompleted(m); });
+  bus.Subscribe<QuestTurnedInMsg>([this](const QuestTurnedInMsg& m) { audio->OnQuestTurnedIn(m); });
+  bus.Subscribe<NpcInteractedMsg>([this](const NpcInteractedMsg& m) { audio->OnNpcInteracted(m); });
   // Turn-in listeners run before exp / gold are paid (quests 4.1): story cutscene enqueue, embers + unlocks.
   bus.Subscribe<QuestTurnedInMsg>([this](const QuestTurnedInMsg& m) { story->OnQuestTurnedIn(m); });
   bus.Subscribe<QuestTurnedInMsg>([this](const QuestTurnedInMsg& m) { homestead->OnQuestTurnedIn(m); });
