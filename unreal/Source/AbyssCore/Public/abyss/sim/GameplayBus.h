@@ -14,6 +14,7 @@
 #include <functional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "abyss/base/Enums.h"
@@ -130,11 +131,19 @@ struct StoryBeatFinishedMsg {
 };
 // STORY_STATE: the StoryDirector became busy (a beat started from an idle director) or idle again (queue drained).
 // musicTrack: the started beat's sequence music theme ("" = keep the zone music); the music director takes the story
-// lock while active (audio 10.4 rule 2).
+// lock while active (audio 10.4 rule 2). A sequence beat ends its own span with {false} when it finishes (the zone's
+// explore track returns) and a following beat retakes the lock with {true, ""} (StoryDirector.h).
+// musicState: the sequence's music state, web sequence(id, zone, state) ("explore" or "" = explore; the epilogue and
+// credits play "victory", StoryDirector.ts:106-110). The constructor keeps the three-field {active, beatId, musicTrack}
+// form valid.
 struct StoryStateMsg {
+  StoryStateMsg() = default;
+  StoryStateMsg(bool isActive, std::string beat, std::string track, std::string state = std::string())
+      : active(isActive), beatId(std::move(beat)), musicTrack(std::move(track)), musicState(std::move(state)) {}
   bool active = false;
   std::string beatId;
   std::string musicTrack;
+  std::string musicState;
 };
 // The boss bar (story 8.3 boss scan, 250 ms): shown for a named boss within bossBarRangeTiles, cleared otherwise.
 // Audio 10.4 rule 4: bar shown && combat on -> boss music; cleared without a kill -> disengaged.

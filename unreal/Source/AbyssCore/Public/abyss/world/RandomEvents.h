@@ -93,7 +93,8 @@ struct ActiveRandomEvent {
 
 // The environmental puzzle prompt (world 13.3): a core-owned modal (PanelId::Puzzle). Opened by interacting with an
 // unresolved puzzle prop (EvPuzzlePrompt{open}); closed by CmdPuzzleAnswer (either choice), CmdClosePanel{Puzzle}
-// (= leave), ExitZone and the hero's death. Text keys: sys.event.puzzle.<zoneId>.{prompt,solution,reward}.
+// (= leave), ExitZone and the hero's death. Text keys: sys.event.puzzle.<zoneId>.{prompt,solution,reward}; a zone
+// without puzzle data gets createEvent's fallback puzzle (puzzleIndex -1: sys.event.puzzle.fallback.*, 50 gold, 30 exp).
 struct PuzzlePromptState {
   bool open = false;
   EntityId prop = kNoEntity;

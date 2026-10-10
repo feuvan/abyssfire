@@ -38,8 +38,12 @@ ActionTiming ComputeAttackTiming(const AnimTimingTable& t, const AssetManifest& 
   const AnimConfigDef& cfg = t.Preset(rig);
   const AnimClipDef* c = HitFeedbackFindClip(manifest, artId, clip);
   // Contact at play rate 1: the authored Contact notify when the manifest has it, else the web's frame rule
-  // round((frames - 1) * attackContact) * 1000 / fps (anim_timing contact table, unrounded).
-  const double contact1 = (c != nullptr && c->hasContactMs) ? c->contactMs : t.Contact(rig).frameContactMs;
+  // round((frames - 1) * attackContact) * 1000 / fps (anim_timing contact table, unrounded). The manifest stores the
+  // notify in whole ms: a notify on the web's beat (within its rounding, e.g. 308 for 307.69) is that beat, so the
+  // exact frame value is scaled (10.1: contactMs = round(frameContactMs x speed); 0.7 -> 215, not round(308 x 0.7)).
+  const double frameContact = t.Contact(rig).frameContactMs;
+  double contact1 = frameContact;
+  if (c != nullptr && c->hasContactMs && !(std::fabs(c->contactMs - frameContact) <= 0.5)) contact1 = c->contactMs;
   ActionTiming a;
   a.speed = AttackSpeedScale(t, cfg.attackDuration, attackIntervalMs);
   a.contactMs = JsRound(contact1 * a.speed);

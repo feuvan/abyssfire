@@ -20,6 +20,7 @@ struct StorySlide {
   std::string heading, title, text;  // i18n keys (empty = absent)
   bool hasMood = false;
   StoryMood mood = StoryMood::Embers;
+  std::string subtitle;  // i18n key; chapter cards only (EvStoryStep: ChapterCard.subtitle, revealed at 600 ms)
 };
 
 struct StorySequence {

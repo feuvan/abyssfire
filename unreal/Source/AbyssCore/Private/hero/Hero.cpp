@@ -120,19 +120,20 @@ double Hero::GroundSpeedTilesPerSec() const { return HeroTilesPerSecond(derived_
 // Resources
 // ---------------------------------------------------------------------------------------------------------------------
 double Hero::Heal(double amount) {
-  // 5.1.1: no HP gain unless Alive. `min(maxHp, hp + amount)` as the web's heals; a heal never LOWERS hp (after an
-  // unequip hp may sit above maxHp until damage, 3).
-  if (life_ != HeroLife::Alive || !(amount > 0)) return 0;
+  // 5.1.1: no HP gain unless Alive. Every web heal is `hp = Math.min(maxHp, hp + x)`, which also snaps an hp above a
+  // lowered maxHp (3: recalcDerived does not clamp) down to maxHp.
+  if (life_ != HeroLife::Alive || !std::isfinite(amount) || amount < 0) return 0;
   const double before = hp_;
-  hp_ = (std::max)(before, (std::min)(derived_.maxHp, before + amount));
-  return hp_ - before;
+  hp_ = (std::min)(derived_.maxHp, before + amount);
+  return (std::max)(0.0, hp_ - before);
 }
 
 double Hero::RestoreMana(double amount) {
-  if (life_ != HeroLife::Alive || !(amount > 0)) return 0;
+  // `mana = Math.min(maxMana, mana + x)` (potions, mana steal, free-cast refund, pet mana); snaps down like Heal.
+  if (life_ != HeroLife::Alive || !std::isfinite(amount) || amount < 0) return 0;
   const double before = mana_;
-  mana_ = (std::max)(before, (std::min)(derived_.maxMana, before + amount));
-  return mana_ - before;
+  mana_ = (std::min)(derived_.maxMana, before + amount);
+  return (std::max)(0.0, mana_ - before);
 }
 
 void Hero::SpendMana(double amount) { mana_ = (std::max)(0.0, mana_ - amount); }
@@ -148,12 +149,10 @@ void Hero::FillHpMana() {
   mana_ = derived_.maxMana;
 }
 
-// Per-step regen (4.1, 4.2), in the web's order: Life Regen passive (ZoneScene step 6), then mana regen, then HP regen
-// (Player.update). Primary stats are RAW (3.1); gear hpRegen / manaRegen come from the last RecalcDerived bag.
-void Hero::TickRegen(double dtMs, const RegenModifiers& mods) {
+// Step 6 (4.2; ZoneScene.ts:1372-1379): the Life Regen passive, BEFORE the Unyielding check reads the hp ratio. Linear
+// +perLevel HP/s per level, times the step's campfire / poison HP multiplier.
+void Hero::TickLifeRegen(double dtMs, const RegenModifiers& mods) {
   if (life_ != HeroLife::Alive || hp_ <= 0) return;
-  const HeroFormulas& f = data_->Classes().formulas;
-  // Life Regen (4.2): linear +perLevel HP/s per level, times the same campfire / poison multiplier.
   const std::vector<SkillDef>& skills = ClassData().skills;
   for (size_t i = 0; i < skills.size(); ++i) {
     const SkillDef& s = skills[i];
@@ -165,7 +164,13 @@ void Hero::TickRegen(double dtMs, const RegenModifiers& mods) {
       hp_ = (std::min)(derived_.maxHp, hp_ + regenBonus * dtMs / 1000 * mods.hpMul);
     }
   }
-  // Player.update: mana, then HP.
+}
+
+// Step 7 (4.1; Player.update after the spirit drain): mana regen, then HP regen. Primary stats are RAW (3.1); gear
+// hpRegen / manaRegen come from the last RecalcDerived bag.
+void Hero::TickRegen(double dtMs, const RegenModifiers& mods) {
+  if (life_ != HeroLife::Alive || hp_ <= 0) return;
+  const HeroFormulas& f = data_->Classes().formulas;
   if (mana_ < derived_.maxMana) {
     const double perSec = f.manaRegenBase + static_cast<double>(stats_.spi) * f.manaRegenPerSpi;
     mana_ = (std::min)(derived_.maxMana, mana_ + (perSec + eq_.Get(Stat::ManaRegen)) * mods.mpMul * dtMs / 1000);

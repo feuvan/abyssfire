@@ -24,7 +24,7 @@ namespace {
 
 int32_t InvMaxStack(const ItemBaseDef* base) { return base != nullptr ? (std::max)(1, base->maxStack) : 1; }
 
-// sortInventory comparator (7.3): quality order, type order, stored name. Unknown base type sorts last (7).
+// sortInventory comparator (7.3): quality order, type order, localised display name. Unknown base type sorts last (7).
 struct InvSortKey {
   int32_t quality = 0;
   int32_t type = 0;
@@ -54,7 +54,7 @@ void InvSort(const DataStore& data, const I18n& names, std::vector<ItemInstance>
   std::stable_sort(keyed.begin(), keyed.end(), [](const Keyed& a, const Keyed& b) {
     if (a.key.quality != b.key.quality) return a.key.quality < b.key.quality;
     if (a.key.type != b.key.type) return a.key.type < b.key.type;
-    return a.name < b.name;
+    return CompareItemNames(a.name, b.name) < 0;  // current culture's collation when UE installed one (7.3)
   });
   std::vector<ItemInstance> sorted;
   sorted.reserve(list.size());
@@ -90,7 +90,6 @@ bool Inventory::CanAdd(const ItemInstance& item) const {
 
 AddResult Inventory::AddItem(ItemInstance item) {
   AddResult r;
-  if (!CanAdd(item)) return r;  // atomic (port fix)
   const ItemBaseDef* base = data_->Items().FindBase(item.baseId);
   if (base != nullptr && base->stackable) {
     const int32_t cap = InvMaxStack(base);
@@ -104,8 +103,12 @@ AddResult Inventory::AddItem(ItemInstance item) {
         r.ok = true;
         return r;
       }
-      break;
+      break;  // only the first partial stack is topped up (Q21 kept)
     }
+  }
+  if (IsFull()) {
+    r.remaining = item.quantity;  // 20.8: the top-up stays, the rest is refused
+    return r;
   }
   bag_.push_back(std::move(item));
   r.ok = true;
@@ -254,15 +257,9 @@ StatBag Inventory::EquipmentStatBag() const {
     if (base != nullptr && base->hasBaseDefense) s.Add(Stat::Defense, base->baseDefense);
     for (const StatValue& sv : item.stats.Items()) s.Add(sv.stat, sv.value);
     // C11: a legendary special effect that combat reads is an item stat.
-    if (!item.legendaryId.empty()) {
-      const LegendaryDef* l = t.FindLegendary(item.legendaryId);
-      if (l != nullptr && l->hasSpecialEffectValue) {
-        Stat st{};
-        const bool applied = std::find(t.appliedSpecialEffects.begin(), t.appliedSpecialEffects.end(),
-                                       l->specialEffect) != t.appliedSpecialEffects.end();
-        if (applied && ParseEnum(l->specialEffect, st)) s.Add(st, l->specialEffectValue);
-      }
-    }
+    Stat effect{};
+    double effectValue = 0;
+    if (ItemSpecialEffectStat(item, *data_, effect, effectValue)) s.Add(effect, effectValue);
   }
   // Set bonuses: pieces counted by setId (Q14), cumulative bonuses, sets in table order.
   for (const SetDef& set : t.sets) {
@@ -361,7 +358,11 @@ InvResult Inventory::MoveToStash(std::string_view uid, int32_t capacity) {
 InvResult Inventory::MoveFromStash(std::string_view uid) {
   for (size_t i = 0; i < stash_.size(); ++i) {
     if (stash_[i].uid != uid) continue;
-    if (!AddItem(stash_[i]).ok) return InvResult::BagFull;
+    const AddResult r = AddItem(stash_[i]);
+    if (!r.ok) {
+      stash_[i].quantity = r.remaining;  // a partial top-up moved some units (web: the shared object was mutated)
+      return InvResult::BagFull;
+    }
     stash_.erase(stash_.begin() + static_cast<std::ptrdiff_t>(i));
     return InvResult::Ok;
   }
@@ -435,8 +436,10 @@ InvResult InventorySystem::Equip(std::string_view uid) {
   EquipSlot slot = EquipSlot::Weapon;
   const InvResult r = inv_.Equip(uid, level, &slot);
   if (r == InvResult::LevelTooLow) {
-    // No dedicated key exists yet (sys.inventory.levelTooLow would be a port key): the hero-level message.
-    ctx_.events.Log(MakeLoc("homestead.workshop.block.level"), LogType::System);
+    const ItemInstance* it = inv_.FindInBag(uid);
+    const ItemBaseDef* base = it != nullptr ? ctx_.data.Items().FindBase(it->baseId) : nullptr;
+    ctx_.events.Log(MakeLoc("sys.inventory.levelTooLow", {{"level", ToStr(base != nullptr ? base->levelReq : 0)}}),
+                    LogType::System);  // I3 (port key)
     ctx_.events.Sfx(SfxId::Error);
   }
   if (r != InvResult::Ok) return r;
@@ -540,6 +543,7 @@ InvResult InventorySystem::Discard(std::string_view uid) {
   std::optional<ItemInstance> it = inv_.TakeEntry(uid);
   if (!it.has_value()) return InvResult::UnknownItem;
   ctx_.events.Log(MakeLoc("sys.inventory.discarded", {ItemNameArg("name", *it, ctx_.data)}), LogType::System);
+  ctx_.events.Emit(EvItemDiscarded{std::move(*it)});  // 17 ItemDiscarded {item}
   BagChanged();
   return InvResult::Ok;
 }
@@ -616,8 +620,17 @@ InvResult InventorySystem::StashPut(std::string_view uid) {
 InvResult InventorySystem::StashTake(std::string_view uid) {
   if (!stash_.open) return InvResult::StashClosed;
   if (HeroDying()) return InvResult::Dying;
+  const ItemInstance* before = inv_.FindInStash(uid);
+  const int32_t quantityBefore = before != nullptr ? before->quantity : 0;
   const InvResult r = inv_.MoveFromStash(uid);
-  if (r == InvResult::BagFull) ctx_.events.Log(MakeLoc("ui.stash.bagFull"), LogType::System);
+  if (r == InvResult::BagFull) {
+    ctx_.events.Log(MakeLoc("ui.stash.bagFull"), LogType::System);
+    const ItemInstance* after = inv_.FindInStash(uid);
+    if (after != nullptr && after->quantity != quantityBefore) {  // partial top-up (7.2)
+      ctx_.events.Emit(EvInventoryChanged{});
+      ctx_.events.Emit(EvStashChanged{});
+    }
+  }
   if (r != InvResult::Ok) return r;
   ctx_.events.Emit(EvInventoryChanged{});
   ctx_.events.Emit(EvStashChanged{});
@@ -634,25 +647,27 @@ int32_t InventorySystem::StashCapacity() const {
 ItemGrantOutcome InventorySystem::Grant(ItemInstance& item, OverflowPolicy policy, ItemSource source) {
   if (item.uid.empty()) item.uid = uids_.Next();
   if (item.quantity < 1) item.quantity = 1;
-  if (inv_.CanAdd(item)) {
-    const AddResult r = inv_.AddItem(item);  // copy: `item` stays intact if the add fails
-    if (r.ok) {
-      if (r.newEntry) {
-        ctx_.events.Log(MakeLoc("sys.inventory.obtained", {ItemNameArg("name", item, ctx_.data, true)}),
-                        LogType::Loot);
-      } else {
-        ctx_.events.Log(MakeLoc("sys.inventory.obtainedQty",
-                                {ItemNameArg("name", item, ctx_.data), {"qty", ToStr(r.stackedQuantity)}}),
-                        LogType::Loot);
-      }
-      if (source == ItemSource::Pickup) {
-        ctx_.bus.Publish(ItemPickedMsg{item.uid, item.baseId, item.quality});
-        ctx_.events.Emit(EvItemPicked{item.uid, item.baseId, item.quality, item.quantity});
-      }
-      item = ItemInstance{};
-      BagChanged();
-      return ItemGrantOutcome::Bag;
+  const AddResult r = inv_.AddItem(item);  // copy: `item` keeps what the bag did not take
+  if (r.ok) {
+    if (r.newEntry) {
+      ctx_.events.Log(MakeLoc("sys.inventory.obtained", {ItemNameArg("name", item, ctx_.data, true)}), LogType::Loot);
+    } else {
+      ctx_.events.Log(MakeLoc("sys.inventory.obtainedQty",
+                              {ItemNameArg("name", item, ctx_.data), {"qty", ToStr(r.stackedQuantity)}}),
+                      LogType::Loot);
     }
+    if (source == ItemSource::Pickup) {
+      ctx_.bus.Publish(ItemPickedMsg{item.uid, item.baseId, item.quality});
+      ctx_.events.Emit(EvItemPicked{item.uid, item.baseId, item.quality, item.quantity, item});
+    }
+    item = ItemInstance{};
+    BagChanged();
+    return ItemGrantOutcome::Bag;
+  }
+  if (r.stackedQuantity > 0) {
+    // 7.2 / 20.8: the first partial stack was topped up before the bag refused the rest (no obtained log, as the web).
+    item.quantity = r.remaining;
+    BagChanged();
   }
   switch (policy) {
     case OverflowPolicy::Refuse:

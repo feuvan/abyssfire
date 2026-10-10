@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,7 @@
 #include "TestUtil.h"
 #include "abyss/base/Json.h"
 #include "abyss/base/SimClock.h"
+#include "abyss/combat/Combat.h"
 #include "abyss/hero/Buffs.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/hero/Rewards.h"
@@ -21,6 +23,10 @@
 #include "abyss/hero/Spirit.h"
 #include "abyss/items/Inventory.h"
 #include "abyss/save/SaveData.h"
+#include "abyss/save/SaveIO.h"
+#include "abyss/sim/GameSim.h"
+#include "abyss/story/StoryDirector.h"
+#include "abyss/world/Zone.h"
 #include "doctest/doctest.h"
 
 // The JSON section readers / writers are internal to the core (not exported): test them only when the core is linked
@@ -78,6 +84,17 @@ int32_t Idx(const Hero& h, const char* id) {
   const int32_t i = h.Skills().IndexOf(id);
   REQUIRE_MESSAGE(i >= 0, id);
   return i;
+}
+
+// A GameSim on a new game with the prologue / chapter card played out (they freeze the world, S2), one step in.
+std::unique_ptr<GameSim> LiveHeroSim(ClassId cls, uint64_t seed) {
+  auto sim = GameSim::Create(test::RealData(), SimConfig{});
+  REQUIRE(sim != nullptr);
+  REQUIRE(sim->NewGame(cls, Difficulty::Normal, seed));
+  sim->Context().sys.story->FinishAllBeats();
+  sim->Step();
+  REQUIRE_FALSE(sim->WorldFrozen());
+  return sim;
 }
 
 // classes-stats-skills.md 10.4, generated from the spec tables (no CDR, no Resonance). -1 = not shown for that skill.
@@ -494,10 +511,12 @@ TEST_SUITE("hero") {
     g.RecalcDerived(EquipStats{});
     CHECK(g.MaxHp() == 110);
     CHECK(g.Hp() == 210);
-    CHECK(g.Heal(10) == 0);  // a heal never lowers it
-    CHECK(g.Hp() == 210);
+    g.TickLifeRegen(1000, {});
     g.TickRegen(1000, {});
-    CHECK(g.Hp() == 210);  // regen stops at the max
+    CHECK(g.Hp() == 210);  // regen only runs below the max: it never lowers it
+    // ... but every web heal is `hp = Math.min(maxHp, hp + x)`, so the next heal snaps it down to the max.
+    CHECK(g.Heal(10) == 0);
+    CHECK(g.Hp() == 110);
   }
 
   TEST_CASE("gear primaries flow into recalcDerived (GemSocketing stat flow)") {
@@ -572,30 +591,48 @@ TEST_SUITE("hero") {
     CHECK(h.Hp() == doctest::Approx(53));
     CHECK(h.Mana() == doctest::Approx(2.5));
     h.RecalcDerived(EquipStats{});
-    // Life Regen L3: +6 HP/s, linear, same campfire / poison factor, before the base regen.
+    // Life Regen L3: +6 HP/s, linear, same campfire / poison factor. It is its own step-6 call (TickLifeRegen, before
+    // the Unyielding check); the step-7 TickRegen never applies it.
     h.Skills().InitStarterLevels();
     h.Skills().SetLevel(Idx(h, "life_regen"), 3);
     h.SetHp(50);
     h.TickRegen(1000, {});
+    CHECK(h.Hp() == doctest::Approx(50 + 1));
+    h.SetHp(50);
+    h.SetMana(10);
+    h.TickLifeRegen(1000, {});
+    CHECK(h.Hp() == doctest::Approx(50 + 6));
+    CHECK(h.Mana() == 10);  // HP only
+    h.TickRegen(1000, {});
     CHECK(h.Hp() == doctest::Approx(50 + 6 + 1));
     h.SetHp(50);
+    h.TickLifeRegen(1000, RegenModifiers{0.5, 1});
     h.TickRegen(1000, RegenModifiers{0.5, 1});
     CHECK(h.Hp() == doctest::Approx(50 + 3 + 0.5));
+    h.SetHp(50);
+    h.TickLifeRegen(100, RegenModifiers{50, 50});  // campfire: 6 x 50 x 0.1
+    CHECK(h.Hp() == doctest::Approx(80));
+    h.SetHp(149.99);
+    h.TickLifeRegen(1000, {});
+    CHECK(h.Hp() == 150);  // clamped at the max
     // Exact web expression order for one 60 Hz step: life regen then base regen, each clamped.
     h.SetHp(100);
     const double dt = kSimStepMs;
     double expect = (std::min)(150.0, 100 + 6.0 * dt / 1000 * 1.0);
     expect = (std::min)(150.0, expect + (0.5 + 10 * 0.05 + 0) * 1.0 * dt / 1000);
+    h.TickLifeRegen(dt, {});
     h.TickRegen(dt, {});
     CHECK(h.Hp() == expect);
     // Dead or Dying: nothing regenerates.
     h.SetHp(0);
     h.SetMana(0);
+    h.TickLifeRegen(1000, {});
     h.TickRegen(1000, {});
     CHECK(h.Hp() == 0);
     CHECK(h.Mana() == 0);
     h.SetHp(20);
     h.SetLife(HeroLife::Dying);
+    h.TickLifeRegen(1000, {});
     h.TickRegen(1000, {});
     CHECK(h.Hp() == 20);
     CHECK(h.Mana() == 0);
@@ -629,6 +666,57 @@ TEST_SUITE("hero") {
     h.SetLife(HeroLife::Alive);
     CHECK(h.Heal(25) == 25);
     CHECK_FALSE(h.IsDead());
+  }
+
+  TEST_CASE("heals snap hp / mana above a lowered max down to it, like every web heal site (3, 4.3, 12.1)") {
+    // Web: potions, life / mana steal, kill and thorns heals, merc / pet heals and the free-cast refund all assign
+    // `Math.min(max, value + x)`; recalcDerived itself never clamps (unequipped +maxHp / +maxMana gear).
+    const DataStore& data = test::RealData();
+    Hero h(data, ClassId::Warrior);
+    EquipStats gear;
+    gear.Ref(Stat::MaxHp) = 60;
+    gear.Ref(Stat::MaxMana) = 40;
+    h.RecalcDerived(gear);
+    h.FillHpMana();
+    CHECK(h.Hp() == 210);
+    CHECK(h.Mana() == 125);
+    h.RecalcDerived(EquipStats{});  // unequip
+    REQUIRE(h.MaxHp() == 150);
+    REQUIRE(h.MaxMana() == 85);
+    CHECK(h.Hp() == 210);  // 3: no clamp on recalc
+    CHECK(h.Mana() == 125);
+    // A positive heal snaps to the max and reports no gain.
+    CHECK(h.Heal(50) == 0);
+    CHECK(h.Hp() == 150);
+    CHECK(h.RestoreMana(30) == 0);
+    CHECK(h.Mana() == 85);
+    // A zero heal (e.g. floor(maxHp * killHeal% / 100) == 0, a 0-cost free-cast refund) snaps too: min(max, v + 0).
+    h.RecalcDerived(gear);
+    h.FillHpMana();
+    h.RecalcDerived(EquipStats{});
+    CHECK(h.Heal(0) == 0);
+    CHECK(h.Hp() == 150);
+    CHECK(h.RestoreMana(0) == 0);
+    CHECK(h.Mana() == 85);
+    // Below the max a zero heal changes nothing; negative / non-finite amounts are refused (no web site passes one).
+    h.SetHp(100);
+    h.SetMana(20);
+    CHECK(h.Heal(0) == 0);
+    CHECK(h.Hp() == 100);
+    CHECK(h.Heal(-10) == 0);
+    CHECK(h.Hp() == 100);
+    CHECK(h.RestoreMana(-10) == 0);
+    CHECK(h.RestoreMana(std::numeric_limits<double>::infinity()) == 0);
+    CHECK(h.Mana() == 20);
+    // Not Alive: refused, even the snap (5.1.1).
+    h.RecalcDerived(gear);
+    h.FillHpMana();
+    h.RecalcDerived(EquipStats{});
+    h.SetLife(HeroLife::Dying);
+    CHECK(h.Heal(10) == 0);
+    CHECK(h.Hp() == 210);
+    CHECK(h.RestoreMana(10) == 0);
+    CHECK(h.Mana() == 125);
   }
 
   TEST_CASE("AsCombatant: raw stats, derived numbers, merged bag, spirit outgoing multiplier (12)") {
@@ -1447,6 +1535,195 @@ TEST_SUITE("hero") {
     REQUIRE(toll != nullptr);
     CHECK(toll->amount == -410);
     CHECK(toll->source == ExpSource::DeathPenalty);
+  }
+
+  // ===================================================================================================================
+  // GameSim level: the hero inside the real step order and the real save path
+  // ===================================================================================================================
+  TEST_CASE("step order (16 step 6, 4.2): Life Regen heals BEFORE the Unyielding check reads the hp ratio") {
+    auto sim = LiveHeroSim(ClassId::Warrior, 41);
+    Hero& h = *sim->Context().sys.hero;
+    const int32_t lifeRegen = Idx(h, "life_regen");
+    const int32_t uny = Idx(h, "unyielding");
+    h.Skills().SetLevel(lifeRegen, 5);
+    h.Skills().SetLevel(uny, 1);
+    const SkillDef& unySkill = h.Skills().Skill(uny);
+    REQUIRE(unySkill.passiveRule.kind == PassiveRuleKind::LowHpProc);
+    const double ratio = unySkill.passiveRule.hpRatioBelow;
+    REQUIRE(ratio == 0.3);
+    // This step's Life Regen (pre-movement campfire factor, the web's `recovery`).
+    const HeroFormulas& f = test::RealData().Classes().formulas;
+    const double mul = sim->Context().sys.zone->NearCampfire(h.Position()) ? f.campfireHpMultiplier : 1.0;
+    const double perStep = 5 * SkillById("life_regen").passiveRule.hpPerSecondPerLevel * kSimStepMs / 1000 * mul;
+    const double threshold = ratio * h.MaxHp();
+
+    // Half a step's regen under 30 %: the heal lifts hp to >= 30 % first, so Unyielding does not proc.
+    h.SetHp(threshold - perStep / 2);
+    sim->Step();
+    CHECK(h.Hp() > threshold);
+    CHECK_FALSE(h.Buffs().Has(BuffStat::DamageReduction));
+    CHECK(h.Skills().IsReady(uny, sim->NowMs()));
+    CHECK(h.stepRegen.hpMul == mul);  // the step's modifiers, shared with step 7
+
+    // Control: still under 30 % after this step's Life Regen -> the proc fires (buff + cooldown).
+    h.SetHp(threshold - perStep * 1.5);
+    sim->Step();
+    CHECK(h.Buffs().Has(BuffStat::DamageReduction));
+    CHECK_FALSE(h.Skills().IsReady(uny, sim->NowMs()));
+  }
+
+  TEST_CASE("kill pipeline: spirit 'kill' gain carries its source (14.3, 17); kill heal snaps hp above a lowered max") {
+    auto sim = LiveHeroSim(ClassId::Warrior, 43);
+    SimContext& ctx = sim->Context();
+    Hero& h = *ctx.sys.hero;
+    EntityId victim = kNoEntity;
+    for (const MonsterView& m : sim->View().monsters) {
+      if (m.alive) {
+        victim = m.id;
+        break;
+      }
+    }
+    REQUIRE(victim != kNoEntity);
+    // hp above a lowered max (unequipped +maxHp gear), killHealPercent 1 %: heal = floor(150 x 1 / 100) = 1.
+    EquipStats gear;
+    gear.Ref(Stat::MaxHp) = 60;
+    h.RecalcDerived(gear);
+    h.FillHpMana();
+    h.RecalcDerived(EquipStats{});
+    REQUIRE(h.Hp() == 210);
+    REQUIRE(h.MaxHp() == 150);
+    ctx.equip = EquipStats{};
+    ctx.equip.Ref(Stat::KillHealPercent) = 1;
+    sim->ClearEvents();
+    MonsterHitRequest r;
+    r.monster = victim;
+    r.amount = 1e9;
+    r.attacker = kHeroEntityId;
+    r.source = KillSource::HeroBasic;
+    ctx.sys.combat->DamageMonster(r);
+    // Web ZoneScene.ts:3816: hp = Math.min(maxHp, hp + heal).
+    CHECK(h.Hp() == 150);
+    const EvSpiritChanged* gain = nullptr;
+    for (const Event& e : sim->Events()) {
+      if (const auto* s = std::get_if<EvSpiritChanged>(&e)) gain = s;
+    }
+    REQUIRE(gain != nullptr);
+    CHECK(gain->hasSource);
+    CHECK(gain->source == SpiritSource::Kill);
+    CHECK(gain->gained == doctest::Approx(15 * 1.075));
+    CHECK(gain->value == doctest::Approx(15 * 1.075));
+    CHECK_FALSE(gain->resonating);
+
+    // The Resonance end (14.3: {value 0, maxValue, resonating false}) carries no source.
+    h.GetSpirit().Gain(h.GetSpirit().MaxValue());
+    REQUIRE(h.GetSpirit().IsResonating());
+    std::vector<EvSpiritChanged> changes;
+    for (int i = 0; i < 400 && h.GetSpirit().IsResonating(); ++i) {
+      sim->Step();
+      for (const Event& e : sim->Events()) {
+        if (const auto* s = std::get_if<EvSpiritChanged>(&e)) changes.push_back(*s);
+      }
+    }
+    CHECK_FALSE(h.GetSpirit().IsResonating());
+    REQUIRE_FALSE(changes.empty());
+    CHECK_FALSE(changes.back().hasSource);
+    CHECK(changes.back().value == 0);
+    CHECK_FALSE(changes.back().resonating);
+  }
+
+  TEST_CASE("save round trip through GameSim: level, exp, gold, stats, points, skills, spirit, hotbar, settings") {
+    // save-ui-input 3.2-3.5 (player / settings sections, v4 hotbar), U2, C3: SaveGame -> JSON -> ParseSave / LoadGame.
+    auto sim = LiveHeroSim(ClassId::Rogue, 47);
+    SimContext& ctx = sim->Context();
+    Hero& h = *ctx.sys.hero;
+    RewardService& rewards = *ctx.sys.rewards;
+    CombatSystem& combat = *ctx.sys.combat;
+    while (h.Level() < 4) rewards.GrantExp(h.ExpToNext() - h.Exp(), ExpSource::Debug);
+    rewards.GrantExp(17, ExpSource::Debug);
+    rewards.ChangeGold(321, GoldReason::Debug);
+    REQUIRE(combat.AllocateStat(PrimaryStat::Dex, 3));
+    REQUIRE(combat.AllocateStat(PrimaryStat::Vit, 1));
+    // One point into the first learned active skill of the bar (a valid tier-1 investment).
+    const int32_t first = h.Skills().HotbarSkill(0);
+    REQUIRE(first >= 0);
+    REQUIRE(combat.LearnSkill(first));
+    // Swap the first two hotbar slots (C3: player-edited bar is saved as is).
+    const int32_t second = h.Skills().HotbarSkill(1);
+    REQUIRE(second >= 0);
+    REQUIRE(combat.SetHotbar(0, second));
+    REQUIRE(h.Skills().HotbarSkill(1) == first);
+    h.GetSpirit().Gain(42.5);
+    h.autoCombat = true;
+    h.autoLoot = AutoLootMode::Rare;
+    h.SetHp(h.MaxHp() - 7.5);
+    h.SetMana(h.MaxMana() - 3.25);
+    const Vec2 pos = h.Position();
+    const int32_t level = h.Level();
+    const int64_t exp = h.Exp();
+    const int64_t gold = h.Gold();
+    const PrimaryStats stats = h.BaseStats();
+    const int32_t freeStat = h.FreeStatPoints();
+    const int32_t freeSkill = h.FreeSkillPoints();
+    const auto levels = h.Skills().LevelsForSave();
+    const auto hotbar = h.Skills().HotbarForSave();
+    const double spirit = h.GetSpirit().Value();
+    const double hp = h.Hp();
+    const double mana = h.Mana();
+    REQUIRE(level == 4);
+    REQUIRE(exp == 17);
+    REQUIRE(freeStat == 3 * 5 - 4);
+    REQUIRE(freeSkill == 3 - 1);
+
+    const std::string json = sim->SaveGame(5555);
+    SaveData parsed;
+    std::string err;
+    REQUIRE(ParseSave(json, parsed, &err, &test::RealData()) == SaveError::None);
+    CHECK(parsed.classId == ClassId::Rogue);
+    CHECK(parsed.player.level == level);
+    CHECK(parsed.player.exp == exp);
+    CHECK(parsed.player.gold == gold);
+    CHECK(parsed.player.stats == stats);
+    CHECK(parsed.player.freeStatPoints == freeStat);
+    CHECK(parsed.player.freeSkillPoints == freeSkill);
+    CHECK(parsed.player.skillLevels == levels);
+    CHECK(parsed.player.hasSpirit);
+    CHECK(parsed.player.spirit.value == spirit);
+    CHECK(parsed.player.hp == hp);
+    CHECK(parsed.player.mana == mana);
+    CHECK(parsed.player.maxHp == h.MaxHp());
+    CHECK(parsed.player.tileCol == pos.x);
+    CHECK(parsed.player.tileRow == pos.y);
+    CHECK(parsed.hasHotbar);
+    CHECK(parsed.hotbar == hotbar);
+    CHECK(parsed.settings.autoCombat);
+    CHECK(parsed.settings.autoLootMode == AutoLootMode::Rare);
+
+    auto other = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(other != nullptr);
+    REQUIRE(other->LoadGame(json, &err) == SaveError::None);
+    const Hero& b = *other->Context().sys.hero;
+    CHECK(b.Class() == ClassId::Rogue);
+    CHECK(b.Level() == level);
+    CHECK(b.Exp() == exp);
+    CHECK(b.Gold() == gold);
+    CHECK(b.BaseStats() == stats);
+    CHECK(b.FreeStatPoints() == freeStat);
+    CHECK(b.FreeSkillPoints() == freeSkill);
+    CHECK(b.Skills().LevelsForSave() == levels);
+    CHECK(b.Skills().HotbarForSave() == hotbar);
+    CHECK(b.GetSpirit().Value() == spirit);
+    CHECK(b.Hp() == hp);
+    CHECK(b.Mana() == mana);
+    CHECK(b.MaxHp() == h.MaxHp());
+    CHECK(b.Position() == pos);
+    CHECK(b.autoCombat);
+    CHECK(b.autoLoot == AutoLootMode::Rare);
+    // And the reloaded session saves the same player section again.
+    SaveData again;
+    other->BuildSave(again, 5555);
+    CHECK(again.player.level == level);
+    CHECK(again.player.skillLevels == levels);
+    CHECK(again.hotbar == hotbar);
   }
 
 #if ABYSS_HERO_TEST_SAVE_SECTIONS

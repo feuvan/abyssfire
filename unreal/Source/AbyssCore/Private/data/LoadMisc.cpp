@@ -65,6 +65,7 @@ void LoadAudioCuesFile(const JNode& r, AudioTables& out) {
   a.forgeError = Cue(di.Child("forgeError"));
   const JNode port = ru.Child("port");
   a.heavyHitCue = Cue(port.Child("heavyHitCue").Child("cue"));
+  a.heavyHitWeights = port.Child("heavyHitCue").EnumList<HitWeight>("weights");
   a.heroDamageTakenCue = Cue(port.Child("heroDamageTakenCue").Child("cue"));
   a.monsterAggro = Cue(port.Child("monsterAggro").Child("cue"));
   a.monsterHurt = Cue(port.Child("monsterHurt").Child("cue"));
@@ -84,6 +85,8 @@ void LoadMusicFile(const JNode& r, AudioTables& out) {
   m.trueDebounce = p.Bool("trueDebounce");
   m.exploreResumesPosition = p.Bool("exploreResumesPosition");
   m.bossCh1Score = p.Str("bossCh1Score");
+  m.bossMusic.clear();
+  for (const auto& [bossId, score] : p.Members("bossMusic")) m.bossMusic.emplace_back(bossId, score.AsStr());
   m.defaultMusicVolume = r.Child("portSettingsDefaults").Num("musicVolume");
   m.defaultSfxVolume = r.Child("portSettingsDefaults").Num("sfxVolume");
   m.themeZones.clear();

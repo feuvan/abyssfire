@@ -145,6 +145,10 @@ struct GroundItemView {
   int32_t quantity = 1;
   Vec2 pos;
   Vec2 visualOffset;
+  // Live view of the dropped item (valid until the next GameSim call): the localised world nameplate (ItemDisplayName:
+  // affixes, legendaryId, setId - loot 18 / FIX Q16) and the ground tooltip.
+  const ItemInstance* item = nullptr;
+  bool cacheDrop = false;  // treasure-cache drop (no despawn, no legendary / set flash; loot 6.1 / 6.5)
 };
 
 struct PotionDropView {

@@ -193,7 +193,9 @@ export function exportAudio(): TableResult[] {
     composer: { modes: plain(MODES), rhythms4: plain(exp<number[][]>(ComposerMod, 'RHYTHMS_4')), rhythms3: plain(exp<number[][]>(ComposerMod, 'RHYTHMS_3')),
       bassFloor: exp<number>(ScorePlayerMod, 'BASS_FLOOR') },
     director: { zoneFadeSec: 2.0, stateFadeSec: 1.5, fadeInSec: 1.0, victoryHoldMs: 3000, combatOffDelayMs: 1500,
-      port: { bossVictoryHoldMs: 8000, trueDebounce: true, exploreResumesPosition: true, bossCh1Score: 'boss_ch1', decision: 'A2, A5' } },
+      port: { bossVictoryHoldMs: 8000, trueDebounce: true, exploreResumesPosition: true, bossCh1Score: 'boss_ch1',
+        // audio 10.4 rule 4: boss def id -> boss score; a boss without an entry keeps the combat track.
+        bossMusic: { goblin_chief: 'boss_ch1' }, decision: 'A2, A5' } },
     settingsDefaults: plain(exp<Record<string, unknown>>(AudioManagerMod, 'DEFAULT_SETTINGS')),
     portSettingsDefaults: { musicVolume: 0.6, sfxVolume: 0.8, loudnessLufs: -16, decision: 'A3' },
     bgmFiles: plain(__BGM_MANIFEST__),

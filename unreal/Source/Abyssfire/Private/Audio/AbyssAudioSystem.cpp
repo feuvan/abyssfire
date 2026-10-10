@@ -1,7 +1,6 @@
 #include "Audio/AbyssAudioSystem.h"
 
 #include "Async/Async.h"
-#include "Camera/PlayerCameraManager.h"
 #include "Components/AudioComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -371,6 +370,7 @@ void UAbyssAudioSystem::Tick(float DeltaTime)
 	}
 	RefreshVolumes(/*bForce*/ false);
 	TickMusic(RealDelta);
+	TickJukebox();
 	TickDuck(RealDelta);
 
 	// Ambience: cinematic duck (A7 bed under story beats) + volume.
@@ -395,6 +395,7 @@ void UAbyssAudioSystem::HandleAppStateChanged(EAbyssAppState NewState)
 		// audio.md 10.4 rule 1: the title theme restarts on every return to the menu (fade-in 1.0 s).
 		PreloadSounds();
 		EndStoryAudio();
+		EndJukebox();
 		StopAmbience(Manifest.Ambience.FadeOutSec);
 		const UAbyssGameInstance* GI = GetAbyssGameInstance();
 		const abyss::DataStore* Data = GI ? GI->GetData() : nullptr;
@@ -405,10 +406,12 @@ void UAbyssAudioSystem::HandleAppStateChanged(EAbyssAppState NewState)
 	}
 	case EAbyssAppState::InGame:
 		PreloadSounds();
+		EndJukebox();  // the session's EvMusic owns the music from here
 		break;
 	case EAbyssAppState::Boot:
 	case EAbyssAppState::DataError:
 	default:
+		EndJukebox();
 		StopAllMusic();
 		break;
 	}
@@ -547,8 +550,20 @@ float UAbyssAudioSystem::AmbienceGain() const
 void UAbyssAudioSystem::HandleMusic(const abyss::EvMusic& Event)
 {
 	EnsureReady();
-	PlayMusic(AbyssAudioSystemPrivate::ToName(Event.trackKey), static_cast<float>(Event.fadeOutSec),
-		static_cast<float>(Event.fadeInSec), Event.restart, Event.loop);
+	EndJukebox();
+	FName TrackKey = AbyssAudioSystemPrivate::ToName(Event.trackKey);
+	// Presentation override per zone (manifest zoneOverrides): the zone is the snapshot's, which during dispatch is
+	// already the zone the command was issued for.
+	if (!TrackKey.IsNone() && Manifest.ZoneOverrides.Num() > 0)
+	{
+		const UAbyssGameInstance* GI = GetAbyssGameInstance();
+		if (const abyss::Snapshot* Snap = GI ? GI->GetSnapshot() : nullptr)
+		{
+			TrackKey = Manifest.ApplyZoneOverride(AbyssAudioSystemPrivate::ToName(Snap->zone.mapId), TrackKey);
+		}
+	}
+	PlayMusic(TrackKey, static_cast<float>(Event.fadeOutSec), static_cast<float>(Event.fadeInSec), Event.restart,
+		Event.loop);
 }
 
 int32 UAbyssAudioSystem::FindFreeMusicSlot() const
@@ -561,6 +576,37 @@ int32 UAbyssAudioSystem::FindFreeMusicSlot() const
 		}
 	}
 	return INDEX_NONE;
+}
+
+int32 UAbyssAudioSystem::FindActiveMusicVoice() const
+{
+	for (int32 I = 0; I < MusicVoices.Num(); ++I)
+	{
+		if (MusicVoices[I].bActive)
+		{
+			return I;
+		}
+	}
+	return INDEX_NONE;
+}
+
+double UAbyssAudioSystem::ResolveTrackDuration(const FAbyssMusicTrackDef& Track, USoundBase* Sound) const
+{
+	if (Track.LengthSec > 0.f)
+	{
+		return Track.LengthSec;
+	}
+	if (const FAbyssAudioAssetDef* AssetDef = Manifest.FindAsset(Track.Asset); AssetDef != nullptr && AssetDef->LengthSec > 0.f)
+	{
+		return AssetDef->LengthSec;
+	}
+	// No manifest (e.g. a build that did not stage it): the wave's own length. USoundBase::Duration holds the real
+	// length; GetDuration() would report a looping wave as "indefinitely looping" (10000 s).
+	if (Sound != nullptr && Sound->Duration > 0.f)
+	{
+		return Sound->Duration;
+	}
+	return 0.0;
 }
 
 UAudioComponent* UAbyssAudioSystem::EnsureMusicComponent(int32 Slot, USoundBase* Sound)
@@ -631,7 +677,8 @@ void UAbyssAudioSystem::PlayMusic(FName TrackKey, float FadeOutSec, float FadeIn
 		}
 		ResumePositions.Add(Voice.TrackKey, Voice.PositionSec);
 		UAudioComponent* Comp = MusicComponents[I];
-		if (AbyssAudioSystemPrivate::IsSounding(Comp) && FadeOutSec > 0.f)
+		// A paused (soundtrack) voice would never advance its fade: it stops at once.
+		if (AbyssAudioSystemPrivate::IsSounding(Comp) && FadeOutSec > 0.f && !Voice.bPaused)
 		{
 			Comp->FadeOut(FadeOutSec, 0.f, EAudioFaderCurve::Linear);
 			Voice.bActive = false;
@@ -667,13 +714,7 @@ void UAbyssAudioSystem::PlayMusic(FName TrackKey, float FadeOutSec, float FadeIn
 	}
 
 	const FAbyssAudioAssetDef* AssetDef = Manifest.FindAsset(Track.Asset);
-	double Duration = Track.LengthSec > 0.f ? Track.LengthSec : (AssetDef ? AssetDef->LengthSec : 0.f);
-	if (Duration <= 0.0)
-	{
-		// GetDuration() reports looping waves as "indefinite" (10000 s): only a finite length is usable here.
-		const float WaveDuration = Sound->GetDuration();
-		Duration = WaveDuration > 0.f && WaveDuration < 5000.f ? WaveDuration : 0.0;
-	}
+	const double Duration = ResolveTrackDuration(Track, Sound);
 	const bool bWaveLoops = Sound->IsLooping();
 	if (bLoopRequested != bWaveLoops)
 	{
@@ -744,7 +785,8 @@ void UAbyssAudioSystem::TickMusic(float RealDeltaSec)
 			continue;
 		}
 		UAudioComponent* Comp = MusicComponents.IsValidIndex(I) ? MusicComponents[I].Get() : nullptr;
-		if (!bSuspended)
+		const bool bHeld = bSuspended || Voice.bPaused;
+		if (!bHeld)
 		{
 			Voice.PositionSec += RealDeltaSec;
 			if (Voice.bLoop && Voice.DurationSec > 0.0)
@@ -758,7 +800,7 @@ void UAbyssAudioSystem::TickMusic(float RealDeltaSec)
 		}
 		if (Voice.bFadingOut)
 		{
-			Voice.FadeOutRemainingSec -= bSuspended ? 0.0 : RealDeltaSec;
+			Voice.FadeOutRemainingSec -= bHeld ? 0.0 : RealDeltaSec;
 			if (Voice.FadeOutRemainingSec <= 0.0 || !AbyssAudioSystemPrivate::IsSounding(Comp))
 			{
 				if (IsValid(Comp))
@@ -769,13 +811,14 @@ void UAbyssAudioSystem::TickMusic(float RealDeltaSec)
 				continue;
 			}
 		}
-		else if (!bSuspended && !AbyssAudioSystemPrivate::IsSounding(Comp))
+		else if (!bHeld && !AbyssAudioSystemPrivate::IsSounding(Comp))
 		{
 			// A one-shot (victory) reached its end; the director sends the next track after its hold.
 			Voice = FMusicVoice();
 			continue;
 		}
-		else if (!Voice.bLoop && Voice.DurationSec > 0.0 && Voice.PositionSec >= Voice.DurationSec)
+		else if (!bHeld && !Voice.bLoop && !IsJukeboxActive() && Voice.DurationSec > 0.0 &&
+			Voice.PositionSec >= Voice.DurationSec)
 		{
 			// One-shot request on a looping asset: end it at its length.
 			if (IsValid(Comp))
@@ -809,9 +852,11 @@ void UAbyssAudioSystem::HandleSfx(const abyss::EvSfx& Event)
 	}
 	const FName Family = (Cue->Families.Num() > 0 || Cue->VocalLayer.Num() > 0) ? FamilyOfEntity(Event.source)
 		: FName(NAME_None);
+	const bool bSpatial = Event.spatial && !Cue->bUiBus;
 	FVector2D Tile(Event.pos.x, Event.pos.y);
-	if (Event.source != abyss::kNoEntity && Event.pos.x == 0.0 && Event.pos.y == 0.0)
+	if (bSpatial && Event.source != abyss::kNoEntity && Event.pos.x == 0.0 && Event.pos.y == 0.0)
 	{
+		// A spatial cue without a position: where its source stands now.
 		if (const UAbyssSimDriver* Driver = UAbyssSimDriver::Get(GetAudioWorld()))
 		{
 			abyss::Vec2 Prev, Cur;
@@ -821,7 +866,6 @@ void UAbyssAudioSystem::HandleSfx(const abyss::EvSfx& Event)
 			}
 		}
 	}
-	const bool bSpatial = Event.spatial && !Cue->bUiBus;
 	PlayCue(*Cue, Family, bSpatial, Tile);
 
 	// A7: the family's death vocal on top of the web's monster_death groan.
@@ -956,25 +1000,28 @@ UAudioComponent* UAbyssAudioSystem::PlayOneShot(USoundBase* Sound, float Volume,
 		/*bPersistAcrossLevelTransition*/ false, /*bAutoDestroy*/ true);
 }
 
+APlayerController* UAbyssAudioSystem::GetListenerController() const
+{
+	UWorld* AudioWorld = GetAudioWorld();
+	return AudioWorld ? AudioWorld->GetFirstPlayerController() : nullptr;
+}
+
 bool UAbyssAudioSystem::ComputeVirtualEmitter(const FVector2D& Tile, FVector& OutLocation) const
 {
-	// A4 mild panning, listener on the hero: the source's lateral offset from the hero across the screen (camera right,
-	// flattened), normalised by the play-area half width, times the spread, is the azimuth of an emitter placed
-	// VirtualDistanceCm from the listener (the camera) in its forward / right plane - elevation 0, no distance loss.
-	UWorld* AudioWorld = GetAudioWorld();
-	const APlayerController* PC = AudioWorld ? AudioWorld->GetFirstPlayerController() : nullptr;
-	const APlayerCameraManager* Camera = PC ? PC->PlayerCameraManager.Get() : nullptr;
-	if (Camera == nullptr)
+	// A4 mild panning, listener on the hero: the source's lateral offset from the hero across the screen (the listener's
+	// right axis flattened onto the ground), normalised by the play-area half width and scaled by the spread, becomes
+	// the azimuth of an emitter VirtualDistanceCm from the listener in its own front / right plane: elevation 0, no
+	// distance loss (the attenuation only spatialises). The listener is the player controller's (the camera unless an
+	// override is set), so the panning follows whatever the engine uses.
+	const APlayerController* PC = GetListenerController();
+	if (PC == nullptr)
 	{
 		return false;
 	}
-	const FVector CameraLocation = Camera->GetCameraLocation();
-	const FRotator CameraRotation = Camera->GetCameraRotation();
-	const FRotationMatrix Axes(CameraRotation);
-	const FVector Forward = Axes.GetScaledAxis(EAxis::X);
-	const FVector Right = Axes.GetScaledAxis(EAxis::Y);
+	FVector ListenerLocation, Front, Right;
+	PC->GetAudioListenerPosition(ListenerLocation, Front, Right);
 	FVector RightFlat(Right.X, Right.Y, 0.0);
-	if (!RightFlat.Normalize())
+	if (!RightFlat.Normalize() || !Front.Normalize() || !Right.Normalize())
 	{
 		return false;
 	}
@@ -983,7 +1030,7 @@ bool UAbyssAudioSystem::ComputeVirtualEmitter(const FVector2D& Tile, FVector& Ou
 	const double Lateral = FVector::DotProduct(Source - Hero, RightFlat);
 	const double Pan = FMath::Clamp(Lateral / Manifest.Spatial.HalfWidthCm, -1.0, 1.0) * Manifest.Spatial.Spread;
 	const double Azimuth = Pan * UE_HALF_PI;
-	OutLocation = CameraLocation + (Forward * FMath::Cos(Azimuth) + Right * FMath::Sin(Azimuth)) *
+	OutLocation = ListenerLocation + (Front * FMath::Cos(Azimuth) + Right * FMath::Sin(Azimuth)) *
 		Manifest.Spatial.VirtualDistanceCm;
 	return true;
 }
@@ -1559,6 +1606,245 @@ void UAbyssAudioSystem::PlayFootstep()
 }
 
 // =====================================================================================================================
+// Title-menu soundtrack (audio.md 8.3, FIX Q10)
+// =====================================================================================================================
+
+void UAbyssAudioSystem::RefreshJukeboxRows()
+{
+	EnsureReady();
+	if (bJukeboxRowsBuilt || !bReady)
+	{
+		return;
+	}
+	bJukeboxRowsBuilt = true;
+	JukeboxRows.Reset();
+	for (int32 I = 0; I < Manifest.Jukebox.Tracks.Num(); ++I)
+	{
+		const FAbyssMusicTrackDef Track = Manifest.ResolveTrack(Manifest.Jukebox.Tracks[I].Track);
+		if (GetSound(Track.Asset, AbyssAudioSystemPrivate::MusicFolder) != nullptr)
+		{
+			JukeboxRows.Add(I);  // packaged in this build
+		}
+	}
+}
+
+TArray<FAbyssJukeboxTrack> UAbyssAudioSystem::GetJukeboxTracks()
+{
+	RefreshJukeboxRows();
+	TArray<FAbyssJukeboxTrack> Out;
+	for (const int32 RowIndex : JukeboxRows)
+	{
+		const FAbyssJukeboxEntry& Entry = Manifest.Jukebox.Tracks[RowIndex];
+		const FAbyssMusicTrackDef Track = Manifest.ResolveTrack(Entry.Track);
+		FAbyssJukeboxTrack Info;
+		Info.TrackKey = Entry.Track;
+		Info.TitleKey = Entry.TitleKey;
+		Info.LengthSec = static_cast<float>(ResolveTrackDuration(Track, GetSound(Track.Asset,
+			AbyssAudioSystemPrivate::MusicFolder)));
+		Out.Add(MoveTemp(Info));
+	}
+	return Out;
+}
+
+void UAbyssAudioSystem::JukeboxPlay(int32 Index)
+{
+	JukeboxStart(Index, Manifest.Jukebox.FadeOutSec);
+}
+
+void UAbyssAudioSystem::JukeboxStart(int32 Index, float FadeOutSec)
+{
+	RefreshJukeboxRows();
+	if (!JukeboxRows.IsValidIndex(Index))
+	{
+		return;
+	}
+	JukeboxIndex = Index;
+	// One pass per row (no loop): TickJukebox advances at the real end of the track.
+	PlayMusic(Manifest.Jukebox.Tracks[JukeboxRows[Index]].Track, FadeOutSec, Manifest.Jukebox.FadeInSec,
+		/*bRestart*/ true, /*bLoopRequested*/ false);
+}
+
+void UAbyssAudioSystem::JukeboxSetPaused(bool bPaused)
+{
+	if (!IsJukeboxActive())
+	{
+		return;
+	}
+	const int32 Slot = FindActiveMusicVoice();
+	if (Slot == INDEX_NONE)
+	{
+		if (!bPaused)
+		{
+			JukeboxPlay(JukeboxIndex);  // the row ended (last row holds at its end): play it again
+		}
+		return;
+	}
+	FMusicVoice& Voice = MusicVoices[Slot];
+	if (!bPaused && Voice.DurationSec > 0.0 && Voice.PositionSec >= Voice.DurationSec - 0.05)
+	{
+		JukeboxPlay(JukeboxIndex);
+		return;
+	}
+	Voice.bPaused = bPaused;
+	if (UAudioComponent* Comp = MusicComponents[Slot].Get(); IsValid(Comp))
+	{
+		Comp->SetPaused(bPaused || bSuspended);
+	}
+}
+
+void UAbyssAudioSystem::JukeboxSeek(float Seconds)
+{
+	if (!IsJukeboxActive())
+	{
+		return;
+	}
+	const int32 Slot = FindActiveMusicVoice();
+	if (Slot == INDEX_NONE)
+	{
+		JukeboxPlay(JukeboxIndex);
+		return;
+	}
+	FMusicVoice& Voice = MusicVoices[Slot];
+	UAudioComponent* Comp = MusicComponents[Slot].Get();
+	if (!IsValid(Comp))
+	{
+		return;
+	}
+	const double MaxSec = Voice.DurationSec > 0.0 ? FMath::Max(0.0, Voice.DurationSec - 0.05) : TNumericLimits<float>::Max();
+	const double Target = FMath::Clamp(static_cast<double>(Seconds), 0.0, MaxSec);
+	Comp->SetVolumeMultiplier(Voice.Gain * MusicBusGain());
+	Comp->Play(static_cast<float>(Target));
+	Comp->SetPaused(Voice.bPaused || bSuspended);
+	Voice.PositionSec = Target;
+	ResumePositions.Add(Voice.TrackKey, Target);
+}
+
+void UAbyssAudioSystem::JukeboxClose()
+{
+	if (!IsJukeboxActive())
+	{
+		return;
+	}
+	EndJukebox();
+	const UAbyssGameInstance* GI = GetAbyssGameInstance();
+	const abyss::DataStore* Data = GI ? GI->GetData() : nullptr;
+	const float FadeOut = Data ? static_cast<float>(Data->Audio().music.stateFadeSec) : 1.5f;
+	const float FadeIn = Data ? static_cast<float>(Data->Audio().music.fadeInSec) : 1.f;
+	PlayMusic(Manifest.MenuTrack, FadeOut, FadeIn, /*bRestart*/ true, /*bLoopRequested*/ true);
+}
+
+bool UAbyssAudioSystem::IsJukeboxPaused() const
+{
+	const int32 Slot = IsJukeboxActive() ? FindActiveMusicVoice() : INDEX_NONE;
+	// A row that reached its end (last row) counts as paused: the play button restarts it.
+	return IsJukeboxActive() && (Slot == INDEX_NONE || MusicVoices[Slot].bPaused);
+}
+
+float UAbyssAudioSystem::GetJukeboxPositionSec() const
+{
+	if (!IsJukeboxActive())
+	{
+		return 0.f;
+	}
+	const int32 Slot = FindActiveMusicVoice();
+	if (Slot == INDEX_NONE)
+	{
+		return GetJukeboxLengthSec();
+	}
+	const FMusicVoice& Voice = MusicVoices[Slot];
+	return static_cast<float>(Voice.DurationSec > 0.0 ? FMath::Min(Voice.PositionSec, Voice.DurationSec) : Voice.PositionSec);
+}
+
+float UAbyssAudioSystem::GetJukeboxLengthSec() const
+{
+	if (!IsJukeboxActive() || !JukeboxRows.IsValidIndex(JukeboxIndex))
+	{
+		return 0.f;
+	}
+	const FAbyssMusicTrackDef Track = Manifest.ResolveTrack(Manifest.Jukebox.Tracks[JukeboxRows[JukeboxIndex]].Track);
+	const TObjectPtr<USoundBase>* Sound = Sounds.Find(Track.Asset);
+	return static_cast<float>(ResolveTrackDuration(Track, Sound ? Sound->Get() : nullptr));
+}
+
+void UAbyssAudioSystem::TickJukebox()
+{
+	if (!IsJukeboxActive() || bSuspended)
+	{
+		return;
+	}
+	const int32 Slot = FindActiveMusicVoice();
+	if (Slot == INDEX_NONE)
+	{
+		return;
+	}
+	FMusicVoice& Voice = MusicVoices[Slot];
+	constexpr double EndLeadSec = 0.05;
+	if (Voice.bPaused || Voice.DurationSec <= 0.0 || Voice.PositionSec < Voice.DurationSec - EndLeadSec)
+	{
+		return;
+	}
+	// End of the row: the next row, or hold at the end of the last one (web MenuScene). The ending row is cut with a
+	// short fade: the music waves loop, a long fade-out would let the row's opening bars sound under the next one.
+	if (JukeboxRows.IsValidIndex(JukeboxIndex + 1))
+	{
+		JukeboxStart(JukeboxIndex + 1, static_cast<float>(EndLeadSec));
+	}
+	else
+	{
+		Voice.PositionSec = Voice.DurationSec;
+		Voice.bPaused = true;
+		if (UAudioComponent* Comp = MusicComponents[Slot].Get(); IsValid(Comp))
+		{
+			Comp->SetPaused(true);
+		}
+	}
+}
+
+void UAbyssAudioSystem::EndJukebox()
+{
+	if (!IsJukeboxActive())
+	{
+		return;
+	}
+	JukeboxIndex = INDEX_NONE;
+	for (int32 I = 0; I < MusicVoices.Num(); ++I)
+	{
+		if (MusicVoices[I].bPaused)
+		{
+			MusicVoices[I].bPaused = false;
+			if (MusicComponents.IsValidIndex(I) && IsValid(MusicComponents[I]))
+			{
+				MusicComponents[I]->SetPaused(bSuspended);
+			}
+		}
+	}
+}
+
+TArray<FAbyssMusicCreditRow> UAbyssAudioSystem::GetMusicCredits() const
+{
+	TArray<FAbyssMusicCreditRow> Out;
+	for (const TPair<FName, FAbyssMusicTrackDef>& Pair : Manifest.GetTracks())
+	{
+		if (!Pair.Value.Credit.IsSet())
+		{
+			continue;
+		}
+		const FAbyssMusicCredit& Credit = Pair.Value.Credit.GetValue();
+		FAbyssMusicCreditRow* Row = Out.FindByPredicate([&Credit](const FAbyssMusicCreditRow& R)
+		{
+			return R.Credit.Title == Credit.Title && R.Credit.Author == Credit.Author;
+		});
+		if (Row == nullptr)
+		{
+			Row = &Out.AddDefaulted_GetRef();
+			Row->Credit = Credit;
+		}
+		Row->Tracks.Add(Pair.Key);
+	}
+	return Out;
+}
+
+// =====================================================================================================================
 // Diagnostics
 // =====================================================================================================================
 
@@ -1568,12 +1854,14 @@ FString UAbyssAudioSystem::DescribeState() const
 		"sfx %.2f duck %.1f dB (target %.1f)\n"), bReady ? 1 : 0, bSuspended ? 1 : 0, bInSession ? 1 : 0,
 		Manifest.IsFromFile() ? TEXT("file") : TEXT("defaults"), MasterVolume, MusicVolume, SfxVolume, DuckCurrentDb,
 		DuckTargetDb);
-	Out += FString::Printf(TEXT("  current track: %s\n"), *CurrentTrack.ToString());
+	Out += FString::Printf(TEXT("  current track: %s, jukebox row %d%s\n"), *CurrentTrack.ToString(), JukeboxIndex,
+		IsJukeboxPaused() ? TEXT(" (paused)") : TEXT(""));
 	for (int32 I = 0; I < MusicVoices.Num(); ++I)
 	{
 		const FMusicVoice& Voice = MusicVoices[I];
-		Out += FString::Printf(TEXT("  voice %d: %s %s pos %.2f / %.2f s gain %.3f playing=%d\n"), I,
+		Out += FString::Printf(TEXT("  voice %d: %s %s%s pos %.2f / %.2f s gain %.3f playing=%d\n"), I,
 			*Voice.TrackKey.ToString(), Voice.bActive ? TEXT("active") : (Voice.bFadingOut ? TEXT("fading") : TEXT("idle")),
+			Voice.bPaused ? TEXT(" paused") : TEXT(""),
 			Voice.PositionSec, Voice.DurationSec, Voice.Gain,
 			MusicComponents.IsValidIndex(I) && AbyssAudioSystemPrivate::IsSounding(MusicComponents[I]) ? 1 : 0);
 	}

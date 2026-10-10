@@ -27,6 +27,7 @@
 #include "abyss/monsters/MonsterSystem.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/GameSim.h"
+#include "abyss/story/StoryDirector.h"
 #include "abyss/world/Locomotion.h"
 #include "abyss/world/Zone.h"
 #include "doctest/doctest.h"
@@ -317,6 +318,11 @@ TEST_SUITE("combat") {
     const DamageResult ms = Hit(goblin, m);
     CHECK(ms.damage == 5);
     CHECK(ms.manaDamage == 2);
+    // A fractional pool (regen) absorbs min(floor(7 x 0.3), D.mana) = 1.5: 5.5 HP (step 17, "D.mana may be fractional").
+    m.c.mana = 1.5;
+    const DamageResult frac = Hit(goblin, m);
+    CHECK(frac.manaDamage == doctest::Approx(1.5));
+    CHECK(frac.damage == doctest::Approx(5.5));
     // Rogue basic with poison_blade L1 (0.5) + vanish L1 (1.0): 49.
     Fighter r;
     MakeHero(r, ClassId::Rogue);
@@ -631,6 +637,18 @@ TEST_SUITE("combat") {
     CHECK(ComputeAttackTiming(a, man, "warrior", AnimRig::Warrior, 400).contactMs == JsRound(300 * 400 * 0.9 / 610));
     CHECK(ComputeCastTiming(a, man, "warrior", AnimRig::Warrior).contactMs == 320);
     CHECK(ComputeAttackTiming(a, man, "mage", AnimRig::Mage, 1000).contactMs == 267);  // other assets: fallback
+    // A notify on the web's beat in whole ms (308 for 307.69) is that beat: the exact frame value is speed-scaled
+    // (10.1 round(frameContactMs x speed)): at speed 0.7 -> round(215.38) = 215, not round(308 x 0.7) = 216.
+    const double interval07 = 0.7 * a.Preset(AnimRig::Warrior).attackDuration / 0.9;
+    CHECK(ComputeAttackTiming(a, man, "warrior", AnimRig::Warrior, interval07).speed == doctest::Approx(0.7));
+    CHECK(ComputeAttackTiming(a, man, "warrior", AnimRig::Warrior, interval07).contactMs == 210);  // moved notify
+    man.assets[0].anims[0].contactMs = 308;
+    CHECK(ComputeAttackTiming(a, man, "warrior", AnimRig::Warrior, 1000).contactMs == 308);
+    CHECK(ComputeAttackTiming(a, man, "warrior", AnimRig::Warrior, interval07).contactMs == 215);
+    CHECK(ComputeAttackTiming(a, AssetManifest{}, "warrior", AnimRig::Warrior, interval07).contactMs == 215);
+    if (D().Assets().loaded) {  // the exported art manifest (warrior Attack01 Contact notify at 308 ms)
+      CHECK(ComputeAttackTiming(a, D().Assets(), "warrior", AnimRig::Warrior, interval07).contactMs == 215);
+    }
   }
 
   TEST_CASE("camera shake rules (combat 11.5, 6.5) and the throttle") {
@@ -1277,7 +1295,6 @@ TEST_SUITE("combat") {
     g.radius = 2;
     g.durationMs = 3000;
     g.ticks = 6;
-    g.damageShare = 1.0 / 6;
     const EntityId id = ps.StartGroundEffect(g);
     REQUIRE(ps.FindGroundEffect(id) != nullptr);
     CHECK(ps.FindGroundEffect(id)->ticksDone == 1);  // the first tick at once
@@ -2138,6 +2155,7 @@ TEST_SUITE("combat") {
     auto sim = GameSim::Create(D(), cfg);
     REQUIRE(sim != nullptr);
     REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 5));
+    sim->Context().sys.story->FinishAllBeats();  // the new-game prologue / chapter card hold the world (S2)
     sim->Step();
     int32_t slot = -1;
     for (int32_t i = 0; i < 6; ++i) {
@@ -2185,5 +2203,299 @@ TEST_SUITE("combat") {
     CHECK(b.RemainingMs(sim->NowMs()) == doctest::Approx(left2));
     CHECK(sim->View().heroBuffs->Has(BuffStat::DamageReduction));
     CHECK(left - left2 <= kSimStepMs + 1e-6);
+  }
+
+  // ===================================================================================================================
+  // Audit fixes (C4 ground totals, chain shake, C8 teleport lock, audio miss, dungeon death, spirit source)
+  // ===================================================================================================================
+  TEST_CASE("C4 GroundTickShare: the tick parts keep the remainder and sum to the one-shot hit") {
+    // 29 over 6 ticks: 4 5 5 5 5 5 (not 6 x floor(29 / 6) = 24).
+    const int32_t parts[6] = {4, 5, 5, 5, 5, 5};
+    for (int32_t k = 0; k < 6; ++k) CHECK(GroundTickShare(29, k, 6) == parts[k]);
+    for (int32_t ticks = 1; ticks <= 8; ++ticks) {
+      for (int32_t total = 0; total <= 240; ++total) {
+        int32_t sum = 0;
+        for (int32_t k = 0; k < ticks; ++k) {
+          const int32_t part = GroundTickShare(total, k, ticks);
+          CHECK(part >= total / ticks);
+          CHECK(part <= (total + ticks - 1) / ticks);
+          sum += part;
+        }
+        CHECK(sum == total);
+      }
+    }
+    CHECK(GroundTickShare(7, 0, 1) == 7);
+    CHECK(GroundTickShare(7, 6, 6) == 0);   // past the last tick
+    CHECK(GroundTickShare(7, -1, 6) == 0);
+    CHECK(GroundTickShare(-3, 0, 6) == 0);
+    CHECK(GroundTickShare(2147483647, 5, 6) + GroundTickShare(2147483647, 0, 6) > 0);  // no int32 overflow
+  }
+
+  TEST_CASE("runtime C4: a fire wall's ticks on one target sum to the web's one-shot hit; burn and Spirit roll once") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(3, 0));
+    REQUIRE_MONSTER(t);
+    rig.combat.SetAttackTarget(t, false);
+    hero.lastAttackMs = 1e18;
+    const int32_t fw = rig.SkillIndex("fire_wall");
+    hero.Skills().SetLevel(fw, 1);
+    const SkillDef& fire = Skill("fire_wall");
+    // The web's one-shot hit with "no dodge, no crit".
+    Rng probe(1);
+    probe.Script({0.99, 0.99});
+    SkillHitInput in;
+    in.skill = &fire;
+    in.level = 1;
+    in.synergyFactor = hero.Skills().SynergyFactor(fire);
+    const DamageResult oneShot = CalculateDamage(Rules(), rig.combat.HeroCombatant(),
+                                                 CombatSystem::MonsterCombatant(*rig.monsters.Find(t)), in, false, probe);
+    REQUIRE(oneShot.damage >= 6);
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(fw, SkillAim{}) == SkillRequestResult::Executed);
+    rig.StepBefore(t0 + 230);
+    rig.h.rng.Get(RngStream::Combat).Script({0.99, 0.99, 0.0});  // no dodge, no crit, the 40 % burn applies
+    rig.StepTo(t0 + 230 + 3100);
+    double total = 0;
+    size_t ticks = 0;
+    for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+      if (h.skillId != "fire_wall" || h.target != t) continue;
+      CHECK_FALSE(h.dodged);
+      CHECK_FALSE(h.crit);
+      total += h.amount;
+      ++ticks;
+    }
+    CHECK(ticks == 6);
+    CHECK(total == doctest::Approx(oneShot.damage));  // the same total damage (DECISIONS C4)
+    // One burn from the full hit: value max(1, floor(dmg x 0.15)) (classes 13.5), never re-rolled per tick.
+    size_t burns = 0;
+    for (const EvStatusApplied& e : EventsOf<EvStatusApplied>(rig.h.events)) {
+      if (e.target != t || e.type != StatusType::Burn) continue;
+      ++burns;
+      CHECK(e.value == (std::max)(1.0, std::floor(oneShot.damage * 0.15)));
+    }
+    CHECK(burns == 1);
+    // Spirit 'hit' once for the one web hit (classes 12.1), with its source (14.3).
+    size_t hitGains = 0;
+    for (const EvSpiritChanged& e : EventsOf<EvSpiritChanged>(rig.h.events)) {
+      if (e.hasSource && e.source == SpiritSource::Hit) ++hitGains;
+    }
+    CHECK(hitGains == 1);
+
+    // A dodged roll misses for the whole effect: one MISS, no damage, no status.
+    CombatRig d(ClassId::Mage);
+    const EntityId u = d.Spawn("goblin_chief", d.hero->Position() + Vec2(3, 0));
+    d.monsters.Find(u)->stats.dex = 100;  // 30 % dodge
+    d.combat.SetAttackTarget(u, false);
+    d.hero->lastAttackMs = 1e18;
+    d.hero->Skills().SetLevel(d.SkillIndex("fire_wall"), 1);
+    const double d0 = d.h.clock.NowMs();
+    REQUIRE(d.combat.RequestSkill(d.SkillIndex("fire_wall"), SkillAim{}) == SkillRequestResult::Executed);
+    d.StepBefore(d0 + 230);
+    d.h.rng.Get(RngStream::Combat).Script({0.0});  // dodged
+    d.StepTo(d0 + 230 + 3100);
+    size_t misses = 0, landed = 0;
+    for (const EvHit& h : EventsOf<EvHit>(d.h.events)) {
+      if (h.skillId != "fire_wall" || h.target != u) continue;
+      (h.dodged ? misses : landed) += 1;
+    }
+    CHECK(misses == 1);
+    CHECK(landed == 0);
+    CHECK(d.monsters.Find(u)->hp == d.monsters.Find(u)->maxHp);
+    CHECK_FALSE(d.status.Has(u, StatusType::Burn));
+  }
+
+  TEST_CASE("runtime C4: the chain lightning batch shake follows the last link and counts every link (6.5)") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const Vec2 p = hero.Position();
+    std::vector<EntityId> ids;
+    for (const Vec2 off : {Vec2(3, 0), Vec2(1, 0), Vec2(2, 1)}) {
+      const EntityId id = rig.Spawn("goblin_chief", p + off);
+      REQUIRE_MONSTER(id);
+      MonsterInstance* m = rig.monsters.Find(id);
+      m->maxHp = 1e6;  // light hits: no per-hit profile shake competes with the batch shake
+      m->hp = 1e6;
+      ids.push_back(id);
+    }
+    const int32_t chain = rig.SkillIndex("chain_lightning");
+    hero.Skills().SetLevel(chain, 1);
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(chain, SkillAim{}) == SkillRequestResult::Executed);
+    rig.StepBefore(t0 + 230);
+    rig.h.rng.Get(RngStream::Combat).Script({0.99, 0.99, 0.99, 0.99, 0.99, 0.99});  // three links, no crit
+    rig.h.events.Clear();
+    double lastLinkAt = -1, shakeAt = -1;
+    std::vector<EvCameraShake> shakes;
+    for (int i = 0; i < 30; ++i) {
+      rig.Step();
+      for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+        if (h.skillId == "chain_lightning") lastLinkAt = rig.h.clock.NowMs();
+      }
+      for (const EvCameraShake& e : EventsOf<EvCameraShake>(rig.h.events)) {
+        shakes.push_back(e);
+        shakeAt = rig.h.clock.NowMs();
+      }
+      rig.h.events.Clear();
+    }
+    REQUIRE(shakes.size() == 1);
+    const HitFeedbackTable& t = D().Combat().hitFeedback;
+    CHECK(shakes[0].durationMs == t.aoeHitShakeDurationMs);
+    CHECK(shakes[0].intensity == doctest::Approx(t.aoeHitShakeBase + 3 * t.aoeHitShakePerHit));  // 0.007
+    CHECK(shakeAt == lastLinkAt);
+    CHECK(lastLinkAt >= t0 + 230 + 110 - 1e-6);
+  }
+
+  TEST_CASE("C8 touch teleport: without a lock it never blinks toward the nearest monster; the lock wins") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const int32_t tp = rig.SkillIndex("teleport");
+    hero.Skills().SetLevel(tp, 1);
+    const SkillPortDef& port = Skill("teleport").port;
+    const WalkableFn walk = [&rig](int32_t c, int32_t r) { return rig.zone.Walkable(c, r); };
+    const int32_t cols = rig.zone.Grid().Cols();
+    const int32_t rows = rig.zone.Grid().Rows();
+    const Vec2 start = hero.Position();
+    const EntityId near = rig.Spawn("goblin", start + Vec2(5, 0));
+    REQUIRE_MONSTER(near);
+    REQUIRE(rig.combat.AttackTarget() == kNoEntity);
+    REQUIRE(rig.combat.PreferredTarget() == near);  // the release target falls back to the nearest monster
+    hero.SetFacing(Vec2(0, 1));
+    TeleportAim ahead;  // no pointer, no stick, no lock: 6 tiles along the facing
+    ahead.facing = Vec2(0, 1);
+    TilePos expect;
+    REQUIRE(ComputeTeleportDestination(port, start, ahead, cols, rows, walk, expect));
+    REQUIRE(rig.combat.RequestSkill(tp, SkillAim{}) == SkillRequestResult::Executed);
+    CHECK(hero.Position() == expect.Center());
+    CHECK(hero.Facing() == Vec2(0, 1));  // the cast did not turn toward the unlocked monster
+    CHECK(Dist(hero.Position(), rig.monsters.Find(near)->pos) > 5);
+    // With a lock: the blink goes to the locked target (clamped to 8 tiles, walkable search).
+    hero.Skills().ResetCooldowns();
+    hero.FillHpMana();
+    const Vec2 here = hero.Position();
+    const EntityId locked = rig.Spawn("goblin", here + Vec2(-4, 0));
+    rig.combat.SetAttackTarget(locked, false);
+    TeleportAim toLock;
+    toLock.hasTarget = true;
+    toLock.targetPos = rig.monsters.Find(locked)->pos;
+    toLock.facing = hero.Facing();
+    TilePos lockDest;
+    REQUIRE(ComputeTeleportDestination(port, here, toLock, cols, rows, walk, lockDest));
+    REQUIRE(rig.combat.RequestSkill(tp, SkillAim{}) == SkillRequestResult::Executed);
+    CHECK(hero.Position() == lockDest.Center());
+    // A tapped target (SkillAim::target) is a lock too.
+    hero.Skills().ResetCooldowns();
+    hero.FillHpMana();
+    const Vec2 there = hero.Position();
+    REQUIRE(rig.combat.AttackTarget() == kNoEntity);  // the blink cleared the lock
+    SkillAim tap;
+    tap.target = near;
+    TeleportAim toTap;
+    toTap.hasTarget = true;
+    toTap.targetPos = rig.monsters.Find(near)->pos;
+    toTap.facing = hero.Facing();
+    TilePos tapDest;
+    REQUIRE(ComputeTeleportDestination(port, there, toTap, cols, rows, walk, tapDest));
+    REQUIRE(rig.combat.RequestSkill(tp, tap) == SkillRequestResult::Executed);
+    CHECK(hero.Position() == tapDest.Center());
+  }
+
+  TEST_CASE("audio 3.2: a monster's stat dodge of a hero hit is silent; a swing into the i-frames plays `miss`") {
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(1, 0), false);
+    REQUIRE_MONSTER(g);
+    REQUIRE(rig.monsters.Find(g)->stats.dex > 0);
+    rig.combat.SetAttackTarget(g, false);
+    rig.Step();
+    const double swing = rig.h.clock.NowMs();
+    rig.StepBefore(swing + 308);
+    rig.h.rng.Get(RngStream::Combat).Script({0.0});  // the goblin dodges the contact
+    rig.StepTo(swing + 308);
+    const auto hits = EventsOf<EvHit>(rig.h.events);
+    REQUIRE(hits.size() == 1);
+    CHECK(hits[0].dodged);
+    CHECK(hits[0].target == g);
+    for (const EvSfx& e : EventsOf<EvSfx>(rig.h.events)) CHECK(e.cue != SfxId::Miss);
+    // The goblin swings into the dodge roll's i-frames: `miss`, Spirit 'dodge' with its source.
+    hero.lastAttackMs = 1e18;
+    rig.combat.ClearAttackTarget();
+    rig.monsters.Find(g)->state = MonsterState::Attack;
+    rig.h.events.Clear();
+    REQUIRE(rig.StepUntil([&] { return rig.combat.IsWindingUp(g); }));
+    const double mswing = rig.h.clock.NowMs();
+    const Vec2 near = hero.Position();
+    rig.Step(3);  // 50 ms into the wind-up: the 220 ms i-frames cover the 250 ms contact
+    REQUIRE(rig.combat.RequestDodge(Vec2(0, -1)));
+    hero.SetPosition(near);
+    rig.StepTo(mswing + 300);
+    size_t missCues = 0;
+    for (const EvSfx& e : EventsOf<EvSfx>(rig.h.events)) missCues += e.cue == SfxId::Miss;
+    CHECK(missCues == 1);
+    size_t dodgeGains = 0;
+    for (const EvSpiritChanged& e : EventsOf<EvSpiritChanged>(rig.h.events)) {
+      if (e.hasSource && e.source == SpiritSource::Dodge) ++dodgeGains;
+    }
+    CHECK(dodgeGains == 1);
+  }
+
+  TEST_CASE("combat 15: a death in a sub-dungeon takes the penalty for good (no echo); spirit events carry a source") {
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    for (int i = 0; i < 4; ++i) rig.rewards.GrantExp(hero.ExpToNext(), ExpSource::Debug);
+    REQUIRE(hero.Level() == 5);
+    rig.rewards.ChangeGold(1000, GoldReason::Debug);
+    REQUIRE_FALSE(D().World().subDungeons.empty());
+    rig.h.session.currentMap = D().World().subDungeons.front().id;
+    rig.h.events.Clear();
+    hero.SetHp(0);
+    rig.combat.KillHero(HeroDeathCause::Other);
+    CHECK(hero.Life() == HeroLife::Dying);
+    CHECK(hero.Gold() == 900);              // the 10 % toll is still paid
+    CHECK_FALSE(rig.soul.State().Has());   // ... but nothing is left behind
+    bool lostLog = false;
+    for (const EvLog& e : EventsOf<EvLog>(rig.h.events)) lostLog = lostLog || e.text.key == "zone.soulEcho.lostInDungeon";
+    CHECK(lostLog);
+    // Death resets the meter: EvSpiritChanged without a source (14.3).
+    const auto spirit = EventsOf<EvSpiritChanged>(rig.h.events);
+    REQUIRE_FALSE(spirit.empty());
+    CHECK(spirit.back().value == 0);
+    CHECK_FALSE(spirit.back().hasSource);
+    // A labyrinth floor counts too; the overworld leaves an echo.
+    CombatRig lab(ClassId::Warrior);
+    for (int i = 0; i < 4; ++i) lab.rewards.GrantExp(lab.hero->ExpToNext(), ExpSource::Debug);
+    lab.rewards.ChangeGold(1000, GoldReason::Debug);
+    lab.h.session.currentMap = "dungeon_floor_1";
+    lab.hero->SetHp(0);
+    lab.combat.KillHero(HeroDeathCause::Other);
+    CHECK(lab.hero->Gold() == 900);
+    CHECK_FALSE(lab.soul.State().Has());
+    CombatRig field(ClassId::Warrior);
+    for (int i = 0; i < 4; ++i) field.rewards.GrantExp(field.hero->ExpToNext(), ExpSource::Debug);
+    field.rewards.ChangeGold(1000, GoldReason::Debug);
+    field.hero->SetHp(0);
+    field.combat.KillHero(HeroDeathCause::Other);
+    CHECK(field.soul.State().Has());
+    // A kill's Spirit gain names its source.
+    CombatRig k(ClassId::Warrior);
+    const EntityId slime = k.Spawn("slime_green", k.hero->Position() + Vec2(1, 0));
+    REQUIRE_MONSTER(slime);
+    k.h.events.Clear();
+    MonsterHitRequest kill;
+    kill.monster = slime;
+    kill.amount = 1e6;
+    kill.attacker = kHeroEntityId;
+    kill.source = KillSource::HeroSkill;
+    k.combat.DamageMonster(kill);
+    size_t killGains = 0;
+    for (const EvSpiritChanged& e : EventsOf<EvSpiritChanged>(k.h.events)) {
+      if (e.hasSource && e.source == SpiritSource::Kill) ++killGains;
+    }
+    CHECK(killGains == 1);
   }
 }

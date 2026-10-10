@@ -23,12 +23,23 @@
 //   contact-time cinematic check", since the sim clock cannot run during one.
 // * FIX Q7: at the release beat a range-checked skill whose (re)target is beyond range + slack takes the nearest
 //   monster in reach, else fizzles (cost spent).
-// * C4 ground effects: each tick is a full calculateDamage (own rolls) scaled by 1 / ticks (min 1), and evaluates the
-//   skill's status rules per tick (fire wall: same expected burn as the web's one-shot). A Charge whose target already
-//   stands within melee range hits at once (no zero-length dash).
+// * C4 ground effects ("the same total damage spread over their tick count"): the first tick that reaches a monster
+//   rolls the web's one-shot hit for it ONCE (calculateDamage, combustion, crit-bonus consumption, Spirit 'hit', the
+//   skill's status rules from the full damage); tick k of n then deals GroundTickShare(total, k, n) =
+//   floor(total (k+1) / n) - floor(total k / n) of it (life / mana steal likewise), so the ticks of a target that
+//   stands in the effect from the first tick sum to exactly the web's hit. A dodged roll misses for the whole effect.
+//   A tick share of 0 deals nothing that tick. A Charge whose target already stands within melee range hits at once.
+// * C4 chain lightning: link k lands at release + k x 55 ms; the AoE batch shake (6.5) follows the LAST link, counting
+//   every link that landed.
+// * C8 teleport on touch: the "locked target" fallback is the lock (hero.attackTarget, or the aim's tapped target),
+//   never the preferred-target fallback (nearest monster on the map).
 // * Audio: every hit emits a cue (SfxForCombatHit; hero damage -> the A6 player_hurt cue; the A7 monster_hurt vocal on
-//   non-lethal, non-tick monster hits); the hero's stat dodge stays silent (web).
-// * Life Regen heals inside Hero::TickRegen (hero area); TickPassives does Unyielding and Dual Wield.
+//   non-lethal, non-tick monster hits). A miss is audible only for a monster swing into the dodge-roll i-frames
+//   (audio 3.2); a monster's stat dodge of a hero hit and the hero's stat dodge stay silent (web).
+// * Hero death in a sub-dungeon (zone id = a world SubDungeonDef id) or a labyrinth floor (dungeon_floor_*) takes the
+//   penalty permanently (SoulEchoSystem::OnHeroDied inDungeon, combat 15).
+// * TickPassives computes the step's regen modifiers (Hero::stepRegen, pre-movement campfire) and applies Life Regen
+//   (Hero::TickLifeRegen) before the Unyielding check; TickHeroUpdate applies mana / HP regen (Hero::TickRegen).
 #pragma once
 
 #include <cstdint>
@@ -215,8 +226,9 @@ class ABYSS_API CombatSystem {
     int32_t manaCost = 0;
     bool used = false;
   };
-  // A delayed skill hit (T4): the meteor batch (all targets, then the AoE shake), a per-target arrow delay or one link
-  // of the chain-lightning stagger. Slot index = timer param.
+  // A delayed skill hit (T4): the meteor batch (all targets, then the AoE shake), a per-target arrow delay, or the rest
+  // of a C4 chain lightning (links nextLink.. of `targets`, one per timer at baseMs + link x staggerMs; the AoE shake
+  // after the last link counts `chainHits`, which includes the immediate link 0). Slot index = timer param.
   struct PendingHit {
     int32_t skillIndex = -1;
     int32_t level = 0;
@@ -224,7 +236,28 @@ class ABYSS_API CombatSystem {
     Vec2 center;
     bool blastFrom = false;  // knock-back from `center` (ground skills), else from the hero
     bool batchShake = false;
+    bool chain = false;
+    size_t nextLink = 0;
+    int32_t chainHits = 0;
+    double baseMs = 0;
+    double staggerMs = 0;
     bool used = false;
+  };
+  // C4 ground effect tick being resolved (nullptr = an ordinary one-shot hit).
+  struct GroundTick {
+    EntityId effect = kNoEntity;
+    int32_t index = 0;  // 0-based tick index
+    int32_t ticks = 1;
+  };
+  // One target's hit for a whole C4 ground effect (rolled on its first tick, shared out by GroundTickShare).
+  struct GroundRoll {
+    EntityId effect = kNoEntity;
+    EntityId target = kNoEntity;
+    bool dodged = false;
+    bool crit = false;
+    int32_t total = 0;       // the web's dealt damage (after combustion)
+    int32_t lifeStolen = 0;  // the web's steal from that hit
+    int32_t manaStolen = 0;
   };
   // A monster swing waiting for its contact beat (T1): telegraph state for the snapshot and the F2 cancel event.
   struct PendingStrike {
@@ -239,7 +272,7 @@ class ABYSS_API CombatSystem {
     const SkillDef* skill = nullptr;  // nullptr = basic attack
     int32_t level = 1;
     bool forceCrit = false;
-    double damageShare = 1.0;         // C4 ground-effect tick share
+    const GroundTick* ground = nullptr;  // C4 ground-effect tick (ticks > 1: shared roll)
     bool applyStatusRules = true;
     bool impactBurst = true;
     bool hasFrom = false;
@@ -249,10 +282,15 @@ class ABYSS_API CombatSystem {
   struct HeroHitOutcome {
     bool attempted = false;  // the target was alive
     bool dodged = false;
+    bool landed = false;     // damage was applied (DamageMonster ran): counts for the AoE batch shake
     bool killed = false;
     int32_t damage = 0;
     bool crit = false;
     HitWeight weight = HitWeight::Tick;
+    // Whether this hit evaluates the skill's status rules, and the dealt damage they read (the full one-shot hit for a
+    // C4 ground tick: only on the target's first tick).
+    bool rollStatuses = true;
+    int32_t statusDamage = 0;
   };
 
   // ---- skills ----
@@ -266,10 +304,18 @@ class ABYSS_API CombatSystem {
   void ReleaseBuff(const SkillDef& s, int32_t level);
   void ReleaseAoe(const SkillDef& s, int32_t level, EntityId target);
   void ReleaseSingle(const SkillDef& s, int32_t level, EntityId target);
-  void SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, double radius, double share);
-  // Shared single-target / AoE hit (classes 9.7 "apply hit"), true when the target was alive.
+  void SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, double radius, const GroundTick* ground);
+  // Shared single-target / AoE hit (classes 9.7 "apply hit"); `ground` = the C4 ground tick being resolved.
   HeroHitOutcome ApplySkillHit(const SkillDef& s, int32_t level, EntityId target, bool blastFrom, Vec2 center,
-                               double share);
+                               const GroundTick* ground);
+  // Applies link `ph.nextLink` of a pending chain lightning and schedules the next one, or the batch shake after the
+  // last (C4).
+  void FireChainLink(int32_t slot);
+  void ResolveGroundTick(const GroundEffect& g, const GroundTick& tick);
+  GroundRoll* FindGroundRoll(EntityId effect, EntityId target);
+  void DropGroundRolls(EntityId effect);  // kNoEntity = every effect
+  // The live zone is a sub-dungeon or a labyrinth floor (combat 15: the death penalty is permanent there).
+  bool InDungeonZone() const;
   void ApplySkillStatuses(const SkillDef& s, int32_t level, EntityId target, double dealt);
   int32_t AllocRelease(const PendingRelease& r);
   int32_t AllocHit(PendingHit h);
@@ -314,6 +360,7 @@ class ABYSS_API CombatSystem {
   SkillAim bufferedAim_;
   std::vector<PendingRelease> releases_;
   std::vector<PendingHit> hits_;
+  std::vector<GroundRoll> groundRolls_;  // C4: per (effect, target), dropped after the effect's last tick
   std::vector<PendingStrike> strikes_;
   bool inCombat_ = false;
   TimerId combatOffTimer_ = kNoTimer;

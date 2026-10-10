@@ -1,27 +1,27 @@
 // UAbyssUiSubsystem: the Slate UI of Abyssfire (ui agent: UI/). One per game instance.
 //
 // Implements
-// * IAbyssUiRoot (Framework/AbyssUiRoot.h): app-state screens (boot / data error / title + slots + class select +
+// * IAbyssUiRoot (Framework/AbyssUiRoot.h): app-state screens (data error / title + 3 save slots + class select +
 //   difficulty + language + settings + controls + credits / in game), the per-frame HUD sync, Back (U4), locale changes,
 //   system errors. Registered with UAbyssGameInstance::RegisterUiRoot in Initialize.
 // * IAbyssWorldUi (World/AbyssWorldUi.h): world-anchored nameplates, HP bars, loot / lore labels, quest markers and the
 //   floating combat text, in one Slate layer projected every paint (ue58-platform.md 9.6). Registered with the world
-//   builder of each game world (UAbyssWorldBuilder::SetWorldUi).
+//   builder of each game world (UAbyssWorldBuilder::SetWorldUi; the builder also finds it through the UI root).
 //
 // Consumes
 // * FAbyssEventRouter::OnAnyEvent (one subscription; the root widget routes each event to the HUD, panels, notices and the
 //   story overlay), OnSessionStarted / OnSessionEnded; UAbyssGameInstance settings / locale.
 // * UAbyssInputSubsystem::SetUiInputHandler (panel hotkeys, story advance / skip with the two-tap rule, touch log toggle,
-//   touch menu button) and CreateTouchControls (hosted inside the HUD's safe zone); desktop HUD buttons inject their
-//   actions with UAbyssInputSubsystem::PressAction so they share the keyboard path.
+//   touch menu button), OnHoveredEntityChanged (nameplate hover) and CreateTouchControls (hosted inside the HUD's safe
+//   zone); desktop HUD buttons inject their actions with UAbyssInputSubsystem::PressAction so they share the keyboard
+//   path.
 //
 // Every player action is an abyss::Command (GI->Submit); panels are driven by the snapshot and EvPanelRequest (core-owned
 // modals) and report the UE-owned ones with CmdOpenPanel / CmdClosePanel (SimTypes.h ownership, U7). All text comes from
 // the core's i18n tables (keys the tables do not have yet show an English fallback; see the report for the key list).
 //
-// UI-originated sound cues (clicks, panel toggles, forge results) are broadcast as abyss::EvSfx{cue, spatial = false,
-// source = kNoEntity} through the router's EvSfx delegate, so the audio layer has a single SFX path; they never reach the
-// core.
+// UI-originated sound cues (clicks, panel toggles) are broadcast as abyss::EvSfx{cue, spatial = false, source =
+// kNoEntity} through the router's EvSfx delegate, so the audio layer has a single SFX path; they never reach the core.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -41,11 +41,14 @@
 
 #include "AbyssUiSubsystem.generated.h"
 
+class FAbyssMinimapTexture;
 class FAbyssUiContext;
 class FAbyssUiStyle;
 class SAbyssUiRoot;
 class UAbyssGameInstance;
+class UGameViewportClient;
 class UTexture2D;
+class UWorld;
 struct FAbyssUserSettings;
 
 UCLASS()
@@ -104,14 +107,17 @@ private:
 	void HandleSessionStarted();
 	void HandleSessionEnded();
 	void HandleSettingsChanged(const FAbyssUserSettings& NewSettings);
+	void HandleHoveredEntityChanged(abyss::EntityId Entity);
+	void HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
 	bool HandleUiInputRequest(const FAbyssUiInputRequest& Request);
 	void BindInputHandler();
 	void RefreshStyleLocale();
 
 	TSharedPtr<FAbyssUiContext> Context;
 	TSharedPtr<FAbyssUiStyle> Style;
+	TSharedPtr<FAbyssMinimapTexture> Minimap;
 	TSharedPtr<SAbyssUiRoot> RootWidget;
-	TWeakObjectPtr<class UGameViewportClient> AttachedViewport;
+	TWeakObjectPtr<UGameViewportClient> AttachedViewport;
 
 	/** Textures referenced by Slate brushes (icons, portraits) and runtime textures (minimap). */
 	UPROPERTY(Transient)
@@ -120,10 +126,15 @@ private:
 	TMap<FName, TWeakObjectPtr<UTexture2D>> TextureCache;
 	TSet<FName> MissingTextures;
 
+	/** A system error reported before the root widget could be shown (no viewport yet). */
+	TOptional<TPair<FText, FText>> PendingError;
+
 	FDelegateHandle SettingsHandle;
+	FDelegateHandle HoverHandle;
+	FDelegateHandle WorldCleanupHandle;
 	EAbyssAppState AppState = EAbyssAppState::Boot;
 	bool bEventsBound = false;
 	bool bInputHandlerBound = false;
-	bool bWorldRegistered = false;
+	bool bThemeApplied = false;
 	TWeakObjectPtr<UWorld> RegisteredWorld;
 };

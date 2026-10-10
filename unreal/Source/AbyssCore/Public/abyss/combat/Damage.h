@@ -31,13 +31,14 @@ struct Combatant {
 };
 
 struct DamageResult {
-  int32_t damage = 0;
+  // Whole except behind a mana shield fed by a fractional mana pool (step 17: final - min(redirect, D.mana)).
+  double damage = 0;
   bool isCrit = false;
   bool isDodged = false;
   DamageType type = DamageType::Physical;
   int32_t lifeStolen = 0;
   int32_t manaStolen = 0;
-  int32_t manaDamage = 0;  // mana shield absorb (FIX Q16: the caller drains it from the defender's mana)
+  double manaDamage = 0;  // mana shield absorb, may be fractional (FIX Q16: the caller drains it from D's mana)
 };
 
 struct DamageRules {

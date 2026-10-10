@@ -16,9 +16,14 @@
 // forwards input: the FIRST input during a reveal (typewriter, staggered slide parts, fades) is handled by UE alone (it
 // completes the reveal); UE sends StoryAdvance only for the input that advances (a waiting step, a title / chapter
 // hold) and StorySkip for Esc / the skip button.
-// Bus: StartBeat publishes StoryStateMsg{active = true, beatId, musicTrack} when the director turns busy, FinishBeat
-// publishes StoryStateMsg{active = false} when the queue drains (with EvStoryState); the boss scan publishes BossBarMsg
-// whenever the bar appears / changes / clears (killed = true when OnMonsterKilled clears it) together with EvBossBar.
+// Bus: StoryStateMsg is the music director's story lock (audio 10.4 rule 2): {active = true, beatId, musicTrack} when
+// the director turns busy (with EvStoryState{true}), {active = false} when the queue drains (with EvStoryState{false}).
+// A sequence beat (musicTrack set) owns its own span: {true, musicTrack} at its start, {false} when it finishes (the
+// zone's explore track returns), and the next queued beat retakes the lock with {true, ""} when it starts - so the
+// new-game chapter card plays under the zone music. EvStoryState stays busy / idle only. The boss scan publishes
+// BossBarMsg whenever the bar appears / changes / clears (killed = true when OnMonsterKilled clears it) with EvBossBar.
+// Q7 completion: entering a zone re-queues the unseen quest_turned_in cutscenes of its turned-in quests (a quit during
+// the cutscene or its delay would otherwise lose them, and their grantPet, for good).
 #pragma once
 
 #include <cstdint>
@@ -182,6 +187,8 @@ class ABYSS_API StoryDirector {
  private:
   // fire(on, key) (8.2): every trigger in script order with that `on` and key -> EnqueueCutscene with the T15 delay.
   void Fire(StoryTriggerOn on, std::string_view key);
+  void ReplayLostTurnInBeats(std::string_view mapId);
+  void PublishStoryState(bool active, const std::string& beatId, const std::string& musicTrack);
   void EnqueueCutscene(std::string_view cutsceneId, double delayMs, std::string_view grantPet);
   void Enqueue(StoryBeat beat);
   void Pump();
@@ -207,6 +214,9 @@ class ABYSS_API StoryDirector {
   std::string bossBarFor_;
   EntityId bossBarMonster_ = kNoEntity;
   std::vector<EntityId> renamed_;
+  bool audioLock_ = false;        // the last StoryStateMsg was active
+  bool sequenceMusic_ = false;    // ... and carried a sequence's music
+  bool replayLostBeats_ = true;   // false for a save without storySeen
 };
 
 }  // namespace abyss

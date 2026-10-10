@@ -11,6 +11,7 @@
 #include "abyss/data/DataStore.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/monsters/MonsterSystem.h"
+#include "abyss/quests/QuestSystem.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/world/Zone.h"
 #include "abyss/sim/SimContext.h"
@@ -49,7 +50,8 @@ constexpr uint32_t kStoryBossNameColor = 0xffcf6a;
 // Triggers (8.2)
 // ---------------------------------------------------------------------------------------------------------------------
 
-// start(): prologue on a brand-new game, this zone's chapter card on its first visit, then zone_entered triggers.
+// start(): prologue on a brand-new game, this zone's chapter card on its first visit, then zone_entered triggers, then
+// (Q7 completion) the lost turn-in cutscenes of this zone.
 bool StoryDirector::OnZoneEntered(const ZoneEnteredMsg& m) {
   if (!progress_.Has("prologue")) {
     StoryBeat b;
@@ -68,10 +70,31 @@ bool StoryDirector::OnZoneEntered(const ZoneEnteredMsg& m) {
     b.contentId = m.mapId;
     Enqueue(std::move(b));
     Fire(StoryTriggerOn::ZoneEntered, m.mapId);
+    ReplayLostTurnInBeats(m.mapId);
     return true;
   }
   Fire(StoryTriggerOn::ZoneEntered, m.mapId);
+  ReplayLostTurnInBeats(m.mapId);
   return false;
+}
+
+// Q7 marks a beat seen only when it finishes, but quest_turned_in fires once: the turn-in autosave is written before
+// its cutscene plays, so a quit / kill during the cutscene (or its T15 delay), or a zone exit during the delay, would
+// lose it - and its grantPet - for good. Entering the quest's zone re-queues, in script order with the normal turn-in
+// delay, every quest_turned_in trigger of a turned-in quest of this zone whose cutscene is not seen. The giver stands in
+// the quest's zone (QuestContent rule), so the cutscene replays where it was due. Saves without storySeen (pre-story
+// data) never replay: the web treated them as having seen nothing but the prologue.
+void StoryDirector::ReplayLostTurnInBeats(std::string_view mapId) {
+  const QuestSystem* quests = ctx_.sys.quests;
+  if (!replayLostBeats_ || quests == nullptr) return;
+  const StoryScript& script = ctx_.data.Story();
+  for (const StoryTriggerDef& t : script.triggers) {
+    if (t.on != StoryTriggerOn::QuestTurnedIn || progress_.Has(t.cutscene)) continue;
+    const QuestDef* q = ctx_.data.FindQuest(t.subjectId);
+    const QuestProgress* p = quests->Progress(t.subjectId);
+    if (q == nullptr || q->zone != mapId || p == nullptr || p->status != QuestStatus::TurnedIn) continue;
+    EnqueueCutscene(t.cutscene, script.timing.beatDelayQuestTurnedInMs, t.grantPet);
+  }
 }
 
 void StoryDirector::OnQuestTurnedIn(const QuestTurnedInMsg& m) { Fire(StoryTriggerOn::QuestTurnedIn, m.questId); }
@@ -136,10 +159,18 @@ void StoryDirector::OnZoneExit() {
   if (!bossBarFor_.empty()) SetBossBar(nullptr, kNoEntity, false);
   scanAccMs_ = 0;
   renamed_.clear();
-  if (wasRunning) {
-    ctx_.events.Emit(EvStoryState{false, std::string()});
-    ctx_.bus.Publish(StoryStateMsg{false, std::string(), std::string()});
-  }
+  if (wasRunning) ctx_.events.Emit(EvStoryState{false, std::string()});
+  if (audioLock_) PublishStoryState(false, std::string(), std::string());
+}
+
+// The music side of STORY_STATE (audio 10.4 rule 2): the director holds the story lock while busy, except that a
+// sequence beat (prologue / epilogue) owns its music span: {true, musicTrack} when it starts and {false} when it ends,
+// so the zone's explore track returns with the sequence's end (StoryDirector.ts:195) even when more beats follow (the
+// new-game chapter card plays under the zone music); the next beat retakes the lock (no music change).
+void StoryDirector::PublishStoryState(bool active, const std::string& beatId, const std::string& musicTrack) {
+  audioLock_ = active;
+  sequenceMusic_ = active && !musicTrack.empty();
+  ctx_.bus.Publish(StoryStateMsg{active, beatId, musicTrack});
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -167,7 +198,7 @@ void StoryDirector::Pump() {
       running_ = false;
       ctx_.bus.Publish(SaveRequestMsg{SaveReason::StoryQueueFinished});
       ctx_.events.Emit(EvStoryState{false, current_.id});
-      ctx_.bus.Publish(StoryStateMsg{false, current_.id, std::string()});
+      if (audioLock_) PublishStoryState(false, current_.id, std::string());
     }
     return;
   }
@@ -177,7 +208,7 @@ void StoryDirector::Pump() {
   if (!running_) {
     running_ = true;
     ctx_.events.Emit(EvStoryState{true, current_.id});
-    ctx_.bus.Publish(StoryStateMsg{true, current_.id, current_.musicTrack});
+    PublishStoryState(true, current_.id, current_.musicTrack);
     current_.musicTrack.clear();  // announced with the busy state
   }
   if (current_.delayMs > 0) {
@@ -203,8 +234,13 @@ void StoryDirector::StartBeat() {
   playback_.beat = current_;
   ctx_.events.Emit(EvStoryBeat{EvStoryBeat::Phase::Began, current_.id, current_.kind});
   ctx_.bus.Publish(StoryBeatStartedMsg{current_.id});
-  // A sequence that is not the beat which turned the director busy re-announces its music under the story lock.
-  if (!current_.musicTrack.empty()) ctx_.bus.Publish(StoryStateMsg{true, current_.id, current_.musicTrack});
+  // A sequence that is not the beat which turned the director busy announces its music under the story lock; any other
+  // beat retakes the lock a finished sequence released.
+  if (!current_.musicTrack.empty()) {
+    PublishStoryState(true, current_.id, current_.musicTrack);
+  } else if (!audioLock_) {
+    PublishStoryState(true, current_.id, std::string());
+  }
   BuildSegments();
   EnterSegment(0);
   RunPlayer();
@@ -221,6 +257,8 @@ void StoryDirector::FinishBeat() {
   progress_.Add(done.id);
   ctx_.events.Emit(EvStoryBeat{EvStoryBeat::Phase::Ended, done.id, done.kind});
   ctx_.bus.Publish(StoryBeatFinishedMsg{done.id, done.grantPet});
+  // The sequence's music ends with it: the zone's explore track returns and the lock is released (audio 10.4 rule 2).
+  if (sequenceMusic_) PublishStoryState(false, done.id, std::string());
   current_ = StoryBeat{};
   current_.id = done.id;  // the STORY_STATE{false} event names the last finished beat
   Pump();
@@ -380,6 +418,7 @@ void StoryDirector::EmitStep(const StorySegment& seg) {
       if (const ChapterCard* ch = script.ChapterFor(b.contentId)) {
         ev.slide.heading = ch->number;
         ev.slide.title = ch->title;
+        ev.slide.subtitle = ch->subtitle;
         ev.slide.text = ch->text;
         ev.slide.hasMood = true;
         ev.slide.mood = ch->mood;
@@ -641,6 +680,9 @@ void StoryDirector::WriteSave(SaveData& out) const {
   (void)ctx_;
 }
 
-void StoryDirector::ReadSave(const SaveData& in) { progress_.Load(in.storySeen, in.hasStorySeen); }
+void StoryDirector::ReadSave(const SaveData& in) {
+  progress_.Load(in.storySeen, in.hasStorySeen);
+  replayLostBeats_ = in.hasStorySeen;
+}
 
 }  // namespace abyss

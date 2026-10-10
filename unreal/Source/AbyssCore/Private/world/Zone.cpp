@@ -153,7 +153,9 @@ void ZoneRuntime::TickExits() {
   if (!zone_impl::ZoneHeroAlive(ctx_) || ctx_.session.transitioning) return;
   const WorldConstants& wc = ctx_.data.World().constants;
   const Vec2 hero = ctx_.sys.hero->Position();
-  const double armSq = wc.exitArmDistance * wc.exitArmDistance;
+  // W8 / W7: armed once distSq > 6 (strict). The squared constant comes from the data: exitArmDistance^2 would be
+  // 5.999999999999999 and arm at exactly 6.
+  const double armSq = wc.exitArmDistanceSq;
   for (ExitState& e : exits_) {
     if (!e.armed && DistSq(hero, e.def.pos.Center()) > armSq) e.armed = true;
   }
@@ -494,6 +496,10 @@ bool ZoneRuntime::UseTownPortal() {
                                       static_cast<uint16_t>(WorldTimerKind::TownPortal));
   ctx_.events.Emit(EvTownPortal{EvTownPortal::Phase::Started, channel, portalDestination_});
   return true;
+}
+
+void ZoneRuntime::OnHeroMoveInput() {
+  if (ctx_.data.World().constants.townPortalCancelOnMove) CancelTownPortal();
 }
 
 void ZoneRuntime::CancelTownPortal() {

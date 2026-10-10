@@ -13,7 +13,9 @@
 
 #include "abyss/data/DataStore.h"
 #include "abyss/hero/Hero.h"
+#include "abyss/items/Inventory.h"
 #include "abyss/pets/PetSystem.h"
+#include "abyss/quests/Achievements.h"
 
 #include "Framework/AbyssGameInstance.h"
 #include "Framework/AbyssText.h"
@@ -523,6 +525,28 @@ FString FAbyssUiContext::ObjectiveTargetLabel(const abyss::QuestDef& Quest, int3
 		return NameOr(Objective.labelKey, Objective.targetName);
 	}
 	return NameOr("data.questTarget." + Objective.targetId, Objective.targetName.empty() ? Objective.targetId : Objective.targetName);
+}
+
+// =====================================================================================================================
+// Hero numbers
+// =====================================================================================================================
+
+abyss::EquipStats FAbyssUiContext::ApproxEquipStats(const abyss::Snapshot& Snap)
+{
+	abyss::EquipStats Out;
+	if (Snap.inventory != nullptr)
+	{
+		Out.AddAll(Snap.inventory->GearStats());
+	}
+	if (Snap.achievements != nullptr)
+	{
+		Out.AddAll(Snap.achievements->Bonuses());
+	}
+	if (Snap.pets != nullptr)
+	{
+		Snap.pets->Bonuses().AddTo(Out);
+	}
+	return Out;
 }
 
 // =====================================================================================================================

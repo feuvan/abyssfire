@@ -16,6 +16,7 @@ namespace abyss {
 
 struct SimContext;
 struct Snapshot;
+struct HiddenAreaDef;
 
 class ABYSS_API ExplorationGrid {
  public:
@@ -75,8 +76,9 @@ class ABYSS_API ExplorationSystem {
   void OnZoneEnter();  // reset to the zone's size (per visit)
   void Tick();         // reveal around the hero
   const ExplorationGrid& Grid() const { return grid_; }
-  // Hidden-area discovery check points (10.3).
-  bool AreaFullyExplored(int32_t c0, int32_t r0, int32_t c1, int32_t r1) const;
+  // Hidden-area discovery check points (10.3, isHiddenAreaExplored): the four corners of the area bounds (explicit
+  // start / end, else centre +- radius) and the area centre (area.col, area.row) - not the bounds midpoint.
+  bool AreaFullyExplored(const HiddenAreaDef& area) const;
   void FillSnapshot(Snapshot& out) const;
 
  private:

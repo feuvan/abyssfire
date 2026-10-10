@@ -46,7 +46,7 @@ void SimImpl::Wire() {
     audio->OnLevelUp(m);
     RequestSave(SaveReason::LevelUp);
   });
-  bus.Subscribe<HeroMoveInputMsg>([this](const HeroMoveInputMsg&) { zone->CancelTownPortal(); });  // W3
+  bus.Subscribe<HeroMoveInputMsg>([this](const HeroMoveInputMsg&) { zone->OnHeroMoveInput(); });  // W3 cancelOnMove
   bus.Subscribe<HeroDamagedMsg>([this](const HeroDamagedMsg& m) {
     // W3: damage >= 10 % max HP cancels the portal channel.
     const double frac = data.World().constants.townPortalCancelOnDamageFraction;

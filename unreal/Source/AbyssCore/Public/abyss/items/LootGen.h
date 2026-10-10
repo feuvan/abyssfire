@@ -98,14 +98,18 @@ ABYSS_API std::vector<SetPieceCandidate> SetPieceCandidates(const DataStore& dat
 ABYSS_API bool IsGroundPotion(const DataStore& data, std::string_view baseId, PotionKind& kind, int32_t& amount);
 
 // Quest pick-one gear (5.6): itemLevel = max(q.level, min(heroLevel, q.level + 5)); quality = choiceQuality ?? (main ?
-// rare : magic); per choice slot: class pool -> usable (levelReq <= itemLevel + 2) -> top 3 by levelReq desc ->
-// uniform pick (one Float01 draw). Generated once per quest per session (QuestWorld caches them).
+// rare : magic); per choice slot: class pool -> usable (levelReq <= itemLevel + 2, and - port rule with I3, loot_rules
+// questRewards.capUsableAtHeroLevel - levelReq <= heroLevel, so every offered piece can be equipped at turn-in) -> top 3
+// by levelReq desc -> uniform pick (one Float01 draw). Generated once per quest per session (QuestWorld caches them).
 ABYSS_API std::vector<ItemInstance> GenerateQuestRewardChoices(const LootContext& ctx, const QuestDef& quest, ClassId cls,
                                                                int32_t heroLevel);
 ABYSS_API int32_t RewardItemLevel(const QuestDef& quest, int32_t heroLevel);
 ABYSS_API ItemQuality RewardChoiceQuality(const DataStore& data, const QuestDef& quest);
-// pickRewardBase: nullptr when the class pool is empty. Draws once from `rng` when a base is returned.
-ABYSS_API const ItemBaseDef* PickRewardBase(const DataStore& data, RewardSlot choice, ClassId cls, int32_t level, Rng& rng);
+// pickRewardBase: nullptr when the class pool is empty. Draws once from `rng` when a base is returned. `levelReqCap`
+// is the extra usable cap (the hero level for quest rewards, I3); usable = levelReq <= min(level + headroom, cap). When
+// nothing is usable the pool's lowest-levelReq base is offered (web fallback).
+ABYSS_API const ItemBaseDef* PickRewardBase(const DataStore& data, RewardSlot choice, ClassId cls, int32_t level, Rng& rng,
+                                            int32_t levelReqCap = INT32_MAX);
 
 // Treasure-cache fake definition (5.5): {level Lc = floor((min + max) / 2), elite, affix bonus floor(Lc / 10)}; the
 // difficulty is the caller's choice (the web passes the default 'normal', loot Q20 "keep").

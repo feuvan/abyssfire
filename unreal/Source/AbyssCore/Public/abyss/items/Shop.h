@@ -43,8 +43,12 @@ class ABYSS_API ShopSystem {
 
   // SHOP_OPEN: stock from ShopDef (npcId); unknown and removed bases (I4 / I2) are skipped. Emits EvShopOpened.
   void Open(std::string_view npcId, bool blacksmith);
-  // Wandering-merchant event (12.7, FIX Q12): known bases only, price = round(sellPrice * 3 * priceMultiplier).
+  // Wandering-merchant event (12.7, FIX Q12): each id is an item base, or a web merchantItems id resolved through
+  // shops.json wanderingMerchant.<zone>.idMap (the current zone first, then the other zones in table order); ids that
+  // resolve to nothing, unknown or removed bases are skipped. price = round(sellPrice * 3 * priceMultiplier).
   void OpenWanderingMerchant(const std::vector<std::string>& baseIds, double priceMultiplier);
+  // The item base a wandering-merchant id stands for in `zoneId` ("" when none; see OpenWanderingMerchant).
+  static std::string ResolveWanderingMerchantId(const DataStore& data, std::string_view zoneId, std::string_view id);
   void Close();  // EvShopClosed
   const ShopState& State() const { return state_; }
 

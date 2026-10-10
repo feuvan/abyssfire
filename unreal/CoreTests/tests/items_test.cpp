@@ -28,6 +28,7 @@
 #include "abyss/items/ItemCompare.h"
 #include "abyss/items/LootGen.h"
 #include "abyss/items/Shop.h"
+#include "abyss/pets/PetSystem.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/save/SaveIO.h"
 #include "abyss/sim/Snapshot.h"
@@ -141,6 +142,23 @@ bool HasLogKey(const EventSink& sink, std::string_view key) {
     }
   }
   return false;
+}
+
+// A collator that reverses byte order (stands in for the culture collation UE installs, SetItemNameCollator).
+int ItmTestReverseCollate(std::string_view a, std::string_view b, void* user) {
+  if (user != nullptr) ++*static_cast<int*>(user);
+  const int r = a.compare(b);
+  return r < 0 ? 1 : (r > 0 ? -1 : 0);
+}
+
+const EvLog* LastLogWithKey(const EventSink& sink, std::string_view key) {
+  const EvLog* out = nullptr;
+  for (const Event& e : sink.Items()) {
+    if (const EvLog* l = std::get_if<EvLog>(&e)) {
+      if (l->text.key == key) out = l;
+    }
+  }
+  return out;
 }
 
 // A full runtime slice: hero, status effects, inventory, rewards, shop and ground loot over the real data.
@@ -951,7 +969,7 @@ TEST_SUITE("items") {
     CHECK(inv.Capacity() == 100);
   }
 
-  TEST_CASE("20.8 stacking: one partial stack topped up, remainder appended; atomic when full (port)") {
+  TEST_CASE("20.8 stacking: one partial stack topped up, remainder appended; a full bag keeps the top-up") {
     Inventory inv(D());
     inv.MutableBag().push_back(Stack("c_hp_potion_s", 19));
     const AddResult r = inv.AddItem(Stack("c_hp_potion_s", 3));
@@ -961,18 +979,34 @@ TEST_SUITE("items") {
     REQUIRE(inv.Bag().size() == 2);
     CHECK(inv.Bag()[0].quantity == 20);
     CHECK(inv.Bag()[1].quantity == 2);
-    // A full stack merge needs no slot.
+    // 20.8 second vector: bag at 100 entries with c_hp_potion_s x19; adding x3 -> existing 20, returns false, the item
+    // keeps quantity 2 (Q21 kept: the web topped up first, then refused the new entry).
     Inventory full(D());
     full.MutableBag().push_back(Stack("c_hp_potion_s", 19));
     for (int i = 0; i < 99; ++i) full.MutableBag().push_back(Itm("w_rusty_sword"));
-    CHECK(full.CanAdd(Stack("c_hp_potion_s", 1)));
+    CHECK(full.CanAdd(Stack("c_hp_potion_s", 1)));  // a full stack merge needs no slot
     ItemInstance three = Stack("c_hp_potion_s", 3);
     CHECK_FALSE(full.CanAdd(three));
-    CHECK_FALSE(full.AddItem(three).ok);
-    CHECK(full.Bag()[0].quantity == 19);  // FIX: nothing changes when the remainder cannot fit
-    CHECK(full.AddItem(Stack("c_hp_potion_s", 1)).ok);
+    const AddResult partial = full.AddItem(three);
+    CHECK_FALSE(partial.ok);
+    CHECK(partial.stackedQuantity == 1);
+    CHECK(partial.remaining == 2);
+    CHECK_FALSE(partial.newEntry);
     CHECK(full.Bag()[0].quantity == 20);
     CHECK(full.Bag().size() == 100);
+    // Nothing left to top up: refused untouched.
+    const AddResult none = full.AddItem(Stack("c_hp_potion_s", 1));
+    CHECK_FALSE(none.ok);
+    CHECK(none.stackedQuantity == 0);
+    CHECK(none.remaining == 1);
+    CHECK(full.CountOf("c_hp_potion_s") == 20);
+    Inventory fits(D());
+    fits.MutableBag().push_back(Stack("c_hp_potion_s", 19));
+    for (int i = 0; i < 99; ++i) fits.MutableBag().push_back(Itm("w_rusty_sword"));
+    const AddResult one = fits.AddItem(Stack("c_hp_potion_s", 1));
+    CHECK(one.ok);
+    CHECK(one.remaining == 0);
+    CHECK(fits.Bag()[0].quantity == 20);
     // Q21: only the first partial stack is topped up.
     Inventory two(D());
     two.MutableBag().push_back(Stack("c_mp_potion_s", 18));
@@ -2164,13 +2198,15 @@ TEST_SUITE("items") {
     CHECK(test::CountEvents<EvShopClosed>(w.h.events) == 1);
     CHECK(w.shop.Buy(0) == InvResult::ShopClosed);
     CHECK(w.shop.Sell(sold) == InvResult::ShopClosed);
-    // Blacksmith stock; wandering merchant drops the web's invalid ids (Q12) and applies the multiplier.
+    // Blacksmith stock; wandering merchant maps the web's ids (FIX Q12), skips removed bases, applies the multiplier.
     w.shop.Open("blacksmith", true);
     CHECK(w.shop.State().wares.size() == 12);
     CHECK(w.shop.State().blacksmith);
-    w.shop.OpenWanderingMerchant({"iron_sword", "c_hp_potion_s", "c_tp_scroll"}, 1.2);
-    REQUIRE(w.shop.State().wares.size() == 1);
-    CHECK(w.shop.State().wares[0].price == 18);  // round(15 x 1.2)
+    w.shop.OpenWanderingMerchant({"iron_sword", "c_hp_potion_s", "c_tp_scroll", "no_such_item"}, 1.2);
+    REQUIRE(w.shop.State().wares.size() == 2);
+    CHECK(w.shop.State().wares[0].baseId == "w_short_sword");  // iron_sword (emerald_plains idMap)
+    CHECK(w.shop.State().wares[0].price == 54);                // round(15 x 3 x 1.2)
+    CHECK(w.shop.State().wares[1].price == 18);                // round(5 x 3 x 1.2)
     CHECK(w.shop.State().npcId == kWanderingMerchantShopId);
   }
 
@@ -2687,5 +2723,388 @@ TEST_SUITE("items") {
     REQUIRE(test::CountEvents<EvShopClosed>(w.h.events) == 2);
     CHECK(LastEvent<EvShopClosed>(w.h.events)->npcId == "merchant");
     CHECK(LastEvent<EvShopOpened>(w.h.events)->npcId == "merchant");
+  }
+
+  // ===================================================================================================================
+  // Audit fixes (round 2): spec vectors that the first port missed
+  // ===================================================================================================================
+  TEST_CASE("20.8 through the runtime: grants, ground pickups, auto-loot and stash take keep the top-up") {
+    ItmWorld w;
+    auto fullWithPartial = [&w]() {
+      w.inv.Items().MutableBag().clear();
+      w.inv.Items().MutableBag().push_back(Stack("c_hp_potion_s", 19));
+      w.FillBag(99);
+    };
+    // Grant: Refuse keeps the remainder with the caller; Stash pushes only the remainder; Lose drops only the remainder.
+    fullWithPartial();
+    ItemInstance three = Stack("c_hp_potion_s", 3);
+    w.h.events.Clear();
+    CHECK(w.inv.Grant(three, OverflowPolicy::Refuse, ItemSource::Pickup) == ItemGrantOutcome::Refused);
+    CHECK(three.quantity == 2);
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 20);
+    CHECK(test::CountEvents<EvInventoryChanged>(w.h.events) == 1);
+    CHECK(test::CountEvents<EvItemPicked>(w.h.events) == 0);  // the web emitted ITEM_PICKED only on success
+    fullWithPartial();
+    ItemInstance toStash = Stack("c_hp_potion_s", 3);
+    CHECK(w.inv.Grant(toStash, OverflowPolicy::Stash, ItemSource::QuestReward) == ItemGrantOutcome::Stash);
+    REQUIRE(w.inv.Items().Stash().size() == 1);
+    CHECK(w.inv.Items().Stash()[0].quantity == 2);  // web: stash.push(item) after addItem reduced it
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 20);
+    w.inv.Items().MutableStash().clear();
+    fullWithPartial();
+    ItemInstance toLose = Stack("c_hp_potion_s", 3);
+    CHECK(w.inv.Grant(toLose, OverflowPolicy::Lose, ItemSource::RandomEvent) == ItemGrantOutcome::Lost);
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 20);
+
+    // Click pickup: the bag takes one, two stay on the ground (the web left the mutated item there).
+    fullWithPartial();
+    w.hero.SetPosition(Vec2(10, 10));
+    const EntityId drop = w.ground.Drop(Stack("c_hp_potion_s", 3), Vec2(10, 11));
+    w.h.events.Clear();
+    CHECK_FALSE(w.ground.TryPickUp(drop));
+    REQUIRE(w.ground.Find(drop) != nullptr);
+    CHECK(w.ground.Find(drop)->item.quantity == 2);
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 20);
+    CHECK(HasLogKey(w.h.events, "sys.inventory.bagFull"));
+    Snapshot snap;
+    w.ground.FillSnapshot(snap);
+    REQUIRE(snap.groundItems.size() == 1);
+    CHECK(snap.groundItems[0].quantity == 2);
+    // Room again: the rest is picked up.
+    w.inv.Items().MutableBag().pop_back();
+    CHECK(w.ground.TryPickUp(drop));
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 22);
+
+    // Auto-loot: same top-up, then the scan stops.
+    fullWithPartial();
+    w.ground.OnZoneExit();
+    const EntityId autoDrop = w.ground.Drop(Stack("c_hp_potion_s", 4), Vec2(10, 11));
+    w.hero.autoLoot = AutoLootMode::All;
+    w.h.Step(static_cast<int>(400 / kSimStepMs));
+    w.ground.Tick();
+    REQUIRE(w.ground.Find(autoDrop) != nullptr);
+    CHECK(w.ground.Find(autoDrop)->item.quantity == 3);
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 20);
+
+    // Stash take: the stash entry keeps the remainder.
+    fullWithPartial();
+    ItemInstance stashed = Stack("c_hp_potion_s", 3);
+    stashed.uid = "stashed";
+    w.inv.Items().MutableStash() = {stashed};
+    w.inv.OpenStash("stash");
+    w.h.events.Clear();
+    CHECK(w.inv.StashTake("stashed") == InvResult::BagFull);
+    REQUIRE(w.inv.Items().FindInStash("stashed") != nullptr);
+    CHECK(w.inv.Items().FindInStash("stashed")->quantity == 2);
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 20);
+    CHECK(test::CountEvents<EvStashChanged>(w.h.events) == 1);
+    CHECK(HasLogKey(w.h.events, "ui.stash.bagFull"));
+  }
+
+  TEST_CASE("ground drops carry the item: nameplate inputs in EvLootDropped and the snapshot (17 / 18, FIX Q16)") {
+    ItmWorld w;
+    Rng rng(3);
+    const LootContext lc{&D(), &rng, &w.inv.Uids()};
+    std::optional<ItemInstance> grief = CreateItem(lc, "w_broad_sword", 6, ItemQuality::Legendary);
+    REQUIRE(grief.has_value());
+    REQUIRE(grief->legendaryId == "leg_grief");
+    std::optional<ItemInstance> rare = CreateItem(lc, "w_short_sword", 6, ItemQuality::Rare);
+    REQUIRE(rare.has_value());
+    REQUIRE(rare->affixes.size() >= 3);
+    const EntityId gid = w.ground.Drop(*grief, Vec2(5, 5));
+    const EvLootDropped* ld = LastEvent<EvLootDropped>(w.h.events);
+    REQUIRE(ld != nullptr);
+    CHECK(ld->item == *grief);
+    CHECK_FALSE(ld->cacheDrop);
+    CHECK(ld->fallInMs == 0);
+    CHECK(ld->visualOffset == w.ground.Find(gid)->visualOffset);
+    I18n en = D().Strings();
+    en.SetLocale(LocaleId::En);
+    CHECK(ItemDisplayName(ld->item, D(), en) == *en.Lookup(LocaleId::En, "data.legendary.leg_grief.name"));
+    const EntityId rid = w.ground.Drop(*rare, Vec2(6, 5));
+    Snapshot snap;
+    w.ground.FillSnapshot(snap);
+    REQUIRE(snap.groundItems.size() == 2);
+    REQUIRE(snap.groundItems[1].item != nullptr);
+    CHECK(snap.groundItems[1].item == &w.ground.Find(rid)->item);
+    CHECK(ItemDisplayName(*snap.groundItems[1].item, D(), en) == ItemDisplayName(*rare, D(), en));
+    CHECK(ItemDisplayName(*snap.groundItems[1].item, D(), en) != *en.Lookup(LocaleId::En, "data.item.w_short_sword.name"));
+    CHECK(snap.groundItems[0].item->legendaryId == "leg_grief");
+    // The pickup event carries the item too (HUD notice name).
+    w.hero.SetPosition(Vec2(5, 5));
+    CHECK(w.ground.TryPickUp(gid));
+    const EvItemPicked* ip = LastEvent<EvItemPicked>(w.h.events);
+    REQUIRE(ip != nullptr);
+    CHECK(ip->item.legendaryId == "leg_grief");
+    CHECK(ip->item.uid == grief->uid);
+  }
+
+  TEST_CASE("treasure-cache drops (6.1 / 6.5): flagged, fall in over 400 ms, own jitter, no despawn") {
+    ItmWorld w;
+    const LootRulesDef& l = D().Items().loot;
+    CHECK(l.cacheDropFallInMs == 400);
+    CHECK(l.cacheDropJitterXPx == 20);
+    CHECK(l.cacheDropJitterYPx == 10);
+    // Inverse iso of the largest screen jitter (10 px, 5 px): |dc|, |dr| <= 10 / 64 + 5 / 32.
+    const double bound = 10.0 / 64.0 + 5.0 / 32.0 + 1e-9;
+    for (int i = 0; i < 200; ++i) {
+      const EntityId id = w.ground.Drop(Itm("w_dagger", ItemQuality::Set), Vec2(8, 8), /*despawns=*/false);
+      const EvLootDropped* ld = LastEvent<EvLootDropped>(w.h.events);
+      REQUIRE(ld != nullptr);
+      CHECK(ld->drop == id);
+      CHECK(ld->cacheDrop);
+      CHECK(ld->fallInMs == 400);
+      CHECK(ld->expiresAtMs == 0);
+      const GroundItem* g = w.ground.Find(id);
+      REQUIRE(g != nullptr);
+      CHECK(g->cacheDrop);
+      CHECK(std::fabs(g->visualOffset.x) <= bound);
+      CHECK(std::fabs(g->visualOffset.y) <= bound);
+      // Back to screen px: within +-10 / +-5.
+      const double sx = (g->visualOffset.x - g->visualOffset.y) * 32.0;
+      const double sy = (g->visualOffset.x + g->visualOffset.y) * 16.0;
+      CHECK(std::fabs(sx) <= 10.0 + 1e-9);
+      CHECK(std::fabs(sy) <= 5.0 + 1e-9);
+    }
+    Snapshot snap;
+    w.ground.FillSnapshot(snap);
+    REQUIRE_FALSE(snap.groundItems.empty());
+    CHECK(snap.groundItems[0].cacheDrop);
+  }
+
+  TEST_CASE("treasure-cache luck (5.5 + I1): raw lck + gear, without homestead / pet magicFind") {
+    ItmWorld w;
+    PetSystem pets(w.h.ctx.data, w.h.events, w.h.bus);
+    w.h.ctx.sys.pets = &pets;
+    REQUIRE(pets.AddPet("pet_owl", true));
+    const double petMf = pets.Bonuses().Get(Stat::MagicFind);
+    REQUIRE(petMf > 0);
+    const double base = w.hero.BaseStats().lck;
+    CHECK(w.ground.TreasureCacheLuck() == base);
+    CHECK(w.ground.LootLuck() == base + petMf);
+    ItemInstance ring = Itm("j_copper_ring", ItemQuality::Magic);
+    ring.affixes = {StatAffix(Stat::Lck, 4), StatAffix(Stat::MagicFind, 6)};
+    ComputeItemStats(ring);
+    w.inv.Items().MutableEquipment()[EnumIndex(EquipSlot::Ring1)] = ring;
+    CHECK(w.ground.TreasureCacheLuck() == base + 10);
+    CHECK(w.ground.LootLuck() == base + 10 + petMf);
+  }
+
+  TEST_CASE("wandering merchant (12.7, FIX Q12): every event id maps to a base of the zone's tier") {
+    ItmWorld w;
+    for (const ZoneEventDataDef& z : D().World().randomEvents.zones) {
+      const MapDef* map = D().FindMap(z.zoneId);
+      REQUIRE(map != nullptr);
+      REQUIRE_FALSE(z.merchantItems.empty());
+      for (const std::string& id : z.merchantItems) {
+        const std::string base = ShopSystem::ResolveWanderingMerchantId(D(), z.zoneId, id);
+        INFO(z.zoneId << " " << id);
+        REQUIRE_FALSE(base.empty());
+        const ItemBaseDef* b = D().Items().FindBase(base);
+        REQUIRE(b != nullptr);
+        CHECK_FALSE(D().Items().IsRemovedItem(base));
+        CHECK(b->levelReq <= map->levelMax);  // buyable gear of the zone's tier
+      }
+      w.h.session.currentMap = z.zoneId;
+      w.shop.OpenWanderingMerchant(z.merchantItems, 1.0);
+      CHECK(w.shop.State().wares.size() == z.merchantItems.size());  // never an empty panel
+    }
+    w.h.session.currentMap = "emerald_plains";
+    w.shop.OpenWanderingMerchant(D().World().randomEvents.ForZone("emerald_plains")->merchantItems, 1.0);
+    std::vector<std::string> got;
+    for (const ShopWare& ware : w.shop.State().wares) got.push_back(ware.baseId);
+    CHECK(got == std::vector<std::string>{"w_short_sword", "a_leather_armor", "c_hp_potion_s", "c_mp_potion_s"});
+    // The current zone's map wins for ids every zone sells.
+    CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "twilight_forest", "hp_potion") == "c_hp_potion_m");
+    CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "", "hp_potion") == "c_hp_potion_s");
+    CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "emerald_plains", "c_antidote") == "c_antidote");
+    CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "emerald_plains", "nope").empty());
+    // Buying from it works like any shop.
+    w.hero.SetGold(1000);
+    CHECK(w.shop.Buy(2) == InvResult::Ok);
+    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 1);
+  }
+
+  TEST_CASE("C11 effects in the compare totals: deltas show them and the weaker ring counts them (14, FIX Q18)") {
+    Rng rng(2);
+    ItemUidGenerator uids;
+    const LootContext lc{&D(), &rng, &uids};
+    std::optional<ItemInstance> tyrael = CreateItem(lc, "a_plate_armor", 35, ItemQuality::Legendary);
+    REQUIRE(tyrael.has_value());
+    REQUIRE(tyrael->legendaryId == "leg_tyrael");
+    const LegendaryDef* tyraelDef = D().Items().FindLegendary("leg_tyrael");
+    double dr = 0;
+    for (const StatTotal& t : ItemStatTotals(D(), *tyrael)) {
+      if (t.key.kind == CompareKey::Kind::StatKey && t.key.stat == Stat::DamageReduction) dr = t.value;
+    }
+    CHECK(dr == tyraelDef->specialEffectValue);
+    CHECK(dr == 10);
+    ItemInstance plain = Itm("a_plate_armor", ItemQuality::Normal, 35);
+    bool shown = false;
+    for (const StatDelta& d : StatDeltas(D(), *tyrael, &plain)) {
+      if (d.key.kind == CompareKey::Kind::StatKey && d.key.stat == Stat::DamageReduction) shown = d.delta == 10;
+    }
+    CHECK(shown);
+    // The same value as the gear stat (one source of truth).
+    Inventory inv(D());
+    inv.MutableEquipment()[EnumIndex(EquipSlot::Armor)] = *tyrael;
+    CHECK(inv.GearStats().Get(Stat::DamageReduction) == dr);
+    // Grief / Mara's: an effect without a combat consumer adds nothing.
+    std::optional<ItemInstance> maras = CreateItem(lc, "j_jade_amulet", 35, ItemQuality::Legendary);
+    REQUIRE(maras->legendaryId == "leg_maras");
+    Stat st{};
+    double v = 0;
+    CHECK_FALSE(ItemSpecialEffectStat(*maras, D(), st, v));
+    CHECK_FALSE(ItemSpecialEffectStat(Itm("w_dagger", ItemQuality::Legendary), D(), st, v));  // generic: no effect
+
+    // Rings: SoJ at L35 scores 25 + 20 + 12 + 3.5 = 60.5 without its cooldownReduction 10 and 70.5 with it; a 65.5 ring
+    // is the weaker one, so the new ring replaces it, not the SoJ.
+    std::optional<ItemInstance> soj = CreateItem(lc, "j_gold_ring", 35, ItemQuality::Legendary);
+    REQUIRE(soj->legendaryId == "leg_soj");
+    ItemInstance other = Itm("j_silver_ring", ItemQuality::Magic, 35);
+    other.affixes = {StatAffix(Stat::Str, 62)};
+    ComputeItemStats(other);
+    Inventory::EquipmentArray eq{};
+    eq[EnumIndex(EquipSlot::Ring1)] = *soj;
+    eq[EnumIndex(EquipSlot::Ring2)] = other;
+    const ItemInstance candidate = Itm("j_copper_ring", ItemQuality::Normal, 1);
+    const std::optional<CompareTarget> ct = FindCompareTarget(D(), candidate, eq);
+    REQUIRE(ct.has_value());
+    CHECK(ct->slot == EquipSlot::Ring2);
+    Inventory rings(D());
+    rings.MutableEquipment() = eq;
+    rings.MutableBag().push_back(candidate);
+    EquipSlot used = EquipSlot::Weapon;
+    CHECK(rings.Equip(candidate.uid, 40, &used) == InvResult::Ok);
+    CHECK(used == EquipSlot::Ring2);
+    CHECK(rings.Equipped(EquipSlot::Ring1)->legendaryId == "leg_soj");
+  }
+
+  TEST_CASE("sort uses the installed culture collator (7.3 port rule); default is byte order") {
+    Inventory inv(D());
+    I18n en = D().Strings();
+    en.SetLocale(LocaleId::En);
+    inv.MutableBag() = {Itm("w_dagger"), Itm("w_short_sword"), Itm("w_rusty_sword")};
+    inv.SortBag(&en);
+    CHECK(ItemDisplayName(inv.Bag()[0], D(), en) == "Dagger");
+    CHECK(ItemDisplayName(inv.Bag()[2], D(), en) == "Short Sword");
+    CHECK(CompareItemNames("a", "b") < 0);
+    CHECK(CompareItemNames("b", "a") > 0);
+    CHECK(CompareItemNames("a", "a") == 0);
+    int calls = 0;
+    const ItemNameCollatorBinding previous = SetItemNameCollator(&ItmTestReverseCollate, &calls);
+    inv.SortBag(&en);
+    inv.MutableStash() = {Itm("w_dagger"), Itm("w_short_sword")};
+    inv.SortStash(&en);
+    SetItemNameCollator(previous.fn, previous.user);
+    CHECK(calls > 0);
+    CHECK(ItemDisplayName(inv.Bag()[0], D(), en) == "Short Sword");
+    CHECK(ItemDisplayName(inv.Bag()[1], D(), en) == "Rusty Sword");
+    CHECK(ItemDisplayName(inv.Bag()[2], D(), en) == "Dagger");
+    CHECK(inv.Stash()[0].baseId == "w_short_sword");
+    // Quality and type still come first.
+    inv.MutableBag().push_back(Itm("c_hp_potion_s"));
+    inv.MutableBag().push_back(Itm("w_dagger", ItemQuality::Rare));
+    SetItemNameCollator(&ItmTestReverseCollate, nullptr);
+    inv.SortBag(&en);
+    SetItemNameCollator(previous.fn, previous.user);
+    CHECK(inv.Bag().front().quality == ItemQuality::Rare);
+    CHECK(inv.Bag().back().baseId == "c_hp_potion_s");
+    CHECK(CompareItemNames("a", "b") < 0);  // restored
+  }
+
+  TEST_CASE("legendary effect text is localised (4.3 / 15.3, Q5): named and generic legendaries") {
+    Rng rng(4);
+    ItemUidGenerator uids;
+    const LootContext lc{&D(), &rng, &uids};
+    I18n zh = D().Strings();
+    zh.SetLocale(LocaleId::ZhCN);
+    I18n en = D().Strings();
+    en.SetLocale(LocaleId::En);
+    std::optional<ItemInstance> gen = CreateItem(lc, "w_rusty_sword", 10, ItemQuality::Legendary);
+    REQUIRE(gen.has_value());
+    REQUIRE(gen->legendaryId.empty());
+    CHECK(gen->legendaryEffect == *D().Strings().Lookup(LocaleId::ZhCN, "sys.loot.genericLegendaryEffect"));  // stored zh
+    CHECK(ItemLegendaryEffectText(*gen, D(), en) == *en.Lookup(LocaleId::En, "sys.loot.genericLegendaryEffect"));
+    CHECK(ItemLegendaryEffectText(*gen, D(), en) == "Contains an unknown power");
+    CHECK(ItemLegendaryEffectText(*gen, D(), zh) == gen->legendaryEffect);
+    std::optional<ItemInstance> grief = CreateItem(lc, "w_broad_sword", 10, ItemQuality::Legendary);
+    REQUIRE(grief->legendaryId == "leg_grief");
+    CHECK(ItemLegendaryEffectText(*grief, D(), en) == *en.Lookup(LocaleId::En, "data.legendary.leg_grief.effect"));
+    CHECK(ItemLegendaryEffectText(*grief, D(), zh) == *zh.Lookup(LocaleId::ZhCN, "data.legendary.leg_grief.effect"));
+    CHECK(ItemLegendaryEffectText(Itm("w_dagger", ItemQuality::Rare), D(), en).empty());
+  }
+
+  TEST_CASE("I3 refusal logs sys.inventory.levelTooLow {level}; discard emits ItemDiscarded {item} (17)") {
+    ItmWorld w;
+    for (LocaleId loc : {LocaleId::ZhCN, LocaleId::En}) {
+      REQUIRE(D().Strings().Lookup(loc, "sys.inventory.levelTooLow") != nullptr);
+      CHECK(D().Strings().Lookup(loc, "sys.inventory.levelTooLow")->find("{level}") != std::string::npos);
+    }
+    ItemInstance plate = Itm("a_plate_armor");
+    w.inv.Items().MutableBag().push_back(plate);
+    CHECK(w.inv.Equip(plate.uid) == InvResult::LevelTooLow);
+    const EvLog* log = LastLogWithKey(w.h.events, "sys.inventory.levelTooLow");
+    REQUIRE(log != nullptr);
+    REQUIRE(log->text.args.size() == 1);
+    CHECK(log->text.args[0].name == "level");
+    CHECK(log->text.args[0].value == "20");
+    CHECK_FALSE(HasLogKey(w.h.events, "homestead.workshop.block.level"));
+    CHECK(LastEvent<EvSfx>(w.h.events)->cue == SfxId::Error);
+    // Discard.
+    ItemInstance rare = Itm("w_dagger", ItemQuality::Rare);
+    rare.affixes = {FixedAffix("pre_sharp", 2)};
+    w.inv.Items().MutableBag().push_back(rare);
+    w.h.events.Clear();
+    CHECK(w.inv.Discard(rare.uid) == InvResult::Ok);
+    REQUIRE(test::CountEvents<EvItemDiscarded>(w.h.events) == 1);
+    CHECK(LastEvent<EvItemDiscarded>(w.h.events)->item == rare);
+    CHECK(test::CountEvents<EvInventoryChanged>(w.h.events) == 1);
+    CHECK(HasLogKey(w.h.events, "sys.inventory.discarded"));
+    CHECK(w.inv.Discard(rare.uid) == InvResult::UnknownItem);
+    CHECK(test::CountEvents<EvItemDiscarded>(w.h.events) == 1);
+  }
+
+  TEST_CASE("quest pick-one gear is always equippable at turn-in (5.6 with I3)") {
+    CHECK(D().Items().loot.rewardCapUsableAtHeroLevel);
+    // Without the cap (the web pool) a level-13 jewelry pick can be the jade amulet (levelReq 15)...
+    Rng rng(1);
+    rng.Script({0.0});
+    CHECK(PickRewardBase(D(), RewardSlot::Jewelry, ClassId::Rogue, 13, rng)->id == "j_jade_amulet");
+    // ... with the hero-level cap the top-3 window is silver ring (10), copper ring (1), bone amulet (1).
+    rng.Script({0.0});
+    CHECK(PickRewardBase(D(), RewardSlot::Jewelry, ClassId::Rogue, 13, rng, 13)->id == "j_silver_ring");
+    rng.Script({0.99});
+    CHECK(PickRewardBase(D(), RewardSlot::Jewelry, ClassId::Rogue, 13, rng, 13)->id == "j_bone_amulet");
+    // Nothing under the cap: the pool's lowest base (web fallback).
+    rng.Script({0.5});
+    CHECK(PickRewardBase(D(), RewardSlot::Gloves, ClassId::Warrior, 13, rng, 0)->levelReq == 1);
+
+    const QuestDef* secure = D().FindQuest("q_secure_plains");  // L8 main: jewelry + boots + gloves
+    const QuestDef* chief = D().FindQuest("q_find_goblin_chief");  // L7 main: weapon + armor
+    REQUIRE(secure != nullptr);
+    REQUIRE(chief != nullptr);
+    for (ClassId cls : {ClassId::Warrior, ClassId::Mage, ClassId::Rogue}) {
+      for (int heroLevel : {1, 5, 9, 13, 20}) {
+        for (uint64_t seed = 1; seed <= 40; ++seed) {
+          Rng r(seed);
+          ItemUidGenerator uids;
+          const LootContext lc{&D(), &r, &uids};
+          for (const QuestDef* q : {secure, chief}) {
+            const std::vector<ItemInstance> items = GenerateQuestRewardChoices(lc, *q, cls, heroLevel);
+            CHECK(items.size() == q->rewards.choices.size());
+            for (const ItemInstance& it : items) {
+              const ItemBaseDef* b = D().Items().FindBase(it.baseId);
+              REQUIRE(b != nullptr);
+              INFO(q->id << " hero " << heroLevel << " " << it.baseId);
+              CHECK(b->levelReq <= heroLevel);
+              Inventory inv(D());
+              inv.MutableBag().push_back(it);
+              CHECK(inv.Equip(it.uid, heroLevel) == InvResult::Ok);
+            }
+          }
+        }
+      }
+    }
   }
 }

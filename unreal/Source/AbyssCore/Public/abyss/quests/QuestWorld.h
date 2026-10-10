@@ -47,10 +47,19 @@ struct QuestNode {
   bool clue = false;
 };
 
+// Display-name keys of the quest-spawned escort NPC and defend target (Q11 FIX: always resolve keys). The exported keys
+// drop the quest id's "q_" prefix: q_escort_merchant_plains -> data.escortNpc.escort_merchant_plains, q_defend_camp_forest
+// -> data.defendTarget.defend_camp_forest. A quest without such a key (q_trapped_miners) shows the data's zh name.
+ABYSS_API std::string EscortNpcNameKey(std::string_view questId);
+ABYSS_API std::string DefendTargetNameKey(std::string_view questId);
+
 // Escort runtime (3.9; scene-local, not saved: a zone entry / reload respawns it at its start, full HP, not joined).
+// nameKey / name: the label (render I18n::NameOr(nameKey, name)); nameKey is "" when the key does not resolve.
 struct EscortState {
   bool active = false;
   std::string questId;
+  std::string nameKey;
+  std::string name;  // zh-CN fallback (escortNpc.name)
   EntityId entity = kNoEntity;  // EntityKind::Escort
   Vec2 pos;
   TilePos dest;
@@ -64,6 +73,8 @@ struct EscortState {
 struct DefendState {
   bool active = false;
   std::string questId;
+  std::string nameKey;  // data.defendTarget.<id> when it resolves, else "" (see EscortState)
+  std::string name;     // zh-CN fallback (defendTarget.name)
   EntityId entity = kNoEntity;  // EntityKind::DefendTarget
   Vec2 pos;
   double hp = 0, maxHp = 0;

@@ -277,6 +277,9 @@ bool DataStore::Finalize(DataLoadReport& report) {
   for (const ShopDef& s : items_.shops) {
     for (const std::string& id : s.items) requireBase("shops.json", "shops." + s.npcId, id);
   }
+  for (const WanderingMerchantDef& w : items_.wanderingMerchant) {  // FIX loot Q12
+    for (const auto& [from, to] : w.idMap) requireBase("shops.json", "wanderingMerchant." + w.zoneId + ".idMap." + from, to);
+  }
   for (const SetPieceBase& p : items_.setPieceBases) requireBase("sets.json", "pieceBases." + p.pieceId, p.baseId);
   for (const SetDef& s : items_.sets) {
     for (const std::string& piece : s.pieces) {

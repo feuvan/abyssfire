@@ -37,6 +37,14 @@ double SkillArrowDelayMs(const SkillDef& s, Vec2 from, Vec2 to) {
   return (std::min)(s.arrowDelay.maxMs, px * s.arrowDelay.msPerPx);
 }
 
+int32_t GroundTickShare(int32_t total, int32_t tickIndex, int32_t ticks) {
+  if (total <= 0 || ticks < 1 || tickIndex < 0 || tickIndex >= ticks) return 0;
+  const int64_t t = total;
+  const int64_t hi = t * (tickIndex + 1) / ticks;  // non-negative operands: integer division = floor
+  const int64_t lo = t * tickIndex / ticks;
+  return static_cast<int32_t>(hi - lo);
+}
+
 uint32_t MonsterBoltColor(std::string_view spriteKey) {
   if (spriteKey.find("fire") != std::string_view::npos || spriteKey.find("phoenix") != std::string_view::npos) {
     return 0xff6600;

@@ -96,8 +96,11 @@ class ABYSS_API Hero {
   double Mana() const { return mana_; }
   double MaxHp() const { return derived_.maxHp; }
   double MaxMana() const { return derived_.maxMana; }
-  // HP/MP gains return the amount applied; 0 unless Alive (save-ui-input 5.1.1) or amount <= 0. Clamped to the max
-  // like the web's heals; a gain never lowers a value that sits above a lowered max (3: recalc does not clamp).
+  // HP/MP gains: `value = min(max, value + amount)`, exactly the web's heal sites (potions, life / mana steal, kill and
+  // thorns heals, pet / merc heals, free-cast refunds; classes 3 "heals clamp", 4.3, 12.1). So a gain - even of 0 -
+  // SNAPS a value that sits above a lowered max (unequipped +maxHp gear; recalcDerived does not clamp) down to the
+  // max. Refused (no change) unless Alive (save-ui-input 5.1.1), or for a negative / non-finite amount (no web site
+  // passes one). Returns the gain, >= 0 (0 when the value was snapped down).
   double Heal(double amount);
   double RestoreMana(double amount);
   void SpendMana(double amount);       // floor at 0
@@ -125,12 +128,14 @@ class ABYSS_API Hero {
   Spirit& GetSpirit() { return spirit_; }
   const Spirit& GetSpirit() const { return spirit_; }
 
-  // ---- regen (4.1-4.2) ----
-  // Per-step regen, skipped while dead (Dying or hp <= 0), in the web's order: the Life Regen passive (4.2, linear
-  // passiveRule.hpPerSecondPerLevel x level HP/s; ZoneScene step 6) first, then mana regen, then HP regen (4.1). This
-  // is the ONLY place Life Regen is applied (CombatSystem::TickPassives does Unyielding and Dual Wield only). `mods`
-  // carries the campfire x50 and the poisoned x0.5 HP factor (caller-computed). Uses the RAW primaries and the gear
-  // hpRegen / manaRegen of the last RecalcDerived bag.
+  // ---- regen (4.1-4.2), in the web's per-step order (16; ZoneScene.ts:1372-1392, Player.update) ----
+  // Step 6, FIRST (CombatSystem::TickPassives calls it before the Unyielding hp-ratio check): the Life Regen passive
+  // (4.2), linear passiveRule.hpPerSecondPerLevel x level HP/s times mods.hpMul, while 0 < hp < maxHp. Skipped while
+  // dead (Dying or hp <= 0).
+  void TickLifeRegen(double dtMs, const RegenModifiers& mods);
+  // Step 7 (Player.update, after the spirit drain): mana regen, then HP regen (4.1), each clamped at its max. Skipped
+  // while dead. Uses the RAW primaries and the gear hpRegen / manaRegen of the last RecalcDerived bag.
+  // `mods` (both calls): the step's recovery modifiers (stepRegen below).
   void TickRegen(double dtMs, const RegenModifiers& mods);
 
   // CombatEntity view for the damage formula (combat-feel 1.2).
@@ -143,6 +148,10 @@ class ABYSS_API Hero {
   double lastAttackMs = 0;          // basic attack swing timer (first swing immediate)
   double deathSaveReadyAtMs = 0;    // T11 / FIX Q24 (survives zone changes; not saved)
   bool dodgeCounterReady = false;   // dodgeCounter gear
+  // The step's recovery modifiers (the web's `recovery`: campfire x50 within 5 tiles of a camp, poisoned x0.5 HP),
+  // computed ONCE per step by CombatSystem::TickPassives from the position BEFORE this step's movement (16 steps 2, 5)
+  // and passed to both TickLifeRegen (step 6) and TickRegen (step 7). Not saved.
+  RegenModifiers stepRegen;
   // (HUD potion quick slots, I4, are owned by InventorySystem: PotionSlots / ResolvePotionSlot.)
 
   // ---- save ----

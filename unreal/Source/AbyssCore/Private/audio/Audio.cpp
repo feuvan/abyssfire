@@ -1,10 +1,10 @@
 // Audio rules and the music director (audio.md 3, 5, 9.8, 10.4; A2, A4-A6). Owner area: world.
 //
 // MusicDirector priority (10.4): story lock > victory hold > boss > combat > explore. Track keys are
-// "<themeId>_<state>" (explore / combat / victory) and the boss score key (A5 `boss_ch1`). Fades (5.4 effective
-// timings): zone change and forced tracks fade the old music over zoneFadeSec, state changes over stateFadeSec, the new
-// track fades in over fadeInSec. A2: the explore track resumes from its position after combat / boss / victory
-// (restart = false); every other track starts from 0.
+// "<themeId>_<state>" (explore / combat / victory) and the boss's score key (10.4 `bossMusic`, A5 `boss_ch1`). Fades
+// (5.4 effective timings): zone change and forced tracks fade the old music over zoneFadeSec, state changes over
+// stateFadeSec, the new track fades in over fadeInSec. A2: the explore track resumes from its position after combat /
+// boss / victory (restart = false); every other track starts from 0.
 #include "abyss/base/Platform.h"
 
 #include "abyss/audio/Audio.h"
@@ -19,7 +19,10 @@ namespace abyss {
 std::optional<SfxId> SfxForCombatHit(const AudioRulesDef& r, bool dodged, bool crit, HitWeight weight) {
   if (dodged) return r.combatDodged;
   if (crit) return r.combatCrit;
-  if (weight == HitWeight::Heavy || weight == HitWeight::Crit || weight == HitWeight::Kill) return r.heavyHitCue;  // A6
+  // A6: the weights of audio_cues.json rules.port.heavyHitCue (heavy, crit, kill) play hit_heavy.
+  if (std::find(r.heavyHitWeights.begin(), r.heavyHitWeights.end(), weight) != r.heavyHitWeights.end()) {
+    return r.heavyHitCue;
+  }
   return r.combatHit;
 }
 
@@ -83,7 +86,8 @@ void MusicDirector::OnCombatStateChanged(bool inCombat) {
 
 void MusicDirector::OnBossEngaged(std::string_view bossDefId) {
   boss_ = std::string(bossDefId);
-  if (storyLock_ || victoryUntilMs_ >= 0 || def_->bossCh1Score.empty()) return;
+  // 10.4 rule 4 `bossMusic`: a boss without a score keeps the combat track.
+  if (storyLock_ || victoryUntilMs_ >= 0 || def_->BossScore(boss_) == nullptr) return;
   if (state_ == MusicState::Boss) return;
   state_ = MusicState::Boss;
   Transition(def_->stateFadeSec, def_->fadeInSec, true);
@@ -127,8 +131,9 @@ void MusicDirector::SetStoryLock(bool locked) {
     victoryUntilMs_ = -1;
     Transition(def_->zoneFadeSec, def_->fadeInSec, true);
   }
-  // Changes queued under the lock apply now (boss > combat > explore); a forced PlayTrack may follow and wins.
-  if (!boss_.empty() && inCombat_) {
+  // Changes queued under the lock apply now (boss > combat > explore); a forced PlayTrack may follow and wins. A boss
+  // without a score (bossMusic) is plain combat.
+  if (!boss_.empty() && inCombat_ && def_->BossScore(boss_) != nullptr) {
     OnBossEngaged(boss_);
   } else if (state_ != MusicState::Victory) {
     SetState(inCombat_ ? MusicState::Combat : MusicState::Explore);
@@ -162,8 +167,11 @@ void MusicDirector::SetState(MusicState s) {
 }
 
 std::string MusicDirector::TrackKey() const {
+  if (state_ == MusicState::Boss) {
+    const std::string* score = def_->BossScore(boss_);  // A5: goblin_chief -> boss_ch1
+    return score != nullptr ? *score : std::string();
+  }
   const std::string theme = ResolveMusicTheme(*def_, zone_);
-  if (state_ == MusicState::Boss) return def_->bossCh1Score;
   if (theme.empty()) return std::string();  // no theme: fade out and play nothing
   return theme + "_" + std::string(EnumName(state_));
 }
@@ -246,10 +254,15 @@ void AudioDirector::OnNpcInteracted(const NpcInteractedMsg& m) {
 
 void AudioDirector::OnStoryState(const StoryStateMsg& m) {
   if (m.active && !m.musicTrack.empty()) {
+    // sequence(id, musicZone, musicState): explore, or victory for the epilogue / credits (StoryDirector.ts:106-110).
+    MusicState state = MusicState::Explore;
+    if (!ParseEnum(m.musicState, state) || state != MusicState::Victory) state = MusicState::Explore;
     music_.SetStoryLock(true);
     storySequenceMusic_ = true;
-    music_.PlayTrack(m.musicTrack, MusicState::Explore);
+    music_.PlayTrack(m.musicTrack, state);
   } else if (!m.active && storySequenceMusic_) {
+    // The sequence ended (StoryDirector publishes {false} when the sequence beat finishes, even when more beats are
+    // queued): the zone's explore track returns now, so the new-game chapter card plays over it (StoryDirector.ts:195).
     storySequenceMusic_ = false;
     music_.SetStoryLock(false);
     music_.PlayTrack(zoneId_, MusicState::Explore);  // the zone's explore track returns (StoryDirector.ts:195)

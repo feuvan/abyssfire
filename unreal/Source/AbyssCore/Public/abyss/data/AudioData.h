@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "abyss/base/Enums.h"
@@ -92,7 +94,8 @@ struct AudioRulesDef {
   std::vector<std::string> questProgressPrefixes;  // mat_, clue_
   SfxId townPortalComplete = SfxId::ZoneTransition, soulEchoReclaimed = SfxId::Resonance, forgeSuccess = SfxId::Anvil,
         forgeError = SfxId::Error;
-  SfxId heavyHitCue = SfxId::HitHeavy;    // A6: heavy/crit/kill weights
+  SfxId heavyHitCue = SfxId::HitHeavy;    // A6: the cue of the weights below
+  std::vector<HitWeight> heavyHitWeights;  // A6: rules.port.heavyHitCue.weights (heavy, crit, kill)
   SfxId heroDamageTakenCue = SfxId::PlayerHurt;  // A6
   SfxId monsterAggro = SfxId::MonsterAggro;      // A7: MonsterAggroMsg
   SfxId monsterHurt = SfxId::MonsterHurt;        // A7: non-lethal, non-tick hit on a monster
@@ -107,6 +110,15 @@ struct MusicDirectorDef {
   bool trueDebounce = true;          // A2
   bool exploreResumesPosition = true;
   std::string bossCh1Score = "boss_ch1";
+  // audio 10.4 rule 4 `bossMusic`: boss def id -> boss score key, in data order (goblin_chief -> boss_ch1). A boss
+  // without an entry has no boss music (the combat track keeps playing).
+  std::vector<std::pair<std::string, std::string>> bossMusic;
+  const std::string* BossScore(std::string_view bossDefId) const {
+    for (const auto& [id, score] : bossMusic) {
+      if (id == bossDefId) return &score;
+    }
+    return nullptr;
+  }
   double defaultMusicVolume = 0.6, defaultSfxVolume = 0.8;  // A3
   std::vector<std::string> themeZones;  // zones with a music theme (music.json themes keys)
 };

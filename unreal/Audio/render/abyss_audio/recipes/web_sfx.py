@@ -6,7 +6,7 @@ time t = 0. The length of each recipe is the last `stop` (audio.md 4.1); the ren
 
 from __future__ import annotations
 
-from ..sfx import Recipe, adsr, filt, gain, lfo, osc, shape
+from ..sfx import Recipe, adsr, filt, lfo, shape
 
 SRC = "src/systems/audio/SFXEngine.ts"
 

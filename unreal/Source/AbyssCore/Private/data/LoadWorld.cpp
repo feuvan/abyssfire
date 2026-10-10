@@ -254,6 +254,7 @@ void LoadWorldConstantsFile(const JNode& r, WorldTables& out) {
   w.holdMoveRepathMs = r.Num("holdMoveRepathMs");
   w.exitRadiusSq = r.Num("exitRadiusSq");
   w.exitArmDistance = r.Num("exitArmDistance");
+  w.exitArmDistanceSq = r.Num("exitArmDistanceSq");
   w.campfireRadiusTiles = r.Child("campfire").Num("radiusTiles");
   w.campfireHpMul = r.Child("campfire").Num("hpMul");
   w.campfireMpMul = r.Child("campfire").Num("mpMul");

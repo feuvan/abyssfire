@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "abyss/base/Enums.h"
@@ -193,11 +194,18 @@ struct LootRulesDef {
   double pickupRadiusSq = 4;
   double clickHitBoxTiles = 1.5;
   double autoLootIntervalMs = 300;
+  // treasure-cache drops (dropLootAtPosition, loot 6.1 / 6.5): no despawn, no ITEM_DROPPED feedback, visual jitter
+  // +-jitterX/2 px and +-jitterY/2 px on screen (web iso px, converted to tiles by GroundLootSystem), 400 ms fall-in.
+  double cacheDropJitterXPx = 20, cacheDropJitterYPx = 10;
+  double cacheDropFallInMs = 400;
+  double cacheDropFallHeightPx = 30;
   // quest reward choices (loot 5.6)
   std::array<std::vector<WeaponType>, EnumCount<ClassId>()> classWeaponTypes{};
   std::vector<WeaponType> unknownClassWeaponTypes;
   std::vector<ClassId> shieldClasses;
   int32_t rewardLevelHeadroom = 2;
+  // Port (I3 enforces levelReq on equip): usable = levelReq <= min(itemLevel + headroom, heroLevel).
+  bool rewardCapUsableAtHeroLevel = true;
   int32_t rewardTopCandidates = 3;
   ItemQuality rewardQualityMain = ItemQuality::Rare;
   ItemQuality rewardQualitySide = ItemQuality::Magic;
@@ -253,7 +261,18 @@ struct ShopDef {
 
 struct WanderingMerchantDef {
   std::string zoneId;
-  std::vector<std::string> items;  // NOT item base ids (web quirk W10 data); resolved by the events area
+  std::vector<std::string> items;  // the web's ids (random_events.json merchantItems): NOT item base ids (loot Q12)
+  // FIX loot Q12 (shops.json idMap, document order): web id -> an item base of the zone's tier. ShopSystem::
+  // OpenWanderingMerchant resolves the event's ids through it.
+  std::vector<std::pair<std::string, std::string>> idMap;
+
+  // The mapped base id, or "" when `id` is not mapped here.
+  std::string_view MapId(std::string_view id) const {
+    for (const auto& [from, to] : idMap) {
+      if (from == id) return to;
+    }
+    return {};
+  }
 };
 
 struct ABYSS_API ItemTables {
@@ -292,6 +311,12 @@ struct ABYSS_API ItemTables {
   const LegendaryDef* FindLegendary(std::string_view id) const;
   const LegendaryDef* FindLegendaryForBase(std::string_view baseId) const;  // first match (overworld first)
   const ShopDef* FindShop(std::string_view npcId) const;
+  const WanderingMerchantDef* FindWanderingMerchant(std::string_view zoneId) const {
+    for (const WanderingMerchantDef& w : wanderingMerchant) {
+      if (w.zoneId == zoneId) return &w;
+    }
+    return nullptr;
+  }
 
   IdIndex baseIndex;  // built at load
 };

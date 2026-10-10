@@ -7,9 +7,10 @@ A5, A7; audio.md 9, 10).
                                                                               #          stingers music
     ... render_all.py --later-recordings                                      # + the other zones' CC0 recordings
     ... render_all.py --reports                                               # + waveform / spectrum PNGs
+    ... render_all.py --manifest-only                                         # rebuild the manifest only
 
 Outputs (relative to unreal/Audio):
-    Export/<Folder>/<Asset>.ogg          SFX, Vocals, Footsteps (mono), Ambience, Stingers, Music (stereo), 48 kHz
+    Export/<Folder>/<Asset>.ogg          SFX (incl. A7 vocals), Footsteps (mono); Ambience, Stingers, Music (stereo); 48 kHz
     Export/audio_manifest.json           cue / track / stinger / ambience / footstep tables for UAbyssAudioSystem
     render/data/sfx_recipes.json         every recipe as engine-agnostic JSON (audio.md 11)
     Reports/*.png, Reports/stats.md      verification (no listening test is possible where this runs)
@@ -80,6 +81,14 @@ CH1_MUSIC = [
                 "url": "https://opengameart.org/content/medieval-victory-theme"}},
     {"key": "boss_ch1", "asset": "SW_MUS_BossCh1", "kind": "score", "score": "boss_ch1", "state": "combat",
      "bars": 32, "seed": "boss_ch1-1", "theme": "emerald_plains", "loop": True},
+    # The web's procedural plains score (what the Ember Tower plays in the web, QUIRK Q8 / audio.md 11 zoneOverrides:
+    # ember_tower -> emerald_plains_explore_score). Explore loops on 64 bars (odd-cycle rest bars), combat on 32.
+    {"key": "emerald_plains_explore_score", "asset": "SW_MUS_EmeraldPlainsExploreScore", "kind": "score",
+     "score": "emerald_plains", "state": "explore", "bars": 64, "seed": "emerald_plains-explore-1",
+     "theme": "emerald_plains", "loop": True},
+    {"key": "emerald_plains_combat_score", "asset": "SW_MUS_EmeraldPlainsCombatScore", "kind": "score",
+     "score": "emerald_plains", "state": "combat", "bars": 32, "seed": "emerald_plains-combat-1",
+     "theme": "emerald_plains", "loop": True},
     {"key": "abyss_rift_explore", "asset": "SW_MUS_AbyssRiftExplore", "kind": "recording",
      "file": "abyss_rift_explore.mp3", "theme": "abyss_rift", "loop": True,
      "credit": {"title": "Loopable Dungeon Ambience", "author": "JaggedStone", "license": "CC0",
@@ -101,6 +110,28 @@ LATER_RECORDINGS = [
     ("scorching_desert", "victory", "Medieval: Victory Theme", "RandomMind", "https://opengameart.org/content/medieval-victory-theme", False),
     ("abyss_rift", "combat", "Battle Theme B", "cynicmusic", "https://opengameart.org/content/battle-theme-b-for-rpg", True),
     ("abyss_rift", "victory", "Victory Fanfare Short", "cynicmusic", "https://opengameart.org/content/victory-fanfare-short", False),
+]
+
+# zone -> {core track key -> track key played instead} (audio.md 11 music_tracks.json zoneOverrides).
+ZONE_OVERRIDES = {
+    "ember_tower": {"emerald_plains_explore": "emerald_plains_explore_score",
+                    "emerald_plains_combat": "emerald_plains_combat_score"},
+}
+
+# Title-menu soundtrack (web JUKEBOX_TRACKS order, MenuScene.ts:30-42): i18n title key -> track key. Rows whose track
+# is not rendered (later chapters) are left out of the manifest.
+JUKEBOX = [
+    ("menu.jukebox.track.menu", "menu_explore"),
+    ("menu.jukebox.track.emerald_plains.explore", "emerald_plains_explore"),
+    ("menu.jukebox.track.emerald_plains.combat", "emerald_plains_combat"),
+    ("menu.jukebox.track.twilight_forest.explore", "twilight_forest_explore"),
+    ("menu.jukebox.track.twilight_forest.combat", "twilight_forest_combat"),
+    ("menu.jukebox.track.anvil_mountains.explore", "anvil_mountains_explore"),
+    ("menu.jukebox.track.anvil_mountains.combat", "anvil_mountains_combat"),
+    ("menu.jukebox.track.scorching_desert.explore", "scorching_desert_explore"),
+    ("menu.jukebox.track.scorching_desert.combat", "scorching_desert_combat"),
+    ("menu.jukebox.track.abyss_rift.explore", "abyss_rift_explore"),
+    ("menu.jukebox.track.abyss_rift.combat", "abyss_rift_combat"),
 ]
 
 STINGERS = [
@@ -274,7 +305,8 @@ def render_music(music_json: dict, port_scores: dict, entries: list[dict]) -> li
                          "leadNotes": len(player.trace.leads)})
         else:
             dec = mp3.decode(str(BGM / e["file"]), loop=e["loop"])
-            meta.update({"file": f"public/assets/audio/bgm/{e['file']}", "sha256": dec.sha256,
+            # Source fields are prefixed: `file` / `sha256` of a manifest entry describe the exported OGG.
+            meta.update({"sourceFile": f"public/assets/audio/bgm/{e['file']}", "sourceSha256": dec.sha256,
                          "encoder": dec.info.encoder, "encDelay": dec.info.enc_delay,
                          "encPadding": dec.info.enc_padding, "gaplessDecoded": dec.gapless_ok,
                          "trimmedHeadFrames": dec.trimmed_head, "trimmedTailFrames": dec.trimmed_tail,
@@ -285,7 +317,7 @@ def render_music(music_json: dict, port_scores: dict, entries: list[dict]) -> li
             else:
                 y = fade_tail(chain.process_oneshot(dec.audio, cfg, SR, rng, tail_sec=cfg.decay))
         if e["loop"]:
-            meta["seamRatio"] = round(loops.seam_ratio(y), 3)
+            meta["seamRatioRendered"] = round(loops.seam_ratio(y), 3)  # before encoding; `seamRatio` = decoded OGG
         meta["webLufs"] = round(master.integrated_lufs(y, SR), 2)
         a = Asset(e["asset"], "Music", "music", y.astype(np.float32).astype(np.float64), e["loop"], meta)
         out.append(a)
@@ -344,8 +376,9 @@ def level_assets(assets: list[Asset], levels: dict) -> None:
             g_db = headroom
         for a in sfx_assets:
             apply_gain(a, g_db, limit=False)
-    levels["sfxCommonGainDb"] = round(g_db, 3)
-    levels["sfxBalanceRatio"] = ratio
+        # Only a run that levelled the SFX records their gain (a partial run keeps the previous values).
+        levels["sfxCommonGainDb"] = round(g_db, 3)
+        levels["sfxBalanceRatio"] = ratio
 
     # A7 one-shots relative to the web hit cue.
     hits = [a for a in sfx_assets if a.meta.get("cue") == "hit"]
@@ -372,10 +405,21 @@ def level_assets(assets: list[Asset], levels: dict) -> None:
     # Stingers: short-term max 3 LU under the (normalised) plains explore track (audio.md 10.3). A stinger shorter
     # than the 3 s short-term window (the 1.2 s letterbox whoosh) is matched on the momentary (400 ms) maximum instead,
     # otherwise the silence inside the window would read as headroom and push it far above the music.
+    stingers_to_level = by_kind.get("stinger", [])
     if explore_ref is not None:
-        levels["exploreShortTermMaxLufs"] = round(master.short_term_max_lufs(explore_ref.audio, SR), 2)
-        levels["exploreMomentaryMaxLufs"] = round(master.momentary_max_lufs(explore_ref.audio, SR), 2)
-    for a in by_kind.get("stinger", []):
+        explore_audio = explore_ref.audio
+    elif stingers_to_level and not {"exploreShortTermMaxLufs", "exploreMomentaryMaxLufs"} <= levels.keys():
+        # Partial run (--only stingers): measure the exported, already normalised explore track.
+        path = EXPORT / "Music" / "SW_MUS_EmeraldPlainsExplore.ogg"
+        if not path.exists():
+            raise SystemExit(f"{path} is needed as the stinger loudness reference (render music first)")
+        explore_audio, _ = master.read_audio(str(path))
+    else:
+        explore_audio = None
+    if explore_audio is not None:
+        levels["exploreShortTermMaxLufs"] = round(master.short_term_max_lufs(explore_audio, SR), 2)
+        levels["exploreMomentaryMaxLufs"] = round(master.momentary_max_lufs(explore_audio, SR), 2)
+    for a in stingers_to_level:
         if a.meta.get("nominalSec", 3.0) < 3.0:
             cur = master.momentary_max_lufs(a.audio, SR)
             ref = levels["exploreMomentaryMaxLufs"]
@@ -395,8 +439,18 @@ def export(a: Asset) -> dict:
     folder = EXPORT / a.folder
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{a.name}.ogg"
-    master.write_ogg(str(path), a.audio, SR)
-    dec, sr = master.read_audio(str(path))
+    tmp = folder / f".{a.name}.tmp.ogg"
+    master.write_ogg(str(tmp), a.audio, SR, serial=str_seed(a.name))
+    dec, sr = master.read_audio(str(tmp))
+    # Keep the committed file when it decodes to exactly the same samples (no binary churn in git); otherwise replace.
+    if path.exists():
+        old, _ = master.read_audio(str(path))
+        if old.shape == dec.shape and np.array_equal(old, dec):
+            tmp.unlink()
+        else:
+            os.replace(tmp, path)
+    else:
+        os.replace(tmp, path)
     if a.loop:
         # Vorbis keeps the exact frame count (granule position): verify, the loop is the whole file.
         assert dec.shape[1] == a.audio.shape[1], f"{a.name}: frame count changed by the encoder"
@@ -429,6 +483,9 @@ def export(a: Asset) -> dict:
         "limiterGainReductionDb": round(a.limiter_gr_db, 3),
     }
     entry.update(st)
+    clash = (set(a.meta) - {"chain"}) & set(entry)
+    if clash:  # metadata must never overwrite what UE / the import script read (file, sha256, loop, ...)
+        raise SystemExit(f"{a.name}: metadata keys {sorted(clash)} collide with manifest fields")
     entry.update({k: v for k, v in a.meta.items() if k not in ("chain",)})
     if "chain" in a.meta:
         entry["chain"] = a.meta["chain"]
@@ -471,6 +528,10 @@ def build_manifest(assets: dict, levels: dict, cue_table: dict, music_entries: l
         "cues": cues,
         "music": music,
         "menuTrack": "menu_explore",
+        # audio.md 9.8 / 11 zoneOverrides (QUIRK Q8 FIX, "as heard"): the Ember Tower plays the procedural plains score,
+        # not the plains recording its theme resolves to. Applied by UAbyssAudioSystem to the core's EvMusic keys.
+        "zoneOverrides": {zone: {k: v for k, v in table.items() if v in music}
+                          for zone, table in ZONE_OVERRIDES.items()},
         "stingers": {
             "chapterCard": {"dawn": "SW_STG_ChapterCardDawn"},
             "chapterCardFallback": "SW_STG_ChapterCardDawn",
@@ -506,6 +567,13 @@ def build_manifest(assets: dict, levels: dict, cue_table: dict, music_entries: l
             "gain": 1.0,
         },
         "spatial": {"spread": cue_table["spatial"]["spread"], "halfWidthCm": 800.0, "virtualDistanceCm": 100.0},
+        # audio.md 8.3 (FIX Q10): the title menu soundtrack lists only packaged tracks that have a title key; real
+        # lengths come from `music`, pause / seek are real.
+        "jukebox": {
+            "tracks": [{"titleKey": key, "track": track} for key, track in JUKEBOX if track in music],
+            "fadeOutSec": 1.0,
+            "fadeInSec": 0.5,
+        },
         "assets": assets,
     }
 
@@ -516,6 +584,8 @@ def main() -> int:
     ap.add_argument("--only", default="", help="comma list: sfx,vocals,footsteps,ambience,stingers,music")
     ap.add_argument("--later-recordings", action="store_true", help="also transcode the later chapters' recordings")
     ap.add_argument("--reports", action="store_true", help="write waveform / spectrum PNGs into Reports/")
+    ap.add_argument("--manifest-only", action="store_true",
+                    help="rebuild audio_manifest.json from the current one (tables / schema changes), render nothing")
     args = ap.parse_args()
     only = {s.strip() for s in args.only.split(",") if s.strip()}
 
@@ -536,6 +606,13 @@ def main() -> int:
 
     manifest_path = EXPORT / "audio_manifest.json"
     previous = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    if args.manifest_only:
+        if not previous:
+            raise SystemExit(f"{manifest_path} does not exist: render first")
+        manifest = build_manifest(dict(sorted(previous["assets"].items())), dict(previous["levels"]), cue_table, entries)
+        manifest_path.write_text(json.dumps(manifest, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+        log(f"manifest rebuilt: {len(manifest['assets'])} assets")
+        return 0
     levels: dict = dict(previous.get("levels", {})) if only else {}
 
     recipes_dump: dict = {}
@@ -587,7 +664,7 @@ def main() -> int:
 
     if args.reports:
         from abyss_audio import report
-        report.write_reports(assets, REPORTS, SR)
+        report.write_reports(assets, REPORTS, SR, entries_out)
     total = sum(e["bytes"] for e in entries_out.values())
     log(f"done: {len(entries_out)} assets, {total / 1e6:.2f} MB OGG, {time.time() - t0:.1f} s")
     return 0

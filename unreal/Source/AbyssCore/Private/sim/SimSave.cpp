@@ -21,9 +21,11 @@ void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
   out.classId = hero->Class();
   hero->ToSave(out.player);
   out.player.currentMap = session.currentMap;
-  if (!CanSave()) {
+  if (hero->Life() != HeroLife::Alive || !(hero->Hp() > 0)) {
     // C12 / rule 1: a Dying hero is written as respawned at the current zone's camps[0] with full HP/MP. The death
-    // penalty and the soul echo were already applied at death.
+    // penalty and the soul echo were already applied at death. Only the dead hero is rewritten: during a zone change
+    // (CanSave() false while `transitioning`) UE answers the ZoneChange request after the step, and that save (as well as
+    // a 60 s / background save inside the 400 ms fade) keeps the live hero in the old zone (save 3.6, world 9.2).
     const Vec2 camp = zone->CampPosition(0);
     out.player.tileCol = camp.x;
     out.player.tileRow = camp.y;

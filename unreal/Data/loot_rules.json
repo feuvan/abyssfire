@@ -84,6 +84,13 @@
   "pickupRadiusSq": 4,
   "clickHitBoxTiles": 1.5,
   "autoLootIntervalMs": 300,
+  "cacheDrop": {
+    "despawns": false,
+    "itemDroppedEvent": false,
+    "jitterPx": [20, 10],
+    "fallInMs": 400,
+    "fallHeightPx": 30
+  },
   "questRewards": {
     "classWeaponTypes": {
       "warrior": ["sword", "axe", "mace"],
@@ -94,6 +101,7 @@
     "shieldClasses": ["warrior"],
     "itemLevel": "max(quest.level, min(playerLevel, quest.level + 5))",
     "levelHeadroom": 2,
+    "capUsableAtHeroLevel": true,
     "topCandidates": 3,
     "quality": {"main": "rare", "side": "magic", "override": "rewards.choiceQuality"},
     "fallbackCollectChance": 0.25

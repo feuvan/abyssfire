@@ -84,6 +84,18 @@ public:
 	virtual void OpenSocketPanel(abyss::EquipSlot Slot) = 0;
 	/** Rebuild the open panels on the next sync (after a local view change). */
 	virtual void MarkPanelsDirty() = 0;
+
+	// ---- flow helpers ----
+	/**
+	 * Quest card turn-in (quests-story-ch1.md 5.3, T17): offer the NPC's next card after 900 ms, or 300 ms after the
+	 * story director turns idle when the turn-in queued a cutscene (CmdQuestCardOpen; the core ignores it when a card or
+	 * dialogue is open or the NPC has nothing to offer).
+	 */
+	virtual void ScheduleQuestChainOffer(const std::string& NpcId) = 0;
+	/** A UI-side line in the combat log (local feedback the core does not log). */
+	virtual void AddLocalLog(const FString& Text, abyss::LogType Type) = 0;
+	/** The controls reference (menu "Controls", system menu "Controls"). */
+	virtual void ShowHelp() = 0;
 };
 
 class FAbyssUiContext : public TSharedFromThis<FAbyssUiContext>
@@ -165,6 +177,14 @@ public:
 	FString PetName(const std::string& PetId, int32 Evolved) const;
 	FString ObjectiveTypeLabel(const abyss::QuestObjectiveDef& Objective, abyss::QuestType QuestType) const;
 	FString ObjectiveTargetLabel(const abyss::QuestDef& Quest, int32 ObjectiveIndex) const;
+
+	// ---- hero numbers ----
+	/**
+	 * The hero's bonus bag as the snapshot shows it: gear + achievements + the active ley-beast's passive. The core's
+	 * merged EquipStats also holds the Ember Tower blessing and labyrinth boons (later milestones), which the snapshot
+	 * does not expose yet (core API request: HeroView::equip).
+	 */
+	static abyss::EquipStats ApproxEquipStats(const abyss::Snapshot& Snap);
 
 	// ---- numbers (JS String / toFixed parity) ----
 	static FString Num(double Value);

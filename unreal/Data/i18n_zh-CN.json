@@ -14,8 +14,13 @@
   "missingInOtherLocale": {
     "keysOnlyInEn": ["test.enOnly"]
   },
-  "portKeys": {"zone.exit.sealedChapter2": "W7"},
-  "keyCount": 2624,
+  "portKeys": {
+    "zone.exit.sealedChapter2": "W7",
+    "sys.inventory.levelTooLow": "I3",
+    "zone.quest.clueNote": "Q11",
+    "zone.event.puzzle.solved": "world 13.3"
+  },
+  "keyCount": 2627,
   "strings": {
     "boot.title": "渊  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2640,6 +2645,9 @@
     "sys.mobile.panel.pets": "灵兽",
     "menu.helpPanel.ui.pets": "灵兽",
     "menu.helpPanel.ui.companion": "佣兵",
-    "zone.exit.sealedChapter2": "第二章即将开放"
+    "zone.exit.sealedChapter2": "第二章即将开放",
+    "sys.inventory.levelTooLow": "等级不足，需要等级 {level}",
+    "zone.quest.clueNote": "{targetName}\n{note}",
+    "zone.event.puzzle.solved": "{solution} — {reward}"
   }
 }

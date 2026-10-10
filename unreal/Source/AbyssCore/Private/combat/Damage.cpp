@@ -133,16 +133,16 @@ DamageResult CalculateDamage(const DamageRules& rules, const Combatant& attacker
   if (type != DamageType::Physical) fin *= 1 - DamageResist(f, defender, type) / 100.0;
 
   // 16.
-  int32_t finalDamage = SaturatingInt32((std::max)(f.minDamage, std::floor(fin)));
+  double finalDamage = static_cast<double>(SaturatingInt32((std::max)(f.minDamage, std::floor(fin))));
 
-  // 17. Mana shield (FIX Q16: the caller drains manaDamage from the defender's mana). The absorbed amount is whole:
-  // a fractional mana pool absorbs floor(mana) so the HP damage stays an integer.
+  // 17. Mana shield (FIX Q16: the caller drains manaDamage from the defender's mana): absorb =
+  // min(floor(final x ms), D.mana). D.mana may be fractional (regen), and then so are the absorb and the HP damage.
   const double manaShield = DamageBuff(rules, defender, BuffStat::ManaShield);
   if (manaShield > 0 && defender.mana > 0) {
     const double redirect = std::floor(finalDamage * manaShield);
-    const double absorb = (std::min)(redirect, std::floor(defender.mana));
-    finalDamage = SaturatingInt32((std::max)(f.minDamage, finalDamage - absorb));
-    r.manaDamage = SaturatingInt32(absorb);
+    const double absorb = (std::min)(redirect, defender.mana);
+    finalDamage = (std::max)(f.minDamage, finalDamage - absorb);
+    r.manaDamage = absorb;
   }
 
   // 18. Steal.

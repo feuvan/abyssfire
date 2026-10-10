@@ -318,6 +318,18 @@ void LoadLootRulesFile(const JNode& r, ItemTables& out) {
   l.pickupRadiusSq = r.Num("pickupRadiusSq");
   l.clickHitBoxTiles = r.Num("clickHitBoxTiles");
   l.autoLootIntervalMs = r.Num("autoLootIntervalMs");
+  if (r.Has("cacheDrop")) {
+    const JNode cd = r.Child("cacheDrop");
+    const std::vector<double> jit = cd.NumList("jitterPx");
+    if (jit.size() == 2) {
+      l.cacheDropJitterXPx = jit[0];
+      l.cacheDropJitterYPx = jit[1];
+    } else {
+      cd.Child("jitterPx").Error("expected [x, y]");
+    }
+    l.cacheDropFallInMs = cd.Num("fallInMs");
+    l.cacheDropFallHeightPx = cd.Num("fallHeightPx");
+  }
   const JNode qr = r.Child("questRewards");
   for (const auto& [k, n] : qr.Members("classWeaponTypes")) {
     ClassId c{};
@@ -330,6 +342,7 @@ void LoadLootRulesFile(const JNode& r, ItemTables& out) {
   l.unknownClassWeaponTypes = qr.EnumList<WeaponType>("unknownClassWeaponTypes");
   l.shieldClasses = qr.EnumList<ClassId>("shieldClasses");
   l.rewardLevelHeadroom = qr.Int("levelHeadroom");
+  l.rewardCapUsableAtHeroLevel = qr.Bool("capUsableAtHeroLevel", false);  // port (I3); absent = the web's pool
   l.rewardTopCandidates = qr.Int("topCandidates");
   l.rewardQualityMain = qr.Child("quality").Enum<ItemQuality>("main");
   l.rewardQualitySide = qr.Child("quality").Enum<ItemQuality>("side");
@@ -380,7 +393,9 @@ void LoadShopsFile(const JNode& r, ItemTables& out) {
     out.shops.push_back(ShopDef{k, r.Child("shops").StrList(k)});
   }
   for (const auto& [k, n] : r.Members("wanderingMerchant")) {
-    out.wanderingMerchant.push_back(WanderingMerchantDef{k, n.StrList("items")});
+    WanderingMerchantDef w{k, n.StrList("items"), {}};
+    for (const auto& [from, to] : n.Members("idMap", true)) w.idMap.emplace_back(from, to.AsStr());  // FIX loot Q12
+    out.wanderingMerchant.push_back(std::move(w));
   }
   // port.removedWares: items removed by a decision (I4 TP scroll, I2 ID scroll); one id per distinct item.
   out.removedItemIds.clear();

@@ -1,0 +1,5 @@
+# Renderer caches (Python bytecode, numba JIT cache, pytest) and local intermediates; renders live in Export/.
+__pycache__/
+.pytest_cache/
+/Intermediate/
+/Export/**/.*.tmp.ogg

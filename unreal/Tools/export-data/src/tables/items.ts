@@ -217,6 +217,10 @@ function lootRules(): TableResult {
   assertSource(ZS, 'this.time.delayedCall(60000, () => {', 'this.time.delayedCall(30000, () => {',
     'if (this.player.autoLootMode !== \'off\' && time - this.lastAutoLootCheck > 300) {',
     'const luckBonus = this.player.stats.lck + (homeBonus[\'magicFind\'] ?? 0)');
+  // Treasure-cache drops (dropLootAtPosition, ZoneScene.ts:3684-3717): no despawn timer, no ITEM_DROPPED, +-10 / +-5 px
+  // visual jitter, a 400 ms fall-in from 30 px above.
+  assertSource(ZS, 'const offsetX = (Math.random() - 0.5) * 20 * DPR;', 'const offsetY = (Math.random() - 0.5) * 10 * DPR;',
+    'const container = this.add.container(finalX, finalY - 30 * DPR);', 'y: finalY, duration: 400, ease: \'Bounce.easeOut\',');
   assert(leyFruitDropChance(true) === 0.12 && leyFruitDropChance(false) === 0.015, 'ley fruit chance');
   // Quest pick-one gear (QuestRewards.ts:13-91).
   const q = (level: number, category: 'main' | 'side', choiceQuality?: 'magic' | 'rare' | 'legendary') =>
@@ -271,12 +275,16 @@ function lootRules(): TableResult {
       pickupRadiusSq: 4,
       clickHitBoxTiles: 1.5,
       autoLootIntervalMs: 300,
+      cacheDrop: { despawns: false, itemDroppedEvent: false, jitterPx: [20, 10], fallInMs: 400, fallHeightPx: 30 },
       questRewards: {
         classWeaponTypes: plain(QuestRewards.CLASS_WEAPON_TYPES),
         unknownClassWeaponTypes: ['sword'],
         shieldClasses: [...exp<Set<string>>(QuestRewards, 'SHIELD_CLASSES')],
         itemLevel: 'max(quest.level, min(playerLevel, quest.level + 5))',
         levelHeadroom: 2,
+        // Port (DECISIONS I3 enforces levelReq on equip): usable = levelReq <= min(itemLevel + 2, heroLevel), so a
+        // pick-one reward is always equippable at turn-in (the hero level only rises after the card was generated).
+        capUsableAtHeroLevel: true,
         topCandidates: 3,
         quality: { main: 'rare', side: 'magic', override: 'rewards.choiceQuality' },
         fallbackCollectChance: QuestRewards.FALLBACK_COLLECT_CHANCE,

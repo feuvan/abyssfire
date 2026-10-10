@@ -162,8 +162,52 @@ def limit_loop(x: np.ndarray, sr: int, ceiling_dbtp: float = -1.0) -> tuple[np.n
 VORBIS_QUALITY = 0.6  # q6 (A1)
 
 
-def write_ogg(path: str, x: np.ndarray, sr: int, quality: float = VORBIS_QUALITY) -> None:
-    """libsndfile maps SFC_SET_COMPRESSION_LEVEL c to vorbis quality 1 - c (ogg_vorbis.c), so q6 = level 0.4."""
+def _ogg_crc_table() -> list[int]:
+    table = []
+    for i in range(256):
+        r = i << 24
+        for _ in range(8):
+            r = ((r << 1) ^ 0x04C11DB7) if (r & 0x80000000) else (r << 1)
+        table.append(r & 0xFFFFFFFF)
+    return table
+
+
+_OGG_CRC = _ogg_crc_table()
+
+
+def _ogg_crc(data: bytes) -> int:
+    """Ogg page checksum: CRC-32, polynomial 0x04C11DB7, init 0, no reflection, no final xor (RFC 3533)."""
+    crc = 0
+    for b in data:
+        crc = ((crc << 8) & 0xFFFFFFFF) ^ _OGG_CRC[((crc >> 24) ^ b) & 0xFF]
+    return crc
+
+
+def set_ogg_serial(data: bytes, serial: int) -> bytes:
+    """Rewrites the bitstream serial number of every page (and its checksum).
+
+    libsndfile seeds the serial from the clock, so two encodes of the same samples differ in a few bytes; a serial
+    derived from the asset name makes renders byte-reproducible (audio.md 9.3)."""
+    out = bytearray(data)
+    pos = 0
+    while pos < len(out):
+        if out[pos:pos + 4] != b"OggS" or pos + 27 > len(out):
+            raise ValueError(f"not an Ogg page at byte {pos}")
+        nseg = out[pos + 26]
+        body = sum(out[pos + 27:pos + 27 + nseg])
+        end = pos + 27 + nseg + body
+        if end > len(out):
+            raise ValueError(f"truncated Ogg page at byte {pos}")
+        out[pos + 14:pos + 18] = (serial & 0xFFFFFFFF).to_bytes(4, "little")
+        out[pos + 22:pos + 26] = b"\0\0\0\0"
+        out[pos + 22:pos + 26] = _ogg_crc(bytes(out[pos:end])).to_bytes(4, "little")
+        pos = end
+    return bytes(out)
+
+
+def write_ogg(path: str, x: np.ndarray, sr: int, quality: float = VORBIS_QUALITY, serial: int | None = None) -> None:
+    """libsndfile maps SFC_SET_COMPRESSION_LEVEL c to vorbis quality 1 - c (ogg_vorbis.c), so q6 = level 0.4.
+    `serial` fixes the Ogg stream serial number (byte-reproducible output)."""
     if x.ndim == 1:
         x = x[None, :]
     data = np.ascontiguousarray(np.clip(x.T, -1.0, 1.0).astype(np.float32))
@@ -173,6 +217,11 @@ def write_ogg(path: str, x: np.ndarray, sr: int, quality: float = VORBIS_QUALITY
         block = 1 << 15
         for i in range(0, data.shape[0], block):
             f.write(data[i:i + block])
+    if serial is not None:
+        with open(path, "rb") as f:
+            raw = f.read()
+        with open(path, "wb") as f:
+            f.write(set_ogg_serial(raw, serial))
 
 
 def read_audio(path: str) -> tuple[np.ndarray, int]:

@@ -14,6 +14,7 @@
 #include "abyss/data/DataStore.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/hero/Rewards.h"
+#include "abyss/items/Item.h"
 #include "abyss/items/LootGen.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/SimContext.h"
@@ -233,22 +234,32 @@ bool LoreSystem::ClaimHiddenReward(EntityId propId) {
   }
   const HiddenRewardDef& def = area->rewards[static_cast<size_t>(prop.rewardIndex)];
   RewardService* rewards = ctx_.sys.rewards;
+  // collectHiddenAreaReward (world 10.3; ZoneScene.ts:4979-5004): each reward type logs what the hero got.
   switch (def.type) {
-    case HiddenRewardType::GoldPile:
-      if (rewards != nullptr) rewards->ChangeGold(GoldPileAmount(def.value), GoldReason::HiddenReward);
+    case HiddenRewardType::GoldPile: {
+      const int64_t amount = GoldPileAmount(def.value);
+      if (rewards != nullptr) rewards->ChangeGold(amount, GoldReason::HiddenReward);
+      ctx_.events.Log(MakeLoc("zone.hiddenArea.gotGold", {{"amount", ToStr(amount)}}), LogType::Loot);
       break;
+    }
     case HiddenRewardType::Chest: {
       // generateEquipment(levelRange[1], quality) straight into the bag; Q5: overflow to the stash.
       if (rewards != nullptr && ctx_.sys.inventory != nullptr) {
         const LootContext lc{&ctx_.data, &ctx_.Rand(RngStream::World), &ctx_.sys.inventory->Uids()};
         std::optional<ItemInstance> item = GenerateEquipment(lc, zone->Map().levelMax, ChestQuality(def.value));
-        if (item.has_value()) rewards->GrantItem(*item, OverflowPolicy::Stash, ItemSource::HiddenReward);
+        if (item.has_value()) {
+          const I18nArg name = ItemNameArg("itemName", *item, ctx_.data);  // before the grant takes the item
+          rewards->GrantItem(*item, OverflowPolicy::Stash, ItemSource::HiddenReward);
+          ctx_.events.Log(MakeLoc("zone.hiddenArea.gotItem", {name}), LogType::Loot);
+        }
       }
       break;
     }
     case HiddenRewardType::Lore:
+      ctx_.events.Log(MakeLoc("zone.hiddenArea.gotScroll"), LogType::System);  // log only
+      break;
     case HiddenRewardType::RareSpawn:
-      break;  // lore: log only (world 10.3); rare_spawn: later milestones
+      break;  // later milestones
   }
   rewardsClaimed_.push_back(RewardKey(prop.areaId, prop.rewardIndex));
   RemoveRewardProp(prop.id);

@@ -117,16 +117,14 @@ void FAbyssPainter::VerticalGradient3(const FVector2D& Pos, const FVector2D& Siz
 
 void FAbyssPainter::Glow(const FVector2D& Center, float Radius, const FLinearColor& Inner, int32 Rings) const
 {
-	Rings = FMath::Clamp(Rings, 1, 24);
-	for (int32 Index = 0; Index < Rings; ++Index)
+	if (Radius <= 0.f || Inner.A <= 0.f)
 	{
-		const float T = static_cast<float>(Index) / static_cast<float>(Rings);
-		const float R = Radius * (1.f - T);
-		FLinearColor Color = Inner;
-		// Additive-looking falloff: each ring adds a share, the centre accumulates the full alpha.
-		Color.A = Inner.A / static_cast<float>(Rings);
-		Circle(Center, R, Color);
+		return;
 	}
+	// One radial gradient mesh (Inner at the centre -> transparent at Radius), the look of Rings stacked translucent
+	// circles without one cached rounded brush per animated radius / alpha. Rings sets the mesh density.
+	const int32 Segments = FMath::Clamp(FMath::Max(Rings * 4, FMath::CeilToInt(Radius * 0.5f)), 16, 96);
+	RadialGradient(Center, FVector2D::ZeroVector, FVector2D(Radius, Radius), Inner, FLinearColor(Inner.R, Inner.G, Inner.B, 0.f), Segments);
 }
 
 // =====================================================================================================================
@@ -174,6 +172,98 @@ void FAbyssPainter::CircleOutline(const FVector2D& Center, float Radius, const F
 // =====================================================================================================================
 // Filled polygons (custom vertices)
 // =====================================================================================================================
+
+void FAbyssPainter::RadialGradient(const FVector2D& Center, const FVector2D& InnerRadii, const FVector2D& OuterRadii,
+	const FLinearColor& Inner, const FLinearColor& Outer, int32 Segments) const
+{
+	if ((Inner.A <= 0.f && Outer.A <= 0.f) || OuterRadii.X <= 0.0 || OuterRadii.Y <= 0.0)
+	{
+		return;
+	}
+	const int32 Count = FMath::Clamp(Segments, 8, 128);
+	TArray<FVector2D> Points;
+	TArray<FLinearColor> Colors;
+	TArray<uint32> Indices;
+	const bool bDisc = InnerRadii.X <= 0.0 || InnerRadii.Y <= 0.0;
+	if (bDisc)
+	{
+		Points.Reserve(Count + 1);
+		Colors.Reserve(Count + 1);
+		Points.Add(Center);
+		Colors.Add(Inner);
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const double Angle = UE_DOUBLE_TWO_PI * static_cast<double>(Index) / static_cast<double>(Count);
+			Points.Add(Center + FVector2D(FMath::Cos(Angle) * OuterRadii.X, FMath::Sin(Angle) * OuterRadii.Y));
+			Colors.Add(Outer);
+		}
+		Indices.Reserve(Count * 3);
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			Indices.Add(0u);
+			Indices.Add(static_cast<uint32>(1 + Index));
+			Indices.Add(static_cast<uint32>(1 + (Index + 1) % Count));
+		}
+	}
+	else
+	{
+		Points.Reserve(Count * 2);
+		Colors.Reserve(Count * 2);
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const double Angle = UE_DOUBLE_TWO_PI * static_cast<double>(Index) / static_cast<double>(Count);
+			const FVector2D Dir(FMath::Cos(Angle), FMath::Sin(Angle));
+			Points.Add(Center + FVector2D(Dir.X * InnerRadii.X, Dir.Y * InnerRadii.Y));
+			Colors.Add(Inner);
+			Points.Add(Center + FVector2D(Dir.X * OuterRadii.X, Dir.Y * OuterRadii.Y));
+			Colors.Add(Outer);
+		}
+		Indices.Reserve(Count * 6);
+		for (int32 Index = 0; Index < Count; ++Index)
+		{
+			const uint32 A = static_cast<uint32>(Index * 2);
+			const uint32 B = A + 1u;
+			const uint32 C = static_cast<uint32>(((Index + 1) % Count) * 2);
+			const uint32 D = C + 1u;
+			Indices.Append({ A, B, D, A, D, C });
+		}
+	}
+	CustomVerts(Points, Colors, Indices);
+}
+
+void FAbyssPainter::TexturedCircle(const FSlateBrush* InBrush, const FVector2D& Center, float Radius, const FVector2D& UVCenter,
+	float UVRadius, const FLinearColor& Color, int32 Segments) const
+{
+	if (InBrush == nullptr || Radius <= 0.f || Color.A <= 0.f)
+	{
+		return;
+	}
+	const int32 Count = FMath::Clamp(Segments, 8, 128);
+	TArray<FVector2D> Points;
+	TArray<FVector2D> UVs;
+	Points.Reserve(Count + 1);
+	UVs.Reserve(Count + 1);
+	Points.Add(Center);
+	UVs.Add(UVCenter);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const double Angle = UE_DOUBLE_TWO_PI * static_cast<double>(Index) / static_cast<double>(Count);
+		const FVector2D Dir(FMath::Cos(Angle), FMath::Sin(Angle));
+		Points.Add(Center + Dir * static_cast<double>(Radius));
+		UVs.Add(UVCenter + Dir * static_cast<double>(UVRadius));
+	}
+	TArray<FLinearColor> Colors;
+	Colors.Add(Color);
+	TArray<uint32> Indices;
+	Indices.Reserve(Count * 3);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		Indices.Add(0u);
+		Indices.Add(static_cast<uint32>(1 + Index));
+		Indices.Add(static_cast<uint32>(1 + (Index + 1) % Count));
+	}
+	CustomVerts(Points, Colors, Indices, InBrush, &UVs);
+}
 
 void FAbyssPainter::CustomVerts(const TArray<FVector2D>& LocalPoints, const TArray<FLinearColor>& Colors, const TArray<uint32>& Indices,
 	const FSlateBrush* TextureBrush, const TArray<FVector2D>* UVs) const

@@ -25,7 +25,7 @@ namespace abyss {
 struct SimContext;
 struct EvHit;
 
-// 3.2: dodged -> miss; crit -> crit; else hit (A6: heavy / kill -> hit_heavy).
+// 3.2: dodged -> miss; crit -> crit; else hit (A6: the data's heavyHitCue weights, heavy / crit / kill -> hit_heavy).
 ABYSS_API std::optional<SfxId> SfxForCombatHit(const AudioRulesDef& r, bool dodged, bool crit, HitWeight weight);
 // skill_used by damage type (fire / ice / lightning; arcane + poison -> skill_buff; else skill_melee).
 ABYSS_API SfxId SfxForSkill(const AudioRulesDef& r, DamageType type);
@@ -55,7 +55,7 @@ class ABYSS_API MusicDirector {
 
   void OnZoneEntered(std::string_view zoneId);    // zone fade 2.0 / 1.0
   void OnCombatStateChanged(bool inCombat);       // A2 debounce handled upstream (CombatSystem 9.6)
-  void OnBossEngaged(std::string_view bossDefId);
+  void OnBossEngaged(std::string_view bossDefId);  // bossMusic score of that boss; none -> stays in combat
   void OnBossDisengaged();
   void OnBossDefeated(std::string_view bossDefId);  // victory, hold 3000 (boss 8000, A5), back to explore
   void PlayTrack(std::string_view zoneId, MusicState state);  // forced (story, jukebox); restarts
@@ -113,11 +113,12 @@ class ABYSS_API AudioDirector {
   void OnQuestTurnedIn(const QuestTurnedInMsg& m);    // quest_complete
   // NPC_INTERACT (quest-type NPCs) -> npc_interact; SHOP_OPEN (merchant / blacksmith) -> panel_open.
   void OnNpcInteracted(const NpcInteractedMsg& m);
-  // Audio 10.4 rule 2: story lock while a beat plays; a sequence's music theme plays under the lock and the zone's
-  // explore track returns when the director goes idle.
+  // Audio 10.4 rule 2: story lock while a beat plays; a sequence's music (musicTrack, musicState explore / victory)
+  // plays under the lock and the zone's explore track returns when the sequence ends (StoryStateMsg{false} at the end
+  // of the sequence beat, before any following beat retakes the lock), as the web's sequence() finally block does.
   void OnStoryState(const StoryStateMsg& m);
-  // Audio 10.4 rule 4: bar shown && combat on -> OnBossEngaged (boss_ch1); bar cleared without a kill ->
-  // OnBossDisengaged; cleared by the kill -> OnBossDefeated (victory, 8000 ms hold A5).
+  // Audio 10.4 rule 4: bar shown && combat on -> OnBossEngaged (bossMusic score, boss_ch1 for goblin_chief); bar
+  // cleared without a kill -> OnBossDisengaged; cleared by the kill -> OnBossDefeated (victory, 8000 ms hold A5).
   void OnBossBar(const BossBarMsg& m);
   void AdvanceRealTime(double realMs);              // music director timers (presentation clock)
   MusicDirector& Music() { return music_; }

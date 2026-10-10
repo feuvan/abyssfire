@@ -7,6 +7,7 @@
 
 #include "abyss/base/Math.h"
 #include "abyss/base/StrUtil.h"
+#include "abyss/base/Units.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/hero/Rewards.h"
@@ -54,9 +55,20 @@ EntityId GroundLootSystem::Drop(ItemInstance item, Vec2 pos, bool despawns) {
   GroundItem g;
   g.id = ctx_.ids.Next();
   g.pos = pos;
-  const double ox = rng.Float01() * 0.5;  // visual jitter (dropLoot: col + U*0.5, row + U*0.5)
-  const double oy = rng.Float01() * 0.5;
-  g.visualOffset = Vec2(ox, oy);
+  g.cacheDrop = !despawns;
+  const double u = rng.Float01();
+  const double v = rng.Float01();
+  if (g.cacheDrop) {
+    // dropLootAtPosition: screen jitter (U - 0.5) x 20 px, (U - 0.5) x 10 px -> tiles through the inverse iso projection
+    // (x = (c - r) * W / 2, y = (c + r) * H / 2).
+    const double sx = (u - 0.5) * l.cacheDropJitterXPx;
+    const double sy = (v - 0.5) * l.cacheDropJitterYPx;
+    const double a = sx / (kIsoTileWidthPx / 2.0);   // c - r
+    const double b = sy / (kIsoTileHeightPx / 2.0);  // c + r
+    g.visualOffset = Vec2((a + b) / 2.0, (b - a) / 2.0);
+  } else {
+    g.visualOffset = Vec2(u * 0.5, v * 0.5);  // dropLoot: col + U*0.5, row + U*0.5
+  }
   g.droppedAtMs = ctx_.Now();
   g.despawns = despawns;
   const double expires = despawns ? ctx_.Now() + l.groundItemLifetimeMs : 0.0;
@@ -65,7 +77,19 @@ EntityId GroundLootSystem::Drop(ItemInstance item, Vec2 pos, bool despawns) {
                                    g.id);
   }
   g.item = std::move(item);
-  ctx_.events.Emit(EvLootDropped{g.id, g.item.uid, g.item.baseId, g.item.quality, g.item.quantity, pos, expires});
+  EvLootDropped ev;
+  ev.drop = g.id;
+  ev.itemUid = g.item.uid;
+  ev.baseId = g.item.baseId;
+  ev.quality = g.item.quality;
+  ev.quantity = g.item.quantity;
+  ev.pos = pos;
+  ev.expiresAtMs = expires;
+  ev.item = g.item;
+  ev.visualOffset = g.visualOffset;
+  ev.cacheDrop = g.cacheDrop;
+  ev.fallInMs = g.cacheDrop ? l.cacheDropFallInMs : 0.0;
+  ctx_.events.Emit(std::move(ev));
   const EntityId id = g.id;
   items_.push_back(std::move(g));
   return id;
@@ -85,9 +109,21 @@ EntityId GroundLootSystem::DropPotion(PotionKind kind, int32_t amount, Vec2 pos)
   return p.id;
 }
 
-double GroundLootSystem::LootLuck() const {
+double GroundLootSystem::HeroAndGearLuck() const {
   double luck = 0;
   if (ctx_.sys.hero != nullptr) luck += ctx_.sys.hero->BaseStats().lck;  // raw: class base + allocated points
+  if (ctx_.sys.inventory != nullptr) {
+    // I1: gear lck (incl. diamond allStats) and gear magicFind count, through the same x0.5 / x0.3 coefficients.
+    const EquipStats gear = ctx_.sys.inventory->Items().GearStats();
+    luck += gear.Get(Stat::Lck) + gear.Get(Stat::MagicFind);
+  }
+  return luck;
+}
+
+double GroundLootSystem::TreasureCacheLuck() const { return HeroAndGearLuck(); }
+
+double GroundLootSystem::LootLuck() const {
+  double luck = HeroAndGearLuck();
   if (ctx_.sys.homestead != nullptr) {
     // The web's homeBonus is getTotalBonuses() = building bonuses only; the altar blessing (part of the port's
     // TotalBonuses, Homestead.h) feeds EquipStats instead and never reached the loot roll (loot Q3).
@@ -95,11 +131,6 @@ double GroundLootSystem::LootLuck() const {
             ctx_.sys.homestead->BlessingStats().Get(Stat::MagicFind);
   }
   if (ctx_.sys.pets != nullptr) luck += ctx_.sys.pets->Bonuses().Get(Stat::MagicFind);
-  if (ctx_.sys.inventory != nullptr) {
-    // I1: gear lck (incl. diamond allStats) and gear magicFind count, through the same x0.5 / x0.3 coefficients.
-    const EquipStats gear = ctx_.sys.inventory->Items().GearStats();
-    luck += gear.Get(Stat::Lck) + gear.Get(Stat::MagicFind);
-  }
   return luck;
 }
 
@@ -168,8 +199,7 @@ void GroundLootSystem::AutoLoot() {
   for (size_t i = items_.size(); i-- > 0;) {
     if (GlItemRank(items_[i].item.quality) < minRank) continue;
     if (DistSq(pos, items_[i].pos) > l.pickupRadiusSq) continue;
-    ItemInstance copy = items_[i].item;
-    if (GrantPickup(copy)) {
+    if (GrantPickupAt(i)) {
       RemoveItemAt(i, DespawnReason::PickedUp);
     } else {
       blocked = true;
@@ -180,13 +210,17 @@ void GroundLootSystem::AutoLoot() {
   autoLootBlocked_ = blocked;
 }
 
-bool GroundLootSystem::GrantPickup(ItemInstance& item) {
+bool GroundLootSystem::GrantPickupAt(size_t index) {
+  ItemInstance copy = items_[index].item;
+  ItemGrantOutcome out = ItemGrantOutcome::Refused;
   if (ctx_.sys.rewards != nullptr) {
-    return ctx_.sys.rewards->GrantItem(item, OverflowPolicy::Refuse, ItemSource::Pickup) == ItemGrantOutcome::Bag;
+    out = ctx_.sys.rewards->GrantItem(copy, OverflowPolicy::Refuse, ItemSource::Pickup);
+  } else if (ctx_.sys.inventory != nullptr) {
+    out = ctx_.sys.inventory->Grant(copy, OverflowPolicy::Refuse, ItemSource::Pickup);
   }
-  if (ctx_.sys.inventory != nullptr) {
-    return ctx_.sys.inventory->Grant(item, OverflowPolicy::Refuse, ItemSource::Pickup) == ItemGrantOutcome::Bag;
-  }
+  if (out == ItemGrantOutcome::Bag) return true;
+  // Refused: the bag may have taken part of a stack (7.2 / 20.8); the rest stays on the ground.
+  if (copy.quantity > 0 && copy.quantity < items_[index].item.quantity) items_[index].item.quantity = copy.quantity;
   return false;
 }
 
@@ -244,8 +278,7 @@ bool GroundLootSystem::TryPickUp(EntityId drop) {
   for (size_t i = 0; i < items_.size(); ++i) {
     if (items_[i].id != drop) continue;
     if (!InPickupRange(drop)) return false;  // the caller walks there first (W8 / FIX Q22)
-    ItemInstance copy = items_[i].item;
-    if (!GrantPickup(copy)) {
+    if (!GrantPickupAt(i)) {
       ctx_.events.Log(MakeLoc("sys.inventory.bagFull"), LogType::System);
       return false;
     }
@@ -280,6 +313,8 @@ void GroundLootSystem::FillSnapshot(Snapshot& out) const {
     v.quantity = g.item.quantity;
     v.pos = g.pos;
     v.visualOffset = g.visualOffset;
+    v.item = &g.item;
+    v.cacheDrop = g.cacheDrop;
     out.groundItems.push_back(std::move(v));
   }
   for (const PotionDrop& p : potions_) out.potions.push_back({p.id, p.kind, p.amount, p.pos});

@@ -30,7 +30,8 @@ struct StatTotal {
   double value = 0;
 };
 
-// itemStatTotals (14): insertion-ordered.
+// itemStatTotals (14): insertion-ordered - __avgDamage, __baseDefense, affixes, the C11 legendary special effect
+// (ItemSpecialEffectStat; port: it is a gear stat since C11), socketed gems.
 ABYSS_API std::vector<StatTotal> ItemStatTotals(const DataStore& data, const ItemInstance& item);
 
 struct CompareTarget {

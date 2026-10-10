@@ -36,6 +36,19 @@ const exp = <T>(mod: unknown, name: string): T => {
  */
 const REMOVED_WARES: Record<string, string> = { c_tp_scroll: 'I4', c_id_scroll: 'I2' };
 
+/**
+ * FIX loot Q12 (loot-items-inventory.md 12.7 / 19; world-map-nav.md 13 wandering_merchant): the event's merchantItems
+ * are not item bases (`iron_sword`, `hp_potion`, ...), so the web opened an empty shop. The port maps every listed id to
+ * a real base of that zone's tier (maps.json levelRange); priceMultiplier stays unused (W10 parity).
+ */
+const WANDERING_MERCHANT_IDS: Record<string, Record<string, string>> = {
+  emerald_plains: { iron_sword: 'w_short_sword', leather_armor: 'a_leather_armor', hp_potion: 'c_hp_potion_s', mp_potion: 'c_mp_potion_s' },
+  twilight_forest: { steel_sword: 'w_broad_sword', chain_armor: 'a_chain_mail', hp_potion: 'c_hp_potion_m', mp_potion: 'c_mp_potion_m' },
+  anvil_mountains: { mithril_sword: 'w_claymore', plate_armor: 'a_plate_armor', hp_potion: 'c_hp_potion_m', mp_potion: 'c_mp_potion_m' },
+  scorching_desert: { desert_blade: 'w_flamberge', desert_armor: 'a_dragon_armor', hp_potion: 'c_hp_potion_l', mp_potion: 'c_mp_potion_m' },
+  abyss_rift: { abyssal_blade: 'w_demon_blade', demon_armor: 'a_demon_armor', hp_potion: 'c_hp_potion_l', mp_potion: 'c_mp_potion_m' },
+};
+
 function treeIdOf(tree: DialogueTree | undefined): string | null {
   if (!tree) return null;
   const id = Object.entries(DialogueTrees).find(([, t]) => t === tree)?.[0];
@@ -81,8 +94,16 @@ export function exportWorld(): TableResult[] {
   for (const item of Object.keys(REMOVED_WARES)) assert(removedWares.some(r => r.itemId === item), `REMOVED_WARES: nobody sells ${item}`);
   const eventMerchant: Record<string, unknown> = {};
   for (const [zone, z] of Object.entries(ZONE_EVENT_DATA)) {
-    eventMerchant[zone] = { items: [...z.merchantItems], unknownItemIds: z.merchantItems.filter(i => !getItemBase(i)) };
+    const idMap = WANDERING_MERCHANT_IDS[zone] ?? {};
+    const unknownItemIds = z.merchantItems.filter(i => !getItemBase(i));
+    for (const id of unknownItemIds) assert(idMap[id], `WANDERING_MERCHANT_IDS: ${zone} does not map ${id}`);
+    for (const [from, to] of Object.entries(idMap)) {
+      assert(z.merchantItems.includes(from), `WANDERING_MERCHANT_IDS: ${zone} maps ${from}, which it does not sell`);
+      assert(getItemBase(to) && !REMOVED_WARES[to], `WANDERING_MERCHANT_IDS: ${zone}.${from} -> unknown or removed base ${to}`);
+    }
+    eventMerchant[zone] = { items: [...z.merchantItems], unknownItemIds, idMap: { ...idMap } };
   }
+  for (const zone of Object.keys(WANDERING_MERCHANT_IDS)) assert(ZONE_EVENT_DATA[zone], `WANDERING_MERCHANT_IDS: unknown zone ${zone}`);
 
   // ── lore.json / achievements.json ──
   const achievements = exp<unknown[]>(AchievementMod, 'ACHIEVEMENTS');
@@ -132,7 +153,7 @@ export function exportWorld(): TableResult[] {
     {
       file: 'shops.json',
       source: ['src/data/npcs.ts', 'src/systems/RandomEventSystem.ts'],
-      data: { shops, wanderingMerchant: eventMerchant, port: { removedWares } },
+      data: { shops, wanderingMerchant: eventMerchant, port: { removedWares, wanderingMerchantIdMap: 'loot Q12 FIX' } },
       counts: { shops: Object.keys(shops).length },
     },
     {
@@ -191,6 +212,7 @@ export function exportWorld(): TableResult[] {
         holdMoveRepathMs: exp<number>(ZoneSceneMod, 'HOLD_MOVE_REPATH_MS'),
         exitRadiusSq: 2.25,
         exitArmDistance: Math.sqrt(6),
+        exitArmDistanceSq: 6, // W8 strict distSq > 6 (Math.sqrt(6) ** 2 is 5.999999999999999)
         exitArmNote: 'W8: an exit fires only after the hero was > sqrt(6) tiles from it since entering the zone',
         campfire: {
           radiusTiles: exp<number>(ZoneSceneMod, 'CAMPFIRE_RECOVERY_RADIUS'),

@@ -145,6 +145,23 @@ void FAbyssAudioManifest::MakeDefaults(const abyss::AudioTables* CoreCues)
 	}
 	Footsteps.Notifies.Add(FName(TEXT("FootL")));
 	Footsteps.Notifies.Add(FName(TEXT("FootR")));
+
+	// audio.md 11 zoneOverrides (QUIRK Q8): the Ember Tower plays the procedural plains score.
+	TMap<FName, FName>& Tower = ZoneOverrides.Add(FName(TEXT("ember_tower")));
+	Tower.Add(FName(TEXT("emerald_plains_explore")), FName(TEXT("emerald_plains_explore_score")));
+	Tower.Add(FName(TEXT("emerald_plains_combat")), FName(TEXT("emerald_plains_combat_score")));
+
+	// audio.md 8.3: the Chapter 1 soundtrack (tracks that are packaged and have a menu.jukebox.track.* title).
+	const TCHAR* const JukeboxRows[][2] = {
+		{ TEXT("menu.jukebox.track.menu"), TEXT("menu_explore") },
+		{ TEXT("menu.jukebox.track.emerald_plains.explore"), TEXT("emerald_plains_explore") },
+		{ TEXT("menu.jukebox.track.emerald_plains.combat"), TEXT("emerald_plains_combat") },
+		{ TEXT("menu.jukebox.track.abyss_rift.explore"), TEXT("abyss_rift_explore") },
+	};
+	for (const auto& Row : JukeboxRows)
+	{
+		Jukebox.Tracks.Add(FAbyssJukeboxEntry{ FString(Row[0]), FName(Row[1]) });
+	}
 }
 
 bool FAbyssAudioManifest::Load(const abyss::AudioTables* CoreCues, FString& OutSource)
@@ -262,11 +279,36 @@ bool FAbyssAudioManifest::LoadFromJson(std::string_view Json, const abyss::Audio
 		Track.bLoop = M.Get("loop").AsBool(true);
 		Track.LengthSec = JsonFloat(M.Get("lengthSec"), 0.f);
 		Track.Gain = FMath::Max(0.f, JsonFloat(M.Get("gain"), 1.f));
+		const abyss::JsonValue& Credit = M.Get("credit");
+		if (Credit.IsObject())
+		{
+			FAbyssMusicCredit Out;
+			Out.Title = AbyssText::ToFString(Credit.Get("title").AsString());
+			Out.Author = AbyssText::ToFString(Credit.Get("author").AsString());
+			Out.License = AbyssText::ToFString(Credit.Get("license").AsString());
+			Out.Url = AbyssText::ToFString(Credit.Get("url").AsString());
+			Track.Credit = MoveTemp(Out);
+		}
 		Tracks.Add(Track.Key, Track);
 	}
 	if (const FName Menu = JsonName(Root.Get("menuTrack")); !Menu.IsNone())
 	{
 		MenuTrack = Menu;
+	}
+	if (Root.Get("zoneOverrides").IsObject())
+	{
+		ZoneOverrides.Reset();
+		for (const abyss::JsonMember& Zone : Root.Get("zoneOverrides").Members())
+		{
+			TMap<FName, FName>& Table = ZoneOverrides.Add(FName(AbyssText::ToFString(Zone.key)));
+			for (const abyss::JsonMember& Row : Zone.value.Members())
+			{
+				if (const FName To = JsonName(Row.value); !To.IsNone())
+				{
+					Table.Add(FName(AbyssText::ToFString(Row.key)), To);
+				}
+			}
+		}
 	}
 
 	// ---- stingers ----
@@ -338,6 +380,28 @@ bool FAbyssAudioManifest::LoadFromJson(std::string_view Json, const abyss::Audio
 		Footsteps.Gain = FMath::Max(0.f, JsonFloat(Fs.Get("gain"), Footsteps.Gain));
 	}
 
+	// ---- jukebox (audio.md 8.3) ----
+	const abyss::JsonValue& Jb = Root.Get("jukebox");
+	if (Jb.IsObject())
+	{
+		if (Jb.Has("tracks"))
+		{
+			Jukebox.Tracks.Reset();
+			for (const abyss::JsonValue& Row : Jb.Get("tracks").Items())
+			{
+				FAbyssJukeboxEntry Entry;
+				Entry.TitleKey = AbyssText::ToFString(Row.Get("titleKey").AsString());
+				Entry.Track = JsonName(Row.Get("track"));
+				if (!Entry.Track.IsNone())
+				{
+					Jukebox.Tracks.Add(MoveTemp(Entry));
+				}
+			}
+		}
+		Jukebox.FadeOutSec = FMath::Max(0.f, JsonFloat(Jb.Get("fadeOutSec"), Jukebox.FadeOutSec));
+		Jukebox.FadeInSec = FMath::Max(0.f, JsonFloat(Jb.Get("fadeInSec"), Jukebox.FadeInSec));
+	}
+
 	// ---- spatial (A4) ----
 	const abyss::JsonValue& Sp = Root.Get("spatial");
 	if (Sp.IsObject())
@@ -381,6 +445,18 @@ const FAbyssAudioCueDef* FAbyssAudioManifest::FindCue(FName CueId) const
 const FAbyssMusicTrackDef* FAbyssAudioManifest::FindTrack(FName TrackKey) const
 {
 	return Tracks.Find(TrackKey);
+}
+
+FName FAbyssAudioManifest::ApplyZoneOverride(FName ZoneId, FName TrackKey) const
+{
+	if (const TMap<FName, FName>* Table = ZoneOverrides.Find(ZoneId))
+	{
+		if (const FName* To = Table->Find(TrackKey))
+		{
+			return *To;
+		}
+	}
+	return TrackKey;
 }
 
 FAbyssMusicTrackDef FAbyssAudioManifest::ResolveTrack(FName TrackKey) const

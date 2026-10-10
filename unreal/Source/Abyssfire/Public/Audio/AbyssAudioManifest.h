@@ -8,6 +8,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Misc/Optional.h"
 #include "UObject/SoftObjectPath.h"
 
 #include <string_view>
@@ -47,6 +48,15 @@ struct FAbyssAudioCueDef
 	TMap<FName, TArray<FName>> VocalLayer;
 };
 
+/** Licence credit of a recorded track (CC0 recordings from OpenGameArt; the credits screen lists them). */
+struct FAbyssMusicCredit
+{
+	FString Title;
+	FString Author;
+	FString License;
+	FString Url;
+};
+
 struct FAbyssMusicTrackDef
 {
 	FName Key;
@@ -54,6 +64,23 @@ struct FAbyssMusicTrackDef
 	bool bLoop = true;
 	float LengthSec = 0.f;
 	float Gain = 1.f;
+	/** Recordings only (procedural scores have no credit). */
+	TOptional<FAbyssMusicCredit> Credit;
+};
+
+/** One title-menu soundtrack entry (audio.md 8.3; i18n menu.jukebox.track.*). */
+struct FAbyssJukeboxEntry
+{
+	/** i18n key of the row title. */
+	FString TitleKey;
+	FName Track;
+};
+
+struct FAbyssJukeboxDefs
+{
+	TArray<FAbyssJukeboxEntry> Tracks;
+	float FadeOutSec = 1.f;
+	float FadeInSec = 0.5f;
 };
 
 struct FAbyssDuckDef
@@ -128,12 +155,17 @@ public:
 	const FAbyssMusicTrackDef* FindTrack(FName TrackKey) const;
 	/** The track, or the SW_MUS_<PascalCase(key)> convention. */
 	FAbyssMusicTrackDef ResolveTrack(FName TrackKey) const;
+	/** The track a zone plays for a core track key (audio.md 11 zoneOverrides; e.g. the Ember Tower's score). */
+	FName ApplyZoneOverride(FName ZoneId, FName TrackKey) const;
 
 	FName MenuTrack = TEXT("menu_explore");
 	FAbyssStingerDefs Stingers;
 	FAbyssAmbienceDefs Ambience;
 	FAbyssFootstepDefs Footsteps;
 	FAbyssSpatialDefs Spatial;
+	FAbyssJukeboxDefs Jukebox;
+	/** zone id -> (core track key -> track key played instead). */
+	TMap<FName, TMap<FName, FName>> ZoneOverrides;
 	float DefaultMusicVolume = 0.6f;
 	float DefaultSfxVolume = 0.8f;
 	bool IsFromFile() const { return bFromFile; }

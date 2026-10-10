@@ -109,6 +109,9 @@ class ABYSS_API ZoneRuntime {
   PortalRefusal CanUseTownPortal() const;
   bool UseTownPortal();
   void CancelTownPortal();         // movement input, damage >= 10 % max HP, death (W3)
+  // HeroMoveInputMsg (keyboard / stick / click-move, W3 / U10): cancels the channel when the data switch
+  // world_constants townPortal.cancelOnMove is on (GameSim wiring).
+  void OnHeroMoveInput();
   bool IsPortaling() const { return portalTimer_ != kNoTimer; }
 
   // ---- queries ----

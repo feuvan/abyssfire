@@ -47,7 +47,7 @@ struct FAbyssPainter
 		int32 Steps = 16) const;
 	void VerticalGradient3(const FVector2D& Pos, const FVector2D& Size, const FLinearColor& Top, const FLinearColor& Mid, float MidAt,
 		const FLinearColor& Bottom, int32 Steps = 18) const;
-	/** Soft radial glow: concentric circles fading from Inner (centre) to transparent at Radius. */
+	/** Soft radial glow fading from Inner (centre) to transparent at Radius (a gradient mesh; Rings = density hint). */
 	void Glow(const FVector2D& Center, float Radius, const FLinearColor& Inner, int32 Rings = 8) const;
 
 	// ---- lines ----
@@ -69,6 +69,15 @@ struct FAbyssPainter
 	/** Textured quad: four corners (any orientation) with their UVs, e.g. the rotated minimap. */
 	void TexturedQuad(const FSlateBrush* Brush, const FVector2D (&Corners)[4], const FVector2D (&UVs)[4],
 		const FLinearColor& Color = FLinearColor::White) const;
+	/**
+	 * Radial gradient between two ellipses (radii per axis): Inner on the inner ellipse, Outer on the outer one. Zero
+	 * InnerRadii = a disc from the centre (CSS createRadialGradient stops, story mood backdrops and vignettes).
+	 */
+	void RadialGradient(const FVector2D& Center, const FVector2D& InnerRadii, const FVector2D& OuterRadii, const FLinearColor& Inner,
+		const FLinearColor& Outer, int32 Segments = 48) const;
+	/** Textured disc: the brush's UV circle (UVCenter, UVRadius) on a circle of Radius (round portrait medallions). */
+	void TexturedCircle(const FSlateBrush* Brush, const FVector2D& Center, float Radius, const FVector2D& UVCenter, float UVRadius,
+		const FLinearColor& Color = FLinearColor::White, int32 Segments = 48) const;
 	/** Quad with per-corner colours (TL, TR, BR, BL). */
 	void ColoredQuad(const FVector2D& Pos, const FVector2D& Size, const FLinearColor& TL, const FLinearColor& TR, const FLinearColor& BR,
 		const FLinearColor& BL) const;

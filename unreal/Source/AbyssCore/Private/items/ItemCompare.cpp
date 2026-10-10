@@ -62,6 +62,11 @@ std::vector<StatTotal> ItemStatTotals(const DataStore& data, const ItemInstance&
   }
   if (item.identified || item.quality == ItemQuality::Normal) {
     for (const ItemAffix& a : item.affixes) CmpAdd(out, CmpStatKey(a.stat), a.value);
+    // C11: a named legendary's special effect is a real gear stat (Inventory::EquipmentStatBag adds it), so the
+    // compare deltas and the ring score (FIX Q18 slot choice) count it too.
+    Stat effect{};
+    double effectValue = 0;
+    if (ItemSpecialEffectStat(item, data, effect, effectValue)) CmpAdd(out, CmpStatKey(effect), effectValue);
   }
   for (const GemInstance& g : item.sockets) CmpAdd(out, CmpStatKey(g.stat), g.value);
   return out;

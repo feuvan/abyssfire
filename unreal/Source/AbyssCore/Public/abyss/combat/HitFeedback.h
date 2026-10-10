@@ -35,8 +35,9 @@ struct ActionTiming {
 };
 
 // Attack contact (10.1). Contact at speed 1 comes from the manifest clip `clip` of the asset mapped to `artId`
-// (AnimClipDef::contactMs) when present, else from anim_timing contact[rig].frameContactMs. `attackDuration` is
-// presets[rig].attackDuration. The hero passes its derived attackSpeed, monsters def.attackSpeedMs.
+// (AnimClipDef::contactMs) when present and off the web beat by more than its whole-ms rounding (0.5 ms), else from
+// anim_timing contact[rig].frameContactMs (the exact beat, so round(frameContactMs x speed) matches the web).
+// `attackDuration` is presets[rig].attackDuration. The hero passes its derived attackSpeed, monsters def.attackSpeedMs.
 ABYSS_API ActionTiming ComputeAttackTiming(const AnimTimingTable& t, const AssetManifest& manifest, std::string_view artId,
                                            AnimRig rig, double attackIntervalMs, std::string_view clip = "Attack01");
 

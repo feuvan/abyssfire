@@ -224,6 +224,7 @@
       "trueDebounce": true,
       "exploreResumesPosition": true,
       "bossCh1Score": "boss_ch1",
+      "bossMusic": {"goblin_chief": "boss_ch1"},
       "decision": "A2, A5"
     }
   },

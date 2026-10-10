@@ -65,11 +65,25 @@ std::string QwItemKind(const DataStore& data, const QuestObjectiveDef& obj) {
   return std::string(data.Quests().ItemKindFor(obj.targetId));
 }
 
-// Escort NPC name (Q11: data.escortNpc.<questId>, else the data's zh name).
+// The quest id without its "q_" prefix (the escort / defend name keys are exported that way).
+std::string_view QwBareQuestId(std::string_view questId) {
+  return questId.substr(0, 2) == "q_" ? questId.substr(2) : questId;
+}
+
+// The resolving key, else "" (the caller falls back to the data's zh name).
+std::string QwResolvedKey(const DataStore& data, std::string key) {
+  return data.Strings().Has(key) ? key : std::string();
+}
+
+// A name argument: the key when it resolves (Q11), else the data's zh text.
+I18nArg QwNameArg(std::string argName, const std::string& resolvedKey, const std::string& zhName) {
+  if (!resolvedKey.empty()) return KeyArg(std::move(argName), resolvedKey);
+  return I18nArg{std::move(argName), zhName, false};
+}
+
+// Escort NPC name (Q11: data.escortNpc.<bare quest id>, else the data's zh name).
 I18nArg QwEscortNameArg(const DataStore& data, const QuestDef& q) {
-  const std::string key = "data.escortNpc." + q.id;
-  if (data.Strings().Has(key)) return KeyArg("npcName", key);
-  return I18nArg{"npcName", q.escortNpc.name, false};
+  return QwNameArg("npcName", QwResolvedKey(data, EscortNpcNameKey(q.id)), q.escortNpc.name);
 }
 
 std::string QwSpotKey(std::string_view questId, int32_t objectiveIndex) { return StrCat(questId, ":", objectiveIndex); }
@@ -82,6 +96,12 @@ std::vector<std::string> QwOpenQuestIds(const QuestSystem& qs) {
 }
 
 }  // namespace
+
+std::string EscortNpcNameKey(std::string_view questId) { return StrCat("data.escortNpc.", QwBareQuestId(questId)); }
+
+std::string DefendTargetNameKey(std::string_view questId) {
+  return StrCat("data.defendTarget.", QwBareQuestId(questId));
+}
 
 QuestWorld::QuestWorld(SimContext& ctx) : ctx_(ctx) {}
 
@@ -120,13 +140,17 @@ void QuestWorld::OnZoneExit() {
 // NPC interaction (6.1) and the quest card (5.3)
 // ---------------------------------------------------------------------------------------------------------------------
 
-// interactNPC: log dialogue[0] (info; Q11 key), talk progress (any NPC type, before anything opens), craft phases, then
+// interactNPC: log dialogue[0] (info; Q11 key, else the zh line stored in the data - 0.3), talk progress (any NPC type, before anything opens), craft phases, then
 // by type: shop (blacksmith = shop + forge) / quest (card, else tree, else the linear panel) / stash keeper (I7).
 void QuestWorld::InteractNpc(std::string_view npcId) {
   const NpcDef* def = ctx_.data.FindNpc(npcId);
   if (def == nullptr) return;
   const std::string id = def->id;
-  if (!def->dialogue.empty()) ctx_.events.Log(MakeLoc("data.npc." + id + ".dialogue.0"), LogType::Info);
+  if (!def->dialogue.empty()) {
+    // A LocText whose key is missing renders as the key itself, so the zh fallback travels as the key.
+    const std::string key = "data.npc." + id + ".dialogue.0";
+    ctx_.events.Log(MakeLoc(ctx_.data.Strings().Has(key) ? key : def->dialogue[0]), LogType::Info);
+  }
   if (ctx_.sys.quests != nullptr) ctx_.sys.quests->UpdateProgress(ObjectiveType::Talk, id);
   AdvanceCraftFromNpc(id);
   const NpcPlacement* placement = ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone() ? ctx_.sys.zone->FindNpc(id)
@@ -563,15 +587,16 @@ void QuestWorld::TickGatherAndClues() {
     const bool hasNote = ctx_.data.Strings().Has(noteKey);
     ctx_.events.Log(MakeLoc("zone.quest.clueFound", {QwTargetNameArg(ctx_.data, obj)}), LogType::System);
     if (hasNote) ctx_.events.Log(MakeLoc(noteKey), LogType::System);
-    // The note floats above the spot (UE shows the target label over it from the clue's EvQuestUpdate).
+    // What the hero reads off the clue floats above the spot: "<targetName>\n<note>" (zone.quest.clueNote), just the
+    // name without a note.
     EvFloatingText ft;
     ft.kind = FloatingTextKind::Custom;
     ft.pos = n.pos;
+    const I18nArg name = QwTargetNameArg(ctx_.data, obj);
     if (hasNote) {
-      ft.text = MakeLoc(noteKey);
+      ft.text = MakeLoc("zone.quest.clueNote", {name, KeyArg("note", noteKey)});
     } else {
-      const I18nArg name = QwTargetNameArg(ctx_.data, obj);
-      ft.text = name.isKey ? MakeLoc(name.value) : MakeLoc(obj.targetName);
+      ft.text = MakeLoc(name.value);  // the name key, or the zh name (a missing key renders as itself)
     }
     ctx_.events.Emit(std::move(ft));
     QuestProgressSource src;
@@ -628,6 +653,8 @@ void QuestWorld::SpawnEscort() {
     escort_ = EscortState{};
     escort_.active = true;
     escort_.questId = q->id;
+    escort_.nameKey = QwResolvedKey(ctx_.data, EscortNpcNameKey(q->id));
+    escort_.name = q->escortNpc.name;
     escort_.entity = ctx_.ids.Next();
     escort_.pos = q->escortNpc.start.Center();
     escort_.dest = q->escortNpc.dest;
@@ -761,6 +788,8 @@ void QuestWorld::SpawnDefend() {
     defend_ = DefendState{};
     defend_.active = true;
     defend_.questId = q->id;
+    defend_.nameKey = QwResolvedKey(ctx_.data, DefendTargetNameKey(q->id));
+    defend_.name = q->defendTarget.name;
     defend_.entity = ctx_.ids.Next();
     defend_.pos = q->defendTarget.pos.Center();
     defend_.totalWaves = q->defendTarget.totalWaves;
@@ -774,10 +803,9 @@ void QuestWorld::SpawnDefend() {
     defend_.hp = defend_.maxHp;
     ctx_.events.Emit(EvEntitySpawned{defend_.entity, EntityKind::DefendTarget, q->id, q->defendTarget.spriteKey,
                                      defend_.pos, Vec2(0, 1), 1.0});
-    const std::string key = "data.defendTarget." + q->id;
-    const I18nArg name = ctx_.data.Strings().Has(key) ? KeyArg("targetName", key)
-                                                      : I18nArg{"targetName", q->defendTarget.name, false};
-    ctx_.events.Log(MakeLoc("zone.defend.targetNeedsProtection", {name}), LogType::System);
+    ctx_.events.Log(
+        MakeLoc("zone.defend.targetNeedsProtection", {QwNameArg("targetName", defend_.nameKey, defend_.name)}),
+        LogType::System);
     return;
   }
 }

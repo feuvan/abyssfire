@@ -82,8 +82,9 @@ struct BuybackEntry {
 
 struct AddResult {
   bool ok = false;
-  int32_t stackedQuantity = 0;  // units merged into an existing stack
+  int32_t stackedQuantity = 0;  // units merged into an existing stack (also when !ok: the web topped up first)
   bool newEntry = false;
+  int32_t remaining = 0;        // !ok: the units left over (the web's mutated item.quantity); ok: 0
 };
 
 // Pure container. Stack matching by baseId, one partial stack topped up (7.2, Q21 kept), the remainder appended.
@@ -92,8 +93,11 @@ class ABYSS_API Inventory {
   explicit Inventory(const DataStore& data);
 
   // ---- bag ----
-  // addItem (7.2). FIX (port): atomic - when the whole quantity cannot fit (bag full after the top-up) nothing changes
-  // and ok = false (the web topped up and then lost track of the remainder).
+  // addItem (7.2, Q21 kept, worked example 20.8): a stackable tops up the first partial stack of its base, then the
+  // remainder needs a new entry; with a full bag that fails (ok = false) AFTER the top-up - the bag keeps the merged
+  // units and `remaining` is what is left of the item (20.8: 19 + 3 into a full bag -> 20, false, remaining 2). Callers
+  // that hold the item (ground pickups, stash take, InventorySystem::Grant) keep `remaining` units, as the web's mutated
+  // item did. Use CanAdd first for all-or-nothing transactions (shop purchase, FIX Q6).
   AddResult AddItem(ItemInstance item);
   // True iff AddItem would succeed: the first partial stack takes everything, or the bag has a free entry.
   bool CanAdd(const ItemInstance& item) const;
@@ -108,7 +112,8 @@ class ABYSS_API Inventory {
   int32_t CountOf(std::string_view baseId) const;  // summed over stacks
   // sortInventory (7.3): stable by quality order, then type order (economy.json sortOrder), then the localised display
   // name (ItemDisplayName in `names`' locale, default the data's current locale; the port rule of 7.3 - the web compared
-  // the stored zh name with localeCompare). Names compare by UTF-8 byte order: the core has no collation tables.
+  // the stored zh name with localeCompare) compared with CompareItemNames: the collator UE installs for the current
+  // culture (SetItemNameCollator, Item.h), else UTF-8 byte order.
   void SortBag(const I18n* names = nullptr);
   int32_t DestroyNormalItems();  // 7.3: normal weapons / armour / accessories
   int32_t Capacity() const;  // economy.json bagCapacity (100 entries)
@@ -139,7 +144,9 @@ class ABYSS_API Inventory {
 
   // ---- stash (10) ----
   InvResult MoveToStash(std::string_view uid, int32_t capacity);  // whole entry, no stacking in the stash
-  InvResult MoveFromStash(std::string_view uid);                  // addItem (stacks into the bag)
+  // moveFromStash: addItem (stacks into the bag). BagFull when the bag cannot take it all; a partial top-up still
+  // happens (the stash entry keeps the remainder, like the web's shared item object).
+  InvResult MoveFromStash(std::string_view uid);
   void PushStashOverflow(ItemInstance item);  // quest turn-in / Q5 chest overflow (ignores capacity)
   std::span<const ItemInstance> Stash() const { return stash_; }
   const ItemInstance* FindInStash(std::string_view uid) const;
@@ -183,6 +190,7 @@ class ABYSS_API InventorySystem {
   ItemUidGenerator& Uids() { return uids_; }
 
   // Commands (each rejected while Dying, C12).
+  // Equip: I3 refusal logs sys.inventory.levelTooLow {level = base levelReq} (port key) + the error SFX.
   InvResult Equip(std::string_view uid);
   InvResult Unequip(EquipSlot slot);
   // 7.4 + I4: heal / mana potions restore the hero (Hero::Heal / RestoreMana); antidote: StatusEffectSystem::Remove(hero,
@@ -198,6 +206,8 @@ class ABYSS_API InventorySystem {
   // highest restore value (first in bag order on ties); "" when there is none.
   std::string ResolvePotionSlot(PotionSlot slot) const;
   PotionSlotView PotionSlotState(PotionSlot slot) const;
+  // discardItem (7.3): destroys a bag entry, logs sys.inventory.discarded, emits EvItemDiscarded {item} (17) and
+  // EvInventoryChanged.
   InvResult Discard(std::string_view uid);
   int32_t DestroyNormals();
   void SortBag();
@@ -213,10 +223,12 @@ class ABYSS_API InventorySystem {
   InvResult StashTake(std::string_view uid);
   int32_t StashCapacity() const;                  // 80 + homestead stashSlots
 
-  // The one item grant path (RewardService::GrantItem calls it; ground pickups use source Pickup + Refuse): bag first,
-  // then `policy` (OverflowPolicy). Moves from `item` on Bag / Stash / Lost and leaves it untouched on Refused. Logs
-  // (sys.inventory.obtained / obtainedQty, bagFull when lost) + EvInventoryChanged / EvStashChanged; a Pickup also
-  // publishes ItemPickedMsg and emits EvItemPicked.
+  // The one item grant path (RewardService::GrantItem calls it; ground pickups use source Pickup + Refuse): bag first
+  // (Inventory::AddItem), then `policy` (OverflowPolicy) for what did not fit. Moves from `item` on Bag / Stash / Lost.
+  // On Refused `item` stays with the caller holding the units the bag did not take (a stackable may have topped up the
+  // first partial stack first, 7.2 / 20.8: a ground drop keeps only the rest). Stash pushes the remainder, Lose drops it
+  // (bagFull log). Logs sys.inventory.obtained / obtainedQty on success + EvInventoryChanged / EvStashChanged; a Pickup
+  // also publishes ItemPickedMsg and emits EvItemPicked.
   ItemGrantOutcome Grant(ItemInstance& item, OverflowPolicy policy, ItemSource source);
 
   void FillSnapshot(Snapshot& out) const;

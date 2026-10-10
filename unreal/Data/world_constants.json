@@ -24,6 +24,7 @@
   "holdMoveRepathMs": 120,
   "exitRadiusSq": 2.25,
   "exitArmDistance": 2.449489742783178,
+  "exitArmDistanceSq": 6,
   "exitArmNote": "W8: an exit fires only after the hero was > sqrt(6) tiles from it since entering the zone",
   "campfire": {"radiusTiles": 5, "hpMul": 50, "mpMul": 50},
   "safeZoneRadiusDefault": 9,

@@ -13,7 +13,12 @@
 #include "abyss/base/Json.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/save/SaveIO.h"
+#include "abyss/hero/Hero.h"
 #include "abyss/sim/GameSim.h"
+#include "abyss/sim/SimContext.h"
+#include "abyss/story/StoryDirector.h"
+#include "abyss/world/Locomotion.h"
+#include "abyss/world/Zone.h"
 #include "doctest/doctest.h"
 
 using namespace abyss;
@@ -606,5 +611,72 @@ TEST_SUITE("save") {
     newer.replace(newer.find(R"("version":4)"), 11, R"("version":9)");
     CHECK(sim2->LoadGame(newer, &err) == SaveError::VersionTooNew);
     CHECK(sim2->SaveGame(1760000000000) == reloaded);
+  }
+
+  // save-ui-input 3.4 rule 1 / 3.6, world 9.2, DECISIONS C12: UE answers EvSaveRequested{zoneChange} after the step
+  // that set `transitioning`, so BuildSave runs with CanSave() false. Only a Dying hero is rewritten to camps[0]; the
+  // zone change save keeps the live hero (old zone, position, HP / MP), and so does any save inside the 400 ms fade.
+  TEST_CASE("GameSim: the zone-change save keeps the live hero in the old zone; only a Dying hero is respawned (C12)") {
+    const DataStore& data = SaveTestData();
+    SimConfig cfg;
+    cfg.milestone1 = false;  // the emerald_plains exit transitions (no W7 sealed gate)
+    auto sim = GameSim::Create(data, cfg);
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 5, 1));
+    SimContext& ctx = sim->Context();
+    ctx.sys.story->FinishAllBeats();
+    sim->Step();  // the hero starts far from the exit: armed (W8)
+    REQUIRE(ctx.sys.zone->Exits().size() == 1);
+    REQUIRE(ctx.sys.zone->Exits()[0].armed);
+    Hero& hero = *ctx.sys.hero;
+    hero.SetHp(std::floor(hero.MaxHp() * 0.5));
+    hero.SetMana(std::floor(hero.MaxMana() * 0.25));
+    ctx.sys.locomotion->Teleport(Vec2(117.4, 60), TeleportReason::Debug);  // distSq 2.56 > 2.25: not yet
+    sim->Step();
+    REQUIRE_FALSE(ctx.session.transitioning);
+    ctx.sys.locomotion->Teleport(Vec2(117.6, 60.25), TeleportReason::Debug);  // distSq 2.0225 < 2.25
+    sim->Step();
+    REQUIRE(ctx.session.transitioning);
+    bool zoneChangeRequested = false;
+    for (const Event& e : sim->Events()) {
+      if (const EvSaveRequested* r = std::get_if<EvSaveRequested>(&e)) {
+        zoneChangeRequested = zoneChangeRequested || r->reason == EnumName(SaveReason::ZoneChange);
+      }
+    }
+    CHECK(zoneChangeRequested);
+    CHECK_FALSE(sim->CanSave());  // transitioning (rule 1's CanSave), yet the requested save must be written right
+    const Vec2 live = hero.Position();
+    const double hp = hero.Hp(), mana = hero.Mana();
+    REQUIRE(hp < hero.MaxHp());
+    SaveData s;
+    std::string err;
+    REQUIRE(ParseSave(sim->SaveGame(1760000000000), s, &err, &data) == SaveError::None);
+    CHECK(s.player.currentMap == "emerald_plains");  // the old zone (save 3.6)
+    CHECK(s.player.tileCol == live.x);               // the live position, not camps[0] (15, 15)
+    CHECK(s.player.tileRow == live.y);
+    CHECK(s.player.hp == hp);                        // not healed
+    CHECK(s.player.mana == mana);
+    // A save inside the fade (60 s timer, app background) is the same live state.
+    for (int i = 0; i < 10; ++i) sim->Step();
+    REQUIRE(ctx.session.transitioning);
+    REQUIRE(ParseSave(sim->SaveGame(1760000000001), s, &err, &data) == SaveError::None);
+    CHECK(s.player.currentMap == "emerald_plains");
+    CHECK(s.player.tileCol == hero.Position().x);
+    CHECK(s.player.hp == hero.Hp());
+    // C12: a Dying hero is still written as respawned at camps[0] with full HP / MP.
+    hero.SetLife(HeroLife::Dying);
+    REQUIRE(ParseSave(sim->SaveGame(1760000000002), s, &err, &data) == SaveError::None);
+    CHECK(s.player.tileCol == 15);
+    CHECK(s.player.tileRow == 15);
+    CHECK(s.player.hp == hero.MaxHp());
+    CHECK(s.player.mana == hero.MaxMana());
+    hero.SetLife(HeroLife::Alive);
+    // After the fade the hero is in the new zone and the next save says so.
+    for (int i = 0; i < 30 && ctx.session.transitioning; ++i) sim->Step();
+    REQUIRE_FALSE(ctx.session.transitioning);
+    CHECK(ctx.session.currentMap == "twilight_forest");
+    CHECK(sim->CanSave());
+    REQUIRE(ParseSave(sim->SaveGame(1760000000003), s, &err, &data) == SaveError::None);
+    CHECK(s.player.currentMap == "twilight_forest");
   }
 }

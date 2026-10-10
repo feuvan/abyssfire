@@ -51,23 +51,53 @@
   "wanderingMerchant": {
     "emerald_plains": {
       "items": ["iron_sword", "leather_armor", "hp_potion", "mp_potion"],
-      "unknownItemIds": ["iron_sword", "leather_armor", "hp_potion", "mp_potion"]
+      "unknownItemIds": ["iron_sword", "leather_armor", "hp_potion", "mp_potion"],
+      "idMap": {
+        "iron_sword": "w_short_sword",
+        "leather_armor": "a_leather_armor",
+        "hp_potion": "c_hp_potion_s",
+        "mp_potion": "c_mp_potion_s"
+      }
     },
     "twilight_forest": {
       "items": ["steel_sword", "chain_armor", "hp_potion", "mp_potion"],
-      "unknownItemIds": ["steel_sword", "chain_armor", "hp_potion", "mp_potion"]
+      "unknownItemIds": ["steel_sword", "chain_armor", "hp_potion", "mp_potion"],
+      "idMap": {
+        "steel_sword": "w_broad_sword",
+        "chain_armor": "a_chain_mail",
+        "hp_potion": "c_hp_potion_m",
+        "mp_potion": "c_mp_potion_m"
+      }
     },
     "anvil_mountains": {
       "items": ["mithril_sword", "plate_armor", "hp_potion", "mp_potion"],
-      "unknownItemIds": ["mithril_sword", "plate_armor", "hp_potion", "mp_potion"]
+      "unknownItemIds": ["mithril_sword", "plate_armor", "hp_potion", "mp_potion"],
+      "idMap": {
+        "mithril_sword": "w_claymore",
+        "plate_armor": "a_plate_armor",
+        "hp_potion": "c_hp_potion_m",
+        "mp_potion": "c_mp_potion_m"
+      }
     },
     "scorching_desert": {
       "items": ["desert_blade", "desert_armor", "hp_potion", "mp_potion"],
-      "unknownItemIds": ["desert_blade", "desert_armor", "hp_potion", "mp_potion"]
+      "unknownItemIds": ["desert_blade", "desert_armor", "hp_potion", "mp_potion"],
+      "idMap": {
+        "desert_blade": "w_flamberge",
+        "desert_armor": "a_dragon_armor",
+        "hp_potion": "c_hp_potion_l",
+        "mp_potion": "c_mp_potion_m"
+      }
     },
     "abyss_rift": {
       "items": ["abyssal_blade", "demon_armor", "hp_potion", "mp_potion"],
-      "unknownItemIds": ["abyssal_blade", "demon_armor", "hp_potion", "mp_potion"]
+      "unknownItemIds": ["abyssal_blade", "demon_armor", "hp_potion", "mp_potion"],
+      "idMap": {
+        "abyssal_blade": "w_demon_blade",
+        "demon_armor": "a_demon_armor",
+        "hp_potion": "c_hp_potion_l",
+        "mp_potion": "c_mp_potion_m"
+      }
     }
   },
   "port": {
@@ -76,6 +106,7 @@
       {"npcId": "merchant", "itemId": "c_id_scroll", "decision": "I2"},
       {"npcId": "merchant_desert", "itemId": "c_tp_scroll", "decision": "I4"},
       {"npcId": "merchant_desert", "itemId": "c_id_scroll", "decision": "I2"}
-    ]
+    ],
+    "wanderingMerchantIdMap": "loot Q12 FIX"
   }
 }

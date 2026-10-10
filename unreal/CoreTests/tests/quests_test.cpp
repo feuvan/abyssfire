@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "SimHarness.h"
+#include "abyss/audio/Audio.h"
 #include "abyss/base/I18n.h"
 #include "abyss/base/Math.h"
 #include "abyss/data/DataStore.h"
@@ -2032,5 +2033,334 @@ TEST_SUITE("quests") {
     std::string err;
     REQUIRE(s.sim->LoadGame(save, &err) == SaveError::None);
     CHECK(s.sim->Context().sys.achievements->State().ProgressOf("explore") == 1);
+  }
+}
+
+// =====================================================================================================================
+// Audit fixes: escort / defend name keys (Q11), clue float, hidden-area reward logs, chapter subtitle, sequence music
+// span (audio 10.4 rule 2), lost turn-in beats (Q7), NPC line fallback (0.3), QuestProgress payload (13)
+// =====================================================================================================================
+namespace {
+
+I18n EnglishStrings() {
+  I18n en;
+  REQUIRE(en.LoadTable(test::ReadFile(test::DataDir() + "/i18n_en.json")));
+  en.SetLocale(LocaleId::En);
+  return en;
+}
+
+const EvLog* FindLog(std::span<const Event> events, std::string_view key) {
+  for (const EvLog* l : Of<EvLog>(events)) {
+    if (l->text.key == key) return l;
+  }
+  return nullptr;
+}
+
+// Builds a save of the running sim placed in another zone, with the given quests and seen beats.
+SaveData SaveIn(QwSim& s, const char* map, int32_t col, int32_t row, std::vector<QuestProgress> quests,
+                std::vector<std::string> seen) {
+  SaveData save;
+  s.sim->BuildSave(save, 0);
+  save.player.currentMap = map;
+  save.player.tileCol = col;
+  save.player.tileRow = row;
+  save.quests = std::move(quests);
+  save.hasStorySeen = true;
+  save.storySeen = std::move(seen);
+  return save;
+}
+
+}  // namespace
+
+TEST_SUITE("quests") {
+  TEST_CASE("Q11: escort / defend names resolve through data.escortNpc.<id> / data.defendTarget.<id> without q_") {
+    const DataStore& data = test::RealData();
+    CHECK(EscortNpcNameKey("q_escort_merchant_plains") == "data.escortNpc.escort_merchant_plains");
+    CHECK(DefendTargetNameKey("q_defend_camp_forest") == "data.defendTarget.defend_camp_forest");
+    CHECK(EscortNpcNameKey("escort_x") == "data.escortNpc.escort_x");
+    // Every escort / defend quest either has its key in both locales, or is a known key-less one (zh name).
+    const I18n en = EnglishStrings();
+    int keyed = 0;
+    for (const QuestDef& q : data.Quests().quests) {
+      if (!q.hasEscortNpc && !q.hasDefendTarget) continue;
+      const std::string key = q.hasEscortNpc ? EscortNpcNameKey(q.id) : DefendTargetNameKey(q.id);
+      CAPTURE(q.id);
+      if (q.id == "q_trapped_miners") {
+        CHECK_FALSE(data.Strings().Has(key));
+        continue;
+      }
+      CHECK(data.Strings().Has(key));
+      CHECK(en.Lookup(LocaleId::En, key) != nullptr);
+      ++keyed;
+    }
+    CHECK(keyed == 4);
+  }
+
+  TEST_CASE("Q11: the escort logs and its label use the key, so English shows 'Traveling Merchant'") {
+    QwSim s;
+    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15})});
+    s.sim->ClearEvents();
+    REQUIRE(s.Qs().Accept("q_escort_merchant_plains"));
+    const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    const EvLog* appeared = FindLog(ev, "zone.escort.npcAppeared");
+    REQUIRE(appeared != nullptr);
+    REQUIRE(appeared->text.args.size() == 1);
+    CHECK(appeared->text.args[0].isKey);
+    CHECK(appeared->text.args[0].value == "data.escortNpc.escort_merchant_plains");
+    const I18n en = EnglishStrings();
+    CHECK(en.T(appeared->text) == "Traveling Merchant appeared! Escort target marked.");
+    // the label (snapshot EscortState): NameOr(nameKey, name)
+    const EscortState& e = s.Qw().Escort();
+    CHECK(e.nameKey == "data.escortNpc.escort_merchant_plains");
+    CHECK(e.name == s.ctx->data.FindQuest("q_escort_merchant_plains")->escortNpc.name);
+    CHECK(en.NameOr(e.nameKey, e.name) == "Traveling Merchant");
+    s.Place(Vec2(32, 40));
+    const std::vector<Event> joined = s.StepsCollect(1);
+    const EvLog* j = FindLog(joined, "zone.escort.joined");
+    REQUIRE(j != nullptr);
+    CHECK(en.T(j->text) == "Traveling Merchant is following you.");
+  }
+
+  TEST_CASE("Q11: the defend target's protect log and label use data.defendTarget.<id>") {
+    QwSim s;
+    SaveData save = SaveIn(s, "twilight_forest", 41, 36, {Rec("q_defend_camp_forest", QuestStatus::Active, {0})},
+                           {"prologue", "chapter_emerald_plains", "chapter_twilight_forest"});
+    std::string err;
+    REQUIRE(s.sim->LoadGame(save, &err) == SaveError::None);
+    s.ctx = &s.sim->Context();
+    const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    const EvLog* l = FindLog(ev, "zone.defend.targetNeedsProtection");
+    REQUIRE(l != nullptr);
+    REQUIRE(l->text.args.size() == 1);
+    CHECK(l->text.args[0].isKey);
+    CHECK(l->text.args[0].value == "data.defendTarget.defend_camp_forest");
+    const DefendState& d = s.Qw().Defend();
+    REQUIRE(d.active);
+    CHECK(d.nameKey == "data.defendTarget.defend_camp_forest");
+    CHECK(EnglishStrings().NameOr(d.nameKey, d.name) == "Camp Bonfire");
+  }
+
+  TEST_CASE("3.5: an examined clue floats '<targetName>\\n<note>'; progress carries targetId and amount (13)") {
+    QwSim s;
+    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})});
+    REQUIRE(s.Qs().Accept("q_lost_pendant"));
+    const QuestNode* cloth = NodeOf(s.Qw(), true, "q_lost_pendant", 1);
+    REQUIRE(cloth != nullptr);
+    const Vec2 at = cloth->pos;
+    s.Place(Vec2(at.x + 1.5, at.y));
+    const std::vector<Event> ev = s.StepsCollect(1);
+    const EvFloatingText* note = nullptr;
+    for (const EvFloatingText* f : Of<EvFloatingText>(ev)) {
+      if (f->kind == FloatingTextKind::Custom && f->text.key == "zone.quest.clueNote") note = f;
+    }
+    REQUIRE(note != nullptr);
+    CHECK(note->pos == at);
+    const I18n& zh = s.ctx->data.Strings();
+    CHECK(zh.T(note->text) ==
+          zh.T("data.questTarget.clue_pendant_cloth") + "\n" + zh.T("data.questClue.clue_pendant_cloth"));
+    CHECK(EnglishStrings().T(note->text) ==
+          "Rag Snagged on Thorns\nA green rag reeking of goblin hangs on the thorns. The trail bends southeast.");
+    bool progress = false;
+    for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev)) {
+      if (u->kind != EvQuestUpdate::Kind::Progress || u->questId != "q_lost_pendant") continue;
+      progress = u->objectiveIndex == 1 && u->targetId == "clue_pendant_cloth" && u->amount == 1;
+    }
+    CHECK(progress);
+  }
+
+  TEST_CASE("13: kill progress events name the target and the requested amount") {
+    QwSim s;
+    REQUIRE(s.Qs().Accept("q_kill_slimes"));
+    s.sim->ClearEvents();
+    REQUIRE(s.Kill(s.FindAlive("slime_green")));
+    const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    const EvQuestUpdate* kill = nullptr;
+    for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev)) {
+      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_kill_slimes") kill = u;
+    }
+    REQUIRE(kill != nullptr);
+    CHECK(kill->targetId == "slime_green");
+    CHECK(kill->amount == 1);
+    CHECK(kill->current == 1);
+    CHECK_FALSE(kill->hasFrom);
+    // an amount above what is left is reported as requested (the counter clamps)
+    s.sim->ClearEvents();
+    s.Qs().UpdateProgress(ObjectiveType::Kill, "slime_green", 50);
+    const std::vector<Event> ev2(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    bool clamped = false;
+    for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev2)) {
+      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_kill_slimes") {
+        clamped = u->amount == 50 && u->current == u->required && u->completesQuest;
+      }
+    }
+    CHECK(clamped);
+  }
+
+  TEST_CASE("world 10.3: hidden-area rewards log what the hero got (chest item, gold pile, lore scroll)") {
+    QwSim s;
+    s.Place(Vec2(108, 108));
+    s.Steps(2);
+    LoreSystem& lore = *s.ctx->sys.lore;
+    REQUIRE(lore.IsDiscovered("hidden_ep_elven_cache"));
+    s.sim->ClearEvents();
+    REQUIRE(lore.ClaimHiddenReward("hidden_ep_elven_cache", 1));  // gold pile 200
+    std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    const EvLog* gold = FindLog(ev, "zone.hiddenArea.gotGold");
+    REQUIRE(gold != nullptr);
+    CHECK(gold->type == LogType::Loot);
+    CHECK(EnglishStrings().T(gold->text) == "Gained 200 gold");
+    s.sim->ClearEvents();
+    const size_t bag0 = s.ctx->sys.inventory->Items().Bag().size();
+    REQUIRE(lore.ClaimHiddenReward("hidden_ep_elven_cache", 0));  // rare chest
+    ev.assign(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    const EvLog* item = FindLog(ev, "zone.hiddenArea.gotItem");
+    REQUIRE(item != nullptr);
+    CHECK(item->type == LogType::Loot);
+    REQUIRE(item->text.args.size() == 1);
+    CHECK(item->text.args[0].name == "itemName");
+    CHECK_FALSE(item->text.args[0].value.empty());
+    CHECK(s.ctx->sys.inventory->Items().Bag().size() == bag0 + 1);
+    // the twilight forest shrine's second reward is a lore scroll: log only
+    SaveData save = SaveIn(s, "twilight_forest", 110, 15, {},
+                           {"prologue", "chapter_emerald_plains", "chapter_twilight_forest"});
+    std::string err;
+    REQUIRE(s.sim->LoadGame(save, &err) == SaveError::None);
+    s.ctx = &s.sim->Context();
+    s.Steps(2);
+    LoreSystem& tf = *s.ctx->sys.lore;
+    REQUIRE(tf.IsDiscovered("hidden_tf_moonlight_shrine"));
+    s.sim->ClearEvents();
+    const int64_t gold0 = s.H().Gold();
+    REQUIRE(tf.ClaimHiddenReward("hidden_tf_moonlight_shrine", 1));
+    ev.assign(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    const EvLog* scroll = FindLog(ev, "zone.hiddenArea.gotScroll");
+    REQUIRE(scroll != nullptr);
+    CHECK(scroll->type == LogType::System);
+    CHECK(s.H().Gold() == gold0);
+    CHECK(tf.IsRewardClaimed("hidden_tf_moonlight_shrine", 1));
+  }
+
+  TEST_CASE("0.3: an NPC line without an i18n key is logged as its zh data line, never as the raw key") {
+    QwSim s;
+    const NpcDef* ally = s.ctx->data.FindNpc("tower_elder");
+    REQUIRE(ally != nullptr);
+    REQUIRE_FALSE(ally->dialogue.empty());
+    REQUIRE_FALSE(s.ctx->data.Strings().Has("data.npc.tower_elder.dialogue.0"));
+    s.sim->ClearEvents();
+    s.Qw().InteractNpc("tower_elder");
+    const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    CHECK_FALSE(HasLog(ev, "data.npc.tower_elder.dialogue.0"));
+    const EvLog* line = FindLog(ev, ally->dialogue[0]);
+    REQUIRE(line != nullptr);
+    CHECK(s.ctx->data.Strings().T(line->text) == ally->dialogue[0]);
+    // keyed NPCs still log the key
+    s.Qw().CloseCard();
+    s.ctx->sys.dialogue->Close();
+    s.sim->ClearEvents();
+    s.Qw().InteractNpc("quest_elder");
+    CHECK(HasLog(s.ctx->events.Items(), "data.npc.quest_elder.dialogue.0"));
+  }
+}
+
+TEST_SUITE("story") {
+  TEST_CASE("8.5: the chapter card step carries number, title, subtitle and text keys") {
+    QwSim s(7, /*skipStory=*/false);
+    s.PlayBeat();  // the prologue
+    REQUIRE(s.Story().Playback().beat.id == "chapter_emerald_plains");
+    // the chapter card's step was emitted when the beat started (inside the prologue's last advance)
+    const ChapterCard* ch = s.ctx->data.Story().ChapterFor("emerald_plains");
+    REQUIRE(ch != nullptr);
+    const EvStoryStep* card = nullptr;
+    for (const EvStoryStep* st : Of<EvStoryStep>(s.ctx->events.Items())) {
+      if (st->beatId == "chapter_emerald_plains") card = st;
+    }
+    REQUIRE(card != nullptr);
+    CHECK(card->slide.heading == ch->number);
+    CHECK(card->slide.title == ch->title);
+    CHECK(card->slide.subtitle == "story.chapter.emerald_plains.subtitle");
+    CHECK(card->slide.text == ch->text);
+    CHECK(EnglishStrings().T(card->slide.subtitle) == "The Emerald Plains");
+  }
+
+  TEST_CASE("audio 10.4 rule 2: the prologue plays abyss_rift; the chapter card plays under the zone's explore track") {
+    QwSim s(7, /*skipStory=*/false);
+    MusicDirector& music = s.ctx->sys.audio->Music();
+    REQUIRE(s.Story().Playback().beat.id == "prologue");
+    CHECK(music.StoryLocked());
+    CHECK(music.Zone() == "abyss_rift");
+    std::vector<StoryStateMsg> states;
+    s.ctx->bus.Subscribe<StoryStateMsg>([&states](const StoryStateMsg& m) { states.push_back(m); });
+    s.PlayBeat();
+    REQUIRE(s.Story().Playback().beat.id == "chapter_emerald_plains");
+    // the sequence ended its span (zone track back, lock released), the card retook the lock without music
+    REQUIRE(states.size() == 2);
+    CHECK_FALSE(states[0].active);
+    CHECK(states[0].beatId == "prologue");
+    CHECK(states[1].active);
+    CHECK(states[1].beatId == "chapter_emerald_plains");
+    CHECK(states[1].musicTrack.empty());
+    CHECK(music.Zone() == "emerald_plains");
+    CHECK(music.State() == MusicState::Explore);
+    CHECK(music.StoryLocked());
+    CHECK(s.Story().IsBusy());  // EvStoryState stays busy across the two beats
+    s.sim->AdvanceRealTime(9000);
+    CHECK_FALSE(s.Story().IsBusy());
+    REQUIRE(states.size() == 3);
+    CHECK_FALSE(states[2].active);
+    CHECK_FALSE(music.StoryLocked());
+    CHECK(music.Zone() == "emerald_plains");
+  }
+
+  TEST_CASE("Q7: a turn-in cutscene lost to a quit replays on the next entry of the quest's zone, with its pet") {
+    QwSim s;
+    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::Completed, {10})});
+    REQUIRE(s.Qw().TurnIn("q_kill_slimes", 0));
+    REQUIRE(s.Story().IsBusy());
+    SaveData save;  // the turn-in autosave: turned in, cs_ep_mark not seen yet
+    s.sim->BuildSave(save, 0);
+    REQUIRE(save.hasStorySeen);
+    REQUIRE(std::find(save.storySeen.begin(), save.storySeen.end(), "cs_ep_mark") == save.storySeen.end());
+    std::string err;
+    REQUIRE(s.sim->LoadGame(save, &err) == SaveError::None);
+    s.ctx = &s.sim->Context();
+    CHECK(s.Story().IsBusy());
+    CHECK_FALSE(s.Story().IsCinematic());  // the normal 650 ms turn-in delay, world live
+    s.Steps(40);
+    REQUIRE(s.Story().IsCinematic());
+    CHECK(s.Story().Playback().beat.id == "cs_ep_mark");
+    s.Story().FinishAllBeats();
+    CHECK(s.Story().Progress().Has("cs_ep_mark"));
+    // seen now: the next load plays nothing
+    SaveData again;
+    s.sim->BuildSave(again, 0);
+    REQUIRE(s.sim->LoadGame(again, &err) == SaveError::None);
+    s.ctx = &s.sim->Context();
+    CHECK_FALSE(s.Story().IsBusy());
+
+    // Only the quest's own zone replays it; a save without storySeen never does.
+    SaveData elsewhere = SaveIn(s, "twilight_forest", 20, 20, {Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})},
+                                {"prologue", "chapter_emerald_plains", "chapter_twilight_forest"});
+    REQUIRE(s.sim->LoadGame(elsewhere, &err) == SaveError::None);
+    s.ctx = &s.sim->Context();
+    CHECK_FALSE(s.Story().IsBusy());
+    SaveData legacy = save;
+    legacy.hasStorySeen = false;
+    legacy.storySeen.clear();
+    REQUIRE(s.sim->LoadGame(legacy, &err) == SaveError::None);
+    s.ctx = &s.sim->Context();
+    s.Story().FinishAllBeats();  // the chapter card a pre-story save still shows
+    CHECK_FALSE(s.Story().Progress().Has("cs_ep_mark"));
+
+    // A lost grantPet beat comes back too: q_seal_fire_rift -> cs_sd_finale, then cs_sd_helia grants pet_phoenix.
+    SaveData desert = SaveIn(s, "scorching_desert", 15, 18, {Rec("q_seal_fire_rift", QuestStatus::TurnedIn, {1})},
+                             {"prologue", "chapter_emerald_plains", "chapter_scorching_desert"});
+    REQUIRE(s.sim->LoadGame(desert, &err) == SaveError::None);
+    s.ctx = &s.sim->Context();
+    REQUIRE_FALSE(s.ctx->sys.pets->Has("pet_phoenix"));
+    std::vector<std::string> finished;
+    s.ctx->bus.Subscribe<StoryBeatFinishedMsg>([&finished](const StoryBeatFinishedMsg& m) { finished.push_back(m.beatId); });
+    s.Story().FinishAllBeats();
+    CHECK(finished == std::vector<std::string>{"cs_sd_finale", "cs_sd_helia"});
+    CHECK(s.ctx->sys.pets->Has("pet_phoenix"));
   }
 }

@@ -97,6 +97,59 @@ std::string ItemDisplayName(const ItemInstance& item, const DataStore& data, con
   return out;
 }
 
+std::string ItemLegendaryEffectText(const ItemInstance& item, const DataStore& data, const I18n& i18n) {
+  const ItemTables& t = data.Items();
+  if (!item.legendaryId.empty()) {
+    if (const LegendaryDef* l = t.FindLegendary(item.legendaryId)) {
+      return i18n.NameOr("data.legendary." + l->id + ".effect", l->specialEffectDescription);
+    }
+  }
+  if (item.quality == ItemQuality::Legendary && item.legendaryId.empty() && !item.legendaryEffect.empty()) {
+    return i18n.NameOr("sys.loot.genericLegendaryEffect", item.legendaryEffect);
+  }
+  return item.legendaryEffect;
+}
+
+bool ItemSpecialEffectStat(const ItemInstance& item, const DataStore& data, Stat& outStat, double& outValue) {
+  if (item.legendaryId.empty()) return false;
+  const ItemTables& t = data.Items();
+  const LegendaryDef* l = t.FindLegendary(item.legendaryId);
+  if (l == nullptr || !l->hasSpecialEffectValue) return false;
+  if (std::find(t.appliedSpecialEffects.begin(), t.appliedSpecialEffects.end(), l->specialEffect) ==
+      t.appliedSpecialEffects.end()) {
+    return false;
+  }
+  Stat st{};
+  if (!ParseEnum(l->specialEffect, st)) return false;
+  outStat = st;
+  outValue = l->specialEffectValue;
+  return true;
+}
+
+namespace {
+
+ItemNameCollatorBinding& ItmCollator() {
+  static ItemNameCollatorBinding binding;
+  return binding;
+}
+
+}  // namespace
+
+ItemNameCollatorBinding SetItemNameCollator(ItemNameCollator fn, void* user) {
+  ItemNameCollatorBinding& b = ItmCollator();
+  const ItemNameCollatorBinding previous = b;
+  b.fn = fn;
+  b.user = user;
+  return previous;
+}
+
+int CompareItemNames(std::string_view a, std::string_view b) {
+  const ItemNameCollatorBinding& c = ItmCollator();
+  if (c.fn != nullptr) return c.fn(a, b, c.user);
+  const int r = a.compare(b);  // std::string_view::compare = char_traits<char> = unsigned byte order
+  return r < 0 ? -1 : (r > 0 ? 1 : 0);
+}
+
 I18nArg ItemNameArg(std::string argName, const ItemInstance& item, const DataStore& data, bool qualityPrefix) {
   const ItemBaseDef* base = data.Items().FindBase(item.baseId);
   if (base != nullptr && item.quality == ItemQuality::Normal) {

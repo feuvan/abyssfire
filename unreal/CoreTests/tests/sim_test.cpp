@@ -41,10 +41,15 @@ bool HasModal(const Snapshot& v, PanelId panel) {
   return false;
 }
 
+// A new game opens with the prologue and the chapter card (quests-story 16.6), which freeze the world (S2) until they
+// finish on real time. Tests that need a live world play them out at once.
+void FinishNewGameStory(GameSim& sim) { sim.Context().sys.story->FinishAllBeats(); }
+
 std::unique_ptr<GameSim> StartSim(ClassId cls = ClassId::Warrior, uint64_t seed = 11) {
   auto sim = GameSim::Create(test::RealData(), SimConfig{});
   REQUIRE(sim != nullptr);
   REQUIRE(sim->NewGame(cls, Difficulty::Normal, seed));
+  FinishNewGameStory(*sim);
   sim->Step();
   return sim;
 }
@@ -71,6 +76,8 @@ TEST_SUITE("sim") {
     CHECK(v.zone.cols == map->cols);
     CHECK_FALSE(v.npcs.empty());  // camp NPCs are placed by the zone runtime
 
+    CHECK(sim->Context().sys.story->IsCinematic());  // the prologue holds the world
+    FinishNewGameStory(*sim);
     for (int i = 0; i < 120; ++i) sim->Step();
     CHECK(sim->NowMs() == doctest::Approx(2000.0));
     CHECK(sim->View().steps == 120);
@@ -82,6 +89,7 @@ TEST_SUITE("sim") {
   TEST_CASE("pause menu freezes the sim clock; hero commands are rejected while frozen") {
     auto sim = GameSim::Create(test::RealData(), SimConfig{});
     REQUIRE(sim->NewGame(ClassId::Mage, Difficulty::Normal, 7));
+    FinishNewGameStory(*sim);
     sim->Step();
     sim->Submit(CmdOpenPanel{PanelId::SystemMenu});
     sim->Step();  // the command applies in this step; the freeze holds from here on
@@ -122,17 +130,25 @@ TEST_SUITE("sim") {
 
   TEST_CASE("core-owned modals: derived from the owners' state, S2 freeze, U7 same-batch input block") {
     auto sim = StartSim();
-    // Control: a hero command applies when nothing is open.
-    sim->Submit(CmdAttackTarget{4242});
+    // Control: a hero command applies when nothing is open (the target must be a live monster: SetAttackTarget).
+    EntityId foe = kNoEntity;
+    for (const MonsterView& m : sim->View().monsters) {
+      if (m.alive) {
+        foe = m.id;
+        break;
+      }
+    }
+    REQUIRE(foe != kNoEntity);
+    sim->Submit(CmdAttackTarget{foe});
     sim->Step();
-    CHECK(sim->View().hero.target == 4242);
+    CHECK(sim->View().hero.target == foe);
     CHECK_FALSE(sim->View().inputBlocked);
     sim->Submit(CmdClearTarget{});
     sim->Step();
 
     // The dialogue opens inside the batch; the attack later in the same batch is already rejected.
     sim->Submit(CmdDialogueOpenTree{"quest_elder"});
-    sim->Submit(CmdAttackTarget{4242});
+    sim->Submit(CmdAttackTarget{foe});
     sim->Step();
     CHECK(sim->View().hero.target == kNoEntity);
     CHECK(sim->View().inputBlocked);
@@ -161,7 +177,7 @@ TEST_SUITE("sim") {
 
     // A core-owned modal that does not freeze still blocks input (stash, U7).
     sim->Context().sys.inventory->OpenStash("stash");
-    sim->Submit(CmdAttackTarget{7});
+    sim->Submit(CmdAttackTarget{foe});
     sim->Step();
     CHECK(sim->View().hero.target == kNoEntity);
     CHECK_FALSE(sim->WorldFrozen());

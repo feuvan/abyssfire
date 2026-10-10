@@ -49,8 +49,12 @@ struct ItemInstance {
   std::vector<GemInstance> sockets; // filled sockets, insertion order
   int32_t bonusSockets = 0;         // punched by the blacksmith (0 or 1)
   std::string setId;                // set membership (set pieces)
-  std::string legendaryEffect;      // effect description text (display only; zh baked at creation like the web)
-  std::string legendaryId;          // port addition (loot 2.4): named legendary id, empty otherwise
+  // Effect description baked at creation in zh (web parity, save readability only). Never display it directly: UE shows
+  // ItemLegendaryEffectText, which localises it - data.legendary.<legendaryId>.effect for a named legendary and
+  // sys.loot.genericLegendaryEffect for a GENERIC legendary (quality legendary + empty legendaryId: a base without a
+  // legendary definition, makeLegendary's else branch, loot 4.3 / 15.3 / Q5).
+  std::string legendaryEffect;
+  std::string legendaryId;          // port addition (loot 2.4): named legendary id, empty otherwise (incl. generic)
   std::string setPieceId;           // port addition: set piece id, empty otherwise
   bool identified = true;           // always true in milestone 1 (I2)
   int32_t quantity = 1;
@@ -73,6 +77,30 @@ ABYSS_API int32_t ItemSocketCapacity(const ItemInstance& item, const DataStore& 
 //   base name; normal / no affixes -> base name; else prefixes + base + suffixes (en: words joined by spaces; zh: prefix
 //   names concatenated, suffixes after a U+00B7 middle dot). Every key falls back to the data's zh / en names.
 ABYSS_API std::string ItemDisplayName(const ItemInstance& item, const DataStore& data, const I18n& i18n);
+
+// The localised legendary effect line of the tooltip (loot 15.2 / 15.3, Q5 "store ids; UE localises"), in `i18n`'s
+// current locale: named legendary -> data.legendary.<legendaryId>.effect (fallback: the definition's zh text); generic
+// legendary (quality legendary, empty legendaryId, non-empty legendaryEffect) -> sys.loot.genericLegendaryEffect;
+// anything else -> the stored legendaryEffect ("" for items without one).
+ABYSS_API std::string ItemLegendaryEffectText(const ItemInstance& item, const DataStore& data, const I18n& i18n);
+
+// C11: the legendary specialEffect of a named legendary as an item stat, when its key is one combat reads
+// (item_bases appliedSpecialEffects: killHealPercent, elementalDamagePercent, doubleShot, ignoreDefense, dodgeCounter,
+// damageReduction, cooldownReduction). False for every other item. Gear stats (Inventory::EquipmentStatBag) and the
+// tooltip compare totals (ItemStatTotals, loot 14) both add it.
+ABYSS_API bool ItemSpecialEffectStat(const ItemInstance& item, const DataStore& data, Stat& outStat, double& outValue);
+
+// Display-name collation for bag / stash sorting (loot 7.3 port rule: the current culture's collation). The core has no
+// collation tables: the UE layer installs one backed by ICU for the active culture (e.g. FText::CompareTo), so zh-CN
+// sorts like the web's localeCompare (pinyin). Without one, names compare by UTF-8 byte order (= code point order).
+// Returns < 0, 0, > 0. Process-wide like the log sink; SetItemNameCollator returns the previous binding.
+using ItemNameCollator = int (*)(std::string_view a, std::string_view b, void* user);
+struct ItemNameCollatorBinding {
+  ItemNameCollator fn = nullptr;
+  void* user = nullptr;
+};
+ABYSS_API ItemNameCollatorBinding SetItemNameCollator(ItemNameCollator fn, void* user);
+ABYSS_API int CompareItemNames(std::string_view a, std::string_view b);
 
 // A log argument naming an item (loot 15.3: core logs carry ids where they can). Normal-quality items are a KeyArg on
 // data.item.<baseId>.name; composite names (affixes, sets, legendaries) cannot be one key, so they are rendered with

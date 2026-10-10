@@ -20,6 +20,11 @@ const SOURCES = ['src/i18n/locales/zh-CN.ts', 'src/i18n/locales/en.ts', 'src/i18
  */
 const PORT_STRINGS: Record<string, { 'zh-CN': string; en: string; decision: string }> = {
   'zone.exit.sealedChapter2': { 'zh-CN': '第二章即将开放', en: 'Chapter 2 is coming soon', decision: 'W7' },
+  'sys.inventory.levelTooLow': { 'zh-CN': '等级不足，需要等级 {level}', en: 'Level too low: requires level {level}', decision: 'I3' },
+  // quests 3.5: an examined clue floats "<targetName>\n<note>" (the web joined the two translated strings in code).
+  'zone.quest.clueNote': { 'zh-CN': '{targetName}\n{note}', en: '{targetName}\n{note}', decision: 'Q11' },
+  // world 13.3: a solved puzzle logs "<solution> — <reward>" before the gold / exp line (ZoneScene.ts joined them in code).
+  'zone.event.puzzle.solved': { 'zh-CN': '{solution} — {reward}', en: '{solution} — {reward}', decision: 'world 13.3' },
 };
 
 export function exportI18n(): TableResult[] {

@@ -64,6 +64,8 @@ void LgMakeLegendary(const LootContext& ctx, ItemInstance& item) {
     item.legendaryId = def->id;
     item.identified = true;
   } else {
+    // Generic legendary: legendaryId stays empty (that is its marker, Item.h). The stored text is zh like every stored
+    // string (15.3); ItemLegendaryEffectText shows sys.loot.genericLegendaryEffect in the player's locale.
     AddRandomAffixes(ctx, item, item.level, l.genericLegendaryAffixMin, l.genericLegendaryAffixMax);
     item.legendaryEffect = LgZhText(*ctx.data, "sys.loot.genericLegendaryEffect");
   }
@@ -476,7 +478,8 @@ ItemQuality RewardChoiceQuality(const DataStore& data, const QuestDef& quest) {
   return quest.category == QuestCategory::Main ? l.rewardQualityMain : l.rewardQualitySide;
 }
 
-const ItemBaseDef* PickRewardBase(const DataStore& data, RewardSlot choice, ClassId cls, int32_t level, Rng& rng) {
+const ItemBaseDef* PickRewardBase(const DataStore& data, RewardSlot choice, ClassId cls, int32_t level, Rng& rng,
+                                  int32_t levelReqCap) {
   const ItemTables& t = data.Items();
   const LootRulesDef& l = t.loot;
   std::vector<const ItemBaseDef*> pool;
@@ -522,8 +525,9 @@ const ItemBaseDef* PickRewardBase(const DataStore& data, RewardSlot choice, Clas
   }
   if (pool.empty()) return nullptr;
   std::vector<const ItemBaseDef*> ranked;
+  const int32_t usableMax = (std::min)(level + l.rewardLevelHeadroom, levelReqCap);
   for (const ItemBaseDef* b : pool) {
-    if (b->levelReq <= level + l.rewardLevelHeadroom) ranked.push_back(b);
+    if (b->levelReq <= usableMax) ranked.push_back(b);
   }
   if (ranked.empty()) {
     // The pool's lowest-levelReq base (first of equals, stable sort ascending).
@@ -547,7 +551,10 @@ std::vector<ItemInstance> GenerateQuestRewardChoices(const LootContext& ctx, con
   const int32_t level = RewardItemLevel(quest, heroLevel);
   const ItemQuality quality = RewardChoiceQuality(*ctx.data, quest);
   for (RewardSlot choice : quest.rewards.choices) {
-    const ItemBaseDef* base = PickRewardBase(*ctx.data, choice, cls, level, *ctx.rng);
+    // I3 enforces levelReq on equip: never offer a piece the hero cannot wear at turn-in (the hero level only rises
+    // after the choices were generated).
+    const int32_t cap = ctx.data->Items().loot.rewardCapUsableAtHeroLevel ? (std::max)(1, heroLevel) : INT32_MAX;
+    const ItemBaseDef* base = PickRewardBase(*ctx.data, choice, cls, level, *ctx.rng, cap);
     if (base == nullptr) continue;
     std::optional<ItemInstance> item = CreateItem(ctx, base->id, level, quality);
     if (!item.has_value()) continue;

@@ -8,7 +8,9 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -18,6 +20,11 @@
 #include "abyss/base/Math.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/hero/Rewards.h"
+#include "abyss/monsters/MonsterSystem.h"
+#include "abyss/combat/SoulEcho.h"
+#include "abyss/save/SaveData.h"
+#include "abyss/sim/SimContext.h"
+#include "abyss/story/StoryDirector.h"
 #include "abyss/sim/GameSim.h"
 #include "abyss/sim/GameplayBus.h"
 #include "abyss/world/Exploration.h"
@@ -885,10 +892,30 @@ const DataStore& WD() { return test::RealData(); }
 
 // The world systems around a SimHarness, stepped in the world 17 order (hero update -> combat-state slot (random
 // events) -> exits / exploration).
+// The real tables with one file replaced by `edit(parsed JSON)` (data switches and missing-data fallbacks).
+template <class Edit>
+std::unique_ptr<DataStore> WorldEditedData(std::string_view fileName, Edit edit) {
+  JsonValue doc;
+  REQUIRE(ParseJson(test::ReadFile(test::DataDir() + "/" + std::string(fileName)), doc));
+  edit(doc);
+  const std::string edited = WriteJson(doc);
+  auto store = std::make_unique<DataStore>();
+  DataLoadReport report;
+  const bool ok = store->LoadAll(
+      [&](std::string_view name, std::string& out) {
+        out = name == fileName ? edited : test::ReadFile(test::DataDir() + "/" + std::string(name));
+        return !out.empty();
+      },
+      report);
+  INFO(report.Summary(5));
+  REQUIRE(ok);
+  return store;
+}
+
 struct WorldRig {
   explicit WorldRig(uint64_t seed = 5, bool milestone1 = true, std::string_view mapId = "", bool hasTarget = false,
-                    Vec2 target = {})
-      : h(seed),
+                    Vec2 target = {}, const DataStore& data = test::RealData())
+      : h(seed, data),
         hero(std::make_unique<Hero>(h.ctx.data, ClassId::Warrior)),
         zone(h.ctx),
         loco(h.ctx),
@@ -912,8 +939,8 @@ struct WorldRig {
         zone.OnTimer(t);
       }
     };
-    // SimWiring's world hooks (W3: movement input cancels the portal channel).
-    h.bus.Subscribe<HeroMoveInputMsg>([this](const HeroMoveInputMsg&) { zone.CancelTownPortal(); });
+    // SimWiring's world hooks (W3: movement input cancels the portal channel when townPortal.cancelOnMove is on).
+    h.bus.Subscribe<HeroMoveInputMsg>([this](const HeroMoveInputMsg&) { zone.OnHeroMoveInput(); });
     const std::string map = mapId.empty() ? WD().World().defaultMap : std::string(mapId);
     h.session.currentMap = map;
     ok = zone.EnterZone(map, hasTarget, target);
@@ -968,6 +995,17 @@ struct WorldRig {
       if (const EvLog* p = std::get_if<EvLog>(&e); p != nullptr && p->text.key == key) return true;
     }
     return false;
+  }
+  // The first log line with that key (nullptr when none) and its position in the event list (`index`).
+  const EvLog* FindLog(std::string_view key, size_t* index = nullptr) const {
+    const std::span<const Event> items = h.events.Items();
+    for (size_t i = 0; i < items.size(); ++i) {
+      if (const EvLog* p = std::get_if<EvLog>(&items[i]); p != nullptr && p->text.key == key) {
+        if (index != nullptr) *index = i;
+        return p;
+      }
+    }
+    return nullptr;
   }
 
   test::SimHarness h;
@@ -1352,6 +1390,17 @@ TEST_SUITE("world") {
     const int32_t level0 = w.hero->Level();
     w.h.events.Clear();
     CHECK(w.events.AnswerPuzzle(ev.prop, kPuzzleChoiceSolve));
+    // ZoneScene.ts:3655: "<solution> - <reward>" first, then the gold / exp line.
+    size_t solvedAt = 0, rewardAt = 0;
+    const EvLog* solved = w.FindLog("zone.event.puzzle.solved", &solvedAt);
+    REQUIRE(solved != nullptr);
+    REQUIRE(w.FindLog("zone.event.puzzle.rewardGoldExp", &rewardAt) != nullptr);
+    CHECK(solvedAt < rewardAt);
+    REQUIRE(solved->text.args.size() == 2);
+    CHECK(solved->text.args[0] == KeyArg("solution", "sys.event.puzzle.emerald_plains.solution"));
+    CHECK(solved->text.args[1] == KeyArg("reward", "sys.event.puzzle.emerald_plains.reward"));
+    CHECK(WD().Strings().Lookup(LocaleId::En, "zone.event.puzzle.solved") != nullptr);
+    CHECK(WD().Strings().Lookup(LocaleId::ZhCN, "zone.event.puzzle.solved") != nullptr);
     CHECK(w.hero->Gold() == gold0 + 50);
     if (exp0 + 30 >= toNext) {  // the normal addExp path levels up (W11)
       CHECK(w.hero->Level() == level0 + 1);
@@ -1386,6 +1435,93 @@ TEST_SUITE("world") {
     CHECK_FALSE(w.events.HasUnresolved());
     CHECK(w.hero->Gold() == gold0 + 30);
     CHECK(w.Logged("zone.event.rescue.complete"));
+  }
+
+  TEST_CASE("random events 13.3: a zone without event data gets createEvent's fallbacks (puzzle, ambush, rescue)") {
+    // RandomEventSystem.ts:383-423 / ZoneScene.ts:3264-3280: no zone data -> the fallback puzzle (50 gold, 30 exp,
+    // sys.event.puzzle.fallback.*), ambush / rescue monsters = the zone's first monster def, rescue reward 50 / 40.
+    const std::unique_ptr<DataStore> data = WorldEditedData("random_events.json", [](JsonValue& d) {
+      REQUIRE(d.FindMutable("zones")->Remove("emerald_plains"));
+    });
+    REQUIRE(data->World().randomEvents.ForZone("emerald_plains") == nullptr);
+    WorldRig w(5, true, "", false, {}, *data);
+    REQUIRE(w.ok);
+    MonsterSystem monsters(w.h.ctx);
+    w.h.ctx.sys.monsters = &monsters;
+    const TilePos spot = WorldClearRow(w.zone, 4);
+    REQUIRE(spot.col > 0);
+    w.Place(spot.Center());
+
+    // Environmental puzzle: always a prop (the web's "no puzzle -> resolved" branch is unreachable).
+    w.events.TriggerEvent(RandomEventType::EnvironmentalPuzzle, spot.Center());
+    REQUIRE(w.events.Active().size() == 1);
+    const EntityId prop = w.events.Active().front().prop;
+    REQUIRE(prop != kNoEntity);
+    CHECK_FALSE(w.events.Active().front().resolved);
+    CHECK(w.events.Active().front().puzzleIndex == -1);
+    CHECK(w.events.Active().front().propArt == "decor_puzzle_stone");
+    const EvLog* prompt = w.FindLog("zone.event.puzzle.prompt");
+    REQUIRE(prompt != nullptr);
+    REQUIRE(prompt->text.args.size() == 1);
+    CHECK(prompt->text.args[0] == KeyArg("prompt", "sys.event.puzzle.fallback.prompt"));
+    REQUIRE(w.events.OpenPuzzle(prop));
+    CHECK(w.events.Puzzle().puzzleIndex == -1);
+    const int64_t gold0 = w.hero->Gold();
+    w.h.events.Clear();
+    REQUIRE(w.events.AnswerPuzzle(prop, kPuzzleChoiceSolve));
+    CHECK(w.hero->Gold() == gold0 + 50);
+    const EvLog* solved = w.FindLog("zone.event.puzzle.solved");
+    REQUIRE(solved != nullptr);
+    REQUIRE(solved->text.args.size() == 2);
+    CHECK(solved->text.args[0] == KeyArg("solution", "sys.event.puzzle.fallback.solution"));
+    CHECK(solved->text.args[1] == KeyArg("reward", "sys.event.puzzle.fallback.reward"));
+    const EvLog* gained = w.FindLog("zone.event.puzzle.rewardGoldExp");
+    REQUIRE(gained != nullptr);
+    REQUIRE(gained->text.args.size() == 2);
+    CHECK(gained->text.args[0].value == "50");
+    CHECK(gained->text.args[1].value == "30");
+    CHECK(w.events.Active().empty());
+
+    // Ambush: 3-5 monsters (fallback count), every one the zone's first monster def.
+    const std::string first = WD().Monsters().ZoneList("emerald_plains")->monsterIds.front();
+    CHECK(first == "slime_green");
+    REQUIRE(monsters.All().empty());
+    w.events.TriggerEvent(RandomEventType::Ambush, spot.Center());
+    CHECK(w.events.Active().empty());  // the ambush resolves once spawned (and is pruned)
+    size_t ambush = 0;
+    for (const MonsterInstance& m : monsters.All()) {
+      CHECK(m.def.id == first);
+      CHECK(m.role == MonsterRole::AmbushSpawn);
+      ++ambush;
+    }
+    CHECK(ambush >= 3);
+    CHECK(ambush <= 5);
+
+    // Rescue: >= 2 monsters of the first def around the fallback NPC; once they are gone the 50 / 40 fallback reward
+    // and the fallback NPC name.
+    w.events.TriggerEvent(RandomEventType::Rescue, spot.Center());
+    const ActiveRandomEvent* rescue = nullptr;
+    for (const ActiveRandomEvent& e : w.events.Active()) {
+      if (e.type == RandomEventType::Rescue) rescue = &e;
+    }
+    REQUIRE(rescue != nullptr);
+    CHECK(rescue->propArt == "npc_rescue");
+    CHECK(rescue->monsters.size() >= 2);
+    CHECK(rescue->rewardGold == 50);
+    CHECK(rescue->rewardExp == 40);
+    for (EntityId id : rescue->monsters) {
+      REQUIRE(monsters.Find(id) != nullptr);
+      CHECK(monsters.Find(id)->def.id == first);
+    }
+    w.h.ctx.sys.monsters = nullptr;  // nothing tracked is alive any more at the next poll
+    const int64_t gold1 = w.hero->Gold();
+    w.h.events.Clear();
+    w.Step(30);
+    CHECK(w.hero->Gold() == gold1 + 50);
+    const EvLog* complete = w.FindLog("zone.event.rescue.complete");
+    REQUIRE(complete != nullptr);
+    REQUIRE_FALSE(complete->text.args.empty());
+    CHECK(complete->text.args[0] == KeyArg("npcName", "sys.event.rescue.fallback"));
   }
 
   TEST_CASE("random events 13.3: treasure cache gold (30-60 in emerald_plains) and the chest prop fades after 9.2 s") {
@@ -1524,6 +1660,65 @@ TEST_SUITE("world") {
     CHECK(w.h.session.transitioning);
   }
 
+  TEST_CASE("exits W8: arming is strict at distSq exactly 6 (the data's squared constant, not sqrt(6)^2)") {
+    const WorldConstants& wc = WD().World().constants;
+    CHECK(wc.exitArmDistanceSq == 6);
+    CHECK(wc.exitArmDistance * wc.exitArmDistance < 6);  // 5.999999999999999: would arm at exactly 6
+    // A hero position whose DistSq to the exit (119,60) rounds to exactly 6.0.
+    const Vec2 exact6(116.55052350684032, 60.008056640625);
+    REQUIRE(DistSq(exact6, Vec2(119, 60)) == 6.0);
+    WorldRig w(5, /*milestone1=*/false, "emerald_plains", true, Vec2(118, 60));
+    REQUIRE(w.ok);
+    w.Step();
+    REQUIRE_FALSE(w.zone.Exits()[0].armed);
+    w.Place(exact6);
+    w.Step(3);
+    CHECK_FALSE(w.zone.Exits()[0].armed);  // distSq 6 is not > 6
+    w.Place({116.5, 60});                  // 6.25
+    w.Step();
+    CHECK(w.zone.Exits()[0].armed);
+  }
+
+  TEST_CASE("tick order (world 17 step 10): exit proximity runs before exploration, lore and the soul echo claim") {
+    SimConfig cfg;
+    cfg.milestone1 = false;
+    auto sim = GameSim::Create(test::RealData(), cfg);
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 9, 1));
+    SimContext& ctx = sim->Context();
+    ctx.sys.story->FinishAllBeats();
+    sim->Step();
+    REQUIRE(ctx.sys.zone->Exits()[0].armed);
+    // A soul echo lying in the exit trigger: the same step fires the exit and reclaims the echo.
+    SaveData echo;
+    echo.soulEcho.present = true;
+    echo.soulEcho.mapId = "emerald_plains";
+    echo.soulEcho.col = 117.5;
+    echo.soulEcho.row = 60;
+    echo.soulEcho.gold = 12;
+    ctx.sys.soulEcho->ReadSave(echo);
+    ctx.sys.locomotion->Teleport(Vec2(117.6, 60), TeleportReason::Debug);
+    sim->Step();
+    size_t exitAt = 0, claimAt = 0;
+    bool exitSeen = false, claimSeen = false;
+    const std::span<const Event> events = sim->Events();
+    for (size_t i = 0; i < events.size(); ++i) {
+      if (const EvZone* z = std::get_if<EvZone>(&events[i]);
+          z != nullptr && z->phase == EvZone::Phase::TransitionBegan && !exitSeen) {
+        exitSeen = true;
+        exitAt = i;
+      }
+      if (const EvLog* l = std::get_if<EvLog>(&events[i]);
+          l != nullptr && l->text.key == "zone.soulEcho.claimed" && !claimSeen) {
+        claimSeen = true;
+        claimAt = i;
+      }
+    }
+    REQUIRE(exitSeen);
+    REQUIRE(claimSeen);
+    CHECK(exitAt < claimAt);  // web: checkExitProximity (step 10) before the soul echo (step 11)
+  }
+
   TEST_CASE("exits W7: the sealed chapter-2 gate shows the coming-soon line once per approach") {
     WorldRig w;
     REQUIRE(w.ok);
@@ -1589,6 +1784,35 @@ TEST_SUITE("world") {
     w.hero->SetLife(HeroLife::Dying);
     CHECK(w.zone.CanUseTownPortal() == PortalRefusal::Dead);
     CHECK_FALSE(w.zone.UseTownPortal());
+  }
+
+  TEST_CASE("town portal W3 / U10: world_constants townPortal.cancelOnMove switches the movement cancel") {
+    CHECK(WD().World().constants.townPortalCancelOnMove);  // shipped: movement input cancels (W3)
+    const std::unique_ptr<DataStore> data = WorldEditedData("world_constants.json", [](JsonValue& d) {
+      d.FindMutable("townPortal")->Set("cancelOnMove", JsonValue::Bool(false));
+    });
+    REQUIRE_FALSE(data->World().constants.townPortalCancelOnMove);
+    WorldRig w(5, true, "", false, {}, *data);
+    REQUIRE(w.ok);
+    w.Place({60, 40});
+    REQUIRE(w.zone.UseTownPortal());
+    w.Step(10);
+    w.loco.SetMoveInput({1, 0});  // HeroMoveInputMsg -> OnHeroMoveInput: the switch is off, the channel goes on
+    CHECK(w.zone.IsPortaling());
+    w.Step(5);
+    w.loco.SetMoveInput({});
+    CHECK(w.zone.IsPortaling());
+    w.Step(80);  // 1583 ms since the channel started
+    CHECK_FALSE(w.zone.IsPortaling());
+    CHECK(w.hero->Position() == w.zone.PortalDestination());
+    REQUIRE(w.Last<EvTownPortal>() != nullptr);
+    CHECK(w.Last<EvTownPortal>()->phase == EvTownPortal::Phase::Completed);
+    // The damage / death cancels (CancelTownPortal from the wiring) do not depend on the switch.
+    w.Place({60, 40});
+    REQUIRE(w.zone.UseTownPortal());
+    w.zone.CancelTownPortal();
+    CHECK_FALSE(w.zone.IsPortaling());
+    CHECK(w.Last<EvTownPortal>()->phase == EvTownPortal::Phase::Cancelled);
   }
 
   TEST_CASE("interact 7.4: NPC range 3.0 / 3.01, prompt events, nothing in range is a silent no-op") {
@@ -1842,19 +2066,50 @@ TEST_SUITE("world") {
   TEST_CASE("exploration 10.3: standing at (108,108) sees the whole elven cache; (104,102) misses two corners") {
     WorldRig w;
     REQUIRE(w.ok);
+    REQUIRE(w.zone.Map().hiddenAreas.size() == 1);
+    const HiddenAreaDef& cache = w.zone.Map().hiddenAreas[0];
+    CHECK(cache.id == "hidden_ep_elven_cache");
+    CHECK_FALSE(cache.hasBounds);  // bounds = centre (108,108) +- radius 6
     w.Place({104, 102});
     w.Step();
-    CHECK_FALSE(w.explore.AreaFullyExplored(102, 102, 114, 114));
+    CHECK_FALSE(w.explore.AreaFullyExplored(cache));
     CHECK_FALSE(w.explore.Grid().IsExplored(102, 114));
     CHECK_FALSE(w.explore.Grid().IsExplored(114, 114));
     w.Place({108, 108});
     w.Step();
-    CHECK(w.explore.AreaFullyExplored(102, 102, 114, 114));
+    CHECK(w.explore.AreaFullyExplored(cache));
     // The grid is per visit: a zone re-entry resets it.
     w.zone.ExitZone();
     REQUIRE(w.zone.EnterZone("emerald_plains", false, {}));
     w.explore.OnZoneEnter();
     CHECK_FALSE(w.explore.Grid().IsExplored(108, 108));
+  }
+
+  TEST_CASE("exploration 10.3: the fifth check point is the area centre (area.col, area.row), not the bounds midpoint") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    // Explicit bounds whose midpoint (44,44) is not the centre (60,60) (isHiddenAreaExplored, ZoneScene.ts:4841).
+    HiddenAreaDef area;
+    area.id = "test_bounds";
+    area.center = TilePos{60, 60};
+    area.radius = 3;
+    area.hasBounds = true;
+    area.boundsStart = TilePos{40, 40};
+    area.boundsEnd = TilePos{48, 48};
+    w.Place({44, 44});  // all four corners and the midpoint within the radius-10 disc; the centre is 22.6 tiles away
+    w.Step();
+    REQUIRE(w.explore.Grid().IsExplored(44, 44));
+    REQUIRE_FALSE(w.explore.Grid().IsExplored(60, 60));
+    CHECK_FALSE(w.explore.AreaFullyExplored(area));
+    w.Place({60, 60});
+    w.Step();
+    CHECK(w.explore.AreaFullyExplored(area));  // the grid keeps what was seen during this visit
+    // Without explicit bounds a fractional radius puts the corners between tiles: never explored (web: undefined).
+    HiddenAreaDef frac;
+    frac.center = TilePos{60, 60};
+    frac.radius = 2.5;
+    CHECK(w.explore.Grid().IsExplored(58, 58));
+    CHECK_FALSE(w.explore.AreaFullyExplored(frac));
   }
 }
 
@@ -2120,5 +2375,119 @@ TEST_SUITE("audio") {
     const size_t n = w.Count<EvSfx>();
     a.OnNpcInteracted(NpcInteractedMsg{"stash", 5});
     CHECK(w.Count<EvSfx>() == n);  // the stash panel's click is UE's
+  }
+  TEST_CASE("A6: the hit_heavy weights are audio_cues.json rules.port.heavyHitCue.weights, not a code table") {
+    const AudioRulesDef& r = WD().Audio().rules;
+    CHECK(r.heavyHitWeights == std::vector<HitWeight>{HitWeight::Heavy, HitWeight::Crit, HitWeight::Kill});
+    CHECK(r.heavyHitCue == SfxId::HitHeavy);
+    AudioRulesDef only = r;
+    only.heavyHitWeights = {HitWeight::Kill};
+    CHECK(SfxForCombatHit(only, false, false, HitWeight::Heavy) == SfxId::Hit);
+    CHECK(SfxForCombatHit(only, false, false, HitWeight::Kill) == SfxId::HitHeavy);
+    CHECK(SfxForCombatHit(only, false, true, HitWeight::Kill) == SfxId::Crit);  // crit still first
+    only.heavyHitWeights.clear();
+    CHECK(SfxForCombatHit(only, false, false, HitWeight::Kill) == SfxId::Hit);
+  }
+
+  TEST_CASE("10.4 rule 4: bossMusic maps a boss to its score; a boss without one keeps the combat track") {
+    const MusicDirectorDef& def = WD().Audio().music;
+    REQUIRE(def.bossMusic.size() == 1);
+    CHECK(def.bossMusic[0].first == "goblin_chief");
+    CHECK(def.bossMusic[0].second == "boss_ch1");
+    REQUIRE(def.BossScore("goblin_chief") != nullptr);
+    CHECK(*def.BossScore("goblin_chief") == "boss_ch1");
+    CHECK(def.BossScore("werewolf_alpha") == nullptr);
+    MusicDirector m(def);
+    m.Tick(0);
+    m.OnZoneEntered("twilight_forest");
+    m.TakeCommand();
+    m.OnCombatStateChanged(true);
+    std::optional<MusicCommand> c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "twilight_forest_combat");
+    m.OnBossEngaged("werewolf_alpha");  // a later-chapter story boss: no boss_ch1
+    CHECK_FALSE(m.TakeCommand().has_value());
+    CHECK(m.State() == MusicState::Combat);
+    m.OnBossDisengaged();
+    CHECK_FALSE(m.TakeCommand().has_value());
+    m.OnBossEngaged("goblin_chief");
+    c = m.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "boss_ch1");
+    // Released story lock with an unscored boss and the combat flag on: the queued combat state applies.
+    MusicDirector q(def);
+    q.OnZoneEntered("twilight_forest");
+    q.TakeCommand();
+    q.SetStoryLock(true);
+    q.OnCombatStateChanged(true);
+    q.OnBossEngaged("werewolf_alpha");
+    CHECK_FALSE(q.TakeCommand().has_value());
+    q.SetStoryLock(false);
+    c = q.TakeCommand();
+    REQUIRE(c.has_value());
+    CHECK(c->trackKey == "twilight_forest_combat");
+  }
+
+  TEST_CASE("10.4 rule 2: StoryStateMsg carries the sequence's music state (epilogue / credits victory)") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    AudioDirector& a = w.audio;
+    a.OnZoneEntered(ZoneEnteredMsg{"emerald_plains", false});
+    a.AdvanceRealTime(16);
+    a.OnStoryState(StoryStateMsg{true, "epilogue", "abyss_rift", "victory"});  // sequence(EPILOGUE, 'abyss_rift', 'victory')
+    a.AdvanceRealTime(16);
+    REQUIRE(w.Last<EvMusic>() != nullptr);
+    CHECK(w.Last<EvMusic>()->trackKey == "abyss_rift_victory");
+    CHECK_FALSE(w.Last<EvMusic>()->loop);
+    a.AdvanceRealTime(3000);  // the forced victory holds 3000 ms, then the sequence zone's explore under the lock
+    CHECK(w.Last<EvMusic>()->trackKey == "abyss_rift_explore");
+    a.OnStoryState(StoryStateMsg{false, "epilogue", ""});  // the sequence's finally: playTrack(<map>, 'explore')
+    a.AdvanceRealTime(16);
+    CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_explore");
+    CHECK(w.Last<EvMusic>()->restart);
+    a.OnStoryState(StoryStateMsg{true, "credits", "abyss_rift", "victory"});
+    a.AdvanceRealTime(16);
+    CHECK(w.Last<EvMusic>()->trackKey == "abyss_rift_victory");
+    a.OnStoryState(StoryStateMsg{false, "credits", ""});
+    // Only explore / victory are sequence states; anything else plays explore.
+    a.OnStoryState(StoryStateMsg{true, "prologue", "abyss_rift", "boss"});
+    a.AdvanceRealTime(16);
+    CHECK(w.Last<EvMusic>()->trackKey == "abyss_rift_explore");
+  }
+
+  TEST_CASE("10.4 rule 2 (GameSim): the prologue plays abyss_rift explore; the chapter card plays over the zone track") {
+    auto sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Mage, Difficulty::Normal, 4, 1));
+    StoryDirector& story = *sim->Context().sys.story;
+    REQUIRE(story.Playback().playing);
+    REQUIRE(story.Playback().beat.id == "prologue");
+    std::vector<std::string> tracks, beats;
+    auto frame = [&]() {
+      sim->Frame(16);
+      for (const Event& e : sim->Events()) {
+        if (const EvMusic* m = std::get_if<EvMusic>(&e)) {
+          tracks.push_back(m->trackKey);
+          beats.push_back(story.Playback().playing ? story.Playback().beat.id : std::string());
+        }
+      }
+    };
+    frame();
+    REQUIRE(tracks.size() == 1);
+    CHECK(tracks.back() == "abyss_rift_explore");  // StoryDirector.ts:83 sequence(PROLOGUE, 'abyss_rift')
+    for (int i = 0; i < 4000 && story.Playback().beat.id == "prologue"; ++i) {
+      story.Skip();
+      frame();
+    }
+    REQUIRE(story.Playback().playing);
+    REQUIRE(story.Playback().beat.id == "chapter_emerald_plains");
+    CHECK(story.IsCinematic());
+    REQUIRE(tracks.size() == 2);
+    CHECK(tracks.back() == "emerald_plains_explore");  // the prologue's end, not the end of the whole queue
+    CHECK(beats.back() == "chapter_emerald_plains");
+    story.FinishAllBeats();
+    frame();
+    CHECK_FALSE(story.IsCinematic());
+    CHECK(tracks.size() == 2);  // the card's end and the idle director change nothing
   }
 }

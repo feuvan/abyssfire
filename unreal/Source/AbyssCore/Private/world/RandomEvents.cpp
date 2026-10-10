@@ -38,6 +38,14 @@ constexpr double kRevRescueMinDist = 2, kRevRescueDistRange = 3;
 constexpr int32_t kRevAmbushFallbackMin = 3, kRevAmbushFallbackMax = 5;
 constexpr int32_t kRevRescueFallbackMin = 2, kRevRescueFallbackMax = 4;
 constexpr int64_t kRevRescueFallbackGold = 50, kRevRescueFallbackExp = 40;
+// The fallback puzzle createEvent builds when the zone has no puzzle (sys.event.puzzle.fallback.*, 50 gold, 30 exp).
+constexpr int64_t kRevPuzzleFallbackGold = 50, kRevPuzzleFallbackExp = 30;
+
+// i18n key of a puzzle text field: the zone's puzzle (sys.event.puzzle.<zone>.<field>) or the fallback puzzle.
+std::string RevPuzzleKey(const std::string& zoneId, int32_t puzzleIndex, const char* field) {
+  if (puzzleIndex < 0) return std::string("sys.event.puzzle.fallback.") + field;
+  return "sys.event.puzzle." + zoneId + "." + field;
+}
 
 const char* RevPropArt(RandomEventType t, const ZoneEventDataDef* zd) {
   switch (t) {
@@ -284,7 +292,8 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
   const std::vector<std::string>& ids = zd != nullptr ? zd->ambushMonsters : noIds;
   switch (type) {
     case RandomEventType::Ambush: {
-      if (ctx_.sys.monsters != nullptr && !ids.empty()) {
+      // No ambush list (a zone without event data): SpawnAmbush falls back to the zone's first monster (web parity).
+      if (ctx_.sys.monsters != nullptr) {
         ev.monsters = ctx_.sys.monsters->SpawnAmbush(ids, ev.monsterCount, ev.pos, kRevAmbushMinDist,
                                                      kRevAmbushDistRange, MonsterRole::AmbushSpawn);
       }
@@ -332,7 +341,7 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
     case RandomEventType::Rescue: {
       const TilePos t = EventTile(ev.pos);
       SpawnProp(ev, t.Center(), RevPropArt(type, zd));
-      if (ctx_.sys.monsters != nullptr && !ids.empty()) {
+      if (ctx_.sys.monsters != nullptr) {  // empty list -> the zone's first monster (as for the ambush)
         ev.monsters = ctx_.sys.monsters->SpawnAmbush(ids, ev.monsterCount, t.Center(), kRevRescueMinDist,
                                                      kRevRescueDistRange, MonsterRole::RescueSpawn);
       }
@@ -342,13 +351,11 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
       break;
     }
     case RandomEventType::EnvironmentalPuzzle: {
-      if (ev.puzzleIndex < 0) {  // no puzzle data: resolved at once (handlePuzzleEvent)
-        ctx_.events.Emit(EvRandomEvent{false, ev.type, ev.pos, zoneId, kNoEntity});
-        Resolve(ev);
-        break;
-      }
-      ctx_.events.Log(MakeLoc("zone.event.puzzle.prompt", {KeyArg("prompt", "sys.event.puzzle." + zoneId + ".prompt")}),
-                      LogType::Info);
+      // createEvent always builds a puzzle (the zone's, else the fallback puzzle: puzzleIndex -1), so the web's
+      // "no puzzle -> resolved at once" branch of handlePuzzleEvent is unreachable.
+      ctx_.events.Log(
+          MakeLoc("zone.event.puzzle.prompt", {KeyArg("prompt", RevPuzzleKey(zoneId, ev.puzzleIndex, "prompt"))}),
+          LogType::Info);
       const TilePos t = EventTile(ev.pos);
       SpawnProp(ev, t.Center(), RevPropArt(type, zd));
       ctx_.events.Emit(EvRandomEvent{false, ev.type, ev.pos, zoneId, ev.prop});
@@ -365,7 +372,9 @@ void RandomEventSystem::CompleteRescue(ActiveRandomEvent& e) {
     ctx_.sys.rewards->ChangeGold(e.rewardGold, GoldReason::RandomEvent);
     ctx_.sys.rewards->GrantExp(e.rewardExp, ExpSource::RandomEvent);  // W11: the normal addExp path
   }
-  ctx_.events.Log(MakeLoc("zone.event.rescue.complete", {KeyArg("npcName", "sys.event.rescue." + zoneId),
+  const ZoneEventDataDef* zd = ctx_.data.World().randomEvents.ForZone(zoneId);
+  const std::string npcKey = zd != nullptr ? "sys.event.rescue." + zoneId : std::string("sys.event.rescue.fallback");
+  ctx_.events.Log(MakeLoc("zone.event.rescue.complete", {KeyArg("npcName", npcKey),
                                                          {"gold", ToStr(e.rewardGold)},
                                                          {"exp", ToStr(e.rewardExp)}}),
                   LogType::Info);
@@ -456,12 +465,18 @@ bool RandomEventSystem::AnswerPuzzle(EntityId prop, int32_t choice) {
   }
   const std::string zoneId = puzzle_.zoneId;
   const ZoneEventDataDef* zd = ctx_.data.World().randomEvents.ForZone(zoneId);
-  int64_t gold = 0, exp = 0;
+  int64_t gold = randomevents_impl::kRevPuzzleFallbackGold, exp = randomevents_impl::kRevPuzzleFallbackExp;
+  int32_t index = -1;
   if (zd != nullptr && ev->puzzleIndex >= 0 && static_cast<size_t>(ev->puzzleIndex) < zd->puzzles.size()) {
-    gold = zd->puzzles[static_cast<size_t>(ev->puzzleIndex)].rewardGold;
-    exp = zd->puzzles[static_cast<size_t>(ev->puzzleIndex)].rewardExp;
+    index = ev->puzzleIndex;
+    gold = zd->puzzles[static_cast<size_t>(index)].rewardGold;
+    exp = zd->puzzles[static_cast<size_t>(index)].rewardExp;
   }
-  ctx_.events.Log(MakeLoc("sys.event.puzzle." + zoneId + ".reward"), LogType::Info);
+  // ZoneScene.ts:3655: "<solution> - <reward>", then the gold / exp line.
+  ctx_.events.Log(MakeLoc("zone.event.puzzle.solved",
+                          {KeyArg("solution", randomevents_impl::RevPuzzleKey(zoneId, index, "solution")),
+                           KeyArg("reward", randomevents_impl::RevPuzzleKey(zoneId, index, "reward"))}),
+                  LogType::Info);
   if (ctx_.sys.rewards != nullptr) {
     ctx_.sys.rewards->ChangeGold(gold, GoldReason::RandomEvent);
     ctx_.sys.rewards->GrantExp(exp, ExpSource::RandomEvent);  // W11

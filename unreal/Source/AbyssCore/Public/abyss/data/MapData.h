@@ -207,6 +207,7 @@ struct WorldConstants {
   double holdMoveRepathMs = 120;
   double exitRadiusSq = 2.25;
   double exitArmDistance = 2.449489742783178;  // sqrt(6) (W8)
+  double exitArmDistanceSq = 6;                // W8 / W7: armed once distSq > 6 (strict)
   double campfireRadiusTiles = 5, campfireHpMul = 50, campfireMpMul = 50;
   double safeZoneRadiusDefault = 9;
   double hiddenAreaExploreRadius = 10;

@@ -30,10 +30,13 @@ enum class GroundLootTimerKind : uint16_t { ItemDespawn = 1, PotionDespawn = 2 }
 struct GroundItem {
   EntityId id = kNoEntity;
   ItemInstance item;
-  Vec2 pos;            // logical tile position (monster tile)
-  Vec2 visualOffset;   // +U[0, 0.5) tiles (render only; drawn from RngStream::Loot)
+  Vec2 pos;            // logical tile position (monster tile / chest tile)
+  // Render offset in tiles, drawn from RngStream::Loot: monster drops +U[0, 0.5) per axis (dropLoot); treasure-cache
+  // drops the web's screen jitter (U - 0.5) x 20 px / (U - 0.5) x 10 px converted from iso px to tiles.
+  Vec2 visualOffset;
   double droppedAtMs = 0;
-  bool despawns = true;  // treasure-cache drops do not
+  bool despawns = true;    // treasure-cache drops do not
+  bool cacheDrop = false;  // dropLootAtPosition (treasure cache): fall-in, no ITEM_DROPPED feedback (6.1 / 6.5)
   TimerId timer = kNoTimer;
 };
 
@@ -49,8 +52,10 @@ class ABYSS_API GroundLootSystem {
  public:
   explicit GroundLootSystem(SimContext& ctx);
 
-  // dropLoot (6.1): 60 s despawn (none when !despawns: treasure caches), EvLootDropped (legendary / set flash + shake
-  // are presentation rules on the event).
+  // dropLoot (6.1, despawns = true): 60 s despawn timer, EvLootDropped (UE plays the 6.5 legendary / set flash + shake).
+  // dropLootAtPosition (despawns = false, treasure caches only): no despawn timer and EvLootDropped with cacheDrop = true
+  // and fallInMs (the web emitted no ITEM_DROPPED for it, so no flash / shake) and the cache's own jitter.
+  // Both draw the two visual-offset values from RngStream::Loot.
   EntityId Drop(ItemInstance item, Vec2 pos, bool despawns = true);
   // dropPotion (6.2): 30 s despawn, EvPotionDropped.
   EntityId DropPotion(PotionKind kind, int32_t amount, Vec2 pos);
@@ -58,8 +63,11 @@ class ABYSS_API GroundLootSystem {
   // Kill pipeline (loot 5.1): ley-fruit roll, generateLoot with LootLuck() and the session difficulty, potions vs items.
   void OnMonsterKilled(const MonsterKilledMsg& m);
   // Loot luck (5.1 + I1): raw hero lck + homestead building magicFind + active pet magicFind + gear lck + gear
-  // magicFind (the altar blessing is not part of it, loot Q3).
+  // magicFind (the altar blessing is not part of it, loot Q3). Monster kills.
   double LootLuck() const;
+  // Treasure-cache luck (5.5 + I1): the web passed raw player.stats.lck only (no homestead / pet magicFind); I1 adds
+  // gear lck + gear magicFind. RandomEventSystem's treasure cache should roll with this, not LootLuck().
+  double TreasureCacheLuck() const;
 
   // Per step: potion auto-collect within 2 tiles (6.2; alive hero only, C12), auto-loot every 300 ms (6.4).
   void Tick();
@@ -68,7 +76,8 @@ class ABYSS_API GroundLootSystem {
 
   // Click pickup (6.3 + Q22 fix): true when the drop was picked up now (in range, bag has room, hero alive). The caller
   // (ZoneRuntime) walks to an out-of-range drop (InPickupRange false) and calls TryPickUp again on arrival. A full bag
-  // logs sys.inventory.bagFull and leaves the drop on the ground.
+  // logs sys.inventory.bagFull and leaves the drop on the ground - minus the units a partial stack took (7.2 / 20.8:
+  // the web's addItem topped up the first partial stack and left the rest on the ground). Auto-loot does the same.
   bool TryPickUp(EntityId drop);
   bool InPickupRange(EntityId drop) const;  // distSq(hero, drop) <= 4
   // findLootAt (6.3): first ground item with |dcol| < 1.5 && |drow| < 1.5 in drop order; kNoEntity when none.
@@ -81,7 +90,9 @@ class ABYSS_API GroundLootSystem {
 
  private:
   void AutoLoot();
-  bool GrantPickup(ItemInstance& item);
+  // Grants a copy of the drop at `index`; false keeps the drop with the quantity the bag did not take.
+  bool GrantPickupAt(size_t index);
+  double HeroAndGearLuck() const;
   void RemoveItemAt(size_t index, DespawnReason reason);
   void RemovePotionAt(size_t index, DespawnReason reason);
 

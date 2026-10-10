@@ -22,6 +22,8 @@
 #include "abyss/data/MapData.h"
 #include "abyss/data/SkillData.h"
 #include "abyss/data/StoryData.h"
+#include "abyss/hero/Spirit.h"
+#include "abyss/items/Item.h"
 #include "abyss/sim/SimTypes.h"
 
 namespace abyss {
@@ -178,6 +180,9 @@ struct EvSpiritChanged {
   double value = 0, maxValue = 100;
   bool resonating = false;
   double gained = 0;
+  // classes 14.3 / 17 `source?`: set on a combat gain (hit / kill / dodge); absent on resonance end, drain and death.
+  bool hasSource = false;
+  SpiritSource source = SpiritSource::Hit;
 };
 struct EvResonance {
   bool started = true;  // false = ended
@@ -237,6 +242,14 @@ struct EvLootDropped {
   int32_t quantity = 1;
   Vec2 pos;
   double expiresAtMs = 0;  // 0 = never
+  // loot 17 LootDropSpawned {dropId, item}: the whole item, so the world nameplate shows ItemDisplayName (affixes,
+  // legendaryId, setId; loot 18 / FIX Q16) and the tooltip can be built before the next snapshot.
+  ItemInstance item;
+  Vec2 visualOffset;       // render offset from `pos` in tiles (GroundItem::visualOffset)
+  // A treasure-cache drop (dropLootAtPosition, loot 6.1): it falls in over `fallInMs` (from the chest, loot 18) and has
+  // no ITEM_DROPPED feedback (loot 6.5: no legendary / set camera flash or shake). Monster drops: false / 0.
+  bool cacheDrop = false;
+  double fallInMs = 0;
 };
 struct EvPotionDropped {
   EntityId drop = kNoEntity;
@@ -249,6 +262,11 @@ struct EvItemPicked {
   std::string baseId;
   ItemQuality quality = ItemQuality::Normal;
   int32_t quantity = 1;
+  ItemInstance item;  // loot 17 ItemPicked {item}: the picked item as granted (HUD notice: ItemDisplayName x quantity)
+};
+// loot 7.3 / 17 ItemDiscarded {item}: a bag item destroyed by the discard action (not by sell / salvage / bulk destroy).
+struct EvItemDiscarded {
+  ItemInstance item;
 };
 struct EvPotionPicked {
   PotionKind kind = PotionKind::Hp;
@@ -285,6 +303,10 @@ struct EvQuestUpdate {
   bool hasFrom = false;  // Progress from a drop / gather node / clue
   Vec2 from;             // kill point / node / clue tile
   std::string itemKind;  // quest-item icon kind (QuestItemIcons), "" for kill / talk / explore progress
+  // Progress only (quests 13 QuestProgress payload): the objective's targetId and the requested amount (the web's
+  // QUEST_PROGRESS `amount`, before the clamp to `required`).
+  std::string targetId;
+  int32_t amount = 0;
 };
 struct EvNpcInteracted {
   std::string npcId;
@@ -458,7 +480,7 @@ using Event = std::variant<EvEntitySpawned, EvEntityDespawned, EvEntityTeleporte
                            EvFloatingText, EvExpGained, EvLevelUp, EvGoldChanged, EvSpiritChanged, EvResonance,
                            EvSkillUsed, EvSkillBuffered, EvSkillLevelChanged, EvHotbarChanged, EvDodgeStarted,
                            EvHeroDash, EvTargetChanged, EvCombatStateChanged, EvHeroDied, EvHeroRespawned, EvTownPortal,
-                           EvLootDropped, EvPotionDropped, EvItemPicked, EvPotionPicked, EvInventoryChanged,
+                           EvLootDropped, EvPotionDropped, EvItemPicked, EvItemDiscarded, EvPotionPicked, EvInventoryChanged,
                            EvEquipmentChanged, EvStashChanged, EvShopOpened, EvShopClosed, EvCraftPerformed,
                            EvQuestUpdate, EvNpcInteracted, EvQuestCardOpened, EvDialogue, EvMiniBossDialogue,
                            EvLoreCollected, EvHiddenAreaDiscovered, EvAchievementUnlocked, EvStoryState, EvStoryBeat,

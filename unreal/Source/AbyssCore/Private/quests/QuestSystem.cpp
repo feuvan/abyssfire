@@ -124,6 +124,8 @@ void QuestSystem::UpdateProgress(ObjectiveType type, std::string_view targetId, 
       ev.current = current;
       ev.required = q->objectives[i].required;
       ev.completesQuest = allDone;
+      ev.targetId = q->objectives[i].targetId;
+      ev.amount = amount;
       if (source != nullptr) {
         ev.hasFrom = source->hasFrom;
         ev.from = source->from;

@@ -44,6 +44,21 @@ void ShopSystem::Open(std::string_view npcId, bool blacksmith) {
   ctx_.events.Emit(EvShopOpened{state_.npcId, blacksmith});
 }
 
+std::string ShopSystem::ResolveWanderingMerchantId(const DataStore& data, std::string_view zoneId, std::string_view id) {
+  const ItemTables& t = data.Items();
+  if (t.FindBase(id) != nullptr) return std::string(id);
+  // FIX Q12: the event's web ids map to real bases (shops.json idMap), the current zone's map first.
+  if (const WanderingMerchantDef* w = t.FindWanderingMerchant(zoneId)) {
+    const std::string_view mapped = w->MapId(id);
+    if (!mapped.empty()) return std::string(mapped);
+  }
+  for (const WanderingMerchantDef& w : t.wanderingMerchant) {
+    const std::string_view mapped = w.MapId(id);
+    if (!mapped.empty()) return std::string(mapped);
+  }
+  return std::string();
+}
+
 void ShopSystem::OpenWanderingMerchant(const std::vector<std::string>& baseIds, double priceMultiplier) {
   const ItemTables& t = ctx_.data.Items();
   state_ = ShopState{};
@@ -51,9 +66,10 @@ void ShopSystem::OpenWanderingMerchant(const std::vector<std::string>& baseIds, 
   state_.npcId = std::string(kWanderingMerchantShopId);
   state_.blacksmith = false;
   const double mul = priceMultiplier > 0 ? priceMultiplier : 1.0;
-  for (const std::string& id : baseIds) {
-    const ItemBaseDef* base = t.FindBase(id);
-    if (base == nullptr || t.IsRemovedItem(id)) continue;  // the web's invalid ids (Q12) are dropped
+  for (const std::string& raw : baseIds) {
+    const std::string id = ResolveWanderingMerchantId(ctx_.data, ctx_.session.currentMap, raw);
+    const ItemBaseDef* base = id.empty() ? nullptr : t.FindBase(id);
+    if (base == nullptr || t.IsRemovedItem(id)) continue;
     state_.wares.push_back(ShopWare{id, ShpPrice(*base, t.economy.buyPriceMultiplier, mul)});
   }
   ctx_.events.Emit(EvShopOpened{state_.npcId, false});

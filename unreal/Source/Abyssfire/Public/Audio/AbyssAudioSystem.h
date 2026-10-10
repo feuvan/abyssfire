@@ -7,7 +7,8 @@
 //   fadeOutSec, the new one fades in over fadeInSec (linear, audio.md 5.4). A voice that is still fading out when a third
 //   request arrives is stopped at once (never orphaned, FIX Q4). restart = false resumes the track where it was last
 //   heard (A2: explore after a fight / boss / victory); one-shots (victory) end by themselves. The title menu track is
-//   played here on AppState MainMenu (the core has no session there).
+//   played here on AppState MainMenu (the core has no session there). The manifest's zoneOverrides swap a track key
+//   for the current zone (audio.md 11: the Ember Tower plays the procedural plains score).
 // * SFX (EvSfx): per-cue concurrency (max voices, stop oldest, minimum retrigger), random variant without immediate
 //   repeat (audio.md 9.5), monster family variants (A7, the source's animCategory) plus the family death vocal on
 //   monster_death. World cues (EvSfx::spatial) get the A4 mild panning: the source's lateral offset from the hero on
@@ -19,6 +20,8 @@
 //   notifies with the surface of the tile under the hero (a distance cadence takes over when a clip has no notifies).
 // * Volumes: master x bus (music / SFX) from FAbyssUserSettings, applied as component volume multipliers (no sound
 //   class assets needed). App background (mobile): everything pauses, one-shots stop; resumed on foreground.
+// * Title-menu soundtrack (audio.md 8.3, FIX Q10): packaged tracks with real lengths, real pause and seek, auto-advance;
+//   closing it returns to the title theme. Music credits for the credits screen come from the manifest.
 //
 // Lifetime: game instance subsystem (survives the session cycle; components live in the one game world L_Main).
 #pragma once
@@ -39,9 +42,27 @@
 
 class AAbyssCharacterActor;
 class UAbyssGameInstance;
+class APlayerController;
 class UAudioComponent;
 class USoundAttenuation;
 class USoundBase;
+
+/** A row of the title-menu soundtrack (audio.md 8.3). */
+struct FAbyssJukeboxTrack
+{
+	FName TrackKey;
+	/** i18n key of the title (menu.jukebox.track.*): resolve with UAbyssGameInstance::Localize. */
+	FString TitleKey;
+	/** Real length of the rendered track, seconds. */
+	float LengthSec = 0.f;
+};
+
+/** A recorded track's licence credit with the track keys that use it (credits screen). */
+struct FAbyssMusicCreditRow
+{
+	FAbyssMusicCredit Credit;
+	TArray<FName> Tracks;
+};
 
 UCLASS()
 class ABYSSFIRE_API UAbyssAudioSystem : public UGameInstanceSubsystem, public FTickableGameObject
@@ -74,6 +95,29 @@ public:
 	void PlayError() { PlayUiCue(abyss::SfxId::Error); }
 	/** Settings panel preview: a short cue at the SFX volume (rate limited). */
 	void PreviewSfxVolume();
+
+	// ---- title-menu soundtrack (UI agent; audio.md 8.3, FIX Q10) ----
+	/** Rows whose track is packaged (its sound loads), in soundtrack order. Indices below refer to this list. */
+	TArray<FAbyssJukeboxTrack> GetJukeboxTracks();
+	/** Plays row Index from the start (crossfade from whatever plays); the soundtrack mode starts on the first call. */
+	void JukeboxPlay(int32 Index);
+	/** Real pause / resume of the current row (not a mute). Resuming a row that ended restarts it. */
+	void JukeboxSetPaused(bool bPaused);
+	/** Jumps inside the current row (seconds, clamped to its length); keeps the paused state. */
+	void JukeboxSeek(float Seconds);
+	/** Leaves the soundtrack mode and restarts the title theme (fade-in as on returning to the menu). */
+	void JukeboxClose();
+	bool IsJukeboxActive() const { return JukeboxIndex != INDEX_NONE; }
+	int32 GetJukeboxIndex() const { return JukeboxIndex; }
+	bool IsJukeboxPaused() const;
+	/** Playback position of the current row and its length, seconds (0 when the soundtrack mode is off). */
+	float GetJukeboxPositionSec() const;
+	float GetJukeboxLengthSec() const;
+
+	/** Credits of the packaged recorded tracks (title, author, licence, url), deduplicated, manifest order. */
+	TArray<FAbyssMusicCreditRow> GetMusicCredits() const;
+	/** The track key now playing (None = silence). */
+	FName GetCurrentTrack() const { return CurrentTrack; }
 
 	// ---- diagnostics (console abyss.Audio.*) ----
 	FString DescribeState() const;
@@ -121,6 +165,7 @@ private:
 		bool bLoop = true;
 		bool bActive = false;     // the current track (fading in or playing)
 		bool bFadingOut = false;
+		bool bPaused = false;     // jukebox pause (the position does not advance)
 		double FadeOutRemainingSec = 0.0;
 	};
 	/** Crossfade to TrackKey ("" / None = silence). StartAt < 0: resume (A2) or 0 when unknown. */
@@ -128,8 +173,15 @@ private:
 	void StopAllMusic();
 	void TickMusic(float RealDeltaSec);
 	int32 FindFreeMusicSlot() const;
+	int32 FindActiveMusicVoice() const;
 	UAudioComponent* EnsureMusicComponent(int32 Slot, USoundBase* Sound);
 	float MusicBusGain() const;
+	/** Seconds of one pass through a track: manifest, then the asset's own duration (0 = unknown). */
+	double ResolveTrackDuration(const FAbyssMusicTrackDef& Track, USoundBase* Sound) const;
+	void RefreshJukeboxRows();
+	void JukeboxStart(int32 Index, float FadeOutSec);
+	void TickJukebox();
+	void EndJukebox();
 
 	// ---- SFX ----
 	struct FCueState
@@ -144,6 +196,7 @@ private:
 	FName PickVariant(TArray<FName> const& Candidates, FCueState& State, FName Family);
 	FName FamilyOfEntity(abyss::EntityId Id) const;
 	bool ComputeVirtualEmitter(const FVector2D& Tile, FVector& OutLocation) const;
+	APlayerController* GetListenerController() const;
 	float SfxBusGain() const;
 	void StopAllSfx();
 
@@ -191,6 +244,11 @@ private:
 	TArray<FMusicVoice> MusicVoices;
 	TMap<FName, double> ResumePositions;
 	FName CurrentTrack;
+	/** Soundtrack mode: the playing row of JukeboxRows (INDEX_NONE = off). */
+	int32 JukeboxIndex = INDEX_NONE;
+	/** Manifest jukebox rows whose sound is packaged (built once the manifest is loaded). */
+	TArray<int32> JukeboxRows;
+	bool bJukeboxRowsBuilt = false;
 
 	// Volumes (linear) as last applied.
 	float MasterVolume = 1.f;

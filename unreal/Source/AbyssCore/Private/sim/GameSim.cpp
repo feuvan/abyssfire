@@ -306,12 +306,13 @@ void SimImpl::Update(double dtMs) {
   combat->TickCombatState();
   randomEvents->Tick();
   combat->TickAutoCombat();
-  // world: pickups, exploration, lore / hidden areas, soul echo, exits / interact prompt
+  // world (world 17 steps 9-11): pickups; exit proximity first (+ walk-then-act, interact prompt), then exploration,
+  // lore / hidden areas, soul echo
   groundLoot->Tick();
+  zone->Tick();
   exploration->Tick();
   lore->Tick();
   soulEcho->Tick();
-  zone->Tick();
   // quest world (gather / clues / escort / defend / observers), story scan, homestead timers
   questWorld->Tick(dtMs);
   story->Tick(dtMs);

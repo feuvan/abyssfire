@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 #include "abyss/audio/Audio.h"
 #include "abyss/base/Assert.h"
@@ -45,6 +46,8 @@ constexpr double kCombatBlastCentreTiles = 0.1;
 // Swing readiness tolerance: the sim clock is steps * 1000 / 60 while lastAttackMs is a stored stamp, so `now - last`
 // can land an ulp under a whole-step interval (1200 ms = 72 steps) and slip the swing by one step.
 constexpr double kCombatSwingEpsilonMs = 1e-6;
+// Labyrinth floor zone ids (DungeonSystem floors; the same convention as the music theme rule, audio 2).
+constexpr std::string_view kCombatLabyrinthFloorPrefix = "dungeon_floor_";
 
 I18nArg CmbSkillNameArg(const SkillDef& s) { return KeyArg("skillName", "data.skill." + s.id + ".name"); }
 
@@ -142,7 +145,9 @@ void CombatSystem::GainSpirit(SpiritSource source, bool crit) {
   Hero& hero = *ctx_.sys.hero;
   Spirit& sp = hero.GetSpirit();
   const SpiritGainResult g = sp.GainFromCombat(source, hero.BaseStats().spi, crit);
-  if (g.gained > 0) ctx_.events.Emit(EvSpiritChanged{sp.Value(), sp.MaxValue(), sp.IsResonating(), g.gained});
+  if (g.gained > 0) {
+    ctx_.events.Emit(EvSpiritChanged{sp.Value(), sp.MaxValue(), sp.IsResonating(), g.gained, true, source});
+  }
   if (g.resonanceStarted) {
     ctx_.events.Emit(EvResonance{true, sp.Profile().id, sp.Profile().resonanceDurationMs});
     EmitSfx(ctx_.data.Audio().rules.resonanceStarted, hero.Position(), kHeroEntityId);
@@ -204,9 +209,9 @@ void CombatSystem::EmitMiss(EntityId target, Faction faction, EntityId source, c
   ft.anchor = target;
   ft.pos = pos;
   ctx_.events.Emit(ft);
-  // Audio 3.2: a hero basic attack the monster sidestepped and the dodge-roll avoid are `miss`; the hero's stat dodge
-  // emitted no COMBAT_DAMAGE in the web (silent, kept).
-  if (faction == Faction::Monster || iframe) {
+  // Audio 3.2: only a monster swing into the dodge-roll i-frames emits COMBAT_DAMAGE{isDodged} (`miss`). A hero hit the
+  // monster stat-dodged returns before COMBAT_DAMAGE (combat 4.2 step 3) and the hero's stat dodge emits none: silent.
+  if (iframe) {
     if (const std::optional<SfxId> cue = SfxForCombatHit(ctx_.data.Audio().rules, true, false, HitWeight::Tick)) {
       EmitSfx(*cue, pos, target);
     }
@@ -361,41 +366,70 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
   if (m == nullptr || !m->IsAlive()) return out;
   out.attempted = true;
   Hero& hero = *ctx_.sys.hero;
-  const Combatant attacker = HeroCombatant();
-  const Combatant defender = MonsterCombatant(*m);
-  SkillHitInput in;
-  if (h.skill != nullptr) {
-    in.skill = h.skill;
-    in.level = h.level;
-    in.synergyFactor = hero.Skills().SynergyFactor(*h.skill);
-  }
-  DamageResult r = CalculateDamage(Rules(), attacker, defender, in, h.forceCrit, ctx_.Rand(RngStream::Combat));
   const std::string skillId = h.skill != nullptr ? h.skill->id : std::string();
-  if (r.isDodged) {  // C1 / FIX Q9: a dodged hit applies nothing
-    EmitMiss(h.target, Faction::Monster, kHeroEntityId, skillId, false);
-    out.dodged = true;
-    return out;
+  // C4: a multi-tick ground effect rolls the target's one-shot hit on the first tick that reaches it, then shares it.
+  const bool shared = h.ground != nullptr && h.ground->ticks > 1;
+  const GroundRoll* roll = shared ? FindGroundRoll(h.ground->effect, h.target) : nullptr;
+  GroundRoll hit;  // this hit's whole damage and steal (a fresh roll, or the effect's stored one)
+  int32_t spiritDamage = 0;  // Spirit 'hit' (classes 12.1): once per rolled hit, from the formula damage
+  if (roll == nullptr) {
+    const Combatant attacker = HeroCombatant();
+    const Combatant defender = MonsterCombatant(*m);
+    SkillHitInput in;
+    if (h.skill != nullptr) {
+      in.skill = h.skill;
+      in.level = h.level;
+      in.synergyFactor = hero.Skills().SynergyFactor(*h.skill);
+    }
+    const DamageResult r =
+        CalculateDamage(Rules(), attacker, defender, in, h.forceCrit, ctx_.Rand(RngStream::Combat));
+    hit.effect = shared ? h.ground->effect : kNoEntity;
+    hit.target = h.target;
+    if (r.isDodged) {  // C1 / FIX Q9: a dodged hit applies nothing (a ground effect: for its whole duration)
+      hit.dodged = true;
+      if (shared) groundRolls_.push_back(hit);
+      EmitMiss(h.target, Faction::Monster, kHeroEntityId, skillId, false);
+      out.dodged = true;
+      return out;
+    }
+    hit.crit = r.isCrit;
+    hit.total = SaturatingInt32(r.damage);
+    if (h.skill != nullptr && h.skill->hasBonusVsStatus && ctx_.sys.status != nullptr &&
+        ctx_.sys.status->Has(h.target, h.skill->bonusVsStatus)) {
+      hit.total = SaturatingInt32(std::floor(hit.total * h.skill->bonusVsStatusMul));  // combustion x1.5 vs burning
+    }
+    hit.lifeStolen = r.lifeStolen;  // from r, not the combustion value (classes 9.7)
+    hit.manaStolen = r.manaStolen;
+    spiritDamage = SaturatingInt32(r.damage);
+    if (shared) groundRolls_.push_back(hit);
+    ConsumeCritBonus();
+    out.statusDamage = hit.total;
+  } else {
+    if (roll->dodged) {  // missed on its first tick (MISS shown then)
+      out.dodged = true;
+      out.rollStatuses = false;
+      return out;
+    }
+    hit = *roll;
+    out.rollStatuses = false;  // the statuses were rolled with the first tick
   }
-  if (h.damageShare < 1.0) {  // C4 ground tick: the same total damage spread over the ticks
-    const double share = (std::max)(0.0, h.damageShare);
-    r.damage = SaturatingInt32((std::max)(1.0, std::floor(r.damage * share)));
-    r.lifeStolen = SaturatingInt32(std::floor(r.damage * ctx_.equip.Get(Stat::LifeSteal) / 100.0));
-    r.manaStolen = SaturatingInt32(std::floor(r.damage * ctx_.equip.Get(Stat::ManaSteal) / 100.0));
-    if (!(ctx_.equip.Get(Stat::LifeSteal) > 0)) r.lifeStolen = 0;
-    if (!(ctx_.equip.Get(Stat::ManaSteal) > 0)) r.manaStolen = 0;
+  int32_t amount = hit.total;
+  int32_t life = hit.lifeStolen;
+  int32_t mana = hit.manaStolen;
+  if (shared) {
+    amount = GroundTickShare(hit.total, h.ground->index, h.ground->ticks);
+    life = GroundTickShare(hit.lifeStolen, h.ground->index, h.ground->ticks);
+    mana = GroundTickShare(hit.manaStolen, h.ground->index, h.ground->ticks);
   }
-  int32_t dealt = r.damage;
-  if (h.skill != nullptr && h.skill->hasBonusVsStatus && ctx_.sys.status != nullptr &&
-      ctx_.sys.status->Has(h.target, h.skill->bonusVsStatus)) {
-    dealt = SaturatingInt32(std::floor(dealt * h.skill->bonusVsStatusMul));  // combustion x1.5 vs burning
-  }
-  ConsumeCritBonus();
-  ApplySteal(r.damage, r.isCrit, r.lifeStolen, r.manaStolen);  // uses r, not the combustion value (classes 9.7)
+  ApplySteal(spiritDamage, hit.crit, life, mana);
+  out.crit = hit.crit;
+  out.damage = amount;
+  if (amount <= 0) return out;  // a ground tick whose share rounds to 0: nothing lands this tick
 
   MonsterHitRequest req;
   req.monster = h.target;
-  req.amount = dealt;
-  req.isCrit = r.isCrit;
+  req.amount = amount;
+  req.isCrit = hit.crit;
   req.hasFrom = true;
   req.from = h.hasFrom ? h.from : hero.Position();
   req.attacker = kHeroEntityId;
@@ -407,11 +441,27 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
   req.numberSlot = h.numberSlot;
   req.impactBurst = h.impactBurst;
   out.weight = DamageMonster(req);
-  out.damage = dealt;
-  out.crit = r.isCrit;
+  out.landed = true;
   const MonsterInstance* after = ms->Find(h.target);
   out.killed = after == nullptr || !after->IsAlive();
   return out;
+}
+
+CombatSystem::GroundRoll* CombatSystem::FindGroundRoll(EntityId effect, EntityId target) {
+  for (GroundRoll& g : groundRolls_) {
+    if (g.effect == effect && g.target == target) return &g;
+  }
+  return nullptr;
+}
+
+void CombatSystem::DropGroundRolls(EntityId effect) {
+  if (effect == kNoEntity) {
+    groundRolls_.clear();
+    return;
+  }
+  groundRolls_.erase(std::remove_if(groundRolls_.begin(), groundRolls_.end(),
+                                    [effect](const GroundRoll& g) { return g.effect == effect; }),
+                     groundRolls_.end());
 }
 
 // resolvePlayerStrike (combat 4.2) at the contact beat (T3).
@@ -449,7 +499,7 @@ void CombatSystem::ResolveHeroStrike(EntityId target) {
     extra.target = target;
     extra.numberSlot = HitNumberSlot::DoubleStrike;
     const HeroHitOutcome o = HeroHitMonster(extra);
-    if (o.attempted && !o.dodged) ctx_.events.Log(MakeLoc("zone.combat.comboTrigger"), LogType::Combat);
+    if (o.landed) ctx_.events.Log(MakeLoc("zone.combat.comboTrigger"), LogType::Combat);
   }
   // 11. doubleShot (needs attackRange > 2: never for the 1.5-tile heroes, kept for data parity).
   if (eq.Get(Stat::DoubleShot) > 0 && alive() &&
@@ -458,7 +508,7 @@ void CombatSystem::ResolveHeroStrike(EntityId target) {
     extra.target = target;
     extra.numberSlot = HitNumberSlot::DoubleShot;
     const HeroHitOutcome o = HeroHitMonster(extra);
-    if (o.attempted && !o.dodged) ctx_.events.Log(MakeLoc("zone.combat.doubleArrow"), LogType::Combat);
+    if (o.landed) ctx_.events.Log(MakeLoc("zone.combat.doubleArrow"), LogType::Combat);
   }
   // 12. the kill pipeline already ran inside ApplyDamage (target cleanup in OnMonsterKilled).
 }
@@ -607,7 +657,7 @@ void CombatSystem::KillHero(HeroDeathCause cause) {
   ctx_.events.Log(MakeLoc("sys.player.death"), LogType::System);
   // handlePlayerDied: statuses cleared, death penalty / soul echo, flash + text, respawn timer.
   if (ctx_.sys.status != nullptr) ctx_.sys.status->ClearEntity(kHeroEntityId);
-  if (ctx_.sys.soulEcho != nullptr) ctx_.sys.soulEcho->OnHeroDied(pos, false);
+  if (ctx_.sys.soulEcho != nullptr) ctx_.sys.soulEcho->OnHeroDied(pos, InDungeonZone());
   ctx_.events.Emit(EvCameraFlash{0xffffff, 80, 0.6});
   ctx_.events.Emit(EvBanner{BannerKind::Death, MakeLoc("zone.death.text"), LocText{}});
   ctx_.bus.Publish(HeroDiedMsg{pos});
@@ -637,6 +687,15 @@ void CombatSystem::Respawn() {
   ctx_.events.Log(MakeLoc("sys.player.respawn"), LogType::System);
   ctx_.events.Emit(EvHeroRespawned{camp});
   ctx_.bus.Publish(HeroRespawnedMsg{camp});
+}
+
+// combat 15: a sub-dungeon (its zone id is a world SubDungeonDef id) or a labyrinth floor is rebuilt on every visit, so
+// a death there leaves no echo.
+bool CombatSystem::InDungeonZone() const {
+  const std::string& zoneId = ctx_.session.currentMap;
+  if (zoneId.empty()) return false;
+  if (ctx_.data.World().FindSubDungeon(zoneId) != nullptr) return true;
+  return zoneId.rfind(kCombatLabyrinthFloorPrefix, 0) == 0;
 }
 
 void CombatSystem::ResolvePendingDeath() {
@@ -917,7 +976,9 @@ void CombatSystem::TryUseSkill(int32_t skillIndex, const SkillAim& aim) {
     faceTarget = true;
   } else {
     timing = ComputeCastTiming(at, manifest, art, rig, "Cast01");
-    faceTarget = tm != nullptr && !s.hasBuff;
+    // A teleport turns only toward the lock: its touch fallback blinks along the facing (C8), which must not become the
+    // direction of a merely nearest monster.
+    faceTarget = tm != nullptr && !s.hasBuff && (s.execKind != SkillExecKind::Teleport || target == hero.attackTarget);
   }
   EvPlayAnim anim;
   anim.entity = kHeroEntityId;
@@ -1007,10 +1068,9 @@ void CombatSystem::ReleaseSkill(int32_t skillIndex, int32_t level, EntityId targ
         g.durationMs = s.port.groundDurationMs;
         g.trigger = s.port.groundTrigger;
         g.ticks = (std::max)(1, s.port.groundTicks);
-        g.damageShare = 1.0 / g.ticks;
         ctx_.sys.projectiles->StartGroundEffect(g);
       } else {
-        SlowTrapHits(s, level, hero, radius, 1.0);
+        SlowTrapHits(s, level, hero, radius, nullptr);
       }
       return;
     }
@@ -1039,10 +1099,15 @@ void CombatSystem::ReleaseTeleport(const SkillDef& s, int32_t level, EntityId ta
   ta.hasPoint = aim.hasPoint;
   ta.point = aim.point;
   ta.stickDir = aim.stickDir;
-  if (target != kNoEntity) {
-    if (const MonsterInstance* m = ctx_.sys.monsters->Find(target)) {
+  // C8: the touch fallback is the LOCKED target (the lock, else the tapped target), never the release's preferred
+  // target, which falls back to the nearest monster on the map (an escape blink must not land next to it).
+  for (const EntityId lock : {hero.attackTarget, aim.target}) {
+    if (lock == kNoEntity) continue;
+    const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(lock) : nullptr;
+    if (m != nullptr && m->IsAlive()) {
       ta.hasTarget = true;
       ta.targetPos = m->pos;
+      break;
     }
   }
   ta.facing = hero.Facing();
@@ -1146,8 +1211,10 @@ void CombatSystem::ReleaseDeathMark(const SkillDef& s, int32_t level, EntityId t
 }
 
 // Slow trap (classes 10.3): every alive monster within the radius takes the skill hit (no status rules, no impact
-// burst); survivors get slow round(buffValue x 100) for buffDuration. Log slowTrapHit {count}.
-void CombatSystem::SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, double radius, double share) {
+// burst); survivors get slow round(buffValue x 100) for buffDuration. Log slowTrapHit {count}. On a multi-tick C4
+// effect the slow is rolled once per target (its first tick), like the damage.
+void CombatSystem::SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, double radius,
+                                const GroundTick* ground) {
   const SkillRules& rules = ctx_.data.Classes().skillRules;
   const std::vector<TargetCandidate> cands = AliveCandidates(center, radius);
   const std::vector<EntityId> targets = CandidatesInRadius(cands, center, radius);
@@ -1162,17 +1229,24 @@ void CombatSystem::SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, d
       h.target = id;
       h.skill = &s;
       h.level = level;
-      h.damageShare = share;
+      h.ground = ground;
       h.applyStatusRules = false;
       h.impactBurst = false;
       h.hasFrom = true;
       h.from = center;
       o = HeroHitMonster(h);
       if (o.dodged || o.killed) continue;  // C1: a dodged hit applies nothing
+    } else if (ground != nullptr && ground->ticks > 1) {
+      if (FindGroundRoll(ground->effect, id) != nullptr) continue;  // slowed on its first tick
+      GroundRoll seen;
+      seen.effect = ground->effect;
+      seen.target = id;
+      groundRolls_.push_back(seen);
     }
+    if (!o.rollStatuses) continue;
     for (const StatusRule& rule : s.statusRules) {
       StatusRuleInput in;
-      in.dealtDamage = o.damage;
+      in.dealtDamage = o.statusDamage;
       in.buffValue = SkillBuffValue(rules, s, level);
       in.buffDurationMs = SkillBuffDurationMs(rules, s, level);
       const StatusRuleRoll roll = RollStatusRule(rule, in, ctx_.Rand(RngStream::Combat));
@@ -1272,7 +1346,6 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
     g.durationMs = s.port.groundDurationMs;
     g.trigger = s.port.groundTrigger;
     g.ticks = (std::max)(1, s.port.groundTicks);
-    g.damageShare = 1.0 / g.ticks;
     ctx_.sys.projectiles->StartGroundEffect(g);
     return;
   }
@@ -1342,20 +1415,38 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
                          static_cast<uint16_t>(CombatTimerKind::SkillDelayedHit), kHeroEntityId, kNoEntity, slot);
     return;
   }
+  // C4 chain lightning: link 0 lands now, link k at release + k x stagger (FireChainLink); one batch shake at the end.
+  if (stagger > 0 && targets.size() > 1) {
+    PendingHit ph;
+    ph.skillIndex = hero.Skills().IndexOf(s.id);
+    ph.level = level;
+    ph.targets = targets;
+    ph.center = center;
+    ph.blastFrom = blastFrom;
+    ph.chain = true;
+    ph.nextLink = 1;
+    ph.baseMs = now;
+    ph.staggerMs = static_cast<double>(stagger);
+    const HeroHitOutcome first = ApplySkillHit(s, level, targets[0], blastFrom, center, nullptr);
+    ph.chainHits = first.landed ? 1 : 0;
+    const EntityId next = ph.targets[1];
+    const int32_t slot = AllocHit(std::move(ph));
+    ctx_.timers.Schedule(now + static_cast<double>(stagger), TimerOwner::Combat,
+                         static_cast<uint16_t>(CombatTimerKind::SkillDelayedHit), kHeroEntityId, next, slot);
+    return;
+  }
   int32_t immediate = 0;
   for (size_t k = 0; k < targets.size(); ++k) {
     const EntityId id = targets[k];
     double delay = 0;
     if (s.hasArrowDelay) {
       if (const MonsterInstance* m = ms->Find(id)) delay = SkillArrowDelayMs(s, heroPos, m->pos);
-    } else if (stagger > 0) {
-      delay = static_cast<double>(stagger) * static_cast<double>(k);
     }
     if (delay > 0) {
       PendingHit ph;
       ph.skillIndex = hero.Skills().IndexOf(s.id);
       ph.level = level;
-      ph.targets = {id};
+      ph.targets.assign(1, id);
       ph.center = center;
       ph.blastFrom = blastFrom;
       ph.batchShake = false;
@@ -1363,8 +1454,8 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
       ctx_.timers.Schedule(now + delay, TimerOwner::Combat, static_cast<uint16_t>(CombatTimerKind::SkillDelayedHit),
                            kHeroEntityId, id, slot);
     } else {
-      const HeroHitOutcome o = ApplySkillHit(s, level, id, blastFrom, center, 1.0);
-      if (o.attempted && !o.dodged) ++immediate;
+      const HeroHitOutcome o = ApplySkillHit(s, level, id, blastFrom, center, nullptr);
+      if (o.landed) ++immediate;
     }
   }
   if (immediate > 0) {
@@ -1375,6 +1466,10 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
 
 void CombatSystem::FireDelayedHit(int32_t slot) {
   if (slot < 0 || static_cast<size_t>(slot) >= hits_.size() || !hits_[static_cast<size_t>(slot)].used) return;
+  if (hits_[static_cast<size_t>(slot)].chain) {
+    FireChainLink(slot);
+    return;
+  }
   const PendingHit ph = hits_[static_cast<size_t>(slot)];
   hits_[static_cast<size_t>(slot)].used = false;
   if (!HeroAlive() || ctx_.session.transitioning) return;  // stillCasting()
@@ -1383,11 +1478,39 @@ void CombatSystem::FireDelayedHit(int32_t slot) {
   const SkillDef& s = book.Skill(ph.skillIndex);
   int32_t hits = 0;
   for (EntityId id : ph.targets) {
-    const HeroHitOutcome o = ApplySkillHit(s, ph.level, id, ph.blastFrom, ph.center, 1.0);
-    if (o.attempted && !o.dodged) ++hits;
+    const HeroHitOutcome o = ApplySkillHit(s, ph.level, id, ph.blastFrom, ph.center, nullptr);
+    if (o.landed) ++hits;
   }
   if (ph.batchShake && hits > 0) {
     const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, hits);
+    Shake(sh.durationMs, sh.intensity);
+  }
+}
+
+// C4 chain lightning: one link per timer (release + link x stagger); the hero's death or a zone transition ends the
+// chain (stillCasting). After the last link: the 6.5 AoE shake for every link that landed.
+void CombatSystem::FireChainLink(int32_t slot) {
+  PendingHit ph = hits_[static_cast<size_t>(slot)];
+  hits_[static_cast<size_t>(slot)].used = false;
+  hits_[static_cast<size_t>(slot)].targets.clear();
+  if (!HeroAlive() || ctx_.session.transitioning) return;
+  const SkillBook& book = ctx_.sys.hero->Skills();
+  if (ph.skillIndex < 0 || static_cast<size_t>(ph.skillIndex) >= book.SkillCount()) return;
+  if (ph.nextLink >= ph.targets.size()) return;
+  const SkillDef& s = book.Skill(ph.skillIndex);
+  const HeroHitOutcome o = ApplySkillHit(s, ph.level, ph.targets[ph.nextLink], ph.blastFrom, ph.center, nullptr);
+  if (o.landed) ++ph.chainHits;
+  ++ph.nextLink;
+  if (ph.nextLink < ph.targets.size()) {
+    const double due = ph.baseMs + ph.staggerMs * static_cast<double>(ph.nextLink);
+    const EntityId next = ph.targets[ph.nextLink];
+    const int32_t again = AllocHit(std::move(ph));
+    ctx_.timers.Schedule(due, TimerOwner::Combat, static_cast<uint16_t>(CombatTimerKind::SkillDelayedHit),
+                         kHeroEntityId, next, again);
+    return;
+  }
+  if (ph.chainHits > 0) {
+    const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, ph.chainHits);
     Shake(sh.durationMs, sh.intensity);
   }
 }
@@ -1441,7 +1564,7 @@ void CombatSystem::ReleaseSingle(const SkillDef& s, int32_t level, EntityId targ
     return;
   }
   ctx_.events.Emit(v);
-  ApplySkillHit(s, level, target, false, heroPos, 1.0);
+  ApplySkillHit(s, level, target, false, heroPos, nullptr);
 }
 
 void CombatSystem::ResolveChargeDash(int32_t slot) {
@@ -1466,7 +1589,7 @@ void CombatSystem::ResolveChargeDash(int32_t slot) {
   v.origin = ctx_.sys.hero->Position();
   v.point = m->pos;
   ctx_.events.Emit(v);
-  ApplySkillHit(s, pr.level, pr.target, false, ctx_.sys.hero->Position(), 1.0);
+  ApplySkillHit(s, pr.level, pr.target, false, ctx_.sys.hero->Position(), nullptr);
 }
 
 void CombatSystem::OnSkillProjectileArrived(const Projectile& p) {
@@ -1475,21 +1598,40 @@ void CombatSystem::OnSkillProjectileArrived(const Projectile& p) {
   if (p.spec.skillIndex < 0 || static_cast<size_t>(p.spec.skillIndex) >= book.SkillCount()) return;
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(p.spec.target) : nullptr;
   if (m == nullptr || !m->IsAlive()) return;  // target-locked: lands wherever the target is, unless it died
-  ApplySkillHit(book.Skill(p.spec.skillIndex), p.spec.skillLevel, p.spec.target, false, p.spec.from, 1.0);
+  ApplySkillHit(book.Skill(p.spec.skillIndex), p.spec.skillLevel, p.spec.target, false, p.spec.from, nullptr);
 }
 
 void CombatSystem::OnGroundEffectTick(const GroundEffect& g, int32_t tickIndex) {
+  GroundTick tick;
+  tick.effect = g.id;
+  tick.index = tickIndex;
+  tick.ticks = (std::max)(1, g.spec.ticks);
+  // Rolls of effects that ended before their last tick (zone change) are dropped here; this effect's after its last.
+  if (ctx_.sys.projectiles != nullptr) {
+    const ProjectileSystem& ps = *ctx_.sys.projectiles;
+    groundRolls_.erase(std::remove_if(groundRolls_.begin(), groundRolls_.end(),
+                                      [&ps, &g](const GroundRoll& r) {
+                                        return r.effect != g.id && ps.FindGroundEffect(r.effect) == nullptr;
+                                      }),
+                       groundRolls_.end());
+  }
+  const bool lastTick = tickIndex + 1 >= tick.ticks;
+  ResolveGroundTick(g, tick);
+  if (lastTick) DropGroundRolls(g.id);
+}
+
+void CombatSystem::ResolveGroundTick(const GroundEffect& g, const GroundTick& tick) {
   if (!HeroAlive() || ctx_.session.transitioning) return;
   const SkillBook& book = ctx_.sys.hero->Skills();
   if (g.spec.skillIndex < 0 || static_cast<size_t>(g.spec.skillIndex) >= book.SkillCount()) return;
   const SkillDef& s = book.Skill(g.spec.skillIndex);
   if (s.execKind == SkillExecKind::SlowTrap) {
-    SlowTrapHits(s, g.spec.skillLevel, g.spec.center, g.spec.radius, g.spec.damageShare);
+    SlowTrapHits(s, g.spec.skillLevel, g.spec.center, g.spec.radius, &tick);
     return;
   }
   const std::vector<EntityId> targets =
       CandidatesInRadius(AliveCandidates(g.spec.center, g.spec.radius), g.spec.center, g.spec.radius);
-  if (tickIndex == 0 || g.spec.trigger == GroundTrigger::Armed) {
+  if (tick.index == 0 || g.spec.trigger == GroundTrigger::Armed) {
     EvSkillVfx v;
     v.skillId = s.id;
     v.vfxId = s.vfxId;
@@ -1501,8 +1643,8 @@ void CombatSystem::OnGroundEffectTick(const GroundEffect& g, int32_t tickIndex) 
   }
   int32_t hits = 0;
   for (EntityId id : targets) {
-    const HeroHitOutcome o = ApplySkillHit(s, g.spec.skillLevel, id, true, g.spec.center, g.spec.damageShare);
-    if (o.attempted && !o.dodged) ++hits;
+    const HeroHitOutcome o = ApplySkillHit(s, g.spec.skillLevel, id, true, g.spec.center, &tick);
+    if (o.landed) ++hits;
   }
   if (hits > 0) {
     const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, hits);
@@ -1513,20 +1655,20 @@ void CombatSystem::OnGroundEffectTick(const GroundEffect& g, int32_t tickIndex) 
 // Shared skill hit (classes 9.7 applyHit / 9.8): calculateDamage with the skill + synergy, combustion bonus,
 // takeDamage, steal, status rules (alive targets), kill credit, impact burst (skill colour).
 CombatSystem::HeroHitOutcome CombatSystem::ApplySkillHit(const SkillDef& s, int32_t level, EntityId target,
-                                                         bool blastFrom, Vec2 center, double share) {
+                                                         bool blastFrom, Vec2 center, const GroundTick* ground) {
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(target) : nullptr;
   if (m == nullptr || !m->IsAlive()) return {};
   HeroHitSpec h;
   h.target = target;
   h.skill = &s;
   h.level = level;
-  h.damageShare = share;
+  h.ground = ground;
   h.applyStatusRules = true;
   h.impactBurst = s.execKind != SkillExecKind::DeathMark && s.execKind != SkillExecKind::SlowTrap;
   h.hasFrom = true;
   h.from = blastFrom && Dist(m->pos, center) > kCombatBlastCentreTiles ? center : ctx_.sys.hero->Position();
   const HeroHitOutcome o = HeroHitMonster(h);
-  if (o.attempted && !o.dodged && !o.killed) ApplySkillStatuses(s, level, target, o.damage);
+  if (o.attempted && !o.dodged && !o.killed && o.rollStatuses) ApplySkillStatuses(s, level, target, o.statusDamage);
   return o;
 }
 
@@ -1620,12 +1762,23 @@ bool CombatSystem::SetHotbar(int32_t slot, int32_t skillIndex) {
 // per-step hooks
 // =====================================================================================================================
 
-// Step 6 (classes 6.6 / 10.1): Unyielding proc and the Dual Wield Mastery buff. The Life Regen passive heals inside
-// Hero::TickRegen (step 7).
+// Step 6 (classes 4.2, 6.6 / 10.1, 16): the Life Regen heal, then the Unyielding proc (so it reads the hp ratio AFTER
+// this step's Life Regen, web ZoneScene.ts:1372-1392), then the Dual Wield Mastery buff.
 void CombatSystem::TickPassives(double dtMs) {
-  (void)dtMs;
   Hero& hero = *ctx_.sys.hero;
   if (!HeroAlive()) return;
+  // The step's recovery modifiers (web `recovery`, 16 steps 2 / 5): campfire from the position BEFORE this step's
+  // movement, poison halves HP regen. Shared with TickHeroUpdate's mana / HP regen.
+  RegenModifiers mods;
+  if (ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone() && ctx_.sys.zone->NearCampfire(hero.Position())) {
+    mods.hpMul = ctx_.data.Classes().formulas.campfireHpMultiplier;
+    mods.mpMul = ctx_.data.Classes().formulas.campfireManaMultiplier;
+  }
+  if (ctx_.sys.status != nullptr && ctx_.sys.status->Has(kHeroEntityId, StatusType::Poison)) {
+    mods.hpMul *= ctx_.data.Classes().statusRules.poisonedHpRegenMultiplier;
+  }
+  hero.stepRegen = mods;
+  hero.TickLifeRegen(dtMs, mods);
   SkillBook& book = hero.Skills();
   const SkillRules& rules = ctx_.data.Classes().skillRules;
   const double now = ctx_.Now();
@@ -1679,7 +1832,8 @@ void CombatSystem::TickPassives(double dtMs) {
   }
 }
 
-// Step 7 minus movement: spirit drain, then MP / HP regen with the campfire and poison modifiers (classes 4.1).
+// Step 7 minus movement: spirit drain, then MP / HP regen with the step's campfire and poison modifiers (classes 4.1),
+// computed by TickPassives (step 6) before the movement.
 void CombatSystem::TickHeroUpdate(double dtMs) {
   Hero& hero = *ctx_.sys.hero;
   if (!HeroAlive()) return;
@@ -1688,15 +1842,7 @@ void CombatSystem::TickHeroUpdate(double dtMs) {
     ctx_.events.Emit(EvSpiritChanged{sp.Value(), sp.MaxValue(), false, 0});
     ctx_.events.Emit(EvResonance{false, sp.Profile().id, 0});
   }
-  RegenModifiers mods;
-  if (ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone() && ctx_.sys.zone->NearCampfire(hero.Position())) {
-    mods.hpMul = ctx_.data.Classes().formulas.campfireHpMultiplier;
-    mods.mpMul = ctx_.data.Classes().formulas.campfireManaMultiplier;
-  }
-  if (ctx_.sys.status != nullptr && ctx_.sys.status->Has(kHeroEntityId, StatusType::Poison)) {
-    mods.hpMul *= ctx_.data.Classes().statusRules.poisonedHpRegenMultiplier;
-  }
-  hero.TickRegen(dtMs, mods);
+  hero.TickRegen(dtMs, hero.stepRegen);
 }
 
 // Step 9 handleCombat: prune buffs (hero + FIX Q19 monsters), monster swings, the hero's basic attack; armed traps.
@@ -1981,6 +2127,7 @@ void CombatSystem::OnZoneExit() {
   strikes_.clear();
   releases_.clear();
   hits_.clear();
+  DropGroundRolls(kNoEntity);
   buffer_.Clear();
   if (inCombat_) {
     inCombat_ = false;

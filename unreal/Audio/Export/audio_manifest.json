@@ -56,6 +56,7 @@
   },
   "ambienceTargetLufs": -30.0,
   "exploreShortTermMaxLufs": -14.61,
+  "exploreMomentaryMaxLufs": -13.43,
   "stingerUnderExploreLu": 3.0
  },
  "defaults": {
@@ -733,6 +734,26 @@
    "source": "score",
    "credit": null
   },
+  "emerald_plains_explore_score": {
+   "asset": "SW_MUS_EmeraldPlainsExploreScore",
+   "loop": true,
+   "lengthSec": 182.8571,
+   "loopStartSample": 0,
+   "loopEndSample": 8777143,
+   "gain": 1.0,
+   "source": "score",
+   "credit": null
+  },
+  "emerald_plains_combat_score": {
+   "asset": "SW_MUS_EmeraldPlainsCombatScore",
+   "loop": true,
+   "lengthSec": 70.3297,
+   "loopStartSample": 0,
+   "loopEndSample": 3375824,
+   "gain": 1.0,
+   "source": "score",
+   "credit": null
+  },
   "abyss_rift_explore": {
    "asset": "SW_MUS_AbyssRiftExplore",
    "loop": true,
@@ -750,6 +771,12 @@
   }
  },
  "menuTrack": "menu_explore",
+ "zoneOverrides": {
+  "ember_tower": {
+   "emerald_plains_explore": "emerald_plains_explore_score",
+   "emerald_plains_combat": "emerald_plains_combat_score"
+  }
+ },
  "stingers": {
   "chapterCard": {
    "dawn": "SW_STG_ChapterCardDawn"
@@ -836,6 +863,28 @@
   "halfWidthCm": 800.0,
   "virtualDistanceCm": 100.0
  },
+ "jukebox": {
+  "tracks": [
+   {
+    "titleKey": "menu.jukebox.track.menu",
+    "track": "menu_explore"
+   },
+   {
+    "titleKey": "menu.jukebox.track.emerald_plains.explore",
+    "track": "emerald_plains_explore"
+   },
+   {
+    "titleKey": "menu.jukebox.track.emerald_plains.combat",
+    "track": "emerald_plains_combat"
+   },
+   {
+    "titleKey": "menu.jukebox.track.abyss_rift.explore",
+    "track": "abyss_rift_explore"
+   }
+  ],
+  "fadeOutSec": 1.0,
+  "fadeInSec": 0.5
+ },
  "assets": {
   "SW_AMB_Plains": {
    "file": "Ambience/SW_AMB_Plains.ogg",
@@ -867,7 +916,7 @@
    "seam": 0.12960963467278808
   },
   "SW_MUS_AbyssRiftExplore": {
-   "file": "public/assets/audio/bgm/abyss_rift_explore.mp3",
+   "file": "Music/SW_MUS_AbyssRiftExplore.ogg",
    "ue": "/Game/Abyssfire/Audio/Music/SW_MUS_AbyssRiftExplore.SW_MUS_AbyssRiftExplore",
    "kind": "music",
    "channels": 2,
@@ -887,11 +936,13 @@
    "shortTermMaxLufs": -14.9,
    "momentaryMaxLufs": -13.8,
    "bytes": 1911383,
-   "sha256": "103cd6b8da36e5902aa7acbbed8f035066c8c520d3766f1e41972080a991e628",
-   "seamRatio": 0.26,
+   "sha256": "104a74e567c11ebb68eb1dffe14f4eb9acf1458f4478e9d59ba011444e651f23",
+   "seamRatio": 0.357,
    "key": "abyss_rift_explore",
    "source": "recording",
    "theme": "abyss_rift",
+   "sourceFile": "public/assets/audio/bgm/abyss_rift_explore.mp3",
+   "sourceSha256": "103cd6b8da36e5902aa7acbbed8f035066c8c520d3766f1e41972080a991e628",
    "encoder": "Lavc62.11",
    "encDelay": 576,
    "encPadding": 1068,
@@ -906,6 +957,7 @@
     "url": "https://opengameart.org/content/loopable-dungeon-ambience"
    },
    "rawLufs": -14.3,
+   "seamRatioRendered": 0.26,
    "webLufs": -13.35,
    "chain": {
     "reverbMix": 0.38,
@@ -949,7 +1001,7 @@
    "momentaryMaxLufs": -13.53,
    "bytes": 1476712,
    "sha256": "8f14bad4ec8f42c082e10c29a17743304297573c30652463044c090b42c9811a",
-   "seamRatio": 0.113,
+   "seamRatio": 0.058,
    "key": "boss_ch1",
    "source": "score",
    "theme": "emerald_plains",
@@ -960,6 +1012,7 @@
    "scoreSeedU32": 3281523626,
    "oscillators": 739,
    "leadNotes": 68,
+   "seamRatioRendered": 0.113,
    "webLufs": -28.8,
    "chain": {
     "reverbMix": 0.22,
@@ -982,7 +1035,7 @@
    }
   },
   "SW_MUS_EmeraldPlainsCombat": {
-   "file": "public/assets/audio/bgm/emerald_plains_combat.mp3",
+   "file": "Music/SW_MUS_EmeraldPlainsCombat.ogg",
    "ue": "/Game/Abyssfire/Audio/Music/SW_MUS_EmeraldPlainsCombat.SW_MUS_EmeraldPlainsCombat",
    "kind": "music",
    "channels": 2,
@@ -1002,11 +1055,13 @@
    "shortTermMaxLufs": -15.15,
    "momentaryMaxLufs": -14.41,
    "bytes": 2218671,
-   "sha256": "4f961715a89f550c1edec3eed4eac5c62b86bb8d1a4e1988c1e310e66da06e05",
+   "sha256": "6a6608c6705f5f53abf68b1f7c9289e305a5616efbd64b534433b99fd0c69363",
    "seamRatio": 0.003,
    "key": "emerald_plains_combat",
    "source": "recording",
    "theme": "emerald_plains",
+   "sourceFile": "public/assets/audio/bgm/emerald_plains_combat.mp3",
+   "sourceSha256": "4f961715a89f550c1edec3eed4eac5c62b86bb8d1a4e1988c1e310e66da06e05",
    "encoder": "Lavc62.11",
    "encDelay": 576,
    "encPadding": 776,
@@ -1021,6 +1076,7 @@
     "url": "https://opengameart.org/content/battle-theme-a"
    },
    "rawLufs": -13.68,
+   "seamRatioRendered": 0.003,
    "webLufs": -12.68,
    "chain": {
     "reverbMix": 0.22,
@@ -1042,8 +1098,63 @@
     ]
    }
   },
+  "SW_MUS_EmeraldPlainsCombatScore": {
+   "file": "Music/SW_MUS_EmeraldPlainsCombatScore.ogg",
+   "ue": "/Game/Abyssfire/Audio/Music/SW_MUS_EmeraldPlainsCombatScore.SW_MUS_EmeraldPlainsCombatScore",
+   "kind": "music",
+   "channels": 2,
+   "sampleRate": 48000,
+   "loop": true,
+   "loopStartSample": 0,
+   "loopEndSample": 3375824,
+   "gain": 1.0,
+   "masterGainDb": 8.42,
+   "limiterGainReductionDb": 0.0,
+   "frames": 3375824,
+   "lengthSec": 70.3297,
+   "peakDbfs": -5.81,
+   "truePeakDbtp": -5.81,
+   "rmsDbfs": -18.44,
+   "lufs": -15.94,
+   "shortTermMaxLufs": -14.77,
+   "momentaryMaxLufs": -13.05,
+   "bytes": 1403064,
+   "sha256": "2b779a45096532565c58d236a442f048ecbc07c6c70bccb28b4f7ade0f28fa59",
+   "seamRatio": 0.252,
+   "key": "emerald_plains_combat_score",
+   "source": "score",
+   "theme": "emerald_plains",
+   "score": "emerald_plains",
+   "state": "combat",
+   "bars": 32,
+   "scoreSeed": "emerald_plains-combat-1",
+   "scoreSeedU32": 3416486415,
+   "oscillators": 710,
+   "leadNotes": 67,
+   "seamRatioRendered": 0.249,
+   "webLufs": -24.42,
+   "chain": {
+    "reverbMix": 0.22,
+    "reverbDecay": 1.2,
+    "reverbPreDelay": 0.015,
+    "compressor": [
+     -18.0,
+     6.0,
+     4.0,
+     0.003,
+     0.25
+    ],
+    "limiter": [
+     -1.0,
+     0.0,
+     20.0,
+     0.001,
+     0.1
+    ]
+   }
+  },
   "SW_MUS_EmeraldPlainsExplore": {
-   "file": "public/assets/audio/bgm/emerald_plains_explore.mp3",
+   "file": "Music/SW_MUS_EmeraldPlainsExplore.ogg",
    "ue": "/Game/Abyssfire/Audio/Music/SW_MUS_EmeraldPlainsExplore.SW_MUS_EmeraldPlainsExplore",
    "kind": "music",
    "channels": 2,
@@ -1063,11 +1174,13 @@
    "shortTermMaxLufs": -14.59,
    "momentaryMaxLufs": -13.39,
    "bytes": 3438925,
-   "sha256": "419e3d2e7f4da4230af56e77da89dcf6ac683d2d225b5f79e5f9c190518a183d",
-   "seamRatio": 0.018,
+   "sha256": "bbfba6c701860e3117cbc22d48681d04d8c6496923d06a9cd01891f29e0fcb26",
+   "seamRatio": 0.031,
    "key": "emerald_plains_explore",
    "source": "recording",
    "theme": "emerald_plains",
+   "sourceFile": "public/assets/audio/bgm/emerald_plains_explore.mp3",
+   "sourceSha256": "419e3d2e7f4da4230af56e77da89dcf6ac683d2d225b5f79e5f9c190518a183d",
    "encoder": "Lavc62.11",
    "encDelay": 576,
    "encPadding": 1226,
@@ -1082,6 +1195,7 @@
     "url": "https://opengameart.org/content/grasslands-theme"
    },
    "rawLufs": -13.13,
+   "seamRatioRendered": 0.018,
    "webLufs": -13.04,
    "chain": {
     "reverbMix": 0.22,
@@ -1103,8 +1217,63 @@
     ]
    }
   },
+  "SW_MUS_EmeraldPlainsExploreScore": {
+   "file": "Music/SW_MUS_EmeraldPlainsExploreScore.ogg",
+   "ue": "/Game/Abyssfire/Audio/Music/SW_MUS_EmeraldPlainsExploreScore.SW_MUS_EmeraldPlainsExploreScore",
+   "kind": "music",
+   "channels": 2,
+   "sampleRate": 48000,
+   "loop": true,
+   "loopStartSample": 0,
+   "loopEndSample": 8777143,
+   "gain": 1.0,
+   "masterGainDb": 9.87,
+   "limiterGainReductionDb": 0.0,
+   "frames": 8777143,
+   "lengthSec": 182.8571,
+   "peakDbfs": -3.41,
+   "truePeakDbtp": -3.4,
+   "rmsDbfs": -18.7,
+   "lufs": -15.93,
+   "shortTermMaxLufs": -12.98,
+   "momentaryMaxLufs": -11.69,
+   "bytes": 1999481,
+   "sha256": "d6b15b0350b8ba0aac406063faeee3531c63710d31ae0d1ff368568f055721b5",
+   "seamRatio": 0.0,
+   "key": "emerald_plains_explore_score",
+   "source": "score",
+   "theme": "emerald_plains",
+   "score": "emerald_plains",
+   "state": "explore",
+   "bars": 64,
+   "scoreSeed": "emerald_plains-explore-1",
+   "scoreSeedU32": 678095882,
+   "oscillators": 773,
+   "leadNotes": 67,
+   "seamRatioRendered": 0.0,
+   "webLufs": -25.87,
+   "chain": {
+    "reverbMix": 0.22,
+    "reverbDecay": 1.2,
+    "reverbPreDelay": 0.015,
+    "compressor": [
+     -18.0,
+     6.0,
+     4.0,
+     0.003,
+     0.25
+    ],
+    "limiter": [
+     -1.0,
+     0.0,
+     20.0,
+     0.001,
+     0.1
+    ]
+   }
+  },
   "SW_MUS_EmeraldPlainsVictory": {
-   "file": "public/assets/audio/bgm/emerald_plains_victory.mp3",
+   "file": "Music/SW_MUS_EmeraldPlainsVictory.ogg",
    "ue": "/Game/Abyssfire/Audio/Music/SW_MUS_EmeraldPlainsVictory.SW_MUS_EmeraldPlainsVictory",
    "kind": "music",
    "channels": 2,
@@ -1124,10 +1293,12 @@
    "shortTermMaxLufs": -14.85,
    "momentaryMaxLufs": -13.72,
    "bytes": 632772,
-   "sha256": "d66820882a78b6f6e6cace034e2e639108899b36e3b176d78da548c32800f6af",
+   "sha256": "251d432c4d975b748c178c0bd1dceab461429d4576a424f626f144e1bfef0824",
    "key": "emerald_plains_victory",
    "source": "recording",
    "theme": "emerald_plains",
+   "sourceFile": "public/assets/audio/bgm/emerald_plains_victory.mp3",
+   "sourceSha256": "d66820882a78b6f6e6cace034e2e639108899b36e3b176d78da548c32800f6af",
    "encoder": "Lavc62.11",
    "encDelay": 576,
    "encPadding": 1079,
@@ -1185,7 +1356,7 @@
    "momentaryMaxLufs": -12.01,
    "bytes": 2733456,
    "sha256": "6c38322605373e9c2c85f37c13ff5f7adf96781bf45404778d4107656153da28",
-   "seamRatio": 0.0,
+   "seamRatio": 0.001,
    "key": "menu_explore",
    "source": "score",
    "theme": "menu",
@@ -1196,6 +1367,7 @@
    "scoreSeedU32": 2890741060,
    "oscillators": 709,
    "leadNotes": 68,
+   "seamRatioRendered": 0.0,
    "webLufs": -25.88,
    "chain": {
     "reverbMix": 0.22,
@@ -4183,7 +4355,7 @@
    "loopStartSample": 0,
    "loopEndSample": 0,
    "gain": 1.0,
-   "masterGainDb": -0.887,
+   "masterGainDb": -0.89,
    "limiterGainReductionDb": 0.0,
    "frames": 226080,
    "lengthSec": 4.71,
@@ -4191,14 +4363,15 @@
    "truePeakDbtp": -7.29,
    "rmsDbfs": -21.69,
    "lufs": -17.83,
-   "shortTermMaxLufs": -17.58,
+   "shortTermMaxLufs": -17.59,
    "momentaryMaxLufs": -16.29,
-   "bytes": 67929,
-   "sha256": "880b47b4d106d379b9029bd1e8a8eca9e2452c2e03e6577275b6ee2f1755e30a",
+   "bytes": 67922,
+   "sha256": "bc1e41c93059ac33cd49eabb8e68b4b4793b95384b72d3aaff3d4dfe04ed2ab8",
    "role": "bossIntro",
    "seed": 3775101330,
    "recipe": "stg_boss_intro",
    "nominalSec": 3.5,
+   "levelMatch": "shortTerm",
    "chain": "emerald_plains"
   },
   "SW_STG_ChapterCardDawn": {
@@ -4211,22 +4384,23 @@
    "loopStartSample": 0,
    "loopEndSample": 0,
    "gain": 1.0,
-   "masterGainDb": 1.209,
+   "masterGainDb": 1.206,
    "limiterGainReductionDb": 0.0,
    "frames": 490080,
    "lengthSec": 10.21,
-   "peakDbfs": -7.36,
-   "truePeakDbtp": -7.35,
+   "peakDbfs": -7.38,
+   "truePeakDbtp": -7.37,
    "rmsDbfs": -22.32,
-   "lufs": -18.58,
-   "shortTermMaxLufs": -17.56,
+   "lufs": -18.59,
+   "shortTermMaxLufs": -17.57,
    "momentaryMaxLufs": -15.64,
-   "bytes": 120656,
-   "sha256": "f7d3dde51b34856a05cb03a23d699cc5081e5b25dd14a1085714a024c5034306",
+   "bytes": 120693,
+   "sha256": "5bc86ba2326cf08f7f2820aa79e30533c7f953822e00f3ef6cf65f096db6f49f",
    "role": "chapterCard.dawn",
    "seed": 3616013901,
    "recipe": "stg_chapter_card_dawn",
    "nominalSec": 9.0,
+   "levelMatch": "shortTerm",
    "chain": "emerald_plains"
   },
   "SW_STG_CutsceneIn": {
@@ -4239,22 +4413,23 @@
    "loopStartSample": 0,
    "loopEndSample": 0,
    "gain": 1.0,
-   "masterGainDb": 16.697,
+   "masterGainDb": 9.794,
    "limiterGainReductionDb": 0.0,
    "frames": 187680,
    "lengthSec": 3.91,
-   "peakDbfs": -1.89,
-   "truePeakDbtp": -1.87,
-   "rmsDbfs": -21.06,
-   "lufs": -15.34,
-   "shortTermMaxLufs": -17.55,
-   "momentaryMaxLufs": -9.47,
-   "bytes": 46266,
-   "sha256": "dbcaf74e62d2a6c8efa51478c5837f5a4a7e49ba96d836d942c386579195041c",
+   "peakDbfs": -8.87,
+   "truePeakDbtp": -8.86,
+   "rmsDbfs": -27.97,
+   "lufs": -22.24,
+   "shortTermMaxLufs": -24.46,
+   "momentaryMaxLufs": -16.38,
+   "bytes": 43897,
+   "sha256": "a7e9755ccaf862f2d6ab4b928fbea01b368d7a4110dff1b229b8aff19d1ce632",
    "role": "cutsceneIn",
    "seed": 4193410807,
    "recipe": "stg_cutscene_in",
    "nominalSec": 1.2,
+   "levelMatch": "momentary",
    "chain": "emerald_plains"
   },
   "SW_STG_WhisperLoop": {
@@ -4267,7 +4442,7 @@
    "loopStartSample": 0,
    "loopEndSample": 288000,
    "gain": 1.0,
-   "masterGainDb": 11.637,
+   "masterGainDb": 11.634,
    "limiterGainReductionDb": 0.0,
    "frames": 288000,
    "lengthSec": 6.0,
@@ -4276,14 +4451,15 @@
    "rmsDbfs": -20.29,
    "lufs": -17.93,
    "shortTermMaxLufs": -17.56,
-   "momentaryMaxLufs": -16.57,
-   "bytes": 104212,
-   "sha256": "30b1b4773d39289439e102a197a65986d4bff269a6351a8c5bdb76661073a4ce",
+   "momentaryMaxLufs": -16.58,
+   "bytes": 104196,
+   "sha256": "773f0b8d064e4444cff0064b0fa365c5c1723c3e884db8c96588daa63c067800",
    "seamRatio": 0.329,
    "role": "whisper",
    "seed": 1276589191,
    "recipe": "stg_whisper_loop",
    "nominalSec": 6.0,
+   "levelMatch": "shortTerm",
    "chain": "emerald_plains"
   }
  }

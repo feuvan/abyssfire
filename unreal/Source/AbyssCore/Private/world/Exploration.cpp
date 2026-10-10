@@ -195,9 +195,23 @@ void ExplorationSystem::Tick() {
   grid_.Reveal(p.x, p.y, ctx_.data.World().constants.hiddenAreaExploreRadius);
 }
 
-bool ExplorationSystem::AreaFullyExplored(int32_t c0, int32_t r0, int32_t c1, int32_t r1) const {
-  return grid_.IsExplored(c0, r0) && grid_.IsExplored(c1, r0) && grid_.IsExplored(c0, r1) &&
-         grid_.IsExplored(c1, r1) && grid_.IsExplored((c0 + c1) / 2, (r0 + r1) / 2);
+bool ExplorationSystem::AreaFullyExplored(const HiddenAreaDef& area) const {
+  // getHiddenAreaBounds: startCol ?? col - radius, ... (radius may be fractional).
+  double c0 = area.center.col - area.radius, r0 = area.center.row - area.radius;
+  double c1 = area.center.col + area.radius, r1 = area.center.row + area.radius;
+  if (area.hasBounds) {
+    c0 = area.boundsStart.col;
+    r0 = area.boundsStart.row;
+    c1 = area.boundsEnd.col;
+    r1 = area.boundsEnd.row;
+  }
+  // The web indexes exploredTiles[r * cols + c]: a non-integral point reads undefined (unexplored).
+  const auto explored = [this](double c, double r) {
+    if (c != std::floor(c) || r != std::floor(r)) return false;
+    return grid_.IsExplored(static_cast<int32_t>(c), static_cast<int32_t>(r));
+  };
+  return explored(c0, r0) && explored(c1, r0) && explored(c0, r1) && explored(c1, r1) &&
+         explored(area.center.col, area.center.row);
 }
 
 void ExplorationSystem::FillSnapshot(Snapshot& out) const { out.exploration = &grid_; }

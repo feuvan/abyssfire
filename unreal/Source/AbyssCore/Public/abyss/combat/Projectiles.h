@@ -70,8 +70,7 @@ struct GroundEffectSpec {
   // monster stands inside the radius (TickArmedTraps) it fires its `ticks` ticks (the first at once, then every
   // durationMs / ticks from the trigger) and ends after the last one; an untriggered trap expires silently.
   GroundTrigger trigger = GroundTrigger::Periodic;
-  int32_t ticks = 1;
-  double damageShare = 1.0;   // fraction of the skill hit each tick deals (1 / ticks)
+  int32_t ticks = 1;          // the skill's one-shot hit is spread over them (GroundTickShare)
 };
 
 struct GroundEffect {
@@ -94,6 +93,9 @@ ABYSS_API double MonsterBoltTravelMs(const ProjectileTimingTable& t, Vec2 from, 
 ABYSS_API double SkillTravelMs(const SkillDef& s, Vec2 from, Vec2 to);
 // Per-target arrow delay (6.5): min(maxMs, tileDist * 36 * msPerPx) for multishot / piercing_arrow, else 0.
 ABYSS_API double SkillArrowDelayMs(const SkillDef& s, Vec2 from, Vec2 to);
+// C4 "the same total damage spread over their tick count": the part of `total` that tick `tickIndex` (0-based) of
+// `ticks` deals, floor(total * (k + 1) / n) - floor(total * k / n); the n parts sum to exactly `total` (0 <= total).
+ABYSS_API int32_t GroundTickShare(int32_t total, int32_t tickIndex, int32_t ticks);
 // Monster bolt tint (5.2): fire/phoenix -> 0xff6600, ice -> 0x4488ff, else 0xcc44cc (exported per monster as data).
 ABYSS_API uint32_t MonsterBoltColor(std::string_view spriteKey);
 

@@ -1,0 +1,4 @@
+# Local caches of the content-build tooling (tests/fetch_ue_stub.py) and Python bytecode.
+.cache/
+__pycache__/
+*.pyc
