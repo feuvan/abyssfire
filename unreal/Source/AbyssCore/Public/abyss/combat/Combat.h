@@ -177,9 +177,9 @@ class ABYSS_API CombatSystem {
   // poisoned x0.5 modifiers; skipped while dead.
   void TickHeroUpdate(double dtMs);
   void ConsumeBufferedSkill();      // step 3
-  void TickCombat();                // step 9: prune hero + monster buffs (FIX Q19), monster swings, basic attack
+  void TickCombat();                // step 9: monster buffs (FIX Q19, even dying), hero buffs, swings, basic attack
   void TickStatusEffects();         // step 11: ticks then expiry; DoT kills go through MonsterSystem::ApplyDamage
-  void TickAutoCombat();            // step 12 (C1: first skill that CanExecute)
+  void TickAutoCombat();            // step 12 (C1: first skill that CanExecute, only while a living lock is held)
   void TickCombatState();           // 9.6 rising edge immediate, falling edge debounced 1500 ms
   void OnTimer(const Timer& t);
   // F1: clear the input buffer (cinematic: also the attack target). F2 (cinematic): cancel every pending
@@ -273,6 +273,9 @@ class ABYSS_API CombatSystem {
     int32_t total = 0;       // the web's dealt damage (after combustion)
     int32_t lifeStolen = 0;  // the web's steal from that hit
     int32_t manaStolen = 0;
+    // The target's first landed share carried the web's one-shot impact (burst, hurt vocal, provoke, AoE batch shake);
+    // later shares land as ticks (combat 6.5 / 11.1, DECISIONS C4: the feel of one hit, spread damage).
+    bool impactDone = false;
   };
   // A monster swing waiting for its contact beat (T1): telegraph state for the snapshot and the F2 cancel event.
   struct PendingStrike {
@@ -307,11 +310,17 @@ class ABYSS_API CombatSystem {
     // C4 ground tick: only on the target's first tick).
     bool rollStatuses = true;
     int32_t statusDamage = 0;
+    // The hit landed with the full impact (every one-shot hit; a C4 ground effect's first landed share per target):
+    // counts for the AoE batch shake. Later shares are tick-weight hits without burst or shake.
+    bool impact = false;
   };
 
   // ---- skills ----
   int32_t CastManaCost(int32_t skillIndex) const;
   bool SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget) const;
+  // Auto-battle's extra gate (9.4 with C1): never a movement skill (teleport); an AoE / trap only when its blast, cone,
+  // line or ground anchor reaches the living lock `lock`.
+  bool AutoSkillFits(int32_t skillIndex, EntityId lock) const;
   void TryUseSkill(int32_t skillIndex, const SkillAim& aim);
   void ReleaseSkill(int32_t skillIndex, int32_t level, EntityId target, const SkillAim& aim, int32_t manaCost);
   void ReleaseTeleport(const SkillDef& s, int32_t level, EntityId target, const SkillAim& aim, int32_t manaCost);

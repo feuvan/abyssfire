@@ -4,6 +4,7 @@
 
 #include "SimImpl.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "abyss/base/Assert.h"
@@ -31,6 +32,12 @@ void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
     out.player.tileRow = camp.y;
     out.player.hp = hero->MaxHp();
     out.player.mana = hero->MaxMana();
+  } else {
+    // A live hero can sit above a lowered maximum until the next heal (unequipping +maxHp / +maxMana gear: recalcDerived
+    // never clamps, classes 3), and ApplySave clamps to the gear-inclusive maxima (FIX Q8). Write what a load restores
+    // so save -> load -> save is idempotent.
+    out.player.hp = std::min(out.player.hp, hero->MaxHp());
+    if (std::isfinite(out.player.mana)) out.player.mana = std::clamp(out.player.mana, 0.0, hero->MaxMana());
   }
   inventory->WriteSave(out);
   out.quests.assign(quests->AllProgress().begin(), quests->AllProgress().end());
@@ -110,12 +117,16 @@ SaveError SimImpl::ApplySave(const SaveData& s, std::string* err) {
   // dead save's position (camps[0]) and never reaches the grid / int conversions (Math.h SaturatingInt32).
   const bool deadSave = !(std::isfinite(s.player.hp) && s.player.hp > 0);
   const bool badPos = !(std::isfinite(s.player.tileCol) && std::isfinite(s.player.tileRow));
+  const auto loadedStreams = rng.GetStates();
   const bool ok = EnterZone(s.player.currentMap, !badPos, badPos ? Vec2() : Vec2(s.player.tileCol, s.player.tileRow));
   if (!ok) {
     if (err != nullptr) *err = "unknown map";
     hasSession = false;
     return SaveError::Invalid;
   }
+  // S3: the zone entry's spawn rolls drew from the restored streams; put the loaded states back so the session continues
+  // exactly the saved streams and SaveGame() right after LoadGame() reproduces the save (load -> save is idempotent).
+  rng.SetStates(loadedStreams);
   if (deadSave) {
     hero->SetPosition(zone->CampPosition(0));
     hero->FillHpMana();

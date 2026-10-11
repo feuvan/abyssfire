@@ -74,7 +74,8 @@ struct CombatSummary {
 };
 ABYSS_API CombatSummary SummarizeCombatant(const DamageRules& rules, const Combatant& c, const SkillHitInput& skill = {});
 
-// Proc helpers (combat-feel.md 4.3). Each consumes one draw when it can trigger.
+// Proc helpers (combat-feel.md 4.3). CheckCritDoubleStrike / CheckFreeCast consume one draw when they can trigger
+// (their callers gate exactly as the web does); CheckDoubleShot always draws, like the web helper's default argument.
 ABYSS_API bool CheckCritDoubleStrike(double pct, bool isCrit, Rng& rng);
 ABYSS_API bool CheckDoubleShot(double pct, double attackRange, Rng& rng);
 ABYSS_API bool CheckFreeCast(double pct, Rng& rng);

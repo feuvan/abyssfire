@@ -163,9 +163,12 @@ bool CheckCritDoubleStrike(double pct, bool isCrit, Rng& rng) {
   return rng.Float01() * 100.0 < pct;
 }
 
+// The web's checkDoubleShot(pct, range, rng = Math.random()) evaluates its default argument on every call: the roll is
+// drawn even when the range test fails (every 1.5-tile hero), so the draw comes first (combat 0: same draw conditions).
 bool CheckDoubleShot(double pct, double attackRange, Rng& rng) {
+  const double roll = rng.Float01();
   if (!(pct > 0) || !(attackRange > 2)) return false;
-  return rng.Float01() * 100.0 < pct;
+  return roll * 100.0 < pct;
 }
 
 bool CheckFreeCast(double pct, Rng& rng) {

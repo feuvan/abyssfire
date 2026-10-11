@@ -211,6 +211,45 @@ TEST_SUITE("sim") {
     sim->Context().sys.hero->SetLife(HeroLife::Alive);
   }
 
+  TEST_CASE("save -> load -> save is idempotent (the zone entry's spawn rolls do not advance the saved RNG streams)") {
+    // Regression (playthrough): ApplySave restored the RNG streams before the zone entry, whose monster spawns then
+    // drew from the Ai stream, so SaveGame() right after LoadGame() differed in rng.ai from the save just loaded.
+    auto sim = StartSim(ClassId::Warrior, 77);
+    for (int i = 0; i < 600; ++i) sim->Step();
+    const std::string save = sim->SaveGame(1234);
+    auto fresh = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(fresh != nullptr);
+    std::string err;
+    REQUIRE(fresh->LoadGame(save, &err) == SaveError::None);
+    CHECK(fresh->SaveGame(1234) == save);
+    // Loading again into the same instance (UE's Continue after a session) gives the same state.
+    REQUIRE(fresh->LoadGame(save, &err) == SaveError::None);
+    CHECK(fresh->SaveGame(1234) == save);
+  }
+
+  TEST_CASE("a hero above a lowered maximum is saved clamped, as the load restores it (FIX Q8 symmetry)") {
+    // Regression (playthrough): swapping to gear with less maxHp / maxMana leaves hp / mana above the new maxima until
+    // the next heal (recalcDerived never clamps); the save wrote them raw while ApplySave clamps, so
+    // save -> load -> save changed player.hp / player.mana.
+    auto sim = StartSim(ClassId::Mage, 31);
+    Hero& hero = *sim->Context().sys.hero;
+    const double maxHp = hero.MaxHp(), maxMana = hero.MaxMana();
+    hero.SetHp(maxHp + 40);
+    hero.SetMana(maxMana + 25);
+    SaveData built;
+    sim->BuildSave(built, 0);
+    CHECK(built.player.hp == maxHp);
+    CHECK(built.player.mana == maxMana);
+    CHECK(hero.Hp() == maxHp + 40);  // the live state is untouched (web parity until the next heal)
+    const std::string save = sim->SaveGame(99);
+    auto fresh = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(fresh != nullptr);
+    std::string err;
+    REQUIRE(fresh->LoadGame(save, &err) == SaveError::None);
+    CHECK(fresh->View().hero.hp == maxHp);
+    CHECK(fresh->SaveGame(99) == save);
+  }
+
   TEST_CASE("LoadGame: SaveError paths, non-finite position, visitedZones, difficulty override") {
     auto sim = StartSim(ClassId::Mage, 21);
     SaveData base;

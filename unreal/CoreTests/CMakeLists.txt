@@ -105,7 +105,7 @@ add_dependencies(abyss_tests abyss_macro_shim)
 
 enable_testing()
 # One ctest entry per area (doctest TEST_SUITE names). Keep in sync with the suites used in tests/*.cpp.
-set(ABYSS_TEST_AREAS base data hero combat monsters items quests story world pets audio save sim)
+set(ABYSS_TEST_AREAS base data hero combat monsters items quests story world pets audio save sim playthrough)
 foreach(area IN LISTS ABYSS_TEST_AREAS)
   add_test(NAME core.${area} COMMAND abyss_tests --test-suite=${area} --no-intro --no-version)
   set_tests_properties(core.${area} PROPERTIES SKIP_RETURN_CODE 77)

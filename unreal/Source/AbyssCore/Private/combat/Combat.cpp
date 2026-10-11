@@ -422,7 +422,7 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
   const std::string skillId = h.skill != nullptr ? h.skill->id : std::string();
   // C4: a multi-tick ground effect rolls the target's one-shot hit on the first tick that reaches it, then shares it.
   const bool shared = h.ground != nullptr && h.ground->ticks > 1;
-  const GroundRoll* roll = shared ? FindGroundRoll(h.ground->effect, h.target) : nullptr;
+  GroundRoll* roll = shared ? FindGroundRoll(h.ground->effect, h.target) : nullptr;
   GroundRoll hit;  // this hit's whole damage and steal (a fresh roll, or the effect's stored one)
   int32_t spiritDamage = 0;  // Spirit 'hit' (classes 12.1): once per rolled hit, from the formula damage
   if (roll == nullptr) {
@@ -454,6 +454,8 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
     hit.lifeStolen = r.lifeStolen;  // from r, not the combustion value (classes 9.7)
     hit.manaStolen = r.manaStolen;
     spiritDamage = SaturatingInt32(r.damage);
+    // The first share that lands carries the one-shot impact (a share rounding to 0 passes it on to the next).
+    if (shared) hit.impactDone = GroundTickShare(hit.total, h.ground->index, h.ground->ticks) > 0;
     if (shared) groundRolls_.push_back(hit);
     ConsumeCritBonus();
     out.statusDamage = hit.total;
@@ -464,6 +466,7 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
       return out;
     }
     hit = *roll;
+    hit.impactDone = false;  // whether THIS share carries the impact (set below)
     out.rollStatuses = false;  // the statuses were rolled with the first tick
   }
   int32_t amount = hit.total;
@@ -478,6 +481,22 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
   out.crit = hit.crit;
   out.damage = amount;
   if (amount <= 0) return out;  // a ground tick whose share rounds to 0: nothing lands this tick
+  // C4 feel (combat 6.5 / 11.1): the web's fire wall / arrow rain was ONE hit per target - one impact burst, hurt
+  // vocal, provoke and one AoE batch shake. A target's first landed share is that hit; its later shares land as ticks
+  // (tick weight: no recoil, burst, vocal, provoke or shake), except the share that kills, which keeps the kill weight
+  // (still without burst or shake) so the death reads as the web's killing blow.
+  bool impact = true;
+  if (shared) {
+    if (roll == nullptr) {
+      impact = hit.impactDone;
+    } else {
+      impact = !roll->impactDone;
+      roll->impactDone = true;
+    }
+  }
+  const bool lateShare = !impact;
+  const MonsterInstance* victim = ms->Find(h.target);
+  const bool lateShareKills = lateShare && victim != nullptr && !(victim->hp - amount > 0);
 
   MonsterHitRequest req;
   req.monster = h.target;
@@ -492,13 +511,15 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
                                        : ClassImpactColor(ctx_.data.Combat().hitFeedback, hero.Class());
   req.skillId = skillId;
   req.numberSlot = h.numberSlot;
-  req.impactBurst = h.impactBurst;
+  req.impactBurst = h.impactBurst && !lateShare;
+  req.isTick = lateShare && !lateShareKills;
   if (h.scorch && h.skill != nullptr && h.skill->hasScorch) {  // 6.4 #7 / C6: single-target skill hits only
     req.scorch = true;
     req.scorchType = h.skill->scorch;
   }
   out.weight = DamageMonster(req);
   out.landed = true;
+  out.impact = impact;
   const MonsterInstance* after = ms->Find(h.target);
   out.killed = after == nullptr || !after->IsAlive();
   return out;
@@ -558,7 +579,8 @@ void CombatSystem::ResolveHeroStrike(EntityId target) {
     const HeroHitOutcome o = HeroHitMonster(extra);
     if (o.landed) ctx_.events.Log(MakeLoc("zone.combat.comboTrigger"), LogType::Combat);
   }
-  // 11. doubleShot (needs attackRange > 2: never for the 1.5-tile heroes, kept for data parity).
+  // 11. doubleShot (needs attackRange > 2: never for the 1.5-tile heroes, kept for data parity). The roll is drawn
+  // whenever doubleShot gear is worn and the target lives, also for a 1.5-tile hero (the web's default argument).
   if (eq.Get(Stat::DoubleShot) > 0 && alive() &&
       CheckDoubleShot(eq.Get(Stat::DoubleShot), hero.Derived().attackRange, rng)) {
     HeroHitSpec extra;
@@ -1748,10 +1770,11 @@ void CombatSystem::ResolveGroundTick(const GroundEffect& g, const GroundTick& ti
     v.radius = g.spec.radius;
     EmitSkillVfx(s, v);
   }
+  // One AoE batch shake (6.5) for the targets whose web hit lands now (their first landed share), none for later ticks.
   int32_t hits = 0;
   for (EntityId id : targets) {
     const HeroHitOutcome o = ApplySkillHit(s, g.spec.skillLevel, id, true, g.spec.center, &tick);
-    if (o.landed) ++hits;
+    if (o.landed && o.impact) ++hits;
   }
   if (hits > 0) {
     const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, hits);
@@ -1954,21 +1977,24 @@ void CombatSystem::TickHeroUpdate(double dtMs) {
   hero.TickRegen(dtMs, hero.stepRegen);
 }
 
-// Step 9 handleCombat: prune buffs (hero + FIX Q19 monsters), monster swings, the hero's basic attack; armed traps.
+// Step 9 handleCombat: prune buffs (FIX Q19 monsters, then the hero), monster swings, the hero's basic attack; armed
+// traps. FIX Q19 prunes monster buffs every frame, so it runs before the web's dead-hero gate: a death mark or taunt
+// still runs out during the 1100 ms Dying window. The rest stays behind the gate (an armed trap does not spring for a
+// dying hero; it stays armed until its duration ends).
 void CombatSystem::TickCombat() {
   Hero& hero = *ctx_.sys.hero;
-  if (!HeroAlive()) return;
   const double now = ctx_.Now();
-  hero.Buffs().Prune(now);
   MonsterSystem* ms = ctx_.sys.monsters;
-  if (ms == nullptr) return;
-  {
+  if (ms != nullptr) {
     std::vector<EntityId> ids;
     for (const MonsterInstance& m : ms->All()) ids.push_back(m.id);
     for (EntityId id : ids) {
       if (MonsterInstance* m = ms->Find(id)) m->buffs.Prune(now);
     }
   }
+  if (!HeroAlive()) return;
+  hero.Buffs().Prune(now);
+  if (ms == nullptr) return;
 
   // Monster swings (5.1).
   const CombatInputDef& in = ctx_.data.Combat().input;
@@ -2094,7 +2120,36 @@ void CombatSystem::TickStatusEffects() {
   }
 }
 
-// Step 12 handleAutoCombat (9.4 with C1: the first skill that can execute; C7 approach stops at attack range).
+// Auto-battle's gate on top of CanExecute (9.4 with C1). The web's first class skill (slash / fireball / backstab) is
+// targeted and, ready but out of reach, starved every later skill, so auto-battle never cast into empty air; with C1
+// skipping it, each skill needs its own reason: teleport is a movement skill (never automatic), an AoE / trap must
+// reach the lock with its blast (hero-centred blasts, the multishot cone, chain lightning, traps armed at the hero's
+// feet, taunt roar), its line (piercing arrow) or its ground anchor (the lock or the nearest monster within range + 1,
+// as ReleaseAoe picks it). Targeted skills are range-checked by CanExecute; plain buffs need only the living lock.
+bool CombatSystem::AutoSkillFits(int32_t skillIndex, EntityId lock) const {
+  const SkillBook& book = ctx_.sys.hero->Skills();
+  if (skillIndex < 0 || static_cast<size_t>(skillIndex) >= book.SkillCount()) return false;
+  const SkillDef& s = book.Skill(skillIndex);
+  if (s.execKind == SkillExecKind::Teleport) return false;
+  if (!s.aoe) return true;
+  const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(lock) : nullptr;
+  if (m == nullptr || !m->IsAlive()) return false;
+  const SkillRules& rules = ctx_.data.Classes().skillRules;
+  const Vec2 heroPos = ctx_.sys.hero->Position();
+  const double d2 = DistSq(heroPos, m->pos);
+  if (s.groundAnchored) {
+    const double reach = s.range + rules.groundAnchorReachSlackTiles;
+    const std::vector<TargetCandidate> near = AliveCandidates(heroPos, reach);
+    return FindGroundAoeAnchor(near, heroPos, lock, m->pos, true, s.range) != kNoEntity;
+  }
+  if (s.hasLineTarget) return d2 <= s.range * s.range;
+  const double radius = SkillAoeRadius(rules, s, book.Level(skillIndex));
+  return d2 <= radius * radius;
+}
+
+// Step 12 handleAutoCombat (9.4 with C1: the first skill that can execute; C7 approach stops at attack range). Skills
+// are cast only while a living lock is held (the web's targeted first skill never fired without one) and must fit it
+// (AutoSkillFits): no buffs, empty-air AoEs, traps or teleports while idling with auto-battle on.
 void CombatSystem::TickAutoCombat() {
   Hero& hero = *ctx_.sys.hero;
   if (!hero.autoCombat || !HeroAlive()) return;
@@ -2114,10 +2169,13 @@ void CombatSystem::TickAutoCombat() {
       if (d2 <= m->def.aggroRange * m->def.aggroRange) SetAttackTarget(nearest, d2 > range * range);
     }
   }
+  const EntityId lock = hero.attackTarget;  // the held lock, or the one taken this step
+  const MonsterInstance* lm = lock != kNoEntity ? ms->Find(lock) : nullptr;
+  if (lm == nullptr || !lm->IsAlive()) return;
   const SkillBook& book = hero.Skills();
   for (size_t i = 0; i < book.SkillCount(); ++i) {  // autoSkillPriority = class definition order
     const int32_t idx = static_cast<int32_t>(i);
-    if (book.Skill(idx).passive || !CanExecuteSkill(idx)) continue;
+    if (book.Skill(idx).passive || !CanExecuteSkill(idx) || !AutoSkillFits(idx, lock)) continue;
     RequestSkill(idx, SkillAim{});
     break;
   }

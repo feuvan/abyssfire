@@ -7,6 +7,7 @@
 // (monsters area); while those are stubs the tests that need a monster report it with MESSAGE and return early.
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -572,10 +573,12 @@ TEST_SUITE("combat") {
     CHECK(CheckCritDoubleStrike(20, true, rng));     // 10 < 20
     CHECK_FALSE(CheckCritDoubleStrike(20, false, rng));  // no draw without a crit
     CHECK(rng.ScriptedRemaining() == 0);
-    rng.Script({0.1});
-    CHECK_FALSE(CheckDoubleShot(50, 1.5, rng));  // melee range: never, no draw
+    rng.Script({0.1, 0.1});
+    // Melee range never procs, but the web's `rng = Math.random()` default argument still spends the draw.
+    CHECK_FALSE(CheckDoubleShot(50, 1.5, rng));
     CHECK(rng.ScriptedRemaining() == 1);
     CHECK(CheckDoubleShot(50, 3, rng));
+    CHECK(rng.ScriptedRemaining() == 0);
     rng.Script({0.5});
     CHECK_FALSE(CheckFreeCast(50, rng));  // 50 < 50 is false
     CHECK_FALSE(CheckFreeCast(0, rng));
@@ -2977,5 +2980,241 @@ TEST_SUITE("combat") {
     CHECK(field.hero->Life() == HeroLife::Alive);
     CHECK(test::CountEvents<EvZone>(field.h.events) == 0);
     CHECK(Dist(field.hero->Position(), field.zone.CampPosition(0)) < 1e-9);
+  }
+
+  // ===================================================================================================================
+  // Audit fixes: auto-battle gate, C4 ground-tick feel, the doubleShot draw, FIX Q19 while dying
+  // ===================================================================================================================
+  TEST_CASE("9.4 / C1: auto-battle casts nothing without a living lock (no buffs, traps or teleports while idling)") {
+    for (const ClassId cls : {ClassId::Warrior, ClassId::Mage, ClassId::Rogue}) {
+      CAPTURE(static_cast<int>(cls));
+      CombatRig rig(cls);
+      REQUIRE(rig.ok);
+      Hero& hero = *rig.hero;
+      SkillBook& book = hero.Skills();
+      for (size_t i = 0; i < book.SkillCount(); ++i) {  // every skill learned (teleport, traps, buffs, AoEs)
+        const int32_t idx = static_cast<int32_t>(i);
+        if (book.Level(idx) == 0) book.SetLevel(idx, 1);
+      }
+      hero.RecalcDerived(rig.h.ctx.equip);
+      hero.FillHpMana();
+      hero.autoCombat = true;
+      const Vec2 start = hero.Position();
+      rig.h.events.Clear();
+      rig.Step(600);  // 10 s with no monster in the zone
+      CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
+      CHECK(hero.Position() == start);
+      CHECK(hero.Mana() == hero.MaxMana());
+      CHECK_FALSE(rig.combat.Buffer().HasPending());
+      // A monster beyond its aggro range is never locked: still nothing (the web's targeted first skill starved the
+      // list; C1 must not turn that into casting at the nearest monster on the map).
+      const EntityId far = rig.Spawn("goblin", start + Vec2(12, 0));
+      REQUIRE(far != kNoEntity);
+      rig.Step(600);
+      CHECK(rig.combat.AttackTarget() == kNoEntity);
+      CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
+      CHECK(hero.Position() == start);
+    }
+  }
+
+  TEST_CASE("9.4 / C1: auto-battle never teleports; an AoE or trap waits until it reaches the lock") {
+    {  // teleport is a movement skill: never automatic, also with a lock
+      CombatRig rig(ClassId::Mage);
+      REQUIRE(rig.ok);
+      Hero& hero = *rig.hero;
+      SkillBook& book = hero.Skills();
+      for (size_t i = 0; i < book.SkillCount(); ++i) book.SetLevel(static_cast<int32_t>(i), 0);
+      book.SetLevel(rig.SkillIndex("teleport"), 1);
+      const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(3, 0));
+      REQUIRE(t != kNoEntity);
+      rig.combat.SetAttackTarget(t, false);
+      hero.lastAttackMs = 1e18;
+      hero.autoCombat = true;
+      const Vec2 start = hero.Position();
+      rig.h.events.Clear();
+      rig.Step(240);
+      CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
+      CHECK(hero.Position() == start);
+    }
+    struct Case {
+      ClassId cls;
+      const char* id;
+    };
+    const Case cases[] = {
+        {ClassId::Warrior, "whirlwind"},      {ClassId::Warrior, "war_stomp"},    {ClassId::Warrior, "taunt_roar"},
+        {ClassId::Warrior, "rampage"},        {ClassId::Mage, "meteor"},          {ClassId::Mage, "blizzard"},
+        {ClassId::Mage, "chain_lightning"},   {ClassId::Mage, "fire_wall"},       {ClassId::Mage, "arcane_torrent"},
+        {ClassId::Rogue, "multishot"},        {ClassId::Rogue, "arrow_rain"},     {ClassId::Rogue, "piercing_arrow"},
+        {ClassId::Rogue, "explosive_trap"},   {ClassId::Rogue, "poison_cloud"},   {ClassId::Rogue, "slow_trap"},
+        {ClassId::Rogue, "chain_trap"},
+    };
+    const SkillRules& rules = D().Classes().skillRules;
+    size_t aoeSkills = 0;
+    for (const ClassDef& c : D().Classes().classes) {
+      for (const SkillDef& s : c.skills) aoeSkills += s.aoe ? 1 : 0;
+    }
+    CHECK(aoeSkills == std::size(cases));  // every AoE / trap skill is covered
+    for (const Case& k : cases) {
+      CAPTURE(k.id);
+      const SkillDef& s = Skill(k.id);
+      REQUIRE(s.aoe);
+      // Reach: the ground anchor (range + 1), the line (range), else the blast / cone / trap radius around the hero.
+      const double reach = s.groundAnchored  ? s.range + rules.groundAnchorReachSlackTiles
+                           : s.hasLineTarget ? s.range
+                                             : SkillAoeRadius(rules, s, 1);
+      CombatRig rig(k.cls);
+      REQUIRE(rig.ok);
+      Hero& hero = *rig.hero;
+      SkillBook& book = hero.Skills();
+      for (size_t i = 0; i < book.SkillCount(); ++i) book.SetLevel(static_cast<int32_t>(i), 0);
+      book.SetLevel(rig.SkillIndex(k.id), 1);
+      const Vec2 p = hero.Position();
+      const EntityId t = rig.Spawn("goblin_chief", p + Vec2(reach + 0.75, 0));
+      REQUIRE(t != kNoEntity);
+      rig.combat.SetAttackTarget(t, false);  // a held lock, no approach
+      hero.lastAttackMs = 1e18;
+      hero.autoCombat = true;
+      rig.h.events.Clear();
+      rig.Step(60);
+      CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);  // out of reach: no cast into empty air
+      CHECK(hero.Mana() == hero.MaxMana());
+      rig.monsters.Teleport(t, p + Vec2(reach - 0.25, 0), TeleportReason::Debug);
+      rig.Step();
+      const auto used = EventsOf<EvSkillUsed>(rig.h.events);
+      REQUIRE(used.size() == 1);
+      CHECK(used[0].skillId == k.id);
+    }
+    // A ground AoE also takes another monster inside its anchor reach (ReleaseAoe's anchor), with the lock far away.
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    SkillBook& book = hero.Skills();
+    for (size_t i = 0; i < book.SkillCount(); ++i) book.SetLevel(static_cast<int32_t>(i), 0);
+    book.SetLevel(rig.SkillIndex("blizzard"), 1);
+    const EntityId lock = rig.Spawn("goblin_chief", hero.Position() + Vec2(9, 0));
+    REQUIRE(lock != kNoEntity);
+    rig.combat.SetAttackTarget(lock, false);
+    hero.lastAttackMs = 1e18;
+    hero.autoCombat = true;
+    rig.Step(30);
+    CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
+    rig.Spawn("goblin_chief", hero.Position() + Vec2(0, 3));
+    rig.Step();
+    CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 1);
+  }
+
+  TEST_CASE("C4 feel (6.5 / 11.1): a fire wall's first share is the web's hit; later shares are ticks without shake") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId t = rig.Spawn("goblin", hero.Position() + Vec2(3, 0));  // 55 HP: each share is a 'normal' share
+    REQUIRE(t != kNoEntity);
+    rig.combat.SetAttackTarget(t, false);
+    hero.lastAttackMs = 1e18;
+    const int32_t fw = rig.SkillIndex("fire_wall");
+    hero.Skills().SetLevel(fw, 1);
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(fw, SkillAim{}) == SkillRequestResult::Executed);
+    rig.StepBefore(t0 + 230);
+    rig.h.rng.Get(RngStream::Combat).Script({0.99, 0.99, 0.99});  // no dodge, no crit, no burn
+    rig.h.events.Clear();
+    std::vector<EvHit> hits;
+    std::vector<double> shakeAt;
+    std::vector<double> hitAt;
+    size_t hurtVocals = 0;
+    for (int i = 0; i < 200; ++i) {
+      rig.Step();
+      for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+        if (h.skillId != "fire_wall" || h.target != t) continue;
+        hits.push_back(h);
+        hitAt.push_back(rig.h.clock.NowMs());
+      }
+      for (size_t k = 0; k < EventsOf<EvCameraShake>(rig.h.events).size(); ++k) shakeAt.push_back(rig.h.clock.NowMs());
+      for (const EvSfx& e : EventsOf<EvSfx>(rig.h.events)) hurtVocals += e.cue == D().Audio().rules.monsterHurt;
+      rig.h.events.Clear();
+    }
+    REQUIRE(hits.size() == 6);
+    CHECK_FALSE(hits[0].tick);
+    CHECK(hits[0].impactBurst);
+    CHECK(hits[0].weight != HitWeight::Tick);
+    for (size_t i = 1; i < hits.size(); ++i) {
+      CHECK(hits[i].tick);
+      CHECK_FALSE(hits[i].impactBurst);
+      CHECK(hits[i].weight == HitWeight::Tick);
+    }
+    REQUIRE_FALSE(shakeAt.empty());
+    for (double at : shakeAt) CHECK(at == hitAt[0]);  // the impact + one AoE batch shake, nothing per later tick
+    CHECK(hurtVocals == 1);
+    const MonsterInstance* m = rig.monsters.Find(t);
+    REQUIRE(m != nullptr);
+    double total = 0;
+    for (const EvHit& h : hits) total += h.amount;
+    CHECK(m->hp == doctest::Approx(m->maxHp - total));  // the same total damage (C4)
+
+    // A later share that kills keeps the kill weight (the web's killing blow), still without burst or shake.
+    CombatRig k(ClassId::Mage);
+    const EntityId u = k.Spawn("goblin", k.hero->Position() + Vec2(3, 0));
+    k.combat.SetAttackTarget(u, false);
+    k.hero->lastAttackMs = 1e18;
+    k.hero->Skills().SetLevel(k.SkillIndex("fire_wall"), 1);
+    const double k0 = k.h.clock.NowMs();
+    REQUIRE(k.combat.RequestSkill(k.SkillIndex("fire_wall"), SkillAim{}) == SkillRequestResult::Executed);
+    k.StepBefore(k0 + 230);
+    k.h.rng.Get(RngStream::Combat).Script({0.99, 0.99, 0.99});
+    k.StepTo(k0 + 230);
+    REQUIRE(test::CountEvents<EvHit>(k.h.events) == 1);
+    k.monsters.Find(u)->hp = 1;  // the second share kills
+    k.h.events.Clear();
+    REQUIRE(k.StepUntil([&] { return test::CountEvents<EvHit>(k.h.events) > 0; }, 60));
+    const auto kill = EventsOf<EvHit>(k.h.events);
+    REQUIRE(kill.size() == 1);
+    CHECK(kill[0].killed);
+    CHECK(kill[0].weight == HitWeight::Kill);
+    CHECK_FALSE(kill[0].tick);
+    CHECK_FALSE(kill[0].impactBurst);
+    CHECK(test::CountEvents<EvCameraShake>(k.h.events) == 0);
+  }
+
+  TEST_CASE("4.2 step 11 (combat 0 draw conditions): doubleShot gear spends its roll on every landed swing") {
+    for (const bool worn : {false, true}) {
+      CAPTURE(worn);
+      CombatRig rig(ClassId::Warrior);
+      REQUIRE(rig.ok);
+      Hero& hero = *rig.hero;
+      if (worn) rig.h.ctx.equip.Add(Stat::DoubleShot, 50);
+      const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(1, 0));
+      REQUIRE(t != kNoEntity);
+      rig.combat.SetAttackTarget(t, false);
+      rig.Step();
+      const double swing = rig.h.clock.NowMs();
+      REQUIRE(test::CountEvents<EvPlayAnim>(rig.h.events) >= 1);
+      rig.StepBefore(swing + 308);
+      Rng& rng = rig.h.rng.Get(RngStream::Combat);
+      rng.Script({0.99, 0.99, 0.0});  // no dodge, no crit, then the doubleShot roll (0.0 would proc at range > 2)
+      rig.h.events.Clear();
+      rig.StepTo(swing + 308);
+      REQUIRE(test::CountEvents<EvHit>(rig.h.events) == 1);  // a 1.5-tile hero never gets the extra arrow
+      CHECK(rng.ScriptedRemaining() == (worn ? 0u : 1u));
+    }
+  }
+
+  TEST_CASE("FIX Q19: monster buffs keep expiring during the hero's Dying window") {
+    CombatRig rig(ClassId::Rogue);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(5, 0));
+    REQUIRE(t != kNoEntity);
+    ActiveBuff mark;
+    mark.stat = BuffStat::DamageAmplify;
+    mark.value = 0.25;
+    mark.durationMs = 300;
+    mark.startMs = rig.h.clock.NowMs();
+    rig.monsters.Find(t)->buffs.Add(mark);
+    hero.SetHp(0);
+    rig.combat.KillHero(HeroDeathCause::Other);
+    REQUIRE(hero.Life() == HeroLife::Dying);
+    rig.StepTo(mark.startMs + 300 + 2 * kSimStepMs);
+    CHECK(hero.Life() == HeroLife::Dying);  // respawn is 1100 ms away
+    CHECK_FALSE(rig.monsters.Find(t)->buffs.Has(BuffStat::DamageAmplify));
   }
 }
