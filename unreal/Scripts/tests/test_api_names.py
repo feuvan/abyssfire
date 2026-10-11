@@ -26,6 +26,8 @@ EDITOR_ATTRS = {
 # Names that are ours (C++ helper, Python builtins / our own objects), not stub API.
 OWN_METHODS = {
     "configure_skeletal_mesh_socket", "mesh_has_bone", "finish_compilation",          # AbyssContentBuildLibrary
+    "set_skeletal_mesh_lod_screen_size", "get_skeletal_mesh_lod_screen_size",
+    "set_material_instance_texture_parameter", "get_texture_parameter_infos",
 }
 PY_BUILTIN_METHODS = {"append", "items", "keys", "values", "get", "split", "strip", "lower", "upper", "startswith",
                       "endswith", "replace", "join", "format", "pop", "update", "extend", "copy", "is_file", "is_dir",

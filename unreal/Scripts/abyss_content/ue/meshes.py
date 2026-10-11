@@ -90,7 +90,7 @@ def make_pipeline(kind: str, skeleton: Any = None, fps: int = 60, notes: list[st
         "animation_range": enum("InterchangeAnimationRange", "TIMELINE"),
         "custom_bone_animation_sample_rate": int(fps),
         "use30_hz_to_bake_bone_animation": False,
-        "snap_to_closest_frame_boundary": False,
+        "snap_to_closest_frame_boundary": True,
         "import_custom_attribute": False,
     }, "animation pipeline", required=False, notes=soft)
 
@@ -239,19 +239,20 @@ def import_lods(ed: Editor, asset: Asset, mesh: Any, report: BuildReport) -> Non
         if got != lod.index:
             report.warning(f"{asset.name}: LOD{lod.index} import returned {got} (LOD left to the engine reduction)")
     count = int(ed.skm.get_lod_count(mesh))
-    infos = list(mesh.get_editor_property("lod_info") or [])
     sizes = {0: 1.0}
     sizes.update({lod.index: lod.screen_size for lod in asset.lods})
-    changed = False
-    for idx, info in enumerate(infos):
-        if idx in sizes:
-            current = info.get_editor_property("screen_size")
-            if abs(float(current.get_editor_property("default")) - sizes[idx]) > 1e-4:
-                info.set_editor_property("screen_size", unreal.PerPlatformFloat(sizes[idx]))
-                infos[idx] = info
-                changed = True
-    if changed:
-        mesh.set_editor_property("lod_info", infos)
+    # UE 5.8 no longer exposes SkeletalMesh.lod_info to Python: screen sizes go through the C++ helper.
+    lib = ed.content_lib
+    if lib is None or not hasattr(lib, "set_skeletal_mesh_lod_screen_size"):
+        report.warning(f"{asset.name}: AbyssContentBuildLibrary.set_skeletal_mesh_lod_screen_size unavailable "
+                       "(rebuild the AbyssfireEditor target); LOD screen sizes left at the engine defaults")
+    else:
+        for idx in range(count):
+            if idx not in sizes:
+                continue
+            current = float(lib.get_skeletal_mesh_lod_screen_size(mesh, idx))
+            if abs(current - sizes[idx]) > 1e-4 and not lib.set_skeletal_mesh_lod_screen_size(mesh, idx, sizes[idx]):
+                report.warning(f"{asset.name}: could not set the screen size of LOD{idx}")
     report.verification.append(f"{asset.name}: {count} LOD(s) (manifest: {1 + len(asset.lods)})")
     if count < 1 + len(asset.lods):
         report.warning(f"{asset.name}: expected {1 + len(asset.lods)} LODs, the mesh has {count}")

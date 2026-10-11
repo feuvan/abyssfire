@@ -245,7 +245,32 @@ class StaticMeshSocket(Object):
     _defaults = {"socket_name": "None", "relative_location": Vector(), "relative_rotation": Rotator()}
 
 
+def fbx_node_names(path: Path, node_class: str) -> list[str]:
+    """Names of the FBX binary nodes of one class ("Model" = bones and meshes, "Material"), in file order.
+
+    A binary FBX stores each node name as an `S` string record `<name>\\x00\\x01<class>` behind a little-endian length.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return []
+    tag = b"\x00\x01" + node_class.encode()
+    out: list[str] = []
+    at = data.find(tag)
+    while at >= 0:
+        for n in range(1, min(at, 128) - 4):
+            start = at - n
+            if data[start - 5] == ord("S") and int.from_bytes(data[start - 4:start], "little") == n + len(tag):
+                name = data[start:at].decode("utf-8", "replace")
+                if name not in out:
+                    out.append(name)
+                break
+        at = data.find(tag, at + len(tag))
+    return out
+
+
 class SkeletalMesh(Object):
+    # Fallback for meshes whose source FBX cannot be read (each import reads the real bone names from the file).
     BONES = {"root", "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "head", "hand_l", "hand_r", "weapon_l",
              "weapon_r"}
 
@@ -253,6 +278,10 @@ class SkeletalMesh(Object):
         super().__init__(*a, **k)
         self._sockets: list[SkeletalMeshSocket] = []
         self._shadow: dict[tuple[int, int], bool] = {}
+        self._bones: set[str] = set(SkeletalMesh.BONES)
+
+    def has_bone(self, bone: str) -> bool:
+        return str(bone) in self._bones
 
     def find_socket_and_index(self, name: str) -> tuple[Any, int]:
         for i, s in enumerate(self._sockets):
@@ -268,6 +297,7 @@ class StaticMesh(Object):
     def __init__(self, *a: Any, **k: Any) -> None:
         super().__init__(*a, **k)
         self._materials: list[Any] = [None, None]
+        self._slot_names: list[str] = ["MI_AF_Toon_Heroes", "M_AF_Outline"]
         self._sockets: list[StaticMeshSocket] = []
         self._bounds = (Vector(-50, -50, 0), Vector(50, 50, 0))
         self._shadow: dict[tuple[int, int], bool] = {}
@@ -280,7 +310,7 @@ class StaticMesh(Object):
     def get_editor_property(self, name: str) -> Any:
         if name == "static_materials":
             # Interchange slot order is not guaranteed: the fake reverses it to exercise the by-name matching.
-            names = ["M_AF_Outline", "MI_AF_Toon_Heroes"] if len(self._materials) == 2 else ["Sprite"]
+            names = list(reversed(self._slot_names)) if len(self._materials) == len(self._slot_names) else ["Sprite"]
             out = []
             for n in names[:len(self._materials)]:
                 m = StaticMaterial()
@@ -485,6 +515,16 @@ class MaterialEditingLibrary:
         pass
 
     @staticmethod
+    def get_texture_parameter_names(material: Any) -> list[str]:
+        names: list[str] = []
+        for expr in getattr(material, "_expressions", []):
+            if type(expr).__name__.startswith("MaterialExpressionTexture"):
+                name = str(expr.get_editor_property("parameter_name") or "")
+                if name and name not in names:
+                    names.append(name)
+        return names
+
+    @staticmethod
     def get_statistics(material: Any) -> Object:
         st = Object()
         for k in ("num_vertex_shader_instructions", "num_pixel_shader_instructions", "num_samplers"):
@@ -576,14 +616,23 @@ class AssetTools:
                         skeleton = register(Skeleton(), f"{dest}/{stem}_Skeleton")
                         created.append(skeleton)
                     mesh._props["skeleton"] = skeleton
-                    mesh._props["materials"] = [SkeletalMaterial(), SkeletalMaterial()]
-                    mesh._props["materials"][0]._props["material_slot_name"] = "MI_AF_Toon_Heroes"
-                    mesh._props["materials"][1]._props["material_slot_name"] = "M_AF_Outline"
+                    # Interchange names each slot after the FBX material, in file order.
+                    slot_names = fbx_node_names(src, "Material") or ["MI_AF_Toon_Heroes", "M_AF_Outline"]
+                    mesh._props["materials"] = []
+                    for slot_name in slot_names:
+                        slot = SkeletalMaterial()
+                        slot._props["material_slot_name"] = slot_name
+                        mesh._props["materials"].append(slot)
+                    mesh._bones = set(fbx_node_names(src, "Model")) or set(SkeletalMesh.BONES)
                     mesh._props["lod_info"] = [SkeletalMeshLODInfo()]
                     created.insert(0, mesh)
                 elif mesh_p.get_editor_property("import_static_meshes"):
                     mesh = REGISTRY.get(f"{dest}/{stem}") or StaticMesh()
                     register(mesh, f"{dest}/{stem}")
+                    slot_names = fbx_node_names(src, "Material")
+                    if slot_names:
+                        mesh._slot_names = slot_names
+                        mesh._materials = [None] * len(slot_names)
                     created.append(mesh)
             task.set_editor_property("imported_object_paths", [o.get_path_name() for o in created])
 
@@ -757,7 +806,7 @@ class AnimationLibrary:
 class AbyssContentBuildLibrary:
     @staticmethod
     def configure_skeletal_mesh_socket(mesh: SkeletalMesh, socket: SkeletalMeshSocket, name: str, bone: str) -> bool:
-        if bone not in SkeletalMesh.BONES:
+        if not mesh.has_bone(bone):
             return False
         socket.set_editor_property("socket_name", name)
         socket.set_editor_property("bone_name", bone)
@@ -765,7 +814,31 @@ class AbyssContentBuildLibrary:
 
     @staticmethod
     def mesh_has_bone(mesh: SkeletalMesh, bone: str) -> bool:
-        return bone in SkeletalMesh.BONES
+        return mesh.has_bone(bone)
+
+    @staticmethod
+    def set_skeletal_mesh_lod_screen_size(mesh: SkeletalMesh, lod: int, screen_size: float) -> bool:
+        infos = mesh._props.get("lod_info") or []
+        if not 0 <= lod < len(infos):
+            return False
+        infos[lod]._props["screen_size"] = PerPlatformFloat(screen_size)
+        return True
+
+    @staticmethod
+    def get_skeletal_mesh_lod_screen_size(mesh: SkeletalMesh, lod: int) -> float:
+        infos = mesh._props.get("lod_info") or []
+        if not 0 <= lod < len(infos):
+            return -1.0
+        return float(infos[lod].get_editor_property("screen_size").default)
+
+    @staticmethod
+    def set_material_instance_texture_parameter(mi: Any, name: str, value: Any) -> bool:
+        mi._params[("t", str(name))] = value
+        return True
+
+    @staticmethod
+    def get_texture_parameter_infos(material: Any) -> list[str]:
+        return MaterialEditingLibrary.get_texture_parameter_names(material)
 
     @staticmethod
     def finish_compilation() -> None:

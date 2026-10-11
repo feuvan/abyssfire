@@ -16,8 +16,11 @@
 
 #include "AbyssContentBuildLibrary.generated.h"
 
+class UMaterialInstanceConstant;
+class UMaterialInterface;
 class USkeletalMesh;
 class USkeletalMeshSocket;
+class UTexture;
 
 UCLASS()
 class ABYSSFIRE_API UAbyssContentBuildLibrary : public UBlueprintFunctionLibrary
@@ -44,4 +47,26 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
 	static void FinishCompilation();
+
+	/**
+	 * Sets the screen size of one LOD of Mesh (Python: set_skeletal_mesh_lod_screen_size). UE 5.8 no longer exposes
+	 * SkeletalMesh.lod_info to Python. Returns false when the LOD does not exist. Editor only.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
+	static bool SetSkeletalMeshLodScreenSize(USkeletalMesh* Mesh, int32 LodIndex, float ScreenSize);
+
+	/** Screen size of one LOD of Mesh, or -1 when it does not exist (Python: get_skeletal_mesh_lod_screen_size). */
+	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
+	static float GetSkeletalMeshLodScreenSize(USkeletalMesh* Mesh, int32 LodIndex);
+
+	/**
+	 * Sets a global texture parameter override on Instance without first checking that the parent declares it
+	 * (Python: set_material_instance_texture_parameter). Returns false only for missing arguments. Editor only.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
+	static bool SetMaterialInstanceTextureParameter(UMaterialInstanceConstant* Instance, FName ParameterName, UTexture* Value);
+
+	/** Names of every texture parameter Material exposes, as instances see them (Python: get_texture_parameter_infos). */
+	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
+	static TArray<FName> GetTextureParameterInfos(UMaterialInterface* Material);
 };

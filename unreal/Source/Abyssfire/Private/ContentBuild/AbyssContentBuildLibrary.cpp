@@ -3,6 +3,10 @@
 #include "Abyssfire.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/SkeletalMeshSocket.h"
+#include "Engine/SkinnedAssetCommon.h"
+#include "Engine/Texture.h"
+#include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInterface.h"
 #include "ReferenceSkeleton.h"
 
 #if WITH_EDITOR
@@ -53,4 +57,69 @@ void UAbyssContentBuildLibrary::FinishCompilation()
 		GShaderCompilingManager->FinishAllCompilation();
 	}
 #endif
+}
+
+bool UAbyssContentBuildLibrary::SetSkeletalMeshLodScreenSize(USkeletalMesh* Mesh, int32 LodIndex, float ScreenSize)
+{
+#if WITH_EDITOR
+	if (Mesh == nullptr)
+	{
+		return false;
+	}
+	FSkeletalMeshLODInfo* Info = Mesh->GetLODInfo(LodIndex);
+	if (Info == nullptr)
+	{
+		return false;
+	}
+	Mesh->Modify();
+	Info->ScreenSize = FPerPlatformFloat(ScreenSize);
+	Mesh->PostEditChange();
+	Mesh->MarkPackageDirty();
+	return true;
+#else
+	return false;
+#endif
+}
+
+float UAbyssContentBuildLibrary::GetSkeletalMeshLodScreenSize(USkeletalMesh* Mesh, int32 LodIndex)
+{
+	if (Mesh == nullptr)
+	{
+		return -1.f;
+	}
+	const FSkeletalMeshLODInfo* Info = Mesh->GetLODInfo(LodIndex);
+	return Info != nullptr ? Info->ScreenSize.Default : -1.f;
+}
+
+bool UAbyssContentBuildLibrary::SetMaterialInstanceTextureParameter(UMaterialInstanceConstant* Instance, FName ParameterName,
+	UTexture* Value)
+{
+#if WITH_EDITOR
+	if (Instance == nullptr || ParameterName.IsNone())
+	{
+		return false;
+	}
+	Instance->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(ParameterName), Value);
+	Instance->MarkPackageDirty();
+	return true;
+#else
+	return false;
+#endif
+}
+
+TArray<FName> UAbyssContentBuildLibrary::GetTextureParameterInfos(UMaterialInterface* Material)
+{
+	TArray<FName> Names;
+	if (Material == nullptr)
+	{
+		return Names;
+	}
+	TArray<FMaterialParameterInfo> Infos;
+	TArray<FGuid> Ids;
+	Material->GetAllParameterInfoOfType(EMaterialParameterType::Texture, Infos, Ids);
+	for (const FMaterialParameterInfo& Info : Infos)
+	{
+		Names.Add(Info.Name);
+	}
+	return Names;
 }

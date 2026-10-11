@@ -513,6 +513,7 @@ def build_master(ed: Editor, master: Master, ctx: Ctx, report: BuildReport, forc
     mat, created = ed.create(master.name, master.folder, unreal.Material, unreal.MaterialFactoryNew())
     path = f"{master.folder}/{master.name}"
     if not created and not force and ed.get_tag(mat, TAG_MATERIAL) == fp:
+        check_texture_parameters(ed, mat, dry.texture_params, path, report)
         report.asset(path, "Material", "unchanged")
         return mat
     ed.mel.delete_all_material_expressions(mat)
@@ -523,10 +524,27 @@ def build_master(ed: Editor, master: Master, ctx: Ctx, report: BuildReport, forc
     master.build(graph, ctx)
     ed.mel.layout_material_expressions(mat)
     ed.mel.recompile_material(mat)
+    check_texture_parameters(ed, mat, graph.texture_params, path, report)
     ed.set_tag(mat, TAG_MATERIAL, fp)
     ed.save(mat, force=True)
     report.asset(path, "Material", "created" if created else "rebuilt", expressions=len(graph.trace))
     return mat
+
+
+def check_texture_parameters(ed: Editor, mat: unreal.Material, expected: list[str], path: str,
+                             report: BuildReport) -> None:
+    """Every texture parameter the graph created must be exposed to instances (the palettes are bound per instance)."""
+    if not expected:
+        return
+    try:
+        exposed = sorted({str(n) for n in ed.mel.get_texture_parameter_names(mat)})
+    except Exception as e:  # noqa: BLE001 - diagnostics only
+        report.note(f"{path}: texture parameter check unavailable ({type(e).__name__}: {e})")
+        return
+    missing = sorted(set(expected) - set(exposed))
+    if missing:
+        report.warning(f"{path}: texture parameter(s) {missing} not exposed after the rebuild (exposed: {exposed}); "
+                       "instances cannot bind them")
 
 
 def build_masters(ed: Editor, plan: Plan, report: BuildReport, force: bool) -> dict[str, unreal.Material]:
@@ -595,7 +613,21 @@ def apply_instance(ed: Editor, inst: InstancePlan, report: BuildReport) -> None:
             raise BuildError(f"{inst.name}: texture {tex_name} missing (texture import failed?)")
         if mel.get_material_instance_texture_parameter_value(mi, param) != tex:
             if not mel.set_material_instance_texture_parameter_value(mi, param, tex):
-                raise BuildError(f"{inst.name}: parent has no texture parameter {param}")
+                lib = ed.content_lib
+                exposed: list[str] = []
+                if lib is not None and hasattr(lib, "get_texture_parameter_infos"):
+                    exposed = sorted(str(n) for n in lib.get_texture_parameter_infos(parent))
+                try:
+                    editor_names = sorted(str(n) for n in mel.get_texture_parameter_names(parent))
+                except Exception:  # noqa: BLE001 - diagnostics only
+                    editor_names = []
+                if lib is not None and hasattr(lib, "set_material_instance_texture_parameter") \
+                        and lib.set_material_instance_texture_parameter(mi, param, tex):
+                    report.warning(f"{inst.name}: MaterialEditingLibrary refused {param}; set through the C++ "
+                                   f"helper (parent texture params: infos={exposed} editor={editor_names})")
+                else:
+                    raise BuildError(f"{inst.name}: parent has no texture parameter {param} "
+                                     f"(parent texture params: infos={exposed} editor={editor_names})")
             changed = True
     for param, value in sorted(inst.scalars.items()):
         if abs(float(mel.get_material_instance_scalar_parameter_value(mi, param)) - float(value)) > 1e-6:

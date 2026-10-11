@@ -100,6 +100,7 @@ class Graph:
         self.material = material
         self.dry = material is None
         self.trace: list[str] = []
+        self.texture_params: list[str] = []   # texture parameter names, in creation order (checked after the build)
         self._count = 0
 
     # ---- core ----
@@ -107,6 +108,8 @@ class Graph:
         idx = self._count
         self._count += 1
         self.trace.append(f"#{idx} {cls_name} " + ", ".join(f"{k}={props[k]!r}" for k in sorted(props)))
+        if cls_name.startswith("MaterialExpressionTexture") and "parameter_name" in props:
+            self.texture_params.append(str(props["parameter_name"]))
         expr = None
         if not self.dry:
             cls = getattr(unreal, cls_name, None)
