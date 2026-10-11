@@ -187,6 +187,12 @@ struct BlessingDef {
   std::string glyph;
 };
 
+// STORY_PETS (EmberTower.ts:89-92): the ley-beast a story beat of `quest` grants (retroGrantPets safety net).
+struct StoryPetDef {
+  std::string quest;
+  std::string petId;
+};
+
 struct ABYSS_API HomesteadTables {
   std::string towerZoneId = "ember_tower";
   std::string towerUnlockQuest;
@@ -210,6 +216,9 @@ struct ABYSS_API HomesteadTables {
   std::string gardenMpPotionS = "c_mp_potion_s", gardenMpPotionM = "c_mp_potion_m";
   int32_t gardenHpLargeFromLevel = 4, gardenMediumFromLevel = 2;
   bool towerHiddenInMilestone1 = true;  // Q3
+  // retroGrantPets (EmberTower.ts:150-155, every zone entry): a turned-in quest whose story beat grants a pet that is
+  // not owned grants it (a save between the beat's trigger and its end, or a zone exit during its delay, lost it).
+  std::vector<StoryPetDef> storyPets;
 
   const BuildingDef* FindBuilding(std::string_view id) const;
 };

@@ -49,7 +49,7 @@ ABYSS_API std::string RollGardenYield(const HomesteadTables& t, int32_t level, R
 // whose maxLevel < 5).
 ABYSS_API int32_t BuildingStage(const BuildingDef& def, int32_t level, bool unlocked);
 
-// ---- gem workshop (炉台) ----
+// ---- gem workshop (hearth forge) ----
 // nextGemId: "g_<line>_<n>" -> "g_<line>_<n+1>" when that gem exists in the item data, else "".
 ABYSS_API std::string NextGemId(const DataStore& data, std::string_view gemId);
 ABYSS_API int32_t MaxCombineTier(int32_t workshopLevel);  // lv <= 0 ? 0 : min(5, lv + 1)
@@ -59,7 +59,7 @@ ABYSS_ENUM_STRINGS(GemCombineBlock, "none", "noNext", "workshop", "level", "coun
 ABYSS_API GemCombineBlock GemCombineBlockFor(const DataStore& data, std::string_view gemId, int32_t have,
                                              int32_t workshopLevel, int32_t playerLevel, int64_t gold);
 
-// ---- caravan expeditions (商队驿站) ----
+// ---- caravan expeditions (caravan post) ----
 struct ExpeditionReward {
   int32_t embers = 0;
   int64_t gold = 0;
@@ -73,7 +73,7 @@ ABYSS_API ExpeditionReward RollExpeditionReward(const HomesteadTables& t, std::s
 enum class ExpeditionBlock : uint8_t { None, Locked, Busy, NoPet, Active, Option };
 ABYSS_ENUM_STRINGS(ExpeditionBlock, "none", "locked", "busy", "noPet", "active", "option")
 
-// ---- altar blessings (心焰祭坛) ----
+// ---- altar blessings (heart-flame altar) ----
 ABYSS_API int32_t BlessingCost(int32_t altarLevel);                    // 10 + 5 max(0, lv - 1)
 ABYSS_API StatBag BlessingStatsFor(const HomesteadTables& t, std::string_view id, int32_t altarLevel);  // round(v x (1 + 0.5 (lv - 1)))
 enum class BlessingBlock : uint8_t { None, Locked, Embers, Unknown };

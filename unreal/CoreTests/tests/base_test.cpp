@@ -1,9 +1,12 @@
 // Foundation tests: base/ (types, enums, stats, math, units, RNG, clock, timers, JSON, i18n, logging, asserts).
+#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
@@ -196,6 +199,96 @@ TEST_CASE("Math: JsHypot matches the V8 golden vectors") {
     CHECK(JsHypot(r.At(0).AsDouble(), r.At(1).AsDouble()) == r.At(2).AsDouble());
   }
   CHECK(JsHypot(0, 0) == 0.0);
+}
+
+// Det* (Math.h): libm transcendental functions differ by up to 1 ulp between the MSVC CRT, Apple libm, bionic and
+// glibc; the Det* versions use IEEE basic operations only. The golden bit patterns below were produced on Linux (GCC
+// and Clang, -O0 and -O2): the same suite on Mac / Windows / Android must reproduce them exactly.
+TEST_CASE("Math: Det* transcendental functions are bit-exact goldens, near libm, with IEEE special cases") {
+  struct SinCos {
+    double x, s, c;
+  };
+  const SinCos sc[] = {
+      {0x1.999999999999ap-4, 0x1.98eaecb8bcb2cp-4, 0x1.fd712f9a817cp-1},
+      {0x1p+0, 0x1.aed548f090ceep-1, 0x1.14a280fb5068cp-1},
+      {0x1.4p+1, 0x1.326af0dcfcabp-1, -0x1.9a2f7ef858b7dp-1},
+      {-0x1p+2, 0x1.837b9dddc1eaep-1, -0x1.4eaa606db24c1p-1},
+      {0x1.9p+4, -0x1.0f0e6f31e809dp-3, 0x1.fb7eef59504ffp-1},
+      {0x1.e848p+19, -0x1.6664b2568d867p-2, 0x1.df9df9906d32cp-1},
+      {0x1.65a0bcp+31, 0x1.f958b3b760a12p-1, -0x1.491806c4f7336p-3},  // >= 2^29: fmod(x, 2 pi) first
+  };
+  for (const SinCos& v : sc) {
+    CAPTURE(v.x);
+    CHECK(DetSin(v.x) == v.s);
+    CHECK(DetCos(v.x) == v.c);
+  }
+  CHECK(DetAtan2(1, 2) == 0x1.dac670561bb4fp-2);
+  CHECK(DetAtan2(-3, -0.5) == -0x1.bc66e44cbc074p+0);
+  CHECK(DetAtan2(0.25, -7) == 0x1.8d8deb6788b7ap+1);
+  CHECK(DetAtan(0.9) == 0x1.77338a80603bep-1);
+  CHECK(DetExp(1) == 0x1.5bf0a8b145769p+1);
+  CHECK(DetExp(-2.75) == 0x1.05d93892fa01p-4);
+  CHECK(DetExp(0.0003) == 0x1.0013a9eb7b4dep+0);
+  CHECK(DetLog(10) == 0x1.26bb1bbb55516p+1);
+  CHECK(DetLog(0.37) == -0x1.fd0ea24bf89b8p-1);
+  CHECK(DetPow(1.5, 1.3) == 0x1.b1ab52367001bp+0);
+  CHECK(DetPow(2.75, 2.2) == 0x1.28441ca29b158p+3);
+  CHECK(DetPow(10, -1.5) == 0x1.030dc4ea03a71p-5);
+  CHECK(DetPow(-1.5, 3) == -3.375);
+
+  // Special cases (C99 Annex F / IEEE 754-2008 9.2.1).
+  const double inf = std::numeric_limits<double>::infinity();
+  CHECK(std::signbit(DetSin(-0.0)));
+  CHECK(DetCos(0.0) == 1.0);
+  CHECK(std::isnan(DetSin(inf)));
+  CHECK(std::isnan(DetCos(std::nan(""))));
+  CHECK(DetAtan2(0.0, -0.0) == kPi);
+  CHECK(DetAtan2(-0.0, -1.0) == -kPi);
+  CHECK(DetAtan2(1, 0) == kPi / 2);
+  CHECK(DetAtan2(-inf, inf) == -kPi / 4);
+  CHECK(DetExp(0) == 1.0);
+  CHECK(DetExp(-inf) == 0.0);
+  CHECK(DetExp(1000) == inf);
+  CHECK(DetLog(1) == 0.0);
+  CHECK(DetLog(0) == -inf);
+  CHECK(std::isnan(DetLog(-1)));
+  CHECK(DetPow(2, 10) == 1024.0);
+  CHECK(DetPow(7, 0) == 1.0);
+  CHECK(DetPow(1, std::nan("")) == 1.0);
+  CHECK(DetPow(0.0, -1) == inf);
+  CHECK(DetPow(-0.0, -3) == -inf);
+  CHECK(std::isnan(DetPow(-2, 0.5)));
+  CHECK(DetPow(9, 0.5) == 3.0);
+
+  // Accuracy against the host libm (itself within 1 ulp of the correctly rounded result).
+  const auto ulps = [](double a, double b) {
+    const auto ord = [](double x) {
+      const int64_t i = std::bit_cast<int64_t>(x);
+      return i < 0 ? (std::numeric_limits<int64_t>::min)() - i : i;
+    };
+    const int64_t d = ord(a) - ord(b);
+    return d < 0 ? -d : d;
+  };
+  std::mt19937_64 gen(7);
+  std::uniform_real_distribution<double> angle(-7, 7), wide(-50, 50), ex(-20, 20), pos(1e-3, 1e3), base(0.5, 10);
+  int64_t worst[7] = {};
+  for (int i = 0; i < 20000; ++i) {
+    const double a = angle(gen), w = wide(gen), w2 = wide(gen), e = ex(gen), p = pos(gen), b = base(gen);
+    worst[0] = (std::max)(worst[0], ulps(DetSin(a), std::sin(a)));
+    worst[1] = (std::max)(worst[1], ulps(DetCos(a), std::cos(a)));
+    worst[2] = (std::max)(worst[2], ulps(DetAtan2(w, w2), std::atan2(w, w2)));
+    worst[3] = (std::max)(worst[3], ulps(DetExp(e), std::exp(e)));
+    worst[4] = (std::max)(worst[4], ulps(DetLog(p), std::log(p)));
+    worst[5] = (std::max)(worst[5], ulps(DetPow(b, 1.35), std::pow(b, 1.35)));
+    worst[6] = (std::max)(worst[6], ulps(DetPow(b, 2.7), std::pow(b, 2.7)));
+  }
+  CHECK(worst[0] <= 3);
+  CHECK(worst[1] <= 3);
+  CHECK(worst[2] <= 3);
+  CHECK(worst[3] <= 2);
+  CHECK(worst[4] <= 2);
+  CHECK(worst[5] <= 4);
+  CHECK(worst[6] <= 5);
 }
 
 TEST_CASE("Units: S4 constants and iso metric") {

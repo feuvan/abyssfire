@@ -5,12 +5,29 @@
 #include "SimImpl.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <string>
 
 #include "abyss/base/Assert.h"
+#include "abyss/base/Log.h"
 #include "abyss/save/SaveIO.h"
 
 namespace abyss {
+
+namespace {
+
+// Salt of the zone-entry streams a load runs its spawns on (S3; see ApplySave).
+constexpr uint64_t kSimLoadEntrySalt = 0x6C6F616445E7A1ull;
+
+// A 64-bit seed derived from a saved stream state (pure function of the save).
+uint64_t SimLoadDerivedSeed(const RngState& st, size_t streamIndex) {
+  uint64_t h = kSimLoadEntrySalt ^ (static_cast<uint64_t>(streamIndex) + 1) * 0x9E3779B97F4A7C15ull;
+  for (uint32_t w : st.s) h = SplitMix64(h ^ w).Next();
+  return h;
+}
+
+}  // namespace
 
 void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
   out = SaveData{};
@@ -74,12 +91,30 @@ SaveError SimImpl::ApplySave(const SaveData& s, std::string* err) {
     if (err != nullptr) *err = "unknown class";
     return SaveError::Invalid;
   }
+  // The zone entry falls back to the default map for an unknown saved map; when neither can be entered the load would
+  // fail after ResetSession (GameSim.h: Invalid must leave the current session unchanged). Finalize already refuses a
+  // store whose defaultMap is unknown; this is the defence in depth.
+  if (data.FindMap(s.player.currentMap) == nullptr && data.FindMap(data.World().defaultMap) == nullptr) {
+    if (err != nullptr) *err = "unknown map";
+    return SaveError::Invalid;
+  }
   ResetSession();
   BuildSystems(s.classId);
+  // S3: every saved stream is restored exactly; a stream the save lacks (added after it was written, or a malformed
+  // entry) gets the state SeedAll(defaultSeed ^ timestamp) gives it - what a save without `rng` uses for all of them.
+  const uint64_t fallbackSeed = config.defaultSeed ^ static_cast<uint64_t>(s.timestamp);
+  rng.SeedAll(fallbackSeed);
   if (s.rng.present) {
-    rng.SetStates(s.rng.streams);
-  } else {
-    rng.SeedAll(config.defaultSeed ^ static_cast<uint64_t>(s.timestamp));
+    std::array<RngState, kRngStreamCount> states = rng.GetStates();
+    for (size_t i = 0; i < kRngStreamCount; ++i) {
+      if (!s.rng.missing[i]) {
+        states[i] = s.rng.streams[i];
+      } else {
+        LogWarning(std::string("save: rng stream '") + std::string(EnumName(static_cast<RngStream>(i))) +
+                   "' missing or malformed; reseeded");
+      }
+    }
+    rng.SetStates(states);
   }
   session.slot = s.slot;
   session.difficulty = s.difficulty;
@@ -102,6 +137,7 @@ SaveError SimImpl::ApplySave(const SaveData& s, std::string* err) {
   soulEcho->ReadSave(s);
   homestead->ReadSave(s);
   pets->ReadSave(s);
+  RetroGrantStoryPets();  // before the equip-stat merge / derived stats below (the zone entry's call is then a no-op)
   achievements->ReadSave(s);
   hero->autoCombat = s.settings.autoCombat;
   hero->autoLoot = s.settings.autoLootMode;
@@ -117,15 +153,20 @@ SaveError SimImpl::ApplySave(const SaveData& s, std::string* err) {
   // dead save's position (camps[0]) and never reaches the grid / int conversions (Math.h SaturatingInt32).
   const bool deadSave = !(std::isfinite(s.player.hp) && s.player.hp > 0);
   const bool badPos = !(std::isfinite(s.player.tileCol) && std::isfinite(s.player.tileRow));
+  // S3: the zone entry (spawn jitter, elite affix rolls, hunts on RngStream::Ai) runs on streams DERIVED from the loaded
+  // states, then the loaded states are put back: the session continues exactly the saved streams (SaveGame() right
+  // after LoadGame() reproduces the save) and the first draws in play are not the uniforms that just placed and rolled
+  // the zone's monsters. Both are pure functions of the save.
   const auto loadedStreams = rng.GetStates();
+  for (size_t i = 0; i < kRngStreamCount; ++i) {
+    rng.Get(static_cast<RngStream>(i)).Seed(SimLoadDerivedSeed(loadedStreams[i], i));
+  }
   const bool ok = EnterZone(s.player.currentMap, !badPos, badPos ? Vec2() : Vec2(s.player.tileCol, s.player.tileRow));
   if (!ok) {
     if (err != nullptr) *err = "unknown map";
     hasSession = false;
     return SaveError::Invalid;
   }
-  // S3: the zone entry's spawn rolls drew from the restored streams; put the loaded states back so the session continues
-  // exactly the saved streams and SaveGame() right after LoadGame() reproduces the save (load -> save is idempotent).
   rng.SetStates(loadedStreams);
   if (deadSave) {
     hero->SetPosition(zone->CampPosition(0));

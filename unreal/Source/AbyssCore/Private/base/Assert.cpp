@@ -19,7 +19,7 @@ struct AssertState {
   std::vector<std::pair<std::string, int>> reportedUnimplemented;
 };
 
-AssertState& State() {
+AssertState& AssertStateRef() {
   static AssertState s;
   return s;
 }
@@ -40,17 +40,20 @@ void DefaultHandler(const char* file, int line, const char* expr, const char* ms
 }  // namespace
 
 AssertHandlerBinding SetAssertHandler(AssertHandler handler, void* user) {
-  AssertState& s = State();
+  AssertState& s = AssertStateRef();
   const AssertHandlerBinding previous{s.handler, s.user};
   s.handler = handler;
   s.user = user;
   return previous;
 }
 
-AssertHandlerBinding CurrentAssertHandler() { return AssertHandlerBinding{State().handler, State().user}; }
+AssertHandlerBinding CurrentAssertHandler() {
+  const AssertState& s = AssertStateRef();
+  return AssertHandlerBinding{s.handler, s.user};
+}
 
 void ReportAssertFailure(const char* file, int line, const char* expr, const char* msg) {
-  AssertState& s = State();
+  AssertState& s = AssertStateRef();
   ++s.failures;
   if (s.handler) {
     s.handler(file, line, expr, msg, s.user);
@@ -60,7 +63,7 @@ void ReportAssertFailure(const char* file, int line, const char* expr, const cha
 }
 
 void ReportUnimplemented(const char* file, int line, const char* function) {
-  AssertState& s = State();
+  AssertState& s = AssertStateRef();
   const std::string f = file ? file : "?";
   for (const auto& r : s.reportedUnimplemented) {
     if (r.second == line && r.first == f) return;
@@ -76,6 +79,6 @@ void ReportUnimplemented(const char* file, int line, const char* function) {
   Log(LogLevel::Warning, m);
 }
 
-int AssertFailureCount() { return State().failures; }
+int AssertFailureCount() { return AssertStateRef().failures; }
 
 }  // namespace abyss

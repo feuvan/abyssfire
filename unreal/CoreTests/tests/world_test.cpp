@@ -754,6 +754,91 @@ TEST_SUITE("world") {
     CHECK(p1 == p2);
   }
 
+  TEST_CASE("A* connectivity labels: unreachable goals fail fast, labels follow every walkability change") {
+    // ZoneGrid::Component flood-fills with exactly A*'s moves (8 directions, no corner cutting). FindPath rejects a goal
+    // in another component before searching; the result must equal a plain reachability search's verdict.
+    std::vector<TilePos> walls;
+    for (int32_t c = 4; c <= 8; ++c) {
+      walls.emplace_back(c, 4);
+      walls.emplace_back(c, 8);
+    }
+    for (int32_t r = 5; r <= 7; ++r) {
+      walls.emplace_back(4, r);
+      walls.emplace_back(8, r);
+    }
+    ZoneGrid g = WorldOpenGrid(20, 20, walls);
+    Pathfinder pf(g);
+    std::vector<TilePos> path;
+    CHECK(g.Component(6, 6) >= 0);
+    CHECK(g.Component(6, 6) != g.Component(1, 1));  // the walled pocket
+    CHECK(g.Component(4, 4) == -1);                 // a wall
+    CHECK_FALSE(pf.FindPath(1, 1, 6, 6, path));
+    CHECK(path.empty());
+    CHECK_FALSE(pf.FindPath(6, 6, 1, 1, path));
+    CHECK(pf.FindPath(5, 5, 7, 7, path));  // inside the pocket
+    g.SetWalkable(8, 6, true);             // open a door: labels rebuild
+    CHECK(g.Component(6, 6) == g.Component(1, 1));
+    REQUIRE(pf.FindPath(1, 1, 6, 6, path));
+    CHECK(WorldPathValid(g, {1, 1}, path));
+    g.SetTile(8, 6, TileType::Wall);  // and close it again
+    CHECK(g.Component(6, 6) != g.Component(1, 1));
+    CHECK_FALSE(pf.FindPath(1, 1, 6, 6, path));
+
+    // Property check on a random grid: FindPath succeeds iff a reachability flood (A* moves) connects the tiles, and a
+    // reused Pathfinder (persistent scratch) returns exactly what a fresh one does.
+    uint32_t seed = 12345u;
+    auto rnd = [&seed]() {
+      seed = seed * 1103515245u + 12345u;
+      return (seed >> 16) & 0x7FFFu;
+    };
+    std::vector<TilePos> scatter;
+    for (int32_t r = 0; r < 30; ++r) {
+      for (int32_t c = 0; c < 30; ++c) {
+        if (rnd() % 100 < 38) scatter.emplace_back(c, r);
+      }
+    }
+    const ZoneGrid rg = WorldOpenGrid(30, 30, scatter);
+    auto reachable = [&rg](TilePos a, TilePos b) {
+      std::vector<uint8_t> seen(30 * 30, 0);
+      std::vector<TilePos> stack{a};
+      seen[static_cast<size_t>(a.row * 30 + a.col)] = 1;
+      const int32_t dirs[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
+      while (!stack.empty()) {
+        const TilePos t = stack.back();
+        stack.pop_back();
+        if (t == b) return true;
+        for (const auto& d : dirs) {
+          const int32_t nc = t.col + d[0], nr = t.row + d[1];
+          if (!rg.Walkable(nc, nr) || seen[static_cast<size_t>(nr * 30 + nc)] != 0) continue;
+          if (d[0] != 0 && d[1] != 0 && (!rg.Walkable(t.col + d[0], t.row) || !rg.Walkable(t.col, t.row + d[1]))) continue;
+          seen[static_cast<size_t>(nr * 30 + nc)] = 1;
+          stack.emplace_back(nc, nr);
+        }
+      }
+      return false;
+    };
+    Pathfinder reused(rg);
+    int checked = 0, found = 0;
+    for (int i = 0; i < 400; ++i) {
+      const TilePos a(static_cast<int32_t>(rnd() % 30), static_cast<int32_t>(rnd() % 30));
+      const TilePos b(static_cast<int32_t>(rnd() % 30), static_cast<int32_t>(rnd() % 30));
+      if (!rg.Walkable(a.col, a.row) || !rg.Walkable(b.col, b.row) || a == b) continue;
+      ++checked;
+      std::vector<TilePos> p1, p2;
+      const bool ok1 = reused.FindPath(a.col, a.row, b.col, b.row, p1);
+      Pathfinder fresh(rg);
+      const bool ok2 = fresh.FindPath(a.col, a.row, b.col, b.row, p2);
+      CHECK(ok1 == reachable(a, b));
+      CHECK(ok1 == ok2);
+      CHECK(p1 == p2);
+      CHECK((rg.Component(a.col, a.row) == rg.Component(b.col, b.row)) == ok1);
+      found += ok1 ? 1 : 0;
+    }
+    CHECK(checked > 100);
+    CHECK(found > 10);
+    CHECK(found < checked);
+  }
+
   TEST_CASE("A* golden routes on the shipped emerald_plains map, node for node (world 3.5)") {
     const DataStore& data = test::RealData();
     const ZoneGrid g = BuildRawZoneGrid(data, *data.FindMap("emerald_plains"));

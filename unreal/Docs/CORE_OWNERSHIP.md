@@ -13,7 +13,7 @@ BASE (implemented and tested)
 - Types.h: EntityId, kHeroEntityId, EntityKind, EntityIdAllocator, Vec2, TilePos, TileCircle, RoundToTile, IdIndex.
 - Enums.h: ClassId, Difficulty, DamageType, ItemQuality, ItemType, EquipSlot, StatusType, HitWeight, AnimRig, MapTheme, AutoLootMode, LocaleId, Faction. ABYSS_ENUM_STRINGS gives EnumName/ParseEnum/EnumCount.
 - Stats.h: Stat (45 EquipStats keys + extras), PrimaryStats, EquipStats, StatBag.
-- Math.h: JsRound*, Clamp, DistSq, JsHypot, Imul.
+- Math.h: JsRound*, Clamp, DistSq, JsHypot, Imul, SaturatingInt32/64, Det* (bit-exact sin/cos/atan2/exp/log/pow for gameplay values).
 - Units.h: S4/S5 constants and conversions.
 - Rng.h: SplitMix64, Rng (xoshiro128**, scriptable), RngStream {Combat, Loot, Ai, World, Events, Quests, Pets}, RngSet with save states.
 - SimClock.h: kSimStepMs, FreezeReason bit flags, step accumulator, S6 dilation.

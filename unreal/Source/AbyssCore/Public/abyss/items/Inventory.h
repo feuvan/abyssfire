@@ -133,7 +133,8 @@ class ABYSS_API Inventory {
   // getEquipmentStats (8.2) as a StatBag: weapon base damage (weaponDamageMin/Max), armour baseDefense -> defense,
   // item stats (affixes + gems), C11 legendary special effects, set bonuses; allStats expanded into the 6 primaries.
   StatBag EquipmentStatBag() const;
-  EquipStats GearStats() const;                // getTypedEquipStats: EquipStats keys only
+  void FillEquipmentStatBag(StatBag& out) const;  // same, into `out` (cleared first; its capacity is reused)
+  EquipStats GearStats() const;                // getTypedEquipStats: EquipStats keys only (per step: no allocation)
   int32_t EquippedSetCount(std::string_view setId) const;  // by setId (Q14 kept)
 
   // ---- sockets (9) ----
@@ -177,6 +178,7 @@ class ABYSS_API Inventory {
   EquipmentArray equipment_{};
   std::vector<ItemInstance> stash_;
   std::vector<BuybackEntry> buyback_;  // session only, not saved
+  mutable StatBag gearScratch_;        // GearStats() scratch (RebuildEquipStats runs every step)
 };
 
 // Runtime wrapper: logs (sys.inventory.*), EvInventoryChanged / EvEquipmentChanged / EvStashChanged, EquipStatsDirtyMsg,

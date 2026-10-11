@@ -147,19 +147,19 @@ void SaveIoMigrateV2toV3(JsonValue& save, const DataStore* data) {
 
 // v3 -> v4 (U2): the port's fields with their defaults (only when missing).
 void SaveIoMigrateV3toV4(JsonValue& save) {
-  auto ensure = [&save](std::string_view key, JsonValue def) {
+  auto addDefault = [&save](std::string_view key, JsonValue def) {
     if (!save.Has(key)) save.Set(key, std::move(def));
   };
-  ensure("slot", JsonValue::Integer(0));
+  addDefault("slot", JsonValue::Integer(0));
   JsonValue potions = JsonValue::Array();
   potions.Append(JsonValue::String(""));
   potions.Append(JsonValue::String(""));
-  ensure("potionSlots", std::move(potions));
-  ensure("playTimeMs", JsonValue::Integer(0));
-  ensure("dialogueOnce", JsonValue::Array());
-  ensure("hiddenRewardsClaimed", JsonValue::Array());
-  ensure("itemUidCounter", JsonValue::Integer(1));
-  ensure("visitedZones", JsonValue::Array());
+  addDefault("potionSlots", std::move(potions));
+  addDefault("playTimeMs", JsonValue::Integer(0));
+  addDefault("dialogueOnce", JsonValue::Array());
+  addDefault("hiddenRewardsClaimed", JsonValue::Array());
+  addDefault("itemUidCounter", JsonValue::Integer(1));
+  addDefault("visitedZones", JsonValue::Array());
   save.Set("version", JsonValue::Integer(4));
 }
 
@@ -193,18 +193,22 @@ bool SaveIoReadRngState(const JsonValue& v, RngState& out) {
   return anyNonZero;
 }
 
-// rng (v4): {streamName: [s0..s3]} for every RngStream; any missing / malformed stream -> absent (reseeded).
+// rng (v4): {streamName: [s0..s3]} per RngStream. Presence is tracked per stream: a missing / malformed stream is
+// marked `missing` (ApplySave seeds it) and the others are kept, so adding a stream to RngStream (or one bad entry)
+// does not discard the saved states of the rest. No valid stream at all -> absent (every stream reseeded).
 void SaveIoReadRng(const JsonValue& v, SaveRng& out) {
   out = SaveRng{};
   if (!v.IsObject()) return;
   for (size_t i = 0; i < kRngStreamCount; ++i) {
     const JsonValue* s = v.Find(EnumName(static_cast<RngStream>(i)));
     if (s == nullptr || !SaveIoReadRngState(*s, out.streams[i])) {
-      out = SaveRng{};
-      return;
+      out.streams[i] = RngState{};
+      out.missing[i] = true;
+    } else {
+      out.present = true;
     }
   }
-  out.present = true;
+  if (!out.present) out = SaveRng{};
 }
 
 }  // namespace saveio_impl
@@ -245,7 +249,9 @@ SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMess
   s.id = SaveIoString(raw, "id", s.id);
   s.version = kCurrentSaveVersion;
   if (const JsonValue& ts = raw.Get("timestamp"); ts.IsNumber() && std::isfinite(ts.AsDouble())) {
-    s.timestamp = ts.IsInteger() ? ts.AsInt64() : static_cast<int64_t>(std::floor(ts.AsDouble()));
+    // Saturating (SaveHero HeroInt64 rules): a finite timestamp outside int64 (corrupt / hand-edited slot) must not hit
+    // a raw double -> int64 cast (UB; x64 gives INT64_MIN, arm64 saturates).
+    s.timestamp = ts.IsInteger() ? ts.AsInt64() : SaturatingInt64(std::floor(ts.AsDouble()));
   }
   ClassId cls = ClassId::Warrior;  // unknown class -> warrior (ZoneScene.ts:427)
   if (const JsonValue& c = raw.Get("classId"); c.IsString()) ParseEnum(c.AsString(), cls);
@@ -425,6 +431,7 @@ std::string SerializeSave(const SaveData& s, bool pretty) {
     w.Key("rng");
     w.StartObject();
     for (size_t i = 0; i < kRngStreamCount; ++i) {
+      if (s.rng.missing[i]) continue;  // parse -> serialise keeps a partial `rng` partial
       w.Key(EnumName(static_cast<RngStream>(i)));
       w.StartArray();
       for (uint32_t v : s.rng.streams[i].s) w.Int(static_cast<int64_t>(v));

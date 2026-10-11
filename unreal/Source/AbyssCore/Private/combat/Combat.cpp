@@ -836,7 +836,10 @@ void CombatSystem::OnMonsterKilled(const MonsterKilledMsg& m) {
   if (ctx_.sys.homestead != nullptr) homeExp += ctx_.sys.homestead->TotalBonuses().Get(Stat::ExpBonus);
   if (ctx_.sys.pets != nullptr) homeExp += ctx_.sys.pets->Bonuses().Get(Stat::ExpBonus);
   const double expMul = 1 + homeExp / 100.0 + ctx_.equip.Get(Stat::ExpBonus) / 100.0;
-  const int64_t exp = static_cast<int64_t>((std::max)(0.0, std::floor(m.expReward * expMul)));
+  // Saturating to [0, 2^53] (SaveQuests / PetSystem rule): equip expBonus is summed from save-supplied affix values, so
+  // a hand-edited item must not reach a raw out-of-range double -> int64 cast (UB, platform-dependent).
+  const double expRaw = std::floor(m.expReward * expMul);
+  const int64_t exp = expRaw > 0 ? static_cast<int64_t>((std::min)(expRaw, 9007199254740992.0)) : 0;
   const int32_t gMin = SaturatingInt32(m.goldMin);
   const int32_t gMax = (std::max)(gMin, SaturatingInt32(m.goldMax));
   const int64_t gold = ctx_.Rand(RngStream::Loot).RandomInt(gMin, gMax);
@@ -1015,7 +1018,8 @@ SkillRequestResult CombatSystem::RequestSkill(int32_t skillIndex, const SkillAim
 
 // The shared gate of canExecuteSkill / tryUseSkill (classes 9.2-9.3 with C1: passives false, Q6 range + slack for
 // targeted buffs (rangeCheck data), Q8 death_mark / shadow_step need a target; C5: an immobilized hero cannot cast).
-bool CombatSystem::SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget) const {
+bool CombatSystem::SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget,
+                                  PreferredCache* preferred) const {
   const Hero& hero = *ctx_.sys.hero;
   if (!HeroAlive()) return false;
   const SkillBook& book = hero.Skills();
@@ -1037,7 +1041,16 @@ bool CombatSystem::SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId
     }
     return false;
   }
-  const EntityId target = PreferredTarget();
+  EntityId target = kNoEntity;
+  if (preferred != nullptr) {
+    if (!preferred->valid) {
+      preferred->id = PreferredTarget();
+      preferred->valid = true;
+    }
+    target = preferred->id;
+  } else {
+    target = PreferredTarget();
+  }
   if (outTarget != nullptr) *outTarget = target;
   if (target == kNoEntity) {
     if (s.requiresTarget) return false;
@@ -1208,7 +1221,7 @@ void CombatSystem::ReleaseSkill(int32_t skillIndex, int32_t level, EntityId targ
   }
 }
 
-void CombatSystem::ReleaseTeleport(const SkillDef& s, int32_t level, EntityId target, const SkillAim& aim,
+void CombatSystem::ReleaseTeleport(const SkillDef& s, int32_t level, EntityId /*target*/, const SkillAim& aim,
                                    int32_t manaCost) {
   Hero& hero = *ctx_.sys.hero;
   ZoneRuntime* zone = ctx_.sys.zone;
@@ -1443,8 +1456,8 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
   Vec2 center = heroPos;
   if (s.groundAnchored) {
     const double reach = s.range + rules.groundAnchorReachSlackTiles;
-    const std::vector<TargetCandidate> near = AliveCandidates(heroPos, reach);
-    anchor = FindGroundAoeAnchor(near, heroPos, target, targetPos, targetAlive, s.range);
+    const std::vector<TargetCandidate> candidatesNear = AliveCandidates(heroPos, reach);
+    anchor = FindGroundAoeAnchor(candidatesNear, heroPos, target, targetPos, targetAlive, s.range);
     if (anchor != kNoEntity) {
       if (const MonsterInstance* am = ms->Find(anchor)) center = am->pos;
     }
@@ -1985,13 +1998,7 @@ void CombatSystem::TickCombat() {
   Hero& hero = *ctx_.sys.hero;
   const double now = ctx_.Now();
   MonsterSystem* ms = ctx_.sys.monsters;
-  if (ms != nullptr) {
-    std::vector<EntityId> ids;
-    for (const MonsterInstance& m : ms->All()) ids.push_back(m.id);
-    for (EntityId id : ids) {
-      if (MonsterInstance* m = ms->Find(id)) m->buffs.Prune(now);
-    }
-  }
+  if (ms != nullptr) ms->PruneBuffs(now);
   if (!HeroAlive()) return;
   hero.Buffs().Prune(now);
   if (ms == nullptr) return;
@@ -1999,7 +2006,7 @@ void CombatSystem::TickCombat() {
   // Monster swings (5.1).
   const CombatInputDef& in = ctx_.data.Combat().input;
   const AnimTimingTable& at = ctx_.data.Combat().anim;
-  std::vector<EntityId> nearby;
+  std::vector<EntityId>& nearby = scratchNearby_;  // only TickCombat uses it (strike handlers run from timers)
   ms->QueryAlive(hero.Position(), in.monsterSwingScanRadiusTiles, nearby);
   for (EntityId id : nearby) {
     MonsterInstance* m = ms->Find(id);
@@ -2139,8 +2146,8 @@ bool CombatSystem::AutoSkillFits(int32_t skillIndex, EntityId lock) const {
   const double d2 = DistSq(heroPos, m->pos);
   if (s.groundAnchored) {
     const double reach = s.range + rules.groundAnchorReachSlackTiles;
-    const std::vector<TargetCandidate> near = AliveCandidates(heroPos, reach);
-    return FindGroundAoeAnchor(near, heroPos, lock, m->pos, true, s.range) != kNoEntity;
+    const std::vector<TargetCandidate> candidatesNear = AliveCandidates(heroPos, reach);
+    return FindGroundAoeAnchor(candidatesNear, heroPos, lock, m->pos, true, s.range) != kNoEntity;
   }
   if (s.hasLineTarget) return d2 <= s.range * s.range;
   const double radius = SkillAoeRadius(rules, s, book.Level(skillIndex));
@@ -2173,9 +2180,12 @@ void CombatSystem::TickAutoCombat() {
   const MonsterInstance* lm = lock != kNoEntity ? ms->Find(lock) : nullptr;
   if (lm == nullptr || !lm->IsAlive()) return;
   const SkillBook& book = hero.Skills();
+  PreferredCache preferred;  // the loop only reads state until the RequestSkill that ends it
   for (size_t i = 0; i < book.SkillCount(); ++i) {  // autoSkillPriority = class definition order
     const int32_t idx = static_cast<int32_t>(i);
-    if (book.Skill(idx).passive || !CanExecuteSkill(idx) || !AutoSkillFits(idx, lock)) continue;
+    if (book.Skill(idx).passive || !SkillUsableNow(idx, false, nullptr, &preferred) || !AutoSkillFits(idx, lock)) {
+      continue;
+    }
     RequestSkill(idx, SkillAim{});
     break;
   }
@@ -2369,6 +2379,7 @@ void CombatSystem::FillSnapshot(Snapshot& out) const {
   const Hero& hero = *ctx_.sys.hero;
   const SkillBook& book = hero.Skills();
   const SkillRules& rules = ctx_.data.Classes().skillRules;
+  PreferredCache preferred;  // nothing changes between the slots: one PreferredTarget for the whole hotbar
   for (SkillSlotView& v : out.hero.hotbar) {
     if (v.skillIndex < 0 || static_cast<size_t>(v.skillIndex) >= book.SkillCount()) continue;
     const SkillDef& s = book.Skill(v.skillIndex);
@@ -2377,7 +2388,7 @@ void CombatSystem::FillSnapshot(Snapshot& out) const {
     v.manaCost = CastManaCost(v.skillIndex);
     v.cooldownTotalMs = SkillCooldownMs(rules, s, level, ctx_.equip.Get(Stat::CooldownReduction));
     v.affordable = hero.Mana() >= v.manaCost;
-    v.usable = CanExecuteSkill(v.skillIndex);
+    v.usable = SkillUsableNow(v.skillIndex, false, nullptr, &preferred);
   }
   for (MonsterView& m : out.monsters) m.windingUp = IsWindingUp(m.id);
 }

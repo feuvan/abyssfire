@@ -1550,6 +1550,44 @@ TEST_SUITE("story") {
     CHECK_FALSE(s.Story().IsBusy());
   }
 
+  TEST_CASE("a beat queued by a StoryBeatFinishedMsg handler starts after the finished beat, never inside it") {
+    // The pump is iterative: FinishBeat only clears the current beat, so a handler that queues beats (here the final
+    // boss's cutscene + epilogue) cannot start one re-entrantly and have it overwritten by the finishing beat.
+    for (int mode = 0; mode < 2; ++mode) {
+      CAPTURE(mode);
+      QwSim s;
+      std::vector<std::string> done;
+      StoryDirector* st = &s.Story();
+      s.ctx->bus.Subscribe<StoryBeatFinishedMsg>([&done, st](const StoryBeatFinishedMsg& f) {
+        done.push_back(f.beatId);
+        if (f.beatId == "cs_tf_moonfang") {
+          MonsterKilledMsg k;
+          k.defId = "demon_lord";
+          st->OnMonsterKilled(k);
+          CHECK_FALSE(st->IsCinematic());  // queued only
+        }
+      });
+      MonsterKilledMsg m;
+      m.defId = "werewolf_alpha";
+      st->OnMonsterKilled(m);
+      REQUIRE(st->Playback().beat.id == "cs_tf_moonfang");
+      if (mode == 0) {
+        st->FinishAllBeats();
+      } else {
+        for (int i = 0; i < 400 && st->IsBusy(); ++i) {  // real-time path: Skip / Advance / AdvanceRealTime
+          st->Skip();
+          st->Advance();
+          s.sim->AdvanceRealTime(500);
+        }
+      }
+      CHECK(done == std::vector<std::string>{"cs_tf_moonfang", "cs_ar_fall", "epilogue"});
+      CHECK_FALSE(st->IsBusy());
+      CHECK_FALSE(st->IsCinematic());
+      CHECK(st->Progress().Has("cs_ar_fall"));
+      CHECK(st->Progress().Has("epilogue"));
+    }
+  }
+
   TEST_CASE("epilogue beat plays the epilogue slides then the credits roll (until StoryAdvance)") {
     QwSim s;
     MonsterKilledMsg m;
@@ -2351,16 +2389,22 @@ TEST_SUITE("story") {
     s.Story().FinishAllBeats();  // the chapter card a pre-story save still shows
     CHECK_FALSE(s.Story().Progress().Has("cs_ep_mark"));
 
-    // A lost grantPet beat comes back too: q_seal_fire_rift -> cs_sd_finale, then cs_sd_helia grants pet_phoenix.
+    // A lost grantPet beat comes back too: q_seal_fire_rift -> cs_sd_finale, then cs_sd_helia (pet_phoenix). The pet
+    // itself is already back at the load (EmberTower.retroGrantPets, homestead.json storyPets: every zone entry, like
+    // the web), so the replayed beat adds nothing and logs no sys.pet.duplicate.
     SaveData desert = SaveIn(s, "scorching_desert", 15, 18, {Rec("q_seal_fire_rift", QuestStatus::TurnedIn, {1})},
                              {"prologue", "chapter_emerald_plains", "chapter_scorching_desert"});
     REQUIRE(s.sim->LoadGame(desert, &err) == SaveError::None);
     s.ctx = &s.sim->Context();
-    REQUIRE_FALSE(s.ctx->sys.pets->Has("pet_phoenix"));
+    CHECK(s.ctx->sys.pets->Has("pet_phoenix"));
     std::vector<std::string> finished;
     s.ctx->bus.Subscribe<StoryBeatFinishedMsg>([&finished](const StoryBeatFinishedMsg& m) { finished.push_back(m.beatId); });
+    s.sim->ClearEvents();
     s.Story().FinishAllBeats();
     CHECK(finished == std::vector<std::string>{"cs_sd_finale", "cs_sd_helia"});
     CHECK(s.ctx->sys.pets->Has("pet_phoenix"));
+    CHECK(s.ctx->sys.pets->Owned().size() == 1);
+    const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
+    CHECK_FALSE(HasLog(ev, "sys.pet.duplicate"));
   }
 }

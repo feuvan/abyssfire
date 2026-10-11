@@ -6,6 +6,11 @@
 // * Double -> int32 conversions are total and identical on every platform: SaturatingInt32 maps NaN to 0 and clamps
 //   +-inf / out-of-range values (a raw static_cast is UB there; x64 cvttsd2si gives INT32_MIN, arm64 fcvtzs saturates).
 // * Public headers write (std::max)(...) / (std::min)(...) so a <windows.h> min/max macro cannot break them.
+// * Cross-platform bit-exactness covers + - * / sqrt, floor / ceil / trunc / fmod / frexp / ldexp (exact operations),
+//   JsHypot and the Det* functions below. libm's sin / cos / atan2 / exp / log / pow are NOT correctly rounded and
+//   differ by up to 1 ulp between the MSVC CRT, Apple libm, bionic and glibc: anything that feeds gameplay state
+//   (positions, tile rounding, comparisons, rounded stats, saves) uses DetSin / DetCos / DetAtan2 / DetExp / DetPow.
+//   std:: versions are fine for presentation only (UE side).
 #pragma once
 
 #include <algorithm>
@@ -28,6 +33,15 @@ inline int32_t SaturatingInt32(double x) {
   if (x <= -2147483648.0) return (std::numeric_limits<int32_t>::min)();
   if (x >= 2147483647.0) return (std::numeric_limits<int32_t>::max)();
   return static_cast<int32_t>(x);
+}
+
+// Total double -> int64, same rules as SaturatingInt32 (NaN -> 0; clamps at INT64_MIN / INT64_MAX; 2^63 itself is out
+// of range).
+inline int64_t SaturatingInt64(double x) {
+  if (!(x == x)) return 0;
+  if (x <= -9223372036854775808.0) return (std::numeric_limits<int64_t>::min)();
+  if (x >= 9223372036854775808.0) return (std::numeric_limits<int64_t>::max)();
+  return static_cast<int64_t>(x);
 }
 
 // JS Math.round.
@@ -60,6 +74,16 @@ inline int32_t ManhattanDist(TilePos a, TilePos b) { return std::abs(a.col - b.c
 ABYSS_API double JsHypot(double a, double b);
 inline double JsHypot(Vec2 d) { return JsHypot(d.x, d.y); }
 
+// Deterministic transcendental functions (Private/base/DetMath.cpp): identical bits on every platform (IEEE basic ops
+// only, FP contraction off), within a few ulp of the correctly rounded result. IEEE special cases as in C99 Annex F.
+ABYSS_API double DetSin(double x);
+ABYSS_API double DetCos(double x);
+ABYSS_API double DetAtan(double x);
+ABYSS_API double DetAtan2(double y, double x);
+ABYSS_API double DetExp(double x);
+ABYSS_API double DetLog(double x);
+ABYSS_API double DetPow(double x, double y);
+
 // JS ToInt32 / ToUint32 of a finite double (`x | 0`, `x >>> 0`).
 ABYSS_API int32_t ToInt32(double x);
 ABYSS_API uint32_t ToUint32(double x);
@@ -71,7 +95,7 @@ constexpr int32_t Imul(int32_t a, int32_t b) {
 constexpr uint32_t UShr(uint32_t x, unsigned k) { return x >> (k & 31u); }
 
 // Frame-rate independent exponential approach factor: 1 - exp(-k * dtSec).
-inline double ExpApproachAlpha(double k, double dtSec) { return 1.0 - std::exp(-k * dtSec); }
+inline double ExpApproachAlpha(double k, double dtSec) { return 1.0 - DetExp(-k * dtSec); }
 
 // Approximate equality for tests and float tolerances.
 inline bool NearlyEqual(double a, double b, double eps = 1e-9) { return std::fabs(a - b) <= eps; }

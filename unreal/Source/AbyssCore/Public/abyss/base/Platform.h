@@ -34,9 +34,13 @@
 // compiling the core itself (private definition). Monolithic builds (shipping, mobile, CMake tests) define neither or
 // ABYSS_CORE_DLL=0 and ABYSS_API expands to nothing. UBT's own ABYSSCORE_API cannot be used: it expands to DLLEXPORT,
 // which only UE headers define, and core TUs never include those.
-#if defined(ABYSS_CORE_DLL) && ABYSS_CORE_DLL
+// The tests are nested (never `defined(X) && X`): MSVC's traditional preprocessor can report C4668 for the undefined
+// right-hand operand even though it is not evaluated, and /we4668 (UE: undefined identifiers are errors) would then fail
+// every TU. ABYSS_CORE_BUILDING is only ever defined as 1, so `defined` alone is enough for it.
+#if defined(ABYSS_CORE_DLL)
+#if ABYSS_CORE_DLL
 #if defined(_WIN32)
-#if defined(ABYSS_CORE_BUILDING) && ABYSS_CORE_BUILDING
+#if defined(ABYSS_CORE_BUILDING)
 #define ABYSS_API __declspec(dllexport)
 #else
 #define ABYSS_API __declspec(dllimport)
@@ -49,7 +53,9 @@
 // module are built by the same toolchain with the same STL, and per-module operator new/delete forward to FMemory.
 #pragma warning(disable : 4251 4275)
 #endif
-#else
+#endif  // ABYSS_CORE_DLL
+#endif  // defined(ABYSS_CORE_DLL)
+#if !defined(ABYSS_API)
 #define ABYSS_API
 #endif
 

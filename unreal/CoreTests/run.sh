@@ -20,6 +20,13 @@ shared=OFF
 if [[ "${ABYSS_SANITIZE:-0}" == "1" ]]; then suffix="-asan"; sanitize=ON; fi
 if [[ "${ABYSS_SHARED:-0}" == "1" ]]; then suffix="$suffix-shared"; shared=ON; fi
 
+# Core sources are ASCII-only (ue58-platform.md 3.3: MSVC without /utf-8 decodes them in the system code page).
+if LC_ALL=C grep -rlP '[^\x00-\x7F]' "$here/../Source/AbyssCore" >/dev/null 2>&1; then
+  echo "non-ASCII bytes in core sources:"
+  LC_ALL=C grep -rlP '[^\x00-\x7F]' "$here/../Source/AbyssCore"
+  exit 1
+fi
+
 status=0
 for comp in "${which_compilers[@]}"; do
   case "$comp" in

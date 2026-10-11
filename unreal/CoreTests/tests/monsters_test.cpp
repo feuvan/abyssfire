@@ -2737,6 +2737,7 @@ TEST_SUITE("monsters") {
     auto winding = [&]() {
       Snapshot s;
       rig.monsters.FillSnapshot(s);
+      rig.combat.FillSnapshot(s);  // the telegraph's owner (pending strike), filled after the monster views as in GameSim
       for (const MonsterView& v : s.monsters) {
         if (v.id == g) return v.windingUp;
       }

@@ -51,6 +51,10 @@ class ABYSS_API ZoneGrid {
   bool WalkableAt(Vec2 p) const;
   // Rebuilds the collision grid from the tile types.
   void RebuildWalkability();
+  // A* connectivity label of a walkable tile (8 directions, no corner cutting - exactly Pathfinder's moves), -1 for an
+  // unwalkable / out-of-bounds tile. Two walkable tiles are mutually reachable iff their labels are equal. Built
+  // lazily (O(cells)) and invalidated by every mutation.
+  int32_t Component(int32_t col, int32_t row) const;
 
   const std::vector<TileType>& Tiles() const { return tiles_; }
   const std::vector<uint8_t>& Walk() const { return walk_; }
@@ -62,6 +66,7 @@ class ABYSS_API ZoneGrid {
   std::vector<TileType> tiles_;
   std::vector<uint8_t> walk_;
   std::vector<Decoration> decor_;
+  mutable std::vector<int32_t> components_;  // lazily built; empty = stale
 };
 
 }  // namespace abyss

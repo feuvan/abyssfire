@@ -1872,6 +1872,18 @@ TEST_SUITE("items") {
     CHECK(p.stats.Size() == 1);
     CHECK(p.identified);
     CHECK_FALSE(ReadItemJson(JsonValue::Array(), p));
+    // Absurd hand-edited values are clamped to +-1e6 (they feed EquipStats and the kill-exp int conversion).
+    JsonValue huge;
+    REQUIRE(ParseJson(R"({"uid":"h","baseId":"w_dagger","affixes":[{"affixId":"a","stat":"expBonus","value":1e300}],
+                          "sockets":[{"gemId":"g","stat":"str","value":-1e300,"tier":1}],"stats":{"expBonus":1e300}})",
+                      huge));
+    ItemInstance h;
+    REQUIRE(ReadItemJson(huge, h));
+    REQUIRE(h.affixes.size() == 1);
+    CHECK(h.affixes[0].value == 1e6);
+    REQUIRE(h.sockets.size() == 1);
+    CHECK(h.sockets[0].value == -1e6);
+    CHECK(h.stats.Get(Stat::ExpBonus) == 1e6);
   }
 
   TEST_CASE("socketed gems survive the save round trip (GemSocketing.test.ts persistence)") {

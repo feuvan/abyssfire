@@ -99,6 +99,9 @@ struct SimImpl {
 
   // ---- loop state ----
   std::vector<Command> pending;
+  // ApplyCommands' batch (swapped with `pending`, so both keep their capacity). ApplyCommands is not re-entrant (only
+  // StepOnce calls it); a Submit from inside a command lands in `pending` for the next step.
+  std::vector<Command> commandBatch;
   Snapshot snapshot;
   bool hasSession = false;
   bool wasFrozen = false;
@@ -138,6 +141,7 @@ struct SimImpl {
   bool EnterZone(std::string_view mapId, bool hasTarget, Vec2 target);
   void ExitZone();
   void RebuildEquipStats();
+  void RetroGrantStoryPets();
   // SimSave.cpp
   void BuildSave(SaveData& out, int64_t unixMs) const;
   SaveError ApplySave(const SaveData& s, std::string* err);

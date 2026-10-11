@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <limits>
 
+#include "abyss/base/Math.h"
+
 namespace abyss {
 
 namespace {
@@ -23,6 +25,13 @@ std::string SvItmStr(const JsonValue& o, std::string_view key) {
 double SvItmNum(const JsonValue& o, std::string_view key, double def) {
   const JsonValue& v = o.Get(key);
   return v.IsNumber() ? v.AsDouble(def) : def;
+}
+
+// Affix / gem / item stat values feed the merged EquipStats (and from there int conversions such as kill exp): a
+// hand-edited save cannot push one beyond +-1e6 (generated values are a few hundred at most).
+constexpr double kSvItmMaxStatValue = 1e6;
+double SvItmStatValue(const JsonValue& o, std::string_view key) {
+  return Clamp(SvItmNum(o, key, 0), -kSvItmMaxStatValue, kSvItmMaxStatValue);
 }
 
 int32_t SvItmInt(const JsonValue& o, std::string_view key, int32_t def) {
@@ -130,7 +139,7 @@ bool ReadItemJson(const JsonValue& v, ItemInstance& out) {
     if (!ParseEnum(SvItmStr(a, "stat"), affix.stat)) continue;  // unknown stat key: the affix cannot be applied
     affix.affixId = SvItmStr(a, "affixId");
     affix.name = SvItmStr(a, "name");
-    affix.value = SvItmNum(a, "value", 0);
+    affix.value = SvItmStatValue(a, "value");
     out.affixes.push_back(std::move(affix));
   }
   for (const JsonValue& g : v.Get("sockets").Items()) {  // missing sockets -> [] (SaveSystem fix-up)
@@ -139,7 +148,7 @@ bool ReadItemJson(const JsonValue& v, ItemInstance& out) {
     if (!ParseEnum(SvItmStr(g, "stat"), gem.stat)) continue;
     gem.gemId = SvItmStr(g, "gemId");
     gem.name = SvItmStr(g, "name");
-    gem.value = SvItmNum(g, "value", 0);
+    gem.value = SvItmStatValue(g, "value");
     gem.tier = SvItmInt(g, "tier", 1);
     out.sockets.push_back(std::move(gem));
   }
@@ -156,7 +165,7 @@ bool ReadItemJson(const JsonValue& v, ItemInstance& out) {
     for (const JsonMember& m : stats.Members()) {
       Stat s{};
       if (!ParseEnum(m.key, s) || !m.value.IsNumber()) continue;
-      out.stats.Add(s, m.value.AsDouble());
+      out.stats.Add(s, Clamp(m.value.AsDouble(), -kSvItmMaxStatValue, kSvItmMaxStatValue));
     }
   }
   return true;

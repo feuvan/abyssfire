@@ -1,12 +1,15 @@
 // GameSim facade (lead): session start, fixed step, freeze gates, command routing, snapshot, difficulty ladder.
 // These run against the stubbed subsystems; they check the plumbing that every area relies on.
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
 #include "TestUtil.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/items/Inventory.h"
+#include "abyss/pets/PetSystem.h"
 #include "abyss/quests/Lore.h"
+#include "abyss/quests/QuestSystem.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/GameSim.h"
 #include "abyss/story/StoryDirector.h"
@@ -225,6 +228,72 @@ TEST_SUITE("sim") {
     // Loading again into the same instance (UE's Continue after a session) gives the same state.
     REQUIRE(fresh->LoadGame(save, &err) == SaveError::None);
     CHECK(fresh->SaveGame(1234) == save);
+  }
+
+  TEST_CASE("retroGrantPets: a story pet lost to a save during its beat is granted once its quest is turned in") {
+    // Regression (final review): cs_tf_moonfang (monster_killed werewolf_alpha) grants pet_storm_wolf when the beat
+    // ends. A save written while it plays (level-up, app background, quit) has neither the beat nor the pet, and
+    // monster_killed triggers never replay; the web's EmberTower.retroGrantPets (homestead.json storyPets) repairs it
+    // on every zone entry once q_kill_werewolf_alpha is turned in.
+    auto sim = StartSim(ClassId::Rogue, 13);
+    MonsterKilledMsg k;
+    k.defId = "werewolf_alpha";
+    sim->Context().sys.story->OnMonsterKilled(k);
+    REQUIRE(sim->Context().sys.story->IsCinematic());
+    SaveData mid;
+    sim->BuildSave(mid, 500);
+    CHECK(std::find(mid.storySeen.begin(), mid.storySeen.end(), "cs_tf_moonfang") == mid.storySeen.end());
+
+    auto fresh = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(fresh != nullptr);
+    std::string err;
+    REQUIRE(fresh->LoadGame(mid, &err) == SaveError::None);
+    SimContext& f = fresh->Context();
+    CHECK_FALSE(f.sys.pets->Has("pet_storm_wolf"));
+    CHECK_FALSE(f.sys.story->IsBusy());  // the beat is gone for good
+
+    // Turned in before the save: the load grants it (before the equip-stat merge).
+    SaveData turned = mid;
+    turned.quests.push_back(QuestProgress{"q_kill_werewolf_alpha", QuestStatus::TurnedIn, {1}});
+    REQUIRE(fresh->LoadGame(turned, &err) == SaveError::None);
+    CHECK(f.sys.pets->Has("pet_storm_wolf"));
+    CHECK(f.sys.pets->Active() != nullptr);
+
+    // Turned in during the session: the next zone entry grants it.
+    REQUIRE(fresh->LoadGame(mid, &err) == SaveError::None);
+    REQUIRE_FALSE(f.sys.pets->Has("pet_storm_wolf"));
+    std::vector<QuestProgress> all(f.sys.quests->AllProgress().begin(), f.sys.quests->AllProgress().end());
+    all.push_back(QuestProgress{"q_kill_werewolf_alpha", QuestStatus::TurnedIn, {1}});
+    f.sys.quests->Load(all);
+    f.sys.zone->RequestZoneChange("emerald_plains", f.sys.zone->CampPosition(0));
+    for (int i = 0; i < 90 && !f.sys.pets->Has("pet_storm_wolf"); ++i) fresh->Step();
+    CHECK(f.sys.pets->Has("pet_storm_wolf"));
+    // A replay of the beat later adds nothing (no duplicate log): the pet is owned.
+    CHECK(f.sys.pets->Owned().size() == 1);
+  }
+
+  TEST_CASE("a load is a pure function of the save; its zone-entry spawns run on derived streams, not the saved ones") {
+    // S3 (final review): ApplySave runs the zone entry (spawn jitter / elite rolls on RngStream::Ai) on states derived
+    // from the saved ones and then restores the saved states, so the first AI draws in play do not replay the uniforms
+    // that placed the zone's monsters, while save -> load -> save stays byte-identical.
+    auto sim = StartSim(ClassId::Mage, 909);
+    for (int i = 0; i < 300; ++i) sim->Step();
+    const std::string save = sim->SaveGame(4242);
+    std::string err;
+    auto a = GameSim::Create(test::RealData(), SimConfig{});
+    auto b = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(a->LoadGame(save, &err) == SaveError::None);
+    REQUIRE(b->LoadGame(save, &err) == SaveError::None);
+    CHECK(a->SaveGame(4242) == save);  // the saved streams are restored exactly after the entry
+    for (int i = 0; i < 600; ++i) {
+      a->Step();
+      b->Step();
+    }
+    CHECK(a->SaveGame(5000) == b->SaveGame(5000));
+    REQUIRE(a->View().monsters.size() == b->View().monsters.size());
+    for (size_t i = 0; i < a->View().monsters.size(); ++i) {
+      CHECK(a->View().monsters[i].pos == b->View().monsters[i].pos);
+    }
   }
 
   TEST_CASE("a hero above a lowered maximum is saved clamped, as the load restores it (FIX Q8 symmetry)") {

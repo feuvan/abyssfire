@@ -244,8 +244,14 @@ ItemInstance* Inventory::EquippedMutable(EquipSlot slot) {
 }
 
 StatBag Inventory::EquipmentStatBag() const {
-  const ItemTables& t = data_->Items();
   StatBag s;
+  FillEquipmentStatBag(s);
+  return s;
+}
+
+void Inventory::FillEquipmentStatBag(StatBag& s) const {
+  const ItemTables& t = data_->Items();
+  s.Clear();
   for (const auto& e : equipment_) {
     if (!e.has_value()) continue;
     const ItemInstance& item = *e;
@@ -274,12 +280,12 @@ StatBag Inventory::EquipmentStatBag() const {
     for (Stat k : t.allStatsExpandsTo) s.Add(k, all);
     s.Remove(Stat::AllStats);
   }
-  return s;
 }
 
 EquipStats Inventory::GearStats() const {
   EquipStats e;
-  EquipmentStatBag().AddTo(e);
+  FillEquipmentStatBag(gearScratch_);
+  gearScratch_.AddTo(e);
   return e;
 }
 

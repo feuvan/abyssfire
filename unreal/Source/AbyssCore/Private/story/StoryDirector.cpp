@@ -191,38 +191,48 @@ void StoryDirector::Enqueue(StoryBeat beat) {
 // pump(): beats play strictly one at a time in enqueue order. The director turns busy (STORY_STATE{true}) when the
 // first beat is queued; the T15 delay of a beat starts when it reaches the head of the idle queue (the world stays live
 // during it); when the queue drains: autosave + STORY_STATE{false}.
+//
+// Iterative (no Pump -> StartBeat -> RunPlayer -> FinishBeat -> Pump recursion): a beat that ends inside StartBeat
+// (zero-length segments) only clears the current beat and this loop takes the next one. While the loop or a FinishBeat
+// runs, a re-entrant Enqueue (a bus handler of StoryBeatStarted / StoryBeatFinished / SaveRequest / StoryState) only
+// queues its beat; the loop, or the entry point that ran the player (AdvanceRealTime, Advance, Skip, OnTimer,
+// FinishAllBeats), starts it once the publish has returned.
 void StoryDirector::Pump() {
-  if (hasCurrent_) return;
-  if (queue_.empty()) {
-    if (running_) {
+  if (pumping_) return;
+  pumping_ = true;
+  while (!hasCurrent_) {
+    if (queue_.empty()) {
+      if (!running_) break;
       running_ = false;
       ctx_.bus.Publish(SaveRequestMsg{SaveReason::StoryQueueFinished});
       ctx_.events.Emit(EvStoryState{false, current_.id});
       if (audioLock_) PublishStoryState(false, current_.id, std::string());
+      continue;  // a handler of those messages may have queued a beat: it turns the director busy again
     }
-    return;
+    current_ = std::move(queue_.front());
+    queue_.erase(queue_.begin());
+    hasCurrent_ = true;
+    if (!running_) {
+      running_ = true;
+      ctx_.events.Emit(EvStoryState{true, current_.id});
+      PublishStoryState(true, current_.id, current_.musicTrack);
+      current_.musicTrack.clear();  // announced with the busy state
+    }
+    if (current_.delayMs > 0) {
+      delayTimer_ = ctx_.timers.Schedule(ctx_.Now() + current_.delayMs, TimerOwner::Story,
+                                         static_cast<uint16_t>(StoryTimerKind::BeatDelay));
+      break;
+    }
+    StartBeat();  // may finish the beat at once: the loop then takes the next one
   }
-  current_ = std::move(queue_.front());
-  queue_.erase(queue_.begin());
-  hasCurrent_ = true;
-  if (!running_) {
-    running_ = true;
-    ctx_.events.Emit(EvStoryState{true, current_.id});
-    PublishStoryState(true, current_.id, current_.musicTrack);
-    current_.musicTrack.clear();  // announced with the busy state
-  }
-  if (current_.delayMs > 0) {
-    delayTimer_ = ctx_.timers.Schedule(ctx_.Now() + current_.delayMs, TimerOwner::Story,
-                                       static_cast<uint16_t>(StoryTimerKind::BeatDelay));
-    return;
-  }
-  StartBeat();
+  pumping_ = false;
 }
 
 void StoryDirector::OnTimer(const Timer& t) {
   if (t.kind != static_cast<uint16_t>(StoryTimerKind::BeatDelay) || t.id != delayTimer_) return;
   delayTimer_ = kNoTimer;
   if (hasCurrent_ && !playback_.playing) StartBeat();
+  Pump();  // the beat may have finished at once
 }
 
 // The beat's presentation starts: the world freezes (IsCinematic) until the step player finishes, including the
@@ -247,9 +257,12 @@ void StoryDirector::StartBeat() {
 }
 
 // Q7: the beat is marked seen when it finishes (a skipped beat counts as finished); grantPet goes out with
-// StoryBeatFinishedMsg (GameSim: PetSystem::AddPet); then the next beat or the end of the queue.
+// StoryBeatFinishedMsg (GameSim: PetSystem::AddPet). It only clears the current beat: the caller pumps the next beat or
+// the end of the queue (Pump), so an Enqueue from a handler of the messages below cannot start a beat in the middle.
 void StoryDirector::FinishBeat() {
   if (!hasCurrent_) return;
+  const bool wasPumping = pumping_;
+  pumping_ = true;  // a re-entrant Enqueue only queues
   const StoryBeat done = current_;
   playback_ = StoryPlayback{};
   cinematic_ = false;
@@ -261,7 +274,7 @@ void StoryDirector::FinishBeat() {
   if (sequenceMusic_) PublishStoryState(false, done.id, std::string());
   current_ = StoryBeat{};
   current_.id = done.id;  // the STORY_STATE{false} event names the last finished beat
-  Pump();
+  pumping_ = wasPumping;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -492,6 +505,7 @@ void StoryDirector::AdvanceRealTime(double realMs) {
   if (!playback_.playing || !(realMs > 0)) return;
   playback_.segmentElapsedMs += realMs;
   RunPlayer();
+  Pump();
 }
 
 void StoryDirector::Advance() {
@@ -502,6 +516,7 @@ void StoryDirector::Advance() {
   if (to < 0) return;
   EnterSegment(to);
   RunPlayer();
+  Pump();
 }
 
 void StoryDirector::Skip() {
@@ -513,6 +528,7 @@ void StoryDirector::Skip() {
   playback_.skipping = true;
   EnterSegment(to);
   RunPlayer();
+  Pump();
 }
 
 void StoryDirector::FinishAllBeats() {
@@ -529,6 +545,7 @@ void StoryDirector::FinishAllBeats() {
       StartBeat();
     }
     if (playback_.playing) FinishBeat();
+    Pump();  // the next beat, or the end of the queue (STORY_STATE{false} + the autosave request)
   }
 }
 

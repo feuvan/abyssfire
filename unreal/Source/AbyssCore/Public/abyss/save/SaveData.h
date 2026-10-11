@@ -86,10 +86,13 @@ struct SaveSoulEcho {
   int64_t gold = 0, exp = 0;
 };
 
-// v4: one state per RngStream, in RngStream order.
+// v4: one state per RngStream, in RngStream order. `present`: the save carries at least one valid stream; `missing[i]`:
+// stream i was absent or malformed (a stream added after the save was written, a hand-edited entry). ApplySave restores
+// every present stream exactly and seeds only the missing ones; SerializeSave writes the present ones.
 struct SaveRng {
   bool present = false;
   std::array<RngState, kRngStreamCount> streams{};
+  std::array<bool, kRngStreamCount> missing{};
 };
 
 struct SaveData {

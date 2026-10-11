@@ -15,15 +15,18 @@
 //   its own state; GameSim derives the freeze, the input block and EvPanelRequest from it (SimTypes.h PanelId).
 // * Time: every absolute time is SimClock ms (`clock.NowMs()`), durations are ms (double). Delayed actions are timers
 //   in `timers` (TimerQueue) owned by a TimerOwner; GameSim routes a due timer to `<owner system>->OnTimer(t)`.
-// * RNG (S3): each area draws only from its stream(s):
-//     Combat - damage rolls (dodge/crit), procs, status-rule chances, skill effects, elite on-hit rolls
-//     Loot   - loot generation, potion drops, ley-fruit drops, quest pick-one gear, shop stock, crafting rolls,
-//              kill gold
-//     Ai     - monster AI (patrol, leash), elite affix rolls, respawn jitter, mini-boss/hunt placement
-//     World  - zone runtime (hidden rewards, interact fallbacks), town portal, exploration
-//     Events - random events (trigger rolls, event contents)
-//     Quests - quest drops, gather spot tie-breaks, dialogue rewards, story/achievement rolls
-//     Pets   - pet AI, pet abilities, garden yields, expeditions
+// * RNG (S3): each area draws only from its stream(s). This table follows the code (the seeded goldens and save streams
+//   depend on it); moving a draw to another stream changes them, so a new draw goes where its kind is listed:
+//     Combat - damage rolls (dodge/crit), procs, status-rule chances, skill effects, free cast, elite on-hit rolls
+//     Loot   - loot generation, potion drops, ley-fruit drops, quest reward items and pick-one gear, dialogue reward
+//              items, random-event cache items, shop stock, crafting rolls, kill gold
+//     Ai     - monster AI (patrol, leash), zone-entry spawn jitter / placement, elite affix rolls, respawn jitter,
+//              mini-boss / hunt placement, defend waves
+//     World  - hidden-area chest items (Lore)
+//     Events - random events (trigger rolls, type, event contents, ambush / rescue placement)
+//     Quests - quest drops only
+//     Pets   - pet companion (crits, stray swings, take-hit jitter), garden yields, expeditions, homestead workshop
+//              items (gem combine, expedition / garden rewards)
 //   Map generation uses its own Park-Miller generator seeded from map data (W10), never an RngSet stream.
 #pragma once
 

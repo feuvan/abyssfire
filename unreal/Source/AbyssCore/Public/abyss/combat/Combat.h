@@ -317,7 +317,13 @@ class ABYSS_API CombatSystem {
 
   // ---- skills ----
   int32_t CastManaCost(int32_t skillIndex) const;
-  bool SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget) const;
+  // `preferred` (optional): a per-batch cache of PreferredTarget() (valid while no state changes between the calls).
+  struct PreferredCache {
+    bool valid = false;
+    EntityId id = kNoEntity;
+  };
+  bool SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget,
+                      PreferredCache* preferred = nullptr) const;
   // Auto-battle's extra gate (9.4 with C1): never a movement skill (teleport); an AoE / trap only when its blast, cone,
   // line or ground anchor reaches the living lock `lock`.
   bool AutoSkillFits(int32_t skillIndex, EntityId lock) const;
@@ -395,6 +401,7 @@ class ABYSS_API CombatSystem {
   std::vector<PendingHit> hits_;
   std::vector<GroundRoll> groundRolls_;  // C4: per (effect, target), dropped after the effect's last tick
   std::vector<PendingStrike> strikes_;
+  std::vector<EntityId> scratchNearby_;  // TickCombat swing scan (capacity kept)
   bool inCombat_ = false;
   TimerId combatOffTimer_ = kNoTimer;
   TimerId respawnTimer_ = kNoTimer;

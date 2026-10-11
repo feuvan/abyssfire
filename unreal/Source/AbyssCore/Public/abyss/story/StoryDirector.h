@@ -193,7 +193,7 @@ class ABYSS_API StoryDirector {
   void Enqueue(StoryBeat beat);
   void Pump();
   void StartBeat();
-  void FinishBeat();  // Q7 seen, grantPet (StoryBeatFinishedMsg), next beat or STORY_STATE{false} + SaveRequestMsg
+  void FinishBeat();  // Q7 seen, grantPet (StoryBeatFinishedMsg); the caller then pumps (next beat or queue end)
   void BuildSegments();
   void AppendSequence(const StorySequence& seq, int32_t part);
   void EnterSegment(int32_t index);  // index == size: the beat ends
@@ -206,6 +206,7 @@ class ABYSS_API StoryDirector {
   std::vector<StoryBeat> queue_;
   bool running_ = false;      // the pump is active (STORY_STATE true): a beat is delayed / playing or queued
   bool hasCurrent_ = false;   // `current_` was taken from the queue (waiting on its T15 delay or playing)
+  bool pumping_ = false;      // Pump's loop or a FinishBeat is running: a re-entrant Enqueue only queues
   StoryBeat current_;
   bool cinematic_ = false;
   TimerId delayTimer_ = kNoTimer;

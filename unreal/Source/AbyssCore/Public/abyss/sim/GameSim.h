@@ -62,7 +62,8 @@ class ABYSS_API GameSim {
   // An already parsed save (tools, tests, the selector flow after SummarizeSave).
   SaveError LoadGame(const SaveData& save, std::string* err);
   // BuildSave (save 3.4) serialised as v4 JSON. A Dying hero is saved as respawned at the camp (C12); UE should
-  // prefer to call it when CanSave() or after CmdResolvePendingDeath.
+  // prefer to call it when CanSave() or after CmdResolvePendingDeath. Without a session (HasSession() false) it returns
+  // "" (a failed save): a blank level-1 save must never overwrite a slot.
   std::string SaveGame(int64_t unixMs = 0) const;
   bool CanSave() const;  // Alive && hp > 0 && !transitioning
   void BuildSave(SaveData& out, int64_t unixMs) const;

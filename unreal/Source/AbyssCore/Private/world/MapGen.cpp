@@ -108,7 +108,7 @@ struct BoolGrid {
     return v[static_cast<size_t>(r) * static_cast<size_t>(cols) + static_cast<size_t>(c)] != 0;
   }
   void Set(int32_t c, int32_t r, bool b) {
-    v[static_cast<size_t>(r) * static_cast<size_t>(cols) + static_cast<size_t>(c)] = b ? 1 : 0;
+    v[static_cast<size_t>(r) * static_cast<size_t>(cols) + static_cast<size_t>(c)] = static_cast<uint8_t>(b ? 1 : 0);
   }
   bool In(int32_t c, int32_t r) const { return c >= 0 && r >= 0 && c < cols && r < rows; }
 };
@@ -346,9 +346,9 @@ std::vector<Decoration> ScatterDecorations(const MapDef& map, const MapThemeDef&
         bool ok = !noTall.Get(c, r) && pathDist[idx] > 2 && rng.Chance(rate);
         for (int32_t dr = -2; dr <= 2 && ok; ++dr) {
           for (int32_t dc = -2; dc <= 2; ++dc) {
-            const bool near = std::abs(dr) <= 1 && std::abs(dc) <= 1;
+            const bool isNear = std::abs(dr) <= 1 && std::abs(dc) <= 1;
             const bool stacked = dr == dc || std::abs(dr - dc) == 1;
-            if ((near || stacked) && tallAt.In(c + dc, r + dr) && tallAt.Get(c + dc, r + dr)) {
+            if ((isNear || stacked) && tallAt.In(c + dc, r + dr) && tallAt.Get(c + dc, r + dr)) {
               ok = false;
               break;
             }

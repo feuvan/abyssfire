@@ -82,7 +82,7 @@ std::vector<EntityId> CandidatesInCone(std::span<const TargetCandidate> candidat
   std::vector<EntityId> out;
   const Vec2 aim = aimDir.Normalized();
   const double rSq = radius * radius;
-  const double cosHalf = std::cos(coneDeg * 0.5 * kPi / 180.0);
+  const double cosHalf = DetCos(coneDeg * 0.5 * kPi / 180.0);
   for (const TargetCandidate& c : candidates) {
     if (!c.alive) continue;
     const Vec2 rel = c.pos - heroPos;

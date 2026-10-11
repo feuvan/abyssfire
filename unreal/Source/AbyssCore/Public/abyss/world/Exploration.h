@@ -84,6 +84,8 @@ class ABYSS_API ExplorationSystem {
  private:
   SimContext& ctx_;
   ExplorationGrid grid_;
+  bool hasLastReveal_ = false;  // reset on zone entry (a load enters the zone too)
+  Vec2 lastReveal_;
 };
 
 }  // namespace abyss

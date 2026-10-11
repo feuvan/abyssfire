@@ -4,8 +4,12 @@
 // Web suites ported: SaveMigration.test.ts (migrateV1toV2, CURRENT_SAVE_VERSION, findNearestWalkablePosition,
 // integration scenarios) and SpiritSaveMigration.test.ts. JSON fixtures write the web's Chinese strings as \u escapes
 // (core sources and tests are ASCII-only).
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -529,7 +533,7 @@ TEST_SUITE("save") {
     CHECK(SaveTestTree(SerializeSave(s, true)) == tree);
   }
 
-  TEST_CASE("ParseSave v4: malformed rng streams fall back to reseeding; bad slot / play time default") {
+  TEST_CASE("ParseSave v4: malformed rng streams are reseeded one by one; bad slot / play time default") {
     std::string base = SaveTestSpiritV2();
     base.pop_back();
     auto parse = [&base](const std::string& extra) {
@@ -537,16 +541,35 @@ TEST_SUITE("save") {
       REQUIRE(ParseSave(base + extra + "}", s) == SaveError::None);
       return s;
     };
+    const auto missingCount = [](const SaveData& s) {
+      return std::count(s.rng.missing.begin(), s.rng.missing.end(), true);
+    };
     const std::string good = R"("combat":[1,2,3,4],"loot":[1,2,3,4],"ai":[1,2,3,4],"world":[1,2,3,4],)"
                              R"("events":[1,2,3,4],"quests":[1,2,3,4],"pets":[1,2,3,4])";
-    CHECK(parse(R"(,"rng":{)" + good + "}").rng.present);
-    CHECK_FALSE(parse(R"(,"rng":{"combat":[1,2,3,4]})").rng.present);                         // streams missing
+    const SaveData all = parse(R"(,"rng":{)" + good + "}");
+    CHECK(all.rng.present);
+    CHECK(missingCount(all) == 0);
+    // Per-stream presence: the valid streams are kept, the others are marked missing (ApplySave seeds only those).
+    const SaveData one = parse(R"(,"rng":{"combat":[1,2,3,4]})");
+    CHECK(one.rng.present);
+    CHECK_FALSE(one.rng.missing[static_cast<size_t>(RngStream::Combat)]);
+    CHECK(one.rng.streams[static_cast<size_t>(RngStream::Combat)].s == std::array<uint32_t, 4>{1, 2, 3, 4});
+    CHECK(missingCount(one) == static_cast<std::ptrdiff_t>(kRngStreamCount) - 1);
     std::string zero = good;
-    zero.replace(zero.find("[1,2,3,4]"), 9, "[0,0,0,0]");
-    CHECK_FALSE(parse(R"(,"rng":{)" + zero + "}").rng.present);  // all-zero xoshiro state
+    zero.replace(zero.find("[1,2,3,4]"), 9, "[0,0,0,0]");  // all-zero xoshiro state
+    const SaveData z = parse(R"(,"rng":{)" + zero + "}");
+    CHECK(z.rng.present);
+    CHECK(z.rng.missing[static_cast<size_t>(RngStream::Combat)]);
+    CHECK(missingCount(z) == 1);
     std::string big = good;
     big.replace(big.find("[1,2,3,4]"), 9, "[4294967296,2,3,4]");
-    CHECK_FALSE(parse(R"(,"rng":{)" + big + "}").rng.present);
+    CHECK(parse(R"(,"rng":{)" + big + "}").rng.missing[static_cast<size_t>(RngStream::Combat)]);
+    // parse -> serialise keeps a partial rng partial (only the valid streams are written).
+    const JsonValue partial = SaveTestTree(SerializeSave(one));
+    CHECK(SaveTestKeys(partial.Get("rng")) == std::vector<std::string>{"combat"});
+    // No valid stream at all: absent (every stream is reseeded).
+    CHECK_FALSE(parse(R"(,"rng":{"combat":[0,0,0,0]})").rng.present);
+    CHECK_FALSE(parse(R"(,"rng":[])").rng.present);
     const SaveData odd = parse(R"(,"slot":-4,"playTimeMs":-10,"itemUidCounter":0,"hotbar":[1,"slash"])");
     CHECK(odd.slot == 0);
     CHECK(odd.playTimeMs == 0);
@@ -554,6 +577,27 @@ TEST_SUITE("save") {
     CHECK(odd.hasHotbar);
     CHECK(odd.hotbar[0].empty());
     CHECK(odd.hotbar[1] == "slash");
+  }
+
+  TEST_CASE("ParseSave: a timestamp outside int64 saturates (no float -> int UB; checked under float-cast-overflow)") {
+    auto ts = [](const std::string& value) {
+      std::string json = SaveTestSpiritV2();
+      const std::string key = R"("timestamp":123)";
+      REQUIRE(json.find(key) != std::string::npos);
+      json.replace(json.find(key), key.size(), R"("timestamp":)" + value);
+      SaveData s;
+      REQUIRE(ParseSave(json, s) == SaveError::None);
+      return s.timestamp;
+    };
+    CHECK(ts("1e300") == (std::numeric_limits<int64_t>::max)());
+    CHECK(ts("9.3e18") == (std::numeric_limits<int64_t>::max)());
+    CHECK(ts("-1e19") == (std::numeric_limits<int64_t>::min)());
+    CHECK(ts("1760000000000.75") == 1760000000000);
+    CHECK(ts("-2.5") == -3);
+    SaveData s;
+    REQUIRE(ParseSave(R"({"version":4,"timestamp":1e300,"player":{}})", s) == SaveError::None);
+    CHECK(s.timestamp == (std::numeric_limits<int64_t>::max)());
+    CHECK(SummarizeSave(1, s).exists);
   }
 
   TEST_CASE("SummarizeSave: the Continue card and the difficulty selector rule (save-ui-input 1.2)") {
@@ -611,6 +655,52 @@ TEST_SUITE("save") {
     newer.replace(newer.find(R"("version":4)"), 11, R"("version":9)");
     CHECK(sim2->LoadGame(newer, &err) == SaveError::VersionTooNew);
     CHECK(sim2->SaveGame(1760000000000) == reloaded);
+  }
+
+  TEST_CASE("GameSim: a save missing one rng stream restores the other six exactly and seeds only the missing one") {
+    const DataStore& data = SaveTestData();
+    auto sim = GameSim::Create(data, SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Rogue, Difficulty::Normal, 1234, 1));
+    for (int i = 0; i < 120; ++i) sim->Step();
+    const int64_t stamp = 1760000000123;
+    const std::string text = sim->SaveGame(stamp);
+    JsonValue tree = SaveTestTree(text);
+    JsonValue* rngTree = tree.FindMutable("rng");
+    REQUIRE(rngTree != nullptr);
+    rngTree->Remove("ai");  // e.g. a stream added to RngStream after this save was written
+    const std::string partial = WriteJson(tree);
+    SaveData parsed;
+    std::string err;
+    REQUIRE(ParseSave(partial, parsed, &err, &data) == SaveError::None);
+    REQUIRE(parsed.rng.present);
+    CHECK(parsed.rng.missing[static_cast<size_t>(RngStream::Ai)]);
+
+    auto loaded = GameSim::Create(data, SimConfig{});
+    REQUIRE(loaded->LoadGame(partial, &err) == SaveError::None);
+    SaveData again;
+    loaded->BuildSave(again, stamp);
+    SaveData original;
+    REQUIRE(ParseSave(text, original, &err, &data) == SaveError::None);
+    for (size_t i = 0; i < kRngStreamCount; ++i) {
+      CAPTURE(i);
+      if (i == static_cast<size_t>(RngStream::Ai)) continue;
+      CHECK(again.rng.streams[i] == original.rng.streams[i]);
+    }
+    // The missing stream gets what a save without `rng` gives it: SeedAll(defaultSeed ^ timestamp).
+    RngSet fallback;
+    fallback.SeedAll(SimConfig{}.defaultSeed ^ static_cast<uint64_t>(stamp));
+    CHECK(again.rng.streams[static_cast<size_t>(RngStream::Ai)] == fallback.Get(RngStream::Ai).GetState());
+  }
+
+  TEST_CASE("GameSim: SaveGame without a session is a failed save (\"\"), never a blank level-1 hero") {
+    const DataStore& data = SaveTestData();
+    auto sim = GameSim::Create(data, SimConfig{});
+    REQUIRE(sim != nullptr);
+    CHECK_FALSE(sim->HasSession());
+    CHECK(sim->SaveGame(1).empty());
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 3, 0));
+    CHECK_FALSE(sim->SaveGame(1).empty());
   }
 
   // save-ui-input 3.4 rule 1 / 3.6, world 9.2, DECISIONS C12: UE answers EvSaveRequested{zoneChange} after the step

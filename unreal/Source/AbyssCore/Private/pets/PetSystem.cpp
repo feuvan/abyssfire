@@ -19,9 +19,10 @@ namespace abyss {
 
 namespace {
 
-// The 月井 building whose level raises the bond cap and pet exp (homestead.ts BUILDINGS; PetSystem.ts:249-256).
+// The Moon Well (yuejing) building whose level raises the bond cap and pet exp (homestead.ts BUILDINGS;
+// PetSystem.ts:249-256).
 constexpr std::string_view kPsPetHouseId = "pet_house";
-// getExpMultiplier: +10 % per 月井 level; resting exp share 0.2 + 0.1 (level - 1) (PetSystem.ts:254-256, 349-351).
+// getExpMultiplier: +10 % per Moon Well level; resting exp share 0.2 + 0.1 (level - 1) (PetSystem.ts:254-256, 349-351).
 constexpr double kPsPetHouseExpPerLevel = 0.1;
 constexpr double kPsRestingExpBase = 0.2;
 constexpr double kPsRestingExpPerLevel = 0.1;
@@ -338,11 +339,19 @@ double PetSystem::ExpMultiplier() const {
 
 StatBag PetSystem::Bonuses() const {
   StatBag out;
+  Stat stat{};
+  double value = 0;
+  if (ActivePassive(stat, value)) out.Set(stat, value);
+  return out;
+}
+
+bool PetSystem::ActivePassive(Stat& stat, double& value) const {
   const PetInstance* pet = Active();
   const PetDef* def = ActiveDef();
-  if (pet == nullptr || def == nullptr) return out;
-  out.Set(def->passiveStat, PetPassiveValue(data_->Pets(), *def, *pet));
-  return out;
+  if (pet == nullptr || def == nullptr) return false;
+  stat = def->passiveStat;
+  value = PetPassiveValue(data_->Pets(), *def, *pet);
+  return true;
 }
 
 int32_t PetSystem::PetDamage(double heroDamage) const {

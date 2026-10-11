@@ -43,7 +43,8 @@ MonsterDef MakeHuntDefinition(const MonsterDef& base, const HuntDef& hunt, const
   d.aggroRange = (std::max)(base.aggroRange, ai.huntAggroMin);
   d.elite = true;
   d.isMiniBoss = true;
-  d.sources = {MonsterSource::Hunt};
+  // assign(1, x), not `= {x}`: GCC 13 with -fsanitize reports a false -Warray-bounds in the initializer_list assign.
+  d.sources.assign(1, MonsterSource::Hunt);
   return d;
 }
 
@@ -60,10 +61,10 @@ MonsterDef RaiseToLevel(const MonsterDef& def, int32_t level, const MonsterAiDef
   const double m = static_cast<double>(level) / static_cast<double>((std::max)(1, def.level));
   MonsterDef out = def;
   out.level = level;
-  out.hp = JsRound(def.hp * std::pow(m, ai.raiseHpExp));
-  out.damage = JsRound(def.damage * std::pow(m, ai.raiseDamageExp));
-  out.defense = JsRound(def.defense * std::pow(m, ai.raiseDefenseExp));
-  out.expReward = JsRound(def.expReward * std::pow(m, ai.raiseExpExp));
+  out.hp = JsRound(def.hp * DetPow(m, ai.raiseHpExp));  // DetPow: bit-identical on every platform
+  out.damage = JsRound(def.damage * DetPow(m, ai.raiseDamageExp));
+  out.defense = JsRound(def.defense * DetPow(m, ai.raiseDefenseExp));
+  out.expReward = JsRound(def.expReward * DetPow(m, ai.raiseExpExp));
   out.goldMin = JsRound(def.goldMin * m);
   out.goldMax = JsRound(def.goldMax * m);
   return out;

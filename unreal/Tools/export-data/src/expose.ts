@@ -33,6 +33,7 @@ export const EXPOSE: Record<string, string[]> = /*JSON*/{
   "src/systems/QuestWorld.ts": ["GATHER_RANGE", "CLUE_RANGE", "GUIDE_NEAR", "KIND_BY_TARGET"],
   "src/systems/StoryDirector.ts": ["BOSS_SIGHT", "BOSS_BAR_RANGE", "FINAL_BOSS"],
   "src/systems/PetCompanion.ts": ["STRAY_SWING_CHANCE", "FOLLOW_SPEED", "DASH_SPEED", "TELEPORT_DIST"],
+  "src/systems/EmberTower.ts": ["STORY_PETS"],
   "src/systems/InventorySystem.ts": ["QUALITY_ORDER", "TYPE_ORDER"],
   "src/systems/QuestRewards.ts": ["SHIELD_CLASSES"],
   "src/systems/MobileControlsSystem.ts": ["CSS", "MIN_K", "MAX_K", "TOUCH_POINTERS"],

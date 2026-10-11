@@ -94,6 +94,7 @@ void LoadHomesteadFile(const JNode& r, HomesteadTables& out) {
   out.buildings.clear();
   out.expeditionOptions.clear();
   out.blessings.clear();
+  out.storyPets.clear();
   out.towerZoneId = r.Str("towerZoneId");
   out.towerUnlockQuest = r.Str("towerUnlockQuest");
   out.leyFruitId = r.Str("leyFruitId");
@@ -141,6 +142,7 @@ void LoadHomesteadFile(const JNode& r, HomesteadTables& out) {
   out.gardenLeyFruitBase = g.Child("yield").Num("leyFruitBase");
   out.gardenLeyFruitPerLevel = g.Child("yield").Num("leyFruitPerLevel");
   out.gardenHpShare = g.Child("yield").Num("hpShare");
+  for (const JNode& sp : r.Items("storyPets")) out.storyPets.push_back(StoryPetDef{sp.Str("quest"), sp.Str("petId")});
   out.towerHiddenInMilestone1 = r.Child("port").Bool("towerHiddenInMilestone1", true);
 }
 

@@ -94,7 +94,9 @@ void SimImpl::Wire() {
   bus.Subscribe<QuestTurnedInMsg>([this](const QuestTurnedInMsg& m) { story->OnQuestTurnedIn(m); });
   bus.Subscribe<QuestTurnedInMsg>([this](const QuestTurnedInMsg& m) { homestead->OnQuestTurnedIn(m); });
   bus.Subscribe<StoryBeatFinishedMsg>([this](const StoryBeatFinishedMsg& m) {
-    if (!m.grantPet.empty()) pets->AddPet(m.grantPet);
+    // A replayed beat (ReplayLostTurnInBeats) whose pet the retroGrantPets net already granted adds nothing (and does
+    // not log sys.pet.duplicate: the web never replays a beat).
+    if (!m.grantPet.empty() && !pets->Has(m.grantPet)) pets->AddPet(m.grantPet);
   });
   // Music director (audio 10.4 rules 2 and 4): story lock / sequence music, boss engagement.
   bus.Subscribe<StoryStateMsg>([this](const StoryStateMsg& m) { audio->OnStoryState(m); });

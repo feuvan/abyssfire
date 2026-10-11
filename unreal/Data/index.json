@@ -101,9 +101,9 @@
     },
     {
       "file": "homestead.json",
-      "counts": {"buildings": 6},
-      "bytes": 4326,
-      "sha256": "33d3ffaadff2083d66a9220a9d6f49b28b732d06d5c841b4228b5cc5959bba5e"
+      "counts": {"buildings": 6, "storyPets": 2},
+      "bytes": 4502,
+      "sha256": "1791243d46294f476829778214fce52c71673c08e78de5337a297c4c5047bb38"
     },
     {
       "file": "i18n_en.json",

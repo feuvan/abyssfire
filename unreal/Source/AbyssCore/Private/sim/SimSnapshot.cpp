@@ -6,8 +6,7 @@
 namespace abyss {
 
 void Snapshot::ClearDynamic() {
-  monsters.clear();
-  npcs.clear();
+  // `monsters` / `npcs` are NOT cleared: MonsterSystem / ZoneRuntime::FillSnapshot resize them and reuse the views.
   groundItems.clear();
   potions.clear();
   projectiles.clear();
@@ -29,7 +28,11 @@ void SimImpl::BuildSnapshot() {
   s.difficulty = session.difficulty;
   s.playTimeMs = session.playTimeMs;
   s.canSave = CanSave();
-  if (hero == nullptr) return;
+  if (hero == nullptr) {
+    s.monsters.clear();
+    s.npcs.clear();
+    return;
+  }
   s.inputBlocked = InputBlocked();
   s.modals.clear();
   const uint32_t modalMask = CoreModalMask();

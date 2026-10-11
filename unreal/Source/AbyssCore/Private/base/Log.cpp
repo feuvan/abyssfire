@@ -11,7 +11,7 @@ struct LogState {
   LogLevel minLevel = LogLevel::Info;
 };
 
-LogState& State() {
+LogState& LogStateRef() {
   static LogState s;
   return s;
 }
@@ -31,21 +31,21 @@ std::string_view LogLevelName(LogLevel level) {
 }
 
 LogSinkBinding SetLogSink(LogSink sink, void* user) {
-  LogState& s = State();
+  LogState& s = LogStateRef();
   const LogSinkBinding previous{s.sink, s.user};
   s.sink = sink;
   s.user = user;
   return previous;
 }
 
-LogSinkBinding CurrentLogSink() { return LogSinkBinding{State().sink, State().user}; }
+LogSinkBinding CurrentLogSink() { return LogSinkBinding{LogStateRef().sink, LogStateRef().user}; }
 
-void SetMinLogLevel(LogLevel level) { State().minLevel = level; }
+void SetMinLogLevel(LogLevel level) { LogStateRef().minLevel = level; }
 
-LogLevel MinLogLevel() { return State().minLevel; }
+LogLevel MinLogLevel() { return LogStateRef().minLevel; }
 
 void Log(LogLevel level, std::string_view message) {
-  const LogState& s = State();
+  const LogState& s = LogStateRef();
   if (static_cast<int>(level) < static_cast<int>(s.minLevel)) return;
   if (s.sink) s.sink(level, message, s.user);
 }

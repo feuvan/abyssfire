@@ -14,6 +14,9 @@ namespace abyss {
 
 bool SimImpl::EnterZone(std::string_view mapId, bool hasTarget, Vec2 target) {
   session.transitioning = false;
+  // ZoneScene.create runs EmberTower.retroGrantPets on every zone entry. Before the zone loads, so a pet that turns
+  // active spawns once with the companion's zone entry below (no zone yet: PetCompanion::OnPetChanged does nothing).
+  RetroGrantStoryPets();
   if (!zone->EnterZone(mapId, hasTarget, target)) return false;
   const std::string& id = zone->MapId();
   session.currentMap = id;
@@ -83,14 +86,26 @@ void SimImpl::ExitZone() {
   zone->ExitZone();
 }
 
+// EmberTower.retroGrantPets (homestead.json storyPets): every turned-in quest whose story beat grants a ley-beast that is
+// not owned grants it now. A monster_killed beat (cs_tf_moonfang) is never replayed and a turn-in beat discarded by a
+// zone exit may not be either, so a save landing before the beat finished would otherwise lose the pet for good.
+void SimImpl::RetroGrantStoryPets() {
+  if (quests == nullptr || pets == nullptr) return;
+  for (const StoryPetDef& sp : data.Homestead().storyPets) {
+    const QuestProgress* p = quests->Progress(sp.quest);
+    if (p != nullptr && p->status == QuestStatus::TurnedIn && !pets->Has(sp.petId)) pets->AddPet(sp.petId);
+  }
+}
+
 void SimImpl::RebuildEquipStats() {
   EquipStats e = inventory->Items().GearStats();
   e.AddAll(achievements->State().Bonuses());
-  // Active pet passive, except expBonus / magicFind which apply at the kill (quests 18.4).
-  const StatBag petBonus = pets->Bonuses();
-  for (const StatValue& sv : petBonus.Items()) {
-    if (sv.stat == Stat::ExpBonus || sv.stat == Stat::MagicFind) continue;
-    e.Add(sv.stat, sv.value);
+  // Active pet passive, except expBonus / magicFind which apply at the kill (quests 18.4). Read directly (no StatBag):
+  // this runs every unfrozen step.
+  Stat petStat{};
+  double petValue = 0;
+  if (pets->ActivePassive(petStat, petValue) && petStat != Stat::ExpBonus && petStat != Stat::MagicFind) {
+    e.Add(petStat, petValue);
   }
   homestead->BlessingStats().AddTo(e);
   ctx.equip = e;

@@ -163,17 +163,18 @@ bool FogOfWarCore::LoadExploredData(const std::vector<std::vector<bool>>& data) 
     const std::vector<bool>& row = data[static_cast<size_t>(r)];
     for (int32_t c = 0; c < cols_; ++c) {
       const bool v = static_cast<size_t>(c) < row.size() && row[static_cast<size_t>(c)];
-      explored_[static_cast<size_t>(r) * static_cast<size_t>(cols_) + static_cast<size_t>(c)] = v ? 1 : 0;
+      explored_[static_cast<size_t>(r) * static_cast<size_t>(cols_) + static_cast<size_t>(c)] =
+          static_cast<uint8_t>(v ? 1 : 0);
     }
   }
-  std::fill(prevAlpha_.begin(), prevAlpha_.end(), 0);
+  std::fill(prevAlpha_.begin(), prevAlpha_.end(), uint8_t{0});
   lastCol_ = -1;
   lastRow_ = -1;
   return true;
 }
 
 void FogOfWarCore::Invalidate() {
-  std::fill(prevAlpha_.begin(), prevAlpha_.end(), 0);
+  std::fill(prevAlpha_.begin(), prevAlpha_.end(), uint8_t{0});
   lastCol_ = -1;
   lastRow_ = -1;
   dirty_.clear();
@@ -182,6 +183,7 @@ void FogOfWarCore::Invalidate() {
 ExplorationSystem::ExplorationSystem(SimContext& ctx) : ctx_(ctx) {}
 
 void ExplorationSystem::OnZoneEnter() {
+  hasLastReveal_ = false;
   const ZoneRuntime* z = ctx_.sys.zone;
   if (z != nullptr && z->HasZone()) {
     grid_.Reset(z->Grid().Cols(), z->Grid().Rows());
@@ -192,7 +194,12 @@ void ExplorationSystem::OnZoneEnter() {
 
 void ExplorationSystem::Tick() {
   const Vec2 p = ctx_.sys.hero->Position();
-  grid_.Reveal(p.x, p.y, ctx_.data.World().constants.hiddenAreaExploreRadius);
+  const double radius = ctx_.data.World().constants.hiddenAreaExploreRadius;
+  // Reveal is idempotent: a hero standing still (most of combat) reveals exactly the same disc again, so skip it.
+  if (hasLastReveal_ && p.x == lastReveal_.x && p.y == lastReveal_.y) return;
+  grid_.Reveal(p.x, p.y, radius);
+  hasLastReveal_ = true;
+  lastReveal_ = p;
 }
 
 bool ExplorationSystem::AreaFullyExplored(const HiddenAreaDef& area) const {

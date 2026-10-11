@@ -83,6 +83,7 @@ void MonsterSystem::EnsureZoneGrid() {
 
 void MonsterSystem::PrepareZone() {
   monsters_.clear();
+  index_.clear();
   active_.clear();
   grid_.Clear();
   activeDue_ = true;
@@ -231,6 +232,7 @@ void MonsterSystem::OnZoneExit() {
     ctx_.events.Emit(EvEntityDespawned{m.id, EntityKind::Monster, DespawnReason::ZoneUnload});
   }
   monsters_.clear();
+  index_.clear();
   grid_.Clear();
   active_.clear();
   activeDue_ = true;
@@ -289,6 +291,7 @@ EntityId MonsterSystem::AddInstance(MonsterInstance&& m, bool startChasing) {
   const EntityId id = m.id;
   const Vec2 pos = m.pos;
   monsters_.push_back(std::move(m));
+  IndexAdd(id, static_cast<uint32_t>(monsters_.size() - 1));
   grid_.Insert(id, pos);
   const MonsterInstance& added = monsters_.back();
   EmitSpawned(added);
@@ -436,7 +439,7 @@ std::vector<EntityId> MonsterSystem::SpawnAmbush(std::span<const std::string> mo
     if (base == nullptr) continue;  // before the placement draws (web order)
     const double angle = rng.Float01() * kTwoPi;
     const double dist = minDist + rng.Float01() * distRange;
-    const TilePos preferred{JsRoundInt(centre.x + std::cos(angle) * dist), JsRoundInt(centre.y + std::sin(angle) * dist)};
+    const TilePos preferred{JsRoundInt(centre.x + DetCos(angle) * dist), JsRoundInt(centre.y + DetSin(angle) * dist)};
     TilePos tile;
     if (cols < 3 || rows < 3 || !MonsterSysFindWalkableTile(preferred, cols, rows, 5, walkable, tile)) continue;
     MonsterSpawnParams p;
@@ -469,8 +472,8 @@ std::vector<EntityId> MonsterSystem::SpawnDefendWave(Vec2 target, int32_t waveIn
   const int32_t lo = ai.defendWaveEdgeMargin;
   for (int32_t i = 0; i < n; ++i) {
     const double angle = kTwoPi * static_cast<double>(i) / static_cast<double>(n);
-    const int32_t col = JsRoundInt(target.x + std::cos(angle) * ai.defendWaveRadius);
-    const int32_t row = JsRoundInt(target.y + std::sin(angle) * ai.defendWaveRadius);
+    const int32_t col = JsRoundInt(target.x + DetCos(angle) * ai.defendWaveRadius);
+    const int32_t row = JsRoundInt(target.y + DetSin(angle) * ai.defendWaveRadius);
     const int32_t len = static_cast<int32_t>(zoneList->monsterIds.size());
     const std::string& id = zoneList->monsterIds[static_cast<size_t>(rng.RandomInt(0, len - 1))];
     const MonsterDef* base = tables.Find(id);
@@ -606,9 +609,10 @@ void MonsterSystem::TickAI(double dtMs) {
   const bool heroInSafe = InSafeZone(heroPos);
   const StatusEffectSystem* status = ctx_.sys.status;
   Rng& rng = ctx_.Rand(RngStream::Ai);
-  const std::vector<EntityId> ids = active_;
-  std::vector<EntityId> near;
-  std::vector<Vec2> neighbours;
+  std::vector<EntityId>& ids = scratchIds_;  // a copy: handlers of MonsterAggroMsg may spawn
+  ids.assign(active_.begin(), active_.end());
+  std::vector<EntityId>& sepNear = scratchNear_;
+  std::vector<Vec2>& neighbours = scratchNeighbours_;
   for (EntityId id : ids) {
     MonsterInstance* m = Find(id);
     if (m == nullptr || !m->IsAlive()) continue;
@@ -629,8 +633,8 @@ void MonsterSystem::TickAI(double dtMs) {
     in.speedMul = status != nullptr ? status->SpeedMultiplier(id) : 1.0;
     neighbours.clear();
     if (ai.separationRadius > 0) {
-      grid_.QueryRadius(m->pos.x, m->pos.y, ai.separationRadius, near);
-      for (EntityId nid : near) {
+      grid_.QueryRadius(m->pos.x, m->pos.y, ai.separationRadius, sepNear);
+      for (EntityId nid : sepNear) {
         if (nid == id) continue;
         const MonsterInstance* n = Find(nid);
         if (n != nullptr && n->IsAlive()) neighbours.push_back(n->pos);
@@ -659,7 +663,8 @@ void MonsterSystem::TickEliteBehaviours() {
     cols = ctx_.sys.zone->Map().cols;
     rows = ctx_.sys.zone->Map().rows;
   }
-  std::vector<EntityId> ids;
+  std::vector<EntityId>& ids = scratchEliteIds_;  // own scratch (a copy: teleports / curses may publish)
+  ids.clear();
   for (const MonsterInstance& m : monsters_) {
     if (m.IsAlive() && !m.affixes.empty()) ids.push_back(m.id);
   }
@@ -832,14 +837,10 @@ void MonsterSystem::OnMonsterKilled(const MonsterKilledMsg& msg) {
 }
 
 void MonsterSystem::Respawn(EntityId deadId) {
-  size_t idx = monsters_.size();
-  for (size_t i = 0; i < monsters_.size(); ++i) {
-    if (monsters_[i].id == deadId) {
-      idx = i;
-      break;
-    }
-  }
-  if (idx == monsters_.size() || monsters_[idx].IsAlive()) return;
+  const int32_t found = IndexOf(deadId);
+  if (found < 0) return;
+  const size_t idx = static_cast<size_t>(found);
+  if (monsters_[idx].IsAlive()) return;
   EnsureZoneGrid();
   const MonsterAiDef& ai = ctx_.data.Monsters().ai;
   Rng& rng = ctx_.Rand(RngStream::Ai);
@@ -865,6 +866,8 @@ void MonsterSystem::Respawn(EntityId deadId) {
   grid_.Remove(deadId);
   ctx_.events.Emit(EvEntityDespawned{deadId, EntityKind::Monster, DespawnReason::Died});
   monsters_[idx] = std::move(fresh);
+  IndexRemove(deadId);
+  IndexAdd(monsters_[idx].id, static_cast<uint32_t>(idx));
   grid_.Insert(monsters_[idx].id, monsters_[idx].pos);
   EmitSpawned(monsters_[idx]);
 }
@@ -873,32 +876,50 @@ void MonsterSystem::Respawn(EntityId deadId) {
 // queries
 // =====================================================================================================================
 
+void MonsterSystem::IndexAdd(EntityId id, uint32_t idx) {
+  const auto it = std::lower_bound(index_.begin(), index_.end(), id,
+                                   [](const std::pair<EntityId, uint32_t>& e, EntityId k) { return e.first < k; });
+  index_.insert(it, {id, idx});
+}
+
+void MonsterSystem::IndexRemove(EntityId id) {
+  const auto it = std::lower_bound(index_.begin(), index_.end(), id,
+                                   [](const std::pair<EntityId, uint32_t>& e, EntityId k) { return e.first < k; });
+  if (it != index_.end() && it->first == id) index_.erase(it);
+}
+
+int32_t MonsterSystem::IndexOf(EntityId id) const {
+  const auto it = std::lower_bound(index_.begin(), index_.end(), id,
+                                   [](const std::pair<EntityId, uint32_t>& e, EntityId k) { return e.first < k; });
+  return it != index_.end() && it->first == id ? static_cast<int32_t>(it->second) : -1;
+}
+
 MonsterInstance* MonsterSystem::Find(EntityId id) {
-  for (MonsterInstance& m : monsters_) {
-    if (m.id == id) return &m;
-  }
-  return nullptr;
+  const int32_t i = IndexOf(id);
+  return i >= 0 ? &monsters_[static_cast<size_t>(i)] : nullptr;
 }
 
 const MonsterInstance* MonsterSystem::Find(EntityId id) const {
-  for (const MonsterInstance& m : monsters_) {
-    if (m.id == id) return &m;
-  }
-  return nullptr;
+  const int32_t i = IndexOf(id);
+  return i >= 0 ? &monsters_[static_cast<size_t>(i)] : nullptr;
 }
 
 void MonsterSystem::QueryAlive(Vec2 centre, double radius, std::vector<EntityId>& out) const {
   grid_.QueryRadius(centre.x, centre.y, radius, out);
-  std::vector<EntityId> alive;
-  for (EntityId id : out) {
-    const MonsterInstance* m = Find(id);
-    if (m != nullptr && m->IsAlive()) alive.push_back(id);
-  }
-  out.swap(alive);
+  out.erase(std::remove_if(out.begin(), out.end(),
+                           [this](EntityId id) {
+                             const MonsterInstance* m = Find(id);
+                             return m == nullptr || !m->IsAlive();
+                           }),
+            out.end());  // stable: grid order kept
+}
+
+void MonsterSystem::PruneBuffs(double nowMs) {
+  for (MonsterInstance& m : monsters_) m.buffs.Prune(nowMs);
 }
 
 EntityId MonsterSystem::NearestAlive(Vec2 from, double maxRange) const {
-  return grid_.FindNearest(from.x, from.y, maxRange, [this](EntityId id) {
+  return grid_.FindNearestIf(from.x, from.y, maxRange, [this](EntityId id) {
     const MonsterInstance* m = Find(id);
     return m != nullptr && m->IsAlive();
   });
@@ -910,7 +931,7 @@ EntityId MonsterSystem::NearestAggro(Vec2 from) const {
     extent = (std::max)(ctx_.sys.zone->Map().cols, ctx_.sys.zone->Map().rows);
   }
   const double range = extent > 0 ? static_cast<double>(extent) : 1e9;
-  return grid_.FindNearest(from.x, from.y, range, [this](EntityId id) {
+  return grid_.FindNearestIf(from.x, from.y, range, [this](EntityId id) {
     const MonsterInstance* m = Find(id);
     return m != nullptr && m->IsAlive() && m->IsAggro();
   });
@@ -964,9 +985,12 @@ bool MonsterSystem::IsHuntPresent(std::string_view huntId) const {
 
 void MonsterSystem::FillSnapshot(Snapshot& out) const {
   out.miniBossDialogue = miniBossDialogueActive_;
-  const double now = ctx_.Now();
-  for (const MonsterInstance& m : monsters_) {
-    MonsterView v;
+  // The views are reused in place (Snapshot::ClearDynamic keeps them): string / vector assignments keep their capacity,
+  // so a steady population costs no heap traffic per snapshot.
+  out.monsters.resize(monsters_.size());
+  for (size_t i = 0; i < monsters_.size(); ++i) {
+    const MonsterInstance& m = monsters_[i];
+    MonsterView& v = out.monsters[i];
     v.id = m.id;
     v.defId = m.def.id;
     v.artId = m.def.spriteKey;
@@ -986,16 +1010,13 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     v.maxHp = m.maxHp;
     v.elite = m.def.elite;
     v.miniBoss = m.def.isMiniBoss;
+    v.affixes.clear();
     for (const MonsterAffix& a : m.affixes) v.affixes.push_back(a.type);
     v.statusMask = ctx_.sys.status != nullptr ? ctx_.sys.status->StatusMask(m.id) : 0u;
     v.visualScale = m.visualScale;
-    // Wind-up telegraph (combat 10.3): 0.62 x contact after the last swing start.
-    if (v.alive && m.lastAttackMs != 0 && now - m.lastAttackMs >= 0) {
-      const ActionTiming timing = ComputeAttackTiming(ctx_.data.Combat().anim, ctx_.data.Assets(), m.def.spriteKey,
-                                                      m.def.animCategory, m.def.attackSpeedMs);
-      v.windingUp = now - m.lastAttackMs < timing.windupMs;
-    }
-    out.monsters.push_back(std::move(v));
+    // Wind-up telegraph (combat 10.3): owned by CombatSystem::FillSnapshot (it runs after this one), which knows the
+    // pending strike, its windup from the manifest timing and whether it was aborted.
+    v.windingUp = false;
   }
 }
 

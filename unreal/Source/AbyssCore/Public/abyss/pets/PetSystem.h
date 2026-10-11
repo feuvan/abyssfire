@@ -102,6 +102,8 @@ class ABYSS_API PetSystem {
   double ExpMultiplier() const;
   // getBonuses (18.3): {passiveStat: value} of the active pet; empty when resting.
   StatBag Bonuses() const;
+  // The active beast's passive (Bonuses() without the bag): false when no beast is active.
+  bool ActivePassive(Stat& stat, double& value) const;
   int32_t PetDamage(double heroDamage) const;  // calculatePetDamage: active beast, else 0
   std::string_view DisplayNameKey(const PetInstance& p) const;  // data.pet.<id>.name (no evolution suffix)
   LocText DisplayName(const PetInstance& p) const;              // with the evolution suffix

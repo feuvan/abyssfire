@@ -15,17 +15,14 @@ namespace abyss {
 
 namespace pathfinding_impl {
 
-struct AStarNode {
-  int32_t col = 0, row = 0;
-  double g = 0, h = 0, f = 0;
-  int32_t parent = -1;     // index into the node pool
-  int32_t heapIndex = 0;
-};
+using AStarNode = Pathfinder::Node;
 
 // MinHeap of node indices keyed on f (PathfindingSystem.ts MinHeap).
 class AStarHeap {
  public:
-  explicit AStarHeap(std::vector<AStarNode>& nodes) : nodes_(nodes) {}
+  AStarHeap(std::vector<AStarNode>& nodes, std::vector<int32_t>& storage) : nodes_(nodes), data_(storage) {
+    data_.clear();
+  }
   size_t Size() const { return data_.size(); }
 
   void Push(int32_t n) {
@@ -86,7 +83,7 @@ class AStarHeap {
   }
 
   std::vector<AStarNode>& nodes_;
-  std::vector<int32_t> data_;
+  std::vector<int32_t>& data_;
 };
 
 double Octile(int32_t c1, int32_t r1, int32_t c2, int32_t r2) {
@@ -109,15 +106,37 @@ bool Pathfinder::FindPath(double startCol, double startRow, double endCol, doubl
   if (!grid.Walkable(ec, er)) return false;
   if (!grid.Walkable(sc, sr)) return false;
   if (sc == ec && sr == er) return false;
+  // Different connectivity components: the search below would exhaust the start's component and fail (same result).
+  if (grid.Component(sc, sr) != grid.Component(ec, er)) return false;
 
   const int32_t cols = grid.Cols();
   const size_t cells = static_cast<size_t>(cols) * static_cast<size_t>(grid.Rows());
-  std::vector<double> gCost(cells, std::numeric_limits<double>::infinity());
-  std::vector<uint8_t> closed(cells, 0);
-  std::vector<int32_t> nodeMap(cells, -1);
-  std::vector<AStarNode> nodes;
-  nodes.reserve(256);
-  AStarHeap open(nodes);
+  Scratch& sc_ = scratch_;
+  if (sc_.seen.size() != cells) {
+    sc_.gCost.assign(cells, 0.0);
+    sc_.nodeMap.assign(cells, -1);
+    sc_.seen.assign(cells, 0);
+    sc_.closed.assign(cells, 0);
+    sc_.gen = 0;
+  }
+  if (++sc_.gen == 0) {  // wrapped: invalidate every stamp
+    std::fill(sc_.seen.begin(), sc_.seen.end(), 0u);
+    std::fill(sc_.closed.begin(), sc_.closed.end(), 0u);
+    sc_.gen = 1;
+  }
+  const uint32_t gen = sc_.gen;
+  const auto gCostAt = [&sc_, gen](size_t i) {
+    return sc_.seen[i] == gen ? sc_.gCost[i] : std::numeric_limits<double>::infinity();
+  };
+  const auto nodeAt = [&sc_, gen](size_t i) { return sc_.seen[i] == gen ? sc_.nodeMap[i] : -1; };
+  const auto setNode = [&sc_, gen](size_t i, double g, int32_t node) {
+    sc_.seen[i] = gen;
+    sc_.gCost[i] = g;
+    sc_.nodeMap[i] = node;
+  };
+  std::vector<AStarNode>& nodes = sc_.nodes;
+  nodes.clear();
+  AStarHeap open(nodes, sc_.heap);
   auto flat = [cols](int32_t c, int32_t r) { return static_cast<size_t>(r) * static_cast<size_t>(cols) + static_cast<size_t>(c); };
 
   AStarNode start;
@@ -127,8 +146,7 @@ bool Pathfinder::FindPath(double startCol, double startRow, double endCol, doubl
   start.h = Octile(sc, sr, ec, er);
   start.f = start.g + start.h;
   nodes.push_back(start);
-  gCost[flat(sc, sr)] = 0;
-  nodeMap[flat(sc, sr)] = 0;
+  setNode(flat(sc, sr), 0, 0);
   open.Push(0);
 
   static constexpr int32_t kDirs[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
@@ -143,22 +161,22 @@ bool Pathfinder::FindPath(double startCol, double startRow, double endCol, doubl
       out.erase(out.begin());  // start excluded
       return !out.empty();
     }
-    closed[flat(current.col, current.row)] = 1;
+    sc_.closed[flat(current.col, current.row)] = gen;
     for (const auto& d : kDirs) {
       const int32_t dc = d[0], dr = d[1];
       const int32_t nc = current.col + dc;
       const int32_t nr = current.row + dr;
       if (!grid.Walkable(nc, nr)) continue;
       const size_t nIdx = flat(nc, nr);
-      if (closed[nIdx] != 0) continue;
+      if (sc_.closed[nIdx] == gen) continue;
       if (dc != 0 && dr != 0) {
         if (!grid.Walkable(current.col + dc, current.row) || !grid.Walkable(current.col, current.row + dr)) continue;
       }
       const double moveCost = dc != 0 && dr != 0 ? 1.414 : 1.0;
       const double g = current.g + moveCost;
-      if (g < gCost[nIdx]) {
-        gCost[nIdx] = g;
-        const int32_t existing = nodeMap[nIdx];
+      if (g < gCostAt(nIdx)) {
+        const int32_t existing = nodeAt(nIdx);
+        setNode(nIdx, g, existing);
         if (existing >= 0) {
           AStarNode& e = nodes[static_cast<size_t>(existing)];
           e.g = g;
@@ -175,7 +193,7 @@ bool Pathfinder::FindPath(double startCol, double startRow, double endCol, doubl
           n.parent = cur;
           nodes.push_back(n);
           const int32_t id = static_cast<int32_t>(nodes.size()) - 1;
-          nodeMap[nIdx] = id;
+          sc_.nodeMap[nIdx] = id;
           open.Push(id);
         }
       }

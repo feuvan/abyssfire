@@ -205,6 +205,10 @@ class ABYSS_API PetCompanion {
   PetCompanionState state_;
   std::vector<PendingAction> pending_;  // closures of the web's delayed calls (timer param / projectile payload = key)
   int32_t nextKey_ = 1;
+  // Per-step scratch (capacity kept): the decision inputs and the read-only monster scans of PickTarget /
+  // CountHeroAttackers / CountNear (none of them calls out while the list is in use).
+  PetDecisionContext decision_;
+  mutable std::vector<EntityId> scratchQuery_;
 };
 
 }  // namespace abyss

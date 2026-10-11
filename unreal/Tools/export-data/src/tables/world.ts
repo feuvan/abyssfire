@@ -15,6 +15,7 @@ import { CAMP_THEMES } from '../../../../../src/data/camp-themes';
 import * as ZoneSceneMod from '../../../../../src/scenes/ZoneScene';
 import { ZONE_CAMERA_ZOOM } from '../../../../../src/scenes/ZoneScene';
 import * as Homestead from '../../../../../src/data/homestead';
+import * as EmberTowerMod from '../../../../../src/systems/EmberTower';
 import { BOONS, BOON_RARITY_WEIGHT, CURSES, FLOOR_THEMES, TIER_BASE_LEVEL, TIER_LEVEL_STEP } from '../../../../../src/data/abyssRun';
 import * as RenderQualityMod from '../../../../../src/rendering/RenderQuality';
 import { GAME_WIDTH, GAME_HEIGHT, TILE_WIDTH, TILE_HEIGHT } from '../../../../../src/config';
@@ -234,7 +235,7 @@ export function exportWorld(): TableResult[] {
     },
     {
       file: 'homestead.json',
-      source: ['src/data/homestead.ts'],
+      source: ['src/data/homestead.ts', 'src/systems/EmberTower.ts'],
       data: {
         towerZoneId: Homestead.TOWER_ZONE_ID,
         towerUnlockQuest: Homestead.TOWER_UNLOCK_QUEST,
@@ -255,9 +256,12 @@ export function exportWorld(): TableResult[] {
           interval: { base: 16, perLevel: -2, min: 6 }, capacity: { base: 4, perLevel: 4, zeroAtLevel0: true },
           yield: { leyFruitBase: 0.12, leyFruitPerLevel: 0.03, hpShare: 0.6 },
         },
+        // EmberTower.retroGrantPets (called on every zone create): a turned-in quest grants its story beat's ley-beast
+        // when the pet is missing (a save that landed between the beat's trigger and its end lost the grantPet).
+        storyPets: plain(exp<{ quest: string; petId: string }[]>(EmberTowerMod, 'STORY_PETS')),
         port: { towerHiddenInMilestone1: true, decision: 'Q3' },
       },
-      counts: { buildings: Homestead.BUILDINGS.length },
+      counts: { buildings: Homestead.BUILDINGS.length, storyPets: exp<unknown[]>(EmberTowerMod, 'STORY_PETS').length },
     },
     {
       file: 'abyss_run.json',

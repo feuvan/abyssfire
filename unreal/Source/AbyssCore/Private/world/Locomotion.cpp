@@ -51,9 +51,9 @@ bool HeroLocomotion::PathTo(Vec2 goal, double stopRange) {
   const Vec2 hero = ctx_.sys.hero->Position();
   TilePos g = RoundToTile(goal);
   if (!zone->Walkable(g.col, g.row)) {
-    TilePos near;
-    if (!zone->Paths().FindWalkableNear(g, locomotion_impl::kLocoHoldNearRings, near)) return false;
-    g = near;
+    TilePos nearTile;
+    if (!zone->Paths().FindWalkableNear(g, locomotion_impl::kLocoHoldNearRings, nearTile)) return false;
+    g = nearTile;
   }
   std::vector<TilePos> p;
   if (!zone->Paths().FindPath(JsRound(hero.x), JsRound(hero.y), g.col, g.row, p)) return false;

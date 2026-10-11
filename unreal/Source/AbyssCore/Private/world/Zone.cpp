@@ -592,7 +592,10 @@ bool ZoneRuntime::NearestWalkableCamp(Vec2 p, Vec2& out) const {
 }
 
 void ZoneRuntime::FillSnapshot(Snapshot& out) const {
-  if (map_ == nullptr) return;
+  if (map_ == nullptr) {
+    out.npcs.clear();
+    return;
+  }
   out.zone.mapId = map_->id;
   out.zone.nameKey = map_->nameKey;
   out.zone.cols = map_->cols;
@@ -604,15 +607,19 @@ void ZoneRuntime::FillSnapshot(Snapshot& out) const {
   out.zone.camps.clear();
   for (const MapCampDef& c : map_->camps) out.zone.camps.emplace_back(c.pos.col, c.pos.row);
   out.zone.grid = &grid_;
-  for (const NpcPlacement& n : npcs_) {
-    NpcView v;
+  out.npcs.resize(npcs_.size());  // views reused in place (ClearDynamic keeps them): no per-frame string allocations
+  for (size_t i = 0; i < npcs_.size(); ++i) {
+    const NpcPlacement& n = npcs_[i];
+    NpcView& v = out.npcs[i];
     v.id = n.id;
     v.npcId = n.npcId;
     const NpcDef* def = ctx_.data.FindNpc(n.npcId);
     v.artId = def != nullptr && !def->spriteId.empty() ? def->spriteId : n.npcId;
     v.pos = n.pos;
     v.facing = n.facing;
-    out.npcs.push_back(std::move(v));
+    v.marker = NpcMarker::None;
+    v.heroNear = false;
+    v.talking = false;
   }
   for (const ExitState& e : exits_) {
     WorldMarkerView v;

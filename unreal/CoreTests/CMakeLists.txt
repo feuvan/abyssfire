@@ -25,7 +25,9 @@ set(ABYSS_CORE_DIR "${ABYSS_UNREAL_DIR}/Source/AbyssCore")
 
 # -Wundef / /we4668: UE treats an undefined identifier in #if as an error on several platforms (ue58-platform.md 3.3).
 if(MSVC)
-  set(ABYSS_CORE_FLAGS /W4 /WX /we4668 /GR- /EHs-c- /D_HAS_EXCEPTIONS=0 /fp:precise /utf-8)
+  # /wd4100 mirrors -Wno-unused-parameter. /bigobj: GameSim.cpp, Combat.cpp and the tests that see every Command /
+  # Event variant alternative emit more COMDAT sections than COFF's default 65,279 limit (C1128); UBT passes it itself.
+  set(ABYSS_CORE_FLAGS /W4 /WX /we4668 /wd4100 /bigobj /GR- /EHs-c- /D_HAS_EXCEPTIONS=0 /fp:precise /utf-8)
 else()
   set(ABYSS_CORE_FLAGS -Wall -Wextra -Wshadow -Wundef -Werror -Wno-unused-parameter -fno-exceptions -fno-rtti
       -ffp-contract=off)

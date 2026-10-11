@@ -161,7 +161,7 @@ void LoadQuestHuntsFile(const JNode& r, MonsterTables& out) {
     if (def.Exists()) {
       h.defNormal = ReadMonsterDef(def, false);
       h.defNormal.nameKey = "data.monster." + h.huntId;
-      h.defNormal.sources = {MonsterSource::Hunt};
+      h.defNormal.sources.assign(1, MonsterSource::Hunt);
     } else {
       n.Error("no defsNormal entry for hunt '" + h.huntId + "'");
     }

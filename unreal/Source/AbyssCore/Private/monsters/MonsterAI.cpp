@@ -90,7 +90,7 @@ void MonsterAiSeparate(MonsterInstance& m, const MonsterAiDef& ai, const Monster
       dir = d / dist;
     } else {
       const double angle = static_cast<double>(m.id) * 2.39996322972865332;
-      dir = Vec2(std::cos(angle), std::sin(angle));
+      dir = Vec2(DetCos(angle), DetSin(angle));
     }
     push += dir * ((radius - dist) / radius);
   }

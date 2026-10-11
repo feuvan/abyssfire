@@ -243,8 +243,8 @@ std::vector<TilePos> ResolveGatherSpots(const TileCircle& area, int32_t count,
   for (int64_t attempt = 0; attempt < attempts && static_cast<int32_t>(out.size()) < count; ++attempt) {
     const double a = rng.Next() * kPi * 2;
     const double r = std::sqrt(rng.Next()) * area.radius;
-    const double cx = static_cast<double>(area.col) + std::cos(a) * r;
-    const double cy = static_cast<double>(area.row) + std::sin(a) * r;
+    const double cx = static_cast<double>(area.col) + DetCos(a) * r;  // Det*: bit-identical on every platform
+    const double cy = static_cast<double>(area.row) + DetSin(a) * r;
     const TilePos p(JsRoundInt(cx), JsRoundInt(cy));
     if (!walkable || !walkable(p.col, p.row)) continue;
     bool tooClose = false;

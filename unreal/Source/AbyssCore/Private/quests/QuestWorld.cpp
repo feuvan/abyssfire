@@ -549,10 +549,12 @@ void QuestWorld::TickGatherAndClues() {
   if (qs == nullptr || hero == nullptr) return;
   const Vec2 hp = hero->Position();
   const QuestTuningDef& tun = ctx_.data.Quests().tuning;
-  const std::vector<QuestNode> snapshot = nodes_;
+  // Copy only the nodes in reach (node data never changes; the loop body may add / remove nodes).
+  std::vector<QuestNode> snapshot;
+  for (const QuestNode& n : nodes_) {
+    if (!n.clue && !(JsHypot(n.pos.x - hp.x, n.pos.y - hp.y) > tun.gatherRange)) snapshot.push_back(n);
+  }
   for (const QuestNode& n : snapshot) {
-    if (n.clue) continue;
-    if (JsHypot(n.pos.x - hp.x, n.pos.y - hp.y) > tun.gatherRange) continue;
     if (std::none_of(nodes_.begin(), nodes_.end(), [&n](const QuestNode& x) { return x.id == n.id; })) continue;
     const QuestDef* q = ctx_.data.FindQuest(n.questId);
     if (q == nullptr || n.objectiveIndex < 0 || static_cast<size_t>(n.objectiveIndex) >= q->objectives.size()) continue;
@@ -574,10 +576,11 @@ void QuestWorld::TickGatherAndClues() {
     qs->UpdateProgress(obj.type == ObjectiveType::CraftCollect ? ObjectiveType::CraftCollect : ObjectiveType::Collect,
                        obj.targetId, 1, &src);
   }
-  const std::vector<QuestNode> clues = nodes_;
+  std::vector<QuestNode> clues;
+  for (const QuestNode& n : nodes_) {
+    if (n.clue && !(JsHypot(n.pos.x - hp.x, n.pos.y - hp.y) > tun.clueRange)) clues.push_back(n);
+  }
   for (const QuestNode& n : clues) {
-    if (!n.clue) continue;
-    if (JsHypot(n.pos.x - hp.x, n.pos.y - hp.y) > tun.clueRange) continue;
     if (std::none_of(nodes_.begin(), nodes_.end(), [&n](const QuestNode& x) { return x.id == n.id; })) continue;
     RemoveNode(n.id, DespawnReason::Collected);
     const QuestDef* q = ctx_.data.FindQuest(n.questId);

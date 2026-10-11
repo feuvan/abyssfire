@@ -134,6 +134,8 @@ class ABYSS_API MonsterSystem {
   // leashed monster always finishes its walk home.
   void TickAI(double dtMs);
   void TickEliteBehaviours();    // 17.4: teleporting + curse aura
+  // FIX Q19: prunes every monster's buffs (list order; no publish, so no re-entrancy).
+  void PruneBuffs(double nowMs);
   void OnTimer(const Timer& t);
   void DismissMiniBossDialogue();  // 8.3 onDismiss: boss -> chase; EvMiniBossDialogue{opened = false}
 
@@ -203,8 +205,16 @@ class ABYSS_API MonsterSystem {
 
   SimContext& ctx_;
   std::vector<MonsterInstance> monsters_;  // spawn order; a respawn replaces the dead entry in place (7)
+  // id -> index into monsters_, sorted by id (Find is O(log n); monsters_ order stays the spawn order).
+  std::vector<std::pair<EntityId, uint32_t>> index_;
+  void IndexAdd(EntityId id, uint32_t idx);
+  void IndexRemove(EntityId id);
+  int32_t IndexOf(EntityId id) const;
   SpatialGrid grid_;
   std::vector<EntityId> active_;           // activity set (3.8)
+  // Per-step scratch (capacity kept across steps; no heap traffic in TickAI / TickEliteBehaviours).
+  std::vector<EntityId> scratchIds_, scratchNear_, scratchEliteIds_;
+  std::vector<Vec2> scratchNeighbours_;
   double nextActiveRefreshMs_ = 0;
   bool activeDue_ = true;                  // the first activity refresh of a zone is immediately due
   MonsterWorld world_;

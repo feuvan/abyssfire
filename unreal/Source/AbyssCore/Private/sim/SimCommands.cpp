@@ -71,7 +71,8 @@ bool IsHeroGameplayCommand(const Command& c) {
 
 void SimImpl::ApplyCommands(bool frozen) {
   if (pending.empty()) return;
-  std::vector<Command> batch;
+  std::vector<Command>& batch = commandBatch;  // member: both vectors keep their capacity
+  batch.clear();
   batch.swap(pending);
   for (const Command& c : batch) {
     if (!hasSession) break;
@@ -79,6 +80,7 @@ void SimImpl::ApplyCommands(bool frozen) {
     if (hero->Life() == HeroLife::Dying && !AllowedWhileDying(c)) continue;  // 5.1.1
     ApplyCommand(c);
   }
+  batch.clear();
 }
 
 void SimImpl::ApplyCommand(const Command& cmd) {

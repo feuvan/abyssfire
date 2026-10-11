@@ -283,7 +283,10 @@ struct ABYSS_API Snapshot {
   const std::vector<ActiveRandomEvent>* randomEvents = nullptr;  // active world events of the zone
   const PuzzlePromptState* puzzle = nullptr;
 
-  void ClearDynamic();  // clears the per-step vectors (keeps capacity)
+  // Clears the per-step vectors (keeps capacity). `monsters` / `npcs` are not cleared: MonsterSystem / ZoneRuntime
+  // FillSnapshot resize them and assign EVERY field of each reused view (a new MonsterView / NpcView field must be set
+  // there too), so a steady population costs no string / vector allocations per frame.
+  void ClearDynamic();
 };
 
 }  // namespace abyss

@@ -324,6 +324,8 @@ bool DataStore::Finalize(DataLoadReport& report) {
   }
 
   // ---- world ----
+  // GameSim::NewGame enters it, and ZoneRuntime::EnterZone falls back to it for an unknown saved map.
+  if (!world_.FindMap(world_.defaultMap)) ck.Error("maps.json", "defaultMap", "unknown map '" + world_.defaultMap + "'");
   for (const std::string& id : world_.mapOrder) {
     if (!world_.FindMap(id)) ck.Error("maps.json", "order", "unknown map '" + id + "'");
   }
@@ -604,6 +606,10 @@ bool DataStore::Finalize(DataLoadReport& report) {
     if (b.costPerLevel.size() != static_cast<size_t>(b.maxLevel)) ck.Error("homestead.json", "buildings." + b.id, "costPerLevel length != maxLevel");
   }
   if (!quests_.Find(homestead_.towerUnlockQuest)) ck.Error("homestead.json", "towerUnlockQuest", "unknown quest");
+  for (const StoryPetDef& sp : homestead_.storyPets) {
+    if (!quests_.Find(sp.quest)) ck.Error("homestead.json", "storyPets", "unknown quest '" + sp.quest + "'");
+    if (!pets_.Find(sp.petId)) ck.Error("homestead.json", "storyPets", "unknown pet '" + sp.petId + "'");
+  }
   for (size_t i = 0; i < EnumCount<SfxId>(); ++i) {
     if (!audio_.Find(static_cast<SfxId>(i))) {
       ck.Error("audio_cues.json", "cues", "missing cue '" + std::string(EnumName(static_cast<SfxId>(i))) + "'");

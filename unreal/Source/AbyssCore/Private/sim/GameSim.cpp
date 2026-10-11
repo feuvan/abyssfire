@@ -411,6 +411,9 @@ SaveError GameSim::LoadGame(std::string_view saveJson, std::string* err, std::op
 SaveError GameSim::LoadGame(const SaveData& save, std::string* err) { return impl_->ApplySave(save, err); }
 
 std::string GameSim::SaveGame(int64_t unixMs) const {
+  // No session (before NewGame, after a LoadGame that failed past ResetSession): BuildSave would describe a blank
+  // level-1 hero, and writing that to a slot would replace the character. "" is UE's failed-save result.
+  if (!impl_->hasSession) return std::string();
   SaveData out;
   impl_->BuildSave(out, unixMs);
   return SerializeSave(out);

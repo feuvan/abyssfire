@@ -73,14 +73,15 @@ class ABYSS_API Rng {
 };
 
 // Gameplay RNG domains (S3). A subsystem receives its stream by reference; never share one stream across domains.
+// The comments follow the code (full table: SimContext.h); a draw moved to another stream changes the seeded goldens.
 enum class RngStream : uint8_t {
-  Combat,  // damage rolls, procs, status chances, dodge, free cast
-  Loot,    // drops, item creation, affixes, quest reward choices, shop/craft rolls
-  Ai,      // monster patrol/jitter, elite affix rolls, respawn placement
-  World,   // zone-entry placement (spawn jitter), rare pet spots, misc world rolls
-  Events,  // random events (trigger chance, type, ambush/rescue placement)
-  Quests,  // quest drops, garden yields
-  Pets,    // pet companion decisions (stray swings), pet crits
+  Combat,  // damage rolls, procs, status chances, dodge, free cast, elite on-hit rolls
+  Loot,    // drops, item creation, affixes, quest and dialogue reward items, shop/craft rolls, kill gold
+  Ai,      // monster patrol, zone-entry spawn jitter, elite affix rolls, respawn placement, hunts, defend waves
+  World,   // hidden-area chest items
+  Events,  // random events (trigger chance, type, contents, ambush/rescue placement)
+  Quests,  // quest drops only
+  Pets,    // pet companion (stray swings, crits), garden yields, expeditions, homestead workshop items
 };
 ABYSS_ENUM_STRINGS(RngStream, "combat", "loot", "ai", "world", "events", "quests", "pets")
 inline constexpr size_t kRngStreamCount = EnumCount<RngStream>();

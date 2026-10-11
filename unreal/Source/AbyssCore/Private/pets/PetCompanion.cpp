@@ -302,11 +302,11 @@ EntityId PetCompanion::PickTarget() const {
     const MonsterInstance* m = ms->Find(hero.attackTarget);
     if (m != nullptr && m->IsAlive() && JsHypot(m->pos - hp) <= k.targetKeepRange) return m->id;
   }
-  std::vector<EntityId> near;
-  ms->QueryAlive(hp, k.targetScanRange, near);
+  std::vector<EntityId>& nearby = scratchQuery_;  // read-only scan (no callbacks), capacity kept across steps
+  ms->QueryAlive(hp, k.targetScanRange, nearby);
   EntityId best = kNoEntity;
   double bestD = 1e300;
-  for (EntityId id : near) {
+  for (EntityId id : nearby) {
     const MonsterInstance* m = ms->Find(id);
     if (m == nullptr || !m->IsAlive() || !m->IsAggro()) continue;
     const double d = JsHypot(m->pos - hp);
@@ -321,10 +321,10 @@ EntityId PetCompanion::PickTarget() const {
 int32_t PetCompanion::CountHeroAttackers() const {
   const MonsterSystem* ms = ctx_.sys.monsters;
   if (ms == nullptr || ctx_.sys.hero == nullptr) return 0;
-  std::vector<EntityId> near;
-  ms->QueryAlive(ctx_.sys.hero->Position(), ctx_.data.Pets().companion.attackersRange, near);
+  std::vector<EntityId>& nearby = scratchQuery_;
+  ms->QueryAlive(ctx_.sys.hero->Position(), ctx_.data.Pets().companion.attackersRange, nearby);
   int32_t n = 0;
-  for (EntityId id : near) {
+  for (EntityId id : nearby) {
     const MonsterInstance* m = ms->Find(id);
     if (m != nullptr && m->IsAlive() && m->state == MonsterState::Attack) ++n;
   }
@@ -334,10 +334,10 @@ int32_t PetCompanion::CountHeroAttackers() const {
 int32_t PetCompanion::CountNear(Vec2 centre, double radius) const {
   const MonsterSystem* ms = ctx_.sys.monsters;
   if (ms == nullptr) return 0;
-  std::vector<EntityId> near;
-  ms->QueryAlive(centre, radius, near);
+  std::vector<EntityId>& nearby = scratchQuery_;
+  ms->QueryAlive(centre, radius, nearby);
   int32_t n = 0;
-  for (EntityId id : near) n += MonsterAlive(id) ? 1 : 0;
+  for (EntityId id : nearby) n += MonsterAlive(id) ? 1 : 0;
   return n;
 }
 
@@ -448,10 +448,15 @@ void PetCompanion::Tick(double dtMs) {
     if (heroDead) {
       action = PetAction{exhausted ? PetActionKind::Rest : PetActionKind::Follow, nullptr};  // FIX QP1
     } else {
-      PetDecisionContext dc;
+      // Reused member (every field is assigned below): the ability list and the cooldown copy keep their capacity, so
+      // the per-step decision allocates nothing in steady state.
+      PetDecisionContext& dc = decision_;
       dc.nowMs = now;
-      dc.abilities = UnlockedPetAbilities(*def, inst->evolved);
-      dc.readyAt = state_.readyAtMs;
+      dc.abilities.clear();
+      for (const PetAbilityDef& a : def->abilities) {  // UnlockedPetAbilities: unlock <= evolved, priority order
+        if (a.unlock <= inst->evolved) dc.abilities.push_back(&a);
+      }
+      dc.readyAt.assign(state_.readyAtMs.begin(), state_.readyAtMs.end());
       dc.exhausted = exhausted;
       dc.peaceful = peaceful;
       dc.heroDist = heroDist;
@@ -587,7 +592,7 @@ int32_t PetCompanion::Hit(EntityId target, double mult, bool forceCrit, DamageTy
     f.provokes = false;
     ctx_.sys.monsters->ApplyDamage(target, dmg, f);
   }
-  return static_cast<int32_t>(dmg);
+  return SaturatingInt32(dmg);
 }
 
 // 18.5.7
@@ -847,9 +852,9 @@ void PetCompanion::ResolveBolt(const PendingAction& pa, EntityId target) {
   const double damage = a.hasDamage ? a.damage : kPcBoltDamage;
   if (a.hasRadius && a.radius != 0 && ctx_.sys.monsters != nullptr) {
     const Vec2 centre = MonsterPos(target);
-    std::vector<EntityId> near;
-    ctx_.sys.monsters->QueryAlive(centre, a.radius, near);
-    for (EntityId m : near) {
+    std::vector<EntityId> nearby;
+    ctx_.sys.monsters->QueryAlive(centre, a.radius, nearby);
+    for (EntityId m : nearby) {
       if (m != target && MonsterAlive(m)) Hit(m, damage * kPcBoltSplashShare, false, element, color);
     }
     EmitAbilityVfx(a, element, target, centre, a.radius);
@@ -921,10 +926,10 @@ void PetCompanion::ResolveAbility(const PendingAction& pa) {
       const double dur = a.hasDuration ? a.durationMs : kPcTauntMs;
       const double until = now + dur;
       if (ctx_.sys.monsters != nullptr && state_.present) {
-        std::vector<EntityId> near;
+        std::vector<EntityId> nearby;
         const TilePos c = RoundToTile(state_.pos);
-        ctx_.sys.monsters->QueryAlive(c.Center(), a.hasRadius ? a.radius : kPcTauntRadius, near);
-        for (EntityId m : near) {
+        ctx_.sys.monsters->QueryAlive(c.Center(), a.hasRadius ? a.radius : kPcTauntRadius, nearby);
+        for (EntityId m : nearby) {
           if (MonsterAlive(m)) SetUntil(state_.taunts, m, until);
         }
       }
@@ -958,17 +963,17 @@ void PetCompanion::ResolveAbility(const PendingAction& pa) {
       if (ctx_.sys.monsters == nullptr) return;
       const Vec2 o = state_.pos;
       const Vec2 tpos = MonsterPos(pa.target);
-      const double aim = std::atan2(tpos.y - o.y, tpos.x - o.x);
+      const double aim = DetAtan2(tpos.y - o.y, tpos.x - o.x);
       const double half = (a.hasArc ? a.arc : kPcConeArc) / 2.0;
       const double len = a.hasRadius ? a.radius : kPcConeRadius;
-      std::vector<EntityId> near;
-      ctx_.sys.monsters->QueryAlive(RoundToTile(o).Center(), len + 1.0, near);
-      for (EntityId id : near) {
+      std::vector<EntityId> nearby;
+      ctx_.sys.monsters->QueryAlive(RoundToTile(o).Center(), len + 1.0, nearby);
+      for (EntityId id : nearby) {
         if (!MonsterAlive(id)) continue;
         const Vec2 d = MonsterPos(id) - o;
         const double dist = JsHypot(d);
         if (dist > len) continue;
-        double da = std::fabs(std::atan2(d.y, d.x) - aim);
+        double da = std::fabs(DetAtan2(d.y, d.x) - aim);
         if (da > kPi) da = kTwoPi - da;
         if (dist > kPcConeOriginReach && da > half) continue;
         const int32_t dmg = Hit(id, a.hasDamage ? a.damage : kPcConeDamage, false, element, color);
@@ -986,9 +991,9 @@ void PetCompanion::ResolveAbility(const PendingAction& pa) {
       const Vec2 c = onTarget ? MonsterPos(pa.target) : state_.pos;
       const double radius = a.hasRadius ? a.radius : kPcNovaRadius;
       EmitAbilityVfx(a, element, onTarget ? pa.target : state_.entity, c, radius);
-      std::vector<EntityId> near;
-      ctx_.sys.monsters->QueryAlive(RoundToTile(c).Center(), radius + 1.0, near);
-      for (EntityId id : near) {
+      std::vector<EntityId> nearby;
+      ctx_.sys.monsters->QueryAlive(RoundToTile(c).Center(), radius + 1.0, nearby);
+      for (EntityId id : nearby) {
         if (!MonsterAlive(id) || JsHypot(MonsterPos(id) - c) > radius) continue;
         const int32_t dmg = Hit(id, a.hasDamage ? a.damage : kPcNovaDamage, false, element, color);
         if (!MonsterAlive(id)) continue;
