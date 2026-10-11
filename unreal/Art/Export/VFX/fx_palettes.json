@@ -1,0 +1,218 @@
+{
+ "schemaVersion": 1,
+ "source": "art-inventory-ch1.md \u00a78.2 (src/graphics/vfx/FxKit.ts PAL, FxTextures.ts:241-247)",
+ "palettes": {
+  "fire": {
+   "core": "#FFF3C4",
+   "mid": "#FFA532",
+   "rim": "#FF5418",
+   "dark": "#8A1C08",
+   "flameCell": 0
+  },
+  "frost": {
+   "core": "#FFFFFF",
+   "mid": "#A6F0FF",
+   "rim": "#46B4F0",
+   "dark": "#1E5AA8",
+   "flameCell": 1
+  },
+  "lightning": {
+   "core": "#FFFFFF",
+   "mid": "#CFE0FF",
+   "rim": "#8C8CFF",
+   "dark": "#4A3AA8",
+   "flameCell": 1
+  },
+  "poison": {
+   "core": "#F0FFC0",
+   "mid": "#9AEC40",
+   "rim": "#3FAE2E",
+   "dark": "#1C5A1E",
+   "flameCell": 2
+  },
+  "shadow": {
+   "core": "#F0DCFF",
+   "mid": "#B478FF",
+   "rim": "#7030C0",
+   "dark": "#24103E",
+   "flameCell": 3
+  },
+  "holy": {
+   "core": "#FFFBE4",
+   "mid": "#FFE27A",
+   "rim": "#F4AC28",
+   "dark": "#8A5A10",
+   "flameCell": 4
+  },
+  "steel": {
+   "core": "#FFFFFF",
+   "mid": "#EEF3FB",
+   "rim": "#AABBD4",
+   "dark": "#56647C",
+   "flameCell": 6
+  },
+  "blood": {
+   "core": "#FFB0A0",
+   "mid": "#E8342C",
+   "rim": "#A01420",
+   "dark": "#4A0810",
+   "flameCell": 5
+  },
+  "rage": {
+   "core": "#FFE0B0",
+   "mid": "#FF5A2A",
+   "rim": "#D01E1E",
+   "dark": "#5A0A0A",
+   "flameCell": 5
+  },
+  "arcane": {
+   "core": "#FFFFFF",
+   "mid": "#D8B4FF",
+   "rim": "#8A5CFF",
+   "dark": "#34207A",
+   "flameCell": 3
+  },
+  "nature": {
+   "core": "#F6FFE0",
+   "mid": "#A8F07A",
+   "rim": "#40C060",
+   "dark": "#1A5A2A",
+   "flameCell": 2
+  },
+  "earth": {
+   "core": "#FFF0C8",
+   "mid": "#E8C47A",
+   "rim": "#B08850",
+   "dark": "#5A4430",
+   "flameCell": 4
+  }
+ },
+ "flameGradients": {
+  "fire": [
+   "#E8401A",
+   "#FF9A2A",
+   "#FFF0B0"
+  ],
+  "holy": [
+   "#F0A020",
+   "#FFE070",
+   "#FFFBE8"
+  ],
+  "poison": [
+   "#2E9A2A",
+   "#8EE83A",
+   "#EAFFB8"
+  ],
+  "shadow": [
+   "#5A1A9A",
+   "#A05CF0",
+   "#F0D8FF"
+  ],
+  "rage": [
+   "#B01818",
+   "#FF4A2A",
+   "#FFC8A0"
+  ],
+  "frost": [
+   "#2A86D8",
+   "#8EE6FF",
+   "#FFFFFF"
+  ],
+  "plain": [
+   "#B8B8B8",
+   "#E8E8E8",
+   "#FFFFFF"
+  ],
+  "camp": {
+   "base": "#FF8800",
+   "outer": "25% \u2192 #B01810",
+   "mid": "55% \u2192 #FFB030",
+   "inner": "85% \u2192 #FFF0A0",
+   "line": "50% \u2192 #400808"
+  },
+  "note": "outer \u2192 mid \u2192 inner; baked as the pre-coloured cells of T_FX_Flame (flameCell)"
+ },
+ "flameCells": {
+  "fire": 0,
+  "frost": 1,
+  "poison": 2,
+  "shadow": 3,
+  "holy": 4,
+  "rage": 5,
+  "plain": 6,
+  "camp": 7
+ },
+ "classImpactColors": {
+  "warrior": "#FFD98A",
+  "mage": "#C7A6FF",
+  "rogue": "#9DFFC8"
+ },
+ "fallbackImpactColor": "#FFF2C0",
+ "skillImpactColors": {
+  "fire": "#FF6600",
+  "meteor": "#FF6600",
+  "combustion": "#FF6600",
+  "ice": "#4488FF",
+  "blizzard": "#4488FF",
+  "freeze": "#4488FF",
+  "lightning": "#5DADE2",
+  "poison": "#7ED957",
+  "arcane_torrent": "#B07CFF",
+  "physical": "#F1C40F",
+  "other": "#F39C12"
+ },
+ "lootQualityColors": {
+  "normal": "#C8C8C8",
+  "magic": "#4F8CFF",
+  "rare": "#FFD84A",
+  "legendary": "#FF8A2A",
+  "set": "#3ECF6A"
+ },
+ "eliteAffixColors": {
+  "fire_enhanced": "#FF4400",
+  "swift": "#44FF88",
+  "teleporting": "#AA44FF",
+  "extra_strong": "#FF2222",
+  "curse_aura": "#8844AA",
+  "vampiric": "#CC0000",
+  "frozen": "#4488FF"
+ },
+ "spiritColors": {
+  "warrior": "#FFB45C",
+  "mage": "#A98BFF",
+  "rogue": "#66E58A"
+ },
+ "deathBurstColors": {
+  "monster": "#FF4444",
+  "hero": "#CC2222",
+  "escort": "#E67E22",
+  "soulEcho": "#7FD8FF"
+ },
+ "statusTints": {
+  "burn": [
+   "#FF7A3A",
+   0.35
+  ],
+  "freeze": [
+   "#7FD0FF",
+   0.45
+  ],
+  "stun": [
+   "#7FD0FF",
+   0.45
+  ],
+  "poison": [
+   "#8FE04A",
+   0.35
+  ]
+ },
+ "storyEmbers": {
+  "embers": "#FF9A3C",
+  "night": "#9FB8FF",
+  "abyss": "#D24CFF",
+  "dawn": "#FFD08A",
+  "forge": "#FFB040",
+  "sand": "#FFD79A",
+  "light": "#FFF1C8"
+ }
+}

@@ -1,0 +1,19 @@
+{
+ "atlasPx": 256,
+ "family": "FX",
+ "grid": 16,
+ "swatchPx": 16,
+ "swatches": [
+  {
+   "e": 0.0,
+   "hex": "#FFFFFF",
+   "i": 0,
+   "l": 0.3215686274509804,
+   "names": [
+    "sm_fx_arrow.head"
+   ],
+   "o": 1.0,
+   "s": 0.4196078431372549
+  }
+ ]
+}

@@ -43,7 +43,7 @@ FAMILY = "FX"
 INK_HEX = shading.INK_HEX
 PX_CM = 2.0 * shading.CAM_DIST_DEFAULT * math.tan(math.radians(shading.CAM_FOV_H / 2.0)) * (9.0 / 16.0) / 1080.0 * 100.0
 """cm per 1080p pixel at the W1 default distance (≈ 0.83)."""
-SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/vfx")
+SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/vfx3d")
 FX_MATERIAL = "M_AF_FX_Mesh"
 
 
@@ -359,10 +359,7 @@ def import_character(sk: str, category: str, family: str, clip: str | None = Non
         for o in new3:
             if o is not wm:
                 bpy.data.objects.remove(o)
-        fam = family
-        if cat == "Weapons":
-            fam = "Weapons" if (paths.texture_dir() / "T_AF_Palette_Weapons_BC.png").exists() and \
-                not name.startswith("SM_Hero_") and not name.startswith("SM_Mon_") else family
+        fam = _manifest_palette(name) or family
         wt, wo = E.toon_material_files(fam)
         E._set_slots(wm, wt, wo)
         wm["af_outline_width"] = outline.WIDTH_CM["weapon"] / 100.0
@@ -376,6 +373,14 @@ def import_character(sk: str, category: str, family: str, clip: str | None = Non
     root.rotation_euler = (0, 0, math.radians(yaw_deg))
     bpy.context.view_layer.update()
     return root, meshes, arm
+
+
+def _manifest_palette(asset: str) -> str | None:
+    try:
+        e = json.loads(paths.manifest_path().read_text())["assets"].get(asset) or {}
+        return (e.get("materialSlots") or [{}])[0].get("palette")
+    except (OSError, ValueError):
+        return None
 
 
 def import_warrior(clip: str = "Idle", frame: int = 0, at=(0.0, 0.0, 0.0), yaw_deg: float = 0.0):
