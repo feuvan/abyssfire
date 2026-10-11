@@ -162,14 +162,14 @@ AAbyssZoneActor::AAbyssZoneActor()
 
 void AAbyssZoneActor::ClearZone()
 {
-	for (UInstancedStaticMeshComponent* Component : InstanceComponents)
+	for (UInstancedStaticMeshComponent* Component : DecorInstanceComponents)
 	{
 		if (Component != nullptr)
 		{
 			Component->DestroyComponent();
 		}
 	}
-	InstanceComponents.Reset();
+	DecorInstanceComponents.Reset();
 	ComponentByMesh.Reset();
 	PendingInstances.Reset();
 	PendingStories.Reset();
@@ -227,7 +227,7 @@ void AAbyssZoneActor::BuildZone(const abyss::Snapshot& Snap, const abyss::DataSt
 	FlushInstances();
 	ApplyQuality(Quality);
 	UE_LOG(LogAbyss, Log, TEXT("Zone %s built: %d instanced meshes, %d occluders, %d effect spots"),
-		*AbyssText::ToFString(Snap.zone.mapId), InstanceComponents.Num(), Occluders.Num(), EffectSpots.Num());
+		*AbyssText::ToFString(Snap.zone.mapId), DecorInstanceComponents.Num(), Occluders.Num(), EffectSpots.Num());
 }
 
 FVector AAbyssZoneActor::GroundPoint(double TileX, double TileY) const
@@ -515,7 +515,7 @@ void AAbyssZoneActor::FlushInstances()
 				/*bMarkRenderStateDirty*/ false);
 		}
 		Component->MarkRenderStateDirty();
-		const int32 ComponentIndex = InstanceComponents.Add(Component);
+		const int32 ComponentIndex = DecorInstanceComponents.Add(Component);
 		ComponentByMesh.Add(Mesh, ComponentIndex);
 		for (int32 Index = 0; Index < Batch.OccluderSlots.Num(); ++Index)
 		{
@@ -1044,9 +1044,9 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, const FV
 			Fade = Target;
 		}
 		Occluder.Fade = Fade;
-		if (InstanceComponents.IsValidIndex(Occluder.Component) && InstanceComponents[Occluder.Component] != nullptr)
+		if (DecorInstanceComponents.IsValidIndex(Occluder.Component) && DecorInstanceComponents[Occluder.Component] != nullptr)
 		{
-			InstanceComponents[Occluder.Component]->SetCustomDataValue(Occluder.Instance, AbyssDecorIcd::Fade, Fade, false);
+			DecorInstanceComponents[Occluder.Component]->SetCustomDataValue(Occluder.Instance, AbyssDecorIcd::Fade, Fade, false);
 			Dirty.Add(Occluder.Component);
 		}
 	}
@@ -1054,7 +1054,7 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, const FV
 	// proxy every frame of a fade (and reset its TSR history).
 	for (const int32 ComponentIndex : Dirty)
 	{
-		InstanceComponents[ComponentIndex]->MarkRenderInstancesDirty();
+		DecorInstanceComponents[ComponentIndex]->MarkRenderInstancesDirty();
 	}
 }
 
@@ -1063,11 +1063,11 @@ void AAbyssZoneActor::SetStoryFocus(FName DecorId)
 	auto Apply = [this](FName Story, float Value)
 	{
 		const TPair<int32, int32>* Found = StoryInstances.Find(Story);
-		if (Found == nullptr || !InstanceComponents.IsValidIndex(Found->Key) || InstanceComponents[Found->Key] == nullptr)
+		if (Found == nullptr || !DecorInstanceComponents.IsValidIndex(Found->Key) || DecorInstanceComponents[Found->Key] == nullptr)
 		{
 			return;
 		}
-		InstanceComponents[Found->Key]->SetCustomDataValue(Found->Value, AbyssDecorIcd::Highlight, Value, true);
+		DecorInstanceComponents[Found->Key]->SetCustomDataValue(Found->Value, AbyssDecorIcd::Highlight, Value, true);
 	};
 	if (FocusedStory == DecorId)
 	{

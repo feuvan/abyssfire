@@ -148,7 +148,7 @@ private:
 	TObjectPtr<UPostProcessComponent> PostProcess;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UInstancedStaticMeshComponent>> InstanceComponents;
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> DecorInstanceComponents;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2D> TileTexture;
