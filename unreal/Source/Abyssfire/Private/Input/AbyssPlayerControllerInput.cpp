@@ -170,9 +170,11 @@ void AAbyssPlayerController::SetupInputComponent()
 		}
 	}
 	// World touches (Slate controls claim theirs with FReply::Handled, so only world fingers arrive here, ue58 8.3).
-	EnhancedComponent->BindTouch(IE_Pressed, this, &ThisClass::HandleAbyssTouchPressed);
-	EnhancedComponent->BindTouch(IE_Repeat, this, &ThisClass::HandleAbyssTouchMoved);
-	EnhancedComponent->BindTouch(IE_Released, this, &ThisClass::HandleAbyssTouchReleased);
+	// UEnhancedInputComponent deletes BindTouch; the base UInputComponent binding is still processed by the player input.
+	UInputComponent* TouchComponent = EnhancedComponent;
+	TouchComponent->BindTouch(IE_Pressed, this, &ThisClass::HandleAbyssTouchPressed);
+	TouchComponent->BindTouch(IE_Repeat, this, &ThisClass::HandleAbyssTouchMoved);
+	TouchComponent->BindTouch(IE_Released, this, &ThisClass::HandleAbyssTouchReleased);
 }
 
 void AAbyssPlayerController::InitAbyssInput()

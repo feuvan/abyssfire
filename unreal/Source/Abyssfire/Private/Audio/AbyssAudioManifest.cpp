@@ -246,9 +246,9 @@ bool FAbyssAudioManifest::LoadFromJson(std::string_view Json, const abyss::Audio
 		{
 			Cue.bUiBus = Bus == "ui";
 		}
-		if (const std::string_view Spatial = C.Get("spatial").AsString(); !Spatial.empty())
+		if (const std::string_view SpatialMode = C.Get("spatial").AsString(); !SpatialMode.empty())
 		{
-			Cue.bSpatial = Spatial == "3d";
+			Cue.bSpatial = SpatialMode == "3d";
 		}
 		const abyss::JsonValue& Conc = C.Get("concurrency");
 		Cue.ConcurrencyMax = FMath::Max(1, Conc.Get("max").AsInt(Cue.ConcurrencyMax));

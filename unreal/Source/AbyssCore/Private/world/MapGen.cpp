@@ -53,9 +53,8 @@ double GroveNoise(double col, double row, double seed, double scale) {
   return a + (b - a) * sy;
 }
 
-const std::string& PickWeighted(std::span<const WeightedDecor> pool, double u) {
-  static const std::string kEmpty;
-  if (pool.empty()) return kEmpty;
+std::string PickWeighted(std::span<const WeightedDecor> pool, double u) {
+  if (pool.empty()) return std::string();
   double total = 0;
   for (const WeightedDecor& e : pool) total = total + e.weight;
   double x = u * total;

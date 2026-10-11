@@ -325,7 +325,7 @@ bool UAbyssVfxSystem::EnsureRenderer()
 	}
 
 	FActorSpawnParameters Params;
-	Params.Name = MakeUniqueObjectName(OwningWorld->PersistentLevel, AActor::StaticClass(), FName(TEXT("AbyssVfx")));
+	Params.Name = MakeUniqueObjectName(OwningWorld->PersistentLevel.Get(), AActor::StaticClass(), FName(TEXT("AbyssVfx")));
 	Params.ObjectFlags |= RF_Transient;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	RenderActor = OwningWorld->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, Params);

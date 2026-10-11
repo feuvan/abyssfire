@@ -309,8 +309,8 @@ TSharedRef<SWidget> SAbyssStoryOverlay::MakeText(TFunction<FText()> GetText, TFu
 		})
 		[
 			SNew(STextBlock)
-			.Text_Lambda(GetText)
-			.Font_Lambda(GetFont)
+			.Text_Lambda([GetText]() { return GetText(); })
+			.Font_Lambda([GetFont]() { return GetFont(); })
 			.ColorAndOpacity(Color)
 			.WrapTextAt(WrapAt)
 			.Justification(bCentered ? ETextJustify::Center : ETextJustify::Left)

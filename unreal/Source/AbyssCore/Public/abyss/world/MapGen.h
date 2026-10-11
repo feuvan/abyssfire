@@ -39,7 +39,7 @@ class ABYSS_API ParkMillerRng {
 // groveNoise(c, r, seed, scale) (4.5): smooth value noise in [0, 1], independent of the tile RNG.
 ABYSS_API double GroveNoise(double col, double row, double seed, double scale);
 // pickWeighted (4.7): total = sum of weights left to right; x = u * total; first type where (x -= w) <= 0; else last.
-ABYSS_API const std::string& PickWeighted(std::span<const WeightedDecor> pool, double u);
+ABYSS_API std::string PickWeighted(std::span<const WeightedDecor> pool, double u);
 
 struct MapGenInput {
   const MapDef* map = nullptr;

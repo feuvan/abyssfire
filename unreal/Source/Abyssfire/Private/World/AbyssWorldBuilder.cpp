@@ -1345,7 +1345,7 @@ void UAbyssWorldBuilder::UpdateWorldWidgets()
 		{
 			if (IAbyssUiRoot* Root = GameInstance->GetUiRoot())
 			{
-				if (IAbyssWorldUi* Ui = Cast<IAbyssWorldUi>(Root->_getUObject()))
+				if (IAbyssWorldUi* Ui = Cast<IAbyssWorldUi>(Root))
 				{
 					SetWorldUi(Ui);
 				}
