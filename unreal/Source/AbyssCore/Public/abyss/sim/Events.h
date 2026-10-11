@@ -92,6 +92,9 @@ struct EvHit {
   bool impactBurst = false;
   bool melee = false;
   HitNumberSlot numberSlot = HitNumberSlot::Primary;
+  // Ground scorch decal under the target (combat 6.4 #7, C6 SkillDef::scorch): landed single-target skill hits only.
+  bool scorch = false;
+  DamageType scorchType = DamageType::Fire;
 };
 struct EvMonsterAttackCancelled {
   EntityId monster = kNoEntity;

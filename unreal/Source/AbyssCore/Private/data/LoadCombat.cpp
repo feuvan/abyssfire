@@ -218,6 +218,22 @@ void LoadHitFeedbackFile(const JNode& r, CombatTables& out) {
   h.playerHitShakeMsMin = nd.Num("min");
   h.playerHitShakeMsMax = nd.Num("max");
   h.shakeThrottleMs = r.Num("shakeThrottleMs");
+  // Skill-authored FxEngine shakes (combat-feel 11.5); skill ids are checked in DataStore::Finalize.
+  const JNode ss = r.Child("skillShakes");
+  h.skillShakeThrottleMs = ss.Num("throttleMs");
+  h.skillShakes.clear();
+  for (const auto& [id, n] : ss.Members("skills")) {
+    SkillShakeDef d;
+    d.skillId = id;
+    d.durationMs = n.Num("durationMs");
+    d.intensity = n.Num("intensity");
+    d.delayMs = n.Num("delayMs");
+    d.at = n.Enum<SkillShakeAnchor>("at");
+    if (!(d.durationMs > 0) || !(d.intensity > 0) || d.delayMs < 0) {
+      n.Error("expected durationMs > 0, intensity > 0, delayMs >= 0");
+    }
+    h.skillShakes.push_back(std::move(d));
+  }
   h.painTintColor = r.Child("painTint").Color("color");
   h.painTintMs = r.Child("painTint").Num("durationMs");
   const JNode v = r.Child("lowHpVignette");

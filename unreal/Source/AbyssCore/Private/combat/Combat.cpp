@@ -48,6 +48,9 @@ constexpr double kCombatBlastCentreTiles = 0.1;
 constexpr double kCombatSwingEpsilonMs = 1e-6;
 // Labyrinth floor zone ids (DungeonSystem floors; the same convention as the music theme rule, audio 2).
 constexpr std::string_view kCombatLabyrinthFloorPrefix = "dungeon_floor_";
+// A death on a labyrinth floor restarts the rift that holds the portal: the web hard-codes it (ZoneScene.ts:920,
+// `this.isInDungeon ? 'abyss_rift' : ...`); no data table carries it.
+constexpr std::string_view kCombatLabyrinthParentZone = "abyss_rift";
 
 I18nArg CmbSkillNameArg(const SkillDef& s) { return KeyArg("skillName", "data.skill." + s.id + ".name"); }
 
@@ -129,10 +132,38 @@ void CombatSystem::EmitSfx(SfxId cue, Vec2 pos, EntityId source) {
 }
 
 void CombatSystem::Shake(double durationMs, double intensity) {
-  const ShakeRequest s{durationMs, intensity};
-  if (shake_.Accept(s, ctx_.Now(), ctx_.data.Combat().hitFeedback.shakeThrottleMs)) {
-    ctx_.events.Emit(EvCameraShake{durationMs, intensity});
+  CameraShake(ShakeRequest{durationMs, intensity}, ShakeChannel::Hit);
+}
+
+bool CombatSystem::CameraShake(const ShakeRequest& s, ShakeChannel channel) {
+  const HitFeedbackTable& t = ctx_.data.Combat().hitFeedback;
+  const double throttle = channel == ShakeChannel::Skill ? t.skillShakeThrottleMs : t.shakeThrottleMs;
+  if (!shake_.Accept(s, ctx_.Now(), channel, throttle)) return false;
+  ctx_.events.Emit(EvCameraShake{s.durationMs, s.intensity});
+  return true;
+}
+
+// Skill-authored shake (combat 11.5, hit_feedback skillShakes): at the anchor moment, or delayMs later (SkillShake
+// timer, sim clock; dropped with the other combat timers at zone exit like the web's FxEngine tasks at scene restart).
+void CombatSystem::SkillShake(const SkillDef& s, SkillShakeAnchor at) {
+  const HitFeedbackTable& t = ctx_.data.Combat().hitFeedback;
+  const int32_t idx = t.SkillShakeIndex(s.id);
+  if (idx < 0) return;
+  const SkillShakeDef& sh = t.skillShakes[static_cast<size_t>(idx)];
+  if (sh.at != at) return;
+  if (sh.delayMs > 0) {
+    ctx_.timers.Schedule(ctx_.Now() + sh.delayMs, TimerOwner::Combat, static_cast<uint16_t>(CombatTimerKind::SkillShake),
+                         kHeroEntityId, kNoEntity, idx);
+    return;
   }
+  CameraShake(ShakeRequest{sh.durationMs, sh.intensity}, ShakeChannel::Skill);
+}
+
+// Every hero skill VFX goes out here: the event, then its VFX-anchored authored shake (SkillEffectSystem.play runs the
+// effect - and a synchronous e.shake - before the release applies its hits).
+void CombatSystem::EmitSkillVfx(const SkillDef& s, const EvSkillVfx& v) {
+  ctx_.events.Emit(v);
+  SkillShake(s, SkillShakeAnchor::Vfx);
 }
 
 void CombatSystem::StartEliteSlowMotion() {
@@ -228,21 +259,16 @@ HitWeight CombatSystem::DamageMonster(const MonsterHitRequest& r) {
   const MonsterInstance* before = ms->Find(r.monster);
   if (before == nullptr || !before->IsAlive()) return HitWeight::Tick;
   const bool elite = before->def.elite;
-  Vec2 pos = before->pos;
-  DamageFlags flags;
-  flags.isCrit = r.isCrit;
-  flags.isTick = r.isTick;
-  flags.hasFrom = r.hasFrom;
-  flags.from = r.from;
-  flags.attacker = r.attacker;
-  flags.source = r.source;
-  flags.provokes = r.provokes && !r.isTick;
-  const HitWeight w = ms->ApplyDamage(r.monster, r.amount, flags);
-  const MonsterInstance* after = ms->Find(r.monster);  // re-find: the kill pipeline may have grown the list
-  const bool killed = after == nullptr || !after->IsAlive();
-  if (after != nullptr) pos = after->pos;
-
+  const Vec2 pos = before->pos;
+  const double maxHp = before->maxHp;
+  // takeDamage's outcome is known up front (MonsterSystem::ApplyDamage: hp = max(0, hp - amount), killed at 0, weight =
+  // classifyHit), so the hit's events go out BEFORE ApplyDamage runs the kill pipeline (death anim, exp / gold texts,
+  // loot, quest progress): UE gets the hit before the death it causes (combat 4.2 / 13.1 order).
+  const double hpAfter = (std::max)(0.0, before->hp - r.amount);
+  const bool killed = hpAfter <= 0;
   const HitFeedbackTable& t = ctx_.data.Combat().hitFeedback;
+  const HitWeight w = ClassifyHit(t, r.amount, maxHp, r.isCrit, killed, r.isTick);
+
   EvHit hit;
   hit.target = r.monster;
   hit.source = r.attacker;
@@ -257,13 +283,15 @@ HitWeight CombatSystem::DamageMonster(const MonsterHitRequest& r) {
   hit.impactColor = r.impactColor;
   hit.hasFrom = r.hasFrom;
   hit.from = r.from;
-  hit.targetHp = after != nullptr ? after->hp : 0;
-  hit.targetMaxHp = after != nullptr ? after->maxHp : 0;
+  hit.targetHp = hpAfter;
+  hit.targetMaxHp = maxHp;
   hit.skillId = r.skillId;
   hit.attackerStopMs = r.source == KillSource::HeroBasic ? t.Profile(w).attackerStopMs : 0;
   hit.impactBurst = r.impactBurst && !r.isTick;
   hit.melee = false;
   hit.numberSlot = r.numberSlot;
+  hit.scorch = r.scorch;
+  hit.scorchType = r.scorchType;
   ctx_.events.Emit(hit);
 
   EvFloatingText ft;
@@ -280,9 +308,28 @@ HitWeight CombatSystem::DamageMonster(const MonsterHitRequest& r) {
   if (const std::optional<SfxId> cue = SfxForCombatHit(rules, false, r.isCrit, w)) EmitSfx(*cue, pos, r.monster);
   if (!killed && !r.isTick) EmitSfx(rules.monsterHurt, pos, r.monster);
 
-  if (hit.impactBurst) Shake(t.Profile(w).shakeMs, t.Profile(w).shakeIntensity);
-  if (r.source == KillSource::HeroBasic && w == HitWeight::Kill && elite) StartEliteSlowMotion();
-  return w;
+  // Impact (profile shake; an elite killed by a basic attack -> S6 slow motion): a basic attack's playHitImpact runs
+  // before onMonsterKilled (4.2 steps 8 / 12), a skill's impactBurst after its kill check (6.4 #7, 6.5 applyHit).
+  const auto impact = [&]() {
+    if (hit.impactBurst) Shake(t.Profile(w).shakeMs, t.Profile(w).shakeIntensity);
+    if (r.source == KillSource::HeroBasic && w == HitWeight::Kill && elite) StartEliteSlowMotion();
+  };
+  const bool impactFirst = r.source == KillSource::HeroBasic;
+  if (impactFirst) impact();
+
+  DamageFlags flags;
+  flags.isCrit = r.isCrit;
+  flags.isTick = r.isTick;
+  flags.hasFrom = r.hasFrom;
+  flags.from = r.from;
+  flags.attacker = r.attacker;
+  flags.source = r.source;
+  flags.provokes = r.provokes && !r.isTick;
+  const HitWeight applied = ms->ApplyDamage(r.monster, r.amount, flags);
+  ABYSS_ASSERT(applied == w, "DamageMonster: ApplyDamage outcome differs from the announced hit");
+
+  if (!impactFirst) impact();
+  return applied;
 }
 
 void CombatSystem::HurtHero(double amount, bool crit, bool tick, DamageType element, EntityId source, bool melee,
@@ -320,7 +367,13 @@ void CombatSystem::HurtHero(double amount, bool crit, bool tick, DamageType elem
   ft.crit = crit;
   ft.element = element;
   ctx_.events.Emit(ft);
-  EmitSfx(ctx_.data.Audio().rules.heroDamageTakenCue, hero.Position(), kHeroEntityId);  // A6
+  // Audio: the web's COMBAT_DAMAGE cue for a hit on the hero (hit / crit, A6 hit_heavy by weight; DoT ticks `hit`,
+  // audio 3.2), then A6's player_hurt layered on top - A6 adds the hurt cue, it does not take the crit cue away.
+  const AudioRulesDef& rules = ctx_.data.Audio().rules;
+  if (const std::optional<SfxId> cue = SfxForCombatHit(rules, false, crit, weight)) {
+    EmitSfx(*cue, hero.Position(), kHeroEntityId);
+  }
+  EmitSfx(rules.heroDamageTakenCue, hero.Position(), kHeroEntityId);  // A6
   const ShakeRequest s = HeroHitShake(t, amount, hero.MaxHp(), crit);
   Shake(s.durationMs, s.intensity);
   ctx_.bus.Publish(HeroDamagedMsg{amount, hero.Hp(), hero.MaxHp(), source, tick});
@@ -440,6 +493,10 @@ CombatSystem::HeroHitOutcome CombatSystem::HeroHitMonster(const HeroHitSpec& h) 
   req.skillId = skillId;
   req.numberSlot = h.numberSlot;
   req.impactBurst = h.impactBurst;
+  if (h.scorch && h.skill != nullptr && h.skill->hasScorch) {  // 6.4 #7 / C6: single-target skill hits only
+    req.scorch = true;
+    req.scorchType = h.skill->scorch;
+  }
   out.weight = DamageMonster(req);
   out.landed = true;
   const MonsterInstance* after = ms->Find(h.target);
@@ -667,13 +724,31 @@ void CombatSystem::KillHero(HeroDeathCause cause) {
   (void)cause;
 }
 
-// respawnAtCamp (world 9.5): full HP / MP after equipment (C1), camp 0, path and target cleared.
-void CombatSystem::Respawn() {
+// respawnAtCamp (world 9.5): full HP / MP after equipment (C1), camp 0, path and target cleared. The T12 respawn in a
+// sub-dungeon or a labyrinth floor (`parentZoneRestart`) restarts the parent zone instead (13.3 step 3).
+void CombatSystem::Respawn(bool parentZoneRestart) {
   Hero& hero = *ctx_.sys.hero;
   respawnTimer_ = kNoTimer;
   hero.SetLife(HeroLife::Alive);
   hero.RecalcDerived(ctx_.equip);
   hero.FillHpMana();
+  std::string parentMap;
+  Vec2 parentCamp;
+  ZoneRuntime* zone = ctx_.sys.zone;
+  if (parentZoneRestart && zone != nullptr && zone->HasZone() && !ctx_.session.transitioning &&
+      DungeonRespawnTarget(parentMap, parentCamp)) {
+    // scene.restart into the parent zone at its camps[0] with full HP / MP (world 9.5): the hero waits where it fell
+    // until the zone change places it; the parent zone's entry autosave stands in for the web's create() autosave.
+    // (A labyrinth run would end 'fallen' here; the core has no labyrinth run yet - later milestone.)
+    if (ctx_.sys.locomotion != nullptr) ctx_.sys.locomotion->Stop();
+    SetTargetInternal(kNoEntity);
+    hero.lastAttackMs = 0;
+    ctx_.events.Log(MakeLoc("zone.death.logMessage"), LogType::System);
+    zone->RequestZoneChange(parentMap, parentCamp);
+    ctx_.events.Emit(EvHeroRespawned{hero.Position()});
+    ctx_.bus.Publish(HeroRespawnedMsg{hero.Position()});
+    return;
+  }
   Vec2 camp = hero.Position();
   if (ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) camp = ctx_.sys.zone->CampPosition(0);
   if (ctx_.sys.locomotion != nullptr) {
@@ -698,10 +773,32 @@ bool CombatSystem::InDungeonZone() const {
   return zoneId.rfind(kCombatLabyrinthFloorPrefix, 0) == 0;
 }
 
+// world 9.5 / combat 13.3 step 3: the parent of a sub-dungeon (SubDungeonDef::parentZone) or of a labyrinth floor (the
+// rift), and its camps[0] (fallback playerStart, then (3, 3); the web's `parentCamp ?? playerStart ?? 3`).
+bool CombatSystem::DungeonRespawnTarget(std::string& mapId, Vec2& pos) const {
+  const std::string& zoneId = ctx_.session.currentMap;
+  if (zoneId.empty()) return false;
+  if (const SubDungeonDef* sd = ctx_.data.World().FindSubDungeon(zoneId)) {
+    mapId = sd->parentZone;
+  } else if (zoneId.rfind(kCombatLabyrinthFloorPrefix, 0) == 0) {
+    mapId = std::string(kCombatLabyrinthParentZone);
+  } else {
+    return false;
+  }
+  pos = Vec2(3, 3);
+  if (const MapDef* parent = ctx_.data.FindMap(mapId)) {
+    const TilePos t = !parent->camps.empty() ? parent->camps[0].pos : parent->playerStart;
+    pos = Vec2(t.col, t.row);
+  }
+  return true;
+}
+
+// The menu / quit / background / zone-exit path respawns in the current zone (the save that follows maps the position,
+// SimSave rule 1); only the T12 timer restarts a dungeon's parent zone.
 void CombatSystem::ResolvePendingDeath() {
   if (ctx_.sys.hero->Life() != HeroLife::Dying) return;
   ctx_.timers.Cancel(respawnTimer_);
-  Respawn();
+  Respawn(false);
 }
 
 // =====================================================================================================================
@@ -780,13 +877,12 @@ void CombatSystem::SetAttackTarget(EntityId monster, bool approach) {
   if (!HeroAlive()) return;
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(monster) : nullptr;
   if (m == nullptr || !m->IsAlive()) return;
-  const Vec2 mpos = m->pos;
   SetTargetInternal(monster);
   if (!approach || ctx_.sys.locomotion == nullptr) return;
-  const double range = ctx_.sys.hero->Derived().attackRange;
-  if (DistSq(ctx_.sys.hero->Position(), mpos) > range * range) {
-    ctx_.sys.locomotion->Approach(monster, range);  // C7: stop at attack range
-  }
+  // 9.1: a monster click always replaces the walk order (the web paths to the monster's tile); C7 only makes that walk
+  // stop at attack range. Approach ends at once - path cleared, hero stopped - when the target is already in range, so a
+  // click-move path or the approach toward a previous lock never keeps running.
+  ctx_.sys.locomotion->Approach(monster, ctx_.sys.hero->Derived().attackRange);
 }
 
 void CombatSystem::ClearAttackTarget() {
@@ -964,7 +1060,7 @@ void CombatSystem::TryUseSkill(int32_t skillIndex, const SkillAim& aim) {
   // Animation (classes 9.3 step 8): cast for buff / aoe / range > 2 (exported animKind), else the basic-attack contact.
   const AnimTimingTable& at = ctx_.data.Combat().anim;
   const AssetManifest& manifest = ctx_.data.Assets();
-  const std::string art(EnumName(hero.Class()));
+  const std::string art = HeroArtGameId(manifest, hero.Class());  // the asset UE plays (player_<class>)
   const AnimRig rig = HeroRig(hero.Class());
   const MonsterInstance* tm = target != kNoEntity ? ctx_.sys.monsters->Find(target) : nullptr;
   ActionTiming timing;
@@ -1132,7 +1228,7 @@ void CombatSystem::ReleaseTeleport(const SkillDef& s, int32_t level, EntityId ta
   v.caster = kHeroEntityId;
   v.origin = from;
   v.point = dest.Center();
-  ctx_.events.Emit(v);
+  EmitSkillVfx(s, v);
   ctx_.events.Log(MakeLoc("zone.combat.skillActivated", {CmbSkillNameArg(s)}), LogType::Combat);
   (void)level;
 }
@@ -1171,7 +1267,7 @@ void CombatSystem::ReleaseShadowStep(const SkillDef& s, int32_t level, EntityId 
   v.target = target;
   v.origin = from;
   v.point = dest.Center();
-  ctx_.events.Emit(v);
+  EmitSkillVfx(s, v);
   ctx_.events.Log(MakeLoc("zone.combat.skillActivated", {CmbSkillNameArg(s)}), LogType::Combat);
 }
 
@@ -1205,7 +1301,7 @@ void CombatSystem::ReleaseDeathMark(const SkillDef& s, int32_t level, EntityId t
   v.target = target;
   v.origin = ctx_.sys.hero->Position();
   v.point = mpos;
-  ctx_.events.Emit(v);
+  EmitSkillVfx(s, v);
   ctx_.events.Log(MakeLoc("zone.combat.deathMarkApplied", {CmbSkillNameArg(s), KeyArg("targetName", nameKey)}),
                   LogType::Combat);
 }
@@ -1260,7 +1356,7 @@ void CombatSystem::SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, d
   v.origin = center;
   v.point = center;
   v.radius = radius;
-  ctx_.events.Emit(v);
+  EmitSkillVfx(s, v);
   if (count > 0) {
     ctx_.events.Log(MakeLoc("zone.combat.slowTrapHit", {CmbSkillNameArg(s), {"count", ToStr(count)}}), LogType::Combat);
   }
@@ -1306,7 +1402,7 @@ void CombatSystem::ReleaseBuff(const SkillDef& s, int32_t level) {
       ctx_.events.Log(MakeLoc("zone.combat.tauntRoar", {{"count", ToStr(targets.size())}}), LogType::Combat);
     }
   }
-  ctx_.events.Emit(v);
+  EmitSkillVfx(s, v);
 }
 
 void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target) {
@@ -1399,7 +1495,7 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
     if (const MonsterInstance* m = ms->Find(id)) v.points.push_back(m->pos);
   }
   v.staggerMs = stagger;
-  ctx_.events.Emit(v);
+  EmitSkillVfx(s, v);
 
   // Delays: the meteor batch, per-target arrows, the chain stagger; everything else lands now.
   if (s.aoeDelayMs > 0) {
@@ -1472,19 +1568,24 @@ void CombatSystem::FireDelayedHit(int32_t slot) {
   }
   const PendingHit ph = hits_[static_cast<size_t>(slot)];
   hits_[static_cast<size_t>(slot)].used = false;
-  if (!HeroAlive() || ctx_.session.transitioning) return;  // stillCasting()
+  if (ctx_.session.transitioning) return;
   const SkillBook& book = ctx_.sys.hero->Skills();
   if (ph.skillIndex < 0 || static_cast<size_t>(ph.skillIndex) >= book.SkillCount()) return;
   const SkillDef& s = book.Skill(ph.skillIndex);
-  int32_t hits = 0;
-  for (EntityId id : ph.targets) {
-    const HeroHitOutcome o = ApplySkillHit(s, ph.level, id, ph.blastFrom, ph.center, nullptr);
-    if (o.landed) ++hits;
+  if (HeroAlive()) {  // stillCasting()
+    int32_t hits = 0;
+    for (EntityId id : ph.targets) {
+      const HeroHitOutcome o = ApplySkillHit(s, ph.level, id, ph.blastFrom, ph.center, nullptr);
+      if (o.landed) ++hits;
+    }
+    if (ph.batchShake && hits > 0) {
+      const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, hits);
+      Shake(sh.durationMs, sh.intensity);
+    }
   }
-  if (ph.batchShake && hits > 0) {
-    const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, hits);
-    Shake(sh.durationMs, sh.intensity);
-  }
+  // The fall's end (the meteor explosion): its authored shake comes after the batch's hits and shake (the web's damage
+  // timer runs in the scene update, the FxEngine task in post-update).
+  if (ph.batchShake) SkillShake(s, SkillShakeAnchor::Impact);
 }
 
 // C4 chain lightning: one link per timer (release + link x stagger); the hero's death or a zone transition ends the
@@ -1563,8 +1664,8 @@ void CombatSystem::ReleaseSingle(const SkillDef& s, int32_t level, EntityId targ
     ctx_.sys.projectiles->Launch(p);
     return;
   }
-  ctx_.events.Emit(v);
-  ApplySkillHit(s, level, target, false, heroPos, nullptr);
+  EmitSkillVfx(s, v);
+  ApplySkillHit(s, level, target, false, heroPos, nullptr, true);
 }
 
 void CombatSystem::ResolveChargeDash(int32_t slot) {
@@ -1588,17 +1689,23 @@ void CombatSystem::ResolveChargeDash(int32_t slot) {
   v.target = pr.target;
   v.origin = ctx_.sys.hero->Position();
   v.point = m->pos;
-  ctx_.events.Emit(v);
-  ApplySkillHit(s, pr.level, pr.target, false, ctx_.sys.hero->Position(), nullptr);
+  EmitSkillVfx(s, v);
+  ApplySkillHit(s, pr.level, pr.target, false, ctx_.sys.hero->Position(), nullptr, true);
 }
 
 void CombatSystem::OnSkillProjectileArrived(const Projectile& p) {
-  if (!HeroAlive() || ctx_.session.transitioning) return;
+  if (ctx_.session.transitioning) return;
   const SkillBook& book = ctx_.sys.hero->Skills();
   if (p.spec.skillIndex < 0 || static_cast<size_t>(p.spec.skillIndex) >= book.SkillCount()) return;
+  const SkillDef& s = book.Skill(p.spec.skillIndex);
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(p.spec.target) : nullptr;
-  if (m == nullptr || !m->IsAlive()) return;  // target-locked: lands wherever the target is, unless it died
-  ApplySkillHit(book.Skill(p.spec.skillIndex), p.spec.skillLevel, p.spec.target, false, p.spec.from, nullptr);
+  // Target-locked: lands wherever the target is, unless it (or the hero) died in flight.
+  if (HeroAlive() && m != nullptr && m->IsAlive()) {
+    ApplySkillHit(s, p.spec.skillLevel, p.spec.target, false, p.spec.from, nullptr, true);
+  }
+  // The flight's end (the fireball explosion and its authored shake) plays whatever became of the target or the hero,
+  // after the hit's own impact shake (the web's damage timer runs in the scene update, the FxEngine task in post-update).
+  SkillShake(s, SkillShakeAnchor::Impact);
 }
 
 void CombatSystem::OnGroundEffectTick(const GroundEffect& g, int32_t tickIndex) {
@@ -1639,7 +1746,7 @@ void CombatSystem::ResolveGroundTick(const GroundEffect& g, const GroundTick& ti
     v.origin = g.spec.center;
     v.point = g.spec.center;
     v.radius = g.spec.radius;
-    ctx_.events.Emit(v);
+    EmitSkillVfx(s, v);
   }
   int32_t hits = 0;
   for (EntityId id : targets) {
@@ -1655,7 +1762,8 @@ void CombatSystem::ResolveGroundTick(const GroundEffect& g, const GroundTick& ti
 // Shared skill hit (classes 9.7 applyHit / 9.8): calculateDamage with the skill + synergy, combustion bonus,
 // takeDamage, steal, status rules (alive targets), kill credit, impact burst (skill colour).
 CombatSystem::HeroHitOutcome CombatSystem::ApplySkillHit(const SkillDef& s, int32_t level, EntityId target,
-                                                         bool blastFrom, Vec2 center, const GroundTick* ground) {
+                                                         bool blastFrom, Vec2 center, const GroundTick* ground,
+                                                         bool singleTarget) {
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(target) : nullptr;
   if (m == nullptr || !m->IsAlive()) return {};
   HeroHitSpec h;
@@ -1667,6 +1775,7 @@ CombatSystem::HeroHitOutcome CombatSystem::ApplySkillHit(const SkillDef& s, int3
   h.impactBurst = s.execKind != SkillExecKind::DeathMark && s.execKind != SkillExecKind::SlowTrap;
   h.hasFrom = true;
   h.from = blastFrom && Dist(m->pos, center) > kCombatBlastCentreTiles ? center : ctx_.sys.hero->Position();
+  h.scorch = singleTarget;
   const HeroHitOutcome o = HeroHitMonster(h);
   if (o.attempted && !o.dodged && !o.killed && o.rollStatuses) ApplySkillStatuses(s, level, target, o.statusDamage);
   return o;
@@ -1805,7 +1914,7 @@ void CombatSystem::TickPassives(double dtMs) {
         v.caster = kHeroEntityId;
         v.origin = hero.Position();
         v.point = hero.Position();
-        ctx_.events.Emit(v);
+        EmitSkillVfx(s, v);
         ctx_.events.Log(MakeLoc("zone.combat.unyieldingProc"), LogType::Combat);
         break;
       }
@@ -1876,7 +1985,8 @@ void CombatSystem::TickCombat() {
     if (m == nullptr) continue;
     m->lastAttackMs = now;
     const ActionTiming timing =
-        ComputeAttackTiming(at, ctx_.data.Assets(), m->def.spriteKey, m->def.animCategory, m->def.attackSpeedMs);
+        ComputeAttackTiming(at, ctx_.data.Assets(), MonsterArtGameId(ctx_.data.Assets(), m->def.spriteKey, m->def.id),
+                            m->def.animCategory, m->def.attackSpeedMs);
     EvPlayAnim anim;
     anim.entity = id;
     anim.action = AnimAction::Attack;
@@ -1915,7 +2025,7 @@ void CombatSystem::TickCombat() {
     if (tm != nullptr && tm->IsAlive() && DistSq(hero.Position(), tm->pos) <= d.attackRange * d.attackRange &&
         (hero.lastAttackMs == 0 || now - hero.lastAttackMs + kCombatSwingEpsilonMs >= d.attackSpeedMs)) {
       hero.lastAttackMs = now;
-      const std::string art(EnumName(hero.Class()));
+      const std::string art = HeroArtGameId(ctx_.data.Assets(), hero.Class());
       const ActionTiming timing =
           ComputeAttackTiming(at, ctx_.data.Assets(), art, HeroRig(hero.Class()), d.attackSpeedMs, "Attack01");
       hero.SetFacing(CmbDirOr(tm->pos - hero.Position(), hero.Facing()));
@@ -1998,7 +2108,10 @@ void CombatSystem::TickAutoCombat() {
     }
     const EntityId nearest = ms->NearestAlive(hero.Position(), radius);
     if (const MonsterInstance* m = nearest != kNoEntity ? ms->Find(nearest) : nullptr) {
-      if (DistSq(hero.Position(), m->pos) <= m->def.aggroRange * m->def.aggroRange) SetAttackTarget(nearest, true);
+      const double d2 = DistSq(hero.Position(), m->pos);
+      const double range = hero.Derived().attackRange;
+      // 9.4 step 1: target it, and path to it only when beyond attack range (C7: stopping there).
+      if (d2 <= m->def.aggroRange * m->def.aggroRange) SetAttackTarget(nearest, d2 > range * range);
     }
   }
   const SkillBook& book = hero.Skills();
@@ -2083,13 +2196,20 @@ void CombatSystem::OnTimer(const Timer& t) {
       }
       return;
     case CombatTimerKind::HeroRespawn:
-      if (ctx_.sys.hero->Life() == HeroLife::Dying) Respawn();
+      if (ctx_.sys.hero->Life() == HeroLife::Dying) Respawn(true);
       return;
     case CombatTimerKind::ChargeDashEnd:
       ResolveChargeDash(t.param);
       return;
     case CombatTimerKind::DeathSaveRearm:
       return;  // T11 lives in Hero::deathSaveReadyAtMs
+    case CombatTimerKind::SkillShake: {
+      const std::vector<SkillShakeDef>& rows = ctx_.data.Combat().hitFeedback.skillShakes;
+      if (t.param < 0 || static_cast<size_t>(t.param) >= rows.size()) return;
+      const SkillShakeDef& sh = rows[static_cast<size_t>(t.param)];
+      CameraShake(ShakeRequest{sh.durationMs, sh.intensity}, ShakeChannel::Skill);
+      return;
+    }
   }
 }
 
@@ -2111,7 +2231,7 @@ void CombatSystem::OnZoneEnter() {
   hero.Skills().ResetCooldowns();  // Q23: the web rebuilt the hero
   hero.lastAttackMs = 0;
   hero.attackTarget = kNoEntity;
-  indicator_ = kNoEntity;
+  ClearIndicator();
   buffer_.Clear();
   dodge_.Reset();
   shake_.Reset();
@@ -2137,7 +2257,15 @@ void CombatSystem::OnZoneExit() {
   Hero& hero = *ctx_.sys.hero;
   hero.attackTarget = kNoEntity;
   hero.lastAttackMs = 0;
+  ClearIndicator();
+}
+
+// 9.5: TARGET_CHANGED whenever the shown target changes - also when a zone change drops it, so the HUD target frame
+// never keeps an id from the previous zone.
+void CombatSystem::ClearIndicator() {
+  if (indicator_ == kNoEntity) return;
   indicator_ = kNoEntity;
+  ctx_.events.Emit(EvTargetChanged{kNoEntity});
 }
 
 // =====================================================================================================================

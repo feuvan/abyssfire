@@ -33,9 +33,16 @@
 //   every link that landed.
 // * C8 teleport on touch: the "locked target" fallback is the lock (hero.attackTarget, or the aim's tapped target),
 //   never the preferred-target fallback (nearest monster on the map).
-// * Audio: every hit emits a cue (SfxForCombatHit; hero damage -> the A6 player_hurt cue; the A7 monster_hurt vocal on
-//   non-lethal, non-tick monster hits). A miss is audible only for a monster swing into the dodge-roll i-frames
-//   (audio 3.2); a monster's stat dodge of a hero hit and the hero's stat dodge stay silent (web).
+// * Audio: every hit emits a cue (SfxForCombatHit; hero damage keeps the web's hit / crit cue and adds the A6
+//   player_hurt cue; the A7 monster_hurt vocal on non-lethal, non-tick monster hits). A miss is audible only for a
+//   monster swing into the dodge-roll i-frames (audio 3.2); a monster's stat dodge of a hero hit and the hero's stat
+//   dodge stay silent (web).
+// * Camera shakes (11.5): hit / player-hit / AoE shakes on ShakeChannel::Hit, the skill-authored shakes of
+//   hit_feedback skillShakes on ShakeChannel::Skill (at the skill's EvSkillVfx + delayMs, or at the projectile / fall
+//   impact), one shared no-override rule (ShakeThrottle).
+// * C7 / 9.1: a monster click always replaces the walk order with an approach that stops at attack range (at once when
+//   the monster is already in range); auto-battle paths only when the target is beyond attack range (9.4).
+// * Art ids: contact / release beats read the manifest asset UE plays (HeroArtGameId / MonsterArtGameId).
 // * Hero death in a sub-dungeon (zone id = a world SubDungeonDef id) or a labyrinth floor (dungeon_floor_*) takes the
 //   penalty permanently (SoulEchoSystem::OnHeroDied inDungeon, combat 15).
 // * TickPassives computes the step's regen modifiers (Hero::stepRegen, pre-movement campfire) and applies Life Regen
@@ -66,6 +73,7 @@ namespace abyss {
 struct SimContext;
 struct Snapshot;
 struct MonsterInstance;
+struct EvSkillVfx;
 
 enum class CombatTimerKind : uint16_t {
   HeroStrikeContact = 1,  // T3: other = target monster
@@ -80,6 +88,7 @@ enum class CombatTimerKind : uint16_t {
   // stun / freeze (C5) may fall short. Sim clock: a modal freeze holds both (F3).
   ChargeDashEnd,
   DeathSaveRearm,         // T11 bookkeeping (the ready time itself lives in Hero::deathSaveReadyAtMs)
+  SkillShake,             // 11.5: a delayed skill-authored shake (param = hit_feedback skillShakes index)
 };
 
 // How a skill is aimed by the input layer (pointer / stick / locked target).
@@ -116,6 +125,8 @@ struct MonsterHitRequest {
   HitNumberSlot numberSlot = HitNumberSlot::Primary;  // proc extra hits (double strike / double shot)
   bool impactBurst = false;  // hero basic attacks and skills (not death_mark / slow_trap / ticks / pets)
   bool provokes = true;      // M2 (DamageFlags::provokes); false for DoT ticks
+  bool scorch = false;       // EvHit ground scorch (6.4 #7: single-target skill hits with SkillDef::scorch)
+  DamageType scorchType = DamageType::Fire;
 };
 
 // Exp and gold paid by the last kill (kill pipeline step 1), for the zone.monsterKill log written by the last handler.
@@ -186,9 +197,13 @@ class ABYSS_API CombatSystem {
   // ---- shared hit API ----
   // takeDamage on a monster with feedback events (EvHit, floating text, impact); kill credit via MonsterSystem.
   // Every EvHit carries the resolved combat-feel 11.1 decisions (Events.h EvHit: attackerStopMs, impactBurst, melee,
-  // numberSlot); CombatSystem fills them, UE only plays them. A non-lethal, non-tick hit also emits the A7
-  // monster_hurt cue.
+  // numberSlot, scorch); CombatSystem fills them, UE only plays them. A non-lethal, non-tick hit also emits the A7
+  // monster_hurt cue. The hit's events (EvHit, number, cues; a basic attack's impact too) precede ApplyDamage, so they
+  // come before the death anim and the kill pipeline's events (4.2 / 13.1); a skill's impact shake follows the kill.
   HitWeight DamageMonster(const MonsterHitRequest& r);
+  // Camera shake through the core throttles (11.5): per-channel throttle stamp, shared no-override. Emits EvCameraShake
+  // when accepted. Other areas use ShakeChannel::Direct for their cameras.main.shake calls (quest-hunt reveal).
+  bool CameraShake(const ShakeRequest& s, ShakeChannel channel);
   // Damage to the hero outside the monster-swing path (DoT ticks, elite fire, hazards): hp clamp, feedback, W3 portal
   // cancel check (>= 10 % max HP), death (KillHero). Ignored while Dying.
   void DamageHero(const HeroHitRequest& r);
@@ -278,6 +293,7 @@ class ABYSS_API CombatSystem {
     bool hasFrom = false;
     Vec2 from;
     HitNumberSlot numberSlot = HitNumberSlot::Primary;
+    bool scorch = false;  // single-target skill hit: EvHit carries the skill's ground scorch (6.4 #7)
   };
   struct HeroHitOutcome {
     bool attempted = false;  // the target was alive
@@ -305,9 +321,10 @@ class ABYSS_API CombatSystem {
   void ReleaseAoe(const SkillDef& s, int32_t level, EntityId target);
   void ReleaseSingle(const SkillDef& s, int32_t level, EntityId target);
   void SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, double radius, const GroundTick* ground);
-  // Shared single-target / AoE hit (classes 9.7 "apply hit"); `ground` = the C4 ground tick being resolved.
+  // Shared single-target / AoE hit (classes 9.7 "apply hit"); `ground` = the C4 ground tick being resolved;
+  // `singleTarget` = the 6.4 #7 path (ground scorch).
   HeroHitOutcome ApplySkillHit(const SkillDef& s, int32_t level, EntityId target, bool blastFrom, Vec2 center,
-                               const GroundTick* ground);
+                               const GroundTick* ground, bool singleTarget = false);
   // Applies link `ph.nextLink` of a pending chain lightning and schedules the next one, or the batch shake after the
   // last (C4).
   void FireChainLink(int32_t slot);
@@ -316,6 +333,8 @@ class ABYSS_API CombatSystem {
   void DropGroundRolls(EntityId effect);  // kNoEntity = every effect
   // The live zone is a sub-dungeon or a labyrinth floor (combat 15: the death penalty is permanent there).
   bool InDungeonZone() const;
+  // Where a death there respawns (world 9.5): the parent zone and its camps[0] (fallback playerStart, then (3, 3)).
+  bool DungeonRespawnTarget(std::string& mapId, Vec2& pos) const;
   void ApplySkillStatuses(const SkillDef& s, int32_t level, EntityId target, double dealt);
   int32_t AllocRelease(const PendingRelease& r);
   int32_t AllocHit(PendingHit h);
@@ -337,14 +356,19 @@ class ABYSS_API CombatSystem {
   void GainSpirit(SpiritSource source, bool crit);
   StatusApplyOutcome ApplyStatus(EntityId target, StatusType type, double value, double durationMs,
                                      EntityId source);
-  void Shake(double durationMs, double intensity);
+  void Shake(double durationMs, double intensity);  // ShakeChannel::Hit (VFXManager.cameraShake)
+  // The skill's authored shake (hit_feedback skillShakes) if it is anchored at `at`: now, or delayMs later (timer).
+  void SkillShake(const SkillDef& s, SkillShakeAnchor at);
+  // EvSkillVfx for a hero skill + its VFX-anchored authored shake.
+  void EmitSkillVfx(const SkillDef& s, const EvSkillVfx& v);
   void EmitSfx(SfxId cue, Vec2 pos, EntityId source);
   void StartEliteSlowMotion();
 
   // ---- state helpers ----
   void SetTargetInternal(EntityId target);
   void UpdateIndicator();
-  void Respawn();
+  void ClearIndicator();  // indicator -> none, EvTargetChanged{kNoEntity} when it showed one (zone change)
+  void Respawn(bool parentZoneRestart);
   void CancelPendingStrikes(bool emitCancelled);
   bool HeroImmobilized() const;
   bool HeroAlive() const;

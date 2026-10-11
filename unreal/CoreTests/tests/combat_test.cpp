@@ -9,6 +9,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "SimHarness.h"
@@ -137,12 +138,55 @@ std::vector<E> EventsOf(const EventSink& sink) {
   return out;
 }
 
+// Position in the sink of the first event of type E that matches `pred` (-1 when none): event order checks.
+template <class E, class Pred>
+int FirstIndexOf(const EventSink& sink, Pred pred) {
+  int i = 0;
+  for (const Event& e : sink.Items()) {
+    if (const E* p = std::get_if<E>(&e)) {
+      if (pred(*p)) return i;
+    }
+    ++i;
+  }
+  return -1;
+}
+
+std::string CmbReplaceAll(std::string s, std::string_view from, std::string_view to) {
+  for (size_t at = s.find(from); at != std::string::npos; at = s.find(from, at + to.size())) {
+    s.replace(at, from.size(), to);
+  }
+  return s;
+}
+
+// The real data with the warrior asset's authored notifies moved (Attack Contact 308 -> 300 ms, Cast Release
+// 334 -> 320 ms), so a beat read from the manifest differs from the anim_timing fallback.
+const DataStore& MovedNotifyData() {
+  static DataStore store;
+  static bool loaded = false;
+  if (!loaded) {
+    loaded = true;
+    DataLoadReport report;
+    const bool ok = store.LoadAll(
+        [](std::string_view name, std::string& out) {
+          out = test::ReadFile(test::DataDir() + "/" + std::string(name));
+          if (name == "assets.json") {
+            out = CmbReplaceAll(out, "\"contactMs\": 308", "\"contactMs\": 300");
+            out = CmbReplaceAll(out, "\"releaseMs\": 334", "\"releaseMs\": 320");
+          }
+          return !out.empty();
+        },
+        report);
+    if (!ok) Log(LogLevel::Error, report.Summary());
+  }
+  return store;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Runtime rig: the real combat systems around a SimHarness, stepped in the GameSim order (classes 16).
 // ---------------------------------------------------------------------------------------------------------------------
 struct CombatRig {
-  explicit CombatRig(ClassId cls, uint64_t seed = 3)
-      : h(seed),
+  explicit CombatRig(ClassId cls, uint64_t seed = 3, const DataStore& data = D())
+      : h(seed, data),
         hero(std::make_unique<Hero>(h.ctx.data, cls)),
         status(h.ctx.data.Classes().statusRules),
         zone(h.ctx),
@@ -171,8 +215,8 @@ struct CombatRig {
       }
     };
     h.bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { combat.OnMonsterKilled(m); });
-    h.session.currentMap = D().World().defaultMap;
-    ok = zone.EnterZone(D().World().defaultMap, true, Vec2(40, 40));
+    h.session.currentMap = h.ctx.data.World().defaultMap;
+    ok = zone.EnterZone(h.ctx.data.World().defaultMap, true, Vec2(40, 40));
     hero->Skills().InitStarterLevels();
     hero->RecalcDerived(h.ctx.equip);
     hero->FillHpMana();
@@ -220,7 +264,7 @@ struct CombatRig {
   // Spawns a normal-difficulty monster at a tile (kNoEntity while MonsterSystem::Spawn is a stub).
   EntityId Spawn(std::string_view defId, Vec2 tile, bool noDodge = true) {
     MonsterSpawnParams p;
-    p.baseDef = D().FindMonster(defId);
+    p.baseDef = h.ctx.data.FindMonster(defId);
     p.tile = RoundToTile(tile);
     p.role = MonsterRole::Regular;
     const EntityId id = monsters.Spawn(p);
@@ -670,8 +714,9 @@ TEST_SUITE("combat") {
     CHECK(th.Accept({60, 0.002}, 1000, 100));
     CHECK_FALSE(th.Accept({60, 0.002}, 1050, 100));  // throttled
     CHECK(th.Accept({200, 0.002}, 1100, 100));
-    CHECK_FALSE(th.Accept({60, 0.002}, 1250, 100));  // still running (no override)
-    CHECK(th.Accept({60, 0.002}, 1300, 100));
+    CHECK_FALSE(th.Accept({60, 0.002}, 1250, 100));  // still running (no override) - but it stamped the throttle
+    CHECK_FALSE(th.Accept({60, 0.002}, 1300, 100));  // VFXManager: 1300 - 1250 < 100 (lastShakeTime moved at 1250)
+    CHECK(th.Accept({60, 0.002}, 1350, 100));
     CHECK_FALSE(th.Accept({0, 0.1}, 2000, 100));
     CHECK(ClassImpactColor(t, ClassId::Warrior) == 0xffd98au);
   }
@@ -2497,5 +2542,440 @@ TEST_SUITE("combat") {
       if (e.hasSource && e.source == SpiritSource::Kill) ++killGains;
     }
     CHECK(killGains == 1);
+  }
+
+  // ===================================================================================================================
+  // Audit fixes: C7 click-to-attack, manifest art ids, skill-authored shakes, the throttle stamp, scorch, the target
+  // frame on a zone change, hit-before-death order, A6 cue layering, dungeon respawn
+  // ===================================================================================================================
+  TEST_CASE("C7 / 9.1: clicking a monster already in attack range stops the walk; a new lock replaces the approach") {
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId slime = rig.Spawn("slime_green", Vec2(40.17, 41));
+    REQUIRE_MONSTER(slime);
+    REQUIRE(rig.loco.MoveTo(Vec2(48, 40)));  // a click-move under way
+    rig.Step(3);
+    REQUIRE(rig.loco.IsMoving());
+    const double range = hero.Derived().attackRange;
+    REQUIRE(DistSq(hero.Position(), rig.monsters.Find(slime)->pos) <= range * range);
+    rig.combat.SetAttackTarget(slime, true);  // ZoneRuntime row 10 / CmdAttackTarget
+    CHECK(rig.combat.AttackTarget() == slime);
+    CHECK_FALSE(rig.loco.IsMoving());
+    CHECK(rig.loco.Path().empty());
+    CHECK_FALSE(rig.loco.IsApproaching());
+    const Vec2 at = hero.Position();
+    rig.h.events.Clear();
+    rig.Step(48);  // 0.8 s: the hero stays and swings (the bug walked it 1.14 -> 2.92 tiles away)
+    CHECK(hero.Position().x == doctest::Approx(at.x));
+    CHECK(hero.Position().y == doctest::Approx(at.y));
+    size_t swings = 0;
+    for (const EvPlayAnim& a : EventsOf<EvPlayAnim>(rig.h.events)) {
+      if (a.entity == kHeroEntityId && a.action == AnimAction::Attack) ++swings;
+    }
+    CHECK(swings >= 1);
+
+    // Approaching A, then a click on B next to the hero: B is the lock and the walk toward A ends at once.
+    CombatRig two(ClassId::Warrior);
+    REQUIRE(two.ok);
+    const EntityId a = two.Spawn("slime_green", Vec2(48, 40));
+    const EntityId b = two.Spawn("slime_green", two.hero->Position() + Vec2(0, 1));
+    REQUIRE_MONSTER(a);
+    two.combat.SetAttackTarget(a, true);
+    CHECK(two.loco.IsApproaching());
+    two.Step(3);
+    CHECK(two.loco.IsMoving());
+    two.combat.SetAttackTarget(b, true);
+    CHECK(two.combat.AttackTarget() == b);
+    CHECK_FALSE(two.loco.IsApproaching());
+    CHECK_FALSE(two.loco.IsMoving());
+    const Vec2 stop = two.hero->Position();
+    two.Step(30);
+    CHECK(Dist(two.hero->Position(), stop) < 1e-9);
+    // Out of range a click still approaches and stops at attack range (C7).
+    two.combat.SetAttackTarget(a, true);
+    CHECK(two.loco.IsApproaching());
+    REQUIRE(two.StepUntil([&]() { return !two.loco.IsApproaching(); }, 600));
+    const double r2 = two.hero->Derived().attackRange;
+    CHECK(DistSq(two.hero->Position(), two.monsters.Find(a)->pos) <= r2 * r2);
+  }
+
+  TEST_CASE("art ids: hero / monster beats read the manifest asset UE plays (player_<class>, UE candidate chains)") {
+    // Nothing mapped: the first candidate (the anim_timing fallback applies).
+    CHECK(HeroArtGameId(AssetManifest{}, ClassId::Mage) == "player_mage");
+    CHECK(MonsterArtGameId(AssetManifest{}, "monster_slime", "slime_green") == "monster_slime");
+    // A monster asset keyed by its def id is found through the chain.
+    AssetManifest man;
+    man.loaded = true;
+    AssetEntryDef asset;
+    asset.name = "SK_Goblin";
+    asset.gameIds = {"goblin"};
+    AnimClipDef attack;
+    attack.name = "Attack01";
+    attack.hasContactMs = true;
+    attack.contactMs = 200;
+    asset.anims = {attack};
+    man.assets.push_back(asset);
+    man.gameIdToAsset.push_back({"goblin", "SK_Goblin"});
+    CHECK(MonsterArtGameId(man, "monster_goblin", "goblin") == "goblin");
+    const AnimTimingTable& at = D().Combat().anim;
+    CHECK(ComputeAttackTiming(at, man, MonsterArtGameId(man, "monster_goblin", "goblin"), AnimRig::Humanoid, 1200)
+              .contactMs == 200);
+    if (!D().Assets().loaded) {
+      MESSAGE("no exported asset manifest: runtime part skipped");
+      return;
+    }
+    // The exported manifest maps the warrior under player_warrior (not the class name the old lookup used).
+    CHECK(HeroArtGameId(D().Assets(), ClassId::Warrior) == "player_warrior");
+    REQUIRE(D().Assets().FindByGameId("player_warrior") != nullptr);
+    CHECK(D().Assets().FindByGameId("warrior") == nullptr);
+    // A re-authored Contact / Release notify drives the hero's gameplay beats.
+    const DataStore& moved = MovedNotifyData();
+    REQUIRE(moved.IsFinalized());
+    const AssetEntryDef* w = moved.Assets().FindByGameId("player_warrior");
+    REQUIRE(w != nullptr);
+    REQUIRE(w->FindClip("Attack01") != nullptr);
+    REQUIRE(w->FindClip("Attack01")->contactMs == 300);
+    CombatRig rig(ClassId::Warrior, 3, moved);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId slime = rig.Spawn("slime_green", hero.Position() + Vec2(1, 0));
+    REQUIRE_MONSTER(slime);
+    rig.combat.SetAttackTarget(slime, false);
+    rig.Step();
+    const double swing = rig.h.clock.NowMs();
+    const auto anims = EventsOf<EvPlayAnim>(rig.h.events);
+    REQUIRE_FALSE(anims.empty());
+    CHECK(anims.back().action == AnimAction::Attack);
+    CHECK(anims.back().contactMs == 300);
+    rig.StepBefore(swing + 300);
+    CHECK(test::CountEvents<EvHit>(rig.h.events) == 0);
+    rig.StepTo(swing + 300);
+    CHECK(test::CountEvents<EvHit>(rig.h.events) == 1);
+    // Cast release: war_stomp's beat is the moved Release notify.
+    CombatRig cast(ClassId::Warrior, 3, moved);
+    const int32_t stomp = cast.SkillIndex("war_stomp");
+    cast.hero->Skills().SetLevel(stomp, 1);
+    cast.hero->lastAttackMs = 1e18;
+    REQUIRE(cast.combat.RequestSkill(stomp, SkillAim{}) == SkillRequestResult::Executed);
+    const auto castAnims = EventsOf<EvPlayAnim>(cast.h.events);
+    REQUIRE_FALSE(castAnims.empty());
+    CHECK(castAnims.back().action == AnimAction::Cast);
+    CHECK(castAnims.back().contactMs == 320);
+  }
+
+  TEST_CASE("skill-authored shakes (combat 11.5): exported rows, VFX / impact anchors, own throttle, no override") {
+    const HitFeedbackTable& t = D().Combat().hitFeedback;
+    CHECK(t.skillShakeThrottleMs == 120);
+    REQUIRE(t.skillShakes.size() == 9);
+    struct Row {
+      const char* id;
+      double ms, intensity, delay;
+      SkillShakeAnchor at;
+    };
+    const Row rows[] = {{"charge", 150, 0.008, 70, SkillShakeAnchor::Vfx},
+                        {"lethal_strike", 160, 0.008, 0, SkillShakeAnchor::Vfx},
+                        {"war_stomp", 240, 0.011, 0, SkillShakeAnchor::Vfx},
+                        {"rampage", 280, 0.012, 0, SkillShakeAnchor::Vfx},
+                        {"fireball", 90, 0.003, 0, SkillShakeAnchor::Impact},
+                        {"meteor", 320, 0.015, 0, SkillShakeAnchor::Impact},
+                        {"combustion", 140, 0.006, 60, SkillShakeAnchor::Vfx},
+                        {"explosive_trap", 200, 0.009, 80, SkillShakeAnchor::Vfx},
+                        {"chain_trap", 120, 0.004, 0, SkillShakeAnchor::Vfx}};
+    for (const Row& r : rows) {
+      CAPTURE(r.id);
+      const SkillShakeDef* d = t.FindSkillShake(r.id);
+      REQUIRE(d != nullptr);
+      CHECK(d->durationMs == r.ms);
+      CHECK(d->intensity == doctest::Approx(r.intensity));
+      CHECK(d->delayMs == r.delay);
+      CHECK(d->at == r.at);
+    }
+    CHECK(t.FindSkillShake("slash") == nullptr);
+
+    // Channels: their own throttles, one shared no-override rule.
+    ShakeThrottle th;
+    CHECK(th.Accept({240, 0.011}, 0, ShakeChannel::Skill, 120));        // war stomp's VFX
+    CHECK_FALSE(th.Accept({60, 0.0018}, 0, ShakeChannel::Hit, 100));    // its impact: running -> dropped, Hit stamped
+    CHECK_FALSE(th.Accept({100, 0.006}, 50, ShakeChannel::Hit, 100));   // throttled by that dropped impact
+    CHECK_FALSE(th.Accept({120, 0.004}, 100, ShakeChannel::Skill, 120));  // FxEngine's own 120 ms
+    CHECK(th.Accept({100, 0.006}, 240, ShakeChannel::Hit, 100));        // the stomp shake ran out at 240
+    CHECK_FALSE(th.Accept({260, 0.004}, 300, ShakeChannel::Direct, 0));  // running until 340 (no throttle of its own)
+    CHECK(th.Accept({260, 0.004}, 340, ShakeChannel::Direct, 0));
+    CHECK_FALSE(th.Accept({260, 0.004}, 341, ShakeChannel::Direct, 0));
+
+    // War stomp: its 240 / 0.011 shake goes out with the VFX, before the hits; their impact / AoE shakes are dropped.
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId g1 = rig.Spawn("goblin", hero.Position() + Vec2(1, 0));
+    REQUIRE_MONSTER(g1);
+    rig.Spawn("goblin", hero.Position() + Vec2(0, 1));
+    const int32_t stomp = rig.SkillIndex("war_stomp");
+    hero.Skills().SetLevel(stomp, 1);
+    hero.lastAttackMs = 1e18;
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(stomp, SkillAim{}) == SkillRequestResult::Executed);
+    rig.StepTo(t0 + 334);
+    const auto shakes = EventsOf<EvCameraShake>(rig.h.events);
+    REQUIRE(shakes.size() == 1);
+    CHECK(shakes[0].durationMs == 240);
+    CHECK(shakes[0].intensity == doctest::Approx(0.011));
+    const int shakeAt = FirstIndexOf<EvCameraShake>(rig.h.events, [](const EvCameraShake&) { return true; });
+    const int hitAt = FirstIndexOf<EvHit>(rig.h.events, [](const EvHit& h) { return h.skillId == "war_stomp"; });
+    REQUIRE(hitAt >= 0);
+    CHECK(shakeAt < hitAt);
+    for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) CHECK_FALSE(h.scorch);  // AoE hits: no scorch (6.4 #7 only)
+
+    // Charge: 70 ms after its VFX (the impact flash after the C4 dash).
+    CombatRig c(ClassId::Warrior);
+    const EntityId big = c.Spawn("demon_lord", c.hero->Position() + Vec2(4, 0));  // light hits: no profile shake
+    const int32_t charge = c.SkillIndex("charge");
+    c.hero->Skills().SetLevel(charge, 1);
+    c.hero->lastAttackMs = 1e18;
+    c.combat.SetAttackTarget(big, false);
+    REQUIRE(c.combat.RequestSkill(charge, SkillAim{}) == SkillRequestResult::Executed);
+    c.ScriptNoDodge();  // no crit: a crit's 120 ms profile shake would hold the camera past +70
+    double vfxAt = -1, shakeMs = -1;
+    for (int i = 0; i < 90; ++i) {
+      c.Step();
+      for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(c.h.events)) {
+        if (v.skillId == "charge" && vfxAt < 0) vfxAt = c.h.clock.NowMs();
+      }
+      for (const EvCameraShake& e : EventsOf<EvCameraShake>(c.h.events)) {
+        if (e.durationMs == 150 && shakeMs < 0) shakeMs = c.h.clock.NowMs();
+      }
+      c.h.events.Clear();
+    }
+    REQUIRE(vfxAt > 0);
+    REQUIRE(shakeMs > 0);
+    CHECK(shakeMs - vfxAt >= 70 - 1e-6);
+    CHECK(shakeMs - vfxAt < 70 + kSimStepMs);
+
+    // Meteor with nothing to hit: the explosion's 320 / 0.015 shake when the fall ends (release + 300).
+    CombatRig m(ClassId::Mage);
+    const int32_t meteor = m.SkillIndex("meteor");
+    m.hero->Skills().SetLevel(meteor, 1);
+    const double m0 = m.h.clock.NowMs();
+    REQUIRE(m.combat.RequestSkill(meteor, SkillAim{}) == SkillRequestResult::Executed);
+    m.StepBefore(m0 + 530);
+    CHECK(test::CountEvents<EvCameraShake>(m.h.events) == 0);
+    m.StepTo(m0 + 530);
+    const auto ms = EventsOf<EvCameraShake>(m.h.events);
+    REQUIRE(ms.size() == 1);
+    CHECK(ms[0].durationMs == 320);
+    CHECK(ms[0].intensity == doctest::Approx(0.015));
+  }
+
+  TEST_CASE("fireball: the explosion shake follows the hit at arrival, also when the target died in flight; scorch") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId t = rig.Spawn("demon_lord", hero.Position() + Vec2(4, 0));  // light hit: no profile shake
+    REQUIRE_MONSTER(t);
+    const int32_t fireball = rig.SkillIndex("fireball");
+    hero.Skills().SetLevel(fireball, 1);
+    hero.lastAttackMs = 1e18;
+    rig.combat.SetAttackTarget(t, false);
+    REQUIRE(rig.combat.RequestSkill(fireball, SkillAim{}) == SkillRequestResult::Executed);
+    rig.ScriptNoDodge();
+    REQUIRE(rig.StepUntil([&]() { return test::CountEvents<EvProjectileLaunched>(rig.h.events) > 0; }, 60));
+    const EvProjectileLaunched launch = EventsOf<EvProjectileLaunched>(rig.h.events).back();
+    rig.h.events.Clear();
+    rig.StepTo(launch.launchMs + launch.travelMs + kSimStepMs);
+    const int hitAt = FirstIndexOf<EvHit>(rig.h.events, [](const EvHit& h) { return h.skillId == "fireball"; });
+    const int shakeAt = FirstIndexOf<EvCameraShake>(rig.h.events, [](const EvCameraShake& e) {
+      return e.durationMs == 90 && std::fabs(e.intensity - 0.003) < 1e-12;
+    });
+    REQUIRE(hitAt >= 0);
+    REQUIRE(shakeAt >= 0);
+    CHECK(hitAt < shakeAt);
+    // 6.4 #7 / C6: a landed single-target skill hit carries the skill's ground scorch.
+    const EvHit hit = EventsOf<EvHit>(rig.h.events).front();
+    CHECK(hit.scorch);
+    CHECK(hit.scorchType == DamageType::Fire);
+
+    // The target dies in flight: no hit, the explosion still shakes.
+    CombatRig dead(ClassId::Mage);
+    const EntityId d = dead.Spawn("demon_lord", dead.hero->Position() + Vec2(4, 0));
+    dead.hero->Skills().SetLevel(fireball, 1);
+    dead.hero->lastAttackMs = 1e18;
+    dead.combat.SetAttackTarget(d, false);
+    REQUIRE(dead.combat.RequestSkill(fireball, SkillAim{}) == SkillRequestResult::Executed);
+    REQUIRE(dead.StepUntil([&]() { return test::CountEvents<EvProjectileLaunched>(dead.h.events) > 0; }, 60));
+    const EvProjectileLaunched l2 = EventsOf<EvProjectileLaunched>(dead.h.events).back();
+    DamageFlags kill;
+    kill.source = KillSource::Other;
+    dead.monsters.ApplyDamage(d, 1e9, kill);
+    dead.h.events.Clear();
+    dead.StepTo(l2.launchMs + l2.travelMs + kSimStepMs);
+    CHECK(FirstIndexOf<EvHit>(dead.h.events, [](const EvHit& h) { return h.skillId == "fireball"; }) < 0);
+    CHECK(FirstIndexOf<EvCameraShake>(dead.h.events, [](const EvCameraShake& e) { return e.durationMs == 90; }) >= 0);
+
+    // Basic attacks never scorch.
+    CombatRig basic(ClassId::Warrior);
+    const EntityId s = basic.Spawn("slime_green", basic.hero->Position() + Vec2(1, 0));
+    basic.combat.SetAttackTarget(s, false);
+    basic.StepTo(basic.h.clock.NowMs() + 400);
+    const auto bh = EventsOf<EvHit>(basic.h.events);
+    REQUIRE_FALSE(bh.empty());
+    CHECK_FALSE(bh[0].scorch);
+  }
+
+  TEST_CASE("9.5: a zone change that drops the shown target emits TARGET_CHANGED{none}") {
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    const EntityId slime = rig.Spawn("slime_green", rig.hero->Position() + Vec2(1, 0));
+    REQUIRE_MONSTER(slime);
+    rig.combat.SetAttackTarget(slime, false);
+    REQUIRE(rig.combat.IndicatorTarget() == slime);
+    rig.h.events.Clear();
+    rig.combat.OnZoneExit();
+    const auto changed = EventsOf<EvTargetChanged>(rig.h.events);
+    REQUIRE(changed.size() == 1);
+    CHECK(changed[0].target == kNoEntity);
+    CHECK(rig.combat.IndicatorTarget() == kNoEntity);
+    CHECK(rig.combat.AttackTarget() == kNoEntity);
+    rig.h.events.Clear();
+    rig.combat.OnZoneEnter();  // nothing shown any more: no second event
+    CHECK(test::CountEvents<EvTargetChanged>(rig.h.events) == 0);
+    // OnZoneEnter alone (no exit first) also clears a shown target.
+    rig.combat.SetAttackTarget(slime, false);
+    rig.h.events.Clear();
+    rig.combat.OnZoneEnter();
+    REQUIRE(test::CountEvents<EvTargetChanged>(rig.h.events) == 1);
+    CHECK(EventsOf<EvTargetChanged>(rig.h.events)[0].target == kNoEntity);
+  }
+
+  TEST_CASE("4.2 / 13.1: the killing blow's hit precedes the death and the kill pipeline") {
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    const EntityId slime = rig.Spawn("slime_green", rig.hero->Position() + Vec2(1, 0));
+    REQUIRE_MONSTER(slime);
+    rig.monsters.Find(slime)->hp = 1;
+    rig.combat.SetAttackTarget(slime, false);
+    rig.h.events.Clear();
+    REQUIRE(rig.StepUntil([&]() { return !rig.monsters.Find(slime) || !rig.monsters.Find(slime)->IsAlive(); }, 60));
+    const EventSink& ev = rig.h.events;
+    const int hit = FirstIndexOf<EvHit>(ev, [&](const EvHit& h) { return h.target == slime; });
+    const int death = FirstIndexOf<EvPlayAnim>(
+        ev, [&](const EvPlayAnim& a) { return a.entity == slime && a.action == AnimAction::Death; });
+    const int exp = FirstIndexOf<EvFloatingText>(ev, [](const EvFloatingText& f) { return f.kind == FloatingTextKind::Exp; });
+    const int shake = FirstIndexOf<EvCameraShake>(ev, [](const EvCameraShake&) { return true; });
+    REQUIRE(hit >= 0);
+    REQUIRE(death >= 0);
+    REQUIRE(exp >= 0);
+    CHECK(hit < death);
+    CHECK(death < exp);
+    REQUIRE(shake >= 0);
+    CHECK(shake < death);  // a basic attack's playHitImpact runs before onMonsterKilled (4.2 step 8 / 12)
+    const EvHit h = EventsOf<EvHit>(ev).front();
+    CHECK(h.killed);
+    CHECK(h.weight == HitWeight::Kill);
+    CHECK(h.targetHp == 0);
+    // A skill kill: hit, death, kill pipeline, then the impact burst's shake (6.5 applyHit order).
+    CombatRig k(ClassId::Warrior);
+    const EntityId s2 = k.Spawn("slime_green", k.hero->Position() + Vec2(1, 0));
+    k.h.events.Clear();
+    MonsterHitRequest r;
+    r.monster = s2;
+    r.amount = 1e6;
+    r.attacker = kHeroEntityId;
+    r.source = KillSource::HeroSkill;
+    r.impactBurst = true;
+    CHECK(k.combat.DamageMonster(r) == HitWeight::Kill);
+    const int h2 = FirstIndexOf<EvHit>(k.h.events, [&](const EvHit& x) { return x.target == s2; });
+    const int d2 = FirstIndexOf<EvPlayAnim>(
+        k.h.events, [&](const EvPlayAnim& a) { return a.entity == s2 && a.action == AnimAction::Death; });
+    const int e2 =
+        FirstIndexOf<EvFloatingText>(k.h.events, [](const EvFloatingText& f) { return f.kind == FloatingTextKind::Exp; });
+    const int s2Shake = FirstIndexOf<EvCameraShake>(k.h.events, [](const EvCameraShake&) { return true; });
+    CHECK(h2 >= 0);
+    CHECK(h2 < d2);
+    CHECK(d2 < e2);
+    CHECK(e2 < s2Shake);
+  }
+
+  TEST_CASE("A6 / audio 3.2: damage taken keeps the hit / crit cue and adds player_hurt") {
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    const AudioRulesDef& rules = D().Audio().rules;
+    rig.h.events.Clear();
+    HeroHitRequest crit;
+    crit.amount = 5;
+    crit.isCrit = true;
+    rig.combat.DamageHero(crit);
+    const int critCue = FirstIndexOf<EvSfx>(rig.h.events, [&](const EvSfx& e) { return e.cue == rules.combatCrit; });
+    const int hurt = FirstIndexOf<EvSfx>(rig.h.events, [&](const EvSfx& e) { return e.cue == rules.heroDamageTakenCue; });
+    CHECK(critCue >= 0);
+    CHECK(hurt > critCue);
+    rig.h.events.Clear();
+    HeroHitRequest tick;
+    tick.amount = 2;
+    tick.isTick = true;
+    rig.combat.DamageHero(tick);
+    CHECK(FirstIndexOf<EvSfx>(rig.h.events, [&](const EvSfx& e) { return e.cue == rules.combatHit; }) >= 0);
+    CHECK(FirstIndexOf<EvSfx>(rig.h.events, [&](const EvSfx& e) { return e.cue == rules.heroDamageTakenCue; }) >= 0);
+  }
+
+  TEST_CASE("world 9.5 / combat 13.3: the T12 respawn in a sub-dungeon or labyrinth floor restarts the parent zone") {
+    REQUIRE_FALSE(D().World().subDungeons.empty());
+    const SubDungeonDef& sd = D().World().subDungeons.front();
+    const MapDef* parent = D().FindMap(sd.parentZone);
+    REQUIRE(parent != nullptr);
+    REQUIRE_FALSE(parent->camps.empty());
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    rig.h.session.currentMap = sd.id;
+    hero.SetHp(0);
+    rig.combat.KillHero(HeroDeathCause::Other);
+    const Vec2 fell = hero.Position();
+    rig.h.events.Clear();
+    rig.StepTo(rig.h.clock.NowMs() + D().World().constants.deathRespawnMs + kSimStepMs);
+    CHECK(hero.Life() == HeroLife::Alive);
+    CHECK(hero.Hp() == hero.MaxHp());
+    CHECK(hero.Mana() == hero.MaxMana());
+    CHECK(Dist(hero.Position(), fell) < 1e-9);  // no in-dungeon camp teleport: the zone change places the hero
+    CHECK(rig.h.session.transitioning);
+    const auto zones = EventsOf<EvZone>(rig.h.events);
+    REQUIRE(zones.size() == 1);
+    CHECK(zones[0].phase == EvZone::Phase::TransitionBegan);
+    CHECK(zones[0].mapId == sd.parentZone);
+    CHECK(zones[0].target.col == parent->camps[0].pos.col);
+    CHECK(zones[0].target.row == parent->camps[0].pos.row);
+    CHECK(test::CountEvents<EvHeroRespawned>(rig.h.events) == 1);
+    bool logged = false;
+    for (const EvLog& e : EventsOf<EvLog>(rig.h.events)) logged = logged || e.text.key == "zone.death.logMessage";
+    CHECK(logged);
+    // A labyrinth floor restarts the rift (the web's fixed 'abyss_rift').
+    CombatRig lab(ClassId::Warrior);
+    lab.h.session.currentMap = "dungeon_floor_2";
+    lab.hero->SetHp(0);
+    lab.combat.KillHero(HeroDeathCause::Other);
+    lab.h.events.Clear();
+    lab.StepTo(lab.h.clock.NowMs() + D().World().constants.deathRespawnMs + kSimStepMs);
+    const auto labZones = EventsOf<EvZone>(lab.h.events);
+    REQUIRE(labZones.size() == 1);
+    CHECK(labZones[0].mapId == "abyss_rift");
+    // Menu / quit / background (ResolvePendingDeath) respawn in place of the zone: no transition.
+    CombatRig q(ClassId::Warrior);
+    q.h.session.currentMap = sd.id;
+    q.hero->SetHp(0);
+    q.combat.KillHero(HeroDeathCause::Other);
+    q.h.events.Clear();
+    q.combat.ResolvePendingDeath();
+    CHECK(q.hero->Life() == HeroLife::Alive);
+    CHECK_FALSE(q.h.session.transitioning);
+    CHECK(test::CountEvents<EvZone>(q.h.events) == 0);
+    // The overworld keeps respawnAtCamp.
+    CombatRig field(ClassId::Warrior);
+    field.hero->SetHp(0);
+    field.combat.KillHero(HeroDeathCause::Other);
+    field.h.events.Clear();
+    field.StepTo(field.h.clock.NowMs() + D().World().constants.deathRespawnMs + kSimStepMs);
+    CHECK(field.hero->Life() == HeroLife::Alive);
+    CHECK(test::CountEvents<EvZone>(field.h.events) == 0);
+    CHECK(Dist(field.hero->Position(), field.zone.CampPosition(0)) < 1e-9);
   }
 }

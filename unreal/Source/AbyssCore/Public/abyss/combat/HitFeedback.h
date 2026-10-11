@@ -6,7 +6,9 @@
 // Owner area: hero+combat (monsters and pets call the same functions for their swings). Pure functions.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 #include "abyss/base/Enums.h"
@@ -49,6 +51,14 @@ ABYSS_API ActionTiming ComputeCastTiming(const AnimTimingTable& t, const AssetMa
 // Hero rig for a class (Warrior/Mage/Rogue presets).
 ABYSS_API AnimRig HeroRig(ClassId cls);
 
+// The manifest game id of the asset UE plays for an actor, so ComputeAttackTiming / ComputeCastTiming read the clips of
+// that very asset (ARCHITECTURE 3.1 / 5). Same candidate chains as the UE world (Source/Abyssfire WorldContract.md 2.2):
+// hero `player_<class>`, `<class>`; monster `<spriteKey>`, `monster_<spriteKey>`, `<defId>`, `monster_<defId>`. The
+// first candidate the manifest maps wins; none mapped -> the first candidate (the anim_timing fallback then applies).
+ABYSS_API std::string HeroArtGameId(const AssetManifest& manifest, ClassId cls);
+ABYSS_API std::string MonsterArtGameId(const AssetManifest& manifest, std::string_view spriteKey,
+                                       std::string_view defId);
+
 struct ShakeRequest {
   double durationMs = 0;
   double intensity = 0;  // web units (C9)
@@ -63,15 +73,29 @@ ABYSS_API ShakeRequest AoeHitShake(const HitFeedbackTable& t, int32_t hits);
 // Profile shake of a hit weight (via the impact burst; none for Tick / Light).
 ABYSS_API ShakeRequest ProfileShake(const HitFeedbackTable& t, HitWeight w);
 
-// Shake throttle (11.5): a shake within shakeThrottleMs of the last accepted one is dropped; a new shake while one
-// is running is dropped (no override). Runs on the sim clock in the core so tests are deterministic.
+// Who asks for a camera shake (combat-feel 11.5). The web has two throttled callers and one direct one, all feeding the
+// same Phaser camera shake: Hit = VFXManager.cameraShake (hit profiles via the impact burst, player-hit, AoE batch;
+// hit_feedback shakeThrottleMs), Skill = FxEngine.shake (skill-authored shakes; skillShakes.throttleMs), Direct =
+// cameras.main.shake (quest-hunt reveal; no throttle of its own).
+enum class ShakeChannel : uint8_t { Hit, Skill, Direct };
+
+// Shake throttle (11.5), on the sim clock so tests are deterministic. Per channel: a shake within the channel's
+// throttle of that channel's last stamp is dropped; otherwise the stamp moves to now EVEN IF the shake is then dropped
+// (VFXManager / FxEngine stamp lastShake before calling camera.shake). Shared: a new shake while one is running is
+// dropped (Phaser's no-override rule; a shake runs for its duration).
 class ABYSS_API ShakeThrottle {
  public:
-  bool Accept(const ShakeRequest& s, double nowMs, double throttleMs);
-  void Reset() { lastAcceptedMs_ = -1e300; runningUntilMs_ = -1e300; }
+  // The Hit channel (VFXManager.cameraShake).
+  bool Accept(const ShakeRequest& s, double nowMs, double throttleMs) {
+    return Accept(s, nowMs, ShakeChannel::Hit, throttleMs);
+  }
+  // `throttleMs` is ignored for ShakeChannel::Direct.
+  bool Accept(const ShakeRequest& s, double nowMs, ShakeChannel channel, double throttleMs);
+  void Reset();
 
  private:
-  double lastAcceptedMs_ = -1e300;
+  static constexpr size_t kChannels = 3;
+  double lastStampMs_[kChannels] = {-1e300, -1e300, -1e300};
   double runningUntilMs_ = -1e300;
 };
 

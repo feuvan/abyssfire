@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "abyss/base/Enums.h"
@@ -103,6 +104,19 @@ struct HitProfileDef {
   double ringRadius = 0;
 };
 
+// Skill-authored camera shake (hit_feedback.json skillShakes, combat-feel 11.5): SkillEffectSystem's FxEngine.shake with
+// its own throttle. Vfx: when the skill's VFX starts (EvSkillVfx) + delayMs; Impact: when its projectile / fall lands.
+enum class SkillShakeAnchor : uint8_t { Vfx, Impact };
+ABYSS_ENUM_STRINGS(SkillShakeAnchor, "vfx", "impact")
+
+struct SkillShakeDef {
+  std::string skillId;
+  double durationMs = 0;
+  double intensity = 0;
+  double delayMs = 0;
+  SkillShakeAnchor at = SkillShakeAnchor::Vfx;
+};
+
 struct HitFeedbackTable {
   std::array<HitProfileDef, EnumCount<HitWeight>()> profiles{};
   double heavyRatio = 0.25, normalRatio = 0.06;
@@ -116,6 +130,8 @@ struct HitFeedbackTable {
   double playerHitShakeMsBase = 50, playerHitShakeMsPerRatio = 100, playerHitShakeMsMin = 50,
          playerHitShakeMsMax = 120;
   double shakeThrottleMs = 100;
+  double skillShakeThrottleMs = 120;
+  std::vector<SkillShakeDef> skillShakes;  // file order
   uint32_t painTintColor = 0;
   double painTintMs = 100;
   double lowHpBelowRatio = 0.3;
@@ -123,6 +139,17 @@ struct HitFeedbackTable {
   double lowHpRadiusBase = 0.7, lowHpRadiusPerSeverity = 0.15;
 
   const HitProfileDef& Profile(HitWeight w) const { return profiles[static_cast<size_t>(w)]; }
+  // The skill's authored shake: its index in skillShakes (-1 when none) / the row (nullptr).
+  int32_t SkillShakeIndex(std::string_view skillId) const {
+    for (size_t i = 0; i < skillShakes.size(); ++i) {
+      if (skillShakes[i].skillId == skillId) return static_cast<int32_t>(i);
+    }
+    return -1;
+  }
+  const SkillShakeDef* FindSkillShake(std::string_view skillId) const {
+    const int32_t i = SkillShakeIndex(skillId);
+    return i >= 0 ? &skillShakes[static_cast<size_t>(i)] : nullptr;
+  }
 };
 
 // elite_affixes.json (combat-feel.md 17).

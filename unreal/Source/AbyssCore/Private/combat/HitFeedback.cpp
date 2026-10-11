@@ -4,6 +4,8 @@
 #include "abyss/combat/HitFeedback.h"
 
 #include <cmath>
+#include <initializer_list>
+#include <string>
 
 #include "abyss/base/Math.h"
 
@@ -105,15 +107,45 @@ ShakeRequest ProfileShake(const HitFeedbackTable& t, HitWeight w) {
   return {p.shakeMs, p.shakeIntensity};
 }
 
-// VFXManager throttle (a shake < throttleMs after the last accepted one is ignored) + Phaser's no-override rule (a new
-// shake while one is still running is ignored).
-bool ShakeThrottle::Accept(const ShakeRequest& s, double nowMs, double throttleMs) {
+// VFXManager.cameraShake / FxEngine.shake: `if (now - last < throttle) return; last = now; camera.shake(...)` - the stamp
+// moves before Phaser's no-override rule (a new shake while one is still running is ignored) gets to drop the shake.
+bool ShakeThrottle::Accept(const ShakeRequest& s, double nowMs, ShakeChannel channel, double throttleMs) {
   if (s.Empty()) return false;
-  if (nowMs - lastAcceptedMs_ < throttleMs) return false;
+  const size_t ch = static_cast<size_t>(channel);
+  if (ch >= kChannels) return false;
+  if (channel != ShakeChannel::Direct) {
+    if (nowMs - lastStampMs_[ch] < throttleMs) return false;
+    lastStampMs_[ch] = nowMs;
+  }
   if (nowMs < runningUntilMs_) return false;
-  lastAcceptedMs_ = nowMs;
   runningUntilMs_ = nowMs + s.durationMs;
   return true;
+}
+
+void ShakeThrottle::Reset() {
+  for (double& t : lastStampMs_) t = -1e300;
+  runningUntilMs_ = -1e300;
+}
+
+namespace {
+std::string HitFeedbackFirstMapped(const AssetManifest& manifest, std::initializer_list<std::string> candidates) {
+  for (const std::string& id : candidates) {
+    if (!id.empty() && manifest.loaded && manifest.FindByGameId(id) != nullptr) return id;
+  }
+  return candidates.size() > 0 ? *candidates.begin() : std::string();
+}
+}  // namespace
+
+std::string HeroArtGameId(const AssetManifest& manifest, ClassId cls) {
+  const std::string name(EnumName(cls));
+  return HitFeedbackFirstMapped(manifest, {"player_" + name, name});
+}
+
+std::string MonsterArtGameId(const AssetManifest& manifest, std::string_view spriteKey, std::string_view defId) {
+  const std::string key(spriteKey);
+  const std::string def(defId);
+  return HitFeedbackFirstMapped(manifest, {key, key.empty() ? std::string() : "monster_" + key, def,
+                                           def.empty() ? std::string() : "monster_" + def});
 }
 
 uint32_t ClassImpactColor(const HitFeedbackTable& t, ClassId cls) {

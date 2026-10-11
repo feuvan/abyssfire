@@ -247,6 +247,11 @@ bool DataStore::Finalize(DataLoadReport& report) {
       ck.Error("spirit_profiles.json", "profiles", "missing profile for a class");
     }
   }
+  for (const SkillShakeDef& sh : combat_.hitFeedback.skillShakes) {  // combat-feel 11.5 skill-authored shakes
+    if (!classes_.FindSkill(sh.skillId)) {
+      ck.Error("hit_feedback.json", "skillShakes.skills", "unknown skill '" + sh.skillId + "'");
+    }
+  }
 
   // ---- units / timing consistency (S4, S5) ----
   if (!Near(combat_.projectiles.pxPerTileProjectile, kProjectilePxPerTile) ||
