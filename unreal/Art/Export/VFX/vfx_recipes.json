@@ -73,14 +73,62 @@
    "mid": "#E8C47A",
    "rim": "#B08850",
    "dark": "#5A4430"
+  },
+  "portal": {
+   "core": "#E8FFF8",
+   "mid": "#80F0E0",
+   "rim": "#3FE0A0",
+   "dark": "#14584A"
   }
  },
  "sprites": {
-  "Glow": {
+  "Arrow": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Arrow",
+   "note": "cel arrow pointing up, pre-coloured (mesh fallback)"
+  },
+  "Beam": {
+   "cells": 2,
+   "blend": "additive",
+   "texture": "T_FX_Beam",
+   "note": "light column (0 plain, 1 pillar with rising streaks)"
+  },
+  "Bolt": {
+   "cells": 4,
+   "blend": "additive",
+   "texture": "T_FX_Bolt",
+   "note": "vertical jagged bolts (beam quads)"
+  },
+  "Bubble": {
    "cells": 1,
    "blend": "additive",
-   "texture": "T_FX_Glow",
-   "note": "soft radial light (web fx_glow)"
+   "texture": "T_FX_Bubble",
+   "note": "energy bubble with fresnel rim"
+  },
+  "Chain": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Chain",
+   "note": "cel chain link, pre-coloured (mesh fallback)"
+  },
+  "Claw": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Claw",
+   "note": "three-talon rake"
+  },
+  "Coin": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Coin",
+   "note": "cel gold coin, pre-coloured (mesh fallback)"
+  },
+  "Comet": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Comet",
+   "note": "comet head + two-band tail, head at the top"
   },
   "Core": {
    "cells": 1,
@@ -88,11 +136,155 @@
    "texture": "T_FX_Core",
    "note": "white-hot impact core: crisp disc + halo (web fx_core)"
   },
+  "Crack": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Crack",
+   "note": "ground fissures (tint dark)"
+  },
+  "CrackGlow": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_CrackGlow",
+   "note": "glowing fissures (same geometry as Crack)"
+  },
+  "Drop": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Drop",
+   "note": "liquid droplet, cel shaded (tint blood / venom)"
+  },
+  "Dust": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Dust",
+   "note": "low kicked-up dust cloud (charge, dodge, whirlwind)"
+  },
+  "Ember": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Ember",
+   "note": "teardrop ember"
+  },
+  "Flake": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Flake",
+   "note": "snowflake"
+  },
+  "Flame": {
+   "cells": 8,
+   "blend": "translucent",
+   "texture": "T_FX_Flame",
+   "note": "pre-coloured cel flame tongues: 0 fire, 1 frost, 2 poison, 3 shadow, 4 holy, 5 rage, 6 plain, 7 camp"
+  },
+  "Frost": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Frost",
+   "note": "frost crust decal"
+  },
+  "Glow": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Glow",
+   "note": "soft radial light (web fx_glow)"
+  },
+  "Hex": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Hex",
+   "note": "hex shield plate glow"
+  },
+  "Impact": {
+   "cells": 4,
+   "blend": "additive",
+   "texture": "T_FX_Impact",
+   "note": "hit impact stars per profile: 0 normal, 1 heavy, 2 crit, 3 kill"
+  },
   "LightPool": {
    "cells": 1,
    "blend": "additive",
    "texture": "T_FX_LightPool",
    "note": "fake light pool, web glow falloff GLOW_STOPS"
+  },
+  "Plus": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Plus",
+   "note": "heal plus"
+  },
+  "Puddle": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Puddle",
+   "note": "liquid puddle decal (tint venom / blood)"
+  },
+  "Puff": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Puff",
+   "note": "soft round puff (web fx_puff)"
+  },
+  "Ring": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Ring",
+   "note": "ground ring at 0.4375 of the quad"
+  },
+  "Rock": {
+   "cells": 2,
+   "blend": "translucent",
+   "texture": "T_FX_Rock",
+   "note": "cel rock chips, pre-coloured (mesh fallback)"
+  },
+  "Rune": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Rune",
+   "note": "magic circle with rune glyphs"
+  },
+  "Scorch": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Scorch",
+   "note": "char decal (tint dark)"
+  },
+  "Shard": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_Shard",
+   "note": "faceted crystal shard (grey)"
+  },
+  "ShardFrost": {
+   "cells": 1,
+   "blend": "translucent",
+   "texture": "T_FX_ShardFrost",
+   "note": "faceted ice shard, pre-coloured"
+  },
+  "Shock": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Shock",
+   "note": "shockwave disc with a bright rim"
+  },
+  "Skull": {
+   "cells": 1,
+   "blend": "additive",
+   "texture": "T_FX_Skull",
+   "note": "death-mark skull sigil"
+  },
+  "Slash": {
+   "cells": 4,
+   "blend": "additive",
+   "texture": "T_FX_Slash",
+   "note": "crescent swipes, arc centre at the bottom edge: 0 warrior, 1 rogue, 2 mage, 3 heavy"
+  },
+  "Smoke": {
+   "cells": 2,
+   "blend": "translucent",
+   "texture": "T_FX_Smoke",
+   "note": "cartoon smoke puffs, two lobe layouts"
   },
   "Spark": {
    "cells": 1,
@@ -112,203 +304,17 @@
    "texture": "T_FX_Streak",
    "note": "velocity streak, head at the top"
   },
-  "Comet": {
+  "Swirl": {
    "cells": 1,
    "blend": "additive",
-   "texture": "T_FX_Comet",
-   "note": "comet head + two-band tail, head at the top"
-  },
-  "Ember": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Ember",
-   "note": "teardrop ember"
-  },
-  "Drop": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Drop",
-   "note": "liquid droplet, cel shaded (tint blood / venom)"
-  },
-  "Smoke": {
-   "cells": 2,
-   "blend": "translucent",
-   "texture": "T_FX_Smoke",
-   "note": "cartoon smoke puffs, two lobe layouts"
-  },
-  "Dust": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Dust",
-   "note": "low kicked-up dust cloud (charge, dodge, whirlwind)"
-  },
-  "Puff": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Puff",
-   "note": "soft round puff (web fx_puff)"
-  },
-  "Flame": {
-   "cells": 8,
-   "blend": "translucent",
-   "texture": "T_FX_Flame",
-   "note": "pre-coloured cel flame tongues: 0 fire, 1 frost, 2 poison, 3 shadow, 4 holy, 5 rage, 6 plain, 7 camp"
-  },
-  "Shard": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Shard",
-   "note": "faceted crystal shard (grey)"
-  },
-  "ShardFrost": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_ShardFrost",
-   "note": "faceted ice shard, pre-coloured"
-  },
-  "Ring": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Ring",
-   "note": "ground ring at 0.4375 of the quad"
-  },
-  "Shock": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Shock",
-   "note": "shockwave disc with a bright rim"
-  },
-  "Slash": {
-   "cells": 4,
-   "blend": "additive",
-   "texture": "T_FX_Slash",
-   "note": "crescent swipes, arc centre at the bottom edge: 0 warrior, 1 rogue, 2 mage, 3 heavy"
-  },
-  "Claw": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Claw",
-   "note": "three-talon rake"
-  },
-  "Bolt": {
-   "cells": 4,
-   "blend": "additive",
-   "texture": "T_FX_Bolt",
-   "note": "vertical jagged bolts (beam quads)"
-  },
-  "Rune": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Rune",
-   "note": "magic circle with rune glyphs"
-  },
-  "Scorch": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Scorch",
-   "note": "char decal (tint dark)"
-  },
-  "Crack": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Crack",
-   "note": "ground fissures (tint dark)"
-  },
-  "CrackGlow": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_CrackGlow",
-   "note": "glowing fissures (same geometry as Crack)"
-  },
-  "Frost": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Frost",
-   "note": "frost crust decal"
-  },
-  "Puddle": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Puddle",
-   "note": "liquid puddle decal (tint venom / blood)"
-  },
-  "Hex": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Hex",
-   "note": "hex shield plate glow"
-  },
-  "Bubble": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Bubble",
-   "note": "energy bubble with fresnel rim"
-  },
-  "Flake": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Flake",
-   "note": "snowflake"
-  },
-  "Beam": {
-   "cells": 2,
-   "blend": "additive",
-   "texture": "T_FX_Beam",
-   "note": "light column (0 plain, 1 pillar with rising streaks)"
-  },
-  "Coin": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Coin",
-   "note": "cel gold coin, pre-coloured (mesh fallback)"
-  },
-  "Plus": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Plus",
-   "note": "heal plus"
-  },
-  "Skull": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Skull",
-   "note": "death-mark skull sigil"
-  },
-  "Arrow": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Arrow",
-   "note": "cel arrow pointing up, pre-coloured (mesh fallback)"
-  },
-  "Rock": {
-   "cells": 2,
-   "blend": "translucent",
-   "texture": "T_FX_Rock",
-   "note": "cel rock chips, pre-coloured (mesh fallback)"
-  },
-  "Chain": {
-   "cells": 1,
-   "blend": "translucent",
-   "texture": "T_FX_Chain",
-   "note": "cel chain link, pre-coloured (mesh fallback)"
-  },
-  "Impact": {
-   "cells": 4,
-   "blend": "additive",
-   "texture": "T_FX_Impact",
-   "note": "hit impact stars per profile: 0 normal, 1 heavy, 2 crit, 3 kill"
+   "texture": "T_FX_Swirl",
+   "note": "whirlwind ground swirl"
   },
   "Wisp": {
    "cells": 1,
    "blend": "additive",
    "texture": "T_FX_Wisp",
    "note": "spirit-fire wisp, head at the top"
-  },
-  "Swirl": {
-   "cells": 1,
-   "blend": "additive",
-   "texture": "T_FX_Swirl",
-   "note": "whirlwind ground swirl"
   }
  },
  "meshes": {
@@ -339,7 +345,7 @@
   },
   "SM_FX_IceArrow": {
    "fbx": "VFX/SM_FX_IceArrow.fbx",
-   "boundsDiameterCm": 57.2,
+   "boundsDiameterCm": 61.6,
    "orient": "velocity",
    "pivot": "centre",
    "defaultTint": "#CFF6FF",
@@ -350,7 +356,7 @@
   },
   "SM_FX_IceShard": {
    "fbx": "VFX/SM_FX_IceShard.fbx",
-   "boundsDiameterCm": 27.8,
+   "boundsDiameterCm": 33.2,
    "orient": "velocity",
    "pivot": "widest point",
    "defaultTint": "#DDF8FF",
@@ -363,22 +369,22 @@
   },
   "SM_FX_Fireball": {
    "fbx": "VFX/SM_FX_Fireball.fbx",
-   "boundsDiameterCm": 68.6,
+   "boundsDiameterCm": 69.5,
    "orient": "velocity",
    "pivot": "core centre (licks trail behind)",
-   "defaultTint": "#FF5A00",
-   "intensity": 1.45,
+   "defaultTint": "#FF9A3A",
+   "intensity": 2.4,
    "usedBy": [
     "proj.fireball"
    ]
   },
   "SM_FX_SpiritBolt": {
    "fbx": "VFX/SM_FX_SpiritBolt.fbx",
-   "boundsDiameterCm": 49.0,
+   "boundsDiameterCm": 49.9,
    "orient": "velocity",
    "pivot": "head centre",
-   "defaultTint": "#9CE0FF",
-   "intensity": 1.35,
+   "defaultTint": "#7FD2FF",
+   "intensity": 1.9,
    "usedBy": [
     "proj.pet_bolt",
     "proj.monster_bolt"
@@ -386,7 +392,7 @@
   },
   "SM_FX_Rock_A": {
    "fbx": "VFX/SM_FX_Rock_A.fbx",
-   "boundsDiameterCm": 19.4,
+   "boundsDiameterCm": 22.2,
    "orient": "billboard (tumbling rotation)",
    "pivot": "centre",
    "defaultTint": "#8A7358",
@@ -397,7 +403,7 @@
   },
   "SM_FX_Rock_B": {
    "fbx": "VFX/SM_FX_Rock_B.fbx",
-   "boundsDiameterCm": 19.5,
+   "boundsDiameterCm": 23.0,
    "orient": "billboard (tumbling rotation)",
    "pivot": "centre",
    "defaultTint": "#8A7358",
@@ -408,7 +414,7 @@
   },
   "SM_FX_MeteorRock": {
    "fbx": "VFX/SM_FX_MeteorRock.fbx",
-   "boundsDiameterCm": 94.7,
+   "boundsDiameterCm": 95.5,
    "orient": "velocity",
    "pivot": "centre",
    "defaultTint": "#8A6A5A",
@@ -419,7 +425,7 @@
   },
   "SM_FX_HexRing": {
    "fbx": "VFX/SM_FX_HexRing.fbx",
-   "boundsDiameterCm": 250.6,
+   "boundsDiameterCm": 255.3,
    "orient": "ground",
    "pivot": "ring centre at plate mid-height (layer height: chest)",
    "defaultTint": "#FFE27A",
@@ -430,7 +436,7 @@
   },
   "SM_FX_HexDome": {
    "fbx": "VFX/SM_FX_HexDome.fbx",
-   "boundsDiameterCm": 276.3,
+   "boundsDiameterCm": 285.1,
    "orient": "ground",
    "pivot": "lower ring centre at plate mid-height (layer height: chest)",
    "defaultTint": "#9FB4D4",
@@ -441,7 +447,7 @@
   },
   "SM_FX_FrostNova": {
    "fbx": "VFX/SM_FX_FrostNova.fbx",
-   "boundsDiameterCm": 202.4,
+   "boundsDiameterCm": 204.7,
    "orient": "ground",
    "pivot": "ground centre",
    "defaultTint": "#CFF6FF",
@@ -452,7 +458,7 @@
   },
   "SM_FX_FrostCage": {
    "fbx": "VFX/SM_FX_FrostCage.fbx",
-   "boundsDiameterCm": 208.0,
+   "boundsDiameterCm": 210.9,
    "orient": "ground",
    "pivot": "ground centre under the target",
    "defaultTint": "#CFF6FF",
@@ -463,7 +469,7 @@
   },
   "SM_FX_FrostCrust": {
    "fbx": "VFX/SM_FX_FrostCrust.fbx",
-   "boundsDiameterCm": 106.4,
+   "boundsDiameterCm": 110.1,
    "orient": "ground",
    "pivot": "ground centre (attached to the frozen monster)",
    "defaultTint": "#BFEFFF",
@@ -474,7 +480,7 @@
   },
   "SM_FX_StunStar": {
    "fbx": "VFX/SM_FX_StunStar.fbx",
-   "boundsDiameterCm": 25.3,
+   "boundsDiameterCm": 27.6,
    "orient": "upright (yaw only; rotation 0 faces the W1 camera)",
    "pivot": "centre",
    "defaultTint": "#FFE27A",
@@ -485,7 +491,7 @@
   },
   "SM_FX_ChainLink": {
    "fbx": "VFX/SM_FX_ChainLink.fbx",
-   "boundsDiameterCm": 17.4,
+   "boundsDiameterCm": 16.7,
    "orient": "ground (dir out: yaw along the lash)",
    "pivot": "centre",
    "defaultTint": "#A8B4C4",
@@ -496,7 +502,7 @@
   },
   "SM_FX_Chain": {
    "fbx": "VFX/SM_FX_Chain.fbx",
-   "boundsDiameterCm": 60.5,
+   "boundsDiameterCm": 59.9,
    "orient": "ground (dir out: yaw along the lash)",
    "pivot": "chain start (links run along UE +Y)",
    "defaultTint": "#A8B4C4",
@@ -507,15 +513,15 @@
   },
   "SM_FX_SlashArc_Warrior": {
    "fbx": "VFX/SM_FX_SlashArc_Warrior.fbx",
-   "boundsDiameterCm": 216.9,
+   "boundsDiameterCm": 215.6,
    "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
    "pivot": "the swing centre (the caster / the target chest)",
    "defaultTint": "#F4AC28",
-   "intensity": 1.25,
+   "intensity": 1.3,
    "usedBy": [
     "skill.slash",
-    "skill.bleed_strike",
-    "hit.basic.warrior"
+    "hit.basic.warrior",
+    "skill.rampage"
    ]
   },
   "SM_FX_SlashArc_Rogue": {
@@ -524,32 +530,34 @@
    "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
    "pivot": "the swing centre (the caster / the target chest)",
    "defaultTint": "#B478FF",
-   "intensity": 1.25,
+   "intensity": 1.3,
    "usedBy": [
     "skill.backstab",
+    "skill.shadow_step",
     "hit.basic.rogue"
    ]
   },
   "SM_FX_SlashArc_Mage": {
    "fbx": "VFX/SM_FX_SlashArc_Mage.fbx",
-   "boundsDiameterCm": 195.5,
+   "boundsDiameterCm": 195.2,
    "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
    "pivot": "the swing centre (the caster / the target chest)",
    "defaultTint": "#D8B4FF",
-   "intensity": 1.25,
+   "intensity": 1.3,
    "usedBy": [
     "hit.basic.mage"
    ]
   },
   "SM_FX_WhirlBand": {
    "fbx": "VFX/SM_FX_WhirlBand.fbx",
-   "boundsDiameterCm": 307.0,
-   "orient": "ground (+ spinDegS 900: the band whirls)",
+   "boundsDiameterCm": 271.4,
+   "orient": "ground (+ spinDegS \u2248 1500: the band whirls)",
    "pivot": "the caster's centre, chest height",
-   "defaultTint": "#EEF3FB",
-   "intensity": 1.2,
+   "defaultTint": "#AABBD4",
+   "intensity": 1.25,
    "usedBy": [
-    "skill.whirlwind"
+    "skill.whirlwind",
+    "skill.rampage"
    ]
   },
   "SM_Pickup_GoldCoin": {
@@ -560,6 +568,40 @@
    "defaultTint": null,
    "intensity": null,
    "usedBy": null
+  },
+  "SM_FX_HexPlate": {
+   "fbx": "VFX/SM_FX_HexPlate.fbx",
+   "boundsDiameterCm": 66.2,
+   "orient": "billboard / ground (rotation 0 = facing UE +Y)",
+   "pivot": "plate centre",
+   "defaultTint": "#FFE27A",
+   "intensity": 1.0,
+   "usedBy": [
+    "built-in defaults skill.shield_wall / skill.iron_fortress (orbiting plates)"
+   ]
+  },
+  "SM_FX_Bubble": {
+   "fbx": "VFX/SM_FX_Bubble.fbx",
+   "boundsDiameterCm": 225.3,
+   "orient": "billboard (rotation 0, no spin: faces the W1 camera)",
+   "pivot": "bubble centre",
+   "defaultTint": "#A07CFF",
+   "intensity": 1.9,
+   "usedBy": [
+    "skill.mana_shield"
+   ]
+  },
+  "SM_FX_SlashArc_Warrior_Back": {
+   "fbx": "VFX/SM_FX_SlashArc_Warrior_Back.fbx",
+   "boundsDiameterCm": 215.6,
+   "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
+   "pivot": "the swing centre (the caster / the target chest)",
+   "defaultTint": "#F4AC28",
+   "intensity": 1.3,
+   "usedBy": [
+    "skill.bleed_strike",
+    "skill.whirlwind (counter swipe)"
+   ]
   }
  },
  "recipes": {
@@ -600,6 +642,40 @@
       0
      ],
      "color": "#88CC88"
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Glow",
+     "at": "camera",
+     "spawnRadiusCm": 1500,
+     "gravityCmS2": 0,
+     "drag": 0,
+     "fadeIn": 0.15,
+     "intensity": 1.0,
+     "spinDegS": 0,
+     "spawnHeightJitterCm": 120,
+     "height": 30,
+     "speedCmS": [
+      4,
+      18
+     ],
+     "dir": "up",
+     "coneDeg": 140,
+     "lifeMs": [
+      6000,
+      12000
+     ],
+     "sizeCm": [
+      6,
+      10
+     ],
+     "grow": 1.9,
+     "alpha": [
+      0.15,
+      0
+     ],
+     "color": "#88CC88",
+     "count": 1
     }
    ]
   },
@@ -638,6 +714,38 @@
       0
      ],
      "color": "#DCE8F4"
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Glow",
+     "at": "camera",
+     "spawnRadiusCm": 1500,
+     "gravityCmS2": 0,
+     "drag": 0,
+     "fadeIn": 0.15,
+     "intensity": 1.0,
+     "spinDegS": 0,
+     "spawnHeightJitterCm": 260,
+     "height": 60,
+     "speedCmS": [
+      2,
+      11
+     ],
+     "lifeMs": [
+      8000,
+      14000
+     ],
+     "sizeCm": [
+      5,
+      8
+     ],
+     "grow": 1.6,
+     "alpha": [
+      0.3,
+      0
+     ],
+     "color": "#DCE8F4",
+     "count": 1
     }
    ]
   },
@@ -676,6 +784,38 @@
       0
      ],
      "color": "#FFE8A0"
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Glow",
+     "at": "camera",
+     "spawnRadiusCm": 1500,
+     "gravityCmS2": 0,
+     "drag": 0,
+     "fadeIn": 0.15,
+     "intensity": 1.0,
+     "spinDegS": 0,
+     "spawnHeightJitterCm": 260,
+     "height": 60,
+     "speedCmS": [
+      2,
+      11
+     ],
+     "lifeMs": [
+      8000,
+      14000
+     ],
+     "sizeCm": [
+      5,
+      8
+     ],
+     "grow": 1.6,
+     "alpha": [
+      0.35,
+      0
+     ],
+     "color": "#FFE8A0",
+     "count": 1
     }
    ]
   },
@@ -753,6 +893,38 @@
       0
      ],
      "color": "#9ACBFF"
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Glow",
+     "at": "camera",
+     "spawnRadiusCm": 1500,
+     "gravityCmS2": -4,
+     "drag": 0,
+     "fadeIn": 0.15,
+     "intensity": 1.2,
+     "spinDegS": 0,
+     "spawnHeightJitterCm": 200,
+     "height": 80,
+     "speedCmS": [
+      8,
+      20
+     ],
+     "lifeMs": [
+      5000,
+      9000
+     ],
+     "sizeCm": [
+      8,
+      14
+     ],
+     "grow": 1.3,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "color": "#9ACBFF",
+     "count": 1
     }
    ]
   },
@@ -766,7 +938,7 @@
      "blend": "translucent",
      "orient": "upright",
      "at": "origin",
-     "height": 6,
+     "height": 10,
      "spawnRadiusCm": 8.9,
      "upCmS": [
       40.0,
@@ -801,7 +973,7 @@
      "blend": "translucent",
      "orient": "upright",
      "at": "origin",
-     "height": 10,
+     "height": 14,
      "spawnRadiusCm": 6.7,
      "upCmS": [
       55.6,
@@ -854,7 +1026,12 @@
      ],
      "color": "#FFDD44",
      "altEvery": 2,
-     "altColor": "#FF8800"
+     "altColor": "#FF8800",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "glow",
@@ -870,12 +1047,37 @@
       0.45,
       0
      ],
-     "color": "#FF8800"
+     "color": "#FF8800",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 40,
+     "sizeCm": 90,
+     "grow": 1.15,
+     "lifeMs": 600,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.45,
+      0
+     ],
+     "color": "#FF8800",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "light": {
     "radiusCm": 300,
-    "alpha": 0.85,
+    "alpha": 0.4,
     "flicker": true
    }
   },
@@ -933,7 +1135,67 @@
       6,
       9
      ],
-     "color": "#FFB060"
+     "color": "#FFB060",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "at": "origin",
+     "height": 2,
+     "sizeCm": 110,
+     "grow": 1.06,
+     "lifeMs": 800,
+     "fadeIn": 0.35,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "color": "#FF8A3A",
+     "spinDegS": 20,
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "origin",
+     "height": 2,
+     "sizeCm": 120,
+     "grow": 1.1,
+     "lifeMs": 1100,
+     "fadeIn": 0.45,
+     "alpha": [
+      0.55,
+      0.25
+     ],
+     "color": "#FF8A3A",
+     "count": 1
+    },
+    {
+     "emitter": "motes",
+     "at": "origin",
+     "height": 60,
+     "spawnRadiusCm": 10,
+     "gravityCmS2": -80,
+     "lifeMs": [
+      800,
+      1200
+     ],
+     "sizeCm": [
+      6,
+      9
+     ],
+     "color": "#FFB060",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "NS_World_Hearthstone (forward-compatible id: the world builder can play it at camp hearthstones)"
@@ -948,7 +1210,7 @@
      "blend": "translucent",
      "orient": "upright",
      "at": "origin",
-     "height": 150,
+     "height": 166,
      "spawnRadiusCm": 4.4,
      "upCmS": [
       33.3,
@@ -974,12 +1236,17 @@
      "color": "white",
      "intensity": 1.0,
      "rate": 9,
-     "durationMs": -1
+     "durationMs": -1,
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "motes",
      "at": "origin",
-     "height": 175,
+     "height": 195,
      "rate": 2,
      "durationMs": -1,
      "spawnRadiusCm": 6,
@@ -992,12 +1259,17 @@
       5,
       8
      ],
-     "color": "#FFB060"
+     "color": "#FFB060",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "glow",
      "at": "origin",
-     "height": 165,
+     "height": 182,
      "rate": 2,
      "durationMs": -1,
      "sizeCm": 60,
@@ -1008,12 +1280,59 @@
       0.4,
       0
      ],
-     "color": "#FF6600"
+     "color": "#FF6600",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "motes",
+     "at": "origin",
+     "height": 195,
+     "spawnRadiusCm": 6,
+     "gravityCmS2": -120,
+     "lifeMs": [
+      500,
+      900
+     ],
+     "sizeCm": [
+      5,
+      8
+     ],
+     "color": "#FFB060",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 182,
+     "sizeCm": 60,
+     "grow": 1.15,
+     "lifeMs": 600,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "color": "#FF6600",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "light": {
     "radiusCm": 180,
-    "alpha": 0.65,
+    "alpha": 0.35,
     "flicker": true
    }
   },
@@ -1198,6 +1517,42 @@
      ],
      "fadeIn": 0.4,
      "color": "#8844AA"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 137,
+     "grow": 1.2,
+     "sizePow": 1,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.1
+     ],
+     "color": "#8844AA",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 240,
+     "grow": 1.3,
+     "lifeMs": 1500,
+     "alpha": [
+      0.08,
+      0
+     ],
+     "fadeIn": 0.4,
+     "color": "#8844AA",
+     "count": 1
     }
    ],
    "note": "NS_Elite_Aura_curse_aura (forward-compatible id; aura colour #8844AA)"
@@ -1237,7 +1592,51 @@
       0.45,
       0
      ],
-     "color": "#FF2222"
+     "color": "#FF2222",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 137,
+     "grow": 1.2,
+     "sizePow": 1,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.1
+     ],
+     "color": "#FF2222",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "at": "target",
+     "height": "chest",
+     "attach": true,
+     "sizeCm": 90,
+     "grow": 1.8,
+     "lifeMs": 700,
+     "alpha": [
+      0.45,
+      0
+     ],
+     "color": "#FF2222",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "NS_Elite_Aura_extra_strong (forward-compatible id; aura colour #FF2222)"
@@ -1280,7 +1679,54 @@
       0.7,
       0
      ],
-     "color": "#FF4400"
+     "color": "#FF4400",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 137,
+     "grow": 1.2,
+     "sizePow": 1,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.1
+     ],
+     "color": "#FF4400",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "at": "target",
+     "height": "chest",
+     "attach": true,
+     "sizeCm": 40,
+     "grow": 1.2,
+     "upCmS": 22,
+     "dir": "up",
+     "coneDeg": 0,
+     "lifeMs": 800,
+     "alpha": [
+      0.7,
+      0
+     ],
+     "color": "#FF4400",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "NS_Elite_Aura_fire_enhanced (forward-compatible id; aura colour #FF4400)"
@@ -1316,7 +1762,47 @@
      "spawnRadiusCm": 24,
      "sizeCm": 36,
      "lifeMs": 900,
-     "color": "#9CC8FF"
+     "color": "#9CC8FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 137,
+     "grow": 1.2,
+     "sizePow": 1,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.1
+     ],
+     "color": "#4488FF",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "emitter": "glint",
+     "at": "target",
+     "height": "chest",
+     "attach": true,
+     "spawnRadiusCm": 24,
+     "sizeCm": 36,
+     "lifeMs": 900,
+     "color": "#9CC8FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "NS_Elite_Aura_frozen (forward-compatible id; aura colour #4488FF)"
@@ -1358,7 +1844,53 @@
      "alpha": [
       0.6,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 137,
+     "grow": 1.2,
+     "sizePow": 1,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.1
+     ],
+     "color": "#44FF88",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "emitter": "streak",
+     "at": "target",
+     "height": "chest",
+     "attach": true,
+     "dir": "back",
+     "coneDeg": 10,
+     "speedCmS": 200,
+     "lifeMs": 600,
+     "sizeCm": 40,
+     "color": "#44FF88",
+     "alpha": [
+      0.6,
+      0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "NS_Elite_Aura_swift (forward-compatible id; aura colour #44FF88)"
@@ -1394,7 +1926,47 @@
      "spawnRadiusCm": 30,
      "sizeCm": 26,
      "lifeMs": 1000,
-     "color": "#AA44FF"
+     "color": "#AA44FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 137,
+     "grow": 1.2,
+     "sizePow": 1,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.1
+     ],
+     "color": "#AA44FF",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "emitter": "glint",
+     "at": "target",
+     "height": "chest",
+     "attach": true,
+     "spawnRadiusCm": 30,
+     "sizeCm": 26,
+     "lifeMs": 1000,
+     "color": "#AA44FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "NS_Elite_Aura_teleporting (forward-compatible id; aura colour #AA44FF)"
@@ -1439,13 +2011,62 @@
       1,
       0
      ],
-     "color": "#CC0000"
+     "color": "#CC0000",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 137,
+     "grow": 1.2,
+     "sizePow": 1,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.1
+     ],
+     "color": "#CC0000",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "sprite": "Drop",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "target",
+     "height": "chest",
+     "attach": true,
+     "spawnRadiusCm": 14,
+     "gravityCmS2": 300,
+     "sizeCm": 8,
+     "aspect": 0.67,
+     "grow": 1,
+     "lifeMs": 1000,
+     "alpha": [
+      1,
+      0
+     ],
+     "color": "#CC0000",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "NS_Elite_Aura_vampiric (forward-compatible id; aura colour #CC0000)"
   },
   "exit.portal": {
-   "palette": "arcane",
+   "palette": "portal",
    "layers": [
     {
      "sprite": "Ring",
@@ -1481,7 +2102,12 @@
       0.6,
       0
      ],
-     "color": "#80F0FF"
+     "color": "#80F0FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "sprite": "Rune",
@@ -1495,11 +2121,16 @@
      "lifeMs": 1400,
      "fadeIn": 0.4,
      "alpha": [
-      0.5,
+      0.35,
       0
      ],
      "spinDegS": 70,
-     "color": "#DCFFF0"
+     "color": "#9CF5E0",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "motes",
@@ -1519,11 +2150,50 @@
       11
      ],
      "color": "#B0FFE0"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "sizeCm": 115,
+     "grow": 1.05,
+     "lifeMs": 1500,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.55,
+      0
+     ],
+     "spinDegS": 30,
+     "color": "#3FE0A0",
+     "count": 1
+    },
+    {
+     "sprite": "Rune",
+     "orient": "upright",
+     "at": "origin",
+     "height": 40,
+     "sizeCm": 150,
+     "grow": 1,
+     "lifeMs": 1400,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.35,
+      0
+     ],
+     "spinDegS": 70,
+     "color": "#9CF5E0",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "light": {
-    "radiusCm": 260,
-    "alpha": 0.6,
+    "radiusCm": 220,
+    "alpha": 0.3,
     "flicker": false
    }
   },
@@ -1546,7 +2216,30 @@
       0.55,
       0
      ],
-     "color": "#6A2230"
+     "color": "#6A2230",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 2,
+     "rate": 0.8,
+     "durationMs": -1,
+     "sizeCm": 120,
+     "grow": 1,
+     "lifeMs": 2000,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.55,
+      0
+     ],
+     "color": "#4A0E1A"
     },
     {
      "sprite": "Rune",
@@ -1560,10 +2253,67 @@
      "lifeMs": 2000,
      "fadeIn": 0.4,
      "alpha": [
-      0.45,
+      0.7,
       0
      ],
-     "color": "#A8344A"
+     "color": "#E0405A",
+     "intensity": 1.2
+    },
+    {
+     "emitter": "glow",
+     "orient": "upright",
+     "at": "origin",
+     "height": 40,
+     "sizeCm": 180,
+     "aspect": 0.7,
+     "grow": 1.05,
+     "lifeMs": 1400,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.55,
+      0
+     ],
+     "color": "#6A2230",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 2,
+     "sizeCm": 120,
+     "grow": 1,
+     "lifeMs": 2000,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.55,
+      0
+     ],
+     "color": "#4A0E1A",
+     "count": 1
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "sizeCm": 120,
+     "grow": 1,
+     "lifeMs": 2000,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.7,
+      0
+     ],
+     "color": "#E0405A",
+     "intensity": 1.2,
+     "count": 1
     }
    ]
   },
@@ -1587,7 +2337,7 @@
      "dir": "down",
      "coneDeg": 10,
      "lifeMs": 150,
-     "sizeCm": 0.5,
+     "sizeCm": 0.16,
      "grow": 1,
      "alpha": [
       1,
@@ -1605,9 +2355,9 @@
      "durationMs": -1,
      "attach": true,
      "spawnRadiusCm": 0.9,
-     "height": -8,
+     "height": 36,
      "delayMs": 150,
-     "sizeCm": 0.42,
+     "sizeCm": 0.13,
      "aspect": 0.25,
      "grow": 1,
      "lifeMs": 600,
@@ -1656,7 +2406,7 @@
      "spawnRadiusCm": 0.9,
      "height": 6,
      "delayMs": 150,
-     "sizeCm": 18,
+     "sizeCm": 0.035,
      "lifeMs": 160
     }
    ]
@@ -1701,6 +2451,25 @@
      "spinDegS": 180,
      "color": "rim",
      "intensity": 1.2
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 80.0,
+     "grow": 1,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "spinDegS": 180,
+     "color": "rim",
+     "intensity": 1.2,
+     "count": 1
     }
    ]
   },
@@ -1736,13 +2505,98 @@
      "blend": "translucent",
      "at": "origin",
      "height": 30,
-     "count": 5,
-     "dir": "out",
-     "coneDeg": 0,
-     "spawnRadiusCm": 4,
-     "speedCmS": 0.1,
+     "count": 1,
      "unit": "radius",
-     "sizeCm": 0.125,
+     "rotationDeg": 18,
+     "sizeCm": 0.124,
+     "grow": 8.0,
+     "sizePow": 2,
+     "lifeMs": 700,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 6,
+     "color": "#C9D3E0"
+    },
+    {
+     "mesh": "SM_FX_Chain",
+     "sprite": "Chain",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 30,
+     "count": 1,
+     "unit": "radius",
+     "rotationDeg": 90,
+     "delayMs": 14,
+     "sizeCm": 0.124,
+     "grow": 8.0,
+     "sizePow": 2,
+     "lifeMs": 700,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 6,
+     "color": "#C9D3E0"
+    },
+    {
+     "mesh": "SM_FX_Chain",
+     "sprite": "Chain",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 30,
+     "count": 1,
+     "unit": "radius",
+     "rotationDeg": 162,
+     "delayMs": 28,
+     "sizeCm": 0.124,
+     "grow": 8.0,
+     "sizePow": 2,
+     "lifeMs": 700,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 6,
+     "color": "#C9D3E0"
+    },
+    {
+     "mesh": "SM_FX_Chain",
+     "sprite": "Chain",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 30,
+     "count": 1,
+     "unit": "radius",
+     "rotationDeg": 234,
+     "delayMs": 42,
+     "sizeCm": 0.124,
+     "grow": 8.0,
+     "sizePow": 2,
+     "lifeMs": 700,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 6,
+     "color": "#C9D3E0"
+    },
+    {
+     "mesh": "SM_FX_Chain",
+     "sprite": "Chain",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 30,
+     "count": 1,
+     "unit": "radius",
+     "rotationDeg": 306,
+     "delayMs": 56,
+     "sizeCm": 0.124,
      "grow": 8.0,
      "sizePow": 2,
      "lifeMs": 700,
@@ -1866,6 +2720,25 @@
       0.07
      ],
      "color": "mid"
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "unit": "radius",
+     "attach": true,
+     "sizeCm": 2,
+     "grow": 1.05,
+     "lifeMs": 1200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "spinDegS": 25,
+     "color": "rim",
+     "count": 1
     }
    ]
   },
@@ -1986,6 +2859,42 @@
       0
      ],
      "color": "#FF7A3A"
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 80.0,
+     "grow": 1,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "spinDegS": 229,
+     "color": "rim",
+     "intensity": 1.2,
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "origin",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 70,
+     "grow": 1.1,
+     "lifeMs": 600,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.35,
+      0
+     ],
+     "color": "#FF7A3A",
+     "count": 1
     }
    ]
   },
@@ -2143,8 +3052,8 @@
       377.8
      ],
      "sizeCm": [
-      13.6,
-      22.3
+      15.5,
+      25.5
      ],
      "color": "#8A7358"
     },
@@ -2231,7 +3140,7 @@
      "orient": "upright",
      "at": "origin",
      "unit": "radius",
-     "rate": 60,
+     "rate": 105,
      "durationMs": -1,
      "attach": true,
      "spawnRadiusCm": 1,
@@ -2257,8 +3166,7 @@
      ],
      "fadeIn": 0.15,
      "alphaPow": 1.2,
-     "color": "white",
-     "countByRadius": true
+     "color": "white"
     },
     {
      "emitter": "flames",
@@ -2268,7 +3176,7 @@
      "orient": "upright",
      "at": "origin",
      "unit": "radius",
-     "rate": 22,
+     "rate": 40,
      "durationMs": -1,
      "attach": true,
      "spawnRadiusCm": 0.93,
@@ -2345,6 +3253,21 @@
       0
      ],
      "color": "#2E1E18"
+    },
+    {
+     "emitter": "decal",
+     "sprite": "Scorch",
+     "at": "origin",
+     "unit": "radius",
+     "attach": true,
+     "sizeCm": 2.3,
+     "lifeMs": 1700,
+     "alpha": [
+      0.45,
+      0
+     ],
+     "color": "#2E1E18",
+     "count": 1
     }
    ],
    "light": {
@@ -2375,6 +3298,25 @@
      "spinDegS": 286,
      "color": "rim",
      "intensity": 1.2
+    },
+    {
+     "sprite": "Rune",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 71.2,
+     "grow": 1,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "spinDegS": 286,
+     "color": "rim",
+     "intensity": 1.2,
+     "count": 1
     }
    ]
   },
@@ -2670,6 +3612,24 @@
     },
     {
      "emitter": "beam",
+     "variant": 0,
+     "at": "target",
+     "height": 0,
+     "sizeCm": 133.3,
+     "aspect": 0.367,
+     "grow": 2.5,
+     "sizePow": 3,
+     "lifeMs": 900,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "fadeIn": 0.1,
+     "color": "rim",
+     "blend": "translucent"
+    },
+    {
+     "emitter": "beam",
      "variant": 1,
      "at": "target",
      "height": 0,
@@ -2713,7 +3673,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "flash",
@@ -2722,7 +3687,12 @@
      "sizeCm": 28.0,
      "grow": 2.428571428571429,
      "lifeMs": 200,
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "shock",
@@ -2824,6 +3794,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     },
     {
@@ -2877,7 +3852,12 @@
       0.6,
       0
      ],
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "flash",
@@ -2886,7 +3866,12 @@
      "sizeCm": 28.0,
      "grow": 2.428571428571429,
      "lifeMs": 220,
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "glow",
@@ -3000,6 +3985,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     }
    ]
@@ -3044,7 +4034,29 @@
      ],
      "color": "event",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 120,
+     "grow": 1.15,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.35,
+      0
+     ],
+     "color": "event",
+     "count": 1
     }
    ]
   },
@@ -3066,7 +4078,7 @@
      ],
      "color": "#AABBD4",
      "offsetCm": [
-      -13,
+      -35.0,
       0,
       0
      ],
@@ -3087,7 +4099,7 @@
      ],
      "color": "white",
      "offsetCm": [
-      -13,
+      -35.0,
       0,
       0
      ],
@@ -3114,7 +4126,12 @@
       10.4
      ],
      "color": "#FFF2C0",
-     "altEvery": 0
+     "altEvery": 0,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "streak",
@@ -3137,6 +4154,11 @@
      "alpha": [
       0.9,
       0
+     ],
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
      ]
     }
    ]
@@ -3151,7 +4173,7 @@
      "blend": "translucent",
      "at": "target",
      "height": "chest",
-     "sizeCm": 113.2,
+     "sizeCm": 113.0,
      "grow": 1.08,
      "sizePow": 2,
      "lifeMs": 170,
@@ -3173,7 +4195,7 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      28.6,
+      -22.0,
       0,
       0
      ],
@@ -3210,7 +4232,12 @@
       10.4
      ],
      "color": "#FFF2C0",
-     "altEvery": 0
+     "altEvery": 0,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "forward-compatible per-class basic swing (class impact colour #C7A6FF); hit.basic is played today"
@@ -3247,7 +4274,7 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      28.6,
+      -22.0,
       0,
       0
      ],
@@ -3284,7 +4311,12 @@
       10.4
      ],
      "color": "#FFF2C0",
-     "altEvery": 0
+     "altEvery": 0,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "forward-compatible per-class basic swing (class impact colour #9DFFC8); hit.basic is played today"
@@ -3299,7 +4331,7 @@
      "blend": "translucent",
      "at": "target",
      "height": "chest",
-     "sizeCm": 119.3,
+     "sizeCm": 118.6,
      "grow": 1.08,
      "sizePow": 2,
      "lifeMs": 170,
@@ -3321,7 +4353,7 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      28.6,
+      -22.0,
       0,
       0
      ],
@@ -3358,7 +4390,12 @@
       10.4
      ],
      "color": "#FFF2C0",
-     "altEvery": 0
+     "altEvery": 0,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "forward-compatible per-class basic swing (class impact colour #FFD98A); hit.basic is played today"
@@ -3390,7 +4427,12 @@
      "speedCmS": 67,
      "dir": "down",
      "coneDeg": 0,
-     "color": "#5A0A14"
+     "color": "#5A0A14",
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Claw",
@@ -3409,7 +4451,12 @@
       20
      ],
      "color": "#FF5A3A",
-     "intensity": 1.4
+     "intensity": 1.4,
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Claw",
@@ -3424,7 +4471,12 @@
       0
      ],
      "color": "white",
-     "intensity": 1.4
+     "intensity": 1.4,
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -3447,7 +4499,12 @@
       9.8
      ],
      "color": "#FF6A4A",
-     "altEvery": 0
+     "altEvery": 0,
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glow",
@@ -3460,7 +4517,12 @@
       0.5,
       0
      ],
-     "color": "#FF3A2A"
+     "color": "#FF3A2A",
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
     }
    ]
   },
@@ -3476,7 +4538,12 @@
      "lifeMs": 200,
      "rotationDeg": 0,
      "spinDegS": 69,
-     "color": "white"
+     "color": "white",
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -3498,7 +4565,12 @@
       13.0
      ],
      "color": "#FFE9A0",
-     "altEvery": 0
+     "altEvery": 0,
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "streak",
@@ -3518,6 +4590,11 @@
      "alpha": [
       0.8,
       0
+     ],
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
      ]
     }
    ]
@@ -3547,7 +4624,12 @@
      "color": "event",
      "intensity": 1.35,
      "only": "small",
-     "unit": "ring"
+     "unit": "ring",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Impact",
@@ -3571,14 +4653,19 @@
      "color": "event",
      "intensity": 1.35,
      "only": "big",
-     "unit": "ring"
+     "unit": "ring",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      6.7,
+      -22.0,
       0,
       0
      ],
@@ -3594,7 +4681,7 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      6.7,
+      -22.0,
       0,
       0
      ],
@@ -3618,7 +4705,12 @@
       0
      ],
      "color": "event",
-     "only": "small"
+     "only": "small",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glow",
@@ -3633,7 +4725,12 @@
       0
      ],
      "color": "event",
-     "only": "big"
+     "only": "big",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -3726,7 +4823,12 @@
      "gravityCmS2": 266,
      "altEvery": 2,
      "color": "event",
-     "only": "small"
+     "only": "small",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -3747,7 +4849,12 @@
      "gravityCmS2": 266,
      "altEvery": 2,
      "color": "event",
-     "only": "big"
+     "only": "big",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glint",
@@ -3759,7 +4866,12 @@
      "rotationDeg": 45,
      "spinDegS": 69,
      "color": "white",
-     "only": "big"
+     "only": "big",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ]
   },
@@ -3787,14 +4899,19 @@
      ],
      "color": "event",
      "intensity": 1.35,
-     "unit": "ring"
+     "unit": "ring",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      6.7,
+      -22.0,
       0,
       0
      ],
@@ -3816,7 +4933,12 @@
       0.45,
       0
      ],
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -3870,7 +4992,12 @@
      "drag": 4,
      "gravityCmS2": 266,
      "altEvery": 2,
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glint",
@@ -3881,7 +5008,12 @@
      "lifeMs": 200,
      "rotationDeg": 45,
      "spinDegS": 69,
-     "color": "white"
+     "color": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "hit profile crit (12 sparks): forward-compatible id, hit.impact covers it today"
@@ -3910,14 +5042,19 @@
      ],
      "color": "event",
      "intensity": 1.35,
-     "unit": "ring"
+     "unit": "ring",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      6.7,
+      -22.0,
       0,
       0
      ],
@@ -3939,7 +5076,12 @@
       0.45,
       0
      ],
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -3993,7 +5135,12 @@
      "drag": 4,
      "gravityCmS2": 266,
      "altEvery": 2,
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "hit profile heavy (9 sparks): forward-compatible id, hit.impact covers it today"
@@ -4022,14 +5169,19 @@
      ],
      "color": "event",
      "intensity": 1.35,
-     "unit": "ring"
+     "unit": "ring",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      6.7,
+      -22.0,
       0,
       0
      ],
@@ -4051,7 +5203,12 @@
       0.45,
       0
      ],
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -4105,7 +5262,12 @@
      "drag": 4,
      "gravityCmS2": 266,
      "altEvery": 2,
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glint",
@@ -4116,7 +5278,12 @@
      "lifeMs": 200,
      "rotationDeg": 45,
      "spinDegS": 69,
-     "color": "white"
+     "color": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "hit profile kill (14 sparks): forward-compatible id, hit.impact covers it today"
@@ -4145,14 +5312,19 @@
      ],
      "color": "event",
      "intensity": 1.35,
-     "unit": "ring"
+     "unit": "ring",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      6.7,
+      -22.0,
       0,
       0
      ],
@@ -4174,7 +5346,12 @@
       0.45,
       0
      ],
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -4228,7 +5405,12 @@
      "drag": 4,
      "gravityCmS2": 266,
      "altEvery": 2,
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "hit profile light (4 sparks): forward-compatible id, hit.impact covers it today"
@@ -4257,14 +5439,19 @@
      ],
      "color": "event",
      "intensity": 1.35,
-     "unit": "ring"
+     "unit": "ring",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      6.7,
+      -22.0,
       0,
       0
      ],
@@ -4286,7 +5473,12 @@
       0.45,
       0
      ],
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -4340,7 +5532,12 @@
      "drag": 4,
      "gravityCmS2": 266,
      "altEvery": 2,
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "note": "hit profile normal (6 sparks): forward-compatible id, hit.impact covers it today"
@@ -4560,6 +5757,24 @@
     },
     {
      "emitter": "beam",
+     "at": "point",
+     "height": 0,
+     "sizeCm": 24.44,
+     "aspect": 0.26,
+     "grow": 10,
+     "sizePow": 4,
+     "blend": "translucent",
+     "lifeMs": 1800,
+     "fadeIn": 0.05,
+     "alphaPow": 2.5,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "color": "event"
+    },
+    {
+     "emitter": "beam",
      "variant": 1,
      "at": "point",
      "height": 0,
@@ -4682,6 +5897,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     }
    ]
@@ -4700,6 +5920,24 @@
      "fadeIn": 0.2,
      "alpha": [
       0.7,
+      0
+     ],
+     "color": "event"
+    },
+    {
+     "emitter": "beam",
+     "at": "point",
+     "height": 0,
+     "sizeCm": 18,
+     "aspect": 0.2,
+     "grow": 10,
+     "sizePow": 4,
+     "blend": "translucent",
+     "lifeMs": 1400,
+     "fadeIn": 0.05,
+     "alphaPow": 2.5,
+     "alpha": [
+      0.3,
       0
      ],
      "color": "event"
@@ -4820,6 +6058,24 @@
     },
     {
      "emitter": "beam",
+     "at": "point",
+     "height": 0,
+     "sizeCm": 24.44,
+     "aspect": 0.26,
+     "grow": 10,
+     "sizePow": 4,
+     "blend": "translucent",
+     "lifeMs": 1800,
+     "fadeIn": 0.05,
+     "alphaPow": 2.5,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "color": "event"
+    },
+    {
+     "emitter": "beam",
      "variant": 1,
      "at": "point",
      "height": 0,
@@ -4942,6 +6198,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     }
    ]
@@ -4958,7 +6219,12 @@
      "lifeMs": 200,
      "rotationDeg": 0,
      "spinDegS": 69,
-     "color": "white"
+     "color": "white",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "sparks",
@@ -4981,7 +6247,12 @@
      ],
      "color": "mid",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     }
    ]
   },
@@ -5039,7 +6310,12 @@
       0.6,
       0
      ],
-     "color": "#B8D8FF"
+     "color": "#B8D8FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "flash",
@@ -5048,7 +6324,12 @@
      "sizeCm": 28.0,
      "grow": 2.428571428571429,
      "lifeMs": 220,
-     "color": "#B8D8FF"
+     "color": "#B8D8FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "sprite": "Ring",
@@ -5107,7 +6388,12 @@
      ],
      "color": "#66AAFF",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     }
    ]
   },
@@ -5274,7 +6560,12 @@
      "lifeMs": 160,
      "rotationDeg": 0,
      "spinDegS": 69,
-     "color": "white"
+     "color": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ]
   },
@@ -5371,7 +6662,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -5380,7 +6676,12 @@
      "sizeCm": 20.2,
      "grow": 2.428571428571429,
      "lifeMs": 170,
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -5403,7 +6704,12 @@
      ],
      "color": "mid",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -5456,15 +6762,15 @@
      "dir": "blow",
      "coneDeg": 0,
      "speedCmS": 1,
-     "sizeCm": 58.3,
+     "sizeCm": 55.6,
      "grow": 1,
      "lifeMs": 34,
      "alpha": [
       1,
       1
      ],
-     "color": "#FF5A00",
-     "intensity": 1.45,
+     "color": "#FFB347",
+     "intensity": 2.0,
      "rate": 60,
      "durationMs": -1
     },
@@ -5474,11 +6780,11 @@
      "rate": 60,
      "durationMs": -1,
      "attach": true,
-     "sizeCm": 86,
+     "sizeCm": 96,
      "grow": 0.75,
      "lifeMs": 100,
      "alpha": [
-      0.7,
+      0.75,
       0
      ],
      "color": "rim"
@@ -5493,21 +6799,21 @@
      "dir": "blow",
      "coneDeg": 0,
      "speedCmS": 1,
-     "sizeCm": 70,
+     "sizeCm": 118,
      "aspect": 0.4,
      "offsetCm": [
-      -14,
+      -34,
       0,
       0
      ],
      "grow": 0.85,
      "lifeMs": 90,
      "alpha": [
-      0.8,
+      0.85,
       0
      ],
-     "color": "#FFA532",
-     "intensity": 1.4
+     "color": "#FF8A2A",
+     "intensity": 1.6
     },
     {
      "emitter": "flash",
@@ -5515,7 +6821,7 @@
      "rate": 60,
      "durationMs": -1,
      "attach": true,
-     "sizeCm": 18,
+     "sizeCm": 28,
      "grow": 1,
      "lifeMs": 50,
      "alpha": [
@@ -5524,7 +6830,7 @@
      ],
      "color": "core",
      "offsetCm": [
-      10,
+      12,
       0,
       4
      ]
@@ -5536,19 +6842,19 @@
      "blend": "translucent",
      "orient": "upright",
      "at": "origin",
-     "height": -18,
-     "spawnRadiusCm": 6.7,
+     "height": -14,
+     "spawnRadiusCm": 8.9,
      "upCmS": [
-      44.4,
-      88.9
+      66.7,
+      133.3
      ],
      "lifeMs": [
-      220,
-      300
+      130,
+      200
      ],
      "sizeCm": [
-      39.3,
-      58.9
+      25.5,
+      41.3
      ],
      "aspect": 0.5,
      "grow": 0.72,
@@ -5561,17 +6867,27 @@
      "alphaPow": 1.2,
      "color": "white",
      "intensity": 1.0,
-     "rate": 70,
+     "rate": 48,
      "durationMs": -1
     },
     {
      "emitter": "motes",
+     "sprite": "Ember",
      "at": "origin",
-     "rate": 18,
+     "rate": 22,
      "durationMs": -1,
+     "speedCmS": [
+      10,
+      40
+     ],
+     "gravityCmS2": -80,
+     "lifeMs": [
+      220,
+      380
+     ],
      "sizeCm": [
-      5,
-      9
+      6,
+      10
      ],
      "color": "rim"
     },
@@ -5587,8 +6903,8 @@
       100.0
      ],
      "lifeMs": [
-      400,
-      600
+      380,
+      560
      ],
      "sizeCm": [
       21.3,
@@ -5597,11 +6913,11 @@
      "grow": 2.083,
      "gravityCmS2": -44.4,
      "alpha": [
-      0.5,
+      0.45,
       0
      ],
      "color": "#4A3A36",
-     "rate": 11,
+     "rate": 9,
      "durationMs": -1
     }
    ]
@@ -5620,7 +6936,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -5629,7 +6950,12 @@
      "sizeCm": 26.4,
      "grow": 2.428571428571429,
      "lifeMs": 170,
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Impact",
@@ -5651,7 +6977,12 @@
       360
      ],
      "color": "#FFA532",
-     "intensity": 1.35
+     "intensity": 1.35,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glow",
@@ -5664,7 +6995,12 @@
       0.6,
       0
      ],
-     "color": "rim"
+     "color": "rim",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "shock",
@@ -5759,7 +7095,12 @@
      ],
      "color": "mid",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "motes",
@@ -5788,6 +7129,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
      ]
     },
     {
@@ -5911,7 +7257,7 @@
      "dir": "blow",
      "coneDeg": 0,
      "speedCmS": 1,
-     "sizeCm": 57.2,
+     "sizeCm": 61.6,
      "grow": 1,
      "lifeMs": 520,
      "alpha": [
@@ -5921,6 +7267,58 @@
      "color": "#CFF6FF",
      "intensity": 1.2,
      "count": 1
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "origin",
+     "rate": 60,
+     "durationMs": -1,
+     "attach": true,
+     "dir": "blow",
+     "coneDeg": 0,
+     "speedCmS": 1,
+     "sizeCm": 74,
+     "aspect": 0.26,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "#46B4F0",
+     "offsetCm": [
+      -28.1,
+      0,
+      0
+     ],
+     "blend": "translucent",
+     "alpha": [
+      0.7,
+      0
+     ]
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "origin",
+     "rate": 60,
+     "durationMs": -1,
+     "attach": true,
+     "dir": "blow",
+     "coneDeg": 0,
+     "speedCmS": 1,
+     "sizeCm": 74,
+     "aspect": 0.26,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "#46B4F0",
+     "offsetCm": [
+      -28.1,
+      0,
+      0
+     ],
+     "alpha": [
+      0.9,
+      0
+     ],
+     "intensity": 1.4
     },
     {
      "emitter": "glow",
@@ -6008,7 +7406,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -6017,7 +7420,12 @@
      "sizeCm": 18.7,
      "grow": 2.428571428571429,
      "lifeMs": 160,
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "mesh": "SM_FX_IceShard",
@@ -6043,15 +7451,15 @@
       450
      ],
      "sizeCm": [
-      12.5,
-      19.5
+      14.9,
+      23.2
      ],
      "grow": 1,
      "alpha": [
       1,
       0
      ],
-     "alphaPow": 4,
+     "alphaPow": 7,
      "color": "#DDF8FF",
      "intensity": 1.1
     },
@@ -6082,6 +7490,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
      ]
     },
     {
@@ -6184,7 +7597,7 @@
      "dir": "blow",
      "coneDeg": 0,
      "speedCmS": 1,
-     "sizeCm": 41.6,
+     "sizeCm": 49.9,
      "grow": 1,
      "lifeMs": 34,
      "alpha": [
@@ -6195,6 +7608,58 @@
      "intensity": 1.3,
      "rate": 60,
      "durationMs": -1
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "origin",
+     "rate": 60,
+     "durationMs": -1,
+     "attach": true,
+     "dir": "blow",
+     "coneDeg": 0,
+     "speedCmS": 1,
+     "sizeCm": 62,
+     "aspect": 0.3,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "event",
+     "offsetCm": [
+      -23.6,
+      0,
+      0
+     ],
+     "blend": "translucent",
+     "alpha": [
+      0.7,
+      0
+     ]
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "origin",
+     "rate": 60,
+     "durationMs": -1,
+     "attach": true,
+     "dir": "blow",
+     "coneDeg": 0,
+     "speedCmS": 1,
+     "sizeCm": 62,
+     "aspect": 0.3,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "event",
+     "offsetCm": [
+      -23.6,
+      0,
+      0
+     ],
+     "alpha": [
+      0.9,
+      0
+     ],
+     "intensity": 1.4
     },
     {
      "emitter": "glow",
@@ -6247,7 +7712,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -6256,7 +7726,12 @@
      "sizeCm": 18.7,
      "grow": 2.428571428571429,
      "lifeMs": 160,
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -6279,7 +7754,12 @@
      ],
      "color": "event",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Ring",
@@ -6360,7 +7840,7 @@
      "dir": "blow",
      "coneDeg": 0,
      "speedCmS": 1,
-     "sizeCm": 34.3,
+     "sizeCm": 42.4,
      "grow": 1,
      "lifeMs": 34,
      "alpha": [
@@ -6371,6 +7851,58 @@
      "intensity": 1.3,
      "rate": 60,
      "durationMs": -1
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "origin",
+     "rate": 60,
+     "durationMs": -1,
+     "attach": true,
+     "dir": "blow",
+     "coneDeg": 0,
+     "speedCmS": 1,
+     "sizeCm": 50,
+     "aspect": 0.3,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "event",
+     "offsetCm": [
+      -19.0,
+      0,
+      0
+     ],
+     "blend": "translucent",
+     "alpha": [
+      0.7,
+      0
+     ]
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "origin",
+     "rate": 60,
+     "durationMs": -1,
+     "attach": true,
+     "dir": "blow",
+     "coneDeg": 0,
+     "speedCmS": 1,
+     "sizeCm": 50,
+     "aspect": 0.3,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "event",
+     "offsetCm": [
+      -19.0,
+      0,
+      0
+     ],
+     "alpha": [
+      0.9,
+      0
+     ],
+     "intensity": 1.4
     },
     {
      "emitter": "glow",
@@ -6424,7 +7956,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -6433,7 +7970,12 @@
      "sizeCm": 14.0,
      "grow": 2.428571428571429,
      "lifeMs": 150,
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -6456,7 +7998,12 @@
      ],
      "color": "event",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ]
   },
@@ -6524,7 +8071,12 @@
      "lifeMs": 160,
      "rotationDeg": 0,
      "spinDegS": 69,
-     "color": "white"
+     "color": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -6547,7 +8099,12 @@
      ],
      "color": "mid",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ]
   },
@@ -6585,20 +8142,47 @@
      "dir": "blow",
      "coneDeg": 0,
      "speedCmS": 1,
-     "sizeCm": 46,
-     "aspect": 0.33,
-     "grow": 0.8,
-     "lifeMs": 80,
+     "sizeCm": 70,
+     "aspect": 0.26,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "#3FAE2E",
+     "offsetCm": [
+      -26.6,
+      0,
+      0
+     ],
+     "blend": "translucent",
      "alpha": [
       0.7,
       0
-     ],
-     "color": "mid",
+     ]
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "origin",
+     "rate": 60,
+     "durationMs": -1,
+     "attach": true,
+     "dir": "blow",
+     "coneDeg": 0,
+     "speedCmS": 1,
+     "sizeCm": 70,
+     "aspect": 0.26,
+     "grow": 0.85,
+     "lifeMs": 70,
+     "color": "#3FAE2E",
      "offsetCm": [
-      -26,
+      -26.6,
       0,
       0
-     ]
+     ],
+     "alpha": [
+      0.9,
+      0
+     ],
+     "intensity": 1.4
     },
     {
      "sprite": "Drop",
@@ -6654,7 +8238,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -6663,7 +8252,12 @@
      "sizeCm": 15.6,
      "grow": 2.428571428571429,
      "lifeMs": 160,
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Drop",
@@ -6698,7 +8292,12 @@
       0
      ],
      "alphaPow": 3,
-     "color": "rim"
+     "color": "rim",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "smoke",
@@ -6797,7 +8396,31 @@
      "rate": 1,
      "durationMs": -1,
      "attach": true,
-     "spawnRadiusCm": 20
+     "spawnRadiusCm": 20,
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glint",
+     "at": "origin",
+     "height": 45,
+     "sizeCm": 8.0,
+     "grow": 3.333,
+     "lifeMs": 400,
+     "rotationDeg": 0,
+     "spinDegS": 69,
+     "color": "#FFE080",
+     "attach": true,
+     "spawnRadiusCm": 20,
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ]
   },
@@ -6819,7 +8442,12 @@
       0
      ],
      "fadeIn": 0.2,
-     "color": "#FFF0B0"
+     "color": "#FFF0B0",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "glow",
@@ -6832,7 +8460,12 @@
       0.9,
       0
      ],
-     "color": "#FFD870"
+     "color": "#FFD870",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "motes",
@@ -6861,6 +8494,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     }
    ]
@@ -6886,6 +8524,24 @@
      ],
      "color": "#8FE0FF",
      "intensity": 1.2
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 70,
+     "grow": 1.3,
+     "sizePow": 1,
+     "lifeMs": 1100,
+     "alpha": [
+      0.7,
+      0.2
+     ],
+     "color": "#8FE0FF",
+     "intensity": 1.2,
+     "count": 1
     }
    ]
   },
@@ -6907,7 +8563,33 @@
       0.5,
       0
      ],
-     "color": "#72D8FF"
+     "color": "#72D8FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 110,
+     "attach": true,
+     "sizeCm": 80,
+     "grow": 1.2,
+     "lifeMs": 1000,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "color": "#72D8FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ]
   },
@@ -6950,7 +8632,53 @@
       5,
       8
      ],
-     "color": "#FFF1C0"
+     "color": "#FFF1C0",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "origin",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 70,
+     "grow": 1.25,
+     "lifeMs": 900,
+     "fadeIn": 0.4,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "color": "#FFD98A",
+     "count": 1
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Spark",
+     "at": "origin",
+     "height": 25,
+     "attach": true,
+     "spawnRadiusCm": 20,
+     "gravityCmS2": -50,
+     "lifeMs": [
+      600,
+      900
+     ],
+     "sizeCm": [
+      5,
+      8
+     ],
+     "color": "#FFF1C0",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ]
   },
@@ -6993,7 +8721,53 @@
       6,
       9
      ],
-     "color": "event"
+     "color": "event",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "origin",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 100,
+     "grow": 1.2,
+     "lifeMs": 1500,
+     "fadeIn": 0.45,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "color": "event",
+     "count": 1
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Spark",
+     "at": "origin",
+     "height": 30,
+     "attach": true,
+     "spawnRadiusCm": 30,
+     "gravityCmS2": -60,
+     "lifeMs": [
+      700,
+      1100
+     ],
+     "sizeCm": [
+      6,
+      9
+     ],
+     "color": "event",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ]
   },
@@ -7034,7 +8808,30 @@
       16
      ],
      "spinDegS": 0,
-     "color": "#9FE6FF"
+     "color": "#9FE6FF",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 90,
+     "grow": 1.15,
+     "sizePow": 1,
+     "lifeMs": 1400,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.6,
+      0.2
+     ],
+     "color": "#7FD8FF",
+     "count": 1
     }
    ]
   },
@@ -7048,7 +8845,12 @@
      "sizeCm": 45,
      "grow": 2.4,
      "lifeMs": 260,
-     "color": "#FFE39A"
+     "color": "#FFE39A",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "sparks",
@@ -7058,7 +8860,12 @@
      "dir": "flat",
      "speedCmS": 155,
      "color": "#FFF1C0",
-     "altEvery": 0
+     "altEvery": 0,
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     }
    ]
   },
@@ -7085,13 +8892,13 @@
       420,
       580
      ],
-     "sizeCm": 18.5,
-     "grow": 1,
+     "sizeCm": 31.4,
+     "grow": 0.35,
+     "sizePow": 0.25,
      "alpha": [
       1,
-      0
+      1
      ],
-     "alphaPow": 4,
      "spinDegS": [
       -540,
       540
@@ -7133,6 +8940,19 @@
       1.0,
       0
      ]
+    },
+    {
+     "emitter": "glow",
+     "at": "target",
+     "height": 40,
+     "sizeCm": 50,
+     "grow": 1.6,
+     "lifeMs": 220,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "color": "#FFC93A"
     }
    ]
   },
@@ -7150,6 +8970,25 @@
       0.55,
       0
      ],
+     "color": "rim",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 3,
+     "sizeCm": 90,
+     "grow": 1.5,
+     "lifeMs": 480,
+     "alpha": [
+      0.55,
+      0
+     ],
      "color": "rim"
     },
     {
@@ -7163,7 +9002,7 @@
      "sizePow": 3,
      "lifeMs": 420,
      "alpha": [
-      0.44,
+      0.468,
       0
      ],
      "fadeIn": 0.05,
@@ -7180,7 +9019,7 @@
      "sizePow": 3,
      "lifeMs": 420,
      "alpha": [
-      0.8,
+      0.85,
       0
      ],
      "fadeIn": 0.05,
@@ -7192,8 +9031,9 @@
      "emitter": "motes",
      "sprite": "Plus",
      "at": "target",
-     "height": "chest",
-     "count": 4,
+     "height": 60,
+     "count": 5,
+     "spawnRadiusCm": 26.7,
      "speedCmS": [
       44.4,
       155.6
@@ -7203,8 +9043,8 @@
       700
      ],
      "sizeCm": [
-      14,
-      20
+      20,
+      28
      ],
      "gravityCmS2": -133.3,
      "color": "mid",
@@ -7215,14 +9055,21 @@
      "alpha": [
       1.0,
       0
+     ],
+     "intensity": 1.3,
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     },
     {
      "emitter": "motes",
      "sprite": "Ember",
      "at": "target",
-     "height": "chest",
+     "height": 40,
      "count": 10,
+     "spawnRadiusCm": 26.7,
      "speedCmS": [
       44.4,
       155.6
@@ -7246,6 +9093,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     }
    ]
@@ -7264,6 +9116,25 @@
       0.55,
       0
      ],
+     "color": "rim",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 3,
+     "sizeCm": 90,
+     "grow": 1.5,
+     "lifeMs": 480,
+     "alpha": [
+      0.55,
+      0
+     ],
      "color": "rim"
     },
     {
@@ -7277,7 +9148,7 @@
      "sizePow": 3,
      "lifeMs": 420,
      "alpha": [
-      0.44,
+      0.468,
       0
      ],
      "fadeIn": 0.05,
@@ -7294,7 +9165,7 @@
      "sizePow": 3,
      "lifeMs": 420,
      "alpha": [
-      0.8,
+      0.85,
       0
      ],
      "fadeIn": 0.05,
@@ -7306,8 +9177,9 @@
      "emitter": "motes",
      "sprite": "Spark",
      "at": "target",
-     "height": "chest",
-     "count": 10,
+     "height": 40,
+     "count": 12,
+     "spawnRadiusCm": 26.7,
      "speedCmS": [
       44.4,
       155.6
@@ -7317,8 +9189,8 @@
       700
      ],
      "sizeCm": [
-      8,
-      12
+      10,
+      15
      ],
      "gravityCmS2": -155.6,
      "color": "core",
@@ -7331,6 +9203,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
      ]
     }
    ]
@@ -7349,7 +9226,7 @@
      "sizePow": 3,
      "lifeMs": 900,
      "alpha": [
-      0.7,
+      0.6,
       0
      ],
      "fadeIn": 0.06,
@@ -7373,15 +9250,15 @@
      "dir": "down",
      "coneDeg": 14,
      "lifeMs": 150,
-     "sizeCm": 70,
+     "sizeCm": 78,
      "aspect": 0.33,
      "grow": 1,
      "alpha": [
-      1,
-      1
+      0.92,
+      0.92
      ],
-     "color": "mid",
-     "intensity": 1.5
+     "color": "rim",
+     "blend": "translucent"
     },
     {
      "sprite": "Wisp",
@@ -7402,8 +9279,8 @@
       1,
       1
      ],
-     "color": "core",
-     "intensity": 1.3
+     "color": "mid",
+     "intensity": 1.4
     },
     {
      "emitter": "flash",
@@ -7447,12 +9324,12 @@
      "grow": 6.875,
      "lifeMs": 420,
      "alpha": [
-      0.405,
+      0.293,
       0
      ],
      "fadeIn": 0.04,
      "alphaPow": 1.2,
-     "color": "mid",
+     "color": "rim",
      "delayMs": 250
     },
     {
@@ -7463,12 +9340,12 @@
      "grow": 6.875,
      "lifeMs": 420,
      "alpha": [
-      0.9,
+      0.65,
       0
      ],
      "fadeIn": 0.04,
      "alphaPow": 1.2,
-     "color": "mid",
+     "color": "rim",
      "intensity": 1.15,
      "delayMs": 250
     },
@@ -7630,7 +9507,12 @@
       1.0,
       0
      ],
-     "color": "rim"
+     "color": "rim",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "slash",
@@ -7646,7 +9528,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 60
+     "delayMs": 60,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glow",
@@ -7660,7 +9547,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 30
+     "delayMs": 30,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -7670,7 +9562,12 @@
      "grow": 2.428571428571429,
      "lifeMs": 160,
      "color": "mid",
-     "delayMs": 30
+     "delayMs": 30,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glint",
@@ -7682,7 +9579,12 @@
      "rotationDeg": 45,
      "spinDegS": 69,
      "color": "white",
-     "delayMs": 60
+     "delayMs": 60,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -7705,7 +9607,12 @@
      ],
      "color": "mid",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Drop",
@@ -7740,7 +9647,12 @@
       0
      ],
      "alphaPow": 3,
-     "color": "#E8342C"
+     "color": "#E8342C",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "smoke",
@@ -7776,13 +9688,13 @@
    "palette": "blood",
    "layers": [
     {
-     "mesh": "SM_FX_SlashArc_Warrior",
+     "mesh": "SM_FX_SlashArc_Warrior_Back",
      "sprite": "Slash",
      "orient": "ground",
      "blend": "translucent",
      "at": "origin",
      "height": "chest",
-     "sizeCm": 238.6,
+     "sizeCm": 237.2,
      "grow": 1.08,
      "sizePow": 2,
      "lifeMs": 230,
@@ -7857,7 +9769,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -7867,7 +9784,12 @@
      "grow": 2.428571428571429,
      "lifeMs": 160,
      "color": "mid",
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Drop",
@@ -7903,7 +9825,12 @@
      ],
      "alphaPow": 3,
      "color": "mid",
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Drop",
@@ -7930,7 +9857,12 @@
       1,
       0.5
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "decal",
@@ -7971,7 +9903,7 @@
      "sizePow": 3,
      "lifeMs": 1300,
      "alpha": [
-      0.75,
+      0.55,
       0
      ],
      "fadeIn": 0.15,
@@ -7980,7 +9912,7 @@
       0,
       360
      ],
-     "color": "mid"
+     "color": "rim"
     },
     {
      "sprite": "Ring",
@@ -8036,8 +9968,8 @@
       172
      ],
      "sizeCm": [
-      23.6,
-      32.0
+      46.5,
+      59.8
      ],
      "grow": 1,
      "alpha": [
@@ -8066,8 +9998,8 @@
       172
      ],
      "sizeCm": [
-      23.6,
-      32.0
+      46.5,
+      59.8
      ],
      "grow": 1,
      "alpha": [
@@ -8096,8 +10028,8 @@
       172
      ],
      "sizeCm": [
-      23.6,
-      32.0
+      46.5,
+      59.8
      ],
      "grow": 1,
      "alpha": [
@@ -8118,13 +10050,15 @@
      "dir": "down",
      "coneDeg": 24,
      "lifeMs": 150,
-     "sizeCm": 30,
-     "aspect": 0.12,
-     "color": "white",
+     "sizeCm": 60,
+     "aspect": 0.1,
+     "stretch": 0.02,
+     "color": "#CFF6FF",
      "alpha": [
-      0.7,
+      0.85,
       0
-     ]
+     ],
+     "intensity": 1.3
     },
     {
      "emitter": "streak",
@@ -8138,13 +10072,15 @@
      "dir": "down",
      "coneDeg": 24,
      "lifeMs": 150,
-     "sizeCm": 30,
-     "aspect": 0.12,
-     "color": "white",
+     "sizeCm": 60,
+     "aspect": 0.1,
+     "stretch": 0.02,
+     "color": "#CFF6FF",
      "alpha": [
-      0.7,
+      0.85,
       0
-     ]
+     ],
+     "intensity": 1.3
     },
     {
      "emitter": "streak",
@@ -8158,13 +10094,15 @@
      "dir": "down",
      "coneDeg": 24,
      "lifeMs": 150,
-     "sizeCm": 30,
-     "aspect": 0.12,
-     "color": "white",
+     "sizeCm": 60,
+     "aspect": 0.1,
+     "stretch": 0.02,
+     "color": "#CFF6FF",
      "alpha": [
-      0.7,
+      0.85,
       0
-     ]
+     ],
+     "intensity": 1.3
     },
     {
      "emitter": "glint",
@@ -8174,9 +10112,10 @@
      "delayMs": 160,
      "spawnRadiusCm": 216.75,
      "height": 6,
-     "sizeCm": 26,
-     "lifeMs": 180,
-     "color": "white"
+     "sizeCm": 14,
+     "lifeMs": 160,
+     "color": "white",
+     "intensity": 1.2
     },
     {
      "emitter": "glint",
@@ -8186,9 +10125,10 @@
      "delayMs": 340,
      "spawnRadiusCm": 216.75,
      "height": 6,
-     "sizeCm": 26,
-     "lifeMs": 180,
-     "color": "white"
+     "sizeCm": 14,
+     "lifeMs": 160,
+     "color": "white",
+     "intensity": 1.2
     },
     {
      "emitter": "glint",
@@ -8198,9 +10138,10 @@
      "delayMs": 520,
      "spawnRadiusCm": 216.75,
      "height": 6,
-     "sizeCm": 26,
-     "lifeMs": 180,
-     "color": "white"
+     "sizeCm": 14,
+     "lifeMs": 160,
+     "color": "white",
+     "intensity": 1.2
     },
     {
      "sprite": "ShardFrost",
@@ -8211,10 +10152,10 @@
      "durationMs": 160,
      "delayMs": 165,
      "spawnRadiusCm": 216.75,
-     "height": -6,
+     "height": -8,
      "sizeCm": [
-      22,
-      30
+      36,
+      48
      ],
      "aspect": 0.33,
      "grow": 1,
@@ -8242,10 +10183,10 @@
      "durationMs": 160,
      "delayMs": 345,
      "spawnRadiusCm": 216.75,
-     "height": -6,
+     "height": -8,
      "sizeCm": [
-      22,
-      30
+      36,
+      48
      ],
      "aspect": 0.33,
      "grow": 1,
@@ -8273,10 +10214,10 @@
      "durationMs": 160,
      "delayMs": 525,
      "spawnRadiusCm": 216.75,
-     "height": -6,
+     "height": -8,
      "sizeCm": [
-      22,
-      30
+      36,
+      48
      ],
      "aspect": 0.33,
      "grow": 1,
@@ -8612,7 +10553,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 70
+     "delayMs": 70,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -8622,7 +10568,12 @@
      "grow": 2.428571428571429,
      "lifeMs": 160,
      "color": "mid",
-     "delayMs": 70
+     "delayMs": 70,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Impact",
@@ -8645,7 +10596,12 @@
      ],
      "color": "mid",
      "intensity": 1.35,
-     "delayMs": 70
+     "delayMs": 70,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -8670,7 +10626,12 @@
      "color": "mid",
      "altEvery": 3,
      "altColor": "white",
-     "delayMs": 70
+     "delayMs": 70,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "shock",
@@ -8716,7 +10677,12 @@
      "rotationDeg": 0,
      "spinDegS": 69,
      "color": "white",
-     "delayMs": 70
+     "delayMs": 70,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "debris",
@@ -8732,8 +10698,8 @@
       377.8
      ],
      "sizeCm": [
-      13.6,
-      22.3
+      15.5,
+      25.5
      ],
      "color": "#8A7358",
      "delayMs": 70
@@ -8790,7 +10756,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 60
+     "delayMs": 60,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -8800,7 +10771,12 @@
      "grow": 2.428571428571429,
      "lifeMs": 160,
      "color": "core",
-     "delayMs": 60
+     "delayMs": 60,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Impact",
@@ -8823,7 +10799,12 @@
      ],
      "color": "mid",
      "intensity": 1.35,
-     "delayMs": 60
+     "delayMs": 60,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glow",
@@ -8837,7 +10818,12 @@
       0
      ],
      "color": "rim",
-     "delayMs": 60
+     "delayMs": 60,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flames",
@@ -8970,7 +10956,12 @@
      "color": "mid",
      "altEvery": 3,
      "altColor": "white",
-     "delayMs": 60
+     "delayMs": 60,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "smoke",
@@ -9090,14 +11081,31 @@
     {
      "sprite": "Skull",
      "orient": "billboard",
+     "blend": "translucent",
      "at": "target",
      "height": "overhead",
-     "sizeCm": 70,
-     "grow": 0.42,
+     "sizeCm": 96,
+     "grow": 0.5,
      "sizePow": 6,
      "lifeMs": 1000,
      "alpha": [
-      1,
+      0.95,
+      0
+     ],
+     "alphaPow": 3,
+     "color": "rim"
+    },
+    {
+     "sprite": "Skull",
+     "orient": "billboard",
+     "at": "target",
+     "height": "overhead",
+     "sizeCm": 96,
+     "grow": 0.5,
+     "sizePow": 6,
+     "lifeMs": 1000,
+     "alpha": [
+      0.8,
       0
      ],
      "alphaPow": 3,
@@ -9166,6 +11174,92 @@
       1000
      ],
      "color": "mid"
+    }
+   ]
+  },
+  "skill.default": {
+   "palette": "holy",
+   "layers": [
+    {
+     "emitter": "glow",
+     "at": "point",
+     "height": "chest",
+     "sizeCm": 51.2,
+     "grow": 2.0833333333333335,
+     "lifeMs": 255,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "color": "#F39C12"
+    },
+    {
+     "emitter": "flash",
+     "at": "point",
+     "height": "chest",
+     "sizeCm": 18.7,
+     "grow": 2.428571428571429,
+     "lifeMs": 170,
+     "color": "#FFF1C4"
+    },
+    {
+     "emitter": "sparks",
+     "at": "point",
+     "height": "chest",
+     "count": 8,
+     "speedCmS": [
+      244.4,
+      488.9
+     ],
+     "lifeMs": [
+      180,
+      340
+     ],
+     "dir": "random",
+     "drag": 3,
+     "sizeCm": [
+      9.0,
+      13.0
+     ],
+     "color": "#F39C12",
+     "altEvery": 3,
+     "altColor": "white"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "point",
+     "height": 2,
+     "sizeCm": 30.4,
+     "grow": 5.015,
+     "sizePow": 3,
+     "lifeMs": 340,
+     "alpha": [
+      0.468,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 1.5,
+     "color": "#F39C12"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "point",
+     "height": 3,
+     "sizeCm": 30.4,
+     "grow": 5.015,
+     "sizePow": 3,
+     "lifeMs": 340,
+     "alpha": [
+      0.85,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 1.5,
+     "color": "#F39C12",
+     "intensity": 1.2
     }
    ]
   },
@@ -9602,6 +11696,11 @@
      "alpha": [
       1.0,
       0
+     ],
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
      ]
     },
     {
@@ -9616,7 +11715,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 140
+     "delayMs": 140,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -9626,7 +11730,12 @@
      "grow": 2.428571428571429,
      "lifeMs": 160,
      "color": "core",
-     "delayMs": 140
+     "delayMs": 140,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "decal",
@@ -9659,7 +11768,7 @@
      "at": "target",
      "height": 0,
      "delayMs": 140,
-     "sizeCm": 176.8,
+     "sizeCm": 143.4,
      "grow": 1.176,
      "sizePow": 6,
      "lifeMs": 660,
@@ -9667,8 +11776,8 @@
       1,
       1
      ],
-     "color": "#CFF6FF",
-     "intensity": 1.15
+     "color": "#A9E6FF",
+     "intensity": 1.05
     },
     {
      "mesh": "SM_FX_IceShard",
@@ -9697,15 +11806,15 @@
       450
      ],
      "sizeCm": [
-      13.9,
-      22.2
+      16.6,
+      26.6
      ],
      "grow": 1,
      "alpha": [
       1,
       0
      ],
-     "alphaPow": 3,
+     "alphaPow": 7,
      "color": "#DDF8FF"
     },
     {
@@ -9718,7 +11827,12 @@
      "rotationDeg": 0,
      "spinDegS": 69,
      "color": "white",
-     "delayMs": 780
+     "delayMs": 780,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "smoke",
@@ -9844,8 +11958,6 @@
      "orient": "upright",
      "at": "origin",
      "height": 0,
-     "spawnRadiusCm": 57.8,
-     "onRing": true,
      "upCmS": [
       133.3,
       222.2
@@ -9869,7 +11981,12 @@
      "alphaPow": 1.2,
      "color": "white",
      "intensity": 1.0,
-     "count": 10
+     "count": 10,
+     "orbit": {
+      "r0Cm": 57.8,
+      "r1Cm": 57.8,
+      "degS": 0
+     }
     },
     {
      "emitter": "sparks",
@@ -9958,7 +12075,7 @@
      "blend": "translucent",
      "at": "origin",
      "height": 0,
-     "sizeCm": 101.2,
+     "sizeCm": 102.3,
      "grow": 2.0,
      "sizePow": 6,
      "lifeMs": 520,
@@ -10104,15 +12221,15 @@
       380
      ],
      "sizeCm": [
-      11.1,
-      16.7
+      13.3,
+      19.9
      ],
      "grow": 1,
      "alpha": [
       1,
       0
      ],
-     "alphaPow": 3,
+     "alphaPow": 7,
      "color": "#DDF8FF"
     }
    ]
@@ -10209,7 +12326,7 @@
      "at": "origin",
      "height": "chest",
      "delayMs": 100,
-     "sizeCm": 171.3,
+     "sizeCm": 176.8,
      "grow": 1.613,
      "sizePow": 5,
      "lifeMs": 800,
@@ -10217,7 +12334,7 @@
       1,
       0
      ],
-     "alphaPow": 4,
+     "alphaPow": 6,
      "color": "#9FB4D4",
      "intensity": 1.1
     },
@@ -10387,7 +12504,12 @@
      ],
      "color": "mid",
      "intensity": 1.3,
-     "aspect": 1.0
+     "aspect": 1.0,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "slash",
@@ -10404,7 +12526,12 @@
      ],
      "color": "#EEF3FB",
      "delayMs": 70,
-     "intensity": 1.3
+     "intensity": 1.3,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glow",
@@ -10417,7 +12544,12 @@
       0.6,
       0
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -10426,7 +12558,12 @@
      "sizeCm": 23.3,
      "grow": 2.428571428571429,
      "lifeMs": 160,
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Impact",
@@ -10448,7 +12585,12 @@
       360
      ],
      "color": "mid",
-     "intensity": 1.35
+     "intensity": 1.35,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glint",
@@ -10459,7 +12601,12 @@
      "lifeMs": 200,
      "rotationDeg": 45,
      "spinDegS": 69,
-     "color": "white"
+     "color": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -10483,7 +12630,12 @@
      ],
      "color": "mid",
      "altEvery": 3,
-     "altColor": "white"
+     "altColor": "white",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "shock",
@@ -10550,7 +12702,12 @@
       0
      ],
      "alphaPow": 3,
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ],
    "shake": [
@@ -10748,6 +12905,26 @@
      "color": "#8A5CFF"
     },
     {
+     "mesh": "SM_FX_Bubble",
+     "sprite": "Bubble",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": "chest",
+     "delayMs": 120,
+     "sizeCm": 78.9,
+     "grow": 2.857,
+     "sizePow": 6,
+     "lifeMs": 760,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 7,
+     "color": "#A07CFF",
+     "intensity": 1.9
+    },
+    {
      "sprite": "Bubble",
      "orient": "billboard",
      "at": "origin",
@@ -10881,11 +13058,17 @@
      "blend": "translucent",
      "at": "point",
      "height": 600,
-     "speedCmS": 2000,
-     "dir": "down",
+     "offsetCm": [
+      -180,
+      0,
+      0
+     ],
+     "speedCmS": 600,
+     "dir": "blow",
      "coneDeg": 0,
+     "upCmS": -2000,
      "lifeMs": 300,
-     "sizeCm": 94.7,
+     "sizeCm": 109.8,
      "grow": 1,
      "alpha": [
       1,
@@ -10902,17 +13085,18 @@
      "orient": "velocity",
      "at": "point",
      "height": 600,
-     "speedCmS": 2000,
-     "dir": "down",
-     "coneDeg": 0,
-     "lifeMs": 300,
-     "sizeCm": 150,
-     "aspect": 0.4,
      "offsetCm": [
-      0,
+      -180,
       0,
       40
      ],
+     "speedCmS": 600,
+     "dir": "blow",
+     "coneDeg": 0,
+     "upCmS": -2000,
+     "lifeMs": 300,
+     "sizeCm": 150,
+     "aspect": 0.4,
      "grow": 1,
      "alpha": [
       0.9,
@@ -10925,9 +13109,15 @@
      "emitter": "glow",
      "at": "point",
      "height": 600,
-     "speedCmS": 2000,
-     "dir": "down",
+     "offsetCm": [
+      -180,
+      0,
+      0
+     ],
+     "speedCmS": 600,
+     "dir": "blow",
      "coneDeg": 0,
+     "upCmS": -2000,
      "lifeMs": 300,
      "sizeCm": 140,
      "grow": 1,
@@ -10944,18 +13134,18 @@
      "blend": "translucent",
      "orient": "upright",
      "at": "point",
-     "height": 560,
-     "spawnRadiusCm": 8.9,
+     "height": 600,
+     "spawnRadiusCm": 6.7,
      "upCmS": [
-      0.0,
-      22.2
+      -1950,
+      -1400
      ],
      "lifeMs": [
-      200,
-      280
+      250,
+      300
      ],
      "sizeCm": [
-      68.8,
+      58.9,
       98.2
      ],
      "aspect": 0.5,
@@ -10969,39 +13159,57 @@
      "alphaPow": 1.2,
      "color": "white",
      "intensity": 1.0,
-     "rate": 60,
-     "durationMs": 290,
-     "speedCmS": 1200,
-     "dir": "down",
-     "coneDeg": 6
+     "count": 18,
+     "offsetCm": [
+      -180,
+      0,
+      0
+     ],
+     "speedCmS": [
+      420,
+      585
+     ],
+     "dir": "blow",
+     "coneDeg": 3
     },
     {
      "emitter": "smoke",
      "sprite": "Smoke",
      "randomVariants": 2,
      "at": "point",
-     "height": 560,
+     "height": 600,
+     "count": 10,
      "spawnRadiusCm": 17.8,
-     "speedCmS": 900,
+     "speedCmS": [
+      210,
+      390
+     ],
      "lifeMs": [
-      500,
-      800
+      320,
+      420
      ],
      "sizeCm": [
       34.1,
       51.2
      ],
      "grow": 2.083,
-     "gravityCmS2": -44.4,
+     "gravityCmS2": -0.0,
      "alpha": [
-      0.6,
+      0.55,
       0
      ],
      "color": "#4A3A36",
-     "rate": 30,
-     "durationMs": 290,
-     "dir": "down",
-     "coneDeg": 8
+     "offsetCm": [
+      -180,
+      0,
+      0
+     ],
+     "dir": "blow",
+     "coneDeg": 4,
+     "upCmS": [
+      -1300,
+      -700
+     ]
     },
     {
      "emitter": "glow",
@@ -11290,8 +13498,8 @@
       377.8
      ],
      "sizeCm": [
-      13.6,
-      22.4
+      16.1,
+      26.4
      ],
      "color": "#6A5048",
      "delayMs": 300
@@ -11453,20 +13661,6 @@
       0
      ],
      "intensity": 1.3
-    },
-    {
-     "emitter": "glint",
-     "at": "origin",
-     "height": "hand",
-     "count": 7,
-     "dir": "blow",
-     "coneDeg": 92,
-     "speedCmS": 1500,
-     "gravityCmS2": 1360,
-     "delayMs": 200,
-     "lifeMs": 120,
-     "sizeCm": 18,
-     "color": "white"
     }
    ],
    "note": "7 arrows fanned \u00b146\u00b0 round the aim, 3.3 tiles in 220 ms (the web's fallback fan); gravity offsets the blow direction's random climb so the volley lands level"
@@ -11765,8 +13959,6 @@
      "orient": "upright",
      "at": "origin",
      "height": 0,
-     "spawnRadiusCm": 53.3,
-     "onRing": true,
      "upCmS": [
       66.7,
       133.3
@@ -11791,8 +13983,51 @@
      "color": "white",
      "intensity": 1.0,
      "delayMs": 110,
-     "rate": 60.0,
-     "durationMs": 200
+     "count": 6,
+     "orbit": {
+      "r0Cm": 53.3,
+      "r1Cm": 53.3,
+      "degS": 0
+     }
+    },
+    {
+     "emitter": "flames",
+     "sprite": "Flame",
+     "variant": 2,
+     "blend": "translucent",
+     "orient": "upright",
+     "at": "origin",
+     "height": 0,
+     "upCmS": [
+      66.7,
+      133.3
+     ],
+     "lifeMs": [
+      300,
+      520
+     ],
+     "sizeCm": [
+      44.2,
+      68.8
+     ],
+     "aspect": 0.5,
+     "grow": 0.72,
+     "sizePow": 2,
+     "alpha": [
+      1,
+      0
+     ],
+     "fadeIn": 0.15,
+     "alphaPow": 1.2,
+     "color": "white",
+     "intensity": 1.0,
+     "delayMs": 210.0,
+     "count": 6,
+     "orbit": {
+      "r0Cm": 46.9,
+      "r1Cm": 46.9,
+      "degS": 0
+     }
     },
     {
      "sprite": "Ring",
@@ -11994,17 +14229,17 @@
      "grow": 2.083,
      "gravityCmS2": -44.4,
      "alpha": [
-      0.7,
+      0.78,
       0
      ],
-     "color": "#6AB83A"
+     "color": "#3F8E2C"
     },
     {
      "emitter": "smoke",
      "sprite": "Smoke",
      "randomVariants": 2,
      "at": "point",
-     "height": 45,
+     "height": 55,
      "count": 8,
      "spawnRadiusCm": 140.0,
      "speedCmS": [
@@ -12022,10 +14257,10 @@
      "grow": 2.083,
      "gravityCmS2": -44.4,
      "alpha": [
-      0.6,
+      0.7,
       0
      ],
-     "color": "#A8E05A",
+     "color": "#C8EE62",
      "delayMs": 120
     },
     {
@@ -12044,11 +14279,11 @@
       700
      ],
      "sizeCm": [
-      8,
-      13
+      11,
+      16
      ],
      "gravityCmS2": -88.9,
-     "color": "mid",
+     "color": "core",
      "spinDegS": [
       0,
       0
@@ -12056,7 +14291,8 @@
      "alpha": [
       1.0,
       0
-     ]
+     ],
+     "intensity": 1.3
     },
     {
      "emitter": "shock",
@@ -12102,7 +14338,7 @@
      "blend": "translucent",
      "at": "origin",
      "height": "chest",
-     "sizeCm": 491.2,
+     "sizeCm": 434.2,
      "grow": 1.0,
      "sizePow": 2,
      "lifeMs": 340,
@@ -12127,7 +14363,7 @@
      "blend": "translucent",
      "at": "origin",
      "height": "chest",
-     "sizeCm": 368.4,
+     "sizeCm": 325.7,
      "grow": 1.0,
      "sizePow": 2,
      "lifeMs": 320,
@@ -12153,7 +14389,7 @@
      "blend": "translucent",
      "at": "origin",
      "height": "chest",
-     "sizeCm": 412.1,
+     "sizeCm": 409.6,
      "grow": 1.0,
      "sizePow": 2,
      "lifeMs": 280,
@@ -12292,8 +14528,6 @@
      "orient": "upright",
      "at": "origin",
      "height": 0,
-     "spawnRadiusCm": 88.9,
-     "onRing": true,
      "upCmS": [
       111.1,
       200.0
@@ -12317,7 +14551,12 @@
      "alphaPow": 1.2,
      "color": "white",
      "intensity": 1.0,
-     "count": 12
+     "count": 12,
+     "orbit": {
+      "r0Cm": 88.9,
+      "r1Cm": 88.9,
+      "degS": 0
+     }
     },
     {
      "emitter": "debris",
@@ -12333,8 +14572,8 @@
       377.8
      ],
      "sizeCm": [
-      13.6,
-      22.3
+      15.5,
+      25.5
      ],
      "spawnRadiusCm": 66.7,
      "color": "#8A7358"
@@ -12522,7 +14761,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 80
+     "delayMs": 80,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -12532,7 +14776,12 @@
      "grow": 2.428571428571429,
      "lifeMs": 160,
      "color": "mid",
-     "delayMs": 80
+     "delayMs": 80,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "mesh": "SM_FX_SlashArc_Rogue",
@@ -12585,7 +14834,12 @@
       1.0,
       0
      ],
-     "delayMs": 80
+     "delayMs": 80,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ]
   },
@@ -12655,7 +14909,7 @@
      "at": "origin",
      "height": "chest",
      "delayMs": 100,
-     "sizeCm": 155.4,
+     "sizeCm": 158.3,
      "grow": 1.613,
      "sizePow": 5,
      "lifeMs": 780,
@@ -12663,7 +14917,7 @@
       1,
       0
      ],
-     "alphaPow": 4,
+     "alphaPow": 6,
      "color": "mid",
      "intensity": 1.1
     },
@@ -12843,7 +15097,7 @@
      "blend": "translucent",
      "at": "origin",
      "height": "chest",
-     "sizeCm": 249.4,
+     "sizeCm": 247.9,
      "grow": 1.08,
      "sizePow": 2,
      "lifeMs": 230,
@@ -12917,7 +15171,12 @@
       0
      ],
      "color": "mid",
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "flash",
@@ -12927,7 +15186,12 @@
      "grow": 2.428571428571429,
      "lifeMs": 120,
      "color": "mid",
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "sprite": "Impact",
@@ -12950,7 +15214,12 @@
      ],
      "color": "mid",
      "intensity": 1.35,
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "sparks",
@@ -12975,7 +15244,12 @@
      "color": "mid",
      "altEvery": 3,
      "altColor": "white",
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     },
     {
      "emitter": "glint",
@@ -12987,7 +15261,12 @@
      "rotationDeg": 0,
      "spinDegS": 69,
      "color": "white",
-     "delayMs": 40
+     "delayMs": 40,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
     }
    ]
   },
@@ -13038,38 +15317,107 @@
     {
      "emitter": "slash",
      "sprite": "Slash",
-     "variant": 0,
+     "variant": 3,
      "orient": "ground",
+     "blend": "translucent",
      "at": "origin",
      "height": "chest",
      "count": 8,
      "dir": "out",
      "coneDeg": 0,
-     "speedCmS": 377,
+     "speedCmS": 560,
      "drag": 2,
-     "sizeCm": 26,
-     "grow": 1.9,
+     "sizeCm": 15,
+     "aspect": 2.1,
+     "grow": 2.0,
      "lifeMs": 360,
+     "alpha": [
+      0.85,
+      0
+     ],
+     "alphaPow": 1.4,
      "alignToBlow": false,
-     "color": "rim"
+     "color": "rim",
+     "intensity": 1.0
     },
     {
      "emitter": "slash",
      "sprite": "Slash",
-     "variant": 0,
+     "variant": 3,
      "orient": "ground",
+     "blend": "additive",
      "at": "origin",
      "height": "chest",
      "count": 8,
      "dir": "out",
      "coneDeg": 0,
-     "speedCmS": 377,
+     "speedCmS": 560,
      "drag": 2,
-     "sizeCm": 26,
-     "grow": 1.9,
+     "sizeCm": 15,
+     "aspect": 2.1,
+     "grow": 2.0,
      "lifeMs": 360,
+     "alpha": [
+      0.9,
+      0
+     ],
+     "alphaPow": 1.4,
+     "alignToBlow": false,
+     "color": "rim",
+     "intensity": 1.4
+    },
+    {
+     "emitter": "slash",
+     "sprite": "Slash",
+     "variant": 3,
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": "chest",
+     "count": 8,
+     "dir": "out",
+     "coneDeg": 0,
+     "speedCmS": 560,
+     "drag": 2,
+     "sizeCm": 15,
+     "aspect": 2.1,
+     "grow": 2.0,
+     "lifeMs": 360,
+     "alpha": [
+      0.85,
+      0
+     ],
+     "alphaPow": 1.4,
      "alignToBlow": false,
      "color": "mid",
+     "intensity": 1.0,
+     "delayMs": 110
+    },
+    {
+     "emitter": "slash",
+     "sprite": "Slash",
+     "variant": 3,
+     "orient": "ground",
+     "blend": "additive",
+     "at": "origin",
+     "height": "chest",
+     "count": 8,
+     "dir": "out",
+     "coneDeg": 0,
+     "speedCmS": 560,
+     "drag": 2,
+     "sizeCm": 15,
+     "aspect": 2.1,
+     "grow": 2.0,
+     "lifeMs": 360,
+     "alpha": [
+      0.9,
+      0
+     ],
+     "alphaPow": 1.4,
+     "alignToBlow": false,
+     "color": "mid",
+     "intensity": 1.4,
      "delayMs": 110
     },
     {
@@ -13350,20 +15698,39 @@
     },
     {
      "emitter": "beam",
-     "variant": 1,
+     "variant": 0,
      "at": "point",
      "height": 0,
-     "sizeCm": 62.2,
-     "aspect": 0.393,
+     "sizeCm": 71.1,
+     "aspect": 0.406,
      "grow": 2.5,
      "sizePow": 3,
-     "lifeMs": 360,
+     "lifeMs": 380,
      "alpha": [
-      0.7,
+      0.5,
       0
      ],
      "fadeIn": 0.1,
      "color": "rim",
+     "delayMs": 100,
+     "blend": "translucent"
+    },
+    {
+     "emitter": "beam",
+     "variant": 1,
+     "at": "point",
+     "height": 0,
+     "sizeCm": 71.1,
+     "aspect": 0.406,
+     "grow": 2.5,
+     "sizePow": 3,
+     "lifeMs": 380,
+     "alpha": [
+      0.85,
+      0
+     ],
+     "fadeIn": 0.1,
+     "color": "mid",
      "delayMs": 100
     },
     {
@@ -13469,12 +15836,12 @@
      "blend": "translucent",
      "at": "origin",
      "height": 1,
-     "sizeCm": 98.3,
+     "sizeCm": 113.4,
      "grow": 1.176,
      "sizePow": 3,
-     "lifeMs": 900,
+     "lifeMs": 1000,
      "alpha": [
-      0.65,
+      0.8,
       0
      ],
      "fadeIn": 0.06,
@@ -13484,6 +15851,28 @@
       360
      ],
      "color": "#3A2A1E"
+    },
+    {
+     "emitter": "decal",
+     "sprite": "CrackGlow",
+     "blend": "additive",
+     "at": "origin",
+     "height": 1,
+     "sizeCm": 105.7,
+     "grow": 1.176,
+     "sizePow": 3,
+     "lifeMs": 420,
+     "alpha": [
+      0.9,
+      0
+     ],
+     "fadeIn": 0.06,
+     "alphaPow": 1.5,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#F4AC28"
     },
     {
      "emitter": "shock",
@@ -13531,14 +15920,32 @@
      "lifeMs": 620,
      "orbit": {
       "r0Cm": 53,
-      "r1Cm": 53,
-      "degS": 180
+      "r1Cm": 60,
+      "degS": 220
      },
      "sizeCm": [
-      11.6,
-      17.5
+      22.2,
+      31.1
      ],
      "color": "#B08850"
+    },
+    {
+     "emitter": "beam",
+     "variant": 0,
+     "at": "origin",
+     "height": 0,
+     "sizeCm": 56.9,
+     "aspect": 0.586,
+     "grow": 2.5,
+     "sizePow": 3,
+     "lifeMs": 500,
+     "alpha": [
+      0.45,
+      0
+     ],
+     "fadeIn": 0.1,
+     "color": "#F4AC28",
+     "blend": "translucent"
     },
     {
      "emitter": "beam",
@@ -13790,8 +16197,6 @@
      "orient": "upright",
      "at": "origin",
      "height": 0,
-     "spawnRadiusCm": 57.8,
-     "onRing": true,
      "upCmS": [
       111.1,
       200.0
@@ -13815,7 +16220,12 @@
      "alphaPow": 1.2,
      "color": "white",
      "intensity": 1.0,
-     "count": 14
+     "count": 14,
+     "orbit": {
+      "r0Cm": 57.8,
+      "r1Cm": 57.8,
+      "degS": 0
+     }
     },
     {
      "emitter": "flames",
@@ -14110,8 +16520,8 @@
       377.8
      ],
      "sizeCm": [
-      13.6,
-      22.3
+      15.5,
+      25.5
      ],
      "spawnRadiusCm": 60.0,
      "color": "#8A7358"
@@ -14173,7 +16583,7 @@
      "blend": "translucent",
      "at": "origin",
      "height": "chest",
-     "sizeCm": 475.9,
+     "sizeCm": 420.7,
      "grow": 1.0,
      "sizePow": 2,
      "lifeMs": 300,
@@ -14181,7 +16591,7 @@
       1,
       0
      ],
-     "alphaPow": 2,
+     "alphaPow": 5,
      "rotationDeg": [
       0,
       360
@@ -14192,13 +16602,13 @@
      "intensity": 1.2
     },
     {
-     "mesh": "SM_FX_SlashArc_Warrior",
+     "mesh": "SM_FX_SlashArc_Warrior_Back",
      "sprite": "Slash",
      "orient": "ground",
      "blend": "translucent",
      "at": "origin",
      "height": "chest",
-     "sizeCm": 262.4,
+     "sizeCm": 260.9,
      "grow": 1.0,
      "sizePow": 2,
      "lifeMs": 220,
@@ -14365,13 +16775,14 @@
      "blend": "translucent",
      "at": "target",
      "height": "chest",
-     "rate": 3,
+     "rate": 4,
      "attach": true,
-     "spawnRadiusCm": 15,
+     "spawnRadiusCm": 16,
+     "spawnHeightJitterCm": 20,
      "gravityCmS2": 600,
      "sizeCm": [
-      6,
-      9
+      9,
+      13
      ],
      "aspect": 0.67,
      "grow": 1,
@@ -14383,9 +16794,53 @@
       1,
       0.6
      ],
-     "color": "mid"
+     "color": "mid",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "decal",
+     "sprite": "Puddle",
+     "at": "target",
+     "rate": 0.8,
+     "attach": true,
+     "spawnRadiusCm": 12,
+     "sizeCm": [
+      22,
+      30
+     ],
+     "grow": 1.3,
+     "lifeMs": 1400,
+     "alpha": [
+      0.7,
+      0
+     ],
+     "color": "rim"
+    },
+    {
+     "emitter": "decal",
+     "sprite": "Puddle",
+     "at": "target",
+     "attach": true,
+     "spawnRadiusCm": 12,
+     "sizeCm": [
+      22,
+      30
+     ],
+     "grow": 1.3,
+     "lifeMs": 1400,
+     "alpha": [
+      0.7,
+      0
+     ],
+     "color": "rim",
+     "count": 1
     }
-   ]
+   ],
+   "note": "optional R8 bleed visual: blood drips + small spatters at the feet"
   },
   "status.burn": {
    "palette": "fire",
@@ -14398,7 +16853,7 @@
      "orient": "upright",
      "at": "target",
      "height": "chest",
-     "spawnRadiusCm": 15.6,
+     "spawnRadiusCm": 20.0,
      "upCmS": [
       55.6,
       100.0
@@ -14408,8 +16863,8 @@
       420
      ],
      "sizeCm": [
-      31.4,
-      49.1
+      39.3,
+      58.9
      ],
      "aspect": 0.5,
      "grow": 0.72,
@@ -14423,9 +16878,14 @@
      "color": "white",
      "intensity": 1.0,
      "attach": true,
-     "rate": 6,
+     "rate": 9,
      "durationMs": -1,
-     "spawnHeightJitterCm": 40
+     "spawnHeightJitterCm": 40,
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "motes",
@@ -14439,7 +16899,12 @@
       5,
       9
      ],
-     "color": "rim"
+     "color": "rim",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "glow",
@@ -14457,6 +16922,23 @@
       0
      ],
      "color": "#FF7A3A"
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 80,
+     "grow": 1.15,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.3,
+      0
+     ],
+     "color": "#FF7A3A",
+     "count": 1
     }
    ],
    "note": "R8 burn embers: 2\u20133 small cel flames + embers + a warm ground glow; StatusTint #FF7A3A \u03b1 .35"
@@ -14473,7 +16955,7 @@
      "height": 0,
      "rate": 1.0,
      "attach": true,
-     "sizeCm": 106.4,
+     "sizeCm": 110.1,
      "grow": 1,
      "lifeMs": 1050,
      "fadeIn": 0.08,
@@ -14506,7 +16988,12 @@
       700,
       1100
      ],
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     },
     {
      "emitter": "glow",
@@ -14524,6 +17011,43 @@
       0
      ],
      "color": "#7FD0FF"
+    },
+    {
+     "mesh": "SM_FX_FrostCrust",
+     "sprite": "ShardFrost",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "target",
+     "height": 0,
+     "attach": true,
+     "sizeCm": 110.1,
+     "grow": 1,
+     "lifeMs": 1050,
+     "fadeIn": 0.08,
+     "alpha": [
+      1,
+      1
+     ],
+     "color": "#BFEFFF",
+     "intensity": 1.1,
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 110,
+     "grow": 1.1,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.35,
+      0
+     ],
+     "color": "#7FD0FF",
+     "count": 1
     }
    ],
    "note": "R8 frost crystals at the feet (SM_FX_FrostCrust); StatusTint #7FD0FF \u03b1 .45"
@@ -14536,9 +17060,9 @@
      "sprite": "Bubble",
      "at": "target",
      "height": "chest",
-     "rate": 5,
+     "rate": 7,
      "attach": true,
-     "spawnRadiusCm": 22,
+     "spawnRadiusCm": 24,
      "spawnHeightJitterCm": 40,
      "gravityCmS2": -90,
      "speedCmS": [
@@ -14546,16 +17070,38 @@
       30
      ],
      "sizeCm": [
-      8,
-      13
+      12,
+      18
      ],
      "lifeMs": [
       600,
       900
      ],
-     "color": "#8FE04A",
-     "intensity": 1.0,
-     "spinDegS": 0
+     "color": "#B6F060",
+     "intensity": 1.4,
+     "spinDegS": 0,
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 3,
+     "rate": 1.3,
+     "attach": true,
+     "sizeCm": 80,
+     "grow": 1.15,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.35,
+      0
+     ],
+     "color": "#6AC83A"
     },
     {
      "sprite": "Drop",
@@ -14581,7 +17127,60 @@
       1,
       0.4
      ],
-     "color": "#5FC03A"
+     "color": "#5FC03A",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "target",
+     "height": 3,
+     "attach": true,
+     "sizeCm": 80,
+     "grow": 1.15,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.35,
+      0
+     ],
+     "color": "#6AC83A",
+     "count": 1
+    },
+    {
+     "sprite": "Drop",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "target",
+     "height": "chest",
+     "attach": true,
+     "spawnRadiusCm": 16,
+     "gravityCmS2": 500,
+     "sizeCm": [
+      5,
+      7
+     ],
+     "aspect": 0.67,
+     "grow": 1,
+     "lifeMs": [
+      350,
+      500
+     ],
+     "alpha": [
+      1,
+      0.4
+     ],
+     "color": "#5FC03A",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
     }
    ],
    "note": "R8 poison bubbles; StatusTint #8FE04A \u03b1 .35"
@@ -14610,6 +17209,28 @@
       360
      ],
      "color": "mid"
+    },
+    {
+     "sprite": "Swirl",
+     "orient": "ground",
+     "at": "target",
+     "height": 2,
+     "attach": true,
+     "sizeCm": 110,
+     "grow": 1.05,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.45,
+      0
+     ],
+     "spinDegS": -140,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "mid",
+     "count": 1
     }
    ],
    "note": "optional R8 slow visual: a frost swirl at the feet"
@@ -14631,7 +17252,7 @@
       "r1Cm": 24,
       "degS": 240
      },
-     "sizeCm": 22.8,
+     "sizeCm": 24.8,
      "grow": 1,
      "lifeMs": 1000,
      "fadeIn": 0.15,
@@ -14668,7 +17289,12 @@
       300,
       500
      ],
-     "color": "core"
+     "color": "core",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
     }
    ],
    "note": "R8 stun stars: toon stars orbiting fx_overhead, facing the W1 camera"
@@ -14780,8 +17406,12 @@
   "loot.drop.magic": "loot.drop"
  },
  "integration": {
+  "groundSoftFade": "M_AF_FX_Sprite fades every quad with DepthFade(8 cm); ground-oriented quads sit 1-3 cm over the terrain, so decals / rings / shocks / runes draw at 10-30 % strength. Fade ground quads over ~0.8 cm (or skip DepthFade for orient=ground). The previews use 0.8 cm; fx_preview.py --ue-softfade shows the current behaviour.",
   "dirBlowPitch": "EAbyssVfxDir::Blow adds Direction.Z = rand(-0.15, 0.35): flight-aligned heads use one particle per projectile (count 1, life = the longest flight) so their pitch is stable; a `flat` option (Z = 0) would let heads respawn every frame and fans fly level.",
   "meshMaterial": "mesh layers always draw M_AF_FX_Mesh (opaque masked toon + ink, Bayer fade) \u2014 glow, smoke and energy stay sprites; ribbons / crystals / plates / debris / heads are meshes.",
+  "bodyOcclusion": "Sprites are depth-tested against the opaque characters, and a chest / head anchor is the fx_chest / fx_head socket = the middle of the body, so a burst centred there loses everything inside the silhouette (the web drew FX over its sprites). The strike recipes pull their target-side burst layers 22 cm back along the blow (onto the struck surface, fx_recipes.STRIKE_CM); a burst struck from behind the target (attacker farther from the camera) is still partly hidden. Recommended runtime fix: billboard / velocity layers anchored on an actor (origin / target / point at chest, head, hand or overhead) move their quad toward the camera by min(40 cm, 0.5 x the actor's capsule radius + 20 cm) (Position -= CameraForward * Bias in UAbyssVfxSystem::Tick, or a camera-ward WPO in M_AF_FX_Additive / _Translucent) - at the W1 distance that is <2 % size change.",
+  "cameraBias": "Blow-less recipes (level-up, pickups, statuses, loot, portal, resonance, props, camps) carry offsetCm d*(-0.455, -0.455, +0.766) with d = 40 cm on their body-anchored quads: with the zero blow the frame is world +X/+Y and the W1 yaw is fixed, so that is the view ray toward the camera (same screen position, drawn over the body). Re-derive (fx_recipes.CAM_BIAS_CM) if the camera yaw ever changes or these events get a blow.",
+  "loopPrewarm": "Rate emitters start empty (first particle after 1000 / rate ms). Loop layers slower than 3 /s carry a one-particle burst copy (count 1) so a status / prop loop shows at once (fx_recipes.prewarm).",
   "perClassBasic": "hit.basic.<class> and hit.impact.<profile> are authored for a one-line runtime change (PlayFirst({hit.basic.<class>, hit.basic}) / ({hit.impact.<profile>, hit.impact})).",
   "elite": "elite.<affix> and camp.hearthstone are forward-compatible ids (not bound to events yet).",
   "impactShake": "meteor / fireball shakes belong to the impact (combat-feel 11.5); recipe shakes start with the recipe, so the impact recipes (proj.fireball.hit) carry them."

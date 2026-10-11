@@ -814,6 +814,22 @@ def to_srgb8(lin):
 
 
 # ── the stage: terrain, characters, FX mesh library ───────────────────────────────────────────────────
+# the shipped world props the world / prop recipes sit on: (asset, category, palette family, outline px, yaw°)
+WORLD_PROPS = {
+    "camp.campfire": ("SM_Prop_Camp_Campfire", "Props", "Props_Plains", 1.4, 0.0),
+    "camp.torch": ("SM_Prop_Camp_Torch", "Props", "Props_Plains", 1.4, 0.0),
+    "camp.hearthstone": ("SM_Prop_Camp_Hearthstone", "Props", "Props_Plains", 1.4, -30.0),
+    "exit.portal": ("SM_Prop_ExitPortal", "Props", "Props_Plains", 2.0, 45.0),
+    "exit.sealed": ("SM_Prop_ExitGate_Sealed", "Props", "Props_Plains", 2.0, 45.0),
+    "prop.lore": ("SM_Prop_Lore_AncientTablet", "Props", "Props_Plains", 2.0, -30.0),
+    "prop.gather": ("SM_Prop_Gather_EmeraldHerb", "Props", "Props_Plains", 2.0, 0.0),
+    "prop.clue": ("SM_FX_ClueMagnifier", "VFX", "Props_Plains", 2.0, 0.0),
+    "prop.chest": ("SK_Prop_TreasureChest", "Props", "Props_Plains", 2.0, -30.0),
+    "prop.chest.open": ("SK_Prop_TreasureChest", "Props", "Props_Plains", 2.0, -30.0),
+    "prop.event": ("SM_Prop_Event_RunePillar", "Props", "Props_Plains", 2.0, -30.0),
+}
+
+
 class Stage:
     def __init__(self):
         scene.reset()
@@ -943,6 +959,57 @@ class Stage:
         for m in ch["meshes"]:
             m.hide_render = not visible
 
+    def show_prop(self, key: str | None, at_ue):
+        """Show the world prop of ``key`` (imported once from its shipped FBX, toon + outline from the family
+        palette PNGs, screen-constant line-tone ink) at ``at_ue``; hide every other prop."""
+        import envkit as E
+        props = getattr(self, "_props", {})
+        self._props = props
+        for k, objs in props.items():
+            for o in objs:
+                o.hide_render = True
+        if key is None or key not in WORLD_PROPS:
+            return
+        asset, cat, fam, px, yaw = WORLD_PROPS[key]
+        if asset not in props:
+            f = paths.export_root() / cat / f"{asset}.fbx"
+            if not f.exists():
+                props[asset] = []
+                return
+            before = set(bpy.data.objects)
+            bpy.ops.import_scene.fbx(filepath=str(f))
+            new = [o for o in bpy.data.objects if o not in before]
+            mt, mo = E.toon_material_files(fam)
+            meshes = [o for o in new if o.type == "MESH"]
+            keep = [o for o in new if o.type in ("MESH", "ARMATURE")]
+            for o in [o for o in new if o.type not in ("MESH", "ARMATURE")]:
+                for c in list(o.children):
+                    mw = c.matrix_world.copy()
+                    c.parent = None
+                    c.matrix_world = mw
+                bpy.data.objects.remove(o)
+            for m in meshes:
+                E._set_slots(m, mt, mo)
+            root = bpy.data.objects.new(f"{asset}_Root", None)
+            scene.link(root)
+            for o in keep:
+                if o.parent is None:
+                    o.parent = root
+            meshes_alive = meshes
+            for m in meshes_alive:
+                if "af_outline_width" not in m:
+                    m["af_outline_width"] = outline.WIDTH_CM["interactive"] / 100.0
+                review.set_outline_px([m], px)
+            props[asset] = [root] + meshes_alive
+        objs = props[asset]
+        if not objs:
+            return
+        root = objs[0]
+        root.location = ue_to_bl(at_ue)
+        root.rotation_euler = (0, 0, math.radians(yaw))
+        for o in objs[1:]:
+            o.hide_render = False
+
     def set_frame(self, frame):
         bpy.context.scene.frame_set(int(frame))
 
@@ -1035,6 +1102,7 @@ class Scene_:
     ring_px: float = 13.0
     hero: bool = True
     target_clip: str = "Idle"
+    prop: str | None = None              # world prop under the effect (WORLD_PROPS)
 
 
 def skill_radius(sid: str) -> float:
@@ -1205,10 +1273,13 @@ def scenarios() -> dict:
     for w, cl in (("camp.campfire", 2000), ("camp.torch", 2000), ("camp.hearthstone", 2000), ("exit.portal", 2500),
                   ("exit.sealed", 2500), ("prop.lore", 2000), ("prop.gather", 2000), ("prop.clue", 2000),
                   ("prop.soul_echo", 2000), ("prop.chest", 2000), ("prop.event", 2000)):
+        big = w.startswith("exit.")
         sc[w] = Scene_(w, [(0, "world", w)], [cl - 900, cl - 600, cl - 300, cl], clip="Idle", clip_frame=0,
-                       targets=0, focus="prop", crop=(480, 420), color="#FFD86A" if w == "prop.lore" else None)
+                       targets=0, focus="prop", crop=(640, 520) if big else (480, 420),
+                       color="#FFD86A" if w == "prop.lore" else None, prop=w)
     sc["prop.chest.open"] = Scene_("prop.chest.open", [(0, "world", "prop.chest.open")], [0, 100, 250, 450, 700],
-                                   clip="Idle", clip_frame=0, targets=0, focus="prop", crop=(480, 420))
+                                   clip="Idle", clip_frame=0, targets=0, focus="prop", crop=(480, 420),
+                                   prop="prop.chest.open")
     for e in ("fire_enhanced", "swift", "teleporting", "extra_strong", "curse_aura", "vampiric", "frozen"):
         sc[f"elite.{e}"] = Scene_(f"elite.{e}", [(0, "status", f"elite.{e}")], [400, 800, 1200, 1600], clip="Idle",
                                   clip_frame=0, focus="target", crop=(420, 340))
@@ -1249,7 +1320,8 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> Path:
         stage.pose(g, s.target_clip if i == 0 else "Idle", 0, gob_pos[i], H - gob_pos[i], visible=vis)
     stage.set_frame(s.clip_frame)
     target_actor = gobs[0] if s.targets >= 1 else None
-    prop_at = H + RIGHT * 120
+    prop_at = H + RIGHT * (260 if s.rid.startswith("exit.") else 120)
+    stage.show_prop(s.prop, prop_at)
     # camera + crop
     if s.focus == "hero":
         f = H
@@ -1276,6 +1348,9 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> Path:
     ring_cm = s.ring_px * 100 / 45
     base_ctx = dict(blow=blow, radius=s.radius, color=color, element=s.element, big=s.big, sparks=s.sparks,
                     ring=ring_cm)
+    # events whose runtime context sets no blow (level-up, pickups, statuses, loot, world, portal): the blow frame
+    # falls back to UE +X (UAbyssVfxSystem::SpawnParticle)
+    nob_ctx = dict(base_ctx, blow=np.array([1.0, 0.0]))
 
     def ctx_skill():
         pts = [g.pos for g in gobs[:max(1, s.targets)]] if s.targets >= 1 else [T]
@@ -1295,16 +1370,18 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> Path:
             timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=H, point=H, origin_actor=gobs[0],
                                                                  target_actor=hero, **back))))
         elif kind in ("self", "selfloop"):
-            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=H, target=H, point=H, origin_actor=hero,
-                                                                 target_actor=hero, **base_ctx))))
+            sctx = base_ctx if data in ("hero.dodge", "hero.dash") else nob_ctx
+            timed.append((t0, lambda rid=data, sctx=sctx: sim.play(rid, Ctx(origin=H, target=H, point=H,
+                                                                            origin_actor=hero, target_actor=hero,
+                                                                            **sctx))))
         elif kind == "status":
             timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=T, point=T, origin_actor=gobs[0],
-                                                                 target_actor=gobs[0], **base_ctx))))
+                                                                 target_actor=gobs[0], **nob_ctx))))
         elif kind == "loot":
-            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=T, point=T, **base_ctx))))
+            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=T, point=T, **nob_ctx))))
         elif kind == "world":
             timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=prop_at, target=prop_at, point=prop_at,
-                                                                 **base_ctx))))
+                                                                 **nob_ctx))))
         elif kind in ("proj", "mproj"):
             vid, travel = data[0], data[1]
             src = hero if kind == "proj" else gobs[0]
@@ -1386,6 +1463,7 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> Path:
         sim.update(dt)
         t += dt
     stage.place_meshes([])
+    stage.show_prop(None, prop_at)
     cols = 4 if len(cells) > 4 else len(cells)
     if len(cells) in (5, 6) and cw >= 600:
         cols = 3

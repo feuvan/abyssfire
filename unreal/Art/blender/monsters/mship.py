@@ -47,6 +47,61 @@ def apply_bp(A, bp) -> None:
     anim.apply_pose(A.solve(bp))
 
 
+class MReview(review.Review):
+    """``kit.review.Review`` whose measured game cells also report the rim fraction at the **class width itself**
+    (``outline.SCREEN_PX_1080``: monster 3.0 px) next to the kit gate (3.0 − 0.5 slack = 2.5 px): ``fracRimSpec``
+    / ``specPx`` in each ink report (the brief asks for ≥ 3 px on ≥ 90 % of character edges; the kit's gate is
+    unchanged). Same renders and passes as ``Review.game_shot`` — one more ``ink_stats`` on the same coverage."""
+
+    def game_shot(self, border=None, res=(1920, 1080), measure: bool = False, tag: str = "", glow: bool = True,
+                  bloom_on=None):
+        if not measure:
+            return super().game_shot(border, res, measure=False, tag=tag, glow=glow, bloom_on=bloom_on)
+        cam = bpy.context.scene.camera
+        raw = review.render_array(border)
+        body, hull = review.coverage_pass(self.meshes, border, ground=self.ground_occludes,
+                                          extra_body=self.extra_body_slots)
+        ignore = None
+        if self.ground_occludes:
+            b0, h0 = review.coverage_pass(self.meshes, border, ground=False, extra_body=self.extra_body_slots)
+            buried = (b0 + h0) - (body + hull) > 0.25
+            for _ in range(2):
+                pb = np.pad(buried, 1, constant_values=False)
+                buried = buried | pb[:-2, 1:-1] | pb[2:, 1:-1] | pb[1:-1, :-2] | pb[1:-1, 2:]
+            ignore = buried
+        img = self.post(raw, cam, res, border, glow=glow, bloom_on=bloom_on)
+        st = review.ink_stats(body, hull, img, min_px=self.gate["minPx"], dark_lum=self.gate["darkLum"],
+                              within=self.gate["darkWithinPx"], hull_rgb=raw, ignore=ignore)
+        spec = float(outline.SCREEN_PX_1080.get(self.outline_class, self.gate["minPx"]))
+        st2 = review.ink_stats(body, hull, None, min_px=spec, ignore=ignore)
+        st["specPx"], st["fracRimSpec"] = spec, st2["fracRim"]
+        st["tag"] = tag
+        st["gate"] = self.gate
+        self.ink_reports.append(st)
+        return img, st
+
+
+def ink_summary(reports) -> dict:
+    """``review.ink_verdict`` + the fraction of edges at the class width (``MReview``): worst cell and median."""
+    v = review.ink_verdict(reports)
+    gated = [r for r in reports if r.get("gated", True) and "fracRimSpec" in r]
+    if gated:
+        fr = [r["fracRimSpec"] for r in gated]
+        worst = min(gated, key=lambda r: r["fracRimSpec"])
+        v["specPx"] = gated[0]["specPx"]
+        v["minFracRimSpec"] = round(min(fr), 4)
+        v["medianFracRimSpec"] = round(float(np.median(fr)), 4)
+        v["worstSpecCell"] = worst.get("tag", "")
+        v["specNote"] = (f"fraction of silhouette edge pixels with a rim >= {v['specPx']:g} px (the class width, "
+                         f"spec §1.3) on every gated cell; the kit gate is {v['gate']['minPx']:g} px "
+                         f"(outline.GATE_SLACK_PX)")
+    return v
+
+
+INK_KEYS = ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx", "maxHullLumP95", "gate", "specPx",
+            "minFracRimSpec", "medianFracRimSpec", "worstSpecCell", "specNote")
+
+
 @dataclass
 class Item:
     """A static mesh shipped with a skeletal monster: a held weapon (``socket`` = ``weapon_r``…) or an optional
@@ -98,6 +153,7 @@ class MonsterShip:
     lod_note: str = ""
     lod1: bpy.types.Object | None = None             # SK_<asset>_LOD1 (same generator, decimated, trims skipped)
     lod1_screen_size: float = LOD1_SCREEN_SIZE
+    portrait: Callable | None = None                 # fn(ship, rv, actions) → manifest path (``Portraits/T_UI_…``)
 
 
 def bake_clip(rig, c, token):
@@ -243,7 +299,7 @@ def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
         src = record(rig, ms.clips, actions)
     if previews:
         out = paths.preview_root() / ms.preview_dir
-        result["previews"], result["ink"] = render_previews(ms, out, actions)
+        result["previews"], result["ink"], result["portrait"] = render_previews(ms, out, actions)
         man = export.Manifest()
         man.data["assets"][ms.asset]["previews"] = [f"{ms.preview_dir}/{p.name}" for p in sorted(out.glob("*.png"))]
         for it in ms.items:
@@ -251,8 +307,9 @@ def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
                 man.data["assets"][it.asset]["previews"] = [f"{ms.preview_dir}/items.png"] + (
                     [f"{ms.preview_dir}/{p}" for p in ms.variant_previews] if it.variant is not None else [])
         ink = result["ink"]
-        man.data["assets"][ms.asset]["inkGate"] = {
-            k: ink[k] for k in ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx", "maxHullLumP95", "gate")}
+        man.data["assets"][ms.asset]["inkGate"] = {k: ink[k] for k in INK_KEYS if k in ink}
+        if result.get("portrait"):
+            man.data["assets"][ms.asset]["portrait"] = result["portrait"]
         man.save()
     if verify:
         result["verify"] = verify_export(ms, Path(sk), src, entry)
@@ -370,9 +427,9 @@ def render_previews(ms: MonsterShip, out: Path, actions) -> tuple[list, dict]:
         if it.variant is not None:
             it.obj.hide_render = True
     meshes = [ms.body] + [shown(it) for it in held(ms)]
-    rv = review.Review(ms.asset, rig.obj, meshes, ms.height, blob_radius=ms.blob_radius, out_dir=out,
-                       game_outline_px=outline.SCREEN_PX_1080[ms.outline_class], outline_class=ms.outline_class,
-                       glows=ms.glows)
+    rv = MReview(ms.asset, rig.obj, meshes, ms.height, blob_radius=ms.blob_radius, out_dir=out,
+                 game_outline_px=outline.SCREEN_PX_1080[ms.outline_class], outline_class=ms.outline_class,
+                 glows=ms.glows)
     rv.ground_occludes = True          # hull under planted soles is hidden by the terrain (UE) and the stage here
     rv.extra_body_slots = True         # a dithered shell slot (the slime) is body in the ink coverage
     acts = dict(zip([c.name for c in ms.clips], actions))
@@ -406,19 +463,22 @@ def render_previews(ms: MonsterShip, out: Path, actions) -> tuple[list, dict]:
         lod_sheet(ms, rv, actions)
     if ms.extra_previews is not None:
         ms.extra_previews(ms, rv, actions)
+    portrait = ms.portrait(ms, rv, actions) if ms.portrait is not None else None
     rv.facing("se")
     for p, size in rv.written:
         print(f"  {p.name:28s} {size // 1024:4d} KB")
-    ink = review.ink_verdict(rv.ink_reports)
+    ink = ink_summary(rv.ink_reports)
     print(f"\n[ink] {ink['cells']} gated 1080p cells: min rim {ink['minFracRim'] * 100:.1f} %, "
-          f"min dark {ink['minFracDark'] * 100:.1f} %, median rim {ink['medianRimPx']} px")
+          f"min dark {ink['minFracDark'] * 100:.1f} %, median rim {ink['medianRimPx']} px; at the class width "
+          f"{ink.get('specPx', 0):g} px: min {ink.get('minFracRimSpec', 0) * 100:.1f} % ({ink.get('worstSpecCell')}), "
+          f"median {ink.get('medianFracRimSpec', 0) * 100:.1f} %")
     for f in ink["failures"]:
         print("  INK FAIL " + f)
     for it in ms.items:
         it.obj.hide_render = False
         if it.preview_obj is not None:
             it.preview_obj.hide_render = True
-    return [str(p) for p, _ in rv.written], ink
+    return [str(p) for p, _ in rv.written], ink, portrait
 
 
 def _crop_hw(ms: MonsterShip) -> float:
@@ -472,12 +532,18 @@ def fx_view(ms: MonsterShip, rv, facing: str = "se") -> None:
     rv._save("game_fx.png", img)
 
 
+POSES_PER_SHEET = 5
+
+
 def closeup_poses(ms: MonsterShip, rv, actions) -> None:
+    """The intersection check: one close-up per ``close_keys`` entry, ``POSES_PER_SHEET`` cells per sheet
+    (``poses_close_a.png``, ``_b`` …) — a single 2-row sheet went over the 200 KB budget and was downscaled to
+    ~130 px cells with illegible labels; one row of 5 stays 1:1 (cells 240 × 290, labels at native size)."""
     rig = ms.A.rig
     acts = dict(zip([c.name for c in ms.clips], actions))
     meshes = [ms.body] + [shown(it) for it in held(ms)]
     cells = []
-    res = (256, 300)
+    res = (240, 290)
     for name, fr, fac in ms.close_keys:
         rv.facing(fac)
         anim.assign(rig, acts[name])
@@ -494,7 +560,12 @@ def closeup_poses(ms: MonsterShip, rv, actions) -> None:
                 mark = f" {d['name'].upper()}"
         review.draw_text(img, 3, 3, f"{name} F{fr}{mark}")
         cells.append(img)
-    rv._save("poses_close.png", review.grid(cells, min(5, len(cells))))
+    n = POSES_PER_SHEET
+    for k in range(0, len(cells), n):
+        part = cells[k:k + n]
+        while len(part) < n and len(cells) > n:
+            part.append(np.full_like(part[0], 24))
+        rv._save(f"poses_close_{chr(ord('a') + k // n)}.png", review.grid(part, len(part)))
     anim.assign(rig, acts["Idle"])
     anim.set_frame(0)
 
@@ -621,7 +692,11 @@ def lod_sheet(ms: MonsterShip, rv, actions) -> None:
                     if "af_outline_width" in m:
                         outline.set_preview_screen(m, world=review.ink_world(px))
                 img = review.render_array()
-                review.draw_text(img, 3, 3, f"{tag} {toon_tris(show)}+{M.tri_count(show, 1)} {clip} F{fr}")
+                # triangle counts of the shipped mesh (= manifest triangles.lod0 / lods[0].triangles), drawn at 2×:
+                # the 5×7 font's 8 / 6 and 9 / 3 are ambiguous at 1×
+                review.draw_text(img, 3, 3, f"{tag} {clip} F{fr}")
+                review.draw_text(img, 3, 13, f"TOON {toon_tris(show)}", scale=2)
+                review.draw_text(img, 3, 29, f"HULL {M.tri_count(show, 1)}", scale=2)
                 cells.append(img)
         zc = ms.height * 0.45
         for (clip, fr), show, baked, tag in ((("Idle", 0), body, False, "LOD0 SHIPPED"),

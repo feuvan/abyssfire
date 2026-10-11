@@ -3466,7 +3466,7 @@
      "liftShrink": "hop \u00d7 1.5 (web)",
      "radiusFactorOfWidth": 1.05
     },
-    "bodyOpacity": 0.82,
+    "bodyOpacity": 0.62,
     "jellyRim": {
      "alpha": 0.6,
      "color": "#E6FFDC",
@@ -3503,10 +3503,15 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 25.4,
+    "medianFracRimSpec": 0.676,
     "medianRimPx": 3.05,
     "minFracDark": 1.0,
     "minFracRim": 0.9329,
-    "pass": true
+    "minFracRimSpec": 0.3736,
+    "pass": true,
+    "specNote": "fraction of silhouette edge pixels with a rim >= 3 px (the class width, spec \u00a71.3) on every gated cell; the kit gate is 2.5 px (outline.GATE_SLACK_PX)",
+    "specPx": 3.0,
+    "worstSpecCell": "game_poses.png Attack01 F5 se"
    },
    "kind": "SkeletalMesh",
    "lods": [
@@ -3551,7 +3556,7 @@
      "name": "MI_AF_Toon_Slime",
      "palette": "Monsters_Plains",
      "params": {
-      "BodyOpacity": 0.82
+      "BodyOpacity": 0.62
      },
      "parent": "M_AF_Toon_Slime"
     }
@@ -3575,7 +3580,8 @@
     "mon_slime/game_poses.png",
     "mon_slime/lod1.png",
     "mon_slime/material_ab.png",
-    "mon_slime/poses_close.png",
+    "mon_slime/poses_close_a.png",
+    "mon_slime/poses_close_b.png",
     "mon_slime/turnaround.png"
    ],
    "refSpeedCmS": 120.0,
@@ -12204,6 +12210,87 @@
     "toon": 468
    }
   },
+  "SM_FX_Bubble": {
+   "blocking": false,
+   "boundsCm": {
+    "max": [
+     70.761,
+     70.761,
+     51.755
+    ],
+    "min": [
+     -70.761,
+     -70.761,
+     -51.755
+    ]
+   },
+   "boundsDiameterCm": 225.3,
+   "category": "VFX",
+   "family": "vfx",
+   "fbx": "VFX/SM_FX_Bubble.fbx",
+   "fx": {
+    "defaultTint": "#A07CFF",
+    "intensity": 1.9,
+    "orient": "billboard (rotation 0, no spin: faces the W1 camera)",
+    "pivot": "bubble centre",
+    "recipes": [
+     "skill.mana_shield"
+    ],
+    "tintNote": "HDR tint: the highlight arc and glint (value 1) clip toward white, the rim ring (.64) keeps the arcane hue; arc and glint carry their own ink so they read over the caster",
+    "values": {
+     "arc": 1.0,
+     "glint": 1.0,
+     "ring": 0.64
+    }
+   },
+   "gameIds": [],
+   "inkGate": {
+    "cells": 1,
+    "gate": {
+     "class": "fx",
+     "darkLum": 40.0,
+     "darkWithinPx": 3,
+     "maxHullLumP95": 40.0,
+     "minFrac": 0.9,
+     "minPx": 0.94
+    },
+    "maxHullLumP95": 24.8,
+    "medianRimPx": 1.35,
+    "minFracDark": 0.9932,
+    "minFracRim": 0.9983,
+    "pass": true
+   },
+   "kind": "StaticMesh",
+   "materialSlots": [
+    {
+     "index": 0,
+     "name": "M_AF_FX_Mesh",
+     "parent": "M_AF_FX_Mesh"
+    },
+    {
+     "index": 1,
+     "name": "M_AF_FX_Mesh",
+     "note": "baked ink hull (AF_Data.a = 0 \u2192 ink); no outline WPO in M_AF_FX_Mesh",
+     "parent": "M_AF_FX_Mesh",
+     "px1080AtDefaultDistance": 1.44,
+     "widthCm": 1.2
+    }
+   ],
+   "previews": [
+    "Previews/SM_FX_Bubble/game.png",
+    "Previews/SM_FX_Bubble/game_1080crop.png",
+    "Previews/SM_FX_Bubble/game_inkgate.png",
+    "Previews/SM_FX_Bubble/closeup.png",
+    "Previews/SM_FX_Bubble/turnaround.png",
+    "Previews/SM_FX_Bubble/game_context.png"
+   ],
+   "scale": 1.0,
+   "sockets": [],
+   "triangles": {
+    "outline": 1692,
+    "toon": 1692
+   }
+  },
   "SM_FX_Chain": {
    "blocking": false,
    "boundsCm": {
@@ -12549,35 +12636,36 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     12.719,
-     18.957,
-     13.111
+     12.947,
+     19.243,
+     13.354
     ],
     "min": [
-     -18.212,
-     -36.221,
-     -13.449
+     -18.498,
+     -36.508,
+     -13.672
     ]
    },
-   "boundsDiameterCm": 68.6,
+   "boundsDiameterCm": 69.5,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_Fireball.fbx",
    "fx": {
-    "defaultTint": "#FF5A00",
+    "defaultTint": "#FF9A3A",
     "flatLit": true,
-    "intensity": 1.45,
+    "intensity": 2.4,
     "note": "normals all +Z: the toon maths lands the surface in the light band = unshaded cel fire; glow / comet / embers are sprites around it",
     "orient": "velocity",
     "pivot": "core centre (licks trail behind)",
     "recipes": [
      "proj.fireball"
     ],
-    "tintNote": "flat-lit = the light band mix(c, #FFF4D6, .32): #FF5A00 lands on #FF8C44 (licks at value .86 / .74 deeper)",
+    "tintNote": "flat-lit + HDR: the leading cap (value 1) clips to pale yellow and blooms, the body (.8) reads orange-yellow, the licks (.64 / .55) orange to red-orange",
     "values": {
-     "core": 1.0,
-     "lick": 0.86,
-     "lick2": 0.74
+     "cap": 1.0,
+     "core": 0.8,
+     "lick": 0.64,
+     "lick2": 0.55
     }
    },
    "gameIds": [],
@@ -12589,12 +12677,12 @@
      "darkWithinPx": 3,
      "maxHullLumP95": 40.0,
      "minFrac": 0.9,
-     "minPx": 0.7
+     "minPx": 1.06
     },
-    "maxHullLumP95": 20.7,
-    "medianRimPx": 1.36,
-    "minFracDark": 1.0,
-    "minFracRim": 1.0,
+    "maxHullLumP95": 28.6,
+    "medianRimPx": 1.71,
+    "minFracDark": 0.9775,
+    "minFracRim": 0.9494,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -12609,8 +12697,8 @@
      "name": "M_AF_FX_Mesh",
      "note": "baked ink hull (AF_Data.a = 0 \u2192 ink); no outline WPO in M_AF_FX_Mesh",
      "parent": "M_AF_FX_Mesh",
-     "px1080AtDefaultDistance": 1.2,
-     "widthCm": 1.0
+     "px1080AtDefaultDistance": 1.56,
+     "widthCm": 1.3
     }
    ],
    "previews": [
@@ -12625,24 +12713,24 @@
    "sockets": [],
    "triangles": {
     "outline": 1008,
-    "toon": 1008
+    "toon": 1070
    }
   },
   "SM_FX_FrostCage": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     51.901,
-     48.072,
-     144.815
+     52.443,
+     48.615,
+     146.828
     ],
     "min": [
-     -51.495,
-     -53.237,
-     -4.505
+     -52.03,
+     -53.821,
+     -5.118
     ]
    },
-   "boundsDiameterCm": 208.0,
+   "boundsDiameterCm": 210.9,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_FrostCage.fbx",
@@ -12671,9 +12759,9 @@
      "minPx": 1.06
     },
     "maxHullLumP95": 17.6,
-    "medianRimPx": 1.35,
-    "minFracDark": 0.9967,
-    "minFracRim": 0.9342,
+    "medianRimPx": 1.8,
+    "minFracDark": 1.0,
+    "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -12711,17 +12799,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     35.656,
-     44.594,
-     21.732
+     36.49,
+     45.684,
+     23.346
     ],
     "min": [
-     -31.043,
-     -35.428,
-     -5.211
+     -31.399,
+     -35.79,
+     -6.056
     ]
    },
-   "boundsDiameterCm": 107.6,
+   "boundsDiameterCm": 110.1,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_FrostCrust.fbx",
@@ -12750,10 +12838,10 @@
      "minPx": 1.24
     },
     "maxHullLumP95": 17.2,
-    "medianRimPx": 1.48,
+    "medianRimPx": 2.11,
     "minFracDark": 1.0,
-    "minFracRim": 0.8794,
-    "pass": false
+    "minFracRim": 1.0,
+    "pass": true
    },
    "kind": "StaticMesh",
    "materialSlots": [
@@ -12790,17 +12878,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     68.728,
-     72.273,
-     48.352
+     69.72,
+     72.596,
+     49.784
     ],
     "min": [
-     -63.306,
-     -71.384,
-     -5.627
+     -63.499,
+     -72.399,
+     -6.243
     ]
    },
-   "boundsDiameterCm": 202.4,
+   "boundsDiameterCm": 204.7,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_FrostNova.fbx",
@@ -12829,10 +12917,10 @@
      "minFrac": 0.9,
      "minPx": 0.94
     },
-    "maxHullLumP95": 17.4,
-    "medianRimPx": 1.23,
-    "minFracDark": 0.9739,
-    "minFracRim": 0.9351,
+    "maxHullLumP95": 17.3,
+    "medianRimPx": 1.67,
+    "minFracDark": 1.0,
+    "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -12942,17 +13030,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     96.37,
-     93.103,
-     64.868
+     96.852,
+     93.675,
+     65.466
     ],
     "min": [
-     -96.37,
-     -93.103,
-     -27.016
+     -96.852,
+     -93.675,
+     -27.516
     ]
    },
-   "boundsDiameterCm": 283.3,
+   "boundsDiameterCm": 285.1,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_HexDome.fbx",
@@ -12984,9 +13072,9 @@
      "minPx": 0.94
     },
     "maxHullLumP95": 16.2,
-    "medianRimPx": 1.26,
-    "minFracDark": 0.9074,
-    "minFracRim": 0.9078,
+    "medianRimPx": 1.99,
+    "minFracDark": 1.0,
+    "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -13020,21 +13108,102 @@
     "toon": 1152
    }
   },
+  "SM_FX_HexPlate": {
+   "blocking": false,
+   "boundsCm": {
+    "max": [
+     21.552,
+     3.504,
+     24.886
+    ],
+    "min": [
+     -21.552,
+     -3.504,
+     -24.886
+    ]
+   },
+   "boundsDiameterCm": 66.2,
+   "category": "VFX",
+   "family": "vfx",
+   "fbx": "VFX/SM_FX_HexPlate.fbx",
+   "fx": {
+    "defaultTint": "#FFE27A",
+    "intensity": 1.0,
+    "note": "the art recipes use the one-piece SM_FX_HexRing / SM_FX_HexDome (exact radial facing)",
+    "orient": "billboard / ground (rotation 0 = facing UE +Y)",
+    "pivot": "plate centre",
+    "recipes": [
+     "built-in defaults skill.shield_wall / skill.iron_fortress (orbiting plates)"
+    ],
+    "values": {
+     "glint": 1.0,
+     "inner": 0.8,
+     "rim": 1.0
+    }
+   },
+   "gameIds": [],
+   "inkGate": {
+    "cells": 1,
+    "gate": {
+     "class": "fx",
+     "darkLum": 40.0,
+     "darkWithinPx": 3,
+     "maxHullLumP95": 40.0,
+     "minFrac": 0.9,
+     "minPx": 0.94
+    },
+    "maxHullLumP95": 16.2,
+    "medianRimPx": 2.02,
+    "minFracDark": 1.0,
+    "minFracRim": 1.0,
+    "pass": true
+   },
+   "kind": "StaticMesh",
+   "materialSlots": [
+    {
+     "index": 0,
+     "name": "M_AF_FX_Mesh",
+     "parent": "M_AF_FX_Mesh"
+    },
+    {
+     "index": 1,
+     "name": "M_AF_FX_Mesh",
+     "note": "baked ink hull (AF_Data.a = 0 \u2192 ink); no outline WPO in M_AF_FX_Mesh",
+     "parent": "M_AF_FX_Mesh",
+     "px1080AtDefaultDistance": 1.44,
+     "widthCm": 1.2
+    }
+   ],
+   "previews": [
+    "Previews/SM_FX_HexPlate/game.png",
+    "Previews/SM_FX_HexPlate/game_1080crop.png",
+    "Previews/SM_FX_HexPlate/game_inkgate.png",
+    "Previews/SM_FX_HexPlate/closeup.png",
+    "Previews/SM_FX_HexPlate/turnaround.png",
+    "Previews/SM_FX_HexPlate/game_context.png"
+   ],
+   "scale": 1.0,
+   "sockets": [],
+   "triangles": {
+    "outline": 96,
+    "toon": 180
+   }
+  },
   "SM_FX_HexRing": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     88.0,
-     88.0,
-     24.537
+     88.498,
+     88.498,
+     25.048
     ],
     "min": [
-     -88.0,
-     -88.0,
-     -24.537
+     -88.498,
+     -88.498,
+     -25.048
     ]
    },
-   "boundsDiameterCm": 253.7,
+   "boundsDiameterCm": 255.3,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_HexRing.fbx",
@@ -13064,9 +13233,9 @@
      "minPx": 0.94
     },
     "maxHullLumP95": 16.2,
-    "medianRimPx": 1.3,
-    "minFracDark": 0.9729,
-    "minFracRim": 0.9513,
+    "medianRimPx": 2.02,
+    "minFracDark": 1.0,
+    "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -13104,17 +13273,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     6.687,
-     29.5,
-     4.655
+     7.337,
+     31.9,
+     5.35
     ],
     "min": [
-     -6.687,
-     -25.916,
-     -6.928
+     -7.333,
+     -26.51,
+     -7.358
     ]
    },
-   "boundsDiameterCm": 58.2,
+   "boundsDiameterCm": 61.6,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_IceArrow.fbx",
@@ -13143,11 +13312,11 @@
      "minFrac": 0.9,
      "minPx": 1.3
     },
-    "maxHullLumP95": 17.6,
-    "medianRimPx": 1.51,
-    "minFracDark": 0.9561,
-    "minFracRim": 0.8333,
-    "pass": false
+    "maxHullLumP95": 18.2,
+    "medianRimPx": 2.25,
+    "minFracDark": 1.0,
+    "minFracRim": 0.9919,
+    "pass": true
    },
    "kind": "StaticMesh",
    "materialSlots": [
@@ -13184,17 +13353,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     5.347,
-     16.5,
-     4.234
+     6.361,
+     18.9,
+     4.446
     ],
     "min": [
-     -4.889,
-     -9.5,
-     -4.234
+     -5.134,
+     -10.956,
+     -4.446
     ]
    },
-   "boundsDiameterCm": 29.2,
+   "boundsDiameterCm": 33.2,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_IceShard.fbx",
@@ -13224,11 +13393,11 @@
      "minFrac": 0.9,
      "minPx": 1.3
     },
-    "maxHullLumP95": 17.2,
-    "medianRimPx": 1.44,
-    "minFracDark": 0.9792,
-    "minFracRim": 0.625,
-    "pass": false
+    "maxHullLumP95": 16.6,
+    "medianRimPx": 2.02,
+    "minFracDark": 1.0,
+    "minFracRim": 1.0,
+    "pass": true
    },
    "kind": "StaticMesh",
    "materialSlots": [
@@ -13265,17 +13434,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     27.912,
-     26.721,
-     24.876
+     28.359,
+     26.847,
+     25.123
     ],
     "min": [
-     -26.625,
-     -29.424,
-     -28.48
+     -26.769,
+     -29.561,
+     -28.786
     ]
    },
-   "boundsDiameterCm": 94.7,
+   "boundsDiameterCm": 95.5,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_MeteorRock.fbx",
@@ -13303,10 +13472,10 @@
      "minFrac": 0.9,
      "minPx": 1.18
     },
-    "maxHullLumP95": 15.2,
-    "medianRimPx": 1.56,
+    "maxHullLumP95": 16.2,
+    "medianRimPx": 1.78,
     "minFracDark": 1.0,
-    "minFracRim": 0.9943,
+    "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -13427,17 +13596,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     6.506,
-     6.169,
-     5.364
+     6.855,
+     6.6,
+     5.556
     ],
     "min": [
-     -6.501,
-     -6.842,
-     -4.552
+     -6.975,
+     -7.449,
+     -4.66
     ]
    },
-   "boundsDiameterCm": 20.9,
+   "boundsDiameterCm": 22.2,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_Rock_A.fbx",
@@ -13464,10 +13633,10 @@
      "minFrac": 0.9,
      "minPx": 1.18
     },
-    "maxHullLumP95": 15.2,
-    "medianRimPx": 1.45,
+    "maxHullLumP95": 15.9,
+    "medianRimPx": 2.02,
     "minFracDark": 1.0,
-    "minFracRim": 0.9778,
+    "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -13505,17 +13674,17 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     7.992,
-     5.263,
-     6.806
+     8.953,
+     5.719,
+     7.481
     ],
     "min": [
-     -6.876,
-     -4.169,
-     -4.82
+     -7.578,
+     -4.294,
+     -5.032
     ]
    },
-   "boundsDiameterCm": 21.1,
+   "boundsDiameterCm": 23.0,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_Rock_B.fbx",
@@ -13542,11 +13711,11 @@
      "minFrac": 0.9,
      "minPx": 1.18
     },
-    "maxHullLumP95": 15.2,
-    "medianRimPx": 1.39,
+    "maxHullLumP95": 16.2,
+    "medianRimPx": 1.99,
     "minFracDark": 1.0,
-    "minFracRim": 0.8293,
-    "pass": false
+    "minFracRim": 1.0,
+    "pass": true
    },
    "kind": "StaticMesh",
    "materialSlots": [
@@ -13583,34 +13752,37 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     90.152,
-     106.2,
+     90.474,
+     100.79,
      6.969
     ],
     "min": [
-     -90.152,
-     31.29,
-     -3.9
+     -91.69,
+     31.258,
+     -3.044
     ]
    },
-   "boundsDiameterCm": 195.5,
+   "boundsDiameterCm": 195.2,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_SlashArc_Mage.fbx",
    "fx": {
+    "bands": "outer edge 1.0 (white-hot) \u00b7 body .8 \u00b7 inner trailing smear .6",
     "class": "mage",
     "defaultTint": "#D8B4FF",
     "flatLit": true,
-    "intensity": 1.25,
+    "intensity": 1.3,
     "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
     "pivot": "the swing centre (the caster / the target chest)",
     "recipes": [
      "hit.basic.mage"
     ],
+    "spin": "positive spinDegS (head leads)",
     "values": {
      "body": 0.8,
      "edge": 1.0,
-     "spark": 1.0
+     "spark": 1.0,
+     "trail": 0.6
     }
    },
    "gameIds": [],
@@ -13624,10 +13796,10 @@
      "minFrac": 0.9,
      "minPx": 0.94
     },
-    "maxHullLumP95": 18.6,
-    "medianRimPx": 1.31,
-    "minFracDark": 0.9909,
-    "minFracRim": 0.9863,
+    "maxHullLumP95": 19.3,
+    "medianRimPx": 1.25,
+    "minFracDark": 0.9705,
+    "minFracRim": 0.9937,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -13657,8 +13829,8 @@
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 752,
-    "toon": 1044
+    "outline": 784,
+    "toon": 1432
    }
   },
   "SM_FX_SlashArc_Rogue": {
@@ -13680,18 +13852,21 @@
    "family": "vfx",
    "fbx": "VFX/SM_FX_SlashArc_Rogue.fbx",
    "fx": {
+    "bands": "outer blade 1.0 \u00b7 inner blade .8",
     "class": "rogue",
     "defaultTint": "#B478FF",
     "flatLit": true,
-    "intensity": 1.25,
+    "intensity": 1.3,
     "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
     "pivot": "the swing centre (the caster / the target chest)",
     "recipes": [
      "skill.backstab",
+     "skill.shadow_step",
      "hit.basic.rogue"
     ],
+    "spin": "symmetric (either sign)",
     "values": {
-     "body": 0.82,
+     "body": 0.8,
      "edge": 1.0
     }
    },
@@ -13706,7 +13881,7 @@
      "minFrac": 0.9,
      "minPx": 0.94
     },
-    "maxHullLumP95": 18.6,
+    "maxHullLumP95": 19.3,
     "medianRimPx": 1.24,
     "minFracDark": 0.9547,
     "minFracRim": 0.983,
@@ -13747,35 +13922,38 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     97.777,
-     114.7,
-     13.4
+     97.766,
+     105.559,
+     13.562
     ],
     "min": [
-     -97.777,
-     24.685,
-     -13.4
+     -100.258,
+     24.658,
+     -13.491
     ]
    },
-   "boundsDiameterCm": 216.9,
+   "boundsDiameterCm": 215.6,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_SlashArc_Warrior.fbx",
    "fx": {
+    "bands": "outer edge 1.0 (white-hot) \u00b7 body .8 \u00b7 inner trailing smear .6",
     "class": "warrior",
     "defaultTint": "#F4AC28",
     "flatLit": true,
-    "intensity": 1.25,
+    "intensity": 1.3,
     "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
     "pivot": "the swing centre (the caster / the target chest)",
     "recipes": [
      "skill.slash",
-     "skill.bleed_strike",
-     "hit.basic.warrior"
+     "hit.basic.warrior",
+     "skill.rampage"
     ],
+    "spin": "positive spinDegS (head leads)",
     "values": {
-     "body": 0.74,
-     "edge": 1.0
+     "body": 0.8,
+     "edge": 1.0,
+     "trail": 0.6
     }
    },
    "gameIds": [],
@@ -13789,10 +13967,10 @@
      "minFrac": 0.9,
      "minPx": 0.94
     },
-    "maxHullLumP95": 17.3,
-    "medianRimPx": 1.25,
-    "minFracDark": 0.9867,
-    "minFracRim": 0.9943,
+    "maxHullLumP95": 17.6,
+    "medianRimPx": 1.26,
+    "minFracDark": 0.9943,
+    "minFracRim": 0.9811,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -13822,42 +14000,45 @@
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 324,
-    "toon": 648
+    "outline": 356,
+    "toon": 1068
    }
   },
-  "SM_FX_SpiritBolt": {
+  "SM_FX_SlashArc_Warrior_Back": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     8.0,
-     16.5,
-     8.0
+     100.258,
+     105.559,
+     13.562
     ],
     "min": [
-     -8.0,
-     -26.98,
-     -8.0
+     -97.766,
+     24.658,
+     -13.491
     ]
    },
-   "boundsDiameterCm": 49.0,
+   "boundsDiameterCm": 215.6,
    "category": "VFX",
    "family": "vfx",
-   "fbx": "VFX/SM_FX_SpiritBolt.fbx",
+   "fbx": "VFX/SM_FX_SlashArc_Warrior_Back.fbx",
    "fx": {
-    "defaultTint": "#9CE0FF",
+    "bands": "outer edge 1.0 (white-hot) \u00b7 body .8 \u00b7 inner trailing smear .6",
+    "class": "warrior",
+    "defaultTint": "#F4AC28",
     "flatLit": true,
-    "intensity": 1.35,
-    "orient": "velocity",
-    "pivot": "head centre",
+    "intensity": 1.3,
+    "orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
+    "pivot": "the swing centre (the caster / the target chest)",
     "recipes": [
-     "proj.pet_bolt",
-     "proj.monster_bolt"
+     "skill.bleed_strike",
+     "skill.whirlwind (counter swipe)"
     ],
+    "spin": "negative spinDegS (head at the +\u03c6 end)",
     "values": {
-     "head": 1.0,
-     "tail": 0.8,
-     "wisp": 0.68
+     "body": 0.8,
+     "edge": 1.0,
+     "trail": 0.6
     }
    },
    "gameIds": [],
@@ -13869,11 +14050,95 @@
      "darkWithinPx": 3,
      "maxHullLumP95": 40.0,
      "minFrac": 0.9,
-     "minPx": 0.7
+     "minPx": 0.94
     },
-    "maxHullLumP95": 19.6,
-    "medianRimPx": 1.29,
-    "minFracDark": 0.9667,
+    "maxHullLumP95": 17.6,
+    "medianRimPx": 1.27,
+    "minFracDark": 0.9829,
+    "minFracRim": 0.9924,
+    "pass": true
+   },
+   "kind": "StaticMesh",
+   "materialSlots": [
+    {
+     "index": 0,
+     "name": "M_AF_FX_Mesh",
+     "parent": "M_AF_FX_Mesh"
+    },
+    {
+     "index": 1,
+     "name": "M_AF_FX_Mesh",
+     "note": "baked ink hull (AF_Data.a = 0 \u2192 ink); no outline WPO in M_AF_FX_Mesh",
+     "parent": "M_AF_FX_Mesh",
+     "px1080AtDefaultDistance": 1.44,
+     "widthCm": 1.2
+    }
+   ],
+   "previews": [
+    "Previews/SM_FX_SlashArc_Warrior_Back/game.png",
+    "Previews/SM_FX_SlashArc_Warrior_Back/game_1080crop.png",
+    "Previews/SM_FX_SlashArc_Warrior_Back/game_inkgate.png",
+    "Previews/SM_FX_SlashArc_Warrior_Back/closeup.png",
+    "Previews/SM_FX_SlashArc_Warrior_Back/turnaround.png",
+    "Previews/SM_FX_SlashArc_Warrior_Back/game_context.png"
+   ],
+   "scale": 1.0,
+   "sockets": [],
+   "triangles": {
+    "outline": 356,
+    "toon": 1068
+   }
+  },
+  "SM_FX_SpiritBolt": {
+   "blocking": false,
+   "boundsCm": {
+    "max": [
+     8.3,
+     16.8,
+     8.3
+    ],
+    "min": [
+     -8.3,
+     -27.25,
+     -8.3
+    ]
+   },
+   "boundsDiameterCm": 49.9,
+   "category": "VFX",
+   "family": "vfx",
+   "fbx": "VFX/SM_FX_SpiritBolt.fbx",
+   "fx": {
+    "defaultTint": "#7FD2FF",
+    "flatLit": true,
+    "intensity": 1.9,
+    "orient": "velocity",
+    "pivot": "head centre",
+    "recipes": [
+     "proj.pet_bolt",
+     "proj.monster_bolt"
+    ],
+    "tintNote": "the leading cap (value 1) clips toward white, head .82 / tail .66 / wisps .56 step down through the tint",
+    "values": {
+     "cap": 1.0,
+     "head": 0.82,
+     "tail": 0.66,
+     "wisp": 0.56
+    }
+   },
+   "gameIds": [],
+   "inkGate": {
+    "cells": 1,
+    "gate": {
+     "class": "fx",
+     "darkLum": 40.0,
+     "darkWithinPx": 3,
+     "maxHullLumP95": 40.0,
+     "minFrac": 0.9,
+     "minPx": 1.06
+    },
+    "maxHullLumP95": 24.2,
+    "medianRimPx": 1.72,
+    "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -13889,8 +14154,8 @@
      "name": "M_AF_FX_Mesh",
      "note": "baked ink hull (AF_Data.a = 0 \u2192 ink); no outline WPO in M_AF_FX_Mesh",
      "parent": "M_AF_FX_Mesh",
-     "px1080AtDefaultDistance": 1.2,
-     "widthCm": 1.0
+     "px1080AtDefaultDistance": 1.56,
+     "widthCm": 1.3
     }
    ],
    "previews": [
@@ -13905,24 +14170,24 @@
    "sockets": [],
    "triangles": {
     "outline": 400,
-    "toon": 400
+    "toon": 448
    }
   },
   "SM_FX_StunStar": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     8.102,
-     7.28,
-     6.545
+     8.822,
+     7.933,
+     7.147
     ],
     "min": [
-     -7.462,
-     -8.164,
-     -6.044
+     -8.129,
+     -8.889,
+     -6.609
     ]
    },
-   "boundsDiameterCm": 25.3,
+   "boundsDiameterCm": 27.6,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_StunStar.fbx",
@@ -13948,10 +14213,10 @@
      "darkWithinPx": 3,
      "maxHullLumP95": 40.0,
      "minFrac": 0.9,
-     "minPx": 0.6
+     "minPx": 1.06
     },
-    "maxHullLumP95": 18.4,
-    "medianRimPx": 1.15,
+    "maxHullLumP95": 18.6,
+    "medianRimPx": 1.66,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -13968,8 +14233,8 @@
      "name": "M_AF_FX_Mesh",
      "note": "baked ink hull (AF_Data.a = 0 \u2192 ink); no outline WPO in M_AF_FX_Mesh",
      "parent": "M_AF_FX_Mesh",
-     "px1080AtDefaultDistance": 1.08,
-     "widthCm": 0.9
+     "px1080AtDefaultDistance": 1.56,
+     "widthCm": 1.3
     }
    ],
    "previews": [
@@ -13991,21 +14256,22 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     94.678,
-     106.498,
-     24.704
+     92.128,
+     103.18,
+     20.469
     ],
     "min": [
-     -108.262,
-     -81.455,
-     -17.089
+     -105.638,
+     -79.577,
+     -13.439
     ]
    },
-   "boundsDiameterCm": 279.7,
+   "boundsDiameterCm": 271.4,
    "category": "VFX",
    "family": "vfx",
    "fbx": "VFX/SM_FX_WhirlBand.fbx",
    "fx": {
+    "bands": "outer edge 1.0 \u00b7 body .8 \u00b7 inner smear .6",
     "defaultTint": "#AABBD4",
     "flatLit": true,
     "intensity": 1.25,
@@ -14016,8 +14282,9 @@
      "skill.rampage"
     ],
     "values": {
-     "body": 0.72,
-     "edge": 1.0
+     "body": 0.8,
+     "edge": 1.0,
+     "trail": 0.6
     }
    },
    "gameIds": [],
@@ -14032,9 +14299,9 @@
      "minPx": 0.94
     },
     "maxHullLumP95": 16.2,
-    "medianRimPx": 1.25,
-    "minFracDark": 0.9869,
-    "minFracRim": 0.9731,
+    "medianRimPx": 1.29,
+    "minFracDark": 0.9784,
+    "minFracRim": 0.9867,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -14064,8 +14331,8 @@
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 724,
-    "toon": 1448
+    "outline": 772,
+    "toon": 2316
    }
   },
   "SM_Foliage_Plains_BerryBush_A": {

@@ -54,6 +54,7 @@ PAL = {
     "arcane":    ("#FFFFFF", "#D8B4FF", "#8A5CFF", "#34207A", 3),
     "nature":    ("#F6FFE0", "#A8F07A", "#40C060", "#1A5A2A", 2),
     "earth":     ("#FFF0C8", "#E8C47A", "#B08850", "#5A4430", 4),
+    "portal":    ("#E8FFF8", "#80F0E0", "#3FE0A0", "#14584A", 1),
 }
 FLAME = {"fire": 0, "frost": 1, "poison": 2, "shadow": 3, "holy": 4, "rage": 5, "plain": 6, "camp": 7}
 SLASH = {"warrior": 0, "rogue": 1, "mage": 2, "heavy": 3}
@@ -67,9 +68,10 @@ MESH_DIAMETER = {
     "SM_FX_FrostCage": 160.0, "SM_FX_FrostCrust": 85.0, "SM_FX_StunStar": 20.0, "SM_FX_ChainLink": 13.0,
     "SM_FX_Chain": 58.0, "SM_FX_SlashArc_Warrior": 226.0, "SM_FX_SlashArc_Rogue": 215.0,
     "SM_FX_SlashArc_Mage": 200.0, "SM_FX_WhirlBand": 215.0, "SM_Pickup_GoldCoin": 18.0,
+    "SM_FX_HexPlate": 66.0, "SM_FX_Bubble": 225.0, "SM_FX_SlashArc_Warrior_Back": 226.0,
 }
 # arc / band radius of the ribbon meshes in mesh units (m) — size for a ribbon of radius R = R / ARC_R × diameter
-ARC_R = {"SM_FX_SlashArc_Warrior": 1.0, "SM_FX_SlashArc_Rogue": 1.0, "SM_FX_SlashArc_Mage": 0.95,
+ARC_R = {"SM_FX_SlashArc_Warrior": 1.0, "SM_FX_SlashArc_Warrior_Back": 1.0, "SM_FX_SlashArc_Rogue": 1.0, "SM_FX_SlashArc_Mage": 0.95,
          "SM_FX_WhirlBand": 1.0, "SM_FX_HexRing": 0.8, "SM_FX_HexDome": 0.89, "SM_FX_FrostNova": 0.5}
 
 
@@ -201,7 +203,7 @@ def smoke(at, n, color, *, radius_px=8, speed=(15, 45), life=(500, 800), size=(0
 
 
 def flames(at, n, cell, *, radius_px=10, rise=(30, 70), life=(300, 520), size=(0.5, 0.9), delay=0, stagger=0,
-           on_ring=False, h=0, tint="white", rate=None, duration=None, attach=None, **kw):
+           on_ring=False, h=0, tint="white", rate=None, duration=None, attach=None, even=False, **kw):
     """web flames(): cel flame tongues (32×52 px) from a ground disc, rising, pivot at the base: the pre-coloured
     ``Flame`` cell ``cell`` (palette flame), translucent (sorted with the world)."""
     base = dict(emitter="flames", sprite="Flame", variant=cell, blend="translucent", orient="upright", at=at,
@@ -209,7 +211,22 @@ def flames(at, n, cell, *, radius_px=10, rise=(30, 70), life=(300, 520), size=(0
                 lifeMs=list(life), sizeCm=[px(52 * size[0] * 0.85), px(52 * size[1] * 0.85)], aspect=0.5,
                 grow=0.72, sizePow=2, alpha=[1, 0], fadeIn=0.15, alphaPow=1.2, color=tint, intensity=1.0,
                 spinDegS=None, delayMs=delay, attach=attach)
-    if rate:
+    if even and on_ring and not rate:
+        # evenly spaced round the ring: a zero-speed orbit places burst particle i at 360·i/n (random ring angles
+        # cluster); a stagger becomes two half bursts on slightly different radii
+        r = px(radius_px)
+        base.pop("spawnRadiusCm", None)
+        base.pop("onRing", None)
+        if stagger:
+            n1 = (n + 1) // 2
+            a1 = dict(base, count=n1, orbit={"r0Cm": r, "r1Cm": r, "degS": 0})
+            a2 = dict(base, count=n - n1, orbit={"r0Cm": round(r * 0.88, 1), "r1Cm": round(r * 0.88, 1),
+                                                   "degS": 0}, delayMs=delay + stagger * 0.5)
+            a1.update(kw)
+            a2.update({k: v for k, v in kw.items() if k != "delayMs"})
+            return [clean(a1), clean(a2)]
+        base.update(count=n, orbit={"r0Cm": r, "r1Cm": r, "degS": 0})
+    elif rate:
         base.update(rate=rate, durationMs=duration if duration is not None else -1)
     elif stagger:
         base.update(rate=round(n / (stagger / 1000.0), 2), durationMs=stagger)
@@ -411,24 +428,32 @@ def combat() -> dict:
     rec["reward.gold"] = R("holy", [
         lay(sprite="Coin", mesh="SM_Pickup_GoldCoin", orient="billboard", blend="translucent", at="target",
             height=30, count=6, dir="up", coneDeg=126, speedCmS=[111, 222], upCmS=155, gravityCmS2=933,
-            lifeMs=[420, 580], sizeCm=mesh_size("SM_Pickup_GoldCoin", 1.0), grow=1, alpha=[1, 0], alphaPow=4,
+            lifeMs=[420, 580], sizeCm=mesh_size("SM_Pickup_GoldCoin", 1.7), grow=0.35, sizePow=0.25, alpha=[1, 1],
             spinDegS=[-540, 540], rotationDeg=[0, 360], color="#FFC93A", intensity=1.1),
         motes("target", 5, "mid", sprite="Spark", rise=30, alt="core", alt_every=2, h=40, size=(8, 12)),
+        glow("target", 50, 220, "#FFC93A", h=40, grow=1.6, alpha=0.6),
     ])
     rec["reward.heal"] = R("nature", [
         glow("target", 67, 420, "rim", alpha=0.55, grow=1.4),
-        ring("target", px(6), px(28), 420, "mid", alpha=0.8),
-        motes("target", 4, "mid", sprite="Plus", rise=60, size=(14, 20), spin=0),
-        motes("target", 10, "core", rise=70, alt="rim", alt_every=2),
+        lay(emitter="glow", orient="ground", at="target", height=3, sizeCm=90, grow=1.5, lifeMs=480,
+            alpha=[0.55, 0], color="rim"),
+        ring("target", px(6), px(28), 420, "mid", alpha=0.85),
+        motes("target", 5, "mid", sprite="Plus", radius_px=12, rise=60, size=(20, 28), spin=0, h=60,
+              intensity=1.3),
+        motes("target", 10, "core", radius_px=12, rise=70, alt="rim", alt_every=2, h=40),
     ])
     rec["reward.mana"] = R("arcane", [
         glow("target", 67, 420, "rim", alpha=0.55, grow=1.4),
-        ring("target", px(6), px(28), 420, "mid", alpha=0.8),
-        motes("target", 10, "core", sprite="Spark", rise=70, alt="mid", alt_every=2, size=(8, 12)),
+        lay(emitter="glow", orient="ground", at="target", height=3, sizeCm=90, grow=1.5, lifeMs=480,
+            alpha=[0.55, 0], color="rim"),
+        ring("target", px(6), px(28), 420, "mid", alpha=0.85),
+        motes("target", 12, "core", sprite="Spark", radius_px=12, rise=70, alt="mid", alt_every=2, size=(10, 15),
+              h=40),
     ])
     # NS_Hero_LevelUp
     rec["hero.levelup"] = R("holy", [
         decal("target", "Rune", px(40), 1100, "rim", alpha=0.9, blend="additive", grow=1.1, spin=1.0, pow=1.6),
+        beam("target", 150, 44, 900, "rim", alpha=0.4, blend="translucent"),
         beam("target", 150, 44, 900, "mid", alpha=0.85, cell=1),
         beam("target", 130, 14, 700, "white", alpha=0.9),
         flash("target", 36, "core", life=200),
@@ -512,6 +537,8 @@ def utility() -> dict:
     rec["loot.drop.rare"] = R("event", [
         lay(emitter="glow", orient="ground", at="point", height=2, sizeCm=72, grow=1.2, lifeMs=1600, fadeIn=0.2,
             alpha=[0.7, 0], color="event"),
+        lay(emitter="beam", at="point", height=0, sizeCm=18, aspect=0.2, grow=10, sizePow=4, blend="translucent",
+            lifeMs=1400, fadeIn=0.05, alphaPow=2.5, alpha=[0.3, 0], color="event"),
         lay(emitter="beam", variant=1, at="point", height=0, sizeCm=18, aspect=0.16, grow=10, sizePow=4,
             lifeMs=1400, fadeIn=0.05, alphaPow=2.5, alpha=[0.55, 0], color="event", intensity=1.3),
         lay(emitter="beam", at="point", height=0, sizeCm=14, aspect=0.08, grow=10, sizePow=4, lifeMs=1300,
@@ -523,6 +550,8 @@ def utility() -> dict:
         rec[f"loot.drop.{q}"] = R("event", [
             lay(emitter="glow", orient="ground", at="point", height=2, sizeCm=96, grow=1.2, lifeMs=1800, fadeIn=0.2,
                 alpha=[0.75, 0], color="event"),
+            lay(emitter="beam", at="point", height=0, sizeCm=px(hpx) * 0.1, aspect=0.26, grow=10, sizePow=4,
+                blend="translucent", lifeMs=1800, fadeIn=0.05, alphaPow=2.5, alpha=[0.4, 0], color="event"),
             lay(emitter="beam", variant=1, at="point", height=0, sizeCm=px(hpx) * 0.1, aspect=0.2, grow=10,
                 sizePow=4, lifeMs=1800, fadeIn=0.05, alphaPow=2.5, alpha=[0.75, 0], color="event", intensity=1.4),
             lay(emitter="beam", at="point", height=0, sizeCm=px(hpx) * 0.08, aspect=0.1, grow=10, sizePow=4,
@@ -543,17 +572,19 @@ def utility() -> dict:
     ])
     # statuses (DECISIONS R8: small code-driven visuals on top of the StatusTint)
     rec["status.burn"] = R("fire", [
-        flames("target", 0, FLAME["fire"], radius_px=7, rise=(25, 45), life=(260, 420), size=(0.32, 0.5),
-               rate=6, attach=True, h="chest", spawnHeightJitterCm=40),
+        flames("target", 0, FLAME["fire"], radius_px=9, rise=(25, 45), life=(260, 420), size=(0.4, 0.6),
+               rate=9, attach=True, h="chest", spawnHeightJitterCm=40),
         lay(emitter="motes", at="target", height="chest", rate=5, attach=True, spawnRadiusCm=22,
             gravityCmS2=-160, sizeCm=[5, 9], color="rim"),
         lay(emitter="glow", orient="ground", at="target", height=3, rate=1.3, attach=True, sizeCm=80, grow=1.15,
             lifeMs=900, fadeIn=0.3, alpha=[0.3, 0], color="#FF7A3A"),
     ], note="R8 burn embers: 2–3 small cel flames + embers + a warm ground glow; StatusTint #FF7A3A α .35")
     rec["status.poison"] = R("poison", [
-        lay(emitter="motes", sprite="Bubble", at="target", height="chest", rate=5, attach=True, spawnRadiusCm=22,
-            spawnHeightJitterCm=40, gravityCmS2=-90, speedCmS=[10, 30], sizeCm=[8, 13], lifeMs=[600, 900],
-            color="#8FE04A", intensity=1.0, spinDegS=0),
+        lay(emitter="motes", sprite="Bubble", at="target", height="chest", rate=7, attach=True, spawnRadiusCm=24,
+            spawnHeightJitterCm=40, gravityCmS2=-90, speedCmS=[10, 30], sizeCm=[12, 18], lifeMs=[600, 900],
+            color="#B6F060", intensity=1.4, spinDegS=0),
+        lay(emitter="glow", orient="ground", at="target", height=3, rate=1.3, attach=True, sizeCm=80, grow=1.15,
+            lifeMs=900, fadeIn=0.3, alpha=[0.35, 0], color="#6AC83A"),
         lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=1.6,
             attach=True, spawnRadiusCm=16, gravityCmS2=500, sizeCm=[5, 7], aspect=0.67, grow=1, lifeMs=[350, 500],
             alpha=[1, 0.4], color="#5FC03A"),
@@ -581,10 +612,12 @@ def utility() -> dict:
             lifeMs=900, fadeIn=0.3, alpha=[0.45, 0], spinDegS=-140, rotationDeg=[0, 360], color="mid"),
     ], note="optional R8 slow visual: a frost swirl at the feet")
     rec["status.bleed"] = R("blood", [
-        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=3,
-            attach=True, spawnRadiusCm=15, gravityCmS2=600, sizeCm=[6, 9], aspect=0.67, grow=1, lifeMs=[350, 500],
-            alpha=[1, 0.6], color="mid"),
-    ])
+        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=4,
+            attach=True, spawnRadiusCm=16, spawnHeightJitterCm=20, gravityCmS2=600, sizeCm=[9, 13], aspect=0.67,
+            grow=1, lifeMs=[350, 500], alpha=[1, 0.6], color="mid"),
+        lay(emitter="decal", sprite="Puddle", at="target", rate=0.8, attach=True, spawnRadiusCm=12, sizeCm=[22, 30],
+            grow=1.3, lifeMs=1400, alpha=[0.7, 0], color="rim"),
+    ], note="optional R8 bleed visual: blood drips + small spatters at the feet")
     return rec
 
 
@@ -595,24 +628,26 @@ def world() -> dict:
     rec = {}
     # NS_Camp_Flame + NS_Camp_Sparks: the camp flame cell (CampProps drawFlame, #FF8800) + inner tongues
     rec["camp.campfire"] = R("fire", [
+        # on the log pile: SM_Prop_Camp_Campfire socket `flame` = 12 cm
         flames("origin", 0, FLAME["camp"], radius_px=4, rise=(18, 34), life=(420, 620), size=(1.0, 1.25),
-               rate=10, h=6),
+               rate=10, h=10),
         flames("origin", 0, FLAME["fire"], radius_px=3, rise=(25, 45), life=(300, 460), size=(0.5, 0.72),
-               rate=9, h=10),
+               rate=9, h=14),
         lay(emitter="sparks", at="origin", height=30, rate=5.5, durationMs=-1, count=1, dir="up", coneDeg=50,
             speedCmS=[33, 100], gravityCmS2=-40, drag=0.5, lifeMs=[400, 900], sizeCm=[6, 9], color="#FFDD44",
             altEvery=2, altColor="#FF8800"),
         lay(emitter="glow", at="origin", height=40, rate=2.5, durationMs=-1, sizeCm=90, grow=1.15, lifeMs=600,
             fadeIn=0.3, alpha=[0.45, 0], color="#FF8800"),
-    ], light_=light(300, 0.85))
+    ], light_=light(300, 0.4))
     rec["camp.torch"] = R("fire", [
+        # in the torch cup: SM_Prop_Camp_Torch socket `flame` = 170 cm
         flames("origin", 0, FLAME["camp"], radius_px=2, rise=(15, 30), life=(300, 460), size=(0.6, 0.78), rate=9,
-               h=150),
-        lay(emitter="motes", at="origin", height=175, rate=2, durationMs=-1, spawnRadiusCm=6, gravityCmS2=-120,
+               h=166),
+        lay(emitter="motes", at="origin", height=195, rate=2, durationMs=-1, spawnRadiusCm=6, gravityCmS2=-120,
             lifeMs=[500, 900], sizeCm=[5, 8], color="#FFB060"),
-        lay(emitter="glow", at="origin", height=165, rate=2, durationMs=-1, sizeCm=60, grow=1.15, lifeMs=600,
+        lay(emitter="glow", at="origin", height=182, rate=2, durationMs=-1, sizeCm=60, grow=1.15, lifeMs=600,
             fadeIn=0.3, alpha=[0.4, 0], color="#FF6600"),
-    ], light_=light(180, 0.65))
+    ], light_=light(180, 0.35))
     rec["camp.hearthstone"] = R("fire", [
         lay(sprite="Rune", orient="ground", at="origin", height=2, rate=1.25, durationMs=-1, sizeCm=110, grow=1.06,
             lifeMs=800, fadeIn=0.35, alpha=[0.5, 0], color="#FF8A3A", spinDegS=20),
@@ -621,21 +656,23 @@ def world() -> dict:
         lay(emitter="motes", at="origin", height=60, rate=1.25, durationMs=-1, spawnRadiusCm=10, gravityCmS2=-80,
             lifeMs=[800, 1200], sizeCm=[6, 9], color="#FFB060"),
     ], note="NS_World_Hearthstone (forward-compatible id: the world builder can play it at camp hearthstones)")
-    rec["exit.portal"] = R("arcane", [
+    rec["exit.portal"] = R("portal", [
         lay(sprite="Ring", orient="ground", at="origin", height=3, rate=1.2, durationMs=-1, sizeCm=115, grow=1.05,
             lifeMs=1500, fadeIn=0.3, alpha=[0.55, 0], spinDegS=30, color="#3FE0A0"),
         lay(emitter="glow", orient="upright", at="origin", height=110, rate=3, durationMs=-1, sizeCm=170,
             aspect=0.7, grow=1.1, lifeMs=900, fadeIn=0.3, alpha=[0.6, 0], color="#80F0FF"),
         lay(sprite="Rune", orient="upright", at="origin", height=40, rate=1.5, durationMs=-1, sizeCm=150, grow=1,
-            lifeMs=1400, fadeIn=0.4, alpha=[0.5, 0], spinDegS=70, color="#DCFFF0"),
+            lifeMs=1400, fadeIn=0.4, alpha=[0.35, 0], spinDegS=70, color="#9CF5E0"),
         lay(emitter="motes", sprite="Spark", at="origin", height=20, rate=6, durationMs=-1, spawnRadiusCm=80,
             gravityCmS2=-120, lifeMs=[900, 1400], sizeCm=[7, 11], color="#B0FFE0"),
-    ], light_=light(260, 0.6, False))
+    ], light_=light(220, 0.3, False))
     rec["exit.sealed"] = R("blood", [
         lay(emitter="glow", orient="upright", at="origin", height=40, rate=1.5, durationMs=-1, sizeCm=180,
             aspect=0.7, grow=1.05, lifeMs=1400, fadeIn=0.4, alpha=[0.55, 0], color="#6A2230"),
+        lay(sprite="Rune", orient="ground", blend="translucent", at="origin", height=2, rate=0.8, durationMs=-1,
+            sizeCm=120, grow=1, lifeMs=2000, fadeIn=0.4, alpha=[0.55, 0], color="#4A0E1A"),
         lay(sprite="Rune", orient="ground", at="origin", height=3, rate=0.8, durationMs=-1, sizeCm=120, grow=1,
-            lifeMs=2000, fadeIn=0.4, alpha=[0.45, 0], color="#A8344A"),
+            lifeMs=2000, fadeIn=0.4, alpha=[0.7, 0], color="#E0405A", intensity=1.2),
     ])
     rec["prop.lore"] = R("holy", [
         lay(emitter="glow", orient="ground", at="origin", height=2, rate=1.3, durationMs=-1, attach=True,
@@ -740,6 +777,15 @@ def head_mesh(mesh, color, life, *, size=1.0, intensity=1.0, rate=None):
     return clean(d)
 
 
+def comet_tail(color, length_cm, aspect, *, rate=60):
+    """A flight-aligned Comet streak behind a head: translucent body (reads over the bright plains) + additive
+    copy; one per frame on the attached anchor, short-lived so it trails the head."""
+    base = dict(sprite="Comet", orient="velocity", at="origin", rate=rate, durationMs=-1, attach=True, dir="blow",
+                coneDeg=0, speedCmS=1, sizeCm=length_cm, aspect=aspect, grow=0.85, lifeMs=70, color=color,
+                offsetCm=[round(-length_cm * 0.38, 1), 0, 0])
+    return [lay(**base, blend="translucent", alpha=[0.7, 0]), lay(**base, alpha=[0.9, 0], intensity=1.4)]
+
+
 def projectiles() -> dict:
     rec = {}
     rec["proj.default"] = R("event", [
@@ -757,8 +803,15 @@ def projectiles() -> dict:
         ring("point", px(4), px(22), 320, "rim"),
     ])
     rec["proj.default.fizzle"] = R("event", [glow("point", 40, 200, "mid", alpha=0.6, grow=1.5)])
+    # generic skill fallback (SkillEffectSystem.ts:1087-1092): flash / sparks / ring in #F39C12 at the target
+    rec["skill.default"] = R("holy", [
+        flash("point", 24, "#FFF1C4", glow_color="#F39C12", life=170),
+        sparks("point", 8, "#F39C12", speed=(110, 220)),
+        ring("point", px(6), px(30), 340, "#F39C12", alpha=0.85),
+    ])
     rec["proj.monster_bolt"] = R("event", [
-        head_mesh("SM_FX_SpiritBolt", "event", 34, size=0.85, intensity=1.3, rate=60),
+        head_mesh("SM_FX_SpiritBolt", "event", 34, size=1.0, intensity=1.3, rate=60),
+        *comet_tail("event", 62, 0.3),
         lay(emitter="glow", at="origin", rate=60, durationMs=-1, attach=True, sizeCm=48, grow=0.6, lifeMs=90,
             alpha=[0.8, 0], color="event"),
         lay(emitter="motes", at="origin", rate=36, durationMs=-1, speedCmS=[10, 40], gravityCmS2=-60,
@@ -771,7 +824,8 @@ def projectiles() -> dict:
         smoke("point", 2, "#4A3A36", h=40, size=(0.3, 0.45)),
     ])
     rec["proj.pet_bolt"] = R("arcane", [
-        head_mesh("SM_FX_SpiritBolt", "event", 34, size=0.7, intensity=1.3, rate=60),
+        head_mesh("SM_FX_SpiritBolt", "event", 34, size=0.85, intensity=1.3, rate=60),
+        *comet_tail("event", 50, 0.3),
         lay(emitter="glow", at="origin", rate=60, durationMs=-1, attach=True, sizeCm=34, grow=0.6, lifeMs=90,
             alpha=[0.8, 0], color="event"),
         lay(emitter="motes", sprite="Spark", at="origin", rate=24, durationMs=-1, speedCmS=[5, 25],
@@ -819,6 +873,7 @@ def projectiles() -> dict:
     rec["proj.ice_arrow.launch"] = R("frost", [flash("origin", 16, "core", h="hand")])
     rec["proj.ice_arrow"] = R("frost", [
         head_mesh("SM_FX_IceArrow", "#CFF6FF", 520, intensity=1.2),
+        *comet_tail("#46B4F0", 74, 0.26),
         lay(emitter="glow", orient="velocity", at="origin", rate=60, durationMs=-1, attach=True, dir="blow",
             coneDeg=0, speedCmS=1, sizeCm=70, aspect=0.45, grow=0.7, lifeMs=90, alpha=[0.7, 0], color="rim"),
         lay(emitter="motes", sprite="Flake", at="origin", rate=36, durationMs=-1, speedCmS=[5, 30],
@@ -832,16 +887,14 @@ def projectiles() -> dict:
             height="chest", count=7, dir="back", coneDeg=120, speedCmS=[px(100), px(170)], upCmS=[60, 160],
             gravityCmS2=px(180) * 2, lifeMs=[300, 450], sizeCm=[mesh_size("SM_FX_IceShard", 0.45),
                                                                mesh_size("SM_FX_IceShard", 0.7)],
-            grow=1, alpha=[1, 0], alphaPow=4, color="#DDF8FF", intensity=1.1),
+            grow=1, alpha=[1, 0], alphaPow=7, color="#DDF8FF", intensity=1.1),
         motes("point", 6, "core", sprite="Flake", size=(6, 10)),
         ring("point", px(4), px(24), 320, "mid"),
         decal("point", "Frost", px(16), 1000, "mid", alpha=0.6, blend="additive"),
     ])
     rec["proj.poison_arrow"] = R("poison", [
         head_mesh("SM_FX_PoisonArrow", "#9AEC40", 520),
-        lay(sprite="Comet", orient="velocity", at="origin", rate=60, durationMs=-1, attach=True, dir="blow",
-            coneDeg=0, speedCmS=1, sizeCm=46, aspect=0.33, grow=0.8, lifeMs=80, alpha=[0.7, 0], color="mid",
-            offsetCm=[-26, 0, 0]),
+        *comet_tail("#3FAE2E", 70, 0.26),
         lay(sprite="Drop", orient="billboard", blend="translucent", at="origin", rate=20, durationMs=-1,
             gravityCmS2=500, sizeCm=[5, 8], aspect=0.67, grow=1, lifeMs=[250, 400], alpha=[1, 0], color="rim"),
         lay(emitter="glow", at="origin", rate=14, durationMs=-1, sizeCm=26, grow=1.5, lifeMs=300, alpha=[0.5, 0],
@@ -954,10 +1007,12 @@ def projectiles() -> dict:
     ])
     rec["ground.chain_trap.trigger"] = R("holy", [
         flash("origin", 30, "core", h=30),
-        lay(mesh="SM_FX_Chain", sprite="Chain", orient="ground", blend="translucent", at="origin", height=30,
-            count=5, dir="out", coneDeg=0, spawnRadiusCm=4, speedCmS=0.1, unit="radius",
-            sizeCm=round(MESH_DIAMETER["SM_FX_Chain"] / 58.0 * 0.12, 3), grow=8.0, sizePow=2, lifeMs=700,
-            alpha=[1, 0], alphaPow=6, color="#C9D3E0"),
+        # five chains lashing out at fixed 72° yaws (one count-1 layer each: random `dir: out` angles cluster),
+        # links along UE +Y from the pivot, growing out to the trap radius (unit radius)
+        *[lay(mesh="SM_FX_Chain", sprite="Chain", orient="ground", blend="translucent", at="origin", height=30,
+              count=1, unit="radius", rotationDeg=18 + 72 * k, delayMs=14 * k,
+              sizeCm=round(MESH_DIAMETER["SM_FX_Chain"] / 58.0 * 0.12, 3), grow=8.0, sizePow=2, lifeMs=700,
+              alpha=[1, 0], alphaPow=6, color="#C9D3E0") for k in range(5)],
         lay(emitter="bolt", at="origin", beamTo="point", height=30, beamToHeight=30, count=3, sizeCm=50,
             color="#FFE27A", delayMs=120),
         sparks("origin", 10, "mid", h=30),
@@ -966,16 +1021,18 @@ def projectiles() -> dict:
     rec["ground.arrow_rain"] = R("steel", [
         lay(mesh="SM_FX_Arrow", sprite="Arrow", orient="velocity", blend="translucent", at="origin",
             unit="radius", rate=30, durationMs=-1, attach=True, spawnRadiusCm=0.9, spawnHeightJitterCm=30,
-            height=260, speedCmS=1700, dir="down", coneDeg=10, lifeMs=150, sizeCm=0.5, grow=1, alpha=[1, 1],
+            height=260, speedCmS=1700, dir="down", coneDeg=10, lifeMs=150, sizeCm=0.16, grow=1, alpha=[1, 1],
             color="#EEF3FB"),
         lay(sprite="Arrow", orient="upright", blend="translucent", at="origin", unit="radius", rate=30,
-            durationMs=-1, attach=True, spawnRadiusCm=0.9, height=-8, delayMs=150, sizeCm=0.42, aspect=0.25,
+            # stuck shafts: upside-down upright quads hang from their anchor, so the anchor sits 0.8 × the quad
+            # above the ground (head buried 20 %); unit radius scales the size with the AoE (0.13 R = 45 cm at 3.5 t)
+            durationMs=-1, attach=True, spawnRadiusCm=0.9, height=36, delayMs=150, sizeCm=0.13, aspect=0.25,
             grow=1, lifeMs=600, alpha=[1, 0], alphaPow=4, rotationDeg=[170, 190], color="white"),
         lay(emitter="smoke", sprite="Dust", at="origin", unit="radius", rate=10, durationMs=-1, attach=True,
             spawnRadiusCm=0.9, delayMs=150, sizeCm=[0.1, 0.16], lifeMs=[300, 480], alpha=[0.5, 0],
             color="#C8B89A"),
         lay(emitter="glint", at="origin", unit="radius", rate=10, durationMs=-1, attach=True, spawnRadiusCm=0.9,
-            height=6, delayMs=150, sizeCm=18, lifeMs=160),
+            height=6, delayMs=150, sizeCm=0.035, lifeMs=160),
     ])
     rec["ground.arrow_rain.end"] = R("steel", [
         lay(emitter="ring", at="origin", unit="radius", sizeCm=round(1 / RING_R, 3), grow=1.15, lifeMs=400,
@@ -1000,9 +1057,10 @@ def warrior() -> dict:
         glint("target", 26, life=180, delay=40),
     ])
     rec["skill.whirlwind"] = R("steel", [
-        ribbon("SM_FX_WhirlBand", "origin", 155, 300, "mid", rot=(0, 360), spin=1500, align=False, alpha_pow=2,
+        ribbon("SM_FX_WhirlBand", "origin", 155, 300, "mid", rot=(0, 360), spin=1500, align=False, alpha_pow=5,
                intensity=1.2, grow=1.0, unit=None),
-        ribbon(arc_w, "origin", 121, 220, "#F4AC28", rot=(0, 360), spin=-900, align=False, delay=30, grow=1.0),
+        ribbon(arc_w + "_Back", "origin", 121, 220, "#F4AC28", rot=(0, 360), spin=-900, align=False, delay=30,
+               grow=1.0),
         decal("origin", "Swirl", 160, 420, "rim", alpha=0.55, blend="additive", spin=-10.0, pow=1.6, h=3),
         lay(emitter="streak", at="origin", height="chest", count=10, dir="tangent", speedCmS=400,
             spawnRadiusCm=110, lifeMs=200, sizeCm=26, color="white", alpha=[0.9, 0]),
@@ -1017,7 +1075,7 @@ def warrior() -> dict:
         decal("origin", "Rune", px(40), 900, "rim", alpha=0.8, blend="additive", spin=0.6, delay=60, pow=1.6),
         lay(mesh="SM_FX_HexRing", sprite="Hex", orient="ground", blend="translucent", at="origin",
             height="chest", delayMs=100, sizeCm=mesh_size("SM_FX_HexRing", 0.62), grow=round(1 / 0.62, 3),
-            sizePow=5, lifeMs=780, alpha=[1, 0], alphaPow=4, color="mid", intensity=1.1),
+            sizePow=5, lifeMs=780, alpha=[1, 0], alphaPow=6, color="mid", intensity=1.1),
         lay(sprite="Hex", orient="billboard", at="origin", height="chest", delayMs=100, count=8,
             orbit={"r0Cm": 50, "r1Cm": 80, "degS": 0}, sizeCm=26, grow=1.75, sizePow=5, lifeMs=780,
             alpha=[0.7, 0], alphaPow=3, color="mid", intensity=1.2),
@@ -1029,9 +1087,10 @@ def warrior() -> dict:
     ])
     rec["skill.taunt_roar"] = R("rage", [
         glow("origin", 45, 260, "rim", h="head", grow=2.2),
-        *[lay(emitter="slash", sprite="Slash", variant=SLASH["warrior"], orient="ground", at="origin",
-              height="chest", count=8, dir="out", coneDeg=0, speedCmS=377, drag=2, sizeCm=26, grow=1.9, lifeMs=360,
-              alignToBlow=False, color=c, delayMs=d) for c, d in (("rim", 0), ("mid", 110))],
+        *[lay(emitter="slash", sprite="Slash", variant=SLASH["heavy"], orient="ground", blend=bl, at="origin",
+              height="chest", count=8, dir="out", coneDeg=0, speedCmS=560, drag=2, sizeCm=15, aspect=2.1, grow=2.0,
+              lifeMs=360, alpha=[a, 0], alphaPow=1.4, alignToBlow=False, color=c, intensity=i, delayMs=d)
+          for c, d in (("rim", 0), ("mid", 110)) for bl, a, i in (("translucent", 0.85, 1.0), ("additive", 0.9, 1.4))],
         ring("origin", px(14), 300, 480, "rim"),
         ring("origin", px(10), 240, 440, "mid", delay=110, body=False),
         shock("origin", 30, 270, 460, "mid", alpha=0.5),
@@ -1054,7 +1113,7 @@ def warrior() -> dict:
         decal("origin", "Rune", px(38), 900, "rim", alpha=0.8, blend="additive", spin=-0.5, pow=1.6),
         lay(mesh="SM_FX_HexDome", sprite="Hex", orient="ground", blend="translucent", at="origin",
             height="chest", delayMs=100, sizeCm=mesh_size("SM_FX_HexDome", 0.62), grow=round(1 / 0.62, 3),
-            sizePow=5, lifeMs=800, alpha=[1, 0], alphaPow=4, color="#9FB4D4", intensity=1.1),
+            sizePow=5, lifeMs=800, alpha=[1, 0], alphaPow=6, color="#9FB4D4", intensity=1.1),
         lay(sprite="Hex", orient="billboard", at="origin", height="chest", delayMs=100, count=6,
             orbit={"r0Cm": 55, "r1Cm": 89, "degS": 0}, sizeCm=26, grow=1.75, sizePow=5, lifeMs=800,
             alpha=[0.6, 0], alphaPow=3, color="#7F97BB", intensity=1.2),
@@ -1071,12 +1130,13 @@ def warrior() -> dict:
         ring("origin", px(10), px(46), 320, "rim"),
         glow("origin", 80, 260, "rim", grow=1.6, delay=150),
         ring("origin", px(10), px(46), 320, "mid", delay=150, body=False),
-        flames("origin", 10, FLAME["rage"], radius_px=26, on_ring=True, rise=(60, 100), size=(0.55, 0.85)),
+        flames("origin", 10, FLAME["rage"], radius_px=26, on_ring=True, rise=(60, 100), size=(0.55, 0.85),
+               even=True),
         sparks("origin", 10, "mid", dir="up", cone=70),
         motes("origin", 8, "rim", rise=110),
     ])
     rec["skill.bleed_strike"] = R("blood", [
-        ribbon(arc_w, "origin", 110, 230, "mid", rot=40, spin=-260, intensity=1.2),
+        ribbon(arc_w + "_Back", "origin", 110, 230, "mid", rot=40, spin=-260, intensity=1.2),
         swipe_glow("origin", 112, 200, "rim", alpha=0.75, rotationDeg=8),
         swipe_glow("origin", 88, 180, "#FFB0A0", delay=25, alpha=0.5),
         flash("target", 18, "mid", delay=40),
@@ -1087,11 +1147,13 @@ def warrior() -> dict:
         decal("target", "Puddle", px(11), 1300, "rim", alpha=0.8, grow=1.4, delay=200),
     ])
     rec["skill.unyielding"] = R("holy", [
-        decal("origin", "Crack", px(26), 900, "#3A2A1E", alpha=0.65),
+        decal("origin", "Crack", px(30), 1000, "#3A2A1E", alpha=0.8),
+        decal("origin", "CrackGlow", px(28), 420, "#F4AC28", alpha=0.9, blend="additive", pow=1.5),
         shock("origin", px(10), px(44), 400, "#E8C47A"),
         lay(emitter="debris", mesh="SM_FX_Rock_A", at="origin", count=8, upCmS=[100, 140], gravityCmS2=0,
-            speedCmS=0, lifeMs=620, orbit={"r0Cm": 53, "r1Cm": 53, "degS": 180},
-            sizeCm=[mesh_size("SM_FX_Rock_A", 0.6), mesh_size("SM_FX_Rock_A", 0.9)], color="#B08850"),
+            speedCmS=0, lifeMs=620, orbit={"r0Cm": 53, "r1Cm": 60, "degS": 220},
+            sizeCm=[mesh_size("SM_FX_Rock_A", 1.0), mesh_size("SM_FX_Rock_A", 1.4)], color="#B08850"),
+        beam("origin", 64, 30, 500, "#F4AC28", alpha=0.45, blend="translucent"),
         beam("origin", 64, 30, 500, "rim", alpha=0.55),
         glow("origin", 85, 400, "mid", grow=1.4),
         glint("origin", 28),
@@ -1120,7 +1182,8 @@ def warrior() -> dict:
     ], shake=(240, 0.011))
     rec["skill.vengeful_wrath"] = R("rage", [
         gather("origin", 12, "rim", 44, 160, sprite="Ember"),
-        flames("origin", 14, FLAME["rage"], radius_px=26, on_ring=True, rise=(50, 90), size=(0.55, 0.8)),
+        flames("origin", 14, FLAME["rage"], radius_px=26, on_ring=True, rise=(50, 90), size=(0.55, 0.8),
+               even=True),
         flames("origin", 5, FLAME["fire"], radius_px=8, rise=(70, 120), size=(0.9, 1.2)),
         decal("origin", "CrackGlow", px(30), 700, "#FF5A2A", alpha=0.9, blend="additive", pow=1.5),
         glow("origin", 110, 360, "rim", grow=1.6),
@@ -1154,7 +1217,7 @@ def warrior() -> dict:
         decal("origin", "CrackGlow", 160, 600, "#FF5A2A", alpha=0.85, blend="additive", pow=1.5),
         shock("origin", 40, 280, 460, "mid"),
         ring("origin", 50, 260, 520, "rim"),
-        flames("origin", 12, FLAME["rage"], radius_px=40, on_ring=True, rise=(50, 90)),
+        flames("origin", 12, FLAME["rage"], radius_px=40, on_ring=True, rise=(50, 90), even=True),
         debris("origin", 10, spawn_px=30),
         sparks("origin", 12, "mid"),
         smoke("origin", 6, "#5A4048", radius_px=40, delay=100),
@@ -1181,7 +1244,7 @@ def mage() -> dict:
               aspect=0.1, stretch=0.02, color="#CFF6FF", alpha=[0.85, 0], intensity=1.3)
           for n, d in ((9, 0), (9, 180), (8, 360))],
         *[lay(emitter="glint", at="point", rate=round(n / 0.16, 1), durationMs=160, delayMs=d + 160,
-              spawnRadiusCm=0.85 * R_bz, height=6, sizeCm=26, lifeMs=180, color="white")
+              spawnRadiusCm=0.85 * R_bz, height=6, sizeCm=14, lifeMs=160, color="white", intensity=1.2)
           for n, d in ((9, 0), (9, 180), (8, 360))],
         *[lay(sprite="ShardFrost", orient="upright", blend="translucent", at="point", rate=round(n / 0.16, 1),
               durationMs=160, delayMs=d + 165, spawnRadiusCm=0.85 * R_bz, height=-8, sizeCm=[36, 48], aspect=0.33,
@@ -1205,7 +1268,7 @@ def mage() -> dict:
             height=25, delayMs=430, count=9, spawnRadiusCm=50, onRing=True, dir="out", coneDeg=40,
             speedCmS=[120, 220], upCmS=[60, 140], gravityCmS2=600, lifeMs=[260, 380],
             sizeCm=[mesh_size("SM_FX_IceShard", 0.4), mesh_size("SM_FX_IceShard", 0.6)], grow=1, alpha=[1, 0],
-            alphaPow=3, color="#DDF8FF"),
+            alphaPow=7, color="#DDF8FF"),
     ])
     rec["skill.chain_lightning"] = R("lightning", [
         flash("origin", 20, "mid", h="hand"),
@@ -1223,6 +1286,10 @@ def mage() -> dict:
         decal("origin", "Rune", px(34), 900, "rim", alpha=0.8, blend="additive", spin=0.9, delay=100, pow=1.6),
         lay(sprite="Bubble", orient="billboard", blend="translucent", at="origin", height="chest", delayMs=120,
             sizeCm=52, grow=2.88, sizePow=6, lifeMs=760, alpha=[0.45, 0], alphaPow=3, color="#8A5CFF"),
+        # the inked toon shell (rim ring + highlight arc + glint, built facing the W1 camera at rotation 0)
+        lay(mesh="SM_FX_Bubble", sprite="Bubble", orient="billboard", blend="translucent", at="origin",
+            height="chest", delayMs=120, sizeCm=mesh_size("SM_FX_Bubble", 0.35), grow=round(1 / 0.35, 3),
+            sizePow=6, lifeMs=760, alpha=[1, 0], alphaPow=7, color="#A07CFF", intensity=1.9),
         lay(sprite="Bubble", orient="billboard", at="origin", height="chest", delayMs=120, sizeCm=52, grow=2.88,
             sizePow=6, lifeMs=760, alpha=[0.9, 0], alphaPow=2.5, flicker=0.15, color="#9A7CFF", intensity=1.25),
         lay(sprite="Bubble", orient="billboard", at="origin", height="chest", delayMs=120, sizeCm=75, grow=1.7,
@@ -1254,7 +1321,8 @@ def mage() -> dict:
         decal("point", "Rune", px(30), 600, "mid", alpha=0.85, blend="additive", spin=-1.5, grow=1.15, delay=100,
               pow=1.5),
         flash("point", 30, "core", delay=100),
-        beam("point", 70, 22, 360, "rim", alpha=0.7, delay=100, cell=1),
+        beam("point", 80, 26, 380, "rim", alpha=0.5, delay=100, blend="translucent"),
+        beam("point", 80, 26, 380, "mid", alpha=0.85, delay=100, cell=1),
         ring("point", px(6), px(40), 400, "mid", delay=100),
         sparks("point", 10, "mid", delay=100),
         motes("point", 8, "core", rise=80, delay=100),
@@ -1264,20 +1332,23 @@ def mage() -> dict:
         decal("point", "Rune", 0.7 * R_mt, 420, "rim", alpha=0.85, blend="additive", spin=1.4, pow=1.2),
         lay(emitter="glow", orient="ground", blend="translucent", at="point", height=2, sizeCm=60, grow=3.2,
             sizePow=1, lifeMs=320, alpha=[0.0, 0.6], color="#1A0E08"),
+        # the rock falls along a diagonal from the caster's side (web: from (−90, −260) px): 180 cm back along the
+        # blow and 600 cm up, 600 cm/s along the blow + 2000 cm/s down → lands at ≈ +300 ms
         lay(mesh="SM_FX_MeteorRock", sprite="Rock", orient="velocity", blend="translucent", at="point",
-            height=600, speedCmS=2000, dir="down", coneDeg=0, lifeMs=300, sizeCm=mesh_size("SM_FX_MeteorRock"),
-            grow=1, alpha=[1, 1], spinDegS=[-200, 200], color="#8A6A5A"),
-        lay(sprite="Comet", orient="velocity", at="point", height=600, speedCmS=2000, dir="down", coneDeg=0,
-            lifeMs=300, sizeCm=150, aspect=0.4, offsetCm=[0, 0, 40], grow=1, alpha=[0.9, 0.9], color="#FFA532",
-            intensity=1.5),
-        lay(emitter="glow", at="point", height=600, speedCmS=2000, dir="down", coneDeg=0, lifeMs=300,
-            sizeCm=140, grow=1, alpha=[0.7, 0.7], color="rim"),
-        # the trail: one burst from the sky spread over speeds up to the head's, so at any instant the tongues
-        # string out between the sky point and the falling head (a fixed emitter cannot follow the head)
+            height=600, offsetCm=[-180, 0, 0], speedCmS=600, dir="blow", coneDeg=0, upCmS=-2000, lifeMs=300,
+            sizeCm=mesh_size("SM_FX_MeteorRock", 1.15), grow=1, alpha=[1, 1], spinDegS=[-200, 200],
+            color="#8A6A5A"),
+        lay(sprite="Comet", orient="velocity", at="point", height=600, offsetCm=[-180, 0, 40], speedCmS=600,
+            dir="blow", coneDeg=0, upCmS=-2000, lifeMs=300, sizeCm=150, aspect=0.4, grow=1, alpha=[0.9, 0.9],
+            color="#FFA532", intensity=1.5),
+        lay(emitter="glow", at="point", height=600, offsetCm=[-180, 0, 0], speedCmS=600, dir="blow", coneDeg=0,
+            upCmS=-2000, lifeMs=300, sizeCm=140, grow=1, alpha=[0.7, 0.7], color="rim"),
+        # the trail: one burst from the sky point spread over fractions of the head's velocity, so at any instant
+        # the tongues string out along the fall line behind the head (a fixed emitter cannot follow the head)
         flames("point", 18, FLAME["fire"], radius_px=3, rise=(0, 10), life=(250, 300), size=(0.6, 1.0),
-               h=600, speedCmS=[900, 1950], dir="down", coneDeg=3),
-        smoke("point", 10, "#4A3A36", alpha=0.55, h=600, speedCmS=[500, 1300], dir="down", coneDeg=4,
-              size=(0.4, 0.6), life=(320, 420), rise=0),
+               h=600, offsetCm=[-180, 0, 0], speedCmS=[420, 585], dir="blow", coneDeg=3, upCmS=[-1950, -1400]),
+        smoke("point", 10, "#4A3A36", alpha=0.55, h=600, offsetCm=[-180, 0, 0], speedCmS=[210, 390], dir="blow",
+              coneDeg=4, upCmS=[-1300, -700], size=(0.4, 0.6), life=(320, 420), rise=0),
         # impact at +300
         flash("point", 50, "core", delay=300, life=200),
         impact_star("point", "kill", 240, "mid", delay=300, life=200, h=40),
@@ -1316,13 +1387,13 @@ def mage() -> dict:
         flash("target", 26, "core", delay=140),
         decal("target", "Frost", 70, 1200, "mid", alpha=0.65, blend="additive", delay=140),
         lay(mesh="SM_FX_FrostCage", sprite="ShardFrost", orient="ground", blend="translucent", at="target",
-            height=0, delayMs=140, sizeCm=mesh_size("SM_FX_FrostCage", 0.85), grow=round(1 / 0.85, 3), sizePow=6,
-            lifeMs=660, alpha=[1, 1], color="#CFF6FF", intensity=1.15),
+            height=0, delayMs=140, sizeCm=mesh_size("SM_FX_FrostCage", 0.68), grow=round(0.8 / 0.68, 3), sizePow=6,
+            lifeMs=660, alpha=[1, 1], color="#A9E6FF", intensity=1.05),
         lay(mesh="SM_FX_IceShard", sprite="ShardFrost", orient="velocity", blend="translucent", at="target",
             height=70, delayMs=780, count=10, spawnRadiusCm=35, spawnHeightJitterCm=90, dir="out", coneDeg=60,
             speedCmS=[160, 300], upCmS=[60, 180], gravityCmS2=700, lifeMs=[300, 450],
             sizeCm=[mesh_size("SM_FX_IceShard", 0.5), mesh_size("SM_FX_IceShard", 0.8)], grow=1, alpha=[1, 0],
-            alphaPow=3, color="#DDF8FF"),
+            alphaPow=7, color="#DDF8FF"),
         glint("target", 36, delay=780),
         smoke("target", 4, "#CFEFFF", alpha=0.35, delay=780, h=40),
     ])
@@ -1330,11 +1401,11 @@ def mage() -> dict:
     rec["skill.arcane_torrent"] = R("arcane", [
         decal("point", "Rune", 0.9 * R_at, 900, "rim", alpha=0.6, blend="additive", spin=0.7, pow=1.6),
         lay(sprite="Comet", orient="velocity", at="point", rate=22, durationMs=540, spawnRadiusCm=0.85 * R_at,
-            height=330, speedCmS=2200, dir="down", coneDeg=14, lifeMs=150, sizeCm=70, aspect=0.33, grow=1,
-            alpha=[1, 1], color="mid", intensity=1.5),
+            height=330, speedCmS=2200, dir="down", coneDeg=14, lifeMs=150, sizeCm=78, aspect=0.33, grow=1,
+            alpha=[0.92, 0.92], color="rim", blend="translucent"),
         lay(sprite="Wisp", orient="velocity", at="point", rate=22, durationMs=540, spawnRadiusCm=0.85 * R_at,
             height=330, speedCmS=2200, dir="down", coneDeg=14, lifeMs=150, sizeCm=40, aspect=0.5, grow=1,
-            alpha=[1, 1], color="core", intensity=1.3),
+            alpha=[1, 1], color="mid", intensity=1.4),
         lay(emitter="flash", at="point", rate=22, durationMs=540, delayMs=150, spawnRadiusCm=0.85 * R_at,
             height=10, sizeCm=30, grow=2.4, lifeMs=160, color="core"),
         lay(sprite="Ring", orient="ground", at="point", rate=22, durationMs=540, delayMs=150,
@@ -1363,6 +1434,7 @@ def rogue() -> dict:
     rec["skill.poison_blade"] = R("poison", [
         gather("origin", 8, "mid", 34, 300),
         flames("origin", 12, FLAME["poison"], radius_px=24, on_ring=True, rise=(30, 60), delay=110, stagger=200,
+               even=True,
                size=(0.45, 0.7)),
         ring("origin", px(10), px(44), 420, "rim"),
         glow("origin", 75, 400, "mid", grow=1.4),
@@ -1383,8 +1455,11 @@ def rogue() -> dict:
     rec["skill.death_mark"] = R("shadow", [
         decal("target", "Rune", px(22), 1000, "rim", alpha=0.85, blend="additive", spin=-1.2, pow=1.6),
         gather("target", 10, "mid", 34, 300),
+        # a solid violet skull body (reads over grass and sky-bright dirt) under the additive sigil
+        lay(sprite="Skull", orient="billboard", blend="translucent", at="target", height="overhead", sizeCm=96,
+            grow=0.5, sizePow=6, lifeMs=1000, alpha=[0.95, 0], alphaPow=3, color="rim"),
         lay(sprite="Skull", orient="billboard", at="target", height="overhead", sizeCm=96, grow=0.5, sizePow=6,
-            lifeMs=1000, alpha=[1, 0], alphaPow=3, color="mid", intensity=1.4),
+            lifeMs=1000, alpha=[0.8, 0], alphaPow=3, color="mid", intensity=1.3),
         lay(sprite="Skull", orient="billboard", at="target", height="overhead", sizeCm=48, grow=1.05, lifeMs=260,
             alpha=[1, 0], color="white", intensity=1.2),
         lay(sprite="Ring", orient="ground", at="target", height=3, sizeCm=round(px(20) * 0.9 / RING_R, 1),
@@ -1417,10 +1492,13 @@ def rogue() -> dict:
         decal("point", "Puddle", 0.8 * R_pc, 1600, "rim", alpha=0.7, grow=1.2),
         lay(emitter="glow", orient="ground", at="point", height=4, sizeCm=2 * R_pc, grow=1.05, lifeMs=1300,
             alpha=[0.4, 0], color="mid"),
-        smoke("point", 12, "#6AB83A", radius_px=R_pc / PX, life=(900, 1300), alpha=0.7, size=(0.7, 1.0), h=30),
-        smoke("point", 8, "#A8E05A", radius_px=0.8 * R_pc / PX, life=(900, 1300), alpha=0.6, size=(0.55, 0.8),
-              delay=120, h=45),
-        motes("point", 12, "mid", sprite="Bubble", radius_px=0.7 * R_pc / PX, rise=40, size=(8, 13), spin=0, h=10),
+        # over the green plains the cloud needs value contrast, not just hue: a deep sickly-green body under a
+        # pale chartreuse crown (web #6AB83A / #A8E05A pushed apart), bubbles bigger and brighter
+        smoke("point", 12, "#3F8E2C", radius_px=R_pc / PX, life=(900, 1300), alpha=0.78, size=(0.7, 1.0), h=30),
+        smoke("point", 8, "#C8EE62", radius_px=0.8 * R_pc / PX, life=(900, 1300), alpha=0.7, size=(0.55, 0.8),
+              delay=120, h=55),
+        motes("point", 12, "core", sprite="Bubble", radius_px=0.7 * R_pc / PX, rise=40, size=(11, 16), spin=0,
+              h=10, intensity=1.3),
         shock("point", 0.3 * R_pc, 1.2 * R_pc, 420, "mid", alpha=0.5),
     ])
     rec["skill.slow_trap"] = R("frost", [
@@ -1457,16 +1535,10 @@ def rogue() -> dict:
 
 
 def sprite_table() -> dict:
-    sys.path.insert(0, str(HERE))
-    try:
-        from fx_textures import SPRITES
-    except Exception:          # noqa: BLE001 - kit import needs bpy: fall back to the cell counts
-        return {"Smoke": {"cells": 2}, "Flame": {"cells": 8}, "Slash": {"cells": 4}, "Bolt": {"cells": 4},
-                "Beam": {"cells": 2}, "Rock": {"cells": 2}, "Impact": {"cells": 4}}
-    out = {}
-    for name, (_, cells, blend, desc) in SPRITES.items():
-        out[name] = {"cells": cells, "blend": blend, "texture": f"T_FX_{name}", "note": desc}
-    return out
+    """The sprite table from ``sprites.json`` (written by fx_textures.py next to this file: no bpy needed)."""
+    table = json.loads((HERE / "sprites.json").read_text())
+    return {name: {"cells": int(s["cells"]), "blend": s["blend"], "texture": s.get("texture", f"T_FX_{name}"),
+                   "note": s.get("note", "")} for name, s in sorted(table.items())}
 
 
 def mesh_table() -> dict:
@@ -1541,11 +1613,95 @@ def palettes_json() -> dict:
     }
 
 
+STRIKE_CM = -22.0
+"""Body-anchored bursts sit at the target's fx_chest socket = the body's centre, where the opaque body hides them
+(the sprites are depth-tested; the web drew FX over its sprites). Strike recipes pull their target-side burst
+layers 22 cm back along the blow — onto the struck surface, toward the attacker (integration.bodyOcclusion)."""
+STRIKE_IDS = ("hit.impact", "hit.basic", "hit.claw", "hit.evade", "skill.slash", "skill.bleed_strike",
+              "skill.lethal_strike", "skill.charge", "skill.backstab", "skill.combustion", "skill.freeze",
+              "skill.chain_lightning", "skill.death_mark", "skill.shadow_step")
+STRIKE_SPRITES = {"Impact", "Core", "Glow", "Spark", "Streak", "Slash", "Claw", "Drop", "Star", "Ember", "Shard",
+                  "ShardFrost", "Flake"}
+
+
+STRIKE_CM_HERO = -42.0
+"""Bursts on the HERO (claw rakes, evades): the warrior's armoured bulk is ~40 cm deep, so they sit in front of the
+hero's struck side — between the hero and the attacker."""
+
+
+def strike_offsets(recipes: dict) -> None:
+    def is_strike(rid):
+        return any(rid == s or rid.startswith(s + ".") for s in STRIKE_IDS) or \
+            (rid.startswith("proj.") and rid.endswith(".hit"))
+    for rid, r in recipes.items():
+        if not is_strike(rid):
+            continue
+        for L in r["layers"]:
+            if L.get("at") not in ("target", "point") or L.get("orient") in ("ground", "upright", "beam"):
+                continue
+            h = L.get("height", "chest")
+            if not (h in ("chest", "head") or (isinstance(h, (int, float)) and h >= 30)):
+                continue
+            sprite = L.get("sprite") or {"glow": "Glow", "flash": "Core", "glint": "Spark", "sparks": "Streak",
+                                         "streak": "Streak", "slash": "Slash", "motes": "Ember"}.get(L.get("emitter"))
+            if L.get("mesh") or sprite not in STRIKE_SPRITES or L.get("orbit"):
+                continue
+            off = list(L.get("offsetCm", [0.0, 0.0, 0.0]))
+            d = STRIKE_CM_HERO if rid in ("hit.claw", "hit.evade") else STRIKE_CM
+            if off[0] > d:
+                off[0] = round(min(off[0], 0.0) + d, 1)
+                L["offsetCm"] = off
+
+
+CAM_BIAS_CM = 40.0
+"""Blow-less events (level-up, pickups, statuses, loot, portal, resonance, world props: UAbyssVfxSystem leaves
+Context.Blow zero → the blow frame is UE +X / +Y) have a FIXED frame, and the W1 camera's yaw is fixed, so an offset
+in that frame can point straight down the view ray: d·(−0.455, −0.455, +0.766) moves a quad d cm toward the camera
+with the same screen position (2–3 % larger) — it draws over the body it is anchored on instead of inside it."""
+BLOWLESS_IDS = ("hero.levelup", "reward.heal", "reward.mana", "hero.resonance", "portal.", "loot.", "quest.pop",
+                "status.", "elite.", "prop.", "camp.", "exit.")
+
+
+def camera_bias(recipes: dict) -> None:
+    k = CAM_BIAS_CM
+    fx = (round(-0.4548 * k, 1), round(-0.4548 * k, 1), round(0.766 * k, 1))
+    for rid, r in recipes.items():
+        if not any(rid == s or rid.startswith(s) for s in BLOWLESS_IDS):
+            continue
+        for L in r["layers"]:
+            if L.get("at", "origin") not in ("origin", "target", "point") or \
+                    L.get("orient") in ("ground", "beam") or L.get("emitter") in ("ring", "shock", "decal"):
+                continue
+            h = L.get("height", "ground")
+            if not (h in ("chest", "head", "hand", "overhead") or (isinstance(h, (int, float)) and h >= 25)):
+                continue
+            if L.get("mesh") and L.get("orient") == "upright":
+                continue
+            off = list(L.get("offsetCm", [0.0, 0.0, 0.0]))
+            L["offsetCm"] = [round(off[0] + fx[0], 1), round(off[1] + fx[1], 1), round(off[2] + fx[2], 1)]
+
+
+def prewarm(recipes: dict) -> None:
+    """Loops start empty: a rate emitter's first particle appears after 1000 / rate ms (a status ring at 1.2 /s
+    shows nothing for 0.8 s). Every loop layer slower than 3 /s gets a one-particle burst copy at its start."""
+    for r in recipes.values():
+        extra = []
+        for L in r["layers"]:
+            if 0 < L.get("rate", 0) < 3 and L.get("durationMs", -1) < 0 and not L.get("delayMs"):
+                b = {k: v for k, v in L.items() if k not in ("rate", "durationMs")}
+                b["count"] = 1
+                extra.append(b)
+        r["layers"].extend(extra)
+
+
 def build() -> dict:
     load_diameters()
     recipes = {}
     for group in (combat, utility, world, projectiles, warrior, mage, rogue):
         recipes.update(group())
+    strike_offsets(recipes)
+    camera_bias(recipes)
+    prewarm(recipes)
     doc = {
         "schemaVersion": 1,
         "_doc": "Abyssfire VFX recipes, art pass (Art/blender/vfx/fx_recipes.py). Schema: Source/Abyssfire/Public/"
@@ -1569,6 +1725,24 @@ def build() -> dict:
                             "a `flat` option (Z = 0) would let heads respawn every frame and fans fly level.",
             "meshMaterial": "mesh layers always draw M_AF_FX_Mesh (opaque masked toon + ink, Bayer fade) — glow, "
                             "smoke and energy stay sprites; ribbons / crystals / plates / debris / heads are meshes.",
+            "bodyOcclusion": "Sprites are depth-tested against the opaque characters, and a chest / head anchor is the "
+                             "fx_chest / fx_head socket = the middle of the body, so a burst centred there loses "
+                             "everything inside the silhouette (the web drew FX over its sprites). The strike recipes "
+                             "pull their target-side burst layers 22 cm back along the blow (onto the struck surface, "
+                             "fx_recipes.STRIKE_CM); a burst struck from behind the target (attacker farther from the "
+                             "camera) is still partly hidden. Recommended runtime fix: billboard / velocity layers "
+                             "anchored on an actor (origin / target / point at chest, head, hand or overhead) move "
+                             "their quad toward the camera by min(40 cm, 0.5 x the actor's capsule radius + 20 cm) "
+                             "(Position -= CameraForward * Bias in UAbyssVfxSystem::Tick, or a camera-ward WPO in "
+                             "M_AF_FX_Additive / _Translucent) - at the W1 distance that is <2 % size change.",
+            "cameraBias": "Blow-less recipes (level-up, pickups, statuses, loot, portal, resonance, props, camps) "
+                          "carry offsetCm d*(-0.455, -0.455, +0.766) with d = 40 cm on their body-anchored quads: "
+                          "with the zero blow the frame is world +X/+Y and the W1 yaw is fixed, so that is the "
+                          "view ray toward the camera (same screen position, drawn over the body). Re-derive "
+                          "(fx_recipes.CAM_BIAS_CM) if the camera yaw ever changes or these events get a blow.",
+            "loopPrewarm": "Rate emitters start empty (first particle after 1000 / rate ms). Loop layers slower than "
+                           "3 /s carry a one-particle burst copy (count 1) so a status / prop loop shows at once "
+                           "(fx_recipes.prewarm).",
             "perClassBasic": "hit.basic.<class> and hit.impact.<profile> are authored for a one-line runtime change "
                              "(PlayFirst({hit.basic.<class>, hit.basic}) / ({hit.impact.<profile>, hit.impact})).",
             "elite": "elite.<affix> and camp.hearthstone are forward-compatible ids (not bound to events yet).",

@@ -85,6 +85,13 @@
    "rim": "#B08850",
    "dark": "#5A4430",
    "flameCell": 4
+  },
+  "portal": {
+   "core": "#E8FFF8",
+   "mid": "#80F0E0",
+   "rim": "#3FE0A0",
+   "dark": "#14584A",
+   "flameCell": 1
   }
  },
  "flameGradients": {

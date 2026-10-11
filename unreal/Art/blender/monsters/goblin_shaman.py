@@ -59,6 +59,11 @@ WALK = dict(cycle=600.0, duty=0.36, lift=0.06, bob=0.016, lean=3.0, arm=0.05, cr
 WEB_READY = dict(root=(46.0, 73.5), footN=52.5, footF=42.0, lean=0.30, head=-0.26)
 STAFF_UP, STAFF_DOWN = 21.0, 12.0
 
+# headdress fan (teal / red / cream / red): (lateral root, length, splay deg from upright, + = the character's left)
+FAN = ((-3.4, 11.5, -40.0), (-1.2, 13.0, -13.0), (1.2, 12.5, 13.0), (3.4, 11.0, 40.0))
+FAN_ROOT = (5.3, -3.4)          # root on the back of the head (head units h, f)
+FAN_BACK_DEG = 14.0             # lean back from upright (the web swept them ~36° back: end-on from behind at W1)
+
 BONE = Region("#ECE2C6", .30, .40)
 HIDE = Region("#7A5634", .42, .30)
 WOOD = Region("#6A4A2A", .42, .30)
@@ -98,10 +103,17 @@ class ShamanKit(GB.GoblinKit):
         return rb.matrix_local @ Vector((0.0, (STAFF_UP - 4.5) * self.U, -1.3 * self.U))
 
     def fan_roots(self):
+        """The headdress fan: feathers stand nearly upright (FAN_UP / FAN_BACK) and splay sideways (FAN_SPLAY).
+        The web's backward sweep (up .75, back .55 of the length) pointed every feather straight at the W1 camera
+        from behind (pitch −50°: ne / back / nw saw a dark edge-on bar); upright and splayed, the vanes show
+        their colours from the front and from behind alike."""
         out = []
-        for lat, ln in ((-3.4, 12.0), (-1.2, 13.5), (1.2, 12.5), (3.4, 11.0)):
-            r0 = self.hp(5.4, -3.6, lat)
-            r1 = self.hp(5.4 + ln * 0.78, -3.6 - ln * 0.55, lat * 1.9)
+        b = math.radians(FAN_BACK_DEG)
+        for lat, ln, ang in FAN:
+            a = math.radians(ang)
+            r0 = self.hp(FAN_ROOT[0], FAN_ROOT[1], lat)
+            r1 = self.hp(FAN_ROOT[0] + ln * math.cos(a) * math.cos(b), FAN_ROOT[1] - ln * math.sin(b),
+                         lat + ln * math.sin(a) * math.cos(b))
             out.append((r0, r0 + (r1 - r0) * 0.55))
         return out
 
@@ -219,9 +231,9 @@ def build_body(pal: Palette, kit: ShamanKit, lod: int = 0) -> bpy.types.Object:
     for i, reg in enumerate(("feather_teal", "feather_red", "feather_cream", "feather_red")):
         nm = f"headdress_{i + 1:02d}"
         r0, r1 = bones[nm].head_local, bones[nm].tail_local
-        ln = (12.0, 13.5, 12.5, 11.0)[i]
+        ln = FAN[i][1]
         d = (r1 - r0).normalized()
-        face = kit.hdir(0.2, -1.0, 0).normalized()          # the vane faces back (fan seen from behind)
+        face = kit.hdir(0.35, -1.0, 0).normalized()         # the vane faces back and up (seen from behind / above)
         fth = G.feather(hk(ln), hk(2.6), hk(0.35), curl=0.12, bend=0.06, rows=6)
         fth.transform(R.frame(r0 - d * hk(0.8), d, -face))
         b.add(fth, reg, Bind.rigid(nm), name=f"feather_{i}", sub_regions={1: "feather_tip", 2: "fur_dark"},
@@ -575,12 +587,17 @@ def anims(kit) -> GoblinAnims:
     return A
 
 
+TAUNT_LAT, TAUNT_FWD, TAUNT_TILT = 14.5, -1.0, -0.42      # raised totem: at the right side, a little back, leaning out
+
+
 def taunt(A: GoblinAnims):
     """Taunt 900 ms (NEW, pre-fight dialogue): the totem thrust high overhead and rattled, the free fist shaken,
     jaw open in a cackle; back to READY."""
     R0 = A.ready()
+    # the totem goes up beside the head (outside the face in se / front / sw, like the warrior's raised hands)
     up = R0.but(pelvis=R0.pelvis + u3(A, 0, 0.5, 0.8), lean=-8.0, head_pitch=-16.0, twist=R0.twist - 6.0,
-                hand_r=u3(A, -9.0, 6.0, 40.0), elbow_r=V(-0.9, 0.0, -0.4), **A._wkw(R0, -4.0, lat=-0.15),
+                hand_r=u3(A, -TAUNT_LAT, TAUNT_FWD, 39.0), elbow_r=V(-0.9, 0.1, -0.3),
+                **A._wkw(R0, -10.0, lat=TAUNT_TILT),
                 hand_l=u3(A, 8.0, 7.0, 31.0), elbow_l=V(0.9, 0.0, -0.4), clav_r=(16.0, 0.0), clav_l=(10.0, 0.0),
                 jaw=26.0, flow=0.25)
     keys = [K(0.0, R0), K(200 / 900, up, "out"), K(700 / 900, up.but(jaw=22.0)), K(1.0, R0, "smooth")]
@@ -590,7 +607,7 @@ def taunt(A: GoblinAnims):
         if 200 <= t <= 700:                              # rattle the totem + shake the fist
             k = math.sin(math.pi * (t - 200) / 500)
             r = math.sin(t * 0.075)
-            d, u_ = C.blade(-4.0 + 9.0 * r * k, lat=-0.15)
+            d, u_ = C.blade(-10.0 + 9.0 * r * k, lat=TAUNT_TILT)
             bp = bp.but(wpn=d, wpn_up=u_, hand_l=bp.hand_l + V(0, 0, 0.012 * k * math.sin(t * 0.06)),
                         jaw=bp.jaw + 6.0 * k * max(0.0, math.sin(t * 0.05)))
         return bp

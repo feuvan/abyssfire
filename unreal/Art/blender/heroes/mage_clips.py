@@ -42,7 +42,7 @@ class MageAnims(HB.HeroAnims):
     CLOTH_PARTS = ("skirt", "lining", "rune", "hem", "robe_seam", "skirt_fold", "skirt_edge", "sash_tail", "hood_tip",
                    "tome", "beard")
     ON_CLOTH = ("robe", "closure", "sash", "sash_knot", "leg", "mantle", "mantle_trim")
-    ON_CLOTH_CLEAR = 0.012
+    ON_CLOTH_CLEAR = 0.024      # the prone body rests on the robe pooled under it (the draped front panel ≥ 1.2 cm)
     LEG_PARTS = ("leg", "boot", "boot_cuff")
     TORSO_PARTS = ("mantle", "mantle_trim", "clasp", "clasp_gem", "robe", "closure", "sash", "sash_knot")
     SKIRT_CLEAR = 0.045        # leg surface → skirt mid-surface (cloth 4 mm + the linear-blend corner cut at the joint)
@@ -399,6 +399,247 @@ class MageAnims(HB.HeroAnims):
             out[c] = out_ang
         return {"acc": acc, "out": out, "ga": ga, "gs": gs}
 
+    # ── spun poses: the skirt draped on its real skinned surface (art review 7: the face-down robe stood open as
+    # a rigid cone, hem ~2.4× the hip width, boots sticking out of it like a lampshade) ─────────────────────────
+    DRAPE_CLEAR = 0.02         # skirt vertex → leg surface (leggings / boots: tapered capsules fitted to the mesh)
+    DRAPE_FLOOR = 0.012        # every skirt vertex at least this high (the gold hem band + hull bead on the floor)
+    DRAPE_ITERS = (12, 30)     # Gauss-Newton iterations: soft constraints first, then the full weights
+    # residual weights: floor / legs = constraints; grav = the cloth falls (z², per point, normalised); lat = the lower
+    # skirt collapses sideways toward the legs (∝ k², the hem most); reg = stay near the hanging solution (fades out
+    # with the spin)
+    DRAPE_W = dict(floor=80.0, leg=80.0, grav=2.2, lat=8.0, reg=0.02, reg_up=2.0)
+    HEM_HIP_MAX = 1.25         # QA: face-down hem width ≤ 1.25 × hip width
+    # second start of the drape solve (deg, the parameter layout of ``drape_skirt``: f1 f2 b1 b2 pitch, then l1 l2 r1 r2
+    # pitch + roll): the correction the solve converges to on the face-down frames
+    DRAPE_START = (1.5, 5.0, -9.0, -1.0, 4.0, 12.0, -3.0, 22.0, -3.0, -7.0, 6.0, -26.0)
+
+    def _drape_setup(self):
+        """Skirt sample (every toon vertex) + rest skirt parameter k, chain bone data, leg capsules: per side the
+        thigh / calf / foot / ball segments, each with a radius tapering along it (95th percentile of the leggings /
+        boot vertices nearest to it, in 6 bins)."""
+        if getattr(self, "_dr", None) is not None:
+            return self._dr
+        body = self.body_obj()
+        sp = C.SkinPoints(self.rig).add_mesh(body, self.part_names, lambda n: n == "skirt", step=1)
+        MG = self.MG
+        z0, z1 = MG.th(MG.SKIRT_TOP_H), MG.u(MG.SKIRT_HEM_Z)
+        k = np.clip((z0 - sp.co[:, 2]) / (z0 - z1), 0.0, 1.0)
+        bones = self.bones
+        chain = [f"skirt_{c}_{i:02d}" for c in "fblr" for i in (1, 2)]
+        heads = {n: np.array(bones[n].head_local) for n in chain}
+        segs = [(f"{b}_{s}", s) for s in ("l", "r") for b in ("thigh", "calf", "foot", "ball")]
+        lp = self.legs.co[:, :3]
+        side = np.array([t.endswith("_l") for t in self.legs.tags])
+        A0 = np.array([np.array(bones[b].head_local) for b, _ in segs])
+        B0 = np.array([np.array(bones[b].tail_local) for b, _ in segs])
+        D, _, T = self._seg_dist(lp, A0, B0, closest=True)
+        own = np.array([[(s == "l") == sd for (_, s) in segs] for sd in side])
+        D = np.where(own, D, 1e9)
+        near = D.argmin(1)
+        nb = 6
+        rad = np.zeros((len(segs), nb))
+        for j in range(len(segs)):
+            m = near == j
+            tb = np.minimum((T[m, j] * nb).astype(int), nb - 1)
+            for i in range(nb):
+                mi = tb == i
+                rad[j, i] = float(np.percentile(D[m, j][mi], 95.0)) if mi.sum() >= 3 else 0.0
+            # bins without vertices (the leggings tube has rings only at the hip, knee and ankle): interpolated
+            # between the nearest filled bins
+            have = [i for i in range(nb) if rad[j, i] > 0.0]
+            rad[j] = np.interp(np.arange(nb), have, rad[j, have]) if have else 0.05
+        self._dr = dict(sp=sp, k=k, chain=chain, heads=heads, segs=segs, rad=rad, nb=nb,
+                        bidx={n: sp.bidx[n] for n in chain + ["pelvis"]})
+        return self._dr
+
+    @staticmethod
+    def _seg_dist(P: np.ndarray, A: np.ndarray, B: np.ndarray, closest: bool = False):
+        """Distances (N × S) of points P to the segments A[s] → B[s] (+ closest points N × S × 3 and their
+        parameter t N × S)."""
+        AB = B - A
+        L2 = np.maximum((AB * AB).sum(1), 1e-12)
+        t = np.clip(np.einsum("nsd,sd->ns", P[:, None, :] - A[None], AB) / L2[None], 0.0, 1.0)
+        Q = A[None] + t[..., None] * AB[None]
+        d = np.linalg.norm(P[:, None, :] - Q, axis=2)
+        return (d, Q, t) if closest else d
+
+    def _caps(self, mats):
+        """Posed leg capsule segments (pre-spin armature space): A, B (S × 3)."""
+        dr = self._drape_setup()
+        A = np.array([np.array(mats[b].translation) for b, _ in dr["segs"]])
+        B = np.array([np.array(mats[b] @ Vector((0, self.bones[b].length, 0))) for b, _ in dr["segs"]])
+        return A, B
+
+    def _cap_sd(self, Q: np.ndarray, A: np.ndarray, B: np.ndarray):
+        """Signed distance of points to the union of the tapered leg capsules: (d, axis point, radius) per point."""
+        dr = self._drape_setup()
+        d, cq, t = self._seg_dist(Q, A, B, closest=True)
+        nb = dr["nb"]
+        f = np.clip(t * nb - 0.5, 0.0, nb - 1.0)
+        i0 = np.minimum(f.astype(int), nb - 2)
+        w = f - i0
+        R = dr["rad"]
+        S = np.arange(R.shape[0])[None, :]
+        r = R[S, i0] * (1 - w) + R[S, i0 + 1] * w
+        sd = d - r
+        j = sd.argmin(1)
+        n = np.arange(len(j))
+        return sd[n, j], cq[n, j], r[n, j]
+
+    def drape_skirt(self, p: Pose, bp: BP, gs: float, wf) -> None:
+        """Face-down / falling poses: starting from the hanging solution (``set_skirt``), the eight skirt links
+        (pitch for f / b, pitch + roll for l / r) are solved by damped Gauss-Newton on the **skinned skirt
+        vertices** (linear-blend skinning in numpy, chain matrices built from the link rotations): every vertex falls
+        toward the floor (gravity, scaled by the spin weight ``gs``), the lower skirt collapses sideways toward the
+        legs, nothing goes within ``DRAPE_CLEAR`` of the leg capsules or below ``DRAPE_FLOOR`` — so the back panel
+        drapes over the calves, the sides fall beside the legs, the front panel lies under the shins, and the hem
+        ring *between* the chains (the linear blend that cut the calves) is tested too. Soft constraints first, then
+        the full weights (continuation: the hinge penalties otherwise trap the solve in a half-collapsed state)."""
+        from mathutils import Euler
+        dr = self._drape_setup()
+        sp, kk, chain, heads = dr["sp"], dr["k"], dr["chain"], dr["heads"]
+        mats = anim.evaluate(p, return_matrices=True)
+        world, _, Rm = wf
+        P0 = np.array(world(Vector((0, 0, 0))))                         # world(x) = P0 + Rm x
+        rz = np.array(Rm)[2]
+        S = np.array([np.array(mats[n]) for n in sp.bone_names], np.float64) @ sp.rest_inv
+        Spel = S[sp.bidx["pelvis"]]
+        A, B = self._caps(mats)
+        Pm = mats["pelvis"] @ self.bones["pelvis"].matrix_local.inverted()
+        X = np.array((Pm.to_3x3() @ Vector((1, 0, 0))).normalized())
+        O = np.array(mats["pelvis"].translation)
+        co, idx, w = sp.co, sp.idx, sp.w
+        legsel = kk > 0.15
+        low = kk > 0.45                   # the lower skirt hugs the legs sideways (weight ∝ k², the hem most)
+        low_w = ((kk[low] - 0.45) / 0.55) ** 2
+        n_pts = len(co)
+
+        def rot(pitch, roll):
+            return np.array(Euler((pitch, roll, 0.0), "XYZ").to_matrix())
+
+        def about(h, R3):
+            M4 = np.eye(4)
+            M4[:3, :3] = R3
+            M4[:3, 3] = h - R3 @ h
+            return M4
+
+        # parameters: f1 f2 b1 b2 pitch; l1 l2 r1 r2 (pitch, roll) — Euler XYZ in the armature frame (Pose.rot)
+        cur = []
+        for n in chain:
+            e = p.rel[n].to_euler("XYZ") if n in p.rel else Euler((0, 0, 0))
+            cur.append((e.x, e.y))
+        layout = [(ci, comp) for ci, n in enumerate(chain)
+                  for comp in ((0, 1) if n.startswith(("skirt_l", "skirt_r")) else (0,))]
+        x0 = np.array([cur[ci][comp] for ci, comp in layout])
+
+        def angles(x):
+            ang = [list(c) for c in cur]
+            for v, (ci, comp) in zip(x, layout):
+                ang[ci][comp] = v
+            return ang
+
+        def posed(x):
+            ang = angles(x)
+            Sx = S.copy()
+            for c in "fblr":
+                n1, n2 = f"skirt_{c}_01", f"skirt_{c}_02"
+                S1 = Spel @ about(heads[n1], rot(*ang[chain.index(n1)]))
+                Sx[dr["bidx"][n1]] = S1
+                Sx[dr["bidx"][n2]] = S1 @ about(heads[n2], rot(*ang[chain.index(n2)]))
+            Sv = np.einsum("vjab,vb->vja", Sx[idx], co)
+            return (Sv[..., :3] * w[..., None]).sum(1)
+
+        Wt = self.DRAPE_W
+        reg = math.sqrt(Wt["reg"] + Wt["reg_up"] * (1.0 - gs))
+        g_w = math.sqrt(Wt["grav"] * gs / n_pts)
+        l_w = np.sqrt(Wt["lat"] * gs * low_w / max(1.0, float(low_w.sum())))
+        cw = [1.0]
+
+        def resid(x):
+            Q = posed(x)
+            zw = P0[2] + Q @ rz
+            r_floor = cw[0] * Wt["floor"] * np.maximum(0.0, self.DRAPE_FLOOR - zw)
+            sd, ca, rr = self._cap_sd(Q[legsel], A, B)
+            # cloth *under* a leg lying on the floor (the front panel pinned beneath the knees and shins, hidden) is
+            # not tested: the test fades from 20 % of the radius above the leg's axis (full) to 30 % below it (none)
+            # and within 3.5 cm of the floor
+            za = P0[2] + ca @ rz
+            zl = zw[legsel]
+            soft = HB.smooth01((zl - za + 0.3 * rr) / (0.5 * rr)) * HB.smooth01((zl - self.DRAPE_FLOOR) / 0.023)
+            r_leg = cw[0] * Wt["leg"] * soft * np.maximum(0.0, self.DRAPE_CLEAR - sd)
+            r_grav = g_w * zw
+            r_lat = l_w * ((Q[low] - O) @ X)
+            return np.concatenate([r_floor, r_leg, r_grav, r_lat, reg * (x - x0)])
+
+        def solve(x):
+            h = 1e-3
+            E = 0.0
+            for stage, iters in zip((0.15, 1.0), self.DRAPE_ITERS):
+                cw[0] = stage
+                r = resid(x)
+                E = float(r @ r)
+                mu = 1e-3
+                for _ in range(iters):
+                    J = np.empty((len(r), len(x)))
+                    for j in range(len(x)):
+                        xp = x.copy()
+                        xp[j] += h
+                        J[:, j] = (resid(xp) - r) / h
+                    Ah = J.T @ J
+                    g = J.T @ r
+                    step = None
+                    while mu < 1e6:
+                        dx = np.clip(-np.linalg.solve(Ah + mu * (np.diag(np.diag(Ah)) + 1e-9 * np.eye(len(x))), g),
+                                     -0.35, 0.35)
+                        rn = resid(x + dx)
+                        En = float(rn @ rn)
+                        if En < E:
+                            x, r, E, step = x + dx, rn, En, dx
+                            mu = max(mu * 0.3, 1e-6)
+                            break
+                        mu *= 4.0
+                    if step is None or float(np.abs(step).max()) < 2e-4:
+                        break
+            return x, E
+        # two starts, the lower energy wins: the hanging solution, and the hanging solution moved by the typical
+        # face-down correction (DRAPE_START, scaled by the spin) — one start alone fell into a half-collapsed local
+        # minimum on some frames (the hem width jumping 1.2 → 1.4 × the hips between neighbouring frames)
+        tpl = np.radians(np.array(self.DRAPE_START))
+        best = min((solve(x_s.copy()) for x_s in (x0, x0 + gs * tpl)), key=lambda xe: xe[1])
+        x = best[0]
+        if __import__("os").environ.get("AF_DRAPE_DEBUG"):
+            nl = int(legsel.sum())
+            cuts = np.cumsum([n_pts, nl, n_pts, int(low.sum())])
+
+            def br(x_):
+                r_ = resid(x_) ** 2
+                return [round(float(a_.sum()), 4) for a_ in np.split(r_, cuts)]
+            print(f"  [drape] gs {gs:.2f} floor/leg/grav/lat/reg {br(x0)} -> {br(x)}  "
+                  f"dx° {np.round(np.degrees(x - x0), 1).tolist()}")
+        for n, (pt, rl) in zip(chain, angles(x)):
+            p.rel[n] = Euler((pt, rl, 0.0), "XYZ").to_quaternion()
+
+    def hem_hip_ratio(self, mats) -> dict:
+        """QA: the skirt's hem width vs its waist (hip) width across the body axis, posed (pre-spin) — the widest
+        hem extent in the plane ⟂ the pelvis' down axis over the hip ring's lateral width."""
+        dr = self._drape_setup()
+        Q = dr["sp"].posed(mats)
+        Pm = mats["pelvis"] @ self.bones["pelvis"].matrix_local.inverted()
+        ax = np.array((Pm.to_3x3() @ Vector((0, 0, -1))).normalized())
+        X = np.array((Pm.to_3x3() @ Vector((1, 0, 0))).normalized())
+        Y = np.cross(ax, X)
+
+        def ext(sel):
+            q = Q[sel]
+            ux, uy = q @ X, q @ Y
+            dmax = max(float((pr := ux * math.cos(t) + uy * math.sin(t)).max() - pr.min())
+                       for t in np.linspace(0.0, math.pi, 36, endpoint=False))
+            return float(ux.max() - ux.min()), dmax
+        hem_lat, hem_max = ext(dr["k"] > 0.985)
+        hip_lat, _ = ext(dr["k"] < 0.015)
+        return {"hemWidthCm": round(hem_max * 100, 1), "hemLatCm": round(hem_lat * 100, 1),
+                "hipWidthCm": round(hip_lat * 100, 1), "ratio": round(hem_max / hip_lat, 3)}
+
     def set_skirt(self, p: Pose, bp: BP, sk_res: dict, wf) -> None:
         acc, ga, gs = sk_res["acc"], sk_res["ga"], sk_res["gs"]
         for c, sk in self.skirt.items():
@@ -434,6 +675,8 @@ class MageAnims(HB.HeroAnims):
         wf = self.world_fn(p, bp)
         sk = self.skirt_angles(p, bp, mats)
         self.set_skirt(p, bp, sk, wf)
+        if sk["gs"] > 0.0 and self.skin() is not None:
+            self.drape_skirt(p, bp, sk["gs"], wf)
         acc = sk["acc"]
         ch = self.chains
         gs = sk["gs"]
@@ -987,7 +1230,7 @@ class MageAnims(HB.HeroAnims):
         dz = 0.41 - 0.03
         d100 = self.pose(R0, pelvis=R0.pelvis + V(0, 0.03, -dz), lean=-4.0, hip_pitch=0.0, twist=0.0, hip_yaw=0.0,
                          head_pitch=-6.0, head_yaw=-62.0, head_roll=-10.0,
-                         foot_r=V(-0.10, 0.02, 0.058 - dz), foot_l=V(0.11, 0.0, 0.058 - dz),
+                         foot_r=V(-0.078, 0.02, 0.058 - dz), foot_l=V(0.086, 0.0, 0.058 - dz),
                          foot_r_rot=(62.0, 0, 14), foot_l_rot=(58.0, 0, 22), toe_l=0.0, toe_r=0.0,
                          knee_r=V(-0.1, 1, 0), knee_l=V(0.1, 1, 0),
                          hand_r=V(-0.46, 0.10, 1.28), elbow_r=V(-0.7, -0.3, 0.0),

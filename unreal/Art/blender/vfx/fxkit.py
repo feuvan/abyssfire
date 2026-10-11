@@ -202,24 +202,95 @@ class FxBuilder(M.Builder):
             self.region(k, Region("#FFFFFF", .42, .32))
 
 
+def mitre_hull(obj: bpy.types.Object, width: float, limit: float = 2.6) -> dict:
+    """Re-seat the baked hull of a faceted mesh as a **mitred offset**: every hull face sits exactly ``width`` off
+    its body face (the kit pushes vertices along the angle-weighted smoothed normal, which leaves a pyramid's
+    flanks only ``width × cos φ`` off — a sharp crystal tip kept ~1/3 of its ink). Per body position the hull
+    displacement δ solves ``n_i · δ = width`` for the distinct face normals n_i around it (least squares,
+    minimum norm), capped at ``limit × width`` (pointed ink at sharp tips, like a pen line). Hull vertices are
+    found through the stored hull normal (AF_Data.rgb = n·0.5 + 0.5, hull = body + n·width)."""
+    me = obj.data
+    nv = len(me.vertices)
+    co = np.zeros(nv * 3, np.float64)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(nv, 3)
+    afd = me.color_attributes["AF_Data"]
+    data = np.zeros(nv * 4, np.float32)
+    afd.data.foreach_get("color", data)
+    data = data.reshape(nv, 4)
+    mat = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("material_index", mat)
+    hull_v = set()
+    for p in me.polygons:
+        if p.material_index == 1:
+            hull_v.update(p.vertices)
+    if not hull_v:
+        return {"mitred": 0}
+    hv = np.array(sorted(hull_v))
+    n = data[hv, :3].astype(np.float64) * 2.0 - 1.0
+    n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
+    body = co[hv] - n * width
+    keys = [tuple(np.round(b, 5)) for b in body]
+    # face normals of the hull faces (reversed winding → negate) gathered per body position
+    fn: dict[tuple, list] = {}
+    idx_of = {int(v): i for i, v in enumerate(hv)}
+    for p in me.polygons:
+        if p.material_index != 1:
+            continue
+        nrm = -np.array(p.normal[:], np.float64)
+        for v in p.vertices:
+            fn.setdefault(keys[idx_of[v]], []).append(nrm)
+    moved, cap = 0, 0
+    newco = co.copy()
+    cache: dict[tuple, np.ndarray] = {}
+    for i, v in enumerate(hv):
+        k = keys[i]
+        if k not in cache:
+            ns = []
+            for a in fn.get(k, []):
+                if not any(float(a @ b) > 0.996 for b in ns):
+                    ns.append(a)
+            if len(ns) < 2:
+                d = (ns[0] if ns else n[i]) * width
+            else:
+                A = np.array(ns)
+                d = np.linalg.lstsq(A, np.full(len(ns), width), rcond=None)[0]
+                L = float(np.linalg.norm(d))
+                if L > limit * width:
+                    d *= limit * width / L
+                    cap += 1
+                if float(d @ n[i]) <= 0.2 * width:      # concave / degenerate: keep the smoothed push
+                    d = n[i] * width
+            cache[k] = d
+        newco[v] = body[i] + cache[k]
+        moved += 1
+    me.vertices.foreach_set("co", newco.ravel())
+    me.update()
+    return {"mitred": moved, "capped": cap}
+
+
 def finish(b: FxBuilder, width_cm: float, flat_lit: bool = False, default_tint: str = "#FFFFFF",
-           intensity: float = 1.0, lit_dir: Sequence[float] = (0.0, 0.0, 1.0)) -> bpy.types.Object:
+           intensity: float = 1.0, lit_dir: Sequence[float] = (0.0, 0.0, 1.0),
+           mitre: float = 0.0) -> bpy.types.Object:
     """Build → AF_Data.a values per region → (flat-lit normals) → baked ink hull (slot 1) → preview look.
 
     ``flat_lit``: every body normal = ``lit_dir`` (mesh space) so the toon maths lands the whole surface in one
     band — an unshaded, emissive-looking cel shape (fire, spirit flame) whose structure is the value channel and
-    the ink."""
-    rev = {idx: key for key, idx in b.swatch.items()}
+    the ink. ``mitre`` > 0: re-seat the hull as a mitred offset (``mitre_hull``, cap = ``mitre`` × width) — for
+    faceted crystals and chips whose sharp tips and flanks lose ink to the smoothed push."""
+    # values by PART (af_part → the region it was added with): every FX region is the same white Region, so the
+    # palette merges them into one swatch and af_swatch cannot tell them apart
+    part_region = [p["region"] for p in b.parts]
     values = b.values
     obj = b.build(b.asset)
     me = obj.data
     nf = len(me.polygons)
-    sw = np.zeros(nf, np.int32)
-    me.attributes["af_swatch"].data.foreach_get("value", sw)
+    pa = np.zeros(nf, np.int32)
+    me.attributes["af_part"].data.foreach_get("value", pa)
     nv = len(me.vertices)
     vals = np.ones(nv, np.float32)
-    for p, s in zip(me.polygons, sw.tolist()):
-        v = values.get(rev.get(s, ""), 1.0)
+    for p, s in zip(me.polygons, pa.tolist()):
+        v = values.get(part_region[s] if 0 <= s < len(part_region) else "", 1.0)
         for vi in p.vertices:
             vals[vi] = v
     afd = me.color_attributes["AF_Data"]
@@ -234,6 +305,9 @@ def finish(b: FxBuilder, width_cm: float, flat_lit: bool = False, default_tint: 
     mt = bpy.data.materials.new(FX_MATERIAL)
     mo = bpy.data.materials.new(FX_MATERIAL + "_Ink")
     outline.bake_hull(obj, width_cm / 100.0, mt, mo)
+    if mitre > 0:
+        st = mitre_hull(obj, width_cm / 100.0, mitre)
+        obj["af_mitre"] = json.dumps(st)
     obj["af_outline_width"] = width_cm / 100.0
     obj["af_outline_class"] = "fx"
     obj["af_default_tint"] = default_tint

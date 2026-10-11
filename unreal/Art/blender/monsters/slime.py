@@ -6,11 +6,17 @@
 A glossy jiggling jelly dome (0.43 m tall × 0.88 m wide, round footprint) with a dark jelly core, a half-digested
 bone and rising bubbles inside, big glaring eyes, a pseudopod for the slam.
 
-* **Look (R12)**: the shell is its own material slot ``MI_AF_Toon_Slime`` (parent ``M_AF_Toon_Slime``: masked,
-  dithered ``BodyOpacity`` .65 + the web jelly rim rgba(230,255,220,.6)); the core, bone, bubbles, eyes, brows and
-  the sheen are opaque palette toon (slot 0); one ink hull round the whole jelly (slot 1). The previews render the
-  TAA-resolved dither (the shell mixed with what lies behind it, back faces culled like UE). BodyOpacity .82: the jelly
-  reads as solid as the web's, the dark core and the bone still show through.
+* **Look (R12, spec §14 Q14: inner meshes + dithered shell)**: the shell is its own material slot
+  ``MI_AF_Toon_Slime`` (parent ``M_AF_Toon_Slime``: masked, Bayer-dithered ``BodyOpacity`` **0.62** + the web jelly
+  rim rgba(230,255,220,.6)); the core, bone, bubbles, eyes, brows and the sheen are opaque palette toon (slot 0); one
+  ink hull round the whole jelly (slot 1). The previews render the TAA-resolved dither (the shell mixed with what lies
+  behind it, back faces culled like UE). At 0.62 the inside shows at 38 %: the core is a deep ``#0B4019`` (no light band) so the
+  shell over it resolves to ≈ the web's core tint (rgba(28,110,48,.55) over the body), the bone (16 cm, tilted
+  −29° like the web's −0.5 rad) sits in front of the core on the right-front (the side the ``se`` game view sees),
+  and the four bubbles (2.0–3.2 cm) rise in front of it — core, bone and bubbles read at native 1080p. (Art review:
+  at the former 0.82 only 18 % of the inside showed and the slime read as a plain green dome.)
+* **Eyes**: the rim's back half is body green (seen from ne / back / nw the eye bumps read as jelly-covered eyes,
+  not dark horns); at death the eye (rim, sclera, pupil, glint) collapses completely and eye-sized X bars scale in.
 * **Rig (SKEL_Slime, 16 bones, all children of ``root``)**: ``body_base / body_mid / body_top`` carry the web pose
   (``sx, sy`` squash/stretch as non-uniform **bone scale**, ``lean`` as a height-proportional shift, ``hop``),
   ``pod_01..02`` the pseudopod reach, ``eye_l/r`` (openness = vertical scale), ``lid_l/r`` (the angry brows,
@@ -55,15 +61,15 @@ H = 0.43                    # dome height (web H 17 px × 2.552 cm)
 UW = 0.0221                 # web px → m, ground
 UH = 0.02552                # web px → m, upright
 REF_SPEED = 1.20
-BODY_OPACITY = 0.82
+BODY_OPACITY = 0.62          # dithered shell (R12): the core, bone and bubbles show at 38 %
 CONTACT_MS = 250.0
 WINDUP_END_MS = 155.0
 
 REGIONS = outline.ink_regions(dict(
     body=Region("#5FCF5A", .35, .45),
-    core=Region("#14592A", .35, .15),
-    bone=Region("#ECE2C6", .30, .40),
-    bubble=Region("#D2FFC8", .15, .30),
+    core=Region("#0B4019", .30, .0),       # under the 0.62 shell ≈ the web core rgba(28,110,48,.55) over the body
+    bone=Region("#F6F0DE", .25, .45),
+    bubble=Region("#E6FFDC", .10, .35),
     sclera=Region("#F7FFF0", .20, .25),
     eye_rim=Region("#1D4A24", .30, .10),
     pupil=Region("#10200F", .30, .10),
@@ -111,6 +117,28 @@ EYE_TILT = 25.0             # deg the eyes face down from the surface normal (th
 EYE_YS = 1.12               # taller eyes: the tilt foreshortens them from the W1 camera
 FX_REST_K = 0.02            # the X-eyes and angry brows are modelled collapsed to 2 % about their bones (a clean,
                             # neutral bind pose in UE); the clips scale them in by 1 / FX_REST_K
+XEYE_LEN = 2.05             # X bar length (× EYE_R): the X spans the eye like the web's
+XEYE_DEG = 50.0             # bar angle from the eye's horizontal (the eye is EYE_YS taller than wide)
+BUBBLE_PHASE = 0.2          # bubble loop phase offset: both bubbles are up and full-size on Idle F0
+
+
+XEYE_OUT = 0.026            # X bars' centre along the eye normal from the eye bone (rest)
+XEYE_LIFT = 0.016           # posed: X centre above the squashed jelly surface (half the bar depth + a hair)
+
+
+def eye_normal(sg: int) -> Vector:
+    """The eye's outward axis: the dome normal at the eye tipped ``EYE_TILT`` down (tops tuck into the dome)."""
+    n = (surface_point(sg * EYE_LAT, EYE_Z, 0.01) - surface_point(sg * EYE_LAT, EYE_Z, 0.0)).normalized()
+    side = n.cross(Vector((0, 0, 1))).normalized()
+    return Matrix.Rotation(-math.radians(EYE_TILT), 3, side) @ n
+
+
+def _tag_back(part: M.Part, z0: float) -> None:
+    """Face layer ``af_sub`` = 1 on the faces behind local ``z0`` (the part's local +Z faces out of the eye)."""
+    bm = part.bm
+    lay = bm.faces.layers.int.get("af_sub") or bm.faces.layers.int.new("af_sub")
+    for f in bm.faces:
+        f[lay] = 1 if f.calc_center_median().z < z0 else 0
 
 
 def collapsed(head: Vector) -> Matrix:
@@ -154,9 +182,9 @@ def build_rig() -> R.Rig:
         lid = surface_point(sg * (EYE_LAT + 0.004), EYE_Z + 0.082, -0.004)
         bone(f"lid_{s}", lid, lid + Vector((0, -0.04, 0)))
     bone("core", (0, 0.04, 0.16), (0, 0.04, 0.26))
-    bone("bone_prop", (0.12, -0.21, 0.12), (0.12, -0.21, 0.2))
-    bone("bubble_01", (-0.15, -0.22, 0.06), (-0.15, -0.22, 0.12))
-    bone("bubble_02", (0.05, -0.28, 0.08), (0.05, -0.28, 0.14))
+    bone("bone_prop", (-0.19, -0.19, 0.12), (-0.19, -0.19, 0.20))     # right-front, in front of the core
+    bone("bubble_01", (-0.17, -0.24, 0.06), (-0.17, -0.24, 0.12))
+    bone("bubble_02", (0.06, -0.27, 0.07), (0.06, -0.27, 0.13))
     bpy.ops.object.mode_set(mode="OBJECT")
     for pb in obj.pose.bones:
         pb.rotation_mode = "QUATERNION"
@@ -217,12 +245,13 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
     # eyes: dark rim, sclera, pupil looking slightly down-in (glaring), glint
     for s, sg in (("l", 1), ("r", -1)):
         e = rig.joints[f"eye_{s}"]
-        n = (surface_point(sg * EYE_LAT, EYE_Z, 0.01) - surface_point(sg * EYE_LAT, EYE_Z, 0.0)).normalized()
-        side = n.cross(Vector((0, 0, 1))).normalized()
-        n = Matrix.Rotation(-math.radians(EYE_TILT), 3, side) @ n       # (side = −X for the front: tips n down)
+        n = eye_normal(sg)
         m = G.frame_z(e, n, Vector((0, 0, 1)))
-        rim = M.ellipsoid((EYE_R * 0.95, EYE_R * 1.1 * EYE_YS, 0.028), (0, 0, -0.001), sides=14, rings=7).transform(m)
-        b.add(rim, "eye_rim", Bind.rigid(f"eye_{s}"), name=f"eye_rim_{s}", outline=False, covered_by=sid)
+        rim = M.ellipsoid((EYE_R * 0.95, EYE_R * 1.1 * EYE_YS, 0.028), (0, 0, -0.001), sides=14, rings=7)
+        _tag_back(rim, -0.006)        # the back half is jelly: seen from behind the eyes are green bumps, not horns
+        rim.transform(m)
+        b.add(rim, "eye_rim", Bind.rigid(f"eye_{s}"), name=f"eye_rim_{s}", sub_regions={1: "body"}, outline=False,
+              covered_by=sid)
         scl = M.ellipsoid((EYE_R * 0.85, EYE_R * EYE_YS, 0.030), (0, 0, 0.006), sides=14, rings=7).transform(m)
         b.add(scl, "sclera", Bind.rigid(f"eye_{s}"), name=f"sclera_{s}", outline=False, covered_by=sid)
         pup = M.ellipsoid((EYE_R * 0.42, EYE_R * 0.52 * EYE_YS, 0.012), (-sg * EYE_R * 0.1, -EYE_R * 0.08, 0.031),
@@ -231,10 +260,11 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
         gl = M.ellipsoid((EYE_R * 0.13, EYE_R * 0.13, 0.006), (sg * EYE_R * 0.08, EYE_R * 0.22, 0.041), sides=8,
                          rings=4).transform(m)
         b.add(gl, "glint", Bind.rigid(f"eye_{s}"), name=f"glint_{s}", outline=False, covered_by=sid)
-        # X-ed out eye (death): two crossed bars over the eye (scaled in by xeye_*)
-        for ang in (40.0, -40.0):
-            bar = M.box((EYE_R * 1.45, 0.013, 0.012), (0, 0, 0))
-            bar.transform(m @ Matrix.Translation((0, 0, 0.034)) @ Matrix.Rotation(math.radians(ang), 4, "Z"))
+        # X-ed out eye (death): two crossed bars spanning the eye (the web's X is eye-sized: ±0.6 r both ways at a
+        # 0.9 u stroke), scaled in by xeye_* while the eye itself collapses
+        for ang in (XEYE_DEG, -XEYE_DEG):
+            bar = M.box((EYE_R * XEYE_LEN, 0.024, 0.016), (0, 0, 0))
+            bar.transform(m @ Matrix.Translation((0, 0, XEYE_OUT)) @ Matrix.Rotation(math.radians(ang), 4, "Z"))
             b.cover(sid, bar)                   # the full-size bars sit inside the shell's padded ink
             bar.transform(collapsed(rig.joints[f"xeye_{s}"]))
             b.add(bar, "xeye", Bind.rigid(f"xeye_{s}"), name=f"xeye_{s}", outline=False)
@@ -261,15 +291,17 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
     lobe = M.ellipsoid((0.15, 0.13, 0.11), (-0.09, -0.04, 0.12), sides=10, rings=6)
     b.add(lobe, "core", Bind.rigid("core"), name="core", outline=False)
     bp = rig.joints["bone_prop"]
-    tilt = Matrix.Translation(bp) @ Matrix.Rotation(math.radians(-29), 4, "Y") @ Matrix.Rotation(math.radians(25), 4, "Z")
-    shaft = M.capsule((-0.065, 0, 0), (0.065, 0, 0), 0.014, 0.014, sides=6, cap_rings=1).transform(tilt)
+    # in the plane facing the se game view (the camera sees the slime's front-right there), tilted 29° like the web
+    tilt = Matrix.Translation(bp) @ Matrix.Rotation(math.radians(-45), 4, "Z") @ Matrix.Rotation(math.radians(-29), 4, "Y")
+    # the web bone: 7 × 1.4 u shaft with two round knobs at each end (≈ 16 × 3 cm), tilted −0.5 rad
+    shaft = M.capsule((-0.075, 0, 0), (0.075, 0, 0), 0.016, 0.016, sides=6, cap_rings=1).transform(tilt)
     b.add(shaft, "bone", Bind.rigid("bone_prop"), name="bone_prop", outline=False)
-    for x in (-0.072, 0.072):
-        for dz in (-0.015, 0.015):
-            k = M.ellipsoid((0.02, 0.02, 0.02), (x, 0, dz), sides=6, rings=4).transform(tilt)
+    for x in (-0.082, 0.082):
+        for dz in (-0.018, 0.018):
+            k = M.ellipsoid((0.024, 0.024, 0.024), (x, 0, dz), sides=6, rings=4).transform(tilt)
             b.add(k, "bone", Bind.rigid("bone_prop"), name="bone_prop", outline=False)
-    for nm, offs in (("bubble_01", ((0, 0, 0, 0.022), (0.05, 0.03, 0.04, 0.014))),
-                     ("bubble_02", ((0, 0, 0, 0.018), (-0.06, 0.02, 0.05, 0.012)))):
+    for nm, offs in (("bubble_01", ((0, 0, 0, 0.034), (0.06, 0.03, 0.055, 0.024))),
+                     ("bubble_02", ((0, 0, 0, 0.03), (-0.07, 0.02, 0.06, 0.022)))):
         c0 = rig.joints[nm]
         for dx, dy, dz, r in offs:
             bb = M.ellipsoid((r, r, r), c0 + Vector((dx, dy, dz)), sides=6, rings=4)
@@ -383,24 +415,43 @@ class SlimeAnims:
             put(nm, X @ Matrix.Translation(c) @ S @ Matrix.Translation(-c))
         # eyes ride the surface (no squash of their own), open = vertical scale; brows / X-eyes scale in
         xe = max(0.0, min(1.0, (0.12 - p.eyes) / 0.1))
-        open_ = max(0.02, (0.35 + 0.65 * max(p.eyes, 0.0)) * (1.0 - xe))
+        open_ = 0.35 + 0.65 * max(p.eyes, 0.0)
+        gone = max(0.001, 1.0 - xe)             # the whole eye (rim, sclera, pupil, glint) shrinks out under the X
         brow = max(0.001, min(1.0, (p.fx - 0.2) / 0.25))
-        for s in ("l", "r"):
-            for nm, sc in ((f"eye_{s}", (1.0, 1.0, open_)), (f"xeye_{s}", (max(0.001, xe) / FX_REST_K,) * 3),
+        Rz = Matrix.Rotation(math.radians(p.yaw), 4, "Z")
+        sy_eff = p.sy * (1.0 - 0.5 * p.melt)
+        for s, sg in (("l", 1), ("r", -1)):
+            for nm, sc in ((f"eye_{s}", (gone, gone, max(0.001, open_ * gone))),
                            (f"lid_{s}", (brow / FX_REST_K,) * 3)):
                 a = rest[nm].translation
                 k = a.z / H
                 pa = self.body_x(p, k) @ a
                 D = Matrix.Diagonal((sc[0], sc[1], sc[2], 1.0))
-                put(nm, Matrix.Translation(pa) @ Matrix.Rotation(math.radians(p.yaw), 4, "Z") @ D
-                    @ Matrix.Translation(-a))
+                put(nm, Matrix.Translation(pa) @ Rz @ D @ Matrix.Translation(-a))
+            # X-eyes lie on the squashed jelly: turned from the eye axis to the posed surface normal (S^-T n) and
+            # centred just above the posed surface point — flattened into the death puddle they stay whole X's
+            # instead of sinking half into the shell
+            a = rest[f"xeye_{s}"].translation
+            n0 = eye_normal(sg)
+            s0 = surface_point(sg * EYE_LAT, EYE_Z, 0.0)
+            c_rest = rest[f"eye_{s}"].translation + n0 * XEYE_OUT
+            ns = Vector((n0.x / p.sx, n0.y / p.sx, n0.z / max(sy_eff, 1e-3))).normalized()
+            Rn = n0.rotation_difference(ns).to_matrix().to_4x4()
+            surf = self.body_x(p, s0.z / H) @ s0
+            target = surf + (Rz.to_3x3() @ ns) * XEYE_LIFT
+            R = Rz @ Rn
+            pa = target - R.to_3x3() @ (c_rest - a)
+            D = Matrix.Diagonal((max(0.001, xe) / FX_REST_K,) * 3 + (1.0,))
+            put(f"xeye_{s}", Matrix.Translation(pa) @ R @ D @ Matrix.Translation(-a))
         # bubbles rise inside and pop near the top (web: 4 bubbles, k = (i/4 + t) % 1)
         for i, nm in enumerate(("bubble_01", "bubble_02")):
             a = rest[nm].translation
-            ph = ((t_ms / loop_ms) + i * 0.5) % 1.0
+            ph = ((t_ms / loop_ms) + i * 0.5 + BUBBLE_PHASE) % 1.0
             z = a.z + ph * (0.62 * H - a.z) * 1.0
             pop = max(0.001, min(1.0, (0.92 - ph) / 0.12)) * min(1.0, 0.3 + ph / 0.15)
+            pop = max(0.001, pop * (1.0 - min(1.0, 1.6 * p.melt)))      # the puddle has no rising bubbles
             pa = self.body_x(p, z / H) @ Vector((a.x, a.y, z))
+            pa.z = max(pa.z, 0.036 * pop)                                  # never under the floor (squashed body)
             D = Matrix.Diagonal((pop, pop, pop, 1.0))
             put(nm, Matrix.Translation(pa) @ D @ Matrix.Translation(-a))
         return out

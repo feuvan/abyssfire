@@ -204,7 +204,7 @@ def build_ice_arrow():
         fin.translate((0, 0, 0.008))
         fin.rotate("y", 120.0 * k + 60.0)
         b.add(fin.flat(), "fin", name=f"fin{k}")
-    obj = K.finish(b, 1.5, default_tint="#CFF6FF", intensity=1.2)
+    obj = K.finish(b, 1.5, default_tint="#CFF6FF", intensity=1.2, mitre=2.6)
     return obj, {"orient": "velocity", "pivot": "centre", "defaultTint": "#CFF6FF", "intensity": 1.2,
                  "recipes": ["proj.ice_arrow"]}
 
@@ -214,7 +214,7 @@ def build_ice_shard():
     b.add(bipyramid(0.15, 0.08, 0.034, 6, mid_len=0.04), "shard", name="shard")
     chip = bipyramid(0.05, 0.03, 0.014, 5).rotate("z", 25).translate((0.026, 0.035, 0.004))
     b.add(chip, "chip", name="chip")
-    obj = K.finish(b, 1.5, default_tint="#DDF8FF", intensity=1.1)
+    obj = K.finish(b, 1.5, default_tint="#DDF8FF", intensity=1.1, mitre=2.6)
     return obj, {"orient": "velocity", "pivot": "widest point", "defaultTint": "#DDF8FF", "intensity": 1.1,
                  "recipes": ["skill.blizzard", "proj.ice_arrow.hit", "skill.freeze"]}
 
@@ -255,7 +255,7 @@ def build_fireball():
         lick = flame_lick(start, 1.0, rnd.choice((-1, 1)) * rnd.uniform(1.4, 2.2), rnd.uniform(0.05, 0.066),
                           rnd.uniform(0.2, 0.3) if k % 2 else rnd.uniform(0.26, 0.36), k)
         b.add(lick, "lick" if k % 2 == 0 else "lick2", name=f"lick{k}")
-    obj = K.finish(b, 1.0, flat_lit=True, default_tint="#FF9A3A", intensity=2.4)
+    obj = K.finish(b, 1.3, flat_lit=True, default_tint="#FF9A3A", intensity=2.4)
     return obj, {"orient": "velocity", "pivot": "core centre (licks trail behind)", "defaultTint": "#FF9A3A",
                  "intensity": 2.4, "tintNote": "flat-lit + HDR: the leading cap (value 1) clips to pale yellow and "
                  "blooms, the body (.8) reads orange-yellow, the licks (.64 / .55) orange to red-orange",
@@ -278,7 +278,7 @@ def build_spirit_bolt():
     for k, (dx, dz) in enumerate(((0.05, 0.03), (-0.045, -0.02))):
         pts2 = [Vector((dx * 0.6, -0.04, dz * 0.6)), Vector((dx, 0.06, dz)), Vector((dx * 1.3, 0.16, dz * 1.4))]
         b.add(M.tube(pts2, [0.022, 0.014, 0.002], sides=6, dome0=0, dome1=0), "wisp", name=f"wisp{k}")
-    obj = K.finish(b, 1.0, flat_lit=True, default_tint="#7FD2FF", intensity=1.9)
+    obj = K.finish(b, 1.3, flat_lit=True, default_tint="#7FD2FF", intensity=1.9)
     return obj, {"orient": "velocity", "pivot": "head centre", "defaultTint": "#7FD2FF", "intensity": 1.9,
                  "tintNote": "the leading cap (value 1) clips toward white, head .82 / tail .66 / wisps .56 step "
                  "down through the tint", "flatLit": True, "recipes": ["proj.pet_bolt", "proj.monster_bolt"]}
@@ -302,7 +302,7 @@ def build_rock(variant: str):
     if variant == "B":
         p.scale((1.25, 0.85, 1.0))
     b.add(p, "rock", name="rock")
-    obj = K.finish(b, 1.4, default_tint="#8A7358")
+    obj = K.finish(b, 1.4, default_tint="#8A7358", mitre=2.4)
     return obj, {"orient": "billboard (tumbling rotation)", "pivot": "centre", "defaultTint": "#8A7358",
                  "intensity": 1.0, "recipes": ["debris preset (charge, war_stomp, explosive_trap, unyielding, meteor)"]}
 
@@ -311,7 +311,7 @@ def build_meteor():
     b = FxBuilder("SM_FX_MeteorRock", {"rock": 1.0})
     p = jitter_sphere(0.26, 2, ("SM_FX_MeteorRock",), 0.16, 0.92)
     b.add(p, "rock", name="rock")
-    obj = K.finish(b, 1.4, default_tint="#8A6A5A")
+    obj = K.finish(b, 1.4, default_tint="#8A6A5A", mitre=2.4)
     # molten seams: vertices near three crack planes get a low value (dark seams; the glow is the sprites')
     me = obj.data
     afd = me.color_attributes["AF_Data"]
@@ -345,11 +345,72 @@ def build_hex_ring():
             part.rotate("z", yaw)
             part.translate((math.cos(a) * R, -math.sin(a) * R, 0.0))
             b.add(part, region, name=f"{region}{k}")
-    obj = K.finish(b, 1.2, default_tint="#FFE27A", intensity=1.0)
+    obj = K.finish(b, 1.2, default_tint="#FFE27A", intensity=1.0, mitre=2.0)
     return obj, {"orient": "ground", "pivot": "ring centre at plate mid-height (layer height: chest)",
                  "defaultTint": "#FFE27A", "intensity": 1.0, "recipes": ["skill.shield_wall"],
                  "note": "frames at UE yaw 0/45/…: the orbit Hex glow sprites (count 8, r 80 cm) sit in them; "
                          "hollow so the hero stays visible"}
+
+
+def build_hex_plate():
+    """One hex shield plate (web ``fx_hex`` 44 × 48: pointy-top bright frame at .94 + thin inner frame at .66 + a
+    highlight on the upper left) — hollow like the HexRing frames, facing Blender −Y (UE +Y). The built-in
+    defaults orbit eight of them (``SM_FX_HexPlate``); the art recipes use the one-piece ``SM_FX_HexRing``."""
+    b = FxBuilder("SM_FX_HexPlate", {"rim": 1.0, "inner": 0.8, "glint": 1.0})
+    b.add(hex_frame(0.235, 0.056, 0.045), "rim", name="rim")
+    b.add(hex_frame(0.16, 0.022, 0.03), "inner", name="inner")
+    # highlight sliver along the upper-left inner edge (between the frames, a hair proud of the face)
+    pts = []
+    for k in range(7):
+        s = k / 6
+        a = math.radians(150 + 55 * s)
+        pts.append((math.cos(a) * 0.178, -0.004, math.sin(a) * 0.178))
+    b.add(M.tube(pts, [0.004, 0.009, 0.011, 0.011, 0.009, 0.006, 0.003], sides=6, dome0=0, dome1=0), "glint",
+          name="glint", outline=False)
+    obj = K.finish(b, 1.2, default_tint="#FFE27A", intensity=1.0, mitre=2.0)
+    return obj, {"orient": "billboard / ground (rotation 0 = facing UE +Y)", "pivot": "plate centre",
+                 "defaultTint": "#FFE27A", "intensity": 1.0,
+                 "recipes": ["built-in defaults skill.shield_wall / skill.iron_fortress (orbiting plates)"],
+                 "note": "the art recipes use the one-piece SM_FX_HexRing / SM_FX_HexDome (exact radial facing)"}
+
+
+def _face_camera(p: M.Part) -> M.Part:
+    """Turn a part modelled in the XY plane (normal +Z, local +Y = screen up) to face the W1 camera at rotation 0."""
+    f = Vector(review.cam_dir())
+    to_cam = (-f).normalized()
+    up = Vector((0, 0, 1))
+    right = up.cross(to_cam).normalized()
+    if right.length < 1e-6:
+        right = Vector((1, 0, 0))
+    scr_up = to_cam.cross(right).normalized()
+    m = Matrix((right, scr_up, to_cam)).transposed().to_4x4()
+    return p.transform(m)
+
+
+def build_bubble():
+    """Mana-shield shell (spec §8.4 ``SM_FX_Bubble``, web ``fx_bubble``): the cartoon bubble drawn as geometry that
+    faces the fixed W1 camera — a round-section rim ring (toon bands: lit upper left, shade lower right, inked),
+    the white highlight arc on the upper left (.72 R, web 1.05π → 1.4π) and the glint dot. Hollow: the caster stays
+    readable; the fresnel fill is the additive ``Bubble`` sprite under it."""
+    b = FxBuilder("SM_FX_Bubble", {"ring": 0.64, "arc": 1.0, "glint": 1.0})
+    R, n = 0.75, 72
+    path = [(math.cos(i / n * math.tau) * R, math.sin(i / n * math.tau) * R, 0.0) for i in range(n)]
+    ring = M.sweep(path, M.superellipse(0.02, 0.03, 10, 2.0), up=(0, 0, 1), closed_path=True)
+    b.add(_face_camera(ring), "ring", name="ring")
+    pts, rads = [], []
+    for k in range(13):
+        s = k / 12
+        th = math.pi * (1.05 + 0.35 * s)                 # canvas angle (y down) → y up: (cos, −sin)
+        pts.append((math.cos(th) * 0.72 * R, -math.sin(th) * 0.72 * R, 0.02))
+        rads.append(0.016 * math.sin(math.pi * (0.08 + 0.84 * s)) ** 0.6 + 0.003)
+    b.add(_face_camera(M.tube(pts, rads, sides=6, dome0=0, dome1=0)), "arc", name="arc")
+    b.add(_face_camera(M.ellipsoid((0.042, 0.042, 0.012), (-0.28 * R, 0.56 * R, 0.02), sides=12, rings=5)),
+          "glint", name="glint")
+    obj = K.finish(b, 1.2, default_tint="#A07CFF", intensity=1.9)
+    return obj, {"orient": "billboard (rotation 0, no spin: faces the W1 camera)", "pivot": "bubble centre",
+                 "defaultTint": "#A07CFF", "intensity": 1.9, "recipes": ["skill.mana_shield"],
+                 "tintNote": "HDR tint: the highlight arc and glint (value 1) clip toward white, the rim ring (.64) "
+                             "keeps the arcane hue; arc and glint carry their own ink so they read over the caster"}
 
 
 def build_hex_dome():
@@ -365,7 +426,7 @@ def build_hex_dome():
                 part.rotate("z", yaw)
                 part.translate((math.cos(a) * R, -math.sin(a) * R, z))
                 b.add(part, region, name=f"{region}{ring}_{k}")
-    obj = K.finish(b, 1.2, default_tint="#9FB4D4", intensity=1.0)
+    obj = K.finish(b, 1.2, default_tint="#9FB4D4", intensity=1.0, mitre=2.0)
     return obj, {"orient": "ground", "pivot": "lower ring centre at plate mid-height (layer height: chest)",
                  "defaultTint": "#9FB4D4", "intensity": 1.0, "recipes": ["skill.iron_fortress"],
                  "note": "lower ring value .84 (web #7F97BB under #9FB4D4)"}
@@ -389,7 +450,7 @@ def build_frost_nova():
         lean2 = math.radians(rnd.uniform(35, 48))
         place(c2, out2 * rnd.uniform(0.38, 0.6), out2 * math.sin(lean2) + Vector((0, 0, math.cos(lean2))))
         b.add(c2, "small", name=f"small{k}")
-    obj = K.finish(b, 1.2, default_tint="#CFF6FF", intensity=1.15)
+    obj = K.finish(b, 1.2, default_tint="#CFF6FF", intensity=1.15, mitre=2.6)
     return obj, {"orient": "ground", "pivot": "ground centre", "defaultTint": "#CFF6FF", "intensity": 1.15,
                  "recipes": ["skill.ice_armor"], "note": "pops in with sizePow 6 then shatters into Flake motes"}
 
@@ -406,7 +467,7 @@ def build_frost_cage():
         c.rotate("z", rnd.uniform(0, 60))
         place(c, base, d)
         b.add(c, "a" if k % 2 == 0 else "b", name=f"shard{k}")
-    obj = K.finish(b, 1.3, default_tint="#CFF6FF", intensity=1.15)
+    obj = K.finish(b, 1.3, default_tint="#CFF6FF", intensity=1.15, mitre=2.6)
     return obj, {"orient": "ground", "pivot": "ground centre under the target", "defaultTint": "#CFF6FF",
                  "intensity": 1.15, "recipes": ["skill.freeze"]}
 
@@ -422,7 +483,7 @@ def build_frost_crust():
         lean = math.radians(rnd.uniform(15, 40))
         place(c, out * rnd.uniform(0.24, 0.36), out * math.sin(lean) + Vector((0, 0, math.cos(lean))))
         b.add(c, "a" if k % 2 == 0 else "b", name=f"c{k}")
-    obj = K.finish(b, 1.45, default_tint="#BFEFFF", intensity=1.1)
+    obj = K.finish(b, 1.45, default_tint="#BFEFFF", intensity=1.1, mitre=2.6)
     return obj, {"orient": "ground", "pivot": "ground centre (attached to the frozen monster)",
                  "defaultTint": "#BFEFFF", "intensity": 1.1, "recipes": ["status.freeze"]}
 
@@ -432,7 +493,7 @@ def build_stun_star():
     st = M.plate(star_outline(0.085, 0.042), 0.034, bevel=0.012, segments=2)
     b.add(st, "star", name="star")
     # face the W1 camera at rotation 0 (yaw fixed, W1): the plate normal (+Z) → toward the camera
-    obj = K.finish(b, 0.9, default_tint="#FFE27A", intensity=1.25)
+    obj = K.finish(b, 1.3, default_tint="#FFE27A", intensity=1.25, mitre=2.0)
     f = review.cam_dir()
     to_cam = (-f).normalized()
     rot = Vector((0, 0, 1)).rotation_difference(to_cam).to_matrix().to_4x4()
@@ -473,22 +534,45 @@ def build_chain(single: bool):
                  "recipes": ["skill.chain_trap"]}
 
 
-def build_slash_arc(cls: str):
-    name = f"SM_FX_SlashArc_{cls}"
+SWOOSH_BANDS = (("trail", 0.0, 0.36), ("body", 0.33, 0.74), ("edge", 0.71, 1.0))
+"""Radial bands of a swoosh ribbon (fraction of the width, inner → outer): the dark trailing smear, the tinted body,
+the white-hot blade edge on the outer rim (web slash layers: solid body, glow, hot core)."""
+
+
+def swoosh(b: FxBuilder, R: float, phi_head: float, phi_tail: float, n: int, wmax: float, thick: float,
+           z=lambda t: 0.0, r_off=lambda t: 0.0, head_len: float = 0.1, tail_pow: float = 1.25,
+           prefix: str = "") -> None:
+    """A tapered blade trail round the pivot: pointed head at ``phi_head`` (the leading end for the recipe's spin
+    direction), widest just behind it, thinning to a hair at ``phi_tail``; three radial value bands
+    (``SWOOSH_BANDS``), one inked hull from the full-width proxy. ``t`` = 0 at the head, 1 at the tail."""
+    width = lambda t: wmax * min(1.0, (t / head_len) ** 0.55 if t > 0 else 0.0) * (1.0 - t) ** tail_pow + 0.002
+    th = lambda t: thick * max(width(t) / wmax, 0.18) + 0.003
+    st = lambda lo, hi: arc_stations(R, phi_head, phi_tail, n, width, th, z, r_off, lo=lo, hi=hi)
+    proxy = ribbon_solid(st(0.0, 1.0))
+    for i, (reg, lo, hi) in enumerate(SWOOSH_BANDS):
+        if i == 0:
+            b.add(ribbon_solid(st(lo, hi)), reg, name=f"{prefix}{reg}", hull=proxy)
+        else:
+            b.add(ribbon_solid(st(lo, hi)), reg, name=f"{prefix}{reg}", outline=False)
+
+
+SWOOSH_VALUES = {"trail": 0.6, "body": 0.8, "edge": 1.0}
+
+
+def build_slash_arc(cls: str, back: bool = False):
+    """Class slash trails (web ``swipe`` / ``slash`` layers as toon geometry), flat-lit so the value bands carry the
+    form. Warrior: a heavy 150° crescent with a diagonal cut; ``_Back`` = the mirrored backhand (head leads under a
+    negative spin). Rogue: two thin crossing blades, pointed both ends (used with either spin). Mage: a broad staff
+    sweep with arcane sparkles riding the body. Head = the leading end for a positive ``spinDegS`` (UE yaw)."""
+    name = f"SM_FX_SlashArc_{cls}" + ("_Back" if back else "")
+    sgn = -1.0 if back else 1.0
     if cls == "Warrior":
-        b = FxBuilder(name, {"edge": 1.0, "body": 0.74})
-        R, span, n = 1.0, math.radians(150), 40
-        width = lambda s: 0.27 * math.sin(math.pi * s) ** 0.75
-        thick = lambda s: 0.03 * math.sin(math.pi * s) ** 0.5 + 0.004
-        z = lambda s: (s - 0.5) * 0.24
-        proxy = ribbon_solid(arc_stations(R, -span / 2, span / 2, n, width, thick, z))
-        b.add(ribbon_solid(arc_stations(R, -span / 2, span / 2, n, width, thick, z, lo=0.0, hi=0.62)), "body",
-              name="body", hull=proxy)
-        b.add(ribbon_solid(arc_stations(R, -span / 2, span / 2, n, width, thick, z, lo=0.6, hi=1.0)), "edge",
-              name="edge", outline=False)
+        b = FxBuilder(name, dict(SWOOSH_VALUES))
+        span = math.radians(150)
+        swoosh(b, 1.0, -sgn * span / 2, sgn * span / 2, 44, 0.2, 0.026, z=lambda t: (0.5 - t) * 0.24)
         tint = "#F4AC28"
     elif cls == "Rogue":
-        b = FxBuilder(name, {"edge": 1.0, "body": 0.82})
+        b = FxBuilder(name, {"edge": 1.0, "body": 0.8})
         span, n = math.radians(124), 34
         for k, (R, wmax, reg) in enumerate(((1.06, 0.075, "edge"), (0.9, 0.06, "body"))):
             width = (lambda wm: (lambda s: wm * math.sin(math.pi * s) ** 0.7))(wmax)
@@ -498,51 +582,47 @@ def build_slash_arc(cls: str):
                   reg, name=f"blade{k}")
         tint = "#B478FF"
     else:   # Mage: a broad staff sweep with arcane sparkles riding it
-        b = FxBuilder(name, {"edge": 1.0, "body": 0.8, "spark": 1.0})
-        R, span, n = 0.95, math.radians(140), 36
-        width = lambda s: 0.2 * math.sin(math.pi * s) ** 0.6
-        thick = lambda s: 0.05 * math.sin(math.pi * s) ** 0.5 + 0.004
-        z = lambda s: 0.0
-        proxy = ribbon_solid(arc_stations(R, -span / 2, span / 2, n, width, thick, z))
-        b.add(ribbon_solid(arc_stations(R, -span / 2, span / 2, n, width, thick, z, lo=0.0, hi=0.55)), "body",
-              name="body", hull=proxy)
-        b.add(ribbon_solid(arc_stations(R, -span / 2, span / 2, n, width, thick, z, lo=0.53, hi=1.0)), "edge",
-              name="edge", outline=False)
+        b = FxBuilder(name, dict(SWOOSH_VALUES, spark=1.0))
+        R, span = 0.95, math.radians(140)
+        swoosh(b, R, -span / 2, span / 2, 40, 0.19, 0.04, head_len=0.14, tail_pow=1.1)
         for k in range(5):
-            s = 0.18 + 0.16 * k
-            phi = -span / 2 + span * s
+            t = 0.16 + 0.15 * k
+            phi = -span / 2 + span * t
             rad = Vector((math.sin(phi), -math.cos(phi), 0))
-            sz = 0.035 + 0.025 * math.sin(math.pi * s)
+            sz = 0.04 * (1 - t) + 0.016
             stp = M.plate(star_outline(sz, sz * 0.32, 4, 0.0), 0.016, bevel=0.004)
-            stp.translate(tuple(rad * (R - 0.16) + Vector((0, 0, 0.05))))
+            stp.translate(tuple(rad * (R + 0.02) + Vector((0, 0, 0.05))))
             b.add(stp, "spark", name=f"spark{k}")
         tint = "#D8B4FF"
-    obj = K.finish(b, 1.2, flat_lit=True, default_tint=tint, intensity=1.25)
+    obj = K.finish(b, 1.2, flat_lit=True, default_tint=tint, intensity=1.3)
+    rec = {"Warrior": ["skill.slash", "hit.basic.warrior", "skill.rampage"],
+           "Rogue": ["skill.backstab", "skill.shadow_step", "hit.basic.rogue"], "Mage": ["hit.basic.mage"]}[cls]
+    if back:
+        rec = ["skill.bleed_strike", "skill.whirlwind (counter swipe)"]
     return obj, {"orient": "ground (alignToBlow: the crescent's centre points along the blow; spinDegS sweeps it)",
-                 "pivot": "the swing centre (the caster / the target chest)", "defaultTint": tint, "intensity": 1.25,
+                 "pivot": "the swing centre (the caster / the target chest)", "defaultTint": tint, "intensity": 1.3,
                  "flatLit": True, "class": cls.lower(),
-                 "recipes": {"Warrior": ["skill.slash", "skill.bleed_strike", "hit.basic.warrior"],
-                             "Rogue": ["skill.backstab", "hit.basic.rogue"], "Mage": ["hit.basic.mage"]}[cls]}
+                 "spin": "symmetric (either sign)" if cls == "Rogue" else
+                         ("negative spinDegS (head at the +φ end)" if back else "positive spinDegS (head leads)"),
+                 "bands": "outer edge 1.0 (white-hot) · body .8 · inner trailing smear .6" if cls != "Rogue" else
+                          "outer blade 1.0 · inner blade .8",
+                 "recipes": rec}
 
 
 def build_whirl_band():
-    """A rising spiral blade trail: thin tail near the body, widening to a bright blade head at radius 1."""
-    b = FxBuilder("SM_FX_WhirlBand", {"edge": 1.0, "body": 0.72})
-    turns, n = 1.25, 90
+    """A rising spiral blade trail (1.25 turns): a hair-thin tail near the body widening to the blade head at radius
+    1 (s = 1, the leading end under a positive spin); the same three value bands as the slash arcs."""
+    b = FxBuilder("SM_FX_WhirlBand", dict(SWOOSH_VALUES))
+    turns, n = 1.25, 96
     span = turns * math.tau
-    width = lambda s: 0.025 + 0.26 * s ** 1.6 * (1.0 if s < 0.95 else max(0.0, 1 - (s - 0.95) / 0.05) ** 0.6)
-    thick = lambda s: 0.03 * min(1.0, s * 3) + 0.003
-    z = lambda s: -0.16 + 0.34 * s + 0.04 * math.sin(s * math.tau * 1.25)
-    r_off = lambda s: -0.5 * (1 - s) ** 1.4                       # spiral: radius 0.5 (tail) → 1.0 (head)
-    proxy = ribbon_solid(arc_stations(1.0, 0.0, -span, n, width, thick, z, r_off))
-    b.add(ribbon_solid(arc_stations(1.0, 0.0, -span, n, width, thick, z, r_off, lo=0.0, hi=0.6)), "body",
-          name="body", hull=proxy)
-    b.add(ribbon_solid(arc_stations(1.0, 0.0, -span, n, width, thick, z, r_off, lo=0.58, hi=1.0)), "edge",
-          name="edge", outline=False)
+    # head at φ = −span (t = 0), tail at φ = 0 (t = 1); radius 1.0 at the head → 0.5 at the tail
+    swoosh(b, 1.0, -span, 0.0, n, 0.2, 0.028, z=lambda t: 0.18 - 0.34 * t + 0.04 * math.sin(t * math.tau * 1.25),
+           r_off=lambda t: -0.5 * t ** 1.4, head_len=0.05, tail_pow=1.6)
     obj = K.finish(b, 1.2, flat_lit=True, default_tint="#AABBD4", intensity=1.25)
     return obj, {"orient": "ground (+ spinDegS ≈ 1500: the band whirls)", "pivot": "the caster's centre, chest height",
-                 "defaultTint": "#AABBD4", "intensity": 1.25, "flatLit": True, "recipes": ["skill.whirlwind",
-                                                                                          "skill.rampage"]}
+                 "defaultTint": "#AABBD4", "intensity": 1.25, "flatLit": True,
+                 "bands": "outer edge 1.0 · body .8 · inner smear .6", "recipes": ["skill.whirlwind",
+                                                                                    "skill.rampage"]}
 
 
 BUILDERS = {
@@ -557,6 +637,8 @@ BUILDERS = {
     "SM_FX_MeteorRock": build_meteor,
     "SM_FX_HexRing": build_hex_ring,
     "SM_FX_HexDome": build_hex_dome,
+    "SM_FX_HexPlate": build_hex_plate,
+    "SM_FX_Bubble": build_bubble,
     "SM_FX_FrostNova": build_frost_nova,
     "SM_FX_FrostCage": build_frost_cage,
     "SM_FX_FrostCrust": build_frost_crust,
@@ -564,6 +646,7 @@ BUILDERS = {
     "SM_FX_ChainLink": lambda: build_chain(True),
     "SM_FX_Chain": lambda: build_chain(False),
     "SM_FX_SlashArc_Warrior": lambda: build_slash_arc("Warrior"),
+    "SM_FX_SlashArc_Warrior_Back": lambda: build_slash_arc("Warrior", back=True),
     "SM_FX_SlashArc_Rogue": lambda: build_slash_arc("Rogue"),
     "SM_FX_SlashArc_Mage": lambda: build_slash_arc("Mage"),
     "SM_FX_WhirlBand": build_whirl_band,
@@ -582,6 +665,8 @@ CONTEXT = {
     "SM_FX_MeteorRock": ("fall", 1.6, ["#8A6A5A"]),
     "SM_FX_HexRing": ("hero", 0.95, ["#FFE27A"]),
     "SM_FX_HexDome": ("hero", 0.95, ["#9FB4D4"]),
+    "SM_FX_HexPlate": ("plate", 0.95, ["#FFE27A", "#9FB4D4"]),
+    "SM_FX_Bubble": ("bubble", 0.9, ["#A07CFF", "#8A5CFF"]),
     "SM_FX_FrostNova": ("hero", 0.0, ["#CFF6FF"]),
     "SM_FX_FrostCage": ("target", 0.0, ["#CFF6FF"]),
     "SM_FX_FrostCrust": ("target", 0.0, ["#BFEFFF"]),
@@ -589,6 +674,7 @@ CONTEXT = {
     "SM_FX_ChainLink": ("debris", 0.4, ["#A8B4C4"]),
     "SM_FX_Chain": ("ground", 0.15, ["#A8B4C4", "#FFE27A"]),
     "SM_FX_SlashArc_Warrior": ("hero", 1.0, ["#F4AC28", "#E8342C"]),
+    "SM_FX_SlashArc_Warrior_Back": ("hero", 1.0, ["#E8342C", "#F4AC28"]),
     "SM_FX_SlashArc_Rogue": ("target", 0.55, ["#B478FF", "#7030C0"]),
     "SM_FX_SlashArc_Mage": ("target", 0.55, ["#D8B4FF"]),
     "SM_FX_WhirlBand": ("hero", 1.0, ["#AABBD4"]),
@@ -597,6 +683,7 @@ CONTEXT = {
 
 # ── previews ───────────────────────────────────────────────────────────────────────────────────────────
 GATE_PX = 1.0
+CAMERA_FACING = {"SM_FX_Bubble", "SM_FX_StunStar"}
 
 
 def fx_gate(obj) -> dict:
@@ -662,6 +749,11 @@ def context_shot(obj, name: str) -> np.ndarray:
         elif kind == "target":
             o.location = tuple(TARGET_AT + Vector((0, 0, h)))
             o.rotation_euler = (0, 0, yaw_to(blow))
+        elif kind == "plate":
+            o.location = tuple(HERO_AT + RIGHT * 0.8 + Vector((0, 0, h)))
+            o.rotation_euler = (0, 0, yaw_to(RIGHT))
+        elif kind == "bubble":
+            o.location = tuple(HERO_AT + Vector((0, 0, h)))
         elif kind == "overhead":
             o.location = tuple(TARGET_AT + Vector((0.12, 0.18, h)))
         elif kind == "ground":
@@ -690,12 +782,17 @@ def previews(obj, name: str) -> tuple[list[str], dict]:
                        outline_class="decor")
     rv.bloom = False
     rv.gate = fx_gate(obj)
+    # M_AF_FX_Mesh has no outline WPO: every preview (close-up and turnaround too) draws the baked hull as shipped,
+    # magnified with the view — never the kit's screen-pixel close-up ink (which also re-derives the hull from the
+    # smoothed normal and would undo a mitred hull)
+    rv.ink = lambda scale=1.0, px=None, at=None: review.set_outline_px([obj], None)
     K.preview_mats(obj)
     # FX meshes float at their layer height: lift the preview copy off the floor (hull under z = 0 is not ink)
     z0 = -lo.z + (0.4 if hi.z - lo.z < 0.5 else 0.05)
     obj.location = (0, 0, z0)
     bpy.context.view_layer.update()
-    rv.game_view("front")
+    # camera-facing meshes (built to face the fixed W1 camera at rotation 0) are judged unrotated
+    rv.game_view(0.0 if name in CAMERA_FACING else "front")
     rv.closeup("se", res=(420, 420), pitch=-30.0)
     rv.turnaround(cell=(200, 200))
     v = rv.ink_verdict()

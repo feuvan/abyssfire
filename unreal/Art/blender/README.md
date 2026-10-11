@@ -635,3 +635,66 @@ Conventions learnt on the items:
 * **Budgets**: weapons 0.7–3.5 k toon (+ 0.24–1.4 k hull); pickups 0.7–3 k toon (+ ≤ 1.5 k hull), the gold heap
   5.6 k (22 coins on a mound, hull from the mound proxy only) and the herb bundle 3 k + 3 k hull (15 leaves, each
   its own ink); gems 28–70 tris; heap coins 10 sides, loose coins 12 (a 6 cm coin is ~7 px at 1080p).
+
+## 14. VFX: textures, FX meshes, recipes, previews (`vfx/`)
+
+```bash
+/opt/venvs/blender/bin/python unreal/Art/blender/vfx/fx_textures.py      # T_FX_* + Previews/vfx_textures/ (numpy, ~1 min)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/vfx/fx_meshes.py [SM_FX_…]   # ship (~8 min)
+#   --quick (close 3/4 + 1080p context crop per mesh → scratch) · --no-previews
+python3 unreal/Art/blender/vfx/fx_recipes.py                              # vfx_recipes.json + fx_palettes.json (pure Python)
+python3 unreal/Art/blender/vfx/fx_validate.py                             # recipes vs the runtime parser + coverage (exit 1)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/vfx/fx_preview.py [groups|ids]  # contact sheets
+#   groups: combat utility status world warrior mage rogue (default all) · --scratch · --cells · --ue-softfade
+```
+
+DECISIONS P6: VFX are code-driven pooled ISM particles (`UAbyssVfxSystem`, no Niagara). The art ships what those
+emitters draw — sprite textures, FX meshes, and the recipe document the runtime merges over its built-in defaults
+(WorldContract 5; same id replaces).
+
+| File | Content |
+|---|---|
+| `vfx/fxpaint.py` | signed-distance painting toolkit (numpy): fields, cel bands, strokes, halos, strips |
+| `vfx/fx_textures.py` | `Export/VFX/T_FX_<Sprite>.png` — the web `FxTextures.ts` painters redrawn as cel sprites (crisp silhouette, 2–3 value bands, one halo only where the shape emits light), **linear** RGBA (sRGB off), white = tintable, pre-coloured cells (8 flame palettes incl. the camp flame, frost shard, arrow, coin, rock, chain); strips of N cells picked by the instance Variant; `sprites.json` (cells, blend, note) |
+| `vfx/fxkit.py` | the `M_AF_FX_Mesh` look in Cycles (one tint per particle → toon bands → ink hull, **value channel `AF_Data.a`**, 4×4 Bayer-dithered fade, HDR), `FxBuilder` (regions = values, resolved per part), `finish(… flat_lit, mitre)`, **`mitre_hull`** (re-seats a faceted mesh's hull as an exact mitred offset), ship + manifest entry (`fx` record), shipped characters for scale |
+| `vfx/fx_meshes.py` | `SM_FX_*` (below) + previews + the FX ink gate |
+| `vfx/fx_recipes.py` | every effect of spec §8.5–§8.7 + the 40 skills as runtime recipes (web compositions converted at 100/45 cm per px); `fx_palettes.json` (element palettes, flame gradients, class / skill / quality / affix / spirit / death colours, status tints, story embers) |
+| `vfx/fx_validate.py` | mirrors `FAbyssVfxLibrary::ParseLayer` (a wrong JSON type is silently ignored there, an unknown enum skips the recipe), sprite / mesh existence and cell ranges, runtime clamps, coverage of every bound event id and every skill's `skill.` / `proj.` / `ground.` ids |
+| `vfx/fx_preview.py` | Python port of `UAbyssVfxSystem` (presets, emission, anchors, blow frame incl. its random climb, motion, size / alpha curves, colours, quad and mesh transforms) composited over Blender renders of the plains terrain, the shipped warrior (clip pose of the beat), goblins and — for world / prop loops — the shipped prop the effect sits on (`WORLD_PROPS`: campfire, torch, hearthstone, exit portal / sealed gate, lore tablet, herb, clue marker, chest, rune pillar): per-pixel ray / quad intersection, depth test with the 8 cm soft fade, translucent before additive, FX meshes rendered with `M_AF_FX_Mesh`, bloom → `Previews/vfx_effects/<recipe>.png` (native 1080p key frames, ms from the event) |
+
+FX meshes (all drawn by `M_AF_FX_Mesh`: opaque masked toon + ink, one tint per particle, so structure comes from
+geometry, the value channel and the hull; light, smoke and energy stay sprites): arrows (steel, poison, ice),
+`IceShard`, `Fireball` / `SpiritBolt` (flat-lit cel fire: HDR tint, value bands clip toward white at the leading
+cap), `Rock_A/B` debris, `MeteorRock` (dark seams), `HexRing` / `HexDome` / `HexPlate` (hollow hex frames),
+`Bubble` (camera-facing inked rim ring + highlight arc + glint), `FrostNova` / `FrostCage` / `FrostCrust`
+(crystals), `StunStar`, `ChainLink` / `Chain`, the swoosh ribbons `SlashArc_Warrior` (+ `_Back` mirrored for a
+negative spin) / `_Rogue` / `_Mage` and `WhirlBand`, plus the item family's `SM_Pickup_GoldCoin`. Each manifest
+entry carries `fx` {orient, pivot, defaultTint, intensity, values, recipes, …} and `boundsDiameterCm` (what a
+recipe's `sizeCm` scales). Gate: baked hull alone (no outline WPO in the FX material) ≥ baked − 0.5 px on ≥ 90 %
+of the 1080p silhouette edges with an ink pixel within 3 px.
+
+Conventions learnt on the VFX:
+
+* **Every FX region is the same white `Region`**, so the palette merges them into one swatch — values must be
+  resolved per part (`af_part` → region), never per swatch (the first pass gave every mesh its last region's value).
+* **Faceted crystals need mitred hulls**: the kit pushes hull vertices along the smoothed normal, which leaves a
+  pyramid's flanks `w·cos φ` off the body (a sharp tip kept ~⅓ of its ink); `mitre_hull` solves `n_i·δ = w` per
+  corner (least squares, capped 2–2.6 w) — every face exactly `w` off, pointed ink at the tips like a pen line.
+* **Swooshes, not bananas**: a solid crescent of uniform width reads as an object. Slash ribbons taper from a
+  pointed head (the leading end for the recipe's spin sign) to a hair-thin tail and carry three radial value bands
+  (white-hot outer edge 1.0, body .8, trailing smear .6); a backhand needs the mirrored mesh, not a negative spin
+  on the forehand one.
+* **Masked meshes dissolve, they don't fade**: any alpha < 1 is a 4 × 4 screen-door. Keep mesh layers at α 1 and
+  dissolve late (`alphaPow` ≥ 5), or shrink them out (coins: α 1, `sizePow` .25 late shrink).
+* **Bodies swallow bursts**: sprites are depth-tested against opaque characters and the chest anchor is the body's
+  centre. Strike recipes pull their target-side bursts 22 cm back along the blow (`STRIKE_CM`); the recommended
+  runtime fix (camera-ward bias for actor-anchored quads) is in `integration.bodyOcclusion`.
+* **Additive light vanishes over the bright plains**: rings, shocks, beams, comet tails and shouts are two layers —
+  a translucent tinted body for presence + the additive glow on top (the web's `ring()` did the same).
+* **Blow-less events have a fixed frame**: level-up, pickups, statuses, loot, portal and prop loops get no blow, so
+  their frame is world +X/+Y — with the fixed W1 yaw, `offsetCm` d·(−0.455, −0.455, 0.766) is the view ray: their
+  body-anchored quads sit 40 cm camera-ward (`CAM_BIAS_CM`, `integration.cameraBias`) and draw over the body.
+* **Loops start empty**: a 1.2 /s status ring shows nothing for 0.8 s — slow loop layers get a one-particle burst
+  copy (`prewarm`, `integration.loopPrewarm`).
+* **Ground quads** sit 1–3 cm over the terrain: the runtime's 8 cm DepthFade erases 70–90 % of them;
+  `integration.groundSoftFade` asks for ≤ 0.8 cm on ground orient (previews draw that; `--ue-softfade` shows today's).
