@@ -15,8 +15,13 @@ plain CPython 3.11 + the standard library, run by the Unreal Editor (`-run=pytho
 | `fonts/` | the backbone's font subsetter (not part of the content build) |
 
 The C++ side has one small helper, `Source/Abyssfire/{Public,Private}/ContentBuild/AbyssContentBuildLibrary.*`
-(Python: `unreal.AbyssContentBuildLibrary`): it names skeletal-mesh sockets (read-only to Python) and waits for shader /
-asset compilation. Build the editor target before running the content build.
+(Python: `unreal.AbyssContentBuildLibrary`): it names skeletal-mesh sockets (read-only to Python), sets skeletal LOD
+screen sizes (no longer exposed to Python in 5.8), sets material-instance parameters MaterialEditingLibrary did not
+apply, waits for shader / asset compilation and reads a material's shader compile errors. Build the editor target
+before running the content build: every function the scripts call is listed in `abyss_content/ue/core.py`
+(`CONTENT_LIB_FUNCTIONS`), and an editor binary built before one of them existed is reported once at the start of the
+build (*STALE EDITOR BINARY*, naming the missing functions and the rebuild command); the steps then skip what needs them
+with one note each instead of a warning per asset.
 
 ---
 
@@ -72,7 +77,27 @@ wrapper does all three steps and checks the result:
 
 ```bash
 unreal/Scripts/build_content.sh                     # UE_ROOT=... to override the engine path; SKIP_EDITOR_BUILD=1
+unreal/Scripts/build_content.sh --shaders           # also compile every master for real and report compile errors
 ```
+
+`SKIP_EDITOR_BUILD=1` skips the editor build only while the project's editor module
+(`unreal/Binaries/<Mac|Linux>/UnrealEditor-Abyssfire*.dylib` / `libUnrealEditor-Abyssfire*.so`, else
+`UnrealEditor.modules`) is newer than every `*.h / *.cpp / *.inl / *.cs` under `unreal/Source`; otherwise (or when it is
+missing) the wrapper prints a warning and builds `AbyssfireEditor` anyway. If that build fails while a (stale) binary
+exists, the wrapper warns and runs the content build on that binary, which reports the helpers it lacks once
+(`STALE EDITOR BINARY`). `SKIP_EDITOR_BUILD=force` never builds (same warning when the binary is stale). Each build it
+runs leaves `Binaries/<host>/.abyss_editor_build_stamp`, so an up-to-date binary that UBT did not need to touch counts as
+current.
+
+**Shaders.** The headless run is a `-run=pythonscript` commandlet, which renders with the NullRHI: no shader is
+compiled and `MaterialEditingLibrary.get_statistics` reads 0. The report therefore lists every master as *not compiled
+(NullRHI commandlet; run build_content.sh --shaders)* with one note, not as a failure. `--shaders` adds
+`-AllowCommandletRendering` to the editor command line (real RHI; slower, every master compiles for the editor's shader
+platform) and is passed on to `build_content.py`, whose verify step then waits for compilation, reads the instruction
+counts and turns `AbyssContentBuildLibrary.get_material_compile_errors` into report errors (a master without a pixel
+shader is an error too). After every run the wrapper prints the first 40 shader-error lines of the editor log
+(`Failed to compile Material`, `[SM5]/[SM6] … error`, `error: … .usf`, `Material … had errors`); with `--shaders` they
+fail the run. `AF_CONTENT_NULLRHI=1|0` overrides the NullRHI detection.
 
 Options go inside the `-script="…"` string (the wrapper forwards its own arguments; values cannot contain spaces there):
 
@@ -85,12 +110,15 @@ Options go inside the `-script="…"` string (the wrapper forwards its own argum
 | `--prune-audio`, `--audio-args "…"` | passed to `Audio/ue/import_audio.py` |
 | `--report PATH` | JSON report path (default `$AF_CONTENT_REPORT`, else `unreal/Saved/ContentBuild/build_report.json`) |
 | `--strict` | warnings fail the build too |
+| `--shaders` | compiled shaders required: compile errors and masters without a pixel shader fail the build (the wrapper also adds `-AllowCommandletRendering`; on a NullRHI commandlet the option itself is an error) |
 | `--plan` | validate `manifest.json` and print the plan; works with a plain `python3`, writes nothing to the project |
 
 **Result.** `unreal/Saved/ContentBuild/build_report.json` (`"ok": true|false`, per-step status and counts, every asset
-created / re-imported / unchanged, material shader statistics, verification lines) and `build_report.md` (the same,
-readable). A failed build also ends with a Python exception, so the log shows `LogPython: Error` (CI checks both,
-`Docs/CI.md` §8). Re-running with unchanged inputs changes nothing.
+created / re-imported / unchanged, material shader statistics, verification lines, and `compatibility`: engine-version
+differences the build worked around, one line per build with the number of assets each touched — e.g. an Interchange
+property this engine renamed or dropped, or 5.8's instance-parameter setters returning False) and `build_report.md`
+(the same, readable). A failed build also ends with a Python exception, so the log shows `LogPython: Error` (CI checks
+both, `Docs/CI.md` §8). Re-running with unchanged inputs changes nothing.
 
 From the editor UI instead: *Tools → Execute Python Script…* → `unreal/Scripts/build_content.py`, or in the *Output
 Log* Python console: `py "/path/to/abyssfire/unreal/Scripts/build_content.py" --only materials`.
@@ -152,7 +180,7 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 
 | Content | Path | Notes |
 |---|---|---|
-| Skeletal / static meshes, clips | `/Game/Abyssfire/<dir of the manifest fbx>/<Name>` | Interchange, normals as authored (hull custom normals), vertex colours `AF_Data`, no materials / physics / collision / Nanite |
+| Skeletal / static meshes, clips | `/Game/Abyssfire/<dir of the manifest fbx>/<Name>` | Interchange, normals as authored (hull custom normals), vertex colours `AF_Data`, no materials / physics / collision / Nanite; clips import frames 0..`frames` at `fps` of the manifest (explicit range: Blender's FBX exporter writes a fixed 0–1 s global timeline; an engine that cannot set the range imports the keyed range, the same frames, with one compatibility note) |
 | Skeletons | `/Game/Abyssfire/Skeletons/SKEL_<Family>` | created by the family's first mesh, shared by the rest and by every clip |
 | Sockets | on each skeletal mesh (`fx_*`, `visor`) / static mesh (`tip`, `mid`, …) | from the manifest; static ones also from `SOCKET_` empties |
 | LODs | `lods[]` of the manifest imported as LOD n, screen sizes set | |
@@ -188,9 +216,10 @@ Material behaviour in short:
 The build was written against the UE 5.6 Python API (names checked automatically, see below) without an engine at
 hand. On the first real run check:
 
-1. The report is `"ok": true` and `materials` lists every master with non-zero pixel-shader instructions. A master
-   with `NO SHADER` failed to compile: open it, the error names the Custom node (`AF_*`); fix the HLSL in
-   `abyss_content/hlsl.py` (the tests below compile it as C++ too).
+1. The report is `"ok": true`. Run once with `build_content.sh --shaders`: `materials` then lists every master with
+   non-zero pixel-shader instructions and no compile errors (without `--shaders` they read *not compiled*, see §2). A
+   master with `COMPILE ERRORS` / `NO SHADER` failed to compile: the error names the Custom node (`AF_*`); fix the HLSL
+   in `abyss_content/hlsl.py` (the tests below compile it as C++ too).
 2. *Preview Rendering Level → Android Vulkan* and *iOS*: `M_AF_Toon`, `M_AF_Outline`, `M_AF_Terrain` compile.
 3. `SK_Hero_Warrior` in the mesh editor: 2 material slots with `MI_AF_Toon_Heroes` / `MI_AF_Outline_Heroes_Hero`,
    sockets `fx_*` and `visor` on the listed bones, LOD1 present; the clips play on `SKEL_Human`; `A_Hero_Warrior_HurtAdd`
@@ -204,7 +233,11 @@ hand. On the first real run check:
 
 | Symptom | Cause / fix |
 |---|---|
-| `AbyssContentBuildLibrary missing` warning, no skeletal sockets | the editor target was not rebuilt after pulling; build `AbyssfireEditor` first |
+| `STALE EDITOR BINARY` warning (missing `AbyssContentBuildLibrary` functions), LOD screen sizes / sockets skipped | the editor target was not rebuilt after pulling (`SKIP_EDITOR_BUILD=force`, or the wrapper's rebuild of a stale binary failed: its UBT errors are above the warning); fix the build if it failed, then run the rebuild command the warning prints, or `build_content.sh` without `SKIP_EDITOR_BUILD` |
+| every master *not compiled (NullRHI commandlet …)* | expected for a plain headless run; `build_content.sh --shaders` compiles them |
+| `… parameter X not applied (MaterialEditingLibrary returned …; helper unavailable …)` | the value did not stick when read back and the C++ fallback is missing (stale editor binary) or failed too; the message lists the parent's parameters. 5.8's setters return False even when they apply the value: that is only a compatibility note |
+| `MI_…: parent has no <kind> parameter X (…)` | the instance plan (manifest slot `params`, `materials.py` defaults) names a parameter the master does not declare (typo, or the master renamed it); the message lists the master's parameters. Checked before any setter, because an instance keeps an override for any name |
+| `slot N (M_AF_Outline) has no triangles` note | the manifest's `triangles` says the hull is empty, so Interchange imports no such slot; nothing to do |
 | `unreal.X does not exist in this engine version` | an API rename in 5.8: the message names the class / property / enum; update `abyss_content/ue/*` |
 | `import produced no asset` | Interchange rejected the FBX; the log has `LogInterchange` errors. Legacy importer fallback for one run: add `Interchange.FeatureFlags.Import.FBX False` under `[ConsoleVariables]` in `Config/DefaultEngine.ini` (ue58-platform.md §11.3) |
 | `bound the mesh to … instead of SKEL_…` | the FBX armature differs from the family skeleton (bone names / hierarchy): re-export from the art kit |
@@ -227,8 +260,17 @@ python3 unreal/Scripts/tests/fetch_ue_stub.py             # optional: UE Python 
   members, material-expression properties) against a generated stub: the PyPI `unreal-stub` (UE 5.6) fetched by
   `fetch_ue_stub.py`, or your own editor's stub (`UE_PY_STUB=<project>/Intermediate/PythonStub/unreal.py`, written
   with *Editor Preferences → Python → Developer Mode*) — prefer the 5.8.3 one once installed.
-* `test_flow.py` runs the whole build twice against `tests/fake_unreal.py` (an in-memory `unreal`) and checks the
-  results and that a second run is a no-op. `test_manifest.py` covers the planner, `pngio` and the generated textures.
+* `test_flow.py` runs the whole build twice against `tests/fake_unreal.py` (an in-memory `unreal` that behaves like UE
+  5.8 where it matters: instance-parameter setters return False, NullRHI commandlet, 5.8's Interchange deprecations;
+  switches for a stale / missing helper library and the 5.6 Interchange API) and checks the results and that a second
+  run is a no-op. `test_editor_compat.py` covers those engine-version paths (parameter read-back, parent check and C++
+  fallback, the stale-binary warning, the shader check, Interchange replacements, the clip frame range and its fallback). `test_manifest.py` covers
+  the planner (empty outline slots, clip FBX spans), `pngio` and the generated textures. `test_build_content_sh.py`
+  runs `build_content.sh` against a stand-in engine (stale-binary rebuild and its failure, `SKIP_EDITOR_BUILD=force`,
+  `--shaders`, the log scan).
+* `test_api_names.py` also keeps the C++ helper's UFUNCTIONs, `core.CONTENT_LIB_FUNCTIONS` and the helper calls in the
+  scripts in step, and checks that every renamed Interchange setting (`meshes.VERSIONED_SETTINGS`) keeps a UE 5.6
+  spelling.
 * `test_ui_i18n_keys.py` greps `Source/Abyssfire` for every literal i18n key (Loc* / LocalizeOr / NameOr / `{ "key",
   TEXT("English") }` rows) and fails when one is missing from `Data/i18n_zh-CN.json` or `Data/i18n_en.json` (the UI
   would silently show the English fallback in the zh-CN build). New UI text goes into `PORT_STRINGS`

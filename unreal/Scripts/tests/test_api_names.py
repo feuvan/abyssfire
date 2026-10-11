@@ -3,7 +3,8 @@
 Without Unreal installed the editor-side code cannot run; this test parses abyss_content/ue/*.py and build_content.py
 and checks that each `unreal.<Name>`, each subsystem / library method, each editor property name, each enum member and
 each material-expression property exists in the stub. Skipped when no stub is available (tests/fetch_ue_stub.py, or
-UE_PY_STUB=<path to unreal.py>).
+UE_PY_STUB=<path to unreal.py>). ContentLibraryContractTests (no stub needed) keep the C++ helper's UFUNCTIONs, the
+Python list core.CONTENT_LIB_FUNCTIONS and the calls in the scripts in step.
 """
 from __future__ import annotations
 
@@ -28,13 +29,16 @@ OWN_METHODS = {
     "configure_skeletal_mesh_socket", "mesh_has_bone", "finish_compilation",          # AbyssContentBuildLibrary
     "set_skeletal_mesh_lod_screen_size", "get_skeletal_mesh_lod_screen_size",
     "set_material_instance_texture_parameter", "get_texture_parameter_infos",
+    "set_material_instance_scalar_parameter", "set_material_instance_vector_parameter", "get_material_compile_errors",
 }
+HELPER_HEADER = SCRIPTS.parent / "Source" / "Abyssfire" / "Public" / "ContentBuild" / "AbyssContentBuildLibrary.h"
+
 PY_BUILTIN_METHODS = {"append", "items", "keys", "values", "get", "split", "strip", "lower", "upper", "startswith",
                       "endswith", "replace", "join", "format", "pop", "update", "extend", "copy", "is_file", "is_dir",
                       "read_text", "write_text", "read_bytes", "write_bytes", "mkdir", "with_suffix", "relative_to",
                       "as_posix", "exists", "rsplit", "setdefault", "sort", "index", "count", "add", "note", "error",
                       "warning", "begin", "end", "skip", "asset", "resolve", "fingerprint", "rglob", "glob", "decode",
-                      "encode", "hexdigest", "digest",
+                      "encode", "hexdigest", "digest", "rstrip", "isupper",
                       # stdlib / our own plan objects
                       "spec_from_file_location", "module_from_spec", "exec_module", "sha256", "ArgumentParser",
                       "add_argument", "parse_args", "summary"}
@@ -150,7 +154,7 @@ class ApiNameTests(unittest.TestCase):
                                                                  "fxmeshes", "paths", "pngio", "hlsl", "args", "json",
                                                                  "os", "sys", "re", "math", "time", "shlex", "slow",
                                                                  "importlib", "traceback", "lib", "spec", "module",
-                                                                 "h", "f", "mel", "self"):
+                                                                 "h", "f", "mel", "self", "platform"):
                     continue
                 if method in PY_BUILTIN_METHODS or method in OWN_METHODS or method.startswith("_"):
                     continue
@@ -198,7 +202,7 @@ class ApiNameTests(unittest.TestCase):
                 if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict) and any(
                         isinstance(t, ast.Name) and t.id.endswith("SETTINGS") for t in node.targets):
                     dicts.append(node.value)
-                if isinstance(node, ast.FunctionDef) and node.name == "settings_for":
+                if isinstance(node, ast.FunctionDef) and node.name in ("settings_for", "set_anim_range"):
                     dicts += [n for n in ast.walk(node) if isinstance(n, ast.Dict)]
             for d in dicts:
                 for k in d.keys:
@@ -206,6 +210,20 @@ class ApiNameTests(unittest.TestCase):
                     if key and key not in self.stub.all_props:
                         missing.append(f"{path.name}:{d.lineno} property {key}")
         self.assertFalse(missing, "unknown editor properties:\n" + "\n".join(missing))
+
+    def test_versioned_settings_keep_a_56_spelling(self):
+        """meshes.VERSIONED_SETTINGS: the last (oldest) spelling of every entry is a property of the UE 5.6 API, so the
+        older engines keep a setting the newer ones renamed."""
+        tree = self.trees[SCRIPTS / "abyss_content" / "ue" / "meshes.py"]
+        table = next(n.value for n in tree.body if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name)
+                     and n.target.id == "VERSIONED_SETTINGS")
+        missing = []
+        for entry in table.elts:
+            spellings = [(_str(t.elts[0]), _str(t.elts[1])) for t in entry.elts]
+            if spellings[-1][1] not in self.stub.all_props:
+                missing.append(f"{spellings[-1][0]}.{spellings[-1][1]}")
+        self.assertTrue(table.elts)
+        self.assertFalse(missing, "versioned settings without a UE 5.6 spelling:\n" + "\n".join(missing))
 
     def test_enum_members_exist(self):
         missing = []
@@ -229,6 +247,55 @@ class ApiNameTests(unittest.TestCase):
             if not self.stub.enum_has(enum, member):
                 missing.append(f"(data) {enum}.{member}")
         self.assertFalse(missing, "unknown enum members:\n" + "\n".join(missing))
+
+
+def _snake(name: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+class ContentLibraryContractTests(unittest.TestCase):
+    """AbyssContentBuildLibrary: header UFUNCTIONs == core.CONTENT_LIB_FUNCTIONS ⊇ every helper the scripts call."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        core = ast.parse((SCRIPTS / "abyss_content" / "ue" / "core.py").read_text(encoding="utf-8"))
+        node = next(n for n in core.body if isinstance(n, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "CONTENT_LIB_FUNCTIONS" for t in n.targets))
+        cls.listed = [_str(e) for e in node.value.elts]
+
+    def test_header_matches_the_list(self):
+        text = HELPER_HEADER.read_text(encoding="utf-8")
+        decls = re.findall(r"UFUNCTION\(([^)]*)\)\s*(static\s+)?[\w<>:*&\s]+?\b(\w+)\s*\(", text)
+        self.assertTrue(decls)
+        for spec, static, name in decls:
+            self.assertIn("BlueprintCallable", spec, name)
+            self.assertTrue(static, f"{name} must be static")
+        self.assertEqual(sorted(_snake(name) for _, _, name in decls), sorted(self.listed))
+        self.assertEqual(len(set(self.listed)), len(self.listed))
+        self.assertLessEqual(set(self.listed), OWN_METHODS)
+
+    def test_scripts_only_call_listed_helpers(self):
+        used = set()
+        for path in sources():
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    if node.func.attr == "helper" and node.args:
+                        name = _str(node.args[0])
+                        if name is None and isinstance(node.args[0], ast.JoinedStr):
+                            # f"set_material_instance_{kind}_parameter": every kind
+                            name = "".join(v.value if isinstance(v, ast.Constant) else "{}"
+                                           for v in node.args[0].values)
+                        if name and "{}" in name:
+                            used |= {name.format(k) for k in ("texture", "scalar", "vector")}
+                        elif name:
+                            used.add(name)
+                    owner = node.func.value
+                    if (isinstance(owner, ast.Name) and owner.id == "lib") or (
+                            isinstance(owner, ast.Attribute) and owner.attr == "content_lib"):
+                        used.add(node.func.attr)
+        self.assertTrue(used)
+        self.assertLessEqual(used, set(self.listed), "helpers called but not in core.CONTENT_LIB_FUNCTIONS")
 
 
 if __name__ == "__main__":

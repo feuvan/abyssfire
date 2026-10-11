@@ -174,6 +174,84 @@ class SyntheticManifestTests(unittest.TestCase):
         self.assertEqual([a.name for a in plan.assets], ["SM_Foliage_Plains_Oak_A"])
         self.assertIn("SK_Mon_Slime", plan.skipped)
 
+    def test_empty_outline_slots_are_not_planned(self):
+        """A hull without triangles (manifest `triangles.outline` 0, or bySlot 0) is a slot Interchange never creates:
+        dropped with a note, no outline instance only it would use; skeletal and static meshes alike."""
+        data = copy.deepcopy(self.BASE)
+        data["assets"]["SK_Mon_Slime"]["triangles"] = {"toon": 288, "outline": 0}
+        data["assets"]["SM_Foliage_Plains_Oak_A"]["triangles"] = {"toon": 900, "outline": 0,
+                                                                  "bySlot": {"MI_AF_ToonFoliage_Mon": 900,
+                                                                             "M_AF_Outline": 0}}
+        plan = manifest.build_plan(self.make(data))
+        self.assertEqual([p for p in plan.problems if p.level != "note"], [])
+        notes = [p for p in plan.problems if p.level == "note"]
+        self.assertEqual(sorted(p.subject for p in notes), ["SK_Mon_Slime", "SM_Foliage_Plains_Oak_A"])
+        for name in ("SK_Mon_Slime", "SM_Foliage_Plains_Oak_A"):
+            asset = plan.asset(name)
+            self.assertEqual([s.index for s in asset.slots], [0])
+            self.assertEqual([s.name for s in asset.empty_slots], ["M_AF_Outline"])
+            self.assertEqual(sorted(plan.slot_materials[name]), [0])
+        self.assertFalse([n for n in plan.instances if n.startswith(("MI_AF_Outline", "MI_AF_OutlineFoliage"))],
+                         sorted(plan.instances))
+
+    def test_outline_slot_kept_when_any_lod_or_count_says_it_has_faces(self):
+        data = copy.deepcopy(self.BASE)
+        slime = data["assets"]["SK_Mon_Slime"]
+        slime["triangles"] = {"toon": 288, "outline": 0}
+        slime["lods"] = [{"index": 1, "fbx": "Monsters/SK_Mon_Slime_LOD1.fbx",
+                          "triangles": {"toon": 90, "outline": 40}}]
+        data["assets"]["SM_Foliage_Plains_Oak_A"]["triangles"] = {"toon": 900, "outline": 120}
+        plan = manifest.build_plan(self.make(data))
+        for name in ("SK_Mon_Slime", "SM_Foliage_Plains_Oak_A"):
+            self.assertEqual([s.index for s in plan.asset(name).slots], [0, 1], name)
+        self.assertIn("MI_AF_Outline_Mon_SmallMonster", plan.instances)
+        self.assertFalse([p for p in plan.problems if p.level == "note"])
+
+    def test_clip_fbx_span_must_match_the_manifest_frames(self):
+        def fbx(start_s: float, stop_s: float) -> bytes:
+            def prop(name: str, seconds: float) -> bytes:
+                rec = b""
+                for text in (name, "KTime", "Time", ""):
+                    rec += b"S" + len(text).to_bytes(4, "little") + text.encode()
+                return rec + b"L" + round(seconds * manifest.FBX_KTIME_PER_SECOND).to_bytes(8, "little", signed=True)
+            # a Definitions template default first (0), then the object's own records (the last ones win)
+            return (b"Kaydara FBX Binary  \x00\x1a\x00" + prop("LocalStart", 0) + prop("LocalStop", 0)
+                    + prop("LocalStart", start_s) + prop("LocalStop", stop_s))
+
+        path = self.make(copy.deepcopy(self.BASE))
+        root = path.parent
+        (root / "Monsters/A_Mon_Slime_Idle.fbx").write_bytes(fbx(0.0, 1.0))          # 60 frames, as listed
+        (root / "Monsters/A_Mon_Slime_HurtAdd.fbx").write_bytes(fbx(0.0, 0.5))       # 30 frames, manifest 18
+        self.assertEqual(manifest.fbx_anim_stack_seconds(root / "Monsters/A_Mon_Slime_Idle.fbx"), (0.0, 1.0))
+        self.assertIsNone(manifest.fbx_anim_stack_seconds(root / "Textures/T_AF_Palette_Mon_BC.png"))
+        plan = manifest.build_plan(path)
+        spans = [str(p) for p in plan.problems if "animation stack" in p.message]
+        self.assertEqual(len(spans), 1, spans)
+        self.assertIn("A_Mon_Slime_HurtAdd", spans[0])
+        self.assertIn("spans frames 0.00..30.00 at 60 fps, the manifest 18 frames", spans[0])
+        # the right length starting later is wrong too: the import window is frames 0..frames
+        (root / "Monsters/A_Mon_Slime_HurtAdd.fbx").write_bytes(fbx(0.1, 0.4))
+        spans = [str(p) for p in manifest.build_plan(path).problems if "animation stack" in p.message]
+        self.assertEqual(len(spans), 1, spans)
+        self.assertIn("spans frames 6.00..24.00", spans[0])
+
+
+class ExportedClipTests(unittest.TestCase):
+    """The clips import frames 0..frames (ue/meshes.py set_anim_range): every exported clip FBX spans exactly that."""
+
+    def test_exported_stacks_match_the_manifest(self):
+        if not paths.MANIFEST_PATH.is_file():
+            self.skipTest("no Art/Export/manifest.json")
+        plan = manifest.build_plan(scan_textures=False)
+        checked = 0
+        for asset in plan.assets:
+            for clip in asset.clips:
+                span = manifest.fbx_anim_stack_seconds(clip.fbx)
+                self.assertIsNotNone(span, clip.asset)
+                self.assertAlmostEqual((span[1] - span[0]) * clip.fps, clip.frames, places=2, msg=clip.asset)
+                checked += 1
+        self.assertGreater(checked, 0)
+
 
 class PngTests(unittest.TestCase):
     def test_roundtrip_and_determinism(self):

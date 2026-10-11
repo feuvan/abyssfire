@@ -1,14 +1,18 @@
-// Editor-time helpers for the content build (unreal/Scripts/build_content.py, ue58-platform.md 11): the two things the
-// editor Python API cannot do on its own. Exposed to Python as unreal.AbyssContentBuildLibrary; never called by the game.
+// Editor-time helpers for the content build (unreal/Scripts/build_content.py, ue58-platform.md 11): what the editor
+// Python API cannot do on its own. Exposed to Python as unreal.AbyssContentBuildLibrary; never called by the game. The
+// scripts list every function they call in abyss_content/ue/core.py CONTENT_LIB_FUNCTIONS and report an editor binary
+// built before one of them was added (stale_editor_warning).
 //
 // * Skeletal-mesh sockets: USkeletalMeshSocket::SocketName / BoneName are read-only to Python, so the build creates the
 //   socket object in Python, names it here, then adds it with SkeletalMesh.add_socket (manifest sockets fx_feet,
 //   fx_chest, fx_head, fx_overhead, fx_hand_l/r, visor; WorldContract.md 2.3).
 // * Waiting for asynchronous asset builds and shader compilation before the build reads material statistics, saves and
-//   quits the commandlet.
+//   quits the commandlet; the compile errors of a material.
+// * Skeletal-mesh LOD screen sizes (UE 5.8 no longer exposes SkeletalMesh.lod_info to Python) and material-instance
+//   parameter overrides when MaterialEditingLibrary does not apply one.
 //
 // Only public data members and long-standing exported entry points are used, so the file stays link-safe across 5.x
-// engine versions. Both functions do nothing in non-editor builds.
+// engine versions. Every function does nothing (returns false / empty) in non-editor builds.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -66,7 +70,31 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
 	static bool SetMaterialInstanceTextureParameter(UMaterialInstanceConstant* Instance, FName ParameterName, UTexture* Value);
 
+	/**
+	 * Sets a global scalar parameter override on Instance (Python: set_material_instance_scalar_parameter): the fallback
+	 * when MaterialEditingLibrary.set_material_instance_scalar_parameter_value did not apply the value. Returns false only
+	 * for missing arguments. Editor only.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
+	static bool SetMaterialInstanceScalarParameter(UMaterialInstanceConstant* Instance, FName ParameterName, float Value);
+
+	/**
+	 * Sets a global vector parameter override on Instance (Python: set_material_instance_vector_parameter), like
+	 * SetMaterialInstanceScalarParameter. Editor only.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
+	static bool SetMaterialInstanceVectorParameter(UMaterialInstanceConstant* Instance, FName ParameterName, FLinearColor Value);
+
 	/** Names of every texture parameter Material exposes, as instances see them (Python: get_texture_parameter_infos). */
 	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
 	static TArray<FName> GetTextureParameterInfos(UMaterialInterface* Material);
+
+	/**
+	 * Shader compile errors of Material for the editor's maximum feature level / shader platform, after waiting for its
+	 * compilation (Python: get_material_compile_errors). Empty when it compiled, when it has no material resource there,
+	 * and in non-editor builds. Needs a real RHI: a -run=pythonscript commandlet compiles no shaders unless it was started
+	 * with -AllowCommandletRendering (build_content.sh --shaders).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Abyssfire|Content Build")
+	static TArray<FString> GetMaterialCompileErrors(UMaterialInterface* Material);
 };

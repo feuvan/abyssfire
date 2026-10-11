@@ -5,6 +5,12 @@ It does not validate engine API names (tests/test_api_names.py does that against
 deliberately permissive about property names. Imports are simulated from the file names: *.png -> Texture2D,
 SK_*.fbx -> SkeletalMesh (+ a skeleton unless one is passed), A_*.fbx -> AnimSequence, SM_*.fbx -> StaticMesh,
 *.ogg -> SoundWave.
+
+It emulates UE 5.8 where the build depends on it: the MaterialEditingLibrary instance-parameter setters apply the value
+but return False; the command line is a -run=pythonscript commandlet without -AllowCommandletRendering (NullRHI: no
+shader statistics); the Interchange properties 5.8 deprecated or removed raise. Switches (reset() restores 5.8):
+STATE["mel_refuse"] (parameters MaterialEditingLibrary does not apply), STATE["command_line"], STATE["compile_errors"],
+STATE["interchange_missing"] (INTERCHANGE_58 / INTERCHANGE_56) and use_content_library("current" | "stale" | "none").
 """
 from __future__ import annotations
 
@@ -19,13 +25,37 @@ LOG: list[tuple[str, str]] = []
 REGISTRY: dict[str, "Object"] = {}       # package path -> asset
 DIRS: set[str] = set()
 STATE: dict[str, Any] = {"content_dir": None, "unreal_dir": None, "anim_meta": {}, "imports": 0, "compiles": 0}
+COMMANDLET_LINE = '"/p/Abyssfire.uproject" -run=pythonscript -script="build_content.py" -unattended -nosplash -stdout'
+
+# Interchange properties an engine version does not expose: "<pipeline part>.<property>" -> the error reading it raises.
+INTERCHANGE_58 = {
+    "common_meshes_properties.auto_detect_mesh_type":
+        "is deprecated: bAutoDetectMeshType is deprecated. "
+        "Use bConvertStaticsWithAnimatedTransformToSkeletals instead.",
+    "common_skeletal_meshes_and_animations_properties.convert_statics_with_morph_targets_to_skeletals":
+        "is deprecated: bConvertStaticsWithMorphTargetsToSkeletals is deprecated. Use "
+        "UInterchangeGenericCommonMeshesProperties::bConvertStaticsWithMorphTargetsToSkeletals instead.",
+    "mesh_pipeline.combine_static_meshes":
+        "is deprecated: bCombineStaticMeshes is no longer used. Use CombineStaticMeshesBehavior",
+    "mesh_pipeline.import_collision": "is deprecated: Use Collision instead.",
+    "animation_pipeline.snap_to_closest_frame_boundary": "Failed to find property",
+}
+INTERCHANGE_56 = {
+    "common_meshes_properties.convert_statics_with_animated_transform_to_skeletals": "Failed to find property",
+    "common_meshes_properties.convert_statics_with_morph_targets_to_skeletals": "Failed to find property",
+    "mesh_pipeline.combine_static_meshes_behavior": "Failed to find property",
+    "mesh_pipeline.import_collision": "is deprecated: Use Collision instead.",
+}
 
 
 def reset(content_dir: Path, unreal_dir: Path, anim_meta: dict[str, tuple[float, int]]) -> None:
     REGISTRY.clear()
     DIRS.clear()
     LOG.clear()
-    STATE.update(content_dir=content_dir, unreal_dir=unreal_dir, anim_meta=anim_meta, imports=0, compiles=0)
+    STATE.update(content_dir=content_dir, unreal_dir=unreal_dir, anim_meta=anim_meta, imports=0, compiles=0,
+                 mel_refuse=set(), command_line=COMMANDLET_LINE, compile_errors={},
+                 interchange_missing=dict(INTERCHANGE_58), saved=[], pipelines={})
+    use_content_library("current")
 
 
 def _pkg(path: str) -> str:
@@ -83,6 +113,13 @@ class Rotator(_Struct):
 
     def __init__(self, roll: float = 0.0, pitch: float = 0.0, yaw: float = 0.0) -> None:
         self.roll, self.pitch, self.yaw = float(roll), float(pitch), float(yaw)
+
+
+class Int32Interval(_Struct):
+    _fields = ("min", "max")
+
+    def __init__(self, min: int = 0, max: int = 0) -> None:  # noqa: A002 - the engine's keyword names
+        self.min, self.max = int(min), int(max)
 
 
 class Box(_Struct):
@@ -399,8 +436,35 @@ class AssetImportTask(Object):
         return [REGISTRY[_pkg(p)] for p in self.get_editor_property("imported_object_paths")]
 
 
+class _CombineBehavior:
+    """Stand-in for the enum behind 5.8's InterchangeGenericMeshPipeline.combine_static_meshes_behavior."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __repr__(self) -> str:
+        return f"CombineBehavior.{self.name}"
+
+
+_CombineBehavior.DONT_COMBINE = _CombineBehavior("DONT_COMBINE")  # type: ignore[attr-defined]
+_CombineBehavior.COMBINE_ALL = _CombineBehavior("COMBINE_ALL")    # type: ignore[attr-defined]
+
+
 class _Pipeline(Object):
-    pass
+    _defaults = {"combine_static_meshes_behavior": _CombineBehavior.DONT_COMBINE}  # type: ignore[attr-defined]
+
+    def _check(self, name: str) -> None:
+        msg = STATE.get("interchange_missing", {}).get(f"{self._name}.{name}")
+        if msg is not None:
+            raise RuntimeError(f"Property '{name}' on '{self._name}' {msg}")
+
+    def get_editor_property(self, name: str) -> Any:
+        self._check(name)
+        return super().get_editor_property(name)
+
+    def set_editor_property(self, name: str, value: Any) -> None:
+        self._check(name)
+        super().set_editor_property(name, value)
 
 
 class InterchangeGenericAssetsPipeline(_Pipeline):
@@ -488,9 +552,15 @@ class MaterialEditingLibrary:
         return mi._params.get(("t", name))
 
     @staticmethod
+    def _set_param(mi: Any, key: tuple[str, str], value: Any) -> bool:
+        # UE 5.8: the value is applied but the call returns False. STATE["mel_refuse"]: names it does not apply at all.
+        if key[1] not in STATE.get("mel_refuse", set()):
+            mi._params[key] = value
+        return False
+
+    @staticmethod
     def set_material_instance_texture_parameter_value(mi: Any, name: str, value: Any) -> bool:
-        mi._params[("t", name)] = value
-        return True
+        return MaterialEditingLibrary._set_param(mi, ("t", str(name)), value)
 
     @staticmethod
     def get_material_instance_scalar_parameter_value(mi: Any, name: str) -> float:
@@ -498,8 +568,7 @@ class MaterialEditingLibrary:
 
     @staticmethod
     def set_material_instance_scalar_parameter_value(mi: Any, name: str, value: float) -> bool:
-        mi._params[("s", name)] = value
-        return True
+        return MaterialEditingLibrary._set_param(mi, ("s", str(name)), value)
 
     @staticmethod
     def get_material_instance_vector_parameter_value(mi: Any, name: str) -> LinearColor:
@@ -507,28 +576,42 @@ class MaterialEditingLibrary:
 
     @staticmethod
     def set_material_instance_vector_parameter_value(mi: Any, name: str, value: LinearColor) -> bool:
-        mi._params[("v", name)] = value
-        return True
+        return MaterialEditingLibrary._set_param(mi, ("v", str(name)), value)
 
     @staticmethod
     def update_material_instance(mi: Any) -> None:
         pass
 
     @staticmethod
-    def get_texture_parameter_names(material: Any) -> list[str]:
+    def _parameter_names(material: Any, prefix: str) -> list[str]:
         names: list[str] = []
         for expr in getattr(material, "_expressions", []):
-            if type(expr).__name__.startswith("MaterialExpressionTexture"):
+            if type(expr).__name__.startswith(prefix):
                 name = str(expr.get_editor_property("parameter_name") or "")
                 if name and name not in names:
                     names.append(name)
         return names
 
     @staticmethod
+    def get_texture_parameter_names(material: Any) -> list[str]:
+        return MaterialEditingLibrary._parameter_names(material, "MaterialExpressionTexture")
+
+    @staticmethod
+    def get_scalar_parameter_names(material: Any) -> list[str]:
+        return MaterialEditingLibrary._parameter_names(material, "MaterialExpressionScalarParameter")
+
+    @staticmethod
+    def get_vector_parameter_names(material: Any) -> list[str]:
+        return MaterialEditingLibrary._parameter_names(material, "MaterialExpressionVectorParameter")
+
+    @staticmethod
     def get_statistics(material: Any) -> Object:
+        # A commandlet without -AllowCommandletRendering runs the NullRHI: nothing is compiled, every count is 0.
+        cmd = str(STATE.get("command_line", "")).lower()
+        compiled = "-run=" not in cmd or "-allowcommandletrendering" in cmd
         st = Object()
         for k in ("num_vertex_shader_instructions", "num_pixel_shader_instructions", "num_samplers"):
-            st._props[k] = 42
+            st._props[k] = 42 if compiled else 0
         return st
 
 
@@ -550,6 +633,7 @@ class EditorAssetSubsystem:
         return True
 
     def save_loaded_asset(self, obj: Any, only_if_is_dirty: bool = True) -> bool:
+        STATE.setdefault("saved", []).append(obj._package)
         return True
 
     def save_directory(self, path: str, only_if_is_dirty: bool = True, recursive: bool = True) -> bool:
@@ -598,6 +682,7 @@ class AssetTools:
             elif src.suffix.lower() == ".ogg":
                 created.append(register(REGISTRY.get(f"{dest}/{stem}") or SoundWave(), f"{dest}/{stem}"))
             elif src.suffix.lower() == ".fbx":
+                STATE.setdefault("pipelines", {})[stem] = pipeline
                 common = pipeline.get_editor_property("common_skeletal_meshes_and_animations_properties")
                 mesh_p = pipeline.get_editor_property("mesh_pipeline")
                 skeleton = common.get_editor_property("skeleton")
@@ -606,6 +691,12 @@ class AssetTools:
                     register(seq, f"{dest}/{stem}")
                     seq._props["skeleton"] = skeleton
                     length_ms, frames = STATE["anim_meta"].get(stem, (1000.0, 60))
+                    anim_p = pipeline.get_editor_property("animation_pipeline")
+                    if anim_p.get_editor_property("animation_range") == "InterchangeAnimationRange.SET_RANGE":
+                        rng = anim_p.get_editor_property("frame_import_range")
+                        rate = anim_p.get_editor_property("custom_bone_animation_sample_rate") or 30
+                        frames = rng.max - rng.min
+                        length_ms = frames * 1000.0 / rate
                     seq._props["sequence_length"] = length_ms / 1000.0
                     seq._frames = frames
                     created.append(seq)
@@ -762,6 +853,10 @@ class SystemLibrary:
         return "5.8.3-fake"
 
     @staticmethod
+    def get_command_line() -> str:
+        return str(STATE.get("command_line", COMMANDLET_LINE))
+
+    @staticmethod
     def get_console_variable_bool_value(name: str) -> bool:
         return False
 
@@ -837,12 +932,42 @@ class AbyssContentBuildLibrary:
         return True
 
     @staticmethod
+    def set_material_instance_scalar_parameter(mi: Any, name: str, value: float) -> bool:
+        mi._params[("s", str(name))] = float(value)
+        return True
+
+    @staticmethod
+    def set_material_instance_vector_parameter(mi: Any, name: str, value: LinearColor) -> bool:
+        mi._params[("v", str(name))] = value
+        return True
+
+    @staticmethod
     def get_texture_parameter_infos(material: Any) -> list[str]:
         return MaterialEditingLibrary.get_texture_parameter_names(material)
 
     @staticmethod
+    def get_material_compile_errors(material: Any) -> list[str]:
+        return list(STATE.get("compile_errors", {}).get(material.get_name(), []))
+
+    @staticmethod
     def finish_compilation() -> None:
         pass
+
+
+# The helper library of an editor binary built before 6a657c8 (no LOD screen sizes, no parameter fallbacks).
+STALE_LIBRARY_FUNCTIONS = ("configure_skeletal_mesh_socket", "mesh_has_bone", "finish_compilation")
+
+
+def use_content_library(mode: str) -> None:
+    """unreal.AbyssContentBuildLibrary: "current" (every helper), "stale" (an old editor binary) or "none"."""
+    if mode == "current":
+        lib: Any = AbyssContentBuildLibrary
+    elif mode == "stale":
+        lib = type("AbyssContentBuildLibrary", (), {n: AbyssContentBuildLibrary.__dict__[n]
+                                                    for n in STALE_LIBRARY_FUNCTIONS})
+    else:
+        lib = None
+    MOD.AbyssContentBuildLibrary = lib
 
 
 class ScopedSlowTask:
@@ -869,6 +994,10 @@ class Paths:
     @staticmethod
     def project_dir() -> str:
         return str(STATE["unreal_dir"]) + "/"
+
+    @staticmethod
+    def engine_dir() -> str:
+        return "/Users/Shared/Epic Games/UE_5.8/Engine/"
 
     @staticmethod
     def convert_relative_path_to_full(path: str, base: str = "") -> str:
@@ -908,7 +1037,8 @@ class _Factory(Object):
 
 _EXPLICIT = {k: v for k, v in dict(globals()).items() if not k.startswith("_") and k not in (
     "annotations", "copy", "json", "types", "Path", "Any", "MOD", "LOG", "REGISTRY", "DIRS", "STATE", "reset",
-    "register", "SUBSYSTEMS", "EXPRESSION_INPUTS")}
+    "register", "SUBSYSTEMS", "EXPRESSION_INPUTS", "COMMANDLET_LINE", "INTERCHANGE_58", "INTERCHANGE_56",
+    "STALE_LIBRARY_FUNCTIONS", "use_content_library")}
 _DYNAMIC: dict[str, Any] = {}
 
 

@@ -32,6 +32,8 @@ class BuildReport:
     assets: dict[str, dict[str, Any]] = field(default_factory=dict)     # content path -> {class, action, ...}
     materials: dict[str, dict[str, Any]] = field(default_factory=dict)  # material -> stats
     verification: list[str] = field(default_factory=list)
+    # Engine-compatibility notes, one line per build however many assets hit them: note -> subjects (assets) in order.
+    compat: dict[str, list[str]] = field(default_factory=dict)
     plan: dict[str, Any] = field(default_factory=dict)
     finished: float = 0.0
     _current: StepResult | None = None
@@ -67,6 +69,13 @@ class BuildReport:
     def note(self, text: str) -> None:
         if self._current is not None:
             self._current.notes.append(text)
+
+    def compat_note(self, text: str, subject: str = "") -> None:
+        """An engine-version difference the build works around (an Interchange property this engine renamed, a setter
+        whose return value lies): reported once per build with the number of assets it touched, not once per asset."""
+        subjects = self.compat.setdefault(text, [])
+        if subject and subject not in subjects:
+            subjects.append(subject)
 
     # ---- problems ----
     def error(self, text: str) -> None:
@@ -115,6 +124,7 @@ class BuildReport:
             "plan": self.plan,
             "materials": self.materials,
             "verification": self.verification,
+            "compatibility": [{"note": k, "count": len(v), "subjects": list(v)} for k, v in self.compat.items()],
             "assets": dict(sorted(self.assets.items())),
         }
 
@@ -140,6 +150,11 @@ class BuildReport:
                              ("Verification", d["verification"])):
             lines += ["", f"## {title}", ""]
             lines += [f"* {x}" for x in items] or ["(none)"]
+        if d["compatibility"]:
+            lines += ["", "## Engine compatibility (once per build)", ""]
+            for c in d["compatibility"]:
+                shown = ", ".join(c["subjects"][:6]) + (", …" if c["count"] > 6 else "")
+                lines.append(f"* {c['note']}" + (f" — {c['count']} asset(s): {shown}" if c["count"] else ""))
         if d["materials"]:
             lines += ["", "## Materials", "", "| Material | Status | VS instr. | PS instr. | Samplers |", "|---|---|---|---|---|"]
             for name, m in sorted(d["materials"].items()):

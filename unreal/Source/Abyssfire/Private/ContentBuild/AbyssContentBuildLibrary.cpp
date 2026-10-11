@@ -11,7 +11,27 @@
 
 #if WITH_EDITOR
 #include "AssetCompilingManager.h"
+#include "MaterialShared.h"
+#include "RHI.h"
 #include "ShaderCompiler.h"
+
+namespace
+{
+	// UMaterialInterface::GetMaterialResource takes the shader platform in recent engines and the feature level in older
+	// ones: call whichever this engine declares (resolved at compile time; the other branch is never instantiated).
+	template <typename MaterialType>
+	FMaterialResource* AbyssEditorMaterialResource(MaterialType* Material)
+	{
+		if constexpr (requires(MaterialType* M) { M->GetMaterialResource(GMaxRHIShaderPlatform); })
+		{
+			return Material->GetMaterialResource(GMaxRHIShaderPlatform);
+		}
+		else
+		{
+			return Material->GetMaterialResource(GMaxRHIFeatureLevel);
+		}
+	}
+}
 #endif
 
 bool UAbyssContentBuildLibrary::MeshHasBone(USkeletalMesh* Mesh, FName BoneName)
@@ -105,6 +125,57 @@ bool UAbyssContentBuildLibrary::SetMaterialInstanceTextureParameter(UMaterialIns
 #else
 	return false;
 #endif
+}
+
+bool UAbyssContentBuildLibrary::SetMaterialInstanceScalarParameter(UMaterialInstanceConstant* Instance, FName ParameterName,
+	float Value)
+{
+#if WITH_EDITOR
+	if (Instance == nullptr || ParameterName.IsNone())
+	{
+		return false;
+	}
+	Instance->SetScalarParameterValueEditorOnly(FMaterialParameterInfo(ParameterName), Value);
+	Instance->MarkPackageDirty();
+	return true;
+#else
+	return false;
+#endif
+}
+
+bool UAbyssContentBuildLibrary::SetMaterialInstanceVectorParameter(UMaterialInstanceConstant* Instance, FName ParameterName,
+	FLinearColor Value)
+{
+#if WITH_EDITOR
+	if (Instance == nullptr || ParameterName.IsNone())
+	{
+		return false;
+	}
+	Instance->SetVectorParameterValueEditorOnly(FMaterialParameterInfo(ParameterName), Value);
+	Instance->MarkPackageDirty();
+	return true;
+#else
+	return false;
+#endif
+}
+
+TArray<FString> UAbyssContentBuildLibrary::GetMaterialCompileErrors(UMaterialInterface* Material)
+{
+	TArray<FString> Errors;
+#if WITH_EDITOR
+	if (Material == nullptr)
+	{
+		return Errors;
+	}
+	FMaterialResource* Resource = AbyssEditorMaterialResource(Material);
+	if (Resource == nullptr)
+	{
+		return Errors;
+	}
+	Resource->FinishCompilation();
+	Errors = Resource->GetCompileErrors();
+#endif
+	return Errors;
 }
 
 TArray<FName> UAbyssContentBuildLibrary::GetTextureParameterInfos(UMaterialInterface* Material)

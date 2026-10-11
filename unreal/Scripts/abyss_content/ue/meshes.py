@@ -7,25 +7,121 @@ pipeline stack is replaced, so editor defaults never leak in):
   no lightmap UVs, sockets from SOCKET_ empties (static meshes);
 * the first skeletal mesh of a skeleton family creates the skeleton, which is moved to /Game/Abyssfire/Skeletons/<SKEL_x>;
   the others and every animation import onto it;
+* clips import an explicit frame range, frames 0..manifest `frames` at the clip rate (set_anim_range; the keyed
+  range where the engine cannot set one);
+* properties an engine version renamed are set by the spelling it has (VERSIONED_SETTINGS); anything unavailable is
+  one engine-compatibility line per build in the report, not a note per asset;
 * idempotent: an asset whose sources and import settings are unchanged (fingerprint tag) is not re-imported.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import unreal
 
 from .. import paths
 from ..manifest import Asset, Clip, Plan
 from ..report import BuildReport
-from .core import BuildError, Editor, enum, fingerprint, set_props
+from .core import BuildError, Editor, enum, fingerprint, has_enum, set_props
 
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Pipelines
 # ---------------------------------------------------------------------------------------------------------------------
-def make_pipeline(kind: str, skeleton: Any = None, fps: int = 60, notes: list[str] | None = None) -> Any:
-    """kind: 'skeletal' | 'static' | 'anim'."""
+def _member(*names: str) -> Callable[[Any], Any]:
+    """Value for an enum property whose enum type only the running engine knows: the first of `names` its enum has."""
+    def pick(current: Any) -> Any:
+        owner = type(current)
+        for n in names:
+            if current is not None and hasattr(owner, n):
+                return getattr(owner, n)
+        return None
+    return pick
+
+
+# Interchange settings whose property was renamed or moved between engine versions. Each entry lists its spellings,
+# newest first, as (pipeline part, property, value or value(current)); the first spelling the running engine exposes
+# (readable and not deprecated) is set, the older ones are left alone. 5.8 deprecations, from their messages:
+# bAutoDetectMeshType -> bConvertStaticsWithAnimatedTransformToSkeletals; the skeletal-common
+# bConvertStaticsWithMorphTargetsToSkeletals -> UInterchangeGenericCommonMeshesProperties' one; bCombineStaticMeshes ->
+# CombineStaticMeshesBehavior (an enum: "combine all" when it has such a member; every static FBX has one mesh node
+# anyway); bImportCollision -> bCollision (5.6 has both). The last spelling of each entry exists in the UE 5.6 API.
+VERSIONED_SETTINGS: tuple[tuple[tuple[str, str, Any], ...], ...] = (
+    (("common", "convert_statics_with_animated_transform_to_skeletals", False),
+     ("common", "auto_detect_mesh_type", False)),
+    (("common", "convert_statics_with_morph_targets_to_skeletals", False),
+     ("skeletal_common", "convert_statics_with_morph_targets_to_skeletals", False)),
+    (("mesh", "combine_static_meshes_behavior", _member("COMBINE_ALL", "ALL")),
+     ("mesh", "combine_static_meshes", True)),
+    (("mesh", "collision", False),
+     ("mesh", "import_collision", False)),
+)
+
+
+def set_versioned(parts: dict[str, Any], notes: list[str]) -> None:
+    """Applies VERSIONED_SETTINGS: one spelling per entry; a note only when the engine has none of them."""
+    for spellings in VERSIONED_SETTINGS:
+        tried: list[str] = []
+        for part, name, value in spellings:
+            owner = parts[part]
+            try:
+                current = owner.get_editor_property(name)
+            except Exception as e:  # noqa: BLE001 - not in this engine version (or deprecated: reading raises)
+                tried.append(f"{part}.{name} ({e})")
+                continue
+            resolved = value(current) if callable(value) else value
+            if resolved is None:
+                members = sorted(m for m in dir(type(current)) if m.isupper())
+                tried.append(f"{part}.{name} (no matching member among {members})")
+                continue
+            before = len(tried)
+            set_props(owner, {name: resolved}, f"{part} pipeline", required=False, notes=tried)
+            if len(tried) == before:
+                break
+        else:
+            notes.append(f"none of {', '.join(f'{p}.{n}' for p, n, _ in spellings)} is settable: {'; '.join(tried)}")
+
+
+def set_anim_range(anim: Any, frames: int, notes: list[str]) -> None:
+    """The clip's frame range, explicitly: frames 0..frames at the clip rate (manifest `frames`, the AnimationStack span
+    of the exported FBX). Blender's FBX exporter wrote the global timeline as a fixed 0-1 s whatever the clip length,
+    so TIMELINE baked 61 keys for every clip while the payload carried frames + 1 (Interchange ensure
+    `Transforms.Num() == BakeKeyCountForAnimationPayload`); kit/fbxtime.py now writes timeline = take = 0..frames.
+
+    Soft, like the other animation settings: an engine without SET_RANGE / frame_import_range (neither was ever read on
+    UE 5.8) imports the keyed range instead (ANIMATED: the kit bakes every bone on every frame with start and end keys,
+    the same 0..frames), else the file timeline (TIMELINE), and says so in one note. Without a frame count: ANIMATED."""
+    tried: list[str] = []
+    if frames > 0:
+        interval = getattr(unreal, "Int32Interval", None)
+        if interval is None or not has_enum("InterchangeAnimationRange", "SET_RANGE"):
+            tried.append("InterchangeAnimationRange.SET_RANGE / Int32Interval not in this engine")
+        else:
+            # The range first: SET_RANGE with the default (empty) range would import a 0-frame clip.
+            set_props(anim, {"frame_import_range": interval(min=0, max=int(frames))}, "animation pipeline",
+                      required=False, notes=tried)
+            if not tried:
+                set_props(anim, {"animation_range": enum("InterchangeAnimationRange", "SET_RANGE")},
+                          "animation pipeline", required=False, notes=tried)
+            if not tried:
+                return
+    for member in ("ANIMATED", "TIMELINE"):
+        if not has_enum("InterchangeAnimationRange", member):
+            tried.append(f"InterchangeAnimationRange.{member} not in this engine")
+            continue
+        before = len(tried)
+        set_props(anim, {"animation_range": enum("InterchangeAnimationRange", member)}, "animation pipeline",
+                  required=False, notes=tried)
+        if len(tried) == before:
+            if tried:
+                notes.append(f"clip range: clips import the {member} range ({'; '.join(tried)})")
+            return
+    notes.append(f"clip range not settable, clips import Interchange's default range ({'; '.join(tried)})")
+
+
+def make_pipeline(kind: str, skeleton: Any = None, fps: int = 60, notes: list[str] | None = None,
+                  frames: int = 0) -> Any:
+    """kind: 'skeletal' | 'static' | 'anim' (fps / frames: the clip's rate and length, anim only)."""
     if kind not in ("skeletal", "static", "anim"):
         raise BuildError(f"unknown pipeline kind {kind}")
     p = unreal.InterchangeGenericAssetsPipeline()
@@ -41,7 +137,6 @@ def make_pipeline(kind: str, skeleton: Any = None, fps: int = 60, notes: list[st
         "recompute_normals": False,
     }, "common meshes")
     set_props(common, {
-        "auto_detect_mesh_type": False,
         "import_lods": True,
         "bake_meshes": True,
         "keep_sections_separate": False,
@@ -59,8 +154,7 @@ def make_pipeline(kind: str, skeleton: Any = None, fps: int = 60, notes: list[st
         set_props(skm, {"skeleton": skeleton}, "skeletal/animation common")
     elif kind == "anim":
         raise BuildError("animations import onto an existing skeleton")
-    set_props(skm, {"use_t0_as_ref_pose": False, "convert_statics_with_morph_targets_to_skeletals": False},
-              "skeletal/animation common", required=False, notes=soft)
+    set_props(skm, {"use_t0_as_ref_pose": False}, "skeletal/animation common", required=False, notes=soft)
 
     mesh = p.get_editor_property("mesh_pipeline")
     set_props(mesh, {
@@ -73,21 +167,20 @@ def make_pipeline(kind: str, skeleton: Any = None, fps: int = 60, notes: list[st
         "import_vertex_attributes": False,
         "update_skeleton_reference_pose": False,
         "use_high_precision_skin_weights": False,
-        "combine_static_meshes": True,
-        "collision": False,
-        "import_collision": False,
         "generate_lightmap_u_vs": False,
         "build_nanite": False,
         "build_reversed_index_buffer": False,
         "auto_compute_lod_screen_sizes": True,
         "import_geometry_caches": False,
     }, "mesh pipeline", required=False, notes=soft)
+    set_versioned({"common": common, "skeletal_common": skm, "mesh": mesh}, soft)
 
     anim = p.get_editor_property("animation_pipeline")
     set_props(anim, {"import_animations": kind == "anim"}, "animation pipeline")
+    if kind == "anim":
+        set_anim_range(anim, frames, soft)
     set_props(anim, {
         "import_bone_tracks": True,
-        "animation_range": enum("InterchangeAnimationRange", "TIMELINE"),
         "custom_bone_animation_sample_rate": int(fps),
         "use30_hz_to_bake_bone_animation": False,
         "snap_to_closest_frame_boundary": True,
@@ -188,7 +281,7 @@ def import_skeletal(ed: Editor, asset: Asset, report: BuildReport, force: bool) 
     objects = ed.import_file(asset.fbx, f"{paths.CONTENT_ROOT}/{asset.folder}", make_pipeline("skeletal", skeleton,
                                                                                               notes=notes))
     for n in notes:
-        report.note(f"{asset.name}: {n}")
+        report.compat_note(f"Interchange {n}", asset.name)
     mesh = _take(objects, unreal.SkeletalMesh, asset.name)
     if mesh is None:
         raise BuildError(f"{asset.fbx.name} did not produce a skeletal mesh (got "
@@ -241,17 +334,19 @@ def import_lods(ed: Editor, asset: Asset, mesh: Any, report: BuildReport) -> Non
     count = int(ed.skm.get_lod_count(mesh))
     sizes = {0: 1.0}
     sizes.update({lod.index: lod.screen_size for lod in asset.lods})
-    # UE 5.8 no longer exposes SkeletalMesh.lod_info to Python: screen sizes go through the C++ helper.
-    lib = ed.content_lib
-    if lib is None or not hasattr(lib, "set_skeletal_mesh_lod_screen_size"):
-        report.warning(f"{asset.name}: AbyssContentBuildLibrary.set_skeletal_mesh_lod_screen_size unavailable "
-                       "(rebuild the AbyssfireEditor target); LOD screen sizes left at the engine defaults")
+    # UE 5.8 no longer exposes SkeletalMesh.lod_info to Python: screen sizes go through the C++ helper. A stale editor
+    # binary without it is one warning at the start of the build (core.stale_editor_warning), not one per mesh.
+    get_size = ed.helper("get_skeletal_mesh_lod_screen_size")
+    set_size = ed.helper("set_skeletal_mesh_lod_screen_size")
+    if get_size is None or set_size is None:
+        report.compat_note("LOD screen sizes left at the engine defaults: AbyssContentBuildLibrary."
+                           "set/get_skeletal_mesh_lod_screen_size unavailable (stale editor binary)", asset.name)
     else:
         for idx in range(count):
             if idx not in sizes:
                 continue
-            current = float(lib.get_skeletal_mesh_lod_screen_size(mesh, idx))
-            if abs(current - sizes[idx]) > 1e-4 and not lib.set_skeletal_mesh_lod_screen_size(mesh, idx, sizes[idx]):
+            current = float(get_size(mesh, idx))
+            if abs(current - sizes[idx]) > 1e-4 and not set_size(mesh, idx, sizes[idx]):
                 report.warning(f"{asset.name}: could not set the screen size of LOD{idx}")
     report.verification.append(f"{asset.name}: {count} LOD(s) (manifest: {1 + len(asset.lods)})")
     if count < 1 + len(asset.lods):
@@ -266,10 +361,11 @@ def apply_skeletal_sockets(ed: Editor, asset: Asset, mesh: Any, report: BuildRep
     the helper the runtime falls back to fractions of the mesh height (WorldContract 2.3)."""
     if not asset.sockets:
         return
-    lib = ed.content_lib
-    if lib is None or not hasattr(lib, "configure_skeletal_mesh_socket"):
-        report.warning(f"{asset.name}: {len(asset.sockets)} socket(s) not created: AbyssContentBuildLibrary missing "
-                       "(build the AbyssfireEditor target first)")
+    configure = ed.helper("configure_skeletal_mesh_socket")
+    if configure is None:
+        # Reported once at the start of the build (core.stale_editor_warning).
+        report.compat_note("skeletal sockets not created: AbyssContentBuildLibrary.configure_skeletal_mesh_socket "
+                           "unavailable (stale editor binary)", asset.name)
         return
     changed = False
     for s in asset.sockets:
@@ -281,7 +377,7 @@ def apply_skeletal_sockets(ed: Editor, asset: Asset, mesh: Any, report: BuildRep
             sock = None
         if sock is None:
             sock = unreal.SkeletalMeshSocket(mesh)
-            if not lib.configure_skeletal_mesh_socket(mesh, sock, s.name, s.bone):
+            if not configure(mesh, sock, s.name, s.bone):
                 report.error(f"{asset.name}: socket {s.name}: bone {s.bone} is not in the mesh")
                 continue
             sock.set_editor_property("relative_location", loc)
@@ -290,7 +386,7 @@ def apply_skeletal_sockets(ed: Editor, asset: Asset, mesh: Any, report: BuildRep
             changed = True
             continue
         if str(sock.get_editor_property("bone_name")) != s.bone:
-            if not lib.configure_skeletal_mesh_socket(mesh, sock, s.name, s.bone):
+            if not configure(mesh, sock, s.name, s.bone):
                 report.error(f"{asset.name}: socket {s.name}: bone {s.bone} is not in the mesh")
                 continue
             changed = True
@@ -320,7 +416,8 @@ def _clip_order(clips: list[Clip]) -> list[Clip]:
 
 def import_clip(ed: Editor, asset: Asset, clip: Clip, skeleton: Any, report: BuildReport, force: bool) -> Any:
     target = clip.content_path
-    fp = fingerprint([clip.fbx], salt=f"anim:{asset.skeleton}:{clip.fps}")
+    # The frame count is part of the import settings (explicit SET_RANGE, set_anim_range).
+    fp = fingerprint([clip.fbx], salt=f"anim:{asset.skeleton}:{clip.fps}:{clip.frames}")
     existing = ed.load(target)
     if existing is not None and not force and ed.get_tag(existing, paths.TAG_SOURCE_SHA) == fp \
             and existing.get_editor_property("skeleton") == skeleton:
@@ -329,7 +426,9 @@ def import_clip(ed: Editor, asset: Asset, clip: Clip, skeleton: Any, report: Bui
     else:
         notes: list[str] = []
         objects = ed.import_file(clip.fbx, f"{paths.CONTENT_ROOT}/{clip.folder}",
-                                 make_pipeline("anim", skeleton, clip.fps, notes=notes))
+                                 make_pipeline("anim", skeleton, clip.fps, notes=notes, frames=clip.frames))
+        for n in notes:
+            report.compat_note(f"Interchange {n}", clip.asset)
         seq = _take(objects, unreal.AnimSequence, clip.asset)
         if seq is None:
             raise BuildError(f"{clip.fbx.name} did not produce an animation (got {[type(o).__name__ for o in objects]})")
@@ -405,7 +504,7 @@ def import_static(ed: Editor, asset: Asset, report: BuildReport, force: bool) ->
     notes: list[str] = []
     objects = ed.import_file(asset.fbx, f"{paths.CONTENT_ROOT}/{asset.folder}", make_pipeline("static", notes=notes))
     for n in notes:
-        report.note(f"{asset.name}: {n}")
+        report.compat_note(f"Interchange {n}", asset.name)
     mesh = _take(objects, unreal.StaticMesh, asset.name)
     if mesh is None:
         raise BuildError(f"{asset.fbx.name} did not produce a static mesh (got {[type(o).__name__ for o in objects]})")

@@ -35,6 +35,10 @@ Options:
     --audio-args ARGS   extra arguments for import_audio.py (quoted)
     --report PATH       JSON report path (default: $AF_CONTENT_REPORT or Saved/ContentBuild/build_report.json)
     --strict            warnings fail the build too
+    --shaders           the verify step needs compiled shaders: compile errors and masters without a pixel shader
+                        fail the build (build_content.sh --shaders also starts the editor with
+                        -AllowCommandletRendering; without it a -run=pythonscript commandlet uses the NullRHI and
+                        compiles nothing)
     --plan              validate the manifest and print the plan; no editor needed, nothing is written to the project
 
 The JSON report contains "ok": false when anything failed (CI contract, Docs/CI.md 8); a failed build also ends with
@@ -86,6 +90,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--audio-args", default="")
     ap.add_argument("--report", default="")
     ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--shaders", action="store_true")
     ap.add_argument("--plan", action="store_true")
     args = ap.parse_args(argv)
     only, skip = _split(args.only), _split(args.skip)
@@ -122,7 +127,7 @@ def run(argv: list[str]) -> BuildReport:
         raise ContentBuildFailed(str(e)) from e
     report.plan = plan.summary()
     for problem in plan.problems:
-        (report.error if problem.level == "error" else report.warning)(str(problem))
+        {"error": report.error, "note": report.note}.get(problem.level, report.warning)(str(problem))
     report.count("assets", len(plan.assets))
     report.count("textures", len(plan.textures))
     report.end()
@@ -144,9 +149,13 @@ def run(argv: list[str]) -> BuildReport:
     except Exception:  # noqa: BLE001
         report.engine = "unknown"
     core.log(f"abyss_content {__version__} on {report.engine}: steps {', '.join(args.steps)}")
-    if ed.content_lib is None:
-        report.warnings.append("AbyssContentBuildLibrary (C++ helper) not loaded: skeletal sockets are skipped and the "
-                               "build cannot wait for shader compilation; build the AbyssfireEditor target first")
+    stale = core.stale_editor_warning(ed)
+    if stale:
+        # One warning for the whole build; the steps only add one compatibility note per skipped feature.
+        report.warning(stale)
+        core.warn("!" * 100)
+        core.warn(stale)
+        core.warn("!" * 100)
 
     def step(name: str, fn) -> None:
         if name not in args.steps:
@@ -192,7 +201,7 @@ def run(argv: list[str]) -> BuildReport:
     def verify() -> None:
         if not ed.finish_compilation():
             report.note("shader compilation not awaited (C++ helper missing): statistics may be incomplete")
-        materials.check_material_stats(ed, report)
+        materials.check_material_stats(ed, report, require_shaders=args.shaders)
         level.check_project_settings(report)
 
     step("verify", verify)

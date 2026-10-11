@@ -16,7 +16,7 @@ import unreal
 from .. import hlsl, paths
 from ..manifest import Asset, InstancePlan, Plan, Shading, hex_to_linear, hex_to_rgb255, srgb_to_linear1
 from ..report import BuildReport
-from .core import BuildError, Editor, linear_color, set_props
+from .core import BuildError, Editor, linear_color, set_props, shaders_disabled
 from .graph import C, E, Graph
 
 TAG_MATERIAL = "AbyssMaterialFingerprint"
@@ -560,26 +560,56 @@ def build_masters(ed: Editor, plan: Plan, report: BuildReport, force: bool) -> d
     return built
 
 
-def check_material_stats(ed: Editor, report: BuildReport) -> None:
-    """Instruction counts of every master (0 pixel instructions = the shader did not compile: see the log)."""
+NOT_COMPILED = "not compiled (NullRHI commandlet; run build_content.sh --shaders)"
+
+
+def check_material_stats(ed: Editor, report: BuildReport, require_shaders: bool = False) -> None:
+    """Compile errors (C++ helper) and instruction counts of every master for the editor's shader platform.
+
+    A -run=pythonscript commandlet renders with the NullRHI unless started with -AllowCommandletRendering: it compiles
+    no shader and every count reads 0, so the masters are listed as not compiled, with one note. require_shaders
+    (--shaders) makes that, and a master without a pixel shader, an error."""
+    if shaders_disabled():
+        for master in MASTERS:
+            if ed.load(f"{master.folder}/{master.name}") is not None:
+                report.materials[master.name] = {"status": NOT_COMPILED}
+        report.note("shaders not compiled in this session (a -run=pythonscript commandlet uses the NullRHI without "
+                    "-AllowCommandletRendering): material statistics and compile errors not read; "
+                    "`build_content.sh --shaders` compiles every master and reports them")
+        if require_shaders:
+            report.error("--shaders: this editor session compiles no shaders (NullRHI); start it with "
+                         "-AllowCommandletRendering (build_content.sh --shaders adds it)")
+        return
+    compile_errors = ed.helper("get_material_compile_errors")
+    if compile_errors is None:
+        report.note("shader compile errors not read: AbyssContentBuildLibrary.get_material_compile_errors unavailable "
+                    "(stale editor binary)")
     for master in MASTERS:
         path = f"{master.folder}/{master.name}"
         mat = ed.load(path)
         if mat is None:
             continue
+        # The helper waits for the material's compilation, so the statistics below see the finished shader map.
+        errors = [str(e) for e in compile_errors(mat)] if compile_errors is not None else []
+        for err in errors:
+            report.error(f"{master.name}: shader compile error: {err}")
         try:
             st = ed.mel.get_statistics(mat)
             vs = int(st.get_editor_property("num_vertex_shader_instructions"))
             ps = int(st.get_editor_property("num_pixel_shader_instructions"))
             samplers = int(st.get_editor_property("num_samplers"))
         except Exception as e:  # noqa: BLE001
-            report.materials[master.name] = {"status": f"stats unavailable ({e})"}
+            report.materials[master.name] = {"status": f"stats unavailable ({e})", "errors": len(errors)}
             continue
-        status = "ok" if ps > 0 else "NO SHADER (compile error? open it in the editor)"
+        if errors:
+            status = f"COMPILE ERRORS ({len(errors)})"
+        else:
+            status = "ok" if ps > 0 else "NO SHADER (compile error? open it in the editor)"
         report.materials[master.name] = {"status": status, "vs": vs, "ps": ps, "samplers": samplers}
-        if ps <= 0:
-            report.warning(f"{master.name}: no compiled pixel shader for the editor platform; check the log for "
-                           "'Failed to compile Material' and the Custom node HLSL")
+        if ps <= 0 and not errors:
+            (report.error if require_shaders else report.warning)(
+                f"{master.name}: no compiled pixel shader for the editor platform; check the log for "
+                "'Failed to compile Material' and the Custom node HLSL")
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -591,6 +621,115 @@ def material_object_path(name: str) -> str:
     if mp is not None:
         return paths.object_path(mp)
     return paths.object_path(f"{paths.INSTANCES_DIR}/{name}")
+
+
+SETTER_RETURNED_FALSE = ("MaterialEditingLibrary.set_material_instance_*_parameter_value returned False but applied "
+                         "the value (UE 5.8); accepted after reading it back")
+
+
+def _close(a: float, b: float) -> bool:
+    return abs(float(a) - float(b)) <= 1e-6 + 1e-6 * abs(float(b))     # parameters are stored as float32
+
+
+def _read_param(ed: Editor, mi: Any, kind: str, param: str) -> Any:
+    if kind == "texture":
+        return ed.mel.get_material_instance_texture_parameter_value(mi, param)
+    if kind == "scalar":
+        return float(ed.mel.get_material_instance_scalar_parameter_value(mi, param))
+    c = ed.mel.get_material_instance_vector_parameter_value(mi, param)
+    return (float(c.r), float(c.g), float(c.b), float(c.a))
+
+
+def _param_matches(kind: str, got: Any, want: Any) -> bool:
+    if kind == "texture":
+        if got is None or want is None:
+            return got is want
+        return got == want or got.get_path_name() == want.get_path_name()
+    if kind == "scalar":
+        return _close(got, want)
+    return all(_close(a, b) for a, b in zip(got, want))
+
+
+def _engine_value(kind: str, want: Any) -> Any:
+    return linear_color(want) if kind == "vector" else float(want) if kind == "scalar" else want
+
+
+def _describe(value: Any) -> str:
+    if hasattr(value, "get_path_name"):
+        return value.get_path_name()
+    if isinstance(value, tuple):
+        return "(" + ", ".join(f"{v:.4g}" for v in value) + ")"
+    return repr(value)
+
+
+def _parent_names(ed: Editor, parent: Any, kind: str) -> list[str]:
+    """The parent's parameters of this kind as MaterialEditingLibrary lists them (raises when it cannot)."""
+    if kind == "texture":
+        names = ed.mel.get_texture_parameter_names(parent)
+    elif kind == "scalar":
+        names = ed.mel.get_scalar_parameter_names(parent)
+    else:
+        names = ed.mel.get_vector_parameter_names(parent)
+    return sorted(str(n) for n in names)
+
+
+def _parent_param_names(ed: Editor, parent: Any, kind: str) -> str:
+    """Diagnostics: the parent's parameters of this kind as MaterialEditingLibrary (and, for textures, the C++ helper)
+    list them."""
+    try:
+        text = f"editor={_parent_names(ed, parent, kind)}"
+    except Exception as e:  # noqa: BLE001 - diagnostics only
+        text = f"editor=unreadable ({type(e).__name__})"
+    if kind == "texture":
+        infos = ed.helper("get_texture_parameter_infos")
+        text += f" infos={sorted(str(n) for n in infos(parent))}" if infos is not None else " infos=helper unavailable"
+    return text
+
+
+def set_instance_parameter(ed: Editor, mi: Any, parent: Any, inst_name: str, kind: str, param: str, want: Any,
+                           report: BuildReport) -> bool:
+    """Gives a material instance one parameter override (kind: texture | scalar | vector); True when it changed.
+
+    The value read back decides, not the setter's bool: UE 5.8's MaterialEditingLibrary set_material_instance_*_
+    parameter_value apply the value but return False (one compatibility note per build). A value that did not stick goes
+    through the C++ helper (AbyssContentBuildLibrary.set_material_instance_<kind>_parameter); BuildError when that is
+    unavailable or does not apply it either. A parameter the parent does not declare is a BuildError up front: an
+    instance (and the helper's Set*ParameterValueEditorOnly) keeps an override for any name, which then reads back as
+    applied but does nothing."""
+    try:
+        declared = param in _parent_names(ed, parent, kind)
+    except Exception:  # noqa: BLE001 - names unreadable: the read-back below still decides
+        declared = True
+    if not declared:
+        raise BuildError(f"parent has no {kind} parameter {param} (parent {kind} params: "
+                         f"{_parent_param_names(ed, parent, kind)})")
+    if _param_matches(kind, _read_param(ed, mi, kind, param), want):
+        return False
+    if kind == "texture":
+        returned = ed.mel.set_material_instance_texture_parameter_value(mi, param, want)
+    elif kind == "scalar":
+        returned = ed.mel.set_material_instance_scalar_parameter_value(mi, param, float(want))
+    else:
+        returned = ed.mel.set_material_instance_vector_parameter_value(mi, param, linear_color(want))
+    got = _read_param(ed, mi, kind, param)
+    if _param_matches(kind, got, want):
+        if not returned:
+            report.compat_note(SETTER_RETURNED_FALSE, inst_name)
+        return True
+    helper = ed.helper(f"set_material_instance_{kind}_parameter")
+    if helper is None:
+        fallback = "helper unavailable (stale editor binary)"
+    else:
+        helper(mi, param, _engine_value(kind, want))
+        got = _read_param(ed, mi, kind, param)
+        if _param_matches(kind, got, want):
+            report.warning(f"{inst_name}: MaterialEditingLibrary did not apply {kind} parameter {param}; set through "
+                           f"the C++ helper (parent {kind} params: {_parent_param_names(ed, parent, kind)})")
+            return True
+        fallback = "the C++ helper did not apply it either"
+    raise BuildError(f"{kind} parameter {param} not applied (MaterialEditingLibrary returned {bool(returned)}, read "
+                     f"back {_describe(got)}, wanted {_describe(want)}; {fallback}; parent {kind} params: "
+                     f"{_parent_param_names(ed, parent, kind)})")
 
 
 def apply_instance(ed: Editor, inst: InstancePlan, report: BuildReport) -> None:
@@ -607,44 +746,28 @@ def apply_instance(ed: Editor, inst: InstancePlan, report: BuildReport) -> None:
     if mi.get_editor_property("parent") != parent:
         mel.set_material_instance_parent(mi, parent)
         changed = True
+    wanted: list[tuple[str, str, Any]] = []
     for param, tex_name in sorted(inst.textures.items()):
         tex = ed.load(f"{paths.TEXTURES_DIR}/{tex_name}")
         if tex is None:
             raise BuildError(f"{inst.name}: texture {tex_name} missing (texture import failed?)")
-        if mel.get_material_instance_texture_parameter_value(mi, param) != tex:
-            if not mel.set_material_instance_texture_parameter_value(mi, param, tex):
-                lib = ed.content_lib
-                exposed: list[str] = []
-                if lib is not None and hasattr(lib, "get_texture_parameter_infos"):
-                    exposed = sorted(str(n) for n in lib.get_texture_parameter_infos(parent))
-                try:
-                    editor_names = sorted(str(n) for n in mel.get_texture_parameter_names(parent))
-                except Exception:  # noqa: BLE001 - diagnostics only
-                    editor_names = []
-                if lib is not None and hasattr(lib, "set_material_instance_texture_parameter") \
-                        and lib.set_material_instance_texture_parameter(mi, param, tex):
-                    report.warning(f"{inst.name}: MaterialEditingLibrary refused {param}; set through the C++ "
-                                   f"helper (parent texture params: infos={exposed} editor={editor_names})")
-                else:
-                    raise BuildError(f"{inst.name}: parent has no texture parameter {param} "
-                                     f"(parent texture params: infos={exposed} editor={editor_names})")
-            changed = True
-    for param, value in sorted(inst.scalars.items()):
-        if abs(float(mel.get_material_instance_scalar_parameter_value(mi, param)) - float(value)) > 1e-6:
-            if not mel.set_material_instance_scalar_parameter_value(mi, param, float(value)):
-                raise BuildError(f"{inst.name}: parent has no scalar parameter {param}")
-            changed = True
-    for param, value in sorted(inst.vectors.items()):
-        cur = mel.get_material_instance_vector_parameter_value(mi, param)
-        if any(abs(a - b) > 1e-6 for a, b in zip((cur.r, cur.g, cur.b, cur.a), value)):
-            if not mel.set_material_instance_vector_parameter_value(mi, param, linear_color(value)):
-                raise BuildError(f"{inst.name}: parent has no vector parameter {param}")
-            changed = True
+        wanted.append(("texture", param, tex))
+    wanted += [("scalar", param, float(value)) for param, value in sorted(inst.scalars.items())]
+    wanted += [("vector", param, tuple(value)) for param, value in sorted(inst.vectors.items())]
+    failures: list[str] = []
+    for kind, param, value in wanted:
+        try:
+            changed |= set_instance_parameter(ed, mi, parent, inst.name, kind, param, value, report)
+        except BuildError as e:
+            failures.append(str(e))
     if changed:
+        # Saved whatever the setters returned (and with the parameters that did apply when another one failed).
         mel.update_material_instance(mi)
         ed.save(mi, force=True)
     report.asset(f"{paths.INSTANCES_DIR}/{inst.name}", "MaterialInstanceConstant",
                  "created" if created else ("updated" if changed else "unchanged"), parent=inst.parent)
+    if failures:
+        raise BuildError(f"{inst.name}: " + "; ".join(failures))
 
 
 def build_instances(ed: Editor, plan: Plan, report: BuildReport) -> None:

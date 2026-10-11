@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
+import platform
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -16,6 +18,18 @@ import unreal
 from .. import paths
 
 PREFIX = "[build_content]"
+
+# Every AbyssContentBuildLibrary function the scripts call (Python names of the UFUNCTIONs in
+# Source/Abyssfire/Public/ContentBuild/AbyssContentBuildLibrary.h). Editor.helper() only hands out these; an editor
+# binary built before one of them was added is reported once at the start of the build (stale_editor_warning).
+CONTENT_LIB_FUNCTIONS = (
+    "configure_skeletal_mesh_socket", "mesh_has_bone", "finish_compilation",
+    "set_skeletal_mesh_lod_screen_size", "get_skeletal_mesh_lod_screen_size",
+    "set_material_instance_texture_parameter", "set_material_instance_scalar_parameter",
+    "set_material_instance_vector_parameter", "get_texture_parameter_infos", "get_material_compile_errors",
+)
+# AF_CONTENT_NULLRHI=1 / 0 overrides the NullRHI detection (shaders_disabled).
+NULLRHI_ENV = "AF_CONTENT_NULLRHI"
 
 
 class BuildError(RuntimeError):
@@ -124,8 +138,10 @@ class Editor:
         self.actors = self._subsystem("EditorActorSubsystem")
         self.unreal_editor = self._subsystem("UnrealEditorSubsystem")
         # Optional C++ helpers (Source/Abyssfire/Public/ContentBuild/AbyssContentBuildLibrary.h); None when the editor
-        # target was built without them.
+        # target was built without them, and missing_helpers lists what an older editor binary lacks.
         self.content_lib = getattr(unreal, "AbyssContentBuildLibrary", None)
+        self.missing_helpers = [f for f in CONTENT_LIB_FUNCTIONS
+                                if self.content_lib is None or not hasattr(self.content_lib, f)]
         self.interchange = None
         manager_cls = getattr(unreal, "InterchangeManager", None)
         if manager_cls is not None:
@@ -133,6 +149,12 @@ class Editor:
                 self.interchange = manager_cls.get_interchange_manager_scripted()
             except Exception:  # noqa: BLE001
                 self.interchange = None
+
+    def helper(self, name: str) -> Any:
+        """AbyssContentBuildLibrary.<name>, or None when this editor binary lacks it (reported once at the start)."""
+        if name not in CONTENT_LIB_FUNCTIONS:
+            raise BuildError(f"AbyssContentBuildLibrary.{name} is not listed in core.CONTENT_LIB_FUNCTIONS")
+        return getattr(self.content_lib, name, None) if self.content_lib is not None else None
 
     @staticmethod
     def _subsystem(name: str) -> Any:
@@ -240,7 +262,58 @@ class Editor:
     def finish_compilation(self) -> bool:
         """Blocks until async mesh / texture / shader builds finish (C++ helper); False when the helper is missing."""
         self.wait_for_interchange()
-        if self.content_lib is not None and hasattr(self.content_lib, "finish_compilation"):
-            self.content_lib.finish_compilation()
+        finish = self.helper("finish_compilation")
+        if finish is not None:
+            finish()
             return True
         return False
+
+
+def rebuild_command() -> str:
+    """The command that rebuilds this project's editor target (AbyssCore + Abyssfire, including the C++ helper)."""
+    project = paths.UNREAL_DIR / "Abyssfire.uproject"
+    try:
+        engine = str(unreal.Paths.convert_relative_path_to_full(unreal.Paths.engine_dir())).rstrip("/\\")
+    except Exception:  # noqa: BLE001 - only names the path in a message
+        engine = "$UE_ROOT/Engine"
+    system = platform.system()
+    if system == "Windows":
+        return (f'"{engine}\\Build\\BatchFiles\\Build.bat" AbyssfireEditor Win64 Development -project="{project}" '
+                "-waitmutex")
+    host = "Mac" if system == "Darwin" else "Linux"
+    return (f'"{engine}/Build/BatchFiles/{host}/Build.sh" AbyssfireEditor {host} Development -project="{project}" '
+            "-waitmutex")
+
+
+def stale_editor_warning(ed: Editor) -> str | None:
+    """One warning for an editor binary that lacks C++ helpers the scripts call (built before they were added, e.g. run
+    with SKIP_EDITOR_BUILD=1 after a pull), naming them and the rebuild command; None when everything is there."""
+    if not ed.missing_helpers:
+        return None
+    if ed.content_lib is None:
+        what = "AbyssContentBuildLibrary (C++ helper) is not loaded at all"
+    else:
+        what = ("the loaded AbyssfireEditor binary predates these AbyssContentBuildLibrary functions: "
+                + ", ".join(ed.missing_helpers))
+    return (f"STALE EDITOR BINARY: {what}. The build goes on without them (LOD screen sizes, skeletal sockets, "
+            "material parameter fallbacks, shader waits and compile-error checks that need them are skipped; one note "
+            f"each in 'Engine compatibility'). Rebuild the editor target: {rebuild_command()} (build_content.sh does "
+            "it unless SKIP_EDITOR_BUILD is set and the binary is newer than Source/)")
+
+
+def shaders_disabled() -> bool:
+    """True when this editor session compiles no shaders, so material statistics read 0: a commandlet (-run=...) uses
+    the NullRHI unless it was started with -AllowCommandletRendering (build_content.sh --shaders), and -nullrhi forces
+    it. AF_CONTENT_NULLRHI=1 / 0 overrides the detection."""
+    override = os.environ.get(NULLRHI_ENV, "").strip().lower()
+    if override in ("1", "true", "yes", "on"):
+        return True
+    if override in ("0", "false", "no", "off"):
+        return False
+    try:
+        cmd = str(unreal.SystemLibrary.get_command_line()).lower()
+    except Exception:  # noqa: BLE001 - unknown: assume a rendering editor (statistics are read and judged)
+        return False
+    if "-nullrhi" in cmd:
+        return True
+    return "-run=" in cmd and "-allowcommandletrendering" not in cmd

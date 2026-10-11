@@ -232,6 +232,7 @@ class Asset:
     sockets: list[Socket] = field(default_factory=list)
     lods: list[Lod] = field(default_factory=list)
     height_cm: float = 0.0
+    empty_slots: list[MaterialSlot] = field(default_factory=list)   # manifest slots without triangles (not imported)
 
     @property
     def skeletal(self) -> bool:
@@ -279,7 +280,7 @@ class InstancePlan:
 
 @dataclass
 class Problem:
-    level: str      # "error" | "warning"
+    level: str      # "error" | "warning" | "note"
     subject: str
     message: str
 
@@ -397,6 +398,59 @@ def _param_value(name: str, value: Any, subject: str, problems: list[Problem]
     return None
 
 
+def _slot_triangles(tri: Any, slot: MaterialSlot) -> int | None:
+    """Triangles a manifest `triangles` record ({toon, outline[, bySlot]}) gives one slot; None when it does not say."""
+    if not isinstance(tri, dict):
+        return None
+    by_slot = tri.get("bySlot")
+    if isinstance(by_slot, dict) and isinstance(by_slot.get(slot.name), (int, float)):
+        return int(by_slot[slot.name])
+    if slot.is_outline and isinstance(tri.get("outline"), (int, float)):
+        return int(tri["outline"])      # the total over the outline slots: 0 = every outline slot is empty
+    return None
+
+
+def _empty_outline_slot(raw: dict[str, Any], slot: MaterialSlot) -> bool:
+    """An outline slot whose hull has no triangles in LOD0 nor in any LOD (e.g. an NPC kit moustache too thin for a
+    hull): Interchange drops a material slot no face uses, so the build must not expect it."""
+    if not slot.is_outline:
+        return False
+    counts = [_slot_triangles(raw.get("triangles"), slot)]
+    counts += [_slot_triangles(lod.get("triangles"), slot) for lod in raw.get("lods") or [] if isinstance(lod, dict)]
+    return all(c == 0 for c in counts)
+
+
+FBX_KTIME_PER_SECOND = 46186158000
+
+
+def fbx_anim_stack_seconds(path: Path) -> tuple[float, float] | None:
+    """(LocalStart, LocalStop) of the animation stack of a binary FBX in seconds; None when unreadable.
+
+    Reads the AnimationStack's Properties70 records `P: "LocalStop", "KTime", "Time", "", <int64 ticks>` directly (the
+    last occurrence: the Definitions template that precedes the objects holds the defaults). A record left at its
+    template default (0) is not written."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    if not data.startswith(b"Kaydara FBX Binary"):
+        return None
+    span: list[float] = []
+    for key in (b"LocalStart", b"LocalStop"):
+        at = data.rfind(b"S" + len(key).to_bytes(4, "little") + key)
+        if at < 0:
+            return None
+        pos = at + 5 + len(key)
+        for _ in range(3):              # "KTime", "Time", ""
+            if data[pos:pos + 1] != b"S":
+                return None
+            pos += 5 + int.from_bytes(data[pos + 1:pos + 5], "little")
+        if data[pos:pos + 1] != b"L":
+            return None
+        span.append(int.from_bytes(data[pos + 1:pos + 9], "little", signed=True) / FBX_KTIME_PER_SECOND)
+    return span[0], span[1]
+
+
 def _matches_family(asset: Asset, families: set[str]) -> bool:
     if not families:
         return True
@@ -502,6 +556,11 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
             )
             if slot.palette and slot.palette not in palettes:
                 problems.append(Problem("error", subject, f"slot {slot.index} uses unknown palette {slot.palette!r}"))
+            if _empty_outline_slot(raw, slot):
+                asset.empty_slots.append(slot)
+                problems.append(Problem("note", subject, f"slot {slot.index} ({slot.name}) has no triangles (manifest "
+                                        "`triangles`): not planned, Interchange imports no such slot"))
+                continue
             asset.slots.append(slot)
         if not asset.slots:
             problems.append(Problem("warning", subject, "no material slots in the manifest (engine default material)"))
@@ -550,6 +609,13 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
                 )
                 if not cname.startswith("A_"):
                     problems.append(Problem("warning", subject, f"clip {cname} should start with A_"))
+                # The import takes frames 0..frames explicitly (ue/meshes.py set_anim_range): the FBX must agree.
+                span = fbx_anim_stack_seconds(cfbx)
+                if span is not None and clip.frames > 0 and (abs(span[0]) * clip.fps > 0.01 or abs(
+                        (span[1] - span[0]) * clip.fps - clip.frames) > 0.01):
+                    problems.append(Problem("warning", subject, f"clip {cname}: the FBX animation stack spans frames "
+                                            f"{span[0] * clip.fps:.2f}..{span[1] * clip.fps:.2f} at {clip.fps} fps, "
+                                            f"the manifest {clip.frames} frames (imported as frames 0..{clip.frames})"))
                 if clip.additive:
                     base = clip_raw.get("additiveBase") or {}
                     btype = str(base.get("type") or "LocalAnimFrame")
