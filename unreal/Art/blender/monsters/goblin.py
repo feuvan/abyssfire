@@ -222,12 +222,18 @@ def build_spear(pal: Palette) -> bpy.types.Object:
 
 
 # ── body ───────────────────────────────────────────────────────────────────────────────────────────────
-def build_body(pal: Palette, kit: GB.GoblinKit) -> bpy.types.Object:
+LOD1_RATIO = 0.6
+LOD1_SKIP: tuple = ()
+
+
+def build_body(pal: Palette, kit: GB.GoblinKit, lod: int = 0) -> bpy.types.Object:
     from kit import asset
-    b = M.Builder(ASSET, pal, prefix=PREFIX)
+    b = GB.builder(ASSET, pal, PREFIX, lod, LOD1_SKIP, LOD1_RATIO)
     b.regions(**GB.regions_for(LOOK))
     kit.build_parts(b)
-    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=kit.rig, grounding_height=0.92)
+    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=kit.rig, grounding_height=0.92,
+                             name=f"{ASSET}_LOD{lod}" if lod else None)
+    body["af_lod"] = lod
     return body
 
 
@@ -387,6 +393,7 @@ def anim_quick(out: Path, names, facing: str = "se") -> None:
 def ship(previews: bool = True, verify: bool = True) -> int:
     import mship
     pal, kit, body, spear = build_all()
+    body1 = build_body(pal, kit, lod=1)
     A = anims(kit)
     R.attach_to_bone(spear, kit.rig, "weapon_r")
     A.bind_meshes(body, {"weapon_r": spear})
@@ -398,6 +405,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
     ms = mship.MonsterShip(
         asset=ASSET, token=TOKEN, preview_dir="mon_goblin", pal=pal, A=A, body=body, items=items, clips=cs,
         outline_class=OUTLINE_CLASS, game_ids=["monster_goblin", *GH.VARIANTS], blob_radius=round(10 * U * 1.0, 3), height=0.92,
+        lod1=body1,
         display={"zh-CN": "哥布林", "en": "Goblin"},
         fx={"telegraph": {"normal": "#FFC4B0", "elite": "#FF7A5C", "untilMs": 155},
             "attackTrail": {"color": "#E8E0CC", "alpha": 0.45, "sockets": ["tip", "mid"], "item": SPEAR}},

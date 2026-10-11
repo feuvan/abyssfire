@@ -359,9 +359,21 @@ def _pascal(token: str) -> str:
     return "".join(part[:1].upper() + part[1:] for part in re.split(r"[^A-Za-z0-9]+", token) if part)
 
 
-def outline_instance_name(palette: str, outline_class: str, foliage: bool) -> str:
+def _width_token(value: float) -> str:
+    return f"{value:g}".replace(".", "p").replace("-", "m")
+
+
+def outline_instance_name(palette: str, outline_class: str, foliage: bool, px: float | None = None,
+                          baked: float | None = None) -> str:
+    """One outline instance per palette + class; a slot that overrides the class widths gets its own suffix
+    (_Px<px> / _Cm<baked>, '.' -> 'p'), so two widths never fight over one instance."""
     base = "MI_AF_OutlineFoliage" if foliage else "MI_AF_Outline"
-    return f"{base}_{palette}_{_pascal(outline_class) or 'Default'}"
+    name = f"{base}_{palette}_{_pascal(outline_class) or 'Default'}"
+    if px is not None:
+        name += f"_Px{_width_token(px)}"
+    if baked is not None:
+        name += f"_Cm{_width_token(baked)}"
+    return name
 
 
 def _param_value(name: str, value: Any, subject: str, problems: list[Problem]
@@ -652,7 +664,11 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
                 parent = paths.M_OUTLINE_FOLIAGE if foliage else paths.M_OUTLINE
                 scalars = {"OutlinePx1080": float(px), "BakedWidthCm": float(baked)}
                 scalars.update(extra_s)
-                name = outline_instance_name(slot.palette or "Default", cls, foliage)
+                class_px, class_baked = shading.outline_px.get(cls), shading.baked_width_cm.get(cls)
+                name = outline_instance_name(
+                    slot.palette or "Default", cls, foliage,
+                    px=float(px) if class_px is None or abs(float(px) - class_px) > 1e-6 else None,
+                    baked=float(baked) if class_baked is None or abs(float(baked) - class_baked) > 1e-6 else None)
                 mapping[slot.index] = add_instance(
                     InstancePlan(name, parent, slot.palette, scalars=scalars, vectors=extra_v,
                                  textures=palette_textures(slot.palette)), subject)

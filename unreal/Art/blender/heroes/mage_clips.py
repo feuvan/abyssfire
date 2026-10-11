@@ -50,7 +50,19 @@ class MageAnims(HB.HeroAnims):
     # pushes the cloth; HEM_FADE only drops points below the hem
     HEM_FADE = (0.96, 1.04)
     SKIRT_MAX = 80.0           # max outward angle of a skirt link (deg from the pelvis' down axis)
-    SKIRT_FLOOR = 0.05         # chain ends this high at least: the ring between chains and the hem lens hang lower
+    SKIRT_FLOOR = 0.07         # chain ends this high at least: the ring between chains and the hem lens hang lower
+    # a spun body (the face-down Death): each link turns this share of the way toward world down — the robe stays
+    # wrapped round the straight legs (a long robe lying on prone legs), the top settling onto them, the sides
+    # drooping to the floor; the floor and leg tests then stop it
+    # per chain (link 1, link 2): the top panel (b) settles onto the buttocks / thighs with its upper link and keeps
+    # the hem link along the calves, so the hem rests just over the boots (a hem pulled onto them cut the calves)
+    SKIRT_FALL = {"f": (0.22, 0.34), "b": (0.22, 0.34), "l": (0.22, 0.34), "r": (0.22, 0.34)}
+    SKIRT_FALL_IN = 0.25
+    SKIRT_WRAP_LR = (0.0, 0.0)
+    SKIRT_SPUN_BOUND = False
+    SKIRT_FALL_LR = (0.25, 0.45)
+    SKIRT_FALL_CLEAR = 0.02
+    SKIRT_FLOOR_SPUN = 0.012
 
     def __init__(self, rig, D):
         super().__init__(rig, D)
@@ -79,6 +91,7 @@ class MageAnims(HB.HeroAnims):
                    "cuff_band_l", "hand_l", "tome", "tome_cord", "sleeve_r", "bell_r", "cuff_band_r", "face")
     STAFF_CLEAR = 0.012
     STAFF_MAX_TURN = 45.0      # deg: the fit never turns the staff further from the authored key than this
+    STAFF_HEAD_R = 0.150       # m: the claw head's radius round the crystal (a staff lying on the floor rests on it)
 
     def make_env(self, body, names):
         legs = C.SkinPoints(self.rig).add_mesh(body, names, lambda n: n.rstrip("_lr") in self.LEG_PARTS, step=1)
@@ -91,6 +104,9 @@ class MageAnims(HB.HeroAnims):
         self.tome_pts = C.SkinPoints(self.rig).add_mesh(body, names, lambda n: n.startswith("tome") and n != "tome_cord")
         self.skirt_pts = C.SkinPoints(self.rig).add_mesh(body, names, lambda n: n in ("skirt", "hem"), step=2)
         self.staff_near = self.staff_env.mask(["sleeve_r", "bell_r", "cuff_band_r"])
+        # the bell's flared rim stands ~11 cm off the forearm: only its points within 3 cm of the grip (the fist in
+        # the cuff) are the hand's own; beyond that a shaft tilted toward the elbow cuts the bell
+        self.staff_bell = self.staff_env.mask(["bell_r", "cuff_band_r"])
         import mage as MG
         U = MG.U
         self.staff_s = np.linspace(-MG.STAFF_DOWN * U, (MG.CRYSTAL_AT + 4.6) * U, 44)
@@ -148,7 +164,7 @@ class MageAnims(HB.HeroAnims):
         S = g[None, :] + d[None, :] * s_all[:, None]
         dist = np.linalg.norm(S[:, None, :] - pts[None, :, :], axis=2)
         pen = self.staff_r[:, None] + self.STAFF_CLEAR - dist
-        near = (np.abs(s_all)[:, None] < 0.075) & self.staff_near[None, :]
+        near = (np.abs(s_all)[:, None] < np.where(self.staff_bell, 0.03, 0.075)[None, :]) & self.staff_near[None, :]
         if two is not None:
             near |= (np.abs(s_all - two)[:, None] < 0.13) & left[None, :]
         pen = np.where(near | (np.abs(s_all)[:, None] < 0.05), -1.0, pen)
@@ -307,6 +323,7 @@ class MageAnims(HB.HeroAnims):
         ga, gs = self.gravity(bp)
         names = list(self.skirt)
         req = {c: None for c in names}
+        spun: dict = {}
         if self.skin() is not None:
             pts = self.legs.posed(mats)
             q = (np.c_[pts, np.ones(len(pts))] @ np.array(inv).T)[:, :3]          # pelvis rest frame
@@ -319,6 +336,16 @@ class MageAnims(HB.HeroAnims):
                 q, th, rho, k, fade = q[sel], th[sel], rho[sel], np.clip(k[sel], 0.0, 1.0), fade[sel]
                 # + extra room round the chain joint (k ≈ .5), where linear blending cuts the bent chain's corner
                 clear = self.SKIRT_CLEAR + 0.02 * np.exp(-((k - 0.5) / 0.12) ** 2)
+                if gs > 0 and self.SKIRT_SPUN_BOUND:
+                    # a spun body: gravity pulls chains *inward* past their rest radius (the top panel of a
+                    # face-down robe settling onto the legs), so every leg point in a chain's sector bounds it, not
+                    # only the points outside the rest skirt
+                    for c in names:
+                        dth = np.abs((th - self.skirt[c]["ang"] + 180.0) % 360.0 - 180.0)
+                        m = (dth < 40.0) & (fade > 0.3)
+                        if m.any():
+                            need = rho[m] * np.cos(np.radians(dth[m])) + clear[m] + self.SKIRT_FALL_CLEAR
+                            spun[c] = (self.skirt[c]["root"].z - q[m, 2], need - self.skirt[c]["root_r"])
                 delta = (rho + clear - self._skirt_r(k, th)) * fade
                 hit = delta > 0
                 if hit.any():
@@ -334,6 +361,8 @@ class MageAnims(HB.HeroAnims):
                         if m.any():
                             need = self._skirt_r(k[m], np.full(int(m.sum()), self.skirt[c]["ang"])) + x[m, j]
                             req[c] = (self.skirt[c]["root"].z - q[m, 2], need - self.skirt[c]["root_r"])
+        for c, r in spun.items():
+            req[c] = r if req[c] is None else (np.r_[req[c][0], r[0]], np.r_[req[c][1], r[1]])
         out = {}
         for c, sk in self.skirt.items():
             # streaming: the whole skirt trails back with flow (front chain drawn in, back chain out), the lagged
@@ -358,7 +387,12 @@ class MageAnims(HB.HeroAnims):
                 dirc = sk["dir"]
                 for i in range(2):
                     tgt = math.degrees(math.atan2(gv.dot(dirc), -gv.z))
-                    out_ang[i] += self.arc(tgt - out_ang[i]) * gs * (0.55, 0.85)[i]
+                    dg = self.arc(tgt - out_ang[i])
+                    # toward the body (the top panel of a face-down robe) only settles a little: with four chains the
+                    # hem ring between them (linear blend) would cut the legs and boots under it
+                    out_ang[i] += dg * gs * self.SKIRT_FALL[c][i] * (1.0 if dg > 0 else self.SKIRT_FALL_IN)
+                    if c in "lr":
+                        out_ang[i] -= gs * self.SKIRT_WRAP_LR[i]     # the sides fold in round the legs
             if req[c] is not None:
                 dn, bk = req[c]
                 out_ang = HB.envelope(out_ang, sk["lengths"], dn, bk, 0.0, max_deg=self.SKIRT_MAX, slack=0.0)
@@ -373,7 +407,12 @@ class MageAnims(HB.HeroAnims):
             if c in "fb":
                 sgn = -1.0 if c == "f" else 1.0           # outward = forward for f (−), back for b (+)
                 absang = [sgn * a + acc for a in out_ang]
-                absang = self.above_ground(info, absang, wf, "pelvis", self.SKIRT_FLOOR)
+                # face down, the front panel is trapped under the legs: it lies flat on the floor
+                fl = self.SKIRT_FLOOR
+                if c == "f" and gs > 0:
+                    k = min(1.0, max(0.0, (abs(bp.spin) - 50.0) / 30.0))     # only once nearly flat
+                    fl += (self.SKIRT_FLOOR_SPUN - self.SKIRT_FLOOR) * k
+                absang = self.above_ground(info, absang, wf, "pelvis", fl)
                 C.set_chain(p, info, absang, acc)
             else:
                 fl = self.lagged(bp, 60.0).flow - 0.12
@@ -381,11 +420,13 @@ class MageAnims(HB.HeroAnims):
                 if gs > 0:
                     for i in range(2):
                         d = self.arc(ga - absang[i])
-                        absang[i] += d * gs * (0.5, 0.75)[i]
+                        absang[i] += d * gs * self.SKIRT_FALL_LR[i]
                 extra = [out_ang[i] - sk["rest_out"][i] for i in range(2)]
                 sg = -1.0 if c == "l" else 1.0          # roll that tips a downward bone outward
                 rel = [sg * extra[0], sg * (extra[1] - extra[0])]
-                absang = self.above_ground(info, absang, wf, "pelvis", self.SKIRT_FLOOR)
+                # the floor test sees the outward roll too (+x = left): a flared side chain reaches lower
+                absang = self.above_ground(info, absang, wf, "pelvis", self.SKIRT_FLOOR,
+                                           side=[-sg * extra[0], -sg * (extra[1] - extra[0])])
                 C.set_chain(p, info, absang, acc, rel)
 
     def cloth(self, p: Pose, bp: BP) -> None:
@@ -459,13 +500,18 @@ class MageAnims(HB.HeroAnims):
             if ax2.length > 1e-6:
                 d = Quaternion(ax2.normalized(), math.radians(10.0 * fl)) @ d
             up = la @ Vector((0, 0, 1))
-            p.aim(f"sleeve_{side}_01", d, up - d * up.dot(d))
             # a raised forearm: the wide sleeve slides down toward the elbow (uncovering the under-sleeve), so the
             # cuff never stands open round a raised fist (or a staff held upright in it)
             rise = max(0.0, -a.dot(g))
+            if abs(bp.spin) > 1e-6:
+                # face down, an arm flung out past the hood: the sleeve rode back toward the elbow in the fall
+                ga, gs = self.gravity(bp)
+                rise = max(rise, gs)
+            slide = self.SLEEVE_SLIDE * rise ** 0.8
+            p.aim(f"sleeve_{side}_01", d, up - d * up.dot(d))
             # always keyed (+1 µm): a clip without the slide must not inherit the previous action's location
             # (kit bake writes location curves only for bones that move)
-            p.move(f"sleeve_{side}_01", -a * (self.SLEEVE_SLIDE * rise ** 0.8 + 1e-6))
+            p.move(f"sleeve_{side}_01", -a * (slide + 1e-6))
 
     TOME_STAFF_CLEAR = 0.02
 
@@ -823,14 +869,14 @@ class MageAnims(HB.HeroAnims):
                        hand_l=V(0.24, 0.06, 1.74), elbow_l=V(1.0, 0.2, -0.1), wrist_l=(-80.0, 0.0, 0.0),
                        clav_r=(30.0, 0.0), clav_l=(28.0, 0.0), flow=0.45)
         Ch = Ch.but(head_yaw=0.0)
-        Rl = self.pose(R0, pelvis=R0.pelvis + V(0, 0.07, -0.15), lean=26.0, hip_pitch=6.0, head_pitch=-10.0,
-                       twist=4.0, foot_r=self.web_foot(57.5, -0.15), foot_l=self.web_foot(40.5, 0.15),
+        Rl = self.pose(R0, pelvis=R0.pelvis + V(0, 0.05, -0.08), lean=26.0, hip_pitch=4.0, head_pitch=-10.0,
+                       twist=4.0, foot_r=self.web_foot(54.0, -0.16), foot_l=self.web_foot(41.5, 0.15),
                        foot_l_rot=(14.0, 0, 26), toe_l=14.0, knee_r=V(-0.25, 1, 0),
                        hand_r=V(-0.28, 0.46, 0.82), elbow_r=V(-0.9, 0.0, -0.4), **self.staff_kw(132.0, -0.20),
                        hand_l=V(0.28, 0.30, 0.70), elbow_l=V(0.9, 0.0, -0.4), wrist_l=(30.0, 0.0, -10.0),
                        clav_r=(4.0, 14.0), clav_l=(0.0, 10.0), flow=0.75)
         Rl = self.look(Rl, max_down=14.0)
-        H = self.pose(Rl, lean=22.0, pelvis=R0.pelvis + V(0, 0.06, -0.13), hand_r=V(-0.28, 0.44, 0.86),
+        H = self.pose(Rl, lean=22.0, pelvis=R0.pelvis + V(0, 0.04, -0.07), hand_r=V(-0.28, 0.44, 0.86),
                       **self.staff_kw(126.0, -0.20), flow=0.45)
         H = self.look(H, max_down=14.0)
         keys = [K(0.0, R0), K(0.36, Ch, "out"), K(self.REL, Rl, "in"), K(0.72, H), K(1.0, R0)]
@@ -870,47 +916,117 @@ class MageAnims(HB.HeroAnims):
                        hip_yaw=0.0, foot_r=self.web_foot(49.0, -0.10, 82.0), foot_l=self.web_foot(39.0, 0.10, 80.0),
                        foot_r_rot=(40.0, 0, 6), foot_l_rot=(50.0, 0, 10), toe_l=20.0, toe_r=20.0,
                        knee_r=V(-0.1, 1, 0.2), knee_l=V(0.1, 1, 0.2),
-                       hand_r=V(-0.34, 0.40, 1.14), elbow_r=V(-0.8, -0.2, -0.5), **self.staff_kw(70.0, -0.35),
+                       hand_r=V(-0.42, 0.40, 1.14), elbow_r=V(-0.8, -0.2, -0.5), **self.staff_kw(70.0, 0.12),
                        hand_l=V(0.30, -0.24, 1.04), elbow_l=V(0.8, 0.4, -0.3), wrist_l=(30.0, 0.0, 0.0),
                        flow=0.95)
         sk = self.pose(up, pelvis=self.web_pelvis(51.0, 59.0), lean=30.0, foot_r=self.web_foot(52.0, -0.10, 80.0),
-                       foot_l=self.web_foot(41.0, 0.10, 81.0), hand_r=V(-0.34, 0.40, 1.10),
-                       **self.staff_kw(64.0, -0.35), flow=1.0)
+                       foot_l=self.web_foot(41.0, 0.10, 81.0), hand_r=V(-0.42, 0.40, 1.10),
+                       **self.staff_kw(64.0, 0.12), flow=1.0)
         land = self.pose(R0, pelvis=self.web_pelvis(50.0, 69.5), lean=17.0, head_pitch=6.0, twist=0.0, hip_yaw=0.0,
                          foot_r=self.web_foot(55.0, -0.13), foot_l=self.web_foot(44.0, 0.13),
-                         hand_r=V(-0.38, 0.26, 0.92), **self.staff_kw(28.0, -0.30), hand_l=V(0.24, 0.10, 0.80),
+                         hand_r=V(-0.42, 0.22, 0.95), **self.staff_kw(14.0, -0.05), hand_l=V(0.24, 0.10, 0.80),
                          flow=0.5)
         keys = [K(0.0, d0), K(0.25, up, "out"), K(0.5, sk), K(0.75, land, "in"), K(1.0, R0)]
         return self.clip("Dodge", 273.0, keys, 227.0)
 
     # ── Death 667 ms: crumple to the knees, pitch forward face-down, the staff falls in front ──────────────
+    @staticmethod
+    def fall_spin(pitch: float, roll: float) -> dict:
+        """Fall forward (``pitch`` about the lateral axis, + = face first) then roll by ``roll`` about the world
+        forward axis (+ = onto the left side): one axis-angle for BP.spin."""
+        from mathutils import Quaternion
+        q = Quaternion((0, 1, 0), math.radians(roll)) @ Quaternion((1, 0, 0), math.radians(pitch))
+        ax, ang = q.axis, math.degrees(q.angle)
+        if ax.x < 0:
+            ax, ang = -ax, -ang
+        return {"spin": ang, "spin_axis": Vector(ax)}
+
+    # ── Death 667 ms: buckle → tall kneel → topple forward over the knees → face-down (web DEATH: drops to the
+    # knees, pitches forward face-down, the staff falls) ────────────────────────────────────────────────────
     def death(self):
         R0, Hp = self.ready(), self.hit_pose()
-        d25 = self.pose(Hp, pelvis=self.web_pelvis(45.0, 70.0), lean=6.0, head_pitch=20.0,
-                        hand_r=V(-0.34, 0.14, 0.86), **self.staff_kw(34.0, -0.4), hand_l=V(0.24, 0.12, 0.82))
-        # on both knees, sinking forward; hands drop toward the floor in front
-        d50 = self.pose(R0, pelvis=self.web_pelvis(47.0, 77.0), lean=20.0, head_pitch=26.0, twist=-4.0, hip_yaw=2.0,
-                        foot_r=self.web_foot(42.0, -0.12, 86.0), foot_l=self.web_foot(38.0, 0.12, 86.0),
-                        foot_r_rot=(70.0, 0, 6), foot_l_rot=(70.0, 0, 10), toe_l=40.0, toe_r=40.0,
-                        knee_r=V(-0.1, 1, -0.4), knee_l=V(0.1, 1, -0.4),
-                        hand_r=V(-0.30, 0.32, 0.30), elbow_r=V(-0.9, 0.0, 0.0), **self.staff_kw(70.0, -0.6),
-                        hand_l=V(0.26, 0.28, 0.24), elbow_l=V(0.9, 0.0, 0.0), flow=0.2)
-        # pitching forward over the knees: the hips settle back toward the heels, both hands reach for the floor,
-        # the staff tips forward (a robed body folds forward instead of toppling flat: the skirt stays round the
-        # folded legs)
-        d75 = self.pose(d50, pelvis=self.web_pelvis(46.5, 79.5), lean=52.0, hip_pitch=16.0, head_pitch=14.0,
-                        hand_r=V(-0.32, 0.50, 0.14), elbow_r=V(-0.9, 0.0, 0.0), **self.staff_kw(96.0, -0.45),
-                        hand_l=V(0.28, 0.46, 0.12), elbow_l=V(0.9, 0.0, 0.0), flow=0.5)
-        # collapsed face-down over the knees (web: pitched forward face-down, the staff fallen in front): the hood on
-        # the floor turned to one side, the arms flung forward, the staff lying ahead of the right hand
-        d100 = self.pose(d50, pelvis=self.web_pelvis(46.0, 80.0), lean=80.0, hip_pitch=28.0, head_pitch=-12.0,
-                         head_yaw=-38.0, head_roll=16.0, twist=-6.0,
-                         hand_r=V(-0.46, 0.58, 0.07), elbow_r=V(-0.6, 0.4, 0.6), wpn=V(-0.30, 0.94, 0.12).normalized(),
-                         wpn_up=V(0, 0, 1), hand_l=V(0.36, 0.52, 0.06), elbow_l=V(0.7, 0.3, 0.6), wrist_l=(0.0, 0.0, 0.0),
-                         flow=0.05)
-        keys = [K(0.0, Hp), K(0.25, d25), K(0.5, d50), K(0.75, d75, "in"), K(1.0, d100, "out")]
-        gr = self.grounded(snap=True)
-        return self.clip("Death", 667.0, keys, 555.6, post=lambda bp, t: gr(self.fit_staff(bp, t), t))
+        d22 = self.pose(Hp, pelvis=self.web_pelvis(45.5, 71.0), lean=8.0, head_pitch=22.0,
+                        foot_r=self.web_foot(50.0, -0.12), foot_l=self.web_foot(41.0, 0.12, 88.0),
+                        foot_l_rot=(30.0, 0, 16), toe_l=26.0, knee_r=V(-0.1, 1, -0.1), knee_l=V(0.1, 1, -0.1),
+                        hand_r=V(-0.40, 0.16, 0.90), **self.staff_kw(12.0, -0.4), hand_l=V(0.24, 0.12, 0.82))
+        # tall kneel (thighs near vertical, inside the skirt cone; shins back along the floor), slumped, the head
+        # bowed, the staff tilting out of a loosening grip
+        KN = V(0.0, 0.05, 0.03)                       # knee line on the floor = the topple's pivot
+        d45 = self.pose(R0, pelvis=self.web_pelvis(47.5, 77.0), lean=16.0, hip_pitch=2.0, head_pitch=26.0, twist=-4.0,
+                        hip_yaw=2.0, foot_r=self.web_foot(37.6, -0.12, 89.5), foot_l=self.web_foot(37.0, 0.12, 89.5),
+                        foot_r_rot=(78.0, 0, 6), foot_l_rot=(78.0, 0, 10), knee_r=V(-0.1, 1, -0.3),
+                        knee_l=V(0.1, 1, -0.3),
+                        hand_r=V(-0.42, 0.20, 0.52), elbow_r=V(-0.9, 0.0, 0.0), **self.staff_kw(-4.0, -0.62),
+                        hand_l=V(0.26, 0.14, 0.40), elbow_l=V(0.9, 0.0, 0.0), flow=0.2)
+
+        def knee_back(bp: BP, deg: float) -> BP:
+            """Pre-rotate the shins / feet back about the knee line by ``deg`` so the topple (spin ``deg``) leaves
+            them on the floor."""
+            from mathutils import Quaternion
+            q = Quaternion((1, 0, 0), math.radians(-deg))
+            out = {}
+            for s in ("l", "r"):
+                f = getattr(bp, f"foot_{s}")
+                out[f"foot_{s}"] = KN + q @ (f - KN)
+                pr = getattr(bp, f"foot_{s}_rot")
+                out[f"foot_{s}_rot"] = (pr[0] - deg, pr[1], pr[2])
+            return bp.but(**out)
+        # toppling forward over the knees (a dead weight: arms swinging limp ahead, the staff falling away right)
+        from mathutils import Quaternion
+        sp72 = self.fall_spin(44.0, 6.0)
+        q72 = Quaternion(sp72["spin_axis"], math.radians(sp72["spin"]))
+        # the staff tips out to the right and back as the body goes over (world direction, butt ahead of the hood)
+        w72 = q72.inverted() @ Vector((-0.55, 0.78, -0.30)).normalized()
+        d72 = knee_back(self.pose(d45, lean=22.0, head_pitch=18.0, hand_r=V(-0.52, 0.26, 0.74),
+                                  elbow_r=V(-0.9, 0.0, -0.2), wpn=w72, wpn_up=V(0, 1, 0),
+                                  hand_l=V(0.30, 0.30, 0.42), elbow_l=V(0.9, 0.0, -0.2), flow=0.55), 44.0)
+        d72 = d72.but(pivot=KN, **sp72)
+        # face-down (authored standing, sunk so the knees sit on the pivot, then spun 86° forward and rolled onto
+        # the left side): legs straight, insteps on the floor, the staff arm flung ahead, the left hand by the hood,
+        # the hood turned to the side
+        dz = 0.41 - 0.03
+        d100 = self.pose(R0, pelvis=R0.pelvis + V(0, 0.03, -dz), lean=-4.0, hip_pitch=0.0, twist=0.0, hip_yaw=0.0,
+                         head_pitch=-6.0, head_yaw=-62.0, head_roll=-10.0,
+                         foot_r=V(-0.10, 0.02, 0.058 - dz), foot_l=V(0.11, 0.0, 0.058 - dz),
+                         foot_r_rot=(62.0, 0, 14), foot_l_rot=(58.0, 0, 22), toe_l=0.0, toe_r=0.0,
+                         knee_r=V(-0.1, 1, 0), knee_l=V(0.1, 1, 0),
+                         hand_r=V(-0.46, 0.10, 1.28), elbow_r=V(-0.7, -0.3, 0.0),
+                         wpn=V(-0.25, -0.07, -0.97).normalized(), wpn_up=V(0, 1, 0),
+                         hand_l=V(0.34, 0.03, 1.00), elbow_l=V(0.9, -0.2, -0.3), wrist_l=(0.0, 0.0, 0.0),
+                         pivot=KN, **self.fall_spin(86.0, 6.0), flow=0.05)
+        keys = [K(0.0, Hp), K(0.22, d22), K(0.45, d45), K(0.72, d72, "in"), K(1.0, d100, "out")]
+        gr = self.grounded(snap=True, pivot_pelvis=False)
+        span = 555.6
+        t0 = 0.72 * span
+        lay = self.lay_staff(t0, span, Vector((-0.28, 0.96, 0.0)))
+        # from the topple key on, the staff follows its authored fall into the laid direction (no per-frame fit)
+        return self.clip("Death", 667.0, keys, span,
+                         post=lambda bp, t: lay(gr(self.fit_staff(bp, t) if t < t0 else bp, t), t))
+
+    def lay_staff(self, t0: float, t1: float, azim: Vector):
+        """Post step of the face-down Death: from ``t0`` to ``t1`` (ms) the staff settles onto the floor beside the
+        body — along the world azimuth ``azim``, pitched so the claw head (``STAFF_HEAD_R``) and the butt rest on the
+        floor — blended from the fitted direction (one smooth settle, no per-frame search: the fit's ring search
+        picked a different azimuth every frame once the shaft met the floor)."""
+        import mage as MG
+        from mathutils import Quaternion
+        s_head, s_butt = MG.CRYSTAL_AT * self.U, MG.STAFF_DOWN * self.U
+        a = Vector((azim.x, azim.y, 0.0)).normalized()
+
+        def post(bp: BP, t: float) -> BP:
+            w = float(HB.smooth01((t - t0) / max(t1 - t0, 1e-6)))
+            if w <= 0.0 or abs(bp.spin) < 1e-6:
+                return bp
+            p = C.to_pose(self.rig, bp, None, grips=self.GRIPS)
+            G = anim.evaluate(p, return_matrices=True)["weapon_r"].translation
+            dz = (self.STAFF_HEAD_R - G.z) / s_head
+            dz = max(-0.6, min(dz, (G.z - 0.045) / s_butt))
+            d = (a * math.sqrt(max(0.0, 1.0 - dz * dz)) + Vector((0, 0, dz))).normalized()
+            q = Quaternion(Vector(bp.spin_axis).normalized(), math.radians(bp.spin))
+            pre = (q.inverted() @ d).normalized()
+            cur = bp.wpn.normalized()
+            return bp.but(wpn=cur.slerp(pre, w) if cur.dot(pre) > -0.999 else pre)
+        return post
 
     # ── Portrait (static, spec §3.4 / §9.5): the staff upright beside the hood, the crystal at the cheek ─────
     def portrait(self):

@@ -272,7 +272,7 @@ def _rest_elbow_wrist(spec: HumanoidSpec, sx: float) -> tuple[Vector, Vector]:
 
 
 # LOD1 (spec §1.9 hero 7 k): every part decimated, sub-readability details left out
-LOD1_RATIO = 0.5
+LOD1_RATIO = 0.4
 LOD1_SKIP = ("rune", "robe_seam", "skirt_fold", "beard_line", "tome_corner", "tome_clasp", "boot_cuff",
              "hood_seam", "clasp_gem", "nose", "hood_floor", "tome_pages")
 
@@ -343,16 +343,18 @@ def add_hood(b: M.Builder) -> None:
         h = (z - hc) / (U * HOOD_K)
         return -OPEN_DEPTH if e[0] < h < e[1] else 0.0
     eps = 0.0012
-    zs = [z for z in np.linspace(hp.z0, hp.z1, 24)]
-    cols = [OPEN_A * k / 9.0 * 0.998 for k in range(-9, 10)]
+    # density (budget, spec §1.9): 16 rings + a ring pair either side of the opening's edge at 8 angles; 24 sides
+    # + 15 columns across the opening
+    zs = [z for z in np.linspace(hp.z0, hp.z1, 16)]
+    cols = [OPEN_A * k / 7.0 * 0.998 for k in range(-7, 8)]
     rows = []
-    for i in range(1, 14):
-        a = OPEN_A * (-1 + 2 * i / 14)
+    for i in range(1, 10):
+        a = OPEN_A * (-1 + 2 * i / 10)
         e = open_edge(a)
         if e:
             rows += [hc + uh(e[0]) - eps, hc + uh(e[0]) + eps, hc + uh(e[1]) - eps, hc + uh(e[1]) + eps]
     zs = sorted(set([round(z, 5) for z in zs + rows if hp.z0 <= z <= hp.z1]))
-    hood = profile_mesh(hp, zs, 40, disp=disp, cap0=None, cap1="fan", dome1=uh(0.25), extra_angles=cols)
+    hood = profile_mesh(hp, zs, 24, disp=disp, cap0=None, cap1="fan", dome1=uh(0.25), extra_angles=cols)
     shell, recess = C.split_faces(hood, lambda bm, f: any(v[bm.verts.layers.int["af_disp"]] for v in f.verts))
     hull = profile_mesh(hp, list(np.linspace(hp.z0, hp.z1, 16)), 28, cap0="fan", cap1="fan", dome0=-0.03,
                         dome1=uh(0.25))
@@ -364,7 +366,7 @@ def add_hood(b: M.Builder) -> None:
           outline=False, covered_by=hood_id)
     # gold rim round the opening (web: TRIM line 0.8 u), lying on the hood surface just outside the edge
     ring, ups = [], []
-    n = 64
+    n = 48
     zc, hz = (OPEN_Z0 + OPEN_Z1) / 2, (OPEN_Z1 - OPEN_Z0) / 2
     for i in range(n):
         t = 2 * math.pi * i / n
@@ -413,15 +415,25 @@ def add_face(b: M.Builder, hood_id: int) -> None:
     nose = ell((0.015, 0.018, 0.024), (0, -fr - 0.004, nz), sides=10, rings=6)
     b.add(nose, "skin", bind, name="nose", outline=False, covered_by=hood_id)
     # glowing eyes: slanted almond slits in the brow shadow (web 1.6 × 0.9 u at phi ±0.36 about the face)
-    ez = hc + uh(EYE_H)
-    fr = face_r_at(ez) - 0.013
-    for sx in (1.0, -1.0):
-        ex = sx * uh(2.15)
-        yy = -fr + depth * (1 - math.sqrt(max(0.0, 1 - (ex / uh(4.3)) ** 2))) - 0.0035
+    for sx, (ex, yy, ez) in zip((1.0, -1.0), eye_points()):
         eye = ell((0.026, 0.0065, 0.0125), (0, 0, 0), sides=12, rings=6)
         eye.rotate("y", -sx * 10.0)
         eye.rotate("z", sx * 18.0)
         b.add(eye.translate((ex, yy, ez)), "eye", bind, name="eye", outline=False, covered_by=hood_id)
+
+
+def eye_points() -> list[Vector]:
+    """Rest centres of the two eyes (left, right): the face's ``depth`` 5.2 cm, the slits 3.5 mm proud of it. The
+    portrait composites the web's per-eye glow on them (``hero_ship.render_portrait``)."""
+    hc, depth = D.hc, 0.052
+    ez = hc + uh(EYE_H)
+    fr = face_r_at(ez) - 0.013
+    out = []
+    for sx in (1.0, -1.0):
+        ex = sx * uh(2.15)
+        yy = -fr + depth * (1 - math.sqrt(max(0.0, 1 - (ex / uh(4.3)) ** 2))) - 0.0035
+        out.append(Vector((ex, yy, ez)))
+    return out
 
 
 def add_beard(b: M.Builder) -> None:
@@ -471,9 +483,10 @@ def add_torso(b: M.Builder) -> None:
     mp = mantle_profile()
     mzs = list(np.linspace(mp.z0, mp.z1, 11))
     mbind = HB.blend4(RIG[0], "spine_02", "spine_03", "clavicle_l", "clavicle_r", "neck_01", falloff=5.0, smooth=0.02)
+    # full-resolution padded hull: the low-poly proxy's chords cut into the skinned mantle where the clavicles lift
+    # it (thin ink over the shoulders, ink gate)
     mantle_id = b.add(profile_mesh(mp, mzs, 36, cap0="fan", cap1="fan", dome0=-0.03), "mantle", mbind, name="mantle",
-                      hull=profile_mesh(mp, list(np.linspace(mp.z0, mp.z1, 7)), 24, cap0="fan", cap1="fan",
-                                        dome0=-0.03), hull_pad=True)
+                      hull_pad=True)
     b.add(C.surface_band(mp, mp.z0 + u(0.62), u(0.85), 0.0028, segs=48, out0=-0.002), "trim", mbind,
           name="mantle_trim", outline=False, covered_by=mantle_id)
     cz = th(16.0 - 2.6)
@@ -490,8 +503,8 @@ def add_torso(b: M.Builder) -> None:
 
 def add_skirt(b: M.Builder) -> None:
     rows = [i / 16 for i in range(17)]
-    shell, hull = HB.shell_ring(lambda k, uu, d: skirt_point(k, uu * 360.0 - 180.0, d), rows, 44, SKIRT_THICK,
-                                lens=0.002 / 0.75)
+    shell, _ = HB.shell_ring(lambda k, uu, d: skirt_point(k, uu * 360.0 - 180.0, d), rows, 44, SKIRT_THICK)
+    hull = skirt_hull(rows[::2], 44)
     bind = Bind.custom(SKIRT_BONES, skirt_weights)
     sid = b.add(shell, "robe", bind, name="skirt", sub_regions={1: "robe", 2: "mantle"}, hull=hull, hull_pad=True)
     t = SKIRT_THICK / 2
@@ -526,6 +539,30 @@ def add_skirt(b: M.Builder) -> None:
                  for k in [k0 + (0.93 - k0) * i / 10 for i in range(11)]]
         b.add(HB.outward(HB.sheet_grid(strip), lambda c: Vector((0, 0, c.z))), "robe_seam", bind, name=nm,
               outline=False, covered_by=sid)
+
+
+def skirt_hull(rows, cols: int, bead: float = 0.0024, roll_steps: int = 3) -> M.Part:
+    """Outline proxy of the skirt: the shell's rows (every other one) with a **rolled hem** — the proxy swells by
+    ``bead`` over the last row (enclosing the gold hem band) and curls under the hem in a quarter-round each side.
+    Its normals fan from the cone's outward-up normal through horizontal to straight down the cloth, so wherever
+    the hem makes the silhouette (a flared lunge seen from above, the robe pooled in Death) some hull normal points
+    across it: a pinched lens gave only outward and down-the-cloth normals, and the diagonal hem silhouette of a
+    flared skirt kept ~80 % of the ink (ink gate)."""
+    t = SKIRT_THICK / 2 + 1e-4
+    length = skirt_section(0.0)[0] - skirt_section(1.0)[0]
+    us = [-180.0 + 360.0 * c / cols for c in range(cols)]
+    kr = sorted(set(list(rows) + [1.0 - (rows[1] - rows[0]) / 2]))
+
+    def off(k):
+        return t + bead * HB.smooth01((k - kr[-3]) / (1.0 - kr[-3]))
+    prof = [(k, off(k)) for k in kr]
+    R = t + bead
+    for i in range(1, roll_steps + 1):
+        a = math.radians(90.0 * i / roll_steps)
+        prof.append((1.0 + R * math.sin(a) / length, R * math.cos(a) + (1e-5 if i == roll_steps else 0.0)))
+    outer = [[skirt_point(k, a, d) for a in us] for k, d in prof]
+    inner = [[skirt_point(k, a, -d) for a in us] for k, d in prof]
+    return C.thick_patch(outer, inner, wrap_u=True)
 
 
 SKIRT_BONES = ["pelvis", "thigh_l", "thigh_r"] + [f"skirt_{c}_{i:02d}" for c in "fblr" for i in (1, 2)]
@@ -651,8 +688,15 @@ def add_arm(b: M.Builder, rig: R.Rig, side: str) -> None:
         n = Vector((math.cos(t), math.sin(t), -0.42 * k)).normalized()
         return p + n * d
     fr = HB.axis_frame_x(E, dla, Vector((0, 0, -1)))
-    rows = [i / 10 for i in range(11)]
-    shell, hull = HB.shell_ring(lambda k, uu, d: fr @ bell(k, uu, d), rows, 24, 0.007, lens=0.002 / (L * 0.84))
+    rows = [i / 8 for i in range(9)]
+    lens = 0.002 / (L * 0.84)
+    shell, _ = HB.shell_ring(lambda k, uu, d: fr @ bell(k, uu, d), rows, 20, 0.007, lens=lens)
+    # hull proxy on every row (the shell_ring proxy keeps every other row: under the sag bone its chords fell
+    # inside the skinned bell and the silhouette ink over the sleeves ran thin, ink gate)
+    us = [c / 20 for c in range(20)]
+    hk = [(k, 1.0) for k in rows] + [(rows[-1] + 0.6 * lens, 0.8), (rows[-1] + lens, 0.0)]
+    hull = C.thick_patch([[fr @ bell(k, uu, 0.0035 * fk + 1e-4) for uu in us] for k, fk in hk],
+                         [[fr @ bell(k, uu, -0.0035 * fk - 1e-4) for uu in us] for k, fk in hk], wrap_u=True)
     sb = f"sleeve_{side}_01"
 
     def bell_w(co, E=E, dla=dla, L=L):
@@ -670,10 +714,11 @@ def add_arm(b: M.Builder, rig: R.Rig, side: str) -> None:
     # the under-sleeve along the forearm (dark lining tone): what shows when the bell sags down a raised arm
     b.add(M.tube([E + dla * 0.02, W - dla * 0.02], [u(1.45), u(1.2)], sides=12, dome0=0.0, dome1=0.0), "mantle",
           Bind.blend(la, f"hand_{side}", falloff=8.0), name=f"forearm_{side}")
-    cuff_o = [[fr @ bell(k, c / 28, 0.0042) for c in range(28)] for k in (0.90, 0.95, 1.0)]
-    cuff_i = [[fr @ bell(k, c / 28, -0.0042) for c in range(28)] for k in (0.90, 0.95, 1.0)]
-    b.add(C.thick_patch(cuff_o, cuff_i, wrap_u=True), "trim", bbind, name=f"cuff_band_{side}",
-          outline=False, covered_by=bid)
+    cuff_o = [[fr @ bell(k, c / 20, 0.0042) for c in range(20)] for k in (0.90, 0.95, 1.0)]
+    cuff_i = [[fr @ bell(k, c / 20, -0.0042) for c in range(20)] for k in (0.90, 0.95, 1.0)]
+    # the gold cuff band carries its own ink: the bell's lens-pinched hull rim extrudes along the bell axis, so
+    # where the cuff makes the silhouette its ink ran thin (ink gate)
+    b.add(C.thick_patch(cuff_o, cuff_i, wrap_u=True), "trim", bbind, name=f"cuff_band_{side}", hull_pad=True)
     add_hand(b, rig, side)
 
 
@@ -848,7 +893,9 @@ def build_all(lod1: bool = False):
     body = build_body(pal, rig)
     staff, sockets = build_staff(pal)
     crystal = build_crystal(pal)
-    out = dict(pal=pal, rig=rig, body=body, items={STAFF: staff, CRYSTAL: crystal}, sockets={STAFF: sockets})
+    # crystal: one socket at its centre (the runtime crystal hum / motes, fx.crystalHum)
+    out = dict(pal=pal, rig=rig, body=body, items={STAFF: staff, CRYSTAL: crystal},
+               sockets={STAFF: sockets, CRYSTAL: [{"name": "glow", "pos": (0.0, 0.0, 0.0)}]})
     if lod1:
         out["body1"] = build_body(pal, rig, lod=1)
     return out

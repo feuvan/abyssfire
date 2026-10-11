@@ -166,15 +166,21 @@ def basis(x_axis: Vector, y_axis: Vector) -> Matrix:
 
 
 def shell_ring(outer_fn, rows: Sequence[float], cols: int, thick: float, lens: float = 0.0,
-               sub_tags: bool = True) -> tuple[M.Part, M.Part]:
+               sub_tags: bool = True, hull_row_step: int = 2, hull_cols: int | None = None
+               ) -> tuple[M.Part, M.Part]:
     """A closed (wrap-around) two-sided cloth shell — a robe skirt, a capelet — from ``outer_fn(k, u, d)`` → point
     (``k`` 0..1 down the cloth, ``u`` 0..1 round it, ``d`` offset along the outward normal). Returns (shell with
-    ``af_sub`` 1 outside / 2 inside, hull proxy whose bottom edge ends in a pinched lens ``lens`` beyond the hem)."""
+    ``af_sub`` 1 outside / 2 inside, hull proxy whose bottom edge ends in a pinched lens ``lens`` beyond the hem).
+    The proxy keeps every ``hull_row_step``-th row (default 2) and ``hull_cols`` columns (default ``cols``): a cloth
+    that bends between rows (skirt chains) needs ``hull_row_step=1`` or the proxy's chords cut into the bent shell."""
     us = [c / cols for c in range(cols)]
     outer = [[outer_fn(k, u, thick / 2) for u in us] for k in rows]
     inner = [[outer_fn(k, u, -thick / 2) for u in us] for k in rows]
     part = C.thick_patch(outer, inner, wrap_u=True, sub_tags=sub_tags)
-    hk = [(k, 1.0) for k in rows[::2]] + ([(rows[-1], 1.0)] if (len(rows) - 1) % 2 else [])
+    if hull_cols:
+        us = [c / hull_cols for c in range(hull_cols)]
+    st = max(1, int(hull_row_step))
+    hk = [(k, 1.0) for k in rows[::st]] + ([(rows[-1], 1.0)] if (len(rows) - 1) % st else [])
     if lens > 0:
         hk += [(rows[-1] + 0.6 * lens, 0.8), (rows[-1] + lens, 0.0)]
     hull = C.thick_patch([[outer_fn(k, u, thick / 2 * fk + 1e-4) for u in us] for k, fk in hk],

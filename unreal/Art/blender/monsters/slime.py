@@ -109,6 +109,13 @@ EYE_LAT, EYE_Z, EYE_R = 0.098, 0.255, 0.080
 EYE_SINK = 0.016            # eye bone below the jelly surface
 EYE_TILT = 25.0             # deg the eyes face down from the surface normal (their tops tuck into the dome)
 EYE_YS = 1.12               # taller eyes: the tilt foreshortens them from the W1 camera
+FX_REST_K = 0.02            # the X-eyes and angry brows are modelled collapsed to 2 % about their bones (a clean,
+                            # neutral bind pose in UE); the clips scale them in by 1 / FX_REST_K
+
+
+def collapsed(head: Vector) -> Matrix:
+    return Matrix.Translation(head) @ Matrix.Diagonal((FX_REST_K, FX_REST_K, FX_REST_K, 1.0)) @ \
+        Matrix.Translation(-head)
 
 
 def build_rig() -> R.Rig:
@@ -193,9 +200,17 @@ def shell_bind() -> Bind:
     return Bind.custom(names, fn)
 
 
-def build_body(pal: Palette, rig: R.Rig):
+# LOD1 (spec §1.9 slime 1.5 k): decimated parts, the rising bubbles left out (mobile low / far zoom-out)
+LOD1_RATIO = 0.48
+LOD1_SKIP = ("bubble",)
+
+
+def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
     from kit import asset
-    b = M.Builder(ASSET, pal, prefix=PREFIX)
+    if lod:
+        b = M.Builder(ASSET, pal, prefix=PREFIX, lod_ratio=LOD1_RATIO, lod_skip=lambda n: n in LOD1_SKIP)
+    else:
+        b = M.Builder(ASSET, pal, prefix=PREFIX)
     b.regions(**REGIONS)
     shell = M.lathe(PROFILE, sides=36, cap0="fan", cap1="fan")
     sid = b.add(shell, "body", shell_bind(), name="shell", hull_pad=True)
@@ -206,27 +221,31 @@ def build_body(pal: Palette, rig: R.Rig):
         side = n.cross(Vector((0, 0, 1))).normalized()
         n = Matrix.Rotation(-math.radians(EYE_TILT), 3, side) @ n       # (side = −X for the front: tips n down)
         m = G.frame_z(e, n, Vector((0, 0, 1)))
-        rim = M.ellipsoid((EYE_R * 0.95, EYE_R * 1.1 * EYE_YS, 0.028), (0, 0, -0.001), sides=16, rings=8).transform(m)
+        rim = M.ellipsoid((EYE_R * 0.95, EYE_R * 1.1 * EYE_YS, 0.028), (0, 0, -0.001), sides=14, rings=7).transform(m)
         b.add(rim, "eye_rim", Bind.rigid(f"eye_{s}"), name=f"eye_rim_{s}", outline=False, covered_by=sid)
-        scl = M.ellipsoid((EYE_R * 0.85, EYE_R * EYE_YS, 0.030), (0, 0, 0.006), sides=16, rings=8).transform(m)
+        scl = M.ellipsoid((EYE_R * 0.85, EYE_R * EYE_YS, 0.030), (0, 0, 0.006), sides=14, rings=7).transform(m)
         b.add(scl, "sclera", Bind.rigid(f"eye_{s}"), name=f"sclera_{s}", outline=False, covered_by=sid)
         pup = M.ellipsoid((EYE_R * 0.42, EYE_R * 0.52 * EYE_YS, 0.012), (-sg * EYE_R * 0.1, -EYE_R * 0.08, 0.031),
-                          sides=12, rings=6).transform(m)
+                          sides=10, rings=5).transform(m)
         b.add(pup, "pupil", Bind.rigid(f"eye_{s}"), name=f"pupil_{s}", outline=False, covered_by=sid)
         gl = M.ellipsoid((EYE_R * 0.13, EYE_R * 0.13, 0.006), (sg * EYE_R * 0.08, EYE_R * 0.22, 0.041), sides=8,
                          rings=4).transform(m)
         b.add(gl, "glint", Bind.rigid(f"eye_{s}"), name=f"glint_{s}", outline=False, covered_by=sid)
         # X-ed out eye (death): two crossed bars over the eye (scaled in by xeye_*)
         for ang in (40.0, -40.0):
-            bar = M.box((EYE_R * 1.45, 0.013, 0.012), (0, 0, 0), bevel=0.004)
+            bar = M.box((EYE_R * 1.45, 0.013, 0.012), (0, 0, 0))
             bar.transform(m @ Matrix.Translation((0, 0, 0.034)) @ Matrix.Rotation(math.radians(ang), 4, "Z"))
-            b.add(bar, "xeye", Bind.rigid(f"xeye_{s}"), name=f"xeye_{s}", outline=False, covered_by=sid)
+            b.cover(sid, bar)                   # the full-size bars sit inside the shell's padded ink
+            bar.transform(collapsed(rig.joints[f"xeye_{s}"]))
+            b.add(bar, "xeye", Bind.rigid(f"xeye_{s}"), name=f"xeye_{s}", outline=False)
         # angry brow (attack): a slanted bar above the eye, lower toward the middle (scaled in by lid_*)
         lid = rig.joints[f"lid_{s}"]
         a0 = lid + Vector((sg * 0.05, 0, 0.01))
         a1 = lid + Vector((-sg * 0.045, 0, -0.022))
-        brow = M.capsule(a0, a1, 0.012, 0.014, sides=8, cap_rings=1)
-        b.add(brow, "brow", Bind.rigid(f"lid_{s}"), name=f"brow_{s}", outline=False, covered_by=sid)
+        brow = M.capsule(a0, a1, 0.012, 0.014, sides=6, cap_rings=1)
+        b.cover(sid, brow)
+        brow.transform(collapsed(lid))
+        b.add(brow, "brow", Bind.rigid(f"lid_{s}"), name=f"brow_{s}", outline=False)
     # glossy sheen patch (upper front-right) and a specular dot
     for c, rr, reg in ((surface_point(-0.17, 0.33, 0.002), (0.07, 0.035, 0.012), "sheen"),
                        (surface_point(-0.06, 0.39, 0.002), (0.016, 0.016, 0.008), "sheen")):
@@ -234,28 +253,30 @@ def build_body(pal: Palette, rig: R.Rig):
         n = (surface_point(c.x, c.z + dz) - surface_point(c.x, c.z - dz)).cross(Vector((1, 0, 0)))
         nn = (c - Vector((0, 0, 0.12))).normalized()
         m = G.frame_z(c, nn, Vector((0, 0, 1))) @ Matrix.Rotation(math.radians(-28), 4, "Z")
-        sh = M.ellipsoid(rr, (0, 0, 0), sides=12, rings=5).transform(m)
+        sh = M.ellipsoid(rr, (0, 0, 0), sides=10, rings=4).transform(m)
         b.add(sh, reg, shell_bind(), name="sheen", outline=False, covered_by=sid)
     # inside: the dark jelly core (two merged lobes), the half-digested bone, bubbles
-    core = M.ellipsoid((0.27, 0.24, 0.17), (0.0, 0.03, 0.19), sides=18, rings=10)
+    core = M.ellipsoid((0.27, 0.24, 0.17), (0.0, 0.03, 0.19), sides=14, rings=8)
     b.add(core, "core", Bind.rigid("core"), name="core", outline=False)
-    lobe = M.ellipsoid((0.15, 0.13, 0.11), (-0.09, -0.04, 0.12), sides=14, rings=8)
+    lobe = M.ellipsoid((0.15, 0.13, 0.11), (-0.09, -0.04, 0.12), sides=10, rings=6)
     b.add(lobe, "core", Bind.rigid("core"), name="core", outline=False)
     bp = rig.joints["bone_prop"]
     tilt = Matrix.Translation(bp) @ Matrix.Rotation(math.radians(-29), 4, "Y") @ Matrix.Rotation(math.radians(25), 4, "Z")
-    shaft = M.capsule((-0.065, 0, 0), (0.065, 0, 0), 0.014, 0.014, sides=8, cap_rings=1).transform(tilt)
+    shaft = M.capsule((-0.065, 0, 0), (0.065, 0, 0), 0.014, 0.014, sides=6, cap_rings=1).transform(tilt)
     b.add(shaft, "bone", Bind.rigid("bone_prop"), name="bone_prop", outline=False)
     for x in (-0.072, 0.072):
         for dz in (-0.015, 0.015):
-            k = M.ellipsoid((0.02, 0.02, 0.02), (x, 0, dz), sides=8, rings=5).transform(tilt)
+            k = M.ellipsoid((0.02, 0.02, 0.02), (x, 0, dz), sides=6, rings=4).transform(tilt)
             b.add(k, "bone", Bind.rigid("bone_prop"), name="bone_prop", outline=False)
     for nm, offs in (("bubble_01", ((0, 0, 0, 0.022), (0.05, 0.03, 0.04, 0.014))),
                      ("bubble_02", ((0, 0, 0, 0.018), (-0.06, 0.02, 0.05, 0.012)))):
         c0 = rig.joints[nm]
         for dx, dy, dz, r in offs:
-            bb = M.ellipsoid((r, r, r), c0 + Vector((dx, dy, dz)), sides=10, rings=6)
+            bb = M.ellipsoid((r, r, r), c0 + Vector((dx, dy, dz)), sides=6, rings=4)
             b.add(bb, "bubble", Bind.rigid(nm), name="bubble", outline=False)
-    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=rig, grounding_height=H)
+    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=rig, grounding_height=H,
+                             name=f"{ASSET}_LOD{lod}" if lod else None)
+    body["af_lod"] = lod
     # the shell's toon faces → slot 2, the dithered jelly material (R12)
     me = body.data
     fp = np.zeros(len(me.polygons), np.int32)
@@ -263,7 +284,7 @@ def build_body(pal: Palette, rig: R.Rig):
     mi = np.zeros(len(me.polygons), np.int32)
     me.polygons.foreach_get("material_index", mi)
     mi = np.where((fp == sid) & (mi == 0), 2, mi)
-    me.materials.append(dither_material(pal, BODY_OPACITY))
+    me.materials.append(bpy.data.materials.get("MI_AF_Toon_Slime") or dither_material(pal, BODY_OPACITY))
     me.polygons.foreach_set("material_index", mi)
     me.update()
     return body, sid
@@ -365,8 +386,8 @@ class SlimeAnims:
         open_ = max(0.02, (0.35 + 0.65 * max(p.eyes, 0.0)) * (1.0 - xe))
         brow = max(0.001, min(1.0, (p.fx - 0.2) / 0.25))
         for s in ("l", "r"):
-            for nm, sc in ((f"eye_{s}", (1.0, 1.0, open_)), (f"xeye_{s}", (max(0.001, xe),) * 3),
-                           (f"lid_{s}", (brow,) * 3)):
+            for nm, sc in ((f"eye_{s}", (1.0, 1.0, open_)), (f"xeye_{s}", (max(0.001, xe) / FX_REST_K,) * 3),
+                           (f"lid_{s}", (brow / FX_REST_K,) * 3)):
                 a = rest[nm].translation
                 k = a.z / H
                 pa = self.body_x(p, k) @ a
@@ -528,6 +549,7 @@ def anim_quick(out: Path, names) -> None:
 def ship(previews: bool = True, verify: bool = True) -> int:
     import mship
     pal, rig, body = build_all()
+    body1, _ = build_body(pal, rig, lod=1)
     S = SlimeAnims(rig)
     cs = S.all_clips()
     ms = mship.MonsterShip(
@@ -549,7 +571,8 @@ def ship(previews: bool = True, verify: bool = True) -> int:
                         "slot 2 MI_AF_Toon_Slime (M_AF_Toon_Slime, dithered BodyOpacity, jelly rim, R12); the core, "
                         "bone, bubbles, eyes are opaque toon (slot 0). Walk is a no-slide hop: play rate = v / 1.20 "
                         "m/s."},
-        lod_note="Slime budget 2-3k toon tris, <= 16 bones (SKEL_Slime has 16).",
+        lod_note="Slime budget 2-3k toon tris (shell slot 2 included), <= 16 bones (SKEL_Slime has 16).",
+        lod1=body1,
     )
     res = mship.ship(ms, previews=previews, verify=verify)
     return mship.main_result(res)

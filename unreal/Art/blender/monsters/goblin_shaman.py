@@ -87,6 +87,11 @@ TOTEM_REGIONS = outline.ink_regions(dict(
 
 
 class ShamanKit(GB.GoblinKit):
+    @staticmethod
+    def torso_hide(s: float, a: float) -> bool:
+        """Chest and shoulders inside the fur shawl (hem s ≈ 0.56–0.60, 0.35 u inside → 0.5 u out)."""
+        return 0.70 < s < 1.0
+
     def totem_lash(self) -> Vector:
         """Where the totem's two feathers are tied: weapon_r space, 16.5 u up the staff, on its back side."""
         rb = self.rig.obj.data.bones["weapon_r"]
@@ -137,9 +142,14 @@ def skirt_bind(kit, top_z: float, bot_z: float) -> Bind:
     return Bind.custom(names, fn)
 
 
-def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
+LOD1_RATIO = 0.42
+LOD1_SKIP = ("skirt_seam", "charm_cord", "mask_crack", "totem_cord", "beak_keel", "bead", "charm", "elbow", "knee",
+             "bracer")
+
+
+def build_body(pal: Palette, kit: ShamanKit, lod: int = 0) -> bpy.types.Object:
     from kit import asset
-    b = M.Builder(ASSET, pal, prefix=PREFIX)
+    b = GB.builder(ASSET, pal, PREFIX, lod, LOD1_SKIP, LOD1_RATIO)
     b.regions(**GB.regions_for(LOOK))
     u, hk = kit.u, kit.hk
     J = kit.J
@@ -155,9 +165,9 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
         return 6.85 - 2.2 * (abs(a) / 58.0) ** 2.2
 
     rows_o, rows_i = [], []
-    angs = list(np.linspace(-58.0, 58.0, 17))
-    for i in range(8):
-        f = i / 7
+    angs = list(np.linspace(-58.0, 58.0, 15))
+    for i in range(7):
+        f = i / 6
         ro, ri = [], []
         for a in angs:
             h = mask_low(a) + (mask_top(a) - mask_low(a)) * f
@@ -190,19 +200,19 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
         hole = G.surface_patch(msurf, h0 - 0.8, h0 + 0.8, a0 - 9.0, a0 + 9.0, hk(0.03), nu=4, na=6,
                                shape=lambda tu, ta: math.sqrt(max(0.0, 1 - (2 * tu - 1) ** 2)))
         b.add(hole, "socket", head, name="mask_eye", outline=False, covered_by=mid)
-        emb = M.ellipsoid((hk(0.55), hk(0.42), hk(0.25)), msurf.point(h0 + 0.15, a0, hk(0.04)), sides=8, rings=5)
+        emb = M.ellipsoid((hk(0.55), hk(0.42), hk(0.25)), msurf.point(h0 + 0.15, a0, hk(0.04)), sides=6, rings=4)
         b.add(emb, "ember", head, name="mask_ember", outline=False, covered_by=mid)
-    stripe = G.surface_strap(msurf, [(6.6, -40.0), (4.2, -43.0), (1.7, -44.0)], hk(0.85), hk(0.06), steps=8)
+    stripe = G.surface_paint(msurf, [(6.6, -40.0), (4.2, -43.0), (1.7, -44.0)], hk(0.85), hk(0.05), steps=6)
     b.add(stripe, "paint", head, name="mask_paint", outline=False, covered_by=mid)
-    crack = G.surface_strap(msurf, [(6.7, 16.0), (5.7, 13.0), (5.1, 17.0), (4.5, 15.0)], hk(0.32), hk(0.05), steps=8)
+    crack = G.surface_paint(msurf, [(6.7, 16.0), (5.7, 13.0), (5.1, 17.0), (4.5, 15.0)], hk(0.32), hk(0.05), steps=6)
     b.add(crack, "bone_crack", head, name="mask_crack", outline=False, covered_by=mid)
     # beaded hide band round the head, over the mask's top edge
-    band = G.surface_ring(hsurf, lambda a: 6.15 + 0.2 * math.cos(math.radians(a)), hk(1.3), hk(0.95), segs=40)
+    band = G.surface_ring(hsurf, lambda a: 6.15 + 0.2 * math.cos(math.radians(a)), hk(1.3), hk(0.95), segs=24)
     bnd = b.add(band, "hide", head, name="head_band", hull_pad=True)
     for a, reg in ((-92.0, "bead_red"), (126.0, "bead_teal"), (172.0, "bead_red"), (80.0, "bead_teal"),
                    (-150.0, "bead_teal"), (40.0, "bead_red"), (-40.0, "bead_teal")):
         h = 6.15 + 0.2 * math.cos(math.radians(a))
-        bd = M.ellipsoid((hk(0.62), hk(0.62), hk(0.62)), hsurf.point(h, a, hk(1.25)), sides=8, rings=6)
+        bd = M.ellipsoid((hk(0.62), hk(0.62), hk(0.62)), hsurf.point(h, a, hk(1.25)), sides=6, rings=4)
         b.add(bd, reg, head, name="bead", outline=False, covered_by=bnd)
     # feather fan behind the head (headdress_01..04)
     bones = kit.rig.obj.data.bones
@@ -212,7 +222,7 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
         ln = (12.0, 13.5, 12.5, 11.0)[i]
         d = (r1 - r0).normalized()
         face = kit.hdir(0.2, -1.0, 0).normalized()          # the vane faces back (fan seen from behind)
-        fth = G.feather(hk(ln), hk(2.6), hk(0.35), curl=0.12, bend=0.06)
+        fth = G.feather(hk(ln), hk(2.6), hk(0.35), curl=0.12, bend=0.06, rows=6)
         fth.transform(R.frame(r0 - d * hk(0.8), d, -face))
         b.add(fth, reg, Bind.rigid(nm), name=f"feather_{i}", sub_regions={1: "feather_tip", 2: "fur_dark"},
               hull_pad=True)
@@ -225,13 +235,13 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
         th = 0.2 + (math.pi * 1.7 - 0.2) * k / 21
         r = 1.0 + 0.8 * k / 21
         pts.append((0.36 + r * 0.075 * math.sin(th), 17.0 + r * 10.0 * math.cos(th)))
-    sp = G.surface_strap(t, pts, u(0.8), u(0.14), steps=40)
+    sp = G.surface_paint(t, pts, u(0.8), u(0.1), steps=30)
     b.add(sp, "spiral", spine, name="belly_spiral", outline=False, covered_by=tid)
     shw = G.SpineLoft(kit.spine_points(), [(0.56, u(6.6), u(7.8), u(0.4)), (0.70, u(6.9), u(7.6), u(0.3)),
                                            (0.86, u(6.6), u(7.2), u(0.2)), (0.98, u(5.6), u(5.8), u(0.0)),
                                            (1.06, u(4.0), u(4.4), u(0.0)), (1.12, u(3.0), u(3.8), u(0.1))], exp=2.3)
-    angs = G.angles(32)
-    ss = list(np.linspace(0.6, 1.12, 8))
+    angs = G.angles(26)
+    ss = list(np.linspace(0.6, 1.12, 6))
     outer, inner = [], []
     for r, s_ in enumerate(ss):
         ro, ri = [], []
@@ -247,13 +257,13 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
     shid = b.add(shawl, "fur", sbind, name="shawl", hull_pad=True)
     for i in range(12):
         a = -180.0 + 30.0 * i + 9.0
-        st = G.surface_strap(_Off(shw, u(0.5)), [(0.82, a), (0.70, a + 3.0), (0.64, a + 1.0)], u(0.7), u(0.12),
-                             steps=6)
+        st = G.surface_paint(_Off(shw, u(0.5)), [(0.82, a), (0.70, a + 3.0), (0.64, a + 1.0)], u(0.75), u(0.1),
+                             steps=4, taper=0.6)
         b.add(st, "fur_dark", sbind, name="fur_stroke", outline=False, covered_by=shid)
     # tooth necklace over the shawl front with the spirit-stone
     so = _Off(shw, u(0.5))
     cord = G.surface_strap(so, [(0.78, -52.0), (0.70, -26.0), (0.67, 0.0), (0.70, 26.0), (0.78, 52.0)], u(0.4),
-                           u(0.22), steps=16)
+                           u(0.22), steps=10)
     b.add(cord, "strap", sbind, name="neck_cord", outline=False, covered_by=shid)
     for i in range(5):
         a = -36.0 + i * 18.0
@@ -276,9 +286,9 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
     bot_z = J["knee_l"].z - u(0.8)
     sk_rings = [(0.0, u(5.4), u(5.8), u(0.6)), (0.45, u(6.1), u(6.4), u(0.4)), (1.0, u(6.9), u(7.1), u(0.2))]
     rows_o, rows_i = [], []
-    angs = G.angles(30)
-    for k in range(7):
-        f = k / 6
+    angs = G.angles(24)
+    for k in range(6):
+        f = k / 5
         z = top_z + (bot_z - top_z) * f
         lat = np.interp(f, [r[0] for r in sk_rings], [r[1] for r in sk_rings])
         dep = np.interp(f, [r[0] for r in sk_rings], [r[2] for r in sk_rings])
@@ -287,7 +297,7 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
         for i, a in enumerate(angs):
             ra = math.radians(a)
             zz = z
-            if k == 6:                             # ragged hem
+            if k == 5:                             # ragged hem
                 zz += u(0.9) * (0.5 + 0.5 * math.sin(i * 2.3)) * (1 if i % 2 else 0.4)
             c = Vector((0.0, P.y - cf, zz))
             pt = c + Vector((lat * math.sin(ra), -dep * math.cos(ra), 0.0))
@@ -311,17 +321,17 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
                 cf = np.interp(f, [r[0] for r in sk_rings], [r[3] for r in sk_rings])
                 return Vector((lat * math.sin(ra), P.y - cf - dep * math.cos(ra), z))
             p0, p1 = at(f0), at(f1)
-            b.add(M.capsule(p0, p1, u(0.22), u(0.22), sides=6, cap_rings=1), "hide_seam",
+            b.add(M.tube([p0, p1], [u(0.26), u(0.26)], sides=4, dome0=u(0.1), dome1=u(0.1)), "hide_seam",
                   skirt_bind(kit, top_z, bot_z), name="skirt_seam", outline=False, covered_by=skid)
     bel = kit.add_rope_belt(b, tid, s0=0.10, region="strap", stroke=None, width_u=1.7, thick_u=0.9)
     pc = t.point(0.06, -52.0, u(1.6))
-    pouch = M.ellipsoid((u(1.6), u(1.0), u(1.9)), pc, sides=10, rings=7)
+    pouch = M.ellipsoid((u(1.6), u(1.0), u(1.9)), pc, sides=8, rings=6)
     b.add(pouch, "hide_dark", Bind.blend("pelvis", "thigh_r", falloff=3.0), name="pouch", hull_pad=True)
     for a, ln in ((30.0, 2.8), (62.0, 2.2), (-14.0, 2.5)):
         top = t.point(0.09, a, u(1.0))
         n = t.normal(0.09, a)
         bot = top + Vector((0, 0, -u(ln))) + n * u(0.3)
-        b.add(M.capsule(top, bot, u(0.15), u(0.15), sides=5, cap_rings=1), "strap",
+        b.add(M.capsule(top, bot, u(0.15), u(0.15), sides=4, cap_rings=1, mid=0), "strap",
               Bind.blend("pelvis", "loin_f_01", falloff=3.0), name="charm_cord", outline=False, covered_by=skid)
         b.add(G.cone(bot + Vector((0, 0, u(0.3))), bot - Vector((0, 0, u(1.5))) + n * u(0.2), u(0.55), sides=5),
               "bone", Bind.blend("pelvis", "loin_f_01", "loin_f_02", falloff=3.0), name="charm", outline=False,
@@ -338,13 +348,15 @@ def build_body(pal: Palette, kit: ShamanKit) -> bpy.types.Object:
     for nm, reg, ln in (("totem_feather_01", "feather_red", 6.5), ("totem_feather_02", "feather_teal", 5.5)):
         r0 = bones[nm].head_local
         d = (bones[nm].tail_local - r0).normalized()
-        fth = G.feather(u(ln), u(1.8), u(0.3), curl=0.1, bend=0.05)
+        fth = G.feather(u(ln), u(1.8), u(0.3), curl=0.1, bend=0.05, rows=5)
         fth.transform(R.frame(r0, d, Vector((1, 0, 0))))
         b.add(fth, reg, Bind.rigid(nm), name=f"totem_{reg}", sub_regions={1: "feather_tip", 2: "fur_dark"},
               hull_pad=True)
         cordp = M.capsule(r0, r0 + d * u(0.6), u(0.14), u(0.14), sides=5, cap_rings=1)
         b.add(cordp, "strap", Bind.rigid(nm), name="totem_cord", outline=False)
-    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=kit.rig, grounding_height=HEIGHT)
+    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=kit.rig, grounding_height=HEIGHT,
+                             name=f"{ASSET}_LOD{lod}" if lod else None)
+    body["af_lod"] = lod
     return body
 
 
@@ -656,6 +668,7 @@ def anim_quick(out: Path, names, facing: str = "se") -> None:
 def ship(previews: bool = True, verify: bool = True) -> int:
     import mship
     pal, kit, body, totem = build_all()
+    body1 = build_body(pal, kit, lod=1)
     A = anims(kit)
     R.attach_to_bone(totem, kit.rig, "weapon_r")
     A.bind_meshes(body, {"weapon_r": totem})
@@ -671,6 +684,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         asset=ASSET, token=TOKEN, preview_dir="mon_goblin_shaman", pal=pal, A=A, body=body, items=items, clips=cs,
         outline_class=OUTLINE_CLASS, game_ids=["monster_goblin_shaman", "miniboss_goblin_shaman"],
         blob_radius=round(11 * U, 3), height=HEIGHT, display={"zh-CN": "哥布林萨满", "en": "Goblin Shaman"},
+        lod1=body1,
         fx=FX, glows=spirit_glows(kit.rig, bare),
         qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS)},
         qa_pairs={"totemBody": ("item:" + TOTEM, "body_nf")},

@@ -81,6 +81,17 @@ CLEAVER_REGIONS = outline.ink_regions(dict(
 class ChiefKit(GB.GoblinKit):
     """The goblin body kit with the chief's ears (drooping a little under the helm rim) and tusks."""
 
+    @staticmethod
+    def skull_hide(h: float, a: float) -> bool:
+        """The cranium under the helm dome (helm h 3.7 → crown, pushed 0.62 u out; its rim band dips to 4.1)."""
+        return h > 4.25
+
+    @staticmethod
+    def torso_hide(s: float, a: float) -> bool:
+        """Skin fully inside the studded cuirass (s 0.06 → 0.80, 0.06–0.62 u out; same spine weights) and the
+        wolf-pelt mantle over it (s 0.6 → 1.12, round the shoulders and the neck)."""
+        return 0.11 < s < 0.98
+
     def ear_mid(self, sg: int) -> Vector:
         return self.hp(2.9, -1.7, sg * 9.8)
 
@@ -131,9 +142,14 @@ def strip_along(pts, lat_dir: Vector, normal_fn, width: float, thick: float) -> 
 
 
 # ── body ───────────────────────────────────────────────────────────────────────────────────────────────
-def build_body(pal: Palette, kit: ChiefKit) -> bpy.types.Object:
+LOD1_RATIO = 0.45
+LOD1_SKIP = ("helm_rivet", "stud", "cuirass_seam", "horn_ridge", "knee_rivet", "buckle_eye", "pauldron_eye",
+             "pauldron_nose", "bracer_lace", "helm_ridge", "pauldron_jaw", "fur_stroke", "elbow", "knee")
+
+
+def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
     from kit import asset
-    b = M.Builder(ASSET, pal, prefix=PREFIX)
+    b = GB.builder(ASSET, pal, PREFIX, lod, LOD1_SKIP, LOD1_RATIO)
     b.regions(**GB.regions_for(LOOK))
     u, hk = kit.u, kit.hk
     J = kit.J
@@ -148,16 +164,16 @@ def build_body(pal: Palette, kit: ChiefKit) -> bpy.types.Object:
     head = Bind.rigid("head")
     # ── horned iron helm ────────────────────────────────────────────────────────────────────────────────
     hs = HelmSurf(kit, hk(0.62))
-    helm = G.grid_loft(lambda h, a: hs.point(h, a), list(np.linspace(3.7, 7.02, 10)), G.angles(28), cap0="fan",
+    helm = G.grid_loft(lambda h, a: hs.point(h, a), list(np.linspace(3.7, 7.02, 8)), G.angles(22), cap0="fan",
                        cap1="fan", dome1=hk(0.05))
     hid = b.add(helm, "iron", head, name="helm", hull_pad=True)
-    band = G.surface_ring(hs, lambda a: 4.35 - 0.25 * math.cos(math.radians(a)), hk(1.55), hk(0.45), segs=40)
+    band = G.surface_ring(hs, lambda a: 4.35 - 0.25 * math.cos(math.radians(a)), hk(1.55), hk(0.45), segs=24)
     b.add(band, "iron_dark", head, name="helm_band", outline=False, covered_by=hid)
-    for k in range(10):
-        a = -180.0 + 36.0 * k + 18.0
+    for k in range(8):
+        a = -180.0 + 45.0 * k + 22.5
         h = 4.35 - 0.25 * math.cos(math.radians(a))
-        b.add(G.surface_dot(hs, h, a, hk(0.42), hk(0.75)), "iron_light", head, name="helm_rivet", outline=False,
-              covered_by=hid)
+        b.add(G.surface_dot(hs, h, a, hk(0.46), hk(0.75), low=True), "iron_light", head, name="helm_rivet",
+              outline=False, covered_by=hid)
     # crest ridge front to back over the dome (one darker welded seam)
     ridge = [hs.point(h, 0.0, hk(0.05)) for h in np.linspace(4.9, 7.0, 6)] + \
             [hs.point(h, 180.0, hk(0.05)) for h in np.linspace(7.0, 4.9, 6)][1:]
@@ -179,49 +195,51 @@ def build_body(pal: Palette, kit: ChiefKit) -> bpy.types.Object:
         pts = [kit.hp(h, f, sg * l) for h, f, l in ctl]
         dense = []
         for i in range(len(pts) - 1):
-            for k in range(3):
-                dense.append(pts[i].lerp(pts[i + 1], k / 3))
+            for k in range(2):
+                dense.append(pts[i].lerp(pts[i + 1], k / 2))
         dense.append(pts[-1])
         rad = [hk(1.55 * (1 - 0.92 * (i / (len(dense) - 1)) ** 1.25) + 0.05) for i in range(len(dense))]
-        horn = M.tube(dense, rad, sides=12, dome0=0.0, dome1=hk(0.1))
+        horn = M.tube(dense, rad, sides=9, dome0=0.0, dome1=hk(0.1))
         hrn = b.add(horn, "horn", head, name="horn", hull_pad=True)
-        for k, f in enumerate((0.22, 0.34, 0.46)):
+        for k, f in enumerate((0.2, 0.4)):
             i = int(f * (len(dense) - 1))
             tg = (dense[i + 1] - dense[i - 1]).normalized()
-            ring = M.tube([dense[i] - tg * hk(0.28), dense[i] + tg * hk(0.28)], [rad[i] + hk(0.12)] * 2, sides=12,
+            ring = M.tube([dense[i] - tg * hk(0.28), dense[i] + tg * hk(0.28)], [rad[i] + hk(0.12)] * 2, sides=9,
                           dome0=0.0, dome1=0.0)
             b.add(ring, "horn_band", head, name="horn_ridge", outline=False, covered_by=hrn)
     # war paint: two red stripes on each cheek
     hsurf = GB._HeadSurf(kit)
     for sg in (1, -1):
         for h0, h1 in ((1.45, 1.05), (0.25, -0.15)):
-            st = G.surface_strap(hsurf, [(h0, sg * 24.0), (h1, sg * 44.0)], hk(0.8), hk(0.14), steps=6)
+            st = G.surface_paint(hsurf, [(h0, sg * 24.0), (h1, sg * 44.0)], hk(0.8), hk(0.1), steps=3)
             b.add(st, "paint", head, name="war_paint", outline=False, covered_by=skull)
     # ── studded leather cuirass ─────────────────────────────────────────────────────────────────────────
     spine = Bind.blend("pelvis", "spine_01", "spine_02", "spine_03", falloff=3.0, smooth=0.02)
-    ss = list(np.linspace(0.06, 0.80, 9))
-    angs = G.angles(28)
+    ss = list(np.linspace(0.06, 0.80, 7))
+    angs = G.angles(22)
     outer = [[t.point(s_, a, u(0.62)) for a in angs] for s_ in ss]
     inner = [[t.point(s_, a, u(0.06)) for a in angs] for s_ in ss]
     cu = C.thick_patch(outer, inner, wrap_u=True)
     cid = b.add(cu, "leather", spine, name="cuirass", hull_pad=True)
-    for s_ in (0.27, 0.43, 0.59):
-        for a in (-44.0, -22.0, 0.0, 22.0, 44.0, 136.0, 158.0, 180.0, -158.0, -136.0):
-            b.add(G.surface_dot(_Off(t, u(0.62)), s_, a, u(0.62), u(0.55)), "iron_light", spine, name="stud",
-                  outline=False, covered_by=cid)
+    # 3 × 3 iron studs on the chest (web) and 2 × 2 on the back, either side of the pelt tail
+    studs = [(s_, a) for s_ in (0.27, 0.43, 0.59) for a in (-30.0, 0.0, 30.0)] + \
+            [(s_, a) for s_ in (0.31, 0.47) for a in (152.0, -152.0)]
+    for s_, a in studs:
+        b.add(G.surface_dot(_Off(t, u(0.62)), s_, a, u(0.7), u(0.6), low=True), "iron_light", spine,
+              name="stud", outline=False, covered_by=cid)
     # lacing seam down each side
     for a in (90.0, -90.0):
-        st = G.surface_strap(_Off(t, u(0.62)), [(0.10, a), (0.76, a)], u(0.7), u(0.12), steps=10)
+        st = G.surface_paint(_Off(t, u(0.62)), [(0.10, a), (0.76, a)], u(0.7), u(0.1), steps=4)
         b.add(st, "leather_dark", spine, name="cuirass_seam", outline=False, covered_by=cid)
     # strap belt with a trophy-skull buckle
     bid = kit.add_rope_belt(b, cid, s0=0.07, region="strap", stroke=None, width_u=2.1, thick_u=0.95)
     bc = t.point(0.07, 14.0, u(1.3))
     bn = t.normal(0.07, 14.0)
     m = G.frame_z(bc, bn, Vector((0, 0, 1)))
-    sk = M.ellipsoid((u(1.15), u(1.0), u(0.7)), (0, 0, 0), sides=12, rings=8).transform(m)
+    sk = M.ellipsoid((u(1.15), u(1.0), u(0.7)), (0, 0, 0), sides=10, rings=6).transform(m)
     sid = b.add(sk, "bone", Bind.blend("pelvis", "spine_01", falloff=3.0), name="buckle_skull", hull_pad=True)
     for x in (-0.42, 0.42):
-        e = M.ellipsoid((u(0.32), u(0.36), u(0.2)), (0, 0, 0), sides=8, rings=5).transform(
+        e = M.ellipsoid((u(0.32), u(0.36), u(0.2)), (0, 0, 0), sides=6, rings=4).transform(
             m @ Matrix.Translation((x * u(1.0), u(0.15), u(0.62))))
         b.add(e, "socket", Bind.blend("pelvis", "spine_01", falloff=3.0), name="buckle_eye", outline=False,
               covered_by=sid)
@@ -230,8 +248,8 @@ def build_body(pal: Palette, kit: ChiefKit) -> bpy.types.Object:
                                             (0.88, u(9.0), u(8.3), u(-0.5)), (0.98, u(7.6), u(7.0), u(-0.3)),
                                             (1.06, u(5.0), u(5.3), u(-0.1)), (1.12, u(3.6), u(4.2), u(0.1))],
                        exp=2.3)
-    ms_ = list(np.linspace(0.62, 1.12, 9))
-    angs = G.angles(32)
+    ms_ = list(np.linspace(0.62, 1.12, 6))
+    angs = G.angles(24)
     hem = {a: 0.62 - (0.035 if (i % 2) else 0.0) - 0.02 * math.cos(math.radians(a)) for i, a in enumerate(angs)}
     outer, inner = [], []
     for r, s_ in enumerate(ms_):
@@ -246,17 +264,17 @@ def build_body(pal: Palette, kit: ChiefKit) -> bpy.types.Object:
     mbind = kit.blend4("spine_03", "neck_01", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", falloff=3.0,
                        smooth=0.03)
     mid_ = b.add(mantle, "fur", mbind, name="mantle", hull_pad=True)
-    for i in range(16):
-        a = -180.0 + 22.5 * i + 7.0
-        st = G.surface_strap(_Off(mant, u(0.55)), [(0.86, a), (0.74, a + 4.0), (0.66, a + 2.0)], u(0.75), u(0.14),
-                             steps=6)
+    for i in range(14):
+        a = -180.0 + 360.0 / 14 * i + 7.0
+        st = G.surface_paint(_Off(mant, u(0.55)), [(0.86, a), (0.74, a + 4.0), (0.66, a + 2.0)], u(0.8), u(0.1),
+                             steps=4, taper=0.6)
         b.add(st, "fur_dark", mbind, name="fur_stroke", outline=False, covered_by=mid_)
     # pelt tail down the back on the pelt chain
     bones = kit.rig.obj.data.bones
     chain = [bones["pelt_01"].head_local, bones["pelt_02"].head_local, bones["pelt_03"].head_local,
              bones["pelt_03"].tail_local]
     tail = G.chain_strip(chain, [u(6.0), u(5.0), u(3.8), u(2.4)], Vector((1, 0, 0)), Vector((0, 1, 0.15)),
-                         u(0.9), ragged=u(0.4), tails=3, seed=11)
+                         u(0.9), ragged=u(0.4), tails=3, seed=11, per_seg=2)
     tb = GB.chain_bind(chain[0], chain[-1], ("spine_03", "pelt_01", "pelt_02", "pelt_03"))
     b.add(tail, "fur", tb, name="pelt_tail", sub_regions={1: "fur", 2: "fur_dark"}, hull_pad=True)
     # skull pauldron on the weapon (right) shoulder, over the mantle
@@ -265,37 +283,39 @@ def build_body(pal: Palette, kit: ChiefKit) -> bpy.types.Object:
     out = (V(-1.0, 0.45, 0.35)).normalized()
     m = G.frame_z(c, out, Vector((0, 0, 1)))
     pb = Bind.blend("clavicle_r", "upperarm_r", falloff=2.0)
-    cran = M.ellipsoid((u(2.3), u(2.5), u(2.0)), (0, 0, 0), sides=14, rings=8).transform(m)
+    cran = M.ellipsoid((u(2.3), u(2.5), u(2.0)), (0, 0, 0), sides=12, rings=7).transform(m)
     pid = b.add(cran, "bone", pb, name="pauldron_skull", hull_pad=True)
     for x in (-0.9, 0.9):
-        e = M.ellipsoid((u(0.62), u(0.72), u(0.35)), (0, 0, 0), sides=8, rings=5).transform(
+        e = M.ellipsoid((u(0.62), u(0.72), u(0.35)), (0, 0, 0), sides=6, rings=4).transform(
             m @ Matrix.Translation((x * u(1.0), u(0.25), u(1.72))))
         b.add(e, "socket", pb, name="pauldron_eye", outline=False, covered_by=pid)
     nose = M.ellipsoid((u(0.3), u(0.45), u(0.25)), (0, 0, 0), sides=6, rings=4).transform(
         m @ Matrix.Translation((0.0, -u(0.9), u(1.82))))
     b.add(nose, "socket", pb, name="pauldron_nose", outline=False, covered_by=pid)
-    jaw = M.ellipsoid((u(1.6), u(0.9), u(1.2)), (0, 0, 0), sides=10, rings=6).transform(
+    jaw = M.ellipsoid((u(1.6), u(0.9), u(1.2)), (0, 0, 0), sides=8, rings=5).transform(
         m @ Matrix.Translation((0.0, -u(1.9), u(0.9))))
     b.add(jaw, "bone", pb, name="pauldron_jaw", outline=False, covered_by=pid)
     # leather bracers and iron knee guards
     for s, sg in (("l", 1), ("r", -1)):
         E, W = J[f"elbow_{s}"], J[f"wrist_{s}"]
-        br = M.tube([E.lerp(W, 0.2), E.lerp(W, 0.55), E.lerp(W, 0.85)], [u(2.25), u(2.15), u(2.0)], sides=12,
+        br = M.tube([E.lerp(W, 0.2), E.lerp(W, 0.55), E.lerp(W, 0.85)], [u(2.25), u(2.15), u(2.0)], sides=10,
                     dome0=0.0, dome1=0.0)
         brid = b.add(br, "leather", Bind.blend(f"lowerarm_{s}", f"hand_{s}", falloff=4.0), name=f"bracer_{s}",
                      hull_pad=True)
         for f in (0.32, 0.72):
-            ring = M.tube([E.lerp(W, f - 0.04), E.lerp(W, f + 0.04)], [u(2.35)] * 2, sides=12, dome0=0.0, dome1=0.0)
+            ring = M.tube([E.lerp(W, f - 0.04), E.lerp(W, f + 0.04)], [u(2.35)] * 2, sides=10, dome0=0.0, dome1=0.0)
             b.add(ring, "leather_dark", Bind.blend(f"lowerarm_{s}", f"hand_{s}", falloff=4.0), name="bracer_lace",
                   outline=False, covered_by=brid)
         Kn = J[f"knee_{s}"]
-        kg = M.ellipsoid((u(2.45), u(1.6), u(2.6)), Kn + V(0, u(1.05), u(0.3)), sides=14, rings=8)
+        kg = M.ellipsoid((u(2.45), u(1.6), u(2.6)), Kn + V(0, u(1.05), u(0.3)), sides=10, rings=6)
         kid = b.add(kg, "iron", Bind.blend(f"thigh_{s}", f"calf_{s}", falloff=4.0), name=f"knee_guard_{s}",
                     hull_pad=True)
-        b.add(G.surface_dot(_Ell(Kn + V(0, u(1.05), u(0.3)), (u(2.45), u(1.6), u(2.6))), 0.5, 0.0, u(0.45),
-                            u(0.5)), "iron_light", Bind.blend(f"thigh_{s}", f"calf_{s}", falloff=4.0),
+        b.add(G.surface_dot(_Ell(Kn + V(0, u(1.05), u(0.3)), (u(2.45), u(1.6), u(2.6))), 0.5, 0.0, u(0.5),
+                            u(0.5), low=True), "iron_light", Bind.blend(f"thigh_{s}", f"calf_{s}", falloff=4.0),
               name="knee_rivet", outline=False, covered_by=kid)
-    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=kit.rig, grounding_height=HEIGHT)
+    body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=kit.rig, grounding_height=HEIGHT,
+                             name=f"{ASSET}_LOD{lod}" if lod else None)
+    body["af_lod"] = lod
     return body
 
 
@@ -639,6 +659,7 @@ def anim_quick(out: Path, names, facing: str = "se") -> None:
 def ship(previews: bool = True, verify: bool = True) -> int:
     import mship
     pal, kit, body, cleaver = build_all()
+    body1 = build_body(pal, kit, lod=1)
     A = anims(kit)
     R.attach_to_bone(cleaver, kit.rig, "weapon_r")
     A.bind_meshes(body, {"weapon_r": cleaver})
@@ -653,6 +674,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
     ms = mship.MonsterShip(
         asset=ASSET, token=TOKEN, preview_dir="mon_goblin_chief", pal=pal, A=A, body=body, items=items, clips=cs,
         outline_class=OUTLINE_CLASS, game_ids=["monster_goblin_chief"], blob_radius=round(12 * WEB.U, 3), height=HEIGHT,
+        lod1=body1,
         display={"zh-CN": "哥布林首领 · 碎牙·格罗克", "en": "Goblin Chief · Grokk Brokentooth"},
         fx=FX, glows=eye_glows(kit.rig),
         qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS)},

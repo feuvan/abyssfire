@@ -31,7 +31,8 @@ SWATCH_PX = 16     # pixels per swatch edge
 ATLAS_PX = GRID * SWATCH_PX
 UNUSED_RGB = (255, 0, 255)
 
-FAMILIES = ("Heroes", "Monsters_Plains", "NPC", "Props_Plains", "Foliage_Plains", "FX", "Test")
+FAMILIES = ("Heroes", "Monsters_Plains", "NPC", "Props_Plains", "Foliage_Plains", "FX", "Test",
+            "Weapons", "Pickups")   # Weapons: generic equipment meshes (+ tier atlases, items/), Pickups: ground loot
 
 
 def _q8(v: float) -> int:

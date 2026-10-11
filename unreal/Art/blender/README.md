@@ -165,7 +165,8 @@ workhorse) → `tube(points, radii, sides, exp)`, `capsule(a, b, ra, rb)`, `belt
 3–4 rounded box).
 `Builder(asset, palette, prefix, lod_ratio=1, lod_skip=None)`: `.regions(name=Region…)`, `.add(part, region, bind,
 name, outline=True, sub_regions={1: 'lining'}, hull=None, hull_pad=False, covered_by=None)` → part id (padded hull
-proxies: see §2 Outline; `pad_proxy(part, points)`), `.build(name, grounding_height)` → mesh object with
+proxies: see §2 Outline; `pad_proxy(part, points)`), `.cover(pid, part)` (pad `pid`'s proxy round a shape that is
+not added — a detail modelled collapsed in the bind pose and scaled in by a clip), `.build(name, grounding_height)` → mesh object with
 `af_swatch`/`af_part`/`af_nohull`/`af_hullonly` face attributes, palette UVs and `AF_Data`. A reduced LOD is the
 same generator run with `lod_ratio` < 1 (every part and hull proxy collapse-decimated by `decimate(part, ratio)`)
 and `lod_skip(name)` dropping sub-readability details. `tri_count(obj, material_index)`.
@@ -304,8 +305,8 @@ contact frame with the re-imported sword/shield on their sockets (what UE receiv
   (crease strips via `Region.line_region()`, inset plates) for now.
 * Skeletal LODs: Blender's FBX exporter cannot write an `FbxLODGroup`, so a generated LOD ships as its own file
   `SK_<Asset>_LOD1.fbx` (same armature + bind pose) listed in the manifest entry's `lods[]` (import as LOD 1:
-  `USkeletalMeshEditorSubsystem::ImportLOD` / Interchange). The warrior has one; other SKs still rely on UE
-  reduction. SM LOD groups are not generated yet. Hull budgets: see the warrior manifest `budget` record.
+  `USkeletalMeshEditorSubsystem::ImportLOD` / Interchange). The heroes and the Chapter-1 monsters (§10) ship one;
+  other SKs still rely on UE reduction. SM LOD groups are not generated yet. Hull budgets: see the warrior manifest `budget` record.
 * The secondary-motion chains are keyed in the clips (mobile path); AnimDynamics setup is UE-side.
 
 ## 9. Hero generators (`heroes/`)
@@ -397,3 +398,122 @@ Conventions learnt on the warrior (apply them to the next heroes):
   LOD0 vs LOD1; `weapons.png` includes a hilt close-up (pommel cabochon, down-swept guard). The ship prints the QA
   table (`[qa]`) and fails on any weapon intersection, any point > 5 mm under the floor, cape × armour over the yoke
   baseline, or a contact visor > 12° off the strike line.
+
+### Mage and rogue (`heroes/mage*.py`, `heroes/rogue*.py`)
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/heroes/mage.py     # ship (~6 min)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/heroes/rogue.py    # ship (~6 min)
+#   same CLI as the warrior, plus  --anims … --qa [--qa-parts] [--qa-frames=metric,…]   per-frame QA in scratch
+#                                  --game Clip:frame:facing … [--inkmaps]   ink-gated 1080p crops; --inkmaps also writes
+#                                  each cell's edge map and names the mesh part under every thin-ink edge pixel
+```
+
+| File | Content |
+|---|---|
+| `heroes/hero_base.py` | shared by the mage and the rogue (independent of the warrior's files): loft / painted-strip helpers, `shell_ring` (two-sided cloth ring + hull proxy; `hull_row_step` / `hull_cols`), `HeroAnims` (web → body space, chest-relative authoring, `look`, foot planting, `grounded` on the skinned meshes, cloth chain toolkit: lagged hanging chains, gravity in spins, obstacle `envelope`, floor constraint), `PairQA` (per-frame ground / item × body / cloth × body) |
+| `heroes/hero_ship.py` | `HeroDef` + `cli`: bake, QA gate, FBX (SK, LOD1, `A_` per clip, item SMs), manifest (merging; `itemAttachments` incl. the rogue's clip-only bow swap), re-import verification, the review set with the ink gate on every game cell (a body lying away from the root slides the fixed 1:1 crop, never resizes it), portrait |
+| `heroes/mage.py` · `mage_clips.py` · `mage_ship.py` | `SK_Hero_Mage` (robe skirt / sash / hood tip / beard / tome / bell-sleeve chains), `SM_Hero_Mage_Staff` + `SM_Hero_Mage_Crystal` (child item on the staff's `crystal` socket); 15 clips incl. `Cast_Blizzard` / `Cast_Meteor` (R5); skirt leg envelope, staff fit (cone search clear of robe / hood / beard / sleeves / floor), face-down Death drape |
+| `heroes/rogue.py` · `rogue_clips.py` · `rogue_ship.py` | `SK_Hero_Rogue` (scarf A/B and hood-tip chains, tassets on the thighs), `SM_Hero_Rogue_Dagger` / `_Dagger_L` (mirror), `SM_Hero_Rogue_Bow` (flash-bow swapped into the off hand between `FX_BowShow` / `FX_BowHide` in `Cast_Multishot`), `SM_Hero_Rogue_Quiver` (body socket `quiver`); 14 clips |
+
+Conventions learnt on the mage and rogue:
+
+* **A robe skirt is four 2-link chains**: the legs push it out (an envelope of the skinned leggings / boots,
+  shared by angular weight), the floor holds the chain ends ≥ 7 cm; a tall kneel keeps the thighs inside the cone
+  (a sit-back kneel or a child's-pose fold drives the knees through the front panel). Face down (`spin` 86°), each
+  link turns only a share toward world down (`SKIRT_FALL`), the top panel barely (`SKIRT_FALL_IN`: with four chains
+  the hem ring between them would cut the calves), the sides droop to the floor and the front panel lies flat under
+  the knees (`SKIRT_FLOOR_SPUN`, faded in by the spin) — the robe wraps the legs instead of flaring into a funnel.
+* **Ink on cloth that bends**: a hull proxy on every other row cuts its chords into a bent cloth; a pinched hem
+  lens has only outward and down-the-cloth normals, so the diagonal hem of a flared skirt kept ~80 % of the ink.
+  The mage's skirt proxy (`skirt_hull`) swells over the gold hem band and curls under it in a quarter-round, the
+  bell sleeves keep a proxy on every row and the gold cuff carries its own padded hull.
+* **Held items in falls**: the per-frame cone search picks a different azimuth every frame once a shaft meets the
+  floor (a flickering staff); from the topple key on the Death staff follows an authored world-space tip-over and
+  settles onto the floor (`lay_staff`: azimuth + the pitch that rests the claw head and butt on the ground). A
+  falling arm's bell sleeve rides back toward the elbow (`SLEEVE_SLIDE` scaled by the spin's gravity weight).
+* **Budgets**: LOD0 toon 16–18 k, LOD1 ≤ 7.1 k toon, hull ≤ 0.6 × toon (the mage 0.60: skirt and bells keep
+  full-row proxies); the drawn LOD0 total (toon + hull + items, the `budget.drawnLod0` record) is warrior 33.0 k,
+  mage 28.8 k, rogue 34.6 k (the flash-bow, shown in one clip only, counted).
+
+## 10. Monster generators (`monsters/`)
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/goblin.py          # ship (~2 min)
+#   goblin_chief.py · goblin_shaman.py · slime.py · elite_crown.py — same CLI:
+#   --quick (READY close-ups / turnaround / game crop → scratch) · --anims [Clip …] [--facing=se] · --no-previews · --no-verify
+```
+
+| File | Content |
+|---|---|
+| `monsters/mgeo.py` | geometry helpers: `grid_loft` / `split_by` (af_u/af_a regions), `SpineLoft` (hunched torsos, mantles, skirts), `ProfileLoft`, `surface_strap` / `surface_ring` (solid straps, belts, rims), **`surface_paint`** (single-sided painted strokes: fur, war paint, seams, twist lines — 2 tris per step), `surface_dot(low=True)` (25-tri studs / rivets), `flap`, `leaf_solid`, `feather`, `chain_strip`, `cone` |
+| `monsters/goblins.py` | `GoblinKit`: `SKEL_Goblin` (kit humanoid builder, goblin proportions, the union of the family's chains: `ear_*`, `jaw`, `eye_*`, `loin_*`, `pelt_*`, `headdress_*`, `totem_feather_*`) and the shared body (skull, face, ears, pot-belly torso, limbs, fists, feet, loincloth); `skull_hide` / `torso_hide` cut skin under a helm / cuirass / shawl; `builder(…, lod)` + `LOD1_SKIP` |
+| `monsters/mclips.py` | `GoblinAnims`: web `humanoidTracks` → BP poses (READY, thrust / overhead / cast attacks, recoil, backward death), no-slide walk, Stun, contact / windup notifies |
+| `monsters/goblin.py` · `goblin_chief.py` · `goblin_shaman.py` · `slime.py` | the four SKs + held items (spear, cleaver, totem) |
+| `monsters/goblin_hunt.py` | hunt-leader attachments (red cap, pendant, loot sack; manifest `variants`, scale 1.25) |
+| `monsters/elite_crown.py` | `SM_FX_EliteCrown` (+ `crown_over_monsters.png`) |
+| `monsters/mship.py` | ship: bake, FBX (SK, **LOD1**, `A_` per clip, item SMs), manifest (merging), per-frame QA, ink gate, re-import verification (`verify_export`, `verify_lod`), the review set (`lod1.png` = LOD0 vs LOD1 incl. the mobile-low look) |
+
+Budgets (spec §1.9; `budget` in each manifest entry; toon = every toon-lit slot, the slime's dithered shell
+included): goblin 6.1 k / LOD1 3.2 k, chief 9.0 k / 3.2 k, shaman 8.9 k / 3.4 k, slime 2.65 k / 1.47 k; hull ≤ 0.75 ×
+toon. LOD1 `screenSize` 0.05: a monster is 0.10–0.20 at every W1 zoom, so desktop always draws LOD0; LOD1 is the
+mobile-low gameplay mesh (skeletal LOD bias 1, baked hull only) and keeps every identity cue (eyes + pupils, grin,
+teeth, ears, war paint, mask, headdress).
+
+Conventions learnt on the monsters:
+
+* **Budget where it is seen**: small knobs and trims are low-poly (a 1–2 cm stud is 2–3 px at 1080p), painted
+  details are single-sided strips (`surface_paint`), and skin wholly under gear is cut (`skull_hide` /
+  `torso_hide`; the hull is still baked from the closed shape) — the chief went 17.8 k → 9.0 k with no visible change
+  in the game crops or the close-ups.
+* **Clean bind pose**: details a clip scales in (the slime's X-eyes and angry brows) are modelled collapsed to 2 %
+  about their bone and scaled by 1 / 0.02 in the clips; `Builder.cover` keeps their full-size shape inside the
+  shell's padded ink.
+
+## 11. NPC generators (`npcs/`)
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/npcs/npc_ship.py <Npc|all>   # ship (~2 min each)
+#   <Npc> = Blacksmith | Merchant | QuestElder | PlainsHerbalist | PlainsWanderer | EscortTravelingMerchant |
+#           RescueLostTraveler | WanderingMerchant | StashKeeper (or the snake-case preview name)
+#   --quick [--pose=Clip:frame] [--facing=se] · --anims [Clip …] · --no-previews · --no-verify
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/npcs/npc_ship.py props      # SM_NPCKit_Prop_*
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/npcs/npc_ship.py dressing   # anvil stump + quest markers
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/npcs/npc_ship.py kit        # SK_NPCKit_* parts
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/npcs/npc_ship.py lineup     # R2 height lineup
+```
+
+| File | Content |
+|---|---|
+| `npcs/folk.py` | the townsfolk kit (spec §5.1, web `Townsfolk.ts`): `Look` (web `FolkLook`), builds slim / normal / stout / dwarf fitted to the R2 heights (1.72–1.76 m), the shared head (× `HEAD_K` 0.92) with modelled eyes / pupils / catch-lights / brows / nose / mouth / ears / blush, hair (short · long · bald · ponytail · bun · braid; a cap clipped by the web hairline, its sunk inside dropped), beards (stubble · short · full · long · braided · mustache; the hanging mass grows out of the jaw shell), hats (cap · headband · widebrim; `hat_tilt` / `visor_k` / `brim_k` are the W1 camera cheats that keep the face out of the brim's shadow), tops (tunic · vest · robe · coat; neckline opening, placket, hem, 4-chain skirt), belt, apron, mantle / scarf, travel pack (+ the peddler's pot and rug), spectacles, key ring, arms (bare arms = skin + tunic shoulder cap), fists round a grip or open mittens, legs and boots; `build(pal, rig, lod, lod_ratio)` = one merged `SK_NPC_<Id>`, `build_kit_part` = one part group on its own |
+| `npcs/looks.py` | the nine Chapter-1 looks (§5.2 hex values + DECISIONS I7 stash keeper): `NpcDef` = look + work loop + READY tweaks + game ids, display names, runtime FX cards (`orbGlow`, `herbGlow`, `coinGlint`, `anvilSparks`), scenery, extra clips, fidget gesture |
+| `npcs/props.py` | `SM_NPCKit_Prop_*` held props in weapon-bone space (hammer, tongs + hot bar, staff + orb, scroll, purse, herb pouch, sword, book), `SM_Prop_Camp_AnvilStump` (socket `strike`), `SM_UI_QuestMarker_Excl / _Quest / _QuestGrey` |
+| `npcs/npc_clips.py` | `NpcAnims` (on `hero_base.HeroAnims`): READY per work style, `IdleNPC`, `IdleNPC_Fidget` (personal gesture), `Alert`, `Talk`, `Work_Hammer / Count / Read / Guard / Lookout`; escort `Idle`, `Walk` 1.2 m/s, `Run` 2.85 m/s (no-slide), `Hurt`, `Death`; rescue `Cower`; cloth (skirt chains with the leg envelope, hair tail, beard, scarf, pack bounce) |
+| `npcs/npc_ship.py` | build (LOD1 rebuilt to the §1.9 5 k budget), bake, per-frame QA (`ToonGroundQA`: items' ground on their toon surface — a planted staff / sword point's hull under the floor is expected), FBX (SK, LOD1, `A_` per clip), manifest (`npcStates`, `fx`, `scenery`, `attachments`, `budget`, `lods`, `portrait`), re-import verification, review set in `Previews/npc_<id>/` with the ink gate on every game-camera cell, portrait `T_UI_Portrait_<Id>` (512², screen-space ink) |
+| `npcs/npc_dressing.py` · `npcs/npc_kit_parts.py` | props (`Previews/npc_props/props.png`, leading face 3/4 front + 3/4 back), the anvil stump (static ship with `ground_occludes`: the hull under its foot is the terrain's), the quest markers (full camera billboard on `fx_overhead`; `Previews/npc_markers/markers_over_npc.png` on the elder + gated 1080p cells `markers_close.png`), the R2 lineup (`Previews/npc_family/`); the `SK_NPCKit_*` parts (each the merged mesh's own generator, on its look's rig) + `Previews/npc_kit/kit_parts_a/_b.png` |
+
+Budgets (§1.9): LOD0 8.4–11.8 k toon, LOD1 ≤ 5 k (ratio scaled per look), hull ≤ 0.63 × toon, 36–50 bones. LOD1
+`screenSize` 0.05 (as the monsters: desktop always draws LOD0, LOD1 is the mobile-low mesh). Ink: NPC class 3.0 px,
+gate 2.5 px on ≥ 90 % of the edges of every gated 1080p cell (13–17 per NPC: poses, facings, extra clips).
+
+Conventions learnt on the NPCs:
+
+* **Faces at pitch −50°**: a cap visor or a wide brim rooted at the brow hides the eyes from the W1 camera (the eye →
+  camera ray meets the underside of the peak). Hats are pushed back (`hat_tilt` 10–16°) and peaks shortened
+  (`visor_k`); work loops that look down (counting, reading) bow the head ~5° less than the web.
+* **Hands near the face**: shading the eyes = the wrist at the temple, the flat hand across the brow, the elbow out
+  at shoulder height; hammer lifts travel up the arm's own side — no forearm or tool crosses the face in se / sw.
+* **Beards**: the hanging mass starts inside the jaw (spine root under the skin), jaw-wide, bushiest under the chin —
+  a mass whose top stands proud of the lip reads as a collar / funnel in the portrait.
+* **Planted props** (staff foot, sword point) rest their toon surface on the floor; QA measures items on the toon
+  slot (`ToonGroundQA`).
+* **Hair and headbands are inked by the skull's padded hull** (`covered_by=` the skull), never by a hull of their
+  own: the screen-constant ink pushes a hull sideways in screen space, and along a hairline at the temple / sideburn
+  (where the skin beside it recedes from the camera) a separate hair shell's hull lay over the cheek as a dark wedge
+  from the ear to the eye. The hairline also grows out of the skin (buried lower edge on the face side). Kit parts
+  (no skull) keep their own proxy hull.
+* **LOD1 keeps the face exact**: eyes, pupils, brows, mouth and mustache bypass the collapse decimation
+  (`Folk._add_exact`; lower ring counts instead) and the hair cap is rebuilt coarse rather than decimated — a
+  collapsed eye white sinks under the skin and a decimated hairline creeps over the eye.
+* **Grounded falls** check the boots at full resolution (`NpcAnims.grounded`): every-2nd-vertex sampling missed a
+  tucked toe cap by 1.6 cm.

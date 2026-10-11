@@ -15,6 +15,7 @@ from kit import review
 
 # spec §3 general + §3.2 FX attachments (for the UE module; colours are the web's)
 EYE_GLOW = {"color": "#9FE6FF", "radiusCm": 9.0, "alpha": 0.5, "coreColor": "#E8FBFF", "coreRadiusCm": 3.2,
+            "portraitEyeRadiusCm": 5.9, "portraitEyeAlpha": 0.8,     # web per-eye glow r 2 u (UI portrait only)
             "coreAlpha": 0.55}
 FX = {
     "classColor": "#9B59D6", "impactColor": "#C7A6FF", "spiritColor": "#A98BFF",
@@ -94,7 +95,10 @@ QA_PAIRS = {
 }
 QA_LIMITS = {"ground": -0.5, "staffBody": 0, "crystalBody": 0, "crystalStaff": 0, "skirtLegs": 6, "sashSkirt": 6,
              "hoodTipBody": 6, "beardBody": 6, "tomeSkirt": 8}
-QA_CLIP_LIMITS = {"Death": {"skirtLegs": 60, "sashSkirt": 40, "tomeSkirt": 30, "hoodTipBody": 20, "beardBody": 30},
+# Death (tall kneel → topple → face down): the robe's front panel lies flat on the floor under the prone knees, where
+# the four-chain hem ring grazes the underside of the legs (facing the floor, hidden by the body: ≤ 48 tri pairs in the
+# held pose); the sash tails and the tome settle onto the skirt as the body goes over
+QA_CLIP_LIMITS = {"Death": {"ground": -4.0, "skirtLegs": 50, "sashSkirt": 20, "tomeSkirt": 14},
                   "Dodge": {"skirtLegs": 20}}
 
 GAME_KEYS = [("Idle", 0, "se"), ("Run", 8, "se"), ("Attack01", "beat", "se"), ("Cast01", "beat", "se"),
@@ -103,8 +107,18 @@ CONTACT_KEYS = [(n, "beat", fac) for fac in ("se", "sw") for n in ("Attack01", "
 FACING_KEYS = [(n, f, fac) for fac in ("front", "sw", "ne", "back") for n, f in (("Idle", 0), ("Run", 8))]
 CLOSE_KEYS = [("Attack01", "beat", "se"), ("Attack02", "beat", "se"), ("Attack03", "beat", "se"),
               ("Cast01", "beat", "se"), ("Cast02", "beat", "se"), ("Cast_Blizzard", "beat", "se"),
-              ("Cast_Meteor", "beat", "se"), ("Dodge", 8, "side"), ("Hurt", 0, "se"), ("Death", 40, "front")]
+              ("Cast_Meteor", "beat", "se"), ("Dodge", 8, "side"), ("Hurt", 0, "se"), ("Death", 40, "side")]
 BACK_CLIPS = ("Attack01", "Attack02", "Attack03", "Cast01", "Cast02", "Cast_Blizzard", "Cast_Meteor", "Dodge", "Death")
+
+def portrait_glows(rig, meshes) -> list:
+    """The crystal hum at idle strength (fx.crystalHum, fx ≈ .25) baked into the UI portrait (no bloom there)."""
+    cr = next((m for m in meshes if m.name == MG.CRYSTAL), None)
+    if cr is None:
+        return []
+    hum = FX["crystalHum"]
+    return [{"at": cr.matrix_world.translation.copy(), "radiusCm": 24.0, "color": hum["color"], "alpha": 0.45,
+             "core": 0.32}]
+
 
 HERO = HS.HeroDef(
     asset=MG.ASSET, token=MG.TOKEN, game_id="player_mage",
@@ -122,8 +136,12 @@ HERO = HS.HeroDef(
     game_keys=GAME_KEYS, contact_keys=CONTACT_KEYS, facing_keys=FACING_KEYS, close_keys=CLOSE_KEYS,
     back_clips=BACK_CLIPS, portrait_bust_z=1.02, portrait_zoom=(120, 376, 150, 406),
     verify_bones=("skirt_f_02", "skirt_r_02", "sash_a_03", "sash_b_03", "hood_tip_02", "beard_02", "tome_01"),
-    verify_top=(1.70, 1.77),
+    verify_top=(1.70, 1.77), portrait_glows=portrait_glows,
     notes="Dodge (low arcane skim) is in place; the UE module lerps a mesh offset (2.25 tiles). Signature casts keep "
           "Cast01's release (230 ms). The crystal is a child item of the staff (itemAttachments) — attach it to the "
-          "staff's `crystal` socket.",
+          "staff's `crystal` socket. Death (web: drops to the knees, pitches forward face-down): buckle → tall kneel "
+          "(the robe pooled round the knees) → topples forward over the knees → face down, the staff arm flung past "
+          "the hood and the staff settling on the floor along the right side; the body ends ~1.3 m ahead of the root "
+          "(in place, no root motion). Chain bones beyond SKEL_Human: skirt_f/b/l/r, sash_a/b, hood_tip, beard, tome, "
+          "sleeve_l/r (bell-sleeve sag + slide, location keys).",
 )

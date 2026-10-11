@@ -95,7 +95,9 @@ REGIONS = dict(
 )
 DAGGER_REGIONS = dict(
     steel=STEEL,
-    poison=Region("#78FFAA", .0, .0, e=0.85),      # poison edge line rgba(120,255,170,.75) (FX #6DFFA0)
+    # poison edge line rgba(120,255,170,.75) (FX #6DFFA0): set a third of the way in from the curved edge and kept at
+    # e .6 so its bloom does not lift the blade's silhouette ink (ink gate: dark rim)
+    poison=Region("#78FFAA", .0, .0, e=0.6),
     brass=BRASS,
     grip=LEATHER_DARK,
     grip_wrap=LEATHER,
@@ -168,6 +170,10 @@ def th(h: float) -> float:
     return D.hip_z + h * D.hs
 
 
+BELT_H = 2.5                      # web belt at h 1.4, raised 1.1 u to the waist (the tassets hinge under it)
+BAND_BOT_H = 3.7                  # the bandolier's low end at the left hip, above the belt
+
+
 # ── profiles ───────────────────────────────────────────────────────────────────────────────────────────
 def hood_profile() -> Profile:
     """Web RHOOD_RINGS (h, a front/back, b side, f forward) × 0.88, Catmull-Rom between them, closed by a soft
@@ -198,8 +204,9 @@ def capelet_profile() -> Profile:
 
 
 def tasset_profile() -> Profile:
-    """Web TASSET_RINGS (h 2.2 → −3.6), flared a little for the 3D thighs."""
-    rings = [(2.2, 3.65, 5.0, 0.0), (0.0, 4.1, 5.45, 0.0), (-1.6, 4.45, 5.8, 0.05), (-3.7, 4.8, 6.2, 0.2)]
+    """Web TASSET_RINGS (h 2.2 → −3.6) raised 0.8 u with the belt (the panels hinge above the raised thighs),
+    flared a little for the 3D thighs."""
+    rings = [(3.0, 3.6, 4.95, 0.0), (0.8, 4.1, 5.45, 0.0), (-0.8, 4.45, 5.8, 0.05), (-3.4, 4.8, 6.2, 0.2)]
     return Profile([(th(h), u(b), u(a), -u(f)) for h, a, b, f in rings], exp=2.3)
 
 
@@ -221,6 +228,8 @@ def _back_clear(z: float, a: float) -> float:
         if prof.z0 <= z <= prof.z1:
             p = prof.point(z, a)
             out = max(out, math.hypot(p.x, p.y))
+    if abs(z - th(BELT_H)) < u(1.1):                    # the belt stands 0.4 u proud
+        out += u(0.4) + 0.004
     return out
 
 
@@ -236,7 +245,7 @@ def scarf_points(which: int) -> list[Vector]:
     zz = z0
     r_hem = 0.0
     while zz > z0 - L * 1.2:
-        rc = _back_clear(zz, a) + 0.016
+        rc = _back_clear(zz, a) + 0.022
         r_hem = max(r_hem, rc)              # never back inward: the tail hangs plumb off the capelet's hem
         r = r_hem
         dirv = Vector((math.sin(math.radians(a)), -math.cos(math.radians(a)), 0.0))
@@ -262,12 +271,16 @@ def build_spec() -> HumanoidSpec:
     chains = [("scarf_a", "spine_03", scarf_points(0)), ("scarf_b", "spine_03", scarf_points(1)),
               ("hood_tip", "head", [Vector((0, uh(5.3), hc + uh(0.6))), Vector((0, uh(7.6), hc - uh(3.0))),
                                     Vector((0, uh(9.2), hc - uh(6.6)))])]
+    # one hinge bone per split tasset (from under the belt to the hem at the panel's centre): ``rogue_clips``
+    # swings each panel out just enough to clear the posed thighs
+    for i, (a0, a1) in enumerate(tasset_panels()):
+        chains.append((f"tasset_{i}", "pelvis", list(tasset_hinge(i))))
     spec.chains = chains
     return spec
 
 
 # LOD1 (spec §1.9 hero 7 k): every part decimated, sub-readability details left out
-LOD1_RATIO = 0.5
+LOD1_RATIO = 0.4
 LOD1_SKIP = ("stitch", "wrap_line", "hood_seam", "strap_hi", "nose", "hood_floor", "slit", "buckle_bar",
              "pouch_stud", "spaulder_seam", "neck")
 
@@ -333,16 +346,18 @@ def add_hood(b: M.Builder) -> None:
         h = (z - hc) / (U * CAM_K)
         return -OPEN_DEPTH if e[0] < h < e[1] else 0.0
     eps = 0.0012
-    zs = [z for z in np.linspace(hp.z0, hp.z1, 24)]
-    cols = [OPEN_A * k / 9.0 * 0.998 for k in range(-9, 10)]
+    # density (budget, spec §1.9): 16 rings + a ring pair either side of the opening's edge at 8 angles; 24 sides
+    # + 15 columns across the opening
+    zs = [z for z in np.linspace(hp.z0, hp.z1, 16)]
+    cols = [OPEN_A * k / 7.0 * 0.998 for k in range(-7, 8)]
     rows = []
-    for i in range(1, 14):
-        a = OPEN_A * (-1 + 2 * i / 14)
+    for i in range(1, 10):
+        a = OPEN_A * (-1 + 2 * i / 10)
         e = open_edge(a)
         if e:
             rows += [hc + uh(e[0]) - eps, hc + uh(e[0]) + eps, hc + uh(e[1]) - eps, hc + uh(e[1]) + eps]
     zs = sorted(set([round(z, 5) for z in zs + rows if hp.z0 <= z <= hp.z1]))
-    hood = profile_mesh(hp, zs, 40, disp=disp, cap0=None, cap1="fan", dome1=uh(0.25), extra_angles=cols)
+    hood = profile_mesh(hp, zs, 24, disp=disp, cap0=None, cap1="fan", dome1=uh(0.25), extra_angles=cols)
     shell, recess = C.split_faces(hood, lambda bm, f: any(v[bm.verts.layers.int["af_disp"]] for v in f.verts))
     hull = profile_mesh(hp, list(np.linspace(hp.z0, hp.z1, 16)), 28, cap0="fan", cap1="fan", dome0=-0.03,
                         dome1=uh(0.25))
@@ -354,7 +369,7 @@ def add_hood(b: M.Builder) -> None:
     # the opening's turned edge (dark-teal lining roll, lying on the hood just outside the opening): lets the oval
     # read against the hood from the high camera
     ring, ups = [], []
-    n = 64
+    n = 48
     zc, hz = (OPEN_Z0 + OPEN_Z1) / 2, (OPEN_Z1 - OPEN_Z0) / 2
     for i in range(n):
         t = 2 * math.pi * i / n
@@ -404,15 +419,28 @@ def add_face(b: M.Builder, hood_id: int) -> None:
     nose = ell((0.017, 0.016, 0.026), (0, -fr - 0.002, nz), sides=10, rings=6)
     b.add(nose, "mask", bind, name="nose", outline=False, covered_by=hood_id)
     # amber eyes: slanted slits in the skin band (web 1.5 × 0.9 u at phi ±0.35 about the face)
-    ez = hc + uh(EYE_H)
-    fr = face_r_at(ez) - 0.012
-    for sx in (1.0, -1.0):
-        ex = sx * uh(1.95)
-        yy = -fr + depth * (1 - math.sqrt(max(0.0, 1 - (ex / uh(4.2)) ** 2))) - 0.0032
+    for sx, (ex, yy, ez) in zip((1.0, -1.0), eye_points(depth)):
         eye = ell((0.027, 0.006, 0.0115), (0, 0, 0), sides=12, rings=6)
         eye.rotate("y", -sx * 12.0)
         eye.rotate("z", sx * 18.0)
         b.add(eye.translate((ex, yy, ez)), "eye", bind, name="eye", outline=False, covered_by=hood_id)
+
+
+FACE_DEPTH = 0.05                 # add_face's face ellipsoid depth (eye_points() default)
+
+
+def eye_points(depth: float | None = None) -> list[Vector]:
+    """Rest centres of the two amber eyes (left, right), 3.2 mm proud of the face. The portrait composites the web's
+    per-eye glow on them (``hero_ship.render_portrait``)."""
+    depth = FACE_DEPTH if depth is None else depth
+    ez = D.hc + uh(EYE_H)
+    fr = face_r_at(ez) - 0.012
+    out = []
+    for sx in (1.0, -1.0):
+        ex = sx * uh(1.95)
+        yy = -fr + depth * (1 - math.sqrt(max(0.0, 1 - (ex / uh(4.2)) ** 2))) - 0.0032
+        out.append(Vector((ex, yy, ez)))
+    return out
 
 
 def eyes_point() -> Vector:
@@ -469,7 +497,7 @@ def add_capelet(b: M.Builder) -> None:
 def _bandolier_path(jp: Profile, n: int = 72):
     """Closed strap path: right shoulder (len − 0.2, −90°) → across the chest to the left hip (2.8, +52°) → round
     the left side → up the back (+128° → −90°). Web strap: phi π/2 → −0.9 (front) / π + 0.9 (back)."""
-    h_top, h_bot = TORSO_LEN - 0.2, 2.9
+    h_top, h_bot = TORSO_LEN - 0.2, BAND_BOT_H
     pts = []
     for i in range(n):
         s = i / n
@@ -512,7 +540,7 @@ def add_bandolier(b: M.Builder, jp: Profile, bind, tid: int) -> None:
     for i in range(4):
         k = 0.3 + i * 0.14
         a = -90.0 + 142.0 * k
-        h = (TORSO_LEN - 0.2) + (2.9 - (TORSO_LEN - 0.2)) * k
+        h = (TORSO_LEN - 0.2) + (BAND_BOT_H - (TORSO_LEN - 0.2)) * k
         z = th(h)
         c = jp.point(z, a, lift + 0.0048)
         n = jp.normal(z, a)
@@ -531,7 +559,7 @@ def add_bandolier(b: M.Builder, jp: Profile, bind, tid: int) -> None:
 
 def add_belt(b: M.Builder, jp: Profile) -> None:
     bind = Bind.blend("pelvis", "spine_01", smooth=0.04)
-    zb = th(1.4)
+    zb = th(BELT_H)
     # the belt sits over the tasset tops (they start under it): a ring on the larger of the two profiles
     tp = tasset_profile()
     belt_prof = Profile([(z, max(jp.at(z)[0], tp.at(z)[0]) + 0.004, max(jp.at(z)[1], tp.at(z)[1]) + 0.004)
@@ -557,6 +585,9 @@ def add_belt(b: M.Builder, jp: Profile) -> None:
     add_pouch(b, belt_prof, zb)
 
 
+POUCH_PANEL = 2
+
+
 def add_pouch(b: M.Builder, bp: Profile, zb: float) -> None:
     """Leather hip pouch on the left side behind the hip (web phi −1.9), hanging from the belt, a dark flap and a
     brass stud."""
@@ -572,7 +603,7 @@ def add_pouch(b: M.Builder, bp: Profile, zb: float) -> None:
     for i in range(3):
         fr[i][0], fr[i][1], fr[i][2], fr[i][3] = side[i], n[i], (0, 0, 1)[i], cen[i]
     body = M.box((u(3.4), u(1.9), u(3.6)), (0, 0, 0), bevel=0.012, segments=2)
-    bind = Bind.custom(TASSET_BONES, tasset_weights)
+    bind = Bind.rigid(f"tasset_{POUCH_PANEL}_01")          # rides the panel it hangs on
     pid = b.add(body.transform(fr), "leather", bind, name="pouch", hull_pad=True)
     flap = M.box((u(3.55), u(2.05), u(1.5)), (0, u(0.06), u(1.15)), bevel=0.008, segments=2)
     b.add(flap.transform(fr), "leather_dark", bind, name="pouch_flap", outline=False, covered_by=pid)
@@ -581,40 +612,55 @@ def add_pouch(b: M.Builder, bp: Profile, zb: float) -> None:
 
 
 # ── tassets ────────────────────────────────────────────────────────────────────────────────────────────
-TASSET_BONES = ["pelvis", "thigh_l", "thigh_r"]
 TASSET_SLITS = [-11.5 + 45.0 * i for i in range(8)]       # web slits at phi k π/4 + 0.2
-TASSET_TOP, TASSET_HEM = 1.5, -3.7                        # web h: under the belt → the hem
+TASSET_TOP, TASSET_HEM = 2.6, -3.4                        # under the belt → the hem (web 2.2 → −3.6)
+TASSET_HINGE = 2.4                                        # the panels' hinge line (under the belt): above the
+#                                                           thigh's top surface when the thigh is raised level
+TASSET_GAP = 2.2                                          # deg: half the slit between panels
 
 
-def tasset_weights(co: np.ndarray) -> np.ndarray:
-    """Pelvis at the belt, the thigh of the panel's side toward the hem (front panels ride the thigh most, back
-    panels a little: a stride lifts the front flaps and the back ones swing back with the leg)."""
-    z0, z1 = th(TASSET_TOP), th(TASSET_HEM)
-    k = np.clip((z0 - co[:, 2]) / (z0 - z1), 0.0, 1.0)
-    a = np.degrees(np.arctan2(co[:, 0], -co[:, 1]))
-    front = np.clip(1.0 - (np.abs(a) - 30.0) / 120.0, 0.0, 1.0)          # 1 at the front … 0 at the back
-    wt = (0.30 + 0.62 * front) * HB.smooth01((k - 0.05) / 0.85)
-    W = np.zeros((len(co), 3))
-    W[:, 0] = 1.0 - wt
-    W[:, 1] = wt * (co[:, 0] > 0)
-    W[:, 2] = wt * (co[:, 0] <= 0)
-    return W
+def tasset_panels() -> list[tuple[float, float]]:
+    out = []
+    for i in range(8):
+        a0 = TASSET_SLITS[i] + TASSET_GAP
+        a1 = TASSET_SLITS[(i + 1) % 8] + (360.0 if i == 7 else 0.0) - TASSET_GAP
+        out.append((a0, a1))
+    return out
+
+
+def tasset_hinge(i: int) -> tuple[Vector, Vector]:
+    """Rest hinge bone of panel ``i``: from the hinge line at the panel's centre angle down to its hem."""
+    a0, a1 = tasset_panels()[i]
+    ac = (a0 + a1) / 2
+    tp = tasset_profile()
+    return tp.point(th(TASSET_HINGE), ac, 0.0), tp.point(th(TASSET_HEM), ac, 0.0)
+
+
+def tasset_bind(i: int) -> Bind:
+    """The panel above the hinge line blends into the pelvis (it tucks under the belt); below it rides its hinge
+    bone."""
+    bone = f"tasset_{i}_01"
+    z0, zh = th(TASSET_TOP), th(TASSET_HINGE)
+
+    def fn(co):
+        w = HB.smooth01((z0 - co[:, 2]) / max(z0 - zh, 1e-6) * 0.8 + 0.2)
+        W = np.zeros((len(co), 2))
+        W[:, 0] = 1.0 - w
+        W[:, 1] = w
+        return W
+    return Bind.custom(["pelvis", bone], fn)
 
 
 def add_tassets(b: M.Builder) -> None:
     """Eight split dark-leather tassets (web: one flared skirt with eight slits) — separate panels, each inked."""
     tp = tasset_profile()
     z0, z1 = th(TASSET_TOP), th(TASSET_HEM)
-    bind = Bind.custom(TASSET_BONES, tasset_weights)
-    gap = 2.2
     thick = 0.006
-    for i in range(8):
-        a0 = TASSET_SLITS[i] + gap
-        a1 = TASSET_SLITS[(i + 1) % 8] + (360.0 if i == 7 else 0.0) - gap
-        rows = [z0 + (z1 - z0) * j / 8 for j in range(9)]
-        cols = [a0 + (a1 - a0) * c / 8 for c in range(9)]
+    for i, (a0, a1) in enumerate(tasset_panels()):
+        rows = [z0 + (z1 - z0) * j / 6 for j in range(7)]
+        cols = [a0 + (a1 - a0) * c / 6 for c in range(7)]
 
-        def P(z, a, d):
+        def P(z, a, d, a0=a0, a1=a1):
             # each flap bows out a little at its middle (a stiff leather plate) and rounds its lower corners
             f = (a - a0) / (a1 - a0)
             k = (z0 - z) / (z0 - z1)
@@ -623,8 +669,11 @@ def add_tassets(b: M.Builder) -> None:
             return tp.point(zz, a, d + bow)
         outer = [[P(z, a, thick / 2) for a in cols] for z in rows]
         inner = [[P(z, a, -thick / 2) for a in cols] for z in rows]
-        b.add(C.thick_patch(outer, inner, sub_tags=True), "leather_dark", bind, name="tasset",
-              sub_regions={1: "leather_dark", 2: "leather_dark"}, hull_pad=True)
+        hr, hc_ = rows[::2], cols[::2]
+        hull = C.thick_patch([[P(z, a, thick / 2) for a in hc_] for z in hr],
+                             [[P(z, a, -thick / 2) for a in hc_] for z in hr])
+        b.add(C.thick_patch(outer, inner, sub_tags=True), "leather_dark", tasset_bind(i), name="tasset",
+              sub_regions={1: "leather_dark", 2: "leather_dark"}, hull=hull, hull_pad=True)
 
 
 # ── scarf ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -676,19 +725,20 @@ def add_arm(b: M.Builder, rig: R.Rig, side: str) -> None:
     dua = (E - S).normalized()
     dla = (W - E).normalized()
     Lu, Lf = (E - S).length, (W - E).length
-    arm_id = b.add(M.tube([S - dua * 0.02, E + dua * 0.012], [u(2.1), u(1.95)], sides=16), "wrap",
+    ap = [(S - dua * 0.02).lerp(E + dua * 0.012, i / 5) for i in range(6)]
+    arm_id = b.add(M.tube(ap, [u(2.1) + (u(1.95) - u(2.1)) * i / 5 for i in range(6)], sides=16), "wrap",
                    Bind.blend(cl, ua, la, falloff=5.0), name=f"arm_{side}", hull_pad=True)
     # wrap turns (diagonal WRAP.shade lines round the upper arm)
     fr_u = HB.axis_frame_x(S, dua, Vector((0, 0, 1)))
-    for j in range(3):
-        f0 = 0.42 + 0.17 * j
+    for j in range(2):
+        f0 = 0.45 + 0.22 * j
         pts = []
-        for c in range(13):
-            t = 2 * math.pi * c / 12
+        for c in range(11):
+            t = 2 * math.pi * c / 10
             f = f0 + 0.06 * math.cos(t)
             r = u(2.1) + (u(1.95) - u(2.1)) * f + 0.0011
             pts.append(fr_u @ Vector((r * math.cos(t), r * math.sin(t), f * Lu)))
-        b.add(M.tube(pts, [0.0018] * 13, sides=4, dome0=0.0, dome1=0.0), "wrap_line",
+        b.add(M.tube(pts, [0.0018] * 11, sides=4, dome0=0.0, dome1=0.0), "wrap_line",
               Bind.blend(cl, ua, la, falloff=5.0), name="wrap_line", outline=False, covered_by=arm_id)
     # spaulder: a rounded leather pad over the top / outside of the upper arm (web ellipse 3.4 × 2.6 u at 22 %)
     sx = 1.0 if side == "l" else -1.0
@@ -712,15 +762,15 @@ def add_arm(b: M.Builder, rig: R.Rig, side: str) -> None:
     b.add(M.tube([E - dla * 0.012, W - dla * 0.004], [u(1.72), u(1.5)], sides=14), "wrap",
           Bind.blend(la, f"hand_{side}", falloff=8.0), name=f"forearm_{side}")
     # leather bracer 10 → 85 %, lipped ends
-    fs = [0.08, 0.13, 0.30, 0.55, 0.78, 0.86, 0.89]
+    fs = [0.08, 0.13, 0.30, 0.52, 0.72, 0.80, 0.83]
     rs = [u(1.95), u(2.18), u(2.14), u(2.04), u(1.96), u(2.06), u(1.9)]
     bid = b.add(M.tube([E + dla * (f * Lf) for f in fs], rs, sides=16, dome0=0.0, dome1=0.0), "leather",
                 Bind.rigid(la), name=f"bracer_{side}", hull_pad=True)
     # brass ring at the middle (web arc r 2.2 at 50 %)
     fr_f = HB.axis_frame_x(E, dla, Vector((0, 0, 1)))
-    ring = [fr_f @ Vector(((u(2.1) + 0.0012) * math.cos(2 * math.pi * c / 20),
-                           (u(2.1) + 0.0012) * math.sin(2 * math.pi * c / 20), 0.5 * Lf)) for c in range(20)]
-    b.add(M.sweep(ring, M.superellipse(1, 1, 6, 2.0), scales=[(0.0032, 0.0045)] * 20, closed_path=True,
+    ring = [fr_f @ Vector(((u(2.1) + 0.0012) * math.cos(2 * math.pi * c / 16),
+                           (u(2.1) + 0.0012) * math.sin(2 * math.pi * c / 16), 0.5 * Lf)) for c in range(16)]
+    b.add(M.sweep(ring, M.superellipse(1, 1, 4, 2.0, phase=0.785), scales=[(0.0032, 0.0045)] * 16, closed_path=True,
                   cap0=None, cap1=None), "brass", Bind.rigid(la), name="bracer_ring", outline=False, covered_by=bid)
     add_hand(b, rig, side)
 
@@ -752,23 +802,28 @@ def add_leg(b: M.Builder, rig: R.Rig, side: str) -> None:
     J = rig.joints
     Hp, Kn, A = J[f"hip_{side}"], J[f"knee_{side}"], J[f"ankle_{side}"]
     th_, ca, ft, bl = f"thigh_{side}", f"calf_{side}", f"foot_{side}", f"ball_{side}"
-    top = Hp + Vector((0, 0, 0.015))
+    top = Hp + Vector((0, 0, -0.005))
     lbind = Bind.blend("pelvis", th_, ca, ft, falloff=5.0)
-    leg_id = b.add(M.tube([top, Kn, A + Vector((0, 0, 0.065))], [0.066, 0.052, 0.040], sides=16), "wrap", lbind,
-                   name=f"leg_{side}", hull_pad=True)
+    # densely ringed (the knee bends smoothly; the tasset / scarf solvers sample its surface)
+    A2 = A + Vector((0, 0, 0.065))
+    lp = [top.lerp(Kn, i / 7) for i in range(7)] + [Kn.lerp(A2, i / 6) for i in range(7)]
+    lr = [0.056, 0.059] + [0.059 + (0.052 - 0.059) * i / 5 for i in range(1, 6)] + \
+        [0.052 + (0.040 - 0.052) * i / 6 for i in range(7)]
+    leg_id = b.add(M.tube(lp, lr, sides=16), "wrap", lbind, name=f"leg_{side}",
+                   hull=M.tube(lp[::3] + [lp[-1]], lr[::3] + [lr[-1]], sides=12), hull_pad=True)
     # wrap turns on the thigh
     dth = (Kn - top).normalized()
     Lt = (Kn - top).length
     fr_t = HB.axis_frame_x(top, dth, Vector((0, -1, 0)))
-    for j in range(3):
-        f0 = 0.30 + 0.2 * j
+    for j in range(2):
+        f0 = 0.34 + 0.26 * j
         pts = []
-        for c in range(15):
-            t = 2 * math.pi * c / 14
+        for c in range(13):
+            t = 2 * math.pi * c / 12
             f = f0 + 0.05 * math.cos(t)
-            r = 0.066 + (0.052 - 0.066) * f + 0.0011
+            r = 0.061 + (0.052 - 0.061) * f + 0.0011
             pts.append(fr_t @ Vector((r * math.cos(t), r * math.sin(t), f * Lt)))
-        b.add(M.tube(pts, [0.002] * 15, sides=4, dome0=0.0, dome1=0.0), "wrap_line", lbind, name="wrap_line",
+        b.add(M.tube(pts, [0.002] * 13, sides=4, dome0=0.0, dome1=0.0), "wrap_line", lbind, name="wrap_line",
               outline=False, covered_by=leg_id)
     # knee pad
     sx = 1.0 if side == "l" else -1.0
@@ -783,12 +838,12 @@ def add_leg(b: M.Builder, rig: R.Rig, side: str) -> None:
     for j in range(3):
         f0 = 0.25 + 0.22 * j
         pts = []
-        for c in range(17):
-            t = 2 * math.pi * c / 16
+        for c in range(13):
+            t = 2 * math.pi * c / 12
             f = f0 + 0.075 * math.cos(t)
             r = 0.052 + (0.040 - 0.052) * (f * Ls + 0.0) / (Ls + 0.065) + 0.0014
             pts.append(fr_s @ Vector((r * math.cos(t), r * math.sin(t), f * Ls)))
-        b.add(M.sweep(pts[:-1], M.superellipse(1, 1, 6, 2.0), scales=[(0.0022, 0.0055)] * 16, closed_path=True,
+        b.add(M.sweep(pts[:-1], M.superellipse(1, 1, 4, 2.0, phase=0.785), scales=[(0.0022, 0.0055)] * 12, closed_path=True,
                       cap0=None, cap1=None), "leather_dark", lbind, name="shin_strap", outline=False,
               covered_by=leg_id)
     boot = M.boot(D.spec.foot_len, 0.094, 0.084, shaft=0.07, toe_up=0.03)
@@ -883,7 +938,7 @@ def build_dagger(pal: Palette, width_axis: Vector, mirror: bool, name: str) -> t
             xb = _edge_x(R0, cr, L1, y)
             xl, xr = (xa, xb) if not mirror else (xb, xa)
             row = []
-            for f in (0.13, 0.22):
+            for f in (0.24, 0.33):
                 x = xl + (xr - xl) * f
                 xx0, xx1 = min(xa, xb), max(xa, xb)
                 row.append(Vector((u(x), u(y), surf(x, y, xx0, xx1, side_) + side_ * 0.0005)))
@@ -893,7 +948,9 @@ def build_dagger(pal: Palette, width_axis: Vector, mirror: bool, name: str) -> t
             import bmesh
             bmesh.ops.reverse_faces(sheet.bm, faces=list(sheet.bm.faces))
         add(sheet, "poison", name="poison_edge", outline=False, covered_by=bid)
-    guard = C.plate2d([(-u(2.2), u(1.8)), (u(2.2), u(1.8)), (u(2.8), u(3.0)), (-u(2.8), u(3.0))], u(1.0),
+    # guard (web ±2.8 u): +2.1 / −1.25 u in 3D — its quillons lie along the forearm axis under the hammer grip
+    # (+x toward the knuckles) and the web width put the back quillon into the bracer
+    guard = C.plate2d([(-u(0.9), u(1.8)), (u(1.6), u(1.8)), (u(2.1), u(3.0)), (-u(1.25), u(3.0))], u(1.0),
                       bevel=0.003)
     add(guard, "brass", name="guard", hull_pad=True)
     gid = add(M.tube([(0, -u(2.0), 0), (0, u(1.9), 0)], [u(0.78), u(0.8)], sides=10, dome0=0.0, dome1=0.0),
@@ -983,7 +1040,7 @@ def quiver_frame() -> tuple[Vector, Vector, Vector, Vector, Vector]:
     """Rest geometry (armature space): bottom-end centre (resting on the belt just right of the spine), the attach /
     socket point (the strap, 35 % up), the axis up the quiver, its side and outward (away from the back) axes."""
     ax = Vector(QUIVER_AXIS).normalized()
-    z = th(1.2)
+    z = th(BELT_H - 0.2)
     a = -172.0
     jp, tp = jerkin_profile(), tasset_profile()
     r = max(math.hypot(*tuple(jp.point(z, a))[:2]), math.hypot(*tuple(tp.point(z, a))[:2])) + u(0.4) + 0.004

@@ -701,16 +701,8 @@
    "s": 0.0
   },
   {
-   "e": 0.8509803921568627,
-   "hex": "#78FFAA",
-   "i": 61,
-   "l": 0.0,
-   "names": [
-    "rogue_dagger.poison",
-    "rogue_dagger_l.poison"
-   ],
-   "o": 0.4,
-   "s": 0.0
+   "free": true,
+   "i": 61
   },
   {
    "e": 0.0,
@@ -744,6 +736,18 @@
    ],
    "o": 0.4,
    "s": 0.4196078431372549
+  },
+  {
+   "e": 0.6,
+   "hex": "#78FFAA",
+   "i": 65,
+   "l": 0.0,
+   "names": [
+    "rogue_dagger.poison",
+    "rogue_dagger_l.poison"
+   ],
+   "o": 0.4,
+   "s": 0.0
   }
  ]
 }

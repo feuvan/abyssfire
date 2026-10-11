@@ -23,6 +23,25 @@ from kit import anim, export, mesh as M, outline, paths, pngio, review, rig as R
 import common as C
 
 
+# LOD1 screen size (UE ComputeBoundsScreenSize = diameter / view height at the distance): a monster is 0.10–0.20 at
+# every W1 zoom (0.75×–1.25× of the default distance), so desktop always draws LOD0; LOD1 is the mobile-low mesh
+# (skeletal LOD bias 1 / MinLOD 1) and the far fallback below 0.05.
+LOD1_SCREEN_SIZE = 0.05
+
+
+def screen_size(radius_m: float, zoom: float = 1.0) -> float:
+    """UE screen size of a bounding sphere of ``radius_m`` at the W1 camera (16:9, horizontal FOV), ``zoom`` ×
+    the default distance."""
+    p11 = (16.0 / 9.0) / math.tan(math.radians(shading.CAM_FOV_H / 2.0))
+    return 2.0 * 0.5 * p11 * radius_m / (shading.CAM_DIST_DEFAULT * zoom)
+
+
+def toon_tris(obj) -> int:
+    """Toon-lit triangles: every material slot but the outline hull (slot 1) — the slime's dithered shell (slot
+    2) included."""
+    return sum(M.tri_count(obj, i) for i in range(len(obj.data.materials)) if i != 1)
+
+
 def apply_bp(A, bp) -> None:
     anim.assign(A.rig, None)
     anim.apply_pose(A.solve(bp))
@@ -77,6 +96,8 @@ class MonsterShip:
     extra_previews: Callable | None = None           # fn(ship, rv) after the standard set
     variant_previews: Sequence[str] = ()             # extra preview files listed on the variant attachments
     lod_note: str = ""
+    lod1: bpy.types.Object | None = None             # SK_<asset>_LOD1 (same generator, decimated, trims skipped)
+    lod1_screen_size: float = LOD1_SCREEN_SIZE
 
 
 def bake_clip(rig, c, token):
@@ -140,19 +161,29 @@ def parts_except(body, exclude: Sequence[str]) -> list[str]:
 def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
     t0 = time.time()
     rig, body, pal = ms.A.rig, ms.body, ms.pal
-    print(f"[build] {ms.asset}: body {M.tri_count(body, 0)} toon + {M.tri_count(body, 1)} hull tris, "
+    print(f"[build] {ms.asset}: body {toon_tris(body)} toon + {M.tri_count(body, 1)} hull tris, "
           f"bones {len(rig.obj.data.bones)}; items " + ", ".join(
               f"{it.asset} {M.tri_count(it.obj, 0)}+{M.tri_count(it.obj, 1)}" for it in ms.items))
     st = R.weight_stats(body)
     print(f"[weights] max {st['maxInfluences']} influences, {st['unweighted']} unweighted, "
           f"{st['notNormalised']} not normalised, {len(st['groups'])} groups")
     assert st["unweighted"] == 0 and st["maxInfluences"] <= 4
+    if ms.lod1 is not None:
+        st1 = R.weight_stats(ms.lod1)
+        print(f"[build] LOD1 {toon_tris(ms.lod1)} toon + {M.tri_count(ms.lod1, 1)} hull tris; weights max "
+              f"{st1['maxInfluences']}, {st1['unweighted']} unweighted")
+        assert st1["unweighted"] == 0 and st1["maxInfluences"] <= 4
+        ms.lod1.hide_render = True
     pal.save()
     # items (exported unattached, grip / socket origin at the origin)
     for it in ms.items:
         ship_item(it, pal, ms.asset)
     actions = [bake_clip(rig, c, ms.token) for c in ms.clips]
     sk = export.export_skeletal_mesh(rig, [body], ms.asset, ms.category)
+    sk1 = None
+    if ms.lod1 is not None:
+        sk1 = export.export_skeletal_mesh(rig, [ms.lod1], f"{ms.asset}_LOD1", ms.category)
+        ms.lod1.hide_render = True
     entries = []
     for c, a in zip(ms.clips, actions):
         fbx = export.export_animation(rig, a, ms.category)
@@ -176,10 +207,25 @@ def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
     entry["attachments"] = [{"object": it.asset, "socket": it.socket} for it in held(ms)]
     entry["materialSlots"][1]["outlineMix"] = outline.INK_MIX[ms.outline_class]
     _extra_slots(entry, body, pal)
+    entry["triangles"] = tri_record(body)
+    if sk1 is not None:
+        lo, hi = scene.world_bounds([body])
+        rad = 0.5 * (hi - lo).length
+        entry["lods"] = [{
+            "index": 1, "asset": f"{ms.asset}_LOD1", "fbx": paths.rel_to_export(sk1),
+            "screenSize": ms.lod1_screen_size,
+            "screenSizeNote": f"UE screen size of {ms.asset} at the W1 camera: {screen_size(rad, 1.25):.3f} (max "
+                              f"zoom-out) to {screen_size(rad, 0.75):.3f} (max zoom-in), {screen_size(rad):.3f} at the "
+                              f"default distance — desktop always draws LOD0; LOD1 is the mobile-low gameplay mesh "
+                              f"(skeletal LOD bias / MinLOD 1) and the far fallback",
+            "triangles": tri_record(ms.lod1),
+            "import": f"same {entry.get('skeleton', 'skeleton')} armature and bind pose; import as LOD index 1 of "
+                      f"{ms.asset} (USkeletalMeshEditorSubsystem::ImportLOD / Interchange LOD import) — Blender's FBX "
+                      "exporter cannot write an FbxLODGroup, so the LOD ships as its own file"}]
     man.set_asset(ms.asset, entry)
     man.save()
     print(f"[export] {sk.name} + {len(entries)} clips + {len(ms.items)} items ({time.time() - t0:.1f}s)")
-    result = {"sk": str(sk), "anims": [e["fbx"] for e in entries],
+    result = {"sk": str(sk), "lod1": str(sk1) if sk1 is not None else None, "anims": [e["fbx"] for e in entries],
               "items": [str(paths.category_dir(it.category) / f"{it.asset}.fbx") for it in ms.items],
               "manifest": str(man.path)}
     # per-frame geometry gate on the deformed meshes (variant attachments too: all of them at once)
@@ -210,6 +256,10 @@ def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
         man.save()
     if verify:
         result["verify"] = verify_export(ms, Path(sk), src, entry)
+        if sk1 is not None:
+            lv = verify_lod(Path(sk), Path(sk1), entry)
+            result["verify"]["pass"] = result["verify"]["pass"] and lv["pass"]
+            result["verify"]["failures"] += lv["failures"]
     print(f"[ship] {ms.asset} done in {time.time() - t0:.1f}s")
     return result
 
@@ -245,21 +295,33 @@ def ship_item(it: Item, pal, holder: str) -> dict:
     return e
 
 
+def tri_record(obj) -> dict:
+    """``{toon, outline}`` (+ ``bySlot`` when a mesh has more than toon + outline: the slime's dithered shell)."""
+    rec = {"toon": toon_tris(obj), "outline": M.tri_count(obj, 1)}
+    if len(obj.data.materials) > 2:
+        rec["bySlot"] = {m.name: M.tri_count(obj, i) for i, m in enumerate(obj.data.materials)}
+    return rec
+
+
 def budget_record(ms: MonsterShip) -> dict:
     t = M.tri_count
     body = ms.body
     items = {"toon": sum(t(i.obj, 0) for i in held(ms)), "outline": sum(t(i.obj, 1) for i in held(ms))}
     weighted = sorted({g.name for g in body.vertex_groups})
-    return {
+    rec = {
         "spec": "art-inventory-ch1 §1.9 goblin family: LOD0 6-9k, LOD1 3.5k triangles, <= 60 bones per section; "
-                "slime 2-3k, <= 16 bones",
-        "lod0": {"toon": t(body, 0), "outline": t(body, 1)},
+                "slime 2-3k, LOD1 1.5k, <= 16 bones",
+        "lod0": tri_record(body),
         "heldItems": items,
         "weightedBones": len(weighted),
-        "decision": "The §1.9 figures budget the toon surface; the baked hull (P7) is a second cheap unlit draw "
-                    "budgeted separately. No LOD1 file: at the W1 camera a monster is 0.08-0.15 screen height, "
-                    "LOD0 is the gameplay mesh; UE auto-reduction may add LOD1 for far zoom-out. " + ms.lod_note,
+        "decision": "The §1.9 figures budget the toon surface (every toon-lit slot); the baked hull (P7) is a second "
+                    "cheap unlit draw (same skinning, one-colour pixel shader) budgeted separately at <= 0.75x the "
+                    "toon triangles via padded low-poly proxies and no-hull trims. Small trims are low-poly (5-sided "
+                    "studs, painted single-sided strokes), skin fully under gear is cut. " + ms.lod_note,
     }
+    if ms.lod1 is not None:
+        rec["lod1"] = tri_record(ms.lod1)
+    return rec
 
 
 # ── QA ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -322,6 +384,8 @@ def render_previews(ms: MonsterShip, out: Path, actions) -> tuple[list, dict]:
         closeup_poses(ms, rv, actions)
     back_sheets(ms, rv, actions)
     items_sheet(ms, rv)
+    if ms.lod1 is not None:
+        lod_sheet(ms, rv, actions)
     if ms.extra_previews is not None:
         ms.extra_previews(ms, rv, actions)
     rv.facing("se")
@@ -512,6 +576,66 @@ def items_sheet(ms: MonsterShip, rv) -> None:
         o.hide_render = hr
 
 
+def lod_sheet(ms: MonsterShip, rv, actions) -> None:
+    """``lod1.png``: LOD0 vs LOD1 — se close-ups with the shipped ink in world units (top: Idle, Attack01 contact)
+    and native 1080p game crops at the W1 camera (bottom): LOD0 / LOD1 with the screen-constant ink, and LOD1 with
+    the baked hull alone = the mobile-low look (LOD bias 1, no WPO)."""
+    rig = ms.A.rig
+    acts = dict(zip([c.name for c in ms.clips], actions))
+    its = [shown(it) for it in held(ms)]
+    body, body1 = ms.body, ms.lod1
+    px = outline.SCREEN_PX_1080[ms.outline_class]
+    contact = ("Attack01", scene.ms_to_frame(250.0))
+    cells = []
+    res = (250, 300)                   # 1000 × 600: stays full-size under the 200 KB preview budget
+    try:
+        for clip, fr in (("Idle", 0), contact):
+            anim.assign(rig, acts[clip])
+            anim.set_frame(fr)
+            rv.facing("se")
+            for show, hide, tag in ((body, body1, "LOD0"), (body1, body, "LOD1")):
+                show.hide_render, hide.hide_render = False, True
+                meshes = [show] + its
+                review.setup_render(res, 8)
+                pts = review.mesh_points(meshes)
+                review.frame_points(pts, res, fov_h=28.0, pitch_ue=-30.0, fill=0.9)
+                for m in meshes:
+                    if "af_outline_width" in m:
+                        outline.set_preview_screen(m, world=review.ink_world(px))
+                img = review.render_array()
+                review.draw_text(img, 3, 3, f"{tag} {toon_tris(show)}+{M.tri_count(show, 1)} {clip} F{fr}")
+                cells.append(img)
+        zc = ms.height * 0.45
+        for (clip, fr), show, baked, tag in ((("Idle", 0), body, False, "LOD0 SHIPPED"),
+                                             (("Idle", 0), body1, False, "LOD1 SHIPPED"),
+                                             (("Idle", 0), body1, True, "LOD1 MOBILE LOW"),
+                                             (contact, body1, True, "LOD1 MOBILE LOW")):
+            anim.assign(rig, acts[clip])
+            anim.set_frame(fr)
+            rv.facing("se")
+            other = body1 if show is body else body
+            show.hide_render, other.hide_render = False, True
+            review.setup_render((1920, 1080), 8)
+            cam = review.game_camera()
+            review.set_outline_px([show] + its, None if baked else px, Vector((0, 0, zc)))
+            c = review.project(cam, Vector((0, 0, zc)))
+            hw, hh = res[0] / 1920 / 2, res[1] / 1080 / 2
+            crop = review.render_array((c[0] - hw, c[1] - hh, c[0] + hw, c[1] + hh))
+            img = np.zeros((res[1], res[0], 3), np.uint8)
+            img[:, :] = crop[0, 0]
+            h_, w_ = min(res[1], crop.shape[0]), min(res[0], crop.shape[1])
+            img[:h_, :w_] = crop[:h_, :w_]
+            review.draw_text(img, 3, 3, f"{tag} 1080P 1:1")
+            review.draw_text(img, 3, 12, f"{clip} F{fr}")
+            cells.append(img)
+    finally:
+        body.hide_render, body1.hide_render = False, True
+    rv._save("lod1.png", review.grid(cells, 4))
+    anim.assign(rig, acts["Idle"])
+    anim.set_frame(0)
+    rv.facing("se")
+
+
 def quick_review(asset, rig, meshes, attachments, A, out: Path, height: float, outline_class: str,
                  blob_radius: float = 0.22, glows=None, pose=None) -> None:
     """Mesh iteration: READY pose close-up (se / front / back), turnaround and the 1080p game crop → ``out``."""
@@ -652,6 +776,44 @@ def verify_export(ms: MonsterShip, sk_fbx: Path, src: dict, entry: dict) -> dict
             check(all(f"SOCKET_{s['name']}" in names for s in it.sockets),
                   f"{it.asset}: sockets {[x for x in names if x.startswith('SOCKET_')]}")
     print(f"[verify] {'PASS' if not fails else 'FAIL'} ({len(fails)} failures)")
+    return {"pass": not fails, "failures": fails}
+
+
+def verify_lod(sk_fbx: Path, sk1_fbx: Path, entry: dict) -> dict:
+    """Re-import ``SK_*_LOD1.fbx`` next to LOD0: one armature + one mesh, the same bone set and bind pose, the same
+    material slots, weights, triangles == manifest, AF_Data + custom normals."""
+    fails = []
+
+    def check(ok, msg):
+        print(("  ok   " if ok else "  FAIL ") + msg)
+        if not ok:
+            fails.append(msg)
+    print(f"\n[verify] {sk1_fbx.name}: re-import next to LOD0")
+    scene.reset()
+    bpy.ops.import_scene.fbx(filepath=str(sk_fbx))
+    a0 = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    rest0 = {b.name: b.matrix_local.copy() for b in a0.data.bones}
+    objs = set(bpy.data.objects)
+    bpy.ops.import_scene.fbx(filepath=str(sk1_fbx))
+    new = [o for o in bpy.data.objects if o not in objs]
+    arms = [o for o in new if o.type == "ARMATURE"]
+    meshes = [o for o in new if o.type == "MESH"]
+    check(len(arms) == 1 and len(meshes) == 1, f"LOD1: one armature + one mesh ({len(arms)}, {len(meshes)})")
+    if arms and meshes:
+        a1, m1 = arms[0], meshes[0]
+        check({b.name for b in a1.data.bones} == set(rest0), "LOD1: same bone set as LOD0")
+        dev = max((a1.data.bones[n].matrix_local.translation - rest0[n].translation).length
+                  for n in rest0 if n in a1.data.bones)
+        check(dev < 1e-4, f"LOD1: same bind pose ({dev * 1000:.3f} mm)")
+        mats = [m.name.split(".")[0] for m in m1.data.materials]
+        check(mats == [x["name"] for x in entry["materialSlots"]], f"LOD1: material slots {mats}")
+        st = R.weight_stats(m1)
+        check(st["unweighted"] == 0 and st["maxInfluences"] <= 4, "LOD1: weights")
+        want = entry["lods"][0]["triangles"]
+        got = {"toon": toon_tris(m1), "outline": M.tri_count(m1, 1)}
+        check(got["toon"] == want["toon"] and got["outline"] == want["outline"], f"LOD1: triangles {got} == manifest")
+        check("AF_Data" in m1.data.color_attributes and m1.data.has_custom_normals, "LOD1: AF_Data + custom normals")
+    print(f"[verify] LOD1 {'PASS' if not fails else 'FAIL'} ({len(fails)} failures)")
     return {"pass": not fails, "failures": fails}
 
 

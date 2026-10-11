@@ -82,6 +82,7 @@ class HeroDef:
     verify_top: tuple = (1.70, 1.80)
     visibility: Callable | None = None  # (clip name, ms) → {item name: visible}
     preview_extra: Callable | None = None   # (rv, rig, meshes, clips, actions, items) → None (hero sheets)
+    portrait_glows: Callable | None = None  # (rig, meshes) → [{at, radiusCm, color, alpha, core}] baked in the portrait
     notes: str = ""
     lod1_screen_size: float = 0.15
 
@@ -262,9 +263,12 @@ def budget_record(body, body1, objs) -> dict:
         "lod1": {"toon": t(body1, 0), "outline": t(body1, 1)},
         "items": items,
         "drawnLod0": t(body, 0) + t(body, 1) + items["toon"] + items["outline"],
+        "hullRatio": round(t(body, 1) / max(1, t(body, 0)), 2),
         "decision": "The §1.9 figures budget the toon surface; the baked outline hull (P7) is a second, cheap draw "
-                    "(same skinning, unlit one-colour pixel shader) budgeted at <= 0.5x the toon triangles via "
-                    "low-poly hull proxies and no-hull trims.",
+                    "(same skinning, unlit one-colour pixel shader) kept to <= 0.6x the toon triangles via "
+                    "low-poly hull proxies and no-hull trims (cloth that bends between its rows keeps a proxy on "
+                    f"every row, or the ink thins on the bend): here {t(body, 1) / max(1, t(body, 0)):.2f}x. The "
+                    "drawn LOD0 total (toon + hull + held items) is the figure compared across heroes.",
     }
 
 
@@ -374,6 +378,87 @@ def render_previews(hd: HeroDef, out: Path, pal, rig, body, items, A, clips, act
     return [str(p) for p, _ in rv.written], ink
 
 
+INKMAP_DIR: str | None = None     # dev (``--game --inkmaps``): also write every cell's ink map there
+
+
+def _fit_crop(rv, cam, cc, hw: float, hh: float, pad: float = 0.006) -> tuple[float, float]:
+    """The fixed-size 1080p crop round the standing hero, slid (never resized: the scale stays 1:1) so a body
+    lying away from the root (a face-down death, a dodge offset) stays whole in the cell — a silhouette cut by the
+    cell border has no ink there and would read as a gap. Upright poses inside the frame keep the fixed centre."""
+    vis = [m for m in rv.meshes if not m.hide_render]
+    pts = review.mesh_points(vis)
+    if pts is None or not len(pts):
+        return cc
+    pr = [review.project(cam, Vector(p)) for p in pts[:: max(1, len(pts) // 1500)]]
+    x0, x1 = min(p[0] for p in pr) - pad, max(p[0] for p in pr) + pad
+    y0, y1 = min(p[1] for p in pr) - pad, max(p[1] for p in pr) + pad
+    cx, cy = cc
+
+    def slide(c, lo, hi, h):
+        if hi - lo > 2 * h:                       # larger than the cell: centre it
+            return (lo + hi) / 2
+        if lo < c - h:
+            c = lo + h
+        if hi > c + h:
+            c = hi - h
+        return c
+    return slide(cx, x0, x1, hw), slide(cy, y0, y1, hh)
+
+
+def _ink_parts(rv, st, border, shape) -> str:
+    """Dev: which mesh part lies under each thin-ink (red) silhouette edge pixel — walk inward from the edge pixel
+    along the coverage gradient a few px, cast the camera ray through it and read the hit face's ``af_part``."""
+    from collections import Counter
+    sc = bpy.context.scene
+    cam = sc.camera
+    dg = bpy.context.evaluated_depsgraph_get()
+    ys, xs = st["edge_yx"]
+    bad = ~st["edge_ok"]
+    H, W = shape[:2]
+    fw, fh = sc.render.resolution_x, sc.render.resolution_y
+    x0 = int(round(border[0] * fw))
+    ytop = int(round((1.0 - border[3]) * fh))
+    fr = [cam.matrix_world @ v for v in cam.data.view_frame(scene=sc)]   # tr, br, bl, tl
+    tr, br, bl, tl = fr
+    org = cam.matrix_world.translation
+    yy, xx = np.mgrid[0:H, 0:W]
+    cnt: Counter = Counter()
+    zs: dict = {}
+    for y, x in zip(ys[bad], xs[bad]):
+        best = None
+        for r in (3, 5, 7):
+            # inward = toward the nearest pixel farther from the background: probe a ring of offsets
+            for a in range(0, 360, 30):
+                yy2 = int(round(y + r * math.sin(math.radians(a))))
+                xx2 = int(round(x + r * math.cos(math.radians(a))))
+                if not (0 <= yy2 < H and 0 <= xx2 < W):
+                    continue
+                fx = (x0 + xx2 + 0.5) / fw
+                fy = (ytop + yy2 + 0.5) / fh
+                top = tl.lerp(tr, fx)
+                bot = bl.lerp(br, fx)
+                pt = top.lerp(bot, fy)
+                ok, loc, nrm, fi, ob, _m = sc.ray_cast(dg, org, (pt - org).normalized())
+                if ok and ob.type == "MESH":
+                    ev = ob.evaluated_get(dg)
+                    nm = ob.name
+                    at = ev.data.attributes.get("af_part")
+                    if at is not None and "af_parts" in ob and fi < len(at.data):
+                        names = json.loads(ob["af_parts"])
+                        pi = at.data[fi].value
+                        nm = names[pi] if 0 <= pi < len(names) else nm
+                        if ob.data.polygons[fi].material_index == 1 if fi < len(ob.data.polygons) else False:
+                            nm += "(hull)"
+                    best = nm
+                    zs.setdefault(nm, []).append(loc.z)
+                    break
+            if best:
+                break
+        cnt[best or "?"] += 1
+    return ", ".join(f"{k} {v}" + (f" (z {np.percentile(zs[k], 10) * 100:.1f}..{np.percentile(zs[k], 90) * 100:.1f} cm)"
+                                     if k in zs else "") for k, v in cnt.most_common(10))
+
+
 def game_sheet(rv, rig, clips, actions, keys, fname, hd: HeroDef, cols: int = 4) -> None:
     """Native 1080p crops at the W1 camera with the shipped look (UE ink width, bloom, eye glow card); every cell's
     ink rim is measured (``rv.ink_reports``, the ship's ink gate) and printed under its label."""
@@ -393,8 +478,25 @@ def game_sheet(rv, rig, clips, actions, keys, fname, hd: HeroDef, cols: int = 4)
         rv.game_outline(1080, Vector((0, 0, 0.75)))
         cc = review.project(cam, Vector((0, 0, 0.75)))
         hw, hh = 0.075, 0.075 * 1920 / 1080
+        cc = _fit_crop(rv, cam, cc, hw, hh)
         img, st = rv.game_shot((cc[0] - hw, cc[1] - hh, cc[0] + hw, cc[1] + hh), measure=True,
                                tag=f"{fname} {name} F{fr} {fac}")
+        if INKMAP_DIR is not None and st is not None:
+            # dev: each cell's ink map (3x, silhouette edge pixels green / red) next to the scratch sheet
+            ys, xs = st["edge_yx"]
+            y0, y1 = max(0, int(ys.min()) - 6), min(img.shape[0], int(ys.max()) + 7)
+            x0, x1 = max(0, int(xs.min()) - 6), min(img.shape[1], int(xs.max()) + 7)
+            z = review.ink_map(img, st, zoom=3)[y0 * 3:y1 * 3, x0 * 3:x1 * 3]
+            review.draw_text(z, 3, 3, f"{name} F{fr} {fac} " + rv.ink_label(st), rgb=(255, 255, 255))
+            pngio.write_png_budget(Path(INKMAP_DIR) / f"ink_{name}_{fr}_{fac}.png", z)
+            print(f"  [inkparts] {name} F{fr} {fac}: " + _ink_parts(rv, st, (cc[0] - hw, cc[1] - hh, cc[0] + hw,
+                                                                             cc[1] + hh), img.shape))
+            bd = (cc[0] - hw, cc[1] - hh, cc[0] + hw, cc[1] + hh)
+            cb, ch = review.coverage_pass(rv.meshes, bd, ground=rv.ground_occludes,
+                                          extra_body=rv.extra_body_slots)
+            for mp in (2.0, 2.5, 2.75, 3.0, 3.25):
+                s2 = review.ink_stats(cb, ch, None, min_px=mp)
+                print(f"    rim >= {mp}px: {s2['fracRim'] * 100:.1f} %")
         review.draw_text(img, 3, 3, f"{name} F{fr} {fac}")
         review.draw_text(img, 3, img.shape[0] - 10, rv.ink_label(st), rgb=(255, 220, 140))
         cells.append(img)
@@ -507,10 +609,23 @@ def render_portrait(hd: HeroDef, rv, rig, meshes, clips, actions) -> Path:
         outline.remove_preview(m)
     rgba = review.ink_render(vis, res, silhouette_px=PORTRAIT_INK_PX, interior_px=2.0, depth_step=0.018)
     vg = hd.eye_glow
-    vp = socket_world(rig, hd.eye_socket)
-    cx, cy = review.project_px(cam, vp, res)
-    rad = vg["radiusCm"] / 100.0 / outline.pixel_world_size(cam, vp, res[0])
-    review.composite_glow(rgba, (cx, cy), rad, vg["color"], 0.55, core=0.30)
+    eyes = getattr(hd.module, "eye_points", None)
+    if eyes is not None:
+        # the web's glow on each eye (a single card between the eyes read as a third eye at 512²)
+        pb, hb = rig.obj.pose.bones["head"], rig.obj.data.bones["head"]
+        pts = [rig.obj.matrix_world @ (pb.matrix @ (hb.matrix_local.inverted() @ Vector(p))) for p in eyes()]
+        r_cm = vg.get("portraitEyeRadiusCm", vg["radiusCm"] * 0.6)
+    else:
+        pts, r_cm = [socket_world(rig, hd.eye_socket)], vg["radiusCm"]
+    for vp in pts:
+        cx, cy = review.project_px(cam, vp, res)
+        rad = r_cm / 100.0 / outline.pixel_world_size(cam, vp, res[0])
+        review.composite_glow(rgba, (cx, cy), rad, vg["color"], vg.get("portraitEyeAlpha", 0.55), core=0.30)
+    # other runtime glow cards baked into the UI texture (the mage's crystal hum)
+    for g in (hd.portrait_glows(rig, meshes) if hd.portrait_glows else []):
+        cx, cy = review.project_px(cam, g["at"], res)
+        rad = g["radiusCm"] / 100.0 / outline.pixel_world_size(cam, g["at"], res[0])
+        review.composite_glow(rgba, (cx, cy), rad, g["color"], g["alpha"], core=g.get("core", 0.0))
     outp = paths.export_root() / "Portraits" / f"{hd.portrait_name}.png"
     outp.parent.mkdir(parents=True, exist_ok=True)
     pngio.write_png(outp, rgba)
@@ -600,6 +715,11 @@ def items_sheet(hd: HeroDef, rv, items) -> None:
     objs = item_objects(items, hd)
     cells = []
     res = (300, 360)
+    # the per-clip item visibility handler must not re-show / re-hide items while each one is rendered alone
+    hs = bpy.app.handlers.frame_change_post
+    had = _vis_handler in hs
+    if had:
+        hs.remove(_vis_handler)
     saved = {o.name: (o.parent, o.parent_type, o.parent_bone, o.matrix_parent_inverse.copy(), o.matrix_basis.copy(),
                       o.hide_render) for o in objs}
     hidden = [o for o in bpy.data.objects if o.type == "MESH" and o not in objs and not o.hide_render]
@@ -633,6 +753,8 @@ def items_sheet(hd: HeroDef, rv, items) -> None:
         o.matrix_parent_inverse = mpi
         o.matrix_basis = mb
         o.hide_render = hr
+    if had:
+        hs.append(_vis_handler)
 
 
 # ── verification (re-import what UE receives) ───────────────────────────────────────────────────────────
@@ -802,6 +924,11 @@ def anim_preview(hd: HeroDef, out: Path, names: list, facing: str = "se", frames
                 print(f"  parts {cn}: " + "; ".join(f"{m}: " + ", ".join(f"{n} {v}" for n, v in
                                                      sorted(h.items(), key=lambda kv: -kv[1])[:6])
                                                      for m, h in agg.items()))
+        qf = _arg(__import__("sys").argv, "qa-frames")
+        if qf:
+            for cn, r in rep.items():
+                for m in qf.split(","):
+                    print(f"  {cn} {m}: " + " ".join(f"{f['frame']}:{f.get(m, 0):.0f}" for f in r["frames"]))
         for f in HB.PairQA.verdict(rep, hd.qa_limits, hd.qa_clip_limits) + head_verdict(hd, rep):
             print("  QA FAIL " + f)
     print(f"[anims] {time.time() - t0:.1f}s -> {out}")
@@ -879,6 +1006,9 @@ def cli(hd: HeroDef, argv: list, scratch: Path) -> int:
         frame_preview(hd, scratch / "frames", [a for a in argv[i + 1:] if ":" in a and not a.startswith("--")], fac)
         return 0
     if "--game" in argv:
+        global INKMAP_DIR
+        if "--inkmaps" in argv:
+            INKMAP_DIR = str(scratch / "game")
         i = argv.index("--game")
         game_preview(hd, scratch / "game", [a for a in argv[i + 1:] if ":" in a and not a.startswith("--")])
         return 0

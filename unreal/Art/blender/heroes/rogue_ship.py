@@ -17,6 +17,7 @@ from kit import review
 
 # spec §3 general + §3.3 FX attachments (for the UE module; colours are the web's)
 EYE_GLOW = {"color": "#FFC24A", "radiusCm": 7.5, "alpha": 0.42, "coreColor": "#FFE3A0", "coreRadiusCm": 2.6,
+            "portraitEyeRadiusCm": 5.0,          # per-eye glow (UI portrait only)
             "coreAlpha": 0.5}
 STRING_COLOR = "#9DFFC8"
 FX = {
@@ -205,7 +206,7 @@ def preview_extra(rv, rig, meshes, clips, actions, items) -> None:
 ITEM_VIEWS = {
     RG.DAGGER: [("DAGGER R FLAT", Matrix.Rotation(math.radians(90), 4, "X")),
                 ("DAGGER R EDGE", Matrix.Rotation(math.radians(90), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X"))],
-    RG.DAGGER_L: [("DAGGER L FLAT", Matrix.Rotation(math.radians(90), 4, "X"))],
+    RG.DAGGER_L: [("DAGGER L FLAT", Matrix.Rotation(math.radians(-80), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X"))],
     RG.BOW: [("BOW SIDE", Matrix.Rotation(math.radians(90), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X")),
              ("BOW 3/4", Matrix.Rotation(math.radians(135), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X"))],
     RG.QUIVER: [("QUIVER", Matrix.Rotation(math.radians(200), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X"))],
@@ -214,7 +215,7 @@ RG.ITEM_VIEWS = ITEM_VIEWS
 
 LEGS = ("leg_l", "leg_r", "kneepad_l", "kneepad_r", "boot_l", "boot_r", "boot_cuff_l", "boot_cuff_r")
 TORSO = ("capelet", "jerkin", "bandolier", "belt", "buckle", "tasset", "pouch", "pouch_flap", "knife",
-         "knife_pommel", "scarf_knot")
+         "knife_pommel")
 QA_GROUPS = {
     "bodyNoGripR": ("!", ("hand_r", "thumb_r", "wrist_r", "glove_band_r")),
     "bodyNoGripL": ("!", ("hand_l", "thumb_l", "wrist_l", "glove_band_l")),
@@ -243,8 +244,10 @@ QA_PAIRS = {
 QA_LIMITS = {"ground": -0.5, "daggerBody": 0, "daggerLBody": 0, "daggers": 0, "bowBody": 0, "bowDagger": 0,
              "quiverBody": 0, "quiverDagger": 0, "quiverDaggerL": 0, "scarfBody": 6, "scarfLegs": 6,
              "scarfQuiver": 4, "tassetLegs": 8, "hoodTipBody": 6}
-QA_CLIP_LIMITS = {"Death": {"scarfBody": 40, "scarfLegs": 30, "tassetLegs": 30, "hoodTipBody": 20},
-                  "Dodge": {"scarfBody": 20, "scarfLegs": 20, "tassetLegs": 20}}
+# Dodge (a 240 ms tuck roll: thighs folded to the chest) and Death (kneel → on the back): the split tassets are
+# pressed between the folded thighs and the belly for a few frames
+QA_CLIP_LIMITS = {"Death": {"scarfBody": 40, "scarfLegs": 30, "tassetLegs": 60, "hoodTipBody": 20},
+                  "Dodge": {"scarfBody": 20, "scarfLegs": 20, "tassetLegs": 140}}
 
 GAME_KEYS = [("Idle", 0, "se"), ("Run", 8, "se"), ("Attack01", "beat", "se"), ("Attack02", "beat", "se"),
              ("Attack03", "beat", "se"), ("Cast01", "beat", "se"), ("Cast_Multishot", "beat", "se"),
@@ -283,10 +286,12 @@ HERO = HS.HeroDef(
                 RG.BOW: lambda co: abs(co.y) < 0.07 and math.hypot(co.x, co.z) < 0.045},
     game_keys=GAME_KEYS, contact_keys=CONTACT_KEYS, facing_keys=FACING_KEYS, close_keys=CLOSE_KEYS,
     back_clips=BACK_CLIPS, portrait_bust_z=0.98, portrait_zoom=(120, 376, 150, 406),
-    verify_bones=("scarf_a_05", "scarf_b_05", "hood_tip_02"),
+    verify_bones=("scarf_a_05", "scarf_b_05", "hood_tip_02", "tasset_0_01", "tasset_7_01"),
     verify_top=(1.60, 1.66), visibility=visibility, preview_extra=preview_extra,
     notes="Twin daggers: SM_Hero_Rogue_Dagger on weapon_r, its mirror SM_Hero_Rogue_Dagger_L on weapon_l. "
           "Cast_Multishot (R5 signature) swaps the off-hand dagger for SM_Hero_Rogue_Bow between its FX_BowShow / "
           "FX_BowHide notifies (itemAttachments kind swap); the quiver is a body item on the `quiver` socket. Dodge "
-          "is a 360° tuck roll in place; the UE module lerps a mesh offset (2.6 tiles).",
+          "is a 360° tuck roll in place; the UE module lerps a mesh offset (2.6 tiles). Chain bones beyond SKEL_Human: "
+          "scarf_a_01..05, scarf_b_01..05 (spine_03), hood_tip_01..02 (head), tasset_0..7_01 (pelvis: one hinge per "
+          "split tasset, swung clear of the thighs in every key).",
 )

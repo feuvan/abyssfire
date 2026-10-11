@@ -244,6 +244,35 @@ def surface_strap(surf, path: Sequence[tuple[float, float]], width: float, thick
     return C.thick_patch(outer, inner).auto_sharp(55)
 
 
+def surface_paint(surf, path: Sequence[tuple[float, float]], width: float, lift: float, steps: int = 6,
+                  taper: float = 0.0) -> M.Part:
+    """A **painted** stroke on ``surf`` (fur strokes, war paint, seams, twist lines): a single-sided quad strip
+    along the (u, a) path (Catmull-Rom, like :func:`surface_strap`), ``lift`` metres off the surface, facing out.
+    2 triangles per step instead of the strap solid's 8 (+ caps) — the web draws these as strokes, and at the W1
+    camera a 3 mm relief is invisible. ``taper`` narrows the far end (0 = constant width, 1 = to a point)."""
+    us = [p[0] for p in path]
+    as_ = [p[1] for p in path]
+    ts = [i / (len(path) - 1) for i in range(len(path))]
+    cen = [(C._hermite(ts, us, k / steps), C._hermite(ts, as_, k / steps)) for k in range(steps + 1)]
+    pts = [surf.point(u, a) for u, a in cen]
+    bm = bmesh.new()
+    rows = []
+    for k, (u, a) in enumerate(cen):
+        tg = (pts[min(k + 1, steps)] - pts[max(k - 1, 0)]).normalized()
+        n = surf.normal(u, a)
+        w = width * (1.0 - taper * k / steps) * 0.5
+        side = tg.cross(n).normalized() * max(w, width * 0.04)
+        p = pts[k] + n * lift
+        rows.append((bm.verts.new(tuple(p - side)), bm.verts.new(tuple(p + side)), n))
+    for (a0, a1, n0), (b0, b1, _) in zip(rows, rows[1:]):
+        f = bm.faces.new((a0, b0, b1, a1))
+        f.normal_update()
+        if f.normal.dot(n0) < 0:
+            f.normal_flip()
+    bm.normal_update()
+    return M.Part(bm).smooth(True)
+
+
 def surface_ring(surf, u_of_a: Callable[[float], float], height: float, thick: float, out0: float = -0.003,
                  segs: int = 32, a0: float = -180.0, a1: float = 180.0) -> M.Part:
     """A band around ``surf`` (belts, rims, collars): centre line u = ``u_of_a(a)``; ``height`` measured along
@@ -268,10 +297,15 @@ def surface_ring(surf, u_of_a: Callable[[float], float], height: float, thick: f
     return C.thick_patch(outer, inner, wrap_u=full).auto_sharp(50)
 
 
-def surface_dot(surf, u: float, a: float, r: float, h: float, sides: int = 8) -> M.Part:
-    """Stud / rivet / bead sitting on ``surf``."""
+def surface_dot(surf, u: float, a: float, r: float, h: float, sides: int = 8, low: bool = False) -> M.Part:
+    """Stud / rivet / bead sitting on ``surf``. ``low``: the budget dome (5 sides, two bands, open base sunk into
+    the surface — 25 tris instead of 64; at the W1 camera a 1–2 cm stud is 2–3 px, the band silhouette is the
+    same)."""
     p = surf.point(u, a)
     n = surf.normal(u, a)
+    if low:
+        d = M.lathe([(r, -0.004), (r * 0.86, h * 0.55), (r * 0.2, h)], sides=5, cap0=None, cap1="fan")
+        return d.transform(R.frame(p, n, (0, 0, 1)) @ Matrix.Rotation(math.radians(-90), 4, "X"))
     d = M.lathe([(r, -0.004), (r, h * 0.35), (r * 0.72, h * 0.85), (r * 0.15, h)], sides=sides, cap1="fan")
     return d.transform(R.frame(p, n, (0, 0, 1)) @ Matrix.Rotation(math.radians(-90), 4, "X"))
 
@@ -375,9 +409,12 @@ def cone(base: Vector, tip: Vector, r: float, sides: int = 6, r_tip: float = 0.0
     """Small cone (claw, tooth, spike) from ``base`` to ``tip``."""
     d = (tip - base)
     L = d.length
-    p = M.loft_z([(0.0, r, r), (L * 0.55, r * 0.6 + r_tip * 0.4, r * 0.6 + r_tip * 0.4), (L, max(r_tip, 1e-4),
-                                                                                        max(r_tip, 1e-4))],
-                 sides=sides, cap0="fan", cap1="fan")
+    if r_tip <= 0.0:     # pointed: the tip is the cap's fan centre (no degenerate 0.1 mm ring — 16 tris at 4…5 sides)
+        p = M.loft_z([(0.0, r, r), (L * 0.55, r * 0.6, r * 0.6)], sides=sides, cap0="fan", cap1="fan",
+                     dome1=L * 0.45)
+    else:
+        p = M.loft_z([(0.0, r, r), (L * 0.55, r * 0.6 + r_tip * 0.4, r * 0.6 + r_tip * 0.4), (L, r_tip, r_tip)],
+                     sides=sides, cap0="fan", cap1="fan")
     m = R.frame(base, d, Vector((0, 0, 1)) if abs(d.normalized().z) < 0.9 else Vector((0, -1, 0)))
     # loft_z grows along +Z: rotate local Z onto the frame's Y
     return p.transform(m @ Matrix.Rotation(math.radians(-90), 4, "X"))

@@ -704,6 +704,15 @@ class Builder:
             hull.bm.free()
         return pid
 
+    def cover(self, pid: int, part: Part) -> None:
+        """Also pad part ``pid``'s hull proxy (``hull_pad``) round ``part``'s vertices without adding ``part`` to
+        the mesh — e.g. a detail modelled collapsed in the bind pose and scaled in by a clip (the slime's X-eyes),
+        whose full-size shape must still sit inside the ink. ``part`` is not consumed. No-op for a skipped
+        (LOD) or unpadded ``pid``."""
+        if pid is None or pid < 0 or pid not in self._pending:
+            return
+        self._pending[pid]["cover"].append(_vert_array(part.bm))
+
     def binds(self) -> dict:
         return {i: p["bind"] for i, p in enumerate(self.parts)}
 
