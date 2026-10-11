@@ -3,6 +3,471 @@
   "source": ["unreal/Art/Export/manifest.json"],
   "manifest": {
     "assets": {
+      "SK_Hero_Mage": {
+        "anims": [
+          {
+            "asset": "A_Hero_Mage_Idle",
+            "fbx": "Characters/A_Hero_Mage_Idle.fbx",
+            "fps": 60,
+            "frames": 45,
+            "lengthMs": 750,
+            "loop": true,
+            "name": "Idle",
+            "notifies": []
+          },
+          {
+            "asset": "A_Hero_Mage_Walk",
+            "fbx": "Characters/A_Hero_Mage_Walk.fbx",
+            "fps": 60,
+            "frames": 60,
+            "lengthMs": 1000,
+            "loop": true,
+            "name": "Walk",
+            "notifies": [
+              {"ms": 0, "name": "FootL"},
+              {"ms": 500, "name": "FootR"}
+            ],
+            "refSpeedCmS": 120
+          },
+          {
+            "asset": "A_Hero_Mage_Run",
+            "fbx": "Characters/A_Hero_Mage_Run.fbx",
+            "fps": 60,
+            "frames": 43,
+            "lengthMs": 720,
+            "loop": true,
+            "name": "Run",
+            "notifies": [
+              {"ms": 0, "name": "FootL"},
+              {"ms": 360, "name": "FootR"}
+            ],
+            "refSpeedCmS": 333.3
+          },
+          {
+            "asset": "A_Hero_Mage_Attack01",
+            "contactMs": 267,
+            "fbx": "Characters/A_Hero_Mage_Attack01.fbx",
+            "fps": 60,
+            "frames": 32,
+            "lengthMs": 533,
+            "loop": false,
+            "name": "Attack01",
+            "notifies": [
+              {"ms": 267, "name": "Contact"}
+            ]
+          },
+          {
+            "asset": "A_Hero_Mage_Attack02",
+            "contactMs": 267,
+            "fbx": "Characters/A_Hero_Mage_Attack02.fbx",
+            "fps": 60,
+            "frames": 32,
+            "lengthMs": 533,
+            "loop": false,
+            "name": "Attack02",
+            "notifies": [
+              {"ms": 267, "name": "Contact"}
+            ]
+          },
+          {
+            "asset": "A_Hero_Mage_Attack03",
+            "contactMs": 267,
+            "fbx": "Characters/A_Hero_Mage_Attack03.fbx",
+            "fps": 60,
+            "frames": 32,
+            "lengthMs": 533,
+            "loop": false,
+            "name": "Attack03",
+            "notifies": [
+              {"ms": 267, "name": "Contact"}
+            ]
+          },
+          {
+            "asset": "A_Hero_Mage_Cast01",
+            "fbx": "Characters/A_Hero_Mage_Cast01.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Cast01",
+            "notifies": [
+              {"ms": 230, "name": "Release"}
+            ],
+            "releaseMs": 230,
+            "skills": [
+              "fireball",
+              "ice_arrow",
+              "chain_lightning",
+              "fire_wall",
+              "freeze",
+              "combustion",
+              "arcane_torrent"
+            ]
+          },
+          {
+            "asset": "A_Hero_Mage_Cast02",
+            "fbx": "Characters/A_Hero_Mage_Cast02.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Cast02",
+            "notifies": [
+              {"ms": 230, "name": "Release"}
+            ],
+            "releaseMs": 230,
+            "skills": ["ice_armor", "mana_shield", "teleport"]
+          },
+          {
+            "asset": "A_Hero_Mage_Cast_Blizzard",
+            "fbx": "Characters/A_Hero_Mage_Cast_Blizzard.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Cast_Blizzard",
+            "notifies": [
+              {"ms": 230, "name": "Release"}
+            ],
+            "releaseMs": 230,
+            "signature": true,
+            "skill": "blizzard"
+          },
+          {
+            "asset": "A_Hero_Mage_Cast_Meteor",
+            "fbx": "Characters/A_Hero_Mage_Cast_Meteor.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Cast_Meteor",
+            "notifies": [
+              {"ms": 230, "name": "Release"}
+            ],
+            "releaseMs": 230,
+            "signature": true,
+            "skill": "meteor"
+          },
+          {
+            "asset": "A_Hero_Mage_Hurt",
+            "fbx": "Characters/A_Hero_Mage_Hurt.fbx",
+            "fps": 60,
+            "frames": 18,
+            "lengthMs": 308,
+            "loop": false,
+            "name": "Hurt",
+            "notifies": []
+          },
+          {
+            "additive": true,
+            "additiveBase": {
+              "anim": "A_Hero_Mage_HurtAdd",
+              "frame": 0,
+              "note": "Local-space additive; base = its own frame 0 (the READY pose)",
+              "type": "LocalAnimFrame"
+            },
+            "asset": "A_Hero_Mage_HurtAdd",
+            "fbx": "Characters/A_Hero_Mage_HurtAdd.fbx",
+            "fps": 60,
+            "frames": 18,
+            "lengthMs": 308,
+            "loop": false,
+            "name": "HurtAdd",
+            "notifies": []
+          },
+          {
+            "asset": "A_Hero_Mage_Dodge",
+            "fbx": "Characters/A_Hero_Mage_Dodge.fbx",
+            "fps": 60,
+            "frames": 16,
+            "lengthMs": 273,
+            "loop": false,
+            "name": "Dodge",
+            "notifies": []
+          },
+          {
+            "asset": "A_Hero_Mage_Death",
+            "fbx": "Characters/A_Hero_Mage_Death.fbx",
+            "fps": 60,
+            "frames": 40,
+            "lengthMs": 667,
+            "loop": false,
+            "name": "Death",
+            "notifies": []
+          },
+          {
+            "asset": "A_Hero_Mage_Portrait",
+            "fbx": "Characters/A_Hero_Mage_Portrait.fbx",
+            "fps": 60,
+            "frames": 1,
+            "lengthMs": 16.7,
+            "loop": false,
+            "name": "Portrait",
+            "notifies": [],
+            "staticPose": true
+          }
+        ],
+        "attachments": [
+          {"object": "SM_Hero_Mage_Staff", "socket": "weapon_r"}
+        ],
+        "blobShadowRadiusCm": 38,
+        "bones": 57,
+        "boundsCm": {
+          "max": [48.188, 50.926, 169.28],
+          "min": [-44.584, -32.637, -1.847]
+        },
+        "budget": {
+          "decision": "The §1.9 figures budget the toon surface; the baked outline hull (P7) is a second, cheap draw (same skinning, unlit one-colour pixel shader) budgeted at <= 0.5x the toon triangles via low-poly hull proxies and no-hull trims.",
+          "drawnLod0": 31558,
+          "items": {"outline": 1228, "toon": 1888},
+          "lod0": {"outline": 8000, "toon": 20442},
+          "lod1": {"outline": 4062, "toon": 10101},
+          "spec": "art-inventory-ch1 §1.9 hero: LOD0 14-18k, LOD1 7k triangles, <= 75 bones per section"
+        },
+        "category": "Characters",
+        "displayName": {"en": "Abyssfire Arcanist", "zh-CN": "渊火术士"},
+        "fbx": "Characters/SK_Hero_Mage.fbx",
+        "fx": {
+          "attackTrail": {
+            "alpha": 0.5,
+            "color": "#A47BFF",
+            "sampleMs": 12,
+            "samples": 7,
+            "sockets": ["tip", "mid"]
+          },
+          "bloom": {
+            "lobesSigmaPx1080": [
+              [3, 0.55],
+              [10, 0.45]
+            ],
+            "source": "palette P.b emissive regions (eyes, clasp gem, crystal)",
+            "strength": 0.8
+          },
+          "castBladeGlow": {
+            "alpha": 0,
+            "color": "#A47BFF",
+            "embers": {"color": "#9FE6FF", "count": 0},
+            "radiusCm": 0,
+            "tipAlpha": 0.75,
+            "tipColor": "#A47BFF",
+            "tipRadiusCm": 41
+          },
+          "castRuneRing": {
+            "alpha": 0.75,
+            "color": "#B89BFF",
+            "innerDashed": true,
+            "innerRadiusCm": 27,
+            "innerSpinRad": 6,
+            "radiusCm": [36, 44],
+            "socket": "fx_feet"
+          },
+          "classColor": "#9B59D6",
+          "crystalHum": {
+            "alpha": [0.35, 0.75],
+            "bob": {"amplitudeCm": 1.8, "note": "the crystal floats: ±0.6 u twice per loop", "perLoop": 2},
+            "color": "#A47BFF",
+            "coreAlpha": [0.6, 0.95],
+            "coreColor": "#9FE6FF",
+            "coreRadiusCm": [7.4, 16.3],
+            "itemSocket": "crystal",
+            "note": "ranges = fx 0 .. 1 (idle fx .25 ± .15, attack / cast up to 1)",
+            "radiusCm": [18, 41]
+          },
+          "crystalMotes": {
+            "color": "#9FE6FF",
+            "count": 5,
+            "ellipseCm": [16.3, 7.1],
+            "when": "attack / cast with fx > 0.6"
+          },
+          "dodgeMotes": {"alpha": 0.5, "color": "#A47BFF", "count": 4},
+          "heroHalo": {"color": "#FFEEDD", "radiusCm": 200},
+          "impactColor": "#C7A6FF",
+          "palmFlare": {
+            "alpha": 0.6,
+            "color": "#A47BFF",
+            "radiusCm": [12, 27],
+            "socket": "fx_hand_l"
+          },
+          "releaseFlash": {"color": "#B9A5FF", "ms": 120},
+          "spiritColor": "#A98BFF",
+          "visorGlow": {
+            "alpha": 0.5,
+            "alphaPerFx": 0.3,
+            "blend": "additive",
+            "color": "#9FE6FF",
+            "coreAlpha": 0.55,
+            "coreColor": "#E8FBFF",
+            "coreRadiusCm": 3.2,
+            "facingFade": "clamp(2 * dot(headFwd, toCamera) + 0.3, 0, 1)",
+            "falloff": [
+              [0, 1],
+              [0.15, 0.9],
+              [0.4, 0.6],
+              [0.7, 0.25],
+              [1, 0]
+            ],
+            "offAtDeathFraction": 0.7,
+            "radiusCm": 9,
+            "socket": "eyes"
+          }
+        },
+        "gameIds": ["player_mage"],
+        "heightCm": 171,
+        "inkGate": {
+          "cells": 25,
+          "gate": {"class": "hero", "darkLum": 40, "darkWithinPx": 3, "maxHullLumP95": 40, "minFrac": 0.9, "minPx": 3},
+          "maxHullLumP95": 133.5,
+          "medianRimPx": 3.62,
+          "minFracDark": 0.9224,
+          "minFracRim": 0.8887,
+          "pass": false
+        },
+        "itemAttachments": [
+          {
+            "kind": "item",
+            "object": "SM_Hero_Mage_Crystal",
+            "parentItem": "SM_Hero_Mage_Staff",
+            "socket": "crystal"
+          }
+        ],
+        "kind": "SkeletalMesh",
+        "lods": [
+          {
+            "asset": "SK_Hero_Mage_LOD1",
+            "fbx": "Characters/SK_Hero_Mage_LOD1.fbx",
+            "import": "same SKEL_Human armature and bind pose; import as LOD index 1 of SK_Hero_Mage (USkeletalMeshEditorSubsystem::ImportLOD / Interchange LOD import)",
+            "index": 1,
+            "screenSize": 0.15,
+            "screenSizeNote": "LOD0 is the gameplay mesh at every W1 zoom (screen size 0.2-0.28); LOD1 only below 0.15 (far zoom-out, small UI / cutscene shots)",
+            "triangles": {"outline": 4062, "toon": 10101}
+          }
+        ],
+        "materialSlots": [
+          {"index": 0, "name": "MI_AF_Toon_Heroes", "palette": "Heroes", "parent": "M_AF_Toon"},
+          {
+            "class": "hero",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3.5,
+            "palette": "Heroes",
+            "parent": "M_AF_Outline",
+            "px1080AtDefaultDistance": 2.16,
+            "widthCm": 1.8
+          }
+        ],
+        "notes": "Dodge (low arcane skim) is in place; the UE module lerps a mesh offset (2.25 tiles). Signature casts keep Cast01's release (230 ms). The crystal is a child item of the staff (itemAttachments) — attach it to the staff's `crystal` socket.",
+        "portrait": "Portraits/T_UI_Portrait_Hero_Mage.png",
+        "previews": [
+          "hero_mage/anim_Attack01.png",
+          "hero_mage/anim_Attack02.png",
+          "hero_mage/anim_Attack03.png",
+          "hero_mage/anim_Cast01.png",
+          "hero_mage/anim_Cast02.png",
+          "hero_mage/anim_Cast_Blizzard.png",
+          "hero_mage/anim_Cast_Meteor.png",
+          "hero_mage/anim_Death.png",
+          "hero_mage/anim_Dodge.png",
+          "hero_mage/anim_Hurt.png",
+          "hero_mage/anim_HurtAdd.png",
+          "hero_mage/anim_Idle.png",
+          "hero_mage/anim_Portrait.png",
+          "hero_mage/anim_Run.png",
+          "hero_mage/anim_Walk.png",
+          "hero_mage/anim_back_Attack01.png",
+          "hero_mage/anim_back_Attack02.png",
+          "hero_mage/anim_back_Attack03.png",
+          "hero_mage/anim_back_Cast01.png",
+          "hero_mage/anim_back_Cast02.png",
+          "hero_mage/anim_back_Cast_Blizzard.png",
+          "hero_mage/anim_back_Cast_Meteor.png",
+          "hero_mage/anim_back_Death.png",
+          "hero_mage/anim_back_Dodge.png",
+          "hero_mage/closeup.png",
+          "hero_mage/game.png",
+          "hero_mage/game_1080crop.png",
+          "hero_mage/game_contacts.png",
+          "hero_mage/game_eyeglow.png",
+          "hero_mage/game_facings.png",
+          "hero_mage/game_inkgate.png",
+          "hero_mage/game_poses.png",
+          "hero_mage/items.png",
+          "hero_mage/lod1.png",
+          "hero_mage/material_ab.png",
+          "hero_mage/portrait.png",
+          "hero_mage/portrait_zoom2x.png",
+          "hero_mage/poses_attack_cast.png",
+          "hero_mage/poses_signature_hurt.png",
+          "hero_mage/turnaround.png"
+        ],
+        "qa": {
+          "failures": [
+            "Cast_Meteor: groundBody -0.7 beyond -0.5 (frames [4, 5, 6, 7, 8, 9, 10])",
+            "Cast_Meteor: skirtLegs 84.0 beyond 6 (frames [7, 8, 9, 10, 14, 15, 16, 17, 18, 19, 20, 21])",
+            "Dodge: skirtLegs 66.0 beyond 20 (frames [0, 10, 11])",
+            "Dodge: staffBody 230.0 beyond 0 (frames [11])",
+            "Death: ground:SM_Hero_Mage_Staff -0.8 beyond -0.5 (frames [27])",
+            "Death: groundBody -4.5 beyond -0.5 (frames [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 29])",
+            "Death: skirtLegs 232.0 beyond 60 (frames [10, 12, 13, 28, 29, 30, 31, 32, 33, 34, 35, 36])",
+            "Death: staffBody 214.0 beyond 0 (frames [7, 14, 15, 20, 21, 25, 26, 28, 29, 30, 31, 32])"
+          ],
+          "pass": false
+        },
+        "scale": 1,
+        "skeleton": "SKEL_Human",
+        "sockets": [
+          {
+            "bone": "root",
+            "name": "fx_feet",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 0]
+          },
+          {
+            "bone": "spine_03",
+            "name": "fx_chest",
+            "relLocCm": [0, 17.355, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 94.05]
+          },
+          {
+            "bone": "head",
+            "name": "fx_head",
+            "relLocCm": [0, -14.504, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 146.826]
+          },
+          {
+            "bone": "head",
+            "name": "fx_overhead",
+            "relLocCm": [0, -63.678, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 196]
+          },
+          {
+            "bone": "hand_l",
+            "name": "fx_hand_l",
+            "relLocCm": [0, -4.879, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [51.036, 4.096, 79.622]
+          },
+          {
+            "bone": "hand_r",
+            "name": "fx_hand_r",
+            "relLocCm": [0, -4.879, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-51.036, 4.096, 79.622]
+          },
+          {
+            "bone": "head",
+            "name": "eyes",
+            "relLocCm": [0, -17.104, 18.913],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 18.913, 149.425]
+          }
+        ],
+        "triangles": {"outline": 8000, "toon": 20442}
+      },
       "SK_Hero_Warrior": {
         "anims": [
           {
@@ -411,6 +876,1174 @@
         ],
         "triangles": {"outline": 8452, "toon": 17796}
       },
+      "SK_Mon_Goblin": {
+        "anims": [
+          {
+            "asset": "A_Mon_Goblin_Idle",
+            "fbx": "Monsters/A_Mon_Goblin_Idle.fbx",
+            "fps": 60,
+            "frames": 40,
+            "lengthMs": 667,
+            "loop": true,
+            "name": "Idle",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_Goblin_Walk",
+            "fbx": "Monsters/A_Mon_Goblin_Walk.fbx",
+            "fps": 60,
+            "frames": 36,
+            "lengthMs": 600,
+            "loop": true,
+            "name": "Walk",
+            "notifies": [
+              {"ms": 0, "name": "FootL"},
+              {"ms": 300, "name": "FootR"}
+            ],
+            "refSpeedCmS": 165
+          },
+          {
+            "asset": "A_Mon_Goblin_Attack01",
+            "contactMs": 250,
+            "fbx": "Monsters/A_Mon_Goblin_Attack01.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Attack01",
+            "notifies": [
+              {"ms": 155, "name": "WindupEnd"},
+              {"ms": 250, "name": "Contact"}
+            ]
+          },
+          {
+            "asset": "A_Mon_Goblin_Hurt",
+            "fbx": "Monsters/A_Mon_Goblin_Hurt.fbx",
+            "fps": 60,
+            "frames": 12,
+            "lengthMs": 200,
+            "loop": false,
+            "name": "Hurt",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_Goblin_Death",
+            "fbx": "Monsters/A_Mon_Goblin_Death.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Death",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_Goblin_Stun",
+            "fbx": "Monsters/A_Mon_Goblin_Stun.fbx",
+            "fps": 60,
+            "frames": 36,
+            "lengthMs": 600,
+            "loop": true,
+            "name": "Stun",
+            "notifies": []
+          }
+        ],
+        "attachments": [
+          {"object": "SM_Mon_Goblin_Spear", "socket": "weapon_r"}
+        ],
+        "attackStyle": "thrust",
+        "blobShadowRadiusCm": 20.1,
+        "bones": 56,
+        "boundsCm": {
+          "max": [33.889, 32.98, 93.644],
+          "min": [-33.865, -12.248, -1.55]
+        },
+        "budget": {
+          "decision": "The §1.9 figures budget the toon surface; the baked hull (P7) is a second cheap unlit draw budgeted separately. No LOD1 file: at the W1 camera a monster is 0.08-0.15 screen height, LOD0 is the gameplay mesh; UE auto-reduction may add LOD1 for far zoom-out. ",
+          "heldItems": {"outline": 216, "toon": 864},
+          "lod0": {"outline": 5044, "toon": 9394},
+          "spec": "art-inventory-ch1 §1.9 goblin family: LOD0 6-9k, LOD1 3.5k triangles, <= 60 bones per section; slime 2-3k, <= 16 bones",
+          "weightedBones": 35
+        },
+        "category": "Monsters",
+        "displayName": {"en": "Goblin", "zh-CN": "哥布林"},
+        "fbx": "Monsters/SK_Mon_Goblin.fbx",
+        "fx": {
+          "attackTrail": {
+            "alpha": 0.45,
+            "color": "#E8E0CC",
+            "item": "SM_Mon_Goblin_Spear",
+            "sockets": ["tip", "mid"]
+          },
+          "telegraph": {"elite": "#FF7A5C", "normal": "#FFC4B0", "untilMs": 155}
+        },
+        "gameIds": ["monster_goblin", "hunt_redcap_gruk", "hunt_pendant_thief"],
+        "heightCm": 91.9,
+        "inkGate": {
+          "cells": 21,
+          "gate": {
+            "class": "monster",
+            "darkLum": 40,
+            "darkWithinPx": 3,
+            "maxHullLumP95": 40,
+            "minFrac": 0.9,
+            "minPx": 2.5
+          },
+          "maxHullLumP95": 27.7,
+          "medianRimPx": 3.31,
+          "minFracDark": 1,
+          "minFracRim": 0.9705,
+          "pass": true
+        },
+        "kind": "SkeletalMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "px1080AtDefaultDistance": 1.8,
+            "widthCm": 1.5
+          }
+        ],
+        "notes": "Clips in place; the core moves the actor (play rate = v / ref). Death is followed by the knockback impulse and a dithered fade (spec §4). Stun (C5) loops.",
+        "previews": [
+          "mon_goblin/anim_Attack01.png",
+          "mon_goblin/anim_Death.png",
+          "mon_goblin/anim_Hurt.png",
+          "mon_goblin/anim_Idle.png",
+          "mon_goblin/anim_Stun.png",
+          "mon_goblin/anim_Walk.png",
+          "mon_goblin/anim_back_Attack01.png",
+          "mon_goblin/anim_back_Death.png",
+          "mon_goblin/closeup_front.png",
+          "mon_goblin/closeup_ne.png",
+          "mon_goblin/closeup_se.png",
+          "mon_goblin/game.png",
+          "mon_goblin/game_1080crop.png",
+          "mon_goblin/game_facings.png",
+          "mon_goblin/game_inkgate.png",
+          "mon_goblin/game_poses.png",
+          "mon_goblin/hunt_close.png",
+          "mon_goblin/hunt_leaders.png",
+          "mon_goblin/items.png",
+          "mon_goblin/material_ab.png",
+          "mon_goblin/poses_close.png",
+          "mon_goblin/turnaround.png"
+        ],
+        "refSpeedCmS": 165,
+        "scale": 1,
+        "skeleton": "SKEL_Goblin",
+        "sockets": [
+          {
+            "bone": "root",
+            "name": "fx_feet",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 0]
+          },
+          {
+            "bone": "spine_03",
+            "name": "fx_chest",
+            "relLocCm": [0, 7.621, 0.173],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 50.559]
+          },
+          {
+            "bone": "head",
+            "name": "fx_head",
+            "relLocCm": [0, -8.448, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 5.56, 77.847]
+          },
+          {
+            "bone": "head",
+            "name": "fx_overhead",
+            "relLocCm": [0, -47.507, -1],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 6.123, 116.915]
+          },
+          {
+            "bone": "hand_l",
+            "name": "fx_hand_l",
+            "relLocCm": [0, -4.425, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [28.225, 8.154, 35.346]
+          },
+          {
+            "bone": "hand_r",
+            "name": "fx_hand_r",
+            "relLocCm": [0, -4.425, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-28.225, 8.154, 35.346]
+          },
+          {
+            "bone": "eye_l",
+            "name": "fx_eye_l",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [4.715, 16.879, 83.228]
+          },
+          {
+            "bone": "eye_r",
+            "name": "fx_eye_r",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-4.715, 16.879, 83.228]
+          }
+        ],
+        "triangles": {"outline": 5044, "toon": 9394},
+        "variants": {
+          "hunt_pendant_thief": {
+            "attachments": [
+              {"object": "SM_Mon_Goblin_Att_Pendant", "socket": "spine_03"},
+              {"object": "SM_Mon_Goblin_Att_LootSack", "socket": "pelvis"}
+            ],
+            "displayName": {"en": "Sneek the Thief", "zh-CN": "小贼斯尼克"},
+            "elite": true,
+            "note": "quest q_lost_pendant hunt leader: SK_Mon_Goblin x1.25 + the stolen pendant (glint) + loot sack + elite crown",
+            "scale": 1.25
+          },
+          "hunt_redcap_gruk": {
+            "attachments": [
+              {"object": "SM_Mon_Goblin_Att_RedCap", "socket": "head"}
+            ],
+            "displayName": {"en": "Gruk Redcap", "zh-CN": "红帽格鲁克"},
+            "elite": true,
+            "note": "quest q_bandit_trouble hunt leader (quest_hunts.json): SK_Mon_Goblin x1.25 + red cap + elite crown",
+            "scale": 1.25
+          }
+        }
+      },
+      "SK_Mon_GoblinChief": {
+        "anims": [
+          {
+            "asset": "A_Mon_GoblinChief_Idle",
+            "fbx": "Monsters/A_Mon_GoblinChief_Idle.fbx",
+            "fps": 60,
+            "frames": 40,
+            "lengthMs": 667,
+            "loop": true,
+            "name": "Idle",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_GoblinChief_Walk",
+            "fbx": "Monsters/A_Mon_GoblinChief_Walk.fbx",
+            "fps": 60,
+            "frames": 36,
+            "lengthMs": 600,
+            "loop": true,
+            "name": "Walk",
+            "notifies": [
+              {"ms": 0, "name": "FootL"},
+              {"ms": 300, "name": "FootR"}
+            ],
+            "refSpeedCmS": 150
+          },
+          {
+            "asset": "A_Mon_GoblinChief_Attack01",
+            "contactMs": 250,
+            "fbx": "Monsters/A_Mon_GoblinChief_Attack01.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Attack01",
+            "notifies": [
+              {"ms": 155, "name": "WindupEnd"},
+              {"ms": 250, "name": "Contact"}
+            ]
+          },
+          {
+            "asset": "A_Mon_GoblinChief_Hurt",
+            "fbx": "Monsters/A_Mon_GoblinChief_Hurt.fbx",
+            "fps": 60,
+            "frames": 12,
+            "lengthMs": 200,
+            "loop": false,
+            "name": "Hurt",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_GoblinChief_Death",
+            "fbx": "Monsters/A_Mon_GoblinChief_Death.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Death",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_GoblinChief_Roar",
+            "fbx": "Monsters/A_Mon_GoblinChief_Roar.fbx",
+            "fps": 60,
+            "frames": 72,
+            "lengthMs": 1200,
+            "loop": false,
+            "name": "Roar",
+            "notifies": [
+              {"ms": 450, "name": "FX_Roar"}
+            ],
+            "usage": "boss intro cs_boss_goblin_chief (quests-story-ch1 §10.2), plays under the title card"
+          },
+          {
+            "asset": "A_Mon_GoblinChief_Stun",
+            "fbx": "Monsters/A_Mon_GoblinChief_Stun.fbx",
+            "fps": 60,
+            "frames": 36,
+            "lengthMs": 600,
+            "loop": true,
+            "name": "Stun",
+            "notifies": []
+          }
+        ],
+        "attachments": [
+          {"object": "SM_Mon_GoblinChief_Cleaver", "socket": "weapon_r"}
+        ],
+        "attackStyle": "overhead",
+        "blobShadowRadiusCm": 27,
+        "bones": 56,
+        "boundsCm": {
+          "max": [43.372, 35.721, 131.349],
+          "min": [-43.347, -23.366, -1.55]
+        },
+        "budget": {
+          "decision": "The §1.9 figures budget the toon surface; the baked hull (P7) is a second cheap unlit draw budgeted separately. No LOD1 file: at the W1 camera a monster is 0.08-0.15 screen height, LOD0 is the gameplay mesh; UE auto-reduction may add LOD1 for far zoom-out. ",
+          "heldItems": {"outline": 332, "toon": 1204},
+          "lod0": {"outline": 9552, "toon": 17758},
+          "spec": "art-inventory-ch1 §1.9 goblin family: LOD0 6-9k, LOD1 3.5k triangles, <= 60 bones per section; slime 2-3k, <= 16 bones",
+          "weightedBones": 38
+        },
+        "category": "Monsters",
+        "displayName": {"en": "Goblin Chief · Grokk Brokentooth", "zh-CN": "哥布林首领 · 碎牙·格罗克"},
+        "elite": true,
+        "fbx": "Monsters/SK_Mon_GoblinChief.fbx",
+        "fx": {
+          "attackTrail": {
+            "alpha": 0.5,
+            "color": "#E8ECF4",
+            "item": "SM_Mon_GoblinChief_Cleaver",
+            "sockets": ["tip", "mid"]
+          },
+          "eliteCrown": {"asset": "SM_FX_EliteCrown", "socket": "fx_overhead"},
+          "eyeEmbers": {
+            "alpha": 0.35,
+            "alphaPerFx": 0.3,
+            "blend": "additive",
+            "color": "#FF5A2A",
+            "coreAlpha": 0.5,
+            "coreColor": "#FFD08A",
+            "facingFade": "clamp(2 * dot(headFwd, toCamera) + 0.4, 0, 1)",
+            "falloff": "web glow",
+            "offInDeath": true,
+            "radiusCm": 5.5,
+            "sockets": ["fx_eye_l", "fx_eye_r"]
+          },
+          "telegraph": {"elite": "#FF7A5C", "normal": "#FFC4B0", "untilMs": 155}
+        },
+        "gameIds": ["monster_goblin_chief"],
+        "heightCm": 116.3,
+        "inkGate": {
+          "cells": 17,
+          "gate": {
+            "class": "monster",
+            "darkLum": 40,
+            "darkWithinPx": 3,
+            "maxHullLumP95": 40,
+            "minFrac": 0.9,
+            "minPx": 2.5
+          },
+          "maxHullLumP95": 30.2,
+          "medianRimPx": 3.37,
+          "minFracDark": 1,
+          "minFracRim": 0.9606,
+          "pass": true
+        },
+        "kind": "SkeletalMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "px1080AtDefaultDistance": 1.8,
+            "widthCm": 1.5
+          }
+        ],
+        "notes": "Boss of Chapter 1. Clips in place; Roar plays under the boss title card. Death is followed by the knockback impulse and a dithered fade (spec §4).",
+        "previews": [
+          "mon_goblin_chief/anim_Attack01.png",
+          "mon_goblin_chief/anim_Death.png",
+          "mon_goblin_chief/anim_Hurt.png",
+          "mon_goblin_chief/anim_Idle.png",
+          "mon_goblin_chief/anim_Roar.png",
+          "mon_goblin_chief/anim_Stun.png",
+          "mon_goblin_chief/anim_Walk.png",
+          "mon_goblin_chief/anim_back_Attack01.png",
+          "mon_goblin_chief/anim_back_Death.png",
+          "mon_goblin_chief/anim_back_Roar.png",
+          "mon_goblin_chief/closeup_front.png",
+          "mon_goblin_chief/closeup_ne.png",
+          "mon_goblin_chief/closeup_se.png",
+          "mon_goblin_chief/game.png",
+          "mon_goblin_chief/game_1080crop.png",
+          "mon_goblin_chief/game_facings.png",
+          "mon_goblin_chief/game_inkgate.png",
+          "mon_goblin_chief/game_poses.png",
+          "mon_goblin_chief/items.png",
+          "mon_goblin_chief/material_ab.png",
+          "mon_goblin_chief/poses_close.png",
+          "mon_goblin_chief/turnaround.png"
+        ],
+        "refSpeedCmS": 150,
+        "scale": 1,
+        "skeleton": "SKEL_Goblin",
+        "sockets": [
+          {
+            "bone": "root",
+            "name": "fx_feet",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 0]
+          },
+          {
+            "bone": "spine_03",
+            "name": "fx_chest",
+            "relLocCm": [0, 11.415, 0.547],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 63.965]
+          },
+          {
+            "bone": "head",
+            "name": "fx_head",
+            "relLocCm": [0, -9.436, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 5.271, 100.573]
+          },
+          {
+            "bone": "head",
+            "name": "fx_overhead",
+            "relLocCm": [0, -50.142, -1],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 5.9, 141.287]
+          },
+          {
+            "bone": "hand_l",
+            "name": "fx_hand_l",
+            "relLocCm": [0, -4.943, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [37.216, 8.884, 46.32]
+          },
+          {
+            "bone": "hand_r",
+            "name": "fx_hand_r",
+            "relLocCm": [0, -4.943, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-37.216, 8.884, 46.32]
+          },
+          {
+            "bone": "eye_l",
+            "name": "fx_eye_l",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [5.266, 17.915, 106.583]
+          },
+          {
+            "bone": "eye_r",
+            "name": "fx_eye_r",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-5.266, 17.915, 106.583]
+          }
+        ],
+        "triangles": {"outline": 9552, "toon": 17758}
+      },
+      "SK_Mon_GoblinShaman": {
+        "anims": [
+          {
+            "asset": "A_Mon_GoblinShaman_Idle",
+            "fbx": "Monsters/A_Mon_GoblinShaman_Idle.fbx",
+            "fps": 60,
+            "frames": 40,
+            "lengthMs": 667,
+            "loop": true,
+            "name": "Idle",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_GoblinShaman_Walk",
+            "fbx": "Monsters/A_Mon_GoblinShaman_Walk.fbx",
+            "fps": 60,
+            "frames": 36,
+            "lengthMs": 600,
+            "loop": true,
+            "name": "Walk",
+            "notifies": [
+              {"ms": 0, "name": "FootL"},
+              {"ms": 300, "name": "FootR"}
+            ],
+            "refSpeedCmS": 135
+          },
+          {
+            "asset": "A_Mon_GoblinShaman_Attack01",
+            "attackRange": 3,
+            "contactMs": 250,
+            "fbx": "Monsters/A_Mon_GoblinShaman_Attack01.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Attack01",
+            "notifies": [
+              {"ms": 155, "name": "WindupEnd"},
+              {"ms": 250, "name": "Contact"},
+              {"ms": 250, "name": "FX_SpiritBolt"},
+              {"ms": 250, "name": "Release"}
+            ],
+            "projectile": "spirit-fire bolt from the totem's spirit_fire socket (M5)",
+            "ranged": true,
+            "releaseMs": 250
+          },
+          {
+            "asset": "A_Mon_GoblinShaman_Hurt",
+            "fbx": "Monsters/A_Mon_GoblinShaman_Hurt.fbx",
+            "fps": 60,
+            "frames": 12,
+            "lengthMs": 200,
+            "loop": false,
+            "name": "Hurt",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_GoblinShaman_Death",
+            "fbx": "Monsters/A_Mon_GoblinShaman_Death.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Death",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_GoblinShaman_Taunt",
+            "fbx": "Monsters/A_Mon_GoblinShaman_Taunt.fbx",
+            "fps": 60,
+            "frames": 54,
+            "lengthMs": 900,
+            "loop": false,
+            "name": "Taunt",
+            "notifies": [
+              {"ms": 300, "name": "FX_Taunt"}
+            ],
+            "usage": "pre-fight dialogue of miniboss_goblin_shaman (monsters-ai §8.3)"
+          },
+          {
+            "asset": "A_Mon_GoblinShaman_Stun",
+            "fbx": "Monsters/A_Mon_GoblinShaman_Stun.fbx",
+            "fps": 60,
+            "frames": 36,
+            "lengthMs": 600,
+            "loop": true,
+            "name": "Stun",
+            "notifies": []
+          }
+        ],
+        "attachments": [
+          {"object": "SM_Mon_GoblinShaman_Totem", "socket": "weapon_r"}
+        ],
+        "attackStyle": "cast",
+        "blobShadowRadiusCm": 22.2,
+        "bones": 56,
+        "boundsCm": {
+          "max": [36.233, 43.747, 114.369],
+          "min": [-36.209, -15.868, -1.55]
+        },
+        "budget": {
+          "decision": "The §1.9 figures budget the toon surface; the baked hull (P7) is a second cheap unlit draw budgeted separately. No LOD1 file: at the W1 camera a monster is 0.08-0.15 screen height, LOD0 is the gameplay mesh; UE auto-reduction may add LOD1 for far zoom-out. ",
+          "heldItems": {"outline": 1188, "toon": 2128},
+          "lod0": {"outline": 9424, "toon": 14956},
+          "spec": "art-inventory-ch1 §1.9 goblin family: LOD0 6-9k, LOD1 3.5k triangles, <= 60 bones per section; slime 2-3k, <= 16 bones",
+          "weightedBones": 39
+        },
+        "category": "Monsters",
+        "displayName": {"en": "Goblin Shaman", "zh-CN": "哥布林萨满"},
+        "elite": true,
+        "fbx": "Monsters/SK_Mon_GoblinShaman.fbx",
+        "fx": {
+          "castRuneRing": {
+            "color": "#7DFFA0",
+            "fromMs": 83,
+            "radiusCm": [240, 310],
+            "toMs": 250
+          },
+          "eliteCrown": {"asset": "SM_FX_EliteCrown", "socket": "fx_overhead"},
+          "maskEmbers": {
+            "alpha": 0.45,
+            "alphaPerFx": 0.3,
+            "color": "#4DFF7A",
+            "radiusCm": 4.3,
+            "sockets": ["fx_eye_l", "fx_eye_r"]
+          },
+          "spiritBolt": {
+            "atMs": 250,
+            "color": "#4DFF7A",
+            "coreColor": "#D4FFB0",
+            "flashRadiusCm": [15, 6.5],
+            "notify": "FX_SpiritBolt",
+            "socket": "spirit_fire"
+          },
+          "spiritFire": {
+            "alpha": 0.35,
+            "alphaPerFx": 0.35,
+            "color": "#4DFF7A",
+            "coreAlpha": 0.6,
+            "coreColor": "#D4FFB0",
+            "coreRadiusCm": 4.2,
+            "deathFade": "1 - 1.4 t",
+            "flameSizeCm": [9.5, 19],
+            "flickerHz": 3,
+            "item": "SM_Mon_GoblinShaman_Totem",
+            "note": "the mesh carries a steady emissive flame core; the runtime adds the flickering tongues and the additive glow (web spiritFlame + glow)",
+            "radiusCm": 12.6,
+            "radiusPerFxCm": 14.7,
+            "socket": "spirit_fire"
+          },
+          "spiritStone": {"alpha": 0.3, "color": "#4DFF7A", "pulsesPerIdle": 2, "radiusCm": 5},
+          "telegraph": {"elite": "#FF7A5C", "normal": "#FFC4B0", "untilMs": 155}
+        },
+        "gameIds": ["monster_goblin_shaman", "miniboss_goblin_shaman"],
+        "heightCm": 93.4,
+        "inkGate": {
+          "cells": 17,
+          "gate": {
+            "class": "monster",
+            "darkLum": 40,
+            "darkWithinPx": 3,
+            "maxHullLumP95": 40,
+            "minFrac": 0.9,
+            "minPx": 2.5
+          },
+          "maxHullLumP95": 31.2,
+          "medianRimPx": 3.25,
+          "minFracDark": 0.9875,
+          "minFracRim": 0.9667,
+          "pass": true
+        },
+        "kind": "SkeletalMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "px1080AtDefaultDistance": 1.8,
+            "widthCm": 1.5
+          }
+        ],
+        "notes": "M5: ranged caster (attackRange 3.0) — Attack01 releases the spirit-fire bolt from the totem (spirit_fire socket on SM_Mon_GoblinShaman_Totem) at 250 ms. Death: the spirit-fire dies out (runtime 1 - 1.4 t).",
+        "previews": [
+          "mon_goblin_shaman/anim_Attack01.png",
+          "mon_goblin_shaman/anim_Death.png",
+          "mon_goblin_shaman/anim_Hurt.png",
+          "mon_goblin_shaman/anim_Idle.png",
+          "mon_goblin_shaman/anim_Stun.png",
+          "mon_goblin_shaman/anim_Taunt.png",
+          "mon_goblin_shaman/anim_Walk.png",
+          "mon_goblin_shaman/anim_back_Attack01.png",
+          "mon_goblin_shaman/anim_back_Death.png",
+          "mon_goblin_shaman/anim_back_Taunt.png",
+          "mon_goblin_shaman/closeup_front.png",
+          "mon_goblin_shaman/closeup_ne.png",
+          "mon_goblin_shaman/closeup_se.png",
+          "mon_goblin_shaman/game.png",
+          "mon_goblin_shaman/game_1080crop.png",
+          "mon_goblin_shaman/game_facings.png",
+          "mon_goblin_shaman/game_fx.png",
+          "mon_goblin_shaman/game_inkgate.png",
+          "mon_goblin_shaman/game_poses.png",
+          "mon_goblin_shaman/items.png",
+          "mon_goblin_shaman/material_ab.png",
+          "mon_goblin_shaman/poses_close.png",
+          "mon_goblin_shaman/turnaround.png"
+        ],
+        "ranged": true,
+        "refSpeedCmS": 135,
+        "scale": 1,
+        "skeleton": "SKEL_Goblin",
+        "sockets": [
+          {
+            "bone": "root",
+            "name": "fx_feet",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 0]
+          },
+          {
+            "bone": "spine_03",
+            "name": "fx_chest",
+            "relLocCm": [0, 7.714, 0.091],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 51.389]
+          },
+          {
+            "bone": "head",
+            "name": "fx_head",
+            "relLocCm": [0, -8.476, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 5.174, 79.308]
+          },
+          {
+            "bone": "head",
+            "name": "fx_overhead",
+            "relLocCm": [0, -47.583, -1],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 5.739, 118.424]
+          },
+          {
+            "bone": "hand_l",
+            "name": "fx_hand_l",
+            "relLocCm": [0, -4.44, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [30.555, 8.178, 33.92]
+          },
+          {
+            "bone": "hand_r",
+            "name": "fx_hand_r",
+            "relLocCm": [0, -4.44, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-30.555, 8.178, 33.92]
+          },
+          {
+            "bone": "eye_l",
+            "name": "fx_eye_l",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [4.731, 16.532, 84.707]
+          },
+          {
+            "bone": "eye_r",
+            "name": "fx_eye_r",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-4.731, 16.532, 84.707]
+          }
+        ],
+        "triangles": {"outline": 9424, "toon": 14956}
+      },
+      "SK_Mon_Slime": {
+        "anims": [
+          {
+            "asset": "A_Mon_Slime_Idle",
+            "fbx": "Monsters/A_Mon_Slime_Idle.fbx",
+            "fps": 60,
+            "frames": 40,
+            "lengthMs": 667,
+            "loop": true,
+            "name": "Idle",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_Slime_Walk",
+            "fbx": "Monsters/A_Mon_Slime_Walk.fbx",
+            "fps": 60,
+            "frames": 36,
+            "lengthMs": 600,
+            "loop": true,
+            "name": "Walk",
+            "notifies": [
+              {"ms": 510, "name": "FX_Land"}
+            ],
+            "refSpeedCmS": 120
+          },
+          {
+            "asset": "A_Mon_Slime_Attack01",
+            "contactMs": 250,
+            "fbx": "Monsters/A_Mon_Slime_Attack01.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Attack01",
+            "notifies": [
+              {"ms": 155, "name": "WindupEnd"},
+              {"ms": 250, "name": "Contact"}
+            ]
+          },
+          {
+            "asset": "A_Mon_Slime_Hurt",
+            "fbx": "Monsters/A_Mon_Slime_Hurt.fbx",
+            "fps": 60,
+            "frames": 12,
+            "lengthMs": 200,
+            "loop": false,
+            "name": "Hurt",
+            "notifies": []
+          },
+          {
+            "asset": "A_Mon_Slime_Death",
+            "fbx": "Monsters/A_Mon_Slime_Death.fbx",
+            "fps": 60,
+            "frames": 30,
+            "lengthMs": 500,
+            "loop": false,
+            "name": "Death",
+            "notifies": [],
+            "puddleDecal": {
+              "alpha": 0.35,
+              "color": "#5FCF5A",
+              "note": "web fx: rgba(95,207,90,0.35·melt) ellipse r = 1.1·W·sx",
+              "radiusFactor": 1.1
+            }
+          }
+        ],
+        "attachments": [],
+        "attackStyle": "slam",
+        "blobShadowRadiusCm": 46.2,
+        "bones": 16,
+        "boundsCm": {
+          "max": [46.048, 46.048, 44.35],
+          "min": [-46.048, -46.048, -1.55]
+        },
+        "budget": {
+          "decision": "The §1.9 figures budget the toon surface; the baked hull (P7) is a second cheap unlit draw budgeted separately. No LOD1 file: at the W1 camera a monster is 0.08-0.15 screen height, LOD0 is the gameplay mesh; UE auto-reduction may add LOD1 for far zoom-out. Slime budget 2-3k toon tris, <= 16 bones (SKEL_Slime has 16).",
+          "heldItems": {"outline": 0, "toon": 0},
+          "lod0": {"outline": 792, "toon": 3016},
+          "spec": "art-inventory-ch1 §1.9 goblin family: LOD0 6-9k, LOD1 3.5k triangles, <= 60 bones per section; slime 2-3k, <= 16 bones",
+          "weightedBones": 15
+        },
+        "category": "Monsters",
+        "displayName": {"en": "Green Slime", "zh-CN": "绿色史莱姆"},
+        "fbx": "Monsters/SK_Mon_Slime.fbx",
+        "footprintRadiusCm": 44,
+        "fx": {
+          "blobShadow": {"liftShrink": "hop × 1.5 (web)", "radiusFactorOfWidth": 1.05},
+          "bodyOpacity": 0.82,
+          "jellyRim": {"alpha": 0.6, "color": "#E6FFDC", "material": "M_AF_Toon_Slime RimOverride"},
+          "land": {"atMs": 510, "notify": "FX_Land"},
+          "puddle": {"alpha": 0.35, "color": "#5FCF5A", "fromClip": "Death", "radiusFactorOfWidth": 1.1},
+          "telegraph": {"elite": "#FF7A5C", "normal": "#FFC4B0", "untilMs": 155}
+        },
+        "gameIds": ["monster_slime"],
+        "heightCm": 43,
+        "inkGate": {
+          "cells": 17,
+          "gate": {
+            "class": "monster",
+            "darkLum": 40,
+            "darkWithinPx": 3,
+            "maxHullLumP95": 40,
+            "minFrac": 0.9,
+            "minPx": 2.5
+          },
+          "maxHullLumP95": 25.4,
+          "medianRimPx": 3.05,
+          "minFracDark": 1,
+          "minFracRim": 0.9329,
+          "pass": true
+        },
+        "kind": "SkeletalMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "px1080AtDefaultDistance": 1.8,
+            "widthCm": 1.5
+          },
+          {
+            "index": 2,
+            "name": "MI_AF_Toon_Slime",
+            "palette": "Monsters_Plains",
+            "params": {"BodyOpacity": 0.82},
+            "parent": "M_AF_Toon_Slime"
+          }
+        ],
+        "notes": "SKEL_Slime: squash / stretch as bone scale keys (body_*), pseudopod pod_*, eye openness, angry brows (lid_*) and X-eyes (xeye_*) scaled in, bubbles rising and popping. Shell = slot 2 MI_AF_Toon_Slime (M_AF_Toon_Slime, dithered BodyOpacity, jelly rim, R12); the core, bone, bubbles, eyes are opaque toon (slot 0). Walk is a no-slide hop: play rate = v / 1.20 m/s.",
+        "previews": [
+          "mon_slime/anim_Attack01.png",
+          "mon_slime/anim_Death.png",
+          "mon_slime/anim_Hurt.png",
+          "mon_slime/anim_Idle.png",
+          "mon_slime/anim_Walk.png",
+          "mon_slime/anim_back_Attack01.png",
+          "mon_slime/anim_back_Death.png",
+          "mon_slime/closeup_front.png",
+          "mon_slime/closeup_ne.png",
+          "mon_slime/closeup_se.png",
+          "mon_slime/game.png",
+          "mon_slime/game_1080crop.png",
+          "mon_slime/game_facings.png",
+          "mon_slime/game_inkgate.png",
+          "mon_slime/game_poses.png",
+          "mon_slime/material_ab.png",
+          "mon_slime/poses_close.png",
+          "mon_slime/turnaround.png"
+        ],
+        "refSpeedCmS": 120,
+        "scale": 1,
+        "skeleton": "SKEL_Slime",
+        "sockets": [
+          {
+            "bone": "root",
+            "name": "fx_feet",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 0]
+          },
+          {
+            "bone": "body_mid",
+            "name": "fx_chest",
+            "relLocCm": [0, -5.65, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 23.65]
+          },
+          {
+            "bone": "body_top",
+            "name": "fx_head",
+            "relLocCm": [0, -0.4, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 34.4]
+          },
+          {
+            "bone": "body_top",
+            "name": "fx_overhead",
+            "relLocCm": [0, -34, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 0, 68]
+          },
+          {
+            "bone": "eye_l",
+            "name": "fx_eye_l",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [9.469, 33.585, 24.466]
+          },
+          {
+            "bone": "eye_r",
+            "name": "fx_eye_r",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-9.469, 33.585, 24.466]
+          },
+          {
+            "bone": "pod_02",
+            "name": "fx_pod",
+            "relLocCm": [0, 0, 0],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 37, 4]
+          }
+        ],
+        "triangles": {"outline": 792, "toon": 3016}
+      },
+      "SM_FX_EliteCrown": {
+        "attachSocket": "fx_overhead",
+        "boundsCm": {
+          "max": [18.334, 13.134, 32.762],
+          "min": [-18.334, -19.089, -1.498]
+        },
+        "category": "VFX",
+        "displayName": {"en": "Elite crown", "zh-CN": "精英王冠"},
+        "fbx": "VFX/SM_FX_EliteCrown.fbx",
+        "fx": {
+          "absoluteScale": true,
+          "glow": {
+            "alpha": 0.4,
+            "blend": "additive",
+            "color": "#FFD040",
+            "falloff": "web glow",
+            "placement": "behind the crown (depth-tested card a little further from the camera; the web draws the glow before the crown)",
+            "radiusCm": 23
+          },
+          "motion": {
+            "bakedTiltDeg": 38,
+            "bobCm": 3,
+            "bobPeriodMs": 1600,
+            "faceCameraYaw": true,
+            "note": "spec §4.6: slow bob and spin, unlit + outline, always faces the camera's yaw. The mesh is tilted back 38° about its base so the W1 camera (pitch -50) sees it nearly front-on; the 'spin' is a gentle ±20° sway about the camera-facing yaw (a full spin would show the tilt)",
+            "swayDeg": 20,
+            "swayPeriodMs": 3200
+          },
+          "scaleNote": "the crown keeps its 35 cm on scaled elites (hunt leaders x1.25): attach with absolute scale",
+          "socket": "fx_overhead"
+        },
+        "gameIds": ["elite_crown"],
+        "inkGate": {
+          "cells": 1,
+          "gate": {
+            "class": "monster",
+            "darkLum": 40,
+            "darkWithinPx": 3,
+            "maxHullLumP95": 40,
+            "minFrac": 0.9,
+            "minPx": 2.5
+          },
+          "maxHullLumP95": 30.2,
+          "medianRimPx": 3.05,
+          "minFracDark": 1,
+          "minFracRim": 1,
+          "pass": true
+        },
+        "kind": "StaticMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.5
+          }
+        ],
+        "previews": [
+          "SM_FX_EliteCrown/closeup.png",
+          "SM_FX_EliteCrown/crown_over_monsters.png",
+          "SM_FX_EliteCrown/game.png",
+          "SM_FX_EliteCrown/game_1080crop.png",
+          "SM_FX_EliteCrown/game_halo.png",
+          "SM_FX_EliteCrown/game_inkgate.png",
+          "SM_FX_EliteCrown/turnaround.png"
+        ],
+        "scale": 1,
+        "sockets": [
+          {
+            "locCm": [0, 0, 0],
+            "name": "base",
+            "rotDeg": [0, 0, 0]
+          }
+        ],
+        "triangles": {"outline": 4080, "toon": 4828},
+        "widthCm": 35
+      },
+      "SM_Hero_Mage_Crystal": {
+        "attachKind": "item",
+        "attachSocket": "crystal",
+        "boundsCm": {
+          "max": [7.989, 11.747, 7.8],
+          "min": [-9.368, -15.9, -7.901]
+        },
+        "category": "Weapons",
+        "fbx": "Weapons/SM_Hero_Mage_Crystal.fbx",
+        "gameIds": [],
+        "heldBy": ["SK_Hero_Mage"],
+        "kind": "StaticMesh",
+        "materialSlots": [
+          {"index": 0, "name": "MI_AF_Toon_Heroes", "palette": "Heroes", "parent": "M_AF_Toon"},
+          {
+            "class": "weapon",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlinePx1080": 3.5,
+            "palette": "Heroes",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.3
+          }
+        ],
+        "note": "floats in the staff's claw: attach to the staff socket `crystal`; bob ±1.8 cm twice per idle loop + a slow spin in the BP / material (web staff :132-142)",
+        "parentItem": "SM_Hero_Mage_Staff",
+        "previews": ["hero_mage/items.png"],
+        "scale": 1,
+        "sockets": [],
+        "triangles": {"outline": 24, "toon": 60},
+        "weaponType": "crystal"
+      },
+      "SM_Hero_Mage_Staff": {
+        "attachKind": "hand",
+        "attachSocket": "weapon_r",
+        "boundsCm": {
+          "max": [16.073, 51.459, 5.069],
+          "min": [-16.031, -89.414, -5.364]
+        },
+        "category": "Weapons",
+        "fbx": "Weapons/SM_Hero_Mage_Staff.fbx",
+        "gameIds": [],
+        "heldBy": ["SK_Hero_Mage"],
+        "kind": "StaticMesh",
+        "lengthCm": 135.2,
+        "materialSlots": [
+          {"index": 0, "name": "MI_AF_Toon_Heroes", "palette": "Heroes", "parent": "M_AF_Toon"},
+          {
+            "class": "weapon",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlinePx1080": 3.5,
+            "palette": "Heroes",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.3
+          }
+        ],
+        "previews": ["hero_mage/items.png"],
+        "scale": 1,
+        "sockets": [
+          {
+            "locCm": [0, -73.36, 0],
+            "name": "crystal",
+            "rotDeg": [0, 0, 0]
+          },
+          {
+            "locCm": [0, -73.36, 0],
+            "name": "tip",
+            "rotDeg": [0, 0, 0]
+          },
+          {
+            "locCm": [0, -28.882, 0],
+            "name": "mid",
+            "rotDeg": [0, 0, 0]
+          },
+          {
+            "locCm": [0, 49.099, 0],
+            "name": "foot",
+            "rotDeg": [0, 0, 0]
+          }
+        ],
+        "triangles": {"outline": 1204, "toon": 1828},
+        "weaponType": "staff"
+      },
       "SM_Hero_Warrior_Shield": {
         "attachSocket": "weapon_l",
         "boundsCm": {
@@ -500,9 +2133,279 @@
         ],
         "triangles": {"outline": 1118, "toon": 1644},
         "weaponType": "sword"
+      },
+      "SM_Mon_GoblinChief_Cleaver": {
+        "attachSocket": "weapon_r",
+        "bladeCm": [23.3, 36.7],
+        "boundsCm": {
+          "max": [-32.189, 47.591, 63.724],
+          "min": [-41.355, -8.669, 40.871]
+        },
+        "category": "Weapons",
+        "fbx": "Weapons/SM_Mon_GoblinChief_Cleaver.fbx",
+        "gameIds": [],
+        "heldBy": ["SK_Mon_GoblinChief"],
+        "kind": "StaticMesh",
+        "lengthCm": 58.4,
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.5
+          }
+        ],
+        "previews": ["mon_goblin_chief/items.png"],
+        "scale": 1,
+        "sockets": [
+          {
+            "locCm": [0, -41.337, 6.459],
+            "name": "tip",
+            "rotDeg": [0, 0, 0]
+          },
+          {
+            "locCm": [0, -24.544, 12.918],
+            "name": "mid",
+            "rotDeg": [0, 0, 0]
+          }
+        ],
+        "triangles": {"outline": 332, "toon": 1204},
+        "weaponType": "axe"
+      },
+      "SM_Mon_GoblinShaman_Totem": {
+        "attachSocket": "weapon_r",
+        "boundsCm": {
+          "max": [-14.723, 74.307, 41.084],
+          "min": [-45.59, -18.408, 25.137]
+        },
+        "category": "Weapons",
+        "fbx": "Weapons/SM_Mon_GoblinShaman_Totem.fbx",
+        "gameIds": [],
+        "heldBy": ["SK_Mon_GoblinShaman"],
+        "kind": "StaticMesh",
+        "lengthCm": 88.8,
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.5
+          }
+        ],
+        "previews": ["mon_goblin_shaman/items.png"],
+        "scale": 1,
+        "sockets": [
+          {
+            "locCm": [0, -52.067, 0],
+            "name": "spirit_fire",
+            "rotDeg": [0, 0, 0]
+          },
+          {
+            "locCm": [0, -62.561, 0],
+            "name": "tip",
+            "rotDeg": [0, 0, 0]
+          },
+          {
+            "locCm": [0, -16.145, 0],
+            "name": "mid",
+            "rotDeg": [0, 0, 0]
+          }
+        ],
+        "triangles": {"outline": 1188, "toon": 2128},
+        "weaponType": "staff"
+      },
+      "SM_Mon_Goblin_Att_LootSack": {
+        "attach": "bone socket, identity transform (weapon-socket convention)",
+        "attachSocket": "pelvis",
+        "boundsCm": {
+          "max": [21.997, 14.074, -2.078],
+          "min": [6.45, -5.039, -17.333]
+        },
+        "category": "Monsters",
+        "fbx": "Monsters/SM_Mon_Goblin_Att_LootSack.fbx",
+        "gameIds": [],
+        "heldBy": ["SK_Mon_Goblin"],
+        "kind": "StaticMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.5
+          }
+        ],
+        "previews": ["mon_goblin/items.png", "mon_goblin/hunt_leaders.png", "mon_goblin/hunt_close.png"],
+        "scale": 1,
+        "sockets": [],
+        "triangles": {"outline": 388, "toon": 608},
+        "variant": "hunt_pendant_thief",
+        "variantScale": 1.25
+      },
+      "SM_Mon_Goblin_Att_Pendant": {
+        "attach": "bone socket, identity transform (weapon-socket convention)",
+        "attachSocket": "spine_03",
+        "boundsCm": {
+          "max": [2.764, 0.372, 18.911],
+          "min": [-7.701, -8.254, 6.792]
+        },
+        "category": "Monsters",
+        "fbx": "Monsters/SM_Mon_Goblin_Att_Pendant.fbx",
+        "gameIds": [],
+        "glint": {"color": "#E0283C", "region": "gem"},
+        "heldBy": ["SK_Mon_Goblin"],
+        "kind": "StaticMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.5
+          }
+        ],
+        "previews": ["mon_goblin/items.png", "mon_goblin/hunt_leaders.png", "mon_goblin/hunt_close.png"],
+        "scale": 1,
+        "sockets": [],
+        "triangles": {"outline": 480, "toon": 880},
+        "variant": "hunt_pendant_thief",
+        "variantScale": 1.25
+      },
+      "SM_Mon_Goblin_Att_RedCap": {
+        "attach": "bone socket, identity transform (weapon-socket convention)",
+        "attachSocket": "head",
+        "boundsCm": {
+          "max": [14.817, -13.179, 13.44],
+          "min": [-14.819, -34.38, -16.22]
+        },
+        "category": "Monsters",
+        "fbx": "Monsters/SM_Mon_Goblin_Att_RedCap.fbx",
+        "gameIds": [],
+        "heldBy": ["SK_Mon_Goblin"],
+        "kind": "StaticMesh",
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.5
+          }
+        ],
+        "previews": ["mon_goblin/items.png", "mon_goblin/hunt_leaders.png", "mon_goblin/hunt_close.png"],
+        "scale": 1,
+        "sockets": [],
+        "triangles": {"outline": 840, "toon": 1240},
+        "variant": "hunt_redcap_gruk",
+        "variantScale": 1.25
+      },
+      "SM_Mon_Goblin_Spear": {
+        "attachSocket": "weapon_r",
+        "boundsCm": {
+          "max": [-22.232, 47.973, 39.43],
+          "min": [-33.356, -12.348, 32.305]
+        },
+        "category": "Weapons",
+        "fbx": "Weapons/SM_Mon_Goblin_Spear.fbx",
+        "gameIds": [],
+        "heldBy": ["SK_Mon_Goblin"],
+        "kind": "StaticMesh",
+        "lengthCm": 55.5,
+        "materialSlots": [
+          {
+            "index": 0,
+            "name": "MI_AF_Toon_Monsters_Plains",
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Toon"
+          },
+          {
+            "class": "monster",
+            "index": 1,
+            "name": "M_AF_Outline",
+            "outlineMix": 0.4,
+            "outlinePx1080": 3,
+            "palette": "Monsters_Plains",
+            "parent": "M_AF_Outline",
+            "widthCm": 1.5
+          }
+        ],
+        "previews": ["mon_goblin/items.png"],
+        "scale": 1,
+        "sockets": [
+          {
+            "locCm": [0, -37.411, 0],
+            "name": "tip",
+            "rotDeg": [0, 0, 0]
+          },
+          {
+            "locCm": [0, -12.068, 0],
+            "name": "mid",
+            "rotDeg": [0, 0, 0]
+          }
+        ],
+        "triangles": {"outline": 216, "toon": 864},
+        "weaponType": "spear"
       }
     },
-    "gameIds": {"player_warrior": "SK_Hero_Warrior"},
+    "gameIds": {
+      "elite_crown": "SM_FX_EliteCrown",
+      "hunt_pendant_thief": "SK_Mon_Goblin",
+      "hunt_redcap_gruk": "SK_Mon_Goblin",
+      "miniboss_goblin_shaman": "SK_Mon_GoblinShaman",
+      "monster_goblin": "SK_Mon_Goblin",
+      "monster_goblin_chief": "SK_Mon_GoblinChief",
+      "monster_goblin_shaman": "SK_Mon_GoblinShaman",
+      "monster_slime": "SK_Mon_Slime",
+      "player_mage": "SK_Hero_Mage",
+      "player_warrior": "SK_Hero_Warrior"
+    },
     "generator": "abyssfire blender kit 1.0.0 (Blender 5.0.1)",
     "palettes": {
       "Heroes": {
@@ -515,6 +2418,25 @@
           "channels": {"a": "outlineMix", "b": "emissive", "g": "lightAmt", "r": "shadowAmt"},
           "file": "Textures/T_AF_Palette_Heroes_P.png",
           "name": "T_AF_Palette_Heroes_P",
+          "srgb": false
+        },
+        "parent": "M_AF_Toon",
+        "swatchPx": 16
+      },
+      "Monsters_Plains": {
+        "atlasPx": 256,
+        "baseColor": {
+          "file": "Textures/T_AF_Palette_Monsters_Plains_BC.png",
+          "name": "T_AF_Palette_Monsters_Plains_BC",
+          "srgb": true
+        },
+        "filter": "nearest",
+        "material": "MI_AF_Toon_Monsters_Plains",
+        "mips": false,
+        "params": {
+          "channels": {"a": "outlineMix", "b": "emissive", "g": "lightAmt", "r": "shadowAmt"},
+          "file": "Textures/T_AF_Palette_Monsters_Plains_P.png",
+          "name": "T_AF_Palette_Monsters_Plains_P",
           "srgb": false
         },
         "parent": "M_AF_Toon",

@@ -162,6 +162,26 @@ class GoblinKit:
         self._place_face_bones()
         self._add_chains()
 
+    def blend4(self, *bones: str, falloff: float = 4.0, smooth: float = 0.0) -> Bind:
+        """``Bind.blend`` (inverse distance to the bone segments) restricted to the 4 strongest influences with a
+        deterministic tie-break — symmetric left / right bones tie at the kit's top-4 cut and kept 5."""
+        bl = self.rig.obj.data.bones
+        a = np.array([tuple(bl[b].head_local) for b in bones], np.float64)
+        bb = np.array([tuple(bl[b].tail_local) for b in bones], np.float64)
+        from kit.rig import _segment_dist
+
+        def fn(co):
+            d = _segment_dist(np.asarray(co, np.float64), a, bb) + smooth + 1e-4
+            w = 1.0 / d ** falloff
+            w = w * (1.0 + 1e-6 * np.arange(len(bones))[None, :])       # tie-break
+            if w.shape[1] > 4:
+                order = np.argsort(-w, axis=1)
+                keep = np.zeros_like(w, bool)
+                np.put_along_axis(keep, order[:, :4], True, axis=1)
+                w = np.where(keep, w, 0.0)
+            return w / w.sum(axis=1, keepdims=True)
+        return Bind.custom(bones, fn)
+
     # ── units / frames ─────────────────────────────────────────────────────────────────────────────────
     def u(self, n: float) -> float:
         return n * self.U
@@ -323,7 +343,9 @@ class GoblinKit:
             self.add_leg(b, s, sg)
         return ids
 
-    def add_head(self, b: M.Builder, ears: bool = True) -> dict:
+    def add_head(self, b: M.Builder, ears: bool = True, face: bool = True) -> dict:
+        """Skull (+ jaw), and with ``face`` the brow ridge, eyes, hooked nose and nostrils (the shaman's bird-skull
+        mask replaces them), the grin + teeth, ears, neck."""
         hk = self.hk
         hd = self.head
         zs = sorted(set([hk(h) for h in np.linspace(-5.6, 7.05, 16)]))
@@ -340,6 +362,26 @@ class GoblinKit:
         jbind = Bind.custom(("head", "jaw"), jaw_w)
         skull_id = b.add(skull, "skin", jbind, name="skull", hull_pad=True)
         ids = {"skull": skull_id}
+        if face:
+            self._add_face(b, ids, skull_id)
+        # grin (web surfPatch h −1.2..−2.2, ±0.62 rad, lower edge dipping with ``grin``) + teeth
+        grin = self.w.grin
+        mp = self._grin_part(grin)
+        b.add(mp, "mouth", jbind, name="mouth", outline=False, covered_by=skull_id)
+        self.add_teeth(b, jbind, skull_id)
+        if ears:
+            for s, sg in (("l", 1), ("r", -1)):
+                ids[f"ear_{s}"] = self.add_ear(b, s, sg)
+        # neck
+        J = self.J
+        n0 = J["neck"] + Vector((0, 0.004, -0.02))
+        n1 = self.hp(-2.6, -0.6)
+        neck = M.tube([n0, n0.lerp(n1, 0.5), n1], [self.u(2.5), self.u(2.2), self.u(2.4)], sides=12)
+        b.add(neck, "skin", Bind.blend("spine_03", "neck_01", "head", falloff=3.0), name="neck")
+        return ids
+
+    def _add_face(self, b: M.Builder, ids: dict, skull_id: int) -> None:
+        hk = self.hk
         # brow ridge: a heavy darker ridge over the eyes (web surfPatch h 4.4–6, ±54°)
         ids["brow"] = b.add(self._closed_brow(), "skin_dark", Bind.rigid("head"), name="brow", hull_pad=True)
         # eyes: yellow, slit pupils, set under the brow
@@ -348,11 +390,11 @@ class GoblinKit:
             n = self.head_normal(3.1, sg * 25.0)
             up = self.hdir(1, 0)
             m = G.frame_z(ec, n, up)
-            eye = M.ellipsoid((hk(1.75), hk(1.35), hk(1.15)), (0, 0, 0), sides=14, rings=8)
+            eye = M.ellipsoid((hk(1.95), hk(1.5), hk(1.2)), (0, 0, 0), sides=14, rings=8)
             eye.scale((1.0, 1.0, 1.0)).transform(m @ Matrix.Rotation(math.radians(-sg * 8), 4, "Z"))
             b.add(eye, "eye", Bind.rigid(f"eye_{s}"), name=f"eye_{s}", outline=False, covered_by=skull_id)
-            pup = M.ellipsoid((hk(0.34), hk(1.0), hk(0.25)), (0, 0, 0), sides=8, rings=6)
-            pup.transform(m @ Matrix.Translation((sg * hk(0.15), 0.0, hk(1.03))))
+            pup = M.ellipsoid((hk(0.4), hk(1.15), hk(0.25)), (0, 0, 0), sides=8, rings=6)
+            pup.transform(m @ Matrix.Translation((sg * hk(0.15), 0.0, hk(1.08))))
             b.add(pup, "pupil", Bind.rigid(f"eye_{s}"), name=f"pupil_{s}", outline=False, covered_by=skull_id)
         # hooked nose (web view: root h 3.6 f 6 → tip h 0.2 f 10.6 → base h −1 f 6.2, nostrils ±1.8)
         path = [self.hp(3.8, 5.0), self.hp(3.1, 7.3), self.hp(2.0, 9.4), self.hp(0.7, 10.8), self.hp(-0.4, 10.7),
@@ -367,10 +409,10 @@ class GoblinKit:
             nw = M.ellipsoid((hk(0.85), hk(0.95), hk(0.75)), (0, 0, 0), sides=10, rings=6)
             nw.transform(Matrix.Translation(self.hp(0.0, 7.6, sg * 1.3)))
             b.add(nw, "skin", Bind.rigid("head"), name="nostril", outline=False, covered_by=skull_id)
-        # grin (web surfPatch h −1.2..−2.2, ±0.62 rad, lower edge dipping with ``grin``) + three teeth
-        grin = self.w.grin
-        mp = self._grin_part(grin)
-        b.add(mp, "mouth", jbind, name="mouth", outline=False, covered_by=skull_id)
+
+    def add_teeth(self, b: M.Builder, jbind: Bind, skull_id: int) -> None:
+        """Three upper teeth hanging over the grin (web goblinHead); the chief overrides this (tusks)."""
+        hk = self.hk
         for i, a in enumerate((-19.0, -1.0, 17.0)):
             top = self.head_point(-2.15, a, hk(0.2))
             n = self.head_normal(-2.15, a)
@@ -378,16 +420,6 @@ class GoblinKit:
             tooth = G.cone(top - dn * hk(0.15), top + dn * hk(1.15 if i != 1 else 0.95) + n * hk(0.15),
                            hk(0.42), sides=5, r_tip=hk(0.08))
             b.add(tooth, "bone", jbind, name="tooth", outline=False, covered_by=skull_id)
-        if ears:
-            for s, sg in (("l", 1), ("r", -1)):
-                ids[f"ear_{s}"] = self.add_ear(b, s, sg)
-        # neck
-        J = self.J
-        n0 = J["neck"] + Vector((0, 0.004, -0.02))
-        n1 = self.hp(-2.6, -0.6)
-        neck = M.tube([n0, n0.lerp(n1, 0.5), n1], [self.u(2.5), self.u(2.2), self.u(2.4)], sides=12)
-        b.add(neck, "skin", Bind.blend("spine_03", "neck_01", "head", falloff=3.0), name="neck")
-        return ids
 
     def _closed_brow(self) -> M.Part:
         """The brow ridge: a sweep across the face above the eyes, thick in the middle, tapering to the temples,
@@ -436,16 +468,15 @@ class GoblinKit:
         L = d.length
         # the ear's open face looks forward and a little outward; the cup opens toward it
         face = (self.hdir(0.3, 1.0, sg * 0.55)).normalized()
-        m = R.frame(base - d.normalized() * hk(0.6), d, -face)      # leaf front face is −Z → toward ``face``
-        ear = G.leaf(L + hk(0.6), hk(5.4), hk(0.55), sides=9, curl_deg=-38.0, bend_deg=-14.0, taper=0.75, tip=1.6,
-                     base_round=0.30)
+        m = R.frame(base - d.normalized() * hk(0.9), d, -face)      # leaf front face is −Z → toward ``face``
+        # one solid, the dark inner ear a painted region of its cupped front face (the old separate inner leaf
+        # had another curvature and broke through the skin in dark slashes)
+        ear = G.leaf_solid(L + hk(0.9), hk(5.6), hk(0.62), cup=0.34, bend=0.10, twist_deg=-sg * 8.0, rows=12,
+                           prof=[(0.0, 0.55), (0.12, 0.86), (0.34, 1.0), (0.6, 0.80), (0.84, 0.42), (1.0, 0.0)],
+                           inner=(0.13, 0.86, 0.6))
         ear.transform(m)
         bind = Bind.blend(f"ear_{s}_01", f"ear_{s}_02", falloff=3.0, smooth=0.01)
-        eid = b.add(ear, "skin", bind, name=f"ear_{s}", hull_pad=True)
-        inner = G.leaf(L * 0.78, hk(3.2), hk(0.3), sides=8, curl_deg=-44.0, bend_deg=-12.0, taper=0.8, tip=1.5,
-                       base_round=0.35)
-        inner.transform(m @ Matrix.Translation((0.0, hk(0.9), -hk(0.32))))
-        b.add(inner, "ear_in", bind, name=f"ear_in_{s}", outline=False, covered_by=eid)
+        eid = b.add(ear, "skin", bind, name=f"ear_{s}", sub_regions={1: "ear_in"}, hull_pad=True)
         return eid
 
     # torso parts ------------------------------------------------------------------------------------------
@@ -544,9 +575,11 @@ class GoblinKit:
         bind = Bind.blend(f"clavicle_{s}", f"upperarm_{s}", f"lowerarm_{s}", f"hand_{s}", falloff=4.0, smooth=0.008)
         b.add(arm, "skin", bind, name=f"arm_{s}")
         # knobbly elbow
-        eb = M.ellipsoid((u(1.9 * k), u(1.95 * k), u(1.9 * k)), E + (E - S).normalized() * u(0.1)
-                         + Vector((sg * u(0.25), u(0.35), 0)), sides=10, rings=6)
-        b.add(eb, "skin", Bind.blend(f"upperarm_{s}", f"lowerarm_{s}", falloff=4.0), name=f"elbow_{s}")
+        # rigid to the forearm: a blended knob (and its baked hull offset) collapses on the outside of a bent
+        # elbow under linear blend skinning — the ink there thinned to 2 px; a rigid knob keeps its full rim
+        eb = M.ellipsoid((u(2.0 * k), u(2.05 * k), u(2.0 * k)), E + (E - S).normalized() * u(0.1)
+                         + Vector((sg * u(0.3), u(0.4), 0)), sides=12, rings=7)
+        b.add(eb, "skin", Bind.rigid(f"lowerarm_{s}"), name=f"elbow_{s}")
         self.add_fist(b, s, sg)
 
     def add_fist(self, b: M.Builder, s: str, sg: int) -> int:
@@ -591,8 +624,8 @@ class GoblinKit:
         leg = M.tube(pts, rad, sides=12, dome0=u(0.8), dome1=u(0.2))
         bind = Bind.blend("pelvis", f"thigh_{s}", f"calf_{s}", f"foot_{s}", falloff=4.0, smooth=0.008)
         b.add(leg, "skin", bind, name=f"leg_{s}")
-        kn = M.ellipsoid((u(2.05 * k), u(1.85 * k), u(2.0 * k)), Kn + Vector((0, -u(0.5), u(0.1))), sides=10, rings=6)
-        b.add(kn, "skin", Bind.blend(f"thigh_{s}", f"calf_{s}", falloff=4.0), name=f"knee_{s}")
+        kn = M.ellipsoid((u(2.1 * k), u(1.9 * k), u(2.05 * k)), Kn + Vector((0, -u(0.5), u(0.1))), sides=12, rings=7)
+        b.add(kn, "skin", Bind.rigid(f"calf_{s}"), name=f"knee_{s}")
         self.add_foot(b, s, sg)
 
     def add_foot(self, b: M.Builder, s: str, sg: int) -> int:
@@ -603,23 +636,25 @@ class GoblinKit:
         A = J[f"ankle_{s}"]
         L = self.spec.foot_len
         x = A.x
-        st = [  # (y, half-width, half-height, centre z)
+        st = [  # (y, half-width, half-height, centre z): heel, instep, ball, then a long toe curling up off the
+            # floor — its contour (and its ink) stays above the ground instead of being buried under it
             (0.24 * L, u(1.05), u(1.1), u(1.15)),
             (0.10 * L, u(1.6), u(1.55), u(1.45)),
-            (-0.12 * L, u(1.75), u(1.25), u(1.15)),
-            (-0.38 * L, u(1.7), u(0.95), u(0.92)),
-            (-0.60 * L, u(1.25), u(0.72), u(0.78)),
-            (-0.78 * L, u(0.62), u(0.45), u(0.85)),
+            (-0.12 * L, u(1.75), u(1.25), u(1.2)),
+            (-0.36 * L, u(1.68), u(0.98), u(1.02)),
+            (-0.56 * L, u(1.3), u(0.80), u(1.18)),
+            (-0.72 * L, u(0.78), u(0.60), u(1.55)),
+            (-0.84 * L, u(0.34), u(0.36), u(2.05)),
         ]
         path = [Vector((x, y, cz)) for y, _, _, cz in st]
         foot = M.sweep(path, M.superellipse(1, 1, 12, 2.6), scales=[(hh, hw) for _, hw, hh, _ in st], up=(0, 0, 1),
-                       dome0=u(0.6), dome1=u(0.35))
+                       dome0=u(0.6), dome1=u(0.3))
         foot.deform(lambda co: Vector((co.x, co.y, max(co.z, 0.0))))
         fb = Bind.blend(f"calf_{s}", f"foot_{s}", f"ball_{s}", falloff=5.0)
         fid = b.add(foot.smooth(True), "skin", fb, name=f"foot_{s}", hull_pad=True)
         for i, lat in enumerate((-0.75, 0.0, 0.75)):
-            base = Vector((x + lat * u(1.0), -0.70 * L + abs(lat) * u(0.9), u(0.55)))
-            tip = base + Vector((lat * u(0.25), -u(1.15 if lat == 0 else 0.85), -u(0.25)))
+            base = Vector((x + lat * u(0.85), -0.66 * L + abs(lat) * u(0.8), u(1.55 - 0.15 * abs(lat))))
+            tip = base + Vector((lat * u(0.3), -u(1.2 if lat == 0 else 0.9), -u(0.5)))
             b.add(G.cone(base, tip, u(0.45 if lat == 0 else 0.38), sides=5), "bone",
                   Bind.blend(f"foot_{s}", f"ball_{s}", falloff=5.0), name=f"toe_claw_{s}", outline=False,
                   covered_by=fid)

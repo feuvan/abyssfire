@@ -550,3 +550,53 @@ class PoseLib:
 
     def _save(self) -> None:
         self.rig.obj.data["af_poses"] = json.dumps({k: p.to_json() for k, p in sorted(self.poses.items())})
+
+
+def bake_basis(rig: Rig, clip: Clip, asset_token: str, basis_fn: Callable[[float], dict]) -> bpy.types.Action:
+    """Like :func:`bake` for rigs posed directly by bone **basis matrices** (location, rotation and **scale**):
+    ``basis_fn(t_ms) → {bone: Matrix 4×4 pose basis}`` (Blender pose-bone space, = rest⁻¹ · posed for root
+    children); bones it omits keep the identity. Samples every frame (60 fps), writes linear location /
+    rotation_quaternion / scale keys for every bone, notifies as pose markers — the squash-and-stretch
+    ``SKEL_Slime`` (spec §2.4: non-uniform scale keys). Same action layout / naming as :func:`bake`."""
+    arm = rig.obj
+    n = clip.frames
+    names = [b.name for b in _bones_in_order(arm.data) if b.name not in SKIP_KEY_BONES]
+    samples = []
+    for f in range(n + 1):
+        t = scene.frame_to_ms(f)
+        if clip.loop and f == n:
+            t = 0.0
+        samples.append(basis_fn(min(t, clip.length_ms)))
+    act, slot, cb = _new_action(action_name(asset_token, clip), arm)
+    ident = Matrix.Identity(4)
+    for name in names:
+        prev = None
+        locs, quats, scales = [], [], []
+        for s in samples:
+            loc, q, sc = s.get(name, ident).decompose()
+            if prev is not None and prev.dot(q) < 0:
+                q = -q
+            prev = q
+            locs.append(loc)
+            quats.append(q)
+            scales.append(sc)
+        # every channel of every bone is keyed (an unkeyed channel keeps whatever the previous action left on the
+        # pose bone — and the FBX bake would export that stale value)
+        for i in range(4):
+            _write_fcurve(cb, f'pose.bones["{name}"].rotation_quaternion', i, name, [q[i] for q in quats])
+        for i in range(3):
+            _write_fcurve(cb, f'pose.bones["{name}"].location', i, name, [l[i] for l in locs])
+        for i in range(3):
+            _write_fcurve(cb, f'pose.bones["{name}"].scale', i, name, [s[i] for s in scales])
+    for nm, ms in [(d["name"], d["ms"]) for d in clip.notify_list()]:
+        m = act.pose_markers.new(nm)
+        m.frame = scene.ms_to_frame(ms)
+    act.use_frame_range = True
+    act.frame_start, act.frame_end = 0, n
+    act.use_cyclic = clip.loop
+    act.use_fake_user = True
+    act["af_clip"] = json.dumps({"name": clip.name, "lengthMs": clip.length_ms, "loop": clip.loop,
+                                 "notifies": clip.notify_list(), "additive": clip.additive,
+                                 "refSpeed": clip.ref_speed})
+    assign(rig, act)
+    return act

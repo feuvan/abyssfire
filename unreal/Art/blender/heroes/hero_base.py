@@ -207,6 +207,31 @@ def smooth01(x):
     return x * x * (3 - 2 * x)
 
 
+def top4(W: np.ndarray, k: int = 4) -> np.ndarray:
+    """Keep the ``k`` largest weights per row (ties broken by column order), renormalised — custom weight
+    functions return this so the kit skinner never keeps a 5th influence through a tie."""
+    W = np.maximum(np.asarray(W, np.float64), 0.0)
+    if W.shape[1] > k:
+        order = np.argsort(-(W + np.arange(W.shape[1])[None, :] * 1e-9), axis=1, kind="stable")
+        mask = np.zeros_like(W, bool)
+        np.put_along_axis(mask, order[:, :k], True, axis=1)
+        W = np.where(mask, W, 0.0)
+    return W / np.maximum(W.sum(1, keepdims=True), 1e-12)
+
+
+def blend4(rig: R.Rig, *bones: str, falloff: float = 4.0, smooth: float = 0.0) -> R.Bind:
+    """``Bind.blend`` (inverse distance to the bone segments) for more than four bones, as a custom bind that keeps
+    the four strongest per vertex — ``kit.rig.skin`` keeps every tied weight (a vertex on the midline equidistant to
+    both clavicles got five influences)."""
+    a = np.array([tuple(rig.obj.data.bones[b].head_local) for b in bones])
+    b_ = np.array([tuple(rig.obj.data.bones[b].tail_local) for b in bones])
+
+    def fn(co):
+        d = R._segment_dist(np.asarray(co, np.float64), a, b_) + smooth + 1e-4
+        return top4(1.0 / d ** falloff)
+    return R.Bind.custom(bones, fn)
+
+
 def chain_weights(co_param: np.ndarray, n: int, yoke: np.ndarray | None = None) -> np.ndarray:
     """Weights along one chain of ``n`` bones from a 0..1 parameter down the cloth (bone-centre blending,
     the warrior's ``cape_weights``): N × (1 + n) — column 0 is the parent (yoke)."""
@@ -230,11 +255,14 @@ def hero_clip(rig: R.Rig, name: str, length_ms: float, sampler: Callable[[float]
               grips: Sequence[str] = ("r",)) -> Clip:
     """``common.body_clip`` with the hero's grips (hands whose item drives a natural hammer grip)."""
     def fn(t_ms: float) -> Pose:
-        bp = sampler(t_ms)
-        if post is not None:
-            bp = post(bp, t_ms)
+        # the cloth clock is set before the post step too: item fitters solve the cloth (lagged secondary motion)
+        # exactly as the final pose will
         C.ClothClock.sampler, C.ClothClock.t, C.ClothClock.length, C.ClothClock.loop = sampler, t_ms, length_ms, loop
         try:
+            bp = sampler(t_ms)
+            if post is not None:
+                bp = post(bp, t_ms)
+                C.ClothClock.sampler, C.ClothClock.t = sampler, t_ms
             return C.to_pose(rig, bp, cloth, grips=grips)
         finally:
             C.ClothClock.sampler = None
@@ -358,11 +386,15 @@ class HeroAnims:
         a = math.radians(bp.lean + bp.hip_pitch)
         return bp.but(pivot=P + V(0, math.sin(a), math.cos(a)) * (self.rig.spec.torso * k))
 
+    def post(self, bp: BP, t: float = 0.0) -> BP:
+        """Default post step of every clip (subclasses add item fitting before the feet are planted)."""
+        return self.plant(bp, t)
+
     def clip(self, name, length, keys, span, loop=False, notifies=None, ref_speed=None, additive=False,
              layer=None, post=None, key_poses=None):
         lay = layer or self.waver(length)
         c = hero_clip(self.rig, name, length, C.keyed(keys, span, lay), cloth=self.cloth, loop=loop,
-                      notifies=notifies, ref_speed=ref_speed, additive=additive, post=post or self.plant,
+                      notifies=notifies, ref_speed=ref_speed, additive=additive, post=post or self.post,
                       grips=self.GRIPS)
         c.key_poses_ms = key_poses or sorted({round(k.t * span, 1) for k in keys})
         return c
@@ -370,7 +402,7 @@ class HeroAnims:
     def proc_clip(self, name, length, sampler, loop=False, notifies=None, ref_speed=None, post=None,
                   key_poses=None):
         c = hero_clip(self.rig, name, length, sampler, cloth=self.cloth, loop=loop, notifies=notifies,
-                      ref_speed=ref_speed, post=post or self.plant, grips=self.GRIPS)
+                      ref_speed=ref_speed, post=post or self.post, grips=self.GRIPS)
         if key_poses:
             c.key_poses_ms = key_poses
         return c
@@ -598,6 +630,8 @@ class PairQA:
         for g, parts in groups.items():
             if parts == "*":
                 self.sets[g] = np.nonzero(self.toon)[0]
+            elif isinstance(parts, tuple) and parts and parts[0] == "!":          # everything except these parts
+                self.sets[g] = np.nonzero(self.toon & ~_match(self.names, parts[1]))[0]
             else:
                 self.sets[g] = np.nonzero(self.toon & _match(self.names, parts))[0]
         self.item_faces = {}
@@ -614,6 +648,7 @@ class PairQA:
                 t = t & ~np.array([g(Vector(x)) for x in c], bool)
             self.item_faces[nm] = np.nonzero(t)[0]
         self.pairs = pairs
+        self.debug = False
 
     def frame(self) -> dict:
         from qa import Checker
@@ -621,6 +656,11 @@ class PairQA:
         out = {}
         t_all, zb = Checker._tree(gb, np.nonzero(self.toon)[0])
         out["groundBody"] = zb * 100.0
+        if self.debug and zb < -0.005:
+            co, lt, ls, lv, _ = gb
+            tf = np.nonzero(self.toon)[0]
+            fz = np.array([co[lv[ls[f]:ls[f] + lt[f]], 2].min() for f in tf])
+            out.setdefault("parts", {})["groundBody"] = {str(self.names[tf[int(fz.argmin())]]): round(zb * 100, 1)}
         trees = {}
         for g, faces in self.sets.items():
             trees[g] = Checker._tree(gb, faces)[0]
@@ -634,6 +674,12 @@ class PairQA:
             out["ground:" + nm] = Checker._tree(gi, allf)[1] * 100.0
         for metric, (a, b) in self.pairs.items():
             out[metric] = Checker._pairs(trees.get(a), trees.get(b))
+            if self.debug and out[metric] and not b.startswith("item:") and trees.get(a) is not None:
+                hit = {}
+                for i, j in trees[a].overlap(trees[b]):
+                    n = self.names[self.sets[b][j]]
+                    hit[n] = hit.get(n, 0) + 1
+                out.setdefault("parts", {})[metric] = hit
         return out
 
     def run(self, clips, actions, names: Sequence[str] | None = None, before: Callable | None = None) -> dict:
@@ -652,7 +698,7 @@ class PairQA:
                 f = self.frame()
                 f["frame"] = fr
                 frames.append(f)
-            keys = sorted({k for f in frames for k in f if k != "frame"})
+            keys = sorted({k for f in frames for k in f if k not in ("frame", "parts")})
             worst = {}
             for k in keys:
                 vals = [f[k] for f in frames if k in f]

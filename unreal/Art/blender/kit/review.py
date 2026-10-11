@@ -532,20 +532,43 @@ def _visible(meshes) -> list:
     return [m for m in meshes if m.type == "MESH" and not m.hide_render]
 
 
-def coverage_pass(meshes, border=None, samples: int = 8) -> tuple[np.ndarray, np.ndarray]:
+def coverage_pass(meshes, border=None, samples: int = 8, ground: bool = False,
+                  extra_body: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """(body, hull) coverage fractions per pixel for the active camera: toon slots emit red, the visible (far)
-    side of the outline hull green, over black, stage hidden — exact anti-aliased coverages."""
+    side of the outline hull green, over black, stage hidden — exact anti-aliased coverages.
+
+    ``ground`` (opt-in, default off = the original behaviour): keep the stage plane as a black occluder, so hull
+    under the floor (planted soles: the hull and its WPO dilation dip below z = 0, where the terrain hides them in
+    UE too) is not counted as visible ink. ``extra_body`` (opt-in): material slots beyond 0 / 1 (e.g. a dithered
+    shell slot) count as body."""
     stage_ob = bpy.data.objects.get("AF_Stage")
     was = stage_ob.hide_render if stage_ob else True
-    hide_stage(True)
+    saved_mat = None
+    if ground and stage_ob is not None:
+        stage_ob.hide_render = False
+        saved_mat = stage_ob.data.materials[0] if len(stage_ob.data.materials) else None
+        stage_ob.data.materials.clear()
+        stage_ob.data.materials.append(_flat_emission("AF_Cov_Ground", (0, 0, 0)))
+    else:
+        hide_stage(True)
     sc = bpy.context.scene
     keep = sc.cycles.samples
     sc.cycles.samples = samples
     body, hull = _flat_emission("AF_Cov_Body", (1, 0, 0)), _flat_emission("AF_Cov_Hull", (0, 1, 0), hull=True)
-    with _SlotSwap(_visible(meshes), {0: body, 1: hull}), _World((0.0, 0.0, 0.0)):
-        arr = render_array(border, exr=True)
-    sc.cycles.samples = keep
-    hide_stage(was)
+    vis = _visible(meshes)
+    slots = {0: body, 1: hull}
+    if extra_body:
+        for i in range(2, max((len(m.data.materials) for m in vis), default=0)):
+            slots[i] = body
+    try:
+        with _SlotSwap(vis, slots), _World((0.0, 0.0, 0.0)):
+            arr = render_array(border, exr=True)
+    finally:
+        sc.cycles.samples = keep
+        if saved_mat is not None:
+            stage_ob.data.materials.clear()
+            stage_ob.data.materials.append(saved_mat)
+        hide_stage(was)
     return np.clip(arr[:, :, 0], 0, 1), np.clip(arr[:, :, 1], 0, 1)
 
 
@@ -567,6 +590,9 @@ def emissive_pass(meshes, border=None, samples: int = 4) -> np.ndarray:
             mats[0] = shading.emissive_pass_material(saved[-1][0])
         if len(mats) > 1:
             mats[1] = black
+        for i in range(2, len(mats)):           # extra toon slots (dithered shells): their own emissive regions
+            if mats[i] is not None and mats[i].get("af_toon_slot", False):
+                mats[i] = shading.emissive_pass_material(saved[-1][i])
     try:
         with _World((0.0, 0.0, 0.0)):
             arr = render_array(border, exr=True)
@@ -634,19 +660,26 @@ INK_GATE = ink_gate("hero")      # {"minPx": 3.0, "minFrac": 0.9, "darkLum": 40,
 
 def ink_stats(body: np.ndarray, hull: np.ndarray, rgb: np.ndarray | None = None, min_px: float = INK_GATE["minPx"],
               dark_lum: float = INK_GATE["darkLum"], within: int = INK_GATE["darkWithinPx"],
-              hull_rgb: np.ndarray | None = None) -> dict:
+              hull_rgb: np.ndarray | None = None, ignore: np.ndarray | None = None) -> dict:
     """Measure the ink rim on a render: for every silhouette edge pixel (coverage ≥ .5 next to background),
     walk inward along the coverage gradient and integrate the hull coverage until the body is reached = the
     visible ink width in pixels (sub-pixel exact, AA-independent). Also the review's colour check on ``rgb`` (the
     final image): a pixel darker than ``dark_lum`` within ``within`` px of the edge; and the 95th-percentile
     luminance of the solid-ink pixels on ``hull_rgb`` (default ``rgb``; pass the render **before** the bloom /
     glow-card post: the material colour is checked, not the additive FX lying over it).
-    Returns stats + ``edge_ok`` / ``edge_yx`` arrays for the diagnostic map."""
+    Returns stats + ``edge_ok`` / ``edge_yx`` arrays for the diagnostic map.
+    ``ignore`` (optional bool mask): edge pixels to leave out (``Review.ground_occludes``: the contact line of a
+    planted sole, where the hull continues under the floor and the terrain hides it); counted in
+    ``ignoredEdges``."""
     A = np.clip(body + hull, 0, 1)
     inside = A >= 0.5
     pad = np.pad(inside, 1, constant_values=False)
     nb_out = ~pad[:-2, 1:-1] | ~pad[2:, 1:-1] | ~pad[1:-1, :-2] | ~pad[1:-1, 2:]
     edge = inside & nb_out
+    n_ignored = 0
+    if ignore is not None:
+        n_ignored = int((edge & ignore).sum())
+        edge = edge & ~ignore
     ys, xs = np.nonzero(edge)
     if len(ys) == 0:
         return {"edges": 0, "fracRim": 0.0, "fracDark": 0.0, "rimPxMedian": 0.0, "rimPxP10": 0.0,
@@ -664,7 +697,7 @@ def ink_stats(body: np.ndarray, hull: np.ndarray, rgb: np.ndarray | None = None,
     reached = np.cumsum(Bs >= 0.98, axis=1) > 0        # through the body's AA ramp (H = 1 − B there)
     width = (Hs * ~reached).sum(1) * ds
     ok = width >= min_px
-    out = {"edges": int(len(ys)), "fracRim": round(float(ok.mean()), 4),
+    out = {"edges": int(len(ys)), "ignoredEdges": n_ignored, "fracRim": round(float(ok.mean()), 4),
            "rimPxMedian": round(float(np.median(width)), 2), "rimPxP10": round(float(np.percentile(width, 10)), 2),
            "edge_yx": (ys, xs), "edge_ok": ok, "minPx": min_px}
     if rgb is not None:
@@ -839,6 +872,8 @@ class Review:
         self.outline_class = outline_class or next(
             (str(m["af_outline_class"]) for m in self.meshes if m.type == "MESH" and "af_outline_class" in m), "hero")
         self.gate = ink_gate(self.outline_class)
+        self.ground_occludes = False   # opt-in: the stage occludes hull under the floor in the ink measurement
+        self.extra_body_slots = False  # opt-in: material slots ≥ 2 (a dithered shell) are body in the coverage
         stage(blob_radius=blob_radius)
 
     def _save(self, name: str, img: np.ndarray) -> Path:
@@ -903,12 +938,23 @@ class Review:
         cam = bpy.context.scene.camera
         raw = render_array(border)
         st = None
+        ignore = None
         if measure:
-            body, hull = coverage_pass(self.meshes, border)
+            body, hull = coverage_pass(self.meshes, border, ground=self.ground_occludes,
+                                       extra_body=self.extra_body_slots)
+            if self.ground_occludes:
+                # the ground-contact line: pixels where the character continues under the floor (the same pass
+                # without the ground occluder covers more); its edges carry no visible ink in UE either
+                b0, h0 = coverage_pass(self.meshes, border, ground=False, extra_body=self.extra_body_slots)
+                buried = (b0 + h0) - (body + hull) > 0.25
+                for _ in range(2):
+                    pb = np.pad(buried, 1, constant_values=False)
+                    buried = buried | pb[:-2, 1:-1] | pb[2:, 1:-1] | pb[1:-1, :-2] | pb[1:-1, 2:]
+                ignore = buried
         img = self.post(raw, cam, res, border, glow=glow, bloom_on=bloom_on)
         if measure:
             st = ink_stats(body, hull, img, min_px=self.gate["minPx"], dark_lum=self.gate["darkLum"],
-                           within=self.gate["darkWithinPx"], hull_rgb=raw)
+                           within=self.gate["darkWithinPx"], hull_rgb=raw, ignore=ignore)
             st["tag"] = tag
             st["gate"] = self.gate
             self.ink_reports.append(st)

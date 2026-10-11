@@ -395,3 +395,139 @@ def frame_z(origin: Vector, z_dir: Vector, y_hint: Vector) -> Matrix:
     for i in range(3):
         m[i][0], m[i][1], m[i][2], m[i][3] = x[i], y[i], z[i], origin[i]
     return m
+
+
+# ── leaf solids with a painted inner region (ears, feathers) ─────────────────────────────────────────────
+def leaf_solid(length: float, width: float, thick: float, prof: Sequence[tuple[float, float]] | None = None,
+               cup: float = 0.0, bend: float = 0.0, twist_deg: float = 0.0, rows: int = 12,
+               cols: Sequence[float] = (-1.0, -0.82, -0.6, -0.3, 0.0, 0.3, 0.6, 0.82, 1.0),
+               inner: tuple[float, float, float] | None = None, tip_thin: float = 0.55,
+               edge_round: float = 0.35, tag_fn: Callable[[float, float, bool], int] | None = None) -> M.Part:
+    """A closed leaf-shaped solid along +Y (base at y = 0, tip at ``length``), width across X, its **front face
+    toward −Z**. ``prof`` = [(u, half-width fraction)] control points (Catmull-Rom; default an ear leaf);
+    ``cup`` pushes the middle back (+Z) by ``cup`` × local half-width × (1 − v²) (the front face is concave);
+    ``bend`` bends the length back (+Z) by ``bend`` × u² × length; ``twist_deg`` twists about Y toward the tip.
+    ``inner`` = (u0, u1, vmax): front faces with u0 ≤ u ≤ u1 and |v| ≤ vmax get ``af_sub`` = 1 (the inner-ear /
+    vane region, a painted region that follows the leaf exactly — no z-fighting, nothing proud of the ink);
+    everything else ``af_sub`` = 0. Column fractions ``cols`` should contain ±vmax. ``tag_fn(u, v, front)`` →
+    ``af_sub`` overrides the tagging of both faces (feathers: barred tips, quills)."""
+    if prof is None:
+        prof = [(0.0, 0.62), (0.15, 0.92), (0.38, 1.0), (0.62, 0.78), (0.85, 0.40), (1.0, 0.0)]
+    pu = [p[0] for p in prof]
+    pw = [p[1] for p in prof]
+    us = [i / rows for i in range(rows + 1)]
+
+    def hw(u):
+        return max(0.0, C._hermite(pu, pw, u)) * width * 0.5
+
+    def mid(u, v, side):
+        w = hw(u)
+        x = v * w
+        z = cup * w * (1.0 - v * v) + bend * u * u * length
+        t = thick * 0.5 * (1.0 - tip_thin * u) * (1.0 - edge_round * v ** 4)
+        p = Vector((x, u * length, z + side * t))
+        if twist_deg:
+            a = math.radians(twist_deg * u)
+            ca, sa = math.cos(a), math.sin(a)
+            p = Vector((p.x * ca - (p.z) * sa, p.y, p.x * sa + p.z * ca))
+        return p
+    bm = bmesh.new()
+    sub = bm.faces.layers.int.new("af_sub")
+    nc = len(cols)
+    front = [[bm.verts.new(tuple(mid(u, v, -1))) for v in cols] for u in us]
+    back = [[bm.verts.new(tuple(mid(u, v, +1))) for v in cols] for u in us]
+    tip_f = front[-1]
+    tip_b = back[-1]
+
+    def face(vs, tag=0):
+        try:
+            f = bm.faces.new(vs)
+        except ValueError:
+            return None
+        f[sub] = tag
+        return f
+    for r in range(rows):
+        for c in range(nc - 1):
+            uc = (us[r] + us[r + 1]) / 2
+            vc = (cols[c] + cols[c + 1]) / 2
+            tag = 0
+            if inner is not None and inner[0] <= uc <= inner[1] and abs(vc) <= inner[2] + 1e-6:
+                tag = 1
+            tb = 0
+            if tag_fn is not None:
+                tag, tb = tag_fn(uc, vc, True), tag_fn(uc, vc, False)
+            face((front[r][c], front[r + 1][c], front[r + 1][c + 1], front[r][c + 1]), tag)
+            face((back[r][c], back[r][c + 1], back[r + 1][c + 1], back[r + 1][c]), tb)
+        # side walls
+        face((front[r][0], back[r][0], back[r + 1][0], front[r + 1][0]))
+        face((front[r][-1], front[r + 1][-1], back[r + 1][-1], back[r][-1]))
+    for c in range(nc - 1):          # base wall
+        face((front[0][c], front[0][c + 1], back[0][c + 1], back[0][c]))
+    # the tip row collapses to a point: merge its vertices
+    bmesh.ops.remove_doubles(bm, verts=list(tip_f) + list(tip_b), dist=1e-5)
+    bm.normal_update()
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    bm.normal_update()
+    return M.Part(bm).smooth(True)
+
+
+# ── strips along a polyline (pelt tails, straps hanging on chains) ───────────────────────────────────────
+def chain_strip(points: Sequence[Vector], widths: Sequence[float], side: Vector, out_dir: Vector, thick: float,
+                ragged: float = 0.0, tails: int = 0, seed: int = 0, cols: int = 5, per_seg: int = 3) -> M.Part:
+    """Two-sided strip following ``points`` (top → bottom), ``widths`` per point, across ``side``; its outer face
+    looks along ``out_dir`` (``af_sub`` 1 = outer, 2 = inner). ``tails`` > 0 cuts the hem into that many points,
+    ``ragged`` jitters the hem (fur)."""
+    import random
+    rnd = random.Random(seed)
+    pts = [Vector(p) for p in points]
+    dense, dw = [], []
+    for i in range(len(pts) - 1):
+        for k in range(per_seg):
+            t = k / per_seg
+            dense.append(pts[i].lerp(pts[i + 1], t))
+            dw.append(lerp(widths[i], widths[i + 1], t))
+    dense.append(pts[-1])
+    dw.append(widths[-1])
+    side = Vector(side).normalized()
+    out_dir = Vector(out_dir).normalized()
+    rows_o, rows_i = [], []
+    n = len(dense)
+    jit = [rnd.uniform(-1, 1) for _ in range(cols + 1)]
+    for r, (p, w) in enumerate(zip(dense, dw)):
+        tg = (dense[min(r + 1, n - 1)] - dense[max(r - 1, 0)]).normalized()
+        nrm = (out_dir - tg * out_dir.dot(tg)).normalized()
+        sd = (side - tg * side.dot(tg) - nrm * side.dot(nrm)).normalized()
+        ro, ri = [], []
+        for c in range(cols + 1):
+            u = c / cols - 0.5
+            q = p + sd * (u * w)
+            if r == n - 1:
+                if tails:
+                    ph = (u + 0.5) * tails
+                    tri = abs((ph % 1.0) - 0.5) * 2
+                    q = q + tg * (-(1.0 - tri) * w * 0.35)
+                if ragged:
+                    q = q + tg * (ragged * jit[c])
+            bulge = thick * 0.6 * (1 - (2 * u) ** 2)
+            ro.append(q + nrm * (thick * 0.5 + bulge))
+            ri.append(q - nrm * (thick * 0.5))
+        rows_o.append(ro)
+        rows_i.append(ri)
+    return C.thick_patch(rows_o, rows_i, sub_tags=True)
+
+
+def feather(length: float, width: float, thick: float, curl: float = 0.15, bend: float = 0.08,
+            tip_band: float = 0.8, rows: int = 10) -> M.Part:
+    """A feather along +Y (quill root at the origin), vane across X, front face −Z: ``af_sub`` 1 = the dark barred
+    tip (u > ``tip_band``, both faces), 2 = the quill line (both faces), 0 = the vane."""
+    cols = (-1.0, -0.6, -0.25, -0.08, 0.08, 0.25, 0.6, 1.0)
+
+    def tag(u, v, front):
+        if u > tip_band:
+            return 1
+        if abs(v) < 0.1 and u < 0.95:
+            return 2
+        return 0
+    prof = [(0.0, 0.18), (0.12, 0.62), (0.4, 1.0), (0.7, 0.92), (0.9, 0.55), (1.0, 0.0)]
+    return leaf_solid(length, width, thick, prof=prof, cup=curl, bend=bend, rows=rows, cols=cols, tag_fn=tag,
+                      tip_thin=0.4, edge_round=0.6)

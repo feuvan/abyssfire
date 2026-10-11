@@ -1,14 +1,24 @@
-"""Ship + review helpers shared by the monster generators (bake, FBX, manifest, previews, ink gate)."""
+"""Ship + review helpers shared by the monster generators (``monsters/*.py``): bake every clip, export FBX
+(SK + A_ per clip + held items / attachments as SM), write the manifest entries (merging, through
+``kit.export.Manifest``), per-frame geometry QA on the deformed meshes (``heroes/hero_base.PairQA``: ground,
+item × body), re-import verification of what UE receives, and the review set in ``Art/Previews/<dir>/`` — every
+game-camera cell rendered at the shipped look (screen-constant ink, bloom, runtime glow cards) and measured by the
+kit's ink gate (``review.ink_verdict``; the ship exits 1 on a failure).
+"""
 from __future__ import annotations
 
+import json
 import math
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable, Sequence
 
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Euler, Matrix, Vector
 
-from kit import anim, export, outline, paths, pngio, review, rig as R, scene, shading
+from kit import anim, export, mesh as M, outline, paths, pngio, review, rig as R, scene, shading
 
 import common as C
 
@@ -16,6 +26,490 @@ import common as C
 def apply_bp(A, bp) -> None:
     anim.assign(A.rig, None)
     anim.apply_pose(A.solve(bp))
+
+
+@dataclass
+class Item:
+    """A static mesh shipped with a skeletal monster: a held weapon (``socket`` = ``weapon_r``…) or an optional
+    attachment of a variant (``variant`` set: not attached by default)."""
+    obj: bpy.types.Object
+    asset: str
+    socket: str
+    weapon_type: str = ""
+    sockets: list = field(default_factory=list)          # [{'name', 'pos' (m, item-local), 'rot'}]
+    extra: dict = field(default_factory=dict)
+    grip: Callable[[Vector], bool] | None = None          # item-local face centre → in the fist (QA baseline)
+    variant: str | None = None
+    category: str = "Weapons"
+    preview_obj: bpy.types.Object | None = None          # review stand-in (e.g. the totem without its flame)
+    fx_objs: list = field(default_factory=list)          # runtime-lit FX parts: off for the ink measurement
+
+
+@dataclass
+class MonsterShip:
+    asset: str
+    token: str                      # A_<token>_<Clip>
+    preview_dir: str                # Art/Previews/<preview_dir>
+    pal: object
+    A: object                       # GoblinAnims-like (rig, solve, clips)
+    body: bpy.types.Object
+    items: list                     # [Item]
+    clips: list
+    outline_class: str = "monster"
+    game_ids: Sequence[str] = ()
+    blob_radius: float = 0.22
+    height: float = 0.92
+    display: dict = field(default_factory=dict)
+    fx: dict = field(default_factory=dict)
+    glows: Callable | None = None
+    variants: dict = field(default_factory=dict)
+    extra: dict = field(default_factory=dict)
+    qa_pairs: dict = field(default_factory=dict)     # {metric: (groupA, groupB)}
+    qa_groups: dict = field(default_factory=dict)
+    qa_limits: dict = field(default_factory=dict)
+    qa_clip_limits: dict = field(default_factory=dict)
+    game_keys: list = field(default_factory=list)    # [(clip, frame, facing)]
+    contact_keys: list = field(default_factory=list)
+    back_clips: Sequence[str] = ("Attack01", "Death")
+    close_keys: list = field(default_factory=list)
+    category: str = "Monsters"
+    skeleton_bones_required: Sequence[str] = ()
+    extra_previews: Callable | None = None           # fn(ship, rv) after the standard set
+    variant_previews: Sequence[str] = ()             # extra preview files listed on the variant attachments
+    lod_note: str = ""
+
+
+def bake_clip(rig, c, token):
+    """Pose-driven clips bake with ``kit.anim.bake``; basis-driven ones (``c.basis_fn``: the slime's squash and
+    stretch bone scales) with ``kit.anim.bake_basis``."""
+    fn = getattr(c, "basis_fn", None)
+    return anim.bake_basis(rig, c, token, fn) if fn is not None else anim.bake(rig, c, token)
+
+
+def held(ms: MonsterShip) -> list:
+    return [it for it in ms.items if it.variant is None]
+
+
+def shown(it: Item):
+    return it.preview_obj if it.preview_obj is not None else it.obj
+
+
+def fx_objects(ms: MonsterShip) -> list:
+    return [o for it in held(ms) for o in it.fx_objs]
+
+
+class FxOff:
+    """Runtime-lit FX parts hidden and glow cards off (the ink is measured on the inked body only)."""
+
+    def __init__(self, ms: MonsterShip, rv):
+        self.objs, self.rv = fx_objects(ms), rv
+
+    def __enter__(self):
+        for o in self.objs:
+            o.hide_render = True
+        self.g = self.rv.glow_scale
+        self.rv.glow_scale = 0.0 if self.objs else self.g
+        return self
+
+    def __exit__(self, *exc):
+        for o in self.objs:
+            o.hide_render = False
+        self.rv.glow_scale = self.g
+
+
+def fx_shot(ms: MonsterShip, rv, box):
+    """The displayed cell with the FX parts on (in the bloom source too) and the glow cards."""
+    objs = fx_objects(ms)
+    rv.meshes.extend(objs)
+    try:
+        img, _ = rv.game_shot(box, measure=False)
+    finally:
+        for o in objs:
+            rv.meshes.remove(o)
+    return img
+
+
+def parts_except(body, exclude: Sequence[str]) -> list[str]:
+    """Body part names (no hull proxies) minus ``exclude`` (exact names) — QA groups like 'everything but the
+    gripping fist'."""
+    names = json.loads(body["af_parts"])
+    return sorted({n for n in names if not n.endswith("_hull") and n not in set(exclude)})
+
+
+# ── ship ────────────────────────────────────────────────────────────────────────────────────────────────
+def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
+    t0 = time.time()
+    rig, body, pal = ms.A.rig, ms.body, ms.pal
+    print(f"[build] {ms.asset}: body {M.tri_count(body, 0)} toon + {M.tri_count(body, 1)} hull tris, "
+          f"bones {len(rig.obj.data.bones)}; items " + ", ".join(
+              f"{it.asset} {M.tri_count(it.obj, 0)}+{M.tri_count(it.obj, 1)}" for it in ms.items))
+    st = R.weight_stats(body)
+    print(f"[weights] max {st['maxInfluences']} influences, {st['unweighted']} unweighted, "
+          f"{st['notNormalised']} not normalised, {len(st['groups'])} groups")
+    assert st["unweighted"] == 0 and st["maxInfluences"] <= 4
+    pal.save()
+    # items (exported unattached, grip / socket origin at the origin)
+    for it in ms.items:
+        ship_item(it, pal, ms.asset)
+    actions = [bake_clip(rig, c, ms.token) for c in ms.clips]
+    sk = export.export_skeletal_mesh(rig, [body], ms.asset, ms.category)
+    entries = []
+    for c, a in zip(ms.clips, actions):
+        fbx = export.export_animation(rig, a, ms.category)
+        e = export.clip_entry(c, a, fbx)
+        for k, v in getattr(c, "manifest_extra", {}).items():
+            e[k] = v
+        entries.append(e)
+    anim.assign(rig, None)              # bounds / sockets of the bind pose (not the last exported clip)
+    anim.clear_pose(rig)
+    bpy.context.view_layer.update()
+    man = export.Manifest()
+    man.set_palette(pal)
+    extra = {"previews": [], "displayName": ms.display, "budget": budget_record(ms)}
+    if ms.fx:
+        extra["fx"] = ms.fx
+    if ms.variants:
+        extra["variants"] = ms.variants
+    extra.update(ms.extra)
+    entry = export.skeletal_entry(rig, body, sk, ms.category, pal, ms.outline_class, entries, list(ms.game_ids),
+                                  blob_radius_cm=round(ms.blob_radius * 100.0, 1), extra=extra)
+    entry["attachments"] = [{"object": it.asset, "socket": it.socket} for it in held(ms)]
+    entry["materialSlots"][1]["outlineMix"] = outline.INK_MIX[ms.outline_class]
+    _extra_slots(entry, body, pal)
+    man.set_asset(ms.asset, entry)
+    man.save()
+    print(f"[export] {sk.name} + {len(entries)} clips + {len(ms.items)} items ({time.time() - t0:.1f}s)")
+    result = {"sk": str(sk), "anims": [e["fbx"] for e in entries],
+              "items": [str(paths.category_dir(it.category) / f"{it.asset}.fbx") for it in ms.items],
+              "manifest": str(man.path)}
+    # per-frame geometry gate on the deformed meshes (variant attachments too: all of them at once)
+    for it in ms.items:
+        R.attach_to_bone(it.obj, rig, it.socket)
+    rep = qa_run(ms, actions)
+    print("\n[qa] per-clip worst values (ground cm; overlaps = intersecting triangle pairs)")
+    from hero_base import PairQA
+    print(PairQA.table(rep))
+    fails = PairQA.verdict(rep, ms.qa_limits or {"ground": -0.5}, ms.qa_clip_limits)
+    for f in fails:
+        print("  QA FAIL " + f)
+    result["qa"] = {"pass": not fails, "failures": fails, "worst": {k: v["worst"] for k, v in rep.items()}}
+    if verify:
+        src = record(rig, ms.clips, actions)
+    if previews:
+        out = paths.preview_root() / ms.preview_dir
+        result["previews"], result["ink"] = render_previews(ms, out, actions)
+        man = export.Manifest()
+        man.data["assets"][ms.asset]["previews"] = [f"{ms.preview_dir}/{p.name}" for p in sorted(out.glob("*.png"))]
+        for it in ms.items:
+            if it.asset in man.data["assets"]:
+                man.data["assets"][it.asset]["previews"] = [f"{ms.preview_dir}/items.png"] + (
+                    [f"{ms.preview_dir}/{p}" for p in ms.variant_previews] if it.variant is not None else [])
+        ink = result["ink"]
+        man.data["assets"][ms.asset]["inkGate"] = {
+            k: ink[k] for k in ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx", "maxHullLumP95", "gate")}
+        man.save()
+    if verify:
+        result["verify"] = verify_export(ms, Path(sk), src, entry)
+    print(f"[ship] {ms.asset} done in {time.time() - t0:.1f}s")
+    return result
+
+
+def _extra_slots(entry: dict, body, pal) -> None:
+    """Material slots beyond toon + outline (the slime's dithered shell): from the mesh's material list."""
+    mats = body.data.materials
+    for i in range(2, len(mats)):
+        m = mats[i]
+        e = {"index": i, "name": m.name, "parent": m.get("af_parent", "M_AF_Toon"), "palette": pal.family}
+        if "af_params" in m:
+            e["params"] = json.loads(m["af_params"])
+        entry["materialSlots"].append(e)
+
+
+def ship_item(it: Item, pal, holder: str) -> dict:
+    fbx = export.export_static_mesh(it.obj, it.asset, it.category, it.sockets)
+    man = export.Manifest()
+    man.set_palette(pal)
+    cls = str(it.obj.get("af_outline_class", "monster"))
+    ex = {"heldBy": [holder], **it.extra}
+    if it.variant is None:
+        ex.update({"attachSocket": it.socket})
+        if it.weapon_type:
+            ex["weaponType"] = it.weapon_type
+    else:
+        ex.update({"attachSocket": it.socket, "variant": it.variant})
+    e = export.static_entry(it.obj, fbx, it.category, pal, cls, sockets=it.sockets, extra=ex)
+    if len(e["materialSlots"]) > 1:
+        e["materialSlots"][1]["outlineMix"] = outline.INK_MIX.get(cls, 1.0)
+    man.set_asset(it.asset, e)
+    man.save()
+    return e
+
+
+def budget_record(ms: MonsterShip) -> dict:
+    t = M.tri_count
+    body = ms.body
+    items = {"toon": sum(t(i.obj, 0) for i in held(ms)), "outline": sum(t(i.obj, 1) for i in held(ms))}
+    weighted = sorted({g.name for g in body.vertex_groups})
+    return {
+        "spec": "art-inventory-ch1 §1.9 goblin family: LOD0 6-9k, LOD1 3.5k triangles, <= 60 bones per section; "
+                "slime 2-3k, <= 16 bones",
+        "lod0": {"toon": t(body, 0), "outline": t(body, 1)},
+        "heldItems": items,
+        "weightedBones": len(weighted),
+        "decision": "The §1.9 figures budget the toon surface; the baked hull (P7) is a second cheap unlit draw "
+                    "budgeted separately. No LOD1 file: at the W1 camera a monster is 0.08-0.15 screen height, "
+                    "LOD0 is the gameplay mesh; UE auto-reduction may add LOD1 for far zoom-out. " + ms.lod_note,
+    }
+
+
+# ── QA ──────────────────────────────────────────────────────────────────────────────────────────────────
+def qa_run(ms: MonsterShip, actions) -> dict:
+    from hero_base import PairQA
+    names = json.loads(ms.body["af_parts"])
+    items = {it.asset: it.obj for it in ms.items if it.obj.parent is not None}
+    grips = {it.asset: it.grip for it in ms.items if it.grip is not None}
+    groups = {"body": "*"}
+    groups.update(ms.qa_groups)
+    pairs = dict(ms.qa_pairs)
+    q = PairQA(ms.A.rig, ms.body, items, names, groups, pairs, grips)
+    return q.run(ms.clips, actions)
+
+
+# ── previews ────────────────────────────────────────────────────────────────────────────────────────────
+def render_previews(ms: MonsterShip, out: Path, actions) -> tuple[list, dict]:
+    out.mkdir(parents=True, exist_ok=True)
+    for p in out.glob("*.png"):
+        p.unlink()
+    rig = ms.A.rig
+    for it in held(ms):
+        R.attach_to_bone(it.obj, rig, it.socket)
+        if it.preview_obj is not None:
+            R.attach_to_bone(it.preview_obj, rig, it.socket)
+            it.obj.hide_render = True
+    for it in ms.items:
+        if it.variant is not None:
+            it.obj.hide_render = True
+    meshes = [ms.body] + [shown(it) for it in held(ms)]
+    rv = review.Review(ms.asset, rig.obj, meshes, ms.height, blob_radius=ms.blob_radius, out_dir=out,
+                       game_outline_px=outline.SCREEN_PX_1080[ms.outline_class], outline_class=ms.outline_class,
+                       glows=ms.glows)
+    rv.ground_occludes = True          # hull under planted soles is hidden by the terrain (UE) and the stage here
+    rv.extra_body_slots = True         # a dithered shell slot (the slime) is body in the ink coverage
+    acts = dict(zip([c.name for c in ms.clips], actions))
+    anim.assign(rig, acts["Idle"])
+    anim.set_frame(0)
+    with FxOff(ms, rv):
+        rv.game_view()
+    if fx_objects(ms):
+        fx_view(ms, rv)
+    rv.closeup()
+    (out / "closeup.png").rename(out / "closeup_se.png")
+    rv.closeup("front", pitch=-30.0)
+    (out / "closeup.png").rename(out / "closeup_front.png")
+    rv.closeup("ne", pitch=-30.0)
+    (out / "closeup.png").rename(out / "closeup_ne.png")
+    rv.turnaround()
+    rv.material_ab()
+    for c, a in zip(ms.clips, actions):
+        rv.contact_sheet(rig, [(c, a)], frames=8)
+        (out / "anims.png").rename(out / f"anim_{c.name}.png")
+    game_sheet(ms, rv, ms.game_keys, "game_poses.png", actions)
+    if ms.contact_keys:
+        game_sheet(ms, rv, ms.contact_keys, "game_contacts.png", actions)
+    facing_keys = [(n, f, fac) for fac in ("front", "sw", "ne", "back") for n, f in (("Idle", 0), ("Walk", 9))]
+    game_sheet(ms, rv, facing_keys, "game_facings.png", actions)
+    if ms.close_keys:
+        closeup_poses(ms, rv, actions)
+    back_sheets(ms, rv, actions)
+    items_sheet(ms, rv)
+    if ms.extra_previews is not None:
+        ms.extra_previews(ms, rv, actions)
+    rv.facing("se")
+    for p, size in rv.written:
+        print(f"  {p.name:28s} {size // 1024:4d} KB")
+    ink = review.ink_verdict(rv.ink_reports)
+    print(f"\n[ink] {ink['cells']} gated 1080p cells: min rim {ink['minFracRim'] * 100:.1f} %, "
+          f"min dark {ink['minFracDark'] * 100:.1f} %, median rim {ink['medianRimPx']} px")
+    for f in ink["failures"]:
+        print("  INK FAIL " + f)
+    for it in ms.items:
+        it.obj.hide_render = False
+        if it.preview_obj is not None:
+            it.preview_obj.hide_render = True
+    return [str(p) for p, _ in rv.written], ink
+
+
+def _crop_hw(ms: MonsterShip) -> float:
+    """Half width (fraction of 1920) of a game cell: the warrior's 0.075 for 1.76 m, scaled, ≥ 0.05."""
+    return max(0.05, 0.075 * (ms.height + 0.35) / 2.1)
+
+
+def game_sheet(ms: MonsterShip, rv, keys, fname, actions, cols: int = 4) -> None:
+    """Native 1080p crops at the W1 camera with the shipped look (UE ink width, bloom, glow cards); every cell's
+    ink rim is measured (``rv.ink_reports``) and printed under its label."""
+    rig = ms.A.rig
+    acts = dict(zip([c.name for c in ms.clips], actions))
+    cells = []
+    review.setup_render((1920, 1080), 8)
+    hw = _crop_hw(ms)
+    zc = ms.height * 0.45
+    for name, fr, fac in keys:
+        rv.facing(fac)
+        anim.assign(rig, acts[name])
+        anim.set_frame(fr)
+        if hasattr(ms, "glow_frame"):
+            ms.glow_frame(rv, name, fr)
+        cam = review.game_camera()
+        rv.game_outline(1080, Vector((0, 0, zc)))
+        c = review.project(cam, Vector((0, 0, zc)))
+        hh = hw * 1920 / 1080
+        box = (c[0] - hw, c[1] - hh, c[0] + hw, c[1] + hh)
+        with FxOff(ms, rv):
+            img, st = rv.game_shot(box, measure=True, tag=f"{fname} {name} F{fr} {fac}")
+        if fx_objects(ms):
+            img = fx_shot(ms, rv, box)
+        review.draw_text(img, 3, 3, f"{name} F{fr} {fac}")
+        review.draw_text(img, 3, img.shape[0] - 10, rv.ink_label(st), rgb=(255, 220, 140))
+        cells.append(img)
+    rv.glow_scale = 1.0
+    rv._save(fname, review.grid(cells, cols))
+    anim.assign(rig, acts["Idle"])
+    anim.set_frame(0)
+
+
+def fx_view(ms: MonsterShip, rv, facing: str = "se") -> None:
+    """``game_fx.png``: the 1080p 1:1 crop with the runtime FX on (flame mesh, bloom, glow cards) — the measured
+    ``game_1080crop.png`` / ``game_inkgate.png`` are the inked body without them."""
+    rv.facing(facing)
+    review.setup_render((1920, 1080), 8)
+    cam = review.game_camera()
+    box = rv.game_crop_box(cam)
+    rv.game_outline(1080)
+    img = fx_shot(ms, rv, box)
+    review.draw_text(img, 4, 4, "1080P 1:1 SHIPPED + RUNTIME FX (FLAME, GLOW CARDS, BLOOM)")
+    rv._save("game_fx.png", img)
+
+
+def closeup_poses(ms: MonsterShip, rv, actions) -> None:
+    rig = ms.A.rig
+    acts = dict(zip([c.name for c in ms.clips], actions))
+    meshes = [ms.body] + [shown(it) for it in held(ms)]
+    cells = []
+    res = (256, 300)
+    for name, fr, fac in ms.close_keys:
+        rv.facing(fac)
+        anim.assign(rig, acts[name])
+        anim.set_frame(fr)
+        review.setup_render(res, 8)
+        pts = review.mesh_points(meshes)
+        review.frame_points(pts, res, fov_h=26, pitch_ue=-35, fill=0.92)
+        rv.ink(at=Vector(pts.mean(0)))
+        img = review.render_array()
+        clip = next(c for c in ms.clips if c.name == name)
+        mark = ""
+        for d in clip.notify_list():
+            if scene.ms_to_frame(d["ms"]) == fr:
+                mark = f" {d['name'].upper()}"
+        review.draw_text(img, 3, 3, f"{name} F{fr}{mark}")
+        cells.append(img)
+    rv._save("poses_close.png", review.grid(cells, min(5, len(cells))))
+    anim.assign(rig, acts["Idle"])
+    anim.set_frame(0)
+
+
+BACK_FACINGS = ("ne", "back", "nw")
+
+
+def back_sheets(ms: MonsterShip, rv, actions, cell=(150, 180)) -> None:
+    """Key poses + contact from behind at the game pitch (rows ne / back / nw): ``anim_back_<Clip>.png``."""
+    rig = ms.A.rig
+    meshes = [ms.body] + [shown(it) for it in held(ms)]
+    acts = dict(zip([c.name for c in ms.clips], actions))
+    for c in ms.clips:
+        if c.name not in ms.back_clips:
+            continue
+        anim.assign(rig, acts[c.name])
+        notif = {scene.ms_to_frame(d["ms"]): d for d in c.notify_list() if d["name"] in ("Contact", "Release")}
+        keys = getattr(c, "key_poses_ms", None) or [c.length_ms * i / 5 for i in range(6)]
+        frames = sorted({min(c.frames, scene.ms_to_frame(ms_)) for ms_ in keys} | set(notif))
+        pts = []
+        for fc in BACK_FACINGS:
+            rv.facing(fc)
+            for fr in frames:
+                anim.set_frame(fr)
+                pts.append(review.mesh_points(meshes, step=4))
+        pts = np.concatenate(pts)
+        review.setup_render(cell, 4)
+        rows = []
+        for fc in BACK_FACINGS:
+            rv.facing(fc)
+            review.frame_points(pts, cell, fov_h=24.0, pitch_ue=shading.CAM_PITCH_UE, fill=0.95)
+            rv.ink(at=Vector(pts.mean(0)))
+            cells = []
+            for fr in frames:
+                anim.set_frame(fr)
+                img = review.render_array()
+                review.draw_text(img, 3, 3, f"{fc} F{fr}")
+                if fr in notif:
+                    review.border(img)
+                    review.draw_text(img, 3, 12, notif[fr]["name"], rgb=(255, 170, 70))
+                cells.append(img)
+            rows.append(review.grid(cells, len(cells), pad=2))
+        sheet = np.vstack(rows)
+        label = np.zeros((14, sheet.shape[1], 3), np.uint8)
+        label[:, :] = (24, 20, 30)
+        review.draw_text(label, 4, 4, f"{c.name}  BACK VIEWS NE / BACK / NW  PITCH -50  KEY POSES")
+        rv._save(f"anim_back_{c.name}.png", np.vstack([label, sheet]))
+    anim.assign(rig, acts["Idle"])
+    anim.set_frame(0)
+    rv.facing("se")
+
+
+def items_sheet(ms: MonsterShip, rv) -> None:
+    """Every shipped item on its own (two sides) over the studio colour: ``items.png``."""
+    if not ms.items:
+        return
+    cells = []
+    res = (240, 300)
+    objs = [it.obj for it in ms.items]
+    saved = {o.name: (o.parent, o.parent_type, o.parent_bone, o.matrix_parent_inverse.copy(), o.matrix_basis.copy(),
+                      o.hide_render) for o in objs}
+    hidden = [o for o in bpy.data.objects if o.type == "MESH" and o not in objs and not o.hide_render]
+    for o in hidden:
+        o.hide_render = True
+    review.hide_stage(True)
+    for o in objs:
+        o.parent = None
+        o.matrix_world = Matrix.Identity(4)
+        o.hide_render = True
+    for it in ms.items:
+        o = it.obj
+        o.hide_render = False
+        for yaw, side in ((135, "A"), (-45, "B")):
+            if it.variant is None:   # weapons: lay the +Y blade axis up the frame
+                o.matrix_world = Matrix.Rotation(math.radians(yaw), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X")
+            else:                    # attachments (bone-local): upright as worn on the rest pose
+                bm = ms.A.rig.obj.data.bones[it.socket].matrix_local.to_3x3().to_4x4()
+                o.matrix_world = Matrix.Rotation(math.radians(yaw - 90), 4, "Z") @ bm
+            bpy.context.view_layer.update()
+            review.setup_render(res, 8, bg_hex="#3B3546")
+            pts = review.mesh_points([o])
+            review.frame_points(pts, res, fov_h=24, pitch_ue=-15, fill=0.86, include_ground=False)
+            review.set_outline_px([o], 1.6, Vector(pts.mean(0)))
+            img = review.render_array()
+            review.draw_text(img, 3, 3, f"{it.asset.replace('SM_Mon_', '')} {side}")
+            cells.append(img)
+        o.hide_render = True
+    rv._save("items.png", review.grid(cells, min(4, len(cells))))
+    for o in hidden:
+        o.hide_render = False
+    review.hide_stage(False)
+    for o in objs:
+        par, ptype, pbone, mpi, mb, hr = saved[o.name]
+        o.parent, o.parent_type, o.parent_bone = par, ptype, pbone
+        o.matrix_parent_inverse = mpi
+        o.matrix_basis = mb
+        o.hide_render = hr
 
 
 def quick_review(asset, rig, meshes, attachments, A, out: Path, height: float, outline_class: str,
@@ -29,6 +523,7 @@ def quick_review(asset, rig, meshes, attachments, A, out: Path, height: float, o
     rv = review.Review(asset, rig.obj, objs, height, blob_radius=blob_radius, out_dir=out,
                        game_outline_px=outline.SCREEN_PX_1080[outline_class], outline_class=outline_class,
                        glows=glows)
+    rv.ground_occludes = True
     rv.closeup("se")
     (out / "closeup.png").rename(out / "closeup_se.png")
     rv.closeup("front", pitch=-30.0)
@@ -39,3 +534,198 @@ def quick_review(asset, rig, meshes, attachments, A, out: Path, height: float, o
     rv.game_view()
     for p, s in rv.written:
         print(f"  {p.name} {s // 1024} KB")
+
+
+def anim_review(rig, meshes, attachments, clips, token, out: Path, height: float, outline_class: str,
+                blob_radius: float = 0.22, glows=None, facing: str = "se") -> None:
+    """Clip iteration: bake + one contact sheet per clip → ``out``."""
+    out.mkdir(parents=True, exist_ok=True)
+    for o, bone in attachments:
+        R.attach_to_bone(o, rig, bone)
+    objs = list(meshes) + [o for o, _ in attachments]
+    rv = review.Review(rig.obj.name, rig.obj, objs, height, blob_radius=blob_radius, out_dir=out,
+                       game_outline_px=outline.SCREEN_PX_1080[outline_class], outline_class=outline_class,
+                       glows=glows)
+    for c in clips:
+        a = bake_clip(rig, c, token)
+        rv.contact_sheet(rig, [(c, a)], frames=8, facing=facing)
+        (out / "anims.png").rename(out / f"anim_{c.name}_{facing}.png")
+        print(f"  anim_{c.name}_{facing}.png")
+
+
+# ── verification (re-import what UE receives) ───────────────────────────────────────────────────────────
+def record(rig, clips, actions) -> dict:
+    _PARENTS.clear()
+    _PARENTS.update({b.name: b.parent.name for b in rig.obj.data.bones if b.parent is not None})
+    rec = {}
+    for c, a in zip(clips, actions):
+        anim.assign(rig, a)
+        for f in sorted({0, c.frames // 2, c.frames}):
+            anim.set_frame(f)
+            rec[(c.name, f)] = {pb.name: pb.matrix.copy() for pb in rig.obj.pose.bones}
+    anim.assign(rig, None)
+    anim.clear_pose(rig)
+    return rec
+
+
+def verify_export(ms: MonsterShip, sk_fbx: Path, src: dict, entry: dict) -> dict:
+    """Re-import the SK, every clip and every item into an empty scene and check bones, slots, weights,
+    AF_Data / custom normals, bounds, frame counts and posed bones against the source."""
+    fails = []
+
+    def check(ok, msg):
+        print(("  ok   " if ok else "  FAIL ") + msg)
+        if not ok:
+            fails.append(msg)
+    print(f"\n[verify] {ms.asset}: re-import into an empty scene")
+    nslots = len(entry["materialSlots"])
+    want_slots = [s["name"] for s in entry["materialSlots"]]
+    scene.reset()
+    bpy.ops.import_scene.fbx(filepath=str(sk_fbx))
+    arms = [o for o in bpy.data.objects if o.type == "ARMATURE"]
+    meshes = [o for o in bpy.data.objects if o.type == "MESH"]
+    check(len(arms) == 1 and len(meshes) == 1, f"one armature + one mesh ({len(arms)}, {len(meshes)})")
+    arm, me = arms[0], meshes[0]
+    bones = {b.name for b in arm.data.bones}
+    check(len(bones) == entry["bones"], f"{len(bones)} bones == {entry['bones']}")
+    for need in ms.skeleton_bones_required:
+        check(need in bones, f"bone {need}")
+    check("Armature" not in bones, "no extra root bone")
+    mats = [m.name.split(".")[0] for m in me.data.materials]
+    check(mats == want_slots and len(mats) == nslots, f"material slots {mats}")
+    st = R.weight_stats(me)
+    check(st["unweighted"] == 0 and st["maxInfluences"] <= 4, f"weights ({st['maxInfluences']} max, "
+                                                                f"{st['unweighted']} unweighted)")
+    lo, hi = scene.world_bounds([me])
+    hb = entry["boundsCm"]
+    check(abs(hi.z * 100 - hb["max"][2]) < 1.0 and abs(lo.z * 100 - hb["min"][2]) < 1.0,
+          f"bind-pose bounds z {lo.z:.3f} .. {hi.z:.3f} m == manifest")
+    check("AF_Data" in me.data.color_attributes and me.data.has_custom_normals, "AF_Data colours + custom normals")
+    worst_mm, worst_deg = 0.0, 0.0
+    for c in ms.clips:
+        f = paths.category_dir(ms.category) / f"A_{ms.token}_{c.name}.fbx"
+        before = set(bpy.data.actions)
+        objs = set(bpy.data.objects)
+        bpy.ops.import_scene.fbx(filepath=str(f))
+        new = [a for a in bpy.data.actions if a not in before]
+        if len(new) != 1:
+            check(False, f"{f.name}: one action")
+            continue
+        a = new[0]
+        n = int(round(a.frame_range[1] - a.frame_range[0]))
+        check(n == max(1, c.frames), f"{f.name}: {n} frames == {c.frames}")
+        arm2 = next(o for o in bpy.data.objects if o not in objs and o.type == "ARMATURE")
+        if getattr(c, "basis_fn", None) is not None:
+            # bone-scale clips (the slime): Blender's FBX importer takes the first frame's Lcl Scaling as a rest
+            # it cannot store and divides it out, so the curves themselves are compared (what UE reads)
+            mm, dg = _curve_check(f, {fr: m for (cn, fr), m in src.items() if cn == c.name})
+            worst_mm, worst_deg = max(worst_mm, mm), max(worst_deg, dg)
+            bpy.data.objects.remove(arm2)
+            continue
+        for (cn, fr), mats_ in src.items():
+            if cn != c.name:
+                continue
+            bpy.context.scene.frame_set(int(a.frame_range[0]) + fr)
+            for bn, m in mats_.items():
+                pb = arm2.pose.bones.get(bn)
+                if pb is None:
+                    continue
+                worst_mm = max(worst_mm, (pb.matrix.translation - m.translation).length * 1000)
+                q0, q1 = m.to_quaternion(), pb.matrix.to_quaternion()
+                ang = q0.rotation_difference(q1).angle
+                worst_deg = max(worst_deg, math.degrees(min(ang, 2 * math.pi - ang)))
+                s0, s1 = m.to_scale(), pb.matrix.to_scale()
+                worst_mm = max(worst_mm, max(abs(s0[i] - s1[i]) for i in range(3)) * 1000)
+        bpy.data.objects.remove(arm2)
+    check(worst_mm < 1.0 and worst_deg < 0.1, f"re-imported clips match the source (max {worst_mm:.3f} mm "
+                                              f"(scale ×1000), {worst_deg:.4f} deg)")
+    for it in ms.items:
+        objs = set(bpy.data.objects)
+        bpy.ops.import_scene.fbx(filepath=str(paths.category_dir(it.category) / f"{it.asset}.fbx"))
+        new = [o for o in bpy.data.objects if o not in objs]
+        names = sorted(o.name for o in new)
+        mesh = next(o for o in new if o.type == "MESH")
+        mn = [m.name.split(".")[0] for m in mesh.data.materials]
+        check(mn[0] == ms.pal.material_name and (len(mn) == 1 or mn[1] == "M_AF_Outline"),
+              f"{it.asset}: material slots {mn}")
+        if it.sockets:
+            check(all(f"SOCKET_{s['name']}" in names for s in it.sockets),
+                  f"{it.asset}: sockets {[x for x in names if x.startswith('SOCKET_')]}")
+    print(f"[verify] {'PASS' if not fails else 'FAIL'} ({len(fails)} failures)")
+    return {"pass": not fails, "failures": fails}
+
+
+def fbx_local_curves(path: Path) -> dict:
+    """{bone: {'Lcl Translation' | 'Lcl Rotation' | 'Lcl Scaling': [(x, y, z) per key]}} straight from the FBX
+    curves (parent-relative, translation in metres as exported with FBX_SCALE_ALL, Euler XYZ degrees)."""
+    from io_scene_fbx import parse_fbx
+    root, _ = parse_fbx.parse(str(path))
+
+    def sub(e, name):
+        return [c for c in e.elems if c.id == name]
+    models, nodes, curves = {}, {}, {}
+    for e in sub(root, b"Objects")[0].elems:
+        uid = e.props[0]
+        nm = e.props[1].split(b"\x00")[0].decode() if len(e.props) > 1 and isinstance(e.props[1], bytes) else ""
+        if e.id == b"Model":
+            models[uid] = nm
+        elif e.id == b"AnimationCurveNode":
+            nodes[uid] = nm
+        elif e.id == b"AnimationCurve":
+            curves[uid] = list(sub(e, b"KeyValueFloat")[0].props[0])
+    node_of, axes = {}, {}
+    for c in sub(root, b"Connections")[0].elems:
+        p = c.props
+        if p[0] == b"OP" and p[1] in nodes and p[2] in models:
+            node_of[p[1]] = (models[p[2]], p[3].decode())
+        elif p[0] == b"OP" and p[1] in curves and p[2] in nodes:
+            axes.setdefault(p[2], {})[p[3].decode()] = curves[p[1]]
+    out = {}
+    for nid, (bone, prop) in node_of.items():
+        a = axes.get(nid, {})
+        if all(k in a for k in ("d|X", "d|Y", "d|Z")):
+            out.setdefault(bone, {})[prop] = list(zip(a["d|X"], a["d|Y"], a["d|Z"]))
+    return out
+
+
+def _curve_check(path: Path, frames: dict) -> tuple[float, float]:
+    """Worst translation (mm, and scale ×1000) / rotation (deg) difference between the FBX curves of every
+    non-root bone and the recorded source pose (armature-space matrices per frame)."""
+    cv = fbx_local_curves(path)
+    worst_mm, worst_deg = 0.0, 0.0
+    for fr, mats_ in frames.items():
+        for bn, m in mats_.items():
+            pn = _PARENTS.get(bn)
+            if pn is None or bn not in cv:
+                continue
+            loc = mats_[pn].inverted() @ m
+            t, q, sc = loc.decompose()
+            ch = cv[bn]
+            if fr >= len(ch.get("Lcl Scaling", [])):
+                worst_mm = max(worst_mm, 1e6)
+                continue
+            ft = Vector(ch["Lcl Translation"][fr])         # metres (FBX_SCALE_ALL bakes the unit scale)
+            fe = Vector([math.radians(x) for x in ch["Lcl Rotation"][fr]])
+            fq = Euler(fe, "XYZ").to_quaternion()
+            fs = ch["Lcl Scaling"][fr]
+            worst_mm = max(worst_mm, (ft - t).length * 1000.0, max(abs(fs[i] - sc[i]) for i in range(3)) * 1000.0)
+            ang = q.rotation_difference(fq).angle
+            worst_deg = max(worst_deg, math.degrees(min(ang, 2 * math.pi - ang)))
+    return worst_mm, worst_deg
+
+
+_PARENTS: dict = {}
+
+
+def main_result(res: dict) -> int:
+    out = {k: v for k, v in res.items() if k not in ("previews", "qa", "ink")}
+    if res.get("ink"):
+        out["ink"] = {k: v for k, v in res["ink"].items() if k not in ("baked",)}
+    out["qa"] = {k: v for k, v in res["qa"].items() if k != "worst"}
+    print(json.dumps(out, indent=1)[:3000])
+    ok = res.get("verify", {"pass": True})["pass"] and res["qa"]["pass"]
+    ink = res.get("ink")
+    if ink is not None and not ink["pass"]:
+        print("\nINK GATE FAILED (review.INK_GATE, see game_inkgate.png):\n  " + "\n  ".join(ink["failures"]))
+        ok = False
+    return 0 if ok else 1
