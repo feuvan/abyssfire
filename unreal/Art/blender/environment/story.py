@@ -462,7 +462,7 @@ def build_drywell(pal: Palette):
 
 # ── lore collectibles (interactive ink) ─────────────────────────────────────────────────────────────────
 LORE_REGIONS = dict(
-    sandstone=Region("#B89A70", .42, .35),
+    sandstone=Region("#B89A70", .32, .35),
     sandstone_line=Region("#B89A70").line_region(),
     sandstone_sh=Region("#B89A70").shade_region(.3, .15),
     script=Region("#E0901A", .0, .0, e=1.0),
@@ -473,9 +473,9 @@ LORE_REGIONS = dict(
     ink=Region("#8A6A4A", .40, .25),
     quill=Region("#3A6AB8", .42, .40),
     quill_dk=Region("#1E2E5A", .40, .25),
-    crystal=Region("#4FB8E8", .30, .45, e=0.25),
-    crystal_lt=Region("#70D8FF", .30, .45, e=0.35),
-    crystal_core=Region("#F0FFFF", .0, .0, e=1.0),
+    crystal=Region("#4FB8E8", .30, .45, e=0.12, o=.3),
+    crystal_lt=Region("#70D8FF", .30, .45, e=0.1, o=.3),
+    crystal_core=Region("#F0FFFF", .0, .0, e=0.6),
     rock_a=Region("#6A7080", .42, .35),
     rock_b=Region("#5A6070", .42, .35),
     boulder=Region("#8A8E9A", .42, .35),
@@ -497,37 +497,55 @@ def new_lore(pal, name):
 
 
 def build_tablet(pal: Palette):
+    """Web ``ancient_tablet``: a weathered sandstone stele ≈ 0.42 × 0.9 m, rounded top, carved border, a crack,
+    four lines of glowing golden script. Built as a pillowed slab (superellipse loft, exp 3.2): a flat face turned
+    from the key light would sit wholly in one band; the gentle convexity spreads the cel bands across it like
+    the web's ``shade()``."""
     name = "SM_Prop_Lore_AncientTablet"
     b, rnd = new_lore(pal, name)
     W, H, T = 0.42, 0.9, 0.12
-    # stele: flat front (−Y), rounded top, chipped right shoulder
-    outline = []
-    for i in range(13):
-        a = math.pi * i / 12
-        outline.append((W / 2 * math.cos(a), H - W / 2 + W / 2 * math.sin(a) * 0.9))
-    outline = [(W / 2, 0.0)] + outline + [(-W / 2, 0.0)]
-    outline = [(x if not (0.1 < x and 0.55 < y < 0.68) else x - 0.05, y) for x, y in outline]
-    st = M.plate(outline, T, bevel=0.018)
-    st.transform(_rx(90)).translate((0, 0, 0))
+    RX, RY, EXP = W / 2, T / 2 + 0.018, 3.2
+    zs = [-0.03, 0.15, 0.4, H - W / 2]
+    rings = [(z, RX * (1.0 - 0.04 * z), RY) for z in zs]
+    for i in range(1, 7):
+        a = math.pi / 2 * i / 6
+        rings.append((H - W / 2 + W / 2 * 0.9 * math.sin(a), max(RX * math.cos(a), 0.012),
+                      max(RY * (0.55 + 0.45 * math.cos(a)), 0.012)))
+    st = M.loft_z(rings, sides=20, exp=EXP, cap0="ngon", cap1="fan")
+    st.smooth(True)
     sid = b.add(st, "sandstone", name="stele", hull_pad=True)
+
+    def on_face(pts, lift=0.0015):
+        """Snap points (x, ·, z) onto the front (−Y) face of the loft."""
+        out = []
+        for q in pts:
+            if q.z > H - W / 2:
+                a = math.asin(min(1.0, (q.z - (H - W / 2)) / (W / 2 * 0.9)))
+                rx, ry = max(RX * math.cos(a), 0.012), max(RY * (0.55 + 0.45 * math.cos(a)), 0.012)
+            else:
+                rx, ry = RX * (1.0 - 0.04 * q.z), RY
+            u = min(abs(q.x) / rx, 0.999)
+            out.append(Vector((q.x, -ry * (1.0 - u ** EXP) ** (1.0 / EXP) - lift, q.z)))
+        return out
     # carved border (shade line) and the chip / crack (line tone)
-    fy = -T / 2 - 0.001
-    border = [Vector((-W / 2 + 0.05, fy, 0.06)), Vector((-W / 2 + 0.05, fy, H - 0.2))]
+    border = [Vector((-W / 2 + 0.055, 0, 0.06)), Vector((-W / 2 + 0.055, 0, H - 0.2))]
     for i in range(9):
         a = math.pi - math.pi * i / 8
-        border.append(Vector(((W / 2 - 0.05) * math.cos(a), fy, H - W / 2 + (W / 2 - 0.05) * math.sin(a) * 0.9)))
-    border.append(Vector((W / 2 - 0.05, fy, 0.06)))
+        border.append(Vector(((W / 2 - 0.055) * math.cos(a), 0, H - W / 2 + (W / 2 - 0.07) * math.sin(a) * 0.9)))
+    border.append(Vector((W / 2 - 0.055, 0, 0.06)))
+    border = on_face(border)
     b.add(E.ribbon(border, [Vector((0, -1, 0))] * len(border), 0.016, lift=0.0, thick=0.003), "sandstone_sh",
           name="border", outline=False, covered_by=sid)
-    b.add(E.ribbon([Vector((-W / 2 + 0.01, fy, 0.38)), Vector((-W / 2 + 0.07, fy, 0.34)),
-                    Vector((-W / 2 + 0.05, fy, 0.24))], [Vector((0, -1, 0))] * 3, 0.012, lift=0.0, thick=0.003),
-          "sandstone_line", name="crack", outline=False, covered_by=sid)
+    crack = on_face([Vector((-W / 2 + 0.02, 0, 0.38)), Vector((-W / 2 + 0.07, 0, 0.34)),
+                     Vector((-W / 2 + 0.05, 0, 0.24))])
+    b.add(E.ribbon(crack, [Vector((0, -1, 0))] * 3, 0.012, lift=0.0, thick=0.003), "sandstone_line", name="crack",
+          outline=False, covered_by=sid)
     # glowing golden script: 4 lines of zig-zag glyphs (focal accent)
     for i in range(4):
         z = H - 0.24 - i * 0.13
         w = 0.24 - (0.08 if i == 3 else 0.0)
-        pts = [Vector((-0.12 + w * k / 6, fy - 0.001, z + (0.02 if k % 2 else -0.012) * (0.7 + rnd.random() * 0.4)))
-               for k in range(7)]
+        pts = on_face([Vector((-0.12 + w * k / 6, 0, z + (0.02 if k % 2 else -0.012) * (0.7 + rnd.random() * 0.4)))
+                       for k in range(7)], lift=0.002)
         b.add(E.ribbon(pts, [Vector((0, -1, 0))] * len(pts), 0.026, lift=0.0, thick=0.003), "script",
               name="script", outline=False, covered_by=sid)
         b.add(E.ribbon(pts, [Vector((0, -1, 0))] * len(pts), 0.009, lift=0.003, thick=0.002), "script_core",
@@ -622,7 +640,7 @@ def shard(b: M.Builder, base: Vector, h: float, r: float, lean: Vector, region: 
 def build_crystal(pal: Palette):
     name = "SM_Prop_Lore_CrystalShard"
     b, rnd = new_lore(pal, name)
-    shard(b, Vector((0.0, 0.02, 0)), 0.7, 0.1, Vector((0.05, 0.02, 0)), "crystal_lt", "crystal_core", name="big")
+    shard(b, Vector((0.0, 0.02, 0)), 0.7, 0.115, Vector((0.05, 0.02, 0)), "crystal_lt", "crystal_core", name="big")
     shard(b, Vector((-0.17, 0.0, 0)), 0.38, 0.075, Vector((-0.35, -0.05, 0)), "crystal", None)
     shard(b, Vector((0.17, -0.04, 0)), 0.44, 0.08, Vector((0.32, -0.1, 0)), "crystal", None)
     shard(b, Vector((0.05, 0.16, 0)), 0.26, 0.06, Vector((0.1, 0.35, 0)), "crystal", None)
@@ -712,7 +730,7 @@ def main(argv: list[str]) -> int:
             E.quick(objs, "story", spacing=2.6)
         return 0
     shipped = []
-    for n in names:
+    for n in (names if "--family" not in argv else []):
         scene.reset()
         pal = Palette(E.PROPS)
         fn, kw = ASSETS[n]
@@ -722,11 +740,22 @@ def main(argv: list[str]) -> int:
                  "note": NOTES["lore" if "Lore" in n else "story"]}
         E.ship(obj, n, CAT, pal, obj["af_outline_class"], extra=extra, previews=previews, close_facing="front", **kw)
         shipped.append(n)
+    if "--family" in argv:
+        shipped = names
     if previews and len(shipped) > 1:
         scene.reset()
         pal = Palette(E.PROPS)
         objs = [ASSETS[n][0](pal) for n in shipped]
-        E.family_sheet(objs, "story_lore.png", "PLAINS STORY DECOR AND LORE", cols=3, half_w=0.07, focus_z=0.7)
+        story = [o for o in objs if "_Story_" in o.name]
+        lore = [o for o in objs if o not in story]
+        if story:
+            E.family_sheet(story, "story_decor.png", "PLAINS STORY DECORATIONS", cols=5, focus_z=1.0,
+                           cell_px=(300, 400))
+        for o in story:
+            o.hide_render = True
+        if lore:
+            E.family_sheet(lore, "lore_props.png", "PLAINS LORE COLLECTIBLES", cols=5, focus_z=0.35,
+                           cell_px=(220, 260))
     return E.summary()
 
 

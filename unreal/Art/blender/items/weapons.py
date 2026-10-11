@@ -234,7 +234,7 @@ def build_axe(b: M.Builder) -> list[dict]:
     def th(t):
         return float(np.interp(t, [0.0, 0.3, 0.6, 0.8, 1.0], [0.0105, 0.0085, 0.0062, 0.0045, 0.0012]))
 
-    def grid(ts, sign):
+    def grid(ts, sign, A=A, E=E, beard=(0.030, 0.028), side=-1.0, k=1.0):
         rows = []
         for i in range(15):
             sv = i / 14
@@ -242,8 +242,8 @@ def build_axe(b: M.Builder) -> list[dict]:
             row = []
             for t in ts:
                 u = a[0] + (e[0] - a[0]) * t
-                v = a[1] + (e[1] - a[1]) * t + math.sin(math.pi * t) * (0.030 * (1 - sv) - 0.028 * sv)
-                row.append(Vector((sign * th(t), v, -u)))
+                v = a[1] + (e[1] - a[1]) * t + math.sin(math.pi * t) * (beard[0] * (1 - sv) - beard[1] * sv)
+                row.append(Vector((sign * th(t) * k, v, side * u)))
             rows.append(row)
         return rows
     t_main, t_edge = [0.0, 0.12, 0.26, 0.40, 0.54, 0.68, 0.80], [0.80, 0.90, 1.0]
@@ -252,13 +252,21 @@ def build_axe(b: M.Builder) -> list[dict]:
                 hull_pad=True)
     b.add(C.thick_patch(grid(t_edge, 1), grid(t_edge, -1)).auto_sharp(38), "edge", name="bit_edge", outline=False,
           covered_by=bid)
-    # back fluke (+Z) and top spike
-    fl = [(0.020, 0.592), (0.052, 0.586), (0.098, 0.570), (0.140, 0.552), (0.100, 0.528), (0.054, 0.506),
-          (0.020, 0.496)]
-    fluke = profile_slab([(u, v) for u, v in C.smooth_closed(fl, 3)],
-                         lambda u, v: 0.0095 - 0.0055 * max(0.0, min(1.0, (u - 0.02) / 0.12)), rings=3)
-    fluke.scale((1, 1, -1))
-    b.add(fluke.auto_sharp(38), "head", name="fluke", hull_pad=True)
+
+    # back blade (+Z): the web drawAxe's smaller crescent (≈ 0.6 × the main bit), so the head reads as a
+    # double-bit war axe from either side; its own bright bevel band shares the ``edge`` role
+    def A2(s):
+        return (0.021, 0.488 + 0.100 * s)
+
+    def E2(s):
+        b0, c, b1 = (0.108, 0.452), (0.172, 0.546), (0.112, 0.640)
+        return tuple((1 - s) ** 2 * b0[k] + 2 * s * (1 - s) * c[k] + s * s * b1[k] for k in range(2))
+    kw = dict(A=A2, E=E2, beard=(0.020, 0.020), side=1.0, k=0.9)
+    full2 = C.thick_patch(grid(t_main + t_edge[1:], 1, **kw), grid(t_main + t_edge[1:], -1, **kw))
+    bk = b.add(C.thick_patch(grid(t_main, 1, **kw), grid(t_main, -1, **kw)).auto_sharp(38), "head", name="back_bit",
+               hull=full2, hull_pad=True)
+    b.add(C.thick_patch(grid(t_edge, 1, **kw), grid(t_edge, -1, **kw)).auto_sharp(38), "edge", name="back_edge",
+          outline=False, covered_by=bk)
     spike = M.lathe([(0.0185, 0.0), (0.0150, 0.022), (0.0060, 0.060), (0.0008, 0.074)], sides=4, exp=2.0,
                     cap0="fan", cap1="fan").rotate("z", 45).rotate("x", -90).translate((0, 0.638, 0))
     b.add(spike.flat(), "head", name="spike")
@@ -274,24 +282,45 @@ def build_mace(b: M.Builder) -> list[dict]:
           covered_by=haft)
     b.add(IK.lathe_y([(0.014, -0.203), (0.0235, -0.192), (0.0245, -0.180), (0.0185, -0.166)],
                      sides=12, cap0="fan", cap1=None).auto_sharp(45), "butt", name="butt")
-    b.add(IK.lathe_y([(0.0180, 0.365), (0.0250, 0.372), (0.0262, 0.392), (0.0240, 0.410), (0.020, 0.414)],
-                     sides=12, cap0=None, cap1=None).auto_sharp(45), "collar", name="collar")
-    yc = 0.468
-    core = b.add(IK.lathe_y([(0.020, 0.405), (0.034, 0.418), (0.043, 0.445), (0.045, yc), (0.042, 0.495),
-                             (0.032, 0.520), (0.020, 0.532)], sides=12, cap0="fan", cap1="fan"),
-                 "head", name="head_core", hull_pad=True)
-    del core
-    prof = [(0.022, 0.400), (0.050, 0.410), (0.078, 0.437), (0.096, 0.468), (0.080, 0.500), (0.054, 0.524),
-            (0.030, 0.538), (0.022, 0.538)]
-    fl_out = C.smooth_closed(prof + [(0.010, 0.47)], 3)
-    for k in range(6):
-        a = 360.0 * k / 6 + 15.0
-        f = profile_slab(fl_out, lambda u, v: 0.0062 - 0.0022 * max(0.0, min(1.0, (u - 0.03) / 0.06)), rings=3)
-        f.rotate("y", a)
-        b.add(f.auto_sharp(40), "flange", name="flange", hull_pad=True)
-    b.add(IK.lathe_y([(0.024, 0.522), (0.0255, 0.538), (0.019, 0.556), (0.009, 0.574), (0.0008, 0.582)],
-                     sides=12, cap0="fan", cap1="fan").auto_sharp(50), "cap", name="cap")
-    return [{"name": "tip", "pos": (0, 0.56, 0)}, {"name": "mid", "pos": (0, yc, 0)}]
+    b.add(IK.lathe_y([(0.0180, 0.380), (0.0245, 0.386), (0.0250, 0.398), (0.0205, 0.404), (0.0215, 0.418),
+                      (0.0240, 0.436)], sides=12, cap0=None, cap1=None).auto_sharp(45), "collar", name="collar")
+    # web drawMace: an iron ball with triangular flanges fanning out of it and a gold boss. 3D: the ball ringed by
+    # a gold band, 13 blade-spikes (rhombic section, flat in the meridian plane, so from the side each reads as
+    # the web's triangle and from the camera as a spike): 6 on the band, 6 at +42° (offset 30°), one crowning the
+    # gold top boss
+    yc, rb = 0.474, 0.052
+    ctr = Vector((0.0, yc, 0.0))
+    head = IK.ell((rb, rb * 0.96, rb), tuple(ctr), sides=14, rings=9)
+    hid = b.add(head, "head", name="head_ball", hull_pad=True)
+    b.add(IK.ring_y(yc, rb + 0.0045, 0.020, 0.010, sides=18), "cap", name="band", outline=False, covered_by=hid)
+
+    def spike(d: Vector, length: float, wm: float, wt: float) -> M.Part:
+        d = d.normalized()
+        ref = Vector((0, 1, 0)) if abs(d.y) < 0.95 else Vector((0, 0, 1))
+        t1 = (ref - d * ref.dot(d)).normalized()          # along the meridian
+        t2 = d.cross(t1).normalized()                    # along the azimuth
+        c = ctr + d * (rb * 0.62)
+        bm = bmesh.new()
+        ring = [bm.verts.new(c + t1 * wm), bm.verts.new(c + t2 * wt), bm.verts.new(c - t1 * wm),
+                bm.verts.new(c - t2 * wt)]
+        apex = bm.verts.new(ctr + d * (rb + length))
+        for i in range(4):
+            bm.faces.new((ring[i], ring[(i + 1) % 4], apex))
+        bm.faces.new(list(reversed(ring)))
+        bm.normal_update()
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        return M.Part(bm).flat()
+    for ring_el, n, off, ln in ((0.0, 6, 0.0, 0.032), (46.0, 5, 36.0, 0.027)):
+        for k in range(n):
+            az = math.radians(360.0 * k / n + off + 15.0)
+            el = math.radians(ring_el)
+            d = Vector((math.cos(el) * math.cos(az), math.sin(el), math.cos(el) * math.sin(az)))
+            b.add(spike(d, ln, 0.0210, 0.0150), "flange", name="spike", hull_pad=True)
+    b.add(IK.lathe_y([(0.020, yc + rb * 0.80), (0.0235, yc + rb * 0.92), (0.020, yc + rb * 1.06),
+                      (0.012, yc + rb * 1.16), (0.0008, yc + rb * 1.20)], sides=12, cap0="fan", cap1="fan")
+          .auto_sharp(50), "cap", name="cap", hull_pad=True)
+    b.add(spike(Vector((0, 1, 0)), 0.044, 0.0120, 0.0120), "flange", name="spike_top", hull_pad=True)
+    return [{"name": "tip", "pos": (0, yc + rb + 0.044, 0)}, {"name": "mid", "pos": (0, yc, 0)}]
 
 
 def build_dagger(b: M.Builder) -> list[dict]:
@@ -351,22 +380,23 @@ def build_bow(b: M.Builder) -> list[dict]:
         n = 22
         ys = [sgn * L * i / n for i in range(n + 1)]
         path = [P(y) for y in ys]
-        sc = [((0.0215 - 0.0105 * abs(y) / L) / 2 + 0.0005, (0.0330 - 0.0165 * abs(y) / L) / 2) for y in ys]
+        # chunkier than a real self bow so the limbs survive the W1 distance (≈ 2.4 px wide + ink each side)
+        sc = [((0.0300 - 0.0135 * abs(y) / L) / 2 + 0.0005, (0.0420 - 0.0190 * abs(y) / L) / 2) for y in ys]
         lid = b.add(M.sweep(path, M.superellipse(1, 1, 10, 2.6), scales=sc, up=S, dome0=0.0, dome1=0.003),
                     "wood", name=nm, hull_pad=True)
         line = [P(y) - S * (sc[i][0] - 0.0004) for i, y in enumerate(ys) if 0.14 < abs(y) / L < 0.90]
         b.add(M.strap(line, 0.0062, 0.0016, up=[-S] * len(line)), "grain", name="grain", outline=False,
               covered_by=lid)
         tip = P(sgn * L * 0.985)
-        b.add(IK.ell((0.0110, 0.0110, 0.0165), tip, sides=10, rings=6), "tip", name="tip_cap", hull_pad=True)
+        b.add(IK.ell((0.0130, 0.0130, 0.0190), tip, sides=10, rings=6), "tip", name="tip_cap", hull_pad=True)
         yy = sgn * L * 0.52
         d, w = sc[int(round(0.52 * n))]
         b.add(M.tube([P(yy - 0.010), P(yy + 0.010)], [(d + 0.0022, w + 0.0022)] * 2, sides=10, up=S, dome0=0.0,
                      dome1=0.0), "band", name="band", outline=False, covered_by=lid)
-    grip = b.add(M.tube([P(-0.064), P(0.0), P(0.064)], [(0.0150, 0.0200), (0.0160, 0.0210), (0.0150, 0.0200)],
+    grip = b.add(M.tube([P(-0.064), P(0.0), P(0.064)], [(0.0185, 0.0245), (0.0195, 0.0255), (0.0185, 0.0245)],
                         sides=12, up=S, dome0=0.0, dome1=0.0), "wrap", name="bow_grip", hull_pad=True)
     for yy in (-0.070, 0.070):
-        b.add(M.tube([P(yy - 0.006), P(yy + 0.006)], [(0.0170, 0.0220)] * 2, sides=12, up=S, dome0=0.0, dome1=0.0),
+        b.add(M.tube([P(yy - 0.006), P(yy + 0.006)], [(0.0205, 0.0265)] * 2, sides=12, up=S, dome0=0.0, dome1=0.0),
               "band", name="riser_band", outline=False, covered_by=grip)
     top, bot = P(L * 0.985) + S * 0.006, P(-L * 0.985) + S * 0.006
     b.add(M.tube([top, (top + bot) / 2, bot], [0.0024, 0.0026, 0.0024], sides=6, dome0=0.0, dome1=0.0),
@@ -684,20 +714,24 @@ def inhand(fam: str, obj, heroes: Heroes, out_dir: Path):
     cells, reports, qa = [], [], {}
     wide = first = None
     obj.hide_render = False
+    # off-hand items (shield, bow) are shown from sw (the mirrored front 3/4): the hand that holds them faces the
+    # camera instead of hiding behind the body
+    face = "sw" if SOCKET[fam] == "weapon_l" else "se"
     for cls in HEROES:
         arm, body = heroes.arm(cls), heroes.body(cls)
         heroes.show(cls)
         IK.attach(obj, arm, SOCKET[fam])
-        gc = IK.GameCells(ASSET[fam], arm, [body, obj], IK.HERO_HEIGHT[cls], "hero", blob_radius=0.36,
+        # hero + weapon gated together at the weapon class (3.5 px, gate 3.0 px, ink ≤ lum 40 — the hero numbers)
+        gc = IK.GameCells(ASSET[fam], arm, [body, obj], IK.HERO_HEIGHT[cls], "weapon", blob_radius=0.36,
                           out_dir=out_dir)
         for clip, beat, lab in POSES:
             IK.hero_pose(arm, cls, clip, contact_frame(cls, clip) if beat else 0)
-            gc.rv.facing("se")
+            gc.rv.facing(face)
             low = IK.min_z([obj])
             qa[f"{cls}.{clip}"] = round(low * 100.0, 1)
-            img, st = gc.cell(f"{cls} {lab}", facing="se", min_px=CELL, label=False)
+            img, st = gc.cell(f"{cls} {lab} {face}", facing=face, min_px=CELL, label=False)
             cell = IK.pad_to(img, CELL[1], CELL[0])
-            review.draw_text(cell, 3, 3, f"{cls} {lab}".upper())
+            review.draw_text(cell, 3, 3, f"{cls} {lab} {face}".upper())
             review.draw_text(cell, 3, 12, gc.rv.ink_label(st), rgb=(255, 220, 140))
             review.draw_text(cell, 3, 21, f"WEAPON LOWEST {low * 100:.0f}CM", rgb=(200, 230, 255) if low > -0.005
                              else (255, 90, 90))
@@ -802,25 +836,28 @@ def lineup(objs: dict, heroes: Heroes) -> None:
     arm.rotation_euler = (0, 0, math.radians(review.FACINGS["se"]))
     order = ["sword", "axe", "mace", "dagger", "staff", "wand", "bow", "shield"]
     keep = [body]
-    x = 0.55
+    right = Vector((-1.0, -1.0, 0.0)).normalized()      # screen right for the W1 yaw (Blender axes)
+    x = 0.62
     for fam in order:
         if fam not in objs:
             continue
         o = objs[fam][0]
+        p = right * x
         if fam == "shield":
-            m = Matrix.Translation((x + 0.05, -x - 0.05, 0.30)) @ Matrix.Rotation(math.radians(45), 4, "Z")
+            m = Matrix.Translation((p.x, p.y, 0.32)) @ Matrix.Rotation(math.radians(45), 4, "Z")
         elif fam == "bow":
-            m = Matrix.Translation((x, -x, 0.49)) @ STUDIO["bow"][0][0]()
+            m = Matrix.Translation((p.x, p.y, 0.49)) @ Matrix.Rotation(math.radians(135), 4, "Z")
         else:
             lo = min(v.co.y for v in o.data.vertices)
-            m = Matrix.Translation((x, -x, -lo + 0.02)) @ STUDIO["default"][0][0]()
+            m = (Matrix.Translation((p.x, p.y, -lo + 0.02)) @ Matrix.Rotation(math.radians(135), 4, "Z")
+                 @ Matrix.Rotation(math.radians(90), 4, "X"))
         IK.detach(o, m)
         keep.append(o)
-        x += 0.36
+        x += 0.40 if fam not in ("shield",) else 0.5
     bpy.context.view_layer.update()
     with IK.only_visible(keep):
         img = IK.studio(keep, res=(1200, 420), pitch=-14.0, ink_px=1.8, fill=0.94,
-                        label="SM_WEAPON_* (T1) BESIDE SK_HERO_WARRIOR 1.76 M")
+                        label="SM_WEAPON_(FAMILY) T1 BESIDE SK_HERO_WARRIOR 1.76 M")
     IK.save(out, "lineup.png", img)
     for fam in order:
         if fam in objs:
@@ -858,7 +895,14 @@ def main(argv=None):
     ap.add_argument("--quick", default="")
     ap.add_argument("--no-previews", action="store_true")
     ap.add_argument("--no-verify", action="store_true")
+    ap.add_argument("--lineup", action="store_true", help="only re-render Previews/weapons_lineup (no export)")
     a = ap.parse_args(argv)
+    if a.lineup:
+        scene.reset()
+        pal, base, _ = palettes()
+        objs = {f: build(f, pal, base) for f in WT.FAMILIES}
+        lineup(objs, Heroes())
+        return 0
     if a.quick:
         quick([f for f in a.quick.split(",") if f])
         return 0

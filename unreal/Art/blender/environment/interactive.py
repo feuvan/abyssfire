@@ -73,6 +73,8 @@ REGIONS = dict(
     frame_line=Region("#8E96A0").line_region(),
     runestone=Region("#6A7A8A", .42, .35),
     vortex_deep=Region("#10304A", .20, .10, e=0.55),
+    vortex_rim=Region("#0A2A3A", .30, .20, o=.3),
+    sealed_rim=Region("#3A1018", .30, .20, o=.3),
     vortex_mid=Region("#1A6A8A", .10, .10, e=0.9),
     vortex=Region("#3FE0A0", .0, .0, e=1.0),
     vortex_core=Region("#F0FFF8", .0, .0, e=1.0),
@@ -97,6 +99,7 @@ REGIONS = dict(
     arrow_dk=Region("#D88A1A", .40, .35),
     leaf=Region("#5FB84A", .40, .32),
     vein=Region("#9FE07A", .0, .0, e=0.9),
+    bud=Region("#9FE07A", .30, .30, e=0.35, o=.3),
     stem=Region("#3F7A33", .40, .25),
     soil=Region("#7A5A3A", .42, .30),
     stone=Region("#7A7E88", .42, .35),
@@ -457,6 +460,11 @@ def vortex(b: M.Builder, sealed: bool):
         disc.scale((rx * f, rz * f * (1.0 if f > 0.3 else 1.4), 1.0))
         disc.transform(_rx(90)).translate((0, 0, cz))
         b.add(disc, reg, name="vortex", outline=False)
+    # dark rim round the vortex (web ExitPortal rim rgba(10,42,58,.9)): carries the ink where the disc shows
+    # below the arch
+    rim = [Vector((math.cos(a) * rx * 1.0, 0, cz + math.sin(a) * rz * 1.0)) for a in (math.tau * k / 32 for k in range(33))]
+    b.add(M.tube(rim, [0.045] * len(rim), sides=6, cap0=None, cap1=None), "sealed_rim" if sealed else "vortex_rim",
+          name="vortex_rim")
     if not sealed:
         for i in range(4):
             a0 = i * math.pi / 2
@@ -515,7 +523,7 @@ def build_portal(pal: Palette):
     portal_frame(b, rnd, name)
     vortex(b, sealed=False)
     rune_stones(b, rnd, "vortex")
-    ground_ring(b, "ring_mark")
+    # the ground rune ring is the runtime FX (NS_World_ExitPortal ground ring at socket fx_ring), not mesh
     shape = E.RockShape((0.14, 0.12, 0.1), (name, "rock"), bumps=4, amp=0.08, top_cut=0.3)
     b.add(E.rock(shape, subdiv=1, facet=24.0).translate((1.45, -0.7, 0)), "runestone", name="rock", hull_pad=True)
     F.tuft(b, Vector((-1.5, -0.6, 0)), 0.24, 8, rnd, segs=2, inked=True)
@@ -662,7 +670,7 @@ def build_herb(pal: Palette):
         b.add(E.ribbon(pts, [out] * 4, [0.014, 0.012, 0.009, 0.005], lift=0.006, thick=0.002), "vein", name="vein",
               outline=False, covered_by=lid)
     bud = M.ellipsoid((0.025, 0.025, 0.035), (-0.01, 0.01, 0.29), sides=8, rings=4)
-    b.add(bud, "vein", name="bud")
+    b.add(bud, "bud", name="bud")
     return E.finish(b, pal, "interactive", ground_h=0.2, name=name)
 
 
@@ -675,10 +683,11 @@ ASSETS: dict = {
                                               sockets=[{"name": "fx_vortex", "pos": (0, 0, 1.25)},
                                                        {"name": "fx_ring", "pos": (0, -0.9, 0.02)}])),
     "SM_Prop_ExitGate_Sealed": (build_sealed, dict(game_ids=["exit_gate_sealed", "exit_sealed"], footprint=[1, 1],
-                                                   blocking=True, blob=1.3,
+                                                   blocking=False, blob=1.3,
                                                    sockets=[{"name": "fx_vortex", "pos": (0, 0, 1.25)}])),
-    "SM_FX_ClueMagnifier": (build_magnifier, dict(game_ids=["clue_mark", "fx_clue"], blob=0.25, cat="VFX")),
-    "SM_FX_GuideArrow": (build_arrow, dict(game_ids=["guide_arrow"], blob=0.01, ground=False, cat="VFX",
+    "SM_FX_ClueMagnifier": (build_magnifier, dict(game_ids=["clue_mark", "fx_clue"], blob=0.25, cat="VFX",
+                                                  blocking=False)),
+    "SM_FX_GuideArrow": (build_arrow, dict(game_ids=["guide_arrow"], blob=0.01, cat="VFX", blocking=False,
                                            extra_kw={"meshYawOffsetDeg": -90.0})),
     "SM_Prop_Gather_EmeraldHerb": (build_herb, dict(game_ids=["gather_herb"], footprint=[1, 1], blocking=False,
                                                     blob=0.15)),
@@ -687,7 +696,9 @@ NOTES = {
     "SM_Prop_ExitPortal": "open zone exit (later chapters; W7 seals the Chapter-1 exit): faces into the map (-Y); "
                           "NS_World_ExitPortal (rotating swirl, motes, ground ring pulse) + teal light at fx_vortex",
     "SM_Prop_ExitGate_Sealed": "W7: the twilight_forest exit (119,60) shows this sealed gate; the '第二章即将开放' message "
-                               "is UI (zone.exit.sealedChapter2); exit.sealed recipe at fx_vortex",
+                               "is UI (zone.exit.sealedChapter2); exit.sealed recipe at fx_vortex. Not blocking: the "
+                               "hero walks onto the exit tile to get the message (W8 walk-then-act); the wall ring round "
+                               "it blocks",
     "SM_FX_ClueMagnifier": "quest clue marker (QuestWorld investigate_clue): floats 0.5 m up, bobs 6 px and rocks +-8 "
                            "deg (1100 ms yoyo) over NS_World_ClueRing; pivot = lens centre",
     "SM_FX_GuideArrow": "quest guide chevron on a 1.1 m ring round the hero, 30 cm up; tip = mesh forward (-Y, UE +Y "
@@ -716,7 +727,7 @@ def main(argv: list[str]) -> int:
         pal.save()
         E.sheet(objs, "sheet_interactive_" + "_".join(n.split("_")[-1][:6] for n in names)[:80], cols=3)
         return 0
-    for n in names:
+    for n in (names if "--family" not in argv else []):
         scene.reset()
         pal = Palette(E.PROPS)
         if n == "SK_Prop_TreasureChest":
@@ -732,6 +743,22 @@ def main(argv: list[str]) -> int:
         obj = fn(pal)
         pal.save()
         E.ship(obj, n, cat, pal, obj["af_outline_class"], extra=extra, previews=previews, close_facing="front", **kw)
+    if previews and (len(names) > 1 or "--family" in argv):
+        scene.reset()
+        pal = Palette(E.PROPS)
+        objs = [build_chest(pal)[0] if n == "SK_Prop_TreasureChest" else ASSETS[n][0](pal) for n in names]
+        for o in objs:
+            if o.name.startswith("SM_FX_ClueMagnifier"):
+                o.location.z = 0.0
+        big = [o for o in objs if "Exit" in o.name]
+        small = [o for o in objs if o not in big]
+        E.family_sheet(small, "interactive_props.png", "INTERACTIVE PROPS AND MARKERS", cols=4, focus_z=0.35,
+                       cell_px=(230, 230), facing_deg=-135.0)
+        for o in small:
+            o.hide_render = True
+        if big:
+            E.family_sheet(big, "exit_gates.png", "ZONE EXIT: PORTAL (LATER) AND SEALED GATE (W7)", cols=3,
+                           focus_z=1.0, cell_px=(400, 420))
     return E.summary()
 
 

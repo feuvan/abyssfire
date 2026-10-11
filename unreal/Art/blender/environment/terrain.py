@@ -785,6 +785,7 @@ def render_ground(img: np.ndarray, shape, out: Path) -> None:
     """The composited test map on a ground plane at the W1 camera (default distance, 1080p crop) with the
     warrior standing on the camp ground."""
     import bpy
+    from mathutils import Vector
     from kit import scene, review, shading
     scene.reset()
     rows, cols = shape
@@ -821,11 +822,19 @@ def render_ground(img: np.ndarray, shape, out: Path) -> None:
             from kit import outline
             review.set_outline_px([mm], outline.SCREEN_PX_1080[mm.get("af_outline_class", "hero")])
     full = review.render_array()
-    review.draw_text(full, 8, 8, "TERRAIN PLAINS: CAMP + PALISADE GROUND, PATH, POND, STONE, WALL GROUND  W1 1080P",
-                     scale=2)
-    pngio.write_png_budget(out / "transitions.png", full[60:1020, 160:1760])
-    # water close crop (shallows, foam, bank)
-    pngio.write_png_budget(out / "water.png", full[560:1000, 200:900])
+
+    def crop_at(col, row, w, h):
+        x, y = review.project_px(cam, Vector((col, -row, 0.0)), (1920, 1080))
+        x0 = int(min(max(x - w / 2, 0), 1920 - w))
+        y0 = int(min(max(y - h / 2, 0), 1080 - h))
+        return full[y0:y0 + h, x0:x0 + w].copy()
+    tr = crop_at(cols / 2 - 0.5, rows / 2 - 0.5, 1040, 600)
+    review.draw_text(tr, 6, 6, "TERRAIN PLAINS TEST MAP: CAMP GROUND, PATH, POND, STONE, WALL GROUND  W1 1080P 1:1")
+    pngio.write_png_budget(out / "transitions.png", tr)
+    # water close crop (shallows, foam, bank) round the pond (rows 8-10, cols 2-6)
+    wa = crop_at(4.0, 9.2, 640, 400)
+    review.draw_text(wa, 6, 6, "WATER: SHALLOW TINT, FOAM BAND, BANK, WAVE FLECKS, LILY PADS  1080P 1:1")
+    pngio.write_png_budget(out / "water.png", wa)
     print(f"  {out / 'transitions.png'}")
 
 

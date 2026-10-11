@@ -7,6 +7,10 @@ look can be assembled from them with leader-pose components on any ``SKEL_Human`
 parts are rigid on ``head``; tops, apron, mantle, pack are build-specific). Assembled, the parts of one look
 reproduce its merged mesh exactly (no duplicated layers: the top owns the arms, the body the hands, legs and boots).
 
+Parts made only of no-hull trims (mustache, stubble, spectacles: in the merged look they are covered by the skull's
+padded hull, ``covered_by=``) ship without an outline: an own hull would ink a ring across the face, so the mesh has
+one material slot (toon) in the FBX and in the manifest, never an empty ``M_AF_Outline`` slot (Interchange drops it).
+
 Review: ``Previews/npc_kit/kit_parts_a.png`` / ``_b.png`` (every part on its own, READY pose of its look, the shipped ink).
 """
 from __future__ import annotations
@@ -59,7 +63,8 @@ KIT = [
 ]
 
 
-def ship_kit() -> int:
+def ship_kit(only=()) -> int:
+    """Export every kit part (``only``: just these assets; the review sheets still show every part)."""
     import npc_ship as S
     out = paths.preview_root() / "npc_kit"
     out.mkdir(parents=True, exist_ok=True)
@@ -82,15 +87,26 @@ def ship_kit() -> int:
             if obj is None:
                 print(f"[kit] {name}: empty, skipped")
                 continue
-            fbx = export.export_skeletal_mesh(B.rig, [obj], name, "NPCs")
-            e = export.skeletal_entry(B.rig, obj, fbx, "NPCs", B.pal, "npc", [], [], extra={
-                "kitPart": group, "fromLook": npc.asset, "build": npc.look.build,
-                "assembly": "leader-pose component on a SKEL_Human NPC; head / hair / beard / hat / specs are rigid on "
-                            "`head`, the other parts are bind-pose specific to their build",
-                "previews": ["npc_kit/kit_parts_a.png", "npc_kit/kit_parts_b.png"]})
-            e["materialSlots"][1]["outlineMix"] = outline.INK_MIX["npc"]
-            man.set_asset(name, e)
-            print(f"[kit] {name}: {M.tri_count(obj, 0)} + {M.tri_count(obj, 1)} tris ({group} of {npc.asset})")
+            hull = M.tri_count(obj, 1)
+            if not hull:                           # no-hull trims only: no outline slot (module docstring)
+                obj.data.materials.pop(index=1)
+            if only and name not in only:
+                anim.assign(B.rig, None)           # the state export_skeletal_mesh leaves for the review cell
+                anim.clear_pose(B.rig)
+            else:
+                fbx = export.export_skeletal_mesh(B.rig, [obj], name, "NPCs")
+                e = export.skeletal_entry(B.rig, obj, fbx, "NPCs", B.pal, "npc", [], [], extra={
+                    "kitPart": group, "fromLook": npc.asset, "build": npc.look.build,
+                    "assembly": "leader-pose component on a SKEL_Human NPC; head / hair / beard / hat / specs are "
+                                "rigid on `head`, the other parts are bind-pose specific to their build",
+                    "previews": ["npc_kit/kit_parts_a.png", "npc_kit/kit_parts_b.png"]})
+                if hull:
+                    e["materialSlots"][1]["outlineMix"] = outline.INK_MIX["npc"]
+                else:
+                    del e["materialSlots"][1:]
+                man.set_asset(name, e)
+                print(f"[kit] {name}: {M.tri_count(obj, 0)} + {hull} tris ({group} of {npc.asset})"
+                      + ("" if hull else ", no outline slot"))
             # review cell in the look's READY pose
             anim.apply_pose(A.solve(A.ready()))
             rv = review.Review(name, B.rig.obj, [obj], 1.8, blob_radius=0.0, out_dir=out,

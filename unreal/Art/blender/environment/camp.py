@@ -75,17 +75,18 @@ def stake(b: M.Builder, at: Vector, h: float, rnd: random.Random, region: str = 
     """One sharpened stake (web stake()): square-ish post, pyramid tip, a grain line, two rope lashing bands at
     30 % and 68 % of the height, optional ivy leaves."""
     tip = w * 1.15
-    sp = E.spike(w, h, tip, seed=(at.x, at.y, h, rnd.random()), square=True)
+    sp = E.spike(w, h, tip, seed=(at.x, at.y, h, rnd.random()), square=True, rows=14)
     sp.rotate("z", yaw).translate(at)
     pid = b.add(sp, region, name="stake", hull_pad=True)
     hw = w / 2 * 1.02
     for f in (0.30, 0.68):
-        band = E.rope_band((hw * 1.16, hw * 1.16), h * f, height=0.055, thick=0.018, sides=12, exp=3.4)
-        band.rotate("z", yaw + 45).translate(at)
+        # a squared lashing: superellipse corners on the post's corners (spike corners sit on the diagonals)
+        band = E.rope_band((hw * 1.05, hw * 1.05), h * f, height=0.055, thick=0.014, sides=16, exp=8.0)
+        band.rotate("z", yaw).translate(at)
         b.add(band, "band", name="band", outline=False, covered_by=pid)
-    a = math.radians(yaw + 45 + 90 * rnd.randint(0, 3))
+    a = math.radians(yaw + 90 * rnd.randint(0, 3))       # a face normal (faces are axis-aligned in the spike frame)
     n = Vector((math.cos(a), math.sin(a), 0))
-    face = at + n * hw * 1.18
+    face = at + n * hw * 1.005
     grain(b, "wood_line", face + Vector((0, 0, h * 0.42)), face + Vector((0, 0, h * 0.92)), n, 0.014, pid)
     if ivy:
         for q in range(4):
@@ -133,14 +134,13 @@ def build_gatepost(pal: Palette):
     b = M.Builder(name, pal, prefix="palisade")
     b.regions(**PAL_REGIONS)
     h, w = 1.78, 0.22
-    sp = E.spike(w, h, 0.0001, seed=name, square=True, taper=0.97)
+    sp = E.spike(w, h, 0.0001, seed=name, square=True, taper=0.97, rows=18)
     pid = b.add(sp, "wood", name="post", hull_pad=True)
     # carved cap: a lighter pyramid block
     cap = E.spike(w * 1.18, 0.07, 0.2, seed=(name, "cap"), square=True, taper=1.0).translate((0, 0, h - 0.02))
     b.add(cap, "cap", name="cap", hull_pad=True)
     for f in (0.22, 0.5, 0.78):
-        band = E.rope_band((w / 2 * 1.2, w / 2 * 1.2), h * f, height=0.06, thick=0.02, sides=12, exp=3.4)
-        band.rotate("z", 45)
+        band = E.rope_band((w / 2 * 1.05, w / 2 * 1.05), h * f, height=0.06, thick=0.016, sides=16, exp=8.0)
         b.add(band, "band", name="band", outline=False, covered_by=pid)
     # arm + green camp pennant hanging toward the camp side (−Y)
     arm = M.box((0.08, 0.36, 0.07), (0, -0.22, h - 0.22), bevel=0.012)
@@ -168,23 +168,24 @@ CAMP_REGIONS = dict(
     ember=Region("#FF7A2A", .0, .0, e=1.0),
     ember_hot=Region("#FFD080", .0, .0, e=1.0),
     ember_dim=Region("#B8401C", .0, .0, e=0.7),
-    post=Region("#7A5238", .42, .30),
+    post=Region("#7A5238", .42, .30, o=.6),
     post_line=Region("#7A5238").line_region(),
     roof=Region("#9A4A32", .42, .35),
     roof_line=Region("#9A4A32").shade_region(.3, .12),
     bucket=Region("#8A6A44", .42, .32),
-    rope=Region("#C8B088", .36, .30),
+    rope=Region("#C8B088", .36, .30, o=.6),
     water=Region("#1A1A28", .30, .10),
     water_hi=Region("#5096C8", .30, .25),
     iron=Region("#5A5E6A", .42, .45),
-    canvas=Region("#5A4028", .40, .35),
+    canvas=Region("#5A4028", .34, .14),
     canvas_in=Region("#2A1A22", .30, .10),
     canvas_line=Region("#5A4028").shade_region(.30, .12),
     canvas_trim=Region("#8C7050", .36, .30),
-    gold=Region("#D8B04A", .42, .45),
-    peg=Region("#5A3A22", .42, .30),
-    pole=Region("#6E4A30", .42, .30),
-    cloth=Region("#2A6A1A", .42, .35),
+    gold=Region("#D8B04A", .42, .45, o=.6),
+    peg=Region("#5A3A22", .42, .30, o=.6),
+    pole=Region("#6E4A30", .42, .30, o=.55),
+    bar=Region("#6E4A30", .42, .22, o=.3),       # banner crossbar: lit top edge seen from above keeps a dark line
+    cloth=Region("#2A6A1A", .42, .35, o=.6),
     cloth_trim=Region("#1A4A10", .40, .30),
     stave=Region("#9A6A3E", .42, .35),
     stave_line=Region("#9A6A3E").shade_region(.3, .12),
@@ -192,7 +193,7 @@ CAMP_REGIONS = dict(
     plank=Region("#B08450", .42, .35),
     plank_line=Region("#B08450").shade_region(.3, .12),
     frame=Region("#7A5230", .42, .30),
-    cup=Region("#5A5A68", .42, .40),
+    cup=Region("#5A5A68", .42, .40, o=.6),
     rim=Region("#3A2A24", .40, .25),
     rune_stone=Region("#8A8EA0", .42, .35),
     rune=Region("#FFA040", .0, .0, e=1.0),
@@ -325,7 +326,9 @@ def _block(r_in, r_out, a0, a1, z0, z1, segs: int = 3):
 def build_tent(pal: Palette):
     name = "SM_Prop_Camp_Tent"
     b, rnd = new(pal, name)
-    W, D, Hr = 1.15, 0.98, 1.84           # half width, half depth, ridge height
+    # half width, half depth, ridge height: apex 1.7 m (web 66 px), roof pitch 54° — steeper roofs turned across the
+    # W1 view (N·V < 0.44) light up wholesale in the warm rim band
+    W, D, Hr = 1.25, 0.98, 1.70
     th = 0.03
     # roof sheets: from the ridge down to the ground at ±W (slight cloth sag)
     for s in (-1, 1):
@@ -334,7 +337,9 @@ def build_tent(pal: Palette):
             t = j / 4
             x = s * (0.02 + (W - 0.02) * t)
             z = Hr * (1 - t) - 0.03 * math.sin(math.pi * t)
-            rows.append([Vector((x, y, z)) for y in (-D, -D * 0.5, 0, D * 0.5, D)])
+            # the canvas sags between the gable poles (strongest mid-slope): bands ripple along the ridge
+            rows.append([Vector((x, y, z - 0.05 * math.sin(math.pi * t) * math.cos(math.pi * y / (2 * D))))
+                         for y in (-D, -D * 0.5, 0, D * 0.5, D)])
         bm = bmesh.new()
         vv = [[bm.verts.new(p) for p in row] for row in rows]
         for j in range(4):
@@ -347,10 +352,13 @@ def build_tent(pal: Palette):
         rid = b.add(part, "canvas", name=f"roof{s}", hull_pad=True)
         # trim stripe near the hem + seams down the slope
         nrm = Vector((s * Hr, 0, W)).normalized()
-        b.add(E.ribbon([Vector((s * W * 0.84, y, Hr * 0.16)) + nrm * th for y in (-D, 0, D)], [nrm] * 3, 0.06,
-                       lift=0.004, thick=0.003), "canvas_trim", name="trim", outline=False, covered_by=rid)
+        def on_roof(t, y):
+            return Vector((s * (0.02 + (W - 0.02) * t), y, Hr * (1 - t) - 0.03 * math.sin(math.pi * t)
+                           - 0.05 * math.sin(math.pi * t) * math.cos(math.pi * y / (2 * D)))) + nrm * th
+        b.add(E.ribbon([on_roof(0.84, y) for y in (-D, -D * 0.5, 0, D * 0.5, D)], [nrm] * 5, 0.06,
+                       lift=0.002, thick=0.003), "canvas_trim", name="trim", outline=False, covered_by=rid)
         for y in (-D * 0.36, D * 0.36):
-            b.add(E.ribbon([Vector((s * W * t, y, Hr * (1 - t))) + nrm * th for t in (0.06, 0.5, 0.94)], [nrm] * 3,
+            b.add(E.ribbon([on_roof(t, y) for t in (0.06, 0.28, 0.5, 0.72, 0.94)], [nrm] * 5,
                            0.014, lift=0.004, thick=0.002), "canvas_line", name="seam", outline=False, covered_by=rid)
     # gables: back closed, front with a dark door and the flaps (one tied back)
     for y, front in ((D, False), (-D, True)):
@@ -358,6 +366,23 @@ def build_tent(pal: Palette):
         g = M.plate(tri if front else list(reversed(tri)), 0.025, bevel=0.004)
         g.transform(_rx(90)).translate((0, y + (0.012 if not front else -0.012) * 0, 0))
         gid = b.add(g, "canvas", name="gable", hull_pad=True)
+        # web: light trim stripe 8 px (≈ 0.2 m) above the ground across the whole tent, seams from the apex
+        sgn = -1 if front else 1
+        face_y = y + sgn * 0.0127
+        nrm = Vector((0, sgn, 0))
+        zt = 0.2
+        half = W * (1 - zt / Hr) - 0.04
+        spans = [(-half, -0.47), (0.47, half)] if front else [(-half, half)]
+        for x0, x1 in spans:
+            b.add(E.ribbon([Vector((x0, face_y, zt)), Vector(((x0 + x1) / 2, face_y, zt)), Vector((x1, face_y, zt))],
+                           [nrm] * 3, 0.07, lift=0.0005, thick=0.002), "canvas_trim", name="trim", outline=False,
+                  covered_by=gid)
+        for xs in (-1, 1):
+            xa = xs * (0.62 if front else 0.45)
+            top_p = Vector((0, face_y, Hr * 0.94))
+            bot_p = Vector((xa, face_y, 0.04))
+            b.add(E.ribbon([top_p, top_p.lerp(bot_p, 0.5), bot_p], [nrm] * 3, 0.016, lift=0.0005, thick=0.0015),
+                  "canvas_line", name="seam", outline=False, covered_by=gid)
         if front:
             door = M.plate([(-0.42, 0.0), (0.42, 0.0), (0.0, 1.22)], 0.01)
             door.transform(_rx(90)).translate((0, y - 0.016, 0.0))
@@ -369,7 +394,7 @@ def build_tent(pal: Palette):
             tied.transform(_rx(90)).translate((0, y - 0.035, 0.0))
             b.add(tied, "canvas", name="flap_tied", hull_pad=True)
             tie = M.box((0.05, 0.05, 0.05), (0.42, y - 0.06, 0.6), bevel=0.01)
-            b.add(tie, "rope", name="tie", outline=False)
+            b.add(tie, "rope", name="tie")
             for xs in (-1, 1):
                 b.add(E.ribbon([Vector((0, y - 0.013, Hr * 0.98)), Vector((xs * W * 0.5, y - 0.013, Hr * 0.5)),
                                 Vector((xs * W * 0.98, y - 0.013, 0.03))], [Vector((0, -1, 0))] * 3, 0.03,
@@ -398,8 +423,8 @@ def build_banner(pal: Palette):
     pid = b.add(pole, "pole", name="pole", hull_pad=True)
     fin = M.gem(0.07, 0.2, 0.08, sides=4).translate((0, 0, H + 0.04))
     b.add(fin, "gold", name="finial")
-    bar = M.tube([(-0.06, 0, H - 0.17), (0.58, 0, H - 0.17)], [0.03, 0.03], sides=6)
-    b.add(bar, "pole", name="bar")
+    bar = M.tube([(-0.07, 0, H - 0.17), (0.6, 0, H - 0.17)], [0.036, 0.036], sides=8)
+    b.add(bar, "bar", name="bar")
     # swallow-tail cloth hanging from the crossbar (+X side), gentle waves
     w0, L = 0.5, 1.15
     pts = [(0.0, 0.0), (w0, 0.0), (w0 + 0.03, -L), (w0 / 2, -L + 0.22), (0.0, -L)]
@@ -575,8 +600,10 @@ for _v in "ABC":
     ASSETS[f"SM_Palisade_Plains_Stake_{_v}"] = (lambda pal, v=_v: build_stake(pal, v),
                                                dict(game_ids=["palisade_plains"], footprint=[1, 1], blocking=True,
                                                     blob=0.12))
-ASSETS["SM_Palisade_Plains_Straight"] = (lambda pal: build_run(pal, "Straight"), dict(blob=0.3))
-ASSETS["SM_Palisade_Plains_Corner"] = (lambda pal: build_run(pal, "Corner"), dict(blob=0.3))
+ASSETS["SM_Palisade_Plains_Straight"] = (lambda pal: build_run(pal, "Straight"), dict(blob=0.3, footprint=[1, 1],
+                                                                                      blocking=True))
+ASSETS["SM_Palisade_Plains_Corner"] = (lambda pal: build_run(pal, "Corner"), dict(blob=0.3, footprint=[1, 1],
+                                                                                  blocking=True))
 ASSETS["SM_Palisade_Plains_GatePost"] = (build_gatepost, dict(game_ids=["palisade_gate_plains"], footprint=[1, 1],
                                                               blocking=True, blob=0.16))
 ASSETS["SM_Prop_Camp_Campfire"] = (build_campfire, dict(game_ids=["camp_campfire"], footprint=[1, 1], blocking=False,
@@ -629,7 +656,7 @@ def main(argv: list[str]) -> int:
         E.quick(objs, "camp_" + "_".join(n.split("_")[-1][:6] for n in names)[:80], spacing=2.0)
         return 0
     shipped = []
-    for n in names:
+    for n in (names if "--family" not in argv else []):
         scene.reset()
         pal = Palette(E.PROPS)
         fn, kw = ASSETS[n]
@@ -640,11 +667,29 @@ def main(argv: list[str]) -> int:
             extra["note"] = NOTES[n]
         E.ship(obj, n, CAT, pal, obj["af_outline_class"], extra=extra, previews=previews, **kw)
         shipped.append(n)
+    if "--family" in argv:
+        shipped = names
     if previews and len(shipped) > 1:
         scene.reset()
         pal = Palette(E.PROPS)
         objs = [ASSETS[n][0](pal) for n in shipped]
-        E.family_sheet(objs, "camp_kit.png", "PLAINS CAMP KIT AND PALISADE", cols=4, half_w=0.07, focus_z=0.7)
+        pal_objs = [o for o in objs if "Palisade" in o.name]
+        kit = [o for o in objs if o not in pal_objs]
+        if pal_objs:
+            E.family_sheet(pal_objs, "camp_palisade.png", "PLAINS CAMP PALISADE (R1 1.4 M)", cols=4, focus_z=0.7,
+                           cell_px=(240, 300))
+        for o in pal_objs:
+            o.hide_render = True
+        big = [o for o in kit if any(k in o.name for k in ("Tent", "Well", "Campfire", "Banner"))]
+        small = [o for o in kit if o not in big]
+        if big:
+            E.family_sheet(big, "camp_kit.png", "PLAINS CAMP KIT: TENT WELL CAMPFIRE BANNER", cols=5, focus_z=0.9,
+                           cell_px=(300, 360))
+        for o in big:
+            o.hide_render = True
+        if small:
+            E.family_sheet(small, "camp_kit_small.png", "PLAINS CAMP KIT: BARREL CRATE TORCH HEARTHSTONE", cols=5,
+                           focus_z=0.6, cell_px=(220, 280))
     return E.summary()
 
 

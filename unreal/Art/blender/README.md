@@ -255,9 +255,9 @@ fx_overhead, fx_hand_l/r` (+ `fx_eye_l/r`), as bone-relative UE cm.
 
 | File | Content | Exporter |
 |---|---|---|
-| `SK_*.fbx` | armature (object exported as `Armature`, so UE adds no extra root) + skinned mesh, bind pose, no anim, 2 material slots, custom normals, `AF_Data` colours | `bake_anim=False` |
-| `A_*_<Action>.fbx` | armature only, one action, take named like the file, frames 0..N | `bake_anim=True`, all bones, no NLA, no "all actions", force start/end keys, step 1, simplify 0 |
-| `SM_*.fbx` | mesh + `SOCKET_<name>` empties (+ `UCX_<SM>_NN`) | |
+| `SK_*.fbx` | armature (object exported as `Armature`, so UE adds no extra root) + skinned mesh, bind pose, no anim, 2 material slots (1 for a mesh with no hull: never an empty outline slot), custom normals, `AF_Data` colours | `bake_anim=False` |
+| `A_*_<Action>.fbx` | armature only, one action, take named like the file, frames 0..N (N + 1 keys); file timeline (`GlobalSettings` `TimeSpanStart/Stop`) = take (`AnimationStack`, `Takes/Take`) = 0..N / 60 s in exact FBX ticks, every key on its frame | `bake_anim=True`, all bones, no NLA, no "all actions", force start/end keys, step 1, simplify 0; then `fbxtime.set_clip_range` (the exporter hard-codes a 0..1 s timeline and truncates some frame times one tick short) |
+| `SM_*.fbx` | mesh in its own space (node transform identity; held items are unparented for the export) + `SOCKET_<name>` empties (+ `UCX_<SM>_NN`) | |
 
 Common: axis forward −Z / up Y, no leaf bones, deform bones only, primary/secondary bone axis Y/X, face smoothing,
 linear vertex colours. UE import: **Import Normals** (not Compute), Force Front X off, Convert Scene on, don't
@@ -517,3 +517,121 @@ Conventions learnt on the NPCs:
   collapsed eye white sinks under the skin and a decimated hairline creeps over the eye.
 * **Grounded falls** check the boots at full resolution (`NpcAnims.grounded`): every-2nd-vertex sampling missed a
   tucked toe cap by 1.6 cm.
+
+## 12. Environment generators (`environment/`)
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/environment/<family>.py [names…]
+#   <family> = foliage | rocks | camp | story | interactive | goblin_camp     (names: substrings, e.g. Oak Outcrop)
+#   (no flag)       ship: FBX + manifest entry (merged) + review set + ink gate per asset, then the family sheets
+#   --sheet         iteration sheet (3/4 view + 1080p W1 crop ×2 per asset) → scratch
+#   --quick         every asset in a row with the warrior (close 3/4 + native 1080p game crop) → scratch
+#   --family        rebuild the family sheets in Previews/env_family/ only        · --no-previews
+#   rocks.py --ridge    wall outcrops on the tile grid as the runtime places them (Previews/env_family/outcrop_ridge.png)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/environment/terrain.py    # texture set + manifest terrain section
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/environment/vignette.py   # the plains vignette
+```
+
+| File | Content |
+|---|---|
+| `environment/envkit.py` | shared by the family (the kit is unchanged): `Lump` cloud lumps (union of spheres, `cull_hidden` drops faces inside a neighbour), `RockShape` (radial boulder: bumps, flat foot, `top_cut`, `boxy` superellipsoid, `centre`) + `rock`, `rock_cap` (moss / snow blanket with drips; `inner_shell=False` = open cap) + `cull_under_cap`, `drip_edge`, `ring_loft`, `blade`, `ribbon` (painted strips on a surface), `bloom`, `plank`, `spike` (`rows` > 2: rings for local hull padding), `rope_band`; `finish` (build → **spherised normals** per canopy lump → **wind data** `AF_Data.g/.b` + UV1 `UVWind` → toon + outline → hull); `ship` (FBX, merged manifest entry with `footprintTiles` / `blocking` / `outlinePx1080` / `outlineMix` / foliage parents / wind contract, review set with `ground_occludes`, ink gate recorded); `EnvManifest` (also merges the top-level `terrain` section); `family_sheet` (every variant at the W1 camera, native 1080p, the warrior for scale), `scene_shot`, `tile_hash` (= `AbyssWorldUtil::TileHash`), `place`, `import_warrior` / `toon_material_files` (shipped hero + palettes read from disk) |
+| `environment/foliage.py` | `SM_Foliage_Plains_Oak_A/B/C` (`tree`), `_FruitTree_A/B` (`tree_round`), `_BerryBush_A/B` (`bush`), `_GrassTuft_A/B/C` (`grass`), `_FlowerPatch_A/B` (`flower`), `_RedMushrooms_A/B` (`mushroom_red`), `_LilyPad_A/B` (`lily_pad_plains`) — palette `Foliage_Plains`, parents `M_AF_Toon_Foliage` / `M_AF_Outline_Foliage`; ground cover (grass, flowers) has no hull and uses `MI_AF_Toon_Foliage_Plains_Ground` |
+| `environment/rocks.py` | `SM_Rock_Plains_Cluster_A/B/C` (`rock`), `_MossBoulder_A` (`boulder`), wall tiles `SM_Outcrop_Plains_V0..V5` (`outcrop_plains`; V2 / V5 hedges), skirt `SM_Terrain_Plains_SkirtHill_A..C` (`skirt_hill_plains`, ground: no ink) |
+| `environment/camp.py` | `SM_Palisade_Plains_Stake_A/B/C` (`palisade_plains`, 1.30 / 1.40 / 1.50 m, R1), `_GatePost` (`palisade_gate_plains`), level-design runs `_Straight` / `_Corner`; camp kit `SM_Prop_Camp_Campfire/Well/Tent/Banner/Barrel/Crate/Torch/Hearthstone` (`camp_<type>`; sockets `flame`, `glow`, `gem`) |
+| `environment/story.py` | story decor `SM_Prop_Story_ElvenRuins` (`decor_ruins`), `_GoblinTotem` (`decor_war_banner`), `_BrokenAltar` (`decor_broken_altar`, R6 canonical), `_DryWell` (`decor_dry_well`); lore `SM_Prop_Lore_AncientTablet/TornJournal/CrystalShard/CarvedStone` (`lore_<spriteType>`) |
+| `environment/interactive.py` | `SK_Prop_TreasureChest` (`SKEL_Prop_Chest`: root + lid, `A_Prop_TreasureChest_Idle` / `_Open` 400 ms, notify `ChestOpen`), `SM_Prop_GoldPile`, `SM_Prop_Event_RunePillar`, `SM_Prop_ExitPortal` (later chapters), `SM_Prop_ExitGate_Sealed` (W7), markers `SM_FX_ClueMagnifier`, `SM_FX_GuideArrow`, gather node `SM_Prop_Gather_EmeraldHerb` |
+| `environment/goblin_camp.py` | spec §6.9 / R7: `SM_Prop_Goblin_Hut_A/B` (2 × 2), `_FirePit`, `_BoneTotem`, `_SpearRack`, `_Crates` |
+| `environment/terrain.py` | `Art/Export/Terrain/`: `T_Terrain_Plains_Grass/Dirt/Stone/Camp_BC`, `T_Water_Plains_BC` (1024², one 3 × 3-tile period, painted from `Data/terrain_styles.json` like `GroundPainter`), `T_Terrain_Plains_Details_BC` (per-tile detail atlas), `T_Terrain_Plains_Noise_M`, `T_Water_Plains_Mask_M`; `composite()` = the exact web transition rules (`MF_TileBlend`); the UE material inputs (textures, colour spaces, UV rule, transition formulas, water constants) in `manifest.json → terrain.plains`; previews `Previews/terrain_plains/` |
+| `environment/vignette.py` | the plains vignette (`Previews/env_vignette/`): every mesh **re-imported from its FBX** with the shipped palettes, placed like `AAbyssZoneActor` places it (outcrop variant / yaw from `tileHash`, palisade stakes by the neighbour mask, camp props facing the camp centre, lily pads on water tiles), the composited terrain with contact shadows, the warrior; `vignette_footprints.png` paints the W5 footprints from the manifest |
+
+Previews: per asset `Previews/<SM_…>/` `game.png`, `game_1080crop.png` (shipped ink + bloom next to the baked hull alone),
+`game_inkgate.png`, `closeup.png`, `turnaround.png` (the chest adds `anim_Idle.png`, `anim_Open.png`); family sheets in
+`Previews/env_family/` (`foliage_trees`, `foliage_fruittrees`, `foliage_small`, `rocks_outcrops`, `outcrop_ridge`,
+`camp_palisade`, `camp_kit`, `camp_kit_small`, `story_decor`, `lore_props`, `interactive_props`, `exit_gates`,
+`goblin_camp`); `Previews/terrain_plains/`; `Previews/env_vignette/`.
+
+Ink: decor class (line tone, `INK_MIX` 1.0) at 1.2 px — **1.4 px for `Props_Plains` decor** (`envkit.PX_OVERRIDE`;
+poles and stakes are 8–12 px wide at 1080p and their lit edge carries the warm rim), interactive props 2.0 px; every
+gated cell is a native-1080p W1 crop measured with the terrain occluding the hull under the floor
+(`ground_occludes`). Every entry records `footprintTiles` + `blocking` (W5: trees, boulders, outcrops, stakes, tents,
+wells, barrels, crates, tall story decor and the goblin huts / totem / rack / crates block; ground cover, mushrooms,
+bushes, campfire, banners, torches, lore props, markers and the exit gate do not — the hero walks onto the exit tile
+for the W7 message). Budgets: oak 4.4 k toon, fruit tree 3.4 k, bush 2.2 k, outcrop 1.5–1.8 k, ground cover ≤ 360.
+
+Conventions learnt on the environment:
+
+* **Canopies want spherised normals** (spec §6.5): each cloud lump's shading normals are blended 85 % toward its
+  ellipsoid's (`finish(spherise=…)`), so the lobed silhouette keeps its scallops while the cel bands sit on the lump
+  as one clean crescent; at 60 % the lobes facet into crumpled-paper bands.
+* **Wide crowns**: the web oak is wider than tall (7 lumps over 115 px); a ring of 5 light lumps round a dark core
+  with an upper ring and one crowning lump reads as the web tree from every yaw — a vertical stack reads as a column.
+* **Flat faces turned from the key light go wholly to the shade band** (a stele, a gable): pillow them (a loft with a
+  superellipse section, exp ≈ 3) so the three bands spread across the face. Bulging the perimeter of an n-gon does
+  not work — the face needs interior vertices.
+* **Thin poles over bright grass**: a 1.4 px line-tone ink anti-aliases to lum ≈ 70 on a lit pole edge; regions of
+  thin parts take `o` 0.3–0.6 (darker toward ink) — banner crossbar, poles, ropes, pegs.
+* **Bloom eats ink**: emissive regions (crystal, portal, herb bud) bloom over their own outline; keep their `e` low,
+  their `o` near ink and let the glow come from the runtime cards / Niagara.
+* **Open shells need a closed hull proxy** (`Builder.add(hull=proxy, hull_pad=True)`): a solidified hut dome with a
+  door gap split its own hull (60 % rim); the proxy must hug the shell (+1 cm) — padding inflates it where needed, an
+  oversized proxy draws a dark crescent.
+* **Hull padding is per proxy vertex**: a 3-ring post padded round its lashings grew a dark slab along its whole
+  height; `spike(rows=14)` keeps the growth local. Square lashings align their superellipse corners with the post's.
+* **Caps**: moss blankets are open (`inner_shell=False`) and the rock under them is culled (`cull_under_cap`):
+  wall tiles are many (≈ 800 in the plains), 3.8 k → 1.6–1.8 k toon with no visible change.
+* **Ground-like meshes and the rim**: the banded rim lights any slope tilted > 24° away from the W1 camera; the
+  skirt mounds keep every slope ≤ 22° (h ≤ 0.26 × the short radius, apron ≤ 10°) and no light band (`l` 0).
+* **Water props float**: lily pads ride 1.6 cm over their pivot (UE puts the pivot 0.5 cm over the opaque water) —
+  at the surface the near half of the ink would be under the water.
+
+## 13. Items: equipment weapons and ground loot (`items/`)
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapons.py     # ship (~4 min)
+#   --only sword,axe · --quick <families> (studio + tiers + in-hand cells → scratch) · --lineup · --no-previews · --no-verify
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/loot.py        # ship (~5 min)
+#   --only bag,gold,potion,scroll,fruit,gem,quest,coin (subset; family sheets only on a full ship) · --quick [groups]
+```
+
+| File | Content |
+|---|---|
+| `items/itemkit.py` | shared: item data (`Data/item_bases.json`), the tier ladder (`weapon_tier`: levelReq ≥ 1 T1 · 6 T2 · 15 T3 · 20 T4 · 28 T5 · 35 T6, `w_rusty_sword` Worn), `plan_roles` + `AtlasVariant` (tier atlases = the `Weapons` atlas with the role swatches recoloured → `T_AF_Palette_Weapons_<Tier>_BC/_P`, `MI_AF_Toon_Weapons_<Tier>`), heroes re-imported from their shipped FBX (`import_hero`, `hero_pose`, `attach` = UE socket convention), studio cells, `GameCells` (W1 1080p 1:1 ink-gated cells, `ground_occludes`), the quality-presentation composite (`tint_body`, `add_glow`, `add_beam`, canonical `QUALITY`), `ship_static_item`, `verify_fbx`, **`revolve`** / `lathe_y` / `ring_y`, `loft_rings`, `surface_strip` |
+| `items/weapon_tiers.py` | role colours per family and tier from the web icon variant tables (`ItemIcons.ts` SWORDS / DAGGERS / BOWS / staff heads / shield kinds / drawAxe / drawMace / wandSpec); higher tiers make the web's glow accents emissive roles |
+| `items/weapons.py` | `SM_Weapon_<Sword·Axe·Mace·Dagger·Bow·Staff·Wand·Shield>` (Previews `SM_Weapon_<F>/`: `closeup`, `tiers`, `game_inhand` = READY + Attack01 contact on the warrior / mage / rogue, ink-gated, `game`, `game_inkgate`; `weapons_lineup/lineup.png`) |
+| `items/loot.py` | ground loot (spec §7): `SM_Loot_Bag`, `SM_Pickup_GoldCoin` (VFX), `SM_Pickup_Gold_S/M/L`, `SM_Pickup_PotionHP_S/–/L`, `SM_Pickup_PotionMP_S/–`, `SM_Pickup_Antidote`, `SM_Pickup_Scroll_TP/ID`, `SM_Pickup_LeyFruit`, 17 × `SM_Pickup_Gem_<Type>_<Tier>`, `SM_Pickup_Quest_Herb/Gel/Pendant` (Previews `<asset>/` + `loot_family/`) |
+
+**Weapons** (DECISIONS I6 / R4): one mesh per core `WeaponType`, modelled in its socket's bone space (grip at the
+origin, blade / shaft +Y, shields face +Y like `SM_Hero_Warrior_Shield`, bows limbs ±Z with the string toward the
+archer), attached with an identity transform; `heldBy: []` makes them the fallback of `FindWeapon` (a hero's own
+`SM_Hero_*` weapon still wins for its class). Manifest: `weaponType`, `attachSocket`, `tiers` (tier → MI),
+`bases` (item base id → tier), `tierNames`, `inHandLowestCm` (lowest point of the weapon in each tested pose).
+UE: swap slot 0 to `tiers[bases[<equipped baseId>]]`; slot 1 stays `M_AF_Outline` (weapon ink 3.5 px).
+
+**Ground loot**: palette `Pickups`, category `Pickups`, outline class **interactive** (line-tone ink 2.0 px, gate
+1.5 px), pivots at the ground contact, readable from any yaw (props spawn at a hashed yaw and bob 0–12.8 cm). Every
+entry carries a `loot` record — `tint` (only the bag: Tint × 0.85 in the canonical palette, normal untinted),
+`qualityPalette`, `beam` (spec §8.7 pool / pillar per quality), `bob` — and the sockets `beam` (ground centre),
+`label` (name plate, top + 18 cm), `glint`. Game ids: `loot_bag`, `potion_drop_hp|mp[_s|_m|_l]`, `gold_pile_s|m|l`
+(+ `goldAmount` bands), `fx_coin`, `quest_item_<kind>`, and `loot_<baseId>` for gems / potions / scrolls / ley fruit
+(the world resolves `loot_bag` for every ground item today; per-base meshes are an opt-in lookup).
+
+Conventions learnt on the items:
+
+* **`kit.mesh.lathe` / `sweep` collapse an end ring when the first or last two profile points share a height** (the
+  end tangent is zero, so the ring loses one axis): open caps and flipped hull triangles that the preview draws as
+  dark wedges across the surface (and UE would cull). Flat shoulders, coin faces and bands use **`itemkit.revolve`**
+  (explicit rings via `loft_rings`, outward normals); `lathe_y` / `ring_y` are built on it.
+* **Small props and the inverted hull**: a 1.3 cm baked hull is a third of a 6 cm coin; on thin flat parts its far
+  side stands 1.3 cm above the face and reads as a heavy crescent in a magnified close-up. In game the WPO makes it
+  2 px everywhere — so pickup close-ups draw the ink in **screen pixels** (3 px), not the kit's world-unit close-up
+  ink. Padding a hull proxy round a part that stands far proud of a single fan vertex inflates it into a tent (the
+  locket's ruby): such details get their own hull.
+* **Flat insets of a concave outline cross themselves** (`offset_closed` at the heart's tip and notch): pillow lofts
+  scale rings toward the centre instead.
+* **Off-hand items are reviewed from sw** (the holding hand faces the camera); hero + item cells are gated together
+  with `ground_occludes` (the hull under a planted sole is the terrain's, as the hero ships measure it).
+* **Glowing gems and the dark check**: bloom over a near-white stone lifts its line-tone ink above lum 64 — the
+  diamond regions use a darker hull mix (`o` .7) and the perfect cuts a modest table emission (.22).
+* **Budgets**: weapons 0.7–3.5 k toon (+ 0.24–1.4 k hull); pickups 0.7–3 k toon (+ ≤ 1.5 k hull), the gold heap
+  5.6 k (22 coins on a mound, hull from the mound proxy only) and the herb bundle 3 k + 3 k hull (15 leaves, each
+  its own ink); gems 28–70 tris; heap coins 10 sides, loose coins 12 (a 6 cm coin is ~7 px at 1080p).

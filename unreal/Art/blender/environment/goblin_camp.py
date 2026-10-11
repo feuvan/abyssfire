@@ -140,7 +140,11 @@ def build_hut_a(pal: Palette):
     R, H = 1.05, 1.75
     door_az = -math.pi / 2
     shell = dome(b, rnd, R, H, door_az=door_az)
-    sid = b.add(shell, "hide", name="shell", hull_pad=True)
+    # ink from a closed smooth proxy: the solidified shell's open door edges and lip split its own hull
+    proxy = M.lathe([((R + 0.01) * math.cos(el), H * math.sin(el) ** 0.9 + 0.01 * math.sin(el) - 0.03)
+                     for el in (k / 8 * math.pi / 2 for k in range(9))][:-1] + [(0.02, H + 0.01)], sides=24,
+                    cap0="ngon", cap1="fan")
+    sid = b.add(shell, "hide", name="shell", hull=proxy, hull_pad=True)
     # dark interior disc + back wall so the doorway reads
     b.add(M.cylinder(R * 0.92, R * 0.92, 0.0, 0.02, sides=18), "inside", name="floor", outline=False)
     inner = M.ellipsoid((R * 0.9, R * 0.9, H * 0.92), (0, 0, 0), sides=16, rings=8)
@@ -242,7 +246,9 @@ def build_hut_b(pal: Palette):
     bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=0.035)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     shell = M.Part(bm).smooth(True)
-    sid = b.add(shell, "hide_dk", name="cone", hull_pad=True)
+    proxy = M.loft_z([(-0.03, R + 0.01, R + 0.01), (H * 0.43, R * 0.5 + 0.01, R * 0.5 + 0.01),
+                      (H * 0.86 + 0.02, 0.05, 0.05)], sides=20, cap0="ngon", cap1="fan")
+    sid = b.add(shell, "hide_dk", name="cone", hull=proxy, hull_pad=True)
     inner = M.loft_z([(0.0, R * 0.85, R * 0.85), (H * 0.7, 0.08, 0.08)], sides=14, cap0="ngon", cap1="fan")
     b.add(inner, "inside", name="interior", outline=False)
     # poles crossing out of the top
@@ -458,19 +464,20 @@ def build_crates(pal: Palette):
 
 
 ASSETS: dict = {
-    "SM_Prop_Goblin_Hut_A": (build_hut_a, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=False, blob=1.2)),
-    "SM_Prop_Goblin_Hut_B": (build_hut_b, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=False, blob=1.1)),
+    "SM_Prop_Goblin_Hut_A": (build_hut_a, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=True, blob=1.2)),
+    "SM_Prop_Goblin_Hut_B": (build_hut_b, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=True, blob=1.1)),
     "SM_Prop_Goblin_FirePit": (build_firepit, dict(game_ids=["goblin_fire_pit"], footprint=[1, 1], blocking=False,
                                                    blob=0.65)),
     "SM_Prop_Goblin_BoneTotem": (build_bonetotem, dict(game_ids=["goblin_bone_totem"], footprint=[1, 1],
-                                                       blocking=False, blob=0.3)),
+                                                       blocking=True, blob=0.3)),
     "SM_Prop_Goblin_SpearRack": (build_spearrack, dict(game_ids=["goblin_spear_rack"], footprint=[1, 1],
-                                                       blocking=False, blob=0.6)),
-    "SM_Prop_Goblin_Crates": (build_crates, dict(game_ids=["goblin_crates"], footprint=[1, 1], blocking=False,
+                                                       blocking=True, blob=0.6)),
+    "SM_Prop_Goblin_Crates": (build_crates, dict(game_ids=["goblin_crates"], footprint=[1, 1], blocking=True,
                                                  blob=0.55)),
 }
 NOTE = ("goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the "
-        "explore objective zone_goblin_camp / cs_ep_whisper focus; non-blocking per spec 6.9")
+        "explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations "
+        "block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable")
 
 
 def main(argv: list[str]) -> int:
@@ -486,7 +493,7 @@ def main(argv: list[str]) -> int:
         E.sheet(objs, "sheet_goblin_" + "_".join(n.split("_")[-1][:6] for n in names)[:80], cols=3)
         return 0
     shipped = []
-    for n in names:
+    for n in (names if "--family" not in argv else []):
         scene.reset()
         pal = Palette(E.PROPS)
         fn, kw = ASSETS[n]
@@ -495,11 +502,14 @@ def main(argv: list[str]) -> int:
         extra = {"displayName": n.split("_", 2)[-1], "family": "environment.goblin_camp", "note": NOTE}
         E.ship(obj, n, CAT, pal, obj["af_outline_class"], extra=extra, previews=previews, **kw)
         shipped.append(n)
+    if "--family" in argv:
+        shipped = names
     if previews and len(shipped) > 1:
         scene.reset()
         pal = Palette(E.PROPS)
         objs = [ASSETS[n][0](pal) for n in shipped]
-        E.family_sheet(objs, "goblin_camp.png", "GOBLIN CAMP DRESSING", cols=4, half_w=0.07, focus_z=0.7)
+        E.family_sheet(objs, "goblin_camp.png", "GOBLIN CAMP DRESSING (SPEC 6.9, R7)", cols=4, focus_z=0.8,
+                       cell_px=(300, 320))
     return E.summary()
 
 

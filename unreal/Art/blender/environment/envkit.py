@@ -195,7 +195,9 @@ class RockShape:
     plane of the web rocks). ``point(d)`` → surface point (local, before ``center``)."""
 
     def __init__(self, radii: V3, seed, bumps: int = 5, amp: float = 0.10, sink: float = 0.03,
-                 top_cut: float = 0.0, lean: V3 = (0, 0, 0)):
+                 top_cut: float = 0.0, lean: V3 = (0, 0, 0), boxy: float = 2.0, centre: float = 0.62):
+        """``boxy`` > 2: superellipsoid exponent (2 = ellipsoid; 2.6–3 = a rounded block with broad shoulders);
+        ``centre``: height of the shape centre in units of ``radii.z`` (the ground cuts the rest)."""
         rnd = random.Random(scene.seed_for("rock", seed))
         self.R = _v(radii)
         self.waves = [(Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-0.6, 1))).normalized(),
@@ -204,21 +206,26 @@ class RockShape:
         self.sink = sink
         self.top_cut = top_cut
         self.lean = _v(lean)
+        self.boxy = boxy
+        self.centre = centre
 
     def radial(self, d: Vector) -> float:
         s = 1.0
         for u, f, ph, a in self.waves:
             s += a * math.sin(f * d.dot(u) * math.pi + ph)
+        if self.boxy != 2.0:
+            n = self.boxy
+            s /= (abs(d.x) ** n + abs(d.y) ** n + abs(d.z) ** n) ** (1.0 / n)
         return s
 
     def point(self, d: Vector, extra: float = 0.0) -> Vector:
         d = d.normalized()
         r = self.radial(d) + extra / max(min(self.R.x, self.R.y, self.R.z), 1e-3)
         p = Vector((d.x * self.R.x * r, d.y * self.R.y * r, d.z * self.R.z * r))
-        # rocks sit on a centre at z = R.z * 0.62: the lower part is cut by the ground plane
-        p.z += self.R.z * 0.62
+        # rocks sit on a centre at z = R.z * centre (0.62): the lower part is cut by the ground plane
+        p.z += self.R.z * self.centre
         if self.top_cut > 0:
-            top = self.R.z * (0.62 + 1.0 - self.top_cut) + extra
+            top = self.R.z * (self.centre + 1.0 - self.top_cut) + extra
             if p.z > top:
                 p.z = top + (p.z - top) * 0.18
         p.z = max(p.z, -self.sink)
@@ -247,13 +254,15 @@ def rock(shape: RockShape, center: V3 = (0, 0, 0), subdiv: int = 2, facet: float
 
 
 def rock_cap(shape: RockShape, edge: Callable[[float], float], center: V3 = (0, 0, 0), thick: float = 0.035,
-             cols: int = 28, rows: int = 5, inner: float = 0.03, yaw: float = 0.0) -> Part:
+             cols: int = 28, rows: int = 5, inner: float = 0.03, yaw: float = 0.0, inner_shell: bool = True) -> Part:
     """A cap (moss, snow) draped over ``shape``: from the top down to the polar angle ``edge(azimuth)`` (radians
-    from +Z; drips = local bumps of ``edge``), standing ``thick`` proud of the rock and closed ``inner`` inside it."""
+    from +Z; drips = local bumps of ``edge``), standing ``thick`` proud of the rock and closed ``inner`` inside it.
+    ``inner_shell=False``: only the lip turns under (the inner surface would lie hidden inside the rock — half the
+    triangles; the rock faces under the cap can then be culled with :func:`cull_under_cap`)."""
     bm = bmesh.new()
     outer_rows, inner_rows = [], []
     top_o = bm.verts.new(shape.point(Vector((0, 0, 1)), thick))
-    top_i = bm.verts.new(shape.point(Vector((0, 0, 1)), -inner))
+    top_i = bm.verts.new(shape.point(Vector((0, 0, 1)), -inner)) if inner_shell else None
     for j in range(1, rows + 1):
         ro, ri = [], []
         for i in range(cols):
@@ -261,24 +270,58 @@ def rock_cap(shape: RockShape, edge: Callable[[float], float], center: V3 = (0, 
             pol = edge(az) * (j / rows) ** 0.85
             d = Vector((math.sin(pol) * math.cos(az), math.sin(pol) * math.sin(az), math.cos(pol)))
             ro.append(bm.verts.new(shape.point(d, thick * (1.0 - 0.35 * (j == rows)))))
-            ri.append(bm.verts.new(shape.point(d, -inner)))
+            if inner_shell or j == rows:
+                ri.append(bm.verts.new(shape.point(d, -inner)))
         outer_rows.append(ro)
         inner_rows.append(ri)
     for i in range(cols):
         k = (i + 1) % cols
         bm.faces.new((top_o, outer_rows[0][i], outer_rows[0][k]))
-        bm.faces.new((top_i, inner_rows[0][k], inner_rows[0][i]))
+        if inner_shell:
+            bm.faces.new((top_i, inner_rows[0][k], inner_rows[0][i]))
         for j in range(rows - 1):
             a, b = outer_rows[j], outer_rows[j + 1]
             bm.faces.new((a[i], b[i], b[k], a[k]))
-            a, b = inner_rows[j], inner_rows[j + 1]
-            bm.faces.new((a[k], b[k], b[i], a[i]))
+            if inner_shell:
+                a, b = inner_rows[j], inner_rows[j + 1]
+                bm.faces.new((a[k], b[k], b[i], a[i]))
         bm.faces.new((outer_rows[-1][i], inner_rows[-1][i], inner_rows[-1][k], outer_rows[-1][k]))
     part = Part(bm).smooth(True)
-    part.recalc_normals()
+    if inner_shell:
+        part.recalc_normals()
+    else:
+        bm.normal_update()
+        up = sum((f.normal for f in bm.faces if f.verts[0] is top_o or top_o in f.verts), Vector())
+        if up.z < 0:
+            for f in bm.faces:
+                f.normal_flip()
     if yaw:
         part.rotate("z", yaw)
     return part.translate(center)
+
+
+def cull_under_cap(part: Part, shape: RockShape, edge: Callable[[float], float], margin: float = 0.08) -> int:
+    """Delete the faces of a rock ``part`` (local frame of ``shape``, before yaw / translation) lying wholly under
+    a cap with polar edge ``edge`` (``margin`` radians inside the edge). Returns the number removed."""
+    bm = part.bm
+    c = Vector((0, 0, shape.R.z * shape.centre))
+
+    def covered(v) -> bool:
+        q = v.co - c
+        q = Vector((q.x / shape.R.x, q.y / shape.R.y, q.z / shape.R.z))
+        L = q.length
+        if L < 1e-6:
+            return False
+        pol = math.acos(max(-1.0, min(1.0, q.z / L)))
+        return pol < edge(math.atan2(q.y, q.x)) - margin
+    cov = {v: covered(v) for v in bm.verts}
+    dead = [f for f in bm.faces if all(cov[v] for v in f.verts)]
+    if dead:
+        bmesh.ops.delete(bm, geom=dead, context="FACES")
+        loose = [v for v in bm.verts if not v.link_faces]
+        if loose:
+            bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    return len(dead)
 
 
 def drip_edge(base: float, seed, drips: int = 3, depth: float = 0.35, wobble: float = 0.10,
@@ -458,15 +501,17 @@ def plank(size: V3, center: V3 = (0, 0, 0), bevel: float = 0.012, rot: Matrix | 
 
 
 def spike(width: float, height: float, tip: float, center: V3 = (0, 0, 0), sides: int = 6, taper: float = 0.92,
-          seed=0, bend: float = 0.0, square: bool = True) -> Part:
+          seed=0, bend: float = 0.0, square: bool = True, rows: int = 2) -> Part:
     """Sharpened stake: a ``width``-thick post (square-ish when ``square``) rising ``height``, then a ``tip``
-    pyramid; small irregularities from ``seed``."""
+    pyramid; small irregularities from ``seed``. ``rows`` > 2 adds intermediate rings (same taper) so a padded
+    hull proxy grows only round the lashings it has to enclose, not along the whole post."""
     rnd = random.Random(scene.seed_for("spike", seed))
     n = 4 if square else sides
     rings = []
-    zs = [-0.04, height * 0.5, height]
+    zs = [-0.04, height * 0.5, height] if rows <= 2 else [-0.04 + (height + 0.04) * k / rows for k in range(rows + 1)]
     for k, z in enumerate(zs):
-        w = width / 2 * (1.0 if k == 0 else taper ** k)
+        kk = k if rows <= 2 else 2.0 * k / rows
+        w = width / 2 * (1.0 if k == 0 else taper ** kk)
         ring = []
         for i in range(n):
             a = math.tau * (i + 0.5) / n
@@ -888,15 +933,86 @@ def sheet(objs: Sequence, tag: str, cols: int = 4, cell=(320, 320), pitch: float
     return p
 
 
+# ── composed scenes at the game camera (ridges, runs, the plains vignette) ─────────────────────────────
+def tile_hash(col: int, row: int, salt: int = 0) -> int:
+    """``AbyssWorldUtil::TileHash`` / web ``tileHash`` (variant and yaw picks of placed props)."""
+    h = (col * 374761393 + row * 668265263 + salt * 2246822519) & 0xFFFFFFFF
+    h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
+    return (h ^ (h >> 16)) & 0xFFFFFFFF
+
+
+def tile_to_blender(col: float, row: float, z: float = 0.0) -> Vector:
+    """Tile (col, row) → Blender metres: UE X = col, UE Y = row, Blender Y = −UE Y."""
+    return Vector((float(col), -float(row), z))
+
+
+def ue_yaw_to_blender(yaw_deg: float) -> float:
+    """A UE actor yaw (deg, + = clockwise seen from above in UE's left-handed frame) → Blender Z rotation
+    (radians) for a mesh exported facing Blender −Y (= UE +Y)."""
+    return math.radians(-yaw_deg)
+
+
+def place(obj, col: float, row: float, yaw_deg_blender: float = 0.0, scale: float = 1.0, z: float = 0.0):
+    obj.location = tile_to_blender(col, row, z)
+    obj.rotation_euler = (0, 0, math.radians(yaw_deg_blender))
+    obj.scale = (scale, scale, scale)
+    return obj
+
+
+def scene_shot(meshes: Sequence, focus: V3, out: Path, label: str, size_px=(1280, 720), warrior=None,
+               ground_hex: str = "#74A247", ground: bool = True, extra_post=None) -> Path:
+    """One native-1080p window of the W1 game camera (default distance) centred on ``focus`` (Blender metres):
+    every mesh drawn with its shipped screen ink (``ink_px`` of its family / class), the warrior (``(x, y,
+    yaw_deg)`` Blender) with the hero ink, bloom on emissive regions. ``size_px`` is the crop in 1080p pixels."""
+    if ground:
+        review.stage(radius=60.0, blob_radius=0.01, ground_hex=ground_hex)
+    else:
+        review.hide_stage(True)
+    all_meshes = list(meshes)
+    if warrior is not None:
+        w = import_warrior(at=(warrior[0], warrior[1], 0.0), yaw_deg=warrior[2])
+        if w is not None:
+            all_meshes += w[1]
+    review.setup_render((1920, 1080), 8)
+    cam = review.game_camera((focus[0], focus[1]))
+    for m in all_meshes:
+        if "af_outline_width" not in m:
+            continue
+        cls = m.get("af_outline_class", "decor")
+        fam = m.get("af_family", "")
+        px = outline.SCREEN_PX_1080.get(cls, 1.2) if cls in ("hero", "weapon") else ink_px(fam, cls)
+        if px:
+            review.set_outline_px([m], px)
+    c = review.project(cam, Vector((focus[0], focus[1], focus[2] if len(focus) > 2 else 0.0)))
+    hw, hh = size_px[0] / 1920 / 2, size_px[1] / 1080 / 2
+    box = (max(0, c[0] - hw), max(0, c[1] - hh), min(1, c[0] + hw), min(1, c[1] + hh))
+    img = review.render_array(box)
+    em = review.emissive_pass(all_meshes, box)
+    img = review.bloom(img, em, 1080)
+    if extra_post is not None:
+        img = extra_post(img, cam, box)
+    review.draw_text(img, 6, 6, label)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    pngio.write_png_budget(out, img)
+    print(f"  {out}")
+    return out
+
+
 # ── family sheet: variants at the W1 camera, native 1080p, with the warrior ─────────────────────────────
 def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_w: float = 0.075,
                  warrior: bool = True, px_map: dict | None = None, focus_z: float = 0.6,
-                 facing_deg: float = -135.0) -> Path:
+                 facing_deg: float = -135.0, cell_px: tuple[int, int] | None = None) -> Path:
     """One cell per object (all built at the origin): the W1 game camera at the default distance, a fixed
-    1080p window (``half_w`` of the frame width either side of the prop) — true in-game pixels, shipped ink."""
+    1080p window (``half_w`` of the frame width either side of the prop, or ``cell_px`` = (w, h) 1080p pixels
+    centred on the prop) — true in-game pixels, shipped ink."""
     out_dir = paths.preview_root() / "env_family"
     out_dir.mkdir(parents=True, exist_ok=True)
     review.stage(blob_radius=0.3)
+    # every other mesh in the scene (a second family built in the same scene) stays hidden for the whole sheet
+    others = [o for o in bpy.data.objects if o.type == "MESH" and o not in objs and o.name != "AF_Stage"
+              and not o.hide_render]
+    for o in others:
+        o.hide_render = True
     for o in objs:
         o.hide_render = True
     cells = []
@@ -904,6 +1020,9 @@ def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_
 
     def box(cam):
         c = review.project(cam, Vector((0, 0, focus_z)))
+        if cell_px is not None:
+            bw, bh = cell_px[0] / 1920 / 2, cell_px[1] / 1080 / 2
+            return (max(0, c[0] - bw), max(0, c[1] - bh), min(1, c[0] + bw), min(1, c[1] + bh))
         return (max(0, c[0] - half_w), max(0, c[1] - hh * 0.62), min(1, c[0] + half_w), min(1, c[1] + hh * 0.62))
     review.setup_render((1920, 1080), 8)
     cam = review.game_camera()
@@ -930,6 +1049,8 @@ def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_
             for m in meshes:
                 m.hide_render = True
     for o in objs:
+        o.hide_render = False
+    for o in others:
         o.hide_render = False
     sheet = review.grid(cells, cols, pad=2)
     lab = np.zeros((14, sheet.shape[1], 3), np.uint8)

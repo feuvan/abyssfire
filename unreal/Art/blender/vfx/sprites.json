@@ -1,0 +1,392 @@
+{
+ "Arrow": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "cel arrow pointing up, pre-coloured (mesh fallback)",
+  "size": [
+   32,
+   128
+  ],
+  "texture": "T_FX_Arrow"
+ },
+ "Beam": {
+  "blend": "additive",
+  "cells": 2,
+  "note": "light column (0 plain, 1 pillar with rising streaks)",
+  "size": [
+   128,
+   256
+  ],
+  "texture": "T_FX_Beam"
+ },
+ "Bolt": {
+  "blend": "additive",
+  "cells": 4,
+  "note": "vertical jagged bolts (beam quads)",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Bolt"
+ },
+ "Bubble": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "energy bubble with fresnel rim",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Bubble"
+ },
+ "Chain": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "cel chain link, pre-coloured (mesh fallback)",
+  "size": [
+   64,
+   32
+  ],
+  "texture": "T_FX_Chain"
+ },
+ "Claw": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "three-talon rake",
+  "size": [
+   128,
+   128
+  ],
+  "texture": "T_FX_Claw"
+ },
+ "Coin": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "cel gold coin, pre-coloured (mesh fallback)",
+  "size": [
+   32,
+   32
+  ],
+  "texture": "T_FX_Coin"
+ },
+ "Comet": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "comet head + two-band tail, head at the top",
+  "size": [
+   64,
+   192
+  ],
+  "texture": "T_FX_Comet"
+ },
+ "Core": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "white-hot impact core: crisp disc + halo (web fx_core)",
+  "size": [
+   64,
+   64
+  ],
+  "texture": "T_FX_Core"
+ },
+ "Crack": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "ground fissures (tint dark)",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Crack"
+ },
+ "CrackGlow": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "glowing fissures (same geometry as Crack)",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_CrackGlow"
+ },
+ "Drop": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "liquid droplet, cel shaded (tint blood / venom)",
+  "size": [
+   32,
+   48
+  ],
+  "texture": "T_FX_Drop"
+ },
+ "Dust": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "low kicked-up dust cloud (charge, dodge, whirlwind)",
+  "size": [
+   128,
+   128
+  ],
+  "texture": "T_FX_Dust"
+ },
+ "Ember": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "teardrop ember",
+  "size": [
+   32,
+   64
+  ],
+  "texture": "T_FX_Ember"
+ },
+ "Flake": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "snowflake",
+  "size": [
+   64,
+   64
+  ],
+  "texture": "T_FX_Flake"
+ },
+ "Flame": {
+  "blend": "translucent",
+  "cells": 8,
+  "note": "pre-coloured cel flame tongues: 0 fire, 1 frost, 2 poison, 3 shadow, 4 holy, 5 rage, 6 plain, 7 camp",
+  "size": [
+   512,
+   128
+  ],
+  "texture": "T_FX_Flame"
+ },
+ "Frost": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "frost crust decal",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Frost"
+ },
+ "Glow": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "soft radial light (web fx_glow)",
+  "size": [
+   128,
+   128
+  ],
+  "texture": "T_FX_Glow"
+ },
+ "Hex": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "hex shield plate glow",
+  "size": [
+   64,
+   64
+  ],
+  "texture": "T_FX_Hex"
+ },
+ "Impact": {
+  "blend": "additive",
+  "cells": 4,
+  "note": "hit impact stars per profile: 0 normal, 1 heavy, 2 crit, 3 kill",
+  "size": [
+   512,
+   128
+  ],
+  "texture": "T_FX_Impact"
+ },
+ "LightPool": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "fake light pool, web glow falloff GLOW_STOPS",
+  "size": [
+   128,
+   128
+  ],
+  "texture": "T_FX_LightPool"
+ },
+ "Plus": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "heal plus",
+  "size": [
+   64,
+   64
+  ],
+  "texture": "T_FX_Plus"
+ },
+ "Puddle": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "liquid puddle decal (tint venom / blood)",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Puddle"
+ },
+ "Puff": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "soft round puff (web fx_puff)",
+  "size": [
+   64,
+   64
+  ],
+  "texture": "T_FX_Puff"
+ },
+ "Ring": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "ground ring at 0.4375 of the quad",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Ring"
+ },
+ "Rock": {
+  "blend": "translucent",
+  "cells": 2,
+  "note": "cel rock chips, pre-coloured (mesh fallback)",
+  "size": [
+   64,
+   32
+  ],
+  "texture": "T_FX_Rock"
+ },
+ "Rune": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "magic circle with rune glyphs",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Rune"
+ },
+ "Scorch": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "char decal (tint dark)",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Scorch"
+ },
+ "Shard": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "faceted crystal shard (grey)",
+  "size": [
+   32,
+   96
+  ],
+  "texture": "T_FX_Shard"
+ },
+ "ShardFrost": {
+  "blend": "translucent",
+  "cells": 1,
+  "note": "faceted ice shard, pre-coloured",
+  "size": [
+   32,
+   96
+  ],
+  "texture": "T_FX_ShardFrost"
+ },
+ "Shock": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "shockwave disc with a bright rim",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Shock"
+ },
+ "Skull": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "death-mark skull sigil",
+  "size": [
+   128,
+   128
+  ],
+  "texture": "T_FX_Skull"
+ },
+ "Slash": {
+  "blend": "additive",
+  "cells": 4,
+  "note": "crescent swipes, arc centre at the bottom edge: 0 warrior, 1 rogue, 2 mage, 3 heavy",
+  "size": [
+   1024,
+   128
+  ],
+  "texture": "T_FX_Slash"
+ },
+ "Smoke": {
+  "blend": "translucent",
+  "cells": 2,
+  "note": "cartoon smoke puffs, two lobe layouts",
+  "size": [
+   256,
+   128
+  ],
+  "texture": "T_FX_Smoke"
+ },
+ "Spark": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "four-point glint (web star4)",
+  "size": [
+   128,
+   128
+  ],
+  "texture": "T_FX_Spark"
+ },
+ "Star": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "five-point cartoon star (stun / sparkle fallback)",
+  "size": [
+   64,
+   64
+  ],
+  "texture": "T_FX_Star"
+ },
+ "Streak": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "velocity streak, head at the top",
+  "size": [
+   32,
+   128
+  ],
+  "texture": "T_FX_Streak"
+ },
+ "Swirl": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "whirlwind ground swirl",
+  "size": [
+   256,
+   256
+  ],
+  "texture": "T_FX_Swirl"
+ },
+ "Wisp": {
+  "blend": "additive",
+  "cells": 1,
+  "note": "spirit-fire wisp, head at the top",
+  "size": [
+   64,
+   128
+  ],
+  "texture": "T_FX_Wisp"
+ }
+}

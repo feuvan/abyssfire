@@ -12,6 +12,7 @@
     npc_ship.py props      SM_NPCKit_Prop_* (Art/Export/NPCs) + Previews/npc_props/props.png
     npc_ship.py dressing   SM_Prop_Camp_AnvilStump (Art/Export/Props) + SM_UI_QuestMarker_* (Art/Export/NPCs)
     npc_ship.py kit        SK_NPCKit_* modular parts (Art/Export/NPCs/Kit) + Previews/npc_kit/kit_parts.png
+                [SK_NPCKit_… …]                     export only these parts (the sheets still show every part)
     npc_ship.py lineup     Previews/npc_family/ lineup sheets (all NPCs + the warrior for scale, R2)
 """
 from __future__ import annotations
@@ -617,7 +618,7 @@ def main(argv: list) -> int:
         return npc_dressing.ship_dressing()
     if what == "kit":
         import npc_kit_parts
-        return npc_kit_parts.ship_kit()
+        return npc_kit_parts.ship_kit(args[1:])       # kit [SK_NPCKit_… …]: only those parts are exported
     if what == "lineup":
         import npc_dressing
         return npc_dressing.lineup()

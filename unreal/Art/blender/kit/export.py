@@ -95,8 +95,10 @@ def export_skeletal_mesh(rig: krig.Rig, meshes: Sequence[bpy.types.Object], asse
 
 
 def export_animation(rig: krig.Rig, action: bpy.types.Action, category: str) -> Path:
-    """Export one action as ``<action name>.fbx`` (armature only; take = file name)."""
-    from . import anim
+    """Export one action as ``<action name>.fbx`` (armature only; take = file name). The file's timeline and take
+    are then set to the action range exactly (``fbxtime.set_clip_range``: the exporter writes a 0..1 s timeline and
+    truncates some frame times one tick short)."""
+    from . import anim, fbxtime
     out = paths.category_dir(category) / f"{action.name}.fbx"
     out.parent.mkdir(parents=True, exist_ok=True)
     sc = bpy.context.scene
@@ -113,6 +115,7 @@ def export_animation(rig: krig.Rig, action: bpy.types.Action, category: str) -> 
                                      bake_anim_step=1.0, bake_anim_simplify_factor=0.0, **FBX_COMMON)
     finally:
         sc.name = old_scene_name
+    fbxtime.set_clip_range(out, sc.frame_start, sc.frame_end, sc.render.fps / sc.render.fps_base)
     return out
 
 

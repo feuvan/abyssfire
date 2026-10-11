@@ -276,6 +276,24 @@ def _extra_slots(entry: dict, body, pal) -> None:
 
 
 def ship_item(it: Item, pal, holder: str) -> dict:
+    """Export in the item's own space (grip / socket origin at the origin): the generators attach the held weapons to
+    their bones before shipping, and an attached item would carry the bone's bind-pose frame into the FBX node
+    transform, the ``SOCKET_*`` empties and ``boundsCm`` — so it is unparented for the export, then re-attached."""
+    o = it.obj
+    saved = (o.parent, o.parent_type, o.parent_bone, o.matrix_parent_inverse.copy(), o.matrix_basis.copy())
+    o.parent = None
+    o.matrix_world = Matrix.Identity(4)
+    bpy.context.view_layer.update()
+    try:
+        return _ship_item(it, pal, holder)
+    finally:
+        o.parent, o.parent_type, o.parent_bone = saved[:3]
+        o.matrix_parent_inverse = saved[3]
+        o.matrix_basis = saved[4]
+        bpy.context.view_layer.update()
+
+
+def _ship_item(it: Item, pal, holder: str) -> dict:
     fbx = export.export_static_mesh(it.obj, it.asset, it.category, it.sockets)
     man = export.Manifest()
     man.set_palette(pal)
@@ -775,6 +793,14 @@ def verify_export(ms: MonsterShip, sk_fbx: Path, src: dict, entry: dict) -> dict
         if it.sockets:
             check(all(f"SOCKET_{s['name']}" in names for s in it.sockets),
                   f"{it.asset}: sockets {[x for x in names if x.startswith('SOCKET_')]}")
+        mw = mesh.matrix_world
+        check(all(abs(mw[i][j] - (i == j)) < 1e-5 for i in range(4) for j in range(4)),
+              f"{it.asset}: exported in its own space (node transform identity)")
+        for s in it.sockets:
+            so = next((x for x in new if x.name == f"SOCKET_{s['name']}"), None)
+            if so is not None:
+                d = (so.matrix_world.translation - Vector(s["pos"])).length * 100.0
+                check(d < 0.5, f"{it.asset}: SOCKET_{s['name']} at the manifest location ({d:.2f} cm)")
     print(f"[verify] {'PASS' if not fails else 'FAIL'} ({len(fails)} failures)")
     return {"pass": not fails, "failures": fails}
 

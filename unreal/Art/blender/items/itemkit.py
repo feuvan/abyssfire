@@ -334,10 +334,14 @@ class GameCells:
     kit's ink gate (``review.Review.game_shot``). ``root`` is yawed by the facings."""
 
     def __init__(self, asset: str, root: bpy.types.Object, meshes: Sequence[bpy.types.Object], height: float,
-                 outline_class: str, blob_radius: float = 0.3, out_dir: Path | None = None, glows=None):
+                 outline_class: str, blob_radius: float = 0.3, out_dir: Path | None = None, glows=None,
+                 ground_occludes: bool = True):
+        """``ground_occludes``: the stage hides the hull under the floor in the ink measurement, as the terrain does
+        in UE (planted soles; ``Review.ground_occludes``)."""
         self.rv = review.Review(asset, root, list(meshes), height, blob_radius=blob_radius,
                                 game_outline_px=outline.SCREEN_PX_1080[outline_class], outline_class=outline_class,
                                 out_dir=out_dir or SCRATCH / asset, glows=glows)
+        self.rv.ground_occludes = ground_occludes
 
     @property
     def reports(self) -> list[dict]:
@@ -508,11 +512,22 @@ def verify_fbx(asset: str, category: str, expect_tris: int, sockets: Sequence[st
 
 
 # ── small geometry helpers ──────────────────────────────────────────────────────────────────────────────
+def revolve(profile_rz: Sequence[tuple[float, float]], sides: int = 16, exp: float = 2.0, cap0="fan", cap1="fan",
+            squash_y: float = 1.0, phase: float = 0.0) -> M.Part:
+    """Revolve ``(radius, z)`` round +Z from explicit rings (``loft_rings``). Unlike ``kit.mesh.lathe`` (a sweep
+    along the ring centres) consecutive profile points may share a height — flat shoulders, coin faces, band
+    edges: the sweep's end tangent is zero there and its first / last ring collapses into a line (open caps,
+    flipped hull triangles drawn over the surface). Caps: 'fan' or None; closed results get outward normals."""
+    prof = M.superellipse(1.0, squash_y, sides, exp, phase)
+    rings = [[(r * x, r * y, z) for x, y in prof] for r, z in profile_rz]
+    return loft_rings(rings, cap0=None if cap0 is None else "fan", cap1=None if cap1 is None else "fan")
+
+
 def lathe_y(profile_ry: Sequence[tuple[float, float]], sides: int = 12, exp: float = 2.0, cap0="fan", cap1="fan",
             squash: float = 1.0) -> M.Part:
     """Revolve ``(radius, y)`` (bottom → top along +Y) — grips, pommels, collars on an item's +Y axis."""
-    p = M.lathe([(r, y) for r, y in profile_ry], sides=sides, exp=exp, cap0=cap0, cap1=cap1, squash_y=squash)
-    return p.rotate("x", -90)          # lathe +Z → item +Y
+    p = revolve([(r, y) for r, y in profile_ry], sides=sides, exp=exp, cap0=cap0, cap1=cap1, squash_y=squash)
+    return p.rotate("x", -90)          # revolve +Z → item +Y
 
 
 def ring_y(y: float, r: float, h: float, t: float, sides: int = 12) -> M.Part:

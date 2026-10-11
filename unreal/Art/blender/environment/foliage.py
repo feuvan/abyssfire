@@ -112,7 +112,7 @@ def canopy(b: M.Builder, lumps, rnd: random.Random, flick_region: str | None, fl
         pid = b.add(part, region, name=f"lump{k}", hull_pad=True)
         for fp in flick_parts:
             b.add(fp, flick_region, name=f"flick{k}", outline=False, covered_by=pid)
-        sph[pid] = E.lump_info(r, c, 0.6)
+        sph[pid] = E.lump_info(r, c, 0.85)
         pids.append(pid)
     return sph, pids, objs
 
@@ -206,28 +206,32 @@ def build_oak(pal: Palette, variant: str = "A"):
         st = lean * ((th - 0.35) / (th + 0.45)) ** 1.6 + Vector((0, 0, th - 0.35))
         limb(b, "bark", st, st + d * 0.25 + Vector((0, 0, 0.35)), st + d * 0.62 * sp + Vector((0, 0, 0.75)),
              0.075, 0.04, name=f"limb{i}")
+    # Broad sunlit crown (web Tree.ts: 7 cloud lumps spanning 115 px ≈ 2.5 m over a 1.9 m trunk): a dark core
+    # (web back lumps, seen in the cusps between lumps and under the crown) inside a wide low ring of light lumps,
+    # an upper ring and a crowning lump — wider than tall, a dome rather than a stack.
     lumps = []
-    base = th + 0.55
-    # dark core / underside lumps (web back lumps) …
-    for i in range(3):
-        a = a0 + math.tau * i / 3 + 0.5
-        c = top + Vector((math.cos(a) * 0.38 * sp, math.sin(a) * 0.38 * sp, base - th - 0.4 + 0.35 + 0.15 * i))
-        lumps.append((c, (0.72 * k, 0.72 * k, 0.56 * k), "back", (name, "core", i), False))
-    # … under the light outer lumps (web front lumps) with leaf flicks
+    z0 = -0.05                                            # crown base, relative to ``top`` (trunk head)
     for i in range(4):
-        a = a0 + math.tau * i / 4 + rnd.uniform(-0.25, 0.25)
-        rr = 0.66 * sp
-        c = top + Vector((math.cos(a) * rr, math.sin(a) * rr, base - th - 0.4 + 0.25 + rnd.uniform(-0.08, 0.1)))
-        r0 = rnd.uniform(0.55, 0.64) * k
-        lumps.append((c, (r0, r0, r0 * 0.8), "front", (name, "ring", i), True))
-    for i in range(2):
-        a = a0 + math.pi * i + 0.8
-        c = top + Vector((math.cos(a) * 0.32 * sp, math.sin(a) * 0.32 * sp, base - th - 0.4 + 0.95))
-        r0 = rnd.uniform(0.56, 0.62) * k
-        lumps.append((c, (r0, r0, r0 * 0.82), "front", (name, "up", i), True))
-    c = top + Vector((rnd.uniform(-0.08, 0.08), rnd.uniform(-0.08, 0.08), base - th - 0.4 + 1.42 * k))
-    lumps.append((c, (0.48 * k, 0.48 * k, 0.4 * k), "front", (name, "top", 0), True))
-    sph, pids, _ = canopy(b, lumps, rnd, "flick", flicks_per=5)
+        a = a0 + math.tau * i / 4 + 0.4
+        c = top + Vector((math.cos(a) * 0.5 * sp, math.sin(a) * 0.5 * sp, z0 + 0.05 + 0.06 * (i % 2)))
+        lumps.append((c, (0.62 * k, 0.62 * k, 0.46 * k), "back", (name, "core", i), False))
+    c = top + Vector((0.0, 0.0, z0 + 0.62 * k))
+    lumps.append((c, (0.78 * k, 0.78 * k, 0.6 * k), "back", (name, "core", 4), False))
+    n_ring = 5
+    for i in range(n_ring):
+        a = a0 + math.tau * i / n_ring + rnd.uniform(-0.18, 0.18)
+        rr = 0.78 * sp * rnd.uniform(0.95, 1.05)
+        c = top + Vector((math.cos(a) * rr, math.sin(a) * rr, z0 + 0.32 + rnd.uniform(-0.06, 0.08)))
+        r0 = rnd.uniform(0.5, 0.56) * k
+        lumps.append((c, (r0, r0, r0 * 0.82), "front", (name, "ring", i), True))
+    for i in range(3):
+        a = a0 + math.tau * i / 3 + 0.9 + rnd.uniform(-0.15, 0.15)
+        c = top + Vector((math.cos(a) * 0.4 * sp, math.sin(a) * 0.4 * sp, z0 + 0.86 * k + rnd.uniform(-0.04, 0.05)))
+        r0 = rnd.uniform(0.5, 0.55) * k
+        lumps.append((c, (r0, r0, r0 * 0.84), "front", (name, "up", i), True))
+    c = top + Vector((rnd.uniform(-0.08, 0.08), rnd.uniform(-0.08, 0.08), z0 + 1.28 * k))
+    lumps.append((c, (0.44 * k, 0.44 * k, 0.37 * k), "front", (name, "top", 0), True))
+    sph, pids, _ = canopy(b, lumps, rnd, "flick", flicks_per=4)
     hi = max(l[0].z + l[1][2] for l in lumps)
     obj = E.finish(b, pal, "decor", ground_h=1.6, spherise=sph, wind=tree_wind(th, hi, pids), name=name)
     return obj
@@ -293,16 +297,17 @@ def build_fruit_tree(pal: Palette, variant: str = "A"):
         a = a0 + math.pi * i + 0.9
         c = top + Vector((math.cos(a) * 0.28, math.sin(a) * 0.28, z0 - th - 0.3 + 0.3))
         lumps.append((c, (0.6 * k, 0.6 * k, 0.48 * k), "back", (name, "core", i), False))
-    for i in range(3):
-        a = a0 + math.tau * i / 3 + rnd.uniform(-0.2, 0.2)
-        c = top + Vector((math.cos(a) * 0.5 * k, math.sin(a) * 0.5 * k, z0 - th - 0.3 + 0.22 + rnd.uniform(-0.05, 0.08)))
-        r0 = rnd.uniform(0.48, 0.54) * k
-        lumps.append((c, (r0, r0, r0 * 0.82), "front", (name, "ring", i), True))
-    c = top + Vector((0.05, -0.04, z0 - th - 0.3 + 0.78 * k))
-    lumps.append((c, (0.5 * k, 0.5 * k, 0.4 * k), "front", (name, "top", 0), True))
+    # web TreeRoundDrawer: 6 lumps over 84 px (≈ 1.9 m) — a round crown a little wider than tall
+    for i in range(4):
+        a = a0 + math.tau * i / 4 + rnd.uniform(-0.2, 0.2)
+        c = top + Vector((math.cos(a) * 0.56 * k, math.sin(a) * 0.56 * k, z0 - th - 0.3 + 0.2 + rnd.uniform(-0.05, 0.08)))
+        r0 = rnd.uniform(0.44, 0.5) * k
+        lumps.append((c, (r0, r0, r0 * 0.84), "front", (name, "ring", i), True))
+    c = top + Vector((0.05, -0.04, z0 - th - 0.3 + 0.72 * k))
+    lumps.append((c, (0.52 * k, 0.52 * k, 0.42 * k), "front", (name, "top", 0), True))
     sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=4, flick_len=0.15)
     # five+ ripe fruits (web: 5 on the front lumps; all round here so every yaw shows a few)
-    fr = visible_spots(lobjs[2:], rnd, a0, per=(2, 2, 2, 1), el=(-0.05, 0.55), lift=0.05)
+    fr = visible_spots(lobjs[2:], rnd, a0, per=(2, 2, 2, 2, 1), el=(-0.05, 0.55), lift=0.05)
     for q, p in enumerate(fr):
         fid = fruit(b, None, p, 0.078, name=f"fruit{q}")
     hi = max(l[0].z + l[1][2] for l in lumps)
@@ -507,6 +512,11 @@ LILY_REGIONS = dict(
 )
 
 
+# Pads ride 1.6 cm above their pivot (UE places the pivot 0.5 cm over the opaque water surface): the near rim of the
+# decor ink would otherwise sit under the water and only the far half of every pad would be outlined.
+PAD_LIFT = 0.016
+
+
 def lily_pad(b: M.Builder, c: Vector, r: float, notch: float, rnd: random.Random, k: int):
     n = 18
     pts = []
@@ -516,11 +526,11 @@ def lily_pad(b: M.Builder, c: Vector, r: float, notch: float, rnd: random.Random
         pts.append((math.cos(a) * rr, math.sin(a) * rr))
     pts.append((0.0, 0.0))
     pad = M.plate(pts, 0.012, bevel=0.003)
-    pad.translate(c + Vector((0, 0, 0.006)))
+    pad.translate(c + Vector((0, 0, PAD_LIFT + 0.006)))
     pid = b.add(pad, "pad", name=f"pad{k}", hull_pad=True)
     for v in range(3):
         a = notch + math.pi + (v - 1) * 0.9
-        p0 = c + Vector((0, 0, 0.0125))
+        p0 = c + Vector((0, 0, PAD_LIFT + 0.0125))
         p1 = p0 + Vector((math.cos(a) * r * 0.75, math.sin(a) * r * 0.75, 0))
         b.add(E.ribbon([p0, (p0 + p1) / 2, p1], [Vector((0, 0, 1))] * 3, [0.012, 0.01, 0.004], lift=0.0005,
                        thick=0.001), "pad_vein", name="vein", outline=False, covered_by=pid)
@@ -537,7 +547,7 @@ def build_lily(pal: Palette, variant: str = "A"):
     if variant == "B":
         lily_pad(b, Vector((-0.2, -0.16, 0)), 0.12, rnd.uniform(0, math.tau), rnd, 2)
         # water lily on the big pad: two rings of pointed petals + a golden heart
-        c = Vector((0.02, 0.01, 0.02))
+        c = Vector((0.02, 0.01, PAD_LIFT + 0.02))
         for ring, (rad, cup, ph) in enumerate(((0.075, 0.55, 0.0), (0.05, 0.9, 0.3))):
             b.add(E.bloom(c + Vector((0, 0, 0.01 * ring)), rad, petals=7, cup=cup, phase=ph, per_petal=2,
                           thick=0.008, walls=True), "lily", name=f"lily{ring}")
@@ -602,7 +612,7 @@ def main(argv: list[str]) -> int:
                 spacing=1.4 if all("Oak" not in n and "Fruit" not in n for n in names) else 3.0)
         return 0
     shipped = []
-    for n in names:
+    for n in (names if "--family" not in argv else []):
         scene.reset()
         pal = Palette(E.FOLIAGE)
         fn, kw = ASSETS[n]
@@ -617,16 +627,23 @@ def main(argv: list[str]) -> int:
         E.ship(obj, n, CAT, pal, obj["af_outline_class"], extra=extra, previews=previews, **kw)
         shipped.append(n)
     # family sheet (rebuilt in one scene)
+    if "--family" in argv:
+        shipped = names
     if previews and len(shipped) > 1:
         scene.reset()
         pal = Palette(E.FOLIAGE)
         objs = [ASSETS[n][0](pal) for n in shipped]
         trees = [o for o in objs if "Oak" in o.name or "Fruit" in o.name]
         small = [o for o in objs if o not in trees]
-        if trees:
-            E.family_sheet(trees, "foliage_trees.png", "PLAINS TREES", cols=3, half_w=0.085, focus_z=1.7)
-            for o in trees:
-                o.hide_render = True
+        oaks = [o for o in trees if "Oak" in o.name]
+        fruit = [o for o in trees if o not in oaks]
+        if oaks:
+            E.family_sheet(oaks, "foliage_trees.png", "PLAINS OAKS", cols=4, focus_z=1.9, cell_px=(300, 450))
+        if fruit:
+            E.family_sheet(fruit, "foliage_fruittrees.png", "PLAINS FRUIT TREES", cols=4, focus_z=1.5,
+                           cell_px=(300, 400))
+        for o in trees:
+            o.hide_render = True
         if small:
             E.family_sheet(small, "foliage_small.png", "PLAINS SHRUBS GROUND COVER", cols=5, half_w=0.04,
                            focus_z=0.35)
