@@ -3,6 +3,8 @@
 * ``write_png`` is a pure numpy + zlib encoder (no colour management between our numbers and the bytes,
   adaptive per-row filters, optional palette quantisation) — used for palette atlases (exact swatch values)
   and for the review sheets that must stay under the size budget.
+* ``write_png_native`` stores review renders truecolour at scale 1 (split into tiles instead of quantising or
+  downscaling when over the budget) and checks every file (``assert_native``, ``png_info``).
 * ``read_png`` decodes through Blender's image loader with a Non-Color colourspace (raw bytes).
 """
 from __future__ import annotations
@@ -126,6 +128,161 @@ def write_png_budget(path: str | Path, img: np.ndarray, max_bytes: int = PREVIEW
         cur = downscale(cur, 0.85)
         size = write_png(path, cur, palette=True)
     return size
+
+
+class NativePreviewError(RuntimeError):
+    """A native review render could not be stored truecolour at scale 1 within the budget."""
+
+
+def png_info(path: str | Path) -> dict:
+    """IHDR of a PNG file: ``{width, height, bitDepth, colorType, truecolor}`` (colour type 2 RGB / 6 RGBA =
+    truecolour; 3 = indexed)."""
+    data = Path(path).read_bytes()[:33]
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise ValueError(f"{path}: not a PNG")
+    w, h, bd, ct = struct.unpack(">IIBB", data[16:26])
+    return {"width": w, "height": h, "bitDepth": bd, "colorType": ct, "truecolor": ct in (2, 6) and bd == 8}
+
+
+def _separators(img: np.ndarray, axis: int) -> np.ndarray:
+    """Indices along ``axis`` (0 rows, 1 columns) of uniform lines (a ``review.grid`` pad / label band)."""
+    lines = img if axis == 0 else img.transpose(1, 0, 2)
+    flat = lines.reshape(lines.shape[0], -1, img.shape[2])
+    return np.nonzero((flat == flat[:, :1, :]).all(axis=(1, 2)))[0]
+
+
+def split_tiles(img: np.ndarray, k: int, axis: int) -> list[np.ndarray]:
+    """``k`` contiguous tiles of ``img`` along ``axis``, each cut snapped to the nearest uniform separator line
+    (grid pads) within half a tile of the even cut, so panels of a sheet stay whole when possible."""
+    n = img.shape[axis]
+    seps = _separators(img, axis)
+    cuts = [0]
+    for i in range(1, k):
+        ideal = round(n * i / k)
+        if len(seps):
+            j = int(seps[np.argmin(np.abs(seps - ideal))])
+            if abs(j - ideal) <= n / (2 * k) and j - cuts[-1] >= n / (2 * k) and n - j >= n / (2 * k):
+                ideal = j
+        cuts.append(max(cuts[-1] + 1, min(ideal, n - (k - i))))
+    cuts.append(n)
+    return [img[a:b] if axis == 0 else img[:, a:b] for a, b in zip(cuts, cuts[1:])]
+
+
+def assert_native(written: list[tuple[Path, int]], img: np.ndarray, axis: int | None = None) -> None:
+    """Every file of a native review render is truecolour 8-bit and the tiles add up to the source pixels (scale
+    1: no file was resampled). Raises ``NativePreviewError``."""
+    h, w = img.shape[:2]
+    infos = [png_info(p) for p, _ in written]
+    for (p, _), inf in zip(written, infos):
+        if not inf["truecolor"]:
+            raise NativePreviewError(f"{p}: colour type {inf['colorType']} (not truecolour)")
+        if inf["width"] > w or inf["height"] > h:
+            raise NativePreviewError(f"{p}: {inf['width']}x{inf['height']} is larger than the {w}x{h} render")
+    if len(infos) == 1:
+        ok = (infos[0]["width"], infos[0]["height"]) == (w, h)
+    elif axis == 0:
+        ok = all(i["width"] == w for i in infos) and sum(i["height"] for i in infos) == h
+    elif axis == 1:
+        ok = all(i["height"] == h for i in infos) and sum(i["width"] for i in infos) == w
+    else:                                  # panels, then rows: the pixels must add up exactly
+        ok = sum(i["width"] * i["height"] for i in infos) <= w * h and all(i["height"] <= h for i in infos)
+    if not ok:
+        dims = ", ".join(f"{i['width']}x{i['height']}" for i in infos)
+        raise NativePreviewError(f"{written[0][0]}: stored {dims} for a {w}x{h} render (not scale 1)")
+
+
+def _panels(img: np.ndarray, axis: int) -> list[np.ndarray]:
+    """Split ``img`` at every run of uniform separator lines along ``axis`` (a sheet's pads): the panels, each with
+    the pad that follows it (so the pieces add up to the whole)."""
+    n = img.shape[axis]
+    seps = set(int(i) for i in _separators(img, axis))
+    cuts, i = [0], 0
+    while i < n:
+        if i in seps and i > 0:
+            j = i
+            while j in seps:
+                j += 1
+            if j < n and j - cuts[-1] > 8:
+                cuts.append(j)
+            i = j
+        else:
+            i += 1
+    cuts.append(n)
+    return [img[a:b] if axis == 0 else img[:, a:b] for a, b in zip(cuts, cuts[1:]) if b > a]
+
+
+def write_png_native(path: str | Path, img: np.ndarray, max_bytes: int = PREVIEW_MAX_BYTES,
+                     axis: int | str = "auto", max_tiles: int = 8, annotate=None) -> list[tuple[Path, int]]:
+    """Write a review render **truecolour at scale 1** (never palette-quantised, never resampled): one file when
+    it fits ``max_bytes``, else the fewest contiguous tiles along ``axis`` (0 = stacked rows, 1 = side by side;
+    ``"auto"`` = the longer side) whose cuts all fall on the sheet's pad lines and that each fit — ``<stem>.png``,
+    ``<stem>_2.png``, …; failing that, one tile per panel, an oversized panel split into stacked strips (a panel is
+    never cut side to side). Stale ``<stem>_<n>.png`` tiles of an earlier write are removed. Every written file is checked
+    (``assert_native``). Raises ``NativePreviewError`` when ``max_tiles`` tiles still do not fit (cut a smaller
+    native crop instead). Returns [(path, bytes)]."""
+    p = Path(path)
+    img = np.ascontiguousarray(img)
+    ax = (0 if img.shape[0] >= img.shape[1] else 1) if axis == "auto" else int(axis)
+    written: list[tuple[Path, int]] = []
+
+    def encode(tiles):
+        if annotate is not None:
+            tiles = [t.copy() for t in tiles]
+            for i, t in enumerate(tiles):
+                annotate(t, i, len(tiles))
+        blobs = []
+        for t in tiles:
+            tmp = p.with_name(f".{p.stem}.tmp.png")
+            size = write_png(tmp, t)
+            blobs.append((tmp.read_bytes(), size))
+            tmp.unlink()
+        return blobs
+
+    chosen, layout = None, ax
+    seps = set(int(i) for i in _separators(img, ax))
+    sheet = any(8 < i < img.shape[ax] - 8 for i in seps)      # a grid of panels (a single render has no pads)
+    for k in range(1, max_tiles + 1):
+        tiles = [img] if k == 1 else split_tiles(img, k, ax)
+        if k > 1 and sheet:                # only cuts that fall on the sheet's pads keep panels whole
+            edges = np.cumsum([t.shape[ax] for t in tiles])[:-1]
+            if not all(int(e) in seps or int(e) - 1 in seps for e in edges):
+                continue
+        blobs = encode(tiles)
+        if all(s <= max_bytes for _, s in blobs):
+            chosen = blobs
+            break
+    if chosen is None:
+        # panels first (never cut a panel side-to-side), then each oversized panel in stacked strips
+        tiles = []
+        for panel in _panels(img, ax):
+            other = 1 - ax
+            for k in range(1, max_tiles + 1):
+                parts = [panel] if k == 1 else split_tiles(panel, k, other)
+                if all(write_png(p.with_name(f".{p.stem}.probe.png"), t) <= max_bytes * 0.97 for t in parts):
+                    tiles += parts
+                    break
+            else:
+                raise NativePreviewError(f"{p}: a {panel.shape[1]}x{panel.shape[0]} panel does not fit {max_bytes} B "
+                                         f"in {max_tiles} truecolour strips — render a smaller native crop")
+        probe = p.with_name(f".{p.stem}.probe.png")
+        if probe.exists():
+            probe.unlink()
+        if len(tiles) > 9:
+            raise NativePreviewError(f"{p}: needs {len(tiles)} tiles — render a smaller native crop")
+        chosen, layout = encode(tiles), None
+        if any(s > max_bytes for _, s in chosen):
+            raise NativePreviewError(f"{p}: a labelled tile passed {max_bytes} B")
+    names = [p] + [p.with_name(f"{p.stem}_{i}{p.suffix}") for i in range(2, len(chosen) + 1)]
+    for name, (data, size) in zip(names, chosen):
+        name.parent.mkdir(parents=True, exist_ok=True)
+        name.write_bytes(data)
+        written.append((name, size))
+    for i in range(len(written) + 1, 10):
+        stale = p.with_name(f"{p.stem}_{i}{p.suffix}")
+        if stale.exists():
+            stale.unlink()
+    assert_native(written, img, layout if len(written) > 1 else None)
+    return written
 
 
 def downscale(img: np.ndarray, factor: float) -> np.ndarray:

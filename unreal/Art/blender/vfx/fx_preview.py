@@ -1,26 +1,37 @@
 """VFX previews: every recipe of ``Export/VFX/vfx_recipes.json`` played by a Python port of the UE runtime and
-drawn at the W1 game camera over the plains, with the shipped warrior (and goblin targets) for scale.
+drawn at the W1 game camera over the plains, cast by the hero class that owns it (warrior / mage / rogue, each in its
+own clip at the beat), with goblin targets and the props / NPCs the world effects sit on.
 
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/vfx/fx_preview.py [ids…|groups…]
-    #   groups: combat utility status world projectiles warrior mage rogue      (default: all)
-    #   --scratch     write to the scratchpad instead of Art/Previews/vfx_effects
+    #   groups: combat utility status world warrior mage rogue ambient fallback      (default: all)
+    #   --scratch       write to the scratchpad instead of Art/Previews/vfx_effects
+    #   --cells         also dump every frame to the scratchpad
+    #   --soft-ground   draw ground quads with a 0.8 cm depth fade (the proposed runtime fix) instead of the
+    #                   shipped M_AF_FX_Sprite DepthFade(8 cm) on every quad (the default: what the game draws)
 
 Port of ``UAbyssVfxSystem`` (Source/Abyssfire/Private/Vfx/AbyssVfxSystem.cpp + AbyssVfxRecipe.cpp ApplyPreset):
 the same layer defaults, emission (bursts, rates, delays, point stagger), spawn (anchors, spawn disc, cone
 directions incl. the blow direction's random climb), motion (drag, gravity, orbit), size / alpha curves, colours
-(palettes, event colours, alternates, intensity) and the per-orientation quad / mesh transforms. Rendering:
+(palettes, event colours, alternates, intensity) and the per-orientation quad / mesh transforms. Actor anchors are
+the shipped sockets of the posed rig (``fx_chest`` / ``fx_head`` / ``fx_overhead`` / ``fx_hand_r``, as
+``AAbyssCharacterActor::GetAnchorLocation``), re-evaluated every 60 Hz tick while the cast clip plays. Rendering:
 
-* Blender (Cycles, emission-only toon look) renders the static scene — the composited plains terrain, the warrior
-  in the clip pose of the skill's beat, goblins — and the **FX meshes** (``fxkit.fx_material`` = M_AF_FX_Mesh,
-  incl. the Bayer-dithered fade), colour (linear HDR) + a view-depth pass, at native 1080p for the crop;
+* Blender (Cycles, emission-only toon look) renders the static scene — the composited plains terrain, the hero in
+  the clip time of the event (beat + t), goblins, props (the chest in its Open clip), the blacksmith in Work_Hammer
+  — and the **FX meshes** (``fxkit.fx_material`` = M_AF_FX_Mesh, incl. the Bayer-dithered fade), colour (linear
+  HDR) + a view-depth pass, at native 1080p for the crop;
 * numpy composites every sprite quad exactly like the sprite materials: ray / quad intersection per pixel (true
   perspective), bilinear texture cell, additive (``tex.rgb·tint·tex.a·α``) or translucent, depth-tested with the
-  8 cm depth fade (0.8 cm on ground quads: the recommended runtime fix, ``integration.groundSoftFade``;
-  ``--ue-softfade`` draws today's 8 cm); translucent pools before additive ones (sort priorities 1 / 2);
+  shipped 8 cm DepthFade on every quad (``--soft-ground``: 0.8 cm on ground quads); translucent pools before
+  additive ones (sort priorities 1 / 2); the runtime's fake light pools at +2 cm with its ×0.5 alpha;
+* the character-side composites the runtime adds: the StatusTint multiply on a status target, the dodge
+  afterimages (Ghost material: class spirit colour, α .28 / .21 at ⅓ / ⅔ of the path, 260 ms);
 * bloom like the zone post (threshold 1, the kit's two lobes, strength 0.8), then sRGB.
 
-Each effect → ``Previews/vfx_effects/<recipe-id>.png``: key frames (ms from the event) in a grid of native 1080p
-crops (no scaling), labelled.
+Each effect → ``Previews/vfx_effects/<recipe-id>/<ms>[-<ms>]ms.png``: the key frames (ms from the event) as native
+1080p crops at scale 1, truecolour, one or two frames per file — a frame that cannot be stored under 200 KB is cut
+into stacked native strips (``pngio.write_png_native``), and a frame that still does not fit fails the run (no
+resampling, ever).
 """
 from __future__ import annotations
 
@@ -57,7 +68,7 @@ BASE = dict(sprite="Glow", mesh=None, blend="additive", orient="billboard", vari
             orbit=False, orbitR0=(0.0, 0.0), orbitR1=(0.0, 0.0), orbitDeg=(0.0, 0.0), size=(20.0, 20.0), grow=1.0,
             sizePow=1.0, aspect=1.0, stretch=0.0, alpha0=1.0, alpha1=0.0, fadeIn=0.0, alphaPow=1.0, flicker=0.0,
             colorSource="mid", color=(1.0, 1.0, 1.0), altEvery=0, altSource="white", altColor=(1.0, 1.0, 1.0),
-            intensity=1.0, rotation=(0.0, 0.0), spin=(0.0, 0.0), align=False, big=0)
+            intensity=1.0, rotation=(0.0, 0.0), spin=(0.0, 0.0), align=False, big=0, fan=False)
 
 PRESETS = {
     "glow": dict(sprite="Glow", orient="billboard", blend="additive", life=(300, 300), size=(53, 53), grow=1.3 / 0.6,
@@ -173,7 +184,7 @@ def parse_layer(j: dict) -> dict:
         if k in j:
             L[d] = float(j[k])
     for k, d in (("onRing", "onRing"), ("attach", "attach"), ("countByRadius", "countByRadius"),
-                 ("alignToBlow", "align")):
+                 ("alignToBlow", "align"), ("fan", "fan")):
         if k in j:
             L[d] = bool(j[k])
     if "count" in j:
@@ -245,8 +256,9 @@ ELEMENT_PAL = {"fire": "fire", "ice": "frost", "lightning": "lightning", "poison
 class Actor:
     name: str
     pos: np.ndarray                      # UE cm (feet)
-    heights: dict                        # chest / head / overhead / hand → cm
+    heights: dict                        # chest / head / overhead / hand → cm (actors without a posed rig)
     hand_off: np.ndarray = field(default_factory=lambda: np.zeros(3))
+    sockets: dict = field(default_factory=dict)   # chest / head / overhead / hand → UE cm (posed rig sockets)
 
 
 @dataclass
@@ -272,6 +284,8 @@ def actor_point(a: Actor, height: str, cm: float) -> np.ndarray:
         return a.pos.copy()
     if height == "custom":
         return a.pos + np.array([0, 0, cm])
+    if height in a.sockets:
+        return np.array(a.sockets[height], float)
     if height == "hand":
         return a.pos + a.hand_off + np.array([0, 0, a.heights["hand"]])
     return a.pos + np.array([0, 0, a.heights[height]])
@@ -525,7 +539,14 @@ class Sim:
             direction = cone_dir(rnd, np.array([0, 0, -1.0]), 0 if L["cone"] >= 359 else L["cone"])
         elif d in ("blow", "back"):
             axis = blow if d == "blow" else -blow
-            direction = flat_cone(rnd, axis, 0 if L["cone"] >= 359 else L["cone"])
+            cone = 0 if L["cone"] >= 359 else L["cone"]
+            if L["fan"] and L["rate"] <= 0:          # integration.fan: particle i of N at an even yaw
+                n = max(1.0, L["count"][1])
+                yaw = math.radians(cone * ((serial + 0.5) / n - 0.5))
+                c_, s_ = math.cos(yaw), math.sin(yaw)
+                direction = np.array([axis[0] * c_ - axis[1] * s_, axis[0] * s_ + axis[1] * c_, 0.0])
+            else:
+                direction = flat_cone(rnd, axis, cone)
             direction[2] = rnd.uniform(-0.15, 0.35)
             direction /= np.linalg.norm(direction)
         elif d in ("out", "in", "tangent"):
@@ -655,10 +676,10 @@ class Sim:
         for h, anchor, radius, a, flick, col in self.lights:
             if not any(p.handle == h for p in self.particles) and not any(e.handle == h for e in self.emitters):
                 continue
-            k = a * (1.0 - 0.15 * self.rnd.random()) if flick else a
+            k = a + (0.05 * math.sin(self.t * 0.007) + 0.03 * math.sin(self.t * 0.013 + 2.3)) if flick else a
             center = anchor.pos(self.t) + np.array([0, 0, 2.0])
             sprites.append(("LightPool", "additive", 0, center, np.array([radius, 0, 0.0]), np.array([0, radius, 0.0]),
-                            col, k, "ground"))
+                            col, min(max(k, 0.0), 1.0) * 0.5, "ground"))
         return sprites, meshes
 
 
@@ -673,7 +694,7 @@ def rotator(pitch, yaw, roll):
 
 
 MESH_D: dict[str, float] = {}
-SOFT_GROUND = 0.008
+SOFT_GROUND = 0.08          # shipped: DepthFade(8 cm) on every quad; --soft-ground → 0.008 (proposed runtime fix)
 CELL_DIR: Path | None = None
 
 
@@ -788,8 +809,8 @@ def composite_sprites(img, depth, cam: Camera, sprites):
             T = T[:, vi * cw:(vi + 1) * cw]
         smp = bilinear(T, u, v)
         pz = (rel @ cam.fwd) + (np.array(C) - cam.O) @ cam.fwd
-        # UE DepthFade (8 cm) — for ground quads the recommended runtime fix (fade 0.8 cm): at 1-3 cm over the
-        # terrain an 8 cm fade keeps only 10-30 % of a decal / ring (integration note in vfx_recipes.json)
+        # UE DepthFade(8 cm) on every quad (M_AF_FX_Sprite); the recipes lift ground quads to 8-11 cm so they are
+        # whole under it (fx_recipes.ground_lift). --soft-ground draws the proposed 0.8 cm ground fade instead.
         fade = SOFT_GROUND if orient == "ground" else 0.08
         soft = np.clip((depth[y0:y1, x0:x1] - pz) / fade, 0, 1)
         a = smp[..., 3] * min(alpha, 1.0) * soft * inside
@@ -815,6 +836,7 @@ def to_srgb8(lin):
 
 # ── the stage: terrain, characters, FX mesh library ───────────────────────────────────────────────────
 # the shipped world props the world / prop recipes sit on: (asset, category, palette family, outline px, yaw°)
+CLUE_YAW = -135.0   # Blender yaw (UE +135°): the magnifier lens (normal (0, -.766, .643), tilted back 40°) faces the W1 camera (n·v = .985)
 WORLD_PROPS = {
     "camp.campfire": ("SM_Prop_Camp_Campfire", "Props", "Props_Plains", 1.4, 0.0),
     "camp.torch": ("SM_Prop_Camp_Torch", "Props", "Props_Plains", 1.4, 0.0),
@@ -823,24 +845,84 @@ WORLD_PROPS = {
     "exit.sealed": ("SM_Prop_ExitGate_Sealed", "Props", "Props_Plains", 2.0, 45.0),
     "prop.lore": ("SM_Prop_Lore_AncientTablet", "Props", "Props_Plains", 2.0, -30.0),
     "prop.gather": ("SM_Prop_Gather_EmeraldHerb", "Props", "Props_Plains", 2.0, 0.0),
-    "prop.clue": ("SM_FX_ClueMagnifier", "VFX", "Props_Plains", 2.0, 0.0),
-    "prop.chest": ("SK_Prop_TreasureChest", "Props", "Props_Plains", 2.0, -30.0),
-    "prop.chest.open": ("SK_Prop_TreasureChest", "Props", "Props_Plains", 2.0, -30.0),
+    "prop.clue": ("SM_FX_ClueMagnifier", "VFX", "Props_Plains", 2.0, CLUE_YAW),
+    "prop.chest": ("SK_Prop_TreasureChest", "Props", "Props_Plains", 2.0, 150.0),
+    "prop.chest.open": ("SK_Prop_TreasureChest", "Props", "Props_Plains", 2.0, 150.0),
     "prop.event": ("SM_Prop_Event_RunePillar", "Props", "Props_Plains", 2.0, -30.0),
+    "loot.bag": ("SM_Loot_Bag", "Pickups", "Pickups", 2.0, -20.0),
 }
+
+# the three heroes as shipped: (SK, held items [(SM, bone)], clips)
+HERO_KIT = {
+    "warrior": ("SK_Hero_Warrior", [("SM_Hero_Warrior_Sword", "weapon_r"), ("SM_Hero_Warrior_Shield", "weapon_l")],
+                ["Idle", "Attack01", "Cast01", "Cast_Whirlwind", "Cast_Charge", "Dodge"]),
+    "mage": ("SK_Hero_Mage", [("SM_Hero_Mage_Staff", "weapon_r")],
+             ["Idle", "Attack01", "Cast01", "Cast_Blizzard", "Cast_Meteor", "Dodge"]),
+    "rogue": ("SK_Hero_Rogue", [("SM_Hero_Rogue_Dagger", "weapon_r"), ("SM_Hero_Rogue_Dagger_L", "weapon_l")],
+              ["Idle", "Attack01", "Cast01", "Cast_Multishot", "Dodge"]),
+}
+SOCKET_OF = {"chest": "fx_chest", "head": "fx_head", "overhead": "fx_overhead", "hand": "fx_hand_r"}
+_MAN: dict | None = None
+
+
+def manifest() -> dict:
+    global _MAN
+    if _MAN is None:
+        _MAN = json.loads(paths.manifest_path().read_text())["assets"]
+    return _MAN
+
+
+def clip_info(sk: str, clip: str) -> dict:
+    an = manifest()[sk]["anims"]
+    an = an if isinstance(an, list) else list(an.values())
+    return next((a for a in an if a["name"] == clip), {"lengthMs": 1000.0, "loop": True, "notifies": []})
+
+
+def beat_ms(sk: str, clip: str) -> float:
+    """The clip's event beat: Contact (attacks), Release (casts), the first notify otherwise, else 0."""
+    nts = clip_info(sk, clip).get("notifies", [])
+    for want in ("Contact", "Release"):
+        for n in nts:
+            if n["name"] == want:
+                return float(n["ms"])
+    return 0.0
+
+
+def ue_cm(v) -> np.ndarray:
+    return np.array([v[0] * 100.0, -v[1] * 100.0, v[2] * 100.0])
+
+
+def socket_world(arm, sock: dict) -> Vector:
+    """A manifest socket on the posed armature (rest location UE cm → Blender m, carried by its bone)."""
+    rest = Vector((sock["restLocCm"][0] / 100.0, -sock["restLocCm"][1] / 100.0, sock["restLocCm"][2] / 100.0))
+    b = arm.data.bones[sock["bone"]]
+    pb = arm.pose.bones[sock["bone"]]
+    return arm.matrix_world @ (pb.matrix @ (b.matrix_local.inverted() @ rest))
+
+
+def item_socket_world(obj, sock: dict) -> Vector:
+    """A static mesh's manifest socket (``locCm`` in its UE mesh space) in Blender world."""
+    loc = sock["locCm"]
+    return obj.matrix_world @ Vector((loc[0] / 100.0, -loc[1] / 100.0, loc[2] / 100.0))
 
 
 class Stage:
-    def __init__(self):
+    def __init__(self, classes=("warrior", "mage", "rogue")):
         scene.reset()
         bpy.context.scene.view_settings.view_transform = "Standard"
         self.ground = self.make_ground()
-        self.hero = self.load_hero()
+        self.heroes = {c: self.load_hero(c) for c in classes}
+        self.hero = self.heroes.get("warrior") or next(iter(self.heroes.values()))
         self.gobs = [self.load_goblin(i) for i in range(3)]
+        self.smith = None
         self.mesh_src: dict[str, bpy.types.Object] = {}
         self.live: list[bpy.types.Object] = []
         self.depth_mat = review._flat_material("AF_FxDepth", "depth")
         self.depth_hull = self._depth_hull()
+        self.white = _emit_material("AF_FxMaskW", (1.0, 1.0, 1.0))
+        self.black = _emit_material("AF_FxMaskK", (0.0, 0.0, 0.0))
+        self.black_hole = review._flat_material("AF_FxHole", "transparent")
+        self.timed = None                 # (character dict, clip, clip-time ms) driving the scene frame
 
     def _depth_hull(self):
         m = bpy.data.materials.new("AF_FxDepthHull")
@@ -922,15 +1004,99 @@ class Stage:
                 c.target_space = c.owner_space = "POSE"
         return out
 
-    def load_hero(self):
-        r = K.import_warrior("Idle", 0)
-        root, meshes, arm = r
-        anims = self._clip_armatures(arm, "Hero_Warrior", "Characters",
-                                     ["Idle", "Attack01", "Cast01", "Cast_Whirlwind", "Cast_Charge"])
+    # ── loading ────────────────────────────────────────────────────────────────────────────────────────
+    def _static_toon(self, name: str, category: str, family: str, cls: str):
+        """A shipped static mesh in its family's toon + outline look (screen-constant preview ink)."""
+        import envkit as E
+        f = paths.export_root() / category / f"{name}.fbx"
+        if not f.exists():
+            return None
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.fbx(filepath=str(f))
+        new = [o for o in bpy.data.objects if o not in before]
+        m = next(o for o in new if o.type == "MESH")
+        for o in new:
+            if o is not m:
+                bpy.data.objects.remove(o)
+        m.parent = None
+        m.matrix_world.identity()
+        fam = K._manifest_palette(name) or family
+        E._set_slots(m, *E.toon_material_files(fam))
+        m["af_outline_width"] = outline.WIDTH_CM[cls] / 100.0
+        m["af_outline_class"] = cls
+        review.set_outline_px([m], outline.SCREEN_PX_1080[cls])
+        return m
+
+    def _attach_at(self, obj, arm, bone: str, rest_loc_cm) -> None:
+        """Parent ``obj`` to ``bone`` with its frame = the bone's frame moved to a socket's rest location."""
+        from types import SimpleNamespace
+        from kit import rig as krig
+        krig.attach_to_bone(obj, SimpleNamespace(obj=arm), bone)
+        q = Vector((rest_loc_cm[0] / 100.0, -rest_loc_cm[1] / 100.0, rest_loc_cm[2] / 100.0))
+        obj.matrix_basis = Matrix.Translation(arm.data.bones[bone].matrix_local.inverted() @ q)
+
+    def _clip_armatures(self, arm, token, category, clips):
+        out = {}
+        for clip in clips:
+            f = paths.export_root() / category / f"A_{token}_{clip}.fbx"
+            if not f.exists():
+                continue
+            before = set(bpy.data.objects)
+            bpy.ops.import_scene.fbx(filepath=str(f))
+            new = [o for o in bpy.data.objects if o not in before]
+            a2 = next((o for o in new if o.type == "ARMATURE"), None)
+            for o in new:
+                o.hide_render = True
+            if a2 is not None:
+                out[clip] = a2
+        for pb in arm.pose.bones:          # one COPY_TRANSFORMS per bone, retargeted per scenario
+            if not any(c.type == "COPY_TRANSFORMS" for c in pb.constraints) and out:
+                c = pb.constraints.new("COPY_TRANSFORMS")
+                c.target, c.subtarget = next(iter(out.values())), pb.name
+                c.target_space = c.owner_space = "POSE"
+        return out
+
+    def load_hero(self, cls: str):
+        sk, items, clips = HERO_KIT[cls]
+        root, meshes, arm = K.import_character(sk, "Characters", "Heroes", None, 0, (0.0, 0.0, 0.0), 0.0,
+                                               [(n, "Weapons", bone) for n, bone in items], outline_class="hero")
+        anims = self._clip_armatures(arm, sk[3:], "Characters", clips)
         for m in meshes:
             review.set_outline_px([m], outline.SCREEN_PX_1080["hero"] if m["af_outline_class"] == "hero" else
                                   outline.SCREEN_PX_1080["weapon"])
-        return {"root": root, "meshes": meshes, "arm": arm, "anims": anims}
+        ch = {"root": root, "meshes": meshes, "arm": arm, "anims": anims, "sk": sk, "cls": cls, "swap": {},
+              "items": {n: next((m for m in meshes if m.name.startswith(n) and
+                                 not m.name.startswith(n + "_L")), None) for n, _ in items}}
+        man = manifest()[sk]
+        ch["sockets"] = {s["name"]: s for s in man.get("sockets", [])}
+        fx = man.get("fx") or {}
+        ch["spirit"] = fx.get("spiritColor", "#FFB45C")
+        if cls == "mage":                  # the crystal floats on the staff's `crystal` socket
+            staff = ch["items"].get("SM_Hero_Mage_Staff")
+            cry = self._static_toon("SM_Hero_Mage_Crystal", "Weapons", "Heroes", "weapon")
+            if staff is not None and cry is not None:
+                sock = next(x for x in manifest()["SM_Hero_Mage_Staff"]["sockets"] if x["name"] == "crystal")
+                cry.parent = staff
+                cry.matrix_parent_inverse = Matrix.Identity(4)
+                cry.matrix_basis = Matrix.Translation(Vector((sock["locCm"][0] / 100.0, -sock["locCm"][1] / 100.0,
+                                                              sock["locCm"][2] / 100.0)))
+                meshes.append(cry)
+                ch["crystal"] = cry
+        if cls == "rogue":                 # hip quiver (body socket) + the flash-bow swapped in by Cast_Multishot
+            q = self._static_toon("SM_Hero_Rogue_Quiver", "Weapons", "Heroes", "weapon")
+            if q is not None:
+                s_ = ch["sockets"]["quiver"]
+                self._attach_at(q, arm, s_["bone"], s_["restLocCm"])
+                meshes.append(q)
+            bow = self._static_toon("SM_Hero_Rogue_Bow", "Weapons", "Heroes", "weapon")
+            if bow is not None:
+                from types import SimpleNamespace
+                from kit import rig as krig
+                krig.attach_to_bone(bow, SimpleNamespace(obj=arm), "weapon_l")
+                bow.hide_render = True
+                ch["swap"] = {"bow": bow, "dagger_l": next((m for m in meshes
+                                                            if m.name.startswith("SM_Hero_Rogue_Dagger_L")), None)}
+        return ch
 
     def load_goblin(self, i):
         r = K.import_goblin("Idle", 0)
@@ -938,44 +1104,105 @@ class Stage:
         anims = self._clip_armatures(arm, "Mon_Goblin", "Monsters", ["Idle", "Hurt"])
         for m in meshes:
             review.set_outline_px([m], outline.SCREEN_PX_1080["monster"])
-        return {"root": root, "meshes": meshes, "arm": arm, "anims": anims}
+        return {"root": root, "meshes": meshes, "arm": arm, "anims": anims, "sk": "SK_Mon_Goblin", "cls": "goblin"}
 
-    def pose(self, ch, clip, frame, at_ue, facing_ue, visible=True):
+    def load_smith(self):
+        """The blacksmith (Work_Hammer, hammer + tongs) with the anvil stump at its scenery offset."""
+        if self.smith is not None:
+            return self.smith
+        r = K.import_character("SK_NPC_Blacksmith", "NPCs", "NPC", None, 0, (0.0, 0.0, 0.0), 0.0,
+                               [("SM_NPCKit_Prop_Hammer", "NPCs", "weapon_r"),
+                                ("SM_NPCKit_Prop_Tongs", "NPCs", "weapon_l")], outline_class="npc")
+        root, meshes, arm = r
+        anims = self._clip_armatures(arm, "NPC_Blacksmith", "NPCs", ["Work_Hammer"])
+        for m in meshes:
+            review.set_outline_px([m], outline.SCREEN_PX_1080["npc"] if m["af_outline_class"] == "npc" else
+                                  outline.SCREEN_PX_1080["weapon"])
+        sc = manifest()["SK_NPC_Blacksmith"]["scenery"][0]
+        stump = self._static_toon(sc["asset"], "Props", "Props_Plains", "interactive")
+        if stump is not None:
+            stump.parent = root
+            stump.matrix_parent_inverse = Matrix.Identity(4)
+            o = sc["offsetCm"]
+            stump.matrix_basis = Matrix.Translation(Vector((o[0] / 100.0, -o[1] / 100.0, o[2] / 100.0))) @ \
+                Matrix.Rotation(math.radians(sc.get("yawDeg", 0.0)), 4, "Z")
+            meshes.append(stump)
+        hammer = next((m for m in meshes if m.name.startswith("SM_NPCKit_Prop_Hammer")), None)
+        self.smith = {"root": root, "meshes": meshes, "arm": arm, "anims": anims, "sk": "SK_NPC_Blacksmith",
+                      "cls": "smith", "stump": stump, "hammer": hammer}
+        for m in meshes:
+            m.hide_render = True
+        return self.smith
+
+    # ── posing / time ───────────────────────────────────────────────────────────────────────────────────
+    def pose(self, ch, clip, at_ue, facing_ue, visible=True):
         arm = ch["arm"]
-        target = ch["anims"].get(clip) or ch["anims"].get("Idle")
+        target = ch["anims"].get(clip) or ch["anims"].get("Idle") or next(iter(ch["anims"].values()))
         for pb in arm.pose.bones:
             for c in pb.constraints:
                 if c.type == "COPY_TRANSFORMS":
                     c.target = target
-        for a in ch["anims"].values():
-            ad = a.animation_data
-            if ad and ad.action:
-                pass
-        ch["frame"] = frame
+        ch["clip"] = clip if clip in ch["anims"] else "Idle"
         ch["root"].location = ue_to_bl(at_ue)
         d = np.asarray(facing_ue, float)
         db = Vector((d[0], -d[1], 0))
         ch["root"].rotation_euler = (0, 0, math.atan2(db.x, -db.y))
         for m in ch["meshes"]:
             m.hide_render = not visible
+        for k, o in ch.get("swap", {}).items():
+            if o is not None and visible:
+                o.hide_render = k == "bow"
 
-    def show_prop(self, key: str | None, at_ue):
+    def clip_time(self, ch, ms: float) -> None:
+        """Drive the scene frame so ``ch``'s current clip shows clip time ``ms`` (clamped / wrapped)."""
+        info = clip_info(ch["sk"], ch["clip"])
+        L = float(info.get("lengthMs", 1000.0))
+        ms = ms % L if info.get("loop") else min(max(ms, 0.0), L - 1000.0 / 60.0)
+        a2 = ch["anims"][ch["clip"]]
+        act = a2.animation_data.action if a2.animation_data else None
+        f0 = act.frame_range[0] if act is not None else 0.0
+        f = f0 + ms * 0.06
+        fi = int(math.floor(f))
+        bpy.context.scene.frame_set(fi, subframe=f - fi)
+        # the rogue's flash-bow is in the off hand between FX_BowShow and FX_BowHide of Cast_Multishot
+        sw = ch.get("swap") or {}
+        if sw.get("bow") is not None and not sw["bow"].hide_viewport:
+            nts = {n["name"]: n["ms"] for n in info.get("notifies", [])}
+            on = "FX_BowShow" in nts and nts["FX_BowShow"] <= ms < nts.get("FX_BowHide", 1e9)
+            vis = not ch["meshes"][0].hide_render
+            sw["bow"].hide_render = not (on and vis)
+            if sw.get("dagger_l") is not None:
+                sw["dagger_l"].hide_render = on or not vis
+        ch["ms"] = ms
+
+    def sockets_ue(self, ch) -> dict:
+        """fx anchor heights of a posed character → UE cm world positions (AAbyssCharacterActor anchors)."""
+        bpy.context.view_layer.update()
+        out = {}
+        for h, name in SOCKET_OF.items():
+            sk = ch.get("sockets", {}).get(name)
+            if sk is not None:
+                out[h] = ue_cm(socket_world(ch["arm"], sk))
+        return out
+
+    def show_prop(self, key: str | None, at_ue, yaw: float | None = None, clip: str | None = None):
         """Show the world prop of ``key`` (imported once from its shipped FBX, toon + outline from the family
-        palette PNGs, screen-constant line-tone ink) at ``at_ue``; hide every other prop."""
+        palette PNGs, screen-constant line-tone ink) at ``at_ue``; hide every other prop. Skeletal props (the
+        chest) are posed by their clip armature (``clip``) or drawn in the rest pose."""
         import envkit as E
         props = getattr(self, "_props", {})
         self._props = props
         for k, objs in props.items():
-            for o in objs:
+            for o in objs.get("objs", []):
                 o.hide_render = True
         if key is None or key not in WORLD_PROPS:
-            return
-        asset, cat, fam, px, yaw = WORLD_PROPS[key]
+            return None
+        asset, cat, fam, px, yaw0 = WORLD_PROPS[key]
         if asset not in props:
             f = paths.export_root() / cat / f"{asset}.fbx"
             if not f.exists():
-                props[asset] = []
-                return
+                props[asset] = {"objs": []}
+                return None
             before = set(bpy.data.objects)
             bpy.ops.import_scene.fbx(filepath=str(f))
             new = [o for o in bpy.data.objects if o not in before]
@@ -995,20 +1222,35 @@ class Stage:
             for o in keep:
                 if o.parent is None:
                     o.parent = root
-            meshes_alive = meshes
-            for m in meshes_alive:
+            for m in meshes:
                 if "af_outline_width" not in m:
                     m["af_outline_width"] = outline.WIDTH_CM["interactive"] / 100.0
                 review.set_outline_px([m], px)
-            props[asset] = [root] + meshes_alive
-        objs = props[asset]
-        if not objs:
-            return
-        root = objs[0]
+            arm = next((o for o in keep if o.type == "ARMATURE"), None)
+            anims = {}
+            if arm is not None:
+                anims = self._clip_armatures(arm, asset[3:], cat, ["Open"])
+                for a2 in anims.values():
+                    a2.parent = root
+            props[asset] = {"objs": [root] + meshes, "root": root, "arm": arm, "anims": anims, "meshes": meshes,
+                            "sk": asset, "cls": "prop"}
+        P = props[asset]
+        if not P["objs"]:
+            return None
+        root = P["root"]
         root.location = ue_to_bl(at_ue)
-        root.rotation_euler = (0, 0, math.radians(yaw))
-        for o in objs[1:]:
+        root.rotation_euler = (0, 0, math.radians(yaw0 if yaw is None else yaw))
+        if P.get("arm") is not None:
+            for pb in P["arm"].pose.bones:
+                for c in pb.constraints:
+                    if c.type == "COPY_TRANSFORMS":
+                        c.mute = clip is None
+                        if clip and clip in P["anims"]:
+                            c.target = P["anims"][clip]
+            P["clip"] = clip
+        for o in P["objs"][1:]:
             o.hide_render = False
+        return P
 
     def set_frame(self, frame):
         bpy.context.scene.frame_set(int(frame))
@@ -1075,6 +1317,106 @@ class Stage:
             sc.cycles.filter_width = 1.5
         return col, dep
 
+    def render_mask(self, box, objs, slot0_only=True) -> np.ndarray:
+        """Coverage (0..1) of ``objs``' toon surfaces (the slot the StatusTint multiplies), everything else
+        black and occluding."""
+        sc = bpy.context.scene
+        want = set(o.name for o in objs)
+        saved = []
+        for o in bpy.data.objects:
+            if o.type != "MESH" or o.hide_render:
+                continue
+            mats = o.data.materials
+            saved.append((o, [mats[i] for i in range(len(mats))]))
+            for i in range(len(mats)):
+                on = o.name in want and (i == 0 or not slot0_only)
+                # hull slots (1) drop out: an emission hull would enclose and hide the body it outlines
+                mats[i] = self.white if on else (self.black_hole if i == 1 else self.black)
+        try:
+            review.setup_render(RES, 4, bg_hex="#000000")
+            m = review.render_array(box, exr=True)[..., 0]
+        finally:
+            for o, mats in saved:
+                for i, mm in enumerate(mats):
+                    o.data.materials[i] = mm
+        return np.clip(m, 0.0, 1.0)
+
+    def render_ghosts(self, box, ch, ghosts, tint_hex) -> np.ndarray:
+        """The dodge afterimages (M_AF_Ghost look: class spirit tint × (0.35 + 0.9 fresnel), additive): the hero's
+        toon surfaces re-posed at each ghost's capture time and place, rendered alone over black; returns a list
+        of linear RGB layers (one per ghost)."""
+        sc = bpy.context.scene
+        g = self._ghost_material(tint_hex)
+        layers = []
+        hidden = [o for o in bpy.data.objects if o.type == "MESH" and not o.hide_render]
+        for o in hidden:
+            o.hide_render = True
+        saved_loc = ch["root"].location.copy()
+        try:
+            for at_ue, ms in ghosts:
+                ch["root"].location = ue_to_bl(at_ue)
+                self.clip_time(ch, ms)
+                saved = []
+                for o in ch["meshes"]:
+                    if o.get("af_outline_class") in ("hero", "weapon") and not o.name.startswith("SM_Hero_Rogue_Bow"):
+                        o.hide_render = False
+                        mats = o.data.materials
+                        saved.append((o, [mats[i] for i in range(len(mats))]))
+                        for i in range(len(mats)):
+                            mats[i] = g if i == 0 else self.black_hole
+                review.setup_render(RES, 8, bg_hex="#000000")
+                img = review.render_array(box, exr=True)[..., :3]
+                for o, mats in saved:
+                    for i, mm in enumerate(mats):
+                        o.data.materials[i] = mm
+                    o.hide_render = True
+                layers.append(img)
+        finally:
+            ch["root"].location = saved_loc
+            for o in hidden:
+                o.hide_render = False
+        return layers
+
+    def _ghost_material(self, tint_hex: str):
+        name = f"AF_FxGhost_{tint_hex}"
+        m = bpy.data.materials.get(name)
+        if m is not None:
+            return m
+        m = bpy.data.materials.new(name)
+        m.use_nodes = True
+        nt = m.node_tree
+        nt.nodes.clear()
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        lw = nt.nodes.new("ShaderNodeLayerWeight")
+        lw.inputs["Blend"].default_value = 0.5
+        mr = nt.nodes.new("ShaderNodeMapRange")       # 0.35 + 0.9 · fresnel
+        mr.inputs["To Min"].default_value = 0.35
+        mr.inputs["To Max"].default_value = 1.25
+        nt.links.new(lw.outputs["Facing"], mr.inputs["Value"])
+        mul = nt.nodes.new("ShaderNodeMix")
+        mul.data_type = "RGBA"
+        mul.blend_type = "MULTIPLY"
+        mul.inputs["Factor"].default_value = 1.0
+        lin = hex_lin(tint_hex)
+        mul.inputs["A"].default_value = (lin[0], lin[1], lin[2], 1.0)
+        nt.links.new(mr.outputs["Result"], mul.inputs["B"])
+        em = nt.nodes.new("ShaderNodeEmission")
+        nt.links.new(mul.outputs["Result"], em.inputs["Color"])
+        nt.links.new(em.outputs[0], out.inputs["Surface"])
+        return m
+
+
+def _emit_material(name: str, rgb) -> bpy.types.Material:
+    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    em.inputs["Color"].default_value = (rgb[0], rgb[1], rgb[2], 1.0)
+    nt.links.new(em.outputs[0], out.inputs["Surface"])
+    return m
+
 
 # ── scenarios ──────────────────────────────────────────────────────────────────────────────────────────
 RIGHT = np.array([-0.70711, 0.70711, 0.0])       # screen-right on the ground (UE)
@@ -1083,17 +1425,22 @@ HERO_H = {"chest": 96.8, "head": 155.0, "overhead": 201.0, "hand": 105.0}
 GOB_H = {"chest": 50.6, "head": 77.8, "overhead": 117.0, "hand": 35.0}
 
 
+STATUS_TINT = {"status.freeze": ("#7FD0FF", 0.45), "status.stun": ("#7FD0FF", 0.45), "status.burn": ("#FF7A3A", 0.35),
+               "status.poison": ("#8FE04A", 0.35), "status.bleed": ("#C8323C", 0.22), "status.slow": ("#9FD8FF", 0.18)}
+DODGE_TILES = {"warrior": 1.8, "mage": 2.25, "rogue": 2.6}      # Data/combat_input.json dodge.distanceTiles
+
+
 @dataclass
 class Scene_:
     rid: str
     events: list                         # (t_ms, kind, data)
     frames: list
-    clip: str = "Cast01"
-    clip_frame: int = 20
+    clip: str = "Cast01"                 # the hero's clip; the event fires at its beat (Contact / Release)
+    cls: str = "warrior"                 # the hero class casting it
     targets: int = 1
     target_dist: float = 170.0
     crop: tuple = (600, 400)
-    focus: str = "mid"                   # mid | hero | target
+    focus: str = "mid"                   # mid | hero | target | prop | gobs
     radius: float = 100.0
     element: str | None = None
     color: str | None = None
@@ -1103,6 +1450,15 @@ class Scene_:
     hero: bool = True
     target_clip: str = "Idle"
     prop: str | None = None              # world prop under the effect (WORLD_PROPS)
+    prop_clip: str | None = None         # the prop's clip (chest Open), timed from prop_beat
+    prop_beat: float = 0.0
+    bag: str | None = None               # "drop" (bag on the point) | "pickup" (bag flies to the hero)
+    gob_pos: list | None = None          # goblin positions (UE cm, relative to the target spot)
+    tint: tuple | None = None            # StatusTint on goblin 0 (hex, alpha)
+    smith: bool = False                  # the blacksmith at the anvil (Work_Hammer, timed from its notify)
+    dodge: bool = False                  # the hero dodges (Dodge clip, path, afterimages)
+    tight: bool = True                   # crop to what the effect touched (+ its actors); False = the whole crop
+    note: str = ""
 
 
 def skill_radius(sid: str) -> float:
@@ -1129,21 +1485,16 @@ def skill_element(sid: str) -> str | None:
     return None
 
 
-F_SKILL = [0, 60, 120, 200, 300, 420, 600, 850]
-
-
 def scenarios() -> dict:
     sc = {}
-    A = ("Attack01", 18)
-    C = ("Cast01", 20)
+    A, C = "Attack01", "Cast01"
     # warrior
-    for sid, pose, fr, extra in (
+    for sid, clip, fr, extra in (
         ("slash", A, [0, 40, 80, 130, 180, 240], {}),
-        ("whirlwind", ("Cast_Whirlwind", 20), [0, 50, 100, 160, 230, 320, 420, 520], {"crop": (720, 480),
-                                                                                       "focus": "hero"}),
+        ("whirlwind", "Cast_Whirlwind", [0, 50, 100, 160, 230, 320, 420, 520], {"crop": (720, 480), "focus": "hero"}),
         ("shield_wall", C, [0, 80, 140, 220, 340, 480, 640, 860], {"focus": "hero"}),
         ("taunt_roar", C, [0, 80, 160, 260, 360, 480], {"focus": "hero", "crop": (760, 500)}),
-        ("charge", ("Cast_Charge", 20), [0, 40, 80, 120, 200, 300], {"target_dist": 300}),
+        ("charge", "Cast_Charge", [0, 40, 80, 120, 200, 300], {"target_dist": 300}),
         ("iron_fortress", C, [0, 100, 160, 260, 400, 560, 760, 900], {"focus": "hero"}),
         ("frenzy", C, [0, 80, 160, 260, 380, 520], {"focus": "hero"}),
         ("bleed_strike", A, [0, 40, 80, 160, 300, 600, 1000, 1400], {}),
@@ -1153,35 +1504,34 @@ def scenarios() -> dict:
         ("vengeful_wrath", C, [0, 100, 200, 320, 460, 640], {"focus": "hero"}),
         ("lethal_strike", A, [0, 40, 90, 150, 230, 340], {}),
         ("dual_wield_mastery", C, [0, 60, 120, 200, 300], {"focus": "hero"}),
-        ("rampage", ("Cast_Whirlwind", 20), [0, 60, 130, 220, 330, 480, 650, 850], {"focus": "hero",
-                                                                                     "crop": (760, 500)}),
+        ("rampage", "Cast_Whirlwind", [0, 60, 130, 220, 330, 480, 650, 850], {"focus": "hero", "crop": (760, 500)}),
     ):
-        sc[f"skill.{sid}"] = Scene_(f"skill.{sid}", [(0, "skill", sid)], fr, clip=pose[0], clip_frame=pose[1],
+        sc[f"skill.{sid}"] = Scene_(f"skill.{sid}", [(0, "skill", sid)], fr, clip=clip, cls="warrior",
                                     radius=skill_radius(sid), element=skill_element(sid), **extra)
-    # mage
-    for sid, pose, fr, extra in (
-        ("blizzard", C, [0, 100, 190, 280, 380, 520, 760, 1100], {"crop": (900, 560), "focus": "target",
-                                                                   "target_dist": 260}),
+    # mage (cast by the mage, in its own cast clips)
+    for sid, clip, fr, extra in (
+        ("blizzard", "Cast_Blizzard", [0, 100, 190, 280, 380, 520, 760, 1100],
+         {"crop": (900, 560), "focus": "target", "target_dist": 260}),
         ("ice_armor", C, [0, 60, 140, 250, 400, 480, 600, 800], {"focus": "hero"}),
         ("chain_lightning", C, [0, 40, 80, 130, 190, 260, 340], {"targets": 3, "crop": (820, 480)}),
         ("mana_shield", C, [0, 120, 180, 260, 400, 560, 760], {"focus": "hero"}),
         ("fire_wall", C, [0, 80, 180, 300, 450, 650, 900], {"focus": "target", "target_dist": 260,
                                                             "crop": (760, 500)}),
         ("teleport", C, [0, 60, 120, 180, 260, 400, 600], {"target_dist": 300}),
-        ("meteor", C, [0, 100, 200, 280, 320, 380, 500, 700, 1000], {"focus": "target", "target_dist": 260,
-                                                                     "crop": (820, 620)}),
+        ("meteor", "Cast_Meteor", [0, 100, 200, 280, 320, 380, 500, 700, 1000],
+         {"focus": "target", "target_dist": 260, "crop": (820, 620)}),
         ("combustion", C, [0, 40, 70, 120, 200, 320, 500], {}),
         ("freeze", C, [0, 80, 170, 260, 500, 760, 820, 950], {}),
         ("arcane_torrent", C, [0, 100, 200, 300, 400, 550, 750], {"focus": "target", "target_dist": 260,
                                                                   "crop": (820, 560)}),
     ):
-        sc[f"skill.{sid}"] = Scene_(f"skill.{sid}", [(0, "skill", sid)], fr, clip=pose[0], clip_frame=pose[1],
+        sc[f"skill.{sid}"] = Scene_(f"skill.{sid}", [(0, "skill", sid)], fr, clip=clip, cls="mage",
                                     radius=skill_radius(sid), element=skill_element(sid), **extra)
     # rogue
-    for sid, pose, fr, extra in (
+    for sid, clip, fr, extra in (
         ("backstab", A, [0, 40, 80, 130, 200, 300], {}),
         ("poison_blade", C, [0, 110, 200, 300, 450, 650, 900], {"focus": "hero"}),
-        ("multishot", C, [0, 40, 80, 120, 170, 220], {"crop": (760, 520), "target_dist": 260}),
+        ("multishot", "Cast_Multishot", [0, 40, 80, 120, 170, 220], {"crop": (760, 520), "target_dist": 260}),
         ("death_mark", C, [0, 100, 200, 350, 550, 800], {}),
         ("piercing_arrow", C, [0, 60, 120, 180, 240, 320], {"crop": (900, 520), "target_dist": 300}),
         ("poison_cloud", C, [0, 120, 260, 450, 700, 1000, 1300], {"focus": "target", "target_dist": 260,
@@ -1189,100 +1539,139 @@ def scenarios() -> dict:
         ("vanish", C, [0, 60, 150, 280, 450, 700], {"focus": "hero"}),
         ("shadow_step", C, [0, 40, 80, 120, 200, 320], {"target_dist": 300}),
     ):
-        sc[f"skill.{sid}"] = Scene_(f"skill.{sid}", [(0, "skill", sid)], fr, clip=pose[0], clip_frame=pose[1],
+        sc[f"skill.{sid}"] = Scene_(f"skill.{sid}", [(0, "skill", sid)], fr, clip=clip, cls="rogue",
                                     radius=skill_radius(sid), element=skill_element(sid), **extra)
-    # skills played as projectiles / ground effects
-    for sid, travel in (("fireball", 360), ("ice_arrow", 300), ("poison_arrow", 300)):
+    # skills played as projectiles / ground effects (launched at the owning class's hand on its release beat)
+    for sid, travel, cls in (("fireball", 360, "mage"), ("ice_arrow", 300, "mage"), ("poison_arrow", 300, "rogue")):
         sc[f"proj.{sid}"] = Scene_(f"proj.{sid}", [(0, "skill", sid), (0, "proj", (sid, travel))],
-                                   [40, 120, 200, 280, travel, travel + 60, travel + 160, travel + 400],
-                                   clip="Cast01", clip_frame=20, target_dist=330, crop=(820, 460),
+                                   [40, 120, 200, 280, travel + 20, travel + 80, travel + 180, travel + 400],
+                                   clip="Cast01", cls=cls, target_dist=330, crop=(820, 460),
                                    element=skill_element(sid))
+    sc["proj.arrow"] = Scene_("proj.arrow", [(0, "proj", ("arrow", 220))], [30, 90, 160, 240, 280, 340],
+                              clip="Cast_Multishot", cls="rogue", target_dist=330, crop=(820, 460),
+                              note="per-target multishot arrow (alias proj.multishot)")
+    sc["proj.piercing_arrow"] = Scene_("proj.piercing_arrow", [(0, "proj", ("piercing_arrow", 260))],
+                                       [30, 100, 180, 280, 320, 400], clip="Cast01", cls="rogue",
+                                       target_dist=330, crop=(820, 460))
     sc["proj.monster_bolt"] = Scene_("proj.monster_bolt", [(0, "mproj", ("monster_bolt", 320, "#B478FF"))],
-                                     [60, 160, 260, 320, 380, 520], clip="Idle", clip_frame=0, target_dist=330,
+                                     [60, 160, 260, 340, 400, 520], clip="Idle", target_dist=330,
                                      crop=(820, 460), color="#B478FF")
-    sc["proj.pet_bolt"] = Scene_("proj.pet_bolt", [(0, "mproj", ("pet_bolt", 320, "#9CE0FF"))],
-                                 [60, 160, 260, 320, 380, 520], clip="Idle", clip_frame=0, target_dist=330,
-                                 crop=(820, 460), color="#9CE0FF")
+    sc["proj.pet_bolt"] = Scene_("proj.pet_bolt", [(0, "pproj", ("pet_bolt", 320, "#9CE0FF"))],
+                                 [60, 160, 260, 340, 400, 520], clip="Idle", target_dist=330, crop=(820, 460),
+                                 color="#9CE0FF", note="a pet behind the hero shoots the goblin")
     sc["ground.fire_wall"] = Scene_("ground.fire_wall", [(0, "skill", "fire_wall"),
                                                          (0, "ground", ("fire_wall", 3000, None))],
-                                    [100, 400, 800, 1400, 2200, 2900], focus="target", target_dist=260,
+                                    [100, 400, 800, 1400, 2200, 2900], cls="mage", focus="target", target_dist=260,
                                     crop=(760, 500), radius=200, element="fire")
     for sid, trig in (("explosive_trap", 900), ("slow_trap", 900), ("chain_trap", 900)):
         sc[f"ground.{sid}"] = Scene_(f"ground.{sid}", [(0, "skill", sid), (0, "ground", (sid, trig, trig))],
                                      [100, 500, trig, trig + 60, trig + 140, trig + 260, trig + 450, trig + 800],
-                                     focus="hero", crop=(760, 520), radius=skill_radius(sid),
+                                     cls="rogue", focus="hero", crop=(760, 520), radius=skill_radius(sid),
                                      element=skill_element(sid))
     sc["ground.arrow_rain"] = Scene_("ground.arrow_rain", [(0, "skill", "arrow_rain"),
                                                            (0, "ground", ("arrow_rain", 3000, None))],
-                                     [100, 300, 600, 1000, 1600, 2400], focus="target", target_dist=260,
-                                     crop=(900, 600), radius=350)
+                                     [100, 300, 600, 1000, 1600, 2400], cls="rogue", focus="target",
+                                     target_dist=260, crop=(900, 600), radius=350)
+    # fallbacks (unknown skill / projectile / ground effect ids)
+    sc["skill.default"] = Scene_("skill.default", [(0, "skill", "default")], [0, 60, 140, 240, 360],
+                                 crop=(560, 400), color="#F39C12")
+    sc["proj.default"] = Scene_("proj.default", [(0, "proj", ("default", 300))], [60, 160, 260, 320, 380, 480],
+                                clip="Cast01", cls="mage", target_dist=330, crop=(820, 460), color="#F39C12")
+    sc["proj.default.fizzle"] = Scene_("proj.default.fizzle", [(0, "proj", ("default", 300, "fizzle"))],
+                                       [200, 320, 380, 480], clip="Cast01", cls="mage", target_dist=330,
+                                       crop=(820, 460), color="#F39C12", targets=0)
+    sc["ground.default"] = Scene_("ground.default", [(0, "ground", ("default", 900, 1500))],
+                                  [200, 700, 900, 980, 1100, 1500, 1700], focus="target", target_dist=260,
+                                  crop=(640, 460), radius=150, element="fire")
     # combat feedback
     for prof, sp, rp in (("light", 4, 10), ("normal", 6, 13), ("heavy", 9, 17), ("crit", 12, 22), ("kill", 14, 24)):
         big = prof in ("crit", "kill")
         sc[f"hit.impact.{prof}"] = Scene_(f"hit.impact.{prof}", [(0, "hit", "hit.impact")],
-                                          [0, 30, 60, 100, 160, 240], clip="Attack01", clip_frame=18, big=big,
+                                          [0, 30, 60, 100, 160, 240], clip="Attack01", big=big,
                                           sparks=sp, ring_px=rp, color="#FFD98A", crop=(520, 360))
     sc["hit.basic"] = Scene_("hit.basic", [(0, "hit", "hit.basic"), (0, "hit", "hit.impact")],
-                             [0, 30, 60, 100, 150, 220], clip="Attack01", clip_frame=18, color="#FFD98A",
-                             crop=(520, 360))
+                             [0, 30, 60, 100, 150, 220], clip="Attack01", color="#FFD98A", crop=(520, 360))
     for cls in ("warrior", "mage", "rogue"):
         sc[f"hit.basic.{cls}"] = Scene_(f"hit.basic.{cls}", [(0, "hit", f"hit.basic.{cls}"), (0, "hit", "hit.impact")],
-                                        [0, 40, 80, 120, 170], clip="Attack01", clip_frame=18,
+                                        [0, 40, 80, 120, 170], clip="Attack01", cls=cls,
                                         color={"warrior": "#FFD98A", "mage": "#C7A6FF", "rogue": "#9DFFC8"}[cls],
                                         crop=(520, 360))
     sc["hit.claw"] = Scene_("hit.claw", [(0, "hitme", "hit.claw")], [0, 30, 70, 120, 180, 230], clip="Idle",
-                            clip_frame=0, crop=(520, 360))
+                            crop=(520, 360))
     sc["hit.evade"] = Scene_("hit.evade", [(0, "hitme", "hit.evade")], [0, 40, 90, 150, 220], clip="Idle",
-                             clip_frame=0, crop=(520, 360))
+                             crop=(520, 360))
     for m in ("fire", "ice", "other"):
         sc[f"hit.mark.{m}"] = Scene_(f"hit.mark.{m}", [(0, "hit", f"hit.mark.{m}")], [0, 100, 300, 700, 1200, 1700],
                                      crop=(520, 360))
     sc["death.burst"] = Scene_("death.burst", [(0, "hit", "death.burst"), (0, "hit", "reward.gold")],
-                               [0, 60, 140, 240, 380, 560, 800], clip="Attack01", clip_frame=18, color="#FF4444",
+                               [0, 60, 140, 240, 380, 560, 800], clip="Attack01", color="#FF4444",
                                crop=(560, 400), target_clip="Hurt")
     sc["reward.heal"] = Scene_("reward.heal", [(0, "self", "reward.heal")], [0, 80, 180, 320, 480, 680],
-                               clip="Idle", clip_frame=0, focus="hero", crop=(520, 400))
+                               clip="Idle", focus="hero", crop=(520, 400))
     sc["reward.mana"] = Scene_("reward.mana", [(0, "self", "reward.mana")], [0, 80, 180, 320, 480, 680],
-                               clip="Idle", clip_frame=0, focus="hero", crop=(520, 400))
+                               clip="Idle", cls="mage", focus="hero", crop=(520, 400))
     sc["hero.levelup"] = Scene_("hero.levelup", [(0, "self", "hero.levelup")], [0, 80, 160, 280, 420, 600, 850, 1100],
-                                clip="Idle", clip_frame=0, focus="hero", crop=(620, 480))
-    for q, col in (("loot.drop", "#4F8CFF"), ("loot.drop.rare", "#FFD84A"), ("loot.drop.legendary", "#FF8A2A"),
-                   ("loot.drop.set", "#3ECF6A")):
-        sc[q] = Scene_(q, [(0, "loot", q)], [0, 60, 140, 260, 500, 900, 1300], clip="Idle", clip_frame=0,
-                       color=col, crop=(560, 420), focus="target", targets=0)
+                                clip="Idle", focus="hero", crop=(620, 480))
+    # loot: the drop burst + the standing beam loop on the bag (as the world builder plays them), then the beam
+    # alone later on, and the pickup (bag flight to the hero)
+    for q, col in (("magic", "#4F8CFF"), ("rare", "#FFD84A"), ("legendary", "#FF8A2A"), ("set", "#3ECF6A")):
+        drop = "loot.drop" if q == "magic" else f"loot.drop.{q}"
+        sc[drop] = Scene_(drop, [(0, "loot", drop), (0, "lootloop", f"loot.beam.{q}")],
+                          [0, 60, 140, 260, 500, 900, 1300], clip="Idle", color=col, crop=(560, 560),
+                          focus="beam", targets=0, bag="drop")
+        sc[f"loot.beam.{q}"] = Scene_(f"loot.beam.{q}", [(0, "lootloop", f"loot.beam.{q}")],
+                                      [2100, 2600, 3050, 3500], clip="Idle", color=col, crop=(560, 560),
+                                      focus="beam", targets=0, bag="drop",
+                                      note="standing beam (pulse ×.55 yoyo); frames span one pulse period")
+    sc["loot.pickup"] = Scene_("loot.pickup", [(0, "loot", "loot.pickup"), (0, "pickup", "#FFD84A")],
+                               [0, 60, 120, 200, 300, 420], clip="Idle", color="#FFD84A", crop=(620, 460),
+                               targets=0, target_dist=150, bag="pickup")
     sc["reward.gold"] = Scene_("reward.gold", [(0, "hit", "reward.gold")], [0, 80, 160, 260, 380, 500],
                                crop=(520, 360), targets=1)
     sc["quest.pop"] = Scene_("quest.pop", [(0, "loot", "quest.pop")], [0, 60, 130, 200, 260], clip="Idle",
-                             clip_frame=0, targets=0, focus="target", crop=(420, 320))
+                             targets=0, focus="target", crop=(420, 320))
     for st in ("burn", "poison", "freeze", "stun", "slow", "bleed"):
         sc[f"status.{st}"] = Scene_(f"status.{st}", [(0, "status", f"status.{st}")], [300, 700, 1100, 1500],
-                                    clip="Idle", clip_frame=0, focus="target", crop=(420, 340))
-    sc["hero.dodge"] = Scene_("hero.dodge", [(0, "self", "hero.dodge")], [0, 80, 200, 350, 500], clip="Idle",
-                              clip_frame=0, focus="hero", crop=(520, 360))
+                                    clip="Idle", focus="target", crop=(420, 340), tint=STATUS_TINT[f"status.{st}"])
+    sc["hero.dodge"] = Scene_("hero.dodge", [(0, "dodge", "hero.dodge")], [0, 80, 160, 240, 340, 460],
+                              clip="Dodge", cls="rogue", focus="hero", crop=(720, 440), dodge=True, targets=0)
     sc["hero.dash"] = Scene_("hero.dash", [(0, "skillctx", "hero.dash")], [0, 60, 120, 200, 320, 480],
-                             clip="Cast_Charge", clip_frame=20, target_dist=300, crop=(760, 420))
+                             clip="Cast_Charge", target_dist=300, crop=(760, 420))
     sc["hero.resonance"] = Scene_("hero.resonance", [(0, "self", "hero.resonance"),
                                                      (0, "selfloop", "hero.resonance.aura")],
-                                  [0, 100, 220, 400, 800, 1300], clip="Idle", clip_frame=0, focus="hero",
+                                  [0, 100, 220, 400, 800, 1300], clip="Idle", focus="hero",
                                   color="#FFB55C", crop=(560, 420))
     sc["teleport.blink"] = Scene_("teleport.blink", [(0, "skillctx", "teleport.blink")], [0, 60, 120, 200, 320],
-                                  clip="Cast01", clip_frame=20, target_dist=300, crop=(760, 420), targets=0)
+                                  clip="Cast01", target_dist=300, crop=(760, 420), targets=0)
     sc["portal.channel"] = Scene_("portal.channel", [(0, "selfloop", "portal.channel"), (1500, "self", "portal.arrive")],
-                                  [200, 600, 1000, 1400, 1560, 1750], clip="Idle", clip_frame=0, focus="hero",
-                                  crop=(560, 440))
+                                  [200, 600, 1000, 1400, 1560, 1750], clip="Idle", focus="hero", crop=(560, 440))
     for w, cl in (("camp.campfire", 2000), ("camp.torch", 2000), ("camp.hearthstone", 2000), ("exit.portal", 2500),
                   ("exit.sealed", 2500), ("prop.lore", 2000), ("prop.gather", 2000), ("prop.clue", 2000),
                   ("prop.soul_echo", 2000), ("prop.chest", 2000), ("prop.event", 2000)):
         big = w.startswith("exit.")
-        sc[w] = Scene_(w, [(0, "world", w)], [cl - 900, cl - 600, cl - 300, cl], clip="Idle", clip_frame=0,
-                       targets=0, focus="prop", crop=(640, 520) if big else (480, 420),
+        sc[w] = Scene_(w, [(0, "world", w)], [cl - 900, cl - 600, cl - 300, cl], clip="Idle",
+                       targets=0, focus="prop", crop=(640, 640) if big else (480, 420),
                        color="#FFD86A" if w == "prop.lore" else None, prop=w)
-    sc["prop.chest.open"] = Scene_("prop.chest.open", [(0, "world", "prop.chest.open")], [0, 100, 250, 450, 700],
-                                   clip="Idle", clip_frame=0, targets=0, focus="prop", crop=(480, 420),
-                                   prop="prop.chest.open")
+    # chest open: played as the Open clip starts (its layers wait for the ChestOpen notify, 120 ms); the lid keeps
+    # lifting until 400 ms
+    sc["prop.chest.open"] = Scene_("prop.chest.open", [(0, "world", "prop.chest.open")],
+                                   [60, 136, 180, 220, 300, 400, 570, 820], clip="Idle", targets=0, focus="prop",
+                                   crop=(480, 420), prop="prop.chest.open", prop_clip="Open", prop_beat=0.0)
+    # elites: one goblin on the dirt path, one on the grass — every affix hue on both grounds
     for e in ("fire_enhanced", "swift", "teleporting", "extra_strong", "curse_aura", "vampiric", "frozen"):
-        sc[f"elite.{e}"] = Scene_(f"elite.{e}", [(0, "status", f"elite.{e}")], [400, 800, 1200, 1600], clip="Idle",
-                                  clip_frame=0, focus="target", crop=(420, 340))
+        sc[f"elite.{e}"] = Scene_(f"elite.{e}", [(0, "status", f"elite.{e}"), (0, "status1", f"elite.{e}")],
+                                  [400, 800, 1200, 1600], clip="Idle", focus="gobs", crop=(560, 470), targets=2,
+                                  gob_pos=[(0.0, 0.0), (-150.0, 60.0)])
+    # the blacksmith's anvil sparks at 427 ms of Work_Hammer (FX_HammerStrike), on the stump's strike point
+    sc["npc.FX_HammerStrike"] = Scene_("npc.FX_HammerStrike", [(0, "notify", "npc.FX_HammerStrike")],
+                                       [0, 33, 66, 110, 160, 230], clip="Idle", targets=0, hero=False,
+                                       focus="smith", crop=(420, 380), smith=True)
+    # ambient camera volumes (emerald_plains: pollen + dust; wisps / dust_motes / sparks for later moods)
+    for amb, fr in (("pollen", [14000, 16000]), ("dust", [12000, 14000]), ("wisps", [9000, 11000]),
+                    ("dust_motes", [14000, 16000]), ("sparks", [6000, 8000])):
+        sc[f"ambient.{amb}"] = Scene_(f"ambient.{amb}", [(0, "ambient", f"ambient.{amb}")], fr, clip="Idle",
+                                      targets=1, focus="mid", crop=(960, 540), tight=False,
+                                      note="camera-attached volume, steady state")
     return sc
 
 
@@ -1292,55 +1681,142 @@ GROUPS = {
         "unyielding", "life_regen", "war_stomp", "vengeful_wrath", "lethal_strike", "dual_wield_mastery", "rampage"},
     "mage": lambda k: (k.startswith("skill.") and k[6:] in {
         "blizzard", "ice_armor", "chain_lightning", "mana_shield", "fire_wall", "teleport", "meteor", "combustion",
-        "freeze", "arcane_torrent"}) or k in ("proj.fireball", "proj.ice_arrow", "ground.fire_wall"),
+        "freeze", "arcane_torrent"}) or k in ("proj.fireball", "proj.ice_arrow", "ground.fire_wall",
+                                              "hit.basic.mage", "reward.mana"),
     "rogue": lambda k: (k.startswith("skill.") and k[6:] in {
         "backstab", "poison_blade", "multishot", "death_mark", "piercing_arrow", "poison_cloud", "vanish",
-        "shadow_step"}) or k in ("proj.poison_arrow", "ground.explosive_trap", "ground.slow_trap",
-                                 "ground.chain_trap", "ground.arrow_rain"),
-    "combat": lambda k: k.startswith("hit.") or k in ("death.burst", "reward.gold", "proj.monster_bolt",
-                                                     "proj.pet_bolt"),
-    "utility": lambda k: k.startswith(("reward.", "hero.", "loot.", "quest.", "teleport.", "portal.")),
+        "shadow_step"}) or k in ("proj.poison_arrow", "proj.arrow", "proj.piercing_arrow", "ground.explosive_trap",
+                                 "ground.slow_trap", "ground.chain_trap", "ground.arrow_rain", "hit.basic.rogue"),
+    "combat": lambda k: (k.startswith("hit.") and k not in ("hit.basic.mage", "hit.basic.rogue")) or
+    k in ("death.burst", "reward.gold", "proj.monster_bolt", "proj.pet_bolt"),
+    "utility": lambda k: k.startswith(("reward.", "hero.", "loot.", "quest.", "teleport.", "portal.")) and
+    k != "reward.mana",
     "status": lambda k: k.startswith(("status.", "elite.")),
-    "world": lambda k: k.startswith(("camp.", "exit.", "prop.")),
+    "world": lambda k: k.startswith(("camp.", "exit.", "prop.", "npc.")),
+    "ambient": lambda k: k.startswith("ambient."),
+    "fallback": lambda k: k in ("skill.default", "proj.default", "proj.default.fizzle", "ground.default"),
 }
 
 
+# ── output: native 1:1 frames, one or two per file, never resampled ──────────────────────────────────────
+def write_effect(rid: str, cells: list, out_dir: Path) -> list:
+    """``cells`` = [(ms, uint8 HxWx3)] → ``out_dir/<rid>/<ms>[-<ms>]ms.png``: two frames side by side when the pair
+    fits the budget truecolour, else one frame per file, else the frame in stacked native strips
+    (``<ms>ms.png``, ``<ms>ms_2.png`` …). Raises ``pngio.NativePreviewError`` when a frame cannot be stored at
+    scale 1 under the budget (no resampling)."""
+    d = out_dir / rid
+    d.mkdir(parents=True, exist_ok=True)
+    for old in d.glob("*.png"):
+        old.unlink()
+    flat = out_dir / f"{rid}.png"              # the earlier downscaled contact sheet
+    if flat.exists():
+        flat.unlink()
+    written = []
+    i = 0
+    while i < len(cells):
+        if i + 1 < len(cells):
+            (ma, ca), (mb, cb) = cells[i], cells[i + 1]
+            pair = review.grid([ca, cb], 2, pad=2)
+            path = d / f"{int(ma):05d}-{int(mb):05d}ms.png"
+            size = pngio.write_png(path, pair)
+            if size <= pngio.PREVIEW_MAX_BYTES:
+                written.append((path, size))
+                i += 2
+                continue
+            path.unlink()
+        ms, c = cells[i]
+        written += pngio.write_png_native(d / f"{int(ms):05d}ms.png", c, axis=0, max_tiles=4)
+        i += 1
+    for path, size in written:
+        inf = pngio.png_info(path)
+        if not inf["truecolor"] or size > pngio.PREVIEW_MAX_BYTES:
+            raise pngio.NativePreviewError(f"{path}: not a truecolour native frame under the budget")
+    return written
+
+
+def label(img: np.ndarray, text: str) -> None:
+    review.draw_text(img, 4, 4, text, rgb=(255, 244, 220))
+
+
 # ── run one scenario ───────────────────────────────────────────────────────────────────────────────────
-def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> Path:
+def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
     H = np.array([0.0, 0.0, 0.0])
     T = H + RIGHT * s.target_dist + UP * 12.0
     blow3 = T - H
     blow = blow3[:2] / np.linalg.norm(blow3[:2])
+    ch = stage.heroes.get(s.cls) or stage.hero
+    for c_, h_ in stage.heroes.items():
+        if h_ is not ch:
+            stage.pose(h_, "Idle", H + np.array([0, 0, -5000.0]), blow3, visible=False)
     hero = Actor("hero", H, HERO_H, hand_off=np.array([blow[0], blow[1], 0]) * 32)
-    gob_pos = [T, T + UP * 150 + RIGHT * 60, T - UP * 140 + RIGHT * 110]
+    if s.gob_pos is not None:
+        gob_pos = [T + UP * u + RIGHT * r for u, r in s.gob_pos] + [T + UP * 150 + RIGHT * 60] * 3
+    else:
+        gob_pos = [T, T + UP * 150 + RIGHT * 60, T - UP * 140 + RIGHT * 110]
     gobs = [Actor(f"gob{i}", gob_pos[i], GOB_H) for i in range(3)]
-    stage.pose(stage.hero, s.clip, s.clip_frame, H, blow3, visible=s.hero)
+    hero_clip = s.clip if s.clip in ch["anims"] else ("Cast01" if s.clip.startswith("Cast") else "Idle")
+    dodge_dir = np.array([-UP[0], -UP[1], 0.0]) * 0.6 + np.array([-RIGHT[0], -RIGHT[1], 0.0]) * 0.8
+    dodge_dir /= np.linalg.norm(dodge_dir)
+    dodge_len = DODGE_TILES.get(s.cls, 1.8) * 100.0
+    stage.pose(ch, hero_clip, H, blow3 if not s.dodge else dodge_dir, visible=s.hero)
+    beat = beat_ms(ch["sk"], hero_clip)
     for i, g in enumerate(stage.gobs):
         vis = i < max(s.targets, 0)
-        stage.pose(g, s.target_clip if i == 0 else "Idle", 0, gob_pos[i], H - gob_pos[i], visible=vis)
-    stage.set_frame(s.clip_frame)
+        stage.pose(g, s.target_clip if i == 0 else "Idle", gob_pos[i], H - gob_pos[i], visible=vis)
     target_actor = gobs[0] if s.targets >= 1 else None
     prop_at = H + RIGHT * (260 if s.rid.startswith("exit.") else 120)
-    stage.show_prop(s.prop, prop_at)
-    # camera + crop
-    if s.focus == "hero":
-        f = H
-    elif s.focus == "target":
-        f = T
-    elif s.focus == "prop":
-        f = prop_at
+    prop = stage.show_prop(s.prop, prop_at, clip=s.prop_clip)
+    bag = None
+    if s.bag:
+        bag = stage.show_prop("loot.bag", T)
+    smith = None
+    if s.smith:
+        smith = stage.load_smith()
+        stage.pose(smith, "Work_Hammer", H + RIGHT * 60, -UP + RIGHT * 0.25, visible=True)
+    elif stage.smith is not None:
+        for m in stage.smith["meshes"]:
+            m.hide_render = True
+
+    # the timed actor (its clip time drives the scene frame) and the event's clip time at t = 0
+    if smith is not None:
+        timed, t0_ms = smith, beat_ms("SK_NPC_Blacksmith", "Work_Hammer") or 426.6
+    elif prop is not None and s.prop_clip:
+        timed, t0_ms = prop, s.prop_beat
     else:
-        f = (H + T) * 0.5
+        timed, t0_ms = ch, (beat if hero_clip not in ("Idle", "Dodge") else 0.0)
+    clip_len = float(clip_info(timed["sk"], timed["clip"]).get("lengthMs", 1000.0)) if timed.get("clip") else 0.0
+    static_idle = timed is ch and hero_clip == "Idle"      # an idle hero holds its first frame (one background)
+    live_until = -1.0 if static_idle or not timed.get("clip") else clip_len - t0_ms
+
+    def hero_at(t_ms: float) -> np.ndarray:
+        if not s.dodge:
+            return H
+        u = min(max(t_ms / 300.0, 0.0), 1.0)
+        u = 1.0 - (1.0 - u) ** 2
+        return H + dodge_dir * dodge_len * u
+
+    def set_time(t_ms: float, sockets=True) -> None:
+        if timed.get("clip"):
+            stage.clip_time(timed, t0_ms + (0.0 if static_idle else t_ms))
+        if s.dodge:
+            ch["root"].location = ue_to_bl(hero_at(t_ms))
+            hero.pos = hero_at(t_ms)
+        if sockets and timed is ch:
+            hero.sockets = stage.sockets_ue(ch)
+
+    # camera + crop
+    focus = {"hero": H, "target": T, "prop": prop_at, "gobs": (gob_pos[0] + gob_pos[1]) * 0.5,
+             "smith": H + RIGHT * 60 - UP * 25, "beam": T + UP * 110}.get(s.focus, (H + T) * 0.5)
     review.setup_render(RES, 8)
-    fb = ue_to_bl(f)
+    fb = ue_to_bl(focus)
     cam_obj = review.game_camera((fb.x, fb.y))
     c = review.project(cam_obj, Vector((fb.x, fb.y, 0.6)))
-    cw, ch = s.crop
+    cw, chh = s.crop
     x0 = int(round(c[0] * RES[0] - cw / 2))
-    y0 = int(round((1 - c[1]) * RES[1] - ch / 2))
-    x0, y0 = max(0, min(RES[0] - cw, x0)), max(0, min(RES[1] - ch, y0))
-    box = (x0 / RES[0], 1 - (y0 + ch) / RES[1], (x0 + cw) / RES[0], 1 - y0 / RES[1])
-    cam = Camera(cam_obj, RES, (x0, y0, cw, ch))
+    y0 = int(round((1 - c[1]) * RES[1] - chh / 2))
+    x0, y0 = max(0, min(RES[0] - cw, x0)), max(0, min(RES[1] - chh, y0))
+    box = (x0 / RES[0], 1 - (y0 + chh) / RES[1], (x0 + cw) / RES[0], 1 - y0 / RES[1])
+    cam = Camera(cam_obj, RES, (x0, y0, cw, chh))
     R_ = np.array(cam_obj.matrix_world)[:3, :3]
     cam_vecs = (bl_to_ue_dir(R_[:, 0]), bl_to_ue_dir(R_[:, 1]), bl_to_ue_dir(-R_[:, 2]))
     sim = Sim(recipes, cam_vecs)
@@ -1351,67 +1827,109 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> Path:
     # events whose runtime context sets no blow (level-up, pickups, statuses, loot, world, portal): the blow frame
     # falls back to UE +X (UAbyssVfxSystem::SpawnParticle)
     nob_ctx = dict(base_ctx, blow=np.array([1.0, 0.0]))
+    set_time(0.0)
+    if timed is not ch:
+        hero.sockets = stage.sockets_ue(ch)
+    if ch.get("crystal") is not None and any(k == "proj" for _, k, _ in s.events):
+        cw_ = ue_cm(ch["crystal"].matrix_world.translation)
+        print(f"  {s.cls} release: fx_hand_r {np.round(hero.sockets.get('hand', H), 1)}  staff crystal "
+              f"{np.round(cw_, 1)}  ({np.linalg.norm(cw_ - hero.sockets.get('hand', H)):.0f} cm apart)")
 
     def ctx_skill():
         pts = [g.pos for g in gobs[:max(1, s.targets)]] if s.targets >= 1 else [T]
         return Ctx(origin=H, target=T, point=T, origin_actor=hero, target_actor=target_actor, points=pts,
                    stagger=55.0 if s.targets > 1 else 0.0, **base_ctx)
-    pending = sorted(s.events, key=lambda e: e[0])
-    timed: list = []          # (t, fn)
-    for t0, kind, data in pending:
+    timed_ev: list = []          # (t, fn)
+    flight = {}
+    for t0, kind, data in sorted(s.events, key=lambda e: e[0]):
         if kind in ("skill", "skillctx"):
             rid = f"skill.{data}" if kind == "skill" else data
-            timed.append((t0, lambda rid=rid: sim.play(rid, ctx_skill())))
+            timed_ev.append((t0, lambda rid=rid: sim.play(rid, ctx_skill())))
         elif kind == "hit":
-            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=H, target=T, point=T, origin_actor=hero,
-                                                                 target_actor=target_actor, **base_ctx))))
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=H, target=T, point=T, origin_actor=hero,
+                                                                    target_actor=target_actor, **base_ctx))))
         elif kind == "hitme":
             back = dict(base_ctx, blow=-blow)
-            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=H, point=H, origin_actor=gobs[0],
-                                                                 target_actor=hero, **back))))
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=H, point=H, origin_actor=gobs[0],
+                                                                    target_actor=hero, **back))))
         elif kind in ("self", "selfloop"):
-            sctx = base_ctx if data in ("hero.dodge", "hero.dash") else nob_ctx
-            timed.append((t0, lambda rid=data, sctx=sctx: sim.play(rid, Ctx(origin=H, target=H, point=H,
-                                                                            origin_actor=hero, target_actor=hero,
-                                                                            **sctx))))
-        elif kind == "status":
-            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=T, point=T, origin_actor=gobs[0],
-                                                                 target_actor=gobs[0], **nob_ctx))))
-        elif kind == "loot":
-            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=T, point=T, **nob_ctx))))
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=H, target=H, point=H, origin_actor=hero,
+                                                                    target_actor=hero, **nob_ctx))))
+        elif kind == "dodge":
+            dctx = dict(base_ctx, blow=dodge_dir[:2])
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=H, target=H, point=H, origin_actor=hero,
+                                                                    target_actor=hero, **dctx))))
+        elif kind in ("status", "status1"):
+            g = gobs[0] if kind == "status" else gobs[1]
+            timed_ev.append((t0, lambda rid=data, g=g: sim.play(rid, Ctx(origin=g.pos, target=g.pos, point=g.pos,
+                                                                         origin_actor=g, target_actor=g,
+                                                                         **nob_ctx))))
+        elif kind in ("loot", "lootloop"):
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=T, target=T, point=T, **nob_ctx))))
+        elif kind == "pickup":
+            col = hex_lin(data)
+            timed_ev.append((t0, lambda col=col: sim.play("reward.gold", Ctx(origin=H, target=H, point=H,
+                                                                             target_actor=hero,
+                                                                             **dict(nob_ctx, color=col)))))
         elif kind == "world":
-            timed.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=prop_at, target=prop_at, point=prop_at,
-                                                                 **nob_ctx))))
-        elif kind in ("proj", "mproj"):
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=prop_at, target=prop_at, point=prop_at,
+                                                                    **nob_ctx))))
+        elif kind == "notify":
+            sp = ue_cm(smith["root"].matrix_world.translation)
+            fwd = smith["root"].matrix_world.to_3x3() @ Vector((0.0, -1.0, 0.0))
+            nb = np.array([fwd.x, -fwd.y])
+            nb /= np.linalg.norm(nb)
+            sa = Actor("smith", sp, {"chest": 94.6, "head": 150.8, "overhead": 197.0, "hand": 77.7})
+            timed_ev.append((t0, lambda rid=data, sp=sp, nb=nb, sa=sa: sim.play(
+                rid, Ctx(origin=sp, target=sp, point=sp, origin_actor=sa, target_actor=sa,
+                         **dict(base_ctx, blow=nb)))))
+        elif kind == "ambient":
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=focus.copy(), target=focus.copy(),
+                                                                    point=focus.copy(), **nob_ctx))))
+        elif kind in ("proj", "mproj", "pproj"):
             vid, travel = data[0], data[1]
-            src = hero if kind == "proj" else gobs[0]
-            dst = gobs[0] if kind == "proj" else hero
-            a = actor_point(src, "hand", 0)
-            b = actor_point(dst, "chest", 0)
+            ending = data[2] if kind == "proj" and len(data) > 2 else "hit"
+            if kind == "proj":
+                src, dst = hero, (gobs[0] if s.targets >= 1 else None)
+            elif kind == "mproj":
+                src, dst = gobs[0], hero
+            else:
+                pet = Actor("pet", H - UP * 70 - RIGHT * 50, {"chest": 30.0, "head": 45.0, "overhead": 70.0,
+                                                               "hand": 35.0})
+                src, dst = pet, gobs[0]
+            dst_pt = (lambda: actor_point(dst, "chest", 0)) if dst is not None else \
+                (lambda: T + np.array([0, 0, 90.0]))
             arc = recipes.get(f"proj.{vid}", {}).get("arc", 0.0)
-
-            def moving(t_ms, a=a, b=b, travel=travel, arc=arc):
-                u = min(max(t_ms / travel, 0.0), 1.0)
-                p = a + (b - a) * u
-                p[2] += arc * 4 * u * (1 - u)
-                return p
-            pblow = (b - a)[:2] / np.linalg.norm((b - a)[:2])
-            pc = dict(base_ctx, blow=pblow)
-            ctxp = Ctx(origin=a, target=b, point=b, origin_actor=src, target_actor=dst, **pc)
-            head_anchor = Anchor(None, "ground", 0, a, moving=moving)
             state = {}
 
-            def launch(vid=vid, ctxp=ctxp, head_anchor=head_anchor, state=state):
+            def launch(vid=vid, src=src, dst=dst, dst_pt=dst_pt, travel=travel, arc=arc, state=state):
+                a = actor_point(src, "hand", 0)          # the launch socket at the release beat
+                b = dst_pt()
+
+                def moving(t_ms, a=a, b=b, t_start=sim.t, travel=travel, arc=arc):
+                    u = min(max((t_ms - t_start) / travel, 0.0), 1.0)
+                    p = a + (b - a) * u
+                    p[2] += arc * 4 * u * (1 - u)
+                    return p
+                pblow = (b - a)[:2] / np.linalg.norm((b - a)[:2])
+                ctxp = Ctx(origin=a, target=b, point=b, origin_actor=src, target_actor=dst,
+                           **dict(base_ctx, blow=pblow))
+                state["ctx"] = ctxp
+                state["b"] = b
                 sim.play(f"proj.{vid}.launch", ctxp)
                 hc = Ctx(**{**ctxp.__dict__, "origin_actor": None})
-                state["h"] = sim.play(f"proj.{vid}", hc, anchor_override=head_anchor)
+                state["h"] = sim.play(f"proj.{vid}", hc,
+                                      anchor_override=Anchor(None, "ground", 0, a, moving=moving))
 
-            def end(vid=vid, ctxp=ctxp, state=state, dst=dst):
+            def end(vid=vid, state=state, dst=dst, ending=ending):
                 sim.stop(state.get("h", 0))
-                ec = Ctx(**{**ctxp.__dict__, "point": dst.pos.copy(), "target": dst.pos.copy()})
-                sim.play(f"proj.{vid}.hit", ec)
-            timed.append((t0, launch))
-            timed.append((t0 + travel, end))
+                ctxp = state["ctx"]
+                end_pt = dst.pos.copy() if dst is not None else state["b"] - np.array([0, 0, 90.0])
+                ec = Ctx(**{**ctxp.__dict__, "point": end_pt, "target": end_pt})
+                rid = f"proj.{vid}.{ending}"
+                sim.play(rid if rid in recipes else f"proj.default.{ending}", ec)
+            timed_ev.append((t0, launch))
+            timed_ev.append((t0 + travel, end))
         elif kind == "ground":
             gid, trig, end_t = data
             gc = Ctx(origin=H if gid in ("explosive_trap", "slow_trap", "chain_trap") else T,
@@ -1420,75 +1938,191 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> Path:
 
             def gstart(gid=gid, gc=gc, state=state):
                 state["h"] = sim.play(f"ground.{gid}", gc)
-            timed.append((t0, gstart))
+            timed_ev.append((t0, gstart))
             if trig is not None and trig != end_t:
-                timed.append((trig, lambda gid=gid, gc=gc: sim.play(f"ground.{gid}.trigger", gc)))
+                timed_ev.append((trig, lambda gid=gid, gc=gc: sim.play(f"ground.{gid}.trigger", gc)))
             if end_t is not None:
-                def gend(gid=gid, gc=gc, state=state):
+                def gend(gid=gid, gc=gc, state=state, trig=trig, end_t=end_t):
                     sim.stop(state.get("h", 0))
                     if f"ground.{gid}.trigger" in recipes and end_t == trig:
                         sim.play(f"ground.{gid}.trigger", gc)
-                    sim.play(f"ground.{gid}.end", gc) if f"ground.{gid}.end" in recipes else None
-                timed.append((end_t, gend))
-    timed.sort(key=lambda e: e[0])
-    # static background (no FX meshes)
-    stage.place_meshes([])
-    bg_col, bg_dep = stage.render(box)
+                    if f"ground.{gid}.end" in recipes:
+                        sim.play(f"ground.{gid}.end", gc)
+                timed_ev.append((end_t, gend))
+    timed_ev.sort(key=lambda e: e[0])
+
+    # bag flight (WorldBuilder Leaving: 300 ms, EaseInCubic toward the hero's chest − half the bag, 18 px arc)
+    def bag_at(t_ms: float) -> np.ndarray:
+        if s.bag != "pickup":
+            return T
+        u = min(max(t_ms / 300.0, 0.0), 1.0)
+        e = u ** 3
+        chest = actor_point(hero, "chest", 0) - np.array([0, 0, 30.0])
+        p = T + (chest - T) * e
+        p[2] += 18.0 * PX_CM_WEB * math.sin(math.pi * u)
+        return p
+
     cells = []
     dt = 1000.0 / 60.0
     t = 0.0
     fi = 0
     frames = sorted(max(f, 16.7) for f in s.frames)     # the beat's first tick: particles exist after one update
+    bg_key, bg_col, bg_dep = None, None, None
+    tag = {"warrior": "WARRIOR 1.76M", "mage": "MAGE", "rogue": "ROGUE"}.get(s.cls, "")
+    ghosts_spec = []
+    if s.dodge:
+        for k, (frac, a0) in enumerate(((1 / 3, 0.28), (2 / 3, 0.21))):
+            tc = 300.0 * (1 - math.sqrt(1 - frac))          # when the eased path passes ⅓ / ⅔
+            ghosts_spec.append((hero_at(tc), tc, a0, 1.0 + 0.04 * k))
     while fi < len(frames):
-        while timed and timed[0][0] <= t + 1e-6:
-            timed.pop(0)[1]()
+        while timed_ev and timed_ev[0][0] <= t + 1e-6:
+            timed_ev.pop(0)[1]()
         if t + 1e-6 >= frames[fi]:
+            set_time(t)
+            if bag is not None:
+                bag["root"].location = ue_to_bl(bag_at(t))
+                for o in bag["objs"][1:]:
+                    o.hide_render = s.bag == "pickup" and t >= 300.0
             sprites, meshes = sim.instances()
+            key = (round(timed.get("ms", 0.0), 1), tuple(hero.pos), round(t) if s.bag == "pickup" else 0)
             if meshes:
                 stage.place_meshes(meshes)
                 col, dep = stage.render(box)
-            else:
+                stage.place_meshes([])
+                if key != bg_key:                 # the plate without FX meshes (the touched-pixel crop)
+                    bg_key = key
+                    bg_col, bg_dep = stage.render(box)
+            elif key == bg_key:
                 col, dep = bg_col.copy(), bg_dep
+            else:
+                col, dep = stage.render(box)
+                bg_key, bg_col, bg_dep = key, col.copy(), dep
             img = col.copy()
+            if s.tint is not None:
+                mask = stage.render_mask(box, stage.gobs[0]["meshes"])
+                tl = np.array(hex_lin(s.tint[0]))
+                img = img * (1.0 + (tl - 1.0) * s.tint[1] * mask[..., None])
+            if ghosts_spec:
+                live = [(p, tc, a0, sc_) for p, tc, a0, sc_ in ghosts_spec if tc <= t <= tc + 260.0]
+                if live:
+                    layers = stage.render_ghosts(box, ch, [(p, tc) for p, tc, _, _ in live], ch["spirit"])
+                    set_time(t)
+                    for lay_, (p, tc, a0, sc_) in zip(layers, live):
+                        a = a0 * (1.0 - min((t - tc) / 260.0, 1.0)) ** 1.3
+                        img = img + lay_ * a
+            plate = img.copy()
             composite_sprites(img, dep, cam, sprites)
+            # what the effect touched (sprites, FX meshes) → the tight crop
+            touched = np.abs(img - plate).max(axis=2) > 0.02
+            if meshes:
+                touched |= np.abs(col - bg_col).max(axis=2) > 0.02
             img = bloom_lin(img)
             out = to_srgb8(img)
-            review.draw_text(out, 4, 4, f"{s.rid}  +{int(frames[fi])}MS", rgb=(255, 244, 220))
-            cells.append(out)
-            if CELL_DIR is not None:
-                CELL_DIR.mkdir(parents=True, exist_ok=True)
-                pngio.write_png(CELL_DIR / f"{s.rid}_{int(frames[fi]):04d}.png", out)
+            cells.append((frames[fi], out, touched))
             fi += 1
             continue
+        if (0 <= t <= live_until + dt) or (s.dodge and t <= 320.0):
+            set_time(t)                       # the cast clip moves the launch / anchor sockets
         sim.update(dt)
         t += dt
     stage.place_meshes([])
+    # one tight crop for every frame of the effect: the union of what it touched + the actors it plays on (for
+    # scale), padded, inside the scenario crop — native pixels, only less of the empty plains
+    subj = [hero_at(t)] if s.hero else []
+    subj += [g.pos for g in gobs[:max(s.targets, 0)]]
+    if s.prop:
+        subj.append(prop_at)
+    if s.bag:
+        subj.append(T)
+    if smith is not None:
+        subj.append(ue_cm(smith["root"].matrix_world.translation))
+    box_px = tight_box([c[2] for c in cells], cam, subj, (cw, chh)) if s.tight else (0, 0, cw, chh)
+    x0c, y0c, x1c, y1c = box_px
+    final = []
+    for ms, out, _ in cells:
+        o = np.ascontiguousarray(out[y0c:y1c, x0c:x1c])
+        label(o, f"{s.rid}  +{int(ms)}MS  1:1 1080P  {tag if s.hero else ''}")
+        final.append((ms, o))
+        if CELL_DIR is not None:
+            CELL_DIR.mkdir(parents=True, exist_ok=True)
+            pngio.write_png(CELL_DIR / f"{s.rid}_{int(ms):05d}.png", o)
+    cw, chh = x1c - x0c, y1c - y0c
     stage.show_prop(None, prop_at)
-    cols = 4 if len(cells) > 4 else len(cells)
-    if len(cells) in (5, 6) and cw >= 600:
-        cols = 3
-    sheet = review.grid(cells, cols, pad=2)
-    lab = np.zeros((14, sheet.shape[1], 3), np.uint8)
-    lab[:] = (24, 20, 30)
-    review.draw_text(lab, 4, 4, f"{s.rid}   W1 GAME CAMERA  NATIVE 1080P CROPS  WARRIOR 1.76M FOR SCALE")
-    sheet = np.vstack([lab, sheet])
-    out_dir.mkdir(parents=True, exist_ok=True)
-    p = out_dir / f"{s.rid}.png"
-    size = pngio.write_png_budget(p, sheet)
-    print(f"  {p.name}: {sheet.shape[1]}x{sheet.shape[0]} {size // 1024} KB")
-    return p
+    written = write_effect(s.rid, final, out_dir)
+    kb = sum(sz for _, sz in written) // 1024
+    print(f"  {s.rid}: {len(cells)} frames {cw}x{chh} native -> {len(written)} files, {kb} KB "
+          f"(max {max(sz for _, sz in written) // 1024} KB)")
+    if smith is not None:
+        hm = smith.get("hammer")
+        if hm is not None:
+            stage.clip_time(smith, t0_ms)
+            bpy.context.view_layer.update()
+            hs = next((x for x in manifest()["SM_NPCKit_Prop_Hammer"]["sockets"] if x["name"] == "head"), None)
+            sp = ue_cm(smith["root"].matrix_world.translation)
+            fwd = smith["root"].matrix_world.to_3x3() @ Vector((0.0, -1.0, 0.0))
+            f2 = np.array([fwd.x, -fwd.y])
+            f2 /= np.linalg.norm(f2)
+            r2 = np.array([-f2[1], f2[0]])
+            strike = next(L["offset"] for L in recipes["npc.FX_HammerStrike"]["layers"] if L["sprite"] == "Ember")
+            sp_world = sp + np.array([*(f2 * strike[0] + r2 * strike[1]), strike[2]])
+            if hs is not None:
+                head = ue_cm(item_socket_world(hm, hs))
+                print(f"  hammer head at the strike notify: {np.round(head, 1)}  burst at {np.round(sp_world, 1)}  "
+                      f"gap {np.linalg.norm(head - sp_world):.1f} cm")
+            st = stage.smith.get("stump")
+            if st is not None:
+                ss = next(x for x in manifest()["SM_Prop_Camp_AnvilStump"]["sockets"] if x["name"] == "strike")
+                sw = ue_cm(item_socket_world(st, ss))
+                print(f"  anvil `strike` socket {np.round(sw, 1)} vs recipe anchor {np.round(sp_world, 1)} "
+                      f"(+3 cm over the bar): {np.linalg.norm(sw + np.array([0, 0, 3.0]) - sp_world):.1f} cm")
+        for m in smith["meshes"]:
+            m.hide_render = True
+    return written
+
+
+PX_CM_WEB = 100.0 / 45.0
+def tight_box(touched: list, cam: Camera, subjects: list, crop: tuple, pad: int = 26, min_wh=(300, 240)):
+    """(x0, y0, x1, y1) in the scenario crop: the union of the effect's touched pixels over all frames and the
+    screen boxes of its subject actors (feet → 1.9 m, ±45 cm), padded, at least ``min_wh``."""
+    W, H_ = crop
+    ys, xs = [], []
+    for m in touched:
+        yy, xx = np.nonzero(m)
+        if len(xx):
+            xs += [int(xx.min()), int(xx.max())]
+            ys += [int(yy.min()), int(yy.max())]
+    for p in subjects:
+        for dz in (0.0, 190.0):
+            for dx in (-60.0, 60.0):
+                q = np.asarray(p, float) + np.array([0.0, 0.0, dz]) + RIGHT * dx
+                pr = cam.project(np.array(ue_to_bl(q)))
+                if pr is not None:
+                    xs.append(int(pr[0]))
+                    ys.append(int(pr[1]))
+    if not xs:
+        return 0, 0, W, H_
+    x0, x1 = max(0, min(xs) - pad), min(W, max(xs) + pad + 1)
+    y0, y1 = max(0, min(ys) - pad), min(H_, max(ys) + pad + 1)
+    for lo, hi, n, mn in ((0, 2, W, min_wh[0]), (1, 3, H_, min_wh[1])):
+        b = [x0, y0, x1, y1]
+        if b[hi] - b[lo] < mn:
+            c = (b[hi] + b[lo]) // 2
+            a = max(0, min(n - mn, c - mn // 2))
+            b[lo], b[hi] = a, min(n, a + mn)
+        x0, y0, x1, y1 = b
+    return x0, y0, x1, y1
 
 
 def main(argv) -> int:
     global CELL_DIR, SOFT_GROUND
-    if "--ue-softfade" in argv:
-        SOFT_GROUND = 0.08
+    if "--soft-ground" in argv:
+        SOFT_GROUND = 0.008
     out_dir = K.SCRATCH / "effects" if "--scratch" in argv else OUT_DIR
     if "--cells" in argv:
         CELL_DIR = K.SCRATCH / "cells"
     sel = [a for a in argv if not a.startswith("--")]
     recipes = load_recipes()
-    man = json.loads(paths.manifest_path().read_text())["assets"]
+    man = manifest()
     for name, e in man.items():
         if name.startswith(("SM_FX_", "SM_Pickup_GoldCoin")):
             d = e.get("boundsDiameterCm")
@@ -1506,9 +2140,18 @@ def main(argv) -> int:
         else:
             print(f"unknown scenario {a}")
     keys = list(dict.fromkeys(keys))
-    stage = Stage()
+    classes = sorted({sc[k].cls for k in keys} | {"warrior"})
+    stage = Stage(tuple(classes))
+    fails = []
     for k in keys:
-        run(stage, recipes, sc[k], out_dir)
+        try:
+            run(stage, recipes, sc[k], out_dir)
+        except pngio.NativePreviewError as ex:
+            print(f"  FAIL {k}: {ex}")
+            fails.append(k)
+    if fails:
+        print(f"native preview budget failures: {fails}")
+        return 1
     return 0
 
 

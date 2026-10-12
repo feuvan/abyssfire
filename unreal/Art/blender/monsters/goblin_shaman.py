@@ -3,9 +3,11 @@
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/goblin_shaman.py
         [--quick] [--anims Clip … --facing=se] [--no-previews] [--no-verify]
 
-The tribe's hunched spirit-caller (0.95 m, feathers to ≈ 1.07 m): a cracked bird-skull mask over brow and nose
+The tribe's hunched spirit-caller (0.95 m, feathers to ≈ 1.13 m): a cracked bird-skull mask over brow and nose
 with a jutting beak, two eye holes holding green spirit embers and a red war-paint stripe; a beaded hide band and a
-fan of four feathers (teal / red / cream / red, dark barred tips) behind the head on ``headdress_*``; a mangy fur
+fan of four feathers (teal / red / cream / red, dark barred tips) behind the head on ``headdress_*`` — standing
+nearly upright and splayed (``FAN``), so the vanes show their colours from behind too (the web's backward sweep
+pointed them end-on at the W1 camera from ne / back / nw); a mangy fur
 shawl with dark strokes and a ragged fringe, a bone-tooth necklace with a glowing spirit-stone; a painted belly
 spiral; a stitched hide skirt over the thighs (front / back panels on ``loin_*``) hung with bone charms, a belt and
 a dark-hide pouch; two bone bracers on the totem arm. Weapon: ``SM_Mon_GoblinShaman_Totem`` — a gnarled staff
@@ -14,7 +16,8 @@ a dark-hide pouch; two bone bracers on the totem arm. Weapon: ``SM_Mon_GoblinSha
 ``totem_feather_*`` (children of ``weapon_r``). M5: a **ranged caster** — Attack01 draws the totem back past the
 shoulder, sweeps it up and thrusts it at the target, releasing the spirit-fire bolt at 250 ms (``FX_SpiritBolt``,
 ``Release``, ``Contact``). Clips: Idle 667, Walk 600 (1.35 m/s), Attack01 500, Hurt 200, Death 500 (the fire dies
-out), Taunt 900, Stun 600.
+out), Taunt 900, Stun 600. Cloth × limb QA (``QA_PAIRS``, limit 0 on every frame): the skirt envelope
+(``ShamanAnims``) keeps the legs inside the skirt, the shawl clear of the free fist.
 
 Web source: ``src/graphics/sprites/monsters/GoblinShaman.ts`` (palette :41-60, mask :123-160, headdress :96-121,
 totem :229-275, READY :480-490, ATTACK :510-515, fx :540-619).
@@ -129,9 +132,13 @@ class _Off:
         return self.s.normal(u, a)
 
 
+SKIRT_THIGH = 1.3            # side-panel weight on the thighs (× the front / back chain weights' scale)
+
+
 def skirt_bind(kit, top_z: float, bot_z: float) -> Bind:
     """Hide skirt weights: the waist on the pelvis, the front / back panels down the ``loin_f`` / ``loin_b`` chains
-    (the flap envelope keeps them clear of the thighs), the sides blended onto the thighs."""
+    (the skirt envelope ``skirt_cloth`` keeps them clear of the thighs and knees), the sides blended onto the
+    thighs."""
     J = kit.J
     names = ("pelvis", "loin_f_01", "loin_f_02", "loin_b_01", "loin_b_02", "thigh_l", "thigh_r")
 
@@ -148,8 +155,9 @@ def skirt_bind(kit, top_z: float, bot_z: float) -> Bind:
         top = 1.0 - GB._smooth_w(t, 0.0, 0.3)
         low = 1.0 - top
         lk = GB._smooth_w(t, 0.35, 0.8)
+        # the sides follow the thighs (× SKIRT_THIGH): a knee lifting at the front-side carries the panel with it
         w = np.stack([top + 1e-4, low * fr * (1 - lk), low * fr * lk, low * bk * (1 - lk), low * bk * lk,
-                      low * sl * 0.8, low * sr * 0.8], axis=1)
+                      low * sl * SKIRT_THIGH, low * sr * SKIRT_THIGH], axis=1)
         return w
     return Bind.custom(names, fn)
 
@@ -296,7 +304,9 @@ def build_body(pal: Palette, kit: ShamanKit, lod: int = 0) -> bpy.types.Object:
     P = J["pelvis"]
     top_z = t.point(0.10, 0.0).z
     bot_z = J["knee_l"].z - u(0.8)
-    sk_rings = [(0.0, u(5.4), u(5.8), u(0.6)), (0.45, u(6.1), u(6.4), u(0.4)), (1.0, u(6.9), u(7.1), u(0.2))]
+    # bell flare (web): the hip rows widen fast so the swinging thigh roots stay inside the waist band
+    sk_rings = [(0.0, u(5.4), u(5.8), u(0.6)), (0.2, u(6.2), u(6.6), u(0.45)), (0.5, u(6.6), u(6.9), u(0.35)),
+                (1.0, u(7.1), u(7.3), u(0.2))]
     rows_o, rows_i = [], []
     angs = G.angles(24)
     for k in range(6):
@@ -343,15 +353,16 @@ def build_body(pal: Palette, kit: ShamanKit, lod: int = 0) -> bpy.types.Object:
         top = t.point(0.09, a, u(1.0))
         n = t.normal(0.09, a)
         bot = top + Vector((0, 0, -u(ln))) + n * u(0.3)
+        # the charms ride the skirt surface they hang on (same weights): a thigh-driven skirt would swallow
+        # charms left on the pelvis
         b.add(M.capsule(top, bot, u(0.15), u(0.15), sides=4, cap_rings=1, mid=0), "strap",
-              Bind.blend("pelvis", "loin_f_01", falloff=3.0), name="charm_cord", outline=False, covered_by=skid)
+              skirt_bind(kit, top_z, bot_z), name="charm_cord", outline=False, covered_by=skid)
         b.add(G.cone(bot + Vector((0, 0, u(0.3))), bot - Vector((0, 0, u(1.5))) + n * u(0.2), u(0.55), sides=5),
-              "bone", Bind.blend("pelvis", "loin_f_01", "loin_f_02", falloff=3.0), name="charm", outline=False,
-              covered_by=skid)
+              "bone", skirt_bind(kit, top_z, bot_z), name="charm", outline=False, covered_by=skid)
     # ── limbs + two bone bracers on the totem arm ──────────────────────────────────────────────────────
     for s, sg in (("l", 1), ("r", -1)):
         kit.add_arm(b, s, sg)
-        kit.add_leg(b, s, sg)
+        kit.add_leg(b, s, sg, top_up=0.5, top_r=2.2)       # the thigh root stays inside the skirt's waist band
     E, W = J["elbow_r"], J["wrist_r"]
     for f, r in ((0.35, 2.35), (0.70, 2.2)):
         ring = M.tube([E.lerp(W, f - 0.07), E.lerp(W, f + 0.07)], [u(r), u(r)], sides=12, dome0=0.0, dome1=0.0)
@@ -530,8 +541,10 @@ def install_poses(A: GoblinAnims) -> None:
     def recoil():
         R0 = A.ready()
         rx, ry = WEB_READY["root"]
+        # the totem kicked out to the right (lat −0.3, hand outside the shoulder): at lat +0.1 the shaft stood
+        # straight across the mask in the hit frame (art review)
         return R0.but(pelvis=A.web_pelvis(rx - 3.5, ry + 1.0), lean=-19.5, head_pitch=-20.0, head_yaw=8.0,
-                      twist=R0.twist - 6.0, hand_r=u3(A, -11.0, 4.0, 27.0), **A._wkw(R0, -8.0, lat=0.1),
+                      twist=R0.twist - 6.0, hand_r=u3(A, *RECOIL_HAND), **A._wkw(R0, -8.0, lat=RECOIL_LAT),
                       hand_l=u3(A, 5.5, 3.0, 25.0), elbow_l=V(0.9, 0.3, -0.3), foot_l=R0.foot_l + V(0, -1.5 * A.U, 0),
                       clav_l=(10.0, 0.0), clav_r=(10.0, 0.0), flow=0.45, jaw=16.0)
 
@@ -541,16 +554,18 @@ def install_poses(A: GoblinAnims) -> None:
         rx, ry = WEB_READY["root"]
         fn, ff = WEB_READY["footN"], WEB_READY["footF"]
         P0 = A.J["pelvis"]
-        buckle = rec.but(pelvis=A.web_pelvis(rx - 2.5, ry + 7.0), lean=-10.0, head_pitch=-16.0, head_yaw=10.0,
+        # the hips drop DEATH_DROP u (web 7) and the legs stay long through the fall (DEATH_FEET): a deep knee
+        # bend drove the knees through the front of the hide skirt (cloth × limb QA)
+        buckle = rec.but(pelvis=A.web_pelvis(rx - 2.5, ry + DEATH_DROP), lean=-10.0, head_pitch=-16.0, head_yaw=10.0,
                          head_roll=6.0, foot_r=A.web_foot(fn - 1.0, R0.foot_r.x), foot_l=A.web_foot(ff, R0.foot_l.x),
                          knee_l=V(0.6, 1, 0), knee_r=V(-0.6, 1, 0), hand_r=u3(A, -11.5, 8.0, 16.0),
-                         elbow_r=V(-0.9, 0.3, -0.2), **A._wkw(R0, 60.0, lat=-0.08), hand_l=u3(A, 6.5, 3.0, 15.0),
+                         elbow_r=V(-0.9, 0.3, -0.2), **A._wkw(R0, 60.0, lat=-0.08), hand_l=u3(A, 8.5, 5.0, 15.0),
                          flow=0.5, jaw=22.0)
         Pt = P0 + A.web_pelvis(rx + 1.5, 91.0 - 10.0)
         tip = buckle.but(pelvis=A.web_pelvis(rx + 1.5, 91.0 - 10.0), lean=-6.0, head_pitch=-14.0,
-                         foot_r=Pt + u3(A, -3.0, -5.0, -11.0), foot_l=Pt + u3(A, 3.0, -1.0, -12.5),
+                         foot_r=Pt + u3(A, *DEATH_FEET[0]), foot_l=Pt + u3(A, *DEATH_FEET[1]),
                          hand_r=Pt + u3(A, -13.5, 0.0, 9.0), elbow_r=V(-0.9, 0.2, -0.3),
-                         wpn=V(-0.25, 0.45, 0.86), wpn_up=V(0, -1, 0), hand_l=Pt + u3(A, 8.5, 1.0, 11.0),
+                         wpn=V(-0.25, 0.45, 0.86), wpn_up=V(0, -1, 0), hand_l=Pt + u3(A, 12.0, 3.5, 10.0),
                          spin=-54.0, spin_axis=V(1, 0, 0), flow=0.6, jaw=26.0)
         Pl = P0 + A.web_pelvis(rx + 2.0, 91.0 - 4.8)
         lying = R0.but(pelvis=A.web_pelvis(rx + 2.0, 91.0 - 4.8), lean=-12.0, head_pitch=-10.0, head_roll=-24.0,
@@ -567,6 +582,99 @@ def install_poses(A: GoblinAnims) -> None:
                        death_keys=death_keys)
 
 
+RECOIL_HAND, RECOIL_LAT = (-14.5, 4.0, 26.0), -0.3  # hit pose: totem hand + lateral tilt
+DEATH_DROP = 3.5                                               # u the hips sink in the buckle (web 7)
+DEATH_FEET = ((-3.0, -8.0, -15.0), (3.0, -3.0, -16.5))         # tip key: feet from the pelvis (u, lat/fwd/up)
+
+
+class ShamanAnims(GoblinAnims):
+    """``GoblinAnims`` + the **skirt envelope** (art review: the lunging right knee broke through the front of the
+    hide skirt at the Attack01 contact, F14–F21, and in Walk / Hurt / Death). After the default flap angles (web
+    flow + leg spheres), the real meshes are tested: the skinned skirt and legs / knee caps (``SkinPoints``, exact
+    linear-blend skinning) are taken into the pelvis rest frame, round the skirt's vertical axis, and every leg
+    vertex inside the skirt's height span must lie ``SKIRT_CLEAR`` inside the skirt's inner surface at its angle
+    and height (min radius of the skirt vertices within ``SKIRT_WIN``). A front (back) deficit turns both
+    ``loin_f`` (``loin_b``) links further out in ``SKIRT_STEP`` steps until the legs are inside or a step stops
+    helping (the thigh-weighted sides follow the legs anyway)."""
+
+    SKIRT_CLEAR = 0.006            # m: leg / knee surface → skirt inner surface
+    SKIRT_STEP = 3.0               # deg per solver step
+    SKIRT_MAX_EXTRA = 60.0         # deg past the default flap angle
+    SKIRT_WIN = (0.20, 0.03)       # (rad, m) neighbourhood of a leg point on the skirt (angle, height)
+    skirt = None
+
+    def bind_meshes(self, body, items=None, foot_parts=None) -> None:
+        super().bind_meshes(body, items, foot_parts)
+        import json
+        names = json.loads(body["af_parts"])
+        kit = self.kit
+        sk = C.SkinPoints(self.rig).add_mesh(body, names, lambda n: n == "skirt")
+        lg = C.SkinPoints(self.rig).add_mesh(body, names, lambda n: n.startswith(("leg_", "knee_")))
+        top_z = kit.torso.point(0.10, 0.0).z
+        yc = self.J["pelvis"].y - kit.u(0.4)
+        rest = np.array(self.rig.obj.data.bones["pelvis"].matrix_local)
+        self.skirt = (sk, lg, top_z, yc, rest)
+
+    def skirt_excess(self, mats) -> dict:
+        """Worst leg-in-skirt deficit (m, > 0 = a leg vertex closer than ``SKIRT_CLEAR`` to / outside the skirt's
+        inner surface) in the front and back halves → {'loin_f': …, 'loin_b': …}."""
+        sk, lg, top_z, yc, rest = self.skirt
+        T = rest @ np.linalg.inv(np.array(mats["pelvis"]))
+
+        def cyl(x):
+            x = (np.c_[x, np.ones(len(x))] @ T.T)[:, :3]
+            dx, dy = x[:, 0], x[:, 1] - yc
+            return x[:, 2], np.arctan2(dx, -dy), np.hypot(dx, dy)
+        zs, ts, rs = cyl(sk.posed(mats))
+        zl, tl, rl = cyl(lg.posed(mats))
+        # leg points in the waist band (pelvis-weighted skirt, top 15 %) cannot be cleared by the chains: left out
+        # here (the slim thigh root keeps them inside) so they never freeze the solver
+        sel = (zl < top_z - 0.15 * (top_z - zs.min())) & (zl > zs.min())
+        out = {"loin_f": -1.0, "loin_b": -1.0}
+        if not sel.any():
+            return out
+        zl, tl, rl = zl[sel], tl[sel], rl[sel]
+        da = np.abs((ts[None, :] - tl[:, None] + np.pi) % (2 * np.pi) - np.pi)
+        near_a = da < self.SKIRT_WIN[0]
+        # the hem at the leg point's own angle: a knee / shin swinging out ahead of a lifted front panel is below the
+        # skirt there, not through it (the global lowest hem point made every stride read as a 10 cm deficit)
+        hem = np.where(near_a, zs[None, :], np.inf).min(axis=1)
+        near = near_a & (np.abs(zs[None, :] - zl[:, None]) < self.SKIRT_WIN[1])
+        rmin = np.where(near, rs[None, :], np.inf).min(axis=1)
+        ok = np.isfinite(rmin) & (zl > hem + 0.004)
+        ex = np.where(ok, rl + self.SKIRT_CLEAR - rmin, -1.0)
+        front = np.abs(tl) < math.pi / 2
+        for nm, m in (("loin_f", front), ("loin_b", ~front)):
+            if m.any():
+                out[nm] = float(ex[m].max())
+        return out
+
+    def flaps(self, p, bp, **kw) -> None:
+        super().flaps(p, bp, **kw)
+        if self.skirt is None or kw.get("extra"):
+            return
+        from kit import anim as kanim
+        extra = {"loin_f": 0.0, "loin_b": 0.0}
+        frozen = set()
+        ex = self.skirt_excess(kanim.evaluate(p, return_matrices=True))
+        for _ in range(int(self.SKIRT_MAX_EXTRA / self.SKIRT_STEP)):
+            bump = [nm for nm in extra if ex[nm] > 0.0 and nm not in frozen]
+            if not bump:
+                break
+            for nm in bump:
+                extra[nm] += self.SKIRT_STEP
+            super().flaps(p, bp, extra=extra, **kw)
+            ex2 = self.skirt_excess(kanim.evaluate(p, return_matrices=True))
+            for nm in bump:
+                if ex2[nm] > ex[nm] - 0.0005:            # this chain cannot help any more (a thigh-bound side)
+                    extra[nm] -= self.SKIRT_STEP
+                    frozen.add(nm)
+            if frozen & set(bump):
+                super().flaps(p, bp, extra=extra, **kw)
+                ex2 = self.skirt_excess(kanim.evaluate(p, return_matrices=True))
+            ex = ex2
+
+
 def shaman_cloth(p, bp: BP, A: GoblinAnims) -> None:
     """Feather fan (headdress_*) swaying with the flow (web sway sin(t + .5)·.06 − flow·.25 rad), and the totem
     feathers hanging in the world from the lash (absolute aims)."""
@@ -581,13 +689,14 @@ def shaman_cloth(p, bp: BP, A: GoblinAnims) -> None:
 
 
 def anims(kit) -> GoblinAnims:
-    A = GoblinAnims(kit, REF_SPEED, WALK, ready, extra_cloth=shaman_cloth, style="cast", contact_wpn=52.0,
+    A = ShamanAnims(kit, REF_SPEED, WALK, ready, extra_cloth=shaman_cloth, style="cast", contact_wpn=52.0,
                     web_ready=WEB_READY)
     install_poses(A)
     return A
 
 
 TAUNT_LAT, TAUNT_FWD, TAUNT_TILT = 14.5, -1.0, -0.42      # raised totem: at the right side, a little back, leaning out
+TAUNT_RATTLE = (-12.0, 6.0)        # rattle: shaft angle centre, amplitude (deg) — the butt clears the bracer
 
 
 def taunt(A: GoblinAnims):
@@ -598,7 +707,7 @@ def taunt(A: GoblinAnims):
     up = R0.but(pelvis=R0.pelvis + u3(A, 0, 0.5, 0.8), lean=-8.0, head_pitch=-16.0, twist=R0.twist - 6.0,
                 hand_r=u3(A, -TAUNT_LAT, TAUNT_FWD, 39.0), elbow_r=V(-0.9, 0.1, -0.3),
                 **A._wkw(R0, -10.0, lat=TAUNT_TILT),
-                hand_l=u3(A, 8.0, 7.0, 31.0), elbow_l=V(0.9, 0.0, -0.4), clav_r=(16.0, 0.0), clav_l=(10.0, 0.0),
+                hand_l=u3(A, 9.0, 10.0, 31.0), elbow_l=V(0.9, 0.0, -0.4), clav_r=(16.0, 0.0), clav_l=(10.0, 0.0),
                 jaw=26.0, flow=0.25)
     keys = [K(0.0, R0), K(200 / 900, up, "out"), K(700 / 900, up.but(jaw=22.0)), K(1.0, R0, "smooth")]
 
@@ -607,7 +716,7 @@ def taunt(A: GoblinAnims):
         if 200 <= t <= 700:                              # rattle the totem + shake the fist
             k = math.sin(math.pi * (t - 200) / 500)
             r = math.sin(t * 0.075)
-            d, u_ = C.blade(-10.0 + 9.0 * r * k, lat=TAUNT_TILT)
+            d, u_ = C.blade(TAUNT_RATTLE[0] + TAUNT_RATTLE[1] * r * k, lat=TAUNT_TILT)
             bp = bp.but(wpn=d, wpn_up=u_, hand_l=bp.hand_l + V(0, 0, 0.012 * k * math.sin(t * 0.06)),
                         jaw=bp.jaw + 6.0 * k * max(0.0, math.sin(t * 0.05)))
         return bp
@@ -617,13 +726,31 @@ def taunt(A: GoblinAnims):
     return c
 
 
+WALK_HAND_L = (0.01, 0.03, -0.04)          # m (left, forward, up): the free fist rides ahead of / under the shawl
+
+
+def walk_hand(bp: BP, t: float, sw: float) -> BP:
+    """Walk: the walking lean tips the chest (and the shawl hanging on it) onto the free left fist, which is placed
+    in the pelvis frame — carry it forward, lower and out, with half the arm swing (cloth × limb QA: shawl × fist
+    was 100 pairs)."""
+    x, y, z = WALK_HAND_L
+    return bp.but(hand_l=bp.hand_l + V(x, y + 0.5 * WALK["arm"] * sw, z))       # and half the arm swing
+
+
 def clips(A: GoblinAnims) -> list:
     att = A.attack(notifies={"FX_SpiritBolt": CONTACT_MS, "Release": CONTACT_MS})
     att.manifest_extra = {"ranged": True, "projectile": "spirit-fire bolt from the totem's spirit_fire socket (M5)",
                           "attackRange": 3.0}
-    return [A.idle(), A.walk(), att, A.hurt(), A.death(), taunt(A),
+    return [A.idle(), A.walk(extra=walk_hand), att, A.hurt(), A.death(), taunt(A),
             A.stun(droop=100.0, hand_r=u3(A, -12.0, 6.0, 17.5), wlat=-0.12)]
 
+
+# cloth × limb gate (art review: the lunging knee broke through the hide skirt at the Attack01 contact): the skirt
+# against the legs and knee caps, the shawl against the elbows / forearms / fists (the upper-arm tube roots under the
+# shawl by construction) — intersecting triangle pairs, limit 0 on every frame
+QA_GROUPS = {"skirt": ["skirt"], "legs": ["leg", "knee"], "shawl": ["shawl"],
+             "forearms": ["elbow", "bracer", "fist", "knuckle", "thumb", "claw"]}
+QA_PAIRS = {"skirtLeg": ("skirt", "legs"), "shawlArm": ("shawl", "forearms")}
 
 GRIP_PARTS = ("fist_r", "knuckle_r", "thumb_r", "claw_r", "totem_feather_red", "totem_feather_teal", "totem_cord")
 
@@ -656,7 +783,13 @@ FX = {"spiritFire": {"socket": "spirit_fire", "item": TOTEM, "color": SPIRIT, "c
       "maskEmbers": {"sockets": ["fx_eye_l", "fx_eye_r"], "color": SPIRIT, "radiusCm": 4.3, "alpha": 0.45,
                      "alphaPerFx": 0.3},
       "spiritStone": {"color": SPIRIT, "pulsesPerIdle": 2, "radiusCm": 5.0, "alpha": 0.3},
-      "castRuneRing": {"color": "#7DFFA0", "radiusCm": [240, 310], "fromMs": 83, "toMs": 250},
+      # web ellipse (11 + 3 fx) u at the feet, inner dashed ring 8 u spinning t·6 rad (GoblinShaman.ts :599-610),
+      # in the shaman's own units (WEB.U = 2.02 cm): 22–28 cm (art review: the old [240, 310] was mm written as cm)
+      "castRuneRing": {"socket": "fx_feet", "color": "#7DFFA0", "radiusCm": [round(11.0 * WEB.U * 100, 1),
+                                                                             round(14.0 * WEB.U * 100, 1)],
+                       "alpha": 0.7, "innerRadiusCm": round(8.0 * WEB.U * 100, 1), "innerDashed": True,
+                       "innerSpinRad": 6.0, "when": "Attack01 with fx > 0.5", "fromMs": 83, "toMs": 250,
+                       "note": "radiusCm = fx 0 .. 1 (as the mage's castRuneRing)"},
       "spiritBolt": {"notify": "FX_SpiritBolt", "atMs": 250, "socket": "spirit_fire", "color": SPIRIT,
                      "coreColor": SPIRIT_HOT, "flashRadiusCm": [15.0, 6.5]},
       "telegraph": {"normal": "#FFC4B0", "elite": "#FF7A5C", "untilMs": 155},
@@ -703,9 +836,9 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         blob_radius=round(11 * U, 3), height=HEIGHT, display={"zh-CN": "哥布林萨满", "en": "Goblin Shaman"},
         lod1=body1,
         fx=FX, glows=spirit_glows(kit.rig, bare),
-        qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS)},
-        qa_pairs={"totemBody": ("item:" + TOTEM, "body_nf")},
-        qa_limits={"ground": -0.5, "totemBody": 0},
+        qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS), **QA_GROUPS},
+        qa_pairs={"totemBody": ("item:" + TOTEM, "body_nf"), **QA_PAIRS},
+        qa_limits={"ground": -0.5, "totemBody": 0, **{k: 0 for k in QA_PAIRS}},
         game_keys=[("Idle", 0, "se"), ("Walk", 9, "se"), ("Attack01", 5, "se"), ("Attack01", 10, "se"),
                    ("Attack01", 15, "se"), ("Attack01", 15, "sw"), ("Taunt", 24, "se"), ("Death", 30, "se")],
         close_keys=[("Attack01", 5, "se"), ("Attack01", 10, "se"), ("Attack01", 15, "se"), ("Attack01", 15, "side"),

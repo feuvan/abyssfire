@@ -2,13 +2,15 @@
 
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/elite_crown.py [--quick]
 
-A small floating gold crown (≈ 35 cm wide, the web's 16 px), tilted back 38° so the camera-yawed crown is seen
-nearly front-on from the W1 camera, over every elite (the chief, the shaman, the hunt
-leaders): a flared gold band with five points — the front one tallest, so the camera-yawed crown reads as the web's
-three-point silhouette — ball tips in the gold light tone, a dark gold rule round the band and a red cabochon
-``#FF3A4A`` (emissive glint, rim ``#7A1020``) at the front. Pivot = the centre of the band's base; it rides
-``fx_overhead`` with a slow bob and spin and always faces the camera's yaw (UE side, manifest ``motion``); the warm
-glow ``#FFD040`` α .4 is a runtime card (``fx.glow``). Monster-class ink (the weight of the elite it marks; a 2 px line tone lost its dark core at this size).
+A small floating gold crown (≈ 31 cm wide at the points, the web's 16 px), tilted back 38° so the camera-yawed crown is seen
+nearly front-on from the W1 camera, over every elite (the chief, the shaman, the hunt leaders): the web / spec
+three-point crown (``Pickups.ts:50-67``) — a front arc whose top edge is the web polygon (a tall centre point and
+two side points with straight edges), a low plain band round the back (never seen: the crown always faces the
+camera's yaw), low-poly ball tips in the gold light tone, a dark gold rule across the front and a diamond-cut ruby
+``#FF3A4A`` (emissive glint) on a dark ``#7A1020`` setting. ≈ 540 toon + 340 hull tris. Pivot = the lowest point of
+the tilted base; it rides ``fx_overhead`` with a slow bob and sway and always faces the camera's yaw (UE side,
+manifest ``motion``); the warm glow ``#FFD040`` α .4 is a runtime card (``fx.glow``). Monster-class ink (the weight
+of the elite it marks; a 2 px line tone lost its dark core at this size).
 """
 from __future__ import annotations
 
@@ -36,14 +38,22 @@ FAMILY = "Monsters_Plains"
 OUTLINE_CLASS = "monster"          # same ink weight as the elite it floats over (a 2 px line tone lost its
                                    # dark core at 35 cm / 1080p)
 R0 = 0.14                   # band radius at the base
-BAND_H = 0.045
+FLARE = 0.016               # the band flares out this much toward its top edge (per 0.12 m of height)
+TH = 0.015                  # band thickness
+BACK_H = 0.034              # the low back band (the crown always faces the camera's yaw: the back is never seen)
 GOLD = Region("#F2B72E", .35, .50)
 REGIONS = outline.ink_regions(dict(
     gold=GOLD, gold_light=GOLD.light_region(.25, .30), gold_rule=GOLD.shade_region(.30, .15),
-    gem=Region("#FF3A4A", .25, .40, e=0.6), gem_rim=Region("#7A1020", .30, .15),
+    gem=Region("#FF3A4A", .25, .40, e=0.3), gem_rim=Region("#7A1020", .30, .15),   # e .3: its bloom ate the ink below
 ), "monster")
 TILT_DEG = 38.0
-POINTS = [(0.0, 0.118), (72.0, 0.092), (-72.0, 0.092), (144.0, 0.08), (-144.0, 0.08)]   # (angle from front, height)
+# the web's front-view crown (Pickups.ts:50-67) as the top-edge profile of the front arc (deg from the front,
+# height m): the tall centre point, two valleys, two side points, down to the low back band at ±72°
+PROFILE = [(0.0, 0.122), (12.5, 0.088), (25.0, 0.058), (37.5, 0.082), (50.0, 0.104), (61.0, 0.066),
+           (72.0, BACK_H)]
+POINTS = [(0.0, 0.122), (50.0, 0.104), (-50.0, 0.104)]          # ball tips (angle, height)
+BACK_STEP = 18.0            # deg between the back band's columns (low, plain)
+
 FX = {"glow": {"color": "#FFD040", "alpha": 0.4, "radiusCm": 23.0, "blend": "additive", "falloff": "web glow",
                "placement": "behind the crown (depth-tested card a little further from the camera; the web draws the "
                             "glow before the crown)"},
@@ -57,65 +67,92 @@ FX = {"glow": {"color": "#FFD040", "alpha": 0.4, "radiusCm": 23.0, "blend": "add
 
 
 def top_h(a: float) -> float:
-    """Top edge height of the crown at angle ``a`` (deg, 0 = front): the band + five spikes."""
-    h = BAND_H
-    for pa, ph in POINTS:
-        d = abs(((a - pa + 180.0) % 360.0) - 180.0)
-        w = 30.0
-        if d < w:
-            k = 1.0 - d / w
-            h = max(h, BAND_H + (ph - BAND_H) * k ** 1.35)
-    return h
+    """Top edge height of the crown at angle ``a`` (deg, 0 = front): the front arc's three points (``PROFILE``,
+    linear between the keys: straight-edged points like the web polygon), the low back band behind ±72°."""
+    d = abs(((a + 180.0) % 360.0) - 180.0)
+    if d >= PROFILE[-1][0]:
+        return BACK_H
+    for (a0, h0), (a1, h1) in zip(PROFILE, PROFILE[1:]):
+        if a0 <= d <= a1:
+            return h0 + (h1 - h0) * (d - a0) / (a1 - a0)
+    return BACK_H
+
+
+def _ring_dir(a: float) -> Vector:
+    c, s = math.cos(math.radians(a - 90.0)), math.sin(math.radians(a - 90.0))
+    return Vector((c, s, 0.0))                                # a = 0 → −Y (front)
+
+
+def _rad(z: float) -> float:
+    return R0 + FLARE * (z / 0.12)
 
 
 def build_crown(pal: Palette) -> bpy.types.Object:
+    """Art review rebuild: the web / spec three-point crown (Pickups.ts:50-67, §4.6) — a front arc whose top edge
+    is the web polygon (tall centre point, two side points, straight edges), a low plain band round the back, low-
+    poly ball tips, a dark rule across the front and a diamond-cut ruby. One band row (the faces are flat between the
+    profile keys), ≈ 540 toon + 340 hull tris (was a 5-point ring: 4.8 k toon + 4.1 k hull tris for a 35 cm marker);
+    the band and the balls are their own hulls, the rule and the ruby are interior details of the camera-facing
+    front."""
     b = M.Builder(ASSET, pal, prefix="elite_crown")
     b.regions(**REGIONS)
     rig = Bind.rigid("root")
-    angs = list(np.linspace(-180.0, 180.0, 121))[:-1]        # 3° steps: every point angle is a column
-    rows = 7
+    front = sorted({a for a, _ in PROFILE} | {-a for a, _ in PROFILE})
+    back = list(np.arange(PROFILE[-1][0] + BACK_STEP, 360.0 - PROFILE[-1][0] - 1e-6, BACK_STEP))
+    back = [a if a <= 180.0 else a - 360.0 for a in back]
+    angs = sorted(front + back, key=lambda a: (a + 360.0) % 360.0)
     outer, inner = [], []
-    th = 0.016
-    for r in range(rows):
-        f = r / (rows - 1)
+    for zf in (0.0, 1.0):
         ro, ri = [], []
         for a in angs:
-            z = top_h(a) * f
-            rad = R0 + 0.02 * (z / 0.12)                      # flares out toward the points
-            c, s = math.cos(math.radians(a - 90.0)), math.sin(math.radians(a - 90.0))
-            d = Vector((c, s, 0.0))                           # a = 0 → −Y (front)
-            ro.append(d * (rad + th * 0.5) + Vector((0, 0, z)))
-            ri.append(d * (rad - th * 0.5) + Vector((0, 0, z)))
+            z = top_h(a) * zf
+            d = _ring_dir(a)
+            ro.append(d * (_rad(z) + TH * 0.5) + Vector((0, 0, z)))
+            ri.append(d * (_rad(z) - TH * 0.5) + Vector((0, 0, z)))
         outer.append(ro)
         inner.append(ri)
     band = C.thick_patch(outer, inner, wrap_u=True)
     bid = b.add(band, "gold", rig, name="band")
-    # dark rule round the band (web line at gy − 2) and a raised base ring
-    for z0, z1, reg in ((0.026, 0.032, "gold_rule"),):
-        rr = []
-        for zz in (z0, z1):
-            row_o, row_i = [], []
-            for a in np.linspace(-180, 180, 73)[:-1]:
-                c, s = math.cos(math.radians(a - 90.0)), math.sin(math.radians(a - 90.0))
-                d = Vector((c, s, 0.0))
-                rad = R0 + 0.02 * (zz / 0.12)
-                row_o.append(d * (rad + th * 0.5 + 0.0007) + Vector((0, 0, zz)))
-                row_i.append(d * (rad + th * 0.5 - 0.001) + Vector((0, 0, zz)))
-            rr.append((row_o, row_i))
-        b.add(C.thick_patch([rr[0][0], rr[1][0]], [rr[0][1], rr[1][1]], wrap_u=True), reg, rig, name="rule",
-              outline=False)
-    # ball tips
+    # dark rule across the front (web line at gy − 2), a painted strip on the outer face
+    zr0, zr1 = 0.020, 0.027
+    ra = [a for a in np.linspace(-66.0, 66.0, 23)]
+    ro_, ri_ = [], []
+    for zz in (zr0, zr1):
+        ro_.append([_ring_dir(a) * (_rad(zz) + TH * 0.5 + 0.0012) + Vector((0, 0, zz)) for a in ra])
+        ri_.append([_ring_dir(a) * (_rad(zz) + TH * 0.5 - 0.0004) + Vector((0, 0, zz)) for a in ra])
+    b.add(C.thick_patch(ro_, ri_), "gold_rule", rig, name="rule", outline=False)
+    # ball tips on the three points (low poly: 8 × 4)
     for pa, ph in POINTS:
-        c, s = math.cos(math.radians(pa - 90.0)), math.sin(math.radians(pa - 90.0))
-        rad = R0 + 0.02 * (ph / 0.12)
-        p = Vector((c * rad, s * rad, ph + 0.012))
-        b.add(M.ellipsoid((0.021, 0.021, 0.021), p, sides=12, rings=7), "gold_light", rig, name="ball", hull_pad=True)
-    # the red cabochon on the front of the band (+ a dark rim)
-    front = Vector((0.0, -(R0 + 0.0035), 0.03))
-    m = Matrix.Translation(front) @ Matrix.Rotation(math.radians(90), 4, "X")
-    rim = M.ellipsoid((0.024, 0.029, 0.007), (0, 0, 0), sides=14, rings=6).transform(m)
-    b.add(rim, "gem_rim", rig, name="gem_rim", outline=False)
-    gem = M.gem(0.02, 0.012, 0.004, sides=8).transform(m @ Matrix.Translation((0, 0, 0.004)) @ Matrix.Diagonal((1, 1.2, 1, 1)))
+        p = _ring_dir(pa) * _rad(ph) + Vector((0, 0, ph + 0.011))
+        b.add(M.ellipsoid((0.019, 0.019, 0.019), p, sides=8, rings=4), "gold_light", rig, name="ball")
+    # diamond-cut ruby on the front of the band (web: a rhombus over the rule) — four facets to an apex, on a dark
+    # rhombic setting
+    zc, hh, hw, out = 0.063, 0.024, 0.018, 0.009     # above the rule (web: the gem sits over gy − 2)
+    nrm = _ring_dir(0.0)
+    base = nrm * (_rad(zc) + TH * 0.5) + Vector((0.0, 0.0, zc))
+    up, side = Vector((0, 0, 1)), Vector((1, 0, 0))
+
+    def rhomb(scale, lift):
+        c0 = base + nrm * lift
+        return [c0 + up * hh * scale, c0 + side * hw * scale, c0 - up * hh * scale, c0 - side * hw * scale]
+    rim = rhomb(1.28, 0.0012)
+    rim_back = rhomb(1.28, -0.003)
+    b.add(C.thick_patch([[rim[0], rim[1]], [rim[3], rim[2]]], [[rim_back[0], rim_back[1]], [rim_back[3], rim_back[2]]]),
+          "gem_rim", rig, name="gem_rim", outline=False)
+    g = rhomb(1.0, 0.0025)
+    apex = base + nrm * (0.0025 + out)
+    import bmesh
+    bm = bmesh.new()
+    vs = [bm.verts.new(tuple(p)) for p in g]
+    va = bm.verts.new(tuple(apex))
+    vb = [bm.verts.new(tuple(p - nrm * 0.004)) for p in g]
+    for i in range(4):
+        bm.faces.new((vs[i], vs[(i + 1) % 4], va))
+        bm.faces.new((vs[(i + 1) % 4], vs[i], vb[i], vb[(i + 1) % 4]))
+    bm.faces.new(list(reversed(vb)))
+    gem = M.Part(bm).flat()
+    # interior details of the camera-facing front (inside the band's silhouette from the yaw-locked view): no hull
+    # and no hull padding (a padded band hull grew a dark bib under the front)
     b.add(gem, "gem", rig, name="gem", outline=False)
     obj = b.build(ASSET, grounding_height=None)
     # tilted back about the base so the yaw-facing crown is seen almost front-on from the W1 camera (pitch −50°):
@@ -245,7 +282,7 @@ def ship(previews: bool = True) -> int:
     man = export.Manifest()
     man.set_palette(pal)
     entry = export.static_entry(obj, fbx, "VFX", pal, OUTLINE_CLASS, ["elite_crown"], sockets,
-                                extra={"attachSocket": "fx_overhead", "fx": FX, "widthCm": round(2 * (R0 + 0.035) * 100, 1),
+                                extra={"attachSocket": "fx_overhead", "fx": FX, "widthCm": round(2 * (_rad(PROFILE[0][1]) + TH * 0.5) * 100, 1),
                                        "displayName": {"zh-CN": "精英王冠", "en": "Elite crown"}, "previews": []})
     entry["materialSlots"][1]["outlineMix"] = outline.INK_MIX[OUTLINE_CLASS]
     man.set_asset(ASSET, entry)

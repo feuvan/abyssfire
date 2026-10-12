@@ -6,18 +6,21 @@ loop personal):
 
 * ``IdleNPC`` 1500 loop — breath bob ±0.5 u, spine settle, slow head turn ±0.08 rad, hands bob (web idle);
 * ``IdleNPC_Fidget`` ~2600 one-shot (NEW) — a personality gesture that starts and ends on the IdleNPC pose: the smith
-  rolls his shoulders, the merchant strokes his mustache, the elder looks to the sky and nods, the herbalist tucks her hair, the
-  swordsman tips his hat, the escort lifts his, the lost traveller glances over both shoulders, the peddler hitches
-  his pack, the stash keeper pushes up his spectacles;
-* ``Alert`` 667 one-shot (motion 500) — from the work pose: head up −7°, stretch, then the free hand raised to head
-  height in greeting (ease-out);
+  rolls his shoulders, the merchant strokes his mustache, the elder looks to the sky and nods, the herbalist tucks her
+  hair, the swordsman tips his hat, the escort tips his (both take the brim at its side), the lost traveller glances
+  over both shoulders, the peddler hitches his pack, the stash keeper pushes up his spectacles;
+* ``Alert`` 667 one-shot (motion 500) — from the work pose: head up −7°, stretch, then the free hand raised in
+  greeting (ease-out) — beside the head at crown height, ≥ 0.35 m out, never before the face (the runtime holds the
+  last frame while the hero is within 3 tiles, and the NPC turns to the hero: the near hand is se's or sw's);
 * ``Talk`` 1200 loop — the gesture hand from the chest out and up (+3 u fwd, −4 u up), lean +2°, head −3° … lower,
-  head +3°;
+  head +3°; a right-hand gesturer's beats go out past the shoulder (near side in se) so the hand clears the torso;
 * ``Work_<Style>`` loop — Hammer 1333 (``FX_HammerStrike`` 427 ms: the hammer face lands on the hot bar held on the
-  anvil by the tongs), Count 1600 / 2000 (coin toss: ``FX_CoinToss`` / ``FX_CoinCatch``), Read 2667, Guard 2000
-  (leaning on the planted sword), Lookout 2000 (hand shading the eyes);
+  anvil by the tongs; the raise up the arm's own side), Count 1600 / 2000 (coin toss: ``FX_CoinToss`` /
+  ``FX_CoinCatch``), Read 2667 (the elder's open sheet tipped up to the camera), Guard 2000 (leaning on the planted
+  sword), Lookout 2000 (shading the eyes: elbow out, forearm sideways along the upper brow, eyes clear);
 * escort only: ``Idle`` (the UE escort actor's idle), ``Walk`` 1000 @ 1.2 m/s, ``Run`` 700 @ 2.85 m/s (no-slide
-  gait, FootL/R), ``Hurt`` 300, ``Death`` 600; rescue only: ``Cower`` 1000 loop (NEW).
+  gait, FootL/R, counter-swinging arms, ~10° lean, coat-hem kick), ``Hurt`` 300, ``Death`` 600 (kneel → topple →
+  face down, the coat draped); rescue only: ``Cower`` 1000 loop (NEW).
 
 Cloth: robe / coat skirts (four ``skirt_*`` chains, the mage's leg envelope), ponytail / long hair (``hair_tail``),
 long beards (``beard``), the scarf tail (``scarf_a``) and the travel pack (``pack_01``) hang with secondary lag and
@@ -72,6 +75,12 @@ class NpcAnims(HB.HeroAnims):
     HEM_FADE = (0.96, 1.04)
     SKIRT_MAX = 80.0
     SKIRT_FLOOR = 0.05
+    # spun body (face-down Death): per-link share toward world down (outward / toward the body), side chains, the
+    # front panel's floor clearance once flat (``mage_clips.MageAnims`` values)
+    SKIRT_FALL = (0.22, 0.34)
+    SKIRT_FALL_IN = 0.25
+    SKIRT_FALL_LR = (0.25, 0.45)
+    SKIRT_FLOOR_SPUN = 0.046    # the coat's hem lens hangs ~3.6 cm under its chain end (the robe drape is per vertex)
 
     def __init__(self, rig, folk, npc, items: dict | None = None):
         self.F = folk
@@ -202,12 +211,14 @@ class NpcAnims(HB.HeroAnims):
         front = -(F.torso.at(zc)[1] - F.torso.at(zc)[2])
         if self.look.item == "staff":
             # web elder READY: lean 0.08, head 0.04, staff hand at chest x + 8 held out to the side, staff upright;
-            # the scroll in the far hand before the chest; 3D: the staff foot planted on the ground
+            # the scroll in the far hand before the chest; 3D: the staff foot planted on the ground. The open sheet
+            # lies forward from the hand ~28° above level, its text up toward the reader's bowed head: held near
+            # upright (the web's side view) the W1 camera saw it edge-on, a second wooden baton by the staff
             hand_r = V(-0.33, -front + 0.05, zc - 0.12)
             sd, se = C.blade(-3.0, lat=-0.07)
             bp = bp.but(lean=4.6, head_pitch=2.0, hand_r=hand_r, wpn=sd, wpn_up=se, elbow_r=V(-0.9, -0.3, -0.3),
                         hand_l=V(0.06, -front + 0.19, zc - 0.22), elbow_l=V(0.8, -0.5, -0.4),
-                        off=V(-0.12, 0.42, 0.90), off_up=V(0.05, -0.90, 0.42))
+                        off=V(-0.10, 0.87, 0.47), off_up=V(0.0, -0.47, 0.87))
             foot = Vector((0, -P.STAFF_DOWN, 0))
             p = self.item_pt(bp, "r", foot)
             bp = self.fit_item(bp, "r", foot, Vector((p.x, p.y, 0.004)))
@@ -342,10 +353,14 @@ class NpcAnims(HB.HeroAnims):
                 else:
                     out_ang[i] += wave * 0.5
             if gs > 0:
+                # a spun body (the face-down Death): each link turns a share toward world down, the share toward the
+                # body (the top panel settling onto the legs) smaller — the mage's robe (``mage_clips.SKIRT_FALL``):
+                # the full hanging solution stood the coat's back panel up behind the knees as a lump
                 gv = self._gvec(bp)
                 for i in range(2):
                     tgt = math.degrees(math.atan2(gv.dot(sk["dir"]), -gv.z))
-                    out_ang[i] += self.arc(tgt - out_ang[i]) * gs * (0.55, 0.85)[i]
+                    dg = self.arc(tgt - out_ang[i])
+                    out_ang[i] += dg * gs * self.SKIRT_FALL[i] * (1.0 if dg > 0 else self.SKIRT_FALL_IN)
             if req[c] is not None:
                 dn, bk = req[c]
                 out_ang = envelope_soft(out_ang, sk["lengths"], dn, bk, 0.0, max_deg=self.SKIRT_MAX, slack=0.0)
@@ -360,7 +375,12 @@ class NpcAnims(HB.HeroAnims):
             if c in "fb":
                 sgn = -1.0 if c == "f" else 1.0
                 absang = [sgn * a + acc for a in out_ang]
-                absang = self.above_ground(info, absang, wf, "pelvis", self.SKIRT_FLOOR)
+                fl = self.SKIRT_FLOOR
+                if c == "f" and gs > 0:
+                    # face down the front panel is trapped under the body: it lies flat on the floor
+                    k = min(1.0, max(0.0, (abs(bp.spin) - 50.0) / 30.0))
+                    fl += (self.SKIRT_FLOOR_SPUN - self.SKIRT_FLOOR) * k
+                absang = self.above_ground(info, absang, wf, "pelvis", fl)
                 C.set_chain(p, info, absang, acc)
             else:
                 fl = self.lagged(bp, 60.0).flow - 0.12
@@ -368,11 +388,16 @@ class NpcAnims(HB.HeroAnims):
                 if gs > 0:
                     for i in range(2):
                         d = self.arc(ga - absang[i])
-                        absang[i] += d * gs * (0.5, 0.75)[i]
+                        absang[i] += d * gs * self.SKIRT_FALL_LR[i]
                 extra = [out_ang[i] - sk["rest_out"][i] for i in range(2)]
                 sg = -1.0 if c == "l" else 1.0
                 rel = [sg * extra[0], sg * (extra[1] - extra[0])]
-                absang = self.above_ground(info, absang, wf, "pelvis", self.SKIRT_FLOOR)
+                # the floor test sees the outward roll too (as the mage's): a flared side chain reaches lower; face
+                # down the hem ring between a side chain and the front one (linear-blend skinning) sags ~1.5 cm
+                # under both chain ends
+                fl = self.SKIRT_FLOOR + (0.015 * min(1.0, max(0.0, (abs(bp.spin) - 50.0) / 30.0)) if gs > 0 else 0.0)
+                absang = self.above_ground(info, absang, wf, "pelvis", fl,
+                                           side=[-sg * extra[0], -sg * (extra[1] - extra[0])])
                 C.set_chain(p, info, absang, acc, rel)
 
     def _front_chain(self, p: Pose, bp: BP, wf, name: str, parent: str, follow: float, clear: float,
@@ -447,6 +472,15 @@ class NpcAnims(HB.HeroAnims):
             bounce = math.degrees((pb.pelvis.z - bp.pelvis.z) * 2.2)
             p.rot("pack_01", pitch=-max(-6.0, min(6.0, bounce)))
 
+    def coat_pts(self):
+        """Skinned points of the coat / robe skirt and its hem (``ground_pts`` leaves the cloth out)."""
+        if getattr(self, "_coat_pts", None) is None:
+            import json
+            body = self.body_obj()
+            self._coat_pts = C.SkinPoints(self.rig).add_mesh(body, json.loads(body["af_parts"]),
+                                                             lambda n: n.startswith(("skirt", "hem")), step=1)
+        return self._coat_pts
+
     def grounded(self, snap: bool = False, pivot_pelvis: bool = True):
         """``HeroAnims.grounded`` (whole body on the floor, measured on every 2nd skinned vertex) + the boots at
         full resolution: a tucked toe cap's lowest vertex can fall between the sampled ones (−1.6 cm in the
@@ -482,9 +516,20 @@ class NpcAnims(HB.HeroAnims):
         # W1: pitch −50° drops a forward hand down the screen by ~0.77 × its reach, so the "out & up" beat rises to
         # the chin (the web's +4 u read at a side view)
         a = Vector((sg * (0.10 + lo), front - (0.12 + fy), zc + 0.02 - fo))
+        if s == "r":
+            # a right-hand gesturer's hand is the near side in se, where the camera projects forward reach onto the
+            # torso (screen-x ∝ x − y): "out & up" and "lower" go out past the shoulder (|x| ≥ shoulder + 0.18) with
+            # less forward reach, so the open hand clears the torso silhouette at 1080p
+            (ob, fb), (oc, fc) = self.TALK_R
+            b = Vector((sg * (abs(S.x) + ob + lo * 0.5), -fb - fy, zc + 0.20 - fo))
+            c = Vector((sg * (abs(S.x) + oc + lo * 0.5), -fc - fy, zc - 0.03 - fo))
+            return a, b, c
         b = Vector((sg * (abs(S.x) + 0.10 + lo * 0.5), front - (0.17 + fy), zc + 0.24 - fo))
         c = Vector((sg * (abs(S.x) + 0.04 + lo * 0.5), front - (0.15 + fy), zc - 0.04 - fo))
         return a, b, c
+
+    # right-hand gesturers: (out past the shoulder, forward of the body centre) of the "out & up" / "lower" beats
+    TALK_R = ((0.24, 0.10), (0.20, 0.10))
 
     def gesture_item(self, side: str, t: str) -> dict:
         """Keep a held prop sensible while its hand gestures: bags hang, scrolls / books stay readable, tools point
@@ -533,12 +578,33 @@ class NpcAnims(HB.HeroAnims):
         return c
 
     # ── Alert (667 one-shot, web :204-208) ──────────────────────────────────────────────────────────────
+    # the greeting hand (lateral from the head centre, up from the crown, forward; wrist pitch / roll / yaw of the
+    # right hand, mirrored for the left)
+    WAVE = dict(lat=0.41, up=0.0, fwd=0.0, wrist=(-35.0, 40.0, -10.0))
+
+    def wave_target(self) -> Vector:
+        """Alert greeting wrist target as (lateral, forward, up) for ``chest`` (rest body space, carried by the
+        chest). The web raises the hand to head height a little before the face; in 3D that hand is the near side
+        in se (right hand) or sw (left hand) — the NPC turns to the hero, so either view is common — and anywhere
+        before the head it lies over the face, on the frame the runtime holds while the hero is within 3 tiles. So
+        it goes out beside the head: ≥ 0.35 m lateral, level with the crown, no forward offset (wrist turned out,
+        palm to the camera)."""
+        s = self.free_hand()
+        sg = 1.0 if s == "l" else -1.0
+        hc = self.J["head_center"]
+        w = self.WAVE
+        return Vector((hc.x + sg * w["lat"], -hc.y + w["fwd"], self.J["crown"].z + w["up"]))
+
+    def wave_wrist(self, s: str) -> tuple:
+        p, r, y = self.WAVE["wrist"]
+        return (p, r, y) if s == "r" else (p, -r, -y)
+
     def alert(self):
         R0 = self.ready()
         W0 = self.work_keys()[0].bp
         s = self.free_hand()
         sg = 1.0 if s == "l" else -1.0
-        hand = self.J["head_center"] + V(sg * 0.26, 0.12, -0.02)
+        hand = self.wave_target()
         o = "r" if s == "l" else "l"
         so = 1.0 if o == "l" else -1.0
         hold = getattr(R0, f"hand_{o}")
@@ -549,8 +615,9 @@ class NpcAnims(HB.HeroAnims):
         up = R0.but(head_pitch=R0.head_pitch - 7.0, lean=R0.lean - 1.5, pelvis=R0.pelvis + V(0, 0, 0.008), **out_kw,
                     **self.gesture_item(s, "mid"))
         wave = up.but(head_pitch=R0.head_pitch - 4.0, head_yaw=R0.head_yaw + sg * 4.0, twist=R0.twist - sg * 4.0,
-                      **{f"hand_{s}": self.chest(R0, hand.x, -hand.y, hand.z), f"elbow_{s}": V(sg * 1.0, 0.3, -0.6),
-                         f"wrist_{s}": (-10.0, 0.0, sg * 10.0)}, **self.gesture_item(s, "up"))
+                      **{f"hand_{s}": self.chest(R0, hand.x, hand.y, hand.z), f"elbow_{s}": V(sg * 1.0, 0.3, -0.6),
+                         f"wrist_{s}": self.wave_wrist(s)},
+                      **self.gesture_item(s, "up"))
         keys = [K(0.0, W0), K(0.4, up), K(1.0, wave, "out")]
         c = self.clip("Alert", 667.0, keys, 500.0)
         c.key_poses_ms = [0.0, 200.0, 350.0, 500.0, 667.0]
@@ -607,6 +674,9 @@ class NpcAnims(HB.HeroAnims):
     def bar_target(self) -> Vector:
         return self.strike_point() + Vector((0.0, 0.0, 0.55 * 0.0319 * 0.985 + 0.002))
 
+    HAMMER_RAISE = (-0.14, 0.15, 0.36)      # fist at the top of the raise, from the right shoulder (lat, fwd, up)
+    HAMMER_MID = (-0.02, 0.38, 0.12)        # mid-swing fist
+
     def _work_hammer(self) -> list:
         """3D smithing: the anvil before the belly (a touch left), the hot bar held on its face by the tongs from the
         left; the hammer raised in front of the right shoulder (head up-back over it, eyes on the work) and brought
@@ -624,15 +694,16 @@ class NpcAnims(HB.HeroAnims):
             return self.fit_item(bp, "l", tong_local, hit)
         face_local = Vector((0.0, 12.1 * P.U, 4.35 * P.U))
         S_r = self.shoulder("r")
-        # raised: the fist up before the right shoulder, the hammer head up and back over it
+        # raised: the fist up beside the right shoulder (out on the arm's own side: at the cheek the forearm
+        # crossed the beard in se for a third of the loop), the hammer head up and back over it
         rd, ru = C.blade(-40.0, lat=-0.40)
         raised = with_tongs(R0.but(lean=-4.0, head_pitch=14.0, head_yaw=8.0, twist=-8.0, hip_yaw=-4.0,
-                                   hand_r=S_r + V(-0.05, 0.20, 0.36), elbow_r=V(-0.9, -0.2, -0.3), wpn=rd, wpn_up=ru,
-                                   clav_r=(12.0, 6.0)))
+                                   hand_r=S_r + V(*self.HAMMER_RAISE), elbow_r=V(-0.9, -0.2, -0.3), wpn=rd,
+                                   wpn_up=ru, clav_r=(12.0, 6.0)))
         # mid-swing (t .2): the fist comes forward over the anvil line, the hammer upright above it
         md, mu = C.blade(30.0, lat=-0.30)
         mid = with_tongs(R0.but(lean=6.0, head_pitch=16.0, head_yaw=10.0, twist=2.0,
-                                hand_r=S_r + V(0.06, 0.40, 0.12), elbow_r=V(-0.9, -0.1, -0.4), wpn=md, wpn_up=mu,
+                                hand_r=S_r + V(*self.HAMMER_MID), elbow_r=V(-0.9, -0.1, -0.4), wpn=md, wpn_up=mu,
                                 clav_r=(6.0, 8.0)))
         # strike: lean 14°, head down 18°, dip 1.2 u; the hammer face on the hot bar
         sd, se = C.blade(150.0, lat=0.10)
@@ -696,16 +767,29 @@ class NpcAnims(HB.HeroAnims):
         return [K(0.0, k0), K(0.5, k1), K(1.0, k0)]
 
     # Lookout (web :146-150): hand raised to the brow (−19 u), head −8° ↔ −5°, lean 3° ↔ 6°, weight shift 0.8 u
+    # Lookout hand in the head frame (``head_pt`` offsets from the head centre: lateral, forward, up): the wrist at
+    # the right temple up at the hairline, the flat hand (palm down) running forward-left across the upper brow
+    LOOKOUT = dict(wrist=(-0.17, 0.09, 0.14), elbow=(-1.0, -0.3, 0.3), hand=(-10.0, 0.0, 40.0),
+                   clav=(26.0, -22.0))
+
     def _work_lookout(self) -> list:
+        """Shading the eyes, looking out: the elbow up and out to the side, the forearm rising beside the head to
+        the wrist at the temple, the flat hand over the upper brow. W1 (pitch −50°): anything before the face
+        projects *down* the screen over it, so the hand sits high on the cartoon forehead (its lower edge ≈ 9 cm
+        above the eye line, a few cm proud of the brow) and the forearm stays at the side of the head — eyes, nose
+        and mouth stay clear in se and sw. The hand is carried by the head (``head_pt``) so the head's slow scan
+        keeps it on the brow."""
         R0 = self.ready()
         U = self.U
-        # the wrist at the right temple, the flat hand across the brow above the eyes (palm down), the elbow out to
-        # the side at shoulder height: from the W1 camera the face stays visible under the hand
-        brow = self.J["head_center"] + V(-0.12, 0.185, 0.13)
-        base = R0.but(hand_r=brow, elbow_r=V(-1.0, 0.15, 0.75), wrist_r=(0.0, 0.0, 0.0), clav_r=(22.0, 4.0))
-        k0 = base.but(head_pitch=-8.0, lean=3.0, head_yaw=-8.0)
-        k1 = base.but(head_pitch=-5.0, lean=6.0, head_yaw=6.0, pelvis=R0.pelvis + V(0.8 * U, 0, 0.3 * U),
-                      hip_roll=2.0, hand_r=brow + V(0.0, 0.01, -0.01))
+        L = self.LOOKOUT
+        base = R0.but(elbow_r=V(*L["elbow"]), wrist_r=L["hand"], clav_r=L["clav"])
+
+        def on_brow(bp: BP, d=(0.0, 0.0, 0.0)) -> BP:
+            w = Vector(L["wrist"]) + Vector(d)
+            return bp.but(hand_r=self.head_pt(bp, w.x, w.y, w.z))
+        k0 = on_brow(base.but(head_pitch=-8.0, lean=3.0, head_yaw=-6.0))
+        k1 = on_brow(base.but(head_pitch=-5.0, lean=6.0, head_yaw=4.0, pelvis=R0.pelvis + V(0.8 * U, 0, 0.3 * U),
+                              hip_roll=2.0), (0.0, 0.0, -0.004))
         return [K(0.0, k0), K(0.5, k1), K(1.0, k0)]
 
     # ── IdleNPC_Fidget (NEW): one personal gesture, IdleNPC pose in and out ─────────────────────────────
@@ -763,14 +847,52 @@ class NpcAnims(HB.HeroAnims):
                           head_yaw=12.0, head_pitch=6.0)
         return [K(0.0, R0), K(0.3, a, "out"), K(0.55, b), K(0.7, a), K(1.0, R0)]
 
+    HAT_PINCH_AZ = 80.0         # deg from the front, toward the gesture hand: where the hat-tip hand takes the brim
+
+    def brim_edge(self, az_deg: float) -> Vector | None:
+        """Rest-pose point on the outer edge of the wide brim at azimuth ``az_deg`` (0 = front, + = the character's
+        left), read from the built mesh (the brim's tilt, tip and curl included)."""
+        import json
+        body = self.body_obj()
+        if body is None or "brim" not in json.loads(body["af_parts"]):
+            return None
+        bid = json.loads(body["af_parts"]).index("brim")
+        me = body.data
+        part = np.zeros(len(me.polygons), np.int32)
+        me.attributes["af_part"].data.foreach_get("value", part)
+        vids = {v for f in me.polygons if part[f.index] == bid for v in f.vertices}
+        co = np.array([me.vertices[i].co[:] for i in sorted(vids)])
+        hc = np.array(self.J["head_center"])
+        a = math.radians(az_deg)
+        d = np.array((math.sin(a), -math.cos(a), 0.0))
+        rel = co - hc
+        along = rel @ d
+        lateral = np.abs(rel[:, 0] * d[1] - rel[:, 1] * d[0])
+        score = along - 3.0 * lateral
+        return Vector(co[int(np.argmax(score))])
+
     def _fidget_hat(self, R0):
+        """Tips the hat: the hand takes the brim's edge at its own side (from below and outside) and draws it down
+        a touch. Carried by the head (``head_pt``) so the fingers stay on the brim while the head nods. At the front
+        of a wide brim the forearm crossed the face in the near view (se for the right hand, sw for the left) and
+        the hand sank into the brim."""
         s = self.free_hand()
         sg = 1.0 if s == "l" else -1.0
-        brim = self.J["head_center"] + V(sg * 0.10, 0.26, 0.11)
-        a = self._hand_to(R0, s, brim, **{f"wrist_{s}": (-70.0, 0.0, sg * -40.0)}, head_pitch=R0.head_pitch + 2.0,
-                          **self.gesture_item(s, "up"))
-        b = self._hand_to(R0, s, brim + V(0.0, 0.03, -0.035), **{f"wrist_{s}": (-75.0, 0.0, sg * -40.0)},
-                          head_pitch=R0.head_pitch + 9.0, **self.gesture_item(s, "up"))
+        hc = self.J["head_center"]
+        e = self.brim_edge(sg * self.HAT_PINCH_AZ)
+        if e is None:
+            e = hc + V(sg * 0.10, 0.26, 0.11)
+        out = Vector((e.x - hc.x, e.y - hc.y, 0.0)).normalized()
+        w = e + out * 0.045 + Vector((0, 0, -0.045))          # the wrist below and outside the edge
+        off = (w.x - hc.x, -(w.y - hc.y), w.z - hc.z)          # head_pt offsets: lateral, forward, up
+
+        def pinch(bp: BP, d=(0.0, 0.0, 0.0)) -> BP:
+            return bp.but(**{f"hand_{s}": self.head_pt(bp, off[0] + d[0], off[1] + d[1], off[2] + d[2]),
+                             f"elbow_{s}": V(sg * 1.0, -0.1, -0.4)})
+        a = pinch(R0.but(head_pitch=R0.head_pitch + 2.0, **{f"wrist_{s}": (-70.0, 0.0, sg * -40.0)},
+                         **self.gesture_item(s, "up")))
+        b = pinch(R0.but(head_pitch=R0.head_pitch + 9.0, **{f"wrist_{s}": (-75.0, 0.0, sg * -40.0)},
+                         **self.gesture_item(s, "up")), (0.0, 0.01, -0.02))
         return [K(0.0, R0), K(0.28, a, "out"), K(0.48, b), K(0.66, b), K(1.0, R0)]
 
     def _fidget_look(self, R0):
@@ -802,7 +924,8 @@ class NpcAnims(HB.HeroAnims):
 
     # ── escort: locomotion, Hurt, Death ─────────────────────────────────────────────────────────────────
     def locomotion(self, name: str, length: float, speed: float, duty: float, lift: float, bob: float,
-                   lean: float, arm: float, flow: float, crouch: float, stance: float = 0.11):
+                   lean: float, arm: float, flow: float, crouch: float, stance: float = 0.11,
+                   hip_pitch: float = 1.5, flow_step: float = 0.08, head_up: float | None = None):
         J = self.J
         R0 = self.ready()
 
@@ -812,24 +935,29 @@ class NpcAnims(HB.HeroAnims):
             ph = 2 * math.pi * t
             sw = max(-1.0, min(1.0, swing))
             sp = speed / 3.333
+            # arms counter-swing the legs (``swing`` = +1 when the left foot is forward: the right hand leads)
             if speed > 2.0:
-                # run: elbows bent ~90°, the fists pumping fore and aft at the hips (the purse hand swings less)
-                hl = self.shoulder("l") + V(0.15, 0.08 + arm * 0.6 * sw, -0.40 + 0.05 * max(0.0, sw))
-                hr = self.shoulder("r") + V(-0.10, 0.06 - arm * sw, -0.40 + 0.06 * max(0.0, -sw))
+                # run: elbows bent ~90°, the free (right) fist pumping fore and aft beside the hip, rising as it
+                # comes forward and kept out from the coat (the near side in se: it must leave the torso
+                # silhouette); the purse hand swings too, half as far, its bag bouncing
+                hl = self.shoulder("l") + V(0.24 + 0.02 * abs(sw), 0.06 - arm * 0.55 * sw,
+                                            -0.40 + 0.05 * max(0.0, -sw))
+                hr = self.shoulder("r") + V(-0.13 - 0.03 * abs(sw), 0.03 + arm * sw, -0.39 + 0.10 * max(0.0, sw))
             else:
-                hl = self.hang_hand("l", 0.17, 0.07, 0.84) + V(0, arm * 0.3 * sw, 0.02 * abs(sw))
-                hr = self.hang_hand("r", 0.08, 0.05, 0.86) + V(0, -arm * sw, 0.03 * abs(sw))
+                hl = self.hang_hand("l", 0.21, 0.07, 0.84) + V(0, -arm * 0.45 * sw, 0.02 * abs(sw))
+                hr = self.hang_hand("r", 0.08, 0.05, 0.86) + V(0, arm * sw, 0.03 * abs(sw))
             bp = BP(
-                pelvis=V(0, 0.02 * sp, crouch + dz), hip_pitch=1.5, hip_yaw=-6.0 * sw * sp ** 0.5,
+                pelvis=V(0, 0.02 * sp, crouch + dz), hip_pitch=hip_pitch, hip_yaw=-6.0 * sw * sp ** 0.5,
                 hip_roll=-2.5 * math.sin(ph), lean=lean + 1.2 * abs(math.sin(ph)), twist=7.0 * sw * sp ** 0.5,
-                head_pitch=-lean * 0.5, head_yaw=-2.5 * sw,
+                head_pitch=-lean * 0.5 if head_up is None else -head_up, head_yaw=-2.5 * sw,
                 foot_l=J["ankle_l"] + V(stance - J["ankle_l"].x, 0, 0) + fl,
                 foot_r=J["ankle_r"] + V(-(stance + J["ankle_r"].x), 0, 0) + fr,
                 foot_l_rot=(pl, 0, 7), foot_r_rot=(pr, 0, 7), toe_l=tl, toe_r=tr,
                 knee_l=V(0.15, 1, 0), knee_r=V(-0.15, 1, 0),
                 hand_l=hl, hand_r=hr, elbow_l=V(0.5, -0.9, -0.3), elbow_r=V(-0.5, -0.9, -0.3),
                 wrist_r=(-20.0, 0.0, 0.0) if speed > 2.0 else (0.0, 0.0, 0.0),
-                off=V(0.3, -0.12 * sw, -1.0), off_up=V(0, 1, 0), flow=flow + 0.08 * math.sin(2 * ph), wave=2 * ph)
+                off=V(0.55, 0.12 * sw, -1.0), off_up=V(0, 1, 0), flow=flow + flow_step * math.sin(2 * ph),
+                wave=2 * ph)
             return bp
         c = self.proc_clip(name, length, s, loop=True, notifies=anim.run_contacts_ms(length), ref_speed=speed)
         c.key_poses_ms = [round(length * i / 8, 1) for i in range(8)]
@@ -840,8 +968,12 @@ class NpcAnims(HB.HeroAnims):
                                flow=0.18, crouch=-0.02)
 
     def run(self):
-        return self.locomotion("Run", 700.0, ESCORT_RUN_SPEED, duty=0.30, lift=0.10, bob=0.03, lean=11.0, arm=0.20,
-                               flow=0.38, crouch=-0.05)
+        """2.85 m/s escort run: forward pitch (hips 5° + spine 13°: ~10° of whole-body lean read from the W1
+        camera) with the head held level (the wide brim would hide the face from the high camera), a 4.5 cm bob,
+        high knees that kick the coat hem out each step, counter-swinging arms."""
+        return self.locomotion("Run", 700.0, ESCORT_RUN_SPEED, duty=0.30, lift=0.15, bob=0.045, lean=13.0,
+                               arm=0.22, flow=0.40, crouch=-0.05, hip_pitch=5.0, flow_step=0.16,
+                               head_up=19.0)
 
     def hurt(self):
         R0 = self.ready()
@@ -856,9 +988,13 @@ class NpcAnims(HB.HeroAnims):
         return c
 
     def death(self):
-        """Hit, knees buckle, falls forward onto the belly (the pack on top), arms thrown forward then limp."""
+        """Hit, knees buckle, the body topples forward off the knees (arms flung out to break the fall) and lands
+        face down on the belly, the legs sliding back straight (the pack on top), arms limp. The topple key keeps
+        the fall from popping from a crouched ball to prone in 80 ms (art review); the coat drapes face down like
+        the mage's robe (``SKIRT_FALL`` shares, the front panel flat on the floor, the back panel on the legs)."""
         R0 = self.ready()
         J = self.J
+        X = Vector((1, 0, 0))
         hit = R0.but(lean=-10.0, head_pitch=-14.0, pelvis=R0.pelvis + V(0, -0.02, 0.0), flow=0.3,
                      hand_l=R0.hand_l + V(0.05, 0.04, 0.10), hand_r=R0.hand_r + V(-0.05, 0.04, 0.10))
         kneel = R0.but(pelvis=V(0, 0.06, -0.30), lean=24.0, hip_pitch=10.0, head_pitch=6.0,
@@ -867,12 +1003,48 @@ class NpcAnims(HB.HeroAnims):
                        knee_r=V(-0.2, 1, -0.4),
                        hand_l=self.J["hip_l"] + V(0.20, 0.30, -0.05), hand_r=self.J["hip_r"] + V(-0.10, 0.30, -0.05),
                        flow=0.25)
-        down = kneel.but(spin=78.0, spin_axis=Vector((1, 0, 0)), pivot=V(0, 0.12, 0.25), lean=12.0, head_pitch=-30.0,
-                         hand_l=V(0.32, 0.55, 0.85), hand_r=V(-0.34, 0.50, 0.88), elbow_l=V(0.9, 0.0, 0.3),
-                         elbow_r=V(-0.9, 0.0, 0.3), flow=0.1, head_yaw=-25.0)
-        keys = [K(0.0, R0), K(0.15, hit, "out"), K(0.5, kneel, "in"), K(0.85, down, "in"), K(1.0, down)]
-        c = self.clip("Death", 600.0, keys, 600.0, post=self.grounded(snap=False))
-        c.key_poses_ms = [0.0, 90.0, 300.0, 420.0, 510.0, 600.0]
+        # topple: tipping forward over the knees, the hips opening, the arms thrown out ahead to break the fall
+        topple = kneel.but(spin=44.0, spin_axis=X, pivot=V(0, 0.12, 0.10), pelvis=V(0, 0.03, -0.17), lean=13.0,
+                           hip_pitch=3.0, head_pitch=-18.0, head_yaw=-14.0,
+                           foot_l=J["ankle_l"] + V(0.03, -0.07, 0.03), foot_r=J["ankle_r"] + V(-0.03, -0.05, 0.03),
+                           foot_l_rot=(58.0, 0, 8), foot_r_rot=(54.0, 0, 6),
+                           hand_l=V(0.30, 0.48, 0.92), hand_r=V(-0.30, 0.46, 0.95), elbow_l=V(0.9, -0.2, -0.2),
+                           elbow_r=V(-0.9, -0.2, -0.2), flow=0.35)
+        # face down: the body straight, the legs lying back with the toes pointed (the boots' tips on the floor);
+        # before the spin anything forward of the body ends up *under* it — the hands stay level with the chest
+        # front (one reaching past the head, one limp by the hip) so the belly rests on the floor, not a hand plank
+        down = R0.but(spin=86.0, spin_axis=X, pivot=V(0, 0.16, 0.08), pelvis=V(0, 0.0, -0.01), lean=8.0,
+                      hip_pitch=0.0, twist=0.0, hip_yaw=0.0, head_pitch=-34.0, head_yaw=-28.0,
+                      foot_l=J["ankle_l"] + V(0.035, -0.02, 0.0), foot_r=J["ankle_r"] + V(-0.035, -0.02, 0.0),
+                      foot_l_rot=(62.0, 0, 6), foot_r_rot=(58.0, 0, 4), knee_l=V(0.15, 1, 0),
+                      knee_r=V(-0.15, 1, 0),
+                      hand_l=V(0.30, 0.10, 1.50), hand_r=V(-0.38, 0.06, 0.86), elbow_l=V(0.9, 0.3, -0.2),
+                      elbow_r=V(-0.9, 0.2, 0.0), flow=0.1)
+        keys = [K(0.0, R0), K(0.14, hit, "out"), K(0.40, kneel, "in"), K(0.62, topple, "smooth"),
+                K(0.86, down, "smooth"), K(1.0, down)]
+        up_only = self.grounded(snap=False)
+        snap = self.grounded(snap=True, pivot_pelvis=False)
+
+        def post(bp: BP, t: float) -> BP:
+            # upright frames only keep the feet out of the floor; once tipping the body rests on it (knees, then
+            # belly, chest and toes)
+            w = HB.smooth01((abs(bp.spin) - 8.0) / 26.0)
+            a = up_only(bp, t)
+            if w <= 0.0:
+                return a
+            b = snap(bp, t)
+            out = bp.but(lift=a.lift + (b.lift - a.lift) * w)
+            if w > 0.5 and self.skin() is not None:
+                # face down the coat lies on the floor: its hem ring between the chains (linear-blend skinning)
+                # dips under the chain ends — the floor test sees the solved cloth too
+                pz = C.to_pose(self.rig, out, self.cloth, grips=self.GRIPS)
+                z = self.coat_pts().posed(anim.evaluate(pz, return_matrices=True))[:, 2]
+                low = float(z.min()) - 0.002
+                if low < 0.0:
+                    out = out.but(lift=out.lift - low)
+            return out
+        c = self.clip("Death", 600.0, keys, 600.0, post=post)
+        c.key_poses_ms = [0.0, 84.0, 240.0, 372.0, 444.0, 516.0, 600.0]
         return c
 
     # ── rescue: Cower (NEW, 1000 loop) ──────────────────────────────────────────────────────────────────

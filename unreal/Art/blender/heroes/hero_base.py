@@ -71,6 +71,36 @@ def profile_mesh(prof: Profile, zs, sides: int, disp=None, exp: float | None = N
     return M.Part(bm).smooth(True)
 
 
+def snap_open_edge(part: M.Part, prof, hc: float, unit: float, open_a: float, open_z0: float, open_z1: float,
+                   r_front: float) -> None:
+    """Face-opening hoods (``profile_mesh(disp=…)`` with the opening ellipse ``open_a`` deg × ``open_z0 … open_z1``
+    hood units about ``hc``; ``unit`` = metres per hood unit): slide every undisplaced vertex of a grid cell that
+    straddles the opening's edge along the (undisplaced) hood surface onto the edge curve (nearest point, metric
+    distance with ``r_front`` metres per radian round the front). The recess walls then end exactly at the edge,
+    under the rim trim, instead of stepping out past it as dark squares (art review 8)."""
+    bm = part.bm
+    dl = bm.verts.layers.int["af_disp"]
+    zc, hz = (open_z0 + open_z1) / 2, (open_z1 - open_z0) / 2
+    ts = np.linspace(0.0, 2 * math.pi, 721)[:-1]
+    xs = np.sin(ts)
+    ea = open_a * xs * 0.999
+    eh = zc + hz * np.sign(np.cos(ts)) * (1 - xs * xs) ** 0.4 * 0.999
+    ex, ey = np.radians(ea) * r_front, eh * unit
+    outer = set()
+    for f in bm.faces:
+        d = [v[dl] for v in f.verts]
+        if any(d) and not all(d):
+            outer.update(v for v in f.verts if not v[dl])
+    for v in outer:
+        rx, ry, cy, cx = prof.at(v.co.z)
+        a = math.degrees(math.atan2((v.co.y - cy) / ry, (v.co.x - cx) / rx)) + 90.0
+        a = ((a + 180.0) % 360.0) - 180.0
+        h = (v.co.z - hc) / unit
+        i = int(np.argmin((ex - math.radians(a) * r_front) ** 2 + (ey - h * unit) ** 2))
+        v.co = prof.point(hc + float(eh[i]) * unit, float(ea[i]), 0.0)
+    bm.normal_update()
+
+
 def sheet_grid(grid) -> M.Part:
     """Single-sided quad sheet from a rows × cols grid of points."""
     bm = bmesh.new()
@@ -298,6 +328,44 @@ def envelope(angles: Sequence[float], lengths: Sequence[float], dn: np.ndarray, 
         s_dn += L * math.cos(math.radians(a))
         s_bk += L * math.sin(math.radians(a))
     return out
+
+
+def envelope_min_reach(angles: Sequence[float], lengths: Sequence[float], dn: np.ndarray, bk: np.ndarray,
+                       clear: np.ndarray | float, max_deg: float = 100.0, slack: float = 0.004,
+                       search_deg: float = 45.0, step_deg: float = 1.5, bias: float = 0.003, min_gain: float = 0.05,
+                       margin2: float = 0.015) -> list[float]:
+    """``envelope`` for a two-link panel that lies on a lifted knee instead of fanning out from it: the greedy
+    envelope keeps the upper link at its minimum, so a knee just past the joint drives the hem link out at the
+    same steep angle (a robe front over a lunging thigh stood out as a flat tray, its hem 30 cm past the foot).
+    Here the upper link may open up to ``search_deg`` further when that lets the hem link hang back — the
+    upper link chosen to minimise the hem's reach along B (+ ``bias`` m per degree of extra opening), the hem link
+    clearing its points by ``margin2`` more (the hem ring *between* chains is a linear blend that sits inside the
+    chain lines), and only when the hem comes in by ≥ ``min_gain`` m. Every obstacle point stays cleared at least
+    as by ``envelope``. Other chains fall back to ``envelope``."""
+    base = envelope(angles, lengths, dn, bk, clear, max_deg=max_deg, slack=slack)
+    if len(lengths) != 2 or len(dn) == 0:
+        return base
+    L1, L2 = lengths
+    clear = np.broadcast_to(np.asarray(clear, float), dn.shape)
+
+    def reach(out):
+        return L1 * math.sin(math.radians(out[0])) + L2 * math.sin(math.radians(out[1]))
+    r0 = reach(base)
+    best, best_cost = base, r0
+    a = base[0] + step_deg
+    while a <= min(max_deg, base[0] + search_deg) + 1e-6:
+        o1 = envelope([a, angles[1]], lengths, dn, bk, clear, max_deg=max_deg, slack=slack)
+        # the hem link with the extra margin (points below the joint only)
+        s_dn = L1 * math.cos(math.radians(o1[0]))
+        deep = dn > s_dn + slack
+        o2 = envelope([o1[0], angles[1]], lengths, dn, bk, np.where(deep, clear + margin2, clear),
+                      max_deg=max_deg, slack=slack)
+        out = [o1[0], max(o1[1], o2[1])]
+        cost = reach(out) + bias * (out[0] - base[0])
+        if cost < best_cost - 1e-6 and r0 - reach(out) >= min_gain:
+            best, best_cost = out, cost
+        a += step_deg
+    return best
 
 
 def chain_ends(angles: Sequence[float], lengths: Sequence[float]) -> list[tuple[float, float]]:

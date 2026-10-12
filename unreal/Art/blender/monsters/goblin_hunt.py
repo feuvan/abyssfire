@@ -165,9 +165,11 @@ def build_lootsack(pal: Palette, kit) -> bpy.types.Object:
         r = d.length
         if r < 1e-6:
             return co
-        k = 1.0 + 0.07 * math.sin(d.x / u(1.0) * 2.1 + 1.0) * math.sin(d.y / u(1.0) * 1.7) + 0.05 * math.sin(d.z / u(1.0) * 2.6)
+        # soft burlap lumps (half the old amplitude, longer waves: the toon bands drew the old ones as rock facets)
+        k = 1.0 + 0.035 * math.sin(d.x / u(1.0) * 1.2 + 1.0) * math.sin(d.y / u(1.0) * 1.0) + 0.025 * math.sin(d.z / u(1.0) * 1.5)
         return c + d * k
-    sack = M.ellipsoid((u(3.0), u(2.7), u(3.3)), c, sides=16, rings=10).deform(lumpy)
+    # 24 × 14 (was 16 × 10: flat facets read through the toon bands at the close-ups) and smooth normals
+    sack = M.ellipsoid((u(3.0), u(2.7), u(3.3)), c, sides=24, rings=14).deform(lumpy)
     sid = b.add(sack.smooth(True), "sack", rig, name="sack", hull_pad=True)
     neck = M.tube([c + Vector((0, 0, u(2.6))), c + Vector((0, 0, u(3.7))), top + Vector((0, 0, -u(0.2)))],
                   [u(1.2), u(0.85), u(1.25)], sides=10, dome0=0.0, dome1=0.0)
@@ -175,13 +177,15 @@ def build_lootsack(pal: Palette, kit) -> bpy.types.Object:
     tie = M.tube([c + Vector((0, 0, u(3.35))), c + Vector((0, 0, u(3.9)))], [u(1.05)] * 2, sides=10, dome0=0.0,
                  dome1=0.0)
     b.add(tie, "rope", rig, name="sack_tie", hull_pad=True)
-    # a patch and a few stitches (burlap)
+    # a patch and a few stitches (burlap): the stitches are flat dashes lying on the patch, inside its edge (art
+    # review: boxes standing across the edge read as four grey prongs / claws in the silhouette)
     pm = G.frame_z(c + n * u(2.85) + Vector((0, 0, -u(0.4))), n, Vector((0, 0, 1)))
     patch = M.box((u(2.2), u(1.9), u(0.3)), (0, 0, 0), bevel=u(0.08)).transform(pm)
     b.add(patch, "sack_patch", rig, name="sack_patch", outline=False, covered_by=sid)
     for k in range(4):
-        st = M.box((u(0.22), u(0.7), u(0.32)), (u(-0.85 + 0.57 * k), u(0.95), u(0.06)), bevel=u(0.05)).transform(pm)
-        b.add(st, "rope_line", rig, name="stitch", outline=False, covered_by=sid)
+        for y in (0.62, -0.62):
+            st = M.box((u(0.2), u(0.42), u(0.08)), (u(-0.78 + 0.52 * k), u(y), u(0.16)), bevel=u(0.02)).transform(pm)
+            b.add(st, "rope_line", rig, name="stitch", outline=False, covered_by=sid)
     return _finish(b, pal, LOOTSACK, kit.rig.obj.data.bones["pelvis"].matrix_local)
 
 
@@ -194,5 +198,8 @@ VARIANTS = {
         "displayName": {"zh-CN": "小贼斯尼克", "en": "Sneek the Thief"}, "scale": SCALE, "elite": True,
         "attachments": [{"object": PENDANT, "socket": PENDANT_BONE}, {"object": LOOTSACK, "socket": "pelvis"}],
         "note": "quest q_lost_pendant hunt leader: SK_Mon_Goblin x1.25 + the stolen pendant (glint) + loot sack "
-                "+ elite crown"},
+                "+ elite crown. Deviation from spec §4.5 (pendant 'on the belt'): the locket hangs on the chest "
+                "(spine_03) among the bone-tooth trophies — every belt spot is crossed by the spear butt, the free "
+                "fist's swing, the belly or the loincloth in some clip (per-frame QA), and the chest reads from "
+                "every front view"},
 }

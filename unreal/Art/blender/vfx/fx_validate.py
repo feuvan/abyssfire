@@ -58,6 +58,7 @@ LAYER_KEYS = {
     "stretch": NUM, "alpha": "alpha", "fadeIn": NUM, "alphaPow": NUM, "flicker": NUM, "color": "color",
     "altEvery": NUM, "altColor": "color", "intensity": NUM, "rotationDeg": RANGE, "spinDegS": RANGE,
     "alignToBlow": BOOL, "only": "str",
+    "fan": BOOL,       # forward-compatible (integration.fan): even yaw fan for dir blow / back bursts
 }
 RECIPE_KEYS = {"palette", "layers", "arcCm", "light", "shake", "note"}
 
@@ -68,6 +69,7 @@ EVENT_IDS = [
     "death.burst", "reward.gold", "reward.heal", "reward.mana", "hero.levelup", "hero.resonance",
     "hero.resonance.aura", "hero.dodge", "hero.dash", "teleport.blink", "portal.channel", "portal.arrive",
     "loot.drop", "loot.drop.rare", "loot.drop.legendary", "loot.drop.set", "loot.pickup", "quest.pop",
+    "loot.beam.magic", "loot.beam.rare", "loot.beam.legendary", "loot.beam.set",     # loot prop loops (5.3)
     "skill.default", "proj.default", "proj.default.hit", "proj.default.fizzle", "proj.monster_bolt",
     "proj.monster_bolt.hit", "proj.pet_bolt", "proj.pet_bolt.hit", "ground.default", "ground.default.trigger",
     "ground.default.end", "status.burn", "status.freeze", "status.poison", "status.bleed", "status.slow",

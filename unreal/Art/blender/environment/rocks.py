@@ -1,4 +1,4 @@
-"""Emerald Plains rocks, wall outcrops and the terrain skirt (spec art-inventory-ch1.md §6.2, §6.5, §6.10; web
+"""Emerald Plains rocks and wall outcrops (spec art-inventory-ch1.md §6.2, §6.5, §6.10; web
 ``Rock.ts``, ``Boulder.ts``, ``OutcropPainter.ts`` mossBoulder; DECISIONS R1 walls 1.4 m, W5).
 
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/environment/rocks.py [names…]
@@ -9,7 +9,6 @@
 | ``SM_Rock_Plains_Cluster_A/B/C`` | ``rock`` | three faceted rocks ``#8A8E98`` (main ≈ 0.53 × 0.43 m), flat foot, the lit top plane is the key light's band on the cut top, a crack, a grass tuft ``#4F8A3A`` / ``#8CC24F`` |
 | ``SM_Rock_Plains_MossBoulder_A`` | ``boulder`` (tall, blocks 1×1) | ≈ 1.1 m boulder ``#8E919C`` + a 0.5 m stone, two cracks, a moss cap, grass tuft |
 | ``SM_Outcrop_Plains_V0..V5`` | ``outcrop_plains`` (wall tiles, variant = tileHash(c, r, 3) % 6) | V0 V1 V3 V4: moss-capped boulder cluster ``#9C9888`` / cap ``#7CAA48`` with drips, 1 + v % 2 front stones, tufts ``#5A8A3A`` / ``#A9CC68``; V2 V5: leafy hedge ``#5F9A3E`` + a boulder. ≈ 1.25 m footprint, 1.35–1.45 m tall (R1), round in plan so neighbouring wall tiles (random yaw) merge into one ridge |
-| ``SM_Terrain_Plains_SkirtHill_A..C`` | ``skirt_hill_plains`` | rolling grass mounds beyond the border ring (no collision), hedge lumps and stones on their shoulders |
 """
 from __future__ import annotations
 
@@ -30,7 +29,6 @@ from kit import mesh as M  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 
 CAT_ROCK = "Props"
-CAT_TERRAIN = "Terrain"
 
 
 def crack(b: M.Builder, shape: E.RockShape, center: Vector, yaw: float, az: float, z0: float, z1: float,
@@ -97,7 +95,7 @@ def build_rock_cluster(pal: Palette, variant: str = "A"):
     add_rock(b, "rock", (0.09 * k, 0.08 * k, 0.07 * k), (name, 2), Vector((-0.3 * k, -0.16 * k, 0)),
              yaw=rnd.uniform(0, math.tau), subdiv=1, name="rock3")
     if variant != "B":
-        F.tuft(b, Vector((0.12 * k, 0.2 * k, 0)), 0.2, 7, rnd, segs=2, inked=True)
+        F.tuft(b, Vector((0.12 * k, 0.2 * k, 0)), 0.2, 5, rnd, segs=2, inked=True)
     return E.finish(b, pal, "decor", ground_h=0.5, name=name)
 
 
@@ -150,6 +148,11 @@ OUTCROP_REGIONS = dict(
 )
 
 
+CAP_COLS = (28, 18)      # main mass / front stones (drips need ≥ 0.25 rad columns)
+CAP_ROWS = (6, 4)
+HULL_DECIMATE = 0.5      # hull proxies: the culled mass / open cap themselves, collapse-decimated (same boundary)
+
+
 def outcrop_boulders(b: M.Builder, name: str, v: int, rnd: random.Random):
     """Web ``mossBoulder`` / ``layoutMasses``: one big back mass filling the footprint + 1 + v % 2 smaller front
     stones. Rounded blocks (superellipsoid, broad shoulders, slightly flattened crown) so neighbouring wall tiles
@@ -172,18 +175,23 @@ def outcrop_boulders(b: M.Builder, name: str, v: int, rnd: random.Random):
         part = E.rock(shape, subdiv=3 if k == 0 else 2, facet=None)
         E.cull_under_cap(part, shape, edge)          # rock hidden under the moss blanket (wall tiles are many)
         part.rotate("z", yaw).translate(c)
-        pid = b.add(part, "rock", name=f"mass{k}", hull_pad=True)
-        cap = E.rock_cap(shape, edge, thick=0.034 if k == 0 else 0.024, cols=32 if k == 0 else 20,
-                         rows=8 if k == 0 else 5, inner=0.05, inner_shell=False)
+        # art review 9 budget (≈ 800 wall tiles in the plains): the caps are sampled coarser (CAP_COLS / CAP_ROWS) and
+        # the tufts have 5 blades. Low-poly hull proxies were tried and dropped: a coarse mass proxy culled under its
+        # cap, or a 3-row cap, padded until it enclosed the detailed surface, drew dark slabs and crescents beside
+        # the boulder at 1080p — on these open, culled shells the hull stays a padded copy
+        pid = b.add(part, "rock", name=f"mass{k}", hull=M.decimate(part.copy(), HULL_DECIMATE), hull_pad=True)
+        thick = 0.034 if k == 0 else 0.024
+        cap = E.rock_cap(shape, edge, thick=thick, cols=CAP_COLS[k > 0], rows=CAP_ROWS[k > 0], inner=0.05,
+                         inner_shell=False)
         cap.rotate("z", yaw).translate(c)
-        b.add(cap, "cap", name=f"cap{k}", hull_pad=True)
+        b.add(cap, "cap", name=f"cap{k}", hull=M.decimate(cap.copy(), HULL_DECIMATE), hull_pad=True)
         if k == 0:
             crack(b, shape, c, math.radians(yaw), rnd.uniform(0, math.tau), r[2] * 0.72, 0.14, "rock_line", pid,
                   rnd, 0.03)
     # tufts hugging the base (web tuftAt at both feet) + a flower accent (theme accent #F6D65A)
     for q in range(3):
         a = rnd.uniform(0, math.tau) if q else math.radians(-100)
-        F.tuft(b, Vector((math.cos(a) * 0.6, math.sin(a) * 0.6, 0)), rnd.uniform(0.22, 0.3), 6, rnd, segs=2,
+        F.tuft(b, Vector((math.cos(a) * 0.6, math.sin(a) * 0.6, 0)), rnd.uniform(0.22, 0.3), 5, rnd, segs=2,
                inked=True, name="tuft")
     if v in (0, 4):
         a = rnd.uniform(0, math.tau)
@@ -199,7 +207,7 @@ def outcrop_hedge(b: M.Builder, name: str, v: int, rnd: random.Random):
         (Vector((-0.28, -0.18, 0.5)), (0.44, 0.4, 0.5), "hedge", (name, "h2"), True),
         (Vector((0.0, 0.05, 1.0)), (0.42, 0.4, 0.38), "hedge", (name, "h3"), True),
     ]
-    sph, pids, _ = F.canopy(b, lumps, rnd, "fleck", flicks_per=4, flick_len=0.16)
+    sph, pids, _ = F.canopy(b, lumps, rnd, "fleck", flicks_per=4, flick_len=0.16, hull_ratio=F.TREE_HULL)
     shape = E.RockShape((0.24, 0.22, 0.26), (name, "stone"), bumps=5, amp=0.08, top_cut=0.2)
     part = E.rock(shape, subdiv=1, facet=None).translate((0.32, -0.48, 0))
     b.add(part, "rock", name="stone", hull_pad=True)
@@ -221,80 +229,11 @@ def build_outcrop(pal: Palette, v: int):
 
 
 # ── terrain skirt ───────────────────────────────────────────────────────────────────────────────────────
-SKIRT_REGIONS = dict(
-    grass=Region("#74A247", .22, .08),
-    grass_dark=Region("#6C9A43", .22, .08),
-    hedge=Region("#5F9A3E", .40, .30),
-    hedge_back=Region("#4A7E36", .38, .20),
-    fleck=Region("#B5D86A", .22, .22),
-    rock=Region("#9C9888", .40, .32),
-    dark=Region("#5A8A3A", .40, .14),
-    light=Region("#A9CC68", .38, .12),
-)
-
-
-def hill(size, height: float, seed, cols: int = 32, rows: int = 9):
-    """A rolling mound: smooth superellipse plan ``size`` (x, y half-extents), profile h·(1 − ρ²)² (no slope over
-    ≈ 22° for h ≤ 0.26 × the short radius, so the toon rim never lights its far side from the W1 camera), gentle
-    bumps, an apron sunk 0.1 m at the rim (the terrain hides it)."""
-    rnd = random.Random(scene.seed_for("hill", seed))
-    ph = [rnd.uniform(0, math.tau) for _ in range(4)]
-    rings = []
-    for j in range(rows + 1):
-        t = j / rows
-        rho = 1.08 * (1.0 - t ** 0.85)            # 1.08 apron → 1 rim → 0 top (denser rings toward the rim)
-        z = height * (1 - rho * rho) ** 2 if rho <= 1.0 else -0.05 * (rho - 1.0) / 0.08   # apron: ≤ 10° into the ground
-        ring = []
-        for i in range(cols):
-            a = math.tau * i / cols
-            wob = 1 + 0.08 * math.sin(2 * a + ph[0]) + 0.05 * math.sin(3 * a + ph[1])
-            zz = z * (1 + 0.1 * math.sin(a * 2 + ph[2]) * (1 - rho))
-            ring.append(Vector((math.cos(a) * size[0] * max(rho, 0.02) * wob,
-                                math.sin(a) * size[1] * max(rho, 0.02) * wob, zz)))
-        rings.append(ring)
-    return E.ring_loft(rings, cap0=None, cap1="fan")
-
-
-def build_skirt(pal: Palette, variant: str):
-    """Terrain skirt mound: ground, so no ink (spec §1.3) and low-contrast bands (s .16, l .12) that melt into
-    the terrain grass; darker grass patches and a few painted tufts on the slopes. The grove foliage on and
-    round it is placed by the runtime (AAbyssZoneActor::BuildSkirt)."""
-    name = f"SM_Terrain_Plains_SkirtHill_{variant}"
-    rnd = scene.rng(name)
-    b = M.Builder(name, pal, prefix="skirt")
-    b.regions(**SKIRT_REGIONS)
-    size, h = {"A": ((3.2, 2.4), 0.62), "B": ((4.4, 2.8), 0.72), "C": ((2.6, 2.0), 0.5)}[variant]
-    hp = hill(size, h, name)
-    hid = b.add(hp, "grass", name="hill", outline=False)
-    sph = {}          # no spherised normals: an ellipsoid's rim normals would tilt the far slope into the rim band
-
-    def surf(x, y):
-        """Hill surface point / normal at (x, y) (numerical, from the cosine profile)."""
-        rr = min(math.hypot(x / size[0], y / size[1]), 1.0)
-        return h * (1 - rr * rr) ** 2
-
-    for q in range({"A": 4, "B": 6, "C": 3}[variant]):
-        a0 = rnd.uniform(0, math.tau)
-        rr = rnd.uniform(0.25, 0.7)
-        cx, cy = math.cos(a0) * size[0] * rr, math.sin(a0) * size[1] * rr
-        pts, nrm = [], []
-        for k in range(5):
-            x = cx + (k - 2) * 0.22 * math.cos(a0 + 1.4)
-            y = cy + (k - 2) * 0.22 * math.sin(a0 + 1.4)
-            z = surf(x, y)
-            e = 0.05
-            nx = (surf(x - e, y) - surf(x + e, y)) / (2 * e)
-            ny = (surf(x, y - e) - surf(x, y + e)) / (2 * e)
-            pts.append(Vector((x, y, z)))
-            nrm.append(Vector((nx, ny, 1.0)).normalized())
-        b.add(E.ribbon(pts, nrm, [0.35, 0.55, 0.62, 0.5, 0.3], lift=0.006, thick=0.004), "grass_dark",
-              name="patch", outline=False)
-    for q in range({"A": 5, "B": 7, "C": 4}[variant]):
-        a = rnd.uniform(0, math.tau)
-        rr = rnd.uniform(0.15, 0.85)
-        x, y = math.cos(a) * size[0] * rr, math.sin(a) * size[1] * rr
-        F.tuft(b, Vector((x, y, surf(x, y) - 0.01)), rnd.uniform(0.22, 0.32), 6, rnd, segs=2)
-    return E.finish(b, pal, "none", ground_h=None, spherise=sph, name=name)
+# SM_Terrain_Plains_SkirtHill_A..C were retired in art review 9: the runtime skirt (AAbyssZoneActor::BuildSkirt) is
+# the terrain heightfield (SkirtHillCm) dressed from the theme's grove pool and never placed game id
+# skirt_hill_plains, and the meshes read as flat pale ovals with a hard seam (ground-coloured mounds can only match
+# the painted unlit terrain if they sample it). Their FBX, previews and manifest entries are removed; a rebuild
+# needs terrain-matched shading and a BuildSkirt hook first (spec §6.10).
 
 
 # ── registry ────────────────────────────────────────────────────────────────────────────────────────────
@@ -310,15 +249,10 @@ for _i in range(6):
     ASSETS[f"SM_Outcrop_Plains_V{_i}"] = (lambda pal, i=_i: build_outcrop(pal, i),
                                          dict(cat=CAT_ROCK, game_ids=["outcrop_plains"], footprint=[1, 1],
                                               blocking=True, blob=0.75))
-for _v in "ABC":
-    ASSETS[f"SM_Terrain_Plains_SkirtHill_{_v}"] = (lambda pal, v=_v: build_skirt(pal, v),
-                                                  dict(cat=CAT_TERRAIN, game_ids=["skirt_hill_plains"],
-                                                       blocking=False, blob=0.01, ground=False))
 NOTES = {
     "outcrop": "wall tile (type 4): one per tile at the tile centre, yaw from tileHash; variant index = "
                "tileHash(col,row,3) % 6 over the variants sorted by name (V2, V5 hedges = web v % 3 == 2); "
                "R1 1.4 m; the tile is already non-walkable (footprint/blocking recorded for W5 completeness)",
-    "skirt": "terrain skirt (spec 6.10): scenery beyond the border ring, no collision, no gameplay footprint",
 }
 
 
@@ -362,8 +296,7 @@ def main(argv: list[str]) -> int:
     if quick:
         objs = [ASSETS[n][0](pal) for n in names]
         pal.save()
-        E.quick(objs, "rocks_" + "_".join(n.split("_")[-1] for n in names)[:80],
-                spacing=1.6 if all("Skirt" not in n for n in names) else 7.0)
+        E.quick(objs, "rocks_" + "_".join(n.split("_")[-1] for n in names)[:80], spacing=1.6)
         return 0
     shipped = []
     for n in (names if "--family" not in argv else []):
@@ -377,20 +310,16 @@ def main(argv: list[str]) -> int:
         extra = {"displayName": n.split("_", 2)[-1], "family": "environment.rocks"}
         if "Outcrop" in n:
             extra["placement"] = NOTES["outcrop"]
-        if "Skirt" in n:
-            extra["placement"] = NOTES["skirt"]
-        E.ship(obj, n, cat, pal, obj["af_outline_class"], extra=extra, previews=previews,
-               turnaround="Skirt" not in n, **kw)
+        E.ship(obj, n, cat, pal, obj["af_outline_class"], extra=extra, previews=previews, **kw)
         shipped.append(n)
     if "--family" in argv:
         shipped = names
     if previews and len(shipped) > 1:
         scene.reset()
         pal = Palette(E.PROPS)
-        objs = [ASSETS[n][0](pal) for n in shipped if "Skirt" not in n]
+        objs = [ASSETS[n][0](pal) for n in shipped]
         if objs:
-            E.family_sheet(objs, "rocks_outcrops.png", "PLAINS ROCKS AND WALL OUTCROPS", cols=4, focus_z=0.6,
-                           cell_px=(280, 300))
+            E.family_sheet(objs, "rocks_outcrops.png", "PLAINS ROCKS AND WALL OUTCROPS", cols=4)
         if any("Outcrop" in n for n in shipped):
             ridge_preview()
     return E.summary()

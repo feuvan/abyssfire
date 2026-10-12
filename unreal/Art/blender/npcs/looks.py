@@ -26,6 +26,7 @@ class NpcDef:
     extra_clips: tuple = ()       # escort: Idle, Walk, Run, Hurt, Death; rescue: Cower
     fx: dict = field(default_factory=dict)
     scenery: tuple = ()           # [(asset, offset (m, body space), yaw deg)]
+    scenery_note: str = ""        # why the 3D placement deviates from the spec (manifest scenery[].note)
     blob_radius: float = 0.36
     notes: str = ""
 
@@ -55,8 +56,19 @@ NPCS = [
         work="Hammer", work_ms=1333.0, fidget="stretch", gesture_hand="l",
         fx={"anvilSparks": {"notify": "FX_HammerStrike", "atMs": 427.0, "socket": "strike",
                             "on": "SM_Prop_Camp_AnvilStump", "glow": "#FFA040", "sparks": "#FFD070",
-                            "note": "spec §8.7 NS_NPC_AnvilSparks"}},
+                            "flashRadiusCm": 16.0, "flashAlpha": 0.7, "flashMs": 140.0,
+                            "note": "spec §8.7 NS_NPC_AnvilSparks; previews draw the strike flash as a 16 cm #FFA040 "
+                                    "card (core #FFD070) fading over 140 ms, 3 cm above the hot bar"},
+            "hotBarGlow": {"item": "SM_NPCKit_Prop_Tongs", "socket": "glow", "color": "#FF8A3A", "radiusCm": 7.0,
+                           "alpha": 0.45, "coreColor": "#FFD08A", "coreFrac": 0.35, "coreAlpha": 0.6,
+                           "note": "the hot iron in the tongs' jaws (the forge's focal accent, spec §1.5): a steady "
+                                   "glow card on the tongs' glow socket over the emissive bar"}},
         scenery=(("SM_Prop_Camp_AnvilStump", (0.12, -0.52, 0.0), 0.0),),
+        scenery_note="spec §5.2 gives ≈ 35 cm forward / 17 cm to the front-left (web x +11 u, lateral −5.5 u); the "
+                     "stout 3D smith's boots and belly reach into the stump there (body-anvil gap 0 cm at 35-42 cm "
+                     "forward, 0.1-2.3 cm at 47 cm, measured on the skinned mesh over the Work_Hammer keys), so the "
+                     "stump stands 52 cm forward, 12 cm left (gap >= 3.5 cm on every key); Work_Hammer's strike, "
+                     "tongs and FX_HammerStrike socket are solved on this offset — place it exactly here",
         blob_radius=0.40,
         notes="stout, bald with a braided red beard; sleeveless soot-grey tunic, leather apron; hammer + tongs at the "
               "stump anvil (SM_Prop_Camp_AnvilStump at the scenery offset)"),
@@ -106,7 +118,8 @@ NPCS = [
         id="EscortTravelingMerchant", snake="escort_traveling_merchant",
         game_ids=("npc_escort_traveling_merchant",), display={"zh": "旅行商人", "en": "Traveling Merchant"},
         look=Look(skin="#C49C78", build="stout", hair=("#3F2D21", "short"), beard=("#3F2D21", "mustache"),
-                  hat=("widebrim", "#6B3E39", "#28706D"), hat_tilt=15.0, brim_k=0.84, top=("#6B3E39", "coat", "#28706D"), belt="#68472D",
+                  hat=("widebrim", "#6B3E39", "#28706D"), hat_tilt=13.0, brim_k=1.02, brim_curl=0.35,
+                  top=("#6B3E39", "coat", "#28706D"), belt="#68472D",
                   legs="#354458", boots="#2A1E14", pack="#68472D", off="pouch"),
         work="Count", work_ms=2000.0, fidget="hat", gesture_hand="r",
         extra_clips=("Idle", "Walk", "Run", "Hurt", "Death"), fx={"coinGlint": COIN_GLINT},
@@ -124,7 +137,8 @@ NPCS = [
         id="WanderingMerchant", snake="wandering_merchant", game_ids=("npc_wandering_merchant",),
         display={"zh": "流浪商人", "en": "Wandering Merchant"},
         look=Look(skin="#C49A72", build="normal", hair=("#5A4028", "short"), beard=("#5A4028", "short"),
-                  hat=("widebrim", "#5A4A30", "#9A2A2A"), hat_tilt=15.0, brim_k=0.86, top=("#3A4A30", "coat", "#B08A3A"), belt="#3A2414",
+                  hat=("widebrim", "#5A4A30", "#9A2A2A"), hat_tilt=15.0, brim_k=0.98, brim_curl=0.0, brim_droop=0.9,
+                  top=("#3A4A30", "coat", "#B08A3A"), belt="#3A2414",
                   legs="#4A3A2A", boots="#2A1A0A", pack="#7A5A36", pack_scale=1.35, off="pouch"),
         work="Count", work_ms=1600.0, fidget="straps", gesture_hand="r", fx={"coinGlint": COIN_GLINT},
         blob_radius=0.38, notes="random-event peddler with a huge pack (pot, rug, bedroll); Talk while the shop is "

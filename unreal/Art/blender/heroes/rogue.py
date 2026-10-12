@@ -358,6 +358,8 @@ def add_hood(b: M.Builder) -> None:
             rows += [hc + uh(e[0]) - eps, hc + uh(e[0]) + eps, hc + uh(e[1]) - eps, hc + uh(e[1]) + eps]
     zs = sorted(set([round(z, 5) for z in zs + rows if hp.z0 <= z <= hp.z1]))
     hood = profile_mesh(hp, zs, 24, disp=disp, cap0=None, cap1="fan", dome1=uh(0.25), extra_angles=cols)
+    # the cells straddling the opening's edge stepped out past the rim roll as dark squares (art review 8)
+    HB.snap_open_edge(hood, hp, hc, U * CAM_K, OPEN_A, OPEN_Z0, OPEN_Z1, face_r_at(hc))
     shell, recess = C.split_faces(hood, lambda bm, f: any(v[bm.verts.layers.int["af_disp"]] for v in f.verts))
     hull = profile_mesh(hp, list(np.linspace(hp.z0, hp.z1, 16)), 28, cap0="fan", cap1="fan", dome0=-0.03,
                         dome1=uh(0.25))
@@ -1032,7 +1034,10 @@ def build_bow(pal: Palette, forearm: Vector) -> tuple[bpy.types.Object, list]:
     return obj, socks
 
 
-QUIVER_AXIS = (-0.60, 0.30, 0.74)  # up the quiver: up, out to the right, back (opening behind the right hip)
+# up the quiver: up, out to the right, back (opening behind the right hip); 18° off vertical (art review 8: at 42° out
+# to the right it stuck out of the se silhouette as a dark stub left of the body — the se camera sees 'right' and
+# 'back' both as screen-left, so the quiver now rises nearly plumb behind the right hip)
+QUIVER_AXIS = (-0.08, 0.30, 0.95)
 QUIVER_LEN = 9.5                  # units (≈ 27 cm body) + the fletchings
 
 

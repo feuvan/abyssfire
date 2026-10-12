@@ -659,14 +659,18 @@ class GoblinKit:
         b.add(th, "skin", hb_bind, name=f"thumb_{s}", outline=False, covered_by=fid)
         return fid
 
-    def add_leg(self, b: M.Builder, s: str, sg: int, r_scale: float = 1.0) -> None:
+    def add_leg(self, b: M.Builder, s: str, sg: int, r_scale: float = 1.0, top_up: float = 1.6,
+                top_r: float = 2.55) -> None:
+        """Leg tube hip → ankle with a knee cap and the foot. ``top_up`` / ``top_r`` (web units) shape the hidden
+        thigh root above the hip: a skirt that hugs the hips (the shaman) needs a slimmer, lower root, or the swinging
+        thigh's top pushes through the waist band."""
         J = self.J
         u = self.u
         k = r_scale
         Hp, Kn, A = J[f"hip_{s}"], J[f"knee_{s}"], J[f"ankle_{s}"]
-        top = Hp + Vector((0, 0, u(1.6)))
+        top = Hp + Vector((0, 0, u(top_up)))
         pts = [top, Hp.lerp(Kn, 0.45), Kn, Kn.lerp(A, 0.4), A.lerp(Kn, 0.08)]
-        rad = [u(2.55 * k), u(2.35 * k), u(1.95 * k), u(1.9 * k), u(1.35 * k)]
+        rad = [u(top_r * k), u(2.35 * k), u(1.95 * k), u(1.9 * k), u(1.35 * k)]
         leg = M.tube(pts, rad, sides=8, dome0=u(0.8), dome1=u(0.2))
         bind = Bind.blend("pelvis", f"thigh_{s}", f"calf_{s}", f"foot_{s}", falloff=4.0, smooth=0.008)
         b.add(leg, "skin", bind, name=f"leg_{s}")

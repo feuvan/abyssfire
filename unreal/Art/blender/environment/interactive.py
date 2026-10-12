@@ -31,6 +31,7 @@ import foliage as F  # noqa: E402
 import story as ST  # noqa: E402
 import bmesh  # noqa: E402
 import bpy  # noqa: E402
+import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import export, outline, paths, review, scene, shading  # noqa: E402
@@ -126,18 +127,79 @@ LID_R = CD / 2                          # barrel lid radius
 HINGE = Vector((0, CD / 2, CH))         # back top edge
 
 
+def rrect(ax: float, ay: float, rc: float, z: float, nx: int = 9, ny: int = 5) -> list[Vector]:
+    """Points round a rounded rectangle (half sizes ``ax`` × ``ay``, corner radius ``rc``) at height ``z``,
+    counter-clockwise: both ends of every corner arc (the corners stay square to the planks) and ``nx`` / ``ny``
+    interior points on the sides along X / Y."""
+    sx, sy = ax - rc, ay - rc
+    corners = (((sx, sy), 0.0), ((-sx, sy), 0.5 * math.pi), ((-sx, -sy), math.pi), ((sx, -sy), 1.5 * math.pi))
+    out = []
+    for k, ((cx, cy), a0) in enumerate(corners):
+        for t in (0.0, 1.0):
+            ang = a0 + 0.5 * math.pi * t
+            out.append(Vector((cx + rc * math.cos(ang), cy + rc * math.sin(ang), z)))
+        p0 = out[-1]
+        (nx2, ny2), _ = corners[(k + 1) % 4]
+        a1 = corners[(k + 1) % 4][1]
+        p1 = Vector((nx2 + rc * math.cos(a1), ny2 + rc * math.sin(a1), z))
+        n = nx if k % 2 == 0 else ny
+        for i in range(1, n + 1):
+            out.append(p0.lerp(p1, i / (n + 1)))
+    return out
+
+
+def chest_body_proxy() -> M.Part:
+    """Hull proxy of the chest body (art review 9): a dense closed tube hugging the planks (+1 mm) up to the
+    lid line that **curls under** at the base (inset 3 mm at 3 cm, 13 mm at the floor) and widens
+    back to the planks under the floor (hidden by the terrain; the ink gate reads that contact line as buried, like
+    a character's soles). Under the W1 camera the ink beside a box's lower vertical edges can only come from a hull surface that
+    faces up there: a vertical hull wall is edge-on and its bottom is under the terrain, so the old proxy (a plain
+    box padded round straps, lock and seam) only inked them by growing out and under the floor — the dark line
+    standing off the planks and the wedges at the base corners. ``hull_pad`` now grows the tube only where the rim
+    band and the corner straps stand proud (nothing is padded below z = 0); the lock plate and the hasp carry their
+    own small hulls."""
+    curl = ((-0.045, -0.001), (-0.008, 0.013), (0.004, 0.013), (0.02, 0.006), (0.045, 0.001), (0.08, -0.001))
+    zs = list(curl) + [(z, -0.001) for z in (CH - 0.075, CH - 0.05, CH - 0.03, CH - 0.01, CH + 0.001)]
+    rings = [rrect(CW / 2 - inset, CD / 2 - inset, 0.006, z) for z, inset in zs]
+    part = E.ring_loft(rings, cap0="fan", cap1="fan", smooth=True)
+    bm = part.bm
+    bm.normal_update()
+    out = sum(f.normal.dot(f.calc_center_median() - Vector((0, 0, CH / 2))) for f in bm.faces)
+    if out < 0:                        # the waist can fool recalc into the inward side
+        for f in bm.faces:
+            f.normal_flip()
+        bm.normal_update()
+    return part
+
+
+def chest_lid_proxy() -> M.Part:
+    """Hull proxy of the barrel lid: the same half cylinder (+1 mm) with 9 rings along the hinge axis and 13
+    points round, so the padding round the brass bands stays local."""
+    rings = []
+    for k in range(9):
+        x = -CW / 2 - 0.001 + (CW + 0.002) * k / 8
+        ring = []
+        for i in range(13):
+            a = math.pi * i / 12
+            r = LID_R + 0.001
+            ring.append(Vector((x, -math.cos(a) * r, CH - 0.0005 + math.sin(a) * r * 0.72)))
+        rings.append(ring)
+    return E.ring_loft(rings, cap0="ngon", cap1="ngon", smooth=True)
+
+
 def build_chest(pal: Palette):
     """Returns (mesh, binds {part id: 'root' | 'lid'})."""
     name = "SK_Prop_TreasureChest"
     b, rnd = new(pal, name)
     lid_parts = []
     body = M.box((CW, CD, CH), (0, 0, CH / 2), bevel=0.02)
-    bid = b.add(body, "wood", name="body", hull_pad=True)
-    # dark interior (visible when open) + the treasure: gold heap + coins + gem
-    b.add(M.box((CW - 0.07, CD - 0.07, 0.02), (0, 0, CH + 0.0005), bevel=0.004), "wood_in", name="inside",
+    bid = b.add(body, "wood", name="body", hull=chest_body_proxy(), hull_pad=True)
+    # dark interior (visible when open; its top flush with the body top) + the treasure: gold heap + coins + gem
+    # (inside the closed lid: no ink, not padded into the body's hull)
+    b.add(M.box((CW - 0.07, CD - 0.07, 0.02), (0, 0, CH - 0.0095), bevel=0.004), "wood_in", name="inside",
           outline=False, covered_by=bid)
     heap = M.ellipsoid((CW * 0.4, CD * 0.36, 0.07), (0, 0, CH), sides=12, rings=6)
-    b.add(heap, "gold", name="heap", outline=False, covered_by=bid)
+    b.add(heap, "gold", name="heap", outline=False)
     for q in range(7):
         c = Vector((rnd.uniform(-0.2, 0.2), rnd.uniform(-0.12, 0.12), CH + 0.04 + rnd.uniform(0, 0.02)))
         coin = M.cylinder(0.035, 0.035, -0.004, 0.004, sides=10)
@@ -162,9 +224,9 @@ def build_chest(pal: Palette):
                        bevel=0.006)
             b.add(st, "brass", name="strap", outline=False, covered_by=bid)
     plate = M.box((0.11, 0.02, 0.12), (0, -CD / 2 - 0.006, CH - 0.07), bevel=0.008)
-    b.add(plate, "lock", name="lock", outline=False, covered_by=bid)
+    lock_id = b.add(plate, "lock", name="lock", hull_pad=True)
     hole = M.ellipsoid((0.013, 0.006, 0.024), (0, -CD / 2 - 0.016, CH - 0.08), sides=6, rings=3)
-    b.add(hole, "keyhole", name="keyhole", outline=False, covered_by=bid)
+    b.add(hole, "keyhole", name="keyhole", outline=False, covered_by=lock_id)
     # barrel lid (half cylinder along X, hinged at the back top edge) + bands + the glowing seam
     rings = []
     for x in (-CW / 2, CW / 2):
@@ -175,20 +237,20 @@ def build_chest(pal: Palette):
         rings.append(ring)
     lid = E.ring_loft(rings, cap0="ngon", cap1="ngon", smooth=True)
     lid.auto_sharp(50)
-    lid_id = b.add(lid, "wood", name="lid", hull_pad=True)
+    lid_id = b.add(lid, "wood", name="lid", hull=chest_lid_proxy(), hull_pad=True)
     lid_parts.append(lid_id)
     for x in (-CW / 2 + 0.07, CW / 2 - 0.07, 0.0):
         band = []
         for i in range(9):
             a = math.pi * i / 8
-            band.append(Vector((x, -math.cos(a) * (LID_R + 0.008), CH + math.sin(a) * (LID_R + 0.008) * 0.72)))
+            band.append(Vector((x, -math.cos(a) * (LID_R + 0.003), CH + math.sin(a) * (LID_R + 0.003) * 0.72)))
         nrm = [Vector((0, -math.cos(math.pi * i / 8), math.sin(math.pi * i / 8))) for i in range(9)]
-        rb = E.ribbon(band, nrm, 0.05 if x else 0.04, lift=0.0, thick=0.008)
+        rb = E.ribbon(band, nrm, 0.05 if x else 0.04, lift=0.0, thick=0.005)
         lid_parts.append(b.add(rb, "brass", name="lid_band", outline=False, covered_by=lid_id))
-    seam = M.box((CW - 0.12, 0.016, 0.018), (0, -CD / 2 - 0.006, CH - 0.006), bevel=0.004)
+    seam = M.box((CW - 0.12, 0.01, 0.016), (0, -CD / 2 - 0.002, CH - 0.006), bevel=0.003)
     b.add(seam, "seam", name="seam", outline=False)
     hasp = M.box((0.06, 0.02, 0.1), (0, -LID_R - 0.004, CH + 0.02), bevel=0.006)
-    lid_parts.append(b.add(hasp, "lock", name="hasp", outline=False, covered_by=lid_id))
+    lid_parts.append(b.add(hasp, "lock", name="hasp", hull_pad=True))
     obj = E.finish(b, pal, "interactive", ground_h=0.4, name=name)
     return obj, b, lid_parts
 
@@ -282,6 +344,110 @@ def chest_action(arm, clip: str):
     return act, clip_ns
 
 
+def rest_pose(arm) -> None:
+    """Closed rest pose: no action evaluating (``export_animation`` leaves the last exported clip assigned — the
+    Open end frame showed in every review image and in ``boundsCm`` before art review 9), identity bones."""
+    ad = arm.animation_data
+    if ad is not None:
+        ad.action = None
+    for pb in arm.pose.bones:
+        pb.rotation_mode = "QUATERNION"
+        pb.rotation_quaternion = (1, 0, 0, 0)
+        pb.location = (0, 0, 0)
+        pb.scale = (1, 1, 1)
+    bpy.context.scene.frame_set(0)
+    bpy.context.view_layer.update()
+
+
+def open_pose(rig, act, clip) -> None:
+    from kit import anim
+    anim.assign(rig, act)
+    anim.set_frame(clip.frames)
+    bpy.context.view_layer.update()
+
+
+def chest_open_views(rv, rig, act, clip) -> None:
+    """The Open end frame as its own gated 1080p cell (shipped ink + baked hull alone) and a close-up."""
+    open_pose(rig, act, clip)
+    rv.facing("front")
+    review.setup_render((1920, 1080), rv.samples)
+    review.hide_stage(False)
+    cam = review.game_camera()
+    box = rv.game_crop_box(cam)
+    rv.game_outline(1080)
+    ship, st = rv.game_shot(box, measure=True, tag="game_open_1080crop front shipped (Open end frame)")
+    rv.game_outline(1080, baked=True)
+    base, st_b = rv.game_shot(box, measure=True, tag="game_open_1080crop front baked (Open end frame)", glow=False,
+                              bloom_on=False)
+    st_b["gated"] = False
+    rv.game_outline(1080)
+    review.draw_text(ship, 4, 4, f"OPEN END F{clip.frames}  1080P 1:1 SHIPPED  INK {rv.game_outline_px:g}PX + BLOOM")
+    review.draw_text(ship, 4, 14, rv.ink_label(st), rgb=(255, 220, 140))
+    review.draw_text(base, 4, 4, "OPEN END  BAKED 1.3CM ONLY (MOBILE LOW)")
+    review.draw_text(base, 4, 14, f"RIM MEDIAN {st_b['rimPxMedian']:.1f}PX P10 {st_b['rimPxP10']:.1f}PX",
+                     rgb=(255, 220, 140))
+    rv._save("game_open_1080crop.png", review.grid([ship, base], 2, pad=2))
+    res = (480, 600)
+    review.setup_render(res, rv.samples)
+    pts = review.mesh_points(rv.meshes)
+    review.frame_points(pts, res, fov_h=28.0, pitch_ue=-22.0, fill=0.9)
+    rv.ink(at=Vector(pts.mean(0)))
+    img = review.render_array()
+    review.draw_text(img, 6, 6, f"{rv.asset}  OPEN END F{clip.frames}  FRONT 3/4")
+    rv._save("closeup_open.png", img)
+
+
+def chest_sheet(rv, rig, acts, frames: int = 8, cell=(220, 196)) -> None:
+    """Contact sheets (``anims.png`` + ``anim_<Clip>.png``) framed on every sampled frame of every clip with room
+    to spare (fill .8: the kit sheet's .95 clipped the chest at the cell edge)."""
+    from kit import anim
+    rv.facing("se")
+    plan, allpts = [], []
+    for act, clip in acts:
+        anim.assign(rig, act)
+        n = clip.frames
+        picks = sorted(set(int(round(x)) for x in np.linspace(0, n if not clip.loop else n - 1, frames)))
+        marks = {}
+        for d in clip.notify_list():
+            fr = scene.ms_to_frame(d["ms"])
+            marks.setdefault(fr, []).append(d)
+            if fr not in picks:
+                picks[picks.index(min(picks, key=lambda p: abs(p - fr)))] = fr
+        picks = sorted(set(picks))
+        plan.append((clip, act, picks, marks))
+        for fr in picks:
+            anim.set_frame(fr)
+            allpts.append(review.mesh_points(rv.meshes, step=2))
+    pts = np.concatenate(allpts)
+    review.setup_render(cell, max(4, rv.samples // 2))
+    review.frame_points(pts, cell, fov_h=24.0, pitch_ue=shading.CAM_PITCH_UE, fill=0.8)
+    rv.ink(at=Vector(pts.mean(0)))
+    rows = []
+    width = max(len(p[2]) for p in plan)
+    for clip, act, picks, marks in plan:
+        anim.assign(rig, act)
+        cells = []
+        for fr in picks:
+            anim.set_frame(fr)
+            img = review.render_array()
+            review.draw_text(img, 3, cell[1] - 10, f"F{fr} {scene.frame_to_ms(fr):.0f}MS")
+            if fr in marks:
+                review.border(img)
+                for i, d in enumerate(marks[fr]):
+                    review.draw_text(img, 3, 14 + i * 9, f"{d['name']} {d['ms']:.0f}", rgb=(255, 170, 70))
+            cells.append(img)
+        while len(cells) < width:
+            cells.append(np.full_like(cells[0], 24))
+        row = review.grid(cells, width, pad=2)
+        label = np.zeros((14, row.shape[1], 3), np.uint8)
+        label[:, :] = (24, 20, 30)
+        review.draw_text(label, 4, 4, f"{clip.name}  {clip.length_ms:.0f}MS  {clip.frames}F{' LOOP' if clip.loop else ''}")
+        rowimg = np.vstack([label, row])
+        rows.append(rowimg)
+        rv._save(f"anim_{clip.name}.png", rowimg)
+    rv._save("anims.png", np.vstack(rows))
+
+
 def ship_chest(pal: Palette, previews: bool = True):
     name = "SK_Prop_TreasureChest"
     obj, b, lid_parts = build_chest(pal)
@@ -292,27 +458,30 @@ def ship_chest(pal: Palette, previews: bool = True):
     for clip in CHEST_CLIPS:
         acts.append(chest_action(arm, clip))
     # verify the lid opens upward: the lid's front vertex rises at the Open end frame
-    from kit import anim
-    anim.assign(rig, acts[1][0])
-    anim.set_frame(acts[1][1].frames)
+    open_pose(rig, *acts[1])
     lo, hi = scene.world_bounds([obj])
     print(f"[chest] open bounds z {lo.z:.3f}..{hi.z:.3f} (closed top {CH + LID_R * 0.72:.3f})")
-    anim.assign(rig, None)
-    for pb in arm.pose.bones:
-        pb.rotation_quaternion = (1, 0, 0, 0)
-        pb.location = (0, 0, 0)
+    open_bounds = export.bounds_ue([obj])
+    rest_pose(arm)
     sk = export.export_skeletal_mesh(rig, [obj], name, CAT)
     anim_entries = []
     for act, clip in acts:
         fbx = export.export_animation(rig, act, CAT)
         anim_entries.append(export.clip_entry(clip, act, fbx))
+    rest_pose(arm)                     # export_animation leaves the last clip (Open) assigned
+    bounds = export.bounds_ue([obj])
+    lo, hi = scene.world_bounds([obj])
+    assert hi.z < CH + LID_R * 0.72 + 0.03, f"chest bounds not in the closed rest pose (top {hi.z:.3f} m)"
+    print(f"[chest] rest bounds {bounds}")
     man = E.EnvManifest()
     man.set_palette(pal)
     width = float(obj.get("af_outline_width", 0.0))
     entry = {
         "kind": "SkeletalMesh", "category": CAT, "fbx": paths.rel_to_export(sk),
         "gameIds": ["decor_treasure_chest", "treasure_chest"], "skeleton": "SKEL_Prop_Chest", "scale": 1.0,
-        "heightCm": round((CH + LID_R * 0.72) * 100.0, 1), "boundsCm": export.bounds_ue([obj]),
+        "heightCm": round((CH + LID_R * 0.72) * 100.0, 1), "boundsCm": bounds,
+        "boundsNote": "closed rest pose (bind pose, no clip); openBoundsCm = the Open end frame (lid up 105 deg)",
+        "openBoundsCm": open_bounds,
         "bones": len(arm.data.bones),
         "triangles": {"toon": E.tris(obj, 0), "outline": E.tris(obj, 1)},
         "materialSlots": [
@@ -332,20 +501,26 @@ def ship_chest(pal: Palette, previews: bool = True):
                 "ChestOpen notify -> NS_World_ChestOpen (light shaft, sparkles) at socket fx_open",
     }
     if previews:
-        rv = review.Review(name, arm, [obj], 0.62, blob_radius=0.42,
-                           game_outline_px=outline.SCREEN_PX_1080["interactive"], outline_class="interactive")
+        rv = E.EnvReview(name, arm, [obj], 0.62, blob_radius=0.42,
+                         game_outline_px=outline.SCREEN_PX_1080["interactive"], outline_class="interactive")
         rv.ground_occludes = True
+        rest_pose(arm)
         rv.game_view("front")
         rv.closeup("front")
         rv.turnaround()
-        rv.contact_sheet(rig, [(c, a) for a, c in acts], frames=8, per_clip_files=True)
+        chest_open_views(rv, rig, *acts[1])
+        chest_sheet(rv, rig, acts)
+        rest_pose(arm)
         entry["previews"] = [str(Path(p).relative_to(rv.out.parent.parent)) for p, _ in rv.written]
         v = rv.ink_verdict()
         entry["inkGate"] = {k: v[k] for k in ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx",
-                                              "maxHullLumP95", "gate")}
+                                              "maxHullLumP95", "gate", "baked")}
+        entry["inkGate"]["cellsNote"] = "closed rest pose (game_1080crop) + Open end frame (game_open_1080crop)"
         E.RESULTS.append({"asset": name, "fbx": str(sk), "toonTris": E.tris(obj, 0), "hullTris": E.tris(obj, 1),
                           "ink": {k: v[k] for k in ("pass", "minFracRim", "minFracDark", "medianRimPx",
                                                     "maxHullLumP95")}, "inkFailures": v["failures"]})
+        print(f"[chest] ink cells: " + "; ".join(f"{r['tag']}: median {r['rimPxMedian']:.2f}px "
+                                                 f"rim {r['fracRim'] * 100:.0f}%" for r in rv.ink_reports))
     man.set_asset(name, entry)
     man.save()
     return obj
@@ -640,24 +815,55 @@ def build_arrow(pal: Palette):
     return obj
 
 
+def herb_leaf(base: Vector, d: Vector, L: float, W: float, side: Vector, segs: int = 5) -> M.Part:
+    """A lanceolate leaf: ``E.blade`` re-profiled so it is narrow at the stem, widest at 40 % and pointed."""
+    lf = E.blade(base, d, L, W, bend=0.16, side=side, segs=segs, thick=0.006)
+    bm = lf.bm
+    bm.verts.ensure_lookup_table()
+    s_ax = side.normalized()
+    for i in range(segs + 1):
+        t = i / segs
+        lin = W * (1 - t)
+        if t <= 0.4:
+            prof = W * (0.4 + 0.6 * math.sin(0.5 * math.pi * t / 0.4))
+        else:
+            prof = W * max(0.06, ((1 - t) / 0.6) ** 0.8)
+        vs = bm.verts[4 * i:4 * i + 4]
+        c = sum((v.co for v in vs), Vector()) / 4
+        for v in vs:
+            lat = (v.co - c).dot(s_ax)
+            side_sign = 1.0 if lat >= 0 else -1.0
+            if lin > 1e-4:
+                v.co = v.co + s_ax * (lat * (prof / lin - 1.0))
+            else:                               # the tip section collapsed to a point: re-open it
+                v.co = v.co + s_ax * (side_sign * prof / 2 - lat)
+    bm.normal_update()
+    return lf
+
+
 def build_herb(pal: Palette):
+    """翡翠草药 sprig. Art review 9: seven overlapping leaves whose padded hulls (veins 6 mm proud) were as wide as
+    the leaves read as a dark-green blot (median rim 5.4 px for the 2.0 px class: 2 px of ink each side of a 7 px
+    leaf). Now five broad leaves (9.5 → 6.7 cm, 20 → 14 cm long) fanned apart on the golden angle and laid out flat
+    enough to face the high camera, veins lying flush (1.5 mm), leaves 6 mm thick — each leaf shows its green face
+    inside the screen-constant 2 px line."""
     name = "SM_Prop_Gather_EmeraldHerb"
     b, rnd = new(pal, name)
-    mound = M.ellipsoid((0.12, 0.1, 0.03), (0, 0, 0.0), sides=10, rings=4)
+    mound = M.ellipsoid((0.11, 0.09, 0.03), (0, 0, 0.0), sides=10, rings=4)
     b.add(mound, "soil", name="soil")
     stem = M.tube([Vector((0, 0, 0.0)), Vector((0.01, 0.0, 0.12)), Vector((-0.01, 0.01, 0.27))], [0.012, 0.01, 0.006],
                   sides=6)
     b.add(stem, "stem", name="stem")
-    for i in range(7):
-        a = i * 2.39 + rnd.uniform(-0.2, 0.2)
-        z = 0.04 + i * 0.033
-        L = 0.16 - i * 0.012
-        d = Vector((math.cos(a), math.sin(a), 0.55 + i * 0.08)).normalized()
+    for i in range(5):
+        a = i * 2.4 + rnd.uniform(-0.15, 0.15)
+        z = 0.05 + i * 0.045
+        L = 0.2 - i * 0.014
+        d = Vector((math.cos(a), math.sin(a), 0.32 + i * 0.12)).normalized()
         base = Vector((0, 0, z))
         side = d.cross(Vector((0, 0, 1))).normalized()
-        lf = E.blade(base, d, L, 0.075 - i * 0.004, bend=0.18, side=side, segs=3, thick=0.008)
+        lf = herb_leaf(base, d, L, 0.095 - i * 0.007, side)
         lid = b.add(lf, "leaf", name="leaf", hull_pad=True)
-        # glowing midrib vein along the leaf's upper face
+        # glowing midrib vein lying on the leaf's upper face
         out = d.cross(side).normalized()
         if out.z < 0:
             out = -out
@@ -665,10 +871,10 @@ def build_herb(pal: Palette):
         pts = []
         for k in range(4):
             t = 0.1 + 0.75 * k / 3
-            p = base + d * (L * t) + horiz * (0.18 * L * t * t) - Vector((0, 0, 0.18 * L * t * t * 0.6))
+            p = base + d * (L * t) + horiz * (0.16 * L * t * t) - Vector((0, 0, 0.16 * L * t * t * 0.6))
             pts.append(p)
-        b.add(E.ribbon(pts, [out] * 4, [0.014, 0.012, 0.009, 0.005], lift=0.006, thick=0.002), "vein", name="vein",
-              outline=False, covered_by=lid)
+        b.add(E.ribbon(pts, [out] * 4, [0.014, 0.012, 0.009, 0.005], lift=0.0032, thick=0.0015), "vein",
+              name="vein", outline=False, covered_by=lid)
     bud = M.ellipsoid((0.025, 0.025, 0.035), (-0.01, 0.01, 0.29), sides=8, rings=4)
     b.add(bud, "bud", name="bud")
     return E.finish(b, pal, "interactive", ground_h=0.2, name=name)
@@ -752,13 +958,11 @@ def main(argv: list[str]) -> int:
                 o.location.z = 0.0
         big = [o for o in objs if "Exit" in o.name]
         small = [o for o in objs if o not in big]
-        E.family_sheet(small, "interactive_props.png", "INTERACTIVE PROPS AND MARKERS", cols=4, focus_z=0.35,
-                       cell_px=(230, 230), facing_deg=-135.0)
+        E.family_sheet(small, "interactive_props.png", "INTERACTIVE PROPS AND MARKERS", cols=4, facing_deg=-135.0)
         for o in small:
             o.hide_render = True
         if big:
-            E.family_sheet(big, "exit_gates.png", "ZONE EXIT: PORTAL (LATER) AND SEALED GATE (W7)", cols=3,
-                           focus_z=1.0, cell_px=(400, 420))
+            E.family_sheet(big, "exit_gates.png", "ZONE EXIT: PORTAL (LATER) AND SEALED GATE (W7)", cols=3)
     return E.summary()
 
 

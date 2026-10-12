@@ -46,7 +46,7 @@ WEB = GB.Web(U=0.0216 * 0.92 / 0.988)       # skull top 0.92 m (R2); web 2.16 cm
 LOOK = GB.Look()
 OUTLINE_CLASS = "monster"
 REF_SPEED = 1.65
-WALK = dict(cycle=600.0, duty=0.34, lift=0.07, bob=0.018, lean=4.0, arm=0.07, crouch=-0.035, twist=4.0,
+WALK = dict(cycle=600.0, duty=0.34, lift=0.058, bob=0.018, lean=4.0, arm=0.07, crouch=-0.035, twist=4.0,
             hand_swing=0.35, hand_off=V(-0.024, 0.0, 0.016))
 
 SPEAR_REGIONS = outline.ink_regions(dict(
@@ -124,7 +124,9 @@ def install_poses(A: GoblinAnims) -> None:
         rx, ry = WEB_READY["root"]
         fn, ff = WEB_READY["footN"], WEB_READY["footF"]
         P0 = A.J["pelvis"]
-        buckle = rec.but(pelvis=A.web_pelvis(rx - 2.5, ry + 7.0), lean=-10.0, head_pitch=-16.0, head_yaw=10.0,
+        # the hips sink DEATH_DROP u (web 7): a deeper knee bend lifted the right knee to the belt, through the front
+        # flap's pelvis-held top (cloth × limb QA)
+        buckle = rec.but(pelvis=A.web_pelvis(rx - 2.5, ry + DEATH_DROP), lean=-10.0, head_pitch=-16.0, head_yaw=10.0,
                          head_roll=6.0, foot_r=A.web_foot(fn - 1.0, R0.foot_r.x), foot_l=A.web_foot(ff, R0.foot_l.x),
                          knee_l=V(0.6, 1, 0), knee_r=V(-0.6, 1, 0), hand_r=u3(A, -10.5, 4.0, 15.0),
                          elbow_r=V(-0.9, 0.3, -0.2), **A._wkw(R0, 110.0, lat=-0.15), hand_l=u3(A, 6.5, 3.0, 15.0),
@@ -247,10 +249,24 @@ def build_all():
 
 
 WEB_READY = dict(root=(47.0, 74.0), footN=53.0, footF=42.5, lean=0.34, head=-0.30)
+DEATH_DROP = 4.5
+
+
+class LoinAnims(GoblinAnims):
+    """``GoblinAnims`` with the loincloth envelope's leg spheres sized to the knee caps (cloth × limb QA: at the
+    default 2.6 u (1.95 u at the knee) the cap, 2.4 u ahead of the knee joint, cut through the front flap in Walk,
+    Attack01 and Death)."""
+
+    def flaps(self, p, bp, **kw) -> None:
+        kw.setdefault("thigh_r", self.U * FLAP_THIGH_R)
+        super().flaps(p, bp, **kw)
+
+
+FLAP_THIGH_R = 3.3          # u at the hip (× 0.75 = 2.5 u at the knee)
 
 
 def anims(kit) -> GoblinAnims:
-    A = GoblinAnims(kit, REF_SPEED, WALK, ready, style="thrust", contact_wpn=92.0, web_ready=WEB_READY)
+    A = LoinAnims(kit, REF_SPEED, WALK, ready, style="thrust", contact_wpn=92.0, web_ready=WEB_READY)
     install_poses(A)
     return A
 
@@ -279,6 +295,11 @@ def hunt_items(pal: Palette, kit) -> list:
                        category="Monsters", extra=dict(note, glint={"region": "gem", "color": "#E0283C"})),
             mship.Item(GH.build_lootsack(pal, kit), GH.LOOTSACK, "pelvis", variant="hunt_pendant_thief",
                        category="Monsters", extra=dict(note))]
+
+
+# cloth × limb gate (art review): the ragged loincloth flaps against the legs and knee caps — limit 0 on every frame
+QA_GROUPS = {"loin": ["loin_f", "loin_b"], "legs": ["leg", "knee"]}
+QA_PAIRS = {"loinLeg": ("loin", "legs")}
 
 
 def hunt_qa_groups(body) -> dict:
@@ -409,9 +430,9 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         display={"zh-CN": "哥布林", "en": "Goblin"},
         fx={"telegraph": {"normal": "#FFC4B0", "elite": "#FF7A5C", "untilMs": 155},
             "attackTrail": {"color": "#E8E0CC", "alpha": 0.45, "sockets": ["tip", "mid"], "item": SPEAR}},
-        qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS), **hunt_qa_groups(body)},
-        qa_pairs={"spearBody": ("item:" + SPEAR, "body_nf"), **HUNT_QA_PAIRS},
-        qa_limits={"ground": -0.5, "spearBody": 0, **{k: 0 for k in HUNT_QA_PAIRS}},
+        qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS), **hunt_qa_groups(body), **QA_GROUPS},
+        qa_pairs={"spearBody": ("item:" + SPEAR, "body_nf"), **HUNT_QA_PAIRS, **QA_PAIRS},
+        qa_limits={"ground": -0.5, "spearBody": 0, **{k: 0 for k in HUNT_QA_PAIRS}, **{k: 0 for k in QA_PAIRS}},
         variants=GH.VARIANTS, extra_previews=hunt_previews, variant_previews=("hunt_leaders.png", "hunt_close.png"),
         game_keys=[("Idle", 0, "se"), ("Walk", 9, "se"), ("Attack01", 5, "se"), ("Attack01", 15, "se"),
                    ("Attack01", 15, "sw"), ("Hurt", 0, "se"), ("Death", 30, "se"), ("Stun", 10, "se")],

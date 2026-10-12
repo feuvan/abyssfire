@@ -7,14 +7,20 @@
 Families = the core's ``WeaponType`` (sword · axe · mace · dagger · bow · staff · wand · shield; ``Data/item_bases.json``
 has bases for all but mace and wand). Every mesh is authored in its socket's bone space (kit README §4: grip centre
 at the origin, blade / shaft along +Y, +Z up; shields: face +Y, up +Z like ``SM_Hero_Warrior_Shield``; bows: limbs
-along ±Y with the string toward the archer like ``SM_Hero_Rogue_Bow``), attaches with an identity transform, and is
-painted on the ``Weapons`` palette by *roles* so the tier atlases (``weapon_tiers.py``: T1 iron · Worn · T2 … T6
-abyssal, ``T_AF_Palette_Weapons_<Tier>``) re-skin it. The manifest entry lists ``tiers`` (tier → material instance)
-and ``bases`` (item base id → tier) so the UE side can pick the MI for the equipped base.
+along ±Z, string toward −Y), painted on the ``Weapons`` palette by *roles* so the tier atlases (``weapon_tiers.py``:
+T1 iron · Worn · T2 … T6 abyssal, ``T_AF_Palette_Weapons_<Tier>``) re-skin it. The manifest entry lists ``tiers``
+(tier → material instance) and ``bases`` (item base id → tier) so the UE side can pick the MI for the equipped base.
+
+The meshes ride clips authored for each class's own weapon, so each (class, family) has **grips** (``weapon_grips.py``,
+table ``weapon_grips.json``; manifest ``grips``: a socket-relative default + per-clip overrides, blended over
+``gripBlendMs``) and the ship runs the **whole-clip in-hand QA** at those grips (every frame of every hero clip:
+ground, item × body / head / the class's other default item) and exits 1 on a failure, like the warrior's ship. The
+bow is a main-hand base held in the left hand: ``occupiesOffhand``.
 
 Previews in ``Art/Previews/SM_Weapon_<Family>/``: ``closeup.png`` (studio views), ``tiers.png`` (every tier atlas),
-``game_inhand.png`` (W1 camera, 1080p 1:1, READY + attack contact on the warrior / mage / rogue re-imported from
-their shipped FBX, ink-gated), ``game.png`` (the 640×360 frame), ``game_inkgate.png``; ``Previews/weapons_lineup``.
+``game_inhand_<Class>.png`` (W1 camera, 1080p 1:1: READY, a Run frame, the Attack01-03 contacts and the Cast01
+release, at the shipped grips with the class's default attachments, ink-gated; only the classes the runtime shows the
+generic mesh on), ``game.png`` (the 640×360 frame), ``game_inkgate.png``; ``Previews/weapons_lineup``.
 """
 from __future__ import annotations
 
@@ -38,6 +44,7 @@ from kit import asset, mesh as M, outline, paths, review, scene, shading  # noqa
 from kit.palette import Palette, Region  # noqa: E402
 
 import common as C  # noqa: E402  (heroes/common.py: slab2d, thick_patch, smooth_closed, offset_closed …)
+import weapon_grips as WG  # noqa: E402
 import weapon_tiers as WT  # noqa: E402
 
 CATEGORY = "Weapons"
@@ -282,17 +289,18 @@ def build_mace(b: M.Builder) -> list[dict]:
           covered_by=haft)
     b.add(IK.lathe_y([(0.014, -0.203), (0.0235, -0.192), (0.0245, -0.180), (0.0185, -0.166)],
                      sides=12, cap0="fan", cap1=None).auto_sharp(45), "butt", name="butt")
+    # collar: closed revolve (art review 9: open lathe ends let the hull show through as a dark notch)
     b.add(IK.lathe_y([(0.0180, 0.380), (0.0245, 0.386), (0.0250, 0.398), (0.0205, 0.404), (0.0215, 0.418),
-                      (0.0240, 0.436)], sides=12, cap0=None, cap1=None).auto_sharp(45), "collar", name="collar")
+                      (0.0240, 0.436)], sides=12, cap0="fan", cap1="fan").auto_sharp(45), "collar", name="collar")
     # web drawMace: an iron ball with triangular flanges fanning out of it and a gold boss. 3D: the ball ringed by
     # a gold band, 13 blade-spikes (rhombic section, flat in the meridian plane, so from the side each reads as
     # the web's triangle and from the camera as a spike): 6 on the band, 6 at +42° (offset 30°), one crowning the
     # gold top boss
-    yc, rb = 0.474, 0.052
+    yc, rb = 0.486, 0.0625          # head 20 % larger than the first pass (art review 9: a grey blob at 1080p)
     ctr = Vector((0.0, yc, 0.0))
     head = IK.ell((rb, rb * 0.96, rb), tuple(ctr), sides=14, rings=9)
     hid = b.add(head, "head", name="head_ball", hull_pad=True)
-    b.add(IK.ring_y(yc, rb + 0.0045, 0.020, 0.010, sides=18), "cap", name="band", outline=False, covered_by=hid)
+    b.add(IK.ring_y(yc, rb + 0.0045, 0.022, 0.010, sides=18), "cap", name="band", outline=False, covered_by=hid)
 
     def spike(d: Vector, length: float, wm: float, wt: float) -> M.Part:
         d = d.normalized()
@@ -310,17 +318,17 @@ def build_mace(b: M.Builder) -> list[dict]:
         bm.normal_update()
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         return M.Part(bm).flat()
-    for ring_el, n, off, ln in ((0.0, 6, 0.0, 0.032), (46.0, 5, 36.0, 0.027)):
+    for ring_el, n, off, ln in ((0.0, 6, 0.0, 0.038), (46.0, 5, 36.0, 0.032)):
         for k in range(n):
             az = math.radians(360.0 * k / n + off + 15.0)
             el = math.radians(ring_el)
             d = Vector((math.cos(el) * math.cos(az), math.sin(el), math.cos(el) * math.sin(az)))
-            b.add(spike(d, ln, 0.0210, 0.0150), "flange", name="spike", hull_pad=True)
-    b.add(IK.lathe_y([(0.020, yc + rb * 0.80), (0.0235, yc + rb * 0.92), (0.020, yc + rb * 1.06),
-                      (0.012, yc + rb * 1.16), (0.0008, yc + rb * 1.20)], sides=12, cap0="fan", cap1="fan")
+            b.add(spike(d, ln, 0.0250, 0.0180), "flange", name="spike", hull_pad=True)
+    b.add(IK.lathe_y([(0.024, yc + rb * 0.80), (0.028, yc + rb * 0.92), (0.024, yc + rb * 1.06),
+                      (0.014, yc + rb * 1.16), (0.0008, yc + rb * 1.20)], sides=12, cap0="fan", cap1="fan")
           .auto_sharp(50), "cap", name="cap", hull_pad=True)
-    b.add(spike(Vector((0, 1, 0)), 0.044, 0.0120, 0.0120), "flange", name="spike_top", hull_pad=True)
-    return [{"name": "tip", "pos": (0, yc + rb + 0.044, 0)}, {"name": "mid", "pos": (0, yc, 0)}]
+    b.add(spike(Vector((0, 1, 0)), 0.050, 0.0140, 0.0140), "flange", name="spike_top", hull_pad=True)
+    return [{"name": "tip", "pos": (0, yc + rb + 0.050, 0)}, {"name": "mid", "pos": (0, yc, 0)}]
 
 
 def build_dagger(b: M.Builder) -> list[dict]:
@@ -358,49 +366,59 @@ def build_dagger(b: M.Builder) -> list[dict]:
     return [{"name": "tip", "pos": (0, ytip, 0)}, {"name": "mid", "pos": (0, (y0 + ytip) / 2, 0)}]
 
 
-# Bows stand in the off hand the way the strapped shield's handle does (limbs along ±Z = up in the socket frame,
-# the back of the bow toward +Y = out of the fist, the string toward the archer, −Y): in every class's READY / combat
-# clip weapon_l keeps +Z roughly up, so the bow stands upright in front of the forearm. (The rogue's clip-only
-# flash-bow is modelled along ±Y because Cast_Multishot aims weapon_l for it.)
+# Bows are modelled in ``weapon_l`` space like the strapped shield's handle (limbs along ±Z, the back of the bow toward
+# +Y = out of the fist, the string toward the archer, −Y); the per-class grip table (``weapon_grips.json``, manifest
+# ``grips``) turns the bow in each hero's hand so its D-profile faces the W1 camera. (The rogue's clip-only flash-bow is
+# modelled along ±Y because Cast_Multishot aims weapon_l for it.)
 BOW_S = Vector((0.0, -1.0, 0.0))          # toward the archer (string side)
 BOW_UP = Vector((0.0, 0.0, 1.0))          # upper limb
+BOW_L = 0.46                              # half length (92 cm tip to tip)
+BOW_B, BOW_R = 0.215, 0.065               # web bowSpec bulge 13 / 84: a deep D, brace 15 cm, tips recurving a little
+
+
+def bow_path(y: float) -> Vector:
+    f = abs(y) / BOW_L
+    return BOW_UP * y + BOW_S * (BOW_B * f * f - BOW_R * f ** 6)
 
 
 def build_bow(b: M.Builder) -> list[dict]:
     """Recurve bow in ``weapon_l`` space: grip in the fist, limbs along ±Z, string toward −Y. Web bowSpec: limbs
     tapering to recurved tips, wrapped grip with ring bands, a band at mid-limb, tip caps, a lit grain line on the
-    back of each limb; 92 cm tip to tip, brace ≈ 10 cm."""
-    S, Y = BOW_S, BOW_UP
-    L = 0.46
-
-    def P(y: float) -> Vector:
-        f = abs(y) / L
-        return Y * y + S * (0.122 * f * f - 0.026 * f ** 4)
+    back of each limb; 92 cm tip to tip, brace 15 cm (art review: the D must read at the W1 distance — a 10 cm brace
+    and a 2.4 mm string read as a straight stick). The string is a light no-hull cord, 1.3 cm across in the bow's
+    plane (≥ 1.5 px at 1080p when the D faces the camera)."""
+    S, Y, L = BOW_S, BOW_UP, BOW_L
+    P = bow_path
     for sgn, nm in ((1.0, "limb_top"), (-1.0, "limb_bot")):
         n = 22
         ys = [sgn * L * i / n for i in range(n + 1)]
         path = [P(y) for y in ys]
-        # chunkier than a real self bow so the limbs survive the W1 distance (≈ 2.4 px wide + ink each side)
-        sc = [((0.0300 - 0.0135 * abs(y) / L) / 2 + 0.0005, (0.0420 - 0.0190 * abs(y) / L) / 2) for y in ys]
+        # (thickness in the bow's plane, width across it): near-round and chunkier than a real self bow, so the
+        # limbs keep ≈ 3–4 px + ink each side with the D facing the camera
+        sc = [((0.0360 - 0.0170 * abs(y) / L) / 2, (0.0400 - 0.0180 * abs(y) / L) / 2) for y in ys]
         lid = b.add(M.sweep(path, M.superellipse(1, 1, 10, 2.6), scales=sc, up=S, dome0=0.0, dome1=0.003),
                     "wood", name=nm, hull_pad=True)
         line = [P(y) - S * (sc[i][0] - 0.0004) for i, y in enumerate(ys) if 0.14 < abs(y) / L < 0.90]
         b.add(M.strap(line, 0.0062, 0.0016, up=[-S] * len(line)), "grain", name="grain", outline=False,
               covered_by=lid)
         tip = P(sgn * L * 0.985)
-        b.add(IK.ell((0.0130, 0.0130, 0.0190), tip, sides=10, rings=6), "tip", name="tip_cap", hull_pad=True)
+        b.add(IK.ell((0.0135, 0.0135, 0.0195), tip, sides=10, rings=6), "tip", name="tip_cap", hull_pad=True)
         yy = sgn * L * 0.52
         d, w = sc[int(round(0.52 * n))]
         b.add(M.tube([P(yy - 0.010), P(yy + 0.010)], [(d + 0.0022, w + 0.0022)] * 2, sides=10, up=S, dome0=0.0,
                      dome1=0.0), "band", name="band", outline=False, covered_by=lid)
-    grip = b.add(M.tube([P(-0.064), P(0.0), P(0.064)], [(0.0185, 0.0245), (0.0195, 0.0255), (0.0185, 0.0245)],
-                        sides=12, up=S, dome0=0.0, dome1=0.0), "wrap", name="bow_grip", hull_pad=True)
+    b.add(M.tube([P(-0.064), P(0.0), P(0.064)], [(0.0185, 0.0245), (0.0195, 0.0255), (0.0185, 0.0245)],
+                 sides=12, up=S, dome0=0.0, dome1=0.0), "wrap", name="bow_grip")
+    # riser bands: each its own thin hull (art review 12: padding the grip proxy round them grew a tent)
     for yy in (-0.070, 0.070):
         b.add(M.tube([P(yy - 0.006), P(yy + 0.006)], [(0.0205, 0.0265)] * 2, sides=12, up=S, dome0=0.0, dome1=0.0),
-              "band", name="riser_band", outline=False, covered_by=grip)
+              "band", name="riser_band")
     top, bot = P(L * 0.985) + S * 0.006, P(-L * 0.985) + S * 0.006
-    b.add(M.tube([top, (top + bot) / 2, bot], [0.0024, 0.0026, 0.0024], sides=6, dome0=0.0, dome1=0.0),
-          "string", name="string", outline=False)
+    # the string: an elliptic cord, wide (1.3 cm) in the bow's plane, thin (0.7 cm) across it
+    X = S.cross(Y).normalized()
+    pts = [top + (bot - top) * (i / 6) for i in range(7)]
+    b.add(M.tube(pts, [(0.0035, 0.0065)] * 7, sides=8, up=X, dome0=0.0, dome1=0.0), "string", name="string",
+          outline=False)
     rest = (top + bot) / 2
     return [{"name": "string_top", "pos": tuple(top)}, {"name": "string_bottom", "pos": tuple(bot)},
             {"name": "nock", "pos": tuple(rest + Y * 0.010)}, {"name": "arrow_rest", "pos": tuple(P(0.07) + Vector((-0.02, 0, 0)))},
@@ -673,18 +691,58 @@ def tier_sheet(fam: str, obj, pal, variants) -> np.ndarray:
 
 
 class Heroes:
-    """The three heroes re-imported from their shipped FBX, READY pose; one shown at a time at the origin."""
+    """The three heroes re-imported from their shipped FBX with their **default attachments** (warrior sword +
+    shield, mage staff + crystal, rogue daggers + quiver: what the runtime keeps beside a generic weapon); one shown
+    at a time at the origin."""
 
-    def __init__(self, clips=("Idle",)):
-        self.h = {}
+    def __init__(self):
+        self.h, self.att = {}, {}
         for cls in HEROES:
             arm, body = IK.import_hero(cls)
             self.h[cls] = (arm, body)
+            self.att[cls] = [(a, sk, self._import_att(a, sk, arm)) for a, sk in WG.DEFAULTS[cls]]
+            if cls == "Mage":       # the crystal rides the staff's ``crystal`` socket (manifest itemAttachments)
+                staff = self.att[cls][0][2]
+                cr = self._import_att("SM_Hero_Mage_Crystal", None, None)
+                cr.parent = staff
+                cr.matrix_parent_inverse = Matrix.Identity(4)
+                cr.matrix_basis = Matrix.Translation((0.0, 0.7336, 0.0))
+                self.att[cls].append(("SM_Hero_Mage_Crystal", "weapon_r", cr))
         self.show(None)
 
-    def show(self, cls: str | None):
+    @staticmethod
+    def _import_att(asset_name: str, socket: str | None, arm):
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.fbx(filepath=str(paths.category_dir("Weapons") / f"{asset_name}.fbx"))
+        new = [o for o in bpy.data.objects if o not in before]
+        o = next(x for x in new if x.type == "MESH")
+        for x in new:
+            if x is not o:
+                bpy.data.objects.remove(x)
+        o.name = f"ATT_{asset_name}"
+        IK.set_toon(o, IK.ReadOnlyPalette("Heroes"))
+        o["af_outline_width"] = outline.WIDTH_CM["weapon"] / 100.0
+        o["af_outline_class"] = "weapon"
+        if socket == "quiver":
+            IK.attach(o, arm, "pelvis")
+            o.matrix_basis = Matrix.Translation(WG.QUIVER_LOCAL)
+        elif socket is not None:
+            IK.attach(o, arm, socket)
+        return o
+
+    def show(self, cls: str | None, fam: str | None = None, socket: str | None = None) -> list:
+        """Show ``cls`` (body + the default attachments the runtime keeps with ``fam`` on ``socket``); returns the
+        visible attachment objects."""
+        vis = []
         for k, (arm, body) in self.h.items():
             body.hide_render = k != cls
+            for a, sk, o in self.att[k]:
+                keep = k == cls and fam is not None and sk != (socket or SOCKET[fam]) and not (
+                    fam == "bow" and sk in ("weapon_r", "weapon_l"))
+                o.hide_render = not keep
+                if keep:
+                    vis.append(o)
+        return vis
 
     def arm(self, cls):
         return self.h[cls][0]
@@ -693,7 +751,7 @@ class Heroes:
         return self.h[cls][1]
 
 
-def contact_frame(cls: str, clip: str = "Attack01") -> int:
+def beat_frame(cls: str, clip: str) -> int:
     """The clip's Contact / Release frame from the shipped manifest (60 fps)."""
     man = json.loads(paths.manifest_path().read_text())
     for a in man["assets"][f"SK_Hero_{cls}"]["anims"]:
@@ -703,44 +761,66 @@ def contact_frame(cls: str, clip: str = "Attack01") -> int:
     return 0
 
 
-POSES = (("Idle", None, "READY"), ("Attack01", "contact", "ATTACK01 CONTACT"))
+def clip_frames(cls: str, clip: str) -> int:
+    man = json.loads(paths.manifest_path().read_text())
+    return next(a["frames"] for a in man["assets"][f"SK_Hero_{cls}"]["anims"] if a["name"] == clip)
+
+
+# in-hand cells (art review: READY + a Run frame + every strike's contact / release, at the shipped grips)
+POSES = (("Idle", "ready", "READY"), ("Run", "run", "RUN"), ("Attack01", "beat", "A01 CONTACT"),
+         ("Attack02", "beat", "A02 CONTACT"), ("Attack03", "beat", "A03 CONTACT"), ("Cast01", "beat", "CAST01"))
 CELL = (330, 330)
 
 
-def inhand(fam: str, obj, heroes: Heroes, out_dir: Path):
-    """W1 1080p 1:1 cells: the weapon on each hero's socket in the READY pose and at the Attack01 contact (se),
-    ink-gated together with the hero (hero class 3.5 px, gate 3.0 px). Also the lowest point of the weapon in each
-    pose (``inHand`` QA: generic meshes ride clips authored for each class's own weapon)."""
-    cells, reports, qa = [], [], {}
+def pose_frame(cls: str, clip: str, beat: str) -> int:
+    if beat == "beat":
+        return beat_frame(cls, clip)
+    if beat == "run":
+        return clip_frames(cls, clip) // 4          # the near foot's push-off: the weapon swung furthest
+    return 0
+
+
+def inhand(fam: str, obj, heroes: Heroes, out_dir: Path, table: dict, qa_low: dict | None = None):
+    """W1 1080p 1:1 cells (``game_inhand_<Class>.png``) for every class the runtime shows this generic mesh on:
+    READY, a Run frame and the Attack01-03 contacts + the Cast01 release, the weapon on its socket at the shipped
+    grip of each clip, the class's default attachments beside it, ink-gated together with the hero (weapon class
+    3.5 px, gate 3.0 px). Off-hand items (shield, bow) are shown from sw (the holding hand toward the camera)."""
+    files, reports = [], []
     wide = first = None
     obj.hide_render = False
-    # off-hand items (shield, bow) are shown from sw (the mirrored front 3/4): the hand that holds them faces the
-    # camera instead of hiding behind the body
-    face = "sw" if SOCKET[fam] == "weapon_l" else "se"
     for cls in HEROES:
+        if not WG.shown(cls, fam):
+            continue
+        sock = WG.socket_for(table, cls, fam)
+        face = "sw" if sock == "weapon_l" else "se"
         arm, body = heroes.arm(cls), heroes.body(cls)
-        heroes.show(cls)
-        IK.attach(obj, arm, SOCKET[fam])
-        # hero + weapon gated together at the weapon class (3.5 px, gate 3.0 px, ink ≤ lum 40 — the hero numbers)
-        gc = IK.GameCells(ASSET[fam], arm, [body, obj], IK.HERO_HEIGHT[cls], "weapon", blob_radius=0.36,
+        vis = heroes.show(cls, fam, sock)
+        IK.attach(obj, arm, sock)
+        gc = IK.GameCells(ASSET[fam], arm, [body, obj] + vis, IK.HERO_HEIGHT[cls], "weapon", blob_radius=0.36,
                           out_dir=out_dir)
+        cells = []
         for clip, beat, lab in POSES:
-            IK.hero_pose(arm, cls, clip, contact_frame(cls, clip) if beat else 0)
+            fr = pose_frame(cls, clip, beat)
+            IK.hero_pose(arm, cls, clip, fr)
+            obj.matrix_basis = Matrix(WG.grip(table, cls, fam, clip).tolist())
+            bpy.context.view_layer.update()
             gc.rv.facing(face)
             low = IK.min_z([obj])
-            qa[f"{cls}.{clip}"] = round(low * 100.0, 1)
             img, st = gc.cell(f"{cls} {lab} {face}", facing=face, min_px=CELL, label=False)
             cell = IK.pad_to(img, CELL[1], CELL[0])
-            review.draw_text(cell, 3, 3, f"{cls} {lab} {face}".upper())
+            review.draw_text(cell, 3, 3, f"{cls} {lab} F{fr} {face}".upper())
             review.draw_text(cell, 3, 12, gc.rv.ink_label(st), rgb=(255, 220, 140))
-            review.draw_text(cell, 3, 21, f"WEAPON LOWEST {low * 100:.0f}CM", rgb=(200, 230, 255) if low > -0.005
-                             else (255, 90, 90))
+            g = table.get("classes", {}).get(cls, {}).get(fam, {}).get("clips", {}).get(clip, "carry")
+            review.draw_text(cell, 3, 21, f"GRIP {g.upper()}  LOW {low * 100:.0f}CM",
+                             rgb=(200, 230, 255) if low > -0.005 else (255, 90, 90))
             cells.append(cell)
             if first is None:
                 first = (img, st, gc)
-        if cls == "Warrior":
+        if wide is None:
             IK.hero_pose(arm, cls, "Idle", 0)
-            wide = gc.wide(ASSET[fam], text=f"{ASSET[fam]} ON SK_HERO_WARRIOR  W1 640X360")
+            obj.matrix_basis = Matrix(WG.grip(table, cls, fam, "Idle").tolist())
+            wide = gc.wide(ASSET[fam], text=f"{ASSET[fam]} ON SK_HERO_{cls.upper()} (READY)  W1 640X360")
+        files.append(IK.save(out_dir, f"game_inhand_{cls}.png", review.grid(cells, len(cells), pad=2)))
         reports += gc.reports
         IK.hero_pose(arm, cls, "Idle", 0)
         arm.rotation_euler = (0, 0, 0)
@@ -749,27 +829,64 @@ def inhand(fam: str, obj, heroes: Heroes, out_dir: Path):
     obj.hide_render = True
     v = review.ink_verdict(reports)
     img0, st0, gc0 = first
-    return cells, v, (wide, gc0.inkmap(img0, st0)), qa
+    return files, v, (wide, gc0.inkmap(img0, st0))
 
 
 # ── ship ────────────────────────────────────────────────────────────────────────────────────────────────
-def manifest_extra(fam: str, variants) -> dict:
+def clip_names() -> dict[str, list[str]]:
+    man = json.loads(paths.manifest_path().read_text())
+    return {cls: [a["name"] for a in man["assets"][f"SK_Hero_{cls}"]["anims"]] for cls in HEROES}
+
+
+def manifest_extra(fam: str, variants, table: dict, qa: dict | None = None) -> dict:
     bases = [b for b in IK.weapon_bases() if b.get("weaponType") == fam]
     tiers = {"T1": f"MI_AF_Toon_{FAMILY_PAL}"}
     for v in variants:
         tiers[v.variant] = v.material_name
-    used = sorted({IK.weapon_tier(b) for b in bases}, key=lambda t: ("Worn",) + IK.TIERS)
-    return {
+    order = ("Worn",) + IK.TIERS
+    used = sorted({IK.weapon_tier(b) for b in bases}, key=order.index)
+    e = {
         "weaponType": fam, "attachSocket": SOCKET[fam], "attachKind": "hand", "heldBy": [],
         "tiers": tiers, "tierNames": {k: WT.TIER_NAMES[k] for k in tiers},
         "bases": {b["id"]: IK.weapon_tier(b) for b in bases},
         "tierRule": "item base levelReq >= 1 T1 · 6 T2 · 15 T3 · 20 T4 · 28 T5 · 35 T6; w_rusty_sword Worn",
-        "note": ("generic family mesh for every hero (I6 / R4): attach to attachSocket with no extra transform; swap "
-                 "material slot 0 to tiers[bases[<equipped base id>]] (MI over T_AF_Palette_Weapons_<Tier>); slot 1 "
-                 "stays M_AF_Outline (weapon ink 3.5 px)" + ("; no item base uses this family yet (core WeaponType "
-                                                              "enum)" if not bases else "")),
         "tiersUsed": used,
+        # per hero class: the socket-relative grip (carry) + per-clip overrides (strike / dodge / death)
+        "grips": WG.manifest_grips(table, fam, clip_names()),
+        "gripBlendMs": WG.BLEND_MS,
+        "note": ("generic family mesh (I6 / R4) for every hero whose class has no own SM_Hero_* weapon of this type "
+                 "(grips[cls].shown). On attach to attachSocket set the component's relative transform to "
+                 "grips[<class>].default (locCm / rotDeg = FRotator, quat = FQuat XYZW, socket space); when a clip "
+                 "starts, blend it over gripBlendMs to grips[<class>].clips[<clip>] if listed, else back to the "
+                 "default. Swap material slot 0 to tiers[bases[<equipped base id>]] (MI over "
+                 "T_AF_Palette_Weapons_<Tier>); slot 1 stays M_AF_Outline (weapon ink 3.5 px)"
+                 + ("; no item base uses this family yet (core WeaponType enum)" if not bases else "")),
     }
+    if fam == "bow":
+        e["occupiesOffhand"] = True
+        e["note"] += ("; occupiesOffhand: the bow is a main-hand ('weapon' slot) base held in the left hand — hide "
+                      "the class default off-hand (warrior shield, rogue off dagger) and show no main-hand mesh "
+                      "while it is equipped")
+    if qa is not None:
+        e["inHandQA"] = qa
+    return e
+
+
+def qa_records(res: dict, fam: str) -> dict:
+    """Manifest ``inHandQA`` for one family: per class the whole-clip worst values + the limits."""
+    out = {"limits": WG.LIMITS, "frames": "every frame of every SK_Hero_<Class> clip (shipped FBX)", "classes": {}}
+    for cls, fams in res["classes"].items():
+        clips = fams.get(fam)
+        if not clips:
+            continue
+        out["classes"][cls] = {
+            "shown": WG.shown(cls, fam), "pass": all(WG.GripQA.passes(w) for w in clips.values()),
+            "lowestCm": round(min(w["lowCm"] for w in clips.values()), 1),
+            "lowestClip": min(clips, key=lambda k: clips[k]["lowCm"]),
+            "bodyPairs": max(w["body"] for w in clips.values()), "clothPairs": max(w["cloth"] for w in clips.values()),
+            "headPairs": max(w["head"] for w in clips.values()), "otherItemPairs": max(w["other"] for w in clips.values()),
+            "faceFrames": sum(w.get("faceFrames", 0) for w in clips.values())}
+    return out
 
 
 def ship(fams: list[str], previews: bool = True, verify: bool = True) -> dict:
@@ -783,26 +900,37 @@ def ship(fams: list[str], previews: bool = True, verify: bool = True) -> dict:
     for fam in fams:
         objs[fam] = build(fam, pal, base)
         objs[fam][0].hide_render = True
+    table = WG.load_table()
+    # whole-clip in-hand QA at the shipped grips (art review: failing the ship like the warrior's QA does)
+    heroes = Heroes()
+    posed = {cls: WG.Posed(cls, heroes.arm(cls), heroes.body(cls)) for cls in HEROES}
+    qa = WG.qa_all(table, {f: WG.Item.from_object(f, objs[f][0]) for f in fams}, posed)
+    print(WG.qa_table(qa))
+    for f in qa["info"]:
+        print("  [qa] info", f)
+    for f in qa["failures"]:
+        print("  [qa] FAIL", f)
     entries = {}
     for fam in fams:
         obj, socks = objs[fam]
-        e = IK.ship_static_item(obj, ASSET[fam], CATEGORY, pal, "weapon", socks, extra=manifest_extra(fam, variants),
-                                palettes=variants)
+        e = IK.ship_static_item(obj, ASSET[fam], CATEGORY, pal, "weapon", socks,
+                                extra=manifest_extra(fam, variants, table, qa_records(qa, fam)), palettes=variants)
         entries[fam] = e
         print(f"[weapons] {ASSET[fam]}: toon {e['triangles']['toon']} hull {e['triangles']['outline']} tris, "
               f"bounds {e['boundsCm']}")
-    result = {"assets": {ASSET[f]: entries[f]["triangles"] for f in fams}, "ink": {}}
+    result = {"assets": {ASSET[f]: entries[f]["triangles"] for f in fams}, "ink": {}, "qa": qa["failures"]}
     if previews:
-        heroes = Heroes()
         upd = {}
         for fam in fams:
             obj, _ = objs[fam]
             out = paths.preview_dir(ASSET[fam])
+            for old in out.glob("game_inhand*.png"):
+                old.unlink()
             sheet = review.grid(studio_set(fam, obj), 3)
             files = [IK.save(out, "closeup.png", sheet)]
             files.append(IK.save(out, "tiers.png", tier_sheet(fam, obj, pal, variants)))
-            cells, v, (wide, imap), qa = inhand(fam, obj, heroes, out)
-            files.append(IK.save(out, "game_inhand.png", review.grid(cells, 6, pad=2)))
+            inh, v, (wide, imap) = inhand(fam, obj, heroes, out, table)
+            files += inh
             files.append(IK.save(out, "game.png", wide))
             files.append(IK.save(out, "game_inkgate.png", imap))
             print(f"[ink] {ASSET[fam]}: {v['cells']} cells, min rim {v['minFracRim'] * 100:.1f} %, dark "
@@ -811,8 +939,7 @@ def ship(fams: list[str], previews: bool = True, verify: bool = True) -> dict:
                 print("   ", f)
             result["ink"][ASSET[fam]] = v["pass"]
             upd[ASSET[fam]] = {"previews": [str(p.relative_to(paths.preview_root())) for p in files],
-                               "inkGate": IK.ink_entry(v),
-                               "inHandLowestCm": qa}
+                               "inkGate": IK.ink_entry(v)}
         IK.update_entries(upd)
         lineup(objs, heroes)
     if verify:
@@ -867,13 +994,14 @@ def lineup(objs: dict, heroes: Heroes) -> None:
 
 
 def quick(fams: list[str]) -> None:
-    """Mesh iteration: studio + tiers + in-hand cells → scratch (no export, no manifest)."""
+    """Mesh iteration: studio + tiers + in-hand cells (at the current grips) → scratch (no export, no manifest)."""
     scene.reset()
     pal, base, variants = palettes()
     pal.save()
     for v in variants:
         v.save()
     heroes = Heroes()
+    table = WG.load_table()
     for fam in fams:
         obj, _ = build(fam, pal, base)
         obj.hide_render = True
@@ -881,9 +1009,7 @@ def quick(fams: list[str]) -> None:
         print(f"[quick] {fam}: toon {M.tri_count(obj, 0)} hull {M.tri_count(obj, 1)}")
         IK.save(out, "closeup.png", review.grid(studio_set(fam, obj), 3))
         IK.save(out, "tiers.png", tier_sheet(fam, obj, pal, variants))
-        cells, v, (wide, imap), qa = inhand(fam, obj, heroes, out)
-        IK.save(out, "game_inhand.png", review.grid(cells, 6, pad=2))
-        print(f"[quick] {fam} lowest cm {qa}")
+        files, v, (wide, imap) = inhand(fam, obj, heroes, out, table)
         IK.save(out, "game_inkgate.png", imap)
         print(f"[quick] {fam} ink {'PASS' if v['pass'] else 'FAIL'} min rim {v['minFracRim']:.3f} "
               f"dark {v['minFracDark']:.3f} {v['failures'][:3]}")
@@ -908,7 +1034,7 @@ def main(argv=None):
         return 0
     fams = [f for f in (a.only.split(",") if a.only else WT.FAMILIES) if f]
     r = ship(fams, previews=not a.no_previews, verify=not a.no_verify)
-    bad = [k for k, ok in r["ink"].items() if not ok] + (r.get("verify") or [])
+    bad = [k for k, ok in r["ink"].items() if not ok] + (r.get("verify") or []) + r["qa"]
     return 1 if bad else 0
 
 

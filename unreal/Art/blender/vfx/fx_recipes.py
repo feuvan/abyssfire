@@ -55,6 +55,8 @@ PAL = {
     "nature":    ("#F6FFE0", "#A8F07A", "#40C060", "#1A5A2A", 2),
     "earth":     ("#FFF0C8", "#E8C47A", "#B08850", "#5A4430", 4),
     "portal":    ("#E8FFF8", "#80F0E0", "#3FE0A0", "#14584A", 1),
+    # the game's mana language is blue (HUD MP globe 0x2A5FD6, MP potion liquid #2A5AE8 / glow #4A8AFF, spec §7)
+    "mana":      ("#DDEEFF", "#4A8AFF", "#2A5AE8", "#102A72", 1),
 }
 FLAME = {"fire": 0, "frost": 1, "poison": 2, "shadow": 3, "holy": 4, "rage": 5, "plain": 6, "camp": 7}
 SLASH = {"warrior": 0, "rogue": 1, "mage": 2, "heavy": 3}
@@ -442,7 +444,7 @@ def combat() -> dict:
               intensity=1.3),
         motes("target", 10, "core", radius_px=12, rise=70, alt="rim", alt_every=2, h=40),
     ])
-    rec["reward.mana"] = R("arcane", [
+    rec["reward.mana"] = R("mana", [
         glow("target", 67, 420, "rim", alpha=0.55, grow=1.4),
         lay(emitter="glow", orient="ground", at="target", height=3, sizeCm=90, grow=1.5, lifeMs=480,
             alpha=[0.55, 0], color="rim"),
@@ -561,6 +563,46 @@ def utility() -> dict:
             motes("point", 10, "event", sprite="Star", radius_px=16, rise=60, life=(700, 1100), alt="white",
                   alt_every=2, size=(8, 12), h=30),
         ])
+    # NS_Loot_Beam_<Quality>: the beam STANDS on the bag until pickup (VFXManager.addLootBeam): pool glow (magic+),
+    # light pillar + white core (rare+), alpha pulsing ×.55 yoyo every 900 ms (700 legendary / set). Particles
+    # cannot loop an alpha curve, so each part is (a) a steady layer — one particle per half period P living 2P with
+    # a triangle envelope (fadeIn .5): two overlap at any time and sum to a constant .55·α — plus (b) a pulse layer,
+    # one particle per 2P living 2P, triangle 0 → .45·α → 0: together .55·α ↔ α, period 2P. The loot.drop.* burst
+    # covers the first P while the steady layer fades in. Played attached to the loot prop (WorldContract 5.3).
+    def steady_pulse(base: dict, a: float, P: int, translucent_body: float = 0.0) -> list:
+        out = []
+        if translucent_body:
+            out.append(lay(**base, blend="translucent", rate=round(1000.0 / P, 3), durationMs=-1, attach=True,
+                           lifeMs=2 * P, fadeIn=0.5, alphaPow=1, alpha=[round(translucent_body, 3), 0]))
+        out.append(lay(**base, rate=round(1000.0 / P, 3), durationMs=-1, attach=True, lifeMs=2 * P, fadeIn=0.5,
+                       alphaPow=1, alpha=[round(0.55 * a, 3), 0]))
+        out.append(lay(**base, rate=round(1000.0 / (2 * P), 3), durationMs=-1, attach=True, lifeMs=2 * P,
+                       fadeIn=0.5, alphaPow=1, alpha=[round(0.45 * a, 3), 0]))
+        return out
+
+    # the pool reaches well past the bag (≈ 40 cm wide): smaller pools hid under it and read as a thin rim
+    for q, col, pool_cm, pillar_cm, big in (("magic", "#4F8CFF", 120, 0, False), ("rare", "#FFD84A", 128, 180, False),
+                                            ("legendary", "#FF8A2A", 156, 280, True),
+                                            ("set", "#3ECF6A", 156, 280, True)):
+        P = 700 if big else 900
+        layers = steady_pulse(dict(sprite="Glow", orient="ground", at="point", height=2, sizeCm=pool_cm, grow=1.0,
+                                   color=col, intensity=1.2), 0.75, P, translucent_body=0.5)
+        if pillar_cm:
+            w = 0.22 if big else 0.2
+            layers += steady_pulse(dict(sprite="Beam", variant=1, orient="upright", at="point", height=0,
+                                        sizeCm=pillar_cm, aspect=w, grow=1.0, color=col, intensity=1.3),
+                                   0.75 if big else 0.55, P, translucent_body=0.22 if big else 0.18)
+            layers += steady_pulse(dict(sprite="Beam", orient="upright", at="point", height=0,
+                                        sizeCm=round(pillar_cm * 0.8), aspect=round(0.08 / 0.8, 3), grow=1.0,
+                                        color="white"), 0.7 if big else 0.5, P)
+        if big:
+            layers.append(lay(emitter="motes", sprite="Spark", at="point", height=20, rate=2.2, durationMs=-1,
+                              attach=True, spawnRadiusCm=18, gravityCmS2=-70, speedCmS=[0, 8], lifeMs=[900, 1300],
+                              sizeCm=[7, 10], alpha=[0.9, 0], color=col, altEvery=2, altColor="white",
+                              intensity=1.3))
+        parts = f"pool + pillar {pillar_cm} cm + core" if pillar_cm else "pool only (web: no pillar below rare)"
+        rec[f"loot.beam.{q}"] = R("event", layers, note=f"NS_Loot_Beam_{q.capitalize()}: loop on the loot prop until "
+                                                        f"pickup ({parts}), alpha ×.55 yoyo every {P} ms")
     rec["loot.pickup"] = R("holy", [
         glint("point", 18, life=200, h=25),
         sparks("point", 5, "mid", h=25),
@@ -598,7 +640,11 @@ def utility() -> dict:
             color="core"),
         lay(emitter="glow", orient="ground", at="target", height=3, rate=1.2, attach=True, sizeCm=110, grow=1.1,
             lifeMs=900, fadeIn=0.3, alpha=[0.35, 0], color="#7FD0FF"),
-    ], note="R8 frost crystals at the feet (SM_FX_FrostCrust); StatusTint #7FD0FF α .45")
+        # a frosted veil over the body (camera-ward, translucent pale ice): the StatusTint multiply alone keeps a
+        # green goblin green — the web hue-shifted it to ice blue
+        lay(sprite="Glow", orient="billboard", blend="translucent", at="target", height="chest", rate=1.2,
+            attach=True, sizeCm=96, grow=1.05, lifeMs=1000, fadeIn=0.35, alpha=[0.34, 0], color="#D6F4FF"),
+    ], note="R8 frost crystals at the feet (SM_FX_FrostCrust) + a frosted veil; StatusTint #7FD0FF α .45")
     rec["status.stun"] = R("holy", [
         lay(mesh="SM_FX_StunStar", sprite="Star", orient="upright", blend="translucent", at="target",
             height="overhead", rate=3, attach=True, orbit={"r0Cm": 24, "r1Cm": 24, "degS": 240},
@@ -612,12 +658,16 @@ def utility() -> dict:
             lifeMs=900, fadeIn=0.3, alpha=[0.45, 0], spinDegS=-140, rotationDeg=[0, 360], color="mid"),
     ], note="optional R8 slow visual: a frost swirl at the feet")
     rec["status.bleed"] = R("blood", [
-        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=4,
-            attach=True, spawnRadiusCm=16, spawnHeightJitterCm=20, gravityCmS2=600, sizeCm=[9, 13], aspect=0.67,
-            grow=1, lifeMs=[350, 500], alpha=[1, 0.6], color="mid"),
-        lay(emitter="decal", sprite="Puddle", at="target", rate=0.8, attach=True, spawnRadiusCm=12, sizeCm=[22, 30],
-            grow=1.3, lifeMs=1400, alpha=[0.7, 0], color="rim"),
-    ], note="optional R8 bleed visual: blood drips + small spatters at the feet")
+        # fat dark-red drops (a dark body reads on grass and dirt; the light blood mid vanished) + spatters
+        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=5,
+            attach=True, spawnRadiusCm=18, spawnHeightJitterCm=24, gravityCmS2=520, sizeCm=[15, 20], aspect=0.67,
+            grow=1, lifeMs=[380, 520], alpha=[1, 0.7], color="rim"),
+        lay(sprite="Drop", orient="billboard", at="target", height="chest", rate=5, attach=True, spawnRadiusCm=18,
+            spawnHeightJitterCm=24, gravityCmS2=520, sizeCm=[8, 10], aspect=0.67, grow=1, lifeMs=[380, 520],
+            alpha=[0.5, 0], color="#FF8070"),
+        lay(emitter="decal", sprite="Puddle", at="target", rate=1.0, attach=True, spawnRadiusCm=16, sizeCm=[32, 42],
+            grow=1.3, lifeMs=1400, alpha=[0.85, 0], color="rim"),
+    ], note="optional R8 bleed visual: blood drips + spatters at the feet; StatusTint #C8323C α .22")
     return rec
 
 
@@ -656,23 +706,35 @@ def world() -> dict:
         lay(emitter="motes", at="origin", height=60, rate=1.25, durationMs=-1, spawnRadiusCm=10, gravityCmS2=-80,
             lifeMs=[800, 1200], sizeCm=[6, 9], color="#FFB060"),
     ], note="NS_World_Hearthstone (forward-compatible id: the world builder can play it at camp hearthstones)")
+    # the exit vortex is the prop's own toon mesh (deep teal interior, bright swirl strokes): the recipe adds only
+    # the ground ward (ring + rune stroke at the ring radius, translucent body + additive), rising motes and a small
+    # core glint — a big additive upright glow blew the centre out to white and its pool spilled 2.5 m of mint haze
     rec["exit.portal"] = R("portal", [
-        lay(sprite="Ring", orient="ground", at="origin", height=3, rate=1.2, durationMs=-1, sizeCm=115, grow=1.05,
-            lifeMs=1500, fadeIn=0.3, alpha=[0.55, 0], spinDegS=30, color="#3FE0A0"),
-        lay(emitter="glow", orient="upright", at="origin", height=110, rate=3, durationMs=-1, sizeCm=170,
-            aspect=0.7, grow=1.1, lifeMs=900, fadeIn=0.3, alpha=[0.6, 0], color="#80F0FF"),
-        lay(sprite="Rune", orient="upright", at="origin", height=40, rate=1.5, durationMs=-1, sizeCm=150, grow=1,
-            lifeMs=1400, fadeIn=0.4, alpha=[0.35, 0], spinDegS=70, color="#9CF5E0"),
-        lay(emitter="motes", sprite="Spark", at="origin", height=20, rate=6, durationMs=-1, spawnRadiusCm=80,
-            gravityCmS2=-120, lifeMs=[900, 1400], sizeCm=[7, 11], color="#B0FFE0"),
-    ], light_=light(220, 0.3, False))
+        lay(sprite="Ring", orient="ground", blend="translucent", at="origin", height=2, rate=1.0, durationMs=-1,
+            sizeCm=250, grow=1.04, sizePow=1, lifeMs=1600, fadeIn=0.3, alpha=[0.6, 0.15], color="#14584A"),
+        lay(sprite="Ring", orient="ground", at="origin", height=3, rate=1.0, durationMs=-1, sizeCm=250, grow=1.04,
+            sizePow=1, lifeMs=1600, fadeIn=0.3, alpha=[0.55, 0], color="#3FE0A0", intensity=1.1),
+        lay(sprite="Rune", orient="ground", blend="translucent", at="origin", height=2, rate=0.7, durationMs=-1,
+            sizeCm=226, grow=1.0, lifeMs=2000, fadeIn=0.35, alpha=[0.55, 0], spinDegS=14, rotationDeg=[0, 360],
+            color="#1E6E5C"),
+        lay(sprite="Rune", orient="ground", at="origin", height=3, rate=0.7, durationMs=-1, sizeCm=226, grow=1.0,
+            lifeMs=2000, fadeIn=0.35, alpha=[0.45, 0], spinDegS=14, rotationDeg=[0, 360], color="#80F0E0"),
+        lay(emitter="motes", sprite="Spark", at="origin", height=20, rate=6, durationMs=-1, spawnRadiusCm=95,
+            onRing=True, gravityCmS2=-120, speedCmS=[0, 8], lifeMs=[900, 1400], sizeCm=[7, 11],
+            color="#B0FFE0"),
+    ], light_=light(120, 0.3, False))
     rec["exit.sealed"] = R("blood", [
-        lay(emitter="glow", orient="upright", at="origin", height=40, rate=1.5, durationMs=-1, sizeCm=180,
-            aspect=0.7, grow=1.05, lifeMs=1400, fadeIn=0.4, alpha=[0.55, 0], color="#6A2230"),
+        # W7 sealed gate: the crimson seal is the prop's membrane (#6A2230 at α .75); the recipe draws the ward on
+        # the ground (dark stroke + red rune glow) and slow embers sinking back into it
+        lay(sprite="Ring", orient="ground", blend="translucent", at="origin", height=2, rate=0.8, durationMs=-1,
+            sizeCm=250, grow=1.0, sizePow=1, lifeMs=2000, fadeIn=0.4, alpha=[0.6, 0.15], color="#4A0E1A"),
         lay(sprite="Rune", orient="ground", blend="translucent", at="origin", height=2, rate=0.8, durationMs=-1,
-            sizeCm=120, grow=1, lifeMs=2000, fadeIn=0.4, alpha=[0.55, 0], color="#4A0E1A"),
-        lay(sprite="Rune", orient="ground", at="origin", height=3, rate=0.8, durationMs=-1, sizeCm=120, grow=1,
-            lifeMs=2000, fadeIn=0.4, alpha=[0.7, 0], color="#E0405A", intensity=1.2),
+            sizeCm=226, grow=1, lifeMs=2000, fadeIn=0.4, alpha=[0.6, 0], color="#4A0E1A"),
+        lay(sprite="Rune", orient="ground", at="origin", height=3, rate=0.8, durationMs=-1, sizeCm=226, grow=1,
+            lifeMs=2000, fadeIn=0.4, alpha=[0.6, 0], color="#E0405A", intensity=1.1),
+        lay(emitter="motes", sprite="Ember", at="origin", height=150, rate=2.5, durationMs=-1, spawnRadiusCm=80,
+            spawnHeightJitterCm=120, gravityCmS2=30, speedCmS=[0, 6], lifeMs=[1200, 1800], sizeCm=[6, 9],
+            alpha=[0.8, 0], color="#E0405A"),
     ])
     rec["prop.lore"] = R("holy", [
         lay(emitter="glow", orient="ground", at="origin", height=2, rate=1.3, durationMs=-1, attach=True,
@@ -700,64 +762,146 @@ def world() -> dict:
         glint("origin", 12, life=400, h=45, rate=1, durationMs=-1, attach=True, spawnRadiusCm=20,
               color="#FFE080"),
     ])
+    # played when the chest opens (the world builder starts the Open clip, 400 ms): every layer waits for the
+    # ChestOpen notify (120 ms) — the lid lifts over the next 280 ms, so the shaft rises out of the opening (fx_open,
+    # 35 cm) as it widens; the warm glow fades in instead of flashing (a 0.9 additive pop bloomed the whole chest
+    # into a white blob)
+    OPEN = 120
     rec["prop.chest.open"] = R("holy", [
-        beam("origin", 60, 44, 900, "#FFF0B0", alpha=0.55, fade_in=0.2, cell=1, h=30),
-        glow("origin", 98, 600, "#FFD870", h=40, grow=1.4),
-        motes("origin", 10, "core", sprite="Star", rise=70, h=40, size=(8, 12)),
-    ])
+        beam("origin", 60, 26, 900, "#FFE9A0", alpha=0.3, fade_in=0.3, cell=1, h=36, blend="translucent",
+             delay=OPEN),
+        beam("origin", 60, 26, 900, "#FFF0B0", alpha=0.5, fade_in=0.3, cell=1, h=36, delay=OPEN),
+        glow("origin", 80, 600, "#FFD870", h=44, grow=1.35, alpha=0.4, fadeIn=0.3, delay=OPEN),
+        motes("origin", 10, "core", sprite="Star", rise=70, h=46, size=(8, 12), delay=OPEN + 80),
+    ], note="chest opened (picked up / collected): timed from the Open clip's start, ChestOpen notify at 120 ms")
     rec["prop.event"] = R("frost", [
         lay(emitter="glow", at="origin", height=110, rate=1.5, durationMs=-1, attach=True, sizeCm=80, grow=1.2,
             lifeMs=1000, fadeIn=0.4, alpha=[0.5, 0], color="#72D8FF"),
     ])
+    # camera-attached ambient volumes (WeatherSystem.ts:15-30; emerald_plains = pollen + dust). The volume is a 10 m
+    # disc round the camera focus (about half of it on screen at the W1 distance), rates scaled so the screen holds
+    # the web's count (pollen ≈ 26 motes, dust ≈ 11). Over the bright plains an additive pale mote vanishes, so
+    # pollen and dust are translucent soft dots (the web's α .35 / .15 read on its darker ground); spawn heights stay
+    # above the ground (10–210 cm).
     for amb, kw in (
-        ("pollen", dict(rate=2.4, spawnHeightJitterCm=260, height=60, speedCmS=[2, 11], lifeMs=[8000, 14000],
-                        sizeCm=[5, 8], grow=1.6, alpha=[0.35, 0], color="#FFE8A0")),
-        ("dust", dict(rate=1.25, spawnHeightJitterCm=120, height=30, speedCmS=[4, 18], dir="up", coneDeg=140,
-                      lifeMs=[6000, 12000], sizeCm=[6, 10], grow=1.9, alpha=[0.15, 0], color="#88CC88")),
-        ("wisps", dict(rate=1.2, spawnHeightJitterCm=200, height=80, speedCmS=[8, 20], gravityCmS2=-4,
-                       lifeMs=[5000, 9000], sizeCm=[8, 14], grow=1.3, alpha=[0.4, 0], color="#9ACBFF",
-                       intensity=1.2)),
-        ("dust_motes", dict(rate=2.4, spawnHeightJitterCm=260, height=60, speedCmS=[2, 11], lifeMs=[8000, 14000],
-                            sizeCm=[5, 8], grow=1.6, alpha=[0.3, 0], color="#DCE8F4")),
-        ("sparks", dict(sprite="Ember", rate=3, spawnHeightJitterCm=200, height=30, speedCmS=[10, 30], dir="up",
-                        coneDeg=90, gravityCmS2=-20, lifeMs=[3000, 6000], sizeCm=[5, 9], alpha=[0.6, 0],
+        ("pollen", dict(rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11], lifeMs=[8000, 14000],
+                        sizeCm=[6, 9], grow=1.6, alpha=[0.62, 0], blend="translucent", color="#FFF0B0")),
+        ("dust", dict(rate=2.4, spawnHeightJitterCm=120, height=70, speedCmS=[4, 18], dir="up", coneDeg=140,
+                      lifeMs=[6000, 12000], sizeCm=[8, 12], grow=1.9, alpha=[0.34, 0], blend="translucent",
+                      color="#D6EEC0")),
+        ("wisps", dict(rate=2.2, spawnHeightJitterCm=200, height=110, speedCmS=[8, 20], gravityCmS2=-4,
+                       lifeMs=[5000, 9000], sizeCm=[8, 14], grow=1.3, alpha=[0.5, 0], color="#9ACBFF",
+                       intensity=1.3)),
+        ("dust_motes", dict(rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11], lifeMs=[8000, 14000],
+                            sizeCm=[6, 9], grow=1.6, alpha=[0.45, 0], blend="translucent", color="#E8F0F8")),
+        ("sparks", dict(sprite="Ember", rate=5, spawnHeightJitterCm=180, height=100, speedCmS=[10, 30], dir="up",
+                        coneDeg=90, gravityCmS2=-20, lifeMs=[3000, 6000], sizeCm=[5, 9], alpha=[0.7, 0],
                         color="#FF6A3A", intensity=1.5)),
     ):
-        base = dict(emitter="motes", sprite="Glow", at="camera", durationMs=-1, spawnRadiusCm=1500, gravityCmS2=0,
+        base = dict(emitter="motes", sprite="Glow", at="camera", durationMs=-1, spawnRadiusCm=1000, gravityCmS2=0,
                     drag=0, fadeIn=0.15, intensity=1.0, spinDegS=0)
         base.update(kw)
         rec[f"ambient.{amb}"] = R("event" if amb != "sparks" else "fire", [clean(base)])
+    # NS_NPC_AnvilSparks at the anvil stump's `strike` socket. PlayNotify passes the smith's actor (feet) and its
+    # forward as the blow, so the socket is an offset in the actor frame: the stump stands at mesh (12, 52) cm
+    # (12 cm to the smith's left, 52 forward; SK_NPC_Blacksmith scenery), its `strike` socket at (0, -3.19, 54.63)
+    # → forward 48.8, right -12, up 54.6 (+3 cm over the hot bar)
+    strike = [48.8, -12.0, 57.6]
+    lift = [48.8, -12.0, 66.0]          # the glow's centre over the hammer head (which sits on the strike point)
     rec["npc.FX_HammerStrike"] = R("fire", [
-        glow("origin", 32, 150, "#FFA040", h="hand", grow=1.6, alpha=0.7),
-        lay(emitter="sparks", at="origin", height="hand", count=6, dir="up", coneDeg=130, speedCmS=[80, 160],
-            lifeMs=[120, 220], sizeCm=[5, 8], color="#FFD070", altEvery=0),
-    ])
-    # elite affix auras (§8.7, forward-compatible ids elite.<affix>: the M_AF_AffixAura ring is drawn by the actor)
-    for affix, col, extra in (
-        ("fire_enhanced", "#FF4400", [lay(emitter="glow", at="target", height="chest", rate=1.25, attach=True,
-                                          sizeCm=40, grow=1.2, upCmS=22, dir="up", coneDeg=0, lifeMs=800,
-                                          alpha=[0.7, 0], color="#FF4400")]),
-        ("swift", "#44FF88", [lay(emitter="streak", at="target", height="chest", rate=1.7, attach=True,
-                                  dir="back", coneDeg=10, speedCmS=200, lifeMs=600, sizeCm=40, color="#44FF88",
-                                  alpha=[0.6, 0])]),
-        ("teleporting", "#AA44FF", [lay(emitter="glint", at="target", height="chest", rate=2, attach=True,
-                                        spawnRadiusCm=30, sizeCm=26, lifeMs=1000, color="#AA44FF")]),
-        ("extra_strong", "#FF2222", [lay(emitter="glow", at="target", height="chest", rate=1.4, attach=True,
-                                         sizeCm=90, grow=1.8, lifeMs=700, alpha=[0.45, 0], color="#FF2222")]),
-        ("curse_aura", "#8844AA", [lay(emitter="glow", orient="ground", at="target", height=2, rate=0.7,
-                                       attach=True, sizeCm=240, grow=1.3, lifeMs=1500, alpha=[0.08, 0],
-                                       fadeIn=0.4, color="#8844AA")]),
-        ("vampiric", "#CC0000", [lay(sprite="Drop", orient="billboard", blend="translucent", at="target",
-                                     height="chest", rate=1, attach=True, spawnRadiusCm=14, gravityCmS2=300,
-                                     sizeCm=8, aspect=0.67, grow=1, lifeMs=1000, alpha=[1, 0], color="#CC0000")]),
-        ("frozen", "#4488FF", [lay(emitter="glint", at="target", height="chest", rate=1.1, attach=True,
-                                   spawnRadiusCm=24, sizeCm=36, lifeMs=900, color="#9CC8FF")]),
+        lay(emitter="glow", at="origin", height="ground", offsetCm=lift, sizeCm=44, grow=1.2, lifeMs=160,
+            alpha=[0.85, 0], fadeIn=0.0, alphaPow=1.4, color="#FFA040", intensity=1.5),
+        lay(emitter="flash", at="origin", height="ground", offsetCm=lift, sizeCm=12, grow=1.8, lifeMs=110,
+            alpha=[0.9, 0], color="#FFD070"),
+        # 6 spark dots (web r 1.2 u ≈ 4 cm) in an upward fan (−90° ± 65°), 10–22 cm out (NpcKit.ts:343-352)
+        lay(emitter="motes", sprite="Ember", at="origin", height="ground", offsetCm=strike, count=6, dir="up",
+            coneDeg=130, speedCmS=[150, 280], gravityCmS2=420, drag=3, lifeMs=[160, 260], sizeCm=[7, 10],
+            spinDegS=0, alpha=[1, 0], alphaPow=1.5, color="#FFD070", altEvery=3, altColor="white",
+            intensity=1.6),
+        lay(emitter="sparks", at="origin", height="ground", offsetCm=strike, count=4, dir="up", coneDeg=110,
+            speedCmS=[220, 340], gravityCmS2=500, drag=3, lifeMs=[120, 200], sizeCm=[9, 13], aspect=0.3,
+            stretch=0.03, color="#FFD070", altEvery=0, intensity=1.5),
+    ], light_=light(90, 0.55, False),
+        note="NS_NPC_AnvilSparks: Work_Hammer notify FX_HammerStrike (426.6 ms) at SM_Prop_Camp_AnvilStump `strike`")
+    # elite affix auras (§8.7, forward-compatible ids elite.<affix>): the spec's aura ellipse — fill α .25 + stroke
+    # α .6 in the affix colour, pulsing scale 1 → 1.2, α .25 → .1 over 1200 ms. Additive alone turns every red into
+    # the same orange on dirt and greys purple / blue on grass, so the body is TRANSLUCENT (the Shock disc = a thin
+    # fill + a crisp rim: true hue on any ground) and only a faint additive rim glows on top.
+    def aura(col, rim):
+        return [
+            lay(sprite="Shock", orient="ground", blend="translucent", at="target", height=2, rate=0.85, attach=True,
+                sizeCm=120, grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=[0.72, 0.28], color=col),
+            lay(sprite="Puff", orient="ground", blend="translucent", at="target", height=1.5, rate=0.85,
+                attach=True, sizeCm=118, grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=[0.3, 0.1],
+                color=col),
+            lay(sprite="Ring", orient="ground", at="target", height=3, rate=0.85, attach=True,
+                sizeCm=round(60 / RING_R), grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=[0.5, 0.08],
+                color=rim, intensity=1.1),
+        ]
+
+    def glints(col, lit, rate, size, life, radius):
+        """an arcane / ice shimmer: a translucent star in the true hue under the additive glint."""
+        return [
+            lay(emitter="glint", blend="translucent", at="target", height="chest", rate=rate, attach=True,
+                spawnRadiusCm=radius, spawnHeightJitterCm=40, sizeCm=size, lifeMs=life, alpha=[0.9, 0],
+                color=col, intensity=1.0),
+            lay(emitter="glint", at="target", height="chest", rate=rate, attach=True, spawnRadiusCm=radius,
+                spawnHeightJitterCm=40, sizeCm=round(size * 0.8, 1), lifeMs=life, color=lit, intensity=1.3),
+        ]
+    for affix, col, rim, extra in (
+        # a fire orb at mid-body rising 8 px (800 ms): a solid orange ball with a hot core + a cel flame tongue
+        ("fire_enhanced", "#FF4400", "#FF7A3A", [
+            lay(sprite="Puff", orient="billboard", blend="translucent", at="target", height="chest", rate=1.25,
+                attach=True, offsetCm=[0, 26, 6], sizeCm=30, grow=1.1, upCmS=22, dir="up", coneDeg=0, lifeMs=800,
+                fadeIn=0.12, alpha=[0.95, 0], alphaPow=2.5, color="#FF5A14"),
+            flames("target", 0, FLAME["fire"], radius_px=0, rise=(10, 10), life=(780, 820), size=(0.27, 0.3),
+                   rate=1.25, attach=True, h="chest", offsetCm=[0, 26, 14], alphaPow=2.5, grow=0.85),
+            lay(emitter="flash", at="target", height="chest", rate=1.25, attach=True, offsetCm=[0, 26, 6],
+                sizeCm=14, grow=1.1, upCmS=22, dir="up", coneDeg=0, lifeMs=800, alpha=[0.9, 0], alphaPow=2,
+                color="#FFE0A0"),
+            lay(emitter="glow", at="target", height="chest", rate=1.25, attach=True, offsetCm=[0, 26, 6],
+                sizeCm=52, grow=1.2, upCmS=22, dir="up", coneDeg=0, lifeMs=800, alpha=[0.5, 0], color="#FF4400"),
+        ]),
+        ("swift", "#44FF88", "#8AFFB4", [
+            lay(emitter="streak", blend="translucent", at="target", height="chest", rate=1.7, attach=True,
+                spawnHeightJitterCm=40, dir="back", coneDeg=10, speedCmS=200, lifeMs=600, sizeCm=44, aspect=0.16,
+                color="#1E9A4E", alpha=[0.8, 0]),
+            lay(emitter="streak", at="target", height="chest", rate=1.7, attach=True, spawnHeightJitterCm=40,
+                dir="back", coneDeg=10, speedCmS=200, lifeMs=600, sizeCm=40, color="#44FF88", alpha=[0.7, 0]),
+        ]),
+        ("teleporting", "#AA44FF", "#C890FF", glints("#AA44FF", "#E0C0FF", 2, 30, 1000, 30)),
+        # red power pulse ×1.8 (700 ms): rim-only (a hollow ring round the body) — a filled additive glow turned
+        # the green goblin khaki
+        ("extra_strong", "#FF2222", "#FF6A5A", [
+            lay(sprite="Ring", orient="billboard", blend="translucent", at="target", height="chest", rate=1.4,
+                attach=True, sizeCm=118, grow=1.45, sizePow=1.5, lifeMs=700, fadeIn=0.15, alpha=[0.7, 0],
+                alphaPow=1.2, color="#E01818"),
+            lay(sprite="Ring", orient="billboard", at="target", height="chest", rate=1.4, attach=True,
+                sizeCm=118, grow=1.45, sizePow=1.5, lifeMs=700, fadeIn=0.15, alpha=[0.45, 0], color="#FF4A3A",
+                intensity=1.2),
+        ]),
+        ("curse_aura", "#8844AA", "#B07CD8", [
+            lay(sprite="Puff", orient="ground", blend="translucent", at="target", height=1, rate=0.7, attach=True,
+                sizeCm=240, grow=1.3, lifeMs=1500, alpha=[0.24, 0], fadeIn=0.4, color="#6A2A90"),
+            lay(emitter="smoke", sprite="Smoke", at="target", height=10, rate=1.4, attach=True, spawnRadiusCm=70,
+                onRing=True, dir="out", speedCmS=[6, 14], gravityCmS2=-12, sizeCm=[34, 46], grow=1.4,
+                lifeMs=[1300, 1700], alpha=[0.32, 0], fadeIn=0.3, color="#5A2A78"),
+        ]),
+        # a blood orb dripping (1000 ms): a dark-red ball beside the chest + fat drops falling from it
+        ("vampiric", "#CC0000", "#FF5050", [
+            lay(sprite="Puff", orient="billboard", blend="translucent", at="target", height="chest", rate=1,
+                attach=True, offsetCm=[0, 26, 10], sizeCm=26, grow=1.0, lifeMs=1000, fadeIn=0.15,
+                alpha=[0.95, 0], alphaPow=3, color="#A00012"),
+            lay(emitter="flash", at="target", height="chest", rate=1, attach=True, offsetCm=[-3, 23, 15],
+                sizeCm=8, grow=1, lifeMs=1000, alpha=[0.7, 0], alphaPow=3, color="#FFB0A0"),
+            lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=2.4,
+                attach=True, offsetCm=[0, 26, 0], spawnRadiusCm=6, gravityCmS2=320, sizeCm=[13, 17], aspect=0.67,
+                grow=1, lifeMs=[650, 850], alpha=[1, 0], alphaPow=3, color="#B00010"),
+        ]),
+        ("frozen", "#4488FF", "#9CC8FF", glints("#3A78F0", "#CFE4FF", 1.1, 40, 900, 24)),
     ):
-        rec[f"elite.{affix}"] = R("event", [
-            lay(sprite="Ring", orient="ground", at="target", height=2, rate=0.85, attach=True, sizeCm=round(60 / RING_R),
-                grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.3, alpha=[0.6, 0.1], color=col, intensity=1.1),
-            *extra,
-        ], note=f"NS_Elite_Aura_{affix} (forward-compatible id; aura colour {col})")
+        rec[f"elite.{affix}"] = R("event", [*aura(col, rim), *extra],
+                                  note=f"NS_Elite_Aura_{affix} (forward-compatible id; aura colour {col})")
     return rec
 
 
@@ -818,7 +962,9 @@ def projectiles() -> dict:
             lifeMs=[220, 380], sizeCm=[5, 9], color="event"),
     ])
     rec["proj.monster_bolt.hit"] = R("event", [
-        flash("point", 24, "core", life=160),
+        flash("point", 28, "core", life=180),
+        impact_star("point", "normal", 64, "event", life=160),
+        glow("point", 56, 220, "event", alpha=0.45, grow=1.5, blend="translucent"),
         sparks("point", 7, "event"),
         ring("point", px(4), px(20), 300, "event"),
         smoke("point", 2, "#4A3A36", h=40, size=(0.3, 0.45)),
@@ -832,8 +978,10 @@ def projectiles() -> dict:
             gravityCmS2=0, lifeMs=[200, 320], sizeCm=[5, 8], color="core"),
     ])
     rec["proj.pet_bolt.hit"] = R("arcane", [
-        flash("point", 18, "core", life=150),
-        sparks("point", 5, "event"),
+        flash("point", 22, "core", life=160),
+        impact_star("point", "normal", 48, "event", life=140),
+        sparks("point", 6, "event"),
+        ring("point", px(3), px(16), 260, "event", alpha=0.8),
     ])
     # fireball (C + flight clamp(1.5 × dist px, 300, 600) ms)
     rec["proj.fireball.launch"] = R("fire", [
@@ -1023,11 +1171,11 @@ def projectiles() -> dict:
             unit="radius", rate=30, durationMs=-1, attach=True, spawnRadiusCm=0.9, spawnHeightJitterCm=30,
             height=260, speedCmS=1700, dir="down", coneDeg=10, lifeMs=150, sizeCm=0.16, grow=1, alpha=[1, 1],
             color="#EEF3FB"),
-        lay(sprite="Arrow", orient="upright", blend="translucent", at="origin", unit="radius", rate=30,
-            # stuck shafts: upside-down upright quads hang from their anchor, so the anchor sits 0.8 × the quad
-            # above the ground (head buried 20 %); unit radius scales the size with the AoE (0.13 R = 45 cm at 3.5 t)
-            durationMs=-1, attach=True, spawnRadiusCm=0.9, height=36, delayMs=150, sizeCm=0.13, aspect=0.25,
-            grow=1, lifeMs=600, alpha=[1, 0], alphaPow=4, rotationDeg=[170, 190], color="white"),
+        # stuck shafts: the inked arrow mesh, velocity-oriented by a 1 cm/s downward drift (head down, ±12° lean),
+        # centred 16 cm up so the head is buried; dissolves late (a flat Arrow quad was nearly invisible)
+        lay(mesh="SM_FX_Arrow", sprite="Arrow", orient="velocity", blend="translucent", at="origin", unit="radius",
+            rate=30, durationMs=-1, attach=True, spawnRadiusCm=0.9, height=16, delayMs=150, dir="down", coneDeg=24,
+            speedCmS=1, sizeCm=0.15, grow=1, lifeMs=650, alpha=[1, 0], alphaPow=8, color="#EEF3FB"),
         lay(emitter="smoke", sprite="Dust", at="origin", unit="radius", rate=10, durationMs=-1, attach=True,
             spawnRadiusCm=0.9, delayMs=150, sizeCm=[0.1, 0.16], lifeMs=[300, 480], alpha=[0.5, 0],
             color="#C8B89A"),
@@ -1125,10 +1273,15 @@ def warrior() -> dict:
         ring("origin", px(14), px(50), 420, "mid", delay=170),
         sparks("origin", 8, "mid", delay=170),
     ])
+    def heartbeat(delay, col):
+        return [lay(sprite="Ring", orient="billboard", blend="translucent", at="origin", height="chest", sizeCm=150,
+                    grow=1.35, sizePow=2, lifeMs=280, alpha=[0.75, 0], fadeIn=0.1, color=col, delayMs=delay),
+                lay(sprite="Ring", orient="billboard", at="origin", height="chest", sizeCm=150, grow=1.35,
+                    sizePow=2, lifeMs=280, alpha=[0.6, 0], fadeIn=0.1, color=col, intensity=1.3, delayMs=delay)]
     rec["skill.frenzy"] = R("rage", [
-        glow("origin", 80, 260, "rim", grow=1.6),
+        *heartbeat(0, "rim"),
         ring("origin", px(10), px(46), 320, "rim"),
-        glow("origin", 80, 260, "rim", grow=1.6, delay=150),
+        *heartbeat(150, "mid"),
         ring("origin", px(10), px(46), 320, "mid", delay=150, body=False),
         flames("origin", 10, FLAME["rage"], radius_px=26, on_ring=True, rise=(60, 100), size=(0.55, 0.85),
                even=True),
@@ -1192,11 +1345,19 @@ def warrior() -> dict:
         ring("origin", px(12), px(70), 480, "rim"),
         motes("origin", 14, "rim", rise=110),
     ])
+    # the tall vertical blood crescent (web r 44 px: the arc stands ~2 m, twice the goblin) — a dark translucent
+    # body + the additive edge — then the steel counter-slash mirrored at +70 ms; the crit star stays small so the
+    # crescent, not a disc, is the read
     rec["skill.lethal_strike"] = R("blood", [
-        slash_sprite("target", 110, 240, "mid", cell=SLASH["heavy"], rot=90, intensity=1.3, aspect=1.0),
-        slash_sprite("target", 100, 200, "#EEF3FB", cell=SLASH["warrior"], rot=-90, delay=70, intensity=1.3),
-        flash("target", 30, "core"),
-        impact_star("target", "crit", 130, "mid", life=180),
+        slash_sprite("target", 96, 260, "rim", cell=SLASH["heavy"], rot=90, aspect=2.0, blend="translucent",
+                     alpha=0.85),
+        slash_sprite("target", 96, 240, "mid", cell=SLASH["heavy"], rot=90, aspect=2.0, intensity=1.3),
+        slash_sprite("target", 84, 200, "#56647C", cell=SLASH["warrior"], rot=-90, aspect=2.0, delay=70,
+                     blend="translucent", alpha=0.7),
+        slash_sprite("target", 84, 200, "#EEF3FB", cell=SLASH["warrior"], rot=-90, aspect=2.0, delay=70,
+                     intensity=1.3),
+        flash("target", 26, "core"),
+        impact_star("target", "crit", 70, "mid", life=160),
         glint("target", 44, rot=45),
         sparks("target", 12, "mid", dir="blow", cone=90),
         shock("target", px(8), px(44), 380, "rim"),
@@ -1351,7 +1512,7 @@ def mage() -> dict:
               coneDeg=4, upCmS=[-1300, -700], size=(0.4, 0.6), life=(320, 420), rise=0),
         # impact at +300
         flash("point", 50, "core", delay=300, life=200),
-        impact_star("point", "kill", 240, "mid", delay=300, life=200, h=40),
+        impact_star("point", "heavy", 220, "mid", delay=300, life=200, h=30),
         glow("point", 2 * R_mt, 420, "rim", delay=300, grow=1.4, alpha=0.7),
         shock("point", 30, R_mt, 460, "mid", delay=300),
         ring("point", 40, 1.1 * R_mt, 520, "rim", delay=300),
@@ -1400,12 +1561,13 @@ def mage() -> dict:
     R_at = 2.5 * 100
     rec["skill.arcane_torrent"] = R("arcane", [
         decal("point", "Rune", 0.9 * R_at, 900, "rim", alpha=0.6, blend="additive", spin=0.7, pow=1.6),
+        # arcane missiles: a long violet comet body + a fat bright wisp head (40 cm heads read as droplets)
         lay(sprite="Comet", orient="velocity", at="point", rate=22, durationMs=540, spawnRadiusCm=0.85 * R_at,
-            height=330, speedCmS=2200, dir="down", coneDeg=14, lifeMs=150, sizeCm=78, aspect=0.33, grow=1,
+            height=330, speedCmS=2200, dir="down", coneDeg=14, lifeMs=150, sizeCm=120, aspect=0.36, grow=1,
             alpha=[0.92, 0.92], color="rim", blend="translucent"),
         lay(sprite="Wisp", orient="velocity", at="point", rate=22, durationMs=540, spawnRadiusCm=0.85 * R_at,
-            height=330, speedCmS=2200, dir="down", coneDeg=14, lifeMs=150, sizeCm=40, aspect=0.5, grow=1,
-            alpha=[1, 1], color="mid", intensity=1.4),
+            height=330, speedCmS=2200, dir="down", coneDeg=14, lifeMs=150, sizeCm=66, aspect=0.55, grow=1,
+            alpha=[1, 1], color="mid", intensity=1.5),
         lay(emitter="flash", at="point", rate=22, durationMs=540, delayMs=150, spawnRadiusCm=0.85 * R_at,
             height=10, sizeCm=30, grow=2.4, lifeMs=160, color="core"),
         lay(sprite="Ring", orient="ground", at="point", rate=22, durationMs=540, delayMs=150,
@@ -1437,7 +1599,13 @@ def rogue() -> dict:
                even=True,
                size=(0.45, 0.7)),
         ring("origin", px(10), px(44), 420, "rim"),
-        glow("origin", 75, 400, "mid", grow=1.4),
+        # web glow 56 px around the body → a venom pool at the feet + glows at the blade hand (a chest-centred
+        # glow is swallowed by the body it is anchored in)
+        lay(emitter="glow", orient="ground", blend="translucent", at="origin", height=4, sizeCm=130, grow=1.2,
+            lifeMs=500, alpha=[0.35, 0], fadeIn=0.1, color="rim"),
+        lay(emitter="glow", orient="ground", at="origin", height=5, sizeCm=130, grow=1.2, lifeMs=500,
+            alpha=[0.55, 0], fadeIn=0.1, color="mid"),
+        glow("origin", 40, 420, "mid", h="hand", grow=1.4, alpha=0.8),
         drops("origin", 7, "rim", dir="down", cone=60, speed=(10, 30), gravity=420, h="hand"),
         motes("origin", 6, "mid", sprite="Bubble", rise=50, size=(8, 12), spin=0, h=10),
         decal("origin", "Puddle", px(16), 900, "rim", alpha=0.75, grow=1.3, delay=250),
@@ -1445,26 +1613,33 @@ def rogue() -> dict:
     rec["skill.multishot"] = R("steel", [
         flash("origin", 20, "mid", h="hand"),
         lay(mesh="SM_FX_Arrow", sprite="Arrow", orient="velocity", blend="translucent", at="origin",
-            height="hand", count=7, dir="blow", coneDeg=92, speedCmS=1500, gravityCmS2=1360, lifeMs=220,
+            height="hand", count=7, dir="blow", coneDeg=92, fan=True, speedCmS=1500, gravityCmS2=1360, lifeMs=220,
             sizeCm=mesh_size("SM_FX_Arrow"), grow=1, alpha=[1, 1], color="#EEF3FB", intensity=1.1),
-        lay(emitter="streak", at="origin", height="hand", count=7, dir="blow", coneDeg=92, speedCmS=1500,
-            gravityCmS2=1360, lifeMs=200, sizeCm=40, aspect=0.15, stretch=0.02, color="#EEF3FB",
+        lay(emitter="streak", at="origin", height="hand", count=7, dir="blow", coneDeg=92, fan=True,
+            speedCmS=1500, gravityCmS2=1360, lifeMs=200, sizeCm=40, aspect=0.15, stretch=0.02, color="#EEF3FB",
             alpha=[0.85, 0], intensity=1.3),
-    ], note="7 arrows fanned ±46° round the aim, 3.3 tiles in 220 ms (the web's fallback fan); gravity offsets "
-            "the blow direction's random climb so the volley lands level")
+    ], note="7 arrows fanned evenly over ±46° (±0.8 rad) round the aim (`fan`: particle i of N at yaw "
+            "cone·((i + .5) / N − .5); runtimes without it draw the random ±46° cone), 3.3 tiles in 220 ms (the web's "
+            "fallback fan); gravity offsets the blow direction's random climb so the volley lands level")
     rec["skill.death_mark"] = R("shadow", [
         decal("target", "Rune", px(22), 1000, "rim", alpha=0.85, blend="additive", spin=-1.2, pow=1.6),
         gather("target", 10, "mid", 34, 300),
-        # a solid violet skull body (reads over grass and sky-bright dirt) under the additive sigil
-        lay(sprite="Skull", orient="billboard", blend="translucent", at="target", height="overhead", sizeCm=96,
-            grow=0.5, sizePow=6, lifeMs=1000, alpha=[0.95, 0], alphaPow=3, color="rim"),
-        lay(sprite="Skull", orient="billboard", at="target", height="overhead", sizeCm=96, grow=0.5, sizePow=6,
-            lifeMs=1000, alpha=[0.8, 0], alphaPow=3, color="mid", intensity=1.3),
-        lay(sprite="Skull", orient="billboard", at="target", height="overhead", sizeCm=48, grow=1.05, lifeMs=260,
-            alpha=[1, 0], color="white", intensity=1.2),
+        # the skull sigil stamps down 18 cm over fx_overhead (clear of the head): a dark under-stroke (the same
+        # skull 12 % larger in shadow dark) + the translucent shadow-mid body + a faint additive glow; the white
+        # stamp flash is capped at α .5 so it never blooms into a featureless bulb
+        lay(sprite="Skull", orient="billboard", blend="translucent", at="target", height="overhead",
+            offsetCm=[0, 0, 18], sizeCm=108, grow=0.5, sizePow=6, lifeMs=1000, alpha=[0.95, 0], alphaPow=3,
+            color="dark"),
+        lay(sprite="Skull", orient="billboard", blend="translucent", at="target", height="overhead",
+            offsetCm=[0, 0, 18], sizeCm=96, grow=0.5, sizePow=6, lifeMs=1000, alpha=[0.92, 0], alphaPow=3,
+            color="mid"),
+        lay(sprite="Skull", orient="billboard", at="target", height="overhead", offsetCm=[0, 0, 18], sizeCm=96,
+            grow=0.5, sizePow=6, lifeMs=1000, alpha=[0.3, 0], alphaPow=3, color="mid", intensity=1.1),
+        lay(sprite="Skull", orient="billboard", at="target", height="overhead", offsetCm=[0, 0, 18], sizeCm=60,
+            grow=0.85, sizePow=2, lifeMs=200, alpha=[0.5, 0], alphaPow=1.5, color="white", intensity=1.0),
         lay(sprite="Ring", orient="ground", at="target", height=3, sizeCm=round(px(20) * 0.9 / RING_R, 1),
             grow=0.39, sizePow=2, lifeMs=360, alpha=[0.9, 0], color="rim", intensity=1.2),
-        glint("target", 26, h="overhead"),
+        glint("target", 12, h="overhead", offsetCm=[0, 22, 46], delay=60),
         lay(emitter="motes", at="target", height="chest", count=6, orbit={"r0Cm": 49, "r1Cm": 49, "degS": 180},
             gravityCmS2=0, sizeCm=[6, 10], lifeMs=[800, 1000], color="mid"),
     ])
@@ -1492,11 +1667,12 @@ def rogue() -> dict:
         decal("point", "Puddle", 0.8 * R_pc, 1600, "rim", alpha=0.7, grow=1.2),
         lay(emitter="glow", orient="ground", at="point", height=4, sizeCm=2 * R_pc, grow=1.05, lifeMs=1300,
             alpha=[0.4, 0], color="mid"),
-        # over the green plains the cloud needs value contrast, not just hue: a deep sickly-green body under a
-        # pale chartreuse crown (web #6AB83A / #A8E05A pushed apart), bubbles bigger and brighter
-        smoke("point", 12, "#3F8E2C", radius_px=R_pc / PX, life=(900, 1300), alpha=0.78, size=(0.7, 1.0), h=30),
-        smoke("point", 8, "#C8EE62", radius_px=0.8 * R_pc / PX, life=(900, 1300), alpha=0.7, size=(0.55, 0.8),
-              delay=120, h=55),
+        # over the green plains the cloud needs value contrast, not just hue: a dark-green under-layer (a shadow /
+        # outline mass under the billows), a light sickly yellow-green body and a pale chartreuse crown
+        smoke("point", 10, "#1F4A18", radius_px=R_pc / PX, life=(900, 1300), alpha=0.62, size=(0.8, 1.1), h=20),
+        smoke("point", 12, "#A6CC3E", radius_px=R_pc / PX, life=(900, 1300), alpha=0.86, size=(0.7, 1.0), h=34),
+        smoke("point", 8, "#DCF06C", radius_px=0.8 * R_pc / PX, life=(900, 1300), alpha=0.78, size=(0.55, 0.8),
+              delay=120, h=58),
         motes("point", 12, "core", sprite="Bubble", radius_px=0.7 * R_pc / PX, rise=40, size=(11, 16), spin=0,
               h=10, intensity=1.3),
         shock("point", 0.3 * R_pc, 1.2 * R_pc, 420, "mid", alpha=0.5),
@@ -1507,8 +1683,13 @@ def rogue() -> dict:
     rec["skill.vanish"] = R("shadow", [
         flash("origin", 26, "mid"),
         ring("origin", 100, 10, 260, "rim", pow=2),
-        smoke("origin", 12, "#4A3A5E", radius_px=18, alpha=0.85, size=(0.6, 0.9), h=30),
-        smoke("origin", 6, "#6A5A80", radius_px=14, alpha=0.75, size=(0.5, 0.75), h=60, delay=60),
+        # the smoke bomb ENVELOPS the rogue: puffs on a ring just outside the body (≥ 45 cm, so the camera-side
+        # half always draws in front of it whatever the facing) from the boots to over the head, + a dense core
+        smoke("origin", 14, "#3E2F52", radius_px=21, onRing=True, alpha=0.92, size=(0.75, 1.05), h=60,
+              spawnHeightJitterCm=100, speed=(5, 25), rise=14),
+        smoke("origin", 8, "#6A5A80", radius_px=16, onRing=True, alpha=0.85, size=(0.6, 0.85), h=95, delay=50,
+              spawnHeightJitterCm=80, speed=(5, 20), rise=18),
+        smoke("origin", 5, "#4A3A5E", radius_px=6, alpha=0.9, size=(0.9, 1.1), h=70, delay=20, speed=(0, 10)),
         sparks("origin", 10, "mid", alt="core"),
         decal("origin", "Scorch", 60, 1400, "#24103E", alpha=0.6),
     ])
@@ -1647,7 +1828,7 @@ def strike_offsets(recipes: dict) -> None:
             if L.get("mesh") or sprite not in STRIKE_SPRITES or L.get("orbit"):
                 continue
             off = list(L.get("offsetCm", [0.0, 0.0, 0.0]))
-            d = STRIKE_CM_HERO if rid in ("hit.claw", "hit.evade") else STRIKE_CM
+            d = STRIKE_CM_HERO if rid in ("hit.claw", "hit.evade", "proj.monster_bolt.hit") else STRIKE_CM
             if off[0] > d:
                 off[0] = round(min(off[0], 0.0) + d, 1)
                 L["offsetCm"] = off
@@ -1681,6 +1862,35 @@ def camera_bias(recipes: dict) -> None:
             L["offsetCm"] = [round(off[0] + fx[0], 1), round(off[1] + fx[1], 1), round(off[2] + fx[2], 1)]
 
 
+GROUND_LIFT_CM = 7.0
+GROUND_MIN_CM = 8.0
+PRESET_ORIENT = {"ring": "ground", "shock": "ground", "decal": "ground", "swipe": "ground", "flames": "upright",
+                 "beam": "upright", "streak": "velocity", "sparks": "velocity", "bolt": "beam"}
+PRESET_HEIGHT = {"ring": 3.0, "shock": 2.0, "decal": 1.0, "swipe": "chest", "gather": "chest", "bolt": "chest"}
+
+
+def ground_lift(recipes: dict) -> None:
+    """Sprite quads lying on the ground (orient ``ground``: rings, shocks, decals, runes, pools, auras) sit 8–10 cm
+    over the terrain instead of 1–3 cm. M_AF_FX_Sprite fades every quad by DepthFade(8 cm) (Scripts/abyss_content/
+    ue/materials.py) and the runtime has no ground special case, so at 1–3 cm they drew at 10–30 % strength; from
+    6.2 cm (8 cm of view depth at the W1 pitch, 8 / sin 50° · sin 50°… = h / 0.766 along the ray) they are whole.
+    The relative order of stacked ground layers is kept (+7 cm each, at least 8 cm); FX meshes (opaque, no fade)
+    and ground-orient quads anchored higher (chest swipes, ribbons) are untouched."""
+    for r in recipes.values():
+        for L in r["layers"]:
+            if L.get("mesh"):
+                continue
+            orient = L.get("orient", PRESET_ORIENT.get(L.get("emitter"), "billboard"))
+            if orient != "ground":
+                continue
+            h = L.get("height", PRESET_HEIGHT.get(L.get("emitter"), "ground"))
+            if h in ("ground", "feet"):
+                h = 0.0
+            if not isinstance(h, (int, float)) or h >= GROUND_MIN_CM:
+                continue
+            L["height"] = round(max(GROUND_MIN_CM, float(h) + GROUND_LIFT_CM), 1)
+
+
 def prewarm(recipes: dict) -> None:
     """Loops start empty: a rate emitter's first particle appears after 1000 / rate ms (a status ring at 1.2 /s
     shows nothing for 0.8 s). Every loop layer slower than 3 /s gets a one-particle burst copy at its start."""
@@ -1701,6 +1911,7 @@ def build() -> dict:
         recipes.update(group())
     strike_offsets(recipes)
     camera_bias(recipes)
+    ground_lift(recipes)
     prewarm(recipes)
     doc = {
         "schemaVersion": 1,
@@ -1716,10 +1927,17 @@ def build() -> dict:
         "aliases": {"proj.multishot": "proj.arrow", "proj.multishot.hit": "proj.arrow.hit",
                     "loot.drop.magic": "loot.drop"},
         "integration": {
-            "groundSoftFade": "M_AF_FX_Sprite fades every quad with DepthFade(8 cm); ground-oriented quads sit 1-3 cm "
-                              "over the terrain, so decals / rings / shocks / runes draw at 10-30 % strength. Fade "
-                              "ground quads over ~0.8 cm (or skip DepthFade for orient=ground). The previews use "
-                              "0.8 cm; fx_preview.py --ue-softfade shows the current behaviour.",
+            "groundSoftFade": "M_AF_FX_Sprite fades every quad with DepthFade(8 cm) and the runtime has no ground "
+                              "special case, so every ground-oriented sprite quad (rings, shocks, decals, runes, pools, "
+                              "auras) is authored 8-10 cm over the terrain (fx_recipes.ground_lift; full strength from "
+                              "6.2 cm at the W1 pitch). The previews draw exactly the shipped 8 cm fade on every quad. "
+                              "The runtime's fake light pools (UAbyssVfxSystem lights, +2 cm) and the prop pools "
+                              "(AAbyssPropActor, M_AF_LightPool) still sit at 2 cm and draw at ~25 %: lift them to 8 "
+                              "cm too (or skip DepthFade for ground quads / M_AF_LightPool).",
+            "fan": "Layer key `fan` (bool, dir blow / back): particle i of a burst of N flies at yaw cone*((i + 0.5) / "
+                   "N - 0.5) round the axis instead of a random yaw in the cone - an even fan (skill.multishot: 7 "
+                   "arrows over the web's +-0.8 rad). Needs FAbyssVfxLayer::bFan + ReadBool(\"fan\") + the Serial-"
+                   "based yaw in SpawnParticle; until then the runtime ignores the key (random cone).",
             "dirBlowPitch": "EAbyssVfxDir::Blow adds Direction.Z = rand(-0.15, 0.35): flight-aligned heads use one "
                             "particle per projectile (count 1, life = the longest flight) so their pitch is stable; "
                             "a `flat` option (Z = 0) would let heads respawn every frame and fans fly level.",
@@ -1746,6 +1964,22 @@ def build() -> dict:
             "perClassBasic": "hit.basic.<class> and hit.impact.<profile> are authored for a one-line runtime change "
                              "(PlayFirst({hit.basic.<class>, hit.basic}) / ({hit.impact.<profile>, hit.impact})).",
             "elite": "elite.<affix> and camp.hearthstone are forward-compatible ids (not bound to events yet).",
+            "lootBeam": "loot.beam.<magic|rare|legendary|set> are LOOPS for the loot prop (WorldContract 5.3): play as "
+                        "the GroundItem prop's LoopRecipe (UAbyssWorldBuilder::SpawnEntity, quality >= magic) and kill "
+                        "them on pickup (Stop(handle, true)); loot.drop.* stay the drop-moment burst.",
+            "clueYaw": "SM_FX_ClueMagnifier's lens is tilted back 40 deg and faces the W1 camera at mesh yaw camera + 90 "
+                       "(UE 135 deg; n.v = 0.985); a random Pickup yaw turns it edge-on. Give quest_clue props that yaw "
+                       "(the +-8 deg rock on top).",
+            "chestOpen": "prop.chest.open is timed from the start of the chest's Open clip (its layers wait for the "
+                         "ChestOpen notify, 120 ms); nothing plays it yet - play it where the chest prop starts Open "
+                         "(UAbyssWorldBuilder::RemoveEntity, PickedUp / Collected of a Chest-style prop).",
+            "meshDissolve": "FX mesh layers fade by a 4x4 Bayer screen-door (M_AF_FX_Mesh opacity mask) that TAA / TSR "
+                            "resolves; without TAA (mobile low) it shows as checker noise on the late dissolves "
+                            "(ice armor shatter, mana shield, whirlwind / rampage bands). On tiers without TAA use a "
+                            "plain alpha-test at 0.5 (the mesh pops out at mid-fade) instead of the dither.",
+            "launchSocket": "Projectiles and `hand` layers resolve fx_hand_r. The mage holds the staff there: at Cast01's "
+                            "release the staff crystal is 73 cm further along the cast; resolve `hand` to the main "
+                            "weapon's `crystal` socket when it has one to launch from the crystal (spec 8.1).",
             "impactShake": "meteor / fireball shakes belong to the impact (combat-feel 11.5); recipe shakes start "
                            "with the recipe, so the impact recipes (proj.fireball.hit) carry them.",
         },

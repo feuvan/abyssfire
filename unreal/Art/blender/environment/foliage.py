@@ -55,6 +55,27 @@ def surface_hit(part, center: Vector, d: Vector):
     return loc, nrm
 
 
+def dome_fan(center: Vector, normal: Vector, rx: float, ry: float, height: float, n: int = 5,
+             phase: float = 0.0) -> M.Part:
+    """A low single-sided ``n``-triangle dome (flower centre, toadstool spot): a fan from an apex ``height`` above
+    ``center`` along ``normal`` to an ``rx`` × ``ry`` ellipse lying in the surface — the few triangles a 1–3 cm
+    dot needs at 1080p (ground cover ≤ 300 tris, spec §1.9)."""
+    import bmesh
+    nm = Vector(normal).normalized()
+    x = nm.orthogonal().normalized()
+    y = nm.cross(x)
+    bm = bmesh.new()
+    apex = bm.verts.new(Vector(center) + nm * height)
+    ring = [bm.verts.new(Vector(center) + x * (math.cos(phase + math.tau * i / n) * rx)
+                         + y * (math.sin(phase + math.tau * i / n) * ry)) for i in range(n)]
+    for i in range(n):
+        f = bm.faces.new((apex, ring[i], ring[(i + 1) % n]))
+        f.normal_update()
+        if f.normal.dot(nm) < 0:
+            f.normal_flip()
+    return M.Part(bm).smooth(True)
+
+
 def flick(part, center: Vector, az: float, el: float, length: float, width: float, rnd: random.Random,
           lift: float = 0.006):
     """A leaf-flick stroke lying on a lump (web canopy() leaf flicks): a tapered strip curving over the
@@ -85,14 +106,31 @@ def lump_kw(r, outer: bool) -> dict:
 
 
 def canopy(b: M.Builder, lumps, rnd: random.Random, flick_region: str | None, flicks_per: int = 4,
-           flick_len: float = 0.17, extra_solids: Sequence = ()):
+           flick_len: float = 0.17, extra_solids: Sequence = (), fine: tuple | None = None, lift: float = 0.0,
+           flick_w: float = 0.042, hull_ratio: float | None = None):
     """Add cloud lumps ``[(center, radii, region, seed, outer?)]``: faces hidden inside a neighbour are culled,
     each lump gets a padded hull and (outer lumps) leaf flicks on visible spots. Returns (spherise map, lump
-    part ids, Lump objects)."""
+    part ids, Lump objects).
+
+    ``fine`` = (toon ratio, hull ratio) (art review 9, bush): outer lumps are sampled one icosphere level finer
+    (subdiv 4, 1280 tris) and collapse-decimated to the toon ratio — the decimation keeps the lobes' cusps and
+    rounds, instead of a uniform 320-tri facet net — and a harder decimation of the same lump (culled alike) is
+    their padded low-poly hull proxy. ``hull_ratio`` (no ``fine``): the hull proxy of every lump is the lump
+    collapse-decimated to that ratio (budget: hull ≤ 0.5 × toon). ``lift``: the spherised normals' tilt toward +Z
+    (``envkit.lump_info``)."""
     objs = [E.Lump(r, seed, center=Vector(c), **lump_kw(r, outer)) for c, r, region, seed, outer in lumps]
-    parts = [o.part() for o in objs]
+    parts, hulls = [], []
+    for (c, r, region, seed, outer), lo in zip(lumps, objs):
+        if fine and outer:
+            lo.subdiv = 4
+            parts.append(M.decimate(lo.part(), fine[0]))
+            hulls.append(M.decimate(lo.part(), fine[1]))
+            lo.subdiv = 3
+        else:
+            parts.append(lo.part())
+            hulls.append(M.decimate(lo.part(), hull_ratio) if hull_ratio else None)
     sph, pids = {}, []
-    for k, ((c, r, region, seed, outer), lo, part) in enumerate(zip(lumps, objs, parts)):
+    for k, ((c, r, region, seed, outer), lo, part, hull) in enumerate(zip(lumps, objs, parts, hulls)):
         c = Vector(c)
         others = [o for j, o in enumerate(objs) if j != k] + list(extra_solids)
         flick_parts = []
@@ -102,31 +140,38 @@ def canopy(b: M.Builder, lumps, rnd: random.Random, flick_region: str | None, fl
                 tries += 1
                 az = rnd.uniform(0, math.tau)
                 el = rnd.uniform(0.3, 1.1)
-                fp = flick(part, c, az, el, flick_len * rnd.uniform(0.85, 1.15) / max(r[0], 0.2) * 1.3, 0.042, rnd)
+                fp = flick(part, c, az, el, flick_len * rnd.uniform(0.85, 1.15) / max(r[0], 0.2) * 1.3, flick_w, rnd)
                 mid = sum((v.co for v in fp.bm.verts), Vector()) / max(len(fp.bm.verts), 1)
                 if any(o.inside(mid, -0.01) for o in others):
                     fp.bm.free()
                     continue
                 flick_parts.append(fp)
         E.cull_hidden(part, others)
-        pid = b.add(part, region, name=f"lump{k}", hull_pad=True)
+        if hull is not None:
+            E.cull_hidden(hull, others)
+        pid = b.add(part, region, name=f"lump{k}", hull=hull, hull_pad=True)
         for fp in flick_parts:
             b.add(fp, flick_region, name=f"flick{k}", outline=False, covered_by=pid)
-        sph[pid] = E.lump_info(r, c, 0.85)
+        sph[pid] = E.lump_info(r, c, 0.85, lift)
         pids.append(pid)
     return sph, pids, objs
 
 
 def trunk_radius(z: float, r_base: float, r_top: float, h: float, flare: float, lobes: int, ph: float, a: float):
+    """Trunk radius at height ``z`` / azimuth ``a``: a taper from ``r_base`` to ``r_top`` plus a root flare of
+    ``lobes`` **rounded** buttresses (art review 9: ``max(0, cos)^1.5`` lobes made flat, sharp triangular fins
+    splayed on the ground — a star in every 1080p crop). Each lobe is a smooth ``((1 + cos) / 2)^2`` swell that
+    never pinches to zero between lobes, sweeping out from the trunk and tapering into the ground (decay 13 cm)."""
     rz = r_base + (r_top - r_base) * min(1.0, z / h) ** 0.8
-    f = flare * math.exp(-z / 0.16)
-    return rz * (1 + f * max(0.0, math.cos(lobes * (a - ph))) ** 1.5 + 0.25 * f)
+    f = flare * math.exp(-max(z, 0.0) / 0.13)
+    lobe = ((1.0 + math.cos(lobes * (a - ph))) / 2.0) ** 2
+    return rz * (1 + f * (0.3 + 0.7 * lobe))
 
 
 def trunk(b: M.Builder, region: str, groove_region: str, h: float, r_base: float, r_top: float, flare: float,
-          lean: Vector, rnd: random.Random, lobes: int = 5, sides: int = 14, grooves: int = 3):
+          lean: Vector, rnd: random.Random, lobes: int = 4, sides: int = 20, grooves: int = 3):
     ph = rnd.uniform(0, math.tau)
-    zs = [-0.03, 0.04, 0.12, 0.25, 0.45, 0.8, 1.2, h * 0.85, h]
+    zs = [-0.04, 0.0, 0.035, 0.08, 0.14, 0.24, 0.45, 0.8, 1.2, h * 0.85, h]
     rings = []
     for z in zs:
         off = lean * (max(z, 0) / h) ** 1.6
@@ -139,7 +184,7 @@ def trunk(b: M.Builder, region: str, groove_region: str, h: float, r_base: float
     for g in range(grooves):
         a0 = ph + math.tau * (g + rnd.uniform(0.2, 0.8)) / grooves
         pts, nrm = [], []
-        z0, z1 = rnd.uniform(0.15, 0.3), h * rnd.uniform(0.55, 0.8)
+        z0, z1 = rnd.uniform(0.2, 0.32), h * rnd.uniform(0.55, 0.8)
         for i in range(6):
             t = i / 5
             z = z0 + (z1 - z0) * t
@@ -189,23 +234,37 @@ OAK_VARIANTS = {
 }
 
 
-def build_oak(pal: Palette, variant: str = "A"):
+# LOD1 (spec §1.9 large decor 1.5 k): the same generator with every part collapse-decimated and the leaf flicks and
+# bark grooves (below the readability floor at LOD distances) left out.
+TREE_LOD1 = {"oak": 0.46, "fruit": 0.55}
+TREE_HULL = 0.55            # lump hull proxies: the lump decimated to 55 % (hull ≤ 0.5 × toon)
+
+
+def tree_lod_skip(name: str) -> bool:
+    return name.startswith("flick") or name == "groove"
+
+
+def build_oak(pal: Palette, variant: str = "A", lod: int = 0):
     name = f"SM_Foliage_Plains_Oak_{variant}"
     v = OAK_VARIANTS[variant]
     rnd = scene.rng(name)
-    b = M.Builder(name, pal, prefix="oak")
+    b = M.Builder(name, pal, prefix="oak", lod_ratio=TREE_LOD1["oak"] if lod else 1.0,
+                  lod_skip=tree_lod_skip if lod else None)
     b.regions(**OAK_REGIONS)
     th, k, sp = v["trunk_h"], v["scale"], v["spread"]
     lean = Vector(v["lean"])
-    trunk(b, "bark", "bark_groove", th + 0.45, 0.24, 0.15, 1.35, lean, rnd)
+    trunk(b, "bark", "bark_groove", th + 0.45, 0.24, 0.15, 0.85, lean, rnd)
     top = lean + Vector((0, 0, th + 0.4))
     a0 = rnd.uniform(0, math.tau)
-    for i in range(2):
-        a = a0 + math.pi * i + rnd.uniform(-0.4, 0.4)
+    # the web oak's fork: two branches leave the trunk ≈ 0.7 m under the crown and climb out into the lower ring of
+    # lumps, visible under the canopy from every yaw (art review 9: the stubs hid inside the crown — a plain post)
+    for i in range(2):                      # a Y fork 115° apart in plan: one limb always clears the trunk
+        a = a0 + 0.35 + math.radians(115) * i + rnd.uniform(-0.15, 0.15)
         d = Vector((math.cos(a), math.sin(a), 0))
-        st = lean * ((th - 0.35) / (th + 0.45)) ** 1.6 + Vector((0, 0, th - 0.35))
-        limb(b, "bark", st, st + d * 0.25 + Vector((0, 0, 0.35)), st + d * 0.62 * sp + Vector((0, 0, 0.75)),
-             0.075, 0.04, name=f"limb{i}")
+        zf = th - 0.78 + 0.1 * i
+        st = lean * (zf / (th + 0.45)) ** 1.6 + Vector((0, 0, zf))
+        limb(b, "bark", st, st + d * 0.36 * sp + Vector((0, 0, 0.38)), st + d * 0.74 * sp + Vector((0, 0, 1.12)),
+             0.1, 0.05, name=f"limb{i}")
     # Broad sunlit crown (web Tree.ts: 7 cloud lumps spanning 115 px ≈ 2.5 m over a 1.9 m trunk): a dark core
     # (web back lumps, seen in the cusps between lumps and under the crown) inside a wide low ring of light lumps,
     # an upper ring and a crowning lump — wider than tall, a dome rather than a stack.
@@ -231,9 +290,10 @@ def build_oak(pal: Palette, variant: str = "A"):
         lumps.append((c, (r0, r0, r0 * 0.84), "front", (name, "up", i), True))
     c = top + Vector((rnd.uniform(-0.08, 0.08), rnd.uniform(-0.08, 0.08), z0 + 1.28 * k))
     lumps.append((c, (0.44 * k, 0.44 * k, 0.37 * k), "front", (name, "top", 0), True))
-    sph, pids, _ = canopy(b, lumps, rnd, "flick", flicks_per=4)
+    sph, pids, _ = canopy(b, lumps, rnd, "flick", flicks_per=4, hull_ratio=TREE_HULL)
     hi = max(l[0].z + l[1][2] for l in lumps)
-    obj = E.finish(b, pal, "decor", ground_h=1.6, spherise=sph, wind=tree_wind(th, hi, pids), name=name)
+    obj = E.finish(b, pal, "decor", ground_h=1.6, spherise=sph, wind=tree_wind(th, hi, pids),
+                   name=name if not lod else f"{name}_LOD1")
     return obj
 
 
@@ -273,19 +333,20 @@ def visible_spots(lobjs, rnd: random.Random, a0: float, per, el=(0.0, 0.6), lift
 
 
 def fruit(b: M.Builder, lump_part_pid, c: Vector, r: float, region="fruit", name="fruit"):
-    f = M.ellipsoid((r, r, r * 0.95), c, sides=10, rings=6)
+    f = M.ellipsoid((r, r, r * 0.95), c, sides=8, rings=5)
     return b.add(f, region, name=name)
 
 
-def build_fruit_tree(pal: Palette, variant: str = "A"):
+def build_fruit_tree(pal: Palette, variant: str = "A", lod: int = 0):
     name = f"SM_Foliage_Plains_FruitTree_{variant}"
     rnd = scene.rng(name)
-    b = M.Builder(name, pal, prefix="fruittree")
+    b = M.Builder(name, pal, prefix="fruittree", lod_ratio=TREE_LOD1["fruit"] if lod else 1.0,
+                  lod_skip=tree_lod_skip if lod else None)
     b.regions(**FRUIT_REGIONS)
     th = 1.6 if variant == "A" else 1.5
     lean = Vector((-0.12, 0.05, 0)) if variant == "A" else Vector((0.08, 0.10, 0))
     k = 1.0 if variant == "A" else 1.06
-    trunk(b, "bark", "bark_groove", th + 0.35, 0.16, 0.10, 1.1, lean, rnd, lobes=4, sides=12, grooves=2)
+    trunk(b, "bark", "bark_groove", th + 0.35, 0.16, 0.10, 0.75, lean, rnd, lobes=3, sides=18, grooves=2)
     top = lean + Vector((0, 0, th + 0.3))
     a0 = rnd.uniform(0, math.tau)
     st = lean * ((th - 0.3) / (th + 0.35)) ** 1.6 + Vector((0, 0, th - 0.3))
@@ -305,22 +366,30 @@ def build_fruit_tree(pal: Palette, variant: str = "A"):
         lumps.append((c, (r0, r0, r0 * 0.84), "front", (name, "ring", i), True))
     c = top + Vector((0.05, -0.04, z0 - th - 0.3 + 0.72 * k))
     lumps.append((c, (0.52 * k, 0.52 * k, 0.42 * k), "front", (name, "top", 0), True))
-    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=4, flick_len=0.15)
+    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=4, flick_len=0.15, hull_ratio=TREE_HULL)
     # five+ ripe fruits (web: 5 on the front lumps; all round here so every yaw shows a few)
     fr = visible_spots(lobjs[2:], rnd, a0, per=(2, 2, 2, 2, 1), el=(-0.05, 0.55), lift=0.05)
     for q, p in enumerate(fr):
         fid = fruit(b, None, p, 0.078, name=f"fruit{q}")
     hi = max(l[0].z + l[1][2] for l in lumps)
-    return E.finish(b, pal, "decor", ground_h=1.4, spherise=sph, wind=tree_wind(th, hi, pids), name=name)
+    return E.finish(b, pal, "decor", ground_h=1.4, spherise=sph, wind=tree_wind(th, hi, pids),
+                    name=name if not lod else f"{name}_LOD1")
 
 
 BUSH_REGIONS = dict(
-    back=Region("#376A3C", .35, .18),
-    front=Region("#5C9C3C", .40, .30),
+    back=Region("#376A3C", .35, .10),
+    front=Region("#5C9C3C", .40, .24),
     flick=Region("#D2EA83", .22, .25),
     berry=Region("#C8324A", .42, .50),
     stem=Region("#5A4028", .45, .25),
 )
+# Bush lumps (art review 9): the 4–5 big 320-tri lumps read as a faceted mossy rock with chalky crescents. Now a dark
+# core under a scalloped ring of 6 / 7 smaller lumps + two crowning lumps (web Bush.ts: overlapping cloud lumps,
+# back #376A3C peeking out low), each sampled at subdiv 4 and decimated to 35 % (round scallops; hull proxy 17 %), spherised 85 %
+# and lifted toward +Z (BUSH_LIFT: the flanks face the high camera, the banded rim shrinks to a thin warm edge);
+# the back light band keeps l .10 and the front .24 so the lit tops stay green, not grey.
+BUSH_LIFT = 0.3
+BUSH_FINE = (0.35, 0.17)
 
 
 def build_bush(pal: Palette, variant: str = "A"):
@@ -331,23 +400,27 @@ def build_bush(pal: Palette, variant: str = "A"):
     w = 1.0 if variant == "A" else 1.08
     lumps = []
     a0 = rnd.uniform(0, math.tau)
-    for i in range(2):
+    for i in range(2):                     # dark core, low and wide (seen in the cusps and at the foot)
         a = a0 + math.pi * i
-        c = Vector((math.cos(a) * 0.16, math.sin(a) * 0.16, 0.34))
-        lumps.append((c, (0.42 * w, 0.42 * w, 0.36), "back", (name, "core", i), False))
-    n_front = 4 if variant == "A" else 5
-    for i in range(n_front):
-        a = a0 + math.tau * i / n_front + rnd.uniform(-0.2, 0.2)
-        rr = 0.3 * w
-        c = Vector((math.cos(a) * rr, math.sin(a) * rr, 0.26 + rnd.uniform(0, 0.08)))
-        r0 = rnd.uniform(0.26, 0.31) * w
+        c = Vector((math.cos(a) * 0.14 * w, math.sin(a) * 0.14 * w, 0.27))
+        lumps.append((c, (0.36 * w, 0.34 * w, 0.27), "back", (name, "core", i), False))
+    n_ring = 6 if variant == "A" else 7
+    for i in range(n_ring):                # scalloped outer ring, alternately higher / lower
+        a = a0 + math.tau * i / n_ring + rnd.uniform(-0.12, 0.12)
+        rr = 0.35 * w * rnd.uniform(0.94, 1.04)
+        c = Vector((math.cos(a) * rr, math.sin(a) * rr, 0.22 + 0.05 * (i % 2) + rnd.uniform(-0.02, 0.03)))
+        r0 = rnd.uniform(0.2, 0.235) * w
         lumps.append((c, (r0, r0, r0 * 0.9), "front", (name, "ring", i), True))
-    c = Vector((rnd.uniform(-0.05, 0.05), rnd.uniform(-0.05, 0.05), 0.5))
-    lumps.append((c, (0.3 * w, 0.3 * w, 0.26), "front", (name, "top", 0), True))
-    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=3, flick_len=0.11)
-    berries = visible_spots(lobjs[2:], rnd, a0, per=(2,) * 6, el=(0.0, 0.7), lift=0.025)
-    for q, p in enumerate(berries[:9]):
-        b.add(M.ellipsoid((0.045, 0.045, 0.043), p, sides=8, rings=5), "berry", name=f"berry{q}")
+    for i in range(2):                     # crown
+        a = a0 + 0.8 + math.pi * i + rnd.uniform(-0.3, 0.3)
+        c = Vector((math.cos(a) * 0.12 * w, math.sin(a) * 0.12 * w, 0.5 + rnd.uniform(-0.02, 0.03)))
+        r0 = rnd.uniform(0.22, 0.25) * w
+        lumps.append((c, (r0, r0, r0 * 0.88), "front", (name, "top", i), True))
+    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=1, flick_len=0.11, fine=BUSH_FINE, lift=BUSH_LIFT,
+                              flick_w=0.04, hull_ratio=0.6)
+    berries = visible_spots(lobjs[2:], rnd, a0, per=(1, 1, 1, 1, 1, 1, 1, 1, 1), el=(0.05, 0.75), lift=0.022)
+    for q, p in enumerate(berries[:6]):
+        b.add(M.ellipsoid((0.042, 0.042, 0.04), p, sides=6, rings=4), "berry", name=f"berry{q}")
     phase = {p: (i * 0.618) % 1.0 for i, p in enumerate(pids)}
     return E.finish(b, pal, "decor", ground_h=0.8, spherise=sph,
                     wind=lambda co, pid: (0.2 + 0.8 * E.smoothstep(0.05, 0.75, co.z), phase.get(pid, 0.3)), name=name)
@@ -443,8 +516,8 @@ def build_flowers(pal: Palette, variant: str = "A"):
         r = rnd.uniform(0.06, 0.075)
         b.add(E.bloom(top, r, petals=5, normal=lean, cup=0.18, phase=rnd.uniform(0, 1), per_petal=2), col,
               name="bloom", outline=False)
-        b.add(M.ellipsoid((r * 0.36, r * 0.36, r * 0.22), top + lean * 0.008, sides=5, rings=3), "centre",
-              name="centre", outline=False)
+        b.add(dome_fan(top + lean * 0.006, lean, r * 0.36, r * 0.36, r * 0.22), "centre", name="centre",
+              outline=False)
     return E.finish(b, pal, "none", ground_h=0.35, spherise=sph,
                     wind=lambda co, pid: (E.smoothstep(0.0, 0.33, co.z), (co.x * 2.3 + co.y * 3.7) % 1.0),
                     name=name)
@@ -460,29 +533,28 @@ MUSH_REGIONS = dict(
 )
 
 
-def toadstool(b: M.Builder, c: Vector, h: float, cap_r: float, rnd: random.Random, tilt: Vector, k: int):
+def toadstool(b: M.Builder, c: Vector, h: float, cap_r: float, rnd: random.Random, tilt: Vector, k: int,
+              spots: int = 5):
     up = Vector((0, 0, 1)).lerp(tilt, 0.25).normalized()
     stem = M.lathe([(0.34 * cap_r, 0.0), (0.36 * cap_r, 0.25 * h), (0.3 * cap_r, 0.75 * h), (0.27 * cap_r, h)],
-                   sides=10)
+                   sides=8)
     cap = M.lathe([(0.25 * cap_r, h - 0.05 * cap_r), (0.92 * cap_r, h - 0.06 * cap_r), (1.0 * cap_r, h + 0.06 * cap_r),
                    (0.86 * cap_r, h + 0.42 * cap_r), (0.5 * cap_r, h + 0.68 * cap_r), (0.02, h + 0.76 * cap_r)],
-                  sides=16, cap0="fan", cap1="fan")
+                  sides=12, cap0="fan", cap1="fan")
     rot = Vector((0, 0, 1)).rotation_difference(up).to_matrix().to_4x4()
     for p in (stem, cap):
         p.transform(rot)
         p.translate(c)
     b.add(stem, "stem", name=f"stem{k}")
     cid = b.add(cap, "cap", name=f"cap{k}", hull_pad=True)
-    # spots: small domes lying on the cap
-    for q in range(6):
+    # spots: small low domes lying on the cap (12-tri studs: a 2–3 cm spot is 3 px at 1080p)
+    for q in range(spots):
         az = rnd.uniform(0, math.tau) + q * 1.05
         el = rnd.uniform(0.25, 0.95)
         rr = cap_r * (0.95 - 0.55 * el)
         p = Vector((math.cos(az) * rr, math.sin(az) * rr, h + 0.06 * cap_r + 0.7 * cap_r * el))
         n = Vector((math.cos(az) * (1 - el * 0.6), math.sin(az) * (1 - el * 0.6), 0.4 + el)).normalized()
-        sp = M.ellipsoid((0.17 * cap_r, 0.17 * cap_r, 0.04 * cap_r), (0, 0, 0), sides=8, rings=3)
-        sp.transform(Vector((0, 0, 1)).rotation_difference(n).to_matrix().to_4x4())
-        sp.translate(p)
+        sp = dome_fan(p + n * (0.012 * cap_r), n, 0.17 * cap_r, 0.17 * cap_r, 0.035 * cap_r, n=6, phase=az)
         sp.transform(rot)
         sp.translate(c)
         b.add(sp, "spot", name=f"spot{k}", outline=False, covered_by=cid)
@@ -497,7 +569,7 @@ def build_mushrooms(pal: Palette, variant: str = "A"):
     toadstool(b, Vector((-0.05, 0.02, 0)), big[0], big[1], rnd, Vector((-0.3, 0.1, 1)), 0)
     toadstool(b, Vector((0.12, -0.06, 0)), big[0] * 0.62, big[1] * 0.68, rnd, Vector((0.4, -0.2, 1)), 1)
     if variant == "B":
-        toadstool(b, Vector((-0.12, -0.12, 0)), 0.07, 0.05, rnd, Vector((-0.3, -0.4, 1)), 2)
+        toadstool(b, Vector((-0.12, -0.12, 0)), 0.07, 0.05, rnd, Vector((-0.3, -0.4, 1)), 2, spots=3)
     sph = {}
     tuft(b, Vector((0.02, 0.1, 0)), 0.16, 5, rnd, segs=2, inked=True)
     return E.finish(b, pal, "decor", ground_h=0.3, spherise=sph,
@@ -525,11 +597,11 @@ def lily_pad(b: M.Builder, c: Vector, r: float, notch: float, rnd: random.Random
         rr = r * (1 + 0.04 * math.sin(a * 3 + k))
         pts.append((math.cos(a) * rr, math.sin(a) * rr))
     pts.append((0.0, 0.0))
-    pad = M.plate(pts, 0.012, bevel=0.003)
+    pad = M.plate(pts, 0.012)
     pad.translate(c + Vector((0, 0, PAD_LIFT + 0.006)))
     pid = b.add(pad, "pad", name=f"pad{k}", hull_pad=True)
-    for v in range(3):
-        a = notch + math.pi + (v - 1) * 0.9
+    for v in range(2):
+        a = notch + math.pi + (v - 0.5) * 1.1
         p0 = c + Vector((0, 0, PAD_LIFT + 0.0125))
         p1 = p0 + Vector((math.cos(a) * r * 0.75, math.sin(a) * r * 0.75, 0))
         b.add(E.ribbon([p0, (p0 + p1) / 2, p1], [Vector((0, 0, 1))] * 3, [0.012, 0.01, 0.004], lift=0.0005,
@@ -548,11 +620,12 @@ def build_lily(pal: Palette, variant: str = "A"):
         lily_pad(b, Vector((-0.2, -0.16, 0)), 0.12, rnd.uniform(0, math.tau), rnd, 2)
         # water lily on the big pad: two rings of pointed petals + a golden heart
         c = Vector((0.02, 0.01, PAD_LIFT + 0.02))
+        inner = -1
         for ring, (rad, cup, ph) in enumerate(((0.075, 0.55, 0.0), (0.05, 0.9, 0.3))):
-            b.add(E.bloom(c + Vector((0, 0, 0.01 * ring)), rad, petals=7, cup=cup, phase=ph, per_petal=2,
-                          thick=0.008, walls=True), "lily", name=f"lily{ring}")
-        b.add(M.ellipsoid((0.02, 0.02, 0.016), c + Vector((0, 0, 0.03)), sides=8, rings=4), "lily_core",
-              name="lilycore", outline=False)
+            inner = b.add(E.bloom(c + Vector((0, 0, 0.01 * ring)), rad, petals=6, cup=cup, phase=ph + 0.5 * ring,
+                                  per_petal=2, thick=0.008, walls=True), "lily", name=f"lily{ring}", hull_pad=ring == 1)
+        b.add(M.ellipsoid((0.02, 0.02, 0.016), c + Vector((0, 0, 0.03)), sides=6, rings=3), "lily_core",
+              name="lilycore", outline=False, covered_by=inner)
     return E.finish(b, pal, "decor", ground_h=None, name=name)
 
 
@@ -586,6 +659,9 @@ for _v in "ABC":
         dict(game_ids=["grass"], footprint=[1, 1], blocking=False, foliage=True, toon_slot=GROUND_SLOT,
              toon_params=GROUND_WIND, blob=0.2, turnaround=False))
 
+LOD1 = {f"SM_Foliage_Plains_Oak_{v}": (lambda pal, v=v: build_oak(pal, v, lod=1)) for v in "ABC"}
+LOD1.update({f"SM_Foliage_Plains_FruitTree_{v}": (lambda pal, v=v: build_fruit_tree(pal, v, lod=1)) for v in "AB"})
+
 NOTES = {
     "tree": "W5: tall decor, blocks its tile (trunk + root flare); canopy overhangs the neighbours",
     "flower": "ground cover: no outline hull (spec 1.3), MI_AF_Toon_Foliage_Plains_Ground (gentle low sway)",
@@ -616,15 +692,27 @@ def main(argv: list[str]) -> int:
         scene.reset()
         pal = Palette(E.FOLIAGE)
         fn, kw = ASSETS[n]
-        obj = fn(pal)
-        pal.save()
         kw = dict(kw)
         extra = {"displayName": n.replace("SM_Foliage_Plains_", ""), "family": "environment.foliage"}
+        lod_obj = None
+        if n in LOD1:                       # spec §1.9 large decor: LOD1 1.5 k, shipped as its own FBX
+            lod_obj = LOD1[n](pal)
+            rec = E.export_lod1(lod_obj, n, CAT)
+            extra["lods"] = [rec]
+            lod_obj.hide_render = True
+        obj = fn(pal)
+        pal.save()
+        if lod_obj is not None:
+            extra["budget"] = {"spec": "art-inventory-ch1 §1.9 large decor (trees): LOD0 3-5k, LOD1 1.5k; hull <= 0.5x "
+                                       "toon (lump hull proxies = the lumps decimated, flicks and grooves without hull)",
+                               "lod0": {"toon": E.tris(obj, 0), "outline": E.tris(obj, 1)},
+                               "lod1": dict(extra["lods"][0]["triangles"])}
         if kw.get("blocking"):
             extra["blockingNote"] = NOTES["tree"]
         if kw.get("toon_slot"):
             extra["groundCover"] = NOTES["flower"]
-        E.ship(obj, n, CAT, pal, obj["af_outline_class"], extra=extra, previews=previews, **kw)
+        rx = (lambda rv, l0=obj, l1=lod_obj: E.lod_preview(rv, l0, l1)) if lod_obj is not None else None
+        E.ship(obj, n, CAT, pal, obj["af_outline_class"], extra=extra, previews=previews, review_extra=rx, **kw)
         shipped.append(n)
     # family sheet (rebuilt in one scene)
     if "--family" in argv:
@@ -638,15 +726,13 @@ def main(argv: list[str]) -> int:
         oaks = [o for o in trees if "Oak" in o.name]
         fruit = [o for o in trees if o not in oaks]
         if oaks:
-            E.family_sheet(oaks, "foliage_trees.png", "PLAINS OAKS", cols=4, focus_z=1.9, cell_px=(300, 450))
+            E.family_sheet(oaks, "foliage_trees.png", "PLAINS OAKS", cols=4)
         if fruit:
-            E.family_sheet(fruit, "foliage_fruittrees.png", "PLAINS FRUIT TREES", cols=4, focus_z=1.5,
-                           cell_px=(300, 400))
+            E.family_sheet(fruit, "foliage_fruittrees.png", "PLAINS FRUIT TREES", cols=4)
         for o in trees:
             o.hide_render = True
         if small:
-            E.family_sheet(small, "foliage_small.png", "PLAINS SHRUBS GROUND COVER", cols=5, half_w=0.04,
-                           focus_z=0.35)
+            E.family_sheet(small, "foliage_small.png", "PLAINS SHRUBS GROUND COVER", cols=6)
     return E.summary()
 
 

@@ -8,8 +8,9 @@ keys over 437.5 ms) · Hurt 308 (+ HurtAdd) · Dodge 273 · Death 667 · Portrai
 The 3D poses add what one side view cannot say: the staff held out at the right side (web ``zN`` 5 u, ``STAFF_LAT``
 0.3, so the crystal stands beside the hood from every facing), the off hand's spell gestures, chest twist, foot
 turn-out. Every contact / release has its own silhouette (Attack01 diagonal overhead bash, Attack02 level backhand
-sweep, Attack03 lunging crystal thrust; Cast01 staff + palm thrust, Cast02 staff planted + palm raised, Blizzard both
-arms flung wide, Meteor the staff driven down in a crouch).
+sweep, Attack03 arcane palm strike — a step in, the off-hand palm driven forward at shoulder height, the staff held
+upright at the right side; Cast01 staff + palm thrust, Cast02 staff planted + palm raised, Blizzard both arms flung
+wide, Meteor the staff driven down in a crouch).
 
 Cloth: the robe skirt's four chains (``skirt_f/b/l/r``) hang plumb, stream with ``flow`` and are pushed out by the
 legs under them (an envelope of the skinned leggings and boots, distributed by each chain's angular weight); sash
@@ -41,8 +42,10 @@ class MageAnims(HB.HeroAnims):
     ITEMS = (("SM_Hero_Mage_Staff", "weapon_r"),)
     CLOTH_PARTS = ("skirt", "lining", "rune", "hem", "robe_seam", "skirt_fold", "skirt_edge", "sash_tail", "hood_tip",
                    "tome", "beard")
-    ON_CLOTH = ("robe", "closure", "sash", "sash_knot", "leg", "mantle", "mantle_trim")
-    ON_CLOTH_CLEAR = 0.024      # the prone body rests on the robe pooled under it (the draped front panel ≥ 1.2 cm)
+    # (SkinPoints.mask matches exact part names: the leggings are ``leg_l`` / ``leg_r`` — a bare "leg" matched nothing
+    # and the prone legs lay on the floor *through* the robe's front panel pooled under them)
+    ON_CLOTH = ("robe", "closure", "sash", "sash_knot", "leg_l", "leg_r", "mantle", "mantle_trim")
+    ON_CLOTH_CLEAR = 0.030      # the prone body rests on the robe pooled under it (the draped front panel ≥ 1.2 cm)
     LEG_PARTS = ("leg", "boot", "boot_cuff")
     TORSO_PARTS = ("mantle", "mantle_trim", "clasp", "clasp_gem", "robe", "closure", "sash", "sash_knot")
     SKIRT_CLEAR = 0.045        # leg surface → skirt mid-surface (cloth 4 mm + the linear-blend corner cut at the joint)
@@ -50,6 +53,8 @@ class MageAnims(HB.HeroAnims):
     # pushes the cloth; HEM_FADE only drops points below the hem
     HEM_FADE = (0.96, 1.04)
     SKIRT_MAX = 80.0           # max outward angle of a skirt link (deg from the pelvis' down axis)
+    MIN_REACH_PELVIS = (-0.15, 0.05)   # m: pelvis offset range (no kneels, no leaps) for envelope_min_reach
+    MIN_REACH_CHAINS = "fblr"
     SKIRT_FLOOR = 0.07         # chain ends this high at least: the ring between chains and the hem lens hang lower
     # a spun body (the face-down Death): each link turns this share of the way toward world down — the robe stays
     # wrapped round the straight legs (a long robe lying on prone legs), the top settling onto them, the sides
@@ -283,7 +288,10 @@ class MageAnims(HB.HeroAnims):
                 + x * y * t[i + 1, j + 1])
 
     # ── ready (web READY :472-487) ──────────────────────────────────────────────────────────────────────
-    STAFF_THETA, STAFF_LAT = -1.0, -0.10         # web wpn 0.1 rad, STAFF_LAT 0.3 (out to the right)
+    # web wpn 0.1 rad, STAFF_LAT 0.3 (out to the right); art review 8: the hand further out to the right and a touch
+    # back, the staff tilted out more — in the se view the shaft and the crystal stood in front of the hood opening
+    STAFF_THETA, STAFF_LAT = -1.0, -0.17
+    STAFF_HAND = (-0.38, 0.06, 1.03)            # READY staff fist (body space: +X left, +Y forward)
 
     def staff_kw(self, theta: float, lat: float = 0.0, roll: float = 0.0) -> dict:
         d, e = C.blade(theta, lat=lat, roll=roll)
@@ -295,7 +303,7 @@ class MageAnims(HB.HeroAnims):
             head_yaw=-4.0,
             foot_r=self.web_foot(52.0, -0.10), foot_l=self.web_foot(43.0, 0.105),
             foot_r_rot=(0, 0, 10), foot_l_rot=(0, 0, 24), knee_r=V(-0.15, 1, 0), knee_l=V(0.25, 1, 0),
-            hand_r=V(-0.35, 0.14, 1.03), elbow_r=V(-0.5, -0.8, -0.2),
+            hand_r=V(*self.STAFF_HAND), elbow_r=V(-0.5, -0.8, -0.2),
             **self.staff_kw(self.STAFF_THETA, self.STAFF_LAT),
             hand_l=V(0.19, 0.17, 0.86), elbow_l=V(0.8, 0.3, -0.5), wrist_l=(-10.0, 0.0, -20.0),
             clav_r=(3.0, 2.0), flow=0.12,
@@ -395,14 +403,22 @@ class MageAnims(HB.HeroAnims):
                         out_ang[i] -= gs * self.SKIRT_WRAP_LR[i]     # the sides fold in round the legs
             if req[c] is not None:
                 dn, bk = req[c]
-                out_ang = HB.envelope(out_ang, sk["lengths"], dn, bk, 0.0, max_deg=self.SKIRT_MAX, slack=0.0)
+                # upright: the panel lies over a lifted knee and hangs from it (``envelope_min_reach``; the greedy
+                # envelope fanned the hem link out at the thigh's angle — a flat tray on the lunge contacts, art
+                # review 8); spun poses, kneels and leaps keep the greedy envelope (the drape solve starts from it; a
+                # panel hung back off kneeling thighs cut them with the hem ring between the chains)
+                lo, hi = self.MIN_REACH_PELVIS
+                env = (HB.envelope_min_reach if c in self.MIN_REACH_CHAINS and gs <= 0 and lo <= bp.pelvis.z <= hi
+                       else HB.envelope)
+                out_ang = env(out_ang, sk["lengths"], dn, bk, 0.0, max_deg=self.SKIRT_MAX, slack=0.0)
             out[c] = out_ang
         return {"acc": acc, "out": out, "ga": ga, "gs": gs}
 
     # ── spun poses: the skirt draped on its real skinned surface (art review 7: the face-down robe stood open as
     # a rigid cone, hem ~2.4× the hip width, boots sticking out of it like a lampshade) ─────────────────────────
     DRAPE_CLEAR = 0.02         # skirt vertex → leg surface (leggings / boots: tapered capsules fitted to the mesh)
-    DRAPE_FLOOR = 0.012        # every skirt vertex at least this high (the gold hem band + hull bead on the floor)
+    DRAPE_FLOOR = 0.014        # every skirt vertex at least this high (the gold hem band + hull bead on the floor)
+    DRAPE_UNDER = 0.0          # cloth under a prone leg → leg capsule (None: the old test, skipped under the axis)
     DRAPE_ITERS = (12, 30)     # Gauss-Newton iterations: soft constraints first, then the full weights
     # residual weights: floor / legs = constraints; grav = the cloth falls (z², per point, normalised); lat = the lower
     # skirt collapses sideways toward the legs (∝ k², the hem most); reg = stay near the hanging solution (fades out
@@ -565,8 +581,15 @@ class MageAnims(HB.HeroAnims):
             # and within 3.5 cm of the floor
             za = P0[2] + ca @ rz
             zl = zw[legsel]
-            soft = HB.smooth01((zl - za + 0.3 * rr) / (0.5 * rr)) * HB.smooth01((zl - self.DRAPE_FLOOR) / 0.023)
-            r_leg = cw[0] * Wt["leg"] * soft * np.maximum(0.0, self.DRAPE_CLEAR - sd)
+            if self.DRAPE_UNDER is None:
+                soft = HB.smooth01((zl - za + 0.3 * rr) / (0.5 * rr)) * HB.smooth01((zl - self.DRAPE_FLOOR) / 0.023)
+                r_leg = cw[0] * Wt["leg"] * soft * np.maximum(0.0, self.DRAPE_CLEAR - sd)
+            else:
+                # the prone legs rest on the robe (``ON_CLOTH_CLEAR``): cloth under a leg is tested too, with the
+                # small clearance that fits between the floor layer and the leg (above the axis: DRAPE_CLEAR)
+                under = HB.smooth01((za - zl) / (0.4 * rr))
+                clr = self.DRAPE_CLEAR * (1.0 - under) + self.DRAPE_UNDER * under
+                r_leg = cw[0] * Wt["leg"] * np.maximum(0.0, clr - sd)
             r_grav = g_w * zw
             r_lat = l_w * ((Q[low] - O) @ X)
             return np.concatenate([r_floor, r_leg, r_grav, r_lat, reg * (x - x0)])
@@ -604,9 +627,17 @@ class MageAnims(HB.HeroAnims):
         # two starts, the lower energy wins: the hanging solution, and the hanging solution moved by the typical
         # face-down correction (DRAPE_START, scaled by the spin) — one start alone fell into a half-collapsed local
         # minimum on some frames (the hem width jumping 1.2 → 1.4 × the hips between neighbouring frames)
+        # + a third start, the last drape solved (the previous frame while baking): the two fixed starts alone let
+        # single frames of the held face-down pose fall into a wider basin (hem 1.13 → 1.31 × the hips → 1.10 on
+        # neighbouring frames, art review 8)
         tpl = np.radians(np.array(self.DRAPE_START))
-        best = min((solve(x_s.copy()) for x_s in (x0, x0 + gs * tpl)), key=lambda xe: xe[1])
+        starts = [x0, x0 + gs * tpl]
+        prev = getattr(self, "_drape_last", None)
+        if prev is not None and len(prev) == len(x0):
+            starts.append(prev.copy())
+        best = min((solve(x_s.copy()) for x_s in starts), key=lambda xe: xe[1])
         x = best[0]
+        self._drape_last = x.copy()
         if __import__("os").environ.get("AF_DRAPE_DEBUG"):
             nl = int(legsel.sum())
             cuts = np.cumsum([n_pts, nl, n_pts, int(low.sum())])
@@ -708,7 +739,10 @@ class MageAnims(HB.HeroAnims):
         if gs > 0:
             d = self.arc(sk["ga"] - absang[0])
             absang[0] += d * gs * 0.85
-        absang = self.above_ground(info, absang, wf, "pelvis", 0.03)
+        tclear = 0.03
+        if gs > 0 and skp is not None:
+            tclear = max(tclear, self._skirt_under_tome(m2, skp, wf))
+        absang = self.above_ground(info, absang, wf, "pelvis", tclear)
         ext_f = max(0.0, sk["out"]["f"][0] - self.skirt["f"]["rest_out"][0])
         ext_r = max(0.0, sk["out"]["r"][0] - self.skirt["r"]["rest_out"][0])
         ext = 0.35 * ext_f + 0.8 * ext_r
@@ -742,7 +776,12 @@ class MageAnims(HB.HeroAnims):
             ax2 = d.cross(back)
             if ax2.length > 1e-6:
                 d = Quaternion(ax2.normalized(), math.radians(10.0 * fl)) @ d
-            up = la @ Vector((0, 0, 1))
+            # the sag bone keeps its own rest roll carried by the forearm (art review 8: aimed with the forearm's +Z
+            # as 'up' it twisted against its rest roll and the bell, skinned between forearm and sag bone, pinched
+            # into an hourglass — the thin dark neck between the upper sleeve and the bell)
+            sb = self.bones[f"sleeve_{side}_01"]
+            r_la = la @ self.bones[f"lowerarm_{side}"].matrix_local.to_3x3().inverted()
+            up = r_la @ sb.matrix_local.to_3x3().col[2]
             # a raised forearm: the wide sleeve slides down toward the elbow (uncovering the under-sleeve), so the
             # cuff never stands open round a raised fist (or a staff held upright in it)
             rise = max(0.0, -a.dot(g))
@@ -757,10 +796,25 @@ class MageAnims(HB.HeroAnims):
             p.move(f"sleeve_{side}_01", -a * (slide + 1e-6))
 
     TOME_STAFF_CLEAR = 0.02
+    TOME_SKIRT_CLEAR = 0.012
+
+    def _skirt_under_tome(self, mats, skp: np.ndarray, wf) -> float:
+        """Falls: the floor height the hanging tome must clear is the robe pooled under it (the drape lays the skirt
+        on the floor round the kneel) — the highest posed skirt point in the tome's column below its centre, +
+        ``TOME_SKIRT_CLEAR``. World z for ``above_ground``."""
+        world, _, Rm = wf
+        Rn = np.array(Rm)
+        o = np.array(world(Vector((0.0, 0.0, 0.0))))
+        sk = skp @ Rn.T + o
+        T = self.tome_pts.posed(mats) @ Rn.T + o
+        c = T.mean(0)
+        r = 0.6 * float(np.linalg.norm(T[:, :2] - c[None, :2], axis=1).max())
+        sel = (np.linalg.norm(sk[:, :2] - c[None, :2], axis=1) < r) & (sk[:, 2] < c[2])
+        return float(sk[sel, 2].max()) + self.TOME_SKIRT_CLEAR if sel.any() else 0.0
 
     def _tome_off_staff(self, p: Pose) -> None:
         """The staff brushes the hanging tome aside: if the shaft passes through the book, the tome pendulum turns
-        about its hook (the smallest swing of a ±50° grid) until it clears the shaft by ``TOME_STAFF_CLEAR``."""
+        about its hook (the smallest swing of a ±90° grid) until it clears the shaft by ``TOME_STAFF_CLEAR``."""
         if self.skin() is None:
             return
         from mathutils import Quaternion
@@ -786,7 +840,7 @@ class MageAnims(HB.HeroAnims):
         rad = (cen - P0) - up * ((cen - P0) @ up)
         rad /= max(np.linalg.norm(rad), 1e-6)
         best = None
-        for mag in range(5, 55, 5):
+        for mag in range(5, 95, 5):          # (up to 90°: a staff sweeping back to READY past the hip)
             for k in range(12):
                 ax = Vector((math.cos(2 * math.pi * k / 12), math.sin(2 * math.pi * k / 12), 0.0))
                 q = Quaternion(Pm @ ax, math.radians(mag))
@@ -898,13 +952,14 @@ class MageAnims(HB.HeroAnims):
             sp = speed / RUN_SPEED
             if walk:
                 # web: the staff planted like a walking stick in rhythm with the stride
-                hand_r = V(-0.35, 0.14 + 0.065 * -sw, 1.02 + 0.018 * abs(math.sin(ph)))
+                hand_r = V(-0.38, 0.06 + 0.065 * -sw, 1.02 + 0.018 * abs(math.sin(ph)))
                 st = self.staff_kw(self.STAFF_THETA + 6.0 * -sw, self.STAFF_LAT)
             else:
                 # run: the staff carried at the side, tilted forward, the fist swinging with the stride
                 # carried at the side in front of the hanging tome, swinging like a walking stick
-                hand_r = V(-0.41, 0.15 + 0.05 * -sw, 0.98 + 0.03 * abs(sw))
-                st = self.staff_kw(5.0 + 7.0 * -sw, 0.06)
+                # (art review 8: out at the right and tilted out, not in — the crystal stood in front of the hood)
+                hand_r = V(-0.43, 0.07 + 0.05 * -sw, 0.98 + 0.03 * abs(sw))
+                st = self.staff_kw(3.0 + 6.0 * -sw, -0.14)
             bp = BP(
                 pelvis=V(0, 0.02 * sp, crouch + dz), hip_pitch=1.5, hip_yaw=-7.0 * sw * sp ** 0.5,
                 hip_roll=-2.0 * math.sin(ph), lean=lean + 1.2 * abs(math.sin(ph)), twist=8.0 * sw * sp ** 0.5,
@@ -1016,14 +1071,16 @@ class MageAnims(HB.HeroAnims):
                       hand_l=V(0.20, 0.30, 1.10), elbow_l=V(0.8, -0.4, -0.4), wrist_l=(-50.0, 0.0, -10.0),
                       clav_l=(6.0, 4.0), flow=0.35)
         S = self.look(S)
-        Ct = self.pose(R0, pelvis=self.web_pelvis(51.0, 68.0), lean=14.0, hip_pitch=3.0, head_pitch=-4.0, twist=-26.0,
-                       hip_yaw=-10.0, foot_l=self.web_foot(60.0, 0.15), foot_r=self.web_foot(41.0, -0.15),
-                       foot_r_rot=(10.0, 0, 20), toe_r=10.0, knee_l=V(0.2, 1, 0),
+        # (art review 8: a step, not a lunge — the back boot 31 cm behind the pelvis fanned the robe's back panel
+        # out into a flat tray on the hit-stop frame; the palm strike reads from the arm and the lean)
+        Ct = self.pose(R0, pelvis=self.web_pelvis(51.8, 67.4), lean=14.0, hip_pitch=3.0, head_pitch=-4.0, twist=-26.0,
+                       hip_yaw=-4.0, foot_l=self.web_foot(57.5, 0.10), foot_r=self.web_foot(46.5, -0.12),
+                       foot_r_rot=(6.0, 0, 20), toe_r=6.0, knee_l=V(0.06, 1, 0),
                        hand_r=V(-0.40, -0.10, 1.14), elbow_r=V(-0.6, -0.8, -0.1), **self.staff_kw(-10.0, 0.04),
                        hand_l=V(0.10, 0.66, 1.24), elbow_l=V(0.7, -0.3, -0.6), wrist_l=(-75.0, 0.0, 10.0),
-                       clav_l=(8.0, 24.0), clav_r=(4.0, -8.0), flow=0.55)
+                       clav_l=(8.0, 24.0), clav_r=(4.0, -8.0), flow=0.42)
         Ct = self.look(Ct)
-        F = self.pose(Ct, hand_l=V(0.10, 0.64, 1.20), flow=0.45)
+        F = self.pose(Ct, hand_l=V(0.10, 0.64, 1.20), flow=0.36)
         F = self.look(F)
         Rc = self.pose(R0, pelvis=R0.pelvis + V(0, 0.03, -0.04), lean=8.0, twist=-8.0, hip_yaw=-4.0,
                        foot_l=self.web_foot(48.0, 0.12), hand_l=V(0.20, 0.30, 0.98), wrist_l=(-30.0, 0.0, -10.0),
@@ -1064,14 +1121,14 @@ class MageAnims(HB.HeroAnims):
         R0 = self.ready()
         Ch = self.pose(R0, pelvis=R0.pelvis + V(0, -0.02, -0.08), lean=10.0, head_pitch=12.0, twist=-6.0,
                        foot_r=self.web_foot(52.0, -0.13), foot_l=self.web_foot(42.0, 0.13),
-                       hand_r=V(-0.30, 0.14, 1.12), elbow_r=V(-0.9, 0.1, -0.4), **self.staff_kw(-6.0, -0.15),
+                       hand_r=V(-0.36, 0.08, 1.12), elbow_r=V(-0.9, 0.1, -0.4), **self.staff_kw(-6.0, -0.20),
                        hand_l=V(0.12, 0.26, 0.96), elbow_l=V(0.8, 0.2, -0.5), wrist_l=(30.0, 0.0, -10.0),
                        flow=0.25)
         # release: the staff butt driven to the ground beside the right foot (staff vertical), the left palm raised
         # high, the head lifted to it — an upright, open silhouette
         Rl = self.pose(R0, pelvis=R0.pelvis + V(0, 0.0, -0.01), lean=-6.0, hip_pitch=-2.0, head_pitch=-18.0,
                        twist=6.0, foot_r=self.web_foot(52.5, -0.15), foot_l=self.web_foot(42.0, 0.15),
-                       hand_r=V(-0.30, 0.16, 0.98), elbow_r=V(-0.9, 0.0, -0.4), **self.staff_kw(0.0, -0.06),
+                       hand_r=V(-0.38, 0.05, 0.98), elbow_r=V(-0.9, 0.0, -0.4), **self.staff_kw(0.0, -0.19),
                        hand_l=V(0.30, 0.16, 1.70), elbow_l=V(1.0, 0.2, -0.2), wrist_l=(-75.0, 0.0, 0.0),
                        clav_l=(22.0, 4.0), flow=0.5)
         H = self.pose(Rl, head_pitch=-14.0, lean=-4.0, hand_l=V(0.30, 0.15, 1.66), flow=0.32)
@@ -1153,7 +1210,7 @@ class MageAnims(HB.HeroAnims):
         R0 = self.ready()
         d0 = self.pose(R0, pelvis=self.web_pelvis(47.0, 68.5), lean=20.0, head_pitch=4.0, twist=0.0, hip_yaw=0.0,
                        foot_r=self.web_foot(53.0, -0.12), foot_l=self.web_foot(42.5, 0.12),
-                       hand_r=V(-0.32, 0.22, 0.78), **self.staff_kw(52.0, -0.35),
+                       hand_r=V(-0.37, 0.27, 0.80), **self.staff_kw(50.0, -0.04),
                        hand_l=V(0.22, 0.16, 0.76), flow=0.3)
         up = self.pose(R0, pelvis=self.web_pelvis(50.0, 60.0), lean=34.0, hip_pitch=2.0, head_pitch=-6.0, twist=0.0,
                        hip_yaw=0.0, foot_r=self.web_foot(49.0, -0.10, 82.0), foot_l=self.web_foot(39.0, 0.10, 80.0),

@@ -349,11 +349,14 @@ def build_bonetotem(pal: Palette):
     # red-painted hide strips hanging from a short crossbar
     b.add(M.tube([Vector((-0.3, -0.04, 1.3)), Vector((0.3, -0.04, 1.32))], [0.03, 0.03], sides=6), "pole",
           name="bar")
+    sway = {}
     for q, x in enumerate((-0.22, -0.07, 0.08, 0.23)):
         L = rnd.uniform(0.4, 0.6)
         st = M.plate([(-0.05, 0.0), (0.05, 0.0), (0.04, -L), (0.0, -L - 0.06), (-0.04, -L)], 0.014, bevel=0.003)
         st.transform(_rx(90)).translate((x, -0.06, 1.3))
-        b.add(st, "red" if q % 2 == 0 else "hide", name="strip", hull_pad=True)
+        sid = b.add(st, "red" if q % 2 == 0 else "hide", name="strip", hull_pad=True)
+        sway[sid] = (1.3, L + 0.06, 0.2 * q)
+        sway[sid + 1] = sway[sid]          # its padded hull proxy (the next part id)
     for side in (-1, 1):
         b.add(M.tube([Vector((side * 0.3, -0.04, 1.3)), Vector((side * 0.32, -0.04, 1.05))], [0.007, 0.007], sides=5),
               "cord", name="string")
@@ -367,7 +370,8 @@ def build_bonetotem(pal: Palette):
         shape = E.RockShape((r, r * 0.9, r * 0.8), (name, q), bumps=4, amp=0.08, top_cut=0.3)
         b.add(E.rock(shape, subdiv=1, facet=26.0).translate((x, y, 0)), "soot", name="stone", hull_pad=True)
     ST.bone(b, Vector((0.25, -0.25, 0.02)), Vector((0.42, -0.12, 0.02)), 0.02)
-    return E.finish(b, pal, "decor", ground_h=1.0, name=name)
+    # hide strips sway from the crossbar (spec §6.4 cloth language; pole, skull and stones rigid)
+    return E.finish(b, pal, "decor", ground_h=1.0, wind=E.cloth_wind(sway), name=name)
 
 
 def goblin_spear(b, base: Vector, top: Vector, rnd):
@@ -464,20 +468,23 @@ def build_crates(pal: Palette):
 
 
 ASSETS: dict = {
-    "SM_Prop_Goblin_Hut_A": (build_hut_a, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=True, blob=1.2)),
-    "SM_Prop_Goblin_Hut_B": (build_hut_b, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=True, blob=1.1)),
+    "SM_Prop_Goblin_Hut_A": (build_hut_a, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=False, blob=1.2)),
+    "SM_Prop_Goblin_Hut_B": (build_hut_b, dict(game_ids=["goblin_hut"], footprint=[2, 2], blocking=False, blob=1.1)),
     "SM_Prop_Goblin_FirePit": (build_firepit, dict(game_ids=["goblin_fire_pit"], footprint=[1, 1], blocking=False,
                                                    blob=0.65)),
     "SM_Prop_Goblin_BoneTotem": (build_bonetotem, dict(game_ids=["goblin_bone_totem"], footprint=[1, 1],
-                                                       blocking=True, blob=0.3)),
+                                                       blocking=False, blob=0.3, wind_slot=E.PROP_WIND_SLOT,
+                                                       toon_params=E.PROP_WIND_PARAMS)),
     "SM_Prop_Goblin_SpearRack": (build_spearrack, dict(game_ids=["goblin_spear_rack"], footprint=[1, 1],
-                                                       blocking=True, blob=0.6)),
-    "SM_Prop_Goblin_Crates": (build_crates, dict(game_ids=["goblin_crates"], footprint=[1, 1], blocking=True,
+                                                       blocking=False, blob=0.6)),
+    "SM_Prop_Goblin_Crates": (build_crates, dict(game_ids=["goblin_crates"], footprint=[1, 1], blocking=False,
                                                  blob=0.55)),
 }
-NOTE = ("goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the "
-        "explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations "
-        "block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable")
+NOTE = ("goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): non-blocking decorations per spec 6.9 "
+        "(blocking false: no MapGen / W5 bake places them, so a blocking flag would be unbaked data); footprintTiles "
+        "is the body size for the placer")
+PLACEMENT = ("level script (spec 6.9): placed round the explore objective zone_goblin_camp / cs_ep_whisper focus "
+             "(40,52) by the world / level-design owner — no Source or Data file references these ids yet")
 
 
 def main(argv: list[str]) -> int:
@@ -499,7 +506,8 @@ def main(argv: list[str]) -> int:
         fn, kw = ASSETS[n]
         obj = fn(pal)
         pal.save()
-        extra = {"displayName": n.split("_", 2)[-1], "family": "environment.goblin_camp", "note": NOTE}
+        extra = {"displayName": n.split("_", 2)[-1], "family": "environment.goblin_camp", "note": NOTE,
+                 "placement": PLACEMENT}
         E.ship(obj, n, CAT, pal, obj["af_outline_class"], extra=extra, previews=previews, **kw)
         shipped.append(n)
     if "--family" in argv:
@@ -508,8 +516,7 @@ def main(argv: list[str]) -> int:
         scene.reset()
         pal = Palette(E.PROPS)
         objs = [ASSETS[n][0](pal) for n in shipped]
-        E.family_sheet(objs, "goblin_camp.png", "GOBLIN CAMP DRESSING (SPEC 6.9, R7)", cols=4, focus_z=0.8,
-                       cell_px=(300, 320))
+        E.family_sheet(objs, "goblin_camp.png", "GOBLIN CAMP DRESSING (SPEC 6.9, R7)", cols=4)
     return E.summary()
 
 

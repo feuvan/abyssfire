@@ -44,6 +44,7 @@ class RogueAnims(HB.HeroAnims):
     SCARF_PARTS = ("capelet", "jerkin", "bandolier", "belt", "buckle", "tasset", "pouch", "pouch_flap", "leg_l",
                    "leg_r", "kneepad_l", "kneepad_r")
     SCARF_CLEAR = 0.024
+    SCARF_TWIST = (2.0, 22.0)   # deg per link (4 links): base + × (flow − 0.3)
 
     TASSET_CLEAR = 0.018        # thigh surface → panel mid-surface (plate 6 mm + bow + skinning slack)
     TASSET_MAX = 130.0          # deg: a panel never swings further out than this (knees pulled up: flipped up)
@@ -83,7 +84,8 @@ class RogueAnims(HB.HeroAnims):
             co = co.reshape(-1, 3)[::2]
             rest = np.array(self.rig.obj.data.bones[bone].matrix_local)
             co = (np.c_[co, np.ones(len(co))] @ (rest @ np.array(m)).T)[:, :3]
-            for env in (self.scarf_env, self.ground_pts):
+            # (+ the torso sample: the hood tip, swinging down the back in HurtAdd, stays off the near-plumb quiver)
+            for env in (self.scarf_env, self.ground_pts, self.torso_env):
                 idx = np.zeros((len(co), 4), np.int64)
                 idx[:, 0] = env.bidx[bone]
                 w = np.zeros((len(co), 4))
@@ -135,6 +137,43 @@ class RogueAnims(HB.HeroAnims):
     def okw(self, theta: float, lat: float = 0.0, roll: float = 0.0) -> dict:
         return self.blade_kw(theta, lat, roll, key="off")
 
+    @staticmethod
+    def dir_kw(elev: float, az: float, key: str = "wpn") -> dict:
+        """A blade given by its body-space elevation (deg, + up) and azimuth (deg from straight forward, + toward the
+        character's right) — the readable way to author blades for the W1 camera: from the se view a blade pointing
+        forward-right points at the camera and shrinks to a stub, one pointing out to the right reads at full
+        length (screen left)."""
+        e, a = math.radians(elev), math.radians(az)
+        d = V(-math.sin(a) * math.cos(e), math.cos(a) * math.cos(e), math.sin(e))
+        up = V(0, 0, 1) - d * d.z
+        up = up.normalized() if up.length > 1e-4 else V(0, 1, 0)
+        return {key: d, f"{key}_up": up}
+
+    def pose(self, base: BP | None = None, **kw) -> BP:
+        """A key from ``base``: a key that sets a new main blade (``wpn``) without a ``wrist_r`` drops READY's
+        ``MAIN_ROLL`` (that roll only turns the idle blade's flat to the camera; carried into the strikes it turned
+        their edges into the hood, the kneepads and the bracer)."""
+        if "wpn" in kw and "wrist_r" not in kw:
+            kw["wrist_r"] = (0.0, 0.0, 0.0)
+        return super().pose(base, **kw)
+
+    # READY main blade (art review 8): at waist height, out to the right and raised (the web's 'both blades held
+    # wide'); the old forward-right blade at the knee pointed at the se camera, edge-on — a stub over the legs. The
+    # se camera sits between the hero's front and right, so a blade reads at full length only out to the right *and
+    # back* (screen left); raised 32°, out-back 125°, its flat rolled to the camera (se 20 px of 26, sw / front 26)
+    MAIN_READY = (32.0, 125.0)
+    MAIN_ROLL = -60.0           # deg: the main blade's flat turned to the camera (at 0 the se view saw its edge)
+    # contacts in the se view (art review 8): the 118° body-space cut ended pointing straight down beside the legs
+    # in both Attack01 and Attack02. Attack01 = a diagonal cut out to the right and down (screen lower-left in se,
+    # clear of the legs) with the off blade thrust forward; Attack02 = the X-cut flung wide, both blades out level
+    # and a touch back (main screen-left, off screen upper-right in se)
+    A01_MAIN = (-10.0, 100.0)
+    A02_MAIN = (-10.0, 110.0)
+    # Cast01 release: the flung blade level and out to the right, the off blade back and low — raised, the blades
+    # stood over the hood like horns from the se view
+    C01_MAIN = (-6.0, 94.0)
+    C01_OFF = (-38.0, -140.0)   # the off blade swept back low for balance (raised, it rose over the hood from se)
+
     def ready(self) -> BP:
         return BP(
             pelvis=self.web_pelvis(46.5, 66.4), hip_pitch=2.0, hip_yaw=-6.0, lean=11.5, twist=-6.0,
@@ -142,7 +181,8 @@ class RogueAnims(HB.HeroAnims):
             foot_r=self.web_foot(55.0, -0.15), foot_l=self.web_foot(40.5, 0.13),
             foot_r_rot=(0, 0, 12), foot_l_rot=(0, 0, 30), knee_r=V(-0.35, 1, 0), knee_l=V(0.4, 1, 0),
             # (the web's 83° / 46° blades, raised for the −50° camera: a level blade reads as pointing down)
-            hand_r=self.web_hand(56.5, 65.0, -0.30), elbow_r=V(-0.8, -0.4, -0.4), **self.dkw(40.0, -0.6),
+            hand_r=self.web_hand(56.0, 60.5, -0.38), elbow_r=V(-0.8, -0.4, -0.4), **self.dir_kw(*self.MAIN_READY),
+            wrist_r=(0.0, self.MAIN_ROLL, 0.0),
             hand_l=self.web_hand(53.0, 58.0, 0.26), elbow_l=V(0.8, -0.3, -0.5), **self.okw(26.0, 0.6),
             clav_r=(0.0, 4.0), clav_l=(3.0, 4.0), flow=0.15,
         )
@@ -215,6 +255,15 @@ class RogueAnims(HB.HeroAnims):
                                        rel[sel] @ np.array(B), self.SCARF_CLEAR, max_deg=120.0)
             want = self.above_ground(info, want, wf, "spine_03", 0.05)
             pb = self.lagged(bp, 80.0)
+            # streaming tails twist along their length (art review 8: a flat strip streaming straight back was
+            # seen edge-on from the se camera — a rigid rod over the shoulder on the Cast01 release): each link
+            # turns about its own axis (applied before the swing), more with the flow, so the cloth shows its width
+            fl = max(0.0, pb.flow - 0.3)
+            for i, n in enumerate(info.names):
+                # (upright clips only: in rolls and falls the twisted strip's edge dipped through the floor)
+                if i and abs(bp.spin) < 1e-6:
+                    p.twist(n, math.copysign(self.SCARF_TWIST[0] + self.SCARF_TWIST[1] * fl, spread)
+                            * (1.0 + 0.3 * math.sin(bp.wave + ph - 1.2 * i)))
             side = []
             for i in range(len(info.names)):
                 k = (i + 1) / len(info.names)
@@ -275,7 +324,7 @@ class RogueAnims(HB.HeroAnims):
                 head_pitch=R0.head_pitch + math.degrees(math.sin(ph - 0.5) * 0.04),
                 hand_r=R0.hand_r + V(0, 0, -math.sin(ph - 0.3) * 0.5 * U),
                 hand_l=R0.hand_l + V(0, 0, -math.sin(ph - 0.8) * 0.6 * U),
-                **self.dkw(40.0 + math.degrees(math.sin(ph) * 0.04), -0.6),
+                **self.dir_kw(self.MAIN_READY[0] + math.degrees(math.sin(ph) * 0.04), self.MAIN_READY[1]),
                 **self.okw(26.0 + math.degrees(math.sin(ph - 0.6) * 0.05), 0.6),
                 flow=0.15 + math.sin(ph) * 0.07, wave=ph, sway=math.sin(ph + 1.0) * 0.15)
         c = self.proc_clip("Idle", 667.0, s, loop=True)
@@ -302,8 +351,8 @@ class RogueAnims(HB.HeroAnims):
                 foot_r=J["ankle_r"] + V(-(stance + J["ankle_r"].x), 0, 0) + fr,
                 foot_l_rot=(pl, 0, 6), foot_r_rot=(pr, 0, 6), toe_l=tl, toe_r=tr,
                 knee_l=V(0.15, 1, 0), knee_r=V(-0.15, 1, 0),
-                hand_r=V(-0.28, 0.22 - arm * 1.2 * sw, 0.80 + 0.03 * abs(sw)), elbow_r=V(-0.8, -0.4, -0.4),
-                **self.dkw(48.0 - 8.0 * sw, -0.6),
+                hand_r=V(-0.30, 0.20 - arm * 1.2 * sw, 0.85 + 0.03 * abs(sw)), elbow_r=V(-0.8, -0.4, -0.4),
+                **self.dir_kw(26.0 - 6.0 * sw, 118.0 - 8.0 * sw), wrist_r=(0.0, self.MAIN_ROLL, 0.0),
                 hand_l=V(0.24, 0.16 + arm * 0.9 * sw, 0.92 + 0.02 * abs(sw)), elbow_l=V(0.8, -0.3, -0.5),
                 **self.okw(30.0 + 6.0 * sw, 0.6),
                 clav_r=(0.0, 4.0 - 4.0 * sw), clav_l=(2.0, 4.0 + 3.0 * sw),
@@ -342,20 +391,23 @@ class RogueAnims(HB.HeroAnims):
         Ct = self.pose(R0, pelvis=self.web_pelvis(54.0, 68.8), lean=33.0, hip_pitch=4.0, twist=-14.0, hip_yaw=-6.0,
                        foot_r=self.web_foot(63.0, -0.16), foot_l=self.web_foot(42.0, 0.13),
                        foot_l_rot=(8.0, 0, 30), toe_l=8.0,
-                       hand_r=V(-0.30, 0.60, 0.80), elbow_r=V(-0.8, -0.3, -0.4), **self.dkw(118.0, -0.55),
+                       hand_r=V(-0.30, 0.60, 0.80), elbow_r=V(-0.8, -0.3, -0.4), **self.dir_kw(*self.A01_MAIN),
                        hand_l=V(0.30, 0.42, 0.98), elbow_l=V(0.8, -0.3, -0.5), **self.okw(70.0, 0.75),
                        clav_r=(4.0, 18.0), clav_l=(2.0, 10.0), flow=0.8)
         Ct = self.look(Ct, max_down=10.0)
         F = self.pose(Ct, pelvis=self.web_pelvis(53.5, 69.0), lean=34.0, twist=12.0, hip_yaw=4.0,
-                      hand_r=V(-0.34, 0.36, 0.62), elbow_r=V(-0.8, 0.2, -0.3), **self.dkw(150.0, -0.6),
+                      hand_r=V(-0.34, 0.36, 0.62), elbow_r=V(-0.8, 0.2, -0.3), **self.dir_kw(-50.0, 78.0),
                       hand_l=V(0.14, 0.64, 1.00), elbow_l=V(0.7, -0.2, -0.6), **self.okw(64.0, 0.6),
                       clav_l=(4.0, 20.0), clav_r=(2.0, 6.0), flow=0.6)
         F = self.look(F, max_down=10.0)
         Rc = self.pose(R0, pelvis=self.web_pelvis(49.5, 67.4), lean=20.0, twist=-2.0,
-                       foot_r=self.web_foot(58.0, -0.15), hand_r=V(-0.30, 0.34, 0.74), **self.dkw(96.0, -0.4),
+                       foot_r=self.web_foot(58.0, -0.15), hand_r=V(-0.30, 0.34, 0.74), **self.dir_kw(-4.0, 72.0),
                        flow=0.3)
-        keys = [K(0.0, R0), K(0.28, W, "out"), K(0.43, S, "in"), K(0.571, Ct, "linear"), K(0.71, F, "out"),
-                K(0.86, Rc), K(1.0, R0)]
+        # the main blade swings forward-up first, then back over the shoulder into the wind-up (straight from READY's
+        # out-and-back blade to the drawn-back one, the slerp swept it back through the hood)
+        Up = self.pose(R0, **self.dir_kw(50.0, 45.0), hand_r=R0.hand_r.lerp(W.hand_r, 0.25), wrist_r=(0.0, 0.0, 0.0))
+        keys = [K(0.0, R0), K(0.15, Up, "out"), K(0.28, W, "out"), K(0.43, S, "in"), K(0.571, Ct, "linear"),
+                K(0.71, F, "out"), K(0.86, Rc), K(1.0, R0)]
         return self.clip("Attack01", 444.0, keys, self.SPAN_A, notifies={"Contact": 222.0})
 
     # ── Attack02: X cross-slash — both blades crossed high, then swept out and down (same timing) ────────
@@ -377,12 +429,13 @@ class RogueAnims(HB.HeroAnims):
         Ct = self.pose(R0, pelvis=R0.pelvis + V(0, 0.13, -0.08), lean=26.0, hip_pitch=3.0, twist=0.0, hip_yaw=0.0,
                        foot_r=self.web_foot(61.0, -0.17), foot_l=self.web_foot(41.0, 0.15),
                        foot_l_rot=(8.0, 0, 28), toe_l=8.0,
-                       hand_r=V(-0.44, 0.40, 0.84), elbow_r=V(-0.6, -0.5, -0.5), **self.dkw(118.0, -0.95),
-                       hand_l=V(0.44, 0.38, 0.86), elbow_l=V(0.6, -0.5, -0.5), **self.okw(118.0, 0.95),
+                       hand_r=V(-0.46, 0.38, 0.86), elbow_r=V(-0.6, -0.5, -0.5), **self.dir_kw(*self.A02_MAIN),
+                       hand_l=V(0.46, 0.36, 0.88), elbow_l=V(0.6, -0.5, -0.5),
+                       **self.dir_kw(self.A02_MAIN[0] + 4.0, -self.A02_MAIN[1], "off"),
                        clav_r=(2.0, 8.0), clav_l=(2.0, 8.0), flow=0.8)
         Ct = self.look(Ct, max_down=10.0)
-        F = self.pose(Ct, hand_r=V(-0.50, 0.24, 0.84), **self.dkw(140.0, -1.2), hand_l=V(0.50, 0.22, 0.86),
-                      **self.okw(140.0, 1.2), flow=0.6)
+        F = self.pose(Ct, hand_r=V(-0.52, 0.22, 0.84), **self.dir_kw(-26.0, 120.0), hand_l=V(0.52, 0.20, 0.86),
+                      **self.dir_kw(-24.0, -120.0, "off"), flow=0.6)
         F = self.look(F, max_down=10.0)
         Rc = self.pose(R0, pelvis=R0.pelvis + V(0, 0.06, -0.03), lean=16.0, twist=-3.0, hand_r=V(-0.34, 0.30, 0.78),
                        hand_l=V(0.30, 0.22, 0.92), flow=0.3)
@@ -439,12 +492,12 @@ class RogueAnims(HB.HeroAnims):
         Rl = self.pose(R0, pelvis=self.web_pelvis(51.5, 67.5), lean=26.0, hip_pitch=3.0, twist=16.0, hip_yaw=6.0,
                        foot_r=self.web_foot(60.0, -0.16), foot_l=self.web_foot(40.0, 0.13),
                        foot_l_rot=(8.0, 0, 30), toe_l=8.0,
-                       hand_r=V(-0.34, 0.54, 1.08), elbow_r=V(-0.8, -0.2, -0.5), **self.dkw(40.0, -1.4),
-                       hand_l=V(0.38, -0.06, 0.82), elbow_l=V(0.7, 0.5, -0.4), **self.okw(20.0, 1.5),
+                       hand_r=V(-0.34, 0.54, 1.04), elbow_r=V(-0.8, -0.2, -0.5), **self.dir_kw(*self.C01_MAIN),
+                       hand_l=V(0.38, -0.06, 0.82), elbow_l=V(0.7, 0.5, -0.4), **self.dir_kw(*self.C01_OFF, "off"),
                        clav_r=(6.0, 20.0), clav_l=(2.0, -8.0), flow=0.7)
         Rl = self.look(Rl)
-        H = self.pose(Rl, lean=23.0, hand_r=V(-0.35, 0.50, 1.04), **self.dkw(44.0, -1.4), hand_l=V(0.37, -0.02, 0.84),
-                      flow=0.4)
+        H = self.pose(Rl, lean=23.0, hand_r=V(-0.35, 0.50, 1.00),
+                      **self.dir_kw(self.C01_MAIN[0] - 4.0, self.C01_MAIN[1]), hand_l=V(0.37, -0.02, 0.84), flow=0.4)
         H = self.look(H)
         keys = [K(0.0, R0), K(0.36, Ch, "out"), K(self.REL, Rl, "in"), K(0.72, H), K(1.0, R0)]
         return self.clip("Cast01", 533.0, keys, self.SPAN_C, notifies={"Release": 246.0})
@@ -588,24 +641,95 @@ class RogueAnims(HB.HeroAnims):
                         hand_r=V(-0.34, 0.08, 0.60), **self.dkw(137.0, -0.6), hand_l=V(0.30, 0.04, 0.62),
                         **self.fall_spin(-54.0, 14.0), flow=0.6)
         P100 = self.J["pelvis"] + self.web_pelvis(47.0, 86.5)
+        fs = self.fall_spin(-87.0, 32.0)
         d100 = self.pose(d45, pelvis=self.web_pelvis(47.0, 86.5), lean=4.0, head_pitch=-10.0, head_roll=-24.0,
                          head_yaw=10.0, twist=-4.0, hip_yaw=0.0, hip_pitch=-4.0,
                          foot_r=P100 + V(-0.14, -0.02, -0.74), foot_l=P100 + V(0.30, 0.04, -0.62),
                          foot_r_rot=(25.0, 0, 30), foot_l_rot=(10.0, 0, 50), toe_l=0.0, knee_l=V(1.0, 0.45, 0),
                          knee_r=V(-0.2, 1, 0),
-                         hand_r=P100 + V(-0.50, -0.04, 0.30), elbow_r=V(-0.4, -0.3, -1.0),
+                         hand_r=P100 + self.on_floor(-0.40, 0.20, fs), elbow_r=V(-0.4, -0.3, -1.0),
                          wpn=V(-0.70, 0.05, -0.70).normalized(), wpn_up=V(0, 0, 1),
-                         hand_l=P100 + V(0.44, -0.04, 0.22), elbow_l=V(1.0, -0.2, -0.6),
+                         hand_l=P100 + self.on_floor(0.44, 0.22, fs), elbow_l=V(1.0, -0.2, -0.6),
                          off=V(0.6, 0.78, 0.1).normalized(), off_up=V(0, 0, 1),
-                         **self.fall_spin(-87.0, 32.0), flow=0.05)
+                         **fs, flow=0.05)
         keys = [K(0.0, Hp), K(0.22, d22), K(0.45, d45), K(0.72, d72, "in"), K(1.0, d100, "out")]
         gr = self.grounded(snap=True)
-        return self.clip("Death", 545.0, keys, 454.5, post=lambda bp, t: gr(self.fit_daggers(bp), t))
+        lay = self.lay_blades(0.72 * 454.5, 454.5)
+        return self.clip("Death", 545.0, keys, 454.5, post=lambda bp, t: gr(lay(self.fit_daggers(bp), t), t))
+
+    @staticmethod
+    def on_floor(lat: float, up: float, spin: dict, dz: float = -0.17) -> Vector:
+        """Death rest pose: the hand offset (body space, from the fallen pelvis) with the forward component chosen so
+        that, after the fall spin, the hand lies ``dz`` below the pelvis — on the floor beside the body (art review
+        8: with the 32° roll onto the left side the right fist hung 0.5 m up in the air, the left one under the
+        floor)."""
+        R = Quaternion(Vector(spin["spin_axis"]).normalized(), math.radians(spin["spin"])).to_matrix()
+        r = R[2]
+        fwd = (r[0] * lat + r[2] * up - dz) / r[1]
+        return V(lat, fwd, up)
+
+    LAY_OUT = 0.35             # weight of 'away from the body' in the laid blades' heading
+    LAY_TILT = -2.0            # deg: the laid blades' tips (− = up: the tip clears the floor, the grip rests on it)
+
+    def lay_blades(self, t0: float, t1: float):
+        """Death post step (art review 8: lying on the back, both fists still held the daggers pointing straight
+        up): from ``t0`` to ``t1`` ms the grips relax — each blade turns to the floor plane (its world horizontal
+        heading kept, the tip dipping ``LAY_TILT``) and rolls so its flat lies on the floor (edge horizontal), as the
+        warrior's sword does; the ground clamp then keeps blades and body on the floor."""
+        from mathutils import Quaternion as Q_
+
+        def post(bp: BP, t: float) -> BP:
+            w = float(HB.smooth01((t - t0) / (t1 - t0)))
+            if w <= 0.0:
+                return bp
+            q = Q_(Vector(bp.spin_axis).normalized(), math.radians(bp.spin))
+            mats = anim.evaluate(C.to_pose(self.rig, bp, None, grips=self.GRIPS), return_matrices=True)
+            pel = mats["pelvis"].translation
+            tilt = math.radians(self.LAY_TILT)
+            new = {}
+            for s, key in (("r", "wpn"), ("l", "off")):
+                d = (mats[f"weapon_{s}"].to_3x3() @ Vector((0, 1, 0))).normalized()
+                h = Vector((d.x, d.y, 0.0))
+                # the heading: across the forearm (a blade along it drives the pommel into the bracer), on the side
+                # of the current heading, leaning away from the body (laid along the thigh or the ribs it cut them)
+                fa = mats[f"lowerarm_{s}"].to_3x3() @ Vector((0, 1, 0))
+                fa.z = 0.0
+                out = mats[f"hand_{s}"].translation - pel
+                out.z = 0.0
+                if fa.length > 1e-3:
+                    perp = Vector((-fa.y, fa.x, 0.0)).normalized()
+                    if perp.dot(h) < 0.0:
+                        perp = -perp
+                    h = perp
+                if out.length > 1e-4:
+                    h = h.normalized() + out.normalized() * self.LAY_OUT
+                h.normalize()
+                flat = (h * math.cos(tilt) - Vector((0, 0, 1)) * math.sin(tilt)).normalized()
+                new[key] = q.inverted() @ d.lerp(flat, w).normalized()
+            bp = bp.but(**new)
+            mats = anim.evaluate(C.to_pose(self.rig, bp, None, grips=self.GRIPS), return_matrices=True)
+            wr = {}
+            for s in ("r", "l"):
+                M3 = mats[f"weapon_{s}"].to_3x3()
+                d, e = (M3 @ Vector((0, 1, 0))).normalized(), (M3 @ Vector((0, 0, 1))).normalized()
+                e_des = Vector((0, 0, 1)).cross(d)
+                if e_des.length < 1e-3:
+                    continue
+                e_des.normalize()
+                if e_des.dot(e) < 0.0:
+                    e_des = -e_des
+                phi = math.degrees(math.atan2(d.dot(e.cross(e_des)), e.dot(e_des)))
+                a, r, y = getattr(bp, f"wrist_{s}")
+                wr[f"wrist_{s}"] = (a, r + phi * w, y)
+            return bp.but(**wr)
+        return post
 
     # ── Portrait (static, spec §3.4 / §9.5): a blade raised beside the hood ─────────────────────────────
     def portrait(self):
         R0 = self.ready()
-        P = self.pose(R0, hand_r=V(-0.17, 0.20, 1.20), elbow_r=V(-0.8, -0.2, -0.5), **self.dkw(12.0, -0.25),
+        # (art review 8: the raised guard and fist covered an eye — the blade now rises out at the right, clear of
+        # the eyes and the mask band)
+        P = self.pose(R0, hand_r=V(-0.31, 0.22, 1.04), elbow_r=V(-0.8, -0.2, -0.5), **self.dir_kw(60.0, 72.0),
                       hand_l=V(0.20, 0.24, 1.00), elbow_l=V(0.8, -0.2, -0.5), **self.okw(70.0, 0.5),
                       head_yaw=6.0, head_pitch=2.0, twist=-6.0, lean=8.0, clav_r=(12.0, 6.0), flow=0.2)
         keys = [K(0.0, P), K(1.0, P)]

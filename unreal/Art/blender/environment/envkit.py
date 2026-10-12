@@ -63,10 +63,61 @@ RESULTS: list[dict] = []           # one record per shipped asset (printed by su
 # the anti-aliased line never gets darker than lum ~67 over the grass (the ink gate's dark check, lum 64, failed on
 # 20 % of their edges) — 1.4 px keeps decor well under interactive (2.0) and reads as the same thin line art.
 PX_OVERRIDE = {(PROPS, "decor"): 1.4}
+# Prop cloth (camp banner, goblin totem flags, bone-totem hide strips; spec §6.4 WPO sway): one wind instance for the
+# whole Props_Plains palette — every asset naming it must carry the same parameters (the content build rejects an
+# instance with two parameter sets).
+PROP_WIND_SLOT = "MI_AF_Toon_Props_Plains_Wind"
+PROP_WIND_PARAMS = {"WindAmplitudeCm": 3.0, "WindHeightCm": 235.0, "WindSpeed": 1.7}
 
 
 def ink_px(family: str, cls: str) -> float:
     return PX_OVERRIDE.get((family, cls), outline.SCREEN_PX_1080.get(cls, 0.0))
+
+
+# ── review PNGs: truecolour, scale 1 ────────────────────────────────────────────────────────────────────
+# Art review 9: ``pngio.write_png_budget`` fell back to a 256-colour palette and 0.85× downscales on busy frames, so
+# crops labelled "1080P 1:1" were neither (crimson capes turned brown, a canopy shrank to half). Every environment
+# preview is written by ``pngio.write_png_native``: truecolour, never resampled, split into tiles along the sheet's
+# pads when over 200 KB, and checked after writing.
+TILE_AXIS = {"turnaround.png": 0, "anims.png": 0}
+
+
+def save_native(path: Path, img: np.ndarray, axis: int | str | None = None) -> list[tuple[Path, int]]:
+    """Write one environment review image (``pngio.write_png_native``; tiles ``<stem>_2.png`` … when needed)."""
+    path = Path(path)
+    ax = axis if axis is not None else TILE_AXIS.get(path.name, "auto")
+    out = pngio.write_png_native(path, img, axis=ax)
+    if len(out) > 1:
+        print(f"  {path.name}: {len(out)} truecolour tiles")
+    return out
+
+
+class EnvReview(review.Review):
+    """The kit review set with every PNG stored truecolour at scale 1 (:func:`save_native`)."""
+
+    def _save(self, name: str, img: np.ndarray) -> Path:
+        out = save_native(self.out / name, img)
+        self.written.extend(out)
+        return out[0][0]
+
+    def game_crop_box(self, cam, pad: float = 0.03, margin_px: int = 28) -> tuple[float, float, float, float]:
+        """The 1:1 crop fitted to the asset's projected (posed) vertices + ``margin_px`` (the kit's square box round
+        the bounding-box corners left a tall tree's or a guyed tent's 1080p crop mostly grass and over the 200 KB
+        budget as two truecolour panels)."""
+        from bpy_extras.object_utils import world_to_camera_view
+        pts = review.mesh_points(self.meshes + self.extra)
+        if len(pts) > 6000:
+            pts = pts[:: int(math.ceil(len(pts) / 6000))]
+        sc = bpy.context.scene
+        proj = [world_to_camera_view(sc, cam, Vector(p)) for p in pts]
+        proj += [world_to_camera_view(sc, cam, Vector((float(c[0]), float(c[1]), 0.0)))   # the floor under the prop
+                 for c in (pts.min(0), pts.max(0))]
+        xs, ys = [p.x for p in proj], [p.y for p in proj]
+        mx, my = margin_px / 1920.0, margin_px / 1080.0
+        # at least 320 × 160 px, so the two label lines fit over a small prop
+        mx = max(mx, (320 / 1920.0 - (max(xs) - min(xs))) / 2)
+        my = max(my, (160 / 1080.0 - (max(ys) - min(ys))) / 2)
+        return (max(0.0, min(xs) - mx), max(0.0, min(ys) - my), min(1.0, max(xs) + mx), min(1.0, max(ys) + my))
 
 
 # ── manifest ────────────────────────────────────────────────────────────────────────────────────────────
@@ -112,7 +163,7 @@ def icosphere(subdiv: int = 2) -> bmesh.types.BMesh:
 class Lump:
     """Cloud lump: the union of a core sphere and ``lobes`` sub-spheres reaching radius ≈ 1 along well spread,
     mostly upward directions, scaled to ``radii`` — rounded lobes with sharp inward cusps (web ``cloudP``).
-    ``part()`` samples the radial union on an icosphere (``subdiv`` 2 = 320 tris, 3 = 1280); ``inside(p)`` is the
+    ``part()`` samples the radial union on an icosphere (``subdiv`` 2 = 80 tris, 3 = 320, 4 = 1280); ``inside(p)`` is the
     exact solid (cull faces hidden inside a neighbouring lump: :func:`cull_hidden`)."""
 
     def __init__(self, radii: V3, seed, center: V3 = (0, 0, 0), lobes: int = 7, amp: float = 0.24,
@@ -183,9 +234,11 @@ def cull_hidden(part: Part, others: Sequence, margin: float = 0.012) -> int:
     return len(dead)
 
 
-def lump_info(radii: V3, center: V3 = (0, 0, 0), mix: float = 0.65) -> tuple:
-    """``finish(spherise=…)`` entry for a lump: (centre, radii, mix toward the ellipsoid normal)."""
-    return (_v(center), _v(radii), mix)
+def lump_info(radii: V3, center: V3 = (0, 0, 0), mix: float = 0.65, lift: float = 0.0) -> tuple:
+    """``finish(spherise=…)`` entry for a lump: (centre, radii, mix toward the ellipsoid normal, lift). ``lift``
+    then tilts the shading normals toward +Z (n + lift·Z, renormalised — the only camera-invariant bias; the
+    mage robe's rim cure): a lump's flanks face the 50° W1 camera more and the banded rim shrinks."""
+    return (_v(center), _v(radii), mix, lift)
 
 
 # ── rocks ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -545,7 +598,8 @@ def _face_parts(me) -> np.ndarray:
 
 
 def spherise_normals(obj, spherise: dict) -> None:
-    """Blend the shading normals of parts ``{pid: (centre, radii, mix)}`` toward their ellipsoid's normals."""
+    """Blend the shading normals of parts ``{pid: (centre, radii, mix[, lift])}`` toward their ellipsoid's normals
+    (then tilt them toward +Z by ``lift``)."""
     me = obj.data
     nl = len(me.loops)
     cur = np.zeros(nl * 3, np.float32)
@@ -563,7 +617,9 @@ def spherise_normals(obj, spherise: dict) -> None:
     me.polygons.foreach_get("loop_total", lt)
     loop_pid = np.repeat(pid, lt)
     out = cur.copy()
-    for p, (c, r, mix) in spherise.items():
+    for p, info in spherise.items():
+        c, r, mix = info[:3]
+        lift = info[3] if len(info) > 3 else 0.0
         sel = loop_pid == p
         if not sel.any():
             continue
@@ -573,6 +629,9 @@ def spherise_normals(obj, spherise: dict) -> None:
         n /= np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-9)
         b = cur[sel] * (1 - mix) + n * mix
         b /= np.maximum(np.linalg.norm(b, axis=1, keepdims=True), 1e-9)
+        if lift:
+            b[:, 2] += lift
+            b /= np.maximum(np.linalg.norm(b, axis=1, keepdims=True), 1e-9)
         out[sel] = b
     me.normals_split_custom_set([tuple(v) for v in out])
 
@@ -603,6 +662,19 @@ def set_wind(obj, fn: Callable[[Vector, int], tuple[float, float]]) -> None:
     uv.data.foreach_set("uv", wp[lv].ravel())
     me.uv_layers.active = me.uv_layers["UVMap"]
     me.uv_layers["UVMap"].active_render = True
+
+
+def cloth_wind(cloth: dict, rigid_phase: float = 0.0) -> Callable[[Vector, int], tuple[float, float]]:
+    """``finish(wind=…)`` for a prop with hanging cloth: ``cloth`` = {part id: (z_hang, length, phase0)} — the
+    weight runs 0 at the hanging line ``z_hang`` → 1 a ``length`` below it (eased), the phase drifts 0.25 across
+    the panel (X) from ``phase0``; every other part (pole, bar, base) is rigid (0)."""
+    def fn(co: Vector, pid: int) -> tuple[float, float]:
+        if pid in cloth:
+            z0, length, ph = cloth[pid]
+            t = smoothstep(0.0, length, z0 - co.z)
+            return t, (ph + 0.25 * co.x) % 1.0
+        return 0.0, rigid_phase
+    return fn
 
 
 def finish(b: M.Builder, pal: Palette, cls: str, ground_h: float | None = None, spherise: dict | None = None,
@@ -642,9 +714,14 @@ def ship(obj, name: str, category: str, pal: Palette, cls: str, *, game_ids: Seq
          extra: dict | None = None, foliage: bool = False, toon_slot: str | None = None,
          toon_params: dict | None = None, previews: bool = True, height: float | None = None, blob: float = 0.3,
          facing: str = "front", glows=None, turnaround: bool = True, ground: bool = True,
-         close_facing: str = "se", review_extra=None) -> dict:
+         close_facing: str = "se", review_extra=None, wind_slot: str | None = None) -> dict:
     """Export ``SM_<…>.fbx`` + manifest entry (merged) + the review set (ink gate recorded, not raised: the
-    caller collects ``RESULTS`` and fails the run at the end)."""
+    caller collects ``RESULTS`` and fails the run at the end). ``wind_slot`` (cloth on a prop: banners, totem
+    flags): the toon slot becomes that instance of ``M_AF_Toon_Foliage`` (``toon_params``), the outline slot
+    ``M_AF_Outline_Foliage``, without touching the palette's own parent; the baked weights (``finish(wind=…)``)
+    keep the pole rigid."""
+    if wind_slot:
+        toon_slot = wind_slot
     if toon_slot:
         # Interchange names each UE material slot after the FBX material: the toon material must carry the slot
         # name the manifest records, or the content build falls back to matching by index.
@@ -660,7 +737,7 @@ def ship(obj, name: str, category: str, pal: Palette, cls: str, *, game_ids: Seq
         man.data["palettes"][pal.family]["parent"] = FOLIAGE_TOON
     entry = export.static_entry(obj, fbx, category, pal, cls, game_ids, sockets, footprint, blocking, extra)
     slots = entry["materialSlots"]
-    if foliage:
+    if foliage or wind_slot:
         slots[0]["parent"] = FOLIAGE_TOON
         if len(slots) > 1:
             slots[1]["parent"] = "M_AF_Outline_Foliage"
@@ -676,14 +753,21 @@ def ship(obj, name: str, category: str, pal: Palette, cls: str, *, game_ids: Seq
                                         "(toon vertices; hull AF_Data.rgb = its normal)",
                          "uv1": "UVWind: U = sway weight, V = phase (toon + hull loops: sway both alike)",
                          "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)"}
+        if wind_slot:
+            entry["wind"].update({
+                "weights": "vertex",
+                "required": "prop cloth: AF_Wind must scale its sway by the baked weight (AF_Data.g on the toon, UVWind.U "
+                            "on the hull) — the height ramp alone sways the pole top and pins the tail",
+                "weightRule": "0 on the pole, crossbar, finial and base; cloth (and its trims / emblem) 0 at the bar "
+                              "-> 1 at the tail; phase per cloth panel + along its width"})
     result = {"asset": name, "fbx": str(fbx), "toonTris": tris(obj, 0),
               "hullTris": tris(obj, 1) if len(obj.data.materials) > 1 else 0}
     if previews:
         lo, hi = scene.world_bounds([obj])
         h = height or max(hi.z, 0.2)
         px = ink_px(pal.family, cls) or None
-        rv = review.Review(name, obj, [obj], h, blob_radius=blob, game_outline_px=px, outline_class=cls,
-                           glows=glows)
+        rv = EnvReview(name, obj, [obj], h, blob_radius=blob, game_outline_px=px, outline_class=cls,
+                       glows=glows)
         rv.ground_occludes = ground
         rv.game_view(facing)
         rv.closeup(close_facing)
@@ -706,6 +790,49 @@ def ship(obj, name: str, category: str, pal: Palette, cls: str, *, game_ids: Seq
           + (f"ink rim {ink['minFracRim'] * 100:.1f}% dark {ink['minFracDark'] * 100:.1f}% -> "
              f"{'PASS' if ink['pass'] else 'FAIL'}" if ink else "no ink (ground cover)"))
     return result
+
+
+LOD1_SCREEN_SIZE = 0.05
+
+
+def export_lod1(obj, name: str, category: str) -> dict:
+    """Export a generated LOD1 static mesh as ``<name>_LOD1.fbx`` and return its manifest ``lods[]`` record (the
+    skeletal convention, README §8: Blender's FBX exporter cannot write an ``FbxLODGroup``)."""
+    fbx = export.export_static_mesh(obj, f"{name}_LOD1", category)
+    return {"asset": f"{name}_LOD1", "fbx": paths.rel_to_export(fbx), "index": 1,
+            "screenSize": LOD1_SCREEN_SIZE,
+            "screenSizeNote": "W1 camera: a tree spans 0.3-0.5 of the screen height at every zoom, so desktop draws "
+                              "LOD0; LOD1 is the mobile-low mesh (static mesh MinLOD / LOD bias 1) and the far "
+                              "fallback",
+            "import": f"same palette UVs, AF_Data wind weights and material slots as {name}; import as LOD index 1 "
+                      f"of {name} (StaticMeshEditorSubsystem.import_lod / Interchange LOD import)",
+            "triangles": {"toon": tris(obj, 0), "outline": tris(obj, 1) if len(obj.data.materials) > 1 else 0}}
+
+
+def lod_preview(rv, lod0, lod1, label0: str = "LOD0", label1: str = "LOD1") -> None:
+    """``lod1.png``: LOD0 vs LOD1 at native 1080p (W1 camera, shipped ink) and the LOD1 baked hull alone (mobile
+    low), each labelled with its triangle counts."""
+    cells = []
+    review.setup_render((1920, 1080), rv.samples)
+    review.hide_stage(False)
+    cam = review.game_camera()
+    rv.facing("front")
+    box = rv.game_crop_box(cam)
+    for o, lab, baked in ((lod0, label0, False), (lod1, label1, False), (lod1, label1 + " BAKED ONLY", True)):
+        for m in (lod0, lod1):
+            m.hide_render = m is not o
+        o.rotation_euler = rv.root.rotation_euler
+        bpy.context.view_layer.update()
+        px = ink_px(o.get("af_family", ""), o.get("af_outline_class", "decor"))
+        review.set_outline_px([o], None if baked else px)
+        img = review.render_array(box)
+        review.draw_text(img, 4, 4, f"{lab}  TOON {tris(o, 0)}  HULL {tris(o, 1)}")
+        review.draw_text(img, 4, 14, "1080P 1:1 W1", rgb=(255, 220, 140))
+        cells.append(img)
+    lod1.hide_render = True
+    lod0.hide_render = False
+    review.set_outline_px([lod0], ink_px(lod0.get("af_family", ""), lod0.get("af_outline_class", "decor")))
+    rv._save("lod1.png", review.grid(cells, 3, pad=2))
 
 
 def summary() -> int:
@@ -991,20 +1118,62 @@ def scene_shot(meshes: Sequence, focus: V3, out: Path, label: str, size_px=(1280
     img = review.bloom(img, em, 1080)
     if extra_post is not None:
         img = extra_post(img, cam, box)
-    review.draw_text(img, 6, 6, label)
     out.parent.mkdir(parents=True, exist_ok=True)
-    pngio.write_png_budget(out, img)
+
+    def annotate(t, i, k):
+        review.draw_text(t, 6, 6, label + (f"  TILE {i + 1}/{k}" if k > 1 else ""))
+    pngio.write_png_native(out, img, annotate=annotate)
     print(f"  {out}")
     return out
 
 
 # ── family sheet: variants at the W1 camera, native 1080p, with the warrior ─────────────────────────────
+SHORT_PREFIXES = ("SM_", "SK_", "Foliage_Plains_", "Palisade_Plains_", "Rock_Plains_", "Outcrop_Plains_", "Prop_",
+                  "Camp_", "Story_", "Lore_", "Goblin_", "Event_", "Gather_", "FX_")
+
+
+def short_name(name: str) -> str:
+    """Sheet label: the asset name without its family prefixes (``SM_Foliage_Plains_BerryBush_A`` → ``BerryBush_A``)."""
+    n = name.split(".")[0]
+    changed = True
+    while changed:
+        changed = False
+        for pre in SHORT_PREFIXES:
+            if n.startswith(pre) and len(n) > len(pre):
+                n = n[len(pre):]
+                changed = True
+    return n
+
+
+def projected_box(cam, objs, res=(1920, 1080), max_pts: int = 4000) -> tuple[float, float, float, float]:
+    """Pixel bounds (x0, y0, x1, y1; y down) of the posed vertices of ``objs`` (hulls included) in a ``res``
+    render of ``cam``."""
+    from bpy_extras.object_utils import world_to_camera_view
+    hidden = [o for o in objs if o.hide_render]
+    for o in hidden:
+        o.hide_render = False
+    pts = review.mesh_points(objs)
+    for o in hidden:
+        o.hide_render = True
+    if len(pts) > max_pts:
+        pts = pts[:: int(math.ceil(len(pts) / max_pts))]
+    sc = bpy.context.scene
+    xs, ys = [], []
+    for p in pts:
+        co = world_to_camera_view(sc, cam, Vector(p))
+        xs.append(co.x * res[0])
+        ys.append((1.0 - co.y) * res[1])
+    return min(xs), min(ys), max(xs), max(ys)
+
+
 def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_w: float = 0.075,
                  warrior: bool = True, px_map: dict | None = None, focus_z: float = 0.6,
-                 facing_deg: float = -135.0, cell_px: tuple[int, int] | None = None) -> Path:
-    """One cell per object (all built at the origin): the W1 game camera at the default distance, a fixed
-    1080p window (``half_w`` of the frame width either side of the prop, or ``cell_px`` = (w, h) 1080p pixels
-    centred on the prop) — true in-game pixels, shipped ink."""
+                 facing_deg: float = -135.0, cell_px: tuple[int, int] | None = None, margin: int = 14) -> Path:
+    """One cell per object (all built at the origin): the W1 game camera at the default distance, true in-game
+    pixels, shipped ink. Cells are sized from the assets' own projected bounds (art review 9: fixed windows cut the
+    tent on three sides, the gates' rune stones and the scale warrior): one size for the sheet = the largest
+    asset (the warrior included) + ``margin`` px, each cell centred on its asset. ``cell_px`` (w, h) forces a
+    window centred on the prop at ``focus_z`` instead (``half_w`` is kept for old callers and ignored)."""
     out_dir = paths.preview_root() / "env_family"
     out_dir.mkdir(parents=True, exist_ok=True)
     review.stage(blob_radius=0.3)
@@ -1015,39 +1184,49 @@ def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_
         o.hide_render = True
     for o in objs:
         o.hide_render = True
-    cells = []
-    hh = half_w * 1920 / 1080
-
-    def box(cam):
-        c = review.project(cam, Vector((0, 0, focus_z)))
-        if cell_px is not None:
-            bw, bh = cell_px[0] / 1920 / 2, cell_px[1] / 1080 / 2
-            return (max(0, c[0] - bw), max(0, c[1] - bh), min(1, c[0] + bw), min(1, c[1] + bh))
-        return (max(0, c[0] - half_w), max(0, c[1] - hh * 0.62), min(1, c[0] + half_w), min(1, c[1] + hh * 0.62))
     review.setup_render((1920, 1080), 8)
     cam = review.game_camera()
+    entries = []                       # (label, meshes, box px)
     for o in objs:
-        o.hide_render = False
         o.rotation_euler = (0, 0, math.radians(facing_deg))
         cls = o.get("af_outline_class", "decor")
         px = (px_map or {}).get(o.name, ink_px(o.get("af_family", ""), cls))
         if px:
             review.set_outline_px([o], px)
-        img = review.render_array(box(cam))
-        review.draw_text(img, 3, 3, o.name.replace("SM_", "")[:30])
-        cells.append(img)
-        o.hide_render = True
+        bpy.context.view_layer.update()
+        entries.append((short_name(o.name), [o], projected_box(cam, [o])))
+    w_meshes = []
     if warrior:
         w = import_warrior()
         if w is not None:
-            root, meshes = w
-            for m in meshes:
+            w_meshes = w[1]
+            for m in w_meshes:
                 review.set_outline_px([m], outline.SCREEN_PX_1080[m.get("af_outline_class", "hero")])
-            img = review.render_array(box(cam))
-            review.draw_text(img, 3, 3, "WARRIOR 1.76M (SCALE)")
-            cells.append(img)
-            for m in meshes:
                 m.hide_render = True
+            entries.append(("WARRIOR 1.76M (SCALE)", w_meshes, projected_box(cam, w_meshes)))
+    if cell_px is None:
+        cw = max(max(b[2] - b[0] for _, _, b in entries) + 2 * margin, max(len(t) for t, _, _ in entries) * 6 + 10)
+        ch = max(b[3] - b[1] for _, _, b in entries) + 2 * margin + 12
+        cw, ch = int(math.ceil(cw)), int(math.ceil(ch))
+    else:
+        cw, ch = cell_px
+    cells = []
+    for text, meshes, bx in entries:
+        if cell_px is None:
+            cx, cy = (bx[0] + bx[2]) / 2, (bx[1] + bx[3]) / 2 - 6
+        else:
+            c = review.project(cam, Vector((0, 0, focus_z)))
+            cx, cy = c[0] * 1920, (1 - c[1]) * 1080
+        x0 = int(round(cx - cw / 2))
+        y0 = int(round(cy - ch / 2))
+        box = (max(0.0, x0 / 1920), max(0.0, 1 - (y0 + ch) / 1080), min(1.0, (x0 + cw) / 1920), min(1.0, 1 - y0 / 1080))
+        for m in meshes:
+            m.hide_render = False
+        img = review.render_array(box)
+        for m in meshes:
+            m.hide_render = True
+        review.draw_text(img, 3, 3, text)
+        cells.append(img)
     for o in objs:
         o.hide_render = False
     for o in others:
@@ -1055,8 +1234,11 @@ def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_
     sheet = review.grid(cells, cols, pad=2)
     lab = np.zeros((14, sheet.shape[1], 3), np.uint8)
     lab[:, :] = (24, 20, 30)
-    review.draw_text(lab, 4, 4, f"{label}  W1 GAME CAMERA  NATIVE 1080P  SHIPPED INK")
+    text = f"{label}  W1 GAME CAMERA  NATIVE 1080P 1:1  SHIPPED INK"
+
+    def annotate(t, i, k):                 # the band stays blank until the tiles are cut (pads remain separators)
+        review.draw_text(t, 4, 4, text + (f"  {i + 1}/{k}" if k > 1 else ""))
     p = out_dir / out_name
-    pngio.write_png_budget(p, np.vstack([lab, sheet]))
+    pngio.write_png_native(p, np.vstack([lab, sheet]), annotate=annotate)
     print(f"  {p}")
     return p

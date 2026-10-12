@@ -14,9 +14,11 @@ import mage_clips as MC
 from kit import review
 
 # spec §3 general + §3.2 FX attachments (for the UE module; colours are the web's)
-EYE_GLOW = {"color": "#9FE6FF", "radiusCm": 9.0, "alpha": 0.5, "coreColor": "#E8FBFF", "coreRadiusCm": 3.2,
+# (art review 8: a 9 cm card with a 3.2 cm core + bloom merged both eyes, the face and the top of the beard into one
+# white smear at 1080p from the front; a small dim card leaves the two emissive eyes + bloom as the eye points)
+EYE_GLOW = {"color": "#9FE6FF", "radiusCm": 5.0, "alpha": 0.35, "coreColor": "#E8FBFF", "coreRadiusCm": 1.6,
             "portraitEyeRadiusCm": 5.9, "portraitEyeAlpha": 0.8,     # web per-eye glow r 2 u (UI portrait only)
-            "coreAlpha": 0.55}
+            "coreAlpha": 0.4}
 FX = {
     "classColor": "#9B59D6", "impactColor": "#C7A6FF", "spiritColor": "#A98BFF",
     # glowing eyes under the hood (web glow r 2 u #9FE6FF α .45 + .3·fx per eye): one card between the eyes on the
@@ -98,7 +100,7 @@ QA_LIMITS = {"ground": -0.5, "staffBody": 0, "crystalBody": 0, "crystalStaff": 0
 # Death (tall kneel → topple → face down): the robe's front panel lies flat on the floor under the prone knees, where
 # the four-chain hem ring grazes the underside of the legs (facing the floor, hidden by the body: ≤ 48 tri pairs in the
 # held pose); the sash tails and the tome settle onto the skirt as the body goes over
-QA_CLIP_LIMITS = {"Death": {"ground": -4.0, "skirtLegs": 50, "sashSkirt": 20, "tomeSkirt": 14},
+QA_CLIP_LIMITS = {"Death": {"ground": -4.0, "skirtLegs": 12, "sashSkirt": 20, "tomeSkirt": 14},
                   "Dodge": {"skirtLegs": 20}}
 
 GAME_KEYS = [("Idle", 0, "se"), ("Run", 8, "se"), ("Attack01", "beat", "se"), ("Cast01", "beat", "se"),
@@ -110,6 +112,66 @@ CLOSE_KEYS = [("Attack01", "beat", "se"), ("Attack02", "beat", "se"), ("Attack03
               ("Cast_Meteor", "beat", "se"), ("Dodge", 8, "side"), ("Hurt", 0, "se"), ("Death", 40, "side")]
 BACK_CLIPS = ("Attack01", "Attack02", "Attack03", "Cast01", "Cast02", "Cast_Blizzard", "Cast_Meteor", "Dodge", "Death")
 
+def death_qa(A, rig, body, clips, actions) -> tuple[dict, list]:
+    """Face-down robe check (art review 8): over the held face-down frames of Death (from 70 % of the clip on) the
+    skirt's hem width ≤ ``MageAnims.HEM_HIP_MAX`` × its hip width (``hem_hip_ratio``: widest hem extent ⟂ the pelvis'
+    down axis / the waist ring's lateral width) and the hem ≥ 1 cm above the floor (skinned mesh, world z)."""
+    import json as _json
+    import bpy
+    import numpy as np
+    from kit import anim as _anim
+    acts = dict(zip([c.name for c in clips], actions))
+    c = next((x for x in clips if x.name == "Death"), None)
+    if c is None:
+        return {}, []
+    names = _json.loads(body["af_parts"])
+    me = body.data
+    fp = np.zeros(len(me.polygons), np.int32)
+    me.attributes["af_part"].data.foreach_get("value", fp)
+    mi = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("material_index", mi)
+    rest = np.zeros(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", rest)
+    rest = rest.reshape(-1, 3)
+    hem = np.zeros(len(me.vertices), bool)
+    z0, z1 = MG.th(MG.SKIRT_TOP_H), MG.u(MG.SKIRT_HEM_Z)
+    for f in me.polygons:
+        if mi[f.index] == 0 and names[fp[f.index]] == "skirt":
+            for v in f.vertices:
+                hem[v] = (z0 - rest[v, 2]) / (z0 - z1) > 0.97
+    saved = rig.obj.rotation_euler.copy()
+    rig.obj.rotation_euler = (0, 0, 0)
+    _anim.assign(rig, acts["Death"])
+    out = {}
+    f0 = int(round(c.frames * 0.7))
+    for fr in range(f0, c.frames + 1):
+        _anim.set_frame(fr)
+        mats = {pb.name: pb.matrix.copy() for pb in rig.obj.pose.bones}
+        hh = A.hem_hip_ratio(mats)
+        dg = bpy.context.evaluated_depsgraph_get()
+        m = body.evaluated_get(dg).to_mesh()
+        co = np.zeros(len(m.vertices) * 3)
+        m.vertices.foreach_get("co", co)
+        z = (co.reshape(-1, 3) @ np.array(body.matrix_world.to_3x3()).T)[:, 2] + body.matrix_world.translation.z
+        out[fr] = (hh["ratio"], float(z[hem].min()), hh)
+    rig.obj.rotation_euler = saved
+    _anim.set_frame(0)
+    last = out[c.frames]
+    worst = max(r for r, _, _ in out.values())
+    low = min(z for _, z, _ in out.values())
+    metrics = {"deathHemHipRatio": {"final": last[0], "maxHeld": round(worst, 3), "limit": MC.MageAnims.HEM_HIP_MAX,
+                                    "hemWidthCm": last[2]["hemWidthCm"], "hipWidthCm": last[2]["hipWidthCm"],
+                                    "frames": [f0, c.frames]},
+               "deathHemMinHeightCm": round(low * 100.0, 2)}
+    fails = []
+    if worst > MC.MageAnims.HEM_HIP_MAX:
+        fails.append(f"Death: face-down hem / hip width {worst:.2f} beyond {MC.MageAnims.HEM_HIP_MAX} "
+                     f"(frames {f0}-{c.frames})")
+    if low < 0.01:
+        fails.append(f"Death: the hem sinks to {low * 100:.1f} cm (< 1 cm above the floor)")
+    return metrics, fails
+
+
 def portrait_glows(rig, meshes) -> list:
     """The crystal hum at idle strength (fx.crystalHum, fx ≈ .25) baked into the UI portrait (no bloom there)."""
     cr = next((m for m in meshes if m.name == MG.CRYSTAL), None)
@@ -120,6 +182,10 @@ def portrait_glows(rig, meshes) -> list:
              "core": 0.32}]
 
 
+# blob shadow (art review 8: 38 / 36 cm had no rationale; the warrior's 39 cm follows spec §3.7)
+BLOB_NOTE = ("spec §3.7: 13 u = 33.8 cm at the spec's own 2.6 cm per u (warrior 15 u = 39 cm); all three heroes on "
+             "one scale, not the hero's mesh unit. The robe hem (rest radius 22-24 cm) stays inside it.")
+
 HERO = HS.HeroDef(
     asset=MG.ASSET, token=MG.TOKEN, game_id="player_mage",
     display_name={"zh-CN": "渊火术士", "en": "Abyssfire Arcanist"},
@@ -129,14 +195,15 @@ HERO = HS.HeroDef(
            HS.Item(MG.CRYSTAL, "crystal", "crystal", kind="item", parent=MG.STAFF,
                    extra={"note": "floats in the staff's claw: attach to the staff socket `crystal`; bob ±1.8 cm "
                                   "twice per idle loop + a slow spin in the BP / material (web staff :132-142)"})],
-    blob_radius=0.38, fx=FX, eye_socket="eyes", eye_glow=EYE_GLOW, clip_meta=clip_meta,
+    blob_radius=0.338, blob_note=BLOB_NOTE,
+    fx=FX, eye_socket="eyes", eye_glow=EYE_GLOW, clip_meta=clip_meta,
     qa_groups=QA_GROUPS, qa_pairs=QA_PAIRS, qa_limits=QA_LIMITS, qa_clip_limits=QA_CLIP_LIMITS,
     qa_head={"clips": ("Attack01", "Attack02", "Attack03", "Cast01"), "maxYaw": 14.0, "maxDown": 12.0},
     item_grips={MG.STAFF: lambda co: abs(co.y) < 0.07 and math.hypot(co.x, co.z) < 0.05},
     game_keys=GAME_KEYS, contact_keys=CONTACT_KEYS, facing_keys=FACING_KEYS, close_keys=CLOSE_KEYS,
     back_clips=BACK_CLIPS, portrait_bust_z=1.02, portrait_zoom=(120, 376, 150, 406),
     verify_bones=("skirt_f_02", "skirt_r_02", "sash_a_03", "sash_b_03", "hood_tip_02", "beard_02", "tome_01"),
-    verify_top=(1.70, 1.77), portrait_glows=portrait_glows,
+    verify_top=(1.70, 1.77), portrait_glows=portrait_glows, extra_qa=death_qa,
     notes="Dodge (low arcane skim) is in place; the UE module lerps a mesh offset (2.25 tiles). Signature casts keep "
           "Cast01's release (230 ms). The crystal is a child item of the staff (itemAttachments) — attach it to the "
           "staff's `crystal` socket. Death (web: drops to the knees, pitches forward face-down): buckle → tall kneel "

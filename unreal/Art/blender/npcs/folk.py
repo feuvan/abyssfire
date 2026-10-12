@@ -127,6 +127,8 @@ class Look:
     hat_tilt: float = 0.0          # deg the hat is pushed back (the W1 camera looks down on the brim)
     brim_k: float = 1.0            # wide-brim radius scale
     visor_k: float = 1.0           # cap visor reach scale (W1: a shorter peak keeps the eyes out of its shadow)
+    brim_curl: float = 1.0         # wide-brim rim curl (1 = the swordsman's upturned straw rim, 0 = flat)
+    brim_droop: float = 0.0        # wide-brim sag at the sides and back (a soft, droopy felt brim), head units
     lids: float = 0.0              # upper lids over the eye whites (0 open … 0.5 half-lidded)
 
 
@@ -221,6 +223,10 @@ def regions_for(look: Look) -> dict:
         r["metal_dark"] = METAL_DARK
     if look.specs:
         r["specs"] = Region("#A8D6F2", .30, .45)
+    if look.keyring:
+        # aged brass, not the #F1C40F of the quest turn-in marker
+        r["brass"] = Region("#B08A3A", .42, .40)
+        r["brass_dark"] = Region("#B08A3A", .42, .40).shade_region(.30, .12)
     return outline.ink_regions(r, OUTLINE_CLASS)
 
 
@@ -1102,8 +1108,10 @@ class Folk:
                     rx, ry = lerp(R0x, R1x, s), lerp(R0y, R1y, s)
                     x, y = rx * sa, cyb - ry * ca
                     lift_front = math.tan(math.radians(tip)) * max(0.0, -y + cyb) * s
-                    curl = 0.55 * HK * s ** 3 * (0.6 + 0.4 * abs(sa))
-                    z = self.hz(hb + 0.25) + lift_front * 0.85 + curl - 0.25 * HK * s * (1 - abs(ca))
+                    curl = 0.55 * HK * s ** 3 * (0.6 + 0.4 * abs(sa)) * lk.brim_curl
+                    droop = lk.brim_droop * HK * s ** 2 * (1.0 - 0.85 * max(0.0, ca))
+                    z = (self.hz(hb + 0.25) + lift_front * 0.85 + curl - droop
+                         - 0.25 * HK * s * (1 - abs(ca)))
                     th_ = lerp(0.42, 0.26, s) * HK
                     o_row.append(Vector((x, y, z + th_ / 2)))
                     i_row.append(Vector((x, y, z - th_ / 2)))
@@ -1361,13 +1369,19 @@ class Folk:
         pb = Bind.custom(["pelvis", "thigh_l", "thigh_r"], wfn)
         pid = b.add(panel, "apron", pb, name="apron_panel", sub_regions={1: "apron", 2: "apron_line"},
                     hull_pad=True)
-        # pocket (web strokeRect on the lower apron)
+        # pocket (web strokeRect on the lower apron: an outline, not a fill): a linen patch a hair proud of the
+        # panel, its edge a stitched line-tone border (~1.5 px at 1080p) — a filled line-tone panel read as a hole
         k0, k1 = 0.18, 0.48
         pk = []
         for r in range(3):
             s = lerp(k0, k1, r / 2)
-            pk.append([outer[int(round(s * rows))][c] + Vector((0, -0.0022, 0)) for c in (3, 4, 5, 6, 7)])
-        b.add(HB.outward(HB.sheet_grid(pk), lambda c: c + Vector((0, 1, 0))), "apron_line", pb, name="pocket",
+            pk.append([outer[int(round(s * rows))][c] + Vector((0, -0.0016, 0)) for c in (3, 4, 5, 6, 7)])
+        b.add(HB.outward(HB.sheet_grid(pk), lambda c: c + Vector((0, 1, 0))), "apron", pb, name="pocket",
+              outline=False, covered_by=pid)
+        rim = pk[0] + [pk[1][-1]] + pk[2][::-1] + [pk[1][0]]
+        rim = [q + Vector((0, -0.0012, 0)) for q in rim]
+        b.add(M.sweep(rim, M.superellipse(1, 1, 6, 2.0), scales=[(0.0016, 0.0042)] * len(rim), up=(0, -1, 0),
+                      closed_path=True, cap0=None, cap1=None), "apron_line", pb, name="pocket_stitch",
               outline=False, covered_by=pid)
         # neck straps from the bib's top corners over the shoulders to the back of the neck
         for sg in (1.0, -1.0):
@@ -1505,28 +1519,61 @@ class Folk:
                                                falloff=4.0), name="pack_strap", hull_pad=True)
 
     # ── key ring at the hip (stash keeper) ──────────────────────────────────────────────────────────────
+    KEYRING_A = -62.0          # belt angle (deg; − = the character's right, toward the se camera)
+    KEYRING_RING_YAW = 58.0    # the ring plane turned from the hip tangent toward the body normal
+    KEYRING_FAN = 24.0         # each key's tilt from plumb, away from the other
+
     def add_keyring(self, b: M.Builder, ids: dict) -> None:
+        """A leather tab hanging from the belt at the right hip, an aged-brass ring on it turned ~60° toward the
+        body normal (an ellipse from the W1 camera, a loop on the tab — not a flat disc), two keys fanned apart
+        below it. Every piece carries its own unpadded hull: one padded proxy round ring, shafts and bits grew a
+        dark slab 2–3× the keys behind them (art review), and a flat brass circle with keys hanging under one
+        side read as a yellow '?' — the quest turn-in glyph — on this camp NPC."""
         U = self.U
         bp = self.belt_profile()
+        a = self.KEYRING_A
         z = self.th(0.5)
-        p = bp.point(z, -62.0, 0.9 * U)
-        n = bp.normal(z, -62.0)
-        fr = R.frame(p, Vector((0, 0, -1)), n)
-        ring = M.sweep([fr @ Vector((1.2 * U * math.cos(t), 1.2 * U * math.sin(t) + 1.2 * U, 0))
-                        for t in np.linspace(0, 2 * math.pi, 16, endpoint=False)],
-                       M.superellipse(1, 1, 6, 2.0), scales=[(0.28 * U, 0.28 * U)] * 16, closed_path=True,
-                       up=tuple(n), cap0=None, cap1=None)
+        n = bp.normal(z, a)
+        n = Vector((n.x, n.y, 0.0)).normalized()
+        t = Vector((0.0, 0.0, 1.0)).cross(n).normalized()          # hip tangent (horizontal)
+        down = Vector((0.0, 0.0, -1.0))
         kb = Bind.blend("pelvis", "thigh_r", falloff=6.0)
-        rid = b.add(ring, "gold", kb, name="keyring", hull_pad=True)
-        for k, (dx, ln) in enumerate(((-0.5, 4.8), (0.6, 4.0))):
-            top = fr @ Vector((dx * U, 2.2 * U, 0.0))
-            bot = top + Vector((0, 0, -ln * U))
-            shaft = M.tube([top, bot], [0.32 * U, 0.32 * U], sides=6, dome0=0.0, dome1=0.0)
-            kid = b.add(shaft, "gold", kb, name="key", hull_pad=True)
-            bit = M.box((0.25 * U, 1.3 * U, 0.9 * U), bot + n * 0.6 * U + Vector((0, 0, 0.6 * U)), bevel=0.001)
-            b.add(bit, "gold", kb, name="key", outline=False, covered_by=kid)
-            bow = ell((0.95 * U, 0.35 * U, 0.95 * U), top + Vector((0, 0, 0.0)), sides=10, rings=6)
-            b.add(bow, "gold", kb, name="key", outline=False, covered_by=rid)
+        # leather tab: tucked under the belt, hanging 2.2 u, a touch off the robe
+        p0 = bp.point(self.th(1.4), a, 0.30 * U)
+        p1 = bp.point(self.th(0.2), a, 0.55 * U)
+        p2 = p1 + down * 1.3 * U + n * 0.25 * U
+        tab = M.sweep(HB.catmull([p0, p1, p2], 4), M.rect_profile(0.0045, 1.15 * U), up=tuple(n), cap0="ngon",
+                      cap1="ngon")
+        b.add(tab, "leather", kb, name="key_tab")
+        # ring: through the tab's lower end, its plane spanned by plumb and w (the tangent turned toward n)
+        yaw = math.radians(self.KEYRING_RING_YAW)
+        w = (t * math.cos(yaw) + n * math.sin(yaw)).normalized()
+        rr = 1.05 * U
+        top = p2 + down * 0.15 * U
+        c = top + down * rr
+        ring = M.sweep([c + (w * math.sin(th) - down * math.cos(th)) * rr
+                        for th in np.linspace(0, 2 * math.pi, 14, endpoint=False)],
+                       M.superellipse(1, 1, 6, 2.0), scales=[(0.22 * U, 0.22 * U)] * 14, closed_path=True,
+                       up=tuple(w.cross(down)), cap0=None, cap1=None)
+        b.add(ring, "brass", kb, name="keyring")
+        # keys: bow at the ring's bottom, shaft fanned out from plumb along the hip tangent, bit toward the body
+        hang = c + down * rr
+        for sg, ln in ((1.0, 3.9), (-1.0, 3.3)):
+            fan = math.radians(self.KEYRING_FAN) * sg
+            d = (down * math.cos(fan) + t * math.sin(fan)).normalized()
+            bow_c = hang + d * 0.75 * U
+            bow = ell((0.62 * U, 0.62 * U, 0.62 * U), Vector((0, 0, 0)), sides=10, rings=6)
+            bow.transform(R.frame(bow_c, d, n) @ Matrix.Diagonal((1.0, 1.0, 0.45, 1.0)))
+            b.add(bow, "brass", kb, name="key_bow")
+            s0 = bow_c + d * 0.5 * U
+            s1 = s0 + d * ln * U
+            b.add(M.tube([s0, s1], [0.22 * U, 0.20 * U], sides=6, dome0=0.0, dome1=0.0), "brass", kb,
+                  name="key_shaft")
+            side = d.cross(n).normalized() * sg
+            bit_c = s1 - d * 0.55 * U + side * 0.45 * U
+            bit = M.box((0.9 * U, 0.85 * U, 0.22 * U), Vector((0, 0, 0)), bevel=0.0012)
+            bit.transform(R.frame(bit_c, d, n))
+            b.add(bit, "brass_dark", kb, name="key_bit")
 
     # ── arms / hands / legs ─────────────────────────────────────────────────────────────────────────────
     def add_arm(self, b: M.Builder, rig: R.Rig, side: str, hand: bool = True) -> None:

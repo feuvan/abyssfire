@@ -665,6 +665,77 @@ def items_sheet(ms: MonsterShip, rv) -> None:
         o.hide_render = hr
 
 
+PORTRAIT_INK_PX = 4.5            # silhouette ink of the 512² UI portraits (heroes / NPCs: the same)
+
+
+def portrait_shot(ms: MonsterShip, rv, bp, name: str, eye_sockets=("fx_eye_l", "fx_eye_r"), eye_glow=None,
+                  yaw: float = -110.0, bust_below_head: float = 0.42, bust_radius: float = 0.45,
+                  zoom: tuple = (96, 352, 128, 384), glows=None, pitch: float = -9.0) -> str:
+    """Spec §9.5 / R11 UI portrait of a monster (the heroes' / NPCs' pattern): the **Portrait pose** ``bp`` (a
+    BP solved on the rig with the clip cloth; no exported clip), 3/4 front (``yaw``), 512² RGBA head and
+    shoulders, toon + screen-space ink (``review.ink_render``, no hull at 1:1), the runtime eye cards composited
+    (``eye_glow`` = {radiusCm, color, alpha, coreColor, coreAlpha, coreFrac}; no bloom on a UI texture) and
+    ``glows(rig) → [{at, radiusCm, color, alpha, core}]`` extra cards → ``Art/Export/Portraits/<name>.png`` +
+    ``portrait.png`` (over the studio colour) and ``portrait_zoom2x.png`` (the 2× defect check) in the preview set.
+    Returns the manifest path ``Portraits/<name>.png``."""
+    rig = ms.A.rig
+    apply_bp(ms.A, bp)
+    bpy.context.view_layer.update()
+    rv.facing(yaw)
+    res = (512, 512)
+    review.hide_stage(True)
+    review.setup_render(res, 16)
+    vis = [m for m in [ms.body] + [shown(it) for it in held(ms)] if not m.hide_render]
+    pts = review.mesh_points(vis)
+
+    def sock(nm):
+        so = next(x for x in rig.sockets if x["name"] == nm)
+        b = rig.obj.data.bones[so["bone"]]
+        pb = rig.obj.pose.bones[so["bone"]]
+        return rig.obj.matrix_world @ (pb.matrix @ (b.matrix_local.inverted() @ Vector(so["pos"])))
+    hc = sock("fx_head")
+    sel = pts[(pts[:, 2] > hc.z - bust_below_head) &
+              (np.linalg.norm(pts[:, :2] - np.array(hc[:2]), axis=1) < bust_radius)]
+    cam = review.frame_points(sel, res, fov_h=24, pitch_ue=pitch, fill=0.96, include_ground=False)
+    for m in vis:
+        outline.remove_preview(m)
+    rgba = review.ink_render(vis, res, silhouette_px=PORTRAIT_INK_PX, interior_px=2.0, depth_step=0.018)
+    if eye_glow:
+        hb = rig.obj.data.bones["head"]
+        pbh = rig.obj.pose.bones["head"]
+        fwd = (rig.obj.matrix_world.to_3x3() @ pbh.matrix.to_3x3() @ hb.matrix_local.to_3x3().inverted()
+               @ Vector((0, -1, 0))).normalized()
+        for nm in eye_sockets:
+            wp = sock(nm)
+            vis_k = max(0.0, min(1.0, 2.0 * fwd.dot((cam.matrix_world.translation - wp).normalized()) + 0.4))
+            cx, cy = review.project_px(cam, wp, res)
+            rad = eye_glow["radiusCm"] / 100.0 / outline.pixel_world_size(cam, wp, res[0])
+            review.composite_glow(rgba, (cx, cy), rad, eye_glow["color"], eye_glow["alpha"] * vis_k,
+                                  core=eye_glow.get("coreFrac", 0.3))
+    for g in (glows(rig) if glows else []):
+        cx, cy = review.project_px(cam, g["at"], res)
+        rad = g["radiusCm"] / 100.0 / outline.pixel_world_size(cam, g["at"], res[0])
+        review.composite_glow(rgba, (cx, cy), rad, g["color"], g["alpha"], core=g.get("core", 0.0))
+    outp = paths.export_root() / "Portraits" / f"{name}.png"
+    outp.parent.mkdir(parents=True, exist_ok=True)
+    pngio.write_png(outp, rgba)
+    review.hide_stage(False)
+    bg = np.array([59, 53, 70], np.float32)
+    a = rgba[:, :, 3:4].astype(np.float32) / 255.0
+    comp = (rgba[:, :, :3].astype(np.float32) * a + bg * (1 - a) + 0.5).astype(np.uint8)
+    review.draw_text(comp, 4, 4, name.upper())
+    rv._save("portrait.png", comp)
+    y0, y1, x0, x1 = zoom
+    z = comp[y0:y1, x0:x1].repeat(2, 0).repeat(2, 1)
+    review.draw_text(z, 4, 4, "PORTRAIT 2X ZOOM")
+    rv._save("portrait_zoom2x.png", z)
+    anim.assign(rig, None)
+    anim.clear_pose(rig)
+    rv.facing("se")
+    print(f"[portrait] {outp}")
+    return f"Portraits/{name}.png"
+
+
 def lod_sheet(ms: MonsterShip, rv, actions) -> None:
     """``lod1.png``: LOD0 vs LOD1 — se close-ups with the shipped ink in world units (top: Idle, Attack01 contact)
     and native 1080p game crops at the W1 camera (bottom): LOD0 / LOD1 with the screen-constant ink, and LOD1 with

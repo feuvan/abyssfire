@@ -58,14 +58,14 @@ SWORD = {
                  grip=cloth(DARK_LEATHER), wrap=cloth("#3A2416"), pommel=metal("#756C66", .32),
                  gem=metal("#5A524E", .25)),
     # w_broad_sword: steel, bronze cross guard and pommel
-    "T2": dict(blade=blade(STEEL), fuller=FULLER, guard=metal(BRONZE), grip=cloth(LEATHER), wrap=cloth(DARK_LEATHER),
-               pommel=metal(BRONZE), gem=metal("#E8B070", .55)),
+    "T2": dict(blade=blade(STEEL), fuller=FULLER, guard=metal("#D98A3C", .55), grip=cloth("#7A4A26"),
+               wrap=cloth("#4A2A14"), pommel=metal("#D98A3C", .55), gem=metal("#F0B870", .55)),
     # w_militia_sword: bright steel, iron cross, blue grip
-    "T3": dict(blade=blade("#D3DBE4"), fuller=FULLER, guard=metal(IRON, .45), grip=cloth("#3E5A8A"),
-               wrap=cloth("#27406A"), pommel=metal(IRON, .45), gem=stone("#4A7AD8", .25)),
+    "T3": dict(blade=blade("#D3DBE4"), fuller=FULLER, guard=metal("#9DB0C8", .50), grip=cloth("#2F62C8"),
+               wrap=cloth("#1E3F86"), pommel=metal("#9DB0C8", .50), gem=stone("#4A7AD8", .25)),
     # w_claymore: dark-iron cross, gold pommel, ruby
-    "T4": dict(blade=blade("#D8E0EA"), fuller=FULLER, guard=metal(DARK_IRON, .45), grip=cloth(DARK_LEATHER),
-               wrap=cloth("#3A2418"), pommel=metal(GOLD), gem=stone(RUBY, .35)),
+    "T4": dict(blade=blade("#D8E0EA"), fuller=FULLER, guard=metal("#343A48", .45), grip=cloth("#5A1E28"),
+               wrap=cloth("#2E0E14"), pommel=metal(GOLD), gem=stone(RUBY, .35)),
     # w_flamberge: warm steel, gold wings, crimson grip, ember gem + glow (the fuller burns)
     "T5": dict(blade=blade("#E6D6C8"), fuller=glow(EMBER), guard=metal(GOLD), grip=cloth("#8A1F24"),
                wrap=cloth("#5A1418"), pommel=metal(GOLD), gem=glow("#FF7A1A")),
@@ -77,12 +77,12 @@ SWORD = {
 AXE = {
     "T1": dict(haft=wood(WOOD), wrap=cloth(DARK_LEATHER), butt=metal(IRON, .45), head=Region(STEEL, .25, .50),
                edge=blade("#EEF2F6"), socket=metal(DARK_IRON, .40), rivet=metal(IRON, .45)),
-    "T2": dict(haft=wood(WOOD), wrap=cloth(DARK_LEATHER), butt=metal(IRON, .45), head=Region(STEEL, .25, .50),
-               edge=blade("#EEF2F6"), socket=metal(DARK_IRON, .40), rivet=metal(GOLD)),          # web drawAxe
-    "T3": dict(haft=wood("#7A4A2E"), wrap=cloth("#3E5A8A"), butt=metal(IRON, .45), head=Region("#D3DBE4", .25, .50),
-               edge=blade("#F4F7FA"), socket=metal("#6C7488", .45), rivet=metal(STEEL)),
-    "T4": dict(haft=wood(DARK_WOOD), wrap=cloth(DARK_LEATHER), butt=metal(GOLD), head=Region("#D8E0EA", .25, .50),
-               edge=blade("#F6F8FB"), socket=metal(DARK_IRON, .40), rivet=metal(GOLD)),
+    "T2": dict(haft=wood(WOOD), wrap=cloth("#2F5A3A"), butt=metal(BRONZE), head=Region(STEEL, .25, .50),
+               edge=blade("#EEF2F6"), socket=metal(BRONZE), rivet=metal(GOLD)),               # web drawAxe rivets
+    "T3": dict(haft=wood("#7A4A2E"), wrap=cloth("#2F62C8"), butt=metal("#9DB0C8", .50), head=Region("#D3DBE4", .25, .50),
+               edge=blade("#F4F7FA"), socket=metal("#9DB0C8", .50), rivet=metal(STEEL)),
+    "T4": dict(haft=wood(DARK_WOOD), wrap=cloth("#5A1E28"), butt=metal(GOLD), head=Region("#B9C3D0", .25, .50),
+               edge=blade("#F6F8FB"), socket=metal(GOLD), rivet=stone(RUBY, .35)),
     "T5": dict(haft=wood("#5A3020"), wrap=cloth("#8A1F24"), butt=metal(GOLD), head=Region("#E6D6C8", .25, .50),
                edge=glow(EMBER), socket=metal(GOLD), rivet=glow("#FF7A1A")),
     "T6": dict(haft=cloth(DEMON_BLACK), wrap=cloth(DEMON), butt=metal(DEMON, .40), head=Region("#4A3446", .20, .45),
@@ -90,14 +90,14 @@ AXE = {
 }
 
 MACE = {   # web drawMace: dark-wood haft, leather wraps, iron flanged head, gold cap
-    "T1": dict(haft=wood(DARK_WOOD), wrap=cloth(LEATHER), butt=metal(IRON, .45), head=metal(IRON, .45),
-               flange=metal("#A2AAB6", .45), cap=metal("#6A7280", .40), collar=metal(DARK_IRON, .40)),
-    "T2": dict(haft=wood(DARK_WOOD), wrap=cloth(LEATHER), butt=metal(IRON, .45), head=metal(IRON, .45),
-               flange=metal("#A2AAB6", .45), cap=metal(GOLD), collar=metal(DARK_IRON, .40)),
-    "T3": dict(haft=wood("#7A4A2E"), wrap=cloth("#3E5A8A"), butt=metal(IRON, .45), head=metal("#D3DBE4", .45),
-               flange=metal(STEEL, .45), cap=metal(IRON, .45), collar=metal("#6C7488", .45)),
-    "T4": dict(haft=wood(DARK_WOOD), wrap=cloth(DARK_LEATHER), butt=metal(GOLD), head=metal("#5A6070", .45),
-               flange=metal(IRON, .45), cap=metal(GOLD), collar=metal(GOLD)),
+    "T1": dict(haft=wood(DARK_WOOD), wrap=cloth(LEATHER), butt=metal(IRON, .45), head=metal(IRON, .50),
+               flange=metal("#A2AAB6", .50), cap=metal(GOLD, .55), collar=metal(DARK_IRON, .40)),
+    "T2": dict(haft=wood(DARK_WOOD), wrap=cloth("#2F5A3A"), butt=metal(BRONZE), head=metal(STEEL, .50),
+               flange=metal(STEEL, .55), cap=metal(BRONZE, .55), collar=metal(BRONZE)),
+    "T3": dict(haft=wood("#7A4A2E"), wrap=cloth("#2F62C8"), butt=metal("#9DB0C8", .50), head=metal("#D3DBE4", .45),
+               flange=metal("#9DB0C8", .50), cap=metal("#9DB0C8", .50), collar=metal("#6C7488", .45)),
+    "T4": dict(haft=wood(DARK_WOOD), wrap=cloth("#5A1E28"), butt=metal(GOLD), head=metal("#5A6070", .45),
+               flange=metal(GOLD), cap=stone(RUBY, .35), collar=metal(GOLD)),
     "T5": dict(haft=wood("#5A3020"), wrap=cloth("#8A1F24"), butt=metal(GOLD), head=metal(GOLD),
                flange=metal("#F0CE78"), cap=glow(EMBER), collar=metal("#8A1F24", .35)),
     "T6": dict(haft=cloth(DEMON_BLACK), wrap=cloth("#1C1520"), butt=metal(DEMON, .40), head=metal("#4A3446", .40),
@@ -155,9 +155,9 @@ STAFF = {   # heads: oak · arcane · rune · elder · lich · abyss (web staffS
                collar=metal(DEMON, .40), claw=metal("#40324E", .40), orb=glow(CRIMSON)),
 }
 
-WAND = {   # web wandSpec: violet wood, gold bands, cyan marquise crystal
-    "T1": dict(shaft=wood(WOOD), band=metal(IRON, .45), crystal=stone("#9FD8FF", .45), cap=metal(IRON, .45)),
-    "T2": dict(shaft=wood("#7A3A8A"), band=metal(GOLD), crystal=glow(CYAN), cap=metal(GOLD)),
+WAND = {   # web wandSpec (T1): violet wood, gold bands, cyan marquise crystal
+    "T1": dict(shaft=wood("#7A3A8A"), band=metal(GOLD), crystal=stone(CYAN, .45), cap=metal(GOLD)),
+    "T2": dict(shaft=wood("#4A2A5A"), band=metal(SILVER, .55), crystal=glow(CYAN), cap=metal(SILVER, .55)),
     "T3": dict(shaft=metal("#6C7488", .40), band=metal("#8A94A8", .45), crystal=glow("#4F8CFF"),
                cap=metal("#8A94A8", .45)),
     "T4": dict(shaft=wood("#D8CCB0"), band=metal(GOLD), crystal=glow("#FFB84A"), cap=metal(GOLD)),

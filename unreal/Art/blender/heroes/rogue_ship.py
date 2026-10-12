@@ -259,6 +259,10 @@ CLOSE_KEYS = [("Attack01", "beat", "se"), ("Attack02", "beat", "se"), ("Attack03
               ("Cast_Multishot", 10, "side"), ("Dodge", 6, "side"), ("Hurt", 0, "se"), ("Death", 32, "front")]
 BACK_CLIPS = ("Attack01", "Attack02", "Attack03", "Cast01", "Cast02", "Cast_Multishot", "Dodge", "Death")
 
+# blob shadow (art review 8: 38 / 36 cm had no rationale; the warrior's 39 cm follows spec §3.7)
+BLOB_NOTE = ("spec §3.7: 13 u = 33.8 cm at the spec's own 2.6 cm per u (warrior 15 u = 39 cm); all three heroes on "
+             "one scale, not the hero's mesh unit.")
+
 HERO = HS.HeroDef(
     asset=RG.ASSET, token=RG.TOKEN, game_id="player_rogue",
     display_name={"zh-CN": "影刃", "en": "Shadowblade"},
@@ -278,7 +282,8 @@ HERO = HS.HeroDef(
            HS.Item(RG.QUIVER, "quiver", "quiver", kind="body",
                    extra={"note": "hip quiver on the body socket `quiver` (pelvis), authored in the socket frame: "
                                   "attach with no extra transform"})],
-    blob_radius=0.36, fx=FX, eye_socket="eyes", eye_glow=EYE_GLOW, clip_meta=clip_meta,
+    blob_radius=0.338, blob_note=BLOB_NOTE,
+    fx=FX, eye_socket="eyes", eye_glow=EYE_GLOW, clip_meta=clip_meta,
     qa_groups=QA_GROUPS, qa_pairs=QA_PAIRS, qa_limits=QA_LIMITS, qa_clip_limits=QA_CLIP_LIMITS,
     qa_head={"clips": ("Attack01", "Attack02", "Attack03", "Cast01"), "maxYaw": 14.0, "maxDown": 12.0},
     item_grips={RG.DAGGER: lambda co: -0.075 < co.y < 0.06 and math.hypot(co.x, co.z) < 0.03,

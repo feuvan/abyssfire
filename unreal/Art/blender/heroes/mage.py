@@ -181,9 +181,22 @@ def skirt_section(k: float) -> tuple[float, float, float, float]:
     return z, u(C._hermite(ks, rx, k)), u(C._hermite(ks, ry, k)), 0.0
 
 
+# soft vertical flutes growing toward the hem (art review 8: a wide flare read as a rigid cone / flat tray between
+# the four chains; under three-band shading the flutes break the panel into cloth folds). Crests on the chain
+# angles (0, ±90, 180) so a flared chain lifts a fold, not a trough.
+FLUTE_N, FLUTE_A, FLUTE_K0 = 8, 0.03, 0.22
+
+
+def flute(k: float, a: float) -> float:
+    w = max(0.0, (k - FLUTE_K0) / (1.0 - FLUTE_K0))
+    return 1.0 + FLUTE_A * w * w * (3.0 - 2.0 * w) * math.cos(math.radians(FLUTE_N * a))
+
+
 def skirt_point(k: float, a: float, d: float = 0.0) -> Vector:
     """Skirt surface at ``k`` and angle ``a`` (deg: 0 front, +90 left) pushed ``d`` along the outward normal."""
     z, rx, ry, cy = skirt_section(k)
+    m = flute(k, a)
+    rx, ry = rx * m, ry * m
     e = 2.15
     t = math.radians(a - 90.0)
     c, s = math.cos(t), math.sin(t)
@@ -303,18 +316,64 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0) -> bpy.types.Object:
     body = asset.finish_mesh(b, pal, "hero", rig=rig, grounding_height=HEIGHT,
                              name=f"{ASSET}_LOD{lod}" if lod else f"{ASSET}_Mesh")
     body["af_parts"] = json.dumps(names)
+    lift_normals(body, names, SKIRT_LIFT_PARTS, SKIRT_NORMAL_LIFT)
     body["af_lod"] = lod
     return body
 
 
 LAST_PARTS: list = []
 
+# robe rim wash (art review 8): from the W1 camera (50° above) a vertical cloth side faces the view at N·V ≤ 0.64, so
+# the banded rim (N·V < 0.44 on the lit half) covered a third of the skirt in pale grey-lavender. The outer skirt's
+# exported custom normals are tilted up by ``SKIRT_NORMAL_LIFT`` (n + lift·Z, the only camera-invariant bias: the
+# hero turns under a fixed camera): less grazing area, the indigo kept; the trade is a little more light band.
+SKIRT_LIFT_PARTS = ("skirt", "lining", "rune", "hem", "skirt_edge", "skirt_fold", "robe_seam")
+SKIRT_NORMAL_LIFT = 0.25
+
+
+def lift_normals(obj, names: list, parts: tuple, lift: float) -> None:
+    """Tilt the toon (slot 0) corner normals of ``parts`` that face outward (away from the body axis) toward +Z by
+    ``lift`` (n + lift·Z, renormalised); the hull's custom normals and inner (lining-side) loops are kept."""
+    if lift <= 0.0:
+        return
+    me = obj.data
+    nl = np.zeros(len(me.loops) * 3, np.float32)
+    me.corner_normals.foreach_get("vector", nl)
+    nl = nl.reshape(-1, 3)
+    fp = np.zeros(len(me.polygons), np.int32)
+    me.attributes["af_part"].data.foreach_get("value", fp)
+    mi = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("material_index", mi)
+    ls = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("loop_start", ls)
+    lt = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("loop_total", lt)
+    cn = np.zeros(len(me.polygons) * 3)
+    me.polygons.foreach_get("center", cn)
+    cn = cn.reshape(-1, 3)
+    want = np.array([names[i] in parts for i in fp]) & (mi == 0)
+    for f in np.nonzero(want)[0]:
+        rad = cn[f, :2] / max(1e-6, float(np.linalg.norm(cn[f, :2])))
+        sl = slice(ls[f], ls[f] + lt[f])
+        n = nl[sl]
+        out = (n[:, :2] @ rad) > 0.0
+        n2 = n + np.array([0.0, 0.0, lift], np.float32)
+        n2 /= np.linalg.norm(n2, axis=1, keepdims=True)
+        nl[sl] = np.where(out[:, None], n2, n)
+    me.normals_split_custom_set([tuple(v) for v in nl])
+
 # face opening (web: a dark oval h −6.1 … 5.5, ±1.05 rad round the hood front; trimmed in 3D so the hood keeps a
 # cheek either side), in hood units about the head centre
 OPEN_Z0, OPEN_Z1, OPEN_A = -5.9, 5.2, 52.0
 OPEN_DEPTH = 0.046
 EYE_H = 1.0                        # web eyes at h 1.1
-BROW_H = 1.75                      # forehead in the hood's shadow above this (web brow stroke at h 2.6)
+# forehead *and eye line* in the hood's shadow above this (art review 8: with the shade above the eyes the face read
+# as a flat peach disc filling the opening and the forehead band as a skull cap; web: the eyes glow out of shadow)
+BROW_H = 0.25
+# the face sits deeper and narrower in the opening so a ring of the dark hood interior (#1A1030) frames it
+FACE_RECESS = 0.026                # face front behind the hood surface (was 1.3 cm)
+FACE_W, FACE_H, FACE_D = 3.85, 4.15, 0.052     # half-width / half-height (hood units), depth (m)
+EYE_X = 1.95                       # eye centres ± this (hood units) off the face centre
 
 
 def open_edge(a: float) -> tuple[float, float] | None:
@@ -355,6 +414,10 @@ def add_hood(b: M.Builder) -> None:
             rows += [hc + uh(e[0]) - eps, hc + uh(e[0]) + eps, hc + uh(e[1]) - eps, hc + uh(e[1]) + eps]
     zs = sorted(set([round(z, 5) for z in zs + rows if hp.z0 <= z <= hp.z1]))
     hood = profile_mesh(hp, zs, 24, disp=disp, cap0=None, cap1="fan", dome1=uh(0.25), extra_angles=cols)
+    # the grid cells straddling the opening's edge (15° × 1 u) made dark walls that stepped out past the gold rim as
+    # dark squares (art review 8): every undisplaced vertex of a straddling cell is slid along the hood surface onto
+    # the edge curve, so the recess walls end exactly at the edge, under the rim
+    HB.snap_open_edge(hood, hp, hc, U * HOOD_K, OPEN_A, OPEN_Z0, OPEN_Z1, face_r_at(hc))
     shell, recess = C.split_faces(hood, lambda bm, f: any(v[bm.verts.layers.int["af_disp"]] for v in f.verts))
     hull = profile_mesh(hp, list(np.linspace(hp.z0, hp.z1, 16)), 28, cap0="fan", cap1="fan", dome0=-0.03,
                         dome1=uh(0.25))
@@ -401,9 +464,9 @@ def add_face(b: M.Builder, hood_id: int) -> None:
     hc = D.hc
     fz = hc + uh(-0.3)
     front = face_r_at(fz)
-    depth = 0.052
-    cy = -(front - 0.013) + depth                      # face front 1.3 cm behind the hood surface
-    face = ell((uh(4.3), depth, uh(4.4)), (0, cy, fz), sides=20, rings=12, exp=2.1)
+    depth = FACE_D
+    cy = -(front - FACE_RECESS) + depth
+    face = ell((uh(FACE_W), depth, uh(FACE_H)), (0, cy, fz), sides=20, rings=12, exp=2.1)
     zb = hc + uh(BROW_H)
     lit, shade = C.split_faces(face, lambda bm, f: f.calc_center_median().z > zb)
     bind = Bind.rigid("head")
@@ -411,12 +474,12 @@ def add_face(b: M.Builder, hood_id: int) -> None:
     b.add(shade, "skin_shade", bind, name="face_shade", outline=False, covered_by=hood_id)
     # nose: a blunt wedge under the eyes catching the key light
     nz = hc + uh(-0.9)
-    fr = face_r_at(nz) - 0.013
-    nose = ell((0.015, 0.018, 0.024), (0, -fr - 0.004, nz), sides=10, rings=6)
+    fr = face_r_at(nz) - FACE_RECESS
+    nose = ell((0.014, 0.018, 0.023), (0, -fr - 0.004, nz), sides=10, rings=6)
     b.add(nose, "skin", bind, name="nose", outline=False, covered_by=hood_id)
     # glowing eyes: slanted almond slits in the brow shadow (web 1.6 × 0.9 u at phi ±0.36 about the face)
     for sx, (ex, yy, ez) in zip((1.0, -1.0), eye_points()):
-        eye = ell((0.026, 0.0065, 0.0125), (0, 0, 0), sides=12, rings=6)
+        eye = ell((0.023, 0.0065, 0.0115), (0, 0, 0), sides=12, rings=6)
         eye.rotate("y", -sx * 10.0)
         eye.rotate("z", sx * 18.0)
         b.add(eye.translate((ex, yy, ez)), "eye", bind, name="eye", outline=False, covered_by=hood_id)
@@ -425,13 +488,13 @@ def add_face(b: M.Builder, hood_id: int) -> None:
 def eye_points() -> list[Vector]:
     """Rest centres of the two eyes (left, right): the face's ``depth`` 5.2 cm, the slits 3.5 mm proud of it. The
     portrait composites the web's per-eye glow on them (``hero_ship.render_portrait``)."""
-    hc, depth = D.hc, 0.052
+    hc, depth = D.hc, FACE_D
     ez = hc + uh(EYE_H)
-    fr = face_r_at(ez) - 0.013
+    fr = face_r_at(ez) - FACE_RECESS
     out = []
     for sx in (1.0, -1.0):
-        ex = sx * uh(2.15)
-        yy = -fr + depth * (1 - math.sqrt(max(0.0, 1 - (ex / uh(4.3)) ** 2))) - 0.0035
+        ex = sx * uh(EYE_X)
+        yy = -fr + depth * (1 - math.sqrt(max(0.0, 1 - (ex / uh(FACE_W)) ** 2))) - 0.0035
         out.append(Vector((ex, yy, ez)))
     return out
 
@@ -440,7 +503,7 @@ def add_beard(b: M.Builder) -> None:
     """Pointed silver beard: a lens-section loft from the cheeks over the hood's lower rim down the chest to the
     tip (web beard blob: 7 u wide under the cheeks, tip 10.6 u below the head centre), three strand grooves."""
     hc = D.hc
-    spine = HB.catmull([Vector((0, -face_r_at(hc - uh(1.9)) + 0.026, hc - uh(1.9))),
+    spine = HB.catmull([Vector((0, -face_r_at(hc - uh(1.9)) + FACE_RECESS + 0.010, hc - uh(1.9))),
                         Vector((0, -uh(7.25), hc - uh(4.4))), Vector((0, -uh(7.2), hc - uh(7.4))),
                         Vector((0, -uh(6.4), hc - uh(11.0)))], 14)
     n = len(spine)
@@ -510,23 +573,40 @@ def add_skirt(b: M.Builder) -> None:
     t = SKIRT_THICK / 2
     # front opening (web: lining panel between phi 0.12 and 0.55 → toward the right, gold edges, 3 rune diamonds)
     a0, a1 = -33.0, -7.0
-    ks = [0.02 + 0.98 * i / 14 for i in range(15)]
-    panel = [[skirt_point(k, a0 + (a1 - a0) * j / 6, t + 0.0012) for j in range(7)] for k in ks]
+    # (22 rows × 9 columns: the rune diamonds lie 2 mm over it — a coarser lining, skinned through the chains' steep
+    # weight blend near the yoke, bulged through them; the panel ends under the gold hem band, k .95 → 1)
+    ks = [0.02 + 0.935 * i / 21 for i in range(22)]
+    panel = [[skirt_point(k, a0 + (a1 - a0) * j / 8, t + 0.0012) for j in range(9)] for k in ks]
     b.add(HB.outward(HB.sheet_grid(panel), lambda c: Vector((0, 0, c.z))), "lining", bind, name="lining",
           outline=False, covered_by=sid)
     for a in (a0, a1):
         edge = [[skirt_point(k, a + da, t + 0.0019) for da in (-1.2, 0.0, 1.2)] for k in ks]
         b.add(HB.outward(HB.sheet_grid(edge), lambda c: Vector((0, 0, c.z))), "trim", bind, name="skirt_edge",
               outline=False, covered_by=sid)
+    # three rune diamonds hugging the flared lining (art review 8: flat plates held world-up while the cone slopes
+    # away — their lower halves sank into the lining and read as clipped pentagons): each corner and a 5 × 5
+    # grid lie on the skirt surface itself (``skirt_point`` at the diamond's own k / angle), 3.3 mm over the lining
+    # (the lining's coarser rows bridge the creases at the chain joints)
     am = (a0 + a1) / 2
+    slant = (skirt_point(0.0, am) - skirt_point(1.0, am)).length
     for i in range(3):
         k = 0.26 + i * 0.24
-        c = skirt_point(k, am, t + 0.0024)
-        n = (skirt_point(k, am, t + 0.01) - c).normalized()
-        fr = R.frame(c, Vector((0, 0, 1)), n)
         s = 1.0 + 0.12 * i
-        dia = C.plate2d([(0.0, -u(1.3) * s), (u(0.85) * s, 0.0), (0.0, u(1.3) * s), (-u(0.85) * s, 0.0)], 0.0016)
-        b.add(dia.transform(fr), "rune", bind, name="rune", outline=False, covered_by=sid)
+        r = Vector(skirt_point(k, am).xy).length
+        dk, da = u(1.3) * s / slant, math.degrees(u(0.85) * s / r)
+        T, Rr, Bt, Lf = (k - dk, am), (k, am + da), (k + dk, am), (k, am - da)
+        n = 5
+        grid = []
+        for ip in range(n):
+            row = []
+            for iq in range(n):
+                p_, q_ = ip / (n - 1), iq / (n - 1)
+                kk = ((1 - p_) * (1 - q_) * T[0] + p_ * (1 - q_) * Rr[0] + p_ * q_ * Bt[0] + (1 - p_) * q_ * Lf[0])
+                aa = ((1 - p_) * (1 - q_) * T[1] + p_ * (1 - q_) * Rr[1] + p_ * q_ * Bt[1] + (1 - p_) * q_ * Lf[1])
+                row.append(skirt_point(kk, aa, t + 0.0045))
+            grid.append(row)
+        b.add(HB.outward(HB.sheet_grid(grid), lambda c: Vector((0, 0, c.z))), "rune", bind, name="rune",
+              outline=False, covered_by=sid)
     # gold hem (web: TRIM line round the hem, 0.9 u)
     hk = [0.95, 0.975, 1.0]
     o2 = [[skirt_point(k, -180.0 + 360.0 * c / 44, t + 0.0016) for c in range(44)] for k in hk]
@@ -572,11 +652,15 @@ SKIRT_ANG = {"f": 0.0, "l": 90.0, "b": 180.0, "r": -90.0}
 def skirt_weights(co: np.ndarray) -> np.ndarray:
     """Skirt skin weights from its surface parameters: round the skirt the four chains blend by angle (smoothstep
     between neighbours, so the cone bends as one sheet), down it bone → bone between bone centres; the waist band
-    (top 13 %) stays on the pelvis, with a touch of each thigh on its own side near the hip."""
+    (down to the chains' root, k .09, handing over by k .21) stays on the pelvis, with a touch of each thigh on its own
+    side near the hip."""
     z0, z1 = th(SKIRT_TOP_H), u(SKIRT_HEM_Z)
     k = np.clip((z0 - co[:, 2]) / (z0 - z1), 0.0, 1.0)
     a = np.degrees(np.arctan2(co[:, 0], -co[:, 1]))          # 0 front, +90 left
-    yoke = 1.0 - HB.smooth01(k / 0.13)
+    # the waist band stays on the pelvis down to the chains' root (k .10) and hands over below it (art review 8: with
+    # chain weight *above* the root, an outward swing of the upper link turned that band inward — the panel folded
+    # under the sash and its dark inside showed as a lens below the sash)
+    yoke = 1.0 - HB.smooth01((k - 0.09) / 0.12)
     W = np.zeros((len(co), len(SKIRT_BONES)))
     thigh = 0.18 * np.exp(-((k - 0.10) / 0.08) ** 2)
     W[:, 0] = yoke * (1 - thigh)
@@ -881,7 +965,7 @@ def crystal_local() -> Matrix:
 
 
 def eyes_point() -> Vector:
-    return Vector((0, -(face_r_at(D.hc + uh(EYE_H)) - 0.013) - 0.004, D.hc + uh(EYE_H)))
+    return Vector((0, -(face_r_at(D.hc + uh(EYE_H)) - FACE_RECESS) - 0.004, D.hc + uh(EYE_H)))
 
 
 def build_all(lod1: bool = False):

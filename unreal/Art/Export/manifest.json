@@ -247,35 +247,37 @@
      "socket": "weapon_r"
     }
    ],
-   "blobShadowRadiusCm": 38.0,
+   "blobShadowNote": "spec \u00a73.7: 13 u = 33.8 cm at the spec's own 2.6 cm per u (warrior 15 u = 39 cm); all three heroes on one scale, not the hero's mesh unit. The robe hem (rest radius 22-24 cm) stays inside it.",
+   "blobShadowRadiusCm": 33.8,
    "bones": 57,
    "boundsCm": {
     "max": [
-     48.354,
-     51.053,
-     169.279
+     55.822,
+     26.909,
+     173.37
     ],
     "min": [
-     -44.542,
-     -35.237,
-     -1.847
+     -57.611,
+     -31.345,
+     -1.843
     ]
    },
+   "boundsNote": "bind pose (the FBX rest pose), body + outline hull, UE cm",
    "budget": {
-    "decision": "The \u00a71.9 figures budget the toon surface; the baked outline hull (P7) is a second, cheap draw (same skinning, unlit one-colour pixel shader) kept to <= 0.6x the toon triangles via low-poly hull proxies and no-hull trims (cloth that bends between its rows keeps a proxy on every row, or the ink thins on the bend): here 0.60x. The drawn LOD0 total (toon + hull + held items) is the figure compared across heroes.",
-    "drawnLod0": 28834,
-    "hullRatio": 0.6,
+    "decision": "The \u00a71.9 figures budget the toon surface; the baked outline hull (P7) is a second, cheap draw (same skinning, unlit one-colour pixel shader) kept to <= 0.6x the toon triangles via low-poly hull proxies and no-hull trims (cloth that bends between its rows keeps a proxy on every row, or the ink thins on the bend): here 0.59x. The drawn LOD0 total (toon + hull + held items) is the figure compared across heroes.",
+    "drawnLod0": 29118,
+    "hullRatio": 0.59,
     "items": {
      "outline": 1228,
      "toon": 1888
     },
     "lod0": {
      "outline": 9608,
-     "toon": 16110
+     "toon": 16394
     },
     "lod1": {
      "outline": 4014,
-     "toon": 6501
+     "toon": 6569
     },
     "spec": "art-inventory-ch1 \u00a71.9 hero: LOD0 14-18k, LOD1 7k triangles, <= 75 bones per section"
    },
@@ -396,13 +398,13 @@
     },
     "spiritColor": "#A98BFF",
     "visorGlow": {
-     "alpha": 0.5,
+     "alpha": 0.35,
      "alphaPerFx": 0.3,
      "blend": "additive",
      "color": "#9FE6FF",
-     "coreAlpha": 0.55,
+     "coreAlpha": 0.4,
      "coreColor": "#E8FBFF",
-     "coreRadiusCm": 3.2,
+     "coreRadiusCm": 1.6,
      "facingFade": "clamp(2 * dot(headFwd, toCamera) + 0.3, 0, 1)",
      "falloff": [
       [
@@ -427,7 +429,7 @@
       ]
      ],
      "offAtDeathFraction": 0.7,
-     "radiusCm": 9.0,
+     "radiusCm": 5.0,
      "socket": "eyes"
     }
    },
@@ -445,10 +447,10 @@
      "minFrac": 0.9,
      "minPx": 3.0
     },
-    "maxHullLumP95": 30.1,
-    "medianRimPx": 3.7,
-    "minFracDark": 0.9494,
-    "minFracRim": 0.9375,
+    "maxHullLumP95": 30.3,
+    "medianRimPx": 3.68,
+    "minFracDark": 0.9664,
+    "minFracRim": 0.9376,
     "pass": true
    },
    "itemAttachments": [
@@ -470,7 +472,7 @@
      "screenSizeNote": "LOD0 is the gameplay mesh at every W1 zoom (screen size 0.2-0.28); LOD1 only below 0.15 (far zoom-out, small UI / cutscene shots)",
      "triangles": {
       "outline": 4014,
-      "toon": 6501
+      "toon": 6569
      }
     }
    ],
@@ -539,6 +541,20 @@
    ],
    "qa": {
     "failures": [],
+    "metrics": {
+     "deathHemHipRatio": {
+      "final": 1.123,
+      "frames": [
+       28,
+       40
+      ],
+      "hemWidthCm": 38.1,
+      "hipWidthCm": 34.0,
+      "limit": 1.25,
+      "maxHeld": 1.131
+     },
+     "deathHemMinHeightCm": 4.04
+    },
     "pass": true
    },
    "scale": 1.0,
@@ -664,7 +680,7 @@
      "relLocCm": [
       0.0,
       -17.104,
-      18.913
+      17.613
      ],
      "relRotDeg": [
       0,
@@ -673,14 +689,14 @@
      ],
      "restLocCm": [
       0.0,
-      18.913,
+      17.613,
       149.425
      ]
     }
    ],
    "triangles": {
     "outline": 9608,
-    "toon": 16110
+    "toon": 16394
    }
   },
   "SK_Hero_Rogue": {
@@ -947,20 +963,22 @@
      "socket": "weapon_l"
     }
    ],
-   "blobShadowRadiusCm": 36.0,
+   "blobShadowNote": "spec \u00a73.7: 13 u = 33.8 cm at the spec's own 2.6 cm per u (warrior 15 u = 39 cm); all three heroes on one scale, not the hero's mesh unit.",
+   "blobShadowRadiusCm": 33.8,
    "bones": 56,
    "boundsCm": {
     "max": [
-     40.92,
-     37.871,
-     155.019
+     55.443,
+     18.965,
+     163.719
     ],
     "min": [
-     -41.068,
-     -31.814,
+     -55.443,
+     -28.763,
      -1.844
     ]
    },
+   "boundsNote": "bind pose (the FBX rest pose), body + outline hull, UE cm",
    "budget": {
     "decision": "The \u00a71.9 figures budget the toon surface; the baked outline hull (P7) is a second, cheap draw (same skinning, unlit one-colour pixel shader) kept to <= 0.6x the toon triangles via low-poly hull proxies and no-hull trims (cloth that bends between its rows keeps a proxy on every row, or the ink thins on the bend): here 0.47x. The drawn LOD0 total (toon + hull + held items) is the figure compared across heroes.",
     "drawnLod0": 34634,
@@ -1148,9 +1166,9 @@
      "minPx": 3.0
     },
     "maxHullLumP95": 30.3,
-    "medianRimPx": 3.86,
+    "medianRimPx": 3.84,
     "minFracDark": 0.9274,
-    "minFracRim": 0.9871,
+    "minFracRim": 0.9884,
     "pass": true
    },
    "itemAttachments": [
@@ -1392,9 +1410,9 @@
      "bone": "pelvis",
      "name": "quiver",
      "relLocCm": [
-      -7.836,
-      -11.157,
-      -19.288
+      -3.058,
+      -13.081,
+      -19.286
      ],
      "relRotDeg": [
       0,
@@ -1402,9 +1420,9 @@
       0
      ],
      "restLocCm": [
-      -7.836,
-      -19.288,
-      87.398
+      -3.058,
+      -19.286,
+      89.322
      ]
     }
    ],
@@ -2184,10 +2202,15 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 27.7,
-    "medianRimPx": 3.33,
+    "medianFracRimSpec": 0.793,
+    "medianRimPx": 3.34,
     "minFracDark": 1.0,
-    "minFracRim": 0.9678,
-    "pass": true
+    "minFracRim": 0.9682,
+    "minFracRimSpec": 0.625,
+    "pass": true,
+    "specNote": "fraction of silhouette edge pixels with a rim >= 3 px (the class width, spec \u00a71.3) on every gated cell; the kit gate is 2.5 px (outline.GATE_SLACK_PX)",
+    "specPx": 3.0,
+    "worstSpecCell": "game_facings.png Idle F0 front"
    },
    "kind": "SkeletalMesh",
    "lods": [
@@ -2246,7 +2269,8 @@
     "mon_goblin/items.png",
     "mon_goblin/lod1.png",
     "mon_goblin/material_ab.png",
-    "mon_goblin/poses_close.png",
+    "mon_goblin/poses_close_a.png",
+    "mon_goblin/poses_close_b.png",
     "mon_goblin/turnaround.png"
    ],
    "refSpeedCmS": 165.0,
@@ -2427,7 +2451,7 @@
       "zh-CN": "\u5c0f\u8d3c\u65af\u5c3c\u514b"
      },
      "elite": true,
-     "note": "quest q_lost_pendant hunt leader: SK_Mon_Goblin x1.25 + the stolen pendant (glint) + loot sack + elite crown",
+     "note": "quest q_lost_pendant hunt leader: SK_Mon_Goblin x1.25 + the stolen pendant (glint) + loot sack + elite crown. Deviation from spec \u00a74.5 (pendant 'on the belt'): the locket hangs on the chest (spine_03) among the bone-tooth trophies \u2014 every belt spot is crossed by the spear butt, the free fist's swing, the belly or the loincloth in some clip (per-frame QA), and the chest reads from every front view",
      "scale": 1.25
     },
     "hunt_redcap_gruk": {
@@ -2557,14 +2581,14 @@
    "bones": 56,
    "boundsCm": {
     "max": [
-     43.558,
-     35.477,
-     131.349
+     43.845,
+     35.776,
+     139.157
     ],
     "min": [
-     -44.455,
-     -23.877,
-     -1.55
+     -44.755,
+     -24.143,
+     -1.85
     ]
    },
    "budget": {
@@ -2634,18 +2658,23 @@
    "inkGate": {
     "cells": 17,
     "gate": {
-     "class": "monster",
+     "class": "boss",
      "darkLum": 40.0,
      "darkWithinPx": 3,
      "maxHullLumP95": 40.0,
      "minFrac": 0.9,
-     "minPx": 2.5
+     "minPx": 3.0
     },
-    "maxHullLumP95": 30.2,
-    "medianRimPx": 3.43,
+    "maxHullLumP95": 30.5,
+    "medianFracRimSpec": 0.7893,
+    "medianRimPx": 3.91,
     "minFracDark": 1.0,
-    "minFracRim": 0.9674,
-    "pass": true
+    "minFracRim": 0.9686,
+    "minFracRimSpec": 0.6921,
+    "pass": true,
+    "specNote": "fraction of silhouette edge pixels with a rim >= 3.5 px (the class width, spec \u00a71.3) on every gated cell; the kit gate is 3 px (outline.GATE_SLACK_PX)",
+    "specPx": 3.5,
+    "worstSpecCell": "game_facings.png Walk F9 front"
    },
    "kind": "SkeletalMesh",
    "lods": [
@@ -2655,7 +2684,7 @@
      "import": "same SKEL_Goblin armature and bind pose; import as LOD index 1 of SK_Mon_GoblinChief (USkeletalMeshEditorSubsystem::ImportLOD / Interchange LOD import) \u2014 Blender's FBX exporter cannot write an FbxLODGroup, so the LOD ships as its own file",
      "index": 1,
      "screenSize": 0.05,
-     "screenSizeNote": "UE screen size of SK_Mon_GoblinChief at the W1 camera: 0.151 (max zoom-out) to 0.252 (max zoom-in), 0.189 at the default distance \u2014 desktop always draws LOD0; LOD1 is the mobile-low gameplay mesh (skeletal LOD bias / MinLOD 1) and the far fallback",
+     "screenSizeNote": "UE screen size of SK_Mon_GoblinChief at the W1 camera: 0.157 (max zoom-out) to 0.262 (max zoom-in), 0.197 at the default distance \u2014 desktop always draws LOD0; LOD1 is the mobile-low gameplay mesh (skeletal LOD bias / MinLOD 1) and the far fallback",
      "triangles": {
       "outline": 2810,
       "toon": 3247
@@ -2670,18 +2699,19 @@
      "parent": "M_AF_Toon"
     },
     {
-     "class": "monster",
+     "class": "boss",
      "index": 1,
      "name": "M_AF_Outline",
      "outlineMix": 0.4,
-     "outlinePx1080": 3.0,
+     "outlinePx1080": 3.5,
      "palette": "Monsters_Plains",
      "parent": "M_AF_Outline",
-     "px1080AtDefaultDistance": 1.8,
-     "widthCm": 1.5
+     "px1080AtDefaultDistance": 2.16,
+     "widthCm": 1.8
     }
    ],
    "notes": "Boss of Chapter 1. Clips in place; Roar plays under the boss title card. Death is followed by the knockback impulse and a dithered fade (spec \u00a74).",
+   "portrait": "Portraits/T_UI_Portrait_GoblinChief.png",
    "previews": [
     "mon_goblin_chief/anim_Attack01.png",
     "mon_goblin_chief/anim_Death.png",
@@ -2704,7 +2734,10 @@
     "mon_goblin_chief/items.png",
     "mon_goblin_chief/lod1.png",
     "mon_goblin_chief/material_ab.png",
-    "mon_goblin_chief/poses_close.png",
+    "mon_goblin_chief/portrait.png",
+    "mon_goblin_chief/portrait_zoom2x.png",
+    "mon_goblin_chief/poses_close_a.png",
+    "mon_goblin_chief/poses_close_b.png",
     "mon_goblin_chief/turnaround.png"
    ],
    "refSpeedCmS": 150.0,
@@ -2993,11 +3026,11 @@
     "max": [
      36.404,
      43.733,
-     114.344
+     115.153
     ],
     "min": [
      -37.218,
-     -15.896,
+     -16.133,
      -1.55
     ]
    },
@@ -3027,13 +3060,20 @@
    "fbx": "Monsters/SK_Mon_GoblinShaman.fbx",
    "fx": {
     "castRuneRing": {
+     "alpha": 0.7,
      "color": "#7DFFA0",
      "fromMs": 83,
+     "innerDashed": true,
+     "innerRadiusCm": 16.1,
+     "innerSpinRad": 6.0,
+     "note": "radiusCm = fx 0 .. 1 (as the mage's castRuneRing)",
      "radiusCm": [
-      240,
-      310
+      22.2,
+      28.3
      ],
-     "toMs": 250
+     "socket": "fx_feet",
+     "toMs": 250,
+     "when": "Attack01 with fx > 0.5"
     },
     "eliteCrown": {
      "asset": "SM_FX_EliteCrown",
@@ -3107,10 +3147,15 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 31.2,
-    "medianRimPx": 3.3,
-    "minFracDark": 0.9874,
-    "minFracRim": 0.9644,
-    "pass": true
+    "medianFracRimSpec": 0.7876,
+    "medianRimPx": 3.27,
+    "minFracDark": 0.9888,
+    "minFracRim": 0.9685,
+    "minFracRimSpec": 0.6724,
+    "pass": true,
+    "specNote": "fraction of silhouette edge pixels with a rim >= 3 px (the class width, spec \u00a71.3) on every gated cell; the kit gate is 2.5 px (outline.GATE_SLACK_PX)",
+    "specPx": 3.0,
+    "worstSpecCell": "game_poses.png Attack01 F10 se"
    },
    "kind": "SkeletalMesh",
    "lods": [
@@ -3120,7 +3165,7 @@
      "import": "same SKEL_Goblin armature and bind pose; import as LOD index 1 of SK_Mon_GoblinShaman (USkeletalMeshEditorSubsystem::ImportLOD / Interchange LOD import) \u2014 Blender's FBX exporter cannot write an FbxLODGroup, so the LOD ships as its own file",
      "index": 1,
      "screenSize": 0.05,
-     "screenSizeNote": "UE screen size of SK_Mon_GoblinShaman at the W1 camera: 0.133 (max zoom-out) to 0.222 (max zoom-in), 0.166 at the default distance \u2014 desktop always draws LOD0; LOD1 is the mobile-low gameplay mesh (skeletal LOD bias / MinLOD 1) and the far fallback",
+     "screenSizeNote": "UE screen size of SK_Mon_GoblinShaman at the W1 camera: 0.134 (max zoom-out) to 0.223 (max zoom-in), 0.167 at the default distance \u2014 desktop always draws LOD0; LOD1 is the mobile-low gameplay mesh (skeletal LOD bias / MinLOD 1) and the far fallback",
      "triangles": {
       "outline": 2612,
       "toon": 3378
@@ -3170,7 +3215,8 @@
     "mon_goblin_shaman/items.png",
     "mon_goblin_shaman/lod1.png",
     "mon_goblin_shaman/material_ab.png",
-    "mon_goblin_shaman/poses_close.png",
+    "mon_goblin_shaman/poses_close_a.png",
+    "mon_goblin_shaman/poses_close_b.png",
     "mon_goblin_shaman/turnaround.png"
    ],
    "ranged": true,
@@ -3918,7 +3964,7 @@
    ],
    "triangles": {
     "outline": 884,
-    "toon": 900
+    "toon": 1044
    }
   },
   "SK_NPCKit_Beard_Braided": {
@@ -7118,14 +7164,14 @@
    "bones": 44,
    "boundsCm": {
     "max": [
-     -2.03,
-     -10.722,
-     85.991
+     -0.638,
+     -10.391,
+     88.752
     ],
     "min": [
-     -14.653,
-     -22.496,
-     58.662
+     -14.752,
+     -20.935,
+     56.135
     ]
    },
    "build": "slim",
@@ -7297,8 +7343,8 @@
     }
    ],
    "triangles": {
-    "outline": 240,
-    "toon": 528
+    "outline": 540,
+    "toon": 540
    }
   },
   "SK_NPCKit_Mantle": {
@@ -8894,7 +8940,7 @@
     },
     "lod0": {
      "outline": 6276,
-     "toon": 10028
+     "toon": 10172
     },
     "lod1": {
      "outline": 2982,
@@ -8913,12 +8959,28 @@
    "fx": {
     "anvilSparks": {
      "atMs": 427.0,
+     "depthTest": "runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide it) \u2014 the body occludes it in the ne / back facings",
+     "flashAlpha": 0.7,
+     "flashMs": 140.0,
+     "flashRadiusCm": 16.0,
      "glow": "#FFA040",
-     "note": "spec \u00a78.7 NS_NPC_AnvilSparks",
+     "note": "spec \u00a78.7 NS_NPC_AnvilSparks; previews draw the strike flash as a 16 cm #FFA040 card (core #FFD070) fading over 140 ms, 3 cm above the hot bar",
      "notify": "FX_HammerStrike",
      "on": "SM_Prop_Camp_AnvilStump",
      "socket": "strike",
      "sparks": "#FFD070"
+    },
+    "hotBarGlow": {
+     "alpha": 0.45,
+     "color": "#FF8A3A",
+     "coreAlpha": 0.6,
+     "coreColor": "#FFD08A",
+     "coreFrac": 0.35,
+     "depthTest": "runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide it) \u2014 the body occludes it in the ne / back facings",
+     "item": "SM_NPCKit_Prop_Tongs",
+     "note": "the hot iron in the tongs' jaws (the forge's focal accent, spec \u00a71.5): a steady glow card on the tongs' glow socket over the emissive bar",
+     "radiusCm": 7.0,
+     "socket": "glow"
     }
    },
    "gameIds": [
@@ -8936,7 +8998,7 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 25.3,
-    "medianRimPx": 3.23,
+    "medianRimPx": 3.16,
     "minFracDark": 0.9393,
     "minFracRim": 0.9549,
     "pass": true
@@ -9013,6 +9075,7 @@
    "scenery": [
     {
      "asset": "SM_Prop_Camp_AnvilStump",
+     "note": "spec \u00a75.2 gives \u2248 35 cm forward / 17 cm to the front-left (web x +11 u, lateral \u22125.5 u); the stout 3D smith's boots and belly reach into the stump there (body-anvil gap 0 cm at 35-42 cm forward, 0.1-2.3 cm at 47 cm, measured on the skinned mesh over the Work_Hammer keys), so the stump stands 52 cm forward, 12 cm left (gap >= 3.5 cm on every key); Work_Hammer's strike, tongs and FX_HammerStrike socket are solved on this offset \u2014 place it exactly here",
      "offsetCm": [
       12.0,
       52.0,
@@ -9160,7 +9223,7 @@
    ],
    "triangles": {
     "outline": 6276,
-    "toon": 10028
+    "toon": 10172
    }
   },
   "SK_NPC_EscortTravelingMerchant": {
@@ -9308,8 +9371,8 @@
    "boundsCm": {
     "max": [
      65.787,
-     26.056,
-     184.006
+     27.373,
+     183.682
     ],
     "min": [
      -63.62,
@@ -9345,6 +9408,7 @@
     "coinGlint": {
      "alpha": 0.9,
      "color": "#FFD860",
+     "depthTest": "runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide it) \u2014 the body occludes it in the ne / back facings",
      "note": "web: glow r 1.8 u #FFD860 a .9 at the near hand, 5 u above the palm x the pose fx (toss)",
      "notifyOff": "FX_CoinCatch",
      "notifyOn": "FX_CoinToss",
@@ -9368,9 +9432,9 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 25.1,
-    "medianRimPx": 3.35,
+    "medianRimPx": 3.23,
     "minFracDark": 1.0,
-    "minFracRim": 0.9369,
+    "minFracRim": 0.9417,
     "pass": true
    },
    "kind": "SkeletalMesh",
@@ -9704,6 +9768,7 @@
     "coinGlint": {
      "alpha": 0.9,
      "color": "#FFD860",
+     "depthTest": "runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide it) \u2014 the body occludes it in the ne / back facings",
      "note": "web: glow r 1.8 u #FFD860 a .9 at the near hand, 5 u above the palm x the pose fx (toss)",
      "notifyOff": "FX_CoinCatch",
      "notifyOn": "FX_CoinToss",
@@ -9727,9 +9792,9 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 29.2,
-    "medianRimPx": 3.15,
+    "medianRimPx": 3.14,
     "minFracDark": 1.0,
-    "minFracRim": 0.9268,
+    "minFracRim": 0.9359,
     "pass": true
    },
    "kind": "SkeletalMesh",
@@ -10025,11 +10090,11 @@
     },
     "lod0": {
      "outline": 4840,
-     "toon": 9590
+     "toon": 9734
     },
     "lod1": {
-     "outline": 2570,
-     "toon": 4922
+     "outline": 2580,
+     "toon": 4934
     },
     "spec": "art-inventory-ch1 \u00a71.9 NPC (merged look): LOD0 8-12k, LOD1 5k triangles, <= 75 bones per section",
     "weightedBones": 23
@@ -10045,6 +10110,7 @@
     "herbGlow": {
      "alpha": 0.45,
      "color": "#9FE07A",
+     "depthTest": "runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide it) \u2014 the body occludes it in the ne / back facings",
      "note": "web glow r 3.5 \u00b1 0.6 u #9FE07A a .45 over the hand",
      "pulse": 0.17,
      "pulseMs": 2000.0,
@@ -10067,9 +10133,9 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 29.5,
-    "medianRimPx": 3.25,
-    "minFracDark": 0.951,
-    "minFracRim": 0.9208,
+    "medianRimPx": 3.22,
+    "minFracDark": 0.9653,
+    "minFracRim": 0.9175,
     "pass": true
    },
    "kind": "SkeletalMesh",
@@ -10081,8 +10147,8 @@
      "index": 1,
      "screenSize": 0.05,
      "triangles": {
-      "outline": 2570,
-      "toon": 4922
+      "outline": 2580,
+      "toon": 4934
      },
      "use": "mobile-low gameplay mesh (skeletal LOD bias 1, baked hull only); an NPC is 0.10-0.20 of the screen at every W1 zoom, so desktop always draws LOD0 (as the monsters)"
     }
@@ -10279,7 +10345,7 @@
    ],
    "triangles": {
     "outline": 4840,
-    "toon": 9590
+    "toon": 9734
    }
   },
   "SK_NPC_PlainsWanderer": {
@@ -10397,7 +10463,7 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 27.5,
-    "medianRimPx": 3.1,
+    "medianRimPx": 3.11,
     "minFracDark": 1.0,
     "minFracRim": 0.9369,
     "pass": true
@@ -10722,6 +10788,7 @@
      "coreAlpha": 0.5,
      "coreColor": "#E8FFD0",
      "coreRadiusCm": 4.0,
+     "depthTest": "runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide it) \u2014 the body occludes it in the ne / back facings",
      "item": "SM_NPCKit_Prop_Staff",
      "note": "web glow r 4 u #FFCF50 a .55 over the orb #7FD6A0; 3D 11 cm a .5 (+ the orb's own bloom) so the orb keeps some of its ink at 1080p",
      "radiusCm": 11.0,
@@ -10745,7 +10812,7 @@
     "maxHullLumP95": 30.5,
     "medianRimPx": 3.21,
     "minFracDark": 0.9053,
-    "minFracRim": 0.9548,
+    "minFracRim": 0.9577,
     "pass": true
    },
    "kind": "SkeletalMesh",
@@ -11078,8 +11145,8 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 26.0,
-    "medianRimPx": 3.29,
-    "minFracDark": 1.0,
+    "medianRimPx": 3.27,
+    "minFracDark": 0.9978,
     "minFracRim": 0.9469,
     "pass": true
    },
@@ -11377,12 +11444,12 @@
      "toon": 388
     },
     "lod0": {
-     "outline": 4064,
-     "toon": 9870
+     "outline": 4364,
+     "toon": 9882
     },
     "lod1": {
-     "outline": 2036,
-     "toon": 4898
+     "outline": 2234,
+     "toon": 4902
     },
     "spec": "art-inventory-ch1 \u00a71.9 NPC (merged look): LOD0 8-12k, LOD1 5k triangles, <= 75 bones per section",
     "weightedBones": 30
@@ -11412,7 +11479,7 @@
     "maxHullLumP95": 30.5,
     "medianRimPx": 3.2,
     "minFracDark": 1.0,
-    "minFracRim": 0.9475,
+    "minFracRim": 0.9476,
     "pass": true
    },
    "kind": "SkeletalMesh",
@@ -11424,8 +11491,8 @@
      "index": 1,
      "screenSize": 0.05,
      "triangles": {
-      "outline": 2036,
-      "toon": 4898
+      "outline": 2234,
+      "toon": 4902
      },
      "use": "mobile-low gameplay mesh (skeletal LOD bias 1, baked hull only); an NPC is 0.10-0.20 of the screen at every W1 zoom, so desktop always draws LOD0 (as the monsters)"
     }
@@ -11621,8 +11688,8 @@
     }
    ],
    "triangles": {
-    "outline": 4064,
-    "toon": 9870
+    "outline": 4364,
+    "toon": 9882
    }
   },
   "SK_NPC_WanderingMerchant": {
@@ -11737,6 +11804,7 @@
     "coinGlint": {
      "alpha": 0.9,
      "color": "#FFD860",
+     "depthTest": "runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide it) \u2014 the body occludes it in the ne / back facings",
      "note": "web: glow r 1.8 u #FFD860 a .9 at the near hand, 5 u above the palm x the pose fx (toss)",
      "notifyOff": "FX_CoinCatch",
      "notifyOn": "FX_CoinToss",
@@ -11760,8 +11828,8 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 25.0,
-    "medianRimPx": 3.34,
-    "minFracDark": 1.0,
+    "medianRimPx": 3.28,
+    "minFracDark": 0.9958,
     "minFracRim": 0.905,
     "pass": true
    },
@@ -12008,16 +12076,17 @@
    "bones": 2,
    "boundsCm": {
     "max": [
-     35.305,
-     25.548,
-     78.246
+     33.789,
+     25.084,
+     48.05
     ],
     "min": [
-     -35.305,
-     -46.448,
-     -2.462
+     -33.849,
+     -24.813,
+     -5.8
     ]
    },
+   "boundsNote": "closed rest pose (bind pose, no clip); openBoundsCm = the Open end frame (lid up 105 deg)",
    "category": "Props",
    "displayName": "TreasureChest",
    "family": "environment.interactive",
@@ -12032,7 +12101,22 @@
    ],
    "heightCm": 45.8,
    "inkGate": {
-    "cells": 1,
+    "baked": [
+     {
+      "fracRim": 0.9109,
+      "rimPxMedian": 2.25,
+      "rimPxP10": 1.63,
+      "tag": "game_1080crop front baked"
+     },
+     {
+      "fracRim": 0.758,
+      "rimPxMedian": 1.75,
+      "rimPxP10": 1.25,
+      "tag": "game_open_1080crop front baked (Open end frame)"
+     }
+    ],
+    "cells": 2,
+    "cellsNote": "closed rest pose (game_1080crop) + Open end frame (game_open_1080crop)",
     "gate": {
      "class": "interactive",
      "darkLum": 64.0,
@@ -12041,8 +12125,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 24.4,
-    "medianRimPx": 4.98,
+    "maxHullLumP95": 46.6,
+    "medianRimPx": 2.63,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -12067,12 +12151,27 @@
     }
    ],
    "note": "hidden-area reward / random-event cache (spec 6.8): Idle = restless rattle (the seam glow pulse 0.55 +- 0.25 is the material's emissive x runtime CPD), Open = lid up 105 deg in 400 ms; ChestOpen notify -> NS_World_ChestOpen (light shaft, sparkles) at socket fx_open",
+   "openBoundsCm": {
+    "max": [
+     33.789,
+     25.084,
+     75.735
+    ],
+    "min": [
+     -33.849,
+     -46.281,
+     -5.8
+    ]
+   },
    "previews": [
     "Previews/SK_Prop_TreasureChest/game.png",
     "Previews/SK_Prop_TreasureChest/game_1080crop.png",
     "Previews/SK_Prop_TreasureChest/game_inkgate.png",
     "Previews/SK_Prop_TreasureChest/closeup.png",
     "Previews/SK_Prop_TreasureChest/turnaround.png",
+    "Previews/SK_Prop_TreasureChest/turnaround_2.png",
+    "Previews/SK_Prop_TreasureChest/game_open_1080crop.png",
+    "Previews/SK_Prop_TreasureChest/closeup_open.png",
     "Previews/SK_Prop_TreasureChest/anim_Idle.png",
     "Previews/SK_Prop_TreasureChest/anim_Open.png",
     "Previews/SK_Prop_TreasureChest/anims.png"
@@ -12120,7 +12219,7 @@
     }
    ],
    "triangles": {
-    "outline": 76,
+    "outline": 1110,
     "toon": 1372
    }
   },
@@ -12525,14 +12624,14 @@
    "attachSocket": "fx_overhead",
    "boundsCm": {
     "max": [
-     18.334,
-     13.134,
-     32.762
+     16.376,
+     13.105,
+     32.543
     ],
     "min": [
-     -18.334,
-     -19.089,
-     -1.498
+     -16.376,
+     -15.574,
+     -1.492
     ]
    },
    "category": "VFX",
@@ -12577,9 +12676,9 @@
      "minPx": 2.5
     },
     "maxHullLumP95": 30.2,
-    "medianRimPx": 3.05,
+    "medianRimPx": 2.99,
     "minFracDark": 1.0,
-    "minFracRim": 1.0,
+    "minFracRim": 0.9322,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -12627,10 +12726,10 @@
     }
    ],
    "triangles": {
-    "outline": 4080,
-    "toon": 4828
+    "outline": 336,
+    "toon": 542
    },
-   "widthCm": 35.0
+   "widthCm": 32.8
   },
   "SM_FX_Fireball": {
    "blocking": false,
@@ -12986,7 +13085,7 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 50.0,
-    "medianRimPx": 2.7,
+    "medianRimPx": 2.71,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -14339,14 +14438,14 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     61.49,
-     57.493,
-     75.085
+     55.779,
+     56.529,
+     72.672
     ],
     "min": [
-     -55.037,
-     -57.626,
-     10.399
+     -59.417,
+     -53.889,
+     9.414
     ]
    },
    "category": "Foliage",
@@ -14371,7 +14470,7 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 32.5,
-    "medianRimPx": 1.31,
+    "medianRimPx": 1.93,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -14400,13 +14499,14 @@
     "Previews/SM_Foliage_Plains_BerryBush_A/game_1080crop.png",
     "Previews/SM_Foliage_Plains_BerryBush_A/game_inkgate.png",
     "Previews/SM_Foliage_Plains_BerryBush_A/closeup.png",
-    "Previews/SM_Foliage_Plains_BerryBush_A/turnaround.png"
+    "Previews/SM_Foliage_Plains_BerryBush_A/turnaround.png",
+    "Previews/SM_Foliage_Plains_BerryBush_A/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1747,
-    "toon": 2143
+    "outline": 1658,
+    "toon": 3287
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -14418,14 +14518,14 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     63.164,
-     59.031,
-     75.033
+     62.03,
+     61.286,
+     73.86
     ],
     "min": [
-     -60.51,
-     -59.744,
-     9.973
+     -56.521,
+     -58.986,
+     7.19
     ]
    },
    "category": "Foliage",
@@ -14450,7 +14550,7 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 32.5,
-    "medianRimPx": 1.36,
+    "medianRimPx": 1.92,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -14479,13 +14579,14 @@
     "Previews/SM_Foliage_Plains_BerryBush_B/game_1080crop.png",
     "Previews/SM_Foliage_Plains_BerryBush_B/game_inkgate.png",
     "Previews/SM_Foliage_Plains_BerryBush_B/closeup.png",
-    "Previews/SM_Foliage_Plains_BerryBush_B/turnaround.png"
+    "Previews/SM_Foliage_Plains_BerryBush_B/turnaround.png",
+    "Previews/SM_Foliage_Plains_BerryBush_B/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1804,
-    "toon": 2272
+    "outline": 1780,
+    "toon": 3494
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -14499,7 +14600,7 @@
     "max": [
      28.819,
      21.768,
-     26.783
+     26.582
     ],
     "min": [
      -25.386,
@@ -14543,7 +14644,7 @@
    "sockets": [],
    "triangles": {
     "outline": 0,
-    "toon": 360
+    "toon": 270
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -14557,7 +14658,7 @@
     "max": [
      25.214,
      22.404,
-     27.563
+     27.363
     ],
     "min": [
      -24.298,
@@ -14601,7 +14702,7 @@
    "sockets": [],
    "triangles": {
     "outline": 0,
-    "toon": 360
+    "toon": 270
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -14614,15 +14715,26 @@
    "blockingNote": "W5: tall decor, blocks its tile (trunk + root flare); canopy overhangs the neighbours",
    "boundsCm": {
     "max": [
-     92.211,
-     98.607,
-     316.956
+     92.212,
+     98.61,
+     317.618
     ],
     "min": [
-     -122.053,
-     -105.084,
-     -3.832
+     -121.616,
+     -105.28,
+     -4.894
     ]
+   },
+   "budget": {
+    "lod0": {
+     "outline": 1856,
+     "toon": 3276
+    },
+    "lod1": {
+     "outline": 1121,
+     "toon": 1456
+    },
+    "spec": "art-inventory-ch1 \u00a71.9 large decor (trees): LOD0 3-5k, LOD1 1.5k; hull <= 0.5x toon (lump hull proxies = the lumps decimated, flicks and grooves without hull)"
    },
    "category": "Foliage",
    "displayName": "FruitTree_A",
@@ -14646,12 +14758,26 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 37.8,
-    "medianRimPx": 1.28,
-    "minFracDark": 0.993,
+    "medianRimPx": 1.86,
+    "minFracDark": 0.9988,
     "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
+   "lods": [
+    {
+     "asset": "SM_Foliage_Plains_FruitTree_A_LOD1",
+     "fbx": "Foliage/SM_Foliage_Plains_FruitTree_A_LOD1.fbx",
+     "import": "same palette UVs, AF_Data wind weights and material slots as SM_Foliage_Plains_FruitTree_A; import as LOD index 1 of SM_Foliage_Plains_FruitTree_A (StaticMeshEditorSubsystem.import_lod / Interchange LOD import)",
+     "index": 1,
+     "screenSize": 0.05,
+     "screenSizeNote": "W1 camera: a tree spans 0.3-0.5 of the screen height at every zoom, so desktop draws LOD0; LOD1 is the mobile-low mesh (static mesh MinLOD / LOD bias 1) and the far fallback",
+     "triangles": {
+      "outline": 1121,
+      "toon": 1456
+     }
+    }
+   ],
    "materialSlots": [
     {
      "index": 0,
@@ -14675,13 +14801,15 @@
     "Previews/SM_Foliage_Plains_FruitTree_A/game_1080crop.png",
     "Previews/SM_Foliage_Plains_FruitTree_A/game_inkgate.png",
     "Previews/SM_Foliage_Plains_FruitTree_A/closeup.png",
-    "Previews/SM_Foliage_Plains_FruitTree_A/turnaround.png"
+    "Previews/SM_Foliage_Plains_FruitTree_A/turnaround.png",
+    "Previews/SM_Foliage_Plains_FruitTree_A/turnaround_2.png",
+    "Previews/SM_Foliage_Plains_FruitTree_A/lod1.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 2576,
-    "toon": 3384
+    "outline": 1856,
+    "toon": 3276
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -14694,15 +14822,26 @@
    "blockingNote": "W5: tall decor, blocks its tile (trunk + root flare); canopy overhangs the neighbours",
    "boundsCm": {
     "max": [
-     108.904,
-     87.683,
-     312.006
+     109.206,
+     87.687,
+     312.481
     ],
     "min": [
-     -86.092,
-     -101.318,
-     -3.824
+     -86.498,
+     -101.368,
+     -4.894
     ]
+   },
+   "budget": {
+    "lod0": {
+     "outline": 1829,
+     "toon": 3265
+    },
+    "lod1": {
+     "outline": 1106,
+     "toon": 1449
+    },
+    "spec": "art-inventory-ch1 \u00a71.9 large decor (trees): LOD0 3-5k, LOD1 1.5k; hull <= 0.5x toon (lump hull proxies = the lumps decimated, flicks and grooves without hull)"
    },
    "category": "Foliage",
    "displayName": "FruitTree_B",
@@ -14726,12 +14865,26 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 37.8,
-    "medianRimPx": 1.35,
-    "minFracDark": 0.9989,
+    "medianRimPx": 1.89,
+    "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
+   "lods": [
+    {
+     "asset": "SM_Foliage_Plains_FruitTree_B_LOD1",
+     "fbx": "Foliage/SM_Foliage_Plains_FruitTree_B_LOD1.fbx",
+     "import": "same palette UVs, AF_Data wind weights and material slots as SM_Foliage_Plains_FruitTree_B; import as LOD index 1 of SM_Foliage_Plains_FruitTree_B (StaticMeshEditorSubsystem.import_lod / Interchange LOD import)",
+     "index": 1,
+     "screenSize": 0.05,
+     "screenSizeNote": "W1 camera: a tree spans 0.3-0.5 of the screen height at every zoom, so desktop draws LOD0; LOD1 is the mobile-low mesh (static mesh MinLOD / LOD bias 1) and the far fallback",
+     "triangles": {
+      "outline": 1106,
+      "toon": 1449
+     }
+    }
+   ],
    "materialSlots": [
     {
      "index": 0,
@@ -14755,13 +14908,15 @@
     "Previews/SM_Foliage_Plains_FruitTree_B/game_1080crop.png",
     "Previews/SM_Foliage_Plains_FruitTree_B/game_inkgate.png",
     "Previews/SM_Foliage_Plains_FruitTree_B/closeup.png",
-    "Previews/SM_Foliage_Plains_FruitTree_B/turnaround.png"
+    "Previews/SM_Foliage_Plains_FruitTree_B/turnaround.png",
+    "Previews/SM_Foliage_Plains_FruitTree_B/turnaround_2.png",
+    "Previews/SM_Foliage_Plains_FruitTree_B/lod1.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 2565,
-    "toon": 3373
+    "outline": 1829,
+    "toon": 3265
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -14947,14 +15102,14 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     36.519,
-     22.389,
-     7.081
+     36.467,
+     22.297,
+     4.312
     ],
     "min": [
-     -17.134,
-     -16.484,
-     -1.31
+     -16.914,
+     -16.379,
+     0.144
     ]
    },
    "category": "Foliage",
@@ -14979,9 +15134,9 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 36.4,
-    "medianRimPx": 1.32,
-    "minFracDark": 1.0,
-    "minFracRim": 1.0,
+    "medianRimPx": 1.24,
+    "minFracDark": 0.9718,
+    "minFracRim": 0.9605,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -15012,22 +15167,22 @@
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 472,
-    "toon": 592
+    "outline": 152,
+    "toon": 232
    }
   },
   "SM_Foliage_Plains_LilyPad_B": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     36.478,
-     28.723,
-     10.552
+     36.315,
+     28.6,
+     11.068
     ],
     "min": [
-     -32.728,
-     -16.43,
-     -1.605
+     -32.566,
+     -16.07,
+     0.144
     ]
    },
    "category": "Foliage",
@@ -15051,10 +15206,10 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 52.9,
-    "medianRimPx": 1.3,
-    "minFracDark": 1.0,
-    "minFracRim": 1.0,
+    "maxHullLumP95": 53.9,
+    "medianRimPx": 1.26,
+    "minFracDark": 0.9912,
+    "minFracRim": 0.9824,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -15085,8 +15240,8 @@
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 820,
-    "toon": 1048
+    "outline": 324,
+    "toon": 468
    }
   },
   "SM_Foliage_Plains_Oak_A": {
@@ -15094,15 +15249,26 @@
    "blockingNote": "W5: tall decor, blocks its tile (trunk + root flare); canopy overhangs the neighbours",
    "boundsCm": {
     "max": [
-     127.361,
-     118.597,
-     386.635
+     127.442,
+     120.084,
+     387.285
     ],
     "min": [
-     -123.358,
-     -127.167,
-     -3.862
+     -124.254,
+     -127.446,
+     -4.919
     ]
+   },
+   "budget": {
+    "lod0": {
+     "outline": 2141,
+     "toon": 4612
+    },
+    "lod1": {
+     "outline": 1029,
+     "toon": 1470
+    },
+    "spec": "art-inventory-ch1 \u00a71.9 large decor (trees): LOD0 3-5k, LOD1 1.5k; hull <= 0.5x toon (lump hull proxies = the lumps decimated, flicks and grooves without hull)"
    },
    "category": "Foliage",
    "displayName": "Oak_A",
@@ -15126,12 +15292,26 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 33.4,
-    "medianRimPx": 1.35,
-    "minFracDark": 0.9896,
+    "medianRimPx": 2.12,
+    "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
+   "lods": [
+    {
+     "asset": "SM_Foliage_Plains_Oak_A_LOD1",
+     "fbx": "Foliage/SM_Foliage_Plains_Oak_A_LOD1.fbx",
+     "import": "same palette UVs, AF_Data wind weights and material slots as SM_Foliage_Plains_Oak_A; import as LOD index 1 of SM_Foliage_Plains_Oak_A (StaticMeshEditorSubsystem.import_lod / Interchange LOD import)",
+     "index": 1,
+     "screenSize": 0.05,
+     "screenSizeNote": "W1 camera: a tree spans 0.3-0.5 of the screen height at every zoom, so desktop draws LOD0; LOD1 is the mobile-low mesh (static mesh MinLOD / LOD bias 1) and the far fallback",
+     "triangles": {
+      "outline": 1029,
+      "toon": 1470
+     }
+    }
+   ],
    "materialSlots": [
     {
      "index": 0,
@@ -15155,13 +15335,16 @@
     "Previews/SM_Foliage_Plains_Oak_A/game_1080crop.png",
     "Previews/SM_Foliage_Plains_Oak_A/game_inkgate.png",
     "Previews/SM_Foliage_Plains_Oak_A/closeup.png",
-    "Previews/SM_Foliage_Plains_Oak_A/turnaround.png"
+    "Previews/SM_Foliage_Plains_Oak_A/turnaround.png",
+    "Previews/SM_Foliage_Plains_Oak_A/turnaround_2.png",
+    "Previews/SM_Foliage_Plains_Oak_A/lod1.png",
+    "Previews/SM_Foliage_Plains_Oak_A/lod1_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 2996,
-    "toon": 4424
+    "outline": 2141,
+    "toon": 4612
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -15174,15 +15357,26 @@
    "blockingNote": "W5: tall decor, blocks its tile (trunk + root flare); canopy overhangs the neighbours",
    "boundsCm": {
     "max": [
-     128.426,
-     130.164,
-     386.977
+     129.655,
+     131.15,
+     387.252
     ],
     "min": [
-     -141.339,
-     -140.897,
-     -3.848
+     -141.325,
+     -140.902,
+     -4.919
     ]
+   },
+   "budget": {
+    "lod0": {
+     "outline": 2122,
+     "toon": 4603
+    },
+    "lod1": {
+     "outline": 1023,
+     "toon": 1468
+    },
+    "spec": "art-inventory-ch1 \u00a71.9 large decor (trees): LOD0 3-5k, LOD1 1.5k; hull <= 0.5x toon (lump hull proxies = the lumps decimated, flicks and grooves without hull)"
    },
    "category": "Foliage",
    "displayName": "Oak_B",
@@ -15206,12 +15400,26 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 33.4,
-    "medianRimPx": 1.32,
-    "minFracDark": 0.9897,
+    "medianRimPx": 2.35,
+    "minFracDark": 0.9971,
     "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
+   "lods": [
+    {
+     "asset": "SM_Foliage_Plains_Oak_B_LOD1",
+     "fbx": "Foliage/SM_Foliage_Plains_Oak_B_LOD1.fbx",
+     "import": "same palette UVs, AF_Data wind weights and material slots as SM_Foliage_Plains_Oak_B; import as LOD index 1 of SM_Foliage_Plains_Oak_B (StaticMeshEditorSubsystem.import_lod / Interchange LOD import)",
+     "index": 1,
+     "screenSize": 0.05,
+     "screenSizeNote": "W1 camera: a tree spans 0.3-0.5 of the screen height at every zoom, so desktop draws LOD0; LOD1 is the mobile-low mesh (static mesh MinLOD / LOD bias 1) and the far fallback",
+     "triangles": {
+      "outline": 1023,
+      "toon": 1468
+     }
+    }
+   ],
    "materialSlots": [
     {
      "index": 0,
@@ -15235,13 +15443,17 @@
     "Previews/SM_Foliage_Plains_Oak_B/game_1080crop.png",
     "Previews/SM_Foliage_Plains_Oak_B/game_inkgate.png",
     "Previews/SM_Foliage_Plains_Oak_B/closeup.png",
-    "Previews/SM_Foliage_Plains_Oak_B/turnaround.png"
+    "Previews/SM_Foliage_Plains_Oak_B/turnaround.png",
+    "Previews/SM_Foliage_Plains_Oak_B/turnaround_2.png",
+    "Previews/SM_Foliage_Plains_Oak_B/lod1.png",
+    "Previews/SM_Foliage_Plains_Oak_B/lod1_2.png",
+    "Previews/SM_Foliage_Plains_Oak_B/lod1_3.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 2987,
-    "toon": 4415
+    "outline": 2122,
+    "toon": 4603
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -15254,15 +15466,26 @@
    "blockingNote": "W5: tall decor, blocks its tile (trunk + root flare); canopy overhangs the neighbours",
    "boundsCm": {
     "max": [
-     124.784,
-     120.396,
-     391.333
+     125.405,
+     120.894,
+     392.454
     ],
     "min": [
-     -106.233,
-     -110.492,
-     -3.856
+     -106.193,
+     -111.58,
+     -4.92
     ]
+   },
+   "budget": {
+    "lod0": {
+     "outline": 2101,
+     "toon": 4544
+    },
+    "lod1": {
+     "outline": 1018,
+     "toon": 1446
+    },
+    "spec": "art-inventory-ch1 \u00a71.9 large decor (trees): LOD0 3-5k, LOD1 1.5k; hull <= 0.5x toon (lump hull proxies = the lumps decimated, flicks and grooves without hull)"
    },
    "category": "Foliage",
    "displayName": "Oak_C",
@@ -15286,12 +15509,26 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 33.4,
-    "medianRimPx": 1.31,
-    "minFracDark": 0.9989,
-    "minFracRim": 0.9946,
+    "medianRimPx": 1.95,
+    "minFracDark": 0.9946,
+    "minFracRim": 0.9989,
     "pass": true
    },
    "kind": "StaticMesh",
+   "lods": [
+    {
+     "asset": "SM_Foliage_Plains_Oak_C_LOD1",
+     "fbx": "Foliage/SM_Foliage_Plains_Oak_C_LOD1.fbx",
+     "import": "same palette UVs, AF_Data wind weights and material slots as SM_Foliage_Plains_Oak_C; import as LOD index 1 of SM_Foliage_Plains_Oak_C (StaticMeshEditorSubsystem.import_lod / Interchange LOD import)",
+     "index": 1,
+     "screenSize": 0.05,
+     "screenSizeNote": "W1 camera: a tree spans 0.3-0.5 of the screen height at every zoom, so desktop draws LOD0; LOD1 is the mobile-low mesh (static mesh MinLOD / LOD bias 1) and the far fallback",
+     "triangles": {
+      "outline": 1018,
+      "toon": 1446
+     }
+    }
+   ],
    "materialSlots": [
     {
      "index": 0,
@@ -15315,13 +15552,16 @@
     "Previews/SM_Foliage_Plains_Oak_C/game_1080crop.png",
     "Previews/SM_Foliage_Plains_Oak_C/game_inkgate.png",
     "Previews/SM_Foliage_Plains_Oak_C/closeup.png",
-    "Previews/SM_Foliage_Plains_Oak_C/turnaround.png"
+    "Previews/SM_Foliage_Plains_Oak_C/turnaround.png",
+    "Previews/SM_Foliage_Plains_Oak_C/turnaround_2.png",
+    "Previews/SM_Foliage_Plains_Oak_C/lod1.png",
+    "Previews/SM_Foliage_Plains_Oak_C/lod1_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 2928,
-    "toon": 4356
+    "outline": 2101,
+    "toon": 4544
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -15333,14 +15573,14 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     21.944,
+     21.943,
      15.345,
-     29.938
+     29.673
     ],
     "min": [
-     -18.576,
-     -21.681,
-     -2.345
+     -18.645,
+     -19.19,
+     -2.369
     ]
    },
    "category": "Foliage",
@@ -15364,9 +15604,9 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 33.2,
-    "medianRimPx": 1.34,
-    "minFracDark": 0.9905,
+    "maxHullLumP95": 32.8,
+    "medianRimPx": 1.31,
+    "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -15394,13 +15634,14 @@
     "Previews/SM_Foliage_Plains_RedMushrooms_A/game_1080crop.png",
     "Previews/SM_Foliage_Plains_RedMushrooms_A/game_inkgate.png",
     "Previews/SM_Foliage_Plains_RedMushrooms_A/closeup.png",
-    "Previews/SM_Foliage_Plains_RedMushrooms_A/turnaround.png"
+    "Previews/SM_Foliage_Plains_RedMushrooms_A/turnaround.png",
+    "Previews/SM_Foliage_Plains_RedMushrooms_A/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 644,
-    "toon": 1028
+    "outline": 516,
+    "toon": 576
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -15412,14 +15653,14 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     20.888,
-     18.962,
-     26.159
+     20.945,
+     19.042,
+     26.149
     ],
     "min": [
-     -18.624,
-     -18.249,
-     -2.322
+     -18.618,
+     -19.697,
+     -2.351
     ]
    },
    "category": "Foliage",
@@ -15443,8 +15684,8 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 27.8,
-    "medianRimPx": 1.27,
+    "maxHullLumP95": 40.2,
+    "medianRimPx": 1.31,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -15473,13 +15714,14 @@
     "Previews/SM_Foliage_Plains_RedMushrooms_B/game_1080crop.png",
     "Previews/SM_Foliage_Plains_RedMushrooms_B/game_inkgate.png",
     "Previews/SM_Foliage_Plains_RedMushrooms_B/closeup.png",
-    "Previews/SM_Foliage_Plains_RedMushrooms_B/turnaround.png"
+    "Previews/SM_Foliage_Plains_RedMushrooms_B/turnaround.png",
+    "Previews/SM_Foliage_Plains_RedMushrooms_B/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 916,
-    "toon": 1492
+    "outline": 724,
+    "toon": 802
    },
    "wind": {
     "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
@@ -15956,14 +16198,14 @@
    "attachSocket": "quiver",
    "boundsCm": {
     "max": [
-     9.613,
-     10.459,
-     7.712
+     5.081,
+     11.318,
+     7.706
     ],
     "min": [
-     -17.669,
-     -21.173,
-     -10.899
+     -6.35,
+     -25.878,
+     -10.895
     ]
    },
    "category": "Weapons",
@@ -15998,9 +16240,9 @@
    "sockets": [
     {
      "locCm": [
-      -14.383,
-      -17.739,
-      -7.191
+      -1.916,
+      -22.758,
+      -7.187
      ],
      "name": "arrow_draw",
      "rotDeg": [
@@ -16376,14 +16618,14 @@
    ],
    "boundsCm": {
     "max": [
-     4.583,
-     17.389,
-     16.77
+     4.883,
+     17.689,
+     16.992
     ],
     "min": [
-     -4.583,
-     -38.871,
-     -6.083
+     -4.883,
+     -39.09,
+     -6.304
     ]
    },
    "category": "Weapons",
@@ -16402,14 +16644,14 @@
      "parent": "M_AF_Toon"
     },
     {
-     "class": "monster",
+     "class": "boss",
      "index": 1,
      "name": "M_AF_Outline",
      "outlineMix": 0.4,
-     "outlinePx1080": 3.0,
+     "outlinePx1080": 3.5,
      "palette": "Monsters_Plains",
      "parent": "M_AF_Outline",
-     "widthCm": 1.5
+     "widthCm": 1.8
     }
    ],
    "previews": [
@@ -16546,14 +16788,14 @@
    "attachSocket": "pelvis",
    "boundsCm": {
     "max": [
-     21.997,
-     14.074,
-     -2.078
+     22.038,
+     14.495,
+     -2.465
     ],
     "min": [
-     6.45,
+     6.429,
      -5.039,
-     -17.333
+     -16.413
     ]
    },
    "category": "Monsters",
@@ -16589,8 +16831,8 @@
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 388,
-    "toon": 608
+    "outline": 724,
+    "toon": 1120
    },
    "variant": "hunt_pendant_thief",
    "variantScale": 1.25
@@ -17415,14 +17657,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     71.673,
+     74.418,
      77.435,
-     136.521
+     136.791
     ],
     "min": [
-     -79.883,
-     -76.461,
-     -4.25
+     -80.492,
+     -78.226,
+     -7.828
     ]
    },
    "category": "Props",
@@ -17447,9 +17689,9 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 38.0,
-    "medianRimPx": 1.51,
-    "minFracDark": 0.9812,
-    "minFracRim": 0.9791,
+    "medianRimPx": 2.36,
+    "minFracDark": 0.9868,
+    "minFracRim": 0.9824,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -17477,27 +17719,28 @@
     "Previews/SM_Outcrop_Plains_V0/game_1080crop.png",
     "Previews/SM_Outcrop_Plains_V0/game_inkgate.png",
     "Previews/SM_Outcrop_Plains_V0/closeup.png",
-    "Previews/SM_Outcrop_Plains_V0/turnaround.png"
+    "Previews/SM_Outcrop_Plains_V0/turnaround.png",
+    "Previews/SM_Outcrop_Plains_V0/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1528,
-    "toon": 1564
+    "outline": 789,
+    "toon": 1266
    }
   },
   "SM_Outcrop_Plains_V1": {
    "blocking": true,
    "boundsCm": {
     "max": [
-     74.827,
-     78.58,
-     136.058
+     78.245,
+     80.158,
+     136.549
     ],
     "min": [
-     -71.528,
-     -80.664,
-     -4.25
+     -72.359,
+     -81.828,
+     -7.2
     ]
    },
    "category": "Props",
@@ -17522,7 +17765,7 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 38.0,
-    "medianRimPx": 1.46,
+    "medianRimPx": 2.12,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -17552,26 +17795,27 @@
     "Previews/SM_Outcrop_Plains_V1/game_1080crop.png",
     "Previews/SM_Outcrop_Plains_V1/game_inkgate.png",
     "Previews/SM_Outcrop_Plains_V1/closeup.png",
-    "Previews/SM_Outcrop_Plains_V1/turnaround.png"
+    "Previews/SM_Outcrop_Plains_V1/turnaround.png",
+    "Previews/SM_Outcrop_Plains_V1/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1787,
-    "toon": 1823
+    "outline": 878,
+    "toon": 1467
    }
   },
   "SM_Outcrop_Plains_V2": {
    "blocking": true,
    "boundsCm": {
     "max": [
-     70.721,
+     72.11,
      70.385,
-     136.029
+     136.681
     ],
     "min": [
-     -70.543,
-     -64.965,
+     -72.251,
+     -66.024,
      -4.245
     ]
    },
@@ -17596,8 +17840,8 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 39.9,
-    "medianRimPx": 1.47,
+    "maxHullLumP95": 37.0,
+    "medianRimPx": 2.11,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -17627,12 +17871,13 @@
     "Previews/SM_Outcrop_Plains_V2/game_1080crop.png",
     "Previews/SM_Outcrop_Plains_V2/game_inkgate.png",
     "Previews/SM_Outcrop_Plains_V2/closeup.png",
-    "Previews/SM_Outcrop_Plains_V2/turnaround.png"
+    "Previews/SM_Outcrop_Plains_V2/turnaround.png",
+    "Previews/SM_Outcrop_Plains_V2/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1026,
+    "outline": 669,
     "toon": 1458
    }
   },
@@ -17640,14 +17885,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     84.724,
-     75.856,
-     135.238
+     86.008,
+     75.372,
+     135.727
     ],
     "min": [
-     -84.78,
-     -82.743,
-     -4.25
+     -84.509,
+     -77.025,
+     -6.901
     ]
    },
    "category": "Props",
@@ -17672,8 +17917,8 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 38.0,
-    "medianRimPx": 1.52,
-    "minFracDark": 0.9888,
+    "medianRimPx": 3.13,
+    "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -17702,27 +17947,28 @@
     "Previews/SM_Outcrop_Plains_V3/game_1080crop.png",
     "Previews/SM_Outcrop_Plains_V3/game_inkgate.png",
     "Previews/SM_Outcrop_Plains_V3/closeup.png",
-    "Previews/SM_Outcrop_Plains_V3/turnaround.png"
+    "Previews/SM_Outcrop_Plains_V3/turnaround.png",
+    "Previews/SM_Outcrop_Plains_V3/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1783,
-    "toon": 1819
+    "outline": 878,
+    "toon": 1463
    }
   },
   "SM_Outcrop_Plains_V4": {
    "blocking": true,
    "boundsCm": {
     "max": [
-     82.262,
-     81.398,
-     137.523
+     82.119,
+     80.57,
+     138.51
     ],
     "min": [
-     -75.19,
-     -84.304,
-     -4.25
+     -76.779,
+     -84.97,
+     -7.294
     ]
    },
    "category": "Props",
@@ -17746,8 +17992,8 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 38.4,
-    "medianRimPx": 1.49,
+    "maxHullLumP95": 38.0,
+    "medianRimPx": 2.38,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -17777,26 +18023,27 @@
     "Previews/SM_Outcrop_Plains_V4/game_1080crop.png",
     "Previews/SM_Outcrop_Plains_V4/game_inkgate.png",
     "Previews/SM_Outcrop_Plains_V4/closeup.png",
-    "Previews/SM_Outcrop_Plains_V4/turnaround.png"
+    "Previews/SM_Outcrop_Plains_V4/turnaround.png",
+    "Previews/SM_Outcrop_Plains_V4/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1532,
-    "toon": 1568
+    "outline": 792,
+    "toon": 1270
    }
   },
   "SM_Outcrop_Plains_V5": {
    "blocking": true,
    "boundsCm": {
     "max": [
-     73.412,
+     74.002,
      67.188,
-     136.039
+     136.661
     ],
     "min": [
-     -75.305,
-     -64.576,
+     -75.897,
+     -64.583,
      -4.245
     ]
    },
@@ -17821,8 +18068,8 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 41.4,
-    "medianRimPx": 1.53,
+    "maxHullLumP95": 37.0,
+    "medianRimPx": 2.08,
     "minFracDark": 0.9944,
     "minFracRim": 0.9972,
     "pass": true
@@ -17852,12 +18099,13 @@
     "Previews/SM_Outcrop_Plains_V5/game_1080crop.png",
     "Previews/SM_Outcrop_Plains_V5/game_inkgate.png",
     "Previews/SM_Outcrop_Plains_V5/closeup.png",
-    "Previews/SM_Outcrop_Plains_V5/turnaround.png"
+    "Previews/SM_Outcrop_Plains_V5/turnaround.png",
+    "Previews/SM_Outcrop_Plains_V5/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1024,
+    "outline": 673,
     "toon": 1456
    }
   },
@@ -17865,14 +18113,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     55.125,
-     50.866,
-     164.017
+     54.75,
+     49.838,
+     145.917
     ],
     "min": [
-     -12.167,
-     -13.649,
-     -4.803
+     -10.798,
+     -13.843,
+     -4.78
     ]
    },
    "category": "Props",
@@ -17895,8 +18143,8 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 30.2,
-    "medianRimPx": 2.08,
-    "minFracDark": 1.0,
+    "medianRimPx": 1.75,
+    "minFracDark": 0.9876,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -17925,7 +18173,8 @@
     "Previews/SM_Palisade_Plains_Corner/game_1080crop.png",
     "Previews/SM_Palisade_Plains_Corner/game_inkgate.png",
     "Previews/SM_Palisade_Plains_Corner/closeup.png",
-    "Previews/SM_Palisade_Plains_Corner/turnaround.png"
+    "Previews/SM_Palisade_Plains_Corner/turnaround.png",
+    "Previews/SM_Palisade_Plains_Corner/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -17935,7 +18184,7 @@
    }
   },
   "SM_Palisade_Plains_GatePost": {
-   "blocking": true,
+   "blocking": false,
    "boundsCm": {
     "max": [
      14.57,
@@ -17969,7 +18218,7 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 34.7,
+    "maxHullLumP95": 34.3,
     "medianRimPx": 1.63,
     "minFracDark": 0.9788,
     "minFracRim": 1.0,
@@ -17994,7 +18243,7 @@
      "widthCm": 1.2
     }
    ],
-   "note": "one each side of the 2-tile camp gate (AAbyssZoneActor::BuildWalls), pennant arm toward the camp (-Y)",
+   "note": "one each side of the 2-tile camp gate (AAbyssZoneActor::BuildWalls: camp.x - 1.5 / + 0.5 on the gate row, half-tile positions), pennant arm toward the camp (-Y); not blocking: the palisade wall tile beside it already blocks, and rounding a half-tile post onto the gate would close one of the two gate tiles",
    "previews": [
     "Previews/SM_Palisade_Plains_GatePost/game.png",
     "Previews/SM_Palisade_Plains_GatePost/game_1080crop.png",
@@ -18013,14 +18262,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     9.999,
-     10.018,
-     147.35
+     8.746,
+     8.742,
+     133.248
     ],
     "min": [
-     -9.929,
-     -9.882,
-     -4.707
+     -8.633,
+     -8.699,
+     -4.728
     ]
    },
    "category": "Props",
@@ -18045,8 +18294,8 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 30.2,
-    "medianRimPx": 1.98,
-    "minFracDark": 1.0,
+    "medianRimPx": 1.73,
+    "minFracDark": 0.9951,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -18087,14 +18336,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     10.138,
-     9.937,
-     157.35
+     8.669,
+     8.726,
+     141.25
     ],
     "min": [
-     -10.085,
-     -10.081,
-     -4.702
+     -8.903,
+     -8.907,
+     -4.701
     ]
    },
    "category": "Props",
@@ -18119,8 +18368,8 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 28.0,
-    "medianRimPx": 1.63,
-    "minFracDark": 1.0,
+    "medianRimPx": 1.53,
+    "minFracDark": 0.9861,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -18161,14 +18410,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     13.074,
-     13.122,
-     167.35
+     13.466,
+     13.688,
+     149.248
     ],
     "min": [
-     -9.937,
-     -13.239,
-     -4.782
+     -8.913,
+     -13.372,
+     -4.769
     ]
    },
    "category": "Props",
@@ -18193,8 +18442,8 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 30.2,
-    "medianRimPx": 2.47,
-    "minFracDark": 0.9922,
+    "medianRimPx": 2.09,
+    "minFracDark": 0.9622,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -18235,14 +18484,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     50.244,
-     13.16,
-     161.188
+     48.84,
+     11.673,
+     145.087
     ],
     "min": [
-     -48.616,
-     -16.041,
-     -4.805
+     -47.378,
+     -15.793,
+     -4.756
     ]
    },
    "category": "Props",
@@ -18265,8 +18514,8 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 30.2,
-    "medianRimPx": 1.57,
-    "minFracDark": 0.981,
+    "medianRimPx": 1.61,
+    "minFracDark": 0.9963,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -18295,7 +18544,8 @@
     "Previews/SM_Palisade_Plains_Straight/game_1080crop.png",
     "Previews/SM_Palisade_Plains_Straight/game_inkgate.png",
     "Previews/SM_Palisade_Plains_Straight/closeup.png",
-    "Previews/SM_Palisade_Plains_Straight/turnaround.png"
+    "Previews/SM_Palisade_Plains_Straight/turnaround.png",
+    "Previews/SM_Palisade_Plains_Straight/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -18308,13 +18558,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     10.391,
-     11.325,
+     10.283,
+     11.339,
      32.15
     ],
     "min": [
-     -10.387,
-     -11.335,
+     -10.283,
+     -11.347,
      -1.35
     ]
    },
@@ -18338,7 +18588,7 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 39.4,
-    "medianRimPx": 2.63,
+    "medianRimPx": 2.62,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -18391,8 +18641,9 @@
     },
     "bob": {
      "amplitudeCm": 12.8,
-     "periodMs": 1600
+     "periodMs": 1200
     },
+    "glintZ": 0.1066,
     "kind": "potion",
     "potion": "antidote",
     "qualityPalette": {
@@ -18468,7 +18719,7 @@
      "locCm": [
       0.0,
       -0.0,
-      11.8
+      10.664
      ],
      "name": "glint",
      "rotDeg": [
@@ -18487,13 +18738,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     4.901,
-     5.603,
-     6.834
+     4.547,
+     5.184,
+     5.79
     ],
     "min": [
-     -5.607,
-     -5.588,
+     -5.185,
+     -5.184,
      -1.3
     ]
    },
@@ -18516,8 +18767,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 43.4,
-    "medianRimPx": 2.02,
+    "maxHullLumP95": 42.7,
+    "medianRimPx": 1.99,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -18574,6 +18825,7 @@
      "periodMs": 1600
     },
     "cut": "round",
+    "form": "chipped",
     "gem": "diamond",
     "kind": "gem",
     "qualityPalette": {
@@ -18637,7 +18889,7 @@
      "locCm": [
       0.0,
       -0.0,
-      24.834
+      23.79
      ],
      "name": "label",
      "rotDeg": [
@@ -18650,7 +18902,7 @@
      "locCm": [
       0.0,
       -0.0,
-      6.834
+      5.79
      ],
      "name": "glint",
      "rotDeg": [
@@ -18669,13 +18921,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     6.485,
-     6.506,
-     7.993
+     6.185,
+     6.206,
+     7.609
     ],
     "min": [
-     -6.509,
-     -6.487,
+     -6.209,
+     -6.187,
      -1.3
     ]
    },
@@ -18698,8 +18950,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 43.1,
-    "medianRimPx": 1.98,
+    "maxHullLumP95": 43.0,
+    "medianRimPx": 2.01,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -18756,6 +19008,7 @@
      "periodMs": 1600
     },
     "cut": "round",
+    "form": "faceted",
     "gem": "diamond",
     "kind": "gem",
     "qualityPalette": {
@@ -18819,7 +19072,7 @@
      "locCm": [
       0.0,
       -0.0,
-      25.993
+      25.609
      ],
      "name": "label",
      "rotDeg": [
@@ -18832,7 +19085,7 @@
      "locCm": [
       0.0,
       -0.0,
-      7.993
+      7.609
      ],
      "name": "glint",
      "rotDeg": [
@@ -18851,13 +19104,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     7.185,
-     7.206,
-     8.889
+     7.318,
+     7.337,
+     10.341
     ],
     "min": [
-     -7.209,
-     -7.187,
+     -7.34,
+     -7.32,
      -1.3
     ]
    },
@@ -18880,7 +19133,7 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 43.7,
+    "maxHullLumP95": 43.5,
     "medianRimPx": 2.02,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
@@ -18938,6 +19191,7 @@
      "periodMs": 1600
     },
     "cut": "round",
+    "form": "crowned",
     "gem": "diamond",
     "kind": "gem",
     "qualityPalette": {
@@ -19001,7 +19255,7 @@
      "locCm": [
       0.0,
       -0.0,
-      26.889
+      28.341
      ],
      "name": "label",
      "rotDeg": [
@@ -19014,7 +19268,7 @@
      "locCm": [
       0.0,
       -0.0,
-      8.889
+      10.341
      ],
      "name": "glint",
      "rotDeg": [
@@ -19025,21 +19279,21 @@
     }
    ],
    "triangles": {
-    "outline": 70,
-    "toon": 70
+    "outline": 94,
+    "toon": 94
    }
   },
   "SM_Pickup_Gem_Diamond_4": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     7.585,
-     7.606,
-     9.401
+     8.32,
+     8.338,
+     12.406
     ],
     "min": [
-     -7.609,
-     -7.587,
+     -8.34,
+     -8.322,
      -1.3
     ]
    },
@@ -19062,8 +19316,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 43.4,
-    "medianRimPx": 1.99,
+    "maxHullLumP95": 43.0,
+    "medianRimPx": 1.97,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -19120,6 +19374,7 @@
      "periodMs": 1600
     },
     "cut": "round",
+    "form": "brilliant",
     "gem": "diamond",
     "kind": "gem",
     "qualityPalette": {
@@ -19183,7 +19438,7 @@
      "locCm": [
       0.0,
       -0.0,
-      27.401
+      30.406
      ],
      "name": "label",
      "rotDeg": [
@@ -19196,7 +19451,7 @@
      "locCm": [
       0.0,
       -0.0,
-      9.401
+      12.406
      ],
      "name": "glint",
      "rotDeg": [
@@ -19207,21 +19462,21 @@
     }
    ],
    "triangles": {
-    "outline": 70,
-    "toon": 70
+    "outline": 126,
+    "toon": 126
    }
   },
   "SM_Pickup_Gem_Diamond_5": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     7.985,
-     8.006,
-     9.913
+     9.329,
+     9.344,
+     16.318
     ],
     "min": [
-     -8.009,
-     -7.987,
+     -9.346,
+     -9.331,
      -1.3
     ]
    },
@@ -19244,8 +19499,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 42.8,
-    "medianRimPx": 1.97,
+    "maxHullLumP95": 43.1,
+    "medianRimPx": 2.0,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -19302,6 +19557,7 @@
      "periodMs": 1600
     },
     "cut": "round",
+    "form": "perfect",
     "gem": "diamond",
     "kind": "gem",
     "qualityPalette": {
@@ -19365,7 +19621,7 @@
      "locCm": [
       0.0,
       -0.0,
-      27.913
+      34.318
      ],
      "name": "label",
      "rotDeg": [
@@ -19378,7 +19634,7 @@
      "locCm": [
       0.0,
       -0.0,
-      9.913
+      16.318
      ],
      "name": "glint",
      "rotDeg": [
@@ -19389,21 +19645,21 @@
     }
    ],
    "triangles": {
-    "outline": 70,
-    "toon": 70
+    "outline": 126,
+    "toon": 126
    }
   },
   "SM_Pickup_Gem_Emerald_1": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     4.244,
-     5.476,
-     6.842
+     3.956,
+     5.059,
+     5.799
     ],
     "min": [
-     -4.292,
-     -5.527,
+     -3.992,
+     -5.118,
      -1.298
     ]
    },
@@ -19426,8 +19682,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 38.0,
-    "medianRimPx": 1.95,
+    "maxHullLumP95": 36.3,
+    "medianRimPx": 2.0,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -19484,6 +19740,7 @@
      "periodMs": 1600
     },
     "cut": "emerald",
+    "form": "chipped",
     "gem": "emerald",
     "kind": "gem",
     "qualityPalette": {
@@ -19547,7 +19804,7 @@
      "locCm": [
       0.0,
       -0.0,
-      24.842
+      23.799
      ],
      "name": "label",
      "rotDeg": [
@@ -19560,7 +19817,7 @@
      "locCm": [
       0.0,
       -0.0,
-      6.842
+      5.799
      ],
      "name": "glint",
      "rotDeg": [
@@ -19579,13 +19836,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     4.919,
-     6.415,
-     7.991
+     4.703,
+     6.115,
+     7.607
     ],
     "min": [
-     -4.934,
-     -6.401,
+     -4.718,
+     -6.101,
      -1.3
     ]
    },
@@ -19608,8 +19865,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 36.2,
-    "medianRimPx": 1.97,
+    "maxHullLumP95": 34.2,
+    "medianRimPx": 1.95,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -19666,6 +19923,7 @@
      "periodMs": 1600
     },
     "cut": "emerald",
+    "form": "faceted",
     "gem": "emerald",
     "kind": "gem",
     "qualityPalette": {
@@ -19729,7 +19987,7 @@
      "locCm": [
       0.0,
       -0.0,
-      25.991
+      25.607
      ],
      "name": "label",
      "rotDeg": [
@@ -19742,7 +20000,7 @@
      "locCm": [
       0.0,
       -0.0,
-      7.991
+      7.607
      ],
      "name": "glint",
      "rotDeg": [
@@ -19761,13 +20019,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     5.423,
-     7.115,
-     8.887
+     5.522,
+     7.242,
+     10.339
     ],
     "min": [
-     -5.438,
-     -7.101,
+     -5.535,
+     -7.23,
      -1.3
     ]
    },
@@ -19790,7 +20048,7 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 35.9,
+    "maxHullLumP95": 35.4,
     "medianRimPx": 1.98,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
@@ -19848,6 +20106,7 @@
      "periodMs": 1600
     },
     "cut": "emerald",
+    "form": "crowned",
     "gem": "emerald",
     "kind": "gem",
     "qualityPalette": {
@@ -19911,7 +20170,7 @@
      "locCm": [
       0.0,
       -0.0,
-      26.887
+      28.339
      ],
      "name": "label",
      "rotDeg": [
@@ -19924,7 +20183,7 @@
      "locCm": [
       0.0,
       -0.0,
-      8.887
+      10.339
      ],
      "name": "glint",
      "rotDeg": [
@@ -19935,21 +20194,21 @@
     }
    ],
    "triangles": {
-    "outline": 46,
-    "toon": 46
+    "outline": 62,
+    "toon": 62
    }
   },
   "SM_Pickup_Gem_Ruby_1": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     4.543,
-     5.607,
-     6.815
+     4.236,
+     5.19,
+     5.78
     ],
     "min": [
-     -4.565,
-     -5.591,
+     -4.243,
+     -5.19,
      -1.299
     ]
    },
@@ -19972,8 +20231,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 27.6,
-    "medianRimPx": 1.98,
+    "maxHullLumP95": 25.9,
+    "medianRimPx": 1.95,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -20030,6 +20289,7 @@
      "periodMs": 1600
     },
     "cut": "oval",
+    "form": "chipped",
     "gem": "ruby",
     "kind": "gem",
     "qualityPalette": {
@@ -20093,7 +20353,7 @@
      "locCm": [
       0.0,
       -0.0,
-      24.815
+      23.78
      ],
      "name": "label",
      "rotDeg": [
@@ -20106,7 +20366,7 @@
      "locCm": [
       0.0,
       -0.0,
-      6.815
+      5.78
      ],
      "name": "glint",
      "rotDeg": [
@@ -20125,13 +20385,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     5.2,
-     6.511,
-     7.976
+     4.971,
+     6.211,
+     7.592
     ],
     "min": [
-     -5.224,
-     -6.493,
+     -4.996,
+     -6.193,
      -1.3
     ]
    },
@@ -20154,8 +20414,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 29.2,
-    "medianRimPx": 2.0,
+    "maxHullLumP95": 26.4,
+    "medianRimPx": 2.01,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -20212,6 +20472,7 @@
      "periodMs": 1600
     },
     "cut": "oval",
+    "form": "faceted",
     "gem": "ruby",
     "kind": "gem",
     "qualityPalette": {
@@ -20275,7 +20536,7 @@
      "locCm": [
       0.0,
       -0.0,
-      25.976
+      25.592
      ],
      "name": "label",
      "rotDeg": [
@@ -20288,7 +20549,7 @@
      "locCm": [
       0.0,
       -0.0,
-      7.976
+      7.592
      ],
      "name": "glint",
      "rotDeg": [
@@ -20307,13 +20568,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     5.732,
-     7.211,
-     8.872
+     5.837,
+     7.34,
+     10.324
     ],
     "min": [
-     -5.757,
-     -7.193,
+     -5.856,
+     -7.324,
      -1.3
     ]
    },
@@ -20336,8 +20597,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 29.6,
-    "medianRimPx": 1.99,
+    "maxHullLumP95": 27.3,
+    "medianRimPx": 2.0,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -20394,6 +20655,7 @@
      "periodMs": 1600
     },
     "cut": "oval",
+    "form": "crowned",
     "gem": "ruby",
     "kind": "gem",
     "qualityPalette": {
@@ -20457,7 +20719,7 @@
      "locCm": [
       0.0,
       -0.0,
-      26.872
+      28.324
      ],
      "name": "label",
      "rotDeg": [
@@ -20470,7 +20732,7 @@
      "locCm": [
       0.0,
       -0.0,
-      8.872
+      10.324
      ],
      "name": "glint",
      "rotDeg": [
@@ -20481,21 +20743,21 @@
     }
    ],
    "triangles": {
-    "outline": 58,
-    "toon": 58
+    "outline": 78,
+    "toon": 78
    }
   },
   "SM_Pickup_Gem_Sapphire_1": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     4.123,
-     6.14,
-     6.835
+     3.842,
+     5.676,
+     5.789
     ],
     "min": [
-     -4.606,
-     -5.313,
+     -4.278,
+     -4.92,
      -1.299
     ]
    },
@@ -20518,8 +20780,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 30.7,
-    "medianRimPx": 1.99,
+    "maxHullLumP95": 27.5,
+    "medianRimPx": 2.01,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -20576,6 +20838,7 @@
      "periodMs": 1600
     },
     "cut": "pear",
+    "form": "chipped",
     "gem": "sapphire",
     "kind": "gem",
     "qualityPalette": {
@@ -20639,7 +20902,7 @@
      "locCm": [
       0.0,
       -0.0,
-      24.835
+      23.789
      ],
      "name": "label",
      "rotDeg": [
@@ -20652,7 +20915,7 @@
      "locCm": [
       0.0,
       -0.0,
-      6.835
+      5.789
      ],
      "name": "glint",
      "rotDeg": [
@@ -20671,13 +20934,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     5.295,
-     7.139,
-     7.981
+     5.064,
+     6.803,
+     7.597
     ],
     "min": [
-     -5.318,
-     -6.216,
+     -5.087,
+     -5.929,
      -1.3
     ]
    },
@@ -20700,8 +20963,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 31.2,
-    "medianRimPx": 1.99,
+    "maxHullLumP95": 27.6,
+    "medianRimPx": 2.02,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -20758,6 +21021,7 @@
      "periodMs": 1600
     },
     "cut": "pear",
+    "form": "faceted",
     "gem": "sapphire",
     "kind": "gem",
     "qualityPalette": {
@@ -20821,7 +21085,7 @@
      "locCm": [
       0.0,
       -0.0,
-      25.981
+      25.597
      ],
      "name": "label",
      "rotDeg": [
@@ -20834,7 +21098,7 @@
      "locCm": [
       0.0,
       -0.0,
-      7.981
+      7.597
      ],
      "name": "glint",
      "rotDeg": [
@@ -20853,13 +21117,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     5.836,
-     7.923,
-     8.877
+     5.939,
+     8.064,
+     10.33
     ],
     "min": [
-     -5.859,
-     -6.888,
+     -5.961,
+     -7.013,
      -1.3
     ]
    },
@@ -20882,8 +21146,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 31.7,
-    "medianRimPx": 1.99,
+    "maxHullLumP95": 28.6,
+    "medianRimPx": 2.01,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -20940,6 +21204,7 @@
      "periodMs": 1600
     },
     "cut": "pear",
+    "form": "crowned",
     "gem": "sapphire",
     "kind": "gem",
     "qualityPalette": {
@@ -21003,7 +21268,7 @@
      "locCm": [
       0.0,
       -0.0,
-      26.877
+      28.33
      ],
      "name": "label",
      "rotDeg": [
@@ -21016,7 +21281,7 @@
      "locCm": [
       0.0,
       -0.0,
-      8.877
+      10.33
      ],
      "name": "glint",
      "rotDeg": [
@@ -21027,21 +21292,21 @@
     }
    ],
    "triangles": {
-    "outline": 64,
-    "toon": 64
+    "outline": 86,
+    "toon": 86
    }
   },
   "SM_Pickup_Gem_Topaz_1": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     4.955,
-     5.036,
-     6.794
+     4.614,
+     4.667,
+     5.76
     ],
     "min": [
-     -4.471,
-     -3.956,
+     -4.159,
+     -3.708,
      -1.3
     ]
    },
@@ -21064,8 +21329,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 47.9,
-    "medianRimPx": 2.0,
+    "maxHullLumP95": 47.8,
+    "medianRimPx": 1.99,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -21122,6 +21387,7 @@
      "periodMs": 1600
     },
     "cut": "trillion",
+    "form": "chipped",
     "gem": "topaz",
     "kind": "gem",
     "qualityPalette": {
@@ -21185,7 +21451,7 @@
      "locCm": [
       0.0,
       -0.0,
-      24.794
+      23.76
      ],
      "name": "label",
      "rotDeg": [
@@ -21198,7 +21464,7 @@
      "locCm": [
       0.0,
       -0.0,
-      6.794
+      5.76
      ],
      "name": "glint",
      "rotDeg": [
@@ -21217,13 +21483,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     5.731,
-     5.768,
-     7.953
+     5.475,
+     5.504,
+     7.569
     ],
     "min": [
-     -5.751,
-     -4.514,
+     -5.495,
+     -4.328,
      -1.3
     ]
    },
@@ -21246,8 +21512,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 48.6,
-    "medianRimPx": 1.98,
+    "maxHullLumP95": 48.2,
+    "medianRimPx": 1.97,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -21304,6 +21570,7 @@
      "periodMs": 1600
     },
     "cut": "trillion",
+    "form": "faceted",
     "gem": "topaz",
     "kind": "gem",
     "qualityPalette": {
@@ -21367,7 +21634,7 @@
      "locCm": [
       0.0,
       -0.0,
-      25.953
+      25.569
      ],
      "name": "label",
      "rotDeg": [
@@ -21380,7 +21647,7 @@
      "locCm": [
       0.0,
       -0.0,
-      7.953
+      7.569
      ],
      "name": "glint",
      "rotDeg": [
@@ -21399,13 +21666,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     6.328,
-     6.386,
-     8.849
+     6.439,
+     6.494,
+     10.3
     ],
     "min": [
-     -6.348,
-     -4.948,
+     -6.458,
+     -5.035,
      -1.3
     ]
    },
@@ -21428,8 +21695,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 49.2,
-    "medianRimPx": 1.99,
+    "maxHullLumP95": 48.4,
+    "medianRimPx": 1.98,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -21486,6 +21753,7 @@
      "periodMs": 1600
     },
     "cut": "trillion",
+    "form": "crowned",
     "gem": "topaz",
     "kind": "gem",
     "qualityPalette": {
@@ -21549,7 +21817,7 @@
      "locCm": [
       0.0,
       -0.0,
-      26.849
+      28.3
      ],
      "name": "label",
      "rotDeg": [
@@ -21562,7 +21830,7 @@
      "locCm": [
       0.0,
       -0.0,
-      8.849
+      10.3
      ],
      "name": "glint",
      "rotDeg": [
@@ -21573,8 +21841,8 @@
     }
    ],
    "triangles": {
-    "outline": 52,
-    "toon": 52
+    "outline": 70,
+    "toon": 70
    }
   },
   "SM_Pickup_GoldCoin": {
@@ -21602,71 +21870,6 @@
     "pickup_gold_coin"
    ],
    "kind": "StaticMesh",
-   "loot": {
-    "beam": {
-     "legendary": {
-      "coreAlpha": 0.7,
-      "motes": 10,
-      "pillarAlpha": 0.75,
-      "pillarCm": 280,
-      "pillarWidthCm": 30,
-      "poolAlpha": 0.7,
-      "poolCm": [
-       55,
-       24
-      ]
-     },
-     "magic": {
-      "poolAlpha": 0.7,
-      "poolCm": [
-       40,
-       18
-      ]
-     },
-     "rare": {
-      "coreAlpha": 0.5,
-      "pillarAlpha": 0.55,
-      "pillarCm": 180,
-      "pillarWidthCm": 22,
-      "poolAlpha": 0.7,
-      "poolCm": [
-       40,
-       18
-      ]
-     },
-     "set": {
-      "coreAlpha": 0.7,
-      "motes": 10,
-      "pillarAlpha": 0.75,
-      "pillarCm": 280,
-      "pillarWidthCm": 30,
-      "poolAlpha": 0.7,
-      "poolCm": [
-       55,
-       24
-      ]
-     }
-    },
-    "bob": {
-     "amplitudeCm": 12.8,
-     "periodMs": 1600
-    },
-    "kind": "fx_coin",
-    "qualityPalette": {
-     "legendary": "#FF8A2A",
-     "magic": "#4F8CFF",
-     "normal": "#C8C8C8",
-     "rare": "#FFD84A",
-     "set": "#3ECF6A"
-    },
-    "sockets": {
-     "beam": "ground centre (pool + pillar base)",
-     "glint": "sparkle",
-     "label": "name plate anchor"
-    },
-    "tint": false,
-    "tintAmount": 0.0
-   },
    "materialSlots": [
     {
      "index": 0,
@@ -21675,10 +21878,12 @@
      "parent": "M_AF_Toon"
     }
    ],
-   "note": "VFX mesh (reward.gold burst, AbyssVfxDefaults): toon slot only, no outline (spec \u00a71.3 VFX); the VFX system replaces slot 0 with M_AF_FX_Mesh and sizes it by its bounds",
+   "note": "VFX mesh (reward.gold burst, AbyssVfxDefaults): toon slot only, no outline (spec \u00a71.3 VFX), no sockets; the VFX system replaces slot 0 with M_AF_FX_Mesh and sizes it by its bounds; not a ground pickup (no loot record)",
    "pickupGroup": "coin",
    "previews": [
-    "SM_Pickup_GoldCoin/closeup.png"
+    "SM_Pickup_GoldCoin/closeup.png",
+    "SM_Pickup_GoldCoin/game.png",
+    "SM_Pickup_GoldCoin/game_1080crop.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -21691,14 +21896,14 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     20.318,
-     15.791,
-     9.661
+     20.282,
+     15.501,
+     9.159
     ],
     "min": [
-     -18.786,
-     -15.608,
-     -3.12
+     -18.789,
+     -14.432,
+     -1.429
     ]
    },
    "category": "Pickups",
@@ -21720,8 +21925,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 44.0,
-    "medianRimPx": 2.24,
+    "maxHullLumP95": 43.3,
+    "medianRimPx": 2.32,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -21841,7 +22046,7 @@
      "locCm": [
       0.0,
       -0.0,
-      27.661
+      27.159
      ],
      "name": "label",
      "rotDeg": [
@@ -21854,7 +22059,7 @@
      "locCm": [
       0.0,
       -0.0,
-      8.212
+      7.785
      ],
      "name": "glint",
      "rotDeg": [
@@ -21865,8 +22070,8 @@
     }
    ],
    "triangles": {
-    "outline": 984,
-    "toon": 5648
+    "outline": 1552,
+    "toon": 2664
    }
   },
   "SM_Pickup_Gold_M": {
@@ -22415,13 +22620,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     12.274,
-     12.15,
+     12.148,
+     12.148,
      33.55
     ],
     "min": [
-     -12.26,
-     -12.15,
+     -12.148,
+     -12.148,
      -1.35
     ]
    },
@@ -22447,7 +22652,7 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 33.3,
-    "medianRimPx": 2.22,
+    "medianRimPx": 2.11,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -22500,7 +22705,18 @@
     },
     "bob": {
      "amplitudeCm": 12.8,
-     "periodMs": 1600
+     "periodMs": 1200
+    },
+    "glintZ": 0.1203,
+    "glow": {
+     "alpha": 0.45,
+     "blend": "additive",
+     "color": "#FF4A4A",
+     "depthOffsetCm": 15.0,
+     "falloff": "web light (review.GLOW_STOPS)",
+     "placement": "behind: camera-facing card pushed 15 cm back along the view ray, depth-tested (the flask and its ink occlude it; web draws the glow under the sprite)",
+     "radiusCm": 22.0,
+     "socket": "glint"
     },
     "kind": "potion",
     "potion": "hp",
@@ -22579,7 +22795,7 @@
      "locCm": [
       0.0,
       -0.0,
-      15.0
+      12.028
      ],
      "name": "glint",
      "rotDeg": [
@@ -22591,19 +22807,19 @@
    ],
    "triangles": {
     "outline": 504,
-    "toon": 1202
+    "toon": 1242
    }
   },
   "SM_Pickup_PotionHP_L": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     14.908,
+     14.75,
      14.75,
      40.95
     ],
     "min": [
-     -14.893,
+     -14.75,
      -14.75,
      -1.35
     ]
@@ -22629,7 +22845,7 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 33.3,
-    "medianRimPx": 2.22,
+    "medianRimPx": 2.13,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -22682,7 +22898,18 @@
     },
     "bob": {
      "amplitudeCm": 12.8,
-     "periodMs": 1600
+     "periodMs": 1200
+    },
+    "glintZ": 0.1476,
+    "glow": {
+     "alpha": 0.45,
+     "blend": "additive",
+     "color": "#FF4A4A",
+     "depthOffsetCm": 15.0,
+     "falloff": "web light (review.GLOW_STOPS)",
+     "placement": "behind: camera-facing card pushed 15 cm back along the view ray, depth-tested (the flask and its ink occlude it; web draws the glow under the sprite)",
+     "radiusCm": 22.0,
+     "socket": "glint"
     },
     "kind": "potion",
     "potion": "hp",
@@ -22761,7 +22988,7 @@
      "locCm": [
       0.0,
       -0.0,
-      18.4
+      14.756
      ],
      "name": "glint",
      "rotDeg": [
@@ -22780,13 +23007,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     8.893,
-     8.576,
+     8.532,
+     8.533,
      29.75
     ],
     "min": [
-     -8.852,
-     -8.576,
+     -8.532,
+     -8.533,
      -1.35
     ]
    },
@@ -22811,7 +23038,7 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 33.3,
-    "medianRimPx": 2.28,
+    "medianRimPx": 2.12,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -22864,7 +23091,18 @@
     },
     "bob": {
      "amplitudeCm": 12.8,
-     "periodMs": 1600
+     "periodMs": 1200
+    },
+    "glintZ": 0.093,
+    "glow": {
+     "alpha": 0.45,
+     "blend": "additive",
+     "color": "#FF4A4A",
+     "depthOffsetCm": 15.0,
+     "falloff": "web light (review.GLOW_STOPS)",
+     "placement": "behind: camera-facing card pushed 15 cm back along the view ray, depth-tested (the flask and its ink occlude it; web draws the glow under the sprite)",
+     "radiusCm": 22.0,
+     "socket": "glint"
     },
     "kind": "potion",
     "potion": "hp",
@@ -22943,7 +23181,7 @@
      "locCm": [
       0.0,
       -0.0,
-      11.2
+      9.3
      ],
      "name": "glint",
      "rotDeg": [
@@ -22962,13 +23200,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     12.274,
-     12.15,
+     12.148,
+     12.148,
      33.55
     ],
     "min": [
-     -12.26,
-     -12.15,
+     -12.148,
+     -12.148,
      -1.35
     ]
    },
@@ -22994,7 +23232,7 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 33.3,
-    "medianRimPx": 2.22,
+    "medianRimPx": 2.11,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -23047,7 +23285,18 @@
     },
     "bob": {
      "amplitudeCm": 12.8,
-     "periodMs": 1600
+     "periodMs": 1200
+    },
+    "glintZ": 0.1203,
+    "glow": {
+     "alpha": 0.45,
+     "blend": "additive",
+     "color": "#4A8AFF",
+     "depthOffsetCm": 15.0,
+     "falloff": "web light (review.GLOW_STOPS)",
+     "placement": "behind: camera-facing card pushed 15 cm back along the view ray, depth-tested (the flask and its ink occlude it; web draws the glow under the sprite)",
+     "radiusCm": 22.0,
+     "socket": "glint"
     },
     "kind": "potion",
     "potion": "mp",
@@ -23126,7 +23375,7 @@
      "locCm": [
       0.0,
       -0.0,
-      15.0
+      12.028
      ],
      "name": "glint",
      "rotDeg": [
@@ -23138,20 +23387,20 @@
    ],
    "triangles": {
     "outline": 504,
-    "toon": 1202
+    "toon": 1242
    }
   },
   "SM_Pickup_PotionMP_S": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     8.893,
-     8.576,
+     8.532,
+     8.533,
      29.75
     ],
     "min": [
-     -8.852,
-     -8.576,
+     -8.532,
+     -8.533,
      -1.35
     ]
    },
@@ -23176,7 +23425,7 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 33.3,
-    "medianRimPx": 2.28,
+    "medianRimPx": 2.12,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -23229,7 +23478,18 @@
     },
     "bob": {
      "amplitudeCm": 12.8,
-     "periodMs": 1600
+     "periodMs": 1200
+    },
+    "glintZ": 0.093,
+    "glow": {
+     "alpha": 0.45,
+     "blend": "additive",
+     "color": "#4A8AFF",
+     "depthOffsetCm": 15.0,
+     "falloff": "web light (review.GLOW_STOPS)",
+     "placement": "behind: camera-facing card pushed 15 cm back along the view ray, depth-tested (the flask and its ink occlude it; web draws the glow under the sprite)",
+     "radiusCm": 22.0,
+     "socket": "glint"
     },
     "kind": "potion",
     "potion": "mp",
@@ -23308,7 +23568,7 @@
      "locCm": [
       0.0,
       -0.0,
-      11.2
+      9.3
      ],
      "name": "glint",
      "rotDeg": [
@@ -23514,7 +23774,7 @@
     "min": [
      -16.515,
      -10.047,
-     -1.085
+     -1.278
     ]
    },
    "category": "Pickups",
@@ -23536,8 +23796,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 40.8,
-    "medianRimPx": 3.7,
+    "maxHullLumP95": 54.0,
+    "medianRimPx": 3.97,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -23679,21 +23939,21 @@
     }
    ],
    "triangles": {
-    "outline": 2952,
-    "toon": 2952
+    "outline": 3384,
+    "toon": 3528
    }
   },
   "SM_Pickup_Quest_Pendant": {
    "blocking": false,
    "boundsCm": {
     "max": [
-     11.535,
-     10.508,
-     4.48
+     8.223,
+     7.654,
+     4.557
     ],
     "min": [
-     -11.489,
-     -11.606,
+     -18.002,
+     -15.002,
      -1.404
     ]
    },
@@ -23716,8 +23976,8 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 47.4,
-    "medianRimPx": 4.41,
+    "maxHullLumP95": 52.0,
+    "medianRimPx": 4.06,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -23835,7 +24095,7 @@
      "locCm": [
       0.0,
       -0.0,
-      21.13
+      21.366
      ],
      "name": "label",
      "rotDeg": [
@@ -23848,7 +24108,7 @@
      "locCm": [
       0.0,
       -0.4,
-      3.13
+      3.366
      ],
      "name": "glint",
      "rotDeg": [
@@ -23859,8 +24119,8 @@
     }
    ],
    "triangles": {
-    "outline": 1212,
-    "toon": 1732
+    "outline": 1484,
+    "toon": 2004
    }
   },
   "SM_Pickup_Scroll_ID": {
@@ -23953,6 +24213,8 @@
      "periodMs": 1600
     },
     "kind": "scroll",
+    "milestone": "later",
+    "milestoneNote": "DECISIONS I2: no ID scrolls in milestone 1",
     "qualityPalette": {
      "legendary": "#FF8A2A",
      "magic": "#4F8CFF",
@@ -24039,7 +24301,7 @@
    ],
    "triangles": {
     "outline": 936,
-    "toon": 2004
+    "toon": 2060
    }
   },
   "SM_Pickup_Scroll_TP": {
@@ -24132,6 +24394,8 @@
      "periodMs": 1600
     },
     "kind": "scroll",
+    "milestone": "later",
+    "milestoneNote": "DECISIONS I4: the TP scroll is removed in milestone 1",
     "qualityPalette": {
      "legendary": "#FF8A2A",
      "magic": "#4F8CFF",
@@ -24350,7 +24614,7 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 31.4,
+    "maxHullLumP95": 32.0,
     "medianRimPx": 1.38,
     "minFracDark": 0.9731,
     "minFracRim": 1.0,
@@ -24360,9 +24624,14 @@
    "materialSlots": [
     {
      "index": 0,
-     "name": "MI_AF_Toon_Props_Plains",
+     "name": "MI_AF_Toon_Props_Plains_Wind",
      "palette": "Props_Plains",
-     "parent": "M_AF_Toon"
+     "params": {
+      "WindAmplitudeCm": 3.0,
+      "WindHeightCm": 235.0,
+      "WindSpeed": 1.7
+     },
+     "parent": "M_AF_Toon_Foliage"
     },
     {
      "class": "decor",
@@ -24371,7 +24640,7 @@
      "outlineMix": 1.0,
      "outlinePx1080": 1.4,
      "palette": "Props_Plains",
-     "parent": "M_AF_Outline",
+     "parent": "M_AF_Outline_Foliage",
      "widthCm": 1.2
     }
    ],
@@ -24387,6 +24656,14 @@
    "triangles": {
     "outline": 212,
     "toon": 680
+   },
+   "wind": {
+    "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
+    "required": "prop cloth: AF_Wind must scale its sway by the baked weight (AF_Data.g on the toon, UVWind.U on the hull) \u2014 the height ramp alone sways the pole top and pins the tail",
+    "uv1": "UVWind: U = sway weight, V = phase (toon + hull loops: sway both alike)",
+    "vertexColor": "AF_Data.g = sway weight (0 rigid base .. 1 free tip), AF_Data.b = phase 0..1 (toon vertices; hull AF_Data.rgb = its normal)",
+    "weightRule": "0 on the pole, crossbar, finial and base; cloth (and its trims / emblem) 0 at the bar -> 1 at the tail; phase per cloth panel + along its width",
+    "weights": "vertex"
    }
   },
   "SM_Prop_Camp_Barrel": {
@@ -24529,7 +24806,8 @@
     "Previews/SM_Prop_Camp_Campfire/game_1080crop.png",
     "Previews/SM_Prop_Camp_Campfire/game_inkgate.png",
     "Previews/SM_Prop_Camp_Campfire/closeup.png",
-    "Previews/SM_Prop_Camp_Campfire/turnaround.png"
+    "Previews/SM_Prop_Camp_Campfire/turnaround.png",
+    "Previews/SM_Prop_Camp_Campfire/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [
@@ -24587,9 +24865,9 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 24.2,
+    "maxHullLumP95": 23.9,
     "medianRimPx": 1.5,
-    "minFracDark": 0.9281,
+    "minFracDark": 0.9132,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -24617,7 +24895,9 @@
     "Previews/SM_Prop_Camp_Crate/game_1080crop.png",
     "Previews/SM_Prop_Camp_Crate/game_inkgate.png",
     "Previews/SM_Prop_Camp_Crate/closeup.png",
-    "Previews/SM_Prop_Camp_Crate/turnaround.png"
+    "Previews/SM_Prop_Camp_Crate/closeup_2.png",
+    "Previews/SM_Prop_Camp_Crate/turnaround.png",
+    "Previews/SM_Prop_Camp_Crate/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -24630,14 +24910,14 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     33.238,
-     14.623,
+     33.217,
+     17.942,
      85.3
     ],
     "min": [
-     -31.841,
-     -18.034,
-     -4.35
+     -35.515,
+     -18.501,
+     -4.348
     ]
    },
    "category": "Props",
@@ -24663,9 +24943,9 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 36.2,
-    "medianRimPx": 2.01,
+    "medianRimPx": 2.05,
     "minFracDark": 1.0,
-    "minFracRim": 0.9858,
+    "minFracRim": 1.0,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -24693,7 +24973,8 @@
     "Previews/SM_Prop_Camp_Hearthstone/game_1080crop.png",
     "Previews/SM_Prop_Camp_Hearthstone/game_inkgate.png",
     "Previews/SM_Prop_Camp_Hearthstone/closeup.png",
-    "Previews/SM_Prop_Camp_Hearthstone/turnaround.png"
+    "Previews/SM_Prop_Camp_Hearthstone/turnaround.png",
+    "Previews/SM_Prop_Camp_Hearthstone/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [
@@ -24725,8 +25006,8 @@
     }
    ],
    "triangles": {
-    "outline": 182,
-    "toon": 342
+    "outline": 302,
+    "toon": 494
    }
   },
   "SM_Prop_Camp_Tent": {
@@ -24740,16 +25021,17 @@
     "min": [
      -170.551,
      -139.551,
-     -3.093
+     -3.302
     ]
    },
    "category": "Props",
    "displayName": "Camp_Tent",
    "family": "environment.camp",
    "fbx": "Props/SM_Prop_Camp_Tent.fbx",
+   "footprintNote": "footprintTiles [2,2] = the canvas body (2.5 x 2.0 m; 3.3 x 2.7 m with the guy ropes): MapGen CampProps / ApplyCampBlockers still block only the anchor tile (world-map-nav 3.4 offsets (-3,-2) (3,-2) (-2,2) (2,2)), so the hero can walk into the canvas beside it until the core bakes this footprint (world owner)",
    "footprintTiles": [
-    1,
-    1
+    2,
+    2
    ],
    "gameIds": [
     "camp_tent"
@@ -24765,7 +25047,7 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 32.3,
-    "medianRimPx": 1.49,
+    "medianRimPx": 1.47,
     "minFracDark": 0.994,
     "minFracRim": 1.0,
     "pass": true
@@ -24793,15 +25075,17 @@
    "previews": [
     "Previews/SM_Prop_Camp_Tent/game.png",
     "Previews/SM_Prop_Camp_Tent/game_1080crop.png",
+    "Previews/SM_Prop_Camp_Tent/game_1080crop_2.png",
     "Previews/SM_Prop_Camp_Tent/game_inkgate.png",
+    "Previews/SM_Prop_Camp_Tent/game_inkgate_2.png",
     "Previews/SM_Prop_Camp_Tent/closeup.png",
     "Previews/SM_Prop_Camp_Tent/turnaround.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 784,
-    "toon": 1188
+    "outline": 1232,
+    "toon": 1764
    }
   },
   "SM_Prop_Camp_Torch": {
@@ -24890,7 +25174,7 @@
    ],
    "triangles": {
     "outline": 156,
-    "toon": 496
+    "toon": 664
    }
   },
   "SM_Prop_Camp_Well": {
@@ -24928,7 +25212,7 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 39.0,
+    "maxHullLumP95": 39.1,
     "medianRimPx": 2.5,
     "minFracDark": 0.992,
     "minFracRim": 1.0,
@@ -24958,7 +25242,8 @@
     "Previews/SM_Prop_Camp_Well/game_1080crop.png",
     "Previews/SM_Prop_Camp_Well/game_inkgate.png",
     "Previews/SM_Prop_Camp_Well/closeup.png",
-    "Previews/SM_Prop_Camp_Well/turnaround.png"
+    "Previews/SM_Prop_Camp_Well/turnaround.png",
+    "Previews/SM_Prop_Camp_Well/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25033,7 +25318,8 @@
     "Previews/SM_Prop_Event_RunePillar/game_1080crop.png",
     "Previews/SM_Prop_Event_RunePillar/game_inkgate.png",
     "Previews/SM_Prop_Event_RunePillar/closeup.png",
-    "Previews/SM_Prop_Event_RunePillar/turnaround.png"
+    "Previews/SM_Prop_Event_RunePillar/turnaround.png",
+    "Previews/SM_Prop_Event_RunePillar/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25078,7 +25364,7 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 41.1,
+    "maxHullLumP95": 41.3,
     "medianRimPx": 2.0,
     "minFracDark": 1.0,
     "minFracRim": 0.9961,
@@ -25107,9 +25393,15 @@
    "previews": [
     "Previews/SM_Prop_ExitGate_Sealed/game.png",
     "Previews/SM_Prop_ExitGate_Sealed/game_1080crop.png",
+    "Previews/SM_Prop_ExitGate_Sealed/game_1080crop_2.png",
     "Previews/SM_Prop_ExitGate_Sealed/game_inkgate.png",
+    "Previews/SM_Prop_ExitGate_Sealed/game_inkgate_2.png",
+    "Previews/SM_Prop_ExitGate_Sealed/game_inkgate_3.png",
+    "Previews/SM_Prop_ExitGate_Sealed/game_inkgate_4.png",
     "Previews/SM_Prop_ExitGate_Sealed/closeup.png",
-    "Previews/SM_Prop_ExitGate_Sealed/turnaround.png"
+    "Previews/SM_Prop_ExitGate_Sealed/closeup_2.png",
+    "Previews/SM_Prop_ExitGate_Sealed/turnaround.png",
+    "Previews/SM_Prop_ExitGate_Sealed/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [
@@ -25196,9 +25488,14 @@
    "previews": [
     "Previews/SM_Prop_ExitPortal/game.png",
     "Previews/SM_Prop_ExitPortal/game_1080crop.png",
+    "Previews/SM_Prop_ExitPortal/game_1080crop_2.png",
     "Previews/SM_Prop_ExitPortal/game_inkgate.png",
+    "Previews/SM_Prop_ExitPortal/game_inkgate_2.png",
+    "Previews/SM_Prop_ExitPortal/game_inkgate_3.png",
+    "Previews/SM_Prop_ExitPortal/game_inkgate_4.png",
     "Previews/SM_Prop_ExitPortal/closeup.png",
-    "Previews/SM_Prop_ExitPortal/turnaround.png"
+    "Previews/SM_Prop_ExitPortal/turnaround.png",
+    "Previews/SM_Prop_ExitPortal/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [
@@ -25238,13 +25535,13 @@
    "blocking": false,
    "boundsCm": {
     "max": [
-     17.425,
-     14.263,
+     22.651,
+     18.957,
      33.8
     ],
     "min": [
-     -13.3,
-     -11.452,
+     -17.267,
+     -14.147,
      -4.3
     ]
    },
@@ -25270,9 +25567,9 @@
      "minPx": 1.5
     },
     "maxHullLumP95": 36.3,
-    "medianRimPx": 5.41,
+    "medianRimPx": 2.35,
     "minFracDark": 1.0,
-    "minFracRim": 1.0,
+    "minFracRim": 0.9903,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -25300,17 +25597,18 @@
     "Previews/SM_Prop_Gather_EmeraldHerb/game_1080crop.png",
     "Previews/SM_Prop_Gather_EmeraldHerb/game_inkgate.png",
     "Previews/SM_Prop_Gather_EmeraldHerb/closeup.png",
-    "Previews/SM_Prop_Gather_EmeraldHerb/turnaround.png"
+    "Previews/SM_Prop_Gather_EmeraldHerb/turnaround.png",
+    "Previews/SM_Prop_Gather_EmeraldHerb/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 340,
-    "toon": 536
+    "outline": 364,
+    "toon": 504
    }
   },
   "SM_Prop_Goblin_BoneTotem": {
-   "blocking": true,
+   "blocking": false,
    "boundsCm": {
     "max": [
      46.472,
@@ -25354,9 +25652,14 @@
    "materialSlots": [
     {
      "index": 0,
-     "name": "MI_AF_Toon_Props_Plains",
+     "name": "MI_AF_Toon_Props_Plains_Wind",
      "palette": "Props_Plains",
-     "parent": "M_AF_Toon"
+     "params": {
+      "WindAmplitudeCm": 3.0,
+      "WindHeightCm": 235.0,
+      "WindSpeed": 1.7
+     },
+     "parent": "M_AF_Toon_Foliage"
     },
     {
      "class": "decor",
@@ -25365,11 +25668,12 @@
      "outlineMix": 1.0,
      "outlinePx1080": 1.4,
      "palette": "Props_Plains",
-     "parent": "M_AF_Outline",
+     "parent": "M_AF_Outline_Foliage",
      "widthCm": 1.2
     }
    ],
-   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable",
+   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): non-blocking decorations per spec 6.9 (blocking false: no MapGen / W5 bake places them, so a blocking flag would be unbaked data); footprintTiles is the body size for the placer",
+   "placement": "level script (spec 6.9): placed round the explore objective zone_goblin_camp / cs_ep_whisper focus (40,52) by the world / level-design owner \u2014 no Source or Data file references these ids yet",
    "previews": [
     "Previews/SM_Prop_Goblin_BoneTotem/game.png",
     "Previews/SM_Prop_Goblin_BoneTotem/game_1080crop.png",
@@ -25382,10 +25686,18 @@
    "triangles": {
     "outline": 1378,
     "toon": 1738
+   },
+   "wind": {
+    "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
+    "required": "prop cloth: AF_Wind must scale its sway by the baked weight (AF_Data.g on the toon, UVWind.U on the hull) \u2014 the height ramp alone sways the pole top and pins the tail",
+    "uv1": "UVWind: U = sway weight, V = phase (toon + hull loops: sway both alike)",
+    "vertexColor": "AF_Data.g = sway weight (0 rigid base .. 1 free tip), AF_Data.b = phase 0..1 (toon vertices; hull AF_Data.rgb = its normal)",
+    "weightRule": "0 on the pole, crossbar, finial and base; cloth (and its trims / emblem) 0 at the bar -> 1 at the tail; phase per cloth panel + along its width",
+    "weights": "vertex"
    }
   },
   "SM_Prop_Goblin_Crates": {
-   "blocking": true,
+   "blocking": false,
    "boundsCm": {
     "max": [
      60.631,
@@ -25444,13 +25756,15 @@
      "widthCm": 1.2
     }
    ],
-   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable",
+   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): non-blocking decorations per spec 6.9 (blocking false: no MapGen / W5 bake places them, so a blocking flag would be unbaked data); footprintTiles is the body size for the placer",
+   "placement": "level script (spec 6.9): placed round the explore objective zone_goblin_camp / cs_ep_whisper focus (40,52) by the world / level-design owner \u2014 no Source or Data file references these ids yet",
    "previews": [
     "Previews/SM_Prop_Goblin_Crates/game.png",
     "Previews/SM_Prop_Goblin_Crates/game_1080crop.png",
     "Previews/SM_Prop_Goblin_Crates/game_inkgate.png",
     "Previews/SM_Prop_Goblin_Crates/closeup.png",
-    "Previews/SM_Prop_Goblin_Crates/turnaround.png"
+    "Previews/SM_Prop_Goblin_Crates/turnaround.png",
+    "Previews/SM_Prop_Goblin_Crates/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25494,7 +25808,7 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 54.2,
+    "maxHullLumP95": 54.0,
     "medianRimPx": 1.36,
     "minFracDark": 0.9894,
     "minFracRim": 1.0,
@@ -25519,13 +25833,15 @@
      "widthCm": 1.2
     }
    ],
-   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable",
+   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): non-blocking decorations per spec 6.9 (blocking false: no MapGen / W5 bake places them, so a blocking flag would be unbaked data); footprintTiles is the body size for the placer",
+   "placement": "level script (spec 6.9): placed round the explore objective zone_goblin_camp / cs_ep_whisper focus (40,52) by the world / level-design owner \u2014 no Source or Data file references these ids yet",
    "previews": [
     "Previews/SM_Prop_Goblin_FirePit/game.png",
     "Previews/SM_Prop_Goblin_FirePit/game_1080crop.png",
     "Previews/SM_Prop_Goblin_FirePit/game_inkgate.png",
     "Previews/SM_Prop_Goblin_FirePit/closeup.png",
-    "Previews/SM_Prop_Goblin_FirePit/turnaround.png"
+    "Previews/SM_Prop_Goblin_FirePit/turnaround.png",
+    "Previews/SM_Prop_Goblin_FirePit/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25535,7 +25851,7 @@
    }
   },
   "SM_Prop_Goblin_Hut_A": {
-   "blocking": true,
+   "blocking": false,
    "boundsCm": {
     "max": [
      109.579,
@@ -25569,7 +25885,7 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 53.3,
+    "maxHullLumP95": 53.4,
     "medianRimPx": 2.63,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
@@ -25594,13 +25910,16 @@
      "widthCm": 1.2
     }
    ],
-   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable",
+   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): non-blocking decorations per spec 6.9 (blocking false: no MapGen / W5 bake places them, so a blocking flag would be unbaked data); footprintTiles is the body size for the placer",
+   "placement": "level script (spec 6.9): placed round the explore objective zone_goblin_camp / cs_ep_whisper focus (40,52) by the world / level-design owner \u2014 no Source or Data file references these ids yet",
    "previews": [
     "Previews/SM_Prop_Goblin_Hut_A/game.png",
     "Previews/SM_Prop_Goblin_Hut_A/game_1080crop.png",
     "Previews/SM_Prop_Goblin_Hut_A/game_inkgate.png",
     "Previews/SM_Prop_Goblin_Hut_A/closeup.png",
-    "Previews/SM_Prop_Goblin_Hut_A/turnaround.png"
+    "Previews/SM_Prop_Goblin_Hut_A/closeup_2.png",
+    "Previews/SM_Prop_Goblin_Hut_A/turnaround.png",
+    "Previews/SM_Prop_Goblin_Hut_A/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25610,7 +25929,7 @@
    }
   },
   "SM_Prop_Goblin_Hut_B": {
-   "blocking": true,
+   "blocking": false,
    "boundsCm": {
     "max": [
      114.413,
@@ -25669,13 +25988,15 @@
      "widthCm": 1.2
     }
    ],
-   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable",
+   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): non-blocking decorations per spec 6.9 (blocking false: no MapGen / W5 bake places them, so a blocking flag would be unbaked data); footprintTiles is the body size for the placer",
+   "placement": "level script (spec 6.9): placed round the explore objective zone_goblin_camp / cs_ep_whisper focus (40,52) by the world / level-design owner \u2014 no Source or Data file references these ids yet",
    "previews": [
     "Previews/SM_Prop_Goblin_Hut_B/game.png",
     "Previews/SM_Prop_Goblin_Hut_B/game_1080crop.png",
     "Previews/SM_Prop_Goblin_Hut_B/game_inkgate.png",
     "Previews/SM_Prop_Goblin_Hut_B/closeup.png",
-    "Previews/SM_Prop_Goblin_Hut_B/turnaround.png"
+    "Previews/SM_Prop_Goblin_Hut_B/turnaround.png",
+    "Previews/SM_Prop_Goblin_Hut_B/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25685,7 +26006,7 @@
    }
   },
   "SM_Prop_Goblin_SpearRack": {
-   "blocking": true,
+   "blocking": false,
    "boundsCm": {
     "max": [
      71.3,
@@ -25744,13 +26065,15 @@
      "widthCm": 1.2
     }
    ],
-   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): placed by the level script round the explore objective zone_goblin_camp / cs_ep_whisper focus. Blocking follows DECISIONS W5 (tall decorations block: huts 2x2, totem, spear rack, crates) over spec 6.9's 'non-blocking' note; the fire pit stays walkable",
+   "note": "goblin camp dressing at (40,52) (spec 6.9 NEW, DECISIONS R7): non-blocking decorations per spec 6.9 (blocking false: no MapGen / W5 bake places them, so a blocking flag would be unbaked data); footprintTiles is the body size for the placer",
+   "placement": "level script (spec 6.9): placed round the explore objective zone_goblin_camp / cs_ep_whisper focus (40,52) by the world / level-design owner \u2014 no Source or Data file references these ids yet",
    "previews": [
     "Previews/SM_Prop_Goblin_SpearRack/game.png",
     "Previews/SM_Prop_Goblin_SpearRack/game_1080crop.png",
     "Previews/SM_Prop_Goblin_SpearRack/game_inkgate.png",
     "Previews/SM_Prop_Goblin_SpearRack/closeup.png",
-    "Previews/SM_Prop_Goblin_SpearRack/turnaround.png"
+    "Previews/SM_Prop_Goblin_SpearRack/turnaround.png",
+    "Previews/SM_Prop_Goblin_SpearRack/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25826,7 +26149,8 @@
     "Previews/SM_Prop_GoldPile/game_1080crop.png",
     "Previews/SM_Prop_GoldPile/game_inkgate.png",
     "Previews/SM_Prop_GoldPile/closeup.png",
-    "Previews/SM_Prop_GoldPile/turnaround.png"
+    "Previews/SM_Prop_GoldPile/turnaround.png",
+    "Previews/SM_Prop_GoldPile/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25870,7 +26194,7 @@
      "minFrac": 0.9,
      "minPx": 1.5
     },
-    "maxHullLumP95": 39.2,
+    "maxHullLumP95": 39.3,
     "medianRimPx": 2.12,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
@@ -25901,7 +26225,8 @@
     "Previews/SM_Prop_Lore_AncientTablet/game_1080crop.png",
     "Previews/SM_Prop_Lore_AncientTablet/game_inkgate.png",
     "Previews/SM_Prop_Lore_AncientTablet/closeup.png",
-    "Previews/SM_Prop_Lore_AncientTablet/turnaround.png"
+    "Previews/SM_Prop_Lore_AncientTablet/turnaround.png",
+    "Previews/SM_Prop_Lore_AncientTablet/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -25976,7 +26301,8 @@
     "Previews/SM_Prop_Lore_CarvedStone/game_1080crop.png",
     "Previews/SM_Prop_Lore_CarvedStone/game_inkgate.png",
     "Previews/SM_Prop_Lore_CarvedStone/closeup.png",
-    "Previews/SM_Prop_Lore_CarvedStone/turnaround.png"
+    "Previews/SM_Prop_Lore_CarvedStone/turnaround.png",
+    "Previews/SM_Prop_Lore_CarvedStone/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -26051,7 +26377,8 @@
     "Previews/SM_Prop_Lore_CrystalShard/game_1080crop.png",
     "Previews/SM_Prop_Lore_CrystalShard/game_inkgate.png",
     "Previews/SM_Prop_Lore_CrystalShard/closeup.png",
-    "Previews/SM_Prop_Lore_CrystalShard/turnaround.png"
+    "Previews/SM_Prop_Lore_CrystalShard/turnaround.png",
+    "Previews/SM_Prop_Lore_CrystalShard/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -26126,7 +26453,8 @@
     "Previews/SM_Prop_Lore_TornJournal/game_1080crop.png",
     "Previews/SM_Prop_Lore_TornJournal/game_inkgate.png",
     "Previews/SM_Prop_Lore_TornJournal/closeup.png",
-    "Previews/SM_Prop_Lore_TornJournal/turnaround.png"
+    "Previews/SM_Prop_Lore_TornJournal/turnaround.png",
+    "Previews/SM_Prop_Lore_TornJournal/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -26201,7 +26529,8 @@
     "Previews/SM_Prop_Story_BrokenAltar/game_1080crop.png",
     "Previews/SM_Prop_Story_BrokenAltar/game_inkgate.png",
     "Previews/SM_Prop_Story_BrokenAltar/closeup.png",
-    "Previews/SM_Prop_Story_BrokenAltar/turnaround.png"
+    "Previews/SM_Prop_Story_BrokenAltar/turnaround.png",
+    "Previews/SM_Prop_Story_BrokenAltar/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -26245,7 +26574,7 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 38.7,
+    "maxHullLumP95": 38.2,
     "medianRimPx": 1.39,
     "minFracDark": 0.9523,
     "minFracRim": 0.9695,
@@ -26276,7 +26605,8 @@
     "Previews/SM_Prop_Story_DryWell/game_1080crop.png",
     "Previews/SM_Prop_Story_DryWell/game_inkgate.png",
     "Previews/SM_Prop_Story_DryWell/closeup.png",
-    "Previews/SM_Prop_Story_DryWell/turnaround.png"
+    "Previews/SM_Prop_Story_DryWell/turnaround.png",
+    "Previews/SM_Prop_Story_DryWell/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
@@ -26289,14 +26619,14 @@
    "blocking": true,
    "boundsCm": {
     "max": [
-     100.139,
-     102.56,
-     272.255
+     100.4,
+     101.392,
+     241.338
     ],
     "min": [
-     -143.76,
+     -141.35,
      -36.559,
-     -4.326
+     -4.249
     ]
    },
    "category": "Props",
@@ -26322,8 +26652,8 @@
     },
     "maxHullLumP95": 40.3,
     "medianRimPx": 1.41,
-    "minFracDark": 0.9698,
-    "minFracRim": 0.9677,
+    "minFracDark": 0.9745,
+    "minFracRim": 0.9627,
     "pass": true
    },
    "kind": "StaticMesh",
@@ -26351,13 +26681,15 @@
     "Previews/SM_Prop_Story_ElvenRuins/game_1080crop.png",
     "Previews/SM_Prop_Story_ElvenRuins/game_inkgate.png",
     "Previews/SM_Prop_Story_ElvenRuins/closeup.png",
-    "Previews/SM_Prop_Story_ElvenRuins/turnaround.png"
+    "Previews/SM_Prop_Story_ElvenRuins/closeup_2.png",
+    "Previews/SM_Prop_Story_ElvenRuins/turnaround.png",
+    "Previews/SM_Prop_Story_ElvenRuins/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 1852,
-    "toon": 3256
+    "outline": 1992,
+    "toon": 3396
    }
   },
   "SM_Prop_Story_GoblinTotem": {
@@ -26365,7 +26697,7 @@
    "boundsCm": {
     "max": [
      49.2,
-     20.43,
+     20.428,
      268.2
     ],
     "min": [
@@ -26396,7 +26728,7 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 53.0,
-    "medianRimPx": 1.62,
+    "medianRimPx": 1.63,
     "minFracDark": 0.9929,
     "minFracRim": 1.0,
     "pass": true
@@ -26405,9 +26737,14 @@
    "materialSlots": [
     {
      "index": 0,
-     "name": "MI_AF_Toon_Props_Plains",
+     "name": "MI_AF_Toon_Props_Plains_Wind",
      "palette": "Props_Plains",
-     "parent": "M_AF_Toon"
+     "params": {
+      "WindAmplitudeCm": 3.0,
+      "WindHeightCm": 235.0,
+      "WindSpeed": 1.7
+     },
+     "parent": "M_AF_Toon_Foliage"
     },
     {
      "class": "decor",
@@ -26416,7 +26753,7 @@
      "outlineMix": 1.0,
      "outlinePx1080": 1.4,
      "palette": "Props_Plains",
-     "parent": "M_AF_Outline",
+     "parent": "M_AF_Outline_Foliage",
      "widthCm": 1.2
     }
    ],
@@ -26426,13 +26763,22 @@
     "Previews/SM_Prop_Story_GoblinTotem/game_1080crop.png",
     "Previews/SM_Prop_Story_GoblinTotem/game_inkgate.png",
     "Previews/SM_Prop_Story_GoblinTotem/closeup.png",
-    "Previews/SM_Prop_Story_GoblinTotem/turnaround.png"
+    "Previews/SM_Prop_Story_GoblinTotem/turnaround.png",
+    "Previews/SM_Prop_Story_GoblinTotem/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
     "outline": 1084,
     "toon": 1656
+   },
+   "wind": {
+    "material": "M_AF_Toon_Foliage / M_AF_Outline_Foliage (AF_Wind: height-based today)",
+    "required": "prop cloth: AF_Wind must scale its sway by the baked weight (AF_Data.g on the toon, UVWind.U on the hull) \u2014 the height ramp alone sways the pole top and pins the tail",
+    "uv1": "UVWind: U = sway weight, V = phase (toon + hull loops: sway both alike)",
+    "vertexColor": "AF_Data.g = sway weight (0 rigid base .. 1 free tip), AF_Data.b = phase 0..1 (toon vertices; hull AF_Data.rgb = its normal)",
+    "weightRule": "0 on the pole, crossbar, finial and base; cloth (and its trims / emblem) 0 at the bar -> 1 at the tail; phase per cloth panel + along its width",
+    "weights": "vertex"
    }
   },
   "SM_Rock_Plains_Cluster_A": {
@@ -26445,7 +26791,7 @@
     ],
     "min": [
      -37.7,
-     -33.762,
+     -33.448,
      -4.25
     ]
    },
@@ -26471,8 +26817,8 @@
      "minPx": 0.7
     },
     "maxHullLumP95": 40.5,
-    "medianRimPx": 1.37,
-    "minFracDark": 0.9761,
+    "medianRimPx": 1.36,
+    "minFracDark": 0.976,
     "minFracRim": 1.0,
     "pass": true
    },
@@ -26500,13 +26846,14 @@
     "Previews/SM_Rock_Plains_Cluster_A/game_1080crop.png",
     "Previews/SM_Rock_Plains_Cluster_A/game_inkgate.png",
     "Previews/SM_Rock_Plains_Cluster_A/closeup.png",
-    "Previews/SM_Rock_Plains_Cluster_A/turnaround.png"
+    "Previews/SM_Rock_Plains_Cluster_A/turnaround.png",
+    "Previews/SM_Rock_Plains_Cluster_A/turnaround_2.png"
    ],
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 320,
-    "toon": 356
+    "outline": 280,
+    "toon": 316
    }
   },
   "SM_Rock_Plains_Cluster_B": {
@@ -26618,8 +26965,8 @@
      "minFrac": 0.9,
      "minPx": 0.7
     },
-    "maxHullLumP95": 36.0,
-    "medianRimPx": 1.47,
+    "maxHullLumP95": 36.4,
+    "medianRimPx": 1.44,
     "minFracDark": 1.0,
     "minFracRim": 1.0,
     "pass": true
@@ -26653,8 +27000,8 @@
    "scale": 1.0,
    "sockets": [],
    "triangles": {
-    "outline": 320,
-    "toon": 356
+    "outline": 280,
+    "toon": 316
    }
   },
   "SM_Rock_Plains_MossBoulder_A": {
@@ -26729,138 +27076,6 @@
    "triangles": {
     "outline": 640,
     "toon": 748
-   }
-  },
-  "SM_Terrain_Plains_SkirtHill_A": {
-   "blocking": false,
-   "boundsCm": {
-    "max": [
-     378.006,
-     261.819,
-     73.136
-    ],
-    "min": [
-     -352.638,
-     -236.397,
-     -5.04
-    ]
-   },
-   "category": "Terrain",
-   "displayName": "Plains_SkirtHill_A",
-   "family": "environment.rocks",
-   "fbx": "Terrain/SM_Terrain_Plains_SkirtHill_A.fbx",
-   "gameIds": [
-    "skirt_hill_plains"
-   ],
-   "kind": "StaticMesh",
-   "materialSlots": [
-    {
-     "index": 0,
-     "name": "MI_AF_Toon_Props_Plains",
-     "palette": "Props_Plains",
-     "parent": "M_AF_Toon"
-    }
-   ],
-   "placement": "terrain skirt (spec 6.10): scenery beyond the border ring, no collision, no gameplay footprint",
-   "previews": [
-    "Previews/SM_Terrain_Plains_SkirtHill_A/game.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_A/game_1080crop.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_A/game_inkgate.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_A/closeup.png"
-   ],
-   "scale": 1.0,
-   "sockets": [],
-   "triangles": {
-    "outline": 0,
-    "toon": 992
-   }
-  },
-  "SM_Terrain_Plains_SkirtHill_B": {
-   "blocking": false,
-   "boundsCm": {
-    "max": [
-     474.903,
-     303.204,
-     81.234
-    ],
-    "min": [
-     -505.222,
-     -303.308,
-     -5.04
-    ]
-   },
-   "category": "Terrain",
-   "displayName": "Plains_SkirtHill_B",
-   "family": "environment.rocks",
-   "fbx": "Terrain/SM_Terrain_Plains_SkirtHill_B.fbx",
-   "gameIds": [
-    "skirt_hill_plains"
-   ],
-   "kind": "StaticMesh",
-   "materialSlots": [
-    {
-     "index": 0,
-     "name": "MI_AF_Toon_Props_Plains",
-     "palette": "Props_Plains",
-     "parent": "M_AF_Toon"
-    }
-   ],
-   "placement": "terrain skirt (spec 6.10): scenery beyond the border ring, no collision, no gameplay footprint",
-   "previews": [
-    "Previews/SM_Terrain_Plains_SkirtHill_B/game.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_B/game_1080crop.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_B/game_inkgate.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_B/closeup.png"
-   ],
-   "scale": 1.0,
-   "sockets": [],
-   "triangles": {
-    "outline": 0,
-    "toon": 1160
-   }
-  },
-  "SM_Terrain_Plains_SkirtHill_C": {
-   "blocking": false,
-   "boundsCm": {
-    "max": [
-     272.357,
-     232.986,
-     59.786
-    ],
-    "min": [
-     -244.32,
-     -233.874,
-     -5.04
-    ]
-   },
-   "category": "Terrain",
-   "displayName": "Plains_SkirtHill_C",
-   "family": "environment.rocks",
-   "fbx": "Terrain/SM_Terrain_Plains_SkirtHill_C.fbx",
-   "gameIds": [
-    "skirt_hill_plains"
-   ],
-   "kind": "StaticMesh",
-   "materialSlots": [
-    {
-     "index": 0,
-     "name": "MI_AF_Toon_Props_Plains",
-     "palette": "Props_Plains",
-     "parent": "M_AF_Toon"
-    }
-   ],
-   "placement": "terrain skirt (spec 6.10): scenery beyond the border ring, no collision, no gameplay footprint",
-   "previews": [
-    "Previews/SM_Terrain_Plains_SkirtHill_C/game.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_C/game_1080crop.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_C/game_inkgate.png",
-    "Previews/SM_Terrain_Plains_SkirtHill_C/closeup.png"
-   ],
-   "scale": 1.0,
-   "sockets": [],
-   "triangles": {
-    "outline": 0,
-    "toon": 908
    }
   },
   "SM_UI_QuestMarker_Excl": {
@@ -28400,7 +28615,6 @@
   "quest_marker_complete": "SM_UI_QuestMarker_Quest",
   "quest_marker_progress": "SM_UI_QuestMarker_QuestGrey",
   "rock": "SM_Rock_Plains_Cluster_C",
-  "skirt_hill_plains": "SM_Terrain_Plains_SkirtHill_C",
   "treasure_chest": "SK_Prop_TreasureChest",
   "tree": "SM_Foliage_Plains_Oak_C",
   "tree_round": "SM_Foliage_Plains_FruitTree_B"
@@ -28888,7 +29102,7 @@
   "plains": {
    "details": {
     "alpha": "straight",
-    "cells": "4 x 4 cells of one tile: row 0 grass, 1 dirt, 2 stone, 3 camp (paint 5); column = variant - 1 (variants 1..3); column 3 = water lily-pad motifs (rows = variant - 1)",
+    "cells": "4 x 4 cells of one tile: row 0 grass, 1 dirt, 2 stone, 3 camp (paint 5); column = variant - 1 (variants 1..3); column 3 (water) is transparent: lily pads are the instanced SM_Foliage_Plains_LilyPad_A/B meshes only (spec 6.1)",
     "file": "Terrain/T_Terrain_Plains_Details_BC.png",
     "rule": "own tile (nearest centre) h = tileHash(col, row, 7): h % 12 >= 6 -> variant 1 + h % 3; sample cell at frac(UV0 + 0.5) (tile-local 0..1); composite over the winning material only when it is the own tile's material (AF_Terrain _pattern_block own_var / own_m)",
     "srgb": true,

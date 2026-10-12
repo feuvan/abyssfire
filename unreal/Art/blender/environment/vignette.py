@@ -11,10 +11,12 @@ lily pads on water tiles). The ground is the shipped terrain texture set composi
 rules (``terrain.composite``) + the web contact shadows under the props. The hero is ``SK_Hero_Warrior`` with its
 Idle clip.
 
-Writes ``Art/Previews/env_vignette/``: ``vignette.png`` (the whole 1920×1080 frame at half size), ``vignette_1080crop.png``
-(native 1080p pixels round the hero and the camp gate), ``vignette_pond.png`` (the pond, ridge and grove corner,
-native pixels) and ``vignette_footprints.png`` (W5: the blocking footprints of every placed prop painted on the
-tile grid from the manifest ``footprintTiles`` / ``blocking``).
+Writes ``Art/Previews/env_vignette/``: ``vignette.png`` (the whole frame as a native 640 × 360 render of the same camera),
+``vignette_1080crop.png`` (native 1080p pixels round the hero and the camp gate), ``vignette_pond.png`` (the pond,
+ridge and grove corner), ``vignette_camp.png`` and ``vignette_footprints.png`` (W5: the blocking footprints of every
+placed prop painted on the tile grid from the manifest ``footprintTiles`` / ``blocking``). Every image is truecolour at
+scale 1 (``pngio.write_png_native``: busy crops are split into labelled ``_2`` … tiles, each read back and compared
+pixel-exact); ``hero_check`` asserts the warrior's crimson and ink survive.
 """
 from __future__ import annotations
 
@@ -288,7 +290,8 @@ def ground(shelf: Shelf, m: np.ndarray) -> Path:
 
 def footprints(shelf: Shelf, m: np.ndarray) -> Path:
     """W5 check: the tiles each placed prop blocks (manifest ``blocking`` + ``footprintTiles`` round its anchor
-    tile), painted over a flat map of the tile ids."""
+    tile), painted over a flat map of the tile ids. Half-tile placements (the gate posts at camp.x − 1.5 / + 0.5)
+    are skipped: they are not blocking and rounding them would paint the gate shut."""
     pal = {0: (116, 162, 71), 1: (192, 154, 96), 2: (169, 162, 145), 3: (63, 147, 184), 4: (60, 70, 50),
            5: (184, 148, 104), 6: (110, 80, 50)}
     k = 16
@@ -302,6 +305,8 @@ def footprints(shelf: Shelf, m: np.ndarray) -> Path:
         e = shelf.entry(name)
         if not e.get("blocking"):
             continue
+        if abs(c - round(c)) == 0.5 or abs(r - round(r)) == 0.5:
+            continue
         fw, fh = e.get("footprintTiles", [1, 1])
         ac, ar = int(round(c)), int(round(r))
         for dr in range(fh):
@@ -313,8 +318,29 @@ def footprints(shelf: Shelf, m: np.ndarray) -> Path:
     img = img.repeat(2, 0).repeat(2, 1)
     review.draw_text(img, 4, 4, "W5 BLOCKING FOOTPRINTS (RED) OF THE PLACED PROPS ON THE TILE GRID")
     p = OUT / "vignette_footprints.png"
-    pngio.write_png_budget(p, img)
+    pngio.write_png_native(p, img)
     return p
+
+
+def hero_check(full: np.ndarray, cam, w) -> None:
+    """Art review 9 check on the native frame: the warrior's crimson (cape, plume, shield #A82230 family) is still
+    red — not the brown of a 256-colour fallback — and his ink is dark."""
+    if w is None:
+        return
+    root, meshes = w
+    pts = review.mesh_points(meshes, step=4)
+    xy = [review.project_px(cam, Vector(p), (1920, 1080)) for p in pts]
+    x0, x1 = int(max(min(x for x, _ in xy) - 4, 0)), int(min(max(x for x, _ in xy) + 4, 1920))
+    y0, y1 = int(max(min(y for _, y in xy) - 4, 0)), int(min(max(y for _, y in xy) + 4, 1080))
+    reg = full[y0:y1, x0:x1].astype(np.int32)
+    r, g, b = reg[..., 0], reg[..., 1], reg[..., 2]
+    crimson = (r > 110) & (r > 2.0 * g) & (r > 1.7 * b)
+    lum = 0.299 * r + 0.587 * g + 0.114 * b
+    ink = lum < 40
+    print(f"  [hero] crimson px {int(crimson.sum())} (mean {reg[crimson].mean(0).round().tolist() if crimson.any() else '-'}), "
+          f"ink px {int(ink.sum())} of {reg.shape[0] * reg.shape[1]}")
+    if crimson.sum() < 80 or ink.sum() < 80:
+        raise RuntimeError("vignette: the warrior's crimson / ink did not survive in the native frame")
 
 
 # ── render ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -331,33 +357,62 @@ def main(argv: list[str]) -> int:
     meshes = [o for *_, o in shelf.placed]
     if w is not None:
         meshes += w[1]
-    review.setup_render((1920, 1080), 8)
     focus = E.tile_to_blender(10.2, 7.6)
-    cam = review.game_camera((focus.x, focus.y))
-    for o in meshes:
-        if "af_outline_width" not in o:
-            continue
-        cls = o.get("af_outline_class", "decor")
-        px = outline.SCREEN_PX_1080[cls] if cls in ("hero", "weapon") else E.ink_px(o.get("af_family", ""), cls)
-        review.set_outline_px([o], px)
-    full = review.render_array()
-    full = review.bloom(full, review.emissive_pass(meshes), 1080)
-    half = pngio.downscale(full, 0.5)
-    review.draw_text(half, 6, 6, "EMERALD PLAINS VIGNETTE  W1 GAME CAMERA DEFAULT DISTANCE  1080P FRAME AT 1/2")
-    pngio.write_png_budget(OUT / "vignette.png", half)
+
+    def render_at(res):
+        review.setup_render(res, 8)
+        cam = review.game_camera((focus.x, focus.y))
+        k = res[1] / 1080.0
+        for o in meshes:
+            if "af_outline_width" not in o:
+                continue
+            cls = o.get("af_outline_class", "decor")
+            px = outline.SCREEN_PX_1080[cls] if cls in ("hero", "weapon") else E.ink_px(o.get("af_family", ""), cls)
+            review.set_outline_px([o], px * k)
+        img = review.render_array()
+        # emissive_pass swaps slot materials per object; the placed copies share their mesh data, so the swap of
+        # one copy is saved as the "original" of the next — restore every mesh's own materials afterwards
+        saved = {}
+        for o in meshes:
+            saved.setdefault(o.data.name, (o.data, list(o.data.materials)))
+        em = review.emissive_pass(meshes)
+        for data, mats in saved.values():
+            for i, mt in enumerate(mats):
+                data.materials[i] = mt
+        return cam, review.bloom(img, em, res[1])
+    # overview: a native 640 × 360 render of the same camera (ink and bloom at 360p, like every game.png) — never a
+    # resampled 1080p frame (art review 9: the 1/2 downscale + 256-colour fallback turned the crimson cape brown)
+    _, small = render_at((640, 360))
+
+    def overview_label(t, i, k):
+        review.draw_text(t, 6, 6, "EMERALD PLAINS VIGNETTE  W1 CAMERA DEFAULT DISTANCE  NATIVE 640X360 RENDER"
+                         + (f"  {i + 1}/{k}" if k > 1 else ""))
+    written = pngio.write_png_native(OUT / "vignette.png", small, annotate=overview_label)
+    cam, full = render_at((1920, 1080))
 
     def crop(col, row, w_px, h_px, label, name):
+        """Native 1080p pixels (scale 1, truecolour); split into labelled tiles when one file would pass 200 KB."""
         x, y = review.project_px(cam, E.tile_to_blender(col, row, 0.5), (1920, 1080))
         x0 = int(min(max(x - w_px / 2, 0), 1920 - w_px))
         y0 = int(min(max(y - h_px / 2, 0), 1080 - h_px))
         c = full[y0:y0 + h_px, x0:x0 + w_px].copy()
-        review.draw_text(c, 6, 6, label)
-        pngio.write_png_budget(OUT / name, c)
-        print(f"  {OUT / name}")
+
+        def lab(t, i, k):
+            review.draw_text(t, 6, 6, label + (f"  TILE {i + 1}/{k}" if k > 1 else ""))
+        out = pngio.write_png_native(OUT / name, c, annotate=lab)
+        back = np.concatenate([pngio.read_png(p)[:, :, :3] for p, _ in out], axis=1 if len(out) > 1 else 0)
+        body = np.ones(c.shape[:2], bool)
+        body[:20, :] = False                  # the label rows differ (each tile is labelled)
+        if back.shape != c.shape or not np.array_equal(back[body], c[body]):
+            raise RuntimeError(f"{name}: the stored pixels differ from the native render")
+        for p, size in out:
+            print(f"  {p} {size // 1024} KB (truecolour, scale 1, pixel-exact)")
+        return out
+    print(f"  {written[0][0]}")
     crop(9.4, 9.6, 720, 440, "CAMP GATE + HERO  NATIVE 1080P 1:1", "vignette_1080crop.png")
     crop(15.4, 4.6, 720, 440, "POND, RIDGE, RUINS  NATIVE 1080P 1:1", "vignette_pond.png")
     crop(11.4, 14.6, 720, 440, "CAMP: TENTS, WELL, CAMPFIRE, BANNERS  NATIVE 1080P 1:1", "vignette_camp.png")
-    print(f"  {OUT / 'vignette.png'}")
+    hero_check(full, cam, w)
     return 0
 
 

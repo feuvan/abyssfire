@@ -1,0 +1,1657 @@
+{
+ "classes": {
+  "Mage": {
+   "axe": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Blizzard": "strike",
+     "Cast_Meteor": "strike",
+     "Death": "strike",
+     "Dodge": "carry",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.270031,
+       0.075921,
+       -0.0,
+       -0.959854
+      ],
+      "read": 0.028,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 148.668
+     },
+     "strike": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "bow": {
+    "clips": {
+     "Attack01": "strike_Attack01",
+     "Attack02": "strike_Attack02",
+     "Attack03": "strike",
+     "Cast01": "strike_Cast01",
+     "Cast02": "strike",
+     "Cast_Blizzard": "strike_Cast_Blizzard",
+     "Cast_Meteor": "strike_Cast_Meteor",
+     "Death": "death",
+     "Dodge": "dodge",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.701561,
+       -0.25342,
+       0.405046,
+       0.528704
+      ],
+      "read": 0.02,
+      "roll": 60.0,
+      "slide": 0.0,
+      "tilt": 71.79
+     },
+     "death": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.72313,
+       0.687691,
+       0.0,
+       0.064534
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 87.373
+     },
+     "dodge": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.940435,
+       0.226903,
+       0.251989,
+       0.024461
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 26.384
+     },
+     "strike": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.936292,
+       -0.004879,
+       0.250879,
+       0.24575
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 28.458
+     },
+     "strike_Attack01": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.81522,
+       0.579117,
+       0.0,
+       0.006317
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 70.782
+     },
+     "strike_Attack02": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.81522,
+       0.579117,
+       0.0,
+       0.006317
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 70.782
+     },
+     "strike_Cast01": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.9425,
+       -0.176328,
+       0.252542,
+       0.129712
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 25.289
+     },
+     "strike_Cast_Blizzard": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.848712,
+       0.055919,
+       0.490004,
+       0.190935
+      ],
+      "read": 0.0,
+      "roll": 60.0,
+      "slide": 0.0,
+      "tilt": 22.952
+     },
+     "strike_Cast_Meteor": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.958857,
+       -0.115921,
+       0.256925,
+       0.033848
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 13.872
+     }
+    },
+    "searchFailed": [
+     "Cast_Blizzard",
+     "Cast_Meteor"
+    ],
+    "socket": "weapon_r"
+   },
+   "dagger": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Blizzard": "strike",
+     "Cast_Meteor": "strike",
+     "Death": "carry",
+     "Dodge": "strike",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.356488,
+       -0.128036,
+       -0.0,
+       -0.925486
+      ],
+      "read": 0.005,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 138.231
+     },
+     "strike": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "mace": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Blizzard": "strike",
+     "Cast_Meteor": "strike",
+     "Death": "strike",
+     "Dodge": "carry",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.270031,
+       0.075921,
+       -0.0,
+       -0.959854
+      ],
+      "read": 0.014,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 148.668
+     },
+     "strike": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "shield": {
+    "clips": {
+     "Attack01": "strike_Attack01",
+     "Attack02": "strike_Attack02",
+     "Attack03": "strike_Attack03",
+     "Cast01": "strike_Cast01",
+     "Cast02": "strike_Cast02",
+     "Cast_Blizzard": "strike_Cast_Blizzard",
+     "Cast_Meteor": "strike_Cast_Meteor",
+     "Death": "death",
+     "Dodge": "dodge",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry_Idle",
+     "Portrait": "carry_Idle",
+     "Run": "carry_Run",
+     "Walk": "carry_Walk"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 30.0,
+      "quat": [
+       0.9425,
+       -0.176328,
+       0.252542,
+       0.129712
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 25.289
+     },
+     "carry_Idle": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "carry_Run": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 30.0,
+      "quat": [
+       0.958857,
+       -0.115921,
+       0.256925,
+       0.033848
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 13.872
+     },
+     "carry_Walk": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 30.0,
+      "quat": [
+       0.865123,
+       -0.028572,
+       0.499479,
+       -0.035595
+      ],
+      "read": 0.0,
+      "roll": 60.0,
+      "slide": 0.0,
+      "tilt": 5.232
+     },
+     "death": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.5,
+       0.0,
+       0.866025,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 120.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     },
+     "dodge": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.398565,
+       0.319338,
+       -0.690335,
+       0.512452
+      ],
+      "read": 0.0,
+      "roll": 240.0,
+      "slide": 0.0,
+      "tilt": 74.286
+     },
+     "strike": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.828213,
+       0.150923,
+       -0.478169,
+       -0.250278
+      ],
+      "read": 0.0,
+      "roll": 300.0,
+      "slide": 0.0,
+      "tilt": 33.987
+     },
+     "strike_Attack01": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.704894,
+       0.074867,
+       -0.704894,
+       0.025397
+      ],
+      "read": 0.0,
+      "roll": 270.0,
+      "slide": 0.0,
+      "tilt": 9.069
+     },
+     "strike_Attack02": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     },
+     "strike_Attack03": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.493183,
+       -0.150574,
+       0.854217,
+       0.066413
+      ],
+      "read": 0.0,
+      "roll": 120.0,
+      "slide": 0.0,
+      "tilt": 18.945
+     },
+     "strike_Cast01": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.5,
+       0.0,
+       0.866025,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 120.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     },
+     "strike_Cast02": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.861503,
+       0.073702,
+       0.497389,
+       -0.070602
+      ],
+      "read": 0.0,
+      "roll": 60.0,
+      "slide": 0.0,
+      "tilt": 11.716
+     },
+     "strike_Cast_Blizzard": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.703414,
+       0.089464,
+       0.703414,
+       -0.049121
+      ],
+      "read": 0.0,
+      "roll": 90.0,
+      "slide": 0.0,
+      "tilt": 11.716
+     },
+     "strike_Cast_Meteor": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.700446,
+       0.076144,
+       0.700446,
+       0.113807
+      ],
+      "read": 0.0,
+      "roll": 90.0,
+      "slide": 0.0,
+      "tilt": 15.741
+     }
+    },
+    "searchFailed": [
+     "Walk",
+     "Run",
+     "Attack01",
+     "Attack02",
+     "Attack03",
+     "Cast01",
+     "Cast02",
+     "Cast_Blizzard",
+     "Cast_Meteor",
+     "Dodge",
+     "Death"
+    ]
+   },
+   "staff": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Blizzard": "strike",
+     "Cast_Meteor": "strike",
+     "Death": "strike",
+     "Dodge": "strike",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.990581,
+       0.134316,
+       0.0,
+       0.026632
+      ],
+      "read": 0.008,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 15.741
+     },
+     "strike": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "sword": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Blizzard": "strike",
+     "Cast_Meteor": "strike",
+     "Death": "death",
+     "Dodge": "carry",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.0,
+       0.944185,
+       0.198956,
+       -0.262549
+      ],
+      "read": 0.029,
+      "roll": 180.0,
+      "slide": 0.0,
+      "tilt": 157.048
+     },
+     "death": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.5,
+       -0.0,
+       -0.866025,
+       -0.0
+      ],
+      "read": 0.0,
+      "roll": 240.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     },
+     "strike": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.965926,
+       0.0,
+       0.258819,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     }
+    }
+   },
+   "wand": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Blizzard": "strike",
+     "Cast_Meteor": "strike",
+     "Death": "strike",
+     "Dodge": "strike",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.356488,
+       -0.128036,
+       -0.0,
+       -0.925486
+      ],
+      "read": 0.015,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 138.231
+     },
+     "strike": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   }
+  },
+  "Rogue": {
+   "axe": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike_Attack03",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Multishot": "strike",
+     "Death": "death",
+     "Dodge": "dodge",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0156,
+       0.07833,
+       0.00454
+      ],
+      "maxTilt": 70.0,
+      "quat": [
+       0.994778,
+       0.028527,
+       0.0,
+       -0.097994
+      ],
+      "read": 0.101,
+      "roll": 0.0,
+      "slide": -0.08,
+      "tilt": 11.716
+     },
+     "death": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.986365,
+       -0.017772,
+       0.0,
+       0.163608
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 18.945
+     },
+     "dodge": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.986365,
+       -0.017772,
+       0.0,
+       0.163608
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 18.945
+     },
+     "strike": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.08,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": -0.08,
+      "tilt": 0.0
+     },
+     "strike_Attack03": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       -0.02669,
+       0.07233,
+       -0.02135
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.975748,
+       -0.136748,
+       0.0,
+       0.170929
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": -0.08,
+      "tilt": 25.289
+     }
+    },
+    "searchFailed": [
+     "Dodge"
+    ]
+   },
+   "dagger": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Multishot": "strike",
+     "Death": "carry",
+     "Dodge": "carry",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "strike": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   },
+   "mace": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike_Cast02",
+     "Cast_Multishot": "strike",
+     "Death": "death",
+     "Dodge": "dodge",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0078,
+       0.03917,
+       0.00227
+      ],
+      "maxTilt": 70.0,
+      "quat": [
+       0.994778,
+       0.028527,
+       0.0,
+       -0.097994
+      ],
+      "read": 0.101,
+      "roll": 0.0,
+      "slide": -0.04,
+      "tilt": 11.716
+     },
+     "death": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "dodge": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0156,
+       0.07833,
+       0.00454
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.994778,
+       0.028527,
+       0.0,
+       -0.097994
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": -0.08,
+      "tilt": 11.716
+     },
+     "strike": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       -0.01077,
+       0.03683,
+       0.01128
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.946616,
+       0.103432,
+       0.253645,
+       0.169956
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": -0.04,
+      "tilt": 22.952
+     },
+     "strike_Cast02": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.04,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": -0.04,
+      "tilt": 0.0
+     }
+    }
+   },
+   "sword": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike_Attack03",
+     "Cast01": "strike",
+     "Cast02": "strike_Cast02",
+     "Cast_Multishot": "strike",
+     "Death": "death",
+     "Dodge": "dodge",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 70.0,
+      "quat": [
+       0.988475,
+       -0.089605,
+       0.0,
+       -0.122015
+      ],
+      "read": 0.092,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 17.414
+     },
+     "death": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.0,
+       -0.084837,
+       0.965013,
+       -0.248098
+      ],
+      "read": 0.0,
+      "roll": 180.0,
+      "slide": 0.0,
+      "tilt": 30.402
+     },
+     "dodge": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.498435,
+       -0.043908,
+       0.863315,
+       0.065742
+      ],
+      "read": 0.0,
+      "roll": 120.0,
+      "slide": 0.0,
+      "tilt": 9.069
+     },
+     "strike": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.707107,
+       0.0,
+       0.707107,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 90.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     },
+     "strike_Attack03": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.965013,
+       -0.248098,
+       0.0,
+       0.084837
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 30.402
+     },
+     "strike_Cast02": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.258819,
+       0.0,
+       0.965926,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 150.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     }
+    },
+    "searchFailed": [
+     "Dodge"
+    ]
+   }
+  },
+  "Warrior": {
+   "axe": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike_Attack02",
+     "Attack03": "strike_Attack03",
+     "Cast01": "strike_Cast01",
+     "Cast02": "strike_Cast02",
+     "Cast_Charge": "strike_Cast_Charge",
+     "Cast_Whirlwind": "strike_Cast_Whirlwind",
+     "Death": "death",
+     "Dodge": "dodge",
+     "Hurt": "carry_Hurt",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry_Run",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.01633,
+       0.0365,
+       -0.00109
+      ],
+      "maxTilt": 40.0,
+      "quat": [
+       0.253094,
+       -0.205204,
+       -0.94456,
+       -0.040514
+      ],
+      "read": 0.0,
+      "roll": 210.0,
+      "slide": -0.04,
+      "tilt": 24.147
+     },
+     "carry_Hurt": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 40.0,
+      "quat": [
+       0.982132,
+       -0.188153,
+       0.0,
+       -0.003889
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 21.695
+     },
+     "carry_Run": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.00965,
+       0.03817,
+       -0.00709
+      ],
+      "maxTilt": 40.0,
+      "quat": [
+       0.988475,
+       -0.089605,
+       0.0,
+       -0.122015
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": -0.04,
+      "tilt": 17.414
+     },
+     "death": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0078,
+       0.03917,
+       0.00227
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.994778,
+       0.028527,
+       0.0,
+       -0.097994
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": -0.04,
+      "tilt": 11.716
+     },
+     "dodge": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.01726,
+       0.03483,
+       0.00942
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.934214,
+       0.17535,
+       0.250322,
+       -0.183945
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": -0.04,
+      "tilt": 29.444
+     },
+     "strike": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.0078,
+       0.03917,
+       0.00227
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.960882,
+       0.002192,
+       -0.257468,
+       -0.102039
+      ],
+      "read": 0.0,
+      "roll": 330.0,
+      "slide": -0.04,
+      "tilt": 11.716
+     },
+     "strike_Attack02": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.01633,
+       0.0365,
+       -0.00109
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.691466,
+       -0.157455,
+       -0.691466,
+       -0.137688
+      ],
+      "read": 0.0,
+      "roll": 270.0,
+      "slide": -0.04,
+      "tilt": 24.147
+     },
+     "strike_Attack03": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.00031,
+       0.03717,
+       -0.01478
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.254194,
+       -0.052454,
+       -0.948667,
+       0.180735
+      ],
+      "read": 0.0,
+      "roll": 210.0,
+      "slide": -0.04,
+      "tilt": 21.695
+     },
+     "strike_Cast01": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       -0.00655,
+       0.0345,
+       -0.01915
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.932131,
+       -0.217687,
+       -0.249764,
+       0.146159
+      ],
+      "read": 0.0,
+      "roll": 330.0,
+      "slide": -0.04,
+      "tilt": 30.402
+     },
+     "strike_Cast02": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       -0.00655,
+       0.0345,
+       -0.01915
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.0,
+       -0.084837,
+       0.965013,
+       -0.248098
+      ],
+      "read": 0.0,
+      "roll": 180.0,
+      "slide": -0.04,
+      "tilt": 30.402
+     },
+     "strike_Cast_Charge": {
+      "faceFrac": 0.0,
+      "failing": true,
+      "kind": "search",
+      "loc": [
+       0.01726,
+       0.03483,
+       0.00942
+      ],
+      "maxTilt": 35.0,
+      "quat": [
+       0.967169,
+       0.121767,
+       0.0,
+       -0.223061
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": -0.04,
+      "tilt": 29.444
+     },
+     "strike_Cast_Whirlwind": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 180.0,
+      "quat": [
+       0.938749,
+       0.226209,
+       0.0,
+       -0.25996
+      ],
+      "read": 0.0,
+      "roll": 0.0,
+      "slide": 0.0,
+      "tilt": 40.315
+     }
+    },
+    "searchFailed": [
+     "Run",
+     "Attack03",
+     "Cast_Charge"
+    ]
+   },
+   "sword": {
+    "clips": {
+     "Attack01": "strike",
+     "Attack02": "strike",
+     "Attack03": "strike",
+     "Cast01": "strike",
+     "Cast02": "strike",
+     "Cast_Charge": "strike",
+     "Cast_Whirlwind": "strike",
+     "Death": "carry",
+     "Dodge": "carry",
+     "Hurt": "carry",
+     "HurtAdd": "carry",
+     "Idle": "carry",
+     "Portrait": "carry",
+     "Run": "carry",
+     "Walk": "carry"
+    },
+    "grips": {
+     "carry": {
+      "faceFrac": 0.0,
+      "kind": "search",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "maxTilt": 40.0,
+      "quat": [
+       0.965926,
+       0.0,
+       0.258819,
+       0.0
+      ],
+      "read": 0.0,
+      "roll": 30.0,
+      "slide": 0.0,
+      "tilt": 0.0
+     },
+     "strike": {
+      "kind": "identity",
+      "loc": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "quat": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   }
+  }
+ },
+ "note": "socket-space grips of SM_Weapon_<Family> per hero class (weapon_grips.py): quat = Blender (w, x, y, z), loc = metres in the socket (bone head) frame; clips \u2192 grip name; socket overrides attachSocket",
+ "schema": 1
+}

@@ -117,10 +117,12 @@ class GoblinAnims:
     FLAP_CLEAR = 0.012          # m kept between a flap and the thigh / knee surface in front of / behind it
 
     def flaps(self, p: Pose, bp: BP, names=(("loin_f", 1.0), ("loin_b", -1.0)), base_deg: float = 6.0,
-              flow_deg: float = 28.0, thigh_r: float | None = None) -> None:
+              flow_deg: float = 28.0, thigh_r: float | None = None, extra: dict | None = None) -> None:
         """Loincloth flaps hanging in the world (aims are absolute; ``apply_spin`` turns them with a falling body):
         the web flow + sway angles, then an **envelope** — each link turns out just enough to stay
-        ``FLAP_CLEAR`` in front of (front flap) / behind (back flap) the posed thighs and knees."""
+        ``FLAP_CLEAR`` in front of (front flap) / behind (back flap) the posed thighs and knees. ``extra``
+        ({chain: deg}) turns both links of a chain further out (a solver on the real meshes, e.g. the shaman's
+        skirt envelope)."""
         sw = bp.sway
         mats = anim.evaluate(p, return_matrices=True)
         tr = thigh_r if thigh_r is not None else self.U * 2.6
@@ -145,6 +147,8 @@ class GoblinAnims:
             d1 = Vector((0.0, -sg * math.sin(math.radians(a1)), -math.cos(math.radians(a1))))
             M1 = T + d1 * L1
             a2 = self._flap_env(M1, L2, max(want[1], a1 - 25.0), sg, legs)
+            if extra and extra.get(nm):
+                a1, a2 = min(a1 + extra[nm], 80.0), min(a2 + extra[nm], 85.0)
             for k, a in ((1, a1), (2, a2)):
                 # bone +Z rests along +Y (back) for both flaps; swinging the tip by ``a`` turns it with the link
                 # (the old up vector rolled the front flap 180°: its dark lining faced forward)
@@ -449,7 +453,9 @@ class GoblinAnims:
 
     # ── Stun 600 ms loop (C5): dazed sway, head lolling, weapon drooping ──────────────────────────────────────
     def stun(self, length: float = 600.0, droop: float = 40.0, hand_r: Vector | None = None,
-             wlat: float | None = None):
+             wlat: float | None = None, head_droop: float = 14.0, head_roll: float = 16.0, head_nod: float = 6.0):
+        """Stun 600 ms loop: dazed sway, the head lolling (``head_droop`` deg past READY, ± ``head_nod``; rolling ±
+        ``head_roll``), weapon drooping. A helmed head (the chief) lolls less so the face stays on screen."""
         R0 = self.ready()
         U = self.U
         th0 = self._theta(R0.wpn) + droop
@@ -462,7 +468,8 @@ class GoblinAnims:
             wd, wu = self._aim(R0, th0 + 6.0 * sn, wlat)
             return R0.but(
                 pelvis=R0.pelvis + V(0.35 * U * c, 0.6 * U, -1.2 * U + 0.4 * U * sn), lean=R0.lean + 6.0 + 2.0 * sn,
-                side=5.0 * c, head_pitch=R0.head_pitch + 14.0 + 6.0 * sn, head_roll=16.0 * c, head_yaw=10.0 * sn,
+                side=5.0 * c, head_pitch=R0.head_pitch + head_droop + head_nod * sn, head_roll=head_roll * c,
+                head_yaw=10.0 * sn,
                 hand_r=R0.hand_r + V(0.01, -1.5 * U, -2.5 * U + 0.5 * U * c), wpn=wd, wpn_up=wu,
                 hand_l=R0.hand_l + V(0.0, -2.0 * U, -3.0 * U + 0.6 * U * sn),
                 knee_l=V(0.4, 1, 0), knee_r=V(-0.4, 1, 0),

@@ -8,7 +8,7 @@ Writes ``Art/Export/Terrain/``:
 | Texture | Content |
 |---|---|
 | ``T_Terrain_Plains_Grass_BC`` / ``_Dirt_BC`` / ``_Stone_BC`` / ``_Camp_BC`` / ``_Water_BC`` | 1024² sRGB, one **3 × 3-tile period** of each ground material (web PERIOD 3: every tile is a window onto one periodic world, so tiles of a material always match at their edges). Painted from ``Data/terrain_styles.json`` exactly like ``GroundPainter`` — base, cel patches, tufts / pebbles / cracks / leaves / waves / Voronoi slabs — in **tile space** (no iso squash, render-only); upright motifs (grass tufts) are drawn leaning toward screen-up of the fixed W1 camera (+col +row) and stretched 1 / sin 50° so they read upright in the game view. Flat toon colour, no noise. |
-| ``T_Terrain_Plains_Details_BC`` | 1024² RGBA, 4 × 4 cells of one tile each: row = paint index 0 grass / 1 dirt / 2 stone / 5 camp, column = detail variant 1..3 (col 4: water lily pads); the web's interior-only per-tile details (flowers, bigTuft, stones, crackStar, straw, lilyPads) with straight alpha |
+| ``T_Terrain_Plains_Details_BC`` | 1024² RGBA, 4 × 4 cells of one tile each: row = paint index 0 grass / 1 dirt / 2 stone / 5 camp, column = detail variant 1..3 (col 4: empty — lily pads are meshes); the web's interior-only per-tile details (flowers, bigTuft, stones, crackStar, straw, lilyPads) with straight alpha |
 | ``T_Terrain_Plains_Noise_M`` | 256² linear, R = the period-3 lattice noise ``latNoise`` (0..1 = −1..1) the transitions use (``MF_TileBlend``: score += 0.3 × noise), G = the same field for paint index 1 (offset per material as in ``AF_Terrain``), B = the cel patch field (``_pattern_block`` pf), A = 1 |
 | ``T_Water_Plains_Mask_M`` | 512² linear, period 3: R = wave flecks (``#A9E2EE`` α .7), G = foam breakup noise for the shoreline band, B = patch mask (``#3B8AB0`` / ``#459AC0``) |
 
@@ -445,10 +445,9 @@ def paint_details(res: int = RES) -> np.ndarray:
             for _ in range(n):
                 kind = st["details"][int(math.floor(r() * len(st["details"])))]
                 paint_detail(atlas, kind, st, r, variant - 1 + 0.5, row + 0.5)
-    water = STYLES["ground"]["3"]
-    r = mulberry32(4242)
-    for k in range(4):
-        paint_detail(atlas, "lilyPads", water, r, 3.5, k + 0.5)
+    # column 3 (water) stays empty: lily pads are the instanced SM_Foliage_Plains_LilyPad_A/B meshes on ~1 in 6
+    # water tiles (spec §6.1; art review 9 — the painted, uninked pads beside the inked meshes were two styles of one
+    # object)
     return atlas.u8(with_alpha=True)
 
 
@@ -695,7 +694,8 @@ def manifest_section() -> dict:
         "details": {"texture": "T_Terrain_Plains_Details_BC", "file": "Terrain/T_Terrain_Plains_Details_BC.png",
                     "srgb": True, "alpha": "straight",
                     "cells": "4 x 4 cells of one tile: row 0 grass, 1 dirt, 2 stone, 3 camp (paint 5); column = "
-                             "variant - 1 (variants 1..3); column 3 = water lily-pad motifs (rows = variant - 1)",
+                             "variant - 1 (variants 1..3); column 3 (water) is transparent: lily pads are the "
+                             "instanced SM_Foliage_Plains_LilyPad_A/B meshes only (spec 6.1)",
                     "rule": "own tile (nearest centre) h = tileHash(col, row, 7): h % 12 >= 6 -> variant 1 + h % 3; "
                             "sample cell at frac(UV0 + 0.5) (tile-local 0..1); composite over the winning material "
                             "only when it is the own tile's material (AF_Terrain _pattern_block own_var / own_m)"},
@@ -764,16 +764,16 @@ def previews(tex: dict) -> None:
     for key in ("0", "1", "2", "5", "3"):
         t = tex["tex"][key]
         tile = np.tile(t, (2, 2, 1))[::4, ::4]
-        review.draw_text(tile, 4, 4, f"{TEXTURES[key]}  2X2 PERIODS (6 TILES)")
+        review.draw_text(tile, 4, 4, f"{TEXTURES[key]}  2X2 PERIODS (6 TILES)  TEXELS AT 1/4")
         cells.append(tile)
-    pngio.write_png_budget(out / "layers.png", review.grid(cells, 3, pad=2))
+    E.save_native(out / "layers.png", review.grid(cells, 3, pad=2))
     det = tex["details"]
     bg = np.zeros_like(det[:, :, :3])
     bg[:, :] = (60, 52, 70)
     a = det[:, :, 3:4] / 255.0
     comp = (det[:, :, :3] * a + bg * (1 - a)).astype(np.uint8)[::2, ::2].copy()
-    review.draw_text(comp, 4, 4, "DETAILS ATLAS: ROWS GRASS DIRT STONE CAMP / COLS VARIANT 1-3 + LILY")
-    pngio.write_png_budget(out / "details.png", comp)
+    review.draw_text(comp, 4, 4, "DETAILS ATLAS AT 1/2: ROWS GRASS DIRT STONE CAMP / COLS VARIANT 1-3 (COL 4 EMPTY)")
+    E.save_native(out / "details.png", comp)
     layers = Layers(tex["tex"], tex["details"])
     m = test_map()
     img = composite(m, layers, ppt=64)
@@ -828,13 +828,17 @@ def render_ground(img: np.ndarray, shape, out: Path) -> None:
         x0 = int(min(max(x - w / 2, 0), 1920 - w))
         y0 = int(min(max(y - h / 2, 0), 1080 - h))
         return full[y0:y0 + h, x0:x0 + w].copy()
+    def labelled(text):
+        def lab(t, i, k):
+            review.draw_text(t, 6, 6, text + (f"  TILE {i + 1}/{k}" if k > 1 else ""))
+        return lab
     tr = crop_at(cols / 2 - 0.5, rows / 2 - 0.5, 1040, 600)
-    review.draw_text(tr, 6, 6, "TERRAIN PLAINS TEST MAP: CAMP GROUND, PATH, POND, STONE, WALL GROUND  W1 1080P 1:1")
-    pngio.write_png_budget(out / "transitions.png", tr)
+    pngio.write_png_native(out / "transitions.png", tr, annotate=labelled(
+        "TERRAIN PLAINS TEST MAP: CAMP GROUND, PATH, POND, STONE, WALL GROUND  W1 1080P 1:1"))
     # water close crop (shallows, foam, bank) round the pond (rows 8-10, cols 2-6)
     wa = crop_at(4.0, 9.2, 640, 400)
-    review.draw_text(wa, 6, 6, "WATER: SHALLOW TINT, FOAM BAND, BANK, WAVE FLECKS, LILY PADS  1080P 1:1")
-    pngio.write_png_budget(out / "water.png", wa)
+    pngio.write_png_native(out / "water.png", wa, annotate=labelled(
+        "WATER: SHALLOW TINT, FOAM BAND, BANK, WAVE FLECKS  1080P 1:1"))
     print(f"  {out / 'transitions.png'}")
 
 

@@ -153,25 +153,43 @@ def build_ruins(pal: Palette):
         lf = M.ellipsoid((0.05, 0.012, 0.028), (0, 0, 0), sides=7, rings=3)
         lf.transform(_ry(40 if i % 2 else -40)).translate(c)
         b.add(lf, "relief", name="relief_leaf", outline=False)
-    # arch spring: voussoirs curving out ≈ 0.6 m toward +X at the top
-    for i in range(4):
-        a0 = math.radians(90 - i * 22)
-        a1 = math.radians(90 - (i + 1) * 22)
-        R0, R1 = 0.52, 0.85
-        cxa, cza = px + 0.62, 1.95
+    # arch spring (art review 9: one smooth square-section slab bent through two joints, rising to 2.72 m, read as
+    # a pale duct elbow): five voussoirs leaving the pier top and curving out ≈ 0.6 m and down (web Ruins.ts arch
+    # band), the crown at ≈ 2.4 m, a chamfered section tapering 17 → 10 cm (radial) and 34 → 26 cm (deep), each
+    # stone a little out of true, 1 cm joints that the stones' own ink fills as line-tone joints, and a ragged
+    # broken end
+    cxa, cza = px + 0.25, 1.92                 # arc centre: the pier's +X face, under the crown
+    rx, rz = 0.62, 0.40                        # centre-line half axes
+    a_start, a_end, n_vs = 101.0, 22.0, 5
+    step = (a_start - a_end) / n_vs
+
+    def arch_pt(deg: float, off: float, y: float) -> Vector:
+        a = math.radians(deg)
+        c = Vector((cxa + math.cos(a) * rx, py + y, cza + math.sin(a) * rz))
+        n = Vector((math.cos(a) / rx, 0.0, math.sin(a) / rz)).normalized()
+        return c + n * off
+
+    for i in range(n_vs):
+        d0 = a_start - i * step - (0.0 if i == 0 else 0.55)
+        d1 = a_start - (i + 1) * step + (0.55 if i < n_vs - 1 else 0.0)
+        jr = rnd.uniform(-0.008, 0.008)
+        jy = rnd.uniform(-0.01, 0.01)
         rings = []
-        for a in (a0, (a0 + a1) / 2, a1):
-            ca, sa = math.cos(a), math.sin(a)
-            rings.append([Vector((cxa - ca * R0, py + y, cza + sa * R0 * 0.9)) for y in (-0.22,)] +
-                         [Vector((cxa - ca * R1, py - 0.22, cza + sa * R1 * 0.9)),
-                          Vector((cxa - ca * R1, py + 0.22, cza + sa * R1 * 0.9)),
-                          Vector((cxa - ca * R0, py + 0.22, cza + sa * R0 * 0.9))])
-        part = E.ring_loft(rings, cap0="ngon", cap1="ngon", smooth=False).auto_sharp(40)
-        part.translate((0, 0, 0.0))
-        if i == 3:
-            for v in part.bm.verts:          # broken end
-                v.co.z -= 0.04 * (v.co.x - px - 0.5)
-        b.add(part, "arch", name="voussoir", hull_pad=True)
+        for k, d in enumerate((d0, (d0 + d1) / 2, d1)):
+            f = (a_start - d) / (a_start - a_end)
+            t = 0.17 + (0.10 - 0.17) * f        # radial thickness
+            dp = 0.17 + (0.13 - 0.17) * f       # half depth
+            ch = 0.016
+            sect = [(-t / 2 + ch, -dp), (t / 2 - ch, -dp), (t / 2, -dp + ch), (t / 2, dp - ch), (t / 2 - ch, dp),
+                    (-t / 2 + ch, dp), (-t / 2, dp - ch), (-t / 2, -dp + ch)]
+            rings.append([arch_pt(d, o + jr, y + jy) for o, y in sect])
+        if i == n_vs - 1:                        # broken end: ragged, chipped
+            ang = math.radians(d1)
+            tang = Vector((math.sin(ang) * rx, 0.0, -math.cos(ang) * rz)).normalized()
+            for q, v in enumerate(rings[-1]):
+                rings[-1][q] = v + tang * rnd.uniform(-0.035, 0.03) + Vector((0, 0, rnd.uniform(-0.015, 0.015)))
+        part = E.ring_loft(rings, cap0="ngon", cap1="ngon", smooth=False).auto_sharp(35)
+        b.add(part, "arch" if i % 2 == 0 else "stone_lt", name="voussoir", hull_pad=True)
     # low front broken column (+X, toward the camera side)
     cx, cy = 0.78, -0.42
     stone(b, "stone", (0.42, 0.42, 0.12), (cx, cy, 0.06), rnd, tilt=1, name="col_base")
@@ -286,13 +304,14 @@ def build_totem(pal: Palette):
         v.co.z += 0.045 * math.sin(math.pi * v.co.x / w0) + 0.02 * math.sin(v.co.y * 6)
     cloth.transform(_rx(90)).translate((-0.41, -0.1, zc - 0.03))
     cid = b.add(cloth, "cloth", name="banner", hull_pad=True)
+    sway = {cid: (zc - 0.03, L, 0.35), cid + 1: (zc - 0.03, L, 0.35)}         # + its padded hull proxy
     # crude painted emblem (front face): a "Y" of thick strokes + a ring
     off = lambda x: -0.1 - 0.011 - 0.045 * math.sin(math.pi * (x + 0.41) / w0)  # noqa: E731
     strokes = [[(-0.2, zc - 0.25), (0.0, zc - 0.52), (0.2, zc - 0.25)], [(0.0, zc - 0.52), (0.0, zc - 0.82)]]
     for s in strokes:
         pts3 = [Vector((x, off(x), z)) for x, z in s]
-        b.add(E.ribbon(pts3, [Vector((0, -1, 0))] * len(pts3), 0.07, lift=0.002, thick=0.003), "paint",
-              name="emblem", outline=False, covered_by=cid)
+        sway[b.add(E.ribbon(pts3, [Vector((0, -1, 0))] * len(pts3), 0.07, lift=0.002, thick=0.003), "paint",
+                       name="emblem", outline=False, covered_by=cid)] = sway[cid]
     # skull on top
     skull(b, Vector((0.02, -0.02, H - 0.08)), 0.13)
     # lashings
@@ -328,12 +347,14 @@ def build_totem(pal: Palette):
     # hide flap hanging on the right of the pole
     flap = M.plate([(0.0, 0.0), (0.0, -0.32), (0.08, -0.38), (0.16, -0.3), (0.18, 0.0)][::-1], 0.016, bevel=0.004)
     flap.transform(_rx(90) @ _rz(0)).translate((0.06, -0.08, 1.35))
-    b.add(flap, "hide_lt", name="flap", hull_pad=True)
+    fid = b.add(flap, "hide_lt", name="flap", hull_pad=True)
+    sway[fid] = sway[fid + 1] = (1.35, 0.38, 0.7)
     # base stones
     for q, (x, y, r) in enumerate(((-0.17, -0.06, 0.12), (0.15, -0.1, 0.1), (0.02, 0.16, 0.11), (-0.1, 0.14, 0.08))):
         shape = E.RockShape((r, r * 0.9, r * 0.8), (name, "base", q), bumps=4, amp=0.08, top_cut=0.3)
         b.add(E.rock(shape, subdiv=1, facet=26.0).translate((x, y, 0)), "stone", name="stone", hull_pad=True)
-    return E.finish(b, pal, "decor", ground_h=1.2, name=name)
+    # the tattered banner and the hide flap sway (spec §6.4 cloth; pole, skull, bones and stones rigid)
+    return E.finish(b, pal, "decor", ground_h=1.2, wind=E.cloth_wind(sway), name=name)
 
 
 # ── broken altar ────────────────────────────────────────────────────────────────────────────────────────
@@ -691,6 +712,7 @@ ASSETS: dict = {
     "SM_Prop_Story_ElvenRuins": (build_ruins, dict(game_ids=["decor_ruins"], footprint=[2, 1], blocking=True,
                                                    blob=1.1)),
     "SM_Prop_Story_GoblinTotem": (build_totem, dict(game_ids=["decor_war_banner"], footprint=[1, 1], blocking=True,
+                                                    wind_slot=E.PROP_WIND_SLOT, toon_params=E.PROP_WIND_PARAMS,
                                                     blob=0.35)),
     "SM_Prop_Story_BrokenAltar": (build_altar, dict(game_ids=["decor_broken_altar"], footprint=[1, 1], blocking=True,
                                                     blob=0.7)),
@@ -749,13 +771,11 @@ def main(argv: list[str]) -> int:
         story = [o for o in objs if "_Story_" in o.name]
         lore = [o for o in objs if o not in story]
         if story:
-            E.family_sheet(story, "story_decor.png", "PLAINS STORY DECORATIONS", cols=5, focus_z=1.0,
-                           cell_px=(300, 400))
+            E.family_sheet(story, "story_decor.png", "PLAINS STORY DECORATIONS", cols=5)
         for o in story:
             o.hide_render = True
         if lore:
-            E.family_sheet(lore, "lore_props.png", "PLAINS LORE COLLECTIBLES", cols=5, focus_z=0.35,
-                           cell_px=(220, 260))
+            E.family_sheet(lore, "lore_props.png", "PLAINS LORE COLLECTIBLES", cols=5)
     return E.summary()
 
 

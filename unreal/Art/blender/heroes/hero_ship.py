@@ -83,6 +83,10 @@ class HeroDef:
     visibility: Callable | None = None  # (clip name, ms) → {item name: visible}
     preview_extra: Callable | None = None   # (rv, rig, meshes, clips, actions, items) → None (hero sheets)
     portrait_glows: Callable | None = None  # (rig, meshes) → [{at, radiusCm, color, alpha, core}] baked in the portrait
+    # extra per-hero QA (e.g. the mage's face-down hem / hip width): (anims, rig, body, clips, actions) →
+    # (metrics dict, failure strings); metrics go to the manifest entry's qa block, failures fail the ship
+    extra_qa: Callable | None = None
+    blob_note: str = ""                # why blobShadowRadiusCm is what it is (spec §3.7)
     notes: str = ""
     lod1_screen_size: float = 0.15
 
@@ -197,10 +201,17 @@ def ship(hd: HeroDef, previews: bool = True, verify: bool = True) -> dict:
         entries.append(e)
     man = export.Manifest()
     man.set_palette(pal)
+    # boundsCm / heightCm from the bind pose the FBX carries (art review 8: the entry was measured on whatever clip
+    # the last export left assigned — READY-ish bounds, top 169 vs the FBX's 171.5 cm)
+    anim.assign(rig, None)
+    anim.clear_pose(rig)
     entry = export.skeletal_entry(rig, body, sk, "Characters", pal, "hero", entries, [hd.game_id],
                                   blob_radius_cm=round(hd.blob_radius * 100.0, 1),
                                   extra={"displayName": hd.display_name, "fx": hd.fx, "previews": [],
                                          "notes": hd.notes})
+    entry["boundsNote"] = "bind pose (the FBX rest pose), body + outline hull, UE cm"
+    if hd.blob_note:
+        entry["blobShadowNote"] = hd.blob_note
     # character attachments = the hand items the UE actor puts on weapon_r / weapon_l (AAbyssCharacterActor reads
     # only these); child items (the mage crystal on the staff), body items (the rogue's quiver) and clip-only
     # items (the flash-bow) are listed separately so the actor's main / off-hand logic is not confused
@@ -230,9 +241,16 @@ def ship(hd: HeroDef, previews: bool = True, verify: bool = True) -> dict:
     print("\n[qa] per-clip worst values (ground cm; overlaps = intersecting triangle pairs)")
     print(HB.PairQA.table(rep))
     fails = HB.PairQA.verdict(rep, hd.qa_limits, hd.qa_clip_limits) + head_verdict(hd, rep)
+    metrics = {}
+    if hd.extra_qa is not None:
+        metrics, more = hd.extra_qa(A, rig, body, clips, actions)
+        print(f"[qa] {hd.asset} metrics: {json.dumps(metrics)}")
+        fails += more
     for f in fails:
         print("  QA FAIL " + f)
     result["qa"] = {"pass": not fails, "failures": fails, "worst": {k: v["worst"] for k, v in rep.items()}}
+    if metrics:
+        result["qa"]["metrics"] = metrics
     if verify:
         src = record(rig, clips, actions)
     if previews:
@@ -246,7 +264,8 @@ def ship(hd: HeroDef, previews: bool = True, verify: bool = True) -> dict:
         ink = result["ink"]
         man.data["assets"][hd.asset]["inkGate"] = {
             k: ink[k] for k in ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx", "maxHullLumP95", "gate")}
-        man.data["assets"][hd.asset]["qa"] = {"pass": result["qa"]["pass"], "failures": result["qa"]["failures"]}
+        man.data["assets"][hd.asset]["qa"] = {"pass": result["qa"]["pass"], "failures": result["qa"]["failures"],
+                                              **({"metrics": metrics} if metrics else {})}
         man.save()
     if verify:
         result["verify"] = verify_export(hd, Path(sk), clips, src, entry, Path(sk1))
@@ -929,7 +948,11 @@ def anim_preview(hd: HeroDef, out: Path, names: list, facing: str = "se", frames
             for cn, r in rep.items():
                 for m in qf.split(","):
                     print(f"  {cn} {m}: " + " ".join(f"{f['frame']}:{f.get(m, 0):.0f}" for f in r["frames"]))
-        for f in HB.PairQA.verdict(rep, hd.qa_limits, hd.qa_clip_limits) + head_verdict(hd, rep):
+        more = []
+        if hd.extra_qa is not None:
+            metrics, more = hd.extra_qa(A, rig, body, clips, acts)
+            print(f"[qa] {hd.asset} metrics: {json.dumps(metrics)}")
+        for f in HB.PairQA.verdict(rep, hd.qa_limits, hd.qa_clip_limits) + head_verdict(hd, rep) + more:
             print("  QA FAIL " + f)
     print(f"[anims] {time.time() - t0:.1f}s -> {out}")
 

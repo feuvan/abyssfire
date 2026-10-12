@@ -92,6 +92,13 @@
    "rim": "#3FE0A0",
    "dark": "#14584A",
    "flameCell": 1
+  },
+  "mana": {
+   "core": "#DDEEFF",
+   "mid": "#4A8AFF",
+   "rim": "#2A5AE8",
+   "dark": "#102A72",
+   "flameCell": 1
   }
  },
  "flameGradients": {

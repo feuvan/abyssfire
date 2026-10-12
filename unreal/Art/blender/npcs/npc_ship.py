@@ -160,6 +160,47 @@ def coin_fx(t_ms: float, L: float) -> float:
     return 0.0
 
 
+OCCLUDE_MARGIN = 0.08       # m: geometry this close in front of a card's centre does not hide it (its own hand / prop)
+DEPTH_TEST_NOTE = ("runtime card: draw it depth-tested against the characters and props (or fade it by an occlusion "
+                   "test, as the previews do: 7 rays to the card's core, hits more than 8 cm in front of it hide "
+                   "it) — the body occludes it in the ne / back facings")
+
+
+def card_visibility(cam, p: Vector, radius_m: float, ignore=()) -> float:
+    """Fraction of a glow card's core seen from the camera: rays to the centre and a ring at half the radius (in the
+    camera plane); a hit more than ``OCCLUDE_MARGIN`` in front of the card on any mesh but ``ignore`` (the prop that
+    carries the glow) hides that sample. The previews fade every card by it — the UE card is depth-tested."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    sc = bpy.context.scene
+    o = cam.matrix_world.translation
+    r3 = cam.matrix_world.to_3x3()
+    rx, ry = r3 @ Vector((1, 0, 0)), r3 @ Vector((0, 1, 0))
+    pts = [p] + [p + (rx * math.cos(a) + ry * math.sin(a)) * (0.5 * radius_m)
+                 for a in np.linspace(0.0, 2 * math.pi, 6, endpoint=False)]
+    names = {getattr(x, "name", x) for x in ignore}
+    vis = 0.0
+    for q in pts:
+        d = q - o
+        L = d.length
+        d.normalize()
+        start, seen = o.copy(), True
+        for _ in range(8):
+            reach = L - max(OCCLUDE_MARGIN, 0.5 * radius_m) - (start - o).length
+            if reach <= 0.0:
+                break
+            hit, loc, _n, _i, obj, _m = sc.ray_cast(dg, start, d, distance=reach)
+            if not hit:
+                break
+            if obj is not None and (obj.name in names or obj.original.name in names or obj.type != "MESH"
+                                    or obj.name.startswith("AF_")):
+                start = loc + d * 1e-4
+                continue
+            seen = False
+            break
+        vis += 1.0 if seen else 0.0
+    return vis / len(pts)
+
+
 def glows_for(B):
     npc, rig = B.npc, B.rig
     fx = npc.fx
@@ -167,34 +208,42 @@ def glows_for(B):
     def fn(cam, res):
         out = []
         clip, t = _clip_time(rig)
+
+        def add(p, radius_m, color, alpha, core=None, core_frac=0.35, core_alpha=0.0, ignore=()):
+            v = card_visibility(cam, p, radius_m, ignore)
+            if v > 0.0:
+                out.append(_card(cam, res, p, radius_m, color, alpha * v, core, core_frac, core_alpha * v))
         if "orbGlow" in fx:
             g = fx["orbGlow"]
             staff = next(o for o, _ in B.items.values() if o.name == P.PROPS["staff"])
             p = staff.matrix_world @ Vector((0, P.STAFF_UP, 0))
-            out.append(_card(cam, res, p, g["radiusCm"] / 100, g["color"], g["alpha"], g["coreColor"],
-                             g["coreRadiusCm"] / g["radiusCm"], g["coreAlpha"]))
+            add(p, g["radiusCm"] / 100, g["color"], g["alpha"], g["coreColor"], g["coreRadiusCm"] / g["radiusCm"],
+                g["coreAlpha"], ignore=(staff,))
         if "herbGlow" in fx:
             g = fx["herbGlow"]
             p = _world_socket(rig, "fx_hand_r") + Vector((0, 0, -0.05))
             k = 1.0 + g["pulse"] * math.sin(2 * math.pi * t / g["pulseMs"])
-            out.append(_card(cam, res, p, g["radiusCm"] / 100 * k, g["color"], g["alpha"]))
+            add(p, g["radiusCm"] / 100 * k, g["color"], g["alpha"],
+                ignore=[o for o, _ in B.items.values()])
         if "coinGlint" in fx and clip == "Work_Count":
             g = fx["coinGlint"]
             f = coin_fx(t, npc.work_ms)
             if f > 0.05:
                 p = _world_socket(rig, "fx_hand_r") + Vector((0, 0, 0.04 + g["riseCm"] / 100 * f))
-                out.append(_card(cam, res, p, g["radiusCm"] / 100, g["color"], g["alpha"] * min(1.0, f * 1.6),
-                                 "#FFF6D0", 0.35, 0.9 * f))
-        if npc.look.off == "tongs":
-            tong = next(o for o, _ in B.items.values() if o.name == P.PROPS["tongs"])
-            p = tong.matrix_world @ Vector((0, 14.3 * P.U, 0.55 * P.U))
-            out.append(_card(cam, res, p, 0.07, "#FF8A3A", 0.45, "#FFD08A", 0.35, 0.6))
-            if clip == "Work_Hammer":
-                dt = t - npc.work_ms * 0.32
-                if 0.0 <= dt <= 140.0:
-                    k = 1.0 - dt / 140.0
-                    out.append(_card(cam, res, p + Vector((0, 0, 0.03)), 0.16, "#FFA040", 0.7 * k, "#FFD070",
-                                     0.3, 0.9 * k))
+                add(p, g["radiusCm"] / 100, g["color"], g["alpha"] * min(1.0, f * 1.6), "#FFF6D0", 0.35, 0.9 * f)
+        if "hotBarGlow" in fx:
+            g = fx["hotBarGlow"]
+            tong = next(o for o, _ in B.items.values() if o.name == g["item"])
+            p = tong.matrix_world @ Vector(next(k["pos"] for k in B.socks[tong.name] if k["name"] == g["socket"]))
+            add(p, g["radiusCm"] / 100, g["color"], g["alpha"], g["coreColor"], g["coreFrac"], g["coreAlpha"],
+                ignore=(tong,))
+            s = fx.get("anvilSparks")
+            if s and clip == "Work_Hammer":
+                dt = t - s["atMs"]
+                if 0.0 <= dt <= s["flashMs"]:
+                    k = 1.0 - dt / s["flashMs"]
+                    add(p + Vector((0, 0, 0.03)), s["flashRadiusCm"] / 100, s["glow"], s["flashAlpha"] * k,
+                        s["sparks"], 0.3, 0.9 * k, ignore=(tong,))
         return out
     return fn
 
@@ -509,12 +558,14 @@ def ship(npc, previews: bool = True, verify: bool = True) -> dict:
     bpy.context.view_layer.update()
     man = export.Manifest()
     man.set_palette(pal)
-    extra = {"displayName": npc.display, "previews": [], "fx": npc.fx, "npcStates": npc_states(npc, clips),
+    fx = {k: {**v, "depthTest": DEPTH_TEST_NOTE} for k, v in npc.fx.items()}
+    extra = {"displayName": npc.display, "previews": [], "fx": fx, "npcStates": npc_states(npc, clips),
              "build": npc.look.build, "budget": budget(B), "notes": npc.notes,
              "portrait": f"Portraits/T_UI_Portrait_{npc.id}.png"}
     if npc.scenery:
         extra["scenery"] = [{"asset": a, "offsetCm": scene.blender_to_ue_cm(off), "yawDeg": yaw,
-                             "space": "character mesh space (before the actor's -90 deg mesh yaw), like sockets"}
+                             "space": "character mesh space (before the actor's -90 deg mesh yaw), like sockets",
+                             **({"note": npc.scenery_note} if npc.scenery_note else {})}
                             for a, off, yaw in npc.scenery]
     entry = export.skeletal_entry(rig, body, sk, CATEGORY, pal, "npc", entries, list(npc.game_ids),
                                   blob_radius_cm=round(npc.blob_radius * 100.0, 1), extra=extra)

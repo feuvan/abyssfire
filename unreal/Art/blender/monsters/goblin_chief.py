@@ -11,6 +11,9 @@ iron knee guards; ember-lit eyes (emissive + the ``eyeEmbers`` glow cards). Weap
 ``SM_Mon_GoblinChief_Cleaver`` (broad chopping blade, spine back / edge leading, honed edge, rust, a hole near the
 tip, leather grip, iron pommel) on ``weapon_r``. Clips: Idle 667, Walk 600 (1.50 m/s, no slide), Attack01 overhead
 chop 500 (WindupEnd 155, Contact 250), Hurt 200, Death 500, Roar 1200 (boss intro, FX_Roar 450), Stun 600.
+The chop's contact key and the Stun keep the face (ember eyes, war paint) out from under the helm brim. UI portrait
+``T_UI_Portrait_GoblinChief`` (spec §9.5, R11; boss intro ``cs_boss_goblin_chief``): the Portrait pose, 512²,
+toon + screen-space ink, the eye embers composited. Ink: **boss** class (spec §1.3: bosses 3.5 px; gate 3.0 px).
 
 Web source: ``src/graphics/sprites/monsters/GoblinChief.ts`` (palette :37-47, cleaver :134-160, helm :89-110,
 war paint :112-127, READY :304-314, walk :326).
@@ -48,7 +51,7 @@ PREFIX = "chief"
 HEIGHT = 1.17
 WEB = GB.Web(U=0.0239 * 0.94, thigh=10.5, shin=10.5, upper_arm=9.0, fore_arm=8.5, torso=14.5, neck=6.8, ankle=1.8,
              hip=2.6, shoulder=5.4, lean=0.24, head_tilt=-0.20, root=(46.5, 71.5), bulk=1.15, foot_len=9.2, grin=1.6)
-OUTLINE_CLASS = "monster"
+OUTLINE_CLASS = "boss"      # spec §1.3: monsters 3.0 px, bosses 3.5 px (gate ≥ 3.0 px) — the Chapter-1 boss
 REF_SPEED = 1.50
 WALK = dict(cycle=600.0, duty=0.36, lift=0.075, bob=0.02, lean=4.0, arm=0.06, crouch=-0.035, twist=5.0,
             hand_swing=0.35, hand_off=V(-0.02, 0.0, 0.01))
@@ -76,6 +79,9 @@ CLEAVER_REGIONS = outline.ink_regions(dict(
     rust=Region("#9C5A2C", .42, .25), hole=Region("#2A2A30", .30, .10), leather=LEATHER,
     leather_line=LEATHER.shade_region(.30, .12),
 ), OUTLINE_CLASS)
+
+
+BRACER_TOP = 0.34          # bracer top edge, fraction of the forearm from the elbow
 
 
 class ChiefKit(GB.GoblinKit):
@@ -191,7 +197,8 @@ def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
           "iron_dark", head, name="nose_guard", hull_pad=True)
     # horns: bull horns sweeping out and up from the helm sides, ridged near the base
     for sg in (1, -1):
-        ctl = [(5.0, -0.5, 4.2), (6.4, -0.2, 6.0), (8.3, -0.4, 8.1), (10.6, -1.2, 9.7), (12.9, -2.1, 10.3)]
+        # tips at ≈ 1.37 m (spec §4.3: horns to 138 cm; they stopped at 1.30 m)
+        ctl = [(5.0, -0.5, 4.2), (6.7, -0.25, 6.1), (9.2, -0.5, 8.3), (12.4, -1.4, 9.9), (16.2, -2.4, 10.5)]
         pts = [kit.hp(h, f, sg * l) for h, f, l in ctl]
         dense = []
         for i in range(len(pts) - 1):
@@ -298,7 +305,9 @@ def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
     # leather bracers and iron knee guards
     for s, sg in (("l", 1), ("r", -1)):
         E, W = J[f"elbow_{s}"], J[f"wrist_{s}"]
-        br = M.tube([E.lerp(W, 0.2), E.lerp(W, 0.55), E.lerp(W, 0.85)], [u(2.25), u(2.15), u(2.0)], sides=10,
+        # from 1/3 down the forearm: a bracer reaching up to the elbow pushed into the mantle's hem whenever the elbow
+        # bent (cloth × limb QA)
+        br = M.tube([E.lerp(W, BRACER_TOP), E.lerp(W, 0.6), E.lerp(W, 0.86)], [u(2.2), u(2.15), u(2.0)], sides=10,
                     dome0=0.0, dome1=0.0)
         brid = b.add(br, "leather", Bind.blend(f"lowerarm_{s}", f"hand_{s}", falloff=4.0), name=f"bracer_{s}",
                      hull_pad=True)
@@ -453,8 +462,22 @@ def ready(A: GoblinAnims) -> BP:
         pelvis=A.web_pelvis(46.5, 71.5), hip_yaw=-6.0, twist=4.0, head_pitch=-6.0,
         foot_r=A.web_foot(54.0, -0.085), foot_l=A.web_foot(41.5, 0.09),
         foot_r_rot=(0.0, 0.0, 12.0), foot_l_rot=(0.0, 0.0, 22.0), knee_r=V(-0.5, 1, 0), knee_l=V(0.5, 1, 0),
-        hand_r=u3(A, -9.0, 8.0, 24.0), elbow_r=V(-0.9, 0.4, -0.2), wpn=wd, wpn_up=wu, wrist_r=(0.0, IDLE_ROLL, 0.0),
-        hand_l=u3(A, 6.0, 6.0, 23.0), elbow_l=V(0.9, 0.4, -0.2), wrist_l=(10.0, 0.0, 0.0), flow=0.1)
+        hand_r=u3(A, -10.5, 8.0, 24.0), elbow_r=V(-0.9, 0.4, -0.2), wpn=wd, wpn_up=wu, wrist_r=(0.0, IDLE_ROLL, 0.0),
+        hand_l=u3(A, *READY_HAND_L), elbow_l=V(0.9, 0.4, -0.2), wrist_l=(10.0, 0.0, 0.0), flow=0.1)
+
+
+# free fist: forward and a little low of the mantle's hem (cloth × limb QA: the leaning walk / chop dropped the
+# wolf-pelt mantle onto the bracer at the web's 6 u forward, 23 u up)
+READY_HAND_L = (7.0, 8.5, 21.5)
+HIT_HAND_L = (10.5, 6.0, 21.0)      # chop contact: the free fist swung back and out (web 9, −2, 25: the elbow went
+                                    # into the mantle)
+HIT_HEAD_PITCH = -60.0              # deg (web −12; the rest hunch + lean put the face under the helm brim)
+STUN_HEAD_DROOP = -14.0             # deg past READY (goblins +14 = drooping): the dazed chief lolls face-up — a
+                                    # drooping head showed only the helm dome and horns through most of Stun
+STUN_HEAD_ROLL = 5.0                # deg (goblins 16): the rolled helm turned its dome to the W1 camera
+STUN_HEAD_NOD = -8.0                # deg × sin (goblins +6): the head lifts as the body sags, the face stays up
+FREE_HAND = {"wind": (7.5, 11.0, 24.0), "mid": (9.0, 9.0, 23.0), "recoil": (9.0, 6.0, 25.0)}   # u (web 7/9/27,
+# 7.5/6/26, 7.5/3/28): the free fist stays ahead of and below the mantle's hem
 
 
 def install_poses(A: GoblinAnims) -> None:
@@ -465,16 +488,19 @@ def install_poses(A: GoblinAnims) -> None:
         rx, ry = WEB_READY["root"]
         fn = WEB_READY["footN"]
         wind = R0.but(wrist_r=STRIKE, pelvis=A.web_pelvis(rx - 2.0, ry + 0.8), lean=-13.7, head_pitch=-2.0, twist=R0.twist - 16.0,
-                      hip_yaw=-10.0, hand_r=u3(A, -13.0, -3.0, 40.0), elbow_r=V(-0.9, 0.1, -0.4),
-                      **A._wkw(R0, -45.0, lat=-0.35), hand_l=u3(A, 7.0, 9.0, 27.0), elbow_l=V(0.9, 0.3, -0.3),
+                      hip_yaw=-10.0, hand_r=u3(A, -16.0, -3.0, 40.0), elbow_r=V(-0.9, 0.1, -0.4),
+                      **A._wkw(R0, -45.0, lat=-0.35), hand_l=u3(A, *FREE_HAND["wind"]), elbow_l=V(0.9, 0.3, -0.3),
                       clav_r=(14.0, -4.0), fx=0.4, jaw=10.0)
         mid = R0.but(wrist_r=STRIKE, pelvis=A.web_pelvis(rx + 1.2, ry + 1.0), lean=5.7, twist=R0.twist + 2.0,
-                     hand_r=u3(A, -9.5, 9.0, 41.0), elbow_r=V(-0.9, 0.0, -0.3), **A._wkw(R0, 30.0, lat=-0.15),
-                     hand_l=u3(A, 7.5, 6.0, 26.0), foot_r=A.web_foot(fn + 3.5, R0.foot_r.x), clav_r=(12.0, 4.0),
+                     hand_r=u3(A, -10.5, 11.0, 41.0), elbow_r=V(-0.9, 0.0, -0.3), **A._wkw(R0, 30.0, lat=-0.15),
+                     hand_l=u3(A, *FREE_HAND["mid"]), foot_r=A.web_foot(fn + 3.5, R0.foot_r.x), clav_r=(12.0, 4.0),
                      fx=0.7, jaw=16.0)
-        hit = R0.but(wrist_r=STRIKE, pelvis=A.web_pelvis(rx + 3.8, ry + 1.8), lean=21.8, head_pitch=-12.0, twist=R0.twist + 16.0,
+        # the head counter-pitches the 21.8° lean (the warrior's "contacts look at the target"): at the web's −12 the
+        # helm dome and horns hid the ember eyes and war paint on the hit-stop frame
+        hit = R0.but(wrist_r=STRIKE, pelvis=A.web_pelvis(rx + 3.8, ry + 1.8), lean=21.8, head_pitch=HIT_HEAD_PITCH,
+                     twist=R0.twist + 16.0,
                      hip_yaw=6.0, hand_r=u3(A, -7.5, 21.0, 21.0), elbow_r=V(-0.8, 0.2, -0.6),
-                     **A._wkw(R0, 120.0, lat=0.05), hand_l=u3(A, 9.0, -2.0, 25.0), elbow_l=V(0.9, 0.3, -0.4),
+                     **A._wkw(R0, 120.0, lat=0.05), hand_l=u3(A, *HIT_HAND_L), elbow_l=V(0.9, 0.3, -0.4),
                      foot_r=A.web_foot(fn + 5.0, R0.foot_r.x), foot_r_rot=(0, 0, 4), clav_r=(-2.0, 8.0), fx=1.0,
                      jaw=24.0, flow=0.3)
         return [A.look(wind), A.look(mid), A.look(hit)]
@@ -492,7 +518,7 @@ def install_poses(A: GoblinAnims) -> None:
         rx, ry = WEB_READY["root"]
         return R0.but(pelvis=A.web_pelvis(rx - 3.5, ry + 1.0), lean=-19.5, head_pitch=-20.0, head_yaw=8.0,
                       twist=R0.twist - 6.0, hand_r=u3(A, -10.0, 4.0, 29.0), **A._wkw(R0, 30.0, lat=-0.15),
-                      hand_l=u3(A, 7.5, 3.0, 28.0), foot_l=R0.foot_l + V(0, -1.5 * A.U, 0), clav_l=(10.0, 0.0),
+                      hand_l=u3(A, *FREE_HAND["recoil"]), foot_l=R0.foot_l + V(0, -1.5 * A.U, 0), clav_l=(10.0, 0.0),
                       clav_r=(10.0, 0.0), flow=0.45, jaw=18.0)
 
     def death_keys():
@@ -504,13 +530,13 @@ def install_poses(A: GoblinAnims) -> None:
         buckle = rec.but(pelvis=A.web_pelvis(rx - 2.5, ry + 7.0), lean=-10.0, head_pitch=-16.0, head_yaw=10.0,
                          head_roll=6.0, foot_r=A.web_foot(fn - 1.0, R0.foot_r.x), foot_l=A.web_foot(ff, R0.foot_l.x),
                          knee_l=V(0.6, 1, 0), knee_r=V(-0.6, 1, 0), hand_r=u3(A, -12.0, 4.0, 18.0),
-                         elbow_r=V(-0.9, 0.3, -0.2), **A._wkw(R0, 100.0, lat=-0.3), hand_l=u3(A, 8.0, 3.0, 17.0),
+                         elbow_r=V(-0.9, 0.3, -0.2), **A._wkw(R0, 100.0, lat=-0.3), hand_l=u3(A, 10.0, 5.0, 17.0),
                          flow=0.5, jaw=24.0)
         Pt = P0 + A.web_pelvis(rx + 1.5, 91.0 - 10.0)
         tip = buckle.but(pelvis=A.web_pelvis(rx + 1.5, 91.0 - 10.0), lean=-6.0, head_pitch=-14.0,
                          foot_r=Pt + u3(A, -3.0, -5.0, -13.0), foot_l=Pt + u3(A, 3.5, -1.0, -14.5),
-                         hand_r=Pt + u3(A, -13.0, 0.0, 10.0), elbow_r=V(-0.9, 0.2, -0.3),
-                         wpn=V(-0.5, -0.3, 0.81), wpn_up=V(0, -1, 0), hand_l=Pt + u3(A, 10.0, 1.0, 12.0),
+                         hand_r=Pt + u3(A, -15.0, 0.0, 10.0), elbow_r=V(-0.9, 0.2, -0.3),
+                         wpn=V(-0.5, -0.3, 0.81), wpn_up=V(0, -1, 0), hand_l=Pt + u3(A, 15.5, 3.0, 11.0),
                          spin=-54.0, spin_axis=V(1, 0, 0), flow=0.6, jaw=28.0)
         Pl = P0 + A.web_pelvis(rx + 2.0, 91.0 - 4.8)
         lying = R0.but(pelvis=A.web_pelvis(rx + 2.0, 91.0 - 4.8), lean=-8.0, head_pitch=-6.0, head_roll=-30.0,
@@ -519,7 +545,7 @@ def install_poses(A: GoblinAnims) -> None:
                        foot_r_rot=(30.0, 0, 25), foot_l_rot=(18.0, 0, 40), knee_l=V(0.8, 0.6, 0), knee_r=V(-0.4, 1, 0),
                        hand_r=Pl + u3(A, -14.0, -2.5, 10.0), elbow_r=V(-0.4, 0.2, -1.0),
                        wpn=V(-0.62, 0.0, 0.78), wpn_up=V(0, -1, 0),
-                       hand_l=Pl + u3(A, 12.5, -1.5, 9.0), elbow_l=V(0.6, 0.2, -1.0),
+                       hand_l=Pl + u3(A, 15.0, -1.5, 9.0), elbow_l=V(0.6, 0.2, -1.0),
                        spin=-87.0, spin_axis=V(1, 0, 0), flow=0.05, jaw=20.0)
         return [rec, buckle, tip, lying]
 
@@ -554,9 +580,21 @@ def pelt_cloth(p, bp: BP, A: GoblinAnims) -> None:
         prev = prev + d * L
 
 
+class ChiefAnims(GoblinAnims):
+    """``GoblinAnims`` with the loincloth envelope sized for the chief's thicker legs and iron knee guards (cloth ×
+    limb QA: the front flap cut through the right knee guard in Walk / Attack01 / Roar / Stun)."""
+
+    def flaps(self, p, bp, **kw) -> None:
+        kw.setdefault("thigh_r", self.U * FLAP_THIGH_R)
+        super().flaps(p, bp, **kw)
+
+
+FLAP_THIGH_R = 3.6          # u: leg sphere radius of the flap envelope at the hip (× 0.75 at the knee guard)
+
+
 def anims(kit) -> GoblinAnims:
-    A = GoblinAnims(kit, REF_SPEED, WALK, ready, extra_cloth=pelt_cloth, style="overhead", contact_wpn=120.0,
-                    web_ready=WEB_READY)
+    A = ChiefAnims(kit, REF_SPEED, WALK, ready, extra_cloth=pelt_cloth, style="overhead", contact_wpn=120.0,
+                   web_ready=WEB_READY)
     install_poses(A)
     return A
 
@@ -590,12 +628,40 @@ def roar(A: GoblinAnims):
     return c
 
 
+def portrait_pose(A: GoblinAnims) -> BP:
+    """Portrait pose (``T_UI_Portrait_GoblinChief``, boss intro ``cs_boss_goblin_chief``): a snarl over the raised
+    cleaver — the blade up beside the right horn (outside the face, like the warrior's raised sword), the free fist
+    clenched at the chest, the head lifted out from under the helm brim so the ember eyes and war paint read."""
+    R0 = A.ready()
+    return R0.but(head_pitch=-16.0, head_yaw=-14.0, twist=R0.twist - 4.0, lean=R0.lean - 4.0,
+                  hand_r=u3(A, -14.0, 5.0, 37.0), elbow_r=V(-0.9, 0.1, -0.4), wrist_r=(0.0, -35.0, 0.0),
+                  **A._wkw(R0, -12.0, lat=-0.5), hand_l=u3(A, 8.0, 10.0, 28.0), elbow_l=V(0.9, 0.2, -0.4),
+                  clav_r=(10.0, 0.0), jaw=20.0, flow=0.15)
+
+
+def portrait(ms, rv, actions) -> str:
+    import mship
+    return mship.portrait_shot(ms, rv, portrait_pose(ms.A), PORTRAIT, eye_glow=PORTRAIT_EYES, bust_below_head=0.30,
+                               pitch=-20.0)   # a little from above: the helm dome reads over the band
+
+
+PORTRAIT = "T_UI_Portrait_GoblinChief"
+PORTRAIT_EYES = {"radiusCm": 3.6, "color": "#FF5A2A", "alpha": 0.55, "coreFrac": 0.35}   # one ember card per eye
+
+
 def clips(A: GoblinAnims) -> list:
     return [A.idle(), A.walk(), A.attack(), A.hurt(), A.death(), roar(A),
-            A.stun(droop=60.0, hand_r=u3(A, -9.5, 5.0, 19.0), wlat=-0.1)]
+            A.stun(droop=60.0, hand_r=u3(A, -9.5, 5.0, 19.0), wlat=-0.1, head_droop=STUN_HEAD_DROOP,
+                   head_roll=STUN_HEAD_ROLL, head_nod=STUN_HEAD_NOD)]
 
 
 GRIP_PARTS = ("fist_r", "knuckle_r", "thumb_r", "claw_r")
+
+# cloth × limb gate (art review): the loincloth flaps against the legs / knee caps / knee guards, the wolf-pelt mantle
+# and the pelt tail against the elbows / forearms / fists (the upper-arm tubes root under the mantle by construction)
+QA_GROUPS = {"loin": ["loin_f", "loin_b"], "legs": ["leg", "knee", "knee_guard"], "mantle": ["mantle", "pelt_tail"],
+             "forearms": ["elbow", "bracer", "fist", "knuckle", "thumb", "claw"]}
+QA_PAIRS = {"loinLeg": ("loin", "legs"), "mantleArm": ("mantle", "forearms")}
 
 
 def cleaver_grip(co) -> bool:
@@ -645,6 +711,22 @@ def quick(out: Path) -> None:
                        blob_radius=0.29, glows=eye_glows(kit.rig))
 
 
+def portrait_quick(out: Path) -> None:
+    """Portrait iteration: the portrait + its 2× zoom → ``out`` (and Art/Export/Portraits)."""
+    import mship
+    pal, kit, body, cleaver = build_all()
+    A = anims(kit)
+    R.attach_to_bone(cleaver, kit.rig, "weapon_r")
+    A.bind_meshes(body, {"weapon_r": cleaver})
+    ms = mship.MonsterShip(asset=ASSET, token=TOKEN, preview_dir="x", pal=pal, A=A, body=body,
+                           items=[mship.Item(cleaver, CLEAVER, "weapon_r", "axe")], clips=[],
+                           outline_class=OUTLINE_CLASS, game_ids=[], blob_radius=0.29, height=HEIGHT)
+    out.mkdir(parents=True, exist_ok=True)
+    rv = mship.MReview(ASSET, kit.rig.obj, [body, cleaver], HEIGHT, blob_radius=0.29, out_dir=out,
+                       game_outline_px=outline.SCREEN_PX_1080[OUTLINE_CLASS], outline_class=OUTLINE_CLASS)
+    portrait(ms, rv, [])
+
+
 def anim_quick(out: Path, names, facing: str = "se") -> None:
     import mship
     pal, kit, body, cleaver = build_all()
@@ -676,10 +758,10 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         outline_class=OUTLINE_CLASS, game_ids=["monster_goblin_chief"], blob_radius=round(12 * WEB.U, 3), height=HEIGHT,
         lod1=body1,
         display={"zh-CN": "哥布林首领 · 碎牙·格罗克", "en": "Goblin Chief · Grokk Brokentooth"},
-        fx=FX, glows=eye_glows(kit.rig),
-        qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS)},
-        qa_pairs={"cleaverBody": ("item:" + CLEAVER, "body_nf")},
-        qa_limits={"ground": -0.5, "cleaverBody": 0},
+        fx=FX, glows=eye_glows(kit.rig), portrait=portrait,
+        qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS), **QA_GROUPS},
+        qa_pairs={"cleaverBody": ("item:" + CLEAVER, "body_nf"), **QA_PAIRS},
+        qa_limits={"ground": -0.5, "cleaverBody": 0, **{k: 0 for k in QA_PAIRS}},
         game_keys=[("Idle", 0, "se"), ("Walk", 9, "se"), ("Attack01", 5, "se"), ("Attack01", 10, "se"),
                    ("Attack01", 15, "se"), ("Attack01", 15, "sw"), ("Roar", 27, "se"), ("Death", 30, "se")],
         close_keys=[("Attack01", 5, "se"), ("Attack01", 10, "se"), ("Attack01", 15, "se"), ("Attack01", 15, "side"),
@@ -701,6 +783,8 @@ if __name__ == "__main__":
     scratch = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/chief")
     if "--quick" in args:
         quick(scratch)
+    elif "--portrait" in args:
+        portrait_quick(scratch)
     elif "--anims" in args:
         names = [a for a in args[args.index("--anims") + 1:] if not a.startswith("--")]
         fac = next((a.split("=")[1] for a in args if a.startswith("--facing=")), "se")
