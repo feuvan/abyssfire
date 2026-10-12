@@ -40,7 +40,7 @@ void FAbyssPainter::Box(const FVector2D& Pos, const FVector2D& Size, const FLine
 	{
 		return;
 	}
-	FSlateDrawElement::MakeBox(Elements, Layer, AbyssDraw_Paint(Geometry, Pos, Size), Style.White(), ESlateDrawEffect::None, Tinted(Color));
+	FSlateDrawElement::MakeBox(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), Style.White(), ESlateDrawEffect::None, Tinted(Color));
 }
 
 void FAbyssPainter::Brush(const FVector2D& Pos, const FVector2D& Size, const FSlateBrush* InBrush, const FLinearColor& Color) const
@@ -49,7 +49,7 @@ void FAbyssPainter::Brush(const FVector2D& Pos, const FVector2D& Size, const FSl
 	{
 		return;
 	}
-	FSlateDrawElement::MakeBox(Elements, Layer, AbyssDraw_Paint(Geometry, Pos, Size), InBrush, ESlateDrawEffect::None, Tinted(Color));
+	FSlateDrawElement::MakeBox(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), InBrush, ESlateDrawEffect::None, Tinted(Color));
 }
 
 void FAbyssPainter::RoundBox(const FVector2D& Pos, const FVector2D& Size, const FLinearColor& Fill, float Radius,
@@ -59,10 +59,21 @@ void FAbyssPainter::RoundBox(const FVector2D& Pos, const FVector2D& Size, const 
 	{
 		return;
 	}
+	const FLinearColor TintedFill = Tinted(Fill);
 	const FLinearColor TintedOutline = Tinted(Outline);
-	// The brush carries the colours (an outline is not reliably tinted by the element tint): bake the tint in.
-	const FSlateBrush* RoundBrush = Style.Rounded(Tinted(Fill), Radius, TintedOutline, TintedOutline.A > 0.f ? OutlineWidth : 0.f);
-	FSlateDrawElement::MakeBox(Elements, Layer, AbyssDraw_Paint(Geometry, Pos, Size), RoundBrush, ESlateDrawEffect::None, FLinearColor::White);
+	const bool bOutline = OutlineWidth > 0.f && TintedOutline.A > 0.f;
+	if (TintedFill.A <= 0.f && !bOutline)
+	{
+		return;
+	}
+	// MakeBox draws with the element tint only: it never applies the brush's own TintColor (SImage and SBorder multiply
+	// that in before calling it), so the fill colour is the element tint. A rounded box's outline colour comes from the
+	// brush's OutlineSettings and is not tinted by the element, so the tinted outline is baked into the cached brush.
+	const FSlateBrush* RoundBrush = Style.Rounded(FLinearColor::White, Radius, TintedOutline, bOutline ? OutlineWidth : 0.f);
+	// An outline-only box keeps a fill alpha below 1/255: Slate culls elements whose tint is fully transparent (which
+	// would drop the outline too), and the fill still quantises to nothing in the 8-bit vertex colour.
+	const FLinearColor ElementTint = TintedFill.A > 0.f ? TintedFill : FLinearColor(TintedFill.R, TintedFill.G, TintedFill.B, 1.f / 1024.f);
+	FSlateDrawElement::MakeBox(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), RoundBrush, ESlateDrawEffect::None, ElementTint);
 }
 
 void FAbyssPainter::Circle(const FVector2D& Center, float Radius, const FLinearColor& Fill, const FLinearColor& Outline, float OutlineWidth) const
@@ -136,7 +147,7 @@ void FAbyssPainter::Line(const FVector2D& From, const FVector2D& To, const FLine
 	TArray<FVector2f> Points;
 	Points.Add(FVector2f(From));
 	Points.Add(FVector2f(To));
-	FSlateDrawElement::MakeLines(Elements, Layer, Geometry.ToPaintGeometry(), MoveTemp(Points), ESlateDrawEffect::None, Tinted(Color), true,
+	FSlateDrawElement::MakeLines(Elements, TakeLayer(), Geometry.ToPaintGeometry(), MoveTemp(Points), ESlateDrawEffect::None, Tinted(Color), true,
 		Thickness);
 }
 
@@ -152,7 +163,7 @@ void FAbyssPainter::Polyline(const TArray<FVector2D>& InPoints, const FLinearCol
 	{
 		Points.Add(FVector2f(Point));
 	}
-	FSlateDrawElement::MakeLines(Elements, Layer, Geometry.ToPaintGeometry(), MoveTemp(Points), ESlateDrawEffect::None, Tinted(Color), true,
+	FSlateDrawElement::MakeLines(Elements, TakeLayer(), Geometry.ToPaintGeometry(), MoveTemp(Points), ESlateDrawEffect::None, Tinted(Color), true,
 		Thickness);
 }
 
@@ -320,7 +331,7 @@ void FAbyssPainter::CustomVerts(const TArray<FVector2D>& LocalPoints, const TArr
 	{
 		SlateIndices.Add(static_cast<SlateIndex>(Index));
 	}
-	FSlateDrawElement::MakeCustomVerts(Elements, Layer, Handle, Vertices, SlateIndices, nullptr, 0, 0);
+	FSlateDrawElement::MakeCustomVerts(Elements, TakeLayer(), Handle, Vertices, SlateIndices, nullptr, 0, 0);
 }
 
 void FAbyssPainter::ConvexPolygon(const TArray<FVector2D>& Points, const FLinearColor& Color) const
@@ -520,7 +531,7 @@ void FAbyssPainter::Text(const FVector2D& Pos, const FString& InText, const FSla
 		return;
 	}
 	const FVector2D Size = Measure(InText, Font);
-	FSlateDrawElement::MakeText(Elements, Layer, AbyssDraw_Paint(Geometry, Pos, Size), InText, Font, ESlateDrawEffect::None, Tinted(Color));
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), InText, Font, ESlateDrawEffect::None, Tinted(Color));
 }
 
 void FAbyssPainter::TextCentered(const FVector2D& Center, const FString& InText, const FSlateFontInfo& Font, const FLinearColor& Color,
@@ -532,7 +543,7 @@ void FAbyssPainter::TextCentered(const FVector2D& Center, const FString& InText,
 	}
 	const FVector2D Size = Measure(InText, Font);
 	const FVector2D TopLeft = Center - Size * (0.5 * Scale);
-	FSlateDrawElement::MakeText(Elements, Layer, AbyssDraw_Paint(Geometry, TopLeft, Size, Scale), InText, Font, ESlateDrawEffect::None,
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, TopLeft, Size, Scale), InText, Font, ESlateDrawEffect::None,
 		Tinted(Color));
 }
 
@@ -546,9 +557,9 @@ void FAbyssPainter::TextShadowed(const FVector2D& Pos, const FString& InText, co
 	const FVector2D Size = Measure(InText, Font);
 	FLinearColor ShadowColor = Shadow;
 	ShadowColor.A *= Color.A;
-	FSlateDrawElement::MakeText(Elements, Layer, AbyssDraw_Paint(Geometry, Pos + ShadowOffset, Size), InText, Font, ESlateDrawEffect::None,
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos + ShadowOffset, Size), InText, Font, ESlateDrawEffect::None,
 		Tinted(ShadowColor));
-	FSlateDrawElement::MakeText(Elements, Layer, AbyssDraw_Paint(Geometry, Pos, Size), InText, Font, ESlateDrawEffect::None, Tinted(Color));
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), InText, Font, ESlateDrawEffect::None, Tinted(Color));
 }
 
 // =====================================================================================================================

@@ -24,12 +24,20 @@ struct FAbyssPainter
 
 	const FGeometry& Geometry;
 	FSlateWindowElementList& Elements;
-	int32 Layer;
+	/**
+	 * Layer of the next element. Every primitive draws on its own layer and advances it, because Slate keeps paint order
+	 * only across layers: inside one layer it batches elements by shader and texture, so a rounded box, a plain box,
+	 * custom vertices and text drawn in that order can come out in another. Consecutive compatible elements still merge
+	 * into one batch. After painting, Layer is one past the last element (return it from OnPaint).
+	 */
+	mutable int32 Layer;
 	FLinearColor Tint;
 	const FAbyssUiStyle& Style;
 
 	/** Next layer (for content that must draw above what was painted so far). */
 	int32 NextLayer() { return ++Layer; }
+	/** The layer for one draw element; advances Layer. */
+	int32 TakeLayer() const { return Layer++; }
 
 	FLinearColor Tinted(const FLinearColor& Color) const;
 
