@@ -20,6 +20,7 @@ namespace AbyssCharacterPrivate
 {
 	constexpr float TurnRateDegPerSec = 720.f;   // M11 (render-only), also used for the hero
 	constexpr float YawDeadbandDeg = 2.f;
+	constexpr double SingleViewMirrorDeadband = 0.05;   // |screen-x| of a unit facing below which the mirror side holds
 	constexpr float MinMovingSpeedCmS = 5.f;
 	constexpr float CrownSpinDegPerSec = 45.f;
 	constexpr float AuraPeriodSec = 1.2f;
@@ -125,6 +126,9 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	SpiritColor = Setup.SpiritColor;
 	bFlying = Setup.bFlying;
 	HoverCm = Setup.HoverCm;
+	bSingleView = Setup.bSingleView;
+	bSingleViewLeft = false;
+	SingleViewCameraYawDeg = Setup.CameraYawDeg;
 	MeshYawOffsetDeg = Assets.GetManifest().GetShading().MeshYawOffsetDeg;
 
 	bHasArt = false;
@@ -892,10 +896,40 @@ void AAbyssCharacterActor::SnapTo(const FVector& Location, const FVector2D& Faci
 	SetActorLocation(Location);
 	if (!Facing.IsNearlyZero())
 	{
-		CurrentYawDeg = FMath::RadiansToDegrees(FMath::Atan2(Facing.Y, Facing.X));
+		const FVector2D Shown = bSingleView ? SingleViewFacing(Facing, /*bAimed*/ false) : Facing;
+		CurrentYawDeg = FMath::RadiansToDegrees(FMath::Atan2(Shown.Y, Shown.X));
 		bHasYaw = true;
 		SetActorRotation(FRotator(0.f, CurrentYawDeg, 0.f));
 	}
+}
+
+FVector2D AAbyssCharacterActor::SingleViewFacing(const FVector2D& Desired, bool bAimed)
+{
+	using namespace AbyssCharacterPrivate;
+	// Ground axes of the fixed camera (AAbyssCameraRig::GetGroundForward / GetGroundRight): screen up, screen right.
+	const float Yaw = FMath::DegreesToRadians(SingleViewCameraYawDeg);
+	const FVector2D ScreenUp(FMath::Cos(Yaw), FMath::Sin(Yaw));
+	const FVector2D ScreenRight(-FMath::Sin(Yaw), FMath::Cos(Yaw));
+	const FVector2D Dir = Desired.GetSafeNormal();
+	const double ScreenX = FVector2D::DotProduct(Dir, ScreenRight);
+	// The web mirrors on the sign of the screen-x step and keeps the side when that step is ~0.
+	if (FMath::Abs(ScreenX) >= SingleViewMirrorDeadband)
+	{
+		bSingleViewLeft = ScreenX < 0.0;
+	}
+	const FVector2D Side = bSingleViewLeft ? -ScreenRight : ScreenRight;
+	if (bAimed)
+	{
+		// The slam keeps its aim while that shows the front; a target up-screen is struck side-on, never with the back
+		// to the viewer.
+		if (FVector2D::DotProduct(Dir, ScreenUp) <= 0.0)
+		{
+			return Dir;
+		}
+		return FMath::Abs(ScreenX) >= SingleViewMirrorDeadband ? (ScreenRight * ScreenX).GetSafeNormal() : Side;
+	}
+	// The se / sw view: halfway between screen right / left and the viewer (the web's +col / +row screen steps).
+	return (Side - ScreenUp).GetSafeNormal();
 }
 
 void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float DeltaSec)
@@ -906,13 +940,19 @@ void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float
 		return;
 	}
 	FVector2D Desired = Frame.Facing;
+	bool bAimed = false;
 	if (ActionState.bFaceLock && ActionState.Action != EAbyssCharacterAction::None)
 	{
 		Desired = ActionState.FaceDir;
+		bAimed = true;
 	}
 	if (Desired.IsNearlyZero())
 	{
 		return;
+	}
+	if (bSingleView)
+	{
+		Desired = SingleViewFacing(Desired, bAimed);
 	}
 	const float DesiredYaw = FMath::RadiansToDegrees(FMath::Atan2(Desired.Y, Desired.X));
 	if (!bHasYaw)

@@ -31,7 +31,11 @@ public:
 
 	virtual abyss::PanelId GetPanelId() const override { return abyss::PanelId::Skills; }
 	virtual void Refresh(const abyss::Snapshot& Snap) override;
-	virtual FVector2D GetDesignSize() const override { return FVector2D(660.0, 600.0); }
+	/**
+	 * 7.4 is 660x520; the port's hotbar strip (C3) adds 60 px. 580 keeps the bottom (y 585) clear of the HUD's top row
+	 * (interact prompt y 599, potion medallions y 601).
+	 */
+	virtual FVector2D GetDesignSize() const override { return FVector2D(660.0, 580.0); }
 	virtual FVector2D GetDesignPosition() const override { return FVector2D(310.0, 5.0); }
 	virtual bool HandleBack() override;
 

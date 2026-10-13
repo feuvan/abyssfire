@@ -23,7 +23,11 @@ public:
 	virtual abyss::PanelId GetPanelId() const override { return abyss::PanelId::WorldMap; }
 	virtual void Refresh(const abyss::Snapshot& Snap) override;
 	virtual FVector2D GetDesignSize() const override { return FVector2D(680.0, 560.0); }
-	virtual FVector2D GetDesignPosition() const override { return FVector2D(-1.0, 60.0); }
+	/**
+	 * 7.6 puts the 236-high zone strip at y 80; this panel adds the zone map (560 high), so it starts at y 24: bottom 584,
+	 * clear of the HUD's interact prompt (y 599) and potion medallions (y 601).
+	 */
+	virtual FVector2D GetDesignPosition() const override { return FVector2D(-1.0, 24.0); }
 	/** Explored share / legend refresh (the map itself repaints every frame from the shared minimap texture). */
 	virtual double GetAutoRefreshSeconds() const override { return 1.0; }
 

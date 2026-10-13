@@ -90,6 +90,12 @@ namespace AbyssZonePrivate
 	constexpr float WallFadeTarget = 0.55f;    // alpha .45
 	constexpr float FadeTimeConstantSec = 0.11f;
 	constexpr float ShadowCasterMinHeightCm = 45.f;
+	// Low dressing (not an R1 occluder) that can hide ground loot: anything taller than the 30 cm height floor of
+	// PlaceArt (berry bush 73 cm, grass tufts 32-38, rocks 37-42, camp props). Lily pads and flat bits stay out.
+	constexpr float LootCoverMinHeightCm = 30.5f;
+	// Lateral slack of the occlusion test: a character's body half-width; a ground item's footprint is smaller.
+	constexpr double OccluderSlackCm = 25.0;
+	constexpr double LootOccluderSlackCm = 12.0;
 
 	// Asset / parameter id from a pattern with exactly one "%s" (e.g. TEXT("decor_%s")). Not FString::Printf: with
 	// checked format strings (UE 5.4+, DefaultBuildSettings Latest) the format must be a TCHAR array literal, so a
@@ -241,6 +247,10 @@ AAbyssZoneActor::AAbyssZoneActor()
 	TerrainMesh->SetCanEverAffectNavigation(false);
 	TerrainMesh->bUseAsyncCooking = false;
 	TerrainMesh->SetCastShadow(false);   // the ground receives sun shadows; hills casting is not worth the cost
+	// The water sections are translucent and sort by the whole terrain's bounds (the map centre, not the shore): draw
+	// them before the other default-priority translucency (the slime shell, R12) and the VFX (1 / 2); the blob
+	// shadows (-10) and prop light pools (-5) stay under them.
+	TerrainMesh->SetTranslucentSortPriority(-2);
 
 	Sun = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("Sun"));
 	Sun->SetupAttachment(SceneRoot);
@@ -412,10 +422,28 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 	UAbyssAssetLibrary* Assets = AssetLibrary.Get();
 	FString TerrainMaterialName(TEXT("NONE"));
 	FString WaterMaterialName(TEXT("NONE"));
-	if (UMaterialInterface* Base = Assets != nullptr ? Assets->LoadMaterial(TEXT("M_AF_Terrain")) : nullptr)
+	// The painted ground (WorldContract 3.1): MI_AF_Terrain_<Theme> is M_AF_Terrain_Painted with the theme's art layers
+	// and detail atlas bound by the content build (manifest terrain.<theme>). Themes without painted art keep the
+	// procedural M_AF_Terrain; both take the same TileIds / Tile<i>* / Water* parameters (ApplyTerrainStyle).
+	UMaterialInterface* TerrainBase = nullptr;
+	if (Assets != nullptr)
 	{
-		TerrainMaterial = UMaterialInstanceDynamic::Create(Base, this);
-		TerrainMaterialName = Base->GetName();
+		const FString ThemeKey = AbyssZonePrivate::ToF(ThemeName);
+		const FString PaintedName = FString(TEXT("MI_AF_Terrain_")) + ThemeKey.Left(1).ToUpper() + ThemeKey.Mid(1);
+		if (!ThemeKey.IsEmpty()
+			&& Assets->DoesAssetExist(FAbyssArtManifest::MakeObjectPath(TEXT("Materials/Instances"), FName(*PaintedName))))
+		{
+			TerrainBase = Assets->LoadMaterial(*PaintedName);
+		}
+		if (TerrainBase == nullptr)
+		{
+			TerrainBase = Assets->LoadMaterial(TEXT("M_AF_Terrain"));
+		}
+	}
+	if (TerrainBase != nullptr)
+	{
+		TerrainMaterial = UMaterialInstanceDynamic::Create(TerrainBase, this);
+		TerrainMaterialName = TerrainBase->GetName();
 	}
 	if (UMaterialInterface* Base = Assets != nullptr ? Assets->LoadMaterial(TEXT("M_AF_Water")) : nullptr)
 	{
@@ -617,14 +645,21 @@ bool AAbyssZoneActor::AddInstance(UStaticMesh* Mesh, const FTransform& Transform
 	const int32 InstanceIndex = Batch.Transforms.Add(Transform);
 	Batch.CustomData.Append({ 0.f, RandomValue, 0.f });
 	int32 OccluderIndex = INDEX_NONE;
-	if (bOccluder)
+	// Low dressing inside the map can hide ground loot: it fades for loot targets only (UpdateOcclusion).
+	const FVector InstanceLocation = Transform.GetLocation();
+	const double TileCm = AbyssUnits::TileUU;
+	const bool bInsideMap = InstanceLocation.X > -TileCm && InstanceLocation.Y > -TileCm
+		&& InstanceLocation.X < Terrain.GetCols() * TileCm && InstanceLocation.Y < Terrain.GetRows() * TileCm;
+	const bool bLootCover = !bOccluder && bInsideMap && HeightCm > LootCoverMinHeightCm;
+	if (bOccluder || bLootCover)
 	{
 		FOccluder& Occluder = Occluders.AddDefaulted_GetRef();
 		Occluder.Instance = InstanceIndex;   // component resolved in FlushInstances
-		Occluder.Location = Transform.GetLocation();
+		Occluder.Location = InstanceLocation;
 		Occluder.RadiusCm = RadiusCm;
 		Occluder.HeightCm = HeightCm;
-		Occluder.FadeTarget = FadeTarget;
+		Occluder.FadeTarget = FadeTarget > 0.f ? FadeTarget : DecorFadeTarget;
+		Occluder.bLootOnly = bLootCover;
 		OccluderIndex = Occluders.Num() - 1;
 		OccluderBuckets.FindOrAdd(BucketOf(Occluder.Location)).Add(OccluderIndex);
 	}
@@ -1240,7 +1275,8 @@ void AAbyssZoneActor::ApplyPostProcess()
 // Occlusion fade and story focus
 // =====================================================================================================================
 
-void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, const FVector& CameraLocation, float DeltaSec)
+void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstArrayView<FVector> LootTargets,
+	const FVector& CameraLocation, float DeltaSec)
 {
 	using namespace AbyssZonePrivate;
 	if (Occluders.Num() == 0)
@@ -1248,8 +1284,15 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, const FV
 		return;
 	}
 	TSet<int32> Covering;
-	for (const FVector& Target : Targets)
+	const int32 TargetCount = Targets.Num() + LootTargets.Num();
+	for (int32 TargetIndex = 0; TargetIndex < TargetCount; ++TargetIndex)
 	{
+		// Characters first (R1 occluders only); ground loot fades only the low dressing (bLootOnly), with a narrower
+		// footprint. Trees, walls and camp structures never fade for loot: ground loot persists, so such a fade would
+		// last until pickup (the web draws loot behind its decor, ZoneScene.dropLootAtPosition; the nameplate stays).
+		const bool bLoot = TargetIndex >= Targets.Num();
+		const FVector& Target = bLoot ? LootTargets[TargetIndex - Targets.Num()] : Targets[TargetIndex];
+		const double SlackCm = bLoot ? LootOccluderSlackCm : OccluderSlackCm;
 		const FVector ToCamera = CameraLocation - Target;
 		const FVector2D Flat(ToCamera.X, ToCamera.Y);
 		const double FlatLength = Flat.Size();
@@ -1273,6 +1316,10 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, const FV
 				for (const int32 Index : *Bucket)
 				{
 					const FOccluder& Occluder = Occluders[Index];
+					if (Occluder.bLootOnly != bLoot)
+					{
+						continue;
+					}
 					const FVector2D Rel(Occluder.Location.X - Target.X, Occluder.Location.Y - Target.Y);
 					const double Along = FVector2D::DotProduct(Rel, Dir);
 					if (Along < -Occluder.RadiusCm || Along > 1200.0)
@@ -1280,7 +1327,7 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, const FV
 						continue;
 					}
 					const double Lateral = FMath::Abs(FVector2D::CrossProduct(Dir, Rel));
-					if (Lateral > Occluder.RadiusCm + 25.0)
+					if (Lateral > Occluder.RadiusCm + SlackCm)
 					{
 						continue;
 					}

@@ -64,6 +64,14 @@ struct FAbyssCharacterSetup
 	TArray<FLinearColor> AffixColors;
 	bool bCastShadow = true;
 	bool bOptimizeAnimation = false;   // URO + tick only when rendered (monsters, ambient NPCs)
+	/**
+	 * Radial rigs (the slime): the web has one front (se) view and only mirrors it (CharacterAnimator.setFacing without
+	 * views), so the face always shows. The actor turns to the camera-facing 3/4 direction on the side of the desired
+	 * facing instead of the facing itself (aimed actions stay in the camera-facing half plane).
+	 */
+	bool bSingleView = false;
+	/** The fixed camera yaw (W1, degrees) single-view facings are relative to. */
+	float CameraYawDeg = 45.f;
 	/** Ghost / afterimage tint (class Spirit colour). */
 	FLinearColor SpiritColor = FLinearColor(1.f, 0.7f, 0.36f);
 };
@@ -183,6 +191,8 @@ private:
 	void PlayClip(const FAbyssArtClip& Clip, float Rate, float StartSec, const char* ToState);
 	void UpdateLocomotion(const FAbyssCharacterFrame& Frame);
 	void UpdateFacing(const FAbyssCharacterFrame& Frame, float DeltaSec);
+	/** bSingleView: the facing shown for a desired one (se / sw toward the camera; bAimed keeps an aim in front). */
+	FVector2D SingleViewFacing(const FVector2D& Desired, bool bAimed);
 	void UpdateRecoil(float DeltaSec);
 	void UpdateDeath(float DeltaSec);
 	void UpdateMaterialFeedback(const FAbyssCharacterFrame& Frame, float DeltaSec);
@@ -275,6 +285,9 @@ private:
 	bool bWorldHold = false;
 	float CurrentYawDeg = 0.f;
 	bool bHasYaw = false;
+	bool bSingleView = false;
+	bool bSingleViewLeft = false;   // mirrored (sw) side of a single-view rig
+	float SingleViewCameraYawDeg = 45.f;
 
 	// feedback
 	float FlashRemainingSec = 0.f;

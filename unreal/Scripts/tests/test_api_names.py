@@ -243,6 +243,7 @@ class ApiNameTests(unittest.TestCase):
                                                         "MP_BASE_COLOR", "MP_SPECULAR", "MP_ROUGHNESS",
                                                         "MP_WORLD_POSITION_OFFSET")]
         from_data += [("MaterialSamplerType", m) for m in ("SAMPLERTYPE_COLOR", "SAMPLERTYPE_LINEAR_COLOR")]
+        from_data += [("SamplerSourceMode", m) for m in ("SSM_FROM_TEXTURE_ASSET", "SSM_WRAP_WORLD_GROUP_SETTINGS")]
         for enum, member in from_data:
             if not self.stub.enum_has(enum, member):
                 missing.append(f"(data) {enum}.{member}")

@@ -11,10 +11,15 @@
 | world       | Textures            | yes  | Default                  | default | yes  | World     |
 | normal      | Textures            | no   | Normalmap                | default | yes  | WorldNormalMap |
 | mask        | Textures            | no   | Masks                    | default | yes  | World     |
+| atlas       | Textures            | yes  | BC7 (ASTC on mobile)     | default | yes  | World     |
 
 Palettes are exact swatch atlases: uncompressed and unfiltered on every platform (16 px swatches survive no block
 compression or bilinear blending), never streamed. The sampler types the masters expect follow from these settings
 (sRGB + default compression -> Color, linear -> LinearColor); a palette imported differently would not bind.
+
+The terrain detail atlas (`*_Details_BC`, kind atlas) holds small motifs on transparent texels: BC3 / DXT5 would put the
+motif colours and the black of the empty texels on one 4-colour line per block, so it is BC7 (several endpoint pairs
+per block), clamped (its cells are sampled tile by tile).
 """
 from __future__ import annotations
 
@@ -65,6 +70,11 @@ def settings_for(kind: str) -> dict[str, Any]:
     if kind == "mask":
         return {"srgb": False, "compression_settings": enum("TextureCompressionSettings", "TC_MASKS"),
                 "lod_group": enum("TextureGroup", "TEXTUREGROUP_WORLD")}
+    if kind == "atlas":
+        return {"srgb": True, "compression_settings": enum("TextureCompressionSettings", "TC_BC7"),
+                "lod_group": enum("TextureGroup", "TEXTUREGROUP_WORLD"),
+                "address_x": enum("TextureAddress", "TA_CLAMP"),
+                "address_y": enum("TextureAddress", "TA_CLAMP")}
     return {"srgb": True, "compression_settings": enum("TextureCompressionSettings", "TC_DEFAULT"),
             "lod_group": enum("TextureGroup", "TEXTUREGROUP_WORLD")}
 

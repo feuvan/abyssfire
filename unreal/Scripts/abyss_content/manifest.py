@@ -8,7 +8,9 @@ Contract with the runtime (Source/Abyssfire/Public/World/WorldContract.md 2.1, A
 * palettes -> /Game/Abyssfire/Textures/<T_AF_Palette_*>; portraits / icons / UI glyphs -> /Game/Abyssfire/UI/{Portraits,Icons};
   FX sprites (T_FX_*) -> /Game/Abyssfire/FX/Textures;
 * material slot 0 = the family toon instance (MI_AF_Toon_<Family>), slot 1 = the outline hull (M_AF_Outline, made an
-  instance per palette and outline class: MI_AF_Outline_<Family>_<Class>).
+  instance per palette and outline class: MI_AF_Outline_<Family>_<Class>);
+* the manifest `terrain.<theme>` ground layers + detail atlas -> /Game/Abyssfire/Textures, bound on
+  MI_AF_Terrain_<Theme> (parent M_AF_Terrain_Painted), which AAbyssZoneActor::BuildTerrain loads for that theme.
 """
 from __future__ import annotations
 
@@ -794,6 +796,9 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
 
     # ---- textures ----
     textures = plan_textures(export_dir, palettes, data, problems, scan=scan_textures)
+    # ---- painted ground: MI_AF_Terrain_<Theme> per manifest terrain section (needs the planned textures) ----
+    for terrain_instance, subject in plan_terrain_instances(data, textures, problems):
+        add_instance(terrain_instance, subject)
 
     return Plan(manifest_path=manifest_path, export_dir=export_dir, shading=shading, palettes=palettes, assets=assets,
                 skeleton_families=families_map, textures=textures, instances=instances, slot_materials=slot_materials,
@@ -816,6 +821,9 @@ def classify_texture(name: str) -> tuple[str, str, bool]:
         return "normal", paths.TEXTURES_DIR, False
     if name.endswith(("_M", "_P", "_E")):
         return "mask", paths.TEXTURES_DIR, False
+    if name.endswith("_Details_BC"):
+        # straight-alpha motif atlas (T_Terrain_<Theme>_Details_BC): small coloured motifs on transparent texels
+        return "atlas", paths.TEXTURES_DIR, True
     return "world", paths.TEXTURES_DIR, True
 
 
@@ -861,6 +869,12 @@ def plan_textures(export_dir: Path, palettes: dict[str, Palette], data: dict[str
             value = raw.get(key)
             for rel in (value if isinstance(value, list) else [value] if value else []):
                 add(export_dir / str(rel), name, True)
+    # the painted ground's layers and detail atlas (plan_terrain_instances binds them; a missing one is reported there)
+    for theme, section in sorted((data.get("terrain") or {}).items()):
+        if not isinstance(section, dict):
+            continue
+        for rel in terrain_files(section):
+            add(export_dir / rel, f"terrain {theme}", False)
     if scan:
         for sub in TEXTURE_SCAN_DIRS:
             root = export_dir / sub
@@ -871,3 +885,64 @@ def plan_textures(export_dir: Path, palettes: dict[str, Palette], data: dict[str
                     continue
                 add(png, f"Art/Export/{sub}", False)
     return [entries[k] for k in sorted(entries)]
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Painted ground (manifest `terrain.<theme>`, Art/blender/environment/terrain.py; WorldContract 3.1)
+# ---------------------------------------------------------------------------------------------------------------------
+def terrain_files(section: dict[str, Any]) -> list[str]:
+    """Export-relative files of one theme's painted ground: the layer per paint index and the detail atlas."""
+    out: list[str] = []
+    layers = section.get("layers")
+    for tile in paths.TERRAIN_PAINT_TILES:
+        layer = layers.get(str(tile)) if isinstance(layers, dict) else None
+        if isinstance(layer, dict) and layer.get("file"):
+            out.append(str(layer["file"]))
+    details = section.get("details")
+    if isinstance(details, dict) and details.get("file"):
+        out.append(str(details["file"]))
+    return out
+
+
+def plan_terrain_instances(data: dict[str, Any], textures: list[TextureEntry], problems: list[Problem]
+                           ) -> list[tuple[InstancePlan, str]]:
+    """MI_AF_Terrain_<Theme> (parent M_AF_Terrain_Painted) for every manifest theme whose five ground layers and detail
+    atlas are all in the texture plan. A theme with a texture missing gets no instance: its zones keep the procedural
+    M_AF_Terrain (the runtime falls back when the instance does not exist)."""
+    have = {t.name for t in textures}
+    out: list[tuple[InstancePlan, str]] = []
+    for theme, section in sorted((data.get("terrain") or {}).items()):
+        if not isinstance(section, dict):
+            continue
+        subject = f"terrain {theme}"
+        name = paths.terrain_instance_name(str(theme))
+        if not _NAME_RE.match(name):
+            problems.append(Problem("warning", subject, f"{name}: not a valid UE asset name (skipped)"))
+            continue
+        period = section.get("periodTiles", paths.TERRAIN_PERIOD_TILES)
+        if not isinstance(period, (int, float)) or abs(float(period) - paths.TERRAIN_PERIOD_TILES) > 1e-6:
+            problems.append(Problem("warning", subject, f"periodTiles {period!r}: {paths.M_TERRAIN_PAINTED} samples "
+                                    f"the layers every {paths.TERRAIN_PERIOD_TILES} tiles; {name} not built"))
+            continue
+        bound: dict[str, str] = {}
+        missing: list[str] = []
+        layers = section.get("layers")
+        for tile in paths.TERRAIN_PAINT_TILES:
+            layer = layers.get(str(tile)) if isinstance(layers, dict) else None
+            tex = str(layer.get("texture") or "") if isinstance(layer, dict) else ""
+            if tex and tex in have:
+                bound[paths.terrain_layer_param(tile)] = tex
+            else:
+                missing.append(tex or f"layer {tile}")
+        details = section.get("details")
+        tex = str(details.get("texture") or "") if isinstance(details, dict) else ""
+        if tex and tex in have:
+            bound[paths.TERRAIN_DETAILS_PARAM] = tex
+        else:
+            missing.append(tex or "details")
+        if missing:
+            problems.append(Problem("warning", subject, f"painted ground texture(s) missing ({', '.join(missing)}): "
+                                    f"{name} not built, the theme keeps the procedural {paths.M_TERRAIN}"))
+            continue
+        out.append((InstancePlan(name, paths.M_TERRAIN_PAINTED, textures=bound), subject))
+    return out

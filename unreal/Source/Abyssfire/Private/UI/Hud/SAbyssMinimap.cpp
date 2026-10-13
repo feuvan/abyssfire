@@ -165,9 +165,14 @@ void SAbyssMinimap::PaintMap(FAbyssPainter& P, const FAbyssUiContext& Ctx, const
 	{
 		P.Box(X.ToLocal(Point) - FVector2D(2.0, 2.0), FVector2D(4.0, 4.0), FAbyssUiStyle::Rgb(0x777777));
 	}
-	// monsters (layer 7)
+	// monsters (layer 7): only on explored tiles. The web minimap has no fog (Q24); with the W2 fog a dot in the dark
+	// would give away monsters the hero has not discovered. (Exits, quest givers and the guide star stay: guidance.)
 	for (const FAbyssMinimapMarkers::FDot& Monster : M.Monsters)
 	{
+		if (!Map.IsExplored(FMath::RoundToInt(static_cast<float>(Monster.Pos.x)), FMath::RoundToInt(static_cast<float>(Monster.Pos.y))))
+		{
+			continue;
+		}
 		if (Monster.Kind == 1)
 		{
 			P.Circle(X.ToLocal(Monster.Pos), FMath::Max(2.f, Dot), FAbyssUiStyle::WithAlpha(FAbyssUiStyle::Rgb(0xff4444), 0.9f));

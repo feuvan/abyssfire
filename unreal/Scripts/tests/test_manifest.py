@@ -61,6 +61,25 @@ class RealManifestTests(unittest.TestCase):
             self.assertEqual(kinds[pal.p_name], "palette_p")
         self.assertFalse(any(n.startswith("T_AF_Palette_Test_") for n in kinds))
 
+    def test_painted_terrain_instance(self):
+        """manifest terrain.plains -> MI_AF_Terrain_Plains (M_AF_Terrain_Painted), every layer + the detail atlas."""
+        if "plains" not in (manifest.load_manifest(paths.MANIFEST_PATH).get("terrain") or {}):
+            self.skipTest("no terrain.plains in the art manifest")
+        inst = self.plan.instances[paths.terrain_instance_name("plains")]
+        self.assertEqual(inst.name, "MI_AF_Terrain_Plains")
+        self.assertEqual(inst.parent, paths.M_TERRAIN_PAINTED)
+        self.assertEqual(inst.textures[paths.terrain_layer_param(0)], "T_Terrain_Plains_Grass_BC")
+        self.assertEqual(inst.textures[paths.terrain_layer_param(3)], "T_Water_Plains_BC")
+        self.assertEqual(inst.textures[paths.TERRAIN_DETAILS_PARAM], "T_Terrain_Plains_Details_BC")
+        self.assertEqual(len(inst.textures), len(paths.TERRAIN_PAINT_TILES) + 1)
+        kinds = {t.name: t.kind for t in self.plan.textures}
+        self.assertEqual(kinds["T_Terrain_Plains_Details_BC"], "atlas")
+        for tile in paths.TERRAIN_PAINT_TILES:
+            self.assertEqual(kinds[inst.textures[paths.terrain_layer_param(tile)]], "world")
+        # without the texture scan the terrain textures are still planned (the manifest names them)
+        bare = manifest.build_plan(scan_textures=False)
+        self.assertIn(inst.name, bare.instances)
+
 
 class SyntheticManifestTests(unittest.TestCase):
     BASE = {
@@ -129,6 +148,32 @@ class SyntheticManifestTests(unittest.TestCase):
         self.assertEqual(hurt.additive_base_type, "ABPT_ANIM_FRAME")
         self.assertEqual(hurt.additive_base_anim, "A_Mon_Slime_Idle")
         self.assertEqual(plan.skeleton_families, {"SKEL_Slime": ["SK_Mon_Slime"]})
+
+    def test_painted_terrain_needs_every_texture(self):
+        data = copy.deepcopy(self.BASE)
+        layers = {}
+        for tile, name in ((0, "Grass"), (1, "Dirt"), (2, "Stone"), (3, "Water"), (5, "Camp")):
+            layers[str(tile)] = {"texture": f"T_Terrain_Test_{name}_BC",
+                                 "file": f"Terrain/T_Terrain_Test_{name}_BC.png"}
+        data["terrain"] = {"test": {"periodTiles": 3, "layers": layers, "details": {
+            "texture": "T_Terrain_Test_Details_BC", "file": "Terrain/T_Terrain_Test_Details_BC.png"}}}
+        path = self.make(data)
+        root = path.parent
+        (root / "Terrain").mkdir(parents=True, exist_ok=True)
+        for rel in [v["file"] for v in layers.values()] + ["Terrain/T_Terrain_Test_Details_BC.png"]:
+            pngio.write_png(root / rel, 2, 2, bytes(16))
+        plan = manifest.build_plan(path, scan_textures=False)
+        inst = plan.instances["MI_AF_Terrain_Test"]
+        self.assertEqual(inst.parent, paths.M_TERRAIN_PAINTED)
+        self.assertEqual(inst.textures["Tile5Layer"], "T_Terrain_Test_Camp_BC")
+        self.assertEqual(inst.textures["Details"], "T_Terrain_Test_Details_BC")
+        # a missing layer: no instance (the theme keeps the procedural M_AF_Terrain), a warning, no error
+        (root / "Terrain/T_Terrain_Test_Stone_BC.png").unlink()
+        plan = manifest.build_plan(path, scan_textures=False)
+        self.assertNotIn("MI_AF_Terrain_Test", plan.instances)
+        self.assertEqual(plan.errors, [])
+        self.assertTrue(any("T_Terrain_Test_Stone_BC" in p.message and p.level == "warning" for p in plan.problems),
+                        [str(p) for p in plan.problems])
 
     def test_conflicting_instance_definitions_are_errors(self):
         data = copy.deepcopy(self.BASE)

@@ -96,6 +96,18 @@ Ground and water triangles face +Z in UE's convention (front normal `(P2 - P0) ^
   `Tile<i>Base`, `Tile<i>PatchA`, `Tile<i>PatchB`, `Tile<i>Lip`, `Tile<i>Accent`; scalar `Tile<i>Rank` (blend priority).
 * Water colours (also on M_AF_Water): `WaterBase`, `WaterShallow`, `WaterFoam`, `WaterBank`, `WaterWave`.
 
+**Painted ground** (`M_AF_Terrain_Painted`, art `manifest.json` `terrain.<theme>`, `Art/blender/environment/terrain.py`):
+the same tile mask, transitions and edge tints, but the ground colours are the art's painted layers instead of the
+procedural patterns. The content build makes `MI_AF_Terrain_<Theme>` (`/Game/Abyssfire/Materials/Instances`, theme name
+capitalised: `MI_AF_Terrain_Plains`) for every manifest theme whose layers and atlas were exported, with texture
+parameters `Tile<i>Layer` (`T_Terrain_<Theme>_<Grass|Dirt|Stone|Camp>_BC`, `T_Water_<Theme>_BC`; sRGB, one 3 x 3-tile
+period, sampled at `UV0 / 3` with the shared wrap sampler) and `Details` (`T_Terrain_<Theme>_Details_BC`, 4 x 4 cells:
+row = own paint 0 / 1 / 2 / 5, column = `G % 3`, used when `G >= 6` and the winning material is the own tile's; BC7,
+clamp). `AAbyssZoneActor::BuildTerrain` uses that instance when it exists for the zone theme, else `M_AF_Terrain`; both
+take the parameters above (the painted one reads only `Tile<i>Lip`, `Tile<i>Rank` and the water colours of the style
+vectors). Material quality Low drops the boundary noise (M_AF_Terrain also its procedural specks and details;
+the painted layers and atlas stay).
+
 ### 3.2 M_AF_Water
 
 Translucent surface sections at -12 cm over the basins (bed -60 cm). Same `TileIds`, `MapCols`, `MapRows` and water
@@ -200,7 +212,7 @@ nature, earth (element: fire -> fire, ice -> frost, lightning, poison, arcane, p
 | `delayMs`, `count` (range or `"sparks"`), `countByRadius`, `rate`, `durationMs` (-1 = until stopped), `staggerMs` | emission |
 | `lifeMs` | particle life |
 | `speedCmS`, `dir` (`random`, `up`, `down`, `blow`, `back`, `out`, `in`, `flat`, `tangent`), `coneDeg`, `upCmS`, `gravityCmS2`, `drag`, `orbit {r0Cm, r1Cm, degS}` | motion |
-| `sizeCm`, `grow`, `sizePow`, `aspect` (width / height), `stretch` | size: quads - height (width = height x aspect); meshes - drawn diameter |
+| `sizeCm`, `grow`, `sizePow`, `aspect` (width / height), `stretch` | size: quads - height (width = height x aspect); meshes - the drawn bounding-box diagonal (manifest `boundsDiameterCm`) |
 | `alpha [a0, a1]`, `fadeIn`, `alphaPow`, `flicker` | alpha over life |
 | `color` (`core`, `mid`, `rim`, `dark`, `event`, `white`, `#RRGGBB`), `altEvery`, `altColor`, `intensity` | colour (HDR x intensity) |
 | `rotationDeg`, `spinDegS`, `alignToBlow` | rotation |

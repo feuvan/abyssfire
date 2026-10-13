@@ -198,10 +198,13 @@ class Graph:
             props["group"] = group
         return self.node("MaterialExpressionVectorParameter", **props)
 
-    def texture(self, name: str, default_texture: str, sampler: str, uv: Wire | None = None) -> Node:
+    def texture(self, name: str, default_texture: str, sampler: str, uv: Wire | None = None,
+                sampler_source: str = "SSM_FROM_TEXTURE_ASSET") -> Node:
+        """A texture parameter sample. sampler_source SSM_WRAP_WORLD_GROUP_SETTINGS shares one wrap sampler (world
+        texture group filtering) instead of taking a sampler slot per texture."""
         n = self.node("MaterialExpressionTextureSampleParameter2D", parameter_name=name, texture=A(default_texture),
                       sampler_type=E("MaterialSamplerType", sampler),
-                      sampler_source=E("SamplerSourceMode", "SSM_FROM_TEXTURE_ASSET"))
+                      sampler_source=E("SamplerSourceMode", sampler_source))
         if uv is not None:
             self.connect(uv, n, "UVs")
         return n
@@ -223,8 +226,11 @@ class Graph:
     def vertex_color(self) -> Node:
         return self.node("MaterialExpressionVertexColor")
 
-    def texcoord(self, index: int = 0) -> Node:
-        return self.node("MaterialExpressionTextureCoordinate", coordinate_index=index)
+    def texcoord(self, index: int = 0, tiling: float | None = None) -> Node:
+        if tiling is None:
+            return self.node("MaterialExpressionTextureCoordinate", coordinate_index=index)
+        return self.node("MaterialExpressionTextureCoordinate", coordinate_index=index, u_tiling=float(tiling),
+                         v_tiling=float(tiling))
 
     def per_instance(self, index: int, default: float) -> Node:
         return self.node("MaterialExpressionPerInstanceCustomData", data_index=index, const_default_value=float(default))

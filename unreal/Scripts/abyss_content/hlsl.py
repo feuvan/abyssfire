@@ -200,7 +200,7 @@ def toon_node(sh: Shading) -> CustomNode:
                       "float3", TOON_INPUTS, code)
 
 
-# Dithered opacity (occlusion / death fade, slime body): ordered 4x4 Bayer, stable under TSR and MSAA.
+# Dithered opacity (occlusion / death fade of the masked toon and ink): ordered 4x4 Bayer, a fixed screen pattern.
 DITHER_INPUTS = (NodeInput("Fade", "float"), NodeInput("Inst", "float2"), NodeInput("BodyOpacity", "float"))
 _DITHER = """
 float a = saturate(BodyOpacity) * (1.0 - saturate(max(Fade, Inst.x)));
@@ -217,6 +217,19 @@ return a > t ? 1.0 : 0.0;
 def dither_node() -> CustomNode:
     return CustomNode("AF_Dither", "Abyssfire dithered opacity mask (Bayer 4x4)", "float", DITHER_INPUTS,
                       _fill(_DITHER, {}))
+
+
+# Blended opacity (M_AF_Toon_Slime, translucent): the jelly shell's BodyOpacity faded by the death / occlusion fade.
+# The static 4x4 Bayer above is a visible screen door wherever nothing averages it (MSAA on mobile, FXAA on the
+# desktop low tier, and TSR, which sees the same pattern every frame); the slime previews render this blend.
+_FADE_OPACITY = """
+return saturate(BodyOpacity) * (1.0 - saturate(max(Fade, Inst.x)));
+"""
+
+
+def fade_opacity_node() -> CustomNode:
+    return CustomNode("AF_FadeOpacity", "Abyssfire blended body opacity (translucent slime shell)", "float",
+                      DITHER_INPUTS, _fill(_FADE_OPACITY, {}))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -697,13 +710,15 @@ def _pattern_block(dst: str, m: str, own: str, detailed: bool) -> str:
     return "".join(out)
 
 
-def terrain_node(detailed: bool = True) -> CustomNode:
-    """detailed=False is the low-quality branch (QualitySwitch Low): no boundary noise, no specks / details."""
+def _terrain_mask_code(detailed: bool, prelude: tuple[str, ...] = ()) -> list[str]:
+    """The web tile mask (ZoneTerrain.ts quadMask) up to the winner mb / runner-up ms and the coverage al, plus the own
+    tile (own_m, own_var, own_c). `prelude` lines go right after `g` (uniform control flow: derivatives)."""
     waves, lo, hi = lattice_noise_waves()
     c: list[str] = [
         "int cols = max((int)(MapCols + 0.5), 1);\n",
         "int rows = max((int)(MapRows + 0.5), 1);\n",
         "float2 g = UV;\n",
+        *prelude,
         "float2 b0 = floor(g);\n",
         "float2 fr = float2(g.x - b0.x, g.y - b0.y);\n",
         "int bx = (int)b0.x;\n",
@@ -764,24 +779,45 @@ def terrain_node(detailed: bool = True) -> CustomNode:
         "float dlt = single ? 1.0 : s1 - s2;\n",
         "float al = dlt >= 0.025 ? 1.0 : 0.5 + dlt / 0.05;\n",
     ]
-    c.append(_pattern_block("c1", "mb", "own", detailed))
-    c.append(_pattern_block("c2", "ms", "own", detailed))
+    return c
+
+
+def _terrain_tint_code(lazy: bool) -> list[str]:
+    """c1 (winner) over c2 (runner-up) by al, then the web edge tints (shallows / foam, bank, lip, dark edge), the wall
+    contact shade and the skirt; returns linear colour. lazy=True encodes the edge colours only inside their branches
+    (the painted node: no c1_lip from a pattern block, and no sRGB encodes of uniforms on every interior pixel)."""
+    shallow = _encode("shallowS", "float3(WaterShallow.r, WaterShallow.g, WaterShallow.b)")
+    foam = _encode("foamS", "float3(WaterFoam.r, WaterFoam.g, WaterFoam.b)")
+    bank = _encode("bankS", "float3(WaterBank.r, WaterBank.g, WaterBank.b)")
+    c: list[str] = ["float3 col = lerp(c2, c1, al);\n"]
+    if not lazy:
+        c += [shallow, foam, bank]
     c += [
-        "float3 col = lerp(c2, c1, al);\n",
-        _encode("shallowS", "float3(WaterShallow.r, WaterShallow.g, WaterShallow.b)"),
-        _encode("foamS", "float3(WaterFoam.r, WaterFoam.g, WaterFoam.b)"),
-        _encode("bankS", "float3(WaterBank.r, WaterBank.g, WaterBank.b)"),
         f"float rb = {_select('mb', 'Rank')};\n",
         f"float rs = {_select('ms', 'Rank')};\n",
         "if (!single) {\n",
         f"if (mb == {TERRAIN_LIQUID_TILE}) {{\n",
+    ]
+    if lazy:
+        c += [shallow, foam]
+    c += [
         "col = lerp(col, shallowS, (1.0 - smoothstep(0.5, 0.95, fb)) * 0.75);\n",
         "if (dlt < 0.065) { col = lerp(col, foamS, pow(max(1.0 - dlt / 0.065, 0.0), 0.6) * 0.92); }\n",
         f"}} else if (ms == {TERRAIN_LIQUID_TILE}) {{\n",
+    ]
+    if lazy:
+        c.append(bank)
+    c += [
         "if (dlt < 0.045) { col = lerp(col, bankS, 0.7 * (1.0 - dlt / 0.045)); }\n",
         "else if (dlt < 0.1) { col = lerp(col, bankS, 0.25 * (1.0 - (dlt - 0.045) / 0.055)); }\n",
         "} else if (rb > rs) {\n",
-        "if (dlt < 0.032) { col = lerp(col, c1_lip, 0.75); }\n",
+    ]
+    if lazy:
+        c += ["if (dlt < 0.032) {\n", _encode("c1_lip", _f3(_select("mb", "Lip"))),
+              "col = lerp(col, c1_lip, 0.75);\n", "}\n"]
+    else:
+        c.append("if (dlt < 0.032) { col = lerp(col, c1_lip, 0.75); }\n")
+    c += [
         "} else if (rb < rs) {\n",
         f"if (dlt < 0.055) {{ col = lerp(col, {hex_srgb_vec('#241A3A')}, 0.2 * (1.0 - dlt / 0.055)); }}\n",
         "}\n",
@@ -792,8 +828,65 @@ def terrain_node(detailed: bool = True) -> CustomNode:
         _decode("lin", "col"),
         "return lin;\n",
     ]
+    return c
+
+
+def terrain_node(detailed: bool = True) -> CustomNode:
+    """detailed=False is the low-quality branch (QualitySwitch Low): no boundary noise, no specks / details."""
+    c = _terrain_mask_code(detailed)
+    c.append(_pattern_block("c1", "mb", "own", detailed))
+    c.append(_pattern_block("c2", "ms", "own", detailed))
+    c += _terrain_tint_code(lazy=False)
     key = "AF_Terrain" if detailed else "AF_TerrainLow"
     return CustomNode(key, "web tile transitions + procedural ground patterns", "float3", terrain_inputs(), "".join(c))
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Painted terrain (M_AF_Terrain_Painted; manifest terrain.<theme>, Art/blender/environment/terrain.py composite()): the
+# same tile mask, but the ground colours are the art's painted 3 x 3-tile layers (sampled outside the node at UV0 / 3
+# with one shared wrap sampler, handed in as linear Tile<i>Layer) and the per-tile detail atlas, composited over the
+# winner exactly like terrain.composite(): own tile h = tileHash(c, r, 7) (TileIds G = h % 12) >= 6 -> cell (row of
+# the own paint, column h % 3), tile-local frac(UV0 + 0.5), straight alpha, only where the winner is the own material.
+# ---------------------------------------------------------------------------------------------------------------------
+TERRAIN_DETAIL_ROWS = (0, 1, 2, 5)    # atlas rows: grass, dirt, stone, camp (water has no painted detail: lily meshes)
+
+
+def terrain_painted_inputs() -> tuple[NodeInput, ...]:
+    ins = [NodeInput("UV", "float2"), NodeInput("Wall", "float"), NodeInput("Skirt", "float"),
+           NodeInput("TileIds", "Texture2D"), NodeInput("MapCols", "float"), NodeInput("MapRows", "float")]
+    for t in TERRAIN_TILES:
+        ins += [NodeInput(f"Tile{t}Layer", "float3"), NodeInput(f"Tile{t}Lip", "float3"),
+                NodeInput(f"Tile{t}Rank", "float")]
+    ins += [NodeInput("WaterShallow", "float3"), NodeInput("WaterFoam", "float3"), NodeInput("WaterBank", "float3"),
+            NodeInput("Details", "Texture2D")]
+    return tuple(ins)
+
+
+def terrain_painted_node(detailed: bool = True) -> CustomNode:
+    """detailed=False (QualitySwitch Low) drops the boundary noise only; the layers and details are texture reads."""
+    cells = float(len(TERRAIN_DETAIL_ROWS))
+    row = "-1.0"
+    for i, t in reversed(list(enumerate(TERRAIN_DETAIL_ROWS))):
+        row = f"(own_m == {t} ? {lit(float(i))} : {row})"
+    inv = lit(1.0 / cells)
+    # atlas UV derivatives from the continuous tile coordinate: the cell jump at tile borders must not pick a coarse mip
+    prelude = (f"float2 dgx = ddx(g) * {inv};\n", f"float2 dgy = ddy(g) * {inv};\n")
+    c = _terrain_mask_code(detailed, prelude)
+    c += [
+        _encode("c1", _f3(_select("mb", "Layer"))),
+        _encode("c2", _f3(_select("ms", "Layer"))),
+        f"float drow = {row};\n",
+        "float dsel = (own_var >= 6 && mb == own_m && drow >= 0.0) ? 1.0 : 0.0;\n",
+        f"float2 duv = float2(((float)(own_var % 3) + g.x - own_c.x + 0.5) * {inv},"
+        f" (max(drow, 0.0) + g.y - own_c.y + 0.5) * {inv});\n",
+        "float4 dcell = Details.SampleGrad(DetailsSampler, duv, dgx, dgy);\n",
+        _encode("detS", "float3(dcell.r, dcell.g, dcell.b)"),
+        "c1 = lerp(c1, detS, saturate(dcell.a) * dsel);\n",
+    ]
+    c += _terrain_tint_code(lazy=True)
+    key = "AF_TerrainPainted" if detailed else "AF_TerrainPaintedLow"
+    return CustomNode(key, "web tile transitions over the painted ground layers + detail atlas", "float3",
+                      terrain_painted_inputs(), "".join(c))
 
 
 TERRAIN_EMISSIVE_INPUTS = (NodeInput("Albedo", "float3"), NodeInput("Amb", "float4"))
@@ -809,9 +902,9 @@ def terrain_emissive_node() -> CustomNode:
 
 def all_nodes(sh: Shading) -> list[CustomNode]:
     """Every node the build creates (tests compile them all)."""
-    nodes = [toon_node(sh), dither_node(), ink_node(sh), outline_wpo_node(sh), wind_node(), fx_mesh_node(sh),
-             fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(), terrain_node(True), terrain_node(False),
-             terrain_emissive_node()]
+    nodes = [toon_node(sh), dither_node(), fade_opacity_node(), ink_node(sh), outline_wpo_node(sh), wind_node(),
+             fx_mesh_node(sh), fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(), terrain_node(True),
+             terrain_node(False), terrain_painted_node(True), terrain_painted_node(False), terrain_emissive_node()]
     nodes += list(fx_nodes().values()) + list(quad_nodes().values()) + list(water_nodes().values())
     return nodes
 

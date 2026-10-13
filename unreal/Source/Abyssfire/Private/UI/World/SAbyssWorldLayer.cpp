@@ -662,12 +662,16 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 		case EAbyssWorldWidgetKind::GroundItem:
 			if (const abyss::GroundItemView* Item = FindGroundItem(Id))
 			{
+				// The item's own name in its quality colour, as the web nameplate (ZoneScene.dropLootAtPosition: item.name):
+				// affix name for magic / rare, the legendary / set name (ItemDisplayName, loot 18 / FIX Q16).
 				FAbyssWorldLayerLabelSignature Signature;
+				Signature.Str(Item->uid);
 				Signature.Str(Item->baseId);
+				Signature.Value(static_cast<uint64>(Item->quality));
 				Signature.Value(static_cast<uint64>(Item->quantity));
 				if (NeedsName(Label, Signature))
 				{
-					Label.Name = Ctx->ItemBaseName(Item->baseId);
+					Label.Name = Item->item != nullptr ? Ctx->ItemName(*Item->item) : Ctx->ItemBaseName(Item->baseId);
 					if (Item->quantity > 1)
 					{
 						Label.Name += FString::Printf(TEXT(" x%d"), Item->quantity);

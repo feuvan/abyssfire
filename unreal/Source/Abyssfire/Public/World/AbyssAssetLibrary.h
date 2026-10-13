@@ -79,6 +79,12 @@ public:
 	void TrimToRecentZones(int32 KeepZones);
 	/** Async preload (zone transition fade): fire and forget; LoadObjectAt finds them resident afterwards. */
 	void PreloadAsync(const TArray<FSoftObjectPath>& Paths);
+	/**
+	 * Loads every static mesh of one manifest category now and keeps it for the current zone (zone build: the ground
+	 * loot "Pickups", so the first drop of a zone does not stall on a load - or, uncooked, on the mesh build the zone
+	 * entry's WaitForPendingCompilation then finishes). Returns how many are loaded.
+	 */
+	int32 LoadCategoryStaticMeshes(FName Category);
 
 	// ---- uncooked runs ----
 	/**

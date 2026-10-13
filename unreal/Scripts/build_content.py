@@ -10,12 +10,14 @@ or from the editor's Python console: `py "<repo>/unreal/Scripts/build_content.py
 `python3 unreal/Scripts/build_content.py --plan` (no editor) validates the art manifest and prints the import plan.
 
 Pipeline (each step is idempotent; unchanged sources / graphs are skipped):
-    textures   generated defaults + palettes, portraits, icons, FX sprites       -> Textures/, UI/, FX/Textures/
+    textures   generated defaults + palettes, portraits, icons, FX sprites,
+               terrain layers / detail atlas                                     -> Textures/, UI/, FX/Textures/
     mpc        MPC_AF_Lighting                                                   -> Materials/
-    materials  M_AF_Toon(+_Foliage, _Slime), M_AF_Outline(+_Foliage), M_AF_Terrain, M_AF_Water, M_AF_PP_Grade,
-               M_AF_FX_Additive / _Translucent / _Mesh, M_AF_Ghost, M_AF_LightPool, M_AF_TargetRing, M_AF_AffixAura,
-               M_AF_BlobShadow                                                   -> Materials/, Materials/FX/
-    instances  MI_AF_Toon_<Family>, MI_AF_Outline_<Family>_<Class>               -> Materials/Instances/
+    materials  M_AF_Toon(+_Foliage, _Slime), M_AF_Outline(+_Foliage), M_AF_Terrain(+_Painted), M_AF_Water,
+               M_AF_PP_Grade, M_AF_FX_Additive / _Translucent / _Mesh, M_AF_Ghost, M_AF_LightPool, M_AF_TargetRing,
+               M_AF_AffixAura, M_AF_BlobShadow                                   -> Materials/, Materials/FX/
+    instances  MI_AF_Toon_<Family>, MI_AF_Outline_<Family>_<Class>, MI_AF_Terrain_<Theme>
+                                                                                 -> Materials/Instances/
     fxquad     SM_FX_Quad                                                        -> FX/
     skeletal   SK_* (+ SKEL_* skeletons, LODs, sockets)                          -> <fbx dir>/, Skeletons/
     anims      A_* onto the family skeletons (additive settings, length check)    -> <fbx dir>/

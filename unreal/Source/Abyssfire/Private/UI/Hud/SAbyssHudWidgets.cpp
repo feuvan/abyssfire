@@ -2,6 +2,7 @@
 
 #include "Algo/StableSort.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SConstraintCanvas.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
@@ -136,39 +137,74 @@ void SAbyssCombatLog::Rebuild()
 	const FVector2D Size = GetDesignSize();
 	const float FontPx = bTouch ? 19.f : 12.f;
 	const int32 Outline = bTouch ? 3 : 2;
+	const FSlateFontInfo LineFont = UiStyle.Body(FontPx, false, Outline);
 	const double Now = Ctx->Now();
-	SAssignNew(Lines, SVerticalBox);
+	const bool bFramed = bExpanded;
 
-	const int32 Count = Buffer.Num();
-	int32 Shown = 0;
-	for (int32 Index = 0; Index < Count; ++Index)
+	// 6.10 / UIScene.updateLogDisplay: the newest line sits at the bottom (framed: y + h - 6; collapsed: the widget's
+	// bottom), older ones stack upward by their wrapped height + 1 px, and a line that would cross the top limit (framed:
+	// y + 22 under the header) is dropped together with everything older. The lines are measured here (wrapped at w - 20)
+	// so only the ones that fit are built; the column is also bottom-anchored below, so if a measure comes out short the
+	// oldest line is the one clipped at the top, never the newest.
+	const double WrapWidth = FMath::Max(1.0, Size.X - 20.0);
+	const double TopInset = bFramed ? 22.0 : 0.0;
+	const double BottomInset = bFramed ? 6.0 : 0.0;
+	const double Room = FMath::Max(0.0, Size.Y - TopInset - BottomInset);
+	const double RowHeight = FMath::Max(1.0, FAbyssPainter::Measure(TEXT("Ag\x6E0A"), LineFont).Y);
+
+	struct FShownLine
 	{
-		const int32 FromNewest = Count - 1 - Index;
-		const FLine& Line = Buffer[Index];
+		FString Text;
+		FLinearColor Color;
+	};
+	TArray<FShownLine> Shown;  // newest first
+	double Used = 0.0;
+	const int32 Count = Buffer.Num();
+	for (int32 FromNewest = 0; FromNewest < Count; ++FromNewest)
+	{
+		const FLine& Line = Buffer[Count - 1 - FromNewest];
 		const double Age = Now - Line.Time;
 		if (!bExpanded && (FromNewest >= 3 || Age >= 12.0))
 		{
 			continue;
 		}
 		const FString Text = Line.Resolved.IsEmpty() ? Ctx->LocStr(Line.Loc) : Line.Resolved;
-		FLinearColor Color = TypeColor(Line.Type);
-		Color.A = LineAlpha(FromNewest, Age);
+		TArray<FString> Paragraphs;
+		Text.ParseIntoArray(Paragraphs, TEXT("\n"), false);
+		double Rows = 0.0;
+		for (const FString& Paragraph : Paragraphs)
+		{
+			Rows += FMath::Max(1.0, FMath::CeilToDouble(FAbyssPainter::Measure(Paragraph, LineFont).X / WrapWidth));
+		}
+		const double Height = FMath::Max(1.0, Rows) * RowHeight + 1.0;
+		if (Used + Height > Room && Shown.Num() > 0)
+		{
+			break;  // web: y < top -> hidden, and every older line with it
+		}
+		Used += Height;
+		FShownLine& Entry = Shown.AddDefaulted_GetRef();
+		Entry.Text = Text;
+		Entry.Color = TypeColor(Line.Type);
+		Entry.Color.A = LineAlpha(FromNewest, Age);
+	}
+
+	SAssignNew(Lines, SVerticalBox);
+	for (int32 Index = Shown.Num() - 1; Index >= 0; --Index)
+	{
 		Lines->AddSlot()
 			.AutoHeight()
 			.Padding(FMargin(0.f, 1.f, 0.f, 0.f))
 			[
 				SNew(STextBlock)
-				.Text(FText::AsCultureInvariant(Text))
-				.Font(UiStyle.Body(FontPx, false, Outline))
-				.ColorAndOpacity(FSlateColor(Color))
+				.Text(FText::AsCultureInvariant(Shown[Index].Text))
+				.Font(LineFont)
+				.ColorAndOpacity(FSlateColor(Shown[Index].Color))
 				.AutoWrapText(false)
-				.WrapTextAt(static_cast<float>(Size.X - 20.0))
+				.WrapTextAt(static_cast<float>(WrapWidth))
 			];
-		++Shown;
 	}
 
 	const FText Header = Ctx->LocOr("ui.hud.combatLog", TEXT("Combat log"));
-	const bool bFramed = bExpanded;
 	const TSharedRef<FAbyssUiContext> Context = Ctx.ToSharedRef();
 	ChildSlot
 	[
@@ -200,10 +236,24 @@ void SAbyssCombatLog::Rebuild()
 				.ColorAndOpacity(FSlateColor(UiStyle.Colors().Heading))
 			]
 			+ SOverlay::Slot()
-			.VAlign(VAlign_Bottom)
-			.Padding(FMargin(10.f, bFramed ? 22.f : 0.f, 10.f, 6.f))
+			.Padding(FMargin(0.f, static_cast<float>(TopInset), 0.f, 0.f))
 			[
-				Lines.ToSharedRef()
+				// Lines area (below the header): the column keeps its desired height and hangs from the bottom edge
+				// (a VAlign_Bottom slot would clamp an overflowing column to the slot and lay it out top-down, which
+				// clipped the newest line).
+				SNew(SBox)
+				.Clipping(EWidgetClipping::ClipToBounds)
+				[
+					SNew(SConstraintCanvas)
+					+ SConstraintCanvas::Slot()
+					.Anchors(FAnchors(0.f, 1.f, 1.f, 1.f))
+					.Alignment(FVector2D(0.0, 1.0))
+					.Offset(FMargin(10.f, -static_cast<float>(BottomInset), 10.f, 0.f))
+					.AutoSize(true)
+					[
+						Lines.ToSharedRef()
+					]
+				]
 			]
 		]
 	];

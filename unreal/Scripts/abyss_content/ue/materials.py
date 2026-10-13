@@ -132,6 +132,13 @@ def _surface(blend: str, shading_model: str = "MSM_UNLIT", two_sided: bool = Fal
 
 TOON_SETTINGS = _surface("BLEND_MASKED", opacity_mask_clip_value=0.5, used_with_skeletal_mesh=True,
                          used_with_instanced_static_meshes=True)
+# The slime shell (DECISIONS R12, revised after the second Mac playtest): alpha-blended unlit translucency, back faces
+# culled. A fixed Bayer screen door only resolves under a temporal AA that varies it, which no tier has (mobile MSAA,
+# desktop FXAA / TSR with a per-pixel-fixed pattern); the blend is what the slime previews render (shell mixed with
+# the opaque core, bone, eyes and ink hull behind it). Opaque sections (slot 0 toon, slot 1 ink hull) stay in the base
+# pass and write depth; the hull still casts the slime's sun shadow. Sorting (translucent sort priority): blob shadows
+# (-10) and water (-2) first, the shell at the component's default 0, VFX after it (1 / 2).
+SLIME_SETTINGS = _surface("BLEND_TRANSLUCENT", used_with_skeletal_mesh=True, used_with_instanced_static_meshes=True)
 OUTLINE_SETTINGS = dict(TOON_SETTINGS)
 TERRAIN_SETTINGS = _surface("BLEND_OPAQUE", shading_model="MSM_DEFAULT_LIT",
                             float_precision_mode=E("MaterialFloatPrecisionMode", "MFPM_FULL"))
@@ -187,7 +194,7 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
     fb = _feedback(g)
     inst = _instance_fade_highlight(g)
     vc = g.vertex_color()
-    # Slime (DECISIONS R12): masked dithered toon with the web's jelly rim rgba(230,255,220,.6) (Slime.ts:234).
+    # Slime (DECISIONS R12): translucent toon shell with the web's jelly rim rgba(230,255,220,.6) (Slime.ts:234).
     rim_rgb = (230.0 / 255.0, 1.0, 220.0 / 255.0) if slime else ctx.rim_srgb
     toon = g.custom(hlsl.toon_node(sh), {
         "Base": bc["RGB"], "P": pp["RGBA"],
@@ -211,9 +218,18 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
         "Inst": inst,
         "HighlightColor": g.vector("HighlightColor", (*ctx.highlight, 1.0), group="Look"),
     })
+    if slime:
+        # SLIME_SETTINGS: blended opacity (BodyOpacity faded by Fade) instead of the dithered mask
+        body = g.scalar("BodyOpacity", 0.9, group="Look")
+        g.output(toon, "MP_EMISSIVE_COLOR")
+        g.output(g.custom(hlsl.fade_opacity_node(), {"Fade": fb["Fade"], "Inst": inst, "BodyOpacity": body}),
+                 "MP_OPACITY")
+        return
+    # Keep this node order (scalar, dither, emissive, mask): Graph.fingerprint hashes the trace in creation order, and a
+    # reordered trace rebuilds M_AF_Toon / M_AF_Toon_Foliage (and recompiles every toon shader) for an identical graph.
     mask = g.custom(hlsl.dither_node(), {
         "Fade": fb["Fade"], "Inst": inst,
-        "BodyOpacity": g.scalar("BodyOpacity", 0.9 if slime else 1.0, group="Look"),
+        "BodyOpacity": g.scalar("BodyOpacity", 1.0, group="Look"),
     })
     g.output(toon, "MP_EMISSIVE_COLOR")
     g.output(mask, "MP_OPACITY_MASK")
@@ -279,12 +295,43 @@ def build_terrain(g: Graph, ctx: Ctx) -> None:
         wires[name] = g.vector(name, (*ctx.terrain_defaults[name], 1.0), group="Water")
     detailed = g.custom(hlsl.terrain_node(True), wires)
     simple = g.custom(hlsl.terrain_node(False), wires)
-    albedo = g.quality(detailed, simple)
+    _terrain_outputs(g, ctx, g.quality(detailed, simple))
+
+
+def _terrain_outputs(g: Graph, ctx: Ctx, albedo: Any) -> None:
     ambient = g.custom(hlsl.terrain_emissive_node(), {"Albedo": albedo, "Amb": g.mpc(ctx.mpc, "Ambient")})
     g.output(albedo, "MP_BASE_COLOR")
     g.output(ambient, "MP_EMISSIVE_COLOR")
     g.output(g.const(0.0), "MP_SPECULAR")
     g.output(g.const(1.0), "MP_ROUGHNESS")
+
+
+def build_terrain_painted(g: Graph, ctx: Ctx) -> None:
+    """M_AF_Terrain_Painted: the M_AF_Terrain tile mask over the art's painted ground (manifest terrain.<theme>).
+
+    The five layer textures (`Tile<i>Layer`, one 3 x 3-tile period each) are sampled once at UV0 / 3 outside the Custom
+    node with the shared wrap sampler (no sampler slot per layer) and handed in as linear colour; the node picks the
+    winner's / runner-up's and composites the per-tile `Details` atlas (its own clamped sampler, explicit gradients).
+    Bound per theme on MI_AF_Terrain_<Theme> (manifest.plan_terrain_instances); the defaults only keep it compiling."""
+    vc = g.vertex_color()
+    wires: dict[str, Any] = {
+        "UV": g.texcoord(0), "Wall": vc["G"], "Skirt": vc["B"],
+        "TileIds": g.texture_object("TileIds", ctx.tex_tile_ids, "SAMPLERTYPE_LINEAR_COLOR"),
+        "MapCols": g.scalar("MapCols", 120.0, group="Map"), "MapRows": g.scalar("MapRows", 120.0, group="Map"),
+    }
+    layer_uv = g.texcoord(0, tiling=1.0 / paths.TERRAIN_PERIOD_TILES)
+    for t in hlsl.TERRAIN_TILES:
+        layer = g.texture(paths.terrain_layer_param(t), ctx.tex_white, "SAMPLERTYPE_COLOR", uv=layer_uv,
+                          sampler_source="SSM_WRAP_WORLD_GROUP_SETTINGS")
+        wires[f"Tile{t}Layer"] = layer["RGB"]
+        wires[f"Tile{t}Lip"] = g.vector(f"Tile{t}Lip", (*ctx.terrain_defaults[f"Tile{t}Lip"], 1.0), group=f"Tile {t}")
+        wires[f"Tile{t}Rank"] = g.scalar(f"Tile{t}Rank", ctx.terrain_ranks.get(t, 0.0), group=f"Tile {t}")
+    for name in ("WaterShallow", "WaterFoam", "WaterBank"):
+        wires[name] = g.vector(name, (*ctx.terrain_defaults[name], 1.0), group="Water")
+    wires["Details"] = g.texture_object(paths.TERRAIN_DETAILS_PARAM, ctx.tex_white, "SAMPLERTYPE_COLOR")
+    detailed = g.custom(hlsl.terrain_painted_node(True), wires)
+    simple = g.custom(hlsl.terrain_painted_node(False), wires)
+    _terrain_outputs(g, ctx, g.quality(detailed, simple))
 
 
 def build_water(g: Graph, ctx: Ctx) -> None:
@@ -394,10 +441,11 @@ class Master:
 MASTERS: tuple[Master, ...] = (
     Master(paths.M_TOON, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "toon")),
     Master(paths.M_TOON_FOLIAGE, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "foliage")),
-    Master(paths.M_TOON_SLIME, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "slime")),
+    Master(paths.M_TOON_SLIME, paths.MATERIALS_DIR, SLIME_SETTINGS, lambda g, c: build_toon(g, c, "slime")),
     Master(paths.M_OUTLINE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, False)),
     Master(paths.M_OUTLINE_FOLIAGE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, True)),
     Master(paths.M_TERRAIN, paths.MATERIALS_DIR, TERRAIN_SETTINGS, build_terrain),
+    Master(paths.M_TERRAIN_PAINTED, paths.MATERIALS_DIR, TERRAIN_SETTINGS, build_terrain_painted),
     Master(paths.M_WATER, paths.MATERIALS_DIR, WATER_SETTINGS, build_water),
     Master(paths.M_PP_GRADE, paths.MATERIALS_DIR, PP_SETTINGS, build_grade),
     Master(paths.M_FX_ADDITIVE, paths.FX_MATERIALS_DIR, FX_ADD_SETTINGS, lambda g, c: build_fx_sprite(g, c, True)),

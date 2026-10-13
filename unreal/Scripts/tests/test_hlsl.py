@@ -154,6 +154,15 @@ class LintTests(unittest.TestCase):
                 self.assertNotRegex(node.code, r"#\s*include")
                 self.assertNotRegex(node.code, r"\.(xxx|xx|rrr)\b", "scalar broadcast swizzles are not portable here")
 
+    def test_terrain_tables_agree(self):
+        from abyss_content import paths
+        self.assertEqual(hlsl.TERRAIN_TILES, paths.TERRAIN_PAINT_TILES)
+        # detail atlas rows: Art/blender/environment/terrain.py DETAIL_ROWS ("0", "1", "2", "5")
+        self.assertEqual(hlsl.TERRAIN_DETAIL_ROWS, (0, 1, 2, 5))
+        painted = hlsl.terrain_painted_node(True)
+        self.assertIn("ddx(g)", painted.code.split("float2 b0")[0], "derivatives before any branch")
+        self.assertNotIn("Accent", painted.code)
+
     def test_literals(self):
         self.assertEqual(hlsl.lit(1), "1.0")
         self.assertEqual(hlsl.lit(0.5), "0.5")
@@ -333,10 +342,77 @@ int main() {{
         self.assertGreater(float(out[1]), 0.0, "grass region should read green")
         self.assertGreater(float(out[2]), 0.0, "dirt region should read ochre")
 
+    def test_painted_terrain_layers_and_details(self):
+        """M_AF_Terrain_Painted (terrain.composite in Art/blender/environment/terrain.py): the winner's layer colour,
+        the detail atlas cell (row = own paint, column = variant % 3) only on tiles with variant >= 6, none on water."""
+        nodes = [hlsl.terrain_painted_node(True), hlsl.terrain_painted_node(False)]
+        # 6x4 map: grass (0) left, dirt (1) right, one water tile (3) at (1, 2); TileIds G = tileHash % 12.
+        variants = {(1, 1): 7, (4, 1): 9, (2, 1): 6, (1, 3): 2, (1, 2): 8}
+        texels = []
+        for row in range(4):
+            for col in range(6):
+                paint = 3 if (col, row) == (1, 2) else (0 if col < 3 else 1)
+                texels.append(f"float4({paint}.f / 255.f, {variants.get((col, row), 0)}.f / 255.f, 1.f, "
+                              f"{paint}.f / 255.f)")
+        # 4 x 4 atlas, one texel per cell: (row 0 grass, column 1) red, (row 1 dirt, column 0) blue, (row 0, column 0)
+        # transparent (variant 6 has a detail cell, here an empty one), the water column / rest transparent.
+        cells = ["float4(0.f, 0.f, 0.f, 0.f)"] * 16
+        cells[0 * 4 + 1] = "float4(1.f, 0.f, 0.f, 1.f)"
+        cells[1 * 4 + 0] = "float4(0.f, 0.f, 1.f, 1.f)"
+        layers = {0: (0.1, 0.4, 0.05), 1: (0.5, 0.3, 0.1), 2: (0.35, 0.33, 0.28), 3: (0.05, 0.29, 0.48),
+                  5: (0.45, 0.3, 0.15)}
+        ranks = {0: 4, 1: 1, 2: 2, 3: 0, 5: 2}
+        style = []
+        for t in hlsl.TERRAIN_TILES:
+            style += ["float3({:.6g}f, {:.6g}f, {:.6g}f)".format(*layers[t]), "float3(0.6f, 0.75f, 0.3f)",
+                      f"{ranks[t]}.f"]
+        water = "float3(0.15f, 0.55f, 0.6f), float3(0.85f, 0.95f, 0.9f), float3(0.27f, 0.18f, 0.07f)"
+        probes = [(1.0, 1.0), (4.0, 1.0), (2.0, 1.0), (1.0, 3.0), (1.0, 2.0), (0.0, 0.0)]
+        calls = "\n".join(
+            f'{{ float3 a = {fn}(float2({u}f, {v}f), 0.f, 0.f, T, S, 6.f, 4.f, {", ".join(style)}, {water}, D, S);'
+            f' std::printf("%.6f %.6f %.6f\\n", a.x, a.y, a.z); }}'
+            for fn in ("AF_TerrainPainted", "AF_TerrainPaintedLow") for u, v in probes)
+        main = f"""
+int main() {{
+    Texture2D T; T.Width = 6; T.Height = 4;
+    T.Texels = {{ {", ".join(texels)} }};
+    Texture2D D; D.Width = 4; D.Height = 4;
+    D.Texels = {{ {", ".join(cells)} }};
+    SamplerState S;
+{calls}
+    int bad = 0;
+    for (int j = 0; j <= 60; ++j) for (int i = 0; i <= 100; ++i) {{
+        float2 uv(-0.5f + i * 0.06f, -0.5f + j * 0.066f);
+        float3 a = AF_TerrainPainted(uv, 0.f, 0.f, T, S, 6.f, 4.f, {", ".join(style)}, {water}, D, S);
+        if (!(a.x == a.x) || !(a.y == a.y) || !(a.z == a.z)) ++bad;
+        if (a.x < 0.f || a.y < 0.f || a.z < 0.f || a.x > 1.001f || a.y > 1.001f || a.z > 1.001f) ++bad;
+    }}
+    std::printf("%d\\n", bad);
+    return 0;
+}}"""
+        out = compile_and_run(cpp_unit(nodes, main), run=True).strip().split("\n")
+        got = [[float(x) for x in line.split()] for line in out[:-1]]
+        self.assertEqual(int(out[-1]), 0, "NaN or out-of-range terrain colour")
+        expected = [(1.0, 0.0, 0.0),   # grass, variant 7 -> cell (0, 1)
+                    (0.0, 0.0, 1.0),   # dirt, variant 9 -> cell (1, 0)
+                    layers[0],         # grass, variant 6 -> cell (0, 0), transparent
+                    layers[0],         # variant 2 < 6: no detail
+                    layers[3],         # water, variant 8: no painted detail (lily pads are meshes)
+                    layers[0]]         # variant 0
+        for tier in range(2):
+            for k, exp in enumerate(expected):
+                for g_, e in zip(got[tier * len(probes) + k], exp):
+                    self.assertAlmostEqual(g_, e, delta=2e-3, msg=f"tier {tier} probe {probes[k]}")
+
     def test_dither_and_quads(self):
-        nodes = [hlsl.dither_node(), hlsl.blob_node()] + list(hlsl.quad_nodes().values())
+        nodes = [hlsl.dither_node(), hlsl.fade_opacity_node(), hlsl.blob_node()] + list(hlsl.quad_nodes().values())
         main = """
 int main() {
+    // translucent slime shell: BodyOpacity, faded by max(Fade, instance fade)
+    if (std::fabs(AF_FadeOpacity(0.f, float2(0.f, 0.f), 0.62f) - 0.62f) > 1e-6f) return 4;
+    if (std::fabs(AF_FadeOpacity(0.5f, float2(0.25f, 0.f), 0.62f) - 0.31f) > 1e-6f) return 5;
+    if (std::fabs(AF_FadeOpacity(0.f, float2(0.5f, 0.f), 0.62f) - 0.31f) > 1e-6f) return 6;
+    if (AF_FadeOpacity(1.f, float2(0.f, 0.f), 0.62f) != 0.f) return 7;
     int visible = 0;
     for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) {
         Parameters.SvPosition = float4(x + 0.5f, y + 0.5f, 0.f, 1.f);

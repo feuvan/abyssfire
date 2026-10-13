@@ -607,7 +607,7 @@ void SAbyssSkillTreePanel::BuildCards(const abyss::Snapshot& Snap)
 			})
 		];
 	}
-	Body->AddSlot().Position(FVector2D(30.0, 100.0)).Size(FVector2D(614.0, 368.0))
+	Body->AddSlot().Position(FVector2D(30.0, 100.0)).Size(FVector2D(614.0, 358.0))
 	[
 		SNew(SBox)
 		.Clipping(EWidgetClipping::ClipToBounds)
@@ -628,7 +628,7 @@ void SAbyssSkillTreePanel::BuildHotbar(const abyss::Snapshot& Snap)
 	const abyss::SkillBook& Book = *Snap.skills;
 	const FAbyssUiPalette& C = Ctx->Style().Colors();
 	const bool bTouch = Ctx->IsTouch();
-	Body->AddSlot().Position(FVector2D(16.0, 476.0)).Size(FVector2D(628.0, 18.0))
+	Body->AddSlot().Position(FVector2D(16.0, 466.0)).Size(FVector2D(628.0, 18.0))
 	[
 		AbyssUi::SectionHeader(Context, Ctx->LocOr("ui.skillTree.hotbar", TEXT("Skill bar")), 628.f)
 	];
@@ -646,7 +646,7 @@ void SAbyssSkillTreePanel::BuildHotbar(const abyss::Snapshot& Snap)
 		const FString Key = Ctx->KeyHint(static_cast<EAbyssInputAction>(static_cast<int32>(EAbyssInputAction::Skill1) + Slot));
 		const bool bTarget = SelectedSkill >= 0 && !bLocked;
 		const bool bHeld = Bound >= 0 && Bound == SelectedSkill;
-		Body->AddSlot().Position(FVector2D(Left + Slot * (SlotSize + Gap), 500.0)).Size(FVector2D(SlotSize, SlotSize))
+		Body->AddSlot().Position(FVector2D(Left + Slot * (SlotSize + Gap), 488.0)).Size(FVector2D(SlotSize, SlotSize))
 		[
 			SNew(SAbyssHitArea, Context)
 			.IsEnabled(!bLocked)
@@ -697,7 +697,7 @@ void SAbyssSkillTreePanel::BuildHotbar(const abyss::Snapshot& Snap)
 	}
 	const FText Hint = bTouch ? Ctx->LocOr("ui.skillTree.hotbarHintTouch", TEXT("Tap a learned skill, then a slot. Tap a slot to move or clear it."))
 		: Ctx->LocOr("ui.skillTree.hotbarHint", TEXT("Click a learned skill, then a slot. Right-click a slot to clear it."));
-	Body->AddSlot().Position(FVector2D(16.0, 556.0)).Size(FVector2D(628.0, 34.0))
+	Body->AddSlot().Position(FVector2D(16.0, 544.0)).Size(FVector2D(628.0, 30.0))
 	[
 		SNew(SBox)
 		.HAlign(HAlign_Center)

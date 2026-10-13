@@ -105,7 +105,7 @@ module, UE 5.8+, macOS first then Windows/Android/iOS with touch UI, Chapter 1 f
 
 | ID | Decision |
 |---|---|
-| W1 | Camera: fixed yaw 45°, **pitch −50°**, perspective FOV 35°, default distance framing ≈ 16 × 12 tiles of ground on 16:9; mouse wheel / pinch zoom between 0.75× and 1.25× of default. Smooth follow with 0.12 s lag. |
+| W1 | Camera: fixed yaw 45°, **pitch −50°**, perspective FOV 35°, default distance framing ≈ 16 × 12 tiles of ground on 16:9; mouse wheel / pinch zoom between 0.75× and 1.25× of default. Smooth follow with 0.12 s lag. *Confirmed by the user after the second Mac playtest:* yaw 45° stays. The map therefore reads as a 180° rotation of the web's cartToIso view (col+1 runs up-left, the minimap's north points down-left); gameplay is identical, and the terrain motifs, key light and art reviews are authored for this yaw. |
 | W2 | Fog of war: none in the 3D view; the **minimap and world map show explored fog** (FogOfWarCore). |
 | W3 | Town portal: 1.5 s channel, **cancelled by movement input, damage ≥ 10 % max HP, or death**, goes to the **nearest camp** of the zone; on touch it is a HUD button. |
 | W4 | Minimap **rotated to the camera yaw** (north indicator shown). |
@@ -160,4 +160,5 @@ module, UE 5.8+, macOS first then Windows/Android/iOS with touch UI, Chapter 1 f
 | R9 | Run cycle lengths re-derived from S5 (3.333 m/s): stride matches ground speed, no foot sliding. |
 | R10 | Item and skill icons are **rendered from Blender** (3D models / VFX shapes) at 256×256 with the UI frame applied in Slate. |
 | R11 | Portraits are offline Blender renders (512×512, bust, three-quarter). |
-| R12 | Slime: masked dithered toon (opaque pipeline) with a fresnel rim; no true translucency. |
+| R12 | Slime: toon shell with a fresnel (jelly) rim over opaque inner meshes (core, bone, bubbles, eyes) and an opaque ink hull. *Revised after the second Mac playtest (pending confirmation):* the shell is **alpha-blended translucency** (`M_AF_Toon_Slime`, `BodyOpacity` .62 × fade, back faces culled) instead of the masked 4 × 4 Bayer dither, which read as a screen door on every tier (no temporal AA varies a fixed pattern: MSAA on mobile, FXAA on desktop low, TSR); the blend is what the slime previews render. Opaque sections keep depth and the hull still casts the shadow; sort priorities: blob shadows −10, water −2, shell 0, VFX 1 / 2. |
+| R13 | Generic weapons (I6 / R4) on another class's clips use per-class grips (`SM_Weapon_*` manifest `grips`). *Pending art-direction sign-off (weapons-loot review, fourth look):* the mage's generic **shield is slung on her back** (`spine_03`, `slung`) — her Walk / Run swing the left hand across the robe and no forearm grip clears it (12 of 60 Walk frames at any grip), so from the se 3/4 view she shows most the shield is hidden behind her; the warrior holds a generic **bow in his right hand** (`weapon_r`, like the mage) so every strike carries it and its D faces the camera (on `weapon_l` it dangled edge-on at the hip while an empty fist struck). |

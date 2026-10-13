@@ -16,10 +16,10 @@
 
 namespace
 {
-	// 7.3 row order
+	// 7.3 row order (UIScene.toggleCharacter statKeys: str, dex, vit, int, spi, lck)
 	constexpr abyss::PrimaryStat GAbyssCharacterStats[6] = {
-		abyss::PrimaryStat::Str, abyss::PrimaryStat::Dex, abyss::PrimaryStat::Int,
-		abyss::PrimaryStat::Vit, abyss::PrimaryStat::Spi, abyss::PrimaryStat::Lck,
+		abyss::PrimaryStat::Str, abyss::PrimaryStat::Dex, abyss::PrimaryStat::Vit,
+		abyss::PrimaryStat::Int, abyss::PrimaryStat::Spi, abyss::PrimaryStat::Lck,
 	};
 }
 

@@ -1,7 +1,7 @@
 // The one Settings panel (DECISIONS U9; save-ui-input 7.13 / 9): master / music / SFX volume, language, graphics quality
-// (auto / low / balanced / high), control layout, touch control size and opacity, camera shake, damage numbers. Reached
-// from the title screen, the system menu and the O key. Every change goes through UAbyssGameInstance::ApplyUserSettings
-// (sanitised, applied, persisted in settings.json); sliders apply when the drag ends.
+// (auto / low / balanced / high), control layout, touch control size and opacity (shown while the touch layout is active),
+// camera shake, damage numbers. Reached from the title screen, the system menu and the O key. Every change goes through
+// UAbyssGameInstance::ApplyUserSettings (sanitised, applied, persisted in settings.json); sliders apply when the drag ends.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -21,8 +21,13 @@ public:
 
 	virtual abyss::PanelId GetPanelId() const override { return abyss::PanelId::Settings; }
 	virtual void Refresh(const abyss::Snapshot& Snap) override;
-	virtual FVector2D GetDesignSize() const override { return FVector2D(560.0, 600.0); }
-	virtual FVector2D GetDesignPosition() const override { return FVector2D(-1.0, -1.0); }
+	/**
+	 * In game it hangs from the top like the other tall HUD-side panels (achievements 560 high at y 10): bottom y 570,
+	 * clear of the HUD's top row (interact prompt y 599, potion medallions y 601, orb rims y 619). Centred on the title
+	 * screen (no session). The content scrolls.
+	 */
+	virtual FVector2D GetDesignSize() const override { return FVector2D(560.0, 560.0); }
+	virtual FVector2D GetDesignPosition() const override;
 
 private:
 	FAbyssUserSettings Current() const;

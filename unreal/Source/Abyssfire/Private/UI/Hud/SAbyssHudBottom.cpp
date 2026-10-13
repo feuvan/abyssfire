@@ -444,13 +444,27 @@ void SAbyssHudBottom::PaintSpirit(FAbyssPainter& P, double Now) const
 	const FVector2D ValueSize = FAbyssPainter::Measure(Value, ValueFont);
 	P.Text(FVector2D(Layout.SpiritPos.X + Layout.SpiritSize.X + 6.0, Layout.SpiritPos.Y + Layout.SpiritSize.Y * 0.5 - ValueSize.Y * 0.5), Value,
 		ValueFont, FAbyssUiStyle::Rgb(0xf0c080));
-	if (S.bResonating)
+	FString ResonanceText;
+	FSlateFontInfo ResonanceFont;
+	FVector2D ResonanceCenter = FVector2D::ZeroVector;
+	if (ResonanceLabel(ResonanceText, ResonanceFont, ResonanceCenter))
 	{
-		const FString Text = Ctx->LocArgsOrStr("ui.hud.resonance", TEXT("Resonance {seconds}s"),
-			{ FAbyssUiContext::Arg("seconds", FAbyssUiContext::Fixed(S.ResonanceRemainingMs / 1000.0, 1)) });
-		P.TextCentered(Layout.SpiritPos + FVector2D(Layout.SpiritSize.X * 0.5, -(Layout.bTouch ? 22.0 : 14.0)), Text, UiStyle.Body(Px(11.f), true, 2),
-			FAbyssUiStyle::Rgb(0xffd27a));
+		P.TextCentered(ResonanceCenter, ResonanceText, ResonanceFont, FAbyssUiStyle::Rgb(0xffd27a));
 	}
+}
+
+bool SAbyssHudBottom::ResonanceLabel(FString& OutText, FSlateFontInfo& OutFont, FVector2D& OutCenter) const
+{
+	const FAbyssHudState& S = *State;
+	if (!S.bResonating)
+	{
+		return false;
+	}
+	OutText = Ctx->LocArgsOrStr("ui.hud.resonance", TEXT("Resonance {seconds}s"),
+		{ FAbyssUiContext::Arg("seconds", FAbyssUiContext::Fixed(S.ResonanceRemainingMs / 1000.0, 1)) });
+	OutFont = Ctx->Style().Body(Px(11.f), true, 2);
+	OutCenter = Layout.SpiritPos + FVector2D(Layout.SpiritSize.X * 0.5, -(Layout.bTouch ? 22.0 : 14.0));
+	return true;
 }
 
 void SAbyssHudBottom::PaintExp(FAbyssPainter& P) const
@@ -633,6 +647,17 @@ void SAbyssHudBottom::PaintPotion(FAbyssPainter& P, int32 Slot) const
 		const FString Count = FAbyssUiContext::Int(View.count);
 		P.TextCentered(Center + FVector2D(R * 0.7, R * 0.72), Count, Ctx->Style().Body(10.f, true, 2), FLinearColor::White);
 	}
+	else
+	{
+		// Nothing of this kind in the bag: a ghost flask in the slot's colour, so the medallion reads as an empty HP / MP
+		// potion slot (click drinks, right click picks the potion) rather than a broken orb.
+		const FLinearColor Ghost = FAbyssUiStyle::WithAlpha(Slot == 0 ? FAbyssUiStyle::Rgb(0xe0283c) : FAbyssUiStyle::Rgb(0x2f6cf0), 0.4f);
+		const FLinearColor Glass = FAbyssUiStyle::WithAlpha(FAbyssUiStyle::Rgb(0xbfb4a2), 0.55f);
+		const FVector2D Flask = Center + FVector2D(0.0, 2.0);
+		P.Circle(Flask, R * 0.45f, Ghost);
+		P.CircleOutline(Flask, R * 0.45f, Glass, 1.f, 24);
+		P.Box(Center + FVector2D(-2.0, -R * 0.62), FVector2D(4.0, R * 0.4), Glass);
+	}
 	const FString Hint = Ctx->KeyHint(Slot == 0 ? EAbyssInputAction::PotionHp : EAbyssInputAction::PotionMp);
 	if (!Hint.IsEmpty())
 	{
@@ -662,7 +687,29 @@ void SAbyssHudBottom::PaintPrompt(FAbyssPainter& P) const
 	const FVector2D LabelSize = FAbyssPainter::Measure(Label, Font);
 	const double KeyW = Key.IsEmpty() ? 0.0 : FMath::Max(20.0, FAbyssPainter::Measure(Key, Font).X + 10.0);
 	const double TotalW = LabelSize.X + KeyW + (KeyW > 0.0 ? 6.0 : 0.0) + 20.0;
-	const FVector2D Pos = Layout.PromptCenter - FVector2D(TotalW * 0.5, 13.0);
+	FVector2D Pos = Layout.PromptCenter - FVector2D(TotalW * 0.5, 13.0);
+	// The resonance timer (6.4; the web has no prompt) is centred 14 px over the spirit bar (y 625 = the prompt's bottom
+	// edge), so its upper half shares the prompt's bottom rows right by the box's lower-left corner (second playtest,
+	// 9.webp: the text ends ~5 px left of the box). While both show and the timer comes within 12 px of the box in x,
+	// the prompt lifts to sit 1 px over the timer's measured line box (~9 px at 11 px; never into the portal bar).
+	FString ResonanceText;
+	FSlateFontInfo ResonanceFont;
+	FVector2D ResonanceCenter = FVector2D::ZeroVector;
+	if (ResonanceLabel(ResonanceText, ResonanceFont, ResonanceCenter))
+	{
+		const FVector2D ResonanceHalf = FAbyssPainter::Measure(ResonanceText, ResonanceFont) * 0.5;
+		const double ResonanceTop = ResonanceCenter.Y - ResonanceHalf.Y;
+		const bool bNearX = ResonanceCenter.X - ResonanceHalf.X < Pos.X + TotalW + 12.0 && ResonanceCenter.X + ResonanceHalf.X + 12.0 > Pos.X;
+		const bool bOverlapsY = ResonanceTop < Pos.Y + 27.0 && ResonanceCenter.Y + ResonanceHalf.Y > Pos.Y;
+		if (bNearX && bOverlapsY)
+		{
+			Pos.Y = ResonanceTop - 1.0 - 26.0;
+			if (S.bPortaling)
+			{
+				Pos.Y = FMath::Max(Pos.Y, Layout.PortalCenter.Y + 10.0);
+			}
+		}
+	}
 	P.RoundBox(Pos, FVector2D(TotalW, 26.0), FLinearColor(0.04f, 0.035f, 0.05f, 0.85f), 6.f, FAbyssUiStyle::WithAlpha(Ctx->Style().Colors().Gold, 0.8f), 1.f);
 	double X = Pos.X + 10.0;
 	if (KeyW > 0.0)

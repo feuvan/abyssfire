@@ -9,6 +9,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Fonts/SlateFontInfo.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -68,6 +69,8 @@ private:
 	void PaintUtility(FAbyssPainter& P) const;
 	void PaintPotion(FAbyssPainter& P, int32 Slot) const;
 	void PaintPrompt(FAbyssPainter& P) const;
+	/** 6.4 resonance timer ("Resonance 0.7s", 14 px over the spirit bar's centre): text, font, centre; false when not resonating. */
+	bool ResonanceLabel(FString& OutText, FSlateFontInfo& OutFont, FVector2D& OutCenter) const;
 	void PaintPortal(FAbyssPainter& P) const;
 
 	TSharedRef<SWidget> MakeHitArea(TFunction<void()> OnPress, TFunction<void()> OnRightPress, TSharedPtr<SWidget>& OutWidget);

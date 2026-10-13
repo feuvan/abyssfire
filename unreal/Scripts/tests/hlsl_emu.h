@@ -143,6 +143,10 @@ inline float length(float2 v) { return std::sqrt(dot(v, v)); }
 inline float length(float3 v) { return std::sqrt(dot(v, v)); }
 inline float3 normalize(float3 v) { return v / length(v); }
 
+// Screen-space derivatives: one pixel is evaluated at a time here, so they are zero (mip 0 in SampleGrad below).
+inline float2 ddx(float2) { return float2(0.f, 0.f); }
+inline float2 ddy(float2) { return float2(0.f, 0.f); }
+
 // ---- textures / material parameters ----
 struct SamplerState {};
 struct Texture2D
@@ -156,6 +160,13 @@ struct Texture2D
 			return float4(0.f, 0.f, 0.f, 0.f);
 		}
 		return Texels[static_cast<size_t>(P.y * Width + P.x)];
+	}
+	// Nearest texel of mip 0, clamped (the terrain tests check cell selection and compositing, not filtering).
+	float4 SampleGrad(SamplerState, float2 UV, float2, float2) const
+	{
+		const int X = static_cast<int>(std::floor(UV.x * static_cast<float>(Width)));
+		const int Y = static_cast<int>(std::floor(UV.y * static_cast<float>(Height)));
+		return Load(int3(X < 0 ? 0 : (X >= Width ? Width - 1 : X), Y < 0 ? 0 : (Y >= Height ? Height - 1 : Y), 0));
 	}
 };
 

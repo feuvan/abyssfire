@@ -53,6 +53,8 @@
 namespace AbyssWorldBuilderPrivate
 {
 	constexpr float NearMonsterOcclusionTiles = 6.f;   // world-map-nav.md 15.6: monsters within ~6 tiles fade props too
+	constexpr float NearLootOcclusionTiles = 9.f;      // ground loot on screen around the hero fades the dressing it is in
+	constexpr int32 MaxLootOcclusionTargets = 24;
 	constexpr float GuideRadiusCm = 110.f;             // art-inventory-ch1.md 6.8: ~1.1 m ring around the hero
 	constexpr float GuideHeightCm = 30.f;
 	constexpr float FlyingHoverCm = 45.f;
@@ -76,6 +78,67 @@ namespace AbyssWorldBuilderPrivate
 	bool StartsWith(const std::string& Text, std::string_view Prefix)
 	{
 		return Text.size() >= Prefix.size() && std::string_view(Text).substr(0, Prefix.size()) == Prefix;
+	}
+
+	/**
+	 * Game ids of the entity props that can appear after a zone is built, as SpawnProp's fallback chains resolve them
+	 * (keep in step): quest gather / quest-item nodes, lore pickups, random-event chests and rune pillars, revealed
+	 * hidden rewards (gold pile, chest).
+	 */
+	bool IsLateEntityPropGameId(FName GameId)
+	{
+		static const TCHAR* const Prefixes[] = { TEXT("gather_"), TEXT("quest_item_"), TEXT("lore_") };
+		static const TCHAR* const Exact[] = { TEXT("gather_node"), TEXT("decor_treasure_chest"), TEXT("treasure_chest"),
+			TEXT("decor_event_puzzle_rune_pillar"), TEXT("decor_gold_pile"), TEXT("gold_pile") };
+		const FString Id = GameId.ToString();
+		for (const TCHAR* Prefix : Prefixes)
+		{
+			if (Id.StartsWith(Prefix, ESearchCase::IgnoreCase))
+			{
+				return true;
+			}
+		}
+		for (const TCHAR* Name : Exact)
+		{
+			if (Id.Equals(Name, ESearchCase::IgnoreCase))   // FName ids compare case-insensitively
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Loads the art of IsLateEntityPropGameId (mesh, and a skeletal chest's clips) for the current zone; returns the meshes. */
+	int32 WarmLateEntityPropArt(UAbyssAssetLibrary& Assets)
+	{
+		int32 Count = 0;
+		for (const FAbyssArtAsset& Asset : Assets.GetManifest().GetAssets())
+		{
+			if (!Asset.GameIds.ContainsByPredicate([](FName GameId) { return IsLateEntityPropGameId(GameId); }))
+			{
+				continue;
+			}
+			if (Asset.IsSkeletal())
+			{
+				if (Assets.LoadSkeletalMesh(Asset) == nullptr)
+				{
+					continue;
+				}
+				for (const FAbyssArtClip& Clip : Asset.Clips)
+				{
+					if (!Clip.bStaticPose)
+					{
+						Assets.LoadClip(Clip);
+					}
+				}
+			}
+			else if (Assets.LoadStaticMesh(Asset) == nullptr)
+			{
+				continue;
+			}
+			++Count;
+		}
+		return Count;
 	}
 
 	FLinearColor QualityTint(abyss::ItemQuality Quality)
@@ -474,6 +537,15 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 		return;
 	}
 	ZoneActor->BuildZone(Snap, *Data, *Assets, Quality);
+	// Ground loot (bags, gold, potions, gems, scrolls, quest items, the reward.gold coin): loaded behind the zone fade
+	// instead of on the first kill, where the synchronous load (and, uncooked, the "Waiting on static mesh" build) was a
+	// hitch. Uncooked, the zone entry's compile wait finishes their builds before the first frame.
+	const int32 LootMeshes = Assets->LoadCategoryStaticMeshes(FName(TEXT("Pickups")));
+	// Likewise the Props meshes of entity props that appear mid-zone (random-event chests and rune pillars, revealed
+	// hidden rewards, quest gather nodes, lore pickups). The second playtest's log line ("Waiting on static mesh
+	// /Game/Abyssfire/?rops/...", cut off) named a Props mesh: there is no Drops folder.
+	const int32 LatePropMeshes = AbyssWorldBuilderPrivate::WarmLateEntityPropArt(*Assets);
+	UE_LOG(LogAbyss, Log, TEXT("Zone build: %d ground-loot and %d late entity-prop meshes loaded"), LootMeshes, LatePropMeshes);
 	const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
 	Assets->TrimToRecentZones(GameInstance != nullptr && GameInstance->IsTouchMode() ? 1 : 2);
 
@@ -762,6 +834,10 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 	default:
 		break;
 	}
+	// Radial rigs have one front view in the web (Slime.ts: no back view, mirrored only): the actor keeps it toward the
+	// camera.
+	Setup.bSingleView = Rig == abyss::AnimRig::Slime;
+	Setup.CameraYawDeg = CameraRig != nullptr ? CameraRig->GetYawDegrees() : Assets->GetManifest().GetShading().CameraYawDeg;
 	const abyss::AnimConfigDef& Preset = Data->Combat().anim.Preset(Rig);
 	Setup.HurtKnockbackPx = static_cast<float>(Preset.hurtKnockback > 0.0 ? Preset.hurtKnockback : 8.0);
 	Setup.HurtDurationMs = static_cast<float>(Preset.hurtDuration > 0.0 ? Preset.hurtDuration : 200.0);
@@ -1773,12 +1849,29 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 	UpdateLeaving(VisualDelta);
 	UpdateCamera(Snap, RealDelta);
 
-	// Occlusion fade (R1): the hero (chest, head) and living monsters near it.
+	// Occlusion fade (R1): the hero (chest, head) and living monsters near it; ground loot near the hero also fades the
+	// low dressing it lies in (a drop inside a berry bush is otherwise hidden by the mesh).
 	if (ZoneActor != nullptr && CameraRig != nullptr && CameraRig->GetCamera() != nullptr)
 	{
 		TArray<FVector, TInlineAllocator<16>> Targets;
+		TArray<FVector, TInlineAllocator<AbyssWorldBuilderPrivate::MaxLootOcclusionTargets>> LootTargets;
 		if (const AAbyssCharacterActor* Hero = FindCharacter(abyss::kHeroEntityId))
 		{
+			const float LootRange = AbyssWorldBuilderPrivate::NearLootOcclusionTiles * static_cast<float>(AbyssUnits::TileUU);
+			for (const TPair<uint32, TObjectPtr<AAbyssPropActor>>& Pair : Props)
+			{
+				const AAbyssPropActor* Prop = Pair.Value.Get();
+				if (Prop == nullptr || Prop->IsHidden() || LootTargets.Num() >= AbyssWorldBuilderPrivate::MaxLootOcclusionTargets
+					|| (Prop->GetEntityKind() != abyss::EntityKind::GroundItem && Prop->GetEntityKind() != abyss::EntityKind::PotionDrop))
+				{
+					continue;
+				}
+				const FVector PropLocation = Prop->GetActorLocation();
+				if (FVector::DistSquared2D(PropLocation, Hero->GetActorLocation()) < LootRange * LootRange)
+				{
+					LootTargets.Add(PropLocation + FVector(0.0, 0.0, 0.4 * Prop->GetVisualHeightCm()));
+				}
+			}
 			Targets.Add(Hero->GetActorLocation() + FVector(0.0, 0.0, 30.0));
 			Targets.Add(Hero->GetAnchorLocation(EAbyssAnchor::Chest));
 			Targets.Add(Hero->GetAnchorLocation(EAbyssAnchor::Head));
@@ -1794,7 +1887,7 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 				}
 			}
 		}
-		ZoneActor->UpdateOcclusion(Targets, CameraRig->GetCamera()->GetComponentLocation(), VisualDelta);
+		ZoneActor->UpdateOcclusion(Targets, LootTargets, CameraRig->GetCamera()->GetComponentLocation(), VisualDelta);
 	}
 
 	UpdateIndicators(Snap, RealDelta);

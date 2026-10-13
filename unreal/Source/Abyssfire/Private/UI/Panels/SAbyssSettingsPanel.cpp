@@ -31,6 +31,11 @@ void SAbyssSettingsPanel::Construct(const FArguments& InArgs, const TSharedRef<F
 		]);
 }
 
+FVector2D SAbyssSettingsPanel::GetDesignPosition() const
+{
+	return FVector2D(-1.0, Ctx.IsValid() && Ctx->GetSnapshot() != nullptr ? 10.0 : -1.0);
+}
+
 FAbyssUserSettings SAbyssSettingsPanel::Current() const
 {
 	const UAbyssGameInstance* GameInstance = Ctx->GetGameInstance();
@@ -118,14 +123,40 @@ void SAbyssSettingsPanel::Refresh(const abyss::Snapshot& Snap)
 		[](const FAbyssUserSettings& S) { return static_cast<int32>(S.ControlLayout); },
 		[](FAbyssUserSettings& S, int32 Index) { S.ControlLayout = static_cast<EAbyssControlLayout>(FMath::Clamp(Index, 0, 2)); }));
 
-	// ---- touch controls (save-ui-input 5.7) ----
-	Section("ui.settings.touch", TEXT("Touch Controls"));
-	Row(MakeSliderRow(Ctx->LocOr("ui.settings.touchScale", TEXT("Size")),
-		[](const FAbyssUserSettings& S) { return S.TouchControlScale; },
-		[](FAbyssUserSettings& S, float V) { S.TouchControlScale = V; }, 0.75f, 1.5f));
-	Row(MakeSliderRow(Ctx->LocOr("ui.settings.touchOpacity", TEXT("Opacity")),
-		[](const FAbyssUserSettings& S) { return S.TouchControlOpacity; },
-		[](FAbyssUserSettings& S, float V) { S.TouchControlOpacity = V; }, 0.3f, 1.f));
+	// ---- touch controls (save-ui-input 5.7; spec 9 lists the scale as a mobile setting): only while the touch layout
+	// is active (a touch device, or Controls = Touch), so a mouse-and-keyboard session does not show sliders for
+	// controls it never draws. Bound live: switching the control layout above shows / hides the section at once.
+	{
+		const TSharedRef<FAbyssUiContext> TouchCtx = Context;
+		TSharedRef<SVerticalBox> Touch = SNew(SVerticalBox)
+			.Visibility_Lambda([TouchCtx]() { return TouchCtx->IsTouch() ? EVisibility::Visible : EVisibility::Collapsed; });
+		Touch->AddSlot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 10.f, 0.f, 6.f))
+			[
+				AbyssUi::SectionHeader(Context, Ctx->LocOr("ui.settings.touch", TEXT("Touch Controls")), GAbyssSettingsInnerW)
+			];
+		Touch->AddSlot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 3.f))
+			[
+				MakeSliderRow(Ctx->LocOr("ui.settings.touchScale", TEXT("Size")),
+					[](const FAbyssUserSettings& S) { return S.TouchControlScale; },
+					[](FAbyssUserSettings& S, float V) { S.TouchControlScale = V; }, 0.75f, 1.5f)
+			];
+		Touch->AddSlot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 3.f))
+			[
+				MakeSliderRow(Ctx->LocOr("ui.settings.touchOpacity", TEXT("Opacity")),
+					[](const FAbyssUserSettings& S) { return S.TouchControlOpacity; },
+					[](FAbyssUserSettings& S, float V) { S.TouchControlOpacity = V; }, 0.3f, 1.f)
+			];
+		Scroll->AddSlot()
+			[
+				Touch
+			];
+	}
 
 	// ---- feel ----
 	Section("ui.settings.feel", TEXT("Gameplay"));

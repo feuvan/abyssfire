@@ -96,6 +96,20 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(outline._params[("s", "OutlinePx1080")], 3.5)
         self.assertEqual(outline._params[("s", "BakedWidthCm")], 1.8)
         self.assertIs(outline._params[("t", "PaletteBC")], reg[f"{paths.TEXTURES_DIR}/T_AF_Palette_Heroes_BC"])
+        # the painted ground: MI_AF_Terrain_<Theme> = M_AF_Terrain_Painted with the manifest's layers + detail atlas
+        # (imported even without the texture scan, which this flow skips)
+        terrain_plans = [i for i in self.plan.instances.values() if i.parent == paths.M_TERRAIN_PAINTED]
+        self.assertTrue(terrain_plans, "no painted terrain instance planned from manifest terrain.*")
+        for inst in terrain_plans:
+            mi = reg[f"{paths.INSTANCES_DIR}/{inst.name}"]
+            self.assertIs(mi.get_editor_property("parent"), reg[f"{paths.MATERIALS_DIR}/{paths.M_TERRAIN_PAINTED}"])
+            self.assertEqual(set(inst.textures), {paths.terrain_layer_param(t) for t in paths.TERRAIN_PAINT_TILES}
+                             | {paths.TERRAIN_DETAILS_PARAM})
+            for param, tex_name in inst.textures.items():
+                self.assertIs(mi._params[("t", param)], reg[f"{paths.TEXTURES_DIR}/{tex_name}"])
+            atlas = reg[f"{paths.TEXTURES_DIR}/{inst.textures[paths.TERRAIN_DETAILS_PARAM]}"]
+            self.assertEqual(atlas.get_editor_property("compression_settings"), "TextureCompressionSettings.TC_BC7")
+            self.assertEqual(atlas.get_editor_property("address_x"), "TextureAddress.TA_CLAMP")
         # every master material exists and has outputs; the MPC carries the key light
         from abyss_content.ue import materials as mats
         for m in mats.MASTERS:

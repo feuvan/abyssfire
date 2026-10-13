@@ -383,7 +383,11 @@ int32 UAbyssVfxSystem::FindOrCreatePool(const FAbyssVfxLayer& Layer)
 			Pool.bMesh = true;
 			Pool.Blend = EAbyssVfxBlend::Translucent;
 			Pool.Component = PoolComponents.Add(Component);
-			Pool.MeshDiameterCm = FMath::Max(1.f, static_cast<float>(Mesh->GetBounds().SphereRadius * 2.0));
+			// A recipe's sizeCm scales the mesh's boundsDiameterCm = the diagonal of its bounding box (fxkit.manifest_entry,
+			// fx_recipes.MESH_DIAMETER, the previews' MESH_D), not the engine's bounding sphere: that sphere is centred on
+			// the box and only reaches the farthest vertex, so for flat meshes (coins, hex plates, rings, novas) it is up
+			// to 1.41x smaller and every one of them was drawn up to 1.41x too big (the reward.gold coins at ~31 cm).
+			Pool.MeshDiameterCm = FMath::Max(1.f, static_cast<float>(Mesh->GetBounds().BoxExtent.Size() * 2.0));
 			const int32 Index = Pools.Num() - 1;
 			PoolIndexByKey.Add(Key, Index);
 			return Index;

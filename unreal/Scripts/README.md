@@ -215,8 +215,9 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 | Portraits, icons, glyphs | `/Game/Abyssfire/UI/{Portraits,Icons}/T_UI_*` | UserInterface2D, no mips |
 | FX sprites | `/Game/Abyssfire/FX/Textures/T_FX_*` | linear (masks); `T_AF_FX_DefaultGlow` is the generated fallback |
 | `MPC_AF_Lighting` | `/Game/Abyssfire/Materials` | `SunDir`, `KeyLightDir` (manifest key light), `SunColor`, `Ambient`, `RimColor`, `CameraTanHalfFovY`, `TimeSec` |
-| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`, `M_AF_Water`, `M_AF_PP_Grade`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow` | shader code in `abyss_content/hlsl.py` |
-| Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow |
+| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow` | shader code in `abyss_content/hlsl.py` |
+| Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>`, `MI_AF_Terrain_<Theme>` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow. `MI_AF_Terrain_<Theme>`: `M_AF_Terrain_Painted` with the manifest `terrain.<theme>` layers + detail atlas (only when all of them were exported) |
+| Terrain textures | `/Game/Abyssfire/Textures/T_Terrain_<Theme>_*_BC`, `T_Water_<Theme>_BC` | world (sRGB, mips, wrap); the `_Details_BC` atlas BC7, clamp; imported even without the texture scan (the manifest names them) |
 | `SM_FX_Quad` | `/Game/Abyssfire/FX` | 100 × 100 cm XY quad (unless the art ships one) |
 | Audio | `/Game/Abyssfire/Audio/...` | `Audio/ue/import_audio.py` (audio agent) |
 | `L_Main` | `/Game/Abyssfire/Maps/L_Main` | empty persistent map; world settings only |
@@ -228,13 +229,22 @@ Material behaviour in short:
   emissive regions unshaded (× 1.6), then the gameplay feedback from custom primitive data: `HitFlash` (0),
   `PainTint` (1–4), `Telegraph` (5–8), `StatusTint` (9–12), `Fade` (13), `Ghost` (14), `Highlight` (15); instanced
   dressing reads `PerInstanceCustomData` 0 Fade / 2 Highlight. `_Foliage` adds wind (WPO from the instance `Random`),
-  `_Slime` the jelly rim and a dithered body (R12).
+  `_Slime` the jelly rim and an alpha-blended translucent body (`BodyOpacity` × fade, back faces culled; R12).
 * **`M_AF_Outline`** — ink `mix(#120C18, line(c), o)`, screen-constant width: WPO dilates the baked hull to
   `OutlinePx1080 × ViewSizeY / 1080` px (manifest `shading.outline.wpo`); material quality *Low* keeps the baked hull.
 * **`M_AF_Terrain`** — lit (receives sun shadows), base colour from the web tile-transition algorithm over the runtime
   `TileIds` texture (exact port of `ZoneTerrain.ts` weights / ranks / lattice noise / liquid, lip and dark edges) with
   procedural ground patterns (patches, specks, accent details); ambient fill from `MPC Ambient`. Low quality drops the
   boundary noise and the details.
+* **`M_AF_Terrain_Painted`** — the same mask and edge tints over the art's painted ground (`Art/blender/environment/
+  terrain.py`, its `composite()` is the reference): the five `Tile<i>Layer` textures sampled once at `UV0 / 3` with the
+  shared wrap sampler, the winner's / runner-up's picked in the Custom node, the `Details` atlas cell of the own tile
+  (explicit gradients from the continuous tile coordinate, so tile borders keep their mip) composited over the winner.
+  No procedural patterns, so far less ALU than `M_AF_Terrain`, but every ground pixel on every quality tier reads the
+  four `TileIds` texels, all five 1024² layers and the atlas (the layers are sampled outside the node, so Low, which
+  drops only the boundary noise, reads them too; `M_AF_Terrain`'s Low read only `TileIds`). The theme adds six 1024²
+  textures (≈ 4.7 MB BC, ≈ 8 MB ASTC 4x4 with mips). Not yet profiled on an ES3.1 / iOS device. Used through
+  `MI_AF_Terrain_<Theme>`; zones whose theme has no painted art keep `M_AF_Terrain`.
 * **`M_AF_Water`**, **`M_AF_FX_*`**, **`M_AF_Ghost`**, quads, **`M_AF_BlobShadow`**, **`M_AF_PP_Grade`** — see the
   docstrings in `abyss_content/ue/materials.py`.
 
@@ -247,7 +257,8 @@ hand. On the first real run check:
    non-zero pixel-shader instructions and no compile errors (without `--shaders` they read *not compiled*, see §2). A
    master with `COMPILE ERRORS` / `NO SHADER` failed to compile: the error names the Custom node (`AF_*`); fix the HLSL
    in `abyss_content/hlsl.py` (the tests below compile it as C++ too).
-2. *Preview Rendering Level → Android Vulkan* and *iOS*: `M_AF_Toon`, `M_AF_Outline`, `M_AF_Terrain` compile.
+2. *Preview Rendering Level → Android Vulkan* and *iOS*: `M_AF_Toon`, `M_AF_Outline`, `M_AF_Terrain`,
+   `M_AF_Terrain_Painted` compile.
 3. `SK_Hero_Warrior` in the mesh editor: 2 material slots with `MI_AF_Toon_Heroes` / `MI_AF_Outline_Heroes_Hero`,
    sockets `fx_*` and `visor` on the listed bones, LOD1 present; the clips play on `SKEL_Human`; `A_Hero_Warrior_HurtAdd`
    is additive (local space, frame 0).

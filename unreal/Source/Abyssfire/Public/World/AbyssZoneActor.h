@@ -1,9 +1,10 @@
 // AAbyssZoneActor: everything static of one zone, built at runtime from the core's zone data (DECISIONS P9, W1, W5, W7,
 // R1; ue58-platform.md 6.2, 6.4-6.8, 10.4; world-map-nav.md 3.4, 14, 15; art-inventory-ch1.md 6).
 //
-// * Terrain: FAbyssTerrainField meshes as UProceduralMeshComponent sections (ground chunks with M_AF_Terrain, water
-//   surfaces with M_AF_Water), a transient tile-id texture (B8G8R8A8, point sampled) and the zone theme's terrain style
-//   colours as material parameters (terrain_styles.json). Skirt hills beyond the border ring.
+// * Terrain: FAbyssTerrainField meshes as UProceduralMeshComponent sections (ground chunks with the theme's painted
+//   MI_AF_Terrain_<Theme> when the content build made one, else the procedural M_AF_Terrain; water surfaces with
+//   M_AF_Water), a transient tile-id texture (B8G8R8A8, point sampled) and the zone theme's terrain style colours as
+//   material parameters (terrain_styles.json). Skirt hills beyond the border ring.
 // * Instanced dressing, one UInstancedStaticMeshComponent per mesh (GPU-scene instance culling on every platform;
 //   per-instance custom data AbyssDecorIcd): decorations (ZoneGrid::Decorations with the core's 15.5 jitter),
 //   outcrops on wall tiles (tileHash(c, r, 3) variants, ZoneTerrain), palisade stakes on camp-wall tiles (4-bit
@@ -12,7 +13,8 @@
 // * Light and look: the movable directional sun (manifest key light, CSM per tier), the unbound post-process of the
 //   zone mood (manual exposure, no tone curve, grade, vignette, bloom per tier; or M_AF_PP_Grade when it exists).
 // * Occlusion fade (R1, world-map-nav.md 15.6): tall dressing between the camera and the hero / nearby monsters fades
-//   to alpha .25 (decor, tents) / .45 (walls) with the web's 110 ms approach.
+//   to alpha .25 (decor, tents) / .45 (walls) with the web's 110 ms approach. Ground loot near the hero also fades the
+//   low dressing it lies in or behind (bushes, grass, rocks; in 3D a bag inside a berry bush is otherwise hidden).
 // * Picking support: GetGroundHeight / RaycastGround on the terrain height field (ue58-platform.md 8.4).
 // * Shader gate (uncooked editor-binary runs only, WITH_EDITOR): an instanced mesh whose material is still compiling
 //   for this RHI stays hidden until its shader map is ready (abyss.DecorShaderGate), instead of drawing with the
@@ -77,8 +79,14 @@ public:
 	/** Render tier: sun shadows, bloom / grading, post-process (ue58-platform.md 6.8, P10). */
 	void ApplyQuality(const FAbyssQualityProfile& Quality);
 
-	/** Occlusion fade toward the targets (hero chest / head, nearby monsters) seen from CameraLocation. */
-	void UpdateOcclusion(TConstArrayView<FVector> Targets, const FVector& CameraLocation, float DeltaSec);
+	/**
+	 * Occlusion fade toward the targets (hero chest / head, nearby monsters) seen from CameraLocation. LootTargets
+	 * (ground items and potion drops near the hero) fade only the low dressing they sit in or behind (bushes, grass,
+	 * rocks, camp props; not the R1 occluders such as trees or walls): a drop that lands in a berry bush is otherwise
+	 * hidden inside the mesh.
+	 */
+	void UpdateOcclusion(TConstArrayView<FVector> Targets, TConstArrayView<FVector> LootTargets, const FVector& CameraLocation,
+		float DeltaSec);
 	/** Story-decoration focus rim (EvStoryDecorFocus); NAME_None clears. */
 	void SetStoryFocus(FName DecorId);
 
@@ -106,6 +114,7 @@ private:
 		float HeightCm = 150.f;
 		float FadeTarget = 0.75f;   // 1 - alpha (decor .25 -> .75, walls .45 -> .55)
 		float Fade = 0.f;
+		bool bLootOnly = false;     // low dressing: fades for ground loot only, never for the hero or monsters
 	};
 
 	struct FPendingStory

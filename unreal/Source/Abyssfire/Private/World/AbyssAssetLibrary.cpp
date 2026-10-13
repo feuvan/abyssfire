@@ -481,6 +481,19 @@ void UAbyssAssetLibrary::PreloadAsync(const TArray<FSoftObjectPath>& Paths)
 	}
 }
 
+int32 UAbyssAssetLibrary::LoadCategoryStaticMeshes(FName Category)
+{
+	int32 Count = 0;
+	for (const FAbyssArtAsset& Asset : Manifest.GetAssets())
+	{
+		if (Asset.Category == Category && !Asset.IsSkeletal() && LoadStaticMesh(Asset) != nullptr)
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
 EAbyssCompileWait UAbyssAssetLibrary::WaitForPendingCompilation(bool bZoneEntry)
 {
 #if WITH_EDITOR

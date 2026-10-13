@@ -49,6 +49,7 @@ M_TOON_SLIME = "M_AF_Toon_Slime"
 M_OUTLINE = "M_AF_Outline"
 M_OUTLINE_FOLIAGE = "M_AF_Outline_Foliage"
 M_TERRAIN = "M_AF_Terrain"
+M_TERRAIN_PAINTED = "M_AF_Terrain_Painted"
 M_WATER = "M_AF_Water"
 M_FX_ADDITIVE = "M_AF_FX_Additive"
 M_FX_TRANSLUCENT = "M_AF_FX_Translucent"
@@ -62,6 +63,22 @@ M_PP_GRADE = "M_AF_PP_Grade"
 
 TOON_MASTERS = (M_TOON, M_TOON_FOLIAGE, M_TOON_SLIME)
 OUTLINE_MASTERS = (M_OUTLINE, M_OUTLINE_FOLIAGE)
+
+# Painted ground (WorldContract 3.1, manifest `terrain.<theme>`): MI_AF_Terrain_<Theme> is M_AF_Terrain_Painted with the
+# theme's art layers bound; AAbyssZoneActor::BuildTerrain uses it when it exists, else the procedural M_AF_Terrain.
+TERRAIN_PAINT_TILES = (0, 1, 2, 3, 5)     # paint indices with a ground style (terrain_styles.json `ground` keys)
+TERRAIN_PERIOD_TILES = 3                  # the layer textures repeat every 3 tiles (web PERIOD; manifest periodTiles)
+TERRAIN_DETAILS_PARAM = "Details"         # the per-tile detail atlas (4 x 4 cells)
+
+
+def terrain_layer_param(tile: int) -> str:
+    """Texture parameter of paint index `tile`'s ground layer on M_AF_Terrain_Painted."""
+    return f"Tile{tile}Layer"
+
+
+def terrain_instance_name(theme: str) -> str:
+    """'plains' -> 'MI_AF_Terrain_Plains' (the runtime capitalises the zone theme the same way)."""
+    return f"MI_AF_Terrain_{theme[:1].upper()}{theme[1:]}"
 
 # Generated utility textures (pngio.default_textures): defaults of the texture parameters, so every master compiles
 # before the art exists, and the VFX glow used when T_FX_Glow is missing.
