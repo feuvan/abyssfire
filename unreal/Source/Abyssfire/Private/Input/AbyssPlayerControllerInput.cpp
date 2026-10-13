@@ -496,7 +496,9 @@ void AAbyssPlayerController::TickAbyssHover(const abyss::Snapshot& Snap)
 	switch (Pick.Action)
 	{
 	case EAbyssPickAction::Attack:
-		CurrentMouseCursor = EMouseCursor::Crosshairs;
+		// Like the web (monsters are not interactive objects there): the arrow stays; the hovered monster's highlight
+		// shows the target.
+		CurrentMouseCursor = DefaultMouseCursor;
 		break;
 	case EAbyssPickAction::Interact:
 	case EAbyssPickAction::PickUp:
