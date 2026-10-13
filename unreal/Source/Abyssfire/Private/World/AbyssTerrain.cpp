@@ -374,8 +374,10 @@ void FAbyssTerrainField::BuildChunkMeshes(int32 ChunkX, int32 ChunkY, FAbyssTerr
 			const int32 V10 = V00 + 1;
 			const int32 V01 = V00 + W;
 			const int32 V11 = V01 + 1;
-			// Front face = (V1 - V0) ^ (V2 - V0) pointing up (+Z): +X then +Y.
-			OutGround.Triangles.Append({ V00, V10, V01, V10, V11, V01 });
+			// UE front face = (V2 - V0) ^ (V1 - V0) (counter-clockwise in UE's left-handed frame, the order
+			// FStaticMeshOperations / GenerateBoxMesh use), so an up-facing (+Z) triangle lists +Y before +X. The
+			// reverse order faces down and the one-sided M_AF_Terrain is back-face culled from the overhead camera.
+			OutGround.Triangles.Append({ V00, V01, V10, V10, V01, V11 });
 		}
 	}
 
@@ -421,7 +423,8 @@ void FAbyssTerrainField::BuildChunkMeshes(int32 ChunkX, int32 ChunkY, FAbyssTerr
 					const int32 V10 = V00 + 1;
 					const int32 V01 = V00 + Stride;
 					const int32 V11 = V01 + 1;
-					OutWater.Triangles.Append({ V00, V10, V01, V10, V11, V01 });
+					// Up-facing like the ground (UE front face = (V2 - V0) ^ (V1 - V0)): M_AF_Water is one-sided.
+					OutWater.Triangles.Append({ V00, V01, V10, V10, V01, V11 });
 				}
 			}
 		}

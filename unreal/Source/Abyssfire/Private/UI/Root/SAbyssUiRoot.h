@@ -119,6 +119,8 @@ private:
 		bool bChild = false;
 		double OpenTime = 0.0;
 		bool bAnimating = true;
+		/** Diagnostics: the arranged position was logged once (LogArrangedLayout). */
+		bool bLayoutLogged = false;
 	};
 
 	// ---- panels ----
@@ -147,6 +149,11 @@ private:
 	// ---- overlays ----
 	FMargin GetTooltipOffset() const;
 	FMargin GetPopupOffset() const;
+	/**
+	 * Diagnostics: logs where InWidget was arranged in InLayer against the top-left offset its canvas slot asked for
+	 * (a Warning when they differ). False while InWidget has no geometry yet (try again next tick).
+	 */
+	bool LogArrangedLayout(const FString& What, const SWidget& InLayer, const SWidget& InWidget, const FMargin& Offset) const;
 	void CloseConfirm(bool bConfirmed);
 	void CloseHelp();
 	void CloseError();
@@ -188,6 +195,10 @@ private:
 	FVector2D TooltipAnchor = FVector2D::ZeroVector;
 	FVector2D PopupAnchor = FVector2D::ZeroVector;
 	bool bPopupOpen = false;
+	/** Diagnostics: ticks since the tooltip / popup was shown (-1: nothing to log); the first few of each are logged. */
+	int32 TooltipLogTicks = -1;
+	int32 PopupLogTicks = -1;
+	int32 OverlayLogsLeft = 6;
 	bool bConfirmOpen = false;
 	bool bConfirmReported = false;
 	FAbyssConfirmRequest ActiveConfirm;

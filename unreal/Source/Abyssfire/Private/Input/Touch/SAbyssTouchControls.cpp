@@ -42,10 +42,13 @@ namespace
 		return static_cast<EAbyssInputAction>(static_cast<int32>(EAbyssInputAction::Skill1) + Slot);
 	}
 
-	/** First two characters of a skill name (web skill-bar fallback when the icon is missing). */
+	/**
+	 * Stand-in for a missing skill icon, as on the desktop hotbar (DECISIONS U11): the first glyph of a CJK name, else
+	 * the first two letters.
+	 */
 	FString AbyssTouch_ShortName(const FString& Name)
 	{
-		return Name.Left(2);
+		return !Name.IsEmpty() && static_cast<uint32>(Name[0]) >= 0x2E80u ? Name.Left(1) : Name.Left(2);
 	}
 }
 

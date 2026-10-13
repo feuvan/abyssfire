@@ -7,9 +7,68 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#include "HAL/FileManager.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialParameterCollection.h"
+#include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
+
+#include <string_view>
+
+namespace AbyssAssetLibraryPrivate
+{
+	/**
+	 * Data/assets.json is the exporter's copy of Art/Export/manifest.json and is read first (the core DataStore reads the
+	 * same copy for decor footprints, so the fix is the re-export, not reading the art file here). Uncooked runs have both
+	 * files: a copy that lags the art export hides every asset added since without an error (the first Mac playtest loaded
+	 * 17 of 198 assets: no foliage, props, NPCs or loot bags). Packaged builds have no Art/ folder and skip the check.
+	 */
+	void WarnIfManifestCopyStale(const FAbyssArtManifest& Loaded, const FString& SourcePath)
+	{
+		const FString ArtExport = FPaths::ProjectDir() / TEXT("Art/Export/manifest.json");
+		if (FPaths::IsSamePath(SourcePath, ArtExport) || !FPaths::FileExists(ArtExport))
+		{
+			return;
+		}
+		TArray<uint8> Bytes;
+		if (!FFileHelper::LoadFileToArray(Bytes, *ArtExport, FILEREAD_Silent))
+		{
+			return;
+		}
+		FAbyssArtManifest ArtManifest;
+		FString ParseError;
+		if (!ArtManifest.LoadFromJson(std::string_view(reinterpret_cast<const char*>(Bytes.GetData()), static_cast<size_t>(Bytes.Num())),
+			ParseError))
+		{
+			UE_LOG(LogAbyss, Warning, TEXT("Art manifest check: %s does not parse (%s)"), *ArtExport, *ParseError);
+			return;
+		}
+		int32 MissingFromCopy = 0;
+		FString Examples;
+		for (const FAbyssArtAsset& Asset : ArtManifest.GetAssets())
+		{
+			if (Loaded.FindAsset(Asset.Name) != nullptr)
+			{
+				continue;
+			}
+			if (MissingFromCopy < 6)
+			{
+				Examples += Examples.IsEmpty() ? Asset.Name.ToString() : FString(TEXT(", ")) + Asset.Name.ToString();
+			}
+			++MissingFromCopy;
+		}
+		if (MissingFromCopy == 0 && ArtManifest.Num() == Loaded.Num())
+		{
+			return;
+		}
+		UE_LOG(LogAbyss, Warning, TEXT("Art manifest %s is stale: %d assets vs %d in %s (%d missing from the copy, e.g. %s; "
+			"copy %s, art export %s). Zone dressing, NPCs and loot without a manifest entry are not drawn. Re-export from "
+			"the repo root: node unreal/Tools/export-data/run.mjs"),
+			*SourcePath, Loaded.Num(), ArtManifest.Num(), *ArtExport, MissingFromCopy, Examples.IsEmpty() ? TEXT("-") : *Examples,
+			*IFileManager::Get().GetTimeStamp(*SourcePath).ToString(), *IFileManager::Get().GetTimeStamp(*ArtExport).ToString());
+	}
+}
 
 UAbyssAssetLibrary* UAbyssAssetLibrary::Get(const UObject* WorldContextObject)
 {
@@ -26,6 +85,7 @@ void UAbyssAssetLibrary::Initialize(FSubsystemCollectionBase& Collection)
 	if (Manifest.LoadFromProject(Error, Source))
 	{
 		UE_LOG(LogAbyss, Log, TEXT("Art manifest: %d assets from %s"), Manifest.Num(), *Source);
+		AbyssAssetLibraryPrivate::WarnIfManifestCopyStale(Manifest, Source);
 	}
 	else
 	{

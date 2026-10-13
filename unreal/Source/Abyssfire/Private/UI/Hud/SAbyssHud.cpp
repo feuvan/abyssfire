@@ -67,6 +67,11 @@ void SAbyssHud::RebuildLayout()
 	const bool bTouch = Ctx->IsTouch();
 	bLayoutTouch = bTouch;
 	State->bTouch = bTouch;
+	// A locale change rebuilds the layout: re-read the hotbar names (SyncHero only rebuilds one when its skill changes).
+	for (FAbyssHudSkillSlot& SkillSlot : State->Slots)
+	{
+		SkillSlot.Name = SkillSlot.bBound ? Ctx->SkillName(SkillSlot.SkillId) : FString();
+	}
 	Canvas->ClearChildren();
 	Bottom->RebuildLayout();
 	CombatLog->SetTouch(bTouch);

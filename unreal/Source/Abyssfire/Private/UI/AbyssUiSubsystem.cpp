@@ -491,8 +491,9 @@ UTexture2D* UAbyssUiSubsystem::FindUiTexture(FName AssetName)
 			return Texture;
 		}
 	}
-	// Missing art is expected while the pipeline catches up: the widgets draw their procedural fallback.
-	UE_LOG(LogAbyss, Verbose, TEXT("UI texture %s not found (fallback glyph)"), *Name);
+	// Missing art is expected while the pipeline catches up: the widgets draw their procedural fallback. Logged once per
+	// name (MissingTextures), so the log lists exactly which T_UI_* art the build lacks.
+	UE_LOG(LogAbyss, Log, TEXT("UI texture %s not found (fallback glyph)"), *Name);
 	MissingTextures.Add(AssetName);
 	return nullptr;
 }

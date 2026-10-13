@@ -349,6 +349,35 @@ def load_manifest(path: Path) -> dict[str, Any]:
     return data
 
 
+def runtime_copy_problem(manifest_path: Path, copy_path: Path) -> Problem | None:
+    """Data/assets.json is the exporter's copy of the art manifest, and the game reads it before the art file
+    (UAbyssAssetLibrary, the core DataStore's decor footprints). A copy that lags the export hides every asset added
+    since at runtime without an error (the first playtest loaded 17 of 198 assets: no foliage, props, NPCs or loot
+    bags), although this build imports them all. None when the copy matches or does not exist (the game then reads
+    the art file)."""
+    if not copy_path.is_file():
+        return None
+    subject = f"{copy_path.parent.name}/{copy_path.name}"
+    try:
+        with open(copy_path, encoding="utf-8") as f:
+            envelope = json.load(f)
+        with open(manifest_path, encoding="utf-8") as f:
+            art = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        return Problem("warning", subject, f"could not compare with {manifest_path}: {e}")
+    inner = envelope.get("manifest") if isinstance(envelope, dict) else None
+    if inner == art:
+        return None
+
+    def count(m: Any) -> int:
+        return len(m.get("assets") or {}) if isinstance(m, dict) else 0
+
+    return Problem("warning", subject,
+                   f"stale copy of {manifest_path.name} ({count(inner)} vs {count(art)} assets): the game reads the "
+                   "copy, so assets missing from it never show; re-export from the repo root with "
+                   "`node unreal/Tools/export-data/run.mjs`")
+
+
 def _folder_of(fbx: str, category: str) -> str:
     rel = fbx.replace("\\", "/").strip("/")
     if "/" in rel:

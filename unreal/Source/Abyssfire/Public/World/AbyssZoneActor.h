@@ -177,6 +177,11 @@ private:
 	FName FocusedStory;
 	TArray<FAbyssZoneEffectSpot> EffectSpots;
 	TArray<FIntPoint> ExitTiles;
+	/** Build diagnostics: first game ids of PlaceArt calls with no manifest asset (one zone-build warning lists them). */
+	TSet<FName> MissingArtIds;
+	int32 PlacedArtCount = 0;
+	int32 UnresolvedArtCount = 0;
+	int32 UnloadedArtCount = 0;
 
 	FAbyssQualityProfile QualityProfile;
 	/** Art manifest hero fx.bloom.strength (0 = none): the zone bloom intensity unless abyss.Bloom overrides it. */

@@ -28,9 +28,10 @@ class EditorTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         tmp = Path(self.tmp.name)
-        self._saved = (paths.GENERATED_DIR, paths.CONTENT_DIR)
+        self._saved = (paths.GENERATED_DIR, paths.CONTENT_DIR, paths.RUNTIME_MANIFEST_COPY)
         paths.GENERATED_DIR = tmp / "Generated"
         paths.CONTENT_DIR = tmp / "Content"
+        paths.RUNTIME_MANIFEST_COPY = tmp / "Data" / "assets.json"   # absent: the build does not depend on Data/
         self.plan = manifest.build_plan(scan_textures=False)
         anim_meta = {c.asset: (c.length_ms, c.frames) for a in self.plan.assets for c in a.clips}
         fake_unreal.reset(paths.CONTENT_DIR, paths.UNREAL_DIR, anim_meta)
@@ -47,7 +48,7 @@ class EditorTestCase(unittest.TestCase):
         self.addCleanup(env.stop)
 
     def tearDown(self) -> None:
-        paths.GENERATED_DIR, paths.CONTENT_DIR = self._saved
+        paths.GENERATED_DIR, paths.CONTENT_DIR, paths.RUNTIME_MANIFEST_COPY = self._saved
         sys.modules.pop("unreal", None)
         self.tmp.cleanup()
 

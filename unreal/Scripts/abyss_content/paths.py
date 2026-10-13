@@ -12,6 +12,8 @@ UNREAL_DIR = Path(__file__).resolve().parent.parent.parent
 REPO_DIR = UNREAL_DIR.parent
 EXPORT_DIR = UNREAL_DIR / "Art" / "Export"
 MANIFEST_PATH = EXPORT_DIR / "manifest.json"
+# The exporter's copy the game reads first (UAbyssAssetLibrary, the core DataStore): {"manifest": <MANIFEST_PATH>}.
+RUNTIME_MANIFEST_COPY = UNREAL_DIR / "Data" / "assets.json"
 AUDIO_IMPORT_SCRIPT = UNREAL_DIR / "Audio" / "ue" / "import_audio.py"
 CONTENT_DIR = UNREAL_DIR / "Content"            # /Game on disk
 # Generated, never committed (unreal/.gitignore ignores Saved/).

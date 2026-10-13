@@ -1324,7 +1324,9 @@ void UAbyssVfxSystem::Render()
 					Alpha += static_cast<float>(FMath::Sin(TimeMs * 0.007 + Light.Seed) * 0.05
 						+ FMath::Sin(TimeMs * 0.013 + 2.3 * Light.Seed) * 0.03);
 				}
-				const FVector Ground = Anchors[Light.Anchor].Current + FVector(0.0, 0.0, 2.0);
+				// 8 cm over the ground like the recipes' ground quads (fx_recipes.ground_lift): the pool sprite draws
+				// with M_AF_FX_Additive, whose DepthFade(8 cm) would leave a 2 cm pool at about a third of its strength.
+				const FVector Ground = Anchors[Light.Anchor].Current + FVector(0.0, 0.0, 8.0);
 				const float Diameter = Light.RadiusCm * 2.f / 100.f;
 				Emit(PoolIndex, AxesTransform(Ground, FVector::ForwardVector, FVector::RightVector, Diameter, Diameter),
 					Light.Color, FMath::Clamp(Alpha, 0.f, 1.f) * 0.5f, 0.f, 0.f);

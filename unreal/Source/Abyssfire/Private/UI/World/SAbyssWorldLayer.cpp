@@ -17,6 +17,7 @@
 #include "abyss/quests/QuestSystem.h"
 #include "abyss/quests/QuestWorld.h"
 
+#include "Abyssfire.h"
 #include "Framework/AbyssGameInstance.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssText.h"
@@ -55,6 +56,13 @@ namespace
 	FLinearColor AbyssWorldLayer_HpColor(double Ratio, uint32 High, uint32 Mid, uint32 Low)
 	{
 		return FAbyssUiStyle::Rgb(Ratio > 0.5 ? High : (Ratio > 0.25 ? Mid : Low));
+	}
+
+	/** Floats that pop, stack and rise as hit numbers (combat-feel 12). */
+	bool AbyssWorldLayer_IsNumber(abyss::FloatingTextKind Kind)
+	{
+		return Kind == abyss::FloatingTextKind::MonsterDamage || Kind == abyss::FloatingTextKind::HeroDamage
+			|| Kind == abyss::FloatingTextKind::Heal || Kind == abyss::FloatingTextKind::Miss;
 	}
 
 	FLinearColor AbyssWorldLayer_ElementColor(abyss::DamageType Element)
@@ -105,6 +113,7 @@ void SAbyssWorldLayer::ClearWidgets()
 	Floats.Reset();
 	Popups.Reset();
 	StackKeys.Reset();
+	RewardStackKeys.Reset();
 }
 
 void SAbyssWorldLayer::UpdateFrames(TConstArrayView<FAbyssWorldWidgetFrame> Frames)
@@ -196,9 +205,7 @@ void SAbyssWorldLayer::AddFloatingText(const FAbyssFloatingTextRequest& Request)
 	{
 		return;
 	}
-	const bool bNumber = Request.Kind == abyss::FloatingTextKind::MonsterDamage || Request.Kind == abyss::FloatingTextKind::HeroDamage
-		|| Request.Kind == abyss::FloatingTextKind::Heal || Request.Kind == abyss::FloatingTextKind::Miss;
-	if (bNumber)
+	if (AbyssWorldLayer_IsNumber(Request.Kind))
 	{
 		// Stacking (combat-feel 12): a number on the same spot within 320 ms climbs one row (max 4).
 		const int64 KeyX = static_cast<int64>(FMath::RoundToDouble(Float.World.X / 40.0));
@@ -219,6 +226,40 @@ void SAbyssWorldLayer::AddFloatingText(const FAbyssFloatingTextRequest& Request)
 		case abyss::HitNumberSlot::Primary: break;
 		}
 	}
+	else if (Request.Kind == abyss::FloatingTextKind::Exp || Request.Kind == abyss::FloatingTextKind::Gold
+		|| Request.Kind == abyss::FloatingTextKind::Embers)
+	{
+		// Port addition: kill rewards of one kind on the same spot within 600 ms (an AoE, a pack cleared together) climb
+		// one 24 px row each (max 3). The kinds start 12 px apart (+G -28, EXP -40, Embers -52), so the rows interleave:
+		// +EXP never shares a line with the others, and +G / +Embers on one line are 33 px apart sideways.
+		const FIntVector Key(static_cast<int32>(FMath::RoundToDouble(Float.World.X / 60.0)),
+			static_cast<int32>(FMath::RoundToDouble(Float.World.Y / 60.0)), static_cast<int32>(Request.Kind));
+		int32 Row = 0;
+		if (const TPair<double, int32>* Previous = RewardStackKeys.Find(Key))
+		{
+			Row = Now - Previous->Key < 0.6 ? FMath::Min(Previous->Value + 1, 3) : 0;
+		}
+		RewardStackKeys.Add(Key, TPair<double, int32>(Now, Row));
+		Float.StartOffset.Y -= 24.0 * Row;
+		// The killing blow's number (emitted just before the rewards, on the same corpse) rises -30 -> -58 px in 0.35 s
+		// while +EXP rises slowly from -40, so the two cross within 0.1 s (web geometry). With a number on this spot from
+		// the last 320 ms, the rewards start one more 24 px row up, plus however far that number was already stacked.
+		double NumberTop = 0.0;
+		for (const FFloat& Other : Floats)
+		{
+			if (AbyssWorldLayer_IsNumber(Other.Kind) && Now - Other.Start < 0.32
+				&& FVector::DistSquared2D(Other.World, Float.World) < 60.0 * 60.0)
+			{
+				NumberTop = FMath::Min(NumberTop, Other.StartOffset.Y);
+			}
+		}
+		if (NumberTop < 0.0)
+		{
+			Float.StartOffset.Y -= 24.0 + FMath::Max(0.0, -30.0 - NumberTop);
+		}
+	}
+	UE_LOG(LogAbyss, VeryVerbose, TEXT("Float kind=%d world=%s offset=%s (web px, x%.2f on screen)"), static_cast<int32>(Request.Kind),
+		*Request.WorldLocation.ToString(), *Float.StartOffset.ToString(), WebPx);
 	Floats.Add(MoveTemp(Float));
 	if (Floats.Num() > 96)
 	{
@@ -227,6 +268,10 @@ void SAbyssWorldLayer::AddFloatingText(const FAbyssFloatingTextRequest& Request)
 	if (StackKeys.Num() > 256)
 	{
 		StackKeys.Reset();
+	}
+	if (RewardStackKeys.Num() > 256)
+	{
+		RewardStackKeys.Reset();
 	}
 }
 
@@ -559,6 +604,7 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 		const FVector Ground = AbyssUnits::TileToWorld(Tile);
 		const double Z = View ? View->GetGroundHeight(Ground.X, Ground.Y) : 0.0;
 		HeroOverhead = FVector(Ground.X, Ground.Y, Z + 210.0);
+		HeroGround = FVector(Ground.X, Ground.Y, Z);
 		bHeroKnown = true;
 	}
 }
@@ -651,6 +697,26 @@ int32 SAbyssWorldLayer::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 
 	const double Now = Ctx->Now();
 	const FVector2D LocalSize(AllottedGeometry.GetLocalSize());
+	// The web draws zone texts as world objects under ZONE_CAMERA_ZOOM 1.8, so its float offsets are web world px. One
+	// web tile diagonal (64 px) = the projected tile diagonal at the hero ((+1, -1) runs screen-horizontal at the 45 deg
+	// yaw, W1): ~1.77 at the default framing, following the wheel zoom.
+	if (bHeroKnown)
+	{
+		FVector2D TileFrom;
+		FVector2D TileTo;
+		if (Project(HeroGround, TileFrom, LocalSize) && Project(HeroGround + FVector(AbyssUnits::TileUU, -AbyssUnits::TileUU, 0.0), TileTo, LocalSize))
+		{
+			WebPx = FMath::Clamp(FVector2D::Distance(TileFrom, TileTo) / 64.0, 1.0, 3.0);
+		}
+	}
+	if (!LocalSize.Equals(LoggedLocalSize, 0.5) || !ViewportSize.Equals(LoggedViewportSize, 0.5) || FMath::Abs(WebPx - LoggedWebPx) > 0.25)
+	{
+		LoggedLocalSize = LocalSize;
+		LoggedViewportSize = ViewportSize;
+		LoggedWebPx = WebPx;
+		UE_LOG(LogAbyss, Log, TEXT("WorldLayer: LocalSize=%s Viewport=%s WebPx=%.2f (hero %s)"), *LocalSize.ToString(), *ViewportSize.ToString(), WebPx,
+			bHeroKnown ? TEXT("known") : TEXT("unknown"));
+	}
 	FAbyssPainter P(AllottedGeometry, OutDrawElements, LayerId, InWidgetStyle, Ctx->Style());
 	for (const TPair<uint32, FLabel>& Pair : Labels)
 	{
@@ -662,7 +728,8 @@ int32 SAbyssWorldLayer::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 	{
 		PaintFloat(P, Float, LocalSize, Now);
 	}
-	// quest progress popups above the hero: pop 160 ms, hold 800 ms (1300 when done), rise 26 px and fade 700 ms
+	// quest progress popups above the hero: pop 160 ms, hold 800 ms (1300 when done), rise 26 px and fade 700 ms (rows and
+	// rise in web px)
 	Popups.RemoveAll([Now](const FPopup& Popup) { return Now - Popup.Start > (Popup.bDone ? 2.16 : 1.66); });
 	FVector2D HeroScreen;
 	if (bHeroKnown && Popups.Num() > 0 && Project(HeroOverhead, HeroScreen, LocalSize))
@@ -673,7 +740,7 @@ int32 SAbyssWorldLayer::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 			const double Hold = Popup.bDone ? 1.3 : 0.8;
 			const float Pop = AbyssEase::BackOut(AbyssEase::Clamp01(static_cast<float>(T / 0.16)));
 			const float Out = T > 0.16 + Hold ? AbyssEase::Clamp01(static_cast<float>((T - 0.16 - Hold) / 0.7)) : 0.f;
-			const FVector2D Pos = HeroScreen + FVector2D(0.0, -16.0 * Popup.Stack - 26.0 * Out);
+			const FVector2D Pos = HeroScreen + FVector2D(0.0, -(16.0 * Popup.Stack + 26.0 * Out) * WebPx);
 			const FLinearColor Color = Popup.bDone ? FAbyssUiStyle::Rgb(0x7ee07e) : FAbyssUiStyle::Rgb(0xffe7a0);
 			P.TextCentered(Pos, Popup.Text, Ctx->Style().Body(16.f, true, 3), FAbyssUiStyle::WithAlpha(Color, 1.f - Out), FMath::Max(0.01f, Pop));
 		}
@@ -751,7 +818,8 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 		return;
 	}
 	const double T = Now - Float.Start;
-	FVector2D Pos = Anchor + Float.StartOffset;
+	// offsets, rises, drift and sinks below are web world px (combat-feel 12), scaled to the camera by WebPx
+	FVector2D Pos = Anchor + Float.StartOffset * WebPx;
 	float Scale = 1.f;
 	float Alpha = 1.f;
 	const FSlateFontInfo Font = Ctx->Style().Font(EAbyssFontFace::Title, Float.FontPx, true, Float.Outline);
@@ -762,21 +830,21 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 		// scale 0.8 -> 1 in 90 ms, then after 120 ms rise 22 px and fade over 650 ms
 		Scale = 0.8f + 0.2f * AbyssEase::Clamp01(static_cast<float>(T / 0.09));
 		const float Rise = AbyssEase::Clamp01(static_cast<float>((T - 0.12) / 0.65));
-		Pos.Y -= 22.0 * Rise;
+		Pos.Y -= 22.0 * WebPx * Rise;
 		Alpha = 1.f - Rise;
 		break;
 	}
 	case abyss::FloatingTextKind::Exp:
 	{
 		const float U = AbyssEase::Clamp01(static_cast<float>(T / 1.5));
-		Pos.Y -= 35.0 * AbyssEase::QuadOut(U);
+		Pos.Y -= 35.0 * WebPx * AbyssEase::QuadOut(U);
 		Alpha = 1.f - AbyssEase::QuadIn(U);
 		break;
 	}
 	case abyss::FloatingTextKind::Gold:
 	{
 		const float U = AbyssEase::Clamp01(static_cast<float>(T / 1.2));
-		Pos.Y -= 30.0 * AbyssEase::QuadOut(U);
+		Pos.Y -= 30.0 * WebPx * AbyssEase::QuadOut(U);
 		Alpha = 1.f - AbyssEase::QuadIn(U);
 		break;
 	}
@@ -784,7 +852,7 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 	{
 		// y -> y - 30 and alpha -> 0 together over 1400 ms, ease-out quad (web tween on both properties).
 		const float U = AbyssEase::QuadOut(AbyssEase::Clamp01(static_cast<float>(T / 1.4)));
-		Pos.Y -= 30.0 * U;
+		Pos.Y -= 30.0 * WebPx * U;
 		Alpha = 1.f - U;
 		break;
 	}
@@ -792,7 +860,7 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 	case abyss::FloatingTextKind::Custom:
 	{
 		const float U = AbyssEase::Clamp01(static_cast<float>(T / 1.4));
-		Pos.Y -= 30.0 * AbyssEase::QuadOut(U);
+		Pos.Y -= 30.0 * WebPx * AbyssEase::QuadOut(U);
 		Alpha = U > 0.6f ? 1.f - (U - 0.6f) / 0.4f : 1.f;
 		break;
 	}
@@ -816,8 +884,8 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 			Scale = FMath::Lerp(Peak, Rest, AbyssEase::BackOut(AbyssEase::Clamp01(static_cast<float>((T - PopMs) / SettleMs))));
 		}
 		const double Life = bCrit ? 1.05 : 0.78;
-		const double Rise = bCrit ? 40.0 : 28.0;
-		Pos.X += Float.Drift * AbyssEase::SineOut(AbyssEase::Clamp01(static_cast<float>(T / Life)));
+		const double Rise = (bCrit ? 40.0 : 28.0) * WebPx;
+		Pos.X += Float.Drift * WebPx * AbyssEase::SineOut(AbyssEase::Clamp01(static_cast<float>(T / Life)));
 		const double RiseT = Life * 0.45;
 		if (T < RiseT)
 		{
@@ -826,7 +894,7 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 		else
 		{
 			const float U = AbyssEase::Clamp01(static_cast<float>((T - RiseT) / (Life - RiseT)));
-			Pos.Y -= Rise - 8.0 * AbyssEase::QuadIn(U);
+			Pos.Y -= Rise - 8.0 * WebPx * AbyssEase::QuadIn(U);
 			Alpha = 1.f - AbyssEase::QuadIn(U);
 		}
 		if (T > Life)

@@ -102,11 +102,14 @@ private:
 	/** Locale the cached label names were built in (-1 = none). */
 	int32 NameLocale = -1;
 	FVector HeroOverhead = FVector::ZeroVector;
+	FVector HeroGround = FVector::ZeroVector;
 	bool bHeroKnown = false;
 	abyss::EntityId HoveredId = abyss::kNoEntity;
 	abyss::EntityId TargetId = abyss::kNoEntity;
 	/** Floating-number stacking (combat-feel 12): key = projected position / 28 px, last spawn time and index. */
 	mutable TMap<int64, TPair<double, int32>> StackKeys;
+	/** Kill-reward stacking (+EXP / +G / +Embers): key = (world / 60 cm, kind), last spawn time and row. */
+	TMap<FIntVector, TPair<double, int32>> RewardStackKeys;
 	FRandomStream Random;
 
 	// projection cache (one per paint)
@@ -114,4 +117,13 @@ private:
 	mutable FMatrix ViewProjection = FMatrix::Identity;
 	mutable FIntRect ViewRect;
 	mutable FVector2D ViewportSize = FVector2D::ZeroVector;
+	/**
+	 * Slate px per web world px at the hero (the web draws zone texts as world objects under ZONE_CAMERA_ZOOM 1.8): the
+	 * float / popup offsets, rises and stack rows are web world px times this. Kept from the last paint that saw the hero.
+	 */
+	mutable double WebPx = 1.0;
+	// last values written to the log (LogAbyss "WorldLayer:" line, only when they change)
+	mutable FVector2D LoggedLocalSize = FVector2D::ZeroVector;
+	mutable FVector2D LoggedViewportSize = FVector2D::ZeroVector;
+	mutable double LoggedWebPx = 0.0;
 };

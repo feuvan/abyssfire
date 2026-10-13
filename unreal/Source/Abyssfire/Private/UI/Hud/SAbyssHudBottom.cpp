@@ -36,6 +36,44 @@ namespace
 		}
 		return FAbyssUiStyle::Rgb(0xb0a8b4);
 	}
+
+	/** Stand-in for a missing skill icon: the first glyph of a CJK name, else the first two letters. */
+	FString AbyssHudBottom_Monogram(const FString& Name)
+	{
+		return !Name.IsEmpty() && static_cast<uint32>(Name[0]) >= 0x2E80u ? Name.Left(1) : Name.Left(2);
+	}
+
+	/**
+	 * Hue of a skill whose icon art is missing, after the web icon backdrop (SkillIcons.ts backdropFor): the damage-type
+	 * colour, physical skills by tree (TREE_BG mid), so the three warrior skills do not share one grey.
+	 */
+	FLinearColor AbyssHudBottom_SkillAccent(const abyss::DataStore* Data, const std::string& SkillId, abyss::DamageType DamageType)
+	{
+		struct FTreeTint
+		{
+			const char* Tree;
+			uint32 Color;
+		};
+		static const FTreeTint TreeTints[] = {
+			{ "combat_master", 0xb4742e }, { "guardian", 0x3a6eaa }, { "berserker", 0xa82a26 },
+			{ "assassination", 0x5e3c90 }, { "archery", 0x3a8c5a }, { "traps", 0xa47c2a },
+		};
+		if (Data != nullptr && DamageType != abyss::DamageType::Physical)
+		{
+			return FAbyssUiStyle::Rgb(Data->Classes().damageTypeColors[static_cast<size_t>(DamageType)]);
+		}
+		if (const abyss::SkillDef* Skill = Data != nullptr ? Data->FindSkill(SkillId) : nullptr)
+		{
+			for (const FTreeTint& Tint : TreeTints)
+			{
+				if (Skill->tree == Tint.Tree)
+				{
+					return FAbyssUiStyle::Rgb(Tint.Color);
+				}
+			}
+		}
+		return FAbyssUiStyle::Rgb(TreeTints[0].Color);
+	}
 }
 
 void SAbyssHudBottom::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUiContext>& InContext, const TSharedRef<FAbyssHudState>& InState)
@@ -458,17 +496,29 @@ void SAbyssHudBottom::PaintSkillSlot(FAbyssPainter& P, int32 Slot, double Now) c
 	{
 		IconTint = FLinearColor(0.45f, 0.5f, 0.8f, 0.85f);   // not enough mana
 	}
+	const bool bCooling = Info.CooldownRemainingMs > 0.0 && Info.CooldownTotalMs > 0.0;
+	// No icon art yet: a tile in the skill's hue with a monogram. The monogram sits up-left of centre (clear of the key
+	// badge) while ready; while cooling it shrinks to a corner tag so the centred seconds never print over it.
+	FString Monogram;
+	FLinearColor MonogramColor = FLinearColor::White;
 	if (const FSlateBrush* Icon = Ctx->SkillIcon(Info.SkillId))
 	{
 		P.Brush(IconPos, FVector2D(IconSize, IconSize), Icon, IconTint);
 	}
 	else
 	{
-		P.RoundBox(IconPos, FVector2D(IconSize, IconSize), FMath::Lerp(FAbyssUiStyle::Rgb(0x2a2430), IconTint, 0.15f), 4.f);
-		P.TextCentered(Center, Info.Name.Left(2), UiStyle.Body(13.f, true, 2), IconTint * UiStyle.Colors().Parchment);
+		const FLinearColor Accent = AbyssHudBottom_SkillAccent(Ctx->GetData(), Info.SkillId, Info.DamageType);
+		P.RoundBox(IconPos, FVector2D(IconSize, IconSize), FMath::Lerp(FAbyssUiStyle::Rgb(0x1a171d), Accent, 0.35f) * IconTint, 4.f,
+			FAbyssUiStyle::WithAlpha(FAbyssUiStyle::Lighten(Accent, 0.25f), 0.75f), 1.2f);
+		Monogram = AbyssHudBottom_Monogram(Info.Name);
+		MonogramColor = FAbyssUiStyle::Lighten(Accent, 0.7f) * IconTint;
+		if (!bCooling)
+		{
+			P.TextCentered(Center + FVector2D(-2.0, -3.0), Monogram, UiStyle.Body(Monogram.Len() == 1 ? 18.f : 14.f, true, 2), MonogramColor);
+		}
 	}
 	// cooldown sweep (6.6): square-clipped pie from a0 = -90 + (1 - frac) * 360 clockwise to 270, black 0.66, gold hand.
-	if (Info.CooldownRemainingMs > 0.0 && Info.CooldownTotalMs > 0.0)
+	if (bCooling)
 	{
 		const float Frac = FMath::Clamp(static_cast<float>(Info.CooldownRemainingMs / Info.CooldownTotalMs), 0.f, 1.f);
 		const float A0 = FMath::DegreesToRadians(-90.f + (1.f - Frac) * 360.f);
@@ -478,6 +528,10 @@ void SAbyssHudBottom::PaintSkillSlot(FAbyssPainter& P, int32 Slot, double Now) c
 		P.Line(Center, Center + FVector2D(FMath::Cos(A0), FMath::Sin(A0)) * Half, FAbyssUiStyle::WithAlpha(UiStyle.Colors().GoldBright, 0.85f), 1.5f);
 		const FString Seconds = FAbyssUiContext::Int(static_cast<int64>(FMath::CeilToDouble(Info.CooldownRemainingMs / 1000.0)));
 		P.TextCentered(Center, Seconds, UiStyle.Body(15.f, true, 2), FLinearColor::White);
+		if (!Monogram.IsEmpty())
+		{
+			P.TextCentered(Pos + FVector2D(10.0, 9.5), Monogram.Left(1), UiStyle.Body(10.f, true, 2), FAbyssUiStyle::WithAlpha(MonogramColor, 0.9f));
+		}
 	}
 	// ready flash: 38x38 #fff0c0 (additive-looking) alpha 0.55 -> 0 over 320 ms
 	const float FlashT = static_cast<float>((Now - Info.ReadyFlashTime) / 0.32);

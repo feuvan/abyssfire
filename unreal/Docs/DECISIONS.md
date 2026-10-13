@@ -54,6 +54,7 @@ module, UE 5.8+, macOS first then Windows/Android/iOS with touch UI, Chapter 1 f
 | C10 | Weapon `baseDamage`/`attackSpeed` and shield `defense` stay **inert in milestone 1** (balance parity), but the tooltip shows them dimmed with "(未生效)". Revisit with a balance pass after playtesting. |
 | C11 | Legendary `specialEffect` keys that combat already reads are applied as item stats (killHealPercent, elementalDamagePercent, doubleShot, ignoreDefense, dodgeCounter, damageReduction, cooldownReduction); others are designed later. |
 | C12 | Dead-hero rules: Esc and menu actions are blocked during the death window; saving with hp ≤ 0 saves as respawned at the camp. |
+| C13 | Floating combat text, kill rewards and quest progress popups (combat-feel §12, quests §5.8): the web draws them as world objects under `ZONE_CAMERA_ZOOM` 1.8, so their px **offsets, rises, drifts, sinks and stack rows are web world px × the live camera scale** (`SAbyssWorldLayer::WebPx` = projected tile diagonal at the hero / 64, ≈ 1.77 at the default framing, follows the zoom); font sizes stay screen px. Port additions: +EXP / +G / +Embers of one kind on the same 60 cm spot within 600 ms climb one 24 px row each (max 3), and with a hit number on that spot from the last 320 ms (the killing blow) the rewards start one more 24 px row up (plus that number's own stack height), since the number's fast −30 → −58 px rise otherwise crosses +EXP in its first 0.1 s (web geometry). (First playtest: unscaled offsets put +EXP on the loot labels.) |
 
 ## M — Monsters and AI (monsters-ai.md)
 
@@ -129,6 +130,7 @@ module, UE 5.8+, macOS first then Windows/Android/iOS with touch UI, Chapter 1 f
 | U8 | Minimap rotated (W4) with explored fog; world map shows all 5 zones, locked ones greyed with their chapter name. |
 | U9 | One **Settings** panel on all platforms: master/music/SFX volume, language (zh-CN / en), graphics quality (low/mid/high/auto), touch control scale and opacity, camera shake on/off, damage numbers on/off. Touch gets entries for achievements and settings. |
 | U10 | Portal channel cancelled by movement input and death (W3). |
+| U11 | Skill slot without icon art (`T_UI_SkillIcon_<id>` missing): a 36 px tile in the web icon backdrop hue (damage-type colour; physical skills by tree) with a monogram (first glyph of a CJK name, else 2 letters) up-left of centre; while cooling the monogram becomes a 10 px top-left corner tag, so the centred seconds (§6.6) never print over it. Touch buttons (5.7.3) use the same monogram; any label-only touch button moves its label to a small tag under the centred countdown while cooling. |
 
 ## A — Audio (audio.md)
 

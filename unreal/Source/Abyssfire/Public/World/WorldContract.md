@@ -82,6 +82,8 @@ fall back to fractions of the asset height). Clip names used: `Idle`, `IdleNPC`,
 ### 3.1 M_AF_Terrain and the tile-id texture
 
 The zone ground is a `UProceduralMeshComponent` (chunked sections, no collision) built by `FAbyssTerrainField`.
+Ground and water triangles face +Z in UE's convention (front normal `(P2 - P0) ^ (P1 - P0)`: a cell is
+`V00, V01, V10` + `V10, V01, V11`); M_AF_Terrain and M_AF_Water are one-sided, so the reverse order is culled.
 
 * Vertex colours: R = water depth 0..1, G = wall-tile coverage 0..1, B = skirt factor 0 (map) .. 1 (4+ tiles out), A = 1.
 * UV0 = tile-space position (col, row); `UV0 / 3` is the web's 3x3-tile pattern period.
@@ -97,7 +99,7 @@ The zone ground is a `UProceduralMeshComponent` (chunked sections, no collision)
 ### 3.2 M_AF_Water
 
 Translucent surface sections at -12 cm over the basins (bed -60 cm). Same `TileIds`, `MapCols`, `MapRows` and water
-vectors as 3.1; vertex colour R = depth.
+vectors as 3.1; vertex colour R = shore factor (foam), G = depth factor (shallow tint).
 
 ### 3.3 Character / prop custom primitive data (`AbyssCpd`)
 

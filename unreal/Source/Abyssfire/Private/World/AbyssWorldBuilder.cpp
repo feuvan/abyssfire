@@ -503,9 +503,18 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 	if (CameraRig != nullptr)
 	{
 		const float FocusZ = Assets->GetManifest().GetShading().CameraFocusZCm;
+		const FVector HeroGround = GroundAt(Snap.hero.pos);
+		const FVector SnapFocus = HeroGround + FVector(0.0, 0.0, FocusZ);
 		CameraRig->EndStoryFocus();
-		CameraRig->SnapToFocus(GroundAt(Snap.hero.pos) + FVector(0.0, 0.0, FocusZ));
+		CameraRig->SnapToFocus(SnapFocus);
 		CameraRig->FadeTo(0.f, FLinearColor::Black, ZoneFadeSec);
+		// The rig only moves on its next UpdateRig, so log where the snap will put it (UpdateRig's placement without
+		// shake), not the camera's current, previous-zone location.
+		const FRotator SnapView(CameraRig->GetPitchDegrees(), CameraRig->GetYawDegrees(), 0.f);
+		const FVector SnapCamera = SnapFocus - SnapView.Vector() * CameraRig->GetCurrentDistance();
+		UE_LOG(LogAbyss, Log, TEXT("Zone camera snaps to %s pitch %.1f (distance %.0f cm, focus %s), hero ground %s"),
+			*SnapCamera.ToString(), CameraRig->GetPitchDegrees(), CameraRig->GetCurrentDistance(), *SnapFocus.ToString(),
+			*HeroGround.ToString());
 	}
 	bStoryFocusActive = false;
 	bZoneBuilt = true;
@@ -1694,6 +1703,10 @@ void UAbyssWorldBuilder::UpdateLightingCollection(float RealDelta)
 		: nullptr;
 	if (Instance == nullptr)
 	{
+		UE_CLOG(!bLightingMissLogged, LogAbyss, Warning,
+			TEXT("MPC_AF_Lighting unavailable (%s): materials use the collection defaults"),
+			Collection != nullptr ? TEXT("no world instance") : TEXT("collection not found under /Game/Abyssfire/Materials"));
+		bLightingMissLogged = true;
 		return;
 	}
 	auto SetVector = [Collection, Instance](const TCHAR* Name, const FLinearColor& Value)
@@ -1731,6 +1744,9 @@ void UAbyssWorldBuilder::UpdateLightingCollection(float RealDelta)
 	SetVector(TEXT("RimColor"), Rim);
 	SetScalar(TEXT("CameraTanHalfFovY"), CameraRig != nullptr ? CameraRig->GetTanHalfFovY() : 0.1773f);
 	SetScalar(TEXT("TimeSec"), static_cast<float>(FMath::Fmod(TimeSec, 3600.0)));
+	UE_CLOG(!bLightingWriteLogged, LogAbyss, Log, TEXT("MPC_AF_Lighting written: sun %s, ambient %s, rim %s, key light %s"),
+		*SunColor.ToString(), *Ambient.ToString(), *Rim.ToString(), *DirToLight.ToString());
+	bLightingWriteLogged = true;
 }
 
 void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFrameInfo& Frame)

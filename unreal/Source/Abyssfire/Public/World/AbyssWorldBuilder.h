@@ -228,5 +228,8 @@ private:
 	bool bCameraShakeEnabled = true;
 	bool bDamageNumbers = true;
 	bool bStoryFocusActive = false;
+	/** MPC_AF_Lighting diagnostics: the first successful write and the first miss are logged once. */
+	bool bLightingWriteLogged = false;
+	bool bLightingMissLogged = false;
 	abyss::EntityId StoryFocusEntity = abyss::kNoEntity;
 };

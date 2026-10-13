@@ -63,7 +63,7 @@ if __name__ == "__main__":
         del sys.modules[_name]
 
 from abyss_content import __version__, paths  # noqa: E402
-from abyss_content.manifest import ManifestError, build_plan  # noqa: E402
+from abyss_content.manifest import ManifestError, build_plan, runtime_copy_problem  # noqa: E402
 from abyss_content.report import BuildReport  # noqa: E402
 
 STEPS = ("textures", "mpc", "materials", "instances", "fxquad", "skeletal", "anims", "static", "assign", "audio",
@@ -128,6 +128,9 @@ def run(argv: list[str]) -> BuildReport:
     report.plan = plan.summary()
     for problem in plan.problems:
         {"error": report.error, "note": report.note}.get(problem.level, report.warning)(str(problem))
+    stale_copy = runtime_copy_problem(plan.manifest_path, paths.RUNTIME_MANIFEST_COPY)
+    if stale_copy is not None:
+        report.warning(str(stale_copy))
     report.count("assets", len(plan.assets))
     report.count("textures", len(plan.textures))
     report.end()

@@ -179,6 +179,10 @@ void AAbyssZoneActor::ClearZone()
 	FocusedStory = NAME_None;
 	EffectSpots.Reset();
 	ExitTiles.Reset();
+	MissingArtIds.Reset();
+	PlacedArtCount = 0;
+	UnresolvedArtCount = 0;
+	UnloadedArtCount = 0;
 	if (TerrainMesh != nullptr)
 	{
 		TerrainMesh->ClearAllMeshSections();
@@ -226,8 +230,21 @@ void AAbyssZoneActor::BuildZone(const abyss::Snapshot& Snap, const abyss::DataSt
 	BuildSkirt(Data);
 	FlushInstances();
 	ApplyQuality(Quality);
-	UE_LOG(LogAbyss, Log, TEXT("Zone %s built: %d instanced meshes, %d occluders, %d effect spots"),
-		*AbyssText::ToFString(Snap.zone.mapId), DecorInstanceComponents.Num(), Occluders.Num(), EffectSpots.Num());
+	UE_LOG(LogAbyss, Log, TEXT("Zone %s built: %d instanced meshes (%d art placed, %d unresolved, %d not loaded), %d occluders, %d effect spots"),
+		*AbyssText::ToFString(Snap.zone.mapId), DecorInstanceComponents.Num(), PlacedArtCount, UnresolvedArtCount, UnloadedArtCount,
+		Occluders.Num(), EffectSpots.Num());
+	if (MissingArtIds.Num() > 0)
+	{
+		// A stale Data/assets.json (UAbyssAssetLibrary warns) or an id the art pipeline has not shipped yet.
+		TArray<FString> Names;
+		for (const FName MissingId : MissingArtIds)
+		{
+			Names.Add(MissingId.ToString());
+		}
+		Names.Sort();
+		UE_LOG(LogAbyss, Warning, TEXT("Zone %s: %d art placements skipped, no manifest asset for %d ids: %s"),
+			*AbyssText::ToFString(Snap.zone.mapId), UnresolvedArtCount, Names.Num(), *FString::Join(Names, TEXT(", ")));
+	}
 }
 
 FVector AAbyssZoneActor::GroundPoint(double TileX, double TileY) const
@@ -293,18 +310,24 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 	}
 
 	UAbyssAssetLibrary* Assets = AssetLibrary.Get();
+	FString TerrainMaterialName(TEXT("NONE"));
+	FString WaterMaterialName(TEXT("NONE"));
 	if (UMaterialInterface* Base = Assets != nullptr ? Assets->LoadMaterial(TEXT("M_AF_Terrain")) : nullptr)
 	{
 		TerrainMaterial = UMaterialInstanceDynamic::Create(Base, this);
+		TerrainMaterialName = Base->GetName();
 	}
 	if (UMaterialInterface* Base = Assets != nullptr ? Assets->LoadMaterial(TEXT("M_AF_Water")) : nullptr)
 	{
 		WaterMaterial = UMaterialInstanceDynamic::Create(Base, this);
+		WaterMaterialName = Base->GetName();
 	}
 	ApplyTerrainStyle(Data);
 
 	const TArray<FProcMeshTangent> NoTangents;
 	int32 Section = 0;
+	int32 GroundSections = 0;
+	int32 WaterSections = 0;
 	for (int32 ChunkY = 0; ChunkY < Terrain.GetNumChunksY(); ++ChunkY)
 	{
 		for (int32 ChunkX = 0; ChunkX < Terrain.GetNumChunksX(); ++ChunkX)
@@ -314,6 +337,16 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 			Terrain.BuildChunkMeshes(ChunkX, ChunkY, Ground, Water);
 			if (!Ground.IsEmpty())
 			{
+				if (GroundSections == 0 && Ground.Triangles.Num() >= 3)
+				{
+					// UE's front face is (P2 - P0) ^ (P1 - P0); M_AF_Terrain is one-sided, so a down-facing ground is
+					// back-face culled from the overhead camera and the world shows the black clear colour.
+					const FVector& P0 = Ground.Vertices[Ground.Triangles[0]];
+					const FVector FrontNormal = FVector::CrossProduct(Ground.Vertices[Ground.Triangles[2]] - P0,
+						Ground.Vertices[Ground.Triangles[1]] - P0);
+					UE_CLOG(FrontNormal.Z <= 0.0, LogAbyss, Error,
+						TEXT("Terrain triangles face down (front normal %s): the ground is back-face culled"), *FrontNormal.ToString());
+				}
 				TerrainMesh->CreateMeshSection_LinearColor(Section, Ground.Vertices, Ground.Triangles, Ground.Normals, Ground.UV0,
 					Ground.Colors, NoTangents, /*bCreateCollision*/ false);
 				if (TerrainMaterial != nullptr)
@@ -321,6 +354,7 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 					TerrainMesh->SetMaterial(Section, TerrainMaterial);
 				}
 				++Section;
+				++GroundSections;
 			}
 			if (!Water.IsEmpty())
 			{
@@ -331,9 +365,14 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 					TerrainMesh->SetMaterial(Section, WaterMaterial);
 				}
 				++Section;
+				++WaterSections;
 			}
 		}
 	}
+	// Without M_AF_Terrain / M_AF_Water (LoadMaterial warns) the sections draw with the engine default material.
+	UE_LOG(LogAbyss, Log, TEXT("Terrain %dx%d: %d ground + %d water sections, bounds %s, material %s, water %s, tile ids %s"),
+		Cols, Rows, GroundSections, WaterSections, *Terrain.GetWorldBounds().ToString(),
+		*TerrainMaterialName, *WaterMaterialName, TileTexture != nullptr ? TEXT("ok") : TEXT("FAILED"));
 }
 
 void AAbyssZoneActor::ApplyTerrainStyle(const abyss::DataStore& Data)
@@ -360,12 +399,15 @@ void AAbyssZoneActor::ApplyTerrainStyle(const abyss::DataStore& Data)
 	const abyss::JsonValue* Styles = Data.RawTable("terrain_styles.json");
 	if (Styles == nullptr)
 	{
+		UE_LOG(LogAbyss, Warning, TEXT("terrain_styles.json not loaded: M_AF_Terrain draws its default tile colours"));
 		return;
 	}
 	const abyss::JsonValue& ThemeStyle = Styles->Get("themes").Get(ThemeName);
 	const abyss::JsonValue& Ground = ThemeStyle.Get("ground");
+	int32 GroundStyles = 0;
 	for (const abyss::JsonMember& Member : Ground.Members())
 	{
+		++GroundStyles;
 		const FString Tile = ToF(Member.key);
 		const abyss::JsonValue& Style = Member.value;
 		const FLinearColor Base = JsonColor(Style.Get("base"), FLinearColor(0.2f, 0.35f, 0.1f));
@@ -417,6 +459,9 @@ void AAbyssZoneActor::ApplyTerrainStyle(const abyss::DataStore& Data)
 			}
 		}
 	}
+	UE_CLOG(GroundStyles == 0, LogAbyss, Warning, TEXT("terrain_styles.json has no ground styles for theme '%s': "
+		"M_AF_Terrain draws its default tile colours"), *ToF(ThemeName));
+	UE_CLOG(GroundStyles > 0, LogAbyss, Log, TEXT("Terrain style '%s': %d ground tile styles"), *ToF(ThemeName), GroundStyles);
 }
 
 // =====================================================================================================================
@@ -434,15 +479,22 @@ bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, cons
 {
 	const FAbyssArtAsset* Art = ResolveArt(GameIds, Hash);
 	UAbyssAssetLibrary* Assets = AssetLibrary.Get();
-	if (Art == nullptr || Assets == nullptr || Art->IsSkeletal())
+	if (Art == nullptr || Assets == nullptr)
 	{
+		++UnresolvedArtCount;
+		if (GameIds.Num() > 0)
+		{
+			MissingArtIds.Add(GameIds[0]);
+		}
 		return false;
 	}
-	UStaticMesh* Mesh = Assets->LoadStaticMesh(*Art);
+	UStaticMesh* Mesh = Art->IsSkeletal() ? nullptr : Assets->LoadStaticMesh(*Art);
 	if (Mesh == nullptr)
 	{
+		++UnloadedArtCount;   // LoadStaticMesh logs the missing path once
 		return false;
 	}
+	++PlacedArtCount;
 	const float FinalScale = FMath::Max(0.05f, Scale * Art->Scale);
 	const FTransform Transform(FRotator(0.f, YawDeg, 0.f), Location, FVector(FinalScale));
 	const FBox Bounds = Art->BoundsCm.IsValid ? Art->BoundsCm : Mesh->GetBoundingBox();

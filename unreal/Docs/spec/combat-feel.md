@@ -712,7 +712,9 @@ Others: pop from scale 0.35 (crit, rotated −8°) / 0.5 → peak 1.5 / 1.2 in 9
 1.1 / 1.0 in 160 / 110 ms (back-out); life `L = 1050` (crit) / `780`; x eases to `start+drift` over L (sine-out);
 y rises `40`/`28` px over 0.45L (quad-out), then sinks 8 px while fading to 0 over 0.55L (quad-in). Pooled objects.
 Kill rewards: `+N EXP` (`#b39ddb`, 13 px, at y−40, rise 35 px, 1500 ms) and `+NG` (`#ffd700`, 13 px, at (x+15, y−28), rise 30, 1200 ms).
-3D: screen-space widgets anchored to projected world points (head height), same timings; offsets in px are screen px.
+3D: screen-space widgets anchored to projected world points (head height), same timings; offsets, rises, drifts and
+stack rows in px are web world px × the camera scale (the web text lives under the 1.8 zone zoom; DECISIONS C13), font
+sizes are screen px.
 
 ---
 

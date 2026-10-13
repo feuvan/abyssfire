@@ -270,6 +270,9 @@ int32 SAbyssTouchButton::OnPaint(const FPaintArgs& Args, const FGeometry& Allott
 
 	// ---- icon / label ----
 	const bool bCaption = bCaptionBelowIcon && Icon != nullptr && !Label.IsEmpty();
+	// A label standing in for missing icon art moves to a small tag below the countdown while cooling, so the centred
+	// seconds never print between its glyphs (same rule as the desktop hotbar, DECISIONS U11).
+	const bool bLabelTag = !Label.IsEmpty() && Icon == nullptr && CooldownFraction > 0.0f && !CooldownText.IsEmpty();
 	if (Icon != nullptr)
 	{
 		const double IconSize = (bCaption ? 0.56 : 0.66) * FMath::Min(Size.X, Size.Y);
@@ -278,7 +281,7 @@ int32 SAbyssTouchButton::OnPaint(const FPaintArgs& Args, const FGeometry& Allott
 			Icon, ESlateDrawEffect::None, Tinted(FLinearColor::White));
 		++Layer;
 	}
-	if (!Label.IsEmpty() && (Icon == nullptr || bCaption))
+	if (!Label.IsEmpty() && (Icon == nullptr || bCaption) && !bLabelTag)
 	{
 		const float LabelPx = bCaption ? static_cast<float>(Size.Y * 0.22) : static_cast<float>(FMath::Clamp(Size.Y * 0.26, 9.0, 26.0));
 		const FVector2D LabelCenter = bCaption ? FVector2D(Center.X, Center.Y + Size.Y * 0.32) : Center;
@@ -311,6 +314,14 @@ int32 SAbyssTouchButton::OnPaint(const FPaintArgs& Args, const FGeometry& Allott
 			DrawLines(OutDrawElements, Layer, AllottedGeometry, CooldownText,
 				AbyssTouchStyle::Resized(BaseFont, static_cast<float>(FMath::Clamp(Size.Y * 0.36, 10.0, 30.0))), Center,
 				static_cast<float>(Size.X * 0.9), Tinted(FLinearColor::White));
+			++Layer;
+		}
+		if (bLabelTag)
+		{
+			// below the countdown digits and inside the arc's bottom (r - 3)
+			DrawLines(OutDrawElements, Layer, AllottedGeometry, Label,
+				AbyssTouchStyle::Resized(BaseFont, static_cast<float>(FMath::Clamp(Size.Y * 0.18, 8.0, 16.0))),
+				FVector2D(Center.X, Center.Y + Size.Y * 0.27), static_cast<float>(Size.X * 0.6), Tinted(LabelColor));
 			++Layer;
 		}
 	}

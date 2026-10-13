@@ -16,6 +16,7 @@
 #include "abyss/quests/Dialogue.h"
 #include "abyss/quests/QuestWorld.h"
 
+#include "Abyssfire.h"
 #include "Framework/AbyssGameInstance.h"
 #include "Input/Touch/SAbyssTouchControls.h"
 #include "UI/AbyssUiStyle.h"
@@ -176,6 +177,7 @@ void SAbyssUiRoot::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 				.Visibility(EVisibility::SelfHitTestInvisible)
 				+ SConstraintCanvas::Slot()
 				.Anchors(FAnchors(0.f, 0.f))
+				.Alignment(FVector2D(0.0, 0.0))  // the offset is the top-left (the slot default 0.5 centres on it)
 				.AutoSize(true)
 				.Offset(TAttribute<FMargin>::CreateSP(this, &SAbyssUiRoot::GetPopupOffset))
 				[
@@ -209,6 +211,7 @@ void SAbyssUiRoot::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 			.Visibility(EVisibility::Collapsed)
 			+ SConstraintCanvas::Slot()
 			.Anchors(FAnchors(0.f, 0.f))
+			.Alignment(FVector2D(0.0, 0.0))  // the offset is the top-left (the slot default 0.5 centres on it)
 			.AutoSize(true)
 			.Offset(TAttribute<FMargin>::CreateSP(this, &SAbyssUiRoot::GetTooltipOffset))
 			[
@@ -399,6 +402,15 @@ void SAbyssUiRoot::Tick(const FGeometry& AllottedGeometry, const double InCurren
 	// 7.0.4: open animation, scale 0.92 -> 1 and alpha 0 -> 1 over 150 ms (Back.easeOut).
 	for (FPanelEntry& Entry : Panels)
 	{
+		// Diagnostics: once per panel, after the open animation (no render transform left), where it was arranged.
+		if (!Entry.bAnimating && !Entry.bLayoutLogged && PanelLayer.IsValid() && Entry.Panel.IsValid())
+		{
+			const TWeakPtr<SAbyssPanelBase> WeakPanel = Entry.Panel;
+			const FVector2D Design = Entry.Panel->GetDesignSize();
+			Entry.bLayoutLogged = LogArrangedLayout(FString::Printf(TEXT("panel %d (design %.0fx%.0f, scale %.2f)"),
+					static_cast<int32>(Entry.Id), Design.X, Design.Y, GetPanelScale(WeakPanel)),
+				*PanelLayer, *Entry.Panel, GetPanelOffset(WeakPanel));
+		}
 		if (!Entry.bAnimating || !Entry.Animated.IsValid())
 		{
 			continue;
@@ -414,6 +426,29 @@ void SAbyssUiRoot::Tick(const FGeometry& AllottedGeometry, const double InCurren
 		const float Scale = 0.92f + 0.08f * AbyssEase::BackOut(T);
 		Entry.Animated->SetRenderTransform(TOptional<FSlateRenderTransform>(FSlateRenderTransform(Scale)));
 		Entry.Animated->SetRenderOpacity(T);
+	}
+
+	// Diagnostics: the first few tooltips / popups log where they were arranged. Two ticks after showing, so the
+	// geometry read is this content's (children are painted after this Tick), not the previously shown one's.
+	if (TooltipLogTicks >= 0 && TooltipCanvas.IsValid() && TooltipScaler.IsValid() && ++TooltipLogTicks >= 2)
+	{
+		const FVector2D CursorLocal(TooltipCanvas->GetTickSpaceGeometry().AbsoluteToLocal(TooltipAnchor));
+		if (LogArrangedLayout(FString::Printf(TEXT("tooltip (cursor %.0f,%.0f)"), CursorLocal.X, CursorLocal.Y),
+				*TooltipCanvas, *TooltipScaler, GetTooltipOffset()))
+		{
+			TooltipLogTicks = -1;
+			--OverlayLogsLeft;
+		}
+	}
+	if (PopupLogTicks >= 0 && PopupLayer.IsValid() && PopupScaler.IsValid() && ++PopupLogTicks >= 2)
+	{
+		const FVector2D AnchorLocal(PopupLayer->GetTickSpaceGeometry().AbsoluteToLocal(PopupAnchor));
+		if (LogArrangedLayout(FString::Printf(TEXT("popup (anchor %.0f,%.0f)"), AnchorLocal.X, AnchorLocal.Y),
+				*PopupLayer, *PopupScaler, GetPopupOffset()))
+		{
+			PopupLogTicks = -1;
+			--OverlayLogsLeft;
+		}
 	}
 
 	// Outside a session nothing calls SyncFrame: panels opened from the menu (settings) refresh here.
@@ -791,6 +826,8 @@ TSharedRef<SWidget> SAbyssUiRoot::MakePanelHolder(FPanelEntry& Entry)
 		.Visibility(EVisibility::SelfHitTestInvisible)
 		+ SConstraintCanvas::Slot()
 		.Anchors(FAnchors(0.f, 0.f))
+		// GetPanelOffset is the panel's top-left; the slot default alignment (0.5, 0.5) would centre the panel on it.
+		.Alignment(FVector2D(0.0, 0.0))
 		.AutoSize(true)
 		.Offset(TAttribute<FMargin>::CreateLambda([this, WeakPanel]() { return GetPanelOffset(WeakPanel); }))
 		[
@@ -1245,6 +1282,7 @@ void SAbyssUiRoot::ShowTooltip(const TSharedRef<SWidget>& Content, const FVector
 	TooltipAnchor = AbsoluteAnchor;
 	TooltipBox->SetContent(Content);
 	TooltipCanvas->SetVisibility(EVisibility::HitTestInvisible);
+	TooltipLogTicks = OverlayLogsLeft > 0 ? 0 : -1;
 }
 
 void SAbyssUiRoot::HideTooltip(const void* Owner)
@@ -1254,6 +1292,7 @@ void SAbyssUiRoot::HideTooltip(const void* Owner)
 		return;
 	}
 	TooltipOwner = nullptr;
+	TooltipLogTicks = -1;
 	if (TooltipBox.IsValid())
 	{
 		TooltipBox->SetContent(SNullWidget::NullWidget);
@@ -1297,6 +1336,7 @@ void SAbyssUiRoot::ShowPopup(const TSharedRef<SWidget>& Content, const FVector2D
 	PopupBox->SetContent(Content);
 	PopupLayer->SetVisibility(EVisibility::SelfHitTestInvisible);
 	bPopupOpen = true;
+	PopupLogTicks = OverlayLogsLeft > 0 ? 0 : -1;
 }
 
 void SAbyssUiRoot::ClosePopup()
@@ -1306,6 +1346,7 @@ void SAbyssUiRoot::ClosePopup()
 		return;
 	}
 	bPopupOpen = false;
+	PopupLogTicks = -1;
 	PopupBox->SetContent(SNullWidget::NullWidget);
 	PopupLayer->SetVisibility(EVisibility::Collapsed);
 }
@@ -1343,6 +1384,31 @@ FMargin SAbyssUiRoot::GetPopupOffset() const
 	X = FMath::Clamp(X, 4.0, FMath::Max(4.0, Layer.X - Size.X - 4.0));
 	Y = FMath::Clamp(Y, 4.0, FMath::Max(4.0, Layer.Y - Size.Y - 4.0));
 	return FMargin(static_cast<float>(X), static_cast<float>(Y), 0.f, 0.f);
+}
+
+bool SAbyssUiRoot::LogArrangedLayout(const FString& What, const SWidget& InLayer, const SWidget& InWidget, const FMargin& Offset) const
+{
+	const FGeometry& WidgetGeometry = InWidget.GetTickSpaceGeometry();
+	const FVector2D WidgetSize(WidgetGeometry.GetLocalSize());
+	if (WidgetSize.X < 1.0 || WidgetSize.Y < 1.0)
+	{
+		return false;  // not laid out yet
+	}
+	const FGeometry& LayerGeometry = InLayer.GetTickSpaceGeometry();
+	const FVector2D LayerSize(LayerGeometry.GetLocalSize());
+	const FVector2D TopLeft(LayerGeometry.AbsoluteToLocal(FVector2D(WidgetGeometry.GetAbsolutePosition())));
+	// Every canvas slot here is top-left aligned, so the arranged corner is the offset (first playtest: offset - size / 2).
+	if (FMath::Abs(TopLeft.X - Offset.Left) > 2.0 || FMath::Abs(TopLeft.Y - Offset.Top) > 2.0)
+	{
+		UE_LOG(LogAbyss, Warning, TEXT("UI %s: layer %.0fx%.0f offset (%.0f,%.0f) arranged top-left (%.0f,%.0f) size %.0fx%.0f - misplaced"),
+			*What, LayerSize.X, LayerSize.Y, Offset.Left, Offset.Top, TopLeft.X, TopLeft.Y, WidgetSize.X, WidgetSize.Y);
+	}
+	else
+	{
+		UE_LOG(LogAbyss, Log, TEXT("UI %s: layer %.0fx%.0f offset (%.0f,%.0f) arranged top-left (%.0f,%.0f) size %.0fx%.0f"),
+			*What, LayerSize.X, LayerSize.Y, Offset.Left, Offset.Top, TopLeft.X, TopLeft.Y, WidgetSize.X, WidgetSize.Y);
+	}
+	return true;
 }
 
 // =====================================================================================================================

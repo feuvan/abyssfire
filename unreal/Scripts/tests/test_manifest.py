@@ -253,6 +253,33 @@ class ExportedClipTests(unittest.TestCase):
         self.assertGreater(checked, 0)
 
 
+class RuntimeCopyTests(unittest.TestCase):
+    """Data/assets.json (the game's copy of the art manifest) must match the export the content build imports."""
+
+    def write(self, path: Path, data: object) -> Path:
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return path
+
+    def test_matching_or_absent_copy_is_fine(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            art = self.write(Path(tmp) / "manifest.json", {"schemaVersion": 1, "assets": {"SM_A": {}, "SM_B": {}}})
+            copy_path = self.write(Path(tmp) / "assets.json",
+                                   {"schemaVersion": 1, "manifest": json.loads(art.read_text(encoding="utf-8"))})
+            self.assertIsNone(manifest.runtime_copy_problem(art, copy_path))
+            self.assertIsNone(manifest.runtime_copy_problem(art, Path(tmp) / "missing.json"))
+
+    def test_stale_copy_is_a_warning_naming_the_exporter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            art = self.write(Path(tmp) / "manifest.json", {"schemaVersion": 1, "assets": {"SM_A": {}, "SM_B": {}}})
+            copy_path = self.write(Path(tmp) / "assets.json", {"manifest": {"schemaVersion": 1, "assets": {"SM_A": {}}}})
+            problem = manifest.runtime_copy_problem(art, copy_path)
+            self.assertIsNotNone(problem)
+            assert problem is not None
+            self.assertEqual(problem.level, "warning")
+            self.assertIn("(1 vs 2 assets)", problem.message)
+            self.assertIn("export-data/run.mjs", problem.message)
+
+
 class PngTests(unittest.TestCase):
     def test_roundtrip_and_determinism(self):
         rgba = bytes(range(256)) * 4  # 16 x 16 pixels
