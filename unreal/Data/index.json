@@ -29,9 +29,9 @@
     },
     {
       "file": "assets.json",
-      "counts": {"entries": 8},
-      "bytes": 894943,
-      "sha256": "bddac67dd106992bd5e0583122e56a95fbad4c09d774ef1a66a02ad143b392b7"
+      "counts": {"entries": 9},
+      "bytes": 1010206,
+      "sha256": "7f2be997a88fc51361459efe7b5359848a04d939b6f83f73a3c58bcc76a39b4f"
     },
     {
       "file": "audio_cues.json",

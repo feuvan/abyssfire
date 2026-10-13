@@ -637,7 +637,7 @@ def sparkle_poly(x: float, y: float, r: float, rot_deg: float = 0.0, n: int = 4,
 class Accent:
     """An overlay painted after the inked body (web ``over``) or before it (``under``) in icon pixels —
     computed from the framing (``at`` = world point) or given in icon units (``u``)."""
-    kind: str                       # 'sparkle' | 'glow' | 'glowline' (``at`` → ``to``)
+    kind: str                       # 'sparkle' | 'glow' | 'glowline' (``at`` → ``to``) | 'rays' (gem tier 5)
     at: Sequence[float] | None = None
     to: Sequence[float] | None = None
     u: tuple[float, float] | None = None
@@ -659,6 +659,15 @@ def _accent_layer(a: Accent, size: int, cam) -> np.ndarray:
     if a.kind == "sparkle":
         m = poly_mask(size, size, [sparkle_poly(x, y, r, a.rot)])
         return solid(m, hex01(a.hex), a.alpha)
+    if a.kind == "rays":            # web gem tier 5: 8 short strokes round the stone (r_u = inner radius)
+        polys = []
+        for i in range(8):
+            ang = 2 * math.pi * i / 8 + 0.2
+            c_, s_ = math.cos(ang), math.sin(ang)
+            r0, r1, w = r + 4 * (size / UNIT), r + 11 * (size / UNIT), 0.75 * (size / UNIT)
+            polys.append([(x + c_ * r0 - s_ * w, y + s_ * r0 + c_ * w), (x + c_ * r1 - s_ * w * .4, y + s_ * r1 + c_ * w * .4),
+                          (x + c_ * r1 + s_ * w * .4, y + s_ * r1 - c_ * w * .4), (x + c_ * r0 + s_ * w, y + s_ * r0 - c_ * w)])
+        return solid(poly_mask(size, size, polys), hex01(a.hex), a.alpha)
     if a.kind in ("glow", "glowline"):
         yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
         if a.kind == "glowline":
@@ -787,11 +796,11 @@ def render_icon(size: int = ICON_PX, style: IconStyle | None = None, accents: Se
         sh = _shift(inked[:, :, 3], -int(round(SHADOW_OFF_U[1] * s)), -int(round(SHADOW_OFF_U[0] * s)), 0.0)
         sh = blur(sh, SHADOW_BLUR_U * s / 2.0) * SHADOW_ALPHA
         layers = over(solid(sh, (0, 0, 0)), inked)
-    if glow_layer is not None:
-        layers = over(layers, glow_layer)
-    for ac in accents:
+    if glow_layer is not None:                      # under-glow: behind the inked body and its shadow
+        layers = over(glow_layer, layers)
+    for ac in accents:                              # over(dst, src) = src composited over dst
         lay = _accent_layer(ac, size, cam)
-        layers = over(lay, layers) if not ac.under else over(layers, lay)
+        layers = over(lay, layers) if ac.under else over(layers, lay)
     if post is not None:
         layers = post(layers, s)
     rgba = (np.clip(layers, 0, 1) * 255.0 + 0.5).astype(np.uint8)
@@ -982,9 +991,13 @@ class IconManifest(export.Manifest):
     MERGED = ("assets", "palettes", "gameIds", "ui")
 
 
+IMPORT_HINT = {"compression": "UserInterface2D", "group": "UI", "mips": True, "mipGen": "SimpleAverage",
+               "note": "drawn at 1/4-1/7 of the texture size (icons 36-48 px, glyphs 14-32 px): without mips Slate's "
+                       "bilinear minification aliases the 1-2 px line art"}
+
+
 def ui_entry(kind: str, rel_file: str, px: int, **extra) -> dict:
-    e = {"kind": kind, "file": rel_file, "px": px, "srgb": True, "alpha": "straight",
-         "import": {"compression": "UserInterface2D", "mips": False, "group": "UI"}}
+    e = {"kind": kind, "file": rel_file, "px": px, "srgb": True, "alpha": "straight", "import": IMPORT_HINT}
     e.update(extra)
     return e
 

@@ -206,10 +206,10 @@ def helm(kind: str) -> Model:
         parts.append((cap, "cap"))
         band = S.torus(.315, .055, center=(0, 0, .0), axis=(0, 0, 1), rz=.075, sides=10, segs=36)
         parts.append((band, "band"))
-        for k in range(10):
-            a = math.radians(-60 + k * 14)
-            x, y = .37 * math.sin(a), -.37 * math.cos(a)
-            parts.append((M.capsule((x, y, -.055), (x * 1.0, y * 1.0, .055), .009, sides=6), "seam"))
+        cs = S.Surface(cap)
+        for pts in (Wb([(30, 60), (36, 30), (58, 20)], 10), Wb([(50, 62), (56, 34)], 6)):
+            parts.append((drape_strip(cs, pts, .006, .006, step=.008), "seam"))
+        cs.free()
         parts.append((M.ellipsoid((.06, .06, .06), (.30, -.02, .30), sides=12, rings=7), "pom"))
         objs = [K.build_model("helm_cloth", P, regs, parts)]
         for o in objs:
@@ -346,11 +346,15 @@ def helm(kind: str) -> Model:
     if kind == "dragon":
         regs = dict(body=Region(DRAGON, .42, .40), scale=Region("#2E7A46", .35, .2), horn=soft("#E8D8A0", .4),
                     gold=metal(GOLD, .45), slit=dark("#10140C"), ruby=stone(RUBY, .35))
-        body = M.loft_z([(-.34, .25, .26, 0, 0), (-.20, .285, .29, 0, 0), (-.02, .30, .30, 0, 0), (.14, .28, .28, 0, .01),
-                         (.26, .22, .22, 0, .01), (.34, .13, .13, 0, .01), (.37, .05, .05, 0, .01),
-                         (.375, .01, .01, 0, .01)], sides=32)
+        body = M.loft_z([(-.30, .31, .31, 0, .01), (-.22, .29, .29, 0, 0), (-.05, .30, .30, 0, 0), (.12, .28, .28, 0, .01),
+                         (.24, .22, .22, 0, .01), (.31, .13, .13, 0, .01), (.34, .05, .05, 0, .01),
+                         (.345, .01, .01, 0, .01)], sides=32)
         parts.append((body, "body"))
         surf = S.Surface(body)
+        nasal = S.pillow(Wp([(44, 50), (52, 50), (51.5, 78), (48, 86), (44.5, 78)]), depth=.02, back=.006, wall=.012)
+        p0, _ = surf.at(0.0, -.15)
+        nasal.translate((0, (p0.y if p0 is not None else -.3) - .006, 0))
+        parts.append((nasal, "gold"))
         for r in range(4):
             for k in range(-4, 5):
                 x = k * .065 + (r % 2) * .032

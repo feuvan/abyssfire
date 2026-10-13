@@ -154,6 +154,9 @@ def build_pickup(asset: str, kind: str, extra=None):
         if tier >= 4:
             acc.append(K.Accent("sparkle", u=(48 - 0.85 * 30 * GEM_FILL[tier] / .8, 49 + 0.6 * 30 * GEM_FILL[tier] / .8),
                                 r_u=4.5, alpha=.85))
+        if tier >= 5:
+            acc.append(K.Accent("rays", u=(48, 49), r_u=GEM_FILL[tier] * 48 * .78,
+                                hex=GEM_COLOR.get(asset.split("_")[3].lower(), "#FFFFFF"), alpha=.75))
     return [o], acc, style, fitk
 
 
