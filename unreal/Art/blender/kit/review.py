@@ -874,6 +874,9 @@ class Review:
         self.gate = ink_gate(self.outline_class)
         self.ground_occludes = False   # opt-in: the stage occludes hull under the floor in the ink measurement
         self.extra_body_slots = False  # opt-in: material slots ≥ 2 (a dithered shell) are body in the coverage
+        # opt-in: callable(border) → bool mask of edge pixels the ink gate leaves out — an intentional no-hull light
+        # line at the silhouette (a bow string); OR-ed with the ground-contact mask
+        self.ink_ignore = None
         stage(blob_radius=blob_radius)
 
     def _save(self, name: str, img: np.ndarray) -> Path:
@@ -951,6 +954,10 @@ class Review:
                     pb = np.pad(buried, 1, constant_values=False)
                     buried = buried | pb[:-2, 1:-1] | pb[2:, 1:-1] | pb[1:-1, :-2] | pb[1:-1, 2:]
                 ignore = buried
+        if measure and self.ink_ignore is not None:
+            extra = self.ink_ignore(border)
+            if extra is not None:
+                ignore = extra if ignore is None else (ignore | extra)
         img = self.post(raw, cam, res, border, glow=glow, bloom_on=bloom_on)
         if measure:
             st = ink_stats(body, hull, img, min_px=self.gate["minPx"], dark_lum=self.gate["darkLum"],

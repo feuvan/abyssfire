@@ -256,6 +256,16 @@ def gather(at, n, color, r_px, life, *, sprite="Glow", size=(10, 16), delay=0, h
                lifeMs=[int(life * 0.8), life], sizeCm=list(size), alpha=[0.2, 1], color=color, delayMs=delay, **kw)
 
 
+def held(base: dict, a: float, P: int, pulse: float = 0.45) -> list:
+    """a sprite that STAYS (the web's yoyo tweens on a persistent circle): one particle per half period P living
+    2P with a triangle envelope (fadeIn .5) — two overlap, summing to a constant (1 − pulse)·α — plus one per
+    2P (triangle 0 → pulse·α → 0): (1 − pulse)·α ↔ α, period 2P (the loot beam's steady + pulse pair)."""
+    return [lay(**base, rate=round(1000.0 / P, 3), attach=True, lifeMs=2 * P, fadeIn=0.5, alphaPow=1,
+                alpha=[round((1 - pulse) * a, 3), 0]),
+            lay(**base, rate=round(1000.0 / (2 * P), 3), attach=True, lifeMs=2 * P, fadeIn=0.5, alphaPow=1,
+                alpha=[round(pulse * a, 3), 0])]
+
+
 def impact_star(at, kind, size_cm, color, *, life=140, delay=0, h="chest", rot=(0, 360), **kw):
     """Toon hit star (T_FX_Impact cell per hit profile): a white-hot core cell over the event colour."""
     return [
@@ -658,16 +668,24 @@ def utility() -> dict:
             lifeMs=900, fadeIn=0.3, alpha=[0.45, 0], spinDegS=-140, rotationDeg=[0, 360], color="mid"),
     ], note="optional R8 slow visual: a frost swirl at the feet")
     rec["status.bleed"] = R("blood", [
-        # fat dark-red drops (a dark body reads on grass and dirt; the light blood mid vanished) + spatters
-        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=5,
-            attach=True, spawnRadiusCm=18, spawnHeightJitterCm=24, gravityCmS2=520, sizeCm=[15, 20], aspect=0.67,
-            grow=1, lifeMs=[380, 520], alpha=[1, 0.7], color="rim"),
-        lay(sprite="Drop", orient="billboard", at="target", height="chest", rate=5, attach=True, spawnRadiusCm=18,
-            spawnHeightJitterCm=24, gravityCmS2=520, sizeCm=[8, 10], aspect=0.67, grow=1, lifeMs=[380, 520],
-            alpha=[0.5, 0], color="#FF8070"),
-        lay(emitter="decal", sprite="Puddle", at="target", rate=1.0, attach=True, spawnRadiusCm=16, sizeCm=[32, 42],
-            grow=1.3, lifeMs=1400, alpha=[0.85, 0], color="rim"),
-    ], note="optional R8 bleed visual: blood drips + spatters at the feet; StatusTint #C8323C α .22")
+        # a held open wound on the body (a dark crimson cut + a wet glint, camera-ward), fat dark-red drops running
+        # off it and spatters spreading round the feet past the silhouette (the web has no bleed visual; the first
+        # pass — small drops at the chest — vanished into the body)
+        *held(dict(sprite="Slash", variant=SLASH["rogue"], orient="billboard", blend="translucent", at="target",
+                   height="chest", offsetCm=[0, 4, 4], sizeCm=44, aspect=0.5, rotationDeg=-35, grow=1.0,
+                   color="#7A0614"), 0.95, 450, pulse=0.25),
+        *held(dict(sprite="Slash", variant=SLASH["rogue"], orient="billboard", at="target", height="chest",
+                   offsetCm=[0, 4, 5], sizeCm=36, aspect=0.5, rotationDeg=-35, grow=1.0, color="#FF5A5A",
+                   intensity=1.1), 0.45, 450),
+        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=8,
+            attach=True, offsetCm=[0, 4, -4], spawnRadiusCm=14, spawnHeightJitterCm=20, gravityCmS2=480,
+            sizeCm=[18, 24], aspect=0.67, grow=1, lifeMs=[420, 560], alpha=[1, 0.7], color="rim"),
+        lay(sprite="Drop", orient="billboard", at="target", height="chest", rate=8, attach=True, offsetCm=[0, 4, -4],
+            spawnRadiusCm=14, spawnHeightJitterCm=20, gravityCmS2=480, sizeCm=[8, 11], aspect=0.67, grow=1,
+            lifeMs=[420, 560], alpha=[0.55, 0], color="#FF8070"),
+        lay(emitter="decal", sprite="Puddle", at="target", rate=1.6, attach=True, spawnRadiusCm=30, sizeCm=[36, 50],
+            grow=1.3, lifeMs=1600, alpha=[0.9, 0], color="rim"),
+    ], note="optional R8 bleed visual: a held wound, blood drips + spatters round the feet; StatusTint #C8323C α .22")
     return rec
 
 
@@ -780,20 +798,23 @@ def world() -> dict:
     ])
     # camera-attached ambient volumes (WeatherSystem.ts:15-30; emerald_plains = pollen + dust). The volume is a 10 m
     # disc round the camera focus (about half of it on screen at the W1 distance), rates scaled so the screen holds
-    # the web's count (pollen ≈ 26 motes, dust ≈ 11). Over the bright plains an additive pale mote vanishes, so
-    # pollen and dust are translucent soft dots (the web's α .35 / .15 read on its darker ground); spawn heights stay
-    # above the ground (10–210 cm).
+    # the web's count (pollen ≈ 26 motes, dust ≈ 11). Over the bright plains an additive pale mote vanishes and a soft
+    # Glow dot at α ≤ .6 fading linearly over 8–14 s was invisible at 1:1, so pollen / dust / dust motes are crisp
+    # translucent specks (the Core sprite's disc, 5–8 cm) that hold their alpha for most of the life (alphaPow 2.5);
+    # spawn heights stay above the ground (10–210 cm).
     for amb, kw in (
-        ("pollen", dict(rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11], lifeMs=[8000, 14000],
-                        sizeCm=[6, 9], grow=1.6, alpha=[0.62, 0], blend="translucent", color="#FFF0B0")),
-        ("dust", dict(rate=2.4, spawnHeightJitterCm=120, height=70, speedCmS=[4, 18], dir="up", coneDeg=140,
-                      lifeMs=[6000, 12000], sizeCm=[8, 12], grow=1.9, alpha=[0.34, 0], blend="translucent",
-                      color="#D6EEC0")),
+        ("pollen", dict(sprite="Core", rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11],
+                        lifeMs=[8000, 14000], sizeCm=[14, 19], grow=1.25, alpha=[0.9, 0], alphaPow=2.5,
+                        blend="translucent", color="#FFF2A0")),
+        ("dust", dict(sprite="Core", rate=2.4, spawnHeightJitterCm=120, height=70, speedCmS=[4, 18], dir="up",
+                      coneDeg=140, lifeMs=[6000, 12000], sizeCm=[14, 20], grow=1.4, alpha=[0.55, 0], alphaPow=2.5,
+                      blend="translucent", color="#E4F2CC")),
         ("wisps", dict(rate=2.2, spawnHeightJitterCm=200, height=110, speedCmS=[8, 20], gravityCmS2=-4,
                        lifeMs=[5000, 9000], sizeCm=[8, 14], grow=1.3, alpha=[0.5, 0], color="#9ACBFF",
                        intensity=1.3)),
-        ("dust_motes", dict(rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11], lifeMs=[8000, 14000],
-                            sizeCm=[6, 9], grow=1.6, alpha=[0.45, 0], blend="translucent", color="#E8F0F8")),
+        ("dust_motes", dict(sprite="Core", rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11],
+                            lifeMs=[8000, 14000], sizeCm=[14, 19], grow=1.25, alpha=[0.75, 0], alphaPow=2.5,
+                            blend="translucent", color="#EEF4FA")),
         ("sparks", dict(sprite="Ember", rate=5, spawnHeightJitterCm=180, height=100, speedCmS=[10, 30], dir="up",
                         coneDeg=90, gravityCmS2=-20, lifeMs=[3000, 6000], sizeCm=[5, 9], alpha=[0.7, 0],
                         color="#FF6A3A", intensity=1.5)),
@@ -807,15 +828,18 @@ def world() -> dict:
     # (12 cm to the smith's left, 52 forward; SK_NPC_Blacksmith scenery), its `strike` socket at (0, -3.19, 54.63)
     # → forward 48.8, right -12, up 54.6 (+3 cm over the hot bar)
     strike = [48.8, -12.0, 57.6]
-    lift = [48.8, -12.0, 66.0]          # the glow's centre over the hammer head (which sits on the strike point)
+    # the flash sits over the hammer head (head centre ≈ strike + 4 cm, top ≈ +12 cm): centred lower, the hammer and
+    # tongs hid it and the strike read as a few specks
+    lift = [48.8, -12.0, 76.0]
     rec["npc.FX_HammerStrike"] = R("fire", [
-        lay(emitter="glow", at="origin", height="ground", offsetCm=lift, sizeCm=44, grow=1.2, lifeMs=160,
-            alpha=[0.85, 0], fadeIn=0.0, alphaPow=1.4, color="#FFA040", intensity=1.5),
-        lay(emitter="flash", at="origin", height="ground", offsetCm=lift, sizeCm=12, grow=1.8, lifeMs=110,
-            alpha=[0.9, 0], color="#FFD070"),
+        lay(emitter="glow", at="origin", height="ground", offsetCm=lift, sizeCm=66, grow=1.2, lifeMs=180,
+            alpha=[0.9, 0], fadeIn=0.0, alphaPow=1.4, color="#FFA040", intensity=1.5),
+        *impact_star("origin", "normal", 40, "#FFD070", life=100, h="ground", offsetCm=lift),
+        lay(emitter="flash", at="origin", height="ground", offsetCm=lift, sizeCm=18, grow=1.8, lifeMs=110,
+            alpha=[0.95, 0], color="#FFE6A0"),
         # 6 spark dots (web r 1.2 u ≈ 4 cm) in an upward fan (−90° ± 65°), 10–22 cm out (NpcKit.ts:343-352)
-        lay(emitter="motes", sprite="Ember", at="origin", height="ground", offsetCm=strike, count=6, dir="up",
-            coneDeg=130, speedCmS=[150, 280], gravityCmS2=420, drag=3, lifeMs=[160, 260], sizeCm=[7, 10],
+        lay(emitter="motes", sprite="Ember", at="origin", height="ground", offsetCm=strike, count=7, dir="up",
+            coneDeg=130, speedCmS=[170, 300], gravityCmS2=420, drag=3, lifeMs=[180, 280], sizeCm=[8, 12],
             spinDegS=0, alpha=[1, 0], alphaPow=1.5, color="#FFD070", altEvery=3, altColor="white",
             intensity=1.6),
         lay(emitter="sparks", at="origin", height="ground", offsetCm=strike, count=4, dir="up", coneDeg=110,
@@ -850,17 +874,18 @@ def world() -> dict:
         ]
     for affix, col, rim, extra in (
         # a fire orb at mid-body rising 8 px (800 ms): a solid orange ball with a hot core + a cel flame tongue
+        # the web's fire orb (r 6 px ≈ 27 cm, alpha .4 ↔ .1 yoyo 800 ms) STAYS over the elite: a held crisp 28 cm
+        # ball (the Core sprite's disc, translucent in the affix red-orange) + a hot additive core + halo (`held`),
+        # a cel flame tongue licking up from it (a soft Puff read as a faint glow, not an orb)
         ("fire_enhanced", "#FF4400", "#FF7A3A", [
-            lay(sprite="Puff", orient="billboard", blend="translucent", at="target", height="chest", rate=1.25,
-                attach=True, offsetCm=[0, 26, 6], sizeCm=30, grow=1.1, upCmS=22, dir="up", coneDeg=0, lifeMs=800,
-                fadeIn=0.12, alpha=[0.95, 0], alphaPow=2.5, color="#FF5A14"),
-            flames("target", 0, FLAME["fire"], radius_px=0, rise=(10, 10), life=(780, 820), size=(0.27, 0.3),
-                   rate=1.25, attach=True, h="chest", offsetCm=[0, 26, 14], alphaPow=2.5, grow=0.85),
-            lay(emitter="flash", at="target", height="chest", rate=1.25, attach=True, offsetCm=[0, 26, 6],
-                sizeCm=14, grow=1.1, upCmS=22, dir="up", coneDeg=0, lifeMs=800, alpha=[0.9, 0], alphaPow=2,
-                color="#FFE0A0"),
-            lay(emitter="glow", at="target", height="chest", rate=1.25, attach=True, offsetCm=[0, 26, 6],
-                sizeCm=52, grow=1.2, upCmS=22, dir="up", coneDeg=0, lifeMs=800, alpha=[0.5, 0], color="#FF4400"),
+            *held(dict(sprite="Core", orient="billboard", blend="translucent", at="target", height="chest",
+                       offsetCm=[0, 28, 12], sizeCm=76, grow=1.0, color="#E8400E"), 0.95, 400, pulse=0.25),
+            *held(dict(sprite="Glow", orient="billboard", at="target", height="chest", offsetCm=[0, 28, 12],
+                       sizeCm=84, grow=1.0, color="#FF4400", intensity=1.2), 0.45, 400),
+            *held(dict(sprite="Core", orient="billboard", at="target", height="chest", offsetCm=[0, 28, 13],
+                       sizeCm=40, grow=1.0, color="#FFC060", intensity=1.3), 0.85, 400, pulse=0.3),
+            flames("target", 0, FLAME["fire"], radius_px=0, rise=(10, 10), life=(560, 640), size=(0.34, 0.38),
+                   rate=2.5, attach=True, h="chest", offsetCm=[0, 28, 22], alphaPow=1.6, grow=0.8),
         ]),
         ("swift", "#44FF88", "#8AFFB4", [
             lay(emitter="streak", blend="translucent", at="target", height="chest", rate=1.7, attach=True,
@@ -887,16 +912,20 @@ def world() -> dict:
                 onRing=True, dir="out", speedCmS=[6, 14], gravityCmS2=-12, sizeCm=[34, 46], grow=1.4,
                 lifeMs=[1300, 1700], alpha=[0.32, 0], fadeIn=0.3, color="#5A2A78"),
         ]),
-        # a blood orb dripping (1000 ms): a dark-red ball beside the chest + fat drops falling from it
+        # a blood orb dripping (web r 5 px, alpha .4 ↔ .15 yoyo 1000 ms): a held cel blood bead (the inked Drop
+        # sprite, 36 cm; a flat dark-red disc turned brown on dirt) beside the chest with a wet highlight, fat drops
+        # falling from it to the ground
         ("vampiric", "#CC0000", "#FF5050", [
-            lay(sprite="Puff", orient="billboard", blend="translucent", at="target", height="chest", rate=1,
-                attach=True, offsetCm=[0, 26, 10], sizeCm=26, grow=1.0, lifeMs=1000, fadeIn=0.15,
-                alpha=[0.95, 0], alphaPow=3, color="#A00012"),
-            lay(emitter="flash", at="target", height="chest", rate=1, attach=True, offsetCm=[-3, 23, 15],
-                sizeCm=8, grow=1, lifeMs=1000, alpha=[0.7, 0], alphaPow=3, color="#FFB0A0"),
-            lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=2.4,
-                attach=True, offsetCm=[0, 26, 0], spawnRadiusCm=6, gravityCmS2=320, sizeCm=[13, 17], aspect=0.67,
-                grow=1, lifeMs=[650, 850], alpha=[1, 0], alphaPow=3, color="#B00010"),
+            *held(dict(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest",
+                       offsetCm=[0, 28, 12], sizeCm=36, aspect=0.67, grow=1.0, color="#E8182A"), 1.0, 500,
+                  pulse=0.15),
+            *held(dict(sprite="Glow", orient="billboard", at="target", height="chest", offsetCm=[0, 28, 12],
+                       sizeCm=64, grow=1.0, color="#CC0000", intensity=1.0), 0.14, 500),
+            *held(dict(sprite="Core", orient="billboard", at="target", height="chest", offsetCm=[-6, 23, 9],
+                       sizeCm=11, grow=1.0, color="#FF9A8A", intensity=1.0), 0.7, 500, pulse=0.2),
+            lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=2.6,
+                attach=True, offsetCm=[0, 28, 2], spawnRadiusCm=5, gravityCmS2=360, sizeCm=[16, 21], aspect=0.67,
+                grow=1, lifeMs=[620, 780], alpha=[1, 0.35], alphaPow=1, fadeIn=0.08, color="#A00012"),
         ]),
         ("frozen", "#4488FF", "#9CC8FF", glints("#3A78F0", "#CFE4FF", 1.1, 40, 900, 24)),
     ):
@@ -1156,10 +1185,12 @@ def projectiles() -> dict:
     rec["ground.chain_trap.trigger"] = R("holy", [
         flash("origin", 30, "core", h=30),
         # five chains lashing out at fixed 72° yaws (one count-1 layer each: random `dir: out` angles cluster),
-        # links along UE +Y from the pivot, growing out to the trap radius (unit radius)
-        *[lay(mesh="SM_FX_Chain", sprite="Chain", orient="ground", blend="translucent", at="origin", height=30,
-              count=1, unit="radius", rotationDeg=18 + 72 * k, delayMs=14 * k,
-              sizeCm=round(MESH_DIAMETER["SM_FX_Chain"] / 58.0 * 0.12, 3), grow=8.0, sizePow=2, lifeMs=700,
+        # links along UE +Y from the pivot, growing out to 0.76 of the trap radius (unit radius), lying 14 cm over the
+        # ground; yaws 81 + 72k flank the view axis (a chain heading straight away from the W1 camera seemed to rise
+        # through the rogue) and the links are a quarter smaller (T3 review: oversized)
+        *[lay(mesh="SM_FX_Chain", sprite="Chain", orient="ground", blend="translucent", at="origin", height=14,
+              count=1, unit="radius", rotationDeg=-9 + 72 * k, delayMs=14 * k,
+              sizeCm=round(MESH_DIAMETER["SM_FX_Chain"] / 58.0 * 0.095, 3), grow=8.0, sizePow=2, lifeMs=700,
               alpha=[1, 0], alphaPow=6, color="#C9D3E0") for k in range(5)],
         lay(emitter="bolt", at="origin", beamTo="point", height=30, beamToHeight=30, count=3, sizeCm=50,
             color="#FFE27A", delayMs=120),
@@ -1205,10 +1236,12 @@ def warrior() -> dict:
         glint("target", 26, life=180, delay=40),
     ])
     rec["skill.whirlwind"] = R("steel", [
-        ribbon("SM_FX_WhirlBand", "origin", 155, 300, "mid", rot=(0, 360), spin=1500, align=False, alpha_pow=5,
+        # mesh dissolves are a 4×4 screen-door that only TAA resolves: alphaPow 10 keeps the half-dithered window to
+        # the last ~2 frames (VFX review 16; integration.meshDissolve)
+        ribbon("SM_FX_WhirlBand", "origin", 155, 300, "mid", rot=(0, 360), spin=1500, align=False, alpha_pow=10,
                intensity=1.2, grow=1.0, unit=None),
         ribbon(arc_w + "_Back", "origin", 121, 220, "#F4AC28", rot=(0, 360), spin=-900, align=False, delay=30,
-               grow=1.0),
+               grow=1.0, alpha_pow=10),
         decal("origin", "Swirl", 160, 420, "rim", alpha=0.55, blend="additive", spin=-10.0, pow=1.6, h=3),
         lay(emitter="streak", at="origin", height="chest", count=10, dir="tangent", speedCmS=400,
             spawnRadiusCm=110, lifeMs=200, sizeCm=26, color="white", alpha=[0.9, 0]),
@@ -1370,10 +1403,12 @@ def warrior() -> dict:
         motes("origin", 8, "core", sprite="Spark", rise=40, size=(7, 11)),
     ])
     rec["skill.rampage"] = R("blood", [
-        ribbon("SM_FX_WhirlBand", "origin", 160, 340, "mid", rot=(0, 360), spin=1300, align=False, grow=1.0),
+        ribbon("SM_FX_WhirlBand", "origin", 160, 340, "mid", rot=(0, 360), spin=1300, align=False, grow=1.0,
+               alpha_pow=10),
         ribbon("SM_FX_WhirlBand", "origin", 120, 320, "rim", rot=(0, 360), spin=1500, align=False, delay=60,
-               grow=1.0),
-        ribbon(arc_w, "origin", 190, 280, "#FF5A2A", rot=(0, 360), spin=1100, align=False, delay=120, grow=1.0),
+               grow=1.0, alpha_pow=10),
+        ribbon(arc_w, "origin", 190, 280, "#FF5A2A", rot=(0, 360), spin=1100, align=False, delay=120, grow=1.0,
+               alpha_pow=10),
         decal("origin", "Crack", 160, 1400, "#3A2A1E", alpha=0.75),
         decal("origin", "CrackGlow", 160, 600, "#FF5A2A", alpha=0.85, blend="additive", pow=1.5),
         shock("origin", 40, 280, 460, "mid"),
@@ -1420,7 +1455,7 @@ def mage() -> dict:
         decal("origin", "Frost", px(30), 900, "mid", alpha=0.6, blend="additive"),
         lay(mesh="SM_FX_FrostNova", sprite="ShardFrost", orient="ground", blend="translucent", at="origin",
             height=0, sizeCm=mesh_size("SM_FX_FrostNova", 0.5), grow=2.0, sizePow=6, lifeMs=520, alpha=[1, 0],
-            alphaPow=6, rotationDeg=[0, 360], color="#CFF6FF", intensity=1.15),
+            alphaPow=12, rotationDeg=[0, 360], color="#CFF6FF", intensity=1.15),
         flash("origin", 26, "mid", delay=60),
         ring("origin", px(10), px(42), 420, "rim"),
         glint("origin", 30, delay=60),
@@ -1429,7 +1464,7 @@ def mage() -> dict:
             height=25, delayMs=430, count=9, spawnRadiusCm=50, onRing=True, dir="out", coneDeg=40,
             speedCmS=[120, 220], upCmS=[60, 140], gravityCmS2=600, lifeMs=[260, 380],
             sizeCm=[mesh_size("SM_FX_IceShard", 0.4), mesh_size("SM_FX_IceShard", 0.6)], grow=1, alpha=[1, 0],
-            alphaPow=7, color="#DDF8FF"),
+            alphaPow=12, color="#DDF8FF"),
     ])
     rec["skill.chain_lightning"] = R("lightning", [
         flash("origin", 20, "mid", h="hand"),
@@ -1450,7 +1485,7 @@ def mage() -> dict:
         # the inked toon shell (rim ring + highlight arc + glint, built facing the W1 camera at rotation 0)
         lay(mesh="SM_FX_Bubble", sprite="Bubble", orient="billboard", blend="translucent", at="origin",
             height="chest", delayMs=120, sizeCm=mesh_size("SM_FX_Bubble", 0.35), grow=round(1 / 0.35, 3),
-            sizePow=6, lifeMs=760, alpha=[1, 0], alphaPow=7, color="#A07CFF", intensity=1.9),
+            sizePow=6, lifeMs=760, alpha=[1, 0], alphaPow=12, color="#A07CFF", intensity=1.9),
         lay(sprite="Bubble", orient="billboard", at="origin", height="chest", delayMs=120, sizeCm=52, grow=2.88,
             sizePow=6, lifeMs=760, alpha=[0.9, 0], alphaPow=2.5, flicker=0.15, color="#9A7CFF", intensity=1.25),
         lay(sprite="Bubble", orient="billboard", at="origin", height="chest", delayMs=120, sizeCm=75, grow=1.7,
@@ -1975,11 +2010,13 @@ def build() -> dict:
                          "(UAbyssWorldBuilder::RemoveEntity, PickedUp / Collected of a Chest-style prop).",
             "meshDissolve": "FX mesh layers fade by a 4x4 Bayer screen-door (M_AF_FX_Mesh opacity mask) that TAA / TSR "
                             "resolves; without TAA (mobile low) it shows as checker noise on the late dissolves "
-                            "(ice armor shatter, mana shield, whirlwind / rampage bands). On tiers without TAA use a "
-                            "plain alpha-test at 0.5 (the mesh pops out at mid-fade) instead of the dither.",
+                            "(ice armor shatter, mana shield, whirlwind / rampage bands). Those layers now dissolve at "
+                            "alphaPow 10-12 (the half-dithered window is the last ~2 frames); on tiers without TAA use "
+                            "a plain alpha-test at 0.5 (the mesh pops out at mid-fade) instead of the dither.",
             "launchSocket": "Projectiles and `hand` layers resolve fx_hand_r. The mage holds the staff there: at Cast01's "
-                            "release the staff crystal is 73 cm further along the cast; resolve `hand` to the main "
-                            "weapon's `crystal` socket when it has one to launch from the crystal (spec 8.1).",
+                            "release the staff crystal is 73 cm further along the cast. Spec 8.1 launches from the "
+                            "crystal: AAbyssCharacterActor::GetAnchorLocation(HandR) returns the main-hand mesh's "
+                            "`crystal` socket when it has one (the previews draw it so).",
             "impactShake": "meteor / fireball shakes belong to the impact (combat-feel 11.5); recipe shakes start "
                            "with the recipe, so the impact recipes (proj.fireball.hit) carry them.",
         },

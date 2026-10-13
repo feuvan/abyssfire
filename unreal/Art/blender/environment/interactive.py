@@ -625,11 +625,16 @@ def portal_frame(b: M.Builder, rnd: random.Random, name: str):
 
 def vortex(b: M.Builder, sealed: bool):
     """The standing oval vortex disc filling the opening (two-sided): deep rim → mid → core, with four swirl
-    strokes (web ExitPortal swirl arcs); sealed = a dormant crimson seal with a cracked ward glyph."""
+    strokes (web ExitPortal swirl arcs); sealed = a dormant crimson seal carrying a runic ward (rings, a band of runes, a
+    triangle-and-eye sigil)."""
     cz = 1.25
     rx, rz = ARCH_W - 0.04, 1.2
+    # the open vortex keeps a deep teal body (web rgba(16,48,74,.95) rim → #1A6A8A) with a small mint / white eye
+    # (VFX review 14: a 0.55 mint disc + 0.22 white core bloomed the whole centre to white); the swirl strokes carry
+    # the brightness
     layers = ((1.0, "sealed_deep" if sealed else "vortex_deep"), (0.86, "sealed" if sealed else "vortex_mid"),
-              (0.55, "sealed" if sealed else "vortex"), (0.22, "sealed" if sealed else "vortex_core"))
+              (0.55 if sealed else 0.4, "sealed" if sealed else "vortex"),
+              (0.22 if sealed else 0.13, "sealed" if sealed else "vortex_core"))
     for k, (f, reg) in enumerate(layers):
         disc = M.cylinder(1.0, 1.0, -0.012 - 0.004 * k, 0.012 + 0.004 * k, sides=28)
         disc.scale((rx * f, rz * f * (1.0 if f > 0.3 else 1.4), 1.0))
@@ -655,16 +660,50 @@ def vortex(b: M.Builder, sealed: bool):
                                                                      (k / 12 for k in range(13))], lift=0.0,
                                thick=0.004), "swirl" if i % 2 else "swirl_b", name="swirl", outline=False)
     else:
+        # a runic ward seal (VFX review 14: the ring + one diagonal read as a 'no entry' road sign): two rings with a
+        # band of eight angular runes between them and a triangle-and-eye sigil in the centre
+        def at(a: float, rr: float, t: float, r: float, side: int, y: float) -> Vector:
+            """(t tangential, r radial) metres round the point at angle ``a`` on the oval of relative radius rr"""
+            u = Vector((math.cos(a), 0, math.sin(a)))
+            v = Vector((-math.sin(a), 0, math.cos(a)))
+            c = Vector((math.cos(a) * rx * rr, side * y, cz + math.sin(a) * rz * rr))
+            return c + u * r + v * t
+
+        runes = (  # polylines in (t, r) units of the band half-height (0.075 m)
+            [[(0, -1), (0, 1)], [(-0.7, 1), (0, 0.15), (0.7, 1)]],              # algiz
+            [[(0, -1), (0, 1)], [(0, 0.7), (0.65, 0.2), (0, -0.25)]],           # thurisaz
+            [[(0.55, 1), (-0.45, 0), (0.55, -1)]],                               # kaunan
+            [[(0, -1), (0, 1)], [(-0.65, 0.35), (0, 1), (0.65, 0.35)]],          # tiwaz
+            [[(-0.55, 1), (0.45, 0.2), (-0.45, -0.2), (0.55, -1)]],              # sowilo
+            [[(-0.5, -1), (-0.5, 1)], [(0.5, -1), (0.5, 1)], [(-0.5, 0.45), (0.5, -0.15)]],  # hagalaz
+            [[(0, -1), (0, 1)], [(0, 1), (0.6, 0.45), (0, -0.05)], [(0, -0.05), (0.6, -1)]],  # raido
+            [[(-0.6, -1), (0, 1), (0.6, -1)]],                                   # inverted v (ingwaz half)
+        )
         for side in (-1, 1):
-            ring = [Vector((math.cos(a) * rx * 0.62, side * 0.032, cz + math.sin(a) * rz * 0.62)) for a in
-                    (math.tau * i / 24 for i in range(25))]
-            b.add(E.ribbon(ring, [Vector((0, side, 0))] * len(ring), 0.035, lift=0.0, thick=0.004), "sealed_glyph",
-                  name="ward", outline=False)
-            for a in (math.radians(60), math.radians(240)):
-                p0 = Vector((math.cos(a) * rx * 0.62, side * 0.034, cz + math.sin(a) * rz * 0.62))
-                p1 = Vector((math.cos(a + math.pi) * rx * 0.62, side * 0.034, cz + math.sin(a + math.pi) * rz * 0.62))
-                b.add(E.ribbon([p0, (p0 + p1) / 2, p1], [Vector((0, side, 0))] * 3, 0.03, lift=0.0, thick=0.004),
-                      "sealed_glyph", name="ward_x", outline=False)
+            nrm = [Vector((0, side, 0))]
+            for rr, w in ((0.66, 0.034), (0.47, 0.026)):
+                ring = [Vector((math.cos(a) * rx * rr, side * 0.032, cz + math.sin(a) * rz * rr)) for a in
+                        (math.tau * i / 28 for i in range(29))]
+                b.add(E.ribbon(ring, nrm * len(ring), w, lift=0.0, thick=0.004), "sealed_glyph", name="ward",
+                      outline=False)
+            for k, rune in enumerate(runes):
+                a = math.tau * (k + 0.5) / len(runes) + math.pi / 2
+                for line in rune:
+                    pts = [at(a, 0.565, t * 0.075, r * 0.075, side, 0.034) for t, r in line]
+                    if len(pts) == 2:
+                        pts.insert(1, (pts[0] + pts[1]) / 2)
+                    b.add(E.ribbon(pts, nrm * len(pts), 0.022, lift=0.0, thick=0.004), "sealed_glyph",
+                          name="ward_rune", outline=False)
+            # centre sigil: an upward triangle round a small eye (ring + pupil)
+            tri = [at(math.pi / 2 + math.tau * i / 3, 0.30, 0, 0, side, 0.034) for i in range(4)]
+            b.add(E.ribbon(tri, nrm * len(tri), 0.026, lift=0.0, thick=0.004), "sealed_glyph", name="ward_sigil",
+                  outline=False)
+            eye = [Vector((math.cos(a) * 0.1, side * 0.034, cz + math.sin(a) * 0.065)) for a in
+                   (math.tau * i / 16 for i in range(17))]
+            b.add(E.ribbon(eye, nrm * len(eye), 0.02, lift=0.0, thick=0.004), "sealed_glyph", name="ward_sigil",
+                  outline=False)
+            b.add(M.cylinder(0.028, 0.028, 0.0, 0.006, sides=8).transform(_rx(90))
+                  .translate((0, side * 0.036, cz)), "sealed_glyph", name="ward_sigil", outline=False)
 
 
 def rune_stones(b: M.Builder, rnd: random.Random, glow_region: str):

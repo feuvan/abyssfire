@@ -13,8 +13,8 @@ Port of ``UAbyssVfxSystem`` (Source/Abyssfire/Private/Vfx/AbyssVfxSystem.cpp + A
 the same layer defaults, emission (bursts, rates, delays, point stagger), spawn (anchors, spawn disc, cone
 directions incl. the blow direction's random climb), motion (drag, gravity, orbit), size / alpha curves, colours
 (palettes, event colours, alternates, intensity) and the per-orientation quad / mesh transforms. Actor anchors are
-the shipped sockets of the posed rig (``fx_chest`` / ``fx_head`` / ``fx_overhead`` / ``fx_hand_r``, as
-``AAbyssCharacterActor::GetAnchorLocation``), re-evaluated every 60 Hz tick while the cast clip plays. Rendering:
+the shipped sockets of the posed rig (``fx_chest`` / ``fx_head`` / ``fx_overhead`` / ``fx_hand_r`` — the mage's
+staff ``crystal`` for ``hand``, spec 8.1 — as ``AAbyssCharacterActor::GetAnchorLocation``), re-evaluated every 60 Hz tick while the cast clip plays. Rendering:
 
 * Blender (Cycles, emission-only toon look) renders the static scene — the composited plains terrain, the hero in
   the clip time of the event (beat + t), goblins, props (the chest in its Open clip), the blacksmith in Work_Hammer
@@ -841,8 +841,10 @@ WORLD_PROPS = {
     "camp.campfire": ("SM_Prop_Camp_Campfire", "Props", "Props_Plains", 1.4, 0.0),
     "camp.torch": ("SM_Prop_Camp_Torch", "Props", "Props_Plains", 1.4, 0.0),
     "camp.hearthstone": ("SM_Prop_Camp_Hearthstone", "Props", "Props_Plains", 1.4, -30.0),
-    "exit.portal": ("SM_Prop_ExitPortal", "Props", "Props_Plains", 2.0, 45.0),
-    "exit.sealed": ("SM_Prop_ExitGate_Sealed", "Props", "Props_Plains", 2.0, 45.0),
+    # the gates face into the map (mesh −Y): Blender yaw −135° turns that side to the W1 camera (a yaw of 45° showed
+    # the back of the sealed gate — no planks, chain or padlock)
+    "exit.portal": ("SM_Prop_ExitPortal", "Props", "Props_Plains", 2.0, -135.0),
+    "exit.sealed": ("SM_Prop_ExitGate_Sealed", "Props", "Props_Plains", 2.0, -135.0),
     "prop.lore": ("SM_Prop_Lore_AncientTablet", "Props", "Props_Plains", 2.0, -30.0),
     "prop.gather": ("SM_Prop_Gather_EmeraldHerb", "Props", "Props_Plains", 2.0, 0.0),
     "prop.clue": ("SM_FX_ClueMagnifier", "VFX", "Props_Plains", 2.0, CLUE_YAW),
@@ -1183,6 +1185,11 @@ class Stage:
             sk = ch.get("sockets", {}).get(name)
             if sk is not None:
                 out[h] = ue_cm(socket_world(ch["arm"], sk))
+        if ch.get("crystal") is not None and "hand" in out:
+            # spec 8.1: the mage casts from the staff crystal — `hand` resolves to the main-hand weapon's `crystal`
+            # socket when it has one (runtime patch: AAbyssCharacterActor::GetAnchorLocation, HandR)
+            out["hand_r"] = out["hand"]
+            out["hand"] = ue_cm(ch["crystal"].matrix_world.translation)
         return out
 
     def show_prop(self, key: str | None, at_ue, yaw: float | None = None, clip: str | None = None):
@@ -1650,7 +1657,7 @@ def scenarios() -> dict:
                   ("prop.soul_echo", 2000), ("prop.chest", 2000), ("prop.event", 2000)):
         big = w.startswith("exit.")
         sc[w] = Scene_(w, [(0, "world", w)], [cl - 900, cl - 600, cl - 300, cl], clip="Idle",
-                       targets=0, focus="prop", crop=(640, 640) if big else (480, 420),
+                       targets=0, focus="prop", crop=(680, 780) if big else (480, 420),
                        color="#FFD86A" if w == "prop.lore" else None, prop=w)
     # chest open: played as the Open clip starts (its layers wait for the ChestOpen notify, 120 ms); the lid keeps
     # lifting until 400 ms
@@ -1832,8 +1839,9 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
         hero.sockets = stage.sockets_ue(ch)
     if ch.get("crystal") is not None and any(k == "proj" for _, k, _ in s.events):
         cw_ = ue_cm(ch["crystal"].matrix_world.translation)
-        print(f"  {s.cls} release: fx_hand_r {np.round(hero.sockets.get('hand', H), 1)}  staff crystal "
-              f"{np.round(cw_, 1)}  ({np.linalg.norm(cw_ - hero.sockets.get('hand', H)):.0f} cm apart)")
+        hr = hero.sockets.get("hand_r", H)
+        print(f"  {s.cls} release: fx_hand_r {np.round(hr, 1)}  launch (staff crystal) {np.round(cw_, 1)}  "
+              f"({np.linalg.norm(cw_ - hr):.0f} cm apart)")
 
     def ctx_skill():
         pts = [g.pos for g in gobs[:max(1, s.targets)]] if s.targets >= 1 else [T]
@@ -2032,6 +2040,8 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
     subj += [g.pos for g in gobs[:max(s.targets, 0)]]
     if s.prop:
         subj.append(prop_at)
+        if s.prop.startswith("exit."):                 # the whole 3.3 m gate, not a 1.9 m actor box
+            subj.append(prop_at + np.array([0.0, 0.0, 140.0]))
     if s.bag:
         subj.append(T)
     if smith is not None:

@@ -780,6 +780,37 @@ def pose_frame(cls: str, clip: str, beat: str) -> int:
     return 0
 
 
+def line_mask(obj, part: str = "string"):
+    """(hidden copy of ``obj`` keeping only ``part``'s toon faces, callable(border) → bool mask of its coverage
+    dilated 2 px). The ink gate leaves the bow's string out: a light no-hull line by design (art review: ≥ 1.5 px, no
+    ink), so its edges carry no rim on purpose."""
+    names = json.loads(obj["af_parts"])
+    ids = {i for i, n in enumerate(names) if n == part}
+    me = obj.data.copy()
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    lay = bm.faces.layers.int.get("af_part")
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[lay] not in ids or f.material_index != 0], context="FACES")
+    bm.to_mesh(me)
+    bm.free()
+    o = bpy.data.objects.new(f"{obj.name}_{part}_only", me)
+    bpy.context.scene.collection.objects.link(o)
+    o.hide_render = True
+
+    def fn(border):
+        o.matrix_world = obj.matrix_world.copy()
+        if obj.hide_render:
+            return None
+        with IK.only_visible([o]):
+            body, _ = review.coverage_pass([o], border)
+        m = body > 0.2
+        for _ in range(2):
+            pm = np.pad(m, 1, constant_values=False)
+            m = m | pm[:-2, 1:-1] | pm[2:, 1:-1] | pm[1:-1, :-2] | pm[1:-1, 2:]
+        return m
+    return o, fn
+
+
 def inhand(fam: str, obj, heroes: Heroes, out_dir: Path, table: dict, qa_low: dict | None = None):
     """W1 1080p 1:1 cells (``game_inhand_<Class>.png``) for every class the runtime shows this generic mesh on:
     READY, a Run frame and the Attack01-03 contacts + the Cast01 release, the weapon on its socket at the shipped
@@ -792,17 +823,23 @@ def inhand(fam: str, obj, heroes: Heroes, out_dir: Path, table: dict, qa_low: di
         if not WG.shown(cls, fam):
             continue
         sock = WG.socket_for(table, cls, fam)
-        face = "sw" if sock == "weapon_l" else "se"
+        # off-hand items from sw (the holding hand toward the camera), a shield slung on the back from ne
+        face = "sw" if sock == "weapon_l" else ("se" if sock in WG.HAND_SOCKETS else "ne")
         arm, body = heroes.arm(cls), heroes.body(cls)
         vis = heroes.show(cls, fam, sock)
         IK.attach(obj, arm, sock)
         gc = IK.GameCells(ASSET[fam], arm, [body, obj] + vis, IK.HERO_HEIGHT[cls], "weapon", blob_radius=0.36,
                           out_dir=out_dir)
+        if fam == "bow":
+            line_obj, gc.rv.ink_ignore = line_mask(obj)
         cells = []
         for clip, beat, lab in POSES:
             fr = pose_frame(cls, clip, beat)
             IK.hero_pose(arm, cls, clip, fr)
-            obj.matrix_basis = Matrix(WG.grip(table, cls, fam, clip).tolist())
+            obj.matrix_basis = Matrix(WG.grip(table, cls, fam, clip, fr).tolist())
+            hw = WG.hide_window(table, cls, fam, clip)
+            hidden = bool(hw and hw[0] <= fr <= hw[1])        # the runtime hides the mesh in this window
+            obj.hide_render = hidden
             bpy.context.view_layer.update()
             gc.rv.facing(face)
             low = IK.min_z([obj])
@@ -810,18 +847,22 @@ def inhand(fam: str, obj, heroes: Heroes, out_dir: Path, table: dict, qa_low: di
             cell = IK.pad_to(img, CELL[1], CELL[0])
             review.draw_text(cell, 3, 3, f"{cls} {lab} F{fr} {face}".upper())
             review.draw_text(cell, 3, 12, gc.rv.ink_label(st), rgb=(255, 220, 140))
-            g = table.get("classes", {}).get(cls, {}).get(fam, {}).get("clips", {}).get(clip, "carry")
+            g = WG.grip_label(table, cls, fam, clip) + (" HIDDEN" if hidden else "")
             review.draw_text(cell, 3, 21, f"GRIP {g.upper()}  LOW {low * 100:.0f}CM",
                              rgb=(200, 230, 255) if low > -0.005 else (255, 90, 90))
+            obj.hide_render = False
             cells.append(cell)
             if first is None:
                 first = (img, st, gc)
         if wide is None:
             IK.hero_pose(arm, cls, "Idle", 0)
-            obj.matrix_basis = Matrix(WG.grip(table, cls, fam, "Idle").tolist())
-            wide = gc.wide(ASSET[fam], text=f"{ASSET[fam]} ON SK_HERO_{cls.upper()} (READY)  W1 640X360")
+            obj.matrix_basis = Matrix(WG.grip(table, cls, fam, "Idle", 0).tolist())
+            wide = gc.wide(ASSET[fam], facing=face,
+                           text=f"{ASSET[fam]} ON SK_HERO_{cls.upper()} (READY, {face.upper()})  W1 640X360")
         files.append(IK.save(out_dir, f"game_inhand_{cls}.png", review.grid(cells, len(cells), pad=2)))
         reports += gc.reports
+        if fam == "bow":
+            bpy.data.objects.remove(line_obj)
         IK.hero_pose(arm, cls, "Idle", 0)
         arm.rotation_euler = (0, 0, 0)
     heroes.show(None)
@@ -858,7 +899,11 @@ def manifest_extra(fam: str, variants, table: dict, qa: dict | None = None) -> d
                  "(grips[cls].shown). On attach to attachSocket set the component's relative transform to "
                  "grips[<class>].default (locCm / rotDeg = FRotator, quat = FQuat XYZW, socket space); when a clip "
                  "starts, blend it over gripBlendMs to grips[<class>].clips[<clip>] if listed, else back to the "
-                 "default. Swap material slot 0 to tiers[bases[<equipped base id>]] (MI over "
+                 "default. A clip entry with 'keys' is a keyed grip track ({ms, locCm, rotDeg, quat} at clip "
+                 "time; slerp / lerp between keys, held before the first and after the last; sample at the "
+                 "montage / sequence position, so play rate scales it); grips[<class>].socket overrides "
+                 "attachSocket (slung: carried on that spine bone, not in the hand); hideMs {clip: [ms0, ms1]} "
+                 "hides the mesh in that window. Swap material slot 0 to tiers[bases[<equipped base id>]] (MI over "
                  "T_AF_Palette_Weapons_<Tier>); slot 1 stays M_AF_Outline (weapon ink 3.5 px)"
                  + ("; no item base uses this family yet (core WeaponType enum)" if not bases else "")),
     }
@@ -886,6 +931,9 @@ def qa_records(res: dict, fam: str) -> dict:
             "bodyPairs": max(w["body"] for w in clips.values()), "clothPairs": max(w["cloth"] for w in clips.values()),
             "headPairs": max(w["head"] for w in clips.values()), "otherItemPairs": max(w["other"] for w in clips.values()),
             "faceFrames": sum(w.get("faceFrames", 0) for w in clips.values())}
+        clr = [w["clearCm"] for w in clips.values() if "clearCm" in w]
+        if clr:       # bows: limbs + string off the rigid body (WG.CLEAR)
+            out["classes"][cls]["minClearCm"] = round(min(clr), 1)
     return out
 
 

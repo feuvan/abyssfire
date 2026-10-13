@@ -6,10 +6,15 @@ hit-stop frame, a sword's blade through the mage's hood, a bow inside the warrio
 therefore gets **grips**: socket-space transforms the runtime applies on attach — a ``carry`` grip (READY, locomotion,
 hurt) and a ``strike`` grip (attacks, casts), plus ``dodge`` / ``death`` (or a per-clip one) where neither passes. The
 grip keeps the item's handle in the fist (the grip point may slide along a haft: ``slide``) and turns it about the
-grip centre; the runtime blends the attach transform over ``BLEND_MS`` when the clip changes.
+grip centre; the runtime blends the attach transform over ``BLEND_MS`` when the clip changes. Where no static grip
+clears a clip (a 1.27 m staff in the warrior's sword swings, a shield on the mage's robe in Walk), the clip gets a
+**keyed grip track** (``tracks``: one grip per frame from an exact-feasibility Viterbi pass, ≤ 12°/frame, constant runs
+collapsed; manifest ``clips[<clip>].keys`` sampled by clip time) — a weapon-socket correction curve, the cheap form of a
+per-class clip override.
 
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapon_grips.py --qa
     ... weapon_grips.py --search [Warrior,Mage,Rogue] [--fams staff,bow]     # re-plan grips → weapon_grips.json
+    ... weapon_grips.py --tracks Warrior[,Mage,Rogue] [--fams …]               # keyed tracks for the clips that fail
 
 **QA** (``GripQA``; the checks of ``heroes/qa.py`` on the shipped FBX: every frame of every clip, the body deformed
 by the re-imported ``A_Hero_*`` action): lowest point of the item ≥ −0.5 cm; item × body intersecting triangle pairs
@@ -59,12 +64,19 @@ GROUPS = {"carry": ("Idle", "Walk", "Run", "Hurt", "HurtAdd", "Portrait"),
           "strike": ("Attack01", "Attack02", "Attack03", "Cast01", "Cast02", "Cast_Whirlwind", "Cast_Charge",
                      "Cast_Blizzard", "Cast_Meteor", "Cast_Multishot"),
           "dodge": ("Dodge",), "death": ("Death",)}
-LIMITS = {"body": 0, "head": 0, "other": 0, "cloth": 20, "lowCm": -0.5}
+LIMITS = {"body": 0, "head": 0, "other": 0, "cloth": 20, "lowCm": -0.5, "clearCm": 2.0}
+# families that must also keep their far parts (beyond the hilt zone) this far off the rigid body — torso, helm,
+# legs; not the holding hand / forearm (art review: a bow's limbs ≥ 2 cm off the torso and helm, string included)
+CLEAR = {"bow": 0.02}
 FACE_CLIPS = ("Idle", "Walk", "Run")
+# the Portrait clip is the offline UI portrait bake pose (T_UI_Portrait_*): never shown with a generic weapon
+QA_SKIP = ("Portrait",)
 HEAD_GROUPS = ("head", "neck_01", "hood_tip_01", "hood_tip_02", "beard_01", "beard_02")
 CLOTH_PREFIX = ("cape_", "tabard_", "skirt_", "sash_", "scarf_", "sleeve_", "hood_tip", "beard_", "plume_", "tome_",
                 "tasset_")
 HILT_R = 0.13
+HAND_SOCKETS = ("weapon_r", "weapon_l")
+SLING_BONE = "spine_03"        # a shield the class's arm cannot carry is slung on the back (``slung`` in the table)
 # default attachments the runtime keeps beside a generic weapon (manifest ``attachments`` / ``itemAttachments``)
 DEFAULTS = {"Warrior": [("SM_Hero_Warrior_Sword", "weapon_r"), ("SM_Hero_Warrior_Shield", "weapon_l")],
             "Mage": [("SM_Hero_Mage_Staff", "weapon_r")],
@@ -117,13 +129,41 @@ def socket_for(table: dict, cls: str, fam: str) -> str:
     return (e or {}).get("socket", SOCKET[fam])
 
 
-def grip(table: dict, cls: str, fam: str, clip: str) -> np.ndarray:
-    """The 4×4 socket-space grip of ``fam`` in ``cls``'s hand for ``clip`` (identity when the table has none)."""
+def track_matrix(tr: dict, fr: float) -> np.ndarray:
+    """A keyed grip track at clip frame ``fr``: keys {fr, quat (w, x, y, z), loc}, slerp / lerp between them,
+    held before the first and after the last key (the runtime samples the same by clip time)."""
+    keys = tr["keys"]
+    if fr <= keys[0]["fr"]:
+        return gmat(keys[0])
+    for k0, k1 in zip(keys, keys[1:]):
+        if fr <= k1["fr"]:
+            t = (fr - k0["fr"]) / max(k1["fr"] - k0["fr"], 1e-9)
+            q = Quaternion(k0["quat"]).slerp(Quaternion(k1["quat"]), t)
+            m = np.eye(4)
+            m[:3, :3] = np.array(q.to_matrix())
+            m[:3, 3] = (1 - t) * np.asarray(k0["loc"]) + t * np.asarray(k1["loc"])
+            return m
+    return gmat(keys[-1])
+
+
+def grip(table: dict, cls: str, fam: str, clip: str, fr: float = 0) -> np.ndarray:
+    """The 4×4 socket-space grip of ``fam`` in ``cls``'s hand for ``clip`` at frame ``fr`` (identity when the
+    table has none; a keyed track where the clip has one)."""
     e = table.get("classes", {}).get(cls, {}).get(fam)
     if not e:
         return np.eye(4)
+    tr = e.get("tracks", {}).get(clip)
+    if tr:
+        return track_matrix(tr, fr)
     name = e["clips"].get(clip, "carry")
     return gmat(e["grips"].get(name) or e["grips"]["carry"])
+
+
+def grip_label(table: dict, cls: str, fam: str, clip: str) -> str:
+    e = table.get("classes", {}).get(cls, {}).get(fam) or {}
+    if clip in e.get("tracks", {}):
+        return f"track ({len(e['tracks'][clip]['keys'])} keys)"
+    return e.get("clips", {}).get(clip, "identity" if not e else "carry")
 
 
 def ue_transform(G: np.ndarray) -> dict:
@@ -155,9 +195,18 @@ def manifest_grips(table: dict, fam: str, clip_names: dict[str, list[str]]) -> d
         rec = {"socket": socket_for(table, cls, fam), "default": ue_transform(gmat(e["grips"][carry])), "clips": {},
                "shown": shown(cls, fam)}
         for clip in clip_names.get(cls, []):
+            if clip in QA_SKIP:
+                continue
+            tr = e.get("tracks", {}).get(clip)
+            if tr:
+                rec["clips"][clip] = {"keys": [dict(ms=round(k["fr"] * 1000.0 / 60.0, 2), **ue_transform(gmat(k)))
+                                               for k in tr["keys"]]}
+                continue
             name = e["clips"].get(clip, carry)
             if name != carry:
                 rec["clips"][clip] = ue_transform(gmat(e["grips"][name]))
+        if e.get("slung"):
+            rec["slung"] = True       # carried on the back (socket = a spine bone), not in the hand
         if e.get("hide"):
             rec["hideMs"] = {clip: [round(f0 * 1000.0 / 60.0), round((f1 + 1) * 1000.0 / 60.0)]
                              for clip, (f0, f1) in e["hide"].items()}
@@ -195,7 +244,7 @@ def _sm_local(asset: str) -> tuple[np.ndarray, np.ndarray]:
 class Posed:
     """One hero over every frame of every shipped clip: deformed toon vertices, bone frames, dominant-bone face
     groups and the default attachments (item space)."""
-    BONES = ("weapon_r", "weapon_l", "head", "pelvis")
+    BONES = ("weapon_r", "weapon_l", "head", "pelvis", "spine_03")
 
     def __init__(self, cls: str, arm=None, body=None):
         self.cls = cls
@@ -227,7 +276,7 @@ class Posed:
         start = 0
         for a in man["assets"][f"SK_Hero_{cls}"]["anims"]:
             ms = a.get("contactMs") or a.get("releaseMs")
-            self.clips.append({"name": a["name"], "frames": a["frames"], "start": start,
+            self.clips.append({"name": a["name"], "frames": a["frames"], "start": start, "loop": bool(a.get("loop")),
                                "beat": int(round(ms * 0.06)) if ms else -1})
             start += a["frames"]
             for fr in range(a["frames"]):
@@ -279,6 +328,8 @@ class Item:
             z = np.linalg.norm(pts, axis=1) < HILT_R
         hilt = z.reshape(-1, 3).any(1)
         self.t_hilt, self.t_main = tris[hilt], tris[~hilt]
+        far = np.setdiff1d(np.unique(self.t_main), np.unique(self.t_hilt))
+        self.far = far[:: max(1, len(far) // 240)]
 
     def on(self, socket: str) -> "Item":
         return self if socket == self.socket else Item(self.fam, self.co, self.tris, socket)
@@ -302,6 +353,18 @@ def _ov(a, b):
     return a.overlap(b) if (a is not None and b is not None) else []
 
 
+def _clearance(tree, pts: np.ndarray, cap: float = 0.06) -> float:
+    """Smallest distance (cm) from ``pts`` to the triangles of ``tree`` (capped at ``cap`` m)."""
+    if tree is None or len(pts) == 0:
+        return round(cap * 100.0, 2)
+    best = cap
+    for q in pts:
+        hit = tree.find_nearest(Vector(q), best)
+        if hit[0] is not None:
+            best = min(best, hit[3])
+    return round(best * 100.0, 2)
+
+
 def _face_hits(fc: np.ndarray, pts: np.ndarray, r: float) -> int:
     n = 0
     for yaw in FACING.values():
@@ -319,62 +382,99 @@ class GripQA:
     def __init__(self, posed: Posed):
         self.p = posed
 
+    def frame_ctx(self, fi: int, sockets=("weapon_r", "weapon_l"), clear: bool = False) -> dict:
+        """The posed body's trees on global frame ``fi``: per socket (without this hand · without this forearm ·
+        without this hand + sleeve), the head, the default attachments, and (``clear``) the rigid body without this
+        forearm for the bow clearance."""
+        p = self.p
+        v = p.verts[fi].astype(np.float64)
+        body = {}
+        none = np.zeros(len(p.tris), bool)
+        for sock in sockets:
+            keep = np.nonzero(~p.m_hand.get(sock, none))[0]
+            keep_h = np.nonzero(~p.m_forearm.get(sock, none))[0]
+            keep_s = np.nonzero(~p.m_sleeve.get(sock, none))[0]
+            body[sock] = (keep, _bvh(v, p.tris[keep]), keep_h, _bvh(v, p.tris[keep_h]), keep_s,
+                          _bvh(v, p.tris[keep_s]))
+        t_clear = {s: _bvh(v, p.tris[~p.m_forearm.get(s, none) & ~p.m_cloth]) for s in sockets} if clear else {}
+        atts = {a: (s, _bvh(aco @ p.att_matrix(s, fi)[:3, :3].T + p.att_matrix(s, fi)[:3, 3], atr))
+                for a, (s, aco, atr) in p.atts.items()}
+        return {"fi": fi, "body": body, "head": _bvh(v, p.tris[p.m_head]), "clear": t_clear, "atts": atts}
+
+    def check(self, ctx: dict, it: Item, G: np.ndarray, fr: int = 0, face: bool = False) -> dict:
+        """One item at socket-space grip ``G`` on the frame of ``ctx`` → the QA record."""
+        p = self.p
+        fi, sock = ctx["fi"], it.socket
+        Ms = p.bones[sock][fi] @ np.asarray(G, np.float64)
+        w = it.co @ Ms[:3, :3].T + Ms[:3, 3]
+        tm, th = _bvh(w, it.t_main), _bvh(w, it.t_hilt)
+        keep, tb, keep_h, tbh, keep_s, tbs = ctx["body"][sock]
+        if it.fam == "shield":       # boards strapped to this forearm: its sleeve runs behind them
+            keep, tb = keep_s, tbs
+        rigid = cloth = 0
+        # slung on the back (a body socket): the handle and straps lie against the back behind the boards, hidden
+        # from every view — only the boards, rim and face are tested against the body
+        hilt_pairs = _ov(th, tbh) if sock in HAND_SOCKETS else []
+        for idx, pairs in ((keep, _ov(tm, tb)), (keep_h, hilt_pairs)):
+            for _, j in pairs:
+                if p.m_cloth[idx[j]]:
+                    cloth += 1
+                else:
+                    rigid += 1
+        head = len(_ov(tm, ctx["head"])) + len(_ov(th, ctx["head"]))
+        other = 0
+        for a, (asock, ta) in ctx["atts"].items():
+            if asock == sock or (it.fam == "bow" and asock in ("weapon_r", "weapon_l")):
+                continue      # replaced on its socket / hidden by a bow (occupiesOffhand)
+            other += len(_ov(tm, ta)) + len(_ov(th, ta))
+        rec = {"fr": fr, "lowCm": round(float(w[it.used, 2].min()) * 100.0, 2), "body": rigid,
+               "cloth": cloth, "head": head, "other": other}
+        if it.fam in CLEAR:
+            rec["clearCm"] = _clearance(ctx["clear"][sock], w[it.far])
+        if face:
+            rec["face"] = _face_hits(p.face_center(fi), w[it.used], FACE_R[p.cls])
+        return rec
+
     def run(self, items: dict[str, Item], grips: dict[str, dict | np.ndarray], clips=None, frames=None) -> dict:
-        """``grips[key]``: a 4×4 or {clip: 4×4, 'default': 4×4}; ``items[key]``: the Item. → {key: {clip: [rec]}}"""
+        """``grips[key]``: a callable (clip, frame) → 4×4, a 4×4 or {clip: 4×4, 'default': 4×4}; ``items[key]``:
+        the Item. → {key: {clip: [rec]}}"""
         p = self.p
         rep = {k: {} for k in grips}
+        clear = any(it.fam in CLEAR for it in items.values())
+        socks = tuple(dict.fromkeys(HAND_SOCKETS + tuple(it.socket for it in items.values())))
         for c in p.clips:
-            if clips and c["name"] not in clips:
+            if (clips and c["name"] not in clips) or c["name"] in QA_SKIP:
                 continue
             frs = frames(c) if frames else range(c["frames"])
             for fr in frs:
-                fi = c["start"] + fr
-                v = p.verts[fi].astype(np.float64)
-                body = {}
-                for sock in ("weapon_r", "weapon_l"):
-                    keep = np.nonzero(~p.m_hand[sock])[0]
-                    keep_h = np.nonzero(~p.m_forearm[sock])[0]
-                    keep_s = np.nonzero(~p.m_sleeve[sock])[0]
-                    body[sock] = (keep, _bvh(v, p.tris[keep]), keep_h, _bvh(v, p.tris[keep_h]), keep_s,
-                                  _bvh(v, p.tris[keep_s]))
-                t_head = _bvh(v, p.tris[p.m_head])
-                atts = {a: (s, _bvh(aco @ p.att_matrix(s, fi)[:3, :3].T + p.att_matrix(s, fi)[:3, 3], atr))
-                        for a, (s, aco, atr) in p.atts.items()}
+                ctx = self.frame_ctx(c["start"] + fr, sockets=socks, clear=clear)
                 for key, g in grips.items():
-                    G = (g.get(c["name"], g["default"]) if isinstance(g, dict) else g)
-                    it = items[key]
-                    sock = it.socket
-                    Ms = p.bones[sock][fi] @ np.asarray(G, np.float64)
-                    w = it.co @ Ms[:3, :3].T + Ms[:3, 3]
-                    tm, th = _bvh(w, it.t_main), _bvh(w, it.t_hilt)
-                    keep, tb, keep_h, tbh, keep_s, tbs = body[sock]
-                    if it.fam == "shield":       # boards strapped to this forearm: its sleeve runs behind them
-                        keep, tb = keep_s, tbs
-                    rigid = cloth = 0
-                    for idx, pairs in ((keep, _ov(tm, tb)), (keep_h, _ov(th, tbh))):
-                        for _, j in pairs:
-                            if p.m_cloth[idx[j]]:
-                                cloth += 1
-                            else:
-                                rigid += 1
-                    head = len(_ov(tm, t_head)) + len(_ov(th, t_head))
-                    other = 0
-                    for a, (asock, ta) in atts.items():
-                        if asock == sock or (it.fam == "bow" and asock in ("weapon_r", "weapon_l")):
-                            continue      # replaced on its socket / hidden by a bow (occupiesOffhand)
-                        other += len(_ov(tm, ta)) + len(_ov(th, ta))
-                    rec = {"fr": fr, "lowCm": round(float(w[it.used, 2].min()) * 100.0, 2), "body": rigid,
-                           "cloth": cloth, "head": head, "other": other}
-                    if c["name"] in FACE_CLIPS:
-                        rec["face"] = _face_hits(p.face_center(fi), w[it.used], FACE_R[p.cls])
-                    rep[key].setdefault(c["name"], []).append(rec)
+                    G = (g(c["name"], fr) if callable(g) else
+                         g.get(c["name"], g["default"]) if isinstance(g, dict) else g)
+                    rep[key].setdefault(c["name"], []).append(
+                        self.check(ctx, items[key], G, fr, face=c["name"] in FACE_CLIPS))
         return rep
+
+    def feasible(self, item: Item, Gs: np.ndarray, clip: str) -> np.ndarray:
+        """Exact pass / fail of every candidate grip ``Gs`` (K × 4 × 4) on every frame of ``clip`` → bool (F, K)
+        (Idle / Walk / Run also fail on any item point in front of the face disc)."""
+        c = self.p.clip(clip)
+        out = np.zeros((c["frames"], len(Gs)), bool)
+        face = clip in FACE_CLIPS       # READY / locomotion: nothing in front of the visor / eyes / mask either
+        for fr in range(c["frames"]):
+            ctx = self.frame_ctx(c["start"] + fr, sockets=(item.socket,), clear=item.fam in CLEAR)
+            for k, G in enumerate(Gs):
+                rec = self.check(ctx, item, G, fr, face=face)
+                out[fr, k] = self.passes(self.worst([rec])) and not rec.get("face", 0)
+        return out
 
     @staticmethod
     def worst(frames: list[dict]) -> dict:
         w = {"body": max(r["body"] for r in frames), "cloth": max(r["cloth"] for r in frames),
              "head": max(r["head"] for r in frames), "other": max(r["other"] for r in frames),
              "lowCm": min(r["lowCm"] for r in frames)}
+        if "clearCm" in frames[0]:
+            w["clearCm"] = min(r["clearCm"] for r in frames)
         if "face" in frames[0]:
             w["faceFrames"] = sum(1 for r in frames if r["face"])
         return w
@@ -382,7 +482,8 @@ class GripQA:
     @staticmethod
     def passes(w: dict) -> bool:
         return (w["body"] <= LIMITS["body"] and w["head"] <= LIMITS["head"] and w["other"] <= LIMITS["other"]
-                and w["cloth"] <= LIMITS["cloth"] and w["lowCm"] >= LIMITS["lowCm"])
+                and w["cloth"] <= LIMITS["cloth"] and w["lowCm"] >= LIMITS["lowCm"]
+                and w.get("clearCm", 99.0) >= LIMITS["clearCm"])
 
     @classmethod
     def verdict(cls_, rep: dict) -> list[str]:
@@ -393,7 +494,8 @@ class GripQA:
             if not cls_.passes(w):
                 bad = [r["fr"] for r in frs if not cls_.passes(cls_.worst([r]))]
                 out.append(f"{clip}: body {w['body']} cloth {w['cloth']} head {w['head']} other {w['other']} "
-                           f"low {w['lowCm']:.1f} cm (frames {bad[:10]})")
+                           f"low {w['lowCm']:.1f} cm" + (f" clear {w['clearCm']:.1f} cm" if "clearCm" in w else "")
+                           + f" (frames {bad[:10]})")
         return out
 
 
@@ -410,13 +512,7 @@ def qa_all(table: dict, items: dict[str, Item], posed: dict[str, Posed]) -> dict
     out = {"classes": {}, "failures": [], "info": []}
     for cls, p in posed.items():
         qa = GripQA(p)
-        grips = {}
-        for fam in items:
-            e = table.get("classes", {}).get(cls, {}).get(fam)
-            g = {"default": grip(table, cls, fam, "Idle")}
-            for c in p.clips:
-                g[c["name"]] = grip(table, cls, fam, c["name"])
-            grips[fam] = g
+        grips = {fam: (lambda clip, fr, f=fam: grip(table, cls, f, clip, fr)) for fam in items}
         rep = qa.run({f: it.on(socket_for(table, cls, f)) for f, it in items.items()}, grips)
         out["classes"][cls] = {}
         for fam, r in rep.items():
@@ -430,7 +526,7 @@ def qa_all(table: dict, items: dict[str, Item], posed: dict[str, Posed]) -> dict
             (out["failures"] if shown(cls, fam) else out["info"]).extend(f"{tag} {f}" for f in fails)
             if table.get("classes", {}).get(cls, {}).get(fam) is None:
                 out["info"].append(f"{tag}: no grips in the table (identity)")
-        print(f"[grips] QA {cls}: {sum(len(c['frames']) for c in p.clips)} frames x {len(items)} families", flush=True)
+        print(f"[grips] QA {cls}: {sum(c['frames'] for c in p.clips)} frames x {len(items)} families", flush=True)
     return out
 
 
@@ -446,8 +542,9 @@ def qa_table(res: dict) -> str:
             ot = max(w["other"] for w in clips.values())
             fc = sum(w.get("faceFrames", 0) for w in clips.values())
             wc = min(clips, key=lambda k: clips[k]["lowCm"])
+            clr = [w["clearCm"] for w in clips.values() if "clearCm" in w]
             rows.append(f"{fam:7s} {cls:7s} {str(shown(cls, fam)):5s} {low:7.1f} {b:4d} {cl:5d} {hd:4d} {ot:5d} "
-                        f"{fc:4d}  low@{wc}")
+                        f"{fc:4d}  low@{wc}" + (f"  clear {min(clr):.1f} cm" if clr else ""))
     return "\n".join(rows)
 
 
@@ -461,6 +558,7 @@ ROLLS = {"staff": 4, "mace": 2, "wand": 3}
 ROLL_SPAN = {"staff": 120.0, "wand": 120.0, "mace": 60.0}
 ROLL_SYM = {"sword": 180.0, "dagger": 180.0, "staff": 120.0, "mace": 60.0, "wand": 120.0}
 SHORT = ("sword", "axe", "mace", "dagger", "wand")
+BOW_SOCKETS: dict[str, tuple[str, ...]] = {}       # --bow-socket: plan the bow on this hand only
 
 
 class SDF:
@@ -573,12 +671,16 @@ def _axis(Ms, Gs, local) -> np.ndarray:
 
 
 def read_staff_up(p, fi, Ms, Gs, smp):
-    """Orb clearly above the fist, shaft near vertical, orb outboard of the head (warrior / rogue carry)."""
+    """Orb clearly above the fist, shaft near vertical, orb outboard of the head (warrior / rogue carry), and not
+    foreshortened toward the W1 camera (a staff pointing up the view ray shrank to a stub with the orb at the fist)."""
     orb = _world(Gs, Ms, np.array([[0.0, 0.815, 0.0]]))[:, 0]
     rise = orb[:, 2] - Ms[2, 3]
     ax = _axis(Ms, Gs, (0, 1, 0))
     lateral = np.abs(orb[:, 0] - p.bones["head"][fi][0, 3])
-    return np.maximum(0, 0.55 - rise) * 4 + np.maximum(0, 0.85 - ax[:, 2]) + np.maximum(0, 0.28 - lateral) * 4
+    proj = np.minimum(np.sqrt(np.maximum(0.0, 1.0 - (ax @ V_VIEW["se"]) ** 2)),
+                      np.sqrt(np.maximum(0.0, 1.0 - (ax @ V_VIEW["sw"]) ** 2)))
+    return (np.maximum(0, 0.55 - rise) * 4 + np.maximum(0, 0.85 - ax[:, 2]) + np.maximum(0, 0.28 - lateral) * 4
+            + np.maximum(0, 0.6 - proj) * 6)
 
 
 def read_low_outboard(p, fi, Ms, Gs, smp):
@@ -642,9 +744,17 @@ class Searcher:
         self.sdf_all = SDF(posed, idx, rigid=False)
         print(f"[grips] {posed.cls}: SDF on {len(idx)} frames in {time.time() - t0:.0f}s", flush=True)
         self.qa = GripQA(posed)
+        self._clip_sdf = {}
 
-    def score(self, item: Item, cands: list, clips, read=None) -> dict:
+    def score(self, item: Item, cands: list, clips, read=None, margin: float = 0.0, per_frame=None,
+              sdfs=None) -> dict:
+        """Aggregate candidate terms over the SDF frames of ``clips``; ``per_frame`` (a list) also collects
+        (k, frame, bad, clearance, face, read) per frame for the track search; ``margin`` widens every clearance;
+        ``sdfs`` = (rigid, whole) grids to use instead of the searcher's (the track search: every frame)."""
         p, sdf = self.p, self.sdf
+        sdf_all = self.sdf_all
+        if sdfs is not None:
+            sdf, sdf_all = sdfs
         fam, sock = item.fam, item.socket
         co = item.co[item.used]
         r = np.linalg.norm(co, axis=1)
@@ -654,6 +764,9 @@ class Searcher:
         others = [(s, _fps(aco[np.unique(atr)], 40)) for a, (s, aco, atr) in p.atts.items()
                   if s != sock and not (fam == "bow" and s in ("weapon_r", "weapon_l"))]
         far_sub = far[:: max(1, len(far) // 36)]
+        # the hilt zone beyond the fist (8–13 cm from the grip centre): the exact QA tests it against the body
+        # without this hand / forearm, the SDF keeps them — so only "not inside" is asked of it
+        near = (_fps(co[(r > 0.08) & (r <= HILT_R)], 16) if fam != "shield" else np.zeros((0, 3)))
         Gs = np.stack([c[0] for c in cands])
         C = len(Gs)
         st = {"n": 0, "minfar": np.full(C, 9.0), "low": np.full(C, 9.0), "face": np.zeros(C), "read": np.zeros(C),
@@ -664,9 +777,11 @@ class Searcher:
             Ms = p.bones[sock][fi]
             Pf = _world(Gs, Ms, far)
             df = sdf.sample(k, Pf).min(1)
-            dc = self.sdf_all.sample(k, Pf).min(1)
+            dc = sdf_all.sample(k, Pf).min(1)
             low = _world(Gs, Ms, ground)[..., 2].min(1)
-            bad = (df < 0.008) | (dc < -0.012) | (low < 0.0)
+            bad = (df < CLEAR.get(fam, 0.0) + 0.008 + margin) | (dc < -0.012 + margin) | (low < margin * 0.5)
+            if len(near):
+                bad |= sdf.sample(k, _world(Gs, Ms, near)).min(1) < margin * 0.5
             if others:
                 Pq = _world(Gs, Ms, far_sub)
                 for asock, apts in others:
@@ -676,21 +791,23 @@ class Searcher:
                     for j in range(0, len(aw), 10):
                         dmin = np.minimum(dmin, np.linalg.norm(Pq[:, :, None, :] - aw[None, None, j:j + 10, :],
                                                                axis=-1).min(axis=(1, 2)))
-                    bad |= dmin < 0.03
+                    bad |= dmin < 0.03 + margin
             st["bad"] += bad
             st["minfar"] = np.minimum(st["minfar"], df)
             st["low"] = np.minimum(st["low"], low)
+            hits = np.zeros(C)
             if cn in FACE_CLIPS:
                 fc = p.face_center(fi)
-                hits = np.zeros(C)
                 for v in V_VIEW.values():
                     d = Pf - fc
                     along = d @ v
                     perp = d - along[..., None] * v
                     hits += ((np.linalg.norm(perp, axis=-1) < FACE_R[p.cls]) & (along < 0.0)).sum(1)
                 st["face"] += hits > 0
-            if read is not None:
-                st["read"] += read(p, fi, Ms, Gs, smp)
+            rd = read(p, fi, Ms, Gs, smp) if read is not None else np.zeros(C)
+            st["read"] += rd
+            if per_frame is not None:
+                per_frame.append((k, fr, bad.copy(), df.copy(), hits > 0, rd))
             st["n"] += 1
         st["face"] /= max(st["n"], 1)
         st["read"] /= max(st["n"], 1)
@@ -699,11 +816,12 @@ class Searcher:
     @staticmethod
     def rank(fam: str, cands: list, st: dict, w_tilt: float, w_read: float) -> list:
         rows = []
+        pref = CLEAR.get(fam, 0.0) + 0.012
         for i, (G, tilt, roll, s) in enumerate(cands):
             per = ROLL_SYM.get(fam, 360.0)
             rd = min(roll % per, per - roll % per)
             score = (st["bad"][i] * 10 + 6.0 * st["face"][i] + w_read * st["read"][i] + w_tilt * tilt + 0.006 * rd
-                     + 0.3 * abs(s) - 2.0 * min(st["minfar"][i], 0.012))
+                     + 0.3 * abs(s) - 2.0 * min(st["minfar"][i], pref))
             rows.append((score, i))
         rows.sort()
         return [i for _, i in rows]
@@ -713,6 +831,127 @@ class Searcher:
         if frames:
             return rep
         return {k: {clip: GripQA.worst(frs) for clip, frs in r.items()} for k, r in rep.items()}
+
+    def clip_sdfs(self, clip: str):
+        """Rigid + whole-body SDF grids on *every* frame of ``clip`` (cached): track keys sit on every frame."""
+        if clip not in self._clip_sdf:
+            c = self.p.clip(clip)
+            idx = [(clip, fr, c["start"] + fr) for fr in range(c["frames"])]
+            self._clip_sdf = {clip: (SDF(self.p, idx), SDF(self.p, idx, rigid=False))}
+        return self._clip_sdf[clip]
+
+    def track(self, item: Item, cls: str, group: str, clip: str, loop: bool, margin: float = 0.004,
+              pool_all: int = 140, pool_frame: int = 10, rounds: int = 3) -> tuple[dict, list[int]]:
+        """A keyed grip track for a clip no static grip clears. On every frame of the clip the candidate grips are
+        scored on that frame's SDF (clearance incl. the hilt zone, ground, face disc, readability, tilt); a pool of
+        the best overall and per frame is checked with the **exact** QA on every frame (``GripQA.feasible``); a
+        Viterbi pass then picks one feasible grip per frame minimising the soft costs + the turn between frames
+        (≤ 12°/frame, slides cost extra); looping clips close on their first frame. Frames with no feasible pool
+        member widen the pool there (``rounds``). Constant runs collapse to their end keys.
+        → (track {keys, loop}, frames that still fail)."""
+        read, mt, wt, wr = search_spec(cls, item.fam, group)
+        wr = wr if read is not None else 0.0
+        # a roll / fall tumbles the whole body ~25°/frame: a faster weapon turn hides in it
+        snap = 45.0 if group in ("dodge", "death") else 24.0
+        cands = candidates(item.fam, 180.0)
+        Gs = np.stack([c[0] for c in cands])
+        tilt = np.array([c[1] for c in cands])
+        per = ROLL_SYM.get(item.fam, 360.0)
+        rdev = np.array([min(c[2] % per, per - c[2] % per) for c in cands])
+        slide = np.array([c[3] for c in cands])
+        quats = np.array([list(Matrix(G[:3, :3].tolist()).to_quaternion()) for G in Gs])
+        pref = CLEAR.get(item.fam, 0.0) + 0.012
+        pf = []
+        self.score(item, cands, (clip,), read, margin=margin, per_frame=pf, sdfs=self.clip_sdfs(clip))
+        pf.sort(key=lambda x: x[1])
+        # the exact feasibility decides clearance, so the coarse SDF flags only nudge and readability leads
+        cost = np.stack([3.0 * x[2] + 6.0 * x[4] + 3.0 * wr * x[5] + wt * tilt + 0.006 * rdev + 0.3 * np.abs(slide)
+                         - 2.0 * np.minimum(x[3], pref) for x in pf])
+        F = cost.shape[0]
+        order = np.argsort(cost, 1)
+        pool = list(dict.fromkeys(np.argsort(cost.sum(0))[:pool_all].tolist()
+                                  + [int(i) for row in order[:, :pool_frame] for i in row]))
+        pool = [int(i) for i in pool]
+        feas = self.qa.feasible(item, Gs[pool], clip)
+        for r in range(1, rounds):
+            dead = np.nonzero(~feas.any(1))[0]
+            if not len(dead):
+                break
+            add = [int(i) for f in dead for i in order[f, :pool_frame * (2 + 2 * r)] if int(i) not in pool]
+            add = list(dict.fromkeys(add))[:240]
+            print(f"[grips] track {cls} {item.fam} {clip}: no feasible grip on frames {dead.tolist()[:12]}, "
+                  f"+{len(add)} candidates", flush=True)
+            if not add:
+                break
+            pool += add
+            feas = np.concatenate([feas, self.qa.feasible(item, Gs[add], clip)], 1)
+        def plan(pool, feas):
+            P = np.array(pool)
+            cp = cost[:, P] + 5000.0 * ~feas
+            qd = np.clip(np.abs(quats[P] @ quats[P].T), 0.0, 1.0)
+            ang = np.degrees(2.0 * np.arccos(qd))
+            ds = np.abs(slide[P][:, None] - slide[P][None, :])
+            T1 = 0.03 * ang + 0.004 * ang * ang + 25.0 * ds
+            T1[ang > 12.0] += 300.0          # a quick flick beats an intersection; never a snap
+            T1[ang > snap] = 1e6
+            K = len(P)
+
+            def run(a0):
+                acc, back = a0.copy(), np.zeros((F, K), np.int64)
+                for f in range(1, F):
+                    tot = acc[:, None] + T1
+                    back[f] = np.argmin(tot, 0)
+                    acc = tot[back[f], np.arange(K)] + cp[f]
+                return acc, back
+            if not loop:
+                acc, back = run(cp[0])
+                e = int(np.argmin(acc))
+            else:      # the last frame must turn back to the first within one frame
+                best = None
+                for s0 in np.argsort(cp[0])[:10]:
+                    a0 = np.full(K, 1e9)
+                    a0[s0] = cp[0][s0]
+                    acc, bk = run(a0)
+                    fin = acc + T1[:, s0]
+                    e = int(np.argmin(fin))
+                    if best is None or fin[e] < best[0]:
+                        best = (fin[e], e, bk)
+                _, e, back = best
+            path = [e]
+            for f in range(F - 1, 0, -1):
+                path.append(int(back[f][path[-1]]))
+            return path[::-1]
+
+        path = plan(pool, feas)
+        for r in range(rounds):
+            bad = [f for f, ci in enumerate(path) if not feas[f, ci]]
+            if not bad:
+                break
+            # widen the pool round the failing stretch: every candidate within 20° of the path's grips there
+            near = set()
+            for f in bad:
+                for g in range(max(0, f - 3), min(F, f + 4)):
+                    qd = np.abs(quats @ quats[pool[path[g]]])
+                    near |= set(np.nonzero(qd > math.cos(math.radians(snap * 0.5)))[0].tolist())
+            have = set(pool)
+            add = [i for i in sorted(near, key=lambda i: cost[bad, i].sum()) if i not in have][:260]
+            print(f"[grips] track {cls} {item.fam} {clip}: failing {bad[:12]} -> +{len(add)} nearby candidates",
+                  flush=True)
+            if not add:
+                break
+            pool = pool + add
+            feas = np.concatenate([feas, self.qa.feasible(item, Gs[add], clip)], 1)
+            path = plan(pool, feas)
+        keys = []
+        for f, ci in enumerate(path):
+            if 0 < f < F - 1 and path[f - 1] == ci == path[f + 1]:
+                continue
+            keys.append(dict(gjson(Gs[pool[ci]]), fr=int(f)))
+        K = len(pool)
+        tr = {"keys": keys, "loop": bool(loop)}
+        bad = [f for f, ci in enumerate(path) if not feas[f, ci]]
+        print(f"[grips] track {cls} {item.fam} {clip}: pool {K}, {len(keys)} keys, failing {bad[:12]}", flush=True)
+        return tr, bad
 
     def refine_clip(self, item: Item, cls: str, group: str, clip: str, topn: int = 24):
         """A clip no static grip passes: the candidate with the fewest failing frames (the run's best + ranked
@@ -775,7 +1014,7 @@ class Searcher:
         if item.fam != "bow":
             return self._plan(item)
         best = None
-        for sock in ("weapon_l", "weapon_r"):
+        for sock in (BOW_SOCKETS.get(self.p.cls) or ("weapon_l", "weapon_r")):
             r = self._plan(item.on(sock))
             r["socket"] = sock
             cost = (sum(1 for v in r["clips"].values() if v.endswith("!fail")), len(r["grips"]))
@@ -818,6 +1057,75 @@ class Searcher:
         return res
 
 
+def sling_plan(posed: Posed, item: Item) -> tuple[dict, dict]:
+    """A shield slung on the back (``SLING_BONE``) for a class whose off-hand arm is authored against its body (the
+    mage's left hand swings across the robe in Walk / Run: no grip on the forearm clears it). Candidates: face out
+    (+Y = the hero's back), a diagonal sling (about the face normal), the top leaning off the back, the boards a few cm
+    off the back, centred on the shoulder blades or lower; the exact QA over every frame of every clip picks the
+    closest-fitting one that passes the most clips, then each failing clip gets the nearest candidate that clears it
+    (a hood flopping back in Hurt / Death / the big casts). → (table entry, QA worst per clip)."""
+    it = item.on(SLING_BONE)
+    fi = posed.clip("Idle")["start"]
+    B = posed.bones[SLING_BONE][fi]
+    v = posed.verts[fi]
+    band = v[(np.abs(v[:, 0]) < 0.10) & (np.abs(v[:, 2] - (B[2, 3] + 0.02)) < 0.10)]
+    back_y = float(band[:, 1].max())
+    boards_y = 0.092          # back of the boards on the centre line (weapons.SH_FACE_Y − 2.6 cm board thickness)
+
+    def cand_set(diags, leans, offs, dzs):
+        out = {}
+        for diag in diags:
+            for lean in leans:
+                for off in offs:
+                    for dz in dzs:
+                        R = (np.array(Matrix.Rotation(math.radians(-lean), 3, "X"))
+                             @ np.array(Matrix.Rotation(math.radians(diag), 3, "Y")))
+                        M = np.eye(4)
+                        M[:3, :3] = R
+                        M[:3, 3] = (0.0, back_y + off - boards_y, B[2, 3] + 0.02 + dz)
+                        out[f"d{diag:+.0f}_l{lean:.0f}_o{off * 100:.1f}_z{dz * 100:+.0f}"] = (
+                            np.linalg.inv(B) @ M, {"diag": diag, "lean": lean, "offCm": off * 100, "dzCm": dz * 100})
+        return out
+
+    def rank(cands, clips=None):
+        qa = GripQA(posed)
+        rep_ = qa.run({k: it for k in cands}, {k: c[0] for k, c in cands.items()}, clips=clips)
+        rows = []
+        for k, r in rep_.items():
+            worst = {clip: GripQA.worst(frs) for clip, frs in r.items()}
+            nbad = sum(1 for frs in r.values() for x in frs if not GripQA.passes(GripQA.worst([x])))
+            m = cands[k][1]
+            rows.append((nbad, m["offCm"], abs(m["dzCm"]), abs(m["diag"] - 15.0), m["lean"], k, worst))
+        rows.sort(key=lambda x: x[:5])
+        return rows
+
+    base = cand_set((-25.0, 0.0, 25.0), (0.0, 10.0, 20.0), (0.01, 0.025, 0.04, 0.06), (-0.06, 0.0, 0.06))
+    rows = rank(base)
+    nbad, _, _, _, _, k, worst = rows[0]
+    print(f"[grips] sling {posed.cls} {item.fam}: base {k} failing frames {nbad}", flush=True)
+    G, meta = base[k]
+    entry = {"socket": SLING_BONE, "slung": True, "grips": {"carry": gjson(G, kind="sling", **meta)},
+             "clips": {c["name"]: "carry" for c in posed.clips}}
+    fails = [clip for clip, w in worst.items() if not GripQA.passes(w)]
+    if fails:
+        wide = cand_set((-25.0, 0.0, 25.0), (0.0, 15.0, 30.0), (0.04, 0.07, 0.10),
+                        (-0.26, -0.20, -0.14, -0.08, 0.0))
+        for clip in fails:
+            r2 = rank(wide, clips=(clip,))
+            # the nearest passing candidate to the base pose (blends in over gripBlendMs)
+            ok = [x for x in r2 if x[0] == 0]
+            pick = min(ok, key=lambda x: (abs(wide[x[5]][1]["dzCm"] - meta["dzCm"]) / 4
+                                          + abs(wide[x[5]][1]["diag"] - meta["diag"]) / 25
+                                          + abs(wide[x[5]][1]["lean"] - meta["lean"]) / 10
+                                          + abs(wide[x[5]][1]["offCm"] - meta["offCm"]) / 2)) if ok else r2[0]
+            name = f"sling_{clip}"
+            entry["grips"][name] = gjson(wide[pick[5]][0], kind="sling", **wide[pick[5]][1])
+            entry["clips"][clip] = name
+            worst[clip] = pick[6][clip]
+            print(f"[grips] sling {posed.cls} {item.fam} {clip}: {pick[5]} failing frames {pick[0]}", flush=True)
+    return entry, worst
+
+
 def build_items(fams=FAMS) -> dict[str, Item]:
     """The current generator meshes (``weapons.py``), item space."""
     import weapons as W
@@ -838,11 +1146,21 @@ def main(argv=None) -> int:
     ap.add_argument("--refine", default="", help="classes: re-plan the clips the search could not clear (hide "
                                                   "windows where nothing passes)")
     ap.add_argument("--out", default="", help="write the table here instead (parallel searches; merge after)")
+    ap.add_argument("--classes", default=",".join(CLASSES), help="--qa: only these classes")
+    ap.add_argument("--tracks", default="", help="classes: give every clip that fails the exact QA at its static grip "
+                                                  "a keyed grip track (Viterbi over the candidate grips)")
+    ap.add_argument("--force", default="", help="--tracks: also re-track these clips when their grip passes "
+                                                 "(readability: e.g. Idle,Walk,Run,Hurt,HurtAdd)")
+    ap.add_argument("--sling", default="", help="classes: sling the --fams shield on the back (spine_03)")
+    ap.add_argument("--bow-socket", default="", help="--search: plan the bow on this socket only (weapon_l|weapon_r)")
     a = ap.parse_args(argv)
     if a.out:
         global GRIPS_JSON
         GRIPS_JSON = Path(a.out)
     scene.reset()
+    if a.bow_socket and a.search:
+        for cls in a.search.split(","):
+            BOW_SOCKETS[cls] = (a.bow_socket,)
     fams = [f for f in a.fams.split(",") if f]
     items = build_items(fams)
     if a.search:
@@ -885,8 +1203,55 @@ def main(argv=None) -> int:
                 t = load_table()
                 t["classes"][cls][fam] = e
                 save_table(t)
+    if a.sling:
+        for cls in [c for c in a.sling.split(",") if c]:
+            posed = Posed(cls)
+            for fam in fams:
+                entry, worst = sling_plan(posed, items[fam])
+                t = load_table()
+                t.setdefault("classes", {}).setdefault(cls, {})[fam] = entry
+                save_table(t)
+                for clip, w in worst.items():
+                    print(f"   {clip}: {w} {'ok' if GripQA.passes(w) else 'FAIL'}", flush=True)
+    if a.tracks:
+        for cls in [c for c in a.tracks.split(",") if c]:
+            t = load_table()
+            todo = [f for f in fams if t.get("classes", {}).get(cls, {}).get(f) and shown(cls, f)]
+            if not todo:
+                continue
+            posed = Posed(cls)
+            res = qa_all(t, {f: items[f] for f in todo}, {cls: posed})
+            s = None
+            for fam in todo:
+                e = t["classes"][cls][fam]
+                fails = [c for c, w in res["classes"][cls][fam].items()
+                         if not GripQA.passes(w) or c in a.force.split(",")]
+                print(f"[grips] tracks {cls} {fam}: static grips fail {fails}", flush=True)
+                if not fails:
+                    continue
+                s = s or Searcher(posed)
+                for clip in fails:
+                    group = next(g for g, cl in GROUPS.items() if clip in cl)
+                    t0 = time.time()
+                    tr, bad = s.track(items[fam].on(socket_for(t, cls, fam)), cls, group, clip,
+                                      posed.clip(clip)["loop"])
+                    e.setdefault("tracks", {})[clip] = tr
+                    e.get("hide", {}).pop(clip, None)
+                    if bad:
+                        e.setdefault("trackFailed", {})[clip] = bad
+                    else:
+                        e.get("trackFailed", {}).pop(clip, None)
+                    print(f"[grips] tracks {cls} {fam} {clip}: {len(tr['keys'])} keys, failing {bad[:12]} "
+                          f"({time.time() - t0:.0f}s)", flush=True)
+                e.pop("searchFailed", None)       # the exact QA (tracks / trackFailed) is the record now
+                for k in ("hide", "trackFailed"):
+                    if k in e and not e[k]:
+                        e.pop(k)
+                t2 = load_table()
+                t2["classes"][cls][fam] = e
+                save_table(t2)
     if a.qa:
-        posed = {c: Posed(c) for c in CLASSES}
+        posed = {c: Posed(c) for c in a.classes.split(",") if c}
         res = qa_all(load_table(), items, posed)
         print(qa_table(res))
         for f in res["failures"]:

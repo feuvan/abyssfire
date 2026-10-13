@@ -218,7 +218,8 @@ border + label). `game_outline_px=` (`ship_*` pass `SCREEN_PX_1080[class]`) rend
 screen-constant ink and close-ups / sheets with the same ink in world units (`ink_world`: the shipped weight,
 magnified); `.game_shot(border, measure=True, tag=)` = one game-camera cell (+ `post`: emissive **bloom**
 `BLOOM_LOBES` and runtime **glow cards** `glows(cam, res)` with the web falloff `GLOW_STOPS`) measured by the ink
-gate → `.ink_reports`, `.ink_verdict()`, `.assert_ink()`; module level `ink_gate(class)`, `INK_GATE`,
+gate → `.ink_reports`, `.ink_verdict()`, `.assert_ink()` (opt-in `.ink_ignore` = callable(border) → bool mask of
+edge pixels the gate leaves out: an intentional no-hull light line such as a bow string); module level `ink_gate(class)`, `INK_GATE`,
 `ink_stats(body, hull, rgb, …)`, `coverage_pass`, `ink_gate_ok`, `ink_verdict`, `assert_ink_gate`,
 `InkGateError`, `ink_map`, `emissive_pass`, `bloom`, `glow_card`, `blur`. Offline UI renders
 (portraits, icons): `ink_render(meshes, res, silhouette_px, interior_px, depth_step)` — hulls hidden, the web's ink
@@ -690,6 +691,7 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/
 #   --only sword,axe · --quick <families> (studio + tiers + in-hand cells → scratch) · --lineup · --no-previews · --no-verify
 EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapon_grips.py --qa   # whole-clip QA table
 #   --search [Warrior,Mage,Rogue] [--fams staff,bow] [--out table.json]   re-plan grips (~30 min per class)
+#   --tracks Warrior[,Mage,Rogue] [--fams …] [--out table.json]   keyed grip tracks for every clip a static grip fails
 EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/loot.py        # ship (~5 min)
 #   --only bag,gold,potion,scroll,fruit,gem,quest,coin (subset; family sheets only on a full ship) · --quick [groups]
 ```
@@ -698,8 +700,8 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/
 |---|---|
 | `items/itemkit.py` | shared: item data (`Data/item_bases.json`), the tier ladder (`weapon_tier`: levelReq ≥ 1 T1 · 6 T2 · 15 T3 · 20 T4 · 28 T5 · 35 T6, `w_rusty_sword` Worn), `plan_roles` + `AtlasVariant` (tier atlases = the `Weapons` atlas with the role swatches recoloured → `T_AF_Palette_Weapons_<Tier>_BC/_P`, `MI_AF_Toon_Weapons_<Tier>`), heroes re-imported from their shipped FBX (`import_hero`, `hero_pose`, `attach` = UE socket convention), studio cells, `GameCells` (W1 1080p 1:1 ink-gated cells, `ground_occludes`), the quality-presentation composite (`tint_body`, `add_glow`, `add_beam`, canonical `QUALITY`), `ship_static_item`, `verify_fbx`, **`revolve`** / `lathe_y` / `ring_y`, `loft_rings`, `surface_strip` |
 | `items/weapon_tiers.py` | role colours per family and tier from the web icon variant tables (`ItemIcons.ts` SWORDS / DAGGERS / BOWS / staff heads / shield kinds / drawAxe / drawMace / wandSpec); higher tiers make the web's glow accents emissive roles |
-| `items/weapons.py` | `SM_Weapon_<Sword·Axe·Mace·Dagger·Bow·Staff·Wand·Shield>` (Previews `SM_Weapon_<F>/`: `closeup`, `tiers`, `game_inhand_<Class>` = READY, a Run frame, the Attack01-03 contacts and the Cast01 release at the shipped grips with the class's default attachments, for each class the runtime shows the generic mesh on, ink-gated, `game`, `game_inkgate`; `weapons_lineup/lineup.png`); the ship runs the whole-clip in-hand QA and exits 1 on a failure |
-| `items/weapon_grips.py` · `weapon_grips.json` | per-(class, family) **grips** (socket-space transforms: `carry` for READY / locomotion / hurt, `strike` for attacks / casts, `dodge` / `death` or per-clip ones where neither passes; the bow's hand per class) + `GripQA` (every frame of every hero clip on the shipped FBX: lowest point, item × body / head / the class's other default item, face disc) + the search that produced the table (`--search`: coarse SDF of the posed body, thousands of candidates scored for clearance and readability, then the exact QA); `--qa` prints the table |
+| `items/weapons.py` | `SM_Weapon_<Sword·Axe·Mace·Dagger·Bow·Staff·Wand·Shield>` (Previews `SM_Weapon_<F>/`: `closeup`, `tiers`, `game_inhand_<Class>` = READY, a Run frame, the Attack01-03 contacts and the Cast01 release at the shipped grips with the class's default attachments, for each class the runtime shows the generic mesh on, ink-gated (hand items from se, off-hand from sw, a slung shield from ne; the bow's no-hull string is left out of the gate: `Review.ink_ignore`), `game`, `game_inkgate`; `weapons_lineup/lineup.png`); the ship runs the whole-clip in-hand QA and exits 1 on a failure |
+| `items/weapon_grips.py` · `weapon_grips.json` | per-(class, family) **grips** (socket-space transforms: `carry` for READY / locomotion / hurt, `strike` for attacks / casts, `dodge` / `death` or per-clip ones where neither passes, and **keyed tracks** where no static grip clears a clip; the bow's hand per class) + `GripQA` (every frame of every hero clip on the shipped FBX: lowest point, item × body / head / the class's other default item, face disc; a bow's limbs and string ≥ 2 cm off the rigid body: `CLEAR`, `clearCm`) + the search that produced the table (`--search`: coarse SDF of the posed body, thousands of candidates scored for clearance and readability, then the exact QA); `--qa` prints the table |
 | `items/loot.py` | ground loot (spec §7): `SM_Loot_Bag`, `SM_Pickup_GoldCoin` (VFX), `SM_Pickup_Gold_S/M/L`, `SM_Pickup_PotionHP_S/–/L`, `SM_Pickup_PotionMP_S/–`, `SM_Pickup_Antidote`, `SM_Pickup_Scroll_TP/ID`, `SM_Pickup_LeyFruit`, 17 × `SM_Pickup_Gem_<Type>_<Tier>`, `SM_Pickup_Quest_Herb/Gel/Pendant` (Previews `<asset>/` + `loot_family/`) |
 
 **Weapons** (DECISIONS I6 / R4): one mesh per core `WeaponType`, modelled in its socket's bone space (grip at the
@@ -707,7 +709,8 @@ origin, blade / shaft +Y, shields face +Y like `SM_Hero_Warrior_Shield`, bows li
 archer); `heldBy: []` makes them the fallback of `FindWeapon` (a hero's own `SM_Hero_*` weapon still wins for its
 class: warrior sword / shield, mage staff, rogue dagger / bow). Manifest: `weaponType`, `attachSocket`, `tiers`
 (tier → MI), `bases` (item base id → tier), `tierNames`, **`grips`** (per class: `socket`, `default` = the carry grip
-and `clips` {clip: grip} where it differs, each `locCm` / `rotDeg` FRotator / `quat` FQuat XYZW, socket-relative;
+and `clips` {clip: grip} where it differs, each `locCm` / `rotDeg` FRotator / `quat` FQuat XYZW, socket-relative, or
+`{keys: [{ms, locCm, rotDeg, quat}]}` = a keyed track sampled by clip time (slerp / lerp, held at the ends);
 `shown` = the runtime shows this mesh on that class today), `gripBlendMs`, `inHandQA` (per class: whole-clip lowest
 point, body / cloth / head / other-item pairs, face frames, pass), the bow's **`occupiesOffhand`**. UE (not wired
 yet — see the entries' `note`): attach to `grips[cls].socket` with `grips[cls].default`, blend to
@@ -751,9 +754,21 @@ Conventions learnt on the items:
   side (never over the hood and eyes), strikes on the identity attach (the clip's own weapon motion). A grip turns
   the item about the grip centre and may slide along a haft; at 1080p the handle's angle in the fist does not read,
   the forearm-to-item angle does.
+* **Some arms cannot carry an item at all**: the mage's left hand swings across the robe in Walk / Run, so a shield
+  strapped to that forearm crosses the body on 12 of 60 Walk frames at any grip — the generic shield is **slung on her
+  back** (`socket` `spine_03`, `slung`, per-clip alternatives where the hood flops back in Hurt / Death / the big
+  casts). The rogue's shield is hidden for frames 2–7 of the Dodge roll (`hideMs`) — the forearm is tucked into the
+  body there and nothing clears it.
+* **Static grips are not always enough**: a 1.27 m staff carried by the warrior hits his strapped shield in Walk and
+  his own body in every sword swing at any one grip. Such clips get a keyed grip track: the coarse SDF ranks
+  candidates per frame, the exact QA checks a pool of them on every frame, and a Viterbi pass threads one feasible
+  grip per frame (≤ 12°/frame, flicks to 24°/frame only to dodge an intersection), widening the pool round any frame it
+  cannot clear. A 4 cm SDF misses thin parts (pauldrons, fingers) and a 40-point cloud misses a shield face: rank with
+  the SDF, decide with the exact test.
 * **Bows need their D toward the camera**: the W1 camera saw a bow in the hero's sagittal plane edge-on (a stick);
   the brace is 15 cm (web bulge 13 / 84) and the string a light no-hull cord 1.3 cm across in the bow's plane; the
-  grips turn the plane toward the camera in se *and* sw.
+  grips turn the plane toward the camera in se *and* sw and keep limbs and string ≥ 2 cm off the torso and helm
+  (the search rejects candidates closer than 2.8 cm on the coarse SDF; the exact QA measures `clearCm`).
 * **Glowing gems and the dark check**: bloom over a near-white stone lifts its line-tone ink above lum 64 — the
   diamond regions use a darker hull mix (`o` .7) and the perfect cuts a modest table emission (.22).
 * **Heaps** (art review 4): a mound proxy padded round the coins on it tented into a detached dark arch behind the
@@ -841,6 +856,14 @@ Conventions learnt on the VFX:
 * **Loops that must stand** (the loot beam on a bag until pickup) cannot loop an alpha curve: a steady layer (one
   particle per half period P living 2P, fadeIn .5 → the overlapping triangles sum to a constant) + a pulse layer (one
   per 2P living 2P) give .55·α ↔ α with period 2P (`loot.beam.*`, the web's ×.55 yoyo).
+* **Markers that must stay up are `held`** (`fx_recipes.held`, the same steady + pulse pair as the loot beam): the
+  elite fire orb and blood orb, the bleed wound. One-shot particles re-spawned every second with a steep `alphaPow`
+  were faint most of the time (the web's orbs are persistent circles with a yoyo tween). A marker needs a crisp
+  shape, not a soft Glow / Puff: the fire orb is the Core sprite's disc, the blood bead the inked Drop, and the
+  ambient pollen / dust are Core specks that hold their alpha (`alphaPow` 2.5) — soft dots fading over 8–14 s were
+  invisible at 1:1.
+* **Props face the way the game places them**: the exit gates face into the map (mesh −Y → Blender yaw −135° to
+  the W1 camera, as the env family sheets); at 45° the preview showed the sealed gate's back without its planks.
 * **A hue must survive the ground**: additive rings in #FF4400 / #FF2222 / #CC0000 all came out the same orange on
   dirt and purples went grey on grass — affix auras are a translucent Shock disc (thin fill + crisp rim in the true
   hue) + a faint additive rim, verified on dirt and grass side by side (`elite.*`). A filled additive body glow tints
@@ -848,6 +871,7 @@ Conventions learnt on the VFX:
 * **Bodies hide self-buffs too**: a chest-anchored glow on a blow-ful self cast (frenzy, poison blade, vanish) is
   inside the body; use hollow rings larger than the silhouette, ground pools, the hand socket, or spawn puffs on a
   ring ≥ 45 cm round the body (the vanish smoke bomb) until the runtime camera-ward bias lands.
-* **Launch points come from the owning class**: the mage's fireball leaves `fx_hand_r` (the staff hand), 73 cm short
-  of the staff crystal at Cast01's release — the spec's crystal launch needs the runtime to resolve `hand` to the
-  staff's `crystal` socket.
+* **Launch points come from the owning class**: mage and rogue effects are cast by their own rig in their own clip
+  (Cast01 / Cast_Blizzard / Cast_Meteor / Cast_Multishot) at its release beat. The mage's `hand` resolves to the staff
+  `crystal` socket (spec 8.1; at Cast01's release the crystal is 73 cm past `fx_hand_r`): the previews draw it so, and
+  the runtime needs the matching `AAbyssCharacterActor::GetAnchorLocation` change (`integration.launchSocket`).
