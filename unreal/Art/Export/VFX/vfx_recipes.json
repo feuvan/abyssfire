@@ -625,7 +625,7 @@
      "fadeIn": 0.15,
      "intensity": 1.0,
      "spinDegS": 0,
-     "rate": 2.4,
+     "rate": 3.2,
      "spawnHeightJitterCm": 120,
      "height": 70,
      "speedCmS": [
@@ -639,53 +639,17 @@
       12000
      ],
      "sizeCm": [
-      14,
-      20
+      16,
+      22
      ],
      "grow": 1.4,
      "alpha": [
-      0.55,
+      0.7,
       0
      ],
      "alphaPow": 2.5,
      "blend": "translucent",
      "color": "#E4F2CC"
-    },
-    {
-     "emitter": "motes",
-     "sprite": "Core",
-     "at": "camera",
-     "spawnRadiusCm": 1000,
-     "gravityCmS2": 0,
-     "drag": 0,
-     "fadeIn": 0.15,
-     "intensity": 1.0,
-     "spinDegS": 0,
-     "spawnHeightJitterCm": 120,
-     "height": 70,
-     "speedCmS": [
-      4,
-      18
-     ],
-     "dir": "up",
-     "coneDeg": 140,
-     "lifeMs": [
-      6000,
-      12000
-     ],
-     "sizeCm": [
-      14,
-      20
-     ],
-     "grow": 1.4,
-     "alpha": [
-      0.55,
-      0
-     ],
-     "alphaPow": 2.5,
-     "blend": "translucent",
-     "color": "#E4F2CC",
-     "count": 1
     }
    ]
   },
@@ -2991,10 +2955,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.72,
-      0.28
+      0.92,
+      0.45
      ],
-     "color": "#CC0000"
+     "color": "#A80A24"
     },
     {
      "sprite": "Puff",
@@ -3028,10 +2992,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.5,
-      0.08
+      0.42,
+      0.06
      ],
-     "color": "#FF5050",
+     "color": "#FF2A48",
      "intensity": 1.1
     },
     {
@@ -3042,10 +3006,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 36,
+     "sizeCm": 48,
      "aspect": 0.67,
      "grow": 1.0,
      "color": "#E8182A",
@@ -3067,10 +3031,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 36,
+     "sizeCm": 48,
      "aspect": 0.67,
      "grow": 1.0,
      "color": "#E8182A",
@@ -3091,10 +3055,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 64,
+     "sizeCm": 80,
      "grow": 1.0,
      "color": "#CC0000",
      "intensity": 1.0,
@@ -3104,7 +3068,7 @@
      "fadeIn": 0.5,
      "alphaPow": 1,
      "alpha": [
-      0.077,
+      0.088,
       0
      ]
     },
@@ -3115,10 +3079,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 64,
+     "sizeCm": 80,
      "grow": 1.0,
      "color": "#CC0000",
      "intensity": 1.0,
@@ -3128,7 +3092,7 @@
      "fadeIn": 0.5,
      "alphaPow": 1,
      "alpha": [
-      0.063,
+      0.072,
       0
      ]
     },
@@ -3138,11 +3102,11 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      -24.2,
+      -26.2,
       4.8,
-      39.6
+      40.6
      ],
-     "sizeCm": 11,
+     "sizeCm": 14,
      "grow": 1.0,
      "color": "#FF9A8A",
      "intensity": 1.0,
@@ -3162,11 +3126,11 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      -24.2,
+      -26.2,
       4.8,
-      39.6
+      40.6
      ],
-     "sizeCm": 11,
+     "sizeCm": 14,
      "grow": 1.0,
      "color": "#FF9A8A",
      "intensity": 1.0,
@@ -3190,14 +3154,14 @@
      "attach": true,
      "offsetCm": [
       -18.2,
-      9.8,
-      32.6
+      11.8,
+      30.6
      ],
-     "spawnRadiusCm": 5,
+     "spawnRadiusCm": 6,
      "gravityCmS2": 360,
      "sizeCm": [
-      16,
-      21
+      20,
+      27
      ],
      "aspect": 0.67,
      "grow": 1,
@@ -3226,10 +3190,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.72,
-      0.28
+      0.92,
+      0.45
      ],
-     "color": "#CC0000",
+     "color": "#A80A24",
      "count": 1
     },
     {
@@ -3263,10 +3227,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.5,
-      0.08
+      0.42,
+      0.06
      ],
-     "color": "#FF5050",
+     "color": "#FF2A48",
      "intensity": 1.1,
      "count": 1
     },
@@ -3278,10 +3242,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 36,
+     "sizeCm": 48,
      "aspect": 0.67,
      "grow": 1.0,
      "color": "#E8182A",
@@ -3303,10 +3267,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 36,
+     "sizeCm": 48,
      "aspect": 0.67,
      "grow": 1.0,
      "color": "#E8182A",
@@ -3327,10 +3291,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 64,
+     "sizeCm": 80,
      "grow": 1.0,
      "color": "#CC0000",
      "intensity": 1.0,
@@ -3339,7 +3303,7 @@
      "fadeIn": 0.5,
      "alphaPow": 1,
      "alpha": [
-      0.077,
+      0.088,
       0
      ],
      "count": 1
@@ -3351,10 +3315,10 @@
      "height": "chest",
      "offsetCm": [
       -18.2,
-      9.8,
-      42.6
+      11.8,
+      44.6
      ],
-     "sizeCm": 64,
+     "sizeCm": 80,
      "grow": 1.0,
      "color": "#CC0000",
      "intensity": 1.0,
@@ -3363,7 +3327,7 @@
      "fadeIn": 0.5,
      "alphaPow": 1,
      "alpha": [
-      0.063,
+      0.072,
       0
      ],
      "count": 1
@@ -3374,11 +3338,11 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      -24.2,
+      -26.2,
       4.8,
-      39.6
+      40.6
      ],
-     "sizeCm": 11,
+     "sizeCm": 14,
      "grow": 1.0,
      "color": "#FF9A8A",
      "intensity": 1.0,
@@ -3398,11 +3362,11 @@
      "at": "target",
      "height": "chest",
      "offsetCm": [
-      -24.2,
+      -26.2,
       4.8,
-      39.6
+      40.6
      ],
-     "sizeCm": 11,
+     "sizeCm": 14,
      "grow": 1.0,
      "color": "#FF9A8A",
      "intensity": 1.0,
@@ -3425,14 +3389,14 @@
      "attach": true,
      "offsetCm": [
       -18.2,
-      9.8,
-      32.6
+      11.8,
+      30.6
      ],
-     "spawnRadiusCm": 5,
+     "spawnRadiusCm": 6,
      "gravityCmS2": 360,
      "sizeCm": [
-      16,
-      21
+      20,
+      27
      ],
      "aspect": 0.67,
      "grow": 1,
@@ -3876,7 +3840,7 @@
       1,
       0
      ],
-     "alphaPow": 8,
+     "alphaPow": 64.6,
      "color": "#EEF3FB"
     },
     {
@@ -4024,7 +3988,7 @@
       1,
       0
      ],
-     "alphaPow": 6,
+     "alphaPow": 69.7,
      "color": "#C9D3E0"
     },
     {
@@ -4046,7 +4010,7 @@
       1,
       0
      ],
-     "alphaPow": 6,
+     "alphaPow": 69.7,
      "color": "#C9D3E0"
     },
     {
@@ -4068,7 +4032,7 @@
       1,
       0
      ],
-     "alphaPow": 6,
+     "alphaPow": 69.7,
      "color": "#C9D3E0"
     },
     {
@@ -4090,7 +4054,7 @@
       1,
       0
      ],
-     "alphaPow": 6,
+     "alphaPow": 69.7,
      "color": "#C9D3E0"
     },
     {
@@ -4112,7 +4076,7 @@
       1,
       0
      ],
-     "alphaPow": 6,
+     "alphaPow": 69.7,
      "color": "#C9D3E0"
     },
     {
@@ -4565,7 +4529,17 @@
       15.5,
       25.5
      ],
-     "color": "#8A7358"
+     "color": "#8A7358",
+     "alpha": [
+      1.0,
+      1.0
+     ],
+     "grow": 0.15,
+     "sizePow": 0.3,
+     "lifeMs": [
+      420,
+      560
+     ]
     },
     {
      "emitter": "sparks",
@@ -5695,7 +5669,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 15.6,
      "rotationDeg": -30,
      "spinDegS": 300,
      "alignToBlow": true,
@@ -5774,7 +5748,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 15.6,
      "rotationDeg": -30,
      "spinDegS": 300,
      "alignToBlow": true,
@@ -5853,7 +5827,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 15.6,
      "rotationDeg": -30,
      "spinDegS": 300,
      "alignToBlow": true,
@@ -10324,14 +10298,14 @@
       14.9,
       23.2
      ],
-     "grow": 1,
+     "grow": 0.15,
      "alpha": [
-      1,
-      0
+      1.0,
+      1.0
      ],
-     "alphaPow": 7,
      "color": "#DDF8FF",
-     "intensity": 1.1
+     "intensity": 1.1,
+     "sizePow": 0.3
     },
     {
      "emitter": "motes",
@@ -11787,19 +11761,38 @@
      "orient": "ground",
      "at": "origin",
      "height": 10.0,
-     "rate": 0.7,
-     "durationMs": -1,
+     "sizeCm": 90,
+     "grow": 1.0,
+     "sizePow": 1,
+     "color": "#7FD8FF",
+     "rate": 1.429,
      "attach": true,
+     "lifeMs": 1400,
+     "fadeIn": 0.5,
+     "alphaPow": 1,
+     "alpha": [
+      0.252,
+      0
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 10.0,
      "sizeCm": 90,
      "grow": 1.15,
      "sizePow": 1,
+     "color": "#7FD8FF",
+     "rate": 0.714,
+     "attach": true,
      "lifeMs": 1400,
-     "fadeIn": 0.3,
+     "fadeIn": 0.5,
+     "alphaPow": 1,
      "alpha": [
-      0.6,
-      0.2
-     ],
-     "color": "#7FD8FF"
+      0.348,
+      0
+     ]
     },
     {
      "emitter": "motes",
@@ -11828,17 +11821,37 @@
      "orient": "ground",
      "at": "origin",
      "height": 10.0,
+     "sizeCm": 90,
+     "grow": 1.0,
+     "sizePow": 1,
+     "color": "#7FD8FF",
      "attach": true,
+     "lifeMs": 1400,
+     "fadeIn": 0.5,
+     "alphaPow": 1,
+     "alpha": [
+      0.252,
+      0
+     ],
+     "count": 1
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 10.0,
      "sizeCm": 90,
      "grow": 1.15,
      "sizePow": 1,
-     "lifeMs": 1400,
-     "fadeIn": 0.3,
-     "alpha": [
-      0.6,
-      0.2
-     ],
      "color": "#7FD8FF",
+     "attach": true,
+     "lifeMs": 1400,
+     "fadeIn": 0.5,
+     "alphaPow": 1,
+     "alpha": [
+      0.348,
+      0
+     ],
      "count": 1
     }
    ]
@@ -12472,7 +12485,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 18.7,
      "rotationDeg": -40,
      "spinDegS": 320,
      "alignToBlow": true,
@@ -12494,7 +12507,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 18.7,
      "rotationDeg": 40,
      "spinDegS": -320,
      "alignToBlow": true,
@@ -12710,7 +12723,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 21.7,
      "rotationDeg": 40,
      "spinDegS": -260,
      "alignToBlow": true,
@@ -13710,7 +13723,17 @@
       25.5
      ],
      "color": "#8A7358",
-     "delayMs": 70
+     "delayMs": 70,
+     "alpha": [
+      1.0,
+      1.0
+     ],
+     "grow": 0.15,
+     "sizePow": 0.3,
+     "lifeMs": [
+      420,
+      560
+     ]
     }
    ],
    "shake": [
@@ -14862,13 +14885,13 @@
       16.6,
       26.6
      ],
-     "grow": 1,
+     "grow": 0.15,
      "alpha": [
-      1,
-      0
+      1.0,
+      1.0
      ],
-     "alphaPow": 7,
-     "color": "#DDF8FF"
+     "color": "#DDF8FF",
+     "sizePow": 0.3
     },
     {
      "emitter": "glint",
@@ -15179,7 +15202,7 @@
       1,
       0
      ],
-     "alphaPow": 12,
+     "alphaPow": 51.3,
      "rotationDeg": [
       0,
       360
@@ -15320,13 +15343,13 @@
       13.3,
       19.9
      ],
-     "grow": 1,
+     "grow": 0.15,
      "alpha": [
-      1,
-      0
+      1.0,
+      1.0
      ],
-     "alphaPow": 12,
-     "color": "#DDF8FF"
+     "color": "#DDF8FF",
+     "sizePow": 0.3
     }
    ]
   },
@@ -15430,7 +15453,7 @@
       1,
       0
      ],
-     "alphaPow": 6,
+     "alphaPow": 79.9,
      "color": "#9FB4D4",
      "intensity": 1.1
     },
@@ -16085,7 +16108,7 @@
       1,
       0
      ],
-     "alphaPow": 12,
+     "alphaPow": 75.8,
      "color": "#A07CFF",
      "intensity": 1.9
     },
@@ -16667,7 +16690,17 @@
       26.4
      ],
      "color": "#6A5048",
-     "delayMs": 300
+     "delayMs": 300,
+     "alpha": [
+      1.0,
+      1.0
+     ],
+     "grow": 0.15,
+     "sizePow": 0.3,
+     "lifeMs": [
+      420,
+      560
+     ]
     },
     {
      "emitter": "sparks",
@@ -16865,7 +16898,7 @@
       1,
       0
      ],
-     "alphaPow": 8,
+     "alphaPow": 41.1,
      "color": "#FFE27A",
      "intensity": 1.2
     },
@@ -17572,7 +17605,7 @@
       1,
       0
      ],
-     "alphaPow": 10,
+     "alphaPow": 32.9,
      "rotationDeg": [
       0,
       360
@@ -17597,7 +17630,7 @@
       1,
       0
      ],
-     "alphaPow": 10,
+     "alphaPow": 30.9,
      "rotationDeg": [
       0,
       360
@@ -17623,7 +17656,7 @@
       1,
       0
      ],
-     "alphaPow": 10,
+     "alphaPow": 26.8,
      "rotationDeg": [
       0,
       360
@@ -17802,7 +17835,17 @@
       25.5
      ],
      "spawnRadiusCm": 66.7,
-     "color": "#8A7358"
+     "color": "#8A7358",
+     "alpha": [
+      1.0,
+      1.0
+     ],
+     "grow": 0.15,
+     "sizePow": 0.3,
+     "lifeMs": [
+      420,
+      560
+     ]
     },
     {
      "emitter": "sparks",
@@ -18024,7 +18067,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 18.7,
      "rotationDeg": -30,
      "spinDegS": 300,
      "alignToBlow": true,
@@ -18143,7 +18186,7 @@
       1,
       0
      ],
-     "alphaPow": 6,
+     "alphaPow": 77.8,
      "color": "mid",
      "intensity": 1.1
     },
@@ -18331,7 +18374,7 @@
       1,
       0
      ],
-     "alphaPow": 5.0,
+     "alphaPow": 21.7,
      "rotationDeg": -38,
      "spinDegS": 260,
      "alignToBlow": true,
@@ -19153,7 +19196,13 @@
       22.2,
       31.1
      ],
-     "color": "#B08850"
+     "color": "#B08850",
+     "alpha": [
+      1.0,
+      1.0
+     ],
+     "grow": 0.15,
+     "sizePow": 0.3
     },
     {
      "emitter": "beam",
@@ -19787,7 +19836,17 @@
       25.5
      ],
      "spawnRadiusCm": 60.0,
-     "color": "#8A7358"
+     "color": "#8A7358",
+     "alpha": [
+      1.0,
+      1.0
+     ],
+     "grow": 0.15,
+     "sizePow": 0.3,
+     "lifeMs": [
+      420,
+      560
+     ]
     },
     {
      "emitter": "smoke",
@@ -19854,7 +19913,7 @@
       1,
       0
      ],
-     "alphaPow": 10,
+     "alphaPow": 28.9,
      "rotationDeg": [
       0,
       360
@@ -19879,7 +19938,7 @@
       1,
       0
      ],
-     "alphaPow": 10,
+     "alphaPow": 20.7,
      "rotationDeg": [
       0,
       360
@@ -20146,19 +20205,24 @@
      "blend": "translucent",
      "at": "target",
      "height": "chest",
-     "rate": 8,
+     "rate": 7,
      "attach": true,
      "offsetCm": [
       -18.2,
       -14.2,
       26.6
      ],
-     "spawnRadiusCm": 14,
-     "spawnHeightJitterCm": 20,
+     "spawnRadiusCm": 18,
+     "spawnHeightJitterCm": 16,
+     "dir": "flat",
+     "speedCmS": [
+      25,
+      55
+     ],
      "gravityCmS2": 480,
      "sizeCm": [
-      18,
-      24
+      22,
+      30
      ],
      "aspect": 0.67,
      "grow": 1,
@@ -20168,28 +20232,33 @@
      ],
      "alpha": [
       1,
-      0.7
+      0.8
      ],
-     "color": "rim"
+     "color": "mid"
     },
     {
      "sprite": "Drop",
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "rate": 8,
+     "rate": 7,
      "attach": true,
      "offsetCm": [
       -18.2,
       -14.2,
       26.6
      ],
-     "spawnRadiusCm": 14,
-     "spawnHeightJitterCm": 20,
+     "spawnRadiusCm": 18,
+     "spawnHeightJitterCm": 16,
+     "dir": "flat",
+     "speedCmS": [
+      25,
+      55
+     ],
      "gravityCmS2": 480,
      "sizeCm": [
-      8,
-      11
+      9,
+      12
      ],
      "aspect": 0.67,
      "grow": 1,
@@ -20211,16 +20280,17 @@
      "attach": true,
      "spawnRadiusCm": 30,
      "sizeCm": [
-      36,
-      50
+      34,
+      46
      ],
-     "grow": 1.3,
+     "grow": 1.25,
      "lifeMs": 1600,
      "alpha": [
-      0.9,
+      1.0,
       0
      ],
-     "color": "rim",
+     "alphaPow": 3.5,
+     "color": "#D41A2C",
      "height": 8.0
     },
     {
@@ -20338,16 +20408,17 @@
      "attach": true,
      "spawnRadiusCm": 30,
      "sizeCm": [
-      36,
-      50
+      34,
+      46
      ],
-     "grow": 1.3,
+     "grow": 1.25,
      "lifeMs": 1600,
      "alpha": [
-      0.9,
+      1.0,
       0
      ],
-     "color": "rim",
+     "alphaPow": 3.5,
+     "color": "#D41A2C",
      "height": 8.0,
      "count": 1
     }
@@ -20470,7 +20541,7 @@
      "sizeCm": 110.1,
      "grow": 1,
      "lifeMs": 1050,
-     "fadeIn": 0.08,
+     "fadeIn": 0.032,
      "alpha": [
       1,
       1
@@ -20558,7 +20629,7 @@
      "sizeCm": 110.1,
      "grow": 1,
      "lifeMs": 1050,
-     "fadeIn": 0.08,
+     "fadeIn": 0.032,
      "alpha": [
       1,
       1
@@ -20803,7 +20874,6 @@
      "blend": "translucent",
      "at": "target",
      "height": "overhead",
-     "rate": 3,
      "attach": true,
      "orbit": {
       "r0Cm": 24,
@@ -20812,19 +20882,53 @@
      },
      "sizeCm": 24.8,
      "grow": 1,
-     "lifeMs": 1000,
-     "fadeIn": 0.15,
+     "fadeIn": 0.034,
      "alpha": [
       1,
       0
      ],
-     "alphaPow": 8,
+     "alphaPow": 96.8,
      "rotationDeg": [
       -20,
       20
      ],
      "color": "#FFE27A",
-     "intensity": 1.25
+     "intensity": 1.25,
+     "rate": 3,
+     "lifeMs": 1000
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 24,
+      "r1Cm": 24,
+      "degS": 240
+     },
+     "sizeCm": 24.8,
+     "grow": 1,
+     "fadeIn": 0.034,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 96.8,
+     "rotationDeg": [
+      -20,
+      20
+     ],
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 2,
+     "lifeMs": [
+      600,
+      1000
+     ]
     },
     {
      "emitter": "motes",
@@ -20976,7 +21080,7 @@
   "lootBeam": "loot.beam.<magic|rare|legendary|set> are LOOPS for the loot prop (WorldContract 5.3: add a 'GroundItem prop loop' row): in UAbyssWorldBuilder::SpawnEntity's GroundItem branch set LoopRecipe = loot.beam.<quality> for quality >= Magic (Normal: none). The prop's vfx:<handle> tag already stops it in RemoveEntity on pickup / despawn. loot.drop.* stay the drop-moment burst; the 31 cm PoolRadiusCm light pool can stay (the beam carries its own pool).",
   "clueYaw": "SM_FX_ClueMagnifier's lens is tilted back 40 deg and faces the W1 camera at mesh yaw camera + 90 (UE 135 deg; n.v = 0.985); the random Pickup yaw (AbyssWorldBuilder.cpp Setup.YawDeg = TileHash % 360) turns it edge-on. For DefId quest_clue set Setup.YawDeg = CameraYawDeg + 180 (= 225; AAbyssPropActor adds MeshYawOffsetDeg -90 -> mesh yaw 135) + a hash jitter of at most +-8 deg.",
   "chestOpen": "prop.chest.open is timed from the start of the chest's Open clip (its layers wait for the ChestOpen notify, 120 ms); nothing plays it yet - play it where the chest prop starts Open (UAbyssWorldBuilder::RemoveEntity, PickedUp / Collected of a Chest-style prop).",
-  "meshDissolve": "FX mesh layers fade by a 4x4 Bayer screen-door (M_AF_FX_Mesh opacity mask) that TAA / TSR resolves; without TAA (mobile low) it shows as checker noise on the late dissolves (ice armor shatter, mana shield, whirlwind / rampage bands). Those layers now dissolve at alphaPow 10-12 (the half-dithered window is the last ~2 frames); on tiers without TAA use a plain alpha-test at 0.5 (the mesh pops out at mid-fade) instead of the dither.",
+  "meshDissolve": "FX mesh layers fade by a 4x4 Bayer screen-door (M_AF_FX_Mesh opacity mask) that TAA / TSR resolves; without TAA (mobile low) any alpha < 31/32 shows as checker noise. The recipes now hold every mesh layer's dithered window (fade-in + late dissolve) to <= 34 ms = 2 frames at 60 Hz (fx_recipes.mesh_dissolve raises alphaPow / cuts fadeIn; at alphaPow 10-12 the shatter / bubble / band dissolves still dithered for 90-190 ms), and rock debris / ice shards no longer dissolve at all (alpha 1, late shrink: grow x .15, sizePow .3). Optional runtime polish: on tiers without TAA use a plain alpha-test at 0.5 instead of the dither.",
   "launchSocket": "Projectiles and `hand` layers resolve fx_hand_r. The mage holds the staff there: at Cast01's release the staff crystal is 73 cm further along the cast. Spec 8.1 launches from the crystal: AAbyssCharacterActor::GetAnchorLocation(HandR) returns the main-hand mesh's `crystal` socket when it has one (the previews draw it so).",
   "impactShake": "meteor / fireball shakes belong to the impact (combat-feel 11.5); recipe shakes start with the recipe, so the impact recipes (proj.fireball.hit) carry them."
  }

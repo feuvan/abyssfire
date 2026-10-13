@@ -157,26 +157,34 @@ GOLD = R("#E3B44C", .42, .50)
 REGIONS = {
     "bag": dict(cloth=CLOTH, fold=CLOTH.shade_region(.30, .20), patch=R("#D3C19C", .38, .40),
                 stitch=R("#8A6A44", .35, .2), cord=R("#8A6A44", .40, .30), coin=COIN_FACE, coin_rim=COIN_RIM),
-    "coin": dict(rim=COIN_RIM, face=COIN_FACE, heap=R("#E9AE36", .36, .45)),
+    # heap: the mound between the coins of Gold_L reads as the shadowed coins inside the pile (a shade darker than a
+    # coin's rim); *_lean: an upright coin keeps gold in the shade band at any spawn yaw (low shadowAmt)
+    "coin": dict(rim=COIN_RIM, face=COIN_FACE, heap=R("#D69A2A", .40, .40), rim_lean=R("#E3A631", .16, .45),
+                 face_lean=R("#F6C84A", .14, .55)),
     "potion": dict(glass=GLASS, glint=GLINT, cork=CORK, cork_line=R("#7A4E26", .35, .2), collar=GOLD,
                    # glass tinted 22 % toward its liquid (art review 5: the colourless shoulder dominated from −50°)
-                   glass_hp=R("#E0BCC8", .30, .50), glass_mp=R("#BCCAF0", .30, .50), glass_anti=R("#C8E8C4", .30, .50),
+                   glass_hp=R("#E0BCC8", .30, .50), glass_mp=R("#BCCAF0", .30, .50), glass_anti=R("#E6F8E0", .26, .55),
                    hp=R("#E0283A", .40, .45, e=0.22), hp_hi=R("#FF8A92", .30, .40, e=0.35),
                    mp=R("#2A5AE8", .40, .45, e=0.22), mp_hi=R("#8AB0FF", .30, .40, e=0.35),
-                   anti=R("#5FD03A", .40, .45, e=0.22), anti_hi=R("#B8F49A", .30, .40, e=0.35),
+                   # antidote: a lighter lime liquid and near-white glass (art review, fourth look: saturated green
+                   # on the plains grass #74A247 at equal value — only the ink carried it)
+                   anti=R("#9CEB5A", .34, .50, e=0.26), anti_hi=R("#E4FFC8", .25, .45, e=0.45),
                    label=R("#EEE2C0", .35, .40), leafmark=R("#3A9A3A", .35, .25)),
     "scroll": dict(sheet=R("#F0DCAA", .38, .35), roll=R("#E2C890", .38, .40), knob=R("#C8A86A", .42, .35),
                    ink=R("#C8A86A", .30, .2).shade_region(.25, .1),
                    tp=R("#3E8CFF", .30, .30, e=0.55), tp_seal=R("#2F5AC0", .40, .40), tp_ribbon=R("#3E8CFF", .40, .35),
                    id=R("#9A5A14", .35, .15), id_pupil=R("#4A200C", .30, .10), id_seal=R("#C0282E", .40, .40),
                    id_ribbon=R("#D8A030", .40, .35)),
-    "fruit": dict(skin=R("#3FD0B0", .40, .45, e=0.05), vein=R("#C8FFF0", 0.0, 0.0, e=0.6),
+    # the ley-vein seams are emissive lines (web #C8FFF0 / #9FF6E0, art review, fourth look: faint lines on a plain
+    # teal apple; spec §1.1 one emissive accent per interactive prop)
+    # (e .55: at e 1.0 the seams' bloom lifted the ink above the dark limit where a seam meets the silhouette)
+    "fruit": dict(skin=R("#3FD0B0", .40, .45, e=0.05), vein=R("#C8FFF0", 0.0, 0.0, e=0.55),
                   vein2=R("#9FF6E0", 0.0, 0.0, e=0.45), stem=R("#6B4428", .42, .30), leaf=R("#3FAE5C", .42, .40),
                   rib=R("#7FD88A", .30, .30)),
     "quest": dict(herb_a=R("#5AA83A"), herb_b=R("#6CBF42"), herb_c=R("#4F9A34"), herb_d=R("#7CCC4C"),
-                  herb_e=R("#62B43E"), stem=R("#4A7A28"), twine=R("#EFE2BC", .40, .45),
-                  petal=R("#F7F3E2", .35, .40), pistil=R("#F2C94C", .35, .40),
-                  gel=R("#6EE04A", .38, .50, e=0.10), gel_hi=R("#FFFFFF", 0.0, 0.0, e=0.6),
+                  herb_e=R("#62B43E"), stem=R("#4A7A28"), twine=R("#FFF4D6", .30, .50),
+                  petal=R("#FFFDF4", .25, .50, e=0.12), pistil=R("#FFD24A", .30, .45, e=0.15),
+                  gel=R("#6EE04A", .38, .50, e=0.10), gel_hi=R("#FFFFFF", 0.0, 0.0, e=0.85),
                   gel_core=R("#B6F49A", .30, .45, e=0.25),
                   locket=R("#EEC05A", .40, .36), filigree=R("#FFE7A0", .30, .40), hinge=R("#9A6A1A", .35, .2),
                   ruby=R("#E0283C", .35, .45, e=0.40), chain=R("#E2B64E", .40, .45), bail=R("#FFE09A", .35, .45)),
@@ -186,11 +194,16 @@ GEMS = {   # web ItemIcons.ts gem colours and cuts (gemSpec)
     "Topaz": ("#FFC02A", "trillion"), "Diamond": ("#D8F4FF", "round"),
 }
 GEM_TIERS = {"Ruby": 3, "Sapphire": 3, "Emerald": 3, "Topaz": 3, "Diamond": 5}
-GEM_R = {1: 0.040, 2: 0.050, 3: 0.061, 4: 0.071, 5: 0.081}   # art review 7: a stronger size ramp
+# pickup scale (art review, fourth look: 8–16 cm stones were 10–22 px dots at 1080p beside 24 cm potions, and the
+# tier silhouettes could not be told apart): ×1.75–1.85, about 14 → 30 cm across the tier ramp
+GEM_R = {1: 0.070, 2: 0.088, 3: 0.106, 4: 0.126, 5: 0.148}
 # tier → silhouette (crown height / table / girdle sides): chipped · faceted · crowned (a two-step crown) · brilliant
 GEM_FORM = {1: dict(crown=0.26, table=0.62, steps=1), 2: dict(crown=0.40, table=0.54, steps=1),
             3: dict(crown=0.62, table=0.40, steps=2), 4: dict(crown=0.70, table=0.36, steps=2, sides=16),
             5: dict(crown=0.82, table=0.32, steps=2, sides=16, pavilion=0.95)}
+
+
+GEM_STAR_TIER = 3          # tiers ≥ this (and every diamond) carry the emissive glint star on the table
 
 
 def gem_regions() -> dict:
@@ -205,7 +218,8 @@ def gem_regions() -> dict:
         rgb = color.hex_to_rgb(hx)
         hexm = lambda c, t: color.rgb_to_hex(color.mix(rgb, c, t))  # noqa: E731
         dia = name == "Diamond"
-        o = 0.7 if dia else 1.0
+        # bloom of the glowing tables / glint stars over the hull (fourth look: larger, brighter accents)
+        o = 0.45 if dia else 0.5
         out[f"{k}_a"] = Region(hexm((150, 190, 225), .25), .55, .22, o=o) if dia else Region(hx, .55, .14, o=o)
         out[f"{k}_b"] = (Region(hexm((255, 255, 255), .18), .50, .30, e=0.05, o=o) if dia
                          else Region(hexm((255, 255, 255), .09), .50, .18, e=0.05, o=o))
@@ -216,16 +230,48 @@ def gem_regions() -> dict:
         out[f"{k}_glow"] = (Region(hexm((255, 255, 255), .62), .25, .40, e=0.22, o=o) if dia
                             else Region(hexm((255, 255, 255), .34), .30, .12, e=0.20, o=o))
         out[f"{k}_deep"] = Region(hexm((40, 80, 140), .50) if dia else hexm((16, 8, 32), .45), .50, .20, o=o)
+        if name == "Ruby":         # the crown still read pink / salmon under the warm band (fourth look): web #E0283C
+            # (the pink came from the warm rim band on the steep crown facets: e .3 mixes it back toward the base)
+            out[f"{k}_a"] = Region(hx, .55, .05, e=0.30, o=o)
+            out[f"{k}_b"] = Region(hexm((255, 255, 255), .04), .50, .07, e=0.30, o=o)
+            out[f"{k}_table"] = Region(hexm((255, 255, 255), .16), .40, .05, e=0.06, o=o)
+            out[f"{k}_glow"] = Region(hexm((255, 255, 255), .22), .30, .05, e=0.45, o=o)
+        if name == "Emerald":      # green on the plains grass at equal value (fourth look): deep body, bright facets
+            out[f"{k}_a"] = Region(hexm((8, 40, 24), .38), .55, .14, o=o)
+            out[f"{k}_b"] = Region(hexm((255, 255, 255), .22), .45, .25, e=0.08, o=o)
+            out[f"{k}_table"] = Region(hexm((255, 255, 255), .45), .35, .30, e=0.12, o=o)
+            out[f"{k}_glow"] = Region(hexm((255, 255, 255), .52), .25, .30, e=0.45, o=o)
+        elif name != "Ruby":
+            # the table of the crowned / brilliant cuts glows (a focal accent at 1080p; the web icons sparkle)
+            out[f"{k}_glow"] = Region(out[f"{k}_glow"].hex, out[f"{k}_glow"].s, out[f"{k}_glow"].l, e=0.42, o=o)
+        if dia:      # a pale ice-blue table under the white glint star (a white table swallowed the star)
+            out[f"{k}_glow"] = Region(hexm((120, 190, 240), .30), .25, .30, e=0.30, o=o)
+        out[f"{k}_star"] = Region(hexm((255, 255, 255), .80), 0.0, 0.0, e=1.0, o=o)
     return out
 
 
 REGIONS["gem"] = gem_regions()
 
 
+# darker hull mixes where a lighter / more emissive region (art review, fourth look) put its line tone or the bloom of
+# an emissive accent next to the silhouette above the interactive dark limit (lum 64): the antidote's lime liquid,
+# the ley fruit's emissive seams, the gel's highlight band
+HULL_O = {"potion": {"anti": 0.55, "glass_anti": 0.55, "anti_hi": 0.55},
+          "fruit": {"skin": 0.4, "vein": 0.4, "vein2": 0.4, "leaf": 0.5, "stem": 0.5, "rib": 0.5},
+          "quest": {"gel": 0.5, "gel_hi": 0.5, "gel_core": 0.5}}
+
+
 def class_regions(prefix: str) -> dict:
-    """The prefix's regions with the class outline mix (line tone); gem regions keep their own ``o``."""
+    """The prefix's regions with the class outline mix (line tone); gem regions keep their own ``o``; ``HULL_O``
+    darkens a few."""
+    from dataclasses import replace
     regs = REGIONS[prefix]
-    return dict(regs) if prefix == "gem" else outline.ink_regions(regs, CLS)
+    if prefix == "gem":
+        return dict(regs)
+    out = outline.ink_regions(regs, CLS)
+    for k, o in HULL_O.get(prefix, {}).items():
+        out[k] = replace(out[k], o=o)
+    return out
 
 
 def palette() -> Palette:
@@ -382,6 +428,121 @@ def heap_coin(r: float = 0.030, h: float = 0.0085, sides: int = 8) -> tuple[M.Pa
     return rim, face
 
 
+def heap_coin2(r: float = 0.030, h: float = 0.0085, sides: int = 8) -> tuple[M.Part, M.Part]:
+    """A light coin with a face on both sides (crest / edge coins tilt far enough to show their underside)."""
+    rim, face = heap_coin(r, h, sides)
+    face.merge(M.cylinder(r * 0.80, r * 0.80, -h * 0.62, -h * 0.30, sides=sides).auto_sharp(30))
+    return rim, face
+
+
+def stack(b: M.Builder, rng, xy, z0: float, n: int, r: float, h: float, sides: int = 8) -> None:
+    """A short stack of light coins (each a little off-centre) sharing one padded cylinder hull: one 8-sided ink
+    round the stack instead of a hull per coin."""
+    rims = faces = None
+    z = z0
+    for k in range(n):
+        m = tilt(rx=rng.uniform(-3, 3), rz=rng.uniform(0, 360), t=(xy[0] + rng.uniform(-0.003, 0.003),
+                                                                    xy[1] + rng.uniform(-0.003, 0.003), z))
+        rp, fp = heap_coin2(r, h, sides) if k == 0 else heap_coin(r, h, sides)
+        rp, fp = place(rp, m), place(fp, m)
+        rims = rp if rims is None else rims.merge(rp)
+        faces = fp if faces is None else faces.merge(fp)
+        z += h * 0.98
+    lo = min(v.co.z for v in rims.bm.verts)
+    lift = max(0.0, -lo)                                  # a tilted bottom coin on the floor: rest it on the floor
+    rims.translate((0.0, 0.0, lift))
+    faces.translate((0.0, 0.0, lift))
+    proxy = M.cylinder(r, r, z0 - h / 2 + lift, z - h * 0.48 + lift, sides=sides).translate((xy[0], xy[1], 0.0))
+    rid = b.add(rims, "rim", name="coin_stack", hull=proxy, hull_pad=True)
+    b.add(faces, "face", name="coin_face", outline=False, covered_by=rid)
+
+
+def build_heap(b: M.Builder, rng, r: float, h: float) -> None:
+    """``SM_Pickup_Gold_L``: a heap of coins (art review, fourth look: the mound with flush, sunk octagons read as
+    dough or cheese with embossed shapes, both in the close-up and the 1080p crop). The mound is low and a shade
+    darker (the shadowed coins inside the heap); every coin on it rests *on* the surface with its rim band showing
+    (lifted by its half-height, tilted ±16° off the slope) on a Poisson-spaced layout; four coins stuck upright into
+    the crest and a three-coin stack on top break the silhouette with coin rims (as Gold_M's stack); the outer ring
+    carries its own hulls (+3 coins slid off the foot, tilted out); the stack of three and the leaning coin beside
+    keep the pile's base readable. The leaning coin faces between the key light and the camera at the 'front' yaw
+    and uses the low-shadow coin regions so it stays gold in the shade band at any spawn yaw.
+    Ink (art review 4): the mound keeps its own (unpadded) hull; only coins that reach the silhouette carry hulls."""
+    hr, hh = 0.150, 0.062
+
+    def hz(x, y):
+        d = math.hypot(x / hr, y / (hr * 0.86))
+        return hh * max(0.0, 1.0 - d * d) ** 0.85
+
+    def slope_n(x, y):
+        gx = (hz(x + 0.004, y) - hz(x - 0.004, y)) / 0.008
+        gy = (hz(x, y + 0.004) - hz(x, y - 0.004)) / 0.008
+        return Vector((-gx, -gy, 1.0)).normalized()
+
+    rings = []
+    for k, f in enumerate((1.0, 0.86, 0.68, 0.48, 0.26, 0.08)):
+        pts = []
+        for i in range(20):
+            a = TAU * i / 20
+            wob = 1.0 + 0.07 * math.sin(4 * a + 1.3) + 0.04 * math.sin(7 * a)
+            x, y = hr * f * wob * math.cos(a), hr * 0.86 * f * wob * math.sin(a)
+            pts.append(Vector((x, y, hz(x / wob, y / wob) if k else 0.0)))
+        rings.append(pts)
+    b.add(IK.loft_rings(rings, cap0="fan", cap1="fan", dome1=0.004), "heap", name="mound")
+
+    def put(x, y, lift, tilt_deg, spin, hull, both=False, sides=8, rim="rim", face="face", up_extra=None):
+        n = slope_n(x, y) if up_extra is None else up_extra
+        rot = n.to_track_quat("Z", "Y").to_matrix().to_4x4() @ Matrix.Rotation(spin, 4, "Z")
+        rot = rot @ Matrix.Rotation(math.radians(tilt_deg), 4, "X")
+        m = Matrix.Translation(Vector((x, y, hz(x, y) + lift))) @ rot
+        rp, fp = (heap_coin2 if both else heap_coin)(r, h, sides)
+        rp, fp = place(rp, m), place(fp, m)
+        lo = min(v.co.z for v in rp.bm.verts)
+        if lo < 0.0005:                                   # an edge coin dipping under the floor: lift it
+            rp.translate((0.0, 0.0, 0.0005 - lo))
+            fp.translate((0.0, 0.0, 0.0005 - lo))
+        if hull:
+            rid = b.add(rp, rim, name="coin_rim", hull_pad=True)
+            b.add(fp, face, name="coin_face", outline=False, covered_by=rid)
+        else:
+            b.add(rp, rim, name="coin_rim_in", outline=False)
+            b.add(fp, face, name="coin_face_in", outline=False)
+
+    # surface coins: Poisson-spaced (≥ 4.6 cm apart), resting on the mound with the rim band above the surface
+    placed: list[tuple[float, float]] = []
+    tries = 0
+    while len(placed) < 14 and tries < 900:
+        tries += 1
+        a, d = rng.uniform(0, TAU), math.sqrt(rng.uniform(0.0, 0.90))
+        x, y = hr * d * math.cos(a), hr * 0.86 * d * math.sin(a)
+        if any(math.hypot(x - px, y - py) < 0.050 for px, py in placed):
+            continue
+        placed.append((x, y))
+        put(x, y, h * 0.42, rng.uniform(-16, 16), rng.uniform(0, TAU), hull=d > 0.52)
+    # crest: three coins stuck into the top at 45–60°, rims up, and a stack of three on the summit
+    for k, (ang, dd, tilt_d) in enumerate(((0.4, 0.34, 52.0), (2.6, 0.30, 60.0), (4.5, 0.36, 46.0))):
+        x, y = hr * dd * math.cos(ang), hr * 0.86 * dd * math.sin(ang)
+        out = Vector((math.cos(ang), math.sin(ang), 0.0))
+        n = (slope_n(x, y) + out * math.tan(math.radians(tilt_d))).normalized()
+        put(x, y, r * math.sin(math.radians(tilt_d)) * 0.55, 0.0, rng.uniform(0, TAU), hull=True, both=True,
+            up_extra=n)
+    stack(b, rng, (0.012, -0.010), hz(0.012, -0.010) + h * 0.5, 3, r, h)
+    # the foot: three coins slid off the heap, tilted out (their own hulls: they set the silhouette's lower edge)
+    for ang in (1.1, 2.9, 4.6):
+        x, y = hr * 0.98 * math.cos(ang), hr * 0.86 * 0.98 * math.sin(ang)
+        out = Vector((math.cos(ang), math.sin(ang), 0.0))
+        n = (Vector((0, 0, 1)) - out * 0.35).normalized()
+        put(x, y, h * 0.5 + 0.004, 0.0, rng.uniform(0, TAU), hull=True, up_extra=n)
+    stack(b, rng, (0.160, -0.060), h / 2, 3, r, h)
+    # the leaning coin: face between the key light (+X +Y) and the camera (−X +Y) at the front yaw, tilted back 40°
+    lean = Vector((-0.707, -0.707, 0.85)).normalized()          # front yaw: camera at local −Y, key light from −X
+    m = Matrix.Translation(Vector((-0.150, -0.075, 0.0))) @ lean.to_track_quat("Z", "X").to_matrix().to_4x4()
+    rim_p, face_p = coin(r, h, sides=10)
+    lo = min((m @ v.co).z for v in rim_p.bm.verts)
+    m = Matrix.Translation((0.0, 0.0, -lo)) @ m
+    rid = b.add(place(rim_p, m), "rim_lean", name="coin_rim", hull_pad=True)
+    b.add(place(face_p, m), "face_lean", name="coin_face", outline=False, covered_by=rid)
+
+
 def build_coin_fx(pal: Palette):
     """``SM_Pickup_GoldCoin``: the ``reward.gold`` burst coin (VFX mesh; no outline slot — ``M_AF_FX_Mesh`` replaces
     every slot at runtime). Disc in the XY plane, centred (the VFX system tumbles it)."""
@@ -419,63 +580,7 @@ def build_gold(pal: Palette, size: str):
             zz = r if rx > 60 else h / 2 + 0.006 * math.sin(math.radians(rx))
             add_coin(b, tilt(rx=rx, rz=rz, t=(x, y, zz)))
     else:
-        # a heap: a lumpy gold mound under 18 coins lying on its surface at random tilts, + a short stack beside.
-        # Ink (art review 4): the mound keeps its own (unpadded) hull and the coins on the heap's outer ring — the
-        # only ones that reach the silhouette (the camera at −50° sees the whole 27° top) — carry their own hulls,
-        # so the ink follows the real coin silhouette; inner coins need none. (A mound proxy padded round the coins
-        # tented into a detached dark arch behind the pile; a shrink-wrap height field inks its own dips between
-        # coins.) Heap coins are light (8 sides, top face only): 5.6 k → ≤ 3.5 k tris.
-        hr, hh = 0.150, 0.075
-
-        def hz(x, y):
-            d = math.hypot(x / hr, y / (hr * 0.86))
-            return hh * max(0.0, 1.0 - d * d) ** 0.85
-
-        rings = []
-        for k, f in enumerate((1.0, 0.86, 0.68, 0.48, 0.26, 0.08)):
-            pts = []
-            for i in range(20):
-                a = TAU * i / 20
-                wob = 1.0 + 0.07 * math.sin(4 * a + 1.3) + 0.04 * math.sin(7 * a)
-                x, y = hr * f * wob * math.cos(a), hr * 0.86 * f * wob * math.sin(a)
-                pts.append(Vector((x, y, hz(x / wob, y / wob) if k else 0.0)))
-            rings.append(pts)
-        mound = IK.loft_rings(rings, cap0="fan", cap1="fan", dome1=0.004)
-        coins = []
-        placed = tries = 0
-        while placed < 18 and tries < 400:
-            tries += 1
-            a, d = rng.uniform(0, TAU), math.sqrt(rng.uniform(0.0, 0.86))
-            x, y = hr * d * math.cos(a), hr * 0.86 * d * math.sin(a)
-            z = hz(x, y)
-            gx = (hz(x + 0.004, y) - hz(x - 0.004, y)) / 0.008
-            gy = (hz(x, y + 0.004) - hz(x, y - 0.004)) / 0.008
-            nrm = Vector((-gx, -gy, 1.0)).normalized()
-            rot = nrm.to_track_quat("Z", "Y").to_matrix().to_4x4() @ Matrix.Rotation(rng.uniform(0, TAU), 4, "Z")
-            jitter = Matrix.Rotation(math.radians(rng.uniform(-9, 9)), 4, "X")
-            m = Matrix.Translation(Vector((x, y, z - h * 0.05))) @ rot @ jitter
-            rim, face = heap_coin(r, h)
-            rim, face = place(rim, m), place(face, m)
-            lo = min(v.co.z for v in rim.bm.verts)
-            if lo < 0.0005:                                   # an edge coin dipping under the floor: lift it
-                rim.translate((0.0, 0.0, 0.0005 - lo))
-                face.translate((0.0, 0.0, 0.0005 - lo))
-                m = Matrix.Translation((0.0, 0.0, 0.0005 - lo)) @ m
-            coins.append((rim, face, d))
-            placed += 1
-        b.add(mound, "heap", name="mound")
-        for rim, face, d in coins:
-            if d > 0.55:            # outer ring: reaches the silhouette → own ink
-                rid = b.add(rim, "rim", name="coin_rim", hull_pad=True)
-                b.add(face, "face", name="coin_face", outline=False, covered_by=rid)
-            else:
-                b.add(rim, "rim", name="coin_rim_in", outline=False)
-                b.add(face, "face", name="coin_face_in", outline=False)
-        z = h / 2
-        for k in range(3):
-            add_coin(b, tilt(rz=rng.uniform(0, 360), t=(0.160 + rng.uniform(-0.002, 0.002), -0.060, z)), sides=10)
-            z += h * 0.98
-        add_coin(b, tilt(rx=80, rz=40, t=(-0.150, -0.075, r)), sides=10)
+        build_heap(b, rng, r, h)
     obj = asset.finish_mesh(b, pal, CLS)
     top_z = max(v.co.z for v in obj.data.vertices)
     lo = GOLD_PILES[size]["amount"]
@@ -713,7 +818,8 @@ def build_fruit(pal: Palette):
     zs = [0.0, 0.006, 0.018, 0.04, 0.06, 0.085, 0.11, 0.135, 0.155, 0.173, 0.188, 0.199, 0.205]
     rings = [[fruit_surface(TAU * i / n, z)[0] for i in range(n)] for z in zs]
     fid = b.add(IK.loft_rings(rings, cap0="fan", cap1="fan", dome1=-0.006), "skin", name="fruit", hull_pad=True)
-    for a0, w, reg in ((0.6, 0.0105, "vein"), (3.5, 0.0085, "vein2"), (2.0, 0.006, "vein2")):
+    # two seams on the 'front' half (the camera sits at local −Y = azimuth 4.71 at the front yaw), one behind
+    for a0, w, reg in ((4.15, 0.0175, "vein"), (5.30, 0.0135, "vein2"), (1.6, 0.0120, "vein2")):
         pts, nrm = [], []
         for i in range(12):
             t = i / 11
@@ -721,7 +827,7 @@ def build_fruit(pal: Palette):
             p, nn = fruit_surface(a0 + 0.30 * math.sin(math.pi * t * 1.2), z)
             pts.append(p)
             nrm.append(nn)
-        b.add(IK.surface_strip(pts, nrm, w, lift=0.0010, depth=0.003), reg, name="vein", outline=False,
+        b.add(IK.surface_strip(pts, nrm, w, lift=0.0014, depth=0.003), reg, name="vein", outline=False,
               covered_by=fid)
     stem = [Vector((0.0, 0.0, 0.192)), Vector((0.004, 0.0, 0.222)), Vector((0.014, 0.0, 0.246)),
             Vector((0.028, 0.0, 0.260))]
@@ -734,7 +840,7 @@ def build_fruit(pal: Palette):
                            depth=0.002), "rib", name="rib", outline=False, covered_by=lid)
     obj = asset.finish_mesh(b, pal, CLS)
     top_z = max(v.co.z for v in obj.data.vertices)
-    return obj, sockets(top_z, (0.0, 0.0, 0.14)), {"kind": "fruit"}
+    return obj, sockets(top_z, (0.0, 0.0, 0.12)), {"kind": "fruit", "glintZ": 0.12}
 
 
 # ── gems ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -820,8 +926,21 @@ def build_gem(pal: Palette, gname: str, tier: int):
     form = dict(GEM_FORM[tier])
     sides = form.pop("sides", None)
     part = gem_part(gem_cut(cut, r, sides), r, tier == 1, **form)
-    table = f"{k}_glow" if tier >= 3 else f"{k}_table"
+    dia = gname == "Diamond"
+    table = f"{k}_glow" if (tier >= 3 or (dia and tier >= 2)) else f"{k}_table"
+    tz = max(v.co.z for v in part.bm.verts)
     b.add(part, f"{k}_a", name="gem", sub_regions={1: f"{k}_b", 2: table, 3: f"{k}_deep"})
+    if tier >= GEM_STAR_TIER or dia:
+        # the glint: a four-point emissive star on the table (web facetGem sparkle; fourth look: no focal accent)
+        tb = form.get("table", 0.54)
+        R_ = r * tb * (0.80 if tier >= 4 else 0.70)
+        star = []
+        npts = 8 if tier >= 5 else 4                     # the perfect cut: an eight-point star (web tier-5 rays)
+        for i in range(2 * npts):
+            a_ = math.pi / 4 + math.pi * i / npts
+            rr = (R_ if (i // 2) % 2 == 0 or npts == 4 else R_ * 0.62) if i % 2 == 0 else R_ * 0.22
+            star.append((rr * math.cos(a_) - 0.05 * r, rr * math.sin(a_) - 0.04 * r))
+        b.add(plate_xy(star, tz - 0.0004, tz + 0.0009, rings=2), f"{k}_star", name="glint_star", outline=False)
     obj = asset.finish_mesh(b, pal, CLS)
     top_z = max(v.co.z for v in obj.data.vertices)
     base_id = f"g_{k}_{tier}"
@@ -871,12 +990,12 @@ def build_quest_herb(pal: Palette):
         petals = []
         for i in range(10):
             a = TAU * i / 10
-            rr = 0.021 if i % 2 == 0 else 0.010
+            rr = 0.031 if i % 2 == 0 else 0.015          # larger, brighter blossoms (fourth look: barely visible)
             petals.append((rr * math.cos(a), rr * math.sin(a)))
         fl = plate_xy(petals, -0.0025, 0.0025, rings=2)
         m = tilt(rx=-25 + 12 * k, rz=36 * k, t=(dx, dy, dz))
         pid = b.add(place(fl, m), "petal", name="blossom", hull_pad=True)
-        b.add(place(IK.ell((0.0068, 0.0068, 0.0040), (0, 0, 0.0028), sides=8, rings=4), m), "pistil",
+        b.add(place(IK.ell((0.0095, 0.0095, 0.0045), (0, 0, 0.0028), sides=8, rings=4), m), "pistil",
               name="pistil", outline=False, covered_by=pid)
     obj = asset.finish_mesh(b, pal, CLS)
     top_z = max(v.co.z for v in obj.data.vertices)
@@ -907,7 +1026,7 @@ def build_quest_gel(pal: Palette):
             p = surf(a, z)
             pts.append(p)
             nrm.append(Vector((p.x, p.y, (p.z - 0.02) * 1.6)).normalized())
-        b.add(IK.surface_strip(pts, nrm, 0.011, lift=0.0010, depth=0.004), "gel_hi", name="glint", outline=False,
+        b.add(IK.surface_strip(pts, nrm, 0.016, lift=0.0012, depth=0.004), "gel_hi", name="glint", outline=False,
               covered_by=gid)
     cap = []
     for a in [TAU * i / 14 for i in range(14)]:
@@ -1030,7 +1149,14 @@ QUALITY_HOOKS = {
 # web px → 2.2 cm, the VFX conversion) on the ``glint`` socket at the liquid's centre
 POTION_BOB = {"amplitudeCm": 12.8, "periodMs": 1200}
 POTION_GLOW = {"hp": "#FF4A4A", "mp": "#4A8AFF"}
-GLOW_RADIUS_CM, GLOW_ALPHA = 22.0, 0.45
+# the ley fruit's soft glow (web drawLeyFruit: glow #6FF0C8 α .6, r 40 / 27 of the fruit): additive — it brightens
+# the grass round the fruit to a luminous mint (a light, not a colour over the ground like the potions)
+FRUIT_GLOW = {"color": "#6FF0C8", "radiusCm": 20.0, "alpha": 0.6, "blend": "additive"}
+# translucent 'over' (art review, fourth look: added over the plains grass the red card turned the grass amber, the
+# 'rare' colour): red mixed into green stays khaki / orange below ~60 % coverage, so the card's peak opacity is .85
+# (web falloff: ~.45 at the flask's silhouette, as the web's α .45 glow under its sprite)
+GLOW_RADIUS_CM, GLOW_ALPHA = 22.0, 0.85
+GLOW_BLEND = "alpha"
 LATER = {"tp": "DECISIONS I4: the TP scroll is removed in milestone 1", "id": "DECISIONS I2: no ID scrolls in milestone 1"}
 
 
@@ -1043,10 +1169,17 @@ def loot_entry(meta: dict, tint: bool) -> dict:
         e["bob"] = dict(POTION_BOB)
         if meta.get("potion") in POTION_GLOW:
             e["glow"] = {"color": POTION_GLOW[meta["potion"]], "radiusCm": GLOW_RADIUS_CM, "alpha": GLOW_ALPHA,
-                         "socket": "glint", "blend": "additive", "falloff": "web light (review.GLOW_STOPS)",
+                         "socket": "glint", "blend": GLOW_BLEND, "falloff": "web light (review.GLOW_STOPS)",
+                         "blendNote": ("alpha = translucent premultiplied 'over' (BLEND_Translucent, emissive = colour × "
+                                       "a·f, opacity = a·f): the halo replaces the terrain with the liquid colour; "
+                                       "additive turned the plains grass amber"),
                          "placement": "behind: camera-facing card pushed 15 cm back along the view ray, depth-tested "
                                       "(the flask and its ink occlude it; web draws the glow under the sprite)",
                          "depthOffsetCm": 15.0}
+    if meta.get("kind") == "fruit":
+        e["glow"] = dict(FRUIT_GLOW, socket="glint", falloff="web light (review.GLOW_STOPS)",
+                         placement="behind: camera-facing card pushed 15 cm back along the view ray, depth-tested",
+                         depthOffsetCm=15.0)
     if meta.get("kind") == "scroll":
         e["milestone"] = "later"
         e["milestoneNote"] = LATER[meta["scroll"]]
@@ -1099,7 +1232,10 @@ class LootReview(review.Review):
         x0, y0 = review.border_origin(border, res)
         for g in self.glows(cam, res):
             c = (g["center_px"][0] - x0, g["center_px"][1] - y0)
-            lit = review.glow_card(lit, c, g["radius_px"], g["color"], g.get("alpha", 0.0) * self.glow_scale)
+            if g.get("blend") == "alpha":
+                lit = glow_over(lit, c, g["radius_px"], g["color"], g.get("alpha", 0.0) * self.glow_scale)
+            else:
+                lit = review.glow_card(lit, c, g["radius_px"], g["color"], g.get("alpha", 0.0) * self.glow_scale)
         body, hull = review.coverage_pass(self.meshes, border, ground=False)
         A = np.clip(body + hull, 0.0, 1.0)[..., None]
         return (base.astype(np.float32) * A + lit.astype(np.float32) * (1.0 - A) + 0.5).astype(np.uint8)
@@ -1111,20 +1247,39 @@ class LootReview(review.Review):
         return img, st
 
 
+def glow_over(img: np.ndarray, center_px, radius_px: float, hex_color: str, alpha: float) -> np.ndarray:
+    """The potion glow card **alpha-blended** (premultiplied 'over', UE translucent): lin = lin·(1 − a·f) + a·f·c with
+    the web light falloff f (``review.GLOW_STOPS``). Art review, fourth look: added over the plains grass the red
+    glow (#FF4A4A α .45) shifted the grass (116,162,71) → (142,160,75) — amber, the 'rare' colour; blended over, the
+    halo replaces the grass with the liquid's colour and reads red / blue."""
+    h, w = img.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    r = np.hypot(xx + 0.5 - center_px[0], yy + 0.5 - center_px[1]) / max(radius_px, 1e-3)
+    xs, ys = zip(*review.GLOW_STOPS)
+    f = (alpha * np.interp(r, xs, ys)).astype(np.float32)[:, :, None]
+    lin = IK._lin(img)
+    lin = lin * (1.0 - f) + f * np.array(color.hex_linear(hex_color), np.float32)
+    return IK._srgb(lin).astype(np.uint8)
+
+
 def potion_glows(obj, meta: dict | None):
     """The runtime potion glow card (manifest ``loot.glow``) for the game cells: centred on the ``glint`` socket,
     radius 22 cm projected at the card's depth."""
-    if not meta or meta.get("potion") not in POTION_GLOW:
+    if meta and meta.get("kind") == "fruit":
+        hx, gz, rad, al, bl = FRUIT_GLOW["color"], meta.get("glintZ", 0.12), FRUIT_GLOW["radiusCm"], \
+            FRUIT_GLOW["alpha"], FRUIT_GLOW["blend"]
+    elif not meta or meta.get("potion") not in POTION_GLOW:
         return None
-    hx = POTION_GLOW[meta["potion"]]
-    gz = meta.get("glintZ", 0.15)
+    else:
+        hx, gz, rad, al, bl = POTION_GLOW[meta["potion"]], meta.get("glintZ", 0.15), GLOW_RADIUS_CM, GLOW_ALPHA, \
+            GLOW_BLEND
 
     def glows(cam, res):
         c = obj.matrix_world @ Vector((0.0, 0.0, gz))
         right = cam.matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))
         p0 = review.project_px(cam, c, res)
-        p1 = review.project_px(cam, c + right * (GLOW_RADIUS_CM / 100.0), res)
-        return [dict(center_px=p0, radius_px=abs(p1[0] - p0[0]), color=hx, alpha=GLOW_ALPHA)]
+        p1 = review.project_px(cam, c + right * (rad / 100.0), res)
+        return [dict(center_px=p0, radius_px=abs(p1[0] - p0[0]), color=hx, alpha=al, blend=bl)]
     return glows
 
 
@@ -1210,6 +1365,7 @@ def coin_previews(obj, name: str) -> list[Path]:
     chars = (w[1] if w else []) + (g[1] if g else [])
     for m in chars:
         review.set_outline_px([m], outline.SCREEN_PX_1080[m.get("af_outline_class", "monster")])
+    toon_mats = list(obj.data.materials)
     K.set_fx_look(obj, K.tint_linear("#FFC93A", 1.1), 1.0)
     rng = scene.rng(name, "burst")
     coins = []
@@ -1252,6 +1408,10 @@ def coin_previews(obj, name: str) -> list[Path]:
         files.append(IK.save(out, "game_1080crop.png", img))
     for c in coins:
         bpy.data.objects.remove(c)
+    # back to the shipped slot-0 toon material: the family studio sheet renders the mesh after this, and the FX look
+    # (lit by the game stage) drew a solid black ellipse in the studio (art review, fourth look)
+    for i, mt in enumerate(toon_mats):
+        obj.data.materials[i] = mt
     for m in chars:
         m.hide_render = True
     for root in (w, g):
@@ -1324,7 +1484,7 @@ def lineup(objs: dict) -> np.ndarray:
     rows = [[n for n in order if objs[n][4] in ("bag", "gold")],
             [n for n in order if objs[n][4] in ("potion", "scroll", "fruit", "quest")],
             [n for n in order if objs[n][4] == "gem"]]
-    for ri, (row, dist, step) in enumerate(zip(rows, (0.75, 1.35, 1.85), (0.46, 0.40, 0.21))):
+    for ri, (row, dist, step) in enumerate(zip(rows, (0.75, 1.35, 1.95), (0.46, 0.40, 0.31))):
         for i, n in enumerate(row):
             o = objs[n][0]
             off = (i - (len(row) - 1) / 2) * step

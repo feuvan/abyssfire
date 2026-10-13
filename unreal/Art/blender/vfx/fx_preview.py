@@ -25,7 +25,8 @@ staff ``crystal`` for ``hand``, spec 8.1 — as ``AAbyssCharacterActor::GetAncho
   shipped 8 cm DepthFade on every quad (``--soft-ground``: 0.8 cm on ground quads); translucent pools before
   additive ones (sort priorities 1 / 2); the runtime's fake light pools at +2 cm with its ×0.5 alpha;
 * the character-side composites the runtime adds: the StatusTint multiply on a status target, the dodge
-  afterimages (Ghost material: class spirit colour, α .28 / .21 at ⅓ / ⅔ of the path, 260 ms);
+  afterimages (Ghost material: class spirit colour, α .28 / .21 at ⅓ / ⅔ of the path, 260 ms), the soul echo's
+  hero ghost on its ring (Ghost #9FE6FF, α .55 ↔ .35, bob 6 px, 1400 ms yoyo);
 * bloom like the zone post (threshold 1, the kit's two lobes, strength 0.8), then sRGB.
 
 Each effect → ``Previews/vfx_effects/<recipe-id>/<ms>[-<ms>]ms.png``: the key frames (ms from the event) as native
@@ -1957,6 +1958,9 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
     bg_key, bg_col, bg_dep = None, None, None
     tag = {"warrior": "WARRIOR 1.76M", "mage": "MAGE", "rogue": "ROGUE"}.get(s.cls, "")
     ghosts_spec = []
+    # the soul echo is the hero's ghost (M_AF_Ghost, #9FE6FF, α .55 ↔ .35, bob 6 px, 1400 ms yoyo) standing on the
+    # NS_World_SoulEcho ring (ZoneScene.ts:1248-1286, spec §6.8)
+    echo_at = prop_at if s.prop == "prop.soul_echo" else None
     if s.dodge:
         for k, (frac, a0) in enumerate(((1 / 3, 0.28), (2 / 3, 0.21))):
             tc = 300.0 * (1 - math.sqrt(1 - frac))          # when the eased path passes ⅓ / ⅔
@@ -1997,6 +2001,12 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
                     for lay_, (p, tc, a0, sc_) in zip(layers, live):
                         a = a0 * (1.0 - min((t - tc) / 260.0, 1.0)) ** 1.3
                         img = img + lay_ * a
+            if echo_at is not None:
+                yoyo = 0.5 * (1.0 - math.cos(2.0 * math.pi * t / 2800.0))      # 0 → 1 → 0 over 2 × 1400 ms
+                lay_ = stage.render_ghosts(box, ch, [(echo_at + np.array([0.0, 0.0, 6.0 * PX_CM_WEB * yoyo]),
+                                                      0.0)], "#9FE6FF")[0]
+                set_time(t)
+                img = img + lay_ * (0.55 - 0.20 * yoyo)
             plate = img.copy()
             composite_sprites(img, dep, cam, sprites)
             # what the effect touched (sprites, FX meshes) → the tight crop
@@ -2021,6 +2031,8 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
         subj.append(prop_at)
         if s.prop.startswith("exit."):                 # the whole 3.3 m gate, not a 1.9 m actor box
             subj.append(prop_at + np.array([0.0, 0.0, 140.0]))
+        if echo_at is not None:                        # the ghost's plume at the top of its bob
+            subj.append(prop_at + np.array([0.0, 0.0, 40.0]))
     if s.bag:
         subj.append(T)
     if smith is not None:

@@ -655,11 +655,15 @@ def utility() -> dict:
         lay(sprite="Glow", orient="billboard", blend="translucent", at="target", height="chest", rate=1.2,
             attach=True, sizeCm=96, grow=1.05, lifeMs=1000, fadeIn=0.35, alpha=[0.34, 0], color="#D6F4FF"),
     ], note="R8 frost crystals at the feet (SM_FX_FrostCrust) + a frosted veil; StatusTint #7FD0FF α .45")
+    star = dict(mesh="SM_FX_StunStar", sprite="Star", orient="upright", blend="translucent", at="target",
+                height="overhead", attach=True, orbit={"r0Cm": 24, "r1Cm": 24, "degS": 240},
+                sizeCm=mesh_size("SM_FX_StunStar", 0.9), grow=1, fadeIn=0.15, alpha=[1, 0], alphaPow=8,
+                rotationDeg=[-20, 20], color="#FFE27A", intensity=1.25)
     rec["status.stun"] = R("holy", [
-        lay(mesh="SM_FX_StunStar", sprite="Star", orient="upright", blend="translucent", at="target",
-            height="overhead", rate=3, attach=True, orbit={"r0Cm": 24, "r1Cm": 24, "degS": 240},
-            sizeCm=mesh_size("SM_FX_StunStar", 0.9), grow=1, lifeMs=1000, fadeIn=0.15, alpha=[1, 0],
-            alphaPow=8, rotationDeg=[-20, 20], color="#FFE27A", intensity=1.25),
+        lay(**star, rate=3, lifeMs=1000),
+        # the stun reads from its first frame: two stars already circling (staggered lives), not 333 ms of nothing
+        # before the 3 /s loop's first star
+        lay(**star, count=2, lifeMs=[600, 1000]),
         lay(emitter="motes", sprite="Spark", at="target", height="overhead", rate=4, attach=True,
             spawnRadiusCm=26, gravityCmS2=0, speedCmS=[5, 15], sizeCm=[6, 9], lifeMs=[300, 500], color="core"),
     ], note="R8 stun stars: toon stars orbiting fx_overhead, facing the W1 camera")
@@ -677,14 +681,19 @@ def utility() -> dict:
         *held(dict(sprite="Slash", variant=SLASH["rogue"], orient="billboard", at="target", height="chest",
                    offsetCm=[0, 4, 5], sizeCm=36, aspect=0.5, rotationDeg=-35, grow=1.0, color="#FF5A5A",
                    intensity=1.1), 0.45, 450),
-        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=8,
-            attach=True, offsetCm=[0, 4, -4], spawnRadiusCm=14, spawnHeightJitterCm=20, gravityCmS2=480,
-            sizeCm=[18, 24], aspect=0.67, grow=1, lifeMs=[420, 560], alpha=[1, 0.7], color="rim"),
-        lay(sprite="Drop", orient="billboard", at="target", height="chest", rate=8, attach=True, offsetCm=[0, 4, -4],
-            spawnRadiusCm=14, spawnHeightJitterCm=20, gravityCmS2=480, sizeCm=[8, 11], aspect=0.67, grow=1,
-            lifeMs=[420, 560], alpha=[0.55, 0], color="#FF8070"),
-        lay(emitter="decal", sprite="Puddle", at="target", rate=1.6, attach=True, spawnRadiusCm=30, sizeCm=[36, 50],
-            grow=1.3, lifeMs=1600, alpha=[0.9, 0], color="rim"),
+        # fat inked drops (22–30 cm) flicked a little sideways off the wound so they fall clear of the silhouette —
+        # 18–24 cm drops falling straight down the body read as red smudges on the goblin at 1:1
+        lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=7,
+            attach=True, offsetCm=[0, 4, -4], spawnRadiusCm=18, spawnHeightJitterCm=16, dir="flat",
+            speedCmS=[25, 55], gravityCmS2=480, sizeCm=[22, 30], aspect=0.67, grow=1, lifeMs=[420, 560],
+            alpha=[1, 0.8], color="mid"),
+        lay(sprite="Drop", orient="billboard", at="target", height="chest", rate=7, attach=True, offsetCm=[0, 4, -4],
+            spawnRadiusCm=18, spawnHeightJitterCm=16, dir="flat", speedCmS=[25, 55], gravityCmS2=480,
+            sizeCm=[9, 12], aspect=0.67, grow=1, lifeMs=[420, 560], alpha=[0.55, 0], color="#FF8070"),
+        # crimson spatters round the feet (held near opaque, a bright tint: the cel Puddle's value bands average .69 and
+        # the Drop's .43, so the palette rim #A01420 came out maroon-brown over tan dirt)
+        lay(emitter="decal", sprite="Puddle", at="target", rate=1.6, attach=True, spawnRadiusCm=30, sizeCm=[34, 46],
+            grow=1.25, lifeMs=1600, alpha=[1.0, 0], alphaPow=3.5, color="#D41A2C"),
     ], note="optional R8 bleed visual: a held wound, blood drips + spatters round the feet; StatusTint #C8323C α .22")
     return rec
 
@@ -770,9 +779,13 @@ def world() -> dict:
         lay(sprite="Ring", orient="ground", at="origin", height=3, rate=0.9, durationMs=-1, attach=True,
             sizeCm=70, grow=1.3, sizePow=1, lifeMs=1100, alpha=[0.7, 0.2], color="#8FE0FF", intensity=1.2),
     ])
+    # the glow ring under the hero's ghost STAYS (ZoneScene.ts:1248-1286: α .6 ↔ .25 + widen ×1.15, 1400 ms yoyo):
+    # a steady ring at .25 + a widening pulse to .6 (one-shot rings at .7 /s left it empty half the time)
+    echo_ring = held(dict(sprite="Ring", orient="ground", at="origin", height=3, sizeCm=90, grow=1.0, sizePow=1,
+                          color="#7FD8FF"), 0.6, 700, pulse=0.58)
+    echo_ring[1]["grow"] = 1.15
     rec["prop.soul_echo"] = R("frost", [
-        lay(sprite="Ring", orient="ground", at="origin", height=3, rate=0.7, durationMs=-1, attach=True,
-            sizeCm=90, grow=1.15, sizePow=1, lifeMs=1400, fadeIn=0.3, alpha=[0.6, 0.2], color="#7FD8FF"),
+        *echo_ring,
         lay(emitter="motes", sprite="Wisp", at="origin", height="chest", rate=3, durationMs=-1, attach=True,
             spawnRadiusCm=25, gravityCmS2=-80, sizeCm=[10, 16], spinDegS=0, color="#9FE6FF"),
     ])
@@ -806,8 +819,10 @@ def world() -> dict:
         ("pollen", dict(sprite="Core", rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11],
                         lifeMs=[8000, 14000], sizeCm=[14, 19], grow=1.25, alpha=[0.9, 0], alphaPow=2.5,
                         blend="translucent", color="#FFF2A0")),
-        ("dust", dict(sprite="Core", rate=2.4, spawnHeightJitterCm=120, height=70, speedCmS=[4, 18], dir="up",
-                      coneDeg=140, lifeMs=[6000, 12000], sizeCm=[14, 20], grow=1.4, alpha=[0.55, 0], alphaPow=2.5,
+        # dust: the web's every-800 ms layer (≈ 13 on screen); at 2.4 /s and α .55 a quarter-screen crop held 0–1
+        # visible mote, so 3.2 /s (≈ 17 on screen) and α .7
+        ("dust", dict(sprite="Core", rate=3.2, spawnHeightJitterCm=120, height=70, speedCmS=[4, 18], dir="up",
+                      coneDeg=140, lifeMs=[6000, 12000], sizeCm=[16, 22], grow=1.4, alpha=[0.7, 0], alphaPow=2.5,
                       blend="translucent", color="#E4F2CC")),
         ("wisps", dict(rate=2.2, spawnHeightJitterCm=200, height=110, speedCmS=[8, 20], gravityCmS2=-4,
                        lifeMs=[5000, 9000], sizeCm=[8, 14], grow=1.3, alpha=[0.5, 0], color="#9ACBFF",
@@ -851,15 +866,19 @@ def world() -> dict:
     # α .6 in the affix colour, pulsing scale 1 → 1.2, α .25 → .1 over 1200 ms. Additive alone turns every red into
     # the same orange on dirt and greys purple / blue on grass, so the body is TRANSLUCENT (the Shock disc = a thin
     # fill + a crisp rim: true hue on any ground) and only a faint additive rim glows on top.
-    def aura(col, rim):
+    def aura(col, rim, *, body=None, body_alpha=(0.72, 0.28), rim_alpha=(0.5, 0.08)):
+        """``body`` (default ``col``) is the translucent Shock disc's tint: a dark affix hue needs a deeper body at
+        a higher alpha to hold its hue over the tan dirt (vampiric #CC0000 at α .72 came out the fire ring's
+        orange, only darker)."""
         return [
             lay(sprite="Shock", orient="ground", blend="translucent", at="target", height=2, rate=0.85, attach=True,
-                sizeCm=120, grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=[0.72, 0.28], color=col),
+                sizeCm=120, grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=list(body_alpha),
+                color=body or col),
             lay(sprite="Puff", orient="ground", blend="translucent", at="target", height=1.5, rate=0.85,
                 attach=True, sizeCm=118, grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=[0.3, 0.1],
                 color=col),
             lay(sprite="Ring", orient="ground", at="target", height=3, rate=0.85, attach=True,
-                sizeCm=round(60 / RING_R), grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=[0.5, 0.08],
+                sizeCm=round(60 / RING_R), grow=1.2, sizePow=1, lifeMs=1200, fadeIn=0.25, alpha=list(rim_alpha),
                 color=rim, intensity=1.1),
         ]
 
@@ -872,6 +891,10 @@ def world() -> dict:
             lay(emitter="glint", at="target", height="chest", rate=rate, attach=True, spawnRadiusCm=radius,
                 spawnHeightJitterCm=40, sizeCm=round(size * 0.8, 1), lifeMs=life, color=lit, intensity=1.3),
         ]
+    AURA_KW = {
+        # blood, not fire: a deep crimson body held near opaque (a ring of drying blood) + a thin cool-red rim
+        "vampiric": dict(body="#A80A24", body_alpha=(0.92, 0.45), rim_alpha=(0.42, 0.06)),
+    }
     for affix, col, rim, extra in (
         # a fire orb at mid-body rising 8 px (800 ms): a solid orange ball with a hot core + a cel flame tongue
         # the web's fire orb (r 6 px ≈ 27 cm, alpha .4 ↔ .1 yoyo 800 ms) STAYS over the elite: a held crisp 28 cm
@@ -913,23 +936,23 @@ def world() -> dict:
                 lifeMs=[1300, 1700], alpha=[0.32, 0], fadeIn=0.3, color="#5A2A78"),
         ]),
         # a blood orb dripping (web r 5 px, alpha .4 ↔ .15 yoyo 1000 ms): a held cel blood bead (the inked Drop
-        # sprite, 36 cm; a flat dark-red disc turned brown on dirt) beside the chest with a wet highlight, fat drops
-        # falling from it to the ground
-        ("vampiric", "#CC0000", "#FF5050", [
+        # sprite, 48 cm; a flat dark-red disc turned brown on dirt, 36 cm was a speck at 1:1) beside the chest with a wet
+        # highlight, fat drops falling from it to the ground
+        ("vampiric", "#CC0000", "#FF2A48", [
             *held(dict(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest",
-                       offsetCm=[0, 28, 12], sizeCm=36, aspect=0.67, grow=1.0, color="#E8182A"), 1.0, 500,
+                       offsetCm=[0, 30, 14], sizeCm=48, aspect=0.67, grow=1.0, color="#E8182A"), 1.0, 500,
                   pulse=0.15),
-            *held(dict(sprite="Glow", orient="billboard", at="target", height="chest", offsetCm=[0, 28, 12],
-                       sizeCm=64, grow=1.0, color="#CC0000", intensity=1.0), 0.14, 500),
-            *held(dict(sprite="Core", orient="billboard", at="target", height="chest", offsetCm=[-6, 23, 9],
-                       sizeCm=11, grow=1.0, color="#FF9A8A", intensity=1.0), 0.7, 500, pulse=0.2),
+            *held(dict(sprite="Glow", orient="billboard", at="target", height="chest", offsetCm=[0, 30, 14],
+                       sizeCm=80, grow=1.0, color="#CC0000", intensity=1.0), 0.16, 500),
+            *held(dict(sprite="Core", orient="billboard", at="target", height="chest", offsetCm=[-8, 23, 10],
+                       sizeCm=14, grow=1.0, color="#FF9A8A", intensity=1.0), 0.7, 500, pulse=0.2),
             lay(sprite="Drop", orient="billboard", blend="translucent", at="target", height="chest", rate=2.6,
-                attach=True, offsetCm=[0, 28, 2], spawnRadiusCm=5, gravityCmS2=360, sizeCm=[16, 21], aspect=0.67,
+                attach=True, offsetCm=[0, 30, 0], spawnRadiusCm=6, gravityCmS2=360, sizeCm=[20, 27], aspect=0.67,
                 grow=1, lifeMs=[620, 780], alpha=[1, 0.35], alphaPow=1, fadeIn=0.08, color="#A00012"),
         ]),
         ("frozen", "#4488FF", "#9CC8FF", glints("#3A78F0", "#CFE4FF", 1.1, 40, 900, 24)),
     ):
-        rec[f"elite.{affix}"] = R("event", [*aura(col, rim), *extra],
+        rec[f"elite.{affix}"] = R("event", [*aura(col, rim, **AURA_KW.get(affix, {})), *extra],
                                   note=f"NS_Elite_Aura_{affix} (forward-compatible id; aura colour {col})")
     return rec
 
@@ -1948,6 +1971,54 @@ def prewarm(recipes: dict) -> None:
         r["layers"].extend(extra)
 
 
+DITHER_MAX_MS = 34.0
+"""M_AF_FX_Mesh fades by a 4 × 4 Bayer screen-door (thresholds (b + .5) / 16: any α < 31/32 drops pixels) that only
+TAA / TSR resolves, and mobile low has no TAA. Every mesh layer's dithered window (fade-in + late dissolve) is held to
+two 60 Hz frames."""
+SHRINK_OUT = ("SM_FX_Rock_A", "SM_FX_Rock_B", "SM_FX_IceShard")
+MESH_PRESET_FADE = {"debris": ([1.0, 0.0], 5.0, [420, 560])}     # AbyssVfxRecipe.cpp ApplyPreset
+
+
+def mesh_dissolve(recipes: dict) -> None:
+    """FX meshes are masked, so a dissolve is a screen-door, not a fade (ice armor's shatter, the mana-shield bubble,
+    whirlwind / rampage bands showed ~90–190 ms of checker noise at 1:1). Small flying pieces (rock debris, ice
+    shards) keep α 1 and shrink out instead (the coins' late shrink: grow × .15, sizePow .3); every other mesh
+    layer's alphaPow is raised until α < 31/32 lasts at most ``DITHER_MAX_MS`` of its longest life, and a fade-in
+    is cut to the same window (α = α0 − (α0 − α1)·U^pow, U = (T − fadeIn) / (1 − fadeIn), AbyssVfxSystem.cpp)."""
+    thr = 31.0 / 32.0          # AF_FxMeshMask keeps a pixel while α > (b + .5) / 16: the first one drops below 15.5/16
+    for r in recipes.values():
+        for L in r["layers"]:
+            mesh = L.get("mesh")
+            if not mesh:
+                continue
+            da, dp, dl = MESH_PRESET_FADE.get(L.get("emitter"), ([1.0, 0.0], 1.0, [300, 300]))
+            alpha = L.get("alpha", da)
+            a0, a1 = (float(alpha[0]), float(alpha[-1])) if isinstance(alpha, list) else (float(alpha), 0.0)
+            life = L.get("lifeMs", dl)
+            lmax = float(max(life) if isinstance(life, list) else life)
+            fi = float(L.get("fadeIn", 0.0))
+            if fi * lmax > DITHER_MAX_MS:
+                fi = round(DITHER_MAX_MS / lmax, 3)
+                L["fadeIn"] = fi
+            if not (a1 < a0 and a0 >= thr):
+                continue
+            grow, size_pow = float(L.get("grow", 1.0)), L.get("sizePow")
+            if mesh in SHRINK_OUT and grow <= 1.0 and size_pow is None:
+                L["alpha"] = [a0, a0]
+                L.pop("alphaPow", None)
+                L["grow"] = round(grow * 0.15, 3)
+                L["sizePow"] = 0.3
+                if "lifeMs" not in L:
+                    L["lifeMs"] = list(dl)
+                continue
+            pw = float(L.get("alphaPow", dp))
+            frac = (a0 - thr) / (a0 - a1)
+            span = (1.0 - fi) * lmax
+            need = math.log(frac) / math.log(1.0 - min(DITHER_MAX_MS / span, 0.99))
+            if need > pw:
+                L["alphaPow"] = round(need + 0.05, 1)
+
+
 def build() -> dict:
     load_diameters()
     recipes = {}
@@ -1957,6 +2028,7 @@ def build() -> dict:
     camera_bias(recipes)
     ground_lift(recipes)
     prewarm(recipes)
+    mesh_dissolve(recipes)
     doc = {
         "schemaVersion": 1,
         "_doc": "Abyssfire VFX recipes, art pass (Art/blender/vfx/fx_recipes.py). Schema: Source/Abyssfire/Public/"
@@ -2021,10 +2093,12 @@ def build() -> dict:
                          "ChestOpen notify, 120 ms); nothing plays it yet - play it where the chest prop starts Open "
                          "(UAbyssWorldBuilder::RemoveEntity, PickedUp / Collected of a Chest-style prop).",
             "meshDissolve": "FX mesh layers fade by a 4x4 Bayer screen-door (M_AF_FX_Mesh opacity mask) that TAA / TSR "
-                            "resolves; without TAA (mobile low) it shows as checker noise on the late dissolves "
-                            "(ice armor shatter, mana shield, whirlwind / rampage bands). Those layers now dissolve at "
-                            "alphaPow 10-12 (the half-dithered window is the last ~2 frames); on tiers without TAA use "
-                            "a plain alpha-test at 0.5 (the mesh pops out at mid-fade) instead of the dither.",
+                            "resolves; without TAA (mobile low) any alpha < 31/32 shows as checker noise. The recipes "
+                            "now hold every mesh layer's dithered window (fade-in + late dissolve) to <= 34 ms = 2 frames "
+                            "at 60 Hz (fx_recipes.mesh_dissolve raises alphaPow / cuts fadeIn; at alphaPow 10-12 the "
+                            "shatter / bubble / band dissolves still dithered for 90-190 ms), and rock debris / ice "
+                            "shards no longer dissolve at all (alpha 1, late shrink: grow x .15, sizePow .3). Optional "
+                            "runtime polish: on tiers without TAA use a plain alpha-test at 0.5 instead of the dither.",
             "launchSocket": "Projectiles and `hand` layers resolve fx_hand_r. The mage holds the staff there: at Cast01's "
                             "release the staff crystal is 73 cm further along the cast. Spec 8.1 launches from the "
                             "crystal: AAbyssCharacterActor::GetAnchorLocation(HandR) returns the main-hand mesh's "

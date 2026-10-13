@@ -15,6 +15,8 @@ per-class clip override.
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapon_grips.py --qa
     ... weapon_grips.py --search [Warrior,Mage,Rogue] [--fams staff,bow]     # re-plan grips → weapon_grips.json
     ... weapon_grips.py --tracks Warrior[,Mage,Rogue] [--fams …]               # keyed tracks for the clips that fail
+    ... weapon_grips.py --hold Rogue:staff:Attack03[,…]                        # hold the hit-stop at one world angle
+    ... weapon_grips.py --roll Warrior,Mage,Rogue --fams axe                    # readability roll about the haft
 
 **QA** (``GripQA``; the checks of ``heroes/qa.py`` on the shipped FBX: every frame of every clip, the body deformed
 by the re-imported ``A_Hero_*`` action): lowest point of the item ≥ −0.5 cm; item × body intersecting triangle pairs
@@ -41,6 +43,14 @@ strikes and casts too, from 2 frames before the contact / release on (``FACE_STR
 in the world (a staff held steady while the casting hand rolls under it is calm on screen), staff / bow strikes may
 flick (> 12°/frame) for readability (cost 30, else 300) and casts turn ≤ 45°/frame at the release; a **readability
 rescue** checks more candidates where the plan's soft cost is > 2 above that frame's best.
+
+**Readability gate** (art review, fourth look: the warrior's bow passed the clearance QA while it dangled edge-on at
+the hip in every strike): ``read_metric`` — the bow / axe plane's on-screen fraction (min over se, sw of |normal ·
+view ray|), a shield face's turn toward sw — on every strike / cast frame; the bow fails the QA below ``READ_GATE``
+(.45 on the hit-stop, .15 on any run of > 2 frames). The warrior's bow rides ``weapon_r`` (as the mage's), the axe's
+strike / cast grips are rolled about the haft to show the bit (``--roll``), the rogue's Attack03 shield is held
+face-on through the hit-stop (``--hold``) and the warrior / rogue wand carry clears the body on screen
+(``read_wand_out``).
 """
 from __future__ import annotations
 
@@ -92,6 +102,12 @@ FACE_STRIKE_SKIP = ("Dodge", "Death", "Portrait", "Cast_Meteor")
 # wind-up before it whips the hand across the face in a few frames (the rogue's Attack01 / 03 raise the fist past
 # the mask for every weapon)
 FACE_STRIKE_LEAD = 2
+# the hit-stop holds the contact pose on screen: a staff / bow strike's readability weighs ×HIT_READ_W from 2 frames
+# before the contact / release to HIT_READ_TAIL after it (art review, third look: the rogue's Attack03 staff stayed
+# foreshortened into an orb blob at the fist through the hit-stop because a turn there cost more than ten frames of
+# poor readability saved)
+HIT_READ_W = 4.0
+HIT_READ_TAIL = 6
 
 
 def face_clip(fam: str, clip: str, fr: int | None = None, beat: int = -1) -> bool:
@@ -138,7 +154,9 @@ def load_table() -> dict:
 def save_table(t: dict) -> None:
     t["schema"] = 1
     t["note"] = ("socket-space grips of SM_Weapon_<Family> per hero class (weapon_grips.py): quat = Blender (w, x, "
-                 "y, z), loc = metres in the socket (bone head) frame; clips → grip name")
+                 "y, z), loc = metres in the socket (bone head) frame; clips -> grip name; tracks: keyed per-frame "
+                 "grips (hold: the hit-stop frames held at one world orientation); socket overrides attachSocket; "
+                 "slung: carried on the back; hide: frames [f0, f1] the mesh is hidden")
     GRIPS_JSON.write_text(json.dumps(t, indent=1, sort_keys=True) + "\n")
 
 
@@ -541,10 +559,57 @@ def hide_window(table: dict, cls: str, fam: str, clip: str) -> tuple[int, int] |
     return (int(h[0]), int(h[1])) if h else None
 
 
+def read_stats(table: dict, cls: str, fam: str, p: Posed) -> dict:
+    """On-screen readability (``read_metric``) of ``fam`` in ``cls``'s hands on every frame of every strike / cast
+    clip at the shipped grips → {clip: {minHit, meanHit, minAll}} (hit = the hit-stop window; frames inside a
+    ``hide`` window are skipped)."""
+    out = {}
+    sock = socket_for(table, cls, fam)
+    for c in p.clips:
+        if c["name"] not in GROUPS["strike"] or c["beat"] < 0:
+            continue
+        hw = hide_window(table, cls, fam, c["name"])
+        h0, h1 = c["beat"] - FACE_STRIKE_LEAD, c["beat"] + HIT_READ_TAIL
+        allm, hit = [], []
+        for fr in range(c["frames"]):
+            if hw and hw[0] <= fr <= hw[1]:
+                continue
+            m = read_metric(fam, p.bones[sock][c["start"] + fr] @ grip(table, cls, fam, c["name"], fr))
+            allm.append(m)
+            if h0 <= fr <= h1:
+                hit.append(m)
+        if allm:
+            g = READ_GATE.get(fam)
+            run = best = 0
+            for m in allm:
+                run = run + 1 if (g and m < g["all"]) else 0
+                best = max(best, run)
+            out[c["name"]] = {"minHit": round(min(hit or allm), 3), "meanHit": round(float(np.mean(hit or allm)), 3),
+                              "minAll": round(min(allm), 3), "lowRun": best}
+    return out
+
+
+def read_failures(stats: dict, fam: str) -> list[str]:
+    g = READ_GATE.get(fam)
+    if not g:
+        return []
+    out = []
+    for clip, r in stats.items():
+        if r["meanHit"] < g["hitMean"]:
+            out.append(f"{clip}: readability mean {r['meanHit']:.2f} < {g['hitMean']} on the hit-stop")
+        elif r["minHit"] < g["hit"]:
+            out.append(f"{clip}: readability {r['minHit']:.2f} < {g['hit']} on a hit-stop frame")
+        elif r.get("lowRun", 0) > g["run"]:
+            out.append(f"{clip}: readability < {g['all']} on {r['lowRun']} consecutive frames (min {r['minAll']:.2f})")
+    return out
+
+
 def qa_all(table: dict, items: dict[str, Item], posed: dict[str, Posed]) -> dict:
     """Every (class, family) with its grips over every frame of every clip → {cls: {fam: {clip: worst}}, failures}
-    (frames inside a ``hide`` window are not measured: the weapon is not drawn there)."""
-    out = {"classes": {}, "failures": [], "info": []}
+    (frames inside a ``hide`` window are not measured: the weapon is not drawn there); ``read`` {cls: {fam: {clip:
+    stats}}}: the on-screen readability of the bow / axe / shield on strike and cast frames, gated for the bow
+    (``READ_GATE``)."""
+    out = {"classes": {}, "failures": [], "info": [], "read": {}}
     for cls, p in posed.items():
         qa = GripQA(p)
         grips = {fam: (lambda clip, fr, f=fam: grip(table, cls, f, clip, fr)) for fam in items}
@@ -557,6 +622,11 @@ def qa_all(table: dict, items: dict[str, Item], posed: dict[str, Posed]) -> dict
                     r[clip] = [x for x in r[clip] if not hw[0] <= x["fr"] <= hw[1]] or [r[clip][0]]
             out["classes"][cls][fam] = {clip: GripQA.worst(frs) for clip, frs in r.items()}
             fails = GripQA.verdict(r)
+            ent = table.get("classes", {}).get(cls, {}).get(fam)
+            if fam in READ_REPORT and ent and not ent.get("slung"):          # (a slung shield is not in play)
+                rs = read_stats(table, cls, fam, p)
+                out["read"].setdefault(cls, {})[fam] = rs
+                fails += read_failures(rs, fam)
             tag = f"{fam} on {cls}"
             (out["failures"] if shown(cls, fam) else out["info"]).extend(f"{tag} {f}" for f in fails)
             if table.get("classes", {}).get(cls, {}).get(fam) is None:
@@ -741,7 +811,9 @@ def read_bow(p, fi, Ms, Gs, smp):
     n = _axis(Ms, Gs, (1, 0, 0))
     f = np.minimum(np.abs(n @ V_VIEW["se"]), np.abs(n @ V_VIEW["sw"]))
     limb = _axis(Ms, Gs, (0, 0, 1))
-    return np.maximum(0, 0.55 - f) * 3 + np.maximum(0, 0.6 - np.abs(limb[:, 2])) * 2
+    # + a steep floor term (art review, fourth look: one-frame flips through edge-on survived the soft term)
+    return (np.maximum(0, 0.55 - f) * 3 + np.maximum(0, 0.6 - np.abs(limb[:, 2])) * 2
+            + np.maximum(0, READ_GATE["bow"]["all"] + 0.05 - f) * 15)
 
 
 def read_flat(p, fi, Ms, Gs, smp):
@@ -749,6 +821,79 @@ def read_flat(p, fi, Ms, Gs, smp):
     n = _axis(Ms, Gs, (1, 0, 0))
     ax = _axis(Ms, Gs, (0, 1, 0))
     return np.maximum(0, 0.5 - np.abs(n @ V_VIEW["se"])) * 2 + np.maximum(0, np.abs(ax @ V_VIEW["se"]) - 0.6) * 3
+
+
+def read_axe(p, fi, Ms, Gs, smp):
+    """The axe bit's flat (normal = item X) toward the W1 camera in se *and* sw (art review, fourth look: the bit went
+    edge-on at the warrior's Cast01 release and the rogue's Attack02 / Cast01 — a stick with a dark tip, a spear)."""
+    n = _axis(Ms, Gs, (1, 0, 0))
+    f = np.minimum(np.abs(n @ V_VIEW["se"]), np.abs(n @ V_VIEW["sw"]))
+    return np.maximum(0, 0.55 - f) * 3
+
+
+def read_shield_face(p, fi, Ms, Gs, smp):
+    """The shield's face (item +Y) turned toward the camera in sw, the off-hand review view: ≥ 30° out of edge-on
+    (art review, fourth look: the rogue's Attack03 contact showed the shield edge-on, a pale curved blade)."""
+    n = _axis(Ms, Gs, (0, 1, 0))
+    return np.maximum(0, 0.5 - (n @ -V_VIEW["sw"])) * 3
+
+
+WAND_PROBES = np.array([[0.0, 0.256, 0.0], [0.0, 0.160, 0.0], [0.0, 0.300, 0.0]])   # crystal, upper shaft, tip
+
+
+def read_wand_out(p, fi, Ms, Gs, smp):
+    """Warrior / rogue wand carry: the crystal and the upper shaft clear of the body silhouette *on screen* in se and
+    sw (art review, fourth look: the wand lay along the warrior's iron greaves and vanished, only the crystal read) —
+    the projected distance of each probe to the nearest body / attachment vertex ≥ 6 cm (crystal) / 4 cm (shaft),
+    and the rod not foreshortened (≥ 60 % of its length on screen)."""
+    body = p.verts[fi][::4].astype(np.float64)
+    extra = []
+    for a, (s, aco, atr) in p.atts.items():
+        if s in HAND_SOCKETS and s == SOCKET["wand"]:
+            continue                       # the class's own main-hand weapon is replaced by the wand
+        A = p.att_matrix(s, fi)
+        extra.append(aco[::3] @ A[:3, :3].T + A[:3, 3])
+    pts = np.concatenate([body] + extra) if extra else body
+    W = _world(Gs, Ms, WAND_PROBES)                          # (C, 3, 3)
+    ax = _axis(Ms, Gs, (0, 1, 0))
+    pen = np.zeros(len(Gs))
+    for view, v in V_VIEW.items():
+        k = 1.0 if view == "se" else 0.35       # se: the main-hand review view (sw sees the right hand past the body)
+        right = np.cross(v, [0.0, 0.0, 1.0])
+        right /= np.linalg.norm(right)
+        B = np.stack([right, _view_up(v)], 1)               # (3, 2)
+        b2 = pts @ B
+        w2 = W @ B                                          # (C, 3, 2)
+        d = np.full(w2.shape[:2], 9.0)
+        for j in range(0, len(b2), 400):
+            d = np.minimum(d, np.linalg.norm(w2[:, :, None, :] - b2[None, None, j:j + 400, :], axis=-1).min(-1))
+        pen += k * (np.maximum(0, 0.06 - d[:, 0]) * 30 + np.maximum(0, 0.04 - d[:, 1]) * 20)
+        sl = np.sqrt(np.maximum(0.0, 1.0 - (ax @ v) ** 2))
+        pen += k * np.maximum(0, 0.6 - sl) * 3
+    return pen / 1.35
+
+
+# per-frame readability of one grip (the QA's read gate): bow / axe = the flat plane's view fraction min over se, sw;
+# shield = the face's turn toward the sw camera (sin of the angle out of edge-on)
+def read_metric(fam: str, Mw: np.ndarray) -> float:
+    """``Mw``: the item's world matrix (socket frame · grip)."""
+    if fam in ("bow", "axe"):
+        n = Mw[:3, 0] / np.linalg.norm(Mw[:3, 0])
+        return float(min(abs(n @ V_VIEW["se"]), abs(n @ V_VIEW["sw"])))
+    if fam == "shield":
+        n = Mw[:3, 1] / np.linalg.norm(Mw[:3, 1])
+        return float(n @ -V_VIEW["sw"])
+    return 1.0
+
+
+# readability floors on strike / cast frames (art review, fourth look: the in-hand QA passed a bow that read as a
+# horizontal brown bar at every warrior contact — it measured clearance only). The hit-stop window runs from
+# FACE_STRIKE_LEAD frames before the contact / release to HIT_READ_TAIL after it: its mean ≥ ``hitMean`` and every
+# frame ≥ ``hit``; any other frame ≥ ``all`` except flips through edge-on of ≤ ``run`` frames (≤ 33 ms at 60 fps,
+# mid-whip: not seen). The old weapon_l bow failed it on 6 of 7 warrior strikes (Attack01 hit mean .32, Cast01 .06 at
+# the release), the weapon_r tracks pass (hit means .55–.74, the whirlwind's spin dips to .37 at the release).
+READ_GATE = {"bow": {"hitMean": 0.45, "hit": 0.35, "all": 0.15, "run": 2}}
+READ_REPORT = ("bow", "axe", "shield")
 
 
 STAFF_ORB_Y = 0.815                # the orb's centre on the generic staff (item +Y, metres from the grip)
@@ -793,6 +938,8 @@ def search_spec(cls: str, fam: str, group: str, clip: str | None = None):
         return read_staff_screen(kind), 180.0, (0.002 if group == "carry" else 0.01), 1.0
     if fam == "bow" and group == "strike":       # the D toward the camera in attacks and casts too
         return read_bow, 180.0, 0.01, 1.0
+    if fam == "wand" and cls in ("Warrior", "Rogue") and group == "carry":
+        return read_wand_out, 180.0, 0.002, 1.0   # held forward and outboard, clear of the body on screen
     if group in ("strike", "dodge", "death"):
         return None, (35.0 if group == "strike" else 180.0), (0.05 if group == "strike" else 0.01), 0.0
     if fam == "bow":
@@ -809,6 +956,8 @@ def search_spec(cls: str, fam: str, group: str, clip: str | None = None):
 
 
 def prefers_identity(cls: str, fam: str, group: str) -> bool:
+    if fam == "wand" and group == "carry":        # the sword's hang along the greaves hid the wand (fourth look)
+        return False
     return group in ("strike", "dodge", "death") or fam == "shield" or (cls in ("Warrior", "Rogue") and fam in SHORT)
 
 
@@ -960,9 +1109,16 @@ class Searcher:
         pf = []
         self.score(item, cands, (clip,), read, margin=margin, per_frame=pf, sdfs=self.clip_sdfs(clip))
         pf.sort(key=lambda x: x[1])
-        # the exact feasibility decides clearance, so the coarse SDF flags only nudge and readability leads
-        cost = np.stack([3.0 * x[2] + 6.0 * x[4] + 3.0 * wr * x[5] + wt * tilt + 0.006 * rdev + 0.3 * np.abs(slide)
-                         - 2.0 * np.minimum(x[3], pref) for x in pf])
+        # the exact feasibility decides clearance, so the coarse SDF flags only nudge and readability leads; the
+        # hit-stop frames of a staff / bow strike weigh more (``HIT_READ_W``)
+        beat = self.p.clip(clip)["beat"]
+
+        def wread(fr: int) -> float:
+            hit = (group == "strike" and item.fam in FACE_STRIKE and beat >= 0
+                   and beat - FACE_STRIKE_LEAD <= fr <= beat + HIT_READ_TAIL)
+            return HIT_READ_W if hit else 1.0
+        cost = np.stack([3.0 * x[2] + 6.0 * x[4] + 3.0 * wr * wread(x[1]) * x[5] + wt * tilt + 0.006 * rdev
+                         + 0.3 * np.abs(slide) - 2.0 * np.minimum(x[3], pref) for x in pf])
         F = cost.shape[0]
         order = np.argsort(cost, 1)
         pool = list(dict.fromkeys(np.argsort(cost.sum(0))[:pool_all].tolist()
@@ -1200,6 +1356,216 @@ class Searcher:
         return res
 
 
+def _rot_angle(A: np.ndarray, B: np.ndarray) -> float:
+    c = (np.trace(A.T @ B) - 1.0) * 0.5
+    return math.degrees(math.acos(max(-1.0, min(1.0, float(c)))))
+
+
+def _slerp_rot(A: np.ndarray, B: np.ndarray, t: float) -> np.ndarray:
+    q = Matrix(A.tolist()).to_quaternion().slerp(Matrix(B.tolist()).to_quaternion(), t)
+    return np.array(q.to_matrix())
+
+
+def _slide_of(G: np.ndarray) -> float:
+    return -float((G[:3, :3].T @ G[:3, 3])[1])
+
+
+def _grip_from(R_sock: np.ndarray, s: float) -> np.ndarray:
+    G = np.eye(4)
+    G[:3, :3] = R_sock
+    G[:3, 3] = R_sock @ np.array([0.0, -s, 0.0])
+    return G
+
+
+def hit_hold(posed: Posed, item: Item, track: dict, clip: str, ramp: int = 4, snap: float = 24.0,
+             ndirs: int = 600, top: int = 240, min_pen: float = 0.15) -> tuple[dict | None, dict]:
+    """**Hit-stop hold** for a staff / bow strike track (art review, third look): the Viterbi's grips are fixed in the
+    fist, so following a hand that rolls ~15°/frame through the lunge costs a flick every frame and the plan kept the
+    rogue's Attack03 staff foreshortened into an orb blob at the fist through the hit-stop. This pass holds one
+    *world* orientation from ``FACE_STRIKE_LEAD`` frames before the contact / release to ``HIT_READ_TAIL`` after it
+    (the grip counter-rotates in the fist, calm on screen), slerps in and out of the planned track over ``ramp``
+    frames (≤ ``snap``°/frame in the world), and keeps the readable orientation (``read_staff_screen`` / ``read_bow``
+    in se *and* sw) that passes the exact QA on every frame of the window. Only when the window's planned readability
+    is weak (mean penalty > ``min_pen``). → (new track or None, info)."""
+    c = posed.clip(clip)
+    beat, F, s0 = c["beat"], c["frames"], c["start"]
+    if beat < 0:
+        return None, {"skip": "no contact"}
+    h0, h1 = max(0, beat - FACE_STRIKE_LEAD), min(F - 1, beat + HIT_READ_TAIL)
+    a, b = max(0, h0 - ramp), min(F - 1, h1 + ramp)
+    kind = "cast" if clip in CAST_CLIPS else "attack"
+    read = read_staff_screen(kind) if item.fam == "staff" else HOLD_READ.get(item.fam, read_bow)
+    M = [posed.bones[item.socket][s0 + f] for f in range(F)]
+    Gp = [track_matrix(track, f) for f in range(F)]
+    Rw = [M[f][:3, :3] @ Gp[f][:3, :3] for f in range(F)]
+
+    def pen(f: int, Gs: np.ndarray) -> np.ndarray:
+        return read(posed, s0 + f, M[f], Gs, None)
+    base = [float(pen(f, Gp[f][None])[0]) for f in range(a, b + 1)]
+    hold_base = float(np.mean(base[h0 - a:h1 - a + 1]))
+    info = {"window": [a, h0, h1, b], "penBefore": round(hold_base, 3)}
+    if hold_base <= min_pen:
+        info["skip"] = "readable"
+        return None, info
+    cands = candidates(item.fam, 180.0, ndirs=ndirs)
+    Rk = np.stack([M[beat][:3, :3] @ g[0][:3, :3] for g in cands])          # world rotation held over the window
+    sk = np.array([g[3] for g in cands])
+    tot = np.zeros(len(cands))
+    for f in range(h0, h1 + 1):
+        Rs = np.einsum("ji,kjl->kil", M[f][:3, :3], Rk)                      # socket-space: M_f^T · R_world
+        Gs = np.zeros((len(cands), 4, 4))
+        Gs[:, :3, :3] = Rs
+        Gs[:, :3, 3] = np.einsum("kij,j->ki", Rs, np.array([0.0, -1.0, 0.0])) * sk[:, None]
+        Gs[:, 3, 3] = 1.0
+        tot += pen(f, Gs)
+    order = np.argsort(tot)[:top]
+    qa = GripQA(posed)
+    ctxs = {f: qa.frame_ctx(s0 + f, sockets=(item.socket,), clear=item.fam in CLEAR) for f in range(a, b + 1)}
+    best = None
+    for k in order:
+        if tot[k] / (h1 - h0 + 1) >= hold_base - 0.05:
+            break
+        R_hold, s_hold = Rk[k], float(sk[k])
+        grips, ok, turns = {}, True, 0.0
+        for f in range(a, b + 1):
+            if f < h0:
+                t = (f - a + 1) / (h0 - a + 1)
+            elif f > h1:
+                t = (b - f + 1) / (b - h1 + 1)
+            else:
+                t = 1.0
+            R_world = _slerp_rot(Rw[f], R_hold, t) if t < 1.0 else R_hold
+            s = (1.0 - t) * _slide_of(Gp[f]) + t * s_hold
+            grips[f] = _grip_from(M[f][:3, :3].T @ R_world, s)
+        prev = Rw[a - 1] if a > 0 else None
+        for f in range(a, b + 2):
+            if f > F - 1:
+                break
+            cur = M[f][:3, :3] @ (grips[f] if f in grips else Gp[f])[:3, :3]
+            if prev is not None:
+                ang = _rot_angle(prev, cur)
+                turns += ang
+                if ang > snap:
+                    ok = False
+                    break
+            prev = cur
+        if not ok:
+            continue
+        p_sum = 0.0
+        for f in list(range(h0, h1 + 1)) + list(range(a, h0)) + list(range(h1 + 1, b + 1)):   # hold frames first
+            rec = qa.check(ctxs[f], item, grips[f], f, face=face_clip(item.fam, clip, f, beat))
+            if not GripQA.passes(GripQA.worst([rec])) or rec.get("face", 0):
+                ok = False
+                break
+            p_sum += float(pen(f, grips[f][None])[0])
+        if not ok:
+            continue
+        score = p_sum + 0.01 * turns
+        if best is None or score < best[0]:
+            best = (score, grips, p_sum)
+        if p_sum <= 0.01 * (b - a + 1):          # readable on every frame of the window: good enough
+            break
+    if best is None:
+        info["skip"] = "no feasible hold"
+        return None, info
+    _, grips, p_sum = best
+    keys = [k for k in track["keys"] if k["fr"] < a - 1 or k["fr"] > b + 1]
+    edge = []
+    if a > 0:
+        edge.append(dict(gjson(Gp[a - 1]), fr=a - 1))
+    if b < F - 1:
+        edge.append(dict(gjson(Gp[b + 1]), fr=b + 1))
+    keys += edge + [dict(gjson(G), fr=int(f)) for f, G in grips.items()]
+    keys.sort(key=lambda k: k["fr"])
+    hold_after = float(np.mean([float(pen(f, grips[f][None])[0]) for f in range(h0, h1 + 1)]))
+    info.update(penAfter=round(hold_after, 3), keys=len(keys))
+    return {"keys": keys, "loop": track.get("loop", False), "hold": [h0, h1]}, info
+
+
+HOLD_READ = {"bow": read_bow, "axe": read_axe, "shield": read_shield_face}
+# the axis a readability roll turns the item about (item space): the axe about its haft, a shield about the forearm
+# that runs through its straps (item Z), so the arm stays in them while the face turns
+ROLL_AXIS = {"axe": (0.0, 1.0, 0.0), "shield": (0.0, 0.0, 1.0), "bow": (0.0, 1.0, 0.0)}
+
+
+def _axis_rot(axis, deg: float) -> np.ndarray:
+    R = np.eye(4)
+    R[:3, :3] = np.array(Matrix.Rotation(math.radians(deg), 3, Vector(axis)))
+    return R
+
+
+def roll_pass(posed: Posed, item: Item, table: dict, cls: str, clip: str, window: bool = False,
+              angles=tuple(range(-90, 91, 10)), ramp: int = 4) -> tuple[dict | None, dict]:
+    """**Readability roll** (art review, fourth look): turn a clip's grip about ``ROLL_AXIS[fam]`` by the angle that
+    best shows the item's flat to the W1 camera (``read_metric``: the axe bit in se *and* sw, a shield's face toward
+    sw) on the hit-stop frames (``FACE_STRIKE_LEAD`` before the contact / release to ``HIT_READ_TAIL`` after, ×1; the
+    rest of the clip ×0.25) among the angles whose grips pass the exact QA on every frame of the clip. ``window``:
+    the roll ramps in and out over ``ramp`` frames round the hit-stop only (a keyed track: keys on every frame
+    there); else the whole clip turns (a static grip → a per-clip grip, a track → every key). → (table entry update
+    or None, info)."""
+    fam = item.fam
+    c = posed.clip(clip)
+    beat, F, s0 = c["beat"], c["frames"], c["start"]
+    if beat < 0:
+        return None, {"skip": "no contact"}
+    h0, h1 = max(0, beat - FACE_STRIKE_LEAD), min(F - 1, beat + HIT_READ_TAIL)
+    a, b = max(0, h0 - ramp), min(F - 1, h1 + ramp)
+    axis = ROLL_AXIS[fam]
+    base = [grip(table, cls, fam, clip, f) for f in range(F)]
+    M = [posed.bones[item.socket][s0 + f] for f in range(F)]
+
+    def wgt(f: int) -> float:
+        if not window:
+            return 1.0
+        if f < a or f > b:
+            return 0.0
+        if f < h0:
+            return (f - a + 1) / (h0 - a + 1)
+        if f > h1:
+            return (b - f + 1) / (b - h1 + 1)
+        return 1.0
+
+    def grips_for(deg: float) -> list[np.ndarray]:
+        return [base[f] @ _axis_rot(axis, deg * wgt(f)) for f in range(F)]
+
+    def score(gs) -> tuple[float, float]:
+        m = [read_metric(fam, M[f] @ gs[f]) for f in range(F)]
+        hit = float(np.mean(m[h0:h1 + 1]))
+        return hit + 0.25 * float(np.mean(m)), hit
+    cand = {f"r{d:+d}": grips_for(float(d)) for d in angles}
+    qa = GripQA(posed)
+    rep = qa.run({k: item for k in cand}, {k: (lambda cl, fr, g=g: g[fr]) for k, g in cand.items()}, clips=(clip,))
+    hw = hide_window(table, cls, fam, clip)
+    rows = []
+    for k, g in cand.items():
+        frs = [x for x in rep[k][clip] if not (hw and hw[0] <= x["fr"] <= hw[1])]
+        ok = GripQA.passes(GripQA.worst(frs)) and not any(x.get("face", 0) for x in frs)
+        s, hit = score(g)
+        rows.append((ok, s, hit, -abs(int(k[1:])), k))
+    s0_, hit0 = score(base)
+    info = {"hitBefore": round(hit0, 3)}
+    ok_rows = sorted([r for r in rows if r[0]], key=lambda r: (r[1], r[3]), reverse=True)
+    if not ok_rows or ok_rows[0][1] <= s0_ + 0.02:
+        info["skip"] = "no better feasible roll" if ok_rows else "no feasible roll"
+        return None, info
+    _, s, hit, _, k = ok_rows[0]
+    deg = float(k[1:])
+    info.update(hitAfter=round(hit, 3), rollDeg=deg)
+    e = table["classes"][cls][fam]
+    tr = e.get("tracks", {}).get(clip)
+    if window:
+        src = tr or {"keys": [dict(gjson(base[0]), fr=0)], "loop": False}
+        keys = [k_ for k_ in src["keys"] if k_["fr"] < a - 1 or k_["fr"] > b + 1]
+        for f in sorted({max(0, a - 1), min(F - 1, b + 1)} | set(range(a, b + 1))):
+            keys.append(dict(gjson(base[f] @ _axis_rot(axis, deg * wgt(f))), fr=int(f)))
+        keys.sort(key=lambda k_: k_["fr"])
+        return {"track": {"keys": keys, "loop": src.get("loop", False), "roll": [a, h0, h1, b, deg]}}, info
+    if tr:
+        return {"track": {"keys": [dict(gjson(gmat(k_) @ _axis_rot(axis, deg)), fr=k_["fr"]) for k_ in tr["keys"]],
+                          "loop": tr.get("loop", False), "roll": deg}}, info
+    return {"grip": (f"read_{clip}", gjson(base[0] @ _axis_rot(axis, deg), kind="roll", rollDeg=deg))}, info
+
+
 def sling_plan(posed: Posed, item: Item) -> tuple[dict, dict]:
     """A shield slung on the back (``SLING_BONE``) for a class whose off-hand arm is authored against its body (the
     mage's left hand swings across the robe in Walk / Run: no grip on the forearm clears it). Candidates: face out
@@ -1296,6 +1662,10 @@ def main(argv=None) -> int:
                                                  "(readability: e.g. Idle,Walk,Run,Hurt,HurtAdd)")
     ap.add_argument("--sling", default="", help="classes: sling the --fams shield on the back (spine_03)")
     ap.add_argument("--bow-socket", default="", help="--search: plan the bow on this socket only (weapon_l|weapon_r)")
+    ap.add_argument("--hold", default="", help="Cls:fam:Clip[,…]: hit-stop hold pass on an existing strike track "
+                                                "(one world orientation through the contact / release)")
+    ap.add_argument("--roll", default="", help="Cls:fam:Clip[:window][,…] or Cls[,…] with --fams: readability roll "
+                                                "about ROLL_AXIS (every strike / cast clip of the class)")
     a = ap.parse_args(argv)
     if a.out:
         global GRIPS_JSON
@@ -1397,10 +1767,72 @@ def main(argv=None) -> int:
                     t2 = load_table()                 # saved per clip (a long run keeps what it finished)
                     t2["classes"][cls][fam] = e
                     save_table(t2)
+    if a.hold:
+        posed = {}
+        for spec in [s for s in a.hold.split(",") if s]:
+            cls, fam, clip = spec.split(":")
+            t = load_table()
+            e = t["classes"][cls][fam]
+            tr = e.get("tracks", {}).get(clip)
+            if not tr:
+                print(f"[grips] hold {spec}: no track", flush=True)
+                continue
+            if fam not in items:
+                items.update(build_items([fam]))
+            posed.setdefault(cls, Posed(cls))
+            t0 = time.time()
+            new, info = hit_hold(posed[cls], items[fam].on(socket_for(t, cls, fam)), tr, clip)
+            print(f"[grips] hold {spec}: {info} ({time.time() - t0:.0f}s)", flush=True)
+            if new:
+                t = load_table()
+                t["classes"][cls][fam].setdefault("tracks", {})[clip] = new
+                save_table(t)
+    if a.roll:
+        specs = []
+        for spec in [x for x in a.roll.split(",") if x]:
+            if ":" in spec:
+                parts = spec.split(":")
+                specs.append((parts[0], parts[1], parts[2], "window" in parts[3:]))
+                for ax in parts[3:]:
+                    if ax in ("x", "y", "z"):
+                        ROLL_AXIS[parts[1]] = tuple(float(ax == c) for c in "xyz")
+            else:
+                t = load_table()
+                for fam in fams:
+                    if not t.get("classes", {}).get(spec, {}).get(fam) or not shown(spec, fam):
+                        continue
+                    specs += [(spec, fam, c, False) for c in GROUPS["strike"]]
+        posed = {}
+        for cls, fam, clip, window in specs:
+            if fam not in items:
+                items.update(build_items([fam]))
+            if cls not in posed:
+                posed[cls] = Posed(cls)
+            if clip not in {c["name"] for c in posed[cls].clips}:
+                continue
+            t = load_table()
+            t0 = time.time()
+            upd, info = roll_pass(posed[cls], items[fam].on(socket_for(t, cls, fam)), t, cls, clip, window=window)
+            print(f"[grips] roll {cls} {fam} {clip}{' window' if window else ''}: {info} ({time.time() - t0:.0f}s)",
+                  flush=True)
+            if upd:
+                t = load_table()
+                e = t["classes"][cls][fam]
+                if "track" in upd:
+                    e.setdefault("tracks", {})[clip] = upd["track"]
+                else:
+                    name, g = upd["grip"]
+                    e["grips"][name] = g
+                    e["clips"][clip] = name
+                save_table(t)
     if a.qa:
         posed = {c: Posed(c) for c in a.classes.split(",") if c}
         res = qa_all(load_table(), items, posed)
         print(qa_table(res))
+        for cls, fams_r in res["read"].items():
+            for fam, clips in fams_r.items():
+                print(f"  read {fam:6s} {cls:7s} " + "  ".join(f"{c} {r['minHit']:.2f}/{r['meanHit']:.2f}/"
+                                                              f"{r['minAll']:.2f}" for c, r in clips.items()))
         for f in res["failures"]:
             print("  FAIL", f)
         for f in res["info"]:

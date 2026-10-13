@@ -156,7 +156,9 @@ STAFF = {   # heads: oak · arcane · rune · elder · lich · abyss (web staffS
 }
 
 WAND = {   # web wandSpec (T1): violet wood, gold bands, cyan marquise crystal
-    "T1": dict(shaft=wood("#7A3A8A"), band=metal(GOLD), crystal=stone(CYAN, .45), cap=metal(GOLD)),
+    # T1: the shaft a value lighter (lightAmt .55) and the crystal faintly self-lit (e .6), so the 3 cm rod reads
+    # beside dark greaves and leather at 1080p (art review, fourth look: only the cyan tip read)
+    "T1": dict(shaft=wood("#9A54AC", .55), band=metal(GOLD), crystal=stone(CYAN, .60), cap=metal(GOLD)),
     "T2": dict(shaft=wood("#4A2A5A"), band=metal(SILVER, .55), crystal=glow(CYAN), cap=metal(SILVER, .55)),
     "T3": dict(shaft=metal("#6C7488", .40), band=metal("#8A94A8", .45), crystal=glow("#4F8CFF"),
                cap=metal("#8A94A8", .45)),

@@ -687,12 +687,17 @@ Conventions learnt on the environment:
 ## 13. Items: equipment weapons and ground loot (`items/`)
 
 ```bash
-EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapons.py     # ship (~4 min)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapons.py     # ship (+ clip sheets ~2 h)
 #   --only sword,axe · --quick <families> (studio + tiers + in-hand cells → scratch) · --lineup · --no-previews · --no-verify
+#   --no-clips (ship in ~6 min, listing the clip sheets already on disk)
+#   --clips sword,axe [--classes Mage] [--clip-names Attack01]   only the per-clip contact sheets (+ manifest previews)
 #   --strips Warrior:staff:Run:4:se,sw … [--table t.json]   per-frame readability strips of whole clips → scratch
 EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapon_grips.py --qa   # whole-clip QA table
 #   --search [Warrior,Mage,Rogue] [--fams staff,bow] [--out table.json]   re-plan grips (~30 min per class)
 #   --tracks Warrior[,Mage,Rogue] [--fams …] [--out table.json]   keyed grip tracks for every clip a static grip fails
+#   --hold Rogue:staff:Attack03[,…] [--out table.json]   hit-stop hold pass on a staff / bow / shield / axe strike track
+#   --roll Warrior,Mage,Rogue --fams axe | --roll Rogue:shield:Attack03[:window][:x|y|z]   readability roll about the
+#        haft (axe) / forearm (shield) on strike and cast clips, kept only where the exact QA passes every frame
 EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/loot.py        # ship (~5 min)
 #   --only bag,gold,potion,scroll,fruit,gem,quest,coin (subset; family sheets only on a full ship) · --quick [groups]
 ```
@@ -701,7 +706,7 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/
 |---|---|
 | `items/itemkit.py` | shared: item data (`Data/item_bases.json`), the tier ladder (`weapon_tier`: levelReq ≥ 1 T1 · 6 T2 · 15 T3 · 20 T4 · 28 T5 · 35 T6, `w_rusty_sword` Worn), `plan_roles` + `AtlasVariant` (tier atlases = the `Weapons` atlas with the role swatches recoloured → `T_AF_Palette_Weapons_<Tier>_BC/_P`, `MI_AF_Toon_Weapons_<Tier>`), heroes re-imported from their shipped FBX (`import_hero`, `hero_pose`, `attach` = UE socket convention), studio cells, `GameCells` (W1 1080p 1:1 ink-gated cells, `ground_occludes`), the quality-presentation composite (`tint_body`, `add_glow`, `add_beam`, canonical `QUALITY`), `ship_static_item`, `verify_fbx`, **`revolve`** / `lathe_y` / `ring_y`, `loft_rings`, `surface_strip` |
 | `items/weapon_tiers.py` | role colours per family and tier from the web icon variant tables (`ItemIcons.ts` SWORDS / DAGGERS / BOWS / staff heads / shield kinds / drawAxe / drawMace / wandSpec); higher tiers make the web's glow accents emissive roles |
-| `items/weapons.py` | `SM_Weapon_<Sword·Axe·Mace·Dagger·Bow·Staff·Wand·Shield>` (Previews `SM_Weapon_<F>/`: `closeup`, `tiers`, `game_inhand_<Class>` = READY, a Run frame, the Attack01-03 contacts and the Cast01 release at the shipped grips with the class's default attachments, for each class the runtime shows the generic mesh on, ink-gated (hand items from se, off-hand from sw, a slung shield from ne; the bow's no-hull string is left out of the gate: `Review.ink_ignore`), `game`, `game_inkgate`; `weapons_lineup/lineup.png`); the ship runs the whole-clip in-hand QA and exits 1 on a failure |
+| `items/weapons.py` | `SM_Weapon_<Sword·Axe·Mace·Dagger·Bow·Staff·Wand·Shield>` (Previews `SM_Weapon_<F>/`: `closeup`, `tiers`, `game_inhand_<Class>` = READY, a Run frame, the Attack01-03 contacts and the Cast01 release at the shipped grips with the class's default attachments, for each class the runtime shows the generic mesh on, ink-gated (hand items from se, off-hand from sw, a slung shield from ne; the bow's no-hull string is left out of the gate: `Review.ink_ignore`), **`clips_<Class>_<Clip>.png`** (every clip of every class the mesh is shown on: every 4th frame + the contact / release frame in orange, se and sw rows for hand items, ne for the slung shield, one crop per clip so the motion reads against the ground grid, W1 1080p 1:1, `write_png_native` row tiles `_2` …), `game`, `game_inkgate`; `weapons_lineup/lineup.png`); the ship runs the whole-clip in-hand QA (clearance + the bow's readability gate) and exits 1 on a failure |
 | `items/weapon_grips.py` · `weapon_grips.json` | per-(class, family) **grips** (socket-space transforms: `carry` for READY / locomotion / hurt, `strike` for attacks / casts, `dodge` / `death` or per-clip ones where neither passes, and **keyed tracks** where no static grip clears a clip; the bow's hand per class) + `GripQA` (every frame of every hero clip on the shipped FBX: lowest point, item × body / head / the class's other default item, face disc; a bow's limbs and string ≥ 2 cm off the rigid body: `CLEAR`, `clearCm`) + the search that produced the table (`--search`: coarse SDF of the posed body, thousands of candidates scored for clearance and readability, then the exact QA); `--qa` prints the table |
 | `items/loot.py` | ground loot (spec §7): `SM_Loot_Bag`, `SM_Pickup_GoldCoin` (VFX), `SM_Pickup_Gold_S/M/L`, `SM_Pickup_PotionHP_S/–/L`, `SM_Pickup_PotionMP_S/–`, `SM_Pickup_Antidote`, `SM_Pickup_Scroll_TP/ID`, `SM_Pickup_LeyFruit`, 17 × `SM_Pickup_Gem_<Type>_<Tier>`, `SM_Pickup_Quest_Herb/Gel/Pendant` (Previews `<asset>/` + `loot_family/`) |
 
@@ -722,8 +727,9 @@ bow is equipped; swap slot 0 to `tiers[bases[<equipped baseId>]]`; slot 1 stays 
 1.5 px), pivots at the ground contact, readable from any yaw (props spawn at a hashed yaw and bob 0–12.8 cm). Every
 entry carries a `loot` record — `tint` (only the bag: Tint × 0.85 in the canonical palette, normal untinted),
 `qualityPalette`, `beam` (spec §8.7 pool / pillar per quality), `bob` (the bag 1600 ms; potions 1200 ms = spec §7
-5 px / 600 ms yoyo), HP / MP potions a `glow` (spec §7 `#FF4A4A` / `#4A8AFF`, 22 cm, α .45, on `glint`, placed
-**behind** the flask: depth-tested, so the flask's ink stays dark), scrolls `milestone: later` (DECISIONS I2 / I4) —
+5 px / 600 ms yoyo), HP / MP potions a `glow` (spec §7 `#FF4A4A` / `#4A8AFF`, 22 cm, **alpha-blended** peak α .85 ≈ .45 at the
+flask's silhouette, on `glint`, placed **behind** the flask: depth-tested, so the flask's ink stays dark), the ley
+fruit an additive mint `glow` (#6FF0C8 α .6, 20 cm), scrolls `milestone: later` (DECISIONS I2 / I4) —
 and the sockets `beam` (ground centre), `label` (name plate, top + 18 cm), `glint`. `SM_Pickup_GoldCoin` is the
 `reward.gold` burst mesh, not a ground pickup: no `loot` record, no sockets (its `game.png` / `game_1080crop.png`
 show a burst of six in the `M_AF_FX_Mesh` look over a goblin). Game ids: `loot_bag`, `potion_drop_hp|mp[_s|_m|_l]`,
@@ -780,30 +786,78 @@ Conventions learnt on the items:
   **readability rescue** checks that frame's next readable candidates exactly and re-plans. The check is
   `weapons.py --strips Cls:fam:Clip[:step[:se,sw]]` (every 4th frame from se and sw) — the six in-hand cells sample
   only six frames.
+* **Hold the hit-stop in the world** (art review, third look): track grips are fixed in the fist, so following a hand
+  that rolls ~15°/frame through a lunge costs a flick every frame — the plan kept the rogue's Attack03 staff
+  foreshortened into an orb blob at the fist through the hit-stop (se: 29 % of its length on screen). Staff / bow
+  strike tracks weigh readability × `HIT_READ_W` (4) from 2 frames before the contact / release to `HIT_READ_TAIL` (6)
+  after it, and `--hold` post-processes a track: one *world* orientation held over that window (the grip
+  counter-rotates in the fist), slerped in and out over 4 frames (≤ 24°/frame), the readable one (se *and* sw) that
+  passes the exact QA on every frame. The rogue's Attack03 and Cast02 staff hold (penalty .40 / .35 → 0); the rogue's
+  Attack01 and the warrior's strikes have no feasible hold (the strapped shield, the plate) and keep their tracks.
 * **Bows need their D toward the camera**: the W1 camera saw a bow in the hero's sagittal plane edge-on (a stick);
   the brace is 15 cm (web bulge 13 / 84) and the string a light no-hull cord 1.3 cm across in the bow's plane; the
   grips turn the plane toward the camera in se *and* sw and keep limbs and string ≥ 2 cm off the torso and helm
   (the search rejects candidates closer than 2.8 cm on the coarse SDF; the exact QA measures `clearCm`).
+* **Clearance is not readability — gate both** (art review, fourth look): the warrior's bow on `weapon_l` passed the
+  in-hand QA while it dangled edge-on at the hip (a brown bar) and an empty right fist struck, at every contact.
+  The bow now rides the warrior's **right hand** (`socket` `weapon_r`, as the mage's; DECISIONS R13), so the swing
+  carries it, every strike / cast has a keyed track planned with `read_bow` (×`HIT_READ_W` on the hit-stop) and the
+  `--hold` pass; and the QA **gates readability**: `read_metric` (min over se / sw of |bow plane normal · view ray|,
+  the D's on-screen fraction) on every strike / cast frame, `READ_GATE` floors .45 on the hit-stop window and .15 on
+  any frame (manifest `inHandQA.classes.<cls>.read`, `readGate`); the axe and shield report the same metric.
+* **Flats to the camera** (fourth look): the axe bit went edge-on at the warrior's Cast01 release (a stick with a dark
+  tip) and the rogue's Attack02 / Cast01 (a spear, a grey blob); `--roll` turns each strike / cast grip about the
+  haft (≤ 90°, keyed tracks key by key) to the angle that best shows the bit in se *and* sw on the hit-stop among
+  the angles whose grips pass the exact QA (warrior Cast01 .12 → .45, rogue Attack02 .21 → .54, Cast01 .16 → .76).
+  The rogue's Attack03 shield (edge-on, a pale blade) got the `--hold` pass with `read_shield_face` (the face ≥ 30°
+  toward the sw camera): no roll about the forearm or across the boards cleared her lunge, one held world angle did.
+* **A carry grip must clear the body on screen** (fourth look): the warrior's wand hung along his iron greaves and
+  vanished (only the crystal read). `read_wand_out` scores the crystal / upper shaft's projected distance to the
+  nearest body / attachment vertex (≥ 6 / 4 cm, se weighted ×1, sw ×.35: the right hand sits behind the body from
+  sw) and the rod's on-screen length; the warrior / rogue wand carry is searched with it (not the sword's identity
+  hang), the T1 shaft is a value lighter (#9A54AC, lightAmt .55) and the crystal faintly self-lit (e .6).
 * **One mesh per family (R4)**: `w_wooden_shield` (T1) is a round planked buckler in the web; here it is the heater
   with the T1 plank boards and iron boss (R4: one mesh per weapon base type family) — an accepted trade-off.
 * **Glowing gems and the dark check**: bloom over a near-white stone lifts its line-tone ink above lum 64 — the
-  diamond regions use a darker hull mix (`o` .7) and the perfect cuts a modest table emission (.22).
+  diamond regions use a darker hull mix (`o` .45, coloured stones .5) under the glowing tables (e .42; diamonds a
+  pale ice-blue table e .30) and glint stars (e 1.0). The same holds for any emissive accent that meets the
+  silhouette: the ley fruit's seams bloomed the ink past the limit at e 1.0 (e .7 + hull mix .5 pass).
+* **Small hulls round small details** (fourth look, weapons): the sword / dagger guard bars padded round their ball
+  finials and the wand crystal padded round its three prongs tented into dark diamonds past the knobs — finials,
+  crystal and prongs carry their own hulls; a wrap helix rides its grip's radius profile (`helix(r_fn=, sides=)`,
+  seated on the polygon's flats, ~1.5 mm proud) instead of floating off a tapered grip; the mace band follows the
+  ball's curvature on the equator (≤ 6.5 mm proud) with the spikes above and below it, never through it.
 * **Heaps** (art review 4): a mound proxy padded round the coins on it tented into a detached dark arch behind the
   pile (and left the coins' real silhouette without ink); a shrink-wrapped height-field proxy inks its own dips
   between coins (concave walls). The heap keeps the mound's own hull and gives the coins on its outer ring — the
-  only ones that reach the silhouette, the camera at −50° sees the whole 27° top — their own hulls.
+  only ones that reach the silhouette, the camera at −50° sees the whole 27° top — their own hulls. Fourth look:
+  coins sunk flush in a smooth mound read as dough with embossed octagons — the mound is lower and a shade darker
+  (#D69A2A, the shadowed coins inside), every coin rests *on* it with its rim band showing (Poisson-spaced, ±16°),
+  three coins stand in the crest and a three-coin stack crowns it (one padded cylinder hull per stack), three coins
+  slid off the foot set the lower edge, and the leaning coin faces between the key light and the camera with low-
+  shadow regions (`rim_lean` / `face_lean`, s .14–.16) so it stays gold at any spawn yaw.
+* **Glows over terrain** (fourth look): an additive red card over the plains grass turned it amber (the 'rare'
+  colour). The HP / MP cards are alpha-blended ('over', `loot.glow.blend` `alpha`, peak .85 so the ring at the flask
+  reads ~.45 red / blue — red mixed into green stays khaki below ~60 % coverage); the ley fruit's mint glow (#6FF0C8
+  α .6) stays additive: a light, not a colour laid over the ground.
 * **Glass from −50°**: the colourless shoulder of a flask fills the top of the silhouette; potions fill the bulb to
   the shoulder and tint the glass 22 % toward the liquid; painted glints sit on the key-lit upper-left at the 'front'
   yaw (and its opposite), ~45° in from the silhouette so the ink never covers them.
-* **Tiers in silhouette** (gems): size ramp 4.0 → 8.1 cm and crown form chipped · faceted · crowned (a second,
-  steeper crown ring) · brilliant / perfect (16-sided); coloured stones keep low lightAmt and little white on crown
-  and table (the ruby read salmon under the warm light band).
+* **Tiers in silhouette** (gems): radius ramp 7.0 → 14.8 cm (about 14 → 30 cm across: pickup scale beside 24 cm
+  potions — at 8–16 cm they were 10–22 px dots and the tiers could not be told apart) and crown form chipped ·
+  faceted · crowned (a second, steeper crown ring) · brilliant / perfect (16-sided); tiers ≥ 3 and every diamond carry
+  a glowing table and an emissive four-point glint star (eight points on the perfect cut: the web's tier-5 rays);
+  coloured stones keep low lightAmt and little white on crown and table, the ruby's crown facets e .3 (the warm rim
+  band on the steep facets read salmon), the emerald a deep body with bright facets (equal value with the grass).
+* **Figure-ground on the plains** (fourth look): saturated greens at the grass's value (#74A247) read only by their
+  ink — the antidote's lime liquid and near-white glass are lighter, the herb's blossoms 50 % larger and near-white
+  (e .12) with pale twine, the gel's highlight band wider and brighter (e .85).
 * **Thin hanging hardware** (the pendant chain): a 9 mm round cord disappears in its own 2 px ink; lay it as a 1.5 cm
   flat cord (coiled beside the locket) and give small fittings (the bail) a light metal.
 * **Budgets**: weapons 0.7–3.5 k toon (+ 0.24–1.4 k hull); pickups 0.7–3 k toon (+ ≤ 1.5 k hull), the gold heap
-  2.7 k (18 light heap coins: 8 sides, top face only) and the herb bundle 3.5 k + 3.4 k hull (15 leaves, each its
-  own ink, pale twine and three pale blossoms for value contrast on the grass); gems 40–126 tris; loose coins 10–12
-  sides (a 6 cm coin is ~7 px at 1080p).
+  3.0 k + 1.4 k hull (27 light heap coins: 8 sides, one face unless tilted up) and the herb bundle 3.5 k + 3.4 k hull
+  (15 leaves, each its own ink, pale twine and three pale blossoms for value contrast on the grass); gems 40–254 tris (glint stars included);
+  loose coins 10–12 sides (a 6 cm coin is ~7 px at 1080p).
 
 ## 14. VFX: textures, FX meshes, recipes, previews (`vfx/`)
 
@@ -830,7 +884,7 @@ emitters draw — sprite textures, FX meshes, and the recipe document the runtim
 | `vfx/fx_meshes.py` | `SM_FX_*` (below) + previews + the FX ink gate |
 | `vfx/fx_recipes.py` | every effect of spec §8.5–§8.7 + the 40 skills as runtime recipes (web compositions converted at 100/45 cm per px); `fx_palettes.json` (element palettes, flame gradients, class / skill / quality / affix / spirit / death colours, status tints, story embers) |
 | `vfx/fx_validate.py` | mirrors `FAbyssVfxLibrary::ParseLayer` (a wrong JSON type is silently ignored there, an unknown enum skips the recipe), sprite / mesh existence and cell ranges, runtime clamps, coverage of every bound event id and every skill's `skill.` / `proj.` / `ground.` ids |
-| `vfx/fx_preview.py` | Python port of `UAbyssVfxSystem` (presets, emission, anchors, blow frame incl. its random climb, motion, size / alpha curves, colours, quad and mesh transforms) composited over Blender renders of the plains terrain, **the hero class that owns the effect** (warrior / mage with staff + crystal / rogue with daggers, quiver and the Cast_Multishot flash-bow) in its own clip at the event's beat + t, actor anchors = the posed rig's `fx_chest` / `fx_head` / `fx_overhead` / `fx_hand_r` sockets re-read every 60 Hz tick while the clip plays (as `AAbyssCharacterActor::GetAnchorLocation`), goblins and — for world / prop loops — the shipped prop the effect sits on (`WORLD_PROPS`: campfire, torch, hearthstone, exit portal / sealed gate, lore tablet, herb, clue marker facing the camera, the chest in its Open clip, rune pillar, the loot bag incl. its pickup flight), the blacksmith in Work_Hammer at the anvil stump: per-pixel ray / quad intersection, depth test with the shipped 8 cm DepthFade on every quad, translucent before additive, the runtime's light pools (+2 cm, α × .5), FX meshes rendered with `M_AF_FX_Mesh`, the StatusTint multiply on a status target, the dodge afterimages (Ghost look), bloom → `Previews/vfx_effects/<recipe>/<ms>[-<ms>]ms.png` (native 1080p, scale 1, truecolour, one or two key frames per file, one tight crop per effect = what it touched + its actors; a frame over 200 KB becomes stacked native strips `<ms>ms_2.png`; a frame that cannot fit **fails the run** — nothing is ever resampled) |
+| `vfx/fx_preview.py` | Python port of `UAbyssVfxSystem` (presets, emission, anchors, blow frame incl. its random climb, motion, size / alpha curves, colours, quad and mesh transforms) composited over Blender renders of the plains terrain, **the hero class that owns the effect** (warrior / mage with staff + crystal / rogue with daggers, quiver and the Cast_Multishot flash-bow) in its own clip at the event's beat + t, actor anchors = the posed rig's `fx_chest` / `fx_head` / `fx_overhead` / `fx_hand_r` sockets re-read every 60 Hz tick while the clip plays (as `AAbyssCharacterActor::GetAnchorLocation`), goblins and — for world / prop loops — the shipped prop the effect sits on (`WORLD_PROPS`: campfire, torch, hearthstone, exit portal / sealed gate, lore tablet, herb, clue marker facing the camera, the chest in its Open clip, rune pillar, the loot bag incl. its pickup flight), the blacksmith in Work_Hammer at the anvil stump: per-pixel ray / quad intersection, depth test with the shipped 8 cm DepthFade on every quad, translucent before additive, the runtime's light pools (+2 cm, α × .5), FX meshes rendered with `M_AF_FX_Mesh`, the StatusTint multiply on a status target, the dodge afterimages and the soul echo's hero ghost (Ghost look, #9FE6FF α .55 ↔ .35, bob 6 px), bloom → `Previews/vfx_effects/<recipe>/<ms>[-<ms>]ms.png` (native 1080p, scale 1, truecolour, one or two key frames per file, one tight crop per effect = what it touched + its actors; a frame over 200 KB becomes stacked native strips `<ms>ms_2.png`; a frame that cannot fit **fails the run** — nothing is ever resampled) |
 
 FX meshes (all drawn by `M_AF_FX_Mesh`: opaque masked toon + ink, one tint per particle, so structure comes from
 geometry, the value channel and the hull; light, smoke and energy stay sprites): arrows (steel, poison, ice),
@@ -854,8 +908,12 @@ Conventions learnt on the VFX:
   pointed head (the leading end for the recipe's spin sign) to a hair-thin tail and carry three radial value bands
   (white-hot outer edge 1.0, body .8, trailing smear .6); a backhand needs the mirrored mesh, not a negative spin
   on the forehand one.
-* **Masked meshes dissolve, they don't fade**: any alpha < 1 is a 4 × 4 screen-door. Keep mesh layers at α 1 and
-  dissolve late (`alphaPow` ≥ 5), or shrink them out (coins: α 1, `sizePow` .25 late shrink).
+* **Masked meshes dissolve, they don't fade**: any alpha < 1 is a 4 × 4 screen-door (thresholds (b + .5) / 16, so
+  α < 31/32 already drops pixels), raw checker noise wherever there is no TAA (mobile low). `fx_recipes.
+  mesh_dissolve` holds every mesh layer's dithered window (fade-in + late tail) to 2 frames at 60 Hz (`DITHER_MAX_MS`
+  34; at `alphaPow` 12 ice armor's nova dithered for ~130 ms, the mana-shield bubble for ~190 ms, a slash arc at 5
+  for ~115 ms), and small flying pieces (rock debris, ice shards) never dissolve — α 1 and a late shrink (grow × .15,
+  `sizePow` .3; the coins' .25).
 * **Bodies swallow bursts**: sprites are depth-tested against opaque characters and the chest anchor is the body's
   centre. Strike recipes pull their target-side bursts 22 cm back along the blow (`STRIKE_CM`); the recommended
   runtime fix (camera-ward bias for actor-anchored quads) is in `integration.bodyOcclusion`.
@@ -884,7 +942,9 @@ Conventions learnt on the VFX:
 * **A hue must survive the ground**: additive rings in #FF4400 / #FF2222 / #CC0000 all came out the same orange on
   dirt and purples went grey on grass — affix auras are a translucent Shock disc (thin fill + crisp rim in the true
   hue) + a faint additive rim, verified on dirt and grass side by side (`elite.*`). A filled additive body glow tints
-  the body (extra_strong turned the goblin khaki): power pulses are hollow rings round the body.
+  the body (extra_strong turned the goblin khaki): power pulses are hollow rings round the body. A dark hue needs a
+  deeper body held near opaque: vampiric #CC0000 at the shared α .72 still read as a darker fire ring, so its disc
+  is crimson #A80A24 at α .92 → .45 (`aura(…, body=, body_alpha=)`) — blood, not fire.
 * **Bodies hide self-buffs too**: a chest-anchored glow on a blow-ful self cast (frenzy, poison blade, vanish) is
   inside the body; use hollow rings larger than the silhouette, ground pools, the hand socket, or spawn puffs on a
   ring ≥ 45 cm round the body (the vanish smoke bomb) until the runtime camera-ward bias lands.
