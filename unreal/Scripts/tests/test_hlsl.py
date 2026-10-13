@@ -154,6 +154,11 @@ class LintTests(unittest.TestCase):
                 self.assertNotRegex(node.code, r"#\s*include")
                 self.assertNotRegex(node.code, r"\.(xxx|xx|rrr)\b", "scalar broadcast swizzles are not portable here")
 
+    def test_temporal_dither_reads_the_view_jitter_index(self):
+        for node in (hlsl.dither_node(), hlsl.dither_shadow_node(), hlsl.fx_mesh_mask_node()):
+            self.assertIn("View.TemporalAAParams.x", node.code, node.key)
+            self.assertNotIn("StateFrameIndex", node.code, f"{node.key}: a per-frame index flickers without TAA")
+
     def test_terrain_tables_agree(self):
         from abyss_content import paths
         self.assertEqual(hlsl.TERRAIN_TILES, paths.TERRAIN_PAINT_TILES)
@@ -432,6 +437,96 @@ int main() {
         self.assertAlmostEqual(float(out[2]), 0.0, places=4)
         self.assertAlmostEqual(float(out[3]), 0.45, places=4)
         self.assertAlmostEqual(float(out[4]), 0.0, places=4)
+
+    def test_temporal_dither(self):
+        """AF_Dither / AF_DitherShadow / AF_FxMeshMask: the 4x4 Bayer rotated per temporal AA sample (DECISIONS R1).
+
+        Every sample keeps exactly alpha x 16 of the 16 cells, every pixel is kept about alpha of the samples of a TSR
+        sequence (8 jitter samples -> 11, the next prime, in UE 5.6+), and sample 0 (every frame without temporal AA)
+        is the static ordered pattern."""
+        nodes = [hlsl.dither_node(), hlsl.dither_shadow_node(), hlsl.fx_mesh_mask_node()]
+        main = """
+int main() {
+    const float alphas[] = {0.25f, 0.45f, 0.5f, 0.55f, 0.75f};
+    // per sample index: kept cells of AF_Dither (alpha via Fade, via the instance fade), AF_DitherShadow, AF_FxMeshMask
+    for (int k = 0; k < 11; ++k) {
+        View.TemporalAAParams = float4((float)k, 11.f, 0.f, 0.f);
+        for (float a : alphas) {
+            int dith = 0, inst = 0, shadow = 0, shadowInst = 0, fx = 0;
+            for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) {
+                Parameters.SvPosition = float4(x + 8.5f, y + 4.5f, 0.f, 1.f);
+                dith += AF_Dither(1.f - a, float2(0.f, 0.f), 1.f) > 0.5f ? 1 : 0;
+                inst += AF_Dither(0.f, float2(1.f - a, 0.f), 1.f) > 0.5f ? 1 : 0;
+                shadow += AF_DitherShadow(1.f - a, 1.f) > 0.5f ? 1 : 0;
+                shadowInst += AF_DitherShadow(0.f, a) > 0.5f ? 1 : 0;
+                fx += AF_FxMeshMask(float4(1.f, 1.f, 1.f, a)) > 0.5f ? 1 : 0;
+            }
+            std::printf("%d %d %d %d %d\\n", dith, inst, shadow, shadowInst, fx);
+        }
+    }
+    // per pixel over one sequence (TSR: 11 samples, TAA: 8) at alpha .25 / .45: samples kept
+    for (int n : {11, 8}) for (float a : {0.25f, 0.45f}) {
+        for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) {
+            int kept = 0;
+            for (int k = 0; k < n; ++k) {
+                View.TemporalAAParams = float4((float)k, (float)n, 0.f, 0.f);
+                Parameters.SvPosition = float4(x + 0.5f, y + 0.5f, 0.f, 1.f);
+                kept += AF_Dither(0.f, float2(1.f - a, 0.f), 1.f) > 0.5f ? 1 : 0;
+            }
+            std::printf("%d ", kept);
+        }
+        std::printf("\\n");
+    }
+    // kept-sample runs: the longest run of consecutive kept samples of any pixel over two TSR sequences at alpha .25
+    int longest = 0;
+    for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) {
+        int run = 0;
+        for (int k = 0; k < 22; ++k) {
+            View.TemporalAAParams = float4((float)(k % 11), 11.f, 0.f, 0.f);
+            Parameters.SvPosition = float4(x + 0.5f, y + 0.5f, 0.f, 1.f);
+            run = AF_Dither(0.f, float2(0.75f, 0.f), 1.f) > 0.5f ? run + 1 : 0;
+            longest = run > longest ? run : longest;
+        }
+    }
+    std::printf("%d\\n", longest);
+    // no temporal AA: index 0, the ordered pattern
+    View.TemporalAAParams = float4(0.f, 1.f, 0.f, 0.f);
+    for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x) {
+        Parameters.SvPosition = float4(x + 0.5f, y + 0.5f, 0.f, 1.f);
+        std::printf("%d ", AF_Dither(0.f, float2(0.75f, 0.f), 1.f) > 0.5f ? 1 : 0);
+    }
+    std::printf("\\n");
+    return 0;
+}"""
+        lines = compile_and_run(cpp_unit(nodes, main), run=True).strip().split("\n")
+        alphas = (0.25, 0.45, 0.5, 0.55, 0.75)
+        for k in range(11):
+            for j, a in enumerate(alphas):
+                counts = [int(x) for x in lines[k * len(alphas) + j].split()]
+                expected = math.ceil(a * 16 - 1e-6)   # cells with threshold (b + .5) / 16 + shift (mod 1) below alpha
+                for name, got in zip(("Fade", "instance fade", "shadow", "shadow BodyOpacity", "FX mesh"), counts):
+                    self.assertIn(got, (expected - 1, expected) if a * 16 % 1 else (expected,),
+                                  f"sample {k}, alpha {a}, {name}: {got} of 16 cells kept")
+                self.assertEqual(counts[0], counts[1], "Fade and the instance fade dither alike")
+        base = 11 * len(alphas)
+        tsr_25, tsr_45, taa_25, taa_45 = ([int(x) for x in lines[base + i].split()] for i in range(4))
+        # every 1/n shift once per sequence: each pixel keeps floor or ceil of alpha x n samples
+        self.assertTrue(all(n in (2, 3) for n in tsr_25), f"alpha .25 over 11 TSR samples: {tsr_25}")
+        self.assertTrue(all(n in (4, 5) for n in tsr_45), f"alpha .45 over 11 TSR samples: {tsr_45}")
+        self.assertEqual(sum(tsr_25), 4 * 11)
+        self.assertEqual(taa_25, [2] * 16, "alpha .25 over 8 TAA samples")
+        self.assertTrue(all(n in (3, 4) for n in taa_45), f"alpha .45 over 8 TAA samples: {taa_45}")
+        self.assertLessEqual(int(lines[base + 4]), 2, "kept samples come in runs (TSR would see a slow blink)")
+        static = [int(x) for x in lines[base + 5].split()]
+        # the ordered 4x4 Bayer (the pre-temporal pattern): kept where (b + .5) / 16 < .25, i.e. b in 0..3
+        ref = []
+        for y in range(4):
+            for x in range(4):
+                m = x ^ y
+                b = ((m & 1) << 3) | ((y & 1) << 2) | (m & 2) | ((y & 2) >> 1)
+                ref.append(1 if (b + 0.5) / 16 < 0.25 else 0)
+        self.assertEqual(static, ref)
+        self.assertEqual(sum(static), 4)
 
 
 if __name__ == "__main__":

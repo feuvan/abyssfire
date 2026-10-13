@@ -200,28 +200,59 @@ def toon_node(sh: Shading) -> CustomNode:
                       "float3", TOON_INPUTS, code)
 
 
-# Dithered opacity (occlusion / death fade of the masked toon and ink): ordered 4x4 Bayer, a fixed screen pattern.
-DITHER_INPUTS = (NodeInput("Fade", "float"), NodeInput("Inst", "float2"), NodeInput("BodyOpacity", "float"))
-_DITHER = """
-float a = saturate(BodyOpacity) * (1.0 - saturate(max(Fade, Inst.x)));
+# Dithered opacity (occlusion / death fade of the masked toon and ink, FX meshes): ordered 4x4 Bayer threshold `t`,
+# shifted every temporal AA sample. View.TemporalAAParams = (jitter index k, sequence length n, ...): UE's FViewInfo
+# TemporalJitterIndex / TemporalJitterSequenceLength, (0, 1) on every frame without temporal AA; TSR runs a prime n
+# (11 at 100 % screen percentage), TAA r.TemporalAASamples (8). The shift visits k * p / n (mod 1) with p the integer
+# nearest 0.618 n: coprime with a prime n, so one sequence visits every 1/n step once (exact coverage per pixel) in a
+# golden-ratio order (no runs of kept samples). Each frame keeps exactly a x 16 of the 16 cells (the thresholds stay
+# 1/16 apart, only shifted) and every pixel about a of the samples, so TSR / TAA resolve the fade to a smooth alpha
+# (DECISIONS R1) instead of the fixed screen door of the third Mac playtest. Without temporal AA, k = 0: the static
+# ordered pattern (no flicker); the zone dressing fades through a translucent copy there (AAbyssZoneActor,
+# abyss.FadeGhost).
+_BAYER_TEMPORAL = """
 float2 q = floor(fmod(Parameters.SvPosition.xy, float2(4.0, 4.0)));
 uint qx = (uint)q.x;
 uint qy = (uint)q.y;
 uint m = qx ^ qy;
 uint b = ((m & 1u) << 3) | ((qy & 1u) << 2) | (m & 2u) | ((qy & 2u) >> 1);
-float t = ((float)b + 0.5) / 16.0;
+float tn = max(View.TemporalAAParams.y, 1.0);
+float ts = frac(View.TemporalAAParams.x * floor(tn * 0.618034 + 0.5) / tn);
+float t = frac(((float)b + 0.5) / 16.0 + ts);
+"""
+
+DITHER_INPUTS = (NodeInput("Fade", "float"), NodeInput("Inst", "float2"), NodeInput("BodyOpacity", "float"))
+_DITHER = """
+float a = saturate(BodyOpacity) * (1.0 - saturate(max(Fade, Inst.x)));
+@BAYER@
 return a > t ? 1.0 : 0.0;
 """
 
 
 def dither_node() -> CustomNode:
-    return CustomNode("AF_Dither", "Abyssfire dithered opacity mask (Bayer 4x4)", "float", DITHER_INPUTS,
-                      _fill(_DITHER, {}))
+    return CustomNode("AF_Dither", "Abyssfire dithered opacity mask (Bayer 4x4, rotated per temporal AA sample)",
+                      "float", DITHER_INPUTS, _fill(_DITHER, {"BAYER": _BAYER_TEMPORAL.strip()}))
 
 
-# Blended opacity (M_AF_Toon_Slime, translucent): the jelly shell's BodyOpacity faded by the death / occlusion fade.
-# The static 4x4 Bayer above is a visible screen door wherever nothing averages it (MSAA on mobile, FXAA on the
-# desktop low tier, and TSR, which sees the same pattern every frame); the slime previews render this blend.
+# Shadow-pass mask of M_AF_Toon / M_AF_Toon_Foliage (ShadowPassSwitch): the death / prop fade (CPD 13) and BodyOpacity
+# only. The occlusion fade of instanced dressing (PerInstanceCustomData 0) never thins its sun shadow: a faded tree
+# still stands there, and the translucent copy that replaces the hidden instance on tiers without temporal AA casts none.
+DITHER_SHADOW_INPUTS = (NodeInput("Fade", "float"), NodeInput("BodyOpacity", "float"))
+_DITHER_SHADOW = """
+float a = saturate(BodyOpacity) * (1.0 - saturate(Fade));
+@BAYER@
+return a > t ? 1.0 : 0.0;
+"""
+
+
+def dither_shadow_node() -> CustomNode:
+    return CustomNode("AF_DitherShadow", "Abyssfire shadow-pass opacity mask (no instance occlusion fade)", "float",
+                      DITHER_SHADOW_INPUTS, _fill(_DITHER_SHADOW, {"BAYER": _BAYER_TEMPORAL.strip()}))
+
+
+# Blended opacity (M_AF_Toon_Slime and the M_AF_Toon_Fade / M_AF_Toon_Foliage_Fade copies of faded dressing,
+# translucent): BodyOpacity faded by the death / occlusion fade. A Bayer screen door is visible wherever nothing
+# averages it (MSAA on mobile, FXAA on the desktop low tier); the slime previews render this blend (DECISIONS R12).
 _FADE_OPACITY = """
 return saturate(BodyOpacity) * (1.0 - saturate(max(Fade, Inst.x)));
 """
@@ -380,20 +411,19 @@ def fx_mesh_node(sh: Shading) -> CustomNode:
     return CustomNode("AF_FxMesh", "toon-banded FX mesh colour", "float3", FX_MESH_INPUTS, code)
 
 
+# The FX mesh fade over life: the same temporally rotated Bayer as AF_Dither (resolved by TSR / TAA; static and brief
+# elsewhere). The ink hull is baked into the same mesh and material, so it keeps the same pixels as the body.
 FX_MESH_MASK_INPUTS = (NodeInput("Col", "float4"),)
 _FX_MESH_MASK = """
 float a = saturate(Col.a);
-float2 q = floor(fmod(Parameters.SvPosition.xy, float2(4.0, 4.0)));
-uint qx = (uint)q.x;
-uint qy = (uint)q.y;
-uint m = qx ^ qy;
-uint b = ((m & 1u) << 3) | ((qy & 1u) << 2) | (m & 2u) | ((qy & 2u) >> 1);
-return a > ((float)b + 0.5) / 16.0 ? 1.0 : 0.0;
+@BAYER@
+return a > t ? 1.0 : 0.0;
 """
 
 
 def fx_mesh_mask_node() -> CustomNode:
-    return CustomNode("AF_FxMeshMask", "dithered FX mesh fade", "float", FX_MESH_MASK_INPUTS, _fill(_FX_MESH_MASK, {}))
+    return CustomNode("AF_FxMeshMask", "dithered FX mesh fade", "float", FX_MESH_MASK_INPUTS,
+                      _fill(_FX_MESH_MASK, {"BAYER": _BAYER_TEMPORAL.strip()}))
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -902,9 +932,10 @@ def terrain_emissive_node() -> CustomNode:
 
 def all_nodes(sh: Shading) -> list[CustomNode]:
     """Every node the build creates (tests compile them all)."""
-    nodes = [toon_node(sh), dither_node(), fade_opacity_node(), ink_node(sh), outline_wpo_node(sh), wind_node(),
-             fx_mesh_node(sh), fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(), terrain_node(True),
-             terrain_node(False), terrain_painted_node(True), terrain_painted_node(False), terrain_emissive_node()]
+    nodes = [toon_node(sh), dither_node(), dither_shadow_node(), fade_opacity_node(), ink_node(sh), outline_wpo_node(sh),
+             wind_node(), fx_mesh_node(sh), fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(),
+             terrain_node(True), terrain_node(False), terrain_painted_node(True), terrain_painted_node(False),
+             terrain_emissive_node()]
     nodes += list(fx_nodes().values()) + list(quad_nodes().values()) + list(water_nodes().values())
     return nodes
 

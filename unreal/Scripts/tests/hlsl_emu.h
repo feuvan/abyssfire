@@ -175,3 +175,11 @@ struct FMaterialPixelParameters
 	float4 SvPosition = float4(0.5f, 0.5f, 0.f, 1.f);
 };
 inline FMaterialPixelParameters Parameters;
+
+// The members of UE's view uniform buffer the nodes read. TemporalAAParams = (jitter index, sequence length, jitter x,
+// jitter y): (0, 1, 0, 0) without temporal AA (FViewInfo::SetupUniformBufferParameters, UE 5.6+).
+struct FViewUniforms
+{
+	float4 TemporalAAParams = float4(0.f, 1.f, 0.f, 0.f);
+};
+inline FViewUniforms View;

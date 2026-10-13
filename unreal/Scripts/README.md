@@ -215,7 +215,7 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 | Portraits, icons, glyphs | `/Game/Abyssfire/UI/{Portraits,Icons}/T_UI_*` | UserInterface2D, no mips |
 | FX sprites | `/Game/Abyssfire/FX/Textures/T_FX_*` | linear (masks); `T_AF_FX_DefaultGlow` is the generated fallback |
 | `MPC_AF_Lighting` | `/Game/Abyssfire/Materials` | `SunDir`, `KeyLightDir` (manifest key light), `SunColor`, `Ambient`, `RimColor`, `CameraTanHalfFovY`, `TimeSec` |
-| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow` | shader code in `abyss_content/hlsl.py` |
+| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow` | shader code in `abyss_content/hlsl.py` |
 | Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>`, `MI_AF_Terrain_<Theme>` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow. `MI_AF_Terrain_<Theme>`: `M_AF_Terrain_Painted` with the manifest `terrain.<theme>` layers + detail atlas (only when all of them were exported) |
 | Terrain textures | `/Game/Abyssfire/Textures/T_Terrain_<Theme>_*_BC`, `T_Water_<Theme>_BC` | world (sRGB, mips, wrap); the `_Details_BC` atlas BC7, clamp; imported even without the texture scan (the manifest names them) |
 | `SM_FX_Quad` | `/Game/Abyssfire/FX` | 100 × 100 cm XY quad (unless the art ships one) |
@@ -224,12 +224,17 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 
 Material behaviour in short:
 
-* **`M_AF_Toon`** — Unlit, masked (dithered fade): 3-band half-Lambert in sRGB space from the palette atlases
+* **`M_AF_Toon`** — Unlit, masked (dithered fade: a 4 × 4 Bayer shifted every TSR / TAA jitter sample
+  (`View.TemporalAAParams`), resolved by the AA, static without it; the shadow pass ignores the instanced
+  dressing's occlusion fade): 3-band half-Lambert in sRGB space from the palette atlases
   (`shade / base / light`, bands at 0.42 / 0.86 ± 0.01), grounding from `AF_Data.r`, banded rim on the lit half,
   emissive regions unshaded (× 1.6), then the gameplay feedback from custom primitive data: `HitFlash` (0),
   `PainTint` (1–4), `Telegraph` (5–8), `StatusTint` (9–12), `Fade` (13), `Ghost` (14), `Highlight` (15); instanced
   dressing reads `PerInstanceCustomData` 0 Fade / 2 Highlight. `_Foliage` adds wind (WPO from the instance `Random`),
   `_Slime` the jelly rim and an alpha-blended translucent body (`BodyOpacity` × fade, back faces culled; R12).
+  `M_AF_Toon_Fade` / `M_AF_Toon_Foliage_Fade` are translucent twins of `M_AF_Toon` / `_Foliage` (alpha 1 − fade)
+  for the occlusion-fade ghosts of the zone dressing on tiers without temporal AA (DECISIONS R1;
+  `AAbyssZoneActor` creates them at runtime, no manifest slot names them).
 * **`M_AF_Outline`** — ink `mix(#120C18, line(c), o)`, screen-constant width: WPO dilates the baked hull to
   `OutlinePx1080 × ViewSizeY / 1080` px (manifest `shading.outline.wpo`); material quality *Low* keeps the baked hull.
 * **`M_AF_Terrain`** — lit (receives sun shadows), base colour from the web tile-transition algorithm over the runtime

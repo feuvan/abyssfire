@@ -65,6 +65,18 @@ namespace
 			|| Kind == abyss::FloatingTextKind::Heal || Kind == abyss::FloatingTextKind::Miss;
 	}
 
+	/**
+	 * Font of a float, the same for its ink box (AddFloatingText) and its paint (PaintFloat). Hit numbers keep the bold
+	 * Title face; the label floats (kill rewards, status / pickup lines) are regular weight (combat-feel 12 makes no
+	 * reward bold) with the 1 px outline their AddFloatingText case sets: quests-story-ch1 4 gives them Cinzel with a 2 px
+	 * stroke, which is centred on the glyph edge (1 px outside), while a Slate outline lies wholly outside the glyph. Bold
+	 * with a 2 px outline closed the counters of a 13 px "+18 EXP" into a dark smear (third Mac playtest).
+	 */
+	FSlateFontInfo AbyssWorldLayer_FloatFont(const FAbyssUiStyle& Style, abyss::FloatingTextKind Kind, float FontPx, int32 Outline)
+	{
+		return Style.Font(EAbyssFontFace::Title, FontPx, AbyssWorldLayer_IsNumber(Kind), Outline);
+	}
+
 	/** Screen rect of a float at one sample time of the placement check (Slate px). */
 	struct FAbyssWorldLayerRect
 	{
@@ -211,24 +223,25 @@ void SAbyssWorldLayer::AddFloatingText(const FAbyssFloatingTextRequest& Request)
 		Float.Text = FString::Printf(TEXT("+%s EXP"), *FAbyssUiContext::Num(Request.Value));
 		Float.Color = FAbyssUiStyle::Rgb(0xb39ddb);
 		Float.FontPx = 13.f;
-		Float.Outline = 2;
+		Float.Outline = 1;   // 1 px outside the glyph, like a centred 2 px stroke; regular weight (AbyssWorldLayer_FloatFont)
 		Float.StartOffset = FVector2D(0.0, -40.0);
 		break;
 	case abyss::FloatingTextKind::Gold:
 		Float.Text = FString::Printf(TEXT("+%sG"), *FAbyssUiContext::Num(Request.Value));
 		Float.Color = FAbyssUiStyle::Rgb(0xffd700);
 		Float.FontPx = 13.f;
-		Float.Outline = 2;
+		Float.Outline = 1;
 		Float.StartOffset = FVector2D(15.0, -28.0);
 		break;
 	case abyss::FloatingTextKind::Embers:
 		// quests-story-ch1.md 4 (OQ10, shown in Ch1; DECISIONS Q3 hides only the tower UI): 12 px Cinzel #ff9a4a, 2 px
-		// stroke, 18 px left / 52 px above the corpse, rises 30 px and fades over 1400 ms (one Power2 = Cubic.Out tween).
+		// stroke (centred: a 1 px Slate outline), 18 px left / 52 px above the corpse, rises 30 px and fades over 1400 ms
+		// (one Power2 = Cubic.Out tween).
 		Float.Text = Ctx->LocArgsOrStr("homestead.float.embers", TEXT("+{n} Embers"),
 			{ FAbyssUiContext::Arg("n", static_cast<int64>(FMath::RoundToDouble(Request.Value))) });
 		Float.Color = FAbyssUiStyle::Rgb(0xff9a4a);
 		Float.FontPx = 12.f;
-		Float.Outline = 2;
+		Float.Outline = 1;
 		Float.StartOffset = FVector2D(-18.0, -52.0);
 		break;
 	case abyss::FloatingTextKind::Status:
@@ -236,7 +249,7 @@ void SAbyssWorldLayer::AddFloatingText(const FAbyssFloatingTextRequest& Request)
 		Float.Text = Request.Text.Empty() ? FString::Printf(TEXT("+%s"), *FAbyssUiContext::Num(Request.Value)) : Ctx->LocStr(Request.Text);
 		Float.Color = Request.Text.Empty() ? FAbyssUiStyle::Rgb(0x6fb6ff) : FAbyssUiStyle::Rgb(0xf0dcae);
 		Float.FontPx = 15.f;
-		Float.Outline = 2;
+		Float.Outline = 1;
 		Float.StartOffset = FVector2D(0.0, -36.0);
 		break;
 	}
@@ -267,8 +280,8 @@ void SAbyssWorldLayer::AddFloatingText(const FAbyssFloatingTextRequest& Request)
 	}
 	Float.BaseOffset = Float.StartOffset;
 	Float.Box = AbyssWorldLayer_InkBox(Float.Text,
-		FAbyssPainter::Measure(Float.Text, Ctx->Style().Font(EAbyssFontFace::Title, Float.FontPx, true, Float.Outline)), Float.FontPx,
-		Float.Outline);
+		FAbyssPainter::Measure(Float.Text, AbyssWorldLayer_FloatFont(Ctx->Style(), Float.Kind, Float.FontPx, Float.Outline)),
+		Float.FontPx, Float.Outline);
 	const bool bLabelFloat = !AbyssWorldLayer_IsNumber(Request.Kind);
 	const FVector World = Float.World;
 	Floats.Add(MoveTemp(Float));
@@ -985,7 +998,12 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 		return;
 	}
 	// offsets, rises, drift and sinks are web world px (combat-feel 12), scaled to the camera by WebPx
-	const FSlateFontInfo Font = Ctx->Style().Font(EAbyssFontFace::Title, Float.FontPx, true, Float.Outline);
+	FSlateFontInfo Font = AbyssWorldLayer_FloatFont(Ctx->Style(), Float.Kind, Float.FontPx, Float.Outline);
+	// Slate draws the outline glyph (the glyph grown by the outline, inside included) under the fill; once the float is
+	// translucent that darkens its inside by up to ~22% of the ground behind it (outline alpha .9 x a under fill a). Below
+	// alpha .7 the fill area is cut out of the outline (bSeparateFillAlpha, "better for transparent fill areas"), which
+	// matches fading the text as one layer more closely; nearer opaque it would let a light seam in at the glyph edges.
+	Font.OutlineSettings.bSeparateFillAlpha = Alpha < 0.7f;
 	P.TextCentered(Anchor + Offset * WebPx, Float.Text, Font, FAbyssUiStyle::WithAlpha(Float.Color, Alpha), FMath::Max(0.05f, Scale));
 }
 

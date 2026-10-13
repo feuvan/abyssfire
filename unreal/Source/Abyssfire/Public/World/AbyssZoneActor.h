@@ -12,9 +12,14 @@
 //   lily pads.
 // * Light and look: the movable directional sun (manifest key light, CSM per tier), the unbound post-process of the
 //   zone mood (manual exposure, no tone curve, grade, vignette, bloom per tier; or M_AF_PP_Grade when it exists).
-// * Occlusion fade (R1, world-map-nav.md 15.6): tall dressing between the camera and the hero / nearby monsters fades
-//   to alpha .25 (decor, tents) / .45 (walls) with the web's 110 ms approach. Ground loot near the hero also fades the
-//   low dressing it lies in or behind (bushes, grass, rocks; in 3D a bag inside a berry bush is otherwise hidden).
+// * Occlusion fade (R1, world-map-nav.md 15.6): tall dressing between the camera and the hero / nearby living monsters
+//   fades to alpha .25 (decor, tents) / .45 (walls) with the web's 110 ms approach. Ground loot near the hero also fades
+//   the low dressing it lies in or behind (bushes, grass, rocks; in 3D a bag inside a berry bush is otherwise hidden).
+//   With temporal AA (TSR / TAA) the masked toon / ink materials dither the fade with a pattern that changes every
+//   jitter sample, which the AA resolves; without it (desktop low FXAA, mobile MSAA) an instance faded by .3 or more is
+//   hidden in its ISM and drawn by a translucent copy in a parallel "fade ghost" ISM (M_AF_Toon_Fade / _Foliage_Fade,
+//   ink hull hidden; abyss.FadeGhost). Trees, rocks and tents fade when a target's ray toward the camera enters their
+//   bounds ellipsoid from behind; walls, stakes and gates use a cylinder.
 // * Picking support: GetGroundHeight / RaycastGround on the terrain height field (ue58-platform.md 8.4).
 // * Shader gate (uncooked editor-binary runs only, WITH_EDITOR): an instanced mesh whose material is still compiling
 //   for this RHI stays hidden until its shader map is ready (abyss.DecorShaderGate), instead of drawing with the
@@ -37,6 +42,7 @@ class UAbyssAssetLibrary;
 class UDirectionalLightComponent;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
+class UMaterialInterface;
 class UPostProcessComponent;
 class UProceduralMeshComponent;
 class USceneComponent;
@@ -110,11 +116,23 @@ private:
 		int32 Component = INDEX_NONE;
 		int32 Instance = INDEX_NONE;
 		FVector Location = FVector::ZeroVector;
+		FTransform Transform = FTransform::Identity;   // world transform of the instance (the fade ghost's copy)
+		float RandomValue = 0.5f;   // AbyssDecorIcd::Random of the instance (wind phase of the ghost)
 		float RadiusCm = 50.f;
 		float HeightCm = 150.f;
 		float FadeTarget = 0.75f;   // 1 - alpha (decor .25 -> .75, walls .45 -> .55)
 		float Fade = 0.f;
 		bool bLootOnly = false;     // low dressing: fades for ground loot only, never for the hero or monsters
+		bool bEllipsoid = false;    // R1 decor (trees, rocks, tents, story props): bounds-ellipsoid test; walls: cylinder
+		bool bGhosted = false;      // drawn by its fade ghost (own instance hidden), FFadeGhost::Occluders lists it
+	};
+
+	/** Fade ghost of one dressing component (index parallel to DecorInstanceComponents). */
+	struct FFadeGhost
+	{
+		TArray<int32> Occluders;    // occluder indices, in ghost instance order
+		bool bResolved = false;     // the ghost component was created (or found impossible) once
+		bool bDirty = false;        // the occluder set changed: rebuild the ghost instances
 	};
 
 	struct FPendingStory
@@ -139,6 +157,16 @@ private:
 	static bool GateUntilShadersReady(const UInstancedStaticMeshComponent& Component);
 	/** Shows every gated component whose materials are ready (all of them after the timeout); stops ticking when done. */
 	void UpdateShaderGate();
+	/** Occlusion fade through translucent ghosts this frame (abyss.FadeGhost; auto: no temporal AA resolves the dither). */
+	bool UseFadeGhosts() const;
+	/** The fade ghost of a dressing component, created on first use; nullptr when its mesh has another material than
+	 *  the toon / ink masters, the fade masters are missing, or (uncooked runs) its shaders are not ready yet. */
+	UInstancedStaticMeshComponent* GetFadeGhost(int32 ComponentIndex);
+	UInstancedStaticMeshComponent* CreateFadeGhost(UInstancedStaticMeshComponent& Source);
+	/** Writes one occluder's fade: on its own instance (dithered), or on its ghost copy with its own instance hidden. */
+	void ApplyOccluderFade(int32 Index, bool bGhostMode, TSet<int32>& DirtyComponents, TSet<int32>& DirtyGhosts);
+	/** Rebuilds (after a set change) or refreshes the ghost instances of one dressing component. */
+	void UpdateFadeGhost(int32 ComponentIndex);
 	const FAbyssArtAsset* ResolveArt(TConstArrayView<FName> GameIds, uint32 Hash) const;
 	bool PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
 		bool bOccluder, float FadeTarget, FName StoryId = NAME_None);
@@ -169,6 +197,17 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UInstancedStaticMeshComponent>> DecorInstanceComponents;
 
+	/** Fade ghost ISMs, parallel to DecorInstanceComponents (nullptr until a ghost is needed, or when it is impossible). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UInstancedStaticMeshComponent>> FadeGhostComponents;
+
+	/** Translucent twins of M_AF_Toon / M_AF_Toon_Foliage for the fade ghosts (content build; nullptr when missing). */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> FadeToonMaster;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> FadeFoliageMaster;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2D> TileTexture;
 
@@ -188,6 +227,10 @@ private:
 	TMap<TObjectPtr<UStaticMesh>, FInstanceBatch> PendingInstances;
 	TMap<TObjectPtr<UStaticMesh>, int32> ComponentByMesh;
 	TArray<FOccluder> Occluders;
+	/** Parallel to DecorInstanceComponents / FadeGhostComponents. */
+	TArray<FFadeGhost> FadeGhosts;
+	/** UseFadeGhosts() of the last UpdateOcclusion (a change re-applies every faded occluder). */
+	bool bFadeGhostMode = false;
 	/** Occluder indices per 8 x 8 tile bucket (spatial query). */
 	TMap<FIntPoint, TArray<int32>> OccluderBuckets;
 	/** Story decoration id -> (component, instance). */

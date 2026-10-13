@@ -13,6 +13,26 @@ namespace
 	{
 		return Geometry.ToPaintGeometry(FVector2f(Size), FSlateLayoutTransform(Scale, FVector2f(Pos)));
 	}
+
+	/**
+	 * Font whose outline is tinted and faded with the text. MakeText draws the outline in the font's raw OutlineColor: the
+	 * element tint reaches only the fill (ElementBatcher BuildFontGeometry), so a fading outlined text left a solid copy of
+	 * its outline behind, which is the glyph grown by the outline with its inside filled (bSeparateFillAlpha off): a fat
+	 * black "+18 EXP" once the fill had faded. STextBlock multiplies the outline by the widget tint (FSlateTextRun::OnPaint)
+	 * and the web fades a whole Text object, stroke included. OutlineColor is not part of the glyph cache key
+	 * (FFontOutlineSettings::IsIdenticalToForCaching / GetTypeHash), so this adds no font atlas entries.
+	 */
+	FSlateFontInfo AbyssDraw_FadeOutline(const FSlateFontInfo& Font, const FLinearColor& Tint, float Alpha)
+	{
+		FSlateFontInfo Faded = Font;
+		if (Faded.OutlineSettings.OutlineSize > 0)
+		{
+			FLinearColor Outline = Font.OutlineSettings.OutlineColor * Tint;
+			Outline.A *= Alpha;
+			Faded.OutlineSettings.OutlineColor = Outline;
+		}
+		return Faded;
+	}
 }
 
 FAbyssPainter::FAbyssPainter(const FGeometry& InGeometry, FSlateWindowElementList& InElements, int32 InLayer,
@@ -531,7 +551,8 @@ void FAbyssPainter::Text(const FVector2D& Pos, const FString& InText, const FSla
 		return;
 	}
 	const FVector2D Size = Measure(InText, Font);
-	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), InText, Font, ESlateDrawEffect::None, Tinted(Color));
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), InText, AbyssDraw_FadeOutline(Font, Tint, Color.A),
+		ESlateDrawEffect::None, Tinted(Color));
 }
 
 void FAbyssPainter::TextCentered(const FVector2D& Center, const FString& InText, const FSlateFontInfo& Font, const FLinearColor& Color,
@@ -543,8 +564,8 @@ void FAbyssPainter::TextCentered(const FVector2D& Center, const FString& InText,
 	}
 	const FVector2D Size = Measure(InText, Font);
 	const FVector2D TopLeft = Center - Size * (0.5 * Scale);
-	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, TopLeft, Size, Scale), InText, Font, ESlateDrawEffect::None,
-		Tinted(Color));
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, TopLeft, Size, Scale), InText,
+		AbyssDraw_FadeOutline(Font, Tint, Color.A), ESlateDrawEffect::None, Tinted(Color));
 }
 
 void FAbyssPainter::TextShadowed(const FVector2D& Pos, const FString& InText, const FSlateFontInfo& Font, const FLinearColor& Color,
@@ -557,9 +578,10 @@ void FAbyssPainter::TextShadowed(const FVector2D& Pos, const FString& InText, co
 	const FVector2D Size = Measure(InText, Font);
 	FLinearColor ShadowColor = Shadow;
 	ShadowColor.A *= Color.A;
-	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos + ShadowOffset, Size), InText, Font, ESlateDrawEffect::None,
-		Tinted(ShadowColor));
-	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), InText, Font, ESlateDrawEffect::None, Tinted(Color));
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos + ShadowOffset, Size), InText,
+		AbyssDraw_FadeOutline(Font, Tint, ShadowColor.A), ESlateDrawEffect::None, Tinted(ShadowColor));
+	FSlateDrawElement::MakeText(Elements, TakeLayer(), AbyssDraw_Paint(Geometry, Pos, Size), InText, AbyssDraw_FadeOutline(Font, Tint, Color.A),
+		ESlateDrawEffect::None, Tinted(Color));
 }
 
 // =====================================================================================================================

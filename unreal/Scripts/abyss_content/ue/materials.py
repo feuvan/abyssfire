@@ -139,6 +139,11 @@ TOON_SETTINGS = _surface("BLEND_MASKED", opacity_mask_clip_value=0.5, used_with_
 # pass and write depth; the hull still casts the slime's sun shadow. Sorting (translucent sort priority): blob shadows
 # (-10) and water (-2) first, the shell at the component's default 0, VFX after it (1 / 2).
 SLIME_SETTINGS = _surface("BLEND_TRANSLUCENT", used_with_skeletal_mesh=True, used_with_instanced_static_meshes=True)
+# Occlusion fade ghosts (DECISIONS R1): on tiers without temporal AA (desktop low FXAA, mobile MSAA) a faded tree / rock /
+# wall instance is hidden in its masked ISM and drawn by a translucent copy (AAbyssZoneActor, abyss.FadeGhost) with
+# these twins of M_AF_Toon / M_AF_Toon_Foliage: the same toon colour and wind, alpha 1 - PerInstanceCustomData[0],
+# back faces culled, no depth write (sort priority 0 on the component, like the slime shell). Instanced dressing only.
+FADE_SETTINGS = _surface("BLEND_TRANSLUCENT", used_with_instanced_static_meshes=True)
 OUTLINE_SETTINGS = dict(TOON_SETTINGS)
 TERRAIN_SETTINGS = _surface("BLEND_OPAQUE", shading_model="MSM_DEFAULT_LIT",
                             float_precision_mode=E("MaterialFloatPrecisionMode", "MFPM_FULL"))
@@ -187,8 +192,11 @@ def _wind(g: Graph, ctx: Ctx) -> Any:
 
 
 def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
+    """variant: toon | foliage (masked, dithered fade) | slime | fade | fade_foliage (translucent, blended fade)."""
     sh = ctx.shading
     slime = variant == "slime"
+    blended = variant in ("slime", "fade", "fade_foliage")
+    foliage = variant in ("foliage", "fade_foliage")
     bc = g.texture("PaletteBC", ctx.tex_white, "SAMPLERTYPE_COLOR")
     pp = g.texture("PaletteP", ctx.tex_palette_p, "SAMPLERTYPE_LINEAR_COLOR")
     fb = _feedback(g)
@@ -218,22 +226,30 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
         "Inst": inst,
         "HighlightColor": g.vector("HighlightColor", (*ctx.highlight, 1.0), group="Look"),
     })
-    if slime:
-        # SLIME_SETTINGS: blended opacity (BodyOpacity faded by Fade) instead of the dithered mask
-        body = g.scalar("BodyOpacity", 0.9, group="Look")
+    if blended:
+        # SLIME_SETTINGS / FADE_SETTINGS: blended opacity (BodyOpacity faded by Fade / the instance fade) instead of the
+        # dithered mask. Keep the slime's node order: Graph.fingerprint hashes the trace in creation order.
+        body = g.scalar("BodyOpacity", 0.9 if slime else 1.0, group="Look")
         g.output(toon, "MP_EMISSIVE_COLOR")
         g.output(g.custom(hlsl.fade_opacity_node(), {"Fade": fb["Fade"], "Inst": inst, "BodyOpacity": body}),
                  "MP_OPACITY")
+        if foliage:
+            g.output(_wind(g, ctx), "MP_WORLD_POSITION_OFFSET")
         return
-    # Keep this node order (scalar, dither, emissive, mask): Graph.fingerprint hashes the trace in creation order, and a
-    # reordered trace rebuilds M_AF_Toon / M_AF_Toon_Foliage (and recompiles every toon shader) for an identical graph.
-    mask = g.custom(hlsl.dither_node(), {
-        "Fade": fb["Fade"], "Inst": inst,
-        "BodyOpacity": g.scalar("BodyOpacity", 1.0, group="Look"),
-    })
+    # Keep this node order (scalar, dither, emissive, shadow mask, switch, mask): Graph.fingerprint hashes the trace in
+    # creation order, and a reordered trace rebuilds M_AF_Toon / M_AF_Toon_Foliage (and recompiles every toon shader)
+    # for an identical graph.
+    body = g.scalar("BodyOpacity", 1.0, group="Look")
+    mask = g.custom(hlsl.dither_node(), {"Fade": fb["Fade"], "Inst": inst, "BodyOpacity": body})
     g.output(toon, "MP_EMISSIVE_COLOR")
-    g.output(mask, "MP_OPACITY_MASK")
-    if variant == "foliage":
+    # Shadow pass (ShadowPassSwitch): the death / prop fade and BodyOpacity only. The occlusion fade of instanced
+    # dressing keeps its full sun shadow, also while the instance is hidden behind its translucent ghost (R1).
+    shadow = g.custom(hlsl.dither_shadow_node(), {"Fade": fb["Fade"], "BodyOpacity": body})
+    switch = g.node("MaterialExpressionShadowReplace")
+    g.connect(mask, switch, "Default")
+    g.connect(shadow, switch, "Shadow")
+    g.output(switch, "MP_OPACITY_MASK")
+    if foliage:
         g.output(_wind(g, ctx), "MP_WORLD_POSITION_OFFSET")
 
 
@@ -442,6 +458,9 @@ MASTERS: tuple[Master, ...] = (
     Master(paths.M_TOON, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "toon")),
     Master(paths.M_TOON_FOLIAGE, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "foliage")),
     Master(paths.M_TOON_SLIME, paths.MATERIALS_DIR, SLIME_SETTINGS, lambda g, c: build_toon(g, c, "slime")),
+    Master(paths.M_TOON_FADE, paths.MATERIALS_DIR, FADE_SETTINGS, lambda g, c: build_toon(g, c, "fade")),
+    Master(paths.M_TOON_FOLIAGE_FADE, paths.MATERIALS_DIR, FADE_SETTINGS,
+           lambda g, c: build_toon(g, c, "fade_foliage")),
     Master(paths.M_OUTLINE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, False)),
     Master(paths.M_OUTLINE_FOLIAGE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, True)),
     Master(paths.M_TERRAIN, paths.MATERIALS_DIR, TERRAIN_SETTINGS, build_terrain),

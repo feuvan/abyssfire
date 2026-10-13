@@ -92,6 +92,8 @@ struct FAbyssPainter
 		const FLinearColor& BL) const;
 
 	// ---- text ----
+	// The font's outline is tinted and faded with the fill (Tint x OutlineColor, alpha x Color.A), like STextBlock does
+	// with the widget tint and the web does with a Text object's alpha; MakeText alone would draw it unfaded.
 	static FVector2D Measure(const FString& Text, const FSlateFontInfo& Font);
 	void Text(const FVector2D& Pos, const FString& Text, const FSlateFontInfo& Font, const FLinearColor& Color) const;
 	/** Text centred on Center (both axes); Scale scales around the centre. */

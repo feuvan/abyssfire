@@ -1879,8 +1879,10 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 			const float Range = AbyssWorldBuilderPrivate::NearMonsterOcclusionTiles * static_cast<float>(AbyssUnits::TileUU);
 			for (const TPair<uint32, TObjectPtr<AAbyssCharacterActor>>& Pair : Characters)
 			{
+				// Living monsters only (world-map-nav.md 15.6): a dying one sinks and fades out by itself, and a prop
+				// faded for it would stay see-through until the corpse is gone.
 				const AAbyssCharacterActor* Actor = Pair.Value.Get();
-				if (Actor != nullptr && Actor->GetEntityKind() == abyss::EntityKind::Monster && !Actor->IsHidden()
+				if (Actor != nullptr && Actor->GetEntityKind() == abyss::EntityKind::Monster && !Actor->IsHidden() && !Actor->IsDying()
 					&& FVector::DistSquared2D(Actor->GetActorLocation(), HeroLocation) < Range * Range && Targets.Num() < 16)
 				{
 					Targets.Add(Actor->GetAnchorLocation(EAbyssAnchor::Chest));

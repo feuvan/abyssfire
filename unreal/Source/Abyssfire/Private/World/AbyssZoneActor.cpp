@@ -9,6 +9,8 @@
 #include "Engine/Texture2D.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
@@ -59,6 +61,16 @@ static TAutoConsoleVariable<float> CVarAbyssBloom(
 	TEXT("fx.bloom.strength (the reviewed emissive bloom, 0.8), 0.6 when the manifest has none."),
 	ECVF_Default);
 
+static TAutoConsoleVariable<int32> CVarAbyssFadeGhost(
+	TEXT("abyss.FadeGhost"),
+	1,
+	TEXT("Occlusion fade of the zone dressing (DECISIONS R1). 0 = the masked toon / ink materials dither it on every ")
+	TEXT("tier (a pattern that changes every TSR / TAA jitter sample, a fixed screen door without temporal AA). ")
+	TEXT("1 = auto (default): dithered under TSR / TAA; otherwise (desktop low FXAA, mobile MSAA) an instance faded by .3 ")
+	TEXT("or more is hidden and drawn by a translucent copy (M_AF_Toon_Fade / M_AF_Toon_Foliage_Fade, ink hull hidden). ")
+	TEXT("2 = the translucent copy on every tier."),
+	ECVF_Default);
+
 #if WITH_EDITOR
 // Uncooked runs compile a master on demand when the DDC has no shader map for this RHI ("Preparing Shaders (N)"), and
 // UE draws its meshes with the engine default material meanwhile: lit WorldGrid, black where the sun does not reach
@@ -93,9 +105,55 @@ namespace AbyssZonePrivate
 	// Low dressing (not an R1 occluder) that can hide ground loot: anything taller than the 30 cm height floor of
 	// PlaceArt (berry bush 73 cm, grass tufts 32-38, rocks 37-42, camp props). Lily pads and flat bits stay out.
 	constexpr float LootCoverMinHeightCm = 30.5f;
-	// Lateral slack of the occlusion test: a character's body half-width; a ground item's footprint is smaller.
+	// Lateral slack of the cylinder occlusion test (walls, low dressing over loot): a character's body half-width along a
+	// wall line (stakes / outcrops one tile apart fade without gaps); a ground item's footprint is smaller.
 	constexpr double OccluderSlackCm = 25.0;
 	constexpr double LootOccluderSlackCm = 12.0;
+	// Fade ghosts (abyss.FadeGhost) take over a faded instance from fade .3 (alpha .7) and hand it back below .2 (alpha
+	// .8; the gap keeps a fade that hovers around one value from switching every frame): the translucent copy has no ink
+	// hull and blends its own overlapping parts (trunk, inner lobes) in triangle order, which reads as a broken mesh while
+	// it is nearly opaque. Outside it, i.e. the first ~3 frames of a fade-in and the last ~0.25 s of a fade-out (110 ms
+	// approach, snap at .02), the masked instance dithers sparsely (at most 5 of 16 pixels dropped, none below fade 1/32)
+	// with its outline.
+	constexpr float GhostEnterFade = 0.3f;
+	constexpr float GhostLeaveFade = 0.2f;
+
+	/**
+	 * R1 decor occlusion (trees, boulders, tents, story props; world-map-nav.md 15.6: the camera -> target ray against the
+	 * prop): does the ray from a target point toward the camera enter the occluder's bounds ellipsoid (horizontal semi-axis
+	 * R, vertical semi-axis H / 2, centred H / 2 over its ground point)? Canopies are widest in their upper half (plains
+	 * fruit tree: 104-123 cm at 200-260 cm of 318, an 18-33 cm trunk below), which the ellipsoid follows, as it does
+	 * boulders; the bounding cylinder with 25 cm slack counted targets beside a prop as covered (third Mac playtest: a
+	 * boulder faded for a goblin next to it, whose chest ray passes over the rock), and a half-spheroid resting on the
+	 * ground is narrowest where a canopy is widest (goblins half hidden by a crown stayed unfaded). Tents are boxier and
+	 * fade a little early. Along / Lateral: the occluder centre in the target's frame (Along toward the camera), Z0: the
+	 * target height over the ellipsoid centre. With s >= 0 the horizontal distance along the ray:
+	 * ((Along - s)^2 + Lateral^2) / R^2 + (Z0 + s TanElevation)^2 / Hs^2 <= 1 for some s, a quadratic in s.
+	 */
+	bool EllipsoidCoversRay(double Along, double Lateral, double Z0, double TanElevation, double RadiusCm, double SemiHeightCm)
+	{
+		const double InvR2 = 1.0 / FMath::Max(RadiusCm * RadiusCm, 1.0);
+		const double InvH2 = 1.0 / FMath::Max(SemiHeightCm * SemiHeightCm, 1.0);
+		const double A = InvR2 + TanElevation * TanElevation * InvH2;
+		const double B = 2.0 * (Z0 * TanElevation * InvH2 - Along * InvR2);
+		const double C = (Along * Along + Lateral * Lateral) * InvR2 + Z0 * Z0 * InvH2 - 1.0;
+		const double S = FMath::Max(0.0, -B / (2.0 * A));
+		return (A * S + B) * S + C <= 0.0;
+	}
+
+	/** The anti-aliasing in use resolves a dither that changes per jitter sample: TAA (2) or TSR (4); FXAA, MSAA, none do not. */
+	bool IsTemporalAntiAliasing(bool bMobile)
+	{
+		const TCHAR* Name = TEXT("r.AntiAliasingMethod");
+		if (bMobile)
+		{
+			Name = TEXT("r.Mobile.AntiAliasing");   // the mobile renderer's own setting (DefaultEngine.ini: 3 = MSAA)
+		}
+		// Read every frame (RefreshQuality and the console can change it): no frequent-lookup warning.
+		const IConsoleVariable* Method = IConsoleManager::Get().FindConsoleVariable(Name, /*bTrackFrequentCalls*/ false);
+		const int32 Value = Method != nullptr ? Method->GetInt() : (bMobile ? 3 : 4);
+		return Value == 2 || Value == 4;
+	}
 
 	// Asset / parameter id from a pattern with exactly one "%s" (e.g. TEXT("decor_%s")). Not FString::Printf: with
 	// checked format strings (UE 5.4+, DefaultBuildSettings Latest) the format must be a TCHAR array literal, so a
@@ -278,6 +336,16 @@ void AAbyssZoneActor::ClearZone()
 		}
 	}
 	DecorInstanceComponents.Reset();
+	for (UInstancedStaticMeshComponent* Ghost : FadeGhostComponents)
+	{
+		if (Ghost != nullptr)
+		{
+			Ghost->DestroyComponent();
+		}
+	}
+	FadeGhostComponents.Reset();
+	FadeGhosts.Reset();
+	bFadeGhostMode = false;
 	ShaderGatedComponents.Reset();
 	SetActorTickEnabled(false);
 	ComponentByMesh.Reset();
@@ -310,6 +378,9 @@ void AAbyssZoneActor::BuildZone(const abyss::Snapshot& Snap, const abyss::DataSt
 	ClearZone();
 	AssetLibrary = &Assets;
 	QualityProfile = Quality;
+	// Fade ghost masters (abyss.FadeGhost), loaded with the zone so an uncooked run compiles them in the zone-entry wait.
+	FadeToonMaster = Assets.LoadMaterial(TEXT("M_AF_Toon_Fade"));
+	FadeFoliageMaster = Assets.LoadMaterial(TEXT("M_AF_Toon_Foliage_Fade"));
 	const FAbyssArtShading& Shading = Assets.GetManifest().GetShading();
 	MeshYawOffsetDeg = Shading.MeshYawOffsetDeg;
 	CameraYawDeg = Shading.CameraYawDeg;
@@ -656,10 +727,15 @@ bool AAbyssZoneActor::AddInstance(UStaticMesh* Mesh, const FTransform& Transform
 		FOccluder& Occluder = Occluders.AddDefaulted_GetRef();
 		Occluder.Instance = InstanceIndex;   // component resolved in FlushInstances
 		Occluder.Location = InstanceLocation;
+		Occluder.Transform = Transform;
+		Occluder.RandomValue = RandomValue;
 		Occluder.RadiusCm = RadiusCm;
 		Occluder.HeightCm = HeightCm;
 		Occluder.FadeTarget = FadeTarget > 0.f ? FadeTarget : DecorFadeTarget;
 		Occluder.bLootOnly = bLootCover;
+		// Walls, palisade stakes and camp gates (placed with WallFadeTarget) keep the cylinder test with slack, so a wall
+		// line fades without gaps; the other R1 dressing is tested against its bounds ellipsoid (EllipsoidCoversRay).
+		Occluder.bEllipsoid = bOccluder && Occluder.FadeTarget != WallFadeTarget;
 		OccluderIndex = Occluders.Num() - 1;
 		OccluderBuckets.FindOrAdd(BucketOf(Occluder.Location)).Add(OccluderIndex);
 	}
@@ -709,6 +785,8 @@ void AAbyssZoneActor::FlushInstances()
 		}
 		Component->MarkRenderStateDirty();
 		const int32 ComponentIndex = DecorInstanceComponents.Add(Component);
+		FadeGhostComponents.AddDefaulted();   // null until the first ghosted fade (GetFadeGhost)
+		FadeGhosts.AddDefaulted();
 		ComponentByMesh.Add(Mesh, ComponentIndex);
 		if (bShaderGated)
 		{
@@ -1327,6 +1405,19 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstAr
 						continue;
 					}
 					const double Lateral = FMath::Abs(FVector2D::CrossProduct(Dir, Rel));
+					if (Occluder.bEllipsoid)
+					{
+						// R1 decor: a target standing behind the prop (15.6; behind its centre, seen from the camera)
+						// whose ray toward the camera enters the prop's bounds ellipsoid.
+						const double SemiHeightCm = Occluder.HeightCm * 0.5;
+						if (Along >= 0.0 && Lateral <= Occluder.RadiusCm
+							&& EllipsoidCoversRay(Along, Lateral, Target.Z - Occluder.Location.Z - SemiHeightCm, TanElevation,
+								Occluder.RadiusCm, SemiHeightCm))
+						{
+							Covering.Add(Index);
+						}
+						continue;
+					}
 					if (Lateral > Occluder.RadiusCm + SlackCm)
 					{
 						continue;
@@ -1341,13 +1432,18 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstAr
 		}
 	}
 
+	// Ghost mode (abyss.FadeGhost) can change with the quality tier or the console: re-apply every faded occluder then.
+	const bool bGhostMode = UseFadeGhosts();
+	const bool bModeChanged = bGhostMode != bFadeGhostMode;
+	bFadeGhostMode = bGhostMode;
 	TSet<int32> Dirty;
+	TSet<int32> DirtyGhosts;
 	const float Blend = FMath::Min(1.f, DeltaSec / FadeTimeConstantSec);
 	for (int32 Index = 0; Index < Occluders.Num(); ++Index)
 	{
 		FOccluder& Occluder = Occluders[Index];
 		const float Target = Covering.Contains(Index) ? Occluder.FadeTarget : 0.f;
-		if (Occluder.Fade == Target)
+		if (Occluder.Fade == Target && !(bModeChanged && (Occluder.Fade > 0.f || Occluder.bGhosted)))
 		{
 			continue;
 		}
@@ -1357,11 +1453,7 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstAr
 			Fade = Target;
 		}
 		Occluder.Fade = Fade;
-		if (DecorInstanceComponents.IsValidIndex(Occluder.Component) && DecorInstanceComponents[Occluder.Component] != nullptr)
-		{
-			DecorInstanceComponents[Occluder.Component]->SetCustomDataValue(Occluder.Instance, AbyssDecorIcd::Fade, Fade, false);
-			Dirty.Add(Occluder.Component);
-		}
+		ApplyOccluderFade(Index, bGhostMode, Dirty, DirtyGhosts);
 	}
 	// Incremental instance-data update (5.4+ instance data manager); MarkRenderStateDirty would re-create the decor
 	// proxy every frame of a fade (and reset its TSR history).
@@ -1369,6 +1461,209 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstAr
 	{
 		DecorInstanceComponents[ComponentIndex]->MarkRenderInstancesDirty();
 	}
+	for (const int32 ComponentIndex : DirtyGhosts)
+	{
+		UpdateFadeGhost(ComponentIndex);
+	}
+}
+
+bool AAbyssZoneActor::UseFadeGhosts() const
+{
+	using namespace AbyssZonePrivate;
+	const int32 Mode = CVarAbyssFadeGhost.GetValueOnGameThread();
+	if (Mode <= 0 || FadeToonMaster == nullptr)
+	{
+		return false;
+	}
+	return Mode >= 2 || !IsTemporalAntiAliasing(QualityProfile.bMobile);
+}
+
+void AAbyssZoneActor::ApplyOccluderFade(int32 Index, bool bGhostMode, TSet<int32>& DirtyComponents, TSet<int32>& DirtyGhosts)
+{
+	FOccluder& Occluder = Occluders[Index];
+	UInstancedStaticMeshComponent* Component =
+		DecorInstanceComponents.IsValidIndex(Occluder.Component) ? DecorInstanceComponents[Occluder.Component].Get() : nullptr;
+	if (Component == nullptr)
+	{
+		return;
+	}
+	const bool bWasGhosted = Occluder.bGhosted;
+	const float MinFade = bWasGhosted ? AbyssZonePrivate::GhostLeaveFade : AbyssZonePrivate::GhostEnterFade;
+	const bool bGhost = bGhostMode && Occluder.Fade >= MinFade && GetFadeGhost(Occluder.Component) != nullptr;
+	if (bGhost != bWasGhosted)
+	{
+		FFadeGhost& Ghost = FadeGhosts[Occluder.Component];
+		if (bGhost)
+		{
+			Ghost.Occluders.Add(Index);
+		}
+		else
+		{
+			Ghost.Occluders.Remove(Index);
+		}
+		Ghost.bDirty = true;
+		Occluder.bGhosted = bGhost;
+	}
+	// A ghosted instance is hidden in its masked ISM: fade 1 keeps no pixel of AF_Dither (body and ink hull) and the
+	// shadow pass ignores the instance fade, so the tree still casts its shadow. Written once when it is ghosted.
+	if (!bGhost || !bWasGhosted)
+	{
+		Component->SetCustomDataValue(Occluder.Instance, AbyssDecorIcd::Fade, bGhost ? 1.f : Occluder.Fade, false);
+		DirtyComponents.Add(Occluder.Component);
+	}
+	if (bGhost || bWasGhosted)
+	{
+		DirtyGhosts.Add(Occluder.Component);
+	}
+}
+
+UInstancedStaticMeshComponent* AAbyssZoneActor::GetFadeGhost(int32 ComponentIndex)
+{
+	if (!FadeGhosts.IsValidIndex(ComponentIndex) || !FadeGhostComponents.IsValidIndex(ComponentIndex)
+		|| !DecorInstanceComponents.IsValidIndex(ComponentIndex))
+	{
+		return nullptr;
+	}
+	FFadeGhost& Ghost = FadeGhosts[ComponentIndex];
+	if (!Ghost.bResolved)
+	{
+		Ghost.bResolved = true;
+		UInstancedStaticMeshComponent* Source = DecorInstanceComponents[ComponentIndex].Get();
+		FadeGhostComponents[ComponentIndex] = Source != nullptr ? CreateFadeGhost(*Source) : nullptr;
+	}
+	UInstancedStaticMeshComponent* GhostComponent = FadeGhostComponents[ComponentIndex].Get();
+	// Uncooked runs: not while the dressing itself waits for its shaders, nor while the ghost's materials compile (the
+	// dithered fade stays meanwhile instead of a ghost drawn with the engine default material).
+	if (GhostComponent == nullptr || ShaderGatedComponents.Contains(ComponentIndex) || GateUntilShadersReady(*GhostComponent))
+	{
+		return nullptr;
+	}
+	return GhostComponent;
+}
+
+UInstancedStaticMeshComponent* AAbyssZoneActor::CreateFadeGhost(UInstancedStaticMeshComponent& Source)
+{
+	using namespace AbyssZonePrivate;
+	UStaticMesh* Mesh = Source.GetStaticMesh();
+	if (Mesh == nullptr)
+	{
+		return nullptr;
+	}
+	// Slot materials of the ghost: the toon body -> its translucent twin with the instance's parameters (palette
+	// textures, look scalars); the ink hull -> hidden (a blended inverted hull would show its far side through the
+	// body; BodyOpacity 0 makes M_AF_Outline's mask keep no pixel). Any other master: no ghost, the dither stays.
+	const FName ToonName(TEXT("M_AF_Toon"));
+	const FName ToonFoliageName(TEXT("M_AF_Toon_Foliage"));
+	const FName OutlineName(TEXT("M_AF_Outline"));
+	const FName OutlineFoliageName(TEXT("M_AF_Outline_Foliage"));
+	TArray<UMaterialInterface*, TInlineAllocator<4>> Materials;
+	const int32 NumMaterials = Source.GetNumMaterials();
+	for (int32 Slot = 0; Slot < NumMaterials; ++Slot)
+	{
+		UMaterialInterface* Material = Source.GetMaterial(Slot);
+		UMaterial* Base = Material != nullptr ? Material->GetBaseMaterial() : nullptr;
+		const FName BaseName = Base != nullptr ? Base->GetFName() : NAME_None;
+		UMaterialInterface* Twin = BaseName == ToonName ? FadeToonMaster.Get()
+			: (BaseName == ToonFoliageName ? FadeFoliageMaster.Get() : nullptr);
+		if (Twin != nullptr)
+		{
+			UMaterialInstanceDynamic* Body = UMaterialInstanceDynamic::Create(Twin, this);
+			if (Body == nullptr)
+			{
+				return nullptr;
+			}
+			if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Material))
+			{
+				Body->CopyParameterOverrides(Instance);
+			}
+			Materials.Add(Body);
+		}
+		else if (BaseName == OutlineName || BaseName == OutlineFoliageName)
+		{
+			UMaterialInstanceDynamic* Hull = UMaterialInstanceDynamic::Create(Material, this);
+			if (Hull == nullptr)
+			{
+				return nullptr;
+			}
+			Hull->SetScalarParameterValue(FName(TEXT("BodyOpacity")), 0.f);
+			Materials.Add(Hull);
+		}
+		else
+		{
+			return nullptr;
+		}
+	}
+	if (Materials.Num() == 0)
+	{
+		return nullptr;
+	}
+	UInstancedStaticMeshComponent* Ghost = NewObject<UInstancedStaticMeshComponent>(this, NAME_None, RF_Transient);
+	Ghost->SetStaticMesh(Mesh);
+	Ghost->SetMobility(EComponentMobility::Movable);
+	Ghost->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Ghost->SetGenerateOverlapEvents(false);
+	Ghost->SetCanEverAffectNavigation(false);
+	Ghost->SetNumCustomDataFloats(AbyssDecorIcd::Count);
+	// The hidden source instance keeps casting the shadow (M_AF_Toon's shadow pass ignores the instance fade).
+	Ghost->SetCastShadow(false);
+	// Translucent sorting: the default priority, like the slime shell; water (-2) and blob shadows (-10) draw before,
+	// VFX (1 / 2) after.
+	Ghost->SetTranslucentSortPriority(0);
+	for (int32 Slot = 0; Slot < Materials.Num(); ++Slot)
+	{
+		Ghost->SetMaterial(Slot, Materials[Slot]);
+	}
+	Ghost->SetupAttachment(SceneRoot);
+	Ghost->SetVisibility(false);   // shown while it holds instances (UpdateFadeGhost)
+	Ghost->RegisterComponent();
+	UE_LOG(LogAbyss, Verbose, TEXT("Fade ghost created for %s"), *Mesh->GetName());
+	return Ghost;
+}
+
+void AAbyssZoneActor::UpdateFadeGhost(int32 ComponentIndex)
+{
+	using namespace AbyssZonePrivate;
+	UInstancedStaticMeshComponent* Ghost =
+		FadeGhostComponents.IsValidIndex(ComponentIndex) ? FadeGhostComponents[ComponentIndex].Get() : nullptr;
+	if (Ghost == nullptr || !FadeGhosts.IsValidIndex(ComponentIndex))
+	{
+		return;
+	}
+	FFadeGhost& State = FadeGhosts[ComponentIndex];
+	const int32 Count = State.Occluders.Num();
+	if (!State.bDirty && Count == 0)
+	{
+		return;
+	}
+	if (State.bDirty)
+	{
+		// The ghosted set changed (rare: a fade starts or ends): rebuild the few instances.
+		State.bDirty = false;
+		Ghost->ClearInstances();
+		if (Count > 0)
+		{
+			TArray<FTransform> Transforms;
+			Transforms.Reserve(Count);
+			for (const int32 Index : State.Occluders)
+			{
+				Transforms.Add(Occluders[Index].Transform);
+			}
+			Ghost->AddInstances(Transforms, /*bShouldReturnIndices*/ false, /*bWorldSpace*/ true);
+		}
+		Ghost->SetVisibility(Count > 0);
+	}
+	const TPair<int32, int32>* Focus = FocusedStory.IsNone() ? nullptr : StoryInstances.Find(FocusedStory);
+	for (int32 Slot = 0; Slot < Count; ++Slot)
+	{
+		const FOccluder& Occluder = Occluders[State.Occluders[Slot]];
+		const bool bFocused = Focus != nullptr && Focus->Key == ComponentIndex && Focus->Value == Occluder.Instance;
+		float Data[AbyssDecorIcd::Count] = {};
+		Data[AbyssDecorIcd::Fade] = Occluder.Fade;   // M_AF_Toon_Fade: alpha 1 - fade
+		Data[AbyssDecorIcd::Random] = Occluder.RandomValue;
+		Data[AbyssDecorIcd::Highlight] = bFocused ? 1.f : 0.f;
+		Ghost->SetCustomData(Slot, TArrayView<const float>(Data, AbyssDecorIcd::Count), /*bMarkRenderStateDirty*/ false);
+	}
+	Ghost->MarkRenderInstancesDirty();
 }
 
 void AAbyssZoneActor::SetStoryFocus(FName DecorId)
@@ -1386,6 +1681,7 @@ void AAbyssZoneActor::SetStoryFocus(FName DecorId)
 	{
 		return;
 	}
+	const FName Previous = FocusedStory;
 	if (!FocusedStory.IsNone())
 	{
 		Apply(FocusedStory, 0.f);
@@ -1394,5 +1690,13 @@ void AAbyssZoneActor::SetStoryFocus(FName DecorId)
 	if (!DecorId.IsNone())
 	{
 		Apply(DecorId, 1.f);
+	}
+	// A story decoration drawn by its fade ghost shows the focus rim on the ghost (UpdateFadeGhost reads FocusedStory).
+	for (const FName& Story : { Previous, DecorId })
+	{
+		if (const TPair<int32, int32>* Found = StoryInstances.Find(Story))
+		{
+			UpdateFadeGhost(Found->Key);
+		}
 	}
 }

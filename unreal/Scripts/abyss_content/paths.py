@@ -46,6 +46,10 @@ MPC_NAME = "MPC_AF_Lighting"
 M_TOON = "M_AF_Toon"
 M_TOON_FOLIAGE = "M_AF_Toon_Foliage"
 M_TOON_SLIME = "M_AF_Toon_Slime"
+# Translucent twins of M_AF_Toon / M_AF_Toon_Foliage for the occlusion fade ghosts (runtime only: no manifest slot
+# names them; AAbyssZoneActor loads them by name).
+M_TOON_FADE = "M_AF_Toon_Fade"
+M_TOON_FOLIAGE_FADE = "M_AF_Toon_Foliage_Fade"
 M_OUTLINE = "M_AF_Outline"
 M_OUTLINE_FOLIAGE = "M_AF_Outline_Foliage"
 M_TERRAIN = "M_AF_Terrain"

@@ -1,6 +1,7 @@
 #include "UI/Hud/SAbyssHudWidgets.h"
 
 #include "Algo/StableSort.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SConstraintCanvas.h"
 #include "Widgets/SBoxPanel.h"
@@ -143,22 +144,20 @@ void SAbyssCombatLog::Rebuild()
 
 	// 6.10 / UIScene.updateLogDisplay: the newest line sits at the bottom (framed: y + h - 6; collapsed: the widget's
 	// bottom), older ones stack upward by their wrapped height + 1 px, and a line that would cross the top limit (framed:
-	// y + 22 under the header) is dropped together with everything older. The lines are measured here (wrapped at w - 20)
-	// so only the ones that fit are built; the column is also bottom-anchored below, so if a measure comes out short the
-	// oldest line is the one clipped at the top, never the newest.
+	// y + 22 under the header) is hidden together with everything older, so no line is ever shown cut. Each line is
+	// measured as the STextBlock that shows it (prepassed at this widget's layout scale, wrapped at w - 20): a font
+	// measure counts the outline once, but the text layout adds it above and below every row (FSlateTextRun::GetMaxHeight
+	// and GetBaseLine; 2 px a row on desktop), which let in a sixth line with room for only its bottom half. The column
+	// hangs from the bottom edge under a clip, so a newest line taller than the whole room loses its top, never its bottom.
 	const double WrapWidth = FMath::Max(1.0, Size.X - 20.0);
 	const double TopInset = bFramed ? 22.0 : 0.0;
 	const double BottomInset = bFramed ? 6.0 : 0.0;
 	const double Room = FMath::Max(0.0, Size.Y - TopInset - BottomInset);
-	const double RowHeight = FMath::Max(1.0, FAbyssPainter::Measure(TEXT("Ag\x6E0A"), LineFont).Y);
+	const float LayoutScale = GetPrepassLayoutScaleMultiplier();
+	const bool bCanMeasure = FSlateApplication::IsInitialized();
 
-	struct FShownLine
-	{
-		FString Text;
-		FLinearColor Color;
-	};
-	TArray<FShownLine> Shown;  // newest first
-	double Used = 0.0;
+	TArray<TSharedRef<STextBlock>, TInlineAllocator<8>> Shown;  // newest first
+	double Used = 0.0;  // from the bottom to the top of the last line taken, with a 1 px gap above each line
 	const int32 Count = Buffer.Num();
 	for (int32 FromNewest = 0; FromNewest < Count; ++FromNewest)
 	{
@@ -169,23 +168,27 @@ void SAbyssCombatLog::Rebuild()
 			continue;
 		}
 		const FString Text = Line.Resolved.IsEmpty() ? Ctx->LocStr(Line.Loc) : Line.Resolved;
-		TArray<FString> Paragraphs;
-		Text.ParseIntoArray(Paragraphs, TEXT("\n"), false);
-		double Rows = 0.0;
-		for (const FString& Paragraph : Paragraphs)
+		// The web sets the alpha of the whole Text, stroke included: RenderOpacity reaches the outline (FSlateTextRun
+		// multiplies it by the widget tint), a ColorAndOpacity alpha would fade only the fill.
+		const TSharedRef<STextBlock> Block = SNew(STextBlock)
+			.Text(FText::AsCultureInvariant(Text))
+			.Font(LineFont)
+			.ColorAndOpacity(FSlateColor(TypeColor(Line.Type)))
+			.RenderOpacity(LineAlpha(FromNewest, Age))
+			.AutoWrapText(false)
+			.WrapTextAt(static_cast<float>(WrapWidth));
+		double Height = 0.0;
+		if (bCanMeasure)
 		{
-			Rows += FMath::Max(1.0, FMath::CeilToDouble(FAbyssPainter::Measure(Paragraph, LineFont).X / WrapWidth));
+			Block->SlatePrepass(LayoutScale);
+			Height = Block->GetDesiredSize().Y;
 		}
-		const double Height = FMath::Max(1.0, Rows) * RowHeight + 1.0;
-		if (Used + Height > Room && Shown.Num() > 0)
+		if (Shown.Num() > 0 && Used + Height > Room + 0.01)
 		{
 			break;  // web: y < top -> hidden, and every older line with it
 		}
-		Used += Height;
-		FShownLine& Entry = Shown.AddDefaulted_GetRef();
-		Entry.Text = Text;
-		Entry.Color = TypeColor(Line.Type);
-		Entry.Color.A = LineAlpha(FromNewest, Age);
+		Used += Height + 1.0;
+		Shown.Add(Block);
 	}
 
 	SAssignNew(Lines, SVerticalBox);
@@ -195,12 +198,7 @@ void SAbyssCombatLog::Rebuild()
 			.AutoHeight()
 			.Padding(FMargin(0.f, 1.f, 0.f, 0.f))
 			[
-				SNew(STextBlock)
-				.Text(FText::AsCultureInvariant(Shown[Index].Text))
-				.Font(LineFont)
-				.ColorAndOpacity(FSlateColor(Shown[Index].Color))
-				.AutoWrapText(false)
-				.WrapTextAt(static_cast<float>(WrapWidth))
+				Shown[Index]
 			];
 	}
 

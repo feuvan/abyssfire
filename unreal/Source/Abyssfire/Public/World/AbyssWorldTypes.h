@@ -21,7 +21,7 @@ namespace AbyssCpd
 	inline constexpr int32 TelegraphAmount = 8;  // 0..1
 	inline constexpr int32 TintR = 9;            // 9..11: status tint (characters) / quality tint (loot) (linear)
 	inline constexpr int32 TintAmount = 12;      // 0..1
-	inline constexpr int32 Fade = 13;            // 0 = opaque .. 1 = invisible (DitherTemporalAA opacity mask)
+	inline constexpr int32 Fade = 13;            // 0 = opaque .. 1 = invisible (opacity mask dithered per TSR / TAA sample)
 	inline constexpr int32 Ghost = 14;           // 0..1: ghost look (soul echo); colour = Tint
 	inline constexpr int32 Highlight = 15;       // 0..1: interactable hover / story-decoration focus rim
 	inline constexpr int32 Count = 16;

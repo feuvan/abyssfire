@@ -124,7 +124,7 @@ build) reads them as custom primitive data parameters:
 | 1..3 `PainTint` RGB, 4 amount | hero pain tint (multiply) |
 | 5..7 `Telegraph` RGB, 8 amount | monster wind-up tint |
 | 9..11 `Tint` RGB, 12 amount | status tint (characters) / quality tint (loot) / ghost colour / light-pool colour + alpha |
-| 13 `Fade` | 0 opaque .. 1 invisible (dithered opacity mask) |
+| 13 `Fade` | 0 opaque .. 1 invisible (dithered opacity mask: a 4 x 4 Bayer shifted every TSR / TAA jitter sample, which the AA resolves to a smooth fade; static without temporal AA; the shadow pass dithers it too) |
 | 14 `Ghost` | 0..1 ghost look (soul echo, afterimages) |
 | 15 `Highlight` | 0..1 hover / story-focus rim |
 
@@ -132,7 +132,19 @@ build) reads them as custom primitive data parameters:
 
 Decor / outcrop / palisade / camp ISMs have 3 per-instance custom data floats: 0 `Fade` (occlusion, 0 opaque),
 1 `Random` (stable 0..1: wind phase, colour jitter), 2 `Highlight` (story-decoration focus rim). Materials used on
-dressing meshes must read `PerInstanceCustomData[0..2]` (and dither on Fade).
+dressing meshes must read `PerInstanceCustomData[0..2]` (and dither on Fade in the main passes only: the shadow
+pass of `M_AF_Toon` / `M_AF_Toon_Foliage` ignores the instance fade, so faded dressing keeps its sun shadow).
+
+**Occlusion fade (DECISIONS R1).** Under TSR / TAA the dithered Fade is resolved by the AA. Without temporal AA
+(desktop low FXAA, mobile MSAA; `abyss.FadeGhost`) `AAbyssZoneActor` hides an instance faded by .3 or more (Fade 1;
+handed back below .2) and draws a copy in a parallel translucent ISM (same mesh, sort priority 0, no shadow; nearer
+opaque the instance dithers with its outline): the toon slots use `M_AF_Toon_Fade` /
+`M_AF_Toon_Foliage_Fade` (the same toon colour and wind, alpha 1 - Fade, the source instance's parameter
+overrides copied), the ink hull slots their own material with `BodyOpacity` 0 (hidden). Meshes with any other
+master keep the dither. Targets: the hero (feet + 30 cm, chest, head) and living monsters within 6 tiles (chest);
+walls / stakes / gates fade when the target's ray toward the camera passes their cylinder (radius + 25 cm), the
+other tall dressing when it enters their bounds ellipsoid (semi-axes: bounds radius, half the height; centred at half
+height) from behind the centre.
 
 ### 3.5 MPC_AF_Lighting
 
@@ -260,7 +272,8 @@ Rune, ShardFrost, Skull.
 ## 6. Console variables
 
 `abyss.SunScale` (0.55, sun intensity x pi), `abyss.GroundAmbient` (0.55), `abyss.ExposureBias` (0.263 = log2 1.2),
-`abyss.Bloom` (0.6), `abyss.ShakeScale` (camera shake amplitude).
+`abyss.Bloom` (0.6), `abyss.ShakeScale` (camera shake amplitude), `abyss.FadeGhost` (occlusion fade of the dressing,
+3.4: 0 = dithered on every tier, 1 = auto: translucent ghosts without temporal AA (default), 2 = ghosts on every tier).
 
 **Uncooked runs: shaders compiled on first use** (editor binary only; every variable below is compiled out of cooked
 builds, which ship compiled shaders). Until a material's shader map is ready UE draws its meshes with the engine's

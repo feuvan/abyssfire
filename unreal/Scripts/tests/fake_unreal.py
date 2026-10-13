@@ -496,6 +496,7 @@ EXPRESSION_INPUTS = {
     "MaterialExpressionVertexInterpolator": ["VS"],
     "MaterialExpressionTransform": [""],
     "MaterialExpressionDepthFade": ["Opacity", "FadeDistance"],
+    "MaterialExpressionShadowReplace": ["Default", "Shadow"],
 }
 
 
