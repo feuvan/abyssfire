@@ -985,27 +985,6 @@ class Stage:
         me.materials.append(mat)
         return ob
 
-    def _clip_armatures(self, arm, token, category, clips):
-        out = {}
-        for clip in clips:
-            f = paths.export_root() / category / f"A_{token}_{clip}.fbx"
-            if not f.exists():
-                continue
-            before = set(bpy.data.objects)
-            bpy.ops.import_scene.fbx(filepath=str(f))
-            new = [o for o in bpy.data.objects if o not in before]
-            a2 = next((o for o in new if o.type == "ARMATURE"), None)
-            for o in new:
-                o.hide_render = True
-            if a2 is not None:
-                out[clip] = a2
-        for pb in arm.pose.bones:          # import_character added COPY_TRANSFORMS (→ Idle); keep one per bone
-            if not any(c.type == "COPY_TRANSFORMS" for c in pb.constraints) and out:
-                c = pb.constraints.new("COPY_TRANSFORMS")
-                c.target, c.subtarget = next(iter(out.values())), pb.name
-                c.target_space = c.owner_space = "POSE"
-        return out
-
     # ── loading ────────────────────────────────────────────────────────────────────────────────────────
     def _static_toon(self, name: str, category: str, family: str, cls: str):
         """A shipped static mesh in its family's toon + outline look (screen-constant preview ink)."""

@@ -15591,20 +15591,22 @@
      "variant": 3,
      "at": "target",
      "height": "chest",
-     "sizeCm": 96,
-     "lifeMs": 260,
-     "rotationDeg": 90,
+     "sizeCm": 84,
+     "lifeMs": 300,
+     "rotationDeg": 0,
      "alpha": [
-      0.85,
+      0.9,
       0
      ],
-     "color": "rim",
+     "color": "#4A0810",
      "blend": "translucent",
      "aspect": 2.0,
+     "grow": 1.12,
+     "alphaPow": 2.2,
      "offsetCm": [
       -22.0,
-      0.0,
-      0.0
+      0,
+      24
      ]
     },
     {
@@ -15613,20 +15615,45 @@
      "variant": 3,
      "at": "target",
      "height": "chest",
-     "sizeCm": 96,
-     "lifeMs": 240,
-     "rotationDeg": 90,
+     "sizeCm": 78,
+     "lifeMs": 300,
+     "rotationDeg": 0,
      "alpha": [
-      1.0,
+      0.95,
       0
      ],
      "color": "mid",
+     "blend": "translucent",
      "aspect": 2.0,
-     "intensity": 1.3,
+     "grow": 1.12,
+     "alphaPow": 2.2,
      "offsetCm": [
       -22.0,
-      0.0,
-      0.0
+      0,
+      24
+     ]
+    },
+    {
+     "emitter": "slash",
+     "sprite": "Slash",
+     "variant": 3,
+     "at": "target",
+     "height": "chest",
+     "sizeCm": 74,
+     "lifeMs": 220,
+     "rotationDeg": 0,
+     "alpha": [
+      0.55,
+      0
+     ],
+     "color": "#FFB0A0",
+     "aspect": 2.0,
+     "grow": 1.12,
+     "intensity": 1.0,
+     "offsetCm": [
+      -22.0,
+      0,
+      24
      ]
     },
     {
@@ -15635,11 +15662,11 @@
      "variant": 0,
      "at": "target",
      "height": "chest",
-     "sizeCm": 84,
-     "lifeMs": 200,
-     "rotationDeg": -90,
+     "sizeCm": 60,
+     "lifeMs": 220,
+     "rotationDeg": -62,
      "alpha": [
-      0.7,
+      0.8,
       0
      ],
      "color": "#56647C",
@@ -15648,8 +15675,8 @@
      "aspect": 2.0,
      "offsetCm": [
       -22.0,
-      0.0,
-      0.0
+      0,
+      12
      ]
     },
     {
@@ -15658,9 +15685,9 @@
      "variant": 0,
      "at": "target",
      "height": "chest",
-     "sizeCm": 84,
+     "sizeCm": 56,
      "lifeMs": 200,
-     "rotationDeg": -90,
+     "rotationDeg": -62,
      "alpha": [
       1.0,
       0
@@ -15668,25 +15695,26 @@
      "color": "#EEF3FB",
      "delayMs": 70,
      "aspect": 2.0,
-     "intensity": 1.3,
+     "intensity": 1.15,
      "offsetCm": [
       -22.0,
-      0.0,
-      0.0
+      0,
+      12
      ]
     },
     {
      "emitter": "glow",
      "at": "target",
      "height": "chest",
-     "sizeCm": 55.5,
+     "sizeCm": 42.7,
      "grow": 2.0833333333333335,
-     "lifeMs": 240,
+     "lifeMs": 225,
      "alpha": [
       0.6,
       0
      ],
      "color": "mid",
+     "delayMs": 10,
      "offsetCm": [
       -22.0,
       0.0,
@@ -15697,37 +15725,11 @@
      "emitter": "flash",
      "at": "target",
      "height": "chest",
-     "sizeCm": 20.2,
+     "sizeCm": 15.6,
      "grow": 2.428571428571429,
-     "lifeMs": 160,
-     "color": "core",
-     "offsetCm": [
-      -22.0,
-      0.0,
-      0.0
-     ]
-    },
-    {
-     "sprite": "Impact",
-     "variant": 2,
-     "orient": "billboard",
-     "at": "target",
-     "height": "chest",
-     "sizeCm": 70,
-     "grow": 1.45,
-     "sizePow": 3,
-     "lifeMs": 160,
-     "alpha": [
-      1,
-      0
-     ],
-     "alphaPow": 1.6,
-     "rotationDeg": [
-      0,
-      360
-     ],
+     "lifeMs": 150,
      "color": "mid",
-     "intensity": 1.35,
+     "delayMs": 10,
      "offsetCm": [
       -22.0,
       0.0,
@@ -15738,12 +15740,30 @@
      "emitter": "glint",
      "at": "target",
      "height": "chest",
-     "sizeCm": 29.3,
+     "sizeCm": 33.3,
      "grow": 3.333,
-     "lifeMs": 200,
+     "lifeMs": 220,
      "rotationDeg": 45,
      "spinDegS": 69,
      "color": "white",
+     "delayMs": 10,
+     "offsetCm": [
+      -22.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "emitter": "glint",
+     "at": "target",
+     "height": "chest",
+     "sizeCm": 24.0,
+     "grow": 3.333,
+     "lifeMs": 260,
+     "rotationDeg": 0,
+     "spinDegS": 69,
+     "color": "mid",
+     "delayMs": 40,
      "offsetCm": [
       -22.0,
       0.0,
@@ -15756,8 +15776,8 @@
      "height": "chest",
      "count": 12,
      "speedCmS": [
-      200.0,
-      444.4
+      311.1,
+      577.8
      ],
      "lifeMs": [
       180,
@@ -15767,12 +15787,13 @@
      "coneDeg": 90,
      "drag": 3,
      "sizeCm": [
-      9.0,
-      13.0
+      9.9,
+      14.3
      ],
      "color": "mid",
      "altEvery": 3,
      "altColor": "white",
+     "delayMs": 10,
      "offsetCm": [
       -22.0,
       0.0,
@@ -15785,31 +15806,33 @@
      "at": "target",
      "height": 8.5,
      "sizeCm": 35.6,
-     "grow": 5.494,
-     "lifeMs": 380,
+     "grow": 5.242,
+     "lifeMs": 320,
      "alpha": [
-      0.405,
+      0.315,
       0
      ],
      "fadeIn": 0.04,
      "alphaPow": 1.2,
-     "color": "rim"
+     "color": "rim",
+     "delayMs": 20
     },
     {
      "emitter": "shock",
      "at": "target",
      "height": 9.5,
      "sizeCm": 35.6,
-     "grow": 5.494,
-     "lifeMs": 380,
+     "grow": 5.242,
+     "lifeMs": 320,
      "alpha": [
-      0.9,
+      0.7,
       0
      ],
      "fadeIn": 0.04,
      "alphaPow": 1.2,
      "color": "rim",
-     "intensity": 1.15
+     "intensity": 1.15,
+     "delayMs": 20
     },
     {
      "sprite": "Drop",
@@ -15830,8 +15853,8 @@
      ],
      "gravityCmS2": 933.3,
      "sizeCm": [
-      6,
-      9
+      8,
+      12
      ],
      "aspect": 0.67,
      "grow": 1,
@@ -20950,8 +20973,8 @@
   "loopPrewarm": "Rate emitters start empty (first particle after 1000 / rate ms). Loop layers slower than 3 /s carry a one-particle burst copy (count 1) so a status / prop loop shows at once (fx_recipes.prewarm).",
   "perClassBasic": "hit.basic.<class> and hit.impact.<profile> are authored for a one-line runtime change (PlayFirst({hit.basic.<class>, hit.basic}) / ({hit.impact.<profile>, hit.impact})).",
   "elite": "elite.<affix> and camp.hearthstone are forward-compatible ids (not bound to events yet).",
-  "lootBeam": "loot.beam.<magic|rare|legendary|set> are LOOPS for the loot prop (WorldContract 5.3): play as the GroundItem prop's LoopRecipe (UAbyssWorldBuilder::SpawnEntity, quality >= magic) and kill them on pickup (Stop(handle, true)); loot.drop.* stay the drop-moment burst.",
-  "clueYaw": "SM_FX_ClueMagnifier's lens is tilted back 40 deg and faces the W1 camera at mesh yaw camera + 90 (UE 135 deg; n.v = 0.985); a random Pickup yaw turns it edge-on. Give quest_clue props that yaw (the +-8 deg rock on top).",
+  "lootBeam": "loot.beam.<magic|rare|legendary|set> are LOOPS for the loot prop (WorldContract 5.3: add a 'GroundItem prop loop' row): in UAbyssWorldBuilder::SpawnEntity's GroundItem branch set LoopRecipe = loot.beam.<quality> for quality >= Magic (Normal: none). The prop's vfx:<handle> tag already stops it in RemoveEntity on pickup / despawn. loot.drop.* stay the drop-moment burst; the 31 cm PoolRadiusCm light pool can stay (the beam carries its own pool).",
+  "clueYaw": "SM_FX_ClueMagnifier's lens is tilted back 40 deg and faces the W1 camera at mesh yaw camera + 90 (UE 135 deg; n.v = 0.985); the random Pickup yaw (AbyssWorldBuilder.cpp Setup.YawDeg = TileHash % 360) turns it edge-on. For DefId quest_clue set Setup.YawDeg = CameraYawDeg + 180 (= 225; AAbyssPropActor adds MeshYawOffsetDeg -90 -> mesh yaw 135) + a hash jitter of at most +-8 deg.",
   "chestOpen": "prop.chest.open is timed from the start of the chest's Open clip (its layers wait for the ChestOpen notify, 120 ms); nothing plays it yet - play it where the chest prop starts Open (UAbyssWorldBuilder::RemoveEntity, PickedUp / Collected of a Chest-style prop).",
   "meshDissolve": "FX mesh layers fade by a 4x4 Bayer screen-door (M_AF_FX_Mesh opacity mask) that TAA / TSR resolves; without TAA (mobile low) it shows as checker noise on the late dissolves (ice armor shatter, mana shield, whirlwind / rampage bands). Those layers now dissolve at alphaPow 10-12 (the half-dithered window is the last ~2 frames); on tiers without TAA use a plain alpha-test at 0.5 (the mesh pops out at mid-fade) instead of the dither.",
   "launchSocket": "Projectiles and `hand` layers resolve fx_hand_r. The mage holds the staff there: at Cast01's release the staff crystal is 73 cm further along the cast. Spec 8.1 launches from the crystal: AAbyssCharacterActor::GetAnchorLocation(HandR) returns the main-hand mesh's `crystal` socket when it has one (the previews draw it so).",

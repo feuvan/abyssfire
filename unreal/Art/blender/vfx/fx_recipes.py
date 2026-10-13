@@ -1381,20 +1381,29 @@ def warrior() -> dict:
     # the tall vertical blood crescent (web r 44 px: the arc stands ~2 m, twice the goblin) — a dark translucent
     # body + the additive edge — then the steel counter-slash mirrored at +70 ms; the crit star stays small so the
     # crescent, not a disc, is the read
+    # the overhead cleave (web :347-360, spec "tall vertical blood crescent r 44 + steel counter-slash (+70)"): the
+    # Slash cell is aligned to the blow at rotation 0, so the crescent stands as a ")" facing the blow — its span
+    # (aspect 2) runs screen-vertical, 2 × 78 cm from over the head to the feet (anchor lifted 24 cm off fx_chest).
+    # A rotation of ±90 laid it flat (a wide ∩ the white counter-slash covered) and the 70 cm crit impact star read as
+    # an orange rune disc, so the blood is a solid TRANSLUCENT crescent (dark-blood under-stroke + blood-mid body)
+    # with only a thin additive hot edge, and the steel counter-slash (+70 ms) crosses it on the diagonal
     rec["skill.lethal_strike"] = R("blood", [
-        slash_sprite("target", 96, 260, "rim", cell=SLASH["heavy"], rot=90, aspect=2.0, blend="translucent",
-                     alpha=0.85),
-        slash_sprite("target", 96, 240, "mid", cell=SLASH["heavy"], rot=90, aspect=2.0, intensity=1.3),
-        slash_sprite("target", 84, 200, "#56647C", cell=SLASH["warrior"], rot=-90, aspect=2.0, delay=70,
-                     blend="translucent", alpha=0.7),
-        slash_sprite("target", 84, 200, "#EEF3FB", cell=SLASH["warrior"], rot=-90, aspect=2.0, delay=70,
-                     intensity=1.3),
-        flash("target", 26, "core"),
-        impact_star("target", "crit", 70, "mid", life=160),
-        glint("target", 44, rot=45),
-        sparks("target", 12, "mid", dir="blow", cone=90),
-        shock("target", px(8), px(44), 380, "rim"),
-        drops("target", 7, "mid"),
+        slash_sprite("target", 84, 300, "#4A0810", cell=SLASH["heavy"], aspect=2.0, blend="translucent",
+                     alpha=0.9, grow=1.12, alphaPow=2.2, offsetCm=[0, 0, 24]),
+        slash_sprite("target", 78, 300, "mid", cell=SLASH["heavy"], aspect=2.0, blend="translucent", alpha=0.95,
+                     grow=1.12, alphaPow=2.2, offsetCm=[0, 0, 24]),
+        slash_sprite("target", 74, 220, "#FFB0A0", cell=SLASH["heavy"], aspect=2.0, alpha=0.55, grow=1.12,
+                     intensity=1.0, offsetCm=[0, 0, 24]),
+        slash_sprite("target", 60, 220, "#56647C", cell=SLASH["warrior"], rot=-62, aspect=2.0, delay=70,
+                     blend="translucent", alpha=0.8, offsetCm=[0, 0, 12]),
+        slash_sprite("target", 56, 200, "#EEF3FB", cell=SLASH["warrior"], rot=-62, aspect=2.0, delay=70,
+                     intensity=1.15, offsetCm=[0, 0, 12]),
+        flash("target", 20, "mid", life=150, delay=10),
+        glint("target", 50, life=220, rot=45, delay=10),
+        glint("target", 36, life=260, color="mid", delay=40),
+        sparks("target", 12, "mid", speed=(140, 260), size=1.1, dir="blow", cone=90, delay=10),
+        shock("target", px(8), px(42), 320, "rim", alpha=0.7, delay=20),
+        drops("target", 7, "mid", size=(8, 12)),
     ], shake=(160, 0.008))
     rec["skill.dual_wield_mastery"] = R("holy", [
         slash_sprite("origin", 70, 220, "rim", cell=SLASH["warrior"], rot=45),
@@ -1999,12 +2008,15 @@ def build() -> dict:
             "perClassBasic": "hit.basic.<class> and hit.impact.<profile> are authored for a one-line runtime change "
                              "(PlayFirst({hit.basic.<class>, hit.basic}) / ({hit.impact.<profile>, hit.impact})).",
             "elite": "elite.<affix> and camp.hearthstone are forward-compatible ids (not bound to events yet).",
-            "lootBeam": "loot.beam.<magic|rare|legendary|set> are LOOPS for the loot prop (WorldContract 5.3): play as "
-                        "the GroundItem prop's LoopRecipe (UAbyssWorldBuilder::SpawnEntity, quality >= magic) and kill "
-                        "them on pickup (Stop(handle, true)); loot.drop.* stay the drop-moment burst.",
+            "lootBeam": "loot.beam.<magic|rare|legendary|set> are LOOPS for the loot prop (WorldContract 5.3: add a "
+                        "'GroundItem prop loop' row): in UAbyssWorldBuilder::SpawnEntity's GroundItem branch set "
+                        "LoopRecipe = loot.beam.<quality> for quality >= Magic (Normal: none). The prop's vfx:<handle> "
+                        "tag already stops it in RemoveEntity on pickup / despawn. loot.drop.* stay the drop-moment "
+                        "burst; the 31 cm PoolRadiusCm light pool can stay (the beam carries its own pool).",
             "clueYaw": "SM_FX_ClueMagnifier's lens is tilted back 40 deg and faces the W1 camera at mesh yaw camera + 90 "
-                       "(UE 135 deg; n.v = 0.985); a random Pickup yaw turns it edge-on. Give quest_clue props that yaw "
-                       "(the +-8 deg rock on top).",
+                       "(UE 135 deg; n.v = 0.985); the random Pickup yaw (AbyssWorldBuilder.cpp Setup.YawDeg = TileHash "
+                       "% 360) turns it edge-on. For DefId quest_clue set Setup.YawDeg = CameraYawDeg + 180 (= 225; "
+                       "AAbyssPropActor adds MeshYawOffsetDeg -90 -> mesh yaw 135) + a hash jitter of at most +-8 deg.",
             "chestOpen": "prop.chest.open is timed from the start of the chest's Open clip (its layers wait for the "
                          "ChestOpen notify, 120 ms); nothing plays it yet - play it where the chest prop starts Open "
                          "(UAbyssWorldBuilder::RemoveEntity, PickedUp / Collected of a Chest-style prop).",

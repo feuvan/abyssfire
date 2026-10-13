@@ -3,6 +3,7 @@
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapons.py            # ship all
     ... weapons.py --only sword,axe        # ship a subset (manifest entries of the others are kept)
     ... weapons.py --quick sword           # mesh iteration: studio + tiers + in-hand cells → scratch
+    ... weapons.py --strips Warrior:staff:Run:4:se,sw …   # per-frame readability strips of whole clips → scratch
 
 Families = the core's ``WeaponType`` (sword · axe · mace · dagger · bow · staff · wand · shield; ``Data/item_bases.json``
 has bases for all but mace and wand). Every mesh is authored in its socket's bone space (kit README §4: grip centre
@@ -1063,6 +1064,66 @@ def quick(fams: list[str]) -> None:
               f"dark {v['minFracDark']:.3f} {v['failures'][:3]}")
 
 
+def strips(specs: list[str], table_path: str | None = None, cell: int = 240) -> None:
+    """Per-frame readability strips → scratch ``strips/<Cls>_<fam>_<Clip>.png``: the generic weapon in a hero's hand
+    every ``step`` frames of a clip (+ the contact / release frame) from se and / or sw at the W1 camera, 1080p 1:1,
+    at the shipped (or ``table_path``) grips with the class's default attachments. The six in-hand cells sample six
+    frames; these show the whole clip (a staff hiding behind the helm for half the Run cycle passed the cells).
+    ``specs``: ``Cls:fam:Clip[:step[:se,sw]]``."""
+    from kit import pngio
+    scene.reset()
+    pal, base, _ = palettes()
+    heroes = Heroes()
+    table = json.loads(Path(table_path).read_text()) if table_path else WG.load_table()
+    out = IK.SCRATCH / "strips"
+    out.mkdir(parents=True, exist_ok=True)
+    objs = {}
+    for spec in specs:
+        parts = spec.split(":")
+        cls, fam, clip = parts[:3]
+        step = int(parts[3]) if len(parts) > 3 else 4
+        facings = (parts[4] if len(parts) > 4 else "se").split(",")
+        if fam not in objs:
+            objs[fam] = build(fam, pal, base)[0]
+        obj = objs[fam]
+        for o in objs.values():
+            o.hide_render = o is not obj
+        sock = WG.socket_for(table, cls, fam)
+        arm, body = heroes.arm(cls), heroes.body(cls)
+        vis = heroes.show(cls, fam, sock)
+        IK.attach(obj, arm, sock)
+        gc = IK.GameCells(ASSET[fam], arm, [body, obj] + vis, IK.HERO_HEIGHT[cls], "weapon", blob_radius=0.36,
+                          out_dir=out)
+        n = clip_frames(cls, clip)
+        frs = sorted(set(range(0, n, step)) | ({beat_frame(cls, clip)} if clip not in WG.GROUPS["carry"] else set()))
+        rows = []
+        for face in facings:
+            cells = []
+            for fr in frs:
+                IK.hero_pose(arm, cls, clip, fr)
+                obj.matrix_basis = Matrix(WG.grip(table, cls, fam, clip, fr).tolist())
+                hw = WG.hide_window(table, cls, fam, clip)
+                obj.hide_render = bool(hw and hw[0] <= fr <= hw[1])
+                bpy.context.view_layer.update()
+                low = IK.min_z([obj])
+                img, _ = gc.cell(f"{cls} {clip}", facing=face, min_px=(cell, cell), label=False, measure=False)
+                c = IK.pad_to(img, cell, cell)
+                review.draw_text(c, 3, 3, f"{clip} F{fr} {face}".upper())
+                review.draw_text(c, 3, 12, f"LOW {low * 100:.0f} {WG.grip_label(table, cls, fam, clip)}".upper(),
+                                 rgb=(200, 230, 255))
+                cells.append(c)
+            rows.append(review.grid(cells, min(len(cells), 8), pad=2))
+        w = max(r.shape[1] for r in rows)
+        img = np.concatenate([IK.pad_to(r, r.shape[0], w) for r in rows], 0)
+        pngio.write_png(out / f"{cls}_{fam}_{clip}.png", img)
+        print(f"[strips] {out / f'{cls}_{fam}_{clip}.png'}", flush=True)
+        IK.detach(obj)
+        obj.hide_render = True
+        IK.hero_pose(arm, cls, "Idle", 0)
+        arm.rotation_euler = (0, 0, 0)
+        heroes.show(None)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
@@ -1070,7 +1131,13 @@ def main(argv=None):
     ap.add_argument("--no-previews", action="store_true")
     ap.add_argument("--no-verify", action="store_true")
     ap.add_argument("--lineup", action="store_true", help="only re-render Previews/weapons_lineup (no export)")
+    ap.add_argument("--strips", nargs="+", default=None, metavar="Cls:fam:Clip[:step[:se,sw]]",
+                    help="per-frame readability strips of a clip → scratch (no export)")
+    ap.add_argument("--table", default="", help="--strips: a scratch grip table instead of weapon_grips.json")
     a = ap.parse_args(argv)
+    if a.strips:
+        strips(a.strips, a.table or None)
+        return 0
     if a.lineup:
         scene.reset()
         pal, base, _ = palettes()

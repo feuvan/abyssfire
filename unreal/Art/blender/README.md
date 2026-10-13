@@ -689,6 +689,7 @@ Conventions learnt on the environment:
 ```bash
 EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapons.py     # ship (~4 min)
 #   --only sword,axe · --quick <families> (studio + tiers + in-hand cells → scratch) · --lineup · --no-previews · --no-verify
+#   --strips Warrior:staff:Run:4:se,sw … [--table t.json]   per-frame readability strips of whole clips → scratch
 EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/weapon_grips.py --qa   # whole-clip QA table
 #   --search [Warrior,Mage,Rogue] [--fams staff,bow] [--out table.json]   re-plan grips (~30 min per class)
 #   --tracks Warrior[,Mage,Rogue] [--fams …] [--out table.json]   keyed grip tracks for every clip a static grip fails
@@ -765,10 +766,26 @@ Conventions learnt on the items:
   grip per frame (≤ 12°/frame, flicks to 24°/frame only to dodge an intersection), widening the pool round any frame it
   cannot clear. A 4 cm SDF misses thin parts (pauldrons, fingers) and a 40-point cloud misses a shield face: rank with
   the SDF, decide with the exact test.
+* **Readability is a whole-clip, on-screen property** (art review, second pass): a track that only had to clear the
+  body swung the warrior's Run staff up the view ray behind the helm for half the cycle, pointed his Cast01 staff and
+  the rogue's Attack03 staff at the camera (an orb blob at the fist) and turned the bow edge-on in every warrior
+  strike. Staff tracks score the fist → orb vector projected in the se *and* sw views (`read_staff_screen`: ≥ 65 %
+  of its length, the orb above the fist — carry .30, casts .40, attacks level — and not behind the head); bow strikes
+  keep their D toward the camera (`read_bow`); staffs and bows keep out of the face disc in strikes and casts too,
+  from 2 frames before the contact / release on (`FACE_STRIKE`; the wind-ups whip the fist itself across the face,
+  rolls, falls and the mage's Cast_Meteor summon are excepted) — the QA now gates face frames (`LIMITS.face` 0). The turn between frames costs the smaller of the turn in the fist and
+  the turn in the world (a staff held steady while the casting hand rolls fast under it is calm on screen; the
+  grip-relative limit alone could not follow the Cast01 thrust), staff / bow strikes may flick > 12°/frame to stay
+  readable (cost 30 instead of 300), and where the plan's soft cost stays > 2 above a frame's best candidate a
+  **readability rescue** checks that frame's next readable candidates exactly and re-plans. The check is
+  `weapons.py --strips Cls:fam:Clip[:step[:se,sw]]` (every 4th frame from se and sw) — the six in-hand cells sample
+  only six frames.
 * **Bows need their D toward the camera**: the W1 camera saw a bow in the hero's sagittal plane edge-on (a stick);
   the brace is 15 cm (web bulge 13 / 84) and the string a light no-hull cord 1.3 cm across in the bow's plane; the
   grips turn the plane toward the camera in se *and* sw and keep limbs and string ≥ 2 cm off the torso and helm
   (the search rejects candidates closer than 2.8 cm on the coarse SDF; the exact QA measures `clearCm`).
+* **One mesh per family (R4)**: `w_wooden_shield` (T1) is a round planked buckler in the web; here it is the heater
+  with the T1 plank boards and iron boss (R4: one mesh per weapon base type family) — an accepted trade-off.
 * **Glowing gems and the dark check**: bloom over a near-white stone lifts its line-tone ink above lum 64 — the
   diamond regions use a darker hull mix (`o` .7) and the perfect cuts a modest table emission (.22).
 * **Heaps** (art review 4): a mound proxy padded round the coins on it tented into a detached dark arch behind the
@@ -871,6 +888,10 @@ Conventions learnt on the VFX:
 * **Bodies hide self-buffs too**: a chest-anchored glow on a blow-ful self cast (frenzy, poison blade, vanish) is
   inside the body; use hollow rings larger than the silhouette, ground pools, the hand socket, or spawn puffs on a
   ring ≥ 45 cm round the body (the vanish smoke bomb) until the runtime camera-ward bias lands.
+* **Aligned slash cells face the blow at rotation 0**: with `alignToBlow` the quad's up (the arc's apex) points
+  along the blow on screen and the arc's span (`aspect` 2) runs across it — a tall ")" for a sideways blow;
+  `rotationDeg` ±90 lays it flat (∩ / ∪). The lethal strike's tall blood crescent is rotation 0 (a solid translucent
+  crescent + a thin additive edge), its steel counter-slash −62° crosses it.
 * **Launch points come from the owning class**: mage and rogue effects are cast by their own rig in their own clip
   (Cast01 / Cast_Blizzard / Cast_Meteor / Cast_Multishot) at its release beat. The mage's `hand` resolves to the staff
   `crystal` socket (spec 8.1; at Cast01's release the crystal is 73 cm past `fx_hand_r`): the previews draw it so, and
