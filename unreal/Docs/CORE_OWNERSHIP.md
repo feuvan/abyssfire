@@ -48,7 +48,7 @@ COMBAT
 - StatusEffects.h: StatusEffectSystem, RollStatusRule.
 - HitFeedback.h: ClassifyHit, ComputeAttackTiming/ComputeCastTiming (manifest first, anim_timing fallback), shake helpers, ShakeThrottle.
 - CombatInput.h: InputBuffer, DodgeController, ComputeDodgeDestination, CycleTarget.
-- SkillTargeting.h: AoE anchor, line/cone/radius targets, teleport/shadow-step/charge destinations.
+- SkillTargeting.h: C14 cast shapes, cast reach, ground cast point, cast direction, chain links, line/cone/radius targets, teleport/shadow-step/charge destinations.
 - Projectiles.h: ProjectileSystem (projectiles and C4 ground effects), travel-time functions.
 - Combat.h: CombatSystem (skill requests, dodge, targeting, progression commands, per-step ticks, DamageMonster/DamageHero, KillHero, ResolvePendingDeath, OnMonsterKilled).
 - SoulEcho.h: ComputeDeathPenalty, SoulEchoState, SoulEchoSystem.

@@ -174,7 +174,8 @@ void ProjectileSystem::OnTimer(const Timer& t) {
         if (projectiles_[i].id != t.entity) continue;
         const Projectile p = projectiles_[i];
         projectiles_.erase(projectiles_.begin() + static_cast<std::ptrdiff_t>(i));
-        ctx_.events.Emit(EvProjectileEnded{p.id, true});
+        // A projectile launched without a target (C14 no-target shot) ends at `to` without a hit.
+        ctx_.events.Emit(EvProjectileEnded{p.id, p.spec.target != kNoEntity});
         switch (p.spec.kind) {
           case ProjectileKind::HeroSkill:
             if (ctx_.sys.combat != nullptr) ctx_.sys.combat->OnSkillProjectileArrived(p);

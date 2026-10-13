@@ -107,6 +107,7 @@ void SimImpl::ApplyCommand(const Command& cmd) {
             aim.hasPoint = c.hasPoint;
             aim.point = c.point;
             aim.stickDir = ScreenDirToTile(c.stickDir);
+            aim.hoverTarget = c.hoverTarget;
             combat->RequestSkillSlot(c.slot, aim);
           },
           [this](const CmdDodge& c) { combat->RequestDodge(ScreenDirToTile(c.dir)); },

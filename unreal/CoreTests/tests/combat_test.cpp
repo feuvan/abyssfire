@@ -1093,14 +1093,33 @@ TEST_SUITE("combat") {
   // ===================================================================================================================
   // Targeting geometry (classes 9.7, 10; C1, C4, C8)
   // ===================================================================================================================
-  TEST_CASE("targeting: ground anchor, radius, line, cone") {
+  TEST_CASE("targeting: ground cast point, cast direction, chain links, radius, line, cone (C4, C14)") {
     const TargetCandidate c[] = {{1, Vec2(3, 0), true}, {2, Vec2(5.5, 0), true}, {3, Vec2(7, 0), true},
                                  {4, Vec2(2, 0), false}, {5, Vec2(4, 1), true}};
-    // The target within range + 1 wins; else the nearest alive within it.
-    CHECK(FindGroundAoeAnchor(c, Vec2(0, 0), 3, Vec2(7, 0), true, 6) == 3);
-    CHECK(FindGroundAoeAnchor(c, Vec2(0, 0), 3, Vec2(7, 0), true, 5) == 1);
-    CHECK(FindGroundAoeAnchor(c, Vec2(0, 0), 3, Vec2(7, 0), false, 6) == 1);
-    CHECK(FindGroundAoeAnchor(c, Vec2(0, 0), kNoEntity, Vec2(), false, 1) == kNoEntity);
+    // C14 ground point: the target, else the cursor point, else `ahead` along the facing; clamped to the reach.
+    CastAim aim;
+    aim.facing = Vec2(0, 2);
+    CHECK(GroundCastPoint(Vec2(0, 0), aim, 8, 3) == Vec2(0, 3));
+    CHECK(GroundCastPoint(Vec2(0, 0), aim, 8, 0) == Vec2(0, 0));  // a trap: the hero's feet
+    aim.hasPoint = true;
+    aim.point = Vec2(0, -12);
+    CHECK(GroundCastPoint(Vec2(0, 0), aim, 8, 3) == Vec2(0, -8));
+    CHECK(CastDirection(Vec2(0, 0), aim) == Vec2(0, -1));
+    aim.hasTarget = true;
+    aim.targetPos = Vec2(7, 0);
+    CHECK(GroundCastPoint(Vec2(0, 0), aim, 8, 3) == Vec2(7, 0));  // the target's tile, never another monster
+    CHECK(GroundCastPoint(Vec2(0, 0), aim, 5, 3) == Vec2(5, 0));  // beyond the reach: clamped toward it
+    CHECK(CastDirection(Vec2(0, 0), aim) == Vec2(1, 0));
+    aim = CastAim{};
+    aim.facing = Vec2();
+    CHECK(CastDirection(Vec2(0, 0), aim) == Vec2(1, 0));  // no aim at all: +x
+    // C4 / C14 chain: from the given first link, nearest unlinked alive candidate within the hop radius, capped.
+    const TargetCandidate chain[] = {{1, Vec2(5, 0), true}, {2, Vec2(6, 2), true}, {3, Vec2(0, 1), true},
+                                     {4, Vec2(9, 2), false}, {5, Vec2(9, 3), true}};
+    CHECK(ChainLinks(chain, 1, Vec2(5, 0), 4, 6) == std::vector<EntityId>{1, 2, 5});
+    CHECK(ChainLinks(chain, 1, Vec2(5, 0), 4, 2) == std::vector<EntityId>{1, 2});
+    CHECK(ChainLinks(chain, 3, Vec2(0, 1), 4, 0).size() == 1);  // nothing within 4 of the first link
+    CHECK(ChainLinks(chain, kNoEntity, Vec2(), 4, 6).empty());
     CHECK(CandidatesInRadius(c, Vec2(3, 0), 1.5) == std::vector<EntityId>{1, 5});
     CHECK(NearestAlive(c, Vec2(0, 0), 100) == 1);
     CHECK(NearestAlive(c, Vec2(0, 0), 2) == kNoEntity);
@@ -1305,6 +1324,7 @@ TEST_SUITE("combat") {
     const EntityId b = ps.Launch(bolt);
     ProjectileSpec arrow;
     arrow.kind = ProjectileKind::HeroSkill;
+    arrow.target = 55;  // target-locked
     arrow.travelMs = 100;
     const EntityId a = ps.Launch(arrow);
     CHECK(test::CountEvents<EvProjectileLaunched>(h.events) == 2);
@@ -1324,6 +1344,14 @@ TEST_SUITE("combat") {
     REQUIRE(ended.size() == 2);
     CHECK_FALSE(ended[0].hit);
     CHECK(ended[1].hit);
+    // C14: a shot launched without a target ends at `to` as a fizzle.
+    ProjectileSpec shot = arrow;
+    shot.target = kNoEntity;
+    ps.Launch(shot);
+    h.Step(6);
+    const auto ended2 = EventsOf<EvProjectileEnded>(h.events);
+    REQUIRE(ended2.size() == 3);
+    CHECK_FALSE(ended2[2].hit);
     const EntityId c = ps.Launch(arrow);
     ps.Destroy(c);
     CHECK(ps.Projectiles().empty());
@@ -1812,7 +1840,7 @@ TEST_SUITE("combat") {
       }
     }
     REQUIRE(order.size() == 3);
-    CHECK(order[0].first == b);  // nearest to the hero first, then nearest to the previous link
+    CHECK(order[0].first == b);  // C14: the auto-pick (nearest within 8 tiles) is link 0, then nearest to the previous link
     CHECK(order[1].first == c);
     CHECK(order[2].first == a);
     CHECK(order[0].second == doctest::Approx(t0 + 230).epsilon(0.1));
@@ -1943,7 +1971,7 @@ TEST_SUITE("combat") {
     CHECK(test::CountEvents<EvHit>(rig.h.events) == hitsBefore);
   }
 
-  TEST_CASE("runtime: FIX Q7 retarget at release - nearest in reach, else fizzle") {
+  TEST_CASE("runtime: C14 release target - a dead target is re-resolved within reach, else fizzle; never a swap") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
@@ -1981,6 +2009,24 @@ TEST_SUITE("combat") {
     size_t onDistant = 0;
     for (const EvHit& h : EventsOf<EvHit>(far.h.events)) onDistant += (h.target == distant);
     CHECK(onDistant == 0);
+    // A living target that stepped out of melee reach before the contact beat: the strike whiffs - the monster still in
+    // reach is never hit instead (the web's FIX Q7 swapped to it).
+    CombatRig walk(ClassId::Warrior);
+    const Vec2 w = walk.hero->Position();
+    const EntityId runner = walk.Spawn("goblin_chief", w + Vec2(1, 0));
+    const EntityId stayer = walk.Spawn("goblin_chief", w + Vec2(0, 1));
+    walk.combat.SetAttackTarget(runner, false);
+    walk.hero->lastAttackMs = 1e18;
+    const double w0 = walk.h.clock.NowMs();
+    REQUIRE(walk.combat.RequestSkill(walk.SkillIndex("slash"), SkillAim{}) == SkillRequestResult::Executed);
+    walk.Step(5);
+    walk.monsters.Teleport(runner, w + Vec2(4, 0), TeleportReason::Debug);
+    walk.StepTo(w0 + 400);
+    size_t slashes = 0;
+    for (const EvHit& h : EventsOf<EvHit>(walk.h.events)) slashes += h.skillId == "slash";
+    CHECK(slashes == 0);
+    CHECK(walk.combat.AttackTarget() == runner);
+    (void)stayer;
   }
 
   TEST_CASE("runtime: FIX Q9 a dodged skill hit applies nothing; statuses on landed hits") {
@@ -2141,11 +2187,11 @@ TEST_SUITE("combat") {
     CHECK_FALSE(changes[1].inCombat);
   }
 
-  TEST_CASE("runtime: auto-battle locks the nearest monster in its aggro range and casts the first usable skill (C1)") {
+  TEST_CASE("runtime: auto-battle locks the nearest monster within the cast reach and casts the first usable skill (C1)") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(4, 0));  // aggro range 5
+    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(4, 0));
     REQUIRE_MONSTER(g);
     hero.autoCombat = true;
     hero.lastAttackMs = 1e18;
@@ -2410,7 +2456,8 @@ TEST_SUITE("combat") {
     const EntityId near = rig.Spawn("goblin", start + Vec2(5, 0));
     REQUIRE_MONSTER(near);
     REQUIRE(rig.combat.AttackTarget() == kNoEntity);
-    REQUIRE(rig.combat.PreferredTarget() == near);  // the release target falls back to the nearest monster
+    REQUIRE(rig.combat.PreviewCastTarget(rig.SkillIndex("fireball")) == near);  // other skills would auto-pick it (C14)
+    CHECK(rig.combat.PreviewCastTarget(tp) == kNoEntity);                      // teleport never resolves a target
     hero.SetFacing(Vec2(0, 1));
     TeleportAim ahead;  // no pointer, no stick, no lock: 6 tiles along the facing
     ahead.facing = Vec2(0, 1);
@@ -2418,7 +2465,8 @@ TEST_SUITE("combat") {
     REQUIRE(ComputeTeleportDestination(port, start, ahead, cols, rows, walk, expect));
     REQUIRE(rig.combat.RequestSkill(tp, SkillAim{}) == SkillRequestResult::Executed);
     CHECK(hero.Position() == expect.Center());
-    CHECK(hero.Facing() == Vec2(0, 1));  // the cast did not turn toward the unlocked monster
+    CHECK(hero.Facing() == Vec2(0, 1));  // turned toward its aimed destination, not toward the unlocked monster
+    CHECK(rig.combat.AttackTarget() == kNoEntity);  // and nothing was selected
     CHECK(Dist(hero.Position(), rig.monsters.Find(near)->pos) > 5);
     // With a lock: the blink goes to the locked target (clamped to 8 tiles, walkable search).
     hero.Skills().ResetCooldowns();
@@ -2438,7 +2486,7 @@ TEST_SUITE("combat") {
     hero.Skills().ResetCooldowns();
     hero.FillHpMana();
     const Vec2 there = hero.Position();
-    REQUIRE(rig.combat.AttackTarget() == kNoEntity);  // the blink cleared the lock
+    REQUIRE(rig.combat.AttackTarget() == locked);  // C14: the blink keeps the lock (the web cleared it)
     SkillAim tap;
     tap.target = near;
     TeleportAim toTap;
@@ -2449,6 +2497,99 @@ TEST_SUITE("combat") {
     REQUIRE(ComputeTeleportDestination(port, there, toTap, cols, rows, walk, tapDest));
     REQUIRE(rig.combat.RequestSkill(tp, tap) == SkillRequestResult::Executed);
     CHECK(hero.Position() == tapDest.Center());
+  }
+
+  TEST_CASE("C8 + C14: a teleport with no point or stick never blinks to an auto-picked, hovered or auto-battle lock") {
+    // Blinks with no cursor point and no stick (touch / pad without the stick, a skill-bar click) while facing away from
+    // the selected goblin; returns the distance to it afterwards.
+    const auto blinkAway = [](CombatRig& r, EntityId g, Vec2& expectDest) {
+      Hero& hero = *r.hero;
+      const int32_t tp = r.SkillIndex("teleport");
+      hero.Skills().SetLevel(tp, 1);
+      hero.Skills().ResetCooldowns();
+      hero.FillHpMana();
+      hero.SetFacing(Vec2(-1, 0));
+      TeleportAim ahead;
+      ahead.facing = Vec2(-1, 0);
+      TilePos dest;
+      const WalkableFn walk = [&r](int32_t c, int32_t row) { return r.zone.Walkable(c, row); };
+      REQUIRE(ComputeTeleportDestination(Skill("teleport").port, hero.Position(), ahead, r.zone.Grid().Cols(),
+                                         r.zone.Grid().Rows(), walk, dest));
+      expectDest = dest.Center();
+      REQUIRE(r.combat.RequestSkill(tp, SkillAim{}) == SkillRequestResult::Executed);
+      return Dist(hero.Position(), r.monsters.Find(g)->pos);
+    };
+    {  // (c) auto-pick: the ice arrow selects the goblin; the blink still goes 6 tiles along the facing, twice
+      CombatRig rig(ClassId::Mage);
+      REQUIRE(rig.ok);
+      rig.hero->lastAttackMs = 1e18;
+      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(5, 0));
+      REQUIRE_MONSTER(g);
+      const double t0 = rig.h.clock.NowMs();
+      REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), SkillAim{}) == SkillRequestResult::Executed);
+      rig.StepTo(t0 + 300);
+      REQUIRE(rig.combat.AttackTarget() == g);
+      CHECK(rig.combat.PlayerLock() == kNoEntity);
+      Vec2 expect;
+      CHECK(blinkAway(rig, g, expect) > 5);
+      CHECK(rig.hero->Position() == expect);
+      CHECK(rig.combat.AttackTarget() == g);  // the selection survives the blink (C14)
+      CHECK(blinkAway(rig, g, expect) > 5);
+      CHECK(rig.hero->Position() == expect);
+      // A touch tap on that same monster makes it the player's lock.
+      rig.hero->Skills().ResetCooldowns();
+      SkillAim tap;
+      tap.target = g;
+      rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), tap);
+      CHECK(rig.combat.PlayerLock() == g);
+    }
+    {  // (b) hover: the same
+      CombatRig rig(ClassId::Mage);
+      rig.hero->lastAttackMs = 1e18;
+      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(4, 0));
+      SkillAim hover;
+      hover.hoverTarget = g;
+      REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), hover) == SkillRequestResult::Executed);
+      REQUIRE(rig.combat.AttackTarget() == g);
+      Vec2 expect;
+      CHECK(blinkAway(rig, g, expect) > 4);
+      CHECK(rig.hero->Position() == expect);
+    }
+    {  // auto-battle's acquisition is not the player's lock either
+      CombatRig rig(ClassId::Mage);
+      rig.hero->lastAttackMs = 1e18;
+      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(3, 0));
+      rig.hero->autoCombat = true;
+      rig.Step();
+      REQUIRE(rig.combat.AttackTarget() == g);
+      rig.hero->autoCombat = false;
+      Vec2 expect;
+      CHECK(blinkAway(rig, g, expect) > 3);
+      CHECK(rig.hero->Position() == expect);
+    }
+    {  // a click (CmdAttackTarget) or a target cycle is the player's lock: the blink goes to it
+      CombatRig rig(ClassId::Mage);
+      rig.hero->lastAttackMs = 1e18;
+      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(5, 0));
+      rig.combat.SetAttackTarget(g, false);
+      CHECK(rig.combat.PlayerLock() == g);
+      Vec2 expect;
+      CHECK(blinkAway(rig, g, expect) < 2);
+      rig.combat.ClearAttackTarget();
+      rig.combat.CycleTarget();
+      REQUIRE(rig.combat.AttackTarget() == g);
+      CHECK(rig.combat.PlayerLock() == g);
+      // A later auto-pick of another monster replaces the lock and is not the player's.
+      rig.combat.ClearAttackTarget();
+      MonsterHitRequest kill;
+      kill.monster = g;
+      kill.amount = 1e6;
+      rig.combat.DamageMonster(kill);
+      const EntityId h2 = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(0, 4));
+      REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), SkillAim{}) == SkillRequestResult::Executed);
+      CHECK(rig.combat.AttackTarget() == h2);
+      CHECK(rig.combat.PlayerLock() == kNoEntity);
+    }
   }
 
   TEST_CASE("audio 3.2: a monster's stat dodge of a hero hit is silent; a swing into the i-frames plays `miss`") {
@@ -3006,8 +3147,8 @@ TEST_SUITE("combat") {
       CHECK(hero.Position() == start);
       CHECK(hero.Mana() == hero.MaxMana());
       CHECK_FALSE(rig.combat.Buffer().HasPending());
-      // A monster beyond its aggro range is never locked: still nothing (the web's targeted first skill starved the
-      // list; C1 must not turn that into casting at the nearest monster on the map).
+      // A monster beyond the C14 auto-pick radius (8 tiles) is never locked: still nothing (the web's targeted first
+      // skill starved the list; C1 must not turn that into casting at the nearest monster on the map).
       const EntityId far = rig.Spawn("goblin", start + Vec2(12, 0));
       REQUIRE(far != kNoEntity);
       rig.Step(600);
@@ -3058,10 +3199,14 @@ TEST_SUITE("combat") {
       CAPTURE(k.id);
       const SkillDef& s = Skill(k.id);
       REQUIRE(s.aoe);
-      // Reach: the ground anchor (range + 1), the line (range), else the blast / cone / trap radius around the hero.
-      const double reach = s.groundAnchored  ? s.range + rules.groundAnchorReachSlackTiles
-                           : s.hasLineTarget ? s.range
-                                             : SkillAoeRadius(rules, s, 1);
+      // Reach (C14): a ground AoE, trap, chain, cone or line needs the lock within the cast reach (8; it then lands on /
+      // starts at / includes the lock); a nova or taunt its blast radius.
+      const CastShape shape = SkillCastShape(s);
+      const double castReach = SkillCastReach(rules, s);
+      const double reach = shape == CastShape::Ground || shape == CastShape::Trap || shape == CastShape::Chain ||
+                                   shape == CastShape::Cone || shape == CastShape::Line
+                               ? castReach
+                               : SkillAoeRadius(rules, s, 1);
       CombatRig rig(k.cls);
       REQUIRE(rig.ok);
       Hero& hero = *rig.hero;
@@ -3084,23 +3229,35 @@ TEST_SUITE("combat") {
       REQUIRE(used.size() == 1);
       CHECK(used[0].skillId == k.id);
     }
-    // A ground AoE also takes another monster inside its anchor reach (ReleaseAoe's anchor), with the lock far away.
+    // C14: a ground AoE never substitutes another monster for the lock (the web re-anchored on the nearest monster in
+    // reach): with the lock out of its reach it waits, also when another monster stands right next to the hero.
     CombatRig rig(ClassId::Mage);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
     SkillBook& book = hero.Skills();
     for (size_t i = 0; i < book.SkillCount(); ++i) book.SetLevel(static_cast<int32_t>(i), 0);
     book.SetLevel(rig.SkillIndex("blizzard"), 1);
-    const EntityId lock = rig.Spawn("goblin_chief", hero.Position() + Vec2(9, 0));
+    const EntityId lock = rig.Spawn("goblin_chief", hero.Position() + Vec2(12, 0));
     REQUIRE(lock != kNoEntity);
     rig.combat.SetAttackTarget(lock, false);
     hero.lastAttackMs = 1e18;
     hero.autoCombat = true;
     rig.Step(30);
     CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
-    rig.Spawn("goblin_chief", hero.Position() + Vec2(0, 3));
-    rig.Step();
+    const EntityId other = rig.Spawn("goblin_chief", hero.Position() + Vec2(0, 3));
+    rig.Step(30);
+    CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
+    // In reach (7.5 tiles): cast on the lock's tile, and it hits the lock, not the other one.
+    rig.monsters.Teleport(lock, hero.Position() + Vec2(7.5, 0), TeleportReason::Debug);
+    rig.Step(20);
     CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 1);
+    size_t onLock = 0, onOther = 0;
+    for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+      onLock += h.skillId == "blizzard" && h.target == lock;
+      onOther += h.skillId == "blizzard" && h.target == other;
+    }
+    CHECK(onLock == 1);
+    CHECK(onOther == 0);
   }
 
   TEST_CASE("C4 feel (6.5 / 11.1): a fire wall's first share is the web's hit; later shares are ticks without shake") {
@@ -3216,5 +3373,738 @@ TEST_SUITE("combat") {
     rig.StepTo(mark.startMs + 300 + 2 * kSimStepMs);
     CHECK(hero.Life() == HeroLife::Dying);  // respawn is 1100 ms away
     CHECK_FALSE(rig.monsters.Find(t)->buffs.Has(BuffStat::DamageAmplify));
+  }
+
+  // ===================================================================================================================
+  // DECISIONS C14: the cast target rule (classes-stats-skills 9.2-9.9, combat-feel 6.2-6.5 / 9.2)
+  // ===================================================================================================================
+  TEST_CASE("C14 cast shapes and reach: data-driven, 8 tiles for every shipped skill, melee / dash range + 1") {
+    const SkillRules& rules = D().Classes().skillRules;
+    CHECK(rules.rangeSlackTiles == 1);
+    CHECK(rules.castAcquirePadTiles == 2);
+    CHECK(rules.castAcquireMinTiles == 8);
+    CHECK(rules.noTargetGroundAheadTiles == 3);
+    CHECK(rules.chainMaxLinks == 6);
+    struct Row {
+      const char* id;
+      CastShape shape;
+    };
+    const Row rows[] = {
+        {"slash", CastShape::Melee},          {"backstab", CastShape::Melee},       {"charge", CastShape::Dash},
+        {"whirlwind", CastShape::Nova},       {"rampage", CastShape::Nova},         {"shield_wall", CastShape::Self},
+        {"taunt_roar", CastShape::Self},      {"fireball", CastShape::Projectile},  {"ice_arrow", CastShape::Projectile},
+        {"poison_arrow", CastShape::Projectile}, {"freeze", CastShape::Instant},    {"combustion", CastShape::Instant},
+        {"shadow_step", CastShape::Instant},  {"death_mark", CastShape::Instant},   {"meteor", CastShape::Ground},
+        {"blizzard", CastShape::Ground},      {"fire_wall", CastShape::Ground},     {"arrow_rain", CastShape::Ground},
+        {"poison_cloud", CastShape::Ground},  {"explosive_trap", CastShape::Trap},  {"slow_trap", CastShape::Trap},
+        {"chain_trap", CastShape::Trap},      {"chain_lightning", CastShape::Chain}, {"multishot", CastShape::Cone},
+        {"piercing_arrow", CastShape::Line},  {"teleport", CastShape::Blink},
+    };
+    for (const Row& r : rows) {
+      CAPTURE(r.id);
+      CHECK(SkillCastShape(Skill(r.id)) == r.shape);
+    }
+    for (const ClassDef& c : D().Classes().classes) {
+      for (const SkillDef& s : c.skills) {
+        CAPTURE(s.id);
+        CHECK(SkillCastReach(rules, s) == doctest::Approx(8));  // max(range + 2, 8): every range is <= 6
+      }
+    }
+    CHECK(SkillReleaseReach(rules, Skill("slash")) == doctest::Approx(2.5));
+    CHECK(SkillReleaseReach(rules, Skill("charge")) == doctest::Approx(6));
+    CHECK(SkillReleaseReach(rules, Skill("freeze")) == doctest::Approx(8));
+    CHECK(SkillReleaseReach(rules, Skill("ice_arrow")) == doctest::Approx(8));
+    for (const CastShape sh : {CastShape::Melee, CastShape::Dash, CastShape::Instant}) CHECK(CastShapeNeedsTarget(sh));
+    for (const CastShape sh : {CastShape::Projectile, CastShape::Chain, CastShape::Ground, CastShape::Trap,
+                               CastShape::Cone, CastShape::Line, CastShape::Nova, CastShape::Self, CastShape::Blink}) {
+      CHECK_FALSE(CastShapeNeedsTarget(sh));
+    }
+    for (const CastShape sh : {CastShape::Self, CastShape::Blink, CastShape::Nova}) CHECK_FALSE(CastShapeSelects(sh));
+    CHECK(CastShapeSelects(CastShape::Projectile));
+    CHECK(CastShapeSelects(CastShape::Ground));
+  }
+
+  TEST_CASE("C14 rule 1: the tap / lock wins, else the monster under the cursor, else the nearest within 8") {
+    // Presses `skill` now and returns the target of the projectile it launches on the mage's 230 ms beat.
+    const auto launchedAt = [](CombatRig& r, int32_t skill, const SkillAim& aim) {
+      r.h.events.Clear();
+      const double t0 = r.h.clock.NowMs();
+      REQUIRE(r.combat.RequestSkill(skill, aim) == SkillRequestResult::Executed);
+      r.StepTo(t0 + 230);
+      const auto l = EventsOf<EvProjectileLaunched>(r.h.events);
+      REQUIRE(l.size() == 1);
+      return l.back().target;
+    };
+    {  // (a) the lock beats a nearer monster and the hover; the hero turns to it before the cast
+      CombatRig rig(ClassId::Mage);
+      REQUIRE(rig.ok);
+      Hero& hero = *rig.hero;
+      hero.lastAttackMs = 1e18;
+      const Vec2 p = hero.Position();
+      const EntityId nearA = rig.Spawn("goblin_chief", p + Vec2(2, 0));
+      REQUIRE_MONSTER(nearA);
+      const EntityId lockB = rig.Spawn("goblin_chief", p + Vec2(0, 5));
+      const EntityId hoverC = rig.Spawn("goblin_chief", p + Vec2(-3, 0));
+      rig.combat.SetAttackTarget(lockB, false);
+      SkillAim aim;
+      aim.hoverTarget = hoverC;
+      CHECK(launchedAt(rig, rig.SkillIndex("ice_arrow"), aim) == lockB);
+      const auto anims = EventsOf<EvPlayAnim>(rig.h.events);
+      REQUIRE_FALSE(anims.empty());
+      CHECK(anims.front().hasFaceTarget);
+      CHECK(anims.front().faceTarget == p + Vec2(0, 5));
+      CHECK(hero.Facing() == Vec2(0, 1));
+      CHECK(rig.combat.AttackTarget() == lockB);
+      // (a) a touch tap (SkillAim::target) beats the lock and becomes it.
+      hero.Skills().ResetCooldowns();
+      SkillAim tap;
+      tap.target = nearA;
+      CHECK(launchedAt(rig, rig.SkillIndex("ice_arrow"), tap) == nearA);
+      CHECK(rig.combat.AttackTarget() == nearA);
+    }
+    {  // (b) no lock: the hovered monster, selected at the press (before the release beat)
+      CombatRig rig(ClassId::Mage);
+      Hero& hero = *rig.hero;
+      hero.lastAttackMs = 1e18;
+      const Vec2 p = hero.Position();
+      const EntityId nearA = rig.Spawn("goblin_chief", p + Vec2(2, 0));
+      const EntityId hoverB = rig.Spawn("goblin_chief", p + Vec2(-5, 0));
+      const int32_t ia = rig.SkillIndex("ice_arrow");
+      SkillAim aim;
+      aim.hoverTarget = hoverB;
+      rig.h.events.Clear();
+      const double t0 = rig.h.clock.NowMs();
+      REQUIRE(rig.combat.RequestSkill(ia, aim) == SkillRequestResult::Executed);
+      const auto changed = EventsOf<EvTargetChanged>(rig.h.events);
+      REQUIRE(changed.size() == 1);
+      CHECK(changed[0].target == hoverB);
+      CHECK(rig.combat.AttackTarget() == hoverB);
+      CHECK(rig.combat.IndicatorTarget() == hoverB);
+      rig.StepTo(t0 + 230);
+      const auto l = EventsOf<EvProjectileLaunched>(rig.h.events);
+      REQUIRE(l.size() == 1);
+      CHECK(l[0].target == hoverB);
+      // A dead monster under the cursor does not count: (c) takes over.
+      rig.combat.ClearAttackTarget();
+      MonsterHitRequest kill;
+      kill.monster = hoverB;
+      kill.amount = 1e6;
+      rig.combat.DamageMonster(kill);
+      hero.Skills().ResetCooldowns();
+      CHECK(launchedAt(rig, ia, aim) == nearA);
+      CHECK(rig.combat.AttackTarget() == nearA);
+    }
+    {  // (c) no lock, no hover: the nearest alive monster within 8 tiles (the web's range + 1 = 7 failed silently)
+      CombatRig rig(ClassId::Mage);
+      Hero& hero = *rig.hero;
+      hero.lastAttackMs = 1e18;
+      const Vec2 p = hero.Position();
+      const EntityId at75 = rig.Spawn("goblin_chief", p + Vec2(7.5, 0));
+      rig.Spawn("goblin_chief", p + Vec2(0, -9));  // beyond the cast reach: never picked
+      const int32_t fb = rig.SkillIndex("fireball");
+      CHECK(rig.combat.PreviewCastTarget(fb) == at75);
+      CHECK(launchedAt(rig, fb, SkillAim{}) == at75);
+      CHECK(rig.combat.AttackTarget() == at75);  // the auto-pick becomes the selection
+    }
+    {  // (c) is the nearest, also over a farther monster that already chases the hero; without a lock the target ring
+       // previews that same pick (9.5 with C14), so the ring and the cast agree
+      CombatRig rig(ClassId::Mage);
+      Hero& hero = *rig.hero;
+      hero.lastAttackMs = 1e18;
+      const Vec2 p = hero.Position();
+      const EntityId idle = rig.Spawn("goblin_chief", p + Vec2(3, 0));
+      const EntityId chaser = rig.Spawn("goblin_chief", p + Vec2(-6, 0));
+      rig.monsters.Find(chaser)->state = MonsterState::Chase;
+      rig.Step();  // the web's 9.5 ring went under the chaser (nearest aggro)
+      REQUIRE(rig.combat.AttackTarget() == kNoEntity);
+      CHECK(rig.combat.IndicatorTarget() == idle);
+      const int32_t ia = rig.SkillIndex("ice_arrow");
+      CHECK(rig.combat.PreviewCastTarget(ia) == idle);
+      CHECK(launchedAt(rig, ia, SkillAim{}) == idle);
+      CHECK(rig.combat.AttackTarget() == idle);
+      CHECK(rig.combat.IndicatorTarget() == idle);
+    }
+    {  // the ring without a lock: nothing beyond the 8-tile auto-pick radius
+      CombatRig rig(ClassId::Mage);
+      const Vec2 p = rig.hero->Position();
+      const EntityId far = rig.Spawn("goblin_chief", p + Vec2(9, 0));
+      REQUIRE_MONSTER(far);
+      rig.Step();
+      CHECK(rig.combat.IndicatorTarget() == kNoEntity);
+      rig.monsters.Teleport(far, p + Vec2(7.5, 0), TeleportReason::Debug);
+      rig.h.events.Clear();
+      rig.Step();
+      CHECK(rig.combat.IndicatorTarget() == far);
+      const auto changed = EventsOf<EvTargetChanged>(rig.h.events);
+      REQUIRE(changed.size() == 1);
+      CHECK(changed[0].target == far);
+      CHECK(rig.combat.AttackTarget() == kNoEntity);  // a preview, not a selection
+    }
+    {  // melee (c): the adjacent monster, not a farther chaser the slash could not reach
+      CombatRig w(ClassId::Warrior);
+      w.hero->lastAttackMs = 1e18;
+      const Vec2 p = w.hero->Position();
+      const EntityId adj = w.Spawn("goblin_chief", p + Vec2(1, 0));
+      REQUIRE_MONSTER(adj);
+      const EntityId chaser = w.Spawn("goblin_chief", p + Vec2(-5, 0));
+      w.monsters.Find(chaser)->state = MonsterState::Chase;
+      w.Step();
+      w.h.events.Clear();
+      const double t0 = w.h.clock.NowMs();
+      REQUIRE(w.combat.RequestSkill(w.SkillIndex("slash"), SkillAim{}) == SkillRequestResult::Executed);
+      CHECK(w.combat.AttackTarget() == adj);
+      w.StepTo(t0 + 400);
+      size_t onAdj = 0;
+      for (const EvHit& h : EventsOf<EvHit>(w.h.events)) onAdj += h.skillId == "slash" && h.target == adj;
+      CHECK(onAdj == 1);
+    }
+  }
+
+  TEST_CASE("C14 rule 3: nothing within 8 tiles - casts aim at the cursor, else the facing; targeted ones say why") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    hero.lastAttackMs = 1e18;
+    const Vec2 p = hero.Position();
+    const EntityId far = rig.Spawn("goblin_chief", p + Vec2(9, 0));  // beyond the cast reach
+    REQUIRE_MONSTER(far);
+    const int32_t ia = rig.SkillIndex("ice_arrow");
+    CHECK(rig.combat.PreviewCastTarget(ia) == kNoEntity);
+    CHECK(rig.combat.CanExecuteSkill(ia));  // a projectile needs no target
+    // Desktop: the projectile flies from the hero along the cursor direction for the cast reach and fizzles.
+    SkillAim cursor;
+    cursor.hasPoint = true;
+    cursor.point = p + Vec2(0, 3);
+    rig.h.events.Clear();
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(ia, cursor) == SkillRequestResult::Executed);
+    CHECK(rig.combat.AttackTarget() == kNoEntity);  // nothing selected
+    CHECK(hero.Facing() == Vec2(0, 1));             // turned toward the cursor before the cast
+    const auto anims = EventsOf<EvPlayAnim>(rig.h.events);
+    REQUIRE(anims.size() == 1);
+    CHECK(anims[0].hasFaceTarget);
+    CHECK(anims[0].faceTarget == p + Vec2(0, 1));
+    rig.StepTo(t0 + 230);
+    const auto launched = EventsOf<EvProjectileLaunched>(rig.h.events);
+    REQUIRE(launched.size() == 1);
+    CHECK(launched[0].target == kNoEntity);
+    CHECK(launched[0].from == p);
+    CHECK(launched[0].to == p + Vec2(0, 8));
+    CHECK(launched[0].travelMs == doctest::Approx(432));  // clamp(8 x 36 x 1.5, 250, 500)
+    bool glint = false;  // the projectile skill's cast glint is emitted with the launch
+    for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+      glint = glint || (v.skillId == "ice_arrow" && v.point == p + Vec2(0, 8) && v.dir == Vec2(0, 1));
+    }
+    CHECK(glint);
+    rig.StepTo(launched[0].launchMs + launched[0].travelMs + kSimStepMs);
+    const auto ended = EventsOf<EvProjectileEnded>(rig.h.events);
+    REQUIRE(ended.size() == 1);
+    CHECK_FALSE(ended[0].hit);
+    CHECK(test::CountEvents<EvHit>(rig.h.events) == 0);
+    // No cursor (touch, pad, a HUD button): along the facing.
+    hero.Skills().ResetCooldowns();
+    hero.FillHpMana();
+    hero.SetFacing(Vec2(-1, 0));
+    rig.h.events.Clear();
+    const double t1 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(ia, SkillAim{}) == SkillRequestResult::Executed);
+    rig.StepTo(t1 + 230);
+    const auto l2 = EventsOf<EvProjectileLaunched>(rig.h.events);
+    REQUIRE(l2.size() == 1);
+    CHECK(l2[0].to == p + Vec2(-8, 0));
+    // Ground AoE: the cursor point clamped to the cast reach, else min(range, 3) ahead - never on the hero.
+    const int32_t bz = rig.SkillIndex("blizzard");
+    hero.Skills().SetLevel(bz, 1);
+    const auto blizzardAt = [&](const SkillAim& aim) {
+      hero.Skills().ResetCooldowns();
+      hero.FillHpMana();
+      rig.h.events.Clear();
+      const double tb = rig.h.clock.NowMs();
+      REQUIRE(rig.combat.RequestSkill(bz, aim) == SkillRequestResult::Executed);
+      rig.StepTo(tb + 230);
+      for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+        if (v.skillId == "blizzard") return v.point;
+      }
+      FAIL("no blizzard VFX");
+      return Vec2();
+    };
+    SkillAim farPoint;
+    farPoint.hasPoint = true;
+    farPoint.point = p + Vec2(0, 20);
+    CHECK(blizzardAt(farPoint) == p + Vec2(0, 8));
+    hero.SetFacing(Vec2(-1, 0));
+    CHECK(blizzardAt(SkillAim{}) == p + Vec2(-3, 0));
+    // Trap: at the cursor point (else the hero's feet, the C4 trap test).
+    CombatRig r(ClassId::Rogue);
+    r.hero->lastAttackMs = 1e18;
+    SkillAim trapAim;
+    trapAim.hasPoint = true;
+    trapAim.point = r.hero->Position() + Vec2(2, 2);
+    REQUIRE(r.combat.RequestSkill(r.SkillIndex("explosive_trap"), trapAim) == SkillRequestResult::Executed);
+    r.StepTo(r.h.clock.NowMs() + 300);
+    const auto armed = EventsOf<EvGroundEffectStarted>(r.h.events);
+    REQUIRE(armed.size() == 1);
+    CHECK(armed[0].center == trapAim.point);
+    // A melee strike with no target / a target beyond its reach: buffered and logged, never silent. The pick it cannot
+    // reach is NOT selected: as a lock it would pin every later press (rule a) and the basic attack to it.
+    CombatRig w(ClassId::Warrior);
+    const auto logged = [&w](std::string_view key) {
+      for (const EvLog& e : EventsOf<EvLog>(w.h.events)) {
+        if (e.text.key == key) return true;
+      }
+      return false;
+    };
+    w.hero->lastAttackMs = 0;
+    const int32_t slash = w.SkillIndex("slash");
+    CHECK(w.combat.RequestSkill(slash, SkillAim{}) == SkillRequestResult::Buffered);
+    CHECK(logged("zone.combat.noTarget"));
+    const Vec2 wp = w.hero->Position();
+    const EntityId g = w.Spawn("goblin_chief", wp + Vec2(5, 0));
+    REQUIRE_MONSTER(g);
+    w.h.events.Clear();
+    const double mana0 = w.hero->Mana();
+    CHECK(w.combat.RequestSkill(slash, SkillAim{}) == SkillRequestResult::Buffered);
+    CHECK(logged("zone.combat.outOfRange"));
+    CHECK_FALSE(logged("zone.combat.noTarget"));
+    CHECK(w.combat.AttackTarget() == kNoEntity);
+    CHECK(test::CountEvents<EvTargetChanged>(w.h.events) == 0);
+    CHECK(w.hero->Mana() == mana0);
+    // An attacker that steps next to the warrior is still auto-attacked (no far lock holds the basic attack).
+    const EntityId adj = w.Spawn("goblin_chief", wp + Vec2(-1, 0));
+    w.monsters.Find(adj)->state = MonsterState::Attack;
+    w.h.events.Clear();
+    w.Step(60);
+    size_t swings = 0;
+    for (const EvPlayAnim& a : EventsOf<EvPlayAnim>(w.h.events)) {
+      swings += a.entity == kHeroEntityId && a.action == AnimAction::Attack;
+    }
+    CHECK(swings >= 1);
+    // The next press auto-picks the monster in reach.
+    w.hero->Skills().ResetCooldowns();
+    w.hero->FillHpMana();
+    CHECK(w.combat.RequestSkill(slash, SkillAim{}) == SkillRequestResult::Executed);
+    CHECK(w.combat.AttackTarget() == adj);
+
+    // Desktop: a monster hovered beyond the cast reach is refused (outOfRange) and not selected; a later press with the
+    // cursor elsewhere auto-picks the monster that came into reach.
+    CombatRig m(ClassId::Mage);
+    m.hero->lastAttackMs = 1e18;
+    const Vec2 mp = m.hero->Position();
+    const EntityId hoverFar = m.Spawn("goblin_chief", mp + Vec2(0, 10));
+    REQUIRE_MONSTER(hoverFar);
+    const int32_t mia = m.SkillIndex("ice_arrow");
+    SkillAim hoverAim;
+    hoverAim.hoverTarget = hoverFar;
+    CHECK(m.combat.RequestSkill(mia, hoverAim) == SkillRequestResult::Buffered);
+    CHECK(m.combat.AttackTarget() == kNoEntity);
+    m.Step(20);  // the buffered press expires
+    const EntityId nearA = m.Spawn("goblin_chief", mp + Vec2(2, 0));
+    m.h.events.Clear();
+    const double m0 = m.h.clock.NowMs();
+    CHECK(m.combat.RequestSkill(mia, SkillAim{}) == SkillRequestResult::Executed);
+    CHECK(m.combat.AttackTarget() == nearA);
+    m.StepTo(m0 + 230);
+    const auto ml = EventsOf<EvProjectileLaunched>(m.h.events);
+    REQUIRE(ml.size() == 1);
+    CHECK(ml[0].target == nearA);
+  }
+
+  TEST_CASE("C14 rule 2: a projectile keeps its press-time target and hits it wherever it moves") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    hero.lastAttackMs = 1e18;
+    const Vec2 p = hero.Position();
+    const EntityId t = rig.Spawn("goblin_chief", p + Vec2(5, 0));
+    REQUIRE_MONSTER(t);
+    const EntityId other = rig.Spawn("goblin_chief", p + Vec2(1, 1));
+    rig.combat.SetAttackTarget(t, false);
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), SkillAim{}) == SkillRequestResult::Executed);
+    rig.Step(6);
+    // It walks beyond the web's range + 1 (7) during the beat: no swap to the monster next to the hero.
+    rig.monsters.Teleport(t, p + Vec2(7.5, 0), TeleportReason::Debug);
+    rig.StepTo(t0 + 230);
+    const auto l = EventsOf<EvProjectileLaunched>(rig.h.events);
+    REQUIRE(l.size() == 1);
+    CHECK(l[0].target == t);
+    CHECK(l[0].from == p);
+    CHECK(l[0].to == p + Vec2(7.5, 0));  // toward its release position
+    rig.monsters.Teleport(t, p + Vec2(7.5, 2), TeleportReason::Debug);  // and again in flight
+    rig.StepTo(l[0].launchMs + l[0].travelMs + kSimStepMs);
+    size_t onT = 0, onOther = 0;
+    for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+      onT += h.skillId == "ice_arrow" && h.target == t;
+      onOther += h.target == other;
+    }
+    CHECK(onT == 1);
+    CHECK(onOther == 0);
+    const auto ended = EventsOf<EvProjectileEnded>(rig.h.events);
+    REQUIRE(ended.size() == 1);
+    CHECK(ended[0].hit);
+  }
+
+  TEST_CASE("C14 rule 2: a ground AoE lands on the target's tile at release, never on another monster or the hero") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    hero.lastAttackMs = 1e18;
+    const Vec2 p = hero.Position();
+    const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(7, 0));  // the web anchored only within range + 1 = 6
+    REQUIRE_MONSTER(lock);
+    const EntityId near = rig.Spawn("goblin_chief", p + Vec2(2, 0));  // 5 tiles from the lock: outside the radius 3
+    rig.combat.SetAttackTarget(lock, false);
+    const int32_t bz = rig.SkillIndex("blizzard");
+    hero.Skills().SetLevel(bz, 1);
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(bz, SkillAim{}) == SkillRequestResult::Executed);
+    const auto anims = EventsOf<EvPlayAnim>(rig.h.events);
+    REQUIRE(anims.size() == 1);
+    CHECK(anims[0].faceTarget == p + Vec2(7, 0));
+    rig.Step(6);
+    rig.monsters.Teleport(lock, p + Vec2(7, 1), TeleportReason::Debug);  // it moves before the beat: the storm follows
+    rig.StepTo(t0 + 230);
+    Vec2 at;
+    for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+      if (v.skillId == "blizzard") at = v.point;
+    }
+    CHECK(at == p + Vec2(7, 1));
+    size_t onLock = 0, onNear = 0;
+    for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+      onLock += h.skillId == "blizzard" && h.target == lock;
+      onNear += h.skillId == "blizzard" && h.target == near;
+    }
+    CHECK(onLock == 1);
+    CHECK(onNear == 0);
+    // A lock beyond the cast reach: refused like a projectile (outOfRange, nothing spent) - a storm clamped 8 tiles out
+    // would land short of it on empty ground.
+    hero.Skills().ResetCooldowns();
+    hero.FillHpMana();
+    rig.monsters.Teleport(lock, p + Vec2(12, 0), TeleportReason::Debug);
+    rig.h.events.Clear();
+    const double t1 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(bz, SkillAim{}) == SkillRequestResult::Buffered);
+    bool outOfRange = false;
+    for (const EvLog& e : EventsOf<EvLog>(rig.h.events)) outOfRange = outOfRange || e.text.key == "zone.combat.outOfRange";
+    CHECK(outOfRange);
+    rig.StepTo(t1 + 300);
+    CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
+    CHECK(test::CountEvents<EvSkillVfx>(rig.h.events) == 0);
+    CHECK(hero.Mana() == hero.MaxMana());
+    CHECK(rig.combat.AttackTarget() == lock);  // the player's lock stays
+    // The same for every other shape aimed at a target: trap, cone, line and chain refuse a lock beyond 8 tiles.
+    struct FarCase {
+      ClassId cls;
+      const char* id;
+    };
+    for (const FarCase& k : {FarCase{ClassId::Rogue, "explosive_trap"}, FarCase{ClassId::Rogue, "multishot"},
+                             FarCase{ClassId::Rogue, "piercing_arrow"}, FarCase{ClassId::Mage, "chain_lightning"},
+                             FarCase{ClassId::Mage, "fireball"}}) {
+      CAPTURE(k.id);
+      CombatRig r(k.cls);
+      r.hero->lastAttackMs = 1e18;
+      const int32_t idx = r.SkillIndex(k.id);
+      r.hero->Skills().SetLevel(idx, 1);
+      const EntityId far = r.Spawn("goblin_chief", r.hero->Position() + Vec2(8.5, 0));
+      REQUIRE_MONSTER(far);
+      r.combat.SetAttackTarget(far, false);
+      CHECK(r.combat.RequestSkill(idx, SkillAim{}) == SkillRequestResult::Buffered);
+      r.Step(12);  // the buffered press expires: nothing was cast
+      CHECK(test::CountEvents<EvSkillUsed>(r.h.events) == 0);
+      CHECK(r.hero->Mana() == r.hero->MaxMana());
+      r.monsters.Teleport(far, r.hero->Position() + Vec2(7.5, 0), TeleportReason::Debug);  // within the cast reach
+      CHECK(r.combat.RequestSkill(idx, SkillAim{}) == SkillRequestResult::Executed);
+    }
+  }
+
+  TEST_CASE("C14 rule 2: cones and lines face the target and always reach it; no self-nova without a line target") {
+    {  // multishot: the fan turns to the lock behind the hero; the lock beyond the fan's 3 tiles is still hit
+      CombatRig rig(ClassId::Rogue);
+      REQUIRE(rig.ok);
+      Hero& hero = *rig.hero;
+      hero.lastAttackMs = 1e18;
+      hero.SetFacing(Vec2(1, 0));
+      const Vec2 p = hero.Position();
+      const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(-4, 0));
+      REQUIRE_MONSTER(lock);
+      const EntityId inFan = rig.Spawn("goblin_chief", p + Vec2(-2, 0.5));
+      const EntityId ahead = rig.Spawn("goblin_chief", p + Vec2(2, 0));  // along the old facing
+      rig.combat.SetAttackTarget(lock, false);
+      const double t0 = rig.h.clock.NowMs();
+      REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("multishot"), SkillAim{}) == SkillRequestResult::Executed);
+      CHECK(hero.Facing() == Vec2(-1, 0));
+      rig.StepTo(t0 + 246 + 300);
+      std::vector<EntityId> hit;
+      for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+        if (h.skillId == "multishot") hit.push_back(h.target);
+      }
+      CHECK(std::count(hit.begin(), hit.end(), lock) == 1);
+      CHECK(std::count(hit.begin(), hit.end(), inFan) == 1);
+      CHECK(std::count(hit.begin(), hit.end(), ahead) == 0);
+      for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+        if (v.skillId != "multishot") continue;
+        CHECK(v.dir == Vec2(-1, 0));
+        CHECK(v.points.size() == v.pointTargets.size());
+        CHECK(std::find(v.pointTargets.begin(), v.pointTargets.end(), lock) != v.pointTargets.end());
+      }
+    }
+    {  // piercing arrow: the line toward the lock; the lock beyond its 6 tiles (within 8) is hit; no nova behind
+      CombatRig rig(ClassId::Rogue);
+      Hero& hero = *rig.hero;
+      hero.lastAttackMs = 1e18;
+      const Vec2 p = hero.Position();
+      const int32_t pa = rig.SkillIndex("piercing_arrow");
+      hero.Skills().SetLevel(pa, 1);
+      const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(0, -7));
+      const EntityId onLine = rig.Spawn("goblin_chief", p + Vec2(0.5, -3));
+      const EntityId behind = rig.Spawn("goblin_chief", p + Vec2(0, 1));
+      rig.combat.SetAttackTarget(lock, false);
+      const double t0 = rig.h.clock.NowMs();
+      REQUIRE(rig.combat.RequestSkill(pa, SkillAim{}) == SkillRequestResult::Executed);
+      rig.StepTo(t0 + 246 + 300);
+      std::vector<EntityId> hit;
+      for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+        if (h.skillId == "piercing_arrow") hit.push_back(h.target);
+      }
+      CHECK(std::count(hit.begin(), hit.end(), lock) == 1);
+      CHECK(std::count(hit.begin(), hit.end(), onLine) == 1);
+      CHECK(std::count(hit.begin(), hit.end(), behind) == 0);
+      for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+        if (v.skillId != "piercing_arrow") continue;
+        CHECK(v.dir == Vec2(0, -1));
+        CHECK(v.point == p + Vec2(0, -7));  // the line reaches the target beyond its range
+      }
+      // No target at all: the line goes along the cursor; the monster next to the hero is not blasted (web nova).
+      CombatRig none(ClassId::Rogue);
+      none.hero->lastAttackMs = 1e18;
+      const Vec2 q = none.hero->Position();
+      none.hero->Skills().SetLevel(pa, 1);
+      const EntityId side = none.Spawn("goblin_chief", q + Vec2(-9, 0));  // out of the cast reach
+      SkillAim cursor;
+      cursor.hasPoint = true;
+      cursor.point = q + Vec2(-1, 0);
+      const double n0 = none.h.clock.NowMs();
+      REQUIRE(none.combat.RequestSkill(pa, cursor) == SkillRequestResult::Executed);
+      none.StepTo(n0 + 246 + 300);
+      bool fired = false;
+      for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(none.h.events)) {
+        fired = fired || (v.skillId == "piercing_arrow" && v.dir == Vec2(-1, 0) && v.point == q + Vec2(-6, 0));
+      }
+      CHECK(fired);
+      CHECK(test::CountEvents<EvHit>(none.h.events) == 0);
+      (void)side;
+    }
+  }
+
+  TEST_CASE("C14 rule 2: chain lightning starts on the target and jumps from it, not from the hero") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    hero.lastAttackMs = 1e18;
+    const Vec2 p = hero.Position();
+    const int32_t chain = rig.SkillIndex("chain_lightning");
+    hero.Skills().SetLevel(chain, 1);
+    const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(4.5, 0));  // beyond the hero-centred radius 4
+    REQUIRE_MONSTER(lock);
+    const EntityId hop = rig.Spawn("goblin_chief", p + Vec2(6, 1.5));     // 2.1 tiles from the lock
+    const EntityId close = rig.Spawn("goblin_chief", p + Vec2(-1, 0));    // next to the hero, 5.5 from the lock
+    rig.combat.SetAttackTarget(lock, false);
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(chain, SkillAim{}) == SkillRequestResult::Executed);
+    rig.StepTo(t0 + 230 + 200);
+    std::vector<EntityId> order;
+    for (const EvHit& h : EventsOf<EvHit>(rig.h.events)) {
+      if (h.skillId == "chain_lightning" && std::find(order.begin(), order.end(), h.target) == order.end()) {
+        order.push_back(h.target);
+      }
+    }
+    CHECK(order == std::vector<EntityId>{lock, hop});
+    CHECK(std::find(order.begin(), order.end(), close) == order.end());
+    bool vfx = false;
+    for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+      if (v.skillId != "chain_lightning") continue;
+      vfx = true;
+      REQUIRE(v.points.size() == 2);
+      CHECK(v.points[0] == p + Vec2(4.5, 0));
+      CHECK(v.pointTargets == std::vector<EntityId>{lock, hop});
+      CHECK(v.staggerMs == 55);
+    }
+    CHECK(vfx);
+  }
+
+  TEST_CASE("C14: a buffered press keeps its press-time target; a target that died is resolved again") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    hero.lastAttackMs = 1e18;
+    const Vec2 p = hero.Position();
+    const EntityId nearA = rig.Spawn("goblin_chief", p + Vec2(2, 0));
+    REQUIRE_MONSTER(nearA);
+    const EntityId hoverB = rig.Spawn("goblin_chief", p + Vec2(0, -5));
+    const int32_t ia = rig.SkillIndex("ice_arrow");
+    SkillAim aim;
+    aim.hoverTarget = hoverB;
+    const auto launchedTarget = [&rig]() {
+      REQUIRE(rig.StepUntil([&rig] { return test::CountEvents<EvProjectileLaunched>(rig.h.events) > 0; }, 40));
+      return EventsOf<EvProjectileLaunched>(rig.h.events).front().target;
+    };
+    hero.Skills().StartCooldown(ia, rig.h.clock.NowMs() + 100);
+    rig.h.events.Clear();
+    REQUIRE(rig.combat.RequestSkill(ia, aim) == SkillRequestResult::Buffered);
+    CHECK(rig.combat.AttackTarget() == hoverB);  // highlighted at the press
+    rig.combat.ClearAttackTarget();              // the selection goes; A is what a new press would pick now
+    REQUIRE(rig.combat.PreviewCastTarget(ia) == nearA);
+    CHECK(launchedTarget() == hoverB);
+    // The buffered target dies inside the window: resolved again from now, without the stale hover.
+    rig.combat.ClearAttackTarget();
+    hero.FillHpMana();
+    hero.Skills().StartCooldown(ia, rig.h.clock.NowMs() + 100);
+    rig.h.events.Clear();
+    REQUIRE(rig.combat.RequestSkill(ia, aim) == SkillRequestResult::Buffered);
+    MonsterHitRequest kill;
+    kill.monster = hoverB;
+    kill.amount = 1e6;
+    rig.combat.DamageMonster(kill);
+    rig.h.events.Clear();
+    CHECK(launchedTarget() == nearA);
+    CHECK(rig.combat.AttackTarget() == nearA);
+  }
+
+  TEST_CASE("C14: a press without a target keeps its aim through the beat; its fizzle is silent; VFX carry atMs") {
+    CombatRig rig(ClassId::Mage);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    hero.lastAttackMs = 1e18;
+    const Vec2 p = hero.Position();
+    const auto kill = [&rig](EntityId id) {
+      MonsterHitRequest r;
+      r.monster = id;
+      r.amount = 1e6;
+      rig.combat.DamageMonster(r);
+    };
+    SkillAim cursor;
+    cursor.hasPoint = true;
+    cursor.point = p + Vec2(0, 5);
+    // Ground AoE at the cursor: a monster that steps into the cast reach during the 230 ms beat does not capture it.
+    const int32_t bz = rig.SkillIndex("blizzard");
+    hero.Skills().SetLevel(bz, 1);
+    const double t0 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(bz, cursor) == SkillRequestResult::Executed);
+    REQUIRE(rig.combat.AttackTarget() == kNoEntity);
+    const EntityId g = rig.Spawn("goblin_chief", p + Vec2(-7, 0));
+    REQUIRE_MONSTER(g);
+    rig.StepTo(t0 + 300);
+    bool storm = false;
+    for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+      if (v.skillId != "blizzard") continue;
+      storm = true;
+      CHECK(v.point == p + Vec2(0, 5));
+      CHECK(v.atMs > t0);  // stamped with its release time
+      CHECK(v.atMs <= rig.h.clock.NowMs());
+    }
+    CHECK(storm);
+    CHECK(test::CountEvents<EvHit>(rig.h.events) == 0);
+    CHECK(rig.combat.AttackTarget() == kNoEntity);
+    // A projectile along the cursor likewise: no switch to a monster that stepped in.
+    kill(g);
+    hero.Skills().ResetCooldowns();
+    hero.FillHpMana();
+    rig.h.events.Clear();
+    const double t1 = rig.h.clock.NowMs();
+    REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), cursor) == SkillRequestResult::Executed);
+    const EntityId g2 = rig.Spawn("goblin_chief", p + Vec2(-6, 0));
+    REQUIRE_MONSTER(g2);
+    rig.StepTo(t1 + 300);
+    const auto l = EventsOf<EvProjectileLaunched>(rig.h.events);
+    REQUIRE(l.size() == 1);
+    CHECK(l[0].target == kNoEntity);
+    CHECK(l[0].to == p + Vec2(0, 8));
+    for (const EvSkillVfx& v : EventsOf<EvSkillVfx>(rig.h.events)) {
+      if (v.skillId == "ice_arrow") CHECK(v.atMs == l[0].launchMs);  // the glint goes out with the launch
+    }
+    CHECK(rig.combat.AttackTarget() == kNoEntity);
+    // A no-target fireball fizzles without its impact shake (the targeted explosion keeps it: see the fireball test).
+    kill(g2);
+    const int32_t fb = rig.SkillIndex("fireball");
+    hero.Skills().SetLevel(fb, 1);
+    hero.Skills().ResetCooldowns();
+    hero.FillHpMana();
+    rig.Step(30);
+    rig.h.events.Clear();
+    REQUIRE(rig.combat.RequestSkill(fb, cursor) == SkillRequestResult::Executed);
+    REQUIRE(rig.StepUntil([&rig] { return test::CountEvents<EvProjectileEnded>(rig.h.events) > 0; }, 90));
+    rig.Step(30);
+    const auto ended = EventsOf<EvProjectileEnded>(rig.h.events);
+    REQUIRE(ended.size() == 1);
+    CHECK_FALSE(ended[0].hit);
+    CHECK(test::CountEvents<EvCameraShake>(rig.h.events) == 0);
+  }
+
+  TEST_CASE("C14: auto-battle casts through the same resolver - its target is the one a manual press picks") {
+    const auto setUp = [](CombatRig& r) {
+      r.hero->lastAttackMs = 1e18;
+      const Vec2 p = r.hero->Position();
+      r.Spawn("goblin", p + Vec2(4, 0));                // aggro range 5
+      return r.Spawn("goblin", p + Vec2(0, 3));          // the nearest
+    };
+    CombatRig manual(ClassId::Mage);
+    REQUIRE(manual.ok);
+    const EntityId m = setUp(manual);
+    REQUIRE_MONSTER(m);
+    const int32_t fb = manual.SkillIndex("fireball");
+    REQUIRE(manual.combat.RequestSkill(fb, SkillAim{}) == SkillRequestResult::Executed);
+    REQUIRE(manual.StepUntil([&] { return test::CountEvents<EvProjectileLaunched>(manual.h.events) > 0; }, 40));
+    CHECK(EventsOf<EvProjectileLaunched>(manual.h.events).front().target == m);
+    CHECK(manual.combat.AttackTarget() == m);
+
+    CombatRig autoRig(ClassId::Mage);
+    const EntityId a = setUp(autoRig);
+    autoRig.hero->autoCombat = true;
+    REQUIRE(autoRig.StepUntil([&] { return test::CountEvents<EvProjectileLaunched>(autoRig.h.events) > 0; }, 60));
+    const auto launched = EventsOf<EvProjectileLaunched>(autoRig.h.events);
+    CHECK(launched.front().target == a);
+    CHECK(autoRig.combat.AttackTarget() == a);
+    const auto used = EventsOf<EvSkillUsed>(autoRig.h.events);
+    REQUIRE_FALSE(used.empty());
+    CHECK(used.front().skillId == "fireball");
+
+    // Layouts where the web's 9.4 acquisition (nearest on the map, only inside that monster's own aggro range) and the
+    // press disagreed: auto-battle acquires with the press's auto-pick, so both pick the same monster.
+    struct Layout {
+      const char* name;
+      Vec2 a, b;           // b = kNoEntity when zero
+      bool bChases;
+      int expect;          // 0 = a, 1 = b
+    };
+    const Layout layouts[] = {
+        {"beyond its aggro range (goblin 5) but within 8", Vec2(6.5, 0), Vec2(), false, 0},
+        {"a nearer idle monster over a farther chaser", Vec2(3, 0), Vec2(-6, 0), true, 0},
+        {"the nearer of two", Vec2(0, 7), Vec2(-4, 4), false, 1},
+    };
+    for (const Layout& l : layouts) {
+      CAPTURE(l.name);
+      const auto place = [&l](CombatRig& r, EntityId& ida, EntityId& idb) {
+        r.hero->lastAttackMs = 1e18;
+        const Vec2 p = r.hero->Position();
+        ida = r.Spawn("goblin", p + l.a);
+        idb = l.b == Vec2() ? kNoEntity : r.Spawn("goblin", p + l.b);
+        if (l.bChases && idb != kNoEntity) r.monsters.Find(idb)->state = MonsterState::Chase;
+      };
+      CombatRig man(ClassId::Mage);
+      EntityId ma = kNoEntity, mb = kNoEntity;
+      place(man, ma, mb);
+      REQUIRE_MONSTER(ma);
+      const EntityId manualPick = man.combat.PreviewCastTarget(man.SkillIndex("fireball"));
+      CHECK(manualPick == (l.expect == 0 ? ma : mb));
+      CombatRig aut(ClassId::Mage);
+      EntityId aa = kNoEntity, ab = kNoEntity;
+      place(aut, aa, ab);
+      aut.hero->autoCombat = true;
+      REQUIRE(aut.StepUntil([&] { return test::CountEvents<EvProjectileLaunched>(aut.h.events) > 0; }, 60));
+      const EntityId autoPick = l.expect == 0 ? aa : ab;
+      CHECK(EventsOf<EvProjectileLaunched>(aut.h.events).front().target == autoPick);
+      CHECK(aut.combat.AttackTarget() == autoPick);
+      CHECK(aut.combat.IndicatorTarget() == autoPick);
+    }
   }
 }

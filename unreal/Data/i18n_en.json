@@ -120,9 +120,11 @@
     "ui.character.computed.hit": "save-ui-input 7.2",
     "ui.character.computed.dodge": "save-ui-input 7.2",
     "ui.tooltip.inert": "C10",
-    "ui.tooltip.levelReq": "I3"
+    "ui.tooltip.levelReq": "I3",
+    "zone.combat.noTarget": "C14",
+    "zone.combat.outOfRange": "C14"
   },
-  "keyCount": 2732,
+  "keyCount": 2734,
   "strings": {
     "boot.title": "Abyssfire",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2855,6 +2857,8 @@
     "ui.character.computed.hit": "Basic hit",
     "ui.character.computed.dodge": "Dodge",
     "ui.tooltip.inert": "(inactive)",
-    "ui.tooltip.levelReq": "Requires level {level}"
+    "ui.tooltip.levelReq": "Requires level {level}",
+    "zone.combat.noTarget": "No target!",
+    "zone.combat.outOfRange": "Target out of range!"
   }
 }

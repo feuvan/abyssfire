@@ -7,7 +7,8 @@
 // The snapshot decides what an entity is (alive monster, marker kind); presentation actors never decide gameplay.
 //
 // Nothing picked -> the caller deprojects the ground (AAbyssPlayerController::DeprojectToTile) and sends CmdPointerPress,
-// whose core chain keeps the web's 1.5-tile tolerance as the fallback.
+// whose core chain keeps the web's 1.5-tile tolerance as the fallback. PickMonster is the same pick restricted to
+// living monsters (the desktop skill-key target under the cursor, DECISIONS C14).
 #pragma once
 
 #include "CoreMinimal.h"
@@ -23,6 +24,14 @@ namespace AbyssPicking
 	 * every rectangle (touch: a finger is wide). Reads the driver's snapshot index; game thread only.
 	 */
 	ABYSSFIRE_API FAbyssPickResult PickEntity(const APlayerController& Controller, const FVector2D& ScreenPosition,
+		float SlopPixels);
+
+	/**
+	 * Like PickEntity, but only living monsters compete (Action is Attack or None): the desktop cast target under the
+	 * cursor (DECISIONS C14 rule 1b, CmdCastSkill::hoverTarget), so loot / an NPC / a prop drawn over a monster cannot
+	 * shadow it the way it wins a click.
+	 */
+	ABYSSFIRE_API FAbyssPickResult PickMonster(const APlayerController& Controller, const FVector2D& ScreenPosition,
 		float SlopPixels);
 
 	/** What pressing on an entity does, from the snapshot (EAbyssPickAction::None = not pickable now). */

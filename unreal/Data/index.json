@@ -107,21 +107,21 @@
     },
     {
       "file": "i18n_en.json",
-      "counts": {"keys": 2732},
-      "bytes": 224107,
-      "sha256": "0b201b1b8fc311a193dbb72746fab8b1bc5164fd942755d63f18e04130e79558"
+      "counts": {"keys": 2734},
+      "bytes": 224275,
+      "sha256": "27abd2cb6187a0b004ef0ce2b55f875293d2c4ca9b5477f2a0a476103e855cf4"
     },
     {
       "file": "i18n_zh-CN.json",
-      "counts": {"keys": 2731},
-      "bytes": 216729,
-      "sha256": "c773ca29aacfbbfea3e195ffbbfd8e2fc5b876334d4c0f38978ec179a5089168"
+      "counts": {"keys": 2733},
+      "bytes": 216911,
+      "sha256": "b2da241e9d5f5a95eb03c86bd4b7ee1d1ae25f505aaed30168630299c3f0f22f"
     },
     {
       "file": "i18n_zh-TW.json",
-      "counts": {"keys": 2731},
-      "bytes": 216776,
-      "sha256": "ef80fd82c38c402d881c222f157f78c94351160da6c20d00000f321c75cb6f8a"
+      "counts": {"keys": 2733},
+      "bytes": 216958,
+      "sha256": "46fefa48e946b36477b77fe747feb9e21a190a6e70b1bfd3de7e9387be0a02a9"
     },
     {
       "file": "item_bases.json",
@@ -254,8 +254,8 @@
     {
       "file": "skill_rules.json",
       "counts": {"tiers": 3},
-      "bytes": 1207,
-      "sha256": "0ca4675065e3a80a0bbd67b17dee4885b149ccb28feda20184fd5fd9c72cc66e"
+      "bytes": 1300,
+      "sha256": "e348b1eeb6b3e0e11de3f9322dcd9c8a857b101fa6e158cae542c1a8814bd7e9"
     },
     {
       "file": "skill_trees.json",

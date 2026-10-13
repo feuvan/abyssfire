@@ -142,6 +142,15 @@ struct EvSkillVfx {
   double radius = 0;
   std::vector<Vec2> points;  // chain lightning / multishot target points (in order)
   double staggerMs = 0;      // per-point delay (C4 chain 55 ms)
+  // C14 (hero skills): the monster at each of `points` (same order; kNoEntity for a ground point such as a no-target
+  // chain's end), and the unit cast direction the core aimed the cone / line / projectile / chain along (zero for
+  // casts without one: buffs, novas, blinks, pets).
+  std::vector<EntityId> pointTargets;
+  Vec2 dir;
+  // C14: the sim time of the release (hero skills; < 0 = not stamped, e.g. pet abilities). A host frame dispatches the
+  // events of up to maxStepsPerFrame steps at once, so presentation that must land on a core delay (the multishot
+  // arrows' SkillArrowDelayMs) times from this, not from the frame's snapshot time.
+  double atMs = -1;
 };
 struct EvStatusApplied {
   EntityId target = kNoEntity;

@@ -71,6 +71,36 @@ Vec2 CmbDirOr(Vec2 d, Vec2 fallback) {
   return len > 1e-9 ? d / len : fallback;
 }
 
+// C14: a face / aim point closer than 1e-6 tile to the hero gives no direction.
+constexpr double kCombatMinAimTilesSq = 1e-12;
+
+// C14 no-target ground fallback: min(range, noTargetGroundAheadTiles) ahead; a trap drops at the hero's feet.
+double CmbNoTargetAhead(const SkillRules& rules, const SkillDef& s, CastShape shape) {
+  if (shape == CastShape::Trap) return 0;
+  return (std::min)(s.range, rules.noTargetGroundAheadTiles);
+}
+
+// Teleport aim (section 10 + C8): the cursor point, the stick, the player's own lock (`playerLock`: a click / tap /
+// target cycle), else the tapped target, the facing. Never a C14 hover / auto-pick or auto-battle's lock, although they
+// hold hero.attackTarget too: an escape blink must not land next to the monster the hero just shot at.
+TeleportAim CmbTeleportAim(const SimContext& ctx, const SkillAim& aim, EntityId playerLock) {
+  TeleportAim ta;
+  ta.hasPoint = aim.hasPoint;
+  ta.point = aim.point;
+  ta.stickDir = aim.stickDir;
+  for (const EntityId lock : {playerLock, aim.target}) {
+    if (lock == kNoEntity) continue;
+    const MonsterInstance* m = ctx.sys.monsters != nullptr ? ctx.sys.monsters->Find(lock) : nullptr;
+    if (m != nullptr && m->IsAlive()) {
+      ta.hasTarget = true;
+      ta.targetPos = m->pos;
+      break;
+    }
+  }
+  ta.facing = ctx.sys.hero->Facing();
+  return ta;
+}
+
 }  // namespace
 
 CombatSystem::CombatSystem(SimContext& ctx)
@@ -92,10 +122,6 @@ bool CombatSystem::HeroAlive() const {
 
 bool CombatSystem::HeroImmobilized() const {
   return ctx_.sys.status != nullptr && ctx_.sys.status->IsImmobilized(kHeroEntityId);
-}
-
-double CombatSystem::SkillReach(const SkillDef& s) const {
-  return s.range + ctx_.data.Classes().skillRules.rangeSlackTiles;
 }
 
 std::vector<TargetCandidate> CombatSystem::AliveCandidates(Vec2 centre, double radius) const {
@@ -162,7 +188,9 @@ void CombatSystem::SkillShake(const SkillDef& s, SkillShakeAnchor at) {
 // Every hero skill VFX goes out here: the event, then its VFX-anchored authored shake (SkillEffectSystem.play runs the
 // effect - and a synchronous e.shake - before the release applies its hits).
 void CombatSystem::EmitSkillVfx(const SkillDef& s, const EvSkillVfx& v) {
-  ctx_.events.Emit(v);
+  EvSkillVfx stamped = v;
+  stamped.atMs = ctx_.Now();  // C14: one host frame dispatches several steps' events; presentation times from this
+  ctx_.events.Emit(std::move(stamped));
   SkillShake(s, SkillShakeAnchor::Vfx);
 }
 
@@ -763,7 +791,7 @@ void CombatSystem::Respawn(bool parentZoneRestart) {
     // until the zone change places it; the parent zone's entry autosave stands in for the web's create() autosave.
     // (A labyrinth run would end 'fallen' here; the core has no labyrinth run yet - later milestone.)
     if (ctx_.sys.locomotion != nullptr) ctx_.sys.locomotion->Stop();
-    SetTargetInternal(kNoEntity);
+    SetTargetInternal(kNoEntity, false);
     hero.lastAttackMs = 0;
     ctx_.events.Log(MakeLoc("zone.death.logMessage"), LogType::System);
     zone->RequestZoneChange(parentMap, parentCamp);
@@ -779,7 +807,7 @@ void CombatSystem::Respawn(bool parentZoneRestart) {
   } else {
     hero.SetPosition(camp);
   }
-  SetTargetInternal(kNoEntity);
+  SetTargetInternal(kNoEntity, false);
   hero.lastAttackMs = 0;
   ctx_.events.Log(MakeLoc("sys.player.respawn"), LogType::System);
   ctx_.events.Emit(EvHeroRespawned{camp});
@@ -872,7 +900,7 @@ void CombatSystem::OnMonsterKilled(const MonsterKilledMsg& m) {
   ftGold.value = static_cast<double>(gold);
   ctx_.events.Emit(ftGold);
   // Target cleanup (the web cleared it on basic-attack kills; every kill path does here).
-  if (hero.attackTarget == m.monster) SetTargetInternal(kNoEntity);
+  if (hero.attackTarget == m.monster) SetTargetInternal(kNoEntity, false);
   if (indicator_ == m.monster) UpdateIndicator();
   // The dead monster's pending swing can never land.
   for (size_t i = 0; i < strikes_.size(); ++i) {
@@ -888,8 +916,9 @@ void CombatSystem::OnMonsterKilled(const MonsterKilledMsg& m) {
 // targeting
 // =====================================================================================================================
 
-void CombatSystem::SetTargetInternal(EntityId target) {
+void CombatSystem::SetTargetInternal(EntityId target, bool playerChosen) {
   Hero& hero = *ctx_.sys.hero;
+  playerLock_ = playerChosen ? target : kNoEntity;
   if (hero.attackTarget == target && indicator_ == target) return;
   hero.attackTarget = target;
   if (indicator_ != target) {
@@ -902,7 +931,7 @@ void CombatSystem::SetAttackTarget(EntityId monster, bool approach) {
   if (!HeroAlive()) return;
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(monster) : nullptr;
   if (m == nullptr || !m->IsAlive()) return;
-  SetTargetInternal(monster);
+  SetTargetInternal(monster, true);  // a click / tap: the player's own lock (C8 teleport may blink to it)
   if (!approach || ctx_.sys.locomotion == nullptr) return;
   // 9.1: a monster click always replaces the walk order (the web paths to the monster's tile); C7 only makes that walk
   // stop at attack range. Approach ends at once - path cleared, hero stopped - when the target is already in range, so a
@@ -925,6 +954,7 @@ void CombatSystem::CycleTarget() {
                                            ctx_.data.Combat().input.targetCycleRangeTiles, ctx_.sys.hero->attackTarget);
   Hero& hero = *ctx_.sys.hero;
   hero.attackTarget = next;
+  playerLock_ = next;  // a deliberate selection, like a click
   if (indicator_ != next || next == kNoEntity) {
     indicator_ = next;
     ctx_.events.Emit(EvTargetChanged{next});
@@ -941,26 +971,60 @@ void CombatSystem::SetAutoCombat(bool on) {
 
 EntityId CombatSystem::AttackTarget() const { return ctx_.sys.hero->attackTarget; }
 
-// findPreferredSkillTarget (9.2): the lock if alive, else the nearest alive monster anywhere on the map.
-EntityId CombatSystem::PreferredTarget() const {
-  const MonsterSystem* ms = ctx_.sys.monsters;
-  if (ms == nullptr) return kNoEntity;
+EntityId CombatSystem::PlayerLock() const {
   const EntityId lock = ctx_.sys.hero->attackTarget;
-  if (lock != kNoEntity) {
-    const MonsterInstance* m = ms->Find(lock);
-    if (m != nullptr && m->IsAlive()) return lock;
+  return lock != kNoEntity && lock == playerLock_ ? lock : kNoEntity;
+}
+
+// C14 rule (c), shared by the press, the target ring (9.5) and auto-battle (9.4): the nearest alive monster within
+// `radius` (MonsterSystem spatial-grid order keeps ties deterministic).
+EntityId CombatSystem::AutoPickTarget(double radius) const {
+  const MonsterSystem* ms = ctx_.sys.monsters;
+  return ms != nullptr ? ms->NearestAlive(ctx_.sys.hero->Position(), radius) : kNoEntity;
+}
+
+// C14 cast target rule (classes 9.2): (a) tap / lock, (b) hover, (c) the nearest within the radius (the skill's cast
+// reach at the press).
+EntityId CombatSystem::ResolveCastTarget(const SkillDef& s, const SkillAim& aim, bool useHover, double radius,
+                                         AcquireCache* cache) const {
+  const MonsterSystem* ms = ctx_.sys.monsters;
+  if (ms == nullptr || SkillCastShape(s) == CastShape::Blink) return kNoEntity;
+  const auto aliveMonster = [ms](EntityId id) -> const MonsterInstance* {
+    if (id == kNoEntity) return nullptr;
+    const MonsterInstance* m = ms->Find(id);
+    return m != nullptr && m->IsAlive() ? m : nullptr;
+  };
+  const Hero& hero = *ctx_.sys.hero;
+  if (aliveMonster(aim.target) != nullptr) return aim.target;                   // (a) a touch tap
+  if (aliveMonster(hero.attackTarget) != nullptr) return hero.attackTarget;     // (a) the lock
+  if (useHover && aliveMonster(aim.hoverTarget) != nullptr) return aim.hoverTarget;  // (b) under the cursor
+  if (cache != nullptr && cache->valid && cache->radius == radius) return cache->id;
+  const EntityId pick = AutoPickTarget(radius);  // (c); with no lock the ring previews this same pick (9.5)
+  if (cache != nullptr) {
+    cache->valid = true;
+    cache->radius = radius;
+    cache->id = pick;
   }
-  double radius = 1e6;
-  if (ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) {
-    radius = (std::max)(ctx_.sys.zone->Grid().Cols(), ctx_.sys.zone->Grid().Rows());
-  }
-  return ms->NearestAlive(ctx_.sys.hero->Position(), radius);
+  return pick;
+}
+
+void CombatSystem::SelectCastTarget(const SkillDef& s, EntityId target) {
+  if (target == kNoEntity || target == ctx_.sys.hero->attackTarget || !CastShapeSelects(SkillCastShape(s))) return;
+  SetTargetInternal(target, false);  // a hover / auto-pick: selected, but not the player's own (C8) lock
+}
+
+EntityId CombatSystem::PreviewCastTarget(int32_t skillIndex) const {
+  const SkillBook& book = ctx_.sys.hero->Skills();
+  if (skillIndex < 0 || static_cast<size_t>(skillIndex) >= book.SkillCount()) return kNoEntity;
+  const SkillDef& s = book.Skill(skillIndex);
+  return ResolveCastTarget(s, SkillAim{}, false, SkillCastReach(ctx_.data.Classes().skillRules, s));
 }
 
 EntityId CombatSystem::IndicatorTarget() const { return indicator_; }
 
-// updateTargetIndicator (9.5): the lock (a dead lock is cleared), else the nearest aggro monster; EvTargetChanged
-// whenever the shown target changes.
+// updateTargetIndicator (9.5 with C14): the lock (a dead lock is cleared), else the C14 (c) auto-pick a press would
+// take - the nearest alive monster within castAcquireMinTiles (the cast reach of every shipped skill) - so the ring and
+// the cast never disagree; EvTargetChanged whenever the shown target changes.
 void CombatSystem::UpdateIndicator() {
   Hero& hero = *ctx_.sys.hero;
   const MonsterSystem* ms = ctx_.sys.monsters;
@@ -973,7 +1037,9 @@ void CombatSystem::UpdateIndicator() {
       hero.attackTarget = kNoEntity;
     }
   }
-  if (shown == kNoEntity && hero.attackTarget == kNoEntity && ms != nullptr) shown = ms->NearestAggro(hero.Position());
+  if (shown == kNoEntity && hero.attackTarget == kNoEntity) {
+    shown = AutoPickTarget(ctx_.data.Classes().skillRules.castAcquireMinTiles);
+  }
   if (shown != indicator_) {
     indicator_ = shown;
     ctx_.events.Emit(EvTargetChanged{shown});
@@ -1000,81 +1066,112 @@ SkillRequestResult CombatSystem::RequestSkill(int32_t skillIndex, const SkillAim
     ctx_.events.Log(MakeLoc("zone.combat.skillLocked"), LogType::Combat);
     return SkillRequestResult::Locked;
   }
-  if (book.Skill(skillIndex).passive) return SkillRequestResult::Passive;  // C1 / FIX Q4
-  // An explicit target (touch tap) becomes the lock for this cast.
-  if (aim.target != kNoEntity && aim.target != hero.attackTarget) {
+  const SkillDef& s = book.Skill(skillIndex);
+  if (s.passive) return SkillRequestResult::Passive;  // C1 / FIX Q4
+  // An explicit target (touch tap) becomes the player's lock, whatever the skill (C8 teleport reads it as its lock) -
+  // also when it already was the lock as a C14 pick.
+  if (aim.target != kNoEntity && aim.target != PlayerLock()) {
     const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(aim.target) : nullptr;
-    if (m != nullptr && m->IsAlive()) SetTargetInternal(aim.target);
+    if (m != nullptr && m->IsAlive()) SetTargetInternal(aim.target, true);
   }
+  // C14: resolve once, at the press; the pick is highlighted (selected) at once, also when the press is buffered for
+  // cooldown / mana / a stun - but never a pick the cast cannot reach (the lock would then pin every later press and the
+  // basic attack to it).
+  const EntityId target = ResolveCastTarget(s, aim, true, SkillCastReach(ctx_.data.Classes().skillRules, s));
+  const CastGate gate = EvaluateCast(skillIndex, target, false);
+  if (gate != CastGate::OutOfRange) SelectCastTarget(s, target);
   const double now = ctx_.Now();
-  if (buffer_.Request(skillIndex, now, CanExecuteSkill(skillIndex)) == InputBuffer::RequestResult::ExecuteNow) {
-    TryUseSkill(skillIndex, aim);
+  if (buffer_.Request(skillIndex, now, gate == CastGate::Ok) == InputBuffer::RequestResult::ExecuteNow) {
+    TryUseSkill(skillIndex, aim, target);
     return SkillRequestResult::Executed;
   }
   bufferedAim_ = aim;
-  ctx_.events.Emit(EvSkillBuffered{book.Skill(skillIndex).id, buffer_.ExpiresAtMs()});
+  bufferedTarget_ = target;
+  // Never a silent failure for the target rule: the press says why (cooldown / mana show on the hotbar).
+  if (gate == CastGate::NoTarget) ctx_.events.Log(MakeLoc("zone.combat.noTarget"), LogType::Combat);
+  if (gate == CastGate::OutOfRange) ctx_.events.Log(MakeLoc("zone.combat.outOfRange"), LogType::Combat);
+  ctx_.events.Emit(EvSkillBuffered{s.id, buffer_.ExpiresAtMs()});
   return SkillRequestResult::Buffered;
 }
 
-// The shared gate of canExecuteSkill / tryUseSkill (classes 9.2-9.3 with C1: passives false, Q6 range + slack for
-// targeted buffs (rangeCheck data), Q8 death_mark / shadow_step need a target; C5: an immobilized hero cannot cast).
-bool CombatSystem::SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget,
-                                  PreferredCache* preferred) const {
+// The shared gate of canExecuteSkill / tryUseSkill (classes 9.2-9.3 with C1: passives false; C5: an immobilized hero
+// cannot cast; C14: the target rule per cast shape - FIX Q8 death_mark / shadow_step need a target).
+CastGate CombatSystem::EvaluateCast(int32_t skillIndex, EntityId target, bool logFailures) const {
   const Hero& hero = *ctx_.sys.hero;
-  if (!HeroAlive()) return false;
+  if (!HeroAlive()) return CastGate::Dead;
   const SkillBook& book = hero.Skills();
-  if (skillIndex < 0 || static_cast<size_t>(skillIndex) >= book.SkillCount()) return false;
+  if (skillIndex < 0 || static_cast<size_t>(skillIndex) >= book.SkillCount()) return CastGate::Locked;
   const SkillDef& s = book.Skill(skillIndex);
   if (book.Level(skillIndex) <= 0) {
     if (logFailures) ctx_.events.Log(MakeLoc("zone.combat.skillLocked"), LogType::Combat);
-    return false;
+    return CastGate::Locked;
   }
-  if (s.passive) return false;
-  if (!book.IsReady(skillIndex, ctx_.Now())) return false;
+  if (s.passive) return CastGate::Passive;
+  if (!book.IsReady(skillIndex, ctx_.Now())) return CastGate::Cooldown;
   if (hero.Mana() < CastManaCost(skillIndex)) {
     if (logFailures) ctx_.events.Log(MakeLoc("zone.combat.manaInsufficient"), LogType::Combat);
-    return false;
+    return CastGate::Mana;
   }
   if (HeroImmobilized()) {
     if (logFailures && s.execKind == SkillExecKind::Teleport) {
       ctx_.events.Log(MakeLoc("zone.teleport.blockedByCC"), LogType::Combat);
     }
-    return false;
+    return CastGate::Immobilized;
   }
-  EntityId target = kNoEntity;
-  if (preferred != nullptr) {
-    if (!preferred->valid) {
-      preferred->id = PreferredTarget();
-      preferred->valid = true;
-    }
-    target = preferred->id;
-  } else {
-    target = PreferredTarget();
+  const CastShape shape = SkillCastShape(s);
+  // Buffs, teleport and hero-centred novas are never aimed at a target.
+  if (shape == CastShape::Self || shape == CastShape::Blink || shape == CastShape::Nova) return CastGate::Ok;
+  const MonsterInstance* m =
+      target != kNoEntity && ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(target) : nullptr;
+  if (m == nullptr || !m->IsAlive()) {
+    // Projectile / Chain / Ground / Trap / Cone / Line without a target fire along the aim (rule 3); the others need one.
+    return CastShapeNeedsTarget(shape) ? CastGate::NoTarget : CastGate::Ok;
   }
-  if (outTarget != nullptr) *outTarget = target;
-  if (target == kNoEntity) {
-    if (s.requiresTarget) return false;
-    return s.hasBuff || s.aoe || s.execKind == SkillExecKind::Teleport;
-  }
-  if (!s.rangeCheck) return true;
-  const MonsterInstance* m = ctx_.sys.monsters->Find(target);
-  if (m == nullptr) return false;
-  const double reach = SkillReach(s);
-  return DistSq(hero.Position(), m->pos) <= reach * reach;
+  // Every shape aimed at a target needs it within its release reach: a ground AoE beyond it would land short of it
+  // (clamped) and a cone / line would miss it, so they refuse like a projectile instead of spending the cost.
+  const double reach = SkillReleaseReach(ctx_.data.Classes().skillRules, s);
+  return DistSq(hero.Position(), m->pos) <= reach * reach ? CastGate::Ok : CastGate::OutOfRange;
 }
 
-bool CombatSystem::CanExecuteSkill(int32_t skillIndex) const { return SkillUsableNow(skillIndex, false, nullptr); }
+bool CombatSystem::CanExecuteSkill(int32_t skillIndex) const {
+  return EvaluateCast(skillIndex, PreviewCastTarget(skillIndex), false) == CastGate::Ok;
+}
+
+EntityId CombatSystem::BufferedCastTarget(int32_t skillIndex) const {
+  if (bufferedTarget_ != kNoEntity && ctx_.sys.monsters != nullptr) {
+    const MonsterInstance* m = ctx_.sys.monsters->Find(bufferedTarget_);
+    if (m != nullptr && m->IsAlive()) return bufferedTarget_;  // the press-time target, kept
+  }
+  const SkillBook& book = ctx_.sys.hero->Skills();
+  if (skillIndex < 0 || static_cast<size_t>(skillIndex) >= book.SkillCount()) return kNoEntity;
+  const SkillDef& s = book.Skill(skillIndex);
+  // It died (or there was none): resolve again from now, without the stale hover.
+  return ResolveCastTarget(s, bufferedAim_, false, SkillCastReach(ctx_.data.Classes().skillRules, s));
+}
 
 void CombatSystem::ConsumeBufferedSkill() {
   if (!buffer_.HasPending()) return;
-  const int32_t idx = buffer_.ConsumeReady(ctx_.Now(), [this](int32_t i) { return CanExecuteSkill(i); });
-  if (idx >= 0) TryUseSkill(idx, bufferedAim_);
+  const EntityId target = BufferedCastTarget(buffer_.PendingSkill());
+  const int32_t idx = buffer_.ConsumeReady(
+      ctx_.Now(), [this, target](int32_t i) { return EvaluateCast(i, target, false) == CastGate::Ok; });
+  if (idx < 0) return;
+  SelectCastTarget(ctx_.sys.hero->Skills().Skill(idx), target);
+  TryUseSkill(idx, bufferedAim_, target);
+}
+
+CastAim CombatSystem::MakeCastAim(const CastTarget& target, const SkillAim& aim) const {
+  CastAim a;
+  a.hasTarget = target.hasPos;
+  a.targetPos = target.pos;
+  a.hasPoint = aim.hasPoint;
+  a.point = aim.point;
+  a.facing = ctx_.sys.hero->Facing();
+  return a;
 }
 
 // tryUseSkill (classes 9.3): commit (cooldown, mana, SKILL_USED), freeCast, animation, release now or on the beat.
-void CombatSystem::TryUseSkill(int32_t skillIndex, const SkillAim& aim) {
-  EntityId target = kNoEntity;
-  if (!SkillUsableNow(skillIndex, true, &target)) return;
+void CombatSystem::TryUseSkill(int32_t skillIndex, const SkillAim& aim, EntityId target) {
+  if (EvaluateCast(skillIndex, target, true) != CastGate::Ok) return;
   Hero& hero = *ctx_.sys.hero;
   SkillBook& book = hero.Skills();
   const SkillDef& s = book.Skill(skillIndex);
@@ -1098,18 +1195,39 @@ void CombatSystem::TryUseSkill(int32_t skillIndex, const SkillAim& aim) {
   const std::string art = HeroArtGameId(manifest, hero.Class());  // the asset UE plays (player_<class>)
   const AnimRig rig = HeroRig(hero.Class());
   const MonsterInstance* tm = target != kNoEntity ? ctx_.sys.monsters->Find(target) : nullptr;
+  if (tm != nullptr && !tm->IsAlive()) tm = nullptr;
+  CastTarget ct;
+  ct.id = tm != nullptr ? target : kNoEntity;
+  ct.hasPos = tm != nullptr;
+  ct.pos = tm != nullptr ? tm->pos : Vec2();
   ActionTiming timing;
   AnimAction action = AnimAction::Cast;
-  bool faceTarget = false;
   if (s.animKind == SkillAnimKind::Attack && tm != nullptr) {
     timing = ComputeAttackTiming(at, manifest, art, rig, hero.Derived().attackSpeedMs, "Attack01");
     action = AnimAction::Attack;
-    faceTarget = true;
   } else {
     timing = ComputeCastTiming(at, manifest, art, rig, "Cast01");
-    // A teleport turns only toward the lock: its touch fallback blinks along the facing (C8), which must not become the
-    // direction of a merely nearest monster.
-    faceTarget = tm != nullptr && !s.hasBuff && (s.execKind != SkillExecKind::Teleport || target == hero.attackTarget);
+  }
+  // C14 rule 4: the hero turns toward what the cast is released at before the animation - the target, else the
+  // no-target aim (a ground cast's point, the cursor / facing direction), a teleport's aimed destination. Buffs never.
+  const CastShape shape = SkillCastShape(s);
+  const SkillRules& rules = ctx_.data.Classes().skillRules;
+  const Vec2 heroPos = hero.Position();
+  bool face = false;
+  Vec2 facePoint;
+  if (shape == CastShape::Blink) {
+    face = true;
+    facePoint = TeleportAimPoint(s.port, heroPos, CmbTeleportAim(ctx_, aim, PlayerLock()));
+  } else if (shape != CastShape::Self) {
+    face = true;
+    const CastAim ca = MakeCastAim(ct, aim);
+    if (tm != nullptr) {
+      facePoint = tm->pos;
+    } else if (shape == CastShape::Ground || shape == CastShape::Trap) {
+      facePoint = GroundCastPoint(heroPos, ca, SkillCastReach(rules, s), CmbNoTargetAhead(rules, s, shape));
+    } else {
+      facePoint = heroPos + CastDirection(heroPos, ca);
+    }
   }
   EvPlayAnim anim;
   anim.entity = kHeroEntityId;
@@ -1119,26 +1237,26 @@ void CombatSystem::TryUseSkill(int32_t skillIndex, const SkillAim& aim) {
   anim.contactMs = timing.contactMs;
   anim.durationMs = timing.durationMs;
   anim.playRate = timing.playRate;
-  if (faceTarget && tm != nullptr) {
+  if (face && DistSq(facePoint, heroPos) > kCombatMinAimTilesSq) {
     anim.hasFaceTarget = true;
-    anim.faceTarget = tm->pos;
-    hero.SetFacing(CmbDirOr(tm->pos - hero.Position(), hero.Facing()));
+    anim.faceTarget = facePoint;
+    hero.SetFacing(CmbDirOr(facePoint - heroPos, hero.Facing()));
   }
   ctx_.events.Emit(anim);
 
   if (s.instantRelease || !(timing.contactMs > 0)) {
-    ReleaseSkill(skillIndex, level, target, aim, cost);
+    ReleaseSkill(skillIndex, level, ct, aim, cost);
     return;
   }
   PendingRelease pr;
   pr.skillIndex = skillIndex;
   pr.level = level;
-  pr.target = target;
+  pr.target = ct;
   pr.aim = aim;
   pr.manaCost = cost;
   const int32_t slot = AllocRelease(pr);
   ctx_.timers.Schedule(now + timing.contactMs, TimerOwner::Combat, static_cast<uint16_t>(CombatTimerKind::SkillRelease),
-                       kHeroEntityId, target, slot);
+                       kHeroEntityId, ct.id, slot);
 }
 
 int32_t CombatSystem::AllocRelease(const PendingRelease& r) {
@@ -1170,38 +1288,42 @@ int32_t CombatSystem::AllocHit(PendingHit h) {
 // skills: release (classes 9.5)
 // =====================================================================================================================
 
-void CombatSystem::ReleaseSkill(int32_t skillIndex, int32_t level, EntityId target, const SkillAim& aim,
+void CombatSystem::ReleaseSkill(int32_t skillIndex, int32_t level, const CastTarget& target, const SkillAim& aim,
                                 int32_t manaCost) {
   const SkillDef& s = ctx_.sys.hero->Skills().Skill(skillIndex);
+  const MonsterInstance* tm = target.id != kNoEntity ? ctx_.sys.monsters->Find(target.id) : nullptr;
+  const EntityId alive = tm != nullptr && tm->IsAlive() ? target.id : kNoEntity;
   switch (s.execKind) {
     case SkillExecKind::Teleport:
-      ReleaseTeleport(s, level, target, aim, manaCost);
+      ReleaseTeleport(s, level, aim, manaCost);
       return;
     case SkillExecKind::ShadowStep:
-      if (target != kNoEntity) ReleaseShadowStep(s, level, target);  // FIX Q8: no buff fallback without a target
+      if (alive != kNoEntity) ReleaseShadowStep(s, level, alive);  // FIX Q8: no buff fallback without a target
       return;
     case SkillExecKind::DeathMark:
-      if (target != kNoEntity) ReleaseDeathMark(s, level, target);
+      if (alive != kNoEntity) ReleaseDeathMark(s, level, alive);
       return;
     case SkillExecKind::SlowTrap: {
+      // C14: on the target's tile (clamped to the cast reach), else the cursor point, else the hero's feet.
       const SkillRules& rules = ctx_.data.Classes().skillRules;
       const double radius = SkillAoeRadius(rules, s, level);
-      const Vec2 hero = ctx_.sys.hero->Position();
-      if (s.port.persistentGround && ctx_.sys.projectiles != nullptr) {  // C4: an armed trap at the hero's feet
+      const Vec2 center = GroundCastPoint(ctx_.sys.hero->Position(), MakeCastAim(target, aim), SkillCastReach(rules, s),
+                                          CmbNoTargetAhead(rules, s, CastShape::Trap));
+      if (s.port.persistentGround && ctx_.sys.projectiles != nullptr) {  // C4: an armed trap
         GroundEffectSpec g;
         g.source = kHeroEntityId;
         g.skillIndex = skillIndex;
         g.skillLevel = level;
         g.skillId = s.id;
         g.vfxId = s.vfxId;
-        g.center = hero;
+        g.center = center;
         g.radius = radius;
         g.durationMs = s.port.groundDurationMs;
         g.trigger = s.port.groundTrigger;
         g.ticks = (std::max)(1, s.port.groundTicks);
         ctx_.sys.projectiles->StartGroundEffect(g);
       } else {
-        SlowTrapHits(s, level, hero, radius, nullptr);
+        SlowTrapHits(s, level, center, radius, nullptr);
       }
       return;
     }
@@ -1210,38 +1332,22 @@ void CombatSystem::ReleaseSkill(int32_t skillIndex, int32_t level, EntityId targ
       return;
     case SkillExecKind::Aoe:
       if (s.aoe && SkillAoeRadius(ctx_.data.Classes().skillRules, s, level) > 0) {
-        ReleaseAoe(s, level, target);
-      } else if (target != kNoEntity) {
-        ReleaseSingle(s, level, target);
+        ReleaseAoe(s, level, target, aim);
+      } else if (alive != kNoEntity) {
+        ReleaseSingle(s, level, target, aim);
       }
       return;
     case SkillExecKind::Single:
-      if (target != kNoEntity) ReleaseSingle(s, level, target);
+      ReleaseSingle(s, level, target, aim);
       return;
   }
 }
 
-void CombatSystem::ReleaseTeleport(const SkillDef& s, int32_t level, EntityId /*target*/, const SkillAim& aim,
-                                   int32_t manaCost) {
+void CombatSystem::ReleaseTeleport(const SkillDef& s, int32_t level, const SkillAim& aim, int32_t manaCost) {
   Hero& hero = *ctx_.sys.hero;
   ZoneRuntime* zone = ctx_.sys.zone;
   if (zone == nullptr || !zone->HasZone()) return;
-  TeleportAim ta;
-  ta.hasPoint = aim.hasPoint;
-  ta.point = aim.point;
-  ta.stickDir = aim.stickDir;
-  // C8: the touch fallback is the LOCKED target (the lock, else the tapped target), never the release's preferred
-  // target, which falls back to the nearest monster on the map (an escape blink must not land next to it).
-  for (const EntityId lock : {hero.attackTarget, aim.target}) {
-    if (lock == kNoEntity) continue;
-    const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(lock) : nullptr;
-    if (m != nullptr && m->IsAlive()) {
-      ta.hasTarget = true;
-      ta.targetPos = m->pos;
-      break;
-    }
-  }
-  ta.facing = hero.Facing();
+  const TeleportAim ta = CmbTeleportAim(ctx_, aim, PlayerLock());
   TilePos dest;
   const WalkableFn walkable = [zone](int32_t c, int32_t r) { return zone->Walkable(c, r); };
   if (!ComputeTeleportDestination(s.port, hero.Position(), ta, zone->Grid().Cols(), zone->Grid().Rows(), walkable,
@@ -1256,13 +1362,14 @@ void CombatSystem::ReleaseTeleport(const SkillDef& s, int32_t level, EntityId /*
   } else {
     hero.SetPosition(dest.Center());
   }
-  SetTargetInternal(kNoEntity);
+  // C14: the selection survives the blink (the web cleared it): the mage blinks away and keeps casting at it.
   EvSkillVfx v;
   v.skillId = s.id;
   v.vfxId = s.vfxId;
   v.caster = kHeroEntityId;
   v.origin = from;
   v.point = dest.Center();
+  v.dir = CmbDirOr(dest.Center() - from, Vec2());
   EmitSkillVfx(s, v);
   ctx_.events.Log(MakeLoc("zone.combat.skillActivated", {CmbSkillNameArg(s)}), LogType::Combat);
   (void)level;
@@ -1284,7 +1391,7 @@ void CombatSystem::ReleaseShadowStep(const SkillDef& s, int32_t level, EntityId 
     hero.SetPosition(dest.Center());
   }
   hero.SetFacing(CmbDirOr(mpos - dest.Center(), hero.Facing()));
-  SetTargetInternal(target);
+  SetTargetInternal(target, target == PlayerLock());  // the lock it struck stays the player's own if it was
   if (s.hasBuff) {
     const SkillRules& rules = ctx_.data.Classes().skillRules;
     ActiveBuff b;
@@ -1440,31 +1547,28 @@ void CombatSystem::ReleaseBuff(const SkillDef& s, int32_t level) {
   EmitSkillVfx(s, v);
 }
 
-void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target) {
+void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, const CastTarget& target, const SkillAim& aim) {
   Hero& hero = *ctx_.sys.hero;
   MonsterSystem* ms = ctx_.sys.monsters;
   const SkillRules& rules = ctx_.data.Classes().skillRules;
   const double now = ctx_.Now();
   const double radius = SkillAoeRadius(rules, s, level);
   const Vec2 heroPos = hero.Position();
-  const MonsterInstance* tm = target != kNoEntity ? ms->Find(target) : nullptr;
+  const CastShape shape = SkillCastShape(s);
+  const double reach = SkillCastReach(rules, s);
+  const MonsterInstance* tm = target.id != kNoEntity ? ms->Find(target.id) : nullptr;
   const bool targetAlive = tm != nullptr && tm->IsAlive();
-  const Vec2 targetPos = tm != nullptr ? tm->pos : heroPos;
+  const CastAim ca = MakeCastAim(target, aim);
+  // C14: one aim for the whole cast - toward the target (or its last position), else the cursor, else the facing.
+  const Vec2 dir = CastDirection(heroPos, ca);
 
-  // Ground anchor (9.7): the target within range + 1, else the nearest alive monster within it, else the hero.
-  EntityId anchor = kNoEntity;
-  Vec2 center = heroPos;
-  if (s.groundAnchored) {
-    const double reach = s.range + rules.groundAnchorReachSlackTiles;
-    const std::vector<TargetCandidate> candidatesNear = AliveCandidates(heroPos, reach);
-    anchor = FindGroundAoeAnchor(candidatesNear, heroPos, target, targetPos, targetAlive, s.range);
-    if (anchor != kNoEntity) {
-      if (const MonsterInstance* am = ms->Find(anchor)) center = am->pos;
-    }
-  }
-  const bool blastFrom = anchor != kNoEntity && !s.hasArrowDelay;
+  // Ground AoEs and traps land on the target's tile (its last position if it died), else the cursor point, else ahead
+  // (traps: the hero's feet), clamped to the cast reach; novas, chains, cones and lines start at the hero.
+  const bool grounded = shape == CastShape::Ground || shape == CastShape::Trap;
+  const Vec2 center = grounded ? GroundCastPoint(heroPos, ca, reach, CmbNoTargetAhead(rules, s, shape)) : heroPos;
+  const bool blastFrom = grounded && !s.hasArrowDelay;
 
-  // C4 persistent ground effects (fire_wall, arrow_rain periodic; explosive_trap, chain_trap armed at the hero's feet).
+  // C4 persistent ground effects (fire_wall, arrow_rain periodic; explosive_trap, chain_trap armed).
   if (s.port.persistentGround && ctx_.sys.projectiles != nullptr) {
     GroundEffectSpec g;
     g.source = kHeroEntityId;
@@ -1472,7 +1576,7 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
     g.skillLevel = level;
     g.skillId = s.id;
     g.vfxId = s.vfxId;
-    g.center = s.port.groundTrigger == GroundTrigger::Armed ? heroPos : center;
+    g.center = center;
     g.radius = radius;
     g.durationMs = s.port.groundDurationMs;
     g.trigger = s.port.groundTrigger;
@@ -1481,53 +1585,67 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, EntityId target)
     return;
   }
 
-  // Targets (fixed at release).
+  // Targets (fixed at release). A cone or a line keeps its own size, and the resolved target within the cast reach is
+  // always among its hits (the arrow aimed at it reaches it).
   std::vector<EntityId> targets;
-  if (s.hasLineTarget && targetAlive) {
+  Vec2 vfxPoint = center;
+  const bool targetInReach = targetAlive && DistSq(heroPos, tm->pos) <= reach * reach;
+  if (shape == CastShape::Line) {
     const double halfWidth = radius * s.lineHalfWidthFactor;
-    targets = CandidatesAlongLine(AliveCandidates(heroPos, s.range + halfWidth), heroPos, targetPos, target, s.range,
+    const Vec2 end = heroPos + dir * s.range;
+    targets = CandidatesAlongLine(AliveCandidates(heroPos, s.range + halfWidth), heroPos, end, kNoEntity, s.range,
                                   halfWidth);
-  } else if (s.port.coneDeg > 0) {
-    // C4 multishot: a 50 degree fan from the hero toward the target (else along the facing).
-    const Vec2 aim = targetAlive ? CmbDirOr(targetPos - heroPos, hero.Facing()) : hero.Facing();
-    targets = CandidatesInCone(AliveCandidates(heroPos, radius), heroPos, aim, radius, s.port.coneDeg);
+    if (targetInReach && std::find(targets.begin(), targets.end(), target.id) == targets.end()) {
+      targets.push_back(target.id);
+    }
+    vfxPoint = targetInReach && Dist(heroPos, tm->pos) > s.range ? tm->pos : end;
+  } else if (shape == CastShape::Cone) {
+    // C4 multishot: a 50 degree fan from the hero along the aim.
+    targets = CandidatesInCone(AliveCandidates(heroPos, radius), heroPos, dir, radius, s.port.coneDeg);
+    if (targetInReach && std::find(targets.begin(), targets.end(), target.id) == targets.end()) {
+      targets.push_back(target.id);
+    }
+    vfxPoint = targetInReach ? tm->pos : heroPos + dir * radius;
+  } else if (shape == CastShape::Chain) {
+    // C4 chain lightning: link 0 is the target, then the nearest monster not hit yet within aoeRadius of the previous
+    // link (at most chainMaxLinks). No target: the bolt flies along the aim and grounds (no hit).
+    if (targetAlive) {
+      const int32_t cap = rules.chainMaxLinks;
+      // Every link lies within (links - 1) hops of the first; without a cap, the whole zone.
+      double span = radius * static_cast<double>(cap);
+      if (cap <= 0) {
+        span = ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()
+                   ? static_cast<double>((std::max)(ctx_.sys.zone->Grid().Cols(), ctx_.sys.zone->Grid().Rows()))
+                   : 1e4;
+      }
+      targets = ChainLinks(AliveCandidates(tm->pos, span), target.id, tm->pos, radius, cap);
+      vfxPoint = tm->pos;
+    } else {
+      vfxPoint = heroPos + dir * s.range;
+    }
   } else {
     targets = CandidatesInRadius(AliveCandidates(center, radius), center, radius);
   }
-  // C4 chain lightning: target-to-target order (nearest to the previous link), 55 ms per link.
   const int32_t stagger = s.port.chainStaggerMs;
-  if (stagger > 0 && targets.size() > 1) {
-    std::vector<EntityId> remaining = targets;
-    std::vector<EntityId> chain;
-    Vec2 prev = heroPos;
-    while (!remaining.empty()) {
-      size_t best = 0;
-      double bestD = -1;
-      for (size_t i = 0; i < remaining.size(); ++i) {
-        const MonsterInstance* m = ms->Find(remaining[i]);
-        const double d = m != nullptr ? DistSq(prev, m->pos) : 1e300;
-        if (bestD < 0 || d < bestD) {
-          best = i;
-          bestD = d;
-        }
-      }
-      chain.push_back(remaining[best]);
-      if (const MonsterInstance* m = ms->Find(remaining[best])) prev = m->pos;
-      remaining.erase(remaining.begin() + static_cast<std::ptrdiff_t>(best));
-    }
-    targets.swap(chain);
-  }
 
   EvSkillVfx v;
   v.skillId = s.id;
   v.vfxId = s.vfxId;
   v.caster = kHeroEntityId;
-  v.target = target;
+  v.target = targetAlive ? target.id : kNoEntity;
   v.origin = heroPos;
-  v.point = s.hasLineTarget && targetAlive ? targetPos : center;
+  v.point = vfxPoint;
   v.radius = radius;
+  if (shape == CastShape::Chain || shape == CastShape::Cone || shape == CastShape::Line) v.dir = dir;
   for (EntityId id : targets) {
-    if (const MonsterInstance* m = ms->Find(id)) v.points.push_back(m->pos);
+    if (const MonsterInstance* m = ms->Find(id)) {
+      v.points.push_back(m->pos);
+      v.pointTargets.push_back(id);
+    }
+  }
+  if (shape == CastShape::Chain && targets.empty()) {  // the grounded bolt's end
+    v.points.push_back(vfxPoint);
+    v.pointTargets.push_back(kNoEntity);
   }
   v.staggerMs = stagger;
   EmitSkillVfx(s, v);
@@ -1651,14 +1769,42 @@ void CombatSystem::FireChainLink(int32_t slot) {
   }
 }
 
-// Single target (classes 9.8): projectile on arrival, C4 Charge after its dash, else now.
-void CombatSystem::ReleaseSingle(const SkillDef& s, int32_t level, EntityId target) {
+// Single target (classes 9.8): projectile on arrival, C4 Charge after its dash, else now. C14: a projectile without a
+// living target flies along the aim (cursor, else facing) for the cast reach and fizzles.
+void CombatSystem::ReleaseSingle(const SkillDef& s, int32_t level, const CastTarget& target, const SkillAim& aim) {
   Hero& hero = *ctx_.sys.hero;
-  const MonsterInstance* m = ctx_.sys.monsters->Find(target);
-  if (m == nullptr || !m->IsAlive()) return;
+  const MonsterInstance* m = target.id != kNoEntity ? ctx_.sys.monsters->Find(target.id) : nullptr;
+  const bool alive = m != nullptr && m->IsAlive();
   const Vec2 heroPos = hero.Position();
-  const Vec2 mpos = m->pos;
   const int32_t skillIndex = hero.Skills().IndexOf(s.id);
+  if (!alive) {
+    if (!s.hasProjectile || ctx_.sys.projectiles == nullptr) return;
+    const Vec2 dir = CastDirection(heroPos, MakeCastAim(target, aim));
+    const Vec2 end = heroPos + dir * SkillCastReach(ctx_.data.Classes().skillRules, s);
+    EvSkillVfx v;  // the cast glint (the flight is the projectile)
+    v.skillId = s.id;
+    v.vfxId = s.vfxId;
+    v.caster = kHeroEntityId;
+    v.origin = heroPos;
+    v.point = end;
+    v.dir = dir;
+    EmitSkillVfx(s, v);
+    ProjectileSpec p;
+    p.kind = ProjectileKind::HeroSkill;
+    p.source = kHeroEntityId;
+    p.target = kNoEntity;  // not target-locked: ends at `to` without a hit (EvProjectileEnded hit = false)
+    p.from = heroPos;
+    p.to = end;
+    p.travelMs = SkillTravelMs(s, heroPos, end);
+    p.vfxId = s.vfxId;
+    p.color = s.impactColor;
+    p.skillIndex = skillIndex;
+    p.skillLevel = level;
+    ctx_.sys.projectiles->Launch(p);
+    return;
+  }
+  const EntityId id = target.id;
+  const Vec2 mpos = m->pos;
 
   if (s.port.hasDash && ctx_.sys.locomotion != nullptr) {
     const double stop = hero.Derived().attackRange;
@@ -1671,7 +1817,7 @@ void CombatSystem::ReleaseSingle(const SkillDef& s, int32_t level, EntityId targ
       pr.target = target;
       const int32_t slot = AllocRelease(pr);
       ctx_.timers.Schedule(ctx_.Now() + s.port.dashDurationMs, TimerOwner::Combat,
-                           static_cast<uint16_t>(CombatTimerKind::ChargeDashEnd), kHeroEntityId, target, slot);
+                           static_cast<uint16_t>(CombatTimerKind::ChargeDashEnd), kHeroEntityId, id, slot);
       return;
     }
   }
@@ -1680,15 +1826,17 @@ void CombatSystem::ReleaseSingle(const SkillDef& s, int32_t level, EntityId targ
   v.skillId = s.id;
   v.vfxId = s.vfxId;
   v.caster = kHeroEntityId;
-  v.target = target;
+  v.target = id;
   v.origin = heroPos;
   v.point = mpos;
+  v.dir = CmbDirOr(mpos - heroPos, Vec2());
   const double travel = SkillTravelMs(s, heroPos, mpos);
   if (travel > 0 && ctx_.sys.projectiles != nullptr) {
+    EmitSkillVfx(s, v);  // the cast glint (the flight is the projectile)
     ProjectileSpec p;
     p.kind = ProjectileKind::HeroSkill;
     p.source = kHeroEntityId;
-    p.target = target;
+    p.target = id;
     p.from = heroPos;
     p.to = mpos;
     p.travelMs = travel;
@@ -1700,7 +1848,7 @@ void CombatSystem::ReleaseSingle(const SkillDef& s, int32_t level, EntityId targ
     return;
   }
   EmitSkillVfx(s, v);
-  ApplySkillHit(s, level, target, false, heroPos, nullptr, true);
+  ApplySkillHit(s, level, id, false, heroPos, nullptr, true);
 }
 
 void CombatSystem::ResolveChargeDash(int32_t slot) {
@@ -1711,7 +1859,7 @@ void CombatSystem::ResolveChargeDash(int32_t slot) {
   const SkillBook& book = ctx_.sys.hero->Skills();
   if (pr.skillIndex < 0 || static_cast<size_t>(pr.skillIndex) >= book.SkillCount()) return;
   const SkillDef& s = book.Skill(pr.skillIndex);
-  const MonsterInstance* m = ctx_.sys.monsters->Find(pr.target);
+  const MonsterInstance* m = ctx_.sys.monsters->Find(pr.target.id);
   if (m == nullptr || !m->IsAlive()) return;
   // The hit lands where the hero stands: it needs the target within melee reach (attack range + range slack), which an
   // interrupted dash (C5 stun / freeze) may not reach.
@@ -1721,11 +1869,12 @@ void CombatSystem::ResolveChargeDash(int32_t slot) {
   v.skillId = s.id;
   v.vfxId = s.vfxId;
   v.caster = kHeroEntityId;
-  v.target = pr.target;
+  v.target = pr.target.id;
   v.origin = ctx_.sys.hero->Position();
   v.point = m->pos;
+  v.dir = CmbDirOr(m->pos - v.origin, Vec2());
   EmitSkillVfx(s, v);
-  ApplySkillHit(s, pr.level, pr.target, false, ctx_.sys.hero->Position(), nullptr, true);
+  ApplySkillHit(s, pr.level, pr.target.id, false, ctx_.sys.hero->Position(), nullptr, true);
 }
 
 void CombatSystem::OnSkillProjectileArrived(const Projectile& p) {
@@ -1740,7 +1889,8 @@ void CombatSystem::OnSkillProjectileArrived(const Projectile& p) {
   }
   // The flight's end (the fireball explosion and its authored shake) plays whatever became of the target or the hero,
   // after the hit's own impact shake (the web's damage timer runs in the scene update, the FxEngine task in post-update).
-  SkillShake(s, SkillShakeAnchor::Impact);
+  // A C14 no-target shot only fizzles (EvProjectileEnded.hit = false): no explosion, no shake.
+  if (p.spec.target != kNoEntity) SkillShake(s, SkillShakeAnchor::Impact);
 }
 
 void CombatSystem::OnGroundEffectTick(const GroundEffect& g, int32_t tickIndex) {
@@ -2127,36 +2277,49 @@ void CombatSystem::TickStatusEffects() {
   }
 }
 
-// Auto-battle's gate on top of CanExecute (9.4 with C1). The web's first class skill (slash / fireball / backstab) is
-// targeted and, ready but out of reach, starved every later skill, so auto-battle never cast into empty air; with C1
-// skipping it, each skill needs its own reason: teleport is a movement skill (never automatic), an AoE / trap must
-// reach the lock with its blast (hero-centred blasts, the multishot cone, chain lightning, traps armed at the hero's
-// feet, taunt roar), its line (piercing arrow) or its ground anchor (the lock or the nearest monster within range + 1,
-// as ReleaseAoe picks it). Targeted skills are range-checked by CanExecute; plain buffs need only the living lock.
+// Auto-battle's gate on top of EvaluateCast (9.4 with C1, C14). Each skill needs its own reason to fire at the lock:
+// teleport is a movement skill (never automatic); a Self buff needs only the living lock (taunt_roar: its taunt blast
+// must reach it); a nova must reach the lock with its blast; every shape aimed at the lock (Melee / Dash / Projectile /
+// Instant / Ground / Trap / Chain / Cone / Line) is reach-checked by EvaluateCast, and within that reach its release
+// lands on the lock (a ground AoE or trap on its tile; a cone or line always includes it; a chain starts on it).
 bool CombatSystem::AutoSkillFits(int32_t skillIndex, EntityId lock) const {
   const SkillBook& book = ctx_.sys.hero->Skills();
   if (skillIndex < 0 || static_cast<size_t>(skillIndex) >= book.SkillCount()) return false;
   const SkillDef& s = book.Skill(skillIndex);
-  if (s.execKind == SkillExecKind::Teleport) return false;
-  if (!s.aoe) return true;
+  const CastShape shape = SkillCastShape(s);
+  if (shape == CastShape::Blink) return false;
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(lock) : nullptr;
   if (m == nullptr || !m->IsAlive()) return false;
   const SkillRules& rules = ctx_.data.Classes().skillRules;
   const Vec2 heroPos = ctx_.sys.hero->Position();
-  const double d2 = DistSq(heroPos, m->pos);
-  if (s.groundAnchored) {
-    const double reach = s.range + rules.groundAnchorReachSlackTiles;
-    const std::vector<TargetCandidate> candidatesNear = AliveCandidates(heroPos, reach);
-    return FindGroundAoeAnchor(candidatesNear, heroPos, lock, m->pos, true, s.range) != kNoEntity;
-  }
-  if (s.hasLineTarget) return d2 <= s.range * s.range;
   const double radius = SkillAoeRadius(rules, s, book.Level(skillIndex));
-  return d2 <= radius * radius;
+  switch (shape) {
+    case CastShape::Self:
+      return !s.aoe || DistSq(heroPos, m->pos) <= radius * radius;
+    case CastShape::Nova:
+      return DistSq(heroPos, m->pos) <= radius * radius;
+    case CastShape::Blink:
+      return false;
+    case CastShape::Melee:
+    case CastShape::Dash:
+    case CastShape::Projectile:
+    case CastShape::Instant:
+    case CastShape::Ground:
+    case CastShape::Trap:
+    case CastShape::Chain:
+    case CastShape::Cone:
+    case CastShape::Line:
+      return true;
+  }
+  return false;
 }
 
 // Step 12 handleAutoCombat (9.4 with C1: the first skill that can execute; C7 approach stops at attack range). Skills
 // are cast only while a living lock is held (the web's targeted first skill never fired without one) and must fit it
-// (AutoSkillFits): no buffs, empty-air AoEs, traps or teleports while idling with auto-battle on.
+// (AutoSkillFits): no buffs, empty-air AoEs, traps or teleports while idling with auto-battle on. C14: without a lock it
+// acquires with the press's own (c) auto-pick - the nearest alive monster within castAcquireMinTiles, which the ring
+// already shows - and the cast goes through RequestSkill with an empty aim, so the resolver releases it at that lock
+// like a manual press.
 void CombatSystem::TickAutoCombat() {
   Hero& hero = *ctx_.sys.hero;
   if (!hero.autoCombat || !HeroAlive()) return;
@@ -2164,29 +2327,27 @@ void CombatSystem::TickAutoCombat() {
   if (ms == nullptr) return;
   if (hero.attackTarget == kNoEntity) {
     if (ctx_.sys.locomotion != nullptr && ctx_.sys.locomotion->IsMoving()) return;  // never override a click path
-    double radius = 1e6;
-    if (ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) {
-      radius = (std::max)(ctx_.sys.zone->Grid().Cols(), ctx_.sys.zone->Grid().Rows());
-    }
-    const EntityId nearest = ms->NearestAlive(hero.Position(), radius);
-    if (const MonsterInstance* m = nearest != kNoEntity ? ms->Find(nearest) : nullptr) {
-      const double d2 = DistSq(hero.Position(), m->pos);
+    const EntityId pick = AutoPickTarget(ctx_.data.Classes().skillRules.castAcquireMinTiles);
+    if (const MonsterInstance* m = pick != kNoEntity ? ms->Find(pick) : nullptr) {
       const double range = hero.Derived().attackRange;
-      // 9.4 step 1: target it, and path to it only when beyond attack range (C7: stopping there).
-      if (d2 <= m->def.aggroRange * m->def.aggroRange) SetAttackTarget(nearest, d2 > range * range);
+      // 9.4 step 1: target it (an auto-pick: never the C8 teleport lock), and path to it only when beyond attack range
+      // (C7: stopping there).
+      SetTargetInternal(pick, false);
+      if (DistSq(hero.Position(), m->pos) > range * range && ctx_.sys.locomotion != nullptr) {
+        ctx_.sys.locomotion->Approach(pick, range);
+      }
     }
   }
   const EntityId lock = hero.attackTarget;  // the held lock, or the one taken this step
   const MonsterInstance* lm = lock != kNoEntity ? ms->Find(lock) : nullptr;
   if (lm == nullptr || !lm->IsAlive()) return;
   const SkillBook& book = hero.Skills();
-  PreferredCache preferred;  // the loop only reads state until the RequestSkill that ends it
   for (size_t i = 0; i < book.SkillCount(); ++i) {  // autoSkillPriority = class definition order
     const int32_t idx = static_cast<int32_t>(i);
-    if (book.Skill(idx).passive || !SkillUsableNow(idx, false, nullptr, &preferred) || !AutoSkillFits(idx, lock)) {
+    if (book.Skill(idx).passive || EvaluateCast(idx, lock, false) != CastGate::Ok || !AutoSkillFits(idx, lock)) {
       continue;
     }
-    RequestSkill(idx, SkillAim{});
+    RequestSkill(idx, SkillAim{});  // C14 rule (a): resolves to this lock
     break;
   }
 }
@@ -2237,16 +2398,33 @@ void CombatSystem::OnTimer(const Timer& t) {
       const SkillBook& book = ctx_.sys.hero->Skills();
       if (pr.skillIndex < 0 || static_cast<size_t>(pr.skillIndex) >= book.SkillCount()) return;
       const SkillDef& s = book.Skill(pr.skillIndex);
-      // Retarget (9.3 step 9) with FIX Q7: the original target if alive, else the preferred target; a range-checked
-      // skill whose target is now beyond range + slack takes the nearest monster in reach instead, else fizzles.
-      EntityId target = pr.target;
-      const MonsterInstance* m = target != kNoEntity ? ctx_.sys.monsters->Find(target) : nullptr;
-      if (m == nullptr || !m->IsAlive()) target = PreferredTarget();
-      if (target != kNoEntity && s.rangeCheck) {
-        const MonsterInstance* tm = ctx_.sys.monsters->Find(target);
-        const double reach = SkillReach(s);
-        if (tm == nullptr || DistSq(ctx_.sys.hero->Position(), tm->pos) > reach * reach) {
-          target = ctx_.sys.monsters->NearestAlive(ctx_.sys.hero->Position(), reach);
+      // C14 (replaces 9.3 step 9 / FIX Q7): the press-time target while it lives, wherever it went (a ranged cast
+      // follows it; a Melee strike whiffs when it stepped out of reach - never another monster). A target that died
+      // before the beat is replaced through the resolver from the hero (no hover; only a monster within the skill's
+      // release reach), except that Ground / Trap / Cone / Line casts keep aiming at its last position. With no
+      // replacement a Projectile / Chain flies toward that last position, the others fizzle (cost spent). A press
+      // that had no target keeps its no-target aim (cursor point / direction, facing) - the hero already turned to it,
+      // so a monster stepping into reach during the beat does not capture it.
+      CastTarget target = pr.target;
+      const MonsterInstance* m = target.id != kNoEntity ? ctx_.sys.monsters->Find(target.id) : nullptr;
+      const CastShape shape = SkillCastShape(s);
+      const SkillRules& rules = ctx_.data.Classes().skillRules;
+      const Vec2 heroPos = ctx_.sys.hero->Position();
+      const double reach = SkillReleaseReach(rules, s);
+      if (m != nullptr && m->IsAlive()) {
+        target.pos = m->pos;
+        if (shape == CastShape::Melee && DistSq(heroPos, m->pos) > reach * reach) return;  // whiff (cost spent)
+      } else if (target.hasPos) {
+        target.id = kNoEntity;
+        const bool aimsAtSpot = shape == CastShape::Ground || shape == CastShape::Trap || shape == CastShape::Cone ||
+                                shape == CastShape::Line;
+        if (!aimsAtSpot) {
+          const EntityId again = ResolveCastTarget(s, SkillAim{}, false, reach);
+          const MonsterInstance* am = again != kNoEntity ? ctx_.sys.monsters->Find(again) : nullptr;
+          if (am != nullptr && DistSq(heroPos, am->pos) <= reach * reach) {
+            target = CastTarget{again, true, am->pos};
+            SelectCastTarget(s, again);
+          }
         }
       }
       ReleaseSkill(pr.skillIndex, pr.level, target, pr.aim, pr.manaCost);
@@ -2379,7 +2557,7 @@ void CombatSystem::FillSnapshot(Snapshot& out) const {
   const Hero& hero = *ctx_.sys.hero;
   const SkillBook& book = hero.Skills();
   const SkillRules& rules = ctx_.data.Classes().skillRules;
-  PreferredCache preferred;  // nothing changes between the slots: one PreferredTarget for the whole hotbar
+  AcquireCache acquire;  // nothing changes between the slots: one auto-pick per cast reach for the whole hotbar
   for (SkillSlotView& v : out.hero.hotbar) {
     if (v.skillIndex < 0 || static_cast<size_t>(v.skillIndex) >= book.SkillCount()) continue;
     const SkillDef& s = book.Skill(v.skillIndex);
@@ -2388,7 +2566,8 @@ void CombatSystem::FillSnapshot(Snapshot& out) const {
     v.manaCost = CastManaCost(v.skillIndex);
     v.cooldownTotalMs = SkillCooldownMs(rules, s, level, ctx_.equip.Get(Stat::CooldownReduction));
     v.affordable = hero.Mana() >= v.manaCost;
-    v.usable = SkillUsableNow(v.skillIndex, false, nullptr, &preferred);
+    v.usable = EvaluateCast(v.skillIndex, ResolveCastTarget(s, SkillAim{}, false, SkillCastReach(rules, s), &acquire),
+                            false) == CastGate::Ok;
   }
   for (MonsterView& m : out.monsters) m.windingUp = IsWindingUp(m.id);
 }

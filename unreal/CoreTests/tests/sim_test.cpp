@@ -5,8 +5,10 @@
 #include <limits>
 
 #include "TestUtil.h"
+#include "abyss/combat/Combat.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/items/Inventory.h"
+#include "abyss/monsters/MonsterSystem.h"
 #include "abyss/pets/PetSystem.h"
 #include "abyss/quests/Lore.h"
 #include "abyss/quests/QuestSystem.h"
@@ -424,5 +426,142 @@ TEST_SUITE("sim") {
     missing.id = "no_such_monster";
     v = story.ResolveActor(missing);
     CHECK_FALSE(v.resolved);
+  }
+
+  // C14 input contract: the CmdCastSkill shapes the UE input layer sends (AbyssPlayerControllerInput.cpp CastAbyssSkill)
+  // reach the cast target resolver through SimCommands. Desktop key with the cursor on the world: hoverTarget = the
+  // monster under the cursor + the cursor tile, no stick; desktop skill-bar click / cursor over the HUD: nothing; touch:
+  // a tapped monster arrives first as CmdAttackTarget (the lock), the cast carries only the joystick.
+  TEST_CASE("C14 input contract: hover, lock, skill-bar click and touch tap casts reach the resolver via commands") {
+    SimConfig cfg;
+    auto sim = GameSim::Create(test::RealData(), cfg);
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Mage, Difficulty::Normal, 21));
+    FinishNewGameStory(*sim);
+    sim->Step();
+    SimContext& ctx = sim->Context();
+    Hero& hero = *ctx.sys.hero;
+    hero.autoCombat = false;
+    int32_t slot = -1;
+    for (int32_t i = 0; i < 6; ++i) {
+      if (sim->View().hero.hotbar[static_cast<size_t>(i)].skillId == "ice_arrow") slot = i;
+    }
+    REQUIRE(slot >= 0);
+    const Vec2 p = sim->View().hero.pos;
+    const auto kill = [&](EntityId id) {
+      MonsterHitRequest r;
+      r.monster = id;
+      r.amount = 1e6;
+      ctx.sys.combat->DamageMonster(r);
+    };
+    const auto clearAround = [&](Vec2 at, double radius) {  // the zone's own monsters stay out of the cast reach
+      for (const MonsterView& m : sim->View().monsters) {
+        if (m.alive && DistSq(m.pos, at) <= radius * radius) kill(m.id);
+      }
+      sim->Step();
+    };
+    clearAround(p, 12.0);
+    const auto spawn = [&](Vec2 at) {
+      MonsterSpawnParams sp;
+      sp.baseDef = ctx.data.FindMonster("zombie");
+      sp.tile = RoundToTile(at);
+      const EntityId id = ctx.sys.monsters->Spawn(sp);
+      if (MonsterInstance* m = ctx.sys.monsters->Find(id)) m->pos = at;
+      return id;
+    };
+    const EntityId nearA = spawn(p + Vec2(2, 0));
+    const EntityId hoverB = spawn(p + Vec2(-5, 0));
+    if (nearA == kNoEntity || hoverB == kNoEntity) {
+      MESSAGE("MonsterSystem::Spawn is not implemented yet: skipped");
+      return;
+    }
+    // Submits the cast, steps through the mage's 230 ms beat; returns the selection right after the press and the
+    // launched projectile.
+    struct Cast {
+      EntityId selectedAtPress = kNoEntity;
+      bool launched = false;
+      EvProjectileLaunched launch;
+    };
+    const auto press = [&](const CmdCastSkill& cmd) {
+      hero.Skills().ResetCooldowns();
+      hero.FillHpMana();
+      Cast out;
+      sim->Submit(cmd);
+      sim->Step();
+      out.selectedAtPress = sim->View().hero.target;
+      for (int i = 0; i < 30 && !out.launched; ++i) {
+        for (const Event& e : sim->Events()) {
+          if (const EvProjectileLaunched* l = std::get_if<EvProjectileLaunched>(&e)) {
+            if (l->source == kHeroEntityId && l->kind == ProjectileKind::HeroSkill) {
+              out.launched = true;
+              out.launch = *l;
+            }
+          }
+        }
+        if (!out.launched) sim->Step();
+      }
+      return out;
+    };
+
+    // Desktop key, no lock: the monster under the cursor (not the nearer one) is selected at the press and hit.
+    CmdCastSkill key;
+    key.slot = slot;
+    key.hasPoint = true;
+    key.point = p + Vec2(-5, 0);
+    key.hoverTarget = hoverB;
+    Cast c = press(key);
+    CHECK(c.selectedAtPress == hoverB);
+    REQUIRE(c.launched);
+    CHECK(c.launch.target == hoverB);
+
+    // Desktop key with a lock: the lock beats the hovered monster (rule a before b).
+    key.hoverTarget = nearA;
+    key.point = p + Vec2(2, 0);
+    c = press(key);
+    CHECK(c.selectedAtPress == hoverB);
+    REQUIRE(c.launched);
+    CHECK(c.launch.target == hoverB);
+
+    // Desktop skill-bar click (no hover, no cursor point, no stick), no lock: the nearest within the cast reach,
+    // selected at the press.
+    sim->Submit(CmdClearTarget{});
+    sim->Step();
+    kill(hoverB);
+    CmdCastSkill click;
+    click.slot = slot;
+    c = press(click);
+    CHECK(c.selectedAtPress == nearA);
+    REQUIRE(c.launched);
+    CHECK(c.launch.target == nearA);
+
+    // Touch: the tap locks the monster (CmdAttackTarget), the skill button then casts at it.
+    const EntityId tapC = spawn(p + Vec2(0, 4));
+    sim->Submit(CmdAttackTarget{tapC});
+    sim->Step();
+    CmdCastSkill touch;
+    touch.slot = slot;
+    c = press(touch);
+    CHECK(c.selectedAtPress == tapC);
+    REQUIRE(c.launched);
+    CHECK(c.launch.target == tapC);
+
+    // Desktop key with nothing within the cast reach: the arrow flies toward the cursor point (rule 3), not the
+    // facing, and selects nothing.
+    clearAround(sim->View().hero.pos, 10.0);
+    sim->Submit(CmdClearTarget{});
+    sim->Step();
+    const Vec2 from = sim->View().hero.pos;
+    CmdCastSkill aimed;
+    aimed.slot = slot;
+    aimed.hasPoint = true;
+    aimed.point = from + Vec2(0, -4);
+    c = press(aimed);
+    CHECK(c.selectedAtPress == kNoEntity);
+    REQUIRE(c.launched);
+    CHECK(c.launch.target == kNoEntity);
+    const Vec2 flight = c.launch.to - c.launch.from;
+    REQUIRE(flight.Length() > 1.0);
+    CHECK(flight.x == doctest::Approx(0).epsilon(0.01));
+    CHECK(flight.y < 0);
   }
 }

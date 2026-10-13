@@ -37,7 +37,8 @@ enum class ProjectileTimerKind : uint16_t { Arrive = 1, GroundTick = 2, GroundEn
 struct ProjectileSpec {
   ProjectileKind kind = ProjectileKind::HeroSkill;
   EntityId source = kNoEntity;
-  EntityId target = kNoEntity;  // target-locked: lands on the target wherever it is
+  EntityId target = kNoEntity;  // target-locked: lands on the target wherever it is; kNoEntity = an untargeted shot
+                                // (C14 no-target cast) that ends at `to` with EvProjectileEnded{hit = false}
   Vec2 from, to;                // `to` = target position at launch (render only for locked projectiles)
   double travelMs = 0;
   std::string vfxId;

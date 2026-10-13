@@ -27,7 +27,13 @@
     "cooldownFloorMs": 500,
     "cooldownReductionCapPercent": 50
   },
-  "targeting": {"rangeSlackTiles": 1, "groundAnchorReachSlackTiles": 1},
+  "targeting": {
+    "rangeSlackTiles": 1,
+    "castAcquirePadTiles": 2,
+    "castAcquireMinTiles": 8,
+    "noTargetGroundAheadTiles": 3,
+    "chainMaxLinks": 6
+  },
   "gamepadSkillButtons": [0, 2, 3, 5],
   "passiveSkills": ["life_regen", "unyielding", "dual_wield_mastery"]
 }

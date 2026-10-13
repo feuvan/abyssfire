@@ -180,6 +180,13 @@ private:
 		float RemainingSec = 0.f;
 		bool bFaceLock = false;
 		FVector2D FaceDir = FVector2D::ZeroVector;
+		/**
+		 * DECISIONS C14 (4), hero only: seconds left to finish turning toward FaceDir, so the hero faces what the core
+		 * releases at before the Contact / Release beat (half the beat, at most HeroAimTurnMaxSec). 0 = the M11 turn rate.
+		 */
+		float AimTurnBudgetSec = 0.f;
+		/** A skill blink (teleport, shadow step) moved the actor during the action: the lock follows the core facing. */
+		bool bFaceFollowsCore = false;
 		float TelegraphRemainingSec = 0.f;
 		float TelegraphTotalSec = 0.f;
 	};

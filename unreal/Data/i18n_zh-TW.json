@@ -122,9 +122,11 @@
     "ui.character.computed.hit": "save-ui-input 7.2",
     "ui.character.computed.dodge": "save-ui-input 7.2",
     "ui.tooltip.inert": "C10",
-    "ui.tooltip.levelReq": "I3"
+    "ui.tooltip.levelReq": "I3",
+    "zone.combat.noTarget": "C14",
+    "zone.combat.outOfRange": "C14"
   },
-  "keyCount": 2731,
+  "keyCount": 2733,
   "strings": {
     "boot.title": "淵  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2856,6 +2858,8 @@
     "ui.character.computed.hit": "普攻傷害",
     "ui.character.computed.dodge": "閃避",
     "ui.tooltip.inert": "(未生效)",
-    "ui.tooltip.levelReq": "需要等級 {level}"
+    "ui.tooltip.levelReq": "需要等級 {level}",
+    "zone.combat.noTarget": "没有可攻擊的目標!",
+    "zone.combat.outOfRange": "目標超出範圍!"
   }
 }

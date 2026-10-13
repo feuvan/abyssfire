@@ -45,7 +45,14 @@ struct FAbyssVfxContext
 	TWeakObjectPtr<AActor> TargetActor;
 	/** EvSkillVfx::points (chain lightning, multishot), ground points. */
 	TArray<FVector> Points;
+	/**
+	 * The monster at each of Points (EvSkillVfx::pointTargets, DECISIONS C14), null for a ground point: a `points`
+	 * anchor follows it, so a staggered chain link lands on the body wherever it stepped since the release.
+	 */
+	TArray<TWeakObjectPtr<AActor>> PointActors;
 	float StaggerMs = 0.f;
+	/** > 0: `fan` layers spread over this full angle (the core's cone, SkillPortDef::coneDeg) instead of their coneDeg. */
+	float FanConeDeg = 0.f;
 	/** Ground direction of the blow / facing (unit, XY). */
 	FVector2D Blow = FVector2D(1.0, 0.0);
 	/** AoE / ground-effect radius (cm) for `unit: radius` layers. */
@@ -139,6 +146,8 @@ private:
 		float StartDelayMs = 0.f;
 		float SpawnAccumulator = 0.f;
 		uint32 SpawnCounter = 0;
+		/** Particles of the burst being spawned (`fan` layers: particle i of N), 0 for continuous emission. */
+		int32 FanCount = 0;
 		bool bBurstDone = false;
 		bool bStopped = false;
 		bool bContinuous = false;
@@ -209,6 +218,11 @@ private:
 		FLinearColor Color = FLinearColor::White;
 		bool bHasColor = false;
 		FVector Position = FVector::ZeroVector;
+		/**
+		 * A presentation-only flight (multishot's per-target arrows, DECISIONS C14 (4)): no core projectile ends it, so it
+		 * ends itself on arrival. Its id has the top bit set (core entity ids never reach it).
+		 */
+		bool bVisualOnly = false;
 	};
 
 	struct FGroundEffect
@@ -253,6 +267,11 @@ private:
 	void HandleSkillVfx(const abyss::EvSkillVfx& Event);
 	void HandleProjectileLaunched(const abyss::EvProjectileLaunched& Event);
 	void HandleProjectileEnded(const abyss::EvProjectileEnded& Event);
+	/**
+	 * Multishot (DECISIONS C14 (4)): one presentation-only arrow per monster the core hit, from the caster's hand, homing
+	 * on it and landing on the core's per-target arrow delay (SkillArrowDelayMs), when that hit lands.
+	 */
+	void LaunchPerTargetArrows(const abyss::EvSkillVfx& Event, const abyss::SkillDef& Skill);
 	void HandleGroundStarted(const abyss::EvGroundEffectStarted& Event);
 	void HandleGroundTriggered(const abyss::EvGroundEffectTriggered& Event);
 	void HandleGroundEnded(const abyss::EvGroundEffectEnded& Event);
@@ -341,6 +360,7 @@ private:
 	FAbyssQualityProfile Quality;
 	int32 MaxParticles = 900;
 	int32 NextHandle = 1;
+	uint32 NextVisualProjectile = 1;
 	double LastShakeRealSec = -1000.0;
 	double RealClockSec = 0.0;
 	double RenderSimMs = 0.0;

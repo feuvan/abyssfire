@@ -132,6 +132,9 @@ const PORT_STRINGS: Record<string, { 'zh-CN': string; en: string; decision: stri
   'ui.character.computed.dodge': { 'zh-CN': '闪避', en: 'Dodge', decision: 'save-ui-input 7.2' },
   'ui.tooltip.inert': { 'zh-CN': '(未生效)', en: '(inactive)', decision: 'C10' },
   'ui.tooltip.levelReq': { 'zh-CN': '需要等级 {level}', en: 'Requires level {level}', decision: 'I3' },
+  // C14 cast target rule: a targeted skill pressed with no monster to resolve, or with its target beyond the skill's reach.
+  'zone.combat.noTarget': { 'zh-CN': '没有可攻击的目标!', en: 'No target!', decision: 'C14' },
+  'zone.combat.outOfRange': { 'zh-CN': '目标超出范围!', en: 'Target out of range!', decision: 'C14' },
 };
 
 export function exportI18n(): TableResult[] {

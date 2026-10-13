@@ -1,7 +1,7 @@
 // INPUT AGENT FILE. Input half of AAbyssPlayerController (see Framework/AbyssPlayerController.h "input agent region").
 //
-// Devices -> abyss::Command (save-ui-input.md 5, world-map-nav.md 7, ue58-platform.md 8; DECISIONS C7 / C8 / I4 / P13 /
-// Q6 / S5 / U4 / U6 / W1 / W3 / W8):
+// Devices -> abyss::Command (save-ui-input.md 5, world-map-nav.md 7, ue58-platform.md 8; DECISIONS C7 / C8 / C14 / I4 /
+// P13 / Q6 / S5 / U4 / U6 / W1 / W3 / W8):
 //
 //   source                                   handling                                      command / request
 //   WASD, arrows, left stick, touch joystick IA_Move (polled after input, camera yaw)      CmdSetMoveInput (tile space)
@@ -9,7 +9,8 @@
 //                                                                                          CmdPickUp / CmdPointerPress
 //   LMB / finger held after a ground press   re-pick under the pointer every frame         CmdPointerHold (tile changed)
 //   RMB, R, D-pad down, touch portal         IA_AltClick / IA_TownPortal                   CmdTownPortal
-//   1-6, A X Y RB L3 R3, skill buttons       IA_Skill1..6 (+ cursor tile on KBM)           CmdCastSkill
+//   1-6, A X Y RB L3 R3, skill buttons       IA_Skill1..6 (KBM key: monster + tile under   CmdCastSkill
+//                                            the cursor; pad / touch: stick; C14)
 //   Space, B, dodge button                   IA_Dodge (move direction, else facing C8)     CmdDodge
 //   T, LB, LOCK                              IA_TargetCycle                                CmdCycleTarget
 //   Tab, D-pad up / right, toggles           IA_ToggleAuto / IA_AutoLootCycle              CmdToggleAutoCombat / Cycle...
@@ -652,18 +653,37 @@ void AAbyssPlayerController::CastAbyssSkill(int32 Slot, EAbyssInputDevice Device
 	{
 		return;
 	}
+	// DECISIONS C14 (classes-stats-skills 9.2): the core resolves the cast target once, at the press - the lock (a click
+	// or touch tap on a monster already made it the lock: CmdAttackTarget), else the monster under the desktop cursor,
+	// else the ringed / nearest monster within the cast reach - and selects its pick. The input layer only reports what
+	// the device aims with; it never chooses the target itself.
 	abyss::CmdCastSkill SkillCommand;
 	SkillCommand.slot = Slot;
-	SkillCommand.target = abyss::kNoEntity;   // the core's preferred target (lock, else nearest; combat 9.2)
-	// C8 teleport aim on touch / pad: the joystick / stick direction (screen space for the core's ScreenDirToTile).
-	SkillCommand.stickDir = GetAbyssCoreScreenDir();
-	// Desktop keyboard: the ground tile under the cursor (teleport, combat 1085). Never for HUD / touch presses: their
-	// "cursor" is the button itself.
-	if (!bFromInjection && Device == EAbyssInputDevice::KeyboardMouse && !bAbyssTouchLayout)
+	SkillCommand.target = abyss::kNoEntity;   // would override the lock (rule a); the hovered monster is hoverTarget (b)
+	const bool bFakingTouch = FSlateApplication::IsInitialized() && FSlateApplication::Get().IsFakingTouchEvents();
+	const bool bDesktopPointer = Device == EAbyssInputDevice::KeyboardMouse && !bAbyssTouchLayout && !bFakingTouch;
+	if (!bDesktopPointer)
 	{
-		FVector2D MousePosition;
+		// C8 teleport aim on touch / pad: the joystick / stick direction (screen space for the core's ScreenDirToTile).
+		// Never on desktop: WASD / arrows only move the hero and the cursor aims, so a skill-bar click (no cursor point)
+		// teleports to the lock, else ahead, not along the held move keys.
+		SkillCommand.stickDir = GetAbyssCoreScreenDir();
+	}
+	// Desktop key press with the cursor on the world (not over the HUD or a panel): the living monster under the cursor
+	// (rule b) and the ground tile under it (teleport destination; the no-target aim point / direction of C14 rule 3).
+	// The monster is picked now and among monsters only: the hover state is a frame old and, like a click, prefers loot /
+	// NPCs / props drawn over a monster. Never for HUD / touch presses: their "cursor" is the button itself.
+	FVector2D MousePosition;
+	if (!bFromInjection && bDesktopPointer && GetAbyssMouseViewportPosition(MousePosition) && IsAbyssCursorOverWorld())
+	{
+		const FAbyssPickResult HoveredMonster =
+			AbyssPicking::PickMonster(*this, MousePosition, AbyssPcInput_MouseSlopSlate * GetUiDpiScale());
+		if (HoveredMonster.IsValid())
+		{
+			SkillCommand.hoverTarget = HoveredMonster.Id;
+		}
 		abyss::Vec2 CursorTile;
-		if (GetAbyssMouseViewportPosition(MousePosition) && PickAbyssGroundTile(MousePosition, *Snap, CursorTile))
+		if (PickAbyssGroundTile(MousePosition, *Snap, CursorTile))
 		{
 			SkillCommand.hasPoint = true;
 			SkillCommand.point = CursorTile;

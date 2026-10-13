@@ -842,6 +842,7 @@ bool FAbyssVfxLibrary::ParseLayer(const abyss::JsonValue& Json, FAbyssVfxLayer& 
 		return false;
 	}
 	ReadFloat(Json, "coneDeg", L.ConeDeg);
+	ReadBool(Json, "fan", L.bFan);
 	ReadRangeField(Json, "upCmS", L.UpCmS);
 	ReadFloat(Json, "gravityCmS2", L.GravityCmS2);
 	ReadFloat(Json, "drag", L.Drag);

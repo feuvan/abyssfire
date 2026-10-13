@@ -588,7 +588,7 @@ Declared but never emitted: `SAVE_GAME`, `LOAD_GAME`, `ZONE_EXIT`, `INVENTORY_OP
 | Key | Action | Notes |
 |---|---|---|
 | `W`/`↑`, `A`/`←`, `S`/`↓`, `D`/`→` | move (held) | §5.2 |
-| `1`–`6` | `requestSkill(loadout[i])` | loadout = learned skills in class order (classes spec §7.5); missing slot → nothing |
+| `1`–`6` | `requestSkill(loadout[i])` | loadout = learned skills in class order (classes spec §7.5); missing slot → nothing. *Remake (DECISIONS C14): the core resolves the target; UE only sends the aim. A desktop key press with the cursor over the world sends the living monster under the cursor (`CmdCastSkill::hoverTarget`, a monster-only pick at the press) and the cursor's ground tile (`hasPoint` / `point`). A HUD skill-bar click, or a key press with the cursor over the HUD or a panel, sends neither. Pad and touch send the stick / joystick (`stickDir`, C8 teleport); on desktop WASD never aims (`stickDir` zero).* |
 | `Space` | dodge | `performDodge(now)` (combat spec §8.1) |
 | `Q` | cycle combat target | combat spec §9.3 |
 | `Tab` | toggle auto-combat | log `zone.combat.autoCombat {state: zone.combat.autoCombatOn/Off}` (system) |

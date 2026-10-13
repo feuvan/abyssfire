@@ -20,6 +20,7 @@
 #include <string_view>
 
 #include "abyss/base/Enums.h"
+#include "abyss/combat/Projectiles.h"
 #include "abyss/data/ClassData.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/data/SkillData.h"
@@ -41,6 +42,12 @@ namespace AbyssVfxSystemPrivate
 	constexpr float ShakeThrottleSec = 0.12f;    // FxEngine.shake own throttle
 	constexpr float MaxEmitterBacklogMs = 250.f; // continuous emitters never burst more than this after a hitch
 	constexpr float VfxPxToCm = 100.f / 45.f;
+	// Presentation-only projectile ids (FProjectile::bVisualOnly): the top bit, which core entity ids never reach.
+	constexpr uint32 VisualProjectileBit = 0x80000000u;
+	// EvSkillVfx origin: the caster's actor anchors `origin` layers only while it stands within this of the core's origin
+	// (render lag, a hitch's catch-up steps). Farther, the release came from elsewhere - a blink that already moved the
+	// actor (teleport, shadow step), a ground effect / trap centre - and the layers stay on the event origin.
+	constexpr double CasterOriginToleranceCm = 75.0;
 
 	// Default anchor heights (cm) when the anchor has no actor / socket.
 	constexpr float DefaultChestCm = 80.f;
@@ -124,14 +131,20 @@ namespace AbyssVfxSystemPrivate
 		return Random.VRandCone(Axis, FMath::DegreesToRadians(ConeDeg * 0.5f));
 	}
 
+	/** Horizontal direction rotated by YawDeg (counter-clockwise seen from above). */
+	FVector FlatYaw(const FVector2D& Dir, float YawDeg)
+	{
+		const float Yaw = FMath::DegreesToRadians(YawDeg);
+		const float C = FMath::Cos(Yaw);
+		const float S = FMath::Sin(Yaw);
+		return FVector(Dir.X * C - Dir.Y * S, Dir.X * S + Dir.Y * C, 0.0);
+	}
+
 	/** Horizontal direction rotated by a random yaw within +-ConeDeg / 2. */
 	FVector FlatCone(FRandomStream& Random, const FVector2D& Dir, float ConeDeg)
 	{
 		const float Half = FMath::Min(ConeDeg, 360.f) * 0.5f;
-		const float Yaw = FMath::DegreesToRadians(Random.FRandRange(-Half, Half));
-		const float C = FMath::Cos(Yaw);
-		const float S = FMath::Sin(Yaw);
-		return FVector(Dir.X * C - Dir.Y * S, Dir.X * S + Dir.Y * C, 0.0);
+		return FlatYaw(Dir, Random.FRandRange(-Half, Half));
 	}
 
 	FTransform AxesTransform(const FVector& Position, const FVector& UnitX, const FVector& UnitY, float ScaleX, float ScaleY)
@@ -815,7 +828,10 @@ int32 UAbyssVfxSystem::ResolveSpawnAnchor(const FEmitter& Emitter, EAbyssVfxAnch
 	case EAbyssVfxAnchor::Points:
 	{
 		const FVector P = Context.Points.IsValidIndex(PointIndex) ? Context.Points[PointIndex] : Context.Point;
-		return AddAnchor(nullptr, Height, HeightCm, P);
+		// C14: a point on a monster (pointTargets) follows it - the chain link (and its beam end) lands on that body when
+		// its stagger comes, wherever it stepped since the release; a ground point stays put.
+		AActor* PointActor = Context.PointActors.IsValidIndex(PointIndex) ? Context.PointActors[PointIndex].Get() : nullptr;
+		return AddAnchor(PointActor, Height, HeightCm, P);
 	}
 	case EAbyssVfxAnchor::Path:
 		return AddAnchor(nullptr, Height, HeightCm, Context.Origin);   // per-particle lerp origin -> target
@@ -903,6 +919,7 @@ void UAbyssVfxSystem::SpawnFromEmitter(FEmitter& Emitter, int32 Count)
 	case EAbyssVfxUnit::Radius: UnitScale = Emitter.Context.RadiusCm; break;
 	case EAbyssVfxUnit::Cm: break;
 	}
+	Emitter.FanCount = Emitter.bContinuous ? 0 : Count;   // `fan` bursts: particle i of N
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
 		if (Particles.Num() >= MaxParticles)
@@ -1023,7 +1040,18 @@ void UAbyssVfxSystem::SpawnParticle(FEmitter& Emitter, const FAbyssVfxLayer& Lay
 	case EAbyssVfxDir::Back:
 	{
 		const FVector2D Axis = Layer.Dir == EAbyssVfxDir::Blow ? Blow : -Blow;
-		Direction = FlatCone(Random, Axis, Layer.ConeDeg >= 359.f ? 0.f : Layer.ConeDeg);
+		const float ConeDeg = Layer.ConeDeg >= 359.f ? 0.f : Layer.ConeDeg;
+		if (Layer.bFan && Emitter.FanCount > 1)
+		{
+			// An even fan over the event's cone (the core's multishot cone, C14 (4)), else the layer's.
+			const float FanDeg = Context.FanConeDeg > 0.f ? FMath::Min(Context.FanConeDeg, 360.f) : ConeDeg;
+			const float Slot = static_cast<float>(Serial % static_cast<uint32>(Emitter.FanCount));
+			Direction = FlatYaw(Axis, FanDeg * ((Slot + 0.5f) / static_cast<float>(Emitter.FanCount) - 0.5f));
+		}
+		else
+		{
+			Direction = FlatCone(Random, Axis, ConeDeg);
+		}
 		Direction.Z = Random.FRandRange(-0.15f, 0.35f);
 		Direction.Normalize();
 		break;
@@ -1495,22 +1523,61 @@ bool UAbyssVfxSystem::EntityGround(abyss::EntityId Id, FVector& Out) const
 
 void UAbyssVfxSystem::UpdateProjectiles(const FAbyssFrameInfo& Frame)
 {
+	TArray<uint32, TInlineAllocator<8>> VisualArrivals;
 	for (TPair<uint32, FProjectile>& Pair : Projectiles)
 	{
 		FProjectile& Projectile = Pair.Value;
 		const double T = FMath::Clamp((Frame.RenderSimMs - Projectile.LaunchMs) / FMath::Max(1.0, Projectile.TravelMs), 0.0, 1.0);
-		FVector To = Projectile.To;
 		if (const AActor* Target = Projectile.TargetActor.Get())
 		{
-			To = ResolveActorAnchor(Target, EAbyssVfxHeight::Chest, 0.f);
+			// Homing like the core (target-locked); a target actor that goes away leaves the flight on its last seen spot.
+			Projectile.To = ResolveActorAnchor(Target, EAbyssVfxHeight::Chest, 0.f);
 		}
-		FVector Position = FMath::Lerp(Projectile.From, To, T);
+		FVector Position = FMath::Lerp(Projectile.From, Projectile.To, T);
 		Position.Z += Projectile.ArcCm * 4.0 * T * (1.0 - T);
+		// The head turns with its flight (homing on a strafing target, the arc): new trail particles take the new blow,
+		// the attached flight-aligned ones (the arrow / bolt mesh, comets) the new heading.
+		const FVector Step = Position - Projectile.Position;
+		if (Projectile.Handle != 0 && Step.SizeSquared() > 1.0)
+		{
+			const FVector Heading = Step.GetSafeNormal();
+			const FVector2D FlatHeading = FVector2D(Heading.X, Heading.Y).GetSafeNormal();
+			if (!FlatHeading.IsNearlyZero())
+			{
+				for (FEmitter& Emitter : Emitters)
+				{
+					if (Emitter.Handle == Projectile.Handle)
+					{
+						Emitter.Context.Blow = FlatHeading;
+					}
+				}
+			}
+			for (FParticle& Particle : Particles)
+			{
+				if (Particle.Handle == Projectile.Handle && Particle.Anchor == Projectile.Anchor
+					&& Particle.Orient == EAbyssVfxOrient::Velocity)
+				{
+					Particle.Velocity = Heading * FMath::Max(1.0, Particle.Velocity.Size());
+				}
+			}
+		}
 		Projectile.Position = Position;
 		if (Anchors.IsValidIndex(Projectile.Anchor))
 		{
 			Anchors[Projectile.Anchor].Fixed = Position;
 		}
+		if (Projectile.bVisualOnly && T >= 1.0)
+		{
+			VisualArrivals.Add(Pair.Key);
+		}
+	}
+	// Presentation-only flights end themselves on arrival (the core's hit lands on the same sim time).
+	for (const uint32 Id : VisualArrivals)
+	{
+		abyss::EvProjectileEnded Ended;
+		Ended.projectile = Id;
+		Ended.hit = true;
+		HandleProjectileEnded(Ended);
 	}
 }
 
@@ -2321,30 +2388,56 @@ void UAbyssVfxSystem::HandleSkillVfx(const abyss::EvSkillVfx& Event)
 {
 	using namespace AbyssVfxSystemPrivate;
 	FAbyssVfxContext Context;
-	Context.OriginActor = FindActor(Event.caster);
-	Context.Origin = Context.OriginActor.IsValid() ? Context.OriginActor->GetActorLocation() : TileToGround(Event.origin);
+	// Origin layers ride the caster only while it stands where the core released from (CasterOriginToleranceCm): a blink
+	// already moved the actor (EvEntityTeleported is presented first), a trap / ground tick releases at its centre.
+	AActor* Caster = FindActor(Event.caster);
+	const FVector EventOrigin = TileToGround(Event.origin);
+	const bool bCasterAtOrigin = Caster != nullptr
+		&& FVector::DistSquared2D(Caster->GetActorLocation(), EventOrigin) <= FMath::Square(CasterOriginToleranceCm);
+	Context.OriginActor = bCasterAtOrigin ? Caster : nullptr;
+	Context.Origin = bCasterAtOrigin ? Caster->GetActorLocation() : EventOrigin;
 	Context.Point = TileToGround(Event.point);
 	Context.TargetActor = FindActor(Event.target);
 	Context.Target = Context.TargetActor.IsValid() ? Context.TargetActor->GetActorLocation() : Context.Point;
-	for (const abyss::Vec2& Tile : Event.points)
+	for (size_t Index = 0; Index < Event.points.size(); ++Index)
 	{
-		Context.Points.Add(TileToGround(Tile));
+		Context.Points.Add(TileToGround(Event.points[Index]));
+		// C14: the monster the core resolved at this point (chain links), so the point follows it.
+		AActor* PointActor = Index < Event.pointTargets.size() ? FindActor(Event.pointTargets[Index]) : nullptr;
+		Context.PointActors.Add(TWeakObjectPtr<AActor>(PointActor));
 	}
 	Context.StaggerMs = static_cast<float>(Event.staggerMs);
 	Context.RadiusCm = static_cast<float>(Event.radius * AbyssUnits::TileUU);
-	FVector2D Delta(Context.Target - Context.Origin);
-	if (Delta.IsNearlyZero() && Context.OriginActor.IsValid())
+	// C14 (4): the core's cast direction (cones, lines, projectiles, chains, blinks) - the volley / line / bolt is drawn
+	// exactly where the core aimed, not re-derived from actors that lag the sim; else origin -> target / point.
+	FVector2D Delta(Event.dir.x, Event.dir.y);
+	if (Delta.IsNearlyZero())
 	{
-		const FVector Forward = Context.OriginActor->GetActorForwardVector();
-		Delta = FVector2D(Forward.X, Forward.Y);
+		Delta = FVector2D(Context.Target - Context.Origin);
+	}
+	if (Delta.IsNearlyZero() && Caster != nullptr)
+	{
+		// A release away from the caster (trap / ground tick centre): from the caster toward it; on the caster: its facing.
+		Delta = FVector2D(Context.Target - Caster->GetActorLocation());
+		if (Delta.IsNearlyZero())
+		{
+			const FVector Forward = Caster->GetActorForwardVector();
+			Delta = FVector2D(Forward.X, Forward.Y);
+		}
 	}
 	Context.Blow = Delta.IsNearlyZero() ? FVector2D(1.0, 0.0) : Delta.GetSafeNormal();
+	const abyss::SkillDef* Skill = nullptr;
 	if (const UAbyssGameInstance* GameInstance = UAbyssGameInstance::Get(this))
 	{
 		if (const abyss::DataStore* Data = GameInstance->GetData())
 		{
-			if (const abyss::SkillDef* Skill = Data->FindSkill(Event.skillId))
+			Skill = Data->FindSkill(Event.skillId);
+			if (Skill != nullptr)
 			{
+				if (Skill->port.coneDeg > 0.0)
+				{
+					Context.FanConeDeg = static_cast<float>(Skill->port.coneDeg);   // C4 multishot cone (core geometry)
+				}
 				Context.bHasElement = true;
 				Context.Element = Skill->damageType;
 				if (Skill->impactColor != 0)
@@ -2365,6 +2458,56 @@ void UAbyssVfxSystem::HandleSkillVfx(const abyss::EvSkillVfx& Event)
 	}
 	const FName Ids[] = { MakeId(TEXT("skill."), Event.vfxId), MakeId(TEXT("skill."), Event.skillId), FName(TEXT("skill.default")) };
 	PlayFirst(Ids, Context);
+	if (Skill != nullptr && Skill->hasArrowDelay && Skill->port.coneDeg > 0.0)
+	{
+		LaunchPerTargetArrows(Event, *Skill);
+	}
+}
+
+void UAbyssVfxSystem::LaunchPerTargetArrows(const abyss::EvSkillVfx& Event, const abyss::SkillDef& Skill)
+{
+	using namespace AbyssVfxSystemPrivate;
+	// The arrows leave at the core's release time (EvSkillVfx::atMs), so each one reaches its monster on the render frame
+	// its core hit lands (release + SkillArrowDelayMs). Not the frame's snapshot time: one host frame dispatches the
+	// events of up to maxStepsPerFrame steps, and the release may have run up to three steps before the last one.
+	double LaunchMs = Event.atMs;
+	if (LaunchMs < 0.0)
+	{
+		// An unstamped event (not a hero skill): the last simulated step.
+		const UAbyssSimDriver* Driver = UAbyssSimDriver::Get(this);
+		const abyss::Snapshot* Snap = Driver != nullptr ? Driver->GetSnapshotIndex().GetSnapshot() : nullptr;
+		LaunchMs = Snap != nullptr ? Snap->simNowMs : RenderSimMs;
+	}
+	const size_t Count = FMath::Min(Event.points.size(), Event.pointTargets.size());
+	for (size_t Index = 0; Index < Count; ++Index)
+	{
+		const abyss::EntityId TargetId = Event.pointTargets[Index];
+		if (TargetId == abyss::kNoEntity || FindActor(TargetId) == nullptr)
+		{
+			continue;
+		}
+		const double TravelMs = abyss::SkillArrowDelayMs(Skill, Event.origin, Event.points[Index]);
+		if (!(TravelMs > 0.0))
+		{
+			continue;
+		}
+		abyss::EvProjectileLaunched Arrow;
+		Arrow.projectile = VisualProjectileBit | (NextVisualProjectile++ & ~VisualProjectileBit);
+		Arrow.kind = abyss::ProjectileKind::HeroSkill;
+		Arrow.source = Event.caster;
+		Arrow.target = TargetId;
+		Arrow.from = Event.origin;
+		Arrow.to = Event.points[Index];
+		Arrow.launchMs = LaunchMs;
+		Arrow.travelMs = TravelMs;
+		Arrow.vfxId = Event.vfxId.empty() ? Skill.id : Event.vfxId;   // proj.multishot (alias of proj.arrow)
+		Arrow.color = Skill.impactColor;
+		HandleProjectileLaunched(Arrow);
+		if (FProjectile* Launched = Projectiles.Find(Arrow.projectile))
+		{
+			Launched->bVisualOnly = true;
+		}
+	}
 }
 
 // =====================================================================================================================

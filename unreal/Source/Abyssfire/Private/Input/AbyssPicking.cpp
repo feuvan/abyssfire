@@ -92,6 +92,78 @@ namespace
 		}
 		return true;
 	}
+
+	/**
+	 * The pickable entity under ScreenPosition: web press priority, then the most centred rectangle, then the nearest to the
+	 * camera. bMonstersOnly: only living monsters compete (PickMonster).
+	 */
+	FAbyssPickResult AbyssPick_Best(const APlayerController& Controller, const FVector2D& ScreenPosition, float SlopPixels,
+		bool bMonstersOnly)
+	{
+		FAbyssPickResult Best;
+		const UAbyssActorRegistry* Registry = UAbyssActorRegistry::Get(&Controller);
+		if (Registry == nullptr || Registry->Num() == 0)
+		{
+			return Best;
+		}
+		const FVector CameraLocation = Controller.PlayerCameraManager != nullptr
+			? Controller.PlayerCameraManager->GetCameraLocation()
+			: FVector::ZeroVector;
+		const double Slop = FMath::Max(0.0, static_cast<double>(SlopPixels));
+
+		int32 BestPriority = TNumericLimits<int32>::Max();
+		double BestCentredness = TNumericLimits<double>::Max();
+		double BestDepth = TNumericLimits<double>::Max();
+
+		Registry->ForEach([&](abyss::EntityId Id, AActor* Actor, abyss::EntityKind Kind)
+		{
+			if (Actor == nullptr || Actor->IsHidden() || (bMonstersOnly && Kind != abyss::EntityKind::Monster))
+			{
+				return;
+			}
+			abyss::Vec2 Tile;
+			int32 Priority = AbyssPickPriorityWalk;
+			const EAbyssPickAction Action = AbyssPicking::ClassifyEntity(Controller, Id, Kind, Tile, Priority);
+			if (Action == EAbyssPickAction::None || (bMonstersOnly && Action != EAbyssPickAction::Attack)
+				|| Priority > BestPriority)
+			{
+				return;
+			}
+			FVector2D RectMin;
+			FVector2D RectMax;
+			if (!AbyssPick_ProjectBox(Controller, AbyssPick_ActorWorldBox(*Actor, Kind), RectMin, RectMax))
+			{
+				return;
+			}
+			RectMin -= FVector2D(Slop, Slop);
+			RectMax += FVector2D(Slop, Slop);
+			if (ScreenPosition.X < RectMin.X || ScreenPosition.X > RectMax.X || ScreenPosition.Y < RectMin.Y
+				|| ScreenPosition.Y > RectMax.Y)
+			{
+				return;
+			}
+			const FVector2D Centre = (RectMin + RectMax) * 0.5;
+			const FVector2D HalfSize = (RectMax - RectMin) * 0.5;
+			const double Centredness = FVector2D::Distance(ScreenPosition, Centre) / FMath::Max(1.0, HalfSize.GetMax());
+			const double Depth = FVector::DistSquared(CameraLocation, Actor->GetActorLocation());
+
+			const bool bBetter = Priority < BestPriority
+				|| (Priority == BestPriority && (Centredness < BestCentredness - 1.0e-3
+					|| (FMath::Abs(Centredness - BestCentredness) <= 1.0e-3 && Depth < BestDepth)));
+			if (!bBetter)
+			{
+				return;
+			}
+			BestPriority = Priority;
+			BestCentredness = Centredness;
+			BestDepth = Depth;
+			Best.Id = Id;
+			Best.Kind = Kind;
+			Best.Action = Action;
+			Best.Tile = Tile;
+		});
+		return Best;
+	}
 }
 
 namespace AbyssPicking
@@ -177,67 +249,11 @@ namespace AbyssPicking
 
 	FAbyssPickResult PickEntity(const APlayerController& Controller, const FVector2D& ScreenPosition, float SlopPixels)
 	{
-		FAbyssPickResult Best;
-		const UAbyssActorRegistry* Registry = UAbyssActorRegistry::Get(&Controller);
-		if (Registry == nullptr || Registry->Num() == 0)
-		{
-			return Best;
-		}
-		const FVector CameraLocation = Controller.PlayerCameraManager != nullptr
-			? Controller.PlayerCameraManager->GetCameraLocation()
-			: FVector::ZeroVector;
-		const double Slop = FMath::Max(0.0, static_cast<double>(SlopPixels));
+		return AbyssPick_Best(Controller, ScreenPosition, SlopPixels, /*bMonstersOnly*/ false);
+	}
 
-		int32 BestPriority = TNumericLimits<int32>::Max();
-		double BestCentredness = TNumericLimits<double>::Max();
-		double BestDepth = TNumericLimits<double>::Max();
-
-		Registry->ForEach([&](abyss::EntityId Id, AActor* Actor, abyss::EntityKind Kind)
-		{
-			if (Actor == nullptr || Actor->IsHidden())
-			{
-				return;
-			}
-			abyss::Vec2 Tile;
-			int32 Priority = AbyssPickPriorityWalk;
-			const EAbyssPickAction Action = ClassifyEntity(Controller, Id, Kind, Tile, Priority);
-			if (Action == EAbyssPickAction::None || Priority > BestPriority)
-			{
-				return;
-			}
-			FVector2D RectMin;
-			FVector2D RectMax;
-			if (!AbyssPick_ProjectBox(Controller, AbyssPick_ActorWorldBox(*Actor, Kind), RectMin, RectMax))
-			{
-				return;
-			}
-			RectMin -= FVector2D(Slop, Slop);
-			RectMax += FVector2D(Slop, Slop);
-			if (ScreenPosition.X < RectMin.X || ScreenPosition.X > RectMax.X || ScreenPosition.Y < RectMin.Y
-				|| ScreenPosition.Y > RectMax.Y)
-			{
-				return;
-			}
-			const FVector2D Centre = (RectMin + RectMax) * 0.5;
-			const FVector2D HalfSize = (RectMax - RectMin) * 0.5;
-			const double Centredness = FVector2D::Distance(ScreenPosition, Centre) / FMath::Max(1.0, HalfSize.GetMax());
-			const double Depth = FVector::DistSquared(CameraLocation, Actor->GetActorLocation());
-
-			const bool bBetter = Priority < BestPriority
-				|| (Priority == BestPriority && (Centredness < BestCentredness - 1.0e-3
-					|| (FMath::Abs(Centredness - BestCentredness) <= 1.0e-3 && Depth < BestDepth)));
-			if (!bBetter)
-			{
-				return;
-			}
-			BestPriority = Priority;
-			BestCentredness = Centredness;
-			BestDepth = Depth;
-			Best.Id = Id;
-			Best.Kind = Kind;
-			Best.Action = Action;
-			Best.Tile = Tile;
-		});
-		return Best;
+	FAbyssPickResult PickMonster(const APlayerController& Controller, const FVector2D& ScreenPosition, float SlopPixels)
+	{
+		return AbyssPick_Best(Controller, ScreenPosition, SlopPixels, /*bMonstersOnly*/ true);
 	}
 }

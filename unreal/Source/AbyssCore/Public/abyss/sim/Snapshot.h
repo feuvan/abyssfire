@@ -84,7 +84,7 @@ struct HeroView {
   bool autoCombat = false;
   AutoLootMode autoLoot = AutoLootMode::Off;
   EntityId target = kNoEntity;     // attack lock
-  EntityId indicator = kNoEntity;  // ring under (lock, else nearest aggro) (combat 9.5)
+  EntityId indicator = kNoEntity;  // ring under (lock, else the C14 auto-pick: nearest alive within 8) (combat 9.5)
   bool inCombat = false;
   bool portaling = false;
   double portalProgress = 0;       // 0..1 of the 1.5 s channel

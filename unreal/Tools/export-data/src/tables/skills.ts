@@ -416,7 +416,9 @@ export function exportSkills(): TableResult[] {
       cooldownFloorMs: 500,
       cooldownReductionCapPercent: 50,
     },
-    targeting: { rangeSlackTiles: 1, groundAnchorReachSlackTiles: 1 },
+    // Port decision C14 (cast target rule): melee / dash reach slack, cast reach = max(range + pad, min), the no-target
+    // ground fallback distance and the chain link cap.
+    targeting: { rangeSlackTiles: 1, castAcquirePadTiles: 2, castAcquireMinTiles: 8, noTargetGroundAheadTiles: 3, chainMaxLinks: 6 },
     gamepadSkillButtons: [0, 2, 3, 5],
     passiveSkills: Object.keys(PASSIVE),
   };

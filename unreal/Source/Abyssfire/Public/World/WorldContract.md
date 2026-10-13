@@ -223,7 +223,7 @@ nature, earth (element: fire -> fire, ice -> frost, lightning, poison, arcane, p
 | `attach` | particles follow their anchor |
 | `delayMs`, `count` (range or `"sparks"`), `countByRadius`, `rate`, `durationMs` (-1 = until stopped), `staggerMs` | emission |
 | `lifeMs` | particle life |
-| `speedCmS`, `dir` (`random`, `up`, `down`, `blow`, `back`, `out`, `in`, `flat`, `tangent`), `coneDeg`, `upCmS`, `gravityCmS2`, `drag`, `orbit {r0Cm, r1Cm, degS}` | motion |
+| `speedCmS`, `dir` (`random`, `up`, `down`, `blow`, `back`, `out`, `in`, `flat`, `tangent`), `coneDeg`, `fan`, `upCmS`, `gravityCmS2`, `drag`, `orbit {r0Cm, r1Cm, degS}` | motion; `fan` (blow / back bursts): particle i of N at yaw cone x ((i + 0.5) / N - 0.5), an even fan; a skill event with a cone (`coneDeg` > 0, multishot) fans over the core's cone instead of the layer's |
 | `sizeCm`, `grow`, `sizePow`, `aspect` (width / height), `stretch` | size: quads - height (width = height x aspect); meshes - the drawn bounding-box diagonal (manifest `boundsDiameterCm`) |
 | `alpha [a0, a1]`, `fadeIn`, `alphaPow`, `flicker` | alpha over life |
 | `color` (`core`, `mid`, `rim`, `dark`, `event`, `white`, `#RRGGBB`), `altEvery`, `altColor`, `intensity` | colour (HDR x intensity) |
@@ -249,7 +249,7 @@ Presets: `glow`, `flash`, `glint`, `sparks`, `streak`, `motes`, `flames`, `smoke
 | EvTownPortal | `portal.channel` (loop) then `portal.arrive` |
 | EvLootDropped | `loot.drop`; rare `loot.drop.rare`; legendary / set `loot.drop.legendary` (`loot.drop.set`) |
 | EvQuestUpdate (progress from a world point) | `quest.pop` |
-| EvSkillVfx | `skill.<vfxId>`, `skill.<skillId>`, `skill.default` |
+| EvSkillVfx | `skill.<vfxId>`, `skill.<skillId>`, `skill.default`. Blow = the event's `dir` (the core's aim) when set, else origin -> target / point. `origin` layers ride the caster only within 75 cm of the event origin (else they stay there: a blink's departure, a trap / ground-tick centre). `points` anchors follow the monster of `pointTargets`. Multishot (cone + arrow delay) also flies one presentation-only `proj.<vfxId>` arrow per hit monster, homing, leaving at the event's `atMs` (the core's release time, not the frame's last step) and landing on `SkillArrowDelayMs` (`.hit` on arrival) |
 | Projectile launched / flying / ended | `proj.<vfxId>.launch`; head `proj.<vfxId>`, `proj.monster_bolt` / `proj.pet_bolt`, `proj.default`; end `proj.<vfxId>.hit` / `.fizzle` (then by kind, then `proj.default.hit` / `.fizzle`) |
 | Ground effect started / triggered / ended | `ground.<vfxId>` / `ground.<vfxId>.trigger` / `ground.<vfxId>.end` (else `ground.default*`) |
 | Status in the snapshot mask | loop `status.<burn / freeze / poison / bleed / slow / stun>` while set |

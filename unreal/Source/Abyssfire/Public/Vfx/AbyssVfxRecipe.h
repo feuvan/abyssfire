@@ -164,6 +164,11 @@ struct FAbyssVfxLayer
 	EAbyssVfxDir Dir = EAbyssVfxDir::Random;
 	/** Full cone angle around Dir (degrees; 0 = exact, 360 = any). */
 	float ConeDeg = 360.f;
+	/**
+	 * `fan` (dir blow / back bursts): particle i of N flies at yaw cone x ((i + 0.5) / N - 0.5) round the axis - an even
+	 * fan - instead of a random yaw in the cone (multishot's volley). The cone is the event's FanConeDeg when set.
+	 */
+	bool bFan = false;
 	/** Extra vertical velocity (cm/s, + up). */
 	FAbyssVfxRange UpCmS = FAbyssVfxRange(0.f);
 	/** Downward acceleration (cm/s^2); negative rises. */

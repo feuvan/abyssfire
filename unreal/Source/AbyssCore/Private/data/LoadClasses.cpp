@@ -297,8 +297,17 @@ void LoadSkillRulesFile(const JNode& r, ClassTables& out) {
   s.scalingDefaults.buffDurationPerLevel = def.Num("buffDurationPerLevel");
   s.cooldownFloorMs = sc.Num("cooldownFloorMs");
   s.cooldownReductionCapPercent = sc.Num("cooldownReductionCapPercent");
-  s.rangeSlackTiles = r.Child("targeting").Num("rangeSlackTiles");
-  s.groundAnchorReachSlackTiles = r.Child("targeting").Num("groundAnchorReachSlackTiles");
+  const JNode tg = r.Child("targeting");
+  s.rangeSlackTiles = tg.Num("rangeSlackTiles");
+  s.castAcquirePadTiles = tg.Num("castAcquirePadTiles");
+  s.castAcquireMinTiles = tg.Num("castAcquireMinTiles");
+  s.noTargetGroundAheadTiles = tg.Num("noTargetGroundAheadTiles");
+  s.chainMaxLinks = tg.Int("chainMaxLinks");
+  if (s.rangeSlackTiles < 0) tg.Child("rangeSlackTiles").Error("rangeSlackTiles must be >= 0");
+  if (s.castAcquirePadTiles < 0) tg.Child("castAcquirePadTiles").Error("castAcquirePadTiles must be >= 0");
+  if (!(s.castAcquireMinTiles > 0)) tg.Child("castAcquireMinTiles").Error("castAcquireMinTiles must be > 0");
+  if (s.noTargetGroundAheadTiles < 0) tg.Child("noTargetGroundAheadTiles").Error("noTargetGroundAheadTiles must be >= 0");
+  if (s.chainMaxLinks < 0) tg.Child("chainMaxLinks").Error("chainMaxLinks must be >= 0 (0 = no cap)");
   s.gamepadSkillButtons = r.IntList("gamepadSkillButtons");
   s.passiveSkills = r.StrList("passiveSkills");
 }

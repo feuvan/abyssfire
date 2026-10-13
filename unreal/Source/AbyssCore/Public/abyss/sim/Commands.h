@@ -59,12 +59,16 @@ struct CmdAttackTarget {
 };
 struct CmdClearTarget {};
 struct CmdCycleTarget {};
+// C14 cast target rule: the core resolves the target at the press - `target` (tap) / the lock, else `hoverTarget`, else
+// the nearest monster within the skill's cast reach - and highlights the pick. Keep new fields at the END
+// (callers use positional aggregate initialisation).
 struct CmdCastSkill {
   int32_t slot = 0;               // hotbar slot 0..5 (C3)
-  EntityId target = kNoEntity;    // explicit target (touch tap); kNoEntity = preferred target
-  bool hasPoint = false;          // pointer ground tile (teleport on desktop)
+  EntityId target = kNoEntity;    // explicit target (touch tap on a monster): becomes the lock, rule (a)
+  bool hasPoint = false;          // desktop cursor ground tile: teleport destination, no-target aim (C14 rule 3)
   Vec2 point;
-  Vec2 stickDir;                  // touch joystick at press time (C8), screen space
+  Vec2 stickDir;                  // touch joystick / pad stick at press time (C8 teleport), screen space
+  EntityId hoverTarget = kNoEntity;  // desktop mouse + keyboard: the alive monster under the cursor, rule (b)
 };
 struct CmdDodge {
   Vec2 dir;                       // screen space; zero = facing (C8)

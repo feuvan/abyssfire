@@ -225,8 +225,14 @@ struct ABYSS_API SkillRules {
   SkillScaling scalingDefaults;
   double cooldownFloorMs = 500.0;
   double cooldownReductionCapPercent = 50.0;
+  // targeting (DECISIONS C14, classes 9.2): melee / dash reach = range + rangeSlackTiles; cast reach (acquisition radius,
+  // ranged release reach) = max(range + castAcquirePadTiles, castAcquireMinTiles); a ground AoE with no target and no
+  // cursor point lands min(range, noTargetGroundAheadTiles) ahead; a chain hits at most chainMaxLinks monsters (0 = no cap).
   double rangeSlackTiles = 1.0;
-  double groundAnchorReachSlackTiles = 1.0;
+  double castAcquirePadTiles = 2.0;
+  double castAcquireMinTiles = 8.0;
+  double noTargetGroundAheadTiles = 3.0;
+  int32_t chainMaxLinks = 6;
   std::vector<int32_t> gamepadSkillButtons;
   std::vector<std::string> passiveSkills;
 

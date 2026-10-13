@@ -20,6 +20,10 @@ namespace AbyssCharacterPrivate
 {
 	constexpr float TurnRateDegPerSec = 720.f;   // M11 (render-only), also used for the hero
 	constexpr float YawDeadbandDeg = 2.f;
+	// DECISIONS C14 (4): a hero attack / cast faces its aim before the beat - the turn ends by half the Contact / Release
+	// offset and never takes longer than this (a 180 degree turn reads as a quick pivot, not a snap).
+	constexpr float HeroAimTurnMaxSec = 0.1f;
+	constexpr float HeroAimTurnBeatFraction = 0.5f;
 	constexpr double SingleViewMirrorDeadband = 0.05;   // |screen-x| of a unit facing below which the mirror side holds
 	constexpr float MinMovingSpeedCmS = 5.f;
 	constexpr float CrownSpinDegPerSec = 45.f;
@@ -486,6 +490,17 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 		{
 			ActionState.bFaceLock = true;
 			ActionState.FaceDir = Dir;
+			const bool bAimedAction = ActionState.Action == EAbyssCharacterAction::Attack
+				|| ActionState.Action == EAbyssCharacterAction::Cast || ActionState.Action == EAbyssCharacterAction::Signature;
+			if (EntityKind == abyss::EntityKind::Hero && bAimedAction)
+			{
+				// C14 (4): turned toward the target / no-target aim before the beat, not at the M11 rate through it.
+				const float BeatSec = static_cast<float>(FMath::Max(0.0, Event.contactMs) / 1000.0);
+				const float TurnSec = BeatSec > 0.f
+					? FMath::Min(AbyssCharacterPrivate::HeroAimTurnMaxSec, BeatSec * AbyssCharacterPrivate::HeroAimTurnBeatFraction)
+					: AbyssCharacterPrivate::HeroAimTurnMaxSec;
+				ActionState.AimTurnBudgetSec = FMath::Max(0.001f, TurnSec - ElapsedSec);
+			}
 		}
 	}
 	if (Event.windupMs > 0.0)
@@ -597,6 +612,12 @@ void AAbyssCharacterActor::OnTeleported(const abyss::EvEntityTeleported& Event)
 	{
 		DodgeOffset = FVector::ZeroVector;
 		DodgeElapsedSec = -1.f;
+	}
+	if (Event.reason == abyss::TeleportReason::Skill && ActionState.bFaceLock)
+	{
+		// C14 (4): the lock was aimed from where the blink started. The core re-faced the hero on landing (shadow step:
+		// back toward its target; teleport: along the blink), so the rest of the action follows the snapshot facing.
+		ActionState.bFaceFollowsCore = true;
 	}
 	SetActorLocation(To);
 }
@@ -943,8 +964,20 @@ void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float
 	bool bAimed = false;
 	if (ActionState.bFaceLock && ActionState.Action != EAbyssCharacterAction::None)
 	{
+		if (ActionState.bFaceFollowsCore && !Frame.Facing.IsNearlyZero())
+		{
+			ActionState.FaceDir = Frame.Facing;
+		}
 		Desired = ActionState.FaceDir;
 		bAimed = true;
+	}
+	// C14 (4): the hero's aimed attack / cast completes its turn within the aim budget (action time, so a hit-stop or a
+	// frozen world pauses it with the clip).
+	float AimBudgetSec = 0.f;
+	if (bAimed && ActionState.AimTurnBudgetSec > 0.f)
+	{
+		AimBudgetSec = ActionState.AimTurnBudgetSec;
+		ActionState.AimTurnBudgetSec = FMath::Max(0.f, AimBudgetSec - DeltaSec);
 	}
 	if (Desired.IsNearlyZero())
 	{
@@ -967,7 +1000,13 @@ void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float
 		{
 			return;
 		}
-		CurrentYawDeg = FMath::FixedTurn(CurrentYawDeg, DesiredYaw, TurnRateDegPerSec * DeltaSec);
+		float RateDegPerSec = TurnRateDegPerSec;
+		if (AimBudgetSec > 0.f && DeltaSec > 0.f)
+		{
+			// The rest of the turn over the budget left (the last frame of the budget closes it).
+			RateDegPerSec = FMath::Max(RateDegPerSec, FMath::Abs(Delta) / FMath::Max(AimBudgetSec, DeltaSec));
+		}
+		CurrentYawDeg = FMath::FixedTurn(CurrentYawDeg, DesiredYaw, RateDegPerSec * DeltaSec);
 	}
 	SetActorRotation(FRotator(0.f, CurrentYawDeg, 0.f));
 }

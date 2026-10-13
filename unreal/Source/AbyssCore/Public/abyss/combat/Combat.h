@@ -21,8 +21,18 @@
 //   scales movement (HeroLocomotion), like a monster's.
 // * D13 F2 is applied (a cinematic cancels pending monster contacts); S7's "not because of a cinematic" is read as "no
 //   contact-time cinematic check", since the sim clock cannot run during one.
-// * FIX Q7: at the release beat a range-checked skill whose (re)target is beyond range + slack takes the nearest
-//   monster in reach, else fizzles (cost spent).
+// * C14 cast target rule (replaces the web's preferredTarget and FIX Q7): the target is resolved ONCE, at the press
+//   (ResolveCastTarget: explicit tap / lock, else the hovered monster, else the nearest alive monster within the cast
+//   reach max(range + 2, 8) - the same auto-pick the ring previews without a lock and auto-battle acquires with); a
+//   pick becomes the selection for every shape but Self / Blink / Nova unless the cast cannot reach it; a buffered
+//   press keeps its target. Every shape aimed at a target needs it within its release reach (melee / dash range + 1,
+//   else the cast reach): beyond, the press logs zone.combat.outOfRange and spends nothing. The release uses that target
+//   while it lives (ranged shapes regardless of its distance by then; a Melee strike whiffs when it stepped out of
+//   reach). A target that died before the release is re-resolved without the hover (Ground / Trap / Cone / Line aim at
+//   its last position instead); a press without a target keeps its no-target aim. No target: Projectile / Chain / Cone
+//   / Line fire along the cursor direction (else the facing; a projectile fizzles without its impact shake), Ground
+//   lands at the cursor point (else ahead), Trap at the cursor point (else the hero's feet); Melee / Dash / Instant log
+//   zone.combat.noTarget. The hero faces the target or the fallback point before the cast.
 // * C4 ground effects ("the same total damage spread over their tick count"): the first tick that reaches a monster
 //   rolls the web's one-shot hit for it ONCE (calculateDamage, combustion, crit-bonus consumption, Spirit 'hit', the
 //   skill's status rules from the full damage); tick k of n then deals GroundTickShare(total, k, n) =
@@ -31,8 +41,9 @@
 //   A tick share of 0 deals nothing that tick. A Charge whose target already stands within melee range hits at once.
 // * C4 chain lightning: link k lands at release + k x 55 ms; the AoE batch shake (6.5) follows the LAST link, counting
 //   every link that landed.
-// * C8 teleport on touch: the "locked target" fallback is the lock (hero.attackTarget, or the aim's tapped target),
-//   never the preferred-target fallback (nearest monster on the map).
+// * C8 teleport on touch: the "locked target" fallback is the player's own lock (a click / tap / target cycle, or the
+//   aim's tapped target), never a C14 hover / auto-pick or auto-battle's lock although they also hold
+//   hero.attackTarget; teleport never resolves a target and keeps the lock (C14).
 // * Audio: every hit emits a cue (SfxForCombatHit; hero damage keeps the web's hit / crit cue and adds the A6
 //   player_hurt cue; the A7 monster_hurt vocal on non-lethal, non-tick monster hits). A miss is audible only for a
 //   monster swing into the dodge-roll i-frames (audio 3.2); a monster's stat dodge of a hero hit and the hero's stat
@@ -91,13 +102,17 @@ enum class CombatTimerKind : uint16_t {
   SkillShake,             // 11.5: a delayed skill-authored shake (param = hit_feedback skillShakes index)
 };
 
-// How a skill is aimed by the input layer (pointer / stick / locked target).
+// How a skill is aimed by the input layer (pointer / stick / locked target). C14 resolves the cast target from it.
 struct SkillAim {
-  EntityId target = kNoEntity;  // explicit target (touch tap on a monster); kNoEntity = preferred target
-  bool hasPoint = false;        // pointer ground point (teleport, desktop)
+  EntityId target = kNoEntity;       // explicit target (touch tap on a monster): becomes the lock, rule (a)
+  bool hasPoint = false;             // desktop cursor ground point: teleport destination, no-target aim (C14 rule 3)
   Vec2 point;
-  Vec2 stickDir;                // touch joystick direction at press time (C8)
+  Vec2 stickDir;                     // touch joystick / pad stick direction at press time (C8 teleport)
+  EntityId hoverTarget = kNoEntity;  // desktop: the monster under the cursor at the press, rule (b)
 };
+
+// Why a cast cannot go out now (CombatSystem::EvaluateCast). NoTarget / OutOfRange are logged at the press (C14).
+enum class CastGate : uint8_t { Ok, Dead, Locked, Passive, Cooldown, Mana, Immobilized, NoTarget, OutOfRange };
 
 enum class SkillRequestResult : uint8_t {
   Locked,     // unknown / level 0 (log zone.combat.skillLocked)
@@ -154,9 +169,12 @@ class ABYSS_API CombatSystem {
   // ---- commands (rejected while frozen or Dying; save-ui-input 5.1.1) ----
   // Hotbar slot 0..5 (C3) -> skill index; passives never (C1).
   SkillRequestResult RequestSkillSlot(int32_t slot, const SkillAim& aim);
+  // C14: resolves the cast target once (ResolveCastTarget; the pick becomes the selection for selecting shapes), then
+  // executes now or buffers the press WITH that target (180 ms). A press that fails only for its target logs
+  // zone.combat.noTarget / zone.combat.outOfRange.
   SkillRequestResult RequestSkill(int32_t skillIndex, const SkillAim& aim);
-  // canExecuteSkill (classes 9.2) with C1 fixes (passives false, Q6 range + 1 for targeted buffs, Q8 death_mark /
-  // shadow_step need a target).
+  // EvaluateCast == Ok for the target a press would resolve now (PreviewCastTarget): passives false (C1), Melee / Dash /
+  // Instant need a target within their reach, the other aimed shapes one within the cast reach or none at all.
   bool CanExecuteSkill(int32_t skillIndex) const;
   // performDodge (8.1 + C8). False when blocked (dead, cooldown, immobilized, no landing tile).
   bool RequestDodge(Vec2 requestedDir);
@@ -179,7 +197,8 @@ class ABYSS_API CombatSystem {
   void ConsumeBufferedSkill();      // step 3
   void TickCombat();                // step 9: monster buffs (FIX Q19, even dying), hero buffs, swings, basic attack
   void TickStatusEffects();         // step 11: ticks then expiry; DoT kills go through MonsterSystem::ApplyDamage
-  void TickAutoCombat();            // step 12 (C1: first skill that CanExecute, only while a living lock is held)
+  void TickAutoCombat();            // step 12 (C1: first skill that CanExecute, only while a living lock is held; C14
+                                    // acquires that lock with the press's auto-pick)
   void TickCombatState();           // 9.6 rising edge immediate, falling edge debounced 1500 ms
   void OnTimer(const Timer& t);
   // F1: clear the input buffer (cinematic: also the attack target). F2 (cinematic): cancel every pending
@@ -216,8 +235,14 @@ class ABYSS_API CombatSystem {
 
   // ---- queries ----
   EntityId AttackTarget() const;
-  EntityId PreferredTarget() const;   // 9.2
-  EntityId IndicatorTarget() const;   // 9.5
+  // The lock when the player chose it (click / tap / target cycle), else kNoEntity - never a C14 hover / auto-pick or
+  // auto-battle's lock: the C8 teleport fallback.
+  EntityId PlayerLock() const;
+  // C14: the target a press of this skill would resolve now without a hover and without selecting it (kNoEntity for
+  // teleport and when nothing is in reach): the lock, else the nearest monster within the cast reach.
+  EntityId PreviewCastTarget(int32_t skillIndex) const;
+  // 9.5 with C14: the lock, else the auto-pick a press would take (nearest alive within castAcquireMinTiles).
+  EntityId IndicatorTarget() const;
   bool InCombat() const { return inCombat_; }
   // Exp / gold of the last kill credited by OnMonsterKilled (for MonsterSystem's zone.monsterKill log line).
   const KillRewardInfo& LastKillReward() const { return lastKill_; }
@@ -232,14 +257,27 @@ class ABYSS_API CombatSystem {
   void FillSnapshot(Snapshot& out) const;
 
  private:
+  // C14: a cast's resolved target and the position it is aimed at (its position when resolved; only that last known
+  // position when the target died before the release of a Ground / Trap / Cone / Line cast).
+  struct CastTarget {
+    EntityId id = kNoEntity;
+    bool hasPos = false;
+    Vec2 pos;
+  };
   // A skill waiting for its release beat (T4), or a Charge waiting for its dash end (C4). Slot index = timer param.
   struct PendingRelease {
     int32_t skillIndex = -1;
     int32_t level = 0;
-    EntityId target = kNoEntity;
+    CastTarget target;
     SkillAim aim;
     int32_t manaCost = 0;
     bool used = false;
+  };
+  // Per-batch cache of the (c) auto-pick (nearest within a radius) while nothing changes between the calls (hotbar).
+  struct AcquireCache {
+    bool valid = false;
+    double radius = 0;
+    EntityId id = kNoEntity;
   };
   // A delayed skill hit (T4): the meteor batch (all targets, then the AoE shake), a per-target arrow delay, or the rest
   // of a C4 chain lightning (links nextLink.. of `targets`, one per timer at baseMs + link x staggerMs; the AoE shake
@@ -317,24 +355,34 @@ class ABYSS_API CombatSystem {
 
   // ---- skills ----
   int32_t CastManaCost(int32_t skillIndex) const;
-  // `preferred` (optional): a per-batch cache of PreferredTarget() (valid while no state changes between the calls).
-  struct PreferredCache {
-    bool valid = false;
-    EntityId id = kNoEntity;
-  };
-  bool SkillUsableNow(int32_t skillIndex, bool logFailures, EntityId* outTarget,
-                      PreferredCache* preferred = nullptr) const;
-  // Auto-battle's extra gate (9.4 with C1): never a movement skill (teleport); an AoE / trap only when its blast, cone,
-  // line or ground anchor reaches the living lock `lock`.
+  // C14 resolver (no side effects; teleport resolves nothing): (a) the explicit tap, else the lock, if alive; (b) the
+  // hovered monster when `useHover`; (c) AutoPickTarget(radius). `cache` memoises (c).
+  EntityId ResolveCastTarget(const SkillDef& s, const SkillAim& aim, bool useHover, double radius,
+                             AcquireCache* cache = nullptr) const;
+  // C14 (c), also the 9.5 ring without a lock and auto-battle's acquisition: the nearest alive monster within `radius`
+  // (MonsterSystem spatial-grid order keeps ties deterministic).
+  EntityId AutoPickTarget(double radius) const;
+  // The pick becomes the selection (lock + ring, EvTargetChanged) when the skill's cast shape selects; it is not the
+  // player's own lock (PlayerLock).
+  void SelectCastTarget(const SkillDef& s, EntityId target);
+  // The gates of canExecute / tryUseSkill for `target` (C1 passives false, C5 an immobilized hero cannot cast, C14 the
+  // target rule per cast shape). `logFailures`: the locked / mana / teleport-CC lines (tryUseSkill).
+  CastGate EvaluateCast(int32_t skillIndex, EntityId target, bool logFailures) const;
+  // The target a buffered press fires with: its press-time target while alive, else re-resolved without the hover.
+  EntityId BufferedCastTarget(int32_t skillIndex) const;
+  // Auto-battle's extra gate (9.4 with C1, C14): never teleport; a buff only with a living lock `lock` (taunt_roar: in
+  // its blast), a nova only when its blast reaches it (the aimed shapes are reach-checked by EvaluateCast).
   bool AutoSkillFits(int32_t skillIndex, EntityId lock) const;
-  void TryUseSkill(int32_t skillIndex, const SkillAim& aim);
-  void ReleaseSkill(int32_t skillIndex, int32_t level, EntityId target, const SkillAim& aim, int32_t manaCost);
-  void ReleaseTeleport(const SkillDef& s, int32_t level, EntityId target, const SkillAim& aim, int32_t manaCost);
+  void TryUseSkill(int32_t skillIndex, const SkillAim& aim, EntityId target);
+  CastAim MakeCastAim(const CastTarget& target, const SkillAim& aim) const;
+  void ReleaseSkill(int32_t skillIndex, int32_t level, const CastTarget& target, const SkillAim& aim,
+                    int32_t manaCost);
+  void ReleaseTeleport(const SkillDef& s, int32_t level, const SkillAim& aim, int32_t manaCost);
   void ReleaseShadowStep(const SkillDef& s, int32_t level, EntityId target);
   void ReleaseDeathMark(const SkillDef& s, int32_t level, EntityId target);
   void ReleaseBuff(const SkillDef& s, int32_t level);
-  void ReleaseAoe(const SkillDef& s, int32_t level, EntityId target);
-  void ReleaseSingle(const SkillDef& s, int32_t level, EntityId target);
+  void ReleaseAoe(const SkillDef& s, int32_t level, const CastTarget& target, const SkillAim& aim);
+  void ReleaseSingle(const SkillDef& s, int32_t level, const CastTarget& target, const SkillAim& aim);
   void SlowTrapHits(const SkillDef& s, int32_t level, Vec2 center, double radius, const GroundTick* ground);
   // Shared single-target / AoE hit (classes 9.7 "apply hit"); `ground` = the C4 ground tick being resolved;
   // `singleTarget` = the 6.4 #7 path (ground scorch).
@@ -380,14 +428,14 @@ class ABYSS_API CombatSystem {
   void StartEliteSlowMotion();
 
   // ---- state helpers ----
-  void SetTargetInternal(EntityId target);
+  // Sets the lock and the ring; `playerChosen` = a click / tap / target cycle (PlayerLock), false for C14 picks.
+  void SetTargetInternal(EntityId target, bool playerChosen);
   void UpdateIndicator();
   void ClearIndicator();  // indicator -> none, EvTargetChanged{kNoEntity} when it showed one (zone change)
   void Respawn(bool parentZoneRestart);
   void CancelPendingStrikes(bool emitCancelled);
   bool HeroImmobilized() const;
   bool HeroAlive() const;
-  double SkillReach(const SkillDef& s) const;  // range + rangeSlackTiles
   DamageRules Rules() const;
   std::vector<TargetCandidate> AliveCandidates(Vec2 centre, double radius) const;
   int32_t HotbarSlotOf(int32_t skillIndex) const;
@@ -397,6 +445,7 @@ class ABYSS_API CombatSystem {
   DodgeController dodge_;
   ShakeThrottle shake_;
   SkillAim bufferedAim_;
+  EntityId bufferedTarget_ = kNoEntity;  // C14: the press-time target of the buffered request
   std::vector<PendingRelease> releases_;
   std::vector<PendingHit> hits_;
   std::vector<GroundRoll> groundRolls_;  // C4: per (effect, target), dropped after the effect's last tick
@@ -406,6 +455,7 @@ class ABYSS_API CombatSystem {
   TimerId combatOffTimer_ = kNoTimer;
   TimerId respawnTimer_ = kNoTimer;
   EntityId indicator_ = kNoEntity;
+  EntityId playerLock_ = kNoEntity;  // the lock the player chose (PlayerLock: only while it is still the lock)
   KillRewardInfo lastKill_;
 };
 

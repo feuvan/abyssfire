@@ -377,34 +377,47 @@ castMana(s, L)  = ceil(manaCost(s, L) * spirit.manaCostMultiplier)          // P
 
 ### 9.1 Request → buffer (`ZoneScene.requestSkill`, `:2269-2294`; `CombatInputBuffer`, `CombatInputSystem.ts:15-62`)
 1. If the skill is unknown or level 0 → log `zone.combat.skillLocked`, stop.
+1a. (Remake, DECISIONS C14) Resolve the cast target **once, here** (9.2); a pick made by rules (b)/(c) becomes the
+   selection at once, also when the press is buffered for cooldown / mana / a stun — but not when the cast cannot reach
+   it (`outOfRange`, 9.2). `canExecuteSkill` below is evaluated for that target.
 2. `decision = buffer.request(id, now, canExecuteSkill(id, now))`:
    - `canExecute` true → clear the buffer, call `tryUseSkill` now.
-   - false → store `{actionId, requestedAt: now, expiresAt: now + 180}` (single slot, newest replaces older); emit `SKILL_BUFFERED {skillId, expiresAt}`.
-3. Every frame (after input, `ZoneScene.ts:1362`): `consumeReady(now, canExecute)`: if expired (`now > expiresAt`) drop it; else if `canExecute` → clear and `tryUseSkill`.
+   - false → store `{actionId, requestedAt: now, expiresAt: now + 180}` **and the resolved target** (single slot, newest replaces older); emit `SKILL_BUFFERED {skillId, expiresAt}`. If only the target rule failed, log `zone.combat.noTarget` (a Melee / Dash / Instant cast with no target) or `zone.combat.outOfRange` (its target beyond the skill's reach) — never a silent failure.
+3. Every frame (after input, `ZoneScene.ts:1362`): `consumeReady(now, canExecute)`: if expired (`now > expiresAt`) drop it; else if `canExecute` → clear and `tryUseSkill`. The buffered press keeps its target; only if that target died (or there was none) is it resolved again (9.2 without the hover).
 
-### 9.2 `canExecuteSkill(id, now)` (`ZoneScene.ts:2248-2267`)
-False if: hero dead; skill unknown; level ≤ 0; `now < skillCooldowns[id]`; `mana < castMana`; `id == teleport` and hero immobilized (freeze/stun).
-Then `target = preferredTarget()`:
-- no target → true only if the skill has a `buff`, or `aoe`, or is `teleport`;
-- target and (buff or aoe or teleport) → true;
-- else true iff `distSq(hero, target) <= (range + 1)^2`.
+### 9.2 Cast target rule and `canExecuteSkill` (remake: DECISIONS C14 replaces the web's `preferredTarget`)
+**Resolver** (`CombatSystem::ResolveCastTarget`, at the press; teleport resolves nothing):
+- (a) the explicit target sent with the cast (a touch tap on a monster; it becomes the lock) or the lock (`attackTarget`), if alive;
+- (b) desktop mouse + keyboard: the attackable monster under the cursor at the press (`CmdCastSkill::hoverTarget`), if alive;
+- (c) auto-pick: the **nearest** alive monster within the **cast reach** (MonsterSystem spatial-grid order breaks ties), whatever its state (an idle monster nearer than a chasing one wins). Cast reach = `max(range + castAcquirePadTiles, castAcquireMinTiles)` = `max(range + 2, 8)` = **8 tiles** for every shipped skill (`skill_rules.json targeting`). Without a lock the target ring (combat-feel 9.5) previews this same pick (nearest alive within `castAcquireMinTiles`), and auto-battle acquires with it (9.9), so the ring, a press and auto-battle never disagree.
+- none → no target (the no-target rules of 9.5 / 9.7 / 9.8 apply).
 
-`preferredTarget()` (`:2335-2344`): the selected `attackTarget` if alive, else (clearing a dead selection) the nearest alive monster **anywhere on the map** (`findNearestAliveMonster`, radius = max(cols, rows)).
+Touch: a tap on a monster is (a) (`CmdAttackTarget` or `CmdCastSkill::target`), otherwise (c). Gamepad: the lock (LB / cycle), otherwise (c). Auto-battle acquires and casts through the same resolver (9.9).
+A pick by (b) or (c) becomes the **selection** (lock + target ring + `TARGET_CHANGED`) for every cast shape except Self (buffs), Blink (teleport) and Nova (hero-centred blasts), which only turn the hero toward it — and except a pick the cast cannot reach (`outOfRange` below): as the lock it would win every later press (rule a) and hold the basic attack on a far monster. A selected pick is not the **player's own lock** (`CombatSystem::PlayerLock`: a click / tap / target cycle), which only the teleport fallback distinguishes (section 10, C8).
+
+**Cast shapes** (`SkillCastShape`, from the exported data): Self (buffs, taunt_roar), Blink (teleport), Melee (slash, lethal_strike, bleed_strike, backstab), Dash (charge), Projectile (fireball, ice_arrow, poison_arrow), Instant (combustion, freeze, shadow_step, death_mark), Ground (meteor, blizzard, fire_wall, arcane_torrent, arrow_rain, poison_cloud), Trap (explosive_trap, chain_trap, slow_trap), Chain (chain_lightning), Cone (multishot), Line (piercing_arrow), Nova (whirlwind, war_stomp, rampage).
+
+**`canExecuteSkill(id, target)`**: false if hero dead; skill unknown; level ≤ 0; passive (C1); `now < skillCooldowns[id]`; `mana < castMana`; hero immobilized (C5). Then by shape:
+- Self, Blink, Nova → true (never aimed at a target);
+- Projectile, Chain, Ground, Trap, Cone, Line → true with no target (they fire along the aim or land at the cursor, 9.7 / 9.8); with a target, true iff it is within the cast reach (a ground AoE clamped short of a farther target, or a cone / line, would miss it);
+- Melee, Dash → need a target within `range + rangeSlackTiles` (1) — 2.5 tiles for the melee strikes, 6 for charge;
+- Instant → need a target within the cast reach.
+A target beyond its reach is **never swapped** for another monster: the press logs `zone.combat.outOfRange`, spends nothing and is buffered.
 
 ### 9.3 `tryUseSkill(id, now)` (`:2462-2528`)
 1. Abort silently if dead, unknown, not ready. Level 0 → log `skillLocked`.
 2. `cost = castMana(skill, L)`; if `mana < cost` → log `zone.combat.manaInsufficient`, abort.
 3. `teleport` while immobilized → log `zone.teleport.blockedByCC`, abort.
-4. `target = preferredTarget()`; if no target and the skill has no `buff`, no `aoe` and is not `teleport` → abort silently.
-5. If target and no `buff` and not `teleport` and not `aoe`: abort silently if `distSq > (range+1)^2`.
-   (So **buff skills and AoE skills ignore range**; this includes `death_mark` and `shadow_step`, which have buffs — Q6.)
+4. `target` = the press-time target (9.1 / 9.2); `canExecuteSkill(id, target)` must hold (it did at the request).
+5. (Web: buff and AoE skills ignored range, death_mark / shadow_step reached any distance — Q6. Remake: the shape gates of 9.2 apply.)
 6. **Commit**: `skillCooldowns[id] = now + cooldown(skill, L, eq.cooldownReduction)`; `mana = max(0, mana - cost)`; emit `SKILL_USED {skillId, damageType}` and `PLAYER_MANA_CHANGED` (`Player.ts:379-388`).
 7. `freeCast` roll (section 4.3).
 8. Animation and release delay:
-   - if `buff` or `aoe` or `range > 2`: `releaseDelay = playCast(target pos)` when `target && !buff`, else `playCast()` (no facing);
+   - if `buff` or `aoe` or `range > 2`: `releaseDelay = playCast()`;
    - else (melee single target: `slash, lethal_strike, bleed_strike, backstab`, and the passives `dual_wield_mastery, life_regen`): `releaseDelay = playAttack(target)` if a target exists else `playCast()`.
-9. If `id` is `teleport` or `shadow_step`, or `releaseDelay <= 0` → `releaseSkill` immediately with the original target.
-   Otherwise schedule `releaseSkill` after `releaseDelay` ms; at that time abort if the hero is dead or a zone transition started (cooldown and mana stay spent); the target becomes `target` if still alive, else `preferredTarget()` again (no range re-check, Q7); the release uses the clock time at release.
+   Facing (C14 rule 4): the animation (`EvPlayAnim.faceTarget`) turns the hero toward the target; with no target toward the no-target aim point (a ground cast's point, else the cursor direction, else the facing); teleport toward its aimed destination (section 10); buffs never.
+9. If `id` is `teleport` or `shadow_step`, or `releaseDelay <= 0` → `releaseSkill` immediately with the target.
+   Otherwise schedule `releaseSkill` after `releaseDelay` ms; at that time abort if the hero is dead, a zone transition started or the hero is immobilized (C5) (cooldown and mana stay spent). Release target (C14, replaces the web's retarget and FIX Q7): the press-time target **while it is alive, wherever it went** — ranged shapes follow it (no reach re-check), a Melee strike whiffs (fizzles) if it stepped beyond `range + 1`; never another monster. If it died before the beat: Ground / Trap / Cone / Line casts keep aiming at its last position; the others resolve again (9.2 without the hover, only a monster within the skill's reach; the pick becomes the selection when nothing is locked) — with none, a Projectile / Chain flies toward the last position and the rest fizzle. A press that had **no** target keeps its no-target aim (the cursor point / direction, else the facing — the hero already turned to it): a monster that steps into reach during the beat does not capture it. The release uses the clock time at release.
 
 ### 9.4 Release timings (contact/release beats)
 Values for the shipped hero rigs (render-derived, but gameplay-relevant because damage waits for them):
@@ -424,43 +437,50 @@ Values for the shipped hero rigs (render-derived, but gameplay-relevant because 
 | # | condition | behaviour |
 |---|---|---|
 | 1 | `id == teleport` | section 10 (mage) |
-| 2 | `id == shadow_step` and target | section 10 (rogue) |
-| 3 | `id == death_mark` and target | section 10 (rogue) |
-| 4 | `id == slow_trap` | section 10 (rogue) |
-| 5 | skill has `buff` | generic buff (9.6). Also catches `shadow_step`/`death_mark` with no target (Q8) |
+| 2 | `id == shadow_step` | with a living target: section 10 (rogue); else nothing (FIX Q8 — never the buff path) |
+| 3 | `id == death_mark` | with a living target: section 10 (rogue); else nothing (FIX Q8) |
+| 4 | `id == slow_trap` | section 10 (rogue), placed like a Trap (9.7) |
+| 5 | skill has `buff` | generic buff (9.6) |
 | 6 | `aoe` and `aoeRadius(L) > 0` | AoE (9.7) |
-| 7 | target exists | single target (9.8) |
+| 7 | single-target skill | single target (9.8): a living target, or a Projectile's no-target shot |
 | – | otherwise | nothing (cost already paid) |
 
 ### 9.6 Generic buff
 `hero.buffs.push({stat: buff.stat, value: buffValue(L), duration: buffDuration(L), startTime: releaseTime})`; log `zone.combat.skillActivated {skillName}`. Re-casting while active pushes another entry (stacks, section 11.2). `taunt_roar` extra: see section 10.
 
-### 9.7 AoE
+### 9.7 AoE (release geometry: DECISIONS C4 + C14)
 ```
-R = aoeRadius(skill, L)
-anchor = (id in GROUND_AOE) ? findGroundAoeAnchor(target, skill.range) : null
-GROUND_AOE = {meteor, blizzard, fire_wall, arcane_torrent, arrow_rain, poison_cloud}   // ZoneScene.ts:95
-findGroundAoeAnchor(t, range):           // ZoneScene.ts:2305-2318
-  reachSq = (range+1)^2
-  if t alive and distSq(hero,t) <= reachSq: return t
-  return the alive monster with the smallest distSq <= reachSq (strict '<' keeps the first found), else null
-centre = anchor ? anchor.position : hero.position
-targets =
-  (id == piercing_arrow && target) ? monstersAlongLine(target, skill.range, R*0.6)
-                                   : alive monsters with distSq(centre, m) <= R^2
-monstersAlongLine(t, range, halfWidth):  // ZoneScene.ts:2321-2333
-  d = t.pos - hero.pos ; len = |d| ; if len < 0.001 → [t] if alive else []
-  u = d/len ; for each alive m within (range + halfWidth) of hero:
-     r = m.pos - hero.pos ; along = r·u ; perp = |r.x*u.y - r.y*u.x|
+R      = aoeRadius(skill, L) ; reach = cast reach (9.2)
+aim    = the target's position at release (its last position if it died, 9.3 step 9), else none
+dir    = unit(aim - hero), else unit(cursor point - hero) (desktop), else the hero's facing      // CastDirection
+Ground (meteor, blizzard, fire_wall, arcane_torrent, arrow_rain, poison_cloud):
+  centre = aim, else the cursor point, else hero + facing * min(range, noTargetGroundAheadTiles 3)
+           clamped to `reach` along hero -> centre                                           // GroundCastPoint
+  targets = alive monsters with distSq(centre, m) <= R^2 ; knock-back from the centre
+Trap (explosive_trap, chain_trap; slow_trap in section 10):
+  centre = aim, else the cursor point, else the hero's feet, clamped to `reach` ; armed there (C4)
+Nova (whirlwind, war_stomp, rampage): centre = hero ; alive monsters within R
+Chain (chain_lightning): link 0 = the living target, then repeatedly the nearest alive monster not hit yet within R
+  of the previous link (strict '<', first found keeps ties), at most chainMaxLinks (6) links (C4: 55 ms apart).
+  No living target: the bolt flies along `dir` (range) and grounds — no hit.
+Cone (multishot): alive monsters within R of the hero inside the 50 degree fan around `dir` (C4) ; plus the target
+  itself when it is alive within `reach` (its arrow reaches it).
+Line (piercing_arrow): monstersAlongLine(hero, dir, range, R*0.6) ; plus the target when alive within `reach`.
+monstersAlongLine(hero, dir, range, halfWidth):  // ZoneScene.ts:2321-2333
+  for each alive m within (range + halfWidth) of hero:
+     r = m.pos - hero.pos ; along = r·dir ; perp = |r.x*dir.y - r.y*dir.x|
      keep if 0 <= along <= range and perp <= halfWidth
 ```
+`EvSkillVfx` carries what the core released: `point` = the ground centre / the line's end (the target when it lies
+beyond the range) / the cone's aim / the chain's first link; `points` + `pointTargets` = the hit monsters' positions
+and ids in hit order (a grounded chain: its end point, no id); `dir` = the cast direction for chains, cones and lines.
 Target list and per-target delays are fixed at release time:
 - `aoeDelay = projectileTravelMs(id)` (only `meteor` = **300 ms**, `SkillEffectSystem.ts:9-10,38-48`). If `aoeDelay > 0`, after it apply the hit to every captured target (skipping dead ones), aborting if the hero died or a zone transition started.
 - else, per target: `delay = (id in {multishot, piercing_arrow}) ? min(260, isoPx(target - hero) * 1.1) : 0` ms; delay 0 → apply now, else schedule (skip if the hero died / transition / target dead).
 - Apply hit (per target): `r = calculateDamage(heroEntity, monsterEntity, skill, L, skillLevels)`; `dmg = r.damage`; if `id == combustion` and the target has `burn` → `dmg = floor(dmg*1.5)`; `monster.takeDamage(dmg, from, {isCrit})`; `applySteal(r)` (section 12.3 — uses `r`, not the ×1.5 value); `applySkillStatusEffect(target, skill, dmg)`; if the monster died → `onMonsterKilled`.
-  Knock-back origin: blast skills with an anchor push from the anchor (unless the target is within 4 px of it), arrows from the hero (render/feel only).
+  Knock-back origin: Ground / Trap blasts push from their centre (unless the target is within 4 px of it), everything else (arrows, chains, novas) from the hero (render/feel only).
 - A dodged result (damage 0) is **not** special-cased in skill paths: the 0-damage hit still runs hurt reactions and status effects (Q9).
-- If `piercing_arrow` has no target at all it falls back to the caster-centred radius query with R = 1.5.
+- (Web: `piercing_arrow` without a target fell back to a caster-centred radius query. Remake C14: it always fires its line along `dir`.)
 
 ### 9.8 Single target
 Projectile delay `travel = projectileTravelMs(id, hero, target)`:
@@ -472,16 +492,31 @@ Projectile delay `travel = projectileTravelMs(id, hero, target)`:
 | all others | 0 (instant) |
 
 On arrival (or immediately): skip if the target died, the hero died, or a transition started; then same hit
-application as 9.7 (with the combustion rule). No range re-check on arrival.
+application as 9.7 (with the combustion rule). No range re-check on arrival. Projectiles are target-locked: they launch
+from the hero toward the target's release position and land on the target wherever it is (C14 rule 2).
+Projectile with no living target (C14 rule 3): it flies from the hero along `dir` (9.7: the cursor direction on
+desktop, else the facing; toward the dead target's last position at a release) for the cast reach, travel time from
+the same formula, and ends without a hit (`EvProjectileEnded.hit = false`) and without the skill's impact shake (a
+fizzle, not an explosion). Projectile skills emit their cast-glint `EvSkillVfx` at launch. Melee / Dash / Instant skills need a living target (9.2).
 
 ### 9.9 Auto-combat skill use (`ZoneScene.handleAutoCombat`, `:3071-3108`; toggled with Tab)
 Each frame while `autoCombat`: (target acquisition is in the combat spec) then
 `for id in autoSkillPriority (class order): if L>0 and ready and mana >= castMana: requestSkill(id); break`.
 Only the first eligible skill is requested each frame; if it cannot execute (out of range) it is buffered and nothing else is tried that frame. Passives with level > 0 are eligible (Q4).
+Remake (C1 + C14): auto-battle casts only while a living lock is held — without one it takes the 9.2 (c) auto-pick
+(nearest alive monster within `castAcquireMinTiles`, the monster the ring already shows; combat-feel 9.4 step 1) — then
+requests the first skill whose `canExecuteSkill(id, lock)` holds (every aimed shape: the lock within its reach) and
+whose release reaches the lock (`AutoSkillFits`: a nova's or taunt's blast; never teleport), with an empty aim — the 9.2
+resolver then returns the lock (rule a), so manual and automatic casts pick and release identically. Its lock is not
+the player's own (section 10 teleport).
 
 ---
 
 ## 10. Skill catalogue — all 40 skills
+
+Where and at whom each skill is released follows 9.2 / 9.7 / 9.8 and DECISIONS C4 + C14 (the remake): the "Runtime
+behaviour" notes below describe the web build wherever they say "caster-centred", "any distance", "no trap is placed",
+"the hero does not move" or "clear ... `attackTarget`" for these skills.
 
 Legend: **dmg×** = `damageMultiplier`, **mp** = `manaCost`, **cd** = cooldown ms, **rng** = range (tiles),
 **R** = aoeRadius, scaling `d/m/cd/R/bv/bd` = damage/mana/cooldown/radius/buff-value/buff-duration per level.
@@ -556,6 +591,10 @@ Runtime behaviour:
   3. If the tile is not walkable: search `r = 1..3`, `dr = -r..r` (outer), `dc = -r..r` (inner) for the first walkable tile inside `[1, size-2]`. None → log `zone.teleport.unreachable`, refund the mana cost (cooldown stays), stop.
   4. Move the hero there, clear path and `attackTarget`, log `skillActivated`.
   Range is **not** enforced (Q17). Blocked while frozen/stunned. For UE: destination = ground-plane hit under the cursor (mouse) or the stick direction (gamepad/touch).
+  Remake (C1 / C8 / C14): the aim is clamped to 8 tiles (FIX Q17); with no cursor point and no stick it goes to the
+  **player's own lock** (a click / tap / target cycle) else 6 tiles along the facing — never to a monster selected by a
+  C14 hover / auto-pick or by auto-battle (an escape blink must not land next to the monster the mage just shot at);
+  the lock is kept.
 - **arcane_torrent** — ground AoE, instant one-shot.
 
 ### 10.3 Rogue (`src/data/classes/rogue.ts`)
@@ -916,8 +955,8 @@ The orchestrator should confirm these. Recommendation in **bold**.
 | Q3/D3 | Hotbar slots shift when an earlier skill is learned | `SkillProgressionSystem.ts:52-60` | Keep the auto-fill order, but **persist explicit slot bindings** once the player edits them (UE UI). |
 | Q4 | Passives (`life_regen`, `dual_wield_mastery`, `unyielding`) are on the hotbar and castable (1-damage hit / manual Unyielding) and in auto-combat priority | `ZoneScene.ts:2248-2267, 3095-3107` | **Fix**: exclude `passive` skills from the hotbar, manual casting and auto-combat. |
 | Q5 | `stunDuration` does not scale with level though descriptions say it does | `ZoneScene.ts:6266, 6289` | Keep (data-driven; can add `stunDurationPerLevel` later). |
-| Q6 | Buff-carrying targeted skills (`death_mark`, `shadow_step`) ignore range | `ZoneScene.ts:2486-2489` | **Fix**: enforce `range + 1` for them. |
-| Q7 | Retarget after wind-up has no range check | `ZoneScene.ts:2525` | **Fix**: re-check range; if out of range, fizzle (cost already paid) or pick a target in range. |
+| Q6 | Buff-carrying targeted skills (`death_mark`, `shadow_step`) ignore range | `ZoneScene.ts:2486-2489` | **Fix**: enforce `range + 1` for them. *Remake (DECISIONS C14): they are Instant casts that need a target within the cast reach (9.2).* |
+| Q7 | Retarget after wind-up has no range check | `ZoneScene.ts:2525` | **Fix**: re-check range; if out of range, fizzle (cost already paid) or pick a target in range. *Superseded by DECISIONS C14 (9.3 step 9): the press-time target is kept while alive, never swapped.* |
 | Q8 | `death_mark` / `shadow_step` with no living monster fall into the generic buff path (`death_mark` amplifies damage taken by the hero) | `ZoneScene.ts:2588, 2619, 2663` | **Fix**: such casts are rejected before paying cost (require a target). |
 | Q9 | Dodged skill hits still apply status effects (DoT value 1, full freeze/stun) | `ZoneScene.ts:2737-2748` | **Fix**: skip hit reaction and status rules when `isDodged`. |
 | Q10 | `taunted` buff unused; taunt only flips idle/patrol → chase | `ZoneScene.ts:2683-2687` | Keep; monster spec may later read it. |
@@ -925,12 +964,12 @@ The orchestrator should confirm these. Recommendation in **bold**.
 | Q12 | Charge does not move the hero | `SkillEffectSystem.ts:320-345` | Open: implementing a dash is a design change; **keep** for Chapter 1. |
 | Q13 | Rampage "+15 % per extra target" missing | `ZoneScene.ts:2700-2768` | Keep. |
 | Q14 | Blizzard freezes instead of slowing; Ice Armor does not slow attackers | `ZoneScene.ts:6265` | Keep. |
-| Q15 | Chain Lightning / Multishot hit every enemy in a circle around the hero | `ZoneScene.ts:2708-2711` | Keep (it is what players experienced). |
+| Q15 | Chain Lightning / Multishot hit every enemy in a circle around the hero | `ZoneScene.ts:2708-2711` | Keep (it is what players experienced). *Superseded by DECISIONS C4 + C14 (9.7): chain from the target, multishot cone toward it.* |
 | Q16 | Mana Shield never drains mana | `ZoneScene.ts:2996-2998` vs `CombatSystem.ts:394-397` | **Fix**: subtract `manaDamage` from hero mana (matches the tested intent). |
 | Q17 | Teleport range unlimited | `ZoneScene.ts:2539-2556` | **Fix**: clamp the destination to `range` (6) tiles along the aim ray before the walkable search. |
 | Q18 | Shadow Step crit buff does nothing | section 11.1 | **Fix**: read `critBonus` buff in crit chance as percentage points `value*100`, consumed by the next hero hit. |
 | Q19 | Monster buffs never expire (death mark permanent, uncapped stacking) | no prune of `monster.buffs` | **Fix**: prune monster buffs by duration each frame. |
-| Q20 | Traps are instant caster-centred blasts | `ZoneScene.ts:2700-2768` | Keep for Chapter 1. |
+| Q20 | Traps are instant caster-centred blasts | `ZoneScene.ts:2700-2768` | Keep for Chapter 1. *Superseded by DECISIONS C4 (armed traps) + C14 (placed on the target's tile, 9.7).* |
 | Q21 | DoT ticks drop the remainder (`lastTickTime = now`); last tick can be lost; after a pause many ticks fire at once | `StatusEffectSystem.ts:178-185` | **Fix**: `lastTickTime += tickCount*interval`, and cap ticks so that total ticks ≤ `floor(duration/interval)`. |
 | Q22 | Hero freeze/stun/slow do not affect movement | `ZoneScene.ts` (no checks) | Keep for Chapter 1 (no monster applies them); revisit for later chapters. |
 | Q23 | Zone change resets skill cooldowns | `Player.ts:99-101` | Keep (harmless). |

@@ -298,10 +298,13 @@ Hero DoT deaths and the labyrinth volatile-corpse burst call `killPlayer()` **wi
   replaces older. Each frame `consumeReady(now, canExecute)`: drop if `now > expiresAt`; if executable → consume and
   `tryUseSkill`. (A press up to 180 ms before cooldown/mana/range allows fires automatically.)
 
-### 6.2 `canExecuteSkill` (`ZoneScene.ts:2248-2267`)
-False if hero dead, unknown/unlearned, on cooldown, `mana < cost`, or `teleport` while immobilized.
-`target = preferredTarget()` (§9.2). No target → allowed only for buff / aoe / teleport skills. With a target: buff,
-aoe, teleport always allowed; otherwise `dist² <= (range+1)²`.
+### 6.2 `canExecuteSkill` (remake: DECISIONS C14, classes-stats-skills 9.2)
+False if hero dead, unknown/unlearned, passive, on cooldown, `mana < cost`, or the hero is immobilized (C5).
+The target is the one resolved at the press (§9.2). By cast shape: buffs, teleport and novas are never aimed at one;
+projectiles, chain lightning, ground AoEs, traps, cones and lines fire along the aim / land at the cursor without one,
+and with one need it within the cast reach `max(range + 2, 8)`; melee strikes and charge need one within `range + 1`,
+the other single-target skills one within the cast reach. A target-only failure logs `zone.combat.noTarget` /
+`zone.combat.outOfRange` at the press and spends nothing.
 
 ### 6.3 `tryUseSkill` (`ZoneScene.ts:2462-2528`)
 Re-checks the same gates (messages: `zone.combat.manaInsufficient`, `zone.teleport.blockedByCC`). Then:
@@ -311,8 +314,11 @@ Re-checks the same gates (messages: `zone.combat.manaInsufficient`, `zone.telepo
    * `buff || aoe || range > 2` → `playCast()` (faces the target when there is one and the skill is not a buff).
    * else (melee single target) → `playAttack(target)` (uses basic-attack contact timing, compressed by attackSpeed); no target → `playCast()`.
 4. `releaseDelay` = returned contact/charge ms (§10). `teleport` and `shadow_step` (or delay ≤ 0) release **immediately**;
-   others release at `now + releaseDelay`. At release: abort if hero dead / transitioning; if the original target died,
-   **retarget** to `preferredTarget()` (may be null).
+   others release at `now + releaseDelay`. At release: abort if hero dead / transitioning / immobilized; the press-time
+   target is used while it lives (ranged casts follow it; a melee strike whiffs if it stepped out of reach); a target
+   that died is replaced by the §9.2 resolver (no hover, within the skill's reach) — ground AoEs, traps, cones and lines
+   keep aiming at its last position (C14; replaces the web's retarget to `preferredTarget()`).
+   Facing: the cast animation turns the hero toward the target, else toward the no-target aim point (C14 rule 4).
 
 Mana and cooldown are spent even if the release then finds nothing to hit.
 
@@ -320,15 +326,18 @@ Mana and cooldown are spent even if the release then finds nothing to hit.
 
 | # | Class | Skills | Rule |
 |---|---|---|---|
-| 1 | **Blink to cursor** | `teleport` | Destination = pointer ground tile (desktop; **no range limit**, only map clamp `[1, size−2]`). Touch (pointer claimed by a button): joystick dir × 6 tiles if `length(dir) > 0.2`, else current target tile, else self. Rounded; if not walkable search square rings r=1..3 (row-major `dr=-r..r`, `dc=-r..r`) for the first walkable in bounds; none → refund mana (cooldown kept), log `zone.teleport.unreachable`. Then instant move, clear path + attackTarget, VFX. |
+| 1 | **Blink to cursor** | `teleport` | Destination = pointer ground tile (desktop; **no range limit**, only map clamp `[1, size−2]`). Touch (pointer claimed by a button): joystick dir × 6 tiles if `length(dir) > 0.2`, else current target tile, else self. Rounded; if not walkable search square rings r=1..3 (row-major `dr=-r..r`, `dc=-r..r`) for the first walkable in bounds; none → refund mana (cooldown kept), log `zone.teleport.unreachable`. Then instant move, clear path + attackTarget, VFX. *Remake: clamped to 8 tiles (FIX Q17), 6 ahead without aim (C8); the "current target" is only the player's own lock (click / tap / cycle), never a C14 hover / auto-pick or auto-battle's lock; the lock is kept (C14).* |
 | 2 | **Step behind** | `shadow_step` (tier 3), **only with a target** (else falls to #5) | Tile = `round(target − unit(hero−target))` clamped; if not walkable → target's tile. Instant move, set attackTarget, push its buff (inert `critBonus`). |
-| 3 | **Mark** | `death_mark`, **only with a target** (else falls to #5 — quirk 16) | Push `damageAmplify` (buffValue, buffDuration) onto the **monster**; if `damageMultiplier > 0` also one hit (calculateDamage with skill, dodge ignored) — kill check, no status effect, no impact burst. Log `zone.combat.deathMarkApplied`. Because the skill has a `buff`, **no range check** is applied anywhere (§6.2/§6.3): works on the preferred target at any distance (same for shadow_step). |
-| 4 | **Slow trap** | `slow_trap` | Monsters within `aoeRadius(L)` of the **hero**: damage each (dodge ignored), kill check; survivors get status `slow` value `round(buffValue×100)` (40 at L1) for `buffDuration` (5000). No impact burst. Log `zone.combat.slowTrapHit {count}`. |
+| 3 | **Mark** | `death_mark`, **only with a target** (else falls to #5 — quirk 16) | Push `damageAmplify` (buffValue, buffDuration) onto the **monster**; if `damageMultiplier > 0` also one hit (calculateDamage with skill, dodge ignored) — kill check, no status effect, no impact burst. Log `zone.combat.deathMarkApplied`. Because the skill has a `buff`, **no range check** is applied anywhere (§6.2/§6.3): works on the preferred target at any distance (same for shadow_step). *Remake (FIX Q8 + C14): no target → nothing (logged); the target must be within the cast reach.* |
+| 4 | **Slow trap** | `slow_trap` | Monsters within `aoeRadius(L)` of the **hero**: damage each (dodge ignored), kill check; survivors get status `slow` value `round(buffValue×100)` (40 at L1) for `buffDuration` (5000). No impact burst. Log `zone.combat.slowTrapHit {count}`. *Remake (C4 + C14): an armed trap on the target's tile, else the cursor point, else the hero's feet.* |
 | 5 | **Self buff** | any skill with `buff` (shield_wall, ice_armor, mana_shield, frenzy, iron_fortress, taunt_roar, poison_blade, vengeful_wrath, vanish …) | Push `{stat: buff.stat, value: buffValue(L), duration: buffDuration(L), startTime: now}` on the hero, log `zone.combat.skillActivated`, VFX at hero; heal burst if stat is `hp` or id contains `heal`. **No damage** even if `damageMultiplier > 0` (poison_blade). `taunt_roar` additionally: every alive monster within `aoeRadius(L)` gets a `taunted` buff and idle/patrol → chase; log `zone.combat.tauntRoar {count}`. |
 | 6 | **AoE** | `aoe && aoeRadius(L) > 0` | See §6.5. |
 | 7 | **Single target** | everything else with a target | VFX caster→target; `travel = getProjectileTravelMs` (below). Hit at `now + travel` (abort if target or hero dead) or immediately. Hit = calculateDamage(skill, L, skillLevels) [dodge ignored] → `combustion` ×1.5 (floor) if target burning → takeDamage → steal → element-coloured number → skill status (§7.4) → kill check → impact burst (`skillImpactColor`) → ground scorch if `damageType != physical` or `damageMultiplier > 1.5` (type: id has `fire`/`meteor` → fire; `ice`/`blizzard` → ice; else **lightning** — QUIRK: poison/physical get a lightning scorch; recommend map by damageType). |
 
-No target and not covered above → nothing happens (mana already spent). **There are no channelled skills** in the
+No target and not covered above → nothing happens (mana already spent). *Remake (C14 rule 3): a projectile with no target
+flies along the cursor direction (desktop) or the facing for the cast reach and fizzles; a chain grounds along it; cones
+and lines fire along it; ground AoEs land at the cursor point (else 3 tiles ahead), traps at the cursor point (else the
+feet); melee / charge / instant single-target skills are not cast (`zone.combat.noTarget`).* **There are no channelled skills** in the
 web game; every skill resolves as one instant (or once-delayed) burst. A future channel type would be a new class here.
 
 `charge` has no movement — it is a range-5 instant single-target hit (QUIRK, keep for ch1; the VFX streaks sell a dash).
@@ -339,11 +348,16 @@ Projectiles are target-locked: damage lands on the target wherever it is on arri
 
 ### 6.5 AoE resolution (`ZoneScene.ts:2700-2768`)
 * `R = aoeRadius(L)`. **Ground-targeted** set `GROUND_AOE_SKILLS = {meteor, blizzard, fire_wall, arcane_torrent, arrow_rain, poison_cloud}` (`:95`):
-  anchor = chosen target if alive and `dist² <= (range+1)²`, else nearest alive monster with `dist² <= (range+1)²`, else none (`:2305-2318`).
-  Centre = anchor's position or the hero.
+  *remake (C14, classes-stats-skills 9.7)*: centre = the resolved target's position at release (a target beyond the cast
+  reach refuses the press, §6.2), else the desktop cursor point, else 3 tiles ahead, clamped to the cast reach — never
+  another monster, never the hero's feet. (Web: the target within `range + 1`, else the nearest monster within it, else
+  the hero.)
 * Target set (computed **at release**, positions not re-checked for delayed hits):
-  * `piercing_arrow` with a target: line from hero toward target, length `range`, half-width `R×0.6`; monster qualifies if
-    `0 <= along <= range` and `|perp| <= halfWidth` (`:2321-2333`). Without a target: circle R around the hero (QUIRK).
+  * `piercing_arrow`: line from the hero along the cast direction (toward the target, else the cursor, else the facing),
+    length `range`, half-width `R×0.6`; monster qualifies if `0 <= along <= range` and `|perp| <= halfWidth`
+    (`:2321-2333`); the target within the cast reach is always hit (C14; the web's no-target circle is dropped).
+  * `multishot`: the C4 50° fan of radius R along the cast direction, plus the target within the cast reach (C14).
+  * `chain_lightning`: from the target, nearest unhit monster within R of the previous link, ≤ 6 links (C4 + C14).
   * everything else: alive monsters with `dist(centre) <= R` (Euclidean on tile coords).
 * Delays: `aoeDelay = getProjectileTravelMs(id)` (only `meteor` > 0 → 300 ms, all targets together). Else per target:
   `multishot`/`piercing_arrow` hit at `min(260, dist_px × 1.1)` ms (port `tileDist×36×1.1`); all others immediate
@@ -503,8 +517,13 @@ fires as soon as within 1.5 tiles — QUIRK: recommend stopping the path once in
 Ground click clears attackTarget and starts hold-to-move (§ movement spec); while holding, auto-attack is suppressed.
 3D: raycast pawns first (capsule), then ground; keep the 1.5-tile tolerance around the ground hit as fallback.
 
-### 9.2 Preferred skill target (`ZoneScene.ts:2335-2344`)
-`attackTarget` if alive (else cleared) → nearest alive monster on the map (any state).
+### 9.2 Skill cast target (remake: DECISIONS C14; web `ZoneScene.ts:2335-2344` took the nearest monster on the map)
+Resolved once, at the press: (a) the tapped monster / the lock (`attackTarget`) if alive; (b) desktop: the monster under
+the cursor; (c) the nearest alive monster within the cast reach `max(range + 2, 8)` tiles (the pick the ring previews,
+§9.5). A (b)/(c) pick becomes `attackTarget` (+ `TARGET_CHANGED`) except for buffs, teleport and hero-centred novas,
+and except when the cast cannot reach it (`outOfRange`). A buffered press keeps it; a press with none keeps its
+cursor / facing aim through the release beat. Such a pick is not the player's own lock (a click / tap / cycle), which
+the teleport fallback (§6.4 #1, C8) requires. Full rule: classes-stats-skills 9.2.
 
 ### 9.3 Target cycling (`cycleTargetId`, `CombatInputSystem.ts:139-152`; `ZoneScene.ts:2346-2371`)
 Q / gamepad button 4 / touch corner button (`UI_TARGET_CYCLE`). Candidates = all monsters; keep alive with
@@ -520,9 +539,16 @@ Toggle: Tab, HUD button, touch toggle; persisted in save settings (`autoCombat`)
    learned, off cooldown and affordable is `requestSkill`ed, then stop — even if it is only buffered (not executable,
    e.g. out of range). QUIRK: a ready-but-unusable top skill starves lower ones; and passives can be "cast" (§6.6).
    Recommend FIX: pick the first skill that `canExecute`. Potions are **not** used by auto-battle.
+   *Remake (C1 + C14): step 1 takes the §9.2 (c) auto-pick instead — the nearest alive monster within
+   `castAcquireMinTiles` (8), whatever its own `aggroRange`, i.e. the monster the ring already shows — so auto-battle and
+   a manual press pick the same monster; its lock is not the player's own (teleport). Skills only with a living lock; the
+   first skill that can execute on the lock and whose release reaches it; requested through the §9.2 resolver, which
+   returns the lock.*
 
 ### 9.5 Target indicator (`ZoneScene.ts:3110-3140`)
-Shown under `attackTarget`, else under the nearest aggro monster: red ring (ellipse 36×12 px ≈ 0.8×0.27 tile, stroke 1.5 px,
+Shown under `attackTarget`, else (remake, C14) under the monster a press would auto-pick — the nearest alive monster
+within `castAcquireMinTiles` (8 tiles), whatever its state (web: the nearest aggro monster) — so the ring, a cast and
+auto-battle agree; a cast then makes it `attackTarget`: red ring (ellipse 36×12 px ≈ 0.8×0.27 tile, stroke 1.5 px,
 `0xff4444` α 0.6) at the target's feet. Emits `TARGET_CHANGED` whenever the shown target changes. 3D: ground decal ring.
 
 ### 9.6 Combat state (`ZoneScene.ts:3193-3210`)
@@ -911,13 +937,13 @@ Chapter 1 skill effects (`SkillEffectSystem.ts:214-1042`):
 * **fireball** — muzzle flash; flaming comet (glow+comet+flame head+core) flying the travel time with flame/ember/smoke trail every 6 px; on arrival: shake 90/0.003, flash, glow, shock disc r≈1, 9 flame petals, sparks, embers, smoke, scorch decal (1.4 s).
 * **blizzard** — frost decal R×0.85 (1.3 s), ring, 26 ice shards falling in 3 waves over ~700 ms (each lands with a spark, small ring, shard stuck in the ground), snowflakes, mist.
 * **ice_armor** — frost decal, 9 crystal spikes erupt in a ring then shatter into flakes (~420 ms), flash, ring, glint, sparkles.
-* **chain_lightning** — flash at hand; for each target in order a jagged bolt from the previous point (55 ms stagger), each hit: flash, sparks, ring, glint. No targets: a bolt strikes the ground ahead.
+* **chain_lightning** — flash at hand; for each target in order a jagged bolt from the previous point (55 ms stagger), each hit: flash, sparks, ring, glint. No targets: a bolt strikes the ground ahead. UE (C14): each link point follows its monster (`EvSkillVfx.pointTargets`), so a bolt ends on the body it hits.
 * **mana_shield** — arcane gather, rune, a bubble pops in with overshoot and fades (760 ms), 8 orbiting sparks.
 * **fire_wall** — scorch decal R×0.92, shock, 14 flame pillars (3 tongues each, 520–760 ms) appearing around a ring of radius 0.8R in an 18 ms-per-pillar sweep, glows, embers, smoke.
 * **ice_arrow** — frost shard projectile with flake trail; arrival: flash, 7 shard splinters back-sprayed, flakes, ring, frost decal.
 * **teleport** — departure implosion (gather, collapsing ring, rune), 6 rift streaks along the path, arrival at +100 ms: rune flare, flash, light beam, ring, sparks, motes.
 * **backstab** — two crossing shadow dagger arcs at the target (60 ms apart), flash, glint, sparks, blood spray, puff.
-* **multishot** — up to 7 arrows fanned toward targets (or a 1.6 rad fan along aim), 220 ms flight to 1.1R, staggered 12 ms.
+* **multishot** — up to 7 arrows fanned toward targets (or a 1.6 rad fan along aim), 220 ms flight to 1.1R, staggered 12 ms. UE (C14): the 7-arrow volley fans evenly over the core's 50° cone along `EvSkillVfx.dir`, and every monster the core hits gets its own homing arrow from the hand that lands on its per-target delay (`SkillArrowDelayMs`, when the hit lands).
 * **explosive_trap** — arm blink + rune (80 ms), then shake 200/0.009, flash, glow 1.6R, shock to R, ring, flames, debris, sparks, smoke, scorch decal.
 * **poison_blade** — poison gather, ring of green flames at the feet, ring, glow, venom drips, bubbles, puddle decal.
 * **death_mark** — shadow rune under the target (1 s), skull sigil stamps over its head and hangs ~1 s, shrinking ring, glint, 6 orbiting embers.
@@ -998,7 +1024,8 @@ Keep-by-default unless resolved otherwise (see Open Questions):
     then puts `damageAmplify 0.25` on the **hero** (hero takes +25 % damage for 8 s). Recommend FIX: require a target.
 17. Leashed monsters don't walk home directly (idle + patrol drift).
 18. Any skill with a `buff` skips range checks: `death_mark` (range 4) and `shadow_step` (range 5) reach the preferred
-    target at any distance. Recommend FIX: enforce `range+1` for targeted buff-type skills.
+    target at any distance. Recommend FIX: enforce `range+1` for targeted buff-type skills. *Remake (C14): they need a
+    target within the cast reach (classes-stats-skills 9.2).*
 
 Log keys used (zh-CN in `src/i18n/locales/zh-CN.ts:1920-2198`): `zone.combat.{autoCombat,autoCombatOn,autoCombatOff,
 manaInsufficient,skillLocked,freeCast,skillActivated,deathMarkApplied,slowTrapHit,tauntRoar,dodgeCounterReady,
