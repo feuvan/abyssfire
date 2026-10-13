@@ -14,6 +14,9 @@
 // * Occlusion fade (R1, world-map-nav.md 15.6): tall dressing between the camera and the hero / nearby monsters fades
 //   to alpha .25 (decor, tents) / .45 (walls) with the web's 110 ms approach.
 // * Picking support: GetGroundHeight / RaycastGround on the terrain height field (ue58-platform.md 8.4).
+// * Shader gate (uncooked editor-binary runs only, WITH_EDITOR): an instanced mesh whose material is still compiling
+//   for this RHI stays hidden until its shader map is ready (abyss.DecorShaderGate), instead of drawing with the
+//   engine's default material (grey, black where the sun does not reach). Cooked builds ship compiled shaders.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -61,6 +64,9 @@ class ABYSSFIRE_API AAbyssZoneActor : public AActor
 
 public:
 	AAbyssZoneActor();
+
+	/** Ticks only while the shader gate holds hidden dressing (WITH_EDITOR runs); otherwise tick stays disabled. */
+	virtual void Tick(float DeltaSeconds) override;
 
 	/** Builds the whole zone from the snapshot (zone grid, markers, camps) and the data tables. */
 	void BuildZone(const abyss::Snapshot& Snap, const abyss::DataStore& Data, UAbyssAssetLibrary& Assets,
@@ -120,6 +126,10 @@ private:
 	bool AddInstance(UStaticMesh* Mesh, const FTransform& Transform, float RandomValue, bool bOccluder, float FadeTarget,
 		float RadiusCm, float HeightCm, FName StoryId = NAME_None);
 	void FlushInstances();
+	/** Shader gate: true when the component must stay hidden for now (its material is still compiling). */
+	static bool GateUntilShadersReady(const UInstancedStaticMeshComponent& Component);
+	/** Shows every gated component whose materials are ready (all of them after the timeout); stops ticking when done. */
+	void UpdateShaderGate();
 	const FAbyssArtAsset* ResolveArt(TConstArrayView<FName> GameIds, uint32 Hash) const;
 	bool PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
 		bool bOccluder, float FadeTarget, FName StoryId = NAME_None);
@@ -177,6 +187,15 @@ private:
 	FName FocusedStory;
 	TArray<FAbyssZoneEffectSpot> EffectSpots;
 	TArray<FIntPoint> ExitTiles;
+	/**
+	 * Shader gate: DecorInstanceComponents indices hidden until their materials compile; when the wait began (wall
+	 * clock, for the log), the last gate tick, and the waited frame time that abyss.DecorShaderGateMaxSec is measured in
+	 * (each frame counts at most 0.25 s, so a blocking compile wait does not count).
+	 */
+	TArray<int32> ShaderGatedComponents;
+	double ShaderGateStartSec = 0.0;
+	double ShaderGateLastSec = 0.0;
+	double ShaderGateWaitedSec = 0.0;
 	/** Build diagnostics: first game ids of PlaceArt calls with no manifest asset (one zone-build warning lists them). */
 	TSet<FName> MissingArtIds;
 	int32 PlacedArtCount = 0;

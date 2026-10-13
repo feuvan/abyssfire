@@ -39,6 +39,9 @@ void UAbyssGameInstance::Init()
 {
 	Super::Init();
 	check(IsInGameThread());
+	// Before the first frame, once per process (GEngine exists here, unlike at module start-up): -game runs hide the
+	// engine's on-screen debug block ("Preparing Shaders (N)"); PIE keeps it (Scripts/README.md §3).
+	AbyssPlatform::ApplyScreenMessagePolicy();
 
 	SaveStorage = MakeUnique<FAbyssSaveStorage>();
 	LoadSettings();

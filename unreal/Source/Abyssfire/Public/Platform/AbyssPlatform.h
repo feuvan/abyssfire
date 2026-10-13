@@ -29,4 +29,12 @@ namespace AbyssPlatform
 
 	/** Keeps the screen awake during gameplay (ue58-platform.md 13). */
 	ABYSSFIRE_API void SetScreenSaverAllowed(bool bAllowed);
+
+	/**
+	 * Non-shipping game runs (-game, packaged Development): hides the engine's on-screen message block ("Preparing
+	 * Shaders (N)", map warnings, AddOnScreenDebugMessage, the "'DisableAllScreenMessages' to suppress" hint) with the
+	 * engine's own DisableAllScreenMessages command. The editor (PIE) keeps it; -abyssscreenmessages keeps it in a game
+	 * run, and the console command EnableAllScreenMessages brings it back at run time. Call once GEngine exists.
+	 */
+	ABYSSFIRE_API void ApplyScreenMessagePolicy();
 }

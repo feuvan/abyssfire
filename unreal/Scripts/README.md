@@ -134,6 +134,33 @@ screen appears; *New Game* builds the first zone at runtime. Useful console comm
 `abyss.Continue`, `abyss.Debug` (`Source/Abyssfire/README.md`). Mobile look on the Mac: *Settings → Preview Rendering
 Level → Android Vulkan / iOS* (every material must compile there too).
 
+**Standalone `-game` run** (the editor binary without the editor UI, e.g. for a playtest at the window size players get):
+
+```bash
+"$UE/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "$PROJ" -game -windowed -ResX=1280 -ResY=720 -log
+```
+
+The content is uncooked there, so any shader the derived-data cache does not hold yet is compiled the first time it is
+needed, and until it is ready UE draws the mesh with its default material (lit grey, black away from the sun). In
+`-game` runs the game therefore waits at each zone entry, behind the fade, until pending shaders and asset builds are
+done (at most `abyss.WaitForCompilationMaxSec`, 20 s; the window does not respond meanwhile, and the log says
+`Uncooked run: finishing N shader jobs…`), and keeps zone dressing that is still compiling hidden until it is ready; in
+PIE only the hiding applies (`Source/Abyssfire/Public/World/WorldContract.md` §6). Run
+`unreal/Scripts/build_content.sh --shaders` once before playtesting (it compiles every master for this machine's shader
+platform into the local cache, so there is little left to wait for), or test a cooked package (§4), which never compiles
+shaders at run time. UE also reports the compiles in its on-screen message block (`Preparing Shaders (N)`); the game
+hides that block in non-shipping game runs (`AbyssPlatform::ApplyScreenMessagePolicy`, called from
+`UAbyssGameInstance::Init`; the log says `On-screen engine messages hidden`), so shader, map and
+`AddOnScreenDebugMessage` warnings do not cover the HUD:
+
+| Want | How |
+|---|---|
+| the engine messages for the whole run | add `-abyssscreenmessages` to the command line |
+| show / hide them at run time | in the console: `EnableAllScreenMessages`, `DisableAllScreenMessages`, `ToggleAllScreenMessages` |
+| hide them with a binary built before this change | add `-ExecCmds="DisableAllScreenMessages"` to the command line |
+
+PIE (the editor's *Play*) and Shipping builds are unaffected: the editor keeps the messages, Shipping never draws them.
+
 ## 4. Package
 
 All from the repository root, after the content build (cooking reads `unreal/Content`). Development builds shown;
@@ -243,6 +270,7 @@ hand. On the first real run check:
 | `bound the mesh to … instead of SKEL_…` | the FBX armature differs from the family skeleton (bone names / hierarchy): re-export from the art kit |
 | `r.Substrate is True` error | `Config/DefaultEngine.ini` must keep `r.Substrate=False` (DECISIONS P11) |
 | pink materials in game | a texture with other compression / sRGB settings was bound at runtime; re-run the build (it resets texture settings) |
+| dark grey / black lumps without ink where bushes, grass or banners stand in an uncooked run; the log shows `Missing cached shadermap for …`, `Uncooked run: finishing …` / `stopped waiting after …` or `Shader gate: …` (on screen `Preparing Shaders (N)`, in PIE or with `-abyssscreenmessages`) | the masters are still compiling for this RHI and UE draws those meshes with its default material meanwhile (lit grey, black away from the sun). `-game` runs wait for pending compiles at each zone entry (bounded) and hide zone dressing until its shaders are ready; PIE only hides the dressing (`abyss.WaitForCompilation`, `abyss.WaitForCompilationMaxSec`, `abyss.DecorShaderGate`, `abyss.DecorShaderGateMaxSec`: `Source/Abyssfire/Public/World/WorldContract.md` §6). Run `build_content.sh --shaders` once so the DDC already holds every master's shaders. A `Failed to compile Material` line instead means the master is broken, not slow. Cooked builds are not affected |
 | everything re-imports every run | the source files change (line endings / LFS filters) or `IMPORT_SETTINGS_VERSION` was bumped |
 
 ## 8. Developer checks (no Unreal needed)

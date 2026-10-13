@@ -22,6 +22,14 @@ class USkeletalMesh;
 class UStaticMesh;
 class UTexture2D;
 
+/** What UAbyssAssetLibrary::WaitForPendingCompilation did (uncooked runs). */
+enum class EAbyssCompileWait : uint8
+{
+	None,       // nothing pending, the policy skipped it, or a cooked build
+	Finished,   // the pending shader jobs and asset builds were finished and applied
+	TimedOut,   // abyss.WaitForCompilationMaxSec passed with work left; it finishes in the background
+};
+
 UCLASS()
 class ABYSSFIRE_API UAbyssAssetLibrary : public UGameInstanceSubsystem
 {
@@ -71,6 +79,18 @@ public:
 	void TrimToRecentZones(int32 KeepZones);
 	/** Async preload (zone transition fade): fire and forget; LoadObjectAt finds them resident afterwards. */
 	void PreloadAsync(const TArray<FSoftObjectPath>& Paths);
+
+	// ---- uncooked runs ----
+	/**
+	 * Uncooked runs only (the editor binary with -game, or PIE): blocks until the pending asynchronous asset builds and
+	 * shader compile jobs have finished, so no primitive is drawn with the engine's default material (lit grey, near
+	 * black away from the sun) while its own shaders compile. Policy: console variable abyss.WaitForCompilation (0 never,
+	 * 1 zone entry in standalone -game runs (default), 2 every frame, PIE included); the wait stops after
+	 * abyss.WaitForCompilationMaxSec (20 s) and leaves the rest to finish in the background (TimedOut). bZoneEntry: the
+	 * caller is in the first frames of a freshly built zone. Compiled out of cooked builds (WITH_EDITOR 0), which ship
+	 * compiled shaders. WorldContract.md section 6.
+	 */
+	static EAbyssCompileWait WaitForPendingCompilation(bool bZoneEntry);
 
 private:
 	void TouchLoaded(FName Key);

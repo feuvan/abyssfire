@@ -147,4 +147,26 @@ namespace AbyssPlatform
 		FPlatformApplicationMisc::ControlScreensaver(bAllowed ? FGenericPlatformApplicationMisc::EScreenSaverAction::Enable
 															  : FGenericPlatformApplicationMisc::EScreenSaverAction::Disable);
 	}
+
+	void ApplyScreenMessagePolicy()
+	{
+#if !UE_BUILD_SHIPPING
+		// Shipping draws no such block. In an uncooked -game run it shows "Preparing Shaders (N)" whenever shaders compile
+		// on demand (Scripts/README.md §3: build_content.sh --shaders fills the cache first), drawn over the game.
+		if (GIsEditor || GEngine == nullptr)
+		{
+			return;
+		}
+		if (FParse::Param(FCommandLine::Get(), TEXT("abyssscreenmessages")))
+		{
+			UE_LOG(LogAbyss, Log, TEXT("On-screen engine messages kept (-abyssscreenmessages)"));
+			return;
+		}
+		// The engine's own command (it clears GAreScreenMessagesEnabled for the process and logs "Onscreen
+		// warnings/messages are now DISABLED"); no world is needed.
+		const bool bHandled = GEngine->Exec(nullptr, TEXT("DisableAllScreenMessages"), *GLog);
+		UE_LOG(LogAbyss, Log, TEXT("On-screen engine messages %s (-abyssscreenmessages or the console command EnableAllScreenMessages shows them)"),
+			bHandled ? TEXT("hidden") : TEXT("left on: DisableAllScreenMessages not handled by this build"));
+#endif
+	}
 }

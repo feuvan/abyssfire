@@ -2,22 +2,145 @@
 
 #include "Abyssfire.h"
 #include "Animation/AnimSequence.h"
+#include "CoreGlobals.h"
 #include "Engine/GameInstance.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialParameterCollection.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 
+#if WITH_EDITOR
+#include "AssetCompilingManager.h"
+#include "ShaderCompiler.h"
+#endif
+
 #include <string_view>
+
+#if WITH_EDITOR
+// Uncooked runs compile shaders on first use. Until a material's shader map is ready UE draws its primitives with the
+// engine's default material (lit grey, near black away from the sun: the scene's only light is the directional sun),
+// which the second Mac playtest showed as dark lumps where the berry bushes and grass tufts stand (the foliage masters
+// were still in the "Preparing Shaders" queue). Cooked builds ship compiled shaders and compile this out.
+static TAutoConsoleVariable<int32> CVarAbyssWaitForCompilation(
+	TEXT("abyss.WaitForCompilation"),
+	1,
+	TEXT("Uncooked runs (the editor binary): finish pending shader compiles and asynchronous asset builds before the frame ")
+	TEXT("is drawn, so nothing shows the engine's default material while its own shaders compile. 0: never. 1: the first ")
+	TEXT("frames of every zone, standalone -game runs only (default; PIE is left alone). 2: every frame, PIE too (hitches ")
+	TEXT("whenever something new compiles). Scripts/build_content.sh --shaders pre-compiles the masters (shorter waits)."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarAbyssWaitForCompilationMaxSec(
+	TEXT("abyss.WaitForCompilationMaxSec"),
+	20.f,
+	TEXT("abyss.WaitForCompilation: longest wait in seconds (the window does not respond meanwhile). After it the frame is ")
+	TEXT("drawn and the rest compiles in the background: zone dressing stays hidden until ready (abyss.DecorShaderGate), ")
+	TEXT("other meshes draw with the engine default material meanwhile, and the zone's next frames do not wait again. ")
+	TEXT("<= 0: no limit."),
+	ECVF_Default);
+#endif
 
 namespace AbyssAssetLibraryPrivate
 {
+#if WITH_EDITOR
+	/** One warning per run and entry point when this engine lacks one of the compiling-manager calls used below. */
+	void WarnCompileEntryPointMissing(bool& bWarned, const TCHAR* EntryPoint, const TCHAR* Consequence)
+	{
+		if (!bWarned)
+		{
+			bWarned = true;
+			UE_LOG(LogAbyss, Warning, TEXT("Uncooked run: %s not found on this engine, so %s"), EntryPoint, Consequence);
+		}
+	}
+
+	FString CompileCountText(int32 Count)
+	{
+		return Count < 0 ? FString(TEXT("?")) : FString::FromInt(Count);
+	}
+
+	// Pending work counts of the engine's compiling managers, called through whichever entry point this engine version
+	// declares (resolved at compile time; the other branch is never instantiated). -1: no count available (logged once),
+	// wait anyway without a time limit.
+	template <typename ShaderManagerType>
+	int32 PendingShaderJobs(ShaderManagerType* Manager)
+	{
+		if (Manager == nullptr)
+		{
+			return 0;
+		}
+		if constexpr (requires(ShaderManagerType* M) { M->GetNumRemainingJobs(); })
+		{
+			return static_cast<int32>(Manager->GetNumRemainingJobs());
+		}
+		else
+		{
+			static bool bWarned = false;
+			WarnCompileEntryPointMissing(bWarned, TEXT("FShaderCompilingManager::GetNumRemainingJobs"),
+				TEXT("abyss.WaitForCompilation waits without shader job counts and without its time limit"));
+			return -1;
+		}
+	}
+
+	template <typename AssetManagerType>
+	int32 PendingAssetBuilds(AssetManagerType& Manager)
+	{
+		if constexpr (requires(AssetManagerType& M) { M.GetNumRemainingAssets(); })
+		{
+			return static_cast<int32>(Manager.GetNumRemainingAssets());
+		}
+		else
+		{
+			static bool bWarned = false;
+			WarnCompileEntryPointMissing(bWarned, TEXT("FAssetCompilingManager::GetNumRemainingAssets"),
+				TEXT("abyss.WaitForCompilation waits without asset build counts and without its time limit"));
+			return -1;
+		}
+	}
+
+	/**
+	 * Applies the results that are ready (built meshes to their components, shader maps to their materials; the asset
+	 * manager drives every registered compiling manager). False when this engine has no such entry point.
+	 */
+	template <typename AssetManagerType>
+	bool PumpAssetCompilation(AssetManagerType& Manager)
+	{
+		if constexpr (requires(AssetManagerType& M) { M.ProcessAsyncTasks(false); })
+		{
+			Manager.ProcessAsyncTasks(false);
+			return true;
+		}
+		else
+		{
+			static bool bWarned = false;
+			WarnCompileEntryPointMissing(bWarned, TEXT("FAssetCompilingManager::ProcessAsyncTasks"),
+				TEXT("abyss.WaitForCompilation blocks until everything is compiled (no time limit)"));
+			return false;
+		}
+	}
+
+	/** Shader maps that are ready, applied to their materials (unlimited time slice); a no-op without the entry point. */
+	template <typename ShaderManagerType>
+	void PumpShaderCompilation(ShaderManagerType* Manager)
+	{
+		if constexpr (requires(ShaderManagerType* M) { M->ProcessAsyncResults(false, false); })
+		{
+			if (Manager != nullptr)
+			{
+				Manager->ProcessAsyncResults(false, false);
+			}
+		}
+	}
+#endif
+
 	/**
 	 * Data/assets.json is the exporter's copy of Art/Export/manifest.json and is read first (the core DataStore reads the
 	 * same copy for decor footprints, so the fix is the re-export, not reading the art file here). Uncooked runs have both
@@ -356,4 +479,86 @@ void UAbyssAssetLibrary::PreloadAsync(const TArray<FSoftObjectPath>& Paths)
 	{
 		PreloadHandle = Streamable.RequestAsyncLoad(MoveTemp(Existing));
 	}
+}
+
+EAbyssCompileWait UAbyssAssetLibrary::WaitForPendingCompilation(bool bZoneEntry)
+{
+#if WITH_EDITOR
+	using namespace AbyssAssetLibraryPrivate;
+	const int32 Mode = CVarAbyssWaitForCompilation.GetValueOnGameThread();
+	// Mode 1 waits only behind a zone entry of a standalone -game run: in PIE (GIsEditor) the editor's own compile
+	// backlog (a material just edited, the content browser) would stall the session.
+	if (Mode <= 0 || (Mode == 1 && (GIsEditor || !bZoneEntry)))
+	{
+		return EAbyssCompileWait::None;
+	}
+	FAssetCompilingManager& AssetCompiling = FAssetCompilingManager::Get();
+	const int32 AssetBuilds = PendingAssetBuilds(AssetCompiling);
+	const int32 ShaderJobs = PendingShaderJobs(GShaderCompilingManager);
+	if (AssetBuilds == 0 && ShaderJobs == 0)
+	{
+		return EAbyssCompileWait::None;
+	}
+	const double MaxSec = static_cast<double>(CVarAbyssWaitForCompilationMaxSec.GetValueOnGameThread());
+	const bool bBounded = MaxSec > 0.0 && AssetBuilds >= 0 && ShaderJobs >= 0;
+	// Logged before blocking (the window does not respond meanwhile). Unknown counts ('?') are logged at zone entry only,
+	// so mode 2 does not log every frame.
+	if (bZoneEntry || AssetBuilds > 0 || ShaderJobs > 0)
+	{
+		const FString ShaderText = CompileCountText(ShaderJobs);
+		const FString AssetText = CompileCountText(AssetBuilds);
+		const FString LimitText = bBounded ? FString::Printf(TEXT("at most %.1f s"), MaxSec) : FString(TEXT("no time limit"));
+		UE_LOG(LogAbyss, Display, TEXT("Uncooked run: finishing %s shader jobs and %s asset builds before drawing (%s, %s). "
+			"Pre-compile the masters with Scripts/build_content.sh --shaders; abyss.WaitForCompilation 0 skips this wait."),
+			*ShaderText, *AssetText, bZoneEntry ? TEXT("zone entry") : TEXT("mid-play"), *LimitText);
+	}
+	const double StartSec = FPlatformTime::Seconds();
+	bool bTimedOut = false;
+	int32 LeftShaderJobs = 0;
+	int32 LeftAssetBuilds = 0;
+	if (bBounded)
+	{
+		// The shader workers and build threads keep compiling on their own; poll their counts and apply what is ready,
+		// up to the limit. A cold shader cache can take minutes, and nothing can be typed while the game thread waits.
+		while (PumpAssetCompilation(AssetCompiling))
+		{
+			PumpShaderCompilation(GShaderCompilingManager);
+			LeftShaderJobs = PendingShaderJobs(GShaderCompilingManager);
+			LeftAssetBuilds = PendingAssetBuilds(AssetCompiling);
+			if (LeftShaderJobs <= 0 && LeftAssetBuilds <= 0)
+			{
+				break;
+			}
+			if (FPlatformTime::Seconds() - StartSec >= MaxSec)
+			{
+				bTimedOut = true;
+				break;
+			}
+			FPlatformProcess::Sleep(0.02f);
+		}
+	}
+	const double PolledSec = FPlatformTime::Seconds() - StartSec;
+	if (bTimedOut)
+	{
+		UE_LOG(LogAbyss, Warning, TEXT("Uncooked run: stopped waiting after %.1f s (abyss.WaitForCompilationMaxSec) with %d "
+			"shader jobs and %d asset builds left. They finish in the background: zone dressing stays hidden until its "
+			"shaders are ready (abyss.DecorShaderGate), other meshes draw with the engine default material meanwhile."),
+			PolledSec, LeftShaderJobs, LeftAssetBuilds);
+		return EAbyssCompileWait::TimedOut;
+	}
+	// What is left (nothing after a completed poll; everything without a limit or without counts) is finished and
+	// applied now.
+	AssetCompiling.FinishAllCompilation();
+	if (GShaderCompilingManager != nullptr)
+	{
+		GShaderCompilingManager->FinishAllCompilation();
+	}
+	const double WaitedSec = FPlatformTime::Seconds() - StartSec;
+	UE_CLOG(bZoneEntry || AssetBuilds > 0 || ShaderJobs > 0 || WaitedSec > 0.05, LogAbyss, Display,
+		TEXT("Uncooked run: compilation finished in %.2f s"), WaitedSec);
+	return EAbyssCompileWait::Finished;
+#else
+	(void)bZoneEntry;
+	return EAbyssCompileWait::None;
+#endif
 }

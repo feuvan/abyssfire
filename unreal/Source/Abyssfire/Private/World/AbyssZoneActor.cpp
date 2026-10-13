@@ -8,10 +8,15 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/Texture2D.h"
 #include "HAL/IConsoleManager.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
 #include "RHI.h"
+
+#if WITH_EDITOR
+#include "MaterialShared.h"
+#endif
 
 #include <string>
 #include <string_view>
@@ -53,6 +58,27 @@ static TAutoConsoleVariable<float> CVarAbyssBloom(
 	TEXT("Bloom intensity of the zone post-process on tiers with bloom (threshold 1). < 0 = the art manifest's hero ")
 	TEXT("fx.bloom.strength (the reviewed emissive bloom, 0.8), 0.6 when the manifest has none."),
 	ECVF_Default);
+
+#if WITH_EDITOR
+// Uncooked runs compile a master on demand when the DDC has no shader map for this RHI ("Preparing Shaders (N)"), and
+// UE draws its meshes with the engine default material meanwhile: lit WorldGrid, black where the sun does not reach
+// (the zones have no sky light), e.g. the plains grass tufts and berry bushes (M_AF_Toon_Foliage / M_AF_Outline_Foliage).
+static TAutoConsoleVariable<int32> CVarAbyssDecorShaderGate(
+	TEXT("abyss.DecorShaderGate"),
+	1,
+	TEXT("Uncooked editor-binary runs only: zone dressing whose material is still compiling for this RHI. 0 = draw it at ")
+	TEXT("once (engine default material until the shaders finish), 1 = hide it until its shaders are ready (default), ")
+	TEXT("2 = finish those shaders while the zone builds (blocks the game thread). build_content.sh --shaders precompiles ")
+	TEXT("every master so nothing waits."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarAbyssDecorShaderGateMaxSec(
+	TEXT("abyss.DecorShaderGateMaxSec"),
+	60.f,
+	TEXT("abyss.DecorShaderGate 1: seconds of frames after the zone build after which still-hidden dressing is shown anyway ")
+	TEXT("(each frame counts at most 0.25 s, so the zone-entry compile wait of abyss.WaitForCompilation does not count)."),
+	ECVF_Default);
+#endif
 
 namespace AbyssZonePrivate
 {
@@ -126,11 +152,83 @@ namespace AbyssZonePrivate
 		}
 		return &Pool.back().type;
 	}
+
+#if WITH_EDITOR
+	// UMaterialInterface::GetMaterialResource takes the shader platform in recent engines and the feature level in older
+	// ones (same shim as UAbyssContentBuildLibrary; own name, unity builds may join both files in one translation unit).
+	template <typename MaterialType>
+	FMaterialResource* ShaderGateResource(MaterialType* Material)
+	{
+		if constexpr (requires(MaterialType* M) { M->GetMaterialResource(GMaxRHIShaderPlatform); })
+		{
+			return Material->GetMaterialResource(GMaxRHIShaderPlatform);
+		}
+		else
+		{
+			return Material->GetMaterialResource(GMaxRHIFeatureLevel);
+		}
+	}
+
+	/** One warning per run when this engine has no shader-map query, so an inactive gate shows up in the log. */
+	void WarnShaderGateInactive()
+	{
+		static bool bWarned = false;
+		if (bWarned)
+		{
+			return;
+		}
+		bWarned = true;
+		UE_LOG(LogAbyss, Warning, TEXT("Shader gate: FMaterial::IsCompilationFinished not found on this engine, so "
+			"abyss.DecorShaderGate is inactive (zone dressing draws with the engine default material while its shaders "
+			"compile; abyss.WaitForCompilation still waits at zone entry in -game runs)"));
+	}
+
+	/** True while the shader map of this material resource is still being compiled (or fetched from the DDC). */
+	template <typename ResourceType>
+	bool IsShaderMapPending(ResourceType& Resource)
+	{
+		if constexpr (requires(ResourceType& R) { R.IsCompilationFinished(); })
+		{
+			return !Resource.IsCompilationFinished();
+		}
+		else
+		{
+			WarnShaderGateInactive();   // no query on this engine: the gate never hides anything
+			return false;
+		}
+	}
+
+	/** Material resources of the component's slots still compiling (a parameter-only instance resolves to its master's). */
+	void CollectCompilingMaterials(const UInstancedStaticMeshComponent& Component, TArray<FMaterialResource*>& Out)
+	{
+		const int32 NumMaterials = Component.GetNumMaterials();
+		for (int32 Slot = 0; Slot < NumMaterials; ++Slot)
+		{
+			UMaterialInterface* Material = Component.GetMaterial(Slot);
+			FMaterialResource* Resource = Material != nullptr ? ShaderGateResource(Material) : nullptr;
+			if (Resource != nullptr && IsShaderMapPending(*Resource))
+			{
+				Out.AddUnique(Resource);
+			}
+		}
+	}
+#endif
 }
 
 AAbyssZoneActor::AAbyssZoneActor()
 {
+#if WITH_EDITOR
+	// Ticks (every frame, so dressing appears the frame its shaders are ready) only while the shader gate holds hidden
+	// dressing: FlushInstances enables it, UpdateShaderGate disables it. Post-update work: after the tickable sim driver,
+	// so when UAbyssWorldBuilder's zone-entry compile wait (abyss.WaitForCompilation) has just finished the shaders, the
+	// dressing is shown in that same frame.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
+	PrimaryActorTick.bTickEvenWhenPaused = true;
+	PrimaryActorTick.TickGroup = TG_PostUpdateWork;
+#else
 	PrimaryActorTick.bCanEverTick = false;
+#endif
 	SetActorEnableCollision(false);
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
@@ -170,6 +268,8 @@ void AAbyssZoneActor::ClearZone()
 		}
 	}
 	DecorInstanceComponents.Reset();
+	ShaderGatedComponents.Reset();
+	SetActorTickEnabled(false);
 	ComponentByMesh.Reset();
 	PendingInstances.Reset();
 	PendingStories.Reset();
@@ -558,6 +658,12 @@ void AAbyssZoneActor::FlushInstances()
 		const float MeshHeight = static_cast<float>(Mesh->GetBoundingBox().Max.Z);
 		Component->SetCastShadow(MeshHeight >= ShadowCasterMinHeightCm);
 		Component->SetupAttachment(SceneRoot);
+		// Hidden before registering, so no proxy is ever drawn with the default material (UpdateShaderGate shows it).
+		const bool bShaderGated = GateUntilShadersReady(*Component);
+		if (bShaderGated)
+		{
+			Component->SetVisibility(false);
+		}
 		Component->RegisterComponent();
 		Component->AddInstances(Batch.Transforms, /*bShouldReturnIndices*/ false, /*bWorldSpace*/ true);
 		for (int32 Index = 0; Index < Batch.Transforms.Num(); ++Index)
@@ -569,6 +675,10 @@ void AAbyssZoneActor::FlushInstances()
 		Component->MarkRenderStateDirty();
 		const int32 ComponentIndex = DecorInstanceComponents.Add(Component);
 		ComponentByMesh.Add(Mesh, ComponentIndex);
+		if (bShaderGated)
+		{
+			ShaderGatedComponents.Add(ComponentIndex);
+		}
 		for (int32 Index = 0; Index < Batch.OccluderSlots.Num(); ++Index)
 		{
 			if (Occluders.IsValidIndex(Batch.OccluderSlots[Index]))
@@ -586,6 +696,110 @@ void AAbyssZoneActor::FlushInstances()
 	}
 	PendingStories.Reset();
 	PendingInstances.Reset();
+	if (ShaderGatedComponents.Num() > 0)
+	{
+		ShaderGateStartSec = ShaderGateLastSec = FPlatformTime::Seconds();
+		ShaderGateWaitedSec = 0.0;
+		UE_LOG(LogAbyss, Log, TEXT("Shader gate: %d of %d instanced meshes hidden until their materials finish compiling for "
+			"this RHI (uncooked run; Scripts/build_content.sh --shaders precompiles the masters, abyss.DecorShaderGate 0 "
+			"draws them at once)"), ShaderGatedComponents.Num(), DecorInstanceComponents.Num());
+		SetActorTickEnabled(true);
+	}
+}
+
+// =====================================================================================================================
+// Shader gate (uncooked runs)
+// =====================================================================================================================
+
+bool AAbyssZoneActor::GateUntilShadersReady(const UInstancedStaticMeshComponent& Component)
+{
+#if WITH_EDITOR
+	using namespace AbyssZonePrivate;
+	const int32 Mode = CVarAbyssDecorShaderGate.GetValueOnGameThread();
+	if (Mode <= 0)
+	{
+		return false;
+	}
+	TArray<FMaterialResource*> Compiling;
+	CollectCompilingMaterials(Component, Compiling);
+	if (Compiling.Num() == 0)
+	{
+		return false;
+	}
+	if (Mode >= 2)
+	{
+		for (FMaterialResource* Resource : Compiling)
+		{
+			Resource->FinishCompilation();   // blocks until this shader map is compiled and applied
+		}
+		return false;
+	}
+	return true;
+#else
+	(void)Component;
+	return false;
+#endif
+}
+
+void AAbyssZoneActor::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	UpdateShaderGate();
+}
+
+void AAbyssZoneActor::UpdateShaderGate()
+{
+#if WITH_EDITOR
+	using namespace AbyssZonePrivate;
+	// The timeout counts the frames the gate waits through, not wall time: a frame longer than 0.25 s counts 0.25 s.
+	// The zone-entry compile wait (abyss.WaitForCompilation) blocks the game thread between FlushInstances and this
+	// tick, possibly for longer than the timeout, and must not time the gate out by itself.
+	const double NowSec = FPlatformTime::Seconds();
+	ShaderGateWaitedSec += FMath::Clamp(NowSec - ShaderGateLastSec, 0.0, 0.25);
+	ShaderGateLastSec = NowSec;
+	const bool bTimedOut = ShaderGateWaitedSec >= static_cast<double>(CVarAbyssDecorShaderGateMaxSec.GetValueOnGameThread());
+	const bool bGateOff = CVarAbyssDecorShaderGate.GetValueOnGameThread() <= 0;
+	int32 ShownCompiling = 0;
+	TArray<FMaterialResource*> Compiling;
+	for (int32 Pending = ShaderGatedComponents.Num() - 1; Pending >= 0; --Pending)
+	{
+		const int32 ComponentIndex = ShaderGatedComponents[Pending];
+		UInstancedStaticMeshComponent* Component =
+			DecorInstanceComponents.IsValidIndex(ComponentIndex) ? DecorInstanceComponents[ComponentIndex].Get() : nullptr;
+		if (Component != nullptr && !bGateOff)
+		{
+			// Checked after the timeout too: only a component that is really still compiling is shown with the
+			// engine default material (and counted in the warning).
+			Compiling.Reset();
+			CollectCompilingMaterials(*Component, Compiling);
+			if (Compiling.Num() > 0)
+			{
+				if (!bTimedOut)
+				{
+					continue;
+				}
+				++ShownCompiling;
+			}
+		}
+		if (Component != nullptr)
+		{
+			Component->SetVisibility(true);
+		}
+		ShaderGatedComponents.RemoveAtSwap(Pending, 1, EAllowShrinking::No);
+	}
+	if (ShaderGatedComponents.Num() == 0)
+	{
+		SetActorTickEnabled(false);
+		const double WallSec = NowSec - ShaderGateStartSec;
+		UE_CLOG(ShownCompiling == 0, LogAbyss, Log, TEXT("Shader gate: zone dressing shown after %.1f s"), WallSec);
+		UE_CLOG(ShownCompiling > 0, LogAbyss, Warning, TEXT("Shader gate: %d instanced meshes still compiling after %.0f s "
+			"of frames (%.0f s since the zone build), shown with the engine default material until their shaders finish "
+			"(abyss.DecorShaderGateMaxSec)"), ShownCompiling, ShaderGateWaitedSec, WallSec);
+	}
+#else
+	ShaderGatedComponents.Reset();
+	SetActorTickEnabled(false);
+#endif
 }
 
 // =====================================================================================================================

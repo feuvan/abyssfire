@@ -58,6 +58,10 @@ namespace AbyssWorldBuilderPrivate
 	constexpr float FlyingHoverCm = 45.f;
 	constexpr float LootFlySec = 0.3f;                 // ZoneScene.ts:4030-4065
 	constexpr float QuestItemFlySec = 0.42f;           // QuestWorld.ts:286-330
+	// Uncooked runs: frames after a zone build whose end waits for pending shader / asset compilation
+	// (UAbyssAssetLibrary::WaitForPendingCompilation): the build frame (zone dressing, first characters, zone loops) and
+	// two more for whatever the next steps spawn (pets, equipment, story props).
+	constexpr int32 ZoneCompileWaitFrames = 3;
 
 	FString ToF(std::string_view Text)
 	{
@@ -518,6 +522,7 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 	}
 	bStoryFocusActive = false;
 	bZoneBuilt = true;
+	CompileWaitFrames = ZoneCompileWaitFrames;
 	ReconcileMarkers(Snap);
 	RefreshQuality();
 }
@@ -550,6 +555,7 @@ void UAbyssWorldBuilder::ClearZone()
 		GuideArrow->SetVisibility(false);
 	}
 	bZoneBuilt = false;
+	CompileWaitFrames = 0;
 }
 
 double UAbyssWorldBuilder::GetGroundHeight(double WorldX, double WorldY) const
@@ -1804,6 +1810,15 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 	{
 		RefreshQuality();
 	}
+
+	// Last, once everything this frame loads is loaded: in uncooked runs a material whose shaders are still compiling
+	// draws its meshes with the engine's default material (the second Mac playtest's dark lumps were the plains berry
+	// bushes and grass tufts on the foliage masters). The first frames of a zone finish that work before they are drawn
+	// (abyss.WaitForCompilation, bounded by abyss.WaitForCompilationMaxSec; a no-op in cooked builds). After a timed-out
+	// wait the zone's next frames do not wait again: the rest compiles in the background, and the zone actor's shader
+	// gate keeps the dressing that is still compiling hidden.
+	const EAbyssCompileWait CompileWait = UAbyssAssetLibrary::WaitForPendingCompilation(CompileWaitFrames > 0);
+	CompileWaitFrames = CompileWait == EAbyssCompileWait::TimedOut ? 0 : FMath::Max(0, CompileWaitFrames - 1);
 }
 
 // =====================================================================================================================

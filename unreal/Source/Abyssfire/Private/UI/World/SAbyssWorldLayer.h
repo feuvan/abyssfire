@@ -78,7 +78,12 @@ private:
 		int32 Outline = 3;
 		bool bCrit = false;
 		double Start = 0.0;
+		/** Start offset from the anchor in web px (BaseOffset plus the placement lift of PlaceFloatGroup). */
 		FVector2D StartOffset = FVector2D::ZeroVector;
+		/** Start offset before the placement lift (the web position of the kind). */
+		FVector2D BaseOffset = FVector2D::ZeroVector;
+		/** Ink box of the text at scale 1 in Slate px (placement checks). */
+		FVector2D Box = FVector2D::ZeroVector;
 		double Drift = 0.0;
 	};
 
@@ -93,6 +98,18 @@ private:
 	bool Project(const FVector& World, FVector2D& OutLocal, const FVector2D& LocalSize) const;
 	void PaintLabel(FAbyssPainter& P, const FLabel& Label, const FVector2D& LocalSize, double Now) const;
 	void PaintFloat(FAbyssPainter& P, const FFloat& Float, const FVector2D& LocalSize, double Now) const;
+	/**
+	 * A float T seconds after its spawn: offset from its anchor in web px (StartOffset + rise / drift), opacity and scale.
+	 * False once its life is over. Shared by the paint and the placement check.
+	 */
+	static bool FloatMotion(const FFloat& Float, double T, FVector2D& OutOffset, float& OutAlpha, float& OutScale);
+	/**
+	 * Places the group of the label float just added (not numbers): the label floats spawned this frame on World, split
+	 * in arrival order into groups holding each kind once - one kill's +EXP / +G / +Embers. The group is lifted together
+	 * until, over its visible life, it clears every other float on screen, earlier groups on the same spot included
+	 * (DECISIONS C13).
+	 */
+	void PlaceFloatGroup(const FVector& World, double Now);
 	FString MonsterLabel(const abyss::MonsterView& Monster) const;
 
 	TSharedPtr<FAbyssUiContext> Ctx;
@@ -108,8 +125,6 @@ private:
 	abyss::EntityId TargetId = abyss::kNoEntity;
 	/** Floating-number stacking (combat-feel 12): key = projected position / 28 px, last spawn time and index. */
 	mutable TMap<int64, TPair<double, int32>> StackKeys;
-	/** Kill-reward stacking (+EXP / +G / +Embers): key = (world / 60 cm, kind), last spawn time and row. */
-	TMap<FIntVector, TPair<double, int32>> RewardStackKeys;
 	FRandomStream Random;
 
 	// projection cache (one per paint)
@@ -117,6 +132,8 @@ private:
 	mutable FMatrix ViewProjection = FMatrix::Identity;
 	mutable FIntRect ViewRect;
 	mutable FVector2D ViewportSize = FVector2D::ZeroVector;
+	/** Local size of the last paint (AddFloatingText projects with the last paint's camera). */
+	mutable FVector2D PaintLocalSize = FVector2D::ZeroVector;
 	/**
 	 * Slate px per web world px at the hero (the web draws zone texts as world objects under ZONE_CAMERA_ZOOM 1.8): the
 	 * float / popup offsets, rises and stack rows are web world px times this. Kept from the last paint that saw the hero.

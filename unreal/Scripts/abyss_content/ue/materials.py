@@ -575,7 +575,12 @@ def check_material_stats(ed: Editor, report: BuildReport, require_shaders: bool 
                 report.materials[master.name] = {"status": NOT_COMPILED}
         report.note("shaders not compiled in this session (a -run=pythonscript commandlet uses the NullRHI without "
                     "-AllowCommandletRendering): material statistics and compile errors not read; "
-                    "`build_content.sh --shaders` compiles every master and reports them")
+                    "`build_content.sh --shaders` compiles every master and reports them. It also fills the DDC the "
+                    "uncooked -game run reads: without it that run compiles the masters on demand, waiting at each "
+                    "zone entry and hiding zone dressing until its shaders are ready (abyss.WaitForCompilation, "
+                    "abyss.DecorShaderGate; Source/Abyssfire/Public/World/WorldContract.md section 6), and a mesh whose "
+                    "master is not ready meanwhile draws with the engine default material (lit grey, black away from "
+                    "the sun)")
         if require_shaders:
             report.error("--shaders: this editor session compiles no shaders (NullRHI); start it with "
                          "-AllowCommandletRendering (build_content.sh --shaders adds it)")

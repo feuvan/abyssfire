@@ -235,8 +235,12 @@ Presets: `glow`, `flash`, `glint`, `sparks`, `streak`, `motes`, `flames`, `smoke
 
 ### 5.4 Sprites
 
-`T_FX_<Sprite>`: square, linear alpha (or luminance for additive), white-ish so the instance colour tints it. A sprite
-with `cells: N` is a horizontal strip of N equal cells, the instance Variant (custom data 4) picks the cell. Names used by
+`T_FX_<Sprite>`: linear alpha (or luminance for additive), white-ish so the instance colour tints it. A sprite
+with `cells: N` is a horizontal strip of N equal cells, the instance Variant (custom data 4) picks the cell. A cell need
+not be square (Wisp and Ember 1:2, Flame cells 1:2, Streak / Arrow 1:4, Slash 2:1), but the quad's shape comes from the
+layer alone: width = size x `aspect` (default 1, or the emitter preset's), never from the texture. A layer that draws a
+non-square cell must set `aspect` to the cell's width / height, or the sprite is stretched (the death.burst soul wisp on
+a square quad reads as a fat white "?"). Names used by
 presets and defaults: Glow, Core, Spark, Streak, Ember, Flame, Smoke (2 cells), Rock (2), Ring, Shock, Scorch, Slash,
 Beam, Bolt (4), LightPool, Arrow, Bubble, Claw, Coin, Comet, Crack, CrackGlow, Drop, Flake, Frost, Hex, Plus, Puddle,
 Rune, ShardFrost, Skull.
@@ -245,3 +249,25 @@ Rune, ShardFrost, Skull.
 
 `abyss.SunScale` (0.55, sun intensity x pi), `abyss.GroundAmbient` (0.55), `abyss.ExposureBias` (0.263 = log2 1.2),
 `abyss.Bloom` (0.6), `abyss.ShakeScale` (camera shake amplitude).
+
+**Uncooked runs: shaders compiled on first use** (editor binary only; every variable below is compiled out of cooked
+builds, which ship compiled shaders). Until a material's shader map is ready UE draws its meshes with the engine's
+default material: lit grey, black where the sun does not reach, since the zones have no sky light (the second Mac
+playtest's dark lumps without ink were the plains berry bushes and grass tufts on `M_AF_Toon_Foliage` /
+`M_AF_Outline_Foliage`). Two mechanisms keep that off screen:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `abyss.WaitForCompilation` | 1 | Standalone `-game` runs: `UAbyssWorldBuilder::SyncFrame` ends the first 3 frames of every zone with `UAbyssAssetLibrary::WaitForPendingCompilation`, which waits for the pending shader jobs and asynchronous asset builds and applies them before the frame is drawn, behind the zone fade. 0 = never, 1 = zone entry in `-game` runs (PIE is left alone), 2 = every frame, PIE too (hitches whenever something new compiles). |
+| `abyss.WaitForCompilationMaxSec` | 20 | The longest such wait (the window does not respond meanwhile, and no console command can be typed). After it the zone is shown, the rest compiles in the background and the zone's next frames do not wait again. <= 0 = no limit. |
+| `abyss.DecorShaderGate` | 1 | Every uncooked run, and the only cover in PIE, with `abyss.WaitForCompilation 0` and after a timed-out wait: `AAbyssZoneActor` registers each zone-dressing ISM whose material is still compiling hidden, and shows it the frame its shaders are ready (it never blocks; after a finished wait that is the same frame). 0 = draw at once (default material meanwhile), 2 = finish those shaders while the zone builds (blocks). |
+| `abyss.DecorShaderGateMaxSec` | 60 | Seconds of frames (each frame counts at most 0.25 s, so the blocking wait above does not count) after which still-hidden dressing is shown anyway, with a warning. |
+
+Characters, loot and effects are covered by the wait only; the gate covers zone dressing only. The log tells what
+happened: `Missing cached shadermap for …` (UE: a master is being compiled), `Uncooked run: finishing N shader jobs and
+M asset builds …` / `compilation finished in X s` / `stopped waiting after X s …` (the wait), `Shader gate: N of M
+instanced meshes hidden …` / `zone dressing shown after X s` (the gate). A `… not found on this engine` warning means an
+engine API the wait or the gate queries is missing on this UE version, and that mechanism falls back as the warning
+says. UE's on-screen `Preparing Shaders (N)` is hidden in `-game` runs (`-abyssscreenmessages` shows it,
+`Scripts/README.md` §3). `Scripts/build_content.sh --shaders` compiles every master once for the editor's shader
+platform, so later runs find the shader maps in the DDC and neither mechanism has anything to do.

@@ -711,7 +711,9 @@ Motion: Miss: scale 0.8→1 in 90 ms, then after 120 ms rise 22 px and fade over
 Others: pop from scale 0.35 (crit, rotated −8°) / 0.5 → peak 1.5 / 1.2 in 90 / 70 ms (quad-out, rotation→0) → settle
 1.1 / 1.0 in 160 / 110 ms (back-out); life `L = 1050` (crit) / `780`; x eases to `start+drift` over L (sine-out);
 y rises `40`/`28` px over 0.45L (quad-out), then sinks 8 px while fading to 0 over 0.55L (quad-in). Pooled objects.
-Kill rewards: `+N EXP` (`#b39ddb`, 13 px, at y−40, rise 35 px, 1500 ms) and `+NG` (`#ffd700`, 13 px, at (x+15, y−28), rise 30, 1200 ms).
+Kill rewards: `+N EXP` (`#b39ddb`, 13 px, at y−40, rise 35 px, 1500 ms) and `+NG` (`#ffd700`, 13 px, at (x+15, y−28), rise 30, 1200 ms);
+y and alpha → 0 in one `Power2` tween (Phaser `Power2` = Cubic.Out: half faded after ~0.2 of the duration, `ZoneScene.ts:3828-3838`).
+The Ember float (`+N Embers`, 1400 ms, rise 30) uses the same tween. Miss: y and alpha in one `Quad.easeOut` tween.
 3D: screen-space widgets anchored to projected world points (head height), same timings; offsets, rises, drifts and
 stack rows in px are web world px × the camera scale (the web text lives under the 1.8 zone zoom; DECISIONS C13), font
 sizes are screen px.

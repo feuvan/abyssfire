@@ -222,6 +222,8 @@ private:
 	double TimeSec = 0.0;
 	float LightingRefreshSec = 0.f;
 	float ZoneFadeSec = 0.4f;
+	/** Frames left after a zone build whose end waits for pending shader / asset compilation (uncooked runs). */
+	int32 CompileWaitFrames = 0;
 	bool bZoneBuilt = false;
 	bool bEventsBound = false;
 	bool bRegistered = false;
