@@ -884,7 +884,7 @@ ivy leaves in the moss colour `#7CAA48` on ≈ 35 % of tiles. 3D: `SM_Palisade_P
 placed procedurally by the mask; web ratio ≈ 0.4 × hero height → **recommended 1.4–1.6 m**. NEW optional:
 `SM_Palisade_Plains_GatePost` pair at the 2-tile gate. 50 camp-wall tiles in emerald_plains.
 
-### 6.4 Camp kit (both camps; offsets and blocking in `world-map-nav.md` §3.4; drawers `src/graphics/sprites/decorations/CampProps.ts`, theme `src/data/camp-themes.ts:4-14`)
+### 6.4 Camp kit (both camps; offsets and blocking in `world-map-nav.md` §3.4 — the remake places **3 tents** and sub-tile props per DECISIONS W11 / `abyss/world/CampLayout.h`; drawers `src/graphics/sprites/decorations/CampProps.ts`, theme `src/data/camp-themes.ts:4-14`)
 
 | Mesh | Count/camp | Web size (px) → 3D | Look (hex) |
 |---|---|---|---|

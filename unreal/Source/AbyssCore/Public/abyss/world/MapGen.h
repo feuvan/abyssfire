@@ -1,5 +1,6 @@
 // Bit-exact port of the web MapGenerator (DECISIONS W10: same seed -> same grid, the specs' golden layouts hold).
-// Spec: world-map-nav.md 0.1 (floating-point determinism), 3.2-3.3 (landmarks, golden result), 3.4 (camp blockers),
+// Spec: world-map-nav.md 0.1 (floating-point determinism), 3.2-3.3 (landmarks, golden result), 3.4 (camp stamp; camp
+// props and blockers are layout v2, DECISIONS W11 / CampLayout.h),
 // 4.1 (SeededRandom Park-Miller, test vector), 4.2 (themes), 4.3 (pipeline order; every RNG draw listed), 4.4 (drunk
 // walk), 4.5 (lakes, groveNoise), 4.6 (cellular automata), 4.7 (decoration scatter), 4.9 (golden tests), 15.5
 // (decoration placement jitter), Appendix A/B.
@@ -60,25 +61,35 @@ ABYSS_API ZoneGrid GenerateMap(const MapGenDef& gen, const MapGenInput& in, MapG
 // The 15.5 placement jitter of decoration `index` (generation order): fills offsetCol/offsetRow/scale/yawDeg.
 ABYSS_API void ApplyDecorationJitter(Decoration& d, size_t index);
 
-// Runtime camp props (ZoneScene.buildCampDecorations, 3.4), per camp in camp order, in the web's push order.
+// Runtime camp props (camp layout v2, DECISIONS W11: abyss/world/CampLayout.h), per camp in camp order, in the table's
+// push order. Props stand at sub-tile positions with an explicit facing (the UE dressing reads both).
 struct CampProp {
   std::string type;  // campfire | well | banner | tent | barrel | crate | torch
-  TilePos pos;
+  TilePos pos;       // anchor = RoundToTile(centre): the art variant hash; always blocked for a blocking prop
+  Vec2 centre;       // render position (absolute tile coords)
+  Vec2 front;        // unit front (door) direction in tile space, toward the camp centre; (0,0) = face the camera
   int32_t campIndex = 0;
-  bool blocking = false;  // 3.4: barrel / crate; W5: well and tents (see CampProps)
+  bool blocking = false;  // tents, the well, barrels and crates (W5, W11)
+  int32_t ownerSlot = -1;  // the camp NPC slot standing at this tent's door (informational), else -1
 };
-// W5 camp props: barrels and crates block (3.4), the well and the tents block too (W5) except where a camp NPC stands
-// (slots (-3,-2) and (+3,-2) share the tent tiles: the NPC stands in front of its tent and must stay reachable).
+// W11 camp props of every camp: centre = camp centre + the table offset; tents, the well, barrels and crates turn their
+// front to the camp centre. No prop stands on an NPC slot, so every blocking prop blocks.
 ABYSS_API std::vector<CampProp> CampProps(const MapDef& map);
+// The tiles a camp prop makes unwalkable (appended to `out`, row-major): none when not blocking; else the anchor tile
+// plus every tile whose centre lies inside the prop's body rectangle (camp::kCampBlockBodies: the tent canvas, the well,
+// crate and barrel bounds; about `centre`, oriented by `front`) grown by camp::kCampBlockPad. A blocking prop without a
+// body or a front blocks only its anchor.
+ABYSS_API void CampPropBlockedTiles(const CampProp& prop, std::vector<TilePos>& out);
 
 // Builds the zone grid for a map: generated maps go through GenerateMap with the exporter's landmark list; hand-built
-// maps (ember_tower) parse their digit rows (tiles + collisions) and decorations. Then camp blockers (3.4 + W5 camp
-// props) and the W5 decoration footprints are applied.
+// maps (ember_tower) parse their digit rows (tiles + collisions) and decorations. Then camp blockers (W5 / W11 camp
+// props) are applied, decorations on a camp prop's anchor or blocked tile are dropped (W11), and the W5 decoration
+// footprints are applied.
 ABYSS_API ZoneGrid BuildZoneGrid(const DataStore& data, const MapDef& map);
 // The generator-only grid (no camp blockers, no W5 blocking): what the web's module load produced (golden fixtures).
 ABYSS_API ZoneGrid BuildRawZoneGrid(const DataStore& data, const MapDef& map);
 
-// Camp blockers: every blocking CampProp tile becomes unwalkable (bounds-checked; idempotent).
+// Camp blockers: every CampPropBlockedTiles tile of every camp prop becomes unwalkable (bounds-checked; idempotent).
 ABYSS_API void ApplyCampBlockers(ZoneGrid& grid, const MapDef& map);
 // W5: blocking decoration footprints. A decoration blocks when the asset manifest entry for its type (game id `<type>`
 // or `decor_<type>`) says so (footprint w x h tiles centred on the decoration tile), else when its generator flag is set

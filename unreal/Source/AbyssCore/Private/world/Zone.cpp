@@ -21,6 +21,7 @@
 #include "abyss/sim/SimContext.h"
 #include "abyss/sim/Snapshot.h"
 #include "abyss/story/StoryDirector.h"
+#include "abyss/world/CampLayout.h"
 #include "abyss/world/Locomotion.h"
 #include "abyss/world/MapGen.h"
 #include "abyss/world/RandomEvents.h"
@@ -28,8 +29,6 @@
 namespace abyss {
 
 namespace zone_impl {
-// Camp NPC slot offsets (quests-story-ch1.md 6.2 / world 3.4).
-constexpr std::array<TilePos, 6> kZoneCampNpcOffsets{{{-3, -2}, {3, -2}, {-3, 2}, {3, 2}, {0, -3}, {0, 3}}};
 constexpr double kZoneClickBox = 1.5;          // 7.1: |dcol| < 1.5 && |drow| < 1.5 hit boxes
 constexpr uint32_t kZonePortalFlashColor = 0x4488ff;
 constexpr double kZonePortalFlashMs = 200, kZonePortalFlashAlpha = 0.5;
@@ -62,11 +61,14 @@ bool ZoneRuntime::EnterZone(std::string_view mapId, bool hasTarget, Vec2 target)
   npcs_.clear();
   for (const MapCampDef& camp : map->camps) {
     for (size_t i = 0; i < camp.npcs.size(); ++i) {
-      const TilePos off = kZoneCampNpcOffsets[i % kZoneCampNpcOffsets.size()];
       NpcPlacement p;
       p.id = ctx_.ids.Next();
       p.npcId = camp.npcs[i];
-      p.pos = Vec2(camp.pos.col + off.col, camp.pos.row + off.row);
+      // Camp layout v2 slots (DECISIONS W11, CampLayout.h; replaces quests-story-ch1.md 6.2): eighth-tile positions;
+      // a tent owner idles facing out of its door, the others face the fire.
+      const size_t slot = i % abyss::camp::kCampNpcSlots.size();
+      p.pos = camp.pos.Center() + abyss::camp::kCampNpcSlots[slot];
+      p.facing = abyss::camp::CampNpcFacing(slot);
       npcs_.push_back(std::move(p));
     }
   }

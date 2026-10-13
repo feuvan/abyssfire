@@ -4,16 +4,16 @@ stakes, ``TowerProps.ts`` hearthstone; camp theme ``src/data/camp-themes.ts`` pl
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/environment/camp.py [names…]
         [--quick] [--no-previews]
 
-Placement (world-map-nav.md §3.4, ``AAbyssZoneActor::BuildCamps / BuildWalls``): camp props stand on their tile
-centre; tents, the well, barrels and crates turn their front (Blender −Y) to the camp centre, the rest face the
-camera. Palisade: one stake mesh per spot (centre + 0.2 / 0.4 toward every camp-wall neighbour, random yaw) —
+Placement (camp layout v2, DECISIONS W11: core table ``abyss/world/CampLayout.h``; ``AAbyssZoneActor::BuildCamps /
+BuildWalls``): camp props stand at sub-tile positions; tents, the well, barrels and crates turn their front (Blender
+−Y) to the camp centre, the rest face the camera. Three tents per camp, NPCs 0.73–0.76 m in front of their doors. Palisade: one stake mesh per spot (centre + 0.2 / 0.4 toward every camp-wall neighbour, random yaw) —
 ``SM_Palisade_Plains_Stake_A/B/C`` (1.32 / 1.40 / 1.48 m incl. the tip, mean 1.4 m, R1); gate posts ``SM_Palisade_Plains_GatePost`` at
 both sides of the 2-tile gate. ``_Straight`` / ``_Corner`` are the same stakes pre-assembled into 1-tile runs for
 hand-dressed scenes (level design; the runtime builds walls from single stakes).
 
-Blocking (W5 + the core's ``CampProps``): well, tents, barrels and crates block their anchor tile (a tent with an NPC
-in front does not); campfire, banners, torches, the hearthstone and the gate posts do not. ``footprintTiles`` records
-the body's tiles (tent 2 × 2; the core still blocks the anchor tile only — see the tent's ``footprintNote``).
+Blocking (W5, W11 + the core's ``CampPropBlockedTiles``): tents, the well, barrels and crates block their anchor tile
+and every tile whose centre lies within their body (tent canvas; the others' bounds) grown by 0.3 tile; campfire,
+banners, torches, the hearthstone and the gate posts do not. ``footprintTiles`` records the body's nominal tiles (tent 2 × 2; see the tent's ``footprintNote``).
 """
 from __future__ import annotations
 
@@ -672,12 +672,12 @@ NOTES = {
     "SM_Prop_Camp_Torch": "flame = VFX recipe camp.torch at socket flame",
     "SM_Prop_Camp_Hearthstone": "归炉 dormant until the Ember Tower milestone (DECISIONS Q3: not placed in milestone 1); "
                                 "pulse 800 ms + ground glow #FF8A3A via NS_World_Hearthstone at socket glow",
-    "SM_Prop_Camp_Tent": "faces the camp centre (front -Y = door); core CampProps blocks the anchor tile unless an NPC "
-                         "stands in front",
-    "SM_Prop_Camp_Tent#footprint": "footprintTiles [2,2] = the canvas body (2.5 x 2.0 m; 3.3 x 2.7 m with the guy "
-                                   "ropes): MapGen CampProps / ApplyCampBlockers still block only the anchor tile "
-                                   "(world-map-nav 3.4 offsets (-3,-2) (3,-2) (-2,2) (2,2)), so the hero can walk into "
-                                   "the canvas beside it until the core bakes this footprint (world owner)",
+    "SM_Prop_Camp_Tent": "faces the camp centre (front -Y = door); camp layout v2 (DECISIONS W11): 3 tents per camp, "
+                         "the camp NPC stands 0.73-0.76 m in front of the door",
+    "SM_Prop_Camp_Tent#footprint": "footprintTiles [2,2] = the nominal canvas body (2.5 x 2.0 m; 3.4 x 2.8 m with the "
+                                   "guy ropes); the core blocks the real footprint: every tile whose centre lies within "
+                                   "the canvas grown by 0.3 tile at the tent's sub-tile position and facing (MapGen "
+                                   "CampPropBlockedTiles, DECISIONS W11: 8-10 tiles per tent)",
     "SM_Palisade_Plains_Straight": "level-design run: the 5 stakes of a straight 1-tile wall (runtime places single "
                                    "stakes)",
     "SM_Palisade_Plains_Corner": "level-design corner: centre + half-runs toward +X and -Y",

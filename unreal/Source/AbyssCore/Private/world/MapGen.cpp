@@ -13,6 +13,7 @@
 
 #include "abyss/base/Math.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/world/CampLayout.h"
 
 namespace abyss {
 
@@ -444,7 +445,7 @@ ZoneGrid GenerateMap(const MapGenDef& gen, const MapGenInput& in, MapGenTrace* t
 
   // (c) camps
   for (const MapCampDef& camp : map.camps) {
-    constexpr int32_t halfSize = 5;
+    constexpr int32_t halfSize = camp::kCampHalfSize;
     ClearArea(tiles, camp.pos.col, camp.pos.row, halfSize + 1, primary, false);
     for (int32_t dr = -halfSize; dr <= halfSize; ++dr) {
       for (int32_t dc = -halfSize; dc <= halfSize; ++dc) {
@@ -594,46 +595,64 @@ ZoneGrid GenerateMap(const MapGenDef& gen, const MapGenInput& in, MapGenTrace* t
 }
 
 std::vector<CampProp> CampProps(const MapDef& map) {
-  struct Off {
-    const char* type;
-    int32_t dc, dr;
-    bool blocking;
-  };
-  // ZoneScene.buildCampDecorations push order (3.4); blocking per 3.4 (barrel / crate) and W5 (well, tents).
-  static constexpr Off kProps[] = {
-      {"campfire", 0, 0, false},  {"well", 1, -1, true},     {"banner", -1, -4, false}, {"banner", 2, -4, false},
-      {"tent", -3, -2, true},     {"tent", 3, -2, true},     {"tent", -2, 2, true},     {"tent", 2, 2, true},
-      {"barrel", -2, 0, true},    {"crate", 2, 0, true},     {"crate", -3, -3, true},   {"barrel", 3, -3, true},
-      {"banner", -5, 4, false},   {"banner", 5, 4, false},   {"torch", -5, 5, false},   {"torch", 5, 5, false},
-      {"torch", -5, -2, false},   {"torch", -5, 1, false},   {"torch", 5, -2, false},   {"torch", 5, 1, false},
-      {"torch", -2, -5, false},   {"torch", 3, -5, false},
-  };
-  // Camp NPC slots (quests-story-ch1.md 6.2 / world 3.4): npcs[i] at slots[i % 6].
-  static constexpr std::array<std::pair<int32_t, int32_t>, 6> kSlots{{{-3, -2}, {3, -2}, {-3, 2}, {3, 2}, {0, -3}, {0, 3}}};
+  // Camp layout v2 (DECISIONS W11, CampLayout.h): sub-tile centres, fronts from std::sqrt only (no trig), anchor =
+  // RoundToTile(centre). No prop stands on an NPC slot, so a blocking prop always blocks.
   std::vector<CampProp> out;
+  out.reserve(map.camps.size() * camp::kCampProps.size());
   for (size_t ci = 0; ci < map.camps.size(); ++ci) {
-    const MapCampDef& camp = map.camps[ci];
-    for (const Off& o : kProps) {
+    const Vec2 centre = map.camps[ci].pos.Center();
+    for (const camp::CampPropSpec& s : camp::kCampProps) {
       CampProp p;
-      p.type = o.type;
-      p.pos = TilePos{camp.pos.col + o.dc, camp.pos.row + o.dr};
-      p.campIndex = static_cast<int32_t>(ci);
-      p.blocking = o.blocking;
-      if (p.blocking && p.type == "tent") {
-        for (size_t i = 0; i < camp.npcs.size(); ++i) {
-          const auto& s = kSlots[i % kSlots.size()];
-          if (s.first == o.dc && s.second == o.dr) p.blocking = false;  // the NPC stands in front of its tent
-        }
+      p.type = s.type;
+      p.centre = centre + Vec2(s.x, s.y);
+      p.pos = RoundToTile(p.centre);
+      if (s.facesCentre) {
+        const double len = std::sqrt(s.x * s.x + s.y * s.y);
+        if (len > 0.0) p.front = Vec2(-s.x / len, -s.y / len);
       }
+      p.campIndex = static_cast<int32_t>(ci);
+      p.blocking = s.blocking;
+      p.ownerSlot = s.ownerSlot;
       out.push_back(std::move(p));
     }
   }
   return out;
 }
 
+void CampPropBlockedTiles(const CampProp& prop, std::vector<TilePos>& out) {
+  if (!prop.blocking) return;
+  const camp::CampBlockBody* body = camp::FindCampBlockBody(prop.type);
+  if (body == nullptr || prop.front == Vec2()) {
+    out.push_back(prop.pos);
+    return;
+  }
+  // W11: the anchor plus every tile whose centre lies inside the prop body grown by kCampBlockPad (world_test pins the
+  // exact tile set and that no walkable camp tile is cut off from the fire). u = front, v = across (mesh +X).
+  const Vec2 u = prop.front;
+  const Vec2 v(u.y, -u.x);
+  const double halfAcross = body->halfAcross + camp::kCampBlockPad;
+  const double halfDepth = body->halfDepth + camp::kCampBlockPad;
+  const int32_t r0 = static_cast<int32_t>(std::floor(prop.centre.y - 3.0));
+  const int32_t r1 = static_cast<int32_t>(std::ceil(prop.centre.y + 3.0));
+  const int32_t c0 = static_cast<int32_t>(std::floor(prop.centre.x - 3.0));
+  const int32_t c1 = static_cast<int32_t>(std::ceil(prop.centre.x + 3.0));
+  for (int32_t r = r0; r <= r1; ++r) {
+    for (int32_t c = c0; c <= c1; ++c) {
+      const Vec2 d(static_cast<double>(c) - prop.centre.x, static_cast<double>(r) - prop.centre.y);
+      const bool inBody = std::fabs(d.Dot(v)) <= halfAcross && std::fabs(d.Dot(u)) <= halfDepth;
+      if (inBody || (c == prop.pos.col && r == prop.pos.row)) out.emplace_back(c, r);
+    }
+  }
+}
+
 void ApplyCampBlockers(ZoneGrid& grid, const MapDef& map) {
+  std::vector<TilePos> tiles;
   for (const CampProp& p : CampProps(map)) {
-    if (p.blocking && grid.InBounds(p.pos.col, p.pos.row)) grid.SetWalkable(p.pos.col, p.pos.row, false);
+    tiles.clear();
+    CampPropBlockedTiles(p, tiles);
+    for (const TilePos& t : tiles) {
+      if (grid.InBounds(t.col, t.row)) grid.SetWalkable(t.col, t.row, false);
+    }
   }
 }
 
@@ -641,12 +660,10 @@ namespace mapgen_impl {
 
 void CollectAnchors(const MapDef& map, const DataStore& data, std::vector<TilePos>& out) {
   out.push_back(map.playerStart);
-  static constexpr std::array<std::pair<int32_t, int32_t>, 6> kSlots{{{-3, -2}, {3, -2}, {-3, 2}, {3, 2}, {0, -3}, {0, 3}}};
   for (const MapCampDef& c : map.camps) {
     out.push_back(c.pos);
     for (size_t i = 0; i < c.npcs.size(); ++i) {
-      const auto& s = kSlots[i % kSlots.size()];
-      out.push_back(TilePos{c.pos.col + s.first, c.pos.row + s.second});
+      out.push_back(RoundToTile(c.pos.Center() + camp::kCampNpcSlots[i % camp::kCampNpcSlots.size()]));  // W11 slots
     }
   }
   for (const FieldNpcDef& n : map.fieldNpcs) out.push_back(n.pos);
@@ -750,6 +767,23 @@ ZoneGrid BuildRawZoneGrid(const DataStore& data, const MapDef& map) {
 ZoneGrid BuildZoneGrid(const DataStore& data, const MapDef& map) {
   ZoneGrid g = BuildRawZoneGrid(data, map);
   ApplyCampBlockers(g, map);
+  // W11: a decoration on a camp prop's anchor or blocked tile would poke through the prop (only hand-built maps have
+  // decor inside a camp: ember_tower's bush (27,42) under tent 1, grass (19,42) under banner 7); generated maps place
+  // no decor within Chebyshev 6 of a camp centre (4.7). The raw grid (golden fixtures) is untouched.
+  if (!map.camps.empty() && !g.Decorations().empty()) {
+    std::vector<TilePos> covered;
+    for (const CampProp& p : CampProps(map)) {
+      covered.push_back(p.pos);
+      CampPropBlockedTiles(p, covered);
+    }
+    std::vector<Decoration>& decor = g.Decorations();
+    decor.erase(std::remove_if(decor.begin(), decor.end(),
+                               [&covered](const Decoration& d) {
+                                 const TilePos t{JsRoundInt(d.col), JsRoundInt(d.row)};
+                                 return std::find(covered.begin(), covered.end(), t) != covered.end();
+                               }),
+                decor.end());
+  }
   ApplyDecorationBlocking(g, data, &map);
   return g;
 }

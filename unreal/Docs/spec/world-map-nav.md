@@ -265,6 +265,14 @@ Generator stamp per camp centre `(c, r)` (`src/systems/MapGenerator.ts:517-557`)
 Camp 1 (15,15): ground cols/rows 10–20; gate at (14,10),(15,10); walls rows 10–18 at cols 10 and 20. Camp 2 (95,100):
 ground cols 90–100, rows 95–105; gate (94,95),(95,95).
 
+> **Remake (DECISIONS W11, camp layout v2):** the prop offsets, facing and blocking and the NPC slots below are the web's
+> and are **replaced** in the Unreal build by the core table `Source/AbyssCore/Public/abyss/world/CampLayout.h`: three
+> tents at (2.9, 3.75), (2.6, −2.6), (−2.9, 3.75) with their doors to the fire (the web's 4th tent is dropped), well
+> (4, −0.15), sub-tile banners / torches / barrels / crates, NPC slots (1.875, 2.375), (1.375, −1.375), (−1.875, 2.375),
+> (−2.75, −0.75), (2.25, 1.0), (−2.375, −2.25); every blocking prop (tents, well, barrels, crates) blocks its anchor plus
+> its body grown by 0.3 tile (33 tiles per camp, no walkable tile cut off from the fire). The camp stamp above is
+> unchanged.
+
 Runtime camp props (`ZoneScene.buildCampDecorations`, `src/scenes/ZoneScene.ts:1887-1920`), offsets from the centre:
 
 | Prop | Offsets (dc,dr) | Blocks movement? |
@@ -1380,7 +1388,7 @@ Events to UE (pull from a per-tick queue): `ZoneEntered{mapId}`, `ZoneTransition
 | `maps/<id>.map.json` | all `MapData` fields (§2.2) + baked `tiles` (array of row strings of digits `0`–`6`) + `decorations` as `[col,row,type]` in generation order + `golden {tilesSha, decorSha, walkable}`; collisions are derived, not stored | `AllMaps` after module load (Appendix B) |
 | `map_gen_themes.json` | `THEME_CONFIGS`, `DECOR_POOLS` | `src/systems/MapGenerator.ts:49-95,274-300` |
 | `zone_landmarks.json` (or computed in core) | §3.2 rules + per-zone result | `src/data/maps/index.ts:13-33` |
-| `camp_layout.json` | camp stamp numbers, prop offsets, blocker types, NPC slot offsets, hearth offsets | §3.4, §16 |
+| `camp_layout.json` | camp stamp numbers, prop offsets, blocker types, NPC slot offsets, hearth offsets (remake: the core table `abyss/world/CampLayout.h`, DECISIONS W11) | §3.4, §16 |
 | `zone_moods.json` | `ZONE_MOODS`, `ZONE_PALETTES` (+ computed rgba), lighting theme map, light presets, `ZONE_WEATHER`/`THEME_WEATHER`, ambient-dust tints, `CAMP_THEMES`, render-quality presets | §14 |
 | `terrain_styles.json` (art) | `TERRAIN_THEMES` ground/outcrop/palisade colours and ranks | `src/graphics/terrain/TerrainStyles.ts` |
 | `random_events.json` | config, `RANDOM_EVENT_DEFS`, `ZONE_EVENT_DATA` | §13.1 |

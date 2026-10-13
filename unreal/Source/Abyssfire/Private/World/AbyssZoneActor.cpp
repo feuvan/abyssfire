@@ -1062,18 +1062,13 @@ void AAbyssZoneActor::BuildCamps(const abyss::Snapshot& Snap, const abyss::DataS
 	{
 		const FString Type = ToF(Prop.type);
 		const FName Ids[] = { Id(TEXT("camp_%s"), Type), Id(TEXT("decor_camp_%s"), Type), FName(*Type) };
-		const FVector Location = GroundPoint(Prop.pos.col, Prop.pos.row);
-		float FacingYaw = FaceCameraYaw;
-		if (Map->camps.size() > static_cast<size_t>(Prop.campIndex))
-		{
-			const abyss::TilePos Centre = Map->camps[static_cast<size_t>(Prop.campIndex)].pos;
-			const FVector2D ToCentre(Centre.col - Prop.pos.col, Centre.row - Prop.pos.row);
-			const bool bFacesCentre = Prop.type == "tent" || Prop.type == "well" || Prop.type == "barrel" || Prop.type == "crate";
-			if (bFacesCentre && !ToCentre.IsNearlyZero())
-			{
-				FacingYaw = FMath::RadiansToDegrees(FMath::Atan2(ToCentre.Y, ToCentre.X));
-			}
-		}
+		// Camp layout v2 (DECISIONS W11, abyss/world/CampLayout.h): the core gives the sub-tile centre and the front
+		// (tent doors, the well, barrels and crates turn to the camp centre); a prop without a front faces the camera.
+		const FVector Location = GroundPoint(Prop.centre.x, Prop.centre.y);
+		const bool bHasFront = Prop.front.x != 0.0 || Prop.front.y != 0.0;
+		const float FacingYaw = bHasFront
+			? static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(Prop.front.y, Prop.front.x)))
+			: FaceCameraYaw;
 		const bool bTall = Prop.type == "tent" || Prop.type == "well" || Prop.type == "banner";
 		const uint32 Hash = AbyssWorldUtil::TileHash(Prop.pos.col, Prop.pos.row, 23);
 		PlaceArt(Ids, Hash, Location, FacingYaw + MeshYawOffsetDeg, 1.f, bTall, DecorFadeTarget);

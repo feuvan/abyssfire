@@ -27,6 +27,7 @@
 #include "abyss/story/StoryDirector.h"
 #include "abyss/sim/GameSim.h"
 #include "abyss/sim/GameplayBus.h"
+#include "abyss/world/CampLayout.h"
 #include "abyss/world/Exploration.h"
 #include "abyss/world/Grid.h"
 #include "abyss/world/Locomotion.h"
@@ -227,6 +228,134 @@ std::vector<uint8_t> WorldReachable(const ZoneGrid& g, TilePos start) {
 const char* const kWorldZoneIds[] = {"emerald_plains", "twilight_forest", "anvil_mountains", "scorching_desert",
                                      "abyss_rift"};
 
+// ---- Camp layout v2 geometry (DECISIONS W11, abyss/world/CampLayout.h) -----------------------------------------------
+// Prop bodies in tiles (1 tile = 1 m) = Data/assets.json boundsCm / 100, in the mesh frame: x = mesh +X (across),
+// y = mesh +Y = the prop's front (AAbyssZoneActor::BuildCamps yaws it to CampProp.front, or to the camera), z = height.
+struct CampTestBody {
+  const char* type;
+  double minX, maxX, minY, maxY, height;
+};
+constexpr CampTestBody kCampTestBodies[] = {
+    {"campfire", -0.53581, 0.52570, -0.49108, 0.49828, 0.28607},  // SM_Prop_Camp_Campfire
+    {"tent", -1.25, 1.25, -0.98, 0.98, 1.70},                      // canvas: camp.py build_tent W / D, ridge 1.70 m
+    {"well", -0.76051, 0.76051, -0.60697, 0.60697, 1.99629},       // SM_Prop_Camp_Well
+    {"banner", -0.17086, 0.63360, -0.13705, 0.18202, 2.60200},     // SM_Prop_Camp_Banner (cloth toward mesh +X)
+    {"torch", -0.18190, 0.18190, -0.18884, 0.18884, 1.72000},      // SM_Prop_Camp_Torch
+    {"crate", -0.39901, 0.39901, -0.39901, 0.39901, 0.75451},      // SM_Prop_Camp_Crate
+    {"barrel", -0.35761, 0.35761, -0.35761, 0.35761, 0.86549},     // SM_Prop_Camp_Barrel
+};
+// SM_Prop_Camp_Tent boundsCm +-170.551 x +-139.551: the canvas plus its guy ropes and pegs.
+constexpr double kCampTestTentRopeHalfX = 1.70551, kCampTestTentRopeHalfY = 1.39551;
+// SM_Palisade_Plains_GatePost boundsCm x -14.611..14.570, y -14.585..46.051; AAbyssZoneActor::BuildWalls stands one at
+// (camp.x - 1.5, camp.y - 5) and (camp.x + 0.5, camp.y - 5), yaw MeshYawOffsetDeg + 90 = 0 (mesh axes = world axes).
+constexpr double kCampTestGatePostMinX = -0.14611, kCampTestGatePostMaxX = 0.14570;
+constexpr double kCampTestGatePostMinY = -0.14585, kCampTestGatePostMaxY = 0.46051;
+// SM_Palisade_Plains_Stake_A/B/C: radius <= 13.7 cm with a random yaw; the stakes run along the camp-wall tile centres.
+constexpr double kCampTestStakeRadius = 0.15;
+// NPC body: AAbyssZoneActor OccluderSlackCm 25 cm half width; SK_NPC_* stand 172-176 cm.
+constexpr double kCampTestNpcRadius = 0.25, kCampTestNpcHeight = 1.75;
+constexpr double kCampTestNpcClearance = 0.35;  // NPC body to any prop body
+// Hero lanes that stay free (camp-relative): the 2-tile gate (x -1 / 0 on row -5) to the fire, and the open +row side's
+// x = 0 column to the fire.
+constexpr double kCampTestGateLane[4] = {-1.25, 0.25, -5.6, -0.5};  // minX, maxX, minY, maxY
+constexpr double kCampTestSouthLane[4] = {-0.5, 0.5, 0.5, 6.0};
+
+// An oriented rectangle in tile space: local x along V() = front rotated -90 deg (mesh +X), local y along u (front).
+struct CampTestBox {
+  Vec2 c, u{0.0, 1.0};
+  double minX = 0, maxX = 0, minY = 0, maxY = 0, height = 0;
+  Vec2 V() const { return {u.y, -u.x}; }
+  Vec2 Local(Vec2 p) const { return {(p - c).Dot(V()), (p - c).Dot(u)}; }
+  std::array<Vec2, 4> Corners() const {
+    const Vec2 v = V();
+    return {c + v * minX + u * minY, c + v * maxX + u * minY, c + v * maxX + u * maxY, c + v * minX + u * maxY};
+  }
+  double Dist(Vec2 p) const {
+    const Vec2 l = Local(p);
+    const double dx = (std::max)({minX - l.x, 0.0, l.x - maxX});
+    const double dy = (std::max)({minY - l.y, 0.0, l.y - maxY});
+    return std::sqrt(dx * dx + dy * dy);
+  }
+};
+
+CampTestBox CampTestAxisBox(const double (&b)[4]) {
+  CampTestBox r;
+  r.minX = b[0];
+  r.maxX = b[1];
+  r.minY = b[2];
+  r.maxY = b[3];
+  return r;
+}
+
+double CampTestSegPointDist(Vec2 p, Vec2 a, Vec2 b) {
+  const Vec2 ab = b - a;
+  const double l2 = ab.LengthSq();
+  const double t = l2 > 0 ? std::clamp((p - a).Dot(ab) / l2, 0.0, 1.0) : 0.0;
+  return (p - (a + ab * t)).Length();
+}
+
+bool CampTestSegsCross(Vec2 a, Vec2 b, Vec2 c, Vec2 d) {
+  auto orient = [](Vec2 p, Vec2 q, Vec2 r) { return (q - p).Cross(r - p); };
+  return ((orient(a, b, c) > 0) != (orient(a, b, d) > 0)) && ((orient(c, d, a) > 0) != (orient(c, d, b) > 0));
+}
+
+bool CampTestInsideConvex(std::span<const Vec2> poly, Vec2 p) {
+  if (poly.size() < 3) return false;
+  bool pos = false, neg = false;
+  for (size_t i = 0; i < poly.size(); ++i) {
+    const double cr = (poly[(i + 1) % poly.size()] - poly[i]).Cross(p - poly[i]);
+    pos = pos || cr > 0;
+    neg = neg || cr < 0;
+  }
+  return !(pos && neg);
+}
+
+// Distance between two convex polygons (a 2-point polygon is a segment); 0 when they touch or overlap.
+double CampTestPolyDist(std::span<const Vec2> p, std::span<const Vec2> q) {
+  for (size_t i = 0; i < p.size(); ++i) {
+    for (size_t j = 0; j < q.size(); ++j) {
+      if (CampTestSegsCross(p[i], p[(i + 1) % p.size()], q[j], q[(j + 1) % q.size()])) return 0.0;
+    }
+  }
+  if (CampTestInsideConvex(p, q[0]) || CampTestInsideConvex(q, p[0])) return 0.0;
+  double best = 1e9;
+  for (size_t i = 0; i < p.size(); ++i) {
+    for (const Vec2& v : q) best = (std::min)(best, CampTestSegPointDist(v, p[i], p[(i + 1) % p.size()]));
+  }
+  for (size_t j = 0; j < q.size(); ++j) {
+    for (const Vec2& v : p) best = (std::min)(best, CampTestSegPointDist(v, q[j], q[(j + 1) % q.size()]));
+  }
+  return best;
+}
+
+double CampTestBoxDist(const CampTestBox& a, const CampTestBox& b) {
+  const std::array<Vec2, 4> ca = a.Corners(), cb = b.Corners();
+  return CampTestPolyDist(ca, cb);
+}
+
+// A camp prop's body (tent: the canvas) or, with `ropes`, a tent's full bounds, camp-relative. Props without a front
+// face the camera (front = -camera forward).
+CampTestBox CampTestPropBox(const CampProp& p, Vec2 campCentre, Vec2 towardCamera, bool ropes = false) {
+  CampTestBox b;
+  b.c = p.centre - campCentre;
+  b.u = p.front == Vec2() ? towardCamera : p.front;
+  for (const CampTestBody& body : kCampTestBodies) {
+    if (p.type != body.type) continue;
+    b.minX = body.minX;
+    b.maxX = body.maxX;
+    b.minY = body.minY;
+    b.maxY = body.maxY;
+    b.height = body.height;
+  }
+  if (ropes && p.type == "tent") {
+    b.minX = -kCampTestTentRopeHalfX;
+    b.maxX = kCampTestTentRopeHalfX;
+    b.minY = -kCampTestTentRopeHalfY;
+    b.maxY = kCampTestTentRopeHalfY;
+  }
+  return b;
+}
+
 }  // namespace
 
 TEST_SUITE("world") {
@@ -416,41 +545,360 @@ TEST_SUITE("world") {
     CHECK(g.Tile(95, 95) == TileType::Camp);
   }
 
-  TEST_CASE("camp blockers make exactly the 8 barrel / crate tiles unwalkable (world 3.4)") {
+  TEST_CASE("camp blockers (W11): every blocking prop blocks its anchor + its body grown by 0.3 tile, no pocket") {
     const DataStore& data = test::RealData();
     const MapDef& map = *data.FindMap("emerald_plains");
-    ZoneGrid g = BuildRawZoneGrid(data, map);
-    REQUIRE(WorldWalkableCount(g) == 13167);
-    // 3.4 parity: only barrels and crates.
-    int32_t barrelsAndCrates = 0;
-    for (const CampProp& p : CampProps(map)) {
-      if (p.type == "barrel" || p.type == "crate") {
-        CHECK(p.blocking);
-        g.SetWalkable(p.pos.col, p.pos.row, false);
-        ++barrelsAndCrates;
-      }
-    }
-    CHECK(barrelsAndCrates == 8);
-    CHECK(WorldWalkableCount(g) == 13159);
-    for (const TilePos t : {TilePos{13, 15}, TilePos{17, 15}, TilePos{12, 12}, TilePos{18, 12}, TilePos{93, 100},
-                            TilePos{97, 100}, TilePos{92, 97}, TilePos{98, 97}}) {
-      CHECK_FALSE(g.Walkable(t.col, t.row));
-    }
-    // W5 camp props: the well and the tents without an NPC in front block too; ApplyCampBlockers is idempotent.
+    REQUIRE(WorldWalkableCount(BuildRawZoneGrid(data, map)) == 13167);
+    // The exact tiles of every blocking prop (camp-relative, row-major as CampPropBlockedTiles appends them): the tent
+    // canvases, the well, crate and barrel bounds (camp::kCampBlockBodies) grown by kCampBlockPad, plus the anchor.
+    // Smallest margin of a tile centre to a padded body edge: 0.007 tile (tent 2's (3,-4) / (4,-3)).
+    const std::vector<std::pair<int32_t, int32_t>> kExpected[] = {
+        {{2, 3}, {3, 3}, {4, 3}, {2, 4}, {3, 4}, {4, 4}, {2, 5}, {3, 5}},                                  // tent 1
+        {{2, -4}, {3, -4}, {1, -3}, {2, -3}, {3, -3}, {4, -3}, {2, -2}, {3, -2}, {4, -2}, {3, -1}},        // tent 2
+        {{-4, 3}, {-3, 3}, {-2, 3}, {-4, 4}, {-3, 4}, {-2, 4}, {-3, 5}, {-2, 5}},                          // tent 3
+        {{4, -1}, {4, 0}},                                                                                  // well
+        {{-4, -4}, {-4, -3}},                                                                               // crate 17
+        {{-4, -4}, {-3, -4}},                                                                               // barrel 18
+        {{-4, 0}},                                                                                          // crate 19
+        {{3, -4}, {4, -4}},                                                                                 // barrel 20
+    };
+    std::set<std::pair<int32_t, int32_t>> expected;
+    for (const auto& tiles : kExpected) expected.insert(tiles.begin(), tiles.end());
+    REQUIRE(expected.size() == 33);
+    const ZoneGrid raw = BuildRawZoneGrid(data, map);
     ZoneGrid full = BuildRawZoneGrid(data, map);
     ApplyCampBlockers(full, map);
     const int32_t once = WorldWalkableCount(full);
     ApplyCampBlockers(full, map);
-    CHECK(WorldWalkableCount(full) == once);
-    CHECK_FALSE(full.Walkable(16, 14));  // well (+1,-1)
-    CHECK(full.Walkable(12, 13));        // tent (-3,-2): blacksmith stands there
-    CHECK(full.Walkable(18, 13));        // tent (+3,-2): merchant
-    CHECK_FALSE(full.Walkable(13, 17));  // tent (-2,+2)
-    CHECK_FALSE(full.Walkable(17, 17));  // tent (+2,+2)
-    CHECK(full.Walkable(15, 15));        // campfire: the hero respawns on it
-    // Camp 2 has one NPC (slot 0): its (+3,-2) tent blocks.
-    CHECK(full.Walkable(92, 98));
-    CHECK_FALSE(full.Walkable(98, 98));
+    CHECK(WorldWalkableCount(full) == once);  // idempotent
+    CHECK(once == 13167 - 2 * 33);
+    for (size_t ci = 0; ci < map.camps.size(); ++ci) {
+      CAPTURE(ci);
+      const TilePos camp = map.camps[ci].pos;
+      const Vec2 campCentre = camp.Center();
+      std::set<std::pair<int32_t, int32_t>> blocked;
+      std::vector<TilePos> tiles;
+      size_t blockingIndex = 0;
+      std::vector<CampTestBox> bodies;
+      for (const CampProp& p : CampProps(map)) {
+        if (p.campIndex != static_cast<int32_t>(ci)) continue;
+        tiles.clear();
+        CampPropBlockedTiles(p, tiles);
+        if (!p.blocking) {
+          CHECK(tiles.empty());
+          continue;
+        }
+        CAPTURE(p.type);
+        CHECK(p.pos == RoundToTile(p.centre));
+        REQUIRE(blockingIndex < std::size(kExpected));
+        std::vector<std::pair<int32_t, int32_t>> rel;
+        for (const TilePos& t : tiles) rel.emplace_back(t.col - camp.col, t.row - camp.row);
+        CHECK(rel == kExpected[blockingIndex]);  // exact tiles, row-major
+        CHECK(std::find(tiles.begin(), tiles.end(), p.pos) != tiles.end());  // the anchor always blocks
+        ++blockingIndex;
+        blocked.insert(rel.begin(), rel.end());
+        bodies.push_back(CampTestPropBox(p, campCentre, p.front));  // every blocking prop has a front
+      }
+      CHECK(blockingIndex == std::size(kExpected));
+      CHECK(blocked == expected);
+      for (int32_t dr = -6; dr <= 6; ++dr) {
+        for (int32_t dc = -6; dc <= 6; ++dc) {
+          const int32_t c = camp.col + dc, r = camp.row + dr;
+          CAPTURE(dc);
+          CAPTURE(dr);
+          CHECK(full.Walkable(c, r) == (raw.Walkable(c, r) && expected.count({dc, dr}) == 0));
+          if (expected.count({dc, dr}) != 0) CHECK(raw.Tile(c, r) == TileType::Camp);  // never on the palisade
+          // A hero / pet / follower standing on a walkable tile centre keeps >= kCampBlockPad from every prop body.
+          if (full.Walkable(c, r)) {
+            for (const CampTestBox& b : bodies) CHECK(b.Dist(Vec2(dc, dr)) > camp::kCampBlockPad);
+          }
+        }
+      }
+      CHECK(full.Walkable(camp.col, camp.row));          // campfire: the hero respawns on it
+      CHECK(full.Walkable(camp.col - 1, camp.row - 5));  // the 2-tile gate
+      CHECK(full.Walkable(camp.col, camp.row - 5));
+      CHECK(full.Walkable(camp.col + 4, camp.row + 1));  // beside the well (4, -0.15): clear of its body + pad
+      CHECK_FALSE(full.Walkable(camp.col + 4, camp.row - 1));  // between tent 2 and the well: blocked, not a pocket
+    }
+    // A blocker outside the grid is skipped (bounds-checked): a camp in the corner.
+    MapDef corner = map;
+    corner.camps = {{TilePos{1, 1}, {}}};
+    ZoneGrid small(8, 8);
+    ApplyCampBlockers(small, corner);
+    CHECK_FALSE(small.Walkable(4, 4));  // tent 1 (2.9, 3.75) -> canvas tiles (3..5, 4..6) inside the grid
+    CHECK(small.Walkable(1, 1));
+  }
+
+  TEST_CASE("camp layout v2 geometry (W11): NPC slots clear of every prop, props clear of each other and the palisade") {
+    const DataStore& data = test::RealData();
+    const WorldConstants& wc = data.World().constants;
+    const MapDef& map = *data.FindMap("emerald_plains");
+    const ZoneGrid raw = BuildRawZoneGrid(data, map);
+    const TilePos camp = map.camps[0].pos;
+    const Vec2 campCentre = camp.Center();
+    constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+    const double yaw = wc.cameraYawDeg * kDegToRad;
+    const Vec2 camForward(std::cos(yaw), std::sin(yaw));     // ground forward: the camera sits on the -forward side
+    const Vec2 camRight(-std::sin(yaw), std::cos(yaw));      // screen right on the ground
+    const double tanPitch = std::tan(std::fabs(wc.cameraPitchDeg) * kDegToRad);
+    const Vec2 towardCamera = -camForward;
+
+    std::vector<CampProp> props;
+    for (const CampProp& p : CampProps(map)) {
+      if (p.campIndex == 0) props.push_back(p);
+    }
+    REQUIRE(props.size() == camp::kCampProps.size());
+    REQUIRE(CampProps(map).size() == camp::kCampProps.size() * map.camps.size());
+    for (size_t i = 0; i < props.size(); ++i) {
+      CAPTURE(i);
+      const camp::CampPropSpec& spec = camp::kCampProps[i];
+      CHECK(props[i].type == spec.type);
+      CHECK(props[i].centre == campCentre + Vec2(spec.x, spec.y));
+      CHECK(props[i].pos == RoundToTile(props[i].centre));
+      CHECK(props[i].blocking == spec.blocking);
+      CHECK(props[i].ownerSlot == spec.ownerSlot);
+      if (spec.facesCentre) {
+        // Unit front toward the camp centre.
+        const Vec2 to = (campCentre - props[i].centre).Normalized();
+        CHECK(std::fabs(props[i].front.Length() - 1.0) < 1e-12);
+        CHECK(props[i].front.Dot(to) > 1.0 - 1e-12);
+      } else {
+        CHECK(props[i].front == Vec2());
+      }
+      // A blocking prop's anchor is camp ground (a side torch at x +-4.55 rounds onto the wall tile: its anchor only
+      // seeds the art hash; its body clears the stakes, checked below).
+      if (props[i].blocking) CHECK(raw.Tile(props[i].pos.col, props[i].pos.row) == TileType::Camp);
+    }
+    std::vector<CampTestBox> bodies, outers;
+    for (const CampProp& p : props) {
+      bodies.push_back(CampTestPropBox(p, campCentre, towardCamera));
+      outers.push_back(CampTestPropBox(p, campCentre, towardCamera, /*ropes*/ true));
+      CHECK(bodies.back().height > 0);  // every prop type has a body above
+    }
+
+    // (a) NPC slots: distinct tiles, apart, and the NPC body >= 0.35 m from every prop body; never across a tent's
+    // guy ropes.
+    std::set<std::pair<int32_t, int32_t>> slotTiles;
+    for (size_t si = 0; si < camp::kCampNpcSlots.size(); ++si) {
+      CAPTURE(si);
+      const Vec2 s = camp::kCampNpcSlots[si];
+      const TilePos t = RoundToTile(s);
+      slotTiles.emplace(t.col, t.row);
+      for (size_t sj = si + 1; sj < camp::kCampNpcSlots.size(); ++sj) {
+        CHECK((s - camp::kCampNpcSlots[sj]).Length() >= 2 * kCampTestNpcRadius + 0.5);
+      }
+      for (size_t i = 0; i < props.size(); ++i) {
+        CAPTURE(i);
+        CHECK(bodies[i].Dist(s) >= kCampTestNpcRadius + kCampTestNpcClearance);
+        CHECK(outers[i].Dist(s) > kCampTestNpcRadius);
+      }
+      // Nothing hides the NPC from the W1 camera (conservative screen rule): against every prop body and every other
+      // NPC, the screen-x spans are disjoint, or the NPC is entirely nearer, or it stands beyond the occluder's far
+      // edge by more than the occluder's height / tan(pitch).
+      auto visible = [&](const std::vector<Vec2>& occ, double height) {
+        double x0 = 1e9, x1 = -1e9, d0 = 1e9, d1 = -1e9;
+        for (const Vec2& c : occ) {
+          x0 = (std::min)(x0, c.Dot(camRight));
+          x1 = (std::max)(x1, c.Dot(camRight));
+          d0 = (std::min)(d0, c.Dot(camForward));
+          d1 = (std::max)(d1, c.Dot(camForward));
+        }
+        const double sx = s.Dot(camRight), sd = s.Dot(camForward), r = kCampTestNpcRadius;
+        return sx + r < x0 || sx - r > x1 || sd + r < d0 || sd - r > d1 + height / tanPitch;
+      };
+      for (size_t i = 0; i < props.size(); ++i) {
+        CAPTURE(i);
+        const std::array<Vec2, 4> cs = bodies[i].Corners();
+        CHECK(visible(std::vector<Vec2>(cs.begin(), cs.end()), bodies[i].height));
+      }
+      for (size_t sj = 0; sj < camp::kCampNpcSlots.size(); ++sj) {
+        if (sj == si) continue;
+        CAPTURE(sj);
+        const Vec2 o = camp::kCampNpcSlots[sj];
+        const double r = kCampTestNpcRadius;
+        CHECK(visible({o + camRight * r, o - camRight * r, o + camForward * r, o - camForward * r}, kCampTestNpcHeight));
+      }
+    }
+    CHECK(slotTiles.size() == camp::kCampNpcSlots.size());
+    // Click picking (ZoneRuntime::OnPointerPress row 5: the nearest NPC with distSq < interact.npcPickRadiusSq wins over
+    // the ground): no slot's pick disc reaches the campfire (respawn / town-portal point) or the gate / open-side lane
+    // centre lines, so clicking the fire or walking in along a lane never opens a shop.
+    const double pickRadius = std::sqrt(wc.npcPickRadiusSq);
+    for (size_t si = 0; si < camp::kCampNpcSlots.size(); ++si) {
+      CAPTURE(si);
+      const Vec2 s = camp::kCampNpcSlots[si];
+      CHECK(s.Length() >= pickRadius + 0.1);
+      CHECK(CampTestSegPointDist(s, Vec2(-0.5, -5.5), Vec2(-0.5, -0.5)) >= pickRadius + 0.05);
+      CHECK(CampTestSegPointDist(s, Vec2(0.0, 0.5), Vec2(0.0, 6.0)) >= pickRadius + 0.05);
+      // Idle facing: a tent owner looks out of its door, the others at the fire (unit, std::sqrt only).
+      const Vec2 f = camp::CampNpcFacing(si);
+      CHECK(std::fabs(f.Length() - 1.0) < 1e-12);
+      CHECK(f.Dot((-s).Normalized()) > 0.999);
+    }
+    // Owners: slots 0-2 stand on their tent's door axis, 0.6-1.0 m in front of the door plane.
+    int32_t owners = 0;
+    for (size_t i = 0; i < props.size(); ++i) {
+      if (props[i].ownerSlot < 0) continue;
+      CAPTURE(i);
+      ++owners;
+      CHECK(props[i].type == "tent");
+      const Vec2 l = bodies[i].Local(camp::kCampNpcSlots[static_cast<size_t>(props[i].ownerSlot)]);
+      CHECK(std::fabs(l.x) <= 0.05);
+      CHECK(l.y - camp::kTentCanvasHalfDepth >= 0.6);
+      CHECK(l.y - camp::kTentCanvasHalfDepth <= 1.0);
+      CHECK(camp::CampNpcFacing(static_cast<size_t>(props[i].ownerSlot)).Dot(props[i].front) > 1.0 - 1e-12);
+    }
+    CHECK(owners == 3);
+    // The hearth reserve stays clear of every prop body (a later milestone puts the hearthstone there, Q3).
+    for (const CampTestBox& b : outers) CHECK(b.Dist(camp::kCampHearthReserve) >= 0.5);
+
+    // (d) Props never overlap each other (bodies, and a tent's ropes against any other prop).
+    for (size_t i = 0; i < props.size(); ++i) {
+      for (size_t j = i + 1; j < props.size(); ++j) {
+        CAPTURE(i);
+        CAPTURE(j);
+        CHECK(CampTestBoxDist(bodies[i], bodies[j]) >= 0.05);
+        CHECK(CampTestBoxDist(outers[i], outers[j]) > 0.0);
+      }
+    }
+    // ... nor the palisade: stakes along the camp-wall tile centres (radius kCampTestStakeRadius) and the gate posts.
+    // Tent canvases keep 0.3 m from the stakes.
+    std::vector<std::array<Vec2, 2>> stakeRuns;
+    for (int32_t dr = -7; dr <= 7; ++dr) {
+      for (int32_t dc = -7; dc <= 7; ++dc) {
+        if (raw.Tile(camp.col + dc, camp.row + dr) != TileType::CampWall) continue;
+        const Vec2 a(dc, dr);
+        stakeRuns.push_back({a, a});
+        if (raw.Tile(camp.col + dc + 1, camp.row + dr) == TileType::CampWall) stakeRuns.push_back({a, Vec2(dc + 1, dr)});
+        if (raw.Tile(camp.col + dc, camp.row + dr + 1) == TileType::CampWall) stakeRuns.push_back({a, Vec2(dc, dr + 1)});
+      }
+    }
+    CHECK(stakeRuns.size() == 25 + 23);  // 25 wall tiles; 23 adjacent pairs (8 + 8 sides, 3 + 4 beside the gate)
+    std::vector<CampTestBox> gatePosts;
+    for (const double gx : {-1.5, 0.5}) {
+      CampTestBox g;
+      g.c = Vec2(gx, -camp::kCampHalfSize);
+      g.minX = kCampTestGatePostMinX;
+      g.maxX = kCampTestGatePostMaxX;
+      g.minY = kCampTestGatePostMinY;
+      g.maxY = kCampTestGatePostMaxY;
+      gatePosts.push_back(g);
+    }
+    const CampTestBox gateLane = CampTestAxisBox(kCampTestGateLane);
+    const CampTestBox southLane = CampTestAxisBox(kCampTestSouthLane);
+    for (size_t i = 0; i < props.size(); ++i) {
+      CAPTURE(i);
+      for (const CampTestBox* box : {&bodies[i], &outers[i]}) {
+        const std::array<Vec2, 4> cs = box->Corners();
+        double stakeClear = 1e9;
+        for (const auto& run : stakeRuns) stakeClear = (std::min)(stakeClear, CampTestPolyDist(cs, run) - kCampTestStakeRadius);
+        CHECK(stakeClear > 0.0);
+        if (box == &bodies[i] && props[i].type == "tent") CHECK(stakeClear >= 0.3);
+        for (const CampTestBox& g : gatePosts) CHECK(CampTestBoxDist(*box, g) > 0.0);
+        if (props[i].type == "campfire") continue;  // the lanes end at the fire
+        CHECK(CampTestBoxDist(*box, gateLane) > 0.0);
+        CHECK(CampTestBoxDist(*box, southLane) > 0.0);
+      }
+    }
+    for (const Vec2& s : camp::kCampNpcSlots) {
+      CHECK(gateLane.Dist(s) > kCampTestNpcRadius);
+      CHECK(southLane.Dist(s) > kCampTestNpcRadius);
+    }
+
+    // (c) Every tile whose centre is under a tent canvas is unwalkable.
+    const ZoneGrid g = BuildZoneGrid(data, map);
+    int32_t underCanvas = 0;
+    for (size_t i = 0; i < props.size(); ++i) {
+      if (props[i].type != "tent") continue;
+      for (int32_t dr = -6; dr <= 6; ++dr) {
+        for (int32_t dc = -6; dc <= 6; ++dc) {
+          if (bodies[i].Dist(Vec2(dc, dr)) > 0.0) continue;
+          ++underCanvas;
+          CHECK_FALSE(g.Walkable(camp.col + dc, camp.row + dr));
+        }
+      }
+    }
+    CHECK(underCanvas == 3 * 4);
+  }
+
+  TEST_CASE("camp NPC slots are walkable and reachable from the camp centre, the gate and the start (W11, every map)") {
+    const DataStore& data = test::RealData();
+    int32_t checkedCamps = 0;
+    for (const char* id : {"emerald_plains", "twilight_forest", "anvil_mountains", "scorching_desert", "abyss_rift",
+                           "ember_tower"}) {
+      CAPTURE(id);
+      const MapDef& map = *data.FindMap(id);
+      REQUIRE_FALSE(map.camps.empty());
+      const ZoneGrid g = BuildZoneGrid(data, map);
+      Pathfinder pf(g);
+      std::vector<TilePos> path;
+      for (size_t ci = 0; ci < map.camps.size(); ++ci) {
+        CAPTURE(ci);
+        const MapCampDef& c = map.camps[ci];
+        ++checkedCamps;
+        REQUIRE(g.Walkable(c.pos.col, c.pos.row));
+        std::vector<TilePos> from{c.pos};
+        for (const TilePos gate : {TilePos{c.pos.col - 1, c.pos.row - 6}, TilePos{c.pos.col, c.pos.row + 6}}) {
+          if (g.Walkable(gate.col, gate.row)) from.push_back(gate);
+        }
+        if (map.generated) CHECK(from.size() == 3);  // generated camps: the gate and the open side both lead in
+        for (size_t i = 0; i < c.npcs.size(); ++i) {
+          CAPTURE(i);
+          const TilePos slot = RoundToTile(c.pos.Center() + camp::kCampNpcSlots[i % camp::kCampNpcSlots.size()]);
+          REQUIRE(g.Walkable(slot.col, slot.row));
+          for (const TilePos& f : from) {
+            CAPTURE(f.col);
+            CAPTURE(f.row);
+            CHECK(pf.FindPath(f.col, f.row, slot.col, slot.row, path));
+            CHECK(WorldPathValid(g, f, path));
+          }
+        }
+        // Every slot tile (spares too) stays walkable.
+        for (const Vec2& s : camp::kCampNpcSlots) {
+          const TilePos t = RoundToTile(c.pos.Center() + s);
+          CHECK(g.Walkable(t.col, t.row));
+        }
+        // No pocket: every walkable tile of the camp stamp is in the campfire's A* component (a walkable tile sealed off
+        // by props and the palisade is a dead click target and traps a hero that corner-cuts or teleports into it), and
+        // a click on any prop-blocked tile (findWalkableNear, 3 rings) lands on a tile the fire reaches.
+        const int32_t fire = g.Component(c.pos.col, c.pos.row);
+        for (int32_t dr = -camp::kCampHalfSize; dr <= camp::kCampHalfSize; ++dr) {
+          for (int32_t dc = -camp::kCampHalfSize; dc <= camp::kCampHalfSize; ++dc) {
+            if (!g.Walkable(c.pos.col + dc, c.pos.row + dr)) continue;
+            CAPTURE(dc);
+            CAPTURE(dr);
+            CHECK(g.Component(c.pos.col + dc, c.pos.row + dr) == fire);
+          }
+        }
+        std::vector<TilePos> blockedTiles;
+        for (const CampProp& p : CampProps(map)) {
+          if (p.campIndex == static_cast<int32_t>(ci)) CampPropBlockedTiles(p, blockedTiles);
+        }
+        CHECK(blockedTiles.size() == 35);  // 33 distinct: (-4,-4) and (3,-4) belong to two props each
+        for (const TilePos& t : blockedTiles) {
+          CAPTURE(t.col);
+          CAPTURE(t.row);
+          TilePos nearTile;
+          REQUIRE(pf.FindWalkableNear(t, 3, nearTile));
+          CHECK(g.Component(nearTile.col, nearTile.row) == fire);
+        }
+      }
+      CHECK(pf.FindPath(map.playerStart.col, map.playerStart.row, map.camps[0].pos.col, map.camps[0].pos.row, path));
+    }
+    CHECK(checkedCamps == 12);
+    // W11: decorations on a camp prop's tile are dropped (ember_tower's bush under tent 1, grass under banner 7).
+    const MapDef& tower = *data.FindMap("ember_tower");
+    const ZoneGrid raw = BuildRawZoneGrid(data, tower);
+    const ZoneGrid built = BuildZoneGrid(data, tower);
+    auto has = [](const ZoneGrid& z, int32_t c, int32_t r, const char* type) {
+      return std::any_of(z.Decorations().begin(), z.Decorations().end(),
+                         [&](const Decoration& d) { return d.col == c && d.row == r && d.type == type; });
+    };
+    CHECK(has(raw, 27, 42, "bush"));
+    CHECK(has(raw, 19, 42, "grass"));
+    CHECK_FALSE(has(built, 27, 42, "bush"));
+    CHECK_FALSE(has(built, 19, 42, "grass"));
+    CHECK(built.Decorations().size() == raw.Decorations().size() - 2);
   }
 
   TEST_CASE("W5: tall decorations block walking, anchors stay walkable, every POI stays reachable") {
@@ -476,7 +924,12 @@ TEST_SUITE("world") {
       auto reach = [&](TilePos p) {
         return seen[static_cast<size_t>(p.row) * static_cast<size_t>(g.Cols()) + static_cast<size_t>(p.col)] != 0;
       };
-      for (const MapCampDef& c : map.camps) CHECK(reach(c.pos));
+      for (const MapCampDef& c : map.camps) {
+        CHECK(reach(c.pos));
+        for (size_t i = 0; i < c.npcs.size(); ++i) {
+          CHECK(reach(RoundToTile(c.pos.Center() + camp::kCampNpcSlots[i % camp::kCampNpcSlots.size()])));  // W11
+        }
+      }
       for (const MapSpawnDef& s : map.spawns) CHECK(reach(s.pos));
       for (const FieldNpcDef& n : map.fieldNpcs) CHECK(reach(n.pos));
       for (const StoryDecorationDef& d : map.storyDecorations) CHECK(reach(d.pos));
@@ -1665,17 +2118,28 @@ TEST_SUITE("world") {
     CHECK(w.hero->Position() == Vec2(map.playerStart.col, map.playerStart.row));
     CHECK(w.hero->Position() == Vec2(15, 22));
     auto at = [&w](const char* id) { return w.zone.FindNpc(id) != nullptr ? w.zone.FindNpc(id)->pos : Vec2(-1, -1); };
-    CHECK(at("blacksmith") == Vec2(12, 13));
-    CHECK(at("merchant") == Vec2(18, 13));  // camp 1 first; camp 2's merchant also exists
-    CHECK(at("quest_elder") == Vec2(12, 17));
-    CHECK(at("stash") == Vec2(18, 17));      // I7: the stash keeper is the 4th camp-1 NPC
+    // Camp layout v2 slots (W11, CampLayout.h): eighth tiles, exact in binary.
+    CHECK(at("blacksmith") == Vec2(15, 15) + camp::kCampNpcSlots[0]);
+    CHECK(at("blacksmith") == Vec2(16.875, 17.375));
+    CHECK(at("merchant") == Vec2(16.375, 13.625));  // camp 1 first; camp 2's merchant also exists
+    CHECK(at("quest_elder") == Vec2(13.125, 17.375));
+    CHECK(at("stash") == Vec2(12.25, 14.25));       // I7: the stash keeper is the 4th camp-1 NPC
+    // Idle facing (W11): the tent owners look out of their doors (the tent's front), the stash keeper at the fire.
+    auto facing = [&w](const char* id) { return w.zone.FindNpc(id) != nullptr ? w.zone.FindNpc(id)->facing : Vec2(); };
+    CHECK(facing("blacksmith") == camp::CampNpcFacing(0));
+    CHECK(facing("merchant") == camp::CampNpcFacing(1));
+    CHECK(facing("quest_elder") == camp::CampNpcFacing(2));
+    CHECK(facing("stash") == camp::CampNpcFacing(3));
+    CHECK(facing("merchant").Dot(Vec2(-1.0, 1.0).Normalized()) > 1.0 - 1e-12);  // tent 2 (2.6, -2.6) door
+    CHECK(facing("stash").Dot((Vec2(15, 15) - at("stash")).Normalized()) > 1.0 - 1e-12);
+    CHECK(facing("plains_herbalist") == Vec2(0, 1));  // field NPCs keep the default
     CHECK(at("plains_herbalist") == Vec2(50, 30));
     CHECK(at("plains_wanderer") == Vec2(70, 65));
     size_t merchants = 0;
     for (const NpcPlacement& n : w.zone.Npcs()) {
       if (n.npcId == "merchant") {
         ++merchants;
-        if (merchants == 2) CHECK(n.pos == Vec2(92, 98));
+        if (merchants == 2) CHECK(n.pos == Vec2(96.875, 102.375));  // camp 2 (95,100), slot 0
       }
     }
     CHECK(merchants == 2);
@@ -1688,10 +2152,15 @@ TEST_SUITE("world") {
     CHECK_FALSE(w.zone.NearCampfire({15, 20.01}));
     CHECK(w.zone.CampPosition(0) == Vec2(15, 15));
     CHECK(w.zone.CampPosition(7) == Vec2(15, 22));  // missing camp -> playerStart
-    // Camp blockers (3.4) are baked into the grid.
-    CHECK_FALSE(w.zone.Walkable(13, 15));
-    CHECK_FALSE(w.zone.Walkable(17, 15));
+    // Camp blockers (W11) are baked into the grid; every camp NPC stands on a walkable tile.
+    CHECK_FALSE(w.zone.Walkable(19, 15));  // well (4, -0.15)
+    CHECK_FALSE(w.zone.Walkable(11, 15));  // crate (-3.9, -0.1)
+    CHECK_FALSE(w.zone.Walkable(18, 19));  // tent 1 (2.9, 3.75) canvas
     CHECK(w.zone.Walkable(15, 15));
+    for (const NpcPlacement& n : w.zone.Npcs()) {
+      const TilePos t = RoundToTile(n.pos);
+      CHECK(w.zone.Walkable(t.col, t.row));
+    }
     // Unknown map ids fall back to the default map (9.1 step 1).
     WorldRig u(5, true, "no_such_zone");
     CHECK(u.ok);
@@ -1929,10 +2398,11 @@ TEST_SUITE("world") {
     w.Step();
     REQUIRE(w.Last<EvInteractPrompt>() != nullptr);
     CHECK(w.Last<EvInteractPrompt>()->kind == InteractKind::None);
-    // Nearest wins between two NPCs in range (camp 1: blacksmith (12,13), quest_elder (12,17)).
-    w.Place({12, 14.9});
+    // Nearest wins between two NPCs in range (camp 1, W11 slots: blacksmith (16.875,17.375), quest_elder
+    // (13.125,17.375); the merchant and the stash keeper are > 3 tiles away from both spots).
+    w.Place({15.1, 17.375});
     CHECK(w.zone.FindInteractTarget().key == "blacksmith");
-    w.Place({12, 15.1});
+    w.Place({14.9, 17.375});
     CHECK(w.zone.FindInteractTarget().key == "quest_elder");
   }
 
@@ -1982,6 +2452,23 @@ TEST_SUITE("world") {
     CHECK(w.loco.MoveGeneration() == gen);
     CHECK(w.loco.Path().empty());
     CHECK_FALSE(w.loco.IsHoldMoving());
+  }
+
+  TEST_CASE("pointer W11: the campfire and the camp lanes are ground clicks, outside every camp NPC's pick disc") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    w.Place({15, 19});  // camp 1 (15,15), on the open side's lane
+    // The fire (respawn / town-portal point), the gate lane and the open-side lane 2 tiles from the fire (inside the
+    // blacksmith / elder discs with the first v2 slots).
+    for (const Vec2 click : {Vec2(15, 15), Vec2(14.5, 12), Vec2(15, 17)}) {
+      CAPTURE(click.x);
+      CAPTURE(click.y);
+      w.loco.Stop();
+      w.zone.OnPointerPress(click, PointerButton::Primary);
+      CHECK_FALSE(w.zone.Pending().active);
+      CHECK(w.loco.IsHoldMoving());
+      CHECK_FALSE(w.loco.Path().empty());
+    }
   }
 
   TEST_CASE("pointer W6 / W8: clicking an exit walks to its inner tile; the proximity trigger fires on arrival") {
