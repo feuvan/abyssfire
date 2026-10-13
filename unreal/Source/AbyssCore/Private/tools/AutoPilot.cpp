@@ -1,0 +1,2154 @@
+// AutoPilot (abyss/tools/AutoPilot.h): the Chapter-1 bot as a stack of resumable tasks.
+//
+// Every blocking action of the scripted player (walk somewhere, fight a monster, talk to an NPC, work a quest card,
+// ...) is an ApTask whose Run() continues it until it needs the next frame (ApRun::Frame), starts a child task
+// (ApRun::Call: the child runs at once; when it is Done the parent's Run() resumes with its result in
+// AutoPilotImpl::childResult) or ends (ApRun::Done). Locals that live across frames are members and `st_` says where
+// Run() resumes, so a task issues exactly the commands, in the same frames, as the straight-line loop it replaces (the
+// playthrough test's former bot: same final saves). The script is the bottom task: its steps are task factories, notes
+// and checkpoints (ApRun::Checkpoint).
+//
+// Owner area: tools (shared by CoreTests/tests/playthrough_test.cpp and the UE in-game autotest).
+#include "abyss/base/Platform.h"
+
+#include "abyss/tools/AutoPilot.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <deque>
+#include <optional>
+#include <set>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "abyss/base/Math.h"
+#include "abyss/data/DataStore.h"
+#include "abyss/hero/Skills.h"
+#include "abyss/items/Inventory.h"
+#include "abyss/items/ItemCompare.h"
+#include "abyss/items/Shop.h"
+#include "abyss/pets/PetSystem.h"
+#include "abyss/quests/Dialogue.h"
+#include "abyss/quests/Lore.h"
+#include "abyss/quests/QuestWorld.h"
+#include "abyss/sim/GameSim.h"
+#include "abyss/sim/Snapshot.h"
+#include "abyss/story/StoryDirector.h"
+#include "abyss/world/RandomEvents.h"
+
+namespace abyss {
+
+namespace autopilot_impl {
+
+constexpr int64_t kApFps = 60;              // bot frames per second (kSimStepMs frames)
+constexpr double kApThreatRadius = 6.5;     // fight anything chasing / attacking within this many tiles
+constexpr size_t kApRecentNotes = 80;
+constexpr int kApMaxRunsPerAdvance = 200000;  // task resumes without a frame before the bot calls itself stuck
+
+enum class ApRun : uint8_t { Frame, Call, Done, Checkpoint };
+
+class ApTask {
+ public:
+  virtual ~ApTask() = default;
+  virtual ApRun Run(AutoPilotImpl& b) = 0;
+  bool result = false;
+
+ protected:
+  ApRun Finish(bool r) {
+    result = r;
+    return ApRun::Done;
+  }
+};
+
+using ApTaskPtr = std::unique_ptr<ApTask>;
+using ApTaskFactory = std::function<ApTaskPtr(AutoPilotImpl&)>;
+using ApPredicate = std::function<bool(const AutoPilotImpl&)>;
+
+}  // namespace autopilot_impl
+
+using namespace autopilot_impl;
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The bot's state, queries and per-frame upkeep
+// ---------------------------------------------------------------------------------------------------------------------
+struct AutoPilotImpl {
+  AutoPilotImpl(const DataStore& d, AutoPilotConfig c, AutoPilotSubmit s)
+      : data(d), cfg(std::move(c)), submit(std::move(s)) {}
+  ~AutoPilotImpl() {
+    pendingCall.reset();
+    while (!stack.empty()) stack.pop_back();  // innermost first (panel-session guards point back here)
+  }
+  AutoPilotImpl(const AutoPilotImpl&) = delete;
+  AutoPilotImpl& operator=(const AutoPilotImpl&) = delete;
+
+  // ---- wiring ----
+  const DataStore& data;
+  AutoPilotConfig cfg;
+  AutoPilotSubmit submit;
+  const Snapshot* view = nullptr;  // the owner's snapshot during a call (also kept for notes between calls)
+
+  // ---- outcome ----
+  bool ok = true;
+  std::string failure;
+  AutoPilotStats stats;
+  std::vector<AutoPilotMilestoneRecord> milestones;
+  std::string checkpoint, currentStep;
+  int64_t frames = 0;
+  bool hold = false;
+  bool frameOpen = false;     // between PrepareFrame and EndFrame: the owner is running a frame
+  bool frameCounted = false;  // `frames` already advanced for that frame (at its first event)
+  bool finishedNoted = false;
+
+  // ---- per-frame bookkeeping (the former bot's private state) ----
+  std::deque<std::string> recent;
+  int64_t storyFrames = 0, miniBossFrames = 0, loreFrames = 0, strayFrames = 0;
+  int panelSession = 0;  // > 0 while the bot works a panel it opened itself
+  bool feedRefused = false;
+  double lastHpPotionMs = -1e9, lastMpPotionMs = -1e9;
+  int32_t allocated = 0, allocPending = -1, learnPending = -1;
+  int64_t allocPendingAt = 0, learnPendingAt = 0;
+  std::set<EntityId> skippedLoot;
+  std::vector<std::pair<EntityId, std::string>> monsterDefs;  // the monsters before the frame (kill attribution)
+  int32_t lastSteps = 0;
+  bool lastFrozen = false;
+
+  // ---- script ----
+  struct Step {
+    enum class Kind : uint8_t { Task, Note, Checkpoint, Milestone } kind = Kind::Task;
+    std::string text;  // task label, note, checkpoint id or milestone detail
+    ApTaskFactory make;
+  };
+  std::vector<Step> steps;
+  size_t stepIdx = 0;
+  bool childResult = false;
+  ApTaskPtr pendingCall;
+  std::vector<ApTaskPtr> stack;  // declared last: destroyed first
+
+  // ---- task plumbing ----
+  template <class T, class... A>
+  ApRun Call(A&&... args) {
+    pendingCall = std::make_unique<T>(std::forward<A>(args)...);
+    return ApRun::Call;
+  }
+  void Submit(const Command& c) {
+    if (submit) submit(c);
+  }
+
+  // ---- queries ----
+  const Snapshot& V() const { return *view; }
+  Vec2 HeroPos() const { return V().hero.pos; }
+  double Now() const { return V().simNowMs; }
+  bool Alive() const { return V().hero.life == HeroLife::Alive && V().hero.hp > 0; }
+  // Story, modals and transitions: nothing for the hero to do but wait.
+  bool Busy() const {
+    const Snapshot& v = V();
+    return v.frozen || v.inputBlocked || v.storyBusy || !v.modals.empty();
+  }
+  const MonsterView* FindMonster(EntityId id) const {
+    for (const MonsterView& m : V().monsters) {
+      if (m.id == id) return &m;
+    }
+    return nullptr;
+  }
+  const NpcView* FindNpc(const std::string& npcId) const {
+    for (const NpcView& n : V().npcs) {
+      if (n.npcId == npcId) return &n;
+    }
+    return nullptr;
+  }
+  EntityId NearestThreat(double radius) const {
+    EntityId best = kNoEntity;
+    double bestD = radius;
+    for (const MonsterView& m : V().monsters) {
+      if (!m.alive || (m.state != MonsterState::Chase && m.state != MonsterState::Attack)) continue;
+      const double d = Dist(m.pos, HeroPos());
+      if (d <= bestD) {
+        bestD = d;
+        best = m.id;
+      }
+    }
+    return best;
+  }
+  EntityId NearestOf(const std::vector<std::string>& defIds, Vec2 from, double maxDist) const {
+    EntityId best = kNoEntity;
+    double bestD = maxDist;
+    for (const MonsterView& m : V().monsters) {
+      if (!m.alive || m.state == MonsterState::Returning) continue;
+      if (std::find(defIds.begin(), defIds.end(), m.defId) == defIds.end()) continue;
+      const double d = Dist(m.pos, from);
+      if (d < bestD) {
+        bestD = d;
+        best = m.id;
+      }
+    }
+    return best;
+  }
+  const QuestProgress* Progress(const std::string& questId) const {
+    return V().quests != nullptr ? V().quests->Progress(questId) : nullptr;
+  }
+  bool HasStatus(const std::string& questId, QuestStatus s) const {
+    const QuestProgress* p = Progress(questId);
+    return p != nullptr && p->status == s;
+  }
+  bool QuestDone(const std::string& questId) const {  // completed or turned in
+    const QuestProgress* p = Progress(questId);
+    return p != nullptr && (p->status == QuestStatus::Completed || p->status == QuestStatus::TurnedIn);
+  }
+  int32_t ObjCurrent(const std::string& questId, size_t obj) const {
+    const QuestProgress* p = Progress(questId);
+    return p != nullptr && obj < p->objectives.size() ? p->objectives[obj] : 0;
+  }
+  int32_t CountOf(const std::string& baseId) const {
+    return V().inventory != nullptr ? V().inventory->CountOf(baseId) : 0;
+  }
+  int HpPotionTarget() const { return 8; }
+  int MpPotionTarget() const { return cfg.cls == ClassId::Mage ? 6 : 2; }
+
+  // ---- gear ----
+  double StatWeight(Stat s) const {
+    const bool war = cfg.cls == ClassId::Warrior, mage = cfg.cls == ClassId::Mage, rog = cfg.cls == ClassId::Rogue;
+    switch (s) {
+      case Stat::Damage: return 2.0;
+      case Stat::DamagePercent: return 1.5;
+      case Stat::Defense: return 0.6;
+      case Stat::DefensePercent: return 0.5;
+      case Stat::MaxHp: return 0.25;
+      case Stat::MaxHpPercent: return 1.0;
+      case Stat::MaxMana: return mage ? 0.2 : 0.05;
+      case Stat::MaxManaPercent: return mage ? 0.6 : 0.1;
+      case Stat::CritRate: return 1.5;
+      case Stat::CritDamage: return 0.5;
+      case Stat::AttackSpeed: return 1.5;
+      case Stat::LifeSteal: return 2.0;
+      case Stat::ManaSteal: return 0.5;
+      case Stat::HpRegen: return 1.0;
+      case Stat::ManaRegen: return mage ? 1.0 : 0.3;
+      case Stat::FireDamage:
+      case Stat::IceDamage:
+      case Stat::LightningDamage:
+      case Stat::PoisonDamage: return 1.0;
+      case Stat::AllResist: return 0.5;
+      case Stat::MoveSpeed: return 0.5;
+      case Stat::Str: return war ? 2.0 : 0.3;
+      case Stat::Dex: return rog ? 2.0 : 0.5;
+      case Stat::Int: return mage ? 2.0 : 0.2;
+      case Stat::Vit: return 1.2;
+      case Stat::Spi: return mage ? 0.6 : 0.2;
+      case Stat::Lck: return 0.4;
+      case Stat::AllStats: return 3.0;
+      default: return 0.3;
+    }
+  }
+  double Score(const ItemInstance* it) const {
+    if (it == nullptr) return 0;
+    double s = 1.0;  // anything beats an empty slot
+    for (const StatTotal& t : ItemStatTotals(data, *it)) {
+      switch (t.key.kind) {
+        case CompareKey::Kind::AvgDamage: break;  // inert in milestone 1 (C10)
+        case CompareKey::Kind::BaseDefense: s += t.value * 0.4; break;
+        case CompareKey::Kind::StatKey: s += t.value * StatWeight(t.key.stat); break;
+      }
+    }
+    return s;
+  }
+  bool Equippable(const ItemInstance& it) const {
+    const ItemBaseDef* base = data.FindItemBase(it.baseId);
+    return base != nullptr && base->hasSlot && base->levelReq <= V().hero.level;
+  }
+  // Positive when `it` would be better than what its slot holds now.
+  double UpgradeGain(const ItemInstance& it) const {
+    if (V().inventory == nullptr || !Equippable(it)) return 0;
+    const std::optional<CompareTarget> target = FindCompareTarget(data, it, V().inventory->Equipment());
+    if (!target.has_value()) return 0;
+    return Score(&it) - Score(target->equipped);
+  }
+  bool Wanted(const ItemInstance& it) const {
+    const ItemBaseDef* base = data.FindItemBase(it.baseId);
+    if (base == nullptr) return false;
+    if (!base->hasSlot) return true;  // potions, gems, materials, ley fruit
+    if (it.quality != ItemQuality::Normal) return true;
+    return UpgradeGain(it) > 0.5;
+  }
+  // Picks the reward choice that improves the gear most.
+  int32_t BestChoice(const std::vector<ItemInstance>& choices) const {
+    int32_t best = 0;
+    double bestGain = -1e9;
+    for (size_t i = 0; i < choices.size(); ++i) {
+      const ItemInstance& it = choices[i];
+      double g = Score(&it);
+      if (V().inventory != nullptr) {
+        const std::optional<CompareTarget> t = FindCompareTarget(data, it, V().inventory->Equipment());
+        if (t.has_value()) g -= Score(t->equipped);
+      }
+      if (g > bestGain) {
+        bestGain = g;
+        best = static_cast<int32_t>(i);
+      }
+    }
+    return best;
+  }
+  int32_t WareIndex(const std::string& baseId) const {
+    if (V().shop == nullptr) return -1;
+    for (size_t i = 0; i < V().shop->wares.size(); ++i) {
+      if (V().shop->wares[i].baseId == baseId) return static_cast<int32_t>(i);
+    }
+    return -1;
+  }
+  int64_t WarePrice(int32_t index) const {
+    if (V().shop == nullptr || index < 0 || static_cast<size_t>(index) >= V().shop->wares.size()) return INT64_MAX;
+    return V().shop->wares[static_cast<size_t>(index)].price;
+  }
+
+  // ---- combat ----
+  static bool SkipSkill(const std::string& id) {
+    return id == "teleport" || id == "vanish" || id == "shadow_step" || id == "taunt_roar";
+  }
+  bool TryCast(const MonsterView& m) {
+    const HeroView& h = V().hero;
+    const double d = Dist(m.pos, h.pos);
+    for (int slot = 0; slot < 6; ++slot) {
+      const SkillSlotView& s = h.hotbar[static_cast<size_t>(slot)];
+      if (s.skillIndex < 0 || !s.usable) continue;
+      const SkillDef* def = data.FindSkill(s.skillId);
+      if (def == nullptr || def->passive || SkipSkill(def->id)) continue;
+      if (def->range > 0 ? d > def->range + 0.25 : d > 2.5) continue;
+      Submit(CmdCastSkill{slot, m.id, false, Vec2(), Vec2()});
+      ++stats.skillCasts;
+      return true;
+    }
+    return false;
+  }
+  PrimaryStat MainStat() const {
+    switch (cfg.cls) {
+      case ClassId::Warrior: return PrimaryStat::Str;
+      case ClassId::Mage: return PrimaryStat::Int;
+      case ClassId::Rogue: return PrimaryStat::Dex;
+    }
+    return PrimaryStat::Vit;
+  }
+  std::vector<std::string> SkillPriority() const {
+    switch (cfg.cls) {
+      case ClassId::Warrior: return {"whirlwind", "slash"};
+      case ClassId::Mage: return {"fire_wall", "fireball"};
+      case ClassId::Rogue: return {"piercing_arrow", "multishot"};
+    }
+    return {};
+  }
+
+  // ---- diary ----
+  void Note(const std::string& s) {
+    char head[112];
+    const std::string cls(EnumName(cfg.cls));
+    if (view != nullptr) {
+      std::snprintf(head, sizeof(head), "[%s %7.1fs L%d hp %.0f/%.0f (%.1f,%.1f)] ", cls.c_str(),
+                    frames / static_cast<double>(kApFps), view->hero.level, view->hero.hp, view->hero.maxHp,
+                    view->hero.pos.x, view->hero.pos.y);
+    } else {
+      std::snprintf(head, sizeof(head), "[%s %7.1fs] ", cls.c_str(), frames / static_cast<double>(kApFps));
+    }
+    std::string line = std::string(head) + s;
+    if (cfg.onNote) cfg.onNote(line);
+    recent.push_back(std::move(line));
+    if (recent.size() > kApRecentNotes) recent.pop_front();
+  }
+  void Fail(const std::string& why) {
+    if (!ok) return;
+    ok = false;
+    failure = why + " | " + StateLine();
+    Note("FAIL: " + failure);
+  }
+  std::string StateLine() const {
+    if (view == nullptr) return "no snapshot";
+    const Snapshot& v = V();
+    std::string s = "frozen=" + std::to_string(v.frozen) + " mask=" + std::to_string(v.freezeMask) +
+                    " blocked=" + std::to_string(v.inputBlocked) + " storyBusy=" + std::to_string(v.storyBusy) +
+                    " cinematic=" + std::to_string(v.cinematic) + " moving=" + std::to_string(v.hero.moving) +
+                    " target=" + std::to_string(v.hero.target) + " modals=[";
+    for (PanelId p : v.modals) s += std::string(EnumName(p)) + " ";
+    s += "]";
+    if (v.escort != nullptr && v.escort->active) {
+      char buf[160];
+      std::snprintf(buf, sizeof(buf), " escort=(%.2f,%.2f) joined=%d hp=%.0f path=%zu", v.escort->pos.x,
+                    v.escort->pos.y, v.escort->joined ? 1 : 0, v.escort->hp, v.escort->path.size());
+      s += buf;
+    }
+    if (v.story != nullptr && v.story->playing) {
+      s += " beat=" + v.story->beat.id + " seg=" + std::to_string(v.story->segment) +
+           " waiting=" + std::to_string(v.story->waitingForInput);
+    }
+    return s;
+  }
+  void Milestone(AutoPilotMilestone kind, std::string detail) {
+    AutoPilotMilestoneRecord r;
+    r.kind = kind;
+    r.detail = std::move(detail);
+    r.frame = frames;
+    r.simMs = view != nullptr ? view->simNowMs : 0;
+    milestones.push_back(r);
+    if (cfg.onMilestone) cfg.onMilestone(milestones.back());
+  }
+  bool Reached(AutoPilotMilestone kind) const {
+    for (const AutoPilotMilestoneRecord& r : milestones) {
+      if (r.kind == kind) return true;
+    }
+    return false;
+  }
+
+  // ---- per frame, before the sim frame: story beats, dialogue prompts, stray panels ----
+  void AutoUi() {
+    const Snapshot& v = V();
+    if (v.story != nullptr && v.story->playing) {
+      ++storyFrames;
+      const bool skip = cfg.storyMode == AutoPilotStoryMode::SkipAll || v.story->beat.id == "prologue";
+      if (skip) {
+        if (storyFrames % 10 == 1) Submit(CmdStorySkip{});
+      } else if (storyFrames % 15 == 0) {
+        Submit(CmdStoryAdvance{});
+      }
+    } else {
+      storyFrames = 0;
+    }
+    if (v.miniBossDialogue) {
+      if (++miniBossFrames % 40 == 0) Submit(CmdMiniBossDialogueDismiss{});
+    } else {
+      miniBossFrames = 0;
+    }
+    if (v.loreText != nullptr && v.loreText->open) {
+      if (++loreFrames % 40 == 0) Submit(CmdClosePanel{PanelId::LoreText});
+    } else {
+      loreFrames = 0;
+    }
+    if (v.puzzle != nullptr && v.puzzle->open && (frames % 30) == 0) {
+      Submit(CmdPuzzleAnswer{v.puzzle->prop, kPuzzleChoiceSolve});
+    }
+    // A panel the bot did not open (the wandering merchant's shop opens on its own, world 13): look, then close it.
+    if (panelSession == 0 && !v.storyBusy && !v.modals.empty()) {
+      if (++strayFrames % 45 == 0) {
+        for (PanelId p : v.modals) {
+          if (p != PanelId::MiniBossDialogue && p != PanelId::LoreText && p != PanelId::Puzzle) {
+            Submit(CmdClosePanel{p});
+            Note(std::string("closing stray panel ") + std::string(EnumName(p)));
+          }
+        }
+      }
+    } else {
+      strayFrames = 0;
+    }
+  }
+
+  // ---- per frame, after the sim frame: potions, stat and skill points ----
+  void AutoHero() {
+    const Snapshot& v = V();
+    const HeroView& h = v.hero;
+    if (h.life != HeroLife::Alive) return;
+    if (!v.frozen && !v.inputBlocked && h.hp > 0) {
+      if (h.hp < 0.35 * h.maxHp && v.potionSlots[0].count > 0 && Now() - lastHpPotionMs >= 900) {
+        Submit(CmdUsePotion{PotionSlot::Hp});
+        lastHpPotionMs = Now();
+        ++stats.potionsDrunk;
+      }
+      if (h.mana < 0.2 * h.maxMana && v.potionSlots[1].count > 0 && Now() - lastMpPotionMs >= 900 && h.inCombat) {
+        Submit(CmdUsePotion{PotionSlot::Mp});
+        lastMpPotionMs = Now();
+        ++stats.potionsDrunk;
+      }
+    }
+    if (h.freeStatPoints > 0 && allocPending == h.freeStatPoints && frames - allocPendingAt > 30) allocPending = -1;
+    if (h.freeSkillPoints > 0 && learnPending == h.freeSkillPoints && frames - learnPendingAt > 30) {
+      learnPending = -1;
+    }
+    if (h.freeStatPoints > 0 && allocPending != h.freeStatPoints) {
+      static constexpr int kPattern[5] = {0, 0, 1, 0, 1};  // 0 main, 1 vit
+      const PrimaryStat s = kPattern[allocated % 5] == 0 ? MainStat() : PrimaryStat::Vit;
+      Submit(CmdAllocStat{s, 1});
+      allocPending = h.freeStatPoints;
+      allocPendingAt = frames;
+      ++allocated;
+    } else if (h.freeStatPoints == 0) {
+      allocPending = -1;
+    }
+    if (h.freeSkillPoints > 0 && v.skills != nullptr && learnPending != h.freeSkillPoints) {
+      for (const std::string& id : SkillPriority()) {
+        const int32_t idx = v.skills->IndexOf(id);
+        if (idx < 0) continue;
+        if (!v.skills->GetInvestState(idx, h.level, h.freeSkillPoints).canInvest) continue;
+        Submit(CmdLearnSkill{idx});
+        learnPending = h.freeSkillPoints;
+        learnPendingAt = frames;
+        Note("learn " + id);
+        break;
+      }
+    } else if (h.freeSkillPoints == 0) {
+      learnPending = -1;
+    }
+  }
+
+  // ---- events ----
+  // `frames` advances once per frame, before the frame's events are processed. Events outside a frame (the ones
+  // NewGame / LoadGame emit before the first frame, an immediate GameSim::Step) do not advance it.
+  void CountFrame() {
+    if (frameOpen && !frameCounted) {
+      ++frames;
+      frameCounted = true;
+    }
+  }
+  void ProcessEvent(const Event& e) {
+    if (const EvStoryBeat* b = std::get_if<EvStoryBeat>(&e)) {
+      if (b->phase == EvStoryBeat::Phase::Began) {
+        stats.beatsBegan.push_back(b->beatId);
+        Note("story begins " + b->beatId);
+        Milestone(AutoPilotMilestone::StoryBeat, b->beatId);
+        if (b->kind == StoryBeatKind::Cutscene) Milestone(AutoPilotMilestone::Cutscene, b->beatId);
+      } else {
+        stats.beatsEnded.push_back(b->beatId);
+        Note("story ends " + b->beatId);
+      }
+    } else if (const EvLevelUp* l = std::get_if<EvLevelUp>(&e)) {
+      ++stats.levelUps;
+      Note("level up " + std::to_string(l->level));
+      Milestone(AutoPilotMilestone::LevelUp, std::to_string(l->level));
+    } else if (std::holds_alternative<EvHeroDied>(e)) {
+      ++stats.deaths;
+      Note("hero died");
+      Milestone(AutoPilotMilestone::HeroDied, std::string());
+    } else if (const EvExpGained* x = std::get_if<EvExpGained>(&e)) {
+      const size_t src = static_cast<size_t>(x->source);
+      if (src < stats.expBySource.size()) stats.expBySource[src] += x->amount;
+    } else if (std::holds_alternative<EvItemPicked>(e)) {
+      ++stats.itemsPicked;
+    } else if (std::holds_alternative<EvEquipmentChanged>(e)) {
+      ++stats.equipChanges;
+    } else if (const EvQuestUpdate* q = std::get_if<EvQuestUpdate>(&e)) {
+      static const char* kKinds[] = {"accepted", "progress", "completed", "turned in", "failed", "tracked"};
+      if (q->kind != EvQuestUpdate::Kind::Tracked) {
+        Note(std::string("quest ") + kKinds[static_cast<int>(q->kind)] + " " + q->questId +
+             (q->kind == EvQuestUpdate::Kind::Progress
+                  ? " #" + std::to_string(q->objectiveIndex) + " " + std::to_string(q->current) + "/" +
+                        std::to_string(q->required)
+                  : std::string()));
+      }
+      if (q->kind == EvQuestUpdate::Kind::Accepted) Milestone(AutoPilotMilestone::QuestAccepted, q->questId);
+      if (q->kind == EvQuestUpdate::Kind::Completed) Milestone(AutoPilotMilestone::QuestCompleted, q->questId);
+      if (q->kind == EvQuestUpdate::Kind::TurnedIn) Milestone(AutoPilotMilestone::QuestTurnedIn, q->questId);
+    } else if (const EvBanner* bn = std::get_if<EvBanner>(&e)) {
+      if (bn->kind == BannerKind::ComingSoon) ++stats.sealedBanners;
+    } else if (const EvPet* p = std::get_if<EvPet>(&e)) {
+      if (p->kind == EvPet::Kind::Obtained) {
+        stats.petObtained = true;
+        Note("pet obtained " + p->petId);
+        Milestone(AutoPilotMilestone::PetObtained, p->petId);
+      }
+    } else if (const EvHit* h = std::get_if<EvHit>(&e)) {
+      if (h->killed && h->targetFaction == Faction::Monster) {
+        ++stats.kills;
+        std::string killedDef;
+        for (const auto& [id, def] : monsterDefs) {
+          if (id != h->target) continue;
+          killedDef = def;
+          if (std::find(stats.killedDefs.begin(), stats.killedDefs.end(), def) == stats.killedDefs.end()) {
+            stats.killedDefs.push_back(def);
+          }
+          if (def.rfind("hunt_", 0) == 0 || def.rfind("miniboss_", 0) == 0 || def == "goblin_chief") {
+            Note("killed " + def);
+            Milestone(AutoPilotMilestone::BossKill, def);
+          }
+        }
+        if (stats.kills == 1) Milestone(AutoPilotMilestone::FirstKill, killedDef);
+      }
+    } else if (std::holds_alternative<EvSaveRequested>(e)) {
+      ++stats.saveRequests;
+    } else if (const EvMiniBossDialogue* mb = std::get_if<EvMiniBossDialogue>(&e)) {
+      if (mb->opened) {
+        ++stats.miniBossDialogues;
+        Note("mini-boss dialogue " + mb->monsterId);
+      }
+    } else if (const EvZone* z = std::get_if<EvZone>(&e)) {
+      if (z->phase == EvZone::Phase::Entered) Milestone(AutoPilotMilestone::ZoneEntered, z->mapId);
+    }
+  }
+
+  // ---- script ----
+  void AddTask(std::string label, ApTaskFactory make) {
+    Step s;
+    s.kind = Step::Kind::Task;
+    s.text = std::move(label);
+    s.make = std::move(make);
+    steps.push_back(std::move(s));
+  }
+  void AddStep(Step::Kind kind, std::string text) {
+    Step s;
+    s.kind = kind;
+    s.text = std::move(text);
+    steps.push_back(std::move(s));
+  }
+  void BuildScenario();
+  AutoPilotStatus RunScript();
+};
+
+namespace autopilot_impl {
+
+// While alive, the bot works a panel it opened itself (AutoUi leaves its modals alone).
+class ApPanelSession {
+ public:
+  explicit ApPanelSession(AutoPilotImpl& b) : b_(b) { ++b_.panelSession; }
+  ~ApPanelSession() { --b_.panelSession; }
+  ApPanelSession(const ApPanelSession&) = delete;
+  ApPanelSession& operator=(const ApPanelSession&) = delete;
+
+ private:
+  AutoPilotImpl& b_;
+};
+
+int64_t ApFramesFor(double seconds) { return static_cast<int64_t>(seconds * kApFps); }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Waiting
+// ---------------------------------------------------------------------------------------------------------------------
+
+// Frames until the commands submitted so far were applied: a frame may run no sim step at all (S6 slow motion after an
+// elite kill dilates the sim clock, S1 accumulator), and commands apply at the start of the next step - or in the
+// UI-only step of a frozen frame.
+class ApCommit final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    if (started_) {
+      if (b.lastSteps > 0 || b.lastFrozen) return Finish(true);
+      ++i_;
+    }
+    started_ = true;
+    if (i_ < 4 * kApFps && b.ok) return ApRun::Frame;
+    return Finish(true);
+  }
+
+ private:
+  int64_t i_ = 0;
+  bool started_ = false;
+};
+
+class ApWait final : public ApTask {
+ public:
+  explicit ApWait(double seconds) : seconds_(seconds) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    if (!started_) {
+      end_ = b.frames + ApFramesFor(seconds_);
+      started_ = true;
+    }
+    if (b.frames < end_ && b.ok) return ApRun::Frame;
+    return Finish(true);
+  }
+
+ private:
+  double seconds_;
+  int64_t end_ = 0;
+  bool started_ = false;
+};
+
+// Plays frames until no story beat is queued / playing and no core modal is up (closing stray ones).
+class ApWaitIdle final : public ApTask {
+ public:
+  explicit ApWaitIdle(double timeoutSec = 120) : timeoutSec_(timeoutSec) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    if (!started_) {
+      end_ = b.frames + ApFramesFor(timeoutSec_);
+      started_ = true;
+    }
+    if (b.ok && b.frames < end_) {
+      const Snapshot& v = b.V();
+      if (!v.storyBusy && !v.frozen && v.modals.empty()) return Finish(true);
+      if (!v.storyBusy && !v.modals.empty() && (b.frames % 30) == 0) {
+        for (PanelId p : v.modals) b.Submit(CmdClosePanel{p});
+      }
+      return ApRun::Frame;
+    }
+    b.Fail("WaitIdle timeout");
+    return Finish(false);
+  }
+
+ private:
+  double timeoutSec_;
+  int64_t end_ = 0;
+  bool started_ = false;
+};
+
+class ApWaitRespawn final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    if (!started_) {
+      b.Note("hero down, waiting for the respawn");
+      end_ = b.frames + 30 * kApFps;
+      started_ = true;
+    }
+    if (b.ok && b.frames < end_ && !b.Alive()) return ApRun::Frame;
+    if (!b.Alive()) b.Fail("hero never respawned");
+    return Finish(true);
+  }
+
+ private:
+  int64_t end_ = 0;
+  bool started_ = false;
+};
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Fighting and walking
+// ---------------------------------------------------------------------------------------------------------------------
+
+// Attacks `target` until it dies (true) or the timeout / hero death (false).
+class ApEngage final : public ApTask {
+ public:
+  ApEngage(EntityId target, double timeoutSec, int depth) : target_(target), timeoutSec_(timeoutSec), depth_(depth) {}
+  ApRun Run(AutoPilotImpl& b) override;
+
+ private:
+  enum class St : uint8_t { Start, Loop, AfterRespawn, AfterNested };
+  St st_ = St::Start;
+  EntityId target_;
+  double timeoutSec_;
+  int depth_;
+  int64_t end_ = 0, lastOrder_ = -1000, lastCast_ = -1000;
+};
+
+// Walks to `goal` (fighting whatever attacks on the way). True once within `arrive` tiles.
+class ApGoTo final : public ApTask {
+ public:
+  ApGoTo(Vec2 goal, double arrive, double timeoutSec = 240, bool fight = true)
+      : goal_(goal), arrive_(arrive), timeoutSec_(timeoutSec), fight_(fight) {}
+  ApRun Run(AutoPilotImpl& b) override;
+
+ private:
+  enum class St : uint8_t { Start, Loop, AfterRespawn, AfterBusyFrame, AfterFight, AfterMoveFrame };
+  St st_ = St::Start;
+  Vec2 goal_;
+  double arrive_, timeoutSec_;
+  bool fight_;
+  int64_t end_ = 0, lastOrder_ = -1000, lastProgress_ = 0;
+  Vec2 lastPos_;
+};
+
+ApRun ApEngage::Run(AutoPilotImpl& b) {
+  switch (st_) {
+    case St::Start:
+      end_ = b.frames + ApFramesFor(timeoutSec_);
+      lastOrder_ = -1000;
+      lastCast_ = -1000;
+      break;
+    case St::Loop: break;
+    case St::AfterRespawn: return Finish(false);
+    case St::AfterNested: lastOrder_ = -1000; break;
+  }
+  while (b.ok && b.frames < end_) {
+    const MonsterView* m = b.FindMonster(target_);
+    if (m == nullptr || !m->alive) return Finish(true);
+    if (!b.Alive()) {
+      st_ = St::AfterRespawn;
+      return b.Call<ApWaitRespawn>();
+    }
+    if (b.Busy()) {
+      st_ = St::Loop;
+      return ApRun::Frame;
+    }
+    // Something else is hitting us while the target is still far: deal with it first.
+    if (depth_ == 0 && Dist(m->pos, b.HeroPos()) > 4.0) {
+      const EntityId close = b.NearestThreat(2.5);
+      if (close != kNoEntity && close != target_) {
+        st_ = St::AfterNested;
+        return b.Call<ApEngage>(close, 30.0, 1);
+      }
+    }
+    if (b.V().hero.target != target_ && b.frames - lastOrder_ > 15) {
+      b.Submit(CmdAttackTarget{target_});
+      lastOrder_ = b.frames;
+    }
+    if (b.frames - lastCast_ >= 8 && b.TryCast(*m)) lastCast_ = b.frames;
+    st_ = St::Loop;
+    return ApRun::Frame;
+  }
+  if (b.ok) b.Note("gave up on target " + std::to_string(target_));
+  b.Submit(CmdClearTarget{});
+  return Finish(false);
+}
+
+ApRun ApGoTo::Run(AutoPilotImpl& b) {
+  switch (st_) {
+    case St::Start:
+      end_ = b.frames + ApFramesFor(timeoutSec_);
+      lastOrder_ = -1000;
+      lastPos_ = b.HeroPos();
+      lastProgress_ = b.frames;
+      break;
+    case St::Loop: break;
+    case St::AfterRespawn: lastOrder_ = -1000; break;
+    case St::AfterBusyFrame: lastProgress_ = b.frames; break;
+    case St::AfterFight:
+      lastOrder_ = -1000;
+      lastProgress_ = b.frames;
+      break;
+    case St::AfterMoveFrame:
+      if (Dist(b.HeroPos(), lastPos_) > 1.0) {
+        lastPos_ = b.HeroPos();
+        lastProgress_ = b.frames;
+      } else if (b.frames - lastProgress_ > 30 * kApFps) {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf), "stuck walking to (%.1f,%.1f)", goal_.x, goal_.y);
+        b.Fail(buf);
+        return Finish(false);
+      }
+      break;
+  }
+  if (b.ok && b.frames < end_) {
+    if (Dist(b.HeroPos(), goal_) <= arrive_) return Finish(true);
+    if (!b.Alive()) {
+      st_ = St::AfterRespawn;
+      return b.Call<ApWaitRespawn>();
+    }
+    if (b.Busy()) {
+      st_ = St::AfterBusyFrame;
+      return ApRun::Frame;
+    }
+    if (fight_) {
+      const EntityId t = b.NearestThreat(kApThreatRadius);
+      if (t != kNoEntity) {
+        st_ = St::AfterFight;
+        return b.Call<ApEngage>(t, 45.0, 0);
+      }
+    }
+    if (!b.V().hero.moving && b.frames - lastOrder_ > 20) {
+      b.Submit(CmdMoveTo{goal_});
+      lastOrder_ = b.frames;
+    }
+    st_ = St::AfterMoveFrame;
+    return ApRun::Frame;
+  }
+  if (b.ok) {
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "timeout walking to (%.1f,%.1f)", goal_.x, goal_.y);
+    b.Fail(buf);
+  }
+  return Finish(false);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Loot and gear
+// ---------------------------------------------------------------------------------------------------------------------
+
+class ApEquipUpgrades final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    if (st_ == St::Start) {
+      if (b.V().inventory == nullptr) return Finish(true);
+      guard_ = 0;
+    } else {  // AfterCommit
+      bool stillInBag = false;
+      if (b.V().inventory != nullptr) {
+        for (const ItemInstance& it : b.V().inventory->Bag()) stillInBag = stillInBag || it.uid == uid_;
+      }
+      b.Note("equip " + uid_ + (stillInBag ? " (still in the bag)" : ""));
+      ++guard_;
+    }
+    if (guard_ >= 12 || b.V().inventory == nullptr) return Finish(true);
+    std::string uid;
+    double best = 0.5;
+    for (const ItemInstance& it : b.V().inventory->Bag()) {
+      const double g = b.UpgradeGain(it);
+      if (g > best) {
+        best = g;
+        uid = it.uid;
+      }
+    }
+    if (uid.empty()) return Finish(true);
+    b.Submit(CmdEquip{uid});
+    uid_ = uid;
+    st_ = St::AfterCommit;
+    return b.Call<ApCommit>();
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterCommit };
+  St st_ = St::Start;
+  int guard_ = 0;
+  std::string uid_;
+};
+
+// P panel: feed ley fruit to the active beast (quests 18.8) while it can still grow.
+class ApFeedPet final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    if (!started_) {
+      started_ = true;
+      const Snapshot& v = b.V();
+      if (b.feedRefused || v.pets == nullptr || v.pets->Active() == nullptr || b.CountOf("c_ley_fruit") <= 0) {
+        return Finish(true);
+      }
+      id_ = std::string(v.pets->ActiveId());
+      before_ = v.pets->Active()->exp + 1000 * v.pets->Active()->level;
+      b.Submit(CmdFeedPet{id_});
+      return b.Call<ApCommit>();
+    }
+    const PetInstance* p = b.V().pets != nullptr ? b.V().pets->Active() : nullptr;
+    if (p != nullptr && p->exp + 1000 * p->level != before_) {
+      ++b.stats.petFeeds;
+      b.Note("fed " + id_);
+    } else {
+      b.feedRefused = true;
+      b.Note("feeding refused");
+    }
+    return Finish(true);
+  }
+
+ private:
+  bool started_ = false;
+  std::string id_;
+  int64_t before_ = 0;
+};
+
+class ApLootNearby final : public ApTask {
+ public:
+  explicit ApLootNearby(double radius) : radius_(radius) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start: guard_ = 0; break;
+      case St::AfterPotion:
+        if (!b.childResult) return Finish(true);
+        // potions are auto-collected within 2 tiles; mark it so a stuck one cannot loop
+        b.skippedLoot.insert(pick_);
+        ++guard_;
+        break;
+      case St::PickWait: {
+        bool present = false;
+        for (const GroundItemView& g : b.V().groundItems) present = present || g.id == pick_;
+        if (!present) {
+          gone_ = true;
+        } else if (b.NearestThreat(3) == kNoEntity && b.ok && b.frames < pickEnd_) {
+          return ApRun::Frame;
+        }
+        if (!gone_) b.skippedLoot.insert(pick_);
+        ++guard_;
+        break;
+      }
+    }
+    while (guard_ < 24 && b.ok) {
+      if (b.Busy() || !b.Alive()) return Finish(true);
+      if (b.NearestThreat(kApThreatRadius) != kNoEntity) return Finish(true);
+      if (b.V().inventory != nullptr && b.V().inventory->IsFull()) return Finish(true);
+      EntityId pick = kNoEntity;
+      Vec2 pos;
+      double bestD = radius_;
+      for (const GroundItemView& g : b.V().groundItems) {
+        if (g.item == nullptr || b.skippedLoot.count(g.id) != 0 || !b.Wanted(*g.item)) continue;
+        const double d = Dist(g.pos, b.HeroPos());
+        if (d <= bestD) {
+          bestD = d;
+          pick = g.id;
+          pos = g.pos;
+        }
+      }
+      bool potion = false;
+      for (const PotionDropView& p : b.V().potions) {
+        const double d = Dist(p.pos, b.HeroPos());
+        if (b.skippedLoot.count(p.id) == 0 && d <= bestD) {
+          bestD = d;
+          pick = p.id;
+          pos = p.pos;
+          potion = true;
+        }
+      }
+      if (pick == kNoEntity) return Finish(true);
+      pick_ = pick;
+      if (potion) {
+        st_ = St::AfterPotion;
+        return b.Call<ApGoTo>(pos, 1.0, 15.0, true);
+      }
+      b.Submit(CmdPickUp{pick});
+      pickEnd_ = b.frames + 8 * kApFps;
+      gone_ = false;
+      st_ = St::PickWait;
+      return ApRun::Frame;
+    }
+    return Finish(true);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterPotion, PickWait };
+  St st_ = St::Start;
+  double radius_;
+  int guard_ = 0;
+  EntityId pick_ = kNoEntity;
+  int64_t pickEnd_ = 0;
+  bool gone_ = false;
+};
+
+// Kills monsters of `defIds` (nearest first, around `centre`) until `done`.
+class ApHunt final : public ApTask {
+ public:
+  ApHunt(std::vector<std::string> defIds, Vec2 centre, ApPredicate done, double timeoutSec)
+      : defIds_(std::move(defIds)), centre_(centre), done_(std::move(done)), timeoutSec_(timeoutSec) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start:
+        end_ = b.frames + ApFramesFor(timeoutSec_);
+        idleSince_ = -1;
+        break;
+      case St::Loop: break;
+      case St::AfterLoot:
+        if (!b.ok) return Finish(false);
+        st_ = St::AfterEquip;
+        return b.Call<ApEquipUpgrades>();
+      case St::AfterEquip:
+        st_ = St::AfterFeed;
+        return b.Call<ApFeedPet>();
+      case St::AfterFeed: {
+        const EntityId t = b.NearestOf(defIds_, b.HeroPos(), 60);
+        if (t != kNoEntity) {
+          idleSince_ = -1;
+          st_ = St::Loop;
+          return b.Call<ApEngage>(t, 60.0, 0);
+        }
+        if (Dist(b.HeroPos(), centre_) > 4) {
+          st_ = St::Loop;
+          return b.Call<ApGoTo>(centre_, 3.0, 180.0, true);
+        }
+        if (idleSince_ < 0) idleSince_ = b.frames;
+        if (b.frames - idleSince_ > 120 * kApFps) {
+          b.Fail("no " + defIds_.front() + " to hunt (nothing respawned)");
+          return Finish(false);
+        }
+        st_ = St::Loop;
+        return ApRun::Frame;
+      }
+    }
+    while (b.ok && !done_(b)) {
+      if (b.frames >= end_) {
+        b.Fail("hunt timeout for " + defIds_.front());
+        return Finish(false);
+      }
+      if (!b.Alive()) {
+        st_ = St::Loop;
+        return b.Call<ApWaitRespawn>();
+      }
+      if (b.Busy()) {
+        st_ = St::Loop;
+        return ApRun::Frame;
+      }
+      const EntityId threat = b.NearestThreat(kApThreatRadius);
+      if (threat != kNoEntity) {
+        st_ = St::Loop;
+        return b.Call<ApEngage>(threat, 45.0, 0);
+      }
+      st_ = St::AfterLoot;
+      return b.Call<ApLootNearby>(7.0);
+    }
+    return Finish(b.ok);
+  }
+
+ private:
+  enum class St : uint8_t { Start, Loop, AfterLoot, AfterEquip, AfterFeed };
+  St st_ = St::Start;
+  std::vector<std::string> defIds_;
+  Vec2 centre_;
+  ApPredicate done_;
+  double timeoutSec_;
+  int64_t end_ = 0, idleSince_ = -1;
+};
+
+// ---------------------------------------------------------------------------------------------------------------------
+// NPCs, shops, quest cards
+// ---------------------------------------------------------------------------------------------------------------------
+
+class ApClosePanels final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    if (started_) {
+      ++i_;
+    }
+    started_ = true;
+    if (i_ < 120 && b.ok) {
+      if (b.V().modals.empty()) return Finish(true);
+      if ((i_ % 10) == 0) {
+        for (PanelId p : b.V().modals) b.Submit(CmdClosePanel{p});
+      }
+      return ApRun::Frame;
+    }
+    if (!b.V().modals.empty()) b.Fail("panel did not close");
+    return Finish(b.V().modals.empty());
+  }
+
+ private:
+  int i_ = 0;
+  bool started_ = false;
+};
+
+// Walks to the NPC and talks (CmdInteract); true once one of its core modals is up.
+class ApTalkTo final : public ApTask {
+ public:
+  explicit ApTalkTo(std::string npcId) : npcId_(std::move(npcId)) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start:
+        st_ = St::AfterFirstIdle;
+        return b.Call<ApWaitIdle>();
+      case St::AfterFirstIdle: {
+        if (!b.childResult) return Finish(false);
+        const NpcView* n = b.FindNpc(npcId_);
+        if (n == nullptr) {
+          b.Fail("npc not in zone: " + npcId_);
+          return Finish(false);
+        }
+        id_ = n->id;
+        st_ = St::AfterGoTo;
+        return b.Call<ApGoTo>(n->pos, 2.0, 300.0, true);
+      }
+      case St::AfterGoTo:
+        if (!b.childResult) return Finish(false);
+        session_.emplace(b);
+        attempt_ = 0;
+        break;
+      case St::AfterIdle:
+        if (!b.childResult) return Finish(false);
+        b.Submit(CmdInteract{id_});
+        i_ = 0;
+        if (i_ < 4 * kApFps && b.ok) {
+          st_ = St::InteractFrame;
+          return ApRun::Frame;
+        }
+        ++attempt_;
+        break;
+      case St::InteractFrame:
+        if (!b.V().modals.empty()) return Finish(true);
+        ++i_;
+        if (i_ < 4 * kApFps && b.ok) return ApRun::Frame;
+        ++attempt_;
+        break;
+    }
+    if (attempt_ < 3 && b.ok) {
+      st_ = St::AfterIdle;
+      return b.Call<ApWaitIdle>();
+    }
+    b.Fail("talking to " + npcId_ + " opened nothing");
+    return Finish(false);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterFirstIdle, AfterGoTo, AfterIdle, InteractFrame };
+  St st_ = St::Start;
+  std::string npcId_;
+  EntityId id_ = kNoEntity;
+  int attempt_ = 0;
+  int64_t i_ = 0;
+  std::optional<ApPanelSession> session_;
+};
+
+// Sells spare gear and tops up potions at a shop NPC.
+class ApShop final : public ApTask {
+ public:
+  ApShop(std::string npcId, int hpTarget, int mpTarget)
+      : npcId_(std::move(npcId)), hpTarget_(hpTarget), mpTarget_(mpTarget) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start:
+        st_ = St::AfterTalk;
+        return b.Call<ApTalkTo>(npcId_);
+      case St::AfterTalk:
+        if (!b.childResult) return Finish(false);
+        session_.emplace(b);
+        if (b.V().shop == nullptr || !b.V().shop->open) {
+          b.Fail(npcId_ + ": shop did not open");
+          return Finish(false);
+        }
+        // sell bag equipment that is not an upgrade
+        for (const ItemInstance& it : b.V().inventory->Bag()) {
+          const ItemBaseDef* base = b.data.FindItemBase(it.baseId);
+          if (base != nullptr && base->hasSlot && b.UpgradeGain(it) <= 0.5) sell_.push_back(it.uid);
+        }
+        sellIdx_ = 0;
+        break;
+      case St::AfterSell:
+        if (b.V().hero.gold > gold_) ++b.stats.itemsSold;
+        ++sellIdx_;
+        break;
+      case St::AfterBuy:
+        if (b.CountOf(buyBase_) <= before_) {
+          return NextBuy(b);  // break
+        }
+        ++b.stats.itemsBought;
+        ++buyGuard_;
+        return BuyLoop(b);
+      case St::AfterClose: return Finish(b.childResult);
+    }
+    if (sellIdx_ < sell_.size()) {
+      gold_ = b.V().hero.gold;
+      b.Submit(CmdSell{sell_[sellIdx_]});
+      st_ = St::AfterSell;
+      return b.Call<ApCommit>();
+    }
+    phase_ = 0;
+    StartBuy(b, b.V().hero.level >= 10 ? "c_hp_potion_m" : "c_hp_potion_s", hpTarget_);
+    return BuyLoop(b);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterTalk, AfterSell, AfterBuy, AfterClose };
+  void StartBuy(AutoPilotImpl& b, const std::string& baseId, int target) {
+    buyBase_ = baseId;
+    buyTarget_ = target;
+    ware_ = b.WareIndex(baseId);
+    buyGuard_ = 0;
+  }
+  ApRun BuyLoop(AutoPilotImpl& b) {
+    if (ware_ >= 0 && buyGuard_ < 30 && b.CountOf(buyBase_) < buyTarget_ && b.V().hero.gold >= b.WarePrice(ware_)) {
+      before_ = b.CountOf(buyBase_);
+      b.Submit(CmdBuy{ware_});
+      st_ = St::AfterBuy;
+      return b.Call<ApCommit>();
+    }
+    return NextBuy(b);
+  }
+  ApRun NextBuy(AutoPilotImpl& b) {
+    if (phase_ == 0 && mpTarget_ > 0) {
+      phase_ = 1;
+      StartBuy(b, "c_mp_potion_s", mpTarget_);
+      return BuyLoop(b);
+    }
+    b.Note("shopped at " + npcId_ + ": hp potions " + std::to_string(b.V().potionSlots[0].count) + ", gold " +
+           std::to_string(b.V().hero.gold));
+    st_ = St::AfterClose;
+    return b.Call<ApClosePanels>();
+  }
+
+  St st_ = St::Start;
+  std::string npcId_;
+  int hpTarget_, mpTarget_;
+  std::optional<ApPanelSession> session_;
+  std::vector<std::string> sell_;
+  size_t sellIdx_ = 0;
+  int64_t gold_ = 0;
+  int phase_ = 0;
+  std::string buyBase_;
+  int buyTarget_ = 0;
+  int32_t ware_ = -1;
+  int buyGuard_ = 0;
+  int32_t before_ = 0;
+};
+
+// Talks to a quest giver and works its card: turns in everything completed (best reward choice), then accepts the
+// offers in `accept` (all offers when empty). Re-opens the card after each action like the T17 chain offer (900 ms, or
+// after the turn-in cutscene + 300 ms).
+class ApVisitGiver final : public ApTask {
+ public:
+  ApVisitGiver(std::string npcId, std::vector<std::string> accept)
+      : npcId_(std::move(npcId)), accept_(std::move(accept)) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start:
+        st_ = St::AfterTalk;
+        return b.Call<ApTalkTo>(npcId_);
+      case St::AfterTalk:
+        if (!b.childResult) return Finish(false);
+        session_.emplace(b);
+        round_ = 0;
+        return Round(b);
+      case St::AfterTurnIn:
+        if (!b.HasStatus(questId_, QuestStatus::TurnedIn)) {
+          b.Fail("turn-in refused: " + questId_);
+          return Finish(false);
+        }
+        return Acted(b);
+      case St::AfterAccept:
+        if (!b.HasStatus(questId_, QuestStatus::Active) && !b.QuestDone(questId_)) {
+          b.Fail("accept refused: " + questId_);
+          return Finish(false);
+        }
+        return Acted(b);
+      case St::AfterRead:
+        if (b.V().storyBusy) {
+          st_ = St::AfterStoryIdle;
+          return b.Call<ApWaitIdle>();
+        }
+        st_ = St::AfterIdle;
+        return b.Call<ApWaitIdle>();
+      case St::AfterStoryIdle:
+        st_ = St::AfterStoryPause;
+        return b.Call<ApWait>(0.3);
+      case St::AfterStoryPause:
+        st_ = St::AfterIdle;
+        return b.Call<ApWaitIdle>();
+      case St::AfterIdle: {
+        if (!b.childResult) return Finish(false);
+        const NpcView* n = b.FindNpc(npcId_);
+        if (n == nullptr || Dist(b.HeroPos(), n->pos) > 3.0) {
+          st_ = St::AfterReTalk;
+          return b.Call<ApTalkTo>(npcId_);
+        }
+        b.Submit(CmdQuestCardOpen{npcId_});
+        st_ = St::AfterCardOpen;
+        return b.Call<ApCommit>();
+      }
+      case St::AfterReTalk:
+        if (!b.childResult) return Finish(false);
+        st_ = St::AfterNested;
+        return b.Call<ApVisitGiver>(npcId_, accept_);
+      case St::AfterNested: return Finish(b.childResult);
+      case St::AfterCardOpen:
+        if (b.V().questCard == nullptr || !b.V().questCard->open) return Finish(true);  // nothing more to offer
+        ++round_;
+        return Round(b);
+      case St::AfterClose: return Finish(b.childResult);
+    }
+    return Finish(false);
+  }
+
+ private:
+  enum class St : uint8_t {
+    Start, AfterTalk, AfterTurnIn, AfterAccept, AfterRead, AfterStoryIdle, AfterStoryPause, AfterIdle, AfterReTalk,
+    AfterNested, AfterCardOpen, AfterClose,
+  };
+  ApRun Close(AutoPilotImpl& b) {
+    st_ = St::AfterClose;
+    return b.Call<ApClosePanels>();
+  }
+  ApRun Round(AutoPilotImpl& b) {
+    if (!(round_ < 16 && b.ok)) return Close(b);
+    const QuestCardState* card = b.V().questCard;
+    if (card == nullptr || !card->open) return Close(b);  // nothing to offer: a tree / linear dialogue opened instead
+    for (const QuestCardEntry& e : card->entries) {
+      if (e.quest == nullptr || !e.turnIn) continue;
+      questId_ = e.quest->id;
+      const int32_t choice = b.BestChoice(e.choices);
+      b.Note("turn in " + questId_ + (e.choices.empty() ? "" : " choice " + std::to_string(choice)));
+      b.Submit(CmdQuestTurnIn{questId_, choice});
+      st_ = St::AfterTurnIn;
+      return b.Call<ApCommit>();
+    }
+    for (const QuestCardEntry& e : card->entries) {
+      if (e.quest == nullptr || e.turnIn) continue;
+      const std::string& id = e.quest->id;
+      if (!accept_.empty() && std::find(accept_.begin(), accept_.end(), id) == accept_.end()) continue;
+      questId_ = id;
+      b.Note("accept " + questId_);
+      b.Submit(CmdQuestAccept{questId_});
+      st_ = St::AfterAccept;
+      return b.Call<ApCommit>();
+    }
+    return Close(b);
+  }
+  // T17: reopen the card after 900 ms, or after the turn-in cutscene (+300 ms).
+  ApRun Acted(AutoPilotImpl& b) {
+    st_ = St::AfterRead;
+    return b.Call<ApWait>(0.9);
+  }
+
+  St st_ = St::Start;
+  std::string npcId_;
+  std::vector<std::string> accept_;
+  std::optional<ApPanelSession> session_;
+  int round_ = 0;
+  std::string questId_;
+};
+
+// The elder's dialogue tree (quests 10.3) from the quest card's "view story" button: root -> reward_ask -> help
+// (+30 gold / +50 exp, Q1 one-time) -> other_quests -> accept_gel [Q:q_collect_slime_gel] -> Leave.
+class ApElderTree final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    static const char* const kPath[] = {"reward_ask", "help", "other_quests", "accept_gel"};
+    switch (st_) {
+      case St::Start:
+        st_ = St::AfterTalk;
+        return b.Call<ApTalkTo>(std::string("quest_elder"));
+      case St::AfterTalk:
+        if (!b.childResult) return Finish(false);
+        session_.emplace(b);
+        b.Submit(CmdDialogueOpenTree{"quest_elder"});
+        st_ = St::AfterOpen;
+        return b.Call<ApCommit>();
+      case St::AfterOpen: step_ = 0; break;
+      case St::AfterRead:
+        b.Submit(CmdDialogueChoose{button_});
+        st_ = St::AfterChoose;
+        return b.Call<ApCommit>();
+      case St::AfterChoose: ++step_; break;
+      case St::AfterLeave:
+        st_ = St::AfterClose;
+        return b.Call<ApClosePanels>();
+      case St::AfterClose: return Finish(b.childResult);
+    }
+    if (step_ < 4) {
+      const char* next = kPath[step_];
+      const DialogueView* d = b.V().dialogue;
+      if (d == nullptr || !d->open || d->tree == nullptr) {
+        b.Fail("elder dialogue tree not open");
+        return Finish(false);
+      }
+      const DialogueNode* node = d->tree->FindNode(d->nodeId);
+      int32_t button = -1;
+      for (size_t i = 0; i < d->buttons.size() && node != nullptr; ++i) {
+        const DialogueButton& btn = d->buttons[i];
+        if (btn.kind == DialogueButtonKind::Choice && btn.choiceIndex >= 0 &&
+            static_cast<size_t>(btn.choiceIndex) < node->choices.size() &&
+            node->choices[static_cast<size_t>(btn.choiceIndex)].nextNodeId == next) {
+          button = static_cast<int32_t>(i);
+        }
+      }
+      if (button < 0) {
+        b.Fail(std::string("elder tree: no button to ") + next + " at " + d->nodeId);
+        return Finish(false);
+      }
+      button_ = button;
+      st_ = St::AfterRead;
+      return b.Call<ApWait>(0.5);  // reading
+    }
+    const DialogueView* d = b.V().dialogue;
+    if (d == nullptr || !d->open || d->nodeId != "accept_gel") {
+      b.Fail("elder tree did not reach accept_gel");
+      return Finish(false);
+    }
+    int32_t leave = -1;
+    for (size_t i = 0; i < d->buttons.size(); ++i) {
+      if (d->buttons[i].kind == DialogueButtonKind::Leave) leave = static_cast<int32_t>(i);
+    }
+    if (leave < 0) {
+      b.Fail("elder tree: no Leave button at accept_gel");
+      return Finish(false);
+    }
+    b.Submit(CmdDialogueChoose{leave});
+    st_ = St::AfterLeave;
+    return b.Call<ApCommit>();
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterTalk, AfterOpen, AfterRead, AfterChoose, AfterLeave, AfterClose };
+  St st_ = St::Start;
+  std::optional<ApPanelSession> session_;
+  size_t step_ = 0;
+  int32_t button_ = -1;
+};
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Quest helpers
+// ---------------------------------------------------------------------------------------------------------------------
+
+// Walks onto each gather node of `questId` until the objective is full.
+class ApGather final : public ApTask {
+ public:
+  ApGather(std::string questId, size_t obj, int32_t required)
+      : questId_(std::move(questId)), obj_(obj), required_(required) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start: guard_ = 0; break;
+      case St::AfterGoTo:
+        st_ = St::AfterWait;
+        return b.Call<ApWait>(0.2);
+      case St::AfterWait: ++guard_; break;
+    }
+    if (guard_ < 40 && b.ok && b.ObjCurrent(questId_, obj_) < required_) {
+      Vec2 best;
+      double bestD = 1e9;
+      for (const WorldMarkerView& m : b.V().markers) {
+        if (m.kind != MarkerKind::GatherNode) continue;
+        const double d = Dist(m.pos, b.HeroPos());
+        if (d < bestD) {
+          bestD = d;
+          best = m.pos;
+        }
+      }
+      if (bestD > 1e8) {
+        b.Fail("no gather node left for " + questId_);
+        return Finish(false);
+      }
+      st_ = St::AfterGoTo;
+      return b.Call<ApGoTo>(best, 0.6, 120.0, true);
+    }
+    return Finish(b.ok && b.ObjCurrent(questId_, obj_) >= required_);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterGoTo, AfterWait };
+  St st_ = St::Start;
+  std::string questId_;
+  size_t obj_;
+  int32_t required_;
+  int guard_ = 0;
+};
+
+// Examines the clue marks of `questId` in objective order.
+class ApClues final : public ApTask {
+ public:
+  ApClues(std::string questId, std::vector<Vec2> tiles) : questId_(std::move(questId)), tiles_(std::move(tiles)) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    const QuestDef* q = b.data.FindQuest(questId_);
+    if (q == nullptr) return Finish(false);
+    switch (st_) {
+      case St::Start:
+        i_ = 0;
+        clue_ = 0;
+        break;
+      case St::AfterGoTo:
+        st_ = St::AfterWait;
+        return b.Call<ApWait>(0.3);
+      case St::AfterWait:
+        if (b.ObjCurrent(questId_, i_) < q->objectives[i_].required) {
+          b.Fail("clue not taken: " + q->objectives[i_].targetId);
+          return Finish(false);
+        }
+        b.Note("clue " + q->objectives[i_].targetId);
+        ++i_;
+        break;
+    }
+    for (; i_ < q->objectives.size() && b.ok; ++i_) {
+      if (q->objectives[i_].type != ObjectiveType::InvestigateClue) continue;
+      if (clue_ >= tiles_.size()) break;
+      const Vec2 tile = tiles_[clue_++];
+      if (b.ObjCurrent(questId_, i_) >= q->objectives[i_].required) continue;
+      Vec2 mark = tile;
+      for (const WorldMarkerView& m : b.V().markers) {
+        if (m.kind == MarkerKind::Clue && m.key == questId_ && Dist(m.pos, tile) < 3) mark = m.pos;
+      }
+      st_ = St::AfterGoTo;
+      return b.Call<ApGoTo>(mark, 1.0, 300.0, true);
+    }
+    return Finish(b.ok);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterGoTo, AfterWait };
+  St st_ = St::Start;
+  std::string questId_;
+  std::vector<Vec2> tiles_;
+  size_t i_ = 0, clue_ = 0;
+};
+
+// Waits within an explore circle until the objective counts (500 ms observer).
+class ApExplore final : public ApTask {
+ public:
+  ApExplore(std::string questId, size_t obj, Vec2 centre) : questId_(std::move(questId)), obj_(obj), centre_(centre) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start:
+        st_ = St::AfterGoTo;
+        return b.Call<ApGoTo>(centre_, 2.5, 300.0, true);
+      case St::AfterGoTo:
+        if (!b.childResult) return Finish(false);
+        i_ = 0;
+        break;
+      case St::Waiting: ++i_; break;
+    }
+    if (i_ < 3 * kApFps && b.ok && b.ObjCurrent(questId_, obj_) < 1) {
+      st_ = St::Waiting;
+      return ApRun::Frame;
+    }
+    if (b.ObjCurrent(questId_, obj_) < 1) {
+      b.Fail("explore objective did not count: " + questId_);
+      return Finish(false);
+    }
+    b.Note("explored " + questId_ + "#" + std::to_string(obj_));
+    return Finish(true);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterGoTo, Waiting };
+  St st_ = St::Start;
+  std::string questId_;
+  size_t obj_;
+  Vec2 centre_;
+  int64_t i_ = 0;
+};
+
+class ApTownTrip final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start:
+        st_ = St::AfterShop;
+        return b.Call<ApShop>(std::string("merchant"), b.HpPotionTarget(), b.MpPotionTarget());
+      case St::AfterShop:
+        if (!b.childResult) return Finish(false);
+        st_ = St::AfterEquip;
+        return b.Call<ApEquipUpgrades>();
+      case St::AfterEquip: break;
+    }
+    return Finish(b.ok);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterShop, AfterEquip };
+  St st_ = St::Start;
+};
+
+// Town portal home (W3): 1.5 s channel to the nearest camp.
+class ApPortalHome final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start:
+        st_ = St::AfterIdle;
+        return b.Call<ApWaitIdle>();
+      case St::AfterIdle:
+        if (!b.childResult) return Finish(false);
+        attempt_ = 0;
+        return Attempt(b);
+      case St::AfterFight:
+        if (!b.ok) return Attempt(b);
+        return Fight(b);
+      case St::AfterStop:
+        before_ = b.HeroPos();
+        b.Submit(CmdTownPortal{});
+        i_ = 0;
+        return Channel(b);
+      case St::Channelling:
+        if (Dist(b.HeroPos(), before_) > 10) {
+          b.Note("portal home");
+          return Finish(true);
+        }
+        ++i_;
+        return Channel(b);
+    }
+    return Finish(false);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterIdle, AfterFight, AfterStop, Channelling };
+  ApRun Attempt(AutoPilotImpl& b) {
+    if (attempt_ < 4 && b.ok) return Fight(b);
+    b.Note("portal failed, walking");
+    return Finish(false);
+  }
+  ApRun Fight(AutoPilotImpl& b) {
+    const EntityId t = b.NearestThreat(kApThreatRadius);
+    if (t != kNoEntity) {
+      st_ = St::AfterFight;
+      return b.Call<ApEngage>(t, 45.0, 0);
+    }
+    b.Submit(CmdStop{});
+    st_ = St::AfterStop;
+    return b.Call<ApCommit>();
+  }
+  ApRun Channel(AutoPilotImpl& b) {
+    if (i_ < 4 * kApFps && b.ok) {
+      st_ = St::Channelling;
+      return ApRun::Frame;
+    }
+    ++attempt_;
+    return Attempt(b);
+  }
+
+  St st_ = St::Start;
+  int attempt_ = 0;
+  int64_t i_ = 0;
+  Vec2 before_;
+};
+
+// Escort (quests 3.9): protect the merchant and lead it to its destination. False when the quest failed (the merchant
+// died: re-acceptable from the elder) or on a bot failure.
+class ApEscort final : public ApTask {
+ public:
+  explicit ApEscort(std::string questId) : questId_(std::move(questId)) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start: {
+        const QuestDef* q = b.data.FindQuest(questId_);
+        if (q == nullptr) {
+          b.Fail("unknown escort quest " + questId_);
+          return Finish(false);
+        }
+        dest_ = q->escortNpc.dest.Center();
+        st_ = St::AfterGoTo;
+        return b.Call<ApGoTo>(q->escortNpc.start.Center(), 3.0, 300.0, true);
+      }
+      case St::AfterGoTo:
+        if (!b.childResult) return Finish(false);
+        end_ = b.frames + 600 * kApFps;
+        lastOrder_ = -1000;
+        break;
+      case St::Loop: break;
+      case St::AfterEngage: lastOrder_ = -1000; break;
+    }
+    if (!(b.ok && b.frames < end_)) {
+      if (b.ok) b.Fail("escort timeout");
+      return Finish(false);
+    }
+    st_ = St::Loop;
+    if (b.QuestDone(questId_)) {
+      b.Note("escort complete");
+      return Finish(true);
+    }
+    if (b.HasStatus(questId_, QuestStatus::Failed)) {
+      b.Note("escort failed (the merchant died)");  // reacceptable: the caller takes it again from the elder
+      ++b.stats.escortFailures;
+      return Finish(false);
+    }
+    if (!b.Alive()) return b.Call<ApWaitRespawn>();
+    if (b.Busy()) return ApRun::Frame;
+    const EscortState* e = b.V().escort;
+    if (e == nullptr || !e->active) {
+      b.Fail("no escort NPC out");
+      return Finish(false);
+    }
+    // protect: anything near the merchant or us
+    EntityId threat = b.NearestThreat(kApThreatRadius);
+    if (threat == kNoEntity) {
+      for (const MonsterView& m : b.V().monsters) {
+        if (m.alive && Dist(m.pos, e->pos) < 4.5 && m.state != MonsterState::Returning &&
+            m.state != MonsterState::Idle && m.state != MonsterState::Patrol) {
+          threat = m.id;
+        }
+      }
+    }
+    if (threat != kNoEntity) {
+      st_ = St::AfterEngage;
+      return b.Call<ApEngage>(threat, 30.0, 0);
+    }
+    const double gap = Dist(b.HeroPos(), e->pos);
+    if (!e->joined) {
+      if (gap > 4) {
+        b.Submit(CmdMoveTo{e->pos});
+        return b.Call<ApWait>(0.5);
+      }
+      return ApRun::Frame;
+    }
+    // The merchant re-paths to us 2.5x a second and stops a tile short (its path drops the first and last step,
+    // quests 3.9), so it can rest ~3.5 tiles away while we stand: wait only when it really lags.
+    if (gap > 5.0) {
+      if (b.V().hero.moving) b.Submit(CmdStop{});
+      return ApRun::Frame;
+    }
+    if (!b.V().hero.moving && b.frames - lastOrder_ > 20) {
+      b.Submit(CmdMoveTo{dest_});
+      lastOrder_ = b.frames;
+    }
+    return ApRun::Frame;
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterGoTo, Loop, AfterEngage };
+  St st_ = St::Start;
+  std::string questId_;
+  Vec2 dest_;
+  int64_t end_ = 0, lastOrder_ = -1000;
+};
+
+// The escort, taken again from the elder after a failure (quests 3.9), at most three tries.
+class ApEscortWithRetries final : public ApTask {
+ public:
+  explicit ApEscortWithRetries(std::string questId) : questId_(std::move(questId)) {}
+  ApRun Run(AutoPilotImpl& b) override {
+    switch (st_) {
+      case St::Start: attempt_ = 0; break;
+      case St::AfterEscort:
+        if (b.childResult) return Finish(true);
+        if (b.ok) {
+          st_ = St::AfterRetake;
+          return b.Call<ApVisitGiver>(std::string("quest_elder"), std::vector<std::string>{questId_});
+        }
+        ++attempt_;
+        break;
+      case St::AfterRetake: ++attempt_; break;
+    }
+    if (attempt_ < 3 && b.ok) {
+      st_ = St::AfterEscort;
+      return b.Call<ApEscort>(questId_);
+    }
+    return Finish(b.ok);
+  }
+
+ private:
+  enum class St : uint8_t { Start, AfterEscort, AfterRetake };
+  St st_ = St::Start;
+  std::string questId_;
+  int attempt_ = 0;
+};
+
+// The bottom task: plays AutoPilotImpl::steps from stepIdx.
+class ApScript final : public ApTask {
+ public:
+  ApRun Run(AutoPilotImpl& b) override {
+    if (waiting_) {  // the step's task finished (a failure has already set ok = false)
+      waiting_ = false;
+      ++b.stepIdx;
+    }
+    while (b.stepIdx < b.steps.size()) {
+      AutoPilotImpl::Step& s = b.steps[b.stepIdx];
+      switch (s.kind) {
+        case AutoPilotImpl::Step::Kind::Note:
+          b.Note(s.text);
+          ++b.stepIdx;
+          break;
+        case AutoPilotImpl::Step::Kind::Checkpoint:
+          b.checkpoint = s.text;
+          b.Note("checkpoint " + s.text);
+          b.Milestone(AutoPilotMilestone::Checkpoint, s.text);
+          ++b.stepIdx;
+          return ApRun::Checkpoint;
+        case AutoPilotImpl::Step::Kind::Milestone:
+          b.Milestone(AutoPilotMilestone::ScenarioDone, s.text);
+          if (b.cfg.scenario == AutoPilotScenario::Chapter1) {
+            b.Milestone(AutoPilotMilestone::ChapterDone, "emerald_plains");
+          }
+          ++b.stepIdx;
+          break;
+        case AutoPilotImpl::Step::Kind::Task:
+          b.currentStep = s.text;
+          waiting_ = true;
+          b.pendingCall = s.make(b);
+          return ApRun::Call;
+      }
+    }
+    return Finish(true);
+  }
+
+ private:
+  bool waiting_ = false;
+};
+
+}  // namespace autopilot_impl
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The scenarios (formerly PtPlayChapter1 of the playthrough test; checkpoints sit where the test checks the state)
+// ---------------------------------------------------------------------------------------------------------------------
+void AutoPilotImpl::BuildScenario() {
+  using Kind = Step::Kind;
+  using Ids = std::vector<std::string>;
+  const AutoPilotScenario scenario = cfg.scenario;
+  if (scenario == AutoPilotScenario::None) return;
+  const auto addCheckpoint = [this](const char* id) { AddStep(Kind::Checkpoint, id); };
+  const auto note = [this](const char* text) { AddStep(Kind::Note, text); };
+  const auto talkTo = [this](const char* npc) {
+    AddTask(std::string("talk to ") + npc, [npc](AutoPilotImpl&) { return std::make_unique<ApTalkTo>(npc); });
+  };
+  const auto closePanels = [this]() {
+    AddTask("close the panels", [](AutoPilotImpl&) { return std::make_unique<ApClosePanels>(); });
+  };
+  const auto waitIdle = [this](double timeoutSec) {
+    AddTask("wait until idle", [timeoutSec](AutoPilotImpl&) { return std::make_unique<ApWaitIdle>(timeoutSec); });
+  };
+  const auto visit = [this](const char* npc, Ids accept) {
+    AddTask(std::string("quest card of ") + npc,
+            [npc, accept](AutoPilotImpl&) { return std::make_unique<ApVisitGiver>(npc, accept); });
+  };
+  const auto shop = [this](const char* npc, int hp, int mp) {
+    AddTask(std::string("shop at ") + npc,
+            [npc, hp, mp](AutoPilotImpl&) { return std::make_unique<ApShop>(npc, hp, mp); });
+  };
+  const auto shopPotions = [this](const char* npc) {
+    AddTask(std::string("shop at ") + npc, [npc](AutoPilotImpl& b) {
+      return std::make_unique<ApShop>(npc, b.HpPotionTarget(), b.MpPotionTarget());
+    });
+  };
+  const auto townTrip = [this]() {
+    AddTask("town trip", [](AutoPilotImpl&) { return std::make_unique<ApTownTrip>(); });
+  };
+  const auto hunt = [this](Ids defs, Vec2 centre, ApPredicate done, double timeoutSec) {
+    AddTask("hunt " + defs.front(), [defs, centre, done, timeoutSec](AutoPilotImpl&) {
+      return std::make_unique<ApHunt>(defs, centre, done, timeoutSec);
+    });
+  };
+  const auto clues = [this](const char* quest, std::vector<Vec2> tiles) {
+    AddTask(std::string("clues of ") + quest,
+            [quest, tiles](AutoPilotImpl&) { return std::make_unique<ApClues>(quest, tiles); });
+  };
+  const auto explore = [this](const char* quest, size_t obj, Vec2 centre) {
+    AddTask(std::string("explore ") + quest + "#" + std::to_string(obj),
+            [quest, obj, centre](AutoPilotImpl&) { return std::make_unique<ApExplore>(quest, obj, centre); });
+  };
+  const auto goTo = [this](Vec2 goal, double arrive, double timeoutSec) {
+    char label[64];
+    std::snprintf(label, sizeof(label), "walk to (%.0f,%.0f)", goal.x, goal.y);
+    AddTask(label, [goal, arrive, timeoutSec](AutoPilotImpl&) {
+      return std::make_unique<ApGoTo>(goal, arrive, timeoutSec, true);
+    });
+  };
+  const auto portalHome = [this]() {
+    AddTask("portal home", [](AutoPilotImpl&) { return std::make_unique<ApPortalHome>(); });
+  };
+  const auto equipUpgrades = [this]() {
+    AddTask("equip upgrades", [](AutoPilotImpl&) { return std::make_unique<ApEquipUpgrades>(); });
+  };
+  const auto questDone = [](const char* quest) {
+    return ApPredicate([quest](const AutoPilotImpl& b) { return b.QuestDone(quest); });
+  };
+
+  // ---- new game: prologue (skipped) + chapter card ----
+  addCheckpoint("start");
+  waitIdle(180);
+  addCheckpoint("intro");
+
+  // ---- the camp ----
+  note("== camp");
+  talkTo("blacksmith");
+  addCheckpoint("blacksmith");
+  closePanels();
+  talkTo("stash");
+  addCheckpoint("stash");
+  closePanels();
+  AddTask("the elder's dialogue tree", [](AutoPilotImpl&) { return std::make_unique<ApElderTree>(); });
+  addCheckpoint("elder_tree");
+  visit("quest_elder", {"q_kill_slimes", "q_herb_gathering", "q_pet_sprite_friend"});
+  addCheckpoint("first_quests");
+  shop("merchant", 2, 0);
+
+  // ---- herbs, slimes, gel ----
+  note("== herbs");
+  AddTask("gather herbs", [](AutoPilotImpl&) { return std::make_unique<ApGather>("q_herb_gathering", 0, 5); });
+  addCheckpoint("herbs");
+  note("== slimes");
+  hunt({"slime_green"}, Vec2(25, 20),
+       [](const AutoPilotImpl& b) {
+         return b.QuestDone("q_kill_slimes") && b.ObjCurrent("q_collect_slime_gel", 0) >= 6;
+       },
+       600);
+  addCheckpoint("slimes");
+
+  // ---- turn in M1 + herbs (cs_ep_mark), take M2 + the pendant ----
+  note("== elder: M1");
+  visit("quest_elder", {"q_kill_goblins", "q_lost_pendant"});
+  addCheckpoint("elder_m1_turned_in");
+  waitIdle(120);
+  addCheckpoint("elder_m1");
+  if (scenario == AutoPilotScenario::Smoke) {
+    AddStep(Kind::Milestone, std::string(EnumName(scenario)));
+    return;
+  }
+  townTrip();
+
+  // ---- pendant clues 1-2, the herbalist (gel delivery), clue 3, the thief ----
+  note("== pendant + herbalist");
+  clues("q_lost_pendant", {Vec2(30, 24), Vec2(42, 34)});
+  shopPotions("plains_herbalist");
+  addCheckpoint("herbalist");
+  clues("q_lost_pendant", {Vec2(30, 24), Vec2(42, 34), Vec2(54, 44)});
+  hunt({"hunt_pendant_thief"}, Vec2(60, 48), questDone("q_lost_pendant"), 300);
+  addCheckpoint("pendant");
+
+  // ---- goblins ----
+  note("== goblins");
+  hunt({"goblin"}, Vec2(35, 40), questDone("q_kill_goblins"), 600);
+  addCheckpoint("goblins");
+
+  // ---- the sprite's hide-and-seek ----
+  note("== sprite");
+  clues("q_pet_sprite_friend", {Vec2(78, 12), Vec2(92, 10), Vec2(100, 22), Vec2(86, 28)});
+  addCheckpoint("sprite");
+
+  // ---- home: gel, M2, pendant, sprite (pet) ----
+  note("== elder: M2");
+  portalHome();
+  visit("quest_elder", {"q_explore_goblin_camp", "q_escort_merchant_plains"});
+  addCheckpoint("elder_m2_turned_in");
+  waitIdle(120);
+  addCheckpoint("elder_m2");
+  townTrip();
+
+  // ---- M3: the goblin camp; escort the merchant south ----
+  note("== goblin camp + escort");
+  explore("q_explore_goblin_camp", 0, Vec2(40, 52));
+  addCheckpoint("goblin_camp");
+  AddTask("escort q_escort_merchant_plains",
+          [](AutoPilotImpl&) { return std::make_unique<ApEscortWithRetries>("q_escort_merchant_plains"); });
+  addCheckpoint("escort");
+
+  // ---- the wanderer's bounty ----
+  note("== bounty");
+  visit("plains_wanderer", {"q_bandit_trouble"});
+  addCheckpoint("bounty_accepted");
+  hunt({"hunt_redcap_gruk"}, Vec2(82, 72), questDone("q_bandit_trouble"), 400);
+  addCheckpoint("bounty_done");
+  visit("plains_wanderer", {});
+  addCheckpoint("bounty");
+
+  // ---- the zone mini-boss: goblin shaman ----
+  note("== mini-boss");
+  goTo(Vec2(60, 55), 8, 300);
+  hunt({"miniboss_goblin_shaman"}, Vec2(60, 55),
+       [](const AutoPilotImpl& b) {
+         bool alive = false;
+         for (const MonsterView& m : b.V().monsters) alive = alive || (m.miniBoss && m.alive);
+         return !alive;
+       },
+       300);
+  addCheckpoint("miniboss");
+
+  // ---- home: M3 (cs_ep_whisper), escort; take M4 ----
+  note("== elder: M3");
+  portalHome();
+  goTo(Vec2(15, 18), 4, 400);
+  visit("quest_elder", {"q_find_goblin_chief"});
+  addCheckpoint("elder_m3_turned_in");
+  waitIdle(120);
+  addCheckpoint("elder_m3");
+  townTrip();
+
+  // ---- M4: the goblin chief (boss intro) ----
+  note("== chief");
+  goTo(Vec2(18, 88), 3, 400);
+  hunt({"goblin_chief"}, Vec2(15, 95), questDone("q_find_goblin_chief"), 400);
+  addCheckpoint("chief");
+
+  // ---- home: M4 (weapon / armour choice); take M5 ----
+  note("== elder: M4");
+  portalHome();
+  visit("quest_elder", {"q_secure_plains"});
+  addCheckpoint("elder_m4");
+  townTrip();
+
+  // ---- M5: the seal of veins ----
+  note("== M5");
+  explore("q_secure_plains", 0, Vec2(65, 30));
+  explore("q_secure_plains", 1, Vec2(50, 55));
+  addCheckpoint("seal");
+  portalHome();
+  visit("quest_elder", {});
+  addCheckpoint("elder_m5_turned_in");
+  waitIdle(120);
+  addCheckpoint("finale");
+  equipUpgrades();
+  AddStep(Kind::Milestone, std::string(EnumName(scenario)));
+}
+
+AutoPilotStatus AutoPilotImpl::RunScript() {
+  if (!ok) {
+    pendingCall.reset();
+    while (!stack.empty()) stack.pop_back();
+    return AutoPilotStatus::Finished;
+  }
+  if (stack.empty()) {
+    if (stepIdx >= steps.size()) return AutoPilotStatus::Finished;
+    stack.push_back(std::make_unique<ApScript>());
+  }
+  for (int runs = 0; runs < kApMaxRunsPerAdvance; ++runs) {
+    if (!ok) {
+      pendingCall.reset();
+      while (!stack.empty()) stack.pop_back();
+      return AutoPilotStatus::Finished;
+    }
+    if (stack.empty()) return AutoPilotStatus::Finished;
+    ApTask& top = *stack.back();
+    switch (top.Run(*this)) {
+      case ApRun::Frame: return AutoPilotStatus::NeedFrame;
+      case ApRun::Checkpoint: return AutoPilotStatus::Checkpoint;
+      case ApRun::Call:
+        if (pendingCall == nullptr) {
+          Fail("bot task called nothing");
+          break;
+        }
+        stack.push_back(std::move(pendingCall));
+        break;
+      case ApRun::Done:
+        childResult = top.result;
+        stack.pop_back();
+        break;
+    }
+  }
+  Fail("bot logic made no progress without a frame");
+  pendingCall.reset();
+  while (!stack.empty()) stack.pop_back();
+  return AutoPilotStatus::Finished;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// AutoPilot
+// ---------------------------------------------------------------------------------------------------------------------
+AutoPilot::AutoPilot(const DataStore& data, AutoPilotConfig cfg, AutoPilotSubmit submit)
+    : impl_(std::make_unique<AutoPilotImpl>(data, std::move(cfg), std::move(submit))) {
+  impl_->BuildScenario();
+}
+
+AutoPilot::~AutoPilot() = default;
+
+void AutoPilot::AddCheckpoint(const std::string& id) { impl_->AddStep(AutoPilotImpl::Step::Kind::Checkpoint, id); }
+
+void AutoPilot::AddWaitIdle(double timeoutSec) {
+  impl_->AddTask("wait until idle",
+                 [timeoutSec](AutoPilotImpl&) { return std::make_unique<ApWaitIdle>(timeoutSec); });
+}
+
+void AutoPilot::AddWait(double seconds) {
+  impl_->AddTask("wait", [seconds](AutoPilotImpl&) { return std::make_unique<ApWait>(seconds); });
+}
+
+void AutoPilot::AddGoTo(Vec2 goal, double arrive, double timeoutSec) {
+  char label[64];
+  std::snprintf(label, sizeof(label), "walk to (%.1f,%.1f)", goal.x, goal.y);
+  impl_->AddTask(label, [goal, arrive, timeoutSec](AutoPilotImpl&) {
+    return std::make_unique<ApGoTo>(goal, arrive, timeoutSec, true);
+  });
+}
+
+AutoPilotStatus AutoPilot::Advance(const Snapshot& view) {
+  AutoPilotImpl& b = *impl_;
+  b.view = &view;
+  if (b.hold) return b.ok ? AutoPilotStatus::NeedFrame : AutoPilotStatus::Finished;
+  const AutoPilotStatus st = b.RunScript();
+  if (st == AutoPilotStatus::Finished && !b.finishedNoted) {
+    b.finishedNoted = true;
+    b.Note(b.ok ? "script finished" : "script stopped: " + b.failure);
+  }
+  return st;
+}
+
+void AutoPilot::PrepareFrame(const Snapshot& view) {
+  AutoPilotImpl& b = *impl_;
+  b.view = &view;
+  if (!b.hold) b.AutoUi();
+  b.monsterDefs.clear();
+  for (const MonsterView& m : view.monsters) b.monsterDefs.emplace_back(m.id, m.defId);
+  b.lastFrozen = view.frozen;
+  b.frameOpen = true;
+}
+
+void AutoPilot::ObserveEvent(const Event& e) {
+  impl_->CountFrame();
+  impl_->ProcessEvent(e);
+}
+
+void AutoPilot::EndFrame(const Snapshot& view, int32_t steps) {
+  AutoPilotImpl& b = *impl_;
+  b.view = &view;
+  if (!b.frameCounted) ++b.frames;
+  b.frameOpen = false;
+  b.frameCounted = false;
+  b.lastSteps = steps;
+  if (!b.hold) b.AutoHero();
+}
+
+AutoPilotStatus AutoPilot::Tick(GameSim& sim, double dtMs) {
+  const AutoPilotStatus st = Advance(sim.View());
+  if (st != AutoPilotStatus::NeedFrame) return st;
+  RunFrame(sim, dtMs);
+  return st;
+}
+
+void AutoPilot::RunFrame(GameSim& sim, double dtMs) {
+  PrepareFrame(sim.View());
+  const int32_t steps = sim.Frame(dtMs);
+  for (const Event& e : sim.Events()) ObserveEvent(e);
+  EndFrame(sim.View(), steps);
+}
+
+void AutoPilot::SetHold(bool hold) {
+  if (impl_->hold == hold) return;
+  impl_->hold = hold;
+  impl_->Note(hold ? "hold" : "resume");
+}
+
+bool AutoPilot::Held() const { return impl_->hold; }
+bool AutoPilot::Ok() const { return impl_->ok; }
+const std::string& AutoPilot::Failure() const { return impl_->failure; }
+bool AutoPilot::Finished() const {
+  return !impl_->ok || (impl_->stack.empty() && impl_->stepIdx >= impl_->steps.size());
+}
+const std::string& AutoPilot::CurrentCheckpoint() const { return impl_->checkpoint; }
+const std::string& AutoPilot::CurrentStep() const { return impl_->currentStep; }
+
+std::string AutoPilot::RecentNotes() const {
+  std::string out;
+  for (const std::string& s : impl_->recent) out += s + "\n";
+  return out;
+}
+
+const AutoPilotStats& AutoPilot::Stats() const { return impl_->stats; }
+const std::vector<AutoPilotMilestoneRecord>& AutoPilot::Milestones() const { return impl_->milestones; }
+bool AutoPilot::Reached(AutoPilotMilestone kind) const { return impl_->Reached(kind); }
+int64_t AutoPilot::Frames() const { return impl_->frames; }
+const AutoPilotConfig& AutoPilot::Config() const { return impl_->cfg; }
+
+}  // namespace abyss

@@ -10,6 +10,8 @@
 
 #include "abyss/save/SaveData.h"
 
+#include "Framework/AbyssAutoTest.h"
+
 namespace
 {
 	const TCHAR* const AbyssSaveStorage_SaveSettingsFileName = TEXT("settings.json");
@@ -29,6 +31,12 @@ namespace
 FAbyssSaveStorage::FAbyssSaveStorage()
 	: SaveDir(FPaths::ProjectSavedDir() / TEXT("SaveGames"))
 {
+	// -abyssautotest runs keep their slots and settings.json under the run's output directory (Framework/AbyssAutoTest.h).
+	const FString AutoTestSaveDir = AbyssAutoTest::GetSaveDirOverride();
+	if (!AutoTestSaveDir.IsEmpty())
+	{
+		SaveDir = AutoTestSaveDir;
+	}
 	AbyssSaveStorage_SavePlatformFile().CreateDirectoryTree(*SaveDir);
 }
 

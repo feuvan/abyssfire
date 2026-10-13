@@ -32,6 +32,7 @@ in `AbyssCore` (`Source/AbyssCore`, pure C++20). Read `Docs/ARCHITECTURE.md`, `D
 | `AbyssUnits`, `AbyssText` | `Framework/AbyssUnits.h`, `AbyssText.h` | — | Tile <-> world (S4: X = col·100, Y = row·100), UTF-8 <-> FString / FText, i18n resolution. |
 | `FAbyssSaveStorage` | `Platform/AbyssSaveStorage.h` | GI | `abyss::ISaveStorage`: `Saved/SaveGames/abyssfire_slot{0..2}.json`, tmp -> flush -> `.bak` -> rename, async chained writes. |
 | `FAbyssUserSettings`, `AbyssPlatform` | `Platform/` | — | settings.json schema; touch-layout and quality-tier resolution; console vars `abyss.Quality`, `abyss.RenderScale`; switches `-abysstouch`, `-abyssquality=`, `-abyssscreenmessages` (keeps UE's on-screen message block, which non-shipping `-game` runs hide: `ApplyScreenMessagePolicy`, `Scripts/README.md` §3). |
+| `UAbyssAutoTestSubsystem`, `AbyssAutoTest` | `Private/Framework/AbyssAutoTest*.h` | GI (only with `-abyssautotest`) | In-game autotest: drives the shared `abyss::AutoPilot` bot through the real game, screenshots with UI, frame-time and log statistics, `report.json`, exit code. See *In-game autotest* below. |
 
 ## Frame pipeline (per rendered frame, game thread)
 
@@ -166,6 +167,90 @@ void UAbyssUiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 `Cinzel-{Regular,Bold}.ttf` (titles; Latin only), plus the OFL texts. They are staged UFS and loaded at runtime from
 `FPaths::ProjectDir() / "Fonts"` (ue58-platform.md 9.4). zh-TW: use the TC face with an SC fallback (the exported zh-TW
 table still contains some simplified-only characters).
+
+## In-game autotest (`-abyssautotest`)
+
+`UAbyssAutoTestSubsystem` (`Private/Framework/AbyssAutoTestSubsystem.{h,cpp}`, switches in `AbyssAutoTest.h`) plays
+the game unattended and reports. It is platform-neutral (macOS, Windows, Linux) and works with a real RHI (also
+off-screen with `-RenderOffScreen`) and with `-nullrhi` (no screenshots, everything else). Without the switch the
+subsystem is not created at all (no cost); Shipping builds and the editor (PIE) never run it.
+
+| Switch | Default | Meaning |
+|---|---|---|
+| `-abyssautotest[=smoke\|chapter]` | `smoke` | `smoke`: prologue, camp NPCs (shop, stash, the elder's dialogue tree and quest card), gathering, the slime hunt, M1 turned in with its cutscene. `chapter`: all of chapter 1 to the finale cutscene |
+| `-abyssclass=warrior\|mage\|rogue` | `warrior` | hero class |
+| `-abyssautotestdir=<dir>` | `<Project>/Saved/AutoTest` | output directory (relative = the launch directory); see *Isolated saves* below for what it refuses |
+| `-abyssautotestmaxsec=<s>` | 600 smoke, 2400 chapter | hard wall-clock limit from game-instance start: past it the run writes `report.json` (`result: timeout`) and exits 2; a watchdog thread force-exits 2 (and writes `watchdog.txt`) if the game thread is stuck 120 s longer |
+| `-abyssbuildsha=<sha>` | — | recorded in `report.json` |
+| `-abyssseed=<n>` | drawn | seed of the run's new game, 1 to 2^63-1; the seed played is always logged (`AutoTest: ... seed`, `New game: ... seed`) and recorded in `report.json` (`seed`) |
+| `-abyssautotestshotsec=<s>` | 60 | periodic screenshot while in game (0 = off) |
+| `-abyssautotestignore=<LogA,LogB>` | — | Error lines of these log categories are recorded but do not fail the run (Ensures always fail) |
+
+What a run does:
+
+1. **Isolated saves**: `FAbyssSaveStorage` uses `<dir>/SaveGames` (slots and `settings.json`), so the player's saves
+   are never read or written. A directory whose `SaveGames/` would be, or contain, the player's
+   `<Project>/Saved/SaveGames` (e.g. `-abyssautotestdir=<Project>/Saved`) is refused: the run fails before it plays and
+   keeps its saves under `Saved/AutoTest/RefusedRun/`. A run writes `.abyssautotest` into its directory; only a
+   directory carrying that marker is cleaned at the next start (`SaveGames/`, `screenshots/`, `report.json`,
+   `watchdog.txt`). A directory with a `SaveGames/` or `screenshots/` but no marker is refused, never emptied.
+2. **Main menu** (screenshot), then `UAbyssGameInstance::StartNewGame(class, slot 0, Normal)` — the call the main menu's
+   class card makes.
+3. **The bot**: `abyss::AutoPilot` (`Source/AbyssCore/Public/abyss/tools/AutoPilot.h`, the same bot the core's
+   `CoreTests/tests/playthrough_test.cpp` plays chapter 1 with) runs one step per frame from the router's `OnFrame`
+   (`EndFrame` → `Advance` → `PrepareFrame`; events through `OnAnyEvent`). Its commands go through
+   `AAbyssPlayerController::SubmitCommand`, the input layer's submission path, so the whole presentation runs. Story
+   beats are skipped (the first beat of each kind first plays ~2–3 s for its picture).
+4. **Screenshots with UI** (`FScreenshotRequest::RequestScreenshot(..., bShowUI = true)`, one at a time, into
+   `<dir>/screenshots/NNN_<tag>.png`): `main_menu`; `camp` on arrival, then every HUD panel opened and closed through the
+   input layer (`UAbyssInputSubsystem::PressAction`: `panel_inventory`, `panel_character`, `panel_skills`,
+   `panel_quest_log`, `panel_world_map`, `panel_settings`); `story_<kind>` (prologue, chapter card, cutscene, boss
+   intro); the first `shop`, `quest_card` and `dialogue` (the bot waits while they are photographed); `combat` (hero
+   engaged in melee range) and `boss_fight`; `loot` after the first kill that drops something; `skill_<n>` after the
+   first cast of each hotbar slot; `periodic_NN`; `end` (or `failure`). Under `-nullrhi` (`FApp::CanEverRender()`
+   false) the same points are listed in `screenshotsSkipped`.
+5. **Statistics**: wall-clock frame times while in game (avg / p50 / p95 / p99 / max, hitches > 100 ms), Error / Warning /
+   Ensure lines through an `FOutputDevice` on `GLog` (lines logged before the game instance started are not seen).
+6. **Exit**: `FPlatformMisc::RequestExitWithStatus` with **0** when the scenario completed and the log has no Error and no
+   Ensure line, else **2**. Always check `report.json` too (`passed`, `result`).
+
+`report.json`: `passed`, `result` (`passed` / `failed` / `timeout` / `aborted`), `exitCode`, `failure`, `scenario`,
+`class`, `seed` (a string; replay it with `-abyssseed=<seed>`, or in the core with
+`ABYSS_PT_SWEEP=1 ABYSS_PT_SWEEP_BASE=<seed> CoreTests/run.sh` — same RNG streams, though UE's frame pacing makes the
+bot's timing differ), `buildSha`, `rhi` (`GDynamicRHI->GetName()`: `Vulkan`, `Null`, ...), `screenshotsEnabled`, `renderOffScreen`,
+`nullRhi`, `engineVersion`, `platform`, `commandLine`, `durations` (`totalSec`, `bootSec`, `menuToGameSec`, `inGameSec`,
+`simPlayTimeSec`, `simNowSec`), `scenarioCompleted`, `pilot` (bot ok / failure / last checkpoint / step / frames / commands
+/ last notes), `stats` (kills, deaths, level-ups, casts, potions, loot, ...), `hero`, `milestonesReached` and
+`milestones` (main menu, session, zone entered, first kill, boss kills, quests accepted / completed / turned in, story
+beats, level-ups, pet, checkpoints, panel tour, scenario done — with real and sim seconds), `frames`, `log` (counts,
+first 50 Error / Ensure `messages`, first 50 `warningMessages`), `screenshots` (`file`, `tag`, `caption`, `realSec`,
+`simSec`, `captured`, `exists`, `bytes`), `screenshotsSkipped`. The bot's diary is in the log (`LogAbyssAutoTest: bot
+[...]`), milestones and screenshots as `AutoTest ...` lines.
+
+macOS (uncooked project, editor binary; the content build must have run):
+
+```bash
+UE="/Users/Shared/Epic Games/UE_5.8"; PROJ="$PWD/unreal/Abyssfire.uproject"; OUT="$PWD/out/autotest/warrior"
+"$UE/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "$PROJ" -game -windowed -ResX=1280 -ResY=720 \
+  -unattended -nosplash -nosound -log -stdout -FullStdOutLogOutput \
+  -abyssautotest=smoke -abyssclass=warrior -abyssautotestdir="$OUT" -abyssautotestmaxsec=600 \
+  -abyssbuildsha="$(git rev-parse HEAD)"
+echo "exit $?"   # 0 passed, 2 failed / timed out: see $OUT/report.json and $OUT/screenshots/
+
+# no RHI (logic and log checks only, no screenshots)
+"$UE/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" "$PROJ" -game -nullrhi -unattended -nosplash \
+  -nosound -log -stdout -FullStdOutLogOutput -abyssautotest=chapter -abyssclass=mage -abyssautotestdir="$OUT" \
+  -abyssbuildsha="$(git rev-parse HEAD)"
+```
+
+A packaged Development build takes the same switches (`Abyssfire.app/Contents/MacOS/Abyssfire ...`, without the
+project path and `-game`); Windows / Linux editor binaries take them the same way. Pacing: the bot counts frames
+(its timers assume 60 per second), so the autotest caps `t.MaxFPS` at 60
+(an uncapped `-nullrhi` run would shrink every bot timeout). At lower frame rates the core still runs up to 4 sim steps
+per frame and the bot just reacts a little later in sim time (the core tests play the smoke scenario at 20 and 30 fps
+too); add UE's `-UseFixedTimeStep -FPS=60` to get exactly one 60 Hz step per frame like the core test (game time is
+then no longer tied to the wall clock: with `-nullrhi` a run can finish faster than real time, with a slow software
+renderer it takes longer). `report.json` records `maxFps` and `fixedTimeStep`.
 
 ## File ownership for the next agents
 

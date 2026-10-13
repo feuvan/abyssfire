@@ -16,6 +16,7 @@
 #include "abyss/data/DataStore.h"
 #include "abyss/sim/GameSim.h"
 
+#include "Framework/AbyssAutoTest.h"
 #include "Framework/AbyssSimDriver.h"
 #include "Framework/AbyssText.h"
 #include "Platform/AbyssPlatform.h"
@@ -472,8 +473,13 @@ bool UAbyssGameInstance::StartNewGame(abyss::ClassId ClassId, int32 Slot, abyss:
 			LocalizeOr("ui.error.coreCreateFailed", TEXT("The game core could not be created (data not finalized).")));
 		return false;
 	}
-	// Seed: S3 deterministic streams, a fresh seed per new game (0 would mean the config default).
-	uint64 Seed = FPlatformTime::Cycles64() ^ static_cast<uint64>(FDateTime::UtcNow().GetTicks());
+	// Seed: S3 deterministic streams, a fresh seed per new game (0 would mean the config default). An autotest run plays
+	// the seed its report.json records (-abyssseed=<n> replays one; Framework/AbyssAutoTest.h).
+	uint64 Seed = AbyssAutoTest::GetNewGameSeed();
+	if (Seed == 0)
+	{
+		Seed = FPlatformTime::Cycles64() ^ static_cast<uint64>(FDateTime::UtcNow().GetTicks());
+	}
 	if (Seed == 0)
 	{
 		Seed = 1;
@@ -484,8 +490,9 @@ bool UAbyssGameInstance::StartNewGame(abyss::ClassId ClassId, int32 Slot, abyss:
 			LocalizeOr("ui.error.newGameFailed", TEXT("The new game could not be created (unknown class or missing default map).")));
 		return false;
 	}
-	UE_LOG(LogAbyss, Log, TEXT("New game: class %s, difficulty %s, slot %d"),
-		*AbyssText::ToFString(abyss::EnumName(ClassId)), *AbyssText::ToFString(abyss::EnumName(Difficulty)), Slot);
+	UE_LOG(LogAbyss, Log, TEXT("New game: class %s, difficulty %s, slot %d, seed %llu"),
+		*AbyssText::ToFString(abyss::EnumName(ClassId)), *AbyssText::ToFString(abyss::EnumName(Difficulty)), Slot,
+		static_cast<unsigned long long>(Seed));
 	BeginSession(std::move(NewSim), Slot);
 	return true;
 }
