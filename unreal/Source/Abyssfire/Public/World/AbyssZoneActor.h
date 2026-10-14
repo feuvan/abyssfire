@@ -18,14 +18,13 @@
 //   (no M_AF_PP_Grade), vignette, bloom and SSAO (+ M_AF_PP_AOComposite) per tier. UpdateView re-fits the shadow
 //   distance and the fog start to the camera zoom and applies the look console variables live.
 // * Occlusion fade (R1, world-map-nav.md 15.6): tall dressing between the camera and the hero / nearby living monsters
-//   fades to alpha .25 (decor, tents) / .45 (walls) with the web's 110 ms approach. Ground loot near the hero also fades
+//   fades to alpha .25 (decor, camp props) / .45 (walls) with the web's 110 ms approach. Ground loot near the hero also fades
 //   the low dressing it lies in or behind (bushes, grass, rocks; in 3D a bag inside a berry bush is otherwise hidden).
 //   With temporal AA (TSR / TAA) the masked toon / ink materials dither the fade with a pattern that changes every
 //   jitter sample, which the AA resolves; without it (desktop low FXAA, mobile MSAA) an instance faded by .3 or more is
 //   hidden in its ISM and drawn by a translucent copy in a parallel "fade ghost" ISM (M_AF_Toon_Fade / _Foliage_Fade,
-//   ink hull hidden; abyss.FadeGhost). Trees, rocks and tents fade when a target's ray toward the camera enters their
-//   bounds ellipsoid from behind (tents: the 1.25 m canvas half-width, not the rope bounds); walls, stakes and gates use
-//   a cylinder.
+//   ink hull hidden; abyss.FadeGhost). Trees, rocks and tall camp props (well, banners) fade when a target's ray toward
+//   the camera enters their bounds ellipsoid from behind; walls, stakes and gates use a cylinder.
 // * Picking support: GetGroundHeight / RaycastGround on the terrain height field (ue58-platform.md 8.4).
 // * Shader gate (uncooked editor-binary runs only, WITH_EDITOR): an instanced mesh whose material is still compiling
 //   for this RHI stays hidden until its shader map is ready (abyss.DecorShaderGate), instead of drawing with the
@@ -141,7 +140,7 @@ private:
 		float FadeTarget = 0.75f;   // 1 - alpha (decor .25 -> .75, walls .45 -> .55)
 		float Fade = 0.f;
 		bool bLootOnly = false;     // low dressing: fades for ground loot only, never for the hero or monsters
-		bool bEllipsoid = false;    // R1 decor (trees, rocks, tents, story props): bounds-ellipsoid test; walls: cylinder
+		bool bEllipsoid = false;    // R1 decor (trees, rocks, camp props, story props): bounds-ellipsoid test; walls: cylinder
 		bool bGhosted = false;      // drawn by its fade ghost (own instance hidden), FFadeGhost::Occluders lists it
 	};
 
@@ -186,9 +185,8 @@ private:
 	/** Rebuilds (after a set change) or refreshes the ghost instances of one dressing component. */
 	void UpdateFadeGhost(int32 ComponentIndex);
 	const FAbyssArtAsset* ResolveArt(TConstArrayView<FName> GameIds, uint32 Hash) const;
-	/** OccluderRadiusCm > 0 replaces the bounds radius in the R1 occlusion test (tents: the canvas, not the ropes). */
 	bool PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
-		bool bOccluder, float FadeTarget, FName StoryId = NAME_None, float OccluderRadiusCm = -1.f);
+		bool bOccluder, float FadeTarget, FName StoryId = NAME_None);
 
 	void BuildTerrain(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	void ApplyTerrainStyle(const abyss::DataStore& Data);

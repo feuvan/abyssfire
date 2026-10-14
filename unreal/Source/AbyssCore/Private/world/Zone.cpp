@@ -65,7 +65,7 @@ bool ZoneRuntime::EnterZone(std::string_view mapId, bool hasTarget, Vec2 target)
       p.id = ctx_.ids.Next();
       p.npcId = camp.npcs[i];
       // Camp layout v2 slots (DECISIONS W11, CampLayout.h; replaces quests-story-ch1.md 6.2): eighth-tile positions;
-      // a tent owner idles facing out of its door, the others face the fire.
+      // every camp NPC idles facing the fire (no tents).
       const size_t slot = i % abyss::camp::kCampNpcSlots.size();
       p.pos = camp.pos.Center() + abyss::camp::kCampNpcSlots[slot];
       p.facing = abyss::camp::CampNpcFacing(slot);

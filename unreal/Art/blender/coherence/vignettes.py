@@ -9,7 +9,7 @@ Everything is re-imported from ``Art/Export`` (``cohkit``) and placed the way th
   on the gate row except the 2-tile gate at x −1 / 0 and on both sides up to row +3, ``MapGen.cpp``), the palisade
   stakes exactly as ``AAbyssZoneActor::BuildWalls`` (centre + 0.2 / 0.4 toward every camp-wall neighbour, variant and
   yaw from ``tileHash(c·5+i, r, 17)``), the gate posts at x −1.5 / +0.5, every ``abyss/world/CampLayout.h`` prop
-  (tents / well / barrels / crates facing the fire, the rest facing the camera), the four camp NPCs on slots 0–3
+  (well / barrels / crates facing the fire, the rest facing the camera; no tents), the four camp NPCs on slots 0–3
   (blacksmith with his anvil stump, merchant, elder, stash keeper), the three heroes and the ley sprite inside the gate,
   oaks / fruit trees / bushes / grass outside.
 * **Goblin camp** at (40,52) (spec §6.9, R7; the ``q_explore_goblin_camp`` objective and the ``cs_ep_whisper`` focus):
@@ -120,26 +120,22 @@ HERO_NEAR_TILES = 3.0           # QuestWorld heroNear: a camp NPC turns to a her
 
 def camp_layout() -> tuple[list, list]:
     """(``kCampNpcSlots``, ``kCampProps``) parsed from ``abyss/world/CampLayout.h`` — the runtime's own table (camp
-    layout v2, DECISIONS W11), never a copy: slots [(x, y)], props [(type, x, y, facesCentre, blocking, ownerSlot)]."""
+    layout v2, DECISIONS W11), never a copy: slots [(x, y)], props [(type, x, y, blocking, facesCentre)]."""
     src = CAMP_LAYOUT_H.read_text()
     num = r"(-?[0-9]+(?:\.[0-9]*)?)"
     body = src.split("kCampNpcSlots{{", 1)[1].split("}};", 1)[0]
     slots = [(float(a), float(b)) for a, b in re.findall(r"\{\s*" + num + r",\s*" + num + r"\s*\}", body)]
     body = src.split("kCampProps{{", 1)[1].split("}};", 1)[0]
-    props = [(t, float(x), float(y), fc == "true", bl == "true", int(o)) for t, x, y, fc, bl, o in re.findall(
-        r'\{"([a-z_]+)",\s*' + num + r",\s*" + num + r",\s*(true|false),\s*(true|false),\s*(-?[0-9]+)\}", body)]
+    props = [(t, float(x), float(y), bl == "true", fc == "true") for t, x, y, bl, fc in re.findall(
+        r'\{"([a-z_]+)",\s*' + num + r",\s*" + num + r",\s*(true|false),\s*(true|false)\}", body)]
     if len(slots) < 4 or len(props) < 10:
         raise RuntimeError(f"CampLayout.h parse: {len(slots)} slots, {len(props)} props")
     return slots, props
 
 
-def camp_npc_facing(slot: int, slots: list, props: list) -> tuple[float, float]:
-    """``abyss::camp::CampNpcFacing``: a tent owner looks out of its door (the tent's front, toward the centre), every
-    other slot looks at the campfire (tile-space unit vector)."""
-    for (_t, x, y, _fc, _bl, owner) in props:
-        if owner >= 0 and owner == slot:
-            n = math.hypot(x, y)
-            return (-x / n, -y / n)
+def camp_npc_facing(slot: int, slots: list) -> tuple[float, float]:
+    """``abyss::camp::CampNpcFacing``: every slot looks at the campfire (tile-space unit vector; the camp has no tents,
+    DECISIONS W11)."""
     x, y = slots[slot % len(slots)]
     n = math.hypot(x, y)
     return (-x / n, -y / n)
@@ -197,10 +193,10 @@ def camp() -> None:
     for gx in (cx - 1.5, cx + 0.5):
         sc.prop("SM_Palisade_Plains_GatePost", gx, cy - 5, MESH_YAW + 90.0)
     # camp props (CampLayout v2, parsed from CampLayout.h; MapGen CampProps + AAbyssZoneActor::BuildCamp: sub-tile
-    # centre, tents / well / barrels / crates turned to the camp centre, the rest to the camera, variant by
+    # centre, the well / barrels / crates turned to the camp centre, the rest to the camera, variant by
     # TileHash(RoundToTile(centre), 23))
     slots, props = camp_layout()
-    for typ, x, y, faces, _bl, _own in props:
+    for typ, x, y, _bl, faces in props:
         name = sc.variant(f"camp_{typ}", E.tile_hash(round_to_tile(cx + x), round_to_tile(cy + y), 23))
         yaw = (math.degrees(math.atan2(-y, -x)) + MESH_YAW) if faces else FACE_CAM
         sc.prop(name, cx + x, cy + y, yaw)
@@ -221,7 +217,7 @@ def camp() -> None:
         if math.hypot(near[0] - sx, near[1] - sy) <= HERO_NEAR_TILES:
             fc = face_towards(cx + sx, cy + sy, cx + near[0], cy + near[1])
         else:
-            fx, fy = camp_npc_facing(i, slots, props)
+            fx, fy = camp_npc_facing(i, slots)
             fc = face_towards(cx + sx, cy + sy, cx + sx + fx, cy + sy + fy)
         sc.char(asset, cx + sx, cy + sy, fc, clip=None, scenery=scen)
     # dressing outside the palisade (decor game ids: variants by tile hash, jitter / scale like MapGen)
@@ -242,7 +238,7 @@ def camp() -> None:
     K.ground(tiles, (c0, r0), ppt=64, shadows=sc.shadows, name="g_camp")
     render_scene(sc, (cx, cy - 0.5), "vignette_camp",
                  "CH1 CAMP (CAMPLAYOUT V2)  W1 CAMERA  HEROES + LEY SPRITE AT THE GATE",
-                 [((cx + 0.5, cy + 1.2), 760, 470, "CAMP: FIRE, TENTS, NPC SLOTS 0-3", "vignette_camp_1080crop.png"),
+                 [((cx + 0.5, cy + 1.2), 760, 470, "CAMP: FIRE, WELL, NPC SLOTS 0-3", "vignette_camp_1080crop.png"),
                   ((cx + 0.24, cy - 2.93), 640, 420, "CAMP GATE: HEROES + LEY SPRITE", "vignette_camp_gate_1080crop.png")])
 
 

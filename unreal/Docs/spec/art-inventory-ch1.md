@@ -884,13 +884,13 @@ ivy leaves in the moss colour `#7CAA48` on ≈ 35 % of tiles. 3D: `SM_Palisade_P
 placed procedurally by the mask; web ratio ≈ 0.4 × hero height → **recommended 1.4–1.6 m**. NEW optional:
 `SM_Palisade_Plains_GatePost` pair at the 2-tile gate. 50 camp-wall tiles in emerald_plains.
 
-### 6.4 Camp kit (both camps; offsets and blocking in `world-map-nav.md` §3.4 — the remake places **3 tents** and sub-tile props per DECISIONS W11 / `abyss/world/CampLayout.h`; drawers `src/graphics/sprites/decorations/CampProps.ts`, theme `src/data/camp-themes.ts:4-14`)
+### 6.4 Camp kit (both camps; offsets and blocking in `world-map-nav.md` §3.4 — the remake places **no tents** (user request; `SM_Prop_Camp_Tent` stays in the kit, unused) and sub-tile props per DECISIONS W11 / `abyss/world/CampLayout.h`; drawers `src/graphics/sprites/decorations/CampProps.ts`, theme `src/data/camp-themes.ts:4-14`)
 
 | Mesh | Count/camp | Web size (px) → 3D | Look (hex) |
 |---|---|---|---|
 | `SM_Prop_Camp_Campfire` (`:84-120`, flat) | 1 | 60 × 36 → stone ring ≈ 0.9 m | ring of 10 stones `#7A7E88` (rock style), two crossed logs `#7A4A2A` (l .3) with cut ends `#E8B070`, ember bed (radial `rgba(255,150,60,.7)` → `rgba(120,40,20,.6)` → 0), 6 embers `#FFD080`/`#FF7A2A`; flame + sparks + light §8.7. The hero respawns on it |
 | `SM_Prop_Camp_Well` (`:279-328`) | 1 | 68 × 86 (ground 78) → ≈ 2.0 m | stone ring `#8A8E98` (top `#9A9EA8`), posts `#7A5238` (l .3), gable roof `#9A4A32` (l .35), bucket `#8A6A44`, a small rock |
-| `SM_Prop_Camp_Tent` (`:141-180`, tall) | 4 | 104 × 90 (ground 82) → apex 1.7 m, back ridge 1.95 m, ≈ 2.3 × 1.8 m | A-frame canvas `#5A4028` (plains `tentColor`; light .35 shade .4; receding side roof light .2 shade .5), dark door flaps `#2A1A22` (one flap tied back), seams, light trim stripe, ridge pole `#7A5238` with a gold pennant `#D8B04A`, guy ropes `#C8B088`, pegs `#5A3A22` |
+| `SM_Prop_Camp_Tent` (`:141-180`, tall) | 4 (web; remake 0, W11) | 104 × 90 (ground 82) → apex 1.7 m, back ridge 1.95 m, ≈ 2.3 × 1.8 m | A-frame canvas `#5A4028` (plains `tentColor`; light .35 shade .4; receding side roof light .2 shade .5), dark door flaps `#2A1A22` (one flap tied back), seams, light trim stripe, ridge pole `#7A5238` with a gold pennant `#D8B04A`, guy ropes `#C8B088`, pegs `#5A3A22` |
 | `SM_Prop_Camp_Banner` (`:182-219`, tall) | 4 | 40 × 104 (ground 100) → pole 2.35 m, finial 2.55 m | pole `#6E4A30` (l .3), gold diamond finial `#D8B04A`, crossbar; swallow-tail cloth `#2A6A1A` (plains `bannerColor`) ≈ 1.15 m long, top trim `#1A4A10`, gold sun-disc emblem with 8 rays; WPO cloth sway |
 | `SM_Prop_Camp_Barrel` (`:221-254`) | 2 (blocks) | 32 × 42 → ≈ 0.8–1.0 m | staves `#9A6A3E` (l .35), two iron hoops `#5A5E6A` (l .45), lid `#B88A5A` |
 | `SM_Prop_Camp_Crate` (`:256-277`) | 2 (blocks) | 40 × 38 → ≈ 0.85 m | planks `#B08450` (l .35), frame/cross-brace `#7A5230` |

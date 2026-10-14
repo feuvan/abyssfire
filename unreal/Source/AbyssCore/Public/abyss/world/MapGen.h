@@ -64,21 +64,20 @@ ABYSS_API void ApplyDecorationJitter(Decoration& d, size_t index);
 // Runtime camp props (camp layout v2, DECISIONS W11: abyss/world/CampLayout.h), per camp in camp order, in the table's
 // push order. Props stand at sub-tile positions with an explicit facing (the UE dressing reads both).
 struct CampProp {
-  std::string type;  // campfire | well | banner | tent | barrel | crate | torch
+  std::string type;  // campfire | well | banner | barrel | crate | torch (no tents: W11, user request)
   TilePos pos;       // anchor = RoundToTile(centre): the art variant hash; always blocked for a blocking prop
   Vec2 centre;       // render position (absolute tile coords)
-  Vec2 front;        // unit front (door) direction in tile space, toward the camp centre; (0,0) = face the camera
+  Vec2 front;        // unit front direction in tile space, toward the camp centre; (0,0) = face the camera
   int32_t campIndex = 0;
-  bool blocking = false;  // tents, the well, barrels and crates (W5, W11)
-  int32_t ownerSlot = -1;  // the camp NPC slot standing at this tent's door (informational), else -1
+  bool blocking = false;  // the well, barrels and crates (W5, W11)
 };
-// W11 camp props of every camp: centre = camp centre + the table offset; tents, the well, barrels and crates turn their
-// front to the camp centre. No prop stands on an NPC slot, so every blocking prop blocks.
+// W11 camp props of every camp: centre = camp centre + the table offset; the well, barrels and crates turn their front
+// to the camp centre. No prop stands on an NPC slot, so every blocking prop blocks.
 ABYSS_API std::vector<CampProp> CampProps(const MapDef& map);
 // The tiles a camp prop makes unwalkable (appended to `out`, row-major): none when not blocking; else the anchor tile
-// plus every tile whose centre lies inside the prop's body rectangle (camp::kCampBlockBodies: the tent canvas, the well,
-// crate and barrel bounds; about `centre`, oriented by `front`) grown by camp::kCampBlockPad. A blocking prop without a
-// body or a front blocks only its anchor.
+// plus every tile whose centre lies inside the prop's body rectangle (camp::kCampBlockBodies: the well, crate and barrel
+// bounds; about `centre`, oriented by `front`) grown by camp::kCampBlockPad. A blocking prop without a body or a front
+// blocks only its anchor.
 ABYSS_API void CampPropBlockedTiles(const CampProp& prop, std::vector<TilePos>& out);
 
 // Builds the zone grid for a map: generated maps go through GenerateMap with the exporter's landmark list; hand-built

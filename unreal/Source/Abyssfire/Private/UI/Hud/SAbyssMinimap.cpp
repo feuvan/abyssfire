@@ -254,15 +254,6 @@ void SAbyssMinimap::PaintMap(FAbyssPainter& P, const FAbyssUiContext& Ctx, const
 	P.RoundBox(Pos + FVector2D(3.0, 3.0), FVector2D(Size - 6.f, Size - 6.f), FLinearColor::Transparent, 4.f, FAbyssUiStyle::WithAlpha(C.Gold, 0.55f), 1.f);
 	P.Diamond(Pos + FVector2D(Size * 0.5f, 1.0), 9.f, C.Gold);
 	P.Diamond(Pos + FVector2D(Size * 0.5f, 1.0), 4.5f, FAbyssUiStyle::Rgb(0xb3202a));
-
-	// north indicator (W4): where tile "up" (row - 1) points on the rotated map, on the rim around the frame centre (the
-	// whole-zone map centre sits lower, under the gem clearance)
-	if (bRotateMap)
-	{
-		const FVector2D Dir = X.RotateDir(0.0, -1.0);
-		const FVector2D Mark = Pos + FVector2D(Size * 0.5f, Size * 0.5f) + Dir.GetSafeNormal() * (Size * 0.5f - 8.f);
-		const FString North = Ctx.LocOrStr("ui.compass.north", TEXT("N"));
-		P.Circle(Mark, 7.f, FLinearColor(0.02f, 0.015f, 0.03f, 0.85f), FAbyssUiStyle::WithAlpha(C.Gold, 0.8f), 1.f);
-		P.TextCentered(Mark, North, Ctx.Style().Body(9.f, true, 1), C.GoldBright);
-	}
+	// no north badge on the rim (W4: removed at the user's request; the map turns with the camera, so a step up the big
+	// screen is a step up the map and the badge only spun around the frame)
 }

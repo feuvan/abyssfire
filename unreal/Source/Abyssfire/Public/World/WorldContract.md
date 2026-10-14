@@ -65,7 +65,7 @@ of one id are picked with the web tile hash). Resolution chains:
 | Camp palisade | `palisade_<theme>`, `palisade`, `camp_wall`; gate posts `palisade_gate_<theme>`, `palisade_gate` |
 | Lily pads (1 in 6 water tiles) | `lily_pad_<theme>`, `decor_lily_pad`, `lily_pad` |
 | Decorations | `<type>`, `decor_<type>` — the core's W5 footprint lookup order (MapGen); variants of one game id must share `footprintTiles` / `blocking` (checked by Scripts/abyss_content/manifest.py) (core jitter, tall types fade for occlusion) |
-| Camp props | `camp_<type>`, `decor_camp_<type>`, `<type>` (tents / well / barrel / crate face the camp centre) |
+| Camp props | `camp_<type>`, `decor_camp_<type>`, `<type>` (well / barrel / crate face the camp centre; no tents, DECISIONS W11) |
 | Exits | `exit_portal`; sealed (W7): `exit_gate_sealed`, `exit_sealed` |
 | Story decorations | `decor_<spriteType>`, `<spriteType>`, `story_<id>` |
 

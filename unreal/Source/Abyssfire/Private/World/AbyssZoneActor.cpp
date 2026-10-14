@@ -29,7 +29,6 @@
 #include "abyss/data/DataStore.h"
 #include "abyss/data/MapData.h"
 #include "abyss/sim/Snapshot.h"
-#include "abyss/world/CampLayout.h"
 #include "abyss/world/Grid.h"
 #include "abyss/world/MapGen.h"
 
@@ -178,14 +177,14 @@ namespace AbyssZonePrivate
 	constexpr float AOQuality = 50.f;
 
 	/**
-	 * R1 decor occlusion (trees, boulders, tents, story props; world-map-nav.md 15.6: the camera -> target ray against the
-	 * prop): does the ray from a target point toward the camera enter the occluder's bounds ellipsoid (horizontal semi-axis
-	 * R, vertical semi-axis H / 2, centred H / 2 over its ground point)? Canopies are widest in their upper half (plains
-	 * fruit tree: 104-123 cm at 200-260 cm of 318, an 18-33 cm trunk below), which the ellipsoid follows, as it does
-	 * boulders; the bounding cylinder with 25 cm slack counted targets beside a prop as covered (third Mac playtest: a
-	 * boulder faded for a goblin next to it, whose chest ray passes over the rock), and a half-spheroid resting on the
-	 * ground is narrowest where a canopy is widest (goblins half hidden by a crown stayed unfaded). Tents are boxier and
-	 * fade a little early. Along / Lateral: the occluder centre in the target's frame (Along toward the camera), Z0: the
+	 * R1 decor occlusion (trees, boulders, tall camp props, story props; world-map-nav.md 15.6: the camera -> target ray
+	 * against the prop): does the ray from a target point toward the camera enter the occluder's bounds ellipsoid
+	 * (horizontal semi-axis R, vertical semi-axis H / 2, centred H / 2 over its ground point)? Canopies are widest in their
+	 * upper half (plains fruit tree: 104-123 cm at 200-260 cm of 318, an 18-33 cm trunk below), which the ellipsoid
+	 * follows, as it does boulders; the bounding cylinder with 25 cm slack counted targets beside a prop as covered (third
+	 * Mac playtest: a boulder faded for a goblin next to it, whose chest ray passes over the rock), and a half-spheroid
+	 * resting on the ground is narrowest where a canopy is widest (goblins half hidden by a crown stayed unfaded).
+	 * Along / Lateral: the occluder centre in the target's frame (Along toward the camera), Z0: the
 	 * target height over the ellipsoid centre. With s >= 0 the horizontal distance along the ray:
 	 * ((Along - s)^2 + Lateral^2) / R^2 + (Z0 + s TanElevation)^2 / Hs^2 <= 1 for some s, a quadratic in s.
 	 */
@@ -744,7 +743,7 @@ const FAbyssArtAsset* AAbyssZoneActor::ResolveArt(TConstArrayView<FName> GameIds
 }
 
 bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
-	bool bOccluder, float FadeTarget, FName StoryId, float OccluderRadiusCm)
+	bool bOccluder, float FadeTarget, FName StoryId)
 {
 	const FAbyssArtAsset* Art = ResolveArt(GameIds, Hash);
 	UAbyssAssetLibrary* Assets = AssetLibrary.Get();
@@ -768,9 +767,8 @@ bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, cons
 	const FTransform Transform(FRotator(0.f, YawDeg, 0.f), Location, FVector(FinalScale));
 	const FBox Bounds = Art->BoundsCm.IsValid ? Art->BoundsCm : Mesh->GetBoundingBox();
 	const FVector Extent = Bounds.GetExtent() * FinalScale;
-	// R1 occlusion radius: the bounds by default; a caller-given body radius where the bounds include thin parts that
-	// never hide anyone (tent guy ropes and stakes, DECISIONS R1 amendment).
-	const float Radius = OccluderRadiusCm > 0.f ? OccluderRadiusCm : static_cast<float>(FMath::Max(Extent.X, Extent.Y));
+	// R1 occlusion radius: the bounds (the camp tents' canvas-width override went with the tents, DECISIONS W11 / R1).
+	const float Radius = static_cast<float>(FMath::Max(Extent.X, Extent.Y));
 	const float Height = static_cast<float>(Bounds.Max.Z * FinalScale);
 	return AddInstance(Mesh, Transform, AbyssZonePrivate::HashUnit(Hash >> 3), bOccluder, FadeTarget, FMath::Max(25.f, Radius),
 		FMath::Max(30.f, Height), StoryId);
@@ -1134,20 +1132,16 @@ void AAbyssZoneActor::BuildCamps(const abyss::Snapshot& Snap, const abyss::DataS
 	{
 		const FString Type = ToF(Prop.type);
 		const FName Ids[] = { Id(TEXT("camp_%s"), Type), Id(TEXT("decor_camp_%s"), Type), FName(*Type) };
-		// Camp layout v2 (DECISIONS W11, abyss/world/CampLayout.h): the core gives the sub-tile centre and the front
-		// (tent doors, the well, barrels and crates turn to the camp centre); a prop without a front faces the camera.
+		// Camp layout v2 (DECISIONS W11, abyss/world/CampLayout.h; no tents): the core gives the sub-tile centre and the
+		// front (the well, barrels and crates turn to the camp centre); a prop without a front faces the camera.
 		const FVector Location = GroundPoint(Prop.centre.x, Prop.centre.y);
 		const bool bHasFront = Prop.front.x != 0.0 || Prop.front.y != 0.0;
 		const float FacingYaw = bHasFront
 			? static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(Prop.front.y, Prop.front.x)))
 			: FaceCameraYaw;
-		const bool bTent = Prop.type == "tent";
-		const bool bTall = bTent || Prop.type == "well" || Prop.type == "banner";
+		const bool bTall = Prop.type == "well" || Prop.type == "banner";
 		const uint32 Hash = AbyssWorldUtil::TileHash(Prop.pos.col, Prop.pos.row, 23);
-		// DECISIONS R1 amendment (art pass): a tent occludes with its canvas half-width (1.25 m), not its rope bounds
-		// (1.71 m), so a goblin or NPC beside a tent no longer fades it. Tent doors stay on the fire axes (W11 note).
-		const float OccluderRadius = bTent ? static_cast<float>(abyss::camp::kTentCanvasHalfAcross * AbyssUnits::TileUU) : -1.f;
-		PlaceArt(Ids, Hash, Location, FacingYaw + MeshYawOffsetDeg, 1.f, bTall, DecorFadeTarget, NAME_None, OccluderRadius);
+		PlaceArt(Ids, Hash, Location, FacingYaw + MeshYawOffsetDeg, 1.f, bTall, DecorFadeTarget);
 		if (Prop.type == "campfire")
 		{
 			EffectSpots.Add({ FName(TEXT("camp.campfire")), Location });

@@ -266,11 +266,11 @@ Camp 1 (15,15): ground cols/rows 10–20; gate at (14,10),(15,10); walls rows 10
 ground cols 90–100, rows 95–105; gate (94,95),(95,95).
 
 > **Remake (DECISIONS W11, camp layout v2):** the prop offsets, facing and blocking and the NPC slots below are the web's
-> and are **replaced** in the Unreal build by the core table `Source/AbyssCore/Public/abyss/world/CampLayout.h`: three
-> tents at (2.9, 3.75), (2.6, −2.6), (−2.9, 3.75) with their doors to the fire (the web's 4th tent is dropped), well
-> (4, −0.15), sub-tile banners / torches / barrels / crates, NPC slots (1.875, 2.375), (1.375, −1.375), (−1.875, 2.375),
-> (−2.75, −0.75), (2.25, 1.0), (−2.375, −2.25); every blocking prop (tents, well, barrels, crates) blocks its anchor plus
-> its body grown by 0.3 tile (33 tiles per camp, no walkable tile cut off from the fire). The camp stamp above is
+> and are **replaced** in the Unreal build by the core table `Source/AbyssCore/Public/abyss/world/CampLayout.h`: **no
+> tents** (user request; the web's four and layout v2's three are all dropped), well (4, −0.15), sub-tile banners /
+> torches / barrels / crates, NPC slots (1.875, 2.375), (1.375, −1.375), (−1.875, 2.375), (−2.75, −0.75), (2.25, 1.0),
+> (−2.375, −2.25), every camp NPC idling toward the fire; every blocking prop (well, barrels, crates) blocks its anchor
+> plus its body grown by 0.3 tile (8 tiles per camp, no walkable tile cut off from the fire). The camp stamp above is
 > unchanged.
 
 Runtime camp props (`ZoneScene.buildCampDecorations`, `src/scenes/ZoneScene.ts:1887-1920`), offsets from the centre:
@@ -1252,7 +1252,8 @@ neighbours (`ZoneTerrain.showOverlay`, `:493-503`): sharpened wooden stakes (pla
 
 Meshes at the §3.4 offsets: campfire (flat, logs + flame flipbook, 0.6 m), well (2 m), tents (2.3 m wide, 2.1 m tall,
 tint `#5a4028` plains), banners (2.6 m, green `#2a6a1a`), barrels (1 m), crates (0.85 m), torches (1.9 m, flame at the
-top). Tents and other tall camp props fade when they occlude the hero (§15.6).
+top). Tents and other tall camp props fade when they occlude the hero (§15.6). (Remake: the camps place no tents,
+DECISIONS W11; the tent mesh exists but is unused.)
 
 ### 15.5 Decorations
 

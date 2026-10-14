@@ -815,8 +815,8 @@ Every interaction first: Ember Tower hook (later), log `dialogue[0]` (raw zh, QU
 ### 6.2 Placement (`ZoneScene.ts:4467-4484, 4795-4803`)
 Camp NPC `i` stands at `camp + offset[i mod 6]` with offsets `(−3,−2), (3,−2), (−3,2), (3,2), (0,−3), (0,3)`. **Remake
 (DECISIONS W11):** the offsets are `camp::kCampNpcSlots` = `(1.875,2.375), (1.375,−1.375), (−1.875,2.375),
-(−2.75,−0.75), (2.25,1.0), (−2.375,−2.25)` (in front of the three tents' doors, idle facing out of the door; every pick
-disc clear of the campfire and the camp lanes; `abyss/world/CampLayout.h`). Field NPCs
+(−2.75,−0.75), (2.25,1.0), (−2.375,−2.25)` (round the campfire, idle facing the fire; the camps have no tents, user
+request; every pick disc clear of the campfire and the camp lanes; `abyss/world/CampLayout.h`). Field NPCs
 stand at their tile. Safe zone around each camp: radius `mapData.safeZoneRadius ?? 9` (monsters spec §6.2).
 
 ### 6.3 Interaction trigger (`ZoneScene.ts:774-792, 5661-5672`)

@@ -1,6 +1,6 @@
 // SAbyssMinimap: the HUD minimap (save-ui-input 6.11, DECISIONS W2 / W4 / U8): the zone texture with the explored fog,
 // centred on the hero and rotated with the live camera yaw so every tile step points the way it moves on the big screen
-// (W1 / W4; north indicator on the rim), with the web's marker layers (hero with a heading wedge, exits, quest givers,
+// (W1 / W4; no north badge), with the web's marker layers (hero with a heading wedge, exits, quest givers,
 // guide star, monsters, quest areas / explore / clue / escort / defend markers). A click toggles between the local view
 // and the whole zone (fitted to the frame). Also used (rotated the same way, whole zone) by the world-map panel.
 #pragma once

@@ -612,7 +612,6 @@ std::vector<CampProp> CampProps(const MapDef& map) {
       }
       p.campIndex = static_cast<int32_t>(ci);
       p.blocking = s.blocking;
-      p.ownerSlot = s.ownerSlot;
       out.push_back(std::move(p));
     }
   }
@@ -768,8 +767,9 @@ ZoneGrid BuildZoneGrid(const DataStore& data, const MapDef& map) {
   ZoneGrid g = BuildRawZoneGrid(data, map);
   ApplyCampBlockers(g, map);
   // W11: a decoration on a camp prop's anchor or blocked tile would poke through the prop (only hand-built maps have
-  // decor inside a camp: ember_tower's bush (27,42) under tent 1, grass (19,42) under banner 7); generated maps place
-  // no decor within Chebyshev 6 of a camp centre (4.7). The raw grid (golden fixtures) is untouched.
+  // decor inside a camp: ember_tower's grass (19,42) under banner 4; its bush (27,42) stood under a tent and stays now
+  // the tents are gone); generated maps place no decor within Chebyshev 6 of a camp centre (4.7). The raw grid (golden
+  // fixtures) is untouched.
   if (!map.camps.empty() && !g.Decorations().empty()) {
     std::vector<TilePos> covered;
     for (const CampProp& p : CampProps(map)) {
