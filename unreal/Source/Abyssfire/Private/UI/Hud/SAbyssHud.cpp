@@ -335,6 +335,7 @@ void SAbyssHud::SyncHero(const abyss::Snapshot& Snap, double Now, float DeltaSec
 	// hero position at the interpolated pose and the camera yaw (W4)
 	S.HeroPos = abyss::Vec2(Hero.prevPos.x + (Hero.pos.x - Hero.prevPos.x) * Snap.interpolationAlpha,
 		Hero.prevPos.y + (Hero.pos.y - Hero.prevPos.y) * Snap.interpolationAlpha);
+	S.HeroFacing = Hero.facing;
 	if (const UAbyssGameInstance* GameInstance = Ctx->GetGameInstance())
 	{
 		if (const APlayerController* Controller = GameInstance->GetFirstLocalPlayerController())

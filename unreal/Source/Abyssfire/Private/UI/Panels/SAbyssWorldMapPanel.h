@@ -1,6 +1,7 @@
-// World map (M; save-ui-input 7.6, DECISIONS U8 / W2): the five story zones of MapOrder as linked cards (visited zones
-// with name and level range, the current one with a bobbing pin; zones not yet visited greyed with their chapter name),
-// and the current zone's whole map with the explored fog and the minimap marker layers (north up). Read-only.
+// World map (M; save-ui-input 7.6, DECISIONS U8 / W2 / W4): the five story zones of MapOrder as linked cards (visited
+// zones with name and level range, the current one with a bobbing pin; zones not yet visited greyed with their chapter
+// name), and the current zone's whole map with the explored fog and the minimap marker layers, rotated with the live
+// camera yaw like the HUD minimap (W1: steps point the way they move on screen). Read-only.
 #pragma once
 
 #include "CoreMinimal.h"

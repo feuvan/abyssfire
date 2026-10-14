@@ -135,13 +135,16 @@ void SAbyssWorldMapPanel::Refresh(const abyss::Snapshot& Snap)
 		}
 	}
 
-	// the current zone: whole map, explored fog, north up (W2 / U8)
+	// the current zone: whole map with the explored fog (W2 / U8), rotated with the live camera yaw like the HUD minimap
+	// (W1 / W4) so the hero dot and every marker move the way the hero walks on screen (a north-up map ran ~135 degrees
+	// against the yaw-45 view); the rotated zone (a diamond at yaw 45) is fitted to the square. Read-only: no click
+	// picks a tile, so nothing inverts the transform.
 	constexpr double MapSize = 380.0;
 	Body->AddSlot().Position(FVector2D(24.0, 154.0)).Size(FVector2D(MapSize, MapSize))
 	[
 		SNew(SAbyssMinimap, Context, HudState.ToSharedRef(), Minimap.ToSharedRef())
 		.Size(static_cast<float>(MapSize))
-		.Rotate(false)
+		.Rotate(true)
 		.WholeZone(true)
 		.Interactive(false)
 	];

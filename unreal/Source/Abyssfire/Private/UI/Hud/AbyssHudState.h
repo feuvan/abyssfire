@@ -133,8 +133,10 @@ struct FAbyssHudState
 	int32 ActivePetStage = 0;
 	bool bActivePetExhausted = false;
 
-	// hero position (minimap centre, world-anchored popups) and the live camera yaw (W4 rotated minimap)
+	// hero position (minimap centre, world-anchored popups), its tile-space facing (minimap heading wedge) and the live
+	// camera yaw (W4: the minimap and world map rotate with it)
 	abyss::Vec2 HeroPos;
+	abyss::Vec2 HeroFacing{1, 0};
 	float CameraYawDeg = 45.f;
 	FAbyssMinimapMarkers Minimap;
 };

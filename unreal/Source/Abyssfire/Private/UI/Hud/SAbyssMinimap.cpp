@@ -10,6 +10,16 @@
 
 namespace
 {
+	/** Px kept clear inside the frame (iron border + gold line) when the whole zone is fitted. */
+	constexpr double MinimapFrameInset = 4.0;
+	/**
+	 * Px kept clear at the top when the whole zone is fitted: the frame's top gem (Diamond 9 at y 1) reaches y 7.4, and
+	 * at yaw 45 the zone's far corner (the rotated diamond's top vertex) sits right under it: zones 2-4 put their exit to
+	 * the next zone on that corner tile (119, 119), which the gem hid (~70 % of the marker on the world map, ~93 % on the
+	 * HUD whole-zone view). 11 px keeps the exit box and most of a guide star there clear of the gem.
+	 */
+	constexpr double MinimapGemClearance = 11.0;
+
 	/** Tile space -> minimap local (rotation clockwise on screen by Angle radians around Center). */
 	struct FAbyssMinimapXform
 	{
@@ -85,13 +95,29 @@ void SAbyssMinimap::PaintMap(FAbyssPainter& P, const FAbyssUiContext& Ctx, const
 
 	FAbyssMinimapXform X;
 	X.Center = Pos + FVector2D(Size * 0.5f, Size * 0.5f);
+	// W1 / W4: the map turns with the live camera yaw (S.CameraYawDeg = the camera manager's yaw, the one the move
+	// input uses), so every step points the way it moves on the big screen. UE is left-handed (X = col, Y = row, Z up):
+	// a camera with yaw Psi looks along (cos Psi, sin Psi) and its screen right is (-sin Psi, cos Psi), so a tile step
+	// (dc, dr) goes right by -dc sin Psi + dr cos Psi and up (away from the viewer) by dc cos Psi + dr sin Psi. In
+	// Slate (y down) that is the rotation by -(90 + Psi) degrees (cos = -sin Psi, sin = -cos Psi); no mirror, since
+	// (col, row) -> (right, down) keeps the handedness. The camera pitch only foreshortens depth (a diagonal step is
+	// at most ~7 degrees off), never flips. Yaw 45: +col runs up-left, +row up-right, +col+row straight up.
 	const double Angle = bRotateMap ? FMath::DegreesToRadians(-90.0 - static_cast<double>(S.CameraYawDeg)) : 0.0;
 	X.Cos = FMath::Cos(Angle);
 	X.Sin = FMath::Sin(Angle);
 	if (bWhole)
 	{
+		// whole zone: the rotated tile rectangle's bounding box (a diamond at yaw 45) fits inside the frame, below the top
+		// gem (the box is centred in the area left free, a few px under the frame centre)
 		X.Focus = abyss::Vec2((Cols - 1) * 0.5, (Rows - 1) * 0.5);
-		X.Scale = Size / (FMath::Max(Cols, Rows) * (bRotateMap ? 1.4142 : 1.0));
+		const double AbsCos = FMath::Abs(X.Cos);
+		const double AbsSin = FMath::Abs(X.Sin);
+		const double BoundW = Cols * AbsCos + Rows * AbsSin;
+		const double BoundH = Cols * AbsSin + Rows * AbsCos;
+		const double InnerW = FMath::Max(1.0, static_cast<double>(Size) - 2.0 * MinimapFrameInset);
+		const double InnerH = FMath::Max(1.0, static_cast<double>(Size) - MinimapGemClearance - MinimapFrameInset);
+		X.Center = Pos + FVector2D(Size * 0.5, MinimapGemClearance + InnerH * 0.5);
+		X.Scale = FMath::Min(InnerW / FMath::Max(1.0, BoundW), InnerH / FMath::Max(1.0, BoundH));
 	}
 	else
 	{
@@ -198,9 +224,25 @@ void SAbyssMinimap::PaintMap(FAbyssPainter& P, const FAbyssUiContext& Ctx, const
 		P.Circle(Local, 5.5f, FAbyssUiStyle::Rgb(0x1a0f04));
 		P.Star(Local, 4.5f, 4.5f * 0.45f, M.bGuideTurnIn ? FAbyssUiStyle::Rgb(0xffd23a) : FAbyssUiStyle::Rgb(0xffb347));
 	}
-	// hero (layer 2, drawn last so it is never covered)
+	// hero (layer 2, drawn last so it is never covered) with a heading wedge: the hero's tile-space facing through the
+	// same rotation, so it points where the hero model faces / walks on the big screen
 	{
 		const FVector2D Local = X.ToLocal(S.HeroPos);
+		if (S.HeroFacing.LengthSq() > 1e-6)
+		{
+			const FVector2D Heading = X.RotateDir(S.HeroFacing.x, S.HeroFacing.y).GetSafeNormal();
+			const FVector2D Side(-Heading.Y, Heading.X);
+			TArray<FVector2D> Outline;
+			Outline.Add(Local + Heading * 9.0);
+			Outline.Add(Local + Side * 4.6);
+			Outline.Add(Local - Side * 4.6);
+			P.ConvexPolygon(Outline, FLinearColor(0.f, 0.f, 0.f, 0.8f));
+			TArray<FVector2D> Arrow;
+			Arrow.Add(Local + Heading * 7.6);
+			Arrow.Add(Local + Side * 3.3);
+			Arrow.Add(Local - Side * 3.3);
+			P.ConvexPolygon(Arrow, FAbyssUiStyle::Rgb(0x7fd4ff));
+		}
 		P.Circle(Local, 4.f, FLinearColor(0.f, 0.f, 0.f, 0.8f));
 		P.Circle(Local, 2.8f, FAbyssUiStyle::Rgb(0x7fd4ff));
 	}
@@ -213,11 +255,12 @@ void SAbyssMinimap::PaintMap(FAbyssPainter& P, const FAbyssUiContext& Ctx, const
 	P.Diamond(Pos + FVector2D(Size * 0.5f, 1.0), 9.f, C.Gold);
 	P.Diamond(Pos + FVector2D(Size * 0.5f, 1.0), 4.5f, FAbyssUiStyle::Rgb(0xb3202a));
 
-	// north indicator (W4): where tile "up" (row - 1) points on the rotated map
+	// north indicator (W4): where tile "up" (row - 1) points on the rotated map, on the rim around the frame centre (the
+	// whole-zone map centre sits lower, under the gem clearance)
 	if (bRotateMap)
 	{
 		const FVector2D Dir = X.RotateDir(0.0, -1.0);
-		const FVector2D Mark = X.Center + Dir.GetSafeNormal() * (Size * 0.5f - 8.f);
+		const FVector2D Mark = Pos + FVector2D(Size * 0.5f, Size * 0.5f) + Dir.GetSafeNormal() * (Size * 0.5f - 8.f);
 		const FString North = Ctx.LocOrStr("ui.compass.north", TEXT("N"));
 		P.Circle(Mark, 7.f, FLinearColor(0.02f, 0.015f, 0.03f, 0.85f), FAbyssUiStyle::WithAlpha(C.Gold, 0.8f), 1.f);
 		P.TextCentered(Mark, North, Ctx.Style().Body(9.f, true, 1), C.GoldBright);

@@ -1,7 +1,8 @@
 // SAbyssMinimap: the HUD minimap (save-ui-input 6.11, DECISIONS W2 / W4 / U8): the zone texture with the explored fog,
-// centred on the hero and rotated so the camera's forward points up (north indicator on the rim), with the web's marker
-// layers (hero, exits, quest givers, guide star, monsters, quest areas / explore / clue / escort / defend markers).
-// A click toggles between the local view and the whole zone. Also used (unrotated, whole zone) by the world-map panel.
+// centred on the hero and rotated with the live camera yaw so every tile step points the way it moves on the big screen
+// (W1 / W4; north indicator on the rim), with the web's marker layers (hero with a heading wedge, exits, quest givers,
+// guide star, monsters, quest areas / explore / clue / escort / defend markers). A click toggles between the local view
+// and the whole zone (fitted to the frame). Also used (rotated the same way, whole zone) by the world-map panel.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -25,7 +26,7 @@ public:
 	{
 	}
 		SLATE_ARGUMENT(float, Size)
-		/** W4: rotate with the camera yaw (the HUD); false = north up (world map). */
+		/** W4: rotate with the live camera yaw (HUD and world map); false = raw tile space, north up (does not match the 3D view). */
 		SLATE_ARGUMENT(bool, Rotate)
 		SLATE_ARGUMENT(bool, WholeZone)
 		SLATE_ARGUMENT(bool, Interactive)
