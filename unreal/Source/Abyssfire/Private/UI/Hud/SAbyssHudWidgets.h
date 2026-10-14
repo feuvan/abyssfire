@@ -75,6 +75,14 @@ public:
 	float GetWidth() const { return bTouch ? 330.f : 218.f; }
 
 private:
+	struct FObjectiveLine
+	{
+		FString Text;
+		bool bDone = false;
+		/** T_UI_QuestItem_<kind> beside a collect objective (16 px), else nullptr. */
+		const FSlateBrush* Icon = nullptr;
+	};
+
 	struct FEntry
 	{
 		std::string QuestId;
@@ -82,7 +90,7 @@ private:
 		FLinearColor TitleColor;
 		FString Summary;
 		FLinearColor SummaryColor;
-		TArray<TPair<FString, bool>> Objectives;
+		TArray<FObjectiveLine> Objectives;
 		bool bCompleted = false;
 		bool bMain = false;
 		bool bGuided = false;

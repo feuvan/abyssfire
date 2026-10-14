@@ -99,7 +99,17 @@ public:
 	EAbyssPropStyle GetStyle() const { return Style; }
 	bool HasArt() const { return bHasArt; }
 	float GetVisualHeightCm() const { return VisualHeightCm; }
+	/**
+	 * Attachment points. Loot style (DECISIONS R17): Overhead is the pickup mesh's `label` socket (the item's label
+	 * anchor), without the bob, so the label does not bounce with the item.
+	 */
 	FVector GetAnchorLocation(EAbyssAnchor Anchor) const;
+	/**
+	 * Ground origin of the prop's looping recipe (UAbyssVfxSystem ground / custom-height anchors): Loot style - the mesh's
+	 * `beam` socket on the ground (loot.beam.<quality> pools and pillars stand under the item, not under a bob); else the
+	 * actor's location.
+	 */
+	FVector GetEffectOrigin() const;
 
 private:
 	void ApplyCpd();

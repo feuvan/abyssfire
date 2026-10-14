@@ -1,7 +1,7 @@
 // UAbyssVfxSystem: the code-driven particle system of the game world (DECISIONS P6, R8; ue58-platform.md 6.9;
 // art-inventory-ch1.md 8; combat-feel.md 11.4).
 //
-// * A port of the web FxEngine: particles live on the game thread (cap 900 desktop / 600 mobile, web MAX_PARTICLES) and
+// * A port of the web FxEngine: particles live on the game thread (cap 700 desktop / 450 mobile, DECISIONS R20) and
 //   are drawn by pooled UInstancedStaticMeshComponents - one per (sprite texture, blend) or per FX mesh - whose
 //   instances are rewritten every frame (BatchUpdateInstancesTransforms + per-instance custom data, AbyssVfxIcd).
 // * What to play comes from FAbyssVfxLibrary recipes (AbyssVfxRecipe.h). The system subscribes to the core's
@@ -11,6 +11,11 @@
 //   snapshot's status masks. The world builder plays world dressing (camps, exits, props, ambience) through Play().
 // * Ticked by UAbyssWorldBuilder from IAbyssWorldView::SyncFrame (visual delta = real delta x the S6 dilation, so
 //   particles slow down with the elite-kill slow motion; projectile positions follow the sim clock).
+// * Fake lights (DECISIONS R18, P11 revised): recipe lights draw additive ground pools at intensity x the zone's lightScale
+//   and light the toon characters through the MPC_AF_Lighting slots Light<i>PosR / Light<i>Col (nearest 8 desktop / 4
+//   mobile to the camera focus, the hero halo excluded), refreshed every LightingUpdateIntervalMs.
+// * Density (DECISIONS R20): hit.impact.* at most 2 live bursts per target (half count within 120 ms), smoke layers at
+//   half count while more than 40 smoke / dust particles live; the recipe library grades the Smoke sprite layers.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -21,6 +26,7 @@
 #include "abyss/sim/Snapshot.h"
 
 #include "Framework/AbyssTypes.h"
+#include "Vfx/AbyssVfxLighting.h"
 #include "Vfx/AbyssVfxRecipe.h"
 #include "World/AbyssWorldTypes.h"
 
@@ -108,6 +114,12 @@ public:
 
 	const FAbyssVfxLibrary& GetLibrary() const { return Library; }
 	int32 GetLiveParticleCount() const { return Particles.Num(); }
+	/**
+	 * The zone's fake-light scale (DECISIONS R18, world-map-nav.md 14.1): max(0.12, ambientAlpha x (1 - luma(ambient))
+	 * x 1.4) of the zone mood - plains / ember tower / mountain / desert 0.12, forest 0.1605, abyss 0.2522. Light pools and
+	 * the hero halo draw at intensity x this; the toon light slots carry it too.
+	 */
+	float GetLightScale() const { return LightScale; }
 
 	/** Recipe-authored camera shakes (the web FxEngine.shake, own 120 ms throttle). Bound by the world builder. */
 	FOnAbyssVfxShake OnShake;
@@ -198,6 +210,8 @@ private:
 		int32 Capacity = 0;
 		int32 UsedLastFrame = 0;
 		float MeshDiameterCm = 100.f;
+		/** Smoke / Dust sprite pool (the live smoke count of the density cap). */
+		bool bSmoke = false;
 		TArray<FTransform> Transforms;
 		TArray<float> CustomData;
 	};
@@ -247,6 +261,15 @@ private:
 		bool bPersistent = false;
 		float Seed = 0.f;
 		FLinearColor Color = FLinearColor::White;
+		/** The flame above the anchor (FAbyssVfxRecipe::LightHeightCm): where the toon light slot sits. */
+		float HeightCm = 0.f;
+	};
+
+	/** The last hit.impact bursts on one target (DECISIONS R20 density cap). */
+	struct FHitBurstTrack
+	{
+		int32 Handles[2] = { 0, 0 };
+		double LastRealSec = -1000.0;
 	};
 
 	// ---- events ----
@@ -300,6 +323,20 @@ private:
 	void UpdateProjectiles(const FAbyssFrameInfo& Frame);
 	void UpdateStatusLoops(const abyss::Snapshot& Snap);
 	void UpdateLights(float DeltaSec);
+	/** DECISIONS R18: recomputes LightScale from the zone mood when the zone changes. */
+	void UpdateLightScale(const abyss::Snapshot& Snap);
+	/**
+	 * DECISIONS P11 revised (contract C2): writes the toon light slots of MPC_AF_Lighting every LightingUpdateIntervalMs
+	 * (real time) - the nearest 8 (desktop) / 4 (mobile) lights to the camera focus, hero halo excluded:
+	 * Light<i>PosR = (flame position cm, radius cm), Light<i>Col = (linear colour x alpha (flicker) x LightScale x
+	 * abyss.CharLightGain, 1); the last used slot cross-fades over 150 cm, unused slots are 0. Missing parameters (an
+	 * older content build) are skipped.
+	 */
+	void UpdateLightSlots(float RealDeltaSec);
+	/** A light's alpha now (the web flicker included), before the light scale. */
+	float LightAlphaNow(const FLight& Light) const;
+	/** True while a handle still has an emitter or a live particle. */
+	bool IsHandleLive(int32 Handle) const;
 	/**
 	 * Hero attachments from the art manifest fx block (art-inventory-ch1.md 3.1, Art/blender/README.md hero section):
 	 * halo light pool, weapon trail history; plus the spirit-resonance aura kept alive while Snapshot.hero.resonating.
@@ -358,7 +395,7 @@ private:
 	int32 PortalHandle = 0;
 
 	FAbyssQualityProfile Quality;
-	int32 MaxParticles = 900;
+	int32 MaxParticles = 700;
 	int32 NextHandle = 1;
 	uint32 NextVisualProjectile = 1;
 	double LastShakeRealSec = -1000.0;
@@ -383,6 +420,19 @@ private:
 	TWeakObjectPtr<AActor> HeroHaloActor;
 	int32 ResonanceAuraHandle = 0;
 	TWeakObjectPtr<AActor> ResonanceAuraActor;
+
+	// fake lights (DECISIONS R18 / P11 revised)
+	float LightScale = 0.12f;
+	std::string LightScaleMapId;
+	bool bLightScaleKnown = false;
+	float LightSlotRefreshSec = 0.f;
+	/** Every slot of MPC_AF_Lighting holds 0 (nothing to write until a light appears). */
+	bool bLightSlotsClear = false;
+	TArray<AbyssVfxLighting::FSlotPick> SlotPicks;
+
+	// density (DECISIONS R20)
+	TMap<uint32, FHitBurstTrack> HitBursts;
+	int32 LiveSmokeParticles = 0;
 
 	// camera (refreshed every Tick)
 	FVector CameraLocation = FVector::ZeroVector;

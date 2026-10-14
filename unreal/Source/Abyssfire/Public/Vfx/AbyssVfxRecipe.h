@@ -237,6 +237,11 @@ struct FAbyssVfxRecipe
 	float LightRadiusCm = 0.f;
 	float LightAlpha = 0.f;
 	bool bLightFlicker = false;
+	/**
+	 * Height of the light above its anchor for the toon light slots (DECISIONS P11 revised: the flame, torch ~165 cm,
+	 * campfire 30 cm): `light.heightCm`, else the base of the recipe's first Flame layer, at least MinLightHeightCm.
+	 */
+	float LightHeightCm = 0.f;
 	/** Camera shake started with the recipe (skill-authored shakes, web FxEngine.shake). */
 	float ShakeMs = 0.f;
 	float ShakeIntensity = 0.f;
@@ -278,6 +283,23 @@ public:
 	/** Layer defaults of a web FxKit primitive (glow, flash, glint, sparks, motes, flames, smoke, debris, ring, shock,
 	 *  decal, slash, swipe, beam, gather, bolt, streak, mesh). False for an unknown name. */
 	static bool ApplyPreset(FName Emitter, FAbyssVfxLayer& Layer);
+
+	/**
+	 * The layers the runtime smoke grade applies to: translucent Smoke sprites (not Dust / Puff, no mesh) of a fixed
+	 * charcoal / soot colour (display-space HSV value < 0.45 and saturation < 0.3: death, fire soot, rampage). Coloured
+	 * smokes (poison, curse aura, the rogue's violets, frost mist) are gameplay cues and stay as authored.
+	 */
+	static bool IsGradedSmokeLayer(const FAbyssVfxLayer& Layer);
+	/**
+	 * DECISIONS R20 runtime smoke grade (until the art kit's recipes adopt it; console variable abyss.SmokeGrade, read
+	 * when the library loads): alpha x0.35, a fixed colour 45 % toward #A8A0B0 (linear lerp), fade-in >= 0.12, alpha
+	 * power <= 0.75 (faster fade), burst count x0.7 (rounded, >= 2, never above the authored count), size x1.15. The
+	 * hard-edged #5A5060 puffs at alpha 0.8 x 7 read as charcoal blobs on the grass (third playtest, 7.webp).
+	 */
+	static void GradeSmokeLayer(FAbyssVfxLayer& Layer);
+	/** LightHeightCm of a parsed recipe without `light.heightCm` (see FAbyssVfxRecipe::LightHeightCm). */
+	static float DefaultLightHeightCm(const FAbyssVfxRecipe& Recipe);
+	static constexpr float MinLightHeightCm = 30.f;
 
 private:
 	bool ParseRecipe(FName Id, const abyss::JsonValue& Json, FAbyssVfxRecipe& Out, FString& OutError) const;

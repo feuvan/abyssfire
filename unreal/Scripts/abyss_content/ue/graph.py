@@ -7,6 +7,12 @@ A material is described by a Python function that calls the Graph API. The funct
 
 Connections are checked: an unknown input / output name raises BuildError listing the real pin names
 (MaterialEditingLibrary.get_material_expression_input_names), so an engine-version rename fails loudly.
+
+Custom nodes with additional outputs (hlsl.CustomNode.additional_outputs, e.g. AF_ToonSplit's `Lit`): the engine names
+the main pin `return` and adds one pin per additional output (UMaterialExpressionCustom::RebuildOutputs, run when
+`additional_outputs` is set). Should an engine not expose that pin to MaterialEditingLibrary, a connection from it falls
+back to a single-output twin of the node (hlsl.CustomNode.twin: the same code returning that output, same wires) and the
+build reports one compatibility note (`Graph.compat`).
 """
 from __future__ import annotations
 
@@ -75,6 +81,8 @@ class Node:
         self.idx = idx
         self.cls = cls
         self.expr = expr
+        self.custom: tuple[hlsl.CustomNode, dict[str, Any]] | None = None   # (spec, wires) of a Custom node
+        self.twins: dict[str, Node] = {}                                    # additional output -> fallback twin
 
     def __getitem__(self, output: str) -> "Pin":
         return Pin(self, output)
@@ -89,9 +97,9 @@ class Pin:
 Wire = Node | Pin
 
 # Output names tried for an unnamed request (output 0 is unnamed on most expressions; some name it: the Custom node
-# "Output", the vertex interpolator "PS", the view property "Property"). A named request (RGB, R, A, Color, ...) never
-# falls back to another output: that could silently connect the wrong channel.
-_OUTPUT_FALLBACKS = ("", "Output", "Result", "PS", "Property")
+# "Output" (with additional outputs "return"), the vertex interpolator "PS", the view property "Property"). A named
+# request (RGB, R, A, Color, ...) never falls back to another output: that could silently connect the wrong channel.
+_OUTPUT_FALLBACKS = ("", "Output", "Result", "PS", "Property", "return")
 
 
 class Graph:
@@ -101,6 +109,7 @@ class Graph:
         self.dry = material is None
         self.trace: list[str] = []
         self.texture_params: list[str] = []   # texture parameter names, in creation order (checked after the build)
+        self.compat: list[str] = []           # engine-compatibility notes of this build (reported by the caller)
         self._count = 0
 
     # ---- core ----
@@ -144,6 +153,11 @@ class Graph:
         for out in self._outputs(pin.output):
             if mel.connect_material_expressions(pin.node.expr, out, dst.expr, target):
                 return
+        twin = self._twin(pin)
+        if twin is not None:
+            for out in self._outputs(""):
+                if mel.connect_material_expressions(twin.expr, out, dst.expr, target):
+                    return
         raise BuildError(f"{self.material.get_name()}: cannot connect {pin.node.cls}.{pin.output or '<0>'} -> "
                          f"{dst.cls}.{target}")
 
@@ -156,7 +170,28 @@ class Graph:
         for out in self._outputs(pin.output):
             if self.ed.mel.connect_material_property(pin.node.expr, out, prop_value):
                 return
+        twin = self._twin(pin)
+        if twin is not None:
+            for out in self._outputs(""):
+                if self.ed.mel.connect_material_property(twin.expr, out, prop_value):
+                    return
         raise BuildError(f"{self.material.get_name()}: cannot connect {pin.node.cls}.{pin.output or '<0>'} -> {prop}")
+
+    def _twin(self, pin: Pin) -> Node | None:
+        """The single-output twin of a Custom node's additional output (created once; None for any other pin)."""
+        if pin.node.custom is None or not pin.output:
+            return None
+        spec, wires = pin.node.custom
+        names = {o.name.lower(): o.name for o in spec.additional_outputs}
+        output = names.get(pin.output.lower())
+        if output is None:
+            return None
+        if output not in pin.node.twins:
+            twin_spec = spec.twin(output)
+            self.compat.append(f"Custom node additional output pins not exposed to MaterialEditingLibrary: "
+                               f"{spec.key}.{output} built as a single-output twin ({twin_spec.key})")
+            pin.node.twins[output] = self.custom(twin_spec, wires)
+        return pin.node.twins[output]
 
     @staticmethod
     def _outputs(requested: str) -> list[str]:
@@ -248,6 +283,24 @@ class Graph:
         self.connect(b, n, "B")
         return n
 
+    def mul(self, a: Wire, b: Wire) -> Node:
+        n = self.node("MaterialExpressionMultiply")
+        self.connect(a, n, "A")
+        self.connect(b, n, "B")
+        return n
+
+    def scale(self, a: Wire, factor: float) -> Node:
+        """a x a constant (the Multiply node's const_b, B left unconnected)."""
+        n = self.node("MaterialExpressionMultiply", const_b=float(factor))
+        self.connect(a, n, "A")
+        return n
+
+    def rgb(self, src: Wire) -> Node:
+        """The first three channels (ComponentMask RGB): a float4 parameter into a float3 material input."""
+        n = self.node("MaterialExpressionComponentMask", r=True, g=True, b=True, a=False)
+        self.connect(src, n, "")
+        return n
+
     def interpolate(self, src: Wire) -> Node:
         """Vertex-shader value handed to the pixel shader (per-instance data is safest read in the VS on every RHI)."""
         n = self.node("MaterialExpressionVertexInterpolator")
@@ -270,7 +323,10 @@ class Graph:
             raise BuildError(f"custom node {spec.key}: missing inputs {missing}, unknown inputs {extra}")
         n = self.node("MaterialExpressionCustom", code=spec.code, description=spec.key,
                       output_type=E("CustomMaterialOutputType", self._OUTPUT_TYPES[spec.output]))
+        n.custom = (spec, dict(wires))
         self.trace.append(f"#{n.idx} inputs {spec.input_names}")
+        if spec.additional_outputs:
+            self.trace.append(f"#{n.idx} outputs {[(o.name, o.ctype) for o in spec.additional_outputs]}")
         if not self.dry:
             inputs = []
             for name in spec.input_names:
@@ -281,6 +337,20 @@ class Graph:
                 n.expr.set_editor_property("inputs", inputs)
             except Exception as e:  # noqa: BLE001
                 raise BuildError(f"{self.material.get_name()}: custom node {spec.key}: cannot set inputs ({e})") from e
+            if spec.additional_outputs:
+                outputs = []
+                for out in spec.additional_outputs:
+                    co = unreal.CustomOutput()
+                    co.set_editor_property("output_name", out.name)
+                    co.set_editor_property("output_type", enum("CustomMaterialOutputType",
+                                                               self._OUTPUT_TYPES[out.ctype]))
+                    outputs.append(co)
+                try:
+                    # set before any connection: the engine rebuilds the node's output pins from this array
+                    n.expr.set_editor_property("additional_outputs", outputs)
+                except Exception as e:  # noqa: BLE001
+                    raise BuildError(f"{self.material.get_name()}: custom node {spec.key}: cannot set additional "
+                                     f"outputs ({e})") from e
         for name in spec.input_names:
             self.connect(wires[name], n, name)
         return n

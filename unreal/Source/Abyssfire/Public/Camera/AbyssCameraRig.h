@@ -1,9 +1,12 @@
 // AAbyssCameraRig: the fixed-angle oblique camera (DECISIONS W1, world-map-nav.md 8, combat-feel.md 11.5, C9).
 //
 // * Yaw 45, pitch -50, horizontal FOV 35 at 16:9 (wider screens keep the vertical extent, narrower keep the horizontal
-//   one), default distance from the art manifest camera block (25.37 m = 16 x 12 tiles), focus 50 cm above the hero.
+//   one), focus 50 cm above the hero. Default distance (W1, art pass): world_constants camera.framingTiles[0] tiles
+//   across the horizontal FOV at the focus, 13.4 -> 21.25 m (hero ~150 px feet-to-plume at 720p, ~13.8 x 10.4 tiles of
+//   ground); the art manifest camera block's 25.37 m (16 tiles, the art-preview framing) only without constants.
 // * Smooth follow with a 0.12 s time constant (world_constants.json camera.followLagSec); snaps on zone entry and long
-//   teleports. Zoom 0.75x .. 1.25x of the default distance (wheel / pinch through AddZoomInput, input agent).
+//   teleports. Zoom 0.75x .. 1.25x of the default distance (15.9-26.6 m; wheel / pinch through AddZoomInput, input
+//   agent). UAbyssWorldBuilder re-fits the sun's shadow distance and the height-fog start to GetCurrentDistance.
 // * Shake (EvCameraShake, web units): same peak amplitude as the web (I x 3.24 x visible width / height at the focus),
 //   re-randomised every frame, exponential decay over the duration; honours the camera-shake setting. The web's
 //   throttles apply to every source (EAbyssShakeSource): no override while a shake runs, 100 ms VFXManager throttle.
@@ -48,7 +51,7 @@ class ABYSSFIRE_API AAbyssCameraRig : public AActor
 public:
 	AAbyssCameraRig();
 
-	/** Framing from the art manifest (camera block) and the world constants (zoom range, follow lag). */
+	/** Angles from the art manifest (camera block); framing distance, zoom range and follow lag from the world constants. */
 	void Configure(const FAbyssArtShading& Shading, const abyss::WorldConstants* Constants);
 
 	/** Per frame: follow the hero focus point (world, already at focus height). Real time drives the camera. */
@@ -122,7 +125,7 @@ private:
 	float YawDeg = 45.f;
 	float PitchDeg = -50.f;
 	float FovHDeg = 35.f;
-	float DefaultDistance = 2537.3f;
+	float DefaultDistance = 2124.9f;
 	float FocusZ = 50.f;
 	float ZoomMin = 0.75f;
 	float ZoomMax = 1.25f;

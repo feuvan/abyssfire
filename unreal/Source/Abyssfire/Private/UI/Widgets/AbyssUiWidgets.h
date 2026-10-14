@@ -13,6 +13,8 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
+#include <string>
+
 #include "abyss/base/Enums.h"
 #include "abyss/items/Item.h"
 #include "abyss/sim/Snapshot.h"
@@ -24,6 +26,11 @@
 class SButton;
 class SScrollBox;
 class STextBlock;
+
+namespace abyss
+{
+	class DataStore;
+}
 
 DECLARE_DELEGATE_OneParam(FOnAbyssIndexSelected, int32);
 DECLARE_DELEGATE_OneParam(FOnAbyssFloatChanged, float);
@@ -40,11 +47,40 @@ namespace AbyssUi
 		bool bBold = true, int32 OutlinePx = 2);
 	/** Styled vertical scroll box (UiKit thumb; drag-scroll on touch). */
 	TSharedRef<SScrollBox> ScrollBox(const FAbyssUiContext& Ctx, bool bShowBar = true);
-	/** Section header: bold label in the heading colour + fading gold rule (8.5). */
-	TSharedRef<SWidget> SectionHeader(const TSharedRef<FAbyssUiContext>& Ctx, const FText& Text, float Width);
+	/**
+	 * Section header (UiKit addSectionHeader): bold label in the heading colour, then the gold rule 8 px after it: one
+	 * smooth fade (8 segments, alpha 0.7 x (1 - i / 8)) over a 1 px black 0.5 underline 1 px below. FontPx = web px.
+	 */
+	TSharedRef<SWidget> SectionHeader(const TSharedRef<FAbyssUiContext>& Ctx, const FText& Text, float Width, float FontPx = 12.f);
+	/** Paints the section rule from X0 to X1 at Y (shared by SectionHeader and painted headers). */
+	void PaintSectionRule(FAbyssPainter& Painter, double X0, double X1, double Y);
 	/** Horizontal gold divider (8.5). */
 	TSharedRef<SWidget> Divider(const TSharedRef<FAbyssUiContext>& Ctx, float Width, bool bDiamond = true);
 	FLinearColor Alpha(const FLinearColor& Color, float A);
+
+	/** A fixed-size painted icon (glyph / quest item / item art); nullptr brush = an empty spacer of the same size. */
+	TSharedRef<SWidget> Icon(const TSharedRef<FAbyssUiContext>& Ctx, const FSlateBrush* Brush, float Size,
+		const FLinearColor& Tint = FLinearColor::White);
+
+	/** The web skill-icon backdrop (SkillIcons.ts backdropFor): damage-type colours, physical skills by tree. */
+	struct FSkillBackdrop
+	{
+		FLinearColor Mid;
+		FLinearColor Deep;
+		FLinearColor Rim;
+	};
+	FSkillBackdrop SkillBackdrop(const abyss::DataStore* Data, const std::string& SkillId);
+	/** U11 fallback monogram: the first glyph of a CJK name, else the first two letters. */
+	FString SkillMonogram(const FString& Name);
+	/**
+	 * U11 skill tile (HUD slots, skill-tree cards, the panel hotbar): T_UI_SkillIcon_<id> (the emblem plate, inset 2/96,
+	 * corner 15/96) under the Slate frame the manifest asks for (SkillIcons.ts drawSkillIcon): dark iron stroke #17121C
+	 * 3.2 u, inner hairline in the backdrop's rim colour at 0.55, top-left bevel rgba(255,240,210,0.35); units are 1/96 of
+	 * Size. Tint multiplies icon and frame (unlearned, unaffordable). Missing art: a tile in the backdrop hue with the
+	 * monogram (bMonogram = false leaves the letters to the caller). Returns true when the icon art drew.
+	 */
+	bool PaintSkillTile(FAbyssPainter& Painter, const FAbyssUiContext& Ctx, const std::string& SkillId, const FString& Name,
+		const FVector2D& Pos, float Size, const FLinearColor& Tint = FLinearColor::White, bool bMonogram = true);
 }
 
 /** A widget painted by a function (under or over its optional content). */
@@ -149,6 +185,8 @@ public:
 	SLATE_BEGIN_ARGS(SAbyssButton)
 		: _Kind(EAbyssButtonKind::Secondary)
 		, _FontPx(13.f)
+		, _Icon(nullptr)
+		, _IconSize(14.f)
 		, _Width(0.f)
 		, _Height(0.f)
 		, _Selected(false)
@@ -158,6 +196,9 @@ public:
 		SLATE_ATTRIBUTE(FText, Text)
 		SLATE_ARGUMENT(EAbyssButtonKind, Kind)
 		SLATE_ARGUMENT(float, FontPx)
+		/** Optional icon left of the label (a glyph such as T_UI_Glyph_sort); nullptr = the label alone (the fallback). */
+		SLATE_ARGUMENT(const FSlateBrush*, Icon)
+		SLATE_ARGUMENT(float, IconSize)
 		/** Fixed size (0 = content). */
 		SLATE_ARGUMENT(float, Width)
 		SLATE_ARGUMENT(float, Height)
@@ -191,7 +232,7 @@ private:
 	bool bClickSound = true;
 };
 
-/** Round iron medallion with a red X (panel close). */
+/** Panel close: the T_UI_Glyph_close medallion (fallback: a painted iron medallion with a red X). */
 class SAbyssCloseButton : public SCompoundWidget
 {
 public:
@@ -210,7 +251,11 @@ private:
 	TSharedPtr<SButton> Button;
 };
 
-/** Tab row (8.5 tabs): rounded tops, accent underline on the active tab. */
+/**
+ * Tab row (8.5 tabs): rounded tops (each tab clipped to its box, so only the top corners round), accent underline on the
+ * active tab, label centred, count badge centred 12 px from the tab's right edge (web tx + tabW - 12) in the accent on
+ * the active tab and #6e665c on the others.
+ */
 class SAbyssTabBar : public SCompoundWidget
 {
 public:

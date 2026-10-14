@@ -116,6 +116,11 @@ void SAbyssPetsPanel::Refresh(const abyss::Snapshot& Snap)
 					FAbyssUiContext::Arg("total", static_cast<int64>(Tables.chapter1Slice.empty() ? Tables.pets.size() : Tables.chapter1Slice.size())) }),
 				13.f, C.Heading, true, 1)
 		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+		[
+			// U11: the ley fruit's item icon (T_UI_ItemIcon_c_ley_fruit) before its count
+			AbyssUi::Icon(Context, Ctx->ItemIcon(Tables.leyFruitId), 20.f, Fruit > 0 ? FLinearColor::White : FLinearColor(1.f, 1.f, 1.f, 0.5f))
+		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
 			AbyssUi::Label(*Ctx, FText::AsCultureInvariant(FString::Printf(TEXT("%s \x00D7 %d"), *Ctx->ItemBaseName(Tables.leyFruitId), Fruit)), 12.f,

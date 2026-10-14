@@ -9,6 +9,8 @@
 // * Hit feedback from the EvHit profile: white flash (flashMs), hero pain tint, recoil (snap along the blow, squash,
 //   tilt, eased back), per-actor hit-stop (ApplyHitStop), monster wind-up telegraph tint, status tints (R8), thrown death
 //   + fade (combat-feel.md 13.2). All material feedback goes through custom primitive data (AbyssCpd).
+// * Selection rim (DECISIONS R16, WorldContract.md 7): a hull-only follower (leader-pose copy of the body + weapon copies)
+//   drawn with MI_AF_SelectRim outside the whole figure's silhouette; the world builder picks the kind every frame.
 // * The actor does not tick: UAbyssWorldBuilder calls PresentFrame once per rendered frame with the interpolated state.
 #pragma once
 
@@ -28,6 +30,7 @@
 class UAbyssAnimInstance;
 class UAbyssAssetLibrary;
 class UAnimSequence;
+class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UPoseableMeshComponent;
 class USceneComponent;
@@ -95,6 +98,19 @@ struct FAbyssCharacterFrame
 class AAbyssCharacterActor;
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAbyssCharacterNotify, AAbyssCharacterActor* /*Actor*/, FName /*Notify*/);
 
+/**
+ * Selection rim of a character (DECISIONS R16, WorldContract.md 7, contract C1). Colour and width beyond the ink at 720
+ * rows: Hero #FFF4DC 2 px (always, while alive), Target #FF5A3C 1.5 px (attack target / ring indicator), Hover #FFB03C
+ * 1.5 px (hovered monster that is not the target).
+ */
+enum class EAbyssSelectionRim : uint8
+{
+	None,
+	Hero,
+	Target,
+	Hover,
+};
+
 enum class EAbyssCharacterAction : uint8
 {
 	None,
@@ -147,10 +163,23 @@ public:
 	/** A hard reset of feedback state (zone change for the reused hero actor). */
 	void ResetPresentation();
 	/**
-	 * Shadow presentation of the render tier (DECISIONS P10): blob shadow on low / mid mobile (and whenever the sun
-	 * casts no CSM), dynamic sun shadow casting where CSM is active.
+	 * Shadow presentation of the render tier (DECISIONS P10 revised): the blob shadow shows whenever bBlob (every tier),
+	 * at 0.7 of its alpha where the sun casts a CSM (bCastDynamic: the body and weapons cast the sun shadow and contact
+	 * shadows); without CSM the blob is the only ground contact, at full alpha.
 	 */
 	void SetShadowMode(bool bBlob, bool bCastDynamic);
+	/**
+	 * Selection rim (DECISIONS R16, contract C1): UAbyssWorldBuilder::UpdateSelectionRims calls it every frame; a repeat of
+	 * the current kind is ignored. The first non-None call creates the hull-only follower (a leader-pose copy of the body
+	 * showing only its ink-hull sections, weapon copies on the same sockets) drawn with dynamic instances of
+	 * MI_AF_SelectRim; None hides it (the components are kept for reuse). The rim dithers with the body's Fade, casts no
+	 * shadow and hides while the actor is hidden, dying or ghosted. At most 3 characters hold a rim at a time.
+	 */
+	void SetSelectionRim(EAbyssSelectionRim Kind);
+	EAbyssSelectionRim GetSelectionRim() const { return RimKind; }
+
+	// ---- AActor ----
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// ---- queries ----
 	abyss::EntityId GetEntityId() const { return EntityId; }
@@ -215,6 +244,24 @@ private:
 	float BlendSecFor(const char* FromState, const char* ToState) const;
 	void HandleAnimNotify(FName NotifyName);
 	UAbyssAnimInstance* GetAnim() const;
+	/** Selection rim: creates the follower components on first use (false without art / MI_AF_SelectRim / budget). */
+	bool EnsureSelectionRim();
+	/** The rim body follows the body's mesh: leader pose, rim on the ink-hull slots, every other section hidden. */
+	void SyncRimBody();
+	/** The rim weapon copies follow the visible weapon meshes (SetWeaponMeshes). */
+	void SyncRimWeapons();
+	/** A dynamic MI_AF_SelectRim for one ink-hull slot, its OutlinePx1080 / BakedWidthCm copied from that hull material. */
+	UMaterialInstanceDynamic* MakeRimMaterial(UMaterialInterface* SourceHull);
+	/** RimColor / RimPx720 of the current kind on every rim instance. */
+	void ApplyRimLook();
+	/**
+	 * Shows the rim while a kind is set and the body can show one (not hidden, dying, finished or ghosted). bForce
+	 * re-applies every component's visibility (the weapon copies changed).
+	 */
+	void UpdateSelectionRimVisibility(bool bForce = false);
+	/** Takes / returns a slot of the rim budget (3 rimmed characters). */
+	bool AcquireRimBudget();
+	void ReleaseRimBudget();
 
 	UPROPERTY(VisibleAnywhere, Category = "Abyss")
 	TObjectPtr<USceneComponent> SceneRoot;
@@ -243,6 +290,32 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPoseableMeshComponent>> Afterimages;
+
+	/** Selection rim follower (DECISIONS R16): leader-pose copy of Body showing only its ink-hull sections. */
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMeshComponent> RimBody;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> RimMainHand;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMeshComponent> RimOffHand;
+
+	/** MI_AF_SelectRim (the parent of every rim instance). */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> RimParent;
+
+	/** BodyMask 1: the slots of the rim copies that draw nothing (every slot but the ink hull). */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> RimMask;
+
+	/** Rim instances of the body's ink-hull slots. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> RimBodyMaterials;
+
+	/** Rim instances of the weapon copies' ink-hull slots (index 0 main hand, 1 off hand; reused across weapon swaps). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> RimWeaponMaterials;
 
 	/** Clips by manifest clip name (kept alive here; also cached by the asset library). */
 	UPROPERTY(Transient)
@@ -337,4 +410,13 @@ private:
 	bool bCpdDirty = true;
 	bool bBlobWanted = true;
 	bool bHasBlobAssets = false;
+	/** The sun casts a CSM on this tier (SetShadowMode): the blob draws at 0.7 of its alpha (DECISIONS P10 revised). */
+	bool bBlobUnderSunShadow = false;
+
+	// selection rim (DECISIONS R16)
+	EAbyssSelectionRim RimKind = EAbyssSelectionRim::None;
+	bool bRimBudgetHeld = false;
+	bool bRimShown = false;
+	/** MI_AF_SelectRim is missing (older content build): logged once, never retried. */
+	bool bRimUnavailable = false;
 };

@@ -214,9 +214,9 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 | Palettes | `/Game/Abyssfire/Textures/T_AF_Palette_<Family>_{BC,P}` | uncompressed, nearest, no mips (exact swatches) |
 | Portraits, icons, glyphs | `/Game/Abyssfire/UI/{Portraits,Icons}/T_UI_*` | UserInterface2D, no mips |
 | FX sprites | `/Game/Abyssfire/FX/Textures/T_FX_*` | linear (masks); `T_AF_FX_DefaultGlow` is the generated fallback |
-| `MPC_AF_Lighting` | `/Game/Abyssfire/Materials` | `SunDir`, `KeyLightDir` (manifest key light), `SunColor`, `Ambient`, `RimColor`, `CameraTanHalfFovY`, `TimeSec` |
-| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow` | shader code in `abyss_content/hlsl.py` |
-| Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>`, `MI_AF_Terrain_<Theme>` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow. `MI_AF_Terrain_<Theme>`: `M_AF_Terrain_Painted` with the manifest `terrain.<theme>` layers + detail atlas (only when all of them were exported) |
+| `MPC_AF_Lighting` | `/Game/Abyssfire/Materials` | `SunDir`, `KeyLightDir` (manifest key light), `SunColor`, `Ambient`, `RimColor`, `CameraTanHalfFovY`, `TimeSec`, `SunScale` (.55), `InkScale` (1.5), toon light slots `Light0PosR..Light7PosR` / `Light0Col..Light7Col` (0); writers in WorldContract §3.5 |
+| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_SelectRim`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`, `M_AF_PP_AOComposite`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow` | shader code in `abyss_content/hlsl.py` |
+| Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>`, `MI_AF_Terrain_<Theme>`, `MI_AF_SelectRim` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow. Toon instances carry their family's `CastShadowStrength` (heroes / monsters / NPCs / pets / weapons .7, pickups .8, props 1, foliage canopies .6, ground cover 1; `manifest.plan_look_parameters`), the plains ground cover `BaseSaturation` / `BaseValue` .85 / .93. `MI_AF_Terrain_<Theme>`: `M_AF_Terrain_Painted` with the manifest `terrain.<theme>` layers + detail atlas (only when all of them were exported); plains `GroundSaturation` / `GroundValue` .85 / .93. `MI_AF_SelectRim`: the hero selection rim (#FFF4DC, 2 px) |
 | Terrain textures | `/Game/Abyssfire/Textures/T_Terrain_<Theme>_*_BC`, `T_Water_<Theme>_BC` | world (sRGB, mips, wrap); the `_Details_BC` atlas BC7, clamp; imported even without the texture scan (the manifest names them) |
 | `SM_FX_Quad` | `/Game/Abyssfire/FX` | 100 × 100 cm XY quad (unless the art ships one) |
 | Audio | `/Game/Abyssfire/Audio/...` | `Audio/ue/import_audio.py` (audio agent) |
@@ -224,23 +224,42 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 
 Material behaviour in short:
 
-* **`M_AF_Toon`** — Unlit, masked (dithered fade: a 4 × 4 Bayer shifted every TSR / TAA jitter sample
+* **`M_AF_Toon`** — shadow-catcher lit toon (DECISIONS P11 revised, art pass; WorldContract §3.3): DefaultLit with the
+  normal input in world space. Custom node `AF_ToonSplit` computes the toon colour below (lit) and its shade-band floor
+  (shade) and outputs Emissive = shade + (1 − k)(lit − shade) and, through its additional output `Lit`, BaseColor =
+  k (lit − shade) / SunColor, Normal = MPC `KeyLightDir`, Specular 0, Metallic 0, Roughness 1: in full sun the frame is
+  exactly the unlit toon, in a cast shadow it drops to the shade band by k = `CastShadowStrength`; without sun shadows
+  (mobile low / mid) it equals the unlit look. Torches and spell glows add through the eight MPC light slots
+  (`Light<i>PosR` / `Light<i>Col`, written by `UAbyssVfxSystem`); no engine local light lights the toon. Masked
+  (dithered fade: a 4 × 4 Bayer shifted every TSR / TAA jitter sample
   (`View.TemporalAAParams`), resolved by the AA, static without it; the shadow pass ignores the instanced
   dressing's occlusion fade): 3-band half-Lambert in sRGB space from the palette atlases
   (`shade / base / light`, bands at 0.42 / 0.86 ± 0.01), grounding from `AF_Data.r`, banded rim on the lit half,
   emissive regions unshaded (× 1.6), then the gameplay feedback from custom primitive data: `HitFlash` (0),
   `PainTint` (1–4), `Telegraph` (5–8), `StatusTint` (9–12), `Fade` (13), `Ghost` (14), `Highlight` (15); instanced
-  dressing reads `PerInstanceCustomData` 0 Fade / 2 Highlight. `_Foliage` adds wind (WPO from the instance `Random`),
-  `_Slime` the jelly rim and an alpha-blended translucent body (`BodyOpacity` × fade, back faces culled; R12).
-  `M_AF_Toon_Fade` / `M_AF_Toon_Foliage_Fade` are translucent twins of `M_AF_Toon` / `_Foliage` (alpha 1 − fade)
+  dressing reads `PerInstanceCustomData` 0 Fade / 2 Highlight; `BaseSaturation` / `BaseValue` grade the palette colour
+  (ground cover, R19). `_Foliage` adds wind (WPO from the instance `Random`). `_Slime` (the jelly rim and an
+  alpha-blended translucent body, `BodyOpacity` × fade, back faces culled; R12) stays **unlit** (`AF_Toon`), as do
+  `M_AF_Toon_Fade` / `M_AF_Toon_Foliage_Fade`, the translucent twins of `M_AF_Toon` / `_Foliage` (alpha 1 − fade)
   for the occlusion-fade ghosts of the zone dressing on tiers without temporal AA (DECISIONS R1;
-  `AAbyssZoneActor` creates them at runtime, no manifest slot names them).
+  `AAbyssZoneActor` creates them at runtime, no manifest slot names them; they show the unshadowed colour).
 * **`M_AF_Outline`** — ink `mix(#120C18, line(c), o)`, screen-constant width: WPO dilates the baked hull to
-  `OutlinePx1080 × ViewSizeY / 1080` px (manifest `shading.outline.wpo`); material quality *Low* keeps the baked hull.
+  `OutlinePx1080 × InkScale × ViewSizeY / 1080` px (manifest `shading.outline.wpo`; MPC `InkScale` 1.5, so the class
+  values read as px per 720 rows: hero / weapon / NPC 3.5, monster 3, interactive 2, decor props 1.4, foliage 1.2;
+  DECISIONS R3 revised) on every quality tier (the mobile-low baked-only fallback is gone; `OutlineScreenSpace` 0 is
+  the kill switch). The WPO keeps the per-frame view inputs (camera-relative position, view forward, tan half FOV):
+  the hull never casts a shadow, so no MPC copy of the camera is needed.
+* **`M_AF_SelectRim`** — the selection rim (DECISIONS R16, WorldContract §7): unlit, masked, skeletal usage; the ink
+  hull widened `RimPx720 × 1.5` px per 1080 rows beyond the ink and pushed up to `RimDepthPushCm` (30) along the camera
+  ray (same screen position, behind the figure, so it only shows outside the silhouette; clamped 2 cm above the
+  owner's ground plane, `ActorPositionWS`, so it still closes round the feet); colour `RimColor`; dithers with
+  the body's `Fade` (CPD 13); `BodyMask` 1 hides a slot. `MI_AF_SelectRim` holds the hero rim; the runtime derives the
+  target (#FF5A3C) and hover (#FFB03C, both 1.5 px) rims from it.
 * **`M_AF_Terrain`** — lit (receives sun shadows), base colour from the web tile-transition algorithm over the runtime
   `TileIds` texture (exact port of `ZoneTerrain.ts` weights / ranks / lattice noise / liquid, lip and dark edges) with
-  procedural ground patterns (patches, specks, accent details); ambient fill from `MPC Ambient`. Low quality drops the
-  boundary noise and the details.
+  procedural ground patterns (patches, specks, accent details) × MPC `SunScale` (the sun itself is pi lux); ambient
+  fill from `MPC Ambient`; `GroundSaturation` / `GroundValue` (default 1 = bit-identical) compress the composited
+  ground in display space (R19). Low quality drops the boundary noise and the details.
 * **`M_AF_Terrain_Painted`** — the same mask and edge tints over the art's painted ground (`Art/blender/environment/
   terrain.py`, its `composite()` is the reference): the five `Tile<i>Layer` textures sampled once at `UV0 / 3` with the
   shared wrap sampler, the winner's / runner-up's picked in the Custom node, the `Details` atlas cell of the own tile
@@ -250,8 +269,22 @@ Material behaviour in short:
   drops only the boundary noise, reads them too; `M_AF_Terrain`'s Low read only `TileIds`). The theme adds six 1024²
   textures (≈ 4.7 MB BC, ≈ 8 MB ASTC 4x4 with mips). Not yet profiled on an ES3.1 / iOS device. Used through
   `MI_AF_Terrain_<Theme>`; zones whose theme has no painted art keep `M_AF_Terrain`.
-* **`M_AF_Water`**, **`M_AF_FX_*`**, **`M_AF_Ghost`**, quads, **`M_AF_BlobShadow`**, **`M_AF_PP_Grade`** — see the
-  docstrings in `abyss_content/ue/materials.py`.
+* **`M_AF_PP_AOComposite`** — post-process blendable after depth of field: scene colour × lerp(1, SSAO,
+  `AOStrength` .25) on the visible ground only (`PPI_SCENE_DEPTH` reaching `PPI_CUSTOM_DEPTH`, which the terrain alone
+  writes while the blendable is bound; toon pixels carry the fake KeyLightDir normal, DECISIONS P11 / P14); bound on
+  desktop balanced / high only. `M_AF_PP_Grade` (the exact web grade) is still built but no longer bound.
+* **`M_AF_Water`** (its sun term reads MPC `SunScale`), **`M_AF_FX_*`**, **`M_AF_Ghost`**, quads,
+  **`M_AF_BlobShadow`** — see the docstrings in `abyss_content/ue/materials.py`.
+
+**Art pass: one-time rebuild.** The art pass changes the graphs of `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`,
+`M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`,
+`M_AF_Terrain_Painted` and `M_AF_Water` and adds `M_AF_SelectRim`, `M_AF_PP_AOComposite` and `MI_AF_SelectRim`, so the
+first build after it rebuilds those masters once (their fingerprints changed; the others report *unchanged*) and every
+toon / terrain instance gets its new scalars. `MPC_AF_Lighting` gains `SunScale`, `InkScale` and the 16 light-slot
+vectors (existing entries keep their GUIDs), so every material that reads the collection recompiles its shaders once.
+Expect the next `build_content.sh --shaders` to take about as long as a first build. `AF_ToonSplit`'s `Lit` is a Custom
+node *additional output*: should an engine not expose that pin, the build wires a single-output twin
+(`AF_ToonSplit_Lit`, the same code) instead and reports it once under *compatibility*.
 
 ## 6. First run on 5.8.3 — things to look at once
 
@@ -262,14 +295,19 @@ hand. On the first real run check:
    non-zero pixel-shader instructions and no compile errors (without `--shaders` they read *not compiled*, see §2). A
    master with `COMPILE ERRORS` / `NO SHADER` failed to compile: the error names the Custom node (`AF_*`); fix the HLSL
    in `abyss_content/hlsl.py` (the tests below compile it as C++ too).
-2. *Preview Rendering Level → Android Vulkan* and *iOS*: `M_AF_Toon`, `M_AF_Outline`, `M_AF_Terrain`,
-   `M_AF_Terrain_Painted` compile.
+2. *Preview Rendering Level → Android Vulkan* and *iOS*: `M_AF_Toon`, `M_AF_Outline`, `M_AF_SelectRim`,
+   `M_AF_Terrain`, `M_AF_Terrain_Painted` compile (`M_AF_PP_AOComposite` is bound on desktop only; it must at least
+   not break the mobile cook).
 3. `SK_Hero_Warrior` in the mesh editor: 2 material slots with `MI_AF_Toon_Heroes` / `MI_AF_Outline_Heroes_Hero`,
    sockets `fx_*` and `visor` on the listed bones, LOD1 present; the clips play on `SKEL_Human`; `A_Hero_Warrior_HurtAdd`
    is additive (local space, frame 0).
-4. The outline is about 3.5 px at 1080p around the hero in PIE and stays that thick when zooming the camera.
-5. `M_AF_PP_Grade` runs *after tonemapping*; if colours look washed out or too dark, the input is linear on this engine
-   version: tell the maintainers (the grade assumes display-encoded input, like the web canvas).
+4. The outline is about 3.5 px at 720p (5.25 px at 1080p) around the hero in PIE, on every quality tier, and stays
+   that thick when zooming the camera; the selection rim adds 2 px of #FFF4DC outside it (target 1.5 px #FF5A3C).
+5. `M_AF_Toon` in the material editor: shading model *Default Lit*, *Tangent Space Normal* off, the `AF_ToonSplit`
+   node shows two output pins (`return`, `Lit`) with `Lit` wired to Base Color (or the build reported the
+   `AF_ToonSplit_Lit` twin). In PIE a goblin walking into a tree's cast shadow drops toward its shade band but stays
+   readable; no shadow acne on characters; on *Preview Rendering Level → Android Vulkan* (no CSM on mobile low / mid)
+   the toon looks exactly like the unlit toon.
 6. Warnings about redirectors: run *Fix Up Redirectors* on `/Game/Abyssfire` once.
 
 ## 7. Troubleshooting
@@ -298,18 +336,25 @@ python3 unreal/Scripts/tests/fetch_ue_stub.py             # optional: UE Python 
 ```
 
 * `test_hlsl.py` compiles every Custom-node body as C++ against `tests/hlsl_emu.h` (an HLSL-subset emulation; needs
-  `clang++` or `g++`) and checks the toon / ink / outline maths against the art kit's reference formula (≤ 0.6/255),
-  the terrain node on a synthetic map, dithering and the quad falloffs.
+  `clang++` or `g++`; a node's additional outputs become reference parameters) and checks the toon / ink / outline
+  maths against the art kit's reference formula (≤ 0.6/255), the terrain node on a synthetic map, dithering and the
+  quad falloffs; and the art pass: `AF_ToonSplit` (Emit + Lit × SunColor = `AF_Toon` in full sun over normals,
+  palettes, sun tints and every feedback combination; the shade band at k = 1; HitFlash / emissive; the torch slots;
+  `hlsl.toon_split_reference` and the look-dev composite), the ink scale (3.5 px at 720 rows at 2125 cm), the selection
+  rim (5.5 px, the view push keeps the projection and stops 2 cm above the owner's ground plane), the ground grade
+  (1 / 1 bit-identical) and the AO composite (ground pixels only).
 * `test_api_names.py` checks every editor-API name the build uses (classes, subsystem methods, properties, enum
   members, material-expression properties) against a generated stub: the PyPI `unreal-stub` (UE 5.6) fetched by
   `fetch_ue_stub.py`, or your own editor's stub (`UE_PY_STUB=<project>/Intermediate/PythonStub/unreal.py`, written
   with *Editor Preferences → Python → Developer Mode*) — prefer the 5.8.3 one once installed.
 * `test_flow.py` runs the whole build twice against `tests/fake_unreal.py` (an in-memory `unreal` that behaves like UE
   5.8 where it matters: instance-parameter setters return False, NullRHI commandlet, 5.8's Interchange deprecations;
-  switches for a stale / missing helper library and the 5.6 Interchange API) and checks the results and that a second
-  run is a no-op. `test_editor_compat.py` covers those engine-version paths (parameter read-back, parent check and C++
-  fallback, the stale-binary warning, the shader check, Interchange replacements, the clip frame range and its fallback). `test_manifest.py` covers
-  the planner (empty outline slots, clip FBX spans), `pngio` and the generated textures. `test_build_content_sh.py`
+  switches for a stale / missing helper library, the 5.6 Interchange API and a Custom node without additional output
+  pins) and checks the results and that a second run is a no-op. `test_editor_compat.py` covers those engine-version
+  paths (parameter read-back, parent check and C++ fallback, the stale-binary warning, the shader check, Interchange
+  replacements, the clip frame range and its fallback, the `AF_ToonSplit_Lit` twin). `test_manifest.py` covers the
+  planner (empty outline slots, clip FBX spans, the art-pass look parameters and `MI_AF_SelectRim`), `pngio` and the
+  generated textures. `test_build_content_sh.py`
   runs `build_content.sh` against a stand-in engine (stale-binary rebuild and its failure, `SKIP_EDITOR_BUILD=force`,
   `--shaders`, the log scan).
 * `test_api_names.py` also keeps the C++ helper's UFUNCTIONs, `core.CONTENT_LIB_FUNCTIONS` and the helper calls in the

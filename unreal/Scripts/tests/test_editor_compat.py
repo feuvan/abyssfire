@@ -5,7 +5,9 @@
 * an editor binary older than the helpers the scripts call is one warning, not one per asset;
 * a NullRHI commandlet lists the masters as not compiled (one note); --shaders reads real statistics / compile errors;
 * Interchange properties a version renamed or dropped are set by their replacement and reported once per build;
-* clips import an explicit frame range from the manifest (the keyed range and one note where the engine cannot set it).
+* clips import an explicit frame range from the manifest (the keyed range and one note where the engine cannot set it);
+* a Custom node's additional output pin (AF_ToonSplit `Lit`) the engine does not expose falls back to a single-output
+  twin of the node, with one compatibility note.
 """
 from __future__ import annotations
 
@@ -162,6 +164,35 @@ class InstanceParameterTests(EditorTestCase):
         slime = fake_unreal.REGISTRY[f"{paths.INSTANCES_DIR}/MI_AF_Toon_Slime"]
         self.assertIn(("t", "PaletteBC"), slime._params)
         self.assertIn(slime._package, fake_unreal.STATE["saved"])
+
+
+class CustomOutputPinTests(EditorTestCase):
+    def lit_source(self) -> tuple[object, str]:
+        toon = fake_unreal.REGISTRY[f"{paths.MATERIALS_DIR}/{paths.M_TOON}"]
+        return toon._outputs["MaterialProperty.MP_BASE_COLOR"], toon._output_pins["MaterialProperty.MP_BASE_COLOR"]
+
+    def test_additional_output_pin(self):
+        report = self.run_build("--only", "textures,mpc,materials")
+        self.assertTrue(report.ok, "\n".join(report.errors))
+        src, pin = self.lit_source()
+        self.assertEqual((src.get_editor_property("description"), pin), ("AF_ToonSplit", "Lit"))
+        self.assertEqual(self.compat(report, "additional output"), [])
+
+    def test_missing_pin_falls_back_to_a_twin(self):
+        fake_unreal.STATE["custom_output_pins"] = False
+        report = self.run_build("--only", "textures,mpc,materials")
+        self.assertTrue(report.ok, "\n".join(report.errors))
+        self.assertEqual(report.warnings, [])
+        for name in (paths.M_TOON, paths.M_TOON_FOLIAGE):
+            mat = fake_unreal.REGISTRY[f"{paths.MATERIALS_DIR}/{name}"]
+            src = mat._outputs["MaterialProperty.MP_BASE_COLOR"]
+            self.assertEqual(src.get_editor_property("description"), "AF_ToonSplit_Lit", name)
+            self.assertIn("return Lit;", src.get_editor_property("code"))
+            self.assertEqual(mat._outputs["MaterialProperty.MP_EMISSIVE_COLOR"].get_editor_property("description"),
+                             "AF_ToonSplit")
+        (note, subjects), = self.compat(report, "additional output")
+        self.assertEqual(sorted(subjects), sorted(f"{paths.MATERIALS_DIR}/{n}" for n in (paths.M_TOON,
+                                                                                         paths.M_TOON_FOLIAGE)))
 
 
 class StaleEditorTests(EditorTestCase):

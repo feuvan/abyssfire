@@ -17,6 +17,8 @@ Units: 1 tile = 100 uu (cm), X = column, Y = row, Z up. Web px convert with px x
 | `IAbyssPresenter` on `AAbyssCharacterActor` | world | driver (anim / hit / status / teleport events, hit-stop) |
 | `UAbyssVfxSystem::Play / PlayFirst / Stop / PlayNotify`, `OnShake` | world | world builder, anyone wanting a recipe |
 | `AAbyssCameraRig` (`AddZoomInput`, `SetZoomFactor`, `ScreenToGroundDirection`, `GetCamera`) via `UAbyssWorldBuilder::GetCameraRig()` | world | input agent (wheel / pinch zoom) |
+| `AAbyssCharacterActor::SetSelectionRim(EAbyssSelectionRim)` (section 7) | readability (actors) | world builder (`UpdateSelectionRims`, every frame) |
+| `MPC_AF_Lighting` writers (section 3.5) | world builder (sun, camera, scales), `UAbyssVfxSystem` (toon light slots) | every lit / toon material |
 
 The world layer only reads the core through the snapshot, the events (`FAbyssEventRouter`) and the data tables; it
 contains no gameplay rule. All player-facing text goes through the UI (`IAbyssWorldUi`), never through world code.
@@ -50,7 +52,7 @@ of one id are picked with the web tile hash). Resolution chains:
 | NPC | `npc_<spriteId>`, `<spriteId>` (tower allies), `npc_<npcId>`, `<npcId>`, `<artId>` |
 | Pet | `<artId>` (`beast_<id>[_e1/_e2]` after evolution), `beast_<petId>`, `pet_<petId>`, `<petId>` |
 | Escort / other characters | `<artId>`, `npc_<artId>`, `<defId>`, `decor_<artId>` |
-| Ground item | `loot_bag`, `SM_Loot_Bag` (tinted by quality) |
+| Ground item | `loot_<baseId>` (its own pickup mesh: potions, scrolls, ley fruit, gem tiers), `loot_bag`, `SM_Loot_Bag` (only the bag takes the quality tint, 0.85); magic and better loop `loot.beam.<quality>` instead of a prop light pool (DECISIONS R17) |
 | Potion drop | `potion_drop_hp` / `potion_drop_mp`, `SM_Pickup_PotionHP` / `SM_Pickup_PotionMP` |
 | Soul echo | `player_<class>`, `<class>` (drawn with `M_AF_Ghost`) |
 | Quest clue | `<key>`, `clue_mark`, `fx_clue`, `SM_FX_ClueMagnifier` |
@@ -108,6 +110,15 @@ take the parameters above (the painted one reads only `Tile<i>Lip`, `Tile<i>Rank
 vectors). Material quality Low drops the boundary noise (M_AF_Terrain also its procedural specks and details;
 the painted layers and atlas stay).
 
+**Lighting and ground value (art pass).** Both terrain masters are DefaultLit: BaseColor = the composited ground x MPC
+`SunScale` (the sun is pi lux x `SunColor`, so the lit ground keeps `abyss.SunScale`), Emissive = the ground x MPC
+`Ambient` (the fill that keeps shadowed ground at the web's painted-shadow value). DECISIONS R19: scalars
+`GroundSaturation` / `GroundValue` (default 1 / 1 = as painted, bit-identical) pull the composited ground toward its
+luma and scale it in display space (`s = lerp(luma(s), s, GroundSaturation) x GroundValue`, luma .299 / .587 / .114),
+so actors pop; `MI_AF_Terrain_Plains` sets .85 / .93. The plains ground cover (`MI_AF_Toon_Foliage_Plains_Ground`:
+grass tufts, flowers) gets the same values as `BaseSaturation` / `BaseValue` (3.3); characters, props and canopies
+keep their palettes.
+
 ### 3.2 M_AF_Water
 
 Translucent surface sections at -12 cm over the basins (bed -60 cm). Same `TileIds`, `MapCols`, `MapRows` and water
@@ -126,7 +137,30 @@ build) reads them as custom primitive data parameters:
 | 9..11 `Tint` RGB, 12 amount | status tint (characters) / quality tint (loot) / ghost colour / light-pool colour + alpha |
 | 13 `Fade` | 0 opaque .. 1 invisible (dithered opacity mask: a 4 x 4 Bayer shifted every TSR / TAA jitter sample, which the AA resolves to a smooth fade; static without temporal AA; the shadow pass dithers it too) |
 | 14 `Ghost` | 0..1 ghost look (soul echo, afterimages) |
-| 15 `Highlight` | 0..1 hover / story-focus rim |
+| 15 `Highlight` | 0..1 hover / story-focus rim (NPCs, chests, story focus; the selection rim of section 7 is separate) |
+
+**Shadow-catcher lit toon (DECISIONS P11 revised, art pass).** `M_AF_Toon` / `M_AF_Toon_Foliage` are DefaultLit
+(Substrate off): Custom node `AF_ToonSplit` computes today's toon colour (lit) and its shade-band floor (shade: the
+shade band, grounding and emissive mix; no light band, no rim) and outputs
+
+* Emissive = shade + (1 - k)(lit - shade) (+ torch slots, + feedback), BaseColor = k (lit - shade) / SunColor
+  (its additional output `Lit`; GBuffer-clamped to 1), Normal = MPC `KeyLightDir` (world space), Specular 0,
+  Metallic 0, Roughness 1;
+* so the directional light (pi lux x `SunColor`, along -`KeyLightDir`) adds `Lit x SunColor x shadow`: in full sun the
+  frame equals today's unlit toon, in a cast shadow it drops to shade + (1 - k)(lit - shade); where no sun shadow is
+  rendered (mobile low / mid) it is identical to the unlit look. Shade never brightens a channel (`min(lit, shade)`).
+* k = scalar `CastShadowStrength` (master default 1), set per instance by the content build: heroes, monsters, NPCs,
+  pets, weapons .7 (readable in a tree's shade), pickups .8, props 1, foliage canopies .6, ground cover
+  (`MI_AF_Toon_Foliage_<Theme>_Ground`) 1. Scalars `BaseSaturation` / `BaseValue` (default 1) grade the palette colour
+  like the ground (3.1).
+* No engine local light lights the toon: torches, campfires and spell glows reach it through the MPC light slots of
+  3.5 (`Emit += decode(c) (1 - e) x Light<i>Col.rgb x saturate(1 - d^2 / r^2)^2 x lerp(.35, 1, smoothstep(.4, .5,
+  N.l x .5 + .5))`, d = `Light<i>PosR.xyz` - the absolute world position, r = `Light<i>PosR.w`). A future desktop
+  point light must use lighting channel 1 (the fake normal would mis-light the toon).
+* Feedback order (after the torch term, so a status tint also tints torchlight): PainTint, Telegraph, StatusTint
+  multiply Emit and Lit; Ghost replaces Emit and fades Lit; Highlight adds to Emit; HitFlash takes Emit to white and
+  Lit to 0. The slime (`M_AF_Toon_Slime`), the fade ghosts (`M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`: the
+  unshadowed colour, a cast shadow pops off while they fade), the ink, the selection rim and the FX stay Unlit.
 
 ### 3.4 Instanced dressing (`AbyssDecorIcd`)
 
@@ -148,16 +182,46 @@ height) from behind the centre.
 
 ### 3.5 MPC_AF_Lighting
 
-Updated every `lightingUpdateIntervalMs`: vectors `SunDir`, `KeyLightDir` (both = direction towards the key light),
-`SunColor`, `Ambient`, `RimColor`; scalars `CameraTanHalfFovY`, `TimeSec` (wraps at 3600). Missing parameters are skipped.
+Created by the content build (`Scripts/abyss_content/ue/materials.py` `mpc_parameters`, defaults below); writers skip a
+parameter the collection lacks (an older content build).
 
-### 3.6 Post-process grade
+| Parameter | Kind, default | Writer | Meaning |
+| --- | --- | --- | --- |
+| `SunDir`, `KeyLightDir` | vector, manifest key light | world (`UAbyssWorldBuilder`, every `lightingUpdateIntervalMs`) | direction towards the key light (the toon bands, the lit toon's normal, the sun's direction) |
+| `SunColor` | vector, white | world | sun colour (the sun is pi lux x this): the decoded value of the light's sRGB bytes (`FLinearColor(FColor)`), so the lit toon's BaseColor / SunColor cancels the light colour exactly |
+| `Ambient` | vector, .55 x (.92, .95, 1.08) | world | ground ambient fill (`abyss.GroundAmbient`) |
+| `RimColor` | vector, manifest rim (sRGB values) | world | toon rim light colour |
+| `CameraTanHalfFovY` | scalar, tan(17.5 deg) x 9 / 16 | world | the camera's vertical half-FOV tangent |
+| `TimeSec` | scalar, 0 | world | wind / water time (wraps at 3600) |
+| `SunScale` | scalar, .55 | world (`abyss.SunScale`) | the lit ground's and the water's sun strength (BaseColor x SunScale under the pi-lux sun) |
+| `InkScale` | scalar, 1.5 | world (`abyss.InkScale`) | ink and selection-rim width scale (DECISIONS R3 revised: OutlinePx1080 x InkScale px per 1080 rows) |
+| `Light0PosR` .. `Light7PosR` | vector, 0 | readability (`UAbyssVfxSystem`) | toon light slot: xyz absolute world position (cm), w radius (cm) |
+| `Light0Col` .. `Light7Col` | vector, 0 | readability (`UAbyssVfxSystem`) | rgb = colour x intensity x lightScale x `abyss.CharLightGain` (3.5), a > 0 = slot on; 8 slots desktop, 4 mobile (the rest stay a = 0) |
 
-The zone actor owns an unbound post-process: manual exposure (`abyss.ExposureBias`), tone curve 0, no motion blur /
-fringe / grain / AO, bloom per tier (`abyss.Bloom`), vignette from the zone mood. When `M_AF_PP_Grade` exists it is added
-as a blendable with: vectors `Ambient`, `Haze`, `Lift`, `Gain`; scalars `AmbientAlpha`, `HazeAlpha`, `Saturation`,
-`Contrast` (the web mood grade: multiply by Ambient x AmbientAlpha, add Haze x HazeAlpha, saturation / contrast, lift /
-gain). Otherwise the engine colour grading approximates it.
+### 3.6 Post-process and atmosphere (DECISIONS P14)
+
+The zone actor owns an unbound post-process: manual exposure (`abyss.ExposureBias`, recalibrated so the palette
+mid-tones stay within +-2/255 under the tone curve), `ToneCurveAmount` 0.4 (`abyss.ToneCurve`; 0.6 dulled the white
+selection rim and the sword highlights in the look-dev), local exposure contrast 1, no motion blur / fringe / grain,
+bloom per tier (`abyss.Bloom`), vignette from the zone mood. The colour grade is the engine's built-in one at 55 % of
+the zone mood (ColorGain from the mood ambient x alpha x .5, saturation x 1.06, contrast, lift and gain offsets): UE
+renders the 3D scene, it no longer imitates the web canvas.
+
+* `M_AF_PP_Grade` (the exact web grade: vectors `Ambient`, `Haze`, `Lift`, `Gain`; scalars `AmbientAlpha`, `HazeAlpha`,
+  `Saturation`, `Contrast`) is still built but no longer bound.
+* `M_AF_PP_AOComposite` (blendable, `BL_SCENE_COLOR_AFTER_DOF`): scene colour x lerp(1, SSAO, scalar `AOStrength`
+  .25) on the visible ground only, bound on desktop balanced / high only, where SSAO runs. While it is bound the
+  terrain (and nothing else) renders custom depth; a pixel is ground where `PPI_SCENE_DEPTH` reaches `PPI_CUSTOM_DEPTH`
+  (1 cm tolerance, 4 cm fade): characters, props, foliage, ink and the selection rim keep their colour (the lit toon's
+  GBuffer normal is the constant KeyLightDir, which classic SSAO orients its hemisphere by; P11).
+* `ExponentialHeightFog` per zone mood (`zone_moods.json` `port.fog` colour / max opacity / density): plains #F2E8CC
+  .22 / .85, forest #8C86C8 .32 / 1.1, mountain #CEDCEE .30 / 1.0, desert #FFDEA6 .26 / .9, abyss #6E2A40 .35 / 1.2;
+  start = camera distance + 1 m (the hero's rows are never fogged), height falloff .2 (`abyss.Fog`, `abyss.FogScale`).
+  The data density is the look-dev extinction (opacity 1 - 2^(-density x m / 10) near the ground); UE's height-fog line
+  integral carries a ln 2 (HeightFogCommon.ush, SceneCore.cpp FogDensity / 1000), so the runtime sets
+  **UE FogDensity = density / ln 2 x `abyss.FogScale`** (plains .85 -> 1.226). Calibrate against the data value, not
+  the UE property.
+* Lumen, Nanite, virtual shadow maps and MegaLights stay off: desktop-only experiments, never dependencies.
 
 ### 3.7 Utility materials
 
@@ -166,11 +230,13 @@ gain). Otherwise the engine colour grading approximates it.
 | `M_AF_FX_Additive`, `M_AF_FX_Translucent` | VFX quads (two-sided, unlit) | texture `Sprite`, scalar `Cells`; instance data 0..3 RGBA, 4 Variant, 5 Age (0..1) |
 | `M_AF_FX_Mesh` (optional) | VFX meshes | same instance data |
 | `M_AF_Ghost` | soul echo, dodge afterimages | CPD Tint (9..12), Ghost (14), Fade (13) |
-| `M_AF_LightPool` | ground pools under loot / potions | CPD Tint RGB (9..11) + alpha (12) |
+| `M_AF_LightPool` | ground pools under potions / lore props, recipe light pools (torches, campfires, spell glows), the hero halo | CPD Tint RGB (9..11) + alpha (12). Recipe pools and the hero halo: alpha = intensity x the zone's lightScale (DECISIONS R18: `AbyssVfxLighting::LightScaleFromMood` = max(.12, ambientAlpha x (1 - luma(ambient)) x 1.4)); the potion / lore prop pools keep their own pulsing alpha (web sprite glows, unscaled). Never lights characters |
 | `M_AF_TargetRing` | target ring quad | CPD Tint RGB + alpha |
 | (guide arrow mesh material) | `SM_FX_GuideArrow` | CPD Tint RGB (9..11), TintAmount (12) |
 | `M_AF_AffixAura` | elite affix ground aura | CPD Tint RGB + alpha |
-| `M_AF_BlobShadow` | blob shadows (mobile low / balanced) | CPD Fade |
+| `M_AF_BlobShadow` | blob shadow under every character on every tier (manifest `blobShadowRadiusCm`; 0.7 of its alpha where the sun CSM is on, DECISIONS P10 revised) | CPD Fade |
+| `M_AF_SelectRim` / `MI_AF_SelectRim` | selection rim follower (section 7; unlit, masked, skeletal usage, no shadow) | vector `RimColor` (linear, #FFF4DC); scalars `RimPx720` 2, `RimDepthPushCm` 30, `OutlinePx1080` 3.5, `BakedWidthCm` 1.8, `BodyMask` 0, `BodyOpacity` 1, `OutlineScreenSpace` 1; CPD Fade (13); MPC `InkScale` |
+| `M_AF_PP_AOComposite` | zone post-process blendable, desktop balanced / high (3.6) | scalar `AOStrength` (.25) |
 
 ## 4. Meshes
 
@@ -271,9 +337,22 @@ Rune, ShardFrost, Skull.
 
 ## 6. Console variables
 
-`abyss.SunScale` (0.55, sun intensity x pi), `abyss.GroundAmbient` (0.55), `abyss.ExposureBias` (0.263 = log2 1.2),
-`abyss.Bloom` (0.6), `abyss.ShakeScale` (camera shake amplitude), `abyss.FadeGhost` (occlusion fade of the dressing,
-3.4: 0 = dithered on every tier, 1 = auto: translucent ghosts without temporal AA (default), 2 = ghosts on every tier).
+`abyss.SunScale` (0.55: the lit ground's sun term, written to MPC `SunScale`; the sun light itself is pi lux x
+`SunColor`, DECISIONS P11 revised), `abyss.GroundAmbient` (0.55), `abyss.ExposureBias` (0.263 = log2 1.2, to be
+recalibrated for the tone curve), `abyss.Bloom` (-1 = the art manifest's hero `fx.bloom.strength`), `abyss.ShakeScale`
+(camera shake amplitude), `abyss.FadeGhost` (occlusion fade of the dressing, 3.4: 0 = dithered on every tier, 1 = auto:
+translucent ghosts without temporal AA (default), 2 = ghosts on every tier).
+
+Art pass (DECISIONS P11 revised, P14, R3, R18, R20):
+
+| Variable | Default | What it does |
+|---|---|---|
+| `abyss.InkScale` | 1.5 | MPC `InkScale`: ink and selection-rim width = OutlinePx1080 x this px per 1080 rows (hero 3.5 px at 720p) |
+| `abyss.CharLightGain` | 3.5 | gain of the toon light slots (`Light<i>Col` = colour x intensity x lightScale x this) |
+| `abyss.ToneCurve` | 0.4 | post-process `ToneCurveAmount` |
+| `abyss.Fog` | 1 | zone height fog on / off |
+| `abyss.FogScale` | 1 | multiplier on the mood's fog density |
+| `abyss.SmokeGrade` | 1 | runtime grade of the charcoal / soot smoke sprites (fixed colour with display-space value < .45 and saturation < .3: death, fire soot, rampage; coloured smokes stay as authored): alpha x .35, colour 45 % toward #A8A0B0, fade-in >= .12, count x .7, size x 1.15 |
 
 **Uncooked runs: shaders compiled on first use** (editor binary only; every variable below is compiled out of cooked
 builds, which ship compiled shaders). Until a material's shader map is ready UE draws its meshes with the engine's
@@ -296,3 +375,29 @@ engine API the wait or the gate queries is missing on this UE version, and that 
 says. UE's on-screen `Preparing Shaders (N)` is hidden in `-game` runs (`-abyssscreenmessages` shows it,
 `Scripts/README.md` §3). `Scripts/build_content.sh --shaders` compiles every master once for the editor's shader
 platform, so later runs find the shader maps in the DDC and neither mechanism has anything to do.
+
+## 7. Selection rim contract (DECISIONS R16, contract C1)
+
+`AAbyssCharacterActor::SetSelectionRim(EAbyssSelectionRim)` with `None`, `Hero`, `Target`, `Hover` (declared in
+`Public/Actors/AbyssCharacterActor.h`). `UAbyssWorldBuilder::UpdateSelectionRims` calls it every frame: the hero always
+(alive, outside cinematics), the attack target / ring indicator, the hovered monster when it is not the target; every
+other character gets `None`. A repeat of the current rim is ignored.
+
+| Rim | Colour (`RimColor`) | Width beyond the ink at 720 rows (`RimPx720`) |
+| --- | --- | --- |
+| `Hero` | #FFF4DC | 2 px |
+| `Target` | #FF5A3C | 1.5 px |
+| `Hover` | #FFB03C | 1.5 px |
+
+Technique: a hull-only follower of the character (a leader-pose copy of the skeletal body and copies of its weapons)
+drawn with dynamic instances of `MI_AF_SelectRim`: the hull slot gets the rim, the body slot draws nothing (`BodyMask`
+1). The material widens the inverted hull exactly like the ink, plus `RimPx720 x 1.5` px per 1080 rows
+(`AF_OutlineWPO` `ExtraPx1080`), and pushes it up to `RimDepthPushCm` (30) along the camera ray (same screen position,
+deeper), so the rim shows only outside the whole figure's silhouette, never round a sword held in front of the body.
+Near the feet the push is clamped so the pushed vertex stays 2 cm above the owner's ground plane (`ActorPositionWS`
+z: the actor stands on the ground); an unclamped push sank the lowest ~19-26 cm of the rim (boots, goblin legs, the
+slime's widest part) under the terrain.
+Hero: (3.5 x 1.5 + 2 x 1.5) px at 1080 = 5.5 px at 720 from the body edge, i.e. 2 px outside the 3.5 px ink. The
+follower carries the body's custom primitive data `Fade` (13), so the rim dithers out with the body (the same temporal
+Bayer as the toon), and casts no shadow. CPD `Highlight` (15) stays the hover / story-focus rim of NPCs, chests and
+story props.

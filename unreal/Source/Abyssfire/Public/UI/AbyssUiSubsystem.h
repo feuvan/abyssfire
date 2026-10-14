@@ -91,8 +91,11 @@ public:
 	 * A UI texture by asset name (T_UI_ItemIcon_*, T_UI_SkillIcon_*, T_UI_Portrait_*, T_UI_Emblem_*, T_UI_Glyph_*,
 	 * T_UI_QuestItem_*, T_UI_HudIcon_*), searched under /Game/Abyssfire/{UI/Icons, UI/Portraits, UI, Icons, Portraits,
 	 * Textures}. Loaded textures stay referenced for the game instance's lifetime; misses are remembered (nullptr).
+	 * A miss logs one warning per name (U11: the widget then draws its procedural fallback, so the log lists exactly
+	 * which shipped T_UI_* art the build lacks); bWarnIfMissing = false for optional probes in a fallback chain (an
+	 * item's base-specific variant, a monster portrait), whose miss is expected.
 	 */
-	UTexture2D* FindUiTexture(FName AssetName);
+	UTexture2D* FindUiTexture(FName AssetName, bool bWarnIfMissing = true);
 	/** Keeps a runtime UObject (minimap texture) alive while the UI uses it. */
 	void KeepAlive(UObject* Object);
 	void ReleaseKeptAlive(UObject* Object);
@@ -127,6 +130,8 @@ private:
 
 	TMap<FName, TWeakObjectPtr<UTexture2D>> TextureCache;
 	TSet<FName> MissingTextures;
+	/** Misses already reported (one warning per name). */
+	TSet<FName> WarnedMissingTextures;
 
 	/** A system error reported before the root widget could be shown (no viewport yet). */
 	TOptional<TPair<FText, FText>> PendingError;

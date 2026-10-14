@@ -36,44 +36,6 @@ namespace
 		}
 		return FAbyssUiStyle::Rgb(0xb0a8b4);
 	}
-
-	/** Stand-in for a missing skill icon: the first glyph of a CJK name, else the first two letters. */
-	FString AbyssHudBottom_Monogram(const FString& Name)
-	{
-		return !Name.IsEmpty() && static_cast<uint32>(Name[0]) >= 0x2E80u ? Name.Left(1) : Name.Left(2);
-	}
-
-	/**
-	 * Hue of a skill whose icon art is missing, after the web icon backdrop (SkillIcons.ts backdropFor): the damage-type
-	 * colour, physical skills by tree (TREE_BG mid), so the three warrior skills do not share one grey.
-	 */
-	FLinearColor AbyssHudBottom_SkillAccent(const abyss::DataStore* Data, const std::string& SkillId, abyss::DamageType DamageType)
-	{
-		struct FTreeTint
-		{
-			const char* Tree;
-			uint32 Color;
-		};
-		static const FTreeTint TreeTints[] = {
-			{ "combat_master", 0xb4742e }, { "guardian", 0x3a6eaa }, { "berserker", 0xa82a26 },
-			{ "assassination", 0x5e3c90 }, { "archery", 0x3a8c5a }, { "traps", 0xa47c2a },
-		};
-		if (Data != nullptr && DamageType != abyss::DamageType::Physical)
-		{
-			return FAbyssUiStyle::Rgb(Data->Classes().damageTypeColors[static_cast<size_t>(DamageType)]);
-		}
-		if (const abyss::SkillDef* Skill = Data != nullptr ? Data->FindSkill(SkillId) : nullptr)
-		{
-			for (const FTreeTint& Tint : TreeTints)
-			{
-				if (Skill->tree == Tint.Tree)
-				{
-					return FAbyssUiStyle::Rgb(Tint.Color);
-				}
-			}
-		}
-		return FAbyssUiStyle::Rgb(TreeTints[0].Color);
-	}
 }
 
 void SAbyssHudBottom::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUiContext>& InContext, const TSharedRef<FAbyssHudState>& InState)
@@ -312,6 +274,8 @@ void SAbyssHudBottom::ShowPotionPopup(int32 Slot)
 			[
 				SNew(SAbyssButton, Context)
 				.Text(FText::AsCultureInvariant(Context->ItemBaseName(BaseId)))
+				.Icon(Context->ItemIcon(BaseId))
+				.IconSize(18.f)
 				.Kind(EAbyssButtonKind::Secondary)
 				.FontPx(12.f)
 				.Width(160.f)
@@ -511,21 +475,16 @@ void SAbyssHudBottom::PaintSkillSlot(FAbyssPainter& P, int32 Slot, double Now) c
 		IconTint = FLinearColor(0.45f, 0.5f, 0.8f, 0.85f);   // not enough mana
 	}
 	const bool bCooling = Info.CooldownRemainingMs > 0.0 && Info.CooldownTotalMs > 0.0;
-	// No icon art yet: a tile in the skill's hue with a monogram. The monogram sits up-left of centre (clear of the key
-	// badge) while ready; while cooling it shrinks to a corner tag so the centred seconds never print over it.
+	// U11: the T_UI_SkillIcon_<id> tile in its Slate frame, the same tile as the skill tree's cards and hotbar row. Only a
+	// missing texture falls back to the monogram tile (logged once): its letters sit up-left of centre (clear of the key
+	// badge) while ready and shrink to a corner tag while cooling, so the centred seconds never print over them.
 	FString Monogram;
 	FLinearColor MonogramColor = FLinearColor::White;
-	if (const FSlateBrush* Icon = Ctx->SkillIcon(Info.SkillId))
+	if (!AbyssUi::PaintSkillTile(P, *Ctx, Info.SkillId, Info.Name, IconPos, IconSize, IconTint, false))
 	{
-		P.Brush(IconPos, FVector2D(IconSize, IconSize), Icon, IconTint);
-	}
-	else
-	{
-		const FLinearColor Accent = AbyssHudBottom_SkillAccent(Ctx->GetData(), Info.SkillId, Info.DamageType);
-		P.RoundBox(IconPos, FVector2D(IconSize, IconSize), FMath::Lerp(FAbyssUiStyle::Rgb(0x1a171d), Accent, 0.35f) * IconTint, 4.f,
-			FAbyssUiStyle::WithAlpha(FAbyssUiStyle::Lighten(Accent, 0.25f), 0.75f), 1.2f);
-		Monogram = AbyssHudBottom_Monogram(Info.Name);
-		MonogramColor = FAbyssUiStyle::Lighten(Accent, 0.7f) * IconTint;
+		const AbyssUi::FSkillBackdrop Backdrop = AbyssUi::SkillBackdrop(Ctx->GetData(), Info.SkillId);
+		Monogram = AbyssUi::SkillMonogram(Info.Name);
+		MonogramColor = FAbyssUiStyle::Lighten(Backdrop.Rim, 0.4f) * IconTint;
 		if (!bCooling)
 		{
 			P.TextCentered(Center + FVector2D(-2.0, -3.0), Monogram, UiStyle.Body(Monogram.Len() == 1 ? 18.f : 14.f, true, 2), MonogramColor);

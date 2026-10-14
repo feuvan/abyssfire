@@ -43,12 +43,21 @@
 #include "Framework/AbyssText.h"
 #include "Framework/AbyssUiRoot.h"
 #include "Framework/AbyssUnits.h"
+#include "Input/AbyssInputSubsystem.h"
 #include "Platform/AbyssPlatform.h"
 #include "Platform/AbyssSettings.h"
 #include "Vfx/AbyssVfxSystem.h"
 #include "World/AbyssArtManifest.h"
 #include "World/AbyssAssetLibrary.h"
 #include "World/AbyssZoneActor.h"
+
+static TAutoConsoleVariable<float> CVarAbyssInkScale(
+	TEXT("abyss.InkScale"),
+	1.5f,
+	TEXT("Ink (inverted hull) width scale, MPC_AF_Lighting InkScale (DECISIONS R3, art pass): the hull is widened to a ")
+	TEXT("screen-space OutlinePx1080 x this px per 1080 rows on every tier, so at 1.5 the class widths read as px per 720 ")
+	TEXT("rows (hero / weapon / NPC 3.5, monster 3.0, interactive 2.0, decor 1.4, foliage 1.2). Applied live."),
+	ECVF_Default);
 
 namespace AbyssWorldBuilderPrivate
 {
@@ -389,13 +398,25 @@ void UAbyssWorldBuilder::RefreshQuality()
 			ScreenPercentage->Set(FMath::Clamp(Percentage, 25.f, 100.f), ECVF_SetByCode);
 		}
 	}
+	auto SetCVar = [](const TCHAR* Name, auto Value)
+	{
+		if (IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			Variable->Set(Value, ECVF_SetByCode);
+		}
+	};
 	if (!Quality.bMobile)
 	{
 		// FXAA on low, TSR otherwise (desktop deferred; mobile keeps MSAA from the config).
-		if (IConsoleVariable* AntiAliasing = IConsoleManager::Get().FindConsoleVariable(TEXT("r.AntiAliasingMethod")))
-		{
-			AntiAliasing->Set(Quality.Tier == 0 ? 1 : 4, ECVF_SetByCode);
-		}
+		SetCVar(TEXT("r.AntiAliasingMethod"), Quality.Tier == 0 ? 1 : 4);
+		// DECISIONS P10 (revised, art pass): sun CSM resolution per tier, every caster (characters included) in the
+		// shadow, a short fade at the shadow distance (1.35 x the camera distance, AAbyssZoneActor). Mobile keeps the
+		// device profile's r.Shadow.MaxCSMResolution 2048 (high tier) and its defaults.
+		SetCVar(TEXT("r.Shadow.MaxCSMResolution"), Quality.Tier == 0 ? 2048 : 4096);
+		SetCVar(TEXT("r.Shadow.RadiusThreshold"), 0.f);
+		SetCVar(TEXT("r.Shadow.CSMShadowDistanceFadeoutFraction"), 0.05f);
+		// DECISIONS P14: SSAO on balanced (1 level) / high (2 levels); the zone post-process sets its intensity (0 on low).
+		SetCVar(TEXT("r.AmbientOcclusionLevels"), Quality.Tier == 0 ? 0 : (Quality.Tier == 1 ? 1 : 2));
 	}
 
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
@@ -406,12 +427,14 @@ void UAbyssWorldBuilder::RefreshQuality()
 	{
 		ZoneActor->ApplyQuality(Quality);
 	}
-	const bool bBlob = Quality.bMobile && Quality.Tier < 2;
+	// DECISIONS P10 (revised): a blob under every character on every tier (contact / ground read), and the sun CSM cast
+	// wherever the sun has one (desktop, high-tier mobile); the actor draws the blob at 0.7 alpha under CSM.
+	const bool bCsm = !Quality.bMobile || Quality.Tier >= 2;
 	for (const TPair<uint32, TObjectPtr<AAbyssCharacterActor>>& Pair : Characters)
 	{
 		if (Pair.Value != nullptr)
 		{
-			Pair.Value->SetShadowMode(bBlob, !bBlob);
+			Pair.Value->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bCsm);
 		}
 	}
 }
@@ -535,6 +558,10 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 	{
 		UE_LOG(LogAbyss, Error, TEXT("Could not spawn the zone actor"));
 		return;
+	}
+	if (CameraRig != nullptr)
+	{
+		ZoneActor->UpdateView(CameraRig->GetCurrentDistance());   // shadow distance / fog start before the first frame
 	}
 	ZoneActor->BuildZone(Snap, *Data, *Assets, Quality);
 	// Ground loot (bags, gold, potions, gems, scrolls, quest items, the reward.gold coin): loaded behind the zone fade
@@ -855,8 +882,9 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 	{
 		Setup.SpiritColor = Setup.Art->SpiritColor;
 	}
-	const bool bBlob = Quality.bMobile && Quality.Tier < 2;
-	Setup.bCastShadow = !bBlob;
+	// DECISIONS P10 (revised): blob on every tier, sun CSM cast wherever the sun has one (RefreshQuality).
+	const bool bCsm = !Quality.bMobile || Quality.Tier >= 2;
+	Setup.bCastShadow = bCsm;
 
 	FActorSpawnParameters Params;
 	Params.ObjectFlags |= RF_Transient;
@@ -869,7 +897,7 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 		return nullptr;
 	}
 	Actor->InitCharacter(Setup, *Assets);
-	Actor->SetShadowMode(bBlob, !bBlob);
+	Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bCsm);
 	Actor->SnapTo(Location, Facing);
 	Actor->OnCharacterNotify.AddUObject(this, &UAbyssWorldBuilder::HandleCharacterNotify);
 	Characters.Add(Event.id, Actor);
@@ -980,19 +1008,26 @@ AAbyssPropActor* UAbyssWorldBuilder::SpawnProp(abyss::EntityId Id, abyss::Entity
 			}
 		}
 		Setup.Style = EAbyssPropStyle::Loot;
-		Ids = { FName(TEXT("loot_bag")), FName(TEXT("SM_Loot_Bag")) };
-		if (ItemQuality != abyss::ItemQuality::Normal)
+		// DECISIONS R17 (art pass): the item's own pickup mesh (loot_<baseId>: potions, scrolls, ley fruit, gem tiers),
+		// else the bag. Only the bag takes the quality tint (0.85); a pickup mesh keeps its painted colours.
+		const FName PickupId = WidgetDef.IsEmpty() ? NAME_None : N(TEXT("loot_") + WidgetDef);
+		Ids = { PickupId, FName(TEXT("loot_bag")), FName(TEXT("SM_Loot_Bag")) };
+		const FName PickupIds[] = { PickupId };
+		const bool bPickupMesh = !PickupId.IsNone() && Assets->GetManifest().ResolveFirst(PickupIds) != nullptr;
+		if (ItemQuality != abyss::ItemQuality::Normal && !bPickupMesh)
 		{
 			Setup.Tint = QualityTint(ItemQuality);
 			Setup.TintAmount = 0.85f;
 		}
-		if (ItemQuality >= abyss::ItemQuality::Rare)
+		// Rarity read: magic and better loop their loot beam (fx_palettes lootQualityColors: #4F8CFF, #FFD84A, #FF8A2A,
+		// #3ECF6A) instead of a prop light pool: magic a ground pool only, rare / legendary / set pool + pillar.
+		switch (ItemQuality)
 		{
-			Setup.PoolRadiusCm = 31.f;
-			Setup.PoolColor = QualityTint(ItemQuality);
-			Setup.PoolAlphaMin = 0.1f;
-			Setup.PoolAlphaMax = 0.2f;
-			Setup.PoolPeriodSec = ItemQuality >= abyss::ItemQuality::Legendary ? 1.4f : 1.8f;
+		case abyss::ItemQuality::Magic: LoopRecipe = FName(TEXT("loot.beam.magic")); break;
+		case abyss::ItemQuality::Rare: LoopRecipe = FName(TEXT("loot.beam.rare")); break;
+		case abyss::ItemQuality::Legendary: LoopRecipe = FName(TEXT("loot.beam.legendary")); break;
+		case abyss::ItemQuality::Set: LoopRecipe = FName(TEXT("loot.beam.set")); break;
+		case abyss::ItemQuality::Normal: break;
 		}
 		WidgetKind = EAbyssWorldWidgetKind::GroundItem;
 		bWidget = true;
@@ -1718,6 +1753,11 @@ void UAbyssWorldBuilder::UpdateCamera(const abyss::Snapshot& Snap, float RealDel
 		}
 	}
 	CameraRig->UpdateRig(RealDelta, HeroFocus, true);
+	// P10 / P14: the sun's CSM distance and the fog start follow the zoom (re-fitted past 2 %); look cvars apply live.
+	if (ZoneActor != nullptr)
+	{
+		ZoneActor->UpdateView(CameraRig->GetCurrentDistance());
+	}
 }
 
 void UAbyssWorldBuilder::UpdateIndicators(const abyss::Snapshot& Snap, float RealDelta)
@@ -1737,6 +1777,7 @@ void UAbyssWorldBuilder::UpdateIndicators(const abyss::Snapshot& Snap, float Rea
 			TargetRing->SetWorldScale3D(FVector(Diameter / 100.f, Diameter / 100.f, 1.f));
 		}
 	}
+	UpdateSelectionRims(Snap);
 	// Quest guide arrow orbiting the hero (QuestGuide target; turn-ins brighter).
 	if (GuideArrow != nullptr)
 	{
@@ -1765,6 +1806,58 @@ void UAbyssWorldBuilder::UpdateIndicators(const abyss::Snapshot& Snap, float Rea
 				GuideArrow->SetCustomPrimitiveDataVector4(AbyssCpd::TintR, FVector4(Color.R, Color.G, Color.B, 1.0));
 				GuideArrow->SetCustomPrimitiveDataFloat(AbyssCpd::TintAmount, bTurnIn ? 0.95f : 0.8f);
 			}
+		}
+	}
+}
+
+void UAbyssWorldBuilder::UpdateSelectionRims(const abyss::Snapshot& Snap)
+{
+	// DECISIONS R16 (contract C1, AAbyssCharacterActor::SetSelectionRim): the hero always (alive, outside cinematics), the
+	// attack target / ring indicator, and the hovered monster when it is not the target. Nothing during a cinematic.
+	TArray<TPair<uint32, EAbyssSelectionRim>, TInlineAllocator<3>> Wanted;
+	if (!LastFrame.bCinematic)
+	{
+		const AAbyssCharacterActor* Hero = FindCharacter(abyss::kHeroEntityId);
+		if (Hero != nullptr && !Hero->IsHidden() && Snap.hero.life == abyss::HeroLife::Alive)
+		{
+			Wanted.Emplace(abyss::kHeroEntityId, EAbyssSelectionRim::Hero);
+		}
+		auto IsRimmableMonster = [this](abyss::EntityId Id)
+		{
+			const AAbyssCharacterActor* Actor = Id != abyss::kNoEntity ? FindCharacter(Id) : nullptr;
+			return Actor != nullptr && !Actor->IsHidden() && !Actor->IsDying() && Actor->GetEntityKind() == abyss::EntityKind::Monster;
+		};
+		const abyss::EntityId TargetId = Snap.hero.indicator;
+		if (IsRimmableMonster(TargetId))
+		{
+			Wanted.Emplace(TargetId, EAbyssSelectionRim::Target);
+		}
+		const UAbyssInputSubsystem* Input = UAbyssInputSubsystem::Get(this);
+		const abyss::EntityId HoverId = Input != nullptr ? Input->GetHoveredEntity() : abyss::kNoEntity;
+		if (HoverId != TargetId && IsRimmableMonster(HoverId))
+		{
+			Wanted.Emplace(HoverId, EAbyssSelectionRim::Hover);
+		}
+	}
+	// Actors that lost their rim go back to None; the wanted ones are (re)applied every frame (the actor ignores a
+	// repeat of its current rim, and a re-announced hero gets its rim back after ResetPresentation).
+	for (const uint32 Id : RimmedCharacters)
+	{
+		if (!Wanted.ContainsByPredicate([Id](const TPair<uint32, EAbyssSelectionRim>& Entry) { return Entry.Key == Id; }))
+		{
+			if (AAbyssCharacterActor* Actor = FindCharacter(Id))
+			{
+				Actor->SetSelectionRim(EAbyssSelectionRim::None);
+			}
+		}
+	}
+	RimmedCharacters.Reset();
+	for (const TPair<uint32, EAbyssSelectionRim>& Entry : Wanted)
+	{
+		if (AAbyssCharacterActor* Actor = FindCharacter(Entry.Key))
+		{
+			Actor->SetSelectionRim(Entry.Value);
+			RimmedCharacters.Add(Entry.Key);
 		}
 	}
 }
@@ -1826,6 +1919,10 @@ void UAbyssWorldBuilder::UpdateLightingCollection(float RealDelta)
 	SetVector(TEXT("RimColor"), Rim);
 	SetScalar(TEXT("CameraTanHalfFovY"), CameraRig != nullptr ? CameraRig->GetTanHalfFovY() : 0.1773f);
 	SetScalar(TEXT("TimeSec"), static_cast<float>(FMath::Fmod(TimeSec, 3600.0)));
+	// DECISIONS P11 / R3 (art pass): the lit ground's sun term (the sun itself is pi lux now) and the screen-space ink
+	// width scale. The Light* slots (torches, campfires, spell glows) belong to UAbyssVfxSystem: never written here.
+	SetScalar(TEXT("SunScale"), AAbyssZoneActor::GetSunScale());
+	SetScalar(TEXT("InkScale"), FMath::Max(0.f, CVarAbyssInkScale.GetValueOnGameThread()));
 	UE_CLOG(!bLightingWriteLogged, LogAbyss, Log, TEXT("MPC_AF_Lighting written: sun %s, ambient %s, rim %s, key light %s"),
 		*SunColor.ToString(), *Ambient.ToString(), *Rim.ToString(), *DirToLight.ToString());
 	bLightingWriteLogged = true;

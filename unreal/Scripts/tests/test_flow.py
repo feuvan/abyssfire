@@ -121,7 +121,27 @@ class FlowTest(unittest.TestCase):
         self.assertIn("MaterialProperty.MP_OPACITY_MASK", toon._outputs)
         mpc = reg[f"{paths.MATERIALS_DIR}/{paths.MPC_NAME}"]
         names = {str(p.get_editor_property("parameter_name")) for p in mpc.get_editor_property("vector_parameters")}
-        self.assertEqual(names, {"SunDir", "KeyLightDir", "SunColor", "Ambient", "RimColor"})
+        slots = {f"Light{i}{k}" for i in range(8) for k in ("PosR", "Col")}   # toon light slots (UAbyssVfxSystem)
+        self.assertEqual(names, {"SunDir", "KeyLightDir", "SunColor", "Ambient", "RimColor"} | slots)
+        scalars = {str(p.get_editor_property("parameter_name")): p.get_editor_property("default_value")
+                   for p in mpc.get_editor_property("scalar_parameters")}
+        self.assertEqual(set(scalars), {"CameraTanHalfFovY", "TimeSec", "SunScale", "InkScale"})
+        self.assertEqual((scalars["SunScale"], scalars["InkScale"]), (0.55, 1.5))
+        # the shadow-catcher toon: emissive + lit base colour from AF_ToonSplit's additional output, normal = key light
+        self.assertEqual(toon._output_pins["MaterialProperty.MP_BASE_COLOR"], "Lit")
+        self.assertIs(toon._outputs["MaterialProperty.MP_BASE_COLOR"], toon._outputs["MaterialProperty.MP_EMISSIVE_COLOR"])
+        for prop in ("MP_NORMAL", "MP_SPECULAR", "MP_METALLIC", "MP_ROUGHNESS"):
+            self.assertIn(f"MaterialProperty.{prop}", toon._outputs)
+        custom = toon._outputs["MaterialProperty.MP_EMISSIVE_COLOR"]
+        self.assertEqual([str(o.get_editor_property("output_name")) for o in custom.get_editor_property(
+            "additional_outputs")], ["Lit"])
+        self.assertEqual(custom.get_editor_property("description"), "AF_ToonSplit")
+        # the selection rim instance and the art-pass look parameters
+        rim = reg[f"{paths.INSTANCES_DIR}/{paths.MI_SELECT_RIM}"]
+        self.assertIs(rim.get_editor_property("parent"), reg[f"{paths.MATERIALS_DIR}/{paths.M_SELECT_RIM}"])
+        self.assertEqual(rim._params[("s", "RimPx720")], 2.0)
+        heroes = reg[f"{paths.INSTANCES_DIR}/MI_AF_Toon_Heroes"]
+        self.assertEqual(heroes._params[("s", "CastShadowStrength")], 0.7)
         # utility content
         self.assertIn(f"{paths.FX_DIR}/{paths.SM_FX_QUAD}", reg)
         self.assertIn(f"{paths.FX_TEXTURES_DIR}/{paths.T_DEFAULT_GLOW}", reg)

@@ -340,6 +340,28 @@ void LoadZoneMoodsFile(const JNode& r, WorldTables& out) {
     const std::vector<double> gain = n.NumList("gain");
     for (size_t i = 0; i < 3 && i < lift.size(); ++i) d.lift[i] = lift[i];
     for (size_t i = 0; i < 3 && i < gain.size(); ++i) d.gain[i] = gain[i];
+    // P14 fog defaults (overridden by port.fog below): halfway between the haze and the ambient colour, per sRGB channel.
+    d.fogColor = 0;
+    for (const int shift : {16, 8, 0}) {
+      const uint32_t mixed = (((d.haze >> shift) & 0xFFu) + ((d.ambient >> shift) & 0xFFu) + 1u) / 2u;
+      d.fogColor |= mixed << shift;
+    }
+    d.fogMaxOpacity = 0.25;
+    d.fogDensity = 0.9;
+  }
+  // DECISIONS P14 (art pass): the UE height fog per mood theme; every field optional (defaults above).
+  for (const auto& [k, n] : r.Child("port").Members("fog", /*allowMissing*/ true)) {
+    MapTheme th{};
+    if (!ParseEnum(k, th)) {
+      n.Error("unknown theme");
+      continue;
+    }
+    ZoneMoodDef& d = m.moods[EnumIndex(th)];
+    if (n.Has("color")) d.fogColor = n.Color("color");
+    d.fogMaxOpacity = n.Num("maxOpacity", d.fogMaxOpacity);
+    d.fogDensity = n.Num("density", d.fogDensity);
+    if (d.fogMaxOpacity < 0.0 || d.fogMaxOpacity > 1.0) n.Child("maxOpacity").Error("expected 0..1");
+    if (d.fogDensity < 0.0) n.Child("density").Error("expected >= 0");
   }
   for (const auto& [zone, n] : r.Members("weather")) {
     ZoneWeatherDef w;

@@ -7,8 +7,13 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/SkinnedAssetCommon.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Rendering/SkeletalMeshLODRenderData.h"
+#include "Rendering/SkeletalMeshRenderData.h"
 
 #include "abyss/data/CombatData.h"
 
@@ -72,6 +77,98 @@ namespace AbyssCharacterPrivate
 	FName ClipName(const std::string& Text)
 	{
 		return Text.empty() ? NAME_None : FName(UTF8_TO_TCHAR(Text.c_str()));
+	}
+
+	// ---- blob shadow (DECISIONS P10 revised) ----
+	constexpr float BlobAlphaUnderSunShadow = 0.7f;   // the sun CSM draws the cast shadow; the blob only grounds the feet
+
+	// ---- selection rim (DECISIONS R16, WorldContract.md 7) ----
+	constexpr int32 MaxRimmedCharacters = 3;
+	constexpr float RimDepthPushCm = 30.f;
+	/**
+	 * Characters holding a rim (the budget). Every holder returns its slot on None / EndPlay; an actor destroyed without
+	 * EndPlay drops out on the next acquire (weak pointer), so the budget never stays full.
+	 */
+	TArray<TWeakObjectPtr<const AAbyssCharacterActor>>& RimHolders()
+	{
+		static TArray<TWeakObjectPtr<const AAbyssCharacterActor>> Holders;
+		return Holders;
+	}
+
+	struct FRimLook
+	{
+		uint32 Rgb = 0xFFF4DC;   // sRGB
+		float Px720 = 0.f;       // width beyond the ink at 720 rows
+	};
+
+	FRimLook RimLookFor(EAbyssSelectionRim Kind)
+	{
+		switch (Kind)
+		{
+		case EAbyssSelectionRim::Hero: return { 0xFFF4DC, 2.f };
+		case EAbyssSelectionRim::Target: return { 0xFF5A3C, 1.5f };
+		case EAbyssSelectionRim::Hover: return { 0xFFB03C, 1.5f };
+		case EAbyssSelectionRim::None: break;
+		}
+		return {};
+	}
+
+	/** An ink-hull slot material (M_AF_Outline / M_AF_Outline_Foliage or an instance of them). */
+	bool IsInkHull(UMaterialInterface* Material)
+	{
+		static const FName OutlineName(TEXT("M_AF_Outline"));
+		static const FName OutlineFoliageName(TEXT("M_AF_Outline_Foliage"));
+		const UMaterial* Base = Material != nullptr ? Material->GetBaseMaterial() : nullptr;
+		const FName BaseName = Base != nullptr ? Base->GetFName() : NAME_None;
+		return BaseName == OutlineName || BaseName == OutlineFoliageName;
+	}
+
+	/** The ink-hull slots of a mesh component; none recognised -> slot 1 (the art manifest's hull slot, toon is slot 0). */
+	TArray<int32, TInlineAllocator<4>> FindHullSlots(const UPrimitiveComponent& Source)
+	{
+		TArray<int32, TInlineAllocator<4>> Slots;
+		const int32 NumSlots = Source.GetNumMaterials();
+		for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+		{
+			if (IsInkHull(Source.GetMaterial(Slot)))
+			{
+				Slots.Add(Slot);
+			}
+		}
+		if (Slots.Num() == 0 && NumSlots >= 2)
+		{
+			Slots.Add(1);
+		}
+		return Slots;
+	}
+
+	/** OutlinePx1080 / BakedWidthCm of the source hull, so the rim widens exactly like that ink (MI defaults otherwise). */
+	void CopyHullWidth(UMaterialInstanceDynamic& Rim, UMaterialInterface* SourceHull)
+	{
+		if (SourceHull == nullptr)
+		{
+			return;
+		}
+		for (const TCHAR* Name : { TEXT("OutlinePx1080"), TEXT("BakedWidthCm") })
+		{
+			const FName ParameterName(Name);
+			float Value = 0.f;
+			if (SourceHull->GetScalarParameterValue(FHashedMaterialParameterInfo(ParameterName), Value))
+			{
+				Rim.SetScalarParameterValue(ParameterName, Value);
+			}
+		}
+	}
+
+	void ConfigureRimComponent(UPrimitiveComponent& Component)
+	{
+		Component.SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Component.SetGenerateOverlapEvents(false);
+		Component.SetCanEverAffectNavigation(false);
+		Component.SetReceivesDecals(false);
+		Component.SetCastShadow(false);
+		Component.SetCastContactShadow(false);
+		Component.SetVisibility(false);
 	}
 }
 
@@ -227,16 +324,27 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	}
 
 	bHasArt = true;
+	if (RimBody != nullptr && RimBody->GetSkeletalMeshAsset() != Body->GetSkeletalMeshAsset())
+	{
+		SyncRimBody();
+		SyncRimWeapons();
+	}
 	ResetPresentation();
 	return true;
 }
 
 void AAbyssCharacterActor::SetShadowMode(bool bBlob, bool bCastDynamic)
 {
+	using namespace AbyssCharacterPrivate;
 	bBlobWanted = bBlob;
+	bBlobUnderSunShadow = bCastDynamic;
 	if (BlobShadow != nullptr)
 	{
 		BlobShadow->SetVisibility(bBlob && bHasBlobAssets);
+		// DECISIONS P10 revised: under the sun CSM the blob keeps 0.7 of its alpha (Fade 0.3), so the feet stay grounded
+		// without doubling the cast shadow; PresentFrame folds the death fade in.
+		BlobShadow->SetCustomPrimitiveDataFloat(AbyssCpd::Fade,
+			1.f - (1.f - CpdValues[AbyssCpd::Fade]) * (bCastDynamic ? BlobAlphaUnderSunShadow : 1.f));
 	}
 	for (UPrimitiveComponent* Component : { static_cast<UPrimitiveComponent*>(Body.Get()),
 			 static_cast<UPrimitiveComponent*>(MainHandMesh.Get()), static_cast<UPrimitiveComponent*>(OffHandMesh.Get()) })
@@ -244,7 +352,334 @@ void AAbyssCharacterActor::SetShadowMode(bool bBlob, bool bCastDynamic)
 		if (Component != nullptr)
 		{
 			Component->SetCastShadow(bCastDynamic);
+			// Screen-space contact shadows (DECISIONS P10 revised: contact shadow length .03 on desktop balanced / high) seat
+			// the feet and the held weapon where the CSM texels are too coarse.
+			Component->SetCastContactShadow(true);
 		}
+	}
+}
+
+// =====================================================================================================================
+// Selection rim (DECISIONS R16, WorldContract.md 7, contract C1)
+// =====================================================================================================================
+
+bool AAbyssCharacterActor::AcquireRimBudget()
+{
+	using namespace AbyssCharacterPrivate;
+	if (bRimBudgetHeld)
+	{
+		return true;
+	}
+	TArray<TWeakObjectPtr<const AAbyssCharacterActor>>& Holders = RimHolders();
+	Holders.RemoveAll([](const TWeakObjectPtr<const AAbyssCharacterActor>& Holder) { return !Holder.IsValid(); });
+	if (Holders.Num() >= MaxRimmedCharacters)
+	{
+		UE_LOG(LogAbyss, Verbose, TEXT("Selection rim budget (%d) full: entity %u keeps no rim"), MaxRimmedCharacters, EntityId);
+		return false;
+	}
+	Holders.Add(TWeakObjectPtr<const AAbyssCharacterActor>(this));
+	bRimBudgetHeld = true;
+	return true;
+}
+
+void AAbyssCharacterActor::ReleaseRimBudget()
+{
+	using namespace AbyssCharacterPrivate;
+	if (bRimBudgetHeld)
+	{
+		const AAbyssCharacterActor* Self = this;
+		RimHolders().RemoveAll([Self](const TWeakObjectPtr<const AAbyssCharacterActor>& Holder)
+		{
+			return !Holder.IsValid() || Holder.Get() == Self;
+		});
+		bRimBudgetHeld = false;
+	}
+}
+
+void AAbyssCharacterActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	RimKind = EAbyssSelectionRim::None;
+	ReleaseRimBudget();
+	Super::EndPlay(EndPlayReason);
+}
+
+void AAbyssCharacterActor::SetSelectionRim(EAbyssSelectionRim Kind)
+{
+	if (Kind == RimKind)
+	{
+		return;
+	}
+	if (Kind == EAbyssSelectionRim::None)
+	{
+		RimKind = EAbyssSelectionRim::None;
+		ReleaseRimBudget();
+		UpdateSelectionRimVisibility();
+		return;
+	}
+	if (!AcquireRimBudget())
+	{
+		return;   // three rims are up; asked again next frame
+	}
+	if (!EnsureSelectionRim())
+	{
+		ReleaseRimBudget();
+		return;
+	}
+	RimKind = Kind;
+	ApplyRimLook();
+	UpdateSelectionRimVisibility();
+}
+
+bool AAbyssCharacterActor::EnsureSelectionRim()
+{
+	using namespace AbyssCharacterPrivate;
+	if (RimBody != nullptr)
+	{
+		if (Body != nullptr && RimBody->GetSkeletalMeshAsset() != Body->GetSkeletalMeshAsset())
+		{
+			SyncRimBody();
+			SyncRimWeapons();
+		}
+		return true;
+	}
+	if (bRimUnavailable || !bHasArt || Body == nullptr || Body->GetSkeletalMeshAsset() == nullptr)
+	{
+		return false;
+	}
+	UAbyssAssetLibrary* Assets = UAbyssAssetLibrary::Get(this);
+	RimParent = Assets != nullptr ? Assets->LoadMaterial(TEXT("MI_AF_SelectRim")) : nullptr;
+	if (RimParent == nullptr && Assets != nullptr)
+	{
+		RimParent = Assets->LoadMaterial(TEXT("M_AF_SelectRim"));
+	}
+	if (RimParent == nullptr)
+	{
+		static bool bLogged = false;
+		UE_CLOG(!bLogged, LogAbyss, Warning,
+			TEXT("MI_AF_SelectRim not found (run Scripts/build_content.py): characters draw no selection rim"));
+		bLogged = true;
+		bRimUnavailable = true;
+		return false;
+	}
+	RimMask = UMaterialInstanceDynamic::Create(RimParent, this);
+	if (RimMask == nullptr)
+	{
+		bRimUnavailable = true;
+		return false;
+	}
+	RimMask->SetScalarParameterValue(FName(TEXT("BodyMask")), 1.f);
+
+	RimBody = NewObject<USkeletalMeshComponent>(this, TEXT("SelectionRim"));
+	ConfigureRimComponent(*RimBody);
+	// The follower is the body's shape: its bounds are the leader's (no bounds of its own to compute).
+	RimBody->bUseBoundsFromLeaderPoseComponent = true;
+	RimBody->SetupAttachment(Body);
+	RimBody->RegisterComponent();
+
+	RimMainHand = NewObject<UStaticMeshComponent>(this, TEXT("SelectionRimMainHand"));
+	ConfigureRimComponent(*RimMainHand);
+	RimMainHand->SetupAttachment(MainHandMesh);
+	RimMainHand->RegisterComponent();
+
+	RimOffHand = NewObject<UStaticMeshComponent>(this, TEXT("SelectionRimOffHand"));
+	ConfigureRimComponent(*RimOffHand);
+	RimOffHand->SetupAttachment(OffHandMesh);
+	RimOffHand->RegisterComponent();
+
+	bRimShown = false;
+	SyncRimBody();
+	SyncRimWeapons();
+	ApplyCpdTo(RimBody);
+	return true;
+}
+
+UMaterialInstanceDynamic* AAbyssCharacterActor::MakeRimMaterial(UMaterialInterface* SourceHull)
+{
+	UMaterialInstanceDynamic* Rim = RimParent != nullptr ? UMaterialInstanceDynamic::Create(RimParent, this) : nullptr;
+	if (Rim != nullptr)
+	{
+		Rim->SetScalarParameterValue(FName(TEXT("BodyMask")), 0.f);
+		AbyssCharacterPrivate::CopyHullWidth(*Rim, SourceHull);
+	}
+	return Rim;
+}
+
+void AAbyssCharacterActor::SyncRimBody()
+{
+	using namespace AbyssCharacterPrivate;
+	if (RimBody == nullptr || Body == nullptr)
+	{
+		return;
+	}
+	USkeletalMesh* Mesh = Body->GetSkeletalMeshAsset();
+	if (RimBody->GetSkeletalMeshAsset() != Mesh)
+	{
+		RimBody->SetSkeletalMeshAsset(Mesh);
+	}
+	RimBody->SetLeaderPoseComponent(Body);
+
+	// Slot materials: the ink hull gets its rim instance (that hull's width), every other slot the BodyMask instance.
+	const TArray<int32, TInlineAllocator<4>> HullSlots = FindHullSlots(*Body);
+	RimBodyMaterials.Reset();
+	const int32 NumSlots = Body->GetNumMaterials();
+	for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+	{
+		UMaterialInstanceDynamic* Rim = HullSlots.Contains(Slot) ? MakeRimMaterial(Body->GetMaterial(Slot)) : nullptr;
+		if (Rim != nullptr)
+		{
+			RimBodyMaterials.Add(Rim);
+		}
+		RimBody->SetMaterial(Slot, Rim != nullptr ? static_cast<UMaterialInterface*>(Rim) : static_cast<UMaterialInterface*>(RimMask.Get()));
+	}
+
+	// Only the hull draws: in every LOD each section whose material is not the ink hull is hidden (no draw at all; the
+	// BodyMask instance on those slots keeps them invisible should a section stay shown). The section's material index
+	// goes through the LOD's material map like the scene proxy's.
+	const FSkeletalMeshRenderData* RenderData = Mesh != nullptr ? Mesh->GetResourceForRendering() : nullptr;
+	if (RenderData != nullptr)
+	{
+		for (int32 Lod = 0; Lod < RenderData->LODRenderData.Num(); ++Lod)
+		{
+			const FSkeletalMeshLODInfo* LodInfo = Mesh->GetLODInfo(Lod);
+			const TArray<FSkelMeshRenderSection>& Sections = RenderData->LODRenderData[Lod].RenderSections;
+			for (int32 Section = 0; Section < Sections.Num(); ++Section)
+			{
+				int32 MaterialIndex = Sections[Section].MaterialIndex;
+				if (LodInfo != nullptr && LodInfo->LODMaterialMap.IsValidIndex(Section) && LodInfo->LODMaterialMap[Section] != INDEX_NONE)
+				{
+					MaterialIndex = LodInfo->LODMaterialMap[Section];
+				}
+				RimBody->ShowMaterialSection(MaterialIndex, Section, HullSlots.Contains(MaterialIndex), Lod);
+			}
+		}
+	}
+	RimBody->MarkRenderStateDirty();
+	ApplyRimLook();
+}
+
+void AAbyssCharacterActor::SyncRimWeapons()
+{
+	using namespace AbyssCharacterPrivate;
+	if (RimBody == nullptr)
+	{
+		return;
+	}
+	while (RimWeaponMaterials.Num() < 2)
+	{
+		RimWeaponMaterials.Add(nullptr);
+	}
+	auto Sync = [this](UStaticMeshComponent* Rim, UStaticMeshComponent* Source, int32 Index)
+	{
+		if (Rim == nullptr)
+		{
+			return;
+		}
+		UStaticMesh* Mesh = nullptr;
+		if (Source != nullptr && Source->IsVisible())
+		{
+			Mesh = Source->GetStaticMesh();
+		}
+		if (Mesh == nullptr)
+		{
+			Rim->SetStaticMesh(nullptr);
+			Rim->SetVisibility(false);
+			return;
+		}
+		if (Rim->GetStaticMesh() != Mesh)
+		{
+			Rim->SetStaticMesh(Mesh);
+		}
+		if (Rim->GetAttachParent() != Source)
+		{
+			// On the weapon itself (same socket, same transform): the copy follows every grip of the held mesh.
+			Rim->AttachToComponent(Source, FAttachmentTransformRules::SnapToTargetIncludingScale);
+		}
+		// Slot 0 (toon) draws nothing (BodyMask 1); the hull slot gets the rim with that hull's width.
+		const TArray<int32, TInlineAllocator<4>> HullSlots = FindHullSlots(*Source);
+		const int32 NumSlots = Rim->GetNumMaterials();
+		for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+		{
+			UMaterialInterface* Material = RimMask.Get();
+			if (HullSlots.Contains(Slot))
+			{
+				TObjectPtr<UMaterialInstanceDynamic>& WeaponRim = RimWeaponMaterials[Index];
+				if (WeaponRim == nullptr)
+				{
+					WeaponRim = MakeRimMaterial(Source->GetMaterial(Slot));
+				}
+				else
+				{
+					CopyHullWidth(*WeaponRim, Source->GetMaterial(Slot));
+				}
+				if (WeaponRim != nullptr)
+				{
+					Material = WeaponRim.Get();
+				}
+			}
+			Rim->SetMaterial(Slot, Material);
+		}
+		ApplyCpdTo(Rim);
+	};
+	Sync(RimMainHand, MainHandMesh, 0);
+	Sync(RimOffHand, OffHandMesh, 1);
+	ApplyRimLook();
+	UpdateSelectionRimVisibility(/*bForce*/ true);
+}
+
+void AAbyssCharacterActor::ApplyRimLook()
+{
+	using namespace AbyssCharacterPrivate;
+	if (RimKind == EAbyssSelectionRim::None)
+	{
+		return;
+	}
+	const FRimLook Look = RimLookFor(RimKind);
+	const FLinearColor Color = AbyssWorldUtil::ColorFromRgb(Look.Rgb);   // linear, as M_AF_SelectRim's RimColor
+	static const FName RimColorName(TEXT("RimColor"));
+	static const FName RimPxName(TEXT("RimPx720"));
+	static const FName RimPushName(TEXT("RimDepthPushCm"));
+	auto Apply = [&Color, &Look](UMaterialInstanceDynamic* Rim)
+	{
+		if (Rim != nullptr)
+		{
+			Rim->SetVectorParameterValue(RimColorName, Color);
+			Rim->SetScalarParameterValue(RimPxName, Look.Px720);
+			Rim->SetScalarParameterValue(RimPushName, RimDepthPushCm);
+		}
+	};
+	for (UMaterialInstanceDynamic* Rim : RimBodyMaterials)
+	{
+		Apply(Rim);
+	}
+	for (UMaterialInstanceDynamic* Rim : RimWeaponMaterials)
+	{
+		Apply(Rim);
+	}
+}
+
+void AAbyssCharacterActor::UpdateSelectionRimVisibility(bool bForce)
+{
+	if (RimBody == nullptr)
+	{
+		return;
+	}
+	// Hidden while there is no rim, the actor or body is hidden, dying / dead, or ghosted (the rim only frames a living
+	// figure; the body's own Fade dithers it during fades).
+	const bool bShow = RimKind != EAbyssSelectionRim::None && bRimBudgetHeld && bHasArt && !IsHidden() && !bDying
+		&& !bDeathFinished && CpdValues[AbyssCpd::Ghost] <= 0.f && Body != nullptr && Body->IsVisible();
+	if (bShow == bRimShown && !bForce)
+	{
+		return;
+	}
+	bRimShown = bShow;
+	RimBody->SetVisibility(bShow);
+	if (RimMainHand != nullptr)
+	{
+		RimMainHand->SetVisibility(bShow && RimMainHand->GetStaticMesh() != nullptr && MainHandMesh != nullptr && MainHandMesh->IsVisible());
+	}
+	if (RimOffHand != nullptr)
+	{
+		RimOffHand->SetVisibility(bShow && RimOffHand->GetStaticMesh() != nullptr && OffHandMesh != nullptr && OffHandMesh->IsVisible());
 	}
 }
 
@@ -280,6 +715,7 @@ void AAbyssCharacterActor::ResetPresentation()
 		VisualRoot->SetRelativeScale3D(FVector::OneVector);
 	}
 	SetActorHiddenInGame(!bHasArt);
+	UpdateSelectionRimVisibility();
 	// Idle pose right away (no blend from the reference pose).
 	if (const FAbyssArtClip* Idle = FindArtClip(FName(TEXT("Idle"))))
 	{
@@ -756,6 +1192,10 @@ void AAbyssCharacterActor::SetWeaponMeshes(UStaticMesh* MainHand, FName MainSock
 	};
 	Apply(MainHandMesh, MainHand != nullptr ? MainHand : DefaultMainHand.Get(), MainSocket.IsNone() ? DefaultMainSocket : MainSocket);
 	Apply(OffHandMesh, OffHand != nullptr ? OffHand : DefaultOffHand.Get(), OffSocket.IsNone() ? DefaultOffSocket : OffSocket);
+	if (RimBody != nullptr)
+	{
+		SyncRimWeapons();   // the selection rim's weapon copies follow the held meshes (R16)
+	}
 }
 
 void AAbyssCharacterActor::SetElite(bool bInElite, const TArray<FLinearColor>& InAffixColors, UStaticMesh* InCrownMesh,
@@ -1177,6 +1617,11 @@ void AAbyssCharacterActor::UpdateMaterialFeedback(const FAbyssCharacterFrame& Fr
 		ApplyCpdTo(MainHandMesh);
 		ApplyCpdTo(OffHandMesh);
 		ApplyCpdTo(CrownMesh);
+		// Selection rim (R16): the follower carries the body's custom data, so M_AF_SelectRim dithers its Fade (13) on the
+		// same pixels as the body.
+		ApplyCpdTo(RimBody);
+		ApplyCpdTo(RimMainHand);
+		ApplyCpdTo(RimOffHand);
 		bCpdDirty = false;
 	}
 }
@@ -1382,10 +1827,14 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 		const float Diameter = BlobRadiusCm * 2.f / 100.f * K;
 		BlobShadow->SetRelativeLocation(FVector(LocalOffset.X, LocalOffset.Y, 1.5f));
 		BlobShadow->SetRelativeScale3D(FVector(Diameter, Diameter, 1.f));
-		BlobShadow->SetCustomPrimitiveDataFloat(AbyssCpd::Fade, CpdValues[AbyssCpd::Fade]);
+		// The body's fade, and 0.7 of the blob's alpha where the sun CSM casts the real shadow (DECISIONS P10 revised).
+		const float BlobAlpha = (1.f - CpdValues[AbyssCpd::Fade])
+			* (bBlobUnderSunShadow ? AbyssCharacterPrivate::BlobAlphaUnderSunShadow : 1.f);
+		BlobShadow->SetCustomPrimitiveDataFloat(AbyssCpd::Fade, 1.f - BlobAlpha);
 	}
 
 	UpdateMaterialFeedback(Frame, VisualDeltaSec);
 	UpdateEliteVisuals(VisualDeltaSec);
 	UpdateAfterimages(VisualDeltaSec);
+	UpdateSelectionRimVisibility();
 }

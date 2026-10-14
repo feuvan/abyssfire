@@ -2,6 +2,7 @@
 
 #include "Abyssfire.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/PostProcessComponent.h"
 #include "Components/SceneComponent.h"
@@ -28,6 +29,7 @@
 #include "abyss/data/DataStore.h"
 #include "abyss/data/MapData.h"
 #include "abyss/sim/Snapshot.h"
+#include "abyss/world/CampLayout.h"
 #include "abyss/world/Grid.h"
 #include "abyss/world/MapGen.h"
 
@@ -39,7 +41,8 @@
 static TAutoConsoleVariable<float> CVarAbyssSunScale(
 	TEXT("abyss.SunScale"),
 	0.55f,
-	TEXT("Sun illuminance on the lit ground as a fraction of pi lux (ue58-platform.md 6.4 B'): lit ground = base x (N.L x this + ambient)."),
+	TEXT("Sun term of the lit ground as a fraction of the pi-lux sun (MPC_AF_Lighting SunScale; ue58-platform.md 6.4 B'): ")
+	TEXT("lit ground = base x (N.L x this + ambient). The sun itself is pi lux x SunColor (DECISIONS P11, art pass)."),
 	ECVF_Default);
 
 static TAutoConsoleVariable<float> CVarAbyssGroundAmbient(
@@ -51,14 +54,34 @@ static TAutoConsoleVariable<float> CVarAbyssGroundAmbient(
 static TAutoConsoleVariable<float> CVarAbyssExposureBias(
 	TEXT("abyss.ExposureBias"),
 	0.263f,
-	TEXT("Manual exposure bias (EV) so an unlit emissive 1.0 shows as display white: log2(1.2) for UE's EV100 calibration [Verify on 5.8.3]."),
+	TEXT("Manual exposure bias (EV), applied live. Starts at log2(1.2) (an emissive 1.0 at display white without a tone ")
+	TEXT("curve); with abyss.ToneCurve 0.4 recalibrate on the Mac so the T_AF_Palette mid-tones land within +-2/255 (DECISIONS P14)."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarAbyssToneCurve(
+	TEXT("abyss.ToneCurve"),
+	0.4f,
+	TEXT("Post-process ToneCurveAmount on every tier (DECISIONS P14, art pass; 0.6 dulled the white selection rim and the ")
+	TEXT("sword highlights in the look-dev). Applied live."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<int32> CVarAbyssFog(
+	TEXT("abyss.Fog"),
+	1,
+	TEXT("Zone height fog (DECISIONS P14): 1 = on (zone_moods.json port.fog), 0 = hidden. Applied live."),
+	ECVF_Default);
+
+static TAutoConsoleVariable<float> CVarAbyssFogScale(
+	TEXT("abyss.FogScale"),
+	1.f,
+	TEXT("Multiplier on the mood's fog density (UE FogDensity = port.fog density / ln 2 x this). Applied live."),
 	ECVF_Default);
 
 static TAutoConsoleVariable<float> CVarAbyssBloom(
 	TEXT("abyss.Bloom"),
 	-1.f,
 	TEXT("Bloom intensity of the zone post-process on tiers with bloom (threshold 1). < 0 = the art manifest's hero ")
-	TEXT("fx.bloom.strength (the reviewed emissive bloom, 0.8), 0.6 when the manifest has none."),
+	TEXT("fx.bloom.strength (the reviewed emissive bloom, 0.8), 0.6 when the manifest has none. Applied live."),
 	ECVF_Default);
 
 static TAutoConsoleVariable<int32> CVarAbyssFadeGhost(
@@ -117,6 +140,42 @@ namespace AbyssZonePrivate
 	// with its outline.
 	constexpr float GhostEnterFade = 0.3f;
 	constexpr float GhostLeaveFade = 0.2f;
+
+	// ---- light and look (DECISIONS P10 / P11 / P14, art pass) ----
+	// Sun CSM: distance = 1.35 x the live camera distance (2870 cm at the 2125 cm default; the top screen edge's ground is
+	// ~26 m away), 2 cascades with a linear split on desktop, 1 cascade on high-tier mobile. Re-fitted when the camera
+	// distance moves by more than 2 % (zoom, level-up pulse). UE splits from the near plane (DirectionalLightComponent
+	// GetSplitDistance), and at pitch -50 the visible ground lies at 66-90 % of the distance in view depth (1907-2573 cm
+	// at the default framing, the same ratio at every zoom): with 2 linear cascades all of it falls in the far one
+	// [0.5, 1] x distance (0.55 cm per texel at 4096, about as fine as 3 cascades' last one, 0.51), the near cascade
+	// covers the air under the camera and draws next to nothing. A third cascade bought nothing on screen; 1 cascade
+	// would be 0.79 cm per texel (r.Shadow.CSM.MaxCascades 1 to A/B on the Mac).
+	constexpr float ShadowDistanceScale = 1.35f;
+	constexpr int32 DesktopCascades = 2;
+	constexpr int32 MobileCascades = 1;
+	constexpr float CascadeDistributionExponent = 1.f;
+	constexpr float ViewRefitFraction = 0.02f;
+	// Shadow acne on the shadow-catcher toon (its fake normal is the key light direction): a little more bias than UE's
+	// directional defaults (0.5 / 0.5). Tune on the Mac.
+	constexpr float SunShadowBias = 0.6f;
+	constexpr float SunShadowSlopeBias = 0.8f;
+	constexpr float ContactShadowLength = 0.03f;   // screen-space fraction, desktop balanced / high
+	// Height fog: starts 1 m beyond the camera's focus distance (the hero's rows are never fogged), gentle falloff.
+	constexpr float FogStartBeyondFocusCm = 100.f;
+	constexpr float FogHeightFalloff = 0.2f;
+	// zone_moods port.fog density is the look-dev extinction: opacity 1 - 2^(-density x metres / 10) past the start near
+	// the ground (plains 0.85 -> 2^(-0.085 per m)). UE's height-fog line integral carries a ln 2 (HeightFogCommon.ush
+	// CalculateLineIntegralShared: (1 - exp2(-F)) / F, Taylor log(2) at F -> 0; SceneCore.cpp FogDensity / 1000), so
+	// transmittance = exp2(-ln2 x FogDensity / 1000 x cm): FogDensity = density / ln 2.
+	constexpr float FogDensityToUE = 1.f / 0.69314718f;
+	// Built-in grade at 55 % of the zone mood, +6 % saturation (the art pass's look-dev grade).
+	constexpr float GradeMoodFraction = 0.55f;
+	constexpr float GradeSaturationBoost = 1.06f;
+	constexpr float ToneCurveFallback = 0.4f;
+	// SSAO (desktop balanced / high): composited at 0.25 by M_AF_PP_AOComposite.
+	constexpr float AOIntensity = 1.f;
+	constexpr float AORadiusCm = 80.f;
+	constexpr float AOQuality = 50.f;
 
 	/**
 	 * R1 decor occlusion (trees, boulders, tents, story props; world-map-nav.md 15.6: the camera -> target ray against the
@@ -314,6 +373,17 @@ AAbyssZoneActor::AAbyssZoneActor()
 	Sun->SetupAttachment(SceneRoot);
 	Sun->SetMobility(EComponentMobility::Movable);
 	Sun->SetCastShadows(true);
+	// Lighting channel 0 only (P11): the shadow-catcher toon's fake normal would mis-light under any other light, so a
+	// future desktop point light goes on channel 1.
+	Sun->SetLightingChannels(/*bChannel0*/ true, /*bChannel1*/ false, /*bChannel2*/ false);
+	Sun->SetShadowBias(AbyssZonePrivate::SunShadowBias);
+	Sun->SetShadowSlopeBias(AbyssZonePrivate::SunShadowSlopeBias);
+
+	// Height fog of the zone mood (P14), at the zone origin's height; configured by BuildLighting / UpdateView.
+	HeightFog = CreateDefaultSubobject<UExponentialHeightFogComponent>(TEXT("HeightFog"));
+	HeightFog->SetupAttachment(SceneRoot);
+	HeightFog->SetMobility(EComponentMobility::Movable);
+	HeightFog->SetRelativeLocation(FVector::ZeroVector);
 
 	PostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("PostProcess"));
 	PostProcess->SetupAttachment(SceneRoot);
@@ -368,7 +438,7 @@ void AAbyssZoneActor::ClearZone()
 	TileTexture = nullptr;
 	TerrainMaterial = nullptr;
 	WaterMaterial = nullptr;
-	GradeMaterial = nullptr;
+	AOCompositeMaterial = nullptr;
 	Terrain.Reset();
 }
 
@@ -674,7 +744,7 @@ const FAbyssArtAsset* AAbyssZoneActor::ResolveArt(TConstArrayView<FName> GameIds
 }
 
 bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
-	bool bOccluder, float FadeTarget, FName StoryId)
+	bool bOccluder, float FadeTarget, FName StoryId, float OccluderRadiusCm)
 {
 	const FAbyssArtAsset* Art = ResolveArt(GameIds, Hash);
 	UAbyssAssetLibrary* Assets = AssetLibrary.Get();
@@ -698,7 +768,9 @@ bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, cons
 	const FTransform Transform(FRotator(0.f, YawDeg, 0.f), Location, FVector(FinalScale));
 	const FBox Bounds = Art->BoundsCm.IsValid ? Art->BoundsCm : Mesh->GetBoundingBox();
 	const FVector Extent = Bounds.GetExtent() * FinalScale;
-	const float Radius = static_cast<float>(FMath::Max(Extent.X, Extent.Y));
+	// R1 occlusion radius: the bounds by default; a caller-given body radius where the bounds include thin parts that
+	// never hide anyone (tent guy ropes and stakes, DECISIONS R1 amendment).
+	const float Radius = OccluderRadiusCm > 0.f ? OccluderRadiusCm : static_cast<float>(FMath::Max(Extent.X, Extent.Y));
 	const float Height = static_cast<float>(Bounds.Max.Z * FinalScale);
 	return AddInstance(Mesh, Transform, AbyssZonePrivate::HashUnit(Hash >> 3), bOccluder, FadeTarget, FMath::Max(25.f, Radius),
 		FMath::Max(30.f, Height), StoryId);
@@ -1069,9 +1141,13 @@ void AAbyssZoneActor::BuildCamps(const abyss::Snapshot& Snap, const abyss::DataS
 		const float FacingYaw = bHasFront
 			? static_cast<float>(FMath::RadiansToDegrees(FMath::Atan2(Prop.front.y, Prop.front.x)))
 			: FaceCameraYaw;
-		const bool bTall = Prop.type == "tent" || Prop.type == "well" || Prop.type == "banner";
+		const bool bTent = Prop.type == "tent";
+		const bool bTall = bTent || Prop.type == "well" || Prop.type == "banner";
 		const uint32 Hash = AbyssWorldUtil::TileHash(Prop.pos.col, Prop.pos.row, 23);
-		PlaceArt(Ids, Hash, Location, FacingYaw + MeshYawOffsetDeg, 1.f, bTall, DecorFadeTarget);
+		// DECISIONS R1 amendment (art pass): a tent occludes with its canvas half-width (1.25 m), not its rope bounds
+		// (1.71 m), so a goblin or NPC beside a tent no longer fades it. Tent doors stay on the fire axes (W11 note).
+		const float OccluderRadius = bTent ? static_cast<float>(abyss::camp::kTentCanvasHalfAcross * AbyssUnits::TileUU) : -1.f;
+		PlaceArt(Ids, Hash, Location, FacingYaw + MeshYawOffsetDeg, 1.f, bTall, DecorFadeTarget, NAME_None, OccluderRadius);
 		if (Prop.type == "campfire")
 		{
 			EffectSpots.Add({ FName(TEXT("camp.campfire")), Location });
@@ -1219,50 +1295,151 @@ void AAbyssZoneActor::BuildLighting(const abyss::Snapshot& Snap, const abyss::Da
 		AmbienceRecipe = FName(*(FString(TEXT("ambient.")) + ToF(Weather->ambience)));
 	}
 
-	// Sun: the manifest key light (the toon materials and the ground must agree), warm mood tint; pi lux = unlit 1.0.
-	SunColor = FMath::Lerp(FLinearColor::White, Mood.Ambient, 0.5f);
-	SunColor.A = 1.f;
+	// Sun: the manifest key light (the toon materials and the ground must agree), warm mood tint. DECISIONS P11 (art
+	// pass): the shadow-catcher toon is DefaultLit with BaseColor k (lit - shade) under a fake normal = KeyLightDir, so a
+	// pi-lux sun of SunColor (N.L = 1) gives exactly the toon colour in full sun and the shade band in a cast shadow. The
+	// lit ground keeps its own sun term through MPC_AF_Lighting SunScale (abyss.SunScale, written by the world builder).
+	// The light keeps its colour as 8-bit sRGB bytes and the renderer decodes them (ULightComponent::SetLightColor ->
+	// FLinearColor::ToFColor(bSRGB); GetColoredLightBrightness -> FLinearColor(FColor), the sRGB table): the bytes are
+	// sRGB-encoded here and SunColor (MPC_AF_Lighting) is their decoded value, so the toon's BaseColor / SunColor and
+	// the light colour cancel exactly. (Storing the linear value as raw bytes decoded it twice: up to 48 % less per
+	// channel on toon and ground than the MPC said.)
+	FColor SunBytes = FMath::Lerp(FLinearColor::White, Mood.Ambient, 0.5f).ToFColor(/*bSRGB*/ true);
+	SunBytes.A = 255;
+	SunColor = FLinearColor(SunBytes);
 	const float Fill = CVarAbyssGroundAmbient.GetValueOnGameThread();
 	AmbientFill = FLinearColor(Fill * 0.92f, Fill * 0.95f, Fill * 1.08f, 1.f);
 	if (Sun != nullptr)
 	{
 		Sun->SetWorldRotation((-DirToLight).Rotation());
-		Sun->SetIntensity(UE_PI * CVarAbyssSunScale.GetValueOnGameThread());
-		Sun->SetLightColor(SunColor, /*bSRGB*/ false);
+		Sun->SetIntensity(UE_PI * 1.f);
+		Sun->SetLightFColor(SunBytes);
+		if (!Sun->GetLightColor().Equals(SunColor, 1.e-6f))
+		{
+			UE_LOG(LogAbyss, Warning, TEXT("Sun light colour %s differs from MPC SunColor %s: the lit toon will not match"),
+				*Sun->GetLightColor().ToString(), *SunColor.ToString());
+		}
 	}
 
-	// Optional exact-grade post-process material (world-map-nav.md 14.1 formula).
-	GradeMaterial = nullptr;
+	// Height fog (P14, zone_moods.json port.fog).
+	Mood.FogColor = AbyssWorldUtil::ColorFromRgb(MoodDef.fogColor);
+	Mood.FogMaxOpacity = static_cast<float>(FMath::Clamp(MoodDef.fogMaxOpacity, 0.0, 1.0));
+	Mood.FogDensity = static_cast<float>(FMath::Max(0.0, MoodDef.fogDensity));
+	ApplyFog();
+
+	// SSAO composite (P14; desktop balanced / high). The exact web grade (M_AF_PP_Grade) is no longer bound: the built-in
+	// grade at 55 % of the mood replaces it (ApplyPostProcess).
+	AOCompositeMaterial = nullptr;
 	if (UAbyssAssetLibrary* Assets = AssetLibrary.Get())
 	{
 		static const TCHAR* const Folders[] = { TEXT("Materials"), TEXT("Materials/PostProcess") };
-		if (UMaterialInterface* Grade = Cast<UMaterialInterface>(
-				Assets->LoadFromFolders(Folders, FName(TEXT("M_AF_PP_Grade")), UMaterialInterface::StaticClass())))
-		{
-			GradeMaterial = UMaterialInstanceDynamic::Create(Grade, this);
-		}
+		AOCompositeMaterial = Cast<UMaterialInterface>(
+			Assets->LoadFromFolders(Folders, FName(TEXT("M_AF_PP_AOComposite")), UMaterialInterface::StaticClass()));
 	}
+}
+
+float AAbyssZoneActor::GetSunScale()
+{
+	return FMath::Max(0.f, CVarAbyssSunScale.GetValueOnGameThread());
 }
 
 void AAbyssZoneActor::ApplyQuality(const FAbyssQualityProfile& Quality)
 {
+	using namespace AbyssZonePrivate;
 	QualityProfile = Quality;
 	if (Sun != nullptr)
 	{
-		// DECISIONS P10 (binding, overrides ue58-platform.md 6.2 / 6.8): CSM with 2 cascades on desktop (every tier),
-		// 1 cascade on high-tier mobile; low / mid mobile use blob shadows only (no shadow-depth pass at all, matching
-		// UAbyssWorldBuilder's bBlob = mobile && tier < 2). Device profiles cap r.Shadow.CSM.MaxMobileCascades the same way.
+		// DECISIONS P10 (revised, art pass; binding over ue58-platform.md 6.2 / 6.8): CSM with 2 cascades and a linear
+		// split on desktop (every tier), 1 cascade on high-tier mobile; low / mid mobile have no shadow-depth pass at all
+		// (blob shadows only, matching UAbyssWorldBuilder's bCsm = !mobile || tier >= 2). Device profiles cap
+		// r.Shadow.CSM.MaxMobileCascades the same way; the world builder sets r.Shadow.MaxCSMResolution & co. The
+		// distance follows the camera (ApplyViewDistance).
 		const bool bShadows = Quality.bMobile ? Quality.Tier >= 2 : true;
-		const int32 Cascades = Quality.bMobile ? 1 : 2;
 		Sun->SetCastShadows(bShadows);
-		Sun->SetDynamicShadowCascades(Cascades);
-		Sun->SetDynamicShadowDistanceMovableLight(3500.f);
+		Sun->SetDynamicShadowCascades(Quality.bMobile ? MobileCascades : DesktopCascades);
+		Sun->SetCascadeDistributionExponent(CascadeDistributionExponent);
+		// Screen-space contact shadows (the feet / blade on the ground) on desktop balanced / high.
+		const float Contact = !Quality.bMobile && Quality.Tier >= 1 ? ContactShadowLength : 0.f;
+		if (!FMath::IsNearlyEqual(Sun->ContactShadowLength, Contact))
+		{
+			Sun->ContactShadowLength = Contact;
+			Sun->MarkRenderStateDirty();
+		}
 	}
+	AppliedViewDistanceCm = -1.f;
+	ApplyViewDistance();
+	ApplyFog();
 	ApplyPostProcess();
+}
+
+void AAbyssZoneActor::UpdateView(float CameraDistanceCm)
+{
+	using namespace AbyssZonePrivate;
+	if (CameraDistanceCm > 1.f)
+	{
+		ViewDistanceCm = CameraDistanceCm;
+	}
+	if (AppliedViewDistanceCm <= 0.f || FMath::Abs(ViewDistanceCm - AppliedViewDistanceCm) > ViewRefitFraction * AppliedViewDistanceCm)
+	{
+		ApplyViewDistance();
+	}
+	// Look console variables, live (a handful of reads per frame).
+	const float FogScale = CVarAbyssFogScale.GetValueOnGameThread();
+	const int32 FogMode = CVarAbyssFog.GetValueOnGameThread();
+	if (FogMode != AppliedFogMode || FogScale != AppliedFogScale)
+	{
+		ApplyFog();
+	}
+	if (CVarAbyssExposureBias.GetValueOnGameThread() != AppliedExposureBias
+		|| CVarAbyssToneCurve.GetValueOnGameThread() != AppliedToneCurve
+		|| CVarAbyssBloom.GetValueOnGameThread() != AppliedBloom)
+	{
+		ApplyPostProcess();
+	}
+}
+
+void AAbyssZoneActor::ApplyViewDistance()
+{
+	using namespace AbyssZonePrivate;
+	AppliedViewDistanceCm = ViewDistanceCm;
+	if (Sun != nullptr)
+	{
+		Sun->SetDynamicShadowDistanceMovableLight(ShadowDistanceScale * ViewDistanceCm);
+	}
+	if (HeightFog != nullptr)
+	{
+		HeightFog->SetStartDistance(ViewDistanceCm + FogStartBeyondFocusCm);
+	}
+}
+
+void AAbyssZoneActor::ApplyFog()
+{
+	using namespace AbyssZonePrivate;
+	AppliedFogMode = CVarAbyssFog.GetValueOnGameThread();
+	AppliedFogScale = CVarAbyssFogScale.GetValueOnGameThread();
+	if (HeightFog == nullptr)
+	{
+		return;
+	}
+	// UE's height fog: transmittance = 2^(-ln2 x FogDensity / 1000 x height term x cm along the ray past the start),
+	// capped at FogMaxOpacity. Plains 0.85: ~0.20 at the top screen edge (ground ~26 m away at the default framing), 0 on
+	// the hero. No directional inscattering (no sky atmosphere), no volumetric fog. Mobile renders it per vertex.
+	const bool bOn = AppliedFogMode != 0 && Mood.FogMaxOpacity > 0.f && Mood.FogDensity > 0.f;
+	HeightFog->SetVisibility(bOn);
+	HeightFog->SetFogInscatteringColor(Mood.FogColor);
+	HeightFog->SetFogMaxOpacity(Mood.FogMaxOpacity);
+	HeightFog->SetFogDensity(Mood.FogDensity * FogDensityToUE * FMath::Max(0.f, AppliedFogScale));
+	HeightFog->SetFogHeightFalloff(FogHeightFalloff);
+	HeightFog->SetDirectionalInscatteringColor(FLinearColor::Black);
+	HeightFog->SetVolumetricFog(false);
 }
 
 void AAbyssZoneActor::ApplyPostProcess()
 {
+	using namespace AbyssZonePrivate;
+	AppliedExposureBias = CVarAbyssExposureBias.GetValueOnGameThread();
+	AppliedToneCurve = CVarAbyssToneCurve.GetValueOnGameThread();
+	AppliedBloom = CVarAbyssBloom.GetValueOnGameThread();
 	if (PostProcess == nullptr)
 	{
 		return;
@@ -1270,19 +1447,25 @@ void AAbyssZoneActor::ApplyPostProcess()
 	FPostProcessSettings& S = PostProcess->Settings;
 	S = FPostProcessSettings();
 
-	// Stable toon colours (ue58-platform.md 6.7).
+	// Stable toon colours (ue58-platform.md 6.7): manual exposure, recalibrated for the tone curve (P14).
 	S.bOverride_AutoExposureMethod = true;
 	S.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
 	S.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
 	S.AutoExposureApplyPhysicalCameraExposure = false;
 	S.bOverride_AutoExposureBias = true;
-	S.AutoExposureBias = CVarAbyssExposureBias.GetValueOnGameThread();
+	S.AutoExposureBias = AppliedExposureBias;
+	// DECISIONS P14 (art pass): a partial filmic tone curve on every tier (Film* keep the engine defaults), no blue
+	// correction / gamut expansion, no local exposure.
 	S.bOverride_ToneCurveAmount = true;
-	S.ToneCurveAmount = 0.f;
+	S.ToneCurveAmount = FMath::Clamp(AppliedToneCurve >= 0.f ? AppliedToneCurve : ToneCurveFallback, 0.f, 1.f);
 	S.bOverride_BlueCorrection = true;
 	S.BlueCorrection = 0.f;
 	S.bOverride_ExpandGamut = true;
 	S.ExpandGamut = 0.f;
+	S.bOverride_LocalExposureHighlightContrastScale = true;
+	S.LocalExposureHighlightContrastScale = 1.f;
+	S.bOverride_LocalExposureShadowContrastScale = true;
+	S.LocalExposureShadowContrastScale = 1.f;
 	S.bOverride_MotionBlurAmount = true;
 	S.MotionBlurAmount = 0.f;
 	S.bOverride_SceneFringeIntensity = true;
@@ -1290,13 +1473,23 @@ void AAbyssZoneActor::ApplyPostProcess()
 	// Film grain (5.1+ FilmGrain*; the legacy GrainIntensity fields are *_DEPRECATED). 0 is the default; kept explicit.
 	S.bOverride_FilmGrainIntensity = true;
 	S.FilmGrainIntensity = 0.f;
+
+	// SSAO (P14): desktop balanced / high only (r.AmbientOcclusionLevels 1 / 2 from the world builder), composited by
+	// M_AF_PP_AOComposite when the content build made it. Low tier and mobile: none.
+	const bool bAO = !QualityProfile.bMobile && QualityProfile.Tier >= 1;
 	S.bOverride_AmbientOcclusionIntensity = true;
-	S.AmbientOcclusionIntensity = 0.f;
+	S.AmbientOcclusionIntensity = bAO ? AOIntensity : 0.f;
+	if (bAO)
+	{
+		S.bOverride_AmbientOcclusionRadius = true;
+		S.AmbientOcclusionRadius = AORadiusCm;
+		S.bOverride_AmbientOcclusionQuality = true;
+		S.AmbientOcclusionQuality = AOQuality;
+	}
 
 	// Bloom (balanced / high only).
 	S.bOverride_BloomIntensity = true;
-	const float BloomOverride = CVarAbyssBloom.GetValueOnGameThread();
-	const float Bloom = BloomOverride >= 0.f ? BloomOverride : (ArtBloomStrength > 0.f ? ArtBloomStrength : 0.6f);
+	const float Bloom = AppliedBloom >= 0.f ? AppliedBloom : (ArtBloomStrength > 0.f ? ArtBloomStrength : 0.6f);
 	S.BloomIntensity = QualityProfile.bBloom ? Bloom : 0.f;
 	S.bOverride_BloomThreshold = true;
 	S.BloomThreshold = 1.f;
@@ -1308,38 +1501,33 @@ void AAbyssZoneActor::ApplyPostProcess()
 	S.WeightedBlendables.Array.Reset();
 	if (QualityProfile.bColorGrading)
 	{
-		if (GradeMaterial != nullptr)
-		{
-			// Exact web grade: the material reads these (WorldContract.md 3.6).
-			GradeMaterial->SetVectorParameterValue(FName(TEXT("Ambient")), Mood.Ambient);
-			GradeMaterial->SetScalarParameterValue(FName(TEXT("AmbientAlpha")), Mood.AmbientAlpha);
-			GradeMaterial->SetVectorParameterValue(FName(TEXT("Haze")), Mood.Haze);
-			GradeMaterial->SetScalarParameterValue(FName(TEXT("HazeAlpha")), Mood.HazeAlpha);
-			GradeMaterial->SetScalarParameterValue(FName(TEXT("Saturation")), Mood.Saturation);
-			GradeMaterial->SetScalarParameterValue(FName(TEXT("Contrast")), Mood.Contrast);
-			GradeMaterial->SetVectorParameterValue(FName(TEXT("Lift")), FLinearColor(Mood.Lift.X, Mood.Lift.Y, Mood.Lift.Z));
-			GradeMaterial->SetVectorParameterValue(FName(TEXT("Gain")), FLinearColor(Mood.Gain.X, Mood.Gain.Y, Mood.Gain.Z));
-			S.WeightedBlendables.Array.Add(FWeightedBlendable(1.f, GradeMaterial));
-		}
-		else
-		{
-			// Built-in approximation: ambient multiply -> gain, haze -> global offset, sat / contrast, lift -> shadows offset,
-			// gain -> highlights offset.
-			const FLinearColor AmbientMul = FMath::Lerp(FLinearColor::White, Mood.Ambient, Mood.AmbientAlpha);
-			S.bOverride_ColorGain = true;
-			S.ColorGain = FVector4(AmbientMul.R, AmbientMul.G, AmbientMul.B, 1.0);
-			S.bOverride_ColorOffset = true;
-			S.ColorOffset = FVector4(Mood.Haze.R * Mood.HazeAlpha * 0.5f, Mood.Haze.G * Mood.HazeAlpha * 0.5f,
-				Mood.Haze.B * Mood.HazeAlpha * 0.5f, 0.0);
-			S.bOverride_ColorSaturation = true;
-			S.ColorSaturation = FVector4(1.0, 1.0, 1.0, Mood.Saturation);
-			S.bOverride_ColorContrast = true;
-			S.ColorContrast = FVector4(1.0, 1.0, 1.0, Mood.Contrast);
-			S.bOverride_ColorOffsetShadows = true;
-			S.ColorOffsetShadows = FVector4(Mood.Lift.X, Mood.Lift.Y, Mood.Lift.Z, 0.0);
-			S.bOverride_ColorOffsetHighlights = true;
-			S.ColorOffsetHighlights = FVector4(Mood.Gain.X, Mood.Gain.Y, Mood.Gain.Z, 0.0);
-		}
+		// DECISIONS P14: the engine's grade at 55 % of the zone mood (no exact web grade): ambient multiply -> gain (at half
+		// its alpha), saturation (+6 %) / contrast, lift -> shadows offset, gain -> highlights offset. The web haze is the
+		// height fog now (no global ColorOffset).
+		const float K = GradeMoodFraction;
+		const FLinearColor AmbientMul = FMath::Lerp(FLinearColor::White, Mood.Ambient, Mood.AmbientAlpha * 0.5f);
+		S.bOverride_ColorGain = true;
+		S.ColorGain = FVector4(AmbientMul.R, AmbientMul.G, AmbientMul.B, 1.0);
+		S.bOverride_ColorSaturation = true;
+		S.ColorSaturation = FVector4(1.0, 1.0, 1.0, GradeSaturationBoost * (1.f + (Mood.Saturation - 1.f) * K));
+		S.bOverride_ColorContrast = true;
+		S.ColorContrast = FVector4(1.0, 1.0, 1.0, 1.f + (Mood.Contrast - 1.f) * K);
+		S.bOverride_ColorOffsetShadows = true;
+		S.ColorOffsetShadows = FVector4(Mood.Lift.X * K, Mood.Lift.Y * K, Mood.Lift.Z * K, 0.0);
+		S.bOverride_ColorOffsetHighlights = true;
+		S.ColorOffsetHighlights = FVector4(Mood.Gain.X * K, Mood.Gain.Y * K, Mood.Gain.Z * K, 0.0);
+	}
+	const bool bAOComposite = bAO && AOCompositeMaterial != nullptr;
+	if (bAOComposite)
+	{
+		S.WeightedBlendables.Array.Add(FWeightedBlendable(1.f, AOCompositeMaterial));
+	}
+	// The composite darkens the visible ground only: the terrain alone renders custom depth while it is bound, and a pixel
+	// is ground where the scene depth reaches it (hlsl.ao_composite_node). Characters, props and foliage keep their
+	// colour: the lit toon's GBuffer normal is the constant KeyLightDir (P11), which classic SSAO orients its hemisphere by.
+	if (TerrainMesh != nullptr)
+	{
+		TerrainMesh->SetRenderCustomDepth(bAOComposite);
 	}
 	PostProcess->MarkRenderStateDirty();
 }

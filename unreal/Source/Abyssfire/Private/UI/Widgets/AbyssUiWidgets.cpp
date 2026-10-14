@@ -84,25 +84,42 @@ namespace AbyssUi
 			.ConsumeMouseWheel(EConsumeMouseWheel::Always);
 	}
 
-	TSharedRef<SWidget> SectionHeader(const TSharedRef<FAbyssUiContext>& Ctx, const FText& Text, float Width)
+	void PaintSectionRule(FAbyssPainter& P, double X0, double X1, double Y)
 	{
-		const FAbyssUiPalette& C = Ctx->Style().Colors();
-		const FSlateFontInfo Font = Ctx->Style().Body(12.f, true, 1);
+		if (X1 <= X0)
+		{
+			return;
+		}
+		// UiKit addSectionHeader bakes a 4 px strip: a horizontal gradient rgba(212,165,74,0.7 -> 0) on row 1 and
+		// rgba(0,0,0,0.5) on row 2. Eight 1 px segments with alpha 0.7 x (1 - i / 8) give one smooth fade (the old
+		// two-step rule read as a broken line); the black underline is the 1 px row below it at full length. Boxes, not
+		// lines: a 1 px row stays one row (an anti-aliased line on an integer y smears over two).
+		constexpr int32 Segments = 8;
+		const double Span = X1 - X0;
+		const FLinearColor Gold = P.Style.Colors().Gold;
+		P.Box(FVector2D(X0, Y + 1.0), FVector2D(Span, 1.0), FLinearColor(0.f, 0.f, 0.f, 0.5f));
+		for (int32 Index = 0; Index < Segments; ++Index)
+		{
+			const double From = X0 + Span * Index / Segments;
+			const double To = X0 + Span * (Index + 1) / Segments;
+			P.Box(FVector2D(From, Y), FVector2D(To - From, 1.0), FAbyssUiStyle::WithAlpha(Gold, 0.7f * (1.f - static_cast<float>(Index) / Segments)));
+		}
+	}
+
+	TSharedRef<SWidget> SectionHeader(const TSharedRef<FAbyssUiContext>& Ctx, const FText& Text, float Width, float FontPx)
+	{
+		const FLinearColor Heading = Ctx->Style().Colors().Heading;
+		const FSlateFontInfo Font = Ctx->Style().Body(FontPx, true, 1);
 		const FString Str = Text.ToString();
-		return SNew(SAbyssCanvas, Ctx, [Str, Font, C](FAbyssPainter& P, const FVector2D& Size)
+		return SNew(SAbyssCanvas, Ctx, [Str, Font, Heading](FAbyssPainter& P, const FVector2D& Size)
 			{
 				const FVector2D TextSize = FAbyssPainter::Measure(Str, Font);
-				P.Text(FVector2D(0.0, (Size.Y - TextSize.Y) * 0.5), Str, Font, C.Heading);
+				P.Text(FVector2D(0.0, (Size.Y - TextSize.Y) * 0.5), Str, Font, Heading);
+				// web: ruleX = x + text.width + 8, ruleW = max(10, w - text.width - 8), centred on the label's middle row
 				const double X0 = TextSize.X + 8.0;
-				const double Y = Size.Y * 0.5;
-				if (Size.X > X0 + 4.0)
-				{
-					const double Span = Size.X - X0;
-					P.Line(FVector2D(X0, Y), FVector2D(X0 + Span * 0.5, Y), FAbyssUiStyle::WithAlpha(C.Gold, 0.7f), 1.f);
-					P.Line(FVector2D(X0 + Span * 0.5, Y), FVector2D(Size.X, Y), FAbyssUiStyle::WithAlpha(C.Gold, 0.2f), 1.f);
-				}
+				PaintSectionRule(P, X0, FMath::Max(X0 + 10.0, Size.X), FMath::FloorToDouble(Size.Y * 0.5));
 			})
-			.Size(FVector2D(Width, 18.0));
+			.Size(FVector2D(Width, FMath::Max(18.0, FontPx + 6.0)));
 	}
 
 	TSharedRef<SWidget> Divider(const TSharedRef<FAbyssUiContext>& Ctx, float Width, bool bDiamond)
@@ -117,6 +134,134 @@ namespace AbyssUi
 	FLinearColor Alpha(const FLinearColor& Color, float A)
 	{
 		return FAbyssUiStyle::WithAlpha(Color, A);
+	}
+
+	TSharedRef<SWidget> Icon(const TSharedRef<FAbyssUiContext>& Ctx, const FSlateBrush* Brush, float Size, const FLinearColor& Tint)
+	{
+		return SNew(SAbyssCanvas, Ctx, [Brush, Tint](FAbyssPainter& P, const FVector2D& LocalSize)
+			{
+				if (Brush != nullptr)
+				{
+					P.Brush(FVector2D::ZeroVector, LocalSize, Brush, Tint);
+				}
+			})
+			.Size(FVector2D(Size, Size));
+	}
+
+	FSkillBackdrop SkillBackdrop(const abyss::DataStore* Data, const std::string& SkillId)
+	{
+		// SkillIcons.ts ELEMENT_BG / TREE_BG (art-inventory 9.2): { mid, deep, rim }.
+		struct FEntry
+		{
+			const char* Key;
+			uint32 Mid;
+			uint32 Deep;
+			uint32 Rim;
+		};
+		static const FEntry Elements[] = {
+			{ "fire", 0xd0501c, 0x3a0a06, 0xffb060 }, { "ice", 0x2e8ed6, 0x081a3a, 0xaeeaff },
+			{ "lightning", 0x6a52e6, 0x120c3a, 0xd8d0ff }, { "poison", 0x4f9c22, 0x0a2008, 0xc8ff80 },
+			{ "arcane", 0x9a3ad6, 0x1e0838, 0xf0b0ff },
+		};
+		static const FEntry Trees[] = {
+			{ "combat_master", 0xb4742e, 0x2a1206, 0xffd890 }, { "guardian", 0x3a6eaa, 0x0a1428, 0xb8d8ff },
+			{ "berserker", 0xa82a26, 0x280606, 0xffa080 }, { "assassination", 0x5e3c90, 0x120822, 0xd8b8ff },
+			{ "archery", 0x3a8c5a, 0x08200e, 0xc0f0b0 }, { "traps", 0xa47c2a, 0x221806, 0xffe0a0 },
+		};
+		const auto Make = [](const FEntry& Entry)
+		{
+			return FSkillBackdrop{ FAbyssUiStyle::Rgb(Entry.Mid), FAbyssUiStyle::Rgb(Entry.Deep), FAbyssUiStyle::Rgb(Entry.Rim) };
+		};
+		const abyss::SkillDef* Skill = Data != nullptr ? Data->FindSkill(SkillId) : nullptr;
+		if (Skill != nullptr && Skill->damageType != abyss::DamageType::Physical)
+		{
+			const std::string_view Element = abyss::EnumName(Skill->damageType);
+			for (const FEntry& Entry : Elements)
+			{
+				if (Element == Entry.Key)
+				{
+					return Make(Entry);
+				}
+			}
+		}
+		if (Skill != nullptr)
+		{
+			for (const FEntry& Entry : Trees)
+			{
+				if (Skill->tree == Entry.Key)
+				{
+					return Make(Entry);
+				}
+			}
+		}
+		return Make(Trees[0]);  // web: TREE_BG[tree] ?? TREE_BG.combat_master
+	}
+
+	FString SkillMonogram(const FString& Name)
+	{
+		return !Name.IsEmpty() && static_cast<uint32>(Name[0]) >= 0x2E80u ? Name.Left(1) : Name.Left(2);
+	}
+
+	bool PaintSkillTile(FAbyssPainter& P, const FAbyssUiContext& Ctx, const std::string& SkillId, const FString& Name, const FVector2D& Pos,
+		float Size, const FLinearColor& Tint, bool bMonogram)
+	{
+		if (Size <= 0.f)
+		{
+			return false;
+		}
+		const FSkillBackdrop Backdrop = SkillBackdrop(Ctx.GetData(), SkillId);
+		const auto ApplyTint = [&Tint](const FLinearColor& Color)
+		{
+			return FLinearColor(Color.R * Tint.R, Color.G * Tint.G, Color.B * Tint.B, Color.A * Tint.A);
+		};
+		// drawSkillIcon geometry in 1/96 units: plate inset 2, corner 15.
+		const float K = Size / 96.f;
+		const float Inset = 2.f * K;
+		const float Radius = 15.f * K;
+		const float Plate = Size - Inset * 2.f;
+		const FLinearColor Iron = FAbyssUiStyle::Rgb(0x17121c);
+		const FSlateBrush* Icon = Ctx.SkillIcon(SkillId);
+		if (Icon == nullptr)
+		{
+			// U11 fallback (missing texture only): a tile in the emblem's hue with the monogram.
+			P.RoundBox(Pos + FVector2D(Inset, Inset), FVector2D(Plate, Plate), ApplyTint(FMath::Lerp(Backdrop.Deep, Backdrop.Mid, 0.55f)), Radius,
+				ApplyTint(Iron), FMath::Max(1.f, 3.2f * K));
+			if (bMonogram)
+			{
+				const FString Monogram = SkillMonogram(Name);
+				P.TextCentered(Pos + FVector2D(Size * 0.5f, Size * 0.5f), Monogram, P.Style.Body(Size * (Monogram.Len() == 1 ? 0.48f : 0.36f), true, 2),
+					ApplyTint(FAbyssUiStyle::Lighten(Backdrop.Rim, 0.4f)));
+			}
+			return false;
+		}
+		P.Brush(Pos, FVector2D(Size, Size), Icon, Tint);
+		// Frame (not baked into the art): the iron stroke is centred on the plate's edge like the canvas stroke.
+		const float IronW = FMath::Max(1.f, 3.2f * K);
+		P.RoundBox(Pos + FVector2D(Inset - IronW * 0.5f, Inset - IronW * 0.5f), FVector2D(Plate + IronW, Plate + IronW), FLinearColor::Transparent,
+			Radius + IronW * 0.5f, ApplyTint(Iron), IronW);
+		// inner hairline: inset + 2.6 u, corner r - 2.4 u, 1.2 u wide in the rim colour at 0.55 (at least 1 px; a
+		// sub-pixel line keeps its weight through alpha, floored so it still reads at 36 px)
+		const float HairInset = Inset + 2.6f * K;
+		const float HairW = 1.2f * K;
+		P.RoundBox(Pos + FVector2D(HairInset, HairInset), FVector2D(Size - HairInset * 2.f, Size - HairInset * 2.f), FLinearColor::Transparent,
+			FMath::Max(1.f, Radius - 2.4f * K), ApplyTint(FAbyssUiStyle::WithAlpha(Backdrop.Rim, 0.55f * FMath::Clamp(HairW, 0.6f, 1.f))),
+			FMath::Max(1.f, HairW));
+		// top-left bevel: from the left edge at the corner's end, round the corner (radius r - 1.2 u), along the top to
+		// 0.6 of the width
+		const float BevelIn = Inset + 1.2f * K;
+		const float BevelR = FMath::Max(0.5f, Radius - 1.2f * K);
+		const FVector2D Corner = Pos + FVector2D(BevelIn + BevelR, BevelIn + BevelR);
+		TArray<FVector2D> Bevel;
+		Bevel.Add(Pos + FVector2D(BevelIn, Inset + Radius));
+		constexpr int32 ArcSteps = 6;
+		for (int32 Step = 0; Step <= ArcSteps; ++Step)
+		{
+			const float Angle = UE_PI + UE_HALF_PI * static_cast<float>(Step) / ArcSteps;   // 180 -> 270 deg (screen: left -> up)
+			Bevel.Add(Corner + FVector2D(FMath::Cos(Angle), FMath::Sin(Angle)) * BevelR);
+		}
+		Bevel.Add(Pos + FVector2D(Size * 0.6f, BevelIn));
+		P.Polyline(Bevel, ApplyTint(FAbyssUiStyle::Rgb(0xfff0d2, 0.35f * FMath::Clamp(K, 0.6f, 1.f))), FMath::Max(1.f, K));
+		return true;
 	}
 }
 
@@ -296,6 +441,30 @@ void SAbyssButton::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 			.Font(InContext->Style().Body(InArgs._FontPx, true, 1))
 			.Justification(ETextJustify::Center)
 			.ColorAndOpacity(this, &SAbyssButton::GetLabelColor);
+		if (const FSlateBrush* IconBrush = InArgs._Icon)
+		{
+			// U11 glyph buttons (inventory sort, potion picker rows): the icon left of the label; a missing texture
+			// leaves the label alone (the caller passes nullptr).
+			const float IconSize = FMath::Max(8.f, InArgs._IconSize);
+			Content = SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+				[
+					SNew(SAbyssCanvas, InContext, [this, IconBrush](FAbyssPainter& P, const FVector2D& Size)
+					{
+						P.Brush(FVector2D::ZeroVector, Size, IconBrush, IsEnabled() ? FLinearColor::White : FLinearColor(0.6f, 0.6f, 0.6f, 0.5f));
+					})
+					.Size(FVector2D(IconSize, IconSize))
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					Content
+				];
+		}
 	}
 
 	const TSharedRef<FAbyssUiContext> Ctx = InContext;
@@ -493,6 +662,15 @@ void SAbyssCloseButton::Construct(const FArguments& InArgs, const TSharedRef<FAb
 						P.Circle(Center, R + 2.f, FLinearColor(0.88f, 0.12f, 0.08f, 0.25f));
 					}
 					P.Circle(Center + FVector2D(0.0, 1.5), R, FLinearColor(0.f, 0.f, 0.f, 0.5f));
+					// U11: the shipped glyph (iron ring, red button, cream X; 128 px art drawn at 30 / 42 px). The ring
+					// spans 80 / 96 of the glyph, so it is drawn 96 / 80 of the medallion to keep the medallion's size.
+					if (const FSlateBrush* Glyph = Context.IsValid() ? Context->Glyph(TEXT("close")) : nullptr)
+					{
+						const float Half = R * 1.2f;
+						P.Brush(Center - FVector2D(Half, Half), FVector2D(Half * 2.f, Half * 2.f), Glyph,
+							bHovered ? FLinearColor::White : FLinearColor(0.92f, 0.92f, 0.92f, 1.f));
+						return;
+					}
 					P.Circle(Center, R, FAbyssUiStyle::Rgb(0x2a252e), FAbyssUiStyle::Rgb(0x6d6573), 1.5f);
 					P.Circle(Center, R * 0.72f, FAbyssUiStyle::Rgb(0x1a171d), FAbyssUiStyle::Rgb(0x050407), 1.f);
 					const FLinearColor Cross = bHovered ? FAbyssUiStyle::Rgb(0xffb09a) : FAbyssUiStyle::Rgb(0xe0634e);
@@ -573,42 +751,53 @@ void SAbyssTabBar::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 				}
 			})
 		];
+		// The label is centred on the tab by itself (web: tx + tabW / 2, tabY + tabH / 2 - 1); the badge sits in its own
+		// slot, centred 12 px from the right edge (web: tx + tabW - 12, origin 0.5), so the label never shifts.
 		TabContent->AddSlot()
 		.HAlign(HAlign_Center)
 		.VAlign(VAlign_Center)
+		.Padding(FMargin(0.f, 0.f, 0.f, 2.f))
 		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Text(Tab.Label)
-				.Font(Ctx->Style().Body(FontPx, true, 1))
-				.ColorAndOpacity_Lambda([IsActive, Ctx]()
-				{
-					return FSlateColor(IsActive() ? Ctx->Style().Colors().Parchment : FAbyssUiStyle::Rgb(0x8a8290));
-				})
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(FMargin(6.f, 0.f, 0.f, 0.f))
-			[
-				SNew(STextBlock)
-				.Visibility(Tab.Badge.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible)
-				.Text(Tab.Badge)
-				.Font(Ctx->Style().Body(FontPx * 0.8f, true, 1))
-				.ColorAndOpacity(FSlateColor(Ctx->Style().Colors().GoldBright))
-			]
+			SNew(STextBlock)
+			.Text(Tab.Label)
+			.Font(Ctx->Style().Body(FontPx, true, 1))
+			.ColorAndOpacity_Lambda([IsActive, Ctx]()
+			{
+				return FSlateColor(IsActive() ? Ctx->Style().Colors().Parchment : FAbyssUiStyle::Rgb(0x8a8290));
+			})
 		];
+		if (!Tab.Badge.IsEmpty())
+		{
+			const FLinearColor BadgeActive = Tab.Accent;
+			TabContent->AddSlot()
+			.HAlign(HAlign_Right)
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.f, 0.f, 4.f, 2.f))
+			[
+				SNew(SBox)
+				.WidthOverride(16.f)
+				.HAlign(HAlign_Center)
+				.Visibility(EVisibility::HitTestInvisible)
+				[
+					SNew(STextBlock)
+					.Text(Tab.Badge)
+					.Font(Ctx->Style().Body(FontPx * 0.8f, true, 1))
+					.ColorAndOpacity_Lambda([IsActive, BadgeActive]()
+					{
+						return FSlateColor(IsActive() ? BadgeActive : FAbyssUiStyle::Rgb(0x6e665c));
+					})
+				]
+			];
+		}
+		// Each tab clips to its box: the face is drawn Radius taller than the tab so only its top corners round, and that
+		// overdraw (with its bottom border) must not show as a second lip under the tab (third playtest, 12.webp).
 		if (InArgs._TabWidth > 0.f)
 		{
 			Row->AddSlot()
 				.AutoWidth()
 				.Padding(FMargin(Index == 0 ? 0.f : 4.f, 0.f, 0.f, 0.f))
 				[
-					SNew(SBox).WidthOverride(InArgs._TabWidth).HeightOverride(TabH)[TabWidget]
+					SNew(SBox).WidthOverride(InArgs._TabWidth).HeightOverride(TabH).Clipping(EWidgetClipping::ClipToBounds)[TabWidget]
 				];
 		}
 		else
@@ -617,7 +806,7 @@ void SAbyssTabBar::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 				.FillWidth(1.f)
 				.Padding(FMargin(Index == 0 ? 0.f : 4.f, 0.f, 0.f, 0.f))
 				[
-					SNew(SBox).HeightOverride(TabH)[TabWidget]
+					SNew(SBox).HeightOverride(TabH).Clipping(EWidgetClipping::ClipToBounds)[TabWidget]
 				];
 		}
 	}
@@ -941,6 +1130,39 @@ namespace
 			];
 	}
 
+	/**
+	 * A stat line with its 14 px glyph (U11: str / dex / vit / int / spi / lck / hp / mp / atk / def) in a column before the
+	 * text; bColumn keeps the column (empty) for stats without a glyph so a block's values stay aligned.
+	 */
+	void AbyssTooltip_AddStatLine(const TSharedRef<SVerticalBox>& Box, const TSharedRef<FAbyssUiContext>& Ctx, const FSlateBrush* Glyph,
+		bool bColumn, const FString& Text, float Px, const FLinearColor& Color, float Wrap = 236.f)
+	{
+		if (!bColumn)
+		{
+			AbyssTooltip_AddLine(Box, Ctx, Text, Px, Color, false, Wrap);
+			return;
+		}
+		Box->AddSlot()
+			.AutoHeight()
+			.Padding(FMargin(0.f, 1.f, 0.f, 0.f))
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+				[
+					AbyssUi::Icon(Ctx, Glyph, 14.f)
+				]
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.f)
+				.VAlign(VAlign_Center)
+				[
+					AbyssUi::Label(*Ctx, FText::AsCultureInvariant(Text), Px, Color, false, 1, Wrap - 18.f)
+				]
+			];
+	}
+
 	FString AbyssTooltip_CompareLabel(const FAbyssUiContext& Ctx, const abyss::CompareKey& Key)
 	{
 		switch (Key.kind)
@@ -1059,10 +1281,16 @@ namespace AbyssItemTooltip
 		if (!Item.affixes.empty())
 		{
 			Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 5.f, 0.f, 3.f))[AbyssUi::Divider(Ctx, Wrap, false)];
+			bool bGlyphs = false;
 			for (const abyss::ItemAffix& Affix : Item.affixes)
 			{
-				AbyssTooltip_AddLine(Lines, Ctx, FString::Printf(TEXT("%s %s"), *Ctx->StatValue(Affix.stat, Affix.value), *Ctx->StatLabel(Affix.stat)),
-					12.f, FAbyssUiStyle::Rgb(0x7fb0ff));
+				bGlyphs = bGlyphs || Ctx->StatGlyph(Affix.stat) != nullptr;
+			}
+			for (const abyss::ItemAffix& Affix : Item.affixes)
+			{
+				AbyssTooltip_AddStatLine(Lines, Ctx, Ctx->StatGlyph(Affix.stat), bGlyphs,
+					FString::Printf(TEXT("%s %s"), *Ctx->StatValue(Affix.stat, Affix.value), *Ctx->StatLabel(Affix.stat)), 12.f,
+					FAbyssUiStyle::Rgb(0x7fb0ff), Wrap);
 			}
 		}
 		// legendary effect (orange)

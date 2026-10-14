@@ -317,6 +317,7 @@ void SAbyssInventoryPanel::BuildBag(const TSharedRef<SCanvas>& Canvas, const aby
 	[
 		SNew(SAbyssButton, Context)
 		.Text(Ctx->LocOr("ui.inventory.sort", TEXT("Sort")))
+		.Icon(Ctx->Glyph(TEXT("sort")))
 		.Kind(EAbyssButtonKind::Secondary).FontPx(12.f).Width(76.f).Height(26.f)
 		.IsEnabled(!bDying)
 		.OnClicked_Lambda([Context]() { Context->Submit(abyss::CmdSortBag{}); })

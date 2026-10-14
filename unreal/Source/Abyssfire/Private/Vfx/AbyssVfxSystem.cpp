@@ -13,8 +13,11 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
 
 #include <string>
 #include <string_view>
@@ -23,6 +26,7 @@
 #include "abyss/combat/Projectiles.h"
 #include "abyss/data/ClassData.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/data/MapData.h"
 #include "abyss/data/SkillData.h"
 
 #include "Actors/AbyssCharacterActor.h"
@@ -35,10 +39,22 @@
 #include "Framework/AbyssWorldView.h"
 #include "World/AbyssAssetLibrary.h"
 
+static TAutoConsoleVariable<float> CVarAbyssCharLightGain(
+	TEXT("abyss.CharLightGain"),
+	3.5f,
+	TEXT("Gain of the toon light slots (DECISIONS P11 revised): MPC_AF_Lighting Light<i>Col = linear colour x light alpha x ")
+	TEXT("the zone lightScale x this. Torches, campfires and spell glows light the characters through these slots."),
+	ECVF_Default);
+
 namespace AbyssVfxSystemPrivate
 {
-	constexpr int32 DesktopMaxParticles = 900;   // web FxEngine MAX_PARTICLES
-	constexpr int32 MobileMaxParticles = 600;    // art-inventory-ch1.md 1.9
+	constexpr int32 DesktopMaxParticles = 700;   // DECISIONS R20 (web FxEngine MAX_PARTICLES was 900)
+	constexpr int32 MobileMaxParticles = 450;    // DECISIONS R20 (art-inventory-ch1.md 1.9 had 600)
+	// DECISIONS R20 density: at most this many live hit.impact bursts per target; a burst this soon after the previous one
+	// on the same target plays at half count. Smoke / dust layers spawn at half count above the live smoke cap.
+	constexpr int32 MaxLiveHitBursts = 2;
+	constexpr double HitBurstHalfCountSec = 0.12;
+	constexpr int32 SmokeDensityCap = 40;
 	constexpr float ShakeThrottleSec = 0.12f;    // FxEngine.shake own throttle
 	constexpr float MaxEmitterBacklogMs = 250.f; // continuous emitters never burst more than this after a hitch
 	constexpr float VfxPxToCm = 100.f / 45.f;
@@ -281,6 +297,12 @@ void UAbyssVfxSystem::ClearAll()
 	HeroHaloActor.Reset();
 	ResonanceAuraHandle = 0;
 	ResonanceAuraActor.Reset();
+	HitBursts.Reset();
+	LiveSmokeParticles = 0;
+	bLightScaleKnown = false;
+	// The toon light slots are rewritten (to 0 when no light is left) on the next tick.
+	LightSlotRefreshSec = 0.f;
+	bLightSlotsClear = false;
 	// Hide every instance right away (the next Render would do it too, but a zone teardown may not render again).
 	for (FPool& Pool : Pools)
 	{
@@ -446,6 +468,7 @@ int32 UAbyssVfxSystem::FindOrCreatePool(const FAbyssVfxLayer& Layer)
 	Pool.Key = Key;
 	Pool.bMesh = false;
 	Pool.Blend = Layer.Blend;
+	Pool.bSmoke = Layer.Sprite == FName(TEXT("Smoke")) || Layer.Sprite == FName(TEXT("Dust"));
 	Pool.Component = PoolComponents.Add(Component);
 	const int32 Index = Pools.Num() - 1;
 	PoolIndexByKey.Add(Key, Index);
@@ -465,7 +488,10 @@ FVector UAbyssVfxSystem::ResolveActorAnchor(const AActor* Actor, EAbyssVfxHeight
 	}
 	if (Height == EAbyssVfxHeight::Ground || Height == EAbyssVfxHeight::Custom)
 	{
-		return Actor->GetActorLocation() + FVector(0.0, 0.0, Height == EAbyssVfxHeight::Custom ? CustomCm : 0.0);
+		// Props: their effect origin (ground loot: the pickup mesh's `beam` socket, DECISIONS R17).
+		const AAbyssPropActor* Prop = Cast<AAbyssPropActor>(Actor);
+		const FVector Ground = Prop != nullptr ? Prop->GetEffectOrigin() : Actor->GetActorLocation();
+		return Ground + FVector(0.0, 0.0, Height == EAbyssVfxHeight::Custom ? CustomCm : 0.0);
 	}
 	if (const AAbyssCharacterActor* Character = Cast<AAbyssCharacterActor>(Actor))
 	{
@@ -792,6 +818,7 @@ void UAbyssVfxSystem::StartLight(int32 Handle, const FAbyssVfxRecipe& Recipe, in
 	Light.bPersistent = Recipe.Layers.Num() == 0;
 	Light.Seed = Random.FRandRange(0.f, 1000.f);
 	Light.Color = Context.bHasColor ? Context.Color : Palette.Mid;
+	Light.HeightCm = Recipe.LightHeightCm;
 }
 
 void UAbyssVfxSystem::RequestShake(float DurationMs, float Intensity)
@@ -847,10 +874,17 @@ int32 UAbyssVfxSystem::ResolveSpawnAnchor(const FEmitter& Emitter, EAbyssVfxAnch
 
 void UAbyssVfxSystem::UpdateEmitters(float DeltaMs)
 {
+	using namespace AbyssVfxSystemPrivate;
+	static const FName SmokeSprite(TEXT("Smoke"));
+	static const FName DustSprite(TEXT("Dust"));
+	// DECISIONS R20: above the live smoke cap new smoke / dust layers spawn at half count (bursts) / half rate (loops).
+	const bool bSmokeCrowded = LiveSmokeParticles > SmokeDensityCap;
 	for (int32 Index = 0; Index < Emitters.Num();)
 	{
 		FEmitter& Emitter = Emitters[Index];
 		const FAbyssVfxLayer& Layer = Emitter.Recipe->Layers[Emitter.LayerIndex];
+		const float SmokeScale = bSmokeCrowded && Layer.Mesh.IsNone() && (Layer.Sprite == SmokeSprite || Layer.Sprite == DustSprite)
+			? 0.5f : 1.f;
 		Emitter.ElapsedMs += DeltaMs;
 		const float Active = Emitter.ElapsedMs - Emitter.StartDelayMs;
 		bool bDone = false;
@@ -862,7 +896,7 @@ void UAbyssVfxSystem::UpdateEmitters(float DeltaMs)
 				{
 					float Count = Layer.bCountFromContext ? static_cast<float>(Emitter.Context.SparkCount)
 														  : Layer.Count.Sample(Random);
-					Count *= Emitter.Context.CountScale;
+					Count *= Emitter.Context.CountScale * SmokeScale;
 					if (Layer.bCountByRadius)
 					{
 						Count *= FMath::Max(1.f, Emitter.Context.RadiusCm / 100.f);
@@ -883,7 +917,7 @@ void UAbyssVfxSystem::UpdateEmitters(float DeltaMs)
 				{
 					// Web: emission interval x quality multiplier -> rate / multiplier.
 					const float Multiplier = FMath::Max(0.25f, Quality.ParticleFrequencyMultiplier);
-					const float Rate = Layer.Rate / Multiplier;
+					const float Rate = Layer.Rate / Multiplier * SmokeScale;
 					Emitter.SpawnAccumulator += FMath::Min(DeltaMs, AbyssVfxSystemPrivate::MaxEmitterBacklogMs) * Rate / 1000.f;
 					const int32 Count = FMath::FloorToInt32(Emitter.SpawnAccumulator);
 					if (Count > 0)
@@ -1128,6 +1162,7 @@ void UAbyssVfxSystem::SpawnParticle(FEmitter& Emitter, const FAbyssVfxLayer& Lay
 void UAbyssVfxSystem::UpdateParticles(float DeltaSec)
 {
 	const float DeltaMs = DeltaSec * 1000.f;
+	LiveSmokeParticles = 0;
 	for (int32 Index = 0; Index < Particles.Num();)
 	{
 		FParticle& P = Particles[Index];
@@ -1136,6 +1171,10 @@ void UAbyssVfxSystem::UpdateParticles(float DeltaSec)
 		{
 			Particles.RemoveAtSwap(Index, 1, EAllowShrinking::No);
 			continue;
+		}
+		if (Pools.IsValidIndex(P.Pool) && Pools[P.Pool].bSmoke)
+		{
+			++LiveSmokeParticles;
 		}
 		if (P.Drag > 0.f)
 		{
@@ -1345,23 +1384,18 @@ void UAbyssVfxSystem::Render()
 					< FVector::DistSquared2D(Anchors[Lights[B].Anchor].Current, Focus);
 			});
 			const int32 Limit = FMath::Min(Order.Num(), FMath::Max(1, Quality.MaxDynamicLights));
-			const double TimeMs = RealClockSec * 1000.0;
 			for (int32 Rank = 0; Rank < Limit; ++Rank)
 			{
 				const FLight& Light = Lights[Order[Rank]];
-				float Alpha = Light.Alpha;
-				if (Light.bFlicker)
-				{
-					// world-map-nav.md 14.1: + sin(t x 0.007 + s) x 0.05 + sin(t x 0.013 + 2.3 s) x 0.03
-					Alpha += static_cast<float>(FMath::Sin(TimeMs * 0.007 + Light.Seed) * 0.05
-						+ FMath::Sin(TimeMs * 0.013 + 2.3 * Light.Seed) * 0.03);
-				}
+				const float Alpha = LightAlphaNow(Light);
 				// 8 cm over the ground like the recipes' ground quads (fx_recipes.ground_lift): the pool sprite draws
 				// with M_AF_FX_Additive, whose DepthFade(8 cm) would leave a 2 cm pool at about a third of its strength.
 				const FVector Ground = Anchors[Light.Anchor].Current + FVector(0.0, 0.0, 8.0);
 				const float Diameter = Light.RadiusCm * 2.f / 100.f;
+				// DECISIONS R18: alpha = intensity x the zone's lightScale (the web point-light alpha; plains halo .4 x .12 =
+				// .048), no fixed factor - the old x0.5 left the hero's disc ~4x too bright (third playtest).
 				Emit(PoolIndex, AxesTransform(Ground, FVector::ForwardVector, FVector::RightVector, Diameter, Diameter),
-					Light.Color, FMath::Clamp(Alpha, 0.f, 1.f) * 0.5f, 0.f, 0.f);
+					Light.Color, FMath::Clamp(Alpha, 0.f, 1.f) * LightScale, 0.f, 0.f);
 			}
 		}
 	}
@@ -1419,6 +1453,7 @@ void UAbyssVfxSystem::Tick(float VisualDeltaSec, const FAbyssFrameInfo& Frame, c
 	{
 		BindEvents();
 	}
+	UpdateLightScale(Snap);
 
 	// Camera basis (billboards).
 	if (const UWorld* OwningWorld = GetWorld())
@@ -1464,10 +1499,161 @@ void UAbyssVfxSystem::Tick(float VisualDeltaSec, const FAbyssFrameInfo& Frame, c
 		SweepAnchors();
 	}
 	UpdateLights(DeltaSec);
+	UpdateLightSlots(static_cast<float>(Frame.RealDeltaMs / 1000.0));
 	if (bRendererAvailable)
 	{
 		Render();
 	}
+}
+
+// =====================================================================================================================
+// Fake lights: zone light scale and the toon light slots (DECISIONS R18, P11 revised)
+// =====================================================================================================================
+
+float UAbyssVfxSystem::LightAlphaNow(const FLight& Light) const
+{
+	float Alpha = Light.Alpha;
+	if (Light.bFlicker)
+	{
+		// world-map-nav.md 14.1: + sin(t x 0.007 + s) x 0.05 + sin(t x 0.013 + 2.3 s) x 0.03
+		const double TimeMs = RealClockSec * 1000.0;
+		Alpha += static_cast<float>(FMath::Sin(TimeMs * 0.007 + Light.Seed) * 0.05 + FMath::Sin(TimeMs * 0.013 + 2.3 * Light.Seed) * 0.03);
+	}
+	return Alpha;
+}
+
+void UAbyssVfxSystem::UpdateLightScale(const abyss::Snapshot& Snap)
+{
+	if (bLightScaleKnown && Snap.zone.mapId == LightScaleMapId)
+	{
+		return;
+	}
+	const UAbyssGameInstance* GameInstance = UAbyssGameInstance::Get(this);
+	const abyss::DataStore* Data = GameInstance != nullptr ? GameInstance->GetData() : nullptr;
+	if (Data == nullptr)
+	{
+		return;
+	}
+	// The zone's mood (zone_moods.json themeByZone; an unknown zone id uses its map's theme), as AAbyssZoneActor.
+	const abyss::WorldTables& WorldData = Data->World();
+	abyss::MapTheme Theme = abyss::MapTheme::Plains;
+	if (const abyss::MapDef* Map = WorldData.FindMap(Snap.zone.mapId))
+	{
+		Theme = Map->theme;
+	}
+	WorldData.moods.ThemeFor(Snap.zone.mapId, Theme);
+	const abyss::ZoneMoodDef& Mood = WorldData.moods.moods[static_cast<size_t>(Theme)];
+	LightScale = AbyssVfxLighting::LightScaleFromMood(Mood.ambient, static_cast<float>(Mood.ambientAlpha));
+	LightScaleMapId = Snap.zone.mapId;
+	bLightScaleKnown = true;
+	UE_LOG(LogAbyss, Log, TEXT("VFX: zone '%s' light scale %.4f (DECISIONS R18)"), *AbyssText::ToFString(Snap.zone.mapId), LightScale);
+}
+
+void UAbyssVfxSystem::UpdateLightSlots(float RealDeltaSec)
+{
+	using namespace AbyssVfxLighting;
+	LightSlotRefreshSec -= RealDeltaSec;
+	if (LightSlotRefreshSec > 0.f)
+	{
+		return;
+	}
+	LightSlotRefreshSec = FMath::Max(0.f, Quality.LightingUpdateIntervalMs / 1000.f);
+
+	// Candidates: every live light but the hero halo (it never lights characters, DECISIONS R18), by ground distance to
+	// the camera focus.
+	TArray<int32, TInlineAllocator<32>> Candidates;
+	TArray<float, TInlineAllocator<32>> Distances;
+	for (int32 Index = 0; Index < Lights.Num(); ++Index)
+	{
+		const FLight& Light = Lights[Index];
+		if (Light.Handle == HeroHaloHandle || Light.RadiusCm <= 0.f || !Anchors.IsValidIndex(Light.Anchor))
+		{
+			continue;
+		}
+		Candidates.Add(Index);
+		Distances.Add(static_cast<float>(FVector::Dist2D(Anchors[Light.Anchor].Current, CameraFocus)));
+	}
+	const int32 SlotCount = Quality.bMobile ? MobileLightSlots : MaxLightSlots;
+	SelectLightSlots(Distances, SlotCount, SlotCrossFadeCm, SlotPicks);
+	if (SlotPicks.Num() == 0 && bLightSlotsClear)
+	{
+		return;
+	}
+
+	UWorld* OwningWorld = GetWorld();
+	UAbyssAssetLibrary* Assets = UAbyssAssetLibrary::Get(this);
+	UMaterialParameterCollection* Collection = Assets != nullptr ? Assets->GetLightingCollection() : nullptr;
+	UMaterialParameterCollectionInstance* Instance = Collection != nullptr && OwningWorld != nullptr
+		? OwningWorld->GetParameterCollectionInstance(Collection)
+		: nullptr;
+	if (Instance == nullptr)
+	{
+		return;   // the world builder logs the missing collection once
+	}
+	struct FSlotNames
+	{
+		FName Pos[MaxLightSlots];
+		FName Col[MaxLightSlots];
+		FSlotNames()
+		{
+			for (int32 Slot = 0; Slot < MaxLightSlots; ++Slot)
+			{
+				Pos[Slot] = FName(*FString::Printf(TEXT("Light%dPosR"), Slot));
+				Col[Slot] = FName(*FString::Printf(TEXT("Light%dCol"), Slot));
+			}
+		}
+	};
+	static const FSlotNames Names;
+	auto SetVector = [Collection, Instance](FName Name, const FLinearColor& Value)
+	{
+		if (Collection->GetVectorParameterByName(Name) != nullptr)
+		{
+			Instance->SetVectorParameterValue(Name, Value);
+		}
+	};
+	const float Gain = FMath::Max(0.f, CVarAbyssCharLightGain.GetValueOnGameThread());
+	for (int32 Slot = 0; Slot < MaxLightSlots; ++Slot)
+	{
+		FLinearColor PosR(0.f, 0.f, 0.f, 0.f);
+		FLinearColor Col(0.f, 0.f, 0.f, 0.f);
+		if (SlotPicks.IsValidIndex(Slot))
+		{
+			const FLight& Light = Lights[Candidates[SlotPicks[Slot].Candidate]];
+			const FVector Flame = Anchors[Light.Anchor].Current + FVector(0.0, 0.0, Light.HeightCm);
+			PosR = FLinearColor(static_cast<float>(Flame.X), static_cast<float>(Flame.Y), static_cast<float>(Flame.Z), Light.RadiusCm);
+			const float Scale = FMath::Clamp(LightAlphaNow(Light), 0.f, 1.f) * LightScale * Gain * SlotPicks[Slot].Weight;
+			if (Scale > 0.f)
+			{
+				Col = FLinearColor(Light.Color.R * Scale, Light.Color.G * Scale, Light.Color.B * Scale, 1.f);
+			}
+		}
+		SetVector(Names.Pos[Slot], PosR);
+		SetVector(Names.Col[Slot], Col);
+	}
+	bLightSlotsClear = SlotPicks.Num() == 0;
+}
+
+bool UAbyssVfxSystem::IsHandleLive(int32 Handle) const
+{
+	if (Handle == 0)
+	{
+		return false;
+	}
+	for (const FEmitter& Emitter : Emitters)
+	{
+		if (Emitter.Handle == Handle)
+		{
+			return true;
+		}
+	}
+	for (const FParticle& Particle : Particles)
+	{
+		if (Particle.Handle == Handle)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 // =====================================================================================================================
@@ -1797,7 +1983,29 @@ void UAbyssVfxSystem::HandleHit(const abyss::EvHit& Event)
 	}
 	if (Event.impactBurst)
 	{
-		Play(FName(TEXT("hit.impact")), Context);
+		// DECISIONS R20 density: at most two live bursts per target; one within 120 ms of the previous plays at half count.
+		// The weight's own burst (hit.impact.<light|normal|heavy|crit|kill>: light hits fainter) when the recipe exists.
+		FHitBurstTrack& Track = HitBursts.FindOrAdd(Event.target);
+		int32 Free = INDEX_NONE;
+		for (int32 Slot = 0; Slot < MaxLiveHitBursts; ++Slot)
+		{
+			if (!IsHandleLive(Track.Handles[Slot]))
+			{
+				Track.Handles[Slot] = 0;
+				Free = Free == INDEX_NONE ? Slot : Free;
+			}
+		}
+		if (Free != INDEX_NONE)
+		{
+			FAbyssVfxContext Burst = Context;
+			if (RealClockSec - Track.LastRealSec < HitBurstHalfCountSec)
+			{
+				Burst.CountScale *= 0.5f;
+			}
+			const FName Ids[] = { MakeId(TEXT("hit.impact."), abyss::EnumName(Event.weight)), FName(TEXT("hit.impact")) };
+			Track.Handles[Free] = PlayFirst(Ids, Burst);
+			Track.LastRealSec = RealClockSec;
+		}
 	}
 	const bool bHeroBasic = Event.skillId.empty() && Event.source == abyss::kHeroEntityId && !Event.tick
 		&& Event.targetFaction == abyss::Faction::Monster;
@@ -1844,6 +2052,7 @@ void UAbyssVfxSystem::HandleHit(const abyss::EvHit& Event)
 
 void UAbyssVfxSystem::HandleDespawned(const abyss::EvEntityDespawned& Event)
 {
+	HitBursts.Remove(Event.id);
 	// Escort death burst (quests 3.9: #E67E22). Monster kills burst on the killing hit (HandleHit).
 	if (Event.reason == abyss::DespawnReason::Died && Event.kind == abyss::EntityKind::Escort)
 	{

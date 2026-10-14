@@ -299,21 +299,13 @@ private:
 			P.RoundBox(FVector2D(-2.0, -2.0), Size + FVector2D(4.0, 4.0), FLinearColor::Transparent, 6.f, C.GoldBright, 2.f);
 		}
 
-		// 42 px icon in a well framed by the damage-type colour
+		// 42 px skill tile (U11: the same T_UI_SkillIcon tile as the HUD slots) in a well framed by the damage-type colour;
+		// an unlearned skill shows its icon dimmed (0.45, 0.45, 0.5, 0.85) instead of a grey monogram.
 		const FVector2D IconPos(12.0, (Size.Y - 46.0) * 0.5);
 		P.Well(IconPos, FVector2D(46.0, 46.0), 5.f);
 		P.RoundBox(IconPos, FVector2D(46.0, 46.0), FLinearColor::Transparent, 5.f, FAbyssUiStyle::WithAlpha(Data.TypeColor, IconAlpha), 1.5f);
-		const FLinearColor IconTint = Data.State == EAbyssSkillCardState::Locked ? FLinearColor(0.55f, 0.55f, 0.55f, IconAlpha)
-			: FLinearColor(1.f, 1.f, 1.f, IconAlpha);
-		if (const FSlateBrush* Icon = Context->SkillIcon(Data.SkillId))
-		{
-			P.Brush(IconPos + FVector2D(2.0, 2.0), FVector2D(42.0, 42.0), Icon, IconTint);
-		}
-		else
-		{
-			P.TextCentered(IconPos + FVector2D(23.0, 23.0), Data.Name.Left(1), P.Style.Body(18.f, true, 2),
-				FAbyssUiStyle::WithAlpha(Data.TypeColor, IconAlpha));
-		}
+		const FLinearColor IconTint = Data.Level > 0 ? FLinearColor::White : FLinearColor(0.45f, 0.45f, 0.5f, 0.85f);
+		AbyssUi::PaintSkillTile(P, *Context, Data.SkillId, Data.Name, IconPos + FVector2D(2.0, 2.0), 42.f, IconTint);
 
 		// level pips (8 px diamonds, <= 20, gap 10, clipped 80 px from the right) + "lv/max"
 		const double PipX0 = 68.0;
@@ -563,16 +555,18 @@ void SAbyssSkillTreePanel::BuildCards(const abyss::Snapshot& Snap)
 				*Ctx->DamageTypeName(Skill.damageType));
 		}
 
-		// arrow from the previous card (learned: tree colour 0.6 + glow; else 0x3a3a4e 0.15)
+		// Prerequisite arrow from the card above (web renderTab: the line from card si to si + 1 is lit by
+		// getSkillLevel(sortedSkills[si]), the card ABOVE), at the card centre (x 300 of the 600 px card): lit = tree
+		// colour 0.6 over a 6 px glow at 0.2; unlit = #3a3a4e at 0.35.
 		if (Position > 0)
 		{
-			const bool bLit = Level > 0;
+			const bool bLit = Book.Level(Indices[Position - 1]) > 0;
 			Scroll->AddSlot()
 			[
 				SNew(SAbyssCanvas, Context, [bLit, TreeColor](FAbyssPainter& P, const FVector2D& Size)
 				{
-					const FLinearColor Color = bLit ? FAbyssUiStyle::WithAlpha(TreeColor, 0.6f) : FAbyssUiStyle::Rgb(0x3a3a4e, 0.15f);
-					const double X = 35.0;
+					const FLinearColor Color = bLit ? FAbyssUiStyle::WithAlpha(TreeColor, 0.6f) : FAbyssUiStyle::Rgb(0x3a3a4e, 0.35f);
+					const double X = Size.X * 0.5;
 					if (bLit)
 					{
 						P.Line(FVector2D(X, 0.0), FVector2D(X, Size.Y - 3.0), FAbyssUiStyle::WithAlpha(TreeColor, 0.2f), 6.f);
@@ -678,14 +672,8 @@ void SAbyssSkillTreePanel::BuildHotbar(const abyss::Snapshot& Snap)
 					}
 					if (!SkillId.empty())
 					{
-						if (const FSlateBrush* Icon = Context->SkillIcon(SkillId))
-						{
-							P.Brush(FVector2D(4.0, 4.0), Size - FVector2D(8.0, 8.0), Icon);
-						}
-						else
-						{
-							P.TextCentered(Size * 0.5, Name.Left(2), P.Style.Body(14.f, true, 2), Palette.Parchment);
-						}
+						// U11: the same framed T_UI_SkillIcon tile as the HUD slot and the tree card.
+						AbyssUi::PaintSkillTile(P, *Context, SkillId, Name, FVector2D(4.0, 4.0), static_cast<float>(FMath::Min(Size.X, Size.Y) - 8.0));
 					}
 					if (!Key.IsEmpty())
 					{

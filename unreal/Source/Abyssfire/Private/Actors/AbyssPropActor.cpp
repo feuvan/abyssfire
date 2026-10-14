@@ -55,6 +55,19 @@ namespace AbyssPropPrivate
 		float SpinDegS = 0.f;
 	};
 
+	/** Pickup mesh sockets of the loot kit (Art/Export/manifest.json loot_*: beam at the base, label above the item). */
+	FName LabelSocket()
+	{
+		static const FName Name(TEXT("label"));
+		return Name;
+	}
+
+	FName BeamSocket()
+	{
+		static const FName Name(TEXT("beam"));
+		return Name;
+	}
+
 	FBobStyle BobFor(EAbyssPropStyle Style)
 	{
 		switch (Style)
@@ -321,7 +334,14 @@ void AAbyssPropActor::SetOcclusionFade(float Amount)
 
 FVector AAbyssPropActor::GetAnchorLocation(EAbyssAnchor Anchor) const
 {
+	using namespace AbyssPropPrivate;
 	const FVector Base = VisualRoot != nullptr ? VisualRoot->GetComponentLocation() : GetActorLocation();
+	if (Anchor == EAbyssAnchor::Overhead && Style == EAbyssPropStyle::Loot && !bSkeletal && Mesh != nullptr
+		&& Mesh->GetStaticMesh() != nullptr && Mesh->DoesSocketExist(LabelSocket()))
+	{
+		// The label socket at rest: the bob / fall-in offset of the visual root taken out.
+		return Mesh->GetSocketLocation(LabelSocket()) - (Base - GetActorLocation());
+	}
 	switch (Anchor)
 	{
 	case EAbyssAnchor::Feet: return GetActorLocation();
@@ -332,6 +352,19 @@ FVector AAbyssPropActor::GetAnchorLocation(EAbyssAnchor Anchor) const
 	case EAbyssAnchor::HandL: return Base + FVector(0.f, 0.f, VisualHeightCm * 0.5f);
 	}
 	return Base;
+}
+
+FVector AAbyssPropActor::GetEffectOrigin() const
+{
+	using namespace AbyssPropPrivate;
+	const FVector Ground = GetActorLocation();
+	if (Style == EAbyssPropStyle::Loot && !bSkeletal && Mesh != nullptr && Mesh->GetStaticMesh() != nullptr
+		&& Mesh->DoesSocketExist(BeamSocket()))
+	{
+		const FVector Socket = Mesh->GetSocketLocation(BeamSocket());
+		return FVector(Socket.X, Socket.Y, Ground.Z);
+	}
+	return Ground;
 }
 
 void AAbyssPropActor::BeginFallIn(float HeightWebPx, float DurationSec)

@@ -91,7 +91,12 @@ void SAbyssCharacterPanel::Refresh(const abyss::Snapshot& Snap)
 				P.Card(FVector2D::ZeroVector, Size, P.Style.Colors().Card, FAbyssUiStyle::Rgb(0x3a343f), P.Style.Colors().Gold);
 			})
 		];
-		Body->AddSlot().Position(FVector2D(30.0, Y + 3.0)).Size(FVector2D(220.0, 32.0))
+		// U11: the stat's glyph (14 px) beside its name; the label column starts after it.
+		Body->AddSlot().Position(FVector2D(28.0, Y + 4.5)).Size(FVector2D(14.0, 14.0))
+		[
+			AbyssUi::Icon(Context, Ctx->StatGlyph(abyss::ToStat(Stat)), 14.f)
+		];
+		Body->AddSlot().Position(FVector2D(46.0, Y + 3.0)).Size(FVector2D(196.0, 32.0))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
@@ -168,23 +173,26 @@ void SAbyssCharacterPanel::Refresh(const abyss::Snapshot& Snap)
 		FText Label;
 		FString Value;
 		FLinearColor Color;
+		/** U11 glyph id beside the label (hp / mp / atk / def / gold), nullptr = none. */
+		const TCHAR* Glyph = nullptr;
 	};
 	const TArray<FDerivedRow> Rows = {
 		{ FText::AsCultureInvariant(Ctx->StatLabel(abyss::Stat::MaxHp)),
 			FString::Printf(TEXT("%lld/%lld"), static_cast<long long>(FMath::CeilToDouble(Hero.hp)), static_cast<long long>(FMath::RoundToDouble(Hero.maxHp))),
-			FAbyssUiStyle::Rgb(0xff8a72) },
+			FAbyssUiStyle::Rgb(0xff8a72), FAbyssUiContext::StatGlyphId(abyss::Stat::MaxHp) },
 		{ FText::AsCultureInvariant(Ctx->StatLabel(abyss::Stat::MaxMana)),
 			FString::Printf(TEXT("%lld/%lld"), static_cast<long long>(FMath::CeilToDouble(Hero.mana)), static_cast<long long>(FMath::RoundToDouble(Hero.maxMana))),
-			FAbyssUiStyle::Rgb(0x7fb6ff) },
-		{ Ctx->LocOr("ui.character.computed.attack", TEXT("Attack")), Attack, C.Text },
+			FAbyssUiStyle::Rgb(0x7fb6ff), FAbyssUiContext::StatGlyphId(abyss::Stat::MaxMana) },
+		{ Ctx->LocOr("ui.character.computed.attack", TEXT("Attack")), Attack, C.Text, FAbyssUiContext::StatGlyphId(abyss::Stat::Damage) },
 		{ Ctx->LocOr("ui.character.computed.hit", TEXT("Basic hit")),
 			FString::Printf(TEXT("%d - %d"), Summary.damageMin, Summary.damageMax), C.Text },
-		{ Ctx->LocOr("ui.character.computed.defense", TEXT("Defense")), Defense, C.Text },
+		{ Ctx->LocOr("ui.character.computed.defense", TEXT("Defense")), Defense, C.Text, FAbyssUiContext::StatGlyphId(abyss::Stat::Defense) },
 		{ Ctx->LocOr("ui.character.computed.critRate", TEXT("Crit Rate")), FAbyssUiContext::Fixed(Summary.critChancePercent, 1) + TEXT("%"), C.Text },
 		{ Ctx->LocOr("ui.character.computed.critDamage", TEXT("Crit Damage")),
 			FAbyssUiContext::Int(FMath::RoundToInt(Summary.critMultiplier * 100.0)) + TEXT("%"), C.Text },
 		{ Ctx->LocOr("ui.character.computed.dodge", TEXT("Dodge")), FAbyssUiContext::Fixed(Summary.dodgeChancePercent, 1) + TEXT("%"), C.Text },
-		{ Ctx->LocOr("ui.character.computed.gold", TEXT("Gold")), FAbyssUiContext::Int(Hero.gold) + TEXT("G"), FAbyssUiStyle::Rgb(0xffd35a) },
+		{ Ctx->LocOr("ui.character.computed.gold", TEXT("Gold")), FAbyssUiContext::Int(Hero.gold) + TEXT("G"), FAbyssUiStyle::Rgb(0xffd35a),
+			TEXT("gold") },
 	};
 	const double WellTop = 354.0;
 	const double RowH = 19.0;
@@ -198,7 +206,11 @@ void SAbyssCharacterPanel::Refresh(const abyss::Snapshot& Snap)
 	for (int32 Index = 0; Index < Rows.Num(); ++Index)
 	{
 		const double Y = WellTop + 6.0 + Index * RowH;
-		Body->AddSlot().Position(FVector2D(30.0, Y)).Size(FVector2D(160.0, RowH))
+		Body->AddSlot().Position(FVector2D(28.0, Y + (RowH - 14.0) * 0.5)).Size(FVector2D(14.0, 14.0))
+		[
+			AbyssUi::Icon(Context, Ctx->Glyph(Rows[Index].Glyph), 14.f)
+		];
+		Body->AddSlot().Position(FVector2D(46.0, Y)).Size(FVector2D(150.0, RowH))
 		[
 			AbyssUi::Label(*Ctx, Rows[Index].Label, 12.f, C.TextSoft, false, 1)
 		];

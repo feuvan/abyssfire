@@ -278,6 +278,11 @@ struct ZoneMoodDef {
   double hazeAlpha = 0;
   double saturation = 1, contrast = 1;
   std::array<double, 3> lift{}, gain{};
+  // DECISIONS P14 (art pass): the UE height fog of the mood (zone_moods.json port.fog.<theme>). Render-only. Absent
+  // fields: colour = the per-channel sRGB mix of haze and ambient (.5), max opacity .25, density .9.
+  uint32_t fogColor = 0;        // 0xRRGGBB sRGB
+  double fogMaxOpacity = 0.25;  // UE FogMaxOpacity
+  double fogDensity = 0.9;      // look-dev extinction 2^(-d x m / 10); UE FogDensity = d / ln 2 (x abyss.FogScale)
 };
 
 struct ZoneWeatherDef {

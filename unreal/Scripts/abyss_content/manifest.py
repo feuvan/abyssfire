@@ -10,7 +10,10 @@ Contract with the runtime (Source/Abyssfire/Public/World/WorldContract.md 2.1, A
 * material slot 0 = the family toon instance (MI_AF_Toon_<Family>), slot 1 = the outline hull (M_AF_Outline, made an
   instance per palette and outline class: MI_AF_Outline_<Family>_<Class>);
 * the manifest `terrain.<theme>` ground layers + detail atlas -> /Game/Abyssfire/Textures, bound on
-  MI_AF_Terrain_<Theme> (parent M_AF_Terrain_Painted), which AAbyssZoneActor::BuildTerrain loads for that theme.
+  MI_AF_Terrain_<Theme> (parent M_AF_Terrain_Painted), which AAbyssZoneActor::BuildTerrain loads for that theme;
+* art-pass look parameters (DECISIONS P11 revised, R16, R19): every M_AF_Toon / M_AF_Toon_Foliage instance gets its
+  family's CastShadowStrength, ground cover and the painted ground of a graded theme their saturation / value, and the
+  plan always holds MI_AF_SelectRim (plan_look_parameters, SELECT_RIM_DEFAULTS).
 """
 from __future__ import annotations
 
@@ -32,6 +35,23 @@ DEFAULT_OUTLINE_PX = {"hero": 3.5, "boss": 3.5, "weapon": 3.5, "npc": 3.0, "mons
                       "interactive": 2.0, "decor": 1.2, "none": 0.0}
 DEFAULT_BAKED_CM = {"hero": 1.8, "boss": 1.8, "npc": 1.6, "monster": 1.5, "small_monster": 1.4, "interactive": 1.3,
                     "weapon": 1.3, "decor": 1.2, "none": 0.0}
+
+# CastShadowStrength k of the shadow-catcher toon (DECISIONS P11 revised): how far a surface drops toward its shade band
+# in a cast sun shadow (shade + (1 - k)(lit - shade)), by palette family (the palette name's first `_` token).
+# Characters keep 30 % of their light in a tree's shade (readable), loot 20 %, props and ground cover none; canopies
+# (foliage other than the `_Ground` cover) 40 %, so self-shadowed crowns keep their colour.
+CAST_SHADOW_BY_FAMILY = {"Heroes": 0.7, "Monsters": 0.7, "NPC": 0.7, "Pets": 0.7, "Weapons": 0.7, "Pickups": 0.8,
+                         "Props": 1.0, "Foliage": 0.6}
+GROUND_COVER_SUFFIX = "_Ground"            # MI_AF_Toon_Foliage_<Theme>_Ground: grass tufts, flowers
+GROUND_COVER_CAST_SHADOW = 1.0
+# DECISIONS R19 (ground value): display-space (saturation, value) of the painted ground (MI_AF_Terrain_<Theme>
+# GroundSaturation / GroundValue) and its ground cover (BaseSaturation / BaseValue), by theme; other themes as painted.
+GROUND_GRADE_BY_THEME = {"plains": (0.85, 0.93)}
+# Selection rim (DECISIONS R16): M_AF_SelectRim's defaults = the hero's rim; MI_AF_SelectRim carries them and the
+# runtime derives the target / hover rims from it (SELECT_RIM_STYLES: colour, px beyond the ink at 720 rows).
+SELECT_RIM_DEFAULTS: dict[str, Any] = {"RimColor": "#FFF4DC", "RimPx720": 2.0, "RimDepthPushCm": 30.0,
+                                       "OutlinePx1080": 3.5, "BakedWidthCm": 1.8, "BodyMask": 0.0}
+SELECT_RIM_STYLES = {"hero": ("#FFF4DC", 2.0), "target": ("#FF5A3C", 1.5), "hover": ("#FFB03C", 1.5)}
 
 # Additive base pose: manifest `additiveBase.type` -> unreal.AdditiveBasePoseType member.
 ADDITIVE_BASE_TYPES = {
@@ -799,6 +819,9 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
     # ---- painted ground: MI_AF_Terrain_<Theme> per manifest terrain section (needs the planned textures) ----
     for terrain_instance, subject in plan_terrain_instances(data, textures, problems):
         add_instance(terrain_instance, subject)
+    # ---- utility instances and the art-pass look parameters ----
+    add_instance(select_rim_instance(), "selection rim")
+    plan_look_parameters(instances)
 
     return Plan(manifest_path=manifest_path, export_dir=export_dir, shading=shading, palettes=palettes, assets=assets,
                 skeleton_families=families_map, textures=textures, instances=instances, slot_materials=slot_materials,
@@ -946,3 +969,56 @@ def plan_terrain_instances(data: dict[str, Any], textures: list[TextureEntry], p
             continue
         out.append((InstancePlan(name, paths.M_TERRAIN_PAINTED, textures=bound), subject))
     return out
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Art-pass look parameters (DECISIONS P11 revised, R16, R19)
+# ---------------------------------------------------------------------------------------------------------------------
+def _family(inst: InstancePlan) -> str:
+    """Palette family token: 'Monsters_Plains' -> 'Monsters' (else from the instance name MI_AF_Toon_<Family>...)."""
+    key = inst.palette or inst.name.removeprefix("MI_AF_Toon_")
+    return key.split("_", 1)[0]
+
+
+def _theme(inst: InstancePlan) -> str:
+    """Theme token of a themed palette: 'Foliage_Plains' -> 'plains' ('' without one)."""
+    parts = (inst.palette or inst.name.removeprefix("MI_AF_Toon_")).split("_")
+    return parts[1].lower() if len(parts) > 1 else ""
+
+
+def cast_shadow_strength(inst: InstancePlan) -> float | None:
+    """The instance's CastShadowStrength (None: unknown family, the master default 1 applies)."""
+    family = _family(inst)
+    if family == "Foliage" and inst.name.endswith(GROUND_COVER_SUFFIX):
+        return GROUND_COVER_CAST_SHADOW
+    return CAST_SHADOW_BY_FAMILY.get(family)
+
+
+def plan_look_parameters(instances: dict[str, InstancePlan]) -> None:
+    """Adds the art-pass scalars to the planned instances (a value the manifest slot `params` set wins):
+    CastShadowStrength on every M_AF_Toon / M_AF_Toon_Foliage instance, BaseSaturation / BaseValue on the graded themes'
+    ground cover, GroundSaturation / GroundValue on their painted ground."""
+    for inst in instances.values():
+        if inst.parent in (paths.M_TOON, paths.M_TOON_FOLIAGE):
+            k = cast_shadow_strength(inst)
+            if k is not None:
+                inst.scalars.setdefault("CastShadowStrength", k)
+            grade = GROUND_GRADE_BY_THEME.get(_theme(inst))
+            if grade is not None and inst.name.endswith(GROUND_COVER_SUFFIX):
+                inst.scalars.setdefault("BaseSaturation", grade[0])
+                inst.scalars.setdefault("BaseValue", grade[1])
+        elif inst.parent == paths.M_TERRAIN_PAINTED:
+            theme = inst.name.removeprefix("MI_AF_Terrain_").lower()
+            grade = GROUND_GRADE_BY_THEME.get(theme)
+            if grade is not None:
+                inst.scalars.setdefault("GroundSaturation", grade[0])
+                inst.scalars.setdefault("GroundValue", grade[1])
+
+
+def select_rim_instance() -> InstancePlan:
+    """MI_AF_SelectRim: M_AF_SelectRim with the hero rim (the runtime's dynamic instances start from it). BodyMask stays
+    the master's 0 (the runtime sets 1 on the weapon copies' body slot)."""
+    d = SELECT_RIM_DEFAULTS
+    r, g, b = hex_to_linear(str(d["RimColor"]))
+    scalars = {k: float(v) for k, v in d.items() if k not in ("RimColor", "BodyMask")}
+    return InstancePlan(paths.MI_SELECT_RIM, paths.M_SELECT_RIM, scalars=scalars, vectors={"RimColor": (r, g, b, 1.0)})

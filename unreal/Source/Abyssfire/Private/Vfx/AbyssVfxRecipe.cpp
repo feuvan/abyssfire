@@ -1,6 +1,7 @@
 #include "Vfx/AbyssVfxRecipe.h"
 
 #include "Abyssfire.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
@@ -11,8 +12,40 @@
 #include "Framework/AbyssText.h"
 #include "World/AbyssWorldTypes.h"
 
+static TAutoConsoleVariable<int32> CVarAbyssSmokeGrade(
+	TEXT("abyss.SmokeGrade"),
+	1,
+	TEXT("Runtime grade of the charcoal / soot Smoke sprite layers (DECISIONS R20): alpha x0.35, colour 45 % toward #A8A0B0, ")
+	TEXT("fade-in >= 0.12, faster fade, count x0.7, size x1.15; coloured smokes stay as authored. 0 = the recipes as authored. ")
+	TEXT("Read when the VFX library loads (world start)."),
+	ECVF_Default);
+
 namespace AbyssVfxRecipePrivate
 {
+	// DECISIONS R20 smoke grade. Alpha x0.35 (not the first pass's x0.55, whose overlapping core still reached p95 0.78
+	// at 60 ms): death.burst's combined smoke opacity stays at p95 <= 0.6 from the first frame through 240 ms (fx_preview
+	// over the plains, smoke forced black vs removed: 16 ms .35, 60 ms .59, 140 ms .51, 240 ms .47).
+	constexpr float SmokeAlphaScale = 0.35f;
+	constexpr uint32 SmokeGradeRgb = 0xA8A0B0;
+	constexpr float SmokeColorMix = 0.45f;
+	constexpr float SmokeMinFadeIn = 0.12f;
+	constexpr float SmokeMaxAlphaPow = 0.75f;
+	constexpr float SmokeCountScale = 0.7f;
+	constexpr float SmokeMinCount = 2.f;
+	constexpr float SmokeSizeScale = 1.15f;
+	// Only the charcoal / soot smokes are graded: a fixed colour that is dark and grey in display space (HSV value < .45,
+	// saturation < .3: death #5A5060, fire soot #4A3A36, rampage #5A4048). Coloured smokes are gameplay cues reviewed as
+	// authored (poison cloud greens, the elite curse aura's violet, the rogue's stealth violets, frost mist #CFEFFF).
+	constexpr float SmokeGradeMaxValue = 0.45f;
+	constexpr float SmokeGradeMaxSaturation = 0.3f;
+
+	/** Linear -> sRGB-encoded channel (0..1). */
+	float EncodeSrgb(float V)
+	{
+		V = FMath::Clamp(V, 0.f, 1.f);
+		return V <= 0.0031308f ? V * 12.92f : 1.055f * FMath::Pow(V, 1.f / 2.4f) - 0.055f;
+	}
+
 	FName ToName(std::string_view Text)
 	{
 		return Text.empty() ? NAME_None : FName(*AbyssText::ToFString(Text));
@@ -541,6 +574,73 @@ bool FAbyssVfxLibrary::ApplyPreset(FName Emitter, FAbyssVfxLayer& L)
 }
 
 // =====================================================================================================================
+// Runtime grades (art pass)
+// =====================================================================================================================
+
+bool FAbyssVfxLibrary::IsGradedSmokeLayer(const FAbyssVfxLayer& Layer)
+{
+	using namespace AbyssVfxRecipePrivate;
+	static const FName SmokeSprite(TEXT("Smoke"));
+	if (Layer.Blend != EAbyssVfxBlend::Translucent || Layer.Sprite != SmokeSprite || !Layer.Mesh.IsNone()
+		|| Layer.ColorSource != EAbyssVfxColor::Fixed)
+	{
+		return false;
+	}
+	const float Hi = EncodeSrgb(FMath::Max3(Layer.Color.R, Layer.Color.G, Layer.Color.B));
+	const float Lo = EncodeSrgb(FMath::Min3(Layer.Color.R, Layer.Color.G, Layer.Color.B));
+	return Hi < SmokeGradeMaxValue && (Hi - Lo) < SmokeGradeMaxSaturation * Hi;
+}
+
+void FAbyssVfxLibrary::GradeSmokeLayer(FAbyssVfxLayer& Layer)
+{
+	using namespace AbyssVfxRecipePrivate;
+	Layer.Alpha0 *= SmokeAlphaScale;
+	if (Layer.ColorSource == EAbyssVfxColor::Fixed)
+	{
+		const float Alpha = Layer.Color.A;
+		Layer.Color = FMath::Lerp(Layer.Color, Hex(SmokeGradeRgb), SmokeColorMix);
+		Layer.Color.A = Alpha;
+	}
+	Layer.FadeIn = FMath::Max(Layer.FadeIn, SmokeMinFadeIn);
+	Layer.AlphaPow = FMath::Min(Layer.AlphaPow, SmokeMaxAlphaPow);
+	// Fewer puffs, never below two (a single authored puff stays one).
+	const auto ScaleCount = [](float Count)
+	{
+		return FMath::Min(Count, FMath::Max(SmokeMinCount, FMath::RoundToFloat(Count * SmokeCountScale)));
+	};
+	Layer.Count.Min = ScaleCount(Layer.Count.Min);
+	Layer.Count.Max = FMath::Max(Layer.Count.Min, ScaleCount(Layer.Count.Max));
+	Layer.SizeCm.Min *= SmokeSizeScale;
+	Layer.SizeCm.Max *= SmokeSizeScale;
+}
+
+float FAbyssVfxLibrary::DefaultLightHeightCm(const FAbyssVfxRecipe& Recipe)
+{
+	// The base of the first flame: a torch's head (~166 cm), a campfire's flames on the ground (lifted to 30 cm, the
+	// lower flame body rather than the embers); recipes without flames (portals, hammer sparks) light from 30 cm.
+	static const FName FlameSprite(TEXT("Flame"));
+	for (const FAbyssVfxLayer& Layer : Recipe.Layers)
+	{
+		if (Layer.Sprite != FlameSprite)
+		{
+			continue;
+		}
+		float BaseCm = 0.f;
+		switch (Layer.Height)
+		{
+		case EAbyssVfxHeight::Custom: BaseCm = Layer.HeightCm; break;
+		case EAbyssVfxHeight::Chest: BaseCm = 80.f; break;
+		case EAbyssVfxHeight::Head: BaseCm = 140.f; break;
+		case EAbyssVfxHeight::Overhead: BaseCm = 200.f; break;
+		case EAbyssVfxHeight::Hand: BaseCm = 95.f; break;
+		case EAbyssVfxHeight::Ground: break;
+		}
+		return FMath::Max(MinLightHeightCm, BaseCm);
+	}
+	return MinLightHeightCm;
+}
+
+// =====================================================================================================================
 // Library
 // =====================================================================================================================
 
@@ -716,11 +816,13 @@ bool FAbyssVfxLibrary::ParseRecipe(FName Id, const abyss::JsonValue& Json, FAbys
 	}
 	ReadFloat(Json, "arcCm", Out.ArcCm);
 	const abyss::JsonValue& Light = Json.Get("light");
+	float LightHeightCm = -1.f;
 	if (Light.IsObject())
 	{
 		ReadFloat(Light, "radiusCm", Out.LightRadiusCm);
 		ReadFloat(Light, "alpha", Out.LightAlpha);
 		ReadBool(Light, "flicker", Out.bLightFlicker);
+		ReadFloat(Light, "heightCm", LightHeightCm);
 	}
 	const abyss::JsonValue& Shake = Json.Get("shake");
 	if (Shake.IsArray() && Shake.Size() >= 2)
@@ -728,6 +830,7 @@ bool FAbyssVfxLibrary::ParseRecipe(FName Id, const abyss::JsonValue& Json, FAbys
 		Out.ShakeMs = static_cast<float>(Shake.At(0).AsDouble());
 		Out.ShakeIntensity = static_cast<float>(Shake.At(1).AsDouble());
 	}
+	const bool bGradeSmoke = CVarAbyssSmokeGrade.GetValueOnAnyThread() != 0;
 	for (const abyss::JsonValue& LayerJson : Json.Get("layers").Items())
 	{
 		FAbyssVfxLayer Layer;
@@ -737,8 +840,13 @@ bool FAbyssVfxLibrary::ParseRecipe(FName Id, const abyss::JsonValue& Json, FAbys
 			OutError = FString::Printf(TEXT("layer %d: %s"), Out.Layers.Num(), *LayerError);
 			return false;
 		}
+		if (bGradeSmoke && IsGradedSmokeLayer(Layer))
+		{
+			GradeSmokeLayer(Layer);   // DECISIONS R20: soft grey-violet puffs instead of charcoal blobs
+		}
 		Out.Layers.Add(MoveTemp(Layer));
 	}
+	Out.LightHeightCm = LightHeightCm >= 0.f ? LightHeightCm : DefaultLightHeightCm(Out);
 	if (Out.Layers.Num() == 0 && Out.LightRadiusCm <= 0.f && Out.ShakeMs <= 0.f)
 	{
 		OutError = TEXT("no layers");

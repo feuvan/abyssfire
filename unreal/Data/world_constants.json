@@ -8,10 +8,12 @@
     "yawDeg": 45,
     "pitchDeg": -50,
     "fovDeg": 35,
-    "framingTiles": [16, 12],
+    "framingTiles": [13.4, 10.4],
+    "heroPx720": 150,
+    "defaultDistanceCm": 2125,
     "zoomRange": [0.75, 1.25],
     "followLagSec": 0.12,
-    "decision": "W1"
+    "decision": "W1 (art pass)"
   },
   "heroSpeed": {
     "moveSpeed": 120,

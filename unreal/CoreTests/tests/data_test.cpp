@@ -275,6 +275,18 @@ TEST_CASE("world tables") {
   MapTheme t{};
   CHECK(w.moods.ThemeFor("ember_tower", t));
   CHECK(t == MapTheme::Plains);
+  // DECISIONS P14 (art pass): the per-mood UE height fog (zone_moods.json port.fog).
+  const ZoneMoodDef& plains = w.moods.moods[EnumIndex(MapTheme::Plains)];
+  CHECK(plains.fogColor == 0xF2E8CCu);
+  CHECK(plains.fogMaxOpacity == 0.22);
+  CHECK(plains.fogDensity == 0.85);
+  const ZoneMoodDef& abyssMood = w.moods.moods[EnumIndex(MapTheme::Abyss)];
+  CHECK(abyssMood.fogColor == 0x6E2A40u);
+  CHECK(abyssMood.fogMaxOpacity == 0.35);
+  CHECK(abyssMood.fogDensity == 1.2);
+  // W1 (art pass): 13.4 tiles across the horizontal FOV at the focus = the 2125 cm default distance.
+  CHECK(w.constants.cameraFramingTilesW == 13.4);
+  CHECK(w.constants.cameraFramingTilesH == 10.4);
 }
 
 TEST_CASE("quests, npcs, dialogue, story, lore") {
@@ -487,6 +499,39 @@ TEST_CASE("keyed tables must list every enum value; [a, b] pairs must have two e
     }
   });
   CHECK(HasError(ground, "classes.json", "classes.mage.skills.fire_wall.derived.port.groundTicks", "groundTicks >= 1"));
+}
+
+TEST_CASE("zone mood fog (P14): defaults without port.fog, range checks") {
+  // Without the port block every mood falls back to the haze / ambient mix, opacity .25, density .9.
+  JsonValue doc;
+  REQUIRE(ParseJson(test::ReadFile(test::DataDir() + "/zone_moods.json"), doc));
+  REQUIRE(doc.Remove("port"));
+  const std::string edited = WriteJson(doc);
+  DataStore store;
+  DataLoadReport report;
+  store.LoadAll(
+      [&](std::string_view name, std::string& out) {
+        out = name == "zone_moods.json" ? edited : test::ReadFile(test::DataDir() + "/" + std::string(name));
+        return !out.empty();
+      },
+      report);
+  INFO(report.Summary(5));
+  CHECK(report.errors.empty());
+  const ZoneMoodDef& plains = store.World().moods.moods[EnumIndex(MapTheme::Plains)];
+  CHECK(plains.haze == 0xFFE6A0u);
+  CHECK(plains.ambient == 0xFFF0D2u);
+  CHECK(plains.fogColor == 0xFFEBB9u);  // per sRGB channel (a + b + 1) / 2
+  CHECK(plains.fogMaxOpacity == 0.25);
+  CHECK(plains.fogDensity == 0.9);
+
+  const DataLoadReport bad = LoadWithEdit("zone_moods.json", [](JsonValue& d) {
+    Path(d, {"port", "fog", "plains"})->Set("maxOpacity", JsonValue::Number(1.5));
+    Path(d, {"port", "fog", "forest"})->Set("density", JsonValue::Number(-1.0));
+    Path(d, {"port", "fog"})->Set("swamp", JsonValue::Object());
+  });
+  CHECK(HasError(bad, "zone_moods.json", "port.fog.plains.maxOpacity", "expected 0..1"));
+  CHECK(HasError(bad, "zone_moods.json", "port.fog.forest.density", "expected >= 0"));
+  CHECK(HasError(bad, "zone_moods.json", "port.fog.swamp", "unknown theme"));
 }
 
 }  // TEST_SUITE

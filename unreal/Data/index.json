@@ -302,14 +302,14 @@
     {
       "file": "world_constants.json",
       "counts": {"constants": 20},
-      "bytes": 1755,
-      "sha256": "1a23e82e328f925b21e4ef3de6d273984fda8c1b8c467adabafd1a1827be236b"
+      "bytes": 1823,
+      "sha256": "791a310597bae6e6a289a98fe03b8df32244cd496f92f112b0ccd0dee25fb23b"
     },
     {
       "file": "zone_moods.json",
       "counts": {"themes": 5},
-      "bytes": 6808,
-      "sha256": "69e3b9bc6df93df83441bde39eb0a73d4656e9c58e6120e0390d2853361ead65"
+      "bytes": 7239,
+      "sha256": "929353bfa92ac33ec5f74fa748fa5aea7f80983d9a818d8de392a8264eda23b8"
     }
   ],
   "golden": [

@@ -2,7 +2,10 @@
 
 Contract: Source/Abyssfire/Public/World/WorldContract.md 3 (names, parameters, custom primitive data / per-instance data
 layouts) and Art/blender/README.md 2 (the toon / outline look). Platform rules: ue58-platform.md 6.4-6.7, 11.4
-(Substrate off: classic root pins; Unlit + custom lighting; every material compiles for SM5 and ES3.1 / Metal mobile).
+(Substrate off: classic root pins; every material compiles for SM5 and ES3.1 / Metal mobile). Lighting model: DECISIONS
+P11 (revised, art pass): M_AF_Toon / M_AF_Toon_Foliage are a "shadow-catcher lit toon" (DefaultLit: the unlit toon
+colour split into Emissive + a BaseColor the sun lights with N = KeyLightDir, so it only darkens in cast shadows);
+everything else that is a toon (slime, fade ghosts), the ink, the selection rim and the FX stay Unlit.
 """
 from __future__ import annotations
 
@@ -14,7 +17,8 @@ from typing import Any, Callable
 import unreal
 
 from .. import hlsl, paths
-from ..manifest import Asset, InstancePlan, Plan, Shading, hex_to_linear, hex_to_rgb255, srgb_to_linear1
+from ..manifest import (SELECT_RIM_DEFAULTS, Asset, InstancePlan, Plan, Shading, hex_to_linear, hex_to_rgb255,
+                        srgb_to_linear1)
 from ..report import BuildReport
 from .core import BuildError, Editor, linear_color, set_props, shaders_disabled
 from .graph import C, E, Graph
@@ -43,8 +47,14 @@ class Ctx:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# MPC_AF_Lighting (ue58-platform.md 6.4; WorldContract 3.5; written every lighting interval by UAbyssWorldBuilder)
+# MPC_AF_Lighting (ue58-platform.md 6.4; WorldContract 3.5). Writers: UAbyssWorldBuilder every lighting interval (sun,
+# key light, ambient, rim, camera, time, SunScale, InkScale); UAbyssVfxSystem the toon light slots Light<i>PosR /
+# Light<i>Col (DECISIONS P11 revised). A writer skips a parameter the collection lacks.
 # ---------------------------------------------------------------------------------------------------------------------
+INK_SCALE_DEFAULT = 1.5     # DECISIONS R3 (revised): OutlinePx1080 values read as px per 720 rows (abyss.InkScale)
+SUN_SCALE_DEFAULT = 0.55    # abyss.SunScale: the lit ground's sun strength (the light itself is pi lux, P11 revised)
+
+
 def mpc_parameters(sh: Shading) -> tuple[dict[str, tuple[float, float, float, float]], dict[str, float]]:
     k = sh.key_light
     rim = tuple(x / 255.0 for x in hex_to_rgb255(sh.rim_color))
@@ -56,9 +66,20 @@ def mpc_parameters(sh: Shading) -> tuple[dict[str, tuple[float, float, float, fl
         "Ambient": (fill * 0.92, fill * 0.95, fill * 1.08, 1.0),
         "RimColor": (rim[0], rim[1], rim[2], 1.0),
     }
+    for i in range(hlsl.TOON_LIGHT_SLOTS):
+        vectors[light_slot_pos(i)] = (0.0, 0.0, 0.0, 0.0)     # xyz absolute world cm, w radius cm
+        vectors[light_slot_color(i)] = (0.0, 0.0, 0.0, 0.0)   # rgb premultiplied intensity, a > 0 = slot on
     tan_y = math.tan(math.radians(sh.camera_fov_h) / 2.0) * 9.0 / 16.0
-    scalars = {"CameraTanHalfFovY": tan_y, "TimeSec": 0.0}
+    scalars = {"CameraTanHalfFovY": tan_y, "TimeSec": 0.0, "SunScale": SUN_SCALE_DEFAULT, "InkScale": INK_SCALE_DEFAULT}
     return vectors, scalars
+
+
+def light_slot_pos(i: int) -> str:
+    return f"Light{i}PosR"
+
+
+def light_slot_color(i: int) -> str:
+    return f"Light{i}Col"
 
 
 def ensure_mpc(ed: Editor, sh: Shading, report: BuildReport) -> None:
@@ -130,8 +151,11 @@ def _surface(blend: str, shading_model: str = "MSM_UNLIT", two_sided: bool = Fal
     return s
 
 
-TOON_SETTINGS = _surface("BLEND_MASKED", opacity_mask_clip_value=0.5, used_with_skeletal_mesh=True,
-                         used_with_instanced_static_meshes=True)
+# M_AF_Toon / M_AF_Toon_Foliage (DECISIONS P11 revised): DefaultLit, the normal input in world space (= MPC KeyLightDir);
+# masked, dithered fade.
+TOON_SETTINGS = _surface("BLEND_MASKED", shading_model="MSM_DEFAULT_LIT", opacity_mask_clip_value=0.5,
+                         used_with_skeletal_mesh=True, used_with_instanced_static_meshes=True,
+                         tangent_space_normal=False)
 # The slime shell (DECISIONS R12, revised after the second Mac playtest): alpha-blended unlit translucency, back faces
 # culled. A fixed Bayer screen door only resolves under a temporal AA that varies it, which no tier has (mobile MSAA,
 # desktop FXAA / TSR with a per-pixel-fixed pattern); the blend is what the slime previews render (shell mixed with
@@ -144,7 +168,11 @@ SLIME_SETTINGS = _surface("BLEND_TRANSLUCENT", used_with_skeletal_mesh=True, use
 # these twins of M_AF_Toon / M_AF_Toon_Foliage: the same toon colour and wind, alpha 1 - PerInstanceCustomData[0],
 # back faces culled, no depth write (sort priority 0 on the component, like the slime shell). Instanced dressing only.
 FADE_SETTINGS = _surface("BLEND_TRANSLUCENT", used_with_instanced_static_meshes=True)
-OUTLINE_SETTINGS = dict(TOON_SETTINGS)
+OUTLINE_SETTINGS = _surface("BLEND_MASKED", opacity_mask_clip_value=0.5, used_with_skeletal_mesh=True,
+                            used_with_instanced_static_meshes=True)
+# The selection rim (DECISIONS R16): a hull-only follower of a skeletal body (leader pose) and its weapons (static
+# meshes need no usage flag); unlit, masked, back faces culled like the ink hull.
+SELECT_RIM_SETTINGS = _surface("BLEND_MASKED", opacity_mask_clip_value=0.5, used_with_skeletal_mesh=True)
 TERRAIN_SETTINGS = _surface("BLEND_OPAQUE", shading_model="MSM_DEFAULT_LIT",
                             float_precision_mode=E("MaterialFloatPrecisionMode", "MFPM_FULL"))
 WATER_SETTINGS = _surface("BLEND_TRANSLUCENT", float_precision_mode=E("MaterialFloatPrecisionMode", "MFPM_FULL"))
@@ -157,6 +185,11 @@ BLOB_SETTINGS = _surface("BLEND_TRANSLUCENT", two_sided=True)
 PP_SETTINGS = {
     "material_domain": E("MaterialDomain", "MD_POST_PROCESS"),
     "blendable_location": E("BlendableLocation", "BL_SCENE_COLOR_AFTER_TONEMAPPING"),
+}
+# Light AO (DECISIONS P14): linear scene colour before the tone curve, after depth of field.
+PP_AO_SETTINGS = {
+    "material_domain": E("MaterialDomain", "MD_POST_PROCESS"),
+    "blendable_location": E("BlendableLocation", "BL_SCENE_COLOR_AFTER_DOF"),
 }
 
 
@@ -192,7 +225,8 @@ def _wind(g: Graph, ctx: Ctx) -> Any:
 
 
 def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
-    """variant: toon | foliage (masked, dithered fade) | slime | fade | fade_foliage (translucent, blended fade)."""
+    """variant: toon | foliage (masked, dithered fade; shadow-catcher lit, DECISIONS P11 revised) | slime | fade |
+    fade_foliage (translucent, blended fade; unlit AF_Toon)."""
     sh = ctx.shading
     slime = variant == "slime"
     blended = variant in ("slime", "fade", "fade_foliage")
@@ -204,7 +238,7 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
     vc = g.vertex_color()
     # Slime (DECISIONS R12): translucent toon shell with the web's jelly rim rgba(230,255,220,.6) (Slime.ts:234).
     rim_rgb = (230.0 / 255.0, 1.0, 220.0 / 255.0) if slime else ctx.rim_srgb
-    toon = g.custom(hlsl.toon_node(sh), {
+    wires: dict[str, Any] = {
         "Base": bc["RGB"], "P": pp["RGBA"],
         "N": g.node("MaterialExpressionVertexNormalWS"),
         "V": g.node("MaterialExpressionCameraVectorWS"),
@@ -225,10 +259,14 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
         "Highlight": fb["Highlight"],
         "Inst": inst,
         "HighlightColor": g.vector("HighlightColor", (*ctx.highlight, 1.0), group="Look"),
-    })
+        # DECISIONS R19: ground cover (MI_AF_Toon_Foliage_<Theme>_Ground) compressed like the terrain
+        "BaseSaturation": g.scalar("BaseSaturation", 1.0, group="Ground grade"),
+        "BaseValue": g.scalar("BaseValue", 1.0, group="Ground grade"),
+    }
     if blended:
+        toon = g.custom(hlsl.toon_node(sh), wires)
         # SLIME_SETTINGS / FADE_SETTINGS: blended opacity (BodyOpacity faded by Fade / the instance fade) instead of the
-        # dithered mask. Keep the slime's node order: Graph.fingerprint hashes the trace in creation order.
+        # dithered mask. The fade copy shows the unshadowed toon colour (a cast shadow pops off while it fades: accepted).
         body = g.scalar("BodyOpacity", 0.9 if slime else 1.0, group="Look")
         g.output(toon, "MP_EMISSIVE_COLOR")
         g.output(g.custom(hlsl.fade_opacity_node(), {"Fade": fb["Fade"], "Inst": inst, "BodyOpacity": body}),
@@ -236,12 +274,23 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
         if foliage:
             g.output(_wind(g, ctx), "MP_WORLD_POSITION_OFFSET")
         return
-    # Keep this node order (scalar, dither, emissive, shadow mask, switch, mask): Graph.fingerprint hashes the trace in
-    # creation order, and a reordered trace rebuilds M_AF_Toon / M_AF_Toon_Foliage (and recompiles every toon shader)
-    # for an identical graph.
+    # Shadow-catcher lit toon: Emissive = Emit, BaseColor = Lit (the AF_ToonSplit additional output), Normal = the key
+    # light, no specular: the sun (pi lux x SunColor along -KeyLightDir) adds Lit x SunColor x its shadow term.
+    wires["Pw"] = g.node("MaterialExpressionWorldPosition")     # absolute world position (cm), like the slot positions
+    wires["CastShadowStrength"] = g.scalar("CastShadowStrength", 1.0, group="Look")
+    for i in range(hlsl.TOON_LIGHT_SLOTS):
+        wires[f"L{i}"] = g.mpc(ctx.mpc, light_slot_pos(i))
+    for i in range(hlsl.TOON_LIGHT_SLOTS):
+        wires[f"C{i}"] = g.mpc(ctx.mpc, light_slot_color(i))
+    toon = g.custom(hlsl.toon_split_node(sh), wires)
     body = g.scalar("BodyOpacity", 1.0, group="Look")
     mask = g.custom(hlsl.dither_node(), {"Fade": fb["Fade"], "Inst": inst, "BodyOpacity": body})
     g.output(toon, "MP_EMISSIVE_COLOR")
+    g.output(toon["Lit"], "MP_BASE_COLOR")
+    g.output(g.rgb(g.mpc(ctx.mpc, "KeyLightDir")), "MP_NORMAL")
+    g.output(g.const(0.0), "MP_SPECULAR")
+    g.output(g.const(0.0), "MP_METALLIC")
+    g.output(g.const(1.0), "MP_ROUGHNESS")
     # Shadow pass (ShadowPassSwitch): the death / prop fade and BodyOpacity only. The occlusion fade of instanced
     # dressing keeps its full sun shadow, also while the instance is hidden behind its translucent ghost (R1).
     shadow = g.custom(hlsl.dither_shadow_node(), {"Fade": fb["Fade"], "BodyOpacity": body})
@@ -251,6 +300,22 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
     g.output(switch, "MP_OPACITY_MASK")
     if foliage:
         g.output(_wind(g, ctx), "MP_WORLD_POSITION_OFFSET")
+
+
+def _view_inputs(g: Graph) -> tuple[Any, Any, Any]:
+    """Per-frame view inputs of the screen-space outline (camera-relative position without material offsets, camera
+    forward in world space, tan of the half FOV). Kept per frame, not in the MPC: the hull and the rim never cast a
+    shadow (assign_slots / the runtime turn their shadow casting off), so the WPO need not match between passes, and
+    an MPC copy would lag one lighting interval behind the camera."""
+    pos = g.node("MaterialExpressionWorldPosition",
+                 world_position_shader_offset=E("WorldPositionIncludedOffsets", "WPT_CAMERA_RELATIVE_NO_OFFSETS"))
+    forward = g.node("MaterialExpressionTransform",
+                     transform_source_type=E("MaterialVectorCoordTransformSource", "TRANSFORMSOURCE_VIEW"),
+                     transform_type=E("MaterialVectorCoordTransform", "TRANSFORM_WORLD"))
+    g.connect(g.const3((0.0, 0.0, 1.0)), forward, "")
+    tan = g.node("MaterialExpressionViewProperty",
+                 property_=E("MaterialExposedViewProperty", "MEVP_TAN_HALF_FIELD_OF_VIEW"))
+    return pos, forward, tan
 
 
 def build_outline(g: Graph, ctx: Ctx, foliage: bool) -> None:
@@ -268,31 +333,53 @@ def build_outline(g: Graph, ctx: Ctx, foliage: bool) -> None:
     })
     mask = g.custom(hlsl.dither_node(), {"Fade": fade, "Inst": inst,
                                          "BodyOpacity": g.scalar("BodyOpacity", 1.0, group="Look")})
-    pos = g.node("MaterialExpressionWorldPosition",
-                 world_position_shader_offset=E("WorldPositionIncludedOffsets", "WPT_CAMERA_RELATIVE_NO_OFFSETS"))
-    forward = g.node("MaterialExpressionTransform",
-                     transform_source_type=E("MaterialVectorCoordTransformSource", "TRANSFORMSOURCE_VIEW"),
-                     transform_type=E("MaterialVectorCoordTransform", "TRANSFORM_WORLD"))
-    g.connect(g.const3((0.0, 0.0, 1.0)), forward, "")
-    tan = g.node("MaterialExpressionViewProperty",
-                 property_=E("MaterialExposedViewProperty", "MEVP_TAN_HALF_FIELD_OF_VIEW"))
+    pos, forward, tan = _view_inputs(g)
     wpo = g.custom(hlsl.outline_wpo_node(sh), {
         "Pos": pos, "N": g.node("MaterialExpressionVertexNormalWS"), "F": forward, "T": tan,
         "Px": g.scalar("OutlinePx1080", 3.0, group="Outline"),
         "Baked": g.scalar("BakedWidthCm", 1.5, group="Outline"),
         "Enable": g.scalar("OutlineScreenSpace", 1.0, group="Outline"),
+        "InkScale": g.mpc(ctx.mpc, "InkScale"),
+        "ExtraPx1080": g.const(0.0),
     })
-    if foliage:
-        wind = _wind(g, ctx)
-        total = g.plus(wpo, wind)
-        low = wind
-    else:
-        total = wpo
-        low = g.const3((0.0, 0.0, 0.0))
+    total = g.plus(wpo, _wind(g, ctx)) if foliage else wpo
     g.output(ink, "MP_EMISSIVE_COLOR")
     g.output(mask, "MP_OPACITY_MASK")
-    # Mobile low (material quality Low): the baked hull alone (README 2 "Mobile low (no WPO)").
-    g.output(g.quality(total, low), "MP_WORLD_POSITION_OFFSET")
+    # Every quality tier (DECISIONS R3 revised: the mobile-low baked-only fallback is gone); OutlineScreenSpace 0 is
+    # the kill switch back to the baked hull.
+    g.output(total, "MP_WORLD_POSITION_OFFSET")
+
+
+def build_select_rim(g: Graph, ctx: Ctx) -> None:
+    """M_AF_SelectRim (DECISIONS R16): the ink hull dilated RimPx720 px (at 720 rows) beyond the ink and pushed up to
+    RimDepthPushCm along the view ray (less near the feet: never below the actor's ground plane), so it shows only
+    outside the whole figure's silhouette and still closes round the boots; dithers with the body's Fade (CPD 13);
+    BodyMask 1 hides the slot (the weapon copies' body slot)."""
+    sh = ctx.shading
+    d = SELECT_RIM_DEFAULTS
+    grp = "Selection rim"
+    color = g.vector("RimColor", (*hex_to_linear(d["RimColor"]), 1.0), group=grp)
+    mask = g.custom(hlsl.select_rim_mask_node(), {
+        "Fade": g.scalar("Fade", 0.0, cpd=13, group="Feedback (custom primitive data)"),
+        "BodyOpacity": g.scalar("BodyOpacity", 1.0, group="Look"),
+        "BodyMask": g.scalar("BodyMask", d["BodyMask"], group=grp),
+    })
+    pos, forward, tan = _view_inputs(g)
+    wpo = g.custom(hlsl.outline_wpo_node(sh), {
+        "Pos": pos, "N": g.node("MaterialExpressionVertexNormalWS"), "F": forward, "T": tan,
+        "Px": g.scalar("OutlinePx1080", d["OutlinePx1080"], group="Outline"),
+        "Baked": g.scalar("BakedWidthCm", d["BakedWidthCm"], group="Outline"),
+        "Enable": g.scalar("OutlineScreenSpace", 1.0, group="Outline"),
+        "InkScale": g.mpc(ctx.mpc, "InkScale"),
+        "ExtraPx1080": g.scale(g.scalar("RimPx720", d["RimPx720"], group=grp), 1080.0 / 720.0),
+    })
+    # the owner's ground plane (the actor stands on it): the push is clamped above it near the feet (hlsl.view_push_node)
+    feet = g.node("MaterialExpressionActorPositionWS", origin_type=E("PositionOrigin", "CAMERA_RELATIVE"))
+    push = g.custom(hlsl.view_push_node(), {
+        "Pos": pos, "Off": wpo, "Push": g.scalar("RimDepthPushCm", d["RimDepthPushCm"], group=grp), "Feet": feet})
+    g.output(color, "MP_EMISSIVE_COLOR")
+    g.output(mask, "MP_OPACITY_MASK")
+    g.output(push, "MP_WORLD_POSITION_OFFSET")
 
 
 def build_terrain(g: Graph, ctx: Ctx) -> None:
@@ -309,14 +396,24 @@ def build_terrain(g: Graph, ctx: Ctx) -> None:
         wires[f"Tile{t}Rank"] = g.scalar(f"Tile{t}Rank", ctx.terrain_ranks.get(t, 0.0), group=f"Tile {t}")
     for name in ("WaterShallow", "WaterFoam", "WaterBank"):
         wires[name] = g.vector(name, (*ctx.terrain_defaults[name], 1.0), group="Water")
+    _ground_grade(g, wires)
     detailed = g.custom(hlsl.terrain_node(True), wires)
     simple = g.custom(hlsl.terrain_node(False), wires)
     _terrain_outputs(g, ctx, g.quality(detailed, simple))
 
 
+def _ground_grade(g: Graph, wires: dict[str, Any]) -> None:
+    """DECISIONS R19: saturation / value of the composited ground (MI_AF_Terrain_<Theme>; 1 / 1 = as painted)."""
+    for name in ("GroundSaturation", "GroundValue"):
+        wires[name] = g.scalar(name, 1.0, group="Ground grade")
+
+
 def _terrain_outputs(g: Graph, ctx: Ctx, albedo: Any) -> None:
+    """Lit ground: BaseColor = albedo x MPC SunScale under the pi-lux sun (DECISIONS P11 revised: the sun is no longer
+    scaled, so the toon's shadow-catcher sees SunColor exactly; the ground keeps abyss.SunScale through the MPC),
+    plus the ambient fill (MPC Ambient) as emissive."""
     ambient = g.custom(hlsl.terrain_emissive_node(), {"Albedo": albedo, "Amb": g.mpc(ctx.mpc, "Ambient")})
-    g.output(albedo, "MP_BASE_COLOR")
+    g.output(g.mul(albedo, g.mpc(ctx.mpc, "SunScale")), "MP_BASE_COLOR")
     g.output(ambient, "MP_EMISSIVE_COLOR")
     g.output(g.const(0.0), "MP_SPECULAR")
     g.output(g.const(1.0), "MP_ROUGHNESS")
@@ -345,6 +442,7 @@ def build_terrain_painted(g: Graph, ctx: Ctx) -> None:
     for name in ("WaterShallow", "WaterFoam", "WaterBank"):
         wires[name] = g.vector(name, (*ctx.terrain_defaults[name], 1.0), group="Water")
     wires["Details"] = g.texture_object(paths.TERRAIN_DETAILS_PARAM, ctx.tex_white, "SAMPLERTYPE_COLOR")
+    _ground_grade(g, wires)
     detailed = g.custom(hlsl.terrain_painted_node(True), wires)
     simple = g.custom(hlsl.terrain_painted_node(False), wires)
     _terrain_outputs(g, ctx, g.quality(detailed, simple))
@@ -362,7 +460,8 @@ def build_water(g: Graph, ctx: Ctx) -> None:
         "WaterFoam": g.vector("WaterFoam", (*ctx.terrain_defaults["WaterFoam"], 1.0), group="Water"),
         "WaterWave": g.vector("WaterWave", (*ctx.terrain_defaults["WaterWave"], 1.0), group="Water"),
         "SunCol": g.mpc(ctx.mpc, "SunColor"), "Amb": g.mpc(ctx.mpc, "Ambient"), "L": g.mpc(ctx.mpc, "KeyLightDir"),
-        "SunScale": g.scalar("SunScale", 0.55, group="Water"),
+        # the same sun strength as the lit ground (MPC SunScale = abyss.SunScale)
+        "SunScale": g.mpc(ctx.mpc, "SunScale"),
     })
     opacity = g.custom(nodes["opacity"], {"Shore": vc["R"], "Depth": vc["G"], "UV": uv, "Time": time})
     g.output(color, "MP_EMISSIVE_COLOR")
@@ -446,6 +545,20 @@ def build_grade(g: Graph, ctx: Ctx) -> None:
     g.output(color, "MP_EMISSIVE_COLOR")
 
 
+def build_ao_composite(g: Graph, ctx: Ctx) -> None:
+    """M_AF_PP_AOComposite (DECISIONS P14): SceneColor x lerp(1, SSAO, AOStrength) on the visible ground, before the
+    tone curve. Desktop balanced / high only (AAbyssZoneActor binds it where SSAO runs and makes the terrain alone
+    render custom depth); M_AF_PP_Grade stays buildable but unbound."""
+    scene = g.node("MaterialExpressionSceneTexture", scene_texture_id=E("SceneTextureId", "PPI_POST_PROCESS_INPUT0"))
+    ao = g.node("MaterialExpressionSceneTexture", scene_texture_id=E("SceneTextureId", "PPI_AMBIENT_OCCLUSION"))
+    depth = g.node("MaterialExpressionSceneTexture", scene_texture_id=E("SceneTextureId", "PPI_SCENE_DEPTH"))
+    ground = g.node("MaterialExpressionSceneTexture", scene_texture_id=E("SceneTextureId", "PPI_CUSTOM_DEPTH"))
+    color = g.custom(hlsl.ao_composite_node(), {
+        "Scene": scene["Color"], "AO": ao["Color"], "AOStrength": g.scalar("AOStrength", 0.25, group="AO"),
+        "SceneDepth": depth["Color"], "GroundDepth": ground["Color"]})
+    g.output(color, "MP_EMISSIVE_COLOR")
+
+
 @dataclass(frozen=True)
 class Master:
     name: str
@@ -463,10 +576,12 @@ MASTERS: tuple[Master, ...] = (
            lambda g, c: build_toon(g, c, "fade_foliage")),
     Master(paths.M_OUTLINE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, False)),
     Master(paths.M_OUTLINE_FOLIAGE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, True)),
+    Master(paths.M_SELECT_RIM, paths.MATERIALS_DIR, SELECT_RIM_SETTINGS, build_select_rim),
     Master(paths.M_TERRAIN, paths.MATERIALS_DIR, TERRAIN_SETTINGS, build_terrain),
     Master(paths.M_TERRAIN_PAINTED, paths.MATERIALS_DIR, TERRAIN_SETTINGS, build_terrain_painted),
     Master(paths.M_WATER, paths.MATERIALS_DIR, WATER_SETTINGS, build_water),
     Master(paths.M_PP_GRADE, paths.MATERIALS_DIR, PP_SETTINGS, build_grade),
+    Master(paths.M_PP_AO, paths.MATERIALS_DIR, PP_AO_SETTINGS, build_ao_composite),
     Master(paths.M_FX_ADDITIVE, paths.FX_MATERIALS_DIR, FX_ADD_SETTINGS, lambda g, c: build_fx_sprite(g, c, True)),
     Master(paths.M_FX_TRANSLUCENT, paths.FX_MATERIALS_DIR, FX_TRANS_SETTINGS, lambda g, c: build_fx_sprite(g, c, False)),
     Master(paths.M_FX_MESH, paths.FX_MATERIALS_DIR, FX_MESH_SETTINGS, build_fx_mesh),
@@ -589,6 +704,8 @@ def build_master(ed: Editor, master: Master, ctx: Ctx, report: BuildReport, forc
     set_props(mat, resolved, subject=path)
     graph = Graph(ed, mat)
     master.build(graph, ctx)
+    for note in graph.compat:
+        report.compat_note(note, path)
     ed.mel.layout_material_expressions(mat)
     ed.mel.recompile_material(mat)
     check_texture_parameters(ed, mat, graph.texture_params, path, report)

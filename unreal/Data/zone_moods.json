@@ -227,5 +227,15 @@
       "torchFlame": 16720384,
       "tentColor": "#221428"
     }
+  },
+  "port": {
+    "fog": {
+      "plains": {"color": 15919308, "maxOpacity": 0.22, "density": 0.85},
+      "forest": {"color": 9209544, "maxOpacity": 0.32, "density": 1.1},
+      "mountain": {"color": 13556974, "maxOpacity": 0.3, "density": 1},
+      "desert": {"color": 16768678, "maxOpacity": 0.26, "density": 0.9},
+      "abyss": {"color": 7219776, "maxOpacity": 0.35, "density": 1.2}
+    },
+    "decision": "P14 (art pass)"
   }
 }

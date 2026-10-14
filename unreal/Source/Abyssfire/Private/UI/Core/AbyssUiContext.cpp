@@ -572,7 +572,7 @@ FString FAbyssUiContext::Int(int64 Value)
 // Icons
 // =====================================================================================================================
 
-const FSlateBrush* FAbyssUiContext::TextureBrush(FName AssetName) const
+const FSlateBrush* FAbyssUiContext::TextureBrush(FName AssetName, bool bWarnIfMissing) const
 {
 	if (AssetName.IsNone())
 	{
@@ -582,12 +582,17 @@ const FSlateBrush* FAbyssUiContext::TextureBrush(FName AssetName) const
 	{
 		return Found->Get();
 	}
+	UAbyssUiSubsystem* Subsystem = Owner.Get();
 	if (MissingBrushes.Contains(AssetName))
 	{
+		// A known miss: the subsystem only logs it (once per name) when this lookup is not an optional probe.
+		if (bWarnIfMissing && Subsystem != nullptr)
+		{
+			Subsystem->FindUiTexture(AssetName, true);
+		}
 		return nullptr;
 	}
-	UAbyssUiSubsystem* Subsystem = Owner.Get();
-	UTexture2D* Texture = Subsystem ? Subsystem->FindUiTexture(AssetName) : nullptr;
+	UTexture2D* Texture = Subsystem ? Subsystem->FindUiTexture(AssetName, bWarnIfMissing) : nullptr;
 	if (Texture == nullptr)
 	{
 		MissingBrushes.Add(AssetName);
@@ -624,23 +629,35 @@ const FSlateBrush* FAbyssUiContext::RuntimeTextureBrush(UTexture2D* Texture, FNa
 
 const FSlateBrush* FAbyssUiContext::ItemIcon(const std::string& BaseId) const
 {
+	if (BaseId.empty())
+	{
+		return nullptr;
+	}
 	const abyss::DataStore* Data = GetData();
 	const abyss::ItemBaseDef* Base = Data ? Data->FindItemBase(BaseId) : nullptr;
 	const FString Id = AbyssText::ToFString(BaseId);
-	if (Base != nullptr && !Base->icon.empty())
+	const FName ByBase(*FString::Printf(TEXT("T_UI_ItemIcon_%s"), *Id));
+	if (Base == nullptr || Base->icon.empty())
 	{
-		const FString Icon = AbyssText::ToFString(Base->icon);
-		// art-inventory 9: T_UI_ItemIcon_<iconId>__<baseId> for a base-specific variant, else the icon id.
-		if (const FSlateBrush* Variant = TextureBrush(FName(*FString::Printf(TEXT("T_UI_ItemIcon_%s__%s"), *Icon, *Id))))
-		{
-			return Variant;
-		}
-		if (const FSlateBrush* Generic = TextureBrush(FName(*FString::Printf(TEXT("T_UI_ItemIcon_%s"), *Icon))))
-		{
-			return Generic;
-		}
+		return TextureBrush(ByBase);
 	}
-	return TextureBrush(FName(*FString::Printf(TEXT("T_UI_ItemIcon_%s"), *Id)));
+	// art-inventory 9: T_UI_ItemIcon_<iconId>__<baseId> for a base-specific variant, else the icon id, else (legacy) the
+	// base id. Every probe is quiet: only the expected asset (the icon id's) is reported when all three miss.
+	const FString Icon = AbyssText::ToFString(Base->icon);
+	if (const FSlateBrush* Variant = TextureBrush(FName(*FString::Printf(TEXT("T_UI_ItemIcon_%s__%s"), *Icon, *Id)), false))
+	{
+		return Variant;
+	}
+	const FName Generic(*FString::Printf(TEXT("T_UI_ItemIcon_%s"), *Icon));
+	if (const FSlateBrush* Found = TextureBrush(Generic, false))
+	{
+		return Found;
+	}
+	if (const FSlateBrush* Legacy = TextureBrush(ByBase, false))
+	{
+		return Legacy;
+	}
+	return TextureBrush(Generic, true);
 }
 
 const FSlateBrush* FAbyssUiContext::SkillIcon(const std::string& SkillId) const
@@ -651,6 +668,21 @@ const FSlateBrush* FAbyssUiContext::SkillIcon(const std::string& SkillId) const
 const FSlateBrush* FAbyssUiContext::QuestItemIcon(const std::string& Kind) const
 {
 	return Kind.empty() ? nullptr : TextureBrush(FName(*(TEXT("T_UI_QuestItem_") + AbyssText::ToFString(Kind))));
+}
+
+const FSlateBrush* FAbyssUiContext::QuestObjectiveIcon(const abyss::QuestObjectiveDef& Objective) const
+{
+	if (Objective.type != abyss::ObjectiveType::Collect && Objective.type != abyss::ObjectiveType::CraftCollect)
+	{
+		return nullptr;
+	}
+	if (!Objective.itemKind.empty())
+	{
+		return QuestItemIcon(Objective.itemKind);
+	}
+	// QuestWorld's QwItemKind: the tuning's kind by target, else its default kind.
+	const abyss::DataStore* Data = GetData();
+	return Data != nullptr ? QuestItemIcon(std::string(Data->Quests().ItemKindFor(Objective.targetId))) : nullptr;
 }
 
 const FSlateBrush* FAbyssUiContext::Portrait(const std::string& ArtId) const
@@ -673,6 +705,8 @@ const FSlateBrush* FAbyssUiContext::Portrait(const std::string& ArtId) const
 		}
 		return TextureBrush(FName(TEXT("T_UI_Emblem_Generic")));
 	}
+	// Speakers without portrait art (most monsters) fall back to the generic emblem by design (quests-story 8.5): the
+	// portrait probes are quiet, only a missing emblem is reported.
 	FString Stripped = Id;
 	for (const TCHAR* Prefix : { TEXT("player_"), TEXT("npc_"), TEXT("monster_"), TEXT("beast_") })
 	{
@@ -682,13 +716,13 @@ const FSlateBrush* FAbyssUiContext::Portrait(const std::string& ArtId) const
 			break;
 		}
 	}
-	if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_") + AbyssUiContext_Pascal(Stripped)))))
+	if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_") + AbyssUiContext_Pascal(Stripped))), false))
 	{
 		return Found;
 	}
 	if (Stripped != Id)
 	{
-		if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_") + AbyssUiContext_Pascal(Id)))))
+		if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_") + AbyssUiContext_Pascal(Id))), false))
 		{
 			return Found;
 		}
@@ -707,14 +741,44 @@ const FSlateBrush* FAbyssUiContext::PetPortrait(const std::string& PetId) const
 	FString Id = AbyssText::ToFString(PetId);
 	const FString Full = AbyssUiContext_Pascal(Id);
 	Id.RemoveFromStart(TEXT("pet_"));
-	if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_Pet_") + AbyssUiContext_Pascal(Id)))))
+	// Only the ley sprite has portrait art in Chapter 1; the other beasts draw the medallion fallback (quiet probes).
+	if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_Pet_") + AbyssUiContext_Pascal(Id))), false))
 	{
 		return Found;
 	}
-	return TextureBrush(FName(*(TEXT("T_UI_Portrait_") + Full)));
+	return TextureBrush(FName(*(TEXT("T_UI_Portrait_") + Full)), false);
 }
 
 const FSlateBrush* FAbyssUiContext::Glyph(const TCHAR* GlyphId) const
 {
 	return GlyphId ? TextureBrush(FName(*(FString(TEXT("T_UI_Glyph_")) + GlyphId))) : nullptr;
+}
+
+const TCHAR* FAbyssUiContext::StatGlyphId(abyss::Stat Stat)
+{
+	switch (Stat)
+	{
+	case abyss::Stat::Str: return TEXT("str");
+	case abyss::Stat::Dex: return TEXT("dex");
+	case abyss::Stat::Vit: return TEXT("vit");
+	case abyss::Stat::Int: return TEXT("int");
+	case abyss::Stat::Spi: return TEXT("spi");
+	case abyss::Stat::Lck: return TEXT("lck");
+	case abyss::Stat::MaxHp:
+	case abyss::Stat::MaxHpPercent:
+	case abyss::Stat::HpRegen: return TEXT("hp");
+	case abyss::Stat::MaxMana:
+	case abyss::Stat::MaxManaPercent:
+	case abyss::Stat::ManaRegen: return TEXT("mp");
+	case abyss::Stat::Damage:
+	case abyss::Stat::DamagePercent: return TEXT("atk");
+	case abyss::Stat::Defense:
+	case abyss::Stat::DefensePercent: return TEXT("def");
+	default: return nullptr;
+	}
+}
+
+const FSlateBrush* FAbyssUiContext::StatGlyph(abyss::Stat Stat) const
+{
+	return Glyph(StatGlyphId(Stat));
 }

@@ -63,7 +63,12 @@ M_LIGHT_POOL = "M_AF_LightPool"
 M_TARGET_RING = "M_AF_TargetRing"
 M_AFFIX_AURA = "M_AF_AffixAura"
 M_BLOB_SHADOW = "M_AF_BlobShadow"
-M_PP_GRADE = "M_AF_PP_Grade"
+M_PP_GRADE = "M_AF_PP_Grade"            # still built, no longer bound (DECISIONS P14)
+M_PP_AO = "M_AF_PP_AOComposite"         # light SSAO composite, desktop balanced / high (DECISIONS P14)
+# Selection rim (DECISIONS R16): the hull-only follower of the hero / target / hovered monster. The runtime loads the
+# instance (hero defaults) and makes per-use dynamic instances of it (AAbyssCharacterActor::SetSelectionRim).
+M_SELECT_RIM = "M_AF_SelectRim"
+MI_SELECT_RIM = "MI_AF_SelectRim"
 
 TOON_MASTERS = (M_TOON, M_TOON_FOLIAGE, M_TOON_SLIME)
 OUTLINE_MASTERS = (M_OUTLINE, M_OUTLINE_FOLIAGE)

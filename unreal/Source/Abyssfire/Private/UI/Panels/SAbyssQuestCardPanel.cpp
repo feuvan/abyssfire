@@ -165,8 +165,36 @@ void SAbyssQuestCardPanel::Refresh(const abyss::Snapshot& Snap)
 		const int32 Current = Progress != nullptr && Index < Progress->objectives.size()
 			? FMath::Min(Progress->objectives[Index], Objective.required) : 0;
 		const bool bDone = Current >= Objective.required;
-		AddText(FString::Printf(TEXT("%s %s %s  %d/%d"), bDone ? TEXT("\x2713") : TEXT("\x25CB"), *Ctx->ObjectiveTypeLabel(Objective, Quest.type),
-			*Ctx->ObjectiveTargetLabel(Quest, static_cast<int32>(Index)), Current, Objective.required), 12.f, bDone ? C.Good : C.Text, false, 2.f);
+		const FString ObjectiveText = FString::Printf(TEXT("%s %s %s  %d/%d"), bDone ? TEXT("\x2713") : TEXT("\x25CB"),
+			*Ctx->ObjectiveTypeLabel(Objective, Quest.type), *Ctx->ObjectiveTargetLabel(Quest, static_cast<int32>(Index)), Current,
+			Objective.required);
+		const FLinearColor ObjectiveColor = bDone ? C.Good : C.Text;
+		const FSlateBrush* KindIcon = Ctx->QuestObjectiveIcon(Objective);
+		if (KindIcon == nullptr)
+		{
+			AddText(ObjectiveText, 12.f, ObjectiveColor, false, 2.f);
+			continue;
+		}
+		// U11: a collect objective shows its quest-item icon (T_UI_QuestItem_<kind>, 20 px) before the line.
+		const FSlateFontInfo ObjectiveFont = Context->Style().Body(12.f, false, 1);
+		const float TextWrap = Wrap - 24.f;
+		ContentH += 2.0 + FMath::Max(20.0, AbyssQuestCard_TextHeight(ObjectiveText, ObjectiveFont, TextWrap));
+		Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 0.f))
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+			[
+				AbyssUi::Icon(Context, KindIcon, 20.f, bDone ? FLinearColor(1.f, 1.f, 1.f, 0.75f) : FLinearColor::White)
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::AsCultureInvariant(ObjectiveText))
+				.Font(ObjectiveFont)
+				.ColorAndOpacity(FSlateColor(ObjectiveColor))
+				.WrapTextAt(TextWrap)
+			]
+		];
 	}
 
 	// reward summary (embers are not listed)

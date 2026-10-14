@@ -278,9 +278,11 @@ void FAbyssUiStyle::BuildStyles()
 		.SetNormalPadding(FMargin(0.f))
 		.SetPressedPadding(FMargin(0.f));
 
-	const FSlateBrush Track = FSlateRoundedBoxBrush(Rgb(0x0c0b0e, 0.85f), 3.f);
-	const FSlateBrush Thumb = FSlateRoundedBoxBrush(Rgb(0x6d6573), 3.f);
-	const FSlateBrush ThumbHover = FSlateRoundedBoxBrush(Rgb(0xd4a54a), 3.f);
+	// UiKit scroll bar (third playtest, 12.webp): gold thumb #d4a54a at 0.85 (#e8bc5c when hovered / dragged) in a dark
+	// track #0c0b0e at 0.85 with a 1 px #4a4250 outline.
+	const FSlateBrush Track = FSlateRoundedBoxBrush(Rgb(0x0c0b0e, 0.85f), 3.f, Rgb(0x4a4250), 1.f);
+	const FSlateBrush Thumb = FSlateRoundedBoxBrush(Rgb(0xd4a54a, 0.85f), 3.f);
+	const FSlateBrush ThumbHover = FSlateRoundedBoxBrush(Rgb(0xe8bc5c), 3.f);
 	ScrollBarStyle = FScrollBarStyle::GetDefault();
 	ScrollBarStyle
 		.SetVerticalBackgroundImage(Track)

@@ -32,6 +32,10 @@ TERRAIN_FIELDS = ("Base", "PatchA", "PatchB", "Lip", "Accent")
 class NodeInput:
     name: str
     ctype: str          # emulation type: float, float2, float3, float4, Texture2D
+    # C++ default argument in the test emulation only (tests/test_hlsl.py cpp_signature): an input appended to an
+    # existing node keeps the older calls compiling with the value that reproduces the old behaviour. UE Custom-node
+    # inputs have no defaults: the material graph always wires them.
+    emu_default: str | None = None
 
 
 @dataclass(frozen=True)
@@ -42,10 +46,32 @@ class CustomNode:
     inputs: tuple[NodeInput, ...]
     code: str
     stage: str = "pixel"  # pixel | vertex
+    # UMaterialExpressionCustom::AdditionalOutputs: `inout` parameters of the generated function after the inputs,
+    # assigned by the code (`Lit = ...;`); the main output stays the `return` value.
+    additional_outputs: tuple[NodeInput, ...] = ()
 
     @property
     def input_names(self) -> list[str]:
         return [i.name for i in self.inputs]
+
+    def twin(self, output: str) -> "CustomNode":
+        """The same code as a single-output node returning additional output `output` (key `<key>_<output>`): the
+        content build's fallback for an engine that does not expose the additional output pin (ue/graph.py)."""
+        outs = {o.name: o for o in self.additional_outputs}
+        if output not in outs:
+            raise ValueError(f"{self.key} has no additional output {output!r}")
+        lines = self.code.rstrip("\n").split("\n")
+        if not re.fullmatch(r"return [A-Za-z_][A-Za-z0-9_]*;", lines[-1].strip()):
+            raise ValueError(f"{self.key}: the code must end with a single `return <name>;` line")
+        decls = [f"{o.ctype} {o.name} = {_zero(o.ctype)};" for o in self.additional_outputs]
+        code = "\n".join(decls + lines[:-1] + [f"return {output};"]) + "\n"
+        return CustomNode(f"{self.key}_{output}", f"{self.description} ({output} only)", outs[output].ctype,
+                          self.inputs, code, self.stage)
+
+
+def _zero(ctype: str) -> str:
+    n = {"float": 1, "float2": 2, "float3": 3, "float4": 4}[ctype]
+    return "0.0" if n == 1 else f"{ctype}({', '.join(['0.0'] * n)})"
 
 
 def lit(value: float) -> str:
@@ -136,10 +162,31 @@ TOON_INPUTS = (
     NodeInput("Highlight", "float"),        # CPD 15
     NodeInput("Inst", "float2"),            # PerInstanceCustomData (x Fade, y Highlight), interpolated
     NodeInput("HighlightColor", "float3"),  # linear
+    # DECISIONS R19 (ground value): the palette colour pulled toward its luma (saturation) and scaled (value) in
+    # display space before shading; 1 / 1 = the palette as painted (MI_AF_Toon_Foliage_<Theme>_Ground: grass, flowers).
+    NodeInput("BaseSaturation", "float", "1.f"),
+    NodeInput("BaseValue", "float", "1.f"),
 )
+
+LUMA_WEIGHTS = (0.299, 0.587, 0.114)    # web tone() / ColorGradePipeline luma (display-space saturation)
+
+
+def _sat_value(var: str, sat: str, value: str) -> str:
+    """lerp(luma(var), var, sat) * value on an sRGB-encoded float3, written so that sat = value = 1 leaves `var`
+    bit-identical (x + (x - l) * 0 = x, x * 1 = x): the defaults reproduce today's colours exactly."""
+    return (f"float {var}_luma = dot({var}, {vec3(LUMA_WEIGHTS)});\n"
+            f"{var} = ({var} + ({var} - {var}_luma) * ({sat} - 1.0)) * {value};\n")
+
+
+def sat_value_reference(srgb: tuple[float, float, float], sat: float, value: float) -> tuple[float, float, float]:
+    """Python reference of _sat_value (sRGB 0..1 in and out)."""
+    luma = sum(w * c for w, c in zip(LUMA_WEIGHTS, srgb))
+    return tuple((luma + (c - luma) * sat) * value for c in srgb)  # type: ignore[return-value]
+
 
 _TOON = """
 @ENCODE_C@
+@BASE_GRADE@
 float sAmt = saturate(P.r);
 float lAmt = saturate(P.g);
 float eAmt = saturate(P.b);
@@ -178,11 +225,11 @@ return lin;
 """
 
 
-def toon_node(sh: Shading) -> CustomNode:
+def _toon_constants(sh: Shading) -> dict[str, str]:
     half = sh.band_width / 2.0
-    code = _fill(_TOON, {
+    return {
         "ENCODE_C": _encode("c", "Base"),
-        "DECODE_LIN": _decode("lin", "col"),
+        "BASE_GRADE": _sat_value("c", "BaseSaturation", "BaseValue"),
         "COOL": srgb255_vec(sh.cool_shade),
         "COOL_MIX": lit(sh.cool_shade_mix),
         "WARM": srgb255_vec(sh.warm_light),
@@ -195,9 +242,180 @@ def toon_node(sh: Shading) -> CustomNode:
         "RB0": lit(sh.rim_band[0]), "RB1": lit(sh.rim_band[1]),
         "RIM_EDGE": lit(sh.rim_mask_edge),
         "EM_BOOST": lit(sh.emissive_boost),
-    })
+    }
+
+
+def toon_node(sh: Shading) -> CustomNode:
+    """AF_Toon: today's unlit toon colour (M_AF_Toon_Slime, the fade ghosts M_AF_Toon_Fade / _Foliage_Fade)."""
+    code = _fill(_TOON, {**_toon_constants(sh), "DECODE_LIN": _decode("lin", "col")})
     return CustomNode("AF_Toon", "Abyssfire toon: 3-band half-Lambert in sRGB space + rim + grounding + feedback",
                       "float3", TOON_INPUTS, code)
+
+
+# Shadow-catcher lit toon (M_AF_Toon / M_AF_Toon_Foliage, DECISIONS P11 revised): DefaultLit with
+#   Emissive  = shade + (1 - k)(lit - shade)                    (shade = the toon's shade-band floor)
+#   BaseColor = k (lit - shade) / SunColor                      (Lit output)
+#   Normal    = MPC KeyLightDir, Specular 0, Metallic 0, Roughness 1
+# The directional light (pi lux x SunColor, along -KeyLightDir) adds BaseColor x SunColor x shadow, so in full sun the
+# sum is exactly today's AF_Toon colour and in a cast shadow it drops to shade + (1 - k)(lit - shade). k =
+# CastShadowStrength (characters .7, loot .8, props 1, canopies .6). Where no sun shadow is rendered (mobile low / mid)
+# the frame equals the unlit toon. Torches, campfires and spell glows light toon surfaces through the MPC light slots
+# Light<i>PosR (xyz absolute cm, w radius cm) / Light<i>Col (rgb = colour x intensity x lightScale x CharLightGain,
+# a > 0 = slot on), written by UAbyssVfxSystem (8 desktop / 4 mobile); no engine local light ever lights the toon.
+TOON_LIGHT_SLOTS = 8
+TOON_SPLIT_INPUTS = TOON_INPUTS + (
+    NodeInput("Pw", "float3"),                  # absolute WorldPosition (cm)
+    NodeInput("CastShadowStrength", "float"),   # MI scalar k
+) + tuple(NodeInput(f"L{i}", "float4") for i in range(TOON_LIGHT_SLOTS)) \
+  + tuple(NodeInput(f"C{i}", "float4") for i in range(TOON_LIGHT_SLOTS))
+TOON_SPLIT_OUTPUTS = (NodeInput("Lit", "float3"),)
+TORCH_WRAP = (0.35, 0.40, 0.50)     # back-facing floor, smoothstep edges on dot(n, l) * .5 + .5
+
+_TOON_SPLIT = """
+@ENCODE_C@
+@BASE_GRADE@
+float sAmt = saturate(P.r);
+float lAmt = saturate(P.g);
+float eAmt = saturate(P.b);
+float3 n = normalize(N);
+float3 lk = normalize(float3(L.r, L.g, L.b));
+float ndl = dot(n, lk);
+float hl = ndl * 0.5 + 0.5;
+float3 shadeC = lerp(lerp(c, @COOL@, @COOL_MIX@), float3(0.0, 0.0, 0.0), sAmt);
+float3 lightC = lerp(c, @WARM@, lAmt);
+float gw = @GROUND_ALPHA@ * saturate(Ground) * saturate(GroundEnable);
+float3 colL = lerp(shadeC, c, smoothstep(@TS0@, @TS1@, hl));
+colL = lerp(colL, lightC, smoothstep(@TL0@, @TL1@, hl));
+colL = lerp(colL, @GROUND@, gw);
+float3 colS = lerp(shadeC, c, smoothstep(@TS0@, @TS1@, 0.0));
+colS = lerp(colS, lightC, smoothstep(@TL0@, @TL1@, 0.0));
+colS = lerp(colS, @GROUND@, gw);
+float3 v = normalize(V);
+float facing = saturate(dot(n, v));
+float fres = pow(max(1.0 - facing, 1e-5), @RIM_POW@);
+float rimOn = saturate(RimOverride);
+float rimA = lerp(@RIM_ALPHA@, RimOverrideAlpha, rimOn);
+float rimW = rimA * smoothstep(@RB0@, @RB1@, fres) * smoothstep(0.0, @RIM_EDGE@, ndl);
+float3 rimC = lerp(float3(RimCol.r, RimCol.g, RimCol.b), float3(RimOverrideColor.r, RimOverrideColor.g, RimOverrideColor.b), rimOn);
+colL = lerp(colL, rimC, rimW);
+colL = lerp(colL, c, eAmt);
+colS = lerp(colS, c, eAmt);
+@DECODE_LIN_L@
+@DECODE_LIN_S@
+float3 one = float3(1.0, 1.0, 1.0);
+float3 sunC = float3(SunCol.r, SunCol.g, SunCol.b);
+float3 tnt = lerp(one, sunC, saturate(SunTint) * (1.0 - eAmt)) * (1.0 + @EM_BOOST@ * eAmt);
+float3 mS = min(linL, linS);
+float kCast = saturate(CastShadowStrength);
+float3 Emit = (mS + (1.0 - kCast) * (linL - mS)) * tnt;
+Lit = kCast * (linL - mS) * tnt / max(sunC, float3(0.05, 0.05, 0.05));
+@DECODE_BASE@
+float3 pw = float3(Pw.r, Pw.g, Pw.b);
+float3 torch = float3(0.0, 0.0, 0.0);
+@TORCH@
+Emit = Emit + linBase * (1.0 - eAmt) * torch;
+float3 painM = lerp(one, float3(PainTint.r, PainTint.g, PainTint.b), saturate(PainAmt));
+Emit = Emit * painM;
+Lit = Lit * painM;
+float3 teleM = lerp(one, float3(Telegraph.r, Telegraph.g, Telegraph.b), saturate(TelegraphAmt));
+Emit = Emit * teleM;
+Lit = Lit * teleM;
+float3 tintC = float3(StatusTint.r, StatusTint.g, StatusTint.b);
+float3 statM = lerp(one, tintC, saturate(StatusAmt));
+Emit = Emit * statM;
+Lit = Lit * statM;
+float gh = saturate(Ghost);
+Emit = lerp(Emit, tintC * (0.35 + 0.9 * fres), gh);
+Lit = Lit * (1.0 - gh);
+float hi = saturate(max(Highlight, Inst.y));
+float rim2 = (1.0 - facing) * (1.0 - facing);
+Emit = Emit + float3(HighlightColor.r, HighlightColor.g, HighlightColor.b) * (hi * (0.18 + 0.82 * rim2));
+float hf = saturate(HitFlash);
+Emit = lerp(Emit, one, hf);
+Lit = Lit * (1.0 - hf);
+return Emit;
+"""
+
+# One MPC light slot (unrolled; a slot is skipped while its colour alpha is 0): the web light falloff on the toon,
+# att = saturate(1 - d^2 / r^2)^2, wrapped by the normal so the far side keeps 35 %.
+_TORCH_SLOT = """
+if (C@I@.a > 0.0) {
+float3 td@I@ = float3(L@I@.r, L@I@.g, L@I@.b) - pw;
+float tdd@I@ = dot(td@I@, td@I@);
+float tr@I@ = max(L@I@.a, 1.0);
+float ta@I@ = saturate(1.0 - tdd@I@ / (tr@I@ * tr@I@));
+float tn@I@ = dot(n, td@I@ / max(sqrt(tdd@I@), 0.01)) * 0.5 + 0.5;
+torch = torch + float3(C@I@.r, C@I@.g, C@I@.b) * (ta@I@ * ta@I@ * lerp(@W0@, 1.0, smoothstep(@W1@, @W2@, tn@I@)));
+}
+"""
+
+
+def toon_split_node(sh: Shading) -> CustomNode:
+    """AF_ToonSplit: main output Emit (Emissive), additional output Lit (BaseColor) of the shadow-catcher lit toon."""
+    w0, w1, w2 = TORCH_WRAP
+    torch = "".join(_fill(_TORCH_SLOT, {"I": str(i), "W0": lit(w0), "W1": lit(w1), "W2": lit(w2)})
+                    for i in range(TOON_LIGHT_SLOTS))
+    code = _fill(_TOON_SPLIT, {**_toon_constants(sh), "DECODE_LIN_L": _decode("linL", "colL"),
+                               "DECODE_LIN_S": _decode("linS", "colS"), "DECODE_BASE": _decode("linBase", "c"),
+                               "TORCH": torch.strip()})
+    return CustomNode("AF_ToonSplit", "Abyssfire shadow-catcher toon: Emit (emissive) + Lit (base colour, sun-shadowed)",
+                      "float3", TOON_SPLIT_INPUTS, code, additional_outputs=TOON_SPLIT_OUTPUTS)
+
+
+def toon_split_reference(sh: Shading, base_srgb: tuple[float, float, float], params: tuple[float, float, float],
+                         n, v, grounding: float = 0.0, cast_shadow: float = 1.0,
+                         sun_color: tuple[float, float, float] = (1.0, 1.0, 1.0), sun_tint: float = 1.0,
+                         base_saturation: float = 1.0, base_value: float = 1.0
+                         ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Python reference of AF_ToonSplit without feedback and torch slots: (Emit, Lit), linear. base_srgb is the palette
+    colour in sRGB 0..1, params = (shadowAmt, lightAmt, emissive). The rendered colour under a sun-shadow term S is
+    Emit + Lit x sun_color x S (Art-pass look-dev: shade + (lit - shade) x (1 - k + k S))."""
+    def smooth(e0: float, e1: float, x: float) -> float:
+        t = min(max((x - e0) / (e1 - e0), 0.0), 1.0)
+        return t * t * (3.0 - 2.0 * t)
+
+    def unit(a) -> list[float]:
+        ln = math.sqrt(sum(x * x for x in a))
+        return [x / ln for x in a]
+
+    def mix(a, b, t: float) -> list[float]:
+        return [x + (y - x) * t for x, y in zip(a, b)]
+
+    def decode(x: float) -> float:
+        x = min(max(x, 0.0), 1.0)
+        return x / 12.92 if x < 0.04045 else ((x + 0.055) / 1.055) ** 2.4
+
+    s, l, e = (min(max(x, 0.0), 1.0) for x in params)
+    c = list(sat_value_reference(base_srgb, base_saturation, base_value))
+    half = sh.band_width / 2.0
+    N, V, Lk = unit(n), unit(v), unit(sh.key_light)
+    ndl = sum(a * b for a, b in zip(N, Lk))
+    hl = ndl * 0.5 + 0.5
+    cool = [x / 255.0 for x in sh.cool_shade]
+    warm = [x / 255.0 for x in sh.warm_light]
+    ground = [x / 255.0 for x in hex_to_rgb255(sh.ground_color)]
+    rim_c = [x / 255.0 for x in hex_to_rgb255(sh.rim_color)]
+    shade = [x * (1.0 - s) for x in mix(c, cool, sh.cool_shade_mix)]
+    light = mix(c, warm, l)
+    gw = sh.ground_alpha * min(max(grounding, 0.0), 1.0)
+    col_l = mix(mix(mix(shade, c, smooth(sh.t_shade - half, sh.t_shade + half, hl)), light,
+                    smooth(sh.t_light - half, sh.t_light + half, hl)), ground, gw)
+    col_s = mix(mix(mix(shade, c, smooth(sh.t_shade - half, sh.t_shade + half, 0.0)), light,
+                    smooth(sh.t_light - half, sh.t_light + half, 0.0)), ground, gw)
+    facing = min(max(sum(a * b for a, b in zip(N, V)), 0.0), 1.0)
+    fres = max(1.0 - facing, 1e-5) ** sh.rim_power
+    rim_w = sh.rim_alpha * smooth(sh.rim_band[0], sh.rim_band[1], fres) * smooth(0.0, sh.rim_mask_edge, ndl)
+    col_l = mix(mix(col_l, rim_c, rim_w), c, e)
+    col_s = mix(col_s, c, e)
+    k = min(max(cast_shadow, 0.0), 1.0)
+    emit, lit_out = [], []
+    for i in range(3):
+        tnt = (1.0 + (sun_color[i] - 1.0) * min(max(sun_tint, 0.0), 1.0) * (1.0 - e)) * (1.0 + sh.emissive_boost * e)
+        lin_l, lin_s = decode(col_l[i]), decode(col_s[i])
+        m = min(lin_l, lin_s)
+        emit.append((m + (1.0 - k) * (lin_l - m)) * tnt)
+        lit_out.append(k * (lin_l - m) * tnt / max(sun_color[i], 0.05))
+    return (emit[0], emit[1], emit[2]), (lit_out[0], lit_out[1], lit_out[2])
 
 
 # Dithered opacity (occlusion / death fade of the masked toon and ink, FX meshes): ordered 4x4 Bayer threshold `t`,
@@ -302,6 +520,10 @@ OUTLINE_WPO_INPUTS = (
     NodeInput("Px", "float"),       # OutlinePx1080 (per class)
     NodeInput("Baked", "float"),    # BakedWidthCm (the width the hull was baked with)
     NodeInput("Enable", "float"),   # OutlineScreenSpace (1; 0 = baked hull only)
+    # DECISIONS R3 (revised, art pass): MPC InkScale (1.5: the class values read as px per 720 rows) and extra pixels
+    # beyond the scaled ink (0 for the ink; M_AF_SelectRim: RimPx720 x 1.5).
+    NodeInput("InkScale", "float", "1.f"),
+    NodeInput("ExtraPx1080", "float", "0.f"),
 )
 _OUTLINE_WPO = """
 float3 n = normalize(N);
@@ -310,14 +532,63 @@ float3 v = dist > 0.0001 ? Pos / dist : float3(0.0, 0.0, 1.0);
 float depth = max(dot(Pos, F), 1.0);
 float3 np = n - dot(n, v) * v;
 float3 dir = np / max(length(np), @EPS@);
-float width = Px * 2.0 * depth * T.y / 1080.0;
+float width = (Px * InkScale + ExtraPx1080) * 2.0 * depth * T.y / 1080.0;
 return (dir * width - n * Baked) * saturate(Enable);
 """
 
 
 def outline_wpo_node(sh: Shading) -> CustomNode:
-    return CustomNode("AF_OutlineWPO", "Abyssfire outline: hull silhouette dilated by OutlinePx1080 * ViewSizeY / 1080 px",
-                      "float3", OUTLINE_WPO_INPUTS, _fill(_OUTLINE_WPO, {"EPS": lit(sh.outline_eps)}), stage="vertex")
+    return CustomNode("AF_OutlineWPO", "Abyssfire outline: hull silhouette dilated by (OutlinePx1080 x InkScale + "
+                      "ExtraPx1080) x ViewSizeY / 1080 px", "float3", OUTLINE_WPO_INPUTS,
+                      _fill(_OUTLINE_WPO, {"EPS": lit(sh.outline_eps)}), stage="vertex")
+
+
+def outline_px_at(px1080: float, rows: float, ink_scale: float = 1.5, extra_px1080: float = 0.0) -> float:
+    """Screen width (px) of the AF_OutlineWPO dilation at a viewport `rows` high (DECISIONS R3)."""
+    return (px1080 * ink_scale + extra_px1080) * rows / 1080.0
+
+
+# Selection rim (M_AF_SelectRim, DECISIONS R16): the rim hull's outline offset `Off` (AF_OutlineWPO with the rim's extra
+# pixels) plus a push of up to RimDepthPushCm along the camera ray through the offset vertex: same screen position,
+# deeper, so the rim only shows outside the whole figure's silhouette (never round a sword held in front of the body).
+# Near the ground the push is clamped so the pushed vertex stays RIM_GROUND_MARGIN_CM above the owner's ground plane
+# (`Feet` = ActorPositionWS, camera-relative, the actor stands on the ground): an unclamped 30 cm push sinks the rim
+# below the terrain wherever the silhouette is lower than 30 x sin(depression) ~ 19-26 cm (boots, goblin legs, most of
+# the slime), and the depth test removes it there. Pos / Off / Feet share the translated-world frame (z up).
+RIM_GROUND_MARGIN_CM = 2.0
+RIM_MIN_DROP = 0.2      # the ray's minimum downward slope used by the clamp (a level ray would allow any push)
+VIEW_PUSH_INPUTS = (NodeInput("Pos", "float3"), NodeInput("Off", "float3"), NodeInput("Push", "float"),
+                    NodeInput("Feet", "float3", "float3(0.f, 0.f, -1.0e6f)"))
+_VIEW_PUSH = """
+float3 p = Pos + Off;
+float d = length(p);
+float3 dir = d > 0.0001 ? p / d : float3(0.0, 0.0, 1.0);
+float above = p.z - Feet.z - @MARGIN@;
+float push = clamp(above / max(-dir.z, @MIN_DROP@), 0.0, max(Push, 0.0));
+return Off + dir * push;
+"""
+
+
+def view_push_node() -> CustomNode:
+    return CustomNode("AF_ViewPush", "selection rim: outline offset pushed along the camera ray, kept above the ground",
+                      "float3", VIEW_PUSH_INPUTS,
+                      _fill(_VIEW_PUSH, {"MARGIN": lit(RIM_GROUND_MARGIN_CM), "MIN_DROP": lit(RIM_MIN_DROP)}),
+                      stage="vertex")
+
+
+SELECT_RIM_MASK_INPUTS = (NodeInput("Fade", "float"), NodeInput("BodyOpacity", "float"), NodeInput("BodyMask", "float"))
+_SELECT_RIM_MASK = """
+float a = saturate(BodyOpacity) * (1.0 - saturate(Fade));
+@BAYER@
+return (a > t ? 1.0 : 0.0) * (1.0 - saturate(BodyMask));
+"""
+
+
+def select_rim_mask_node() -> CustomNode:
+    """The body's dithered Fade (CPD 13, the same temporal Bayer as AF_Dither) x (1 - BodyMask): BodyMask 1 = this slot
+    draws nothing (the weapon copies' slot 0)."""
+    return CustomNode("AF_SelectRimMask", "selection rim opacity: the body's dithered fade, BodyMask hides a slot",
+                      "float", SELECT_RIM_MASK_INPUTS, _fill(_SELECT_RIM_MASK, {"BAYER": _BAYER_TEMPORAL.strip()}))
 
 
 # Foliage wind (M_AF_Toon_Foliage / M_AF_Outline_Foliage): sway grows with height, phase from the ISM Random float.
@@ -536,6 +807,31 @@ def grade_node() -> CustomNode:
                       "float3", GRADE_INPUTS, code)
 
 
+# Light AO (M_AF_PP_AOComposite, DECISIONS P14; desktop balanced / high only, bound by AAbyssZoneActor): the scene colour
+# before tonemapping (BL_SCENE_COLOR_AFTER_DOF) darkened by the engine's SSAO, AOStrength of the way, on the visible
+# ground only. The terrain alone renders custom depth (AAbyssZoneActor, while AO is on), so a pixel is ground where the
+# scene depth reaches the custom depth: characters, props, foliage, ink and the selection rim stand in front of it and
+# keep their colour (the lit toon's GBuffer normal is the constant MPC KeyLightDir, which classic SSAO would orient its
+# hemisphere by, and the rim sits 30 cm behind its figure). No custom depth at all (the far plane) = no AO.
+AO_GROUND_TOLERANCE_CM = 1.0    # depth slack (both passes rasterise the same terrain; a sole touching the ground)
+AO_GROUND_FADE_CM = 4.0         # in front of the ground by more than tolerance + fade: no AO
+AO_COMPOSITE_INPUTS = (NodeInput("Scene", "float4"), NodeInput("AO", "float4"), NodeInput("AOStrength", "float"),
+                       NodeInput("SceneDepth", "float4", "float4(0.f, 0.f, 0.f, 0.f)"),
+                       NodeInput("GroundDepth", "float4", "float4(0.f, 0.f, 0.f, 0.f)"))
+_AO_COMPOSITE = """
+float gap = GroundDepth.r - SceneDepth.r;
+float ground = 1.0 - saturate((gap - @TOL@) / @FADE@);
+float ao = lerp(1.0, saturate(AO.r), saturate(AOStrength) * ground);
+return float3(Scene.r, Scene.g, Scene.b) * ao;
+"""
+
+
+def ao_composite_node() -> CustomNode:
+    return CustomNode("AF_AOComposite", "scene colour x lerp(1, SSAO, AOStrength) on the visible ground (custom depth)",
+                      "float3", AO_COMPOSITE_INPUTS,
+                      _fill(_AO_COMPOSITE, {"TOL": lit(AO_GROUND_TOLERANCE_CM), "FADE": lit(AO_GROUND_FADE_CM)}))
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Water surface (M_AF_Water; WorldContract 3.2 + AbyssTerrain.cpp: vertex colour R = shore factor, G = depth factor)
 # ---------------------------------------------------------------------------------------------------------------------
@@ -656,6 +952,12 @@ def lattice_noise_reference(u: float, v: float) -> float:
     return (s - lo) / (hi - lo) * 2.0 - 1.0
 
 
+# DECISIONS R19 (ground value): the composited ground (sRGB) pulled toward its luma and scaled, so actors pop; MI scalars
+# (MI_AF_Terrain_Plains .85 / .93), 1 / 1 = bit-identical to the uncompressed ground.
+GROUND_GRADE_INPUTS = (NodeInput("GroundSaturation", "float", "1.f"), NodeInput("GroundValue", "float", "1.f"))
+GROUND_GRADE_CODE = _sat_value("col", "GroundSaturation", "GroundValue")
+
+
 def terrain_inputs() -> tuple[NodeInput, ...]:
     ins = [NodeInput("UV", "float2"), NodeInput("Wall", "float"), NodeInput("Skirt", "float"),
            NodeInput("TileIds", "Texture2D"), NodeInput("MapCols", "float"), NodeInput("MapRows", "float")]
@@ -664,7 +966,7 @@ def terrain_inputs() -> tuple[NodeInput, ...]:
             ins.append(NodeInput(f"Tile{t}{f}", "float3"))
         ins.append(NodeInput(f"Tile{t}Rank", "float"))
     ins += [NodeInput("WaterShallow", "float3"), NodeInput("WaterFoam", "float3"), NodeInput("WaterBank", "float3")]
-    return tuple(ins)
+    return tuple(ins) + GROUND_GRADE_INPUTS
 
 
 def _select(m: str, field_name: str) -> str:
@@ -855,6 +1157,7 @@ def _terrain_tint_code(lazy: bool) -> list[str]:
         # contact shade under wall outcrops, darker skirt beyond the map border
         "col = lerp(col, col * float3(0.62, 0.66, 0.6), saturate(Wall) * 0.45);\n",
         "col = lerp(col, col * 0.86, saturate(Skirt));\n",
+        GROUND_GRADE_CODE,
         _decode("lin", "col"),
         "return lin;\n",
     ]
@@ -889,7 +1192,7 @@ def terrain_painted_inputs() -> tuple[NodeInput, ...]:
                 NodeInput(f"Tile{t}Rank", "float")]
     ins += [NodeInput("WaterShallow", "float3"), NodeInput("WaterFoam", "float3"), NodeInput("WaterBank", "float3"),
             NodeInput("Details", "Texture2D")]
-    return tuple(ins)
+    return tuple(ins) + GROUND_GRADE_INPUTS
 
 
 def terrain_painted_node(detailed: bool = True) -> CustomNode:
@@ -932,8 +1235,10 @@ def terrain_emissive_node() -> CustomNode:
 
 def all_nodes(sh: Shading) -> list[CustomNode]:
     """Every node the build creates (tests compile them all)."""
-    nodes = [toon_node(sh), dither_node(), dither_shadow_node(), fade_opacity_node(), ink_node(sh), outline_wpo_node(sh),
-             wind_node(), fx_mesh_node(sh), fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(),
+    split = toon_split_node(sh)
+    nodes = [toon_node(sh), split, split.twin("Lit"), dither_node(), dither_shadow_node(), fade_opacity_node(),
+             ink_node(sh), outline_wpo_node(sh), view_push_node(), select_rim_mask_node(), wind_node(), fx_mesh_node(sh),
+             fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(), ao_composite_node(),
              terrain_node(True), terrain_node(False), terrain_painted_node(True), terrain_painted_node(False),
              terrain_emissive_node()]
     nodes += list(fx_nodes().values()) + list(quad_nodes().values()) + list(water_nodes().values())

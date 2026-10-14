@@ -10,7 +10,8 @@ It emulates UE 5.8 where the build depends on it: the MaterialEditingLibrary ins
 but return False; the command line is a -run=pythonscript commandlet without -AllowCommandletRendering (NullRHI: no
 shader statistics); the Interchange properties 5.8 deprecated or removed raise. Switches (reset() restores 5.8):
 STATE["mel_refuse"] (parameters MaterialEditingLibrary does not apply), STATE["command_line"], STATE["compile_errors"],
-STATE["interchange_missing"] (INTERCHANGE_58 / INTERCHANGE_56) and use_content_library("current" | "stale" | "none").
+STATE["interchange_missing"] (INTERCHANGE_58 / INTERCHANGE_56), STATE["custom_output_pins"] (False: Custom nodes keep a
+single output pin whatever `additional_outputs` says) and use_content_library("current" | "stale" | "none").
 """
 from __future__ import annotations
 
@@ -54,7 +55,7 @@ def reset(content_dir: Path, unreal_dir: Path, anim_meta: dict[str, tuple[float,
     LOG.clear()
     STATE.update(content_dir=content_dir, unreal_dir=unreal_dir, anim_meta=anim_meta, imports=0, compiles=0,
                  mel_refuse=set(), command_line=COMMANDLET_LINE, compile_errors={},
-                 interchange_missing=dict(INTERCHANGE_58), saved=[], pipelines={})
+                 interchange_missing=dict(INTERCHANGE_58), saved=[], pipelines={}, custom_output_pins=True)
     use_content_library("current")
 
 
@@ -204,6 +205,7 @@ class Material(MaterialInterface):
         super().__init__(*a, **k)
         self._expressions: list[Any] = []
         self._outputs: dict[str, Any] = {}
+        self._output_pins: dict[str, str] = {}     # material property -> the source's output pin name
 
 
 class MaterialInstanceConstant(MaterialInterface):
@@ -226,6 +228,10 @@ class CollectionScalarParameter(Object):
 
 class CustomInput(Object):
     _defaults = {"input_name": ""}
+
+
+class CustomOutput(Object):
+    _defaults = {"output_name": "", "output_type": None}
 
 
 class Texture(Object):
@@ -492,6 +498,8 @@ EXPRESSION_INPUTS = {
     "MaterialExpressionTextureSampleParameter2D": ["UVs", "Tex", "Apply View MipBias"],
     "MaterialExpressionAppendVector": ["A", "B"],
     "MaterialExpressionAdd": ["A", "B"],
+    "MaterialExpressionMultiply": ["A", "B"],
+    "MaterialExpressionComponentMask": [""],
     "MaterialExpressionQualitySwitch": ["Default", "Low", "High", "Medium", "Epic"],
     "MaterialExpressionVertexInterpolator": ["VS"],
     "MaterialExpressionTransform": [""],
@@ -507,12 +515,24 @@ class MaterialExpression(Object):
             return [str(i.get_editor_property("input_name")) for i in (self.get_editor_property("inputs") or [])]
         return list(EXPRESSION_INPUTS.get(cls, []))
 
+    def has_output(self, name: str) -> bool:
+        """Custom nodes: UMaterialExpressionCustom::RebuildOutputs (main pin "" / "return", one pin per additional
+        output); other expressions accept any name (not modelled)."""
+        if type(self).__name__ != "MaterialExpressionCustom" or not name:
+            return True
+        extra = [str(o.get_editor_property("output_name")) for o in (self.get_editor_property("additional_outputs")
+                                                                       or [])]
+        if not extra or not STATE.get("custom_output_pins", True):
+            return False
+        return name.lower() in [n.lower() for n in ["return"] + extra]
+
 
 class MaterialEditingLibrary:
     @staticmethod
     def delete_all_material_expressions(material: Material) -> None:
         material._expressions.clear()
         material._outputs.clear()
+        material._output_pins.clear()
 
     @staticmethod
     def create_material_expression(material: Material, cls: type, x: int = 0, y: int = 0) -> Any:
@@ -526,14 +546,17 @@ class MaterialEditingLibrary:
 
     @staticmethod
     def connect_material_expressions(src: Any, out: str, dst: Any, inp: str) -> bool:
-        if inp not in dst.input_names():
+        if inp not in dst.input_names() or not src.has_output(out):
             return False
         dst._props.setdefault("_links", {})[inp] = (src, out)
         return True
 
     @staticmethod
     def connect_material_property(src: Any, out: str, prop: Any) -> bool:
+        if not src.has_output(out):
+            return False
         src._outer._outputs[str(prop)] = src
+        src._outer._output_pins[str(prop)] = out
         return True
 
     @staticmethod

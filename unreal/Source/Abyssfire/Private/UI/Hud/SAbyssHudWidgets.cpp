@@ -203,6 +203,8 @@ void SAbyssCombatLog::Rebuild()
 	}
 
 	const FText Header = Ctx->LocOr("ui.hud.combatLog", TEXT("Combat log"));
+	const float HeaderPx = bTouch ? 16.f : 12.f;
+	const double HeaderH = FMath::Max(18.0, HeaderPx + 6.0);   // AbyssUi::SectionHeader's height
 	const TSharedRef<FAbyssUiContext> Context = Ctx.ToSharedRef();
 	ChildSlot
 	[
@@ -225,13 +227,14 @@ void SAbyssCombatLog::Rebuild()
 			+ SOverlay::Slot()
 			.VAlign(VAlign_Top)
 			.HAlign(HAlign_Left)
-			.Padding(FMargin(10.f, 6.f, 10.f, 0.f))
+			.Padding(FMargin(10.f, static_cast<float>(12.0 - HeaderH * 0.5), 10.f, 0.f))
 			[
-				SNew(STextBlock)
+				// web: addSectionHeader(x + 10, y + 12, w - 20, 'ui.hud.combatLog'): the label plus the fading gold rule
+				SNew(SBox)
 				.Visibility(bFramed ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
-				.Text(Header)
-				.Font(UiStyle.Font(EAbyssFontFace::Title, bTouch ? 16.f : 11.f, true, 1))
-				.ColorAndOpacity(FSlateColor(UiStyle.Colors().Heading))
+				[
+					AbyssUi::SectionHeader(Context, Header, static_cast<float>(Size.X - 20.0), HeaderPx)
+				]
 			]
 			+ SOverlay::Slot()
 			.Padding(FMargin(0.f, static_cast<float>(TopInset), 0.f, 0.f))
@@ -352,10 +355,13 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 			const int32 Current = Index < Progress.objectives.size() ? Progress.objectives[Index] : 0;
 			const bool bDone = Current >= Objective.required;
 			Done += bDone ? 1 : 0;
-			const FString Line = FString::Printf(TEXT("    %s %s %s"), *Ctx->ObjectiveTypeLabel(Objective, Def.type),
+			FObjectiveLine Line;
+			Line.Text = FString::Printf(TEXT("%s %s %s"), *Ctx->ObjectiveTypeLabel(Objective, Def.type),
 				*Ctx->ObjectiveTargetLabel(Def, static_cast<int32>(Index)),
 				bDone ? TEXT("\x2713") : *FString::Printf(TEXT("%d/%d"), FMath::Min(Current, Objective.required), Objective.required));
-			Entry.Objectives.Add(TPair<FString, bool>(Line, bDone));
+			Line.bDone = bDone;
+			Line.Icon = Ctx->QuestObjectiveIcon(Objective);
+			Entry.Objectives.Add(MoveTemp(Line));
 		}
 		if (Entry.bCompleted)
 		{
@@ -436,17 +442,40 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 			];
 		if (bExpanded)
 		{
-			for (const TPair<FString, bool>& Objective : Entry.Objectives)
+			// Objective lines indented under the title (the web's four leading spaces); a collect objective shows its
+			// quest-item icon (16 px) before the text.
+			const float Indent = bTouch ? 16.f : 12.f;
+			const float IconPx = 16.f;
+			for (const FObjectiveLine& Objective : Entry.Objectives)
 			{
-				Lines->AddSlot()
-					.AutoHeight()
+				const FLinearColor LineColor = Objective.bDone ? FAbyssUiStyle::Rgb(0x66aa66) : FAbyssUiStyle::Rgb(0x888888);
+				TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+				if (Objective.Icon != nullptr)
+				{
+					Row->AddSlot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(FMargin(0.f, 0.f, 3.f, 0.f))
+						[
+							AbyssUi::Icon(Context, Objective.Icon, IconPx, Objective.bDone ? FLinearColor(1.f, 1.f, 1.f, 0.75f) : FLinearColor::White)
+						];
+				}
+				Row->AddSlot()
+					.FillWidth(1.f)
+					.VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(FText::AsCultureInvariant(Objective.Key))
+						.Text(FText::AsCultureInvariant(Objective.Text))
 						.Font(Ctx->Style().Body(ObjectivePx, false, 1))
-						.ColorAndOpacity(FSlateColor(Objective.Value ? FAbyssUiStyle::Rgb(0x66aa66) : FAbyssUiStyle::Rgb(0x888888)))
+						.ColorAndOpacity(FSlateColor(LineColor))
 						.AutoWrapText(false)
-						.WrapTextAt(Width - 6.f)
+						.WrapTextAt(Width - 6.f - Indent - (Objective.Icon != nullptr ? IconPx + 3.f : 0.f))
+					];
+				Lines->AddSlot()
+					.AutoHeight()
+					.Padding(FMargin(Indent, 0.f, 0.f, 0.f))
+					[
+						Row
 					];
 			}
 		}

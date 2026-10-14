@@ -4,6 +4,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "SceneView.h"
 #include "UnrealClient.h"
@@ -152,6 +153,7 @@ void SAbyssWorldLayer::AddWidget(const FAbyssWorldWidgetDesc& Desc)
 	FLabel& Label = Labels.FindOrAdd(Desc.Id);
 	Label = FLabel();
 	Label.Desc = Desc;
+	Label.CreatedAt = Ctx->Now();
 }
 
 void SAbyssWorldLayer::RemoveWidget(abyss::EntityId Id)
@@ -692,7 +694,8 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 				}
 				Label.bPresent = true;
 				Label.NameColor = Ctx->Style().QualityColor(Item->quality);
-				Label.bAlwaysShowName = true;
+				Label.Quality = Item->quality;
+				Label.bAlwaysShowName = false;   // DECISIONS R17: on demand (PaintGroundLabels)
 				Label.NameFontPx = 11;
 			}
 			break;
@@ -879,12 +882,17 @@ int32 SAbyssWorldLayer::OnPaint(const FPaintArgs& Args, const FGeometry& Allotte
 			bHeroKnown ? TEXT("known") : TEXT("unknown"));
 	}
 	FAbyssPainter P(AllottedGeometry, OutDrawElements, LayerId, InWidgetStyle, Ctx->Style());
+	Floats.RemoveAll([Now](const FFloat& Float) { return Now - Float.Start > 1.6; });
 	for (const TPair<uint32, FLabel>& Pair : Labels)
 	{
-		PaintLabel(P, Pair.Value, LocalSize, Now);
+		if (Pair.Value.Desc.Kind != EAbyssWorldWidgetKind::GroundItem)
+		{
+			PaintLabel(P, Pair.Value, LocalSize, Now);
+		}
 	}
+	PaintGroundLabels(P, LocalSize, Now);
+	// Floats always paint above the labels.
 	P.NextLayer();
-	Floats.RemoveAll([Now](const FFloat& Float) { return Now - Float.Start > 1.6; });
 	// Kill rewards and status lines first, hit numbers above them (each text is its own layer, so paint order is draw
 	// order): a number spawned after a reward on that spot (the next target's hit, a DoT tick) rises through it readable.
 	for (const FFloat& Float : Floats)
@@ -968,18 +976,142 @@ void SAbyssWorldLayer::PaintLabel(FAbyssPainter& P, const FLabel& Label, const F
 		P.TextCentered(FVector2D(Anchor.X, Y - TextSize.Y * 0.5), Label.Name, Font, FAbyssUiStyle::WithAlpha(Color, Alpha));
 		Y -= TextSize.Y + 2.0;
 	}
-	// NPC quest marker (quests 5.6): "!" available, "?" turn-in (gold) / in progress (grey), bobbing 4 px over 600 ms
+	// NPC quest marker (quests 5.6): "!" available, "?" turn-in (gold) / in progress (grey), bobbing 4 px over 600 ms. The
+	// painted glyphs T_UI_Glyph_quest_available / quest_complete (DECISIONS U11) when imported, else the text marks.
 	if (Label.Desc.Kind == EAbyssWorldWidgetKind::Npc && Label.Marker != abyss::NpcMarker::None && Label.Marker != abyss::NpcMarker::AvailableLocked)
 	{
 		const bool bExclaim = Label.Marker == abyss::NpcMarker::Available;
-		const FLinearColor Color = Label.Marker == abyss::NpcMarker::InProgress ? FAbyssUiStyle::Rgb(0x888888) : FAbyssUiStyle::Rgb(0xf1c40f);
+		const bool bInProgress = Label.Marker == abyss::NpcMarker::InProgress;
 		const double Bob = FMath::Sin(Now * UE_PI / 0.6) * 4.0;
 		const FVector2D Glyph(Anchor.X, Y - 14.0 + Bob);
-		if (Label.Marker != abyss::NpcMarker::InProgress)
+		if (!bInProgress)
 		{
 			P.Glow(Glyph, 14.f, FAbyssUiStyle::WithAlpha(FAbyssUiStyle::Rgb(0xffc040), 0.45f * Alpha), 5);
 		}
-		P.TextCentered(Glyph, bExclaim ? TEXT("!") : TEXT("?"), Ctx->Style().Title(24.f, true, 4), FAbyssUiStyle::WithAlpha(Color, Alpha));
+		const FSlateBrush* MarkBrush = Ctx->Glyph(bExclaim ? TEXT("quest_available") : TEXT("quest_complete"));
+		if (MarkBrush != nullptr)
+		{
+			// The painted marks are gold with their own ink; the in-progress "?" is the turn-in mark dimmed (the web's grey).
+			constexpr double MarkPx = 32.0;   // the mark itself spans ~0.7 of the 128 px texture: ~23 px, as the 24 px text
+			const FLinearColor MarkTint = bInProgress ? FLinearColor(0.55f, 0.55f, 0.55f, 0.85f * Alpha) : FLinearColor(1.f, 1.f, 1.f, Alpha);
+			P.Brush(Glyph - FVector2D(MarkPx * 0.5, MarkPx * 0.5), FVector2D(MarkPx, MarkPx), MarkBrush, MarkTint);
+		}
+		else
+		{
+			const FLinearColor Color = bInProgress ? FAbyssUiStyle::Rgb(0x888888) : FAbyssUiStyle::Rgb(0xf1c40f);
+			P.TextCentered(Glyph, bExclaim ? TEXT("!") : TEXT("?"), Ctx->Style().Title(24.f, true, 4), FAbyssUiStyle::WithAlpha(Color, Alpha));
+		}
+	}
+}
+
+void SAbyssWorldLayer::PaintGroundLabels(FAbyssPainter& P, const FVector2D& LocalSize, double Now) const
+{
+	using namespace AbyssGroundLabels;
+	// Alt held (desktop): every item label on screen, with a plate and up to 6 rows.
+	const bool bAltHeld = FSlateApplication::IsInitialized() && FSlateApplication::Get().GetModifierKeys().IsAltDown();
+	struct FCandidate
+	{
+		const FLabel* Label = nullptr;
+		FSlateFontInfo Font;
+		bool bPlate = false;
+	};
+	TArray<FCandidate, TInlineAllocator<32>> Candidates;
+	TArray<FItem, TInlineAllocator<32>> Items;
+	for (const TPair<uint32, FLabel>& Pair : Labels)
+	{
+		const FLabel& Label = Pair.Value;
+		if (Label.Desc.Kind != EAbyssWorldWidgetKind::GroundItem || !Label.bHasFrame || !Label.bVisible || !Label.bPresent
+			|| Label.Opacity <= 0.01f || Label.Name.IsEmpty())
+		{
+			continue;
+		}
+		FVisibilityInput In;
+		In.bHovered = Label.Desc.Id == HoveredId;
+		// bPickupTarget stays false: the snapshot carries no pickup target (hero.target is the monster attack lock, and the
+		// walk-then-act target lives in ZoneRuntime::Pending, not in HeroView), so an item the hero walks to shows its
+		// label from 2 tiles (DECISIONS R17).
+		In.bAltHeld = bAltHeld;
+		In.HeroDistanceTiles = bHeroKnown ? FVector::Dist2D(Label.Feet, HeroGround) / AbyssUnits::TileUU : 1.0e9;
+		In.bRareOrBetter = Label.Quality == abyss::ItemQuality::Rare || Label.Quality == abyss::ItemQuality::Legendary
+			|| Label.Quality == abyss::ItemQuality::Set;
+		In.AgeSec = Now - Label.CreatedAt;
+		if (!ShouldShow(In))
+		{
+			continue;
+		}
+		FVector2D Anchor;
+		if (!Project(Label.Overhead, Anchor, LocalSize) || Anchor.X < -100.0 || Anchor.Y < -100.0 || Anchor.X > LocalSize.X + 100.0
+			|| Anchor.Y > LocalSize.Y + 100.0)
+		{
+			continue;
+		}
+		FCandidate& Candidate = Candidates.AddDefaulted_GetRef();
+		Candidate.Label = &Label;
+		Candidate.Font = Ctx->Style().Body(static_cast<float>(Label.NameFontPx), true, 2);
+		Candidate.bPlate = bAltHeld || In.bHovered;
+		const FVector2D TextSize = FAbyssPainter::Measure(Label.Name, Candidate.Font);
+		const double Pad = Candidate.bPlate ? PlatePaddingPx : 0.0;
+		FItem& Item = Items.AddDefaulted_GetRef();
+		Item.AnchorX = Anchor.X;
+		Item.AnchorY = Anchor.Y;
+		Item.Width = TextSize.X + 2.0 * Pad;
+		Item.Height = TextSize.Y + 2.0 * Pad;
+	}
+	if (Items.Num() == 0)
+	{
+		return;
+	}
+	Layout(Items, bAltHeld ? MaxLiftsAlt : MaxLifts, GroundLabelPlacements);
+
+	// Combat floats younger than 0.6 s (their rects now): a label they cross steps back to 0.35.
+	TArray<FRect, TInlineAllocator<16>> FloatRects;
+	for (const FFloat& Float : Floats)
+	{
+		const double Age = Now - Float.Start;
+		FVector2D Offset;
+		float FloatAlpha = 1.f;
+		float Scale = 1.f;
+		FVector2D FloatAnchor;
+		if (Age >= FloatDimAgeSec || !FloatMotion(Float, Age, Offset, FloatAlpha, Scale) || FloatAlpha <= 0.01f
+			|| !Project(Float.World, FloatAnchor, LocalSize))
+		{
+			continue;
+		}
+		const FVector2D Center = FloatAnchor + Offset * WebPx;
+		const FVector2D Half = Float.Box * (0.5 * Scale);
+		FRect& Rect = FloatRects.AddDefaulted_GetRef();
+		Rect.MinX = Center.X - Half.X;
+		Rect.MinY = Center.Y - Half.Y;
+		Rect.MaxX = Center.X + Half.X;
+		Rect.MaxY = Center.Y + Half.Y;
+	}
+
+	const FLinearColor PlateColor = FAbyssUiStyle::Rgb(PlateRgb);
+	for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+	{
+		const FPlacement& Placement = GroundLabelPlacements[Index];
+		if (!Placement.bShown)
+		{
+			continue;   // no free row within the lift budget
+		}
+		const FCandidate& Candidate = Candidates[Index];
+		const FRect& Rect = Placement.Rect;
+		float Alpha = Candidate.Label->Opacity;
+		for (const FRect& FloatRect : FloatRects)
+		{
+			if (Meets(Rect, FloatRect, 0.0))
+			{
+				Alpha *= DimmedAlpha;
+				break;
+			}
+		}
+		if (Candidate.bPlate)
+		{
+			P.Box(FVector2D(Rect.MinX, Rect.MinY), FVector2D(Rect.MaxX - Rect.MinX, Rect.MaxY - Rect.MinY),
+				FAbyssUiStyle::WithAlpha(PlateColor, PlateAlpha * Alpha));
+		}
+		P.TextCentered(FVector2D((Rect.MinX + Rect.MaxX) * 0.5, (Rect.MinY + Rect.MaxY) * 0.5), Candidate.Label->Name, Candidate.Font,
+			FAbyssUiStyle::WithAlpha(Candidate.Label->NameColor, Alpha));
 	}
 }
 
@@ -999,6 +1131,10 @@ void SAbyssWorldLayer::PaintFloat(FAbyssPainter& P, const FFloat& Float, const F
 	}
 	// offsets, rises, drift and sinks are web world px (combat-feel 12), scaled to the camera by WebPx
 	FSlateFontInfo Font = AbyssWorldLayer_FloatFont(Ctx->Style(), Float.Kind, Float.FontPx, Float.Outline);
+	// Art pass (QA: the dark damage-taken number): a dark red-brown outline instead of black, so a red number stays red as
+	// it fades. FAbyssPainter fades the outline alpha with the glyph's (0.9 x Alpha on screen), so it never outlives the
+	// fill.
+	Font.OutlineSettings.OutlineColor = FLinearColor(0.06f, 0.02f, 0.02f, 0.9f);
 	// Slate draws the outline glyph (the glyph grown by the outline, inside included) under the fill; once the float is
 	// translucent that darkens its inside by up to ~22% of the ground behind it (outline alpha .9 x a under fill a). Below
 	// alpha .7 the fill area is cut out of the outline (bSeparateFillAlpha, "better for transparent fill areas"), which

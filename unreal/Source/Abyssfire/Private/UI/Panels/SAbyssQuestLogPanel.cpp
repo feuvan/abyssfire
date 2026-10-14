@@ -371,20 +371,30 @@ TSharedRef<SWidget> SAbyssQuestLogPanel::BuildQuestDetail(const abyss::Snapshot&
 			*Ctx->ObjectiveTypeLabel(Objective, Def->type), *Ctx->ObjectiveTargetLabel(*Def, static_cast<int32>(Index)));
 		const float Fraction = Objective.required > 0 ? static_cast<float>(Current) / static_cast<float>(Objective.required) : 1.f;
 		const FString Count = FString::Printf(TEXT("%d/%d"), Current, Objective.required);
+		// U11: a collect objective shows its quest-item icon (T_UI_QuestItem_<kind>, 20 px) before the label.
+		const FSlateBrush* KindIcon = Ctx->QuestObjectiveIcon(Objective);
+		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+		if (KindIcon != nullptr)
+		{
+			Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+			[
+				AbyssUi::Icon(Context, KindIcon, 20.f, bDone ? FLinearColor(1.f, 1.f, 1.f, 0.75f) : FLinearColor::White)
+			];
+		}
+		Row->AddSlot().FillWidth(1.f).VAlign(VAlign_Center)
+		[
+			AbyssUi::Label(*Ctx, FText::AsCultureInvariant(Label), 12.f, bDone ? C.Good : C.Text, false, 1, KindIcon != nullptr ? 306.f : 330.f)
+		];
+		Row->AddSlot().AutoWidth().VAlign(VAlign_Center)
+		[
+			AbyssUi::Label(*Ctx, FText::AsCultureInvariant(Count), 12.f, bDone ? C.Good : C.TextSoft, true, 1)
+		];
 		Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.f)
-				[
-					AbyssUi::Label(*Ctx, FText::AsCultureInvariant(Label), 12.f, bDone ? C.Good : C.Text, false, 1, 330.f)
-				]
-				+ SHorizontalBox::Slot().AutoWidth()
-				[
-					AbyssUi::Label(*Ctx, FText::AsCultureInvariant(Count), 12.f, bDone ? C.Good : C.TextSoft, true, 1)
-				]
+				Row
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(14.f, 2.f, 0.f, 0.f))
 			[

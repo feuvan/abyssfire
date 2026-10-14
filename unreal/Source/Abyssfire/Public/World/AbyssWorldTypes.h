@@ -74,6 +74,15 @@ struct FAbyssMoodLook
 	float Contrast = 1.f;
 	FVector Lift = FVector::ZeroVector;
 	FVector Gain = FVector::ZeroVector;
+	/**
+	 * Height fog (DECISIONS P14, zone_moods.json port.fog): inscattering colour (linear), max opacity and the look-dev
+	 * density (opacity 1 - 2^(-density x metres / 10) past the start; UE FogDensity = density / ln 2, AAbyssZoneActor).
+	 */
+	FLinearColor FogColor = FLinearColor::White;
+	float FogMaxOpacity = 0.25f;
+	float FogDensity = 0.9f;
+	// The fake-light scale of the mood (DECISIONS R18) has one implementation, AbyssVfxLighting::LightScaleFromMood, used
+	// by UAbyssVfxSystem (recipe light pools, the hero halo, the toon light slots).
 };
 
 /** Resolved render tier settings (render_quality.json, ue58-platform.md 6.8). */

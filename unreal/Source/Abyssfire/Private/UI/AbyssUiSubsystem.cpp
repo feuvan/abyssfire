@@ -151,6 +151,7 @@ void UAbyssUiSubsystem::Deinitialize()
 	Style.Reset();
 	TextureCache.Reset();
 	MissingTextures.Reset();
+	WarnedMissingTextures.Reset();
 	KeptAssets.Reset();
 	Super::Deinitialize();
 }
@@ -456,7 +457,7 @@ const FAbyssUiStyle& UAbyssUiSubsystem::GetStyle() const
 	return *Style;
 }
 
-UTexture2D* UAbyssUiSubsystem::FindUiTexture(FName AssetName)
+UTexture2D* UAbyssUiSubsystem::FindUiTexture(FName AssetName, bool bWarnIfMissing)
 {
 	check(IsInGameThread());
 	if (AssetName.IsNone())
@@ -470,31 +471,40 @@ UTexture2D* UAbyssUiSubsystem::FindUiTexture(FName AssetName)
 			return Texture;
 		}
 	}
-	if (MissingTextures.Contains(AssetName))
+	if (!MissingTextures.Contains(AssetName))
 	{
-		return nullptr;
+		const FString Name = AssetName.ToString();
+		const FString Root(TEXT("/Game/Abyssfire"));
+		for (const TCHAR* Folder : GAbyssUiTextureFolders)
+		{
+			const FString PackageName = Root / Folder / Name;
+			if (!FPackageName::DoesPackageExist(PackageName))
+			{
+				continue;
+			}
+			const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *PackageName, *Name);
+			if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *ObjectPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
+			{
+				KeepAlive(Texture);
+				TextureCache.Add(AssetName, Texture);
+				return Texture;
+			}
+		}
+		MissingTextures.Add(AssetName);
+		if (!bWarnIfMissing)
+		{
+			UE_LOG(LogAbyss, Log, TEXT("UI texture %s not found (optional probe, next fallback)"), *Name);
+		}
 	}
-	const FString Name = AssetName.ToString();
-	const FString Root(TEXT("/Game/Abyssfire"));
-	for (const TCHAR* Folder : GAbyssUiTextureFolders)
+	// U11: every T_UI_* the widgets ask for is shipped (Art/Export manifest 'ui', imported to /Game/Abyssfire/UI/Icons), so
+	// a miss is a content bug: the widget draws its procedural fallback (monogram, painted glyph) and the log names the
+	// asset once. Optional probes (base-specific item variants, monster portraits) pass bWarnIfMissing = false.
+	if (bWarnIfMissing && !WarnedMissingTextures.Contains(AssetName))
 	{
-		const FString PackageName = Root / Folder / Name;
-		if (!FPackageName::DoesPackageExist(PackageName))
-		{
-			continue;
-		}
-		const FString ObjectPath = FString::Printf(TEXT("%s.%s"), *PackageName, *Name);
-		if (UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *ObjectPath, nullptr, LOAD_NoWarn | LOAD_Quiet))
-		{
-			KeepAlive(Texture);
-			TextureCache.Add(AssetName, Texture);
-			return Texture;
-		}
+		WarnedMissingTextures.Add(AssetName);
+		UE_LOG(LogAbyss, Warning, TEXT("UI texture %s not found under /Game/Abyssfire/UI/Icons (or the other UI folders): drawing the fallback"),
+			*AssetName.ToString());
 	}
-	// Missing art is expected while the pipeline catches up: the widgets draw their procedural fallback. Logged once per
-	// name (MissingTextures), so the log lists exactly which T_UI_* art the build lacks.
-	UE_LOG(LogAbyss, Log, TEXT("UI texture %s not found (fallback glyph)"), *Name);
-	MissingTextures.Add(AssetName);
 	return nullptr;
 }
 

@@ -10,8 +10,13 @@
 //   outcrops on wall tiles (tileHash(c, r, 3) variants, ZoneTerrain), palisade stakes on camp-wall tiles (4-bit
 //   neighbour mask), camp props (abyss::CampProps), story decorations, exit portal / sealed gate (W7), skirt foliage,
 //   lily pads.
-// * Light and look: the movable directional sun (manifest key light, CSM per tier), the unbound post-process of the
-//   zone mood (manual exposure, no tone curve, grade, vignette, bloom per tier; or M_AF_PP_Grade when it exists).
+// * Light and look (DECISIONS P10, P11, P14 as revised by the art pass): the movable directional sun (manifest key light,
+//   pi lux x the mood's sun colour, lighting channel 0 only; the shadow-catcher toon reads its shadow term), CSM per tier
+//   (desktop 2 cascades on every tier, high-tier mobile 1) over 1.35 x the live camera distance, contact shadows on
+//   desktop balanced / high; an ExponentialHeightFog per mood (zone_moods.json port.fog) starting 1 m beyond the camera
+//   focus distance; the unbound post-process: manual exposure, tone curve 0.4, the built-in grade at 55 % of the mood
+//   (no M_AF_PP_Grade), vignette, bloom and SSAO (+ M_AF_PP_AOComposite) per tier. UpdateView re-fits the shadow
+//   distance and the fog start to the camera zoom and applies the look console variables live.
 // * Occlusion fade (R1, world-map-nav.md 15.6): tall dressing between the camera and the hero / nearby living monsters
 //   fades to alpha .25 (decor, tents) / .45 (walls) with the web's 110 ms approach. Ground loot near the hero also fades
 //   the low dressing it lies in or behind (bushes, grass, rocks; in 3D a bag inside a berry bush is otherwise hidden).
@@ -19,7 +24,8 @@
 //   jitter sample, which the AA resolves; without it (desktop low FXAA, mobile MSAA) an instance faded by .3 or more is
 //   hidden in its ISM and drawn by a translucent copy in a parallel "fade ghost" ISM (M_AF_Toon_Fade / _Foliage_Fade,
 //   ink hull hidden; abyss.FadeGhost). Trees, rocks and tents fade when a target's ray toward the camera enters their
-//   bounds ellipsoid from behind; walls, stakes and gates use a cylinder.
+//   bounds ellipsoid from behind (tents: the 1.25 m canvas half-width, not the rope bounds); walls, stakes and gates use
+//   a cylinder.
 // * Picking support: GetGroundHeight / RaycastGround on the terrain height field (ue58-platform.md 8.4).
 // * Shader gate (uncooked editor-binary runs only, WITH_EDITOR): an instanced mesh whose material is still compiling
 //   for this RHI stays hidden until its shader map is ready (abyss.DecorShaderGate), instead of drawing with the
@@ -40,6 +46,7 @@
 
 class UAbyssAssetLibrary;
 class UDirectionalLightComponent;
+class UExponentialHeightFogComponent;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
@@ -82,8 +89,19 @@ public:
 	/** Removes every generated component (the actor is destroyed afterwards by the world builder). */
 	void ClearZone();
 
-	/** Render tier: sun shadows, bloom / grading, post-process (ue58-platform.md 6.8, P10). */
+	/** Render tier: sun shadows, fog, bloom / grading / AO, post-process (ue58-platform.md 6.8, P10, P14). */
 	void ApplyQuality(const FAbyssQualityProfile& Quality);
+
+	/**
+	 * Per frame (world builder, after the camera rig): the live camera distance. A change of more than 2 % (zoom, level-up
+	 * pulse) re-fits the CSM distance (1.35 x, P10) and the height-fog start (+ 1 m, P14); a change of the look console
+	 * variables (abyss.ExposureBias, abyss.ToneCurve, abyss.Bloom, abyss.Fog, abyss.FogScale) re-applies the post-process
+	 * / fog the same frame (Mac calibration: exposure palette chart, fog against the look-dev).
+	 */
+	void UpdateView(float CameraDistanceCm);
+
+	/** abyss.SunScale: the lit ground's sun term as a fraction of the pi-lux sun (MPC_AF_Lighting SunScale). */
+	static float GetSunScale();
 
 	/**
 	 * Occlusion fade toward the targets (hero chest / head, nearby monsters) seen from CameraLocation. LootTargets
@@ -168,8 +186,9 @@ private:
 	/** Rebuilds (after a set change) or refreshes the ghost instances of one dressing component. */
 	void UpdateFadeGhost(int32 ComponentIndex);
 	const FAbyssArtAsset* ResolveArt(TConstArrayView<FName> GameIds, uint32 Hash) const;
+	/** OccluderRadiusCm > 0 replaces the bounds radius in the R1 occlusion test (tents: the canvas, not the ropes). */
 	bool PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
-		bool bOccluder, float FadeTarget, FName StoryId = NAME_None);
+		bool bOccluder, float FadeTarget, FName StoryId = NAME_None, float OccluderRadiusCm = -1.f);
 
 	void BuildTerrain(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	void ApplyTerrainStyle(const abyss::DataStore& Data);
@@ -180,6 +199,10 @@ private:
 	void BuildSkirt(const abyss::DataStore& Data);
 	void BuildLighting(const abyss::Snapshot& Snap, const abyss::DataStore& Data);
 	void ApplyPostProcess();
+	/** Sun CSM distance and fog start for ViewDistanceCm (P10 / P14). */
+	void ApplyViewDistance();
+	/** Height fog of the mood (colour, opacity, density / ln 2 x abyss.FogScale, visibility abyss.Fog). */
+	void ApplyFog();
 	FVector GroundPoint(double TileX, double TileY) const;
 
 	UPROPERTY(VisibleAnywhere, Category = "Abyss")
@@ -193,6 +216,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "Abyss")
 	TObjectPtr<UPostProcessComponent> PostProcess;
+
+	UPROPERTY(VisibleAnywhere, Category = "Abyss")
+	TObjectPtr<UExponentialHeightFogComponent> HeightFog;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UInstancedStaticMeshComponent>> DecorInstanceComponents;
@@ -217,8 +243,9 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> WaterMaterial;
 
+	/** M_AF_PP_AOComposite (content build; nullptr when missing): SSAO composite blendable on desktop balanced / high. */
 	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInstanceDynamic> GradeMaterial;
+	TObjectPtr<UMaterialInterface> AOCompositeMaterial;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAbyssAssetLibrary> AssetLibrary;
@@ -255,6 +282,15 @@ private:
 	int32 UnloadedArtCount = 0;
 
 	FAbyssQualityProfile QualityProfile;
+	/** Live camera distance (UpdateView) and the one the shadow distance / fog start were last fitted to. */
+	float ViewDistanceCm = 2125.f;
+	float AppliedViewDistanceCm = -1.f;
+	/** Look console variables the post-process / fog were last built with (UpdateView applies changes live). */
+	float AppliedExposureBias = 0.f;
+	float AppliedToneCurve = 0.f;
+	float AppliedBloom = 0.f;
+	float AppliedFogScale = 0.f;
+	int32 AppliedFogMode = -1;
 	/** Art manifest hero fx.bloom.strength (0 = none): the zone bloom intensity unless abyss.Bloom overrides it. */
 	float ArtBloomStrength = 0.f;
 	FAbyssMoodLook Mood;

@@ -194,16 +194,29 @@ public:
 	static FString Int(int64 Value);
 
 	// ---- icons (nullptr = not available; widgets draw a fallback glyph) ----
+	// U11: the T_UI_* art is shipped (Art/Export manifest 'ui'); a miss is logged once per asset name by the subsystem.
+	/** T_UI_ItemIcon_<icon>__<base>, then T_UI_ItemIcon_<icon>, then T_UI_ItemIcon_<base> (art-inventory 9). */
 	const FSlateBrush* ItemIcon(const std::string& BaseId) const;
+	/** T_UI_SkillIcon_<id>: the emblem plate (frame drawn by AbyssUi::PaintSkillTile). */
 	const FSlateBrush* SkillIcon(const std::string& SkillId) const;
+	/** T_UI_QuestItem_<kind> (herb, gel, pendant in Chapter 1). */
 	const FSlateBrush* QuestItemIcon(const std::string& Kind) const;
+	/**
+	 * The quest-item icon of a collect / craft_collect objective (its itemKind, else the tuning default by target, as the
+	 * core's QuestWorld resolves it); nullptr for other objective types.
+	 */
+	const FSlateBrush* QuestObjectiveIcon(const abyss::QuestObjectiveDef& Objective) const;
 	/** Portrait by story art id (class id, NPC sprite id, monster sprite key, emblem_villain, emblem_generic). */
 	const FSlateBrush* Portrait(const std::string& ArtId) const;
 	const FSlateBrush* HeroPortrait(abyss::ClassId Class) const;
 	const FSlateBrush* PetPortrait(const std::string& PetId) const;
+	/** T_UI_Glyph_<id>: gold, str, dex, vit, int, spi, lck, atk, def, hp, mp, quest_available, quest_complete, close, sort. */
 	const FSlateBrush* Glyph(const TCHAR* GlyphId) const;
-	/** Any UI texture by asset name (cached brush). */
-	const FSlateBrush* TextureBrush(FName AssetName) const;
+	/** The glyph id drawn beside a stat (str / dex / vit / int / spi / lck / hp / mp / atk / def), nullptr for the rest. */
+	static const TCHAR* StatGlyphId(abyss::Stat Stat);
+	const FSlateBrush* StatGlyph(abyss::Stat Stat) const;
+	/** Any UI texture by asset name (cached brush); bWarnIfMissing = false for an optional probe (no log on a miss). */
+	const FSlateBrush* TextureBrush(FName AssetName, bool bWarnIfMissing = true) const;
 	/** Brush around a runtime texture (minimap); the caller keeps the texture alive. */
 	const FSlateBrush* RuntimeTextureBrush(class UTexture2D* Texture, FName Key) const;
 

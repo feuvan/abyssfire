@@ -6,6 +6,7 @@ Needs a C++17 compiler (clang++ or g++) for the compile / numeric tests; they ar
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 import re
 import shutil
@@ -33,15 +34,26 @@ def manifest_shading() -> Shading:
 
 
 def cpp_signature(node: hlsl.CustomNode) -> str:
+    """The node as a C++ function: inputs by value (a Texture2D adds its sampler), then the additional outputs by
+    reference (UE: `inout` parameters). Emulation defaults (keeping older calls compiling) apply to the trailing run of
+    inputs that have one, and not at all with additional outputs (C++ defaults must be trailing)."""
+    first_default = len(node.inputs)
+    while first_default > 0 and node.inputs[first_default - 1].emu_default is not None:
+        first_default -= 1
     params = []
-    for inp in node.inputs:
-        params.append(f"const Texture2D& {inp.name}, SamplerState {inp.name}Sampler" if inp.ctype == "Texture2D"
-                      else f"{inp.ctype} {inp.name}")
+    for i, inp in enumerate(node.inputs):
+        if inp.ctype == "Texture2D":
+            params.append(f"const Texture2D& {inp.name}, SamplerState {inp.name}Sampler")
+        elif i >= first_default and not node.additional_outputs:
+            params.append(f"{inp.ctype} {inp.name} = {inp.emu_default}")
+        else:
+            params.append(f"{inp.ctype} {inp.name}")
+    params += [f"{out.ctype}& {out.name}" for out in node.additional_outputs]
     return f"static {node.output} {node.key}({', '.join(params)})"
 
 
 def cpp_unit(nodes: list[hlsl.CustomNode], main: str = "int main() { return 0; }") -> str:
-    parts = ['#include "hlsl_emu.h"', "#include <cstdio>"]
+    parts = ['#include "hlsl_emu.h"', "#include <cstdio>", "#include <cstring>"]
     for node in nodes:
         parts.append(cpp_signature(node) + "\n{\n" + node.code + "}\n")
     parts.append(main)
@@ -527,6 +539,512 @@ int main() {
                 ref.append(1 if (b + 0.5) / 16 < 0.25 else 0)
         self.assertEqual(static, ref)
         self.assertEqual(sum(static), 4)
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Art pass (DECISIONS P11 revised, R3, R16, R19, P14)
+# ---------------------------------------------------------------------------------------------------------------------
+def f3(v) -> str:
+    return f"float3({float(v[0])!r}f, {float(v[1])!r}f, {float(v[2])!r}f)"
+
+
+def f4(v) -> str:
+    return f"float4({float(v[0])!r}f, {float(v[1])!r}f, {float(v[2])!r}f, {float(v[3])!r}f)"
+
+
+# AF_Toon / AF_ToonSplit inputs without feedback (C++ expressions); the tests override some per call.
+TOON_DEFAULTS = {
+    "Base": "float3(0.5f, 0.5f, 0.5f)", "P": "float4(0.42f, 0.32f, 0.f, 1.f)", "N": "float3(0.f, 0.f, 1.f)",
+    "V": f3((0.4545, -0.4545, 0.766)), "L": f4((*SHADING.key_light, 0.0)), "SunCol": "float4(1.f, 1.f, 1.f, 1.f)",
+    "RimCol": "float4(1.f, 236.f / 255.f, 200.f / 255.f, 1.f)", "Ground": "0.f", "GroundEnable": "1.f",
+    "SunTint": "1.f", "RimOverride": "0.f", "RimOverrideColor": "float3(1.f, 1.f, 1.f)", "RimOverrideAlpha": "0.55f",
+    "HitFlash": "0.f", "PainTint": "float3(1.f, 1.f, 1.f)", "PainAmt": "0.f", "Telegraph": "float3(1.f, 1.f, 1.f)",
+    "TelegraphAmt": "0.f", "StatusTint": "float3(1.f, 1.f, 1.f)", "StatusAmt": "0.f", "Ghost": "0.f",
+    "Highlight": "0.f", "Inst": "float2(0.f, 0.f)", "HighlightColor": "float3(1.f, 1.f, 1.f)",
+    "BaseSaturation": "1.f", "BaseValue": "1.f", "Pw": "float3(0.f, 0.f, 0.f)", "CastShadowStrength": "0.7f",
+    **{f"L{i}": "float4(0.f, 0.f, 0.f, 0.f)" for i in range(8)},
+    **{f"C{i}": "float4(0.f, 0.f, 0.f, 0.f)" for i in range(8)},
+}
+
+
+def cpp_call(node: hlsl.CustomNode, args: dict[str, str], defaults: dict[str, str] | None = None) -> str:
+    """`Key(arg, ...)` in the node's parameter order (inputs, then the additional outputs as lvalues)."""
+    values = []
+    for inp in node.inputs:
+        if inp.name in args:
+            values.append(args[inp.name])
+        elif defaults is not None and inp.name in defaults:
+            values.append(defaults[inp.name])
+        else:
+            raise KeyError(f"{node.key}: no value for input {inp.name}")
+    values += [args[o.name] for o in node.additional_outputs]
+    return f"{node.key}({', '.join(values)})"
+
+
+def lookdev_toon(sh: Shading, base_hex: str, s: float, l: float, e: float, n, v, grounding: float, shade: bool):
+    """The art-pass look-dev's toon group (artpass/lookdev/lookdev.py build_toon): mode lit = today's M_AF_Toon,
+    mode shade = the shade band + grounding (ndl forced to -1, so no light band and no rim); linear, no tint."""
+    c = [x / 255.0 for x in hex_to_rgb255(base_hex)]
+    N, V, L = norm(n), norm(v), norm(sh.key_light)
+    ndl = -1.0 if shade else sum(a * b for a, b in zip(N, L))
+    h = ndl * 0.5 + 0.5
+    hw = sh.band_width / 2
+    wb, wl = smoothstep(sh.t_shade - hw, sh.t_shade + hw, h), smoothstep(sh.t_light - hw, sh.t_light + hw, h)
+    cool, warm = [x / 255.0 for x in sh.cool_shade], [x / 255.0 for x in sh.warm_light]
+    gt, rimc = [x / 255.0 for x in hex_to_rgb255(sh.ground_color)], [x / 255.0 for x in hex_to_rgb255(sh.rim_color)]
+    fres = (1 - max(sum(a * b for a, b in zip(N, V)), 0.0)) ** sh.rim_power
+    rim = smoothstep(sh.rim_band[0], sh.rim_band[1], fres) * sh.rim_alpha * smoothstep(0.0, sh.rim_mask_edge, ndl)
+    out = []
+    for i in range(3):
+        sh_c = (c[i] + (cool[i] - c[i]) * sh.cool_shade_mix) * (1 - s)
+        col = sh_c + (c[i] - sh_c) * wb
+        col = col + (c[i] + (warm[i] - c[i]) * l - col) * wl
+        col = col + (gt[i] - col) * (grounding * sh.ground_alpha)
+        col = col + (rimc[i] - col) * rim
+        col = col + (c[i] - col) * e
+        out.append(srgb_to_linear1(min(max(col, 0.0), 1.0)) * (1 + e * sh.emissive_boost))
+    return out
+
+
+@unittest.skipIf(CXX is None, "no C++ compiler")
+class ArtPassMathTests(unittest.TestCase):
+    """The shadow-catcher toon, the ink scale, the selection rim, the ground grade and the AO composite."""
+
+    NORMALS = [(0, 0, 1), (1, 0, 0), (0, -1, 0), (-0.4, 0.4, 0.82), (0.3, -0.7, 0.2), (-0.6, 0.6, -0.5),
+               (0.40558, -0.40558, 0.819152)]
+    PALETTE = [(0.42, 0.32, 0.0), (0.15, 0.5, 0.0), (0.42, 0.32, 0.45), (0.3, 0.2, 1.0)]
+    BASES = ["#D0473A", "#8A93A6", "#2B2B38", "#F2E6C9", "#FFB45C", "#74A247"]
+
+    def run_cpp(self, nodes: list[hlsl.CustomNode], body: str) -> list[str]:
+        return compile_and_run(cpp_unit(nodes, "int main() {\n" + body + "\nreturn 0; }"), run=True).strip().split("\n")
+
+    @staticmethod
+    def base_lin(hex_: str) -> str:
+        return f3([srgb_to_linear1(x / 255.0) for x in hex_to_rgb255(hex_)])
+
+    def test_split_sums_to_the_unlit_toon_in_full_sun(self):
+        """(a) S = 1: Emit + Lit x SunCol == AF_Toon (1e-4) over normals x palettes x SunTint x SunColor x every
+        feedback combination; (c) k = 0: Lit == 0 and Emit == AF_Toon."""
+        sh = manifest_shading()
+        toon, split = hlsl.toon_node(sh), hlsl.toon_split_node(sh)
+        feedback = {  # one partial value per layer; the loop switches each on / off
+            "HitFlash": ("hf", "0.45f"), "PainAmt": ("pa", "0.8f"), "TelegraphAmt": ("ta", "0.6f"),
+            "StatusAmt": ("sa", "0.7f"), "Ghost": ("gh", "0.55f"), "Highlight": ("hi", "0.65f"),
+        }
+        args = {"Base": "base", "P": "pal", "N": "nrm", "SunCol": "sun", "SunTint": "tint",
+                "PainTint": "float3(1.f, 0.3f, 0.25f)", "Telegraph": "float3(1.f, 0.55f, 0.1f)",
+                "StatusTint": "float3(0.5f, 0.8f, 1.f)", "HighlightColor": "float3(1.f, 0.9f, 0.6f)",
+                "CastShadowStrength": "kc", "Lit": "lit"}
+        for name, (var, _) in feedback.items():
+            args[name] = var
+        loops = "\n".join(f"float {var} = (mask >> {i}) & 1 ? {val} : 0.f;"
+                          for i, (var, val) in enumerate(feedback.values()))
+        body = f"""
+const float3 bases[] = {{ {", ".join(self.base_lin(b) for b in self.BASES)} }};
+const float4 pals[] = {{ {", ".join(f4((*p, 1.0)) for p in self.PALETTE)} }};
+const float3 nrms[] = {{ {", ".join(f3(n) for n in self.NORMALS)} }};
+const float4 suns[] = {{ float4(1.f, 1.f, 1.f, 1.f), float4(1.f, 0.94f, 0.82f, 1.f) }};
+float worst = 0.f, worstK0 = 0.f, litK0 = 0.f; int n = 0;
+for (const float3& base : bases) for (const float4& pal : pals) for (const float3& nrm : nrms)
+for (const float4& sun : suns) for (float tint : {{0.f, 1.f}}) for (int mask = 0; mask < 64; ++mask) {{
+    {loops}
+    float3 ref = {cpp_call(toon, args, TOON_DEFAULTS)};
+    for (float kc : {{0.f, 0.7f, 1.f}}) {{
+        float3 lit;
+        float3 emit = {cpp_call(split, args, TOON_DEFAULTS)};
+        float3 sum = emit + lit * float3(sun.r, sun.g, sun.b);
+        float err = std::fabs(sum.x - ref.x) + std::fabs(sum.y - ref.y) + std::fabs(sum.z - ref.z);
+        worst = err > worst ? err : worst;
+        if (kc == 0.f) {{
+            float e0 = std::fabs(emit.x - ref.x) + std::fabs(emit.y - ref.y) + std::fabs(emit.z - ref.z);
+            worstK0 = e0 > worstK0 ? e0 : worstK0;
+            litK0 += std::fabs(lit.x) + std::fabs(lit.y) + std::fabs(lit.z);
+        }}
+        ++n;
+    }}
+}}
+std::printf("%d %.9g %.9g %.9g\\n", n, worst, worstK0, litK0);"""
+        out = self.run_cpp([toon, split], body)[0].split()
+        self.assertEqual(int(out[0]), len(self.BASES) * len(self.PALETTE) * len(self.NORMALS) * 2 * 2 * 64 * 3)
+        self.assertLess(float(out[1]), 1e-4, "Emit + Lit x SunCol differs from AF_Toon")
+        self.assertLess(float(out[2]), 1e-4, "k = 0: Emit differs from AF_Toon")
+        self.assertEqual(float(out[3]), 0.0, "k = 0: Lit must be exactly 0")
+
+    def test_full_cast_shadow_is_the_shade_band(self):
+        """(b) k = 1, Lit dropped (S = 0): Emit == decode(colS) x T, i.e. AF_Toon with the key light behind the
+        surface (hl = 0: shade band + grounding + emissive mix, no light band, no rim); never brighter than lit."""
+        sh = manifest_shading()
+        toon, split = hlsl.toon_node(sh), hlsl.toon_split_node(sh)
+        neg_l = f3([-x for x in sh.key_light])
+        body = f"""
+const float3 bases[] = {{ {", ".join(self.base_lin(b) for b in self.BASES)} }};
+const float4 pals[] = {{ {", ".join(f4((*p, 1.0)) for p in self.PALETTE)} }};
+const float3 nrms[] = {{ {", ".join(f3(n) for n in self.NORMALS)} }};
+float worst = 0.f, brighter = 0.f;
+for (const float3& base : bases) for (const float4& pal : pals) for (const float3& nrm : nrms)
+for (float gr : {{0.f, 0.6f}}) for (float tint : {{0.f, 1.f}}) {{
+    float3 lit;
+    float3 emit = {cpp_call(split, {"Base": "base", "P": "pal", "N": "nrm", "Ground": "gr", "SunTint": "tint",
+                                    "SunCol": "float4(1.f, 0.94f, 0.82f, 1.f)", "CastShadowStrength": "1.f",
+                                    "Lit": "lit"}, TOON_DEFAULTS)};
+    float3 lt = {cpp_call(toon, {"Base": "base", "P": "pal", "N": "nrm", "Ground": "gr", "SunTint": "tint",
+                                 "SunCol": "float4(1.f, 0.94f, 0.82f, 1.f)"}, TOON_DEFAULTS)};
+    float3 sd = {cpp_call(toon, {"Base": "base", "P": "pal", "N": neg_l, "Ground": "gr", "SunTint": "tint",
+                                 "SunCol": "float4(1.f, 0.94f, 0.82f, 1.f)"}, TOON_DEFAULTS)};
+    float3 want = min(lt, sd);   // where the shade band is brighter than the lit colour, a shadow never brightens
+    float err = std::fabs(emit.x - want.x) + std::fabs(emit.y - want.y) + std::fabs(emit.z - want.z);
+    worst = err > worst ? err : worst;
+    brighter += (emit.x > lt.x + 1e-6f) + (emit.y > lt.y + 1e-6f) + (emit.z > lt.z + 1e-6f);
+}}
+std::printf("%.9g %.9g\\n", worst, brighter);"""
+        worst, brighter = (float(x) for x in self.run_cpp([toon, split], body)[0].split())
+        self.assertLess(worst, 1e-5)
+        self.assertEqual(brighter, 0.0)
+
+    def test_hit_flash_and_emissive_carry_no_lit_part(self):
+        """(d) HitFlash 1: Emit == 1, Lit == 0; (f) e = 1: Lit == 0."""
+        sh = manifest_shading()
+        split = hlsl.toon_split_node(sh)
+        body = f"""
+const float3 bases[] = {{ {", ".join(self.base_lin(b) for b in self.BASES)} }};
+const float3 nrms[] = {{ {", ".join(f3(n) for n in self.NORMALS)} }};
+float flashEmit = 0.f, flashLit = 0.f, emLit = 0.f;
+for (const float3& base : bases) for (const float3& nrm : nrms) {{
+    float3 lit;
+    float3 emit = {cpp_call(split, {"Base": "base", "N": "nrm", "HitFlash": "1.f", "StatusAmt": "0.5f",
+                                    "StatusTint": "float3(0.2f, 0.5f, 1.f)", "Lit": "lit"}, TOON_DEFAULTS)};
+    flashEmit += std::fabs(emit.x - 1.f) + std::fabs(emit.y - 1.f) + std::fabs(emit.z - 1.f);
+    flashLit += std::fabs(lit.x) + std::fabs(lit.y) + std::fabs(lit.z);
+    {cpp_call(split, {"Base": "base", "N": "nrm", "P": "float4(0.42f, 0.32f, 1.f, 1.f)", "CastShadowStrength": "1.f",
+                      "Lit": "lit"}, TOON_DEFAULTS)};
+    emLit += std::fabs(lit.x) + std::fabs(lit.y) + std::fabs(lit.z);
+}}
+std::printf("%.9g %.9g %.9g\\n", flashEmit, flashLit, emLit);"""
+        flash_emit, flash_lit, em_lit = (float(x) for x in self.run_cpp([split], body)[0].split())
+        self.assertLess(flash_emit, 1e-5)
+        self.assertEqual(flash_lit, 0.0)
+        self.assertLess(em_lit, 1e-6)
+
+    def test_torch_slots(self):
+        """(e) Slots with colour alpha 0 add exactly nothing; a slot facing the surface at d = r / 2 adds
+        linBase x Col x 0.5625, one behind it x 0.35 of that; beyond the radius nothing."""
+        sh = manifest_shading()
+        split = hlsl.toon_split_node(sh)
+        n = norm((-0.4, 0.4, 0.82))
+        r = 240.0
+        pw = (130.0, -2410.0, 35.0)
+        near = [pw[i] + n[i] * r / 2 for i in range(3)]
+        behind = [pw[i] - n[i] * r / 2 for i in range(3)]
+        base = "float3(0.4f, 0.25f, 0.1f)"
+        common = {"Base": base, "N": f3(n), "Pw": f3(pw), "Lit": "lit"}
+        off = dict(common, **{f"L{i}": f4((near[0], near[1], near[2], r)) for i in range(8)},
+                   **{f"C{i}": "float4(3.f, 2.f, 1.f, 0.f)" for i in range(8)})
+        facing = dict(common, L3=f4((*near, r)), C3="float4(0.5f, 0.25f, 0.125f, 1.f)")
+        away = dict(common, L7=f4((*behind, r)), C7="float4(0.5f, 0.25f, 0.125f, 1.f)")
+        far = dict(common, L0=f4((pw[0] + r * 1.01, pw[1], pw[2], r)), C0="float4(0.5f, 0.25f, 0.125f, 1.f)")
+        body = f"""
+float3 lit;
+float3 none = {cpp_call(split, common, TOON_DEFAULTS)};
+float3 litNone = lit;
+float3 off = {cpp_call(split, off, TOON_DEFAULTS)};
+float3 litOff = lit;
+float3 facing = {cpp_call(split, facing, TOON_DEFAULTS)};
+float3 litFacing = lit;
+float3 away = {cpp_call(split, away, TOON_DEFAULTS)};
+float3 far = {cpp_call(split, far, TOON_DEFAULTS)};
+std::printf("%d %d\\n", none.x == off.x && none.y == off.y && none.z == off.z,
+            litNone.x == litOff.x && litNone.y == litOff.y && litNone.z == litOff.z && litNone.x == litFacing.x);
+std::printf("%.9g %.9g %.9g\\n", facing.x - none.x, facing.y - none.y, facing.z - none.z);
+std::printf("%.9g %.9g %.9g\\n", away.x - none.x, away.y - none.y, away.z - none.z);
+std::printf("%.9g %.9g %.9g\\n", far.x - none.x, far.y - none.y, far.z - none.z);"""
+        lines = self.run_cpp([split], body)
+        self.assertEqual(lines[0], "1 1", "an off slot changed the colour, or a slot touched Lit")
+        col = (0.5, 0.25, 0.125)
+        lin = (0.4, 0.25, 0.1)
+        for got, want in zip((float(x) for x in lines[1].split()), (b * c * 0.5625 for b, c in zip(lin, col))):
+            self.assertAlmostEqual(got, want, delta=2e-5)
+        for got, want in zip((float(x) for x in lines[2].split()), (b * c * 0.5625 * 0.35 for b, c in zip(lin, col))):
+            self.assertAlmostEqual(got, want, delta=2e-5)
+        self.assertEqual([float(x) for x in lines[3].split()], [0.0, 0.0, 0.0])
+
+    def test_split_matches_the_python_reference_and_the_lookdev_composite(self):
+        """toon_split_reference == the C++ node, and Emit + Lit x S (white sun) == the look-dev composite
+        shade + (lit - shade)(1 - k + k S) (artpass/lookdev/lookdev.py) wherever lit >= shade."""
+        sh = manifest_shading()
+        split = hlsl.toon_split_node(sh)
+        view = (0.4545, -0.4545, 0.766)
+        cases = []
+        for b in self.BASES:
+            for n in self.NORMALS:
+                for (s, l, e) in self.PALETTE:
+                    for gr in (0.0, 0.6):
+                        cases.append((b, s, l, e, n, gr))
+        calls = []
+        for b, s, l, e, n, gr in cases:
+            calls.append(f"{{ float3 lit; float3 em = {cpp_call(split, {'Base': self.base_lin(b), 'P': f4((s, l, e, 1)), 'N': f3(n), 'V': f3(view), 'Ground': f'{gr}f', 'Lit': 'lit'}, TOON_DEFAULTS)};"
+                         f' std::printf("%.9g %.9g %.9g %.9g %.9g %.9g\\n", em.x, em.y, em.z, lit.x, lit.y, lit.z); }}')
+        lines = self.run_cpp([split], "\n".join(calls))
+        worst_cpp = worst_lookdev = 0.0
+        compared = 0
+        for (b, s, l, e, n, gr), line in zip(cases, lines):
+            got = [float(x) for x in line.split()]
+            srgb = tuple(x / 255.0 for x in hex_to_rgb255(b))
+            emit, lit_ = hlsl.toon_split_reference(sh, srgb, (s, l, e), n, view, gr, cast_shadow=0.7)
+            worst_cpp = max(worst_cpp, max(abs(g_ - r_) for g_, r_ in zip(got, emit + lit_)))
+            a = lookdev_toon(sh, b, s, l, e, n, view, gr, shade=False)
+            bb = lookdev_toon(sh, b, s, l, e, n, view, gr, shade=True)
+            if any(x < y for x, y in zip(a, bb)):
+                continue    # a channel whose shade band is brighter: the node keeps it at the lit colour (min)
+            compared += 1
+            for sun in (0.0, 0.35, 1.0):
+                for i in range(3):
+                    comp = bb[i] + (a[i] - bb[i]) * (1 - 0.7 + 0.7 * sun)
+                    worst_lookdev = max(worst_lookdev, abs(emit[i] + lit_[i] * sun - comp))
+        self.assertLess(worst_cpp, 2e-5)
+        self.assertGreater(compared, len(cases) // 2)
+        self.assertLess(worst_lookdev, 1e-6)
+
+    def test_split_twin_returns_the_lit_output(self):
+        """The content build's fallback (graph.py): AF_ToonSplit_Lit returns exactly the additional output."""
+        sh = manifest_shading()
+        split = hlsl.toon_split_node(sh)
+        twin = split.twin("Lit")
+        self.assertEqual(twin.key, "AF_ToonSplit_Lit")
+        self.assertEqual(twin.additional_outputs, ())
+        args = {"Base": "float3(0.6f, 0.3f, 0.2f)", "N": f3((0.3, -0.7, 0.2)), "Lit": "lit",
+                "PainAmt": "0.5f", "PainTint": "float3(1.f, 0.2f, 0.2f)"}
+        body = f"""
+float3 lit;
+{cpp_call(split, args, TOON_DEFAULTS)};
+float3 t = {cpp_call(twin, args, TOON_DEFAULTS)};
+std::printf("%d\\n", t.x == lit.x && t.y == lit.y && t.z == lit.z && lit.x > 0.f);"""
+        self.assertEqual(self.run_cpp([split, twin], body), ["1"])
+
+    def test_base_grade_defaults_are_exact(self):
+        """BaseSaturation / BaseValue 1 leave AF_Toon bit-identical; .85 / .93 match sat_value_reference."""
+        sh = manifest_shading()
+        toon = hlsl.toon_node(sh)
+        old = dataclasses.replace(toon, key="AF_ToonOld",
+                                  code=toon.code.replace(hlsl._sat_value("c", "BaseSaturation", "BaseValue"), ""))
+        self.assertNotEqual(old.code, toon.code)
+        body = f"""
+const float3 bases[] = {{ {", ".join(self.base_lin(b) for b in self.BASES)} }};
+const float3 nrms[] = {{ {", ".join(f3(n) for n in self.NORMALS)} }};
+int diff = 0;
+for (const float3& base : bases) for (const float3& nrm : nrms) {{
+    float3 a = {cpp_call(toon, {"Base": "base", "N": "nrm"}, TOON_DEFAULTS)};
+    float3 b = {cpp_call(old, {"Base": "base", "N": "nrm"}, TOON_DEFAULTS)};
+    diff += std::memcmp(&a, &b, sizeof(a)) != 0;
+}}
+float3 g = {cpp_call(toon, {"Base": self.base_lin("#709C3D"), "P": "float4(0.f, 0.f, 1.f, 1.f)",
+                            "BaseSaturation": "0.85f", "BaseValue": "0.93f"}, TOON_DEFAULTS)};
+std::printf("%d %.9g %.9g %.9g\\n", diff, g.x, g.y, g.z);"""
+        out = self.run_cpp([toon, old], body)[0].split()
+        self.assertEqual(int(out[0]), 0)
+        # e = 1 (emissive: unshaded, x 1.6 boost): the graded swatch comes straight through
+        want = hlsl.sat_value_reference((112 / 255, 156 / 255, 61 / 255), 0.85, 0.93)
+        for got, w in zip(out[1:], want):
+            self.assertAlmostEqual(linear_to_srgb1(float(got) / (1 + sh.emissive_boost)) * 255.0, w * 255.0, delta=0.5)
+
+    def test_ink_scale(self):
+        """R3 revised: InkScale 1.5 gives exactly 1.5 x the width; at 2125 cm, T.y = tan(17.5 deg) x 9 / 16, Px 3.5
+        the dilation is 3.5 px at 720 rows (5.25 px at 1080)."""
+        sh = manifest_shading()
+        node = hlsl.outline_wpo_node(sh)
+        ty = math.tan(math.radians(17.5)) * 9.0 / 16.0
+        depth = 2125.0
+        pos = (40.0, -25.0, depth)          # view space = world space here: F = +Z
+        args = {"Pos": f3(pos), "N": "float3(1.f, 0.f, 0.f)", "F": "float3(0.f, 0.f, 1.f)",
+                "T": f"float2(0.3f, {ty!r}f)", "Px": "3.5f", "Baked": "0.f", "Enable": "1.f"}
+        body = f"""
+float3 a = {cpp_call(node, dict(args, InkScale="1.f", ExtraPx1080="0.f"))};
+float3 b = {cpp_call(node, dict(args, InkScale="1.5f", ExtraPx1080="0.f"))};
+float3 old = AF_OutlineWPO({args["Pos"]}, {args["N"]}, {args["F"]}, {args["T"]}, 3.5f, 0.f, 1.f);
+std::printf("%.9g %.9g %.9g\\n", length(a), length(b), length(old));"""
+        la, lb, lold = (float(x) for x in self.run_cpp([node], body)[0].split())
+        self.assertEqual(la, lold, "InkScale 1 / ExtraPx1080 0 = the old formula")
+        self.assertAlmostEqual(lb / la, 1.5, places=6)
+        # px at 720 rows: the projected width over the 720-row view height at this depth (2 depth T.y cm)
+        dist = math.sqrt(sum(x * x for x in pos))
+        cos_lat = depth / dist           # the dilation is perpendicular to the view ray, not to +Z
+        px720 = lb * cos_lat * 720.0 / (2.0 * depth * ty)
+        self.assertAlmostEqual(px720, 3.5, delta=0.01)
+        self.assertAlmostEqual(hlsl.outline_px_at(3.5, 720.0), 3.5)
+        self.assertAlmostEqual(hlsl.outline_px_at(3.5, 1080.0), 5.25)
+
+    def test_selection_rim(self):
+        """R16: hero rim = (3.5 x 1.5 + 2 x 1.5) px at 1080 = 5.5 px at 720 beyond the silhouette; the 30 cm push keeps
+        the projected position (< 1e-4) and moves the vertex 30 cm deeper; BodyMask 1 draws nothing."""
+        sh = manifest_shading()
+        wpo, push, mask = hlsl.outline_wpo_node(sh), hlsl.view_push_node(), hlsl.select_rim_mask_node()
+        ty = math.tan(math.radians(17.5)) * 9.0 / 16.0
+        pos = (-180.0, 95.0, 2125.0)
+        v = norm(pos)
+        side = norm((v[2], 0.0, -v[0]))     # perpendicular to the view ray
+        body = f"""
+float3 pos = {f3(pos)};
+float3 w = {cpp_call(wpo, {"Pos": "pos", "N": f3(side), "F": "float3(0.f, 0.f, 1.f)", "T": f"float2(0.3f, {ty!r}f)",
+                            "Px": "3.5f", "Baked": "0.f", "Enable": "1.f", "InkScale": "1.5f",
+                            "ExtraPx1080": "2.f * 1.5f"})};
+float3 t = AF_ViewPush(pos, w, 30.f);
+float3 a = pos + w, b = pos + t;
+std::printf("%.9g %.9g %.9g %.9g %.9g\\n", length(w), a.x / a.z - b.x / b.z, a.y / a.z - b.y / b.z,
+            length(b) - length(a), AF_ViewPush(pos, float3(0.f, 0.f, 0.f), 30.f).z);
+Parameters.SvPosition = float4(1.5f, 2.5f, 0.f, 1.f);
+std::printf("%.9g %.9g %.9g %.9g\\n", AF_SelectRimMask(0.f, 1.f, 0.f), AF_SelectRimMask(0.f, 1.f, 1.f),
+            AF_SelectRimMask(1.f, 1.f, 0.f), AF_SelectRimMask(0.f, 0.f, 0.f));"""
+        lines = self.run_cpp([wpo, push, mask], body)
+        width, dx, dy, deeper, _ = (float(x) for x in lines[0].split())
+        self.assertAlmostEqual(width * 720.0 / (2.0 * 2125.0 * ty), 5.5, delta=0.01)
+        self.assertLess(abs(dx), 1e-4)
+        self.assertLess(abs(dy), 1e-4)
+        self.assertAlmostEqual(deeper, 30.0, delta=1e-2)
+        self.assertEqual([float(x) for x in lines[1].split()], [1.0, 0.0, 0.0, 0.0])
+
+    def test_selection_rim_ground_clamp(self):
+        """R16: near the feet the push stops RIM_GROUND_MARGIN_CM above the owner's ground plane (the rim closes round
+        the boots / a slime instead of sinking under the terrain); higher up it is the full 30 cm. W1 camera: pitch -50,
+        yaw 45, 2125 cm to a focus 50 cm above the feet; translated world (camera at the origin, z up)."""
+        push_node = hlsl.view_push_node()
+        pitch, yaw = math.radians(50.0), math.radians(45.0)
+        fwd = (math.cos(pitch) * math.cos(yaw), math.cos(pitch) * math.sin(yaw), -math.sin(pitch))
+        feet = tuple(f * 2125.0 for f in fwd[:2]) + (fwd[2] * 2125.0 - 50.0,)
+        side = (-math.sin(yaw), math.cos(yaw), 0.0)
+        margin = hlsl.RIM_GROUND_MARGIN_CM
+        cases = []
+        for h in (0.5, 10.0, 20.0, 120.0):        # silhouette heights over the feet (cm)
+            p = tuple(fc + 25.0 * sc for fc, sc in zip(feet, side))
+            cases.append((h, (p[0], p[1], p[2] + h)))
+        body = "\n".join(f"""{{
+float3 pos = {f3(p)};
+float3 off = float3(1.5f, -0.75f, -0.5f);
+float3 t = AF_ViewPush(pos, off, 30.f, {f3(feet)});
+float3 a = pos + off, b = pos + t;
+float3 na = a / length(a), nb = b / length(b);
+std::printf("%.9g %.9g %.9g %.9g\\n", length(t - off), b.z - {feet[2]!r}f, length(na - nb), length(b) - length(a));
+}}""" for _, p in cases)
+        lines = self.run_cpp([push_node], body)
+        for (h, _), line in zip(cases, lines):
+            push, above, ray_err, deeper = (float(x) for x in line.split())
+            self.assertLess(ray_err, 1e-6, h)               # the projected position never moves
+            self.assertAlmostEqual(deeper, push, delta=1e-2)
+            self.assertGreaterEqual(above, min(h - 0.5, margin) - 1e-2, h)   # never below the ground plane (+ margin)
+            if h - 0.5 <= margin:
+                self.assertAlmostEqual(push, 0.0, delta=1e-4)
+            elif h >= 60.0:
+                self.assertAlmostEqual(push, 30.0, delta=1e-3)
+            else:
+                self.assertAlmostEqual(above, margin, delta=1e-2)   # pushed exactly down to the margin
+                self.assertLess(push, 30.0)
+
+    def test_ground_grade(self):
+        """R19: GroundSaturation / GroundValue 1 reproduce today's terrain bit-for-bit (both nodes, both tiers); a plains
+        grass texel (112, 156, 61) graded .85 / .93 matches the Python reference within 1/255."""
+        nodes = [hlsl.terrain_node(True), hlsl.terrain_node(False), hlsl.terrain_painted_node(True),
+                 hlsl.terrain_painted_node(False)]
+        legacy = [dataclasses.replace(nd, key=nd.key + "Old", code=nd.code.replace(hlsl.GROUND_GRADE_CODE, ""))
+                  for nd in nodes]
+        for nd, old in zip(nodes, legacy):
+            self.assertNotEqual(nd.code, old.code, nd.key)
+        texels = []
+        for row in range(4):
+            for col in range(6):
+                paint = 3 if (col, row) == (1, 2) else (0 if col < 3 else (1 if row < 2 else 5))
+                texels.append(f"float4({paint}.f / 255.f, {(col * 7 + row * 3) % 12}.f / 255.f, 1.f, {paint}.f / 255.f)")
+        ranks = {0: 4, 1: 1, 2: 2, 3: 0, 5: 2}
+        proc = []
+        for t in hlsl.TERRAIN_TILES:
+            proc += ["float3(0.17f, 0.37f, 0.06f)", "float3(0.2f, 0.4f, 0.07f)", "float3(0.15f, 0.33f, 0.05f)",
+                     "float3(0.6f, 0.75f, 0.3f)", "float3(0.9f, 0.8f, 0.2f)", f"{ranks[t]}.f"]
+        grass = [srgb_to_linear1(x / 255.0) for x in (112, 156, 61)]
+        painted = []
+        for t in hlsl.TERRAIN_TILES:
+            painted += [f3(grass) if t == 0 else "float3(0.5f, 0.3f, 0.12f)", "float3(0.6f, 0.75f, 0.3f)",
+                        f"{ranks[t]}.f"]
+        water = "float3(0.15f, 0.55f, 0.6f), float3(0.85f, 0.95f, 0.9f), float3(0.27f, 0.18f, 0.07f)"
+        proc_args, painted_args = ", ".join(proc), ", ".join(painted)
+        body = f"""
+Texture2D T; T.Width = 6; T.Height = 4;
+T.Texels = {{ {", ".join(texels)} }};
+Texture2D D; D.Width = 4; D.Height = 4;
+D.Texels = std::vector<float4>(16, float4(0.8f, 0.1f, 0.1f, 0.6f));
+Texture2D G; G.Width = 2; G.Height = 2;
+G.Texels = std::vector<float4>(4, float4(0.f, 0.f, 1.f, 0.f));
+SamplerState S;
+int diff = 0, n = 0;
+for (int j = 0; j <= 40; ++j) for (int i = 0; i <= 60; ++i) {{
+    float2 uv(-0.5f + i * 0.1f, -0.5f + j * 0.1f);
+    float wall = (i % 7) * 0.15f, skirt = (j % 5) * 0.2f;
+    float3 r[8] = {{
+        AF_Terrain(uv, wall, skirt, T, S, 6.f, 4.f, {proc_args}, {water}, 1.f, 1.f),
+        AF_TerrainOld(uv, wall, skirt, T, S, 6.f, 4.f, {proc_args}, {water}),
+        AF_TerrainLow(uv, wall, skirt, T, S, 6.f, 4.f, {proc_args}, {water}, 1.f, 1.f),
+        AF_TerrainLowOld(uv, wall, skirt, T, S, 6.f, 4.f, {proc_args}, {water}),
+        AF_TerrainPainted(uv, wall, skirt, T, S, 6.f, 4.f, {painted_args}, {water}, D, S, 1.f, 1.f),
+        AF_TerrainPaintedOld(uv, wall, skirt, T, S, 6.f, 4.f, {painted_args}, {water}, D, S),
+        AF_TerrainPaintedLow(uv, wall, skirt, T, S, 6.f, 4.f, {painted_args}, {water}, D, S, 1.f, 1.f),
+        AF_TerrainPaintedLowOld(uv, wall, skirt, T, S, 6.f, 4.f, {painted_args}, {water}, D, S) }};
+    for (int k = 0; k < 8; k += 2) diff += std::memcmp(&r[k], &r[k + 1], sizeof(float3)) != 0;
+    n += 4;
+}}
+float3 g = AF_TerrainPainted(float2(0.f, 0.f), 0.f, 0.f, G, S, 2.f, 2.f, {painted_args}, {water}, D, S, 0.85f, 0.93f);
+std::printf("%d %d %.9g %.9g %.9g\\n", diff, n, g.x, g.y, g.z);"""
+        out = self.run_cpp(nodes + legacy, body)[0].split()
+        self.assertEqual(int(out[0]), 0, "GroundSaturation / GroundValue 1 changed the terrain")
+        self.assertGreater(int(out[1]), 0)
+        want = hlsl.sat_value_reference((112 / 255, 156 / 255, 61 / 255), 0.85, 0.93)
+        got = [linear_to_srgb1(float(x)) * 255.0 for x in out[2:]]
+        for g_, w in zip(got, want):
+            self.assertAlmostEqual(g_, w * 255.0, delta=1.0)
+        self.assertAlmostEqual(want[0] * 255.0, 106.95, delta=0.05)    # (lum + (c - lum) .85) .93, lum = 132.0
+
+    def test_ao_composite(self):
+        node = hlsl.ao_composite_node()
+        body = """
+float3 a = AF_AOComposite(float4(0.5f, 0.4f, 0.2f, 1.f), float4(0.2f, 0.f, 0.f, 0.f), 0.25f);
+float3 b = AF_AOComposite(float4(0.5f, 0.4f, 0.2f, 1.f), float4(0.2f, 0.f, 0.f, 0.f), 0.f);
+std::printf("%.6f %.6f %.6f %.6f %.6f %.6f\\n", a.x, a.y, a.z, b.x, b.y, b.z);"""
+        got = [float(x) for x in self.run_cpp([node], body)[0].split()]
+        for g_, w in zip(got, (0.4, 0.32, 0.16, 0.5, 0.4, 0.2)):
+            self.assertAlmostEqual(g_, w, places=5)
+
+    def test_ao_composite_ground_only(self):
+        """P14: AO only where the visible surface is the terrain (scene depth reaches the custom depth the terrain alone
+        writes); a character / prop / rim in front of it, or no custom depth (far plane), keeps its colour."""
+        node = hlsl.ao_composite_node()
+        tol, fade = hlsl.AO_GROUND_TOLERANCE_CM, hlsl.AO_GROUND_FADE_CM
+        gaps = (0.0,                # the ground itself
+                tol * 0.5,          # within the tolerance (ground under a boot sole)
+                tol + fade * 0.5,   # half way through the fade
+                35.0,               # a character / rim 35 cm in front of the ground
+                6.5e4 - 2125.0)     # no terrain in custom depth (far)
+        body = "\n".join(f"""{{ float3 c = AF_AOComposite(float4(0.5f, 0.4f, 0.2f, 1.f), float4(0.2f, 0.f, 0.f, 0.f),
+    0.25f, float4(2125.f, 0.f, 0.f, 0.f), float4({2125.0 + gap!r}f, 0.f, 0.f, 0.f)); std::printf("%.6f\\n", c.x); }}"""
+                          for gap in gaps)
+        got = [float(x) for x in self.run_cpp([node], body)]
+        for gap, g_ in zip(gaps, got):
+            ground = 1.0 - min(max((gap - tol) / fade, 0.0), 1.0)
+            self.assertAlmostEqual(g_, 0.5 * (1.0 - 0.8 * 0.25 * ground), places=5, msg=gap)
+        self.assertAlmostEqual(got[0], 0.4, places=5)
+        self.assertAlmostEqual(got[3], 0.5, places=5)
+        self.assertAlmostEqual(got[4], 0.5, places=5)
+
+
+class ArtPassLintTests(unittest.TestCase):
+    def test_split_node_shape(self):
+        split = hlsl.toon_split_node(manifest_shading())
+        self.assertEqual([o.name for o in split.additional_outputs], ["Lit"])
+        self.assertEqual(split.input_names[:len(hlsl.TOON_INPUTS)], [i.name for i in hlsl.TOON_INPUTS])
+        self.assertEqual(split.input_names[len(hlsl.TOON_INPUTS):],
+                         ["Pw", "CastShadowStrength"] + [f"L{i}" for i in range(8)] + [f"C{i}" for i in range(8)])
+        self.assertTrue(split.code.rstrip().endswith("return Emit;"))
+        self.assertEqual(split.code.count("if (C"), 8, "eight unrolled light slots")
+        # the old inputs come first, so the existing material wiring and calls keep their order
+        self.assertEqual(hlsl.OUTLINE_WPO_INPUTS[-2:], (hlsl.NodeInput("InkScale", "float", "1.f"),
+                                                        hlsl.NodeInput("ExtraPx1080", "float", "0.f")))
+        with self.assertRaises(ValueError):
+            split.twin("Nope")
 
 
 if __name__ == "__main__":

@@ -3,6 +3,8 @@
 // labels, lore / prop labels, the floating combat text (combat-feel 12) and the quest progress popups above the hero
 // (quests 5.8). One full-viewport widget; every anchor is projected with the local player's view each paint (after the
 // camera update of the frame), so labels never lag the camera.
+// Ground-item labels show on demand (DECISIONS R17, AbyssGroundLabelLayout.h): hovered, Alt held, the hero within 2
+// tiles, or a rare+ drop for 4 s; they stack in up to 3 rows (7 with Alt) and dim under a live float.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -16,6 +18,7 @@
 #include "abyss/sim/Snapshot.h"
 
 #include "UI/Core/AbyssUiContext.h"
+#include "UI/World/AbyssGroundLabelLayout.h"
 #include "World/AbyssWorldUi.h"
 
 struct FAbyssPainter;
@@ -66,6 +69,9 @@ private:
 		abyss::NpcMarker Marker = abyss::NpcMarker::None;
 		int32 NameFontPx = 12;
 		bool bTitleFont = false;
+		/** Ground items: quality (rare+ drops show 4 s) and when the widget appeared (the drop, Ctx->Now()). */
+		abyss::ItemQuality Quality = abyss::ItemQuality::Normal;
+		double CreatedAt = 0.0;
 	};
 
 	struct FFloat
@@ -97,6 +103,8 @@ private:
 
 	bool Project(const FVector& World, FVector2D& OutLocal, const FVector2D& LocalSize) const;
 	void PaintLabel(FAbyssPainter& P, const FLabel& Label, const FVector2D& LocalSize, double Now) const;
+	/** Ground-item labels on demand (DECISIONS R17): visibility, stacking, plates, dimming under live floats. */
+	void PaintGroundLabels(FAbyssPainter& P, const FVector2D& LocalSize, double Now) const;
 	void PaintFloat(FAbyssPainter& P, const FFloat& Float, const FVector2D& LocalSize, double Now) const;
 	/**
 	 * A float T seconds after its spawn: offset from its anchor in web px (StartOffset + rise / drift), opacity and scale.
@@ -134,6 +142,8 @@ private:
 	mutable FVector2D ViewportSize = FVector2D::ZeroVector;
 	/** Local size of the last paint (AddFloatingText projects with the last paint's camera). */
 	mutable FVector2D PaintLocalSize = FVector2D::ZeroVector;
+	/** Ground-label layout scratch (one per paint). */
+	mutable TArray<AbyssGroundLabels::FPlacement> GroundLabelPlacements;
 	/**
 	 * Slate px per web world px at the hero (the web draws zone texts as world objects under ZONE_CAMERA_ZOOM 1.8): the
 	 * float / popup offsets, rises and stack rows are web world px times this. Kept from the last paint that saw the hero.

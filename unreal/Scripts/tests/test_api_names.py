@@ -241,7 +241,9 @@ class ApiNameTests(unittest.TestCase):
         from_data += [("CustomMaterialOutputType", m) for m in ("CMOT_FLOAT1", "CMOT_FLOAT2", "CMOT_FLOAT3", "CMOT_FLOAT4")]
         from_data += [("MaterialProperty", m) for m in ("MP_EMISSIVE_COLOR", "MP_OPACITY", "MP_OPACITY_MASK",
                                                         "MP_BASE_COLOR", "MP_SPECULAR", "MP_ROUGHNESS",
-                                                        "MP_WORLD_POSITION_OFFSET")]
+                                                        "MP_WORLD_POSITION_OFFSET", "MP_NORMAL", "MP_METALLIC")]
+        # shading models handed to _surface(shading_model=...) (the shadow-catcher toon and the terrain are lit)
+        from_data += [("MaterialShadingModel", m) for m in ("MSM_UNLIT", "MSM_DEFAULT_LIT")]
         from_data += [("MaterialSamplerType", m) for m in ("SAMPLERTYPE_COLOR", "SAMPLERTYPE_LINEAR_COLOR")]
         from_data += [("SamplerSourceMode", m) for m in ("SSM_FROM_TEXTURE_ASSET", "SSM_WRAP_WORLD_GROUP_SETTINGS")]
         for enum, member in from_data:
@@ -252,6 +254,33 @@ class ApiNameTests(unittest.TestCase):
 
 def _snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+@unittest.skipIf(find_stub() is None, "no UE Python stub (run tests/fetch_ue_stub.py or set UE_PY_STUB)")
+class ArtPassApiTests(unittest.TestCase):
+    """The engine names the art pass relies on (DECISIONS P11 revised: a lit toon with a world-space normal from the
+    MPC; the Custom node's additional output pin; the AO composite)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.stub = Stub(find_stub())
+
+    def test_names(self):
+        st = self.stub
+        self.assertIn("CustomOutput", st.classes)
+        self.assertTrue(st.class_has("CustomOutput", "output_name", "prop"))
+        self.assertTrue(st.class_has("CustomOutput", "output_type", "prop"))
+        self.assertTrue(st.class_has("MaterialExpressionCustom", "additional_outputs", "prop"))
+        self.assertTrue(st.class_has("Material", "tangent_space_normal", "prop"))
+        self.assertTrue(st.class_has("Material", "shading_model", "prop"))
+        self.assertTrue(st.class_has("MaterialExpressionMultiply", "const_b", "prop"))
+        for prop in ("r", "g", "b", "a"):
+            self.assertTrue(st.class_has("MaterialExpressionComponentMask", prop, "prop"), prop)
+        for enum, member in (("CustomMaterialOutputType", "CMOT_FLOAT3"), ("MaterialShadingModel", "MSM_DEFAULT_LIT"),
+                             ("MaterialProperty", "MP_NORMAL"), ("MaterialProperty", "MP_METALLIC"),
+                             ("SceneTextureId", "PPI_AMBIENT_OCCLUSION"),
+                             ("BlendableLocation", "BL_SCENE_COLOR_AFTER_DOF")):
+            self.assertTrue(st.enum_has(enum, member), f"{enum}.{member}")
 
 
 class ContentLibraryContractTests(unittest.TestCase):

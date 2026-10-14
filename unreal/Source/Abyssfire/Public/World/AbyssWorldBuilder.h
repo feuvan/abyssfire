@@ -3,13 +3,16 @@
 // * Zone: spawns an AAbyssZoneActor per zone from the snapshot (terrain, water, outcrops, palisades, decor, camps,
 //   exits / sealed gate, story props, sun, post-process), starts the zone's looping VFX (campfires, torches, exits,
 //   ambience) and the asset-library zone retention (web sheetKeepZones: 2 desktop, 1 touch).
-// * Entities: one AAbyssCharacterActor per hero / monster / NPC / pet / escort, one AAbyssPropActor per ground item,
-//   potion, quest marker, lore pickup, hidden reward, event prop, soul echo, defend target; all registered in
-//   UAbyssActorRegistry (the driver routes IAbyssPresenter events, the input agent picks through it). Markers that the
-//   core never announced with EvEntitySpawned are reconciled from the snapshot every frame.
+// * Entities: one AAbyssCharacterActor per hero / monster / NPC / pet / escort (blob shadow on every tier, sun CSM cast
+//   where the tier has one, P10), one AAbyssPropActor per ground item (its loot_<baseId> pickup mesh or the tinted bag;
+//   magic and better loop loot.beam.<quality>, R17), potion, quest marker, lore pickup, hidden reward, event prop, soul
+//   echo, defend target; all registered in UAbyssActorRegistry (the driver routes IAbyssPresenter events, the input
+//   agent picks through it). Markers that the core never announced with EvEntitySpawned are reconciled from the
+//   snapshot every frame.
 // * Per frame (SyncFrame, before the UI root): interpolated transforms (Lerp(prevPos, pos, alpha), S1), facing, speed,
-//   statuses; camera follow / shake / fades / story focus (AAbyssCameraRig); occlusion fade (R1); the target ring and
-//   quest guide arrow; MPC_AF_Lighting; the VFX system tick; world widget placements for the UI (IAbyssWorldUi).
+//   statuses; camera follow / shake / fades / story focus (AAbyssCameraRig) and the zone's view fit (CSM distance, fog
+//   start); occlusion fade (R1); the target ring, selection rims (R16) and quest guide arrow; MPC_AF_Lighting (incl.
+//   SunScale, InkScale); the VFX system tick; world widget placements for the UI (IAbyssWorldUi).
 // * Camera / feel events: EvCameraShake (honours the camera-shake setting), EvCameraFlash, zone transition fades, hero
 //   death / respawn fades, level-up flash + shake + zoom pulse, legendary drop flash, story focus / shake / flash steps,
 //   dodge afterimages, equipment weapon meshes (I6).
@@ -154,6 +157,8 @@ private:
 	void UpdateLeaving(float VisualDelta);
 	void UpdateCamera(const abyss::Snapshot& Snap, float RealDelta);
 	void UpdateIndicators(const abyss::Snapshot& Snap, float RealDelta);
+	/** Selection rims (DECISIONS R16): hero, attack target, hovered monster; the rest None. */
+	void UpdateSelectionRims(const abyss::Snapshot& Snap);
 	void UpdateLightingCollection(float RealDelta);
 	void UpdateWorldWidgets();
 
@@ -209,6 +214,8 @@ private:
 	TMap<uint32, FWidgetEntry> Widgets;
 	/** Ids of props created by ReconcileMarkers (no spawn event): removed when they leave the snapshot. */
 	TSet<uint32> ReconciledProps;
+	/** Characters given a selection rim last frame (UpdateSelectionRims resets the ones that lose it). */
+	TSet<uint32> RimmedCharacters;
 	/** Number placement slot of the last hit on an entity this frame (EvHit before EvFloatingText). */
 	TMap<uint32, abyss::HitNumberSlot> HitSlots;
 	uint64 HitSlotsFrame = 0;

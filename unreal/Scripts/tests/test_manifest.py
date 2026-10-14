@@ -81,6 +81,49 @@ class RealManifestTests(unittest.TestCase):
         self.assertIn(inst.name, bare.instances)
 
 
+class LookParameterTests(unittest.TestCase):
+    """Art-pass instance parameters (DECISIONS P11 revised, R16, R19)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.plan = manifest.build_plan(scan_textures=False)
+
+    def test_cast_shadow_strength_by_family(self):
+        want = {"Heroes": 0.7, "Monsters": 0.7, "NPC": 0.7, "Pets": 0.7, "Weapons": 0.7, "Pickups": 0.8, "Props": 1.0,
+                "Foliage": 0.6}
+        seen = set()
+        for inst in self.plan.instances.values():
+            if inst.parent not in (paths.M_TOON, paths.M_TOON_FOLIAGE):
+                self.assertNotIn("CastShadowStrength", inst.scalars, inst.name)
+                continue
+            family = inst.palette.split("_")[0]
+            expected = 1.0 if inst.name.endswith("_Ground") else want[family]
+            self.assertEqual(inst.scalars.get("CastShadowStrength"), expected, inst.name)
+            seen.add(family)
+        self.assertEqual(seen, set(want), "every family has a toon instance in the art manifest")
+
+    def test_ground_grade_on_the_plains(self):
+        ground = self.plan.instances["MI_AF_Toon_Foliage_Plains_Ground"]
+        self.assertEqual((ground.scalars["BaseSaturation"], ground.scalars["BaseValue"]), (0.85, 0.93))
+        self.assertNotIn("BaseSaturation", self.plan.instances["MI_AF_Toon_Foliage_Plains"].scalars)
+        terrain = self.plan.instances.get(paths.terrain_instance_name("plains"))
+        if terrain is not None:
+            self.assertEqual((terrain.scalars["GroundSaturation"], terrain.scalars["GroundValue"]), (0.85, 0.93))
+
+    def test_select_rim_instance(self):
+        rim = self.plan.instances[paths.MI_SELECT_RIM]
+        self.assertEqual(rim.parent, paths.M_SELECT_RIM)
+        self.assertEqual(rim.scalars, {"RimPx720": 2.0, "RimDepthPushCm": 30.0, "OutlinePx1080": 3.5,
+                                       "BakedWidthCm": 1.8})
+        self.assertEqual(rim.vectors["RimColor"], (*manifest.hex_to_linear("#FFF4DC"), 1.0))
+        self.assertEqual(manifest.SELECT_RIM_STYLES["target"], ("#FF5A3C", 1.5))
+
+    def test_manifest_params_win(self):
+        inst = manifest.InstancePlan("MI_AF_Toon_Heroes_X", paths.M_TOON, "Heroes", scalars={"CastShadowStrength": 0.2})
+        manifest.plan_look_parameters({inst.name: inst})
+        self.assertEqual(inst.scalars["CastShadowStrength"], 0.2)
+
+
 class SyntheticManifestTests(unittest.TestCase):
     BASE = {
         "schemaVersion": 1,

@@ -351,19 +351,27 @@ void SAbyssHud::SyncHero(const abyss::Snapshot& Snap, double Now, float DeltaSec
 void SAbyssHud::SyncTarget(const abyss::Snapshot& Snap)
 {
 	FAbyssHudState& S = *State;
-	S.Target = Snap.hero.target;
+	// 6.7: the frame shows the attack target, else the ring indicator (the lock, else the C14 auto-pick: the nearest alive
+	// monster within 8 tiles), so it appears on auto-acquire as the web's TARGET_CHANGED does (third playtest: no frame
+	// while trading hits). It stays hidden for a dead or vanished monster.
+	const abyss::EntityId Candidate = Snap.hero.target != abyss::kNoEntity ? Snap.hero.target : Snap.hero.indicator;
+	S.Target = abyss::kNoEntity;
 	S.bTargetFound = false;
 	S.TargetName.Reset();
-	if (S.Target != abyss::kNoEntity)
+	if (Candidate != abyss::kNoEntity)
 	{
 		for (const abyss::MonsterView& Monster : Snap.monsters)
 		{
-			if (Monster.id == S.Target)
+			if (Monster.id == Candidate)
 			{
-				S.bTargetFound = Monster.alive;
-				S.TargetHp = Monster.hp;
-				S.TargetMaxHp = FMath::Max(1.0, Monster.maxHp);
-				S.TargetName = Monster.nameKey.empty() ? Ctx->MonsterName(Monster.defId) : Ctx->NameOr(Monster.nameKey, Monster.defId);
+				if (Monster.alive)
+				{
+					S.Target = Candidate;
+					S.bTargetFound = true;
+					S.TargetHp = Monster.hp;
+					S.TargetMaxHp = FMath::Max(1.0, Monster.maxHp);
+					S.TargetName = Monster.nameKey.empty() ? Ctx->MonsterName(Monster.defId) : Ctx->NameOr(Monster.nameKey, Monster.defId);
+				}
 				break;
 			}
 		}

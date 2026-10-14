@@ -198,6 +198,20 @@ export function exportWorld(): TableResult[] {
           torch: { radiusPx: 70, color: 0xff6600, intensity: 0.65, flicker: true, heightPx: 40 },
         },
         campThemes: plain(CAMP_THEMES),
+        // DECISIONS P14 (art pass): the UE ExponentialHeightFog per mood (the web had no fog; its haze becomes the fog).
+        // Colours are 0xRRGGBB sRGB like every colour here; maxOpacity is FogMaxOpacity; density is the look-dev
+        // extinction, opacity 1 - 2^(-density x metres / 10) past the start (UE FogDensity = density / ln 2 x abyss.FogScale,
+        // the ln 2 of UE's line integral). Start = camera distance + 1 m and height falloff 0.2 are code constants.
+        port: {
+          fog: {
+            plains: { color: 0xf2e8cc, maxOpacity: 0.22, density: 0.85 },
+            forest: { color: 0x8c86c8, maxOpacity: 0.32, density: 1.1 },
+            mountain: { color: 0xcedcee, maxOpacity: 0.3, density: 1.0 },
+            desert: { color: 0xffdea6, maxOpacity: 0.26, density: 0.9 },
+            abyss: { color: 0x6e2a40, maxOpacity: 0.35, density: 1.2 },
+          },
+          decision: 'P14 (art pass)',
+        },
       },
       counts: { themes: Object.keys(ZONE_MOODS).length },
     },
@@ -208,7 +222,10 @@ export function exportWorld(): TableResult[] {
         tile: { widthPx: TILE_WIDTH, heightPx: TILE_HEIGHT, portUnitsPerTile: 100, decision: 'S4' },
         designResolution: [GAME_WIDTH, GAME_HEIGHT],
         webCameraZoom: ZONE_CAMERA_ZOOM,
-        camera: { yawDeg: 45, pitchDeg: -50, fovDeg: 35, framingTiles: [16, 12], zoomRange: [0.75, 1.25], followLagSec: 0.12, decision: 'W1' },
+        // W1 (art pass): framingTiles[0] across the horizontal FOV at the focus sets the default distance
+        // (13.4 x 50 / tan(17.5 deg) = 2125 cm, hero ~150 px feet-to-plume at 720p); heroPx720 / defaultDistanceCm document it.
+        camera: { yawDeg: 45, pitchDeg: -50, fovDeg: 35, framingTiles: [13.4, 10.4], heroPx720: 150, defaultDistanceCm: 2125,
+          zoomRange: [0.75, 1.25], followLagSec: 0.12, decision: 'W1 (art pass)' },
         heroSpeed: { moveSpeed: 120, pxPerTile: 36, rampMs: 90, stopMs: 60, clickStartsInstantly: true, decision: 'S5' },
         holdMoveRepathMs: exp<number>(ZoneSceneMod, 'HOLD_MOVE_REPATH_MS'),
         exitRadiusSq: 2.25,

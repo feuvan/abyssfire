@@ -53,8 +53,11 @@ void AAbyssCameraRig::Configure(const FAbyssArtShading& Shading, const abyss::Wo
 	FocusZ = Shading.CameraFocusZCm;
 	if (Constants != nullptr)
 	{
-		// world_constants.json is the gameplay-side copy of W1; the manifest wins for the exact framing it was rendered
-		// with, the constants give zoom range and lag.
+		// world_constants.json is the gameplay-side copy of W1: zoom range, lag and the default framing. The manifest
+		// gives the angles the art was rendered with; its defaultDistanceCm (2537.3 cm, 16 tiles) is the art-preview
+		// framing and only the fallback without constants. W1 (art pass): framingTiles[0] tiles across the horizontal FOV
+		// at the focus, 13.4 x 50 / tan(17.5 deg) = 2125 cm (hero ~150 px feet-to-plume at 720p); the zoom range is
+		// relative to it (0.75-1.25x = 1594-2656 cm, so the old framing stays reachable).
 		ZoomMin = static_cast<float>(Constants->cameraZoomMin);
 		ZoomMax = static_cast<float>(Constants->cameraZoomMax);
 		FollowLagSec = static_cast<float>(Constants->cameraFollowLagSec);
@@ -63,9 +66,11 @@ void AAbyssCameraRig::Configure(const FAbyssArtShading& Shading, const abyss::Wo
 			YawDeg = static_cast<float>(Constants->cameraYawDeg);
 			PitchDeg = static_cast<float>(Constants->cameraPitchDeg);
 			FovHDeg = static_cast<float>(Constants->cameraFovDeg);
-			// framing width (tiles) across the horizontal FOV at the focus
-			DefaultDistance = static_cast<float>(Constants->cameraFramingTilesW * 100.0 * 0.5
-				/ FMath::Tan(FMath::DegreesToRadians(Constants->cameraFovDeg * 0.5)));
+		}
+		const double HalfFovRad = FMath::DegreesToRadians(static_cast<double>(FovHDeg) * 0.5);
+		if (Constants->cameraFramingTilesW > 0.0 && HalfFovRad > 0.0)
+		{
+			DefaultDistance = static_cast<float>(Constants->cameraFramingTilesW * 100.0 * 0.5 / FMath::Tan(HalfFovRad));
 		}
 	}
 	if (ZoomMin > ZoomMax)
