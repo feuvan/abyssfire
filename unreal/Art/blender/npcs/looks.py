@@ -87,10 +87,12 @@ NPCS = [
                   top=("#5A5A28", "robe", "#C8960E"), mantle="#6E6E36", belt="#303015", legs="#3A3A1A",
                   boots="#2A1A0A", item="staff", off="scroll", brow_k=1.45, lids=0.30),
         work="Read", work_ms=2667.0, fidget="ponder", gesture_hand="l",
-        fx={"orbGlow": {"socket": "orb", "item": "SM_NPCKit_Prop_Staff", "color": "#FFCF50", "radiusCm": 11.0,
-                        "alpha": 0.5, "coreColor": "#E8FFD0", "coreRadiusCm": 4.0, "coreAlpha": 0.5,
-                        "note": "web glow r 4 u #FFCF50 a .55 over the orb #7FD6A0; 3D 11 cm a .5 (+ the orb's own "
-                                "bloom) so the orb keeps some of its ink at 1080p"}},
+        fx={"orbGlow": {"socket": "orb", "item": "SM_NPCKit_Prop_Staff", "color": "#FFCF50", "radiusCm": 12.0,
+                        "alpha": 0.30, "coreColor": "#E8FFD0", "coreRadiusCm": 3.0, "coreAlpha": 0.0,
+                        "note": "web glow r 4 u #FFCF50 a .55 over the orb r 2.2 u #7FD6A0: a halo ~1.7x the orb "
+                                "radius. 3D 12 cm a .30 additive, no core (the orb's own emissive highlight is the "
+                                "hot spot): the orb body keeps its green at 1080p and the yellow reads round it (art "
+                                "review: 11 cm a .5 + a pale core washed the orb to white)"}},
         blob_radius=0.36, notes="slim elder, long grey hair and beard, sage robe with gold trim, olive mantle; staff "
                                 "with a glowing orb, scroll; cutscene speaker (portrait)"),
     NpcDef(

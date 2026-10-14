@@ -3,11 +3,15 @@
 * ``T_UI_Glyph_<id>`` (15, web ``UiGlyphs.ts``): gold, str, dex, vit, int, spi, lck, atk, def, hp, mp,
   quest_available, quest_complete, close, sort — 128² (web 64²; shown at 14–32 px), ink 3.2 u, rim 1.4 u
   (quest markers 3.6 u: the same ``SM_UI_QuestMarker_*`` meshes the NPCs wear, gold, with the web's glow);
-  coins are the shipped ``SM_Pickup_GoldCoin``, the sword / shield the shipped ``SM_Weapon_*``.
-* ``T_UI_QuestItem_<kind>`` (Chapter 1: herb, gel, pendant; web ``QuestItemIcons.ts``) — 256², rendered from the
-  ground meshes ``SM_Pickup_Quest_*``.
+  coins are the shipped ``SM_Pickup_GoldCoin``, the sword the shipped ``SM_Weapon_Sword``; ``def`` is the web's own
+  heater (steel rim, blue field, gold lozenge — the in-world T4 shield's cross read as a different emblem).
+* ``T_UI_QuestItem_<kind>`` (Chapter 1: herb, gel, pendant; web ``QuestItemIcons.ts``) — 256²: herb and gel are icon
+  models of the web drawings (``q_herb``: five sprigs in their own greens, crescent leaf, twine, splayed stems;
+  ``q_gel``: the jelly blob with its web under-glow), the pendant the ground mesh ``SM_Pickup_Quest_Pendant`` with
+  icon-only edits (a chain loop in place of the ground coil).
 * ``T_UI_Emblem_Villain`` / ``T_UI_Emblem_Generic`` (story ``say`` portraits without art, quests-story §8.5) —
-  512²: the villain's violet eye in violet flame, the generic ember sigil in a gold ring.
+  512²: the villain's violet eye in a crown of violet flame tongues (clamped inside the ring, one line each), the
+  generic ember sigil in a gold ring.
 
 Run:  EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/icons/glyphs.py [--only id,…]
 """
@@ -16,6 +20,7 @@ from __future__ import annotations
 import math
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -30,7 +35,7 @@ import iconkit as K  # noqa: E402
 import item_models as IM  # noqa: E402
 import motifs as F  # noqa: E402
 import shapes as S  # noqa: E402
-from item_models import W, Wp, U  # noqa: E402
+from item_models import W, Wb, Wp, U  # noqa: E402
 from kit import mesh as M, paths, pngio  # noqa: E402
 from motifs import R, at, pill  # noqa: E402
 
@@ -129,12 +134,19 @@ def g_lck(c):
 
 
 def g_atk(c):
-    F.weapon(c, "sword", "T2", 26, 72, math.pi / 4, 1.62, d=0, widen=1.7)
-    c.style["ink_u"] = 2.4 * GLYPH_PX / 96 * 96 / GLYPH_PX
+    # the glyph set's own 3.2 u ink (a thinner 2.4 u line made atk the one light-weight glyph of the row); the blade
+    # and guard widened 2.1× so the heavier line does not swallow them at 14–32 px
+    F.weapon(c, "sword", "T2", 25, 73, math.pi / 4, 1.58, d=0, widen=2.1)
 
 
 def g_def(c):
-    F.weapon(c, "shield", "T4", 48, 50, 0.0, 1.38, d=0)
+    """Web ``def``: a steel heater, a blue field inset (0.8 × 0.82 about (48, 46)) and a gold lozenge."""
+    import weapon_models as WM
+    outer = WM.heater2d(48, 8, 36, 84, n=14)
+    c.add(pill(outer, depth=8, d=0, edge=.5, dome=.12), "rim", R("#9AA4B4", .42, .5))
+    inner = [(48 + (x - 48) * .8, 46 + (y - 46) * .82) for x, y in outer]
+    c.add(pill(inner, depth=6, d=-8, edge=.55, dome=.25), "field", R("#3E6AB0", .42, .4))
+    c.add(pill([(48, 22), (58, 44), (48, 70), (38, 44)], depth=4, d=-14, edge=.6, dome=.45), "lozenge", R(GOLD, .4, .5))
 
 
 def _split(part: M.Part, keep_top: bool, fn) -> M.Part:
@@ -203,44 +215,210 @@ GLYPHS = {"gold": g_gold, "str": g_str, "dex": g_dex, "vit": g_vit, "int": g_int
 
 
 # ── quest items ─────────────────────────────────────────────────────────────────────────────────────────
+# pendant: the ground mesh (SM_Pickup_Quest_Pendant) with icon-only edits; herb / gel: icon models of the web drawings
 QUEST_ITEMS = {"herb": "SM_Pickup_Quest_Herb", "gel": "SM_Pickup_Quest_Gel", "pendant": "SM_Pickup_Quest_Pendant"}
+QUEST_SOURCE = {
+    "herb": {"model": "icons/glyphs.py:q_herb (web QuestItemIcons herb: five sprigs in their own greens, crescent "
+                      "leaf, twine #C89A5A, splayed cut stems)", "inWorld": "SM_Pickup_Quest_Herb"},
+    "gel": {"model": "icons/glyphs.py:q_gel (web QuestItemIcons gel: blob, light core, nucleus, bubbles, drip)",
+            "inWorld": "SM_Pickup_Quest_Gel"},
+    "pendant": {"mesh": "SM_Pickup_Quest_Pendant",
+                "iconEdits": "ground coil replaced by a loop of chain links (web pendant chain); glow on the ruby"},
+}
+GEL = "#6EE04A"
+
+
+def q_gel(c):
+    """web gel (QuestItemIcons.ts:191-216): a glossy jelly blob (radial white → base → dark), a darker nucleus, three
+    bubble rings, a drip hanging off the bottom right, a white specular streak and dot, an under-glow."""
+    body = [(16, 74), (18, 52), (34, 32), (52, 26), (70, 36), (80, 58), (80, 76), (64, 82), (48, 80), (32, 83)]
+    blob = pill(body, depth=13, back=5, d=0, edge=.55, dome=.35, smooth=True)
+    c.add(blob, "gel", R(GEL, .38, .50, e=.08))
+    surf = S.Surface(blob)
+    # light jelly core (web gradient: 55 % white toward the upper left) laid on the surface
+    core = S.blob2d(Wp([(24, 60), (28, 44), (40, 35), (54, 35), (58, 46), (48, 58), (34, 66)]), 6)
+    c.add(conform(core, surf, .35, .5), "core", R(F._mix(GEL, "#FFFFFF", .42), .30, .45, e=.12))
+    # nucleus: web ellipse (56, 62) 7 × 5 rotated .3, mix(col, #0A3018, .35) — the darker body inside the jelly
+    nuc = F.xform2d([(8 * math.cos(a), 6 * math.sin(a)) for a in [2 * math.pi * i / 22 for i in range(22)]], 57, 62, .3)
+    c.add(conform(Wp(nuc), surf, .35, .6), "nucleus", R(F._mix(GEL, "#0A3018", .5), .35, .30))
+    for (x, y, r) in ((36, 66, 2.8), (68, 50, 2.0), (45, 74, 1.8)):
+        c.add(conform(S.ribbon2d(Wp([(x + r * math.cos(a), y + r * math.sin(a)) for a in
+                                     [2 * math.pi * i / 16 for i in range(17)]]), .45 * U), surf, .5, .3),
+              "bubble", R("#FFFFFF", .1, .5, e=.6))
+    drip = S.chain2d(S.bez([(66, 78), (71.5, 88), (66.5, 94)], 8), S.bez([(66.5, 94), (61, 90), (61.5, 79)], 8))
+    c.add(pill(drip, depth=4.0, back=3, d=-3.0, edge=.7, dome=.4), "gel")
+    streak = S.ribbon2d(Wb([(25, 61), (29, 45), (43, 34)], 14), lambda t: 1.8 * U * (.3 + .7 * math.sin(math.pi * t)))
+    c.add(conform(streak, surf, .7, .4), "glint", R("#FFFFFF", .0, .0, e=.9))
+    c.add(conform(S.circle2d(2.1 * U, 12, *W(26, 69)), surf, .7, .4), "glint")
+    surf.free()
+    c.style.update(seam_min_contrast=.12)
+    c.nolines = ("core", "glint", "bubble")          # soft gradient / highlights: no seam lines round them
+    c.view = (1.1, (48, 59))                         # web 1 u = 1.1 icon u about the blob's centre (drip inside)
+    # web: glow(c, (48, 58), 40, #6EE04A, .3) under the blob — the web stops ('webglow'): the steep (1 − d)² glow
+    # vanished under the body (review r3)
+    c.acc += [K.Accent("webglow", u=(48, 58), r_u=40, hex=GEL, alpha=.3, under=True), sparkle(60, 34, 4.5, alpha=.9)]
+
+
+HERB_SPRIGS = (((24, 26), (30, 44), "#5AA83A"), ((46, 14), (46, 38), "#6CBF42"), ((72, 22), (64, 42), "#4F9A34"),
+               ((34, 18), (40, 40), "#7CCC4C"), ((62, 14), (56, 38), "#62B43E"))      # web herb: (tip, mid, green)
+HERB_STEM, HERB_TWINE = "#4A7A28", "#C89A5A"
+
+
+def _quad(a, ctl, b, n=10):
+    return [((1 - t) ** 2 * a[0] + 2 * (1 - t) * t * ctl[0] + t * t * b[0],
+             (1 - t) ** 2 * a[1] + 2 * (1 - t) * t * ctl[1] + t * t * b[1]) for t in [i / n for i in range(n + 1)]]
+
+
+def leaf_halves(a, b, w, bend=0.0):
+    """web leafPath(a, b, w, bend) split along its midrib: (lit half, shaded half) outlines — the seam between the
+    two halves is the web's midrib line."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    ln = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / ln, dx / ln
+    mx, my = (a[0] + b[0]) / 2 + nx * bend, (a[1] + b[1]) / 2 + ny * bend
+    s1 = _quad(a, (mx + nx * w * 1.3, my + ny * w * 1.3), b)
+    s2 = _quad(b, (mx - nx * w * 1.3, my - ny * w * 1.3), a)
+    rib = _quad(b, (mx, my), a, 6)[1:-1]
+    h1, h2 = s1 + rib, s2 + list(reversed(rib))
+    lit = (nx * -.72 + ny * -.7) > 0                 # the half bulging toward the upper-left light
+    return (h1, h2) if lit else (h2, h1)
+
+
+def _spline(pts, n=8):
+    """Catmull-Rom through web points (open)."""
+    out = []
+    P_ = [pts[0]] + list(pts) + [pts[-1]]
+    for i in range(1, len(P_) - 2):
+        p0, p1, p2, p3 = P_[i - 1], P_[i], P_[i + 1], P_[i + 2]
+        for k in range(n):
+            t = k / n
+            out.append(tuple(.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t * t
+                                   + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t ** 3) for j in range(2)))
+    out.append(pts[-1])
+    return out
+
+
+def q_herb(c):
+    """web herb (QuestItemIcons.ts:113-137) + spec §9.3: five sprigs, each its own green (#5AA83A / #6CBF42 / #4F9A34 /
+    #7CCC4C / #62B43E) — a long leaf to the tip and a side leaf mixed toward #2A5A18 — on #4A7A28 stems tied with
+    #C89A5A twine (three wraps, a loose end), a crescent leaf crowning the middle sprig; the stems splay below the
+    twine and taper to cut ends (review r3: the ground mesh's blossoms read as specks, its greens as one, the stem
+    bundle as a square tube). Later sprigs lie in front, as the web draws them."""
+    tie = (47, 66)
+    stem_r = R(HERB_STEM, .42, .35)
+    for k, (tip, mid, col) in enumerate(HERB_SPRIGS):
+        d = 6.0 - k * 3.2                                   # web draw order: later sprigs nearer the viewer
+        foot = (46 + (k - 2) * 3.4 + (mid[0] - 48) * .06, 88 - abs(k - 2) * 1.2)
+        path = _spline([foot, (46 + (k - 2) * 1.6, 76), (tie[0] + (mid[0] - tie[0]) * .2, tie[1]), mid, tip], 6)
+        n = len(path)
+        rad = [U * (0.55 + 0.6 * min(1.0, i / 3.0)) * (1 - .45 * i / (n - 1)) for i in range(n)]   # cut end, taper up
+        c.add(M.tube([at(x, y, d + 1.6) for x, y in path], rad, sides=8), f"stem{k}", stem_r)
+        lt, dk = leaf_halves(mid, tip, 5.6)
+        c.add(pill(lt, depth=2.0, back=.8, d=d, edge=.7, dome=.2), f"leaf{k}", R(col, .42, .18))
+        c.add(pill(dk, depth=2.0, back=.8, d=d, edge=.7, dome=.2), f"leaf{k}d", R(F._mix(col, "#2A5A18", .22), .42, .3))
+        base2 = (mid[0] + (tie[0] - mid[0]) * .35, mid[1] + (tie[1] - mid[1]) * .35)
+        tip2 = (mid[0] + (-12 if mid[0] < 48 else 12), mid[1] + 2)
+        side = F._mix(col, "#2A5A18", .2)
+        lt, dk = leaf_halves(base2, tip2, 4.4)
+        c.add(pill(lt, depth=1.8, back=.7, d=d - .4, edge=.7, dome=.2), f"side{k}", R(side, .42, .16))
+        c.add(pill(dk, depth=1.8, back=.7, d=d - .4, edge=.7, dome=.2), f"side{k}d", R(F._mix(side, "#2A5A18", .22), .42, .3))
+    # crescent leaf crowning the middle sprig (spec §9.3; the ground mesh's moon-curl)
+    cres = S.chain2d(S.bez([(43, 16), (40, 5), (52, 2), (58, 9)], 10), S.bez([(58, 9), (51, 6), (45, 9), (46, 16)], 10))
+    c.add(pill(cres, depth=2.0, back=.8, d=-1.5, edge=.7, dome=.2), "cres", R("#7CCC4C", .42, .2))
+    # twine: three wraps and the loose end (web roundRect 37, 62, 20 × 8 and leafPath (56, 66) → (66, 76))
+    tw = R(HERB_TWINE, .42, .3)
+    tw2 = R(F._mix(HERB_TWINE, "#8A6232", .3), .42, .25)
+    for i in range(3):                       # three abutting wraps: one band, the wrap lines are the seams
+        x0 = 37.0 + i * 20.0 / 3
+        c.add(pill([(x0, 62), (x0 + 20 / 3, 62.4), (x0 + 20 / 3, 70.4), (x0, 70)], depth=3.0, back=1.6, d=-13.0,
+                   edge=.35, dome=.3), f"twine{i}", tw if i % 2 == 0 else tw2)
+    lt, dk = leaf_halves((56, 66), (66, 77), 2.4, bend=1.0)
+    c.add(pill(lt + list(reversed(dk))[1:-1], depth=1.6, back=.8, d=-12.0, edge=.7), "twine_end", tw)
+    c.style.update(seam_min_contrast=.08)
+    c.acc += [sparkle(30, 30, 4, "#FFF6C8", .9)]
+
+
+def conform(outline_model, surf: S.Surface, lift_u: float, depth_u: float):
+    """A thin painted patch (model outline) laid on ``surf``: each vertex keeps its own thickness offset and rides the
+    surface ``lift_u`` units in front of it (decals on a domed body)."""
+    p = S.pillow(outline_model, depth=depth_u * U, back=depth_u * .5 * U, wall=depth_u * .3 * U, edge=.8, dome=.2)
+
+    def f(co):
+        hit, _n = surf.at(co.x, co.z)
+        base = hit.y if hit is not None else 0.0
+        return Vector((co.x, base + co.y - lift_u * U, co.z))
+    return p.deform(f)
+
+
+QUEST_MODELS = {"herb": q_herb, "gel": q_gel}           # icon models (render_comp); the rest: ground meshes
 
 
 def quest_item(kind: str):
     o = K.import_fbx("Pickups", QUEST_ITEMS[kind])
-    acc = []
-    if kind == "herb":
-        K.place(o, toward=(0, 0, 1), up=(1, 0, 0), roll=-35, pitch=-12)
-        acc = [sparkle(70, 26, 5)]
-    elif kind == "gel":
-        K.place(o, pitch=16)
-        acc = [glow(48, 60, 34, "#6EE04A", .3, under=True), sparkle(36, 36, 5)]
-    else:
-        K.place(o, toward=(0, 0, 1), up=(0, 1, 0), roll=10, pitch=-8)
-        acc = [glow(50, 52, 16, "#FF4050", .3), sparkle(64, 34, 5)]
-    return [o], acc
+    K.place(o, toward=(0, 0, 1), up=(0, 1, 0), roll=10, pitch=-8)
+    # the ground coil → the web's chain: a loose loop of links hanging from the bail up to the top corners
+    K.delete_swatch_faces(o, "Pickups", "quest.chain")
+    bail = K.swatch_centroid(o, "Pickups", "quest.bail")
+    ruby = K.swatch_centroid(o, "Pickups", "quest.ruby")
+    vs = {v for i in K.swatch_faces(o, "Pickups", "quest.locket") for v in o.data.polygons[i].vertices}
+    lk = [o.matrix_world @ o.data.vertices[v].co for v in vs]
+    k = (max(p.x for p in lk) - min(p.x for p in lk)) / 40.0          # world metres per web unit (locket ≈ 40 u wide)
+    pts = []
+    for i in range(29):
+        t = i / 28
+        a = math.pi * (1 - t)
+        x, y = 48 + math.cos(a) * 27, 13 + math.sin(a) * 27.5
+        pts.append(bail + Vector(((x - 48) * k, 3.0 * k, -(y - 40.5) * k)))
+    links = S.links(pts, 6.4 * k, 1.05 * k, width=3.9 * k, face=(0, -1, 0))
+    ch = K.build_model("quest_pendant_chain", IM.pal("QuestIcons"), {"chain": R("#E2B64E", .40, .45)}, [(links, "chain")])
+    acc = [K.Accent("glow", at=tuple(ruby), r_u=14, hex="#FF4050", alpha=.3), sparkle(34, 50, 4.5, alpha=.95)]
+    return [o, ch], acc
 
 
 # ── emblems ─────────────────────────────────────────────────────────────────────────────────────────────
+VILLAIN_FLAME = (("#4A1088", .25), ("#6A1FB0", .35), ("#9B4DFF", .5))     # outer → core (colour, emissive)
+VILLAIN_R_IN = 30.5          # flame tips stay inside the ring's inner edge (ring r 36, band 3, ink): review r3
+
+
+def tongue(c, base, ang, length, w, d, tag, lean=0.0):
+    """One flame tongue of the villain's crown: three nested layers (outer → core) from ``base`` along ``ang`` (canvas
+    radians), each a pointed flame shape; the layers sit 0.6 u apart (under the emblem's 2.4 u depth step), so only
+    the tongue's own silhouette gets an overlap line and the colour layers meet in thin seams (review r3: nested
+    pillows 2.2 u apart drew doubled, offset outlines)."""
+    for i, ((col, e), s) in enumerate(zip(VILLAIN_FLAME, (1.0, .70, .42))):
+        hh, ww = length * s, w * s
+        lx = lean * hh                       # the tip licks sideways (web flame lean): S-curved sides
+        pts = S.chain2d(S.bez([(-ww, ww * .25), (-ww * 1.15, -hh * .40), (-ww * .1 + lx * .55, -hh * .66), (lx, -hh)], 10),
+                        S.bez([(lx, -hh), (ww * .45 + lx * .35, -hh * .64), (ww * 1.15, -hh * .38), (ww, ww * .25)], 10),
+                        S.bez([(ww, ww * .25), (0, ww * 1.1), (-ww, ww * .25)], 8))
+        pts = F.xform2d(pts, base[0], base[1], ang + math.pi / 2)
+        c.add(pill(pts, depth=2.0, back=1.0, d=d - i * .6, edge=.6, dome=.25), f"{tag}{i}", R(col, .3, .45, e=e))
+
+
 def e_villain(c):
-    for i, (col, s, e) in enumerate((("#4A1088", 1.0, .25), ("#6A1FB0", .82, .35), ("#9B4DFF", .64, .5))):
-        for k in range(9):
-            a = -math.pi / 2 + (k - 4) * .38
-            x, y = 48 + math.cos(a) * 22 * s, 52 + math.sin(a) * 15 * s
-            h = (30 - abs(k - 4) * 4.2) * s
-            F.flame(c, x, y + 8, h, 6.5 * s, lean=math.cos(a) * .35, d=12 - i * 4, rot=0.0,
-                    cols=(col, col, col), tag=f"vf{i}")
+    """The villain's violet eye in a crown of violet flame on a dark disc inside a violet ring (quests-story §8.5)."""
     ring = F.ring3(36, 36, 3, 3)
     ring.translate(at(48, 52, 14))
     c.add(ring, "rim", R("#9B4DFF", .3, .5, e=.5))
     disc = pill(S.circle2d(34, 48, 48, 52), depth=3, d=16, edge=.6)
     c.add(disc, "disc", R("#12061A", .3, .1))
+    # crown: seven tongues fanned behind the eye, the centre one tallest and nearest; every tip clamped inside the ring
+    for k in (-3, 3, -2, 2, -1, 1, 0):
+        a = -math.pi / 2 + k * .40
+        base = (48 + math.cos(a) * 10, 54 + math.sin(a) * 6)
+        length = min(VILLAIN_R_IN * (1 - abs(k) * .09), 30.0)
+        tip_r = math.hypot(base[0] + math.cos(a) * length - 48, base[1] + math.sin(a) * length - 52)
+        length -= max(0.0, tip_r - VILLAIN_R_IN)
+        tongue(c, base, a, length, 8.4 - abs(k) * .7, 2.0 + abs(k) * 2.8, f"vf{abs(k)}", lean=.10 * k + (.06 if k == 0 else 0))
     eye = S.chain2d(S.bez([(18, 52), (34, 36), (62, 36), (78, 52)], 14), S.bez([(78, 52), (62, 68), (34, 68), (18, 52)], 14))
     c.add(pill(eye, depth=6, d=-4, edge=.5, dome=.5), "eye", R("#FFD0FF", .3, .5, e=.45))
-    iris = pill(S.circle2d(12, 32, 48, 52), depth=3, d=-9.5, edge=.6)
+    iris = pill(S.circle2d(12, 32, 48, 52), depth=4, d=-9.0, edge=.6)
     c.add(iris, "iris", R("#9B4DFF", .3, .5, e=.6))
-    c.add(pill(S.chain2d(S.bez([(48, 41), (52.5, 52), (48, 63)], 8), S.bez([(48, 63), (43.5, 52), (48, 41)], 8)), depth=1.5, d=-12.5,
-               edge=.7), "pupil", R("#2A0036", .2, .05))
+    # the slit tapers to points well inside the iris and lies almost flush on it (a seam, not an overlap line: its
+    # rounded ends used to ink as black dots)
+    slit = S.chain2d(S.bez([(48, 43.5), (52.6, 52), (48, 60.5)], 12), S.bez([(48, 60.5), (43.4, 52), (48, 43.5)], 12))
+    c.add(pill(slit, depth=.9, back=.3, d=-12.6, edge=.85, dome=.1), "pupil", R("#2A0036", .2, .05))
+    c.style.update(depth_step_u=2.4, line_min_u=3.0)
     c.acc += [glow(48, 52, 40, "#9B4DFF", .45, under=True), sparkle(40, 46, 4, "#FFE8FF")]
 
 
@@ -266,9 +444,16 @@ def render_comp(cam, fn, name: str, size: int, ink_u: float, rim_u: float = K.RI
     K.clear_objects()
     c = F.Comp(name, IM.pal("Glyphs"))
     fn(c)
-    objs = c.build()
+    objs = c.build(getattr(c, "nolines", ()))
+    view = getattr(c, "view", None)          # (scale, web centre): the web square scaled about a point (accents too)
     if fit:
         K.apply_frame(cam, K.fit(objs, fill=.84))
+    elif view is not None:
+        sc, (vx, vy) = view
+        wx, wz = W(vx, vy)
+        K.apply_frame(cam, K.Frame(world_per_unit=U / sc, cx=wx, cz=wz))
+        c.acc = [replace(a, u=None if a.u is None else (48 + (a.u[0] - vx) * sc, 48 + (a.u[1] - vy) * sc),
+                         r_u=a.r_u * sc, len_u=a.len_u * sc, width_u=a.width_u * sc) for a in c.acc]
     else:
         K.apply_frame(cam, K.Frame(world_per_unit=U, cx=0.0, cz=0.0))
     st = dict(ink_u=c.style.pop("ink_u", ink_u), rim_u=rim_u)
@@ -293,12 +478,16 @@ def main(argv: list[str]) -> int:
     for kind in QUEST_ITEMS:
         if only and kind not in only:
             continue
-        K.clear_objects()
-        objs, acc = quest_item(kind)
-        K.apply_frame(cam, K.fit(objs, fill=.82))
-        r = K.render_icon(accents=acc)
+        if kind in QUEST_MODELS:
+            r = render_comp(cam, QUEST_MODELS[kind], f"quest_{kind}", K.ICON_PX, ink_u=K.INK_U)
+        else:
+            K.clear_objects()
+            objs, acc = quest_item(kind)
+            K.apply_frame(cam, K.fit(objs, fill=.82))
+            r = K.render_icon(accents=acc)
         out[f"T_UI_QuestItem_{kind}"] = ("questItem", kind, r, r.rgba)
-        print(f"[glyphs] quest {kind:10s} gate {'ok ' if r.gate['pass'] else 'FAIL'} span {r.gate['span']:.2f}")
+        print(f"[glyphs] quest {kind:10s} gate {'ok ' if r.gate['pass'] else 'FAIL'} span {r.gate['span']:.2f}"
+              + ("" if r.gate["pass"] else f" {r.gate}"))
     for eid, fn in EMBLEMS.items():
         if only and eid not in only:
             continue
@@ -309,6 +498,7 @@ def main(argv: list[str]) -> int:
         cells = [(k.replace("T_UI_", ""), K.resize(v[2].rgba, 256)) for k, v in out.items()]
         pngio.write_png(K.SCRATCH / "glyphs_only.png", K.atlas(cells, cols=6, scale=.5))
         pngio.write_png(K.SCRATCH / "glyphs_only_ui.png", K.ui_sheet(cells, cols=6, sizes=(32, 20), qualities=("normal",)))
+        pngio.write_png(K.SCRATCH / "glyphs_only_1x.png", K.atlas(cells[:6], cols=3, scale=1.0))
         return 0
     return ship(cam, out)
 
@@ -320,27 +510,35 @@ def ship(cam, out) -> int:
                "emblem": f"Portraits/{name}.png"}[kind]
         K.write_icon(rel, img)
         files[name] = rel
-    previews = []
-    gl = [(k.replace("T_UI_Glyph_", ""), v[3]) for k, v in out.items() if v[0] == "glyph"]
-    previews += K.save_preview("icons_glyphs", "glyphs_1x.png", K.atlas(gl, cols=8))
-    previews += K.save_preview("icons_glyphs", "glyphs_half.png", K.atlas(gl, cols=8, scale=.5))
-    previews += K.save_preview("icons_glyphs", "glyphs_ui.png", K.ui_sheet(gl, cols=8, sizes=(32, 20), qualities=("normal",)))
-    qi = [(k.replace("T_UI_QuestItem_", ""), v[3]) for k, v in out.items() if v[0] == "questItem"]
-    previews += K.save_preview("icons_quest", "quest_items_1x.png", K.atlas(qi, cols=3))
-    previews += K.save_preview("icons_quest", "quest_items_half.png", K.atlas(qi, cols=3, scale=.5))
-    previews += K.save_preview("icons_quest", "quest_items_ui.png", K.ui_sheet(qi, cols=3, qualities=("normal",)))
-    em = [(k.replace("T_UI_Emblem_", ""), v[3]) for k, v in out.items() if v[0] == "emblem"]
-    if em:
-        previews += K.save_preview("portraits", "emblems_1x.png", K.atlas(em, cols=2))
-        previews += K.save_preview("portraits", "emblems_ui.png", K.ui_sheet(em, cols=2, sizes=(64, 26), qualities=("normal",)))
+    # previews per texture: only the sheets (and tiles of a split sheet) that show it (review art 10)
+    previews: dict[str, list[str]] = {n: [] for n in out}
+
+    def sheets(kind, prefix, folder, stem, cols, ui_sizes, half=True):
+        rows = [(k, k.replace(prefix, ""), v[3]) for k, v in out.items() if v[0] == kind]
+        if not rows:
+            return
+        names = [k for k, _, _ in rows]
+        cells = [(lbl, img) for _, lbl, img in rows]
+        px = cells[0][1].shape[0]
+        jobs = [(f"{stem}_1x.png", K.atlas(cells, cols=cols), K.atlas_boxes(len(cells), px, cols))]
+        if half:
+            jobs.append((f"{stem}_half.png", K.atlas(cells, cols=cols, scale=.5), K.atlas_boxes(len(cells), px // 2, cols)))
+        jobs.append((f"{stem}_ui.png", K.ui_sheet(cells, cols=cols, sizes=ui_sizes, qualities=("normal",)),
+                     K.ui_sheet_boxes(len(cells), cols, ui_sizes)))
+        for file, img, boxes in jobs:
+            for n, files in zip(names, K.save_preview_cells(folder, file, img, boxes)):
+                previews[n].extend(files)
+    sheets("glyph", "T_UI_Glyph_", "icons_glyphs", "glyphs", 8, (32, 20))
+    sheets("questItem", "T_UI_QuestItem_", "icons_quest", "quest_items", 3, (48, 36))
+    sheets("emblem", "T_UI_Emblem_", "portraits", "emblems", 2, (64, 26), half=False)
     man = K.IconManifest()
     for name, (kind, ident, r, img) in out.items():
         px = img.shape[0]
         extra = {"glyph": dict(glyphId=ident, renderedAt=K.ICON_PX),
-                 "questItem": dict(questItemKind=ident, source={"mesh": QUEST_ITEMS.get(ident)}),
+                 "questItem": dict(questItemKind=ident, source=QUEST_SOURCE.get(ident)),
                  "emblem": dict(emblemId=ident.lower(), artId=f"emblem_{ident.lower()}")}[kind]
         man.data["ui"][name] = K.ui_entry({"glyph": "glyph", "questItem": "questItemIcon", "emblem": "emblem"}[kind],
-                                          files[name], px, gate=r.gate, previews=previews, **extra)
+                                          files[name], px, gate=r.gate, previews=previews[name], **extra)
     man.save()
     fails = [n for n, v in out.items() if not v[2].gate["pass"]]
     print(f"[glyphs] shipped {len(out)} textures; gate fails: {fails}")

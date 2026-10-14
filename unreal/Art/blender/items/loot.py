@@ -36,6 +36,7 @@ qualities with tint, pool, beam at W1 1080p 1:1), ``game_lineup.png`` (every pic
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 import time
@@ -258,7 +259,57 @@ REGIONS["gem"] = gem_regions()
 # the ley fruit's emissive seams, the gel's highlight band
 HULL_O = {"potion": {"anti": 0.55, "glass_anti": 0.55, "anti_hi": 0.55},
           "fruit": {"skin": 0.4, "vein": 0.4, "vein2": 0.4, "leaf": 0.5, "stem": 0.5, "rib": 0.5},
-          "quest": {"gel": 0.5, "gel_hi": 0.5, "gel_core": 0.5}}
+          # fifth look: the herb's hull p95 lum 58.3 / 64 left little margin; the pendant's chain / bail line tone
+          "quest": {"gel": 0.5, "gel_hi": 0.5, "gel_core": 0.5, "herb_a": 0.78, "herb_b": 0.78, "herb_c": 0.78,
+                    "herb_d": 0.78, "herb_e": 0.78, "stem": 0.78, "twine": 0.7, "petal": 0.7,
+                    "chain": 0.8, "bail": 0.8}}
+# thinner baked hull on the thin layered parts of two quest pickups (art review, fifth look: median ink rim 3.95 px on
+# the herb, 4.06 px on the pendant against the 2 px interactive class — fifteen leaves and a coiled cord each carry
+# their own hull, so the walk from a silhouette edge to the body crosses two or three hull layers). The UE outline
+# WPO adds the same screen-constant term to every hull vertex (OutlinePx × PixelWorldSize − BakedWidth), so a part
+# baked at k × the class width draws k × 2 px at the default W1 distance
+HULL_SCALE = {"SM_Pickup_Quest_Herb": {"leaf_hull": 0.8, "crescent_hull": 0.8, "blossom_hull": 0.85},
+              "SM_Pickup_Quest_Pendant": {"chain_hull": 0.75, "bail_hull": 0.75}}
+# the per-asset ink exception (manifest ``inkGate.exception``): the measured median stays ~4 px after the thinning —
+# the rim walk (``review.ink_stats``: hull coverage from a silhouette edge inward until the body is solid) crosses two or
+# three hull layers where leaves / coil turns overlap or a part is thinner than its own two rims, and a flat part
+# lying on the ground shows its far rim through the hull's up-offset at −50°; every single hull still draws ≤ 2 px
+INK_EXCEPTION = {
+    name: {"medianRimPxClass": 2.0, "reason": (
+        "layered thin parts: the median rim counts 2–3 overlapping hull layers (leaf on leaf, coil on coil) and the "
+        "far rim of flat parts lying on the ground; the thin parts' hulls are baked at " + ", ".join(
+            f"{k.replace('_hull', '')} ×{v:g}" for k, v in sc.items()) + " of the class width (≤ 2 px each at "
+        "the W1 default distance); gate: rim ≥ 1.5 px on ≥ 90 % of the edges, hull p95 lum ≤ 64")}
+    for name, sc in HULL_SCALE.items()}
+
+
+def thin_hull(obj, scale: dict[str, float]) -> dict[str, int]:
+    """Pull the baked hull of the named hull parts toward their toon surface: hull vertex −= n × width × (1 − k)
+    (n = the hull normal in ``AF_Data``; ``af_outline_width`` = the class width). → {part: vertices moved}."""
+    names = json.loads(obj["af_parts"])
+    me = obj.data
+    part = np.zeros(len(me.polygons), np.int32)
+    me.attributes["af_part"].data.foreach_get("value", part)
+    col = me.attributes["AF_Data"]
+    width = float(obj.get("af_outline_width", outline.WIDTH_CM[CLS] / 100.0))
+    moved = {}
+    seen = set()
+    for poly, pid in zip(me.polygons, part.tolist()):
+        if poly.material_index != outline.HULL_SLOT or names[pid] not in scale:
+            continue
+        k = scale[names[pid]]
+        for vi in poly.vertices:
+            if vi in seen:
+                continue
+            seen.add(vi)
+            c = col.data[vi].color
+            n = Vector((c[0] * 2 - 1, c[1] * 2 - 1, c[2] * 2 - 1))
+            if n.length < 0.5:
+                continue
+            me.vertices[vi].co -= n.normalized() * width * (1.0 - k)
+            moved[names[pid]] = moved.get(names[pid], 0) + 1
+    me.update()
+    return moved
 
 
 def class_regions(prefix: str) -> dict:
@@ -677,7 +728,9 @@ def build_potion(pal: Palette, kind: str, size: str):
     top_z = max(v.co.z for v in obj.data.vertices)
     return obj, sockets(top_z, (0.0, 0.0, g["level"] * 0.62)), {"kind": "potion", "potion": liq,
                                                                "potionAmount": amounts.get(size), "size": size,
-                                                               "glintZ": round(g["level"] * 0.62, 4)}
+                                                               "glintZ": round(g["level"] * 0.62, 4),
+                                                               "flaskRadiusCm": round(max(r for r, _ in g["prof"])
+                                                                                      * 100.0, 1)}
 
 
 def build_antidote(pal: Palette):
@@ -998,16 +1051,28 @@ def build_quest_herb(pal: Palette):
         b.add(place(IK.ell((0.0095, 0.0095, 0.0045), (0, 0, 0.0028), sides=8, rings=4), m), "pistil",
               name="pistil", outline=False, covered_by=pid)
     obj = asset.finish_mesh(b, pal, CLS)
+    thin_hull(obj, HULL_SCALE["SM_Pickup_Quest_Herb"])
     top_z = max(v.co.z for v in obj.data.vertices)
-    return obj, sockets(top_z, (0.10, 0.0, top_z)), {"kind": "quest", "itemKind": "herb", "questItem": "mat_herb"}
+    return obj, sockets(top_z, (0.10, 0.0, top_z)), {"kind": "quest", "itemKind": "herb", "questItem": "mat_herb",
+                                                     "hullScale": HULL_SCALE["SM_Pickup_Quest_Herb"]}
+
+
+GEL_LIFT = 0.018      # coherence pass: the blob stands on a tucked base (see build_quest_gel)
 
 
 def build_quest_gel(pal: Palette):
-    """Glossy slime-gel blob with a drip and a lighter core (QuestItemIcons.ts gel)."""
+    """Glossy slime-gel blob with a drip and a lighter core (QuestItemIcons.ts gel).
+
+    Coherence pass: the blob stands on a tucked base (r 5.6 cm at the ground, the 11 cm belly 3.8 cm up,
+    ``GEL_LIFT``). Spread flat on the ground (r 9 cm at z 0, widest at 2 cm), the W1 camera's lower contour was the
+    ground contact itself — the ink under it lay below the terrain on ~41 % of the silhouette, and the light-green
+    body met the green plains grass with no line at all; with the belly lifted, the lower contour is inked like the
+    potions'."""
     b = builder("SM_Pickup_Quest_Gel", pal, "quest")
     n = 22
-    zs = [0.0, 0.006, 0.020, 0.040, 0.062, 0.084, 0.102, 0.116, 0.126, 0.132]
-    rs = [0.090, 0.104, 0.110, 0.106, 0.094, 0.076, 0.054, 0.034, 0.016, 0.004]
+    L = GEL_LIFT
+    zs = [0.0, 0.008, 0.016] + [z + L for z in (0.006, 0.020, 0.040, 0.062, 0.084, 0.102, 0.116, 0.126, 0.132)]
+    rs = [0.056, 0.080, 0.096] + [0.104, 0.110, 0.106, 0.094, 0.076, 0.054, 0.034, 0.016, 0.004]
 
     def surf(a, z):
         r = float(np.interp(z, zs, rs)) * (1 + 0.06 * math.sin(3 * a + 0.4) + 0.03 * math.sin(5 * a + 1.1))
@@ -1021,22 +1086,23 @@ def build_quest_gel(pal: Palette):
         pts, nrm = [], []
         for i in range(7):
             t = i / 6
-            z = 0.055 + 0.055 * t
+            z = 0.055 + 0.055 * t + L
             a = ph + 0.45 * (t - 0.5)
             p = surf(a, z)
             pts.append(p)
-            nrm.append(Vector((p.x, p.y, (p.z - 0.02) * 1.6)).normalized())
+            nrm.append(Vector((p.x, p.y, (p.z - 0.02 - L) * 1.6)).normalized())
         b.add(IK.surface_strip(pts, nrm, 0.016, lift=0.0012, depth=0.004), "gel_hi", name="glint", outline=False,
               covered_by=gid)
     cap = []
     for a in [TAU * i / 14 for i in range(14)]:
         cap.append((0.040 * math.cos(a) - 0.012, 0.034 * math.sin(a) + 0.006))
     cp = plate_xy(cap, 0.0, 0.0025, rings=2)
-    cp.deform(lambda co: Vector((co.x, co.y, co.z + 0.126 - 18.0 * (co.x ** 2 + co.y ** 2) - 0.0005)))
+    cp.deform(lambda co: Vector((co.x, co.y, co.z + 0.126 + L - 18.0 * (co.x ** 2 + co.y ** 2) - 0.0005)))
     b.add(cp, "gel_core", name="core", outline=False, covered_by=gid)
     # drip running down the side + a droplet beside the blob
     a0 = -0.6
-    pts = [surf(a0, z) * 1.0 + Vector((math.cos(a0), math.sin(a0), 0)) * 0.006 for z in (0.07, 0.05, 0.03, 0.014)]
+    pts = [surf(a0, z) * 1.0 + Vector((math.cos(a0), math.sin(a0), 0)) * 0.006 for z in (0.07 + L, 0.05 + L, 0.03 + L,
+                                                                                          0.014 + L)]
     b.add(M.tube(pts, [0.008, 0.010, 0.012, 0.013], sides=10, dome0=0.004, dome1=0.010), "gel", name="drip",
           outline=False, covered_by=gid)
     did = b.add(IK.ell((0.018, 0.016, 0.012), (0.128 * math.cos(a0 - 0.25), 0.128 * math.sin(a0 - 0.25), 0.012),
@@ -1101,8 +1167,10 @@ def build_quest_pendant(pal: Palette):
     b.add(M.tube(path, [(0.0042, 0.0075)] * len(path), sides=8, up=(0, 0, 1), dome0=0.003, dome1=0.003), "chain",
           name="chain", hull_pad=True)
     obj = asset.finish_mesh(b, pal, CLS)
+    thin_hull(obj, HULL_SCALE["SM_Pickup_Quest_Pendant"])
     tz = top_z(obj)
-    return obj, sockets(tz, (0.0, 0.004, tz)), {"kind": "quest", "itemKind": "pendant", "questItem": "mat_pendant"}
+    return obj, sockets(tz, (0.0, 0.004, tz)), {"kind": "quest", "itemKind": "pendant", "questItem": "mat_pendant",
+                                                "hullScale": HULL_SCALE["SM_Pickup_Quest_Pendant"]}
 
 
 # ── catalogue ───────────────────────────────────────────────────────────────────────────────────────────
@@ -1157,6 +1225,19 @@ FRUIT_GLOW = {"color": "#6FF0C8", "radiusCm": 20.0, "alpha": 0.6, "blend": "addi
 # (web falloff: ~.45 at the flask's silhouette, as the web's α .45 glow under its sprite)
 GLOW_RADIUS_CM, GLOW_ALPHA = 22.0, 0.85
 GLOW_BLEND = "alpha"
+# saturated core (art review, fifth look: the spec halo, α .45 #FF4A4A 'over' the plains grass #74A247, samples
+# (174,146,75) — khaki next to the 'rare' gold; the MP halo drifts teal): a second card in a deeper, saturated tone of
+# the liquid, α .92 solid to 1.22 × the flask's radius and gone at 1.65 × (computed over grass #74A247 / dirt #C09A60:
+# (213,48,39) / (216,46,42) to 1.2 flask radii, red-orange to 1.45, the olive transition only in the last ~3 px), so the
+# band hugging the flask reads red / blue at full strength; the spec halo keeps its α at the ring beyond it
+POTION_GLOW_CORE = {"hp": "#D81822", "mp": "#1E46E6"}
+CORE_ALPHA, CORE_SCALE = 0.92, 1.65
+CORE_MIN_CM = 15.0        # the slim S vial (7.2 cm) kept a 6 px khaki ring inside the 22 cm halo at 1.65 × its radius
+
+
+def core_radius_cm(flask_cm: float) -> float:
+    return round(max(CORE_SCALE * flask_cm, CORE_MIN_CM), 1)
+CORE_STOPS = ((0.0, 1.0), (0.74, 1.0), (0.90, 0.6), (1.0, 0.0))
 LATER = {"tp": "DECISIONS I4: the TP scroll is removed in milestone 1", "id": "DECISIONS I2: no ID scrolls in milestone 1"}
 
 
@@ -1175,7 +1256,13 @@ def loot_entry(meta: dict, tint: bool) -> dict:
                                        "additive turned the plains grass amber"),
                          "placement": "behind: camera-facing card pushed 15 cm back along the view ray, depth-tested "
                                       "(the flask and its ink occlude it; web draws the glow under the sprite)",
-                         "depthOffsetCm": 15.0}
+                         "depthOffsetCm": 15.0,
+                         "core": {"color": POTION_GLOW_CORE[meta["potion"]], "alpha": CORE_ALPHA,
+                                  "radiusCm": core_radius_cm(meta.get("flaskRadiusCm", 10.8)),
+                                  "falloff": [list(x) for x in CORE_STOPS], "blend": GLOW_BLEND,
+                                  "note": ("a second card on the same socket, drawn over the halo (same placement): "
+                                           "the saturated band round the bulb keeps the hue red / blue over grass "
+                                           "and dirt, where the spec α .45 halo alone mixes to khaki / teal")}}
     if meta.get("kind") == "fruit":
         e["glow"] = dict(FRUIT_GLOW, socket="glint", falloff="web light (review.GLOW_STOPS)",
                          placement="behind: camera-facing card pushed 15 cm back along the view ray, depth-tested",
@@ -1233,7 +1320,8 @@ class LootReview(review.Review):
         for g in self.glows(cam, res):
             c = (g["center_px"][0] - x0, g["center_px"][1] - y0)
             if g.get("blend") == "alpha":
-                lit = glow_over(lit, c, g["radius_px"], g["color"], g.get("alpha", 0.0) * self.glow_scale)
+                lit = glow_over(lit, c, g["radius_px"], g["color"], g.get("alpha", 0.0) * self.glow_scale,
+                                g.get("stops"))
             else:
                 lit = review.glow_card(lit, c, g["radius_px"], g["color"], g.get("alpha", 0.0) * self.glow_scale)
         body, hull = review.coverage_pass(self.meshes, border, ground=False)
@@ -1247,7 +1335,7 @@ class LootReview(review.Review):
         return img, st
 
 
-def glow_over(img: np.ndarray, center_px, radius_px: float, hex_color: str, alpha: float) -> np.ndarray:
+def glow_over(img: np.ndarray, center_px, radius_px: float, hex_color: str, alpha: float, stops=None) -> np.ndarray:
     """The potion glow card **alpha-blended** (premultiplied 'over', UE translucent): lin = lin·(1 − a·f) + a·f·c with
     the web light falloff f (``review.GLOW_STOPS``). Art review, fourth look: added over the plains grass the red
     glow (#FF4A4A α .45) shifted the grass (116,162,71) → (142,160,75) — amber, the 'rare' colour; blended over, the
@@ -1255,7 +1343,7 @@ def glow_over(img: np.ndarray, center_px, radius_px: float, hex_color: str, alph
     h, w = img.shape[:2]
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
     r = np.hypot(xx + 0.5 - center_px[0], yy + 0.5 - center_px[1]) / max(radius_px, 1e-3)
-    xs, ys = zip(*review.GLOW_STOPS)
+    xs, ys = zip(*(stops or review.GLOW_STOPS))
     f = (alpha * np.interp(r, xs, ys)).astype(np.float32)[:, :, None]
     lin = IK._lin(img)
     lin = lin * (1.0 - f) + f * np.array(color.hex_linear(hex_color), np.float32)
@@ -1274,12 +1362,20 @@ def potion_glows(obj, meta: dict | None):
         hx, gz, rad, al, bl = POTION_GLOW[meta["potion"]], meta.get("glintZ", 0.15), GLOW_RADIUS_CM, GLOW_ALPHA, \
             GLOW_BLEND
 
+    core = None
+    if meta.get("kind") == "potion" and meta.get("potion") in POTION_GLOW_CORE:
+        core = (POTION_GLOW_CORE[meta["potion"]], core_radius_cm(meta.get("flaskRadiusCm", 10.8)))
+
     def glows(cam, res):
         c = obj.matrix_world @ Vector((0.0, 0.0, gz))
         right = cam.matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))
         p0 = review.project_px(cam, c, res)
-        p1 = review.project_px(cam, c + right * (rad / 100.0), res)
-        return [dict(center_px=p0, radius_px=abs(p1[0] - p0[0]), color=hx, alpha=al, blend=bl)]
+        px_cm = abs(review.project_px(cam, c + right * 0.01, res)[0] - p0[0])
+        out = [dict(center_px=p0, radius_px=px_cm * rad, color=hx, alpha=al, blend=bl)]
+        if core:            # the saturated band round the bulb, over the halo (fifth look)
+            out.append(dict(center_px=p0, radius_px=px_cm * core[1], color=core[0], alpha=CORE_ALPHA, blend=bl,
+                            stops=CORE_STOPS))
+        return out
     return glows
 
 
@@ -1564,6 +1660,8 @@ def ship(groups: list[str] | None, previews: bool = True, verify: bool = True) -
             e["previews"] = [str(p.relative_to(paths.preview_root())) for p in files]
             if v is not None:
                 e["inkGate"] = IK.ink_entry(v)
+                if name in INK_EXCEPTION:
+                    e["inkGate"]["exception"] = INK_EXCEPTION[name]
                 ok = v["pass"]
                 print(f"[ink] {name}: {v['cells']} cells, min rim {v['minFracRim'] * 100:.1f} %, dark "
                       f"{v['minFracDark'] * 100:.1f} %, median {v['medianRimPx']} px -> {'PASS' if ok else 'FAIL'}")

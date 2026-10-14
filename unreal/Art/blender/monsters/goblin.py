@@ -28,6 +28,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import mesh as M, outline, rig as R, scene  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 from kit.rig import Bind  # noqa: E402
 
@@ -45,6 +46,10 @@ PREFIX = "goblin"
 WEB = GB.Web(U=0.0216 * 0.92 / 0.988)       # skull top 0.92 m (R2); web 2.16 cm/unit gave 0.99 m
 LOOK = GB.Look()
 OUTLINE_CLASS = "monster"
+OUTLINE_PX = 3.5            # per-asset hull request (art review): see OUTLINE_PX_NOTE
+OUTLINE_PX_NOTE = ("art review: at the monster class's 3.0 px about 20 % of the silhouette (ear tips, spear "
+                   "shaft, fingers) kept < 3 px at 1080p; 3.5 px (as the boss / heroes) holds >= 3 px on >= 90 % "
+                   "of every gated cell (gate 3.0 px); the spear and the hunt attachments ink with it")
 REF_SPEED = 1.65
 WALK = dict(cycle=600.0, duty=0.34, lift=0.058, bob=0.018, lean=4.0, arm=0.07, crouch=-0.035, twist=4.0,
             hand_swing=0.35, hand_off=V(-0.024, 0.0, 0.016))
@@ -398,7 +403,7 @@ def quick(out: Path) -> None:
     import mship
     pal, kit, body, spear = build_all()
     A = anims(kit)
-    mship.quick_review(ASSET, kit.rig, [body], [(spear, "weapon_r")], A, out, 0.92, OUTLINE_CLASS)
+    mship.quick_review(ASSET, kit.rig, [body], [(spear, "weapon_r")], A, out, 0.92, OUTLINE_CLASS, px=OUTLINE_PX)
 
 
 def anim_quick(out: Path, names, facing: str = "se") -> None:
@@ -408,7 +413,8 @@ def anim_quick(out: Path, names, facing: str = "se") -> None:
     R.attach_to_bone(spear, kit.rig, "weapon_r")
     A.bind_meshes(body, {"weapon_r": spear})
     cs = [c for c in clips(A) if not names or c.name in names]
-    mship.anim_review(kit.rig, [body], [(spear, "weapon_r")], cs, TOKEN, out, 0.92, OUTLINE_CLASS, facing=facing)
+    mship.anim_review(kit.rig, [body], [(spear, "weapon_r")], cs, TOKEN, out, 0.92, OUTLINE_CLASS, facing=facing,
+                      px=OUTLINE_PX)
 
 
 def ship(previews: bool = True, verify: bool = True) -> int:
@@ -433,6 +439,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS), **hunt_qa_groups(body), **QA_GROUPS},
         qa_pairs={"spearBody": ("item:" + SPEAR, "body_nf"), **HUNT_QA_PAIRS, **QA_PAIRS},
         qa_limits={"ground": -0.5, "spearBody": 0, **{k: 0 for k in HUNT_QA_PAIRS}, **{k: 0 for k in QA_PAIRS}},
+        outline_px=OUTLINE_PX, outline_px_note=OUTLINE_PX_NOTE,
         variants=GH.VARIANTS, extra_previews=hunt_previews, variant_previews=("hunt_leaders.png", "hunt_close.png"),
         game_keys=[("Idle", 0, "se"), ("Walk", 9, "se"), ("Attack01", 5, "se"), ("Attack01", 15, "se"),
                    ("Attack01", 15, "sw"), ("Hurt", 0, "se"), ("Death", 30, "se"), ("Stun", 10, "se")],
@@ -451,7 +458,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
 
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
-    scratch = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/goblin")
+    scratch = scratch_root("mq", "goblin")
     if "--quick" in args:
         k = args.index("--quick")
         quick(Path(args[k + 1]) if len(args) > k + 1 and not args[k + 1].startswith("--") else scratch)

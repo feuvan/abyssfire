@@ -32,7 +32,8 @@ ATLAS_PX = GRID * SWATCH_PX
 UNUSED_RGB = (255, 0, 255)
 
 FAMILIES = ("Heroes", "Monsters_Plains", "NPC", "Props_Plains", "Foliage_Plains", "FX", "Test",
-            "Weapons", "Pickups")   # Weapons: generic equipment meshes (+ tier atlases, items/), Pickups: ground loot
+            "Weapons", "Pickups",   # Weapons: generic equipment meshes (+ tier atlases, items/), Pickups: ground loot
+            "Pets")                 # Pets: ley-beast companions (pets/, DECISIONS Q3)
 
 
 def _q8(v: float) -> int:

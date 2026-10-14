@@ -5,8 +5,8 @@
 | palette_bc  | Textures            | yes  | UserInterface2D (RGBA8)  | nearest | none | Pixels2D  |
 | palette_p   | Textures            | no   | VectorDisplacement (RGBA8)| nearest | none | Pixels2D  |
 | data        | Textures/Defaults   | no   | VectorDisplacement       | nearest | none | Pixels2D  |
-| ui_icon     | UI/Icons            | yes  | UserInterface2D          | default | none | UI        |
-| ui_portrait | UI/Portraits        | yes  | UserInterface2D          | default | none | UI        |
+| ui_icon     | UI/Icons            | yes  | UserInterface2D          | default | 2x2 avg | UI     |
+| ui_portrait | UI/Portraits        | yes  | UserInterface2D          | default | 2x2 avg | UI     |
 | fx          | FX/Textures         | no   | Default (BC / ASTC)      | default | yes  | Effects   |
 | world       | Textures            | yes  | Default                  | default | yes  | World     |
 | normal      | Textures            | no   | Normalmap                | default | yes  | WorldNormalMap |
@@ -16,6 +16,12 @@
 Palettes are exact swatch atlases: uncompressed and unfiltered on every platform (16 px swatches survive no block
 compression or bilinear blending), never streamed. The sampler types the masters expect follow from these settings
 (sRGB + default compression -> Color, linear -> LinearColor); a palette imported differently would not bind.
+
+UI textures are minified 4-8x on screen (256 px item / skill icons drawn at 36-48 px, 128 px glyphs at 14-32 px, 512 px
+portraits at 53-170 px): they carry a SimpleAverage mip chain (the `ui.<texture>.import` hint the icon generators write
+into the manifest: `mips: true, mipGen: SimpleAverage`), so Slate's bilinear sampling reads a pre-filtered level
+instead of skipping texels of the 1-2 px line art (aliasing, shimmer on the HUD's 36 px skill slots). They stay in
+`TEXTUREGROUP_UI` and never stream.
 
 The terrain detail atlas (`*_Details_BC`, kind atlas) holds small motifs on transparent texels: BC3 / DXT5 would put the
 motif colours and the black of the empty texels on one 4-colour line per block, so it is BC7 (several endpoint pairs
@@ -48,10 +54,11 @@ def settings_for(kind: str) -> dict[str, Any]:
         return {"srgb": False, "compression_settings": enum("TextureCompressionSettings", "TC_VECTOR_DISPLACEMENTMAP"),
                 **exact}
     if kind in ("ui_icon", "ui_portrait"):
+        # mips: the manifest's ui import hint (Art/blender/icons/iconkit.py IMPORT_HINT) — see the module doc
         return {
             "srgb": True,
             "compression_settings": enum("TextureCompressionSettings", "TC_EDITOR_ICON"),
-            "mip_gen_settings": enum("TextureMipGenSettings", "TMGS_NO_MIPMAPS"),
+            "mip_gen_settings": enum("TextureMipGenSettings", "TMGS_SIMPLE_AVERAGE"),
             "lod_group": enum("TextureGroup", "TEXTUREGROUP_UI"),
             "never_stream": True,
         }

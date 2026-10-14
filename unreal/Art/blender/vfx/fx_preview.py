@@ -69,7 +69,7 @@ BASE = dict(sprite="Glow", mesh=None, blend="additive", orient="billboard", vari
             orbit=False, orbitR0=(0.0, 0.0), orbitR1=(0.0, 0.0), orbitDeg=(0.0, 0.0), size=(20.0, 20.0), grow=1.0,
             sizePow=1.0, aspect=1.0, stretch=0.0, alpha0=1.0, alpha1=0.0, fadeIn=0.0, alphaPow=1.0, flicker=0.0,
             colorSource="mid", color=(1.0, 1.0, 1.0), altEvery=0, altSource="white", altColor=(1.0, 1.0, 1.0),
-            intensity=1.0, rotation=(0.0, 0.0), spin=(0.0, 0.0), align=False, big=0, fan=False)
+            intensity=1.0, rotation=(0.0, 0.0), spin=(0.0, 0.0), align=False, big=0, fan=False, flat=False)
 
 PRESETS = {
     "glow": dict(sprite="Glow", orient="billboard", blend="additive", life=(300, 300), size=(53, 53), grow=1.3 / 0.6,
@@ -185,7 +185,7 @@ def parse_layer(j: dict) -> dict:
         if k in j:
             L[d] = float(j[k])
     for k, d in (("onRing", "onRing"), ("attach", "attach"), ("countByRadius", "countByRadius"),
-                 ("alignToBlow", "align"), ("fan", "fan")):
+                 ("alignToBlow", "align"), ("fan", "fan"), ("flat", "flat")):
         if k in j:
             L[d] = bool(j[k])
     if "count" in j:
@@ -548,7 +548,8 @@ class Sim:
                 direction = np.array([axis[0] * c_ - axis[1] * s_, axis[0] * s_ + axis[1] * c_, 0.0])
             else:
                 direction = flat_cone(rnd, axis, cone)
-            direction[2] = rnd.uniform(-0.15, 0.35)
+            z = rnd.uniform(-0.15, 0.35)
+            direction[2] = 0.0 if L["flat"] else z          # integration.flat: a level flight
             direction /= np.linalg.norm(direction)
         elif d in ("out", "in", "tangent"):
             radial = disc[:2].copy()
@@ -1444,6 +1445,8 @@ class Scene_:
     tint: tuple | None = None            # StatusTint on goblin 0 (hex, alpha)
     smith: bool = False                  # the blacksmith at the anvil (Work_Hammer, timed from its notify)
     dodge: bool = False                  # the hero dodges (Dodge clip, path, afterimages)
+    blink: bool = False                  # the hero already stands on the arrival point (skill teleport: the core
+                                         # moved it and EvEntityTeleported is presented before the skill VFX)
     tight: bool = True                   # crop to what the effect touched (+ its actors); False = the whole crop
     note: str = ""
 
@@ -1504,7 +1507,8 @@ def scenarios() -> dict:
         ("mana_shield", C, [0, 120, 180, 260, 400, 560, 760], {"focus": "hero"}),
         ("fire_wall", C, [0, 80, 180, 300, 450, 650, 900], {"focus": "target", "target_dist": 260,
                                                             "crop": (760, 500)}),
-        ("teleport", C, [0, 60, 120, 180, 260, 400, 600], {"target_dist": 300}),
+        ("teleport", C, [0, 60, 120, 180, 260, 400, 600], {"target_dist": 300, "targets": 0, "blink": True,
+                                                            "crop": (920, 460)}),
         ("meteor", "Cast_Meteor", [0, 100, 200, 280, 320, 380, 500, 700, 1000],
          {"focus": "target", "target_dist": 260, "crop": (820, 620)}),
         ("combustion", C, [0, 40, 70, 120, 200, 320, 500], {}),
@@ -1534,12 +1538,14 @@ def scenarios() -> dict:
                                    [40, 120, 200, 280, travel + 20, travel + 80, travel + 180, travel + 400],
                                    clip="Cast01", cls=cls, target_dist=330, crop=(820, 460),
                                    element=skill_element(sid))
-    sc["proj.arrow"] = Scene_("proj.arrow", [(0, "proj", ("arrow", 220))], [30, 90, 160, 240, 280, 340],
+    # per-target arrows fly the core's SkillArrowDelayMs: min(260, tiles · 36 px · 1.1 ms) = 131 ms at 3.3 tiles
+    arrow_ms = min(260.0, 3.3 * 36 * 1.1)
+    sc["proj.arrow"] = Scene_("proj.arrow", [(0, "proj", ("arrow", arrow_ms))], [30, 70, 110, 147, 180, 230],
                               clip="Cast_Multishot", cls="rogue", target_dist=330, crop=(820, 460),
                               note="per-target multishot arrow (alias proj.multishot)")
-    sc["proj.piercing_arrow"] = Scene_("proj.piercing_arrow", [(0, "proj", ("piercing_arrow", 260))],
-                                       [30, 100, 180, 280, 320, 400], clip="Cast01", cls="rogue",
-                                       target_dist=330, crop=(820, 460))
+    sc["proj.piercing_arrow"] = Scene_("proj.piercing_arrow", [(0, "proj", ("piercing_arrow", arrow_ms))],
+                                       [30, 70, 110, 147, 190, 240, 300, 380], clip="Cast01", cls="rogue",
+                                       target_dist=330, crop=(1180, 460))
     sc["proj.monster_bolt"] = Scene_("proj.monster_bolt", [(0, "mproj", ("monster_bolt", 320, "#B478FF"))],
                                      [60, 160, 260, 340, 400, 520], clip="Idle", target_dist=330,
                                      crop=(820, 460), color="#B478FF")
@@ -1573,7 +1579,7 @@ def scenarios() -> dict:
     # combat feedback
     for prof, sp, rp in (("light", 4, 10), ("normal", 6, 13), ("heavy", 9, 17), ("crit", 12, 22), ("kill", 14, 24)):
         big = prof in ("crit", "kill")
-        sc[f"hit.impact.{prof}"] = Scene_(f"hit.impact.{prof}", [(0, "hit", "hit.impact")],
+        sc[f"hit.impact.{prof}"] = Scene_(f"hit.impact.{prof}", [(0, "hit", f"hit.impact.{prof}")],
                                           [0, 30, 60, 100, 160, 240], clip="Attack01", big=big,
                                           sparks=sp, ring_px=rp, color="#FFD98A", crop=(520, 360))
     sc["hit.basic"] = Scene_("hit.basic", [(0, "hit", "hit.basic"), (0, "hit", "hit.impact")],
@@ -1628,8 +1634,10 @@ def scenarios() -> dict:
                                                      (0, "selfloop", "hero.resonance.aura")],
                                   [0, 100, 220, 400, 800, 1300], clip="Idle", focus="hero",
                                   color="#FFB55C", crop=(560, 420))
-    sc["teleport.blink"] = Scene_("teleport.blink", [(0, "skillctx", "teleport.blink")], [0, 60, 120, 200, 320],
-                                  clip="Cast01", target_dist=300, crop=(760, 420), targets=0)
+    sc["teleport.blink"] = Scene_("teleport.blink", [(0, "blink", "teleport.blink")], [0, 60, 120, 200, 320],
+                                  clip="Idle", target_dist=300, crop=(760, 420), targets=1, hero=False,
+                                  note="EvEntityTeleported EliteBlink: the elite goblin already stands on the "
+                                       "arrival point, the recipe plays from its old spot to the new one")
     sc["portal.channel"] = Scene_("portal.channel", [(0, "selfloop", "portal.channel"), (1500, "self", "portal.arrive")],
                                   [200, 600, 1000, 1400, 1560, 1750], clip="Idle", focus="hero", crop=(560, 440))
     for w, cl in (("camp.campfire", 2000), ("camp.torch", 2000), ("camp.hearthstone", 2000), ("exit.portal", 2500),
@@ -1776,6 +1784,8 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
     live_until = -1.0 if static_idle or not timed.get("clip") else clip_len - t0_ms
 
     def hero_at(t_ms: float) -> np.ndarray:
+        if s.blink:
+            return T.copy()
         if not s.dodge:
             return H
         u = min(max(t_ms / 300.0, 0.0), 1.0)
@@ -1785,7 +1795,7 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
     def set_time(t_ms: float, sockets=True) -> None:
         if timed.get("clip"):
             stage.clip_time(timed, t0_ms + (0.0 if static_idle else t_ms))
-        if s.dodge:
+        if s.dodge or s.blink:
             ch["root"].location = ue_to_bl(hero_at(t_ms))
             hero.pos = hero_at(t_ms)
         if sockets and timed is ch:
@@ -1825,14 +1835,19 @@ def run(stage: Stage, recipes, s: Scene_, out_dir: Path) -> list:
 
     def ctx_skill():
         pts = [g.pos for g in gobs[:max(1, s.targets)]] if s.targets >= 1 else [T]
-        return Ctx(origin=H, target=T, point=T, origin_actor=hero, target_actor=target_actor, points=pts,
-                   stagger=55.0 if s.targets > 1 else 0.0, **base_ctx)
+        # a blink already moved the caster: origin layers stay on the release point (CasterOriginToleranceCm)
+        return Ctx(origin=H, target=T, point=T, origin_actor=None if s.blink else hero, target_actor=target_actor,
+                   points=pts, stagger=55.0 if s.targets > 1 else 0.0, **base_ctx)
     timed_ev: list = []          # (t, fn)
     flight = {}
     for t0, kind, data in sorted(s.events, key=lambda e: e[0]):
         if kind in ("skill", "skillctx"):
             rid = f"skill.{data}" if kind == "skill" else data
             timed_ev.append((t0, lambda rid=rid: sim.play(rid, ctx_skill())))
+        elif kind == "blink":
+            # EvEntityTeleported (EliteBlink): Origin / Target / Point = the ground tiles, no actors
+            timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=H.copy(), target=T.copy(),
+                                                                    point=T.copy(), **base_ctx))))
         elif kind == "hit":
             timed_ev.append((t0, lambda rid=data: sim.play(rid, Ctx(origin=H, target=T, point=T, origin_actor=hero,
                                                                     target_actor=target_actor, **base_ctx))))

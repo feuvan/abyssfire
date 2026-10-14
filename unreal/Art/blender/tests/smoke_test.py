@@ -450,6 +450,52 @@ def roundtrip_render(arm, me, imported, sm, pal, out_dir: Path, clip: str, frame
     return img
 
 
+def manifest_merge_check() -> None:
+    """``export.Manifest.save`` is shared by every generator: two writers loaded at the same time must not drop each
+    other's entries — neither the per-key merged sections (``assets``) nor a family-owned top-level section that a
+    plain ``Manifest`` does not merge (``ui`` / ``terrain``: before the coherence pass a stale copy was written back)."""
+    import tempfile as _tf
+    path = Path(_tf.mkdtemp(prefix="af_man_")) / "manifest.json"
+    path.write_text(json.dumps({"assets": {"SM_A": {"x": 1}}, "gameIds": {}, "palettes": {},
+                                "ui": {"T_UI_A": {"file": "a"}}}))
+    plain = export.Manifest(path)                 # e.g. a hero ship, loaded first
+
+    class _UiManifest(export.Manifest):          # e.g. the icon generator (merges ``ui`` per key)
+        MERGED = ("assets", "palettes", "gameIds", "ui")
+    other = _UiManifest(path)
+    other.data["ui"]["T_UI_B"] = {"file": "b"}
+    other.set_asset("SM_B", {"y": 2})
+    other.save()
+    plain.set_asset("SM_C", {"z": 3})
+    plain.save()
+    d = json.loads(path.read_text())
+    check(sorted(d["assets"]) == ["SM_A", "SM_B", "SM_C"], f"manifest merge keeps both writers' assets "
+                                                            f"({sorted(d['assets'])})")
+    check(sorted(d.get("ui", {})) == ["T_UI_A", "T_UI_B"], f"manifest merge keeps a section the saving writer "
+                                                          f"did not touch ({sorted(d.get('ui', {}))})")
+    check("shading" in d and d.get("schemaVersion") == export.SCHEMA_VERSION, "kit-owned sections rewritten")
+
+
+def scratch_root_check() -> None:
+    """``paths.scratch_root``: dev-mode output under ``$AF_SCRATCH_ROOT`` (default the system temp dir), never a
+    hard-coded session path; created on demand."""
+    import tempfile as _tf
+    keep = os.environ.get("AF_SCRATCH_ROOT")
+    try:
+        root = Path(_tf.mkdtemp(prefix="af_scr_"))
+        os.environ["AF_SCRATCH_ROOT"] = str(root)
+        p = paths.scratch_root("smoke", "sub")
+        check(p == root.resolve() / "smoke" / "sub" and p.is_dir(), f"scratch_root honours AF_SCRATCH_ROOT ({p})")
+        os.environ.pop("AF_SCRATCH_ROOT")
+        q = paths.scratch_root("smoke")
+        check(str(q).startswith(str(Path(_tf.gettempdir()))), f"scratch_root defaults to the temp dir ({q})")
+    finally:
+        if keep is None:
+            os.environ.pop("AF_SCRATCH_ROOT", None)
+        else:
+            os.environ["AF_SCRATCH_ROOT"] = keep
+
+
 def shader_conformance() -> None:
     """Render flat swatches head-on (no rim) in each band and compare with shading.toon_reference."""
     import numpy as np
@@ -561,6 +607,8 @@ def main() -> int:
             print(f"  {p}  {p.stat().st_size // 1024} KB")
             check(p.stat().st_size <= 200 * 1024, f"{p.name} <= 200 KB")
     shader_conformance()
+    manifest_merge_check()
+    scratch_root_check()
     print(f"\n{'PASS' if not FAIL else 'FAIL'}  ({len(FAIL)} failures, {time.time() - t0:.1f} s)")
     for f in FAIL:
         print("  -", f)

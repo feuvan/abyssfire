@@ -96,12 +96,38 @@ def lod_base(name: str) -> str:
     return re.sub(r"_(?:[lr]|\d+)$", "", name)
 
 
-def builder(asset: str, pal, prefix: str, lod: int = 0, skip: tuple = (), ratio: float = LOD1_RATIO) -> M.Builder:
-    """``kit.mesh.Builder`` for LOD0, or for LOD1 (``lod_ratio`` + the family skip list + ``skip``)."""
+class LodHullBuilder(M.Builder):
+    """LOD1 builder whose outline hulls are baked from proxies decimated ``hull_ratio`` × further than the toon
+    parts (art review: the chief's and shaman's LOD1 hulls were 0.87 / 0.77 × their toon triangles against the
+    family budget hull ≤ 0.75 × toon — the padded proxies copied each decimated part triangle for triangle). Every
+    outlined part gets an explicit hull proxy = the part decimated by ``hull_ratio`` (then by ``lod_ratio`` like the
+    part itself); ``hull_pad`` still inflates it round the part and its covered trims, so the mobile-low ink only
+    thickens a little where the coarser proxy's chords sit outside the part."""
+
+    def __init__(self, *a, hull_ratio: float = 1.0, **kw):
+        super().__init__(*a, **kw)
+        self.hull_ratio = hull_ratio
+
+    def add(self, part, region, bind=None, name=None, outline=True, sub_regions=None, hull=None, hull_pad=False,
+            covered_by=None):
+        skipped = self.lod_skip is not None and name and self.lod_skip(name)
+        if outline and not skipped and self.hull_ratio < 0.999:
+            src = hull if hull is not None else part
+            hull = M.decimate(src.copy(), self.hull_ratio, min_tris=24)
+            hull_pad = True                      # inflated round the part: no chord of the coarser proxy inside it
+        return super().add(part, region, bind, name=name, outline=outline, sub_regions=sub_regions, hull=hull,
+                           hull_pad=hull_pad, covered_by=covered_by)
+
+
+def builder(asset: str, pal, prefix: str, lod: int = 0, skip: tuple = (), ratio: float = LOD1_RATIO,
+            hull_ratio: float = 1.0) -> M.Builder:
+    """``kit.mesh.Builder`` for LOD0, or for LOD1 (``lod_ratio`` + the family skip list + ``skip``; ``hull_ratio``
+    < 1: the outline hulls from proxies decimated that much further, :class:`LodHullBuilder`)."""
     if not lod:
         return M.Builder(asset, pal, prefix=prefix)
     names = set(LOD1_SKIP) | set(skip)
-    return M.Builder(asset, pal, prefix=prefix, lod_ratio=ratio, lod_skip=lambda n: lod_base(n) in names)
+    return LodHullBuilder(asset, pal, prefix=prefix, lod_ratio=ratio, lod_skip=lambda n: lod_base(n) in names,
+                          hull_ratio=hull_ratio)
 
 
 def belly_hex(skin: str) -> str:

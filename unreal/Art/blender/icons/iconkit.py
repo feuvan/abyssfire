@@ -41,6 +41,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 import kit  # noqa: E402,F401
+from kit.paths import scratch_root  # noqa: E402
 from kit import color, export, paths, pngio, review, scene, shading  # noqa: E402
 from kit import mesh as M  # noqa: E402
 from kit.palette import GRID, Palette, Region  # noqa: E402
@@ -75,7 +76,7 @@ L_ICON = view_to_world(L_VIEW).normalized()
 EXPORT_ICONS = paths.export_root() / "Icons"
 EXPORT_PORTRAITS = paths.export_root() / "Portraits"
 SCRATCH = Path(os.environ.get("AF_ICON_SCRATCH",
-                              "/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/ic"))
+                              str(scratch_root("ic"))))
 ICON_PAL_DIR = SCRATCH / "palettes"       # icon-only models: their palettes never ship (regenerated each run)
 
 QUALITY = {   # slot frames for the UI-size sheet only (Slate draws them in game; canonical palette spec §1.1)
@@ -132,6 +133,104 @@ class ShippedPalette:
 
     def save(self) -> tuple[Path, Path]:
         return self.texture_paths()
+
+
+class PatchedPalette(ShippedPalette):
+    """A committed atlas with a few named swatches recoloured **for an icon only** (scratch copies of BC / P; the
+    shipped atlas is untouched): ``patches`` = {swatch name (registry ``names``, e.g. 'quest.twine'): Region}."""
+
+    def __init__(self, family: str, patches: dict, tag: str):
+        super().__init__(family)
+        self.base_family = family
+        self.tag = tag
+        reg = json.loads((HERE.parent / "palettes" / f"{family}.json").read_text())
+        grid, px = reg["grid"], reg["swatchPx"]
+        bc_p, p_p = ShippedPalette(family).texture_paths()
+        bc = pngio.read_png(bc_p)[:, :, :3].copy()
+        pp = pngio.read_png(p_p).copy()
+        for name, rg in patches.items():
+            sw = next((w for w in reg["swatches"] if name in w.get("names", [])), None)
+            if sw is None:
+                raise KeyError(f"{family}: no swatch named {name}")
+            col, row = sw["i"] % grid, sw["i"] // grid
+            ys, xs = slice(row * px, (row + 1) * px), slice(col * px, (col + 1) * px)
+            bc[ys, xs] = [int(c) for c in color.hex_to_rgb(rg.hex)]
+            pp[ys, xs] = [int(round(v * 255)) for v in (rg.s, rg.l, rg.e, rg.o)]
+        self.family = f"{family}_{tag}"
+        ICON_PAL_DIR.mkdir(parents=True, exist_ok=True)
+        b_out, p_out = self.texture_paths()
+        pngio.write_png(b_out, bc)
+        pngio.write_png(p_out, pp)
+        _ATLAS_CACHE.pop(self.texture_names()[0], None)
+
+    @property
+    def material_name(self) -> str:
+        return f"MI_AF_Toon_Icons_{self.family}"
+
+    def texture_names(self) -> tuple[str, str]:
+        return f"T_AF_Palette_Icons_{self.family}_BC", f"T_AF_Palette_Icons_{self.family}_P"
+
+    def texture_paths(self) -> tuple[Path, Path]:
+        bc, p = self.texture_names()
+        return ICON_PAL_DIR / f"{bc}.png", ICON_PAL_DIR / f"{p}.png"
+
+
+def swatch_region(family: str, name: str) -> Region:
+    """The Region a committed palette registered under ``name`` (to patch one of its values for an icon)."""
+    reg = json.loads((HERE.parent / "palettes" / f"{family}.json").read_text())
+    sw = next((w for w in reg["swatches"] if name in w.get("names", [])), None)
+    if sw is None:
+        raise KeyError(f"{family}: no swatch named {name}")
+    return Region(sw["hex"], sw["s"], sw["l"], sw["e"], sw["o"])
+
+
+def swatch_faces(obj: bpy.types.Object, family: str, name: str) -> list[int]:
+    """Polygon indices of a shipped mesh painted with the named swatch of ``family`` (its UVs sit on the swatch)."""
+    reg = json.loads((HERE.parent / "palettes" / f"{family}.json").read_text())
+    grid = reg["grid"]
+    sw = next((w for w in reg["swatches"] if name in w.get("names", [])), None)
+    if sw is None:
+        raise KeyError(f"{family}: no swatch named {name}")
+    col, row = sw["i"] % grid, sw["i"] // grid
+    me = obj.data
+    uvl = me.uv_layers.active.data
+    out = []
+    for poly in me.polygons:
+        if poly.material_index != 0:
+            continue
+        u, v = uvl[poly.loop_start].uv
+        if int(u * grid) == col and int((1.0 - v) * grid) == row:
+            out.append(poly.index)
+    return out
+
+
+def swatch_centroid(obj: bpy.types.Object, family: str, name: str) -> Vector:
+    """World-space centre (area weighted) of the faces painted with a named swatch."""
+    me = obj.data
+    idx = swatch_faces(obj, family, name)
+    if not idx:
+        raise KeyError(f"{obj.name}: no faces painted {name}")
+    acc, area = Vector(), 0.0
+    for i in idx:
+        p = me.polygons[i]
+        acc += p.center * p.area
+        area += p.area
+    return obj.matrix_world @ (acc / max(area, 1e-12))
+
+
+def delete_swatch_faces(obj: bpy.types.Object, family: str, name: str) -> int:
+    """Remove the faces painted with a named swatch (an icon-only edit of an imported mesh)."""
+    import bmesh as _bm
+    idx = set(swatch_faces(obj, family, name))
+    bm = _bm.new()
+    bm.from_mesh(obj.data)
+    bm.faces.ensure_lookup_table()
+    dead = [bm.faces[i] for i in idx]
+    _bm.ops.delete(bm, geom=dead, context="FACES")
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return len(idx)
 
 
 _ATLAS_CACHE: dict[str, tuple[np.ndarray, np.ndarray]] = {}
@@ -531,6 +630,39 @@ def depth_breaks(depth: np.ndarray, cov: np.ndarray, thr: float, ratio: float = 
 
 
 # ── 2-D helpers ─────────────────────────────────────────────────────────────────────────────────────────
+def drop_small_runs(mask: np.ndarray, min_px: float) -> np.ndarray:
+    """``mask`` without its 8-connected pieces smaller than ``min_px`` pixels (union-find over the set pixels)."""
+    ys, xs = np.nonzero(mask)
+    n = len(ys)
+    if n == 0:
+        return mask
+    idx = np.full(mask.shape, -1, np.int64)
+    idx[ys, xs] = np.arange(n)
+    parent = np.arange(n)
+
+    def find(a):
+        r = a
+        while parent[r] != r:
+            r = parent[r]
+        while parent[a] != r:
+            parent[a], a = r, parent[a]
+        return r
+    for dy, dx in ((0, 1), (1, 0), (1, 1), (1, -1)):
+        nb = _shift(idx, -dy, -dx, -1)
+        ok = (idx >= 0) & (nb >= 0)
+        for a, b in zip(idx[ok].tolist(), nb[ok].tolist()):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[max(ra, rb)] = min(ra, rb)
+    roots = np.array([find(i) for i in range(n)])
+    size = np.bincount(roots, minlength=n)
+    keep = size[roots] >= min_px
+    out = np.zeros_like(mask)
+    out[ys[keep], xs[keep]] = True
+    return out
+
+
+
 def _shift(a: np.ndarray, dy: int, dx: int, fill) -> np.ndarray:
     return review._shift(a, dy, dx, fill)
 
@@ -637,7 +769,9 @@ def sparkle_poly(x: float, y: float, r: float, rot_deg: float = 0.0, n: int = 4,
 class Accent:
     """An overlay painted after the inked body (web ``over``) or before it (``under``) in icon pixels —
     computed from the framing (``at`` = world point) or given in icon units (``u``)."""
-    kind: str                       # 'sparkle' | 'glow' | 'glowline' (``at`` → ``to``) | 'rays' (gem tier 5)
+    kind: str                       # 'sparkle' | 'glow' | 'webglow' (web stops) | 'glowline' (``at`` → ``to``) | 'rays'
+                                    # | 'webrays' (tapered bright strokes: r_u inner radius, len_u, width_u, n, rot)
+                                    # | 'bubble' (un-inked: body hex, rim hex2, outline in the body's line tone)
     at: Sequence[float] | None = None
     to: Sequence[float] | None = None
     u: tuple[float, float] | None = None
@@ -647,6 +781,10 @@ class Accent:
     rot: float = 0.0
     core: float = 0.0               # glow: hot core (fraction of r)
     under: bool = False
+    len_u: float = 7.0              # webrays: stroke length (units)
+    width_u: float = 2.2            # webrays: stroke width at its root (units; tapers to a point)
+    n: int = 8                      # webrays: stroke count
+    hex2: str = ""                  # bubble: rim colour (default: the body mixed 60 % toward white)
 
 
 def _accent_layer(a: Accent, size: int, cam) -> np.ndarray:
@@ -668,6 +806,45 @@ def _accent_layer(a: Accent, size: int, cam) -> np.ndarray:
             polys.append([(x + c_ * r0 - s_ * w, y + s_ * r0 + c_ * w), (x + c_ * r1 - s_ * w * .4, y + s_ * r1 + c_ * w * .4),
                           (x + c_ * r1 + s_ * w * .4, y + s_ * r1 - c_ * w * .4), (x + c_ * r0 + s_ * w, y + s_ * r0 - c_ * w)])
         return solid(poly_mask(size, size, polys), hex01(a.hex), a.alpha)
+    if a.kind == "webrays":         # gem tier 5 (review r3): n short bright strokes outside the stone, root width_u
+        polys = []                  # tapering to a point, un-inked, with a soft halo; r_u = inner radius, rot = phase
+        glow = np.zeros((size, size), np.float32)
+        yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+        for i in range(a.n):
+            ang = 2 * math.pi * i / a.n + math.radians(a.rot)
+            c_, s_ = math.cos(ang), math.sin(ang)
+            r0, r1, w = r, r + a.len_u * s, a.width_u * s / 2
+            polys.append([(x + c_ * r0 - s_ * w, y + s_ * r0 + c_ * w), (x + c_ * r1, y + s_ * r1),
+                          (x + c_ * r0 + s_ * w, y + s_ * r0 - c_ * w), (x + c_ * (r0 - w), y + s_ * (r0 - w))])
+            vx, vy = c_ * (r1 - r0), s_ * (r1 - r0)
+            t = np.clip(((xx + 0.5 - x - c_ * r0) * vx + (yy + 0.5 - y - s_ * r0) * vy) / max(vx * vx + vy * vy, 1e-6), 0, 1)
+            d = np.hypot(xx + 0.5 - (x + c_ * r0 + t * vx), yy + 0.5 - (y + s_ * r0 + t * vy)) / max(2.6 * s, 1e-3)
+            glow = np.maximum(glow, np.clip(1 - d, 0, 1) ** 2 * (1 - 0.6 * t))
+        halo = solid(glow * 0.45 * a.alpha, hex01(a.hex), 1.0)
+        return over(halo, solid(poly_mask(size, size, polys), hex01(a.hex), a.alpha))
+    if a.kind == "bubble":          # web venom bubbles (drawn 'over', never inked; review r3: black donuts): a
+        yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)        # translucent body, a light rim, a thin outline
+        d = np.hypot(xx + 0.5 - x, yy + 0.5 - y)                    # in the body's own line tone, a highlight dot
+        u = s
+        rim_w, ol_w = max(1.0 * u, 1.2), max(0.7 * u, 1.0)
+
+        def disc(rr):
+            return np.clip(rr - d + 0.5, 0.0, 1.0)
+        body = hex01(a.hex)
+        rim = hex01(a.hex2) if a.hex2 else body + (1 - body) * 0.6
+        line = line_tone(body[None, None, :])[0, 0]
+        out = solid(disc(r + ol_w), line, a.alpha)
+        out = over(out, solid(disc(r), rim, a.alpha))
+        out = over(out, solid(disc(r - rim_w), body, a.alpha * 0.8))
+        hx, hy = x - 0.38 * r, y - 0.38 * r
+        hd = np.hypot(xx + 0.5 - hx, yy + 0.5 - hy)
+        out = over(out, solid(np.clip(0.26 * r - hd + 0.5, 0.0, 1.0), (1.0, 1.0, 1.0), 0.9 * a.alpha))
+        return out
+    if a.kind == "webglow":         # Rig.ts glow(): α at the centre, .45 α at 0.4 r, 0 at r (linear between stops)
+        yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+        d = np.hypot(xx + 0.5 - x, yy + 0.5 - y) / max(r, 1e-3)
+        g = np.where(d < 0.4, 1 - d / 0.4 * 0.55, 0.45 * np.clip((1 - d) / 0.6, 0, 1)) * a.alpha
+        return solid(g, hex01(a.hex), 1.0)
     if a.kind in ("glow", "glowline"):
         yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
         if a.kind == "glowline":
@@ -698,6 +875,8 @@ class IconStyle:
     samples: int = 12
     auto_glow: float = 0.0              # > 0: a soft under-glow of the emissive regions' colour (web ``under``)
     auto_glow_r: float = 1.9            # glow radius × the emissive area's radius (≥ 9 u)
+    line_min_u: float = 0.0             # > 0: drop overlap-line pieces shorter than this (units; review art 3: the
+                                        # broken dashes a near edge-on torus / girdle leaves are the web's saw-teeth)
 
 
 @dataclass
@@ -739,6 +918,8 @@ def render_icon(size: int = ICON_PX, style: IconStyle | None = None, accents: Se
     # keep only lines that start at a true depth discontinuity (a jump much larger than the surface's own slope
     # on either side) — a sphere's steep rim is a smooth slope, not an overlap
     lmask &= dilate(depth_breaks(ps.depth, ps.cov, thr).astype(np.float32), st.line_u * pxu + 1.0) > 0.5
+    if st.line_min_u > 0:
+        lmask = drop_small_runs(lmask, st.line_min_u * pxu * (2 * st.line_u * pxu))
     # 2 — region seams: two palette regions of different colour meeting on one surface (both sides, own tone)
     smask = np.zeros((H, W), bool)
     if st.seams:
@@ -791,15 +972,22 @@ def render_icon(size: int = ICON_PX, style: IconStyle | None = None, accents: Se
     inkm = dilate(np.clip(fa * 1.25, 0, 1), st.ink_u * s) if st.ink_u > 0 else fa
     inked = over(solid(inkm, ink), out)
     layers = inked
+    # glows and the drop shadow never reach the square's edge (review: the abyssal bow's emissive haze and the
+    # tight glyphs' shadows were clipped by the texture border, a faint straight edge in the slot): soft layers
+    # fade out over the outer GLOW_EDGE_U
+    win = _edge_window(size, GLOW_EDGE_U * s)
     # 5 — drop shadow
     if st.shadow:
         sh = _shift(inked[:, :, 3], -int(round(SHADOW_OFF_U[1] * s)), -int(round(SHADOW_OFF_U[0] * s)), 0.0)
-        sh = blur(sh, SHADOW_BLUR_U * s / 2.0) * SHADOW_ALPHA
+        sh = blur(sh, SHADOW_BLUR_U * s / 2.0) * SHADOW_ALPHA * win
         layers = over(solid(sh, (0, 0, 0)), inked)
     if glow_layer is not None:                      # under-glow: behind the inked body and its shadow
+        glow_layer[:, :, 3] *= win
         layers = over(glow_layer, layers)
     for ac in accents:                              # over(dst, src) = src composited over dst
         lay = _accent_layer(ac, size, cam)
+        if ac.kind in ("glow", "webglow", "glowline", "rays"):
+            lay[:, :, 3] *= win
         layers = over(lay, layers) if ac.under else over(layers, lay)
     if post is not None:
         layers = post(layers, s)
@@ -807,7 +995,22 @@ def render_icon(size: int = ICON_PX, style: IconStyle | None = None, accents: Se
     res = IconResult(rgba, fa, inked[:, :, 3])
     gate_rgba = (np.clip(inked, 0, 1) * 255.0 + 0.5).astype(np.uint8)     # the inked body, before glows / accents
     res.gate = icon_gate(res, st.ink_u, size, gate_rgba)
+    fb = int(max(rgba[0, :, 3].max(), rgba[-1, :, 3].max(), rgba[:, 0, 3].max(), rgba[:, -1, 3].max()))
+    res.gate["finalBorderAlphaMax"] = fb            # with glows / accents: nothing visible may touch the edge
+    if fb > 2:
+        res.gate["pass"] = False
     return res
+
+
+GLOW_EDGE_U = 7.0                       # soft glows fade to 0 over the outer 7 u of the 96-unit square
+
+
+def _edge_window(size: int, margin_px: float) -> np.ndarray:
+    """1 inside, smoothstep to 0 at the texture border over ``margin_px`` (separable, min of the two axes)."""
+    i = np.arange(size, dtype=np.float32) + 0.5
+    w = np.clip(np.minimum(i, size - i) / max(margin_px, 1.0), 0.0, 1.0)
+    w = w * w * (3.0 - 2.0 * w)
+    return np.minimum.outer(w, w).astype(np.float32)
 
 
 # ── gate ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -930,6 +1133,50 @@ def resize(rgba: np.ndarray, px: int) -> np.ndarray:
     return _resize(rgba, px)
 
 
+# ── Slate's view of a UI texture (review art 2: the _ui sheets must not look cleaner than the game) ──────────
+def mip_chain(rgba: np.ndarray) -> list[np.ndarray]:
+    """Premultiplied float mip levels of an RGBA icon, each the 2×2 average of the one above (UE TMGS_SimpleAverage,
+    the import setting of every T_UI_* texture: Scripts/abyss_content/ue/textures.py)."""
+    f = rgba.astype(np.float32) / 255.0
+    lvl = np.dstack([f[:, :, :3] * f[:, :, 3:4], f[:, :, 3:4]])
+    out = [lvl]
+    while min(lvl.shape[:2]) > 1:
+        h, w = lvl.shape[0] // 2 * 2, lvl.shape[1] // 2 * 2
+        lvl = down(lvl[:h, :w], 2)
+        out.append(lvl)
+    return out
+
+
+def _bilinear(img: np.ndarray, px: int) -> np.ndarray:
+    """GPU bilinear sample of ``img`` at the centres of a ``px``² grid (clamp addressing)."""
+    n = img.shape[0]
+    c = (np.arange(px) + 0.5) / px * n - 0.5
+    i0 = np.clip(np.floor(c).astype(int), 0, n - 1)
+    i1 = np.clip(i0 + 1, 0, n - 1)
+    t = np.clip(c - np.floor(c), 0, 1).astype(np.float32)
+    rows = img[i0] * (1 - t)[:, None, None] + img[i1] * t[:, None, None]
+    return rows[:, i0] * (1 - t)[None, :, None] + rows[:, i1] * t[None, :, None]
+
+
+def slate_sample(rgba: np.ndarray, px: int, mip_filter: str = "point") -> np.ndarray:
+    """``rgba`` drawn at ``px``² by Slate: the hardware picks the mip from the screen derivative (λ = log2(size / px))
+    and filters bilinearly inside it — ``mip_filter`` 'point' (UE's TEXTUREGROUP_UI default, MipFilter=point: the
+    nearest level) or 'linear' (trilinear). Premultiplied throughout, returned straight-alpha uint8."""
+    chain = mip_chain(rgba)
+    lam = max(0.0, math.log2(rgba.shape[0] / px))
+    if mip_filter == "point":
+        lvl = min(int(math.floor(lam + 0.5)), len(chain) - 1)
+        pm = _bilinear(chain[lvl], px)
+    else:
+        l0 = min(int(math.floor(lam)), len(chain) - 1)
+        l1 = min(l0 + 1, len(chain) - 1)
+        t = lam - math.floor(lam)
+        pm = _bilinear(chain[l0], px) * (1 - t) + _bilinear(chain[l1], px) * t
+    a = pm[:, :, 3:4]
+    rgb = pm[:, :, :3] / np.maximum(a, 1e-6)
+    return (np.clip(np.dstack([rgb, a]), 0, 1) * 255 + 0.5).astype(np.uint8)
+
+
 def atlas(items: Sequence[tuple[str, np.ndarray]], cols: int, scale: float = 1.0, pad: int = 6,
           label_h: int = 12, bg=SHEET_BG, slot=SLOT_BG) -> np.ndarray:
     """A sheet of icons on slot-coloured cells with labels (5×7 font), icons at ``scale`` (1 = native pixels)."""
@@ -947,14 +1194,19 @@ def atlas(items: Sequence[tuple[str, np.ndarray]], cols: int, scale: float = 1.0
         ic = resize(rgba, px)
         img[y0 + pad - 2:y0 + pad - 2 + px, x0 + pad - 2:x0 + pad - 2 + px] = _composite(
             slot, ic)
-        review.draw_text(img, x0 + 2, y0 + px + 2 * pad - 2, name[:max(4, (cw - 4) // 6)], rgb=(200, 196, 210))
+        fit_n = max(4, (cw - 10) // 6)               # 6 px glyphs; a clear gap to the next cell's label
+        label = name if len(name) <= fit_n else name[:fit_n - 1] + "."
+        review.draw_text(img, x0 + 2, y0 + px + 2 * pad - 2, label, rgb=(200, 196, 210))
     return img
 
 
 def ui_sheet(items: Sequence[tuple[str, np.ndarray]], cols: int = 8, sizes=(48, 36),
-             qualities: Sequence[str] = ("normal", "magic", "rare", "legendary", "set")) -> np.ndarray:
+             qualities: Sequence[str] = ("normal", "magic", "rare", "legendary", "set"),
+             sampler: str = "slate") -> np.ndarray:
     """In-game sizes: each icon at 48 and 36 px in a dark slot with a 2 px quality frame (as the inventory /
-    skill bar draws them), plus a 36 px copy on the lighter panel colour — the readability check."""
+    skill bar draws them), plus a 36 px copy on the lighter panel colour — the readability check. ``sampler``
+    'slate' = what the game shows (``slate_sample``: the imported mip chain, nearest level, bilinear), 'box' = an
+    ideal area filter (cleaner than any runtime)."""
     pad = 6
     cw = sizes[0] + sizes[1] + 3 * pad + 8
     ch = sizes[0] + 2 * pad + 14
@@ -970,10 +1222,11 @@ def ui_sheet(items: Sequence[tuple[str, np.ndarray]], cols: int = 8, sizes=(48, 
             box = np.zeros((sz + 4, sz + 4, 3), np.uint8)
             box[:] = q.astype(np.uint8)
             box[2:-2, 2:-2] = bg
-            ic = resize(rgba, sz)
+            ic = slate_sample(rgba, sz) if sampler == "slate" else resize(rgba, sz)
             box[2:-2, 2:-2] = _composite(bg, ic)
             img[y0:y0 + sz + 4, xo:xo + sz + 4] = box
-        review.draw_text(img, x0, y0 + sizes[0] + 8, name[:14], rgb=(190, 186, 200))
+        label = name if len(name) * 6 <= cw - pad else name[:max(1, (cw - pad) // 6 - 1)] + "."  # 6 px glyphs, no overlap
+        review.draw_text(img, x0, y0 + sizes[0] + 8, label, rgb=(190, 186, 200))
     return img
 
 
@@ -981,6 +1234,53 @@ def save_preview(name: str, file: str, img: np.ndarray) -> list[str]:
     """Native truecolour preview (``pngio.write_png_native``: split into ≤ 200 KB tiles, never resampled)."""
     out = pngio.write_png_native(preview_dir(name) / file, img)
     return [Path(p).relative_to(paths.preview_root()).as_posix() for p, _ in out]
+
+
+# ── which preview file shows which asset (manifest ``previews`` per texture, review art 10) ─────────────────────
+def atlas_boxes(n: int, px: int, cols: int, pad: int = 6, label_h: int = 12) -> list[tuple[int, int, int, int]]:
+    """(y0, y1, x0, x1) of each cell of ``atlas(items, cols, scale)`` with ``px`` = the drawn icon size."""
+    cw, ch = px + 2 * pad, px + 2 * pad + label_h
+    out = []
+    for i in range(n):
+        r, c = divmod(i, cols)
+        out.append((pad + r * ch, pad + r * ch + ch - pad, pad + c * cw, pad + c * cw + cw - pad))
+    return out
+
+
+def ui_sheet_boxes(n: int, cols: int = 8, sizes=(48, 36)) -> list[tuple[int, int, int, int]]:
+    """(y0, y1, x0, x1) of each cell of ``ui_sheet``."""
+    pad = 6
+    cw = sizes[0] + sizes[1] + 3 * pad + 8
+    ch = sizes[0] + 2 * pad + 14
+    out = []
+    for i in range(n):
+        r, c = divmod(i, cols)
+        out.append((pad + r * ch, pad + r * ch + ch - pad, pad + c * cw, pad + c * cw + cw - pad))
+    return out
+
+
+def save_preview_cells(name: str, file: str, img: np.ndarray, boxes) -> list[list[str]]:
+    """``save_preview`` that also says, per cell box, which written file(s) show it: the native writer splits a large
+    sheet into ``<stem>_2.png`` … tiles along one axis (pngio.write_png_native), so a cell belongs to the tile(s) its
+    box overlaps. Falls back to every file of the sheet when the split is not a single-axis stack."""
+    out = pngio.write_png_native(preview_dir(name) / file, img)
+    rels = [Path(p).relative_to(paths.preview_root()).as_posix() for p, _ in out]
+    if len(out) == 1:
+        return [list(rels) for _ in boxes]
+    info = [pngio.png_info(p) for p, _ in out]
+    H, W = img.shape[:2]
+    if all(i["width"] == W for i in info) and sum(i["height"] for i in info) == H:
+        ax, sizes = 0, [i["height"] for i in info]
+    elif all(i["height"] == H for i in info) and sum(i["width"] for i in info) == W:
+        ax, sizes = 1, [i["width"] for i in info]
+    else:
+        return [list(rels) for _ in boxes]
+    edges = np.concatenate([[0], np.cumsum(sizes)])
+    res = []
+    for y0, y1, x0, x1 in boxes:
+        a0, a1 = (y0, y1) if ax == 0 else (x0, x1)
+        res.append([r for r, e0, e1 in zip(rels, edges[:-1], edges[1:]) if a0 < e1 and a1 > e0])
+    return res
 
 
 # ── manifest ────────────────────────────────────────────────────────────────────────────────────────────

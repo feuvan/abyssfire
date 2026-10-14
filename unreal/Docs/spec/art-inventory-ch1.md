@@ -145,7 +145,7 @@ normals **in clip space** so thickness is constant on screen) + painted interior
 | Monsters | ink `#120C18` (slime: ink too; ghostly monsters later may override) | 3.0 px (bosses 3.5) | `line` tone |
 | NPCs | ink `#120C18` | 3.0 px | `line` tone |
 | Interactive props (chest, portal, lore, loot bag, potions, hearthstone, puzzle pillar) | the prop's `line` tone (softer ink) | 2.0 px | yes |
-| Decorations (trees, bushes, rocks, camp props, ruins) | the material's `line` tone | 1.2 px (none on grass/flower ground cover) | sparse |
+| Decorations (trees, bushes, rocks, camp props, ruins) | the material's `line` tone | 1.2 px (none on grass/flower ground cover); **1.4 px on the `Props_Plains` palette** (camp props, palisade, rocks, story decor, goblin camp — DECISIONS R14); gate upper bound: baked-hull rim median ≤ 1.75 × the width (R14) | sparse |
 | Ground / water | none | 0 | none |
 | VFX | none (soft additive) — except "inked" bolts/claws that draw a dark under-stroke (`FxKit.ts:279-301`, `SkillEffectSystem.ts:170-181`) | — | — |
 
@@ -963,7 +963,10 @@ whose ashes still glow faintly `#FF8A2A`, bone/hide totems in the war-banner lan
 
 ### 6.10 Terrain skirt
 Beyond the border ring (15–20 m): rolling grass hills, hedges (`#5F9A3E`) and oaks so the fixed camera never shows the
-void (`world-map-nav.md` §15.1): `SM_Terrain_Plains_SkirtHill_A..C` + reused foliage, no collision.
+void (`world-map-nav.md` §15.1). **Remake (DECISIONS R15):** the hills are the **terrain heightfield** (`SkirtHillCm`,
+`AAbyssZoneActor::BuildSkirt`) dressed from the theme's grove pool (oaks, fruit trees, bushes, hedge outcrops), no
+collision; the `SM_Terrain_Plains_SkirtHill_A..C` meshes were retired (art review 9: shaded mounds cannot match the
+painted unlit terrain).
 
 ---
 
@@ -1443,7 +1446,7 @@ Hearthstone`; decor `SM_Foliage_Plains_Oak_A/B/C`, `_FruitTree_A/B`, `_BerryBush
 `SM_Prop_Story_ElvenRuins`, `SM_Prop_Story_GoblinTotem`, `SM_Prop_Story_BrokenAltar` (+ opt. `_DryWell`); lore
 `SM_Prop_Lore_AncientTablet/TornJournal/CrystalShard/CarvedStone`; interactive `SK_Prop_TreasureChest`,
 `SM_Prop_GoldPile`, `SM_Prop_Event_RunePillar`, `SM_Prop_ExitPortal`; markers `SM_FX_ClueMagnifier`, `SM_FX_GuideArrow`,
-`SM_Prop_Gather_EmeraldHerb` (NEW), `DM_TargetRing`, `DM_BlobShadow`; skirt `SM_Terrain_Plains_SkirtHill_A..C`;
+`SM_Prop_Gather_EmeraldHerb` (NEW), `DM_TargetRing`, `DM_BlobShadow`; skirt = terrain heightfield + grove pool (R15: `SM_Terrain_Plains_SkirtHill_A..C` retired);
 opt. goblin camp kit.
 
 **Loot**: `SM_Loot_Bag` (+ quality MIs), `SM_Pickup_PotionHP`, `SM_Pickup_PotionMP`, `SM_Pickup_GoldCoin`,

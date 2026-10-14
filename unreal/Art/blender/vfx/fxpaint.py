@@ -312,6 +312,41 @@ def blur(a: np.ndarray, sigma: float) -> np.ndarray:
     return conv(conv(a.astype(np.float32), 0), 1)
 
 
+def gutter(img: np.ndarray, sides: str = "TBLR", outer: float = 1.0, inner: float = 6.0) -> np.ndarray:
+    """A transparent gutter inside one cell (VFX review 4): alpha × smoothstep(outer, inner, distance of the pixel
+    centre to the cell border in px) on ``sides`` (T B L R) — the outermost pixel row is exactly 0, nothing is
+    touched from ``inner`` px in, so a cell never meets its quad border (or its strip neighbour) at non-zero
+    alpha and a shape that reached the border fades out instead of being clipped hard."""
+    h, w = img.shape[:2]
+
+    def ramp(d):
+        t = np.clip((d - outer) / max(inner - outer, 1e-6), 0.0, 1.0)
+        return t * t * (3.0 - 2.0 * t)
+    ys = np.arange(h, dtype=np.float32) + 0.5
+    xs = np.arange(w, dtype=np.float32) + 0.5
+    m = np.ones((h, w), np.float32)
+    if "T" in sides:
+        m *= ramp(ys)[:, None]
+    if "B" in sides:
+        m *= ramp(h - ys)[:, None]
+    if "L" in sides:
+        m *= ramp(xs)[None, :]
+    if "R" in sides:
+        m *= ramp(w - xs)[None, :]
+    out = img.astype(np.float32).copy()
+    out[..., 3] *= m
+    return out
+
+
+def alpha_extent(img: np.ndarray, thr: float = 0.5 / 255.0) -> float:
+    """Largest |x − centre| / |y − centre| (px, to the far edge of the pixel) of any texel with alpha > ``thr``."""
+    h, w = img.shape[:2]
+    ys, xs = np.nonzero(img[..., 3] > thr)
+    if len(xs) == 0:
+        return 0.0
+    return float(max(np.abs(xs + 0.5 - w / 2).max(), np.abs(ys + 0.5 - h / 2).max()) + 0.5)
+
+
 def strip(cells: Iterable[np.ndarray]) -> np.ndarray:
     """Horizontal strip of equal cells (WorldContract 5.4: the instance Variant picks the cell)."""
     return np.concatenate(list(cells), axis=1)

@@ -5,11 +5,12 @@
 
 A bulkier goblin warlord (helm crown 1.17 m, horn tips ≈ 1.38 m): horned iron helm with a dark rim band, rivets and
 a nose guard; red war paint on the cheeks; lower tusks — the right one snapped off (碎牙); a wolf-pelt mantle over
-the shoulders with dark fur strokes and a pelt tail down the back (``pelt_*`` chain); a skull pauldron on the weapon
-shoulder; a studded leather cuirass, a strap belt with a trophy-skull buckle, loincloth flaps, leather bracers and
+the shoulders with a jagged tufted hem, two rows of dark fur tufts and a pelt tail down the back (``pelt_*`` chain); a
+big skull pauldron on the front of the weapon shoulder (turned to the se camera); a studded leather cuirass, a strap belt with a trophy-skull buckle, loincloth flaps, leather bracers and
 iron knee guards; ember-lit eyes (emissive + the ``eyeEmbers`` glow cards). Weapon: the rusted cleaver
-``SM_Mon_GoblinChief_Cleaver`` (broad chopping blade, spine back / edge leading, honed edge, rust, a hole near the
-tip, leather grip, iron pommel) on ``weapon_r``. Clips: Idle 667, Walk 600 (1.50 m/s, no slide), Attack01 overhead
+``SM_Mon_GoblinChief_Cleaver`` (broad chopping blade ≈ 17 × 32 cm, ≈ 51 cm overall — spec ≈ 17 × 33 / 50 cm; spine
+back / edge leading, honed edge, rust, a hole near the tip, leather grip, iron pommel) on ``weapon_r``, carried at
+READY out at the weapon side at the web's 52° turned outward (the flat, handle and edge read in every front view). Clips: Idle 667, Walk 600 (1.50 m/s, no slide), Attack01 overhead
 chop 500 (WindupEnd 155, Contact 250), Hurt 200, Death 500, Roar 1200 (boss intro, FX_Roar 450), Stun 600.
 The chop's contact key and the Stun keep the face (ember eyes, war paint) out from under the helm brim. UI portrait
 ``T_UI_Portrait_GoblinChief`` (spec §9.5, R11; boss intro ``cs_boss_goblin_chief``): the Portrait pose, 512²,
@@ -35,6 +36,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import mesh as M, outline, rig as R, scene, shading  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 from kit.rig import Bind  # noqa: E402
 
@@ -71,7 +73,11 @@ LOOK = GB.Look(
         socket=Region("#2A1A12", .30, .10), paint=Region("#BE1E1E", .35, .30),
     ))
 
-CLEAVER_K = 1.15            # "a huge rusted cleaver": the web blade scaled up a little for the 3D read
+CLEAVER_BW = 0.85           # blade width × the web polygon's 9 u → 7.65 u ≈ 17 cm (spec ≈ 17 × 33 cm, ≈ 50 cm overall;
+                            # art review: the old manifest numbers carried a 1.15 scale the mesh never had)
+GRIP_END, POMMEL_Y = -5.0, -5.75   # u: grip butt and pommel centre — the 8 u web grip: a shorter one put the pommel
+                                   # into the bracer in the hammer-grip chop (cloth × limb QA), so the cleaver is
+                                   # ≈ 54 cm overall against the spec's ≈ 50 (manifest note)
 CLEAVER_REGIONS = outline.ink_regions(dict(
     # blade steel with a light shade band (the warrior's blade lesson: the shaded flat stays mid-grey steel,
     # never a dark iron slab)
@@ -82,6 +88,11 @@ CLEAVER_REGIONS = outline.ink_regions(dict(
 
 
 BRACER_TOP = 0.34          # bracer top edge, fraction of the forearm from the elbow
+MANTLE_SEGS = 24           # mantle columns (every other one a hanging fur tuft)
+MANTLE_JAG = 0.07          # tuft depth (spine fraction) front / back
+PAULDRON_K = 1.5           # skull pauldron scale (art review: ≈ 10 cm → 15 cm)
+PAULDRON_AT = (-2.1, 1.9, 2.4)     # u from the shoulder joint (lat, fwd, up): the front of the weapon shoulder
+PAULDRON_OUT = (-0.8, 0.75, 0.3)   # the skull's face (lat, fwd, up): turned to the se camera
 
 
 class ChiefKit(GB.GoblinKit):
@@ -149,13 +160,14 @@ def strip_along(pts, lat_dir: Vector, normal_fn, width: float, thick: float) -> 
 
 # ── body ───────────────────────────────────────────────────────────────────────────────────────────────
 LOD1_RATIO = 0.45
+LOD1_HULL = 0.72            # LOD1 hull proxies decimated this much further (family budget hull ≤ 0.75 × toon)
 LOD1_SKIP = ("helm_rivet", "stud", "cuirass_seam", "horn_ridge", "knee_rivet", "buckle_eye", "pauldron_eye",
              "pauldron_nose", "bracer_lace", "helm_ridge", "pauldron_jaw", "fur_stroke", "elbow", "knee")
 
 
 def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
     from kit import asset
-    b = GB.builder(ASSET, pal, PREFIX, lod, LOD1_SKIP, LOD1_RATIO)
+    b = GB.builder(ASSET, pal, PREFIX, lod, LOD1_SKIP, LOD1_RATIO, hull_ratio=LOD1_HULL)
     b.regions(**GB.regions_for(LOOK))
     u, hk = kit.u, kit.hk
     J = kit.J
@@ -175,8 +187,8 @@ def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
     hid = b.add(helm, "iron", head, name="helm", hull_pad=True)
     band = G.surface_ring(hs, lambda a: 4.35 - 0.25 * math.cos(math.radians(a)), hk(1.55), hk(0.45), segs=24)
     b.add(band, "iron_dark", head, name="helm_band", outline=False, covered_by=hid)
-    for k in range(8):
-        a = -180.0 + 45.0 * k + 22.5
+    for k in range(6):                     # (8 → 6 rivets: the fur tufts' triangles, within the 9 k budget)
+        a = -180.0 + 60.0 * k + 30.0
         h = 4.35 - 0.25 * math.cos(math.radians(a))
         b.add(G.surface_dot(hs, h, a, hk(0.46), hk(0.75), low=True), "iron_light", head, name="helm_rivet",
               outline=False, covered_by=hid)
@@ -228,9 +240,9 @@ def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
     inner = [[t.point(s_, a, u(0.06)) for a in angs] for s_ in ss]
     cu = C.thick_patch(outer, inner, wrap_u=True)
     cid = b.add(cu, "leather", spine, name="cuirass", hull_pad=True)
-    # 3 × 3 iron studs on the chest (web) and 2 × 2 on the back, either side of the pelt tail
+    # 3 × 3 iron studs on the chest (web) and a pair on the back, either side of the pelt tail
     studs = [(s_, a) for s_ in (0.27, 0.43, 0.59) for a in (-30.0, 0.0, 30.0)] + \
-            [(s_, a) for s_ in (0.31, 0.47) for a in (152.0, -152.0)]
+            [(s_, a) for s_ in (0.39,) for a in (152.0, -152.0)]
     for s_, a in studs:
         b.add(G.surface_dot(_Off(t, u(0.62)), s_, a, u(0.7), u(0.6), low=True), "iron_light", spine,
               name="stud", outline=False, covered_by=cid)
@@ -256,8 +268,15 @@ def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
                                             (1.06, u(5.0), u(5.3), u(-0.1)), (1.12, u(3.6), u(4.2), u(0.1))],
                        exp=2.3)
     ms_ = list(np.linspace(0.62, 1.12, 6))
-    angs = G.angles(24)
-    hem = {a: 0.62 - (0.035 if (i % 2) else 0.0) - 0.02 * math.cos(math.radians(a)) for i, a in enumerate(angs)}
+    angs = G.angles(MANTLE_SEGS)
+    # jagged fur hem (art review: the smooth hem read as grey cloth): every other column hangs in a pointed tuft,
+    # deepest front and back (the sides stay short over the arms — cloth × limb QA)
+    def tuft(i, a):
+        if not i % 2:
+            return 0.0
+        d = MANTLE_JAG * (0.3 + 0.7 * abs(math.cos(math.radians(a))) ** 3) * (0.8 + 0.4 * ((i // 2) % 2))
+        return min(d, 0.03) if 15.0 < a < 80.0 else d      # front-left: the free fist swings under it in the chop
+    hem = {a: 0.62 - tuft(i, a) - 0.02 * math.cos(math.radians(a)) for i, a in enumerate(angs)}
     outer, inner = [], []
     for r, s_ in enumerate(ms_):
         ro, ri = [], []
@@ -271,11 +290,13 @@ def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
     mbind = kit.blend4("spine_03", "neck_01", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", falloff=3.0,
                        smooth=0.03)
     mid_ = b.add(mantle, "fur", mbind, name="mantle", hull_pad=True)
-    for i in range(14):
-        a = -180.0 + 360.0 / 14 * i + 7.0
-        st = G.surface_paint(_Off(mant, u(0.55)), [(0.86, a), (0.74, a + 4.0), (0.66, a + 2.0)], u(0.8), u(0.1),
-                             steps=4, taper=0.6)
-        b.add(st, "fur_dark", mbind, name="fur_stroke", outline=False, covered_by=mid_)
+    # fur strokes: two staggered rows of large tufts (art review: 14 thin strokes vanished at 1:1)
+    for row, (s0, s1, n_, w_) in enumerate(((0.98, 0.80, 14, 1.3), (0.80, 0.60, 16, 1.5))):
+        for i in range(n_):
+            a = -180.0 + 360.0 / n_ * i + (11.0 if row else 0.0)
+            path = [(s0, a), ((s0 + s1) / 2, a + 5.0), (s1, a + 2.0)]
+            st = G.surface_paint(_Off(mant, u(0.55)), path, u(w_), u(0.12), steps=3, taper=0.75)
+            b.add(st, "fur_dark", mbind, name="fur_stroke", outline=False, covered_by=mid_)
     # pelt tail down the back on the pelt chain
     bones = kit.rig.obj.data.bones
     chain = [bones["pelt_01"].head_local, bones["pelt_02"].head_local, bones["pelt_03"].head_local,
@@ -285,10 +306,12 @@ def build_body(pal: Palette, kit: ChiefKit, lod: int = 0) -> bpy.types.Object:
     tb = GB.chain_bind(chain[0], chain[-1], ("spine_03", "pelt_01", "pelt_02", "pelt_03"))
     b.add(tail, "fur", tb, name="pelt_tail", sub_regions={1: "fur", 2: "fur_dark"}, hull_pad=True)
     # skull pauldron on the weapon (right) shoulder, over the mantle
+    # (art review: at ≈ 10 cm it read as a 4–5 px dot at 1:1 — the web's big chest skull is a key chief cue): 1.5×,
+    # set on the front of the shoulder and turned to the camera-facing side (the se view sees the weapon shoulder)
     S = J["shoulder_r"]
-    c = S + V(-u(1.6), u(0.6), u(3.3))
-    out = (V(-1.0, 0.45, 0.35)).normalized()
-    m = G.frame_z(c, out, Vector((0, 0, 1)))
+    c = S + V(*(u(x) for x in PAULDRON_AT))
+    out = (V(*PAULDRON_OUT)).normalized()
+    m = G.frame_z(c, out, Vector((0, 0, 1))) @ Matrix.Diagonal((PAULDRON_K,) * 3 + (1.0,))
     pb = Bind.blend("clavicle_r", "upperarm_r", falloff=2.0)
     cran = M.ellipsoid((u(2.3), u(2.5), u(2.0)), (0, 0, 0), sides=12, rings=7).transform(m)
     pid = b.add(cran, "bone", pb, name="pauldron_skull", hull_pad=True)
@@ -364,6 +387,7 @@ def build_cleaver(pal: Palette) -> bpy.types.Object:
     rig = Bind.rigid("root")
     # blade outline in (z, y) from the web polygon (x → z, −y → y), slightly bellied edge
     web = [(-1.6, 2.6), (1.4, 3.2), (6.4, 6.4), (6.8, 15.4), (-1.2, 16.8), (-2.2, 15.0)]
+    bw = CLEAVER_BW
     pts = []
     for i in range(len(web)):
         a, c = Vector(web[i]), Vector(web[(i + 1) % len(web)])
@@ -372,12 +396,12 @@ def build_cleaver(pal: Palette) -> bpy.types.Object:
             q = a.lerp(c, k / n)
             if i == 2:               # belly of the edge
                 q.x += 0.35 * math.sin(math.pi * k / n)
-            pts.append((q.x * u, q.y * u))
+            pts.append((q.x * u * bw, q.y * u))
     pts = C.ccw(pts)
     th = 0.85 * u
 
     def thick_at(z):        # spine thick, edge thin (wedge)
-        k = (z / u + 2.2) / 9.0
+        k = (z / (u * bw) + 2.2) / 9.0
         return th * (1.0 - 0.78 * max(0.0, min(1.0, k)))
     # a closed wedge slab: x across the thickness (thick spine, thin edge), outline in the (z, y) plane: x across thickness, outline in the (z, y) plane
     bm = bmesh.new()
@@ -401,30 +425,30 @@ def build_cleaver(pal: Palette) -> bpy.types.Object:
     for sx in (1, -1):
         outer, inner = [], []
         for z, y in edge:
-            zz = z * u
+            zz = z * u * bw
             x = sx * (thick_at(zz) * 0.5 + 0.0006)
-            outer.append([Vector((x, y * u, zz - 1.0 * u)), Vector((x, y * u, zz - 0.05 * u))])
-            inner.append([Vector((x - sx * 0.002, y * u, zz - 1.0 * u)), Vector((x - sx * 0.002, y * u, zz - 0.05 * u))])
+            outer.append([Vector((x, y * u, zz - 0.9 * u)), Vector((x, y * u, zz - 0.05 * u))])
+            inner.append([Vector((x - sx * 0.002, y * u, zz - 0.9 * u)), Vector((x - sx * 0.002, y * u, zz - 0.05 * u))])
         b.add(C.thick_patch(outer, inner), "edge", rig, name="edge", outline=False, covered_by=bid)
         # rust blotches + the hole near the spine at the tip
         for (z, y, rz, ry, reg) in ((1.4, 12.2, 1.6, 1.1, "rust"), (3.6, 8.0, 1.1, 0.8, "rust"),
                                      (2.4, 4.6, 0.7, 0.5, "rust"), (0.6, 14.4, 0.9, 0.9, "hole")):
-            zz = z * u
-            d = M.ellipsoid((0.0016, ry * u, rz * u), (sx * (thick_at(zz) * 0.5), y * u, zz), sides=12, rings=4)
+            zz = z * u * bw
+            d = M.ellipsoid((0.0016, ry * u, rz * u * bw), (sx * (thick_at(zz) * 0.5), y * u, zz), sides=12, rings=4)
             b.add(d, reg, rig, name=reg, outline=False, covered_by=bid)
     # collar, leather-wrapped grip, iron pommel
     col = M.tube([Vector((0, 2.0 * u, -0.2 * u)), Vector((0, 3.1 * u, -0.2 * u))], [1.25 * u, 1.15 * u], sides=10,
                  dome0=0.0, dome1=0.0)
     b.add(col, "iron_dark", rig, name="collar", hull_pad=True)
-    grip = M.tube([Vector((0, -5.0 * u, 0)), Vector((0, -1.5 * u, 0)), Vector((0, 2.1 * u, -0.1 * u))],
+    grip = M.tube([Vector((0, GRIP_END * u, 0)), Vector((0, -1.2 * u, 0)), Vector((0, 2.1 * u, -0.1 * u))],
                   [0.92 * u, 0.98 * u, 0.95 * u], sides=10, dome0=0.0, dome1=0.0)
     gid = b.add(grip, "leather", rig, name="grip", hull_pad=True)
-    for k in range(6):
-        y = (-4.4 + k * 1.15) * u
+    for k in range(5):
+        y = (GRIP_END + 0.6 + k * 1.15) * u
         w = M.tube([Vector((0, y - 0.25 * u, 0)), Vector((0, y + 0.25 * u, 0))], [1.04 * u] * 2, sides=10,
                    dome0=0.0, dome1=0.0)
         b.add(w, "leather_line", rig, name="grip_wrap", outline=False, covered_by=gid)
-    pom = M.ellipsoid((1.35 * u, 1.3 * u, 1.35 * u), (0, -5.75 * u, 0), sides=12, rings=8)
+    pom = M.ellipsoid((1.35 * u, 1.3 * u, 1.35 * u), (0, POMMEL_Y * u, 0), sides=12, rings=8)
     b.add(pom, "iron_dark", rig, name="pommel", hull_pad=True)
     obj = b.build(CLEAVER)
     mt = shading.toon_material(pal)
@@ -449,20 +473,27 @@ def u3(A, lat: float, fwd: float, up: float) -> Vector:
     return V(lat * A.U, fwd * A.U, up * A.U)
 
 
-IDLE_ROLL = -60.0           # grip roll of the carried cleaver (hammer-grip solver: wrist_r[1] adds roll)
+IDLE_ROLL = 0.0             # grip roll of the carried cleaver (hammer-grip solver: wrist_r[1] adds roll)
+CARRY_ROLL = -60.0          # grip roll of the Roar's raised cleaver (flat up to the key light; the first cut's READY)
+# READY cleaver (art review: held blade-up in front of the belly, flat to the camera, the handle hidden, it read as a
+# grey plate over the cuirass studs and the skull buckle): the hand out at the weapon side at hip height and the
+# web's 52° turned out to that side (C.blade lat −1.28 = 52° from vertical, 8° back) — a 52° forward tilt points
+# the blade almost along the W1 view ray in every front view. Handle, flat and chopping edge read in se / front /
+# sw and the chest stays clear.
+READY_HAND_R = (-15.0, 3.0, 21.0)   # u (lat + left, fwd, up from the ground): the cleaver hand
+READY_CLEAVER = (-8.0, -1.28)       # C.blade(theta: deg from vertical, + forward; lat: − = out to the right)
 STRIKE = (0.0, 0.0, 0.0)    # the chop keys: edge leading, no extra roll
 
 
 def ready(A: GoblinAnims) -> BP:
-    """Web READY (GoblinChief.ts :304-314): lean .24, head −.2, cleaver forward at 52°, held out at the side;
-    the blade rolled 60° so its flat faces up toward the key light and the high camera (an edge-on or shaded flat
-    read as a dark slab)."""
-    wd, wu = C.blade(52.0, lat=-0.05)
+    """Web READY (GoblinChief.ts :304-314): lean .24, head −.2, the cleaver at 52°, held out at the weapon side
+    (``READY_HAND_R`` / ``READY_CLEAVER``: the 52° tilt turned out to the side so the W1 camera sees the flat)."""
+    wd, wu = C.blade(READY_CLEAVER[0], lat=READY_CLEAVER[1])
     return BP(
         pelvis=A.web_pelvis(46.5, 71.5), hip_yaw=-6.0, twist=4.0, head_pitch=-6.0,
         foot_r=A.web_foot(54.0, -0.085), foot_l=A.web_foot(41.5, 0.09),
         foot_r_rot=(0.0, 0.0, 12.0), foot_l_rot=(0.0, 0.0, 22.0), knee_r=V(-0.5, 1, 0), knee_l=V(0.5, 1, 0),
-        hand_r=u3(A, -10.5, 8.0, 24.0), elbow_r=V(-0.9, 0.4, -0.2), wpn=wd, wpn_up=wu, wrist_r=(0.0, IDLE_ROLL, 0.0),
+        hand_r=u3(A, *READY_HAND_R), elbow_r=V(-0.9, 0.4, -0.2), wpn=wd, wpn_up=wu, wrist_r=(0.0, IDLE_ROLL, 0.0),
         hand_l=u3(A, *READY_HAND_L), elbow_l=V(0.9, 0.4, -0.2), wrist_l=(10.0, 0.0, 0.0), flow=0.1)
 
 
@@ -603,10 +634,11 @@ def roar(A: GoblinAnims):
     """Roar 1200 ms (boss intro ``cs_boss_goblin_chief``, NEW): inhale and rear back, then a full-body roar —
     jaw wide, arms flung out and up, cleaver raised high at the side — held with a shudder, then back to READY."""
     R0 = A.ready()
-    inhale = R0.but(pelvis=R0.pelvis + u3(A, 0, -1.0, 0.8), lean=-14.0, head_pitch=-22.0, twist=R0.twist - 4.0,
+    Rr = R0.but(wrist_r=(0.0, CARRY_ROLL, 0.0))          # the roar's raised cleaver keeps the first cut's grip roll
+    inhale = Rr.but(pelvis=R0.pelvis + u3(A, 0, -1.0, 0.8), lean=-14.0, head_pitch=-22.0, twist=R0.twist - 4.0,
                     hand_r=u3(A, -11.0, 2.0, 20.0), **A._wkw(R0, 150.0, lat=-0.3), hand_l=u3(A, 9.0, 2.0, 21.0),
                     clav_l=(-6.0, 0.0), clav_r=(-6.0, 0.0), jaw=6.0, flow=0.2)
-    roar_ = R0.but(pelvis=R0.pelvis + u3(A, 0, 0.5, -1.6), lean=-8.0, head_pitch=-14.0, twist=R0.twist,
+    roar_ = Rr.but(pelvis=R0.pelvis + u3(A, 0, 0.5, -1.6), lean=-8.0, head_pitch=-14.0, twist=R0.twist,
                    foot_r=R0.foot_r + u3(A, -1.0, 1.0, 0), foot_l=R0.foot_l + u3(A, 1.0, -0.5, 0),
                    hand_r=u3(A, -17.0, 4.0, 40.0), elbow_r=V(-0.8, -0.2, -0.6), **A._wkw(R0, -10.0, lat=-0.55),
                    hand_l=u3(A, 16.0, 5.0, 37.0), elbow_l=V(0.8, -0.2, -0.6), clav_l=(18.0, 0.0), clav_r=(18.0, 0.0),
@@ -665,8 +697,9 @@ QA_PAIRS = {"loinLeg": ("loin", "legs"), "mantleArm": ("mantle", "forearms")}
 
 
 def cleaver_grip(co) -> bool:
-    k = WEB.U * CLEAVER_K
-    return -6.5 * k < co.y < 2.4 * k and abs(co.z) < 1.6 * k
+    """The fist round the grip and the pommel under it (item-local; the QA baseline of the first cut)."""
+    k = WEB.U
+    return -7.5 * k < co.y < 2.75 * k and abs(co.z) < 1.85 * k
 
 
 def eye_glows(rig):
@@ -746,12 +779,15 @@ def ship(previews: bool = True, verify: bool = True) -> int:
     R.attach_to_bone(cleaver, kit.rig, "weapon_r")
     A.bind_meshes(body, {"weapon_r": cleaver})
     cs = clips(A)
-    U = WEB.U * CLEAVER_K
+    U = WEB.U
     items = [mship.Item(cleaver, CLEAVER, "weapon_r", "axe",
-                        sockets=[{"name": "tip", "pos": (0.0, 16.0 * U, 2.5 * U)},
-                                 {"name": "mid", "pos": (0.0, 9.5 * U, 5.0 * U)}],
-                        extra={"lengthCm": round(22.6 * U * 100.0, 1), "bladeCm": [round(9.0 * U * 100, 1),
-                                                                                  round(14.2 * U * 100, 1)]},
+                        sockets=[{"name": "tip", "pos": (0.0, 16.0 * U, 2.5 * U * CLEAVER_BW)},
+                                 {"name": "mid", "pos": (0.0, 9.5 * U, 5.0 * U * CLEAVER_BW)}],
+                        extra={"lengthCm": round((16.8 - POMMEL_Y + 1.3) * U * 100.0, 1),
+                               "bladeCm": [round(9.0 * CLEAVER_BW * U * 100, 1), round(14.2 * U * 100, 1)],
+                               "note": "spec §4.3: blade ≈ 17 × 33 cm (web 8 × 14 u) — shipped 17.2 × 31.9 cm; "
+                                       "≈ 50 cm overall — shipped ≈ 54 cm: the web's 8 u grip + pommel kept "
+                                       "(a shorter grip drove the pommel into the bracer in the hammer-grip chop)"},
                         grip=cleaver_grip)]
     ms = mship.MonsterShip(
         asset=ASSET, token=TOKEN, preview_dir="mon_goblin_chief", pal=pal, A=A, body=body, items=items, clips=cs,
@@ -780,7 +816,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
 
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
-    scratch = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/chief")
+    scratch = scratch_root("mq", "chief")
     if "--quick" in args:
         quick(scratch)
     elif "--portrait" in args:

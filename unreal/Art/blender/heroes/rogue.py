@@ -43,6 +43,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import asset, mesh as M, rig as R, scene  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 from kit.rig import Bind, HumanoidSpec  # noqa: E402
 
@@ -1154,7 +1155,7 @@ def part_report(parts) -> str:
     return ", ".join(f"{k} {v}" for k, v in sorted(agg.items(), key=lambda kv: -kv[1]))
 
 
-SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/heroes2/rogue")
+SCRATCH = scratch_root("heroes2", "rogue")
 
 
 def hero_def():

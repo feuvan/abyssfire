@@ -8,15 +8,25 @@ bone and rising bubbles inside, big glaring eyes, a pseudopod for the slam.
 
 * **Look (R12, spec §14 Q14: inner meshes + dithered shell)**: the shell is its own material slot
   ``MI_AF_Toon_Slime`` (parent ``M_AF_Toon_Slime``: masked, Bayer-dithered ``BodyOpacity`` **0.62** + the web jelly
-  rim rgba(230,255,220,.6)); the core, bone, bubbles, eyes, brows and the sheen are opaque palette toon (slot 0); one
-  ink hull round the whole jelly (slot 1). The previews render the TAA-resolved dither (the shell mixed with what lies
-  behind it, back faces culled like UE). At 0.62 the inside shows at 38 %: the core is a deep ``#0B4019`` (no light band) so the
-  shell over it resolves to ≈ the web's core tint (rgba(28,110,48,.55) over the body), the bone (16 cm, tilted
-  −29° like the web's −0.5 rad) sits in front of the core on the right-front (the side the ``se`` game view sees),
-  and the four bubbles (2.0–3.2 cm) rise in front of it — core, bone and bubbles read at native 1080p. (Art review:
-  at the former 0.82 only 18 % of the inside showed and the slime read as a plain green dome.)
-* **Eyes**: the rim's back half is body green (seen from ne / back / nw the eye bumps read as jelly-covered eyes,
-  not dark horns); at death the eye (rim, sclera, pupil, glint) collapses completely and eye-sized X bars scale in.
+  rim rgba(230,255,220,.6)); the core, bone, bubbles, eyes, brows, the sheen and an **inner backing bowl** are opaque
+  palette toon (slot 0); one ink hull round the whole jelly (slot 1). The previews render the TAA-resolved dither
+  (the shell mixed with what lies behind it, back faces culled like UE). At 0.62 the inside shows at 38 %. The
+  backing bowl (flat body green #5FCF5A, no bands, no grounding; a floor + the shell's profile 2 cm inside it up to
+  z ≈ 0.2) is what the dither resolves against where the core is not: the body lands on the web's #5FCF5A lime
+  (light band ≈ #91D980) and only the core ellipse darkens — the deep ``#0B4019`` core resolves to ≈ the web's core
+  tint (rgba(28,110,48,.55) over the body). (Art review: over the grass and the blob shadow the body resolved to a
+  dull #52AC4B–#64B35F glassy dome.) The bone (16 cm, tilted −29° like the web's −0.5 rad) sits in front of the core
+  on the right-front (the side the ``se`` game view sees) and the four bubbles (2.0–3.2 cm) rise in front of it.
+* **Ink (art review)**: a per-asset 3.5 px hull request (``OUTLINE_PX``, manifest ``outlinePx1080``; gate 3.0 px) and
+  a dome whose bulge **overhangs a small sole** (a jelly drop's contact angle): the near contour sits at z ≈ 6–7 cm and
+  the hull's underside stays above the terrain, so the bold closed ink loop of the web survives at the base (the
+  flat 36 cm sole buried the lower ink — a third of the silhouette was < 3 px).
+* **Sheen**: a thin crescent streak high on the back-right of the dome + a specular dot (``SHEEN_*``): in the front,
+  se and sw facings it lies in the screen's upper-left light band, clearly smaller than an eye (the old ellipse on
+  the front-right sat beside the eyes in se and read as a third eye).
+* **Eyes**: big and high on the dome (``EYE_*``: inside the front third of the 3/4 silhouette); the rim's back half is
+  body green (seen from ne / back / nw the eye bumps read as jelly-covered eyes, not dark horns); at death the eye
+  (rim, sclera, pupil, glint) collapses completely and eye-sized X bars (bowed to the dome) scale in.
 * **Rig (SKEL_Slime, 16 bones, all children of ``root``)**: ``body_base / body_mid / body_top`` carry the web pose
   (``sx, sy`` squash/stretch as non-uniform **bone scale**, ``lean`` as a height-proportional shift, ``hop``),
   ``pod_01..02`` the pseudopod reach, ``eye_l/r`` (openness = vertical scale), ``lid_l/r`` (the angry brows,
@@ -24,7 +34,9 @@ bone and rising bubbles inside, big glaring eyes, a pseudopod for the slam.
   (rising bubbles, scaled out when they pop). Clips are keyed as bone basis matrices (``kit.anim.bake_basis``).
 * **Clips** (web ``Slime.ts`` :46-72; ref speed 1.20 m/s): Idle 667 · Walk (hop) 600 with no sliding — the base is
   planted while the body squashes (FX_Land 510) · Attack01 body slam 500 (WindupEnd 155, Contact 250) · Hurt 200 ·
-  Death 500 (melts into a puddle; the runtime adds the puddle decal and the fade).
+  Death 500 (melts into a puddle; the runtime adds the puddle decal and the fade) · Stun 600 loop (NEW, the goblins'
+  C5 / R8 stun loop: a dazed wobble and lean sway, the eyes half shut under drooping lids — the brow bars laid
+  across them — rolling against each other).
 """
 from __future__ import annotations
 
@@ -44,6 +56,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import anim, mesh as M, outline, rig as R, scene, shading  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit.anim import Clip  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 from kit.rig import Bind  # noqa: E402
@@ -62,6 +75,8 @@ UW = 0.0221                 # web px → m, ground
 UH = 0.02552                # web px → m, upright
 REF_SPEED = 1.20
 BODY_OPACITY = 0.62          # dithered shell (R12): the core, bone and bubbles show at 38 %
+OUTLINE_PX = 3.5             # per-asset hull request (art review: at the class's 3.0 px the dome's lower contour
+                             # kept < 3 px on a third of the silhouette; the web's bold closed ink loop is identity)
 CONTACT_MS = 250.0
 WINDUP_END_MS = 155.0
 
@@ -76,12 +91,18 @@ REGIONS = outline.ink_regions(dict(
     glint=Region("#FFFFFF", .05, .20),
     brow=Region("#1D4A24", .30, .10),
     xeye=Region("#123018", .30, .10),
-    sheen=Region("#F2FFEE", .10, .30),
+    sheen=Region("#C8F2BE", .10, .25),     # web white α .55 over the body (≈ #B7E9B5), a touch lighter
+    inner=Region("#5FCF5A", .0, .0),       # the backing bowl: flat body green (no bands, no grounding)
 ), OUTLINE_CLASS)
 
-# dome profile (radius, z) bottom → top: flat sole, a lower bulge, a soft dome
-PROFILE = [(0.36, 0.0), (0.415, 0.012), (0.44, 0.045), (0.445, 0.085), (0.43, 0.15), (0.395, 0.215),
-           (0.34, 0.28), (0.26, 0.345), (0.16, 0.395), (0.075, 0.421), (0.03, 0.428)]
+# dome profile (radius, z) bottom → top: a small sole, the bulge overhanging it (a jelly drop's contact angle),
+# a soft dome. The overhang lifts the near silhouette contour to z ≈ 5.5 cm (normal 40° below horizontal = the W1
+# grazing line): the 3.5 px ink below it (≈ 1.9 cm drop at the default distance, 2.4 cm at max zoom-out) stays
+# above the terrain. (Art review: the old flat 36 cm sole put the contour at z ≈ 2 cm and the terrain swallowed the
+# lower ink — the dome's bottom thinned into the blob shadow; the landing squash sy .74 still keeps it at 4 cm.)
+PROFILE = [(0.20, 0.0), (0.27, 0.007), (0.32, 0.02), (0.36, 0.036), (0.395, 0.055), (0.423, 0.078),
+           (0.440, 0.105), (0.444, 0.13), (0.433, 0.165), (0.41, 0.2), (0.38, 0.235), (0.34, 0.28), (0.26, 0.345),
+           (0.16, 0.395), (0.075, 0.421), (0.03, 0.428)]
 PROFILE_PLOT = PROFILE + [(0.0, 0.43)]          # (the mesh closes the top with a fan: no degenerate pole ring)
 
 
@@ -102,6 +123,61 @@ def surface_point(lat: float, z: float, out: float = 0.0) -> Vector:
     return p + n * out
 
 
+def dome_point(az: float, z: float, out: float = 0.0) -> Vector:
+    """Dome surface at azimuth ``az`` (deg: 0 = front −Y, +90 = the slime's left +X, ±180 = back) and height
+    ``z`` (+ ``out`` along the normal)."""
+    r = radius_at(z)
+    a = math.radians(az)
+    return Vector((r * math.sin(a), -r * math.cos(a), z)) + dome_normal(az, z) * out
+
+
+def dome_normal(az: float, z: float) -> Vector:
+    a = math.radians(az)
+    dz = 1e-3
+    dr = (radius_at(z + dz) - radius_at(z - dz)) / (2 * dz)
+    return Vector((math.sin(a), -math.cos(a), -dr)).normalized()
+
+
+def sheen_streak(az: float, z: float, length: float, width: float, steps: int = 8) -> M.Part:
+    """A single-sided crescent strip along the dome's latitude at (``az``, ``z``): ``length`` m of arc, ``width``
+    m across at the middle tapering to points, bowed a little toward the top (the reflected sky band)."""
+    import bmesh
+    r = radius_at(z)
+    span = math.degrees(length / max(r, 1e-3))
+    bm = bmesh.new()
+    rows = []
+    for k in range(steps + 1):
+        t = k / steps
+        a = az - span / 2 + span * t
+        zc = z + 0.010 * math.sin(math.pi * t)                     # bowed toward the top
+        w = width * max(0.08, math.sin(math.pi * t) ** 0.8) * 0.5
+        c = dome_point(a, zc, 0.0025)
+        n = dome_normal(a, zc)
+        up = (dome_point(a, zc + 0.01) - dome_point(a, zc - 0.01)).normalized()
+        rows.append((bm.verts.new(tuple(c - up * w)), bm.verts.new(tuple(c + up * w)), n))
+    for (a0, a1, n0), (b0, b1, _) in zip(rows, rows[1:]):
+        f = bm.faces.new((a0, b0, b1, a1))
+        f.normal_update()
+        if f.normal.dot(n0) < 0:
+            f.normal_flip()
+    bm.normal_update()
+    return M.Part(bm).smooth(True)
+
+
+def _face_up(part: M.Part) -> None:
+    """Orient the inner bowl's faces up / inward (toward the W1 camera at every azimuth)."""
+    import bmesh
+    bm = part.bm
+    bm.normal_update()
+    for f in bm.faces:
+        c = f.calc_center_median()
+        inward = Vector((-c.x, -c.y, 0.0))
+        want = Vector((0, 0, 1)) + (inward.normalized() * 0.5 if inward.length > 1e-6 else Vector())
+        if f.normal.dot(want) < 0:
+            f.normal_flip()
+    bm.normal_update()
+
+
 @dataclass
 class SlimeSpec:
     name: str = ASSET
@@ -111,7 +187,8 @@ class SlimeSpec:
         return H
 
 
-EYE_LAT, EYE_Z, EYE_R = 0.098, 0.255, 0.080
+EYE_LAT, EYE_Z, EYE_R = 0.098, 0.288, 0.091      # art review: up the dome and 14 % bigger — at se the eyes stay
+                                                # inside the front third of the 3/4 silhouette, big and glaring
 EYE_SINK = 0.016            # eye bone below the jelly surface
 EYE_TILT = 25.0             # deg the eyes face down from the surface normal (their tops tuck into the dome)
 EYE_YS = 1.12               # taller eyes: the tilt foreshortens them from the W1 camera
@@ -119,9 +196,24 @@ FX_REST_K = 0.02            # the X-eyes and angry brows are modelled collapsed 
                             # neutral bind pose in UE); the clips scale them in by 1 / FX_REST_K
 XEYE_LEN = 2.05             # X bar length (× EYE_R): the X spans the eye like the web's
 XEYE_DEG = 50.0             # bar angle from the eye's horizontal (the eye is EYE_YS taller than wide)
+XEYE_BEND_R = 0.30          # m: the X bars bow to this radius (≈ the dome's curvature at the eyes)
 BUBBLE_PHASE = 0.2          # bubble loop phase offset: both bubbles are up and full-size on Idle F0
+SHEEN_AZ, SHEEN_Z = -125.0, 0.36    # crescent streak: back-right, high (upper-left light band in front / se / sw)
+SHEEN_LEN, SHEEN_W = 0.16, 0.032    # m of arc, m across (an eye is 0.18 × 0.23 m)
+SHEEN_DOT_DAZ, SHEEN_DOT_DZ = 14.0, 0.026   # specular dot beside the streak's upper end
+# inner backing bowl (r, z) bottom → top: a floor over the sole, then the shell's own profile 2 cm inside it up to
+# z ≈ 0.2 — rays through the near lower jelly land on the floor / lower wall (front-facing below 50°), rays through
+# the top on the far wall (front-facing); the steep near parts hug the shell (UE culls them, the preview draws them
+# — the same green either way)
+BOWL_IN = 0.02
+BOWL_Z = (0.006, 0.04, 0.09, 0.15, 0.205)
 
 
+LID_DZ = 0.092              # brow / lid bone above the eye centre (just over the rim's top)
+DAZE_LID_DEG = 30.0         # Stun: the brow bar rolled from the angry slant to a sleepy droop (outer end down)
+DAZE_LID_OUT = 0.047        # Stun: m along the eye axis from the eye bone (in front of the sclera and pupil)
+DAZE_LID_UP = 0.022         # Stun: m above the eye centre (the upper third of the half-shut eye)
+DAZE_LID_SCALE = 1.45       # Stun: the lid bar is a heavy line, longer and thicker than the angry brow
 XEYE_OUT = 0.026            # X bars' centre along the eye normal from the eye bone (rest)
 XEYE_LIFT = 0.016           # posed: X centre above the squashed jelly surface (half the bar depth + a hair)
 
@@ -179,7 +271,7 @@ def build_rig() -> R.Rig:
         e = surface_point(sg * EYE_LAT, EYE_Z, -EYE_SINK)
         bone(f"eye_{s}", e, e + Vector((0, -0.04, 0)))
         bone(f"xeye_{s}", e + Vector((0, -0.03, 0)), e + Vector((0, -0.07, 0)))
-        lid = surface_point(sg * (EYE_LAT + 0.004), EYE_Z + 0.082, -0.004)
+        lid = surface_point(sg * (EYE_LAT + 0.004), EYE_Z + LID_DZ, -0.004)
         bone(f"lid_{s}", lid, lid + Vector((0, -0.04, 0)))
     bone("core", (0, 0.04, 0.16), (0, 0.04, 0.26))
     bone("bone_prop", (-0.19, -0.19, 0.12), (-0.19, -0.19, 0.20))     # right-front, in front of the core
@@ -229,7 +321,7 @@ def shell_bind() -> Bind:
 
 
 # LOD1 (spec §1.9 slime 1.5 k): decimated parts, the rising bubbles left out (mobile low / far zoom-out)
-LOD1_RATIO = 0.48
+LOD1_RATIO = 0.43
 LOD1_SKIP = ("bubble",)
 
 
@@ -247,12 +339,12 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
         e = rig.joints[f"eye_{s}"]
         n = eye_normal(sg)
         m = G.frame_z(e, n, Vector((0, 0, 1)))
-        rim = M.ellipsoid((EYE_R * 0.95, EYE_R * 1.1 * EYE_YS, 0.028), (0, 0, -0.001), sides=14, rings=7)
+        rim = M.ellipsoid((EYE_R * 0.95, EYE_R * 1.1 * EYE_YS, 0.028), (0, 0, -0.001), sides=12, rings=6)
         _tag_back(rim, -0.006)        # the back half is jelly: seen from behind the eyes are green bumps, not horns
         rim.transform(m)
         b.add(rim, "eye_rim", Bind.rigid(f"eye_{s}"), name=f"eye_rim_{s}", sub_regions={1: "body"}, outline=False,
               covered_by=sid)
-        scl = M.ellipsoid((EYE_R * 0.85, EYE_R * EYE_YS, 0.030), (0, 0, 0.006), sides=14, rings=7).transform(m)
+        scl = M.ellipsoid((EYE_R * 0.85, EYE_R * EYE_YS, 0.030), (0, 0, 0.006), sides=12, rings=6).transform(m)
         b.add(scl, "sclera", Bind.rigid(f"eye_{s}"), name=f"sclera_{s}", outline=False, covered_by=sid)
         pup = M.ellipsoid((EYE_R * 0.42, EYE_R * 0.52 * EYE_YS, 0.012), (-sg * EYE_R * 0.1, -EYE_R * 0.08, 0.031),
                           sides=10, rings=5).transform(m)
@@ -263,7 +355,12 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
         # X-ed out eye (death): two crossed bars spanning the eye (the web's X is eye-sized: ±0.6 r both ways at a
         # 0.9 u stroke), scaled in by xeye_* while the eye itself collapses
         for ang in (XEYE_DEG, -XEYE_DEG):
-            bar = M.box((EYE_R * XEYE_LEN, 0.024, 0.016), (0, 0, 0))
+            # bowed to the dome's curvature (a straight bar's ends stood ~3 cm proud of the shell and the padded ink
+            # grew dark bumps round them on the stretched death frames once the eyes moved up the dome)
+            hl = EYE_R * XEYE_LEN / 2
+            sag = hl * hl / (2 * XEYE_BEND_R)
+            bar = M.tube([Vector((-hl, 0, -sag)), Vector((0, 0, 0)), Vector((hl, 0, -sag))],
+                         [(0.012, 0.008)] * 3, sides=4, phase=math.pi / 4, up=(0, 1, 0), dome0=0.0, dome1=0.0)
             bar.transform(m @ Matrix.Translation((0, 0, XEYE_OUT)) @ Matrix.Rotation(math.radians(ang), 4, "Z"))
             b.cover(sid, bar)                   # the full-size bars sit inside the shell's padded ink
             bar.transform(collapsed(rig.joints[f"xeye_{s}"]))
@@ -272,19 +369,32 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
         lid = rig.joints[f"lid_{s}"]
         a0 = lid + Vector((sg * 0.05, 0, 0.01))
         a1 = lid + Vector((-sg * 0.045, 0, -0.022))
-        brow = M.capsule(a0, a1, 0.012, 0.014, sides=6, cap_rings=1)
+        # laid on the dome (each point on the surface + 4 mm): a straight bar's ends stood proud near the dome's top
+        bpts = [surface_point(q.x, q.z, 0.004) for q in (a0, a0.lerp(a1, 0.5), a1)]
+        brow = M.tube(bpts, [0.012, 0.013, 0.014], sides=6, dome0=0.006, dome1=0.006)
         b.cover(sid, brow)
         brow.transform(collapsed(lid))
         b.add(brow, "brow", Bind.rigid(f"lid_{s}"), name=f"brow_{s}", outline=False)
-    # glossy sheen patch (upper front-right) and a specular dot
-    for c, rr, reg in ((surface_point(-0.17, 0.33, 0.002), (0.07, 0.035, 0.012), "sheen"),
-                       (surface_point(-0.06, 0.39, 0.002), (0.016, 0.016, 0.008), "sheen")):
-        dz = 1e-3
-        n = (surface_point(c.x, c.z + dz) - surface_point(c.x, c.z - dz)).cross(Vector((1, 0, 0)))
-        nn = (c - Vector((0, 0, 0.12))).normalized()
-        m = G.frame_z(c, nn, Vector((0, 0, 1))) @ Matrix.Rotation(math.radians(-28), 4, "Z")
-        sh = M.ellipsoid(rr, (0, 0, 0), sides=10, rings=4).transform(m)
-        b.add(sh, reg, shell_bind(), name="sheen", outline=False, covered_by=sid)
+    # glossy sheen: a thin crescent streak high on the dome's back-right + a specular dot (art review: the old
+    # ellipse on the front-right landed beside the eyes in se at eye size and value — a "third eye"). At SHEEN_AZ the
+    # streak sits in the screen's upper-left light band in the front, se and sw views (the facings that look at the
+    # hero), pale green-white like the web's white α .55 over the body, clearly smaller than an eye.
+    bd = shell_bind()
+    b.add(sheen_streak(SHEEN_AZ, SHEEN_Z, SHEEN_LEN, SHEEN_W), "sheen", bd, name="sheen", outline=False,
+          covered_by=sid)
+    c = dome_point(SHEEN_AZ + SHEEN_DOT_DAZ, SHEEN_Z + SHEEN_DOT_DZ, 0.0025)
+    m = G.frame_z(c, dome_normal(SHEEN_AZ + SHEEN_DOT_DAZ, SHEEN_Z + SHEEN_DOT_DZ), Vector((0, 0, 1)))
+    b.add(M.ellipsoid((0.012, 0.012, 0.005), (0, 0, 0), sides=8, rings=3).transform(m), "glint", bd,
+          name="sheen", outline=False, covered_by=sid)
+    # inner backing (R12 look, art review: the 0.62 shell over the dark core and the grass resolved to a dull
+    # #52AC4B–#64B35F glassy dome): a body-green bowl inside the jelly — floor + a wall rising at 45° (front-facing
+    # from the W1 pitch at every azimuth, so UE's culling and the preview agree) — is what the dither mixes with
+    # where the core is not: the body resolves to the web's #5FCF5A lime and only the core ellipse darkens (≈ the web
+    # core rgba(28,110,48,.55) over the body). The core, bone and bubbles stand in front of it.
+    bowl = M.lathe([(0.12, BOWL_Z[0])] + [(radius_at(z) - BOWL_IN, z) for z in BOWL_Z], sides=16, cap0="fan",
+                   cap1=None)
+    _face_up(bowl)
+    bowl_id = b.add(bowl, "inner", bd, name="inner_bowl", outline=False, covered_by=sid)
     # inside: the dark jelly core (two merged lobes), the half-digested bone, bubbles
     core = M.ellipsoid((0.27, 0.24, 0.17), (0.0, 0.03, 0.19), sides=14, rings=8)
     b.add(core, "core", Bind.rigid("core"), name="core", outline=False)
@@ -309,6 +419,7 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
     body = asset.finish_mesh(b, pal, OUTLINE_CLASS, rig=rig, grounding_height=H,
                              name=f"{ASSET}_LOD{lod}" if lod else None)
     body["af_lod"] = lod
+    _no_grounding(body, bowl_id)
     # the shell's toon faces → slot 2, the dithered jelly material (R12)
     me = body.data
     fp = np.zeros(len(me.polygons), np.int32)
@@ -320,6 +431,25 @@ def build_body(pal: Palette, rig: R.Rig, lod: int = 0):
     me.polygons.foreach_set("material_index", mi)
     me.update()
     return body, sid
+
+
+def _no_grounding(body, part_id: int) -> None:
+    """AF_Data.r = 0 on one part's vertices (the backing bowl lies at z ≈ 0, where the grounding term would darken
+    it 22 % toward #0A0818: it stands for the jelly's own colour seen through the shell, not a surface near the
+    ground)."""
+    me = body.data
+    fp = np.zeros(len(me.polygons), np.int32)
+    me.attributes["af_part"].data.foreach_get("value", fp)
+    vs = set()
+    for poly, pid in zip(me.polygons, fp.tolist()):
+        if pid == part_id:
+            vs.update(poly.vertices)
+    att = me.color_attributes["AF_Data"]
+    for v in vs:
+        c = list(att.data[v].color)
+        c[0] = 0.0
+        att.data[v].color = c
+    me.update()
 
 
 def dither_material(pal: Palette, opacity: float) -> bpy.types.Material:
@@ -362,6 +492,8 @@ class SP:
     melt: float = 0.0
     fx: float = 0.0         # attack intensity (angry brows)
     yaw: float = 0.0        # deg, a little body turn (3D life)
+    daze: float = 0.0       # stunned: the brows become heavy drooping lids sitting on the half-shut eyes
+    eye_roll: float = 0.0   # deg, the eyes (and their pupils) rolled about their axes — the woozy wobble
 
     def lerp(self, o: "SP", t: float) -> "SP":
         return SP(*[a + (b - a) * t for a, b in zip(self.__dict__.values(), o.__dict__.values())])
@@ -417,17 +549,31 @@ class SlimeAnims:
         xe = max(0.0, min(1.0, (0.12 - p.eyes) / 0.1))
         open_ = 0.35 + 0.65 * max(p.eyes, 0.0)
         gone = max(0.001, 1.0 - xe)             # the whole eye (rim, sclera, pupil, glint) shrinks out under the X
-        brow = max(0.001, min(1.0, (p.fx - 0.2) / 0.25))
+        brow = max(0.001, min(1.0, (p.fx - 0.2) / 0.25), min(1.0, p.daze))
         Rz = Matrix.Rotation(math.radians(p.yaw), 4, "Z")
         sy_eff = p.sy * (1.0 - 0.5 * p.melt)
         for s, sg in (("l", 1), ("r", -1)):
+            n0 = eye_normal(sg)
             for nm, sc in ((f"eye_{s}", (gone, gone, max(0.001, open_ * gone))),
                            (f"lid_{s}", (brow / FX_REST_K,) * 3)):
                 a = rest[nm].translation
                 k = a.z / H
                 pa = self.body_x(p, k) @ a
                 D = Matrix.Diagonal((sc[0], sc[1], sc[2], 1.0))
-                put(nm, Matrix.Translation(pa) @ Rz @ D @ Matrix.Translation(-a))
+                if nm.startswith("eye_"):
+                    Rr = Matrix.Rotation(math.radians(sg * p.eye_roll), 4, n0)
+                    put(nm, Matrix.Translation(pa) @ Rz @ D @ Rr @ Matrix.Translation(-a))
+                    continue
+                if p.daze < 0.5:
+                    put(nm, Matrix.Translation(pa) @ Rz @ D @ Matrix.Translation(-a))
+                    continue
+                # dazed: the brow bar becomes a heavy drooping upper lid lying across the half-shut eye (outer end
+                # down), in front of the sclera, its line a third of the way down the squashed eye
+                e = rest[f"eye_{s}"].translation
+                pc = self.body_x(p, e.z / H) @ (e + n0 * DAZE_LID_OUT + Vector((0.0, 0.0, DAZE_LID_UP)))
+                Rd = Matrix.Rotation(math.radians(sg * DAZE_LID_DEG), 4, -n0)
+                Sd = Matrix.Diagonal((sc[0] * DAZE_LID_SCALE,) * 3 + (1.0,))
+                put(nm, Matrix.Translation(pc) @ Rz @ Rd @ Sd @ Matrix.Translation(-a))
             # X-eyes lie on the squashed jelly: turned from the eye axis to the posed surface normal (S^-T n) and
             # centred just above the posed surface point — flattened into the death puddle they stay whole X's
             # instead of sinking half into the shell
@@ -538,8 +684,24 @@ class SlimeAnims:
                                             "note": "web fx: rgba(95,207,90,0.35·melt) ellipse r = 1.1·W·sx"}}
         return c
 
+    def stun(self):
+        """Stun 600 ms loop (NEW, the goblins' C5 / R8 stun loop for the slime): a dazed wobble — the body slumps
+        (sy .93) and sways in a slow lean circle with a jelly wobble at twice the rate, the eyes half shut under
+        drooping lids, rolling against each other (the pupils circle), a lazy yaw. Loops seamlessly."""
+        L = 600.0
+
+        def fn(t_ms):
+            ph = 2 * math.pi * t_ms / L
+            return P(sx=1.04 + 0.035 * math.sin(2 * ph), sy=0.93 - 0.04 * math.sin(2 * ph), x=0.012 * math.cos(ph),
+                     lean=0.11 * math.sin(ph), yaw=7.0 * math.cos(ph), eyes=0.17 + 0.04 * math.sin(ph + 1.2),
+                     daze=1.0, eye_roll=18.0 * math.sin(ph))
+        c = self.clip("Stun", L, fn, loop=True, loop_ms=L, key_ms=[0.0, 150.0, 300.0, 450.0, 600.0])
+        c.manifest_extra = {"usage": "stunned (C5 stun skills / R8 stun stars over fx_overhead): loops until the "
+                                     "stun ends"}
+        return c
+
     def all_clips(self):
-        return [self.idle(), self.walk(), self.attack(), self.hurt(), self.death()]
+        return [self.idle(), self.walk(), self.attack(), self.hurt(), self.death(), self.stun()]
 
 
 # ── build / review / ship ──────────────────────────────────────────────────────────────────────────────
@@ -575,8 +737,10 @@ def quick(out: Path, clip: str | None = None, frame: int = 0) -> None:
         c = next(c for c in S.all_clips() if c.name == clip)
         a = anim.bake_basis(rig, c, TOKEN, c.basis_fn)
         anim.set_frame(frame)
-    rv = review.Review(ASSET, rig.obj, [body], H, blob_radius=W * 1.05, out_dir=out,
-                       game_outline_px=outline.SCREEN_PX_1080[OUTLINE_CLASS], outline_class=OUTLINE_CLASS)
+    import mship
+    rv = mship.MReview(ASSET, rig.obj, [body], H, blob_radius=W * 1.05, out_dir=out, game_outline_px=OUTLINE_PX,
+                       outline_class=OUTLINE_CLASS)
+    rv.gate = mship.gate_for(OUTLINE_CLASS, OUTLINE_PX)
     rv.ground_occludes = True
     rv.extra_body_slots = True
     rv.closeup("se", pitch=-35.0)
@@ -594,7 +758,7 @@ def anim_quick(out: Path, names) -> None:
     pal, rig, body = build_all()
     S = SlimeAnims(rig)
     cs = [c for c in S.all_clips() if not names or c.name in names]
-    mship.anim_review(rig, [body], [], cs, TOKEN, out, H, OUTLINE_CLASS, blob_radius=W * 1.05)
+    mship.anim_review(rig, [body], [], cs, TOKEN, out, H, OUTLINE_CLASS, blob_radius=W * 1.05, px=OUTLINE_PX)
 
 
 def ship(previews: bool = True, verify: bool = True) -> int:
@@ -609,9 +773,11 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         display={"zh-CN": "绿色史莱姆", "en": "Green Slime"}, fx=FX,
         qa_limits={"ground": -0.5},
         game_keys=[("Idle", 0, "se"), ("Walk", 7, "se"), ("Walk", 16, "se"), ("Walk", 31, "se"),
-                   ("Attack01", 5, "se"), ("Attack01", 15, "se"), ("Hurt", 0, "se"), ("Death", 30, "se")],
+                   ("Attack01", 5, "se"), ("Attack01", 15, "se"), ("Hurt", 0, "se"), ("Death", 30, "se"),
+                   ("Stun", 0, "se"), ("Stun", 18, "sw")],
         close_keys=[("Idle", 0, "front"), ("Walk", 12, "side"), ("Attack01", 5, "se"), ("Attack01", 15, "se"),
-                    ("Attack01", 15, "side"), ("Hurt", 0, "se"), ("Death", 10, "se"), ("Death", 30, "se")],
+                    ("Attack01", 15, "side"), ("Hurt", 0, "se"), ("Death", 10, "se"), ("Death", 30, "se"),
+                    ("Stun", 9, "front"), ("Stun", 27, "se")],
         back_clips=("Attack01", "Death"),
         skeleton_bones_required=("root", "body_base", "body_mid", "body_top", "pod_01", "pod_02", "eye_l", "eye_r",
                                  "lid_l", "lid_r", "xeye_l", "xeye_r", "core", "bone_prop", "bubble_01",
@@ -620,10 +786,15 @@ def ship(previews: bool = True, verify: bool = True) -> int:
                "notes": "SKEL_Slime: squash / stretch as bone scale keys (body_*), pseudopod pod_*, eye openness, "
                         "angry brows (lid_*) and X-eyes (xeye_*) scaled in, bubbles rising and popping. Shell = "
                         "slot 2 MI_AF_Toon_Slime (M_AF_Toon_Slime, dithered BodyOpacity, jelly rim, R12); the core, "
-                        "bone, bubbles, eyes are opaque toon (slot 0). Walk is a no-slide hop: play rate = v / 1.20 "
-                        "m/s."},
+                        "bone, bubbles, eyes, the sheen streak and the inner backing bowl (flat body green, what the "
+                        "dither resolves against: body #5FCF5A, darker only over the core) are opaque toon (slot 0). "
+                        "Walk is a no-slide hop: play rate = v / 1.20 m/s. Stun loops (dazed: lids droop, eyes roll)."},
         lod_note="Slime budget 2-3k toon tris (shell slot 2 included), <= 16 bones (SKEL_Slime has 16).",
         lod1=body1,
+        outline_px=OUTLINE_PX,
+        outline_px_note="art review: at the monster class's 3.0 px the dome's lower contour (lifted off the "
+                        "terrain by the overhanging bulge) kept < 3 px on a third of the silhouette; 3.5 px (as "
+                        "the boss) gives the web's bold closed ink loop, gated at 3.0 px",
     )
     res = mship.ship(ms, previews=previews, verify=verify)
     return mship.main_result(res)
@@ -631,7 +802,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
 
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
-    scratch = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/slime")
+    scratch = scratch_root("mq", "slime")
     if "--quick" in args:
         k = args.index("--quick")
         rest = [a for a in args[k + 1:] if not a.startswith("--")]

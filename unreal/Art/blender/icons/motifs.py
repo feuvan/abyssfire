@@ -120,21 +120,18 @@ def flame(c: Comp, x, y, h, w, lean=0.0, d=0.0, rot=0.0, cols=FLAME_COLS, tag="f
 
 
 def swoosh(c: Comp, cx, cy, r, a0, a1, w, col="#FFF0C8", d=-2.0, tag="sw"):
-    """web swoosh(): tapered crescent along an arc (head at a1)."""
-    n = 24
-    pts = [(cx + math.cos(a0 + (a1 - a0) * t) * r, cy + math.sin(a0 + (a1 - a0) * t) * r) for t in [i / n for i in range(n + 1)]]
-    left, right = [], []
+    """web swoosh(): tapered crescent along an arc (head at a1, the outer edge on the arc), swept as a flat tube so
+    the inner edge stays a true curve (a pillow would chord across the concave side)."""
+    n = 32
+    centre, half = [], []
     for i in range(n + 1):
         t = i / n
         a = a0 + (a1 - a0) * t
         v = w * (t ** .8) * ((1 - t) ** .25)
-        nx, ny = math.cos(a), math.sin(a)
-        if a1 > a0:
-            left.append(pts[i]); right.append((pts[i][0] - nx * v, pts[i][1] - ny * v))
-        else:
-            left.append(pts[i]); right.append((pts[i][0] + nx * v, pts[i][1] + ny * v))
-    outline = left + list(reversed(right))
-    c.add(pill(outline, depth=2.5, d=d, edge=.7, dome=.2), tag, R(col, .25, .6, e=.35))
+        rr = r - v / 2 if a1 > a0 else r + v / 2
+        centre.append((cx + math.cos(a) * rr, cy + math.sin(a) * rr))
+        half.append(max(v / 2, .25))
+    ribbon3(c, centre, lambda t: half[min(n, int(round(t * n)))], depth=2.6, d=d, tag=tag, reg=R(col, .25, .6, e=.35))
 
 
 def ring2d(c: Comp, cx, cy, rx, ry, w, col, d=0.0, tag="ring", a0=0.0, a1=360.0, e=.4, depth=1.5):
@@ -306,3 +303,23 @@ def ribbon3(c: Comp, pts_web, width, depth=2.0, d=0.0, tag="rb", reg: Region | N
                    dome0=0.0, dome1=0.0).smooth(True)
     c.add(part, tag, reg)
     return part
+
+
+def blade(c: Comp, base: str, x, y, rot_rad, s, d=0.0, dagger: bool = False, spin=-14.0, tag: str | None = None,
+          widen: float = 1.0):
+    """web ``blade(c, key, dagger, x, y, rot, s)`` (SkillIcons.ts → drawBladeMotif): the base's own blade shape from
+    ``weapon_models`` (SWORDS / DAGGERS: length, width, profile, guard, pommel, gem, glow) with the grip origin at
+    (x, y), the blade pointing up turned ``rot`` (canvas radians, + = clockwise), ``s`` web units per unit;
+    ``widen`` scales the blade across (emblem weight). Parts join the comp on its palette."""
+    import weapon_models as WM
+    st = (WM.DAGGERS if dagger else WM.SWORDS).get(base) or (WM.DAGGERS if dagger else WM.SWORDS)[
+        WM.DEFAULT_BASE["dagger" if dagger else "sword"]]
+    regs: dict = {}
+    parts = WM.blade_parts(st, regs)
+    tag = tag or base.replace("w_", "")
+    m = (Matrix.Translation(at(x, y, d)) @ Matrix.Rotation(rot_rad, 4, "Y") @ Matrix.Scale(s, 4)
+         @ Matrix.Rotation(math.radians(spin), 4, "Z") @ Matrix.Diagonal((widen, widen, 1.0, 1.0)))
+    for part, key in parts:
+        part.transform(m)
+        c.add(part, f"{tag}_{key}", regs[key])
+    return parts

@@ -61,6 +61,15 @@ def glow(x, y, r, hex, alpha, under=False, core=0.0):
     return K.Accent("glow", u=U9(x, y), r_u=r * MOTIF_SCALE, hex=hex, alpha=alpha, under=under, core=core)
 
 
+VENOM, VENOM_RIM = "#7BE03A", "#C8FF80"
+
+
+def bubble(x, y, r):
+    """web venom bubble (drawn 'over', un-inked): a venom-green body, a #C8FF80 rim, a thin outline in its own line
+    tone (review r3: inked rings read as black donuts / googly eyes)."""
+    return K.Accent("bubble", u=U9(x, y), r_u=r * MOTIF_SCALE, hex=VENOM, hex2=VENOM_RIM, alpha=.95)
+
+
 def move(objs, scale=1.0, at_=(0, 0, 0), rot_deg=0.0):
     """Scale / turn (in the screen plane, + = clockwise) / move already placed objects about the world origin."""
     m = Matrix.Translation(Vector(at_)) @ Matrix.Rotation(math.radians(rot_deg), 4, "Y") @ Matrix.Scale(scale, 4)
@@ -154,16 +163,22 @@ def m_charge(c):
 
 
 def m_lethal_strike(c):
-    F.star(c, 48, 78, 10, 16, 6, "#FF3030", d=8, tag="imp", e=.5)
-    F.star(c, 48, 78, 10, 10, 4, "#FFE0A0", d=5, tag="imp2", e=.8)
-    F.weapon(c, "sword", "T4", 48, 31, math.pi, .94, d=-2, widen=1.6)
-    c.acc += [glow(48, 78, 16, "#FF4040", .5), sparkle(58, 40, 6)]
+    """web: the claymore driven point-down onto a red impact star (blade(c, 'w_claymore', …, π, .95)) — the claymore
+    built to its web shape, heavier across for the 36 px HUD slot, and the impact spread into a shockwave."""
+    F.ring2d(c, 48, 79, 38, 8.0, 4.2, "#FF6A3A", d=10, tag="wave", a0=200, a1=340, e=.45)
+    F.ring2d(c, 48, 79, 38, 8.0, 4.2, "#FF6A3A", d=10, tag="wave", a0=20, a1=160, e=.45)
+    F.star(c, 48, 77, 10, 19, 7.5, "#FF3030", d=8, tag="imp", e=.5)
+    F.star(c, 48, 77, 10, 11.5, 4.5, "#FFE0A0", d=5, tag="imp2", e=.8)
+    F.blade(c, "w_claymore", 48, 29.5, math.pi, .9, d=-2, widen=1.5)
+    c.acc += [glow(48, 77, 22, "#FF4040", .55), sparkle(60, 44, 6)]
 
 
 def m_dual_wield_mastery(c):
-    F.weapon(c, "sword", "T3", 28, 72, math.pi / 4, 1.2, d=2, widen=1.6)
-    F.weapon(c, "sword", "T2", 68, 72, -math.pi / 4, 1.2, d=-4, spin=12, widen=1.6)
-    c.acc.append(sparkle(48, 32, 6))
+    """web: a militia sword and a broad sword crossed (blade(…, ±π/4, .95)) + a sparkle — their own shapes, scaled
+    up so the X fills the emblem."""
+    F.blade(c, "w_militia_sword", 26, 73, math.pi / 4, 1.12, d=2, widen=1.25)
+    F.blade(c, "w_broad_sword", 70, 73, -math.pi / 4, 1.12, d=-6, spin=14, widen=1.15)
+    c.acc.append(sparkle(48, 26, 6.5))
 
 
 def m_iron_fortress(c):
@@ -189,18 +204,23 @@ def m_iron_fortress(c):
 
 
 def m_unyielding(c):
-    hp = F.heart_pts(48, 46, 1.25)
-    heart = pill(hp, depth=12, d=0, edge=.5, dome=.4)
+    """web: a red heart bound by two riveted steel bands, its crack sealed with gold — the heart 1.25 → 1.62 (the HUD
+    reads the silhouette, not the bands)."""
+    k = 1.62
+    cy = 46
+    hp = F.heart_pts(48, cy, k)
+    heart = pill(hp, depth=13, d=0, edge=.5, dome=.4)
     c.add(heart, "heart", R("#D02838", .42, .4))
     surf = S.Surface(heart)
-    for y in (39.5, 61.5):
-        c.add(IM.drape_strip(surf, [W(10, y), W(86, y)], .036, .014), "band", R("#9AA4B4", .42, .5))
-        for x in range(22, 80, 12):
-            c.add(S.dome_on(surf, *W(x, y), .016, .012, lift=.014), "rivet", R("#E8EEF4", .3, .6))
-    crack = [(48, 22), (44, 34), (52, 46), (46, 56), (50, 72)]
-    c.add(IM.drape_strip(surf, Wp(crack), .012, .008, step=.006), "seal", R(GOLD, .35, .55, e=.35))
+    for rel in (-8.0, 9.6):                        # web bands at y 36 / 58 for a 1.25 heart at 46 (7 u tall)
+        y = cy + rel * k / 1.25 + 3.5 * k / 1.25
+        c.add(IM.drape_strip(surf, [W(4, y), W(92, y)], .036 * k / 1.25, .014), "band", R("#9AA4B4", .42, .5))
+        for x in range(16, 84, 12):
+            c.add(S.dome_on(surf, *W(x, y), .016 * k / 1.25, .012, lift=.014), "rivet", R("#E8EEF4", .3, .6))
+    crack = [(48 + (x - 48) * k / 1.25, cy + (y - 46) * k / 1.25) for x, y in ((48, 22), (44, 34), (52, 46), (46, 56), (50, 72))]
+    c.add(IM.drape_strip(surf, Wp(crack), .014, .008, step=.006), "seal", R("#E3B44C", .35, .55, e=.35))
     surf.free()
-    c.acc += [glow(48, 50, 44, "#FFD060", .55, under=True)]
+    c.acc += [glow(48, 52, 46, "#FFD060", .55, under=True)]
 
 
 def m_life_regen(c):
@@ -228,7 +248,7 @@ def m_frenzy(c):
 
 
 def m_bleed_strike(c):
-    F.weapon(c, "dagger", "T4", 26, 74, math.pi / 4, 1.05, d=2, widen=1.4)
+    F.weapon(c, "dagger", "T4", 24, 76, math.pi / 4, 1.3, d=2, widen=1.6)
     red = R("#D01828", .4, .45, e=.15)
     for i in range(3):
         o = i * 11
@@ -245,16 +265,19 @@ def m_rampage(c):
 
 
 def m_fireball(c):
-    bx, by = 58 + 14 * math.sin(math.radians(45)), 38 - 14 * math.cos(math.radians(45))
-    F.flame(c, 58 - 14 * math.sin(math.pi * 1.25), 38 + 14 * math.cos(math.pi * 1.25), 66, 17, 0, d=4,
-            rot=math.pi * 1.25)
-    ball = M.ellipsoid((16 * U, 12 * U, 16 * U), (0, 0, 0), sides=24, rings=12)
-    ball.translate(at(58, 38, -6))
+    """web: a flame-tailed fireball diving down-left (ball r 16 at (58, 38), tail 66 long) — the whole comet ×1.4
+    about the emblem so it fills the slot like the other motifs."""
+    k = 1.4
+    bx, by = 48 + (58 - 48) * k, 50 + (38 - 50) * k
+    rot = math.pi * 1.25
+    F.flame(c, bx - 14 * k * math.sin(rot), by + 14 * k * math.cos(rot), 66 * k, 17 * k, 0, d=4, rot=rot)
+    ball = M.ellipsoid((16 * k * U, 12 * k * U, 16 * k * U), (0, 0, 0), sides=28, rings=14)
+    ball.translate(at(bx, by, -6 * k))
     c.add(ball, "ball", R("#FF7A1A", .3, .5, e=.4))
-    core = M.ellipsoid((10 * U, 6 * U, 10 * U), (0, 0, 0), sides=20, rings=10)
-    core.translate(at(56, 36, -13))
+    core = M.ellipsoid((10 * k * U, 6 * k * U, 10 * k * U), (0, 0, 0), sides=24, rings=12)
+    core.translate(at(bx - 2 * k, by - 2 * k, -13 * k))
     c.add(core, "core", R("#FFE070", .2, .6, e=.75))
-    c.acc += [glow(58, 38, 30, "#FFA040", .5), sparkle(52, 31, 5)]
+    c.acc += [glow(bx, by, 30 * k, "#FFA040", .5), sparkle(bx - 6 * k, by - 7 * k, 5.5)]
 
 
 def m_meteor(c):
@@ -386,25 +409,31 @@ def m_arcane_torrent(c):
 
 
 def m_backstab(c):
+    """The victim seen from behind: shoulders in #3A2458 under a peaked hood — vanish's hood profile (``hood_pts``)
+    scaled onto the head, split down its back seam into a lit and a shaded half (review r3: the round head + cowl
+    read as a bald 'user avatar' bust)."""
+    import gem_models as GM
     st = R("#3A2458", .42, .35)
     body = S.chain2d(S.bez([(8, 92), (8, 66), (18, 56), (40, 54)], 10), S.bez([(40, 54), (62, 56), (72, 66), (72, 92)], 10))
     c.add(pill(body, depth=8, d=4, edge=.5), "body", st)
-    c.add(pill(S.circle2d(15, 24, 40, 38), depth=8, d=2, edge=.5), "body")
-    hood = S.chain2d(S.bez([(24, 42), (22, 18), (58, 16), (56, 42)], 12), S.bez([(56, 42), (48, 58), (40, 60)], 6),
-                     S.bez([(40, 60), (30, 58), (24, 42)], 6))
-    c.add(pill(hood, depth=9, d=-1, edge=.5, dome=.4), "hood", R("#5A3C86", .42, .38))
+    # peak (40, 16), hem on the shoulders; the crown drawn up a little more than vanish's front view (from behind
+    # the peak is the read)
+    hood = [(40 + (x - 48) * .62, 39 + (y - 42) * .62 - max(0.0, 20 - y) * .22) for x, y in F.hood_pts()]
+    big = 200.0
+    for half, (x0, x1), col in (("hood", (-big, 40.0), "#5A3C86"), ("hood_dk", (40.0, big), "#43296A")):
+        pts = GM._clip_convex(hood, [(x0, -big), (x1, -big), (x1, big), (x0, big)])
+        c.add(pill(pts, depth=9, d=-1, edge=.45, dome=.35), half, R(col, .42, .36))
     F.weapon(c, "dagger", "T2", 76, 22, math.pi * 1.22, 1.1, d=-10, widen=1.4)
     F.star(c, 52, 62, 8, 12, 4, "#FF4040", d=-6, tag="hit", e=.6, depth=2)
     c.acc += [glow(52, 62, 16, "#FF4040", .5), sparkle(76, 26, 5)]
 
 
 def m_poison_blade(c):
-    F.weapon(c, "dagger", "T4", 30, 72, math.pi / 4, 1.2, d=2, widen=1.4)
+    F.weapon(c, "dagger", "T4", 26, 76, math.pi / 4, 1.45, d=2, widen=1.6)
     for (x, y, s) in ((60, 50, 1), (70, 66, .8), (52, 70, .7)):
         F.drop(c, x, y, s * 1.3, "#7BE03A", d=-6, tag="venom", e=.25)
-    for (x, y, r) in ((80, 30, 3), (74, 20, 2), (84, 44, 2.2)):
-        F.ring2d(c, x, y, r, r, 1.0, "#C8FF96", d=-4, tag="bub", e=.5)
     c.acc.append(glow(64, 34, 26, "#7BE03A", .35))
+    c.acc += [bubble(x, y, r) for (x, y, r) in ((80, 30, 3), (74, 20, 2), (84, 44, 2.2))]
 
 
 def m_vanish(c):
@@ -422,29 +451,46 @@ def m_vanish(c):
 def m_multishot(c):
     for i, a in enumerate((-.55, -.28, 0, .28, .55)):
         ang = -math.pi / 4 + a
-        F.arrow(c, (20, 78), (20 + math.cos(ang) * 70, 78 + math.sin(ang) * 70), w=1.05, d=-i * 1.5, tag="ar")
+        F.arrow(c, (20, 78), (20 + math.cos(ang) * 70, 78 + math.sin(ang) * 70), w=1.2, d=-i * 1.5, tag="ar")
     c.acc.append(sparkle(22, 76, 6))
 
 
 def m_arrow_rain(c):
     dx, dy = math.cos(math.pi * .62), math.sin(math.pi * .62)
     for i, (x, y) in enumerate(((30, 44), (56, 36), (80, 48), (42, 70), (68, 78), (20, 84))):
-        F.arrow(c, (x - dx * 30, y - dy * 30), (x, y), w=.95, d=-i * 1.2, tag="ar")
+        F.arrow(c, (x - dx * 30, y - dy * 30), (x, y), w=1.15, d=-i * 1.2, tag="ar")
+
+
+def foot2d(right: bool = True):
+    """A bare footprint (web units, toes up): the sole — broad ball, narrow arch on the inner side, round heel — and
+    five toe dots, big toe on the inner side. Returns (sole outline, [(x, y, r) toes])."""
+    sole = [(0.5, -9.5), (4.6, -7.4), (6.0, -2.6), (5.2, 2.6), (4.6, 7.6), (3.2, 11.8), (0.0, 13.2), (-3.0, 12.0),
+            (-4.2, 8.0), (-2.6, 3.0), (-3.4, -1.6), (-4.8, -6.2), (-2.8, -9.0)]
+    toes = [(-3.0, -13.4, 2.5), (0.8, -14.8, 1.8), (3.6, -13.9, 1.55), (5.8, -12.0, 1.35), (7.2, -9.4, 1.15)]
+    if not right:
+        sole = [(-x, y) for x, y in sole]
+        toes = [(-x, y, r) for x, y, r in toes]
+    return sole, toes
 
 
 def m_shadow_step(c):
+    """web: three fading violet footprints `#B890FF` stepping up to the right, shadow streaks behind them — as real
+    footprints (sole + toe dots) alternating right / left so they read as steps, not as marks."""
     for i, (x, y, rot, a) in enumerate(((22, 80, -.5, .45), (46, 60, -.3, .7), (66, 34, -.5, 1.0))):
         col = color.rgb_to_hex(color.mix(color.hex_to_rgb("#5E3C90"), color.hex_to_rgb("#B890FF"), a))
-        sole = F.xform2d(S.circle2d(7, 20, 0, -4, rz=11), x, y, rot)
-        heel = F.xform2d(S.circle2d(5, 16, 0, 12, rz=6), x, y, rot)
         reg = R(col, .35, .5, e=.2 * a)
-        c.add(pill(sole, depth=3, d=-i, edge=.6), f"fp{i}", reg)
-        c.add(pill(heel, depth=3, d=-i, edge=.6), f"fp{i}")
+        sole, toes = foot2d(right=(i % 2 == 0))
+        sk = 1.18
+        c.add(pill(F.xform2d(S.blob2d([(px * sk, py * sk) for px, py in sole], 5), x, y, rot), depth=3, d=-i, edge=.6),
+              f"fp{i}", reg)
+        for tx, ty, tr in toes:
+            cx_, cy_ = F.xform2d([(tx * sk, ty * sk)], x, y, rot)[0]
+            c.add(pill(S.circle2d(tr * sk, 12, cx_, cy_), depth=2.4, d=-i, edge=.6, dome=.4), f"fp{i}")
     for o in (-6, 0, 6):
-        path = S.bez([(14 + o, 60 + o), (30 + o, 30 + o), (60 + o, 16 + o)], 12)
+        path = S.bez([(12 + o, 62 + o), (28 + o, 32 + o), (58 + o, 18 + o)], 12)
         c.add(pill(S.ribbon2d(path, lambda t: 1.2 * math.sin(math.pi * t) + .2), depth=1, d=4, edge=.9), "streak",
               R("#D2B4FF", .25, .55, e=.3))
-    c.acc.append(glow(66, 34, 16, "#B890FF", .5))
+    c.acc.append(glow(66, 34, 18, "#B890FF", .5))
 
 
 def m_death_mark(c):
@@ -476,8 +522,15 @@ def m_poison_arrow(c):
     c.add(pill(S.ribbon2d(trail, lambda t: 5 * math.sin(math.pi * (.1 + .9 * t)) ** .5), depth=2, d=6, edge=.8), "trail",
           R("#8CF050", .3, .5, e=.35))
     F.arrow(c, (14, 82), (80, 16), w=1.35, head="#7BE03A", d=0, glow_head=.3)
-    for (x, y, s) in ((70, 36, 1), (62, 48, .75)):
-        F.drop(c, x, y, s * 1.2, "#7BE03A", d=-4, tag="venom", e=.25)
+    # venom drops hanging off the shaft: the point on the shaft's underside, a round bulb below (review r3: the
+    # web teardrops, drawn on the shaft, read as leaves)
+    for (x, s) in ((68, 1.15), (55, .9)):
+        ys = 82 - (x - 14) + 1.6                     # the shaft's lower edge at x (shaft (14, 82) → (80, 16))
+        cy, r = ys + 7.2 * s, 3.9 * s
+        pts = S.chain2d(S.bez([(x, ys), (x + r * 1.05, cy - r * .55), (x + r, cy)], 8),
+                        [(x + r * math.cos(a), cy + r * math.sin(a)) for a in [math.pi * i / 10 for i in range(1, 10)]],
+                        S.bez([(x - r, cy), (x - r * 1.05, cy - r * .55), (x, ys)], 8))
+        c.add(pill(pts, depth=3.4 * s, d=-3, edge=.7, dome=.45), "venom", R("#7BE03A", .3, .5, e=.25))
     c.acc.append(glow(78, 18, 16, "#9AFF60", .55))
 
 
@@ -509,8 +562,7 @@ def m_poison_cloud(c):
     F.cloud(c, 48, 60, 1.3, "#7AD040", d=4, tag="c1")
     F.cloud(c, 44, 40, .8, "#9AE060", d=8, tag="c2")
     F.skull(c, 48, 60, .75, eye="#1A3008", col="#E8F8C8", d=-12)
-    for (x, y, r) in ((18, 24, 3), (80, 28, 3.6), (74, 84, 2.6), (22, 86, 2.2)):
-        F.ring2d(c, x, y, r, r, 1.2, "#D2FFA0", d=-4, tag="bub", e=.5)
+    c.acc += [bubble(x, y, r) for (x, y, r) in ((18, 24, 3), (80, 28, 3.6), (74, 84, 2.6), (22, 86, 2.2))]
 
 
 def m_slow_trap(c):
@@ -654,31 +706,49 @@ def main(argv: list[str]) -> int:
         cells = [(k, e) for k, (_, r, e) in res.items()] + [(k + "_m", r.rgba) for k, (_, r, e) in res.items()]
         pngio.write_png(K.SCRATCH / "skills_only.png", K.atlas(cells, cols=min(8, len(res)) if len(res) > 1 else 2, scale=.5))
         pngio.write_png(K.SCRATCH / "skills_only_ui.png", K.ui_sheet([(k, e) for k, (_, r, e) in res.items()], cols=8))
+        pngio.write_png(K.SCRATCH / "skills_only_1x.png", K.atlas(cells[:min(8, len(res))], cols=4, scale=1.0))
         print(f"[skills] scratch sheet; gate fails: {fails}")
         return 0
     for sid, (sk, r, e) in res.items():
         K.write_icon(f"{GROUP_DIR}/T_UI_SkillIcon_{sid}.png", e)
         K.write_icon(f"{GROUP_DIR}/T_UI_SkillMotif_{sid}.png", r.rgba)
-    previews = []
+    # previews per texture: only the sheets (and tiles of a split sheet) that show it (review art 10)
+    prev_icon: dict[str, list[str]] = {}
+    prev_motif: dict[str, list[str]] = {}
     for cls in ("warrior", "mage", "rogue"):
         cells = [(sid, e) for sid, (sk, r, e) in res.items() if sk["cls"] == cls]
         mcells = [(sid, r.rgba) for sid, (sk, r, e) in res.items() if sk["cls"] == cls]
+        ids = [sid for sid, _ in cells]
         for pi in range(0, len(cells), 8):
             sfx = f"_p{pi // 8 + 1}"
-            previews += K.save_preview("icons_skills", f"{cls}{sfx}_1x.png", K.atlas(cells[pi:pi + 8], cols=4))
-        previews += K.save_preview("icons_skills", f"{cls}_half.png", K.atlas(cells, cols=8, scale=.5))
-        previews += K.save_preview("icons_skills", f"{cls}_motifs_half.png", K.atlas(mcells, cols=8, scale=.5))
-        previews += K.save_preview("icons_skills", f"{cls}_ui.png", K.ui_sheet(cells, cols=8, qualities=("normal",)))
+            page = cells[pi:pi + 8]
+            per = K.save_preview_cells("icons_skills", f"{cls}{sfx}_1x.png", K.atlas(page, cols=4),
+                                       K.atlas_boxes(len(page), K.ICON_PX, 4))
+            for sid, files in zip(ids[pi:pi + 8], per):
+                prev_icon.setdefault(sid, []).extend(files)
+        for sid, files in zip(ids, K.save_preview_cells("icons_skills", f"{cls}_half.png", K.atlas(cells, cols=8, scale=.5),
+                                                        K.atlas_boxes(len(cells), K.ICON_PX // 2, 8))):
+            prev_icon[sid].extend(files)
+        for sid, files in zip(ids, K.save_preview_cells("icons_skills", f"{cls}_motifs_half.png",
+                                                        K.atlas(mcells, cols=8, scale=.5),
+                                                        K.atlas_boxes(len(mcells), K.ICON_PX // 2, 8))):
+            prev_motif.setdefault(sid, []).extend(files)
+        for sid, files in zip(ids, K.save_preview_cells("icons_skills", f"{cls}_ui.png",
+                                                        K.ui_sheet(cells, cols=8, qualities=("normal",)),
+                                                        K.ui_sheet_boxes(len(cells), 8))):
+            prev_icon[sid].extend(files)
     man = K.IconManifest()
     for sid, (sk, r, e) in res.items():
         bg = backdrop(sk)
         common = dict(skillId=sid, cls=sk["cls"], damageType=sk["damageType"], tree=sk["tree"],
-                      backdrop={"mid": bg[0], "deep": bg[1], "rim": bg[2]}, gate=r.gate, previews=previews)
+                      backdrop={"mid": bg[0], "deep": bg[1], "rim": bg[2]}, gate=r.gate)
         man.data["ui"][f"T_UI_SkillIcon_{sid}"] = K.ui_entry(
             "skillIcon", f"{GROUP_DIR}/T_UI_SkillIcon_{sid}.png", K.ICON_PX, plate=True,
-            frame="Slate (dark iron #17121C 3.2u, rim hairline, top-left bevel): not baked", **common)
+            frame="Slate (dark iron #17121C 3.2u, rim hairline, top-left bevel): not baked",
+            previews=prev_icon.get(sid, []), **common)
         man.data["ui"][f"T_UI_SkillMotif_{sid}"] = K.ui_entry(
-            "skillMotif", f"{GROUP_DIR}/T_UI_SkillMotif_{sid}.png", K.ICON_PX, plate=False, **common)
+            "skillMotif", f"{GROUP_DIR}/T_UI_SkillMotif_{sid}.png", K.ICON_PX, plate=False,
+            previews=prev_motif.get(sid, []), **common)
     man.save()
     print(f"[skills] shipped {len(res)} skills × 2 textures; gate fails: {fails}")
     return 1 if fails else 0

@@ -10,8 +10,8 @@ W1 camera (yaw 45°, pitch −50°, default distance), a native 1080p 1:1 crop, 
     cap + SM_FX_EliteCrown on fx_overhead, camera-yawed, absolute scale) · slime 0.43 × 0.88 m
 
 Every figure is drawn with its shipped screen ink (``outlinePx1080`` of its manifest outline slot: hero / boss 3.5,
-monster 3.0) and **ink-gated** on its own coverage (``review.ink_stats`` with its class gate; the crown with the
-monster gate); the emissive regions bloom like UE. Exit 1 on a gate failure.
+the goblin / shaman / slime's per-asset 3.5, monster 3.0) and **ink-gated** on its own coverage
+(``review.ink_stats`` at that request − 0.5 px; the crown with the monster gate); the emissive regions bloom like UE. Exit 1 on a gate failure.
 """
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import outline, paths, pngio, review, scene  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 
 import envkit as EK  # noqa: E402
 
@@ -152,6 +153,40 @@ def import_monster(man: dict, asset: str, at: Vector, yaw_deg: float, scale: flo
     return root, arm, meshes, px, cls
 
 
+def _fx_off(meshes, family: str) -> list:
+    """Swap each mesh's data for a copy without its fully emissive toon faces (palette swatches with e ≥ 0.99:
+    the spirit-fire tongues, embers, glints). Returns [(mesh, original data)] for the meshes that had any."""
+    import bmesh
+    reg = json.loads((paths.palette_root() / f"{family}.json").read_text())
+    emissive = {sw["i"] for sw in reg["swatches"] if sw and float(sw.get("e", 0.0)) >= 0.99}
+    out = []
+    for m in meshes:
+        if m.type != "MESH" or not m.data.uv_layers:
+            continue
+        me = m.data
+        uv = me.uv_layers.active.data
+        bad = []
+        for poly in me.polygons:
+            if poly.material_index == 1:
+                continue
+            u, v = uv[poly.loop_start].uv
+            idx = int(min(15, max(0, (1.0 - v) * 16))) * 16 + int(min(15, max(0, u * 16)))
+            if idx in emissive:
+                bad.append(poly.index)
+        if not bad:
+            continue
+        cp = me.copy()
+        bm = bmesh.new()
+        bm.from_mesh(cp)
+        bm.faces.ensure_lookup_table()
+        bmesh.ops.delete(bm, geom=[bm.faces[i] for i in bad], context="FACES")
+        bm.to_mesh(cp)
+        bm.free()
+        out.append((m, me))
+        m.data = cp
+    return out
+
+
 def socket_world(man: dict, asset: str, arm, name: str) -> Vector:
     """A manifest socket on the posed imported armature (rest location UE cm → Blender m, through the bone)."""
     s = next(x for x in man["assets"][asset]["sockets"] if x["name"] == name)
@@ -213,40 +248,53 @@ def main() -> int:
            min(1.0, max(ys) + pad_y + 20 / 1080))
     raw = review.render_array(box)
     if "--debug" in sys.argv:
-        pngio.write_png(Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/lineup_raw.png"), raw)
+        pngio.write_png(scratch_root("mq") / "lineup_raw.png", raw)
     em = review.emissive_pass(every, box)
     img = review.bloom(raw, em, 1080)
     # per-figure ink gate on its own coverage (figures stand apart: no mutual occlusion)
     inkimg = img.copy()
     reports, ok = [], True
-    groups = [(lab, ms, cls) for lab, ms, _, cls in figs] + ([("CROWN", [crown], "monster")] if crown else [])
-    for lab, ms, cls in groups:
-        gate = review.ink_gate("boss" if cls == "boss" else cls)
+    groups = [(lab, ms, cls, px) for lab, ms, px, cls in figs] + (
+        [("CROWN", [crown], "monster", outline.SCREEN_PX_1080["monster"])] if crown else [])
+    for lab, ms, cls, px in groups:
+        # the gate of the figure's shipped request (manifest outlinePx1080 − GATE_SLACK_PX): a monster shipping a
+        # per-asset 3.5 px hull is gated at 3.0 px, like the boss
+        gate = dict(review.ink_gate("boss" if cls == "boss" else cls))
+        gate["minPx"] = round(max(0.5, float(px) - outline.GATE_SLACK_PX), 2)
         # only this figure in the coverage pass (coverage_pass swaps the slots of the meshes it is given; anything
         # else visible would render in its toon colours into the red / green coverage channels)
         others = [o for o in every if o not in ms and not o.hide_render]
         for o in others:
             o.hide_render = True
+        # runtime-lit FX parts (the shaman's spirit-fire: unlit emissive, no ink by spec, bloomed) are off for the
+        # measurement, as in the ship gates (mship.FxOff): the figure is re-rendered without them
+        swapped = _fx_off(ms, FAMILY) if cls != "hero" else []        # (the warrior is on the Heroes palette)
+        g_img, g_raw = img, raw
         try:
+            if swapped:
+                g_raw = review.render_array(box)
+                g_img = review.bloom(g_raw, review.emissive_pass(ms, box), 1080)
             body, hull = review.coverage_pass(ms, box, ground=True, extra_body=True)
             b0, h0 = review.coverage_pass(ms, box, ground=False, extra_body=True)
         finally:
             for o in others:
                 o.hide_render = False
+            for m, data in swapped:
+                m.data = data
         # hull under the floor (planted soles) is the terrain's, as in the ship gates (mship.MReview)
         buried = (b0 + h0) - (body + hull) > 0.25
         for _ in range(2):
             pb_ = np.pad(buried, 1, constant_values=False)
             buried = buried | pb_[:-2, 1:-1] | pb_[2:, 1:-1] | pb_[1:-1, :-2] | pb_[1:-1, 2:]
-        st = review.ink_stats(body, hull, img, min_px=gate["minPx"], dark_lum=gate["darkLum"],
-                              within=gate["darkWithinPx"], hull_rgb=raw, ignore=buried)
+        st = review.ink_stats(body, hull, g_img, min_px=gate["minPx"], dark_lum=gate["darkLum"],
+                              within=gate["darkWithinPx"], hull_rgb=g_raw, ignore=buried)
         st["gate"] = gate
         if "--debug" in sys.argv:
             dbg = np.zeros(img.shape, np.uint8)
             dbg[..., 0] = (body * 255).astype(np.uint8)
             dbg[..., 1] = (hull * 255).astype(np.uint8)
             dbg[st["edge_yx"]] = (255, 255, 255)
-            pngio.write_png(Path(f"/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/cov_{lab.split()[0]}.png"), dbg)
+            pngio.write_png(scratch_root("mq") / f"cov_{lab.split()[0]}.png", dbg)
         good = review.ink_gate_ok(st, gate)
         ok = ok and good
         reports.append((lab, st, good))

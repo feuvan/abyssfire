@@ -33,6 +33,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Quaternion, Vector  # noqa: E402
 
 import kit  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit import anim, asset, export, mesh as M, outline, paths, pngio, review, rig as R, scene, shading  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 from kit.rig import Bind, HumanoidSpec  # noqa: E402
@@ -1150,7 +1151,7 @@ def build_all():
     return pal, rig, body, sword, shield, sockets
 
 
-SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/warrior")
+SCRATCH = scratch_root("warrior")
 
 
 def quick(out: Path, facing: str = "se") -> None:

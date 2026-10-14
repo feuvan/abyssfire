@@ -28,6 +28,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import mesh as M, outline, review, scene, shading  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 from kit.rig import Bind  # noqa: E402
 
@@ -326,7 +327,7 @@ if __name__ == "__main__":
         scene.reset()
         pal = Palette(FAMILY)
         obj = build_crown(pal)
-        out = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/crown")
+        out = scratch_root("mq", "crown")
         carrier = bpy.data.objects.new("AF_CrownCarrier", None)
         scene.link(carrier)
         obj.parent = carrier

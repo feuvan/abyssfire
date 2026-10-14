@@ -363,6 +363,13 @@ class Folk:
         if self.skirted:
             for nm, a in (("skirt_f", 0.0), ("skirt_b", 180.0), ("skirt_l", 90.0), ("skirt_r", -90.0)):
                 chains.append((nm, "pelvis", [self.skirt_point(k, a, 0.0) for k in (0.10, 0.52, 1.0)]))
+            # one-bone coat drivers on the hip joints: they copy each thigh's forward swing only (the clips bake it;
+            # ``NpcAnims.drive_coat``), and the cloth before the thigh rides with them (``skirt_thigh_share``)
+            sp = self.D.spec
+            for side, sx in (("l", 1.0), ("r", -1.0)):
+                hp = Vector((sx * sp.hip_half, 0.0, self.D.hip_z))
+                kn = hp + Vector((0.0, -math.sin(math.radians(sp.knee_prebend)) * sp.thigh, -sp.thigh))
+                chains.append((f"coat_th_{side}", "pelvis", [hp, kn]))
         if lk.hair and lk.hair[1] in ("ponytail", "braid", "long"):
             chains.append(("hair_tail", "head", self.hair_tail_points()))
         if lk.beard and lk.beard[1] in ("long", "braided", "full"):
@@ -397,9 +404,15 @@ class Folk:
         p2 = self.hp(-6.1, 0.0, 1.0) + Vector((0, 0.01, -(n + 0.4) * self.HK))
         return [top, p1, p2]
 
+    BRIM_LOD1 = (24, 3)         # wide-brim (segments, rows) at LOD1 (built exact)
+    PEDDLER_K = 1.15            # pack_scale above this = the peddler's huge pack (taller, roll on top, pot, rug)
+    PEDDLER_TALL = 1.3          # its height × this: the bundle rises above the shoulders to the hat (web)
+
     def pack_dims(self) -> tuple[float, float, float]:
         k = self.look.pack_scale
-        return 4.8 * self.g * self.U * k, 2.6 * self.U * k ** 0.8, 6.4 * self.U * k
+        big = k > self.PEDDLER_K
+        tall = self.PEDDLER_TALL if big else 1.0
+        return 4.8 * self.g * self.U * k, 2.6 * self.U * k ** 0.8 * (1.2 if big else 1.0), 6.4 * self.U * k * tall
 
     def pack_axis(self) -> tuple[Vector, Vector]:
         W, Dd, H = self.pack_dims()
@@ -536,6 +549,16 @@ class Folk:
         neck = M.tube([n0, n0.lerp(n1, 0.5), n1], [r0, r0 * 0.97, r0 * 0.95], sides=14)
         b.add(neck, "skin", Bind.blend("spine_03", "neck_01", "head", falloff=3.0), name="neck")
         return sid
+
+    def _exact_via(self, adder, part, *args, **kw) -> int:
+        """``adder.add`` (the builder, or a wrapper that transforms parts first) with the builder's LOD decimation
+        off for this part."""
+        r = self.b.lod_ratio
+        self.b.lod_ratio = 1.0
+        try:
+            return adder.add(part, *args, **kw)
+        finally:
+            self.b.lod_ratio = r
 
     @staticmethod
     def _add_exact(b, part, *args, **kw) -> int:
@@ -844,9 +867,14 @@ class Folk:
             inner.append(ri)
         mass = C.thick_patch(outer, inner)
 
-        def wfn(co, top=top, bot=bot):
+        # the mass rides the head rigidly down to below the occiput and only blends onto the hair_tail chain under
+        # the nape (art review: blended from just under the crown, it sheared off the skull when the elder looked to
+        # the sky — a dark sliver of the inner shell and its hull behind the head)
+        k_nape = (top.z - self.hz(-5.0)) / max(top.z - bot.z, 1e-6)
+
+        def wfn(co, top=top, bot=bot, k_nape=k_nape):
             k = np.clip((top.z - co[:, 2]) / max(top.z - bot.z, 1e-6), 0.0, 1.0)
-            y = 1.0 - HB.smooth01(k / 0.25)
+            y = 1.0 - HB.smooth01((k - (k_nape - 0.06)) / 0.22)
             return HB.top4(HB.chain_weights(k, 2, y))
         b.add(mass, "hair", Bind.custom(["head", "hair_tail_01", "hair_tail_02"], wfn), name="hair_back",
               hull_pad=True)
@@ -1083,12 +1111,20 @@ class Folk:
                 if hh < 4.6:
                     return 0.0
                 return -0.55 * HK * smooth01((hh - 4.6) / 1.4) * math.cos(math.radians(a)) ** 2
-            zs = [self.hz(hb + 0.1 + (6.45 - 0.1) * i / 10) for i in range(11)]
-            crown = profile_mesh(cp, zs, 28, disp=dent, cap0="fan", cap1="fan", dome1=0.15 * HK)
-            hull = profile_mesh(cp, zs[::2] + [zs[-1]], 24, cap0="fan", cap1="fan", dome1=0.15 * HK)
-            crid = b.add(crown, "hat", bind, name="brim_crown", hull=hull, hull_pad=True)
-            b.add(C.surface_band(cp, self.hz(hb + 1.75), 1.35 * HK, 0.18 * HK, segs=32, out0=-0.05 * HK), acc,
-                  bind, name="brim_band", outline=False, covered_by=crid)
+            lod = getattr(self, "lod", 0)
+            nz = 7 if lod else 11
+            zs = [self.hz(hb + 0.1 + (6.45 - 0.1) * i / (nz - 1)) for i in range(nz)]
+            crown = profile_mesh(cp, zs, 16 if lod else 28, disp=dent, cap0="fan", cap1="fan", dome1=0.15 * HK)
+            hull = profile_mesh(cp, zs[::2] + [zs[-1]], 14 if lod else 24, cap0="fan", cap1="fan", dome1=0.15 * HK)
+            # LOD1: crown and its hull proxy rebuilt coarse, not collapsed — the exact accent band below is padded
+            # into the proxy, and a proxy decimated to a few faces inflated into a dark sail over the hat
+            crid = (self._exact_via if lod else (lambda bb, *a_, **kw: bb.add(*a_, **kw)))(
+                b, crown, "hat", bind, name="brim_crown", hull=hull, hull_pad=True)
+            # the accent band bypasses the LOD collapse (art review: decimated, its top faces turned over and the
+            # crimson band read salmon-pink across the crown at LOD1)
+            self._exact_via(b, C.surface_band(cp, self.hz(hb + 1.75), 1.35 * HK, 0.18 * HK, segs=32 if not getattr(self, "lod", 0)
+                                              else 20, out0=-0.05 * HK), acc, bind, name="brim_band",
+                            outline=False, covered_by=crid)
             # crease line along the dent
             pts = [cp.point(self.hz(hb + 6.2), a, -0.5 * HK) for a in (-70, -35, 0, 35, 70)]
             # brim: an annulus at the crown's base, tipped up at the front (web: + cos φ · 0.9 u) and curled at the
@@ -1098,9 +1134,10 @@ class Folk:
             cyb = rings[0][3]
             tip = 15.0 if self.look.item != "sword" else 10.0
             ro, ri = [], []
-            nseg = 36
-            for k in range(4):
-                s = k / 3
+            lod = getattr(self, "lod", 0)
+            nseg, nrow = self.BRIM_LOD1 if lod else (36, 4)
+            for k in range(nrow):
+                s = k / (nrow - 1)
                 o_row, i_row = [], []
                 for i in range(nseg):
                     a = 360.0 * i / nseg
@@ -1118,7 +1155,12 @@ class Folk:
                 ro.append(o_row)
                 ri.append(i_row)
             brim = C.thick_patch(ro, ri, wrap_u=True)
-            b.add(brim, "hat", bind, name="brim", hull_pad=True)
+            # LOD1 rebuilds the brim coarse instead of collapsing it (a drooping felt brim decimated to a third folded
+            # its padded hull into a dark flag beside the hat)
+            if lod:
+                self._exact_via(b, brim, "hat", bind, name="brim", hull_pad=True)
+            else:
+                b.add(brim, "hat", bind, name="brim", hull_pad=True)
             del pts
 
     # ── spectacles (web viewSpecs: two round rims, bridge, arms to the ears) ────────────────────────────
@@ -1222,11 +1264,38 @@ class Folk:
     SKIRT_THICK = 0.009
 
     def skirt_bones(self) -> list[str]:
-        return ["pelvis", "thigh_l", "thigh_r"] + [f"skirt_{c}_{i:02d}" for c in "fblr" for i in (1, 2)]
+        return (["pelvis", "thigh_l", "thigh_r"] + [f"skirt_{c}_{i:02d}" for c in "fblr" for i in (1, 2)]
+                + ["coat_th_l_01", "coat_th_r_01"])
+
+    # the cloth before each thigh rides with its forward swing (art review: the escort's run drove the lifted thighs
+    # through the coat's front panels high under the belt, where no skirt-chain angle can move the cloth without
+    # flaring the whole hem). The share is skinned to the ``coat_th_*`` driver bones (the thigh's forward swing only:
+    # a leg swung back must not drag the panel under the belt into the body): peak share, the thigh's front round
+    # the skirt (deg, ± per side), the angular reach of the share, and its profile down the skirt (rise from, full
+    # at, fall from, gone at; k = 0 waist … 1 hem)
+    SKIRT_THIGH_W = 0.72
+    SKIRT_THIGH_AZ = 26.0
+    SKIRT_THIGH_SPREAD = 66.0
+    SKIRT_THIGH_K = (0.05, 0.22, 0.50, 1.0)
+
+    def skirt_thigh_share(self, k: np.ndarray, a: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """(left, right) thigh weight of skirt points at ``k`` (0 waist … 1 hem) and angle ``a`` (deg, 0 = front,
+        + = the character's left) — the share of the cloth that rides with each thigh."""
+        k0, k1, k2, k3 = self.SKIRT_THIGH_K
+        prof = HB.smooth01((k - k0) / (k1 - k0)) * (1.0 - HB.smooth01((k - k2) / (k3 - k2)))
+        out = []
+        for sg in (1.0, -1.0):
+            d = np.abs((a - sg * self.SKIRT_THIGH_AZ + 180.0) % 360.0 - 180.0)
+            out.append(self.SKIRT_THIGH_W * prof * HB.smooth01(1.0 - d / self.SKIRT_THIGH_SPREAD))
+        tl, tr = out
+        tot = tl + tr
+        over = np.maximum(tot / self.SKIRT_THIGH_W, 1.0)          # the front opening: both thighs share one W
+        return tl / over, tr / over
 
     def skirt_weights(self, co: np.ndarray) -> np.ndarray:
         """The mage's skirt weights: round the skirt the four chains blend by angle, down it bone → bone; the waist
-        band stays on the pelvis with a touch of each thigh near the hip."""
+        band stays on the pelvis with a touch of each thigh near the hip; the cloth before each thigh rides with it
+        (``skirt_thigh_share``)."""
         z0, z1 = self.skirt_z0, self.skirt_z1
         bones = self.skirt_bones()
         k = np.clip((z0 - co[:, 2]) / (z0 - z1), 0.0, 1.0)
@@ -1237,6 +1306,10 @@ class Folk:
         W[:, 0] = yoke * (1 - thigh)
         W[:, 1] = yoke * thigh * (co[:, 0] > 0)
         W[:, 2] = yoke * thigh * (co[:, 0] <= 0)
+        tl, tr = self.skirt_thigh_share(k, a)
+        W[:, bones.index("coat_th_l_01")] = (1.0 - yoke) * tl
+        W[:, bones.index("coat_th_r_01")] = (1.0 - yoke) * tr
+        free = 1.0 - tl - tr
         lat = {}
         for c, ac in (("f", 0.0), ("l", 90.0), ("b", 180.0), ("r", -90.0)):
             d = np.abs((a - ac + 180.0) % 360.0 - 180.0)
@@ -1244,7 +1317,7 @@ class Folk:
         tot = sum(lat.values())
         q = np.clip(k * 2 - 0.5, 0.0, 1.0)
         for c in "fblr":
-            wc = (1.0 - yoke) * lat[c] / np.maximum(tot, 1e-6)
+            wc = (1.0 - yoke) * free * lat[c] / np.maximum(tot, 1e-6)
             W[:, bones.index(f"skirt_{c}_01")] += wc * (1.0 - q)
             W[:, bones.index(f"skirt_{c}_02")] += wc * q
         return HB.top4(W)
@@ -1252,8 +1325,10 @@ class Folk:
     def add_skirt(self, b: M.Builder) -> int:
         lk = self.look
         rows = [i / 9 for i in range(10)]
+        # the hull proxy keeps every row: the coat drivers and the chains bend the cloth between rows, and a proxy
+        # on every other row cut its chords into the bent shell (dark ink specks on the escort's running coat)
         shell, hull = HB.shell_ring(lambda k, uu, d: self.skirt_point(k, uu * 360.0 - 180.0, d), rows, 24,
-                                    self.SKIRT_THICK, lens=0.002 / 0.75)
+                                    self.SKIRT_THICK, lens=0.002 / 0.75, hull_row_step=1)
         bind = Bind.custom(self.skirt_bones(), self.skirt_weights)
         inside = "top_shade"
         sid = b.add(shell, "top", bind, name="skirt", sub_regions={1: "top", 2: inside}, hull=hull, hull_pad=True)
@@ -1483,20 +1558,32 @@ class Folk:
         # side pocket on the left
         b.add(M.box((0.016 + 0.4 * U, Dd * 1.3, H * 0.75), c + Vector((W + 0.2 * U, 0.004, -H * 0.3)),
                     bevel=0.006), "pack_line", pb, name="pack_pocket", hull_pad=True)
-        # bedroll across the top (web capsule r 1.9 u, the width + 0.6 u each side, two leather ties)
+        # bedroll across the top (web capsule r 1.9 u, the width + 0.6 u each side, two leather ties); the peddler's
+        # rides front to back on top of his tall bundle (art review: across it, its ends flanked the head at ear
+        # height and read as earmuffs from the front)
         rr = 2.0 * U * k ** 0.6
         zr = c.z + H + rr * 0.85
-        a = Vector((-(W + 0.8 * U), c.y - 0.15 * U, zr))
-        e = Vector((W + 0.8 * U, c.y - 0.15 * U, zr))
-        roll = M.capsule(a, e, rr, rr, sides=14, cap_rings=2, mid=3, up=(0, 0, 1))
-        rid = b.add(roll, "bedroll", pb, name="bedroll", hull_pad=True)
+        if k > self.PEDDLER_K:
+            a = Vector((0.0, c.y - Dd - 0.2 * U, zr))
+            e = Vector((0.0, c.y + Dd + 0.9 * U, zr))
+        else:
+            a = Vector((-(W + 0.8 * U), c.y - 0.15 * U, zr))
+            e = Vector((W + 0.8 * U, c.y - 0.15 * U, zr))
+        ax = (e - a).normalized()
+        lod = getattr(self, "lod", 0)
+        # LOD1: the roll rebuilt coarse instead of collapsed (decimated, the peddler's front-to-back roll folded its
+        # padded hull into a dark flag behind the hat)
+        roll = M.capsule(a, e, rr, rr, sides=10 if lod else 14, cap_rings=1 if lod else 2, mid=2 if lod else 3,
+                         up=(0, 0, 1))
+        add = self._add_exact if lod else (lambda bb, *a_, **kw: bb.add(*a_, **kw))
+        rid = add(b, roll, "bedroll", pb, name="bedroll", hull_pad=True)
         for f in (0.3, 0.7):
             q = a.lerp(e, f)
-            tie = M.tube([q - Vector((0.6 * U, 0, 0)), q + Vector((0.6 * U, 0, 0))], [rr * 1.08, rr * 1.08],
-                         sides=14, dome0=0.0, dome1=0.0)
+            tie = M.tube([q - ax * 0.6 * U, q + ax * 0.6 * U], [rr * 1.08, rr * 1.08], sides=14, dome0=0.0,
+                         dome1=0.0)
             b.add(tie, "leather", pb, name="lace", outline=False, covered_by=rid)
-        if k > 1.15:
-            # the peddler's extras: a cooking pot hanging off the right side, a rolled rug under the bedroll
+        if k > self.PEDDLER_K:
+            # the peddler's extras: a cooking pot hanging off the right side, a rolled rug under the pack
             pot_c = c + Vector((-(W + 1.5 * U), 0.002, -H * 0.15))
             pot = M.lathe([(1.4 * U, -1.2 * U), (1.75 * U, -0.6 * U), (1.85 * U, 0.6 * U), (1.95 * U, 1.0 * U)],
                           sides=14, cap0="fan", cap1="fan").translate(pot_c)
@@ -1587,11 +1674,18 @@ class Folk:
         bare = self.look.sleeves and self.look.sleeves.lower() == self.look.skin.lower()
         k = 0.92
         r_s, r_e, r_w = 2.9 * g * U * k, 2.5 * g * U * k, 2.15 * g * U * k
-        pts = [S - dua * 0.045, S.lerp(E, 0.5), E, E.lerp(W, 0.5), W - dla * 0.01]
-        rads = [r_s, (r_s + r_e) / 2 * 1.02, r_e, (r_e + r_w) / 2, r_w]
-        arm = M.tube(pts, rads, sides=16, dome0=r_s * 0.6, dome1=r_w * 0.4)
+        # elbow loops either side of the hinge (art review: with one ring at the elbow a sharply bent sleeve folded
+        # into a pointed sheet): the bend spreads over three rings
+        pts = [S - dua * 0.045, S.lerp(E, 0.45), S.lerp(E, 0.8), E, E.lerp(W, 0.2), E.lerp(W, 0.55), W - dla * 0.01]
+        rads = [r_s, lerp(r_s, r_e, 0.45) * 1.02, lerp(r_s, r_e, 0.8) * 1.01, r_e, lerp(r_e, r_w, 0.2),
+                lerp(r_e, r_w, 0.55), r_w]
+        lod = getattr(self, "lod", 0)
+        # LOD1 rebuilds the sleeve coarse (12 sides) instead of collapsing it: decimated, the wrist ring shrank under
+        # the cuff and a dark notch opened between the forearm and the chest (art review: escort LOD1)
+        arm = M.tube(pts, rads, sides=12 if lod else 16, dome0=r_s * 0.6, dome1=r_w * 0.4)
         bind = Bind.blend(cl, ua, la, f"hand_{side}", falloff=5.0)
-        aid = b.add(arm, "sleeve", bind, name=f"arm_{side}", hull_pad=True)
+        add = self._add_exact if lod else (lambda bb, *a_, **kw: bb.add(*a_, **kw))
+        aid = add(b, arm, "sleeve", bind, name=f"arm_{side}", hull_pad=True)
         if bare:
             # the sleeveless tunic's shoulder cap (web: the near arm starts in the top colour)
             cap = M.tube([S - dua * 0.05, S + dua * 0.035, S + dua * 0.075],
@@ -1599,10 +1693,10 @@ class Folk:
             b.add(cap, "top", Bind.blend(cl, ua, falloff=5.0), name=f"sleeve_cap_{side}", hull_pad=True)
         elif self.skirted or self.look.top[1] == "coat":
             # turned-back cuff at the wrist
-            cuff = M.tube([W - dla * 0.045, W - dla * 0.004], [r_w * 1.13, r_w * 1.16], sides=16, dome0=0.0,
-                          dome1=0.0)
-            b.add(cuff, "trim" if self.look.top[2] else "top_shade", Bind.blend(la, f"hand_{side}", falloff=6.0),
-                  name=f"cuff_{side}", outline=False, covered_by=aid)
+            cuff = M.tube([W - dla * 0.045, W - dla * 0.004], [r_w * 1.13, r_w * 1.16], sides=12 if lod else 16,
+                          dome0=0.0, dome1=0.0)
+            add(b, cuff, "trim" if self.look.top[2] else "top_shade", Bind.blend(la, f"hand_{side}", falloff=6.0),
+                name=f"cuff_{side}", outline=False, covered_by=aid)
         if hand:
             self.add_hand(b, rig, side)
 

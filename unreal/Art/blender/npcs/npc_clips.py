@@ -20,9 +20,10 @@ loop personal):
   sword), Lookout 2000 (shading the eyes: elbow out, forearm sideways along the upper brow, eyes clear);
 * escort only: ``Idle`` (the UE escort actor's idle), ``Walk`` 1000 @ 1.2 m/s, ``Run`` 700 @ 2.85 m/s (no-slide
   gait, FootL/R, counter-swinging arms, ~10° lean, coat-hem kick), ``Hurt`` 300, ``Death`` 600 (kneel → topple →
-  face down, the coat draped); rescue only: ``Cower`` 1000 loop (NEW).
+  face down, the coat draped); rescue only: ``Cower`` 1000 loop (NEW: kneeling, hunched, arms over the head).
 
-Cloth: robe / coat skirts (four ``skirt_*`` chains, the mage's leg envelope), ponytail / long hair (``hair_tail``),
+Cloth: robe / coat skirts (four ``skirt_*`` chains, the mage's leg envelope, the ``coat_th_*`` drivers that carry the
+cloth before a thigh swung forward), ponytail / long hair (``hair_tail``),
 long beards (``beard``), the scarf tail (``scarf_a``) and the travel pack (``pack_01``) hang with secondary lag and
 stay off the body and the floor.
 """
@@ -71,8 +72,8 @@ def envelope_soft(angles, lengths, dn: np.ndarray, bk: np.ndarray, clear, max_de
 
 class NpcAnims(HB.HeroAnims):
     LEG_PARTS = ("leg", "boot", "boot_shaft", "boot_cuff")
-    SKIRT_CLEAR = 0.015
-    HEM_FADE = (0.96, 1.04)
+    SKIRT_CLEAR = 0.022          # leg → cloth clearance the envelope keeps (the legs' 1.6 cm baked ink + a margin)
+    HEM_FADE = (1.0, 1.08)       # leg points this far down the skirt (k) stop pushing: the hem lens, then free
     SKIRT_MAX = 80.0
     SKIRT_FLOOR = 0.05
     # spun body (face-down Death): per-link share toward world down (outward / toward the body), side chains, the
@@ -81,6 +82,11 @@ class NpcAnims(HB.HeroAnims):
     SKIRT_FALL_IN = 0.25
     SKIRT_FALL_LR = (0.25, 0.45)
     SKIRT_FLOOR_SPUN = 0.046    # the coat's hem lens hangs ~3.6 cm under its chain end (the robe drape is per vertex)
+    SKIRT_PUSH_K = 0.20         # leg points below this share of the skirt (from the waist) push the chains
+    SKIRT_HEM_CLEAR = 0.012     # extra clearance toward the hem (a trailing shin grazed the back hem's lens)
+    SKIRT_SIDE_BACK = 1.0       # share of the back panel's push the side panels follow backward …
+    SKIRT_SIDE_BACK_DEAD = 28.0  # … beyond this push (deg): a walking shin's push leaves the sides alone
+    SKIRT_FREE_MIN = 0.6        # floor of the chains' free share when a deficit is scaled up by it
 
     def __init__(self, rig, folk, npc, items: dict | None = None):
         self.F = folk
@@ -88,7 +94,7 @@ class NpcAnims(HB.HeroAnims):
         self.look = folk.look
         chains = []
         if folk.skirted:
-            chains += ["skirt_f", "skirt_b", "skirt_l", "skirt_r"]
+            chains += ["skirt_f", "skirt_b", "skirt_l", "skirt_r", "coat_th_l", "coat_th_r"]
         names = {b.name for b in rig.obj.data.bones}
         for c in ("hair_tail", "beard", "scarf_a", "pack"):
             if f"{c}_01" in names:
@@ -205,6 +211,9 @@ class NpcAnims(HB.HeroAnims):
         del hand_on
         return bp.but(**out)
 
+    STAFF_LAT = -0.38           # the elder's staff hand out to his right: the orb (at the crown since the grip rose to
+                                # the chest) stands clear of the head and its halo off the head's ink
+
     def _ready_read(self, bp: BP) -> BP:
         F = self.F
         zc = F.th(F.L - 4.5)
@@ -214,7 +223,7 @@ class NpcAnims(HB.HeroAnims):
             # the scroll in the far hand before the chest; 3D: the staff foot planted on the ground. The open sheet
             # lies forward from the hand ~28° above level, its text up toward the reader's bowed head: held near
             # upright (the web's side view) the W1 camera saw it edge-on, a second wooden baton by the staff
-            hand_r = V(-0.33, -front + 0.05, zc - 0.12)
+            hand_r = V(self.STAFF_LAT, -front + 0.05, zc - 0.12)
             sd, se = C.blade(-3.0, lat=-0.07)
             bp = bp.but(lean=4.6, head_pitch=2.0, hand_r=hand_r, wpn=sd, wpn_up=se, elbow_r=V(-0.9, -0.3, -0.3),
                         hand_l=V(0.06, -front + 0.19, zc - 0.22), elbow_l=V(0.8, -0.5, -0.4),
@@ -249,10 +258,12 @@ class NpcAnims(HB.HeroAnims):
         return self.fit_item(bp, "r", self.SWORD_TIP, tip)
 
     def _ready_lookout(self, bp: BP) -> BP:
-        # hands at rest: the far hand on the pack strap at the chest
+        # hands at rest: the far hand holding the pack strap below the chest, the elbow down at the side (art review:
+        # a fist high on the chest with the elbow out folded the arm to a 32° hinge — the coat sleeve webbed into a
+        # pointed teal sheet past the elbow in the front / sw views the NPC turns to the hero in); hinge ≈ 50°
         F = self.F
-        zc = F.th(F.L - 3.0)
-        return bp.but(hand_l=F.torso.point(zc, 34.0, 0.03) + V(0.0, 0.03, -0.03), elbow_l=V(0.8, -0.4, -0.5),
+        zc = F.th(F.L - 6.5)
+        return bp.but(hand_l=F.torso.point(zc, 28.0, 0.03) + V(0.0, 0.06, 0.0), elbow_l=V(0.4, -0.2, -1.0),
                       wrist_l=(-30.0, 0.0, -50.0))
 
     # ── cloth ───────────────────────────────────────────────────────────────────────────────────────────
@@ -270,7 +281,12 @@ class NpcAnims(HB.HeroAnims):
         self.z0, self.z1 = F.skirt_z0, F.skirt_z1
         self._ks = np.linspace(0.0, 1.0, 21)
         self._as = np.linspace(-180.0, 180.0, 73)
-        self._rt = np.array([[math.hypot(*tuple(F.skirt_point(k, a))[:2]) for a in self._as] for k in self._ks])
+        self._sp = np.array([[tuple(F.skirt_point(k, a)) for a in self._as] for k in self._ks])
+        self._rt = np.hypot(self._sp[..., 0], self._sp[..., 1])
+        # coat drivers: rest sagittal angle of each thigh (deg back from straight down) and its hip joint
+        self._thigh_rest = {s: self.chains[f"coat_th_{s}"].rest[0] for s in ("l", "r")}
+        self._hip = {s: np.array(self.J[f"hip_{s}"]) for s in ("l", "r")}
+        self._drive = {"l": 0.0, "r": 0.0}
 
     def make_env(self, body, names):
         legs = C.SkinPoints(self.rig).add_mesh(body, names, lambda n: n.rstrip("_lr") in self.LEG_PARTS, step=1)
@@ -285,14 +301,49 @@ class NpcAnims(HB.HeroAnims):
             return Vector((0, 0, -1))
         return Quaternion(Vector(bp.spin_axis).normalized(), math.radians(bp.spin)).inverted() @ Vector((0, 0, -1))
 
-    def _skirt_r(self, k: np.ndarray, a: np.ndarray) -> np.ndarray:
+    def _skirt_r(self, k: np.ndarray, a: np.ndarray, table: np.ndarray | None = None) -> np.ndarray:
         fk = np.clip(k, 0.0, 1.0) * (len(self._ks) - 1)
         fa = (np.mod(a + 180.0, 360.0)) / 5.0
         i, j = np.minimum(fk.astype(int), len(self._ks) - 2), np.minimum(fa.astype(int), len(self._as) - 2)
         x, y = fk - i, fa - j
-        t = self._rt
+        t = self._rt if table is None else table
         return ((1 - x) * (1 - y) * t[i, j] + x * (1 - y) * t[i + 1, j] + (1 - x) * y * t[i, j + 1]
                 + x * y * t[i + 1, j + 1])
+
+    COAT_DRIVE_MAX = 95.0       # deg: the coat drivers follow a thigh's forward swing up to this
+
+    def drive_coat(self, p: Pose) -> None:
+        """Set the ``coat_th_*`` drivers: each copies its thigh's forward swing in the pelvis frame (sagittal angle
+        below its rest = forward), never a backward swing — the cloth before a lifted knee rides up with it, a leg
+        swung back leaves the panel hanging. Stored in ``self._drive`` (deg, ≤ 0) for the skirt solver."""
+        mats = anim.evaluate(p, return_matrices=True)
+        Pm = mats["pelvis"] @ self.bones["pelvis"].matrix_local.inverted()
+        inv3 = Pm.to_3x3().inverted()
+        for s in ("l", "r"):
+            d = inv3 @ mats[f"thigh_{s}"].to_3x3().col[1]
+            a = math.degrees(math.atan2(d.y, -d.z))
+            fwd = max(-self.COAT_DRIVE_MAX, min(0.0, a - self._thigh_rest[s]))
+            self._drive[s] = fwd
+            p.rot(self.chains[f"coat_th_{s}"].names[0], pitch=fwd)
+
+    def _drive_dr(self, k: np.ndarray, th: np.ndarray) -> np.ndarray:
+        """Radial displacement (pelvis rest frame) the coat drivers give the cloth at skirt points (k, θ), weighted
+        by each driver's share there."""
+        tl, tr = self.F.skirt_thigh_share(k, th)
+        out = np.zeros(len(k))
+        for s, w in (("l", tl), ("r", tr)):
+            a = math.radians(self._drive[s])
+            if abs(a) < 1e-4:
+                continue
+            c, sn = math.cos(a), math.sin(a)
+            P = self._sp - self._hip[s]
+            # rotation about the hip's X axis by the forward swing (−Y = forward: a negative angle swings forward)
+            y = P[..., 1] * c - P[..., 2] * sn
+            z = P[..., 1] * sn + P[..., 2] * c
+            moved = np.stack([P[..., 0], y, z], -1) + self._hip[s]
+            dr = np.hypot(moved[..., 0], moved[..., 1]) - self._rt
+            out += w * self._skirt_r(k, th, dr)
+        return out
 
     def _acc(self, mats, parent: str, hinge: Vector, down=Vector((0, 0, -1))) -> float:
         M3 = mats[parent].to_3x3() @ self.bones[parent].matrix_local.to_3x3().inverted()
@@ -318,11 +369,17 @@ class NpcAnims(HB.HeroAnims):
             rho = np.hypot(q[:, 0], q[:, 1])
             k = (self.z0 - q[:, 2]) / (self.z0 - self.z1)
             fade = np.asarray(HB.smooth01((self.HEM_FADE[1] - k) / (self.HEM_FADE[1] - self.HEM_FADE[0])))
-            sel = (k > 0.20) & (fade > 0.02)          # the waist band is pinned: only knees / shins / boots push
+            sel = (k > self.SKIRT_PUSH_K) & (fade > 0.02)   # the waist band is pinned: only knees / shins / boots push
             if sel.any():
                 q, th, rho, k, fade = q[sel], th[sel], rho[sel], np.clip(k[sel], 0.0, 1.0), fade[sel]
-                clear = self.SKIRT_CLEAR + 0.012 * np.exp(-((k - 0.5) / 0.12) ** 2)
-                delta = (rho + clear - self._skirt_r(k, th)) * fade
+                clear = (self.SKIRT_CLEAR + 0.012 * np.exp(-((k - 0.5) / 0.12) ** 2)
+                         + self.SKIRT_HEM_CLEAR * HB.smooth01((k - 0.65) / 0.25))
+                # the cloth before a lifted thigh rides partly with its coat driver (``Folk.skirt_thigh_share``):
+                # the drivers' own push is taken off the deficit, and the chains — which move only their free share
+                # of the cloth there — answer for the rest divided by that share
+                delta = (rho + clear - self._skirt_r(k, th) - self._drive_dr(k, th)) * fade
+                tl, tr = self.F.skirt_thigh_share(k, th)
+                delta = delta / np.maximum(1.0 - tl - tr, self.SKIRT_FREE_MIN)
                 hit = delta > 0
                 if hit.any():
                     q, th, k, delta = q[hit], th[hit], k[hit], delta[hit]
@@ -385,6 +442,11 @@ class NpcAnims(HB.HeroAnims):
             else:
                 fl = self.lagged(bp, 60.0).flow - 0.12
                 absang = [info.rest[i] + math.degrees(fl * 0.5 * (0.6 + 0.4 * (i + 1) / 2)) for i in range(2)]
+                # the side panels follow a share of the back panel's push (heels tucked behind a kneel, a shin
+                # kicked back): the cloth between the side and back chains is their blend and sagged into the heels
+                ob = sk_res["out"]["b"]
+                absang = [absang[i] + self.SKIRT_SIDE_BACK * max(0.0, ob[i] - self.skirt["b"]["rest_out"][i]
+                                                                  - self.SKIRT_SIDE_BACK_DEAD) for i in range(2)]
                 if gs > 0:
                     for i in range(2):
                         d = self.arc(ga - absang[i])
@@ -445,7 +507,12 @@ class NpcAnims(HB.HeroAnims):
         want = [follow * (info.rest[i] + acc) + (1 - follow) * free[i] for i in range(len(info.names))]
         if self.skin() is not None:
             root, Dn, B, _, _ = self.plane(mats, parent, info.names[0])
+            # long hair: the back, mantle and pack only — the skull and the hair mass ride the head with the chain's
+            # own root (art review: looking up, the occiput swung into the chain plane and the envelope flipped the
+            # hair out behind the head as a flat fin); a ponytail keeps the skull as an obstacle
             pts = self.torso_env.posed(mats)
+            if self.look.hair[1] == "long":
+                pts = pts[~self.torso_env.mask(("skull", "hair_back"))]
             rel = pts - np.array(root)
             lat = rel @ np.array((Hm.to_3x3() @ Vector((1, 0, 0))).normalized())
             sel = np.abs(lat) < 0.06
@@ -458,6 +525,7 @@ class NpcAnims(HB.HeroAnims):
     def cloth(self, p: Pose, bp: BP) -> None:
         wf = self.world_fn(p, bp)
         if self.F.skirted:
+            self.drive_coat(p)
             mats = anim.evaluate(p, return_matrices=True)
             self.set_skirt(p, bp, self.skirt_angles(p, bp, mats), wf)
         if "hair_tail" in self.chains:
@@ -939,9 +1007,10 @@ class NpcAnims(HB.HeroAnims):
             if speed > 2.0:
                 # run: elbows bent ~90°, the free (right) fist pumping fore and aft beside the hip, rising as it
                 # comes forward and kept out from the coat (the near side in se: it must leave the torso
-                # silhouette); the purse hand swings too, half as far, its bag bouncing
-                hl = self.shoulder("l") + V(0.24 + 0.02 * abs(sw), 0.06 - arm * 0.55 * sw,
-                                            -0.40 + 0.05 * max(0.0, -sw))
+                # silhouette); the purse hand swings too, half as far, its bag bouncing — carried higher and wider
+                # than the free fist: the coat's side panel rides forward with the lifted thigh and met the bag
+                hl = self.shoulder("l") + V(0.27 + 0.02 * abs(sw), 0.06 - arm * 0.55 * sw,
+                                            -0.34 + 0.05 * max(0.0, -sw))
                 hr = self.shoulder("r") + V(-0.13 - 0.03 * abs(sw), 0.03 + arm * sw, -0.39 + 0.10 * max(0.0, sw))
             else:
                 hl = self.hang_hand("l", 0.21, 0.07, 0.84) + V(0, -arm * 0.45 * sw, 0.02 * abs(sw))
@@ -1039,7 +1108,7 @@ class NpcAnims(HB.HeroAnims):
                 # dips under the chain ends — the floor test sees the solved cloth too
                 pz = C.to_pose(self.rig, out, self.cloth, grips=self.GRIPS)
                 z = self.coat_pts().posed(anim.evaluate(pz, return_matrices=True))[:, 2]
-                low = float(z.min()) - 0.002
+                low = float(z.min()) - 0.006          # the re-solved cloth after the lift settles a few mm lower
                 if low < 0.0:
                     out = out.but(lift=out.lift - low)
             return out
@@ -1048,17 +1117,27 @@ class NpcAnims(HB.HeroAnims):
         return c
 
     # ── rescue: Cower (NEW, 1000 loop) ──────────────────────────────────────────────────────────────────
+    # kneeling cower (art review: a squat with the knees spread drove the coat's chains out horizontally — a rigid
+    # flat cone fanned over the ground): on both knees, sitting back toward the tucked heels, hunched over the knees
+    # with the arms over the head; the coat drapes over the thighs and pools on the floor round the knees
+    COWER = dict(pelvis=(0.0, 0.0, -0.42), lean=34.0, hip_pitch=12.0, foot_back=0.36, foot_up=-0.05, toe=110.0,
+                 knee_pole=(0.12, 1.0, -0.5), foot_out=0.07)
+
     def cower(self):
         R0 = self.ready()
         J = self.J
         hc = J["head_center"]
-        base = R0.but(pelvis=V(0, 0.08, -0.22), lean=26.0, hip_pitch=8.0, head_pitch=14.0,
-                      foot_l=J["ankle_l"] + V(0.06, -0.06, 0.0), foot_r=J["ankle_r"] + V(-0.06, 0.08, 0.0),
-                      foot_l_rot=(0, 0, 20), foot_r_rot=(0, 0, 14), knee_l=V(0.5, 1, 0), knee_r=V(-0.5, 1, 0),
+        cw = self.COWER
+        base = R0.but(pelvis=V(*cw["pelvis"]), lean=cw["lean"], hip_pitch=cw["hip_pitch"], head_pitch=14.0,
+                      foot_l=J["ankle_l"] + V(cw["foot_out"], -cw["foot_back"], cw["foot_up"]),
+                      foot_r=J["ankle_r"] + V(-cw["foot_out"], -cw["foot_back"] + 0.02, cw["foot_up"]),
+                      foot_l_rot=(cw["toe"], 0, 6), foot_r_rot=(cw["toe"] - 4.0, 0, 4),
+                      knee_l=V(*cw["knee_pole"]), knee_r=V(-cw["knee_pole"][0], *cw["knee_pole"][1:]),
                       elbow_l=V(0.6, 1.0, -0.2), elbow_r=V(-0.6, 1.0, -0.2), wrist_l=(-60.0, 0.0, -40.0),
                       wrist_r=(-60.0, 0.0, 40.0), clav_l=(10.0, 12.0), clav_r=(10.0, 12.0))
         hl = hc + V(0.10, 0.24, 0.02)
         hr = hc + V(-0.12, 0.22, 0.06)
+        ground = self.grounded(snap=False)
 
         def s(t_ms: float) -> BP:
             t = t_ms / 1000.0
@@ -1068,7 +1147,7 @@ class NpcAnims(HB.HeroAnims):
             bp = base.but(head_yaw=look, twist=look * 0.25, pelvis=base.pelvis + V(tr, 0, tr * 0.5),
                           head_pitch=14.0 + 3.0 * math.sin(2 * ph + 1.0), wave=ph, flow=0.1)
             return bp.but(hand_l=self.chest(bp, hl.x + tr, -hl.y, hl.z), hand_r=self.chest(bp, hr.x - tr, -hr.y, hr.z))
-        c = self.proc_clip("Cower", 1000.0, s, loop=True)
+        c = self.proc_clip("Cower", 1000.0, s, loop=True, post=ground)
         c.key_poses_ms = [0.0, 250.0, 500.0, 750.0]
         return c
 

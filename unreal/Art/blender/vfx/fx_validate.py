@@ -59,6 +59,7 @@ LAYER_KEYS = {
     "altEvery": NUM, "altColor": "color", "intensity": NUM, "rotationDeg": RANGE, "spinDegS": RANGE,
     "alignToBlow": BOOL, "only": "str",
     "fan": BOOL,       # forward-compatible (integration.fan): even yaw fan for dir blow / back bursts
+    "flat": BOOL,      # forward-compatible (integration.flat): no random climb for dir blow / back
 }
 RECIPE_KEYS = {"palette", "layers", "arcCm", "light", "shake", "note"}
 

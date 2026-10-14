@@ -3,7 +3,7 @@
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/goblin_shaman.py
         [--quick] [--anims Clip … --facing=se] [--no-previews] [--no-verify]
 
-The tribe's hunched spirit-caller (0.95 m, feathers to ≈ 1.13 m): a cracked bird-skull mask over brow and nose
+The tribe's hunched spirit-caller (0.95 m, feathers to 1.07 m): a cracked bird-skull mask over brow and nose
 with a jutting beak, two eye holes holding green spirit embers and a red war-paint stripe; a beaded hide band and a
 fan of four feathers (teal / red / cream / red, dark barred tips) behind the head on ``headdress_*`` — standing
 nearly upright and splayed (``FAN``), so the vanes show their colours from behind too (the web's backward sweep
@@ -11,8 +11,11 @@ pointed them end-on at the W1 camera from ne / back / nw); a mangy fur
 shawl with dark strokes and a ragged fringe, a bone-tooth necklace with a glowing spirit-stone; a painted belly
 spiral; a stitched hide skirt over the thighs (front / back panels on ``loin_*``) hung with bone charms, a belt and
 a dark-hide pouch; two bone bracers on the totem arm. Weapon: ``SM_Mon_GoblinShaman_Totem`` — a gnarled staff
-(21 u up / 12 u down) with a knot and two leather wraps, crowned with a horned skull holding the green spirit-fire
-(emissive flame core, socket ``spirit_fire``); its two dangling feathers are part of the body on
+(21 u up / 12 u down) with a knot and two leather wraps, crowned with a small horned skull (``CROWN_K``, secondary
+to the mask) from which the green spirit-fire rises clear above the horn tips (emissive flame core, socket
+``spirit_fire`` at its base). READY / Idle / Walk carry it at shoulder height out at the right side and a little
+forward, so the crown clears the mask by ≥ 14 px at 1080p in se / front / sw (art review: the two bone-white skulls
+merged into one cream blob at 1:1); its two dangling feathers are part of the body on
 ``totem_feather_*`` (children of ``weapon_r``). M5: a **ranged caster** — Attack01 draws the totem back past the
 shoulder, sweeps it up and thrusts it at the target, releasing the spirit-fire bolt at 250 ms (``FX_SpiritBolt``,
 ``Release``, ``Contact``). Clips: Idle 667, Walk 600 (1.35 m/s), Attack01 500, Hurt 200, Death 500 (the fire dies
@@ -39,6 +42,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import mesh as M, outline, rig as R, scene, shading  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
 from kit.rig import Bind  # noqa: E402
 
@@ -56,16 +60,26 @@ HEIGHT = 0.95
 WEB = GB.Web(U=0.0217 * 0.93, thigh=9.0, shin=9.0, upper_arm=8.4, fore_arm=8.0, torso=13.0, neck=6.2, ankle=1.6,
              hip=2.2, shoulder=4.6, lean=0.30, head_tilt=-0.26, root=(46.0, 73.5), bulk=1.0, grin=0.6)
 OUTLINE_CLASS = "monster"
+OUTLINE_PX = 3.5            # per-asset hull request (art review): see OUTLINE_PX_NOTE
+OUTLINE_PX_NOTE = ("art review: at the monster class's 3.0 px the feather tips, totem horns and fingers (the "
+                   "mini-boss's identity silhouette) kept < 3 px on ~20 % of the edges; 3.5 px (as the boss) holds "
+                   ">= 3 px on >= 90 % of every gated cell (gate 3.0 px); the totem inks with it")
 REF_SPEED = 1.35
 WALK = dict(cycle=600.0, duty=0.36, lift=0.06, bob=0.016, lean=3.0, arm=0.05, crouch=-0.03, twist=4.0,
             hand_swing=0.3)
 WEB_READY = dict(root=(46.0, 73.5), footN=52.5, footF=42.0, lean=0.30, head=-0.26)
 STAFF_UP, STAFF_DOWN = 21.0, 12.0
+CROWN_K = 0.85              # totem skull + horns scale (art review: −15 %, secondary to the mask)
+CROWN_ROLL = 0.0            # deg the crown is turned about the shaft
+FLAME_BASE = 2.6            # u above the skull centre where the spirit-fire rises (the tongues clear the horn tips)
+FIRE_C = 7.0                # u above the skull centre: the fire's visual centre (the runtime glow card)
 
 # headdress fan (teal / red / cream / red): (lateral root, length, splay deg from upright, + = the character's left)
-FAN = ((-3.4, 11.5, -40.0), (-1.2, 13.0, -13.0), (1.2, 12.5, 13.0), (3.4, 11.0, 40.0))
-FAN_ROOT = (5.3, -3.4)          # root on the back of the head (head units h, f)
-FAN_BACK_DEG = 14.0             # lean back from upright (the web swept them ~36° back: end-on from behind at W1)
+# Art review: the first fan (11.5–13 u, 14° back) topped out at 114 cm; trimmed to the spec's 107 cm (feathers
+# 79 % of that length, leaning 24° back, rooted a little lower on the back of the head)
+FAN = ((-3.4, 9.1, -40.0), (-1.2, 10.3, -13.0), (1.2, 9.9, 13.0), (3.4, 8.7, 40.0))
+FAN_ROOT = (4.8, -3.6)          # root on the back of the head (head units h, f)
+FAN_BACK_DEG = 24.0             # lean back from upright (the web swept them ~36° back: end-on from behind at W1)
 
 BONE = Region("#ECE2C6", .30, .40)
 HIDE = Region("#7A5634", .42, .30)
@@ -163,13 +177,14 @@ def skirt_bind(kit, top_z: float, bot_z: float) -> Bind:
 
 
 LOD1_RATIO = 0.42
+LOD1_HULL = 0.8             # LOD1 hull proxies decimated this much further (family budget hull ≤ 0.75 × toon)
 LOD1_SKIP = ("skirt_seam", "charm_cord", "mask_crack", "totem_cord", "beak_keel", "bead", "charm", "elbow", "knee",
              "bracer")
 
 
 def build_body(pal: Palette, kit: ShamanKit, lod: int = 0) -> bpy.types.Object:
     from kit import asset
-    b = GB.builder(ASSET, pal, PREFIX, lod, LOD1_SKIP, LOD1_RATIO)
+    b = GB.builder(ASSET, pal, PREFIX, lod, LOD1_SKIP, LOD1_RATIO, hull_ratio=LOD1_HULL)
     b.regions(**GB.regions_for(LOOK))
     u, hk = kit.u, kit.hk
     J = kit.J
@@ -385,20 +400,24 @@ def build_body(pal: Palette, kit: ShamanKit, lod: int = 0) -> bpy.types.Object:
 
 # ── totem ──────────────────────────────────────────────────────────────────────────────────────────────
 def add_fire(b: M.Builder, u: float) -> None:
-    """Spirit-fire core: three emissive tongues + a hot core in a cup above the skull (the runtime adds the
-    flicker and the additive glow, manifest ``fx.spiritFire``)."""
+    """Spirit-fire core: three emissive tongues + a hot core rising from the skull's crown between the horns and
+    standing clear above the horn tips (art review: seated low in the cup, the fire hid behind the near horn from
+    the W1 camera — the shipped mesh showed no green accent at the totem; the web's flame stands above a small skull).
+    The runtime adds the flicker and the additive glow (manifest ``fx.spiritFire``)."""
     rig = Bind.rigid("root")
     yc = (STAFF_UP + 2.4) * u
-    fy = yc + 2.4 * u
-    for k, (dx, dz, h, r, reg) in enumerate(((0.0, 0.0, 6.0, 1.7, "fire"), (-1.0, 0.4, 4.2, 1.0, "fire"),
-                                             (1.1, -0.3, 4.6, 1.1, "fire"), (0.1, 0.0, 3.4, 0.9, "fire_hot"))):
-        prof = [(r * 0.55 * u, 0.0), (r * u, h * 0.22 * u), (r * 0.85 * u, h * 0.5 * u), (r * 0.4 * u, h * 0.8 * u),
+    for k, (dx, dz, y0, h, r, reg) in enumerate(((0.0, 0.0, FLAME_BASE, 9.6, 1.8, "fire"),
+                                                 (-1.1, 0.4, FLAME_BASE + 0.9, 6.0, 1.05, "fire"),
+                                                 (1.2, -0.3, FLAME_BASE + 0.6, 6.6, 1.15, "fire"),
+                                                 (0.1, 0.0, FLAME_BASE + 0.6, 5.0, 0.95, "fire_hot"))):
+        fy = yc + y0 * u
+        prof = [(r * 0.5 * u, 0.0), (r * u, h * 0.2 * u), (r * 0.88 * u, h * 0.48 * u), (r * 0.42 * u, h * 0.8 * u),
                 (0.02 * u, h * u)]
         tongue = M.lathe(prof, sides=10, cap1="fan")
         tongue.transform(Matrix.Translation((dx * u, fy, dz * u)) @ Matrix.Rotation(math.radians(-90), 4, "X")
                          @ Matrix.Rotation(math.radians(8 * dx), 4, "Y"))
-        tongue.deform(lambda co, k=k: Vector((co.x + 0.35 * u * math.sin((co.y - fy) / u * 0.9 + k),
-                                              co.y, co.z)))
+        tongue.deform(lambda co, k=k, fy=fy: Vector((co.x + 0.35 * u * math.sin((co.y - fy) / u * 0.9 + k),
+                                                     co.y, co.z)))
         b.add(tongue, reg, rig, name="fire", outline=False)
 
 
@@ -440,17 +459,21 @@ def build_totem(pal: Palette, fire: bool = True) -> bpy.types.Object:
             l = M.tube([Vector((0, yy - 0.08 * u, 0)), Vector((0, yy + 0.08 * u, 0))], [u * 1.09] * 2, sides=10,
                        dome0=0.0, dome1=0.0)
             b.add(l, "hide_line", rig, name="wrap_line", outline=False, covered_by=wid)
-    # horned skull crowning the staff: cranium (front = −Z of the item = toward the target when thrust), snout
+    # horned skull crowning the staff: cranium (front = −Z of the item = toward the target when thrust), snout —
+    # CROWN_K smaller than the first cut (art review: at the mask's size and value the two bone-white skulls merged
+    # into one cream blob at 1:1; the crown reads secondary to the mask now), turned CROWN_ROLL about the shaft
     yc = (STAFF_UP + 2.4) * u
-    cran = M.ellipsoid((u * 2.6, u * 2.8, u * 2.5), (0, yc, 0), sides=14, rings=9)
+    crown = (Matrix.Translation((0, yc, 0)) @ Matrix.Rotation(math.radians(CROWN_ROLL), 4, "Y")
+             @ Matrix.Diagonal((CROWN_K, CROWN_K, CROWN_K, 1.0)) @ Matrix.Translation((0, -yc, 0)))
+    cran = M.ellipsoid((u * 2.6, u * 2.8, u * 2.5), (0, yc, 0), sides=14, rings=9).transform(crown)
     cid = b.add(cran, "bone", rig, name="skull", hull_pad=True)
-    snout = M.ellipsoid((u * 1.6, u * 1.3, u * 1.8), (0, yc - 1.4 * u, -1.9 * u), sides=10, rings=6)
+    snout = M.ellipsoid((u * 1.6, u * 1.3, u * 1.8), (0, yc - 1.4 * u, -1.9 * u), sides=10, rings=6).transform(crown)
     b.add(snout, "bone", rig, name="snout", outline=False, covered_by=cid)
     for x in (-1.15, 1.15):
         sock = M.ellipsoid((u * 0.8, u * 0.85, u * 0.5), (x * u, yc + 0.1 * u, -2.2 * u), sides=8, rings=5)
-        b.add(sock, "socket", rig, name="socket", outline=False, covered_by=cid)
+        b.add(sock.transform(crown), "socket", rig, name="socket", outline=False, covered_by=cid)
         gl = M.ellipsoid((u * 0.33, u * 0.33, u * 0.2), (x * u + 0.1 * u, yc + 0.3 * u, -2.62 * u), sides=6, rings=4)
-        b.add(gl, "glint", rig, name="glint", outline=False, covered_by=cid)
+        b.add(gl.transform(crown), "glint", rig, name="glint", outline=False, covered_by=cid)
     for sx in (-1, 1):                              # horns sweeping out and up (web: to ±4.4 u, 8.4 u above)
         ctl = [Vector((sx * 1.6, 1.5, 0.3)), Vector((sx * 4.6, 2.6, 0.6)), Vector((sx * 6.2, 4.6, 0.4)),
                Vector((sx * 5.2, 7.2, 0.0)), Vector((sx * 4.0, 8.6, -0.3))]
@@ -461,7 +484,8 @@ def build_totem(pal: Palette, fire: bool = True) -> bpy.types.Object:
         dense.append(ctl[-1])
         hp_ = [Vector((p.x * u, yc + p.y * u, p.z * u)) for p in dense]
         hr = [u * (1.05 * (1 - 0.9 * (i / (len(hp_) - 1)) ** 1.2) + 0.06) for i in range(len(hp_))]
-        b.add(M.tube(hp_, hr, sides=9, dome0=0.0, dome1=u * 0.08), "bone", rig, name="horn", hull_pad=True)
+        b.add(M.tube(hp_, hr, sides=9, dome0=0.0, dome1=u * 0.08).transform(crown), "bone", rig, name="horn",
+              hull_pad=True)
     if fire:
         add_fire(b, u)
     obj = b.build(TOTEM if fire else TOTEM + "_NoFire")
@@ -497,16 +521,25 @@ def u3(A, lat: float, fwd: float, up: float) -> Vector:
     return V(lat * A.U, fwd * A.U, up * A.U)
 
 
+# the totem hand (u: lat + left, fwd, up from the ground) and the staff (deg from vertical, + forward; lateral tilt,
+# − = out to the right). Art review: at (−12, 4, 23) / (−6°, −0.2) the horned crown stood level with and right beside
+# the bird-skull mask in the se game view and the two bone-white skulls merged at 1:1; held at shoulder height further
+# forward and out at the side (the staff leaning out a little), the crown clears the mask by ≥ 20 px at 1080p in se
+# (front 42, sw 50; ink 3.5 px) and stays clear through Idle and Walk
+READY_HAND = (-18.0, 6.0, 26.0)
+READY_WPN = (2.0, -0.3)
+
+
 def ready(A: GoblinAnims) -> BP:
     """Web READY (GoblinShaman.ts :480-490): hunched (lean .30), the totem held far forward and upright (9°)."""
-    wd, wu = C.blade(-6.0, lat=-0.2)
+    wd, wu = C.blade(READY_WPN[0], lat=READY_WPN[1])
     return BP(
         pelvis=A.web_pelvis(46.0, 73.5), hip_yaw=-6.0, twist=6.0, head_pitch=-6.0,
         foot_r=A.web_foot(52.5, -0.07), foot_l=A.web_foot(42.0, 0.075),
         foot_r_rot=(0.0, 0.0, 12.0), foot_l_rot=(0.0, 0.0, 22.0), knee_r=V(-0.45, 1, 0), knee_l=V(0.45, 1, 0),
         # 3D: the staff stands upright at the right side, just ahead — the web's far-forward grip put the horned
         # skull and its fire over the mask from every front game view (projected ≥ 40 px clear here)
-        hand_r=u3(A, -12.0, 4.0, 23.0), elbow_r=V(-0.9, 0.2, -0.4), wpn=wd, wpn_up=wu,
+        hand_r=u3(A, *READY_HAND), elbow_r=V(-0.9, 0.2, -0.4), wpn=wd, wpn_up=wu,
         hand_l=u3(A, 4.5, 6.0, 21.0), elbow_l=V(0.9, 0.4, -0.2), wrist_l=(10.0, 0.0, 0.0), flow=0.1)
 
 
@@ -520,8 +553,10 @@ def install_poses(A: GoblinAnims) -> None:
                       hip_yaw=-10.0, hand_r=u3(A, -14.0, -1.0, 32.0), elbow_r=V(-0.9, 0.1, -0.4),
                       **A._wkw(R0, -20.0, lat=-0.35), hand_l=u3(A, 6.5, 8.0, 27.0), elbow_l=V(0.9, 0.2, -0.3),
                       clav_r=(12.0, -4.0), fx=0.8, jaw=10.0)
+        # the sweep keeps the crown out at the right side (art review: at (−12.5, 9, 33) / lat −0.25 the raised
+        # crown passed in front of the mask in se)
         mid = R0.but(pelvis=A.web_pelvis(46.5, 74.0), lean=-1.2, head_pitch=-5.0, twist=R0.twist - 4.0,
-                     hand_r=u3(A, -12.5, 9.0, 33.0), elbow_r=V(-0.9, 0.1, -0.4), **A._wkw(R0, 26.0, lat=-0.25),
+                     hand_r=u3(A, *MID_HAND), elbow_r=V(-0.9, 0.1, -0.4), **A._wkw(R0, 26.0, lat=MID_LAT),
                      hand_l=u3(A, 6.0, 8.0, 27.0), clav_r=(12.0, 0.0), fx=0.9, jaw=14.0)
         hit = R0.but(pelvis=A.web_pelvis(48.5, 74.5), lean=16.0, head_pitch=-14.0, twist=R0.twist + 8.0,
                      hip_yaw=4.0, hand_r=u3(A, -5.0, 19.0, 27.0), elbow_r=V(-0.8, 0.2, -0.6),
@@ -582,7 +617,9 @@ def install_poses(A: GoblinAnims) -> None:
                        death_keys=death_keys)
 
 
-RECOIL_HAND, RECOIL_LAT = (-14.5, 4.0, 26.0), -0.3  # hit pose: totem hand + lateral tilt
+RECOIL_HAND, RECOIL_LAT = (-17.0, 5.0, 25.0), -0.42  # hit pose: totem hand + lateral tilt (kicked out right of the
+                                                     # mask: at (−14.5, 4, 26) / −0.3 the crown grazed it in se)
+MID_HAND, MID_LAT = (-16.0, 7.0, 33.0), -0.45       # attack sweep (167 ms): the raised totem out at the right side
 DEATH_DROP = 3.5                                               # u the hips sink in the buckle (web 7)
 DEATH_FEET = ((-3.0, -8.0, -15.0), (3.0, -3.0, -16.5))         # tip key: feet from the pelvis (u, lat/fwd/up)
 
@@ -765,7 +802,7 @@ def spirit_glows(rig, totem):
     def fn(cam, res):
         from kit import review
         out = []
-        sp = totem.matrix_world @ Vector((0.0, (STAFF_UP + 6.5) * WEB.U, 0.0))
+        sp = totem.matrix_world @ Vector((0.0, (STAFF_UP + 2.4 + FIRE_C) * WEB.U, 0.0))
         wpp = outline.pixel_world_size(cam, sp, res[0])
         px, py = review.project_px(cam, sp, res)
         out.append(dict(center_px=(px, py), radius_px=(6.0 * WEB.U) / wpp, color=SPIRIT, alpha=0.35,
@@ -801,7 +838,7 @@ def quick(out: Path) -> None:
     pal, kit, body, totem = build_all()
     A = anims(kit)
     mship.quick_review(ASSET, kit.rig, [body], [(totem, "weapon_r")], A, out, HEIGHT, OUTLINE_CLASS,
-                       blob_radius=0.24, glows=spirit_glows(kit.rig, totem))
+                       blob_radius=0.24, glows=spirit_glows(kit.rig, totem), px=OUTLINE_PX)
 
 
 def anim_quick(out: Path, names, facing: str = "se") -> None:
@@ -812,7 +849,7 @@ def anim_quick(out: Path, names, facing: str = "se") -> None:
     A.bind_meshes(body, {"weapon_r": totem})
     cs = [c for c in clips(A) if not names or c.name in names]
     mship.anim_review(kit.rig, [body], [(totem, "weapon_r")], cs, TOKEN, out, HEIGHT, OUTLINE_CLASS,
-                      blob_radius=0.24, facing=facing)
+                      blob_radius=0.24, facing=facing, px=OUTLINE_PX)
 
 
 def ship(previews: bool = True, verify: bool = True) -> int:
@@ -826,16 +863,18 @@ def ship(previews: bool = True, verify: bool = True) -> int:
     U = WEB.U
     bare, fire = build_review_totem(pal)
     items = [mship.Item(totem, TOTEM, "weapon_r", "staff", preview_obj=bare, fx_objs=[fire],
-                        sockets=[{"name": "spirit_fire", "pos": (0.0, (STAFF_UP + 4.8) * U, 0.0)},
-                                 {"name": "tip", "pos": (0.0, (STAFF_UP + 10.0) * U, 0.0)},
+                        sockets=[{"name": "spirit_fire", "pos": (0.0, (STAFF_UP + 2.4 + FLAME_BASE) * U, 0.0)},
+                                 {"name": "tip", "pos": (0.0, (STAFF_UP + 2.4 + FIRE_C + 3.5) * U, 0.0)},
                                  {"name": "mid", "pos": (0.0, 8.0 * U, 0.0)}],
-                        extra={"lengthCm": round((STAFF_UP + STAFF_DOWN + 11.0) * U * 100.0, 1)}, grip=totem_grip)]
+                        extra={"lengthCm": round((STAFF_DOWN + STAFF_UP + 2.4 + 8.6 * CROWN_K) * U * 100.0, 1),
+                               "lengthNote": "butt to the horn tips; the spirit-fire rises ≈ 10 cm above them"},
+                        grip=totem_grip)]
     ms = mship.MonsterShip(
         asset=ASSET, token=TOKEN, preview_dir="mon_goblin_shaman", pal=pal, A=A, body=body, items=items, clips=cs,
         outline_class=OUTLINE_CLASS, game_ids=["monster_goblin_shaman", "miniboss_goblin_shaman"],
         blob_radius=round(11 * U, 3), height=HEIGHT, display={"zh-CN": "哥布林萨满", "en": "Goblin Shaman"},
         lod1=body1,
-        fx=FX, glows=spirit_glows(kit.rig, bare),
+        fx=FX, glows=spirit_glows(kit.rig, bare), outline_px=OUTLINE_PX, outline_px_note=OUTLINE_PX_NOTE,
         qa_groups={"body_nf": mship.parts_except(body, GRIP_PARTS), **QA_GROUPS},
         qa_pairs={"totemBody": ("item:" + TOTEM, "body_nf"), **QA_PAIRS},
         qa_limits={"ground": -0.5, "totemBody": 0, **{k: 0 for k in QA_PAIRS}},
@@ -858,7 +897,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
 
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
-    scratch = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/mq/shaman")
+    scratch = scratch_root("mq", "shaman")
     if "--quick" in args:
         quick(scratch)
     elif "--anims" in args:

@@ -48,6 +48,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import export, outline, paths, pngio, review, scene, shading  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit import mesh as M  # noqa: E402
 from kit.mesh import Part  # noqa: E402
 from kit.palette import Palette, Region  # noqa: E402
@@ -66,6 +67,11 @@ PX_OVERRIDE = {(PROPS, "decor"): 1.4}
 # Prop cloth (camp banner, goblin totem flags, bone-totem hide strips; spec §6.4 WPO sway): one wind instance for the
 # whole Props_Plains palette — every asset naming it must carry the same parameters (the content build rejects an
 # instance with two parameter sets).
+# Ink gate upper bound (art review 10, envkit.ship): the median rim of the **baked hull alone** (the mobile-low cell
+# of game_1080crop, no WPO, measured on the hull coverage) must stay ≤ this × outlinePx1080. A clean hull is
+# ≈ widthCm / 0.833 cm px (decor 1.2 cm → 1.44 px, interactive 1.3 cm → 1.56 px); the bound leaves ≈ 1 px of padding
+# and catches proxies padded round protruding parts that stand off the body (dark shells, slabs).
+BAKED_RIM_MAX_FACTOR = 1.75
 PROP_WIND_SLOT = "MI_AF_Toon_Props_Plains_Wind"
 PROP_WIND_PARAMS = {"WindAmplitudeCm": 3.0, "WindHeightCm": 235.0, "WindSpeed": 1.7}
 
@@ -304,6 +310,112 @@ def rock(shape: RockShape, center: V3 = (0, 0, 0), subdiv: int = 2, facet: float
         part.rotate("z", yaw)
     part.translate(center)
     return part
+
+
+def rock_contains(shape: RockShape, yaw_deg: float, centre: V3, p: Vector, margin: float = 0.0) -> bool:
+    """True when world point ``p`` lies inside the rock ``shape`` placed with ``rotate('z', yaw_deg)`` then
+    ``translate(centre)`` (as :func:`rock` / the outcrops place it), deeper than ``margin`` (m)."""
+    q = Matrix.Rotation(math.radians(-yaw_deg), 3, "Z") @ (Vector(p) - _v(centre))
+    c = Vector((0.0, 0.0, shape.R.z * shape.centre))
+    if q.z < -shape.sink:
+        return False
+    rel = q - c
+    d = Vector((rel.x / shape.R.x, rel.y / shape.R.y, rel.z / shape.R.z))
+    if d.length < 1e-9:
+        return True
+    s = shape.point(d) - c                   # along rel (the radial function scales the ray in param space)
+    return rel.length + margin < s.length
+
+
+def cull_inside(part: Part, inside: Callable[[Vector], bool], any_vertex: bool = False) -> int:
+    """Delete the faces of ``part`` lying inside another body (``inside(point)``): every vertex inside, or with
+    ``any_vertex`` a face with any vertex inside (a cap drip poking out of the neighbour rock: art review 10).
+    Returns the number removed."""
+    bm = part.bm
+    ins = {v: inside(v.co) for v in bm.verts}
+    test = any if any_vertex else all
+    dead = [f for f in bm.faces if test(ins[v] for v in f.verts)]
+    if dead:
+        bmesh.ops.delete(bm, geom=dead, context="FACES")
+        loose = [v for v in bm.verts if not v.link_faces]
+        if loose:
+            bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    return len(dead)
+
+
+def facet_normals(obj, parts: dict, seed=0) -> None:
+    """Crease big smooth faces into a few planes (art review 10, outcrops): the shading normals of parts
+    ``{pid: (n_dirs, keep)}`` snap toward the mean normal of their cluster — loops are clustered by their normal
+    over ``n_dirs`` Fibonacci directions — keeping ``keep`` of the smooth normal. A large, gently curved face
+    otherwise spreads the 0.02-wide light / shade smoothsteps over dozens of pixels (an airbrushed gradient); here
+    the bands snap along the cluster borders like the web's ``shade()`` facets, while the silhouette stays round."""
+    me = obj.data
+    nl = len(me.loops)
+    cur = np.zeros(nl * 3, np.float32)
+    me.corner_normals.foreach_get("vector", cur)
+    cur = cur.reshape(-1, 3)
+    pid = _face_parts(me)
+    lt = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("loop_total", lt)
+    loop_pid = np.repeat(pid, lt)
+    out = cur.copy()
+    rnd = random.Random(scene.seed_for("facet", seed))
+    for p, (n_dirs, keep) in parts.items():
+        sel = np.nonzero(loop_pid == p)[0]
+        if not len(sel):
+            continue
+        dirs = np.array([tuple(d) for d in fib_dirs(n_dirs, rnd, jitter=0.18)], np.float32)
+        n = cur[sel]
+        lab = np.argmax(n @ dirs.T, axis=1)
+        means = np.zeros_like(dirs)
+        for k in range(len(dirs)):
+            m = n[lab == k]
+            if len(m):
+                v = m.mean(0)
+                means[k] = v / max(np.linalg.norm(v), 1e-9)
+        b = n * keep + means[lab] * (1.0 - keep)
+        b /= np.maximum(np.linalg.norm(b, axis=1, keepdims=True), 1e-9)
+        out[sel] = b
+    me.normals_split_custom_set([tuple(v) for v in out])
+
+
+def unflare_foot(part: Part, z_top: float, frac: float = 0.94, bins: int = 24) -> int:
+    """Remove a rock's **undercut** at the floor (art review 10): below ``z_top`` every vertex is pushed out
+    horizontally (from the part's centre axis) to at least ``frac`` × the widest radius at its azimuth, fading out
+    toward ``z_top``. A rounded boulder sitting on its narrow foot shows the floor under its belly from the W1 camera
+    and its baked hull, hugging the contact line, drew a separate ink line there with a gap; a foot as wide as the
+    belly puts the contact line on the silhouette (the rock reads as bedded in the soil). Returns the vertices
+    moved."""
+    vs = list(part.bm.verts)
+    if not vs:
+        return 0
+    cx = sum(v.co.x for v in vs) / len(vs)
+    cy = sum(v.co.y for v in vs) / len(vs)
+    rmax = [0.0] * bins
+
+    def b_of(v):
+        return int(((math.atan2(v.co.y - cy, v.co.x - cx) / math.tau) % 1.0) * bins) % bins
+    for v in vs:
+        r = math.hypot(v.co.x - cx, v.co.y - cy)
+        k = b_of(v)
+        rmax[k] = max(rmax[k], r)
+    sm = [max(rmax[(k - 1) % bins], rmax[k], rmax[(k + 1) % bins]) for k in range(bins)]
+    moved = 0
+    for v in vs:
+        if v.co.z >= z_top:
+            continue
+        w = 1.0 - smoothstep(0.35 * z_top, z_top, v.co.z)
+        dx, dy = v.co.x - cx, v.co.y - cy
+        r = math.hypot(dx, dy)
+        if r < 1e-6:
+            continue
+        target = frac * sm[b_of(v)]
+        if r < target:
+            k = 1.0 + (target / r - 1.0) * w
+            v.co.x, v.co.y = cx + dx * k, cy + dy * k
+            moved += 1
+    part.bm.normal_update()
+    return moved
 
 
 def rock_cap(shape: RockShape, edge: Callable[[float], float], center: V3 = (0, 0, 0), thick: float = 0.035,
@@ -677,14 +789,90 @@ def cloth_wind(cloth: dict, rigid_phase: float = 0.0) -> Callable[[Vector, int],
     return fn
 
 
+GROUND_HULL_Z = 0.001     # clamped hull vertices stay 1 mm over the floor (no z-fighting with the terrain at z = 0)
+
+
+def ground_hull(obj, band: float = 0.02) -> int:
+    """Make the baked hull **hug the ground contact line** (art review 10): every hull vertex whose body point lies
+    within ``band`` of the floor extrudes horizontally (its outward normal with z → 0, renormalised; blended back to
+    the plain normal between ``band`` and 2 × ``band``) and no such hull vertex goes below the floor (``GROUND_HULL_Z``;
+    hull vertices of buried body points stay under the terrain, untouched). The custom normal (the
+    WPO direction in UE) and ``AF_Data`` (= normal × 0.5 + 0.5 on the hull) follow, so the screen-constant ink and the
+    baked hull stay consistent. Without it the base stones of a campfire / hearth and a journal's corners pushed
+    their hull down-and-out along the floor: thin dark spikes fanning out past the contact line, or a separate ink
+    line under a boulder with a gap. Returns the number of hull vertices changed."""
+    me = obj.data
+    if len(me.materials) < 2:
+        return 0
+    width = float(obj.get("af_outline_width", 0.0))
+    nl = len(me.loops)
+    cur = np.zeros(nl * 3, np.float32)
+    me.corner_normals.foreach_get("vector", cur)
+    cur = cur.reshape(-1, 3)
+    lv = np.zeros(nl, np.int32)
+    me.loops.foreach_get("vertex_index", lv)
+    mi = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("material_index", mi)
+    lt = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("loop_total", lt)
+    hull_loop = np.repeat(mi == 1, lt)
+    co = np.zeros(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    vn = {}
+    for li in np.nonzero(hull_loop)[0].tolist():
+        vn.setdefault(int(lv[li]), cur[li].astype(np.float64))
+    changed = {}
+    for vi, n in vn.items():
+        base = co[vi] - n * width
+        if base[2] < -0.002:          # a buried body point (a sunk rock foot): its hull stays under the terrain
+            continue
+        t = smoothstep(band, 2.0 * band, float(base[2]))
+        if t >= 1.0 and co[vi][2] >= GROUND_HULL_Z:
+            continue
+        flat = np.array((n[0], n[1], 0.0))
+        fl = np.linalg.norm(flat)
+        if fl < 0.2:                  # a floor-facing bottom (normal ~ straight down): its hull stays under the floor
+            continue
+        m = flat / fl * (1.0 - t) + n * t
+        m /= max(np.linalg.norm(m), 1e-9)
+        p = base + m * width
+        p[2] = max(p[2], GROUND_HULL_Z)
+        co[vi] = p
+        changed[vi] = m
+    if not changed:
+        return 0
+    me.vertices.foreach_set("co", co.ravel())
+    out = cur.copy()
+    for li in np.nonzero(hull_loop)[0].tolist():
+        m = changed.get(int(lv[li]))
+        if m is not None:
+            out[li] = m
+    me.normals_split_custom_set([tuple(v) for v in out])
+    afd = me.color_attributes.get("AF_Data")
+    if afd is not None and afd.domain == "POINT":
+        dat = np.zeros(len(afd.data) * 4, np.float32)
+        afd.data.foreach_get("color", dat)
+        dat = dat.reshape(-1, 4)
+        for vi, m in changed.items():
+            dat[vi, :3] = m * 0.5 + 0.5
+        afd.data.foreach_set("color", dat.ravel())
+    me.update()
+    return len(changed)
+
+
 def finish(b: M.Builder, pal: Palette, cls: str, ground_h: float | None = None, spherise: dict | None = None,
-           wind: Callable | None = None, name: str | None = None):
+           wind: Callable | None = None, name: str | None = None, ground_band: float | None = None,
+           facet: dict | None = None):
     """``Builder.build`` → spherised normals → wind data → toon + outline materials → baked hull (``cls``
-    width; ``"none"`` = no hull: ground cover)."""
+    width; ``"none"`` = no hull: ground cover). ``ground_band`` (m): :func:`ground_hull` on the baked hull
+    (props resting on the floor: base stones, flat books). ``facet``: :func:`facet_normals` (creased big faces)."""
     obj = b.build(name, ground_h)
     obj["af_parts"] = json.dumps([p["name"] for p in b.parts])
     if spherise:
         spherise_normals(obj, spherise)
+    if facet:
+        facet_normals(obj, facet, seed=name or b.asset)
     if wind:
         set_wind(obj, wind)
     mt = shading.toon_material(pal)
@@ -692,6 +880,9 @@ def finish(b: M.Builder, pal: Palette, cls: str, ground_h: float | None = None, 
     if width > 0:
         mo = shading.outline_material(pal)
         outline.bake_hull(obj, width, mt, mo)
+        if ground_band:
+            n = ground_hull(obj, ground_band)
+            print(f"[ink] {obj.name}: {n} hull vertices hug the ground (band {ground_band * 100:.0f} cm)")
         for msg in outline.hull_color_report(obj, pal, cls):
             print(f"[ink] WARNING {obj.name}: {msg}")
         for r in outline.protrusion_report(obj, 2.0, [p["name"] for p in b.parts])[:6]:
@@ -778,18 +969,39 @@ def ship(obj, name: str, category: str, pal: Palette, cls: str, *, game_ids: Seq
         entry["previews"] = [str(Path(p).relative_to(rv.out.parent.parent)) for p, _ in rv.written]
         if px:
             v = rv.ink_verdict()
+            baked_med = baked_bound(v, px)
             entry["inkGate"] = {k: v[k] for k in ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx",
                                                   "maxHullLumP95", "gate")}
+            entry["inkGate"]["bakedRimPx"] = baked_med
             result["ink"] = {k: v[k] for k in ("pass", "minFracRim", "minFracDark", "medianRimPx", "maxHullLumP95")}
+            result["ink"]["bakedRimPx"] = baked_med
             result["inkFailures"] = v["failures"]
     man.set_asset(name, entry)
     man.save()
     RESULTS.append(result)
     ink = result.get("ink")
     print(f"[ship] {name}: toon {result['toonTris']} hull {result['hullTris']} "
-          + (f"ink rim {ink['minFracRim'] * 100:.1f}% dark {ink['minFracDark'] * 100:.1f}% -> "
+          + (f"ink rim {ink['minFracRim'] * 100:.1f}% dark {ink['minFracDark'] * 100:.1f}% median "
+             f"{ink['medianRimPx']:.2f}px baked {ink.get('bakedRimPx') or 0:.2f}px -> "
              f"{'PASS' if ink['pass'] else 'FAIL'}" if ink else "no ink (ground cover)"))
     return result
+
+
+def baked_bound(v: dict, px: float) -> float | None:
+    """The ink gate's upper bound (art review 10, DECISIONS R14) on an ``ink_verdict`` ``v``: the median rim of the
+    baked-hull-only cells must stay ≤ ``BAKED_RIM_MAX_FACTOR`` × ``px`` (the gate's minimum let blown-up padded
+    proxies pass: a gold pile whose hull shell stood 3-6 cm off the mound measured a 4 px baked rim for the 2 px
+    interactive class). Marks ``v`` failed when over, records ``gate.maxBakedRimPx``; returns the baked median."""
+    baked = [r["rimPxMedian"] for r in v.get("baked", [])]
+    baked_med = round(float(np.median(baked)), 2) if baked else None
+    cap = round(BAKED_RIM_MAX_FACTOR * px, 2)
+    if baked_med is not None and baked_med > cap:
+        v["pass"] = False
+        v["failures"] = list(v["failures"]) + [f"baked hull rim median {baked_med:.2f}px > {cap:.2f}px "
+                                               f"({BAKED_RIM_MAX_FACTOR:g} x outlinePx1080 {px:g}): a padded "
+                                               f"proxy stands off the body"]
+    v["gate"] = dict(v["gate"], maxBakedRimPx=cap)
+    return baked_med
 
 
 LOD1_SCREEN_SIZE = 0.05
@@ -842,6 +1054,7 @@ def summary() -> int:
         ink = r.get("ink")
         print(f"  {r['asset']:42s} toon {r['toonTris']:6d} hull {r['hullTris']:6d}  "
               + (f"rim {ink['minFracRim'] * 100:5.1f}% dark {ink['minFracDark'] * 100:5.1f}% "
+                 f"med {ink['medianRimPx']:4.2f} baked {ink.get('bakedRimPx') or 0:4.2f}px "
                  f"{'PASS' if ink['pass'] else 'FAIL'}" if ink else "-"))
     for r in fails:
         print(f"  FAIL {r['asset']}: " + "; ".join(r.get("inkFailures", [])))
@@ -974,7 +1187,7 @@ def import_warrior(at: V3 = (0, 0, 0), yaw_deg: float = 0.0, clip: str = "Idle",
 
 
 # ── quick look (iteration renders → scratch) ──────────────────────────────────────────────────────────
-SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/env")
+SCRATCH = scratch_root("env")
 
 
 def quick(objs: Sequence, tag: str, warrior: bool = True, spacing: float = 1.6, close_res=(900, 560),

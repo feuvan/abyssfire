@@ -30,6 +30,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import envkit as E  # noqa: E402
+import bmesh  # noqa: E402
+import numpy as np  # noqa: E402
 import bpy  # noqa: E402
 from mathutils import Vector  # noqa: E402
 from typing import Sequence  # noqa: E402
@@ -107,7 +109,8 @@ def lump_kw(r, outer: bool) -> dict:
 
 def canopy(b: M.Builder, lumps, rnd: random.Random, flick_region: str | None, flicks_per: int = 4,
            flick_len: float = 0.17, extra_solids: Sequence = (), fine: tuple | None = None, lift: float = 0.0,
-           flick_w: float = 0.042, hull_ratio: float | None = None):
+           flick_w: float = 0.042, hull_ratio: float | None = None, core_subdiv: int | None = None,
+           cull_hull: bool = True):
     """Add cloud lumps ``[(center, radii, region, seed, outer?)]``: faces hidden inside a neighbour are culled,
     each lump gets a padded hull and (outer lumps) leaf flicks on visible spots. Returns (spherise map, lump
     part ids, Lump objects).
@@ -117,8 +120,10 @@ def canopy(b: M.Builder, lumps, rnd: random.Random, flick_region: str | None, fl
     rounds, instead of a uniform 320-tri facet net — and a harder decimation of the same lump (culled alike) is
     their padded low-poly hull proxy. ``hull_ratio`` (no ``fine``): the hull proxy of every lump is the lump
     collapse-decimated to that ratio (budget: hull ≤ 0.5 × toon). ``lift``: the spherised normals' tilt toward +Z
-    (``envkit.lump_info``)."""
-    objs = [E.Lump(r, seed, center=Vector(c), **lump_kw(r, outer)) for c, r, region, seed, outer in lumps]
+    (``envkit.lump_info``). ``core_subdiv``: icosphere level of the inner (mostly culled) lumps."""
+    objs = [E.Lump(r, seed, center=Vector(c), **dict(lump_kw(r, outer), **({} if outer or core_subdiv is None else
+                                                                          {"subdiv": core_subdiv})))
+            for c, r, region, seed, outer in lumps]
     parts, hulls = [], []
     for (c, r, region, seed, outer), lo in zip(lumps, objs):
         if fine and outer:
@@ -147,11 +152,23 @@ def canopy(b: M.Builder, lumps, rnd: random.Random, flick_region: str | None, fl
                     continue
                 flick_parts.append(fp)
         E.cull_hidden(part, others)
-        if hull is not None:
+        if hull is not None and not cull_hull:
+            # art review 10: pad the *closed* decimated proxy round the culled lump + its flicks, then cull it (a
+            # culled, open proxy padded at its boundary by up to 34 cm); the hull is baked from it as is
+            pts = np.concatenate([np.array([v.co[:] for v in part.bm.verts])] +
+                                 [np.array([v.co[:] for v in fp.bm.verts]) for fp in flick_parts])
+            pad = M.pad_proxy(hull, pts)
             E.cull_hidden(hull, others)
-        pid = b.add(part, region, name=f"lump{k}", hull=hull, hull_pad=True)
-        for fp in flick_parts:
-            b.add(fp, flick_region, name=f"flick{k}", outline=False, covered_by=pid)
+            pid = b.add(part, region, name=f"lump{k}", hull=hull)
+            b.parts[-1]["padMm"] = round(pad * 1000.0, 2)
+            for fp in flick_parts:
+                b.add(fp, flick_region, name=f"flick{k}", outline=False)
+        else:
+            if hull is not None:
+                E.cull_hidden(hull, others)
+            pid = b.add(part, region, name=f"lump{k}", hull=hull, hull_pad=True)
+            for fp in flick_parts:
+                b.add(fp, flick_region, name=f"flick{k}", outline=False, covered_by=pid)
         sph[pid] = E.lump_info(r, c, 0.85, lift)
         pids.append(pid)
     return sph, pids, objs
@@ -237,7 +254,9 @@ OAK_VARIANTS = {
 # LOD1 (spec §1.9 large decor 1.5 k): the same generator with every part collapse-decimated and the leaf flicks and
 # bark grooves (below the readability floor at LOD distances) left out.
 TREE_LOD1 = {"oak": 0.46, "fruit": 0.55}
-TREE_HULL = 0.55            # lump hull proxies: the lump decimated to 55 % (hull ≤ 0.5 × toon)
+TREE_HULL = 0.80            # lump hull proxies: the lump decimated to 80 % (art review 10: at 55 % the padding put the
+                            # baked rim at 2.2-2.7 px for the 1.2 px decor ink, over the 2.1 px bound; hull ≈ 0.6 × toon)
+TREE_CULL_HULL = False      # art review 10: pad the closed proxy, then cull it (culled open shells padded up to 34 cm)
 
 
 def tree_lod_skip(name: str) -> bool:
@@ -290,7 +309,7 @@ def build_oak(pal: Palette, variant: str = "A", lod: int = 0):
         lumps.append((c, (r0, r0, r0 * 0.84), "front", (name, "up", i), True))
     c = top + Vector((rnd.uniform(-0.08, 0.08), rnd.uniform(-0.08, 0.08), z0 + 1.28 * k))
     lumps.append((c, (0.44 * k, 0.44 * k, 0.37 * k), "front", (name, "top", 0), True))
-    sph, pids, _ = canopy(b, lumps, rnd, "flick", flicks_per=4, hull_ratio=TREE_HULL)
+    sph, pids, _ = canopy(b, lumps, rnd, "flick", flicks_per=4, hull_ratio=TREE_HULL, cull_hull=TREE_CULL_HULL)
     hi = max(l[0].z + l[1][2] for l in lumps)
     obj = E.finish(b, pal, "decor", ground_h=1.6, spherise=sph, wind=tree_wind(th, hi, pids),
                    name=name if not lod else f"{name}_LOD1")
@@ -366,7 +385,8 @@ def build_fruit_tree(pal: Palette, variant: str = "A", lod: int = 0):
         lumps.append((c, (r0, r0, r0 * 0.84), "front", (name, "ring", i), True))
     c = top + Vector((0.05, -0.04, z0 - th - 0.3 + 0.72 * k))
     lumps.append((c, (0.52 * k, 0.52 * k, 0.42 * k), "front", (name, "top", 0), True))
-    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=4, flick_len=0.15, hull_ratio=TREE_HULL)
+    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=4, flick_len=0.15, hull_ratio=TREE_HULL,
+                              cull_hull=TREE_CULL_HULL)
     # five+ ripe fruits (web: 5 on the front lumps; all round here so every yaw shows a few)
     fr = visible_spots(lobjs[2:], rnd, a0, per=(2, 2, 2, 2, 1), el=(-0.05, 0.55), lift=0.05)
     for q, p in enumerate(fr):
@@ -389,41 +409,55 @@ BUSH_REGIONS = dict(
 # and lifted toward +Z (BUSH_LIFT: the flanks face the high camera, the banded rim shrinks to a thin warm edge);
 # the back light band keeps l .10 and the front .24 so the lit tops stay green, not grey.
 BUSH_LIFT = 0.3
-BUSH_FINE = (0.35, 0.17)
+BUSH_FINE = (0.19, 0.19)   # art review 10 budget (≤ 2 k toon): was (0.35, 0.17)
+
+
+BUSH_ZS = 1.12          # art review 10: 0.63-0.67 m → the spec's 0.8 m (lump heights and vertical radii)
+BUSH_BERRY_R = 0.045    # berries (the bush's colour pop): ≈ 4.5 cm, on the upper flanks all round
 
 
 def build_bush(pal: Palette, variant: str = "A"):
+    """Web ``Bush.ts`` berry bush, ≈ 1.1 × 0.8 m. Art review 10: raised to 0.8 m; the berries sit on the **upper
+    flanks of every outer lump** (crown and ring, elevation 0.45-0.95 rad) so whatever yaw the scatter gives, ≥ 3
+    read across the front at 1080p (they sat on the silhouette edge, 3-4 visible); outer lumps decimated to 19 %, the dark core at icosphere level 2
+    (the hull proxy at the same 19 %: coarser proxies padded past the 2.1 px baked-rim bound), 24-tri berries: ≤ 2 k toon for a decor type instanced ≈ 200 times in the zone."""
     name = f"SM_Foliage_Plains_BerryBush_{variant}"
     rnd = scene.rng(name)
     b = M.Builder(name, pal, prefix="bush")
     b.regions(**BUSH_REGIONS)
     w = 1.0 if variant == "A" else 1.08
+    zs = BUSH_ZS
     lumps = []
     a0 = rnd.uniform(0, math.tau)
     for i in range(2):                     # dark core, low and wide (seen in the cusps and at the foot)
         a = a0 + math.pi * i
-        c = Vector((math.cos(a) * 0.14 * w, math.sin(a) * 0.14 * w, 0.27))
-        lumps.append((c, (0.36 * w, 0.34 * w, 0.27), "back", (name, "core", i), False))
+        c = Vector((math.cos(a) * 0.14 * w, math.sin(a) * 0.14 * w, 0.27 * zs))
+        lumps.append((c, (0.36 * w, 0.34 * w, 0.27 * zs), "back", (name, "core", i), False))
     n_ring = 6 if variant == "A" else 7
     for i in range(n_ring):                # scalloped outer ring, alternately higher / lower
         a = a0 + math.tau * i / n_ring + rnd.uniform(-0.12, 0.12)
         rr = 0.35 * w * rnd.uniform(0.94, 1.04)
-        c = Vector((math.cos(a) * rr, math.sin(a) * rr, 0.22 + 0.05 * (i % 2) + rnd.uniform(-0.02, 0.03)))
+        c = Vector((math.cos(a) * rr, math.sin(a) * rr,
+                    (0.22 + 0.05 * (i % 2) + rnd.uniform(-0.02, 0.03)) * zs))
         r0 = rnd.uniform(0.2, 0.235) * w
-        lumps.append((c, (r0, r0, r0 * 0.9), "front", (name, "ring", i), True))
+        lumps.append((c, (r0, r0, r0 * 0.9 * zs), "front", (name, "ring", i), True))
     for i in range(2):                     # crown
         a = a0 + 0.8 + math.pi * i + rnd.uniform(-0.3, 0.3)
-        c = Vector((math.cos(a) * 0.12 * w, math.sin(a) * 0.12 * w, 0.5 + rnd.uniform(-0.02, 0.03)))
+        c = Vector((math.cos(a) * 0.12 * w, math.sin(a) * 0.12 * w, (0.5 + rnd.uniform(-0.02, 0.03)) * zs))
         r0 = rnd.uniform(0.22, 0.25) * w
-        lumps.append((c, (r0, r0, r0 * 0.88), "front", (name, "top", i), True))
-    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=1, flick_len=0.11, fine=BUSH_FINE, lift=BUSH_LIFT,
-                              flick_w=0.04, hull_ratio=0.6)
-    berries = visible_spots(lobjs[2:], rnd, a0, per=(1, 1, 1, 1, 1, 1, 1, 1, 1), el=(0.05, 0.75), lift=0.022)
-    for q, p in enumerate(berries[:6]):
-        b.add(M.ellipsoid((0.042, 0.042, 0.04), p, sides=6, rings=4), "berry", name=f"berry{q}")
+        lumps.append((c, (r0, r0, r0 * 0.88 * zs), "front", (name, "top", i), True))
+    fine = BUSH_FINE if n_ring == 6 else tuple(f * 6 / 7 for f in BUSH_FINE)     # B: 7 ring lumps, same budget
+    sph, pids, lobjs = canopy(b, lumps, rnd, "flick", flicks_per=1, flick_len=0.11, fine=fine, lift=BUSH_LIFT,
+                              flick_w=0.04, hull_ratio=0.6, core_subdiv=2)
+    # one berry on the upper flank of every outer lump (crown lumps: two), facing out from the bush axis
+    berries = visible_spots(lobjs[2:], rnd, a0, per=(1,) * n_ring + (2, 2), el=(0.45, 0.95), lift=0.026)
+    for q, p in enumerate(berries):
+        b.add(M.ellipsoid((BUSH_BERRY_R, BUSH_BERRY_R, BUSH_BERRY_R * 0.95), p, sides=6, rings=3), "berry",
+              name=f"berry{q}")
     phase = {p: (i * 0.618) % 1.0 for i, p in enumerate(pids)}
-    return E.finish(b, pal, "decor", ground_h=0.8, spherise=sph,
-                    wind=lambda co, pid: (0.2 + 0.8 * E.smoothstep(0.05, 0.75, co.z), phase.get(pid, 0.3)), name=name)
+    return E.finish(b, pal, "decor", ground_h=0.8 * zs, spherise=sph,
+                    wind=lambda co, pid: (0.2 + 0.8 * E.smoothstep(0.05, 0.75 * zs, co.z), phase.get(pid, 0.3)),
+                    name=name)
 
 
 # ── ground cover (no ink) ───────────────────────────────────────────────────────────────────────────────
@@ -534,44 +568,72 @@ MUSH_REGIONS = dict(
 
 
 def toadstool(b: M.Builder, c: Vector, h: float, cap_r: float, rnd: random.Random, tilt: Vector, k: int,
-              spots: int = 5):
+              spots: int = 4, sides: int = 8, rim_band: bool = True):
+    """A red toadstool, ≈ 110 tris (art review 10: the spec §1.9 small-decor budget is ≤ 300 for the whole
+    patch): a 6-sided stem, a 5-ring cap lathe of ``sides`` sides (the rounded rim band + dome), and ``spots``
+    4-tri white studs lying on the cap (a 2–3 cm spot is 3 px at 1080p)."""
     up = Vector((0, 0, 1)).lerp(tilt, 0.25).normalized()
-    stem = M.lathe([(0.34 * cap_r, 0.0), (0.36 * cap_r, 0.25 * h), (0.3 * cap_r, 0.75 * h), (0.27 * cap_r, h)],
-                   sides=8)
-    cap = M.lathe([(0.25 * cap_r, h - 0.05 * cap_r), (0.92 * cap_r, h - 0.06 * cap_r), (1.0 * cap_r, h + 0.06 * cap_r),
-                   (0.86 * cap_r, h + 0.42 * cap_r), (0.5 * cap_r, h + 0.68 * cap_r), (0.02, h + 0.76 * cap_r)],
-                  sides=12, cap0="fan", cap1="fan")
+    stem = M.lathe([(0.34 * cap_r, -0.01), (0.33 * cap_r, 0.45 * h), (0.27 * cap_r, h + 0.01)], sides=6, cap0=None,
+                   cap1=None)                                   # ends hidden in the ground / under the cap
+    prof = ([(0.25 * cap_r, h - 0.05 * cap_r), (0.95 * cap_r, h - 0.05 * cap_r)] if rim_band else
+            [(0.25 * cap_r, h - 0.03 * cap_r)])
+    cap = M.lathe(prof + [(1.0 * cap_r, h + 0.1 * cap_r), (0.74 * cap_r, h + 0.52 * cap_r), (0.02, h + 0.76 * cap_r)],
+                  sides=sides, cap0="fan", cap1="fan")
     rot = Vector((0, 0, 1)).rotation_difference(up).to_matrix().to_4x4()
     for p in (stem, cap):
         p.transform(rot)
         p.translate(c)
     b.add(stem, "stem", name=f"stem{k}")
     cid = b.add(cap, "cap", name=f"cap{k}", hull_pad=True)
-    # spots: small low domes lying on the cap (12-tri studs: a 2–3 cm spot is 3 px at 1080p)
+    # spots on the cap's flat facets (lathe profile above the rim; azimuth at a facet centre, so the stud lies on the
+    # facet plane, not inside the chord)
+    outer = [(1.0 * cap_r, h + 0.1 * cap_r), (0.74 * cap_r, h + 0.52 * cap_r), (0.02, h + 0.76 * cap_r)]
+    seg = [((r0, z0), (r1, z1)) for (r0, z0), (r1, z1) in zip(outer, outer[1:])]
+    lens = [math.hypot(r1 - r0, z1 - z0) for (r0, z0), (r1, z1) in seg]
+    used = set()
     for q in range(spots):
-        az = rnd.uniform(0, math.tau) + q * 1.05
-        el = rnd.uniform(0.25, 0.95)
-        rr = cap_r * (0.95 - 0.55 * el)
-        p = Vector((math.cos(az) * rr, math.sin(az) * rr, h + 0.06 * cap_r + 0.7 * cap_r * el))
-        n = Vector((math.cos(az) * (1 - el * 0.6), math.sin(az) * (1 - el * 0.6), 0.4 + el)).normalized()
-        sp = dome_fan(p + n * (0.012 * cap_r), n, 0.17 * cap_r, 0.17 * cap_r, 0.035 * cap_r, n=6, phase=az)
+        fi = (int(rnd.uniform(0, sides)) + q * (sides // max(spots, 1) + 1)) % sides
+        while fi in used:
+            fi = (fi + 1) % sides
+        used.add(fi)
+        az = math.tau * (fi + 0.5) / sides
+        t = rnd.uniform(0.25, 0.7) * sum(lens)
+        j = 0 if t <= lens[0] else 1
+        u = (t if j == 0 else t - lens[0]) / lens[j]
+        (r0, z0), (r1, z1) = seg[j]
+        rr, zz = r0 + (r1 - r0) * u, z0 + (z1 - z0) * u
+        dr, dz = r1 - r0, z1 - z0
+        nr, nz = dz, -dr                                    # outward normal in the (r, z) plane
+        nl = math.hypot(nr, nz)
+        nr, nz = nr / nl, nz / nl
+        if nz < 0:
+            nr, nz = -nr, -nz
+        rf = rr * math.cos(math.pi / sides)
+        p = Vector((math.cos(az) * rf, math.sin(az) * rf, zz))
+        n = Vector((math.cos(az) * nr, math.sin(az) * nr, nz)).normalized()
+        sp = dome_fan(p + n * 0.0025, n, 0.24 * cap_r, 0.22 * cap_r, 0.03 * cap_r, n=4, phase=az + 0.4)
         sp.transform(rot)
         sp.translate(c)
         b.add(sp, "spot", name=f"spot{k}", outline=False, covered_by=cid)
 
 
 def build_mushrooms(pal: Palette, variant: str = "A"):
+    """Web red mushroom patch: a big and a small toadstool (+ a button one on B) and, on A, a 3-blade tuft;
+    ≤ 300 toon tris (art review 10: 576 / 802)."""
     name = f"SM_Foliage_Plains_RedMushrooms_{variant}"
     rnd = scene.rng(name)
     b = M.Builder(name, pal, prefix="mushroom")
     b.regions(**MUSH_REGIONS)
     big = (0.2, 0.11) if variant == "A" else (0.17, 0.10)
     toadstool(b, Vector((-0.05, 0.02, 0)), big[0], big[1], rnd, Vector((-0.3, 0.1, 1)), 0)
-    toadstool(b, Vector((0.12, -0.06, 0)), big[0] * 0.62, big[1] * 0.68, rnd, Vector((0.4, -0.2, 1)), 1)
+    toadstool(b, Vector((0.12, -0.06, 0)), big[0] * 0.62, big[1] * 0.68, rnd, Vector((0.4, -0.2, 1)), 1, spots=3,
+              sides=7, rim_band=False)
     if variant == "B":
-        toadstool(b, Vector((-0.12, -0.12, 0)), 0.07, 0.05, rnd, Vector((-0.3, -0.4, 1)), 2, spots=3)
+        toadstool(b, Vector((-0.12, -0.12, 0)), 0.07, 0.05, rnd, Vector((-0.3, -0.4, 1)), 2, spots=2, sides=6,
+                  rim_band=False)
+    else:
+        tuft(b, Vector((0.02, 0.1, 0)), 0.16, 3, rnd, segs=2, inked=True)
     sph = {}
-    tuft(b, Vector((0.02, 0.1, 0)), 0.16, 5, rnd, segs=2, inked=True)
     return E.finish(b, pal, "decor", ground_h=0.3, spherise=sph,
                     wind=lambda co, pid: (0.15 * E.smoothstep(0.0, 0.3, co.z), 0.4), name=name)
 
@@ -590,7 +652,9 @@ PAD_LIFT = 0.016
 
 
 def lily_pad(b: M.Builder, c: Vector, r: float, notch: float, rnd: random.Random, k: int):
-    n = 18
+    """A notched pad (11-segment rim, ≈ 48 tris) with two veins as single flat slivers lying on its top face (art
+    review 10 budget: ≤ 300 tris for the B patch)."""
+    n = 11
     pts = []
     for i in range(n + 1):
         a = notch + 0.28 + (math.tau - 0.56) * i / n
@@ -600,12 +664,19 @@ def lily_pad(b: M.Builder, c: Vector, r: float, notch: float, rnd: random.Random
     pad = M.plate(pts, 0.012)
     pad.translate(c + Vector((0, 0, PAD_LIFT + 0.006)))
     pid = b.add(pad, "pad", name=f"pad{k}", hull_pad=True)
+    ztop = PAD_LIFT + 0.0125
     for v in range(2):
         a = notch + math.pi + (v - 0.5) * 1.1
-        p0 = c + Vector((0, 0, PAD_LIFT + 0.0125))
-        p1 = p0 + Vector((math.cos(a) * r * 0.75, math.sin(a) * r * 0.75, 0))
-        b.add(E.ribbon([p0, (p0 + p1) / 2, p1], [Vector((0, 0, 1))] * 3, [0.012, 0.01, 0.004], lift=0.0005,
-                       thick=0.001), "pad_vein", name="vein", outline=False, covered_by=pid)
+        d = Vector((math.cos(a), math.sin(a), 0.0))
+        side = Vector((-d.y, d.x, 0.0))
+        p0 = c + Vector((0, 0, ztop)) + d * (r * 0.08)
+        bm = bmesh.new()
+        vs = [bm.verts.new(p0 + side * 0.006), bm.verts.new(p0 - side * 0.006), bm.verts.new(p0 + d * (r * 0.7))]
+        f = bm.faces.new(vs)
+        f.normal_update()
+        if f.normal.z < 0:
+            f.normal_flip()
+        b.add(M.Part(bm), "pad_vein", name="vein", outline=False, covered_by=pid)
     return pid
 
 
@@ -618,14 +689,15 @@ def build_lily(pal: Palette, variant: str = "A"):
     lily_pad(b, Vector((0.24, -0.1, 0)), 0.11, rnd.uniform(0, math.tau), rnd, 1)
     if variant == "B":
         lily_pad(b, Vector((-0.2, -0.16, 0)), 0.12, rnd.uniform(0, math.tau), rnd, 2)
-        # water lily on the big pad: two rings of pointed petals + a golden heart
+        # water lily on the big pad: an outer ring of pointed petals (walls: it carries the ink), a cupped inner
+        # ring (single slices) + a golden heart
         c = Vector((0.02, 0.01, PAD_LIFT + 0.02))
-        inner = -1
-        for ring, (rad, cup, ph) in enumerate(((0.075, 0.55, 0.0), (0.05, 0.9, 0.3))):
-            inner = b.add(E.bloom(c + Vector((0, 0, 0.01 * ring)), rad, petals=6, cup=cup, phase=ph + 0.5 * ring,
-                                  per_petal=2, thick=0.008, walls=True), "lily", name=f"lily{ring}", hull_pad=ring == 1)
-        b.add(M.ellipsoid((0.02, 0.02, 0.016), c + Vector((0, 0, 0.03)), sides=6, rings=3), "lily_core",
-              name="lilycore", outline=False, covered_by=inner)
+        outer = b.add(E.bloom(c, 0.075, petals=6, cup=0.55, phase=0.0, per_petal=2, thick=0.008, walls=True), "lily",
+                      name="lily0", hull_pad=True)
+        b.add(E.bloom(c + Vector((0, 0, 0.01)), 0.05, petals=6, cup=0.9, phase=0.8, per_petal=1, thick=0.008),
+              "lily", name="lily1", outline=False, covered_by=outer)
+        b.add(M.ellipsoid((0.02, 0.02, 0.016), c + Vector((0, 0, 0.03)), sides=5, rings=3), "lily_core",
+              name="lilycore", outline=False, covered_by=outer)
     return E.finish(b, pal, "decor", ground_h=None, name=name)
 
 

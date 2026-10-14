@@ -42,6 +42,15 @@ const DataStore& PD() { return test::RealData(); }
 const PetTables& PT() { return PD().Pets(); }
 const HomesteadTables& HT() { return PD().Homestead(); }
 
+// The ley sprite's cast release: the shipped clip's Release notify (assets.json SK_Pet_Sprite Cast01 releaseMs) when
+// the art exists (the clip is authoritative, like every hero / monster contact beat); else the flying rig's 161 ms
+// (quests-story-ch1.md 18.5.7).
+double SpriteCastReleaseMs() {
+  const AssetEntryDef* a = PD().Assets().FindByGameId("beast_pet_sprite");
+  const AnimClipDef* c = a != nullptr ? a->FindClip("Cast01") : nullptr;
+  return c != nullptr && c->hasReleaseMs ? c->releaseMs : 161.0;
+}
+
 const std::vector<std::string>& OriginalPetIds() {
   static const std::vector<std::string> ids = {"pet_sprite",  "pet_dragon",     "pet_owl",           "pet_cat",
                                                "pet_phoenix", "pet_storm_wolf", "pet_jade_tortoise", "pet_void_butterfly"};
@@ -1044,10 +1053,13 @@ TEST_SUITE("pets") {
     CHECK(ChoosePetAction(c).kind == PetActionKind::Follow);
   }
 
-  TEST_CASE("18.5.7: flying beasts release their cast at 161 ms; art ids") {
+  TEST_CASE("18.5.7: flying beasts release their cast at the clip's Release (161 ms without art); art ids") {
     const ActionTiming t =
         ComputeCastTiming(PD().Combat().anim, PD().Assets(), PetArtId("pet_sprite", 0), AnimRig::Flying);
-    CHECK(t.contactMs == doctest::Approx(161));
+    CHECK(t.contactMs == doctest::Approx(SpriteCastReleaseMs()));
+    const ActionTiming noArt = ComputeCastTiming(PD().Combat().anim, AssetManifest{}, PetArtId("pet_sprite", 0),
+                                                 AnimRig::Flying);
+    CHECK(noArt.contactMs == doctest::Approx(161));
     CHECK(PetArtId("pet_sprite", 0) == "beast_pet_sprite");
     CHECK(PetArtId("pet_sprite", 1) == "beast_pet_sprite_e1");
     CHECK(PetArtId("pet_sprite", 2) == "beast_pet_sprite_e2");
@@ -1672,7 +1684,7 @@ TEST_SUITE("pets") {
     CHECK(snap.pet.maxHp == s.maxHp);
   }
 
-  TEST_CASE("companion: ranged basic attack - cast release 161 ms, bolt flight, petAttackDamage on arrival") {
+  TEST_CASE("companion: ranged basic attack - cast release at the clip's Release, bolt flight, petAttackDamage on arrival") {
     PetRig r;
     REQUIRE(r.ok);
     r.h.ctx.equip.Ref(Stat::Damage) = 100;
@@ -1689,14 +1701,15 @@ TEST_SUITE("pets") {
     REQUIRE(anims.size() == 1);
     CHECK(anims[0].entity == r.companion.State().entity);
     CHECK(anims[0].action == AnimAction::Cast);
-    CHECK(anims[0].contactMs == doctest::Approx(161));
+    const double releaseMs = SpriteCastReleaseMs();
+    CHECK(anims[0].contactMs == doctest::Approx(releaseMs));
     CHECK(r.companion.State().basicReadyAtMs == doctest::Approx(t0 + 1800));
     CHECK(r.companion.State().target == g);
     REQUIRE(r.StepUntil([&] { return !PtEvents<EvProjectileLaunched>(r.h.events).empty(); }, 30));
     const EvProjectileLaunched launch = PtEvents<EvProjectileLaunched>(r.h.events)[0];
     CHECK(launch.kind == ProjectileKind::PetBolt);
-    CHECK(launch.launchMs >= t0 + 161);
-    CHECK(launch.launchMs < t0 + 161 + kSimStepMs);
+    CHECK(launch.launchMs >= t0 + releaseMs);
+    CHECK(launch.launchMs < t0 + releaseMs + kSimStepMs);
     CHECK(launch.travelMs == doctest::Approx(MonsterBoltTravelMs(PD().Combat().projectiles, Vec2(39, 41), Vec2(42, 40))));
     CHECK(launch.color == 0x8ff0c0u);
     REQUIRE(r.StepUntil([&] { return !PtEvents<EvProjectileEnded>(r.h.events).empty(); }, 60));
@@ -1737,7 +1750,7 @@ TEST_SUITE("pets") {
     const double t0 = r.Now();
     CHECK(r.companion.State().readyAtMs == std::vector<std::pair<std::string, double>>{{"sprite_heal_pulse", t0 + 12000}});
     REQUIRE(r.StepUntil([&] { return r.hero->Hp() > maxHp * 0.5; }, 20));
-    CHECK(r.Now() >= t0 + 161);
+    CHECK(r.Now() >= t0 + SpriteCastReleaseMs());
     const double amount = std::floor(maxHp * 0.08);
     CHECK(r.hero->Hp() == doctest::Approx(maxHp * 0.5 + amount));
     const std::vector<EvFloatingText> ft = PtEvents<EvFloatingText>(r.h.events);

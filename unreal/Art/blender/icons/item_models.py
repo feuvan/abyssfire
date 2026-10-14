@@ -308,19 +308,44 @@ def helm(kind: str) -> Model:
         A.append(K.Accent("sparkle", u=(32, 26), r_u=4.5, alpha=.9))
         return Model(objs, A)
     if kind == "demon":
-        regs = dict(body=Region("#4A2436", .45, .35), horn=soft("#D8C8A8", .35), hornband=soft("#A8987A", .2),
-                    crest=Region("#8A2A3A", .4, .35), eye=glow(CRIMSON, 1.0), socket=dark("#10080C"))
-        body = M.loft_z([(-.36, .25, .26, 0, 0), (-.14, .29, .29, 0, 0), (.10, .29, .29, 0, 0), (.24, .25, .25, 0, .01),
-                         (.33, .17, .17, 0, .01), (.38, .06, .06, 0, .01), (.385, .02, .02, 0, .01)], sides=32)
-        # jaw points: pull the bottom front into fangs
-        def fangs(co):
-            if co.z < -.25 and co.y < 0:
-                k = (-.25 - co.z) / .11
-                w = abs(math.sin(co.x / .25 * math.pi * 1.5))
-                return Vector((co.x, co.y, co.z - k * .05 * w))
-            return co
-        body.deform(fangs)
+        # a rigid horned mask helm (web helmSpec demon): a squarish shell, a mask over the face with an angular brow
+        # ridge, cheek plates running down to points either side of a chin notch, a nose ridge, a crest over the crown
+        # ending in a spike, slanted eye slits with red eyes, ridged horns (review art 7: not a ragged hood)
+        regs = dict(body=Region("#4A2436", .45, .30), mask=Region("#55263C", .42, .30), brow=Region("#74344C", .42, .38),
+                    horn=soft("#D8C8A8", .35), hornband=soft("#A8987A", .2), crest=Region("#8A2A3A", .4, .38),
+                    eye=glow(CRIMSON, 1.0), socket=dark("#10080C"))
+        body = M.loft_z([(-.34, .27, .27, 0, 0, 2.7), (-.14, .30, .29, 0, 0, 2.7), (.10, .30, .29, 0, 0, 2.5),
+                         (.24, .25, .25, 0, .01, 2.2), (.33, .17, .17, 0, .01, 2.0), (.38, .06, .06, 0, .01),
+                         (.385, .02, .02, 0, .01)], sides=36)
         parts.append((body, "body"))
+
+        def wrap(p_, r=.31, y0=-.285):
+            return p_.deform(lambda co: Vector((co.x, co.y + y0 + co.x * co.x / (2 * r), co.z)))
+        mask = S.pillow(Wp([(19, 40), (34, 43), (48, 47), (62, 43), (77, 40), (77, 64), (63, 87), (48, 77), (33, 87),
+                            (19, 64)]), depth=.045, back=.0, wall=.02, edge=.45, dome=.25)
+        parts.append((wrap(mask), "mask"))
+        ms = S.Surface(wrap(S.pillow(Wp([(19, 40), (48, 47), (77, 40), (77, 64), (63, 87), (48, 77), (33, 87), (19, 64)]),
+                                     depth=.045, back=.0, wall=.02, edge=.45, dome=.25)))
+        for sx in (-1, 1):
+            slit = [(48 + sx * x, y) for x, y in ((22, 46), (4, 52), (4, 58), (20, 54))]
+            so = S.pillow(Wp(slit), depth=.006, back=.002, wall=.004, edge=.7)
+            p, _n = ms.at(*W(48 + sx * 12, 53))
+            parts.append((so.translate((0, (p.y if p is not None else -.33) - .004, 0)), "socket"))
+            ex, ey = W(48 + sx * 11, 53)
+            parts.append((M.ellipsoid((.036, .012, .018), (ex, (p.y if p is not None else -.33) - .012, ey), sides=12,
+                                      rings=6), "eye"))
+        brow = drape_strip(ms, Wb([(18, 42), (33, 44), (48, 51)], 8) + Wb([(48, 51), (63, 44), (78, 42)], 8)[1:], .022, .03)
+        parts.append((brow, "brow"))
+        parts.append((drape_strip(ms, [W(48, 52), W(48, 74)], .012, .022), "brow"))
+        for sx in (-1, 1):                               # cheek-plate edges down to the points
+            parts.append((drape_strip(ms, Wb([(48 + sx * 27, 62), (48 + sx * 22, 74), (48 + sx * 15, 85)], 6), .01, .016),
+                          "brow"))
+        ms.free()
+        crest = M.tube([Vector((0, -.29 * math.cos(math.radians(a)) - .004, -.02 + .41 * math.sin(math.radians(a))))
+                        for a in range(10, 171, 16)], [.03, .034, .036, .036, .034, .03, .026, .022, .018, .014, .01],
+                       sides=6, exp=1.4)
+        parts.append((crest, "crest"))
+        parts.append((S.slab(Wp([(48, 3), (55, 22), (48, 28), (41, 22)]), .05, y0=-.26, bevel=.008), "crest"))
         for sx in (-1, 1):
             h = M.horn(.085, .50, bend_deg=110, sides=12, segments=12)
             h.rotate("z", -90 * sx)          # +Y → ±X, bending up (+Z)
@@ -335,14 +360,9 @@ def helm(kind: str) -> Model:
                 ring = S.torus(rr, .01, center=(0, 0, 0), axis=(math.cos(a) * sx, 0, math.sin(a)), sides=6, segs=16)
                 ring.translate((cx, .03, cz))
                 parts.append((ring, "hornband"))
-        parts.append((S.slab(Wp([(48, 4), (54, 22), (48, 28), (42, 22)]), .05, y0=-.25), "crest"))
-        for sx in (-1, 1):
-            sock = S.slab([(sx * .045, .10), (sx * .21, .14), (sx * .21, .08), (sx * .05, .05)], .03, y0=-.282)
-            parts.append((sock, "socket"))
-            parts.append((M.ellipsoid((.042, .02, .022), (sx * .12, -.30, .098), sides=10, rings=5), "eye"))
         objs = [K.build_model("helm_demon", P, regs, parts)]
         K.place(objs[0], pitch=-6, yaw=10)
-        return Model(objs, A, dict(auto_glow=0.55))
+        return Model(objs, A, dict(auto_glow=0.55, seam_min_contrast=.1))
     if kind == "dragon":
         regs = dict(body=Region(DRAGON, .42, .40), scale=Region("#2E7A46", .35, .2), horn=soft("#E8D8A0", .4),
                     gold=metal(GOLD, .45), slit=dark("#10140C"), ruby=stone(RUBY, .35))
@@ -649,6 +669,52 @@ def gloves(kind: str) -> Model:
 # ════════════════════════════════════════════════════════════════════════════════════════════════════════
 # Boots (web bootsSpec / bootPath)
 # ════════════════════════════════════════════════════════════════════════════════════════════════════════
+BACK_BOOT = (-.25, .19, .075)       # the second boot of the pair: behind, up-left (clear of the front one once turned)
+BACK_BOOT_SPLAY = -14              # degrees about its own vertical: toe out a little more than the front boot
+BOOT_YAW = 24                      # the pair turned toward 3/4 (toe toward the viewer)
+
+
+def _interp(pts, x):
+    """y of a polyline [(x, y)…] (sorted by x) at x."""
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        if x0 <= x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / max(x1 - x0, 1e-9)
+    return pts[0][1] if x < pts[0][0] else pts[-1][1]
+
+
+def boot_solid() -> M.Part:
+    """The web boot silhouette (``boot2d``) as a solid: a round shaft (superellipse loft, its front and back edges
+    the web outline's) and a foot with a toe box (a swept section, its top the web instep line), flat on the sole —
+    so a 3/4 turn shows the toe and the leg's girth instead of the edge of a cushion."""
+    back_edge = [(30, 40), (28.4, 50), (27.2, 60), (27.0, 72), (27.6, 84)]
+    sole_z = W(0, 84)[1]
+    rings = []
+    for y in (84, 78, 70, 60, 50, 40, 30, 20, 12, 10):
+        xb = 26 + (30 - 26) * (y - 10) / 30 if y <= 40 else next(
+            bx + (y - by) * (bx2 - bx) / (by2 - by) for (bx, by), (bx2, by2) in zip(back_edge, back_edge[1:]) if by <= y <= by2)
+        xf = 68 - 2 * min(1.0, (y - 10) / 48)
+        cx = (xb + xf) / 2
+        rx = (xf - xb) / 2 * U
+        rings.append((W(cx, y)[1], rx, min(rx * .74, .108 + .01 * (10 - min(y, 60) / 6) / 10), W(cx, 0)[0], .0, 2.5))
+    shaft = M.loft_z(list(reversed(rings)) if rings[0][0] > rings[-1][0] else rings, sides=28, exp=2.5,
+                     cap0="fan", cap1="fan")
+    # foot: instep line of the web outline (shaft front → toe), section height = instep → sole, toe box rounded
+    top = [(60, 56), (66, 58), (70, 63.5), (76, 66.5), (82, 68.5), (88, 70.5), (91, 74), (92, 79)]
+    path, sc = [], []
+    for i in range(11):
+        x = 46 + (91.5 - 46) * i / 10
+        ty = _interp(top, x)
+        hz = (84 - ty) / 2
+        path.append(Vector((W(x, 0)[0], 0.0, W(0, ty + hz)[1])))
+        k = i / 10
+        sc.append((max(hz, .8) * U, (.205 - .05 * k ** 2) / 2 * 1.0 * (1.0 if k < .85 else 1 - (k - .85) * 2.2)))
+    foot = M.sweep(path, M.superellipse(1.0, 1.0, 20, 2.6), scales=sc, up=[(0, 0, 1)] * len(path), dome0=0.0,
+                   dome1=.03)
+    part = shaft.merge(foot)
+    part.deform(lambda co: Vector((co.x, co.y, max(co.z, sole_z))))
+    return part.smooth(True)
+
+
 def boot2d():
     return S.chain2d([W(26, 10), W(68, 10), W(66, 58)], Wb([(66, 58), (70, 64), (82, 68)], 6),
                      Wb([(82, 68), (92, 72), (90, 84)], 6), [W(28, 84)], Wb([(28, 84), (26, 60), (30, 40)], 8))
@@ -666,19 +732,22 @@ def boots(kind: str) -> Model:
     parts = []
     outline = boot2d()
     for back_boot in (True, False):
-        b = S.pillow(outline, depth=.10, back=.04, wall=.05, edge=.4, dome=.3)
+        # a solid boot (round shaft, toe box), not a cushion: turned to 3/4 it shows the toe and the shaft's girth
+        # (review art 7: a side-on card)
+        b = boot_solid()
         if back_boot:
-            b.translate((-.12, .09, .06))
-            parts.append((b, "back"))
             sole = S.pillow(S.chain2d([W(28, 84), W(88, 84)], Wb([(88, 84), (92, 84), (91, 90)], 4), [W(28, 90)]),
-                            depth=.06, back=.04, wall=.04)
-            sole.translate((-.12, .09, .06))
+                            depth=.095, back=.095, wall=.03, edge=.5)
+            for prt in (b, sole):       # splayed a little more than the front boot: its toe and shaft side show
+                prt.rotate("z", BACK_BOOT_SPLAY, pivot=(W(47, 84)[0], 0.0, W(47, 84)[1]))
+                prt.translate(BACK_BOOT)
+            parts.append((b, "back"))
             parts.append((sole, "sole"))
             continue
         parts.append((b, "boot"))
         surf = S.Surface(b)
         sole = S.pillow(S.chain2d([W(27, 83), W(88, 83)], Wb([(88, 83), (93, 84), (92, 91)], 4), [W(27, 91)]),
-                        depth=.115, back=.05, wall=.05, edge=.5)
+                        depth=.095, back=.095, wall=.03, edge=.5)
         parts.append((sole, "sole"))
         if kind == "chain":
             y = 20
@@ -700,10 +769,11 @@ def boots(kind: str) -> Model:
             for x in (66, 74, 82):
                 parts.append((drape_strip(surf, [W(x, 66), W(x - 2, 82)], .008, .006), "lame"))
         if kind == "leather":
-            cuff = S.pillow(S.chain2d([W(24, 9), W(70, 9), W(68, 26)], Wb([(68, 26), (46, 30), (26, 26)], 8)),
-                            depth=.03, back=.01, wall=.02)
-            p, _ = surf.at(*W(46, 18))
-            cuff.translate((0, p.y - .01, 0))
+            # the folded-over cuff: a band round the shaft top, its lower edge dipping at the front (web cuff)
+            cuff = M.loft_z([(W(0, 27)[1], .218, .122, W(47, 0)[0], 0, 2.5), (W(0, 18)[1], .226, .126, W(47, 0)[0], 0, 2.5),
+                             (W(0, 9)[1], .232, .128, W(47, 0)[0], 0, 2.5)], sides=28, exp=2.5, cap0="fan", cap1="fan")
+            cuff.deform(lambda co: Vector((co.x, co.y, co.z - .035 * max(0.0, -co.y / .128) ** 2
+                                           if co.z < W(0, 22)[1] else co.z)))
             parts.append((cuff, "cuff"))
             for y in range(36, 62, 7):
                 parts.append((surf_tube(surf, [W(57, y), W(66, y + 3)], .007), "lace"))
@@ -719,10 +789,15 @@ def boots(kind: str) -> Model:
                 parts.append((stud(gs, *W(62, y), .018, .012), "rivet"))
             gs.free()
         elif kind == "plate":
-            parts.append((drape_strip(surf, [W(26, 14), W(70, 14)], .045, .025), "gold"))
-            parts.append((stud(surf, *W(44, 60), .085, .045), "cap"))
+            parts.append((drape_strip(surf, [W(26, 16), W(70, 16)], .045, .025), "gold"))
+            # ankle cop seated in the shaft: a shallow dome sunk into the plate, a raised rim ring round it
+            parts.append((stud(surf, *W(44, 60), .075, .028, lift=-.012), "cap"))
+            ring = [W(44 + 8.6 * math.cos(a), 60 + 7.8 * math.sin(a)) for a in [2 * math.pi * i / 28 for i in range(29)]]
+            parts.append((surf_tube(surf, ring, .009, lift=.004, sides=6), "ridge"))
+            for a in (0.6, 2.2, 3.8, 5.4):
+                parts.append((stud(surf, *W(44 + 8.6 * math.cos(a), 60 + 7.8 * math.sin(a)), .012, .01, lift=.008), "rivet"))
         elif kind == "demon":
-            parts.append((drape_strip(surf, [W(26, 14), W(70, 14)], .045, .025), "dcuff"))
+            parts.append((drape_strip(surf, [W(26, 16), W(70, 16)], .045, .025), "dcuff"))
             for (x, y), d in (((28, 30), -1), ((28, 46), -1), ((70, 18), 1)):
                 sp = M.horn(.028, .11, bend_deg=20 * d, sides=8, segments=4)
                 S.align(sp, (d, .0, .35), (0, -1, 0), at=(W(x, y)[0], -.05, W(x, y)[1]))
@@ -732,7 +807,7 @@ def boots(kind: str) -> Model:
             parts.append((sp, "bone"))
         surf.free()
     obj = K.build_model(f"boots_{kind}", P, regs, parts)
-    K.place(obj, yaw=-8)
+    K.place(obj, yaw=BOOT_YAW, pitch=-6)
     A = [K.Accent("sparkle", u=(42, 16), r_u=4, alpha=.85)] if kind in ("plate", "iron") else []
     return Model([obj], A, dict(seam_min_contrast=0.12))
 
@@ -844,6 +919,9 @@ def ring(kind: str) -> Model:
         A.append(K.Accent("sparkle", u=(70, 44), r_u=5, alpha=.9))
     obj = K.build_model(f"ring_{kind}", P, regs, parts)
     K.place(obj, pitch=55, yaw=-4)
+    # the band's own fold (a near edge-on torus) left broken dark dashes along both edges (review art 3): keep only the
+    # real overlap — the band in front of the far side of the hole — with a deeper step and a minimum run
+    style = dict(style, depth_step_u=3.0, line_min_u=9.0)
     return Model([obj], A, style, dict(fill=.78, center_u=(47.5, 50)))
 
 
@@ -971,18 +1049,9 @@ def material(kind: str) -> Model:
               K.Accent("glow", u=(48, 60), r_u=34, hex="#5F8CFF", alpha=.5, under=True)]
         name = "mat_dust"
         style = dict(seams=False)
-    elif kind == "essence":
-        regs = dict(xtal=Region("#FFBF2E", .3, .5, e=.3), shard=Region("#FFD35A", .3, .5, e=.3))
-        g = S.brilliant(.25, sides=9, axis=(0, -1, 0), center=(0, 0, 0), crown=.45, pavilion=.45, table=.5)
-        g.deform(lambda co: Vector((co.x * (1 - .45 * max(0, co.z) / .25), co.y, co.z * 1.25 + (.08 if co.z > 0 else 0) * co.z / .25)))
-        parts.append((g, "xtal"))
-        for (x, z, r) in ((-.26, -.24, .07), (.28, .18, .055)):
-            sh = S.brilliant(r, sides=3, axis=(0, -1, 0), center=(x, -.02, z), crown=.3, pavilion=.4, table=.3)
-            parts.append((sh, "shard"))
-        A += [K.Accent("glow", u=(48, 50), r_u=42, hex="#FFC23A", alpha=.6, under=True),
-              K.Accent("sparkle", u=(36, 30), r_u=6, hex="#FFF6D8"), K.Accent("sparkle", u=(66, 70), r_u=4.5, hex="#FFE7A0", alpha=.9)]
-        style = dict(seams=False)
-        name = "mat_essence"
+    elif kind == "essence":       # the web facetGem crystal + trillion shards (gem_models: faceted, line work)
+        import gem_models as GM
+        return GM.essence()
     else:
         raise KeyError(kind)
     obj = K.build_model(name, P, regs, parts)

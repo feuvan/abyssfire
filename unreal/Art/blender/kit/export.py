@@ -157,10 +157,14 @@ class Manifest:
     (``manifest.json.lock``), re-reads the file and **merges** — in ``assets``, ``palettes`` and ``gameIds`` only
     the keys this instance added, changed (``set_asset`` / ``set_palette`` / direct edits of ``data``) or deleted
     since it was loaded are written; everything else on disk (other generators' entries) is kept. The kit-owned
-    sections (``shading``, ``units``, ``schemaVersion``, ``generator``) are always rewritten from the kit. The
+    sections (``shading``, ``units``, ``schemaVersion``, ``generator``) are always rewritten from the kit. Any other
+    top-level section (a family's own, e.g. ``terrain`` / ``ui``, merged per key by that family's subclass) is
+    written whole only when this instance changed it; otherwise the disk copy is kept (coherence pass: a plain
+    ``Manifest`` loaded before the icon run used to write back its stale ``ui`` and drop the new icons). The
     write is atomic (temp file + rename)."""
 
     MERGED = ("assets", "palettes", "gameIds")
+    KIT_OWNED = ("schemaVersion", "generator", "units", "shading")
 
     def __init__(self, path: Path | None = None):
         self.path = Path(path) if path else paths.manifest_path()
@@ -168,7 +172,13 @@ class Manifest:
         for k in self.MERGED:
             self.data.setdefault(k, {})
         self._base = json.loads(json.dumps({k: self.data[k] for k in self.MERGED}))
+        self._other_base = self._other_sections(self.data)
         self._stamp()
+
+    def _other_sections(self, data: dict) -> dict:
+        """Deep copy of the top-level sections that are neither merged per key here nor kit-owned."""
+        return json.loads(json.dumps({k: v for k, v in data.items()
+                                      if k not in self.MERGED and k not in self.KIT_OWNED}))
 
     def _read(self) -> dict:
         return json.loads(self.path.read_text()) if self.path.exists() else {}
@@ -212,8 +222,11 @@ class Manifest:
                             out.pop(k, None)               # deleted here
                     merged[sec] = out
                 for k, v in self.data.items():
-                    if k not in self.MERGED:
-                        merged[k] = v
+                    if k in self.MERGED:
+                        continue
+                    if k in self.KIT_OWNED or k not in self._other_base or self._other_base[k] != v:
+                        merged[k] = v                      # kit-owned, or a section added / changed here
+                    # else: untouched here → keep the disk copy (another generator may have updated it)
                 tmp = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
                 tmp.write_text(json.dumps(merged, indent=1, sort_keys=True, ensure_ascii=True) + "\n")
                 os.replace(tmp, self.path)
@@ -221,6 +234,7 @@ class Manifest:
                 fcntl.flock(lk, fcntl.LOCK_UN)
         self.data = merged
         self._base = json.loads(json.dumps({k: merged[k] for k in self.MERGED}))
+        self._other_base = self._other_sections(merged)
         return self.path
 
 

@@ -99,7 +99,7 @@ def ink_summary(reports) -> dict:
 
 
 INK_KEYS = ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx", "maxHullLumP95", "gate", "specPx",
-            "minFracRimSpec", "medianFracRimSpec", "worstSpecCell", "specNote")
+            "minFracRimSpec", "medianFracRimSpec", "worstSpecCell", "specNote", "outlinePx1080")
 
 
 @dataclass
@@ -154,6 +154,23 @@ class MonsterShip:
     lod1: bpy.types.Object | None = None             # SK_<asset>_LOD1 (same generator, decimated, trims skipped)
     lod1_screen_size: float = LOD1_SCREEN_SIZE
     portrait: Callable | None = None                 # fn(ship, rv, actions) → manifest path (``Portraits/T_UI_…``)
+    outline_px: float | None = None                  # per-asset OutlinePx1080 of the hull slot (None = the class's)
+    outline_px_note: str = ""                        # why the asset asks for more ink than its class (manifest)
+
+
+def ink_px(ms: MonsterShip) -> float:
+    """Screen ink width at 1080p the asset ships with: its own ``outline_px`` request (the art review's per-asset
+    hull request, e.g. 3.5 px on a monster whose thin ears / spear / slime base lost ink at the class's 3.0 px) or
+    the class width (``outline.SCREEN_PX_1080``)."""
+    return float(ms.outline_px) if ms.outline_px else float(outline.SCREEN_PX_1080[ms.outline_class])
+
+
+def gate_for(outline_class: str, px: float) -> dict:
+    """``review.ink_gate`` of the class with the rim threshold taken from the shipped request ``px`` (px −
+    ``GATE_SLACK_PX``): a 3.5 px monster is gated at 3.0 px — the class width itself."""
+    g = dict(review.ink_gate(outline_class))
+    g["minPx"] = round(max(0.5, px - outline.GATE_SLACK_PX), 2)
+    return g
 
 
 def bake_clip(rig, c, token):
@@ -233,7 +250,7 @@ def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
     pal.save()
     # items (exported unattached, grip / socket origin at the origin)
     for it in ms.items:
-        ship_item(it, pal, ms.asset)
+        ship_item(it, pal, ms.asset, ms)
     actions = [bake_clip(rig, c, ms.token) for c in ms.clips]
     sk = export.export_skeletal_mesh(rig, [body], ms.asset, ms.category)
     sk1 = None
@@ -262,6 +279,7 @@ def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
                                   blob_radius_cm=round(ms.blob_radius * 100.0, 1), extra=extra)
     entry["attachments"] = [{"object": it.asset, "socket": it.socket} for it in held(ms)]
     entry["materialSlots"][1]["outlineMix"] = outline.INK_MIX[ms.outline_class]
+    _slot_px(entry["materialSlots"][1], ms)
     _extra_slots(entry, body, pal)
     entry["triangles"] = tri_record(body)
     if sk1 is not None:
@@ -321,6 +339,16 @@ def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
     return result
 
 
+def _slot_px(slot: dict, ms: MonsterShip) -> None:
+    """The per-asset ink request on an outline slot (the UE importer makes an ``M_AF_Outline`` instance with this
+    ``OutlinePx1080`` when it differs from the class's)."""
+    if ms.outline_px and abs(float(ms.outline_px) - float(slot.get("outlinePx1080", 0.0))) > 1e-6:
+        slot["outlinePx1080"] = float(ms.outline_px)
+        slot["outlinePxClass"] = float(outline.SCREEN_PX_1080.get(slot.get("class", ms.outline_class), 0.0))
+        if ms.outline_px_note:
+            slot["outlinePxNote"] = ms.outline_px_note
+
+
 def _extra_slots(entry: dict, body, pal) -> None:
     """Material slots beyond toon + outline (the slime's dithered shell): from the mesh's material list."""
     mats = body.data.materials
@@ -332,7 +360,7 @@ def _extra_slots(entry: dict, body, pal) -> None:
         entry["materialSlots"].append(e)
 
 
-def ship_item(it: Item, pal, holder: str) -> dict:
+def ship_item(it: Item, pal, holder: str, ms: MonsterShip | None = None) -> dict:
     """Export in the item's own space (grip / socket origin at the origin): the generators attach the held weapons to
     their bones before shipping, and an attached item would carry the bone's bind-pose frame into the FBX node
     transform, the ``SOCKET_*`` empties and ``boundsCm`` — so it is unparented for the export, then re-attached."""
@@ -342,7 +370,7 @@ def ship_item(it: Item, pal, holder: str) -> dict:
     o.matrix_world = Matrix.Identity(4)
     bpy.context.view_layer.update()
     try:
-        return _ship_item(it, pal, holder)
+        return _ship_item(it, pal, holder, ms)
     finally:
         o.parent, o.parent_type, o.parent_bone = saved[:3]
         o.matrix_parent_inverse = saved[3]
@@ -350,7 +378,7 @@ def ship_item(it: Item, pal, holder: str) -> dict:
         bpy.context.view_layer.update()
 
 
-def _ship_item(it: Item, pal, holder: str) -> dict:
+def _ship_item(it: Item, pal, holder: str, ms: MonsterShip | None = None) -> dict:
     fbx = export.export_static_mesh(it.obj, it.asset, it.category, it.sockets)
     man = export.Manifest()
     man.set_palette(pal)
@@ -365,6 +393,8 @@ def _ship_item(it: Item, pal, holder: str) -> dict:
     e = export.static_entry(it.obj, fbx, it.category, pal, cls, sockets=it.sockets, extra=ex)
     if len(e["materialSlots"]) > 1:
         e["materialSlots"][1]["outlineMix"] = outline.INK_MIX.get(cls, 1.0)
+        if ms is not None:                    # held items / attachments ink like their holder
+            _slot_px(e["materialSlots"][1], ms)
     man.set_asset(it.asset, e)
     man.save()
     return e
@@ -428,8 +458,8 @@ def render_previews(ms: MonsterShip, out: Path, actions) -> tuple[list, dict]:
             it.obj.hide_render = True
     meshes = [ms.body] + [shown(it) for it in held(ms)]
     rv = MReview(ms.asset, rig.obj, meshes, ms.height, blob_radius=ms.blob_radius, out_dir=out,
-                 game_outline_px=outline.SCREEN_PX_1080[ms.outline_class], outline_class=ms.outline_class,
-                 glows=ms.glows)
+                 game_outline_px=ink_px(ms), outline_class=ms.outline_class, glows=ms.glows)
+    rv.gate = gate_for(ms.outline_class, ink_px(ms))
     rv.ground_occludes = True          # hull under planted soles is hidden by the terrain (UE) and the stage here
     rv.extra_body_slots = True         # a dithered shell slot (the slime) is body in the ink coverage
     acts = dict(zip([c.name for c in ms.clips], actions))
@@ -468,6 +498,10 @@ def render_previews(ms: MonsterShip, out: Path, actions) -> tuple[list, dict]:
     for p, size in rv.written:
         print(f"  {p.name:28s} {size // 1024:4d} KB")
     ink = ink_summary(rv.ink_reports)
+    ink["outlinePx1080"] = ink_px(ms)
+    if ms.outline_px:
+        ink["specNote"] += (f"; shipped request {ink_px(ms):g} px (per-asset outlinePx1080, class "
+                            f"{outline.SCREEN_PX_1080[ms.outline_class]:g} px): gated at {rv.gate['minPx']:g} px")
     print(f"\n[ink] {ink['cells']} gated 1080p cells: min rim {ink['minFracRim'] * 100:.1f} %, "
           f"min dark {ink['minFracDark'] * 100:.1f} %, median rim {ink['medianRimPx']} px; at the class width "
           f"{ink.get('specPx', 0):g} px: min {ink.get('minFracRimSpec', 0) * 100:.1f} % ({ink.get('worstSpecCell')}), "
@@ -744,7 +778,7 @@ def lod_sheet(ms: MonsterShip, rv, actions) -> None:
     acts = dict(zip([c.name for c in ms.clips], actions))
     its = [shown(it) for it in held(ms)]
     body, body1 = ms.body, ms.lod1
-    px = outline.SCREEN_PX_1080[ms.outline_class]
+    px = ink_px(ms)
     contact = ("Attack01", scene.ms_to_frame(250.0))
     cells = []
     res = (250, 300)                   # 1000 × 600: stays full-size under the 200 KB preview budget
@@ -801,7 +835,7 @@ def lod_sheet(ms: MonsterShip, rv, actions) -> None:
 
 
 def quick_review(asset, rig, meshes, attachments, A, out: Path, height: float, outline_class: str,
-                 blob_radius: float = 0.22, glows=None, pose=None) -> None:
+                 blob_radius: float = 0.22, glows=None, pose=None, px: float | None = None) -> None:
     """Mesh iteration: READY pose close-up (se / front / back), turnaround and the 1080p game crop → ``out``."""
     out.mkdir(parents=True, exist_ok=True)
     for o, bone in attachments:
@@ -809,8 +843,9 @@ def quick_review(asset, rig, meshes, attachments, A, out: Path, height: float, o
     apply_bp(A, pose if pose is not None else A.ready())
     objs = list(meshes) + [o for o, _ in attachments]
     rv = review.Review(asset, rig.obj, objs, height, blob_radius=blob_radius, out_dir=out,
-                       game_outline_px=outline.SCREEN_PX_1080[outline_class], outline_class=outline_class,
+                       game_outline_px=px or outline.SCREEN_PX_1080[outline_class], outline_class=outline_class,
                        glows=glows)
+    rv.gate = gate_for(outline_class, px or outline.SCREEN_PX_1080[outline_class])
     rv.ground_occludes = True
     rv.closeup("se")
     (out / "closeup.png").rename(out / "closeup_se.png")
@@ -825,14 +860,14 @@ def quick_review(asset, rig, meshes, attachments, A, out: Path, height: float, o
 
 
 def anim_review(rig, meshes, attachments, clips, token, out: Path, height: float, outline_class: str,
-                blob_radius: float = 0.22, glows=None, facing: str = "se") -> None:
+                blob_radius: float = 0.22, glows=None, facing: str = "se", px: float | None = None) -> None:
     """Clip iteration: bake + one contact sheet per clip → ``out``."""
     out.mkdir(parents=True, exist_ok=True)
     for o, bone in attachments:
         R.attach_to_bone(o, rig, bone)
     objs = list(meshes) + [o for o, _ in attachments]
     rv = review.Review(rig.obj.name, rig.obj, objs, height, blob_radius=blob_radius, out_dir=out,
-                       game_outline_px=outline.SCREEN_PX_1080[outline_class], outline_class=outline_class,
+                       game_outline_px=px or outline.SCREEN_PX_1080[outline_class], outline_class=outline_class,
                        glows=glows)
     for c in clips:
         a = bake_clip(rig, c, token)

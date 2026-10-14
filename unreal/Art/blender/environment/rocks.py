@@ -22,7 +22,8 @@ sys.path.insert(0, str(HERE))
 
 import envkit as E  # noqa: E402
 import foliage as F  # noqa: E402
-from mathutils import Vector  # noqa: E402
+from mathutils import Matrix, Vector  # noqa: E402
+from mathutils.bvhtree import BVHTree  # noqa: E402
 
 from kit import paths, scene  # noqa: E402
 from kit import mesh as M  # noqa: E402
@@ -32,8 +33,10 @@ CAT_ROCK = "Props"
 
 
 def crack(b: M.Builder, shape: E.RockShape, center: Vector, yaw: float, az: float, z0: float, z1: float,
-          region: str, pid: int, rnd: random.Random, width: float = 0.022):
-    """A zig-zag crack (line tone) running down a rock face at azimuth ``az``."""
+          region: str, pid: int, rnd: random.Random, width: float = 0.022, surface=None):
+    """A zig-zag crack (line tone) running down a rock face at azimuth ``az``. ``surface``: a BVH of the placed rock
+    mesh — the crack points snap onto its facets (the analytic surface floats up to ≈ 1 cm over a 320-tri mass's
+    chords, and an exact, unpadded hull then leaves the crack standing proud of the ink)."""
     pts, nrm = [], []
     for i in range(5):
         t = i / 4
@@ -58,10 +61,21 @@ def crack(b: M.Builder, shape: E.RockShape, center: Vector, yaw: float, az: floa
             n = -n
         pts.append(p)
         nrm.append(n)
-    part = E.ribbon(pts, nrm, [width * (1 - 0.6 * i / 4) for i in range(5)], lift=0.003, thick=0.003)
-    part.rotate("z", math.degrees(yaw))
-    part.translate(center)
-    b.add(part, region, name="crack", outline=False, covered_by=pid)
+    if surface is not None:
+        rot = Matrix.Rotation(yaw, 3, "Z")
+        wp, wn = [], []
+        for p, n in zip(pts, nrm):
+            q = rot @ p + center
+            loc, fn, _, _ = surface.find_nearest(q)
+            wp.append(loc if loc is not None else q)
+            wn.append(fn if fn is not None and fn.dot(rot @ n) > 0 else rot @ n)
+        part = E.ribbon(wp, wn, [width * (1 - 0.6 * i / 4) for i in range(5)], lift=0.002, thick=0.002)
+    else:
+        part = E.ribbon(pts, nrm, [width * (1 - 0.6 * i / 4) for i in range(5)], lift=0.003, thick=0.003)
+        part.rotate("z", math.degrees(yaw))
+        part.translate(center)
+    # covered by the rock's padded proxy when it has one (outcrop masses bake theirs from a pre-padded proxy)
+    b.add(part, region, name="crack", outline=False, covered_by=pid if pid in b._pending else None)
 
 
 def add_rock(b: M.Builder, region: str, radii, seed, center, yaw: float = 0.0, top_cut: float = 0.3,
@@ -150,44 +164,65 @@ OUTCROP_REGIONS = dict(
 
 CAP_COLS = (28, 18)      # main mass / front stones (drips need ≥ 0.25 rad columns)
 CAP_ROWS = (6, 4)
-HULL_DECIMATE = 0.5      # hull proxies: the culled mass / open cap themselves, collapse-decimated (same boundary)
 
 
 def outcrop_boulders(b: M.Builder, name: str, v: int, rnd: random.Random):
-    """Web ``mossBoulder`` / ``layoutMasses``: one big back mass filling the footprint + 1 + v % 2 smaller front
-    stones. Rounded blocks (superellipsoid, broad shoulders, slightly flattened crown) so neighbouring wall tiles
-    read as one lumpy ridge rather than a row of eggs; each mass wears a thick moss blanket over its top third
-    (cap ``#7CAA48``, ragged edge, 2–3 short drips, web ``capOver``); grass tufts hug the base."""
+    """Web ``mossBoulder`` / ``layoutMasses``: one big back mass + 1 + v % 2 smaller **separate** front stones.
+    Rounded blocks (superellipsoid, broad shoulders, slightly flattened crown) so neighbouring wall tiles read as one
+    lumpy ridge rather than a row of eggs; each mass wears a thick moss blanket over its top third (cap ``#7CAA48``,
+    ragged edge, 2–3 short drips, web ``capOver``); grass tufts hug the base.
+
+    Art review 10: the front stones' centres sat inside the big mass, so each variant read as one egg; they now
+    stand just outside it (centre 0.58 m from the big mass's, which moved 10 cm back and shrank ≈ 12 %), each with
+    its own hull, so their ink separates them from the mass behind. Cap drips and rock faces buried in a neighbour
+    mass are culled (drips poked through the rock on the shaded side). The big faces carry creased shading normals
+    (``facet``: the shade band snaps instead of an airbrushed ramp) and the masses' hulls are baked from closed
+    decimated copies of the rock (the decimated *culled* shells padded up to 7 cm: dark slabs, a 3 px baked rim);
+    the caps carry their own hulls."""
     tall = rnd.uniform(1.34, 1.44)
-    masses = [(Vector((rnd.uniform(-0.05, 0.05), rnd.uniform(0.02, 0.08), 0)),
-               (rnd.uniform(0.66, 0.72), rnd.uniform(0.6, 0.66), tall / 1.42), 1.0)]
-    spots = [(-0.34, -0.36), (0.38, -0.3), (0.02, -0.44), (-0.44, 0.02)]
+    big_c = Vector((rnd.uniform(-0.04, 0.04), rnd.uniform(0.08, 0.12), 0))
+    masses = [(big_c, (rnd.uniform(0.58, 0.63), rnd.uniform(0.54, 0.58), tall / 1.42), 1.0)]
+    spots = [-40.0, 42.0, 0.0, -78.0]                      # azimuths from −Y (the front) round the big mass
     for i in range(1 + v % 2):
-        sx, sy = spots[(i + v) % len(spots)]
-        h = tall * rnd.uniform(0.36, 0.5)
-        masses.append((Vector((sx + rnd.uniform(-0.04, 0.04), sy + rnd.uniform(-0.03, 0.03), 0)),
-                       (rnd.uniform(0.32, 0.38), rnd.uniform(0.29, 0.34), h / 1.42), 0.62))
+        az = math.radians(spots[(i + v) % len(spots)] + rnd.uniform(-8, 8))
+        dist = 0.58 + rnd.uniform(-0.02, 0.03)
+        h = tall * rnd.uniform(0.34, 0.46)
+        masses.append((big_c + Vector((math.sin(az) * dist, -math.cos(az) * dist, 0)),
+                       (rnd.uniform(0.28, 0.32), rnd.uniform(0.26, 0.30), h / 1.42), 0.62))
+    built = []
     for k, (c, r, cov) in enumerate(masses):
         shape = E.RockShape(r, (name, "mass", k), bumps=6, amp=0.07, top_cut=0.1, boxy=2.35, centre=0.42)
         yaw = rnd.uniform(0, 360)
         edge = E.drip_edge(rnd.uniform(0.82, 0.92) if k == 0 else rnd.uniform(0.62, 0.7), (name, "cap", k),
                            drips=2 + (k == 0), depth=0.28 if k == 0 else 0.2, width=0.16, wobble=0.12)
-        part = E.rock(shape, subdiv=3 if k == 0 else 2, facet=None)
+        built.append((shape, yaw, c, edge))
+
+    def inside_other(k):
+        others = [(sh, yw, cc) for j, (sh, yw, cc, _) in enumerate(built) if j != k]
+        return lambda p: any(E.rock_contains(sh, yw, cc, p, 0.004) for sh, yw, cc in others)
+    pids = {}
+    for k, (shape, yaw, c, edge) in enumerate(built):
+        sub = 3 if k == 0 else 2
+        part = E.rock(shape, subdiv=sub, facet=None)
         E.cull_under_cap(part, shape, edge)          # rock hidden under the moss blanket (wall tiles are many)
         part.rotate("z", yaw).translate(c)
-        # art review 9 budget (≈ 800 wall tiles in the plains): the caps are sampled coarser (CAP_COLS / CAP_ROWS) and
-        # the tufts have 5 blades. Low-poly hull proxies were tried and dropped: a coarse mass proxy culled under its
-        # cap, or a 3-row cap, padded until it enclosed the detailed surface, drew dark slabs and crescents beside
-        # the boulder at 1080p — on these open, culled shells the hull stays a padded copy
-        pid = b.add(part, "rock", name=f"mass{k}", hull=M.decimate(part.copy(), HULL_DECIMATE), hull_pad=True)
+        E.cull_inside(part, inside_other(k))         # buried in a neighbour mass
+        # the hull is the culled shell itself (exact: no proxy, no padding): its open boundary lies under the moss cap,
+        # so its hull's edge does too. Decimated proxies of these 320-tri masses sat up to 4 cm inside the surface
+        # and padded into dark slabs (a 3.1 px baked rim on V3 for the 1.4 px decor ink)
+        surf = BVHTree.FromBMesh(part.bm) if k == 0 else None
+        pid = b.add(part, "rock", name=f"mass{k}")
+        pids[pid] = (10 if k == 0 else 7, 0.35)
         thick = 0.034 if k == 0 else 0.024
         cap = E.rock_cap(shape, edge, thick=thick, cols=CAP_COLS[k > 0], rows=CAP_ROWS[k > 0], inner=0.05,
                          inner_shell=False)
         cap.rotate("z", yaw).translate(c)
-        b.add(cap, "cap", name=f"cap{k}", hull=M.decimate(cap.copy(), HULL_DECIMATE), hull_pad=True)
+        E.cull_inside(cap, inside_other(k), any_vertex=True)
+        b.add(cap, "cap", name=f"cap{k}")             # its own hull: an open blanket whose lip hides in the rock
         if k == 0:
-            crack(b, shape, c, math.radians(yaw), rnd.uniform(0, math.tau), r[2] * 0.72, 0.14, "rock_line", pid,
-                  rnd, 0.03)
+            # on the +X flank (world azimuth ±20°), clear of the front stones (−Y half) and their buried faces
+            crack(b, shape, c, math.radians(yaw), rnd.uniform(-0.35, 0.35) - math.radians(yaw), shape.R.z * 0.6,
+                  0.14, "rock_line", pid, rnd, 0.03, surface=surf)
     # tufts hugging the base (web tuftAt at both feet) + a flower accent (theme accent #F6D65A)
     for q in range(3):
         a = rnd.uniform(0, math.tau) if q else math.radians(-100)
@@ -197,6 +232,7 @@ def outcrop_boulders(b: M.Builder, name: str, v: int, rnd: random.Random):
         a = rnd.uniform(0, math.tau)
         p = Vector((math.cos(a) * 0.66, math.sin(a) * 0.66, 0.16))
         b.add(E.bloom(p, 0.05, petals=5, cup=0.15, per_petal=2, walls=True), "flower", name="flower")
+    return pids
 
 
 def outcrop_hedge(b: M.Builder, name: str, v: int, rnd: random.Random):
@@ -207,7 +243,8 @@ def outcrop_hedge(b: M.Builder, name: str, v: int, rnd: random.Random):
         (Vector((-0.28, -0.18, 0.5)), (0.44, 0.4, 0.5), "hedge", (name, "h2"), True),
         (Vector((0.0, 0.05, 1.0)), (0.42, 0.4, 0.38), "hedge", (name, "h3"), True),
     ]
-    sph, pids, _ = F.canopy(b, lumps, rnd, "fleck", flicks_per=4, flick_len=0.16, hull_ratio=F.TREE_HULL)
+    sph, pids, _ = F.canopy(b, lumps, rnd, "fleck", flicks_per=4, flick_len=0.16, hull_ratio=F.TREE_HULL,
+                            cull_hull=F.TREE_CULL_HULL)
     shape = E.RockShape((0.24, 0.22, 0.26), (name, "stone"), bumps=5, amp=0.08, top_cut=0.2)
     part = E.rock(shape, subdiv=1, facet=None).translate((0.32, -0.48, 0))
     b.add(part, "rock", name="stone", hull_pad=True)
@@ -220,12 +257,12 @@ def build_outcrop(pal: Palette, v: int):
     rnd = scene.rng(name)
     b = M.Builder(name, pal, prefix="outcrop")
     b.regions(**OUTCROP_REGIONS)
-    sph = None
+    sph = facet = None
     if v % 3 == 2:
         sph = outcrop_hedge(b, name, v, rnd)
     else:
-        outcrop_boulders(b, name, v, rnd)
-    return E.finish(b, pal, "decor", ground_h=1.2, spherise=sph, name=name)
+        facet = outcrop_boulders(b, name, v, rnd)
+    return E.finish(b, pal, "decor", ground_h=1.2, spherise=sph, name=name, ground_band=0.02, facet=facet)
 
 
 # ── terrain skirt ───────────────────────────────────────────────────────────────────────────────────────

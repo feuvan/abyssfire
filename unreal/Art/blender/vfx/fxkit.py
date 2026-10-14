@@ -35,6 +35,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from kit import color, export, outline, paths, review, scene, shading  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit import mesh as M  # noqa: E402
 from kit.palette import Palette  # noqa: E402
 
@@ -43,7 +44,7 @@ FAMILY = "FX"
 INK_HEX = shading.INK_HEX
 PX_CM = 2.0 * shading.CAM_DIST_DEFAULT * math.tan(math.radians(shading.CAM_FOV_H / 2.0)) * (9.0 / 16.0) / 1080.0 * 100.0
 """cm per 1080p pixel at the W1 default distance (≈ 0.83)."""
-SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/vfx3d")
+SCRATCH = scratch_root("vfx3d")
 FX_MATERIAL = "M_AF_FX_Mesh"
 
 

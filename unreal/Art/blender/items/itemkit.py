@@ -32,10 +32,11 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 import kit  # noqa: E402,F401
+from kit.paths import scratch_root  # noqa: E402
 from kit import color, export, mesh as M, outline, paths, pngio, review, scene, shading  # noqa: E402
 from kit.palette import GRID, SWATCH_PX, Palette, Region, _q8  # noqa: E402
 
-SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/items")
+SCRATCH = scratch_root("items")
 DATA = paths.UNREAL_ROOT / "Data"
 
 

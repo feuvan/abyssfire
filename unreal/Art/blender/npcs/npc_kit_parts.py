@@ -100,17 +100,22 @@ def ship_kit(only=()) -> int:
                     "assembly": "leader-pose component on a SKEL_Human NPC; head / hair / beard / hat / specs are "
                                 "rigid on `head`, the other parts are bind-pose specific to their build",
                     "previews": ["npc_kit/kit_parts_a.png", "npc_kit/kit_parts_b.png"]})
+                import npc_dressing as ND
+                e["inkGate"] = ND.held_ink_gate([npc.asset], man, "a kit part (the merged look's generator)")
                 if hull:
                     e["materialSlots"][1]["outlineMix"] = outline.INK_MIX["npc"]
+                    S.ink_slot(e["materialSlots"][1])            # inks as the merged look
                 else:
                     del e["materialSlots"][1:]
+                    e["inkGate"]["noHull"] = ("no-hull trims only: in the merged look the skull's padded hull inks "
+                                              "them; worn as a part they rely on the head part's hull")
                 man.set_asset(name, e)
                 print(f"[kit] {name}: {M.tri_count(obj, 0)} + {hull} tris ({group} of {npc.asset})"
                       + ("" if hull else ", no outline slot"))
             # review cell in the look's READY pose
             anim.apply_pose(A.solve(A.ready()))
             rv = review.Review(name, B.rig.obj, [obj], 1.8, blob_radius=0.0, out_dir=out,
-                               game_outline_px=outline.SCREEN_PX_1080["npc"], outline_class="npc")
+                               game_outline_px=S.PX, outline_class="npc")
             review.hide_stage(True)
             rv.facing("se")
             res = (180, 220)
@@ -125,9 +130,15 @@ def ship_kit(only=()) -> int:
             anim.clear_pose(B.rig)
         B.pal.save()
         man.set_palette(B.pal)
-    man.save()
+    files = []
     for i, (lo, hi) in enumerate(((0, 14), (14, len(cells)))):
         p = out / f"kit_parts_{'ab'[i]}.png"
-        pngio.write_png_budget(p, review.grid(cells[lo:hi], 7, pad=2))
-        print(f"  {p}")
+        for q, _ in S.save_native(p, review.grid(cells[lo:hi], 7, pad=2)):
+            files.append(q)
+            print(f"  {q}")
+    for name, _look, _g in KIT:
+        e = man.data["assets"].get(name)
+        if e is not None and (not only or name in only):
+            e["previews"] = [f"npc_kit/{q.name}" for q in files]
+    man.save()
     return 0

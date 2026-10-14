@@ -44,8 +44,8 @@
   "cells": 1,
   "note": "cel chain link, pre-coloured (mesh fallback)",
   "size": [
-   64,
-   32
+   128,
+   64
   ],
   "texture": "T_FX_Chain"
  },
@@ -197,7 +197,13 @@
    512,
    128
   ],
-  "texture": "T_FX_Impact"
+  "texture": "T_FX_Impact",
+  "cellScale": [
+   0.9667,
+   0.7838,
+   0.7632,
+   0.7342
+  ]
  },
  "LightPool": {
   "blend": "additive",

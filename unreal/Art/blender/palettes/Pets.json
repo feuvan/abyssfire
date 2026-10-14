@@ -1,0 +1,337 @@
+{
+ "atlasPx": 256,
+ "family": "Pets",
+ "grid": 16,
+ "swatchPx": 16,
+ "swatches": [
+  {
+   "e": 0.0,
+   "hex": "#C8F4B0",
+   "i": 0,
+   "l": 0.5019607843137255,
+   "names": [
+    "sprite.skin"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#8AE07A",
+   "i": 1,
+   "l": 0.5019607843137255,
+   "names": [
+    "sprite.tail"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "free": true,
+   "i": 2
+  },
+  {
+   "e": 0.0,
+   "hex": "#5AB84A",
+   "i": 3,
+   "l": 0.45098039215686275,
+   "names": [
+    "sprite.leaf",
+    "sprite_e1.crown_leaf",
+    "sprite_e1.leaf",
+    "sprite_e2.crown_leaf",
+    "sprite_e2.leaf"
+   ],
+   "o": 0.4,
+   "s": 0.45098039215686275
+  },
+  {
+   "e": 0.0,
+   "hex": "#A4D389",
+   "i": 4,
+   "l": 0.4,
+   "names": [
+    "sprite.leaf_lt",
+    "sprite_e1.leaf_lt",
+    "sprite_e2.leaf_lt"
+   ],
+   "o": 0.4,
+   "s": 0.4
+  },
+  {
+   "e": 0.0,
+   "hex": "#4A9A3C",
+   "i": 5,
+   "l": 0.34901960784313724,
+   "names": [
+    "sprite.stem",
+    "sprite_e1.stem",
+    "sprite_e2.stem"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#284928",
+   "i": 6,
+   "l": 0.12156862745098039,
+   "names": [
+    "sprite.vein",
+    "sprite_e1.vein",
+    "sprite_e2.vein"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#D2FFDC",
+   "i": 7,
+   "l": 0.34901960784313724,
+   "names": [
+    "sprite.wing",
+    "sprite_e1.wing"
+   ],
+   "o": 0.4,
+   "s": 0.2196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#8CCB98",
+   "i": 8,
+   "l": 0.25098039215686274,
+   "names": [
+    "sprite.wing_vein",
+    "sprite_e1.wing_vein"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#1E3A28",
+   "i": 9,
+   "l": 0.12156862745098039,
+   "names": [
+    "sprite.iris",
+    "sprite_e1.iris",
+    "sprite_e2.iris"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#0A1A10",
+   "i": 10,
+   "l": 0.050980392156862744,
+   "names": [
+    "sprite.pupil",
+    "sprite_e1.pupil",
+    "sprite_e2.pupil"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.6,
+   "hex": "#FFFFFF",
+   "i": 11,
+   "l": 0.10196078431372549,
+   "names": [
+    "sprite.glint",
+    "sprite_e1.glint",
+    "sprite_e2.glint"
+   ],
+   "o": 0.4,
+   "s": 0.0
+  },
+  {
+   "e": 0.0,
+   "hex": "#3A6A3A",
+   "i": 12,
+   "l": 0.10196078431372549,
+   "names": [
+    "sprite.mouth",
+    "sprite_e1.mouth",
+    "sprite_e2.mouth"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#2A4A2A",
+   "i": 13,
+   "l": 0.050980392156862744,
+   "names": [
+    "sprite.mouth_in",
+    "sprite_e1.mouth_in",
+    "sprite_e2.mouth_in"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#F2B8A0",
+   "i": 14,
+   "l": 0.2980392156862745,
+   "names": [
+    "sprite.cheek",
+    "sprite_e1.cheek",
+    "sprite_e2.cheek"
+   ],
+   "o": 0.4,
+   "s": 0.2
+  },
+  {
+   "e": 0.0,
+   "hex": "#E0FCC8",
+   "i": 15,
+   "l": 0.5019607843137255,
+   "names": [
+    "sprite_e2.skin"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#B0F090",
+   "i": 16,
+   "l": 0.5019607843137255,
+   "names": [
+    "sprite_e2.tail"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#ECFFC8",
+   "i": 17,
+   "l": 0.34901960784313724,
+   "names": [
+    "sprite_e2.wing"
+   ],
+   "o": 0.4,
+   "s": 0.2196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#E0B848",
+   "i": 18,
+   "l": 0.25098039215686274,
+   "names": [
+    "sprite_e2.wing_vein"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#FFD860",
+   "i": 19,
+   "l": 0.4,
+   "names": [
+    "sprite_e1.petal_gold",
+    "sprite_e2.petal_gold"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#FF9AC0",
+   "i": 20,
+   "l": 0.4,
+   "names": [
+    "sprite_e1.petal_pink",
+    "sprite_e2.petal_pink"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#FFF4C0",
+   "i": 21,
+   "l": 0.4,
+   "names": [
+    "sprite_e1.petal_cream",
+    "sprite_e2.petal_cream"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#E89020",
+   "i": 22,
+   "l": 0.2980392156862745,
+   "names": [
+    "sprite_e1.blossom",
+    "sprite_e2.blossom"
+   ],
+   "o": 0.4,
+   "s": 0.34901960784313724
+  },
+  {
+   "free": true,
+   "i": 23
+  },
+  {
+   "e": 0.0,
+   "hex": "#D0F8B8",
+   "i": 24,
+   "l": 0.5019607843137255,
+   "names": [
+    "sprite_e1.skin"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#9AE880",
+   "i": 25,
+   "l": 0.5019607843137255,
+   "names": [
+    "sprite_e1.tail"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "free": true,
+   "i": 26
+  },
+  {
+   "e": 0.45098039215686275,
+   "hex": "#FFEC8C",
+   "i": 27,
+   "l": 0.2,
+   "names": [
+    "sprite_e1.halo",
+    "sprite_e2.halo"
+   ],
+   "o": 0.4,
+   "s": 0.0
+  },
+  {
+   "e": 0.14901960784313725,
+   "hex": "#E8FF90",
+   "i": 28,
+   "l": 0.25098039215686274,
+   "names": [
+    "sprite.tail_tip",
+    "sprite_e1.tail_tip",
+    "sprite_e2.tail_tip"
+   ],
+   "o": 0.4,
+   "s": 0.0
+  }
+ ]
+}

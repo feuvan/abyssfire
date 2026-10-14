@@ -156,16 +156,21 @@ STAFF = {   # heads: oak · arcane · rune · elder · lich · abyss (web staffS
 }
 
 WAND = {   # web wandSpec (T1): violet wood, gold bands, cyan marquise crystal
-    # T1: the shaft a value lighter (lightAmt .55) and the crystal faintly self-lit (e .6), so the 3 cm rod reads
-    # beside dark greaves and leather at 1080p (art review, fourth look: only the cyan tip read)
-    "T1": dict(shaft=wood("#9A54AC", .55), band=metal(GOLD), crystal=stone(CYAN, .60), cap=metal(GOLD)),
-    "T2": dict(shaft=wood("#4A2A5A"), band=metal(SILVER, .55), crystal=glow(CYAN), cap=metal(SILVER, .55)),
-    "T3": dict(shaft=metal("#6C7488", .40), band=metal("#8A94A8", .45), crystal=glow("#4F8CFF"),
-               cap=metal("#8A94A8", .45)),
-    "T4": dict(shaft=wood("#D8CCB0"), band=metal(GOLD), crystal=glow("#FFB84A"), cap=metal(GOLD)),
-    "T5": dict(shaft=Region(BONE, .40, .35), band=metal("#8A7A60", .40), crystal=glow("#7DFF9A"),
-               cap=metal("#8A7A60", .40)),
-    "T6": dict(shaft=cloth(DEMON_BLACK), band=metal(DEMON, .40), crystal=glow(CRIMSON), cap=metal(DEMON, .40)),
+    # T1 (art review, fifth look): the violet shaft had the hue and value of the mage's robe, and on the warrior /
+    # rogue it read as a dark stick with a cyan speck — the rod is a light honey wood now (a value above the robe,
+    # the greaves' grey and the rogue's leather, warm against all three) and the web's violet moves to the three
+    # rings (``ring``); gold cap, collar and prongs (``band``), the crystal faintly self-lit (e .6)
+    "T1": dict(shaft=wood("#C8955C", .50), band=metal(GOLD), ring=wood("#8A44A6", .45), crystal=stone(CYAN, .60),
+               cap=metal(GOLD)),
+    "T2": dict(shaft=wood("#4A2A5A"), band=metal(SILVER, .55), ring=metal(SILVER, .55), crystal=glow(CYAN),
+               cap=metal(SILVER, .55)),
+    "T3": dict(shaft=metal("#6C7488", .40), band=metal("#8A94A8", .45), ring=metal("#8A94A8", .45),
+               crystal=glow("#4F8CFF"), cap=metal("#8A94A8", .45)),
+    "T4": dict(shaft=wood("#D8CCB0"), band=metal(GOLD), ring=metal(GOLD), crystal=glow("#FFB84A"), cap=metal(GOLD)),
+    "T5": dict(shaft=Region(BONE, .40, .35), band=metal("#8A7A60", .40), ring=metal("#8A7A60", .40),
+               crystal=glow("#7DFF9A"), cap=metal("#8A7A60", .40)),
+    "T6": dict(shaft=cloth(DEMON_BLACK), band=metal(DEMON, .40), ring=metal(DEMON, .40), crystal=glow(CRIMSON),
+               cap=metal(DEMON, .40)),
 }
 
 

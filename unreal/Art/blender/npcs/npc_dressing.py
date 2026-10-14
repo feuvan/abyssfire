@@ -45,6 +45,23 @@ def _held_by() -> dict:
     return out
 
 
+def held_ink_gate(holders: list, man: export.Manifest, what: str) -> dict:
+    """``inkGate`` of a part that is never drawn on its own (a held prop, a kit part): it is measured on the merged
+    NPCs that wear / hold it — their gated 1080p cells include it at the shipped ink (the warrior's sword and shield
+    are recorded the same way). Pass = every one of them passed."""
+    gates = {a: (man.data["assets"].get(a) or {}).get("inkGate") for a in holders}
+    ok = bool(gates) and all(bool(g and g.get("pass")) for g in gates.values())
+    return {"standalone": False, "pass": ok, "measuredOn": sorted(gates),
+            "minFracRim": min((g.get("minFracRim", 0.0) for g in gates.values() if g), default=0.0),
+            "note": f"{what} is never drawn alone: its ink is gated on the 1080p cells of the NPCs listed in "
+                    f"measuredOn (at the shipped NPC ink, {_npc_px():g} px), which carry it"}
+
+
+def _npc_px() -> float:
+    import npc_ship as S
+    return float(S.PX)
+
+
 def ship_props() -> int:
     import mship
     scene.reset()
@@ -64,20 +81,27 @@ def ship_props() -> int:
                                        "note": "weapon-bone space: grip at the origin, +Y along the item, +Z the "
                                                "leading face; attaches to the socket with an identity transform"})
         e["materialSlots"][1]["outlineMix"] = outline.INK_MIX["npc"]
+        import npc_ship as S
+        S.ink_slot(e["materialSlots"][1])                      # inks with the NPC that holds it
+        e["inkGate"] = held_ink_gate(sorted({a for a, _ in hb}), man, "a held prop")
         man.set_asset(name, e)
         man.save()
         objs.append((name, obj))
         print(f"[prop] {name}: {sum(len(p.vertices) - 2 for p in obj.data.polygons if p.material_index == 0)} toon "
               f"tris, sockets {[s['name'] for s in socks]}")
     pal.save()
-    _props_sheet(objs)
+    files = _props_sheet(objs)
+    man = export.Manifest()
+    for name, _ in objs:
+        man.data["assets"][name]["previews"] = [f"npc_props/{p.name}" for p in files]
+    man.save()
     return 0
 
 
 PROP_VIEW_YAWS = ((240, "A"), (60, "B"))      # the leading face 3/4 front, then 3/4 back (tongs open)
 
 
-def _props_sheet(objs) -> None:
+def _props_sheet(objs) -> list:
     out = paths.preview_root() / "npc_props"
     out.mkdir(parents=True, exist_ok=True)
     review.stage()
@@ -101,10 +125,11 @@ def _props_sheet(objs) -> None:
             review.draw_text(img, 3, 3, f"{name[len('SM_NPCKit_Prop_'):].upper()} {side}")
             cells.append(img)
         o.hide_render = True
-    p = out / "props.png"
-    from kit import pngio
-    pngio.write_png_budget(p, review.grid(cells, 6))
-    print(f"  {p}")
+    import npc_ship as S
+    written = S.save_native(out / "props.png", review.grid(cells, 4))
+    for p, _ in written:
+        print(f"  {p}")
+    return [p for p, _ in written]
 
 
 def _ship_grounded_static(name: str, category: str, obj, pal, cls: str, game_ids, sockets, footprint, blocking,
@@ -116,6 +141,8 @@ def _ship_grounded_static(name: str, category: str, obj, pal, cls: str, game_ids
     man = export.Manifest()
     man.set_palette(pal)
     entry = export.static_entry(obj, fbx, category, pal, cls, game_ids, sockets, footprint, blocking, extra)
+    if len(entry["materialSlots"]) > 1:
+        entry["materialSlots"][1]["outlineMix"] = outline.INK_MIX[cls]     # DRESS_REGIONS: ink_regions(…, "npc")
     rv = review.Review(name, obj, [obj], height, blob_radius=blob, game_outline_px=outline.SCREEN_PX_1080[cls],
                        outline_class=cls)
     rv.ground_occludes = True
@@ -193,6 +220,7 @@ def ship_markers() -> int:
             "note": "overhead quest marker (spec §5.4 / §9.4): '!' available, '?' turn-in #F1C40F, grey '?' #888888 "
                     "in progress; pivot at the glyph's foot",
             "previews": ["npc_markers/markers_over_npc.png", "npc_markers/markers_close.png"]})
+        entry["materialSlots"][1]["outlineMix"] = outline.INK_MIX["npc"]     # DRESS_REGIONS: ink_regions(…, "npc")
         rv = review.Review(name, B.rig.obj, meshes_of_with(B, m), B.folk.D.height, blob_radius=npc.blob_radius,
                            out_dir=out, game_outline_px=outline.SCREEN_PX_1080["npc"], outline_class="npc",
                            glows=S.glows_for(B))
@@ -230,8 +258,8 @@ def ship_markers() -> int:
     man.set_palette(pal)
     pal.save()
     man.save()
-    pngio.write_png_budget(out / "markers_over_npc.png", review.grid(cells, len(cells), pad=2))
-    pngio.write_png_budget(out / "markers_close.png", review.grid(close, len(close), pad=2))
+    S.save_native(out / "markers_over_npc.png", review.grid(cells, len(cells), pad=2))
+    S.save_native(out / "markers_close.png", review.grid(close, len(close), pad=2))
     for nm, v in verdicts.items():
         print(f"[dressing] {nm}: ink {'PASS' if v['pass'] else 'FAIL'} rim {v['minFracRim'] * 100:.1f} % dark "
               f"{v['minFracDark'] * 100:.1f} %")
@@ -346,8 +374,8 @@ def lineup() -> int:
     w = _warrior_cell(box_of)
     if w is not None:
         cells.append(w)
-    pngio.write_png_budget(out / "lineup_game.png", review.grid(cells, 5, pad=2))
-    pngio.write_png_budget(out / "lineup_close.png", review.grid(close, 9, pad=2))
+    S.save_native(out / "lineup_game.png", review.grid(cells, 5, pad=2))
+    S.save_native(out / "lineup_close.png", review.grid(close, 5, pad=2))
     for nm, h in heights:
         print(f"  {nm:26s} crown {h:.2f} m")
     print(f"  {out / 'lineup_game.png'}\n  {out / 'lineup_close.png'}")

@@ -486,12 +486,16 @@ def build_staff(b: M.Builder) -> list[dict]:
 
 
 def build_wand(b: M.Builder) -> list[dict]:
-    """Wand (web wandSpec: violet wood rod, two gold bands, a cyan marquise crystal in a three-prong setting)."""
+    """Wand (web wandSpec: violet wood rod, gold bands, a cyan marquise crystal in a three-prong setting; T1 a light
+    honey-wood rod with the violet on its three rings and a gold collar under the setting — art review, fifth look)."""
     sh = b.add(IK.lathe_y([(0.0105, -0.116), (0.0150, -0.104), (0.0140, -0.090), (0.0125, -0.04),
                            (0.0118, 0.06), (0.0100, 0.17), (0.0094, 0.214), (0.0125, 0.222)],
                           sides=10, cap0="fan", cap1="fan"), "shaft", name="shaft", hull_pad=True)
-    for yy, r in ((-0.095, 0.0158), (0.070, 0.0135), (0.205, 0.0118)):
-        b.add(IK.ring_y(yy, r, 0.0125, 0.005, sides=12), "band", name="band", outline=False, covered_by=sh)
+    for yy, r in ((-0.095, 0.0158), (0.070, 0.0135), (0.180, 0.0113)):
+        b.add(IK.ring_y(yy, r, 0.0125, 0.005, sides=12), "ring", name="band", outline=False, covered_by=sh)
+    # gold collar where the prongs leave the rod (fifth look: the setting read as a speck; 686 → ~0.8 k toon tris)
+    b.add(IK.lathe_y([(0.0098, 0.200), (0.0122, 0.203), (0.0136, 0.212), (0.0128, 0.220), (0.0102, 0.223)],
+                     sides=12, cap0="fan", cap1="fan"), "band", name="collar", outline=False, covered_by=sh)
     b.add(IK.lathe_y([(0.008, -0.123), (0.012, -0.115), (0.0118, -0.108)], sides=10,
                      cap0="fan", cap1=None), "cap", name="cap", outline=False, covered_by=sh)
     cr = M.loft_z([(-0.040, 0.0006, 0.0006), (-0.012, 0.0200, 0.0155), (0.0, 0.0220, 0.0170),
@@ -799,6 +803,23 @@ POSES = (("Idle", "ready", "READY"), ("Run", "run", "RUN"), ("Attack01", "beat",
 CELL = (330, 330)
 
 
+def item_low(obj) -> float:
+    """Lowest world z (m) of the item's toon surface and **baked** ink hull — the QA's ``lowCm`` (``WG.Item.low``),
+    not the review render's screen-constant hull (the preview WPO modifier grows it with the camera distance)."""
+    me = obj.data
+    co = np.zeros(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get("co", co)
+    mw = np.array(obj.matrix_world)
+    return float((co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3])[:, 2].min())
+
+
+def low_ok(low_m: float) -> bool:
+    """The LOW label's colour: every vertex of the item — toon surface and baked ink hull (``item_low``) — at or
+    above the QA floor (``WG.LIMITS['lowCm']``; the art review's fifth look: the label measured the hull, the QA
+    toon vertices only — both measure toon + baked hull now)."""
+    return low_m * 100.0 >= WG.LIMITS["lowCm"] - 0.05
+
+
 def pose_frame(cls: str, clip: str, beat: str) -> int:
     if beat == "beat":
         return beat_frame(cls, clip)
@@ -869,14 +890,14 @@ def inhand(fam: str, obj, heroes: Heroes, out_dir: Path, table: dict, qa_low: di
             obj.hide_render = hidden
             bpy.context.view_layer.update()
             gc.rv.facing(face)
-            low = IK.min_z([obj])
+            low = item_low(obj)
             img, st = gc.cell(f"{cls} {lab} {face}", facing=face, min_px=CELL, label=False)
             cell = IK.pad_to(img, CELL[1], CELL[0])
             review.draw_text(cell, 3, 3, f"{cls} {lab} F{fr} {face}".upper())
             review.draw_text(cell, 3, 12, gc.rv.ink_label(st), rgb=(255, 220, 140))
             g = WG.grip_label(table, cls, fam, clip) + (" HIDDEN" if hidden else "")
             review.draw_text(cell, 3, 21, f"GRIP {g.upper()}  LOW {low * 100:.0f}CM",
-                             rgb=(200, 230, 255) if low > -0.005 else (255, 90, 90))
+                             rgb=(200, 230, 255) if hidden or low_ok(low) else (255, 90, 90))
             obj.hide_render = False
             cells.append(cell)
             if first is None:
@@ -957,7 +978,7 @@ def clip_sheets(fam: str, obj, heroes: Heroes, out_dir: Path, table: dict, class
                 hidden = bool(hw and hw[0] <= fr <= hw[1])
                 obj.hide_render = hidden
                 bpy.context.view_layer.update()
-                return hidden, IK.min_z([obj]) if not hidden else 0.0
+                return hidden, item_low(obj) if not hidden else 0.0
             borders = {}
             for face in facings:                     # pass 1: the union crop of the clip at each facing
                 gc.rv.facing(face)
@@ -997,7 +1018,7 @@ def clip_sheets(fam: str, obj, heroes: Heroes, out_dir: Path, table: dict, class
                                                       " RELEASE" if fr == beat else "")
                     review.draw_text(img, 3, 3, lab, rgb=BEAT_RGB if fr == beat else (255, 255, 255))
                     g = "HIDDEN" if hidden else f"LOW {low * 100:.0f}"
-                    review.draw_text(img, 3, 12, g, rgb=(200, 230, 255) if hidden or low > -0.005 else (255, 90, 90))
+                    review.draw_text(img, 3, 12, g, rgb=(200, 230, 255) if hidden or low_ok(low) else (255, 90, 90))
                     if fr == beat:
                         img[:2], img[-2:], img[:, :2], img[:, -2:] = BEAT_RGB, BEAT_RGB, BEAT_RGB, BEAT_RGB
                     cells.append((face, img))
@@ -1085,20 +1106,40 @@ def manifest_extra(fam: str, variants, table: dict, qa: dict | None = None) -> d
                       "the class default off-hand (warrior shield, rogue off dagger) and the class main-hand mesh "
                       "while it is equipped; it rides grips[<class>].socket (warrior / mage: weapon_r, so every "
                       "strike carries it; attachSocket weapon_l otherwise)")
-        e["readGate"] = {"metric": "min over the se / sw W1 views of |bow plane normal · view ray| (the D's on-screen "
-                                   "fraction)", "hitWindow": [-WG.FACE_STRIKE_LEAD, WG.HIT_READ_TAIL],
-                         "floors": WG.READ_GATE["bow"]}
+
+    if fam in WG.READ_GATE:          # on-screen readability gate of the in-hand QA (fourth / fifth look)
+        e["readGate"] = {"metric": READ_METRIC[fam], "hitWindow": [-WG.FACE_STRIKE_LEAD, WG.HIT_READ_TAIL],
+                         "floors": WG.READ_GATE[fam]}
     if qa is not None:
         e["inHandQA"] = qa
     return e
 
 
+READ_METRIC = {
+    "bow": "min over the se / sw W1 views of |bow plane normal · view ray| (the D's on-screen fraction)",
+    "axe": "min over the se / sw W1 views of |bit plane normal · view ray| (the bit's on-screen fraction)",
+    "shield": ("face normal · direction to the sw camera (sin of the face's turn out of edge-on; < 0 = its back); "
+               "the shield also keeps out of the face disc on every strike / cast frame"),
+    "staff": ("min over the se / sw W1 views of the fist → orb shaft's on-screen length that is not hidden behind the "
+              "body or the class's attachments, / the 81.5 cm shaft; carry clips: every frame ≥ carry with the orb "
+              "≥ carryUp of the shaft above the fist, visible and clear of the head; strikes / casts: the floors + "
+              "the orb visible, clear of the head and lifted ≥ hitUp on the hit-stop"),
+}
+
+
 def qa_records(res: dict, fam: str) -> dict:
     """Manifest ``inHandQA`` for one family: per class the whole-clip worst values + the limits."""
-    out = {"limits": WG.LIMITS, "frames": "every frame of every SK_Hero_<Class> clip (shipped FBX)", "classes": {}}
+    out = {"limits": WG.LIMITS, "frames": "every frame of every SK_Hero_<Class> clip (shipped FBX)", "classes": {},
+           "lowCm": "lowest vertex of the toon surface and the baked ink hull (cm above the ground plane)",
+           "readGate": {f: g for f, g in WG.READ_GATE.items() if f == fam}}
     for cls, fams in res["classes"].items():
         clips = fams.get(fam)
         if not clips:
+            continue
+        if not WG.shown(cls, fam):
+            # (art review, fifth look) the class shows its own SM_Hero_* weapon of this family: no grips are shipped
+            # for it, so its QA is not part of this entry
+            out.setdefault("notShipped", []).append(cls)
             continue
         out["classes"][cls] = {
             "shown": WG.shown(cls, fam), "pass": all(WG.GripQA.passes(w) for w in clips.values()),
@@ -1315,7 +1356,7 @@ def strips(specs: list[str], table_path: str | None = None, cell: int = 240) -> 
                 hw = WG.hide_window(table, cls, fam, clip)
                 obj.hide_render = bool(hw and hw[0] <= fr <= hw[1])
                 bpy.context.view_layer.update()
-                low = IK.min_z([obj])
+                low = item_low(obj)
                 img, _ = gc.cell(f"{cls} {clip}", facing=face, min_px=(cell, cell), label=False, measure=False)
                 c = IK.pad_to(img, cell, cell)
                 review.draw_text(c, 3, 3, f"{clip} F{fr} {face}".upper())

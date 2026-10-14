@@ -38,7 +38,9 @@ PROP_REGIONS = outline.ink_regions(dict(
     gold=Region("#D9A640", .42, .50),
     leather=Region("#6A4228"),
     leather_dark=Region("#6A4228").shade_region(.30, .12),
-    orb=Region("#7FD6A0", .25, .50, e=0.35),         # lit by the runtime orbGlow card; its bloom keeps the ink
+    # lit by the runtime orbGlow halo; a low emissive and light band keep the #7FD6A0 hue under the card and the
+    # bloom (art review: at e .35 / l .5 under an 11 cm card with a pale core the 1080p orb bloomed to white)
+    orb=Region("#7FD6A0", .25, .30, e=0.18),
     orb_hot=Region("#E8FFD0", .0, .0, e=1.0),
     book=Region("#3A4A7A"),
     book_dark=Region("#3A4A7A").shade_region(.30, .12),
@@ -63,8 +65,9 @@ PROPS = {
 
 SWORD_BLADE = 22.0 * U      # 3D: the web's 17.5 u blade lengthened so the pommel sits at the hip when he leans on it
 SWORD_TIP_Y = 2.3 * U + SWORD_BLADE + 0.9 * U
-STAFF_DOWN = 0.96           # grip → foot (m): planted on the ground from the READY chest-height grip
-STAFF_UP = 0.56             # grip → orb centre
+STAFF_DOWN = 1.24           # grip → foot (m): planted on the ground from the READY chest-height grip (art review:
+                            # at 0.96 the grip sat at the belt and the orb only reached the shoulder)
+STAFF_UP = 0.50             # grip → orb centre: the orb at the crown, beside the head (web: at or above the head)
 ORB_R = 2.2 * U
 
 

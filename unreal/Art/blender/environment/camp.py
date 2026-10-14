@@ -211,6 +211,7 @@ CAMP_REGIONS = dict(
     rune=Region("#FFA040", .0, .0, e=1.0),
     rune_dim=Region("#C86A2A", .10, .10, e=0.6),
     gem=Region("#FF9A3A", .10, .30, e=0.85),
+    gem_glint=Region("#FFF0B0", .0, .0, e=0.9),
     gem_line=Region("#6A2A10", .40, .20),
     dark=Region("#4F8A3A", .40, .14),
     light=Region("#8CC24F", .38, .12),
@@ -261,9 +262,10 @@ def build_campfire(pal: Palette):
         c = Vector((math.cos(a) * 0.42, math.sin(a) * 0.42, 0))
         r = (rnd.uniform(0.09, 0.12), rnd.uniform(0.075, 0.095), rnd.uniform(0.07, 0.095))
         shape = E.RockShape(r, (name, i), bumps=4, amp=0.08, top_cut=0.3)
-        part = E.rock(shape, subdiv=1, facet=26.0, yaw=math.degrees(a)).translate(c)
-        b.add(part, "stone", name="stone", hull_pad=True)
-    return E.finish(b, pal, "decor", ground_h=0.25, name=name)
+        part = E.rock(shape, subdiv=1, facet=26.0, yaw=math.degrees(a))
+        E.unflare_foot(part, 0.045)             # bedded: no floor under the belly (art review 10 hull slivers)
+        b.add(part.translate(c), "stone", name="stone", hull_pad=True)
+    return E.finish(b, pal, "decor", ground_h=0.25, name=name, ground_band=0.02)
 
 
 def build_well(pal: Palette):
@@ -335,60 +337,67 @@ def _block(r_in, r_out, a0, a1, z0, z1, segs: int = 3):
     return E.ring_loft(rings, cap0="ngon", cap1="ngon", smooth=False).auto_sharp(40)
 
 
+TENT_PROFILE = ((0.02, 1.70), (0.38, 1.08), (0.78, 0.55), (1.25, 0.0))   # ridge → eave (x, z): 60° / 53° / 49.5°
+TENT_OVERHANG = 0.04                                                     # roof past each gable (closes the eaves)
+
+
+def tent_roof_z(x: float) -> float:
+    """Roof height at |x| on the creased profile (piecewise linear)."""
+    x = abs(x)
+    pts = TENT_PROFILE
+    if x <= pts[0][0]:
+        return pts[0][1]
+    for (x0, z0), (x1, z1) in zip(pts, pts[1:]):
+        if x <= x1:
+            return z0 + (z1 - z0) * (x - x0) / (x1 - x0)
+    return 0.0
+
+
 def build_tent(pal: Palette):
+    """Plains tent (web ``CampProps`` tent, spec §6.4): A-frame canvas ``#5A4028`` 2.5 × 1.96 m, apex 1.7 m. Art
+    review 10: each roof side is **three flat creased panels** (60° / 53° / 49.5°, flat-shaded) so the toon bands
+    snap per panel — the sagging sheet's smooth curvature spread the light / rim smoothsteps into airbrushed
+    gradients and a whitish smear on the shaded side; the roof overhangs both gables by 4 cm so no interior shows
+    at the eaves."""
     name = "SM_Prop_Camp_Tent"
     b, rnd = new(pal, name)
-    # half width, half depth, ridge height: apex 1.7 m (web 66 px), roof pitch 54° — steeper roofs turned across the
-    # W1 view (N·V < 0.44) light up wholesale in the warm rim band
-    W, D, Hr = 1.25, 0.98, 1.70
+    W, D, Hr = TENT_PROFILE[-1][0], 0.98, TENT_PROFILE[0][1]
     th = 0.03
-
-    def roof_z(t: float, y: float) -> float:
-        """Canvas height at slope fraction ``t`` (ridge 0 → eave 1) and ``y`` along the ridge: the cloth sags
-        between ridge and eave and between the gable ends (14 cm mid-panel, taut along the gables so the gable
-        triangles stay flush) — art review 9: the flat sheets fell wholly into one band; the dip spreads light /
-        base / shade across each side."""
-        return Hr * (1 - t) - 0.14 * math.sin(math.pi * t) * math.cos(math.pi * y / (2 * D))
-
-    ys = [-D + 2 * D * i / 8 for i in range(9)]
-    # roof sheets: from the ridge down to the ground at ±W, a 9 × 9 grid so the sag has interior vertices
+    Do = D + TENT_OVERHANG
+    ys = [-Do, -D * 0.36, D * 0.36, Do]
     for s in (-1, 1):
-        rows = []
-        for j in range(9):
-            t = j / 8
-            x = s * (0.02 + (W - 0.02) * t)
-            rows.append([Vector((x, y, roof_z(t, y))) for y in ys])
         bm = bmesh.new()
-        vv = [[bm.verts.new(p) for p in row] for row in rows]
-        for j in range(8):
-            for i in range(8):
-                bm.faces.new((vv[j][i], vv[j][i + 1], vv[j + 1][i + 1], vv[j + 1][i]))
+        vv = [[bm.verts.new((s * x, y, z)) for y in ys] for x, z in TENT_PROFILE]
+        for j in range(len(TENT_PROFILE) - 1):
+            for i in range(len(ys) - 1):
+                q = (vv[j][i], vv[j][i + 1], vv[j + 1][i + 1], vv[j + 1][i])
+                bm.faces.new(q if s > 0 else tuple(reversed(q)))
         bm.normal_update()
         bmesh.ops.solidify(bm, geom=list(bm.faces), thickness=th)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        part = M.Part(bm).auto_sharp(50)
+        part = M.Part(bm).flat()
         rid = b.add(part, "canvas", name=f"roof{s}", hull_pad=True)
-        # trim stripe near the hem + seams down the slope (lying on the sagging canvas)
+        # trim stripe near the hem + seams down the slope (lying on the panels)
 
-        def on_roof(t, y):
-            p = Vector((s * (0.02 + (W - 0.02) * t), y, roof_z(t, y)))
+        def on_roof(x, y):
+            x = abs(x)
             e = 0.01
-            du = Vector((s * (W - 0.02) * e, 0, roof_z(t + e, y) - roof_z(t, y)))
-            dv = Vector((0, e, roof_z(t, y + e) - roof_z(t, y)))
-            n = du.cross(dv).normalized()
-            if n.z < 0:
-                n = -n
-            return p + n * th, n
-        trim = [on_roof(0.84, y) for y in ys]
+            z = tent_roof_z(x)
+            dz = (tent_roof_z(min(x + e, W)) - tent_roof_z(max(x - e, 0.0))) / (min(x + e, W) - max(x - e, 0.0))
+            n = Vector((s * -dz, 0.0, 1.0)).normalized()
+            return Vector((s * x, y, z)) + n * th, n
+        xt = 1.06
+        trim = [on_roof(xt, y) for y in (-Do + 0.01, 0.0, Do - 0.01)]
         b.add(E.ribbon([q for q, _ in trim], [n for _, n in trim], 0.06, lift=0.002, thick=0.003), "canvas_trim",
               name="trim", outline=False, covered_by=rid)
         for y in (-D * 0.36, D * 0.36):
-            sm = [on_roof(t, y) for t in (0.06, 0.2, 0.34, 0.48, 0.62, 0.76, 0.94)]
+            sm = [on_roof(x, y) for x in (0.06, 0.2, 0.38, 0.58, 0.78, 1.0, 1.2)]
             b.add(E.ribbon([q for q, _ in sm], [n for _, n in sm], 0.014, lift=0.004, thick=0.002), "canvas_line",
                   name="seam", outline=False, covered_by=rid)
     # gables: back closed, front with a dark door and the flaps (one tied back)
     for y, front in ((D, False), (-D, True)):
-        tri = [(-W, 0.0), (W, 0.0), (0.0, Hr)]
+        tri = ([(-W, 0.0), (W, 0.0)] + [(x, z) for x, z in reversed(TENT_PROFILE[1:-1])] + [(0.0, Hr)] +
+               [(-x, z) for x, z in TENT_PROFILE[1:-1]])
         g = M.plate(tri if front else list(reversed(tri)), 0.025, bevel=0.004)
         g.transform(_rx(90)).translate((0, y + (0.012 if not front else -0.012) * 0, 0))
         gid = b.add(g, "canvas", name="gable", hull_pad=True)
@@ -397,7 +406,7 @@ def build_tent(pal: Palette):
         face_y = y + sgn * 0.0127
         nrm = Vector((0, sgn, 0))
         zt = 0.2
-        half = W * (1 - zt / Hr) - 0.04
+        half = W - (W - TENT_PROFILE[-2][0]) * zt / TENT_PROFILE[-2][1] - 0.04
         spans = [(-half, -0.47), (0.47, half)] if front else [(-half, half)]
         for x0, x1 in spans:
             b.add(E.ribbon([Vector((x0, face_y, zt)), Vector(((x0 + x1) / 2, face_y, zt)), Vector((x1, face_y, zt))],
@@ -422,19 +431,20 @@ def build_tent(pal: Palette):
             tie = M.box((0.05, 0.05, 0.05), (0.42, y - 0.06, 0.6), bevel=0.01)
             b.add(tie, "rope", name="tie")
             for xs in (-1, 1):
-                b.add(E.ribbon([Vector((0, y - 0.013, Hr * 0.98)), Vector((xs * W * 0.5, y - 0.013, Hr * 0.5)),
-                                Vector((xs * W * 0.98, y - 0.013, 0.03))], [Vector((0, -1, 0))] * 3, 0.03,
-                               lift=0.003, thick=0.003), "canvas_trim", name="edge", outline=False, covered_by=gid)
+                pts = [Vector((0, y - 0.013, Hr * 0.98))] + [Vector((xs * x * 0.97, y - 0.013, z * 0.98 + 0.01))
+                                                             for x, z in TENT_PROFILE[1:]]
+                b.add(E.ribbon(pts, [Vector((0, -1, 0))] * len(pts), 0.03, lift=0.003, thick=0.003), "canvas_trim",
+                      name="edge", outline=False, covered_by=gid)
     # ridge pole + gold pennant at the front, guy ropes and pegs
-    pole = M.tube([(0, -D - 0.12, Hr + 0.02), (0, D + 0.12, Hr + 0.02)], [0.035, 0.035], sides=8)
+    pole = M.tube([(0, -Do - 0.08, Hr + 0.02), (0, Do + 0.08, Hr + 0.02)], [0.035, 0.035], sides=8)
     b.add(pole, "post", name="ridge")
-    up = M.tube([(0, -D - 0.08, Hr - 0.05), (0, -D - 0.08, Hr + 0.4)], [0.025, 0.02], sides=6)
+    up = M.tube([(0, -Do - 0.06, Hr - 0.05), (0, -Do - 0.06, Hr + 0.4)], [0.025, 0.02], sides=6)
     b.add(up, "post", name="mast")
     pen = M.plate([(0.0, 0.0), (0.26, -0.07), (0.0, -0.15)], 0.012, bevel=0.003)
-    pen.transform(_rx(90)).translate((0, -D - 0.08, Hr + 0.4))
+    pen.transform(_rx(90)).translate((0, -Do - 0.06, Hr + 0.4))
     b.add(pen, "gold", name="pennant")
     for xs, ys in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
-        a = Vector((xs * W * 0.55, ys * (D + 0.02), Hr * 0.48))
+        a = Vector((xs * 0.62, ys * (Do - 0.02), tent_roof_z(0.62) + th + 0.005))
         e = Vector((xs * (W + 0.42), ys * (D + 0.38), 0.03))
         b.add(M.tube([a, a.lerp(e, 0.5) + Vector((0, 0, -0.03)), e], [0.011] * 3, sides=5), "rope", name="guy")
         b.add(M.box((0.05, 0.05, 0.14), e + Vector((0, 0, 0.02)), bevel=0.01), "peg", name="peg")
@@ -504,10 +514,13 @@ def build_barrel(pal: Palette):
     b.add(lid, "lid", name="lid")
     rim = M.belt(r0 - 0.012, r0 - 0.012, H - 0.04, 0.05, 0.02, sides=16)
     b.add(rim, "stave", name="rim")
+    # iron hoops carry their own (ring) hulls: padding the 5-ring body proxy round 1.6 cm hoops inflated the whole
+    # barrel's hull (art review 10: 2.75 px baked rim, over the 2.45 px bound) — the hoops now stand 1 cm proud and
+    # bump the silhouette ink locally, like the web's banded barrel
     for z in (H * 0.2, H * 0.8):
         rr = r0 + (rm - r0) * math.sin(math.pi * z / H) * 0.98
-        hoop = M.belt(rr, rr, z - 0.03, 0.06, 0.016, sides=16)
-        b.add(hoop, "iron", name="hoop", outline=False, covered_by=pid)
+        hoop = M.belt(rr, rr, z - 0.03, 0.06, 0.010, sides=16, exp=2.0)          # round (2.4 bulged at 45°)
+        b.add(hoop, "iron", name="hoop")
     for i in range(8):
         a = math.tau * (i + 0.5) / 8
         pts, nrm = [], []
@@ -566,14 +579,16 @@ def build_torch(pal: Palette):
     top = 1.56
     pole = M.tube([(0, 0, -0.05), (0, 0, 0.8), (0, 0, top)], [0.05, 0.045, 0.04], sides=8)
     pid = b.add(pole, "pole", name="pole", hull_pad=True)
+    # rope wraps and the bowl rim carry their own (ring) hulls: padding the 3-ring pole and cup proxies round them
+    # inflated the whole pole's hull (art review 10: 2.98 px baked rim, over the 2.45 px bound)
     for z in (0.62, 1.12):
-        band = M.belt(0.047, 0.047, z, 0.05, 0.014, sides=10)
-        b.add(band, "rope", name="wrap", outline=False, covered_by=pid)
+        band = M.belt(0.047, 0.047, z, 0.05, 0.009, sides=10, exp=2.0)
+        b.add(band, "rope", name="wrap")
     cup = M.loft_z([(top - 0.02, 0.05, 0.05), (top + 0.1, 0.13, 0.13), (top + 0.16, 0.15, 0.15)], sides=10,
                    cap0="ngon", cap1=None)
     cid = b.add(cup, "cup", name="cup", hull_pad=True)
-    rim = M.belt(0.142, 0.142, top + 0.14, 0.035, 0.018, sides=12)
-    b.add(rim, "rim", name="rim", outline=False, covered_by=cid)
+    rim = M.belt(0.142, 0.142, top + 0.14, 0.035, 0.014, sides=12, exp=2.0)
+    b.add(rim, "rim", name="rim")
     # coals sit low in the cup (the flame VFX rises from socket flame): a radial ember bed like the campfire and
     # the web torch cup — dim rim #B8401C, #FF7A2A ring, hot #FFD080 centre — with six small scattered embers
     # (art review 9: two hot lumps on the dim bed read as a pair of eyes on every torch)
@@ -594,48 +609,100 @@ def build_torch(pal: Palette):
     return E.finish(b, pal, "decor", ground_h=1.0, name=name)
 
 
+HEARTH_RUNE_Z = 0.43          # carved rune centre (socket ``glow``)
+HEARTH_GEM_Z = 0.765          # crown gem centre, set in the upper front face (socket ``gem``)
+
+
 def build_hearthstone(pal: Palette):
+    """归炉 hearthstone (web ``TowerHearthstoneDrawer``: a slim pill menhir 16 × 34 px on two base stones, a carved
+    flame-in-a-circle rune ``#FFA040`` and a faceted ember diamond ``#FF9A3A`` with a ``#FFF0B0`` glint in the
+    crown). Art review 10: at the W1 pitch the old stone read as a squat bell and its focal accents as an orange 'O'
+    and a dot at 1080p — the body is now ≈ 10 % slimmer and longer, the rune ring's stroke 3.2 cm round a **solid**
+    12 cm flame teardrop, the crown gem a 9 cm diamond with a glint facet; the base stones' hull hugs the floor."""
     name = "SM_Prop_Camp_Hearthstone"
     b, rnd = new(pal, name)
-    # two base stones: rounded (icosphere level 2; the level-1 icosahedra showed a dark hull slab on a big facet)
-    for i, (x, r) in enumerate(((-0.13, (0.2, 0.17, 0.12)), (0.15, (0.17, 0.15, 0.1)))):
+    # two low base stones at the foot (the web's dark feet, 1.25 × the stone's width overall)
+    for i, (x, r) in enumerate(((-0.13, (0.15, 0.13, 0.095)), (0.14, (0.13, 0.12, 0.085)))):
         shape = E.RockShape(r, (name, "base", i), bumps=4, amp=0.07, top_cut=0.35)
-        b.add(E.rock(shape, subdiv=2, facet=30.0).translate((x, 0.02, 0)), "stone", name="base", hull_pad=True)
-    # standing rune stone: tapered slab with a rounded crown (front −Y)
+        part = E.rock(shape, subdiv=2, facet=30.0)
+        E.unflare_foot(part, 0.05)              # bedded: no floor under the belly (art review 10 hull slivers)
+        b.add(part.translate((x, 0.02, 0)), "stone", name="base", hull_pad=True)
+    # standing rune stone: a slim pill — nearly parallel sides, a rounded crown (front −Y)
     rings = []
-    for z, w, d in ((0.1, 0.24, 0.12), (0.4, 0.22, 0.11), (0.62, 0.19, 0.1), (0.72, 0.15, 0.09), (0.78, 0.08, 0.07)):
+    for z, w, d in ((0.10, 0.205, 0.092), (0.46, 0.198, 0.088), (0.70, 0.185, 0.083), (0.80, 0.160, 0.076),
+                    (0.865, 0.118, 0.062), (0.90, 0.055, 0.035)):
         rings.append([Vector((math.cos(a) * w, math.sin(a) * d, z)) for a in
                       (math.tau * i / 12 for i in range(12))])
     slab = E.ring_loft(rings, cap0="ngon", cap1="fan", smooth=False).auto_sharp(30)
     bvh = BVHTree.FromBMesh(slab.bm)
     sid = b.add(slab, "rune_stone", name="stone", hull_pad=True)
-    # carved hearth rune: a ring + a flame **inset in** the front face (art review 9: the flat ring stood up to
-    # 2.3 cm proud where the faceted face curves back and showed as a yellow sliver on the silhouette from the side)
+    # carved hearth rune **inset in** the front face (art review 9: a flat ring stood proud where the faceted face
+    # curves back): a 3.2 cm ring round a solid flame teardrop (art review 10: 2.2 cm strokes and an outlined flame
+    # thinned to under 2 px at 1080p)
 
     def on_face(x: float, z: float, inset: float = 0.0015):
         loc, nrm, _, _ = bvh.ray_cast(Vector((x, -1.0, z)), Vector((0, 1, 0)))
         if loc is None:
-            return Vector((x, -0.11, z)), Vector((0, -1, 0))
+            return Vector((x, -0.09, z)), Vector((0, -1, 0))
         return loc - nrm * inset, nrm
-    fz = 0.38
-    # rx 0.095: the ring stays on the two front facets (on the side facets it read as a sliver at the profile)
-    ring = [on_face(math.cos(a) * 0.095, fz + math.sin(a) * 0.115) for a in (math.tau * i / 20 for i in range(21))]
-    b.add(E.ribbon([p for p, _ in ring], [n for _, n in ring], 0.022, lift=0.0, thick=0.002), "rune",
+    fz = HEARTH_RUNE_Z
+    # rx 0.084: the ring stays on the two front facets (on the side facets it read as a sliver at the profile)
+    ring = [on_face(math.cos(a) * 0.084, fz + math.sin(a) * 0.104) for a in (math.tau * i / 24 for i in range(25))]
+    b.add(E.ribbon([p for p, _ in ring], [n for _, n in ring], 0.032, lift=0.0, thick=0.002), "rune",
           name="rune_ring", outline=False, covered_by=sid)            # face + 0.5 mm: flush, no sliver edge-on
-    flame = [(0.0, -0.08), (0.055, -0.03), (0.05, 0.03), (0.015, 0.09), (0.02, 0.03), (-0.02, 0.0),
-             (-0.035, 0.05), (-0.055, -0.02)]
-    fl = M.plate(flame, 0.004)
-    fl.transform(_rx(90))
-    ymax = max(v.co.y for v in fl.bm.verts)
-    for v in fl.bm.verts:                     # wrap the flame plate onto the faceted face, front 0.6 mm proud
-        p, n = on_face(v.co.x * 0.85, v.co.z + fz, inset=0.0)
-        v.co = p + n * (ymax - v.co.y - 0.0034)
-    fl.bm.normal_update()
-    b.add(fl, "rune", name="rune_flame", outline=False, covered_by=sid)
-    # ember gem in the crown
-    gem = M.gem(0.045, 0.06, 0.05, sides=6).translate((0, -0.02, 0.78))
-    b.add(gem, "gem", name="gem")
-    return E.finish(b, pal, "interactive", ground_h=0.6, name=name)
+    # the flame: a filled teardrop, tip up, 12 cm tall × 6.4 cm wide, built as two halves stitched on the x = 0
+    # ridge of the two front facets (a flat plate's long triangles spanned the ridge and sank behind it: only the
+    # rim showed — the "outlined flame"), every vertex 0.8 mm proud of its facet
+    for sgn in (1.0, -1.0):
+        bm = bmesh.new()
+        outer, axis = [], []
+        for k in range(11):
+            t = math.pi * k / 10
+            x = sgn * 0.043 * math.sin(t) * abs(math.sin(t / 2))
+            z = 0.060 * math.cos(t) + 0.004
+            po, no = on_face(x, fz + z, inset=0.0)
+            pa, na = on_face(0.0, fz + z, inset=0.0)
+            outer.append(bm.verts.new(po + no * 0.0008))
+            axis.append(outer[-1] if k in (0, 10) else bm.verts.new(pa + na * 0.0008))
+        for k in range(10):
+            quad = [axis[k], outer[k], outer[k + 1], axis[k + 1]]
+            uniq = []
+            for v in quad:
+                if v not in uniq:
+                    uniq.append(v)
+            f = bm.faces.new(uniq if sgn > 0 else list(reversed(uniq)))
+        bm.normal_update()
+        for f in bm.faces:
+            if f.normal.y > 0:
+                f.normal_flip()
+        b.add(M.Part(bm).flat(), "rune", name="rune_flame", outline=False, covered_by=sid)
+    # ember diamond set in the upper front face (web: just under the crown): a 4-sided bipyramid 12 cm tall with a
+    # girdle vertex toward the camera (a rhombus; the lit upper-left and the shaded right facets show), its back
+    # half sunk in the stone, its own hull (the web's dark line #6A2A10), a pale glint sliver on the lit facet
+    gz = HEARTH_GEM_Z
+    gr, gt = 0.042, 0.064
+    gem = M.gem(gr, gt, 0.054, sides=4)
+    front, gn = on_face(0.0, gz, inset=0.0)
+    off = Vector((0.0, front.y - 0.008, gz))          # axis 8 mm before the face: both apices show
+    gem.translate(off)
+    gid = b.add(gem, "gem", name="gem", hull_pad=True)
+    L = Vector((-gr * 0.92, 0.0, gt * 0.25)) + off            # upper ring vertex (left), (front), apex
+    F = Vector((0.0, -gr * 0.92, gt * 0.25)) + off
+    A = Vector((0.0, 0.0, gt)) + off
+    nrm = (F - L).cross(A - L).normalized()
+    if nrm.y > 0:
+        nrm = -nrm
+    tri = [L * 0.62 + F * 0.30 + A * 0.08, L * 0.28 + F * 0.60 + A * 0.12, L * 0.16 + F * 0.14 + A * 0.70]
+    bm = bmesh.new()
+    vs = [bm.verts.new(p + nrm * 0.0006) for p in tri] + [bm.verts.new(p + nrm * 0.0016) for p in tri]
+    bm.faces.new(vs[:3][::-1])
+    bm.faces.new(vs[3:])
+    for i in range(3):
+        j = (i + 1) % 3
+        bm.faces.new((vs[i], vs[j], vs[3 + j], vs[3 + i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    b.add(M.Part(bm).flat(), "gem_glint", name="gem_glint", outline=False, covered_by=gid)
+    return E.finish(b, pal, "interactive", ground_h=0.6, name=name, ground_band=0.02)
 
 
 # ── registry ────────────────────────────────────────────────────────────────────────────────────────────
@@ -664,8 +731,10 @@ ASSETS["SM_Prop_Camp_Torch"] = (build_torch, dict(game_ids=["camp_torch"], footp
                                                   blob=0.15, sockets=[{"name": "flame", "pos": (0, 0, 1.70)}]))
 ASSETS["SM_Prop_Camp_Hearthstone"] = (build_hearthstone, dict(game_ids=["camp_hearthstone", "decor_hearthstone"],
                                                               footprint=[1, 1], blocking=False, blob=0.35,
-                                                              sockets=[{"name": "glow", "pos": (0, -0.13, 0.38)},
-                                                                       {"name": "gem", "pos": (0, -0.02, 0.8)}]))
+                                                              sockets=[{"name": "glow",
+                                                                        "pos": (0, -0.10, HEARTH_RUNE_Z)},
+                                                                       {"name": "gem",
+                                                                        "pos": (0, -0.095, HEARTH_GEM_Z)}]))
 NOTES = {
     "SM_Prop_Camp_Campfire": "flame + sparks + light = VFX recipe camp.campfire at socket flame (spec 8.7); the hero "
                              "respawns on it (not blocking)",
@@ -673,7 +742,10 @@ NOTES = {
     "SM_Prop_Camp_Hearthstone": "归炉 dormant until the Ember Tower milestone (DECISIONS Q3: not placed in milestone 1); "
                                 "pulse 800 ms + ground glow #FF8A3A via NS_World_Hearthstone at socket glow",
     "SM_Prop_Camp_Tent": "faces the camp centre (front -Y = door); camp layout v2 (DECISIONS W11): 3 tents per camp, "
-                         "the camp NPC stands 0.73-0.76 m in front of the door",
+                         "the camp NPC stands 0.73-0.76 m in front of the door. Art review 10: the A-frame and the dark "
+                         "door read only while the door faces within ~60 deg of screen-down (W1 camera azimuth 225 "
+                         "deg); broadside it shows one roof slope (a flat canvas wall) - CampLayout v2 tents 2 / 3 "
+                         "stand at 90 / 83 deg (world owner: clamp their facing or move them)",
     "SM_Prop_Camp_Tent#footprint": "footprintTiles [2,2] = the nominal canvas body (2.5 x 2.0 m; 3.4 x 2.8 m with the "
                                    "guy ropes); the core blocks the real footprint: every tile whose centre lies within "
                                    "the canvas grown by 0.3 tile at the tent's sub-tile position and facing (MapGen "

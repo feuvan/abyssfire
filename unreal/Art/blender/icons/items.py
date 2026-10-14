@@ -3,10 +3,17 @@ resolves to one (``T_UI_ItemIcon_<iconId>__<baseId>`` where the base looks diffe
 else ``T_UI_ItemIcon_<iconId>``: the UI's lookup, ``FAbyssUiContext::ItemIcon``, tries exactly that order).
 
 Sources (the same meshes the game shows, ``Art/Export`` FBX re-imported):
-* weapons — ``SM_Weapon_<Family>`` with the base's tier material (``manifest → SM_Weapon_* → bases / tiers``:
-  T1 = ``Weapons``, ``Weapons_T2`` … ``Weapons_T6``, ``Weapons_Worn``), presented like the web (blades on the
-  diagonal tip up-right, bows with the string down-right, shields face-on);
-* consumables / gems — the ground-loot meshes ``SM_Pickup_*`` (potion sizes and gem tiers compare in size);
+* swords, daggers, bows, staffs, shields — the base's own *shape* (``weapon_models.py``: the web variant tables
+  SWORDS / DAGGERS / BOWS / STAFFS / SHIELDS rebuilt as icon-only models — a broad sword is a broad blade with a cross
+  guard, a long bow is taller with horn tips, a wooden shield is round), presented like the web (blades on the
+  diagonal tip up-right, bows with the string down-right, shields face-on). The in-world ``SM_Weapon_<Family>``
+  stays one mesh per family with tier atlases (R4);
+* axes, maces, wands (one look each) — ``SM_Weapon_<Family>`` with its tier material (``manifest → SM_Weapon_* →
+  bases / tiers``: T1 = ``Weapons``, ``Weapons_T2`` … ``Weapons_T6``, ``Weapons_Worn``);
+* consumables — the ground-loot meshes ``SM_Pickup_*`` (potion sizes compare in size);
+* gems — icon-only cut stones (``gem_models.py``: the web facetGem crowns — oval ruby, pear sapphire, step-cut
+  emerald, trillion topaz, round-brilliant diamond — every facet its own swatch so the seams draw the facet lines;
+  tiers grow, then glow, then rays); the ground ``SM_Pickup_Gem_*`` stay the in-world look;
 * helms, body armour, gloves, boots, belts, rings, amulets, crafting materials — dedicated icon models
   (``item_models.py``; icon-only, never exported as meshes).
 
@@ -29,8 +36,11 @@ sys.path.insert(0, str(HERE.parent))
 
 import iconkit as K  # noqa: E402
 import item_models as IM  # noqa: E402
+import weapon_models as WM  # noqa: E402
+import gem_models as GM  # noqa: E402
 from kit import paths, pngio  # noqa: E402
 from mathutils import Vector  # noqa: E402
+import numpy as np  # noqa: E402
 
 DATA = paths.UNREAL_ROOT / "Data"
 GROUP_DIR = "Icons/Items"
@@ -62,7 +72,7 @@ POSE = {   # place() kwargs per family (local axes of the socket-space meshes: g
     "sword": dict(toward=(1, 0, 0), up=(0, 1, 0), roll=45, spin=-12),
     "dagger": dict(toward=(1, 0, 0), up=(0, 1, 0), roll=45, spin=-12),
     "axe": dict(toward=(1, 0, 0), up=(0, 1, 0), roll=40, spin=-20),
-    "mace": dict(toward=(1, 0, 0), up=(0, 1, 0), roll=40, spin=-20, pitch=-35),
+    "mace": dict(toward=(1, 0, 0), up=(0, 1, 0), roll=40, spin=-20, pitch=-22),
     "bow": dict(toward=(-1, 0, 0), up=(0, 0, 1), roll=45),
     "staff": dict(toward=(1, 0, 0), up=(0, 1, 0), roll=34, spin=-20, pitch=-58),
     "wand": dict(toward=(1, 0, 0), up=(0, 1, 0), roll=40, spin=-20),
@@ -83,8 +93,8 @@ def weapon_looks(bases: list[dict]) -> list[Look]:
     man = K.manifest()["assets"]
     looks: dict[str, Look] = {}
     for fam, icon in FAMILY_ICON.items():
-        d = Look(f"{fam}:{DEFAULT_TIER[fam]}", icon, "weapon", (fam, DEFAULT_TIER[fam]), default=True,
-                 category="weapons")
+        d = Look(f"{fam}:{DEFAULT_TIER[fam]}", icon, "wmodel" if WM.has_shape_variants(fam) else "weapon",
+                 (fam, DEFAULT_TIER[fam]), default=True, category="weapons")
         looks[d.key] = d
     for b in bases:
         if b.get("type") != "weapon" and b.get("slot") != "offhand":
@@ -95,13 +105,32 @@ def weapon_looks(bases: list[dict]) -> list[Look]:
             raise KeyError(f"{b['id']}: no tier in the manifest of SM_Weapon_{fam.capitalize()}")
         key = f"{fam}:{tier}"
         if key not in looks:
-            looks[key] = Look(key, FAMILY_ICON[fam], "weapon", (fam, tier), category="weapons")
+            looks[key] = Look(key, FAMILY_ICON[fam], "wmodel" if WM.has_shape_variants(fam) else "weapon", (fam, tier),
+                              category="weapons")
         looks[key].bases.append(b["id"])
     return list(looks.values())
 
 
+# icon-only haft shortening (review r3: in a 36 px slot the axe / mace read as a stick with a dot — the web draws
+# the head over a short haft): local y between the butt and the head is compressed by k, the butt moved up rigidly
+HAFT_SQUEEZE = {"axe": (-0.205, 0.425, 0.60), "mace": (-0.166, 0.378, 0.52)}
+
+
+def squeeze_haft(o, lo: float, hi: float, k: float) -> None:
+    me = o.data
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    y = co[:, 1].copy()
+    co[:, 1] = np.where(y >= hi, y, np.where(y >= lo, hi - (hi - y) * k, y + (hi - lo) * (1 - k)))
+    me.vertices.foreach_set("co", co.ravel())
+    me.update()
+
+
 def build_weapon(fam: str, tier: str):
     o = K.import_fbx("Weapons", f"SM_Weapon_{fam.capitalize()}", K.ShippedPalette(tier_palette(tier)))
+    if fam in HAFT_SQUEEZE:
+        squeeze_haft(o, *HAFT_SQUEEZE[fam])
     K.place(o, **POSE[fam])
     sp = o.matrix_world @ Vector(SPARKLE[fam])
     acc = [K.Accent("sparkle", at=tuple(sp), r_u=5.0, alpha=0.95)]
@@ -115,8 +144,6 @@ POTION = {"c_hp_potion_s": "SM_Pickup_PotionHP_S", "c_hp_potion_m": "SM_Pickup_P
           "c_mp_potion_m": "SM_Pickup_PotionMP", "c_antidote": "SM_Pickup_Antidote"}
 POTION_GLOW = {"HP": "#E02838", "MP": "#2F6CF0", "Antidote": "#5FD03A"}
 SCROLL = {"c_tp_scroll": "SM_Pickup_Scroll_TP", "c_id_scroll": "SM_Pickup_Scroll_ID"}
-GEM_FILL = {1: 0.60, 2: 0.70, 3: 0.78, 4: 0.82, 5: 0.86}
-GEM_COLOR = {"ruby": "#E0283C", "sapphire": "#2F6CF0", "emerald": "#22C060", "topaz": "#FFC02A", "diamond": "#D8F4FF"}
 # potions share one scale (S < M < L on a common baseline); 1 u = this many metres
 POTION_WPU = 0.43 / (0.86 * K.UNIT)
 
@@ -130,8 +157,13 @@ def build_pickup(asset: str, kind: str, extra=None):
         K.place(o, pitch=8)
         tag = "HP" if "HP" in asset else ("MP" if "MP" in asset else "Antidote")
         fitk = dict(world_per_unit=POTION_WPU, anchor="bottom", center_u=(47.5, 88.0))
-        acc = [K.Accent("glow", at=tuple(o.matrix_world @ Vector((0, 0, .12))), r_u=30, hex=POTION_GLOW[tag], alpha=.32,
-                        under=True),
+        # the under-glow scales with the bottle (S < M < L): a fixed r 30 u only showed round the small bottles
+        wc = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        zs = [v.z for v in wc]
+        h_u = (max(zs) - min(zs)) / POTION_WPU
+        mid = sum(wc, Vector()) / len(wc)
+        acc = [K.Accent("glow", at=(mid.x, mid.y, min(zs) + 0.38 * (max(zs) - min(zs))),
+                        r_u=max(30.0, 0.56 * h_u), hex=POTION_GLOW[tag], alpha=.32, under=True),
                K.Accent("sparkle", at=tuple(o.matrix_world @ Vector((.07, -.07, .2))), r_u=5, alpha=.9)]
     elif kind == "scroll":
         K.place(o, toward=(0, 0, 1), up=(0, 1, 0), roll=-28, pitch=-10)
@@ -140,23 +172,10 @@ def build_pickup(asset: str, kind: str, extra=None):
             acc = [K.Accent("glow", u=(48, 48), r_u=18, hex="#3E8CFF", alpha=.28)]
     elif kind == "fruit":
         K.place(o, pitch=10)
-        fitk = dict(fill=0.80)
-        acc = [K.Accent("glow", u=(48, 56), r_u=40, hex="#6FF0C8", alpha=.5, under=True),
+        fitk = dict(fill=0.74, center_u=(48, 50))
+        # web: under-glow #6FF0C8 α .6 r 40 round the fruit (review art 8: the (1 − d)² glow vanished under the body)
+        acc = [K.Accent("webglow", u=(48, 54), r_u=44, hex="#6FF0C8", alpha=.6, under=True),
                K.Accent("sparkle", u=(30, 40), r_u=5, hex="#E8FFF8"), K.Accent("sparkle", u=(70, 72), r_u=4, hex="#BFF8EA", alpha=.9)]
-    elif kind == "gem":
-        tier = extra
-        K.place(o, toward=(0, 0, 1), up=(0, 1, 0), yaw=-6)
-        fitk = dict(fill=GEM_FILL[tier], center_u=(48, 49))
-        style = dict(auto_glow=0.0 if tier < 3 else (0.5 if tier >= 4 else 0.35), seams=False)
-        if tier >= 2:
-            acc.append(K.Accent("sparkle", u=(48 + 0.62 * 30 * GEM_FILL[tier] / .8, 49 - 0.7 * 30 * GEM_FILL[tier] / .8),
-                                r_u=6 if tier >= 3 else 4.5, alpha=.95))
-        if tier >= 4:
-            acc.append(K.Accent("sparkle", u=(48 - 0.85 * 30 * GEM_FILL[tier] / .8, 49 + 0.6 * 30 * GEM_FILL[tier] / .8),
-                                r_u=4.5, alpha=.85))
-        if tier >= 5:
-            acc.append(K.Accent("rays", u=(48, 49), r_u=GEM_FILL[tier] * 48 * .78,
-                                hex=GEM_COLOR.get(asset.split("_")[3].lower(), "#FFFFFF"), alpha=.75))
     return [o], acc, style, fitk
 
 
@@ -185,8 +204,9 @@ def gem_looks(bases: list[dict]) -> list[Look]:
             continue
         _, typ, tier = b["id"].split("_")
         tier = int(tier)
-        asset = f"SM_Pickup_Gem_{typ.capitalize()}_{tier}"
-        out.append(Look(f"{b['icon']}:{tier}", b["icon"], "pickup", (asset, "gem", tier), [b["id"]], tier == 2, "gems"))
+        # icon-only cut stones (gem_models: the web facetGem crowns; review r3 — the ground meshes' twisted pavilions
+        # read as pleats and their one-swatch facets drew no line work)
+        out.append(Look(f"{b['icon']}:{tier}", b["icon"], "gem", (typ, tier), [b["id"]], tier == 2, "gems"))
     return out
 
 
@@ -252,12 +272,21 @@ def render_look(cam, lk: Look) -> K.IconResult:
     K.clear_objects()
     if lk.kind == "weapon":
         objs, acc, style, fitk = build_weapon(*lk.args)
+    elif lk.kind == "wmodel":
+        m = WM.build(lk.args[0], lk.bases[0] if lk.bases else None)
+        objs, acc, style, fitk = m.objs, m.accents, m.style, m.fit
     elif lk.kind == "pickup":
         objs, acc, style, fitk = build_pickup(lk.args[0], lk.args[1], lk.args[2] if len(lk.args) > 2 else None)
+    elif lk.kind == "gem":
+        m = GM.gem(*lk.args)
+        objs, acc, style, fitk = m.objs, m.accents, m.style, m.fit
     else:
         m = getattr(IM, lk.args[0])(lk.args[1])
         objs, acc, style, fitk = m.objs, m.accents, m.style, m.fit
-    K.apply_frame(cam, K.fit(objs, **({"fill": 0.80} | fitk)))
+    if "frame" in fitk:            # a fixed frame (icon units = the model's web units)
+        K.apply_frame(cam, fitk["frame"])
+    else:
+        K.apply_frame(cam, K.fit(objs, **({"fill": 0.80} | fitk)))
     return K.render_icon(style=K.IconStyle(**style), accents=acc)
 
 
@@ -287,6 +316,9 @@ def main(argv: list[str]) -> int:
         out = K.SCRATCH / "items_only.png"
         pngio.write_png(out, K.atlas(cells, cols=6, scale=0.5))
         pngio.write_png(K.SCRATCH / "items_only_ui.png", K.ui_sheet(cells, cols=6))
+        for pi in range(0, len(cells), 12):
+            pngio.write_png(K.SCRATCH / f"items_only_1x{'' if pi == 0 else f'_{pi // 12 + 1}'}.png",
+                            K.atlas(cells[pi:pi + 12], cols=4, scale=1.0))
         print(f"[items] scratch sheet {out}; gate fails: {fails}")
         return 0
     # ship: textures, previews, manifest
@@ -295,34 +327,54 @@ def main(argv: list[str]) -> int:
     previews = write_previews(results)
     man = K.IconManifest()
     for tex, (lk, r) in results.items():
-        src = ({"mesh": f"SM_Weapon_{lk.args[0].capitalize()}", "palette": tier_palette(lk.args[1]), "tier": lk.args[1]}
-               if lk.kind == "weapon" else {"mesh": lk.args[0]} if lk.kind == "pickup"
-               else {"model": f"icons/item_models.py:{lk.args[0]}('{lk.args[1]}')"})
+        if lk.kind == "weapon":
+            src = {"mesh": f"SM_Weapon_{lk.args[0].capitalize()}", "palette": tier_palette(lk.args[1]), "tier": lk.args[1]}
+            if lk.args[0] in HAFT_SQUEEZE:
+                lo, hi, k = HAFT_SQUEEZE[lk.args[0]]
+                src["iconEdits"] = f"haft y {lo:.3f}..{hi:.3f} m shortened x{k:.2f} (HAFT_SQUEEZE: the head reads at 36 px)"
+        elif lk.kind == "wmodel":
+            src = {"model": f"icons/weapon_models.py:build('{lk.args[0]}', '{lk.bases[0] if lk.bases else ''}')",
+                   "inWorld": f"SM_Weapon_{lk.args[0].capitalize()}", "tier": lk.args[1]}
+        elif lk.kind == "pickup":
+            src = {"mesh": lk.args[0]}
+        elif lk.kind == "gem":
+            src = {"model": f"icons/gem_models.py:gem('{lk.args[0]}', {lk.args[1]})",
+                   "inWorld": f"SM_Pickup_Gem_{lk.args[0].capitalize()}_{lk.args[1]}"}
+        else:
+            src = {"model": f"icons/item_models.py:{lk.args[0]}('{lk.args[1]}')"}
         man.data["ui"][tex] = K.ui_entry("itemIcon", f"{GROUP_DIR}/{tex}.png", K.ICON_PX, iconId=lk.icon,
                                          default=lk.default, bases=sorted(lk.bases), category=lk.category,
                                          source=src, gate=r.gate,
-                                         previews=previews.get(lk.category, []))
+                                         previews=previews.get(tex, []))
     man.save()
     print(f"[items] shipped {len(results)} icons; gate fails: {fails}")
     return 1 if fails else 0
 
 
 def write_previews(results) -> dict[str, list[str]]:
+    """Category sheets (1:1 pages of 16, 0.5×, UI sizes); returns, per texture, only the files that show it."""
     by_cat: dict[str, list] = {c: [] for c in CATEGORY_ORDER}
     for tex, (lk, r) in results.items():
-        by_cat[lk.category].append((tex.replace("T_UI_ItemIcon_", ""), r.rgba))
+        by_cat[lk.category].append((tex, tex.replace("T_UI_ItemIcon_", ""), r.rgba))
     out: dict[str, list[str]] = {}
-    for cat, cells in by_cat.items():
-        if not cells:
+    for cat, rows in by_cat.items():
+        if not rows:
             continue
-        files = []
+        cells = [(name, rgba) for _, name, rgba in rows]
+        texs = [t for t, _, _ in rows]
         for pi in range(0, len(cells), 16):
             page = cells[pi:pi + 16]
             sfx = "" if len(cells) <= 16 else f"_p{pi // 16 + 1}"
-            files += K.save_preview("icons_items", f"{cat}{sfx}_1x.png", K.atlas(page, cols=4, scale=1.0))
-        files += K.save_preview("icons_items", f"{cat}_half.png", K.atlas(cells, cols=8, scale=0.5))
-        files += K.save_preview("icons_items", f"{cat}_ui.png", K.ui_sheet(cells, cols=6))
-        out[cat] = files
+            per = K.save_preview_cells("icons_items", f"{cat}{sfx}_1x.png", K.atlas(page, cols=4, scale=1.0),
+                                       K.atlas_boxes(len(page), K.ICON_PX, 4))
+            for t, files in zip(texs[pi:pi + 16], per):
+                out.setdefault(t, []).extend(files)
+        for t, files in zip(texs, K.save_preview_cells("icons_items", f"{cat}_half.png", K.atlas(cells, cols=8, scale=0.5),
+                                                       K.atlas_boxes(len(cells), K.ICON_PX // 2, 8))):
+            out[t].extend(files)
+        for t, files in zip(texs, K.save_preview_cells("icons_items", f"{cat}_ui.png", K.ui_sheet(cells, cols=6),
+                                                       K.ui_sheet_boxes(len(cells), 6))):
+            out[t].extend(files)
     return out
 
 

@@ -630,7 +630,8 @@ def build_journal(pal: Palette):
                    side=Vector((0, 0, 1)).cross(e - a).normalized())
     b.add(vane, "quill", name="quill")
     b.add(M.tube([a, e], [0.005, 0.004], sides=5), "quill_dk", name="shaft")
-    return E.finish(b, pal, "interactive", ground_h=0.2, name=name)
+    # ground_band (art review 10): the covers' bottom-corner hull fanned out along the floor as thin spikes
+    return E.finish(b, pal, "interactive", ground_h=0.2, name=name, ground_band=0.02)
 
 
 def shard(b: M.Builder, base: Vector, h: float, r: float, lean: Vector, region: str, core: str | None, name="shard"):
@@ -677,6 +678,9 @@ def build_carved(pal: Palette):
     b, rnd = new_lore(pal, name)
     shape = E.RockShape((0.42, 0.32, 0.36), (name, "body"), bumps=5, amp=0.06, top_cut=0.15)
     body = E.rock(shape, subdiv=2, facet=None)
+    # bed the foot (art review 10: the round boulder stood on a narrow foot; its contact-line ink showed as a
+    # separate line on the floor under the belly)
+    E.unflare_foot(body, 0.2, frac=0.93)
     # flatten the front (−Y) into the recessed panel face
     for v in body.bm.verts:
         if v.co.y < -0.24 and 0.12 < v.co.z < 0.5:
@@ -704,7 +708,8 @@ def build_carved(pal: Palette):
     b.add(M.ellipsoid((0.05, 0.035, 0.01), (0.3, -0.12, 0.42), sides=7, rings=3), "lichen", name="lichen",
           outline=False)
     F.tuft(b, Vector((-0.42, -0.12, 0)), 0.15, 6, rnd, segs=2, inked=True)
-    return E.finish(b, pal, "interactive", ground_h=0.5, name=name)
+    # ground_band (art review 10): the boulder's foot drew a separate ink line under its base, with a gap
+    return E.finish(b, pal, "interactive", ground_h=0.5, name=name, ground_band=0.02)
 
 
 # ── registry ────────────────────────────────────────────────────────────────────────────────────────────

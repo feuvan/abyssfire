@@ -7,7 +7,8 @@ Every generator writes inside ``unreal/Art``:
 * ``Art/blender/palettes/<Family>.json`` (persistent swatch registry, committed)
 
 Environment overrides (used by the smoke test so it never touches committed output):
-``AF_EXPORT_ROOT``, ``AF_PREVIEW_ROOT``, ``AF_PALETTE_ROOT``.
+``AF_EXPORT_ROOT``, ``AF_PREVIEW_ROOT``, ``AF_PALETTE_ROOT``; dev-mode scratch output: ``AF_SCRATCH_ROOT``
+(``scratch_root``).
 """
 from __future__ import annotations
 
@@ -56,6 +57,15 @@ def category_dir(category: str) -> Path:
     if category not in CATEGORIES:
         raise ValueError(f"unknown export category {category!r}; expected one of {CATEGORIES}")
     return export_root() / category
+
+
+def scratch_root(*parts: str) -> Path:
+    """Dev-mode output that never ships (``--quick`` / ``--debug`` / iteration sheets): ``$AF_SCRATCH_ROOT/<parts>``,
+    default ``<system temp dir>/abyss_art/<parts>``; created on demand (an empty folder in the temp dir at worst)."""
+    import tempfile
+    p = _env_path("AF_SCRATCH_ROOT", Path(tempfile.gettempdir()) / "abyss_art").joinpath(*parts)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def preview_dir(asset: str) -> Path:

@@ -745,9 +745,9 @@
      "gravityCmS2": -20,
      "drag": 0,
      "fadeIn": 0.15,
-     "intensity": 1.5,
+     "intensity": 2.2,
      "spinDegS": 0,
-     "rate": 5,
+     "rate": 16,
      "spawnHeightJitterCm": 180,
      "height": 100,
      "speedCmS": [
@@ -761,13 +761,14 @@
       6000
      ],
      "sizeCm": [
-      5,
-      9
+      14,
+      22
      ],
      "alpha": [
-      0.7,
+      0.95,
       0
      ],
+     "alphaPow": 1.6,
      "color": "#FF6A3A"
     }
    ]
@@ -783,10 +784,10 @@
      "spawnRadiusCm": 1000,
      "gravityCmS2": -4,
      "drag": 0,
-     "fadeIn": 0.15,
-     "intensity": 1.3,
+     "fadeIn": 0.2,
+     "intensity": 2.0,
      "spinDegS": 0,
-     "rate": 2.2,
+     "rate": 8,
      "spawnHeightJitterCm": 200,
      "height": 110,
      "speedCmS": [
@@ -798,47 +799,15 @@
       9000
      ],
      "sizeCm": [
-      8,
-      14
+      24,
+      36
      ],
      "grow": 1.3,
      "alpha": [
-      0.5,
+      0.85,
       0
      ],
      "color": "#9ACBFF"
-    },
-    {
-     "emitter": "motes",
-     "sprite": "Glow",
-     "at": "camera",
-     "spawnRadiusCm": 1000,
-     "gravityCmS2": -4,
-     "drag": 0,
-     "fadeIn": 0.15,
-     "intensity": 1.3,
-     "spinDegS": 0,
-     "spawnHeightJitterCm": 200,
-     "height": 110,
-     "speedCmS": [
-      8,
-      20
-     ],
-     "lifeMs": [
-      5000,
-      9000
-     ],
-     "sizeCm": [
-      8,
-      14
-     ],
-     "grow": 1.3,
-     "alpha": [
-      0.5,
-      0
-     ],
-     "color": "#9ACBFF",
-     "count": 1
     }
    ]
   },
@@ -1410,10 +1379,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.72,
-      0.28
+      0.95,
+      0.5
      ],
-     "color": "#8844AA"
+     "color": "#6420A0"
     },
     {
      "sprite": "Puff",
@@ -1447,10 +1416,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.5,
-      0.08
+      0.8,
+      0.16
      ],
-     "color": "#B07CD8",
+     "color": "#D49CFF",
      "intensity": 1.1
     },
     {
@@ -1461,22 +1430,22 @@
      "height": 8.0,
      "rate": 0.7,
      "attach": true,
-     "sizeCm": 240,
-     "grow": 1.3,
+     "sizeCm": 230,
+     "grow": 1.25,
      "lifeMs": 1500,
      "alpha": [
-      0.24,
+      0.58,
       0
      ],
      "fadeIn": 0.4,
-     "color": "#6A2A90"
+     "color": "#2A0A44"
     },
     {
      "emitter": "smoke",
      "sprite": "Smoke",
      "at": "target",
      "height": 10,
-     "rate": 1.4,
+     "rate": 1.8,
      "attach": true,
      "spawnRadiusCm": 70,
      "onRing": true,
@@ -1487,8 +1456,8 @@
      ],
      "gravityCmS2": -12,
      "sizeCm": [
-      34,
-      46
+      36,
+      50
      ],
      "grow": 1.4,
      "lifeMs": [
@@ -1496,11 +1465,11 @@
       1700
      ],
      "alpha": [
-      0.32,
+      0.62,
       0
      ],
      "fadeIn": 0.3,
-     "color": "#5A2A78"
+     "color": "#5A2490"
     },
     {
      "sprite": "Shock",
@@ -1515,10 +1484,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.72,
-      0.28
+      0.95,
+      0.5
      ],
-     "color": "#8844AA",
+     "color": "#6420A0",
      "count": 1
     },
     {
@@ -1552,10 +1521,10 @@
      "lifeMs": 1200,
      "fadeIn": 0.25,
      "alpha": [
-      0.5,
-      0.08
+      0.8,
+      0.16
      ],
-     "color": "#B07CD8",
+     "color": "#D49CFF",
      "intensity": 1.1,
      "count": 1
     },
@@ -1566,15 +1535,15 @@
      "at": "target",
      "height": 8.0,
      "attach": true,
-     "sizeCm": 240,
-     "grow": 1.3,
+     "sizeCm": 230,
+     "grow": 1.25,
      "lifeMs": 1500,
      "alpha": [
-      0.24,
+      0.58,
       0
      ],
      "fadeIn": 0.4,
-     "color": "#6A2A90",
+     "color": "#2A0A44",
      "count": 1
     },
     {
@@ -1592,8 +1561,8 @@
      ],
      "gravityCmS2": -12,
      "sizeCm": [
-      34,
-      46
+      36,
+      50
      ],
      "grow": 1.4,
      "lifeMs": [
@@ -1601,11 +1570,11 @@
       1700
      ],
      "alpha": [
-      0.32,
+      0.62,
       0
      ],
      "fadeIn": 0.3,
-     "color": "#5A2A78",
+     "color": "#5A2490",
      "count": 1
     }
    ],
@@ -4403,7 +4372,7 @@
      "orient": "billboard",
      "at": "origin",
      "height": 40,
-     "sizeCm": 160,
+     "sizeCm": 209.644,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 180,
@@ -5566,7 +5535,7 @@
      ],
      "color": "#AABBD4",
      "offsetCm": [
-      -35.0,
+      -22.0,
       0,
       0
      ],
@@ -5587,7 +5556,7 @@
      ],
      "color": "white",
      "offsetCm": [
-      -35.0,
+      -22.0,
       0,
       0
      ],
@@ -6021,12 +5990,41 @@
      "emitter": "glint",
      "at": "target",
      "height": "chest",
-     "sizeCm": 22.7,
-     "grow": 3.333,
-     "lifeMs": 200,
+     "sizeCm": 60,
+     "grow": 2.0,
+     "sizePow": 2,
+     "lifeMs": 240,
+     "fadeIn": 0.08,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 1.4,
      "rotationDeg": 0,
-     "spinDegS": 69,
      "color": "white",
+     "intensity": 1.7,
+     "offsetCm": [
+      -42.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "emitter": "glint",
+     "at": "target",
+     "height": "chest",
+     "sizeCm": 48,
+     "grow": 1.8,
+     "sizePow": 2,
+     "lifeMs": 200,
+     "fadeIn": 0.08,
+     "alpha": [
+      0.8,
+      0
+     ],
+     "rotationDeg": 45,
+     "color": "mid",
+     "intensity": 1.4,
      "offsetCm": [
       -42.0,
       0.0,
@@ -6037,20 +6035,20 @@
      "emitter": "sparks",
      "at": "target",
      "height": "chest",
-     "count": 6,
+     "count": 8,
      "speedCmS": [
-      200.0,
-      444.4
+      377.8,
+      755.6
      ],
      "lifeMs": [
-      180,
-      340
+      220,
+      380
      ],
      "dir": "random",
      "drag": 3,
      "sizeCm": [
-      9.0,
-      13.0
+      10.3,
+      14.9
      ],
      "color": "#FFE9A0",
      "altEvery": 0,
@@ -6096,7 +6094,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 1.7,
+     "sizeCm": 1.759,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
@@ -6125,7 +6123,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 2.1,
+     "sizeCm": 2.752,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 180,
@@ -6372,7 +6370,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 2.1,
+     "sizeCm": 2.752,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 180,
@@ -6504,7 +6502,7 @@
      ]
     }
    ],
-   "note": "hit profile crit (12 sparks): forward-compatible id, hit.impact covers it today"
+   "note": "hit profile crit (12 sparks): forward-compatible id, hit.impact covers it today (integration.hitImpactProfiles)"
   },
   "hit.impact.heavy": {
    "palette": "event",
@@ -6515,7 +6513,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 1.7,
+     "sizeCm": 2.169,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
@@ -6631,7 +6629,7 @@
      ]
     }
    ],
-   "note": "hit profile heavy (9 sparks): forward-compatible id, hit.impact covers it today"
+   "note": "hit profile heavy (9 sparks): forward-compatible id, hit.impact covers it today (integration.hitImpactProfiles)"
   },
   "hit.impact.kill": {
    "palette": "event",
@@ -6642,7 +6640,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 2.1,
+     "sizeCm": 2.861,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 180,
@@ -6774,7 +6772,7 @@
      ]
     }
    ],
-   "note": "hit profile kill (14 sparks): forward-compatible id, hit.impact covers it today"
+   "note": "hit profile kill (14 sparks): forward-compatible id, hit.impact covers it today (integration.hitImpactProfiles)"
   },
   "hit.impact.light": {
    "palette": "event",
@@ -6785,12 +6783,12 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 1.7,
+     "sizeCm": 1.442,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
      "alpha": [
-      1,
+      0.7,
       0
      ],
      "alphaPow": 1.6,
@@ -6799,7 +6797,7 @@
       360
      ],
      "color": "event",
-     "intensity": 1.35,
+     "intensity": 1.1,
      "unit": "ring",
      "offsetCm": [
       -22.0,
@@ -6817,10 +6815,14 @@
       0
      ],
      "unit": "ring",
-     "sizeCm": 0.5,
+     "sizeCm": 0.375,
      "grow": 2.6,
      "lifeMs": 100,
-     "color": "white"
+     "color": "white",
+     "alpha": [
+      0.55,
+      0
+     ]
     },
     {
      "emitter": "glow",
@@ -6831,7 +6833,7 @@
      "grow": 2.17,
      "lifeMs": 160,
      "alpha": [
-      0.45,
+      0.28,
       0
      ],
      "color": "event",
@@ -6849,11 +6851,11 @@
      "height": 9.0,
      "unit": "ring",
      "sizeCm": 0.686,
-     "grow": 4.17,
+     "grow": 3.336,
      "sizePow": 3,
      "lifeMs": 240,
      "alpha": [
-      0.4,
+      0.24,
       0
      ],
      "color": "event"
@@ -6865,11 +6867,11 @@
      "height": 10.0,
      "unit": "ring",
      "sizeCm": 0.686,
-     "grow": 4.17,
+     "grow": 3.336,
      "sizePow": 3,
      "lifeMs": 240,
      "alpha": [
-      0.75,
+      0.45,
       0
      ],
      "color": "event",
@@ -6881,19 +6883,23 @@
      "height": "chest",
      "count": "sparks",
      "dir": "blow",
-     "coneDeg": 52,
+     "coneDeg": 40,
      "speedCmS": [
-      355,
-      622
+      200,
+      330
      ],
      "lifeMs": [
-      160,
-      280
+      100,
+      160
      ],
      "drag": 4,
      "gravityCmS2": 266,
      "altEvery": 2,
      "color": "event",
+     "sizeCm": [
+      6,
+      8
+     ],
      "offsetCm": [
       -22.0,
       0.0,
@@ -6901,7 +6907,7 @@
      ]
     }
    ],
-   "note": "hit profile light (4 sparks): forward-compatible id, hit.impact covers it today"
+   "note": "hit profile light (4 sparks): forward-compatible id, hit.impact covers it today (integration.hitImpactProfiles)"
   },
   "hit.impact.normal": {
    "palette": "event",
@@ -6912,7 +6918,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 1.7,
+     "sizeCm": 1.759,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
@@ -7028,7 +7034,7 @@
      ]
     }
    ],
-   "note": "hit profile normal (6 sparks): forward-compatible id, hit.impact covers it today"
+   "note": "hit profile normal (6 sparks): forward-compatible id, hit.impact covers it today (integration.hitImpactProfiles)"
   },
   "hit.mark.fire": {
    "palette": "fire",
@@ -7039,12 +7045,12 @@
      "blend": "translucent",
      "at": "target",
      "height": 8.0,
-     "sizeCm": 54.4,
+     "sizeCm": 64.6,
      "grow": 1.176,
      "sizePow": 3,
      "lifeMs": 1800,
      "alpha": [
-      0.6,
+      0.68,
       0
      ],
      "fadeIn": 0.06,
@@ -7053,7 +7059,24 @@
       0,
       360
      ],
-     "color": "#2E1E18"
+     "color": "#3E2818"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 9.0,
+     "sizeCm": 78.2,
+     "grow": 1.08,
+     "lifeMs": 1800,
+     "fadeIn": 0.06,
+     "alpha": [
+      0.32,
+      0
+     ],
+     "alphaPow": 2.2,
+     "color": "#FF6A1A",
+     "intensity": 1.1
     },
     {
      "emitter": "glow",
@@ -7107,12 +7130,12 @@
      "blend": "translucent",
      "at": "target",
      "height": 8.0,
-     "sizeCm": 52.8,
+     "sizeCm": 64.2,
      "grow": 1.176,
      "sizePow": 3,
      "lifeMs": 1400,
      "alpha": [
-      0.6,
+      0.68,
       0
      ],
      "fadeIn": 0.06,
@@ -7121,7 +7144,24 @@
       0,
       360
      ],
-     "color": "#3A3A54"
+     "color": "#48486E"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "target",
+     "height": 9.0,
+     "sizeCm": 77.6,
+     "grow": 1.08,
+     "lifeMs": 1400,
+     "fadeIn": 0.06,
+     "alpha": [
+      0.32,
+      0
+     ],
+     "alphaPow": 2.2,
+     "color": "#8C8CFF",
+     "intensity": 1.1
     },
     {
      "emitter": "decal",
@@ -9023,7 +9063,7 @@
      "orient": "billboard",
      "at": "origin",
      "height": "ground",
-     "sizeCm": 40,
+     "sizeCm": 41.378,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 100,
@@ -9338,6 +9378,61 @@
       11
      ],
      "color": "#9CC8FF"
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "origin",
+     "height": 10.0,
+     "count": 1,
+     "attach": true,
+     "sizeCm": 60,
+     "grow": 2.6,
+     "sizePow": 1.5,
+     "lifeMs": 900,
+     "fadeIn": 0.12,
+     "alpha": [
+      0.7,
+      0
+     ],
+     "color": "#2266CC",
+     "intensity": 1.3
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 10.0,
+     "count": 1,
+     "attach": true,
+     "sizeCm": 20.3,
+     "grow": 6,
+     "sizePow": 1.5,
+     "lifeMs": 900,
+     "alpha": [
+      0.9,
+      0
+     ],
+     "color": "#4488FF",
+     "intensity": 1.3
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Spark",
+     "at": "origin",
+     "count": 8,
+     "attach": true,
+     "spawnRadiusCm": 55,
+     "gravityCmS2": -180,
+     "lifeMs": [
+      500,
+      800
+     ],
+     "sizeCm": [
+      7,
+      11
+     ],
+     "color": "#9CC8FF"
     }
    ]
   },
@@ -9347,23 +9442,23 @@
     {
      "mesh": "SM_FX_Arrow",
      "sprite": "Arrow",
-     "orient": "velocity",
+     "orient": "ground",
+     "alignToBlow": true,
      "blend": "translucent",
      "at": "origin",
      "attach": true,
-     "dir": "blow",
-     "coneDeg": 0,
-     "speedCmS": 1,
+     "rate": 60,
+     "durationMs": -1,
      "sizeCm": 56.2,
      "grow": 1,
-     "lifeMs": 520,
+     "lifeMs": 90,
      "alpha": [
       1,
-      1
+      0
      ],
      "color": "#EEF3FB",
      "intensity": 1.0,
-     "count": 1
+     "alphaPow": 7.4
     },
     {
      "sprite": "Comet",
@@ -9807,7 +9902,7 @@
      "orient": "billboard",
      "at": "point",
      "height": "chest",
-     "sizeCm": 90,
+     "sizeCm": 114.825,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
@@ -10094,23 +10189,23 @@
     {
      "mesh": "SM_FX_IceArrow",
      "sprite": "Arrow",
-     "orient": "velocity",
+     "orient": "ground",
+     "alignToBlow": true,
      "blend": "translucent",
      "at": "origin",
      "attach": true,
-     "dir": "blow",
-     "coneDeg": 0,
-     "speedCmS": 1,
+     "rate": 60,
+     "durationMs": -1,
      "sizeCm": 61.6,
      "grow": 1,
-     "lifeMs": 520,
+     "lifeMs": 90,
      "alpha": [
       1,
-      1
+      0
      ],
      "color": "#CFF6FF",
      "intensity": 1.2,
-     "count": 1
+     "alphaPow": 7.4
     },
     {
      "sprite": "Comet",
@@ -10583,7 +10678,7 @@
      "orient": "billboard",
      "at": "point",
      "height": "chest",
-     "sizeCm": 64,
+     "sizeCm": 66.205,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 160,
@@ -10873,7 +10968,7 @@
      "orient": "billboard",
      "at": "point",
      "height": "chest",
-     "sizeCm": 48,
+     "sizeCm": 49.653,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
@@ -10966,23 +11061,23 @@
     {
      "mesh": "SM_FX_Arrow",
      "sprite": "Arrow",
-     "orient": "velocity",
+     "orient": "ground",
+     "alignToBlow": true,
      "blend": "translucent",
      "at": "origin",
      "attach": true,
-     "dir": "blow",
-     "coneDeg": 0,
-     "speedCmS": 1,
+     "rate": 60,
+     "durationMs": -1,
      "sizeCm": 45.0,
      "grow": 1,
-     "lifeMs": 520,
+     "lifeMs": 90,
      "alpha": [
       1,
-      1
+      0
      ],
      "color": "#FFE27A",
      "intensity": 1.2,
-     "count": 1
+     "alphaPow": 7.4
     },
     {
      "sprite": "Comet",
@@ -11058,6 +11153,58 @@
       0.0,
       0.0
      ]
+    },
+    {
+     "mesh": "SM_FX_Arrow",
+     "sprite": "Arrow",
+     "orient": "velocity",
+     "blend": "translucent",
+     "at": "target",
+     "height": "chest",
+     "count": 1,
+     "dir": "blow",
+     "flat": true,
+     "coneDeg": 0,
+     "speedCmS": 2525,
+     "drag": 8,
+     "lifeMs": 250,
+     "sizeCm": 45.0,
+     "grow": 0.15,
+     "sizePow": 0.25,
+     "alpha": [
+      1,
+      1
+     ],
+     "color": "#FFE27A",
+     "intensity": 1.2
+    },
+    {
+     "sprite": "Comet",
+     "orient": "velocity",
+     "at": "target",
+     "height": "chest",
+     "count": 1,
+     "dir": "blow",
+     "flat": true,
+     "coneDeg": 0,
+     "speedCmS": 2525,
+     "drag": 8,
+     "lifeMs": 260,
+     "sizeCm": 60,
+     "aspect": 0.3,
+     "grow": 0.8,
+     "offsetCm": [
+      -24,
+      0,
+      0
+     ],
+     "alpha": [
+      0.85,
+      0
+     ],
+     "alphaPow": 2.2,
+     "color": "mid",
+     "intensity": 1.4
     }
    ]
   },
@@ -11067,23 +11214,23 @@
     {
      "mesh": "SM_FX_PoisonArrow",
      "sprite": "Arrow",
-     "orient": "velocity",
+     "orient": "ground",
+     "alignToBlow": true,
      "blend": "translucent",
      "at": "origin",
      "attach": true,
-     "dir": "blow",
-     "coneDeg": 0,
-     "speedCmS": 1,
+     "rate": 60,
+     "durationMs": -1,
      "sizeCm": 56.6,
      "grow": 1,
-     "lifeMs": 520,
+     "lifeMs": 90,
      "alpha": [
       1,
-      1
+      0
      ],
      "color": "#9AEC40",
      "intensity": 1.0,
-     "count": 1
+     "alphaPow": 7.4
     },
     {
      "sprite": "Comet",
@@ -11537,15 +11684,16 @@
      "rate": 1.5,
      "durationMs": -1,
      "attach": true,
-     "sizeCm": 80,
+     "sizeCm": 96,
      "grow": 1.2,
      "lifeMs": 1000,
      "fadeIn": 0.4,
      "alpha": [
-      0.5,
+      0.72,
       0
      ],
      "color": "#72D8FF",
+     "intensity": 1.35,
      "offsetCm": [
       -18.2,
       -18.2,
@@ -11557,15 +11705,16 @@
      "at": "origin",
      "height": 110,
      "attach": true,
-     "sizeCm": 80,
+     "sizeCm": 96,
      "grow": 1.2,
      "lifeMs": 1000,
      "fadeIn": 0.4,
      "alpha": [
-      0.5,
+      0.72,
       0
      ],
      "color": "#72D8FF",
+     "intensity": 1.35,
      "offsetCm": [
       -18.2,
       -18.2,
@@ -13602,7 +13751,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 110,
+     "sizeCm": 140.342,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 170,
@@ -13815,7 +13964,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 120,
+     "sizeCm": 153.1,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
@@ -15909,16 +16058,32 @@
     {
      "emitter": "glow",
      "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 9.0,
+     "sizeCm": 115,
+     "grow": 1.2,
+     "lifeMs": 800,
+     "alpha": [
+      0.45,
+      0
+     ],
+     "color": "rim"
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
      "at": "origin",
      "height": 10.0,
      "sizeCm": 115,
      "grow": 1.2,
-     "lifeMs": 700,
+     "lifeMs": 800,
      "alpha": [
-      0.6,
+      0.75,
       0
      ],
-     "color": "rim"
+     "color": "mid",
+     "intensity": 1.25
     },
     {
      "sprite": "Ring",
@@ -15962,6 +16127,7 @@
      "at": "origin",
      "height": "chest",
      "count": 6,
+     "spawnRadiusCm": 42.2,
      "speedCmS": [
       44.4,
       155.6
@@ -15971,11 +16137,13 @@
       700
      ],
      "sizeCm": [
-      14,
-      20
+      24,
+      30
      ],
      "gravityCmS2": -111.1,
-     "color": "mid",
+     "color": "core",
+     "altEvery": 2,
+     "altColor": "white",
      "spinDegS": [
       0,
       0
@@ -15983,7 +16151,10 @@
      "alpha": [
       1.0,
       0
-     ]
+     ],
+     "onRing": true,
+     "blend": "translucent",
+     "spawnHeightJitterCm": 40
     },
     {
      "emitter": "motes",
@@ -16429,7 +16600,7 @@
      "orient": "billboard",
      "at": "point",
      "height": 30,
-     "sizeCm": 220,
+     "sizeCm": 280.684,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 200,
@@ -17442,9 +17613,9 @@
      "sprite": "Smoke",
      "randomVariants": 2,
      "at": "point",
-     "height": 20,
+     "height": 18,
      "count": 10,
-     "spawnRadiusCm": 175.0,
+     "spawnRadiusCm": 136.5,
      "speedCmS": [
       33.3,
       100.0
@@ -17455,24 +17626,25 @@
      ],
      "sizeCm": [
       68.3,
-      93.9
+      89.6
      ],
      "grow": 2.083,
      "gravityCmS2": -44.4,
      "alpha": [
-      0.62,
+      0.6,
       0
      ],
-     "color": "#1F4A18"
+     "color": "#1F4A18",
+     "onRing": true
     },
     {
      "emitter": "smoke",
      "sprite": "Smoke",
      "randomVariants": 2,
      "at": "point",
-     "height": 34,
-     "count": 12,
-     "spawnRadiusCm": 175.0,
+     "height": 30,
+     "count": 11,
+     "spawnRadiusCm": 108.5,
      "speedCmS": [
       33.3,
       100.0
@@ -17482,13 +17654,42 @@
       1300
      ],
      "sizeCm": [
-      59.7,
-      85.3
+      52.9,
+      76.8
      ],
      "grow": 2.083,
      "gravityCmS2": -44.4,
      "alpha": [
-      0.86,
+      0.84,
+      0
+     ],
+     "color": "#A6CC3E",
+     "onRing": true
+    },
+    {
+     "emitter": "smoke",
+     "sprite": "Smoke",
+     "randomVariants": 2,
+     "at": "point",
+     "height": 8,
+     "count": 4,
+     "spawnRadiusCm": 52.5,
+     "speedCmS": [
+      33.3,
+      100.0
+     ],
+     "lifeMs": [
+      900,
+      1300
+     ],
+     "sizeCm": [
+      34.1,
+      46.9
+     ],
+     "grow": 2.083,
+     "gravityCmS2": -44.4,
+     "alpha": [
+      0.42,
       0
      ],
      "color": "#A6CC3E"
@@ -17498,9 +17699,9 @@
      "sprite": "Smoke",
      "randomVariants": 2,
      "at": "point",
-     "height": 58,
-     "count": 8,
-     "spawnRadiusCm": 140.0,
+     "height": 44,
+     "count": 7,
+     "spawnRadiusCm": 87.5,
      "speedCmS": [
       33.3,
       100.0
@@ -17510,17 +17711,18 @@
       1300
      ],
      "sizeCm": [
-      46.9,
-      68.3
+      42.7,
+      61.4
      ],
      "grow": 2.083,
      "gravityCmS2": -44.4,
      "alpha": [
-      0.78,
+      0.7,
       0
      ],
      "color": "#DCF06C",
-     "delayMs": 120
+     "delayMs": 120,
+     "onRing": true
     },
     {
      "emitter": "motes",
@@ -18468,7 +18670,7 @@
      "orient": "billboard",
      "at": "target",
      "height": "chest",
-     "sizeCm": 64,
+     "sizeCm": 81.653,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 140,
@@ -19771,7 +19973,7 @@
      "orient": "billboard",
      "at": "origin",
      "height": 30,
-     "sizeCm": 150,
+     "sizeCm": 191.375,
      "grow": 1.45,
      "sizePow": 3,
      "lifeMs": 170,
@@ -20278,12 +20480,11 @@
      "at": "target",
      "rate": 1.6,
      "attach": true,
-     "spawnRadiusCm": 30,
      "sizeCm": [
-      34,
-      46
+      46,
+      58
      ],
-     "grow": 1.25,
+     "grow": 1.2,
      "lifeMs": 1600,
      "alpha": [
       1.0,
@@ -20406,12 +20607,11 @@
      "sprite": "Puddle",
      "at": "target",
      "attach": true,
-     "spawnRadiusCm": 30,
      "sizeCm": [
-      34,
-      46
+      46,
+      58
      ],
-     "grow": 1.25,
+     "grow": 1.2,
      "lifeMs": 1600,
      "alpha": [
       1.0,
@@ -20818,8 +21018,27 @@
    "palette": "frost",
    "layers": [
     {
+     "sprite": "Puff",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "target",
+     "height": 8.0,
+     "rate": 1.2,
+     "attach": true,
+     "sizeCm": 112,
+     "grow": 1.05,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.42,
+      0
+     ],
+     "color": "#1E5AA8"
+    },
+    {
      "sprite": "Swirl",
      "orient": "ground",
+     "blend": "translucent",
      "at": "target",
      "height": 9.0,
      "rate": 1.2,
@@ -20829,7 +21048,7 @@
      "lifeMs": 900,
      "fadeIn": 0.3,
      "alpha": [
-      0.45,
+      0.3,
       0
      ],
      "spinDegS": -140,
@@ -20837,20 +21056,21 @@
       0,
       360
      ],
-     "color": "mid"
+     "color": "#2A6AC0"
     },
     {
      "sprite": "Swirl",
      "orient": "ground",
      "at": "target",
-     "height": 9.0,
+     "height": 10.0,
+     "rate": 1.2,
      "attach": true,
      "sizeCm": 110,
      "grow": 1.05,
      "lifeMs": 900,
      "fadeIn": 0.3,
      "alpha": [
-      0.45,
+      0.7,
       0
      ],
      "spinDegS": -140,
@@ -20859,6 +21079,70 @@
       360
      ],
      "color": "mid",
+     "intensity": 1.25
+    },
+    {
+     "sprite": "Puff",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "target",
+     "height": 8.0,
+     "attach": true,
+     "sizeCm": 112,
+     "grow": 1.05,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.42,
+      0
+     ],
+     "color": "#1E5AA8",
+     "count": 1
+    },
+    {
+     "sprite": "Swirl",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "target",
+     "height": 9.0,
+     "attach": true,
+     "sizeCm": 110,
+     "grow": 1.05,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.3,
+      0
+     ],
+     "spinDegS": -140,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#2A6AC0",
+     "count": 1
+    },
+    {
+     "sprite": "Swirl",
+     "orient": "ground",
+     "at": "target",
+     "height": 10.0,
+     "attach": true,
+     "sizeCm": 110,
+     "grow": 1.05,
+     "lifeMs": 900,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.7,
+      0
+     ],
+     "spinDegS": -140,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "mid",
+     "intensity": 1.25,
      "count": 1
     }
    ],
@@ -20876,26 +21160,23 @@
      "height": "overhead",
      "attach": true,
      "orbit": {
-      "r0Cm": 24,
-      "r1Cm": 24,
+      "r0Cm": 28,
+      "r1Cm": 28,
       "degS": 240
      },
-     "sizeCm": 24.8,
+     "sizeCm": 35.9,
      "grow": 1,
-     "fadeIn": 0.034,
      "alpha": [
       1,
       0
      ],
-     "alphaPow": 96.8,
-     "rotationDeg": [
-      -20,
-      20
-     ],
+     "alphaPow": 51.9,
+     "rotationDeg": 0,
      "color": "#FFE27A",
      "intensity": 1.25,
-     "rate": 3,
-     "lifeMs": 1000
+     "count": 3,
+     "lifeMs": 560,
+     "fadeIn": 0.061
     },
     {
      "mesh": "SM_FX_StunStar",
@@ -20906,29 +21187,320 @@
      "height": "overhead",
      "attach": true,
      "orbit": {
-      "r0Cm": 24,
-      "r1Cm": 24,
+      "r0Cm": 28,
+      "r1Cm": 28,
       "degS": 240
      },
-     "sizeCm": 24.8,
+     "sizeCm": 35.9,
      "grow": 1,
-     "fadeIn": 0.034,
      "alpha": [
       1,
       0
      ],
-     "alphaPow": 96.8,
-     "rotationDeg": [
-      -20,
-      20
-     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
      "color": "#FFE27A",
      "intensity": 1.25,
-     "count": 2,
-     "lifeMs": [
-      600,
-      1000
-     ]
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 500
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 1000
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 1500
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 2000
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 2500
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 3000
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 3500
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 4000
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 4500
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 5000
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 55.4,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "count": 3,
+     "lifeMs": 560,
+     "delayMs": 5500
+    },
+    {
+     "mesh": "SM_FX_StunStar",
+     "sprite": "Star",
+     "orient": "upright",
+     "blend": "translucent",
+     "at": "target",
+     "height": "overhead",
+     "attach": true,
+     "orbit": {
+      "r0Cm": 28,
+      "r1Cm": 28,
+      "degS": 240
+     },
+     "sizeCm": 35.9,
+     "grow": 1,
+     "alpha": [
+      1,
+      0
+     ],
+     "alphaPow": 100.2,
+     "rotationDeg": 0,
+     "color": "#FFE27A",
+     "intensity": 1.25,
+     "rate": 3,
+     "lifeMs": 1000,
+     "delayMs": 6000
     },
     {
      "emitter": "motes",
@@ -21070,7 +21642,9 @@
  "integration": {
   "groundSoftFade": "M_AF_FX_Sprite fades every quad with DepthFade(8 cm) and the runtime has no ground special case, so every ground-oriented sprite quad (rings, shocks, decals, runes, pools, auras) is authored 8-10 cm over the terrain (fx_recipes.ground_lift; full strength from 6.2 cm at the W1 pitch). The previews draw exactly the shipped 8 cm fade on every quad. The runtime's fake light pools (UAbyssVfxSystem lights, +2 cm) and the prop pools (AAbyssPropActor, M_AF_LightPool) still sit at 2 cm and draw at ~25 %: lift them to 8 cm too (or skip DepthFade for ground quads / M_AF_LightPool).",
   "fan": "Layer key `fan` (bool, dir blow / back): particle i of a burst of N flies at yaw cone*((i + 0.5) / N - 0.5) round the axis instead of a random yaw in the cone - an even fan (skill.multishot: 7 arrows over the web's +-0.8 rad). Needs FAbyssVfxLayer::bFan + ReadBool(\"fan\") + the Serial-based yaw in SpawnParticle; until then the runtime ignores the key (random cone).",
-  "dirBlowPitch": "EAbyssVfxDir::Blow adds Direction.Z = rand(-0.15, 0.35): flight-aligned heads use one particle per projectile (count 1, life = the longest flight) so their pitch is stable; a `flat` option (Z = 0) would let heads respawn every frame and fans fly level.",
+  "dirBlowPitch": "EAbyssVfxDir::Blow adds Direction.Z = rand(-0.15, 0.35): the arrow / shard heads (proj.arrow / multishot / poison_arrow / ice_arrow / piercing_arrow) are 60 /s copies living 90 ms, flat on the ground plane and turned to the flight (orient ground + alignToBlow; UpdateProjectiles turns Context.Blow to the heading), so no copy takes a random pitch and the head is gone <= 75 ms after HandleProjectileEnded's Stop(handle, false) instead of a count-1 particle parked in the target for the rest of its 520 ms (VFX review 4). No runtime change needed.",
+  "flat": "Layer key `flat` (bool, dir blow / back): Direction.Z = 0 instead of rand(-0.15, 0.35) - a level free flight. Needs FAbyssVfxLayer::bFlat + ReadBool(\"flat\") + `Direction.Z = Layer.bFlat ? 0.f : Random.FRandRange(-0.15f, 0.35f)` in SpawnParticle; until then the runtime ignores the key. Used by proj.piercing_arrow.hit (the arrow flying on through its target, spec 8.6; forward-compatible: no core projectile carries vfxId piercing_arrow today) and recommended for skill.piercing_arrow's arrow + comet (drop their gravityCmS2 1100 then).",
+  "hitImpactProfiles": "hit.impact.<light|normal|heavy|crit|kill> differ beyond ring size / spark count (light: lower core / glow / ring alpha, 4 short slow sparks - VFX review 4). The runtime plays hit.impact today: PlayFirst({hit.impact.<profile>, hit.impact}) with the HitFeedback weight name is the one-line change; the previews play the profile ids.",
   "meshMaterial": "mesh layers always draw M_AF_FX_Mesh (opaque masked toon + ink, Bayer fade) \u2014 glow, smoke and energy stay sprites; ribbons / crystals / plates / debris / heads are meshes.",
   "bodyOcclusion": "Sprites are depth-tested against the opaque characters, and a chest / head anchor is the fx_chest / fx_head socket = the middle of the body, so a burst centred there loses everything inside the silhouette (the web drew FX over its sprites). The strike recipes pull their target-side burst layers 22 cm back along the blow (onto the struck surface, fx_recipes.STRIKE_CM); a burst struck from behind the target (attacker farther from the camera) is still partly hidden. Recommended runtime fix: billboard / velocity layers anchored on an actor (origin / target / point at chest, head, hand or overhead) move their quad toward the camera by min(40 cm, 0.5 x the actor's capsule radius + 20 cm) (Position -= CameraForward * Bias in UAbyssVfxSystem::Tick, or a camera-ward WPO in M_AF_FX_Additive / _Translucent) - at the W1 distance that is <2 % size change.",
   "cameraBias": "Blow-less recipes (level-up, pickups, statuses, loot, portal, resonance, props, camps) carry offsetCm d*(-0.455, -0.455, +0.766) with d = 40 cm on their body-anchored quads: with the zero blow the frame is world +X/+Y and the W1 yaw is fixed, so that is the view ray toward the camera (same screen position, drawn over the body). Re-derive (fx_recipes.CAM_BIAS_CM) if the camera yaw ever changes or these events get a blow.",

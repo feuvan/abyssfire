@@ -798,6 +798,9 @@ def ship_weapon(obj: bpy.types.Object, asset: str, pal, sockets: Sequence[dict],
     man.set_palette(pal)
     e = export.static_entry(obj, fbx, "Weapons", pal, "weapon", sockets=sockets,
                             extra={"attachSocket": socket_bone, "weaponType": weapon_type, **(extra or {})})
+    from kit import outline as _ko
+    if len(e["materialSlots"]) > 1:      # palette P.a of the item regions (ink_regions "weapon": 60 % ink)
+        e["materialSlots"][1]["outlineMix"] = _ko.INK_MIX["weapon"]
     man.set_asset(asset, e)
     man.save()
     return {"fbx": str(fbx), "entry": e}

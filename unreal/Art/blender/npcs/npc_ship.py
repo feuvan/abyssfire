@@ -34,6 +34,7 @@ import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from kit import anim, export, mesh as M, outline, paths, pngio, review, rig as R, scene, shading  # noqa: E402
+from kit.paths import scratch_root  # noqa: E402
 from kit.palette import Palette  # noqa: E402
 
 import common as C  # noqa: E402
@@ -43,9 +44,31 @@ import looks as LK  # noqa: E402
 import props as P  # noqa: E402
 from npc_clips import NpcAnims  # noqa: E402
 
-SCRATCH = Path("/tmp/claude-0/-home-user-abyssfire/b3225f99-25a3-5b78-996f-643be8685889/scratchpad/npcs")
+SCRATCH = scratch_root("npcs")
 CATEGORY = "NPCs"
-PX = outline.SCREEN_PX_1080["npc"]
+PX_CLASS = outline.SCREEN_PX_1080["npc"]
+PX = 3.5            # per-asset hull request (coherence pass): see PX_NOTE
+PX_NOTE = ("coherence pass: at the NPC class's 3.0 px the townsfolk kept a rim >= 3 px on only 61-83 % of their "
+           "1080p silhouette edges (hat brims, sleeves, fingers, coat hems, the pack; median 3.1-3.5 px) against the "
+           "Chapter-1 character gate (dark rim >= 3 px on >= 90 %), while the goblins beside them ship 3.5 px; 3.5 px, "
+           "as the heroes, the boss and the goblin family, holds it (gate 3.0 px); held props and kit parts ink with it")
+
+
+def ink_slot(slot: dict) -> dict:
+    """The per-asset ink request on an NPC outline slot (the UE importer makes an ``M_AF_Outline`` instance with this
+    ``OutlinePx1080`` when it differs from the class's); used by the NPCs, their held props and the kit parts."""
+    slot["outlinePx1080"] = float(PX)
+    slot["outlinePxClass"] = float(PX_CLASS)
+    slot["outlinePxNote"] = PX_NOTE
+    return slot
+
+
+def ink_gate() -> dict:
+    """``review.ink_gate("npc")`` with the rim threshold taken from the shipped request (PX − ``GATE_SLACK_PX``):
+    3.0 px, the Chapter-1 character gate."""
+    g = dict(review.ink_gate("npc"))
+    g["minPx"] = round(max(0.5, PX - outline.GATE_SLACK_PX), 2)
+    return g
 
 
 def prop_kind(npc, kind: str) -> str:
@@ -87,13 +110,13 @@ def build_lod1(folk, pal, rig):
     ratio = folk.LOD1_RATIO
     body1 = folk.build(pal, rig, lod=1)
     n0 = n = M.tri_count(body1, 0)
-    for _ in range(3):                  # the exact face parts are a fixed cost: iterate on the measured count
+    for _ in range(8):                  # the exact face / sleeve / hat parts are a fixed cost: iterate on the count
         if n <= LOD1_TRIS:
             break
         me = body1.data
         bpy.data.objects.remove(body1, do_unlink=True)
         bpy.data.meshes.remove(me)
-        ratio *= (LOD1_TRIS - 120) / n
+        ratio *= (LOD1_TRIS - 200) / n
         body1 = folk.build(pal, rig, lod=1, lod_ratio=ratio)
         n = M.tri_count(body1, 0)
     if n != n0:
@@ -292,13 +315,90 @@ def qa_run(B, clips, actions) -> dict:
         # faces inside the fist: within 7 cm of the grip (the origin) along the item axis
         return lambda co: abs(co.y) < 0.075 and math.hypot(co.x, co.z) < 0.06
     q = ToonGroundQA(B.rig, B.body, items, names, groups, pairs, {n: grip(n) for n in items})
+    if B.folk.skirted:
+        q.coat = CoatLegQA(B.rig, B.body, names, B.folk.skirt_z0, B.folk.skirt_z1)
     return q.run(clips, actions)
+
+
+class CoatLegQA:
+    """Per-frame check that no trouser / boot vertex shows through a robe or coat skirt (art review: the escort's
+    Run punched the legs through the coat's front panels). Each leg vertex is joined to its own core — the nearest
+    point on the posed thigh / calf bone of its side — and that segment must not cross the skirt shell: a leg that
+    leaves the coat under the hem never crosses it, a knee or thigh pushed through a panel does. Metrics:
+    ``coatLegs`` = leg vertices beyond the cloth, ``coatLegsMm`` = the deepest one's distance past it (mm)."""
+
+    LEG_PARTS = ("leg_l", "leg_r", "boot_shaft_l", "boot_shaft_r", "boot_cuff_l", "boot_cuff_r")
+
+    def __init__(self, rig, body, part_names, z0: float = 0.0, z1: float = 0.0):
+        from qa import _face_parts
+        self.rig, self.body = rig, body
+        me = body.data
+        nf = len(me.polygons)
+        mi = np.zeros(nf, np.int32)
+        me.polygons.foreach_get("material_index", mi)
+        names = _face_parts(body, part_names)
+        toon = mi == 0
+        self.coat_faces = np.nonzero(toon & (names == "skirt"))[0]
+        lt = np.zeros(nf, np.int32)
+        me.polygons.foreach_get("loop_total", lt)
+        ls = np.zeros(nf, np.int32)
+        me.polygons.foreach_get("loop_start", ls)
+        lv = np.zeros(len(me.loops), np.int32)
+        me.loops.foreach_get("vertex_index", lv)
+        self.leg_verts, self.ink_verts = {}, {}
+        for s in ("l", "r"):
+            legs = np.isin(names, [p for p in self.LEG_PARTS if p.endswith("_" + s)])
+            for out, sel in ((self.leg_verts, toon & legs), (self.ink_verts, (mi == 1) & legs)):
+                f_ = np.nonzero(sel)[0]
+                if len(f_):
+                    out[s] = np.unique(np.concatenate([lv[ls[f]:ls[f] + lt[f]] for f in f_]))
+
+    def frame(self, geom=None) -> dict:
+        from mathutils.bvhtree import BVHTree
+        from qa import Checker
+        if not self.leg_verts or not len(self.coat_faces):
+            return {}
+        co, lt, ls, lv, co_list = geom or Checker._geom(self.body)
+        polys = [lv[ls[f]:ls[f] + lt[f]].tolist() for f in self.coat_faces]
+        tree = BVHTree.FromPolygons(co_list, polys, all_triangles=False)
+        mw = self.rig.obj.matrix_world
+        out = {}
+        for key, verts in (("coatLegs", self.leg_verts), ("coatLegInk", self.ink_verts)):
+            n_out, deep = 0, 0.0
+            for s, vids in verts.items():
+                segs = []
+                for bn in (f"thigh_{s}", f"calf_{s}"):
+                    pb = self.rig.obj.pose.bones[bn]
+                    segs.append((np.array(mw @ pb.head), np.array(mw @ pb.tail)))
+                P = co[vids]
+                best = None
+                for a, b in segs:
+                    ab = b - a
+                    t = np.clip(((P - a) @ ab) / max(ab @ ab, 1e-12), 0.0, 1.0)
+                    c = a + t[:, None] * ab
+                    dd = np.linalg.norm(P - c, axis=1)
+                    best = (c, dd) if best is None else (np.where((dd < best[1])[:, None], c, best[0]),
+                                                         np.minimum(dd, best[1]))
+                for p, c in zip(P, best[0]):
+                    d = p - c
+                    ln = float(np.linalg.norm(d))
+                    if ln < 1e-5:
+                        continue
+                    hit = tree.ray_cast(Vector(c), Vector(d / ln), ln)
+                    if hit[0] is not None:
+                        n_out += 1
+                        deep = max(deep, ln - hit[3])
+            out[key] = float(n_out)
+            out[key + "Mm"] = deep * 1000.0
+        return out
 
 
 class ToonGroundQA(HB.PairQA):
     """``PairQA`` with the items' ground measured on their toon surface: a planted staff foot / sword point rests on
     the floor, and its baked hull (the ink, 1.6 cm) reaching under the floor there is expected — the ground hides it
-    as it hides the soles' ink."""
+    as it hides the soles' ink. Skirted looks add :class:`CoatLegQA` (legs never in front of the coat / robe)."""
+
+    coat: "CoatLegQA | None" = None
 
     def frame(self) -> dict:
         from qa import Checker
@@ -310,17 +410,48 @@ class ToonGroundQA(HB.PairQA):
             mi = np.zeros(len(me.polygons), np.int32)
             me.polygons.foreach_get("material_index", mi)
             out["ground:" + nm] = Checker._tree(Checker._geom(ob), np.nonzero(mi == 0)[0])[1] * 100.0
+        if self.coat is not None:
+            out.update(self.coat.frame())
         return out
 
 
-QA_LIMITS = {"ground": -0.8}
+QA_LIMITS = {"ground": -0.8, "coatLegs": 0.0}
+# face down (Death 22-28) the knees press the front panel into the floor under the body — out of every view; the
+# legs may cross it there by ≤ 12 mm
+QA_CLIP_LIMITS = {"Death": {"coatLegs": 1e9, "coatLegsMm": 12.0}}
 QA_ITEM_LIMIT = 12          # prop x body (hands / arms excluded) intersecting triangle pairs per frame: a graze
 
 
 # ── previews ────────────────────────────────────────────────────────────────────────────────────────────
+def save_native(path: Path, img: np.ndarray) -> list:
+    """Every NPC review PNG (art review 9 / NPC review 11): truecolour at scale 1 (``pngio.write_png_native``,
+    ``<stem>_2.png`` … tiles along the sheet's pads when over 200 KB) — the 256-colour budget fallback turned the
+    elder's small green orb metal grey on the props and lineup sheets and quantised the measured 1080p cells."""
+    out = pngio.write_png_native(path, img)
+    if len(out) > 1:
+        print(f"  {Path(path).name}: {len(out)} truecolour tiles")
+    return out
+
+
+class NpcReview(review.Review):
+    """The kit review set with every PNG written by :func:`save_native`; ``save_as`` renames the next kit-named
+    file (``closeup.png`` → ``closeup_front.png``, ``anims.png`` → ``anim_<Clip>.png``) before it is written, so
+    its tiles carry the final name."""
+
+    save_as: str | None = None
+
+    def _save(self, name: str, img: np.ndarray) -> Path:
+        if self.save_as:
+            name, self.save_as = self.save_as, None
+        out = save_native(self.out / name, img)
+        self.written.extend(out)
+        return out[0][0]
+
+
 def make_review(B, out: Path) -> review.Review:
-    rv = review.Review(B.npc.asset, B.rig.obj, meshes_of(B), B.folk.D.height, blob_radius=B.npc.blob_radius,
-                       out_dir=out, game_outline_px=PX, outline_class="npc", glows=glows_for(B))
+    rv = NpcReview(B.npc.asset, B.rig.obj, meshes_of(B), B.folk.D.height, blob_radius=B.npc.blob_radius,
+                   out_dir=out, game_outline_px=PX, outline_class="npc", glows=glows_for(B))
+    rv.gate = ink_gate()
     rv.ground_occludes = True
     return rv
 
@@ -467,15 +598,15 @@ def render_previews(B, clips, actions, out: Path) -> tuple[list, dict]:
     anim.assign(rig, acts[wk])
     anim.set_frame(0)
     rv.game_view()
+    rv.save_as = "closeup_front.png"
     rv.closeup("front", pitch=-30.0)
-    (out / "closeup.png").rename(out / "closeup_front.png")
     rv.closeup("se")
     anim.assign(rig, acts["IdleNPC"])
     anim.set_frame(0)
     rv.turnaround()
     for c, a in zip(clips, actions):
+        rv.save_as = f"anim_{c.name}.png"
         rv.contact_sheet(rig, [(c, a)], frames=8)
-        (out / "anims.png").rename(out / f"anim_{c.name}.png")
     game, facings, close = standard_keys(B, cl)
     game_cells(B, rv, acts, cl, game, "game_poses.png")
     game_cells(B, rv, acts, cl, facings, "game_facings.png")
@@ -571,6 +702,7 @@ def ship(npc, previews: bool = True, verify: bool = True) -> dict:
                                   blob_radius_cm=round(npc.blob_radius * 100.0, 1), extra=extra)
     entry["attachments"] = [{"object": n, "socket": bone} for n, (o, bone) in B.items.items()]
     entry["materialSlots"][1]["outlineMix"] = outline.INK_MIX["npc"]
+    ink_slot(entry["materialSlots"][1])
     entry["lods"] = [{"index": 1, "asset": f"{npc.asset}_LOD1", "fbx": paths.rel_to_export(sk1), "screenSize": 0.05,
                       "triangles": {"toon": M.tri_count(B.body1, 0), "outline": M.tri_count(B.body1, 1)},
                       "import": f"same SKEL_Human armature and bind pose; import as LOD index 1 of {npc.asset}",
@@ -585,7 +717,7 @@ def ship(npc, previews: bool = True, verify: bool = True) -> dict:
     print(HB.PairQA.table(rep))
     lim = dict(QA_LIMITS)
     lim.update({f"x:{n[len('SM_NPCKit_Prop_'):]}": QA_ITEM_LIMIT for n in B.items})
-    fails = HB.PairQA.verdict(rep, lim)
+    fails = HB.PairQA.verdict(rep, lim, QA_CLIP_LIMITS)
     for f in fails:
         print("  QA FAIL " + f)
     result["qa"] = {"pass": not fails, "failures": fails, "worst": {k: v["worst"] for k, v in rep.items()}}
@@ -625,10 +757,10 @@ def quick(npc, out: Path, pose: str | None = None, facing: str = "se") -> None:
     else:
         anim.apply_pose(A.solve(A.ready()))
     rv = make_review(B, out)
+    rv.save_as = f"closeup_{facing}.png"
     rv.closeup(facing)
-    (out / "closeup.png").rename(out / f"closeup_{facing}.png")
+    rv.save_as = "closeup_front.png"
     rv.closeup("front", pitch=-30.0)
-    (out / "closeup.png").rename(out / "closeup_front.png")
     rv.turnaround()
     rv.game_view()
     print(f"[quick] {npc.asset}: {M.tri_count(B.body, 0)} toon + {M.tri_count(B.body, 1)} hull tris")
@@ -648,9 +780,9 @@ def anim_dev(npc, out: Path, names: list, facing: str = "se") -> None:
         t1 = time.time()
         a = anim.bake(B.rig, c, npc.token)
         print(f"[bake] {c.name} {c.frames}f {time.time() - t1:.1f}s")
-        rv.contact_sheet(B.rig, [(c, a)], frames=8, facing=facing)
         tag = "" if facing == "se" else f"_{facing}"
-        (out / "anims.png").rename(out / f"anim_{c.name}{tag}.png")
+        rv.save_as = f"anim_{c.name}{tag}.png"
+        rv.contact_sheet(B.rig, [(c, a)], frames=8, facing=facing)
         print(f"  {out / f'anim_{c.name}{tag}.png'}")
 
 

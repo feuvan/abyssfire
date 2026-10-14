@@ -47,7 +47,10 @@ def pascal(s: str) -> str:
 
 
 def lookup_name(art_id: str) -> str:
-    """``FAbyssUiContext::Portrait`` (first try): strip the type prefix, PascalCase."""
+    """``FAbyssUiContext::Portrait`` (first try): strip the type prefix, PascalCase; a ``pet_<id>`` resolves like
+    ``FAbyssUiContext::PetPortrait`` (``T_UI_Portrait_Pet_<Id>``)."""
+    if art_id.startswith("pet_"):
+        return f"T_UI_Portrait_Pet_{pascal(art_id[len('pet_'):])}"
     for pre in ("player_", "npc_", "monster_", "beast_"):
         if art_id.startswith(pre):
             art_id = art_id[len(pre):]
@@ -68,6 +71,8 @@ def speakers() -> list[tuple[str, str]]:
         out.append((qid, "escort quest NPC"))
     for eid in ("npc_rescue_lost_traveler", "wandering_merchant"):
         out.append((eid, "random-event NPC"))
+    for pid in ("pet_sprite",):  # DECISIONS Q3: the Chapter-1 companion (pets panel + HUD pet frame)
+        out.append((pid, "pet panel / HUD (PetPortrait)"))
     story = json.loads((DATA / "story.json").read_text())
     for cid, cs in story["cutscenes"].items():
         if not (cid.startswith("cs_ep_") or cid == "cs_boss_goblin_chief"):
@@ -150,7 +155,8 @@ def medallion_sheet(items: list[tuple[str, np.ndarray]]) -> np.ndarray:
                 tile = tile * (1 - rim[..., None] * .9) + gold * rim[..., None] * .9
             img[cy - d // 2:cy - d // 2 + d, x:x + d] = np.clip(tile, 0, 255).astype(np.uint8)
             x += d + 12
-        review.draw_text(img, 8, y0 + cell_h - 14, name.replace("T_UI_Portrait_", "").replace("T_UI_Emblem_", "emblem ")[:40],
+        # the label sits under the small medallions, inside the card's rows, so a split tile never orphans it
+        review.draw_text(img, 8, y0 + 4 + 85 + 60, name.replace("T_UI_Portrait_", "").replace("T_UI_Emblem_", "emblem ")[:40],
                          rgb=(200, 196, 210))
     return img
 
@@ -191,8 +197,7 @@ def main() -> int:
         if old.get("artIds"):
             entry["artIds"] = sorted(set(old["artIds"]) | {art})
         man.data["ui"][name] = entry
-        if src_name == name:
-            previews_items.append((name, img))
+        previews_items.append((src_name, img))     # an alias shows its source art (the stash keeper's bust)
     for e in ("T_UI_Emblem_Villain", "T_UI_Emblem_Generic"):
         f = PORTRAITS / f"{e}.png"
         if f.exists():
@@ -205,12 +210,22 @@ def main() -> int:
         if n not in seen:
             seen.add(n)
             uniq.append((n, im))
-    files = []
+    shown: dict[str, list[str]] = {}  # texture → the medallion sheet tile(s) its row lands in
+    cell_h = 200
     for pi in range(0, len(uniq), 5):
-        files += K.save_preview("portraits", f"medallions_{pi // 5 + 1}.png", medallion_sheet(uniq[pi:pi + 5]))
+        chunk = uniq[pi:pi + 5]
+        sheet = medallion_sheet(chunk)
+        ink = np.any(sheet != np.array(K.SHEET_BG, np.uint8), axis=2).any(axis=1)   # rows with any content
+        boxes = []
+        for i in range(len(chunk)):
+            ys = np.nonzero(ink[8 + i * cell_h:8 + (i + 1) * cell_h])[0] + 8 + i * cell_h
+            boxes.append((int(ys.min()), int(ys.max()) + 1, 0, sheet.shape[1]))
+        for (n, _), fs in zip(chunk, K.save_preview_cells("portraits", f"medallions_{pi // 5 + 1}.png", sheet, boxes)):
+            shown[n] = fs
     for name in man.data["ui"]:
         if name.startswith("T_UI_Portrait_"):
-            man.data["ui"][name]["previews"] = files
+            src = man.data["ui"][name].get("aliasOf", name)
+            man.data["ui"][name]["previews"] = shown.get(src, shown.get(name, []))
     man.save()
     print(f"[portraits] {len(rows)} speakers → {len({r[2] for r in rows})} textures; aliases written: {written_alias}")
     for art, why, name in rows:

@@ -6,22 +6,25 @@ warrior for scale (spec art-inventory-ch1.md §6; DECISIONS W1, R1, W5).
 Everything comes from ``Art/Export``: every static mesh is **re-imported from its FBX** (what UE receives) with the
 toon / outline preview materials read from the shipped palette PNGs, its ink class and family from the manifest
 entry, and placed the way the runtime places it (``AAbyssZoneActor``: outcrop variant = tileHash(c, r, 3) % 6,
-palisade stakes at the centre and 0.2 / 0.4 toward every camp-wall neighbour, camp props facing the camp centre,
-lily pads on water tiles). The ground is the shipped terrain texture set composited with the exact transition
+palisade stakes at the centre and 0.2 / 0.4 toward every camp-wall neighbour, camp props facing the camp centre —
+tents clamped to a door within 60° of screen-down —, lily pads on water tiles; ``check_dry`` keeps every other prop's
+base off water and wall tiles). The ground is the shipped terrain texture set composited with the exact transition
 rules (``terrain.composite``) + the web contact shadows under the props. The hero is ``SK_Hero_Warrior`` with its
 Idle clip.
 
 Writes ``Art/Previews/env_vignette/``: ``vignette.png`` (the whole frame as a native 640 × 360 render of the same camera),
-``vignette_1080crop.png`` (native 1080p pixels round the hero and the camp gate), ``vignette_pond.png`` (the pond,
-ridge and grove corner), ``vignette_camp.png`` and ``vignette_footprints.png`` (W5: the blocking footprints of every
+``vignette_1080crop.png`` (native 1080p pixels round the hero and the camp gate), ``vignette_pond.png`` (the pond and the
+elven ruins on its near shore), ``vignette_camp.png`` and ``vignette_footprints.png`` (W5: the blocking footprints of every
 placed prop painted on the tile grid from the manifest ``footprintTiles`` / ``blocking``). Every image is truecolour at
 scale 1 (``pngio.write_png_native``: busy crops are split into labelled ``_2`` … tiles, each read back and compared
-pixel-exact); ``hero_check`` asserts the warrior's crimson and ink survive.
+pixel-exact); ``hero_check`` asserts the warrior's crimson and ink survive; ``ground_check`` asserts plain grass
+renders at its painted terrain colour (the ground plane is blacked out of the bloom source, art review 10).
 """
 from __future__ import annotations
 
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -195,8 +198,10 @@ def dress(shelf: Shelf, m: np.ndarray) -> None:
         return math.degrees(math.atan2(centre[1] - r, centre[0] - c)) + MESH_YAW
     face_cam = CAMERA_YAW + 180.0 + MESH_YAW
     shelf.put("SM_Prop_Camp_Campfire", 10.5, 14.0, face_cam)
-    shelf.put("SM_Prop_Camp_Tent", 8.6, 15.6, facing(8.6, 15.6))
-    shelf.put("SM_Prop_Camp_Tent", 12.6, 15.8, facing(12.6, 15.8))
+    # tents: door toward the camp centre, clamped to within TENT_DOOR_MAX_DEG of screen-down (art review 10: a tent
+    # standing broadside to the fixed camera reads as a flat brown shed wall — no A-frame, no dark door)
+    shelf.put("SM_Prop_Camp_Tent", 8.6, 15.6, clamp_to_camera(facing(8.6, 15.6)))
+    shelf.put("SM_Prop_Camp_Tent", 12.6, 15.8, clamp_to_camera(facing(12.6, 15.8)))
     shelf.put("SM_Prop_Camp_Well", 12.8, 12.6, facing(12.8, 12.6))
     shelf.put("SM_Prop_Camp_Banner", 8.4, 12.4, face_cam)
     shelf.put("SM_Prop_Camp_Banner", 11.4, 12.2, face_cam)
@@ -212,7 +217,7 @@ def dress(shelf: Shelf, m: np.ndarray) -> None:
         ("tree", 4.6, 9.2), ("tree", 3.4, 12.6), ("tree", 16.6, 12.4), ("tree", 20.6, 9.8), ("tree_round", 15.2, 9.1),
         ("tree_round", 4.2, 4.0), ("tree", 2.0, 6.8),
         ("bush", 5.6, 7.0), ("bush", 12.0, 8.6), ("bush", 17.4, 7.2), ("bush", 2.6, 2.4), ("bush", 15.8, 14.6),
-        ("boulder", 11.6, 2.0), ("rock", 6.2, 3.0), ("rock", 11.2, 7.4), ("rock", 16.8, 1.8), ("rock", 3.8, 8.0),
+        ("boulder", 10.2, 0.8), ("rock", 6.2, 3.0), ("rock", 11.2, 7.4), ("rock", 16.8, 1.8), ("rock", 3.8, 8.0),
         ("mushroom_red", 5.4, 10.6), ("mushroom_red", 13.6, 8.2),
     ]
     for gid, c, r in scatter:
@@ -221,15 +226,62 @@ def dress(shelf: Shelf, m: np.ndarray) -> None:
     rng = scene.rng("vignette", "groundcover")
     for k in range(70):
         c, r = rng.uniform(0, 20), rng.uniform(-3, 17)
-        t = tile(m, int(round(c)), int(round(r)))
-        if t not in (0,):
+        # plain grass under the whole tuft (art review 10: a tuft centred on grass beside the pond reached into the
+        # water tile next to it)
+        if any(tile(m, int(round(c + dc)), int(round(r + dr))) != 0 for dc in (-0.45, 0.0, 0.45)
+               for dr in (-0.45, 0.0, 0.45)):
             continue
         gid = "grass" if k % 3 else "flower"
         h = E.tile_hash(int(c * 10), int(r * 10), 7)
         shelf.put(variant(shelf, gid, h), c, r, float(h % 360), scale=0.9 + 0.2 * ((h >> 5) % 100) / 100)
     # story / lore / interactive accents along the walk
     shelf.put("SM_Prop_Lore_AncientTablet", 6.4, 6.0, CAMERA_YAW + 180.0 + MESH_YAW + 20)
-    shelf.put("SM_Prop_Story_ElvenRuins", 17.6, 3.4, CAMERA_YAW + 180.0 + MESH_YAW)
+    # the ruins stand on dry grass below the pond's near shore, inside the frame (art review 10: at (17.6, 3.4) the
+    # 2 x 1 footprint reached pond tile (17, 4) — its front column stood in the water with lily pads clipping its
+    # base; the reviewer's (18.6, 2.4) is a ridge wall tile and outside the frame); the boulder moved to make room
+    shelf.put("SM_Prop_Story_ElvenRuins", RUINS_AT[0], RUINS_AT[1], CAMERA_YAW + 180.0 + MESH_YAW)
+    check_dry(shelf, m)
+
+
+RUINS_AT = tuple(float(v) for v in os.environ.get("AF_RUINS_AT", "11.4,2.6").split(","))
+TENT_DOOR_MAX_DEG = 60.0
+
+
+def clamp_to_camera(yaw_ue: float) -> float:
+    """A camp prop's UE yaw with its door (mesh front) turned to within ``TENT_DOOR_MAX_DEG`` of screen-down (the
+    camera's ground direction, door azimuth CAMERA_YAW + 180)."""
+    door = yaw_ue - MESH_YAW
+    down = CAMERA_YAW + 180.0
+    d = (door - down + 180.0) % 360.0 - 180.0
+    d = max(-TENT_DOOR_MAX_DEG, min(TENT_DOOR_MAX_DEG, d))
+    return down + d + MESH_YAW
+
+
+def check_dry(shelf: Shelf, m: np.ndarray) -> None:
+    """Decor footprints stay off the water and the wall ridge (art review 10): no toon vertex below 30 cm of a placed
+    prop (lily pads excepted; outcrops on their own wall tiles) may stand over a water or a wall tile."""
+    bad = []
+    for name, c, r, _, o in shelf.placed:
+        if "Lily" in name:
+            continue
+        me = o.data
+        mw = o.matrix_world
+        mi = np.zeros(len(me.polygons), np.int32)
+        me.polygons.foreach_get("material_index", mi)
+        vs = {v for p in me.polygons if mi[p.index] == 0 for v in p.vertices}
+        wet = 0
+        forbid = (3,) if "Outcrop" in name else (3, 4)
+        for vi in vs:
+            co = me.vertices[vi].co
+            if co.z > 0.3:
+                continue
+            w = mw @ co
+            if tile(m, int(round(w.x)), int(round(-w.y))) in forbid:
+                wet += 1
+        if wet:
+            bad.append(f"{name} at ({c:g}, {r:g}): {wet} base vertices over water / wall tiles")
+    if bad:
+        raise RuntimeError("vignette dressing: props standing in the pond or the ridge\n  " + "\n  ".join(bad))
 
 
 # ── ground ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -343,6 +395,59 @@ def hero_check(full: np.ndarray, cam, w) -> None:
         raise RuntimeError("vignette: the warrior's crimson / ink did not survive in the native frame")
 
 
+def _black_emission():
+    mat = bpy.data.materials.get("AF_Vignette_GroundBlack")
+    if mat is None:
+        mat = bpy.data.materials.new("AF_Vignette_GroundBlack")
+        mat.use_nodes = True
+        nt = mat.node_tree
+        nt.nodes.clear()
+        em = nt.nodes.new("ShaderNodeEmission")
+        em.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        nt.links.new(em.outputs[0], out.inputs["Surface"])
+    return mat
+
+
+def ground_check(img: np.ndarray, cam, res, shelf: Shelf, m: np.ndarray, gimg: np.ndarray, what: str) -> None:
+    """Art review 10: the ground reaches the frame at its painted colour. On the five plain grass tiles farthest from
+    every placed prop (3 x 3 grass round each, inside the frame), 7 x 7 ground points are projected into the native
+    render and compared with the composited terrain texels under them: the best tile must agree within 3/255 and
+    the median within 4/255 (a prop's own bloom may still reach one tile; the ground plane in the bloom source put
+    every tile ≈ 30/255 too bright)."""
+    pts = [(o.location.x, -o.location.y) for *_, o in shelf.placed]
+    cands = []
+    for r in range(R0 + 1, R1 - 1):
+        for c in range(C0 + 1, C1 - 1):
+            if any(tile(m, c + dc, r + dr) != 0 for dc in (-1, 0, 1) for dr in (-1, 0, 1)):
+                continue
+            x, y = review.project_px(cam, E.tile_to_blender(c, r), res)
+            if not (0.1 * res[0] < x < 0.9 * res[0] and 0.1 * res[1] < y < 0.9 * res[1]):
+                continue
+            cands.append((min(math.hypot(c - px, r - py) for px, py in pts), c, r))
+    cands.sort(reverse=True)
+    if not cands:
+        raise RuntimeError(f"ground_check {what}: no plain grass tile in the frame")
+    errs = []
+    for d, c, r in cands[:5]:
+        ren, tex = [], []
+        for i in range(7):
+            for j in range(7):
+                gc, gr = c + (i - 3) * 0.08, r + (j - 3) * 0.08
+                x, y = review.project_px(cam, E.tile_to_blender(gc, gr), res)
+                ren.append(img[int(y), int(x), :3].astype(np.float32))
+                tx, ty = (gc - C0 + 0.5) * PPT, (gr - R0 + 0.5) * PPT
+                tex.append(gimg[int(ty), int(tx)])
+        mr, mt = np.mean(ren, 0), np.mean(tex, 0)
+        err = float(np.abs(mr - mt).max())
+        errs.append(err)
+        print(f"  [ground] {what}: grass tile ({c}, {r}) ({d:.1f} tiles from the nearest prop): render "
+              f"{mr.round(1).tolist()} vs terrain {mt.round(1).tolist()} -> max |d| {err:.2f}/255")
+    if min(errs) > 3.0 or float(np.median(errs)) > 4.0:
+        raise RuntimeError(f"ground_check {what}: the ground renders off its painted colour (best {min(errs):.1f}, "
+                           f"median {float(np.median(errs)):.1f}/255 — bloom / exposure on the ground plane?)")
+
+
 # ── render ──────────────────────────────────────────────────────────────────────────────────────────────
 def main(argv: list[str]) -> int:
     OUT.mkdir(parents=True, exist_ok=True)
@@ -350,7 +455,11 @@ def main(argv: list[str]) -> int:
     m = build_map()
     shelf = Shelf()
     dress(shelf, m)
-    ground(shelf, m)
+    if "--check" in argv:                      # dressing checks only (no render)
+        print("  dressing OK:", len(shelf.placed), "placed")
+        return 0
+    gpath = ground(shelf, m)
+    gimg = pngio.read_png(gpath)[:, :, :3].astype(np.float32)
     footprints(shelf, m)
     hero_c, hero_r = 8.8, 8.2
     w = E.import_warrior(at=tuple(E.tile_to_blender(hero_c, hero_r))[:2] + (0.0,), yaw_deg=-60.0)
@@ -375,20 +484,31 @@ def main(argv: list[str]) -> int:
         saved = {}
         for o in meshes:
             saved.setdefault(o.data.name, (o.data, list(o.data.materials)))
-        em = review.emissive_pass(meshes)
-        for data, mats in saved.values():
-            for i, mt in enumerate(mats):
-                data.materials[i] = mt
+        # the vignette's own ground is an emission plane, not the kit's AF_Stage (which emissive_pass hides): black it
+        # out for the bloom source but keep it occluding (art review 10: it bloomed at +0.8x its own linear value —
+        # grass (116,162,71) rendered (145,204,92), water went neon, ink next to grass lightened)
+        gmesh = bpy.data.objects["vignette_ground"].data
+        gmats = list(gmesh.materials)
+        gmesh.materials[0] = _black_emission()
+        try:
+            em = review.emissive_pass(meshes)
+        finally:
+            gmesh.materials[0] = gmats[0]
+            for data, mats in saved.values():
+                for i, mt in enumerate(mats):
+                    data.materials[i] = mt
         return cam, review.bloom(img, em, res[1])
     # overview: a native 640 × 360 render of the same camera (ink and bloom at 360p, like every game.png) — never a
     # resampled 1080p frame (art review 9: the 1/2 downscale + 256-colour fallback turned the crimson cape brown)
-    _, small = render_at((640, 360))
+    cam_s, small = render_at((640, 360))
+    ground_check(small, cam_s, (640, 360), shelf, m, gimg, "vignette.png")
 
     def overview_label(t, i, k):
         review.draw_text(t, 6, 6, "EMERALD PLAINS VIGNETTE  W1 CAMERA DEFAULT DISTANCE  NATIVE 640X360 RENDER"
                          + (f"  {i + 1}/{k}" if k > 1 else ""))
     written = pngio.write_png_native(OUT / "vignette.png", small, annotate=overview_label)
     cam, full = render_at((1920, 1080))
+    ground_check(full, cam, (1920, 1080), shelf, m, gimg, "1080p frame")
 
     def crop(col, row, w_px, h_px, label, name):
         """Native 1080p pixels (scale 1, truecolour); split into labelled tiles when one file would pass 200 KB."""
@@ -410,7 +530,7 @@ def main(argv: list[str]) -> int:
         return out
     print(f"  {written[0][0]}")
     crop(9.4, 9.6, 720, 440, "CAMP GATE + HERO  NATIVE 1080P 1:1", "vignette_1080crop.png")
-    crop(15.4, 4.6, 720, 440, "POND, RIDGE, RUINS  NATIVE 1080P 1:1", "vignette_pond.png")
+    crop(12.4, 2.8, 720, 440, "POND AND ELVEN RUINS  NATIVE 1080P 1:1", "vignette_pond.png")
     crop(11.4, 14.6, 720, 440, "CAMP: TENTS, WELL, CAMPFIRE, BANNERS  NATIVE 1080P 1:1", "vignette_camp.png")
     hero_check(full, cam, w)
     return 0

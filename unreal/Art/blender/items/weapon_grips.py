@@ -51,6 +51,15 @@ view ray|), a shield face's turn toward sw — on every strike / cast frame; the
 strike / cast grips are rolled about the haft to show the bit (``--roll``), the rogue's Attack03 shield is held
 face-on through the hit-stop (``--hold``) and the warrior / rogue wand carry clears the body on screen
 (``read_wand_out``).
+
+**Fifth look** (the staff hid behind the warrior from sw, the axe bit went edge-on at most hit-stops, the rogue's
+shield showed its back at the Cast01 release — all shipped because only the bow was gated): ``READ_GATE`` gates the
+axe, the shield (signed face metric) and the staff (``staff_screen``: the shaft's on-screen length **not hidden behind
+the body / attachments** — ``Occluder`` — on every carry frame, the bow's floors on strikes); the lowest point counts
+the baked ink hull (``Item.low``, floor 0 cm); per-frame corrections: ``roll_track`` (Viterbi roll about the haft /
+forearm), ``lift_pass`` (tilt about the fist where the item or its hull dips under the ground), ``carry_roll``, and
+``read_fix`` (roll → hit-stop hold → re-planned track) for every strike / cast clip that fails the gate
+(``--readfix``); grips of classes the runtime never shows a family on are not shipped (``manifest_grips``).
 """
 from __future__ import annotations
 
@@ -85,7 +94,8 @@ GROUPS = {"carry": ("Idle", "Walk", "Run", "Hurt", "HurtAdd", "Portrait"),
                      "Cast_Blizzard", "Cast_Meteor", "Cast_Multishot"),
           "dodge": ("Dodge",), "death": ("Death",)}
 # face: frames with item points in front of the face disc (se / sw) in READY / locomotion, and in staff / bow strikes
-LIMITS = {"body": 0, "head": 0, "other": 0, "cloth": 20, "lowCm": -0.5, "clearCm": 2.0, "face": 0}
+# lowCm: the lowest vertex of the toon surface *and* the baked ink hull (Item.low) — at or above the ground plane
+LIMITS = {"body": 0, "head": 0, "other": 0, "cloth": 20, "lowCm": 0.0, "clearCm": 2.0, "face": 0}
 # families that must also keep their far parts (beyond the hilt zone) this far off the rigid body — torso, helm,
 # legs; not the holding hand / forearm (art review: a bow's limbs ≥ 2 cm off the torso and helm, string included)
 CLEAR = {"bow": 0.02}
@@ -94,8 +104,13 @@ FACE_CLIPS = ("Idle", "Walk", "Run")
 # rogue's mask on the Attack03 hit-stop, a bow string across the mage's beard at the Cast01 release); rolls and falls
 # tumble the head through everything and are left out, and the mage's Cast_Meteor raises the casting fist across her
 # own face (frames 5–11: every item in that hand crosses the disc, the fist and sleeve already cover it)
-FACE_STRIKE = ("staff", "bow")
+FACE_STRIKE = ("staff", "bow", "shield")
 FACE_STRIKE_SKIP = ("Dodge", "Death", "Portrait", "Cast_Meteor")
+# a hand-held shield also *prefers* to keep out of the face disc in the wind-up (art review, fifth look: in the rogue's
+# Attack02 wind-up the boards covered her face from sw): a soft planning cost there — her off-hand fist itself crosses
+# the face in the Attack02 / 03 and Cast01 / 02 wind-ups, so no grip on that forearm clears it (an exact track found
+# none on frames 2–9); the hard rule holds from the contact / release − ``FACE_STRIKE_LEAD`` on, as for staffs / bows
+FACE_STRIKE_WHOLE = ("shield",)
 
 
 # strikes: from 2 frames before the contact / release on (the hit-stop and the follow-through hold still); the
@@ -108,6 +123,9 @@ FACE_STRIKE_LEAD = 2
 # poor readability saved)
 HIT_READ_W = 4.0
 HIT_READ_TAIL = 6
+# families whose strike tracks weigh the hit-stop's readability ×HIT_READ_W and may flick for it (fifth look: + the
+# axe bit and the shield face)
+HIT_WEIGHTED = ("staff", "bow", "axe", "shield")
 
 
 def face_clip(fam: str, clip: str, fr: int | None = None, beat: int = -1) -> bool:
@@ -115,6 +133,8 @@ def face_clip(fam: str, clip: str, fr: int | None = None, beat: int = -1) -> boo
     release is ``beat``; track feasibility, search scoring, the QA)?"""
     if clip in FACE_CLIPS:
         return True
+    if fam in FACE_STRIKE_WHOLE and clip not in GROUPS["strike"]:
+        return False             # a shield raised over the face in a hurt flinch is a guard, not clutter
     if fam not in FACE_STRIKE or clip in FACE_STRIKE_SKIP:
         return False
     return fr is None or beat < 0 or fr >= beat - FACE_STRIKE_LEAD
@@ -240,7 +260,9 @@ def manifest_grips(table: dict, fam: str, clip_names: dict[str, list[str]]) -> d
     out = {}
     for cls in CLASSES:
         e = table.get("classes", {}).get(cls, {}).get(fam)
-        if not e:
+        if not e or not shown(cls, fam):
+            # (art review, fifth look) grips of a class the runtime never shows this mesh on are not shipped: they
+            # were never planned to pass (the mage's own staff, the rogue's own bow, the warrior's own shield)
             continue
         carry = e["clips"].get("Idle", "carry")
         rec = {"socket": socket_for(table, cls, fam), "default": ue_transform(gmat(e["grips"][carry])), "clips": {},
@@ -328,7 +350,7 @@ class Posed:
         for a in man["assets"][f"SK_Hero_{cls}"]["anims"]:
             ms = a.get("contactMs") or a.get("releaseMs")
             self.clips.append({"name": a["name"], "frames": a["frames"], "start": start, "loop": bool(a.get("loop")),
-                               "beat": int(round(ms * 0.06)) if ms else -1})
+                               "beat": int(round(ms * 0.06)) if ms else -1, "additive": bool(a.get("additive"))})
             start += a["frames"]
             for fr in range(a["frames"]):
                 IK.hero_pose(arm, cls, a["name"], fr)
@@ -364,14 +386,124 @@ class Posed:
         m = self.bones["head"][fi]
         return m[:3, :3] @ np.array(FACE_LOCAL[self.cls]) + m[:3, 3]
 
+    def occluder(self, sock: str) -> "Occluder":
+        """The on-screen occlusion test of an item held on ``sock`` (cached per socket)."""
+        if not hasattr(self, "_occ"):
+            self._occ = {}
+        if sock not in self._occ:
+            self._occ[sock] = Occluder(self, sock)
+        return self._occ[sock]
+
+
+# ── on-screen occlusion (art review, fifth look: the warrior's staff passed a projected-length check while it hid
+# behind his body from sw — only the orb poked out beside the plume) ─────────────────────────────────────────
+OCC_CELL = 0.012                 # depth-buffer cell (m in the view plane; ~1.3 px at the W1 1080p distance)
+OCC_TOL = 0.02                   # a point is hidden when the body / attachments are ≥ 2 cm nearer the camera there
+OCC_LO, OCC_HI = np.array([-1.4, -1.2]), np.array([1.4, 2.4])     # view-plane extents (right, up), m
+
+
+def _view_basis(v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    right = np.cross(v, [0.0, 0.0, 1.0])
+    return right / np.linalg.norm(right), _view_up(v)
+
+
+def _bary(k: int) -> np.ndarray:
+    return np.array([(i / k, j / k, 1.0 - (i + j) / k) for i in range(k + 1) for j in range(k + 1 - i)])
+
+
+class Occluder:
+    """Depth buffers of the posed body (without the holding hand: the fist wraps the handle by design) and the
+    class's default attachments that stay beside the item (the warrior's shield, the rogue's off dagger and quiver)
+    in the se / sw W1 views, per frame: surface samples ≤ ``OCC_CELL`` apart on every triangle splat their nearest
+    depth into ``OCC_CELL`` cells (3 × 3, about the ink's width). ``visible(fi, view, pts)``: not behind the
+    silhouette by more than ``OCC_TOL``."""
+
+    def __init__(self, p: "Posed", sock: str):
+        self.p, self.sock = p, sock
+        none = np.zeros(len(p.tris), bool)
+        tris = p.tris[~p.m_hand.get(sock, none)]
+        self.groups = self._sample(p.verts[0].astype(np.float64), tris)
+        self.atts = []
+        for a, (s, aco, atr) in p.atts.items():
+            if s == sock:
+                continue              # the item replaces the class's own weapon on its socket
+            self.atts.append((s, aco, self._sample(aco, atr)))
+        self.shape = tuple(int(x) for x in np.ceil((OCC_HI - OCC_LO) / OCC_CELL) + 1)
+        self.basis = {k: (*_view_basis(v), v) for k, v in V_VIEW.items()}
+        self.cache: dict = {}
+
+    @staticmethod
+    def _sample(co: np.ndarray, tris: np.ndarray) -> list:
+        e = np.stack([np.linalg.norm(co[tris[:, i]] - co[tris[:, (i + 1) % 3]], axis=1) for i in range(3)], 1)
+        k = np.clip(np.ceil(e.max(1) / (OCC_CELL * 1.2)), 1, 12).astype(int)
+        return [(tris[k == n], _bary(n)) for n in np.unique(k)]
+
+    @staticmethod
+    def _points(co: np.ndarray, groups: list) -> np.ndarray:
+        return np.concatenate([np.einsum("nij,mi->nmj", co[t], B).reshape(-1, 3) for t, B in groups])
+
+    def zbuf(self, fi: int, view: str) -> np.ndarray:
+        key = (fi, view)
+        zb = self.cache.get(key)
+        if zb is not None:
+            return zb
+        pts = [self._points(self.p.verts[fi].astype(np.float64), self.groups)]
+        for s, aco, g in self.atts:
+            A = self.p.att_matrix(s, fi)
+            pts.append(self._points(aco @ A[:3, :3].T + A[:3, 3], g))
+        P = np.concatenate(pts)
+        r, u, v = self.basis[view]
+        ij = np.floor((np.stack([P @ r, P @ u], 1) - OCC_LO) / OCC_CELL).astype(np.int64)
+        ok = (ij >= 0).all(1) & (ij[:, 0] < self.shape[0]) & (ij[:, 1] < self.shape[1])
+        flat = np.full(self.shape[0] * self.shape[1], np.inf, np.float32)
+        cell = ij[ok, 0] * self.shape[1] + ij[ok, 1]
+        dep = (P[ok] @ v).astype(np.float32)
+        order = np.lexsort((dep, cell))                     # by cell, nearest first
+        first = np.unique(cell[order], return_index=True)[1]
+        flat[cell[order][first]] = dep[order][first]
+        z = flat.reshape(self.shape)
+        pz = np.pad(z, 1, constant_values=np.inf)
+        zb = z.copy()
+        for dx in (0, 1, 2):
+            for dy in (0, 1, 2):
+                zb = np.minimum(zb, pz[dx:dx + self.shape[0], dy:dy + self.shape[1]])
+        if len(self.cache) > 400:
+            self.cache.clear()
+        self.cache[key] = zb
+        return zb
+
+    def outside(self, fi: int, view: str, pts: np.ndarray) -> np.ndarray:
+        """bool per point: off the body's / attachments' silhouette in ``view`` (against the ground)."""
+        sh = pts.shape[:-1]
+        P = pts.reshape(-1, 3)
+        r, u, _ = self.basis[view]
+        ij = np.floor((np.stack([P @ r, P @ u], 1) - OCC_LO) / OCC_CELL).astype(np.int64)
+        ij = np.clip(ij, 0, np.array(self.shape) - 1)
+        return ~np.isfinite(self.zbuf(fi, view)[ij[:, 0], ij[:, 1]]).reshape(sh)
+
+    def visible(self, fi: int, view: str, pts: np.ndarray) -> np.ndarray:
+        """bool per point (any leading shape): not hidden behind the body / attachments in ``view``."""
+        sh = pts.shape[:-1]
+        P = pts.reshape(-1, 3)
+        r, u, v = self.basis[view]
+        ij = np.floor((np.stack([P @ r, P @ u], 1) - OCC_LO) / OCC_CELL).astype(np.int64)
+        ij = np.clip(ij, 0, np.array(self.shape) - 1)
+        z = self.zbuf(fi, view)[ij[:, 0], ij[:, 1]]
+        return (z >= P @ v - OCC_TOL).reshape(sh)
+
 
 class Item:
-    """Toon triangles of an item in its own (socket) space; the hilt / strap zone split."""
+    """Toon triangles of an item in its own (socket) space; the hilt / strap zone split. ``low``: the vertices the
+    lowest-point check measures — the toon surface *and* the baked ink hull (art review, fifth look: the clip sheets'
+    LOW label measured every vertex and showed a hull sunk 1–2 cm into the terrain while the QA, on toon vertices
+    only, passed at −0.5 cm)."""
 
-    def __init__(self, fam: str, co: np.ndarray, tris: np.ndarray, socket: str | None = None):
+    def __init__(self, fam: str, co: np.ndarray, tris: np.ndarray, socket: str | None = None,
+                 low: np.ndarray | None = None):
         self.fam, self.co, self.tris = fam, co, tris
         self.socket = socket or SOCKET[fam]
         self.used = np.unique(tris)
+        self.low = self.used if low is None else np.asarray(low)
         pts = co[tris].reshape(-1, 3)
         if fam == "shield":      # handle + straps: the forearm runs through them by design
             z = ((pts[:, 1] < 0.08) & (np.abs(pts[:, 2]) < 0.14) & (np.abs(pts[:, 0]) < 0.17))
@@ -383,7 +515,7 @@ class Item:
         self.far = far[:: max(1, len(far) // 240)]
 
     def on(self, socket: str) -> "Item":
-        return self if socket == self.socket else Item(self.fam, self.co, self.tris, socket)
+        return self if socket == self.socket else Item(self.fam, self.co, self.tris, socket, self.low)
 
     @staticmethod
     def from_object(fam: str, obj) -> "Item":
@@ -391,7 +523,8 @@ class Item:
         me.calc_loop_triangles()
         co = np.array([v.co[:] for v in me.vertices], np.float64)
         tris = np.array([t.vertices[:] for t in me.loop_triangles if t.material_index == 0], np.int32)
-        return Item(fam, co, tris)
+        low = np.unique(np.array([t.vertices[:] for t in me.loop_triangles], np.int32))     # toon + ink hull
+        return Item(fam, co, tris, low=low)
 
 
 def _bvh(co: np.ndarray, tris: np.ndarray):
@@ -478,7 +611,7 @@ class GripQA:
             if asock == sock or (it.fam == "bow" and asock in ("weapon_r", "weapon_l")):
                 continue      # replaced on its socket / hidden by a bow (occupiesOffhand)
             other += len(_ov(tm, ta)) + len(_ov(th, ta))
-        rec = {"fr": fr, "lowCm": round(float(w[it.used, 2].min()) * 100.0, 2), "body": rigid,
+        rec = {"fr": fr, "lowCm": round(float(w[it.low, 2].min()) * 100.0, 2), "body": rigid,
                "cloth": cloth, "head": head, "other": other}
         if it.fam in CLEAR:
             rec["clearCm"] = _clearance(ctx["clear"][sock], w[it.far])
@@ -559,33 +692,81 @@ def hide_window(table: dict, cls: str, fam: str, clip: str) -> tuple[int, int] |
     return (int(h[0]), int(h[1])) if h else None
 
 
-def read_stats(table: dict, cls: str, fam: str, p: Posed) -> dict:
-    """On-screen readability (``read_metric``) of ``fam`` in ``cls``'s hands on every frame of every strike / cast
-    clip at the shipped grips → {clip: {minHit, meanHit, minAll}} (hit = the hit-stop window; frames inside a
-    ``hide`` window are skipped)."""
+def _hit_window(beat: int) -> tuple[int, int]:
+    return beat - FACE_STRIKE_LEAD, beat + HIT_READ_TAIL
+
+
+def _low_run(vals: list[float], floor: float) -> int:
+    run = best = 0
+    for m in vals:
+        run = run + 1 if m < floor else 0
+        best = max(best, run)
+    return best
+
+
+def staff_frame(p: Posed, fi: int, Mw_sock: np.ndarray, G: np.ndarray) -> dict:
+    """One frame of a staff in the fist → {m: min over se / sw of the unhidden on-screen fist → orb fraction, su: min
+    over the views of the orb's lift, orb: the orb visible and not behind the head in both views}."""
+    st = staff_screen(p, fi, Mw_sock, np.asarray(G, np.float64)[None])
+    return {"m": float(min(v["vis"][0] for v in st.values())), "su": float(min(v["su"][0] for v in st.values())),
+            "orb": bool(all(v["orb"][0] and not v["behind"][0] for v in st.values()))}
+
+
+def read_stats(table: dict, cls: str, fam: str, p: Posed, only=None) -> dict:
+    """On-screen readability of ``fam`` in ``cls``'s hands on every frame of every strike / cast clip at the shipped
+    grips → {clip: {minHit, meanHit, minAll, lowRun}} (hit = the hit-stop window; frames inside a ``hide`` window are
+    skipped): bow / axe / shield ``read_metric``; the staff (``staff_frame``) also on every carry clip ({minAll,
+    meanAll, minUp, orbFrames, bad}) and its strikes add ``minUpHit`` / ``orbHit``."""
     out = {}
     sock = socket_for(table, cls, fam)
+    g = READ_GATE.get(fam)
     for c in p.clips:
-        if c["name"] not in GROUPS["strike"] or c["beat"] < 0:
+        if only and c["name"] not in only:
+            continue
+        carry = fam == "staff" and c["name"] in GROUPS["carry"] and c["name"] not in QA_SKIP
+        if not carry and (c["name"] not in GROUPS["strike"] or c["beat"] < 0):
             continue
         hw = hide_window(table, cls, fam, c["name"])
-        h0, h1 = c["beat"] - FACE_STRIKE_LEAD, c["beat"] + HIT_READ_TAIL
-        allm, hit = [], []
+        h0, h1 = _hit_window(c["beat"])
+        kind = "cast" if c["name"] in CAST_CLIPS else "attack"
+        allm, hit, ups, orbs, frs = [], [], [], [], []
         for fr in range(c["frames"]):
             if hw and hw[0] <= fr <= hw[1]:
                 continue
-            m = read_metric(fam, p.bones[sock][c["start"] + fr] @ grip(table, cls, fam, c["name"], fr))
+            if carry and c.get("additive") and fr == 0:
+                continue          # an additive clip's frame 0 is its reference pose: never drawn as such
+            fi = c["start"] + fr
+            G = grip(table, cls, fam, c["name"], fr)
+            if fam == "staff":
+                r = staff_frame(p, fi, p.bones[sock][fi], G)
+                m = r["m"]
+                ups.append(r["su"])
+                orbs.append(r["orb"])
+            else:
+                m = read_metric(fam, p.bones[sock][fi] @ G)
             allm.append(m)
-            if h0 <= fr <= h1:
-                hit.append(m)
-        if allm:
-            g = READ_GATE.get(fam)
-            run = best = 0
-            for m in allm:
-                run = run + 1 if (g and m < g["all"]) else 0
-                best = max(best, run)
-            out[c["name"]] = {"minHit": round(min(hit or allm), 3), "meanHit": round(float(np.mean(hit or allm)), 3),
-                              "minAll": round(min(allm), 3), "lowRun": best}
+            frs.append(fr)
+            if not carry and h0 <= fr <= h1:
+                hit.append(len(allm) - 1)
+        if not allm:
+            continue
+        if carry:
+            bad = [f for f, m, u, o in zip(frs, allm, ups, orbs)
+                   if m < g["carry"] or u < g["carryUp"] or not o]
+            out[c["name"]] = {"minAll": round(min(allm), 3), "meanAll": round(float(np.mean(allm)), 3),
+                              "minUp": round(min(ups), 3), "orbFrames": sum(1 for o in orbs if not o),
+                              "bad": bad[:24], "nBad": len(bad),
+                              "allowed": g.get("flinch", {}).get(c["name"], 0)}
+            continue
+        hm = [allm[i] for i in hit] or allm
+        rec = {"minHit": round(min(hm), 3), "meanHit": round(float(np.mean(hm)), 3),
+               "minAll": round(min(allm), 3), "lowRun": _low_run(allm, g["all"]) if g else 0}
+        if fam == "staff":
+            hi = hit or list(range(len(allm)))
+            rec["minUpHit"] = round(min(ups[i] for i in hi), 3)
+            rec["orbHit"] = sum(1 for i in hi if not orbs[i])
+            rec["upFloor"] = g["hitUp"][kind]
+        out[c["name"]] = rec
     return out
 
 
@@ -595,12 +776,21 @@ def read_failures(stats: dict, fam: str) -> list[str]:
         return []
     out = []
     for clip, r in stats.items():
+        if "meanAll" in r:                     # a staff carry clip: every frame (a hurt flinch: ``flinch``)
+            if r["nBad"] > r.get("allowed", 0):
+                out.append(f"{clip}: staff unreadable on {r['nBad']} carry frames {r['bad'][:8]} (min on-screen "
+                           f"{r['minAll']:.2f} < {g['carry']}, orb lift {r['minUp']:.2f} < {g['carryUp']}, orb hidden "
+                           f"{r['orbFrames']})")
+            continue
         if r["meanHit"] < g["hitMean"]:
             out.append(f"{clip}: readability mean {r['meanHit']:.2f} < {g['hitMean']} on the hit-stop")
         elif r["minHit"] < g["hit"]:
             out.append(f"{clip}: readability {r['minHit']:.2f} < {g['hit']} on a hit-stop frame")
         elif r.get("lowRun", 0) > g["run"]:
             out.append(f"{clip}: readability < {g['all']} on {r['lowRun']} consecutive frames (min {r['minAll']:.2f})")
+        if "orbHit" in r and (r["orbHit"] or r["minUpHit"] < r["upFloor"]):
+            out.append(f"{clip}: staff orb hidden / behind the head on {r['orbHit']} hit-stop frames or lift "
+                       f"{r['minUpHit']:.2f} < {r['upFloor']}")
     return out
 
 
@@ -740,11 +930,34 @@ def _rot_y(psi: float) -> np.ndarray:
     return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
 
 
+def shield_candidates() -> list:
+    """(G, tilt°, roll°, 0): a shield strapped to the forearm turns with it — the forearm's own roll (item Z, the
+    forearm through the straps) is free to ±90° (pronation / supination), the boards' angle on the arm only ±30° (item
+    X: pitch along the forearm, item Y: spin in their plane; fifth look: at the rogue's Cast01 release no attitude
+    within 60° of the strap's face normal faced sw — a 90° forearm roll does). ``tilt`` = the off-strap angle + a
+    quarter of the forearm roll (the tilt cost of the planners)."""
+    out = []
+    for a in range(-90, 91, 10):
+        for b in range(-30, 31, 10):
+            for c in range(-30, 31, 15):
+                R = (np.array(Matrix.Rotation(math.radians(a), 3, "Z")) @ np.array(Matrix.Rotation(math.radians(b), 3, "X"))
+                     @ np.array(Matrix.Rotation(math.radians(c), 3, "Y")))
+                G = np.eye(4)
+                G[:3, :3] = R
+                out.append((G, float(max(abs(b), abs(c)) + 0.25 * abs(a)), float(c), 0.0))
+    return out
+
+
 def candidates(fam: str, max_tilt: float = 180.0, ndirs: int = 240) -> list:
-    """(G, tilt°, roll°, slide m): item axis over the sphere (tilt from the fist axis) × roll × slide."""
+    """(G, tilt°, roll°, slide m): item axis over the sphere (tilt from the fist axis) × roll × slide (a shield:
+    ``shield_candidates``)."""
+    if fam == "shield" and max_tilt <= SHIELD_TILT:
+        return shield_candidates()
     dirs = list(_fib(ndirs)) + [np.array([0.0, 1.0, 0.0]), np.array([0.0, -1.0, 0.0])]
     n = ROLLS.get(fam, 12)
     rolls = [math.radians(ROLL_SPAN.get(fam, 360.0) * k / n) for k in range(n)]
+    if fam == "shield":          # a spin in the boards' plane takes the straps off the forearm: ±40° at most
+        rolls = [math.radians(a) for a in (-40.0, -20.0, 0.0, 20.0, 40.0)]
     out = []
     for a in dirs:
         tilt = math.degrees(math.acos(max(-1.0, min(1.0, float(a[1])))))
@@ -831,11 +1044,22 @@ def read_axe(p, fi, Ms, Gs, smp):
     return np.maximum(0, 0.55 - f) * 3
 
 
+def read_axe_floor(p, fi, Ms, Gs, smp):
+    """``read_axe`` + a steep floor at the gate's any-frame minimum (a one-frame flip through edge-on survived the
+    soft term, as on the bow)."""
+    n = _axis(Ms, Gs, (1, 0, 0))
+    f = np.minimum(np.abs(n @ V_VIEW["se"]), np.abs(n @ V_VIEW["sw"]))
+    return np.maximum(0, 0.55 - f) * 3 + np.maximum(0, READ_GATE["axe"]["all"] + 0.05 - f) * 15
+
+
 def read_shield_face(p, fi, Ms, Gs, smp):
     """The shield's face (item +Y) turned toward the camera in sw, the off-hand review view: ≥ 30° out of edge-on
-    (art review, fourth look: the rogue's Attack03 contact showed the shield edge-on, a pale curved blade)."""
+    (art review, fourth look: the rogue's Attack03 contact showed the shield edge-on, a pale curved blade), with a
+    steep floor against its back (fifth look: the Cast01 release showed plain boards from sw, −.76); from se — where
+    the off hand is the far one — at least not its back (the Cast01 se release: the boards' back behind the hood)."""
     n = _axis(Ms, Gs, (0, 1, 0))
-    return np.maximum(0, 0.5 - (n @ -V_VIEW["sw"])) * 3
+    f_sw, f_se = n @ -V_VIEW["sw"], n @ -V_VIEW["se"]
+    return (np.maximum(0, 0.5 - f_sw) * 3 + np.maximum(0, 0.05 - f_sw) * 10 + np.maximum(0, 0.0 - f_se) * 1.5)
 
 
 WAND_PROBES = np.array([[0.0, 0.256, 0.0], [0.0, 0.160, 0.0], [0.0, 0.300, 0.0]])   # crystal, upper shaft, tip
@@ -892,8 +1116,23 @@ def read_metric(fam: str, Mw: np.ndarray) -> float:
 # frame ≥ ``hit``; any other frame ≥ ``all`` except flips through edge-on of ≤ ``run`` frames (≤ 33 ms at 60 fps,
 # mid-whip: not seen). The old weapon_l bow failed it on 6 of 7 warrior strikes (Attack01 hit mean .32, Cast01 .06 at
 # the release), the weapon_r tracks pass (hit means .55–.74, the whirlwind's spin dips to .37 at the release).
-READ_GATE = {"bow": {"hitMean": 0.45, "hit": 0.35, "all": 0.15, "run": 2}}
-READ_REPORT = ("bow", "axe", "shield")
+# Fifth look: the axe bit edge-on at most hit-stops (Warrior Attack02 .007) and the rogue's shield back-facing at the
+# Cast01 release (−.76) passed because only the bow was gated — the axe takes the bow's floors; the shield's signed
+# face metric (sin of its turn toward the sw camera: < 0 = its back) .50 (30°) on the hit-stop mean, .25 (15°) on every
+# hit-stop frame (the rogue's Cast01 release flings the off hand forward: .27 is the most any strap-plausible attitude
+# reaches there), never back-facing for more than ``run`` frames; the staff (``staff_frame``: the unhidden on-screen
+# fist → orb fraction, min over se / sw) .65 with the orb ≥ .30 above the fist, visible and clear of the head on
+# *every* carry frame, the bow's floors on strikes / casts plus the orb visible, clear of the head and lifted
+# (``hitUp``: casts .30 of the shaft; an attack may lead with the orb down) on every hit-stop frame.
+READ_GATE = {"bow": {"hitMean": 0.45, "hit": 0.35, "all": 0.15, "run": 2},
+             "axe": {"hitMean": 0.45, "hit": 0.35, "all": 0.15, "run": 2},
+             "shield": {"hitMean": 0.50, "hit": 0.25, "all": 0.0, "run": 2},
+             "staff": {"hitMean": 0.45, "hit": 0.35, "all": 0.15, "run": 2, "carry": 0.65, "carryUp": 0.30,
+                       "hitUp": {"cast": 0.30, "attack": -1.0},
+                       # the warrior's Hurt recoil throws the staff hand back for 2 frames (33 ms) where no grip of
+                       # the 12 k candidates that clears the plate keeps the orb up: frames allowed under the gate
+                       "flinch": {"Hurt": 2, "HurtAdd": 2}}}
+READ_REPORT = ("bow", "axe", "shield", "staff")
 
 
 STAFF_ORB_Y = 0.815                # the orb's centre on the generic staff (item +Y, metres from the grip)
@@ -907,37 +1146,95 @@ def _view_up(v: np.ndarray) -> np.ndarray:
     return up / np.linalg.norm(up)
 
 
+STAFF_SAMPLES = np.stack([np.zeros(26), np.linspace(-0.40, STAFF_ORB_Y, 26), np.zeros(26)], 1)
+
+
+def _slides(Gs: np.ndarray) -> np.ndarray:
+    """The fist's position along the haft (item +Y, m) of each grip (``candidates``: G.t = R · (0, −s, 0))."""
+    return -np.einsum("cji,cj->ci", Gs[:, :3, :3], Gs[:, :3, 3])[:, 1]
+
+
+def staff_screen(p, fi, Ms, Gs) -> dict:
+    """The generic staff in the fist, *on screen* in the se and sw W1 views (art review, fifth look: the warrior's
+    staff hid behind his body from sw while its projected length passed) → per view arrays over the grips ``Gs``:
+    ``vis`` = the fist → orb length that is on screen **and not hidden behind the body / shield** (``Occluder``) as a
+    fraction of the shaft (``STAFF_ORB_Y``), ``sl`` = the projected length alone, ``su`` = the orb's lift above the
+    fist on screen (fraction of the shaft), ``orb`` = the orb's centre visible, ``behind`` = the orb behind the head
+    (farther than it and within 22 cm of it on screen)."""
+    W = _world(Gs, Ms, STAFF_SAMPLES)                         # (C, n, 3)
+    ys = STAFF_SAMPLES[:, 1]
+    s = np.clip(_slides(Gs), ys[0], STAFF_ORB_Y)
+    wseg = np.clip((ys[None, 1:] - s[:, None]) / (ys[1:] - ys[:-1])[None], 0.0, 1.0)   # fist → orb part of a segment
+    orb = W[:, -1]
+    fist = Ms[:3, 3]
+    d = orb - fist
+    rel = orb - p.bones["head"][fi][:3, 3]
+    occ = p.occluder(SOCKET["staff"])
+    out = {}
+    for view, v in V_VIEW.items():
+        seg = W[:, 1:] - W[:, :-1]
+        seg_s = np.linalg.norm(seg - (seg @ v)[..., None] * v, axis=-1)          # projected segment lengths
+        vis = occ.visible(fi, view, W).astype(np.float64)
+        # the fist and its cuff wrap the haft by design: within the hilt zone the haft reads where the fist reads
+        if occ.visible(fi, view, fist[None])[0]:
+            vis[np.abs(ys[None, :] - s[:, None]) < HILT_R] = 1.0
+        vseg = 0.5 * (vis[:, 1:] + vis[:, :-1])
+        along = rel @ v
+        perp = np.linalg.norm(rel - np.outer(along, v), axis=1)
+        off = occ.outside(fi, view, W).astype(np.float64)
+        oseg = 0.5 * (off[:, 1:] + off[:, :-1])
+        out[view] = {"vis": (wseg * seg_s * vseg).sum(1) / STAFF_ORB_Y,
+                     "out": (wseg * seg_s * oseg).sum(1) / STAFF_ORB_Y, "orbOut": off[:, -1] > 0.5,
+                     "sl": np.linalg.norm(d - np.outer(d @ v, v), axis=1) / STAFF_ORB_Y,
+                     "su": (d @ _view_up(v)) / STAFF_ORB_Y, "orb": vis[:, -1] > 0.5,
+                     "behind": (along > 0) & (perp < 0.22), "headd": perp}
+    return out
+
+
 def read_staff_screen(kind: str):
     """Staff readability measured on screen (art review: in the warrior's Run the staff swung up the view ray and hid
     behind the helm, in Cast01 / the rogue's Attack03 it pointed at the camera and shrank to an orb blob at the fist,
-    with the orb down at the feet it read as a mop): in the se *and* sw W1 views the fist → orb vector keeps ≥ 65 % of
-    its length, the orb sits above the fist on screen (``SCREEN_UP``: carry ≥ .30, casts ≥ .40 of the shaft, attacks
-    level or above) and is not hidden behind the head."""
+    with the orb down at the feet it read as a mop; fifth look: it hid *behind his body* from sw): in the se *and* sw
+    W1 views — each view a full penalty, sw weighted as se — the fist → orb shaft keeps ≥ 65 % of its length on
+    screen and unhidden (``staff_screen``: ``vis``), the orb sits above the fist on screen (``SCREEN_UP``: carry ≥
+    .30, casts ≥ .40 of the shaft, attacks level or above), is visible and not behind the head."""
     lim = SCREEN_UP[kind]
+    # the orb clear of the head / hood on screen (fifth look: the rogue's Attack03 se contact laid the orb against
+    # her hood, a stick across the torso) — strikes and casts keep it a hand further off than the carry
+    head_clear = 0.22 if kind == "carry" else 0.30
+    # steep floors just above the QA gate (the carry is gated on every frame: .65 on screen, the orb ≥ .30 up)
+    floor = READ_GATE["staff"]["carry"] + 0.02 if kind == "carry" else READ_GATE["staff"]["hit"] + 0.05
+    up_floor = READ_GATE["staff"]["carryUp"] if kind == "carry" else (
+        READ_GATE["staff"]["hitUp"]["cast"] if kind == "cast" else -1.0)
 
     def fn(p, fi, Ms, Gs, smp):
-        orb = _world(Gs, Ms, np.array([[0.0, STAFF_ORB_Y, 0.0]]))[:, 0]
-        d = orb - Ms[:3, 3]
-        rel = orb - p.bones["head"][fi][:3, 3]
+        st = staff_screen(p, fi, Ms, Gs)
         pen = np.zeros(len(Gs))
-        for v in V_VIEW.values():
-            sl = np.linalg.norm(d - np.outer(d @ v, v), axis=1) / STAFF_ORB_Y
-            su = (d @ _view_up(v)) / STAFF_ORB_Y
-            along = rel @ v                                    # > 0: farther from the camera than the head
-            perp = np.linalg.norm(rel - np.outer(along, v), axis=1)
-            pen += np.maximum(0, 0.65 - sl) * 4 + np.maximum(0, lim - su) * 3 + ((along > 0) & (perp < 0.22)) * 1.5
-        return pen / len(V_VIEW)
+        for v in st.values():
+            pen += (np.maximum(0, 0.72 - v["vis"]) * 5 + np.maximum(0, floor - v["vis"]) * 25
+                    + np.maximum(0, 0.25 - v["vis"]) * 6
+                    + np.maximum(0, lim - v["su"]) * 3 + np.maximum(0, up_floor + 0.03 - v["su"]) * 15
+                    + v["behind"] * 1.5 + (~v["orb"]) * 4.0 + np.maximum(0, head_clear - v["headd"]) * 4)
+            if kind != "carry":
+                # a strike / cast reads against the ground: the orb and a third of the shaft off the body's
+                # silhouette (fifth look: the rogue's Attack03 staff lay across her torso, a stick, not a strike)
+                pen += np.maximum(0, 0.35 - v["out"]) * 4 + (~v["orbOut"]) * 2.0
+        return pen
     return fn
 
 
 def search_spec(cls: str, fam: str, group: str, clip: str | None = None):
     """(readability, max tilt, w_tilt, w_read) per group / family / class (``clip``: the one clip a track or a
     per-clip search plans for)."""
-    if fam == "staff" and cls != "Mage" and clip not in (None, "Idle", "Portrait") and group in ("carry", "strike"):
+    if fam == "staff" and cls != "Mage" and clip not in (None, "Portrait") and group in ("carry", "strike"):
         kind = "carry" if group == "carry" else ("cast" if clip in CAST_CLIPS else "attack")
         return read_staff_screen(kind), 180.0, (0.002 if group == "carry" else 0.01), 1.0
     if fam == "bow" and group == "strike":       # the D toward the camera in attacks and casts too
         return read_bow, 180.0, 0.01, 1.0
+    if fam == "shield" and group == "strike":    # the face toward sw (fifth look: its back at the Cast01 release)
+        return read_shield_face, SHIELD_TILT, 0.01, 1.0
+    if fam == "axe" and group == "strike":       # the bit flat to se and sw (fifth look: edge-on at the hit-stops)
+        return read_axe_floor, 180.0, 0.01, 1.0
     if fam == "wand" and cls in ("Warrior", "Rogue") and group == "carry":
         return read_wand_out, 180.0, 0.002, 1.0   # held forward and outboard, clear of the body on screen
     if group in ("strike", "dodge", "death"):
@@ -971,28 +1268,40 @@ class Searcher:
             step = 3 if c["name"] in GROUPS["carry"] else 2
             frs = set(range(0, c["frames"], step)) | {c["frames"] - 1} | ({c["beat"]} if c["beat"] >= 0 else set())
             idx += [(c["name"], fr, c["start"] + fr) for fr in sorted(frs)]
-        t0 = time.time()
-        self.sdf = SDF(posed, idx)
-        self.sdf_all = SDF(posed, idx, rigid=False)
-        print(f"[grips] {posed.cls}: SDF on {len(idx)} frames in {time.time() - t0:.0f}s", flush=True)
+        self._idx = idx
+        self._sdf = None
         self.qa = GripQA(posed)
         self._clip_sdf = {}
+
+    def _grids(self):
+        """The sampled-frame SDF grids, built on first use (a track plans on its own clip's grids)."""
+        if self._sdf is None:
+            t0 = time.time()
+            self._sdf = (SDF(self.p, self._idx), SDF(self.p, self._idx, rigid=False))
+            print(f"[grips] {self.p.cls}: SDF on {len(self._idx)} frames in {time.time() - t0:.0f}s", flush=True)
+        return self._sdf
+
+    @property
+    def sdf(self):
+        return self._grids()[0]
+
+    @property
+    def sdf_all(self):
+        return self._grids()[1]
 
     def score(self, item: Item, cands: list, clips, read=None, margin: float = 0.0, per_frame=None,
               sdfs=None) -> dict:
         """Aggregate candidate terms over the SDF frames of ``clips``; ``per_frame`` (a list) also collects
         (k, frame, bad, clearance, face, read) per frame for the track search; ``margin`` widens every clearance;
         ``sdfs`` = (rigid, whole) grids to use instead of the searcher's (the track search: every frame)."""
-        p, sdf = self.p, self.sdf
-        sdf_all = self.sdf_all
-        if sdfs is not None:
-            sdf, sdf_all = sdfs
+        p = self.p
+        sdf, sdf_all = sdfs if sdfs is not None else self._grids()
         fam, sock = item.fam, item.socket
         co = item.co[item.used]
         r = np.linalg.norm(co, axis=1)
         far = _fps(co[co[:, 1] > 0.085] if fam == "shield" else co[r > HILT_R], 70)
         smp = {"tip": co[np.argmax(co[:, 1])], "length": float(co[:, 1].max() - co[:, 1].min())}
-        ground = _fps(co, 120)
+        ground = _fps(item.co[item.low], 120)          # the ink hull included (Item.low)
         others = [(s, _fps(aco[np.unique(atr)], 40)) for a, (s, aco, atr) in p.atts.items()
                   if s != sock and not (fam == "bow" and s in ("weapon_r", "weapon_l"))]
         far_sub = far[:: max(1, len(far) // 36)]
@@ -1028,18 +1337,24 @@ class Searcher:
             st["minfar"] = np.minimum(st["minfar"], df)
             st["low"] = np.minimum(st["low"], low)
             hits = np.zeros(C)
-            if face_clip(fam, cn, fr, p.clip(cn)["beat"]):
+            strict = face_clip(fam, cn, fr, p.clip(cn)["beat"])
+            soft = not strict and fam in FACE_STRIKE_WHOLE and cn in GROUPS["strike"] and cn not in FACE_STRIKE_SKIP
+            face_k = np.zeros(C)
+            if strict or soft:
                 fc = p.face_center(fi)
                 for v in V_VIEW.values():
                     d = Pf - fc
                     along = d @ v
                     perp = d - along[..., None] * v
                     hits += ((np.linalg.norm(perp, axis=-1) < FACE_R[p.cls]) & (along < 0.0)).sum(1)
-                st["face"] += hits > 0
+                # the wind-up's soft preference grades *how much* of the face the boards cover (an edge-on shield
+                # crossing it costs less than its face held over it); the hard rule is all-or-nothing
+                face_k = (hits > 0).astype(float) if strict else np.minimum(1.0, hits / max(1.0, 0.25 * len(far)))
+                st["face"] += face_k
             rd = read(p, fi, Ms, Gs, smp) if read is not None else np.zeros(C)
             st["read"] += rd
             if per_frame is not None:
-                per_frame.append((k, fr, bad.copy(), df.copy(), hits > 0, rd))
+                per_frame.append((k, fr, bad.copy(), df.copy(), face_k, rd))
             st["n"] += 1
         st["face"] /= max(st["n"], 1)
         st["read"] /= max(st["n"], 1)
@@ -1072,9 +1387,69 @@ class Searcher:
             self._clip_sdf = {clip: (SDF(self.p, idx), SDF(self.p, idx, rigid=False))}
         return self._clip_sdf[clip]
 
+    def _staff_gate(self, item: Item, clip: str, Gs: np.ndarray, cost: np.ndarray, pool: list, feas: np.ndarray,
+                    plan, path: list, rounds: int = 3, per_frame: int = 30):
+        """**Gate repair** of a staff carry track (fifth look: the soft readability cost left frames under the QA's
+        every-frame gate): on every frame where some exactly-feasible candidate passes ``READ_GATE['staff']`` (.65
+        on screen in se and sw, the orb ≥ .30 up, visible, clear of the head) the plan may only use such candidates;
+        frames whose pool holds none get the frame's best gate-passing candidates (``per_frame``, checked exactly
+        on the whole clip) first. → (pool, feas, path)."""
+        g = READ_GATE["staff"]
+        c = self.p.clip(clip)
+        F, c0, sock = c["frames"], c["start"], item.socket
+        skip0 = c.get("additive")
+
+        def gate(idx) -> np.ndarray:
+            out = np.zeros((F, len(idx)), bool)
+            for f in range(F):
+                if skip0 and f == 0:
+                    out[f] = True
+                    continue
+                st = staff_screen(self.p, c0 + f, self.p.bones[sock][c0 + f], Gs[np.asarray(idx)])
+                m = np.minimum(st["se"]["vis"], st["sw"]["vis"])
+                su = np.minimum(st["se"]["su"], st["sw"]["su"])
+                orb = st["se"]["orb"] & st["sw"]["orb"] & ~st["se"]["behind"] & ~st["sw"]["behind"]
+                out[f] = (m >= g["carry"] + 0.01) & (su >= g["carryUp"] + 0.01) & orb
+            return out
+        gok = gate(pool)
+        for r in range(rounds):
+            good = feas & gok
+            missing = [f for f in range(F) if not good[f].any()]
+            if missing:
+                have, add = set(pool), []
+                all_idx = np.arange(len(Gs))
+                for f in missing:
+                    if skip0 and f == 0:
+                        continue
+                    st = staff_screen(self.p, c0 + f, self.p.bones[sock][c0 + f], Gs)
+                    m = np.minimum(st["se"]["vis"], st["sw"]["vis"])
+                    su = np.minimum(st["se"]["su"], st["sw"]["su"])
+                    orb = st["se"]["orb"] & st["sw"]["orb"] & ~st["se"]["behind"] & ~st["sw"]["behind"]
+                    ok = all_idx[(m >= g["carry"] + 0.01) & (su >= g["carryUp"] + 0.01) & orb]
+                    for i in ok[np.argsort(cost[f, ok])][:per_frame]:
+                        if int(i) not in have:
+                            have.add(int(i))
+                            add.append(int(i))
+                add = add[:360]
+                print(f"[grips] gate {self.p.cls} staff {clip}: no gate-passing grip on {len(missing)} frames "
+                      f"{missing[:10]} -> +{len(add)} candidates", flush=True)
+                if add:
+                    pool = pool + add
+                    feas = np.concatenate([feas, self.qa.feasible(item, Gs[add], clip)], 1)
+                    gok = np.concatenate([gok, gate(add)], 1)
+                    good = feas & gok
+            hard = good.any(1)
+            path = plan(pool, np.where(hard[:, None], good, feas))
+            weak = [f for f in range(F) if hard[f] and not good[f, path[f]]]
+            print(f"[grips] gate {self.p.cls} staff {clip}: round {r}: {int((~hard).sum())} frames without a "
+                  f"gate-passing grip, {len(weak)} planned off it {weak[:10]}", flush=True)
+            if not weak and hard.all():
+                break
+        return pool, feas, path
+
     def track(self, item: Item, cls: str, group: str, clip: str, loop: bool, margin: float = 0.004,
               pool_all: int = 140, pool_frame: int = 10, rounds: int = 3, seeds=None,
-              rescue: int = 2) -> tuple[dict, list[int]]:
+              rescue: int = 2, gate_repair: bool = True) -> tuple[dict, list[int]]:
         """A keyed grip track for a clip no static grip clears. On every frame of the clip the candidate grips are
         scored on that frame's SDF (clearance incl. the hilt zone, ground, face disc, readability, tilt); a pool of
         the best overall and per frame is checked with the **exact** QA on every frame (``GripQA.feasible``); a
@@ -1091,10 +1466,13 @@ class Searcher:
         # a roll / fall tumbles the whole body ~25°/frame: a faster weapon turn hides in it
         # (casts: the hand flings out at the release — a staff / bow held up through it may turn as fast)
         snap = 45.0 if group in ("dodge", "death") or (clip in CAST_CLIPS and item.fam in FACE_STRIKE) else 24.0
+        mt = mt if item.fam == "shield" else 180.0
         # a turn faster than 12°/frame (in the fist *and* in the world) costs ``flick``: only an intersection was
         # worth one; a staff / bow strike may also flick to stay readable (~3 frames of the orb at the fist)
-        flick = 30.0 if (group == "strike" and item.fam in FACE_STRIKE) else 300.0
-        cands = candidates(item.fam, 180.0)
+        flick = 30.0 if (group == "strike" and item.fam in HIT_WEIGHTED) else 300.0
+        # staff tracks plan on a finer sphere (fifth look: on the warrior's Idle only ~0.4 % of the grips keep the staff
+        # .65 on screen in both views — the 240-direction set held almost none that also cleared the body)
+        cands = candidates(item.fam, mt, ndirs=600 if item.fam == "staff" else 240)
         for G in (seeds or []):
             G = np.asarray(G, float)
             s_ = -float((G[:3, :3].T @ G[:3, 3])[1])
@@ -1114,7 +1492,7 @@ class Searcher:
         beat = self.p.clip(clip)["beat"]
 
         def wread(fr: int) -> float:
-            hit = (group == "strike" and item.fam in FACE_STRIKE and beat >= 0
+            hit = (group == "strike" and item.fam in HIT_WEIGHTED and beat >= 0
                    and beat - FACE_STRIKE_LEAD <= fr <= beat + HIT_READ_TAIL)
             return HIT_READ_W if hit else 1.0
         cost = np.stack([3.0 * x[2] + 6.0 * x[4] + 3.0 * wr * wread(x[1]) * x[5] + wt * tilt + 0.006 * rdev
@@ -1240,6 +1618,8 @@ class Searcher:
             pool = pool + add
             feas = np.concatenate([feas, self.qa.feasible(item, Gs[add], clip)], 1)
             path = plan(pool, feas)
+        if item.fam == "staff" and group == "carry" and read is not None and gate_repair:
+            pool, feas, path = self._staff_gate(item, clip, Gs, cost, pool, feas, plan, path)
         self.last = {"pool": pool, "feas": feas, "cost": cost, "path": path, "cands": cands, "rd": rd_all}
         keys = []
         for f, ci in enumerate(path):
@@ -1407,7 +1787,7 @@ def hit_hold(posed: Posed, item: Item, track: dict, clip: str, ramp: int = 4, sn
     if hold_base <= min_pen:
         info["skip"] = "readable"
         return None, info
-    cands = candidates(item.fam, 180.0, ndirs=ndirs)
+    cands = candidates(item.fam, SHIELD_TILT if item.fam == "shield" else 180.0, ndirs=ndirs)
     Rk = np.stack([M[beat][:3, :3] @ g[0][:3, :3] for g in cands])          # world rotation held over the window
     sk = np.array([g[3] for g in cands])
     tot = np.zeros(len(cands))
@@ -1482,7 +1862,10 @@ def hit_hold(posed: Posed, item: Item, track: dict, clip: str, ramp: int = 4, sn
     return {"keys": keys, "loop": track.get("loop", False), "hold": [h0, h1]}, info
 
 
-HOLD_READ = {"bow": read_bow, "axe": read_axe, "shield": read_shield_face}
+HOLD_READ = {"bow": read_bow, "axe": read_axe_floor, "shield": read_shield_face}
+# a shield strapped to the forearm turns at most this far off its strapped attitude in a track / hold (beyond it the
+# forearm visibly leaves the straps)
+SHIELD_TILT = 60.0
 # the axis a readability roll turns the item about (item space): the axe about its haft, a shield about the forearm
 # that runs through its straps (item Z), so the arm stays in them while the face turns
 ROLL_AXIS = {"axe": (0.0, 1.0, 0.0), "shield": (0.0, 0.0, 1.0), "bow": (0.0, 1.0, 0.0)}
@@ -1564,6 +1947,340 @@ def roll_pass(posed: Posed, item: Item, table: dict, cls: str, clip: str, window
         return {"track": {"keys": [dict(gjson(gmat(k_) @ _axis_rot(axis, deg)), fr=k_["fr"]) for k_ in tr["keys"]],
                           "loop": tr.get("loop", False), "roll": deg}}, info
     return {"grip": (f"read_{clip}", gjson(base[0] @ _axis_rot(axis, deg), kind="roll", rollDeg=deg))}, info
+
+
+# ── per-frame corrections (art review, fifth look) ──────────────────────────────────────────────────────────
+# one roll per clip (``roll_pass``) left the axe bit edge-on at most hit-stops (Warrior Attack02 .007, Mage Meteor
+# .005): the bit has to follow the hand frame by frame. A Viterbi pass picks a roll offset per frame among the
+# angles that pass the exact QA; a lift pass tilts an item about the fist (in the world) where it or its ink hull
+# would dip below the ground.
+ROLL_ANGLES = tuple(range(-90, 91, 10))
+LIFT_TILTS = (6.0, 12.0, 18.0, 25.0, 32.0, 40.0)
+
+
+def _viterbi(cost: np.ndarray, T: np.ndarray, loop: bool = False) -> list[int]:
+    """Min-cost state path: ``cost`` (F, K) per frame, ``T`` (K, K) transition cost (row → column); a looping clip's
+    last frame must turn back to its first."""
+    F, K = cost.shape
+
+    def run(a0):
+        acc, back = a0.copy(), np.zeros((F, K), np.int64)
+        for f in range(1, F):
+            tot = acc[:, None] + T
+            back[f] = np.argmin(tot, 0)
+            acc = tot[back[f], np.arange(K)] + cost[f]
+        return acc, back
+    if not loop:
+        acc, back = run(cost[0])
+        e = int(np.argmin(acc))
+    else:
+        best = None
+        for s0 in np.argsort(cost[0])[:8]:
+            a0 = np.full(K, 1e12)
+            a0[s0] = cost[0][s0]
+            acc, bk = run(a0)
+            fin = acc + T[:, s0]
+            e = int(np.argmin(fin))
+            if best is None or fin[e] < best[0]:
+                best = (fin[e], e, bk)
+        _, e, back = best
+    path = [e]
+    for f in range(F - 1, 0, -1):
+        path.append(int(back[f][path[-1]]))
+    return path[::-1]
+
+
+def _interp(A: np.ndarray, B: np.ndarray, t: float) -> np.ndarray:
+    m = np.eye(4)
+    m[:3, :3] = _slerp_rot(A[:3, :3], B[:3, :3], t)
+    m[:3, 3] = (1 - t) * A[:3, 3] + t * B[:3, 3]
+    return m
+
+
+def keys_from_frames(Gs: list[np.ndarray], loop: bool = False, deg: float = 0.6, cm: float = 0.2, **meta) -> dict:
+    """A keyed track from per-frame grips: every key the slerp / lerp of its kept neighbours reproduces within
+    ``deg`` / ``cm`` on every frame between them is dropped."""
+    F = len(Gs)
+    keep, a = [0], 0
+    b = a + 2
+    while b < F:
+        ok = all(_rot_angle(_interp(Gs[a], Gs[b], (g - a) / (b - a))[:3, :3], Gs[g][:3, :3]) <= deg
+                 and np.linalg.norm(_interp(Gs[a], Gs[b], (g - a) / (b - a))[:3, 3] - Gs[g][:3, 3]) * 100 <= cm
+                 for g in range(a + 1, b))
+        if ok:
+            b += 1
+            continue
+        keep.append(b - 1)
+        a = b - 1
+        b = a + 2
+    if F > 1 and keep[-1] != F - 1:
+        keep.append(F - 1)
+    return dict({"keys": [dict(gjson(Gs[f]), fr=int(f)) for f in keep], "loop": bool(loop)}, **meta)
+
+
+def _read_cost(fam: str, m: np.ndarray, hit: bool) -> np.ndarray:
+    """Soft readability cost of ``read_metric`` values ``m`` on a hit-stop / any other frame (``READ_GATE``)."""
+    g = READ_GATE[fam]
+    if hit:
+        return 6.0 * np.maximum(0, g["hitMean"] + 0.10 - m) + 25.0 * np.maximum(0, g["hit"] + 0.05 - m)
+    # off the hit-stop the wind-up still reads (fifth look: the rogue's Attack01 / 02 sw wind-ups showed the bit at
+    # ~20°, a thin dark spike, while passing the .15 floor)
+    return 3.0 * np.maximum(0, g["hitMean"] + 0.05 - m) + 12.0 * np.maximum(0, g["all"] + 0.05 - m)
+
+
+def _exact_grid(posed: Posed, item: Item, clip: str, grids, frames=None, cloth_max: int | None = None):
+    """Exact QA of ``grids[f][k]`` (per frame a list of candidate grips) → feasible (F, K) bool, lowCm (F, K)."""
+    c = posed.clip(clip)
+    F, K = c["frames"], max(len(g) for g in grids)
+    feas, low = np.zeros((F, K), bool), np.full((F, K), -99.0)
+    qa = GripQA(posed)
+    for f in (frames if frames is not None else range(F)):
+        ctx = qa.frame_ctx(c["start"] + f, sockets=(item.socket,), clear=item.fam in CLEAR)
+        face = face_clip(item.fam, clip, f, c["beat"])
+        for k, G in enumerate(grids[f]):
+            rec = qa.check(ctx, item, G, f, face=face)
+            w = GripQA.worst([rec])
+            feas[f, k] = GripQA.passes(w) and not rec.get("face", 0) and (cloth_max is None or
+                                                                          rec["cloth"] <= cloth_max)
+            low[f, k] = rec["lowCm"]
+    return feas, low
+
+
+def roll_track(posed: Posed, item: Item, table: dict, cls: str, clip: str, angles=ROLL_ANGLES,
+               max_step: float = 30.0) -> tuple[dict | None, dict]:
+    """**Per-frame readability roll** about ``ROLL_AXIS[fam]`` (the axe's haft, the shield's forearm): on every
+    frame the roll offsets (``angles``) of the clip's grip whose grips pass the exact QA; a Viterbi path minimises the
+    readability cost (``_read_cost``: the ``READ_GATE`` floors, ×hit-stop) + the turn between frames (≤ ``max_step``
+    °/frame) → (keyed track or None, info)."""
+    fam = item.fam
+    c = posed.clip(clip)
+    beat, F, s0 = c["beat"], c["frames"], c["start"]
+    h0, h1 = _hit_window(beat) if beat >= 0 else (F + 1, F + 1)
+    hw = hide_window(table, cls, fam, clip)
+    base = [grip(table, cls, fam, clip, f) for f in range(F)]
+    M = [posed.bones[item.socket][s0 + f] for f in range(F)]
+    Rs = [_axis_rot(ROLL_AXIS[fam], float(a)) for a in angles]
+    grids = [[base[f] @ R for R in Rs] for f in range(F)]
+    feas, _ = _exact_grid(posed, item, clip, grids)
+    m = np.array([[read_metric(fam, M[f] @ G) for G in grids[f]] for f in range(F)])
+    cost = np.zeros_like(m)
+    for f in range(F):
+        hidden = bool(hw and hw[0] <= f <= hw[1])
+        if hidden:
+            feas[f] = True
+            continue
+        cost[f] = _read_cost(fam, m[f], h0 <= f <= h1) + 0.002 * np.abs(angles)
+    cost += 1e6 * ~feas
+    A = np.asarray(angles, float)
+    D = np.abs(A[:, None] - A[None, :])
+    T = 0.01 * D + 0.0015 * D * D + 1e6 * (D > max_step)
+    path = _viterbi(cost, T, loop=c["loop"])
+    bad = [f for f in range(F) if not feas[f, path[f]]]
+    before = [read_metric(fam, M[f] @ base[f]) for f in range(F)]
+    after = [m[f, path[f]] for f in range(F)]
+    vis = [f for f in range(F) if not (hw and hw[0] <= f <= hw[1])]
+    hit = [f for f in vis if h0 <= f <= h1] or vis
+    info = {"meanAllBefore": round(float(np.mean([before[f] for f in vis])), 3),
+            "meanAllAfter": round(float(np.mean([after[f] for f in vis])), 3),
+            "hitBefore": round(float(np.mean([before[f] for f in hit])), 3),
+            "minHitBefore": round(min(before[f] for f in hit), 3),
+            "hitAfter": round(float(np.mean([after[f] for f in hit])), 3),
+            "minHitAfter": round(min(after[f] for f in hit), 3),
+            "minAllAfter": round(min(after[f] for f in vis), 3), "infeasible": bad[:12],
+            "angles": [int(angles[k]) for k in path]}
+    if bad:
+        return None, info
+    return keys_from_frames([grids[f][path[f]] for f in range(F)], loop=c["loop"], roll="track"), info
+
+
+def carry_roll(posed: Posed, item: Item, table: dict, cls: str, angles=ROLL_ANGLES) -> tuple[float | None, dict]:
+    """One roll about ``ROLL_AXIS[fam]`` for every READY / locomotion / hurt clip (the axe bit toward se *and* sw
+    in the carry, fifth look): the angle with the best mean ``read_metric`` over every carry frame among the angles
+    that pass the exact QA on all of them → (angle or None, info)."""
+    fam = item.fam
+    clips = tuple(c["name"] for c in posed.clips if c["name"] in GROUPS["carry"] and c["name"] not in QA_SKIP)
+    keyed = {f"r{a:+d}": (lambda cl, fr, R=_axis_rot(ROLL_AXIS[fam], float(a)): grip(table, cls, fam, cl, fr) @ R)
+             for a in angles}
+    rep = GripQA(posed).run({k: item for k in keyed}, keyed, clips=clips)
+    rows = []
+    for a in angles:
+        k = f"r{a:+d}"
+        ok = all(GripQA.passes(GripQA.worst(frs)) and not any(x.get("face", 0) for x in frs)
+                 for frs in rep[k].values())
+        ms = [read_metric(fam, posed.bones[item.socket][c["start"] + fr] @ keyed[k](c["name"], fr))
+              for c in posed.clips if c["name"] in clips for fr in range(c["frames"])]
+        rows.append((ok, float(np.mean(ms)), float(np.min(ms)), a))
+    base = next(r for r in rows if r[3] == 0)
+    info = {"meanBefore": round(base[1], 3), "minBefore": round(base[2], 3)}
+    ok_rows = sorted([r for r in rows if r[0]], key=lambda r: (r[1] + 0.3 * r[2], -abs(r[3])), reverse=True)
+    if not ok_rows or ok_rows[0][3] == 0:
+        info["skip"] = "no better feasible roll"
+        return None, info
+    info.update(meanAfter=round(ok_rows[0][1], 3), minAfter=round(ok_rows[0][2], 3), rollDeg=ok_rows[0][3])
+    return float(ok_rows[0][3]), info
+
+
+def apply_carry_roll(table: dict, posed: Posed, cls: str, fam: str, deg: float) -> None:
+    """Turn every carry clip's grip / track of (cls, fam) by ``deg`` about ``ROLL_AXIS[fam]`` (new ``<grip>_r``
+    grips: dodge / death keep theirs)."""
+    e = table["classes"][cls][fam]
+    R = _axis_rot(ROLL_AXIS[fam], deg)
+    for c in posed.clips:
+        if c["name"] not in GROUPS["carry"]:
+            continue
+        tr = e.get("tracks", {}).get(c["name"])
+        if tr:
+            for k in tr["keys"]:
+                k.update(gjson(gmat(k) @ R))
+            tr["carryRoll"] = deg
+            continue
+        name = e["clips"].get(c["name"], "carry")
+        new = name + "_r"
+        if new not in e["grips"]:
+            e["grips"][new] = gjson(gmat(e["grips"][name]) @ R, kind="carryRoll", rollDeg=deg)
+        e["clips"][c["name"]] = new
+
+
+def _world_tilts(tilts=LIFT_TILTS, azimuths: int = 8) -> list[np.ndarray]:
+    """World rotations about horizontal axes (``azimuths`` directions) by ``tilts`` degrees, identity first."""
+    out = [np.eye(3)]
+    for t in tilts:
+        for k in range(azimuths):
+            az = 2 * math.pi * k / azimuths
+            out.append(np.array(Matrix.Rotation(math.radians(t), 3, Vector((math.cos(az), math.sin(az), 0.0)))))
+    return out
+
+
+def lift_pass(posed: Posed, item: Item, table: dict, cls: str, clip: str, floor_cm: float = 0.3,
+              cloth_max: int | None = None, pad: int = 5, whole: bool = False) -> tuple[dict | None, dict]:
+    """**Lift** (art review, fifth look: an item and its ink hull 1–2 cm under the terrain in Death / Dodge /
+    Attack03 frames): where the clip's grip puts the lowest toon or hull vertex under ``floor_cm`` (or, ``whole``,
+    anywhere in the clip — e.g. to win a cloth margin: ``cloth_max``), tilt the item about the fist **in the world**
+    (``_world_tilts``) by the least angle that clears it and passes the exact QA, ±``pad`` frames of ramp, ≤ 15° of
+    world turn per frame (Viterbi); a readability-gated family keeps its ``READ_GATE`` cost → (keyed track or None,
+    info)."""
+    fam = item.fam
+    c = posed.clip(clip)
+    beat, F, s0 = c["beat"], c["frames"], c["start"]
+    h0, h1 = _hit_window(beat) if beat >= 0 else (F + 1, F + 1)
+    hw = hide_window(table, cls, fam, clip)
+    base = [grip(table, cls, fam, clip, f) for f in range(F)]
+    M = [posed.bones[item.socket][s0 + f] for f in range(F)]
+    feas0, low0 = _exact_grid(posed, item, clip, [[b] for b in base], cloth_max=cloth_max)
+    need = [f for f in range(F) if not (hw and hw[0] <= f <= hw[1]) and (low0[f, 0] < floor_cm or not feas0[f, 0])]
+    info = {"lowBefore": round(float(min(low0[f, 0] for f in range(F))), 2), "frames": need[:16]}
+    if not need:
+        info["skip"] = "clear"
+        return None, info
+    win = set(range(F)) if whole else {g for f in need for g in range(max(0, f - pad), min(F, f + pad + 1))}
+    Rw = _world_tilts()
+    grids = []
+    for f in range(F):
+        Rm = M[f][:3, :3]
+        grids.append([np.block([[Rm.T @ R @ Rm, np.zeros((3, 1))], [np.zeros((1, 3)), np.ones((1, 1))]]) @ base[f]
+                      for R in (Rw if f in win else Rw[:1])])
+    feas, low = _exact_grid(posed, item, clip, grids, cloth_max=cloth_max)
+    K = len(Rw)
+    tilt = np.array([0.0] + [t for t in LIFT_TILTS for _ in range(8)])
+    cost = np.full((F, K), 1e6)
+    for f in range(F):
+        n = len(grids[f])
+        ok = feas[f, :n] & (low[f, :n] >= floor_cm) if f in need else feas[f, :n]
+        if hw and hw[0] <= f <= hw[1]:
+            ok = np.ones(n, bool)
+        cf = 0.02 * tilt[:n] + 1e6 * ~ok
+        if fam in READ_GATE and fam != "staff":
+            cf = cf + _read_cost(fam, np.array([read_metric(fam, M[f] @ G) for G in grids[f]]), h0 <= f <= h1)
+        cost[f, :n] = cf
+    D = np.array([[_rot_angle(a, b) for b in Rw] for a in Rw])
+    T = 0.01 * D + 0.002 * D * D + 1e6 * (D > 15.0)
+    path = _viterbi(cost, T, loop=c["loop"])
+    bad = [f for f in range(F) if cost[f, path[f]] >= 1e6]
+    info.update(lowAfter=round(float(min(low[f, path[f]] for f in range(F))), 2),
+                tilts=[float(tilt[k]) for k in path], infeasible=bad[:12])
+    if bad:
+        return None, info
+    return keys_from_frames([grids[f][path[f]] for f in range(F)], loop=c["loop"], lift=floor_cm), info
+
+
+def read_fix(posed: Posed, item: Item, table: dict, cls: str, clip: str, searcher=None,
+             retrack: bool = True, force: bool = False) -> tuple[dict | None, dict]:
+    """**Readability fix** of one strike / cast clip that fails ``READ_GATE`` (fifth look: the axe bit edge-on at
+    most hit-stops, the shield's back at the rogue's Cast01 release): (a) the per-frame roll (``roll_track``); (b) the
+    hit-stop hold at one world angle (``hit_hold``) then the roll; (c) a keyed track re-planned with the family's
+    readability (``Searcher.track``: ``read_axe_floor`` / ``read_shield_face`` / ``read_staff_screen``, the hit-stop
+    ×``HIT_READ_W``) then hold and roll. Every step keeps the exact QA on every frame; the first that passes the gate
+    wins, else the best (fewest failures, then the hit-stop minimum) → (track or None when nothing beats the
+    shipped grip, info). ``force``: a clip that passes is still improved (every step tried, the best hit-stop kept —
+    the art review named the warrior's Attack03 / Cast01 / Cast02 / Cast_Charge staff for the hold)."""
+    fam = item.fam
+    e = table["classes"][cls][fam]
+
+    def with_track(tr):
+        t2 = json.loads(json.dumps(table))
+        t2["classes"][cls][fam].setdefault("tracks", {})[clip] = tr
+        return t2
+
+    def judge(t2):
+        st = read_stats(t2, cls, fam, posed, only=(clip,))
+        r = st.get(clip, {})
+        fails = read_failures(st, fam)
+        return (len(fails), -r.get("minHit", r.get("minAll", 0.0)), -r.get("meanHit", 0.0)), r, fails
+    base_key, base_r, base_f = judge(table)
+    info = {"before": base_r, "steps": []}
+    if not base_f and not force:
+        info["skip"] = "passes"
+        return None, info
+    best = (base_key, None, base_r)
+
+    def consider(name, tr):
+        nonlocal best
+        if tr is None:
+            info["steps"].append(f"{name}: none")
+            return False
+        k, r, f = judge(with_track(tr))
+        info["steps"].append(f"{name}: {r} {'PASS' if not f else f[:1]}")
+        if k < best[0] and (not force or k[1] < base_key[1] - 0.05):
+            best = (k, tr, r)
+        return not f and not force
+
+    def roll_on(tr):
+        t2 = with_track(tr) if tr is not None else table
+        new, _ = roll_track(posed, item, t2, cls, clip) if fam in ROLL_AXIS else (None, None)
+        return new
+
+    def hold_on(tr):
+        t2 = with_track(tr) if tr is not None else table
+        cur = t2["classes"][cls][fam].get("tracks", {}).get(clip) or \
+            {"keys": [dict(gjson(grip(t2, cls, fam, clip, 0)), fr=0)], "loop": False}
+        new, hinfo = hit_hold(posed, item, cur, clip, min_pen=0.0)
+        if new is None:
+            info["steps"].append(f"hold: {hinfo.get('skip')}")
+        return new
+    r_a = roll_on(None)
+    if consider("roll", r_a):
+        return best[1], dict(info, after=best[2])
+    h = hold_on(None)
+    if h is not None:
+        if consider("hold", h):
+            return best[1], dict(info, after=best[2])
+        if consider("hold+roll", roll_on(h)):
+            return best[1], dict(info, after=best[2])
+    if retrack and searcher is not None:
+        searcher = searcher() if callable(searcher) else searcher
+        group = next(g for g, cl in GROUPS.items() if clip in cl)
+        seeds = [grip(table, cls, fam, "Idle", 0)]
+        old = e.get("tracks", {}).get(clip)
+        seeds += [gmat(k) for k in old["keys"]] if old else [grip(table, cls, fam, clip, 0)]
+        tr, bad = searcher.track(item, cls, group, clip, posed.clip(clip)["loop"], seeds=seeds)
+        if not bad:
+            if consider("track", tr):
+                return best[1], dict(info, after=best[2])
+            h2 = hold_on(tr)
+            if h2 is not None and consider("track+hold", h2):
+                return best[1], dict(info, after=best[2])
+            consider("track+hold+roll", roll_on(h2 if h2 is not None else tr))
+    return best[1], dict(info, after=best[2])
 
 
 def sling_plan(posed: Posed, item: Item) -> tuple[dict, dict]:
@@ -1656,16 +2373,28 @@ def main(argv=None) -> int:
                                                   "windows where nothing passes)")
     ap.add_argument("--out", default="", help="write the table here instead (parallel searches; merge after)")
     ap.add_argument("--classes", default=",".join(CLASSES), help="--qa: only these classes")
+    ap.add_argument("--json", default="", help="--qa: also write the whole result here")
     ap.add_argument("--tracks", default="", help="classes: give every clip that fails the exact QA at its static grip "
                                                   "a keyed grip track (Viterbi over the candidate grips)")
     ap.add_argument("--force", default="", help="--tracks: also re-track these clips when their grip passes "
                                                  "(readability: e.g. Idle,Walk,Run,Hurt,HurtAdd)")
+    ap.add_argument("--force-only", action="store_true", help="--tracks: re-track only the --force clips (skips the "
+                                                               "whole-class QA that finds the failing ones)")
     ap.add_argument("--sling", default="", help="classes: sling the --fams shield on the back (spine_03)")
     ap.add_argument("--bow-socket", default="", help="--search: plan the bow on this socket only (weapon_l|weapon_r)")
     ap.add_argument("--hold", default="", help="Cls:fam:Clip[,…]: hit-stop hold pass on an existing strike track "
                                                 "(one world orientation through the contact / release)")
     ap.add_argument("--roll", default="", help="Cls:fam:Clip[:window][,…] or Cls[,…] with --fams: readability roll "
                                                 "about ROLL_AXIS (every strike / cast clip of the class)")
+    ap.add_argument("--rolltrack", default="", help="Cls:fam:Clip[,…] or Cls[,…] with --fams: per-frame readability "
+                                                     "roll (Viterbi) on every strike / cast clip")
+    ap.add_argument("--carry-roll", default="", help="classes: one readability roll for every carry clip (--fams)")
+    ap.add_argument("--readfix", default="", help="Cls:fam:Clip[,…] or Cls[,…] with --fams: roll → hold → re-track "
+                                                   "every strike / cast clip that fails READ_GATE")
+    ap.add_argument("--no-retrack", action="store_true", help="--readfix: roll and hold only")
+    ap.add_argument("--readfix-force", default="", help="--readfix: these clips are improved even when they pass")
+    ap.add_argument("--lift", default="", help="Cls:fam:Clip[:whole][:clothN][,…]: tilt the item about the fist where "
+                                                "it or its ink hull dips under the ground")
     a = ap.parse_args(argv)
     if a.out:
         global GRIPS_JSON
@@ -1733,12 +2462,13 @@ def main(argv=None) -> int:
             if not todo:
                 continue
             posed = Posed(cls)
-            res = qa_all(t, {f: items[f] for f in todo}, {cls: posed})
+            forced = [c for c in a.force.split(",") if c]
+            res = None if a.force_only else qa_all(t, {f: items[f] for f in todo}, {cls: posed})
             s = None
             for fam in todo:
                 e = t["classes"][cls][fam]
-                fails = [c for c, w in res["classes"][cls][fam].items()
-                         if not GripQA.passes(w) or c in a.force.split(",")]
+                fails = forced if res is None else [c for c, w in res["classes"][cls][fam].items()
+                                                    if not GripQA.passes(w) or c in forced]
                 print(f"[grips] tracks {cls} {fam}: static grips fail {fails}", flush=True)
                 if not fails:
                     continue
@@ -1774,9 +2504,8 @@ def main(argv=None) -> int:
             t = load_table()
             e = t["classes"][cls][fam]
             tr = e.get("tracks", {}).get(clip)
-            if not tr:
-                print(f"[grips] hold {spec}: no track", flush=True)
-                continue
+            if not tr:            # a static grip: hold from it (one key)
+                tr = {"keys": [dict(gjson(grip(t, cls, fam, clip, 0)), fr=0)], "loop": False}
             if fam not in items:
                 items.update(build_items([fam]))
             posed.setdefault(cls, Posed(cls))
@@ -1825,14 +2554,111 @@ def main(argv=None) -> int:
                     e["grips"][name] = g
                     e["clips"][clip] = name
                 save_table(t)
+    posed_c: dict[str, Posed] = {}
+
+    def posed_of(cls: str) -> Posed:
+        if cls not in posed_c:
+            posed_c[cls] = Posed(cls)
+        return posed_c[cls]
+
+    def item_of(fam: str, t: dict, cls: str) -> Item:
+        if fam not in items:
+            items.update(build_items([fam]))
+        return items[fam].on(socket_for(t, cls, fam))
+    if a.lift:
+        for spec in [x for x in a.lift.split(",") if x]:
+            parts = spec.split(":")
+            cls, fam, clip = parts[:3]
+            whole = "whole" in parts[3:]
+            cm = next((int(x[5:]) for x in parts[3:] if x.startswith("cloth")), None)
+            t = load_table()
+            t0 = time.time()
+            new, info = lift_pass(posed_of(cls), item_of(fam, t, cls), t, cls, clip, cloth_max=cm, whole=whole)
+            print(f"[grips] lift {spec}: {info} ({time.time() - t0:.0f}s)", flush=True)
+            if new:
+                t = load_table()
+                t["classes"][cls][fam].setdefault("tracks", {})[clip] = new
+                save_table(t)
+    if a.carry_roll:
+        for cls in [x for x in a.carry_roll.split(",") if x]:
+            for fam in fams:
+                t = load_table()
+                if not t.get("classes", {}).get(cls, {}).get(fam) or not shown(cls, fam):
+                    continue
+                t0 = time.time()
+                deg, info = carry_roll(posed_of(cls), item_of(fam, t, cls), t, cls)
+                print(f"[grips] carry roll {cls} {fam}: {info} ({time.time() - t0:.0f}s)", flush=True)
+                if deg is not None:
+                    t = load_table()
+                    apply_carry_roll(t, posed_of(cls), cls, fam, deg)
+                    save_table(t)
+    if a.rolltrack:
+        specs = []
+        for spec in [x for x in a.rolltrack.split(",") if x]:
+            if ":" in spec:
+                specs.append(tuple(spec.split(":")[:3]))
+            else:
+                t = load_table()
+                specs += [(spec, fam, c) for fam in fams if t.get("classes", {}).get(spec, {}).get(fam)
+                          and shown(spec, fam) for c in GROUPS["strike"]]
+        for cls, fam, clip in specs:
+            p_ = posed_of(cls)
+            if clip not in {c["name"] for c in p_.clips}:
+                continue
+            t = load_table()
+            t0 = time.time()
+            new, info = roll_track(p_, item_of(fam, t, cls), t, cls, clip)
+            print(f"[grips] rolltrack {cls} {fam} {clip}: {info} ({time.time() - t0:.0f}s)", flush=True)
+            better = (info["minHitAfter"] > info["minHitBefore"] + 0.02 or info["hitAfter"] > info["hitBefore"] + 0.02
+                      or info["meanAllAfter"] > info["meanAllBefore"] + 0.03)
+            if new and better:
+                t2 = json.loads(json.dumps(t))
+                t2["classes"][cls][fam].setdefault("tracks", {})[clip] = new
+                if read_failures(read_stats(t2, cls, fam, p_, only=(clip,)), fam):
+                    print(f"[grips] rolltrack {cls} {fam} {clip}: the rolled track fails the gate — kept", flush=True)
+                    continue
+                t = load_table()
+                t["classes"][cls][fam].setdefault("tracks", {})[clip] = new
+                save_table(t)
+    if a.readfix:
+        specs = []
+        for spec in [x for x in a.readfix.split(",") if x]:
+            if ":" in spec:
+                specs.append(tuple(spec.split(":")[:3]))
+            else:
+                t = load_table()
+                specs += [(spec, fam, c) for fam in fams if t.get("classes", {}).get(spec, {}).get(fam)
+                          and shown(spec, fam) and fam in READ_GATE for c in GROUPS["strike"]]
+        searchers: dict[str, Searcher] = {}
+        for cls, fam, clip in specs:
+            p_ = posed_of(cls)
+            if clip not in {c["name"] for c in p_.clips} or p_.clip(clip)["beat"] < 0:
+                continue
+            t = load_table()
+            t0 = time.time()
+            def get_searcher(c=cls, pp=p_):
+                if c not in searchers:
+                    searchers[c] = Searcher(pp)
+                return searchers[c]
+            new, info = read_fix(p_, item_of(fam, t, cls), t, cls, clip, get_searcher, not a.no_retrack,
+                                 force=clip in a.readfix_force.split(","))
+            print(f"[grips] readfix {cls} {fam} {clip}: {info} ({time.time() - t0:.0f}s)", flush=True)
+            if new:
+                t = load_table()
+                t["classes"][cls][fam].setdefault("tracks", {})[clip] = new
+                save_table(t)
     if a.qa:
-        posed = {c: Posed(c) for c in a.classes.split(",") if c}
+        posed = {c: posed_of(c) for c in a.classes.split(",") if c}
         res = qa_all(load_table(), items, posed)
         print(qa_table(res))
         for cls, fams_r in res["read"].items():
             for fam, clips in fams_r.items():
-                print(f"  read {fam:6s} {cls:7s} " + "  ".join(f"{c} {r['minHit']:.2f}/{r['meanHit']:.2f}/"
-                                                              f"{r['minAll']:.2f}" for c, r in clips.items()))
+                print(f"  read {fam:6s} {cls:7s} " + "  ".join(
+                    f"{c} {r['minHit']:.2f}/{r['meanHit']:.2f}/{r['minAll']:.2f}" if "minHit" in r else
+                    f"{c} carry {r['minAll']:.2f}/{r['meanAll']:.2f} up {r['minUp']:.2f} bad {r['nBad']}"
+                    for c, r in clips.items()))
+        if a.json:
+            Path(a.json).write_text(json.dumps(res, indent=1, default=str))
         for f in res["failures"]:
             print("  FAIL", f)
         for f in res["info"]:

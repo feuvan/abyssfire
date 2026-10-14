@@ -1765,7 +1765,9 @@ unreachable in Ch1 because the bond cap is 3.
 * `basicReadyAt = now + combat.attackMs`; face the target.
 * **Ranged** (Ch1). Play cast. `release = round(castDuration × 0.46)` (frame-sheet cast, `CharacterAnimator.ts:949-950,
   990`). For the `flying` anim category `castDuration = 350`, so **161 ms** (`:114, 164-170`). Then
-  `lockedUntil = now + release + 60`.
+  `lockedUntil = now + release + 60`. *UE:* the shipped clip is authoritative (`ComputeCastTiming`: the manifest
+  `Cast01` `releaseMs` wins over the rig default, like every hero / monster beat): `SK_Pet_Sprite` releases at
+  **200 ms** (web `PET_CAST_RELEASE_FRAME` 2 at 10 fps); 161 ms remains the flying fallback without art.
   * At release, if the target is alive: launch the monster-ranged projectile from the pet (8 px above its anchor)
     toward the target. Flight time is `clamp(dist_px × 2, 200, 500)` ms (combat spec §5.2;
     `SkillEffectSystem.ts:183-212`; port `dist_px = tileDist × 36`). Colour `0x8ff0c0` falls into the "shadow" palette

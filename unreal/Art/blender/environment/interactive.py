@@ -7,7 +7,7 @@
 | Asset | game ids | look / behaviour |
 |---|---|---|
 | ``SK_Prop_TreasureChest`` | ``decor_treasure_chest``, ``treasure_chest`` | ≈ 0.65 × 0.5 m chest ``#8A4E2A`` with brass straps / rim ``#E0AA3A``, lock ``#F0C050`` (keyhole ``#3A1E0C``), an ember-gold seam ``#FFE080`` (focal accent), gold + a ``#FF5A7A`` gem inside; skeleton ``SKEL_Prop_Chest`` (``root``, ``lid``), clips ``Idle`` (1000 ms loop, a restless rattle) and ``Open`` (400 ms, notify ``ChestOpen`` → NS_World_ChestOpen) |
-| ``SM_Prop_GoldPile`` | ``decor_gold_pile``, ``gold_pile`` | coin mound ≈ 0.53 × 0.28 m ``#F0B83A`` with spilled coins and a gem |
+| ``SM_Prop_GoldPile`` | ``decor_gold_pile``, ``gold_pile`` | coin mound ≈ 0.53 × 0.28 m in the loot family's coin language (``SM_Pickup_Gold_L``): ≈ 40 coins flush on a darker heap under one clean hull, a summit stack of seven + a stack of three (lit rims), crest / spilled / leaning coins with their own hulls, a gem |
 | ``SM_Prop_Event_RunePillar`` | ``decor_event_puzzle_rune_pillar`` | base ``#5A6664`` 0.7 × 0.2 m, tapered pillar ``#6F7C7A`` to 1.48 m, zig-zag rune ``#2A9AD8`` / core ``#DFF8FF`` |
 | ``SM_Prop_ExitPortal`` | ``exit_portal`` | 2.6 m elven stone frame round a teal vortex disc (``#3FE0A0`` → ``#1A6A8A``, swirl strokes), two 1.2 m rune stones ``#6A7A8A``, a ground ring of rune marks; NS_World_ExitPortal adds the motion |
 | ``SM_Prop_ExitGate_Sealed`` | ``exit_gate_sealed``, ``exit_sealed`` | W7: the same frame barricaded — nailed planks, an iron chain and padlock across a dormant, crimson-sealed vortex ``#6A2230``, a warning plank; "第二章即将开放" is UI |
@@ -63,6 +63,14 @@ REGIONS = dict(
     seam=Region("#FFE080", .0, .0, e=0.85),
     gold=Region("#F0B83A", .35, .50),
     gold_hi=Region("#FFE89A", .25, .40),
+    # gold pile: the loot family's coin language (items/loot.py COIN_RIM / COIN_FACE / heap, rim_lean / face_lean) so
+    # the hidden-area pile and SM_Pickup_Gold_L read as the same gold (coherence pass)
+    coin_rim=Region("#E3A631", .38, .45),
+    coin_face=Region("#F6C84A", .32, .55),
+    coin_heap=Region("#D69A2A", .40, .40),
+    coin_rim_lean=Region("#E3A631", .16, .45),
+    coin_rim_hi=Region("#E3A631", .30, .62),      # stacked coins: lit rim bands (warmer light band)
+    coin_face_lean=Region("#F6C84A", .14, .55),
     gem=Region("#FF5A7A", .30, .40, e=0.35),
     gem_core=Region("#FFD0DC", .0, .0, e=0.8),
     pillar_base=Region("#5A6664", .45, .35),
@@ -513,8 +521,10 @@ def ship_chest(pal: Palette, previews: bool = True):
         rest_pose(arm)
         entry["previews"] = [str(Path(p).relative_to(rv.out.parent.parent)) for p, _ in rv.written]
         v = rv.ink_verdict()
+        baked_med = E.baked_bound(v, E.ink_px(pal.family, "interactive"))
         entry["inkGate"] = {k: v[k] for k in ("pass", "cells", "minFracRim", "minFracDark", "medianRimPx",
                                               "maxHullLumP95", "gate", "baked")}
+        entry["inkGate"]["bakedRimPx"] = baked_med
         entry["inkGate"]["cellsNote"] = "closed rest pose (game_1080crop) + Open end frame (game_open_1080crop)"
         E.RESULTS.append({"asset": name, "fbx": str(sk), "toonTris": E.tris(obj, 0), "hullTris": E.tris(obj, 1),
                           "ink": {k: v[k] for k in ("pass", "minFracRim", "minFracDark", "medianRimPx",
@@ -527,32 +537,172 @@ def ship_chest(pal: Palette, previews: bool = True):
 
 
 # ── gold pile ───────────────────────────────────────────────────────────────────────────────────────────
+GP_HR, GP_HH = 0.265, 0.165       # mound half width / height (web GoldPile.ts: 24 × 11 px → 0.53 × 0.28 m with coins)
+GP_R, GP_H = 0.040, 0.011         # coin radius / thickness (loot heap 3.0 cm; the web pile's coins are 2.4 px ≈ 5 cm)
+GP_HS = 0.014                     # stacked coins: a little thicker so their lit rims read as bands at 1080p
+
+
+def _gp_coin(r: float, h: float, both: bool = False, sides: int = 8) -> tuple:
+    """(rim, face) of a heap coin (items/loot.heap_coin: 8-sided bevelled rim + a raised top face; ``both`` adds the
+    underside face for coins tilted far enough to show it)."""
+    sys.path.insert(0, str(HERE.parent / "items"))
+    import itemkit as IK
+    rim = IK.revolve([(r * 0.84, -h / 2), (r, -h * 0.2), (r, h * 0.2), (r * 0.84, h / 2)], sides=sides).auto_sharp(40)
+    face = M.cylinder(r * 0.80, r * 0.80, h * 0.30, h * 0.62, sides=sides).auto_sharp(30)
+    if both:
+        face.merge(M.cylinder(r * 0.80, r * 0.80, -h * 0.62, -h * 0.30, sides=sides).auto_sharp(30))
+    return rim, face
+
+
 def build_goldpile(pal: Palette):
+    """Hidden-area reward (+200 gold, spec §6.8): a mound of coins ≈ 0.53 × 0.28 m in the **loot family's coin
+    language** (coherence pass: ``SM_Pickup_Gold_L``'s rim / face / heap regions) with **one clean hull** (art review
+    10: coins tilted off the slope near the equator stood out like fins and the mound's proxy, padded round them,
+    became a ragged dark shell 3-6 cm off the back — 4.4 px median rim for the 2 px interactive class; padded hulls
+    per outer coin drew dark donut rings across the pile). Now:
+
+    * a low, darker heap (the shadowed coins inside the pile) with its own **unpadded** hull;
+    * ≈ 30 coins laid **flush** on it (fully on the surface normal, sunk 3 mm, never below elevation ≈ 0.45 rad, no
+      hull: the rim band and the darker heap between them separate the coins), so nothing stands off the body;
+    * the read on top: a **summit stack of seven** thicker coins and a **stack of three** on the shoulder, lit rims
+      stacked into gold bands (one padded cylinder hull each, the loot family's stack);
+    * three coins stuck into the crest, three slid off the foot, the web's lone spilled coin to the right and a coin
+      leaning at the front, each with its own small hull (they set the silhouette); the ``#FF5A7A`` gem on the
+      right flank. The glint is the runtime glow card."""
+    sys.path.insert(0, str(HERE.parent / "items"))
+    import itemkit as IK
     name = "SM_Prop_GoldPile"
     b, rnd = new(pal, name)
-    mound = M.ellipsoid((0.27, 0.21, 0.16), (0, 0, 0.02), sides=14, rings=7)
-    for v in mound.bm.verts:
-        v.co.z = max(v.co.z, -0.01)
-    mid = b.add(mound, "gold", name="mound", hull_pad=True)
-    # coins lying on the mound (lit discs) and spilled round it
-    for q in range(16):
-        a = rnd.uniform(0, math.tau)
-        e = rnd.uniform(0.15, 1.2)
-        d = Vector((math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e)))
-        p = Vector((d.x * 0.27, d.y * 0.21, 0.02 + d.z * 0.16))
-        n = Vector((d.x / 0.27, d.y / 0.21, d.z / 0.16)).normalized()
-        coin = M.cylinder(0.042, 0.042, -0.005, 0.005, sides=10)
-        coin.transform(Vector((0, 0, 1)).rotation_difference(n.lerp(Vector((0, 0, 1)), 0.4)).to_matrix().to_4x4())
-        coin.translate(p + n * 0.004)
-        b.add(coin, "gold_hi" if q % 3 else "gold", name="coin", outline=False, covered_by=mid)
-    for q in range(6):
-        a = rnd.uniform(0, math.tau)
-        rr = rnd.uniform(0.3, 0.4)
-        coin = M.cylinder(0.042, 0.042, 0.0, 0.01, sides=10)
-        coin.transform(_rx(rnd.uniform(-12, 12))).translate((math.cos(a) * rr, math.sin(a) * rr * 0.8, 0.0))
-        b.add(coin, "gold", name="spill")
-    b.add(M.gem(0.045, 0.06, 0.04, sides=6).translate((0.06, -0.05, 0.17)), "gem", name="gem")
-    return E.finish(b, pal, "interactive", ground_h=0.25, name=name)
+    hr, hh, r, h = GP_HR, GP_HH, GP_R, GP_H
+
+    def hz(x, y):
+        d = math.hypot(x / hr, y / (hr * 0.82))
+        return hh * max(0.0, 1.0 - d * d) ** 0.8
+
+    def slope_n(x, y):
+        gx = (hz(x + 0.004, y) - hz(x - 0.004, y)) / 0.008
+        gy = (hz(x, y + 0.004) - hz(x, y - 0.004)) / 0.008
+        return Vector((-gx, -gy, 1.0)).normalized()
+
+    rings = []
+    for k, f in enumerate((1.0, 0.88, 0.72, 0.54, 0.34, 0.12)):
+        pts = []
+        for i in range(24):
+            a = math.tau * i / 24
+            wob = 1.0 + 0.06 * math.sin(4 * a + 1.3) + 0.035 * math.sin(7 * a)
+            x, y = hr * f * wob * math.cos(a), hr * 0.82 * f * wob * math.sin(a)
+            pts.append(Vector((x, y, hz(x / wob, y / wob) if k else 0.0)))
+        rings.append(pts)
+    b.add(IK.loft_rings(rings, cap0="fan", cap1="fan", dome1=0.006), "coin_heap", name="mound")
+
+    def coin_at(m: Matrix, rr: float, hh_: float, both: bool = False, sides: int = 8, floor: bool = True):
+        rp, fp = _gp_coin(rr, hh_, both, sides)
+        rp.transform(m)
+        fp.transform(m)
+        if floor:
+            lo = min(v.co.z for v in rp.bm.verts)
+            if lo < 0.0005:                               # a coin dipping under the floor: lift it
+                rp.translate((0.0, 0.0, 0.0005 - lo))
+                fp.translate((0.0, 0.0, 0.0005 - lo))
+        return rp, fp
+
+    def hulled(rp, fp, rim="coin_rim", face="coin_face"):
+        rid = b.add(rp, rim, name="coin_rim", hull_pad=True)
+        b.add(fp, face, name="coin_face", outline=False, covered_by=rid)
+
+    # flush coins: oriented to the surface normal, centre h/2 − 3 mm above the heap (the rim band shows ≈ 8 mm),
+    # Poisson-spaced ≥ 6 cm, kept off the foot (normalised radius ≤ 0.84 ≈ elevation ≥ 0.45 rad); a coin whose edge
+    # lifts off the curved heap by more than 1 cm sinks until it does not (nothing may stand proud of the mound's ink)
+    def flush_coin(rr: float, hh_: float) -> M.Part:
+        """A light heap coin (≈ 38 tris): 8-sided wall + a bevel ring in the rim region, the face octagon on top."""
+        bm = bmesh.new()
+        n8 = 8
+        lo = [bm.verts.new((math.cos(math.tau * i / n8) * rr, math.sin(math.tau * i / n8) * rr, -hh_ / 2))
+              for i in range(n8)]
+        up = [bm.verts.new((math.cos(math.tau * i / n8) * rr, math.sin(math.tau * i / n8) * rr, hh_ * 0.3))
+              for i in range(n8)]
+        inn = [bm.verts.new((math.cos(math.tau * i / n8) * rr * 0.80, math.sin(math.tau * i / n8) * rr * 0.80,
+                             hh_ / 2)) for i in range(n8)]
+        sub = bm.faces.layers.int.new("af_sub")
+        for i in range(n8):
+            j = (i + 1) % n8
+            bm.faces.new((lo[i], lo[j], up[j], up[i]))
+            bm.faces.new((up[i], up[j], inn[j], inn[i]))
+        top = bm.faces.new(inn)
+        top[sub] = 1
+        bm.normal_update()
+        return M.Part(bm).auto_sharp(30)
+
+    placed: list[tuple[float, float]] = []
+    tries = 0
+    while len(placed) < 40 and tries < 4000:
+        tries += 1
+        a, d = rnd.uniform(0, math.tau), math.sqrt(rnd.uniform(0.0, 0.84 ** 2))
+        x, y = hr * d * math.cos(a), hr * 0.82 * d * math.sin(a)
+        if any(math.hypot(x - px, y - py) < 0.060 for px, py in placed):
+            continue
+        placed.append((x, y))
+        n = slope_n(x, y)
+        m = (Matrix.Translation(Vector((x, y, hz(x, y))) + n * (h * 0.5 - 0.003)) @
+             n.to_track_quat("Z", "Y").to_matrix().to_4x4() @ _rz(math.degrees(rnd.uniform(0, math.tau))))
+        cp = flush_coin(r, h)
+        cp.transform(m)
+        gap = max(v.co.z - hz(v.co.x, v.co.y) for v in cp.bm.verts)
+        if gap > 0.010:
+            cp.translate(-n * ((gap - 0.010) / max(n.z, 0.3)))
+        b.add(cp, "coin_rim", name="coin_in", outline=False, sub_regions={1: "coin_face"})
+
+    # stacks on top: seven on the summit, three on the shoulder — slightly thicker coins (1.4 cm), lit rims in bands
+    def stack(sx, sy, n_coins, hs, rs):
+        z = hz(sx, sy) + hs * 0.5 - 0.004
+        z0 = z
+        rims = faces = None
+        for k in range(n_coins):
+            m = Matrix.Translation(Vector((sx + rnd.uniform(-0.005, 0.005), sy + rnd.uniform(-0.005, 0.005), z))) @ \
+                _rz(rnd.uniform(0, 360)) @ _rx(rnd.uniform(-2.5, 2.5))
+            rp, fp = coin_at(m, rs, hs, both=(k == 0), floor=False)
+            rims = rp if rims is None else rims.merge(rp)
+            faces = fp if faces is None else faces.merge(fp)
+            z += hs * 0.97
+        proxy = M.cylinder(rs * 1.0, rs * 1.0, z0 - hs / 2, z - hs * 0.47, sides=8).translate((sx, sy, 0.0))
+        rid = b.add(rims, "coin_rim_hi", name="coin_stack", hull=proxy, hull_pad=True)
+        b.add(faces, "coin_face", name="coin_face", outline=False, covered_by=rid)
+    stack(0.015, -0.012, 7, GP_HS, r * 1.02)
+    stack(-0.115, 0.045, 3, GP_HS, r * 0.98)
+
+    # crest: three coins stuck in at 50-60°, rims up (own hulls)
+    for ang, dd, tilt_d in ((0.6, 0.42, 54.0), (2.5, 0.38, 60.0), (4.9, 0.44, 50.0)):
+        x, y = hr * dd * math.cos(ang), hr * 0.82 * dd * math.sin(ang)
+        out = Vector((math.cos(ang), math.sin(ang), 0.0))
+        n = (slope_n(x, y) + out * math.tan(math.radians(tilt_d))).normalized()
+        m = (Matrix.Translation(Vector((x, y, hz(x, y) + r * math.sin(math.radians(tilt_d)) * 0.45))) @
+             n.to_track_quat("Z", "Y").to_matrix().to_4x4() @ _rz(math.degrees(rnd.uniform(0, math.tau))))
+        hulled(*coin_at(m, r, h, both=True))
+    # the foot: three coins slid off the heap, tilted out a little (own hulls)
+    for ang in (0.9, 2.2, 3.6):
+        x, y = hr * 1.04 * math.cos(ang), hr * 0.82 * 1.04 * math.sin(ang)
+        out = Vector((math.cos(ang), math.sin(ang), 0.0))
+        n = (Vector((0, 0, 1)) - out * 0.30).normalized()
+        m = (Matrix.Translation(Vector((x, y, h * 0.5 + 0.004))) @ n.to_track_quat("Z", "Y").to_matrix().to_4x4() @
+             _rz(math.degrees(rnd.uniform(0, math.tau))))
+        hulled(*coin_at(m, r, h))
+    # the web's lone spilled coin to the right, flat on the ground
+    hulled(*coin_at(Matrix.Translation(Vector((0.34, 0.02, h * 0.5))) @ _rz(rnd.uniform(0, 360)), r, h))
+    # the leaning coin at the front: face between the key light and the camera, low-shadow regions (stays gold)
+    lean = Vector((-0.707, -0.707, 0.85)).normalized()
+    m = Matrix.Translation(Vector((-0.20, -0.19, 0.0))) @ lean.to_track_quat("Z", "X").to_matrix().to_4x4()
+    rp, fp = coin_at(m, r * 1.1, h, both=True, sides=10, floor=False)
+    lo = min(v.co.z for v in rp.bm.verts)
+    rp.translate((0.0, 0.0, -lo))
+    fp.translate((0.0, 0.0, -lo))
+    hulled(rp, fp, "coin_rim_lean", "coin_face_lean")
+    # one gem half-buried on the right flank (the pile's focal accent; the chest's #FF5A7A)
+    gx, gy = 0.13, -0.11
+    gm = M.gem(0.036, 0.048, 0.03, sides=6)
+    gm.transform(Matrix.Translation(Vector((gx, gy, hz(gx, gy) + 0.010))) @
+                 slope_n(gx, gy).to_track_quat("Z", "Y").to_matrix().to_4x4())
+    b.add(gm, "gem", name="gem", hull_pad=True)
+    return E.finish(b, pal, "interactive", ground_h=0.25, name=name, ground_band=0.02)
 
 
 # ── puzzle rune pillar ──────────────────────────────────────────────────────────────────────────────────

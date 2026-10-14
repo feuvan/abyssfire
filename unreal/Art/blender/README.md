@@ -24,7 +24,9 @@ Layout (ARCHITECTURE §2; the spec's `Art/Blender/scripts/` is this folder):
 | `Art/Export/manifest.json` | the asset manifest read by `Scripts/build_content.py` and the core (`Data/assets.json`) |
 | `Art/Previews/<Asset>/` | review renders (≤ 200 KB PNG each) |
 
-Env overrides (tests): `AF_EXPORT_ROOT`, `AF_PREVIEW_ROOT`, `AF_PALETTE_ROOT`.
+Env overrides (tests): `AF_EXPORT_ROOT`, `AF_PREVIEW_ROOT`, `AF_PALETTE_ROOT`. Dev-mode output (`--quick`, `--debug`,
+iteration sheets; never shipped) goes to `kit.paths.scratch_root(<sub>)` = `$AF_SCRATCH_ROOT/<sub>`, default
+`<system temp>/abyss_art/<sub>` (created on demand).
 
 ---
 
@@ -207,7 +209,10 @@ as JSON on the armature, `.mirror`, `.apply`).
 `save`), `skeletal_entry`, `static_entry`, `clip_entry`, `bounds_ue`. **`Manifest.save()` merges**: under an
 exclusive lock (`manifest.json.lock`) it re-reads the file and writes only the `assets` / `palettes` / `gameIds`
 keys this instance added, changed or deleted since it was loaded (other generators' entries are kept), atomically;
-`shading` / `units` are rewritten from the kit. Always go through `Manifest`, never write the JSON directly.
+`shading` / `units` are rewritten from the kit; any other top-level section (a family's own, merged per key by its
+subclass: `terrain` — `EnvManifest`, `ui` — `IconManifest`) is written whole only when this instance changed it, else
+the disk copy is kept (coherence pass: a plain `Manifest` loaded before an icon run used to write its stale `ui` back
+and drop the new icons; the smoke test checks both cases). Always go through `Manifest`, never write the JSON directly.
 
 **review** — `Review(asset, root, meshes, height, blob_radius, game_outline_px=, glows=, bloom=True,
 outline_class=)`: `.game_view()` (`game.png` 640×360 at the W1 camera; `game_1080crop.png` native 1080p pixels —
@@ -289,6 +294,11 @@ animated local transforms, which the smoke test verifies are identical to the so
     "SM_…": { kind, category, fbx, gameIds, boundsCm, triangles, materialSlots, sockets[{name,locCm,rotDeg}],
       footprintTiles, blocking, attachSocket, previews[] } } }
 ```
+
+`previews[]` (review only, no consumer): paths relative to `Art/Previews/` (`hero_warrior/game.png`) — the kit's
+`asset.ship_*`, the environment and the VFX shippers write them relative to `Art/` (`Previews/SM_Prop_Camp_Tent/…`);
+`coherence/checklist.py` resolves both. The Chapter-1 checklist of every id the game resolves is
+`Art/Export/CHECKLIST.md` (§17).
 
 ## 7. Smoke test (`tests/smoke_test.py`)
 
@@ -491,17 +501,17 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monste
 | File | Content |
 |---|---|
 | `monsters/mgeo.py` | geometry helpers: `grid_loft` / `split_by` (af_u/af_a regions), `SpineLoft` (hunched torsos, mantles, skirts), `ProfileLoft`, `surface_strap` / `surface_ring` (solid straps, belts, rims), **`surface_paint`** (single-sided painted strokes: fur, war paint, seams, twist lines — 2 tris per step), `surface_dot(low=True)` (25-tri studs / rivets), `flap`, `leaf_solid`, `feather`, `chain_strip`, `cone` |
-| `monsters/goblins.py` | `GoblinKit`: `SKEL_Goblin` (kit humanoid builder, goblin proportions, the union of the family's chains: `ear_*`, `jaw`, `eye_*`, `loin_*`, `pelt_*`, `headdress_*`, `totem_feather_*`) and the shared body (skull, face, ears, pot-belly torso, limbs, fists, feet, loincloth); `skull_hide` / `torso_hide` cut skin under a helm / cuirass / shawl; `builder(…, lod)` + `LOD1_SKIP` |
+| `monsters/goblins.py` | `GoblinKit`: `SKEL_Goblin` (kit humanoid builder, goblin proportions, the union of the family's chains: `ear_*`, `jaw`, `eye_*`, `loin_*`, `pelt_*`, `headdress_*`, `totem_feather_*`) and the shared body (skull, face, ears, pot-belly torso, limbs, fists, feet, loincloth); `skull_hide` / `torso_hide` cut skin under a helm / cuirass / shawl; `builder(…, lod, hull_ratio)` + `LOD1_SKIP`; **`LodHullBuilder`** (LOD1: every outlined part's hull baked from a padded proxy decimated `hull_ratio` × further — chief 0.72, shaman 0.8 — so LOD1 hull ≤ 0.75 × toon) |
 | `monsters/mclips.py` | `GoblinAnims`: web `humanoidTracks` → BP poses (READY, thrust / overhead / cast attacks, recoil, backward death), no-slide walk, Stun, contact / windup notifies |
-| `monsters/goblin.py` · `goblin_chief.py` · `goblin_shaman.py` · `slime.py` | the four SKs + held items (spear, cleaver, totem); the chief also ships `T_UI_Portrait_GoblinChief` (Portrait pose, manifest `portrait`) and inks as a **boss** (spec §1.3: 3.5 px, gate 3.0 px) |
+| `monsters/goblin.py` · `goblin_chief.py` · `goblin_shaman.py` · `slime.py` | the four SKs + held items (spear, cleaver, totem); the chief also ships `T_UI_Portrait_GoblinChief` (Portrait pose, manifest `portrait`) and inks as a **boss** (spec §1.3: 3.5 px, gate 3.0 px); the goblin, shaman and slime keep the monster class (1.5 cm baked) but ship a **per-asset 3.5 px request** (`OUTLINE_PX`, art review: at 3.0 px ear tips, spear, feathers, horns, fingers and the slime's base kept < 3 px on 20–60 % of the edges) and are gated at 3.0 px |
 | `monsters/goblin_hunt.py` | hunt-leader attachments (red cap, pendant, loot sack; manifest `variants`, scale 1.25) |
 | `monsters/elite_crown.py` | `SM_FX_EliteCrown`: the web three-point front crown + low back band, diamond ruby, 542 toon + 336 hull tris (+ `crown_over_monsters.png`) |
-| `monsters/lineup.py` | `Previews/mon_family/lineup_game.png` (+ `lineup_inkgate.png`): the warrior, the four monsters and a hunt leader ×1.25 with cap + crown, re-imported from their FBX, W1 camera, native 1080p, each figure ink-gated with its class gate |
-| `monsters/mship.py` | ship: bake, FBX (SK, **LOD1**, `A_` per clip, item SMs), manifest (merging), per-frame QA, ink gate (+ the fraction at the class width itself, `inkGate.specPx` / `minFracRimSpec`), re-import verification (`verify_export`, `verify_lod`), the review set (`lod1.png` = LOD0 vs LOD1 incl. the mobile-low look, labels = the shipped LOD's tris; `poses_close_a/_b.png` 5 cells each at 1:1), `portrait_shot` (UI portraits of monsters) |
+| `monsters/lineup.py` | `Previews/mon_family/lineup_game.png` (+ `lineup_inkgate.png`): the warrior, the four monsters and a hunt leader ×1.25 with cap + crown, re-imported from their FBX, W1 camera, native 1080p, each figure ink-gated at its shipped request − 0.5 px (manifest `outlinePx1080`), runtime-lit FX faces (emissive swatches: the spirit-fire) off for the measurement as in the ship gates |
+| `monsters/mship.py` | ship: bake, FBX (SK, **LOD1**, `A_` per clip, item SMs), manifest (merging), per-frame QA, ink gate (+ the fraction at the class width itself, `inkGate.specPx` / `minFracRimSpec`), re-import verification (`verify_export`, `verify_lod`), the review set (`lod1.png` = LOD0 vs LOD1 incl. the mobile-low look, labels = the shipped LOD's tris; `poses_close_a/_b.png` 5 cells each at 1:1), `portrait_shot` (UI portraits of monsters); **`MonsterShip(outline_px=, outline_px_note=)`**: a per-asset `OutlinePx1080` on the hull slot (manifest `outlinePx1080` + `outlinePxClass` / `outlinePxNote`; the UE importer makes its own `M_AF_Outline` instance), the held items / attachments ink with it, previews render it and the gate is `px − GATE_SLACK_PX` (`ink_px`, `gate_for`; `inkGate.outlinePx1080`) |
 
 Budgets (spec §1.9; `budget` in each manifest entry; toon = every toon-lit slot, the slime's dithered shell
-included): goblin 6.1 k / LOD1 3.2 k, chief 9.0 k / 3.2 k, shaman 8.9 k / 3.4 k, slime 2.65 k / 1.47 k; hull ≤ 0.75 ×
-toon. LOD1 `screenSize` 0.05: a monster is 0.10–0.20 at every W1 zoom, so desktop always draws LOD0; LOD1 is the
+included): goblin 6.1 k / LOD1 3.2 k, chief 8.96 k / 3.25 k, shaman 8.9 k / 3.4 k, slime 2.92 k / 1.50 k; hull ≤ 0.75 ×
+toon at both LODs (LOD1 hull / toon: goblin 0.68, chief 0.68, shaman 0.65, slime 0.33). LOD1 `screenSize` 0.05: a monster is 0.10–0.20 at every W1 zoom, so desktop always draws LOD0; LOD1 is the
 mobile-low gameplay mesh (skeletal LOD bias 1, baked hull only) and keeps every identity cue (eyes + pupils, grin,
 teeth, ears, war paint, mask, headdress).
 
@@ -545,13 +555,16 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/npcs/n
 | `npcs/folk.py` | the townsfolk kit (spec §5.1, web `Townsfolk.ts`): `Look` (web `FolkLook`), builds slim / normal / stout / dwarf fitted to the R2 heights (1.72–1.76 m), the shared head (× `HEAD_K` 0.92) with modelled eyes / pupils / catch-lights / brows / nose / mouth / ears / blush, hair (short · long · bald · ponytail · bun · braid; a cap clipped by the web hairline, its sunk inside dropped), beards (stubble · short · full · long · braided · mustache; the hanging mass grows out of the jaw shell), hats (cap · headband · widebrim; `hat_tilt` / `visor_k` / `brim_k` are the W1 camera cheats that keep the face out of the brim's shadow), tops (tunic · vest · robe · coat; neckline opening, placket, hem, 4-chain skirt), belt, apron, mantle / scarf, travel pack (+ the peddler's pot and rug), spectacles, key ring, arms (bare arms = skin + tunic shoulder cap), fists round a grip or open mittens, legs and boots; `build(pal, rig, lod, lod_ratio)` = one merged `SK_NPC_<Id>`, `build_kit_part` = one part group on its own |
 | `npcs/looks.py` | the nine Chapter-1 looks (§5.2 hex values + DECISIONS I7 stash keeper): `NpcDef` = look + work loop + READY tweaks + game ids, display names, runtime FX cards (`orbGlow`, `herbGlow`, `coinGlint`, `hotBarGlow`, `anvilSparks`; depth-tested), scenery, extra clips, fidget gesture |
 | `npcs/props.py` | `SM_NPCKit_Prop_*` held props in weapon-bone space (hammer, tongs + hot bar, staff + orb, scroll, purse, herb pouch, sword, book), `SM_Prop_Camp_AnvilStump` (socket `strike`), `SM_UI_QuestMarker_Excl / _Quest / _QuestGrey` |
-| `npcs/npc_clips.py` | `NpcAnims` (on `hero_base.HeroAnims`): READY per work style, `IdleNPC`, `IdleNPC_Fidget` (personal gesture), `Alert`, `Talk`, `Work_Hammer / Count / Read / Guard / Lookout`; escort `Idle`, `Walk` 1.2 m/s, `Run` 2.85 m/s (no-slide), `Hurt`, `Death`; rescue `Cower`; cloth (skirt chains with the leg envelope, hair tail, beard, scarf, pack bounce) |
-| `npcs/npc_ship.py` | build (LOD1 rebuilt to the §1.9 5 k budget), bake, per-frame QA (`ToonGroundQA`: items' ground on their toon surface — a planted staff / sword point's hull under the floor is expected), FBX (SK, LOD1, `A_` per clip), manifest (`npcStates`, `fx`, `scenery`, `attachments`, `budget`, `lods`, `portrait`), re-import verification, review set in `Previews/npc_<id>/` with the ink gate on every game-camera cell, portrait `T_UI_Portrait_<Id>` (512², screen-space ink) |
-| `npcs/npc_dressing.py` · `npcs/npc_kit_parts.py` | props (`Previews/npc_props/props.png`, leading face 3/4 front + 3/4 back), the anvil stump (static ship with `ground_occludes`: the hull under its foot is the terrain's), the quest markers (full camera billboard on `fx_overhead`; `Previews/npc_markers/markers_over_npc.png` on the elder + gated 1080p cells `markers_close.png`), the R2 lineup (`Previews/npc_family/`); the `SK_NPCKit_*` parts (each the merged mesh's own generator, on its look's rig) + `Previews/npc_kit/kit_parts_a/_b.png` |
+| `npcs/npc_clips.py` | `NpcAnims` (on `hero_base.HeroAnims`): READY per work style, `IdleNPC`, `IdleNPC_Fidget` (personal gesture), `Alert`, `Talk`, `Work_Hammer / Count / Read / Guard / Lookout`; escort `Idle`, `Walk` 1.2 m/s, `Run` 2.85 m/s (no-slide), `Hurt`, `Death`; rescue `Cower` (a kneel); cloth (skirt chains with the leg envelope + the `coat_th_*` thigh drivers, hair tail, beard, scarf, pack bounce) |
+| `npcs/npc_ship.py` | build (LOD1 rebuilt to the §1.9 5 k budget), bake, per-frame QA (`ToonGroundQA`: items' ground on their toon surface — a planted staff / sword point's hull under the floor is expected; skirted looks add `CoatLegQA`: `coatLegs` = trouser / boot vertices beyond the coat or robe, gate 0 — `QA_CLIP_LIMITS` lets the face-down Death cross the front panel pressed into the floor under the body by ≤ 12 mm; `coatLegInk` the same for the legs' baked hull, reported), FBX (SK, LOD1, `A_` per clip), manifest (`npcStates`, `fx`, `scenery`, `attachments`, `budget`, `lods`, `portrait`), re-import verification, review set in `Previews/npc_<id>/` with the ink gate on every game-camera cell (`NpcReview`: every PNG truecolour at scale 1, `save_native` tiles), portrait `T_UI_Portrait_<Id>` (512², screen-space ink) |
+| `npcs/npc_dressing.py` · `npcs/npc_kit_parts.py` | props (`Previews/npc_props/props*.png`, leading face 3/4 front + 3/4 back), the anvil stump (static ship with `ground_occludes`: the hull under its foot is the terrain's), the quest markers (full camera billboard on `fx_overhead`; `Previews/npc_markers/markers_over_npc.png` on the elder + gated 1080p cells `markers_close.png`), the R2 lineup (`Previews/npc_family/`); the `SK_NPCKit_*` parts (each the merged mesh's own generator, on its look's rig) + `Previews/npc_kit/kit_parts_a/_b*.png`. Props and kit parts are never drawn alone: their `inkGate` is `{standalone: false, measuredOn: [SK_NPC_…], pass}` — the gated 1080p cells of the NPCs that hold / wear them (`held_ink_gate`; ship the NPCs first) |
 
-Budgets (§1.9): LOD0 8.4–11.8 k toon, LOD1 ≤ 5 k (ratio scaled per look), hull ≤ 0.63 × toon, 36–50 bones. LOD1
-`screenSize` 0.05 (as the monsters: desktop always draws LOD0, LOD1 is the mobile-low mesh). Ink: NPC class 3.0 px,
-gate 2.5 px on ≥ 90 % of the edges of every gated 1080p cell (13–17 per NPC: poses, facings, extra clips).
+Budgets (§1.9): LOD0 8.4–11.8 k toon, LOD1 ≤ 5 k (ratio scaled per look), hull ≤ 0.63 × toon, 36–52 bones. LOD1
+`screenSize` 0.05 (as the monsters: desktop always draws LOD0, LOD1 is the mobile-low mesh). Ink: NPC class (1.6 cm
+baked) with a **per-asset 3.5 px request** (`npc_ship.PX` / `ink_slot`: manifest `outlinePx1080` 3.5, `outlinePxClass`
+3.0, `outlinePxNote`; the held props and the `SK_NPCKit_*` parts ink with it), gated at 3.0 px on ≥ 90 % of the edges
+of every gated 1080p cell (13–17 per NPC: poses, facings, extra clips) — the coherence pass measured the class's 3.0 px
+at 61–83 % against the Chapter-1 character gate (≥ 3 px), the goblins beside them already ship 3.5 px.
 
 Conventions learnt on the NPCs:
 
@@ -596,6 +609,40 @@ Conventions learnt on the NPCs:
   collapsed eye white sinks under the skin and a decimated hairline creeps over the eye.
 * **Grounded falls** check the boots at full resolution (`NpcAnims.grounded`): every-2nd-vertex sampling missed a
   tucked toe cap by 1.6 cm.
+* **Coats and robes follow the thighs** (NPC review 2: the escort's run drove the lifted thighs 6 cm through the
+  coat's front panels, high under the belt, where no skirt-chain angle moves the cloth without flaring the whole hem):
+  skirted looks carry two one-bone drivers `coat_th_l/r_01` on the hip joints that copy each thigh's *forward* swing
+  only (`NpcAnims.drive_coat`; a leg swung back must not drag the panel under the belt into the body), and the cloth
+  before each thigh rides with them (`Folk.skirt_thigh_share`: peak 0.72, ±26° round the front, k .05 → .22 → .50 →
+  1.0). The chain envelope takes the drivers' own push off each leg point's deficit (`_drive_dr`) and divides the rest
+  by the chains' free share (floor 0.6); clearance 2.2 cm (the legs' 1.6 cm baked ink + margin) + 1.2 cm toward the
+  hem; the side chains follow the back panel's push beyond 28° (heels tucked behind a kneel). The skirt hull proxy
+  keeps every row (`shell_ring(hull_row_step=1)`): on every other row its chords cut into the bent cloth as dark ink
+  specks. `CoatLegQA` joins each leg vertex to its own core (the nearest point on its thigh / calf bone) — a leg that
+  leaves the coat under the hem never crosses it, a knee through a panel does.
+* **Kneels, not squats, under long cloth**: the rescue's `Cower` squatted with the knees spread and drove the coat out
+  as a flat cone over the ground; on both knees, hunched, heels back, the coat drapes over the thighs and meets the
+  floor round the knees (`NpcAnims.COWER`, `grounded` post).
+* **Chest holds keep the elbow ≥ ~50°** (NPC review 1): a fist high on the chest with the elbow out folded the arm to a
+  32° hinge and the coat sleeve webbed into a pointed sheet past the elbow; the lost traveller holds the pack strap
+  below the chest, elbow down at the side. Sleeves have elbow loops either side of the hinge (7 rings).
+* **Long hair rides the head to the nape**: the elder's back mass is head-only down to under the occiput and blends
+  onto `hair_tail` below the nape, and the hair chain's envelope ignores the skull and the mass (looking up, the
+  occiput swung into the chain plane and the envelope flipped the hair out behind the head as a fin).
+* **LOD1 rebuilds thin rings and hats, never collapses them**: sleeves and cuffs (12 sides), the wide brim's crown,
+  hull proxy, accent band and brim (coarser grids) and the peddler's bedroll bypass the decimation (`_add_exact` /
+  `_exact_via`): a collapsed wrist left the escort's cuff floating over a dark notch, the wanderer's crimson band
+  turned salmon across the crown, and an exact band padded into a crown proxy decimated to a few faces inflated it
+  into a dark sail over the hat. The rest of the mesh takes the budget (`build_lod1` iterates the ratio).
+* **Staff and orb** (NPC review 4, 9): grip at the chest (`STAFF_DOWN` 1.24 m to the planted foot, `STAFF_UP` 0.50 m:
+  the orb at the crown, the hand 0.38 m out: beside the head); orb `l` .30 `e` .18 under a 12 cm `#FFCF50` α .30
+  halo, no core — at e .35 / l .5 under an 11 cm card with a pale core the 1080p orb bloomed to white.
+* **Previews are truecolour** (`NpcReview`, `save_native`, the props / markers / lineup / kit sheets): the 256-colour
+  budget fallback mapped the elder's small green orb to the metal grey of the props sheet and the lineup, and
+  quantised the measured 1080p cells.
+* **The peddler's huge pack** (`pack_scale` > `Folk.PEDDLER_K`): 1.3× taller (the bundle rises above the shoulders to
+  the hat, web) and 1.2× deeper, the bedroll front to back on top — across it, its ends flanked the head at ear height
+  and read as earmuffs from the front.
 
 ## 12. Environment generators (`environment/`)
 
@@ -613,7 +660,7 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/enviro
 
 | File | Content |
 |---|---|
-| `environment/envkit.py` | shared by the family: `Lump` cloud lumps (union of spheres, `cull_hidden` drops faces inside a neighbour; icosphere `subdiv` 3 = 320 tris, 4 = 1280), `RockShape` (radial boulder: bumps, flat foot, `top_cut`, `boxy` superellipsoid, `centre`) + `rock`, `rock_cap` (moss / snow blanket with drips; `inner_shell=False` = open cap) + `cull_under_cap`, `drip_edge`, `ring_loft`, `blade`, `ribbon` (painted strips on a surface), `bloom`, `plank`, `spike` (`rows` > 2: rings for local hull padding), `rope_band`; `finish` (build → **spherised normals** per canopy lump (`lump_info(…, lift)`: + a tilt toward +Z) → **wind data** `AF_Data.g/.b` + UV1 `UVWind` → toon + outline → hull); `cloth_wind` (prop cloth weights: 0 at the hanging line → 1 at the tail, poles rigid); `ship` (FBX, merged manifest entry with `footprintTiles` / `blocking` / `outlinePx1080` / `outlineMix` / foliage parents / wind contract — `wind_slot=PROP_WIND_SLOT` for prop cloth —, review set with `ground_occludes`, ink gate recorded); **`EnvReview`** / `save_native` (every env preview truecolour at scale 1, `pngio.write_png_native`; the 1:1 game crop fitted to the asset's projected bounds + 28 px instead of the kit's square box); `export_lod1` / `lod_preview` (static LOD1 FBX + `lods[]` + `lod1.png`); `EnvManifest` (also merges the top-level `terrain` section); `family_sheet` (every variant at the W1 camera, native 1080p, cells sized from the assets' projected bounds incl. the scale warrior, short labels), `scene_shot`, `tile_hash` (= `AbyssWorldUtil::TileHash`), `place`, `import_warrior` / `toon_material_files` (shipped hero + palettes read from disk) |
+| `environment/envkit.py` | shared by the family: `Lump` cloud lumps (union of spheres, `cull_hidden` drops faces inside a neighbour; icosphere `subdiv` 3 = 320 tris, 4 = 1280), `RockShape` (radial boulder: bumps, flat foot, `top_cut`, `boxy` superellipsoid, `centre`) + `rock`, `rock_cap` (moss / snow blanket with drips; `inner_shell=False` = open cap) + `cull_under_cap`, `drip_edge`, `ring_loft`, `blade`, `ribbon` (painted strips on a surface), `bloom`, `plank`, `spike` (`rows` > 2: rings for local hull padding), `rope_band`; art review 10: `unflare_foot` (a rock's undercut at the floor pushed out to the belly), `rock_contains` / `cull_inside` (faces buried in a neighbour rock), `facet_normals` (creased shading normals on big smooth faces), `ground_hull` (hull vertices within 2 cm of the floor extrude horizontally, never below it); `finish` (build → **spherised normals** per canopy lump (`lump_info(…, lift)`: + a tilt toward +Z) → `facet=` creases → **wind data** `AF_Data.g/.b` + UV1 `UVWind` → toon + outline → hull → `ground_band=` ground hull); `cloth_wind` (prop cloth weights: 0 at the hanging line → 1 at the tail, poles rigid); `ship` (FBX, merged manifest entry with `footprintTiles` / `blocking` / `outlinePx1080` / `outlineMix` / foliage parents / wind contract — `wind_slot=PROP_WIND_SLOT` for prop cloth —, review set with `ground_occludes`, ink gate recorded — plus the **upper bound** `BAKED_RIM_MAX_FACTOR`: the baked-hull rim median ≤ 1.75 × `outlinePx1080`, `inkGate.bakedRimPx`, DECISIONS R14); **`EnvReview`** / `save_native` (every env preview truecolour at scale 1, `pngio.write_png_native`; the 1:1 game crop fitted to the asset's projected bounds + 28 px instead of the kit's square box); `export_lod1` / `lod_preview` (static LOD1 FBX + `lods[]` + `lod1.png`); `EnvManifest` (also merges the top-level `terrain` section); `family_sheet` (every variant at the W1 camera, native 1080p, cells sized from the assets' projected bounds incl. the scale warrior, short labels), `scene_shot`, `tile_hash` (= `AbyssWorldUtil::TileHash`), `place`, `import_warrior` / `toon_material_files` (shipped hero + palettes read from disk) |
 | `environment/foliage.py` | `SM_Foliage_Plains_Oak_A/B/C` (`tree`, + `_LOD1`), `_FruitTree_A/B` (`tree_round`, + `_LOD1`), `_BerryBush_A/B` (`bush`), `_GrassTuft_A/B/C` (`grass`), `_FlowerPatch_A/B` (`flower`), `_RedMushrooms_A/B` (`mushroom_red`), `_LilyPad_A/B` (`lily_pad_plains`) — palette `Foliage_Plains`, parents `M_AF_Toon_Foliage` / `M_AF_Outline_Foliage`; ground cover (grass, flowers) has no hull and uses `MI_AF_Toon_Foliage_Plains_Ground` |
 | `environment/rocks.py` | `SM_Rock_Plains_Cluster_A/B/C` (`rock`), `_MossBoulder_A` (`boulder`), wall tiles `SM_Outcrop_Plains_V0..V5` (`outcrop_plains`; V2 / V5 hedges); the skirt hills were retired (art review 9: the runtime skirt is the terrain heightfield + the grove pool) |
 | `environment/camp.py` | `SM_Palisade_Plains_Stake_A/B/C` (`palisade_plains`, 1.32 / 1.40 / 1.48 m tip included, mean 1.4 m, R1), `_GatePost` (`palisade_gate_plains`, not blocking), level-design runs `_Straight` / `_Corner`; camp kit `SM_Prop_Camp_Campfire/Well/Tent/Banner/Barrel/Crate/Torch/Hearthstone` (`camp_<type>`; sockets `flame`, `glow`, `gem`; the tent records a 2 × 2 body footprint, the banner sways on `MI_AF_Toon_Props_Plains_Wind`) |
@@ -621,7 +668,7 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/enviro
 | `environment/interactive.py` | `SK_Prop_TreasureChest` (`SKEL_Prop_Chest`: root + lid, `A_Prop_TreasureChest_Idle` / `_Open` 400 ms, notify `ChestOpen`; previews, `boundsCm` and the ink gate in the **closed rest pose**, plus `game_open_1080crop.png` / `closeup_open.png` gated on the Open end frame, `openBoundsCm`), `SM_Prop_GoldPile`, `SM_Prop_Event_RunePillar`, `SM_Prop_ExitPortal` (later chapters), `SM_Prop_ExitGate_Sealed` (W7), markers `SM_FX_ClueMagnifier`, `SM_FX_GuideArrow`, gather node `SM_Prop_Gather_EmeraldHerb` |
 | `environment/goblin_camp.py` | spec §6.9 / R7: `SM_Prop_Goblin_Hut_A/B` (2 × 2 body), `_FirePit`, `_BoneTotem` (hide strips sway), `_SpearRack`, `_Crates` — non-blocking decorations placed by the level script (`placement` in each entry) |
 | `environment/terrain.py` | `Art/Export/Terrain/`: `T_Terrain_Plains_Grass/Dirt/Stone/Camp_BC`, `T_Water_Plains_BC` (1024², one 3 × 3-tile period, painted from `Data/terrain_styles.json` like `GroundPainter`), `T_Terrain_Plains_Details_BC` (per-tile detail atlas), `T_Terrain_Plains_Noise_M`, `T_Water_Plains_Mask_M`; `composite()` = the exact web transition rules (`MF_TileBlend`); the UE material inputs (textures, colour spaces, UV rule, transition formulas, water constants) in `manifest.json → terrain.plains`; previews `Previews/terrain_plains/` |
-| `environment/vignette.py` | the plains vignette (`Previews/env_vignette/`): every mesh **re-imported from its FBX** with the shipped palettes, placed like `AAbyssZoneActor` places it (outcrop variant / yaw from `tileHash`, palisade stakes by the neighbour mask, camp props facing the camp centre, lily pads on water tiles), the composited terrain with contact shadows, the warrior; `vignette.png` is a native 640 × 360 render, the crops native 1080p tiles read back pixel-exact, `hero_check` asserts the warrior's crimson and ink; `vignette_footprints.png` paints the W5 footprints from the manifest (half-tile gate posts skipped) |
+| `environment/vignette.py` | the plains vignette (`Previews/env_vignette/`): every mesh **re-imported from its FBX** with the shipped palettes, placed like `AAbyssZoneActor` places it (outcrop variant / yaw from `tileHash`, palisade stakes by the neighbour mask, camp props facing the camp centre, lily pads on water tiles), the composited terrain with contact shadows, the warrior; `vignette.png` is a native 640 × 360 render, the crops native 1080p tiles read back pixel-exact, `hero_check` asserts the warrior's crimson and ink; `ground_check` asserts a plain grass tile renders within 3/255 of its painted texels (the ground plane is blacked out of the bloom source); `check_dry` keeps every prop's base off water and wall tiles (`--check`: dressing only, no render); tents turn their door to within 60° of screen-down; `vignette_footprints.png` paints the W5 footprints from the manifest (half-tile gate posts skipped) |
 
 Previews: per asset `Previews/<SM_…>/` `game.png`, `game_1080crop.png` (shipped ink + bloom next to the baked hull alone),
 `game_inkgate.png`, `closeup.png`, `turnaround.png` (+ `turnaround_2.png` … when a sheet is split into truecolour tiles;
@@ -630,16 +677,19 @@ trees add `lod1.png`; the chest adds `game_open_1080crop.png`, `closeup_open.png
 `camp_palisade`, `camp_kit`, `camp_kit_small`, `story_decor`, `lore_props`, `interactive_props`, `exit_gates`,
 `goblin_camp`); `Previews/terrain_plains/`; `Previews/env_vignette/`.
 
-Ink: decor class (line tone, `INK_MIX` 1.0) at 1.2 px — **1.4 px for `Props_Plains` decor** (`envkit.PX_OVERRIDE`;
+Ink: decor class (line tone, `INK_MIX` 1.0) at 1.2 px — **1.4 px for `Props_Plains` decor** (DECISIONS R14, `envkit.PX_OVERRIDE`;
 poles and stakes are 8–12 px wide at 1080p and their lit edge carries the warm rim), interactive props 2.0 px; every
 gated cell is a native-1080p W1 crop measured with the terrain occluding the hull under the floor
 (`ground_occludes`). Every entry records `footprintTiles` + `blocking` (W5: trees, boulders, outcrops, stakes, tents,
 wells, barrels, crates, tall story decor and the goblin huts / totem / rack / crates block; ground cover, mushrooms,
 bushes, campfire, banners, torches, lore props, markers and the exit gate do not — the hero walks onto the exit tile
 for the W7 message). Goblin-camp props are non-blocking (spec §6.9: level-script dressing), the gate posts too (the
-wall tile beside them blocks). Budgets (art review 9; hull ≈ 0.5 × toon via decimated hull proxies): oak 4.6 k toon
-(hull 0.46 ×) + LOD1 1.5 k, fruit tree 3.3 k (0.57 ×) + LOD1 1.45 k, bush 3.3–3.5 k (0.5 ×), outcrop 1.27–1.47 k (0.46–0.62 ×;
-drawn total −34 % on V0), rock clusters ≤ 0.6 k drawn, ground cover ≤ 300, mushrooms ≤ 0.8 k, lily pads ≤ 0.5 k.
+wall tile beside them blocks). Budgets (art review 9; hull ≈ 0.5 × toon via decimated hull proxies): oak 4.6 k toon + LOD1 1.5 k, fruit tree
+3.3 k + LOD1 1.45 k; art review 10: canopy hull proxies at 80 %, padded closed and culled after (`canopy(cull_hull=False)`;
+hull ≈ 0.6 × toon — at 55 % the padding put the baked rim at 2.2–2.7 px), the barrel's hoops and the torch's wraps / rim
+carry their own ring hulls (padding the 3–5-ring proxies round them inflated the whole hull to ≈ 3 px); bush ≤ 2 k toon (hull proxies at the toon
+ratio: coarser ones padded past the baked-rim bound), outcrop 1.1–1.2 k toon + ≈ 1.1 k hull (masses and caps bake their hulls
+from themselves), rock clusters ≤ 0.6 k drawn, ground cover, mushrooms and lily pads ≤ 300 toon (spec §1.9).
 
 Conventions learnt on the environment:
 
@@ -683,6 +733,23 @@ Conventions learnt on the environment:
   pale ovals with a hard seam); ground relief belongs to the terrain heightfield / material.
 * **Water props float**: lily pads ride 1.6 cm over their pivot (UE puts the pivot 0.5 cm over the opaque water) —
   at the surface the near half of the ink would be under the water.
+* **Art review 10 — hulls at the floor**: a hull vertex whose body point is within 2 cm of the floor pushed down-and-out
+  drew thin spikes fanning along the ground (`finish(ground_band=0.02)` → `ground_hull`: horizontal extrusion, never
+  below the floor; floor-facing bottoms and buried points stay under the terrain). A round rock on a narrow foot shows
+  floor under its belly and its contact-line ink becomes a separate line with a gap: bed the foot (`unflare_foot`).
+* **Padded proxies must hug**: the gate now has an upper bound (baked-hull rim median ≤ 1.75 × `outlinePx1080`). A
+  mound's proxy padded round coins tilted off its slope made a ragged 3–6 cm shell (gold pile: one unpadded mound hull,
+  flush coins without hulls, hulled stacks / spills); decimated *open* shells (outcrop masses culled under their caps)
+  padded by up to 7 cm — bake from the shell itself when its open boundary hides under another part.
+* **Separate rocks are separate**: a front stone whose centre sits inside the big mass reads as one egg; put its centre
+  just outside (its own hull then inks it against the mass) and cull faces / cap drips buried in the neighbour
+  (`rock_contains` / `cull_inside`).
+* **Big smooth faces airbrush the bands**: the 0.02-wide band smoothsteps spread over dozens of pixels on gently curved
+  faces; crease the shading normals (`facet_normals`) or build flat panels (the tent's three creased roof panels per
+  side).
+* **Decals on faceted parts**: a flat plate's long triangles span the ridge between two facets and sink behind it (the
+  hearth rune's "outlined" flame): split the decal on the ridge and snap every vertex onto its facet; studs on a lathe
+  cap sit at a facet centre on the facet plane (toadstool spots).
 
 ## 13. Items: equipment weapons and ground loot (`items/`)
 
@@ -698,6 +765,12 @@ EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/
 #   --hold Rogue:staff:Attack03[,…] [--out table.json]   hit-stop hold pass on a staff / bow / shield / axe strike track
 #   --roll Warrior,Mage,Rogue --fams axe | --roll Rogue:shield:Attack03[:window][:x|y|z]   readability roll about the
 #        haft (axe) / forearm (shield) on strike and cast clips, kept only where the exact QA passes every frame
+#   --readfix Warrior,Mage,Rogue --fams axe,shield,staff [--no-retrack] | --readfix Rogue:shield:Cast01   every strike /
+#        cast clip that fails READ_GATE: per-frame roll → hit-stop hold → re-planned track (+ hold, roll), exact QA kept
+#   --rolltrack Cls[:fam:Clip] --fams axe   per-frame readability roll (Viterbi) · --carry-roll Cls --fams axe   one
+#        roll for every carry clip · --lift Cls:fam:Clip[:whole][:clothN]   tilt the item about the fist where it or its
+#        ink hull dips under the ground (whole: re-plan the clip, e.g. for a cloth-pair margin: cloth17)
+#   --tracks … --force Clip,… --force-only   re-track just those clips (no whole-class QA first) · --qa --json out.json
 EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/items/loot.py        # ship (~5 min)
 #   --only bag,gold,potion,scroll,fruit,gem,quest,coin (subset; family sheets only on a full ship) · --quick [groups]
 ```
@@ -815,7 +888,7 @@ Conventions learnt on the items:
   vanished (only the crystal read). `read_wand_out` scores the crystal / upper shaft's projected distance to the
   nearest body / attachment vertex (≥ 6 / 4 cm, se weighted ×1, sw ×.35: the right hand sits behind the body from
   sw) and the rod's on-screen length; the warrior / rogue wand carry is searched with it (not the sword's identity
-  hang), the T1 shaft is a value lighter (#9A54AC, lightAmt .55) and the crystal faintly self-lit (e .6).
+  hang), the crystal is faintly self-lit (e .6). Fifth look: the violet shaft had the hue and value of the mage's robe — the T1 rod is a light honey wood (#C8955C) with the web's violet on its three rings (role `ring`), a gold collar under the setting (686 → 806 toon tris: inside the 0.7 k floor). The wand and the mace have no item base yet (`bases` empty): dormant until the core `WeaponType` gains them.
 * **One mesh per family (R4)**: `w_wooden_shield` (T1) is a round planked buckler in the web; here it is the heater
   with the T1 plank boards and iron boss (R4: one mesh per weapon base type family) — an accepted trade-off.
 * **Glowing gems and the dark check**: bloom over a near-white stone lifts its line-tone ink above lum 64 — the
@@ -851,9 +924,66 @@ Conventions learnt on the items:
   band on the steep facets read salmon), the emerald a deep body with bright facets (equal value with the grass).
 * **Figure-ground on the plains** (fourth look): saturated greens at the grass's value (#74A247) read only by their
   ink — the antidote's lime liquid and near-white glass are lighter, the herb's blossoms 50 % larger and near-white
-  (e .12) with pale twine, the gel's highlight band wider and brighter (e .85).
+  (e .12) with pale twine, the gel's highlight band wider and brighter (e .85). Low wide blobs stand on a tucked base
+  (coherence pass, `GEL_LIFT`): spread flat, the W1 camera's lower contour is the ground contact and its ink lies under
+  the terrain — a green gel then meets the green grass with no line along ~40 % of its silhouette.
 * **Thin hanging hardware** (the pendant chain): a 9 mm round cord disappears in its own 2 px ink; lay it as a 1.5 cm
   flat cord (coiled beside the locket) and give small fittings (the bail) a light metal.
+* **Readability is gated, not only planned** (art review, fifth look): the staff, the axe and the shield shipped
+  failing what their planners scored, because only the bow was in `READ_GATE`. All four are gated now (manifest
+  `readGate` per family, `inHandQA.classes.<cls>.read`): the axe takes the bow's floors (min over se / sw of |bit
+  normal · view ray|: hit-stop mean .45, every hit-stop frame .35, any other frame .15 except ≤ 2-frame flips); the
+  shield its **signed** face metric (face normal · direction to the sw camera, < 0 = its back: hit-stop mean .50 =
+  30°, every hit-stop frame .25 = 15° — the rogue's Cast01 release flings the off hand forward and .27 is the most
+  any strap-plausible attitude reaches there — never back-facing for > 2 frames; candidates: the forearm's own roll ±90°,
+  the boards ±30° on the arm, `shield_candidates`) and the face disc from 2 frames before the contact
+  on (in the wind-up a soft planning cost graded by how much of the face the boards cover: the rogue's off-hand fist
+  itself crosses her face in the Attack02 / 03 and Cast01 / 02 wind-ups, where an exact track found no shield attitude
+  on that forearm that clears it; hurt flinches are exempt — a raised guard); the staff
+  `staff_frame` below — on **every** carry frame (Idle / Walk / Run / Hurt; the warrior's Hurt recoil may dip for ≤ 2
+  frames, `flinch`: no grip of 12 k that clears the plate keeps the orb up there) ≥ .65 with the orb ≥ .30 of the shaft
+  above the fist, visible and clear of the head; on strikes / casts the bow's floors, the orb visible and clear of the
+  head on the hit-stop and lifted ≥ .30 at a cast's release.
+* **Hidden is not on screen** (fifth look): `read_staff_screen` measured the fist → orb vector's *projected* length,
+  so the warrior's staff passed while it stood behind his body from sw (the right hand is the far one there) with only
+  the orb poking out beside the plume. `Occluder` (per frame and view: barycentric surface samples ≤ 1.4 cm apart of
+  the posed body — without the holding hand — and the class's attachments that stay beside the item, splatted into a
+  1.2 cm depth buffer) gives `staff_screen`: `vis` = the shaft's on-screen length **not hidden behind the body or the
+  shield** / the 81.5 cm shaft (the hilt zone counts where the fist itself is visible), `su` the orb's lift, `orb`,
+  `behind`, `headd` (the orb's screen distance from the head), `out` / `orbOut` (off the body's silhouette). Both views
+  are full penalties (sw weighs as se), with steep floors just above the gate; strikes also keep the orb a hand off
+  the head / hood (≥ 30 cm on screen) and the orb plus a third of the shaft off the silhouette (the rogue's Attack03 se
+  contact laid the staff across her torso, the orb against the hood). Staff tracks plan on a 600-direction sphere (on
+  the warrior's Idle only ~0.4 % of all grips keep .65 in both views, and most of those cut the plate).
+* **The bit follows the hand** (fifth look): one roll per clip left the axe bit edge-on at most hit-stops (Warrior
+  Attack02 .007, Mage Meteor .005). `roll_track` picks a roll offset about the haft per frame (−90…90°, ≤ 30°/frame,
+  Viterbi) among the offsets that pass the exact QA; where the haft itself points along a view ray no roll helps
+  (the mage's Blizzard release: haft · view .97–1.0) and `read_fix` goes on to the hit-stop **hold** (one world
+  attitude, `read_axe_floor`), then a re-planned track (`Searcher.track` with the family's readability, the hit-stop
+  ×`HIT_READ_W` for axe and shield too) + hold + roll — first passing step wins. `carry_roll` turns the axe's
+  READY / locomotion / hurt grips by one angle for the best mean over every carry frame (mage mean .11 → .48).
+* **Lowest point = toon + ink hull** (fifth look): the clip sheets' LOW label measured every vertex (with the review
+  render's screen-constant hull) and showed hulls 1–2 cm in the terrain while the QA, on toon vertices at −0.5 cm,
+  passed. `Item.low` / `weapons.item_low` both measure the toon surface and the **baked** hull now, floor 0 cm;
+  `lift_pass` tilts an item about the fist in the world (6–40°, ≤ 15°/frame, ±5 frames of ramp) where it dips (rogue
+  sword / axe / mace Attack03 and Death, the warrior's axe Dodge and bow Death), and with `whole` + `clothN` re-plans a
+  clip for a cloth-pair margin.
+* **Grips ship only where the mesh is shown**: a class whose own `SM_Hero_*` weapon of the family wins `FindWeapon`
+  (mage staff, rogue bow, warrior shield / sword, rogue dagger) gets no `grips` record and no `inHandQA` class
+  (`inHandQA.notShipped`): those grips were never planned to pass (the rogue's bow: 573 body pairs).
+* **Potion glow core** (fifth look): the spec halo (#FF4A4A α .45 at the ring, 'over') mixes to khaki over the plains
+  grass (174,146,75 — next to the 'rare' gold) and the MP halo to teal; a second card (`loot.glow.core`: #D81822 /
+  #1E46E6, α .92 solid to 1.22 × the flask radius, gone at 1.65 × — at least 15 cm, or the slim S vial kept a 6 px
+  khaki ring) keeps the band hugging the bulb red / blue over
+  grass (213,48,39) and dirt (216,46,42).
+* **Layered thin parts and the ink measure**: the herb's fifteen leaves and the pendant's coiled cord each carry a
+  hull, so the rim walk crosses two or three hull layers (median 4 px against the 2 px class). Their hulls are baked
+  thinner (`loot.HULL_SCALE`: leaves / crescent ×.8, blossoms ×.85, cord / bail ×.75 — the UE WPO adds the same term to
+  every hull vertex) with darker line tones (hull mix .7–.8) for margin under lum 64; the remaining median is a
+  documented per-asset exception (`inkGate.exception`).
+* **Review scope**: the family's previews are `Previews/SM_Weapon_{Axe,Bow,Dagger,Mace,Shield,Staff,Sword,Wand}/`
+  (closeup, tiers, `game_inhand_<Class>`, `clips_<Class>_<Clip>[_n]`, game, game_inkgate), `SM_Pickup_*/` (33),
+  `SM_Loot_Bag/`, `weapons_lineup/` and `loot_family/` — there is no `item_*` directory.
 * **Budgets**: weapons 0.7–3.5 k toon (+ 0.24–1.4 k hull); pickups 0.7–3 k toon (+ ≤ 1.5 k hull), the gold heap
   3.0 k + 1.4 k hull (27 light heap coins: 8 sides, one face unless tilted up) and the herb bundle 3.5 k + 3.4 k hull
   (15 leaves, each its own ink, pale twine and three pale blossoms for value contrast on the grass); gems 40–254 tris (glint stars included);
@@ -879,7 +1009,7 @@ emitters draw — sprite textures, FX meshes, and the recipe document the runtim
 | File | Content |
 |---|---|
 | `vfx/fxpaint.py` | signed-distance painting toolkit (numpy): fields, cel bands, strokes, halos, strips |
-| `vfx/fx_textures.py` | `Export/VFX/T_FX_<Sprite>.png` — the web `FxTextures.ts` painters redrawn as cel sprites (crisp silhouette, 2–3 value bands, one halo only where the shape emits light), **linear** RGBA (sRGB off), white = tintable, pre-coloured cells (8 flame palettes incl. the camp flame, frost shard, arrow, coin, rock, chain); strips of N cells picked by the instance Variant; `sprites.json` (cells, blend, note) |
+| `vfx/fx_textures.py` | `Export/VFX/T_FX_<Sprite>.png` — the web `FxTextures.ts` painters redrawn as cel sprites (crisp silhouette, 2–3 value bands, one halo only where the shape emits light), **linear** RGBA (sRGB off), white = tintable, pre-coloured cells (8 flame palettes incl. the camp flame, frost shard, arrow, coin, rock, chain); strips of N cells picked by the instance Variant; every cell inside a transparent gutter (`fxpaint.gutter`); `sprites.json` (cells, blend, size, note, the Impact `cellScale`) |
 | `vfx/fxkit.py` | the `M_AF_FX_Mesh` look in Cycles (one tint per particle → toon bands → ink hull, **value channel `AF_Data.a`**, 4×4 Bayer-dithered fade, HDR), `FxBuilder` (regions = values, resolved per part), `finish(… flat_lit, mitre)`, **`mitre_hull`** (re-seats a faceted mesh's hull as an exact mitred offset), ship + manifest entry (`fx` record), shipped characters for scale |
 | `vfx/fx_meshes.py` | `SM_FX_*` (below) + previews + the FX ink gate |
 | `vfx/fx_recipes.py` | every effect of spec §8.5–§8.7 + the 40 skills as runtime recipes (web compositions converted at 100/45 cm per px); `fx_palettes.json` (element palettes, flame gradients, class / skill / quality / affix / spirit / death colours, status tints, story embers) |
@@ -956,3 +1086,227 @@ Conventions learnt on the VFX:
   (Cast01 / Cast_Blizzard / Cast_Meteor / Cast_Multishot) at its release beat. The mage's `hand` resolves to the staff
   `crystal` socket (spec 8.1; at Cast01's release the crystal is 73 cm past `fx_hand_r`): the previews draw it so, and
   the runtime needs the matching `AAbyssCharacterActor::GetAnchorLocation` change (`integration.launchSocket`).
+* **Projectile heads must not outlive the flight**: `HandleProjectileEnded` stops the head recipe with
+  `Stop(handle, false)` — emission ends, live particles stay on the (now parked) anchor. A count-1 head living the
+  longest flight (520 ms) stood in the target at full opacity; arrow / shard heads are `fx_recipes.arrow_head`:
+  60 /s copies living 90 ms on the attached anchor (gone ≤ 75 ms after the impact: solid, then the 2-frame
+  dissolve), flat on the ground plane and turned to the flight (orient ground + `alignToBlow`, so no copy takes the
+  `dir: blow` random climb). A piercing arrow flies on through its target from the `.hit` recipe (a free arrow at
+  the per-target arrow speed 2525 cm/s, braking, its comet fading, the mesh shrinking out) — level only with the
+  layer key `flat` (`integration.flat`, simulated by the previews).
+* **Cells never touch their border**: a shape or halo reaching the cell edge at non-zero alpha is clipped hard by
+  the quad (and bleeds into the strip neighbour under bilinear). `fxpaint.gutter` fades the outer px of a cell
+  (`fx_textures.GUTTER_SIDES`; Bolt / Beam / Flame reach their borders by design); the impact stars are drawn
+  fitted inside a 6 px gutter (`impact_fit`) and the recipes enlarge their quads by 1 / `cellScale` (`sprites.json`)
+  so they keep their size.
+* **A weight step must read at 1:1**: hit.impact.light and .normal differed only by ring r 10 vs 13 and 4 vs 6
+  sparks and looked alike; the light tap also lowers its core / glow / ring alpha and flies 4 short slow sparks
+  (`light_tap`). The runtime plays `hit.impact` until it resolves the profile id (`integration.hitImpactProfiles`).
+* **Evenly spaced orbiters need slots, not a rate**: a rate emitter gives each orbiter a random angle (the stun
+  showed 2 bunched stars). status.stun bursts 3 stars (orbit angle 360·i/3) every 500 ms — at 240 °/s exactly one
+  slot — each landing on the previous set's stars (`STUN_SLOT_MS`).
+
+## 15. Icons, glyphs, emblems and portraits (`icons/`)
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/icons/items.py       # 100 item icons (~4 min)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/icons/skills.py      # 40 × 2 skill textures (~2 min)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/icons/glyphs.py      # 15 glyphs, 3 quest items, 2 emblems
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/icons/portraits.py   # portrait coverage + medallion sheets
+#   items.py / skills.py / glyphs.py --only a,b,c   → scratch sheets only (iteration), nothing shipped
+```
+
+The icons are rendered from the **shipped** meshes (`SM_Weapon_*`, `SM_Pickup_*`, `SM_UI_QuestMarker_*`): re-run
+`items.py`, `skills.py` and `glyphs.py` after those re-ship, and `portraits.py` after any portrait owner re-ships (the
+stash alias is a byte copy). Each script rewrites its own preview sheets (stale `_<n>` tiles of a sheet are removed);
+a whole sheet that is no longer written (fewer pages) is not, so clear the family's preview folder first.
+
+| File | Content |
+|---|---|
+| `icons/iconkit.py` | the icon renderer (spec §9, R10): orthographic studio (camera along +Y, the **game's view-space key light** — upper-left, toward the viewer — through the shared `AF_ToonCore`), shipped meshes re-imported from `Export/` (`import_fbx` with any palette atlas, `import_fx` for FX meshes in a tinted toon look), `IconPalette` (icon-only models: registry + atlases in scratch, never shipped), `place` (orient by local axes: `toward`, `up`, `roll` / `yaw` / `pitch` / `spin`), `fit` / `Frame` (96-unit icon space), `render_icon` (colour + depth + region-key passes at 2× → coloured line art → web post), `icon_gate`, `atlas` / `ui_sheet` previews, `IconManifest` (merges the top-level `ui` section) |
+| `icons/shapes.py` | icon modelling helpers in the studio frame (X right, Z up, viewer −Y): `pillow` (cushioned slab from an outline), `slab`, `torus`, `links` (chains), `brilliant` (faceted stone), `lump`, `Surface` (front ray-cast probe), `dome_on`, `align`, outline builders (`bez`, `blob2d`, `circle2d`, `rrect2d`, `star2d`, `heart2d`, `capsule2d`, `ribbon2d`, `spiral2d`, …) |
+| `icons/item_models.py` | the icon-only item models, one builder per web icon family (`helm`, `armor`, `gloves`, `boots`, `belts`, `ring`, `amulet`, `material`), authored in the web's 96-unit coordinates (`W(x, y)`, 1 u = 1 cm) with `drape_strip` / `surf_tube` details laid on the surfaces |
+| `icons/weapon_models.py` | icon-only weapon models with the base's **shape** (the web variant tables `ItemIcons.ts` SWORDS / DAGGERS / BOWS / STAFFS / SHIELDS): `blade_parts` (length × half-width, profile straight · broad · wavy · serrated · curved · needle as the web `bladeWidth`, guard bar · cross · wing · disc, grip, pommel, gem, fuller, rust, drip, glow; hollow-ground diamond with bright edge bevels and the web's darker far flat), `bow_model` (half-height, bulge, recurve, limb width, horn / steel tips, bands, spikes, feathers, glow), `staff_model` (oak · arcane · rune · elder · lich · abyss heads and hafts), `shield_model` (round wood · iron heater · tower · kite · rune · abyss); scaled like the web (`framed`: blades by the web `bladeSpec` fit, daggers smaller) |
+| `icons/gem_models.py` | icon-only cut stones (web `IconKit.ts` `facetGem` / `gemCut`, `ItemIcons.ts` `gemSpec`): `facet_gem` builds a crown seen table-on — girdle polygon, table (outline × `table`, shifted up-left), one ring of facets (`plain`), two rings (`step`: the emerald) or a round brilliant (`brilliant`: octagonal table, 8 star, 8 kite, 16 upper-girdle facets) — every facet its own swatch from the web ramp (glint · light · base · shade · deep by how it faces the light ± an alternating offset; `Facets.colours` nudges equal neighbours apart) so the seam pass draws the facet lines; a line-less table overlay (darker lower-right, the white reflection wedge); girdle band + pavilion behind. `gem(typ, tier)`: ruby oval, sapphire pear, emerald step cut, topaz trillion, diamond brilliant (tier 1: the web's chipped plain crown), `GEM_PITCH` −9° / `GEM_YAW` −6°, fixed frame (icon units = web units); `essence()` (m_essence) |
+| `icons/items.py` | the item-icon table: every base of `Data/item_bases.json` → one look (swords, daggers, bows, staffs, shields: `weapon_models` per base; axe / mace / wand: `SM_Weapon_<F>` + the tier palette from the manifest `bases`, the axe / mace haft shortened for the icon, `HAFT_SQUEEZE`; consumables: `SM_Pickup_*`; gems: `gem_models`; the rest: `item_models`), coverage check, ship |
+| `icons/motifs.py` | skill / glyph motif kit: `Comp` (modelled parts + placed shipped meshes), `flame`, `swoosh`, `arrow`, `skull`, `heart_pts`, `cloud`, `bolt`, `crystal`, `star`, `drop`, `snowflake`, `ring2d` / `ring3`, `ribbon3` (swept curved ribbons), `weapon` (a shipped weapon placed like the web `blade()`, `widen` for emblem readability), `blade` (the base's own web blade from `weapon_models`, placed like the web `blade(c, key, …)`), `fx` |
+| `icons/skills.py` | the 40 skill motifs (web `SkillIcons.ts` MOTIFS, one function each) + the emblem plate |
+| `icons/glyphs.py` | `T_UI_Glyph_*` (15), `T_UI_QuestItem_*` (Ch1: herb and gel as icon models of the web drawings — `q_herb`, `q_gel`; pendant from its ground mesh), `T_UI_Emblem_Villain` / `_Generic` |
+| `icons/portraits.py` | portrait coverage (every Ch1 speaker resolved like `FAbyssUiContext::Portrait`), checks, alias copies, medallion previews |
+
+Outputs: `Art/Export/Icons/{Items,Skills,Glyphs,QuestItems}/T_UI_*.png` (straight-alpha RGBA, transparent background,
+no UI frame — Slate draws slots, quality borders and the skill frame), `Art/Export/Portraits/T_UI_Emblem_*.png` and the
+alias `T_UI_Portrait_Stash.png`; the content build imports every `T_UI_*` it finds under `Export/{Icons,Portraits}`.
+`manifest.json → ui.<texture>`: `kind` (`itemIcon` · `skillIcon` · `skillMotif` · `glyph` · `questItemIcon` · `emblem` ·
+`portrait` · `portraitAlias`), `file`, `px`, ids (`iconId` + `bases` + `default`, `skillId` + `damageType` + `tree` +
+`backdrop`, `glyphId`, `questItemKind`, `artIds`), `source` (mesh + palette / tier, or the icon model), `gate`, `previews`.
+Previews: `Previews/icons_items/<category>_p<n>_1x.png` (native), `_half.png` (0.5×), `_ui.png` (48 / 36 px in slots with
+the five quality frames); `Previews/icons_skills/<class>_p<n>_1x.png`, `_half.png`, `_motifs_half.png`, `_ui.png`;
+`Previews/icons_glyphs/`, `Previews/icons_quest/`; `Previews/portraits/medallions_<n>.png` (conversation 64 px brush in a
+circle, story `say` masked r 53, class well 66, class card 170) and `emblems_1x.png`.
+
+The look (web `IconKit.ts inked()` on top of the 3-D toon render):
+
+* **Line art in screen space**, not the hull (a 1.3 cm hull is a third of a 6 cm coin at icon scale): an **overlap line**
+  (`LINE_U` 1.15 u, the nearer part's line tone mixed 18 % toward the ink) on the far side of every true depth
+  discontinuity (`depth_breaks`: a jump > 1.6 u *and* > 3× the surface's own slope on both sides — a sphere's steep rim is
+  not an overlap), and a thinner two-sided **seam** (`SEAM_U` 0.5 u each side) where two palette regions of different
+  base colour meet on one surface (region keys = object × swatch from a UV pass, mode-filtered so sub-pixel strips do not
+  dash; emissive regions and `nolines` objects get none).
+* **Web post**: rim `rgba(255,240,210,.45)` 1.1 u on the upper-left edge, ink `#140C1C` 2 u (skill motifs 2.1 × 0.9,
+  glyphs 3.2 u with rim 1.4 u, quest markers 3.6 u), drop shadow black .55 blur 3 u offset (1.5, 2.5) u, under-glows
+  (`auto_glow` = the emissive regions' own colour; or explicit `Accent('glow', under=True)`), over-accents (four-point
+  `sparkle`, `rays` for tier-5 gems). Everything renders at 2× and is box-filtered down.
+* **Gate** (`icon_gate`, recorded per texture): ink ≥ (ink − 0.5 u) on ≥ 98 % of the outer silhouette, ink pixels' lum
+  p95 ≤ 40, an empty border (nothing clipped), the body spanning 30–93 % of the square, and nothing of the finished
+  texture on its edge (`finalBorderAlphaMax` ≤ 2): the drop shadow and the soft accents (`glow`, `webglow`, `glowline`,
+  `rays`, `auto_glow`) fade out over the outer `GLOW_EDGE_U` 7 u, so a big emissive haze (the abyssal bow) or a tight
+  glyph's shadow never ends in a straight cut in the slot.
+
+Conventions learnt on the icons:
+
+* **Presented like the web**: blades on the diagonal tip up-right with a slight `spin` so one hollow-ground facet takes
+  the light; bows string down-right; shields face-on with a little yaw; the axe / mace / wand meshes pitched ~35–58° away so
+  the ortho camera foreshortens the shaft and the head reads at 42 px — the axe and mace hafts are also shortened for
+  the icon (`items.HAFT_SQUEEZE`: local y between butt and head × 0.60 / 0.52, the butt moved up rigidly; art review r3:
+  at 36 px the long shaft left a stick with a dot), so the head spans ~40–55 % of the square; gems table-on like the web
+  with a small tip (`gem_models.GEM_PITCH` −9°: a sliver of girdle shows; the old −32° turned the shipped pickups'
+  twisted pavilions into pleats); potions share one scale on a
+  common baseline (S < M < L), their under-glow scaled with the bottle (0.56 × its height, centred on the body); scrolls turned −28°; boots a pair turned 24° to 3/4 (`boot_solid`: a round shaft and a toe
+  box, not a cushion).
+* **Shape per base, not per tier** (art review of the icons): the inventory tells a broad sword from a short sword by its
+  silhouette, so the five families with web variant tables render `weapon_models` per base (31 looks, every `edgePx`
+  in a family different); the in-world `SM_Weapon_<F>` stays one mesh with tier atlases (R4). T5 / T6 and staffs get the
+  under-glow of their emissive accents.
+* **Two-tone blades**: the icon key light comes toward the viewer, so no front-facing flat ever reaches the toon shade
+  band — the far flat of a blade is painted darker (`blade_dk`, the web's `bt.shade` at α .6); `PatchedPalette`
+  recolours single swatches of shipped meshes for an icon, `swatch_faces` / `delete_swatch_faces` / `swatch_centroid`
+  edit or locate painted parts (the pendant's ground coil replaced by a loop of links, its glow centred on the ruby).
+* **Facet line work = per-facet swatches** (art review r3): a convex stone has no depth breaks and one-swatch facets
+  draw no seams, so cut stones (`gem_models`) give every facet its own colour from the web ramp and keep neighbours
+  ≥ 0.075 apart (`seam_min_contrast` .05, `seam_u` .42): the seam pass then outlines every facet like the web's
+  facet seams. Clear stones (topaz, diamond) pull their shade / deep facets 30 % back toward the body colour. The
+  same trick draws a leaf's midrib (two half-leaf pillows, lit and shaded) and twine wraps (abutting segments).
+* **Saw-teeth on near edge-on forms**: a torus band or a gem girdle seen almost edge-on folds over itself in short
+  steps the depth-break test catches as dashes; `IconStyle(depth_step_u=, line_min_u=)` keeps the real overlaps and
+  drops line pieces shorter than `line_min_u` (rings 3 u / 9 u). Nested colour layers (the villain emblem's flame
+  tongues) sit 0.6 u apart under a 2.4 u `depth_step_u`, so each tongue gets one overlap line and its layers meet in
+  seams (2.2 u apart they drew doubled, offset outlines).
+* **Glows the web way**: `Accent('webglow')` uses the web `glow()` stops (α · .45 α at 0.4 r · 0), which still shows
+  round a body that fills most of its radius (the ley fruit, the quest gel, the gem tiers ≥ 3, the rare essence);
+  `'glow'` is the steeper (1 − d)² falloff and vanishes under a body that covers its centre.
+* **Over-accents that are never inked** (the web draws them in `over`): `'sparkle'` (always upright, four points —
+  a rotated glint reads as a cancel mark in a slot), `'webrays'` (gem tier 5: `n` short strokes outside the stone,
+  `width_u` at the root tapering to a point, bright `mix(colour, white, .45)`, soft halo, no edge window) and
+  `'bubble'` (venom bubbles: body `hex`, rim `hex2`, a thin outline in the body's own line tone — modelled rings took
+  the 2.1 u motif ink and read as black donuts).
+* **Emblem readability**: skill motifs widen shipped blades 1.4–1.7× across (`motifs.weapon(widen=)`) — at 42 px a true
+  5 cm sword blade is a hairline next to the web's 8-unit broadsword.
+* **Pillows fill concave curves** (`pillow` scales rings toward the centroid): spirals, comet tails, wisps and trap jaws use
+  `ribbon3` (a swept flat tube); `links` builds each chain link as a real oval ring (a scaled torus thins its wire).
+* **Compositing order**: `over(dst, src)` = src over dst — under-glows go behind the inked body *and* its shadow, sparkles
+  last.
+* **Portraits** are not re-rendered here (their character generators own them); `portraits.py` verifies them and writes
+  only alias copies where the runtime name differs (`stash` → `T_UI_Portrait_Stash` ← `T_UI_Portrait_StashKeeper`;
+  **re-run it after the stash keeper re-ships**, the alias is a byte copy). It also covers the Q3 companion
+  (`pet_sprite` → `T_UI_Portrait_Pet_Sprite`, resolved like `FAbyssUiContext::PetPortrait`). Each manifest entry lists
+  the one medallion tile its row lands in (labels sit inside the row, so a split tile never orphans one).
+  The conversation panel and the class cards draw the square portrait inside a circle without a mask (the busts' flat
+  bottom shows below the ring, `medallions_*.png`); the story overlay's `TexturedCircle` is the clean medallion.
+* **UI textures are minified 4–7×** (256² icons drawn at 36–48 px, 128² glyphs at 14–32 px): they are imported **with
+  mips** (`Scripts/abyss_content/ue/textures.py`: kinds `ui_icon` / `ui_portrait` → `TMGS_SIMPLE_AVERAGE`,
+  `TEXTUREGROUP_UI`, never streamed; the manifest entries carry the same hint), or Slate's bilinear sampling would skip
+  texels of the 1–2 px line art. The `_ui.png` sheets show what Slate draws (`slate_sample`: the SimpleAverage chain,
+  the nearest level for the slot size — UE's UI group `MipFilter=point` — sampled bilinearly), not an ideal box filter.
+* **`previews[]` per texture**: each manifest entry lists only the sheets that show it — and, for a sheet the native
+  writer split into `_2.png` … tiles, only the tile(s) its cell lands in (`save_preview_cells` + `atlas_boxes` /
+  `ui_sheet_boxes`).
+
+## 16. Ley-beast companion (`pets/`)
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/pets/sprite.py [--stage 1|2]   # SK_Pet_Sprite[_E1|_E2]
+#   --quick [Clip frame] (close-ups / turnaround / game crop → $AF_SCRATCH_ROOT or the system temp dir)
+#   --anims [Clip …] · --no-previews · --no-verify
+```
+
+`SK_Pet_Sprite` (灵脉精灵, `beast_pet_sprite` / `pet_sprite`; DECISIONS Q3: Chapter 1 ships the `pet_sprite`
+companion) on `SKEL_Pet_Sprite`, palette family `Pets`, category `Characters`, ink class `small_monster` (1.4 cm baked)
+with a per-asset **3.5 px** request (`OUTLINE_PX`, gate 3.0 px: at the class's 3.0 px wing tips, sprout and wisp kept
+≥ 3 px on only 72–78 % of the worst cells; the web inks pets heavier than heroes).
+The web `Sprite.ts` / `Fly.ts` translated: a ≈ 20 cm glowing seed-ball body hovering 0.47 m up (web hover 22 u + 3,
+1 u = 1.86 cm), big dark eyes with glints, smile / "o" mouth, peach cheeks, a two-leaf sprout, four dragonfly wings,
+two small arms reaching forward, a wisp tail ending in an emissive tip. 17 bones, all children of `root` (`body`,
+`tail_01..04`, `wing_l/r_01/02`, `arm_l/r`, `sprout`, `eye_l/r`, `mouth`, `mouth_o`); clips keyed as bone basis
+matrices from the web `flyPose` tracks (`SpriteAnims`): Idle 667 · Walk 600 (ref 4.2 m/s) · Attack01 333 (Contact
+250) · Cast01 400 (Release 200) · Hurt 200 — no Death (an exhausted pet idles at 0.6×). The body is not emissive
+and the tip only faintly (its bloom washed the ink off the rim of a 60 px creature): the ley light is the runtime glow
+cards — body aura and tail-tip glow — placed **behind** the pet (manifest `fx.*.placement`, depth-tested like the elite
+crown's halo). The previews composite them behind the coverage (`BehindGlow`, patched into `mship.MReview` for the
+pet's process only), so they show the shipped look and the ink gate still sees the ink; the portrait
+`T_UI_Portrait_Pet_Sprite` (`AbyssUiContext::PetPortrait`) lays them under the creature. Shipped through
+`monsters/mship.py` (`MonsterShip(category="Characters")`: FBX + LOD1 + manifest + QA + re-import verification + the
+full preview set in `Previews/pet_sprite/`).
+
+Evolution (`--stage`, web `PetStage`, artId `beast_pet_sprite_e1` / `_e2`, pets.json levels 10 / 20):
+`SK_Pet_Sprite_E1` (×1.13 of stage 0, lighter skin, longer wings, a crown of five leaves) and `SK_Pet_Sprite_E2`
+(×1.27, five blossoms gold / pink / cream, cream wings with gold veins, a gold halo circlet round the sprout) — same
+17 bones and clip set, previews `Previews/pet_sprite_e1/`, `pet_sprite_e2/`, aura +2 u and +.05 α per stage, orbiting
+motes in `fx.motes`. The crown pieces hug the head (`conform`) inside the ball's padded ink, as the web paints them on
+the head: five separately inked 2 px leaves read as a black cap at 1080p. One portrait (stage 0).
+
+## 17. Chapter-1 coherence pass (`coherence/`)
+
+```bash
+python3 unreal/Art/blender/coherence/checklist.py                       # → Art/Export/CHECKLIST.md (no bpy; exit 1 on a GAP)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/coherence/lineup.py      # lineups + metrics
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/coherence/vignettes.py   # camp + goblin camp
+```
+
+| File | Content |
+|---|---|
+| `coherence/cohkit.py` | re-imports shipped FBX with their own family palettes and manifest ink (`import_character`: clip pose, attachments, body / child items, hunt `variants` with the elite crown on `fx_overhead`, NPC scenery; `import_static`), the composited plains ground (`terrain.composite` + web contact shadows), `render` (screen-constant ink per mesh + bloom), `ink_gate_group` (one figure's gate on its own coverage, rendered only in its box) |
+| `coherence/lineup.py` | `Previews/ch1_coherence/lineup_characters*.png` (heroes, ley sprite, monsters + both hunt variants, every NPC, the sprite's two evolved looks) and `lineup_props_{interactive,camp,story,goblin,loot,foliage}*.png` (+ `_inkgate`; `loot` = every ground-loot kind side by side), packed so no two silhouettes overlap; per mesh: ink gate (characters at the Chapter-1 gate: rim ≥ 3 px, `cohkit.CHAR_GATE_PX`; edges within 2 px of a bright emissive FX accent left out as every ship does, `EMISSIVE_EDGE_MIN`), median rim vs the shipped request, CIELAB chroma and HSV saturation (mean, p75), value spread, lit side, posed top vs the exported rest top and `heightCm` → `coherence/lineup_metrics.json` with the cross-family rules |
+| `coherence/vignettes.py` | `vignette_camp*.png` (MapGen camp stamp + `BuildWalls` palisade + the props and NPC slots **parsed from `CampLayout.h`** (`kCampProps`, `kCampNpcSlots`, `CampNpcFacing`: tent owners look out of their door, a hero within 3 tiles turns them; variant by `TileHash(RoundToTile(centre), 23)`) + the heroes at the gate) and `vignette_goblin_camp*.png` ((40,52): huts, pit, totems, goblins, shaman, chief, the red-cap and a slime on the trail, the rogue and the ley sprite coming up it); native 640 × 360 overviews + 1080p 1:1 crops |
+| `coherence/checklist.py` | every id the game resolves for `emerald_plains` (the runtime chains of `WorldContract.md` §2.2 and `AbyssUiContext`): heroes + signature clips, I6 weapon types, zone monsters + mini-boss + hunt variants + crown, camp / field / quest / event NPCs + markers + scenery, the Q3 pet, MapGen decor pools, walls, camp props (`CampLayout.h`), story / lore / hidden-area / exit / event / quest meshes, ground loot, 97 item-icon bases, 40 skill icons + VFX recipes (sprites, meshes), glyphs, portraits and emblems of every Ch1 speaker, palettes, terrain; per-kind manifest fields, files, LODs, clips, previews ≤ 200 KB, ink gates; the §1.3 rules (class width or a documented per-asset request above it), the Chapter-1 character gate (every hero / monster / NPC / companion `inkGate` gated at ≥ 3 px and passed), R2 / §1.9 rules + the lineup metrics → `Art/Export/CHECKLIST.md` (every requirement, every manifest asset and UI texture with its status) |
+
+Cross-family findings fixed in the responsible scripts (pass 1): the kit `Manifest.save` dropped other generators'
+`ui` / `terrain` updates (stale copy written back; now only sections changed by the saving instance are written,
+smoke-test check); `Pets` added to the kit's palette families; `SM_Prop_GoldPile` (`environment/interactive.py`)
+rebuilt in the loot family's coin language (it read as a cheese wheel next to `SM_Pickup_Gold_L`); the missing Q3
+companion `SK_Pet_Sprite` + its evolved looks + its portrait (`pets/sprite.py`).
+
+Final pass (after the family review rounds):
+* **Character ink**: heroes and the boss ship 3.5 px, the goblin family a documented per-asset 3.5 px (art review), but
+  the NPCs and the ley sprite still shipped their classes' 3.0 px gated at 2.5 px — against the Chapter-1 character gate
+  (dark rim ≥ 3 px on ≥ 90 % of the silhouette edges at 1080p) the NPCs kept 61–83 % in the lineup and the sprite 72–78 %
+  in its worst cells, thinner-inked than the goblins beside them. `npcs/npc_ship.py` (`PX` 3.5, `ink_slot`, `ink_gate`:
+  the NPCs, their held props and the `SK_NPCKit_*` parts) and `pets/sprite.py` (`OUTLINE_PX` 3.5) now ship the same
+  documented per-asset request (`outlinePx1080` 3.5, `outlinePxClass`, `outlinePxNote`) gated at 3.0 px; all 9 NPCs,
+  the props, the kit parts and the 3 sprite stages re-shipped (NPC cells min rim 93–97 %, sprite 99–100 %). Every
+  Chapter-1 character now inks 3.5 px; `checklist.py` gates every shipped character's `inkGate` at ≥ 3 px and accepts a
+  per-asset request only above its class with its note.
+* **`SM_Pickup_Quest_Gel`** (`items/loot.py`): spread flat on the ground (r 9 cm at z 0, widest 2 cm up), the W1
+  camera's lower contour was the ground contact — ~41 % of its ink lay under the terrain and the light-green blob met the
+  green grass with no line (lineup gate 85.7 % dark); it now stands on a tucked base (`GEL_LIFT`, belly 3.8 cm up) and
+  is inked all round (loot re-shipped; its icon is its own model, unaffected).
+* **`outlineMix`** missing on the hero items (`heroes/common.ship_weapon`), the anvil stump and the quest markers
+  (`npcs/npc_dressing.py`): written by the scripts now and filled in place through the kit writer (metadata only).
+* **Camp vignette** read a stale copy of the camp layout: it parses `CampLayout.h` (layout v2: NPCs at the tent doors).
+* **Dev-mode paths**: a dozen family scripts hard-coded this pipeline's session scratch directory for their `--quick` /
+  `--debug` output (the icon kit's icon-only palettes too): all use the new `kit.paths.scratch_root` (smoke-test check).
+
+Measured and accepted (`coherence/lineup_metrics.json`, final pass): §1.5 hierarchy by the p75 **CIELAB chroma** C* of
+each mesh's toon pixels — heroes 34 ≥ NPCs 27, monsters 56 ≥ NPCs, heroes ≥ decor 30, interactive 49 ≥ decor (HSV
+saturation is kept in the metrics but not ruled on: (max − min) / max rates the camp's dark wood and canvas ≈ .55, as
+"saturated" as the warrior's crimson; the goblins' green skin out-chromas the heroes as the spec's "high, greener"
+allows, the potions and gems are the loot's colour pops, and the grass tufts sit at the `#74a247` family the spec names
+for the ground). Ink medians hero 3.8 · boss 3.9 · monster 3.8 · ley sprite 3.9 · NPC 3.7 · interactive 2.1 · decor
+1.4 px; 22 character figures ≥ 3 px on ≥ 94.8 % of their edges; every family lit from the upper left (one `L_KEY`; only
+the icon studio has its own view-space key); one toon band set (`tShade` .42, `tLight` .86) for every family (foliage
+adds wind only); FBX scale: every re-imported character's posed top within 15 % of its exported rest top (the chief's
+horns and the shaman's feather fan stand 11 / 9 % above their R2 body heights, by design); palettes 256² / 16 px swatches
+everywhere (no texel-density drift), terrain 341 px per tile, UI textures 512 (portraits, emblems) / 256 (item, skill,
+quest icons) / 128 (glyphs). The vignettes place everything the way the runtime does (`BuildWalls` stakes, `CampLayout.h`
+props, NPC slots and facings, MapGen camp stamp); the goblin camp's props have no runtime placement yet (spec §6.9 leaves
+it to the level script), so its layout here is a proposal.

@@ -821,20 +821,27 @@ def paint_rock():
 
 
 def paint_chain():
-    cv = Canvas(64, 32)
-    ring = np.abs(P.ellipse(cv, 32, 16, 24, 11)) - 5.2
+    """Cel chain link (mesh fallback), 2:1 like before at twice the resolution with a ≥ 5 px transparent gutter
+    (the 64×32 link touched its top / bottom border at α .98)."""
+    cv = Canvas(128, 64)
+    k = 1.58
+    ring = np.abs(P.ellipse(cv, 64, 32, 24 * k, 11 * k)) - 5.2 * k
     cv.over(P.lin("#3A4250"), cv.cov(ring))
-    cv.over(P.lin("#A8B4C4"), cv.cov(ring + 1.6))
-    hl = P.intersect(ring + 3.2, (cv.y - 16) + (cv.x - 32) * 0.2 + 2.0)
+    cv.over(P.lin("#A8B4C4"), cv.cov(ring + 1.6 * k))
+    hl = P.intersect(ring + 3.2 * k, (cv.y - 32) + (cv.x - 64) * 0.2 + 2.0 * k)
     cv.over(P.lin("#EEF4FA"), cv.cov(hl))
-    return cv.result()
+    return P.gutter(cv.result())
 
 
-def impact_cell(kind: str) -> np.ndarray:
+IMPACT_GUTTER_PX = 6.0
+
+
+def impact_cell(kind: str, k: float = 1.0, W: int = 128) -> np.ndarray:
     """Hit impact stars per hit profile (combat-feel §11): normal (light / normal) 6-point burst, heavy 8-point
-    jagged burst, crit spiky starburst + white cross, kill burst + shattered ring."""
-    cv = Canvas(128, 128)
-    c = 64
+    jagged burst, crit spiky starburst + white cross, kill burst + shattered ring. ``k`` scales the whole drawing
+    round the cell centre (the same jitter sequence at any ``k``), ``W`` is the cell size."""
+    cv = Canvas(W, W)
+    c = W / 2
     r = P.rng({"normal": 1, "heavy": 2, "crit": 3, "kill": 4}[kind])
 
     def burst(n, ro, ri, jitter, rot=0.0):
@@ -842,34 +849,51 @@ def impact_cell(kind: str) -> np.ndarray:
         for i in range(2 * n):
             a = rot + i * math.pi / n - math.pi / 2
             rr = (ro * (1 - jitter + 2 * jitter * r())) if i % 2 == 0 else ri * (0.85 + 0.3 * r())
-            pts.append((c + math.cos(a) * rr, c + math.sin(a) * rr))
+            pts.append((c + math.cos(a) * rr * k, c + math.sin(a) * rr * k))
         return P.polygon(cv, pts)
     if kind == "normal":
-        outer, inner, core = burst(6, 50, 20, 0.14), burst(6, 34, 13, 0.1, 0.2), P.circle(cv, c, c, 9)
+        outer, inner, core = burst(6, 50, 20, 0.14), burst(6, 34, 13, 0.1, 0.2), P.circle(cv, c, c, 9 * k)
     elif kind == "heavy":
-        outer, inner, core = burst(8, 58, 22, 0.2), burst(8, 40, 15, 0.16, 0.18), P.circle(cv, c, c, 11)
+        outer, inner, core = burst(8, 58, 22, 0.2), burst(8, 40, 15, 0.16, 0.18), P.circle(cv, c, c, 11 * k)
     elif kind == "crit":
         outer, inner = burst(12, 62, 24, 0.24), burst(12, 44, 18, 0.2, 0.13)
-        core = P.star(cv, c, c, 40, 6, 4, curve=0.55)
+        core = P.star(cv, c, c, 40 * k, 6 * k, 4, curve=0.55)
     else:
-        outer, inner, core = burst(10, 60, 26, 0.22), burst(10, 42, 18, 0.18, 0.31), P.circle(cv, c, c, 12)
-    glow_under(cv, outer, 8.0, 0.4)
+        outer, inner, core = burst(10, 60, 26, 0.22), burst(10, 42, 18, 0.18, 0.31), P.circle(cv, c, c, 12 * k)
+    glow_under(cv, outer, 8.0 * k, 0.4)
     cv.over(WHITE * 0.8, cv.cov(outer) * 0.8)
     cv.over(WHITE * 0.92, cv.cov(inner))
     cv.over(WHITE, cv.cov(core))
     if kind == "kill":
-        ring = np.abs(np.hypot(cv.x - c, cv.y - c) - 54) - 2.4
+        ring = np.abs(np.hypot(cv.x - c, cv.y - c) - 54 * k) - 2.4 * k
         ang = np.arctan2(cv.y - c, cv.x - c)
         gaps = np.cos(ang * 7 + 0.4) > 0.35
         cv.over(WHITE, cv.cov(ring) * gaps)
     if kind == "crit":
-        ring = np.abs(np.hypot(cv.x - c, cv.y - c) - 57) - 1.6
+        ring = np.abs(np.hypot(cv.x - c, cv.y - c) - 57 * k) - 1.6 * k
         cv.over(WHITE, cv.cov(ring) * 0.85)
     return cv.result()
 
 
+def impact_fit(kind: str, W: int = 128) -> float:
+    """The drawing scale that keeps a ``IMPACT_GUTTER_PX`` transparent gutter inside a ``W`` cell (VFX review 4: the
+    heavy / crit / kill stars' jittered points and halo ran off their cells and were clipped hard by the quad). The
+    star is painted unclipped on a 2× canvas and measured; the recipes enlarge the quad by 1 / fit
+    (``sprites.json`` → ``Impact.cellScale``, fx_recipes.impact_star), so the star keeps its on-screen size."""
+    big = impact_cell(kind, 1.0, 2 * W)
+    ext = P.alpha_extent(big)
+    return round(min(1.0, (W / 2 - IMPACT_GUTTER_PX) / max(ext, 1e-6)), 4)
+
+
+IMPACT_FIT: dict[str, float] = {}
+
+
 def paint_impact():
-    return P.strip([impact_cell(k) for k in IMPACT_CELLS])
+    cells = []
+    for kname in IMPACT_CELLS:
+        IMPACT_FIT[kname] = impact_fit(kname)
+        cells.append(P.gutter(impact_cell(kname, IMPACT_FIT[kname])))
+    return P.strip(cells)
 
 
 def paint_wisp():
@@ -954,6 +978,39 @@ SPRITES = {
     "Wisp": (paint_wisp, 1, "additive", "spirit-fire wisp, head at the top"),
     "Swirl": (paint_swirl, 1, "additive", "whirlwind ground swirl"),
 }
+
+
+# VFX review 4: cells whose shape (or halo) met the cell border at non-zero alpha get a transparent gutter (sides
+# per sprite; fxpaint.gutter). Impact (fitted drawing) and Chain (redrawn) do it in their painters; Bolt (beam quads
+# tile end to end), Beam / Flame (upright quads stand on their base) reach their borders by design.
+# (sides, fully transparent px, ramp end px)
+GUTTER_SIDES = {"Slash": ("TBLR", 2.5, 7.0), "Crack": ("TBLR", 2.5, 7.0), "CrackGlow": ("TBLR", 2.5, 7.0),
+                "Wisp": ("B", 1.0, 6.0), "Comet": ("B", 1.0, 6.0), "Ember": ("TB", 1.0, 5.0),
+                "Streak": ("TB", 1.0, 5.0), "Hex": ("TB", 1.0, 5.0)}
+
+
+def with_gutter(name: str, img: np.ndarray) -> np.ndarray:
+    g = GUTTER_SIDES.get(name)
+    if not g:
+        return img
+    sides, outer, inner = g
+    cells = SPRITES[name][1]
+    w = img.shape[1] // cells
+    return P.strip([P.gutter(img[:, i * w:(i + 1) * w], sides, outer, inner) for i in range(cells)])
+
+
+def write_sprite_json() -> None:
+    """Refresh ``sprites.json`` (read by fx_recipes.py, which needs no bpy / numpy painting): cells, blend, size,
+    note for every sprite, plus ``cellScale`` (the Impact drawing fit per cell) — merged over the existing file."""
+    path = HERE / "sprites.json"
+    table = json.loads(path.read_text()) if path.exists() else {}
+    for name, entry in sprite_table().items():
+        cur = dict(table.get(name, {}))
+        cur.update(entry)
+        if name == "Impact" and IMPACT_FIT:
+            cur["cellScale"] = [IMPACT_FIT[k] for k in IMPACT_CELLS]
+        table[name] = cur
+    path.write_text(json.dumps(dict(sorted(table.items())), indent=1) + "\n")
 
 
 def sprite_table() -> dict:
@@ -1073,9 +1130,14 @@ def main(argv) -> int:
     if not sheet_only:
         for name in names:
             fn = SPRITES[name][0]
-            img = P.to_u8(fn())
+            img = P.to_u8(with_gutter(name, fn()))
             size = pngio.write_png(OUT / f"T_FX_{name}.png", img)
             print(f"T_FX_{name}: {img.shape[1]}x{img.shape[0]} {size / 1024:.1f} KB")
+        if "Impact" not in names:              # cellScale is measured while painting the Impact strip
+            for kname in IMPACT_CELLS:
+                IMPACT_FIT[kname] = impact_fit(kname)
+        write_sprite_json()
+        print(f"  sprites.json (Impact cellScale {[IMPACT_FIT[k] for k in IMPACT_CELLS]})")
     sheet(list(SPRITES))
     return 0
 

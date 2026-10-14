@@ -21,9 +21,10 @@ Look rules of the art pass:
   the manifest ``boundsDiameterCm``).
 
 Runtime notes the recipes work around (``integration`` section of the JSON): ``dir: blow`` adds a random vertical
-component (−0.15…0.35), so flight-aligned heads use one long-lived particle per projectile (a stable pitch) and the
-multishot volley adds a compensating gravity; mesh layers are always ``M_AF_FX_Mesh`` (tint + toon + ink), never
-additive.
+component (−0.15…0.35), so arrow / shard heads are short-lived copies flat on the ground plane turned to the flight
+(``arrow_head``: they also vanish ≤ 75 ms after the projectile ends) and the multishot volley adds a compensating
+gravity; the optional layer key ``flat`` (Z = 0, integration.flat) levels free arrows; mesh layers are always
+``M_AF_FX_Mesh`` (tint + toon + ink), never additive.
 """
 from __future__ import annotations
 
@@ -266,10 +267,23 @@ def held(base: dict, a: float, P: int, pulse: float = 0.45) -> list:
                 alpha=[round(pulse * a, 3), 0])]
 
 
+def impact_scale(kind: str) -> float:
+    """T_FX_Impact draws each star at ``cellScale`` of its cell (fx_textures.impact_fit: a transparent gutter so the
+    jittered points no longer hit the cell border, VFX review 4); quads are enlarged by 1 / cellScale so the star
+    keeps its on-screen size."""
+    try:
+        cs = json.loads((HERE / "sprites.json").read_text())["Impact"].get("cellScale")
+    except (OSError, ValueError, KeyError):
+        cs = None
+    return float(cs[IMPACT[kind]]) if cs else 1.0
+
+
 def impact_star(at, kind, size_cm, color, *, life=140, delay=0, h="chest", rot=(0, 360), **kw):
-    """Toon hit star (T_FX_Impact cell per hit profile): a white-hot core cell over the event colour."""
+    """Toon hit star (T_FX_Impact cell per hit profile): a white-hot core cell over the event colour. ``size_cm`` is
+    the star's drawn size (the quad is ``size_cm / impact_scale(kind)``)."""
     return [
-        lay(sprite="Impact", variant=IMPACT[kind], orient="billboard", at=at, height=h, sizeCm=size_cm, grow=1.45,
+        lay(sprite="Impact", variant=IMPACT[kind], orient="billboard", at=at, height=h,
+            sizeCm=round(size_cm / impact_scale(kind), 3), grow=1.45,
             sizePow=3, lifeMs=life, alpha=[1, 0], alphaPow=1.6, rotationDeg=list(rot), color=color, intensity=1.35,
             delayMs=delay, **kw),
     ]
@@ -335,6 +349,30 @@ def R(palette, layers, *, shake=None, light_=None, arc=None, note=None) -> dict:
 # ════════════════════════════════════════════════════════════════════════════════════════════════════
 # combat feedback (§8.5, combat-feel §11)
 # ════════════════════════════════════════════════════════════════════════════════════════════════════
+def light_tap(layers: list) -> None:
+    """hit.impact.light (HIT_PROFILES light: 4 sparks, ring r 10) against normal (6 sparks, r 13): the 30 % ring
+    step alone did not read at 1:1 (VFX review 4), so the light tap also drops its core / glow / ring alpha and
+    flies 4 short, slow sparks — a tap, not a smaller copy of the normal hit."""
+    for L in layers:
+        if L.get("sprite") == "Impact":
+            L["sizeCm"] = round(L["sizeCm"] * 0.82, 3)
+            L["alpha"] = [0.7, 0]
+            L["intensity"] = 1.1
+        elif L.get("emitter") == "flash":
+            L["sizeCm"] = round(L["sizeCm"] * 0.75, 3)
+            L["alpha"] = [0.55, 0]
+        elif L.get("emitter") == "glow":
+            L["alpha"] = [0.28, 0]
+        elif L.get("sprite") == "Ring":
+            L["grow"] = round(L["grow"] * 0.8, 3)
+            L["alpha"] = [round(L["alpha"][0] * 0.6, 3), 0]
+        elif L.get("emitter") == "sparks":
+            L["speedCmS"] = [200, 330]
+            L["lifeMs"] = [100, 160]
+            L["sizeCm"] = [6, 8]
+            L["coneDeg"] = 40
+
+
 def combat() -> dict:
     rec = {}
     # NS_Hit_Impact: core + coloured glow + ground ring + sparks along the blow (big = crit / kill + cross glint)
@@ -376,13 +414,22 @@ def combat() -> dict:
         for l in r["layers"]:
             l.pop("only", None)
             if l.get("sprite") == "Impact":
+                was = next(k for k, v in IMPACT.items() if v == l["variant"])
+                l["sizeCm"] = round(l["sizeCm"] * impact_scale(was) / impact_scale(cell), 3)
                 l["variant"] = IMPACT[cell]
-        r["note"] = f"hit profile {prof} ({n} sparks): forward-compatible id, hit.impact covers it today"
+        if prof == "light":
+            light_tap(r["layers"])
+        r["note"] = (f"hit profile {prof} ({n} sparks): forward-compatible id, hit.impact covers it today "
+                     f"(integration.hitImpactProfiles)")
         rec[f"hit.impact.{prof}"] = r
     # hero basic attack: steel crescent at the target chest + sparks + trail stamp
     rec["hit.basic"] = R("steel", [
-        slash_sprite("target", 45, 150, "#AABBD4", cell=SLASH["warrior"], offsetCm=[-13, 0, 0], intensity=1.3),
-        slash_sprite("target", 40, 110, "white", cell=SLASH["warrior"], offsetCm=[-13, 0, 0], intensity=1.2,
+        # the crescent band (its visual centre ~0.2 × the quad height ahead of the quad centre; the arc centre is
+        # on the quad's bottom edge) sits 6 web px ≈ 13 cm before the target chest along the swing (spec §8.5):
+        # quad centre at −22 cm = exactly STRIKE_CM, so strike_offsets leaves it (it was −13 − 22 = −35: the band
+        # floated ~30 cm short of the target)
+        slash_sprite("target", 45, 150, "#AABBD4", cell=SLASH["warrior"], offsetCm=[STRIKE_CM, 0, 0], intensity=1.3),
+        slash_sprite("target", 40, 110, "white", cell=SLASH["warrior"], offsetCm=[STRIKE_CM, 0, 0], intensity=1.2,
                      alpha=0.85),
         sparks("target", 5, "#FFF2C0", speed=(90, 170), dir="blow", cone=69, size=0.8, alt_every=0),
         lay(emitter="streak", at="target", height="chest", count=2, sizeCm=60, aspect=0.12, lifeMs=[170, 220],
@@ -408,14 +455,23 @@ def combat() -> dict:
         glow("target", 40, 160, "#FF3A2A", alpha=0.5, grow=1.6),
     ])
     rec["hit.evade"] = R("holy", [
-        glint("target", 34, life=200),
-        sparks("target", 6, "#FFE9A0", alt_every=0),
+        # the web glint (34 px ≈ 75 cm) read as a speck on the armour at 1:1: a white cross that opens at 60 cm
+        # and grows to ~1.2 m over a warm gold one, sparks flung wider (VFX review 4)
+        lay(emitter="glint", at="target", height="chest", sizeCm=60, grow=2.0, sizePow=2, lifeMs=240, fadeIn=0.08,
+            alpha=[1, 0], alphaPow=1.4, rotationDeg=0, color="white", intensity=1.7),
+        lay(emitter="glint", at="target", height="chest", sizeCm=48, grow=1.8, sizePow=2, lifeMs=200, fadeIn=0.08,
+            alpha=[0.8, 0], rotationDeg=45, color="mid", intensity=1.4),
+        sparks("target", 8, "#FFE9A0", speed=(170, 340), life=(220, 380), alt_every=0, size=1.15),
         lay(emitter="streak", at="target", height="chest", count=3, dir="back", coneDeg=40, speedCmS=[200, 300],
             lifeMs=160, sizeCm=26, aspect=0.15, color="#FFF6D0", alpha=[0.8, 0]),
     ])
     # NS_Hit_SkillGroundMark
     rec["hit.mark.fire"] = R("fire", [
-        decal("target", "Scorch", px(18) * 0.8, 1800, "#2E1E18", alpha=0.6),
+        # a lighter char (#2E1E18 sank into the dirt and under the target) peeking out round the feet + a faint
+        # ember rim that outlives the glow (VFX review 4)
+        decal("target", "Scorch", px(18) * 0.95, 1800, "#3E2818", alpha=0.68),
+        lay(sprite="Ring", orient="ground", at="target", height=2, sizeCm=round(px(18) * 0.95 * 0.9 / RING_R, 1),
+            grow=1.08, lifeMs=1800, fadeIn=0.06, alpha=[0.32, 0], alphaPow=2.2, color="#FF6A1A", intensity=1.1),
         lay(emitter="glow", orient="ground", at="target", height=4, sizeCm=px(20 * 0.6 * 2), grow=1.4, lifeMs=500,
             alpha=[0.7, 0], color="#FF6A1A"),
     ])
@@ -423,7 +479,9 @@ def combat() -> dict:
         decal("target", "Frost", px(20) * 0.9, 1600, "mid", alpha=0.6, blend="additive"),
     ])
     rec["hit.mark.other"] = R("lightning", [
-        decal("target", "Scorch", px(20) * 0.7, 1400, "#3A3A54", alpha=0.6),
+        decal("target", "Scorch", px(20) * 0.85, 1400, "#48486E", alpha=0.68),
+        lay(sprite="Ring", orient="ground", at="target", height=2, sizeCm=round(px(20) * 0.85 * 0.9 / RING_R, 1),
+            grow=1.08, lifeMs=1400, fadeIn=0.06, alpha=[0.32, 0], alphaPow=2.2, color="#8C8CFF", intensity=1.1),
         decal("target", "CrackGlow", px(20) * 0.8, 360, "#8C8CFF", alpha=0.9, blend="additive", pow=1.5),
     ])
     # NS_Death_Burst (colour = event: monster #FF4444, hero #CC2222, escort #E67E22, soul echo #7FD8FF)
@@ -533,6 +591,15 @@ def utility() -> dict:
             aspect=0.3, grow=1.05, lifeMs=900, fadeIn=0.3, alpha=[0.45, 0], color="#66AAFF"),
         lay(emitter="motes", sprite="Spark", at="origin", rate=14, durationMs=1500, attach=True, spawnRadiusCm=55,
             gravityCmS2=-180, lifeMs=[500, 800], sizeCm=[7, 11], color="#9CC8FF"),
+        # the loops start empty (first ring at 400 ms): the channel reads from its first frame (VFX review 4) — a
+        # ground glow + ring + a burst of rising motes at once
+        lay(emitter="glow", orient="ground", at="origin", height=3, count=1, attach=True, sizeCm=60, grow=2.6,
+            sizePow=1.5, lifeMs=900, fadeIn=0.12, alpha=[0.7, 0], color="#2266CC", intensity=1.3),
+        lay(sprite="Ring", orient="ground", at="origin", height=3, count=1, attach=True,
+            sizeCm=round(px(4) / RING_R, 1), grow=6, sizePow=1.5, lifeMs=900, alpha=[0.9, 0], color="#4488FF",
+            intensity=1.3),
+        lay(emitter="motes", sprite="Spark", at="origin", count=8, attach=True, spawnRadiusCm=55, gravityCmS2=-180,
+            lifeMs=[500, 800], sizeCm=[7, 11], color="#9CC8FF"),
     ])
     rec["portal.arrive"] = R("frost", [
         flash("point", 36, "#B8D8FF", life=220),
@@ -655,21 +722,34 @@ def utility() -> dict:
         lay(sprite="Glow", orient="billboard", blend="translucent", at="target", height="chest", rate=1.2,
             attach=True, sizeCm=96, grow=1.05, lifeMs=1000, fadeIn=0.35, alpha=[0.34, 0], color="#D6F4FF"),
     ], note="R8 frost crystals at the feet (SM_FX_FrostCrust) + a frosted veil; StatusTint #7FD0FF α .45")
+    # status.stun: THREE stars 120° apart circling fx_overhead (spec §8.7; the random-angle 3 /s loop showed 2,
+    # bunched). A burst of 3 places its stars at 0 / 120 / 240° (orbit angle 360·i/count); at 240 °/s a set turns
+    # exactly one slot in STUN_SLOT_MS, so a new burst every slot lands on the old stars (60 ms overlap, the old one
+    # dissolving) — a steady ring for 6 s (pending bursts never fire once the loop stops), then a random-angle
+    # fallback loop. Stars 1.3× (26 cm) so they read at 1:1.
+    STUN_SLOT_MS, STUN_SLOTS = 500, 12
     star = dict(mesh="SM_FX_StunStar", sprite="Star", orient="upright", blend="translucent", at="target",
-                height="overhead", attach=True, orbit={"r0Cm": 24, "r1Cm": 24, "degS": 240},
-                sizeCm=mesh_size("SM_FX_StunStar", 0.9), grow=1, fadeIn=0.15, alpha=[1, 0], alphaPow=8,
-                rotationDeg=[-20, 20], color="#FFE27A", intensity=1.25)
+                height="overhead", attach=True, orbit={"r0Cm": 28, "r1Cm": 28, "degS": 240},
+                sizeCm=mesh_size("SM_FX_StunStar", 1.3), grow=1, alpha=[1, 0], alphaPow=8, rotationDeg=0,
+                color="#FFE27A", intensity=1.25)
     rec["status.stun"] = R("holy", [
-        lay(**star, rate=3, lifeMs=1000),
-        # the stun reads from its first frame: two stars already circling (staggered lives), not 333 ms of nothing
-        # before the 3 /s loop's first star
-        lay(**star, count=2, lifeMs=[600, 1000]),
+        *[lay(**star, count=3, lifeMs=STUN_SLOT_MS + 60, fadeIn=0.15 if k == 0 else None,
+              delayMs=k * STUN_SLOT_MS) for k in range(STUN_SLOTS)],
+        lay(**star, rate=3, lifeMs=1000, delayMs=STUN_SLOTS * STUN_SLOT_MS),
         lay(emitter="motes", sprite="Spark", at="target", height="overhead", rate=4, attach=True,
             spawnRadiusCm=26, gravityCmS2=0, speedCmS=[5, 15], sizeCm=[6, 9], lifeMs=[300, 500], color="core"),
     ], note="R8 stun stars: toon stars orbiting fx_overhead, facing the W1 camera")
     rec["status.slow"] = R("frost", [
-        lay(sprite="Swirl", orient="ground", at="target", height=2, rate=1.2, attach=True, sizeCm=110, grow=1.05,
-            lifeMs=900, fadeIn=0.3, alpha=[0.45, 0], spinDegS=-140, rotationDeg=[0, 360], color="mid"),
+        # the additive pale swirl vanished on the tan dirt path (VFX review 4): a translucent deep-frost pool under it
+        # gives it a dark ground to glow on, and the swirl itself is stronger
+        lay(sprite="Puff", orient="ground", blend="translucent", at="target", height=1, rate=1.2, attach=True,
+            sizeCm=112, grow=1.05, lifeMs=900, fadeIn=0.3, alpha=[0.42, 0], color="#1E5AA8"),
+        lay(sprite="Swirl", orient="ground", blend="translucent", at="target", height=2, rate=1.2, attach=True,
+            sizeCm=110, grow=1.05, lifeMs=900, fadeIn=0.3, alpha=[0.3, 0], spinDegS=-140, rotationDeg=[0, 360],
+            color="#2A6AC0"),
+        lay(sprite="Swirl", orient="ground", at="target", height=3, rate=1.2, attach=True, sizeCm=110, grow=1.05,
+            lifeMs=900, fadeIn=0.3, alpha=[0.7, 0], spinDegS=-140, rotationDeg=[0, 360], color="mid",
+            intensity=1.25),
     ], note="optional R8 slow visual: a frost swirl at the feet")
     rec["status.bleed"] = R("blood", [
         # a held open wound on the body (a dark crimson cut + a wet glint, camera-ward), fat dark-red drops running
@@ -692,8 +772,10 @@ def utility() -> dict:
             sizeCm=[9, 12], aspect=0.67, grow=1, lifeMs=[420, 560], alpha=[0.55, 0], color="#FF8070"),
         # crimson spatters round the feet (held near opaque, a bright tint: the cel Puddle's value bands average .69 and
         # the Drop's .43, so the palette rim #A01420 came out maroon-brown over tan dirt)
-        lay(emitter="decal", sprite="Puddle", at="target", rate=1.6, attach=True, spawnRadiusCm=30, sizeCm=[34, 46],
-            grow=1.25, lifeMs=1600, alpha=[1.0, 0], alphaPow=3.5, color="#D41A2C"),
+        # under the feet (fx_feet = the target root, no lateral offset: the 30 cm spawn disc dropped them beside
+        # the goblin, VFX review 4), wide enough to show round the boots
+        lay(emitter="decal", sprite="Puddle", at="target", rate=1.6, attach=True, sizeCm=[46, 58],
+            grow=1.2, lifeMs=1600, alpha=[1.0, 0], alphaPow=3.5, color="#D41A2C"),
     ], note="optional R8 bleed visual: a held wound, blood drips + spatters round the feet; StatusTint #C8323C α .22")
     return rec
 
@@ -806,8 +888,8 @@ def world() -> dict:
         motes("origin", 10, "core", sprite="Star", rise=70, h=46, size=(8, 12), delay=OPEN + 80),
     ], note="chest opened (picked up / collected): timed from the Open clip's start, ChestOpen notify at 120 ms")
     rec["prop.event"] = R("frost", [
-        lay(emitter="glow", at="origin", height=110, rate=1.5, durationMs=-1, attach=True, sizeCm=80, grow=1.2,
-            lifeMs=1000, fadeIn=0.4, alpha=[0.5, 0], color="#72D8FF"),
+        lay(emitter="glow", at="origin", height=110, rate=1.5, durationMs=-1, attach=True, sizeCm=96, grow=1.2,
+            lifeMs=1000, fadeIn=0.4, alpha=[0.72, 0], color="#72D8FF", intensity=1.35),
     ])
     # camera-attached ambient volumes (WeatherSystem.ts:15-30; emerald_plains = pollen + dust). The volume is a 10 m
     # disc round the camera focus (about half of it on screen at the W1 distance), rates scaled so the screen holds
@@ -824,15 +906,16 @@ def world() -> dict:
         ("dust", dict(sprite="Core", rate=3.2, spawnHeightJitterCm=120, height=70, speedCmS=[4, 18], dir="up",
                       coneDeg=140, lifeMs=[6000, 12000], sizeCm=[16, 22], grow=1.4, alpha=[0.7, 0], alphaPow=2.5,
                       blend="translucent", color="#E4F2CC")),
-        ("wisps", dict(rate=2.2, spawnHeightJitterCm=200, height=110, speedCmS=[8, 20], gravityCmS2=-4,
-                       lifeMs=[5000, 9000], sizeCm=[8, 14], grow=1.3, alpha=[0.5, 0], color="#9ACBFF",
-                       intensity=1.3)),
+        # wisps / sparks were 1-2 specks per 1080p frame (VFX review 4): bigger, denser, brighter
+        ("wisps", dict(rate=8, spawnHeightJitterCm=200, height=110, speedCmS=[8, 20], gravityCmS2=-4,
+                       lifeMs=[5000, 9000], sizeCm=[24, 36], grow=1.3, alpha=[0.85, 0], fadeIn=0.2, color="#9ACBFF",
+                       intensity=2.0)),
         ("dust_motes", dict(sprite="Core", rate=4.7, spawnHeightJitterCm=200, height=110, speedCmS=[2, 11],
                             lifeMs=[8000, 14000], sizeCm=[14, 19], grow=1.25, alpha=[0.75, 0], alphaPow=2.5,
                             blend="translucent", color="#EEF4FA")),
-        ("sparks", dict(sprite="Ember", rate=5, spawnHeightJitterCm=180, height=100, speedCmS=[10, 30], dir="up",
-                        coneDeg=90, gravityCmS2=-20, lifeMs=[3000, 6000], sizeCm=[5, 9], alpha=[0.7, 0],
-                        color="#FF6A3A", intensity=1.5)),
+        ("sparks", dict(sprite="Ember", rate=16, spawnHeightJitterCm=180, height=100, speedCmS=[10, 30], dir="up",
+                        coneDeg=90, gravityCmS2=-20, lifeMs=[3000, 6000], sizeCm=[14, 22], alpha=[0.95, 0],
+                        alphaPow=1.6, color="#FF6A3A", intensity=2.2)),
     ):
         base = dict(emitter="motes", sprite="Glow", at="camera", durationMs=-1, spawnRadiusCm=1000, gravityCmS2=0,
                     drag=0, fadeIn=0.15, intensity=1.0, spinDegS=0)
@@ -894,6 +977,9 @@ def world() -> dict:
     AURA_KW = {
         # blood, not fire: a deep crimson body held near opaque (a ring of drying blood) + a thin cool-red rim
         "vampiric": dict(body="#A80A24", body_alpha=(0.92, 0.45), rim_alpha=(0.42, 0.06)),
+        # the curse read as a faint lilac haze on both grounds (VFX review 4): a deep violet body held denser + a
+        # brighter rim
+        "curse_aura": dict(body="#6420A0", body_alpha=(0.95, 0.5), rim_alpha=(0.8, 0.16)),
     }
     for affix, col, rim, extra in (
         # a fire orb at mid-body rising 8 px (800 ms): a solid orange ball with a hot core + a cel flame tongue
@@ -928,12 +1014,13 @@ def world() -> dict:
                 sizeCm=118, grow=1.45, sizePow=1.5, lifeMs=700, fadeIn=0.15, alpha=[0.45, 0], color="#FF4A3A",
                 intensity=1.2),
         ]),
-        ("curse_aura", "#8844AA", "#B07CD8", [
+        ("curse_aura", "#8844AA", "#D49CFF", [
+            # a dark violet stain under the ring (reads on dirt and grass) + curling violet smoke
             lay(sprite="Puff", orient="ground", blend="translucent", at="target", height=1, rate=0.7, attach=True,
-                sizeCm=240, grow=1.3, lifeMs=1500, alpha=[0.24, 0], fadeIn=0.4, color="#6A2A90"),
-            lay(emitter="smoke", sprite="Smoke", at="target", height=10, rate=1.4, attach=True, spawnRadiusCm=70,
-                onRing=True, dir="out", speedCmS=[6, 14], gravityCmS2=-12, sizeCm=[34, 46], grow=1.4,
-                lifeMs=[1300, 1700], alpha=[0.32, 0], fadeIn=0.3, color="#5A2A78"),
+                sizeCm=230, grow=1.25, lifeMs=1500, alpha=[0.58, 0], fadeIn=0.4, color="#2A0A44"),
+            lay(emitter="smoke", sprite="Smoke", at="target", height=10, rate=1.8, attach=True, spawnRadiusCm=70,
+                onRing=True, dir="out", speedCmS=[6, 14], gravityCmS2=-12, sizeCm=[36, 50], grow=1.4,
+                lifeMs=[1300, 1700], alpha=[0.62, 0], fadeIn=0.3, color="#5A2490"),
         ]),
         # a blood orb dripping (web r 5 px, alpha .4 ↔ .15 yoyo 1000 ms): a held cel blood bead (the inked Drop
         # sprite, 48 cm; a flat dark-red disc turned brown on dirt, 36 cm was a speck at 1:1) beside the chest with a wet
@@ -971,6 +1058,25 @@ def head_mesh(mesh, color, life, *, size=1.0, intensity=1.0, rate=None):
     else:
         d.update(count=1)
     return clean(d)
+
+
+HEAD_LIFE_MS = 90
+PIERCE_CMS = round(100.0 / (36 * 1.1 / 1000.0))
+"""Arrow speed of the per-target arrows (core SkillArrowDelayMs: tileDist · 36 px · 1.1 ms/px, multishot /
+piercing_arrow) = 2525 cm/s: a free arrow at this speed passes each target as its hit lands."""
+
+
+def arrow_head(mesh, color, *, size=1.0, intensity=1.0):
+    """The arrow / shard mesh riding a projectile (VFX review 4). One count-1 particle living the longest flight
+    (520 ms) stayed parked on the anchor at full opacity after the impact — HandleProjectileEnded stops the head
+    recipe with Stop(handle, false): emission ends, live particles stay. The head is now a continuous emitter of
+    short-lived copies (60 /s, ``HEAD_LIFE_MS``) on the attached anchor, so it is gone ≤ 75 ms after the arrival:
+    solid into the impact, then the 2-frame dissolve (mesh_dissolve). The copies are flat on the ground plane turned
+    to the flight (orient ground + alignToBlow: UpdateProjectiles turns Context.Blow to the heading every frame) —
+    a velocity-aligned copy would take the `dir: blow` random climb (integration.dirBlowPitch) for its first frame."""
+    return lay(mesh=mesh, sprite="Arrow", orient="ground", alignToBlow=True, blend="translucent", at="origin",
+               attach=True, rate=60, durationMs=-1, sizeCm=mesh_size(mesh, size), grow=1, lifeMs=HEAD_LIFE_MS,
+               alpha=[1, 0], color=color, intensity=intensity)
 
 
 def comet_tail(color, length_cm, aspect, *, rate=60):
@@ -1072,7 +1178,7 @@ def projectiles() -> dict:
     ], shake=(90, 0.003))
     rec["proj.ice_arrow.launch"] = R("frost", [flash("origin", 16, "core", h="hand")])
     rec["proj.ice_arrow"] = R("frost", [
-        head_mesh("SM_FX_IceArrow", "#CFF6FF", 520, intensity=1.2),
+        arrow_head("SM_FX_IceArrow", "#CFF6FF", intensity=1.2),
         *comet_tail("#46B4F0", 74, 0.26),
         lay(emitter="glow", orient="velocity", at="origin", rate=60, durationMs=-1, attach=True, dir="blow",
             coneDeg=0, speedCmS=1, sizeCm=70, aspect=0.45, grow=0.7, lifeMs=90, alpha=[0.7, 0], color="rim"),
@@ -1093,7 +1199,7 @@ def projectiles() -> dict:
         decal("point", "Frost", px(16), 1000, "mid", alpha=0.6, blend="additive"),
     ])
     rec["proj.poison_arrow"] = R("poison", [
-        head_mesh("SM_FX_PoisonArrow", "#9AEC40", 520),
+        arrow_head("SM_FX_PoisonArrow", "#9AEC40"),
         *comet_tail("#3FAE2E", 70, 0.26),
         lay(sprite="Drop", orient="billboard", blend="translucent", at="origin", rate=20, durationMs=-1,
             gravityCmS2=500, sizeCm=[5, 8], aspect=0.67, grow=1, lifeMs=[250, 400], alpha=[1, 0], color="rim"),
@@ -1109,19 +1215,33 @@ def projectiles() -> dict:
     ])
     # arrows (multishot / piercing / arrow rain heads)
     rec["proj.arrow"] = R("steel", [
-        head_mesh("SM_FX_Arrow", "#EEF3FB", 520),
+        arrow_head("SM_FX_Arrow", "#EEF3FB"),
         lay(sprite="Comet", orient="velocity", at="origin", rate=60, durationMs=-1, attach=True, dir="blow",
             coneDeg=0, speedCmS=1, sizeCm=40, aspect=0.3, grow=0.8, lifeMs=80, alpha=[0.7, 0], color="#EEF3FB",
             offsetCm=[-26, 0, 0]),
     ])
     rec["proj.arrow.hit"] = R("steel", [glint("point", 14, life=160)])
     rec["proj.piercing_arrow"] = R("holy", [
-        head_mesh("SM_FX_Arrow", "#FFE27A", 520, size=0.8, intensity=1.2),
+        arrow_head("SM_FX_Arrow", "#FFE27A", size=0.8, intensity=1.2),
         lay(sprite="Comet", orient="velocity", at="origin", rate=60, durationMs=-1, attach=True, dir="blow",
             coneDeg=0, speedCmS=1, sizeCm=60, aspect=0.3, grow=0.8, lifeMs=90, alpha=[0.85, 0], color="mid",
             intensity=1.4, offsetCm=[-24, 0, 0]),
     ])
-    rec["proj.piercing_arrow.hit"] = R("holy", [glint("point", 18, life=160), sparks("point", 5, "mid")])
+    # the piercing arrow does not stop in its target (spec §8.6: it flies the full 6-tile line, then fades 160 ms):
+    # the flight head ends at the target like every projectile head, and the hit hands over to a free arrow at the
+    # target chest flying on at the per-target arrow speed — level (`flat`), braking (drag 8: ~2.8 tiles in 260 ms,
+    # 2525 → 315 cm/s, the web's 200 px/s fade drift at the end) while its comet fades and the mesh shrinks out
+    # (a mesh dissolve is a 2-frame screen-door, integration.meshDissolve)
+    rec["proj.piercing_arrow.hit"] = R("holy", [
+        glint("point", 18, life=160), sparks("point", 5, "mid"),
+        lay(mesh="SM_FX_Arrow", sprite="Arrow", orient="velocity", blend="translucent", at="target",
+            height="chest", count=1, dir="blow", flat=True, coneDeg=0, speedCmS=PIERCE_CMS, drag=8, lifeMs=250,
+            sizeCm=mesh_size("SM_FX_Arrow", 0.8), grow=0.15, sizePow=0.25, alpha=[1, 1], color="#FFE27A",
+            intensity=1.2),
+        lay(sprite="Comet", orient="velocity", at="target", height="chest", count=1, dir="blow", flat=True,
+            coneDeg=0, speedCmS=PIERCE_CMS, drag=8, lifeMs=260, sizeCm=60, aspect=0.3, grow=0.8,
+            offsetCm=[-24, 0, 0], alpha=[0.85, 0], alphaPow=2.2, color="mid", intensity=1.4),
+    ])
     # ground effects
     rec["ground.default"] = R("element", [
         lay(sprite="Rune", orient="ground", at="origin", height=3, unit="radius", rate=1.2, durationMs=-1,
@@ -1368,10 +1488,18 @@ def warrior() -> dict:
         glint("origin", 28),
     ])
     rec["skill.life_regen"] = R("nature", [
-        lay(emitter="glow", orient="ground", at="origin", height=3, sizeCm=115, grow=1.2, lifeMs=700,
-            alpha=[0.6, 0], color="rim"),
+        # the nature pool under the hero (spec α .6) read as a faint tint on the dirt: a translucent green body
+        # under the additive glow (VFX review 4)
+        lay(emitter="glow", orient="ground", blend="translucent", at="origin", height=2, sizeCm=115, grow=1.2,
+            lifeMs=800, alpha=[0.45, 0], color="rim"),
+        lay(emitter="glow", orient="ground", at="origin", height=3, sizeCm=115, grow=1.2, lifeMs=800,
+            alpha=[0.75, 0], color="mid", intensity=1.25),
         ring("origin", px(8), px(32), 420, "mid"),
-        motes("origin", 6, "mid", sprite="Plus", rise=50, size=(14, 20), spin=0),
+        # six crisp plus signs (translucent near-white nature core / white: an additive mid-green over the red cape
+        # came out olive), 24–30 cm quads (the plus spans ~60 %), on a 42 cm ring round the body so the camera-side
+        # ones draw in front of the hero instead of inside it
+        motes("origin", 6, "core", sprite="Plus", radius_px=19, onRing=True, rise=50, size=(24, 30), spin=0,
+              blend="translucent", alt="white", alt_every=2, spawnHeightJitterCm=40),
         motes("origin", 10, "core", rise=70),
     ])
     rec["skill.war_stomp"] = R("earth", [
@@ -1736,10 +1864,17 @@ def rogue() -> dict:
             alpha=[0.4, 0], color="mid"),
         # over the green plains the cloud needs value contrast, not just hue: a dark-green under-layer (a shadow /
         # outline mass under the billows), a light sickly yellow-green body and a pale chartreuse crown
-        smoke("point", 10, "#1F4A18", radius_px=R_pc / PX, life=(900, 1300), alpha=0.62, size=(0.8, 1.1), h=20),
-        smoke("point", 12, "#A6CC3E", radius_px=R_pc / PX, life=(900, 1300), alpha=0.86, size=(0.7, 1.0), h=34),
-        smoke("point", 8, "#DCF06C", radius_px=0.8 * R_pc / PX, life=(900, 1300), alpha=0.78, size=(0.55, 0.8),
-              delay=120, h=58),
+        # the billows ring the target instead of burying it (VFX review 4: the goblin at the centre was gone): the
+        # dark mass and the body on rings at .78 / .62 R, the crown lower on .5 R, and only a few thin low puffs
+        # inside, so the target's silhouette stays readable through the cloud's heart
+        smoke("point", 10, "#1F4A18", radius_px=0.78 * R_pc / PX, life=(900, 1300), alpha=0.6, size=(0.8, 1.05),
+              h=18, onRing=True),
+        smoke("point", 11, "#A6CC3E", radius_px=0.62 * R_pc / PX, life=(900, 1300), alpha=0.84, size=(0.62, 0.9),
+              h=30, onRing=True),
+        smoke("point", 4, "#A6CC3E", radius_px=0.3 * R_pc / PX, life=(900, 1300), alpha=0.42, size=(0.4, 0.55),
+              h=8),
+        smoke("point", 7, "#DCF06C", radius_px=0.5 * R_pc / PX, life=(900, 1300), alpha=0.7, size=(0.5, 0.72),
+              delay=120, h=44, onRing=True),
         motes("point", 12, "core", sprite="Bubble", radius_px=0.7 * R_pc / PX, rise=40, size=(11, 16), spin=0,
               h=10, intensity=1.3),
         shock("point", 0.3 * R_pc, 1.2 * R_pc, 420, "mid", alpha=0.5),
@@ -2054,9 +2189,24 @@ def build() -> dict:
                    "N - 0.5) round the axis instead of a random yaw in the cone - an even fan (skill.multishot: 7 "
                    "arrows over the web's +-0.8 rad). Needs FAbyssVfxLayer::bFan + ReadBool(\"fan\") + the Serial-"
                    "based yaw in SpawnParticle; until then the runtime ignores the key (random cone).",
-            "dirBlowPitch": "EAbyssVfxDir::Blow adds Direction.Z = rand(-0.15, 0.35): flight-aligned heads use one "
-                            "particle per projectile (count 1, life = the longest flight) so their pitch is stable; "
-                            "a `flat` option (Z = 0) would let heads respawn every frame and fans fly level.",
+            "dirBlowPitch": "EAbyssVfxDir::Blow adds Direction.Z = rand(-0.15, 0.35): the arrow / shard heads "
+                            "(proj.arrow / multishot / poison_arrow / ice_arrow / piercing_arrow) are 60 /s copies "
+                            "living 90 ms, flat on the ground plane and turned to the flight (orient ground + "
+                            "alignToBlow; UpdateProjectiles turns Context.Blow to the heading), so no copy takes a "
+                            "random pitch and the head is gone <= 75 ms after HandleProjectileEnded's Stop(handle, "
+                            "false) instead of a count-1 particle parked in the target for the rest of its 520 ms "
+                            "(VFX review 4). No runtime change needed.",
+            "flat": "Layer key `flat` (bool, dir blow / back): Direction.Z = 0 instead of rand(-0.15, 0.35) - a level "
+                    "free flight. Needs FAbyssVfxLayer::bFlat + ReadBool(\"flat\") + `Direction.Z = Layer.bFlat ? "
+                    "0.f : Random.FRandRange(-0.15f, 0.35f)` in SpawnParticle; until then the runtime ignores the "
+                    "key. Used by proj.piercing_arrow.hit (the arrow flying on through its target, spec 8.6; "
+                    "forward-compatible: no core projectile carries vfxId piercing_arrow today) and recommended for "
+                    "skill.piercing_arrow's arrow + comet (drop their gravityCmS2 1100 then).",
+            "hitImpactProfiles": "hit.impact.<light|normal|heavy|crit|kill> differ beyond ring size / spark count "
+                                 "(light: lower core / glow / ring alpha, 4 short slow sparks - VFX review 4). The "
+                                 "runtime plays hit.impact today: PlayFirst({hit.impact.<profile>, hit.impact}) with "
+                                 "the HitFeedback weight name is the one-line change; the previews play the profile "
+                                 "ids.",
             "meshMaterial": "mesh layers always draw M_AF_FX_Mesh (opaque masked toon + ink, Bayer fade) — glow, "
                             "smoke and energy stay sprites; ribbons / crystals / plates / debris / heads are meshes.",
             "bodyOcclusion": "Sprites are depth-tested against the opaque characters, and a chest / head anchor is the "
