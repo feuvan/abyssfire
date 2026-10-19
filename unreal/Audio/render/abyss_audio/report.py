@@ -46,12 +46,12 @@ def write_reports(assets, out_dir: pathlib.Path, sr: int, manifest_assets: dict 
         by_kind.setdefault(a.kind, []).append(a)
     for kind, group in sorted(by_kind.items()):
         group = sorted(group, key=lambda a: a.name)
-        # One row per asset (first variant only for multi-variant SFX keeps the sheets small).
+        # One row per asset (first variant only for multi-variant SFX / vocals / bells keeps the sheets small).
         shown = []
         seen = set()
         for a in group:
             stem = a.name.rsplit("_", 1)[0] if a.name[-3:-2] == "_" and a.name[-2:].isdigit() else a.name
-            if kind in ("sfx",) and stem in seen:
+            if kind in ("sfx", "vocal", "bell") and stem in seen:
                 continue
             seen.add(stem)
             shown.append(a)
@@ -85,6 +85,9 @@ def write_reports(assets, out_dir: pathlib.Path, sr: int, manifest_assets: dict 
         fig.tight_layout(rect=(0, 0, 1, 0.98))
         fig.savefig(out_dir / f"{kind}.png", dpi=80)
         plt.close(fig)
+    dark = sorted((a for a in assets if a.meta.get("decision") == "AU3"), key=lambda a: (a.kind, a.name))
+    if dark:
+        _write_spectrograms(dark, out_dir / "music_dark.png", sr, plt)
     rows = manifest_assets if manifest_assets is not None else {
         a.name: dict(a.stats, kind=a.kind, channels=a.channels, masterGainDb=a.gain_db,
                      limiterGainReductionDb=a.limiter_gr_db) for a in assets}
@@ -99,3 +102,42 @@ def write_reports(assets, out_dir: pathlib.Path, sr: int, manifest_assets: dict 
                      f"{s.get('seamRatio', '')} | {float(s.get('masterGainDb', 0.0)):+.2f} | "
                      f"{float(s.get('limiterGainReductionDb', 0.0)):.2f} |")
     (out_dir / "stats.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_spectrograms(assets, path: pathlib.Path, sr: int, plt) -> None:
+    """AU3 music and stingers: the level over time (dBFS, 50 ms peaks) above a spectrogram (log frequency, 30 Hz -
+    8 kHz), so the form (sections, silences, entries) and the voicing can be read without listening."""
+    from scipy.signal import spectrogram
+
+    fig, axes = plt.subplots(len(assets) * 2, 1, figsize=(12, 2.3 * len(assets) + 0.4), squeeze=False,
+                             gridspec_kw={"height_ratios": [1, 2.2] * len(assets)})
+    for i, a in enumerate(assets):
+        s = a.audio.mean(axis=0)
+        n = s.shape[0]
+        hop = max(1, int(0.05 * sr))
+        m = n - n % hop
+        env = 20 * np.log10(np.maximum(np.abs(s[:m]).reshape(-1, hop).max(axis=1), 1e-6))
+        ax = axes[i * 2][0]
+        ax.plot(np.arange(env.shape[0]) * hop / sr, env, color="#4a78b5", linewidth=0.6)
+        ax.set_xlim(0, n / sr)
+        ax.set_ylim(-80, 0)
+        ax.grid(True, linewidth=0.2)
+        ax.tick_params(labelsize=5)
+        st = a.stats
+        ax.set_title(f"{a.name} ({a.kind}, {st.get('lengthSec')} s, LUFS-I {st.get('lufs')}, true peak "
+                     f"{st.get('truePeakDbtp')} dBTP{', loop seam ' + str(st.get('seamRatio')) if a.loop else ''})",
+                     fontsize=6.5, loc="left")
+        f, t, sxx = spectrogram(s, fs=sr, nperseg=4096, noverlap=3072)
+        keep = (f >= 30) & (f <= 8000)
+        ax2 = axes[i * 2 + 1][0]
+        ax2.pcolormesh(t, f[keep], 10 * np.log10(np.maximum(sxx[keep], 1e-16)), shading="auto", cmap="magma",
+                       vmin=-140, vmax=-50, rasterized=True)
+        ax2.set_yscale("log")
+        ax2.set_xlim(0, n / sr)
+        ax2.tick_params(labelsize=5)
+    top = 1.0 - 0.45 / fig.get_figheight()
+    fig.suptitle("AU3 music and stingers: level (dBFS, 50 ms peaks) and spectrogram (30 Hz - 8 kHz)", fontsize=8,
+                 y=1.0 - 0.15 / fig.get_figheight())
+    fig.tight_layout(rect=(0, 0, 1, top))
+    fig.savefig(path, dpi=72)
+    plt.close(fig)

@@ -5,9 +5,16 @@ audio_manifest.json (written by unreal/Audio/render/render_all.py) and, for ever
 /Game/Abyssfire/Audio/<Folder>/<Name> and applies the playback settings UAbyssAudioSystem relies on:
 
     kind                    looping        loading behaviour   compression                virtualisation
-    sfx / vocal / footstep  no             RETAIN_ON_LOAD      ADPCM (instant start)      engine default
+    sfx / vocal / footstep  from manifest  RETAIN_ON_LOAD      ADPCM (instant start)      engine default
+      longer than 4 s       from manifest  PRIME_ON_LOAD       PLATFORM_SPECIFIC q80      engine default
+    bell (AU2, 1-15 s)      from manifest  PRIME_ON_LOAD       PLATFORM_SPECIFIC q80      engine default
     stinger                 from manifest  PRIME_ON_LOAD       PLATFORM_SPECIFIC q80      PLAY_WHEN_SILENT
     music / ambience        from manifest  LOAD_ON_DEMAND      PLATFORM_SPECIFIC q80/q70  PLAY_WHEN_SILENT
+
+Retained ADPCM costs 24 kB per second per channel for as long as the game runs (Chapter 1 budget, README "Package
+budget"): only short one-shots that must start on the frame (hits, voices, steps) are retained; a long one-shot (the
+bells' tolls with their tails, the Corpseherd's 17.6 s lullaby) keeps only its first chunk primed (it still starts at
+once) and streams the rest.
 
 Music, ambience and the whisper bed must keep running while silent (music volume 0, ducking, fade-in from 0):
 UAbyssAudioSystem follows their play position in real time to resume a track where it was left (A2) and to drive the
@@ -28,7 +35,7 @@ From another editor script (Scripts/build_content.py):
 
 Options:
     --manifest PATH      another audio_manifest.json (default: <project>/Audio/Export/audio_manifest.json)
-    --only KINDS         comma list of kinds: sfx, vocal, footstep, ambience, stinger, music
+    --only KINDS         comma list of kinds: sfx, vocal, bell, footstep, ambience, stinger, music
     --force              re-import every asset even when its source is unchanged
     --prune              delete SoundWaves under the audio root that the manifest no longer lists
     --source-root DIR    import <DIR>/<Folder>/<Name>.<ext> instead of the manifest's Export files
@@ -54,10 +61,23 @@ KIND_SETTINGS = {
     "sfx": ("RETAIN_ON_LOAD", "ADPCM", None, False),
     "vocal": ("RETAIN_ON_LOAD", "ADPCM", None, False),
     "footstep": ("RETAIN_ON_LOAD", "ADPCM", None, False),
+    "bell": ("PRIME_ON_LOAD", "PLATFORM_SPECIFIC", 80, False),
     "stinger": ("PRIME_ON_LOAD", "PLATFORM_SPECIFIC", 80, True),
     "music": ("LOAD_ON_DEMAND", "PLATFORM_SPECIFIC", 80, True),
     "ambience": ("LOAD_ON_DEMAND", "PLATFORM_SPECIFIC", 70, True),
 }
+# A retained (ADPCM) one-shot longer than this is primed and streamed instead (LONG_ONESHOT_SETTINGS).
+LONG_ONESHOT_SEC = 4.0
+LONG_ONESHOT_SETTINGS = ("PRIME_ON_LOAD", "PLATFORM_SPECIFIC", 80, False)
+
+
+def settings_for(entry: dict) -> tuple:
+    """(loading behaviour, compression, quality, play when silent) of a manifest asset: its kind's row, except that a
+    retained one-shot longer than LONG_ONESHOT_SEC is primed and streamed (the render pipeline's tests read this)."""
+    row = KIND_SETTINGS.get(entry.get("kind", "sfx"), KIND_SETTINGS["sfx"])
+    if row[0] == "RETAIN_ON_LOAD" and float(entry.get("lengthSec", 0.0)) > LONG_ONESHOT_SEC:
+        return LONG_ONESHOT_SETTINGS
+    return row
 
 
 class ImportError_(RuntimeError):
@@ -155,8 +175,7 @@ def set_prop(asset, name: str, value, required: bool, notes: list[str]) -> bool:
 
 
 def apply_settings(asset, entry: dict, notes: list[str]) -> bool:
-    kind = entry.get("kind", "sfx")
-    loading, compression, quality, play_when_silent = KIND_SETTINGS.get(kind, KIND_SETTINGS["sfx"])
+    loading, compression, quality, play_when_silent = settings_for(entry)
     changed = False
     changed |= set_prop(asset, "looping", bool(entry.get("loop", False)), True, notes)
     lb = enum_value("SoundWaveLoadingBehavior", loading)

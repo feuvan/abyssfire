@@ -1,5 +1,6 @@
 """DECISIONS A7: plains ambience bed, hero footsteps (grass / dirt / stone) and basic monster vocalisations (aggro, hurt,
-death per family: humanoid = the goblin family, slime). Not in the web game; designed here in the same recipe
+death per family: humanoid = the goblin family, slime; the dark remake's families come from dark_vox.py, see
+FAMILIES). Not in the web game; designed here in the same recipe
 language as the web cues (oscillators, seeded noise, Web Audio biquads / shapers, ADSR) so they sit in the same
 sonic world. Variants differ by noise seed and by small deterministic pitch / timing offsets (`variant` argument).
 """
@@ -149,6 +150,15 @@ VOCALS = {
     ("death", "humanoid"): death_humanoid,
     ("death", "slime"): death_slime,
 }
+
+# Voice families, in manifest order (a cue's assets are family-major: `variants` consecutive assets per family).
+# humanoid / slime are A7's (today's goblins and slimes); undead / human / gnawer / breach are the dark remake's
+# (implementation-plan.md AU1), whose recipes live in dark_vox.py and build on the goblin / slime sets above.
+from . import dark_vox  # noqa: E402  (imported after the base recipes; dark_vox reads them lazily)
+
+BASE_FAMILIES = ("humanoid", "slime")
+FAMILIES = BASE_FAMILIES + dark_vox.FAMILIES
+VOCALS.update(dark_vox.VOCALS)
 
 
 # ---------------------------------------------------------------------------------------------------------------------

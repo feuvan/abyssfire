@@ -1,0 +1,423 @@
+{
+  "schemaVersion": 1,
+  "source": "unreal/Docs/dark-remake/implementation-plan.md 7 (AU3); chapter1.md 2, 9.1, 10, 11, 16; story-bible.md (tone)",
+  "decision": "AU3",
+  "notation": "recipes/dark_music.py: tokens ITEM[:DUR][!VEL[>VEL2]], '|' bar lines (checked); ITEM = r | pitch | chord (A+B) | X x o (hits) | R (roll); DUR in beats; phrases {bar (1-based), beat, notes, repeat, vel, overrides}",
+  "originality": "Every melody, rhythm and harmony here is written for this game. No 12-string town theme, no arpeggiated guitar figure, nothing modelled on any known game track.",
+  "director": {
+    "zone": "emerald_plains",
+    "priority": ["story", "victory", "boss", "siege", "region", "zone"],
+    "zoneTracks": {"explore": "march_drones", "combat": "march_drones", "victory": "valdras_falls"},
+    "combat": "keep: the remake has no combat music (chapter1.md 16 lists none). A fight keeps whatever plays (the lute, the dirge, the drones, a silence); the encounters below get stingers instead. While the core still switches state, zoneTracks maps the combat state to the explore track; that row reaches the manifest's zoneOverrides only once the player treats an override that resolves to the track already sounding as a no-op (see heldOverrides)",
+    "heldOverrides": {"combat": "held out of the manifest's zoneOverrides until U7 makes an override that resolves to the track already sounding a no-op even with restart = true (or the core sends restart = false on the combat edge of a one-track zone): today the combat edge's restart would restart the drones from their silent start at every fight (1.5 s crossfade against themselves). Until then the zone's combat key keeps the A7 combat track. To release: delete this entry, run render_all.py --manifest-only"},
+    "regions": [
+      {"id": "breach_rim", "col": 15, "row": 95, "radius": 16, "exitRadius": 17, "track": "", "while": {"monsterAlive": "valdras"},
+       "fadeOutSec": 4.0, "source": "design", "use": "silence inside 16 tiles of the dais while Valdras lives (the AU2 region bed plays: wind and the breach hum); boss music from the intro (boss beats region)"},
+      {"id": "knellwatch", "col": 15, "row": 15, "radius": 9, "exitRadius": 11, "track": "knellwatch_lute", "fadeInSec": 4.0,
+       "fadeOutSec": 3.0, "source": "design", "use": "the fort (camp 1, safe radius 9; the burn pit at 15,22 is inside)"},
+      {"id": "red_field", "col": 30, "row": 82, "radius": 24, "exitRadius": 27, "track": "red_field", "fadeInSec": 5.0,
+       "fadeOutSec": 4.0, "source": "design", "use": "the battlefield in the south-west: the Red Banner (40,70), the Dead Ranks (30,80), the hallowed ground (50,90), around the Breach Rim"},
+      {"id": "ashwheat", "col": 40, "row": 52, "radius": 9, "exitRadius": 11, "track": "", "fadeOutSec": 5.0,
+       "source": "AU3 proposal", "use": "silence in the burned hamlet, so the knocking behind the barred doors and the split bell (AU2 emitters) are heard alone"},
+      {"id": "sheepfold", "col": 60, "row": 55, "radius": 8, "exitRadius": 10, "track": "", "while": {"monsterAlive": "miniboss_corpseherd"},
+       "fadeOutSec": 3.0, "source": "AU3 proposal", "use": "silence in the wagon ring while the Corpseherd lives: her lullaby (vox_corpseherd_lullaby) and bell carry; stinger_miniboss when the fight starts"}
+    ],
+    "regionRule": "the hero's tile picks the smallest region that contains it (radius to enter, exitRadius to leave) and whose `while` holds; track \"\" is silence; outside every region the zone track plays. Contains: (col - c)^2 + (row - r)^2 <= radius^2 in tiles (Euclidean, the hero's tile; ExplorationGrid::Reveal's metric); monsterAlive: a live instance of that monster id is in the zone",
+    "bosses": {
+      "valdras": {"track": "boss_ch1", "from": "the boss intro (cs_boss_valdras at 9 tiles) / the core's boss engagement",
+                  "phaseStingers": {"1": "stinger_valdras_roll_call", "2": "stinger_valdras_no_retreat"},
+                  "victory": "valdras_falls", "note": "EvMonsterPhase index -> stinger (K4 phases[].stinger); the W1 fallback has one phase and no stinger"}
+    },
+    "encounters": {
+      "hunt": {"monsters": ["hunt_hungerbell", "hunt_dreck", "hunt_harke"], "engaged": "stinger_hunt", "slain": "stinger_slain"},
+      "miniboss": {"monsters": ["miniboss_corpseherd"], "engaged": "stinger_miniboss", "slain": "stinger_slain"}
+    },
+    "story": [
+      {"beat": "chapter_emerald_plains", "stinger": "stinger_chapter_night", "note": "the chapter card's mood is night (chapter1.md); the manifest maps stingers.chapterCard.night"},
+      {"beat": "cs_rf_siege", "at": "end", "track": "siege", "until": "q_rf_last_toll's defend objective completes (the last wave falls)", "then": "",
+       "note": "the bell rings by itself during the siege (AU2 bell_self_ring every 20-30 s); after the last wave: silence until the turn-in"},
+      {"beat": "cs_rf_finale", "at": "step 1", "track": "", "fadeOutSec": 3.0,
+       "then": {"afterSec": 6.0, "track": "knellwatch_lute", "fadeInSec": 6.0},
+       "note": "the dawn toll (AU2 bell_dawn_toll at step 4), then silence, then the lute: when the beat ends, 6 s of silence, then the lute fades in"},
+      {"beat": "cs_rf_marshal_falls", "note": "plays inside the victory hold: valdras_falls (one-shot) under the cutscene"}
+    ]
+  },
+  "tracks": {
+    "knellwatch_lute": {
+      "asset": "SW_MUS_KnellwatchLute",
+      "description": "Knellwatch: a sparse, slightly detuned plucked lute (D minor, the bell's minor third and the breach's flat second)",
+      "use": "the Knellwatch region (camp 1, 15,15, safe radius 9); after the finale's silence",
+      "loop": true, "tempo": 56, "beatsPerBar": 3, "bars": 36, "loudnessLufs": -19.5,
+      "buses": {
+        "room": {"reverb": {"decay": 1.7, "wet": 0.2, "dry": 1.0, "tone": 3600, "preDelay": 0.018}}
+      },
+      "parts": [
+        {"id": "lute", "instrument": "lute", "bus": "room", "level": 0.05, "pan": -0.08,
+         "params": {"courseDetuneCents": 7.0, "sustainSec": 4.6, "ringSec": 1.2,
+                    "tuningCents": {"G": -9.0, "Bb": -6.0, "F": 4.0, "C": 3.0}},
+         "humanize": {"timingMs": 22, "velocity": 0.06},
+         "phrases": [
+           {"bar": 1, "label": "A: the bell's third, answered",
+            "notes": "D2+A2:3!0.46 | r:1 D4:1!0.62 F4:1!0.72 | E4:2!0.78 D4:1!0.58 | r:3 |"},
+           {"bar": 5, "notes": "r:1 C4:1!0.55 D4:1!0.62 | F4:1.5!0.75 E4:0.5!0.55 C4:1!0.6 | D4:3!0.66 | r:3 |"},
+           {"bar": 9, "label": "A': the flat second",
+            "notes": "D3+A3:1!0.5 r:1 D4:1!0.6 | F4:1!0.7 Eb4:1!0.66 D4:1!0.58 | C4:2!0.6 A3:1!0.52 | r:3 |"},
+           {"bar": 13, "notes": "Bb2:1!0.55 r:1 F3:1!0.5 | A3:1.5!0.6 G3:0.5!0.48 F3:1!0.52 | E3:2!0.55 D3:1!0.5 | D2+A2+D3:3!0.36 |"},
+           {"bar": 17, "label": "B: up to the high Bb and down",
+            "notes": "r:2 A3:1!0.55 | D4:1!0.6 E4:1!0.64 F4:1!0.7 | G4:2!0.76 A4:1!0.8 | Bb4:1.5!0.85 A4:0.5!0.66 G4:1!0.7 | A4:3!0.74 | r:1 G4:1!0.62 F4:1!0.6 | E4:2!0.64 D4:1!0.55 | A2+E3+A3:3!0.4 |"},
+           {"bar": 25, "notes": "r:3 | r:1 D4:1!0.58 F4:1!0.66 | Eb4:2!0.7 D4:1!0.55 | C4:1!0.55 Bb3:1!0.5 A3:1!0.52 | D3+A3:3!0.5 |"},
+           {"bar": 30, "label": "coda: two notes and the low course",
+            "notes": "r:3 | r:2 F4:1!0.48 | E4:3!0.45 | r:3 | D2:3!0.45 | r:3 | r:3 |"}
+         ]},
+        {"id": "bass", "instrument": "lute", "bus": "room", "level": 0.045, "pan": 0.06,
+         "params": {"courseDetuneCents": 7.0, "sustainSec": 4.6, "ringSec": 1.0,
+                    "tuningCents": {"G": -9.0, "Bb": -6.0, "F": 4.0, "C": 3.0}},
+         "humanize": {"timingMs": 18, "velocity": 0.05},
+         "phrases": [
+           {"bar": 5, "notes": "D3:3!0.42"},
+           {"bar": 10, "notes": "Bb2:3!0.4"},
+           {"bar": 18, "notes": "D3:3!0.42"},
+           {"bar": 22, "notes": "Bb2:3!0.4"},
+           {"bar": 26, "notes": "D3:3!0.4"},
+           {"bar": 27, "notes": "C3:3!0.38"}
+         ]}
+      ]
+    },
+    "march_drones": {
+      "asset": "SW_MUS_MarchDrones",
+      "description": "the wilderness: low drones in D swelling out of silence and sinking back, long silences between",
+      "use": "emerald_plains outside the regions (the zone's explore track); combat keeps it (no combat music)",
+      "loop": true, "tempo": 60, "beatsPerBar": 4, "bars": 32, "loudnessLufs": -21.0,
+      "buses": {
+        "low": {"reverb": {"decay": 3.0, "wet": 0.35, "dry": 1.0, "tone": 1800, "preDelay": 0.03}},
+        "high": {"reverb": {"decay": 3.6, "wet": 0.7, "dry": 0.6, "tone": 5000, "preDelay": 0.04}}
+      },
+      "parts": [
+        {"id": "low", "instrument": "drone", "bus": "low", "level": 0.05, "pan": -0.1,
+         "params": {"attackSec": 9.0, "releaseSec": 9.0, "cutoffHz": [180.0, 420.0], "sub": 0.35, "air": 0.12},
+         "phrases": [
+           {"bar": 1, "label": "swell 1 (0-28 s)", "notes": "D2:28!0.85"},
+           {"bar": 13, "beat": 2, "label": "swell 2 (50-80 s), a fifth lower", "notes": "A1:30!0.75"},
+           {"bar": 25, "label": "swell 3 (96-124 s)", "notes": "D2:28!0.8"}
+         ]},
+        {"id": "fifth", "instrument": "drone", "bus": "low", "level": 0.03, "pan": 0.25,
+         "params": {"attackSec": 7.0, "releaseSec": 8.0, "cutoffHz": [220.0, 520.0], "sub": 0.0, "air": 0.2},
+         "phrases": [
+           {"bar": 2, "beat": 1, "notes": "A2:21!0.7"},
+           {"bar": 15, "notes": "D2:22!0.6"}
+         ]},
+        {"id": "unease", "instrument": "drone", "bus": "low", "level": 0.024, "pan": 0.4,
+         "params": {"attackSec": 6.0, "releaseSec": 5.0, "cutoffHz": [110.0, 220.0], "sub": 0.0, "air": 0.0},
+         "phrases": [
+           {"bar": 4, "beat": 3, "label": "the breach's flat second creeping in", "notes": "Eb2:12!0.7"},
+           {"bar": 27, "notes": "Eb2:16!0.8"}
+         ]},
+        {"id": "glass", "instrument": "glass", "bus": "high", "level": 0.012, "pan": 0.0,
+         "params": {"attackSec": 5.0, "releaseSec": 6.0, "beatHz": 0.45},
+         "phrases": [
+           {"bar": 15, "beat": 2, "notes": "D5:18!0.8"},
+           {"bar": 27, "beat": 2, "notes": "A4:14!0.7"}
+         ]}
+      ]
+    },
+    "red_field": {
+      "asset": "SW_MUS_RedField",
+      "description": "the Red Field: a slow dead drum and a wordless men's choir (i - i - bII - i - VI - iv - v - i5)",
+      "use": "the Red Field region (the battlefield in the south-west: the Red Banner, the Dead Ranks, the hallowed ground)",
+      "loop": true, "tempo": 44, "beatsPerBar": 4, "bars": 18, "loudnessLufs": -19.5,
+      "buses": {
+        "field": {"lowpass": 1500, "reverb": {"decay": 3.2, "wet": 0.55, "dry": 0.6, "tone": 1800, "preDelay": 0.04}},
+        "choir": {"reverb": {"decay": 3.6, "wet": 0.5, "dry": 0.7, "tone": 3000, "preDelay": 0.03}}
+      },
+      "parts": [
+        {"id": "drum", "instrument": "drum", "bus": "field", "level": 0.18, "pan": 0.0,
+         "params": {"tuneHz": 56.0, "dropCents": 500.0, "decaySec": 0.55, "beaterHz": 600.0, "beater": 0.8,
+                    "skin": 0.15, "skinHz": 380.0},
+         "humanize": {"timingMs": 12, "velocity": 0.05},
+         "phrases": [
+           {"bar": 1, "label": "1 and 3, a stumble before the next downbeat",
+            "notes": "X:2 x:2 | X:2 x:2 | X:2 x:2 | X:2 x:1.5 o:0.5 |", "repeat": 2},
+           {"bar": 11, "notes": "X:2 x:2 | X:2 x:2 | X:2 x:1.5 o:0.5 |", "repeat": 2},
+           {"bar": 17, "notes": "X:2 r:2 | X:4!0.8 |"}
+         ]},
+        {"id": "men", "instrument": "choir", "bus": "choir", "level": 0.032, "pan": -0.05,
+         "params": {"voices": 3, "attackSec": 2.5, "releaseSec": 2.5, "vowel": "o"},
+         "humanize": {"timingMs": 40, "velocity": 0.04},
+         "phrases": [
+           {"bar": 3, "vowel": "u>o", "notes": "D2+A2+D3:8!0.55"},
+           {"bar": 5, "notes": "D2+A2+F3:8!0.65"},
+           {"bar": 7, "vowel": "o>a", "label": "bII: the breach", "notes": "Eb2+Bb2+G3:8!0.7"},
+           {"bar": 9, "vowel": "a", "notes": "D2+A2+F3:8!0.78"},
+           {"bar": 11, "notes": "Bb2+D3+F3:8!0.7"},
+           {"bar": 13, "notes": "G2+D3+Bb3:8!0.66"},
+           {"bar": 15, "vowel": "o>u", "notes": "A2+E3+A3:8!0.6"},
+           {"bar": 17, "vowel": "u", "notes": "D2+A2+D3:8!0.5"}
+         ]},
+        {"id": "tenors", "instrument": "choir", "bus": "choir", "level": 0.05, "pan": 0.12,
+         "params": {"voices": 3, "attackSec": 1.6, "releaseSec": 2.0, "vowel": "a", "formantScale": 1.06},
+         "humanize": {"timingMs": 40, "velocity": 0.04},
+         "phrases": [
+           {"bar": 9, "label": "the wordless line over the Dm - Bb - Gm - A",
+            "notes": "F4:4!0.55 | E4:2!0.6 D4:2!0.58 | D4:4!0.62 | F4:2!0.66 Eb4:2!0.62 | D4:4!0.6 | Bb3:2!0.58 C4:2!0.6 | A3:8!0.55 |"}
+         ]}
+      ]
+    },
+    "boss_ch1": {
+      "asset": "SW_MUS_BossCh1",
+      "description": "Valdras (boss_ch1 reworked): war drums, a field snare, low horns grinding D - Eb - D - C, a chanting men's choir, tremolo strings, the cracked bell",
+      "use": "boss music (the core's bossMusic: valdras -> boss_ch1), from the intro on; stingers on phase change",
+      "loop": true, "tempo": 92, "beatsPerBar": 4, "bars": 32, "loudnessLufs": -16.0,
+      "buses": {
+        "drums": {"reverb": {"decay": 2.2, "wet": 0.3, "dry": 1.0, "tone": 2800, "preDelay": 0.02}},
+        "brass": {"reverb": {"decay": 2.4, "wet": 0.3, "dry": 1.0, "tone": 3000, "preDelay": 0.02}},
+        "choir": {"reverb": {"decay": 2.8, "wet": 0.4, "dry": 0.85, "tone": 3200, "preDelay": 0.025}},
+        "strings": {"reverb": {"decay": 2.4, "wet": 0.3, "dry": 1.0, "tone": 3200, "preDelay": 0.02}},
+        "far": {"lowpass": 2000, "reverb": {"decay": 3.4, "wet": 0.8, "dry": 0.4, "tone": 2200, "preDelay": 0.04}}
+      },
+      "parts": [
+        {"id": "war_lo", "instrument": "drum", "bus": "drums", "level": 0.16, "pan": -0.1,
+         "params": {"tuneHz": 46.0, "decaySec": 1.1, "drive": 0.45, "beaterHz": 900.0, "skin": 0.25},
+         "humanize": {"timingMs": 6, "velocity": 0.04},
+         "phrases": [
+           {"bar": 1, "notes": "X:4 | r:4 |", "repeat": 15},
+           {"bar": 31, "vel": 0.8, "notes": "X:2 x:2 | X:1 x:1 X:1 x:1 |"}
+         ]},
+        {"id": "war_hi", "instrument": "drum", "bus": "drums", "level": 0.16, "pan": 0.15,
+         "params": {"tuneHz": 74.0, "decaySec": 0.55, "drive": 0.35, "beaterHz": 1400.0, "skin": 0.3, "skinHz": 520.0},
+         "humanize": {"timingMs": 6, "velocity": 0.05},
+         "phrases": [
+           {"bar": 1, "label": "the march ostinato", "notes": "X:1.5 x:0.5 x:1 x:1 | X:1.5 x:0.5 X:1 x:0.5 x:0.5 |", "repeat": 15},
+           {"bar": 31, "vel": 0.8, "notes": "X:1 x:1 X:1 x:1 | X:0.5 x:0.5 X:0.5 x:0.5 X:0.5 x:0.5 X:0.5 x:0.5 |"}
+         ]},
+        {"id": "snare", "instrument": "snare", "bus": "drums", "level": 0.2, "pan": 0.22,
+         "humanize": {"timingMs": 5, "velocity": 0.06},
+         "phrases": [
+           {"bar": 8, "notes": "r:2 R:2!0.2>0.9 |"},
+           {"bar": 16, "notes": "r:2 R:2!0.2>0.9 |"},
+           {"bar": 17, "label": "field backbeat", "notes": "r:1 x:1 r:1 x:0.75 o:0.25 |", "repeat": 14},
+           {"bar": 31, "label": "two-bar roll into the loop", "notes": "R:8!0.15>1.0 |"}
+         ]},
+        {"id": "horns", "instrument": "brass", "bus": "brass", "level": 0.05, "pan": -0.2,
+         "humanize": {"timingMs": 8, "velocity": 0.04},
+         "phrases": [
+           {"bar": 1, "label": "D - Eb - D - C", "notes": "D2+A2:3!0.8 Eb2+Bb2:1!0.85 | D2+A2:2!0.8 C2+G2:2!0.75 |", "repeat": 15},
+           {"bar": 31, "notes": "D2+A2:6!0.6 r:2 |"}
+         ]},
+        {"id": "horns_hi", "instrument": "brass", "bus": "brass", "level": 0.04, "pan": 0.2,
+         "humanize": {"timingMs": 8, "velocity": 0.04},
+         "phrases": [
+           {"bar": 25, "notes": "D3+A3:3!0.8 Eb3+Bb3:1!0.85 | D3+A3:2!0.8 C3+G3:2!0.75 |", "repeat": 3}
+         ]},
+        {"id": "choir", "instrument": "choir", "bus": "choir", "level": 0.07, "pan": 0.0,
+         "params": {"voices": 3, "attackSec": 0.35, "releaseSec": 0.8, "vowel": "a", "entrySec": 0.05},
+         "humanize": {"timingMs": 12, "velocity": 0.04},
+         "phrases": [
+           {"bar": 9, "label": "the chant",
+            "notes": "D3+D4:4!0.7 | F3+F4:2!0.74 Eb3+Eb4:2!0.72 | D3+D4:4!0.7 | C3+C4:2!0.68 D3+D4:2!0.7 | D3+D4:4!0.72 | F3+F4:2!0.76 G3+G4:2!0.78 | A3+A4:3!0.82 G3+G4:1!0.74 | F3+F4:2!0.76 Eb3+Eb4:2!0.74 |"},
+           {"bar": 17, "vel": 1.12,
+            "notes": "D3+D4:4!0.7 | F3+F4:2!0.74 Eb3+Eb4:2!0.72 | D3+D4:4!0.7 | C3+C4:2!0.68 D3+D4:2!0.7 | D3+D4:4!0.72 | F3+F4:2!0.76 G3+G4:2!0.78 | A3+A4:3!0.82 G3+G4:1!0.74 | F3+F4:2!0.76 Eb3+Eb4:2!0.74 |"},
+           {"bar": 25, "label": "climax in parallel fifths",
+            "notes": "A3+D4+A4:4!0.85 | Bb3+Eb4+Bb4:4!0.88 | A3+D4+A4:4!0.85 | G3+C4+G4:2!0.82 A3+D4+A4:2!0.86 | Bb3+Eb4+Bb4:4!0.9 | A3+D4+A4:4!0.88 |"}
+         ]},
+        {"id": "strings", "instrument": "strings", "bus": "strings", "level": 0.035, "pan": 0.1,
+         "params": {"tremoloHz": 11.0, "brightHz": 2200.0},
+         "phrases": [
+           {"bar": 17, "notes": "D3+A3:8!0.7 | Eb3+Bb3:8!0.75 | D3+A3:8!0.75 | C3+G3:4!0.75 D3+A3:4!0.8 |"},
+           {"bar": 25, "notes": "D4+A4:8!0.8 | Eb4+Bb4:8!0.9 | D4+A4:4!0.9 C4+G4:4!0.85 |"}
+         ]},
+        {"id": "bell", "instrument": "bell", "bus": "far", "level": 0.05, "pan": -0.3,
+         "params": {"ringSec": 8.0, "force": 0.7, "crack": 0.06, "sour": 0.3},
+         "phrases": [
+           {"bar": 1, "notes": "D4:1!0.8"},
+           {"bar": 17, "notes": "D4:1!0.9"}
+         ]}
+      ]
+    },
+    "siege": {
+      "asset": "SW_MUS_Siege",
+      "description": "the siege: drums from the field (two columns out of step, a great drum nearer), far horn calls, a low drone",
+      "use": "from cs_rf_siege until the Boneyard Gate's last wave falls (q_rf_last_toll's defend objective)",
+      "loop": true, "tempo": 76, "beatsPerBar": 4, "bars": 16, "loudnessLufs": -17.0,
+      "buses": {
+        "field_far": {"lowpass": 900, "reverb": {"decay": 3.6, "wet": 1.0, "dry": 0.35, "tone": 1500, "preDelay": 0.06}},
+        "field": {"lowpass": 1600, "reverb": {"decay": 3.0, "wet": 0.6, "dry": 0.7, "tone": 2000, "preDelay": 0.04}},
+        "far_horn": {"lowpass": 1200, "reverb": {"decay": 3.8, "wet": 1.0, "dry": 0.3, "tone": 1600, "preDelay": 0.07}}
+      },
+      "parts": [
+        {"id": "column_a", "instrument": "drum", "bus": "field_far", "level": 0.2, "pan": -0.35,
+         "params": {"tuneHz": 52.0, "decaySec": 0.7, "beaterHz": 800.0},
+         "humanize": {"timingMs": 18, "velocity": 0.08},
+         "phrases": [{"bar": 1, "notes": "X:1 x:1 x:1 x:1 |", "repeat": 16}]},
+        {"id": "column_b", "instrument": "drum", "bus": "field_far", "level": 0.2, "pan": 0.4,
+         "params": {"tuneHz": 64.0, "decaySec": 0.6, "beaterHz": 900.0},
+         "humanize": {"timingMs": 22, "velocity": 0.1},
+         "phrases": [{"bar": 1, "beat": 0.23, "label": "a second column, out of step", "notes": "x:1 x:1 X:1 x:1", "repeat": 16}]},
+        {"id": "great", "instrument": "drum", "bus": "field", "level": 0.14, "pan": 0.05,
+         "params": {"tuneHz": 41.0, "decaySec": 1.3, "drive": 0.35},
+         "humanize": {"timingMs": 8, "velocity": 0.04},
+         "phrases": [{"bar": 1, "notes": "X:4 | r:4 |", "repeat": 8}]},
+        {"id": "snare_far", "instrument": "snare", "bus": "field_far", "level": 0.14, "pan": 0.2,
+         "phrases": [
+           {"bar": 4, "notes": "r:2 R:2!0.3>0.7 |"},
+           {"bar": 12, "notes": "r:2 R:2!0.3>0.7 |"}
+         ]},
+        {"id": "horn", "instrument": "brass", "bus": "far_horn", "level": 0.07, "pan": -0.15,
+         "params": {"attackSec": 0.6, "releaseSec": 1.2, "brightHz": 600.0},
+         "phrases": [
+           {"bar": 3, "notes": "A2:2!0.6 D2:6!0.7"},
+           {"bar": 11, "notes": "A2:2!0.6 Eb2:2!0.62 D2:4!0.7"}
+         ]},
+        {"id": "drone", "instrument": "drone", "bus": "field", "level": 0.04, "pan": 0.0,
+         "params": {"attackSec": 7.0, "releaseSec": 8.0, "cutoffHz": [120.0, 260.0], "sub": 0.5},
+         "phrases": [
+           {"bar": 1, "notes": "D2:40!0.7"},
+           {"bar": 9, "label": "wraps over the loop point", "notes": "D2:40!0.7"}
+         ]}
+      ]
+    },
+    "valdras_falls": {
+      "asset": "SW_MUS_ValdrasFalls",
+      "description": "Valdras falls: one dead drum, the choir's last chord sinking as the standard droops, a distant toll, silence",
+      "use": "replaces the boss victory recording in emerald_plains (one-shot inside the 8 s boss-victory hold)",
+      "loop": false, "tempo": 60, "beatsPerBar": 4, "bars": 2, "loudnessLufs": -18.0,
+      "buses": {
+        "near": {"reverb": {"decay": 3.0, "wet": 0.45, "dry": 0.9, "tone": 2600, "preDelay": 0.03}},
+        "far": {"lowpass": 1800, "reverb": {"decay": 3.6, "wet": 0.9, "dry": 0.35, "tone": 2000, "preDelay": 0.05}}
+      },
+      "parts": [
+        {"id": "drum", "instrument": "drum", "bus": "near", "level": 0.22,
+         "params": {"tuneHz": 50.0, "decaySec": 0.9, "dropCents": 500.0},
+         "phrases": [{"bar": 1, "notes": "X:1"}]},
+        {"id": "horns", "instrument": "brass", "bus": "near", "level": 0.045, "pan": -0.15,
+         "params": {"sustain": 0.3, "releaseSec": 2.0, "attackSec": 0.05},
+         "phrases": [{"bar": 1, "notes": "D2+A2:2.5!0.9"}]},
+        {"id": "choir", "instrument": "choir", "bus": "near", "level": 0.052,
+         "params": {"attackSec": 1.0, "releaseSec": 2.6, "vowel": "o>u"},
+         "phrases": [{"bar": 1, "beat": 0.3, "notes": "D2+A2:5.2!0.7"}]},
+        {"id": "top", "instrument": "choir", "bus": "near", "level": 0.08, "pan": 0.12,
+         "params": {"attackSec": 1.0, "releaseSec": 2.2, "vowel": "o"},
+         "phrases": [{"bar": 1, "beat": 0.3, "label": "the standard droops", "notes": "F3:2.7!0.66 E3:1.0!0.58 D3:2.2!0.5"}]},
+        {"id": "bell", "instrument": "bell", "bus": "far", "level": 0.025, "pan": 0.3,
+         "params": {"ringSec": 6.0, "force": 0.6, "crack": 0.05, "sour": 0.2, "bendCents": -30.0},
+         "phrases": [{"bar": 2, "beat": 0.5, "notes": "D4:1!0.8"}]}
+      ]
+    }
+  },
+  "stingers": {
+    "stinger_hunt": {
+      "asset": "SW_STG_Hunt",
+      "description": "a hunt is joined: two war drums and a men's choir stab",
+      "use": "a hunt target (hunt_hungerbell, hunt_dreck, hunt_harke) first fights the hero",
+      "tempo": 60, "beatsPerBar": 4, "bars": 1, "levelMatch": "momentary", "levelVsExploreLu": -2.0, "duck": {"db": -6.0, "inSec": 0.1, "outSec": 1.2},
+      "buses": {"near": {"reverb": {"decay": 2.4, "wet": 0.35, "dry": 1.0, "tone": 3000, "preDelay": 0.02}}},
+      "parts": [
+        {"id": "drum", "instrument": "drum", "bus": "near", "level": 0.2,
+         "params": {"tuneHz": 58.0, "decaySec": 0.9, "drive": 0.4}, "phrases": [{"bar": 1, "notes": "X:0.3 X:3.7"}]},
+        {"id": "horns", "instrument": "brass", "bus": "near", "level": 0.06,
+         "params": {"sustain": 0.4, "attackSec": 0.05, "releaseSec": 0.9}, "phrases": [{"bar": 1, "beat": 0.3, "notes": "D2+A2:1.0!0.9"}]},
+        {"id": "choir", "instrument": "choir", "bus": "near", "level": 0.09,
+         "params": {"attackSec": 0.06, "releaseSec": 1.2, "vowel": "a", "entrySec": 0.03},
+         "phrases": [{"bar": 1, "beat": 0.3, "notes": "D3+F3+A3:1.2!0.85"}]}
+      ]
+    },
+    "stinger_miniboss": {
+      "asset": "SW_STG_Miniboss",
+      "description": "the Corpseherd's fight begins: women's voices sing the head of her lullaby over a dead drum",
+      "use": "miniboss_corpseherd: her pre-fight lines dismissed (the fight starts)",
+      "tempo": 60, "beatsPerBar": 4, "bars": 2, "levelMatch": "shortTerm", "levelVsExploreLu": -3.0, "duck": {"db": -6.0, "inSec": 0.2, "outSec": 1.5},
+      "buses": {
+        "near": {"reverb": {"decay": 3.0, "wet": 0.45, "dry": 0.9, "tone": 3200, "preDelay": 0.025}},
+        "high": {"reverb": {"decay": 3.6, "wet": 0.8, "dry": 0.5, "tone": 5000, "preDelay": 0.04}}
+      },
+      "parts": [
+        {"id": "drum", "instrument": "drum", "bus": "near", "level": 0.16,
+         "params": {"tuneHz": 56.0, "decaySec": 0.6, "dropCents": 500.0, "beater": 0.8}, "phrases": [{"bar": 1, "notes": "X:2 x:2"}]},
+        {"id": "women", "instrument": "choir", "bus": "near", "level": 0.07,
+         "params": {"formantScale": 1.17, "attackSec": 0.15, "releaseSec": 1.6, "vowel": "u>o", "vibratoCents": 18.0},
+         "phrases": [{"bar": 1, "beat": 0.2, "label": "her lullaby's head (AU1 vox_corpseherd_lullaby)", "notes": "A3:0.45!0.55 D4:0.45!0.6 F4:0.45!0.66 E4:2.2!0.6"}]},
+        {"id": "men", "instrument": "choir", "bus": "near", "level": 0.035,
+         "params": {"attackSec": 1.0, "releaseSec": 1.8, "vowel": "u"}, "phrases": [{"bar": 1, "beat": 0.2, "notes": "D2+A2:3.2!0.6"}]},
+        {"id": "glass", "instrument": "glass", "bus": "high", "level": 0.01,
+         "params": {"attackSec": 1.2, "releaseSec": 2.0, "beatHz": 0.9}, "phrases": [{"bar": 1, "beat": 0.5, "notes": "Eb5:4!0.7"}]}
+      ]
+    },
+    "stinger_slain": {
+      "asset": "SW_STG_Slain",
+      "description": "a hunt or the mini-boss falls: a soft dead drum, the men's minor chord settling into a bare fifth",
+      "use": "a hunt target or miniboss_corpseherd dies (before cs_rf_herd)",
+      "tempo": 60, "beatsPerBar": 4, "bars": 1, "levelMatch": "shortTerm", "levelVsExploreLu": -4.0, "duck": {"db": -6.0, "inSec": 0.2, "outSec": 1.5},
+      "buses": {"near": {"reverb": {"decay": 3.0, "wet": 0.45, "dry": 0.9, "tone": 2800, "preDelay": 0.03}}},
+      "parts": [
+        {"id": "drum", "instrument": "drum", "bus": "near", "level": 0.18,
+         "params": {"tuneHz": 54.0, "decaySec": 0.6, "dropCents": 500.0, "beater": 0.8}, "phrases": [{"bar": 1, "notes": "x:1!0.8"}]},
+        {"id": "men", "instrument": "choir", "bus": "near", "level": 0.035,
+         "params": {"attackSec": 0.6, "releaseSec": 2.2, "vowel": "o>u"},
+         "phrases": [{"bar": 1, "beat": 0.1, "notes": "D2+A2+F3:1.6!0.65 D2+A2+D3:1.8!0.55"}]}
+      ]
+    },
+    "stinger_valdras_roll_call": {
+      "asset": "SW_STG_ValdrasRollCall",
+      "description": "Valdras P2 Roll Call: a snare roll under his 1.2 s Roar, then the muster: drums, horns, a choir shout",
+      "use": "EvMonsterPhase valdras index 1 (65 %: Roll Call); the roll lasts the Roar",
+      "tempo": 60, "beatsPerBar": 4, "bars": 1, "levelMatch": "momentary", "levelVsExploreLu": -2.0, "duck": {"db": -6.0, "inSec": 0.1, "outSec": 1.5},
+      "buses": {"near": {"reverb": {"decay": 2.4, "wet": 0.35, "dry": 1.0, "tone": 3000, "preDelay": 0.02}}},
+      "parts": [
+        {"id": "snare", "instrument": "snare", "bus": "near", "level": 0.2, "phrases": [{"bar": 1, "notes": "R:1.2!0.15>1.0 X:1"}]},
+        {"id": "war_lo", "instrument": "drum", "bus": "near", "level": 0.2,
+         "params": {"tuneHz": 46.0, "decaySec": 1.1, "drive": 0.45}, "phrases": [{"bar": 1, "beat": 1.2, "notes": "X:1"}]},
+        {"id": "war_hi", "instrument": "drum", "bus": "near", "level": 0.16,
+         "params": {"tuneHz": 74.0, "decaySec": 0.55, "drive": 0.35}, "phrases": [{"bar": 1, "beat": 1.2, "label": "three names called", "notes": "X:0.25 X:0.25 X:1"}]},
+        {"id": "horns", "instrument": "brass", "bus": "near", "level": 0.065,
+         "params": {"sustain": 0.45, "attackSec": 0.04, "releaseSec": 1.0}, "phrases": [{"bar": 1, "beat": 1.2, "notes": "D2+A2+Eb3:2.2!1.0"}]},
+        {"id": "choir", "instrument": "choir", "bus": "near", "level": 0.09,
+         "params": {"attackSec": 0.04, "releaseSec": 1.0, "vowel": "a", "entrySec": 0.03},
+         "phrases": [{"bar": 1, "beat": 1.2, "notes": "D3+A3+D4:1.4!0.9"}]}
+      ]
+    },
+    "stinger_valdras_no_retreat": {
+      "asset": "SW_STG_ValdrasNoRetreat",
+      "description": "Valdras P3 No Retreat: strings, horns and choir swell under the Roar, then the standard ignites: two drums, the cracked bell, a high cry",
+      "use": "EvMonsterPhase valdras index 2 (30 %: No Retreat)",
+      "tempo": 60, "beatsPerBar": 4, "bars": 1, "levelMatch": "momentary", "levelVsExploreLu": -2.0, "duck": {"db": -6.0, "inSec": 0.3, "outSec": 1.5},
+      "buses": {
+        "near": {"reverb": {"decay": 2.6, "wet": 0.4, "dry": 1.0, "tone": 3000, "preDelay": 0.02}},
+        "far": {"lowpass": 2200, "reverb": {"decay": 3.4, "wet": 0.8, "dry": 0.4, "tone": 2400, "preDelay": 0.04}}
+      },
+      "parts": [
+        {"id": "strings", "instrument": "strings", "bus": "near", "level": 0.05,
+         "params": {"tremoloHz": 13.0, "releaseSec": 0.4}, "phrases": [{"bar": 1, "notes": "D3+Eb3+A3:1.25!0.15>0.9"}]},
+        {"id": "horns", "instrument": "brass", "bus": "near", "level": 0.06,
+         "params": {"releaseSec": 0.5}, "phrases": [{"bar": 1, "notes": "D2+A2:1.25!0.3>1.0"}]},
+        {"id": "swell", "instrument": "choir", "bus": "near", "level": 0.2,
+         "params": {"attackSec": 1.0, "releaseSec": 0.5, "vowel": "o>a"}, "phrases": [{"bar": 1, "notes": "D3+A3:1.25!0.2>0.85"}]},
+        {"id": "war", "instrument": "drum", "bus": "near", "level": 0.2,
+         "params": {"tuneHz": 46.0, "decaySec": 1.2, "drive": 0.5}, "phrases": [{"bar": 1, "beat": 1.25, "notes": "X:0.3 X:2"}]},
+        {"id": "cry", "instrument": "choir", "bus": "near", "level": 0.08,
+         "params": {"attackSec": 0.05, "releaseSec": 1.4, "vowel": "a", "formantScale": 1.06, "entrySec": 0.03},
+         "phrases": [{"bar": 1, "beat": 1.3, "notes": "D4+A4:1.6!0.9"}]},
+        {"id": "bell", "instrument": "bell", "bus": "far", "level": 0.06,
+         "params": {"ringSec": 5.0, "force": 1.0, "crack": 0.12, "sour": 0.4}, "phrases": [{"bar": 1, "beat": 1.25, "notes": "D4:1"}]}
+      ]
+    },
+    "stinger_chapter_night": {
+      "asset": "SW_STG_ChapterCardNight",
+      "description": "the night chapter card (8.9 s): men's voices rise, a dead drum at the title, the minor third at the subtitle, a far toll at the text",
+      "use": "chapter card with mood night (chapter1.md: Chapter One is night); matches the card's timing like the dawn stinger",
+      "tempo": 60, "beatsPerBar": 9, "bars": 1, "levelMatch": "shortTerm", "levelVsExploreLu": -3.0, "duck": {"db": -8.0, "inSec": 0.6, "outSec": 0.7},
+      "buses": {
+        "near": {"reverb": {"decay": 3.2, "wet": 0.45, "dry": 0.9, "tone": 2800, "preDelay": 0.03}},
+        "far": {"lowpass": 1900, "reverb": {"decay": 3.6, "wet": 0.9, "dry": 0.35, "tone": 2000, "preDelay": 0.05}}
+      },
+      "parts": [
+        {"id": "men", "instrument": "choir", "bus": "near", "level": 0.03,
+         "params": {"attackSec": 1.4, "releaseSec": 1.4, "vowel": "u>o"}, "phrases": [{"bar": 1, "beat": 0.4, "notes": "D2+A2+D3:6.9!0.6"}]},
+        {"id": "third", "instrument": "choir", "bus": "near", "level": 0.04,
+         "params": {"attackSec": 1.0, "releaseSec": 1.4, "vowel": "o"}, "phrases": [{"bar": 1, "beat": 2.0, "notes": "F3:5.3!0.5"}]},
+        {"id": "drum", "instrument": "drum", "bus": "near", "level": 0.12,
+         "params": {"tuneHz": 52.0, "decaySec": 0.7, "dropCents": 500.0, "beater": 0.8}, "phrases": [{"bar": 1, "beat": 1.1, "notes": "X:1!0.9"}]},
+        {"id": "bell", "instrument": "bell", "bus": "far", "level": 0.035, "pan": -0.25,
+         "params": {"ringSec": 5.0, "force": 0.7, "crack": 0.05, "sour": 0.15}, "phrases": [{"bar": 1, "beat": 2.6, "notes": "D4:1!0.8"}]}
+      ]
+    }
+  }
+}
