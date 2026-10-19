@@ -12,6 +12,7 @@ import { isCollectObjective, FALLBACK_COLLECT_CHANCE } from '../../../../../src/
 import { NPCDefinitions } from '../../../../../src/data/npcs';
 import * as Homestead from '../../../../../src/data/homestead';
 import { assert, assertSource, plain, type TableResult } from '../util';
+import { gateRemakeValues, withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -26,8 +27,9 @@ export function exportQuests(): TableResult[] {
     assert(!ids.has(q.id), `duplicate quest ${q.id}`);
     ids.add(q.id);
     const giver = questGiverOf(q.id);
+    gateRemakeValues('quest', q, `quests.${q.id}`);
     return {
-      ...plain(q),
+      ...withholdRemakeFields('quest', plain(q), `quests.${q.id}`),
       derived: {
         giverNpcId: giver,
         objectiveItemKinds: q.objectives.map(o => (isCollectObjective(o) ? questItemKindOf(o) : null)),

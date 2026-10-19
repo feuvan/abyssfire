@@ -1,0 +1,14 @@
+{
+  "//": "Web content module -> remake module (paths from the repo root). The exporter's redirect plugin (unreal/Tools/export-data/run.mjs) loads the GameData module wherever any module imports the web one. A target that does not exist, a web path that is never loaded during the export, or a GameData module that imports a redirected web path fails the export. See README.md.",
+  "modules": {
+    "src/data/quests/all_quests.ts": "unreal/GameData/quests/all_quests.ts",
+    "src/data/npcs.ts": "unreal/GameData/npcs.ts",
+    "src/data/dialogueTrees.ts": "unreal/GameData/dialogueTrees.ts",
+    "src/data/miniBosses.ts": "unreal/GameData/miniBosses.ts",
+    "src/data/monsters/emerald_plains.ts": "unreal/GameData/monsters/emerald_plains.ts",
+    "src/data/maps/emerald_plains.ts": "unreal/GameData/maps/emerald_plains.ts",
+    "src/data/loreCollectibles.ts": "unreal/GameData/loreCollectibles.ts",
+    "src/data/story/script.ts": "unreal/GameData/story/script.ts",
+    "src/data/homestead.ts": "unreal/GameData/homestead.ts"
+  }
+}

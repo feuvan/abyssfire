@@ -2,7 +2,8 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "types": ["vite/client"],
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "@web/*": ["../../../src/*"] }
   },
-  "include": ["src", "../../../src/vite-env.d.ts"]
+  "include": ["src", "../../GameData", "../../../src/vite-env.d.ts"]
 }

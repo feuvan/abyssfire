@@ -18,7 +18,10 @@ import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
 import { STORY_TRIGGERS, BOSS_INTROS } from '../../../../../src/data/story/script';
 import { EmeraldPlainsMap } from '../../../../../src/data/maps';
 import type { MonsterDefinition } from '../../../../../src/data/types';
+import type { RemakeOnHitStatus } from '../../../../GameData/types';
+import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
+import { withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -34,18 +37,21 @@ type Source = 'zone' | 'dungeon' | 'miniBoss' | 'subDungeonBoss';
  * spawns once per zone visit (role `storyBoss`, never respawns within a visit) and not after its quest is turned in,
  * except as a farmable boss once the chapter is complete (once per visit). "Chapter complete" = the quest whose
  * turn-in plays the chapter finale cutscene. Explicit data so the C++ never hardcodes the boss or the chapter rule.
+ * The ids come from unreal/GameData/config.ts (the remake's chapter config); every one is checked below.
  */
-const FINALE_TRIGGER = STORY_TRIGGERS.find(t => t.on === 'quest_turned_in' && t.cutscene === 'cs_ep_finale');
+const FINALE_TRIGGER = STORY_TRIGGERS.find(t => t.on === 'quest_turned_in' && t.cutscene === CHAPTER_CONFIG.chapterFinaleCutscene);
 const STORY_BOSS = {
-  monsterId: 'goblin_chief',
+  monsterId: CHAPTER_CONFIG.storyBoss.monsterId,
   oncePerVisit: true,
-  notAfterQuestTurnIn: 'q_find_goblin_chief',
+  notAfterQuestTurnIn: CHAPTER_CONFIG.storyBoss.notAfterQuestTurnIn,
   farmableAfterChapter: true,
   chapterCompleteQuest: FINALE_TRIGGER && 'questId' in FINALE_TRIGGER ? FINALE_TRIGGER.questId : '',
-  chapterFinaleCutscene: 'cs_ep_finale',
+  chapterFinaleCutscene: CHAPTER_CONFIG.chapterFinaleCutscene,
   decision: 'M7',
 };
-assert(STORY_BOSS.chapterCompleteQuest === 'q_secure_plains', 'M7: the Chapter 1 finale trigger moved');
+assert(STORY_BOSS.chapterCompleteQuest === CHAPTER_CONFIG.chapterCompleteQuest,
+  `M7 / GameData/config.ts: the quest_turned_in trigger of ${STORY_BOSS.chapterFinaleCutscene} is ` +
+  `'${STORY_BOSS.chapterCompleteQuest}', not chapterCompleteQuest '${CHAPTER_CONFIG.chapterCompleteQuest}'`);
 assert(EmeraldPlainsMap.spawns.some(sp => sp.monsterId === STORY_BOSS.monsterId), 'M7: the story boss is not an emerald_plains spawn');
 assert(BOSS_INTROS.some(b => b.monsterId === STORY_BOSS.monsterId), 'M7: the story boss has no boss intro');
 assert(AllQuests.some(q => q.id === STORY_BOSS.notAfterQuestTurnIn && q.objectives.some(o => o.type === 'kill' && o.targetId === STORY_BOSS.monsterId)),
@@ -104,6 +110,20 @@ function projectileColor(def: MonsterDefinition): number {
   return k.includes('fire') || k.includes('phoenix') ? 0xff6600 : k.includes('ice') ? 0x4488ff : 0xcc44cc;
 }
 
+/**
+ * Remake monsters may author `onHitStatus` / `projectileColor` (GameData/types.ts); an authored value wins over the
+ * keyword rule (implementation-plan.md §2.3) and goes into `derived`, which the core already reads, so it needs no
+ * REMAKE_SCHEMA feature. The authored top-level field is consumed here (never written).
+ */
+interface Authored { onHitStatus?: RemakeOnHitStatus[]; projectileColor?: number }
+function takeAuthored(d: MonsterDefinition): Authored {
+  const r = d as MonsterDefinition & Authored;
+  const out: Authored = { onHitStatus: r.onHitStatus, projectileColor: r.projectileColor };
+  delete r.onHitStatus;
+  delete r.projectileColor;
+  return out;
+}
+
 export function exportMonsters(): TableResult[] {
   assertSource(ZS,
     "const projColor = spriteKey.includes('fire') || spriteKey.includes('phoenix') ? 0xff6600 : spriteKey.includes('ice') ? 0x4488ff : 0xcc44cc;",
@@ -120,14 +140,15 @@ export function exportMonsters(): TableResult[] {
       sources[def.id].push(source);
       return;
     }
-    const d: MonsterDefinition = plain(def);
+    const d: MonsterDefinition = withholdRemakeFields('monster', plain(def), `monsters.${def.id}`);
+    const authored = takeAuthored(d);
     const web = plain(def);
     for (const o of OVERRIDES.filter(x => x.id === def.id)) {
       overridesApplied.push({ id: o.id, field: o.field, web: d[o.field] as number, port: o.port, decision: o.decision, note: o.note });
       (d as unknown as Record<string, unknown>)[o.field] = o.port;
     }
-    const onHitStatus = onHitStatusRule(def);
-    checkOnHit(def, onHitStatus);
+    const onHitStatus = authored.onHitStatus ? plain(authored.onHitStatus) as unknown as Record<string, unknown>[] : onHitStatusRule(def);
+    if (!authored.onHitStatus) checkOnHit(def, onHitStatus);
     sources[def.id] = [source];
     defs[def.id] = {
       __web: web,
@@ -135,7 +156,7 @@ export function exportMonsters(): TableResult[] {
       derived: {
         isRanged: d.attackRange > 2.5,
         onHitStatus,
-        projectileColor: projectileColor(d),
+        projectileColor: authored.projectileColor ?? projectileColor(d),
         homeZone: zone,
         nameKey: `data.monster.${d.id}`,
       },
@@ -161,6 +182,9 @@ export function exportMonsters(): TableResult[] {
     else assert(!found, `getMonsterDef should not find ${id}`);
   }
 
+  const finalBoss = CHAPTER_CONFIG.finalBoss ?? exp<string>(StoryDirectorMod, 'FINAL_BOSS');
+  assert(defs[finalBoss], `GameData/config.ts finalBoss: unknown monster '${finalBoss}'`);
+
   // ── minibosses.json ──
   const miniBossByZone = Object.fromEntries(Object.entries(MiniBossByZone).map(([z, m]) => [z, m.id]));
 
@@ -172,6 +196,7 @@ export function exportMonsters(): TableResult[] {
     const base = (MonstersByZone[q.zone] ?? []).find(m => m.id === h.monsterId) ?? getMonsterDef(h.monsterId);
     assert(base, `hunt ${h.huntId}: base monster ${h.monsterId} not found`);
     const def = makeHuntDefinition(base, h, h.name);
+    takeAuthored(withholdRemakeFields('monster', def, `huntDefs.${h.huntId}`));
     const hpMul = h.hpMul ?? 4, dmgMul = h.dmgMul ?? 1.5;
     assert(def.hp === Math.round(base.hp * hpMul) && def.damage === Math.round(base.damage * dmgMul)
       && def.defense === Math.round(base.defense * 1.2) && def.expReward === Math.round(base.expReward * Math.max(3, hpMul))
@@ -204,7 +229,7 @@ export function exportMonsters(): TableResult[] {
     hunt: { hpMul: 4, dmgMul: 1.5, defMul: 1.2, expMulMin: 3, goldMul: 3, aggroMin: 7, minionJitter: 3, spotSearchRadius: 6,
       visualScale: 1.25, revealShakeMs: 260, revealShakeIntensity: 0.004 },
     boss: { sightRange: exp<number>(StoryDirectorMod, 'BOSS_SIGHT'), barRange: exp<number>(StoryDirectorMod, 'BOSS_BAR_RANGE'),
-      finalBoss: exp<string>(StoryDirectorMod, 'FINAL_BOSS') },
+      finalBoss },
     escortChip: { radiusSq: 16, intervalMs: 2000, damageMul: 0.3 },
     defendChip: { radiusSq: 9, intervalMs: 2000, damageMul: 0.2 },
     // Port decisions (DECISIONS M1–M4, M7, M10, M11).

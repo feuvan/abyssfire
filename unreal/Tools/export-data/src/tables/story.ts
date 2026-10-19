@@ -5,7 +5,9 @@
 import { PROLOGUE, CHAPTERS, CUTSCENES, BOSS_INTROS, STORY_TRIGGERS, EPILOGUE, CREDITS } from '../../../../../src/data/story/script';
 import * as StorySceneMod from '../../../../../src/scenes/StoryScene';
 import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
+import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
+import { withholdRemakeFields } from '../remake';
 
 const exp = <T>(mod: unknown, name: string): T => {
   const v = (mod as Record<string, unknown>)[`__expose_${name}`];
@@ -52,7 +54,8 @@ export function exportStory(): TableResult[] {
     data: {
       prologue: plain(PROLOGUE),
       chapters: plain(CHAPTERS),
-      cutscenes: plain(CUTSCENES),
+      cutscenes: Object.fromEntries(Object.entries(plain(CUTSCENES))
+        .map(([id, c]) => [id, withholdRemakeFields('cutscene', c, `cutscenes.${id}`)])),
       bossIntros: plain(BOSS_INTROS),
       triggers: plain(STORY_TRIGGERS),
       epilogue: plain(EPILOGUE),
@@ -62,7 +65,7 @@ export function exportStory(): TableResult[] {
         beatDelayMs: { quest_turned_in: 650, quest_accepted: 650, zone_entered: 900, monster_killed: 0 },
         bossSightTiles: exp<number>(StoryDirectorMod, 'BOSS_SIGHT'),
         bossBarRangeTiles: exp<number>(StoryDirectorMod, 'BOSS_BAR_RANGE'),
-        finalBoss: exp<string>(StoryDirectorMod, 'FINAL_BOSS'),
+        finalBoss: CHAPTER_CONFIG.finalBoss ?? exp<string>(StoryDirectorMod, 'FINAL_BOSS'),
         cameraPanMs: 450, letterboxPx: 78, letterboxMs: 450, typewriterCps: 38, chapterHoldMs: 3800,
         focusDefaultMs: 900, creditsPxPerSec: 42,
         // Phase lengths (ms) per step kind (8.5). `in` = reveal before the step waits (input steps) or holds, `out` =

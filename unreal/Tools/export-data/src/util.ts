@@ -118,12 +118,21 @@ export function writeTable(ctx: Ctx, t: TableResult): string {
 
 const sourceCache = new Map<string, string>();
 let repoRootForSource = '';
+let redirectsForSource: Readonly<Record<string, string>> = {};
 
 export function setRepoRoot(root: string): void { repoRootForSource = root; }
 
+/** Web module -> GameData module (unreal/GameData/redirects.json): source assertions read what the export loads. */
+export function setRedirects(modules: Readonly<Record<string, string>>): void {
+  redirectsForSource = modules;
+  sourceCache.clear();
+}
+
+/** The text of a repo file; a redirected web module reads its GameData replacement (the module the export loaded). */
 export function readSource(file: string): string {
-  if (!sourceCache.has(file)) sourceCache.set(file, readFileSync(resolve(repoRootForSource, file), 'utf8'));
-  return sourceCache.get(file)!;
+  const path = redirectsForSource[file] ?? file;
+  if (!sourceCache.has(path)) sourceCache.set(path, readFileSync(resolve(repoRootForSource, path), 'utf8'));
+  return sourceCache.get(path)!;
 }
 
 /**
@@ -136,7 +145,8 @@ export function assertSource(file: string, ...snippets: string[]): void {
   const src = norm(readSource(file));
   for (const s of snippets) {
     if (!src.includes(norm(s))) {
-      throw new Error(`TS source drift: ${file} no longer contains:\n    ${s}\n  Update the exporter table that cites it.`);
+      const shown = redirectsForSource[file] ? `${file} (redirected to ${redirectsForSource[file]})` : file;
+      throw new Error(`TS source drift: ${shown} no longer contains:\n    ${s}\n  Update the exporter table that cites it.`);
     }
   }
 }

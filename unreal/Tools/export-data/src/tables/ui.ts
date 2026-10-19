@@ -7,6 +7,7 @@ import * as MobileMod from '../../../../../src/systems/MobileControlsSystem';
 import { TERRAIN_THEMES } from '../../../../../src/graphics/terrain/TerrainStyles';
 import { GAME_WIDTH, GAME_HEIGHT } from '../../../../../src/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
+import { overrideEntries } from '../remake';
 
 const exp = <T>(mod: unknown, name: string): T => {
   const v = (mod as Record<string, unknown>)[`__expose_${name}`];
@@ -15,6 +16,7 @@ const exp = <T>(mod: unknown, name: string): T => {
 };
 
 export function exportUi(): TableResult[] {
+  const terrainThemes = overrideEntries('terrainStyles', ['terrain_styles.json'], TERRAIN_THEMES);
   assertSource('src/config.ts', "backgroundColor: '#0f0f1a',");
   assertSource('src/i18n/index.ts', "const DEFAULT_LOCALE: LocaleId = 'zh-CN';", "const SUPPORTED_LOCALES: LocaleId[] = ['zh-CN', 'zh-TW', 'en'];");
   return [
@@ -38,8 +40,8 @@ export function exportUi(): TableResult[] {
     {
       file: 'terrain_styles.json',
       source: ['src/graphics/terrain/TerrainStyles.ts'],
-      data: { themes: plain(TERRAIN_THEMES) },
-      counts: { themes: Object.keys(TERRAIN_THEMES).length },
+      data: { themes: plain(terrainThemes) },
+      counts: { themes: Object.keys(terrainThemes).length },
     },
   ];
 }

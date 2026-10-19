@@ -27,6 +27,7 @@ import * as SoulEchoMod from '../../../../../src/systems/SoulEcho';
 import * as ZoneSceneMod from '../../../../../src/scenes/ZoneScene';
 import { TILE_WIDTH, TILE_HEIGHT } from '../../../../../src/config';
 import { assert, assertSource, plain, readSource, type TableResult } from '../util';
+import { overrideEntries } from '../remake';
 
 const exp = <T>(mod: unknown, name: string): T => {
   const v = (mod as Record<string, unknown>)[`__expose_${name}`];
@@ -454,8 +455,13 @@ function hitFeedback(): TableResult {
 // ── elite_affixes.json / difficulty.json / soul_echo.json ───────────────────
 
 function eliteAffixes(): TableResult {
-  const order = exp<string[]>(EliteMod, 'ALL_AFFIX_TYPES');
-  const zoneCounts = exp<Record<string, [number, number]>>(EliteMod, 'ZONE_AFFIX_COUNTS');
+  // The web tables with the remake's entries (GameData/world.ts); `order` = the roll pool = the definitions' key order.
+  const definitions = overrideEntries('eliteAffixes.definitions', ['elite_affixes.json'], ELITE_AFFIX_DEFINITIONS);
+  const webOrder = exp<string[]>(EliteMod, 'ALL_AFFIX_TYPES');
+  assert(webOrder.join() === Object.keys(ELITE_AFFIX_DEFINITIONS).join(), 'ALL_AFFIX_TYPES is no longer the definitions key order');
+  const order = Object.keys(definitions);
+  const zoneCounts = overrideEntries('eliteAffixes.zoneAffixCounts', ['elite_affixes.json'],
+    exp<Record<string, [number, number]>>(EliteMod, 'ZONE_AFFIX_COUNTS'));
   assertSource('src/systems/EliteAffixSystem.ts', 'const range = ZONE_AFFIX_COUNTS[zoneId] ?? [1, 1];',
     'freezeChance = Math.min(0.5, freezeChance + def.freezeChance);');
   assertSource(ZS, 'if (dSq > 4 && dSq < 225) {', '(Math.random() < 0.5 ? -1 : 1) * (1 + Math.random());',
@@ -465,7 +471,7 @@ function eliteAffixes(): TableResult {
     source: ['src/systems/EliteAffixSystem.ts', ZS],
     data: {
       order,
-      definitions: plain(ELITE_AFFIX_DEFINITIONS),
+      definitions: plain(definitions),
       zoneAffixCounts: plain(zoneCounts),
       defaultAffixCount: [1, 1],
       stacking: { multipliers: 'multiply', extras: 'add', freezeChanceCap: 0.5 },

@@ -1,0 +1,9 @@
+{
+  "//": "Editor / type-check project for the remake content. CI type-checks GameData through unreal/Tools/export-data/tsconfig.json, which includes this folder.",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": { "@web/*": ["../../src/*"] }
+  },
+  "include": [".", "../../src/vite-env.d.ts"]
+}

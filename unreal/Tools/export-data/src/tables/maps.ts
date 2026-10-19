@@ -16,6 +16,7 @@ import { AllSubDungeons, SubDungeonsByZone } from '../../../../../src/data/subDu
 import { NPCDefinitions } from '../../../../../src/data/npcs';
 import type { MapData } from '../../../../../src/data/types';
 import { assert, plain, sha256, formatJson, SCHEMA_VERSION, type TableResult } from '../util';
+import { withholdRemakeFields } from '../remake';
 
 const exp = <T>(mod: unknown, name: string): T => {
   const v = (mod as Record<string, unknown>)[`__expose_${name}`];
@@ -76,7 +77,7 @@ export function exportMaps(): { tables: TableResult[]; golden: { path: string; t
   const warnings: string[] = [];
   for (const [id, raw] of Object.entries(authored)) {
     const generated = raw.tiles.length === 0 && !!raw.theme;
-    const { tiles, collisions, decorations, ...anchors } = plain(raw);
+    const { tiles, collisions, decorations, ...anchors } = withholdRemakeFields('map', plain(raw), `maps.${id}`);
     const landmarks = generated ? externalLandmarks(id) : [];
     const portCampNpcs = PORT_CAMP_NPCS[id] ?? [];
     for (const add of portCampNpcs) {

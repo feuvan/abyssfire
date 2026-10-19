@@ -5,11 +5,19 @@
  * default exports are the full tables the game's t() reads. zh-TW is generated exactly like
  * src/i18n/index.ts does at runtime (convertToTraditional over every zh-CN value). Key order = TS order.
  * Runtime fallback chain (t()): zh-TW → zh-CN → en → the key itself; `{name}` placeholders.
+ *
+ * Remake (implementation-plan.md §2.5), per locale: web table → PORT_STRINGS → unreal/GameData/i18n strings (the remake
+ * wins; a replaced key keeps its position, a new key is appended). Then the orphan sweep drops the content-namespace keys
+ * whose id no exported table references any more, and the parity checks fail the export when a key the tables reference
+ * is missing in zh-CN or en. This module runs last (main.ts) and reads the other tables.
  */
 import zhCN from '../../../../../src/i18n/locales/zh-CN';
 import en from '../../../../../src/i18n/locales/en';
 import { convertToTraditional } from '../../../../../src/i18n/converter';
+import remakeZhCN from '../../../../GameData/i18n/zh-CN';
+import remakeEn from '../../../../GameData/i18n/en';
 import { assert, type TableResult } from '../util';
+import { noteExtra } from '../remake';
 
 const SOURCES = ['src/i18n/locales/zh-CN.ts', 'src/i18n/locales/en.ts', 'src/i18n/locales/story.ts', 'src/i18n/locales/questStory.ts',
   'src/i18n/locales/abyssRun.ts', 'src/i18n/locales/homestead.ts', 'src/i18n/locales/pets.ts'];
@@ -137,24 +145,194 @@ const PORT_STRINGS: Record<string, { 'zh-CN': string; en: string; decision: stri
   'zone.combat.outOfRange': { 'zh-CN': '目标超出范围!', en: 'Target out of range!', decision: 'C14' },
 };
 
-export function exportI18n(): TableResult[] {
+const REMAKE_SOURCE = { zhCN: 'unreal/GameData/i18n/zh-CN.ts', en: 'unreal/GameData/i18n/en.ts' };
+
+// ── Orphan sweep ────────────────────────────────────────────────────────────
+
+type TableData = Record<string, unknown>;
+type Lookup = (file: string) => TableData;
+type Rec = Record<string, unknown>;
+
+const list = (v: unknown): Rec[] => (Array.isArray(v) ? v as Rec[] : []);
+const obj = (v: unknown): Record<string, Rec> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, Rec> : {});
+const quests = (t: Lookup) => list(t('quests.json').quests);
+const objectiveTargets = (t: Lookup) => quests(t).flatMap(q => list(q.objectives).map(o => String(o.targetId)));
+const bareQuestId = (id: string) => (id.startsWith('q_') ? id.slice(2) : id);
+
+/**
+ * Content namespaces (implementation-plan.md §2.5): a key `<prefix><id>...` (id = the next `segments` dot segments) is
+ * kept while `ids` (read from the exported tables, the same way the game builds the key) contains its id, and swept
+ * otherwise. `required` lists keys every referenced record must have in zh-CN and en (parity).
+ */
+interface ContentNamespace {
+  prefix: string;
+  segments: number;
+  /** Optional filter on the id (story.<cutsceneId> shares `story.` with prologue / chapter / boss / ...). */
+  applies?: (id: string) => boolean;
+  ids: (t: Lookup) => Iterable<string>;
+  required?: (t: Lookup) => Iterable<string>;
+}
+
+const CONTENT_NAMESPACES: readonly ContentNamespace[] = [
+  { prefix: 'data.quest.', segments: 1, ids: t => quests(t).map(q => String(q.id)),
+    required: t => quests(t).flatMap(q => [`data.quest.${q.id}.name`, `data.quest.${q.id}.desc`]) },
+  // getQuestTargetName / QuestWorld clue notes read data.questTarget / data.questClue.<objective targetId>.
+  { prefix: 'data.questTarget.', segments: 1, ids: objectiveTargets },
+  { prefix: 'data.questClue.', segments: 1, ids: objectiveTargets },
+  { prefix: 'data.questChoice.', segments: 1, ids: t => quests(t).map(q => String(q.id)) },
+  { prefix: 'data.monster.', segments: 1,
+    ids: t => [...Object.keys(obj(t('monsters.json').defs)), ...list(t('quest_hunts.json').hunts).map(h => String(h.huntId))],
+    required: t => [...Object.keys(obj(t('monsters.json').defs)), ...list(t('quest_hunts.json').hunts).map(h => String(h.huntId))]
+      .map(id => `data.monster.${id}`) },
+  { prefix: 'data.npc.', segments: 1, ids: t => Object.keys(obj(t('npcs.json').npcs)),
+    required: t => Object.keys(obj(t('npcs.json').npcs)).map(id => `data.npc.${id}.name`) },
+  { prefix: 'data.dialogue.', segments: 2,
+    ids: t => Object.entries(obj(t('dialogue_trees.json').trees)).filter(([, tr]) => tr.kind === 'npc')
+      .flatMap(([id, tr]) => Object.keys(obj(tr.nodes)).map(n => `${id}.${n}`)),
+    required: t => Object.entries(obj(t('dialogue_trees.json').trees)).filter(([, tr]) => tr.kind === 'npc')
+      .flatMap(([id, tr]) => Object.entries(obj(tr.nodes)).flatMap(([n, node]) =>
+        [`data.dialogue.${id}.${n}.text`, ...list(node.choices).map((_, i) => `data.dialogue.${id}.${n}.choice.${i}`)])) },
+  { prefix: 'data.miniBossDialogue.', segments: 2,
+    ids: t => Object.entries(obj(t('minibosses.json').dialogues)).flatMap(([m, d]) => Object.keys(obj(d.nodes)).map(n => `${m}.${n}`)),
+    required: t => Object.entries(obj(t('minibosses.json').dialogues))
+      .flatMap(([m, d]) => Object.keys(obj(d.nodes)).map(n => `data.miniBossDialogue.${m}.${n}`)) },
+  { prefix: 'data.lore.', segments: 1, ids: t => Object.values(obj(t('lore.json').byZone)).flatMap(z => list(z).map(e => String(e.id))),
+    required: t => Object.values(obj(t('lore.json').byZone)).flatMap(z => list(z).flatMap(e => [`data.lore.${e.id}.name`, `data.lore.${e.id}.text`])) },
+  { prefix: 'data.storyDeco.', segments: 1,
+    ids: t => Object.values(obj(t('maps.json').maps)).flatMap(m => list(m.storyDecorations).map(d => String(d.id))),
+    required: t => Object.values(obj(t('maps.json').maps)).flatMap(m => list(m.storyDecorations)
+      .flatMap(d => [`data.storyDeco.${d.id}.name`, `data.storyDeco.${d.id}.desc`])) },
+  { prefix: 'data.hiddenArea.', segments: 1,
+    ids: t => Object.values(obj(t('maps.json').maps)).flatMap(m => list(m.hiddenAreas).map(d => String(d.id))),
+    required: t => Object.values(obj(t('maps.json').maps)).flatMap(m => list(m.hiddenAreas)
+      .flatMap(d => [`data.hiddenArea.${d.id}.name`, `data.hiddenArea.${d.id}.discovery`])) },
+  // QuestWorld (Q11): data.escortNpc / data.defendTarget.<quest id without q_> (a quest without one shows the data's name).
+  { prefix: 'data.escortNpc.', segments: 1, ids: t => quests(t).filter(q => q.escortNpc).map(q => bareQuestId(String(q.id))) },
+  { prefix: 'data.defendTarget.', segments: 1, ids: t => quests(t).filter(q => q.defendTarget).map(q => bareQuestId(String(q.id))) },
+  { prefix: 'data.achievement.', segments: 1, ids: t => list(t('achievements.json').achievements).map(a => String(a.id)),
+    required: t => list(t('achievements.json').achievements).flatMap(a => [`data.achievement.${a.id}.name`, `data.achievement.${a.id}.desc`]) },
+  { prefix: 'story.', segments: 1, applies: id => id.startsWith('cs_'), ids: t => Object.keys(obj(t('story.json').cutscenes)) },
+  { prefix: 'story.boss.', segments: 1, ids: t => list(t('story.json').bossIntros).map(b => String(b.monsterId)) },
+];
+
+/**
+ * Keys in the content namespaces that no exported table referenced before the remake either (web i18n debt: objective
+ * targets the web dropped long ago). The sweep keeps them, so it only removes what the remake orphans and the Phase 0
+ * export stays byte-identical. Each entry must still exist and be unreferenced, or the export fails (stale entry).
+ */
+const WEB_I18N_DEBT: readonly string[] = [
+  'data.questTarget.stone_golem', 'data.questTarget.desert_scorpion', 'data.questTarget.succubus',
+  'data.questTarget.mat_mushroom', 'data.questTarget.mat_moonlight_herb', 'data.questTarget.mat_ancient_relic',
+  'data.questTarget.zone_scout_camp', 'data.questTarget.zone_collapsed_mine', 'data.questTarget.zone_dragon_nest',
+  'data.questTarget.zone_buried_ruins', 'data.questTarget.zone_fallen_shrine', 'data.questTarget.zone_hero_memorial',
+];
+
+/** The namespace and id of a content key, or null for any other key. */
+function contentId(key: string): { ns: ContentNamespace; id: string } | null {
+  let best: { ns: ContentNamespace; id: string } | null = null;
+  for (const ns of CONTENT_NAMESPACES) {
+    if (!key.startsWith(ns.prefix)) continue;
+    const parts = key.slice(ns.prefix.length).split('.');
+    if (parts.length < ns.segments) continue;
+    const id = parts.slice(0, ns.segments).join('.');
+    if (ns.applies && !ns.applies(id)) continue;
+    if (!best || ns.prefix.length > best.ns.prefix.length) best = { ns, id };
+  }
+  return best;
+}
+
+/** Key-shaped string values anywhere in a table (`root.seg.seg`, root = a namespace root of the string tables). */
+function collectKeyRefs(v: unknown, roots: ReadonlySet<string>, out: Map<string, string>, file: string, path: string): void {
+  if (typeof v === 'string') {
+    if (/^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9_-]+)+$/.test(v) && roots.has(v.slice(0, v.indexOf('.'))) && !out.has(v)) out.set(v, `${file}:${path}`);
+  } else if (Array.isArray(v)) {
+    v.forEach((x, i) => collectKeyRefs(x, roots, out, file, `${path}[${i}]`));
+  } else if (v && typeof v === 'object') {
+    for (const [k, x] of Object.entries(v)) collectKeyRefs(x, roots, out, file, path ? `${path}.${k}` : k);
+  }
+}
+
+const fewKeys = (keys: readonly string[]) => `${keys.slice(0, 12).join(', ')}${keys.length > 12 ? `, … (${keys.length})` : ''}`;
+
+export function exportI18n(_ctx: unknown, tables: readonly TableResult[]): TableResult[] {
   for (const k of Object.keys(PORT_STRINGS)) {
     assert(!(k in zhCN) && !(k in en), `PORT_STRINGS key ${k} now exists in the web tables — remove it from the exporter`);
   }
+  const lookup: Lookup = file => {
+    const t = tables.find(x => x.file === file);
+    assert(t, `i18n sweep: ${file} was not exported before the i18n tables`);
+    return t.data;
+  };
+
+  // ── merge: web → PORT_STRINGS → GameData (remake wins) ──
   const zh: Record<string, string> = { ...zhCN };
   const enAll: Record<string, string> = { ...en };
   for (const [k, v] of Object.entries(PORT_STRINGS)) {
     zh[k] = v['zh-CN'];
     enAll[k] = v.en;
   }
-  const portKeys = Object.fromEntries(Object.entries(PORT_STRINGS).map(([k, v]) => [k, v.decision]));
-  const zhTW: Record<string, string> = {};
-  for (const [k, v] of Object.entries(zh)) zhTW[k] = convertToTraditional(v);
+  const remakeKeys = Object.keys(remakeZhCN);
+  const onlyZh = remakeKeys.filter(k => !(k in remakeEn));
+  const onlyEn = Object.keys(remakeEn).filter(k => !(k in remakeZhCN));
+  assert(!onlyZh.length && !onlyEn.length, 'GameData i18n: zh-CN and en must define the same keys' +
+    (onlyZh.length ? `; only in zh-CN: ${fewKeys(onlyZh)}` : '') + (onlyEn.length ? `; only in en: ${fewKeys(onlyEn)}` : ''));
+  const replaced = remakeKeys.filter(k => k in zh);
+  for (const k of remakeKeys) {
+    assert(typeof remakeZhCN[k] === 'string' && typeof remakeEn[k] === 'string', `GameData i18n: ${k} is not a string`);
+    zh[k] = remakeZhCN[k];
+    enAll[k] = remakeEn[k];
+  }
   for (const [name, table] of [['zh-CN', zhCN], ['en', en]] as const) {
     for (const [k, v] of Object.entries(table)) assert(typeof v === 'string', `${name}: ${k} is not a string`);
   }
-  const zhKeys = new Set(Object.keys(zhCN));
-  const enKeys = new Set(Object.keys(en));
+
+  // ── orphan sweep (content namespaces only) ──
+  for (const id of Object.keys(obj(lookup('story.json').cutscenes))) {
+    assert(id.startsWith('cs_'), `story.json cutscene '${id}': cutscene ids start with cs_ (the i18n sweep keys story.<cutsceneId> on it)`);
+  }
+  const referenced = new Map(CONTENT_NAMESPACES.map(ns => [ns, new Set(ns.ids(lookup))]));
+  const orphans: string[] = [];
+  for (const k of new Set([...Object.keys(zh), ...Object.keys(enAll)])) {
+    const c = contentId(k);
+    if (c && !referenced.get(c.ns)!.has(c.id)) orphans.push(k);
+  }
+  const orphanSet = new Set(orphans);
+  for (const k of WEB_I18N_DEBT) {
+    assert(k in zh || k in enAll, `WEB_I18N_DEBT: ${k} is no longer in the string tables — remove the entry`);
+    assert(orphanSet.has(k), `WEB_I18N_DEBT: ${k} is referenced by an exported table now — remove the entry`);
+  }
+  const remakeOrphans = orphans.filter(k => k in remakeZhCN);
+  assert(!remakeOrphans.length, `GameData i18n: no exported table references ${fewKeys(remakeOrphans)} (typo, or the record was removed)`);
+  const swept = orphans.filter(k => !WEB_I18N_DEBT.includes(k));
+  for (const k of swept) { delete zh[k]; delete enAll[k]; }
+
+  // ── parity: every key the exported tables reference exists in zh-CN and en ──
+  const roots = new Set([...Object.keys(zh), ...Object.keys(enAll)].map(k => k.slice(0, k.indexOf('.'))).filter(Boolean));
+  const refs = new Map<string, string>();
+  for (const t of tables) collectKeyRefs(t.data, roots, refs, t.file, '');
+  for (const ns of CONTENT_NAMESPACES) for (const k of ns.required?.(lookup) ?? []) if (!refs.has(k)) refs.set(k, `convention ${ns.prefix}*`);
+  const missing = [...refs].filter(([k]) => !(k in zh) || !(k in enAll)).map(([k, where]) =>
+    `${k} (${!(k in zh) && !(k in enAll) ? 'zh-CN, en' : !(k in zh) ? 'zh-CN' : 'en'}; ${where})`);
+  assert(!missing.length, `i18n parity: referenced keys missing: ${fewKeys(missing)}`);
+  const oneSided = Object.keys(zh).filter(k => contentId(k) && !(k in enAll)).concat(Object.keys(enAll).filter(k => contentId(k) && !(k in zh)));
+  assert(!oneSided.length, `i18n parity: content keys in only one of zh-CN / en: ${fewKeys(oneSided)}`);
+
+  // remake blocks (only when the remake changed the tables).
+  const files = ['i18n_zh-CN.json', 'i18n_en.json', 'i18n_zh-TW.json'];
+  if (remakeKeys.length) {
+    for (const f of files) {
+      noteExtra(f, f === 'i18n_en.json' ? REMAKE_SOURCE.en : REMAKE_SOURCE.zhCN, 'stringsReplaced', replaced.length);
+      noteExtra(f, f === 'i18n_en.json' ? REMAKE_SOURCE.en : REMAKE_SOURCE.zhCN, 'stringsAdded', remakeKeys.length - replaced.length);
+    }
+  }
+  // Swept keys: content the remake removed (redirected modules / overrides), listed for review.
+  if (swept.length) for (const f of files) noteExtra(f, 'unreal/GameData', 'swept', swept);
+
+  const portKeys = Object.fromEntries(Object.entries(PORT_STRINGS).map(([k, v]) => [k, v.decision]));
+  const zhTW: Record<string, string> = {};
+  for (const [k, v] of Object.entries(zh)) zhTW[k] = convertToTraditional(v);
+  const zhKeys = new Set(Object.keys(zh));
+  const enKeys = new Set(Object.keys(enAll));
   const missingInEn = [...zhKeys].filter(k => !enKeys.has(k));
   const missingInZh = [...enKeys].filter(k => !zhKeys.has(k));
   const table = (locale: string, strings: Record<string, string>, source: string[], extra: Record<string, unknown>): TableResult => ({

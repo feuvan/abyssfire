@@ -20,8 +20,11 @@ import { BOONS, BOON_RARITY_WEIGHT, CURSES, FLOOR_THEMES, TIER_BASE_LEVEL, TIER_
 import * as RenderQualityMod from '../../../../../src/rendering/RenderQuality';
 import { GAME_WIDTH, GAME_HEIGHT, TILE_WIDTH, TILE_HEIGHT } from '../../../../../src/config';
 import { getItemBase } from '../../../../../src/data/items/bases';
+import { AllMaps } from '../../../../../src/data/maps';
 import type { DialogueTree } from '../../../../../src/data/types';
+import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
+import { overrideById, overrideEntries, withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -62,7 +65,8 @@ export function exportWorld(): TableResult[] {
   const npcs: Record<string, unknown> = {};
   for (const [id, npc] of Object.entries(NPCDefinitions)) {
     const { dialogueTree, ...rest } = npc;
-    const out: Record<string, unknown> = { ...plain(rest), dialogueTreeId: treeIdOf(dialogueTree), nameKey: `data.npc.${id}.name` };
+    const out: Record<string, unknown> = { ...withholdRemakeFields('npc', plain(rest), `npcs.${id}`), dialogueTreeId: treeIdOf(dialogueTree),
+      nameKey: `data.npc.${id}.name` };
     if (npc.shopItems) out.shopItems = npc.shopItems.filter(item => !REMOVED_WARES[item]);
     npcs[id] = out;
   }
@@ -93,8 +97,10 @@ export function exportWorld(): TableResult[] {
     });
   }
   for (const item of Object.keys(REMOVED_WARES)) assert(removedWares.some(r => r.itemId === item), `REMOVED_WARES: nobody sells ${item}`);
+  // RandomEventSystem ZONE_EVENT_DATA, with the remake's per-zone pools (GameData/world.ts) — feeds both files.
+  const zoneEvents = overrideEntries('randomEvents', ['random_events.json', 'shops.json'], ZONE_EVENT_DATA);
   const eventMerchant: Record<string, unknown> = {};
-  for (const [zone, z] of Object.entries(ZONE_EVENT_DATA)) {
+  for (const [zone, z] of Object.entries(zoneEvents)) {
     const idMap = WANDERING_MERCHANT_IDS[zone] ?? {};
     const unknownItemIds = z.merchantItems.filter(i => !getItemBase(i));
     for (const id of unknownItemIds) assert(idMap[id], `WANDERING_MERCHANT_IDS: ${zone} does not map ${id}`);
@@ -104,10 +110,11 @@ export function exportWorld(): TableResult[] {
     }
     eventMerchant[zone] = { items: [...z.merchantItems], unknownItemIds, idMap: { ...idMap } };
   }
-  for (const zone of Object.keys(WANDERING_MERCHANT_IDS)) assert(ZONE_EVENT_DATA[zone], `WANDERING_MERCHANT_IDS: unknown zone ${zone}`);
+  for (const zone of Object.keys(WANDERING_MERCHANT_IDS)) assert(zoneEvents[zone], `WANDERING_MERCHANT_IDS: unknown zone ${zone}`);
 
   // ── lore.json / achievements.json ──
-  const achievements = exp<unknown[]>(AchievementMod, 'ACHIEVEMENTS');
+  const achievements = overrideById('achievements', ['achievements.json'],
+    exp<{ id: string }[]>(AchievementMod, 'ACHIEVEMENTS'));
 
   assertSource('src/data/homestead.ts', 'return Math.max(6, 16 - 2 * level);', 'return level <= 0 ? 0 : 4 + 4 * level;',
     'if (rng() < 0.12 + 0.03 * level) return LEY_FRUIT_ID;', 'const hp = rng() < 0.6;');
@@ -115,13 +122,33 @@ export function exportWorld(): TableResult[] {
   // ── random_events.json ──
   assertSource('src/systems/RandomEventSystem.ts', 'private readonly TRIGGER_MOVE_THRESHOLD = 3;');
 
-  // ── zone_moods.json ──
+  // ── zone_moods.json ── (each web table with the remake's entries from GameData/world.ts)
+  const moodsOut = ['zone_moods.json'];
+  const zoneMoods = overrideEntries('zoneMoods.moods', moodsOut, ZONE_MOODS);
+  const zoneMoodTables = {
+    themeByZone: overrideEntries('zoneMoods.themeByZone', moodsOut, exp<Record<string, string>>(LightingMod, 'ZONE_THEME_BY_ID')),
+    palettes: overrideEntries('zoneMoods.palettes', moodsOut, ZONE_PALETTES),
+    weather: overrideEntries('zoneMoods.weather', moodsOut, exp<Record<string, unknown>>(WeatherMod, 'ZONE_WEATHER')),
+    weatherByTheme: overrideEntries('zoneMoods.weatherByTheme', moodsOut, exp<Record<string, string>>(WeatherMod, 'THEME_WEATHER')),
+    campThemes: overrideEntries('zoneMoods.campThemes', moodsOut, CAMP_THEMES),
+    // DECISIONS P14 (art pass): the UE ExponentialHeightFog per mood (the web had no fog; its haze becomes the fog).
+    fog: overrideEntries('zoneMoods.fog', moodsOut, {
+      plains: { color: 0xf2e8cc, maxOpacity: 0.22, density: 0.85 },
+      forest: { color: 0x8c86c8, maxOpacity: 0.32, density: 1.1 },
+      mountain: { color: 0xcedcee, maxOpacity: 0.3, density: 1.0 },
+      desert: { color: 0xffdea6, maxOpacity: 0.26, density: 0.9 },
+      abyss: { color: 0x6e2a40, maxOpacity: 0.35, density: 1.2 },
+    }),
+  };
   assertSource(ZS, 'emerald_plains: 0x88cc88,', 'twilight_forest: 0x66aa66,', 'anvil_mountains: 0x998888,',
     'scorching_desert: 0xffaa44,', 'abyss_rift: 0xff6622,', 'const tint = tints[this.currentMapId] || 0xccccaa;',
     'radius: 80, color: 0xffeedd, intensity: 0.4,', 'y: pos.y - 8, radius: 120, color: 0xff8800, intensity: 0.85, flicker: true,',
     'y: pos.y - 40, radius: 70, color: 0xff6600, intensity: 0.65, flicker: true,');
 
   // ── world_constants.json ──
+  const gate = CHAPTER_CONFIG.sealedGate;
+  assert(AllMaps[gate.exitTo] && Object.values(AllMaps).some(m => m.exits.some(e => e.targetMap === gate.exitTo)),
+    `GameData/config.ts sealedGate.exitTo: no exit leads to '${gate.exitTo}'`);
   assertSource(ZS, 'if (dSq < 2.25) {', 'this.mapData.safeZoneRadius ?? 9,', 'this.cameras.main.fadeIn(400);',
     'this.time.delayedCall(1100, () => {', 'this.time.delayedCall(1500, () => {',
     'if (subEntrance && distanceSq(this.player.tileCol, this.player.tileRow, subEntrance.col, subEntrance.row) <= 9) {',
@@ -176,44 +203,38 @@ export function exportWorld(): TableResult[] {
         config: plain(DEFAULT_RANDOM_EVENT_CONFIG),
         triggerMoveThresholdTiles: 3,
         defs: plain(RANDOM_EVENT_DEFS),
-        zones: plain(ZONE_EVENT_DATA),
+        zones: plain(zoneEvents),
         port: { resetMoveCounterAfterEveryRoll: true, decision: 'W6' },
         i18n: { message: 'sys.event.msg.<type>', rescue: 'sys.event.rescue.<zone>', puzzle: 'sys.event.puzzle.<zone>.{prompt,solution,reward}' },
       },
-      counts: { types: RANDOM_EVENT_DEFS.length, zones: Object.keys(ZONE_EVENT_DATA).length },
+      counts: { types: RANDOM_EVENT_DEFS.length, zones: Object.keys(zoneEvents).length },
     },
     {
       file: 'zone_moods.json',
       source: ['src/graphics/ZonePalette.ts', 'src/systems/WeatherSystem.ts', 'src/systems/LightingSystem.ts', 'src/data/camp-themes.ts', ZS],
       data: {
-        themeByZone: plain(exp<Record<string, string>>(LightingMod, 'ZONE_THEME_BY_ID')),
-        moods: plain(ZONE_MOODS),
-        palettes: plain(ZONE_PALETTES),
-        weather: plain(exp<Record<string, unknown>>(WeatherMod, 'ZONE_WEATHER')),
-        weatherByTheme: plain(exp<Record<string, string>>(WeatherMod, 'THEME_WEATHER')),
+        themeByZone: plain(zoneMoodTables.themeByZone),
+        moods: plain(zoneMoods),
+        palettes: plain(zoneMoodTables.palettes),
+        weather: plain(zoneMoodTables.weather),
+        weatherByTheme: plain(zoneMoodTables.weatherByTheme),
         ambientDustTint: { emerald_plains: 0x88cc88, twilight_forest: 0x66aa66, anvil_mountains: 0x998888, scorching_desert: 0xffaa44, abyss_rift: 0xff6622, fallback: 0xccccaa },
         lights: {
           hero: { radiusPx: 80, color: 0xffeedd, intensity: 0.4 },
           campfire: { radiusPx: 120, color: 0xff8800, intensity: 0.85, flicker: true, heightPx: 8 },
           torch: { radiusPx: 70, color: 0xff6600, intensity: 0.65, flicker: true, heightPx: 40 },
         },
-        campThemes: plain(CAMP_THEMES),
+        campThemes: plain(zoneMoodTables.campThemes),
         // DECISIONS P14 (art pass): the UE ExponentialHeightFog per mood (the web had no fog; its haze becomes the fog).
         // Colours are 0xRRGGBB sRGB like every colour here; maxOpacity is FogMaxOpacity; density is the look-dev
         // extinction, opacity 1 - 2^(-density x metres / 10) past the start (UE FogDensity = density / ln 2 x abyss.FogScale,
         // the ln 2 of UE's line integral). Start = camera distance + 1 m and height falloff 0.2 are code constants.
         port: {
-          fog: {
-            plains: { color: 0xf2e8cc, maxOpacity: 0.22, density: 0.85 },
-            forest: { color: 0x8c86c8, maxOpacity: 0.32, density: 1.1 },
-            mountain: { color: 0xcedcee, maxOpacity: 0.3, density: 1.0 },
-            desert: { color: 0xffdea6, maxOpacity: 0.26, density: 0.9 },
-            abyss: { color: 0x6e2a40, maxOpacity: 0.35, density: 1.2 },
-          },
+          fog: plain(zoneMoodTables.fog),
           decision: 'P14 (art pass)',
         },
       },
-      counts: { themes: Object.keys(ZONE_MOODS).length },
+      counts: { themes: Object.keys(zoneMoods).length },
     },
     {
       file: 'world_constants.json',
@@ -246,7 +267,8 @@ export function exportWorld(): TableResult[] {
         interact: { lootRadiusSq: 4, hiddenChestRadiusSq: 4, puzzleRadiusSq: 4, npcRange: 3, npcPickRadiusSq: 3.24, entranceRadiusSq: 9, touchTalkRange: 2.5,
           walkThenAct: true, decision: 'W8, Q6' },
         tallDecorBlocks: { decision: 'W5', note: 'trees, boulders, tents, walls, wells, statues block walking; small decor does not' },
-        sealedChapter2Gate: { exitTo: 'twilight_forest', messageKey: 'zone.exit.sealedChapter2', decision: 'W7 (port string, i18n PORT_STRINGS)' },
+        sealedChapter2Gate: { exitTo: CHAPTER_CONFIG.sealedGate.exitTo, messageKey: CHAPTER_CONFIG.sealedGate.messageKey,
+          decision: 'W7 (port string, i18n PORT_STRINGS)' },
       },
       counts: { constants: 20 },
     },
