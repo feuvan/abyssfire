@@ -17,6 +17,8 @@ import * as ComposerMod from '../../../../../src/systems/audio/Composer';
 import * as ScorePlayerMod from '../../../../../src/systems/audio/ScorePlayer';
 import { EventBus, GameEvents } from '../../../../../src/utils/EventBus';
 import { assert, assertSource, plain, readSource, type TableResult } from '../util';
+import { CHAPTER_CONFIG } from '../../../../GameData/config';
+import { noteConfig } from '../remake';
 
 declare const __BGM_MANIFEST__: Record<string, string>;
 
@@ -194,12 +196,14 @@ export function exportAudio(): TableResult[] {
       bassFloor: exp<number>(ScorePlayerMod, 'BASS_FLOOR') },
     director: { zoneFadeSec: 2.0, stateFadeSec: 1.5, fadeInSec: 1.0, victoryHoldMs: 3000, combatOffDelayMs: 1500,
       port: { bossVictoryHoldMs: 8000, trueDebounce: true, exploreResumesPosition: true, bossCh1Score: 'boss_ch1',
-        // audio 10.4 rule 4: boss def id -> boss score; a boss without an entry keeps the combat track.
-        bossMusic: { goblin_chief: 'boss_ch1' }, decision: 'A2, A5' } },
+        // audio 10.4 rule 4: boss def id -> boss score; a boss without an entry keeps the combat track. The Chapter 1
+        // story boss (unreal/GameData/config.ts, DECISIONS M7) scores boss_ch1.
+        bossMusic: { [CHAPTER_CONFIG.storyBoss.monsterId]: 'boss_ch1' }, decision: 'A2, A5' } },
     settingsDefaults: plain(exp<Record<string, unknown>>(AudioManagerMod, 'DEFAULT_SETTINGS')),
     portSettingsDefaults: { musicVolume: 0.6, sfxVolume: 0.8, loudnessLufs: -16, decision: 'A3' },
     bgmFiles: plain(__BGM_MANIFEST__),
   };
+  noteConfig(['music.json'], 'storyBoss');
   return [
     {
       file: 'audio_cues.json',

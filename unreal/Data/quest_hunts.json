@@ -18,29 +18,42 @@
   },
   "hunts": [
     {
-      "questId": "q_lost_pendant",
+      "questId": "q_rf_gnawed_field",
       "zone": "emerald_plains",
-      "huntId": "hunt_pendant_thief",
-      "monsterId": "goblin",
-      "name": "小贼斯尼克",
+      "huntId": "hunt_hungerbell",
+      "monsterId": "bonegorger",
+      "name": "饿钟",
+      "col": 45,
+      "row": 35,
+      "hpMul": 2,
+      "dmgMul": 1,
+      "revealAfterPrevious": true,
+      "minions": {"monsterId": "gravegnawer", "count": 3}
+    },
+    {
+      "questId": "q_rf_tag_thief",
+      "zone": "emerald_plains",
+      "huntId": "hunt_dreck",
+      "monsterId": "deserter",
+      "name": "拾银者·德雷克",
       "col": 60,
       "row": 48,
       "hpMul": 3,
       "dmgMul": 1.2,
       "revealAfterPrevious": true,
-      "minions": {"monsterId": "goblin", "count": 2}
+      "minions": {"monsterId": "deserter", "count": 2}
     },
     {
-      "questId": "q_bandit_trouble",
+      "questId": "q_rf_oathless",
       "zone": "emerald_plains",
-      "huntId": "hunt_redcap_gruk",
-      "monsterId": "goblin",
-      "name": "红帽格鲁克",
+      "huntId": "hunt_harke",
+      "monsterId": "deserter",
+      "name": "断誓者·哈克",
       "col": 82,
       "row": 72,
       "hpMul": 5,
       "dmgMul": 1.6,
-      "minions": {"monsterId": "goblin", "count": 4}
+      "minions": {"monsterId": "deserter", "count": 4}
     },
     {
       "questId": "q_collect_wolf_pelts",
@@ -226,38 +239,56 @@
     }
   ],
   "defsNormal": {
-    "hunt_pendant_thief": {
-      "id": "hunt_pendant_thief",
-      "name": "小贼斯尼克",
-      "level": 3,
-      "hp": 165,
-      "damage": 10,
-      "defense": 5,
-      "speed": 55,
+    "hunt_hungerbell": {
+      "id": "hunt_hungerbell",
+      "name": "饿钟",
+      "level": 7,
+      "hp": 420,
+      "damage": 17,
+      "defense": 11,
+      "speed": 42,
       "aggroRange": 7,
-      "attackRange": 1.5,
-      "attackSpeed": 1200,
-      "expReward": 54,
-      "goldReward": [9, 18],
-      "spriteKey": "monster_goblin",
+      "attackRange": 2,
+      "attackSpeed": 1700,
+      "expReward": 108,
+      "goldReward": [18, 36],
+      "spriteKey": "monster_bonegorger",
       "animCategory": "humanoid",
       "elite": true,
       "isMiniBoss": true
     },
-    "hunt_redcap_gruk": {
-      "id": "hunt_redcap_gruk",
-      "name": "红帽格鲁克",
-      "level": 3,
-      "hp": 275,
-      "damage": 13,
-      "defense": 5,
-      "speed": 55,
+    "hunt_dreck": {
+      "id": "hunt_dreck",
+      "name": "拾银者·德雷克",
+      "level": 6,
+      "hp": 240,
+      "damage": 14,
+      "defense": 8,
+      "speed": 56,
       "aggroRange": 7,
-      "attackRange": 1.5,
-      "attackSpeed": 1200,
-      "expReward": 90,
-      "goldReward": [9, 18],
-      "spriteKey": "monster_goblin",
+      "attackRange": 1.6,
+      "attackSpeed": 1150,
+      "expReward": 63,
+      "goldReward": [18, 36],
+      "spriteKey": "monster_deserter",
+      "animCategory": "humanoid",
+      "elite": true,
+      "isMiniBoss": true
+    },
+    "hunt_harke": {
+      "id": "hunt_harke",
+      "name": "断誓者·哈克",
+      "level": 6,
+      "hp": 400,
+      "damage": 19,
+      "defense": 8,
+      "speed": 56,
+      "aggroRange": 7,
+      "attackRange": 1.6,
+      "attackSpeed": 1150,
+      "expReward": 105,
+      "goldReward": [18, 36],
+      "spriteKey": "monster_deserter",
       "animCategory": "humanoid",
       "elite": true,
       "isMiniBoss": true
@@ -603,6 +634,13 @@
       "animCategory": "humanoid",
       "elite": true,
       "isMiniBoss": true
+    }
+  },
+  "remake": {
+    "source": ["unreal/GameData/monsters/emerald_plains.ts", "unreal/GameData/quests/all_quests.ts"],
+    "modules": {
+      "src/data/monsters/emerald_plains.ts": "unreal/GameData/monsters/emerald_plains.ts",
+      "src/data/quests/all_quests.ts": "unreal/GameData/quests/all_quests.ts"
     }
   }
 }

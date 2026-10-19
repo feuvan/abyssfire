@@ -22,8 +22,25 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * whose feature is missing here is withheld from unreal/Data (a remake-only value fails the export), so content can be
  * authored before the core package that parses it lands: each core package (K1-K7) adds its features in the change
  * that teaches the loaders to read them. Phase 0: none.
+ *
+ * K1 content hooks (implementation-plan.md §3, package 1A): quest `progressKey` (LoadQuests.cpp → QuestCardState
+ * progress lines), `rewards.choiceLabels` (one key per choice slot → QuestCardEntry::choiceLabels), `defendTarget.waves`
+ * / `approachDeg` (MonsterSystem::SpawnDefendWave), map `subDungeonEntrances[].sealed` / `sealedTextKey` (the sealed
+ * entrance toast, ZoneRuntime) and the cutscene focus step `anim` (StoryDirector → EvPlayAnim).
+ *
+ * 1B review fixes: the story trigger `whileQuest` (LoadQuests.cpp → StoryTriggerDef::whileQuest; StoryDirector fires a
+ * monster_killed beat only while that quest is open).
+ *
+ * 1B part 1 (Chapter 1 world data): map `presentationTheme` and `regions` (LoadWorld.cpp → MapDef::presentationTheme /
+ * regions, mood themes of zone_moods.json; DataStore checks them; UE U1 resolves art, terrain, camp kit and the region
+ * blend from them). Still withheld: monster `family` / `damageType` (no core reader yet) and every Wave 2 / 3 feature.
  */
-export const REMAKE_SCHEMA: readonly string[] = [];
+export const REMAKE_SCHEMA: readonly string[] = [
+  'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
+  'map.sealedEntrances', 'map.presentationTheme', 'map.regions',
+  'story.focusAnim',
+  'story.triggerWhileQuest',
+];
 
 export interface RunOptions {
   repoRoot: string;
@@ -42,7 +59,7 @@ const GAMEDATA = 'unreal/GameData';
  * GameData modules that hold only types (erased at load: `import type`), so the export never loads them. Every other
  * GameData module must be loaded, and these may not export a value (a value would need loading to take effect).
  */
-const TYPE_ONLY_MODULES = ['unreal/GameData/types.ts', 'unreal/GameData/story/types.ts'];
+const TYPE_ONLY_MODULES = ['unreal/GameData/types.ts', 'unreal/GameData/story/types.ts', 'unreal/GameData/autopilot/types.ts'];
 
 /** Self-test: every redirect target exists and every redirected web path was loaded (a stale entry fails the export). */
 function checkRedirects(opts: RunOptions): void {
@@ -112,6 +129,8 @@ export async function run(opts: RunOptions): Promise<boolean> {
       () => import('./tables/audio'),
       () => import('./tables/ui'),
       () => import('./tables/assets'),
+      // The bot's routes check their ids against the content tables above (implementation-plan.md §6).
+      () => import('./tables/autopilot'),
       // Last: the i18n orphan sweep and key parity read every other exported table (the second argument).
       () => import('./tables/i18n'),
     ];

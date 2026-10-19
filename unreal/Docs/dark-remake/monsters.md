@@ -95,11 +95,17 @@ Reference numbers today: slime L1 30 HP / 5 dmg / 2 def / 40 speed / aggro 4 / r
 | `valdras` | 焚旗元帅·瓦德拉斯 / Lord-Marshal Valdras | act boss | 9 | ~1100 | 20 | 12 | 48 | 8 | 2.0 | 1300 | 220 | 30-60 | chief: +4 levels, ×6.9 HP, three phases |
 | `sub_pitwarden` [W3] | 掘坑官 / the Pitwarden | Unburied, sub-dungeon mini-boss | 8 | 420 | 17 | 11 | 40 | 7 | 1.8 | 1500 | 110 | 20-40 | — |
 
+**As built (1B review, DECISIONS DR9, pending review):** the Exp column is the design value; the data gives every
+regular round(0.75 × Exp) (8 / 11 / 13 / 14 / 18 / 23 / 21 / 21 / 26 / 30 / 36 in table order) and Valdras 110 (the
+Corpseherd keeps 95), so a full Chapter 1 ends at Lv 13-14 (DR9's 12-14). `hunt_hungerbell` is hp ×2 / dmg ×1.0 (below).
+The Corpseherd's `family` is `unburied` (her violet eyes are the Unburied marker, §1.2; her voice stays the authored
+lullaby and handbell, §2.5).
+
 Hunts (quest_hunts.json; hunt defaults def ×1.2, exp × max(3, hpMul), gold ×3, aggro ≥ 7, visual scale 1.25):
 
 | Hunt | Base | HP × | Dmg × | Minions | Where | Quest |
 |---|---|---|---|---|---|---|
-| `hunt_hungerbell` 饿钟 / Hungerbell | `bonegorger` | 3 | 1.3 | 3 `gravegnawer` | (45,35), revealed after objective 1 | M2 |
+| `hunt_hungerbell` 饿钟 / Hungerbell | `bonegorger` | 3 (as built 2) | 1.3 (as built 1.0) | 3 `gravegnawer` | (45,35), revealed after objective 1 | M2 |
 | `hunt_dreck` 拾银者·德雷克 / Dreck the Silverpicker | `deserter` | 3 | 1.2 | 2 `deserter` | (60,48), revealed after the clues | S3 |
 | `hunt_harke` 断誓者·哈克 / Harke the Oathless | `deserter` | 5 | 1.6 | 4 `deserter` | (82,72), spawns on accept | S4 |
 
@@ -299,6 +305,10 @@ effects [W2]. `emerald_plains` keeps exactly one affix.
 | `vampiric` | 吸血 | 噬渊 / Breach-Drinker | — |
 | `frozen` | 冰封 | 墓寒 / Gravecold | on death: a frost ring r2.5 after 600 ms, slow 30 % for 2.5 s |
 | (new) `unburied` | — | 不葬 / Unburied | Unburied family only: rises once at 50 % HP after 3 s; fire or a burned corpse prevents it |
+
+**As built (1B review, DECISIONS DR5, pending review):** `fire_enhanced` is 焦灼 / Scorched, `extra_strong` 蛮力 / Brutish
+and `curse_aura` 哀咒 / Dirgecursed: 焚誓 is the prologue's Burned Oath (and Ignaroth's 焚誓者), 赤誓 reads as the Red-Oath
+faction and 丧钟 as the hub 丧钟堡, and the elite label puts the affix before the monster's name.
 
 **Champion packs [W2]:** the **Muster** (a standard-bearer and three footmen sharing one affix, from the ambush event),
 the **Hollow Watch** (Deserters' Hollow leader, elite with one affix, drummer and four deserters). **The elite marker:**

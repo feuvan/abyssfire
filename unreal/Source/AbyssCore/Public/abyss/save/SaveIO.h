@@ -38,7 +38,8 @@ class DataStore;
 // and Spirit::Restore applies the class profile's upper bounds at load (same result). v3 -> v4 adds the v4 defaults
 // (slot 0, potionSlots ["", ""], playTimeMs 0, dialogueOnce [], hiddenRewardsClaimed [], itemUidCounter 1,
 // visitedZones []); `hotbar` and `rng` stay absent (auto-filled hotbar, reseeded streams). A missing / non-numeric
-// version counts as 1.
+// version counts as 1. `contentVersion` is not a format migration: a missing or invalid one parses as 1 (ParseSave) and
+// ApplyContentVersion handles it.
 // Returns false when the root is not an object (nothing is changed).
 ABYSS_API bool MigrateRaw(JsonValue& raw, const DataStore* data = nullptr);
 
@@ -52,6 +53,18 @@ ABYSS_API bool MigrateRaw(JsonValue& raw, const DataStore* data = nullptr);
 // `data` (optional) is passed to MigrateRaw for the v2 -> v3 class clamps.
 ABYSS_API SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMessage = nullptr,
                               const DataStore* data = nullptr);
+
+// The content-version rule (implementation-plan.md 2.7, DECISIONS DR3). A save whose contentVersion is older than
+// kCurrentContentVersion was written against content whose ids may be gone (the dark remake renamed every Chapter 1
+// quest, beat, mini-boss, lore entry and achievement): every entry of quests, storySeen, miniBossDialogueSeen,
+// dialogueOnce, dialogueState, loreCollected, discoveredHiddenAreas, hiddenRewardsClaimed and achievements that names
+// an id `data` no longer has is dropped, so the hero, items, gold and everything still valid load and the remade
+// chapter plays again; the beats story.json `contentUpgrade.replayBeats` names (ids kept, content rewritten: the
+// prologue, the remade zone's chapter card) are forgotten too when the save is older than `contentUpgrade.version`.
+// Sets contentVersion to kCurrentContentVersion and returns the number of entries dropped. A save
+// of the current (or a newer) content version is left alone (QuestSystem::Load keeps unknown quest ids, like the web).
+// GameSim::LoadGame applies it (SimImpl::ApplySave).
+ABYSS_API int32_t ApplyContentVersion(const DataStore& data, SaveData& s);
 
 // SerializeSave: stable key order = 3.2 then the v4 fields; numbers via FormatJsonNumber (shortest round trip).
 ABYSS_API std::string SerializeSave(const SaveData& s, bool pretty = false);

@@ -100,12 +100,37 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
       m.hiddenAreas.push_back(std::move(a));
     }
     for (const JNode& s : n.Items("subDungeonEntrances", true)) {
-      m.subDungeonEntrances.push_back(SubDungeonEntranceDef{s.Str("id"), s.Str("name"), TilePos{s.Int("col"), s.Int("row")},
-                                                            s.Str("targetSubDungeon")});
+      SubDungeonEntranceDef e{s.Str("id"),           s.Str("name"),
+                              TilePos{s.Int("col"), s.Int("row")},
+                              s.Str("targetSubDungeon"), s.Bool("sealed", false),
+                              s.Str("sealedTextKey", "")};
+      // K1 (remake schema map.sealedEntrances): a sealed entrance shows its key; only a sealed one has one.
+      if (e.sealed && e.sealedTextKey.empty()) {
+        s.Child("sealedTextKey").Error("a sealed entrance needs its sealedTextKey");
+      }
+      if (!e.sealed && !e.sealedTextKey.empty()) {
+        s.Child("sealedTextKey").Error("sealedTextKey on an entrance that is not sealed");
+      }
+      m.subDungeonEntrances.push_back(std::move(e));
     }
     for (const JNode& s : n.Items("storyDecorations", true)) {
       m.storyDecorations.push_back(StoryDecorationDef{s.Str("id"), s.Str("name"), s.Str("description", ""),
                                                       TilePos{s.Int("col"), s.Int("row")}, s.Str("spriteType")});
+    }
+    // Dark remake presentation (remake schema map.presentationTheme / map.regions): mood themes, render-only.
+    if (n.Has("presentationTheme")) {
+      m.hasPresentationTheme = true;
+      m.presentationTheme = n.Enum<MapTheme>("presentationTheme");
+    }
+    for (const JNode& g : n.Items("regions", true)) {
+      MapRegionDef rg;
+      rg.id = g.Str("id");
+      rg.center = TilePos{g.Int("col"), g.Int("row")};
+      rg.radius = g.Num("radius");
+      rg.mood = g.Enum<MapTheme>("mood");
+      if (rg.id.empty()) g.Child("id").Error("a mood region needs an id");
+      if (!(rg.radius > 0)) g.Child("radius").Error("expected > 0");
+      m.regions.push_back(std::move(rg));
     }
     m.generated = n.Bool("generated");
     if (n.Has("generator")) {
@@ -308,6 +333,7 @@ void LoadRandomEventsFile(const JNode& r, WorldTables& out) {
     d.puzzleSpriteKey = z.Str("puzzleSpriteKey");
     d.rescueNpcName = z.Str("rescueNpcName");
     d.rescueNpcSpriteKey = z.Str("rescueNpcSpriteKey");
+    if (z.Has("rescueMonsters")) d.rescueMonsters = z.StrList("rescueMonsters");
     d.rescueRewardGold = z.Child("rescueReward").I64("gold");
     d.rescueRewardExp = z.Child("rescueReward").I64("exp");
     e.zones.push_back(std::move(d));
@@ -328,6 +354,7 @@ void LoadZoneMoodsFile(const JNode& r, WorldTables& out) {
     }
     ZoneMoodDef& d = m.moods[EnumIndex(th)];
     d.theme = th;
+    d.defined = true;
     d.ambient = n.Color("ambient");
     d.ambientAlpha = n.Num("ambientAlpha");
     d.vignette = n.Color("vignette");
@@ -362,6 +389,32 @@ void LoadZoneMoodsFile(const JNode& r, WorldTables& out) {
     d.fogDensity = n.Num("density", d.fogDensity);
     if (d.fogMaxOpacity < 0.0 || d.fogMaxOpacity > 1.0) n.Child("maxOpacity").Error("expected 0..1");
     if (d.fogDensity < 0.0) n.Child("density").Error("expected >= 0");
+  }
+  // Dark remake: per-mood R18 light-scale overrides and the weather a mood brings (both optional, render-only).
+  for (const auto& [k, n] : r.Child("port").Members("lightScale", /*allowMissing*/ true)) {
+    MapTheme th{};
+    if (!ParseEnum(k, th)) {
+      n.Error("unknown theme");
+      continue;
+    }
+    ZoneMoodDef& d = m.moods[EnumIndex(th)];
+    d.lightScale = n.AsNum();
+    if (!(d.lightScale > 0.0 && d.lightScale <= 1.0)) n.Error("expected 0 < lightScale <= 1");
+  }
+  for (const auto& [k, n] : r.Child("port").Members("moodWeather", /*allowMissing*/ true)) {
+    MapTheme th{};
+    if (!ParseEnum(k, th)) {
+      n.Error("unknown theme");
+      continue;
+    }
+    ZoneMoodDef& d = m.moods[EnumIndex(th)];
+    d.hasMoodWeather = true;
+    d.moodWeather.type = n.Str("type");
+    d.moodWeather.ambience = n.Str("ambience", "");
+    if (n.Has("tint")) {
+      d.moodWeather.hasTint = true;
+      d.moodWeather.tint = n.Color("tint");
+    }
   }
   for (const auto& [zone, n] : r.Members("weather")) {
     ZoneWeatherDef w;

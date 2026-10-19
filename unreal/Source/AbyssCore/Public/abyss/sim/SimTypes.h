@@ -71,8 +71,30 @@ enum class LogType : uint8_t { System, Combat, Loot, Info, Quest };
 ABYSS_ENUM_STRINGS(LogType, "system", "combat", "loot", "info", "quest")
 
 // Animation actions requested from the presentation (P5: timing owned by the core).
-enum class AnimAction : uint8_t { Idle, Walk, Attack, Cast, Hurt, Dodge, Death, Signature, Work, Talk };
-ABYSS_ENUM_STRINGS(AnimAction, "idle", "walk", "attack", "cast", "hurt", "dodge", "death", "signature", "work", "talk")
+// Monster actions (dark remake K1, implementation-plan.md 3; appended, so the earlier values keep their numbers): Roar
+// (phase change / boss intro), Taunt (the mini-boss while its pre-fight dialogue holds it), Stun, Attack02 (a second
+// attack clip), Cast02 (a second cast clip), Rise (raised from a corpse). Contract for the UE anim map
+// (implementation-plan.md U2): each plays the clip of the same name; an asset without that clip keeps its current pose.
+enum class AnimAction : uint8_t {
+  Idle,
+  Walk,
+  Attack,
+  Cast,
+  Hurt,
+  Dodge,
+  Death,
+  Signature,
+  Work,
+  Talk,
+  Roar,
+  Taunt,
+  Stun,
+  Attack02,
+  Cast02,
+  Rise,
+};
+ABYSS_ENUM_STRINGS(AnimAction, "idle", "walk", "attack", "cast", "hurt", "dodge", "death", "signature", "work", "talk",
+                   "roar", "taunt", "stun", "attack02", "cast02", "rise")
 
 enum class DespawnReason : uint8_t { Died, Removed, ZoneUnload, PickedUp, Expired, Collected };
 ABYSS_ENUM_STRINGS(DespawnReason, "died", "removed", "zoneUnload", "pickedUp", "expired", "collected")

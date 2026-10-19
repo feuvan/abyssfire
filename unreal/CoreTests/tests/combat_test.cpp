@@ -705,6 +705,73 @@ TEST_SUITE("combat") {
     }
   }
 
+  TEST_CASE("contact beat: a late shipped Contact stretches the swing continuously, capped by the clip's length") {
+    // monsters.md 1.3 / 2.1: the Unburied footman's Attack01 is a 600 ms chop in a 1080 ms clip; the humanoid preset's
+    // swing is 500 ms with its frame beat at 250 ms. The swing keeps the preset's contact share (contact x 500 / 250),
+    // never below the preset and never past the clip's length (when that ends after the contact). Every clip on the web
+    // beat or earlier keeps the preset's swing, and there is no threshold: a re-timed Contact moves the swing smoothly.
+    const AnimTimingTable& a = D().Combat().anim;
+    AssetManifest man;
+    man.loaded = true;
+    AssetEntryDef asset;
+    asset.name = "SK_Long";
+    asset.gameIds = {"long_swing"};
+    AnimClipDef attack;
+    attack.name = "Attack01";
+    attack.hasContactMs = true;
+    attack.contactMs = 600;
+    attack.lengthMs = 1080;
+    asset.anims = {attack};
+    man.assets.push_back(asset);
+    man.gameIdToAsset.push_back({"long_swing", "SK_Long"});
+    REQUIRE(man.FindByGameId("long_swing") != nullptr);
+    const double preset = a.Preset(AnimRig::Humanoid).attackDuration;
+    const double beat = a.Contact(AnimRig::Humanoid).frameContactMs;
+    REQUIRE(beat > 0);
+    REQUIRE(preset < 600);
+    const auto swing = [&](double contact, double length, double interval = 1600) {
+      man.assets[0].anims[0].contactMs = contact;
+      man.assets[0].anims[0].lengthMs = length;
+      const ActionTiming t = ComputeAttackTiming(a, man, "long_swing", AnimRig::Humanoid, interval);
+      return t.durationMs / t.speed;
+    };
+    // The footman: 600 x 500 / 250 = 1200, capped by the 1080 ms clip.
+    ActionTiming t = ComputeAttackTiming(a, man, "long_swing", AnimRig::Humanoid, 1600);
+    CHECK(t.speed == 1);
+    CHECK(t.contactMs == 600);
+    CHECK(t.durationMs == 1080);
+    CHECK(t.contactMs < t.durationMs);
+    // A fast interval scales the whole clip: speed = interval x 0.9 / 1080.
+    t = ComputeAttackTiming(a, man, "long_swing", AnimRig::Humanoid, 900);
+    CHECK(t.speed == doctest::Approx(900 * 0.9 / 1080));
+    CHECK(t.contactMs == JsRound(600 * 900 * 0.9 / 1080));
+    CHECK(t.durationMs == doctest::Approx(900 * 0.9));
+    // On the web beat or earlier: the preset's swing, whatever the clip's length.
+    CHECK(swing(beat, 1080) == preset);
+    CHECK(swing(beat - 50, 1080) == preset);
+    // Continuous across the old cliff (Contact == the preset's swing): 480 / 500 / 520 ms give 960 / 1000 / 1040.
+    CHECK(swing(480, 2000) == doctest::Approx(480 * preset / beat));
+    CHECK(swing(500, 2000) == doctest::Approx(500 * preset / beat));
+    CHECK(swing(520, 2000) == doctest::Approx(520 * preset / beat));
+    CHECK(swing(preset - 0.001, 2000) == doctest::Approx(swing(preset, 2000)).epsilon(1e-5));
+    // Just past the beat: just past the preset (no jump).
+    CHECK(swing(beat + 1, 2000) == doctest::Approx((beat + 1) * preset / beat));
+    CHECK(swing(beat + 1, 2000) - preset < 3);
+    // The clip's length caps it once the proportional swing would run past the clip: 480 ms in an 850 ms clip -> 850.
+    CHECK(swing(480, 850) == 850);
+    // No length on record (or one that ends before the contact): the proportional swing, so the contact stays inside.
+    CHECK(swing(600, 0) == doctest::Approx(600 * preset / beat));
+    CHECK(swing(600, 590) == doctest::Approx(600 * preset / beat));
+    for (double contact : {260.0, 300.0, 420.0, 450.0, 480.0, 500.0, 600.0, 650.0, 700.0}) {
+      INFO("contact " << contact);
+      man.assets[0].anims[0].contactMs = contact;
+      man.assets[0].anims[0].lengthMs = 1080;
+      t = ComputeAttackTiming(a, man, "long_swing", AnimRig::Humanoid, 1600);
+      CHECK(t.contactMs < t.durationMs);
+      CHECK(t.durationMs >= preset);
+    }
+  }
+
   TEST_CASE("camera shake rules (combat 11.5, 6.5) and the throttle") {
     const HitFeedbackTable& t = D().Combat().hitFeedback;
     const ShakeRequest crit = HeroHitShake(t, 10, 100, true);

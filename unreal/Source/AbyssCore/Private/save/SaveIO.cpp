@@ -9,6 +9,10 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "abyss/base/Assert.h"
 #include "abyss/base/Math.h"
@@ -328,6 +332,11 @@ SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMess
   savejson::ReadStringList(raw.Get("hiddenRewardsClaimed"), s.hiddenRewardsClaimed);
   s.itemUidCounter = savejson::ReadItemUidCounter(raw.Get("itemUidCounter"));
   savejson::ReadStringList(raw.Get("visitedZones"), s.visitedZones);
+  // implementation-plan.md 2.7: saves written before the field are the web port's content (1).
+  s.contentVersion = 1;
+  if (const JsonValue& cv = raw.Get("contentVersion"); cv.IsInteger() && cv.AsInt64() >= 1) {
+    s.contentVersion = static_cast<int32_t>(std::min<int64_t>(cv.AsInt64(), std::numeric_limits<int32_t>::max()));
+  }
 
   out = std::move(s);
   if (errorMessage != nullptr) errorMessage->clear();
@@ -447,10 +456,101 @@ std::string SerializeSave(const SaveData& s, bool pretty) {
   savejson::WriteItemUidCounter(w, s.itemUidCounter);
   w.Key("visitedZones");
   savejson::WriteStringList(w, s.visitedZones);
+  w.Key("contentVersion");
+  w.Int(s.contentVersion);
   w.EndObject();
   std::string out = w.Take();
   ABYSS_ASSERT(!out.empty(), "SerializeSave produced incomplete JSON");
   return out;
+}
+
+namespace {
+
+// Removes the entries `keep` rejects; returns how many went.
+template <class T, class Keep>
+int32_t SaveIoDropIf(std::vector<T>& v, Keep keep) {
+  const size_t before = v.size();
+  v.erase(std::remove_if(v.begin(), v.end(), [&keep](const T& e) { return !keep(e); }), v.end());
+  return static_cast<int32_t>(before - v.size());
+}
+
+// The beat ids StoryProgress records (StoryDirector): the sequences, a zone's chapter card, a cutscene, a boss intro.
+bool SaveIoKnownBeat(const DataStore& data, std::string_view id) {
+  constexpr std::string_view kChapter = "chapter_", kBoss = "boss_";
+  const StoryScript& story = data.Story();
+  if (id == "prologue" || id == "epilogue") return true;
+  if (story.FindCutscene(id) != nullptr) return true;
+  if (id.substr(0, kChapter.size()) == kChapter) return story.ChapterFor(id.substr(kChapter.size())) != nullptr;
+  if (id.substr(0, kBoss.size()) == kBoss) return story.BossIntroFor(id.substr(kBoss.size())) != nullptr;
+  return false;
+}
+
+const DialogueTree* SaveIoTreeOf(const DataStore& data, std::string_view npcId) {
+  const NpcDef* npc = data.FindNpc(npcId);
+  return npc != nullptr && !npc->dialogueTreeId.empty() ? data.Dialogues().Find(npc->dialogueTreeId) : nullptr;
+}
+
+bool SaveIoKnownHiddenArea(const DataStore& data, std::string_view id) {
+  for (const MapDef& m : data.World().maps) {
+    for (const HiddenAreaDef& h : m.hiddenAreas) {
+      if (h.id == id) return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
+
+int32_t ApplyContentVersion(const DataStore& data, SaveData& s) {
+  if (s.contentVersion >= kCurrentContentVersion) return 0;
+  int32_t dropped = 0;
+  dropped += SaveIoDropIf(s.quests, [&](const QuestProgress& p) { return data.FindQuest(p.questId) != nullptr; });
+  dropped += SaveIoDropIf(s.storySeen, [&](const std::string& id) { return SaveIoKnownBeat(data, id); });
+  // Beats whose id survived but whose content was rewritten (story.json contentUpgrade: the remade prologue and the
+  // Red Field's chapter card) are forgotten too, so an older save sees them again.
+  if (s.contentVersion < data.Story().contentUpgradeVersion) {
+    const std::vector<std::string>& replay = data.Story().contentReplayBeats;
+    dropped += SaveIoDropIf(s.storySeen, [&](const std::string& id) {
+      return std::find(replay.begin(), replay.end(), id) == replay.end();
+    });
+  }
+  // MonsterSystem records the boss's def id (a sub-dungeon boss too, which has no tree): the monster must still exist.
+  dropped += SaveIoDropIf(s.miniBossDialogueSeen, [&](const std::string& id) { return data.FindMonster(id) != nullptr; });
+  // Q1 keys "<npcId>|<nodeId>|<choiceIndex>": the NPC's tree still has that node and that choice.
+  dropped += SaveIoDropIf(s.dialogueOnce, [&](const std::string& key) {
+    const size_t a = key.find('|');
+    const size_t b = a == std::string::npos ? a : key.find('|', a + 1);
+    if (b == std::string::npos) return false;
+    const DialogueTree* tree = SaveIoTreeOf(data, std::string_view(key).substr(0, a));
+    const DialogueNode* node = tree != nullptr ? tree->FindNode(std::string_view(key).substr(a + 1, b - a - 1)) : nullptr;
+    if (node == nullptr) return false;
+    const std::string_view index = std::string_view(key).substr(b + 1);
+    if (index.empty() || index.size() > 4 || index.find_first_not_of("0123456789") != std::string_view::npos) return false;
+    size_t choice = 0;
+    for (char c : index) choice = choice * 10 + static_cast<size_t>(c - '0');
+    return choice < node->choices.size();
+  });
+  // dialogueState: NPCs whose tree is gone go; the others keep only nodes (and node -> next pairs) the tree still has.
+  dropped += SaveIoDropIf(s.dialogueState, [&](const DialogueNpcState& st) { return SaveIoTreeOf(data, st.npcId) != nullptr; });
+  for (DialogueNpcState& st : s.dialogueState) {
+    const DialogueTree* tree = SaveIoTreeOf(data, st.npcId);
+    dropped += SaveIoDropIf(st.visitedNodes, [&](const std::string& n) { return tree->FindNode(n) != nullptr; });
+    dropped += SaveIoDropIf(st.choicesMade, [&](const std::pair<std::string, std::string>& c) {
+      return tree->FindNode(c.first) != nullptr && tree->FindNode(c.second) != nullptr;
+    });
+  }
+  dropped += SaveIoDropIf(s.loreCollected, [&](const std::string& id) { return data.Lore().Find(id) != nullptr; });
+  dropped += SaveIoDropIf(s.discoveredHiddenAreas, [&](const std::string& id) { return SaveIoKnownHiddenArea(data, id); });
+  // Q5 keys "<areaId>#<rewardIndex>".
+  dropped += SaveIoDropIf(s.hiddenRewardsClaimed, [&](const std::string& key) {
+    const size_t hash = key.rfind('#');
+    return hash != std::string::npos && SaveIoKnownHiddenArea(data, std::string_view(key).substr(0, hash));
+  });
+  dropped += SaveIoDropIf(s.achievements, [&](const std::pair<std::string, int64_t>& a) {
+    return data.Quests().FindAchievement(a.first) != nullptr;
+  });
+  s.contentVersion = kCurrentContentVersion;
+  return dropped;
 }
 
 bool FindNearestWalkablePosition(double col, double row, const std::function<bool(int32_t, int32_t)>& walkable,

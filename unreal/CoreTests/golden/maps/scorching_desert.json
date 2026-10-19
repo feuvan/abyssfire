@@ -1150,5 +1150,17 @@
     [81, 117, "grass_dry"],
     [93, 117, "cactus_barrel"],
     [107, 117, "bones"]
-  ]
+  ],
+  "remake": {
+    "source": [
+      "unreal/GameData/loreCollectibles.ts",
+      "unreal/GameData/miniBosses.ts",
+      "unreal/GameData/quests/all_quests.ts"
+    ],
+    "modules": {
+      "src/data/loreCollectibles.ts": "unreal/GameData/loreCollectibles.ts",
+      "src/data/miniBosses.ts": "unreal/GameData/miniBosses.ts",
+      "src/data/quests/all_quests.ts": "unreal/GameData/quests/all_quests.ts"
+    }
+  }
 }

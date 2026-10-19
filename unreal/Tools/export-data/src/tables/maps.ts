@@ -24,9 +24,14 @@ const exp = <T>(mod: unknown, name: string): T => {
   return v as T;
 };
 
-/** Hashes quoted by world-map-nav.md §3.3 / §4.9 (computed on this branch when the spec was written). */
+/**
+ * Hashes quoted by world-map-nav.md §3.3 / §4.9 (computed on this branch when the spec was written). emerald_plains is
+ * the dark remake's one planned re-baseline (DECISIONS DR4, chapter1.md §17; package 1B part 1): the finale's two
+ * explore landmarks (65,30) (50,55) became the Boneyard Gate defend target (10,32), the sealed Pit entrance (17,26) and
+ * the echo lore spots (29,15) (38,47) (20,92) were added; the web map was 141fbb8218bb104c / 2450ba59a1db0194 / 13167.
+ */
 const SPEC_GOLDEN: Record<string, { tilesSha: string; decorSha: string; walkable?: number }> = {
-  emerald_plains: { tilesSha: '141fbb8218bb104c', decorSha: '2450ba59a1db0194', walkable: 13167 },
+  emerald_plains: { tilesSha: '54ce0471e96c5d0e', decorSha: '7a501f14066cbb08', walkable: 13169 },
   twilight_forest: { tilesSha: '69726f1529497960', decorSha: '2badccd8450f9f42', walkable: 11668 },
   anvil_mountains: { tilesSha: 'd95cade88db96fdd', decorSha: 'af1cfaccfa3243ad', walkable: 12336 },
   scorching_desert: { tilesSha: 'da688f33090a24c0', decorSha: '11c339464ce5b157', walkable: 13225 },
@@ -83,6 +88,10 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
   const warnings: string[] = [];
   for (const [id, raw] of Object.entries(authored)) {
     const generated = raw.tiles.length === 0 && !!raw.theme;
+    for (const e of (raw as { subDungeonEntrances?: { id: string; sealed?: boolean; sealedTextKey?: string }[] }).subDungeonEntrances ?? []) {
+      // K1 (ZoneRuntime / LoadWorld.cpp): a sealed entrance shows its sealedTextKey; only a sealed one has one.
+      assert(!!e.sealed === !!e.sealedTextKey, `maps.${id}.subDungeonEntrances.${e.id}: sealed and sealedTextKey go together`);
+    }
     const { tiles, collisions, decorations, ...anchors } = withholdRemakeFields('map', plain(raw), `maps.${id}`);
     const landmarks = generated ? externalLandmarks(id) : [];
     const portCampNpcs = PORT_CAMP_NPCS[id] ?? [];

@@ -5,6 +5,7 @@
 import { PROLOGUE, CHAPTERS, CUTSCENES, BOSS_INTROS, STORY_TRIGGERS, EPILOGUE, CREDITS } from '../../../../../src/data/story/script';
 import * as StorySceneMod from '../../../../../src/scenes/StoryScene';
 import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
+import { AllQuests } from '../../../../../src/data/quests/all_quests';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
 import { noteConfig, withholdRemakeFields } from '../remake';
@@ -17,6 +18,34 @@ const exp = <T>(mod: unknown, name: string): T => {
 
 export function exportStory(): TableResult[] {
   for (const trig of STORY_TRIGGERS) assert(CUTSCENES[trig.cutscene], `trigger → unknown cutscene ${trig.cutscene}`);
+  STORY_TRIGGERS.forEach((trig, i) => {
+    // 1B review fix (LoadQuests.cpp LoadStoryFile): `whileQuest` names a quest and sits on a monster_killed trigger.
+    const w = (trig as { whileQuest?: string }).whileQuest;
+    if (w === undefined) return;
+    assert(trig.on === 'monster_killed', `triggers[${i}].whileQuest: only a monster_killed trigger takes one`);
+    assert(AllQuests.some(q => q.id === w), `triggers[${i}].whileQuest: unknown quest '${w}'`);
+  });
+  // DR3 (saves): the beats a content-version bump replays must be beat ids StoryProgress records.
+  const upgrade = CHAPTER_CONFIG.contentUpgrade;
+  if (upgrade) {
+    assert(Number.isInteger(upgrade.version) && upgrade.version >= 2, 'config.contentUpgrade.version: a whole number >= 2');
+    for (const b of upgrade.replayBeats) {
+      const known = b === 'prologue' || b === 'epilogue' || !!CUTSCENES[b] ||
+        (b.startsWith('chapter_') && CHAPTERS.some(c => c.zoneId === b.slice('chapter_'.length))) ||
+        (b.startsWith('boss_') && BOSS_INTROS.some(bi => bi.monsterId === b.slice('boss_'.length)));
+      assert(known, `config.contentUpgrade.replayBeats: unknown beat '${b}'`);
+    }
+    noteConfig(['story.json'], 'contentUpgrade');
+  }
+  for (const [id, c] of Object.entries(CUTSCENES)) {
+    (c.steps as { kind: string; target?: unknown; anim?: string }[]).forEach((st, i) => {
+      // K1 (LoadQuests.cpp LoadStoryFile): `anim` plays on the focused monster, so only a {monster} focus step has one.
+      if (st.anim === undefined) return;
+      const t = st.target;
+      assert(st.kind === 'focus' && !!t && typeof t === 'object' && 'monster' in t,
+        `cutscenes.${id}.steps[${i}].anim: only a focus step on a {monster} target plays an anim`);
+    });
+  }
   for (const bi of BOSS_INTROS) assert(!bi.cutscene || CUTSCENES[bi.cutscene], `boss intro → unknown cutscene ${bi.cutscene}`);
   assertSource('src/systems/StoryDirector.ts', "on === 'monster_killed' ? 0 : on === 'zone_entered' ? 900 : 650");
   assertSource('src/scenes/StoryScene.ts', 'const BAR_H = 78;', 'const speed = 42; // px/s', 'await this.waitOrInput(3800);',
@@ -58,9 +87,10 @@ export function exportStory(): TableResult[] {
       cutscenes: Object.fromEntries(Object.entries(plain(CUTSCENES))
         .map(([id, c]) => [id, withholdRemakeFields('cutscene', c, `cutscenes.${id}`)])),
       bossIntros: plain(BOSS_INTROS),
-      triggers: plain(STORY_TRIGGERS),
+      triggers: plain(STORY_TRIGGERS).map((t, i) => withholdRemakeFields('trigger', t, `triggers[${i}]`)),
       epilogue: plain(EPILOGUE),
       credits: plain(CREDITS),
+      ...(upgrade ? { contentUpgrade: { version: upgrade.version, replayBeats: [...upgrade.replayBeats] } } : {}),
       moods: plain(moods),
       timing: {
         beatDelayMs: { quest_turned_in: 650, quest_accepted: 650, zone_entered: 900, monster_killed: 0 },

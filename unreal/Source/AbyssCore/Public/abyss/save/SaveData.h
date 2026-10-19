@@ -34,6 +34,11 @@ namespace abyss {
 
 inline constexpr int32_t kCurrentSaveVersion = 4;
 
+// The content a save was written against (implementation-plan.md 2.7, DECISIONS DR12), next to the format version:
+// 1 = the web port's content (every save without the field), 2 = the dark remake's Chapter 1. A save of an older
+// content version loses the ids the data no longer has when it loads (ApplyContentVersion, SaveIO.h).
+inline constexpr int32_t kCurrentContentVersion = 2;
+
 // SaveData.player (3.2).
 struct SaveHero {
   int32_t level = 1;
@@ -136,6 +141,8 @@ struct SaveData {
   // Q2: zones entered at least once, first-visit order. Restores SessionState::visitedZones (ZoneEnteredMsg.firstVisit)
   // and AchievementState's distinct-zone set (ach_explore_all) so a reload never counts a zone twice.
   std::vector<std::string> visitedZones;
+  // implementation-plan.md 2.7: the content version (missing = 1, the web port's content).
+  int32_t contentVersion = kCurrentContentVersion;
 };
 
 }  // namespace abyss

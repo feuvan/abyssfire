@@ -1,33 +1,42 @@
 import type { NPCDefinition } from './types';
 import { DialogueTrees } from './dialogueTrees';
 
+// Chapter 1 of the dark remake (Docs/dark-remake/chapter1.md §2-3, package 1B part 2): the kept ids are role keys
+// (DECISIONS DR3) re-cast for Knellwatch (丧钟堡): blacksmith = Hald Swordmelter, merchant = Quartermaster Vira, stash =
+// Tamsin the Gravewarden, quest_elder = Captain Serin Harrow, plains_herbalist = Mother Marl, plains_wanderer = Corran
+// the deserter; knell_chaplain (Brother Aldwin) and crow_trader (Mag Crowe) are new. `blacksmith`, `merchant` and `stash`
+// also stand in later chapters' camps, which stay sealed in milestone 1 (DECISIONS W7) until their own dark pass. Each
+// keeps one line in Wave 1 (chapter1.md §3: the quest-gated lines need the Wave 2 NPC `lines`; their strings are ready as
+// `data.npc.<id>.after.<questId>`, GameData/i18n/ch1Npcs.ts). The words live in i18n; `name` / `dialogue` here are the
+// zh-CN data copies.
 export const NPCDefinitions: Record<string, NPCDefinition> = {
   blacksmith: {
     id: 'blacksmith',
-    name: '铁匠',
+    name: '哈尔德·熔剑',
     type: 'blacksmith',
-    dialogue: ['欢迎来到我的铁匠铺!', '需要修理装备或者打造新武器吗？'],
+    dialogue: ['每把剑的柄脚都刻着名字。剑我熔了，名字留给队长。'],
     shopItems: ['w_short_sword', 'w_broad_sword', 'w_dagger', 'w_stiletto', 'w_short_bow', 'w_oak_staff', 'w_wooden_shield', 'a_leather_helm', 'a_leather_armor', 'a_leather_gloves', 'a_leather_boots', 'a_leather_belt'],
   },
   merchant: {
     id: 'merchant',
-    name: '商人',
+    name: '军需官薇拉',
     type: 'merchant',
-    dialogue: ['需要补给吗？我这里应有尽有!', '药水、卷轴、宝石，随你挑选。'],
+    dialogue: ['一个名字，省下一份口粮。今晚又省了三份。'],
     shopItems: ['c_hp_potion_s', 'c_hp_potion_m', 'c_mp_potion_s', 'c_mp_potion_m', 'c_antidote', 'c_tp_scroll', 'c_id_scroll', 'g_ruby_1', 'g_sapphire_1', 'g_emerald_1', 'g_topaz_1'],
   },
   stash: {
     id: 'stash',
-    name: '仓库管理员',
+    name: '守冢人塔姆欣',
     type: 'stash',
-    dialogue: ['需要存放物品吗？', '您的仓库安全可靠。'],
+    dialogue: ['死人的东西我替他们收着。活人的，也行。'],
   },
   quest_elder: {
     id: 'quest_elder',
-    name: '村长',
+    name: '瑟琳·哈洛队长',
     type: 'quest',
-    dialogue: ['勇士，翡翠平原上的怪物越来越多了...', '请帮助我们清除这些威胁!'],
-    quests: ['q_kill_slimes', 'q_collect_slime_gel', 'q_herb_gathering', 'q_kill_goblins', 'q_explore_goblin_camp', 'q_lost_pendant', 'q_find_goblin_chief', 'q_secure_plains', 'q_escort_merchant_plains', 'q_pet_sprite_friend'],
+    dialogue: ['坑里爬出来的。能站着，就能拿刀。'],
+    // The main line and S1 (chapter1.md §7: six quests).
+    quests: ['q_rf_burial_detail', 'q_rf_black_blood', 'q_rf_gnawed_field', 'q_rf_ashwheat', 'q_rf_marshal', 'q_rf_last_toll'],
     dialogueTree: DialogueTrees['quest_elder'],
   },
   quest_scout: {
@@ -84,31 +93,44 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
     shopItems: ['c_hp_potion_m', 'c_hp_potion_l', 'c_mp_potion_m', 'c_antidote', 'c_tp_scroll', 'c_id_scroll', 'g_ruby_2', 'g_sapphire_2', 'g_diamond_1'],
   },
 
-  // ─── Zone 1: Emerald Plains — New Field NPCs ─────────────────────────
+  // ─── Zone 1: the Red Field — field NPCs: Marl's dressing station (50,30), Corran's culvert (70,65) ─────────────────
   plains_herbalist: {
     id: 'plains_herbalist',
-    name: '平原药师',
+    name: '军医玛勒',
     type: 'merchant',
-    dialogue: [
-      '你好，旅行者！我在这片平原上采集草药已有二十年了。',
-      '翡翠平原的灵脉之力滋养着这里的一切，连草药都比别处更有药效。',
-      '需要补给吗？我的药水都是用灵脉草药亲手调配的。',
-    ],
+    // S1's talk target (the breach-blood samples); leaves for the Ember Tower in the finale (tower_herbalist).
+    dialogue: ['别碰那黑血。碰过的人都不喊疼了——那才最疼。'],
     shopItems: ['c_hp_potion_s', 'c_hp_potion_m', 'c_mp_potion_s', 'c_antidote'],
   },
   plains_wanderer: {
     id: 'plains_wanderer',
-    name: '流浪剑客',
+    name: '逃兵柯兰',
     type: 'quest',
-    dialogue: [
-      '我曾是王国的骑士，如今在这平原上漫无目的地游荡。',
-      '你知道吗？这片看似平和的草原下面，埋藏着精灵族的古老遗迹。',
-      '我在东边的小丘附近发现了一处隐蔽的入口，但那里面太危险了，我一个人不敢进去。',
-    ],
-    quests: ['q_bandit_trouble'],
+    dialogue: ['我跑了，我活下来了。这两件事，哪件更丢人？'],
+    // S4: the bounty on his old sergeant.
+    quests: ['q_rf_oathless'],
   },
 
   // ─── Zone 2: Twilight Forest — New Field NPCs ────────────────────────
+  // ─── Chapter 1 (dark remake, Docs/dark-remake/chapter1.md §3): new NPCs; the kept ids above are role keys ───
+  // Brother Aldwin stands in Knellwatch (camp 1, the 4th slot) and gives S2, S3, S5 and S6 (S7 with Wave 3). His second
+  // line is always on (chapter1.md §3); no dialogue tree.
+  knell_chaplain: {
+    id: 'knell_chaplain',
+    name: '奥德温修士',
+    type: 'quest',
+    dialogue: ['钟声是给活人听的。死人……另有人在跟他们说话。', '我替每个名字念一遍经。念到第三百个，我开始怕自己忘了念给谁。'],
+    quests: ['q_rf_barrowmoss', 'q_rf_tag_thief', 'q_rf_lanternwisp', 'q_rf_hallowed_ground'],
+  },
+  // Mag Crowe trades in Crowmarket (camp 2), which used the shared `merchant` before: same wares.
+  crow_trader: {
+    id: 'crow_trader',
+    name: '鸦嫂玛格',
+    type: 'merchant',
+    dialogue: ['别问靴子是谁的。问价钱。'],
+    shopItems: ['c_hp_potion_s', 'c_hp_potion_m', 'c_mp_potion_s', 'c_mp_potion_m', 'c_antidote', 'c_tp_scroll', 'c_id_scroll', 'g_ruby_1', 'g_sapphire_1', 'g_emerald_1', 'g_topaz_1'],
+  },
+
   forest_tracker: {
     id: 'forest_tracker',
     name: '森林猎人',
@@ -215,12 +237,14 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
     dialogue: ['塔还是那座塔，可如今有了炉火。', '想修哪一翼，跟老头子说。'],
     quests: [],
   },
+  // Mother Marl, sent by the Chapter 1 finale (cs_rf_finale; homestead.ts herb_garden). Hidden with the tower in
+  // milestone 1 (DECISIONS Q3).
   tower_herbalist: {
     id: 'tower_herbalist',
-    name: '药师',
+    name: '军医玛勒',
     type: 'quest',
     spriteId: 'plains_herbalist',
-    dialogue: ['灵脉回暖，药草长得比平原上还旺。', '你在外头每斩一只怪，园子就多一分生气。'],
+    dialogue: ['这里的火，不要人偿。药圃我守着。', '你在外头每放倒一个，园子就多长一寸。别问我为什么。'],
     quests: [],
   },
   tower_hermit: {

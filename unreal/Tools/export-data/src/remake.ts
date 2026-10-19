@@ -27,7 +27,7 @@ const CONFIG_TS = 'unreal/GameData/config.ts';
 
 // ── Schema gate ─────────────────────────────────────────────────────────────
 
-export type RemakeKind = 'monster' | 'quest' | 'map' | 'npc' | 'cutscene';
+export type RemakeKind = 'monster' | 'quest' | 'map' | 'npc' | 'cutscene' | 'trigger';
 
 /**
  * Remake-only fields (implementation-plan.md §2.6), by record kind. `path` is dotted; `[]` walks an array. A field is
@@ -65,6 +65,7 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
   { kind: 'npc', path: 'lines', feature: 'npc.lines', wave: 2 },
   { kind: 'npc', path: 'visibleWhen', feature: 'npc.visibleWhen', wave: 2 },
   { kind: 'cutscene', path: 'steps[].anim', feature: 'story.focusAnim', wave: 1 },
+  { kind: 'trigger', path: 'whileQuest', feature: 'story.triggerWhileQuest', wave: 1 },
 ];
 
 /** Remake-only values of existing fields: a record using one before its feature lands fails the export. */
@@ -192,12 +193,13 @@ export function withheldSummary(): string[] {
 export type OverridePath =
   | 'achievements' | 'randomEvents'
   | 'zoneMoods.themeByZone' | 'zoneMoods.moods' | 'zoneMoods.palettes' | 'zoneMoods.weather' | 'zoneMoods.weatherByTheme'
-  | 'zoneMoods.campThemes' | 'zoneMoods.fog'
+  | 'zoneMoods.campThemes' | 'zoneMoods.fog' | 'zoneMoods.lightScale' | 'zoneMoods.moodWeather'
   | 'eliteAffixes.definitions' | 'eliteAffixes.zoneAffixCounts'
   | 'terrainStyles';
 
 const OVERRIDE_PATHS: readonly OverridePath[] = ['achievements', 'randomEvents', 'zoneMoods.themeByZone', 'zoneMoods.moods',
   'zoneMoods.palettes', 'zoneMoods.weather', 'zoneMoods.weatherByTheme', 'zoneMoods.campThemes', 'zoneMoods.fog',
+  'zoneMoods.lightScale', 'zoneMoods.moodWeather',
   'eliteAffixes.definitions', 'eliteAffixes.zoneAffixCounts', 'terrainStyles'];
 const ENTRY_KEYS = new Set(['replace', 'add', 'remove']);
 const applied = new Set<OverridePath>();

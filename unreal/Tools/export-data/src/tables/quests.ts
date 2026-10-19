@@ -21,6 +21,32 @@ const exp = <T>(mod: unknown, name: string): T => {
   return v as T;
 };
 
+/**
+ * K1 hook shapes the C++ loader rejects (LoadQuests.cpp), checked here first so a content error fails the export:
+ * one `choiceLabels` key per `choices` slot, one `defendTarget.waves` composition per wave with counts >= 1.
+ */
+function checkK1Hooks(q: unknown): void {
+  const r = q as { id: string; progressKey?: string; rewards: { choices?: unknown[]; choiceLabels?: string[] };
+    defendTarget?: { totalWaves: number; waves?: { monsterId: string; count: number }[][] } };
+  const where = `quests.${r.id}`;
+  if (r.progressKey !== undefined) assert(r.progressKey !== '', `${where}.progressKey: empty key`);
+  const labels = r.rewards.choiceLabels;
+  if (labels) {
+    assert(labels.length === (r.rewards.choices?.length ?? 0),
+      `${where}.rewards.choiceLabels: ${labels.length} label(s) for ${r.rewards.choices?.length ?? 0} choice slot(s)`);
+    assert(labels.every(k => k !== ''), `${where}.rewards.choiceLabels: empty key`);
+  }
+  const waves = r.defendTarget?.waves;
+  if (waves) {
+    assert(waves.length === r.defendTarget!.totalWaves,
+      `${where}.defendTarget.waves: ${waves.length} wave(s) for totalWaves ${r.defendTarget!.totalWaves}`);
+    waves.forEach((w, i) => {
+      assert(w.length > 0, `${where}.defendTarget.waves[${i}]: an empty wave`);
+      for (const e of w) assert(Number.isInteger(e.count) && e.count >= 1 && e.monsterId !== '', `${where}.defendTarget.waves[${i}]: bad entry ${JSON.stringify(e)}`);
+    });
+  }
+}
+
 export function exportQuests(): TableResult[] {
   const ids = new Set<string>();
   const quests = AllQuests.map(q => {
@@ -28,6 +54,7 @@ export function exportQuests(): TableResult[] {
     ids.add(q.id);
     const giver = questGiverOf(q.id);
     gateRemakeValues('quest', q, `quests.${q.id}`);
+    checkK1Hooks(q);
     return {
       ...withholdRemakeFields('quest', plain(q), `quests.${q.id}`),
       derived: {

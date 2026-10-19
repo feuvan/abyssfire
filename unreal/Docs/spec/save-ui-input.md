@@ -4,6 +4,14 @@ Area owner: game flow + persistence + presentation shell. Web source of truth: b
 TypeScript under `src/`. Target: portable C++20 core (`AbyssCore`, no UE types, no exceptions/RTTI) + thin UE5
 module (render / input / UMG).
 
+> **Dark remake (DECISIONS DR3 *route and saves as built*, implementation-plan.md §2.7):** v4 saves also carry
+> `contentVersion` (2 = the remake's Chapter 1; written last, after `visitedZones`; a save without it is content 1, the
+> web port's). Loading a save of an older content version drops the ids the data no longer has (quests, `storySeen`,
+> `miniBossDialogueSeen`, `dialogueOnce`, `dialogueState`, lore, hidden areas and their rewards, achievements;
+> `ApplyContentVersion`); the hero, items and gold stay. It also forgets the beats story.json `contentUpgrade` names
+> (ids kept, content rewritten: the remade prologue and the Red Field's chapter card), and a hero saved in a locked Ember
+> Tower loads at the camp of its return zone (1B review). Everything else in §3 is unchanged.
+
 This document describes **what the web game does today**, precisely enough to re-implement it without reading the
 TypeScript. Web behaviour that is a bug or a 2D artefact is called out as a **QUIRK (Qn)** with a recommendation; the
 default is *keep*, unless the recommendation says **FIX** (resolution tracked in §16 Open questions).

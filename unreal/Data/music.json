@@ -224,7 +224,7 @@
       "trueDebounce": true,
       "exploreResumesPosition": true,
       "bossCh1Score": "boss_ch1",
-      "bossMusic": {"goblin_chief": "boss_ch1"},
+      "bossMusic": {"valdras": "boss_ch1"},
       "decision": "A2, A5"
     }
   },
@@ -246,5 +246,9 @@
     "twilight_forest_combat": "assets/audio/bgm/twilight_forest_combat.mp3",
     "twilight_forest_explore": "assets/audio/bgm/twilight_forest_explore.mp3",
     "twilight_forest_victory": "assets/audio/bgm/twilight_forest_victory.mp3"
+  },
+  "remake": {
+    "source": ["unreal/GameData/config.ts"],
+    "replaced": ["config.storyBoss"]
   }
 }

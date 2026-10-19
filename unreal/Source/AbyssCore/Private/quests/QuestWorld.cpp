@@ -44,6 +44,9 @@ constexpr double kQwEscortJoinRange = 5;   // escort.joinRange
 constexpr double kQwEscortFollowMin = 2;   // escort.followMin
 constexpr double kQwEscortRepathMs = 400;  // escort.repathMs
 constexpr int32_t kQwEscortCatchUpRings = 2;
+// Remake (DECISIONS Q9): an escort that has found no path to the hero for this long while it should follow catches up
+// next to the hero, as if left behind (the web waited forever).
+constexpr double kQwEscortStrandedMs = 2000;
 constexpr double kQwNpcAlertRange = 3;     // npcAlertRange (6.4)
 
 bool QwIsCollect(ObjectiveType t) { return t == ObjectiveType::Collect || t == ObjectiveType::CraftCollect; }
@@ -58,6 +61,31 @@ I18nArg QwTargetNameArg(const DataStore& data, const QuestObjectiveDef& obj) {
   const std::string key = "data.questTarget." + obj.targetId;
   if (s.Has(key)) return KeyArg("targetName", key);
   return I18nArg{"targetName", obj.targetName, false};
+}
+
+// The escort's catch-up tile: Chebyshev rings 1..kQwEscortCatchUpRings around the hero's rounded tile in
+// findWalkableNear's order (dr outer, dc inner, centre excluded), but only a tile in the hero's connectivity component
+// (DECISIONS Q9: a ring tile across a wall or water - or a sealed pocket - is walkable yet has no path to the hero, so the
+// escort would be stranded there). When the hero's tile is walkable and no ring tile shares its component (the hero
+// stands in a pocket of its own), there is no catch-up tile: false, and the escort stays where it is. Any walkable ring
+// tile only when the hero's own tile is not walkable (no component to match).
+bool QwEscortCatchUpSpot(const ZoneRuntime& zone, Vec2 heroPos, TilePos& out) {
+  const ZoneGrid& g = zone.Grid();
+  const TilePos h(JsRoundInt(heroPos.x), JsRoundInt(heroPos.y));
+  const int32_t comp = g.Component(h.col, h.row);
+  if (comp < 0) return zone.Paths().FindWalkableNear(h, kQwEscortCatchUpRings, out);
+  for (int32_t r = 1; r <= kQwEscortCatchUpRings; ++r) {
+    for (int32_t dr = -r; dr <= r; ++dr) {
+      for (int32_t dc = -r; dc <= r; ++dc) {
+        if ((std::max)(std::abs(dc), std::abs(dr)) != r) continue;
+        if (g.Component(h.col + dc, h.row + dr) == comp) {
+          out = TilePos(h.col + dc, h.row + dr);
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 std::string QwItemKind(const DataStore& data, const QuestObjectiveDef& obj) {
@@ -190,7 +218,8 @@ bool QuestWorld::OpenCard(std::string_view npcId) {
   if (ctx_.sys.zone == nullptr || !ctx_.sys.zone->HasZone() || ctx_.sys.zone->FindNpc(npcId) == nullptr) return false;
   const int32_t heroLevel = ctx_.sys.hero != nullptr ? ctx_.sys.hero->Level() : 1;
   const std::vector<QuestOffer> offers = ctx_.sys.quests->Offers(npcId, heroLevel, OfferRule::QuestCard);
-  if (offers.empty()) {
+  std::vector<QuestCardProgress> progress = ProgressLines(npcId);
+  if (offers.empty() && progress.empty()) {
     if (refresh) CloseCard();
     return false;
   }
@@ -201,9 +230,14 @@ bool QuestWorld::OpenCard(std::string_view npcId) {
     QuestCardEntry e;
     e.quest = o.quest;
     e.turnIn = o.turnIn;
-    if (o.turnIn && o.quest != nullptr) e.choices = EnsureRewardChoices(*o.quest);
+    if (o.turnIn && o.quest != nullptr) {
+      const RewardChoiceCache& c = EnsureRewardChoices(*o.quest);
+      e.choices = c.items;
+      e.choiceLabels = QuestRewardChoiceLabels(o.quest->rewards, c.slots);
+    }
     next.entries.push_back(std::move(e));
   }
+  next.progress = std::move(progress);
   card_ = std::move(next);
   if (!refresh) ctx_.events.Emit(EvQuestCardOpened{card_.npcId});
   return true;
@@ -221,17 +255,33 @@ bool QuestWorld::OpenDialogueTree(std::string_view npcId) {
 
 // getQuestRewardChoices (4.2): generated once per session (the card shows exactly what the turn-in grants; a reload
 // rerolls - Q9 kept).
-const std::vector<ItemInstance>& QuestWorld::EnsureRewardChoices(const QuestDef& quest) {
-  for (const auto& [id, items] : rewardCache_) {
-    if (id == quest.id) return items;
+const QuestWorld::RewardChoiceCache& QuestWorld::EnsureRewardChoices(const QuestDef& quest) {
+  for (const RewardChoiceCache& c : rewardCache_) {
+    if (c.questId == quest.id) return c;
   }
-  std::vector<ItemInstance> items;
+  RewardChoiceCache c;
+  c.questId = quest.id;
   if (ctx_.sys.hero != nullptr && ctx_.sys.inventory != nullptr) {
     const LootContext lc{&ctx_.data, &ctx_.Rand(RngStream::Loot), &ctx_.sys.inventory->Uids()};
-    items = GenerateQuestRewardChoices(lc, quest, ctx_.sys.hero->Class(), ctx_.sys.hero->Level());
+    c.items = GenerateQuestRewardChoices(lc, quest, ctx_.sys.hero->Class(), ctx_.sys.hero->Level(), &c.slots);
   }
-  rewardCache_.emplace_back(quest.id, std::move(items));
-  return rewardCache_.back().second;
+  rewardCache_.push_back(std::move(c));
+  return rewardCache_.back();
+}
+
+// K1 progress lines: every quest the NPC lists (its order) that is active - not completed, turned in or failed - and
+// has a progressKey.
+std::vector<QuestCardProgress> QuestWorld::ProgressLines(std::string_view npcId) const {
+  std::vector<QuestCardProgress> out;
+  const NpcDef* npc = ctx_.data.FindNpc(npcId);
+  if (npc == nullptr || ctx_.sys.quests == nullptr) return out;
+  for (const std::string& id : npc->quests) {
+    const QuestDef* q = ctx_.data.FindQuest(id);
+    const QuestProgress* p = ctx_.sys.quests->Progress(id);
+    if (q == nullptr || p == nullptr || p->status != QuestStatus::Active || q->progressKey.empty()) continue;
+    out.push_back(QuestCardProgress{q, q->progressKey});
+  }
+  return out;
 }
 
 // Accept button (5.3): acceptQuest, the quest becomes the guided one (setTracked - the web pins it even when the accept
@@ -254,7 +304,7 @@ bool QuestWorld::AcceptFromCard(std::string_view questId) {
 bool QuestWorld::TurnIn(std::string_view questId, int32_t choiceIndex) {
   const QuestDef* q = ctx_.data.FindQuest(questId);
   if (q == nullptr || ctx_.sys.quests == nullptr) return false;
-  const std::vector<ItemInstance> choices = EnsureRewardChoices(*q);
+  const std::vector<ItemInstance> choices = EnsureRewardChoices(*q).items;
   const QuestRewardDef* reward = ctx_.sys.quests->TurnIn(questId);
   if (reward == nullptr) return false;
   Sync();  // QUEST_TURNED_IN -> sync + guide refresh
@@ -286,7 +336,7 @@ bool QuestWorld::TurnIn(std::string_view questId, int32_t choiceIndex) {
     ctx_.events.Log(MakeLoc("zone.quest.rewardItem", {name}), LogType::Loot);
   }
   for (size_t i = 0; i < rewardCache_.size(); ++i) {
-    if (rewardCache_[i].first == q->id) {
+    if (rewardCache_[i].questId == q->id) {
       rewardCache_.erase(rewardCache_.begin() + static_cast<std::ptrdiff_t>(i));
       break;
     }
@@ -303,8 +353,8 @@ bool QuestWorld::TurnIn(std::string_view questId, int32_t choiceIndex) {
 void QuestWorld::CloseCard() { card_ = QuestCardState{}; }
 
 std::span<const ItemInstance> QuestWorld::RewardChoices(std::string_view questId) const {
-  for (const auto& [id, items] : rewardCache_) {
-    if (id == questId) return items;
+  for (const RewardChoiceCache& c : rewardCache_) {
+    if (c.questId == questId) return c.items;
   }
   return {};
 }
@@ -693,25 +743,43 @@ void QuestWorld::TickEscort(double dtMs) {
     escort_.joined = true;
     ctx_.events.Log(MakeLoc("zone.escort.joined", {QwEscortNameArg(ctx_.data, *q)}), LogType::System);
   }
-  if (dist > tun.escortCatchUpTiles) {
-    // Left far behind: catch up out of sight (rings 1..2 around the hero's rounded tile, centre excluded).
+  // Catch up next to the hero (rings 1..2 around its rounded tile, in its connectivity component - DECISIONS Q9). No
+  // teleport when there is no such tile or the escort already stands on it (a stranded escort re-checked every 2 s on
+  // the same spot emits nothing).
+  const auto catchUp = [&]() {
     TilePos spot;
-    if (zone->Paths().FindWalkableNear(TilePos(JsRoundInt(hp.x), JsRoundInt(hp.y)), kQwEscortCatchUpRings, spot)) {
+    if (QwEscortCatchUpSpot(*zone, hp, spot) && !(spot.Center() == escort_.pos)) {
       const Vec2 from = escort_.pos;
       escort_.pos = spot.Center();
       escort_.path.clear();
       ctx_.events.Emit(EvEntityTeleported{escort_.entity, from, escort_.pos, TeleportReason::CatchUp});
     }
+    escort_.strandedSinceMs = -1;
+  };
+  if (dist > tun.escortCatchUpTiles) {
+    catchUp();  // left far behind: catch up out of sight
   } else if (dist > kQwEscortFollowMin) {
     if (now >= escort_.repathAtMs || escort_.path.empty()) {
       escort_.repathAtMs = now + kQwEscortRepathMs;
       std::vector<TilePos> path;
-      zone->Paths().FindPath(JsRound(escort_.pos.x), JsRound(escort_.pos.y), JsRound(hp.x), JsRound(hp.y), path);
-      // Stop a tile or two short of the hero: path.slice(1, max(1, len - 1)).
-      escort_.path.clear();
-      const size_t end = (std::max)(static_cast<size_t>(1), path.empty() ? static_cast<size_t>(0) : path.size() - 1);
-      for (size_t i = 1; i < end && i < path.size(); ++i) escort_.path.push_back(path[i]);
+      const bool found =
+          zone->Paths().FindPath(JsRound(escort_.pos.x), JsRound(escort_.pos.y), JsRound(hp.x), JsRound(hp.y), path);
+      // Stop a tile short of the hero: the path (start excluded) without its last tile. DECISIONS Q9: the first step is
+      // kept. The web's path.slice(1, max(1, len - 1)) dropped it, so an escort between two tiles walked a straight
+      // line to the second step, which can cut the corner of a blocked tile; once its rounded tile was blocked,
+      // findPath (unwalkable start) never found a path again and the escort froze (seed 7013: Old Bern on the scatter
+      // wall (44,61) of emerald_plains, the hero 5 tiles away). With the first step kept the escort only crosses its own
+      // tile, the path's tiles and the corner tiles a diagonal step requires walkable.
+      escort_.path.assign(path.begin(), path.empty() ? path.end() : path.end() - 1);
+      if (found) {
+        escort_.strandedSinceMs = -1;
+      } else if (escort_.strandedSinceMs < 0) {
+        escort_.strandedSinceMs = now;
+      }
     }
+    // No path to the hero for kQwEscortStrandedMs (its tile or the hero's blocked, or no route between them): catch up
+    // instead of waiting forever.
+    if (escort_.strandedSinceMs >= 0 && now - escort_.strandedSinceMs >= kQwEscortStrandedMs) catchUp();
     double budget = (hero->Derived().moveSpeed / tun.escortSpeedDivisor) * tun.escortSpeedFactor * (dtMs / 1000.0);
     while (budget > 0 && !escort_.path.empty()) {
       const Vec2 next = escort_.path.front().Center();
@@ -729,6 +797,7 @@ void QuestWorld::TickEscort(double dtMs) {
     }
   } else {
     escort_.path.clear();
+    escort_.strandedSinceMs = -1;
   }
   // Abstract chip damage: aggro monsters within 4 tiles, one hit per monster per 2 s (monsters 4.4).
   bool died = false;
@@ -839,7 +908,17 @@ void QuestWorld::TickDefend() {
     }
     if (now - defend_.timerMs > tun.defendWaveDelayMs) {
       defend_.waveMonsters.clear();
-      if (ctx_.sys.monsters != nullptr) defend_.waveMonsters = ctx_.sys.monsters->SpawnDefendWave(defend_.pos, defend_.wave);
+      // K1: the quest's own composition of this wave and its approach arc (DefendTargetDef), else the web rule.
+      DefendWaveSpec spec;
+      const DefendTargetDef& dt = q->defendTarget;
+      if (defend_.wave >= 0 && static_cast<size_t>(defend_.wave) < dt.waves.size()) {
+        spec.composition = dt.waves[static_cast<size_t>(defend_.wave)];
+      }
+      spec.hasApproach = dt.hasApproach;
+      spec.approachDeg = dt.approachDeg;
+      if (ctx_.sys.monsters != nullptr) {
+        defend_.waveMonsters = ctx_.sys.monsters->SpawnDefendWave(defend_.pos, defend_.wave, spec);
+      }
       defend_.waveActive = true;
       defend_.timerStarted = false;
       ctx_.events.Log(MakeLoc("zone.defend.waveIncoming",

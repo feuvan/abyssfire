@@ -2,157 +2,209 @@ import type { QuestDefinition } from '../types';
 
 export const AllQuests: QuestDefinition[] = [
   // ═══════════════════════════════════════
-  // Zone 1: Emerald Plains (Lv 1-10)
+  // Zone 1: 赤幡原 / The Red Field (Lv 1-10) — dark remake, Docs/dark-remake/chapter1.md §5-7
   // ═══════════════════════════════════════
+  // Each remake quest holds its web slot (DECISIONS DR3): the same position in this list and every map-generator input
+  // of the slot (objective locations, gather area and count, questArea, escort ends, the M5 gate; chapter1.md §17), so
+  // the golden map moved only once (DR4, package 1B part 1). The text lives in i18n (GameData/i18n/ch1Quests.ts);
+  // `name` / `description` / `targetName` here are the zh-CN data copies. Main gear choices are rare, side ones magic;
+  // embers 2 per main and 1 per side turn-in unless `rewards.embers` says otherwise (20 in the chapter, as today).
 
-  // --- Main Line (protect village from goblins) ---
+  // --- Main line: 收尸队 → 啃食之野 → 灰麦村 → 不眠的元帅 → 最后的钟声 (giver: the Captain, quest_elder) ---
+  // M1 (slot q_kill_slimes): the burial detail at the trenches. Turn-in → cs_rf_brand.
   {
-    id: 'q_kill_slimes',
-    name: '史莱姆之灾',
-    description: '你在精灵塔废墟的灰烬中醒来，被村长收留。那一夜火柱冲天后，北部湿地的史莱姆疯长，啃食庄稼。消灭它们，报答收留之恩。',
+    id: 'q_rf_burial_detail',
+    name: '收尸队',
+    description: '收尸队十个人黄昏出了门，再没回来。去北边的埋骨壕，放倒站起来的人。',
     zone: 'emerald_plains',
     type: 'kill',
     category: 'main',
     objectives: [
-      { type: 'kill', targetId: 'slime_green', targetName: '绿色史莱姆', required: 10, current: 0 },
+      { type: 'kill', targetId: 'risen_footman', targetName: '复起步卒', required: 10, current: 0 },
     ],
     rewards: { exp: 120, gold: 25 },
     level: 1,
     questArea: { col: 32, row: 12, radius: 12 },
+    progressKey: 'data.quest.q_rf_burial_detail.progress',
   },
+  // M2 (slot q_kill_goblins): twelve gravegnawers, then the Hungerbell that rings them to supper.
   {
-    id: 'q_kill_goblins',
-    name: '火光之眼',
-    description: '哥布林的眼中燃起了与你烙印相同的火光，它们成群劫掠村庄。消灭十五只哥布林，挫其锐气，也看看那火光从何而来。',
+    id: 'q_rf_gnawed_field',
+    name: '啃食之野',
+    description: '城下麦田里，啃冢者在吃后卫营的尸体。杀十二只，再找到那个摇钟叫它们开饭的东西。',
     zone: 'emerald_plains',
     type: 'kill',
     category: 'main',
     objectives: [
-      { type: 'kill', targetId: 'goblin', targetName: '哥布林', required: 15, current: 0 },
+      { type: 'kill', targetId: 'gravegnawer', targetName: '啃冢者', required: 12, current: 0 },
+      { type: 'kill', targetId: 'hunt_hungerbell', targetName: '饿钟', required: 1, current: 0 },
     ],
-    rewards: { exp: 200, gold: 40 },
-    prereqQuests: ['q_kill_slimes'],
+    rewards: { exp: 220, gold: 40 },
+    prereqQuests: ['q_rf_burial_detail'],
     level: 3,
     questArea: { col: 34, row: 40, radius: 15 },
+    hunts: [
+      // 1B review (chapter1.md §5 M2 as built): hp x2 / dmg x1.0, not x3 / x1.3. The bonegorger is Lv 7 and M2 is the
+      // Lv 3 quest: the M2 climax stays a bruiser a Lv 4-5 hero can take (420 HP, 17 damage per 1.7 s), not an elite
+      // with 630 HP and 22 damage. Exp stays 3 x the base (the hunt minimum).
+      { huntId: 'hunt_hungerbell', monsterId: 'bonegorger', name: '饿钟', col: 45, row: 35, hpMul: 2, dmgMul: 1.0, revealAfterPrevious: true, minions: { monsterId: 'gravegnawer', count: 3 } },
+    ],
+    progressKey: 'data.quest.q_rf_gnawed_field.progress',
   },
+  // M3 (slot q_explore_goblin_camp): the burned hamlet, then the Corpseherd at the Sheepfold (the raiser lesson on the
+  // main path, before the boss). Turn-in opens the Ember Tower (homestead.ts) → cs_rf_whisper.
   {
-    id: 'q_explore_goblin_camp',
-    name: '篝火营地',
-    description: '哥布林营地的篝火七天七夜不熄，萨满正对着地底举行古老的仪式。潜入侦察，查明他们想唤醒什么。',
+    id: 'q_rf_ashwheat',
+    name: '灰麦村',
+    description: '灰麦村有灯火，可村里不该还有人。去看看，再循着车辙找到领走村民的人。',
     zone: 'emerald_plains',
     type: 'explore',
     category: 'main',
     objectives: [
-      { type: 'explore', targetId: 'zone_goblin_camp', targetName: '哥布林营地', required: 1, current: 0, location: { col: 40, row: 52, radius: 8 } },
+      { type: 'explore', targetId: 'zone_rf_ashwheat', targetName: '灰麦村', required: 1, current: 0, location: { col: 40, row: 52, radius: 8 } },
+      { type: 'kill', targetId: 'miniboss_corpseherd', targetName: '尸牧婆', required: 1, current: 0 },
     ],
-    rewards: { exp: 250, gold: 35 },
-    prereqQuests: ['q_kill_goblins'],
+    rewards: { exp: 260, gold: 40 },
+    prereqQuests: ['q_rf_gnawed_field'],
     level: 5,
+    progressKey: 'data.quest.q_rf_ashwheat.progress',
   },
+  // M4 (slot q_find_goblin_chief): Lord-Marshal Valdras, the story boss (../config.ts, DECISIONS M7). The questArea keeps
+  // the slot's (25,65) r10 (a generator input); the core centres it on the boss's spawn at load (DECISIONS Q4).
   {
-    id: 'q_find_goblin_chief',
-    name: '碎牙之王',
-    description: '哥布林首领格罗克受深渊低语驱使，率部落撬动平原之下的封印。击败它，斩断这只伸向封印的手。',
+    id: 'q_rf_marshal',
+    name: '不眠的元帅',
+    description: '瓦德拉斯元帅还守在渊裂边上，执行他最后的军令。去告诉他，仗打完了。',
     zone: 'emerald_plains',
     type: 'kill',
     category: 'main',
     objectives: [
-      { type: 'kill', targetId: 'goblin_chief', targetName: '哥布林首领', required: 1, current: 0 },
+      { type: 'kill', targetId: 'valdras', targetName: '焚旗元帅·瓦德拉斯', required: 1, current: 0 },
     ],
     rewards: { exp: 500, gold: 80, choices: ['weapon', 'armor'] },
-    prereqQuests: ['q_explore_goblin_camp'],
+    prereqQuests: ['q_rf_ashwheat'],
     level: 7,
     questArea: { col: 25, row: 65, radius: 10 },
+    progressKey: 'data.quest.q_rf_marshal.progress',
   },
+  // M5 (slot q_secure_plains), the chapter-complete quest: hold the Boneyard Gate (10,32) till dawn, 18 tiles from camp
+  // 1, so neither the waves (the far half of the r8 ring, approachDeg = atan2(gate - camp) ~ 106 deg in tile space) nor
+  // its defender stand in the safe radius (9). The gate is a generator landmark (margin 6), part of the one golden
+  // re-baseline (DR4). Reacceptable: a fallen gate is offered again (the chapter stays completable). Accept →
+  // cs_rf_siege; turn-in → cs_rf_finale; sends the herb_garden wing's ally (Mother Marl) to the tower.
   {
-    id: 'q_secure_plains',
-    name: '灵脉之印',
-    description: '首领已死，但被撬动的灵脉仍在震颤。巡视平原东部与南部，让烙印之火安抚灵脉，稳住第一道封印。',
+    id: 'q_rf_last_toll',
+    name: '最后的钟声',
+    description: '元帅倒了，赤幡原上的死人今夜都会走向丧钟堡。守住埋骨门，直到天亮。',
     zone: 'emerald_plains',
-    type: 'explore',
+    type: 'defend',
     category: 'main',
     objectives: [
-      { type: 'explore', targetId: 'zone_east_plains', targetName: '平原东部', required: 1, current: 0, location: { col: 65, row: 30, radius: 10 } },
-      { type: 'explore', targetId: 'zone_south_plains', targetName: '平原南部', required: 1, current: 0, location: { col: 50, row: 55, radius: 10 } },
+      { type: 'defend_wave', targetId: 'defend_rf_boneyard_gate', targetName: '守住埋骨门', required: 3, current: 0 },
     ],
-    rewards: { exp: 400, gold: 60, choices: ['jewelry', 'boots', 'gloves'], embers: 5 },
-    prereqQuests: ['q_find_goblin_chief'],
+    // embers: the main default 2 + 5 (chapter1.md §5 M5 / §7: the turn-in totals 23); `embers` replaces the default.
+    rewards: { exp: 450, gold: 60, choices: ['jewelry', 'boots', 'gloves'], embers: 7 },
+    prereqQuests: ['q_rf_marshal'],
     level: 8,
+    defendTarget: {
+      name: '埋骨门', spriteKey: 'decor_defend_boneyard_gate', col: 10, row: 32, totalWaves: 3, approachDeg: 106,
+      waves: [
+        [{ monsterId: 'risen_footman', count: 5 }],
+        [{ monsterId: 'gravegnawer', count: 4 }, { monsterId: 'cinderbloat', count: 2 }],
+        [{ monsterId: 'risen_shieldbearer', count: 2 }, { monsterId: 'dead_standard_bearer', count: 1 }, { monsterId: 'oath_zealot', count: 2 }],
+      ],
+    },
+    reacceptable: true,
+    progressKey: 'data.quest.q_rf_last_toll.progress',
   },
 
-  // --- Side Quests ---
-  // Each one plays differently: a delivery, a gathering run, a tracking hunt,
-  // a bounty, a hide-and-seek pet trial and the escort below.
+  // --- Side quests: each a plea, an order or a dying word, each a different shape (S5 and S6 hold the pet and escort
+  // slots further down) ---
+  // S1 (slot q_collect_slime_gel), the Captain: breach-blood samples for Marl's dressing station, delivered by hand.
   {
-    id: 'q_collect_slime_gel',
-    name: '药师的订单',
-    description: '平原药师调伤药缺史莱姆凝胶。打史莱姆收集凝胶，亲手送到药师的小摊上。',
+    id: 'q_rf_black_blood',
+    name: '黑血',
+    description: '玛勒要六团还温着的渊血。从渗血洼的凝块里取，别用手碰，送去她的救护站。',
     zone: 'emerald_plains',
     type: 'talk',
     category: 'side',
     objectives: [
-      { type: 'collect', targetId: 'mat_slime_gel', targetName: '史莱姆凝胶', required: 6, current: 0, source: { kind: 'drop', monsters: ['slime_green'], chance: 0.5 }, itemKind: 'gel' },
-      { type: 'talk', targetId: 'plains_herbalist', targetName: '把凝胶送给平原药师', required: 1, current: 0 },
+      { type: 'collect', targetId: 'mat_breach_ichor', targetName: '渊血样本', required: 6, current: 0, source: { kind: 'drop', monsters: ['breachclot'], chance: 0.5 }, itemKind: 'ichor' },
+      { type: 'talk', targetId: 'plains_herbalist', targetName: '把血样交给玛勒', required: 1, current: 0 },
     ],
     rewards: { exp: 110, gold: 35, items: ['c_hp_potion_s', 'c_hp_potion_s'] },
     level: 2,
     questArea: { col: 25, row: 20, radius: 10 },
+    progressKey: 'data.quest.q_rf_black_blood.progress',
   },
+  // S2 (slot q_herb_gathering), Brother Aldwin: barrowmoss from the trench edge, for the old burial rite.
   {
-    id: 'q_herb_gathering',
-    name: '急救草药',
-    description: '村里的伤员等着草药救命。去西边的草坡上采些翡翠草药回来。',
+    id: 'q_rf_barrowmoss',
+    name: '苦冢苔',
+    description: '旧礼说，坟上烧苦冢苔，死人睡得沉些。去埋骨壕边采五把，连根拔。',
     zone: 'emerald_plains',
     type: 'collect',
     category: 'side',
     objectives: [
-      { type: 'collect', targetId: 'mat_herb', targetName: '翡翠草药', required: 5, current: 0, source: { kind: 'gather', area: { col: 22, row: 26, radius: 9 }, count: 7 }, itemKind: 'herb' },
+      { type: 'collect', targetId: 'mat_barrowmoss', targetName: '苦冢苔', required: 5, current: 0, source: { kind: 'gather', area: { col: 22, row: 26, radius: 9 }, count: 7 }, itemKind: 'moss' },
     ],
     rewards: { exp: 70, gold: 20, items: ['c_hp_potion_s'] },
     level: 2,
     questArea: { col: 20, row: 25, radius: 10 },
+    progressKey: 'data.quest.q_rf_barrowmoss.progress',
   },
+  // S3 (slot q_lost_pendant), Brother Aldwin: three clues on the dead, then Dreck the Silverpicker and his pouch of
+  // name-tags. The silver is the hero's to decide: a ring cast from it, or a blade from Hald (labelled choices).
   {
-    id: 'q_lost_pendant',
-    name: '偷挂坠的贼',
-    description: '有个小个子哥布林摸进村子，偷走了一位老妇人的传家挂坠。顺着它留下的痕迹追下去，把挂坠夺回来。',
+    id: 'q_rf_tag_thief',
+    name: '名牌窃贼',
+    description: '有人在割死人颈上的名牌。顺着痕迹找到他，把名牌拿回来。',
     zone: 'emerald_plains',
     type: 'investigate',
     category: 'side',
     objectives: [
-      { type: 'investigate_clue', targetId: 'clue_pendant_fence', targetName: '被扒开的篱笆', required: 1, current: 0, location: { col: 30, row: 24, radius: 2 } },
-      { type: 'investigate_clue', targetId: 'clue_pendant_cloth', targetName: '挂在荆棘上的破布', required: 1, current: 0, location: { col: 42, row: 34, radius: 2 } },
-      { type: 'investigate_clue', targetId: 'clue_pendant_ashes', targetName: '还温热的篝火', required: 1, current: 0, location: { col: 54, row: 44, radius: 2 } },
-      { type: 'kill', targetId: 'hunt_pendant_thief', targetName: '小贼斯尼克', required: 1, current: 0 },
-      { type: 'collect', targetId: 'mat_pendant', targetName: '传家挂坠', required: 1, current: 0, source: { kind: 'drop', monsters: ['hunt_pendant_thief'], chance: 1 }, itemKind: 'pendant' },
+      { type: 'investigate_clue', targetId: 'clue_rf_tag_cord', targetName: '无名的死人', required: 1, current: 0, location: { col: 30, row: 24, radius: 2 } },
+      { type: 'investigate_clue', targetId: 'clue_rf_tag_cloth', targetName: '铁蒺藜', required: 1, current: 0, location: { col: 42, row: 34, radius: 2 } },
+      { type: 'investigate_clue', targetId: 'clue_rf_tag_ashes', targetName: '余火', required: 1, current: 0, location: { col: 54, row: 44, radius: 2 } },
+      { type: 'kill', targetId: 'hunt_dreck', targetName: '拾银者·德雷克', required: 1, current: 0 },
+      { type: 'collect', targetId: 'mat_tag_pouch', targetName: '名牌袋', required: 1, current: 0, source: { kind: 'drop', monsters: ['hunt_dreck'], chance: 1 }, itemKind: 'tags' },
     ],
-    rewards: { exp: 180, gold: 40, choices: ['jewelry'] },
-    prereqQuests: ['q_kill_slimes'],
+    rewards: {
+      exp: 180, gold: 40, choices: ['jewelry', 'weapon'],
+      choiceLabels: ['data.questChoice.q_rf_tag_thief.jewelry', 'data.questChoice.q_rf_tag_thief.weapon'],
+    },
+    prereqQuests: ['q_rf_burial_detail'],
     level: 4,
     questArea: { col: 54, row: 44, radius: 10 },
     hunts: [
-      { huntId: 'hunt_pendant_thief', monsterId: 'goblin', name: '小贼斯尼克', col: 60, row: 48, hpMul: 3, dmgMul: 1.2, revealAfterPrevious: true, minions: { monsterId: 'goblin', count: 2 } },
+      { huntId: 'hunt_dreck', monsterId: 'deserter', name: '拾银者·德雷克', col: 60, row: 48, hpMul: 3, dmgMul: 1.2, revealAfterPrevious: true, minions: { monsterId: 'deserter', count: 2 } },
     ],
+    progressKey: 'data.quest.q_rf_tag_thief.progress',
   },
+  // S4 (slot q_bandit_trouble), Corran the deserter: his old sergeant's head. The chapter's dilemma: whose hand it goes
+  // to (labelled choices: Corran's sword or the Captain's crusade shield).
   {
-    id: 'q_bandit_trouble',
-    name: '悬赏：红帽格鲁克',
-    description: '流浪剑客贴出一张悬赏：哥布林劫匪头目“红帽格鲁克”带着手下盘踞在东南的土坡上，专抢过路的货车。取他的红帽来换赏金。',
+    id: 'q_rf_oathless',
+    name: '悬赏：断誓者哈克',
+    description: '柯兰的老军士哈克把朝圣者卖给赤誓会。柯兰要他的人头，拿去换丧钟堡的门。',
     zone: 'emerald_plains',
     type: 'kill',
     category: 'side',
     objectives: [
-      { type: 'kill', targetId: 'hunt_redcap_gruk', targetName: '红帽格鲁克', required: 1, current: 0 },
+      { type: 'kill', targetId: 'hunt_harke', targetName: '断誓者·哈克', required: 1, current: 0 },
     ],
-    rewards: { exp: 260, gold: 60, choices: ['weapon'] },
-    prereqQuests: ['q_kill_goblins'],
+    rewards: {
+      exp: 260, gold: 60, choices: ['weapon', 'offhand'],
+      choiceLabels: ['data.questChoice.q_rf_oathless.weapon', 'data.questChoice.q_rf_oathless.offhand'],
+    },
+    prereqQuests: ['q_rf_gnawed_field'],
     level: 7,
     questArea: { col: 80, row: 75, radius: 8 },
     hunts: [
-      { huntId: 'hunt_redcap_gruk', monsterId: 'goblin', name: '红帽格鲁克', col: 82, row: 72, hpMul: 5, dmgMul: 1.6, minions: { monsterId: 'goblin', count: 4 } },
+      { huntId: 'hunt_harke', monsterId: 'deserter', name: '断誓者·哈克', col: 82, row: 72, hpMul: 5, dmgMul: 1.6, minions: { monsterId: 'deserter', count: 4 } },
     ],
+    progressKey: 'data.quest.q_rf_oathless.progress',
   },
-
   // ═══════════════════════════════════════
   // Zone 2: Twilight Forest (Lv 10-20)
   // ═══════════════════════════════════════
@@ -799,22 +851,26 @@ export const AllQuests: QuestDefinition[] = [
       { huntId: 'hunt_jade_guardian', monsterId: 'stone_golem', name: '玄武守魂像', col: 42, row: 72, hpMul: 4, dmgMul: 1.3, revealAfterPrevious: true },
     ],
   },
+  // S5 (slot q_pet_sprite_friend), Brother Aldwin: the light that walks the Weeping Ditch, grave to grave. It is Pell's
+  // lantern; the reward is the Lanternwisp (pet_sprite re-dressed, chapter1.md §14), the only Chapter 1 companion (Q3).
   {
-    id: 'q_pet_sprite_friend',
-    name: '捉迷藏的小精灵',
-    description: '东北的池塘边住着一只爱玩的小精灵，它说：找到我四次，我就跟你做朋友。留意草丛里一闪一闪的光。',
+    id: 'q_rf_lanternwisp',
+    name: '灯魂',
+    description: '每夜有一点灯光在泣沟的坟间走。跟着它，看它最后停在哪儿。',
     zone: 'emerald_plains',
     type: 'investigate',
     category: 'side',
     objectives: [
-      { type: 'investigate_clue', targetId: 'clue_sprite_1', targetName: '蘑菇圈里的笑声', required: 1, current: 0, location: { col: 78, row: 12, radius: 2 } },
-      { type: 'investigate_clue', targetId: 'clue_sprite_2', targetName: '会发光的花', required: 1, current: 0, location: { col: 92, row: 10, radius: 2 } },
-      { type: 'investigate_clue', targetId: 'clue_sprite_3', targetName: '树洞里的铃声', required: 1, current: 0, location: { col: 100, row: 22, radius: 2 } },
-      { type: 'investigate_clue', targetId: 'clue_sprite_4', targetName: '池边的小脚印', required: 1, current: 0, location: { col: 86, row: 28, radius: 2 } },
+      { type: 'investigate_clue', targetId: 'clue_rf_lantern_1', targetName: '燃着残烛的坟', required: 1, current: 0, location: { col: 78, row: 12, radius: 2 } },
+      { type: 'investigate_clue', targetId: 'clue_rf_lantern_2', targetName: '冷灯边的坟', required: 1, current: 0, location: { col: 92, row: 10, radius: 2 } },
+      { type: 'investigate_clue', targetId: 'clue_rf_lantern_3', targetName: '描过名字的坟', required: 1, current: 0, location: { col: 100, row: 22, radius: 2 } },
+      { type: 'investigate_clue', targetId: 'clue_rf_lantern_4', targetName: '灯停下的坟', required: 1, current: 0, location: { col: 86, row: 28, radius: 2 } },
     ],
-    rewards: { exp: 220, gold: 50, petReward: 'pet_sprite', embers: 2 },
+    // embers: the side default 1 + 2 (chapter1.md §6 S5 / §7).
+    rewards: { exp: 220, gold: 50, petReward: 'pet_sprite', embers: 3 },
     level: 3,
     questArea: { col: 88, row: 18, radius: 14 },
+    progressKey: 'data.quest.q_rf_lanternwisp.progress',
   },
 
   // ─── Ley-beast quests (灵兽): each chapter's beasts are met through a story beat ───
@@ -872,22 +928,26 @@ export const AllQuests: QuestDefinition[] = [
   // ═══════════════════════════════════════
   // Escort Quests (护送)
   // ═══════════════════════════════════════
+  // S6 (slot q_escort_merchant_plains), Brother Aldwin: Old Bern and his barrow of named dead, from (30,40) to the last
+  // hallowed ground by the black lake (50,90). The escort look is the slot's (npc_escort_traveling_merchant), re-dressed
+  // by the art lane (implementation-plan.md A9); its HP and chip rules are today's (level x 20 + 100 = 200).
   {
-    id: 'q_escort_merchant_plains',
-    name: '护送商人',
-    description: '一位商人需要穿越翡翠平原前往南方营地，但路途上满是哥布林。护送他安全抵达目的地。',
+    id: 'q_rf_hallowed_ground',
+    name: '最后的圣地',
+    description: '掘墓人伯恩推着一车有名字的死人去最后的圣地。天黑前入了土，他们才不会自己走。护着他。',
     zone: 'emerald_plains',
     type: 'escort',
     category: 'side',
     objectives: [
-      { type: 'escort', targetId: 'escort_merchant', targetName: '护送商人到南方营地', required: 1, current: 0, location: { col: 50, row: 90, radius: 5 } },
+      { type: 'escort', targetId: 'escort_rf_bern', targetName: '护送伯恩去最后的圣地', required: 1, current: 0, location: { col: 50, row: 90, radius: 5 } },
     ],
     rewards: { exp: 350, gold: 60, items: ['c_hp_potion_m'] },
-    prereqQuests: ['q_kill_goblins'],
+    prereqQuests: ['q_rf_gnawed_field'],
     level: 5,
     questArea: { col: 50, row: 90, radius: 8 },
-    escortNpc: { name: '旅行商人', spriteKey: 'npc_escort_traveling_merchant', startCol: 30, startRow: 40, destCol: 50, destRow: 90 },
+    escortNpc: { name: '掘墓人伯恩', spriteKey: 'npc_escort_traveling_merchant', startCol: 30, startRow: 40, destCol: 50, destRow: 90 },
     reacceptable: true,
+    progressKey: 'data.quest.q_rf_hallowed_ground.progress',
   },
   {
     id: 'q_escort_survivor_desert',

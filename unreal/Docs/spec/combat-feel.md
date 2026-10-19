@@ -3,6 +3,11 @@
 Area owner: combat. Web source of truth: branch `claude/unreal-rebuild`, TypeScript under `src/`.
 Target: portable C++20 core (`AbyssCore`, no UE types, no exceptions/RTTI) + thin UE5 module (render/input/UI).
 
+> **Dark remake (DECISIONS DR8 note, 1B review):** §10.1's swing is the rig preset's while the shipped clip's Contact is
+> on or before the rig's frame beat; a later Contact (an authored long swing, e.g. the Unburied footman's 600 ms chop in
+> a 1080 ms clip) stretches it in proportion, `max(attackDuration, min(contact × attackDuration / frameContact, the
+> clip's length))`, continuously (no threshold). Every web-timed clip and every hero keeps the preset exactly.
+
 This document describes **what the web game does today**, precisely enough to re-implement it without
 reading the TypeScript. Where the web behaviour is a bug or a 2D artefact, it is called out as a
 **QUIRK** with a recommendation; the default is *keep the behaviour* unless the recommendation says

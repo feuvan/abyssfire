@@ -34,15 +34,36 @@ empty: the web game is read-only for the remake.
 | `loreCollectibles.ts` | lore entries | `src/data/loreCollectibles.ts` |
 | `story/script.ts` (+ `story/types.ts`) | prologue, chapter cards, cutscenes, boss intros, triggers | `src/data/story/script.ts` |
 | `homestead.ts` | Ember Tower data (unlock quests, buildings, ...) | `src/data/homestead.ts` |
-| `config.ts` | chapter config: story boss (M7), chapter-complete quest, finale cutscene, final boss, sealed gate (W7) | ids the exporter used to hard-code (a changed value is recorded as `remake.replaced: ["config.<key>"]`) |
+| `config.ts` | chapter config: story boss (M7), chapter-complete quest, finale cutscene, final boss, sealed gate (W7), `contentUpgrade` (beats an older save replays, DR3) | ids the exporter used to hard-code (a changed value is recorded as `remake.replaced: ["config.<key>"]`) |
 | `world.ts` | `REMAKE_OVERRIDES` for tables inside web system files (below) | achievements, events, moods, affixes, terrain |
 | `types.ts` | web types re-exported + remake-only fields (below) | — |
 | `i18n/zh-CN.ts`, `i18n/en.ts` | remake strings (below) | merged over the web tables |
+| `i18n/ch1World.ts` | Chapter 1 world strings as `[zh-CN, en]` pairs (zone, roster, mini-boss lines, hunts, boss intro, lore, hidden area, story decorations, the sealed Pit, new NPCs, achievements, events, elite affixes) | spread into both locales |
+| `i18n/ch1Quests.ts`, `i18n/ch1Npcs.ts`, `i18n/ch1Story.ts` | Chapter 1 narrative strings, same form: quests (name, quest-log line, offer, progress, turn-in), targets, clue notes, choice labels, the escort and the gate; the re-cast NPCs, their quest-gated lines (Wave 2), the Captain's tree, the Lanternwisp; prologue, chapter card, cutscenes | spread into both locales |
+| `autopilot/ch1.ts` (+ `autopilot/types.ts`) | the bot's Chapter 1 route: checkpoints, notes and steps (talk, dialogue tree, quest card, shop, gather, hunt, boss by role, clues, explore, escort, defend, walk, portal, equip) | new: `autopilot_routes.json` (no web module) |
 | `tsconfig.json` | editor / `tsc -p` project (`@web/*` paths) | — |
 
-Added by later packages (implementation-plan.md §2.1, §9): `setPieces.ts` and `autopilot/ch1.ts` with their exporter
-tables (`set_pieces.json`, `autopilot_routes.json`) in the content switch (C1), `maps/sub_rf_pit.ts` in Wave 3, and the
-per-area string files (`i18n/ch1.ts`, `story.ts`, `affixes.ts`, ...) as the tables grow.
+Added by later packages (implementation-plan.md §2.1, §9): `setPieces.ts` with its exporter table (`set_pieces.json`)
+and `maps/sub_rf_pit.ts` in Wave 3.
+
+**The bot's route (package 1B part 3, implementation-plan.md §6).** `autopilot/ch1.ts` is the script the headless
+playthrough test and the in-game autotest play (`abyss::AutoPilot` interprets it; `playthrough_test.cpp` checks the
+state at its checkpoints). It is content: the exporter checks every id it names against the exported quests, NPCs,
+dialogue trees, monsters, hunts, mini-boss and story boss, every tile against the map and the clue / explore circles,
+and fails when a quest of the route's zone is never accepted by a step, so a content change that strands the bot fails
+the export. A quest, NPC or tree change usually needs a route change and a re-pin of `playthrough_test.cpp`.
+
+**Chapter 1 world data (package 1B part 1, DECISIONS DR3 / DR4 / DR5 *as built*).** The roster, mini-boss, hunts,
+story boss, spawn table, lore and echoes, hidden area, story decorations, sealed Pit entrance, camp lists (two new NPC
+records), achievements, event pool and world overrides are the remake's; the quest slots keep their web ids and text
+and only point into the new world (kill / drop targets, hunts, the M5 defend target of the one golden re-baseline).
+
+**Chapter 1 narrative (package 1B part 2, DECISIONS DR3 *narrative as built*).** The eleven quests carry their remake
+ids (`q_rf_*`) in their web slots, with every generator input of the slot kept, a `progressKey` each and labelled choices
+on S3 / S4; the kept NPC role keys are re-cast for Knellwatch (`npcs.ts`: names, one Wave 1 line each, the quest lists
+per giver), the Captain's 13-node tree replaces the elder's (`dialogueTrees.ts`), and the prologue, chapter card,
+`cs_rf_*` cutscenes and their triggers replace the web's Chapter 1 beats (`story/script.ts`). `config.ts` and
+`homestead.ts` point the story boss, the finale and the tower wings at the new quests. Chapters 2-5 stay as copied.
 
 ## Snapshots (Phase 0)
 
@@ -84,7 +105,9 @@ Tables that live inside web system files (code, so not redirected) are overridde
 = `{replace?: {key: entry}, add?: {key: entry}, remove?: [key]}`. `replace` keeps the entry's slot (in id-keyed lists the
 new entry may carry a new id: a rename in place), `add` appends, `remove` drops. Entries are replaced whole (spread the
 web entry from `@web/...` to change one field). Tables: `achievements`, `randomEvents` (per zone; also feeds the
-wandering merchant), `zoneMoods.{themeByZone, moods, palettes, weather, weatherByTheme, campThemes, fog}`,
+wandering merchant), `zoneMoods.{themeByZone, moods, palettes, weather, weatherByTheme, campThemes, fog, lightScale,
+moodWeather}` (the last two are remake tables with no web entries: R18 light-scale overrides and the weather a mood
+brings, per mood theme, written to `zone_moods.json` `port`),
 `eliteAffixes.{definitions, zoneAffixCounts}`, `terrainStyles`. A table name the exporter does not know, a `replace` /
 `remove` key the web table lacks or an `add` key it already has fails the export. Each change is recorded in the written
 file's `remake` block (`"replaced": ["achievements.ach_kill_slime"]`).
@@ -100,6 +123,14 @@ may be authored before the core reads it: the exporter writes a remake-only fiel
 withheld. A remake-only *value* (objective type `clear_area`) fails the export until its feature lands. Authored monster
 `onHitStatus` / `projectileColor` replace the keyword rules in `derived` right away (the core already reads `derived`).
 
+Written now (the core's K1 hooks read them, DECISIONS DR8 *K1 as built*): quest `progressKey`, `rewards.choiceLabels`
+(one key per `choices` slot), `defendTarget.waves` (one `{monsterId, count}[]` per wave, exactly `totalWaves`) and
+`approachDeg` (tile-space degrees, 0 = +col, 90 = +row), map `subDungeonEntrances[].sealed` + `sealedTextKey` (both or
+neither), and the `anim` of a `focus` step on a `{monster}` target (`roar` / `taunt`). The export checks those shapes;
+the core checks that every key exists in zh-CN and en and every wave monster exists. Since 1B part 1 also map
+`presentationTheme` and `regions` (`MapDef::presentationTheme` / `regions`; each must name a `zone_moods.json` mood,
+checked by the export and by DataStore). Still withheld: monster `family` / `damageType` and every Wave 2 / 3 field.
+
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,
 quest (and its `rewards`, `defendTarget`, `objectives[]`), map (`subDungeonEntrances[]`, `spawns[]`), NPC or cutscene
@@ -112,12 +143,28 @@ field: type it here, add it to the level's `remake` list in `remakeKeys.ts` (tsc
 Per locale the exporter merges: web table → the exporter's port strings → `i18n/<locale>.ts` (the remake wins; a replaced
 key keeps its position, a new key is appended; zh-TW is converted from the merged zh-CN). Rules, enforced by the export:
 
+* zh-TW of a key defined here: the web converter misses many characters, so `i18n/zhTWExtra.ts` supplements it
+  (`ZH_TW_PHRASES` for the characters whose Traditional form depends on the word: 皇后 / 之后, 一只 / 只是, 石台, 公里,
+  干了的, 头发, 关系, ...; `ZH_TW_CHARS` for the characters the web map lacks; Taiwan forms). Web keys are not touched.
+  `content_ch1_test` "Chapter 1 zh-TW" fails when a zh-TW string Chapter 1 shows keeps a Simplified-only character
+  (`CoreTests/golden/zh_simplified_only.txt`): add the character (and a phrase when its form depends on the word). A
+  name with 后 里 于 余 采 尸 叶 涂 needs a phrase entry keeping it.
+
 * `zh-CN.ts` and `en.ts` define the same keys.
 * Orphan sweep: in the content namespaces (`data.quest.`, `data.questTarget.`, `data.questClue.`, `data.questChoice.`,
   `data.monster.`, `data.npc.`, `data.dialogue.<tree>.<node>`, `data.miniBossDialogue.<monster>.<node>`, `data.lore.`,
   `data.storyDeco.`, `data.hiddenArea.`, `data.escortNpc.`, `data.defendTarget.`, `data.achievement.`,
-  `story.<cutsceneId>.` (cutscene ids start with `cs_`), `story.boss.`) a web key whose id no exported table references
-  any more is dropped and listed in the string tables' `remake.swept`; a remake key that would be swept fails (typo).
+  `story.<cutsceneId>.` (cutscene ids start with `cs_`), `story.boss.`, `story.prologue/epilogue/credits.<n>.<field>`)
+  a web key whose id no exported table references any more is dropped and listed in the string tables'
+  `remake.swept`, and so is an NPC line `data.npc.<id>.dialogue.<n>` past the end of the NPC's exported `dialogue`; a
+  remake key that would be swept fails (typo, or a line the NPC record does not have).
 * Parity: every key the exported tables reference (key-shaped strings such as `progressKey`, `nameKey`, story step
   text, plus each namespace's required keys) exists in zh-CN and en.
 * zh-CN first, then en; player-facing text follows the story bible's voice guide.
+
+**1B review fixes (2026-10, pending review).** Chapter 1 exp: regulars round(0.75 × monsters.md §2.0), Valdras 110,
+Hungerbell hp ×2 / dmg ×1.0 (DR9 band 12-14); M5 / S5 embers 7 / 3 (chapter1.md §7: 23 in all); `story/script.ts`
+kill triggers of the Corpseherd and Valdras carry `whileQuest` (`story/types.ts` `StoryTrigger`); `world.ts` re-voices
+the achievements and three affix names and gives the Red Field's rescue its guards (`rescueMonsters`,
+`RemakeZoneEventData`); `i18n/ch1World.ts` adds the jukebox rows, the zone's own event lines and the parked lines (Old
+Bern, hub barks). The amendments to the design are listed in `Docs/dark-remake/chapter1.md` §19.

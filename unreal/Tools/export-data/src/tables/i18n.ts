@@ -10,12 +10,16 @@
  * wins; a replaced key keeps its position, a new key is appended). Then the orphan sweep drops the content-namespace keys
  * whose id no exported table references any more, and the parity checks fail the export when a key the tables reference
  * is missing in zh-CN or en. This module runs last (main.ts) and reads the other tables.
+ *
+ * zh-TW of a remake key goes through remakeToTraditional (GameData/i18n/zhTWExtra.ts: context phrases, the web
+ * converter, then the supplement's characters); every other key keeps convertToTraditional's output byte for byte.
  */
 import zhCN from '../../../../../src/i18n/locales/zh-CN';
 import en from '../../../../../src/i18n/locales/en';
 import { convertToTraditional } from '../../../../../src/i18n/converter';
 import remakeZhCN from '../../../../GameData/i18n/zh-CN';
 import remakeEn from '../../../../GameData/i18n/en';
+import { ZH_TW_CHARS, ZH_TW_PHRASES } from '../../../../GameData/i18n/zhTWExtra';
 import { assert, type TableResult } from '../util';
 import { noteExtra } from '../remake';
 
@@ -146,6 +150,44 @@ const PORT_STRINGS: Record<string, { 'zh-CN': string; en: string; decision: stri
 };
 
 const REMAKE_SOURCE = { zhCN: 'unreal/GameData/i18n/zh-CN.ts', en: 'unreal/GameData/i18n/en.ts' };
+const ZH_TW_SOURCE = 'unreal/GameData/i18n/zhTWExtra.ts';
+
+// ── zh-TW of the remake's strings (final review R4) ─────────────────────────
+
+const PHRASES_LONGEST_FIRST = Object.keys(ZH_TW_PHRASES).sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0));
+const PHRASE_LENGTHS = [...new Set(PHRASES_LONGEST_FIRST.map(p => p.length))];
+
+/** The web converter, then the supplement's characters for what it left Simplified. */
+function convertSegment(text: string): string {
+  let out = '';
+  for (const ch of convertToTraditional(text)) out += ZH_TW_CHARS[ch] ?? ch;
+  return out;
+}
+
+/**
+ * zh-CN -> zh-TW for a GameData string: left to right, a ZH_TW_PHRASES key (longest first) is replaced by its value as
+ * is; the text between phrases goes through convertSegment.
+ */
+function remakeToTraditional(text: string): string {
+  let out = '';
+  let pending = '';
+  for (let i = 0; i < text.length;) {
+    let hit: string | undefined;
+    for (const len of PHRASE_LENGTHS) {
+      const cand = text.slice(i, i + len);
+      if (cand.length === len && cand in ZH_TW_PHRASES) { hit = cand; break; }
+    }
+    if (hit !== undefined) {
+      out += convertSegment(pending) + ZH_TW_PHRASES[hit];
+      pending = '';
+      i += hit.length;
+    } else {
+      pending += text[i];
+      i += 1;
+    }
+  }
+  return out + convertSegment(pending);
+}
 
 // ── Orphan sweep ────────────────────────────────────────────────────────────
 
@@ -213,7 +255,29 @@ const CONTENT_NAMESPACES: readonly ContentNamespace[] = [
     required: t => list(t('achievements.json').achievements).flatMap(a => [`data.achievement.${a.id}.name`, `data.achievement.${a.id}.desc`]) },
   { prefix: 'story.', segments: 1, applies: id => id.startsWith('cs_'), ids: t => Object.keys(obj(t('story.json').cutscenes)) },
   { prefix: 'story.boss.', segments: 1, ids: t => list(t('story.json').bossIntros).map(b => String(b.monsterId)) },
+  // Story sequences: a slide key (`story.<seq>.<n>.<field>`) the exported sequence no longer uses is dropped (the
+  // remake's prologue has no heading lines, so the web's `story.prologue.<n>.heading` go).
+  ...(['prologue', 'epilogue', 'credits'] as const).map((seq): ContentNamespace => ({
+    prefix: `story.${seq}.`, segments: 2, ids: t => slideKeys(t, seq).map(k => k.slice(`story.${seq}.`.length)) })),
 ];
+
+/** The i18n keys the slides of story.json sequence `seq` reference. */
+function slideKeys(t: Lookup, seq: string): string[] {
+  const slides = list(obj(t('story.json'))[seq]?.slides);
+  return slides.flatMap(s => Object.values(s).filter((v): v is string => typeof v === 'string' && v.startsWith(`story.${seq}.`)));
+}
+
+/**
+ * NPC lines (`data.npc.<id>.dialogue.<n>`): the game reads lines 0..n-1 of the NPC's exported `dialogue` (QuestWorld logs
+ * line 0, the linear panel shows them all), so a line at or past the end of a known NPC's list is an orphan: the web's
+ * extra lines of an NPC the remake re-voiced with fewer lines (chapter1.md §3).
+ */
+function npcLineOrphan(t: Lookup, key: string): boolean {
+  const m = /^data\.npc\.([^.]+)\.dialogue\.(\d+)$/.exec(key);
+  if (!m) return false;
+  const npc = obj(t('npcs.json').npcs)[m[1]];
+  return npc !== undefined && Number(m[2]) >= (Array.isArray(npc.dialogue) ? npc.dialogue.length : 0);
+}
 
 /**
  * Keys in the content namespaces that no exported table referenced before the remake either (web i18n debt: objective
@@ -255,6 +319,9 @@ function collectKeyRefs(v: unknown, roots: ReadonlySet<string>, out: Map<string,
 const fewKeys = (keys: readonly string[]) => `${keys.slice(0, 12).join(', ')}${keys.length > 12 ? `, … (${keys.length})` : ''}`;
 
 export function exportI18n(_ctx: unknown, tables: readonly TableResult[]): TableResult[] {
+  for (const k of Object.keys(ZH_TW_CHARS)) {
+    assert(convertToTraditional(k) === k, `${ZH_TW_SOURCE}: '${k}' is in the web converter's map already — remove it from ZH_TW_CHARS`);
+  }
   for (const k of Object.keys(PORT_STRINGS)) {
     assert(!(k in zhCN) && !(k in en), `PORT_STRINGS key ${k} now exists in the web tables — remove it from the exporter`);
   }
@@ -296,7 +363,7 @@ export function exportI18n(_ctx: unknown, tables: readonly TableResult[]): Table
   const orphans: string[] = [];
   for (const k of new Set([...Object.keys(zh), ...Object.keys(enAll)])) {
     const c = contentId(k);
-    if (c && !referenced.get(c.ns)!.has(c.id)) orphans.push(k);
+    if ((c && !referenced.get(c.ns)!.has(c.id)) || npcLineOrphan(lookup, k)) orphans.push(k);
   }
   const orphanSet = new Set(orphans);
   for (const k of WEB_I18N_DEBT) {
@@ -337,7 +404,16 @@ export function exportI18n(_ctx: unknown, tables: readonly TableResult[]): Table
   const portKeys = Object.fromEntries(Object.entries(PORT_STRINGS).filter(([k]) => !(k in remakeZhCN) && k in zh)
     .map(([k, v]) => [k, v.decision]));
   const zhTW: Record<string, string> = {};
-  for (const [k, v] of Object.entries(zh)) zhTW[k] = convertToTraditional(v);
+  let supplemented = 0;
+  for (const [k, v] of Object.entries(zh)) {
+    zhTW[k] = k in remakeZhCN ? remakeToTraditional(v) : convertToTraditional(v);
+    if (zhTW[k] !== convertToTraditional(v)) supplemented += 1;
+  }
+  if (remakeKeys.length) {
+    noteExtra('i18n_zh-TW.json', ZH_TW_SOURCE, 'zhTWSupplement',
+      { keys: remakeKeys.length, changed: supplemented, chars: Object.keys(ZH_TW_CHARS).length,
+        phrases: PHRASES_LONGEST_FIRST.length });
+  }
   const zhKeys = new Set(Object.keys(zh));
   const enKeys = new Set(Object.keys(enAll));
   const missingInEn = [...zhKeys].filter(k => !enKeys.has(k));

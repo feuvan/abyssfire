@@ -6,33 +6,34 @@
   "maps": {
     "emerald_plains": {
       "id": "emerald_plains",
-      "name": "翡翠平原",
+      "name": "赤幡原",
       "cols": 120,
       "rows": 120,
       "theme": "plains",
       "seed": 12345,
+      "presentationTheme": "march",
       "spawns": [
-        {"col": 25, "row": 20, "monsterId": "slime_green", "count": 8},
-        {"col": 35, "row": 40, "monsterId": "goblin", "count": 6},
-        {"col": 20, "row": 45, "monsterId": "slime_green", "count": 5},
-        {"col": 85, "row": 18, "monsterId": "slime_green", "count": 6},
-        {"col": 95, "row": 35, "monsterId": "goblin", "count": 6},
-        {"col": 75, "row": 50, "monsterId": "goblin", "count": 4},
-        {"col": 30, "row": 80, "monsterId": "goblin", "count": 8},
-        {"col": 15, "row": 95, "monsterId": "goblin_chief", "count": 1},
-        {"col": 80, "row": 75, "monsterId": "goblin", "count": 5},
-        {"col": 95, "row": 90, "monsterId": "goblin", "count": 6}
+        {"col": 25, "row": 20, "monsterId": "risen_footman", "count": 8},
+        {"col": 35, "row": 40, "monsterId": "gravegnawer", "count": 8},
+        {"col": 20, "row": 45, "monsterId": "breachclot", "count": 7},
+        {"col": 85, "row": 18, "monsterId": "cinderbloat", "count": 6},
+        {"col": 95, "row": 35, "monsterId": "oath_zealot", "count": 5},
+        {"col": 75, "row": 50, "monsterId": "risen_arbalest", "count": 5},
+        {"col": 30, "row": 80, "monsterId": "risen_shieldbearer", "count": 6},
+        {"col": 15, "row": 95, "monsterId": "valdras", "count": 1},
+        {"col": 80, "row": 75, "monsterId": "deserter", "count": 6},
+        {"col": 95, "row": 90, "monsterId": "bonegorger", "count": 3}
       ],
       "camps": [
         {
           "col": 15,
           "row": 15,
-          "npcs": ["blacksmith", "merchant", "quest_elder", "stash"]
+          "npcs": ["blacksmith", "merchant", "quest_elder", "knell_chaplain", "stash"]
         },
         {
           "col": 95,
           "row": 100,
-          "npcs": ["merchant"]
+          "npcs": ["crow_trader"]
         }
       ],
       "playerStart": {"col": 15, "row": 22},
@@ -46,43 +47,57 @@
       ],
       "hiddenAreas": [
         {
-          "id": "hidden_ep_elven_cache",
-          "name": "精灵族秘密宝库",
+          "id": "hidden_rf_paymaster",
+          "name": "军饷车",
           "col": 108,
           "row": 108,
           "radius": 6,
-          "discoveryText": "你发现了一处被草丛掩盖的精灵族遗迹！这里似乎是远古精灵用来储存珍贵物品的秘密宝库。",
+          "discoveryText": "车夫还被铁链锁在钱箱上。没有人来救他，也没有人来拿钱。",
           "rewards": [
             {"type": "chest", "value": "rare", "col": 108, "row": 108},
             {"type": "gold_pile", "value": "200", "col": 110, "row": 107}
           ]
         }
       ],
+      "subDungeonEntrances": [
+        {
+          "id": "entrance_rf_pit",
+          "name": "信者之坑",
+          "col": 17,
+          "row": 26,
+          "targetSubDungeon": "sub_rf_pit",
+          "sealed": true,
+          "sealedTextKey": "data.subDungeonSealed.entrance_rf_pit"
+        }
+      ],
       "storyDecorations": [
         {
-          "id": "story_ep_ruined_tower",
-          "name": "倒塌的精灵塔",
-          "description": "这座塔楼曾是精灵族的瞭望塔，如今只剩残垣断壁。石块上仍可辨认出精灵族的蔓藤纹饰，诉说着远古文明的辉煌。",
+          "id": "story_rf_belfry",
+          "name": "灰麦村钟楼",
+          "description": "灰麦村的钟裂成两半，陷在泥里。钟锤不见了。",
           "col": 55,
           "row": 45,
           "spriteType": "ruins"
         },
         {
-          "id": "story_ep_goblin_totem",
-          "name": "哥布林图腾柱",
-          "description": "一根由杂乱骨头和兽皮拼接而成的图腾柱，散发着淡淡的腥臭。这是哥布林部落的领地标记，预示着前方有更强大的哥布林在等待。",
+          "id": "story_rf_red_banner",
+          "name": "赤幡",
+          "description": "一面红旗插在盾牌堆成的土丘上。每一面盾，都朝着丧钟堡。",
           "col": 40,
           "row": 70,
           "spriteType": "war_banner"
         },
         {
-          "id": "story_ep_ancient_well",
-          "name": "干涸的古井",
-          "description": "一口被青苔覆盖的石砌古井，井水早已干涸。井壁上刻着精灵文字——这曾是灵脉能量涌出的泉眼，如今灵脉断裂，泉水不再。",
+          "id": "story_rf_penitents_altar",
+          "name": "赎罪坛",
+          "description": "石盆里的沟槽一路斜向裂口。槽里积着灰，和干了的黑。",
           "col": 88,
           "row": 55,
           "spriteType": "broken_altar"
         }
+      ],
+      "regions": [
+        {"id": "breach_rim", "col": 15, "row": 95, "radius": 16, "mood": "breach_rim"}
       ],
       "port": {
         "campNpcsAdded": [
@@ -102,13 +117,15 @@
           {"col": 105, "row": 15, "margin": 2},
           {"col": 15, "row": 108, "margin": 2},
           {"col": 85, "row": 80, "margin": 2},
+          {"col": 29, "row": 15, "margin": 2},
+          {"col": 38, "row": 47, "margin": 2},
+          {"col": 20, "row": 92, "margin": 2},
           {"col": 60, "row": 55, "margin": 5},
           {"col": 32, "row": 12, "margin": 4},
           {"col": 34, "row": 40, "margin": 4},
           {"col": 40, "row": 52, "margin": 3},
           {"col": 25, "row": 65, "margin": 4},
-          {"col": 65, "row": 30, "margin": 3},
-          {"col": 50, "row": 55, "margin": 3},
+          {"col": 10, "row": 32, "margin": 6},
           {"col": 25, "row": 20, "margin": 4},
           {"col": 22, "row": 26, "margin": 3},
           {"col": 20, "row": 25, "margin": 4},
@@ -1069,5 +1086,19 @@
   "subDungeonsByZone": {
     "anvil_mountains": ["sub_dwarf_mine"],
     "abyss_rift": ["sub_demon_altar"]
+  },
+  "remake": {
+    "source": [
+      "unreal/GameData/loreCollectibles.ts",
+      "unreal/GameData/maps/emerald_plains.ts",
+      "unreal/GameData/miniBosses.ts",
+      "unreal/GameData/quests/all_quests.ts"
+    ],
+    "modules": {
+      "src/data/loreCollectibles.ts": "unreal/GameData/loreCollectibles.ts",
+      "src/data/maps/emerald_plains.ts": "unreal/GameData/maps/emerald_plains.ts",
+      "src/data/miniBosses.ts": "unreal/GameData/miniBosses.ts",
+      "src/data/quests/all_quests.ts": "unreal/GameData/quests/all_quests.ts"
+    }
   }
 }

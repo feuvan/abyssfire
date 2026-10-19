@@ -18,22 +18,23 @@
   ],
   "zones": {
     "emerald_plains": {
-      "ambushMonsters": ["slime_green", "goblin"],
+      "ambushMonsters": ["risen_footman", "gravegnawer"],
       "ambushCount": [3, 5],
       "merchantItems": ["iron_sword", "leather_armor", "hp_potion", "mp_potion"],
       "puzzleDescriptions": [
         {
-          "prompt": "石柱上的符文需要按正确顺序触摸。",
-          "solution": "按下发光的符文",
-          "reward": "获得了经验和金币!",
+          "prompt": "五口小钟挂在断桩上。钟舌上刻着数，从一到五。",
+          "solution": "照钟舌上的数，从一敲到五",
+          "reward": "五口钟依次响过。断桩下压着一个油布包。",
           "rewardGold": 50,
           "rewardExp": 30
         }
       ],
       "puzzleSpriteKey": "decor_event_puzzle_rune_pillar",
-      "rescueNpcName": "迷路的旅人",
+      "rescueNpcName": "被缚的朝圣者",
       "rescueNpcSpriteKey": "npc_rescue_lost_traveler",
-      "rescueReward": {"gold": 30, "exp": 25}
+      "rescueReward": {"gold": 30, "exp": 25},
+      "rescueMonsters": ["oath_zealot"]
     },
     "twilight_forest": {
       "ambushMonsters": ["wolf", "bandit"],
@@ -113,5 +114,9 @@
     "message": "sys.event.msg.<type>",
     "rescue": "sys.event.rescue.<zone>",
     "puzzle": "sys.event.puzzle.<zone>.{prompt,solution,reward}"
+  },
+  "remake": {
+    "source": ["unreal/GameData/world.ts"],
+    "replaced": ["randomEvents.emerald_plains"]
   }
 }

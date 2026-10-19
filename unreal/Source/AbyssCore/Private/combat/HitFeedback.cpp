@@ -3,6 +3,7 @@
 
 #include "abyss/combat/HitFeedback.h"
 
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
 #include <string>
@@ -46,11 +47,22 @@ ActionTiming ComputeAttackTiming(const AnimTimingTable& t, const AssetManifest& 
   const double frameContact = t.Contact(rig).frameContactMs;
   double contact1 = frameContact;
   if (c != nullptr && c->hasContactMs && !(std::fabs(c->contactMs - frameContact) <= 0.5)) contact1 = c->contactMs;
+  // The swing grows with a late Contact, continuously (monsters.md 1.3: the contact beat is the clip's Contact notify;
+  // the Unburied swing long, e.g. a 600 ms chop in a 1080 ms clip). It keeps the preset's contact share of the swing
+  // (contact1 x attackDuration / frameContact), never below the preset and never past the shipped clip's own length
+  // when that ends after the contact. A clip on the web beat (every web-timed clip and hero) or earlier keeps the
+  // preset's swing exactly; there is no threshold, so a re-timed Contact moves the swing by a proportional amount.
+  double swingMs = cfg.attackDuration;
+  if (frameContact > 0 && contact1 > frameContact) {
+    double want = contact1 * cfg.attackDuration / frameContact;
+    if (c != nullptr && c->lengthMs > contact1) want = (std::min)(want, c->lengthMs);
+    swingMs = (std::max)(swingMs, want);
+  }
   ActionTiming a;
-  a.speed = AttackSpeedScale(t, cfg.attackDuration, attackIntervalMs);
+  a.speed = AttackSpeedScale(t, swingMs, attackIntervalMs);
   a.contactMs = JsRound(contact1 * a.speed);
   a.windupMs = a.contactMs * t.attackWindupOfContact;
-  a.durationMs = cfg.attackDuration * a.speed;
+  a.durationMs = swingMs * a.speed;
   a.playRate = a.speed > 0 ? 1.0 / a.speed : 1.0;
   return a;
 }

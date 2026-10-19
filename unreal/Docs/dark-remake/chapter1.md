@@ -782,3 +782,26 @@ Breach Rim; the Rim's regulars do not respawn while Valdras lives. `emerald_plai
 | `data.escortNpc.rf_hallowed_ground`, `data.defendTarget.rf_last_toll` | 掘墓人伯恩 / Old Bern; 埋骨门 / the Boneyard Gate |
 | `data.randomEvent.<type>.*`, `data.achievement.<id>.*`, `data.affix.<id>` | §13, §14, monsters.md §3 |
 | `story.prologue.<n>.*`, `story.chapter.emerald_plains.*`, `story.<cutsceneId>.<step>`, `story.boss.valdras.name / .epithet` | §8 |
+
+## 19. Amendments as built (1B review, 2026-10, pending review)
+
+The data follows this document except where listed here (DECISIONS DR3 / DR5 / DR9 / M7 record the same changes).
+
+| Where | As built | Why |
+|---|---|---|
+| §5 M2 Hunt | `hunt_hungerbell` hp ×2, dmg ×1.0 (420 HP, 17 damage per 1.7 s; exp stays 3 × base) | M2 is the Lv 3 quest; ×3 / ×1.3 made it the hardest elite before Valdras for a Lv 4-5 hero |
+| §5-6 exp, §11 Valdras | every regular gives round(0.75 × monsters.md §2.0 Exp); Valdras 110 (was 220); quest rewards unchanged | DR9's band (Lv 12-14 at the end of the chapter): with §2.0's exp a full run ended at Lv 14-15 |
+| §6 S1 complete | the Captain's line 「玛勒说，血里有声音。……别问我是谁的。」 / "Marl says the blood has voices in it. ...Don't ask me whose." | the Captain turns S1 in; Marl's line 「血里有声音……」 waits for K6 as `data.npc.plains_herbalist.after.q_rf_black_blood` |
+| §6 S5 complete | 「是佩尔的灯火。收尸队里最小的那个，灯是他提的。它愿意跟你，就带它走吧。」 / "That's Pell's light. The youngest of the burial detail; he carried the lantern. ..." | the detail's one lantern lies dark in the trench (M1, `lore_rf_echo_01`); what walks the Weeping Ditch is its light (story-bible §8-9) |
+| §12 `lore_rf_echo_01` | 「……灯已经灭了」 / "the lantern has gone out" (was 早灭了 / long out) | M1: it stopped moving an hour ago |
+| §12 `story_rf_belfry` | en "Ashwheat's Broken Belfry" | "Fallen" is on story-bible §12's never-use list |
+| §7 Embers | data now matches the 23: M5 `embers: 7`, S5 `embers: 3` (`embers` replaces the default) | the data had 5 / 2 (total 20) |
+| §13 Events | per-zone lines (`sys.event.msg.<type>.emerald_plains`, `zone.event.merchant.announce.emerald_plains` with the Relic Peddler's line, `zone.event.rescue.complete.emerald_plains` with the Bound Pilgrim's); the pilgrim's guards are `oath_zealot` (`rescueMonsters`) | the core logs a zone's own variant when it exists; the handbell prop and the pilgrim's look still use the plains art ids until the art lane ships them |
+| §3 / §2 lines | Old Bern's line `data.escortNpc.rf_hallowed_ground.line` and the hub barks `data.zoneBark.emerald_plains.0/1` are authored and parked for K6 / U4 (no Wave 1 reader) | |
+| monsters.md §3 | elite affixes 焦灼 Scorched (fire_enhanced), 蛮力 Brutish (extra_strong), 哀咒 Dirgecursed (curse_aura) | 焚誓 / 赤誓 / 丧钟 are story terms (the Burned Oath, the Red-Oath, 丧钟堡) the elite label put before monster names |
+| §14 | every achievement re-voiced (e.g. 第一个名字 / The First Name, 十件差事 / Ten Errands; `ach_kill_demon_lord` neutral as 火的尽头 / The Fire's End until Chapter 5's pass) | the panel lists them all |
+| §8 triggers | `cs_rf_herd` / `cs_rf_marshal_falls` fire only while M3 / M4 is open (`whileQuest`); a Corpseherd or Valdras killed before its quest comes back on the accept (M7) | the climax beat plays on the kill that counts |
+| §8 epilogue slide 2 | 赤幡原 / The Red Field, re-voiced (the web's Emerald Plains slide) | the ending is Chapter 5's, but this slide is Chapter 1's land |
+| Jukebox | 赤幡原 · 探索 / 战斗, and 渊火 · 低语 / Abyssfire · The Whisper (the prologue's abyss slide) for the abyss_rift recording the prologue plays; the title-menu track keeps 渊火 · 序章 / Abyssfire · Prologue | the web plains names showed in the title menu; no two rows share a title |
+
+Still open from the review: 「那里的火，不要人偿。」 (cs_rf_finale.12, story-bible §8) reads as dropping 偿's object; the story owner decides (「不用拿命来换」 or keep).

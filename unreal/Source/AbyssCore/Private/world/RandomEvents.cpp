@@ -47,6 +47,15 @@ std::string RevPuzzleKey(const std::string& zoneId, int32_t puzzleIndex, const c
   return "sys.event.puzzle." + zoneId + "." + field;
 }
 
+// A zone's own variant of a shared event line (dark remake: the Red Field's events speak in its voice, chapter1.md 13):
+// `<base>.<zone>` when the zone has event data and the strings have that key, else `base` (a zone without event data
+// runs createEvent's fallbacks, so it keeps the shared lines too).
+std::string RevZoneKey(const DataStore& data, const std::string& base, const std::string& zoneId) {
+  if (data.World().randomEvents.ForZone(zoneId) == nullptr) return base;
+  std::string own = base + "." + zoneId;
+  return data.Strings().Has(own) ? own : base;
+}
+
 const char* RevPropArt(RandomEventType t, const ZoneEventDataDef* zd) {
   switch (t) {
     case RandomEventType::TreasureCache: return "decor_treasure_chest";
@@ -285,7 +294,8 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
       break;
   }
   // checkRandomEvents: the event message, RANDOM_EVENT_TRIGGERED.
-  ctx_.events.Log(MakeLoc("sys.event.msg." + std::string(EnumName(type))), LogType::Info);
+  const std::string message = "sys.event.msg." + std::string(EnumName(type));
+  ctx_.events.Log(MakeLoc(RevZoneKey(ctx_.data, message, zoneId)), LogType::Info);
   events_.push_back(std::move(e));
   ActiveRandomEvent& ev = events_.back();
   const std::vector<std::string> noIds;
@@ -333,7 +343,7 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
         ctx_.sys.shop->OpenWanderingMerchant(zd != nullptr ? zd->merchantItems : noIds, 1.0);
         ctx_.events.Sfx(ctx_.data.Audio().rules.shopOpen);  // SHOP_OPEN -> panel_open (audio 3.1)
       }
-      ctx_.events.Log(MakeLoc("zone.event.merchant.announce"), LogType::Info);
+      ctx_.events.Log(MakeLoc(RevZoneKey(ctx_.data, "zone.event.merchant.announce", zoneId)), LogType::Info);
       ctx_.events.Emit(EvRandomEvent{false, ev.type, ev.pos, zoneId, ev.prop});
       Resolve(ev);
       break;
@@ -341,8 +351,11 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
     case RandomEventType::Rescue: {
       const TilePos t = EventTile(ev.pos);
       SpawnProp(ev, t.Center(), RevPropArt(type, zd));
-      if (ctx_.sys.monsters != nullptr) {  // empty list -> the zone's first monster (as for the ambush)
-        ev.monsters = ctx_.sys.monsters->SpawnAmbush(ids, ev.monsterCount, t.Center(), kRevRescueMinDist,
+      // The zone's rescue guards when it names them (the Red Field's pilgrim is held by zealots), else its ambush list;
+      // empty -> the zone's first monster (as for the ambush).
+      const std::vector<std::string>& guards = zd != nullptr && !zd->rescueMonsters.empty() ? zd->rescueMonsters : ids;
+      if (ctx_.sys.monsters != nullptr) {
+        ev.monsters = ctx_.sys.monsters->SpawnAmbush(guards, ev.monsterCount, t.Center(), kRevRescueMinDist,
                                                      kRevRescueDistRange, MonsterRole::RescueSpawn);
       }
       ev.timer = ctx_.timers.Schedule(ctx_.Now() + kRevRescuePollMs, TimerOwner::World,
@@ -374,9 +387,8 @@ void RandomEventSystem::CompleteRescue(ActiveRandomEvent& e) {
   }
   const ZoneEventDataDef* zd = ctx_.data.World().randomEvents.ForZone(zoneId);
   const std::string npcKey = zd != nullptr ? "sys.event.rescue." + zoneId : std::string("sys.event.rescue.fallback");
-  ctx_.events.Log(MakeLoc("zone.event.rescue.complete", {KeyArg("npcName", npcKey),
-                                                         {"gold", ToStr(e.rewardGold)},
-                                                         {"exp", ToStr(e.rewardExp)}}),
+  ctx_.events.Log(MakeLoc(randomevents_impl::RevZoneKey(ctx_.data, "zone.event.rescue.complete", zoneId),
+                          {KeyArg("npcName", npcKey), {"gold", ToStr(e.rewardGold)}, {"exp", ToStr(e.rewardExp)}}),
                   LogType::Info);
   Resolve(e);
   DespawnEventProp(e, DespawnReason::Removed);

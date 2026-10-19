@@ -9,42 +9,12 @@
   "prologue": {
     "id": "prologue",
     "slides": [
-      {
-        "heading": "story.prologue.1.heading",
-        "title": "story.prologue.1.title",
-        "text": "story.prologue.1.text",
-        "mood": "embers"
-      },
-      {
-        "heading": "story.prologue.2.heading",
-        "title": "story.prologue.2.title",
-        "text": "story.prologue.2.text",
-        "mood": "night"
-      },
-      {
-        "heading": "story.prologue.3.heading",
-        "title": "story.prologue.3.title",
-        "text": "story.prologue.3.text",
-        "mood": "abyss"
-      },
-      {
-        "heading": "story.prologue.4.heading",
-        "title": "story.prologue.4.title",
-        "text": "story.prologue.4.text",
-        "mood": "abyss"
-      },
-      {
-        "heading": "story.prologue.5.heading",
-        "title": "story.prologue.5.title",
-        "text": "story.prologue.5.text",
-        "mood": "embers"
-      },
-      {
-        "heading": "story.prologue.6.heading",
-        "title": "story.prologue.6.title",
-        "text": "story.prologue.6.text",
-        "mood": "dawn"
-      }
+      {"title": "story.prologue.1.title", "text": "story.prologue.1.text", "mood": "embers"},
+      {"title": "story.prologue.2.title", "text": "story.prologue.2.text", "mood": "night"},
+      {"title": "story.prologue.3.title", "text": "story.prologue.3.text", "mood": "abyss"},
+      {"title": "story.prologue.4.title", "text": "story.prologue.4.text", "mood": "embers"},
+      {"title": "story.prologue.5.title", "text": "story.prologue.5.text", "mood": "abyss"},
+      {"title": "story.prologue.6.title", "text": "story.prologue.6.text", "mood": "night"}
     ]
   },
   "chapters": [
@@ -54,7 +24,7 @@
       "title": "story.chapter.emerald_plains.title",
       "subtitle": "story.chapter.emerald_plains.subtitle",
       "text": "story.chapter.emerald_plains.text",
-      "mood": "dawn"
+      "mood": "night"
     },
     {
       "zoneId": "twilight_forest",
@@ -90,8 +60,8 @@
     }
   ],
   "cutscenes": {
-    "cs_ep_mark": {
-      "id": "cs_ep_mark",
+    "cs_rf_brand": {
+      "id": "cs_rf_brand",
       "steps": [
         {
           "kind": "focus",
@@ -100,65 +70,117 @@
         {
           "kind": "say",
           "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_mark.2"
-        },
-        {"kind": "focus", "target": "player"},
-        {"kind": "narrate", "text": "story.cs_ep_mark.4"},
-        {
-          "kind": "say",
-          "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_mark.5"
+          "text": "story.cs_rf_brand.2"
         },
         {
           "kind": "say",
           "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_mark.6"
+          "text": "story.cs_rf_brand.3"
+        },
+        {"kind": "shake", "intensity": 0.003, "ms": 500},
+        {"kind": "narrate", "text": "story.cs_rf_brand.5"},
+        {
+          "kind": "focus",
+          "target": {"npc": "knell_chaplain"}
         },
         {
           "kind": "say",
-          "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_mark.7"
-        },
-        {"kind": "say", "speaker": "hero", "text": "story.cs_ep_mark.8"},
-        {
-          "kind": "say",
-          "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_mark.9"
+          "speaker": {"npc": "knell_chaplain"},
+          "text": "story.cs_rf_brand.7"
         },
         {
           "kind": "say",
+          "speaker": {"npc": "knell_chaplain"},
+          "text": "story.cs_rf_brand.8"
+        },
+        {
+          "kind": "say",
+          "speaker": {"npc": "knell_chaplain"},
+          "text": "story.cs_rf_brand.9"
+        },
+        {"kind": "say", "speaker": "hero", "text": "story.cs_rf_brand.10"},
+        {
+          "kind": "say",
           "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_mark.10"
+          "text": "story.cs_rf_brand.11"
         }
       ]
     },
-    "cs_ep_whisper": {
-      "id": "cs_ep_whisper",
+    "cs_rf_whisper": {
+      "id": "cs_rf_whisper",
+      "steps": [
+        {"kind": "flash", "color": 11546576, "ms": 400},
+        {"kind": "narrate", "text": "story.cs_rf_whisper.2"},
+        {
+          "kind": "focus",
+          "target": {"col": 15, "row": 95},
+          "ms": 1400
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "valdras"},
+          "text": "story.cs_rf_whisper.4"
+        },
+        {"kind": "narrate", "text": "story.cs_rf_whisper.5"},
+        {"kind": "shake", "intensity": 0.006, "ms": 400},
+        {"kind": "whisper", "text": "story.cs_rf_whisper.7"},
+        {"kind": "whisper", "text": "story.cs_rf_whisper.8"},
+        {"kind": "say", "speaker": "hero", "text": "story.cs_rf_whisper.9"},
+        {"kind": "whisper", "text": "story.cs_rf_whisper.10"},
+        {"kind": "narrate", "text": "story.cs_rf_whisper.11"}
+      ]
+    },
+    "cs_rf_herd": {
+      "id": "cs_rf_herd",
       "steps": [
         {
           "kind": "focus",
-          "target": {"col": 40, "row": 52},
-          "ms": 1400
+          "target": {"col": 60, "row": 55}
         },
-        {"kind": "narrate", "text": "story.cs_ep_whisper.2"},
-        {"kind": "flash", "color": 8011007, "ms": 400},
-        {"kind": "whisper", "text": "story.cs_ep_whisper.4"},
-        {"kind": "whisper", "text": "story.cs_ep_whisper.5"},
-        {"kind": "whisper", "text": "story.cs_ep_whisper.6"},
-        {"kind": "focus", "target": "player"},
-        {"kind": "say", "speaker": "hero", "text": "story.cs_ep_whisper.8"},
-        {"kind": "whisper", "text": "story.cs_ep_whisper.9"},
-        {"kind": "shake", "intensity": 0.006, "ms": 400},
-        {"kind": "narrate", "text": "story.cs_ep_whisper.11"}
+        {"kind": "narrate", "text": "story.cs_rf_herd.2"},
+        {"kind": "narrate", "text": "story.cs_rf_herd.3"},
+        {"kind": "narrate", "text": "story.cs_rf_herd.4"},
+        {"kind": "whisper", "text": "story.cs_rf_herd.5"}
       ]
     },
-    "cs_ep_finale": {
-      "id": "cs_ep_finale",
+    "cs_rf_marshal_falls": {
+      "id": "cs_rf_marshal_falls",
       "steps": [
-        {"kind": "focus", "target": "player"},
-        {"kind": "narrate", "text": "story.cs_ep_finale.2"},
-        {"kind": "flash", "color": 10354608, "ms": 500},
-        {"kind": "narrate", "text": "story.cs_ep_finale.4"},
+        {
+          "kind": "focus",
+          "target": {"col": 15, "row": 95}
+        },
+        {
+          "kind": "say",
+          "speaker": {"monster": "valdras"},
+          "text": "story.cs_rf_marshal_falls.2"
+        },
+        {"kind": "narrate", "text": "story.cs_rf_marshal_falls.3"},
+        {"kind": "whisper", "text": "story.cs_rf_marshal_falls.4"},
+        {"kind": "wait", "ms": 1200}
+      ]
+    },
+    "cs_rf_siege": {
+      "id": "cs_rf_siege",
+      "steps": [
+        {"kind": "shake", "intensity": 0.005, "ms": 500},
+        {"kind": "narrate", "text": "story.cs_rf_siege.2"},
+        {
+          "kind": "say",
+          "speaker": {"npc": "quest_elder"},
+          "text": "story.cs_rf_siege.3"
+        },
+        {
+          "kind": "focus",
+          "target": {"col": 10, "row": 32},
+          "ms": 1200
+        },
+        {"kind": "whisper", "text": "story.cs_rf_siege.5"}
+      ]
+    },
+    "cs_rf_finale": {
+      "id": "cs_rf_finale",
+      "steps": [
         {
           "kind": "focus",
           "target": {"npc": "quest_elder"}
@@ -166,21 +188,34 @@
         {
           "kind": "say",
           "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_finale.6"
+          "text": "story.cs_rf_finale.2"
         },
+        {"kind": "narrate", "text": "story.cs_rf_finale.3"},
+        {"kind": "flash", "color": 10354608, "ms": 500},
+        {"kind": "narrate", "text": "story.cs_rf_finale.5"},
+        {"kind": "title", "title": "story.cs_rf_finale.6.title", "subtitle": "story.cs_rf_finale.6.subtitle"},
+        {"kind": "narrate", "text": "story.cs_rf_finale.7"},
+        {"kind": "whisper", "text": "story.cs_rf_finale.8"},
+        {"kind": "whisper", "text": "story.cs_rf_finale.9"},
         {
           "kind": "say",
           "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_finale.7"
+          "text": "story.cs_rf_finale.10"
+        },
+        {
+          "kind": "focus",
+          "target": {"npc": "plains_herbalist"}
         },
         {
           "kind": "say",
-          "speaker": {"npc": "quest_elder"},
-          "text": "story.cs_ep_finale.8"
+          "speaker": {"npc": "plains_herbalist"},
+          "text": "story.cs_rf_finale.12"
         },
-        {"kind": "whisper", "text": "story.cs_ep_finale.9"},
-        {"kind": "narrate", "text": "story.cs_ep_finale.10"},
-        {"kind": "narrate", "text": "story.cs_ep_finale.11"}
+        {
+          "kind": "say",
+          "speaker": {"npc": "knell_chaplain"},
+          "text": "story.cs_rf_finale.13"
+        }
       ]
     },
     "cs_tf_hermit": {
@@ -602,27 +637,28 @@
         {"kind": "focus", "target": "player"}
       ]
     },
-    "cs_boss_goblin_chief": {
-      "id": "cs_boss_goblin_chief",
+    "cs_boss_valdras": {
+      "id": "cs_boss_valdras",
       "steps": [
         {
           "kind": "focus",
-          "target": {"monster": "goblin_chief"},
-          "ms": 800
+          "target": {"monster": "valdras"},
+          "ms": 800,
+          "anim": "roar"
         },
+        {"kind": "title", "title": "story.boss.valdras.name", "subtitle": "story.boss.valdras.epithet"},
         {
-          "kind": "title",
-          "title": "story.boss.goblin_chief.name",
-          "subtitle": "story.boss.goblin_chief.epithet"
+          "kind": "say",
+          "speaker": {"monster": "valdras"},
+          "text": "story.cs_boss_valdras.3"
         },
         {
           "kind": "say",
-          "speaker": {"monster": "goblin_chief"},
-          "text": "story.cs_boss_goblin_chief.3"
+          "speaker": {"monster": "valdras"},
+          "text": "story.cs_boss_valdras.4"
         },
-        {"kind": "shake", "intensity": 0.006, "ms": 400},
-        {"kind": "whisper", "text": "story.cs_boss_goblin_chief.5"},
-        {"kind": "focus", "target": "player", "ms": 600}
+        {"kind": "whisper", "text": "story.cs_boss_valdras.5"},
+        {"kind": "say", "speaker": "hero", "text": "story.cs_boss_valdras.6"}
       ]
     },
     "cs_boss_werewolf_alpha": {
@@ -758,10 +794,10 @@
   },
   "bossIntros": [
     {
-      "monsterId": "goblin_chief",
-      "name": "story.boss.goblin_chief.name",
-      "epithet": "story.boss.goblin_chief.epithet",
-      "cutscene": "cs_boss_goblin_chief"
+      "monsterId": "valdras",
+      "name": "story.boss.valdras.name",
+      "epithet": "story.boss.valdras.epithet",
+      "cutscene": "cs_boss_valdras"
     },
     {
       "monsterId": "werewolf_alpha",
@@ -795,9 +831,22 @@
     }
   ],
   "triggers": [
-    {"on": "quest_turned_in", "questId": "q_kill_slimes", "cutscene": "cs_ep_mark"},
-    {"on": "quest_turned_in", "questId": "q_explore_goblin_camp", "cutscene": "cs_ep_whisper"},
-    {"on": "quest_turned_in", "questId": "q_secure_plains", "cutscene": "cs_ep_finale"},
+    {"on": "quest_turned_in", "questId": "q_rf_burial_detail", "cutscene": "cs_rf_brand"},
+    {"on": "quest_turned_in", "questId": "q_rf_ashwheat", "cutscene": "cs_rf_whisper"},
+    {"on": "quest_accepted", "questId": "q_rf_last_toll", "cutscene": "cs_rf_siege"},
+    {"on": "quest_turned_in", "questId": "q_rf_last_toll", "cutscene": "cs_rf_finale"},
+    {
+      "on": "monster_killed",
+      "monsterId": "miniboss_corpseherd",
+      "cutscene": "cs_rf_herd",
+      "whileQuest": "q_rf_ashwheat"
+    },
+    {
+      "on": "monster_killed",
+      "monsterId": "valdras",
+      "cutscene": "cs_rf_marshal_falls",
+      "whileQuest": "q_rf_marshal"
+    },
     {"on": "quest_turned_in", "questId": "q_talk_hermit", "cutscene": "cs_tf_hermit"},
     {"on": "quest_turned_in", "questId": "q_seal_dark_source", "cutscene": "cs_tf_finale"},
     {"on": "quest_turned_in", "questId": "q_reforge_artifact", "cutscene": "cs_am_hammer"},
@@ -850,6 +899,10 @@
       {"text": "story.credits.6.text", "mood": "abyss"}
     ]
   },
+  "contentUpgrade": {
+    "version": 2,
+    "replayBeats": ["prologue", "chapter_emerald_plains"]
+  },
   "moods": {
     "embers": {"top": "#0c0605", "bottom": "#2a0f06", "glow": "rgba(255,120,40,0.35)", "embers": 16751164},
     "night": {"top": "#03050c", "bottom": "#101a33", "glow": "rgba(120,150,255,0.22)", "embers": 10467583},
@@ -889,5 +942,10 @@
     "input": "two-tap rule: the first input during a reveal (typewriter, staggered slide parts, fades) completes it on the UE side; UE sends StoryAdvance only for the input that advances (a waiting step, or a title / chapter hold). StorySkip resolves every remaining wait of the beat except the 450 ms camera return.",
     "clock": "presentation (real time); the sim clock is frozen while a beat plays (DECISIONS S2)",
     "markSeen": "when the beat finishes; a skipped beat counts as finished (DECISIONS Q7)"
+  },
+  "remake": {
+    "source": ["unreal/GameData/config.ts", "unreal/GameData/story/script.ts"],
+    "modules": {"src/data/story/script.ts": "unreal/GameData/story/script.ts"},
+    "replaced": ["config.contentUpgrade"]
   }
 }

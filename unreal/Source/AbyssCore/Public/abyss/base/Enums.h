@@ -26,7 +26,11 @@ enum class StatusType : uint8_t { Burn, Freeze, Poison, Bleed, Slow, Stun };
 enum class HitWeight : uint8_t { Tick, Light, Normal, Heavy, Crit, Kill };
 // Animation rig presets (anim_timing.json "presets"; monster animCategory + the 3 hero rigs).
 enum class AnimRig : uint8_t { Humanoid, Slime, Beast, Large, Flying, Serpentine, Demonic, Warrior, Mage, Rogue };
-enum class MapTheme : uint8_t { Plains, Forest, Mountain, Desert, Abyss };
+// Plains..Abyss are the web's themes (map generator configs, moods, terrain styles, camp kits). March, MarchDawn and
+// BreachRim are the dark remake's mood / presentation themes (Docs/dark-remake/chapter1.md 15: zone_moods.json moods,
+// map presentationTheme and mood regions); no map generator config uses them (the generator theme of the Chapter 1 zone
+// stays Plains, so the golden maps do not move).
+enum class MapTheme : uint8_t { Plains, Forest, Mountain, Desert, Abyss, March, MarchDawn, BreachRim };
 enum class AutoLootMode : uint8_t { Off, All, Magic, Rare, Legendary };
 enum class LocaleId : uint8_t { ZhCN, ZhTW, En };
 // Hero skill trees are data (skill_trees.json); this is the hero/monster/pet "side" of a hit.
@@ -54,7 +58,7 @@ ABYSS_ENUM_STRINGS(StatusType, "burn", "freeze", "poison", "bleed", "slow", "stu
 ABYSS_ENUM_STRINGS(HitWeight, "tick", "light", "normal", "heavy", "crit", "kill")
 ABYSS_ENUM_STRINGS(AnimRig, "humanoid", "slime", "beast", "large", "flying", "serpentine", "demonic", "warrior", "mage",
                    "rogue")
-ABYSS_ENUM_STRINGS(MapTheme, "plains", "forest", "mountain", "desert", "abyss")
+ABYSS_ENUM_STRINGS(MapTheme, "plains", "forest", "mountain", "desert", "abyss", "march", "march_dawn", "breach_rim")
 ABYSS_ENUM_STRINGS(AutoLootMode, "off", "all", "magic", "rare", "legendary")
 ABYSS_ENUM_STRINGS(LocaleId, "zh-CN", "zh-TW", "en")
 ABYSS_ENUM_STRINGS(Faction, "hero", "monster", "neutral")

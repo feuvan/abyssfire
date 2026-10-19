@@ -127,6 +127,12 @@ void StoryDirector::Fire(StoryTriggerOn on, std::string_view key) {
   }
   for (const StoryTriggerDef& t : ctx_.data.Story().triggers) {
     if (t.on != on || t.subjectId != key) continue;
+    if (!t.whileQuest.empty()) {
+      // Only while that quest is open (Active or Completed); the kill's quest progress ran before this listener.
+      const QuestSystem* quests = ctx_.sys.quests;
+      const QuestProgress* p = quests != nullptr ? quests->Progress(t.whileQuest) : nullptr;
+      if (p == nullptr || (p->status != QuestStatus::Active && p->status != QuestStatus::Completed)) continue;
+    }
     EnqueueCutscene(t.cutscene, delay, t.grantPet);
   }
 }
@@ -407,7 +413,8 @@ void StoryDirector::EnterSegment(int32_t index) {
 }
 
 // EvStoryStep: the step / slide with the core-resolved focus and speaker. A focus step whose target does not exist
-// resolves at once (its segment shrinks to 0 ms).
+// resolves at once (its segment shrinks to 0 ms). K1: a resolved focus step on a {monster} with `anim` is followed by
+// EvPlayAnim{that instance, anim} (the boss intro's Roar); nothing plays when the monster is not there.
 void StoryDirector::EmitStep(const StorySegment& seg) {
   const StoryScript& script = ctx_.data.Story();
   const StoryTiming& tm = script.timing;
@@ -415,6 +422,8 @@ void StoryDirector::EmitStep(const StorySegment& seg) {
   EvStoryStep ev;
   ev.beatId = b.id;
   ev.index = seg.index;
+  EvPlayAnim focusAnim;  // K1: a focus step's `anim` on the focused monster (emitted after the step)
+  focusAnim.entity = kNoEntity;
   switch (b.kind) {
     case StoryBeatKind::Sequence: {
       const StorySequence& seq = b.contentId == "epilogue" ? (seg.part == 0 ? script.epilogue : script.credits)
@@ -453,6 +462,11 @@ void StoryDirector::EmitStep(const StorySegment& seg) {
           ev.focusPos = a.pos;
           ev.timedMs = a.resolved ? (st.hasMs ? st.ms : tm.focusDefaultMs) : 0.0;
           if (!a.resolved) playback_.segments[static_cast<size_t>(playback_.segment)].ms = 0;
+          if (st.hasAnim && a.resolved && a.entity != kNoEntity && st.target.kind == StoryActorKind::Monster) {
+            focusAnim.entity = a.entity;
+            focusAnim.action = st.anim;
+            focusAnim.startMs = ctx_.Now();
+          }
           break;
         }
         case StoryStepKind::Say: {
@@ -472,6 +486,7 @@ void StoryDirector::EmitStep(const StorySegment& seg) {
     }
   }
   ctx_.events.Emit(std::move(ev));
+  if (focusAnim.entity != kNoEntity) ctx_.events.Emit(focusAnim);
 }
 
 // Consumes elapsed real time: a timed segment that ran out passes its leftover time to the next one; zero-length

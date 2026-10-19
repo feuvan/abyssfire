@@ -31,7 +31,7 @@ ABYSS_API double AttackSpeedScale(const AnimTimingTable& t, double animMs, doubl
 struct ActionTiming {
   double contactMs = 0;   // attack: round(frameContact * speed); cast: release beat (not speed-scaled)
   double windupMs = 0;    // attack: 0.62 * contact (monster telegraph); cast: 0
-  double durationMs = 0;  // attackDuration * speed / castDuration
+  double durationMs = 0;  // swing * speed (attackDuration, stretched for a late Contact) / castDuration
   double speed = 1;       // AttackSpeedScale (1 for casts)
   double playRate = 1;    // 1 / speed: montage play rate that puts the authored Contact notify at contactMs
 };
@@ -39,7 +39,11 @@ struct ActionTiming {
 // Attack contact (10.1). Contact at speed 1 comes from the manifest clip `clip` of the asset mapped to `artId`
 // (AnimClipDef::contactMs) when present and off the web beat by more than its whole-ms rounding (0.5 ms), else from
 // anim_timing contact[rig].frameContactMs (the exact beat, so round(frameContactMs x speed) matches the web).
-// `attackDuration` is presets[rig].attackDuration. The hero passes its derived attackSpeed, monsters def.attackSpeedMs.
+// The swing (durationMs, and the animation length the speed scale fits into the interval) is presets[rig].attackDuration
+// while the Contact is on or before the rig's frame beat; a later Contact (an authored long swing, monsters.md 1.3)
+// stretches it in proportion, max(attackDuration, min(contact x attackDuration / frameContact, the clip's lengthMs when
+// that ends after the contact)): continuous in the Contact, the preset exactly for every web-timed clip. The hero passes
+// its derived attackSpeed, monsters def.attackSpeedMs.
 ABYSS_API ActionTiming ComputeAttackTiming(const AnimTimingTable& t, const AssetManifest& manifest, std::string_view artId,
                                            AnimRig rig, double attackIntervalMs, std::string_view clip = "Attack01");
 

@@ -130,7 +130,9 @@ Merge order for each locale: web table → `PORT_STRINGS` → GameData strings (
    keys stay because their ids still exist).
 2. **Parity.** Every key the exported tables reference exists in zh-CN and en (the exporter fails otherwise; DataStore
    already checks story keys).
-3. **zh-TW** converted from zh-CN with the web converter, as today.
+3. **zh-TW** converted from zh-CN with the web converter, as today; the remake's own keys (GameData) then go through the
+   supplement `GameData/i18n/zhTWExtra.ts` (context phrases, then the characters the web map lacks; final review R4),
+   and web-sourced keys keep the web output byte for byte.
 4. New namespaces: `data.quest.<id>.progress`, `data.questChoice.<questId>.<slot>`, `data.affix.<id>`.
 
 ### 2.6 Schema additions (remake-only, typed in `GameData/types.ts`)
@@ -415,6 +417,190 @@ and the loaders.
 | **1D Art Wave 1** | A1, A2-A8 meshes and W1 clips, A9, A10, A11, A12 (W1 recipes), family passes | `unreal/Art/blender/**` (new files), `unreal/Art/Export/**`, `unreal/Art/Previews/**`, palette registries (append) | 0C; ids from monsters.md (no dependency on 1B) | kit, ship per asset, coherence, darkgate on every new monster, hue audit clean |
 | **1E Audio Wave 1** | AU1-AU3 | `unreal/Audio/render/**`, `unreal/Audio/Export/**` | — | audio; loudness per A3 |
 | **1F Wave 1 close** | the three-class autotest on the Mac, the look review, a dark-tile screenshot set into `Art/Previews/ch1_dark/` | — | 1A-1E | mac-autotest (smoke + chapter × 3 classes), mac-look |
+
+**1A outcomes (K1 as built, 2026-10; pending review; DECISIONS DR8).**
+- **Defend waves.** `DefendTargetDef.waves` (exactly `totalWaves` compositions, counts ≥ 1, unknown monsters fail
+  `Finalize`) → `SpawnDefendWave(target, wave, DefendWaveSpec)` spawns the list in order without an RNG draw (the
+  existing defend scaling, chase, role and edge clamp apply; no walkability check, as before). `approachDeg` is in tile
+  space (0 = +col, 90 = +row; M5's gate away from camp 1 is `atan2(gate − camp)` ≈ 106°) and puts monster k of n at
+  `approachDeg + 180 ((k + 0.5) / n − 0.5)` on the r 8 ring, so every spawn is strictly inside the half ring. Without
+  `waves` the web rule (3 + w random picks) still runs, on the arc when `approachDeg` is set.
+- **Progress line.** `QuestCardState::progress` lists the NPC's active quests that have a `progressKey`; the quest card
+  also opens for these lines alone (the giver's tree stays reachable through the card's *View Story*); without a key
+  the giver keeps today's fallback. U5 renders the line.
+- **Labelled choices.** `GenerateQuestRewardChoices` reports each item's slot, so `QuestCardEntry::choiceLabels`
+  follows the generated items (a slot that yields nothing drops its label); accept cards read
+  `rewards.choiceLabels` slot by slot.
+- **Anim actions.** Appended to `AnimAction` (spellings `roar`, `taunt`, `stun`, `attack02`, `cast02`, `rise`). The
+  mini-boss emits `EvPlayAnim{Taunt}` (facing the hero) when its dialogue holds it and `MonsterView::holdAction` is
+  Taunt until the dismiss. A focus step's `anim` is allowed only on a `{monster}` focus step and never idle / walk /
+  death; it plays on the instance the step focused, right after its `EvStoryStep`. The UE clip map is U2's.
+- **Sealed entrance.** Only sealed entrances are interactive in Wave 1 (interact order 4 and press row 7 of
+  world-map-nav.md §7, `distSq ≤ 9`, walk-then-act): toast + system log of `sealedTextKey`, nothing else. A sealed
+  entrance needs its key and may name a sub-dungeon that Wave 3 adds (`sub_rf_pit`).
+- **Story boss / grep gate.** `content_hooks_test.cpp` runs M7 on a synthetic boss id (role, no respawn, not after its
+  quest, farmable after the chapter) and plays its intro's Roar; the grep gate scans the string literals of
+  `Source/AbyssCore` for the Chapter 1 ids the data names (quests, targets, monsters, hunts, beats, lore, areas,
+  achievements; NPC and zone ids are role keys) with `Private/tools/AutoPilot.cpp` exempt until 1B's route interpreter
+  (the exemption fails once it no longer hides a hit).
+- **Exporter.** `REMAKE_SCHEMA` lists `quest.progressKey`, `quest.choiceLabels`, `quest.defendWaves`,
+  `quest.defendApproach`, `map.sealedEntrances` and `story.focusAnim`, with the loader's shape rules checked at export;
+  the export stays byte-identical while no record uses them. Monster `family` / `damageType` and map
+  `presentationTheme` / `regions` stay withheld until a reader lands (U1 / U7).
+
+**1B part 1 outcomes (Chapter 1 world data, 2026-10; pending review; DECISIONS DR3 / DR4 / DR5 *as built*).**
+- **Split.** 1B runs in three parts on the same lane: part 1 the world data (this note), part 2 the quests, NPC lines,
+  the Captain's tree and the story script (ids and text), part 3 the AutoPilot route interpreter and the playthrough
+  re-pins. Part 1 changed quest slots only where they point into the world (kill / drop targets, hunts, M5's defend
+  target), keeping their web ids, so the data validates between the parts.
+- **Re-baseline (DR4).** Done here, once: it needs M5's defend target and the echo lore spots, which live outside the
+  map. Golden `54ce0471e96c5d0e` / `7a501f14066cbb08` / 13169 walkable, 30 avoid points; RNG checkpoints unchanged.
+  Part 2 must keep every generator input of the slots (quest locations, gather areas, clues, escort ends, M5's gate).
+- **Roster.** monsters.md §2.0 numbers as written (Valdras at the Wave 1 ~900 HP); `spriteKey` = the art lane's plain
+  id `monster_<id>`, so the core times swings by the rig fallback until each asset ships. `family` is authored and still
+  withheld (no core reader). `deserter_drummer` is in the zone list without a Wave 1 spawn. Exp per full clear rises
+  from 913 to 1447 (Valdras alone 220): the playthrough bands (DR9) are re-checked by part 3.
+- **World overrides.** `MapTheme` gains the mood themes `march`, `march_dawn`, `breach_rim` (no generator config uses
+  them); `zone_moods.json` gains `port.lightScale` (R18 override) and `port.moodWeather` (two new exporter-owned
+  override tables), parsed into `ZoneMoodDef::lightScale` / `moodWeather`; the map's `presentationTheme` and `regions`
+  are written (`REMAKE_SCHEMA` `map.presentationTheme`, `map.regions`; `MapDef::presentationTheme` / `regions`,
+  DataStore checks that each names a defined mood). `ember_tower` keeps plains and the pollen it used to borrow;
+  plains-themed places without weather borrow the tower's. Terrain style and camp kit `march` are data for U1.
+- **Not done here.** Set pieces (`setPieces.ts`), the gate's art id (`decor_defend_boneyard_gate` falls back), the
+  ambush toll, per-NPC quest lists, the content-version save rule: parts 2 / 3 and U1 / U4.
+- **Systems tests touched (disclosed by the 1B review; none lost an assertion).** `monsters_test.cpp` "derived data 1.1"
+  skips the Chapter 1 roster from the web keyword rule (the remake authors its statuses and bolt colours, pinned in
+  `content_ch1_test.cpp`), and "elite affix definitions 17.1" replaced the pinned FireEnhanced `vfxColor 0xff4400` with the
+  DR5 rule (no affix glow in the ember family); the remake's colours are pinned in `content_ch1_test.cpp`.
+
+**1B part 2 outcomes (Chapter 1 narrative, 2026-10; pending review; DECISIONS DR3 *narrative as built*).**
+- **Quests.** The eleven quests carry their `q_rf_*` ids in their web slots with every generator input kept (the
+  golden maps are byte-identical to part 1's). Rewards follow §5-7: 2740 exp / 510 gold; embers stay 20 (M5's 5 and
+  S5's 2 replace the per-quest defaults, as today; chapter1.md §7 adds them on top and counts 23). M3 gained its second
+  objective (kill `miniboss_corpseherd`). Every Chapter 1 quest has a `progressKey`; S3 / S4 label their choices. Givers:
+  the Captain 6, Aldwin 4, Corran 1 (§7). S1's turn-in line is Marl's (§6) though the Captain's card shows it.
+- **Words.** `GameData/i18n/ch1Quests.ts` (names, quest-log lines, offers, progress and turn-in lines, targets, clue
+  notes, choice labels, the escort and the gate), `ch1Npcs.ts` (the re-cast NPCs, the quest-gated lines for K6, the
+  Captain's tree, the Lanternwisp) and `ch1Story.ts` (prologue, chapter card, the six cutscenes). chapter1.md gives no
+  quest-log lines, no tag-thief / lantern clue names, no Lanternwisp clue notes, no reward-ask choice texts and no
+  Five Handbells reward line (the web's "获得了经验和金币!" went); this package wrote them in the §11 voice. All zh lines are within the §11 limits (pinned in `content_ch1_test.cpp`).
+- **Exporter.** The orphan sweep (§2.5) also covers `story.prologue/epilogue/credits.<n>.<field>` (the web prologue's
+  heading lines go) and NPC lines past the end of an NPC's exported `dialogue` (the web's extra lines of the re-cast
+  NPCs go).
+- **Tests.** `content_ch1_test.cpp` / `TestContent.h` re-pinned (handles, `kPinnedIds`, quest / tree / beat pins, the
+  `q_rf_barrowmoss:0` gather vector) plus a narrative pin test. Three systems-test changes, none weakening: the
+  cutscene-zone rule counts a zone's mini-boss as standing in it (MonstersIn's rule; `cs_rf_herd` plays on her
+  death), the progress-line fallback test runs on a store without `progressKey` (the remade content authors one
+  everywhere), and the K1 grep gate's AutoPilot exemption is gone (the hard-coded web route spells no live id any more;
+  part 3's route interpreter must keep the gate clean without one). `core.playthrough` fails until part 3: the bot's
+  elder-tree walk looks for `other_quests`.
+- **Not done here.** The AutoPilot route, `ApDefend` and the playthrough re-pins (part 3); the content-version save rule;
+  set pieces (U4); the tower's `tower_elder` and `cs_tower_home` still speak as the web elder (hidden in milestone 1, Q3).
+
+**1B part 3 outcomes (AutoPilot, re-pins, saves, 2026-10; pending review; DECISIONS DR3 *route and saves as built*,
+DR9 *as built*, M7 amendment).**
+- **Route as data.** `GameData/autopilot/ch1.ts` (types in `autopilot/types.ts`) → `Data/autopilot_routes.json`
+  (`src/tables/autopilot.ts` checks every id, tile, clue / explore circle and that each zone quest is accepted by a
+  step; `LoadAutoPilot.cpp` + `DataStore::Finalize` check shape and ids again; `stepKinds` must equal the core's
+  `AutoPilotStepKind`). `AutoPilot.cpp` builds its script from the starting zone's route (`BuildScenario`): the step
+  kinds of §6 plus `note`, `closePanels`, `townTrip`; `boss` hunts by `MonsterRole` (and the kill milestone uses the
+  role, not an id prefix); `tree` walks any NPC's tree by node path (`ApDialogueTree`); `ApDefend` stands `standOff`
+  tiles out along the gate's `approachDeg`, kills the wave nearest the gate first, retreats to a camp under 30 % life
+  without potions, and is retried from the giver like the escort. Smoke stops at `smokeEnd`. The K1 grep gate passes
+  without an exemption.
+- **Route deviations from §6's outline.** S3 is Aldwin's (taken with M1's turn-in), S2's turn-in is his too. Before each
+  portal home the route steps onto Knellwatch's side of the line between the two camps (the portal takes the nearest
+  camp; walking back from the Crowmarket through the Lv 6-7 far half put every class at Lv 15, DR9). The escort starts
+  where Old Bern already follows the hero (he joins on the way to Ashwheat), not back at his start tile.
+- **A soft-lock fixed in the core.** M3 needs the Corpseherd, whose Sheepfold (60,55) is 7 tiles from Dreck (60,48): the
+  mage's Dreck fight killed her before M3 existed, and once per visit (M7) kept her dead in a zone milestone 1 cannot
+  leave. A zone mini-boss an open quest still needs now comes back on that quest's accept (M7 amendment).
+- **Long authored swings.** The art lane's Unburied clips put Contact past the humanoid preset's 500 ms swing (footman
+  600 ms in 1080 ms, monsters.md 1.3 / 2.1). `ComputeAttackTiming` keeps the preset swing unless the shipped clip's
+  Contact lies at or past it, then uses the clip's length (no web-timed clip changes; the sim strike is unchanged).
+- **Saves.** `contentVersion` 2 (§2.7) with the rule extended to every id list a save carries (DR3).
+- **Re-pins.** `playthrough_test.cpp` follows the route's checkpoints and the chapter's totals (2740 quest exp, nine
+  beats, five named kills, `ach_kill_valdras`). **The level band moves to 13-15** (DR9 *as built*, pending review): the
+  remade quests need ~1700 exp of kills (the web's: ~590), so Lv 13 is reached with no extra fight and the bot ends at
+  14-15 on every seed; embers ≥ 40 and kills ≥ 40 hold, level-ups ≥ 12. Keeping 12-14 instead needs ~650 exp less per
+  chapter (quest rewards or hunt / wave / boss exp), a content decision left to review.
+  `content_ch1_test.cpp` gains the Corpseherd test; `save_test.cpp` the content-version tests and the trailing key;
+  `combat_test.cpp` the long-swing test.
+
+**1B review fixes (2026-10; pending review; DECISIONS DR3 / DR5 / DR8 / DR9 / M7 notes, chapter1.md §19).**
+- **Balance (DR9).** The band stays 12-14 (level-ups >= 11): Chapter 1 regulars give round(0.75 × monsters.md §2.0 Exp),
+  Valdras 110, the Corpseherd 95; Hungerbell is hp ×2 / dmg ×1.0. 195 bot runs per compiler (sweeps from seeds 1000 /
+  2000 / 5000 plus the pinned runs): 4319-5108 exp, Lv 13-14, no death. Re-measured after the final review fixes (609
+  GCC runs: sweeps from seeds 1000-10000 step 1000, 20 per class, plus seeds 7013 / 1023 / 8018 alone; the art lane's
+  manifest of 2026-10-19): 4319-5131 exp, Lv 13 (405) / 14 (204), no death, no failure; on the committed art manifest
+  (1200 GCC runs, seeds 1000-20000): 4338-5329 exp, Lv 13 (793) / 14 (407), no death, no failure (DECISIONS DR9).
+  Per-seed results move with the art manifest (decor footprints drive map blocking); the 12-14 band is what is pinned.
+- **Core.** `SpawnStoryBossForQuests` (M7 for the story boss); story triggers `whileQuest` (schema `story.triggerWhileQuest`;
+  `cs_rf_herd` / `cs_rf_marshal_falls` play on the kill that counts); the long-swing rule is continuous (the preset's
+  contact share, capped by the clip); saves: story.json `contentUpgrade` replays the remade prologue and chapter card for
+  older saves, and a hero saved in a locked tower loads at its return zone's camp; random events log a zone's own line
+  (`<key>.<zone>`) and `rescueMonsters` picks the rescue's guards; AutoPilot fails fast (a defend / escort quest that was
+  never accepted, a `visit` accept the card never offered) and has `AddDefend` for tests; a defend / escort quest that
+  already failed when its step starts is a lost attempt, re-taken from its giver (final review fixes, below).
+- **Tests.** `content_hooks_test` (story boss respawn on a synthetic id, through the sim; `whileQuest` load / refuse; the
+  grep gate's id families: entrances, sub-dungeons, regions, compound dialogue nodes), `save_test` (a fixture with the web
+  port's real Chapter 1 ids; the locked tower), `playthrough_test` (a forced gate loss re-taken and held; a defend step
+  for a quest that is not open fails at once; retry counters bounded), `combat_test` (the continuous swing; REQUIRE instead
+  of a skip guard), `content_ch1_test` (re-pinned exp / Hungerbell / affix names / 23 embers; the shipped M5 waves spawn on
+  walkable tiles outside camp 1; the Red Field's event lines and zealot guards; no web plains name or never-used word in a
+  string Chapter 1 shows), `world_test` (the event-log checks read the zone's own key when it has one).
+- **Content.** Jukebox rows, the re-voiced achievements, the epilogue's Red Field slide, S1's and S5's turn-in lines, the
+  echo and the Belfry, zh / en wording (渊血样本, 凝块, "Only in the earth by nightfall", "is warm", "The fire here", the
+  Breach capitalised per the glossary), the Corpseherd's family `unburied`, the parked lines (Old Bern, hub barks).
+- **Not done here.** The tower's `tower_elder` / `cs_tower_home` (tower milestone, Q3); per-zone event labels over props
+  (UE world layer reads `zone.event.*.label`; U4); the handbell puzzle prop and the pilgrim's look (art lane ids); mood
+  themes as data instead of `MapTheme` values (U1 lookup); 「那里的火，不要人偿。」 (story owner).
+
+**Sweep fixes (2026-10; DECISIONS Q9).** Two bot stops, each only with one manifest's clip timings (the art lane's
+manifest moves hit timing, so the seeds differ by manifest):
+- **Escort freeze (mage 7013, HEAD manifest) - a game rule gap.** Old Bern, between tiles at (44.38, 59.78), repathed from
+  (44,60) round the map generator's scatter wall (44,61) by (43,60), (43,61); the web follow rule dropped the path's first
+  step, walked straight at (43,61), cut the wall's corner, and the next repath started on the wall: `findPath` refuses an
+  unwalkable start, so the path stayed empty and he never moved while the hero waited 4.97 tiles away (600 s bot
+  timeout). The wall predates the remake (the golden map has it), and no set piece or decor blocker is involved. Fixed in
+  `QuestWorld::TickEscort` (Q9: keep the first step; catch up into the hero's component; catch up after 2 s without a
+  path). Tests: `content_ch1_test` "3.9 escort (Q9)" x3 (the 7013 geometry, the frozen state, a sealed ring pocket),
+  plus the catch-up edge test of the final review fixes.
+- **Potion detour timeout (mage 8018, art-lane manifest) - a bot mistake.** `ApLootNearby` walked to a potion with a
+  15 s `ApGoTo` that fights on the way; the fights (the last gravegnawers and the Hungerbell) ate the 15 s and the
+  timeout failed the whole script, though the hunt it served was already done. The potion walk is now optional
+  (`ApGoTo` `required = false`: a timeout or a stuck walk notes "gave up" and the potion is skipped). Test:
+  `playthrough_test` "autopilot loot: a potion walk that runs out of time is skipped" (`AutoPilot::AddLootNearby`).
+- **Seed pins.** "sweep regression seeds" plays mage 7013 (the escort freeze with the committed manifest), mage 1023
+  (the same freeze with the art lane's manifest of 2026-10-19) and mage 8018 (the potion detour, art-lane manifest).
+  Which seed meets a given geometry drifts whenever the art manifest changes (clip timings move hit timing), so these
+  pins are smoke, not the guard: the Q9 unit tests (the three above and the catch-up edge test) and the potion-walk test
+  pin the rules themselves.
+
+**Final review fixes (2026-10-19; DECISIONS M7 / Q9 / DR9 notes, chapter1.md §19).**
+- **AutoPilot (R1).** `ApEscort::Start` / `ApDefend::Start` treat a quest that is already `Failed` when the step starts
+  (the escort joined earlier and died, the gate fell on an earlier walk) as a lost attempt (`escortFailures` /
+  `defendFailures` + 1, the `*WithRetries` wrapper re-takes it from the giver); only a quest that was never accepted
+  fails the step. `AutoPilot::AddEscort` joins `AddDefend` for tests. Tests (`playthrough_test`): S6 failed at the
+  checkpoint before its step, re-taken and completed; M5's gate brought down before its step, re-taken and held; an
+  escort step for a quest never accepted fails at once.
+- **Story boss (R2).** `SpawnStoryBossForQuests` leaves a dead boss whose respawn timer is pending to that respawn
+  (`port.storyBoss.oncePerVisit` false makes him a Regular): no second boss on the quest's accept. Test
+  (`content_hooks_test`): the flag flipped, kill, accept, past `respawnDelayMs` -> exactly one alive.
+- **Escort catch-up (Q9).** No catch-up tile when the hero's tile is walkable but no ring tile shares its component (it
+  used to fall back to `findWalkableNear` and re-teleport the escort into another component every 2 s), and no
+  teleport whose from == to. Test: `content_ch1_test` "3.9 escort (Q9): no catch-up into another component ...".
+- **Content.** The abyss_rift jukebox row is 渊火 · 低语 / Abyssfire · The Whisper (the title-menu track keeps 渊火 · 序章);
+  `content_ch1_test` checks every jukebox titleKey (Audio/Export/audio_manifest.json) resolves to a distinct title in
+  zh-CN, zh-TW and en. The Red Field's rescue line no longer splices `{npcName}` ("You cut the pilgrim loose.");
+  the Relic Peddler lays out 一盘圣骨 / a tray of relics, and the Chapter 1 words test bans 白骨 / 骷髅 / 头骨 / 颅骨 and
+  skeleton / skull / white bones.
+- **zh-TW (R4).** `GameData/i18n/zhTWExtra.ts` (context phrases + the characters the web map lacks) converts the
+  remake's 315 strings (131 changed); web-sourced zh-TW stays byte-identical. Test: `content_ch1_test` "Chapter 1
+  zh-TW" against `CoreTests/golden/zh_simplified_only.txt` (2657 characters, OpenCC-derived,
+  `Tools/export-data/scripts/zh_simplified_only.py`); the shared UI (`ui.*`) stays the web converter's.
+- **Seeds and balance.** Mage 1023 pinned beside 7013 and 8018 (above); DR9 re-measured: 4319-5131 exp on the art lane's manifest of that day, 4338-5329 on the committed one, Lv 13-14
+  on both.
 
 ### Phase 2 — Wave 2: the monster systems
 

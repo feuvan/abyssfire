@@ -714,6 +714,154 @@
         "shadow": 1051156
       },
       "palisade": {"kind": "darkStakes", "wood": 4863040, "band": 6971504, "accent": 16726586}
+    },
+    "march": {
+      "ground": {
+        "0": {
+          "base": 4999488,
+          "rank": 4,
+          "lip": 6183504,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [4604731, 5393989, 4604731],
+              "r": [12, 24]
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [5722695, 3025703],
+              "r": [4, 10]
+            },
+            {
+              "kind": "tuft",
+              "count": 16,
+              "color": 5920332,
+              "light": 7827551,
+              "size": [3.2, 5.2]
+            }
+          ],
+          "details": ["bigTuft", "flowers", "stones", "bigTuft", "crackStar", "stones"],
+          "accents": [8006182, 9077880, 6956064, 10130052]
+        },
+        "1": {
+          "base": 3814189,
+          "rank": 1,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [3485225, 4208687],
+              "r": [10, 22]
+            },
+            {
+              "kind": "crack",
+              "count": 2,
+              "color": 2761759,
+              "light": 4866360,
+              "len": [8, 14],
+              "width": 2
+            },
+            {
+              "kind": "pebble",
+              "count": 8,
+              "color": 4866617,
+              "shade": 2893344,
+              "light": 6050375,
+              "size": [1.1, 2.2]
+            }
+          ],
+          "details": ["stones", "straw", "crackStar", "stones"],
+          "accents": [5918789]
+        },
+        "2": {
+          "base": 5591628,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "slabs",
+              "cells": 2,
+              "mortar": 4209976,
+              "mortarW": 0.035,
+              "jitter": 0.06,
+              "bevelLight": 6709850,
+              "bevelShade": 4670527
+            },
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [4999488],
+              "r": [3, 7]
+            }
+          ],
+          "details": ["bigTuft", "crackStar", "stones"],
+          "accents": [4999488]
+        },
+        "3": {
+          "base": 1184792,
+          "rank": 0,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 3,
+              "colors": [987412, 1448222],
+              "r": [14, 26]
+            },
+            {
+              "kind": "wave",
+              "count": 3,
+              "color": 3814736,
+              "len": [6, 11],
+              "alpha": 0.4
+            }
+          ],
+          "details": ["stones"],
+          "accents": [2762288],
+          "liquid": {"shallow": 2237738, "foam": 5591642, "bank": 2893344}
+        },
+        "5": {
+          "base": 4670012,
+          "rank": 2,
+          "layers": [
+            {
+              "kind": "patch",
+              "count": 4,
+              "colors": [4209461, 5130306],
+              "r": [10, 20]
+            },
+            {
+              "kind": "leaf",
+              "count": 4,
+              "colors": [5920078, 6972507],
+              "size": [1.6, 3]
+            },
+            {
+              "kind": "pebble",
+              "count": 6,
+              "color": 5393477,
+              "shade": 3354153,
+              "light": 6445906,
+              "size": [1, 1.8]
+            }
+          ],
+          "details": ["straw", "stones", "straw"],
+          "accents": [5918789]
+        }
+      },
+      "outcrop": {
+        "kind": "mossBoulder",
+        "rock": 5920850,
+        "cap": 4999488,
+        "accent": 8006182,
+        "extra": 4078389,
+        "shadow": 1973274
+      },
+      "palisade": {"kind": "darkStakes", "wood": 3812900, "band": 6181448, "accent": 6164498}
     }
+  },
+  "remake": {
+    "source": ["unreal/GameData/world.ts"],
+    "added": ["terrainStyles.march"]
   }
 }

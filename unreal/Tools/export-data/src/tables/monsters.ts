@@ -57,11 +57,12 @@ assert(BOSS_INTROS.some(b => b.monsterId === STORY_BOSS.monsterId), 'M7: the sto
 assert(AllQuests.some(q => q.id === STORY_BOSS.notAfterQuestTurnIn && q.objectives.some(o => o.type === 'kill' && o.targetId === STORY_BOSS.monsterId)),
   'M7: notAfterQuestTurnIn must be the quest that kills the story boss');
 
-/** DECISIONS overrides applied to the exported definitions (web value kept in `overrides`). */
-const OVERRIDES: { id: string; field: keyof MonsterDefinition; port: number; decision: string; note: string }[] = [
-  { id: 'miniboss_goblin_shaman', field: 'attackRange', port: 3.0, decision: 'M5',
-    note: 'Goblin Shaman becomes a ranged caster (spirit-fire bolt); web 2.5 was melee (ranged iff > 2.5)' },
-];
+/**
+ * DECISIONS overrides applied to the exported definitions (web value kept in `overrides`). Empty since the dark remake's
+ * Chapter 1 roster (unreal/GameData): M5 made the web's goblin shaman (attackRange 2.5, melee) a ranged caster at 3.0
+ * here; the remake mini-boss that holds its slot, miniboss_corpseherd, authors range 3.0 (implementation-plan.md §2.3).
+ */
+const OVERRIDES: { id: string; field: keyof MonsterDefinition; port: number; decision: string; note: string }[] = [];
 
 /**
  * Monster → hero on-hit statuses. The keyword rules (ZoneScene.ts:6204-6237) are evaluated here into an

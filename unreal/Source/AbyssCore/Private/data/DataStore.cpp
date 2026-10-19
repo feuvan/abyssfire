@@ -8,6 +8,7 @@
 #include "JsonReader.h"
 #include "abyss/base/StrUtil.h"
 #include "abyss/base/Units.h"
+#include "abyss/save/SaveData.h"
 
 namespace abyss {
 
@@ -29,6 +30,7 @@ constexpr std::string_view kRequired[] = {
     "sets.json",           "shops.json",          "skill_rules.json",     "skill_trees.json",
     "soul_echo.json",      "spirit_profiles.json", "status_effects.json", "story.json",
     "terrain_styles.json", "ui_theme.json",       "world_constants.json", "zone_moods.json",
+    "autopilot_routes.json",  // the bot's routes (tools/AutoPilot, implementation-plan.md 6)
 };
 constexpr std::string_view kOptional[] = {"i18n_zh-TW.json", "assets.json", "index.json"};
 
@@ -158,6 +160,7 @@ bool DataStore::LoadFile(std::string_view fileName, std::string_view bytes, Data
     else if (fileName == "ui_theme.json") LoadUiThemeFile(r, uiTheme_);
     else if (fileName == "render_quality.json") LoadRenderQualityFile(r, renderQuality_);
     else if (fileName == "abyss_run.json") LoadAbyssRunFile(r, abyssRun_);
+    else if (fileName == "autopilot_routes.json") LoadAutoPilotRoutesFile(r, autopilot_);
     else if (fileName == "terrain_styles.json" || fileName == "index.json") { /* raw only */ }
     else report.warnings.push_back(DataIssue{file, "", "unknown data file (ignored)"});
     if (KeepRaw(fileName)) {
@@ -397,7 +400,10 @@ bool DataStore::Finalize(DataLoadReport& report) {
       if (!world_.FindMap(e.targetMap)) ck.Error("maps.json", path + ".exits", "unknown target map '" + e.targetMap + "'");
     }
     for (const SubDungeonEntranceDef& s : m.subDungeonEntrances) {
-      if (!world_.FindSubDungeon(s.targetSubDungeon)) ck.Error("maps.json", path + ".subDungeonEntrances", "unknown sub-dungeon");
+      // K1: a sealed entrance may point at a sub-dungeon a later wave adds (the Pit before Wave 3).
+      if (!s.sealed && !world_.FindSubDungeon(s.targetSubDungeon)) {
+        ck.Error("maps.json", path + ".subDungeonEntrances", "unknown sub-dungeon");
+      }
     }
     for (const PetSpawnDef& p : m.petSpawns) {
       if (!pets_.Find(p.petId)) ck.Error("maps.json", path + ".petSpawns", "unknown pet '" + p.petId + "'");
@@ -411,7 +417,26 @@ bool DataStore::Finalize(DataLoadReport& report) {
       }
     }
     MapTheme t{};
-    if (!world_.moods.ThemeFor(m.id, t)) ck.Warn("zone_moods.json", "themeByZone", "no mood theme for " + m.id);
+    if (!world_.moods.ThemeFor(m.id, t)) {
+      ck.Warn("zone_moods.json", "themeByZone", "no mood theme for " + m.id);
+    } else if (!world_.moods.moods[EnumIndex(t)].defined) {
+      ck.Error("zone_moods.json", "themeByZone." + m.id, "mood '" + std::string(EnumName(t)) + "' is not in `moods`");
+    }
+    // Dark remake presentation (render-only): the presentation theme and every mood region name a defined mood.
+    if (m.hasPresentationTheme && !world_.moods.moods[EnumIndex(m.presentationTheme)].defined) {
+      ck.Error("maps.json", path + ".presentationTheme", "no zone_moods.json mood '" + std::string(EnumName(m.presentationTheme)) + "'");
+    }
+    for (size_t i = 0; i < m.regions.size(); ++i) {
+      const MapRegionDef& rg = m.regions[i];
+      const std::string rPath = StrCat(path, ".regions[", i, "]");
+      checkPos(m, rPath, rg.center);
+      if (!world_.moods.moods[EnumIndex(rg.mood)].defined) {
+        ck.Error("maps.json", rPath + ".mood", "no zone_moods.json mood '" + std::string(EnumName(rg.mood)) + "'");
+      }
+      for (size_t j = 0; j < i; ++j) {
+        if (m.regions[j].id == rg.id) ck.Error("maps.json", rPath + ".id", "duplicate region id '" + rg.id + "'");
+      }
+    }
   }
   for (const SubDungeonDef& s : world_.subDungeons) {
     const std::string path = "subDungeons." + s.id;
@@ -454,6 +479,11 @@ bool DataStore::Finalize(DataLoadReport& report) {
     for (const std::string& id : z.ambushMonsters) {
       if (!monsters_.FindForZone(z.zoneId, id)) {
         ck.Warn("random_events.json", "zones." + z.zoneId + ".ambushMonsters", "unknown monster '" + id + "' (skipped at spawn)");
+      }
+    }
+    for (const std::string& id : z.rescueMonsters) {  // remake-authored: an unknown guard is a content error
+      if (!monsters_.FindForZone(z.zoneId, id)) {
+        ck.Error("random_events.json", "zones." + z.zoneId + ".rescueMonsters", "unknown monster '" + id + "'");
       }
     }
   }
@@ -565,15 +595,48 @@ bool DataStore::Finalize(DataLoadReport& report) {
       }
     }
   }
+  // K1 content hooks (implementation-plan.md 3): their i18n keys exist in zh-CN and en; defend waves name known monsters.
+  for (const QuestDef& q : quests_.quests) {
+    const std::string path = "quests." + q.id;
+    requireKey("quests.json", path + ".progressKey", q.progressKey);
+    for (const std::string& k : q.rewards.choiceLabels) requireKey("quests.json", path + ".rewards.choiceLabels", k);
+    for (size_t w = 0; w < q.defendTarget.waves.size(); ++w) {
+      for (const DefendWaveEntry& e : q.defendTarget.waves[w]) {
+        if (!monsters_.FindForZone(q.zone, e.monsterId)) {
+          ck.Error("quests.json", StrCat(path, ".defendTarget.waves[", w, "]"), "unknown monster '" + e.monsterId + "'");
+        }
+      }
+    }
+  }
+  for (const MapDef& m : world_.maps) {
+    for (size_t i = 0; i < m.subDungeonEntrances.size(); ++i) {
+      requireKey("maps.json", StrCat("maps.", m.id, ".subDungeonEntrances[", i, "].sealedTextKey"),
+                 m.subDungeonEntrances[i].sealedTextKey);
+    }
+  }
   for (const BossIntroDef& b : story_.bossIntros) {
     if (!story_.FindCutscene(b.cutscene)) ck.Error("story.json", "bossIntros." + b.monsterId, "unknown cutscene");
     if (!monsters_.Find(b.monsterId)) ck.Error("story.json", "bossIntros." + b.monsterId, "unknown monster");
     requireKey("story.json", "bossIntros." + b.monsterId, b.name);
     requireKey("story.json", "bossIntros." + b.monsterId, b.epithet);
   }
+  // contentUpgrade: a version this build writes into saves, and beats StoryProgress can record (StoryDirector ids).
+  if (story_.contentUpgradeVersion > kCurrentContentVersion) {
+    ck.Error("story.json", "contentUpgrade", "version is newer than the saves this build writes");
+  }
+  for (const std::string& b : story_.contentReplayBeats) {
+    const std::string_view id = b;
+    const bool known = id == "prologue" || id == "epilogue" || story_.FindCutscene(id) != nullptr ||
+                       (id.substr(0, 8) == "chapter_" && story_.ChapterFor(id.substr(8)) != nullptr) ||
+                       (id.substr(0, 5) == "boss_" && story_.BossIntroFor(id.substr(5)) != nullptr);
+    if (!known) ck.Error("story.json", "contentUpgrade.replayBeats", "unknown beat '" + b + "'");
+  }
   for (const StoryTriggerDef& t : story_.triggers) {
     if (!story_.FindCutscene(t.cutscene)) ck.Error("story.json", "triggers", "unknown cutscene '" + t.cutscene + "'");
     if (!t.grantPet.empty() && !pets_.Find(t.grantPet)) ck.Error("story.json", "triggers", "unknown pet '" + t.grantPet + "'");
+    if (!t.whileQuest.empty() && !quests_.Find(t.whileQuest)) {
+      ck.Error("story.json", "triggers", "unknown whileQuest '" + t.whileQuest + "'");
+    }
     switch (t.on) {
       case StoryTriggerOn::QuestTurnedIn:
       case StoryTriggerOn::QuestAccepted:
@@ -613,6 +676,76 @@ bool DataStore::Finalize(DataLoadReport& report) {
   for (size_t i = 0; i < EnumCount<SfxId>(); ++i) {
     if (!audio_.Find(static_cast<SfxId>(i))) {
       ck.Error("audio_cues.json", "cues", "missing cue '" + std::string(EnumName(static_cast<SfxId>(i))) + "'");
+    }
+  }
+
+  // ---- the bot's routes (tools/AutoPilot, implementation-plan.md 6): every id a step names exists ----
+  for (const AutoPilotRoute& r : autopilot_.routes) {
+    constexpr std::string_view kFile = "autopilot_routes.json";
+    const std::string rp = "routes." + r.id;
+    if (!world_.FindMap(r.zone)) ck.Error(kFile, rp + ".zone", "unknown zone '" + r.zone + "'");
+    for (size_t i = 0; i < r.steps.size(); ++i) {
+      const AutoPilotStep& s = r.steps[i];
+      const std::string sp = StrCat(rp, ".steps[", i, "]");
+      const NpcDef* npc = s.npc.empty() ? nullptr : npcs_.Find(s.npc);
+      if (!s.npc.empty() && npc == nullptr) ck.Error(kFile, sp + ".npc", "unknown npc '" + s.npc + "'");
+      const auto quest = [&](const std::string& id, const std::string& path) -> const QuestDef* {
+        const QuestDef* q = quests_.Find(id);
+        if (q == nullptr) ck.Error(kFile, path, "unknown quest '" + id + "'");
+        return q;
+      };
+      const auto objective = [&](const QuestDef* q, int32_t obj, const std::string& path) {
+        if (q != nullptr && (obj < 0 || static_cast<size_t>(obj) >= q->objectives.size())) {
+          ck.Error(kFile, path, StrCat(q->id, " has no objective ", obj));
+        }
+      };
+      const QuestDef* q = s.quest.empty() ? nullptr : quest(s.quest, sp + ".quest");
+      switch (s.kind) {
+        case AutoPilotStepKind::Tree: {
+          const DialogueTree* tree = npc != nullptr ? dialogues_.Find(npc->dialogueTreeId) : nullptr;
+          if (npc != nullptr && tree == nullptr) ck.Error(kFile, sp + ".npc", "npc '" + s.npc + "' has no dialogue tree");
+          const DialogueNode* node = tree != nullptr ? tree->FindNode(tree->startNodeId) : nullptr;
+          for (const std::string& next : s.ids) {
+            if (tree == nullptr) break;
+            bool leads = false;
+            if (node != nullptr) {
+              for (const DialogueChoice& c : node->choices) leads = leads || c.nextNodeId == next;
+            }
+            if (!leads) {
+              ck.Error(kFile, sp + ".path", "no choice leads to '" + next + "'");
+              break;
+            }
+            node = tree->FindNode(next);
+          }
+          break;
+        }
+        case AutoPilotStepKind::Visit:
+          for (const std::string& id : s.ids) {
+            if (quest(id, sp + ".accept") == nullptr || npc == nullptr) continue;
+            if (std::find(npc->quests.begin(), npc->quests.end(), id) == npc->quests.end()) {
+              ck.Error(kFile, sp + ".accept", "'" + s.npc + "' does not give '" + id + "'");
+            }
+          }
+          break;
+        case AutoPilotStepKind::Gather:
+        case AutoPilotStepKind::Explore: objective(q, s.obj, sp + ".obj"); break;
+        case AutoPilotStepKind::Hunt:
+          for (const std::string& m : s.ids) {
+            if (!monsters_.Find(m) && !monsters_.FindHunt(m)) ck.Error(kFile, sp + ".monsters", "unknown monster '" + m + "'");
+          }
+          break;
+        case AutoPilotStepKind::Escort:
+          if (q != nullptr && !q->hasEscortNpc) ck.Error(kFile, sp + ".quest", s.quest + " has no escort NPC");
+          break;
+        case AutoPilotStepKind::Defend:
+          if (q != nullptr && !q->hasDefendTarget) ck.Error(kFile, sp + ".quest", s.quest + " has no defend target");
+          break;
+        default: break;
+      }
+      for (const AutoPilotCondition& c : s.until) {
+        const QuestDef* cq = quest(c.quest, sp + ".until");
+        if (c.kind == AutoPilotConditionKind::Objective) objective(cq, c.obj, sp + ".until");
+      }
     }
   }
 

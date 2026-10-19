@@ -142,11 +142,11 @@ struct MonsterAiDef {
   // in SpawnZonePopulation: it spawns at most once per zone visit (never respawns within the visit) and not at all once
   // `storyBossNotAfterQuestTurnIn` is turned in, unless the chapter is complete (`chapterCompleteQuest` turned in) and
   // storyBossFarmableAfterChapter, in which case it spawns once per visit again.
-  std::string storyBossId;                         // "goblin_chief"
+  std::string storyBossId;                         // the chapter's story boss (GameData/config.ts storyBoss)
   bool storyBossOncePerVisit = true;
-  std::string storyBossNotAfterQuestTurnIn;        // "q_find_goblin_chief"
+  std::string storyBossNotAfterQuestTurnIn;        // the quest that kills it
   bool storyBossFarmableAfterChapter = true;
-  std::string chapterCompleteQuest;                // "q_secure_plains" (its turn-in plays the chapter finale)
+  std::string chapterCompleteQuest;                // its turn-in plays the chapter finale (GameData/config.ts)
   double patrolTimeoutMs = 4000;                   // M10
   int32_t placementTries = 8;                      // M10
   double yawTurnRateDegPerSec = 720;               // M11 (render)

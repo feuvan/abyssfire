@@ -1515,5 +1515,17 @@
     [96, 117, "rock_moss"],
     [105, 117, "fern"],
     [108, 117, "grass_forest"]
-  ]
+  ],
+  "remake": {
+    "source": [
+      "unreal/GameData/loreCollectibles.ts",
+      "unreal/GameData/miniBosses.ts",
+      "unreal/GameData/quests/all_quests.ts"
+    ],
+    "modules": {
+      "src/data/loreCollectibles.ts": "unreal/GameData/loreCollectibles.ts",
+      "src/data/miniBosses.ts": "unreal/GameData/miniBosses.ts",
+      "src/data/quests/all_quests.ts": "unreal/GameData/quests/all_quests.ts"
+    }
+  }
 }

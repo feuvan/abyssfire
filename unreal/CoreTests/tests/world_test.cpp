@@ -45,6 +45,13 @@ namespace ch1 = abyss::test::ch1;
 namespace fixture = abyss::test::fixture;
 
 namespace {
+
+// The key RandomEventSystem logs for a shared event line in `zone`: the zone's own variant when it has event data and
+// the strings carry `<base>.<zone>` (RandomEvents.cpp RevZoneKey; the remade Red Field has its own lines).
+std::string WtEventKey(const DataStore& d, const std::string& base, const std::string& zone) {
+  if (d.World().randomEvents.ForZone(zone) == nullptr) return base;
+  return d.Strings().Has(base + "." + zone) ? base + "." + zone : base;
+}
 // Live-map anchors through the TestContent.h handles (the remake keeps them, chapter1.md 17): a point `d` tiles off the
 // Chapter 1 exit / the first camp's fire.
 Vec2 AtExit(double dx = 0, double dy = 0) { return ch1::kExit.Center() + Vec2(dx, dy); }
@@ -1303,7 +1310,7 @@ TEST_SUITE("world") {
     REQUIRE(ev.prop != kNoEntity);
     CHECK(ev.propPos == spot.Center());  // walkable: findWalkableTile keeps it
     CHECK(ev.puzzleIndex == 0);
-    CHECK(w.Logged("sys.event.msg.environmental_puzzle"));
+    CHECK(w.Logged(WtEventKey(w.h.ctx.data, "sys.event.msg.environmental_puzzle", w.h.session.currentMap)));
     CHECK(w.Logged("zone.event.puzzle.prompt"));
     CHECK(w.Count<EvRandomEvent>() == 1);
     CHECK(w.events.HasUnresolved());
@@ -1376,7 +1383,7 @@ TEST_SUITE("world") {
     // No MonsterSystem in this rig: no tracked monster is alive at the first poll.
     CHECK_FALSE(w.events.HasUnresolved());
     CHECK(w.hero->Gold() == gold0 + 30);
-    CHECK(w.Logged("zone.event.rescue.complete"));
+    CHECK(w.Logged(WtEventKey(w.h.ctx.data, "zone.event.rescue.complete", w.h.session.currentMap)));
   }
 
   TEST_CASE("random events 13.3: a zone without event data gets createEvent's fallbacks (puzzle, ambush, rescue)") {

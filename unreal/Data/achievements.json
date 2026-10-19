@@ -4,87 +4,87 @@
   "achievements": [
     {
       "id": "ach_first_kill",
-      "name": "初出茅庐",
-      "description": "击杀第一个怪物",
+      "name": "第一个名字",
+      "description": "放倒第一个敌人",
       "type": "kill",
       "required": 1,
-      "title": "新手冒险者"
+      "title": "灰中人"
     },
     {
       "id": "ach_kill_100",
-      "name": "百人斩",
-      "description": "击杀100个怪物",
+      "name": "一百下钟声",
+      "description": "放倒100个敌人",
       "type": "kill",
       "required": 100,
       "reward": {"stat": "damage", "value": 2}
     },
     {
       "id": "ach_kill_500",
-      "name": "屠戮者",
-      "description": "击杀500个怪物",
+      "name": "掘墓人",
+      "description": "放倒500个敌人",
       "type": "kill",
       "required": 500,
       "reward": {"stat": "damage", "value": 5},
-      "title": "屠戮者"
+      "title": "掘墓人"
     },
     {
-      "id": "ach_kill_slime",
-      "name": "史莱姆克星",
-      "description": "击杀50个史莱姆",
+      "id": "ach_kill_breachclot",
+      "name": "止血",
+      "description": "击杀50个渊血凝块",
       "type": "kill",
-      "targetId": "slime_green",
+      "targetId": "breachclot",
       "required": 50,
       "reward": {"stat": "lck", "value": 2}
     },
     {
-      "id": "ach_kill_goblin_chief",
-      "name": "哥布林终结者",
-      "description": "击杀哥布林首领",
+      "id": "ach_kill_valdras",
+      "name": "撤退令",
+      "description": "击败焚旗元帅·瓦德拉斯",
       "type": "kill",
-      "targetId": "goblin_chief",
+      "targetId": "valdras",
       "required": 1,
-      "title": "哥布林终结者"
+      "title": "撤退令"
     },
     {
       "id": "ach_kill_demon_lord",
-      "name": "恶魔猎人",
-      "description": "击杀深渊魔王",
+      "name": "火的尽头",
+      "description": "在深渊之底，结束这一切",
       "type": "kill",
       "targetId": "demon_lord",
       "required": 1,
       "reward": {"stat": "str", "value": 10},
-      "title": "深渊征服者"
+      "title": "守火人"
     },
-    {"id": "ach_level_10", "name": "成长之路", "description": "达到10级", "type": "level", "required": 10},
+    {"id": "ach_level_10", "name": "还站着", "description": "达到10级", "type": "level", "required": 10},
     {
       "id": "ach_level_25",
-      "name": "勇者",
+      "name": "老兵",
       "description": "达到25级",
       "type": "level",
       "required": 25,
-      "title": "勇者"
+      "title": "老兵"
     },
     {
       "id": "ach_level_50",
-      "name": "传说",
+      "name": "不熄",
       "description": "达到50级",
       "type": "level",
       "required": 50,
       "reward": {"stat": "str", "value": 5},
-      "title": "传说"
+      "title": "不熄者"
     },
     {
       "id": "ach_explore_all",
-      "name": "探索者",
+      "name": "走遍焚境",
       "description": "探索所有区域",
       "type": "explore",
       "required": 5,
       "reward": {"stat": "lck", "value": 5},
-      "title": "大陆探索者"
+      "title": "行路人"
     },
     {
       "id": "ach_quest_10",
-      "name": "任务达人",
+      "name": "十件差事",
       "description": "完成10个任务",
       "type": "quest",
       "required": 10,
@@ -92,12 +92,29 @@
     },
     {
       "id": "ach_collect_legendary",
-      "name": "传奇收藏家",
+      "name": "死者的遗物",
       "description": "收集一件传奇装备",
       "type": "collect",
       "required": 1,
-      "title": "传奇收藏家"
+      "title": "拾遗人"
     }
   ],
-  "port": {"killCounting": "one count per kill", "exploreAll": "distinct zones", "decision": "Q2"}
+  "port": {"killCounting": "one count per kill", "exploreAll": "distinct zones", "decision": "Q2"},
+  "remake": {
+    "source": ["unreal/GameData/world.ts"],
+    "replaced": [
+      "achievements.ach_first_kill",
+      "achievements.ach_kill_100",
+      "achievements.ach_kill_500",
+      "achievements.ach_kill_slime",
+      "achievements.ach_kill_goblin_chief",
+      "achievements.ach_kill_demon_lord",
+      "achievements.ach_level_10",
+      "achievements.ach_level_25",
+      "achievements.ach_level_50",
+      "achievements.ach_explore_all",
+      "achievements.ach_quest_10",
+      "achievements.ach_collect_legendary"
+    ]
+  }
 }

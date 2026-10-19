@@ -43,42 +43,47 @@ inline constexpr TilePos kCamp{15, 15};         // camp 1: the respawn point (ca
 inline constexpr TilePos kPlayerStart{15, 22};  // a new hero's tile
 inline constexpr TilePos kExit{119, 60};        // the east exit to twilight_forest
 
-inline constexpr char kStoryBoss[] = "goblin_chief";  // monster_ai storyBoss (M7); audio bossMusic scores it boss_ch1
+inline constexpr char kStoryBoss[] = "valdras";  // monster_ai storyBoss (M7); audio bossMusic scores it boss_ch1
 
-// Main-chain slots (chapter1.md "Id map": the remake keeps each slot's role and order).
-inline constexpr char kQuestM1[] = "q_kill_slimes";          // M1: the first main quest
-inline constexpr char kQuestM2[] = "q_kill_goblins";         // M2
-inline constexpr char kQuestM3[] = "q_explore_goblin_camp";  // M3: its turn-in opens the Ember Tower
-inline constexpr char kQuestM4[] = "q_find_goblin_chief";    // M4: the story boss quest
-inline constexpr char kQuestM5[] = "q_secure_plains";        // M5: chapter complete; sends the herb_garden wing's ally
+// Main-chain slots (chapter1.md "Id map": the remake keeps each slot's role and order; package 1B part 2 renamed them).
+inline constexpr char kQuestM1[] = "q_rf_burial_detail";  // M1: the first main quest (slot q_kill_slimes)
+inline constexpr char kQuestM2[] = "q_rf_gnawed_field";   // M2 (slot q_kill_goblins)
+inline constexpr char kQuestM3[] = "q_rf_ashwheat";       // M3: its turn-in opens the Ember Tower
+inline constexpr char kQuestM4[] = "q_rf_marshal";        // M4: the story boss quest
+inline constexpr char kQuestM5[] = "q_rf_last_toll";      // M5: chapter complete; sends the herb_garden wing's ally
 
 // Chapter 1 content ids only content_ch1_test.cpp, playthrough_test.cpp and this header may spell as string literals
-// (content_ch1_test.cpp "content isolation"): the ids the content switch renames or removes (chapter1.md "Id map":
-// quests, monsters, hunts, beats, lore, achievements, quest items and targets, the elder tree's quest nodes) and the
-// Chapter 1 NPCs, which other files reach through the handles above. Generic role keys kept by every camp
-// (`blacksmith`, `merchant`, `stash`) and the zone id are not listed. C1 replaces the list with the remake's ids.
-inline constexpr std::array<std::string_view, 55> kPinnedIds = {
+// (content_ch1_test.cpp "content isolation"): the Chapter 1 content ids (chapter1.md "Id map": quests, monsters, hunts,
+// beats, lore, achievements, quest items and targets, the Captain's tree's quest nodes) and the Chapter 1 NPCs, which
+// other files reach through the handles above. Generic role keys kept by every camp (`blacksmith`, `merchant`, `stash`)
+// and the zone id are not listed. Package 1B part 1 (world data) put the remake's monsters, hunts, lore, hidden area,
+// story decorations, achievements, NPCs and the boss intro here; part 2 (narrative) the quests, their targets, the
+// beats and the tree's quest nodes.
+inline constexpr std::array<std::string_view, 73> kPinnedIds = {
     // quests (chapter1.md Id map: M1-M5, S1-S6)
-    "q_kill_slimes", "q_kill_goblins", "q_explore_goblin_camp", "q_find_goblin_chief", "q_secure_plains",
-    "q_collect_slime_gel", "q_herb_gathering", "q_lost_pendant", "q_bandit_trouble", "q_pet_sprite_friend",
-    "q_escort_merchant_plains",
-    // NPCs
-    "quest_elder", "plains_herbalist", "plains_wanderer",
-    // monsters, the mini-boss, hunts
-    "slime_green", "goblin", "goblin_chief", "miniboss_goblin_shaman", "hunt_pendant_thief", "hunt_redcap_gruk",
+    "q_rf_burial_detail", "q_rf_gnawed_field", "q_rf_ashwheat", "q_rf_marshal", "q_rf_last_toll", "q_rf_black_blood",
+    "q_rf_barrowmoss", "q_rf_tag_thief", "q_rf_oathless", "q_rf_lanternwisp", "q_rf_hallowed_ground",
+    // NPCs (role keys kept, chapter1.md 3; the two new ones)
+    "quest_elder", "plains_herbalist", "plains_wanderer", "knell_chaplain", "crow_trader",
+    // monsters, the mini-boss, hunts (monsters.md 2)
+    "breachclot", "risen_footman", "gravegnawer", "cinderbloat", "risen_arbalest", "oath_zealot", "deserter",
+    "deserter_drummer", "risen_shieldbearer", "dead_standard_bearer", "bonegorger", "valdras", "miniboss_corpseherd",
+    "hunt_hungerbell", "hunt_dreck", "hunt_harke",
     // quest objective targets and items
-    "mat_slime_gel", "mat_herb", "mat_pendant", "zone_goblin_camp", "zone_east_plains", "zone_south_plains",
-    "escort_merchant", "clue_pendant_fence", "clue_pendant_cloth", "clue_pendant_ashes", "clue_sprite_1",
-    "clue_sprite_2", "clue_sprite_3", "clue_sprite_4",
-    // story beats
-    "cs_ep_mark", "cs_ep_whisper", "cs_ep_finale", "cs_boss_goblin_chief",
-    // lore, hidden area, story decorations
-    "lore_ep_01", "lore_ep_02", "lore_ep_03", "lore_ep_04", "hidden_ep_elven_cache", "story_ep_ruined_tower",
-    "story_ep_goblin_totem", "story_ep_ancient_well",
-    // achievements
-    "ach_kill_slime", "ach_kill_goblin_chief",
-    // the elder's dialogue tree: quest nodes
-    "accept_slimes", "goblin_first", "accept_goblins", "goblin_info", "other_quests", "accept_gel", "accept_herbs",
+    "mat_breach_ichor", "mat_barrowmoss", "mat_tag_pouch", "zone_rf_ashwheat", "defend_rf_boneyard_gate",
+    "escort_rf_bern", "clue_rf_tag_cord", "clue_rf_tag_cloth", "clue_rf_tag_ashes", "clue_rf_lantern_1",
+    "clue_rf_lantern_2", "clue_rf_lantern_3", "clue_rf_lantern_4",
+    // story beats (chapter1.md 8)
+    "cs_rf_brand", "cs_rf_whisper", "cs_rf_herd", "cs_rf_marshal_falls", "cs_rf_siege", "cs_rf_finale",
+    "cs_boss_valdras",
+    // lore and echoes, hidden area, story decorations, the sealed Pit (chapter1.md 12, 17)
+    "lore_rf_01", "lore_rf_02", "lore_rf_03", "lore_rf_04", "lore_rf_echo_01", "lore_rf_echo_02", "lore_rf_echo_03",
+    "hidden_rf_paymaster", "story_rf_belfry", "story_rf_red_banner", "story_rf_penitents_altar", "entrance_rf_pit",
+    "sub_rf_pit",
+    // achievements (chapter1.md 14)
+    "ach_kill_breachclot", "ach_kill_valdras",
+    // the Captain's dialogue tree: quest nodes (chapter1.md 4)
+    "accept_burial", "gnawers_first", "accept_gnawers", "other_work", "accept_ichor", "chaplain_pointer",
 };
 
 }  // namespace ch1

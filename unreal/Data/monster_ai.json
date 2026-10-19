@@ -49,12 +49,12 @@
     "noRespawn": ["ambush", "rescue", "defendWave", "hunt", "huntMinion", "miniBoss", "storyBoss", "labyrinth"],
     "miniBossOncePerVisit": true,
     "storyBoss": {
-      "monsterId": "goblin_chief",
+      "monsterId": "valdras",
       "oncePerVisit": true,
-      "notAfterQuestTurnIn": "q_find_goblin_chief",
+      "notAfterQuestTurnIn": "q_rf_marshal",
       "farmableAfterChapter": true,
-      "chapterCompleteQuest": "q_secure_plains",
-      "chapterFinaleCutscene": "cs_ep_finale",
+      "chapterCompleteQuest": "q_rf_last_toll",
+      "chapterFinaleCutscene": "cs_rf_finale",
       "decision": "M7"
     },
     "patrolTimeoutMs": 4000,
@@ -63,5 +63,10 @@
     "yawTurnRateDegPerSec": 720,
     "decisionYaw": "M11",
     "pathfinding": "A* on the tile grid when line-of-walk is blocked + separation + wall sliding (M6)"
+  },
+  "remake": {
+    "source": ["unreal/GameData/config.ts", "unreal/GameData/story/script.ts"],
+    "modules": {"src/data/story/script.ts": "unreal/GameData/story/script.ts"},
+    "replaced": ["config.storyBoss", "config.chapterCompleteQuest", "config.chapterFinaleCutscene"]
   }
 }

@@ -24,6 +24,7 @@
 #include "abyss/base/Timers.h"
 #include "abyss/base/Types.h"
 #include "abyss/combat/CombatInput.h"
+#include "abyss/data/QuestData.h"
 #include "abyss/monsters/Hunts.h"
 #include "abyss/monsters/Monster.h"
 #include "abyss/monsters/MonsterAI.h"
@@ -52,6 +53,15 @@ struct MonsterSpawnParams {
   std::string affixZone;                // zone whose affix count applies ("" = the current zone; sub-dungeons: parent)
 };
 
+// What one defend wave spawns (dark remake K1; QuestWorld builds it from the quest's DefendTargetDef). `composition`
+// empty = the web rule (defendWaveBaseCount + w random picks from the zone list); `hasApproach` restricts the ring to
+// the 180 deg arc centred on approachDeg (DefendTargetDef::approachDeg convention).
+struct DefendWaveSpec {
+  std::span<const DefendWaveEntry> composition;
+  bool hasApproach = false;
+  double approachDeg = 0;
+};
+
 struct DamageFlags {
   bool isCrit = false;
   bool isTick = false;
@@ -78,6 +88,21 @@ class ABYSS_API MonsterSystem {
   // M7: once per visit at its fixed tile (bounds check only), always rolls affixes. In a sub-dungeon (the zone id is a
   // world SubDungeonDef id) it spawns that sub-dungeon's boss instead (8.5, later milestone).
   void SpawnMiniBoss();
+  // A zone mini-boss that an open quest of this zone still needs (an unfinished Kill objective on its def id) comes back
+  // when it is not alive, past once-per-visit: M7 keeps a zone from being farmed, never a quest from being finished (a
+  // hero who killed it before taking the quest could otherwise not finish it before a new visit, and the Chapter 1
+  // zone cannot be left in milestone 1). Like the hunts (SpawnDueHunts): trigger QuestAcceptedMsg. Its pre-fight
+  // dialogue and its kill beat stay once per save. Not in sub-dungeons (their boss never respawns).
+  void SpawnMiniBossForQuests();
+  // The same rule for the M7 story boss (review fix of 1B part 3): when an open quest of this zone still needs it (an
+  // unfinished Kill objective on storyBossId), none is alive and StoryBossBlocked() is false, its spawn entries spawn
+  // again at their anchor tiles (count each, no placement draw; affixes roll as at zone entry; an unwalkable anchor is
+  // skipped) with the StoryBoss role (Regular when monster_ai port.storyBoss.oncePerVisit is false). A hero who killed
+  // the boss before taking its quest can still finish it in the same visit. A dead boss whose respawn timer is pending
+  // (oncePerVisit false: the Regular role respawns) is left to that respawn, so there is never a second one.
+  // Trigger: QuestAcceptedMsg.
+  // Returns the spawned ids (empty when nothing was needed).
+  std::vector<EntityId> SpawnStoryBossForQuests();
   // Sub-dungeon mini-boss (8.5): the sub-dungeon's fixed tile (bounds check against its size only), difficulty-scaled,
   // affixes rolled with the PARENT zone's count, MonsterRole::SubDungeonMiniBoss (never respawns, no dialogue tree).
   // Becomes MiniBoss(). Returns kNoEntity for an unknown boss or an out-of-bounds tile.
@@ -109,7 +134,11 @@ class ABYSS_API MonsterSystem {
   // walkability check (web, quests Q8 later); each a uniformly random def of the zone's monster list
   // (RandomInt(0, len - 1), RngStream::Ai, bosses included), difficulty then ScaleDefendWave, chasing, no affixes,
   // MonsterRole::DefendWave (never respawns). Returns the ids in spawn order (empty without a zone list).
-  std::vector<EntityId> SpawnDefendWave(Vec2 target, int32_t waveIndex);
+  // K1 (`spec`): a composition spawns exactly its entries in list order (each entry `count` times; n = the sum; no RNG
+  // draw; an unknown id keeps its ring slot but is skipped) instead of the random picks - the zone list is then not
+  // needed. With an approach the k-th of n monsters stands at approachDeg + 180 * ((k + 0.5) / n - 0.5) degrees (evenly
+  // inside the half ring facing the approach) instead of 2 pi k / n. Scaling, role, chase and clamping are unchanged.
+  std::vector<EntityId> SpawnDefendWave(Vec2 target, int32_t waveIndex, const DefendWaveSpec& spec = {});
 
   // ---- abstract chip damage for quest actors (monsters 4.4; quests 3.9 / 3.10): no animation, RNG or defense ----
   // `apply(monster, damage)` receives each hit in order and returns false to stop the loop (the actor died: the web
@@ -188,6 +217,7 @@ class ABYSS_API MonsterSystem {
 
  private:
   void Respawn(EntityId deadId);
+  bool RespawnPending(EntityId deadId) const;  // a MonsterTimerKind::Respawn timer for this dead instance is queued
   bool InSafeZone(Vec2 p) const;
   bool Walkable(int32_t col, int32_t row) const;
   void PrepareZone();      // zone entry: clears the population, sizes the grid, builds the world service
@@ -195,6 +225,8 @@ class ABYSS_API MonsterSystem {
   void BuildWorld();
   bool RoleNeverRespawns(MonsterRole role) const;
   bool StoryBossBlocked() const;  // M7: the story boss stays away after its quest (until the chapter is done)
+  // An Active quest of the current zone has an unfinished Kill objective on `defId`.
+  bool OpenQuestNeedsKill(std::string_view defId) const;
   // A fresh instance from a final (scaled) definition at a tile (stats, hp, anchor, role flags); not yet listed.
   MonsterInstance MakeInstance(const MonsterDef& def, TilePos tile, MonsterRole role);
   void RollAffixesInto(MonsterInstance& m, std::string_view zoneId);

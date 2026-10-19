@@ -112,6 +112,9 @@ struct MonsterView {
   uint32_t statusMask = 0;
   double visualScale = 1;
   bool windingUp = false;  // telegraph tint (combat 10.3)
+  // A pose the core holds the monster in (K1): Taunt while the mini-boss's pre-fight dialogue holds it (looped until
+  // the dialogue is dismissed; EvPlayAnim{Taunt} marks the start); Idle = none.
+  AnimAction holdAction = AnimAction::Idle;
 };
 
 struct NpcView {

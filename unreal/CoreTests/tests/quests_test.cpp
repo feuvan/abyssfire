@@ -572,18 +572,14 @@ TEST_SUITE("story") {
   TEST_CASE("script: cutscene speakers and focus targets stand in the zone where the cutscene plays") {
     const DataStore& data = test::RealData();
     const StoryScript& s = data.Story();
+    // A monster stands in a zone when a map spawn or the zone's mini-boss puts it there (MonstersIn's rule).
     const auto zonesWithMonster = [&](const std::string& id) {
       std::vector<std::string> out;
       for (const std::string& z : {std::string("dungeon_abyss_lord"), std::string("dungeon_mid_boss")}) {
         if (z == id) return std::vector<std::string>{"abyss_labyrinth"};
       }
       for (const MapDef& m : data.World().maps) {
-        for (const MapSpawnDef& sp : m.spawns) {
-          if (sp.monsterId == id) {
-            out.push_back(m.id);
-            break;
-          }
-        }
+        if (MonstersIn(data, m.id).count(id) != 0) out.push_back(m.id);
       }
       return out;
     };

@@ -4,25 +4,31 @@
  * Story bible: docs/story.md. Every text field is an i18n key; the words live in
  * src/i18n/locales/story.ts (STORY_ZH / STORY_EN). Keys follow `story.<id>.<n>`,
  * where <n> is the 1-based slide/step index.
+ *
+ * Dark remake (unreal/Docs/dark-remake/, package 1B part 2): the prologue, the Chapter 1 card, its cutscenes
+ * (`cs_rf_*`, `cs_boss_valdras`) and triggers follow chapter1.md §8 and story-bible.md; their words live in
+ * unreal/GameData/i18n/ch1Story.ts (the remake strings win over the web's). Chapters 2-5 stay as copied (DECISIONS DR11).
  */
 import type { BossIntro, Chapter, Cutscene, StorySequence, StoryTrigger } from './types';
 
-// ─── Prologue: myth → cataclysm → sealing → the fire stirs → the hero wakes ───
+// ─── Prologue (chapter1.md §8): the forge → the burned oath → the whisper → the Ashen Crusade → the Breach → the hero
+// wakes in the burn pit. Six slides, title + text (no heading line) ───
 export const PROLOGUE: StorySequence = {
   id: 'prologue',
   slides: [
-    { heading: 'story.prologue.1.heading', title: 'story.prologue.1.title', text: 'story.prologue.1.text', mood: 'embers' },
-    { heading: 'story.prologue.2.heading', title: 'story.prologue.2.title', text: 'story.prologue.2.text', mood: 'night' },
-    { heading: 'story.prologue.3.heading', title: 'story.prologue.3.title', text: 'story.prologue.3.text', mood: 'abyss' },
-    { heading: 'story.prologue.4.heading', title: 'story.prologue.4.title', text: 'story.prologue.4.text', mood: 'abyss' },
-    { heading: 'story.prologue.5.heading', title: 'story.prologue.5.title', text: 'story.prologue.5.text', mood: 'embers' },
-    { heading: 'story.prologue.6.heading', title: 'story.prologue.6.title', text: 'story.prologue.6.text', mood: 'dawn' },
+    { title: 'story.prologue.1.title', text: 'story.prologue.1.text', mood: 'embers' },
+    { title: 'story.prologue.2.title', text: 'story.prologue.2.text', mood: 'night' },
+    { title: 'story.prologue.3.title', text: 'story.prologue.3.text', mood: 'abyss' },
+    { title: 'story.prologue.4.title', text: 'story.prologue.4.text', mood: 'embers' },
+    { title: 'story.prologue.5.title', text: 'story.prologue.5.text', mood: 'abyss' },
+    { title: 'story.prologue.6.title', text: 'story.prologue.6.text', mood: 'night' },
   ],
 };
 
 // ─── Chapter cards (first entry into each zone) ───
 export const CHAPTERS: Chapter[] = [
-  { zoneId: 'emerald_plains', number: 'story.chapter.emerald_plains.number', title: 'story.chapter.emerald_plains.title', subtitle: 'story.chapter.emerald_plains.subtitle', text: 'story.chapter.emerald_plains.text', mood: 'dawn' },
+  // 第一章 · 灰烬中醒来 · 赤幡原 / Chapter One · Woken from Ash · The Red Field (chapter1.md §8).
+  { zoneId: 'emerald_plains', number: 'story.chapter.emerald_plains.number', title: 'story.chapter.emerald_plains.title', subtitle: 'story.chapter.emerald_plains.subtitle', text: 'story.chapter.emerald_plains.text', mood: 'night' },
   { zoneId: 'twilight_forest', number: 'story.chapter.twilight_forest.number', title: 'story.chapter.twilight_forest.title', subtitle: 'story.chapter.twilight_forest.subtitle', text: 'story.chapter.twilight_forest.text', mood: 'night' },
   { zoneId: 'anvil_mountains', number: 'story.chapter.anvil_mountains.number', title: 'story.chapter.anvil_mountains.title', subtitle: 'story.chapter.anvil_mountains.subtitle', text: 'story.chapter.anvil_mountains.text', mood: 'forge' },
   { zoneId: 'scorching_desert', number: 'story.chapter.scorching_desert.number', title: 'story.chapter.scorching_desert.title', subtitle: 'story.chapter.scorching_desert.subtitle', text: 'story.chapter.scorching_desert.text', mood: 'sand' },
@@ -31,54 +37,95 @@ export const CHAPTERS: Chapter[] = [
 
 // ─── In-world cutscenes ───
 export const CUTSCENES: Record<string, Cutscene> = {
-  // Ch.1 — the elder reads the brand and speaks the prophecy (after q_kill_slimes).
-  cs_ep_mark: {
-    id: 'cs_ep_mark',
+  // ─── Chapter 1 (dark remake, chapter1.md §8). Every speaker and focus target stands in emerald_plains (the Captain,
+  // Aldwin and Marl in their camps, Valdras at the Breach Rim); the Corpseherd is no map spawn, so cs_rf_herd narrates
+  // her and looks at her tile. Aldwin calls the hero 孩子 (child), the whisper's word: the first seed of his fall. ───
+  // The Captain rings the bell for the burial detail; Aldwin reads the brand and speaks the prophecy (after
+  // q_rf_burial_detail).
+  cs_rf_brand: {
+    id: 'cs_rf_brand',
     steps: [
       { kind: 'focus', target: { npc: 'quest_elder' } },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_mark.2' },
-      { kind: 'focus', target: 'player' },
-      { kind: 'narrate', text: 'story.cs_ep_mark.4' },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_mark.5' },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_mark.6' },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_mark.7' },
-      { kind: 'say', speaker: 'hero', text: 'story.cs_ep_mark.8' },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_mark.9' },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_mark.10' },
+      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_rf_brand.2' },
+      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_rf_brand.3' },
+      { kind: 'shake', intensity: 0.003, ms: 500 },
+      { kind: 'narrate', text: 'story.cs_rf_brand.5' },
+      { kind: 'focus', target: { npc: 'knell_chaplain' } },
+      { kind: 'say', speaker: { npc: 'knell_chaplain' }, text: 'story.cs_rf_brand.7' },
+      { kind: 'say', speaker: { npc: 'knell_chaplain' }, text: 'story.cs_rf_brand.8' },
+      { kind: 'say', speaker: { npc: 'knell_chaplain' }, text: 'story.cs_rf_brand.9' },
+      { kind: 'say', speaker: 'hero', text: 'story.cs_rf_brand.10' },
+      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_rf_brand.11' },
     ],
   },
-  // Ch.1 — the first whisper, in a dream of the goblin camp (after q_explore_goblin_camp).
-  cs_ep_whisper: {
-    id: 'cs_ep_whisper',
+  // The dream of the last battle and the first whisper (after q_rf_ashwheat): the third of the boss's four beats.
+  cs_rf_whisper: {
+    id: 'cs_rf_whisper',
     steps: [
-      { kind: 'focus', target: { col: 40, row: 52 }, ms: 1400 },
-      { kind: 'narrate', text: 'story.cs_ep_whisper.2' },
-      { kind: 'flash', color: 0x7a3cff, ms: 400 },
-      { kind: 'whisper', text: 'story.cs_ep_whisper.4' },
-      { kind: 'whisper', text: 'story.cs_ep_whisper.5' },
-      { kind: 'whisper', text: 'story.cs_ep_whisper.6' },
-      { kind: 'focus', target: 'player' },
-      { kind: 'say', speaker: 'hero', text: 'story.cs_ep_whisper.8' },
-      { kind: 'whisper', text: 'story.cs_ep_whisper.9' },
+      { kind: 'flash', color: 0xb02fd0, ms: 400 },
+      { kind: 'narrate', text: 'story.cs_rf_whisper.2' },
+      { kind: 'focus', target: { col: 15, row: 95 }, ms: 1400 },
+      { kind: 'say', speaker: { monster: 'valdras' }, text: 'story.cs_rf_whisper.4' },
+      { kind: 'narrate', text: 'story.cs_rf_whisper.5' },
       { kind: 'shake', intensity: 0.006, ms: 400 },
-      { kind: 'narrate', text: 'story.cs_ep_whisper.11' },
+      { kind: 'whisper', text: 'story.cs_rf_whisper.7' },
+      { kind: 'whisper', text: 'story.cs_rf_whisper.8' },
+      { kind: 'say', speaker: 'hero', text: 'story.cs_rf_whisper.9' },
+      { kind: 'whisper', text: 'story.cs_rf_whisper.10' },
+      { kind: 'narrate', text: 'story.cs_rf_whisper.11' },
     ],
   },
-  // Ch.1 — the Seal of Veins steadies; the first flame lights (after q_secure_plains).
-  cs_ep_finale: {
-    id: 'cs_ep_finale',
+  // The Corpseherd falls in her wagon ring and the dead sit down (her first kill, the Sheepfold (60,55)).
+  cs_rf_herd: {
+    id: 'cs_rf_herd',
     steps: [
-      { kind: 'focus', target: 'player' },
-      { kind: 'narrate', text: 'story.cs_ep_finale.2' },
-      { kind: 'flash', color: 0x9dffb0, ms: 500 },
-      { kind: 'narrate', text: 'story.cs_ep_finale.4' },
+      { kind: 'focus', target: { col: 60, row: 55 } },
+      { kind: 'narrate', text: 'story.cs_rf_herd.2' },
+      { kind: 'narrate', text: 'story.cs_rf_herd.3' },
+      { kind: 'narrate', text: 'story.cs_rf_herd.4' },
+      { kind: 'whisper', text: 'story.cs_rf_herd.5' },
+    ],
+  },
+  // Valdras kneels on the dais and asks who gave the order to retreat (his first kill, the Breach Rim (15,95)).
+  cs_rf_marshal_falls: {
+    id: 'cs_rf_marshal_falls',
+    steps: [
+      { kind: 'focus', target: { col: 15, row: 95 } },
+      { kind: 'say', speaker: { monster: 'valdras' }, text: 'story.cs_rf_marshal_falls.2' },
+      { kind: 'narrate', text: 'story.cs_rf_marshal_falls.3' },
+      { kind: 'whisper', text: 'story.cs_rf_marshal_falls.4' },
+      { kind: 'wait', ms: 1200 },
+    ],
+  },
+  // The bell rings by itself: the siege of the Boneyard Gate begins (on accepting q_rf_last_toll).
+  cs_rf_siege: {
+    id: 'cs_rf_siege',
+    steps: [
+      { kind: 'shake', intensity: 0.005, ms: 500 },
+      { kind: 'narrate', text: 'story.cs_rf_siege.2' },
+      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_rf_siege.3' },
+      { kind: 'focus', target: { col: 10, row: 32 }, ms: 1200 },
+      { kind: 'whisper', text: 'story.cs_rf_siege.5' },
+    ],
+  },
+  // Dawn at the gate: the branded palm on the bell, the first flame, every risen dead lies down; Marl leaves for the
+  // tower; Aldwin's last line seeds Chapter 2 (after q_rf_last_toll, the chapter-complete quest; config.ts).
+  cs_rf_finale: {
+    id: 'cs_rf_finale',
+    steps: [
       { kind: 'focus', target: { npc: 'quest_elder' } },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_finale.6' },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_finale.7' },
-      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_ep_finale.8' },
-      { kind: 'whisper', text: 'story.cs_ep_finale.9' },
-      { kind: 'narrate', text: 'story.cs_ep_finale.10' },
-      { kind: 'narrate', text: 'story.cs_ep_finale.11' },
+      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_rf_finale.2' },
+      { kind: 'narrate', text: 'story.cs_rf_finale.3' },
+      { kind: 'flash', color: 0x9dffb0, ms: 500 },
+      { kind: 'narrate', text: 'story.cs_rf_finale.5' },
+      { kind: 'title', title: 'story.cs_rf_finale.6.title', subtitle: 'story.cs_rf_finale.6.subtitle' },
+      { kind: 'narrate', text: 'story.cs_rf_finale.7' },
+      { kind: 'whisper', text: 'story.cs_rf_finale.8' },
+      { kind: 'whisper', text: 'story.cs_rf_finale.9' },
+      { kind: 'say', speaker: { npc: 'quest_elder' }, text: 'story.cs_rf_finale.10' },
+      { kind: 'focus', target: { npc: 'plains_herbalist' } },
+      { kind: 'say', speaker: { npc: 'plains_herbalist' }, text: 'story.cs_rf_finale.12' },
+      { kind: 'say', speaker: { npc: 'knell_chaplain' }, text: 'story.cs_rf_finale.13' },
     ],
   },
   // Ch.2 — the hermit reveals the sixth sage, Ignaroth (after q_talk_hermit).
@@ -303,16 +350,17 @@ export const CUTSCENES: Record<string, Cutscene> = {
       { kind: 'focus', target: 'player' },
     ],
   },
-  // Boss intro — goblin_chief.
-  cs_boss_goblin_chief: {
-    id: 'cs_boss_goblin_chief',
+  // Boss intro — valdras (dark remake, Docs/dark-remake/chapter1.md §8): the boss scan at 9 tiles. His Roar plays on the
+  // focus step, under the title (K1 `anim`); Wave 2 adds the phase Roars.
+  cs_boss_valdras: {
+    id: 'cs_boss_valdras',
     steps: [
-      { kind: 'focus', target: { monster: 'goblin_chief' }, ms: 800 },
-      { kind: 'title', title: 'story.boss.goblin_chief.name', subtitle: 'story.boss.goblin_chief.epithet' },
-      { kind: 'say', speaker: { monster: 'goblin_chief' }, text: 'story.cs_boss_goblin_chief.3' },
-      { kind: 'shake', intensity: 0.006, ms: 400 },
-      { kind: 'whisper', text: 'story.cs_boss_goblin_chief.5' },
-      { kind: 'focus', target: 'player', ms: 600 },
+      { kind: 'focus', target: { monster: 'valdras' }, ms: 800, anim: 'roar' },
+      { kind: 'title', title: 'story.boss.valdras.name', subtitle: 'story.boss.valdras.epithet' },
+      { kind: 'say', speaker: { monster: 'valdras' }, text: 'story.cs_boss_valdras.3' },
+      { kind: 'say', speaker: { monster: 'valdras' }, text: 'story.cs_boss_valdras.4' },
+      { kind: 'whisper', text: 'story.cs_boss_valdras.5' },
+      { kind: 'say', speaker: 'hero', text: 'story.cs_boss_valdras.6' },
     ],
   },
   // Boss intro — werewolf_alpha.
@@ -389,7 +437,7 @@ export const CUTSCENES: Record<string, Cutscene> = {
 
 // ─── Boss introductions (first sight of each zone boss) ───
 export const BOSS_INTROS: BossIntro[] = [
-  { monsterId: 'goblin_chief', name: 'story.boss.goblin_chief.name', epithet: 'story.boss.goblin_chief.epithet', cutscene: 'cs_boss_goblin_chief' },
+  { monsterId: 'valdras', name: 'story.boss.valdras.name', epithet: 'story.boss.valdras.epithet', cutscene: 'cs_boss_valdras' },
   { monsterId: 'werewolf_alpha', name: 'story.boss.werewolf_alpha.name', epithet: 'story.boss.werewolf_alpha.epithet', cutscene: 'cs_boss_werewolf_alpha' },
   { monsterId: 'mountain_troll', name: 'story.boss.mountain_troll.name', epithet: 'story.boss.mountain_troll.epithet', cutscene: 'cs_boss_mountain_troll' },
   { monsterId: 'phoenix', name: 'story.boss.phoenix.name', epithet: 'story.boss.phoenix.epithet', cutscene: 'cs_boss_phoenix' },
@@ -400,9 +448,15 @@ export const BOSS_INTROS: BossIntro[] = [
 
 // ─── When each beat plays ───
 export const STORY_TRIGGERS: StoryTrigger[] = [
-  { on: 'quest_turned_in', questId: 'q_kill_slimes', cutscene: 'cs_ep_mark' },
-  { on: 'quest_turned_in', questId: 'q_explore_goblin_camp', cutscene: 'cs_ep_whisper' },
-  { on: 'quest_turned_in', questId: 'q_secure_plains', cutscene: 'cs_ep_finale' },
+  // Chapter 1 (chapter1.md §8 "Triggers"; cs_rf_pit waits for the Pit, Wave 3).
+  { on: 'quest_turned_in', questId: 'q_rf_burial_detail', cutscene: 'cs_rf_brand' },
+  { on: 'quest_turned_in', questId: 'q_rf_ashwheat', cutscene: 'cs_rf_whisper' },
+  { on: 'quest_accepted', questId: 'q_rf_last_toll', cutscene: 'cs_rf_siege' },
+  { on: 'quest_turned_in', questId: 'q_rf_last_toll', cutscene: 'cs_rf_finale' },
+  // While M3 / M4 is open: a Corpseherd or Valdras killed before the quest comes back on its accept (DECISIONS M7) and
+  // the kill that counts plays the beat.
+  { on: 'monster_killed', monsterId: 'miniboss_corpseherd', cutscene: 'cs_rf_herd', whileQuest: 'q_rf_ashwheat' },
+  { on: 'monster_killed', monsterId: 'valdras', cutscene: 'cs_rf_marshal_falls', whileQuest: 'q_rf_marshal' },
   { on: 'quest_turned_in', questId: 'q_talk_hermit', cutscene: 'cs_tf_hermit' },
   { on: 'quest_turned_in', questId: 'q_seal_dark_source', cutscene: 'cs_tf_finale' },
   { on: 'quest_turned_in', questId: 'q_reforge_artifact', cutscene: 'cs_am_hammer' },

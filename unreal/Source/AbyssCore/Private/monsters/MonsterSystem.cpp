@@ -211,6 +211,70 @@ void MonsterSystem::SpawnMiniBoss() {
   miniBoss_ = Spawn(p);
 }
 
+bool MonsterSystem::OpenQuestNeedsKill(std::string_view defId) const {
+  const QuestSystem* quests = ctx_.sys.quests;
+  const ZoneRuntime* zone = ctx_.sys.zone;
+  if (quests == nullptr || zone == nullptr || !zone->HasZone() || defId.empty()) return false;
+  for (const auto& [q, p] : quests->OpenQuests()) {
+    if (p->status != QuestStatus::Active || q->zone != zone->MapId()) continue;
+    for (size_t i = 0; i < q->objectives.size() && i < p->objectives.size(); ++i) {
+      const QuestObjectiveDef& o = q->objectives[i];
+      if (o.type == ObjectiveType::Kill && o.targetId == defId && p->objectives[i] < o.required) return true;
+    }
+  }
+  return false;
+}
+
+void MonsterSystem::SpawnMiniBossForQuests() {
+  ZoneRuntime* zone = ctx_.sys.zone;
+  if (ctx_.sys.quests == nullptr || zone == nullptr || !zone->HasZone()) return;
+  if (ctx_.data.World().FindSubDungeon(zone->MapId()) != nullptr) return;
+  const MiniBossEntry* entry = ctx_.data.Monsters().MiniBossFor(zone->MapId());
+  if (entry == nullptr || !entry->hasSpawn) return;
+  if (const MonsterInstance* m = Find(miniBoss_); m != nullptr && m->IsAlive()) return;
+  if (!OpenQuestNeedsKill(entry->monsterId)) return;
+  miniBossSpawnedThisVisit_ = false;
+  SpawnMiniBoss();
+}
+
+std::vector<EntityId> MonsterSystem::SpawnStoryBossForQuests() {
+  std::vector<EntityId> out;
+  ZoneRuntime* zone = ctx_.sys.zone;
+  const MonsterTables& tables = ctx_.data.Monsters();
+  const MonsterAiDef& ai = tables.ai;
+  if (ctx_.sys.quests == nullptr || zone == nullptr || !zone->HasZone() || ai.storyBossId.empty()) return out;
+  if (ctx_.data.World().FindSubDungeon(zone->MapId()) != nullptr) return out;
+  if (StoryBossBlocked()) return out;  // M7: away after its quest (until the chapter is done)
+  for (const MonsterInstance& m : monsters_) {
+    if (m.def.id != ai.storyBossId) continue;
+    if (m.IsAlive()) return out;
+    // A dead one with its respawn timer pending comes back by itself (oncePerVisit off: the Regular role respawns
+    // after respawnDelayMs), so spawning another now would make two.
+    if (RespawnPending(m.id)) return out;
+  }
+  if (!OpenQuestNeedsKill(ai.storyBossId)) return out;
+  EnsureZoneGrid();
+  const MapDef& map = zone->Map();
+  const std::string zoneId = zone->MapId();
+  for (const MapSpawnDef& spawn : map.spawns) {  // its spawn entries, at their anchors (no placement draw)
+    const MonsterDef* base = tables.FindForZone(zoneId, spawn.monsterId);
+    if (base == nullptr || base->id != ai.storyBossId) continue;
+    if (!Walkable(spawn.pos.col, spawn.pos.row)) continue;
+    const MonsterDef def = ScaleMonsterForDifficulty(*base, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
+    for (int32_t i = 0; i < spawn.count; ++i) {
+      MonsterSpawnParams p;
+      p.baseDef = &def;
+      p.alreadyScaled = true;
+      p.tile = spawn.pos;
+      p.role = ai.storyBossOncePerVisit ? MonsterRole::StoryBoss : MonsterRole::Regular;
+      p.rollAffixes = def.elite;
+      const EntityId id = Spawn(p);
+      if (id != kNoEntity) out.push_back(id);
+    }
+  }
+  return out;
+}
+
 EntityId MonsterSystem::SpawnSubDungeonMiniBoss(const SubDungeonDef& sd) {
   EnsureZoneGrid();
   const MonsterDef* def = ctx_.data.Monsters().Find(sd.miniBossId);
@@ -454,29 +518,42 @@ std::vector<EntityId> MonsterSystem::SpawnAmbush(std::span<const std::string> mo
   return out;
 }
 
-std::vector<EntityId> MonsterSystem::SpawnDefendWave(Vec2 target, int32_t waveIndex) {
+std::vector<EntityId> MonsterSystem::SpawnDefendWave(Vec2 target, int32_t waveIndex, const DefendWaveSpec& spec) {
   std::vector<EntityId> out;
   EnsureZoneGrid();
   const std::string zoneId = CurrentZoneId();
   const MonsterTables& tables = ctx_.data.Monsters();
   const MonsterAiDef& ai = tables.ai;
   const ZoneMonsterList* zoneList = tables.ZoneList(zoneId);
-  if (zoneList == nullptr || zoneList->monsterIds.empty() || waveIndex < 0) return out;
+  const bool composed = !spec.composition.empty();
+  if (waveIndex < 0) return out;
+  if (!composed && (zoneList == nullptr || zoneList->monsterIds.empty())) return out;
   int32_t cols = world_.cols, rows = world_.rows;
   if ((cols <= 0 || rows <= 0) && ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) {
     cols = ctx_.sys.zone->Map().cols;
     rows = ctx_.sys.zone->Map().rows;
   }
+  // K1 composition: the wave's ids in list order (each entry `count` times).
+  std::vector<std::string_view> composedIds;
+  for (const DefendWaveEntry& e : spec.composition) {
+    for (int32_t c = 0; c < e.count; ++c) composedIds.emplace_back(e.monsterId);
+  }
   Rng& rng = ctx_.Rand(RngStream::Ai);
-  const int32_t n = ai.defendWaveBaseCount + waveIndex;
+  const int32_t n = composed ? static_cast<int32_t>(composedIds.size()) : ai.defendWaveBaseCount + waveIndex;
   const int32_t lo = ai.defendWaveEdgeMargin;
+  const double approach = spec.approachDeg * kPi / 180.0;
   for (int32_t i = 0; i < n; ++i) {
-    const double angle = kTwoPi * static_cast<double>(i) / static_cast<double>(n);
+    const double k = static_cast<double>(i), count = static_cast<double>(n);
+    const double angle = spec.hasApproach ? approach + kPi * ((k + 0.5) / count - 0.5) : kTwoPi * k / count;
     const int32_t col = JsRoundInt(target.x + DetCos(angle) * ai.defendWaveRadius);
     const int32_t row = JsRoundInt(target.y + DetSin(angle) * ai.defendWaveRadius);
-    const int32_t len = static_cast<int32_t>(zoneList->monsterIds.size());
-    const std::string& id = zoneList->monsterIds[static_cast<size_t>(rng.RandomInt(0, len - 1))];
-    const MonsterDef* base = tables.Find(id);
+    const MonsterDef* base = nullptr;
+    if (composed) {
+      base = tables.FindForZone(zoneId, composedIds[static_cast<size_t>(i)]);
+    } else {
+      const int32_t len = static_cast<int32_t>(zoneList->monsterIds.size());
+      base = tables.Find(zoneList->monsterIds[static_cast<size_t>(rng.RandomInt(0, len - 1))]);
+    }
     if (base == nullptr) continue;
     const MonsterDef def = ScaleDefendWave(
         ScaleMonsterForDifficulty(*base, ctx_.data.Combat().difficulty, ctx_.session.difficulty), waveIndex, ai);
@@ -554,6 +631,14 @@ void MonsterSystem::CheckMiniBossDialogue() {
   if (tree == nullptr) return;
   miniBossDialogueActive_ = true;
   miniBossDialogueMonster_ = boss->id;
+  // K1: the held boss taunts the hero (MonsterView::holdAction stays Taunt until DismissMiniBossDialogue).
+  EvPlayAnim taunt;
+  taunt.entity = boss->id;
+  taunt.action = AnimAction::Taunt;
+  taunt.startMs = ctx_.Now();
+  taunt.hasFaceTarget = true;
+  taunt.faceTarget = hero->Position();
+  ctx_.events.Emit(taunt);
   EvMiniBossDialogue ev;
   ev.opened = true;
   ev.monster = boss->id;
@@ -836,6 +921,16 @@ void MonsterSystem::OnMonsterKilled(const MonsterKilledMsg& msg) {
                        static_cast<uint16_t>(MonsterTimerKind::Respawn), msg.monster);
 }
 
+bool MonsterSystem::RespawnPending(EntityId deadId) const {
+  for (const Timer& t : ctx_.timers.Pending()) {
+    if (t.owner == TimerOwner::Monsters && t.kind == static_cast<uint16_t>(MonsterTimerKind::Respawn) &&
+        t.entity == deadId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void MonsterSystem::Respawn(EntityId deadId) {
   const int32_t found = IndexOf(deadId);
   if (found < 0) return;
@@ -1017,6 +1112,7 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     // Wind-up telegraph (combat 10.3): owned by CombatSystem::FillSnapshot (it runs after this one), which knows the
     // pending strike, its windup from the manifest timing and whether it was aborted.
     v.windingUp = false;
+    v.holdAction = miniBossDialogueActive_ && m.id == miniBossDialogueMonster_ ? AnimAction::Taunt : AnimAction::Idle;
   }
 }
 

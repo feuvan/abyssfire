@@ -17,3 +17,11 @@ export type CutsceneStep =
 export interface Cutscene extends Omit<Web.Cutscene, 'steps'> {
   steps: CutsceneStep[];
 }
+
+/**
+ * [W1] `whileQuest` (feature `story.triggerWhileQuest`): a `monster_killed` trigger fires only while that quest is
+ * accepted and not yet turned in, so a kill the M7 respawn rules allow before the quest does not spend its beat.
+ */
+export type StoryTrigger =
+  | Exclude<Web.StoryTrigger, { on: 'monster_killed' }>
+  | (Extract<Web.StoryTrigger, { on: 'monster_killed' }> & { whileQuest?: string });

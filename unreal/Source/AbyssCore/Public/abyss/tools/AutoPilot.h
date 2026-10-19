@@ -1,5 +1,10 @@
-// AutoPilot: the scripted Chapter-1 bot (ARCHITECTURE 3.3) shared by the headless playthrough test
+// AutoPilot: the Chapter-1 bot (ARCHITECTURE 3.3) shared by the headless playthrough test
 // (CoreTests/tests/playthrough_test.cpp) and the in-game autotest (UE UAbyssAutoTestSubsystem, -abyssautotest).
+//
+// Its script is data: a route of autopilot_routes.json (exported from unreal/GameData/autopilot/*.ts,
+// implementation-plan.md 6; DataStore::AutoPilotRoutes) whose steps it interprets one by one - checkpoints, notes and
+// tasks (talk, dialogue tree, quest card, shop, gather, hunt by def ids, boss by role, clues, explore, escort, defend,
+// walk, town portal, equip). No content id is spelled in the bot (the K1 grep gate, content_hooks_test.cpp).
 //
 // It plays only through the public contract: it reads the Snapshot and the Events and sends Commands - the commands
 // the UE input layer and UI send (CmdMoveTo / CmdAttackTarget / CmdCastSkill / CmdInteract / CmdPickUp /
@@ -54,10 +59,11 @@ struct AutoPilotImpl;
 // What the bot plays after the new game.
 enum class AutoPilotScenario : uint8_t {
   None,      // nothing: only the steps queued with AddGoTo / AddWait / AddWaitIdle / AddCheckpoint
-  Smoke,     // chapter 1 up to the first main-quest turn-in: prologue, camp NPCs (shop, stash, the elder's dialogue
-             // tree and quest card), gathering, the slime hunt, M1 + the herbs turned in and their cutscene
-             // (cs_ep_mark)
-  Chapter1,  // all of chapter 1: every emerald_plains quest, the zone mini-boss, the goblin chief and the finale
+  Smoke,     // the starting zone's route up to its `smokeEnd` step (Chapter 1: prologue, camp NPCs - shop, stash, the
+             // Captain's dialogue tree and quest cards -, gathering, the first hunts, M1 and the first side quest
+             // turned in with M1's cutscene)
+  Chapter1,  // the whole route of the starting zone: every quest of the zone, its mini-boss, the story boss, the
+             // defend siege and the finale
 };
 ABYSS_ENUM_STRINGS(AutoPilotScenario, "none", "smoke", "chapter")
 
@@ -79,7 +85,7 @@ ABYSS_ENUM_STRINGS(AutoPilotStatus, "needFrame", "checkpoint", "finished")
 enum class AutoPilotMilestone : uint8_t {
   ZoneEntered,     // detail: map id
   FirstKill,       // detail: monster def id
-  BossKill,        // elite named kill (hunt_*, miniboss_*, goblin_chief); detail: monster def id
+  BossKill,        // a hunt leader, mini-boss or story boss killed (by MonsterRole); detail: monster def id
   QuestAccepted,   // detail: quest id
   QuestCompleted,  // detail: quest id
   QuestTurnedIn,   // detail: quest id
@@ -90,7 +96,7 @@ enum class AutoPilotMilestone : uint8_t {
   HeroDied,
   Checkpoint,      // detail: checkpoint id
   ScenarioDone,    // the scenario's script ended; detail: scenario name
-  ChapterDone,     // the Chapter1 scenario ended (finale cutscene seen); detail: "emerald_plains"
+  ChapterDone,     // the Chapter1 scenario ended (finale cutscene seen); detail: the route's zone
 };
 ABYSS_ENUM_STRINGS(AutoPilotMilestone, "zoneEntered", "firstKill", "bossKill", "questAccepted", "questCompleted",
                    "questTurnedIn", "storyBeat", "cutscene", "levelUp", "petObtained", "heroDied", "checkpoint",
@@ -107,7 +113,7 @@ struct AutoPilotMilestoneRecord {
 struct AutoPilotStats {
   int deaths = 0, levelUps = 0, kills = 0, potionsDrunk = 0, itemsPicked = 0, equipChanges = 0, saveRequests = 0;
   int sealedBanners = 0, miniBossDialogues = 0, itemsSold = 0, itemsBought = 0, skillCasts = 0;
-  int petFeeds = 0, escortFailures = 0;
+  int petFeeds = 0, escortFailures = 0, defendFailures = 0, defendRetreats = 0;
   bool petObtained = false;
   std::array<int64_t, EnumCount<ExpSource>()> expBySource{};  // exp granted, indexed by ExpSource
   std::vector<std::string> killedDefs;        // distinct monster defs killed, first-kill order
@@ -141,6 +147,15 @@ class ABYSS_API AutoPilot {
   void AddWaitIdle(double timeoutSec);  // until no story beat and no core modal (closes stray modals); fails on timeout
   void AddWait(double seconds);
   void AddGoTo(Vec2 goal, double arrive, double timeoutSec);  // walks there, fighting on the way; fails when stuck
+  // The hunt's loot pass (ApLootNearby): picks up wanted items and walks over potions within `radius` tiles; a potion
+  // walk that times out is skipped, not a failure.
+  void AddLootNearby(double radius);
+  // The route's `escort` step: lead the quest's escort NPC home (ApEscort), re-taken from its giver up to `tries` times
+  // (an escort that died before the step is one lost attempt); a quest that was never accepted fails the step at once.
+  void AddEscort(const std::string& questId, int tries);
+  // The route's `defend` step: hold the quest's defend target (ApDefend), re-taken from its giver up to `tries` times
+  // (a target that fell before the step is one lost attempt); a quest that was never accepted fails the step at once.
+  void AddDefend(const std::string& questId, int tries, double standOff);
 
   // ---- frame protocol (see the file comment) ----
   AutoPilotStatus Advance(const Snapshot& view);

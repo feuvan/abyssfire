@@ -67,6 +67,9 @@ struct EscortState {
   bool joined = false;
   std::vector<TilePos> path;
   double repathAtMs = 0;
+  // Sim ms since the escort found no path to the hero while it should follow (-1 = it has one); after
+  // kQwEscortStrandedMs it catches up next to the hero (remake rule, DECISIONS Q9).
+  double strandedSinceMs = -1;
 };
 
 // Defend runtime (3.10; scene-local, not saved: the wave count resumes from the quest progress).
@@ -93,11 +96,24 @@ struct QuestCardEntry {
   // CmdQuestTurnIn::choice. Generated (RngStream::Loot) when the card opens or refreshes, cached per quest for the
   // session, so the card shows exactly the items the turn-in grants. Empty on accept cards (they show the preview line).
   std::vector<ItemInstance> choices;
+  // K1 labelled choices: the i18n key labelling each item of `choices` (same length; the quest's rewards.choiceLabels
+  // entry of the slot the item was generated for). Empty when the quest has no labels or on accept cards (which can
+  // read quest->rewards.choiceLabels slot by slot).
+  std::vector<std::string> choiceLabels;
+};
+// K1 quest progress line: an active quest this NPC gives whose definition has a progressKey.
+struct QuestCardProgress {
+  const QuestDef* quest = nullptr;
+  std::string progressKey;  // quest->progressKey (i18n data.quest.<id>.progress by convention)
 };
 struct QuestCardState {
   bool open = false;
   std::string npcId;
   std::vector<QuestCardEntry> entries;
+  // K1: the giver's lines for its active (not yet completed) quests, in the NPC's quest list order. The card also opens
+  // for these alone (an NPC with no offer but an active quest with a progressKey), so the line shows while the quest
+  // runs; an NPC with neither keeps today's fallback (dialogue tree / linear lines).
+  std::vector<QuestCardProgress> progress;
 };
 
 class ABYSS_API QuestWorld {
@@ -152,8 +168,16 @@ class ABYSS_API QuestWorld {
   void FillSnapshot(Snapshot& out) const;
 
  private:
-  // Generates (RngStream::Loot, loot 5.6) and caches the pick-one gear of a quest once per session.
-  const std::vector<ItemInstance>& EnsureRewardChoices(const QuestDef& quest);
+  // Generates (RngStream::Loot, loot 5.6) and caches the pick-one gear of a quest once per session (with the choice
+  // slot of each item, for the K1 labels).
+  struct RewardChoiceCache {
+    std::string questId;
+    std::vector<ItemInstance> items;
+    std::vector<int32_t> slots;  // rewards.choices index of each item
+  };
+  const RewardChoiceCache& EnsureRewardChoices(const QuestDef& quest);
+  // K1: the giver's progress lines (QuestCardState::progress) of `npcId`.
+  std::vector<QuestCardProgress> ProgressLines(std::string_view npcId) const;
   // sync() (3.4 / 3.5): gather nodes and clue marks of this zone's active quests; drops the unwanted ones.
   void Sync();
   const std::vector<TilePos>& SpotsFor(const QuestDef& quest, int32_t objectiveIndex);
@@ -172,7 +196,7 @@ class ABYSS_API QuestWorld {
 
   SimContext& ctx_;
   QuestCardState card_;
-  std::vector<std::pair<std::string, std::vector<ItemInstance>>> rewardCache_;
+  std::vector<RewardChoiceCache> rewardCache_;
   std::vector<QuestNode> nodes_;
   // Per zone visit: spot indices gathered per "<questId>:<objectiveIndex>" (3.4) and the resolved spots.
   std::vector<std::pair<std::string, std::vector<int32_t>>> gathered_;

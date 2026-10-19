@@ -9,7 +9,10 @@
 // were cut from today's roster, and no other test file spells a Chapter 1 content id.
 #include <algorithm>
 #include <array>
+#include <cstdint>
+#include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <set>
 #include <span>
@@ -24,9 +27,12 @@
 #include "QuestsFixtures.h"
 #include "SimFixtures.h"
 #include "SimHarness.h"
+#include "SourceScan.h"
 #include "TestContent.h"
 #include "TestUtil.h"
 #include "WorldFixtures.h"
+#include "abyss/base/Json.h"
+#include "abyss/combat/HitFeedback.h"
 #include "abyss/data/DataStore.h"
 #include "doctest/doctest.h"
 
@@ -34,13 +40,16 @@ using namespace abyss;
 
 // =====================================================================================================================
 // Monsters: the Chapter 1 roster, hunts, mini-boss, story boss, zone population (from monsters_test.cpp)
-// Moved verbatim; the systems tests there run on the synthetic fixtures of TestContent.h.
+// Moved verbatim at T0; the systems tests there run on the synthetic fixtures of TestContent.h. Re-pinned by package 1B
+// part 1 (dark remake world data, Docs/dark-remake/monsters.md 2): the four families, the Corpseherd (the shaman's slot,
+// range 3.0 authored), Lord-Marshal Valdras (the story boss, Wave 1 single phase) and the hunts Hungerbell, Dreck and
+// Harke (the slots of Gruk and Sneek).
 // =====================================================================================================================
 
 TEST_SUITE("monsters") {
   using namespace abyss::test::monsters_fx;
 
-  TEST_CASE("Chapter 1 roster 2.1: base stats, speed in tiles/s, ranged rule (M5 shaman ranged at 3.0)") {
+  TEST_CASE("Chapter 1 roster 2.1: base stats, speed in tiles/s, ranged rule (M5: the Corpseherd ranged at 3.0)") {
     struct Row {
       const char* id;
       int32_t level;
@@ -49,10 +58,21 @@ TEST_SUITE("monsters") {
       double tilesPerSec;
     };
     const Row rows[] = {
-        {"slime_green", 1, 30, 5, 2, 40, 4, 1.2, 1500, 12, 2, 4, false, 1.20},
-        {"goblin", 3, 55, 8, 4, 55, 5, 1.5, 1200, 18, 3, 6, false, 1.65},
-        {"goblin_chief", 5, 160, 14, 8, 50, 6, 1.8, 1000, 55, 8, 15, true, 1.50},
-        {"miniboss_goblin_shaman", 6, 280, 16, 10, 45, 7, 3.0, 1300, 90, 15, 30, true, 1.35},
+        // monsters.md 2.0 (Wave 1: Valdras is the single-phase ~900 HP fallback of chapter1.md 11); exp as built (1B
+        // review, DECISIONS DR9): round(0.75 x the 2.0 Exp) for the regulars, Valdras 110.
+        {"breachclot", 1, 28, 5, 2, 38, 4, 1.2, 1500, 8, 2, 4, false, 1.14},
+        {"risen_footman", 2, 50, 7, 5, 32, 4, 1.5, 1600, 11, 2, 5, false, 0.96},
+        {"gravegnawer", 3, 42, 7, 3, 66, 6, 1.3, 950, 13, 1, 4, false, 1.98},
+        {"cinderbloat", 4, 40, 4, 2, 30, 5, 1.2, 1800, 14, 1, 3, false, 0.90},
+        {"risen_arbalest", 5, 46, 11, 4, 34, 7, 6.0, 2200, 18, 3, 6, false, 1.02},
+        {"oath_zealot", 6, 90, 11, 6, 52, 6, 1.5, 1100, 23, 4, 8, false, 1.56},
+        {"deserter", 6, 80, 12, 7, 56, 5, 1.6, 1150, 21, 6, 12, false, 1.68},
+        {"deserter_drummer", 6, 70, 8, 5, 50, 6, 1.5, 1400, 21, 4, 9, false, 1.50},
+        {"risen_shieldbearer", 7, 130, 12, 14, 30, 5, 1.6, 1700, 26, 3, 7, false, 0.90},
+        {"dead_standard_bearer", 7, 140, 8, 8, 30, 6, 1.6, 1700, 30, 4, 8, false, 0.90},
+        {"bonegorger", 7, 210, 17, 9, 42, 6, 2.0, 1700, 36, 6, 12, false, 1.26},
+        {"miniboss_corpseherd", 6, 300, 15, 10, 45, 7, 3.0, 1300, 95, 15, 30, true, 1.35},
+        {"valdras", 9, 900, 20, 12, 48, 8, 2.0, 1300, 110, 30, 60, true, 1.44},
     };
     for (const Row& r : rows) {
       CAPTURE(r.id);
@@ -72,9 +92,11 @@ TEST_SUITE("monsters") {
       CHECK(MonsterTopSpeed(d, MAi()) == doctest::Approx(r.tilesPerSec));
       CHECK(d.nameKey == "data.monster." + std::string(r.id));
     }
-    CHECK(MDef("miniboss_goblin_shaman").isMiniBoss);
-    CHECK(MDef("miniboss_goblin_shaman").isRanged);  // M5
-    CHECK_FALSE(MDef("goblin_chief").isRanged);
+    CHECK(MDef("miniboss_corpseherd").isMiniBoss);
+    CHECK(MDef("miniboss_corpseherd").isRanged);  // M5's role, authored (no exporter override any more)
+    CHECK(MD().Monsters().overrides.empty());
+    CHECK(MDef("risen_arbalest").isRanged);        // the first ranged regular
+    CHECK_FALSE(MDef("valdras").isRanged);
     // Ranged iff attackRange > 2.5 for every definition (vector 11: 2.5 is melee).
     for (const MonsterDef& d : MD().Monsters().defs) {
       CAPTURE(d.id);
@@ -91,12 +113,22 @@ TEST_SUITE("monsters") {
       double chaseDrop, attackExit, reach;
     };
     const Row rows[] = {
-        {"slime_green", 4, 4, 3, 6.0, 1.44, 2.12},
-        {"goblin", 6, 5, 5, 7.5, 1.8, 2.525},
-        {"goblin_chief", 11, 5, 16, 9.0, 2.16, 2.93},
-        {"miniboss_goblin_shaman", 12, 4, 28, 10.5, 3.6, 4.55},  // M5: range 3.0 (web 2.5: 3.0 / 3.875)
-        {"hunt_pendant_thief", 8, 5, 16, 10.5, 1.8, 2.525},
-        {"hunt_redcap_gruk", 10, 5, 27, 10.5, 1.8, 2.525},
+        {"breachclot", 4, 3, 2, 6.0, 1.44, 2.12},
+        {"risen_footman", 5, 3, 5, 6.0, 1.8, 2.525},
+        {"gravegnawer", 5, 6, 4, 9.0, 1.56, 2.255},
+        {"cinderbloat", 3, 3, 4, 7.5, 1.44, 2.12},
+        {"risen_arbalest", 8, 3, 4, 10.5, 7.2, 8.6},
+        {"oath_zealot", 8, 5, 9, 9.0, 1.8, 2.525},
+        {"deserter", 9, 5, 8, 7.5, 1.92, 2.66},
+        {"deserter_drummer", 6, 5, 7, 9.0, 1.8, 2.525},
+        {"risen_shieldbearer", 9, 3, 13, 7.5, 1.92, 2.66},
+        {"dead_standard_bearer", 6, 3, 14, 9.0, 1.92, 2.66},
+        {"bonegorger", 13, 4, 21, 9.0, 2.4, 3.2},
+        {"miniboss_corpseherd", 12, 4, 30, 10.5, 3.6, 4.55},  // range 3.0
+        {"valdras", 16, 4, 90, 12.0, 2.4, 3.2},
+        {"hunt_hungerbell", 13, 4, 42, 10.5, 2.4, 3.2},  // 420 HP / 17 dmg (hp x2, dmg x1.0)
+        {"hunt_dreck", 11, 5, 24, 10.5, 1.92, 2.66},
+        {"hunt_harke", 15, 5, 40, 10.5, 1.92, 2.66},
     };
     for (const Row& r : rows) {
       CAPTURE(r.id);
@@ -120,19 +152,38 @@ TEST_SUITE("monsters") {
       Difficulty diff;
       double hp, dmg, def, exp, g0, g1;
     };
+    // Math.round(x * mul): hp / damage x1.5 / x2, defense x1.3 / x1.6, exp and gold x2 / x3.
     const Row rows[] = {
-        {"slime_green", Difficulty::Nightmare, 45, 8, 3, 24, 4, 8},
-        {"slime_green", Difficulty::Hell, 60, 10, 3, 36, 6, 12},
-        {"goblin", Difficulty::Nightmare, 83, 12, 5, 36, 6, 12},
-        {"goblin", Difficulty::Hell, 110, 16, 6, 54, 9, 18},
-        {"goblin_chief", Difficulty::Nightmare, 240, 21, 10, 110, 16, 30},
-        {"goblin_chief", Difficulty::Hell, 320, 28, 13, 165, 24, 45},
-        {"miniboss_goblin_shaman", Difficulty::Nightmare, 420, 24, 13, 180, 30, 60},
-        {"miniboss_goblin_shaman", Difficulty::Hell, 560, 32, 16, 270, 45, 90},
-        {"hunt_pendant_thief", Difficulty::Nightmare, 248, 15, 7, 108, 18, 36},
-        {"hunt_pendant_thief", Difficulty::Hell, 330, 20, 8, 162, 27, 54},
-        {"hunt_redcap_gruk", Difficulty::Nightmare, 413, 20, 7, 180, 18, 36},
-        {"hunt_redcap_gruk", Difficulty::Hell, 550, 26, 8, 270, 27, 54},
+        {"breachclot", Difficulty::Nightmare, 42, 8, 3, 16, 4, 8},
+        {"breachclot", Difficulty::Hell, 56, 10, 3, 24, 6, 12},
+        {"risen_footman", Difficulty::Nightmare, 75, 11, 7, 22, 4, 10},
+        {"risen_footman", Difficulty::Hell, 100, 14, 8, 33, 6, 15},
+        {"gravegnawer", Difficulty::Nightmare, 63, 11, 4, 26, 2, 8},
+        {"gravegnawer", Difficulty::Hell, 84, 14, 5, 39, 3, 12},
+        {"cinderbloat", Difficulty::Nightmare, 60, 6, 3, 28, 2, 6},
+        {"cinderbloat", Difficulty::Hell, 80, 8, 3, 42, 3, 9},
+        {"risen_arbalest", Difficulty::Nightmare, 69, 17, 5, 36, 6, 12},
+        {"risen_arbalest", Difficulty::Hell, 92, 22, 6, 54, 9, 18},
+        {"oath_zealot", Difficulty::Nightmare, 135, 17, 8, 46, 8, 16},
+        {"oath_zealot", Difficulty::Hell, 180, 22, 10, 69, 12, 24},
+        {"deserter", Difficulty::Nightmare, 120, 18, 9, 42, 12, 24},
+        {"deserter", Difficulty::Hell, 160, 24, 11, 63, 18, 36},
+        {"risen_shieldbearer", Difficulty::Nightmare, 195, 18, 18, 52, 6, 14},
+        {"risen_shieldbearer", Difficulty::Hell, 260, 24, 22, 78, 9, 21},
+        {"dead_standard_bearer", Difficulty::Nightmare, 210, 12, 10, 60, 8, 16},
+        {"dead_standard_bearer", Difficulty::Hell, 280, 16, 13, 90, 12, 24},
+        {"bonegorger", Difficulty::Nightmare, 315, 26, 12, 72, 12, 24},
+        {"bonegorger", Difficulty::Hell, 420, 34, 14, 108, 18, 36},
+        {"miniboss_corpseherd", Difficulty::Nightmare, 450, 23, 13, 190, 30, 60},
+        {"miniboss_corpseherd", Difficulty::Hell, 600, 30, 16, 285, 45, 90},
+        {"valdras", Difficulty::Nightmare, 1350, 30, 16, 220, 60, 120},
+        {"valdras", Difficulty::Hell, 1800, 40, 19, 330, 90, 180},
+        {"hunt_hungerbell", Difficulty::Nightmare, 630, 26, 14, 216, 36, 72},
+        {"hunt_hungerbell", Difficulty::Hell, 840, 34, 18, 324, 54, 108},
+        {"hunt_dreck", Difficulty::Nightmare, 360, 21, 10, 126, 36, 72},
+        {"hunt_dreck", Difficulty::Hell, 480, 28, 13, 189, 54, 108},
+        {"hunt_harke", Difficulty::Nightmare, 600, 29, 10, 210, 36, 72},
+        {"hunt_harke", Difficulty::Hell, 800, 38, 13, 315, 54, 108},
     };
     for (const Row& r : rows) {
       CAPTURE(r.id);
@@ -147,39 +198,46 @@ TEST_SUITE("monsters") {
     }
   }
 
-  TEST_CASE("makeHuntDefinition (vector 12): Gruk and Sneek; every exported hunt matches the TS defsNormal") {
-    const MonsterDef& goblin = MDef("goblin");
-    const MonsterDef gruk = MakeHuntDefinition(goblin, MHunt("hunt_redcap_gruk"), MAi(), "Gruk");
-    CHECK(gruk.id == "hunt_redcap_gruk");
-    CHECK(gruk.name == "Gruk");
-    CHECK(gruk.nameKey == "data.monster.hunt_redcap_gruk");
-    CHECK(gruk.hp == 275);
-    CHECK(gruk.damage == 13);
-    CHECK(gruk.defense == 5);
-    CHECK(gruk.expReward == 90);
-    CHECK(gruk.goldMin == 9);
-    CHECK(gruk.goldMax == 18);
-    CHECK(gruk.aggroRange == 7);
-    CHECK(gruk.elite);
-    CHECK(gruk.isMiniBoss);
-    CHECK(gruk.spriteKey == goblin.spriteKey);
-    CHECK(gruk.speed == goblin.speed);
-    CHECK(gruk.attackRange == goblin.attackRange);
-    CHECK(gruk.attackSpeedMs == goblin.attackSpeedMs);
-    CHECK(gruk.level == goblin.level);
-    const MonsterDef sneek = MakeHuntDefinition(goblin, MHunt("hunt_pendant_thief"), MAi(), "Sneek");
-    CHECK(sneek.hp == 165);
-    CHECK(sneek.damage == 10);
-    CHECK(sneek.defense == 5);
-    CHECK(sneek.expReward == 54);
-    CHECK(ScaleMonsterForDifficulty(sneek, MDiff(), Difficulty::Nightmare).hp == 248);
+  TEST_CASE("makeHuntDefinition (vector 12): Harke, Dreck and Hungerbell; every exported hunt matches the TS defsNormal") {
+    const MonsterDef& deserter = MDef("deserter");
+    const MonsterDef harke = MakeHuntDefinition(deserter, MHunt("hunt_harke"), MAi(), "Harke");
+    CHECK(harke.id == "hunt_harke");
+    CHECK(harke.name == "Harke");
+    CHECK(harke.nameKey == "data.monster.hunt_harke");
+    CHECK(harke.hp == 400);        // 80 x 5
+    CHECK(harke.damage == 19);     // round(12 x 1.6)
+    CHECK(harke.defense == 8);     // round(7 x 1.2)
+    CHECK(harke.expReward == 105); // 21 x max(3, 5)
+    CHECK(harke.goldMin == 18);
+    CHECK(harke.goldMax == 36);
+    CHECK(harke.aggroRange == 7);
+    CHECK(harke.elite);
+    CHECK(harke.isMiniBoss);
+    CHECK(harke.spriteKey == deserter.spriteKey);
+    CHECK(harke.speed == deserter.speed);
+    CHECK(harke.attackRange == deserter.attackRange);
+    CHECK(harke.attackSpeedMs == deserter.attackSpeedMs);
+    CHECK(harke.level == deserter.level);
+    const MonsterDef dreck = MakeHuntDefinition(deserter, MHunt("hunt_dreck"), MAi(), "Dreck");
+    CHECK(dreck.hp == 240);
+    CHECK(dreck.damage == 14);
+    CHECK(dreck.defense == 8);
+    CHECK(dreck.expReward == 63);
+    CHECK(ScaleMonsterForDifficulty(dreck, MDiff(), Difficulty::Nightmare).hp == 360);
+    const MonsterDef hungerbell = MakeHuntDefinition(MDef("bonegorger"), MHunt("hunt_hungerbell"), MAi(), "Hungerbell");
+    CHECK(hungerbell.hp == 420);     // 210 x 2 (1B review: x2, not x3)
+    CHECK(hungerbell.damage == 17);  // 17 x 1.0
+    CHECK(hungerbell.defense == 11);
+    CHECK(hungerbell.expReward == 108);  // 36 x max(3, 2)
+    CHECK(hungerbell.aggroRange == 7);
+    CHECK(hungerbell.level == 7);
     // Defaults: hpMul 4, dmgMul 1.5 when the hunt omits them.
-    HuntDef bare = MHunt("hunt_redcap_gruk");
+    HuntDef bare = MHunt("hunt_harke");
     bare.hasHpMul = bare.hasDmgMul = false;
-    const MonsterDef def = MakeHuntDefinition(goblin, bare, MAi(), "x");
-    CHECK(def.hp == 220);
-    CHECK(def.damage == 12);
-    CHECK(def.expReward == 72);
+    const MonsterDef def = MakeHuntDefinition(deserter, bare, MAi(), "x");
+    CHECK(def.hp == 320);
+    CHECK(def.damage == 18);
+    CHECK(def.expReward == 84);
     // Cross-check every hunt of every zone against the exporter's TS-computed definition.
     for (const HuntDef& h : MD().Monsters().hunts) {
       CAPTURE(h.huntId);
@@ -200,8 +258,8 @@ TEST_SUITE("monsters") {
   }
 
   TEST_CASE("isHuntDue (vector 13): bounty on accept, tracked quarry after its trail, done / inactive -> not due") {
-    const QuestDef* pendant = MD().FindQuest("q_lost_pendant");
-    const QuestDef* bounty = MD().FindQuest("q_bandit_trouble");
+    const QuestDef* pendant = MD().FindQuest("q_rf_tag_thief");
+    const QuestDef* bounty = MD().FindQuest("q_rf_oathless");
     REQUIRE(pendant != nullptr);
     REQUIRE(bounty != nullptr);
     auto progressOf = [](const QuestDef& q, std::initializer_list<int32_t> done, QuestStatus st = QuestStatus::Active) {
@@ -212,20 +270,20 @@ TEST_SUITE("monsters") {
       for (int32_t i : done) p.objectives[static_cast<size_t>(i)] = q.objectives[static_cast<size_t>(i)].required;
       return p;
     };
-    const HuntDef& gruk = MHunt("hunt_redcap_gruk");
-    const HuntDef& thief = MHunt("hunt_pendant_thief");
-    CHECK(IsHuntDue(*bounty, progressOf(*bounty, {}), gruk));
-    CHECK_FALSE(IsHuntDue(*bounty, progressOf(*bounty, {0}), gruk));
-    CHECK_FALSE(IsHuntDue(*bounty, progressOf(*bounty, {}, QuestStatus::Completed), gruk));
-    CHECK_FALSE(IsHuntDue(*pendant, progressOf(*pendant, {0, 1}), thief));
-    CHECK(IsHuntDue(*pendant, progressOf(*pendant, {0, 1, 2}), thief));
-    CHECK_FALSE(IsHuntDue(*pendant, progressOf(*pendant, {0, 1, 2, 3}), thief));  // kill objective done
-    CHECK(HuntObjectiveIndex(*pendant, "hunt_pendant_thief") == 3);
+    const HuntDef& harke = MHunt("hunt_harke");
+    const HuntDef& dreck = MHunt("hunt_dreck");
+    CHECK(IsHuntDue(*bounty, progressOf(*bounty, {}), harke));
+    CHECK_FALSE(IsHuntDue(*bounty, progressOf(*bounty, {0}), harke));
+    CHECK_FALSE(IsHuntDue(*bounty, progressOf(*bounty, {}, QuestStatus::Completed), harke));
+    CHECK_FALSE(IsHuntDue(*pendant, progressOf(*pendant, {0, 1}), dreck));
+    CHECK(IsHuntDue(*pendant, progressOf(*pendant, {0, 1, 2}), dreck));
+    CHECK_FALSE(IsHuntDue(*pendant, progressOf(*pendant, {0, 1, 2, 3}), dreck));  // kill objective done
+    CHECK(HuntObjectiveIndex(*pendant, "hunt_dreck") == 3);
     CHECK(HuntObjectiveIndex(*pendant, "no_such_hunt") == -1);
     // A short (migrated) progress record counts missing objectives as 0.
     QuestProgress shortRec;
     shortRec.questId = bounty->id;
-    CHECK(IsHuntDue(*bounty, shortRec, gruk));
+    CHECK(IsHuntDue(*bounty, shortRec, harke));
 
     // huntsToSpawn: this zone only, not already out, quest order then hunt order.
     const QuestProgress pp = progressOf(*pendant, {0, 1, 2});
@@ -234,34 +292,35 @@ TEST_SUITE("monsters") {
     std::vector<std::string> present;
     std::vector<DueHunt> due = HuntsToSpawn(open, "emerald_plains", present, MD().Monsters().hunts);
     REQUIRE(due.size() == 2);
-    CHECK(due[0].hunt->huntId == "hunt_pendant_thief");
-    CHECK(due[1].hunt->huntId == "hunt_redcap_gruk");
+    CHECK(due[0].hunt->huntId == "hunt_dreck");
+    CHECK(due[1].hunt->huntId == "hunt_harke");
     CHECK(due[0].quest == pendant);
-    present = {"hunt_redcap_gruk"};
+    present = {"hunt_harke"};
     due = HuntsToSpawn(open, "emerald_plains", present, MD().Monsters().hunts);
     REQUIRE(due.size() == 1);
-    CHECK(due[0].hunt->huntId == "hunt_pendant_thief");
+    CHECK(due[0].hunt->huntId == "hunt_dreck");
     CHECK(HuntsToSpawn(open, "twilight_forest", {}, MD().Monsters().hunts).empty());
   }
 
-  TEST_CASE("elite affix application 2.4 (vector 16): every affix on the chief, shaman and both hunt leaders") {
+  TEST_CASE("elite affix application 2.4 (vector 16): every affix on Valdras, the Corpseherd and two hunt leaders") {
     struct Row {
       const char* id;
       std::array<std::array<int32_t, 5>, 7> v;  // hp, dmg, speed, def, str per affix in table order
     };
+    // floor(x * mult) per affix (the mechanics are the web's; the remake re-voices and recolours them only).
     const Row rows[] = {
-        {"goblin_chief",
-         {{{192, 14, 50, 8, 11}, {160, 14, 80, 8, 11}, {184, 15, 50, 8, 12}, {208, 18, 50, 9, 14}, {192, 15, 50, 8, 12},
-           {200, 15, 50, 8, 12}, {192, 14, 45, 8, 11}}}},
-        {"miniboss_goblin_shaman",
-         {{{336, 16, 45, 10, 12}, {280, 16, 72, 10, 12}, {322, 17, 45, 10, 13}, {364, 21, 45, 11, 16},
-           {336, 17, 45, 10, 13}, {350, 17, 45, 10, 13}, {336, 16, 40, 11, 12}}}},
-        {"hunt_pendant_thief",
-         {{{198, 10, 55, 5, 8}, {165, 10, 88, 5, 8}, {189, 11, 55, 5, 8}, {214, 13, 55, 5, 10}, {198, 11, 55, 5, 8},
-           {206, 11, 55, 5, 8}, {198, 10, 49, 5, 8}}}},
-        {"hunt_redcap_gruk",
-         {{{330, 13, 55, 5, 10}, {275, 13, 88, 5, 10}, {316, 14, 55, 5, 11}, {357, 17, 55, 5, 13},
-           {330, 14, 55, 5, 11}, {343, 14, 55, 5, 11}, {330, 13, 49, 5, 10}}}},
+        {"valdras",
+         {{{1080, 20, 48, 12, 16}, {900, 20, 76, 12, 16}, {1035, 22, 48, 12, 17}, {1170, 27, 48, 13, 21},
+           {1080, 22, 48, 12, 17}, {1125, 22, 48, 12, 17}, {1080, 21, 43, 13, 16}}}},
+        {"miniboss_corpseherd",
+         {{{360, 15, 45, 10, 12}, {300, 15, 72, 10, 12}, {345, 16, 45, 10, 12}, {390, 20, 45, 11, 16},
+           {360, 16, 45, 10, 12}, {375, 16, 45, 10, 12}, {360, 15, 40, 11, 12}}}},
+        {"hunt_dreck",
+         {{{288, 14, 56, 8, 11}, {240, 14, 89, 8, 11}, {276, 15, 56, 8, 12}, {312, 18, 56, 9, 14}, {288, 15, 56, 8, 12},
+           {300, 15, 56, 8, 12}, {288, 14, 50, 8, 11}}}},
+        {"hunt_harke",
+         {{{480, 19, 56, 8, 15}, {400, 19, 89, 8, 15}, {459, 20, 56, 8, 16}, {520, 25, 56, 9, 20},
+           {480, 20, 56, 8, 16}, {500, 20, 56, 8, 16}, {480, 19, 50, 8, 15}}}},
     };
     for (const Row& r : rows) {
       const MonsterDef base = MNormalDef(r.id);
@@ -285,9 +344,9 @@ TEST_SUITE("monsters") {
 
   TEST_CASE("M7 story boss is data: id, quests and the storyBoss role") {
     const MonsterAiDef& ai = MAi();
-    CHECK(ai.storyBossId == "goblin_chief");
-    CHECK(ai.storyBossNotAfterQuestTurnIn == "q_find_goblin_chief");
-    CHECK(ai.chapterCompleteQuest == "q_secure_plains");
+    CHECK(ai.storyBossId == "valdras");
+    CHECK(ai.storyBossNotAfterQuestTurnIn == "q_rf_marshal");  // M4, the Sleepless Marshal (slot q_find_goblin_chief)
+    CHECK(ai.chapterCompleteQuest == "q_rf_last_toll");
     CHECK(ai.storyBossOncePerVisit);
     CHECK(ai.storyBossFarmableAfterChapter);
     CHECK(std::find(ai.noRespawnRoles.begin(), ai.noRespawnRoles.end(), "storyBoss") != ai.noRespawnRoles.end());
@@ -300,7 +359,7 @@ TEST_SUITE("monsters") {
     CHECK(q->questArea.row == 95);
   }
 
-  TEST_CASE("zone population 6.1 / 6.3: 55 monsters, jitter <= 3, walkable, outside camps, chief = story boss") {
+  TEST_CASE("zone population 6.1 / 6.3: 55 monsters, jitter <= 3, walkable, outside camps, Valdras = story boss") {
     MonsterRig rig(11);
     REQUIRE(rig.ok);
     rig.monsters.SpawnZonePopulation();
@@ -328,7 +387,7 @@ TEST_SUITE("monsters") {
       }
       CHECK(nearEntry);
       CHECK_FALSE(rig.zone.InSafeZone(m.pos));
-      if (m.def.id == "goblin_chief") {
+      if (m.def.id == "valdras") {
         CHECK(m.role == MonsterRole::StoryBoss);
         CHECK(m.noRespawn);
         CHECK(m.AffixCount() == 1);  // emerald_plains: exactly one affix
@@ -339,9 +398,19 @@ TEST_SUITE("monsters") {
         CHECK(m.maxHp == MDef(m.def.id).hp);
       }
     }
-    CHECK(perDef["slime_green"] == 19);
-    CHECK(perDef["goblin"] == 35);
-    CHECK(perDef["goblin_chief"] == 1);
+    // chapter1.md 17: 55 in the same 10 entries (one monster id each in Wave 1).
+    CHECK(map.spawns.size() == 10);
+    CHECK(perDef["risen_footman"] == 8);
+    CHECK(perDef["gravegnawer"] == 8);
+    CHECK(perDef["breachclot"] == 7);
+    CHECK(perDef["cinderbloat"] == 6);
+    CHECK(perDef["oath_zealot"] == 5);
+    CHECK(perDef["risen_arbalest"] == 5);
+    CHECK(perDef["risen_shieldbearer"] == 6);
+    CHECK(perDef["valdras"] == 1);
+    CHECK(perDef["deserter"] == 6);
+    CHECK(perDef["bonegorger"] == 3);
+    CHECK(perDef.size() == 10);
     CHECK(MEvents<EvEntitySpawned>(rig.h.events).size() == all.size());
     // Deterministic for a seed.
     MonsterRig again(11);
@@ -356,31 +425,31 @@ TEST_SUITE("monsters") {
     nm.h.session.difficulty = Difficulty::Nightmare;
     nm.monsters.SpawnZonePopulation();
     for (const MonsterInstance& m : nm.monsters.All()) {
-      if (m.def.id == "goblin") CHECK(m.maxHp == 83);
+      if (m.def.id == "gravegnawer") CHECK(m.maxHp == 63);
     }
   }
 
-  TEST_CASE("M7 story boss: skipped after q_find_goblin_chief, back once the chapter is complete") {
+  TEST_CASE("M7 story boss: skipped after q_rf_marshal, back once the chapter is complete") {
     MonsterRig rig(3);
     QuestProgress chief;
-    chief.questId = "q_find_goblin_chief";
+    chief.questId = "q_rf_marshal";
     chief.status = QuestStatus::TurnedIn;
     chief.objectives.assign(MD().FindQuest(chief.questId)->objectives.size(), 1);
     rig.quests.Load({chief});
-    if (!rig.quests.IsTurnedIn("q_find_goblin_chief")) {
+    if (!rig.quests.IsTurnedIn("q_rf_marshal")) {
       MESSAGE("QuestSystem::Load is not implemented yet (quests area): M7 runtime part skipped");
       return;
     }
     rig.monsters.SpawnZonePopulation();
-    CHECK(rig.monsters.NearestAliveOfDef("goblin_chief", {15, 95}) == kNoEntity);
+    CHECK(rig.monsters.NearestAliveOfDef("valdras", {15, 95}) == kNoEntity);
     QuestProgress fin;
-    fin.questId = "q_secure_plains";
+    fin.questId = "q_rf_last_toll";
     fin.status = QuestStatus::TurnedIn;
     fin.objectives.assign(MD().FindQuest(fin.questId)->objectives.size(), 1);
     rig.quests.Load({chief, fin});
     rig.monsters.OnZoneExit();
     rig.monsters.SpawnZonePopulation();
-    const EntityId boss = rig.monsters.NearestAliveOfDef("goblin_chief", {15, 95});
+    const EntityId boss = rig.monsters.NearestAliveOfDef("valdras", {15, 95});
     REQUIRE(boss != kNoEntity);
     CHECK(rig.M(boss).role == MonsterRole::StoryBoss);
   }
@@ -392,7 +461,7 @@ TEST_SUITE("monsters") {
     const EntityId boss = rig.monsters.MiniBoss();
     REQUIRE(boss != kNoEntity);
     const MonsterInstance& b = rig.M(boss);
-    CHECK(b.def.id == "miniboss_goblin_shaman");
+    CHECK(b.def.id == "miniboss_corpseherd");
     CHECK(b.pos == Vec2(60, 55));
     CHECK(b.role == MonsterRole::ZoneMiniBoss);
     CHECK(b.noRespawn);
@@ -409,6 +478,84 @@ TEST_SUITE("monsters") {
     rig.monsters.SpawnMiniBoss();
     CHECK(rig.monsters.MiniBoss() != kNoEntity);
     CHECK(rig.monsters.MiniBoss() != boss);  // fresh id
+  }
+
+  TEST_CASE("M5 as shipped: every authored wave of the Boneyard Gate spawns on walkable ground outside camp 1") {
+    // chapter1.md M5 / DECISIONS DR4: the quest's own target, waves and approachDeg (not a synthetic arc), each wave's
+    // spawn tiles on the r 8 half ring: walkable (a wave on a wall would stand stuck) and outside the camp's safe zone.
+    const QuestDef* q = MD().FindQuest(test::ch1::kQuestM5);
+    REQUIRE(q != nullptr);
+    REQUIRE(q->hasDefendTarget);
+    const DefendTargetDef& dt = q->defendTarget;
+    REQUIRE(dt.hasApproach);
+    REQUIRE(dt.waves.size() == static_cast<size_t>(dt.totalWaves));
+    MonsterRig rig(91, Vec2(60, 60));
+    REQUIRE(rig.ok);
+    const Vec2 gate = dt.pos.Center();
+    const Vec2 camp = test::ch1::kCamp.Center();
+    for (size_t w = 0; w < dt.waves.size(); ++w) {
+      DefendWaveSpec spec;
+      spec.composition = dt.waves[w];
+      spec.hasApproach = true;
+      spec.approachDeg = dt.approachDeg;
+      int32_t expected = 0;
+      for (const DefendWaveEntry& e : dt.waves[w]) expected += e.count;
+      const std::vector<EntityId> ids = rig.monsters.SpawnDefendWave(gate, static_cast<int32_t>(w), spec);
+      CHECK(static_cast<int32_t>(ids.size()) == expected);
+      for (EntityId id : ids) {
+        const Vec2 pos = rig.M(id).pos;
+        CAPTURE(w);
+        CAPTURE(pos.x);
+        CAPTURE(pos.y);
+        CHECK(rig.zone.Walkable(static_cast<int32_t>(std::floor(pos.x)), static_cast<int32_t>(std::floor(pos.y))));
+        CHECK_FALSE(rig.zone.InSafeZone(pos));
+        CHECK(Dist(pos, camp) > rig.zone.SafeZoneRadius());
+        CHECK(Dist(pos, gate) == doctest::Approx(MAi().defendWaveRadius).epsilon(0.15));
+      }
+    }
+  }
+
+  TEST_CASE("M3 needs the Corpseherd: killed before M3 is taken, she comes back when it is (SpawnMiniBossForQuests)") {
+    // The Sheepfold (60,55) lies 7 tiles from Dreck's hunt (60,48): a hero who kills her before M3 could never finish
+    // the chapter (once per visit, M7; the Red Field cannot be left in milestone 1).
+    MonsterRig rig(5);
+    rig.monsters.SpawnZonePopulation();
+    rig.monsters.SpawnMiniBoss();
+    const EntityId first = rig.monsters.MiniBoss();
+    REQUIRE(first != kNoEntity);
+    rig.monsters.SpawnMiniBossForQuests();  // nobody needs her yet: nothing happens
+    CHECK(rig.monsters.MiniBoss() == first);
+    const size_t before = rig.monsters.All().size();
+    rig.monsters.ApplyDamage(first, 1e6, DamageFlags{});
+    CHECK_FALSE(rig.M(first).IsAlive());
+    rig.monsters.SpawnMiniBossForQuests();  // still nobody: once per visit holds
+    CHECK(rig.monsters.MiniBoss() == kNoEntity);
+    CHECK(rig.monsters.All().size() == before);
+    QuestProgress m3;
+    m3.questId = test::ch1::kQuestM3;
+    m3.status = QuestStatus::Active;
+    m3.objectives.assign(MD().FindQuest(m3.questId)->objectives.size(), 0);
+    rig.quests.Load({m3});
+    rig.monsters.SpawnMiniBossForQuests();
+    const EntityId again = rig.monsters.MiniBoss();
+    REQUIRE(again != kNoEntity);
+    CHECK(again != first);
+    const MonsterInstance& b = rig.M(again);
+    CHECK(b.IsAlive());
+    CHECK(b.def.id == "miniboss_corpseherd");
+    CHECK(b.pos == Vec2(60, 55));
+    CHECK(b.role == MonsterRole::ZoneMiniBoss);
+    const size_t count = rig.monsters.All().size();
+    rig.monsters.SpawnMiniBossForQuests();  // alive: no second one
+    CHECK(rig.monsters.All().size() == count);
+    // Once her objective is done nobody needs her any more.
+    rig.monsters.ApplyDamage(again, 1e6, DamageFlags{});
+    m3.objectives[1] = 1;
+    rig.quests.Load({m3});
+    const size_t afterKill = rig.monsters.All().size();
+    rig.monsters.SpawnMiniBossForQuests();
+    CHECK(rig.monsters.MiniBoss() == kNoEntity);
+    CHECK(rig.monsters.All().size() == afterKill);
   }
 
   TEST_CASE("mini-boss dialogue 8.3: within aggro, once per save, boss frozen while open, chase on dismiss") {
@@ -430,7 +577,7 @@ TEST_SUITE("monsters") {
     REQUIRE(opened.size() == 1);
     CHECK(opened[0].opened);
     CHECK(opened[0].monster == boss);
-    CHECK(opened[0].monsterId == "miniboss_goblin_shaman");
+    CHECK(opened[0].monsterId == "miniboss_corpseherd");
     CHECK(rig.M(boss).state == MonsterState::Idle);
     const Vec2 frozenAt = rig.M(boss).pos;
     rig.hero->SetPosition(Vec2(60, 57));
@@ -439,7 +586,7 @@ TEST_SUITE("monsters") {
     CHECK(rig.M(boss).pos == frozenAt);
     SaveData save;
     rig.monsters.WriteSave(save);
-    CHECK(save.miniBossDialogueSeen == std::vector<std::string>{"miniboss_goblin_shaman"});
+    CHECK(save.miniBossDialogueSeen == std::vector<std::string>{"miniboss_corpseherd"});
     rig.h.events.Clear();
     rig.monsters.DismissMiniBossDialogue();
     CHECK_FALSE(rig.monsters.MiniBossDialogueActive());
@@ -468,34 +615,35 @@ TEST_SUITE("monsters") {
   TEST_CASE("hunts 9.4: leader (hunt def, difficulty, affixes, x1.25), minions without affixes, announce") {
     MonsterRig rig(21, Vec2(60, 60));
     rig.OpenWorld();
-    const QuestDef* pendant = MD().FindQuest("q_lost_pendant");
-    const QuestDef* bounty = MD().FindQuest("q_bandit_trouble");
-    const std::vector<DueHunt> due{{pendant, &MHunt("hunt_pendant_thief")}, {bounty, &MHunt("hunt_redcap_gruk")}};
+    const QuestDef* pendant = MD().FindQuest("q_rf_tag_thief");
+    const QuestDef* bounty = MD().FindQuest("q_rf_oathless");
+    const std::vector<DueHunt> due{{pendant, &MHunt("hunt_dreck")}, {bounty, &MHunt("hunt_harke")}};
     rig.monsters.SpawnHunts(due, true);
-    CHECK(rig.monsters.IsHuntPresent("hunt_pendant_thief"));
-    CHECK(rig.monsters.IsHuntPresent("hunt_redcap_gruk"));
+    CHECK(rig.monsters.IsHuntPresent("hunt_dreck"));
+    CHECK(rig.monsters.IsHuntPresent("hunt_harke"));
     const auto all = rig.monsters.All();
     REQUIRE(all.size() == 1 + 2 + 1 + 4);  // open world: every minion placement succeeds
     const MonsterInstance& thief = all[0];
-    CHECK(thief.def.id == "hunt_pendant_thief");
-    CHECK(thief.huntId == "hunt_pendant_thief");
+    CHECK(thief.def.id == "hunt_dreck");
+    CHECK(thief.huntId == "hunt_dreck");
     CHECK(thief.role == MonsterRole::HuntLeader);
     CHECK(thief.noRespawn);
     CHECK(thief.pos == Vec2(60, 48));
     CHECK(thief.visualScale == doctest::Approx(1.25));
     CHECK(thief.AffixCount() == 1);
-    CHECK(thief.originalDef.hp == 165);
-    CHECK(thief.def.nameKey == "data.monster.hunt_pendant_thief");
+    CHECK(thief.originalDef.hp == 240);
+    CHECK(thief.def.nameKey == "data.monster.hunt_dreck");
     for (size_t i = 1; i <= 2; ++i) {
-      CHECK(all[i].def.id == "goblin");
+      CHECK(all[i].def.id == "deserter");
       CHECK(all[i].role == MonsterRole::HuntMinion);
       CHECK(all[i].affixes.empty());
       CHECK(std::abs(all[i].spawnAnchor.col - 60) <= 3);
       CHECK(std::abs(all[i].spawnAnchor.row - 48) <= 3);
     }
-    CHECK(all[3].def.id == "hunt_redcap_gruk");
+    CHECK(all[3].def.id == "hunt_harke");
     CHECK(all[3].pos == Vec2(82, 72));
-    CHECK(all[3].originalDef.hp == 275);
+    CHECK(all[3].originalDef.hp == 400);
+    for (size_t i = 4; i <= 7; ++i) CHECK(all[i].def.id == "deserter");
     // Announce: one log + shake + reveal event per hunt.
     size_t logs = 0;
     for (const EvLog& l : MEvents<EvLog>(rig.h.events)) {
@@ -514,17 +662,17 @@ TEST_SUITE("monsters") {
     // Kill credit uses the hunt id; leaders never respawn; a dead leader is no longer present.
     rig.monsters.ApplyDamage(thief.id, 1e6, DamageFlags{});
     REQUIRE(rig.kills.size() == 1);
-    CHECK(rig.kills[0].defId == "hunt_pendant_thief");
+    CHECK(rig.kills[0].defId == "hunt_dreck");
     CHECK(rig.kills[0].isMiniBoss);
     CHECK(rig.kills[0].role == MonsterRole::HuntLeader);
-    CHECK_FALSE(rig.monsters.IsHuntPresent("hunt_pendant_thief"));
+    CHECK_FALSE(rig.monsters.IsHuntPresent("hunt_dreck"));
     CHECK(rig.h.timers.Empty());
     // A silent spawn (zone entry / accept) has no announcement; a blocked spot falls back to the nearest ring tile.
     MonsterRig quiet(22, Vec2(60, 60));
     auto grid = std::make_shared<MTestGrid>(120, 120);
     grid->Block(82, 72);
     quiet.monsters.SetWorldForTesting(MGridWorld(grid, false));
-    const std::vector<DueHunt> one{{bounty, &MHunt("hunt_redcap_gruk")}};
+    const std::vector<DueHunt> one{{bounty, &MHunt("hunt_harke")}};
     quiet.monsters.SpawnHunts(one, false);
     REQUIRE_FALSE(quiet.monsters.All().empty());
     CHECK(quiet.monsters.All()[0].pos == Vec2(81, 71));  // ring 1, dr = -1, dc = -1
@@ -536,7 +684,7 @@ TEST_SUITE("monsters") {
     MonsterRig rig(23, Vec2(60, 60));
     rig.OpenWorld();
     QuestProgress p;
-    p.questId = "q_bandit_trouble";
+    p.questId = "q_rf_oathless";
     p.status = QuestStatus::Active;
     p.objectives.assign(1, 0);
     rig.quests.Load({p});
@@ -545,7 +693,7 @@ TEST_SUITE("monsters") {
       return;
     }
     rig.monsters.SpawnDueHunts(false);
-    CHECK(rig.monsters.IsHuntPresent("hunt_redcap_gruk"));
+    CHECK(rig.monsters.IsHuntPresent("hunt_harke"));
     const size_t n = rig.monsters.All().size();
     rig.monsters.SpawnDueHunts(true);  // already out: nothing new
     CHECK(rig.monsters.All().size() == n);
@@ -556,7 +704,7 @@ TEST_SUITE("monsters") {
     MonsterRig rig(31, Vec2(60, 60));
     rig.OpenWorld();
     const RngState aiBefore = rig.h.rng.Get(RngStream::Ai).GetState();
-    const std::vector<std::string> ids{"slime_green", "goblin"};
+    const std::vector<std::string> ids{"risen_footman", "gravegnawer"};  // the Red Field's ambush pool (chapter1.md 13)
     const std::vector<EntityId> spawned =
         rig.monsters.SpawnAmbush(ids, 4, Vec2(60, 60), 3, 2, MonsterRole::AmbushSpawn);
     REQUIRE(spawned.size() == 4);
@@ -575,10 +723,10 @@ TEST_SUITE("monsters") {
     // Scripted draws: index, angle, distance per monster.
     MonsterRig s(32, Vec2(60, 60));
     s.OpenWorld();
-    s.h.rng.Get(RngStream::Events).Script({0.6, 0.0, 0.5});  // goblin; angle 0; dist 2 + 0.5 * 3 = 3.5
+    s.h.rng.Get(RngStream::Events).Script({0.6, 0.0, 0.5});  // gravegnawer; angle 0; dist 2 + 0.5 * 3 = 3.5
     const std::vector<EntityId> one = s.monsters.SpawnAmbush(ids, 1, Vec2(40, 40), 2, 3, MonsterRole::RescueSpawn);
     REQUIRE(one.size() == 1);
-    CHECK(s.M(one[0]).def.id == "goblin");
+    CHECK(s.M(one[0]).def.id == "gravegnawer");
     CHECK(s.M(one[0]).pos == Vec2(JsRoundInt(43.5), 40));
     CHECK(s.M(one[0]).role == MonsterRole::RescueSpawn);
     // Blocked preferred tile: the ring search (row-major per ring) inside [1, size - 2].
@@ -597,13 +745,13 @@ TEST_SUITE("monsters") {
     REQUIRE(sim != nullptr);
     REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 77));
     sim->Step();
-    size_t alive = 0, shamans = 0;
+    size_t alive = 0, herds = 0;
     for (const MonsterView& v : sim->View().monsters) {
       if (v.alive) ++alive;
-      if (v.defId == "miniboss_goblin_shaman") ++shamans;
+      if (v.defId == "miniboss_corpseherd") ++herds;
     }
     CHECK(alive >= 56);  // 55 zone spawns + the mini-boss (no hunt is due at a new game)
-    CHECK(shamans == 1);
+    CHECK(herds == 1);
     for (int i = 0; i < 20 && sim->WorldFrozen(); ++i) {  // a prologue, if the story plays one
       sim->Submit(CmdStorySkip{});
       sim->Step();
@@ -626,13 +774,15 @@ TEST_SUITE("monsters") {
   TEST_CASE("defend waves (quests 3.10 / monsters 6.4): 3 + w on a radius-8 circle, scaled, chasing, never respawn") {
     MonsterRig rig(53, Vec2(100, 100));
     rig.OpenWorld();
-    // emerald_plains list [slime_green, goblin, goblin_chief]: RandomInt(0, 2) picks.
-    rig.h.rng.Get(RngStream::Ai).Script({0.0, 0.5, 0.9});
+    // Without a wave composition (K1 `waves`), the web rule: RandomInt(0, 11) picks from the emerald_plains list
+    // [breachclot, risen_footman, gravegnawer, cinderbloat, risen_arbalest, oath_zealot, deserter, deserter_drummer,
+    //  risen_shieldbearer, dead_standard_bearer, bonegorger, valdras].
+    rig.h.rng.Get(RngStream::Ai).Script({0.0, 0.5, 0.99});
     const std::vector<EntityId> w0 = rig.monsters.SpawnDefendWave(Vec2(60, 60), 0);
     REQUIRE(w0.size() == 3);
-    CHECK(rig.M(w0[0]).def.id == "slime_green");
-    CHECK(rig.M(w0[1]).def.id == "goblin");
-    CHECK(rig.M(w0[2]).def.id == "goblin_chief");  // bosses included (quests Q8, later)
+    CHECK(rig.M(w0[0]).def.id == "breachclot");
+    CHECK(rig.M(w0[1]).def.id == "deserter");
+    CHECK(rig.M(w0[2]).def.id == "valdras");  // bosses included (quests Q8, later)
     CHECK(rig.M(w0[0]).pos == Vec2(68, 60));
     CHECK(rig.M(w0[1]).pos == Vec2(56, 67));  // 60 + 8 cos 120 = 56, 60 + 8 sin 120 = 66.93
     CHECK(rig.M(w0[2]).pos == Vec2(56, 53));
@@ -641,9 +791,9 @@ TEST_SUITE("monsters") {
       CHECK(m.state == MonsterState::Chase);
       CHECK(m.role == MonsterRole::DefendWave);
       CHECK(m.noRespawn);
-      CHECK(m.affixes.empty());  // even the elite chief
+      CHECK(m.affixes.empty());  // even the elite boss
     }
-    CHECK(rig.M(w0[2]).maxHp == 160);
+    CHECK(rig.M(w0[2]).maxHp == 900);
     CHECK(rig.aggros.size() == 3);
     // Wave 2 on nightmare: n = 5, difficulty then wave scaling.
     rig.h.session.difficulty = Difficulty::Nightmare;
@@ -651,9 +801,9 @@ TEST_SUITE("monsters") {
     const std::vector<EntityId> w2 = rig.monsters.SpawnDefendWave(Vec2(60, 60), 2);
     REQUIRE(w2.size() == 5);
     for (EntityId id : w2) {
-      CHECK(rig.M(id).def.id == "goblin");
-      CHECK(rig.M(id).maxHp == std::floor(83 * 1.6));    // nightmare 83, x(1 + 0.3 x 2)
-      CHECK(rig.M(id).def.damage == std::floor(12 * 1.4));  // nightmare 12, x(1 + 0.2 x 2)
+      CHECK(rig.M(id).def.id == "deserter");
+      CHECK(rig.M(id).maxHp == std::floor(120 * 1.6));    // nightmare 120, x(1 + 0.3 x 2)
+      CHECK(rig.M(id).def.damage == std::floor(18 * 1.4));  // nightmare 18, x(1 + 0.2 x 2)
       CHECK(Dist(rig.M(id).pos, Vec2(60, 60)) == doctest::Approx(8).epsilon(0.1));
     }
     // Clamped to [2, size - 3] without a walkability check.
@@ -673,7 +823,7 @@ TEST_SUITE("monsters") {
   TEST_CASE("boss rename hook: once per live instance, the snapshot shows the intro name, a respawn starts unmarked") {
     MonsterRig rig(56, Vec2(100, 100));
     rig.OpenWorld();
-    const EntityId chief = rig.Spawn("goblin_chief", {15, 95});
+    const EntityId chief = rig.Spawn("valdras", {15, 95});
     CHECK(rig.monsters.MarkStoryNamed(chief));
     CHECK_FALSE(rig.monsters.MarkStoryNamed(chief));  // already renamed
     CHECK_FALSE(rig.monsters.MarkStoryNamed(999999));
@@ -681,8 +831,9 @@ TEST_SUITE("monsters") {
     rig.monsters.FillSnapshot(snap);
     REQUIRE(snap.monsters.size() == 1);
     CHECK(snap.monsters[0].storyNamed);
-    const BossIntroDef* intro = MD().Story().BossIntroFor("goblin_chief");
-    if (intro != nullptr) CHECK(snap.monsters[0].nameKey == intro->name);
+    const BossIntroDef* intro = MD().Story().BossIntroFor("valdras");
+    REQUIRE(intro != nullptr);
+    CHECK(snap.monsters[0].nameKey == intro->name);
     rig.monsters.ApplyDamage(chief, 1e6, DamageFlags{});
     CHECK_FALSE(rig.monsters.MarkStoryNamed(chief));  // dead
     rig.h.Step(static_cast<int>(MAi().respawnDelayMs / kSimStepMs) + 2);
@@ -699,63 +850,161 @@ TEST_SUITE("monsters") {
   using namespace abyss::test::monsters_fx;
 
   // Split from "mini-boss data (mini-bosses-lore.test.ts)": the Chapter 1 entry.
-  TEST_CASE("mini-boss data: the emerald_plains mini-boss is the goblin shaman at (60,55)") {
+  TEST_CASE("mini-boss data: the emerald_plains mini-boss is the Corpseherd at (60,55)") {
     const MonsterTables& t = MD().Monsters();
     const MiniBossEntry* ep = t.MiniBossFor("emerald_plains");
     REQUIRE(ep != nullptr);
-    CHECK(ep->monsterId == "miniboss_goblin_shaman");
+    CHECK(ep->monsterId == "miniboss_corpseherd");
     CHECK(ep->spawn == TilePos{60, 55});
   }
 
   // Split from "queries: ... snapshot views": once the boss label is renamed the view carries the intro name key.
-  TEST_CASE("queries: the renamed goblin chief's snapshot view carries its intro name key (story 8.3)") {
+  TEST_CASE("queries: the renamed story boss's snapshot view carries its intro name key (story 8.3)") {
     MonsterRig rig(51, Vec2(60, 60));
     rig.OpenWorld();
-    const EntityId chief = rig.Spawn("goblin_chief", {5, 110});
+    const EntityId chief = rig.Spawn("valdras", {5, 110});
     rig.M(chief).storyNameShown = true;
     Snapshot named;
     rig.monsters.FillSnapshot(named);
     REQUIRE(named.monsters.size() == 1);
     CHECK(named.monsters[0].storyNamed);
-    CHECK(named.monsters[0].nameKey == "story.boss.goblin_chief.name");
+    CHECK(named.monsters[0].nameKey == "story.boss.valdras.name");
   }
 
   // Split from "loot-floor flags (story / endgame scrutiny)": regular zone monsters have no loot floor.
-  TEST_CASE("loot-floor flags: the Chapter 1 regulars and the chief have no loot floor") {
-    for (const char* id : {"slime_green", "goblin", "goblin_chief"}) {
+  TEST_CASE("loot-floor flags: the Chapter 1 regulars and the story boss have no loot floor") {
+    for (const char* id : {"breachclot", "risen_footman", "gravegnawer", "cinderbloat", "risen_arbalest", "oath_zealot",
+                           "deserter", "deserter_drummer", "risen_shieldbearer", "dead_standard_bearer", "bonegorger",
+                           "valdras"}) {
       CHECK_FALSE(MDef(id).isMiniBoss);
       CHECK_FALSE(MDef(id).isSubDungeonMiniBoss);
     }
   }
 
-  // Split from "buildAffixName: base name without affixes, [a] base, [a<middle dot>b] base, both locales": the goblin
-  // chief's labels and the Gruk hunt key.
-  TEST_CASE("buildAffixName: the goblin chief's labels in both locales; hunt leaders are named by their hunt id") {
+  // Split from "buildAffixName: base name without affixes, [a] base, [a<middle dot>b] base, both locales": the story
+  // boss's labels and the Harke hunt key.
+  TEST_CASE("buildAffixName: the story boss's labels in both locales; hunt leaders are named by their hunt id") {
     I18n zh, en;
     REQUIRE(zh.LoadTable(test::ReadFile(test::DataDir() + "/i18n_zh-CN.json")));
     REQUIRE(en.LoadTable(test::ReadFile(test::DataDir() + "/i18n_en.json")));
     en.SetLocale(LocaleId::En);
     REQUIRE(en.Current() == LocaleId::En);
     const std::string dot = "\xC2\xB7";
-    const MonsterDef& chief = MDef("goblin_chief");
-    CHECK(MonsterNameKey(chief) == "data.monster.goblin_chief");
-    CHECK(MonsterLabelText(en, MonsterNameKey(chief), {}) == en.T("data.monster.goblin_chief"));
+    const MonsterDef& chief = MDef("valdras");
+    CHECK(MonsterNameKey(chief) == "data.monster.valdras");
+    CHECK(MonsterLabelText(en, MonsterNameKey(chief), {}) == en.T("data.monster.valdras"));
+    CHECK(en.T("data.monster.valdras") == "Lord-Marshal Valdras");
     const std::vector<EliteAffixType> one{EliteAffixType::FireEnhanced};
     CHECK(MonsterLabelText(en, MonsterNameKey(chief), one) ==
-          "[" + en.T("sys.eliteAffix.name.fire_enhanced") + "] " + en.T("data.monster.goblin_chief"));
+          "[" + en.T("sys.eliteAffix.name.fire_enhanced") + "] " + en.T("data.monster.valdras"));
+    CHECK(MonsterLabelText(en, MonsterNameKey(chief), one) == "[Scorched] Lord-Marshal Valdras");  // monsters.md 3 (1B review names)
     const std::vector<EliteAffixType> three{EliteAffixType::Swift, EliteAffixType::Vampiric, EliteAffixType::Frozen};
     CHECK(MonsterLabelText(zh, MonsterNameKey(chief), three) ==
           "[" + zh.T("sys.eliteAffix.name.swift") + dot + zh.T("sys.eliteAffix.name.vampiric") + dot +
-              zh.T("sys.eliteAffix.name.frozen") + "] " + zh.T("data.monster.goblin_chief"));
-    CHECK(zh.T("data.monster.goblin_chief") == chief.name);  // FIX Q11: the key resolves to the zh name
+              zh.T("sys.eliteAffix.name.frozen") + "] " + zh.T("data.monster.valdras"));
+    CHECK(zh.T("data.monster.valdras") == chief.name);  // FIX Q11: the key resolves to the zh name
     // Hunt leaders are named by their hunt id (localized), an empty base name keeps the bracket.
-    const MonsterDef gruk = MNormalDef("hunt_redcap_gruk");
-    CHECK(MonsterNameKey(gruk) == "data.monster.hunt_redcap_gruk");
-    CHECK(en.Has("data.monster.hunt_redcap_gruk"));
+    const MonsterDef harke = MNormalDef("hunt_harke");
+    CHECK(MonsterNameKey(harke) == "data.monster.hunt_harke");
+    CHECK(en.T("data.monster.hunt_harke") == "Harke the Oathless");
+  }
+
+  // 1B part 1 (monsters.md 2, Wave 1 fields): the authored on-hit statuses and bolt colours (they replace the keyword
+  // rule in `derived`), the art ids the art lane ships (`monster_<id>`; until an asset lands the core's art chain misses
+  // and the rig fallback times the swing) and the names in both locales.
+  TEST_CASE("Chapter 1 roster W1 fields: authored on-hit statuses, breach-violet bolts, art ids, names") {
+    struct Hit {
+      const char* id;
+      StatusType status;
+      double chance;
+      StatusValueKind kind;
+      double value;  // fraction (MonsterDamage) or amount (Fixed)
+      int32_t durationMs;
+    };
+    const Hit hits[] = {
+        {"breachclot", StatusType::Poison, 0.2, StatusValueKind::MonsterDamage, 0.15, 3000},  // W2: Ashnumb
+        {"cinderbloat", StatusType::Burn, 0.3, StatusValueKind::MonsterDamage, 0.2, 3000},
+        {"oath_zealot", StatusType::Bleed, 0.15, StatusValueKind::MonsterDamage, 0.25, 5000},
+        {"miniboss_corpseherd", StatusType::Slow, 1.0, StatusValueKind::Fixed, 20, 2000},  // the bell-toll bolt
+    };
+    for (const Hit& h : hits) {
+      CAPTURE(h.id);
+      const MonsterDef& d = MDef(h.id);
+      REQUIRE(d.onHitStatus.size() == 1);
+      const StatusRule& r = d.onHitStatus[0];
+      CHECK(r.status == h.status);
+      CHECK(r.hasChance);
+      CHECK(r.chance == doctest::Approx(h.chance));
+      CHECK(r.valueKind == h.kind);
+      CHECK((h.kind == StatusValueKind::Fixed ? r.amount : r.fraction) == doctest::Approx(h.value));
+      CHECK(r.durationMs == h.durationMs);
+    }
+    I18n en;
+    REQUIRE(en.LoadTable(test::ReadFile(test::DataDir() + "/i18n_en.json")));
+    en.SetLocale(LocaleId::En);
+    for (const MonsterDef& d : MD().Monsters().defs) {
+      if (d.homeZone != "emerald_plains") continue;
+      CAPTURE(d.id);
+      CHECK(d.spriteKey == "monster_" + d.id);  // the art lane's plain remake ids (march_palettes.py)
+      // Graceful art fallback: with or without the asset in the manifest the swing gets a contact beat (the clip's when
+      // shipped, else the anim_timing rig beat).
+      const ActionTiming at = ComputeAttackTiming(MD().Combat().anim, MD().Assets(),
+                                                  MonsterArtGameId(MD().Assets(), d.spriteKey, d.id), d.animCategory,
+                                                  d.attackSpeedMs);
+      CHECK(at.contactMs > 0);
+      CHECK(at.contactMs < at.durationMs);
+      CHECK(en.Has(d.nameKey));
+      CHECK(MD().Strings().Lookup(LocaleId::ZhCN, d.nameKey) != nullptr);
+      const bool authored = d.id == "breachclot" || d.id == "cinderbloat" || d.id == "oath_zealot" || d.id == "miniboss_corpseherd";
+      if (!authored) CHECK(d.onHitStatus.empty());  // no keyword rule fires on a remake id
+      // DR5: an enemy bolt is breach-violet (never the hero's ember); the melee roster keeps the default.
+      CHECK(d.projectileColor == (d.isRanged ? 0xB02FD0u : 0xcc44ccu));
+    }
+    CHECK(MDef("risen_arbalest").isRanged);
+    CHECK(MDef("risen_arbalest").projectileColor == 0xB02FD0u);
+    CHECK(en.T("data.monster.risen_arbalest") == "Risen Arbalester");
+    CHECK(en.T("data.monster.miniboss_corpseherd") == "The Corpseherd");
+  }
+
+  // monsters.md 3: the seven affixes keep their mechanics; the remake re-voices them and moves their glow off the
+  // hero's ember (DR5). `emerald_plains` keeps exactly one affix.
+  TEST_CASE("elite affix look (remake): re-voiced names in both locales, recoloured glows; one affix in Chapter 1") {
+    struct Row {
+      EliteAffixType type;
+      const char* zh;
+      const char* en;
+      uint32_t color;
+    };
+    const Row rows[] = {
+        {EliteAffixType::FireEnhanced, "\xE7\x84\xA6\xE7\x81\xBC", "Scorched", 0xB02FD0},
+        {EliteAffixType::Swift, "\xE9\xA9\xB1\xE7\xAD\x96", "Driven", 0xD8CCB0},
+        {EliteAffixType::Teleporting, "\xE6\xB8\x8A\xE8\xA1\x8C", "Breachwalker", 0xD08CFF},
+        {EliteAffixType::ExtraStrong, "\xE8\x9B\xAE\xE5\x8A\x9B", "Brutish", 0xC0283A},
+        {EliteAffixType::CurseAura, "\xE5\x93\x80\xE5\x92\x92", "Dirgecursed", 0x7A2A90},
+        {EliteAffixType::Vampiric, "\xE5\x99\xAC\xE6\xB8\x8A", "Breach-Drinker", 0x6A0F2A},
+        {EliteAffixType::Frozen, "\xE5\xA2\x93\xE5\xAF\x92", "Gravecold", 0xCFE8FF},
+    };
+    I18n en;
+    REQUIRE(en.LoadTable(test::ReadFile(test::DataDir() + "/i18n_en.json")));
+    en.SetLocale(LocaleId::En);
+    for (const Row& r : rows) {
+      CAPTURE(EnumName(r.type));
+      const EliteAffixDef& d = MAffixes().Def(r.type);
+      CHECK(d.name == r.zh);
+      CHECK(d.nameEn == r.en);
+      CHECK(d.vfxColor == r.color);
+      CHECK(en.T(EliteAffixNameKey(r.type)) == r.en);
+      CHECK(*MD().Strings().Lookup(LocaleId::ZhCN, EliteAffixNameKey(r.type)) == r.zh);
+    }
+    MonsterRig rig(5);
+    rig.monsters.SpawnZonePopulation();
+    for (const MonsterInstance& m : rig.monsters.All()) {
+      if (m.role == MonsterRole::StoryBoss) CHECK(m.AffixCount() == 1);
+    }
   }
 
   // Split from "mini-boss lines are i18n keys (Q10 / M8)": the opened event carries the header key and the lines.
-  TEST_CASE("mini-boss lines: the goblin shaman's opened event carries its header key and its three line keys") {
+  TEST_CASE("mini-boss lines: the Corpseherd's opened event carries its header key and its three line keys") {
     MonsterRig rig(5, Vec2(60, 60));
     rig.OpenWorld();
     rig.monsters.SpawnMiniBoss();
@@ -764,18 +1013,100 @@ TEST_SUITE("monsters") {
     REQUIRE(rig.monsters.MiniBossDialogueActive());
     const std::vector<EvMiniBossDialogue> ev = MEvents<EvMiniBossDialogue>(rig.h.events);
     REQUIRE(ev.size() == 1);
-    CHECK(ev[0].nameKey == "data.monster.miniboss_goblin_shaman");
-    CHECK(ev[0].lineKeys == MiniBossDialogueLineKeys(*MD().Monsters().MiniBossDialogue("miniboss_goblin_shaman"),
-                                                     "miniboss_goblin_shaman"));
-    CHECK(ev[0].lineKeys.size() == 3);
+    CHECK(ev[0].nameKey == "data.monster.miniboss_corpseherd");
+    CHECK(ev[0].lineKeys == MiniBossDialogueLineKeys(*MD().Monsters().MiniBossDialogue("miniboss_corpseherd"),
+                                                     "miniboss_corpseherd"));
+    CHECK(ev[0].lineKeys == std::vector<std::string>{"data.miniBossDialogue.miniboss_corpseherd.line1",
+                                                     "data.miniBossDialogue.miniboss_corpseherd.line2",
+                                                     "data.miniBossDialogue.miniboss_corpseherd.line3"});
   }
 }  // TEST_SUITE
 
 // =====================================================================================================================
 // Quests + story: the Chapter 1 quest chain, the elder, beats, lore (from quests_test.cpp)
 // Moved verbatim (QuestEngine / QuestUX / StoryScript ports and the quests-story-ch1.md section 16 vectors on the
-// Chapter 1 data); the engine tests that need no Chapter 1 content stay in quests_test.cpp.
+// Chapter 1 data); the engine tests that need no Chapter 1 content stay in quests_test.cpp. Re-pinned by package 1B
+// part 2 (dark remake narrative, Docs/dark-remake/chapter1.md 3-8): the eleven q_rf_* quests in their web slots, the
+// Captain (quest_elder) giving M1-M5 and S1, Brother Aldwin (knell_chaplain) S2, S3, S5, S6, Corran (plains_wanderer)
+// S4; the Captain's 13-node tree; the cs_rf_* beats.
 // =====================================================================================================================
+
+namespace {
+
+// The strings Chapter 1 shows (1B review): a key that names a Chapter 1 id (quest, objective target, hunt, monster of
+// the zone, mini-boss, NPC of a camp or the field, hidden area, story decoration, sub-dungeon entrance, lore, a beat
+// those trigger), the zone, the prologue, the chapter card, the jukebox rows of the Chapter 1 soundtrack, the elite
+// affixes and every achievement (the panel lists them all).
+std::function<bool(const std::string&)> Ch1Shown(const DataStore& d) {
+  const std::string zone = test::ch1::kZone;
+  std::set<std::string> ids = {zone};
+  for (const QuestDef& q : d.Quests().quests) {
+    if (q.zone != zone) continue;
+    ids.insert(q.id);
+    for (const QuestObjectiveDef& o : q.objectives) ids.insert(o.targetId);
+    for (const QuestHuntRef& h : q.hunts) ids.insert(h.huntId);
+  }
+  if (const ZoneMonsterList* z = d.Monsters().ZoneList(zone)) ids.insert(z->monsterIds.begin(), z->monsterIds.end());
+  if (const MiniBossEntry* m = d.Monsters().MiniBossFor(zone)) ids.insert(m->monsterId);
+  const MapDef* map = d.FindMap(zone);
+  REQUIRE(map != nullptr);
+  for (const MapCampDef& c : map->camps) ids.insert(c.npcs.begin(), c.npcs.end());
+  for (const FieldNpcDef& f : map->fieldNpcs) ids.insert(f.npcId);
+  for (const HiddenAreaDef& h : map->hiddenAreas) ids.insert(h.id);
+  for (const StoryDecorationDef& sd : map->storyDecorations) ids.insert(sd.id);
+  for (const SubDungeonEntranceDef& e : map->subDungeonEntrances) ids.insert(e.id);
+  for (const LoreEntryDef& l : d.Lore().entries) {
+    if (l.zone == zone) ids.insert(l.id);
+  }
+  for (const StoryTriggerDef& t : d.Story().triggers) {
+    if (ids.count(t.subjectId) != 0) ids.insert(t.cutscene);
+  }
+  for (const BossIntroDef& b : d.Story().bossIntros) {
+    if (ids.count(b.monsterId) != 0) ids.insert(b.cutscene);
+  }
+  return [ids = std::move(ids)](const std::string& key) {
+    for (const char* prefix : {"story.prologue.", "story.chapter.emerald_plains.", "menu.jukebox.track.emerald_plains.",
+                               "menu.jukebox.track.abyss_rift.explore", "data.achievement.", "sys.eliteAffix.",
+                               "data.eliteAffix."}) {
+      if (key.rfind(prefix, 0) == 0) return true;
+    }
+    size_t start = 0;
+    while (start <= key.size()) {
+      const size_t dot = key.find('.', start);
+      const std::string seg = key.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+      if (ids.count(seg) != 0) return true;
+      if (dot == std::string::npos) break;
+      start = dot + 1;
+    }
+    return false;
+  };
+}
+
+// The `strings` table of an exported i18n file (Data/i18n_<locale>.json).
+JsonValue Ch1Strings(const char* file) {
+  JsonValue doc;
+  REQUIRE(ParseJson(test::ReadFile(test::DataDir() + "/" + file), doc));
+  const JsonValue* table = doc.Find("strings");
+  return table != nullptr ? *table : doc;
+}
+
+// UTF-8 -> code points (the exported tables are valid UTF-8; a stray byte decodes as itself).
+std::vector<uint32_t> Ch1CodePoints(std::string_view s) {
+  std::vector<uint32_t> out;
+  for (size_t i = 0; i < s.size();) {
+    const auto b = static_cast<unsigned char>(s[i]);
+    const int extra = b >= 0xF0 ? 3 : b >= 0xE0 ? 2 : b >= 0xC0 ? 1 : 0;
+    uint32_t cp = extra == 3 ? (b & 0x07u) : extra == 2 ? (b & 0x0Fu) : extra == 1 ? (b & 0x1Fu) : b;
+    for (int k = 1; k <= extra && i + static_cast<size_t>(k) < s.size(); ++k) {
+      cp = (cp << 6) | (static_cast<unsigned char>(s[i + static_cast<size_t>(k)]) & 0x3Fu);
+    }
+    out.push_back(cp);
+    i += static_cast<size_t>(extra) + 1;
+  }
+  return out;
+}
+
+}  // namespace
 
 TEST_SUITE("quests") {
   using namespace abyss::test::quests_fx;
@@ -785,35 +1116,35 @@ TEST_SUITE("quests") {
     QuestSystem qs(h.ctx.data, h.events, h.bus);
     int tracked = 0;
     h.bus.Subscribe<QuestTrackedChangedMsg>([&](const QuestTrackedChangedMsg&) { ++tracked; });
-    qs.Load({{"q_kill_slimes", QuestStatus::TurnedIn, {5}}, {"q_collect_slime_gel", QuestStatus::Active, {0, 0}}});
-    CHECK(qs.IsTurnedIn("q_kill_slimes"));
-    CHECK(qs.TurnedInIds() == std::vector<std::string>{"q_kill_slimes"});
+    qs.Load({{"q_rf_burial_detail", QuestStatus::TurnedIn, {5}}, {"q_rf_black_blood", QuestStatus::Active, {0, 0}}});
+    CHECK(qs.IsTurnedIn("q_rf_burial_detail"));
+    CHECK(qs.TurnedInIds() == std::vector<std::string>{"q_rf_burial_detail"});
     const auto open = qs.OpenQuests();
     REQUIRE(open.size() == 1);
-    CHECK(open[0].first->id == "q_collect_slime_gel");
-    qs.SetTracked("q_collect_slime_gel");
-    qs.SetTracked("q_collect_slime_gel");
+    CHECK(open[0].first->id == "q_rf_black_blood");
+    qs.SetTracked("q_rf_black_blood");
+    qs.SetTracked("q_rf_black_blood");
     CHECK(tracked == 1);
-    CHECK(qs.Tracked() == "q_collect_slime_gel");
+    CHECK(qs.Tracked() == "q_rf_black_blood");
   }
 
   TEST_CASE("announces accept, progress (flagging the completing step), completion and turn-in in order") {
     QsRig r;
-    REQUIRE(r.qs.Accept("q_kill_slimes"));
-    CHECK_FALSE(r.qs.Accept("q_kill_slimes"));  // already active
-    r.qs.UpdateProgress(ObjectiveType::Kill, "slime_green");
-    r.qs.UpdateProgress(ObjectiveType::Kill, "slime_green", 8);
-    r.qs.UpdateProgress(ObjectiveType::Kill, "slime_green", 5);  // overflow clamps at 10
-    r.qs.UpdateProgress(ObjectiveType::Kill, "slime_green");     // nothing advances: no event
-    const QuestRewardDef* reward = r.qs.TurnIn("q_kill_slimes");
+    REQUIRE(r.qs.Accept("q_rf_burial_detail"));
+    CHECK_FALSE(r.qs.Accept("q_rf_burial_detail"));  // already active
+    r.qs.UpdateProgress(ObjectiveType::Kill, "risen_footman");
+    r.qs.UpdateProgress(ObjectiveType::Kill, "risen_footman", 8);
+    r.qs.UpdateProgress(ObjectiveType::Kill, "risen_footman", 5);  // overflow clamps at 10
+    r.qs.UpdateProgress(ObjectiveType::Kill, "risen_footman");     // nothing advances: no event
+    const QuestRewardDef* reward = r.qs.TurnIn("q_rf_burial_detail");
     REQUIRE(reward != nullptr);
     CHECK(reward->exp == 120);
     CHECK(reward->gold == 25);
-    CHECK(r.log == std::vector<std::string>{"accepted:q_kill_slimes", "progress:q_kill_slimes:0:1",
-                                            "progress:q_kill_slimes:0:9", "progress:q_kill_slimes:0:10:done",
-                                            "completed:q_kill_slimes", "turnedIn:q_kill_slimes"});
-    CHECK(r.Status("q_kill_slimes") == QuestStatus::TurnedIn);
-    CHECK(r.qs.TurnIn("q_kill_slimes") == nullptr);  // terminal
+    CHECK(r.log == std::vector<std::string>{"accepted:q_rf_burial_detail", "progress:q_rf_burial_detail:0:1",
+                                            "progress:q_rf_burial_detail:0:9", "progress:q_rf_burial_detail:0:10:done",
+                                            "completed:q_rf_burial_detail", "turnedIn:q_rf_burial_detail"});
+    CHECK(r.Status("q_rf_burial_detail") == QuestStatus::TurnedIn);
+    CHECK(r.qs.TurnIn("q_rf_burial_detail") == nullptr);  // terminal
     // Q12: the log lines carry the localized quest name key.
     bool keyed = false;
     for (const Event& e : r.h.events.Items()) {
@@ -827,69 +1158,70 @@ TEST_SUITE("quests") {
   TEST_CASE("accept checks prereqs (not the level); unknown ids are refused") {
     QsRig r;
     CHECK_FALSE(r.qs.Accept("q_does_not_exist"));
-    CHECK_FALSE(r.qs.Accept("q_kill_goblins"));  // prereq q_kill_slimes not turned in
-    r.qs.Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})});
-    CHECK(r.qs.Accept("q_kill_goblins"));
-    CHECK(r.qs.Accept("q_find_goblin_chief") == false);  // prereq chain
-    CHECK(r.qs.Accept("q_herb_gathering"));             // level 2 at any hero level (Q1)
+    CHECK_FALSE(r.qs.Accept("q_rf_gnawed_field"));  // prereq q_rf_burial_detail not turned in
+    r.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10})});
+    CHECK(r.qs.Accept("q_rf_gnawed_field"));
+    CHECK(r.qs.Accept("q_rf_marshal") == false);  // prereq chain
+    CHECK(r.qs.Accept("q_rf_barrowmoss"));  // level 2 at any hero level (Q1)
   }
 
   TEST_CASE("guides the pinned quest, else the zone's first main quest; completed quests count") {
     QsRig r;
-    REQUIRE(r.qs.Accept("q_herb_gathering"));
-    REQUIRE(r.qs.Accept("q_kill_slimes"));
-    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_kill_slimes");
-    r.qs.SetTracked("q_herb_gathering");
-    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_herb_gathering");
+    REQUIRE(r.qs.Accept("q_rf_barrowmoss"));
+    REQUIRE(r.qs.Accept("q_rf_burial_detail"));
+    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_rf_burial_detail");
+    r.qs.SetTracked("q_rf_barrowmoss");
+    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_rf_barrowmoss");
     CHECK(r.qs.GuidedQuest("twilight_forest") == nullptr);
     r.qs.SetTracked("");
-    r.qs.UpdateProgress(ObjectiveType::Kill, "slime_green", 10);
-    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_kill_slimes");  // completed leads back to the giver
-    r.qs.TurnIn("q_kill_slimes");
-    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_herb_gathering");
+    r.qs.UpdateProgress(ObjectiveType::Kill, "risen_footman", 10);
+    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_rf_burial_detail");  // completed leads back to the giver
+    r.qs.TurnIn("q_rf_burial_detail");
+    CHECK(r.qs.GuidedQuest("emerald_plains")->id == "q_rf_barrowmoss");
   }
 
   TEST_CASE("turning in the tracked quest clears tracking") {
     QsRig r;
-    r.qs.Load({Rec("q_herb_gathering", QuestStatus::Completed, {5})});
-    r.qs.SetTracked("q_herb_gathering");
-    REQUIRE(r.qs.TurnIn("q_herb_gathering") != nullptr);
+    r.qs.Load({Rec("q_rf_barrowmoss", QuestStatus::Completed, {5})});
+    r.qs.SetTracked("q_rf_barrowmoss");
+    REQUIRE(r.qs.TurnIn("q_rf_barrowmoss") != nullptr);
     CHECK(r.qs.Tracked().empty());
   }
 
-  TEST_CASE("16.2 talk delivery gating: the herbalist counts only once the gel is in hand") {
+  TEST_CASE("16.2 talk delivery gating: Marl counts only once the breach-blood samples are in hand") {
     QsRig r;
-    REQUIRE(r.qs.Accept("q_collect_slime_gel"));
-    r.qs.UpdateProgress(ObjectiveType::Collect, "mat_slime_gel", 5);
+    REQUIRE(r.qs.Accept("q_rf_black_blood"));
+    r.qs.UpdateProgress(ObjectiveType::Collect, "mat_breach_ichor", 5);
     r.log.clear();
     r.qs.UpdateProgress(ObjectiveType::Talk, "plains_herbalist");
-    CHECK(r.Cur("q_collect_slime_gel", 1) == 0);
+    CHECK(r.Cur("q_rf_black_blood", 1) == 0);
     CHECK(r.log.empty());
-    r.qs.UpdateProgress(ObjectiveType::Collect, "mat_slime_gel");
+    r.qs.UpdateProgress(ObjectiveType::Collect, "mat_breach_ichor");
     r.log.clear();
     r.qs.UpdateProgress(ObjectiveType::Talk, "plains_herbalist");
-    CHECK(r.log == std::vector<std::string>{"progress:q_collect_slime_gel:1:1:done", "completed:q_collect_slime_gel"});
-    CHECK(r.Status("q_collect_slime_gel") == QuestStatus::Completed);
+    CHECK(r.log == std::vector<std::string>{"progress:q_rf_black_blood:1:1:done", "completed:q_rf_black_blood"});
+    CHECK(r.Status("q_rf_black_blood") == QuestStatus::Completed);
   }
 
   TEST_CASE("kill progress is not zone-filtered and one call advances every matching quest") {
     QsRig r;
-    r.qs.Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::Active, {0}),
-               Rec("q_escort_merchant_plains", QuestStatus::Active, {0})});
-    r.qs.UpdateProgress(ObjectiveType::Kill, "goblin", 3);
-    CHECK(r.Cur("q_kill_goblins", 0) == 3);
-    // hunt leaders carry the hunt id: no credit for plain goblin objectives
-    r.qs.UpdateProgress(ObjectiveType::Kill, "hunt_redcap_gruk");
-    CHECK(r.Cur("q_kill_goblins", 0) == 3);
+    r.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+               Rec("q_rf_gnawed_field", QuestStatus::Active, {0, 0}),
+               Rec("q_rf_hallowed_ground", QuestStatus::Active, {0})});
+    r.qs.UpdateProgress(ObjectiveType::Kill, "gravegnawer", 3);
+    CHECK(r.Cur("q_rf_gnawed_field", 0) == 3);
+    // hunt leaders carry the hunt id: no credit for plain objectives on their base monster
+    r.qs.UpdateProgress(ObjectiveType::Kill, "hunt_harke");
+    CHECK(r.Cur("q_rf_gnawed_field", 0) == 3);
   }
 
   TEST_CASE("escort / defend_wave / investigate_clue objectives advance through updateProgress") {
     QsRig r;
-    r.qs.Load({Rec("q_escort_merchant_plains", QuestStatus::Active, {0}),
+    r.qs.Load({Rec("q_rf_hallowed_ground", QuestStatus::Active, {0}),
                Rec("q_defend_camp_forest", QuestStatus::Active, {0}),
-               Rec("q_pet_sprite_friend", QuestStatus::Active, {0, 0, 0, 0})});
-    r.qs.UpdateProgress(ObjectiveType::Escort, "escort_merchant");
-    CHECK(r.Status("q_escort_merchant_plains") == QuestStatus::Completed);
+               Rec("q_rf_lanternwisp", QuestStatus::Active, {0, 0, 0, 0})});
+    r.qs.UpdateProgress(ObjectiveType::Escort, "escort_rf_bern");
+    CHECK(r.Status("q_rf_hallowed_ground") == QuestStatus::Completed);
     r.qs.UpdateProgress(ObjectiveType::DefendWave, "defend_forest_camp");
     r.qs.UpdateProgress(ObjectiveType::DefendWave, "defend_forest_camp");
     CHECK(r.Cur("q_defend_camp_forest", 0) == 2);
@@ -897,43 +1229,43 @@ TEST_SUITE("quests") {
     r.qs.UpdateProgress(ObjectiveType::DefendWave, "defend_forest_camp");
     CHECK(r.Status("q_defend_camp_forest") == QuestStatus::Completed);
     // clues in any order
-    r.qs.UpdateProgress(ObjectiveType::InvestigateClue, "clue_sprite_3");
-    r.qs.UpdateProgress(ObjectiveType::InvestigateClue, "clue_sprite_1");
-    CHECK(r.Cur("q_pet_sprite_friend", 0) == 1);
-    CHECK(r.Cur("q_pet_sprite_friend", 1) == 0);
-    CHECK(r.Cur("q_pet_sprite_friend", 2) == 1);
+    r.qs.UpdateProgress(ObjectiveType::InvestigateClue, "clue_rf_lantern_3");
+    r.qs.UpdateProgress(ObjectiveType::InvestigateClue, "clue_rf_lantern_1");
+    CHECK(r.Cur("q_rf_lanternwisp", 0) == 1);
+    CHECK(r.Cur("q_rf_lanternwisp", 1) == 0);
+    CHECK(r.Cur("q_rf_lanternwisp", 2) == 1);
   }
 
   TEST_CASE("failQuest: active only; emits QUEST_FAILED; completed / missing records are untouched") {
     QsRig r;
-    r.qs.Fail("q_kill_slimes");  // no record
-    CHECK_FALSE(r.qs.HasRecord("q_kill_slimes"));
-    r.qs.Load({Rec("q_escort_merchant_plains", QuestStatus::Active, {0}),
-               Rec("q_collect_slime_gel", QuestStatus::Completed, {6, 1})});
-    r.qs.Fail("q_collect_slime_gel");
-    CHECK(r.Status("q_collect_slime_gel") == QuestStatus::Completed);
-    r.qs.Fail("q_escort_merchant_plains");
-    CHECK(r.Status("q_escort_merchant_plains") == QuestStatus::Failed);
-    CHECK(r.log == std::vector<std::string>{"failed:q_escort_merchant_plains"});
-    r.qs.UpdateProgress(ObjectiveType::Escort, "escort_merchant");  // failed quests do not advance
-    CHECK(r.Cur("q_escort_merchant_plains", 0) == 0);
+    r.qs.Fail("q_rf_burial_detail");  // no record
+    CHECK_FALSE(r.qs.HasRecord("q_rf_burial_detail"));
+    r.qs.Load({Rec("q_rf_hallowed_ground", QuestStatus::Active, {0}),
+               Rec("q_rf_black_blood", QuestStatus::Completed, {6, 1})});
+    r.qs.Fail("q_rf_black_blood");
+    CHECK(r.Status("q_rf_black_blood") == QuestStatus::Completed);
+    r.qs.Fail("q_rf_hallowed_ground");
+    CHECK(r.Status("q_rf_hallowed_ground") == QuestStatus::Failed);
+    CHECK(r.log == std::vector<std::string>{"failed:q_rf_hallowed_ground"});
+    r.qs.UpdateProgress(ObjectiveType::Escort, "escort_rf_bern");  // failed quests do not advance
+    CHECK(r.Cur("q_rf_hallowed_ground", 0) == 0);
   }
 
   TEST_CASE("re-accepting a failed reacceptable quest resets its progress in place; others are refused") {
     QsRig r;
-    r.qs.Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}),
-               Rec("q_escort_merchant_plains", QuestStatus::Failed, {0}),
-               Rec("q_lost_pendant", QuestStatus::Failed, {1, 1, 0, 0, 0}),
+    r.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+               Rec("q_rf_hallowed_ground", QuestStatus::Failed, {0}),
+               Rec("q_rf_tag_thief", QuestStatus::Failed, {1, 1, 0, 0, 0}),
                Rec("q_defend_camp_forest", QuestStatus::Failed, {2})});
     // Q1: re-accept skips the prereq check (M2 is not turned in)
-    CHECK(r.qs.Accept("q_escort_merchant_plains"));
-    CHECK(r.Status("q_escort_merchant_plains") == QuestStatus::Active);
-    CHECK_FALSE(r.qs.Accept("q_lost_pendant"));  // not reacceptable
-    CHECK(r.Status("q_lost_pendant") == QuestStatus::Failed);
+    CHECK(r.qs.Accept("q_rf_hallowed_ground"));
+    CHECK(r.Status("q_rf_hallowed_ground") == QuestStatus::Active);
+    CHECK_FALSE(r.qs.Accept("q_rf_tag_thief"));  // not reacceptable
+    CHECK(r.Status("q_rf_tag_thief") == QuestStatus::Failed);
     CHECK(r.qs.Accept("q_defend_camp_forest"));
     CHECK(r.Cur("q_defend_camp_forest", 0) == 0);  // progress reset
     // map position kept: the escort quest stays second
-    CHECK(r.qs.AllProgress()[1].questId == "q_escort_merchant_plains");
+    CHECK(r.qs.AllProgress()[1].questId == "q_rf_hallowed_ground");
     bool reaccepted = false;
     for (const Event& e : r.h.events.Items()) {
       if (const EvLog* l = std::get_if<EvLog>(&e)) reaccepted = reaccepted || l->text.key == "sys.quest.reaccepted";
@@ -943,31 +1275,31 @@ TEST_SUITE("quests") {
 
   TEST_CASE("16.10 load: redesigned active / completed quests restart; turned_in, failed and unknown ids are kept") {
     QsRig r;
-    r.qs.Load({Rec("q_collect_slime_gel", QuestStatus::Active, {4}),        // definition has 2 objectives
-               Rec("q_secure_plains", QuestStatus::Completed, {1}),        // 2 objectives
-               Rec("q_kill_slimes", QuestStatus::TurnedIn, {1, 2, 3}),     // kept as-is
-               Rec("q_lost_pendant", QuestStatus::Failed, {1}),            // kept as-is
+    r.qs.Load({Rec("q_rf_black_blood", QuestStatus::Active, {4}),          // definition has 2 objectives
+               Rec("q_rf_gnawed_field", QuestStatus::Completed, {1}),      // 2 objectives (gnawers + Hungerbell)
+               Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {1, 2, 3}),  // kept as-is
+               Rec("q_rf_tag_thief", QuestStatus::Failed, {1}),            // kept as-is
                Rec("q_removed_since", QuestStatus::Active, {1}),           // unknown: kept, ignored by lists
-               Rec("q_herb_gathering", QuestStatus::Active, {2}),
-               Rec("q_herb_gathering", QuestStatus::Active, {3})});        // duplicate replaces, keeps position
-    CHECK(r.qs.Progress("q_collect_slime_gel")->objectives == std::vector<int32_t>{0, 0});
-    CHECK(r.Status("q_secure_plains") == QuestStatus::Active);
-    CHECK(r.qs.Progress("q_secure_plains")->objectives == std::vector<int32_t>{0, 0});
-    CHECK(r.qs.Progress("q_kill_slimes")->objectives.size() == 3);
-    CHECK(r.Status("q_lost_pendant") == QuestStatus::Failed);
+               Rec("q_rf_barrowmoss", QuestStatus::Active, {2}),
+               Rec("q_rf_barrowmoss", QuestStatus::Active, {3})});         // duplicate replaces, keeps position
+    CHECK(r.qs.Progress("q_rf_black_blood")->objectives == std::vector<int32_t>{0, 0});
+    CHECK(r.Status("q_rf_gnawed_field") == QuestStatus::Active);
+    CHECK(r.qs.Progress("q_rf_gnawed_field")->objectives == std::vector<int32_t>{0, 0});
+    CHECK(r.qs.Progress("q_rf_burial_detail")->objectives.size() == 3);
+    CHECK(r.Status("q_rf_tag_thief") == QuestStatus::Failed);
     CHECK(r.qs.HasRecord("q_removed_since"));
     CHECK(r.qs.AllProgress().size() == 6);
-    CHECK(r.qs.AllProgress()[5].questId == "q_herb_gathering");
-    CHECK(r.Cur("q_herb_gathering", 0) == 3);
+    CHECK(r.qs.AllProgress()[5].questId == "q_rf_barrowmoss");
+    CHECK(r.Cur("q_rf_barrowmoss", 0) == 3);
     for (const auto& [q, p] : r.qs.OpenQuests()) CHECK(q->id != "q_removed_since");
   }
 
   TEST_CASE("save JSON round trip keeps statuses and counters of every quest kind") {
-    const std::vector<QuestProgress> in = {Rec("q_escort_merchant_plains", QuestStatus::Active, {0}),
+    const std::vector<QuestProgress> in = {Rec("q_rf_hallowed_ground", QuestStatus::Active, {0}),
                                            Rec("q_defend_camp_forest", QuestStatus::Active, {2}),
-                                           Rec("q_lost_pendant", QuestStatus::Failed, {1, 1, 0, 0, 0}),
+                                           Rec("q_rf_tag_thief", QuestStatus::Failed, {1, 1, 0, 0, 0}),
                                            Rec("q_craft_dwarf_weapon", QuestStatus::Active, {3, 2, 0, 0}),
-                                           Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})};
+                                           Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10})};
     test::SimHarness h;
     QuestSystem qs(h.ctx.data, h.events, h.bus);
     qs.Load(in);
@@ -978,9 +1310,14 @@ TEST_SUITE("quests") {
   // ---- offer lists (2.5) - QuestCardUI.test.ts gatherNpcQuests + QuestNPCIndicators.test.ts ------------------------
   TEST_CASE("16.4 the elder's first card at a new game, in NPC list order") {
     QsRig r;
+    // The Captain: M1 and S1 (M2-M5 wait for their prereqs); Brother Aldwin: S2 and S5 (S3 needs M1, S6 needs M2).
     CHECK(OfferIds(r.qs.Offers("quest_elder", 1, OfferRule::QuestCard)) ==
-          std::vector<std::string>{"q_kill_slimes", "q_collect_slime_gel", "q_herb_gathering", "q_pet_sprite_friend"});
+          std::vector<std::string>{"q_rf_burial_detail", "q_rf_black_blood"});
+    CHECK(OfferIds(r.qs.Offers("knell_chaplain", 1, OfferRule::QuestCard)) ==
+          std::vector<std::string>{"q_rf_barrowmoss", "q_rf_lanternwisp"});
     CHECK(r.qs.Marker("quest_elder", 1) == NpcMarker::Available);
+    CHECK(r.qs.Marker("knell_chaplain", 1) == NpcMarker::Available);
+    CHECK(r.qs.Marker("plains_wanderer", 1) == NpcMarker::None);  // S4 needs M2
     CHECK(r.qs.Marker("blacksmith", 1) == NpcMarker::None);        // no quests
     CHECK(r.qs.Marker("plains_herbalist", 1) == NpcMarker::None);  // delivery target only
     CHECK(r.qs.Offers("blacksmith", 1, OfferRule::QuestCard).empty());
@@ -988,61 +1325,66 @@ TEST_SUITE("quests") {
 
   TEST_CASE("quest card: turn-ins first, active and turned-in excluded, level gate +5 inclusive, prereqs") {
     QsRig r;
-    r.qs.Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15}),
-               Rec("q_explore_goblin_camp", QuestStatus::TurnedIn, {1}),
-               Rec("q_collect_slime_gel", QuestStatus::Active, {1, 0}),
-               Rec("q_herb_gathering", QuestStatus::Completed, {5})});
-    // hero L1: q_find_goblin_chief (lvl 7) is above L1 + 5
+    r.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+               Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1}),
+               Rec("q_rf_ashwheat", QuestStatus::TurnedIn, {1, 1}),
+               Rec("q_rf_black_blood", QuestStatus::Completed, {6, 1}),
+               Rec("q_rf_barrowmoss", QuestStatus::Active, {1})});
+    // hero L1: q_rf_marshal (lvl 7) is above L1 + 5
     std::vector<std::string> l1 = OfferIds(r.qs.Offers("quest_elder", 1, OfferRule::QuestCard));
-    CHECK(l1.front() == "T:q_herb_gathering");
-    CHECK(std::find(l1.begin(), l1.end(), "q_find_goblin_chief") == l1.end());
-    CHECK(std::find(l1.begin(), l1.end(), "q_collect_slime_gel") == l1.end());  // active
-    CHECK(std::find(l1.begin(), l1.end(), "q_kill_slimes") == l1.end());        // turned in
-    CHECK(std::find(l1.begin(), l1.end(), "q_lost_pendant") != l1.end());        // prereq met, lvl 4
+    CHECK(l1.front() == "T:q_rf_black_blood");
+    CHECK(std::find(l1.begin(), l1.end(), "q_rf_marshal") == l1.end());
+    CHECK(std::find(l1.begin(), l1.end(), "q_rf_burial_detail") == l1.end());  // turned in
+    // Brother Aldwin's card: the active quest is left out, the prereq-met one offered
+    std::vector<std::string> aldwin = OfferIds(r.qs.Offers("knell_chaplain", 1, OfferRule::QuestCard));
+    CHECK(std::find(aldwin.begin(), aldwin.end(), "q_rf_barrowmoss") == aldwin.end());  // active
+    CHECK(std::find(aldwin.begin(), aldwin.end(), "q_rf_tag_thief") != aldwin.end());   // prereq met, lvl 4
     // exactly hero level + 5 is offered
     std::vector<std::string> l2 = OfferIds(r.qs.Offers("quest_elder", 2, OfferRule::QuestCard));
-    CHECK(std::find(l2.begin(), l2.end(), "q_find_goblin_chief") != l2.end());
+    CHECK(std::find(l2.begin(), l2.end(), "q_rf_marshal") != l2.end());
     // turn-ins are never level gated
-    r.qs.Load({Rec("q_secure_plains", QuestStatus::Completed, {1, 1})});
-    CHECK(OfferIds(r.qs.Offers("quest_elder", 1, OfferRule::QuestCard)).front() == "T:q_secure_plains");
+    r.qs.Load({Rec("q_rf_last_toll", QuestStatus::Completed, {3})});  // the M5 slot defends 3 waves (1B part 1)
+    CHECK(OfferIds(r.qs.Offers("quest_elder", 1, OfferRule::QuestCard)).front() == "T:q_rf_last_toll");
   }
 
   TEST_CASE("failed reacceptable quests are offered again; failed non-reacceptable ones are not") {
     QsRig r;
-    r.qs.Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15}),
-               Rec("q_escort_merchant_plains", QuestStatus::Failed, {0}),
-               Rec("q_lost_pendant", QuestStatus::Failed, {0, 0, 0, 0, 0})});
+    r.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+               Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1}),
+               Rec("q_rf_hallowed_ground", QuestStatus::Failed, {0}),
+               Rec("q_rf_tag_thief", QuestStatus::Failed, {0, 0, 0, 0, 0})});
     for (OfferRule rule : {OfferRule::QuestCard, OfferRule::Available}) {
-      const std::vector<std::string> ids = OfferIds(r.qs.Offers("quest_elder", 5, rule));
-      CHECK(std::find(ids.begin(), ids.end(), "q_escort_merchant_plains") != ids.end());
-      CHECK(std::find(ids.begin(), ids.end(), "q_lost_pendant") == ids.end());
+      const std::vector<std::string> ids = OfferIds(r.qs.Offers("knell_chaplain", 5, rule));
+      CHECK(std::find(ids.begin(), ids.end(), "q_rf_hallowed_ground") != ids.end());
+      CHECK(std::find(ids.begin(), ids.end(), "q_rf_tag_thief") == ids.end());
     }
   }
 
   TEST_CASE("NPC markers: priority turn-in > available > in progress > none; lifecycle on real data") {
     QsRig r;
-    // plains_wanderer gives only q_bandit_trouble (lvl 7, prereq M2).
+    // plains_wanderer gives only q_rf_oathless (lvl 7, prereq M2).
     CHECK(r.qs.Marker("plains_wanderer", 1) == NpcMarker::None);
-    r.qs.Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15})});
+    r.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+               Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
     CHECK(r.qs.Marker("plains_wanderer", 1) == NpcMarker::None);  // 7 > 1 + 5
     CHECK(r.qs.Marker("plains_wanderer", 2) == NpcMarker::Available);
-    REQUIRE(r.qs.Accept("q_bandit_trouble"));
+    REQUIRE(r.qs.Accept("q_rf_oathless"));
     CHECK(r.qs.Marker("plains_wanderer", 2) == NpcMarker::InProgress);
-    r.qs.UpdateProgress(ObjectiveType::Kill, "hunt_redcap_gruk");
+    r.qs.UpdateProgress(ObjectiveType::Kill, "hunt_harke");
     CHECK(r.qs.Marker("plains_wanderer", 2) == NpcMarker::TurnIn);
-    r.qs.TurnIn("q_bandit_trouble");
+    r.qs.TurnIn("q_rf_oathless");
     CHECK(r.qs.Marker("plains_wanderer", 2) == NpcMarker::None);
     // the elder: available beats in progress, turn-in beats both
     QsRig e;
-    REQUIRE(e.qs.Accept("q_kill_slimes"));
+    REQUIRE(e.qs.Accept("q_rf_burial_detail"));
     CHECK(e.qs.Marker("quest_elder", 1) == NpcMarker::Available);
-    e.qs.UpdateProgress(ObjectiveType::Kill, "slime_green", 10);
+    e.qs.UpdateProgress(ObjectiveType::Kill, "risen_footman", 10);
     CHECK(e.qs.Marker("quest_elder", 1) == NpcMarker::TurnIn);
-    e.qs.TurnIn("q_kill_slimes");
+    e.qs.TurnIn("q_rf_burial_detail");
     CHECK(e.qs.Marker("quest_elder", 3) == NpcMarker::Available);  // M2 now available
   }
 
-  TEST_CASE("chapter 1 quest table (10.1): 11 quests, rewards and totals; Q4 chief area; Q8 escort label") {
+  TEST_CASE("chapter 1 quest table (10.1): 11 quests, rewards and totals; Q4 Marshal area; Q8 escort label") {
     const DataStore& data = test::RealData();
     int count = 0;
     int64_t exp = 0, gold = 0;
@@ -1053,59 +1395,339 @@ TEST_SUITE("quests") {
       gold += q.rewards.gold;
     }
     CHECK(count == 11);
-    CHECK(exp == 2660);
-    CHECK(gold == 505);
-    const QuestDef* chief = data.FindQuest("q_find_goblin_chief");
+    CHECK(exp == 2740);  // chapter1.md 7 (DR9): today's 2660 / 505 plus the remake's re-tuned main line
+    CHECK(gold == 510);
+    const QuestDef* chief = data.FindQuest("q_rf_marshal");
     REQUIRE(chief != nullptr);
-    CHECK(chief->questArea.col == 15);  // Q4: centred on the chief's spawn (15,95)
+    CHECK(chief->questArea.col == 15);  // Q4: centred on Valdras's spawn (15,95); the data keeps the slot's (25,65)
     CHECK(chief->questArea.row == 95);
-    const QuestDef* escort = data.FindQuest("q_escort_merchant_plains");
+    const QuestDef* escort = data.FindQuest("q_rf_hallowed_ground");
     REQUIRE(escort != nullptr);
     CHECK(escort->level * 20 + 100 == 200);
     CHECK(escort->objectives[0].labelKey == escort->nameKey);  // Q8: no "southern camp" claim
     CHECK(escort->escortNpc.dest == TilePos(50, 90));
-    const QuestDef* gel = data.FindQuest("q_collect_slime_gel");
-    REQUIRE(gel != nullptr);
-    CHECK(gel->objectives[0].itemKind == "gel");
-    CHECK(gel->rewards.items == std::vector<std::string>{"c_hp_potion_s", "c_hp_potion_s"});
+    const QuestDef* ichor = data.FindQuest("q_rf_black_blood");
+    REQUIRE(ichor != nullptr);
+    CHECK(ichor->objectives[0].itemKind == "ichor");  // art lane quest item (A11); UE falls back while it is missing
+    CHECK(ichor->rewards.items == std::vector<std::string>{"c_hp_potion_s", "c_hp_potion_s"});
+  }
+
+  // 1B review: the strings a Chapter 1 player can see (Ch1Shown) keep no web plains name (翠绿平原 / Emerald Plains, the
+  // jukebox rows included) and none of story-bible.md 12's never-used words (Fallen, Butcher, ... and Diablo III's "Demon
+  // Hunter"); final review: and no exposed skeleton or skull (story-bible.md 12 Gore; the Relic Peddler's tray once held
+  // 白骨 / "white bones").
+  TEST_CASE("Chapter 1 words: no web plains name and no never-used word in the strings Chapter 1 shows") {
+    const DataStore& d = test::RealData();
+    const auto shown = Ch1Shown(d);
+    // Whole words, ignoring ASCII case.
+    const auto hasWord = [](const std::string& text, std::string_view word) {
+      const auto lower = [](char c) { return static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c); };
+      const auto isAlpha = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); };
+      for (size_t i = 0; i + word.size() <= text.size(); ++i) {
+        bool eq = true;
+        for (size_t j = 0; j < word.size() && eq; ++j) eq = lower(text[i + j]) == lower(word[j]);
+        if (!eq) continue;
+        const bool left = i == 0 || !isAlpha(text[i - 1]);
+        const bool right = i + word.size() == text.size() || !isAlpha(text[i + word.size()]);
+        if (left && right) return true;
+      }
+      return false;
+    };
+    const std::vector<std::string_view> enAvoid = {
+        "Emerald", "Plains", "Diablo", "Sanctuary", "Tristram", "Deckard", "Leoric", "Skeleton King", "Lachdanan",
+        "Lazarus", "Butcher", "Fallen", "Lilith", "Andariel", "Duriel", "Mephisto", "Baal", "Belial", "Horadric",
+        "Horadrim", "Zakarum", "Nephalem", "Worldstone", "Kashya", "Akara", "Ogden", "Griswold", "Adria", "Wirt",
+        "Blood Raven", "Helltide", "Wraeclast", "Exile", "Cairn", "Aetherial", "Chthonian", "Eterra", "Coven", "Nevesk",
+        "Stay awhile", "Fresh meat", "Demon Hunter", "skeleton", "skeletons", "skull", "skulls", "white bones"};
+    const std::vector<std::string> zhAvoid = {"\xE5\xB9\xB3\xE5\x8E\x9F", "\xE7\xBF\xA1\xE7\xBF\xA0",
+                                              "\xE7\xBF\xA0\xE7\xBB\xBF",  // 平原, 翡翠, 翠绿
+                                              "\xE7\x99\xBD\xE9\xAA\xA8", "\xE9\xAA\xB7\xE9\xAB\x85",
+                                              "\xE5\xA4\xB4\xE9\xAA\xA8", "\xE9\xA2\x85\xE9\xAA\xA8"};  // 白骨, 骷髅, 头骨, 颅骨
+    const JsonValue zh = Ch1Strings("i18n_zh-CN.json");
+    const JsonValue en = Ch1Strings("i18n_en.json");
+    std::vector<std::string> bad;
+    size_t checked = 0;
+    for (const auto& [key, value] : zh.Members()) {
+      if (!value.IsString() || !shown(key)) continue;
+      ++checked;
+      for (const std::string& w : zhAvoid) {
+        if (std::string(value.AsString()).find(w) != std::string::npos) bad.push_back("zh " + key);
+      }
+    }
+    for (const auto& [key, value] : en.Members()) {
+      if (!value.IsString() || !shown(key)) continue;
+      ++checked;
+      for (std::string_view w : enAvoid) {
+        if (hasWord(std::string(value.AsString()), w)) bad.push_back("en " + key + " (" + std::string(w) + ")");
+      }
+    }
+    INFO(bad.size() << " hit(s), e.g. " << (bad.empty() ? std::string() : bad.front()));
+    for (const std::string& b : bad) MESSAGE(b);
+    CHECK(bad.empty());
+    CHECK(checked > 400);  // the selection reaches the chapter's strings
+    // The jukebox rows of the Chapter 1 soundtrack name the Red Field; the prologue's recording is titled after its abyss
+    // slide (the title-menu track is already "Abyssfire · Prologue").
+    const I18n en2 = EnglishStrings();
+    CHECK(en2.T("menu.jukebox.track.emerald_plains.explore") == "The Red Field \xC2\xB7 Explore");
+    CHECK(en2.T("menu.jukebox.track.abyss_rift.explore") == "Abyssfire \xC2\xB7 The Whisper");
+    CHECK(std::string(zh.Get("menu.jukebox.track.abyss_rift.explore").AsString()) ==
+          "\xE6\xB8\x8A\xE7\x81\xAB \xC2\xB7 \xE4\xBD\x8E\xE8\xAF\xAD");  // 渊火 · 低语
+    CHECK(en2.T("data.storyDeco.story_rf_belfry.name") == "Ashwheat's Broken Belfry");
+  }
+
+  // Final review: every row of the title menu's jukebox (Audio/Export/audio_manifest.json jukebox.tracks, the table the
+  // UE audio manifest reads) has a title in each locale, and no two rows read the same - the abyss_rift row once repeated
+  // the title-menu track's 渊火 · 序章 / Abyssfire · Prologue.
+  TEST_CASE("Chapter 1 jukebox: every row's titleKey resolves, to a distinct title in zh-CN, zh-TW and en") {
+    JsonValue manifest;
+    REQUIRE(ParseJson(test::ReadFile(test::UnrealDir() + "/Audio/Export/audio_manifest.json"), manifest));
+    const JsonValue* tracks = manifest.Get("jukebox").Find("tracks");
+    REQUIRE(tracks != nullptr);
+    std::vector<std::string> keys;
+    for (const JsonValue& t : tracks->Items()) keys.push_back(std::string(t.Get("titleKey").AsString()));
+    REQUIRE(keys.size() >= 4);
+    CHECK(std::find(keys.begin(), keys.end(), "menu.jukebox.track.menu") != keys.end());
+    CHECK(std::find(keys.begin(), keys.end(), "menu.jukebox.track.abyss_rift.explore") != keys.end());
+    for (const char* file : {"i18n_zh-CN.json", "i18n_zh-TW.json", "i18n_en.json"}) {
+      INFO(file);
+      const JsonValue table = Ch1Strings(file);
+      std::set<std::string> titles;
+      for (const std::string& k : keys) {
+        INFO(k);
+        const JsonValue* v = table.Find(k);
+        REQUIRE(v != nullptr);
+        REQUIRE(v->IsString());
+        const std::string title(v->AsString());
+        CHECK_FALSE(title.empty());
+        CHECK(titles.insert(title).second);  // distinct
+      }
+    }
+  }
+
+  // Final review R4: the remake's own Chapter 1 zh-TW strings are Traditional throughout (shared web strings are not checked). The web converter's map (src/i18n/converter.ts) misses
+  // many characters (131 of the 315 remake strings kept Simplified ones: 军 尸 麦 边 没 着 ...), so the exporter runs the
+  // remake's strings through GameData/i18n/zhTWExtra.ts as well (web-sourced strings keep the web output). No zh-TW string
+  // Chapter 1 shows (Ch1Shown) contains a Simplified-only code point (golden/zh_simplified_only.txt: characters whose every
+  // Traditional / Taiwan form differs, derived from OpenCC; 后 里 于 余 ... are Traditional too and not listed). The shared
+  // UI (`ui.*`, which Ch1Shown reaches only through the stash NPC's id: ui.stash.bagFull 背包已满) stays the web
+  // converter's byte for byte: the supplement covers the remake's strings, not the web UI.
+  TEST_CASE("Chapter 1 zh-TW: no string Chapter 1 shows keeps a Simplified-only character") {
+    std::set<uint32_t> simplifiedOnly;
+    const std::string list = test::ReadFile(test::GoldenDir() + "/zh_simplified_only.txt");
+    REQUIRE_FALSE(list.empty());
+    size_t lineStart = 0;
+    while (lineStart < list.size()) {
+      size_t lineEnd = list.find('\n', lineStart);
+      if (lineEnd == std::string::npos) lineEnd = list.size();
+      const std::string_view line(list.data() + lineStart, lineEnd - lineStart);
+      if (!line.empty() && line.front() != '#') {
+        for (uint32_t cp : Ch1CodePoints(line)) {
+          if (cp > 0x7F) simplifiedOnly.insert(cp);
+        }
+      }
+      lineStart = lineEnd + 1;
+    }
+    // The list is the careful one: the characters the review named are in it, the shared ones are not.
+    CHECK(simplifiedOnly.size() > 2000);
+    for (uint32_t cp : {0x519Bu, 0x9EA6u, 0x8FB9u, 0x6CA1u, 0x7740u, 0x70ECu, 0x7ED1u, 0x5BFBu}) {  // 军 麦 边 没 着 烬 绑 寻
+      CHECK(simplifiedOnly.count(cp) == 1);
+    }
+    for (uint32_t cp : {0x540Eu, 0x91CCu, 0x4E8Eu, 0x4F59u, 0x91C7u, 0x5C38u, 0x53EAu, 0x53F0u, 0x5E72u, 0x9762u,
+                        0x7CFBu, 0x5236u, 0x5E8Au, 0x7FA4u}) {  // 后 里 于 余 采 尸 只 台 干 面 系 制 床 群
+      CHECK(simplifiedOnly.count(cp) == 0);
+    }
+    const DataStore& d = test::RealData();
+    const auto shown = Ch1Shown(d);
+    const JsonValue tw = Ch1Strings("i18n_zh-TW.json");
+    std::vector<std::string> bad;
+    size_t checked = 0;
+    for (const auto& [key, value] : tw.Members()) {
+      if (!value.IsString() || !shown(key) || key.rfind("ui.", 0) == 0) continue;
+      ++checked;
+      std::string hits;
+      for (uint32_t cp : Ch1CodePoints(value.AsString())) {
+        if (simplifiedOnly.count(cp) == 0) continue;
+        char hex[16];
+        std::snprintf(hex, sizeof hex, " U+%04X", static_cast<unsigned>(cp));
+        hits += hex;
+      }
+      if (!hits.empty()) bad.push_back(key + ":" + hits);
+    }
+    INFO(bad.size() << " string(s), e.g. " << (bad.empty() ? std::string() : bad.front()));
+    for (const std::string& b : bad) MESSAGE(b);
+    CHECK(bad.empty());
+    CHECK(checked > 200);
+    // A default and three context phrases (zhTWExtra.ts): the Corpseherd's 尸 is 屍, the Captain's 十二只 (M2) is 十二隻, the
+    // dais is 石臺, the dried blood 乾.
+    CHECK(std::string(tw.Get("data.monster.miniboss_corpseherd").AsString()) ==
+          "\xE5\xB1\x8D\xE7\x89\xA7\xE5\xA9\x86");  // 屍牧婆
+    CHECK(std::string(tw.Get("data.dialogue.quest_elder.accept_gnawers.text").AsString()).find(
+              "\xE5\x8D\x81\xE4\xBA\x8C\xE9\x9A\xBB") != std::string::npos);  // 十二隻
+    CHECK(std::string(tw.Get("data.lore.lore_rf_echo_03.name").AsString()).find("\xE7\x9F\xB3\xE8\x87\xBA") !=
+          std::string::npos);  // 石臺
+    CHECK(std::string(tw.Get("data.storyDeco.story_rf_penitents_altar.desc").AsString()).find("\xE4\xB9\xBE") !=
+          std::string::npos);  // 乾
+  }
+
+  // chapter1.md 3-7 (package 1B part 2, narrative): who gives what, the lines every quest carries, the labelled moral
+  // choices, the re-cast NPCs, the Captain's tree and the story-bible zh limits (story-bible.md 11: offer <= 70,
+  // progress and complete <= 50, dialogue <= 60 code points; the script's limits are quests_test's).
+  TEST_CASE("Chapter 1 narrative: givers, quest lines, labelled choices, re-cast NPCs, the Captain's tree, zh limits") {
+    const DataStore& d = test::RealData();
+    const I18n& s = d.Strings();
+    const I18n en = EnglishStrings();
+    std::vector<std::string> over;
+    const auto line = [&](const std::string& key, size_t max) {
+      CAPTURE(key);
+      const std::string* zh = s.Lookup(LocaleId::ZhCN, key);
+      REQUIRE(zh != nullptr);
+      CHECK(s.Lookup(LocaleId::En, key) != nullptr);
+      if (max > 0 && CodePoints(*zh) > max) over.push_back(key);
+    };
+    // Givers (chapter1.md 7): the Captain 6 (the main line and S1), Brother Aldwin 4, Corran 1.
+    CHECK(d.FindNpc("quest_elder")->quests == std::vector<std::string>{"q_rf_burial_detail", "q_rf_black_blood",
+                                                                       "q_rf_gnawed_field", "q_rf_ashwheat",
+                                                                       "q_rf_marshal", "q_rf_last_toll"});
+    CHECK(d.FindNpc("knell_chaplain")->quests == std::vector<std::string>{"q_rf_barrowmoss", "q_rf_tag_thief",
+                                                                          "q_rf_lanternwisp", "q_rf_hallowed_ground"});
+    CHECK(d.FindNpc("plains_wanderer")->quests == std::vector<std::string>{"q_rf_oathless"});
+    // Every quest: name, quest-log line, offer, progress line (K1 progressKey) and turn-in line.
+    std::vector<std::string> order;
+    for (const QuestDef& q : d.Quests().quests) {
+      if (q.zone != "emerald_plains") continue;
+      CAPTURE(q.id);
+      order.push_back(q.id);
+      CHECK(q.progressKey == "data.quest." + q.id + ".progress");
+      line(q.nameKey, 12);
+      line(q.descKey, 70);
+      line(q.offerKey, 70);
+      line(q.progressKey, 50);
+      line(q.completeKey, 50);
+    }
+    // The web slots' order (DR3): the main line and S1-S4 first; S5 / S6 hold the pet and escort slots further down.
+    CHECK(order == std::vector<std::string>{"q_rf_burial_detail", "q_rf_gnawed_field", "q_rf_ashwheat", "q_rf_marshal",
+                                            "q_rf_last_toll", "q_rf_black_blood", "q_rf_barrowmoss", "q_rf_tag_thief",
+                                            "q_rf_oathless", "q_rf_lanternwisp", "q_rf_hallowed_ground"});
+    // M3 explores Ashwheat, then kills the Corpseherd; the prereq chain M1 -> M2 -> M3 -> M4 -> M5.
+    const QuestDef* ash = d.FindQuest("q_rf_ashwheat");
+    REQUIRE(ash->objectives.size() == 2);
+    CHECK(ash->objectives[0].targetId == "zone_rf_ashwheat");
+    CHECK(ash->objectives[1].targetId == "miniboss_corpseherd");
+    CHECK(d.FindQuest("q_rf_last_toll")->prereqQuests == std::vector<std::string>{"q_rf_marshal"});
+    // The moral choices (S3, S4): one label per slot, by slot.
+    const QuestDef* tag = d.FindQuest("q_rf_tag_thief");
+    CHECK(tag->rewards.choices == std::vector<RewardSlot>{RewardSlot::Jewelry, RewardSlot::Weapon});
+    CHECK(tag->rewards.choiceLabels == std::vector<std::string>{"data.questChoice.q_rf_tag_thief.jewelry",
+                                                               "data.questChoice.q_rf_tag_thief.weapon"});
+    CHECK(en.T(tag->rewards.choiceLabels[0]) == "Keep the melted silver");
+    CHECK(en.T(tag->rewards.choiceLabels[1]) == "Give it to Hald");
+    const QuestDef* bounty = d.FindQuest("q_rf_oathless");
+    CHECK(bounty->rewards.choices == std::vector<RewardSlot>{RewardSlot::Weapon, RewardSlot::Offhand});
+    CHECK(en.T(bounty->rewards.choiceLabels[0]) == "The head to Corran");
+    CHECK(en.T(bounty->rewards.choiceLabels[1]) == "The head to the Captain");
+    for (const QuestDef& q : d.Quests().quests) {
+      if (q.zone == "emerald_plains" && q.id != tag->id && q.id != bounty->id) CHECK(q.rewards.choiceLabels.empty());
+    }
+    // The Lanternwisp (S5): Pell's lantern, the chapter's only companion.
+    const QuestDef* wisp = d.FindQuest("q_rf_lanternwisp");
+    CHECK(wisp->rewards.petReward == "pet_sprite");
+    CHECK(en.T("data.pet.pet_sprite.name") == "Lanternwisp");
+    // The escort and the gate (Q11 keys) and the clue notes.
+    CHECK(en.T(EscortNpcNameKey("q_rf_hallowed_ground")) == "Old Bern");
+    CHECK(en.T(DefendTargetNameKey("q_rf_last_toll")) == "The Boneyard Gate");
+    for (const QuestDef& q : d.Quests().quests) {
+      if (q.zone != "emerald_plains") continue;
+      for (const QuestObjectiveDef& o : q.objectives) {
+        line("data.questTarget." + o.targetId, 0);
+        if (o.type == ObjectiveType::InvestigateClue) line("data.questClue." + o.targetId, 60);
+      }
+    }
+    // Knellwatch and the field, re-cast (chapter1.md 3): names, one Wave 1 line each (Aldwin two), the gated lines.
+    const std::pair<const char*, const char*> cast[] = {
+        {"quest_elder", "Captain Serin Harrow"}, {"knell_chaplain", "Brother Aldwin"},
+        {"blacksmith", "Hald Swordmelter"},      {"merchant", "Quartermaster Vira"},
+        {"stash", "Tamsin the Gravewarden"},     {"plains_herbalist", "Mother Marl"},
+        {"plains_wanderer", "Corran the Deserter"}, {"crow_trader", "Mag Crowe"}};
+    for (const auto& [id, name] : cast) {
+      CAPTURE(id);
+      const NpcDef* n = d.FindNpc(id);
+      REQUIRE(n != nullptr);
+      CHECK(en.T(n->nameKey) == name);
+      CHECK(n->dialogue.size() == (std::string_view(id) == "knell_chaplain" ? 2u : 1u));
+      for (size_t i = 0; i < n->dialogue.size(); ++i) {
+        line("data.npc." + std::string(id) + ".dialogue." + std::to_string(i), 60);
+      }
+      CHECK_FALSE(s.Has("data.npc." + std::string(id) + ".dialogue." + std::to_string(n->dialogue.size())));
+    }
+    for (const char* k : {"data.npc.blacksmith.after.q_rf_tag_thief", "data.npc.quest_elder.after.q_rf_oathless",
+                          "data.npc.knell_chaplain.after.q_rf_last_toll"}) {
+      line(k, 60);
+    }
+    // The Captain's tree (chapter1.md 4): 13 nodes, three quest triggers, the bot's walk reward_ask -> help ->
+    // other_work -> accept_ichor (implementation-plan.md 6).
+    const DialogueTree* tree = d.Dialogues().Find("quest_elder");
+    REQUIRE(tree != nullptr);
+    CHECK(tree->nodes.size() == 13);
+    std::vector<std::string> triggers;
+    for (const DialogueNode& n : tree->nodes) {
+      line("data.dialogue.quest_elder." + n.id + ".text", 60);
+      for (size_t i = 0; i < n.choices.size(); ++i) {
+        line("data.dialogue.quest_elder." + n.id + ".choice." + std::to_string(i), 12);
+        if (!n.choices[i].questTrigger.empty()) triggers.push_back(n.choices[i].questTrigger);
+      }
+    }
+    CHECK(triggers == std::vector<std::string>{"q_rf_burial_detail", "q_rf_gnawed_field", "q_rf_black_blood"});
+    const char* walk[] = {"root", "reward_ask", "help", "other_work", "accept_ichor"};
+    for (size_t i = 0; i + 1 < std::size(walk); ++i) {
+      CAPTURE(walk[i]);
+      const DialogueNode* n = tree->FindNode(walk[i]);
+      REQUIRE(n != nullptr);
+      CHECK(std::any_of(n->choices.begin(), n->choices.end(),
+                        [&](const DialogueChoice& c) { return c.nextNodeId == walk[i + 1]; }));
+    }
+    CHECK(tree->FindNode("accept_ichor")->isEnd);
+    INFO("zh lines over the story-bible limit: " << over.size());
+    CHECK(over.empty());
   }
 
   // ---- reward choices (4.2) - QuestEngine.test.ts QuestRewards ---------------------------------------------------------
   TEST_CASE("16.8 reward item level and quality; drop chances") {
     const DataStore& data = test::RealData();
-    const QuestDef* m4 = data.FindQuest("q_find_goblin_chief");
+    const QuestDef* m4 = data.FindQuest("q_rf_marshal");
     REQUIRE(m4 != nullptr);
     CHECK(RewardItemLevel(*m4, 3) == 7);
     CHECK(RewardItemLevel(*m4, 10) == 10);
     CHECK(RewardItemLevel(*m4, 15) == 12);
     CHECK(RewardChoiceQuality(data, *m4) == ItemQuality::Rare);
-    CHECK(RewardChoiceQuality(data, *data.FindQuest("q_lost_pendant")) == ItemQuality::Magic);
+    CHECK(RewardChoiceQuality(data, *data.FindQuest("q_rf_tag_thief")) == ItemQuality::Magic);
   }
 
   TEST_CASE("16.1 gather hash: FNV state, first draws and the all-walkable spots") {
-    GatherSpotRng rng("q_herb_gathering:0");
-    CHECK(rng.State() == 3613349914u);
-    const double expected[] = {0.924380941, 0.017937220, 0.933055474, 0.561144891, 0.710008817, 0.978309497};
+    // chapter1.md S2: the barrowmoss spots are seeded by "q_rf_barrowmoss:0" (the web key "q_herb_gathering:0" gave
+    // state 3613349914 and the spots (23,25) (28,23) (20,17) (18,32) (23,34) (27,29) (23,18)); area and count kept.
+    GatherSpotRng rng("q_rf_barrowmoss:0");
+    CHECK(rng.State() == 3706193809u);
+    const double expected[] = {0.257193835, 0.840027817, 0.115078570, 0.432658153, 0.268157336, 0.646995244};
     for (double e : expected) CHECK(rng.Next() == doctest::Approx(e).epsilon(1e-8));
     const auto all = [](int32_t, int32_t) { return true; };
-    CHECK(ResolveGatherSpots(TileCircle{22, 26, 9}, 7, all, "q_herb_gathering:0") ==
-          std::vector<TilePos>{{23, 25}, {28, 23}, {20, 17}, {18, 32}, {23, 34}, {27, 29}, {23, 18}});
+    CHECK(ResolveGatherSpots(TileCircle{22, 26, 9}, 7, all, "q_rf_barrowmoss:0") ==
+          std::vector<TilePos>{{22, 34}, {26, 30}, {18, 21}, {30, 23}, {20, 33}, {21, 23}, {25, 35}});
     // floor(x + 0.5) on negative offsets
     CHECK(ResolveGatherSpots(TileCircle{0, 0, 5}, 3, all, "abc") == std::vector<TilePos>{{-1, -3}, {-4, -2}, {0, 4}});
   }
 
-  TEST_CASE("achievements: targeted slime kills also count toward the generic key, unlock at 50") {
+  TEST_CASE("achievements: targeted breachclot kills also count toward the generic key, unlock at 50") {
     AchievementState a(test::RealData());
-    for (int i = 0; i < 30; ++i) a.Update(AchievementType::Kill, "slime_green");
-    CHECK(a.ProgressOf("kill:slime_green") == 30);
+    for (int i = 0; i < 30; ++i) a.Update(AchievementType::Kill, "breachclot");
+    CHECK(a.ProgressOf("kill:breachclot") == 30);
     CHECK(a.ProgressOf("kill") == 30);
-    CHECK_FALSE(a.IsUnlocked("ach_kill_slime"));
-    for (int i = 0; i < 20; ++i) a.Update(AchievementType::Kill, "slime_green");
-    CHECK(a.IsUnlocked("ach_kill_slime"));
+    CHECK_FALSE(a.IsUnlocked("ach_kill_breachclot"));
+    for (int i = 0; i < 20; ++i) a.Update(AchievementType::Kill, "breachclot");
+    CHECK(a.IsUnlocked("ach_kill_breachclot"));  // "Stanch the Seep"
     CHECK(a.IsUnlocked("ach_first_kill"));
     // boss kill tracked separately from generic kills
-    CHECK(a.Update(AchievementType::Kill, "goblin_chief") == std::vector<std::string>{"ach_kill_goblin_chief"});
-    CHECK(a.ProgressOf("kill:goblin_chief") == 1);
+    CHECK(a.Update(AchievementType::Kill, "valdras") == std::vector<std::string>{"ach_kill_valdras"});
+    CHECK(a.ProgressOf("kill:valdras") == 1);
   }
 
   TEST_CASE("achievements: bonuses sum per stat over unlocked achievements only, idempotent") {
@@ -1119,17 +1741,17 @@ TEST_SUITE("quests") {
     CHECK(b1.Get(Stat::Damage) == 2);
     CHECK(b1.Get(Stat::Lck) == 5);
     CHECK(a.Bonuses() == b1);
-    for (int i = 0; i < 50; ++i) a.Update(AchievementType::Kill, "slime_green");  // lck +2
+    for (int i = 0; i < 50; ++i) a.Update(AchievementType::Kill, "breachclot");  // ach_kill_breachclot: lck +2 (kept)
     CHECK(a.Bonuses().Get(Stat::Lck) == 7);
   }
 
   TEST_CASE("achievements: save format merges counters with {id: 1}; load splits them back; no drift") {
     AchievementState a(test::RealData());
-    for (int i = 0; i < 12; ++i) a.Update(AchievementType::Kill, "slime_green");
+    for (int i = 0; i < 12; ++i) a.Update(AchievementType::Kill, "breachclot");
     a.CheckLevel(10);
     const auto saved = a.ToSave();
     CHECK(saved == std::vector<std::pair<std::string, int64_t>>{
-                       {"kill", 12}, {"kill:slime_green", 12}, {"ach_first_kill", 1}, {"ach_level_10", 1}});
+                       {"kill", 12}, {"kill:breachclot", 12}, {"ach_first_kill", 1}, {"ach_level_10", 1}});
     AchievementState b(test::RealData());
     b.Load(saved);
     CHECK(b.IsUnlocked("ach_first_kill"));
@@ -1137,24 +1759,25 @@ TEST_SUITE("quests") {
     CHECK(b.ProgressOf("kill") == 12);
     CHECK(b.Bonuses() == a.Bonuses());
     CHECK(b.ToSave() == saved);
-    CHECK(b.Update(AchievementType::Kill, "slime_green").empty());  // no re-unlock after load
+    CHECK(b.Update(AchievementType::Kill, "breachclot").empty());  // no re-unlock after load
     AchievementState c(test::RealData());
     c.Load({});
     CHECK(c.ToSave().empty());
   }
 
-  TEST_CASE("dialogue runtime: root choices, help -> accept_slimes accepts M1 without pinning it, Leave closes") {
+  // The Captain's tree (chapter1.md 4): root -> who / bell / help / reward_ask / farewell; help -> accept_burial
+  // [Q: M1], gnawers_first (after M1) -> accept_gnawers [Q: M2], other_work -> accept_ichor [Q: S1] / chaplain_pointer.
+  TEST_CASE("dialogue runtime: root choices, help -> accept_burial accepts M1 without pinning it, Leave closes") {
     DlgRig r;
     r.Open("quest_elder");
     CHECK(r.dlg.View().open);
     CHECK(r.dlg.View().nodeId == "root");
-    CHECK(r.Kinds() == std::vector<DialogueButtonKind>{DialogueButtonKind::Choice, DialogueButtonKind::Choice,
-                                                       DialogueButtonKind::Choice});
-    r.dlg.Choose(r.ChoiceButton(1));  // help
+    CHECK(r.Kinds() == std::vector<DialogueButtonKind>(5, DialogueButtonKind::Choice));
+    r.dlg.Choose(r.ChoiceButton(2));  // help
     CHECK(r.dlg.View().nodeId == "help");
-    r.dlg.Choose(r.ChoiceButton(0));  // accept_slimes [Q:q_kill_slimes]
-    CHECK(r.dlg.View().nodeId == "accept_slimes");
-    CHECK(r.qs.Progress("q_kill_slimes") != nullptr);
+    r.dlg.Choose(r.ChoiceButton(0));  // accept_burial [Q:q_rf_burial_detail]
+    CHECK(r.dlg.View().nodeId == "accept_burial");
+    CHECK(r.qs.Progress("q_rf_burial_detail") != nullptr);
     CHECK(r.qs.Tracked().empty());  // dialogue-tree acceptances do not pin the guide
     CHECK(r.Kinds() == std::vector<DialogueButtonKind>{DialogueButtonKind::Leave});
     r.dlg.Choose(0);
@@ -1164,46 +1787,50 @@ TEST_SUITE("quests") {
 
   TEST_CASE("dialogue runtime: a handled quest hides its end-node choice; all hidden -> Back (10.3 example)") {
     DlgRig r;
-    REQUIRE(r.qs.Accept("q_kill_slimes"));
+    REQUIRE(r.qs.Accept("q_rf_burial_detail"));
     r.Open("quest_elder");
-    r.dlg.Choose(r.ChoiceButton(0));  // explain
-    REQUIRE(r.dlg.View().nodeId == "explain");
-    CHECK(r.ChoiceButton(0) == -1);  // accept_slimes hidden (quest active, end node)
-    CHECK(r.ChoiceButton(1) == -1);  // goblin_first gated on q_kill_slimes turned in
-    REQUIRE(r.ChoiceButton(2) >= 0);
-    r.dlg.Choose(r.ChoiceButton(2));  // both
-    REQUIRE(r.dlg.View().nodeId == "both");
-    CHECK(r.Kinds() == std::vector<DialogueButtonKind>{DialogueButtonKind::Back});
-    r.dlg.Choose(0);
-    CHECK(r.dlg.View().nodeId == "root");
-    // the help node keeps the hidden-quest's sibling and marks nothing in progress
-    r.dlg.Choose(r.ChoiceButton(1));
-    CHECK(r.ChoiceButton(0) == -1);
-    CHECK(r.ChoiceButton(1) >= 0);
+    r.dlg.Choose(r.ChoiceButton(2));  // help
+    REQUIRE(r.dlg.View().nodeId == "help");
+    CHECK(r.ChoiceButton(0) == -1);  // accept_burial hidden (quest active, end node)
+    CHECK(r.ChoiceButton(1) == -1);  // gnawers_first gated on q_rf_burial_detail turned in
+    REQUIRE(r.ChoiceButton(2) >= 0);  // other_work: the hidden quest's sibling, nothing in progress
+    CHECK_FALSE(r.dlg.View().buttons[static_cast<size_t>(r.ChoiceButton(2))].inProgress);
+    // M1 turned in and M2 active: gnawers_first opens, but its only choice (accept_gnawers) is handled -> Back
+    DlgRig g;
+    g.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+               Rec("q_rf_gnawed_field", QuestStatus::Active, {0, 0})});
+    g.Open("quest_elder");
+    g.dlg.Choose(g.ChoiceButton(2));  // help
+    REQUIRE(g.ChoiceButton(1) >= 0);
+    g.dlg.Choose(g.ChoiceButton(1));  // gnawers_first
+    REQUIRE(g.dlg.View().nodeId == "gnawers_first");
+    CHECK(g.ChoiceButton(0) == -1);
+    CHECK(g.Kinds() == std::vector<DialogueButtonKind>{DialogueButtonKind::Back});
+    g.dlg.Choose(0);
+    CHECK(g.dlg.View().nodeId == "root");
   }
 
   TEST_CASE("dialogue runtime: prereq choices use the quests turned in when the NPC was clicked; in-progress flag") {
     DlgRig r;
-    r.qs.Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})});
+    r.qs.Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10})});
     r.Open("quest_elder");
-    r.dlg.Choose(r.ChoiceButton(0));  // explain
-    const int32_t gob = r.ChoiceButton(1);
-    REQUIRE(gob >= 0);  // goblin_first unlocked
-    CHECK_FALSE(r.dlg.View().buttons[static_cast<size_t>(gob)].inProgress);
-    r.dlg.Choose(gob);
-    REQUIRE(r.dlg.View().nodeId == "goblin_first");
-    r.dlg.Choose(r.ChoiceButton(1));  // goblin_info: accept_goblins (end) + farewell
-    REQUIRE(r.dlg.View().nodeId == "goblin_info");
-    r.dlg.Choose(r.ChoiceButton(0));  // accept q_kill_goblins
-    CHECK(r.qs.Progress("q_kill_goblins") != nullptr);
+    r.dlg.Choose(r.ChoiceButton(2));  // help
+    const int32_t gnaw = r.ChoiceButton(1);
+    REQUIRE(gnaw >= 0);  // gnawers_first unlocked
+    CHECK_FALSE(r.dlg.View().buttons[static_cast<size_t>(gnaw)].inProgress);
+    r.dlg.Choose(gnaw);
+    REQUIRE(r.dlg.View().nodeId == "gnawers_first");
+    r.dlg.Choose(r.ChoiceButton(0));  // accept q_rf_gnawed_field
+    CHECK(r.dlg.View().nodeId == "accept_gnawers");
+    CHECK(r.qs.Progress("q_rf_gnawed_field") != nullptr);
     // visited / choicesMade are recorded per NPC and saved
     SaveData save;
     r.dlg.WriteSave(save);
     REQUIRE(save.dialogueState.size() == 1);
     CHECK(save.dialogueState[0].npcId == "quest_elder");
     CHECK(save.dialogueState[0].visitedNodes ==
-          std::vector<std::string>{"root", "explain", "goblin_first", "goblin_info", "accept_goblins"});
-    CHECK(save.dialogueState[0].choicesMade.size() == 4);
+          std::vector<std::string>{"root", "help", "gnawers_first", "accept_gnawers"});
+    CHECK(save.dialogueState[0].choicesMade.size() == 3);
   }
 }  // TEST_SUITE
 TEST_SUITE("story") {
@@ -1246,11 +1873,11 @@ TEST_SUITE("story") {
     CHECK(s.sim->NowMs() > t0);
   }
 
-  TEST_CASE("T15: turning in M1 queues cs_ep_mark 650 ms later on the sim clock; skip keeps letterbox-out + return pan") {
+  TEST_CASE("T15: turning in M1 queues cs_rf_brand 650 ms later on the sim clock; skip keeps letterbox-out + return") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::Completed, {10})});
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::Completed, {10})});
     const int64_t gold0 = s.H().Gold();
-    REQUIRE(s.Qw().TurnIn("q_kill_slimes", 0));
+    REQUIRE(s.Qw().TurnIn("q_rf_burial_detail", 0));
     CHECK(s.H().Gold() == gold0 + 25);
     StoryDirector& st = s.Story();
     CHECK(st.IsBusy());
@@ -1260,23 +1887,23 @@ TEST_SUITE("story") {
     CHECK_FALSE(st.IsCinematic());  // the world stays live during the delay
     s.Steps(2);
     REQUIRE(st.IsCinematic());
-    CHECK(st.Playback().beat.id == "cs_ep_mark");
+    CHECK(st.Playback().beat.id == "cs_rf_brand");
     CHECK(s.sim->WorldFrozen());
     st.Skip();
     s.sim->AdvanceRealTime(899);  // letterbox out 450 + camera return 450
     CHECK(st.IsCinematic());
     s.sim->AdvanceRealTime(2);
     CHECK_FALSE(st.IsCinematic());
-    CHECK(st.Progress().Has("cs_ep_mark"));
+    CHECK(st.Progress().Has("cs_rf_brand"));
     s.Steps(1);  // the freeze mask follows at the next step
     CHECK_FALSE(s.sim->WorldFrozen());
   }
 
-  TEST_CASE("16.7 boss intro: the chief within 14 tiles -> bar + rename once; within 9 -> boss_goblin_chief once") {
+  TEST_CASE("16.7 boss intro: Valdras within 14 tiles -> bar + rename once; within 9 -> boss_valdras once, with his Roar") {
     QwSim s;
     std::vector<BossBarMsg> bars;
     s.ctx->bus.Subscribe<BossBarMsg>([&bars](const BossBarMsg& m) { bars.push_back(m); });
-    EntityId chief = s.FindAlive("goblin_chief");
+    EntityId chief = s.FindAlive("valdras");
     REQUIRE(chief != kNoEntity);
     const Vec2 cp = s.Mon().Find(chief)->pos;
     s.Place(Vec2(cp.x, cp.y - 12));
@@ -1284,7 +1911,7 @@ TEST_SUITE("story") {
     CHECK_FALSE(s.Story().IsBusy());
     REQUIRE_FALSE(Of<EvBossBar>(ev).empty());
     CHECK(Of<EvBossBar>(ev).front()->show);
-    CHECK(Of<EvBossBar>(ev).front()->nameKey == "story.boss.goblin_chief.name");
+    CHECK(Of<EvBossBar>(ev).front()->nameKey == "story.boss.valdras.name");
     CHECK(Of<EvMonsterRenamed>(ev).size() == 1);
     CHECK(s.sim->View().bossBar.show);
     CHECK(s.sim->View().bossBar.maxHp > 0);
@@ -1292,14 +1919,14 @@ TEST_SUITE("story") {
     s.Place(Vec2(cp2.x, cp2.y - 8.5));
     ev = s.StepsCollect(20);
     REQUIRE(s.Story().IsCinematic());
-    CHECK(s.Story().Playback().beat.id == "boss_goblin_chief");
+    CHECK(s.Story().Playback().beat.id == "boss_valdras");
     CHECK(s.Story().Playback().beat.kind == StoryBeatKind::BossIntro);
     CHECK(Of<EvMonsterRenamed>(ev).empty());  // once per instance
-    // the step player resolves the focus on the live chief and the speaker to the intro name
-    const StoryActorView a = s.Story().ResolveActor(StoryActor{StoryActorKind::Monster, "goblin_chief", TilePos()});
+    // the step player resolves the focus on the live boss and the speaker to the intro name
+    const StoryActorView a = s.Story().ResolveActor(StoryActor{StoryActorKind::Monster, "valdras", TilePos()});
     CHECK(a.resolved);
     CHECK(a.entity == chief);
-    CHECK(a.nameKey == "story.boss.goblin_chief.name");
+    CHECK(a.nameKey == "story.boss.valdras.name");
     s.sim->ClearEvents();
     // letterbox 450, focus 800, title in 980 + hold 2200 + out 450, say in 220 -> waiting at the say step
     s.sim->AdvanceRealTime(450 + 800 + 980 + 2200 + 450 + 220);
@@ -1312,18 +1939,31 @@ TEST_SUITE("story") {
     CHECK(st[0]->focusEntity == chief);
     CHECK(st[0]->timedMs == 800);
     CHECK(st[1]->step.kind == StoryStepKind::Title);
-    CHECK(st[2]->speakerNameKey == "story.boss.goblin_chief.name");
-    s.Story().Advance();             // say out 160
-    s.sim->AdvanceRealTime(160);     // shake (0 ms) then the whisper reveal
+    CHECK(st[2]->speakerNameKey == "story.boss.valdras.name");
+    // K1 focus `anim`: his Roar plays on the focused instance right after the focus step, under the title.
+    const auto roars = Of<EvPlayAnim>(steps);
+    REQUIRE(roars.size() == 1);
+    CHECK(roars[0]->entity == chief);
+    CHECK(roars[0]->action == AnimAction::Roar);
+    s.Story().Advance();               // say out 160, the Marshal's second line in 220
+    s.sim->AdvanceRealTime(160 + 220);
+    CHECK(s.Story().Playback().waitingForInput);
+    CHECK(s.Story().Playback().stepIndex == 3);
+    s.Story().Advance();               // say out 160, then the whisper reveal
+    s.sim->AdvanceRealTime(160);
     CHECK(s.Story().Playback().stepIndex == 4);
-    s.Story().Advance();             // input during the reveal ends the step (out 600)
-    s.sim->AdvanceRealTime(600 + 600 + 450 + 449);
+    s.Story().Advance();               // input during the reveal ends the step (out 600); the hero's line in 220
+    s.sim->AdvanceRealTime(600 + 220);
+    CHECK(s.Story().Playback().waitingForInput);
+    CHECK(s.Story().Playback().stepIndex == 5);
+    s.Story().Advance();               // say out 160, the letterbox out 450, then the 450 ms camera return
+    s.sim->AdvanceRealTime(160 + 450 + 449);
     CHECK(s.Story().IsCinematic());  // camera return still running
     s.sim->AdvanceRealTime(2);
     CHECK_FALSE(s.Story().IsCinematic());
-    CHECK(s.Story().Progress().Has("boss_goblin_chief"));
-    CHECK_FALSE(s.Story().Progress().Has("cs_boss_goblin_chief"));  // the intro's cutscene id is not marked
-    // no second intro; killing the chief clears the bar (killed) and unlocks its achievement
+    CHECK(s.Story().Progress().Has("boss_valdras"));
+    CHECK_FALSE(s.Story().Progress().Has("cs_boss_valdras"));  // the intro's cutscene id is not marked
+    // no second intro; killing the boss clears the bar (killed) and unlocks its achievement
     s.Steps(20);
     CHECK_FALSE(s.Story().IsBusy());
     bars.clear();
@@ -1331,18 +1971,18 @@ TEST_SUITE("story") {
     REQUIRE_FALSE(bars.empty());
     CHECK_FALSE(bars.back().show);
     CHECK(bars.back().killed);
-    CHECK(s.ctx->sys.achievements->State().IsUnlocked("ach_kill_goblin_chief"));
+    CHECK(s.ctx->sys.achievements->State().IsUnlocked("ach_kill_valdras"));
   }
 
   TEST_CASE("the director emits STORY_STATE busy at enqueue time (T17 waits for it) and idle when drained") {
     QwSim s;
     std::vector<StoryStateMsg> states;
     s.ctx->bus.Subscribe<StoryStateMsg>([&states](const StoryStateMsg& m) { states.push_back(m); });
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::Completed, {10})});
-    REQUIRE(s.Qw().TurnIn("q_kill_slimes", 0));
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::Completed, {10})});
+    REQUIRE(s.Qw().TurnIn("q_rf_burial_detail", 0));
     REQUIRE(states.size() == 1);
     CHECK(states[0].active);
-    CHECK(states[0].beatId == "cs_ep_mark");
+    CHECK(states[0].beatId == "cs_rf_brand");
     s.Story().FinishAllBeats();
     REQUIRE(states.size() == 2);
     CHECK_FALSE(states[1].active);
@@ -1351,7 +1991,7 @@ TEST_SUITE("story") {
 TEST_SUITE("quests") {
   using namespace abyss::test::quests_fx;
 
-  TEST_CASE("interact with the elder: log line 0, talk hook, quest card of 4 offers; the card freezes the sim (S2)") {
+  TEST_CASE("interact with the elder: log line 0, talk hook, quest card of 2 offers; the card freezes the sim (S2)") {
     QwSim s;
     s.sim->ClearEvents();
     s.Qw().InteractNpc("quest_elder");
@@ -1359,7 +1999,7 @@ TEST_SUITE("quests") {
     CHECK(HasLog(ev, "data.npc.quest_elder.dialogue.0"));
     CHECK(Of<EvQuestCardOpened>(ev).size() == 1);
     REQUIRE(s.Qw().Card().open);
-    CHECK(s.Qw().Card().entries.size() == 4);
+    CHECK(s.Qw().Card().entries.size() == 2);  // the Captain at L1: M1 and S1
     const double t0 = s.sim->NowMs();
     s.Steps(5);
     CHECK(s.sim->WorldFrozen());
@@ -1370,8 +2010,8 @@ TEST_SUITE("quests") {
       if (v.npcId == "quest_elder") marked = v.marker == NpcMarker::Available && v.talking;
     }
     CHECK(marked);
-    CHECK(s.Qw().AcceptFromCard("q_kill_slimes"));
-    CHECK(s.Qs().Tracked() == "q_kill_slimes");
+    CHECK(s.Qw().AcceptFromCard("q_rf_burial_detail"));
+    CHECK(s.Qs().Tracked() == "q_rf_burial_detail");
     CHECK_FALSE(s.Qw().Card().open);
     s.Steps(5);
     CHECK(s.sim->NowMs() > t0);
@@ -1383,87 +2023,90 @@ TEST_SUITE("quests") {
 
   TEST_CASE("kills go through the pipeline: kill progress, first-kill achievement, 'kill' counted once (Q2)") {
     QwSim s;
-    REQUIRE(s.Qs().Accept("q_kill_slimes"));
-    for (int i = 0; i < 3; ++i) REQUIRE(s.Kill(s.FindAlive("slime_green")));
-    CHECK(s.Cur("q_kill_slimes", 0) == 3);
+    REQUIRE(s.Qs().Accept("q_rf_burial_detail"));
+    for (int i = 0; i < 3; ++i) REQUIRE(s.Kill(s.FindAlive("risen_footman")));
+    CHECK(s.Cur("q_rf_burial_detail", 0) == 3);
     const AchievementState& a = s.ctx->sys.achievements->State();
     CHECK(a.IsUnlocked("ach_first_kill"));
     CHECK(a.ProgressOf("kill") == 3);
-    CHECK(a.ProgressOf("kill:slime_green") == 3);
+    CHECK(a.ProgressOf("kill:risen_footman") == 0);  // a per-target counter only for a targeted achievement
+    REQUIRE(s.Kill(s.FindAlive("breachclot")));
+    CHECK(a.ProgressOf("kill") == 4);
+    CHECK(a.ProgressOf("kill:breachclot") == 1);
     CHECK(a.ProgressOf("explore") == 1);  // the first story zone (Q2: distinct zones)
   }
 
-  TEST_CASE("gel drops: RngStream::Quests at 0.5 per listed kill; the pickup visual starts at the kill point") {
+  TEST_CASE("ichor drops: RngStream::Quests at 0.5 per listed kill; the pickup visual starts at the kill point") {
     QwSim s;
-    REQUIRE(s.Qs().Accept("q_collect_slime_gel"));
+    REQUIRE(s.Qs().Accept("q_rf_black_blood"));
     Rng& q = s.ctx->Rand(RngStream::Quests);
     q.Script({0.4, 0.6});
-    const EntityId a = s.FindAlive("slime_green");
+    const EntityId a = s.FindAlive("breachclot");  // S1's ichor drops from breachclots (chance 0.5)
     REQUIRE(a != kNoEntity);
     const Vec2 at = s.Mon().Find(a)->pos;
     s.sim->ClearEvents();
     REQUIRE(s.Kill(a));
-    CHECK(s.Cur("q_collect_slime_gel", 0) == 1);
+    CHECK(s.Cur("q_rf_black_blood", 0) == 1);
     bool pickup = false;
     for (const EvQuestUpdate* u : Of<EvQuestUpdate>(s.ctx->events.Items())) {
-      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_collect_slime_gel") {
-        pickup = u->hasFrom && u->from == at && u->itemKind == "gel";
+      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_rf_black_blood") {
+        pickup = u->hasFrom && u->from == at && u->itemKind == "ichor";
       }
     }
     CHECK(pickup);
-    REQUIRE(s.Kill(s.FindAlive("slime_green")));
-    CHECK(s.Cur("q_collect_slime_gel", 0) == 1);  // 0.6 >= 0.5
+    REQUIRE(s.Kill(s.FindAlive("breachclot")));
+    CHECK(s.Cur("q_rf_black_blood", 0) == 1);  // 0.6 >= 0.5
     CHECK(q.ScriptedRemaining() == 0);
     q.Script({0.0});
-    REQUIRE(s.Kill(s.FindAlive("goblin")));  // goblins are not listed: no roll
+    REQUIRE(s.Kill(s.FindAlive("risen_footman")));  // footmen are not listed: no roll
     CHECK(q.ScriptedRemaining() == 1);
     q.ClearScript();
   }
 
-  TEST_CASE("16.1 / 3.4 herb nodes: deterministic spots on the live grid, gathered within 1.3 tiles, per-visit") {
+  TEST_CASE("16.1 / 3.4 barrowmoss nodes: deterministic spots on the live grid, gathered within 1.3 tiles, per-visit") {
     QwSim s;
-    REQUIRE(s.Qs().Accept("q_herb_gathering"));
+    REQUIRE(s.Qs().Accept("q_rf_barrowmoss"));
     const ZoneRuntime& zone = *s.ctx->sys.zone;
-    const QuestDef* q = s.ctx->data.FindQuest("q_herb_gathering");
+    const QuestDef* q = s.ctx->data.FindQuest("q_rf_barrowmoss");
     const std::vector<TilePos> spots = ResolveGatherSpots(
         q->objectives[0].gatherArea, q->objectives[0].gatherCount,
-        [&zone](int32_t c, int32_t r) { return zone.Walkable(c, r); }, "q_herb_gathering:0");
+        [&zone](int32_t c, int32_t r) { return zone.Walkable(c, r); }, "q_rf_barrowmoss:0");
     REQUIRE(spots.size() == 7);
     REQUIRE(CountNodes(s.Qw(), false) == 7);
     for (size_t i = 0; i < spots.size(); ++i) {
       CHECK(s.Qw().Nodes()[i].pos == spots[i].Center());
-      CHECK(s.Qw().Nodes()[i].itemKind == "herb");
+      CHECK(s.Qw().Nodes()[i].itemKind == "moss");
     }
     s.Place(spots[0].Center());
     const std::vector<Event> ev = s.StepsCollect(1);
-    CHECK(s.Cur("q_herb_gathering", 0) == 1);
+    CHECK(s.Cur("q_rf_barrowmoss", 0) == 1);
     CHECK(CountNodes(s.Qw(), false) == 6);
     bool fly = false;
-    for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev)) fly = fly || (u->hasFrom && u->itemKind == "herb");
+    for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev)) fly = fly || (u->hasFrom && u->itemKind == "moss");
     CHECK(fly);
     // a new visit restores every spot (gathered sets are per visit); progress is kept
     s.Qw().OnZoneExit();
     s.Qw().OnZoneEnter();
     CHECK(CountNodes(s.Qw(), false) == 7);
-    CHECK(s.Cur("q_herb_gathering", 0) == 1);
+    CHECK(s.Cur("q_rf_barrowmoss", 0) == 1);
     for (size_t i = 1; i < 5; ++i) {
       s.Place(spots[i].Center());
       s.Steps(1);
     }
-    CHECK(s.Status("q_herb_gathering") == QuestStatus::Completed);
+    CHECK(s.Status("q_rf_barrowmoss") == QuestStatus::Completed);
     CHECK(CountNodes(s.Qw(), false) == 0);  // Q5: synced on progress, the leftover nodes go
-    // the guide now leads back to the elder
+    // the guide now leads back to the giver, Brother Aldwin
     s.Steps(16);
     CHECK(s.Qw().Guide().reason == GuideReason::TurnIn);
-    CHECK(s.Qw().Guide().pos == s.NpcPos("quest_elder"));
+    CHECK(s.Qw().Guide().pos == s.NpcPos("knell_chaplain"));
   }
 
-  TEST_CASE("3.5 pendant clues: marks on the clue tiles, examined in any order within 2 tiles, note logged") {
+  TEST_CASE("3.5 the Tag-Thief's clues: marks on the clue tiles, examined in any order within 2 tiles, note logged") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})});
-    REQUIRE(s.Qs().Accept("q_lost_pendant"));
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10})});
+    REQUIRE(s.Qs().Accept("q_rf_tag_thief"));
     REQUIRE(CountNodes(s.Qw(), true) == 3);
-    const QuestNode* cloth = NodeOf(s.Qw(), true, "q_lost_pendant", 1);
+    const QuestNode* cloth = NodeOf(s.Qw(), true, "q_rf_tag_thief", 1);
     REQUIRE(cloth != nullptr);
     const ZoneRuntime& zone = *s.ctx->sys.zone;
     TilePos expect;
@@ -1471,49 +2114,58 @@ TEST_SUITE("quests") {
                                 expect));
     CHECK(cloth->pos == expect.Center());
     Vec2 tile;
-    CHECK(s.Qw().ClueTile("q_lost_pendant", 1, tile));
+    CHECK(s.Qw().ClueTile("q_rf_tag_thief", 1, tile));
     s.Place(Vec2(cloth->pos.x + 1.5, cloth->pos.y));
     const std::vector<Event> ev = s.StepsCollect(1);
-    CHECK(s.Cur("q_lost_pendant", 1) == 1);
-    CHECK(s.Cur("q_lost_pendant", 0) == 0);
+    CHECK(s.Cur("q_rf_tag_thief", 1) == 1);
+    CHECK(s.Cur("q_rf_tag_thief", 0) == 0);
     CHECK(CountNodes(s.Qw(), true) == 2);
     CHECK(HasLog(ev, "zone.quest.clueFound"));
-    CHECK(HasLog(ev, "data.questClue.clue_pendant_cloth"));
-    CHECK_FALSE(s.Qw().ClueTile("q_lost_pendant", 1, tile));
+    CHECK(HasLog(ev, "data.questClue.clue_rf_tag_cloth"));
+    CHECK_FALSE(s.Qw().ClueTile("q_rf_tag_thief", 1, tile));
   }
 
-  TEST_CASE("3.6 explore: within the radius at a 500 ms observer check") {
+  // M3 (chapter1.md 5): explore Ashwheat (40,52) r8, then kill the Corpseherd at the Sheepfold (the zone's mini-boss).
+  TEST_CASE("3.6 explore: within the radius at a 500 ms observer check; M3 then needs the Corpseherd") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15})});
-    REQUIRE(s.Qs().Accept("q_explore_goblin_camp"));
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
+    REQUIRE(s.Qs().Accept("q_rf_ashwheat"));
     s.Place(Vec2(48.5, 52));  // 8.5 > radius 8
     s.Steps(40);
-    CHECK(s.Cur("q_explore_goblin_camp", 0) == 0);
+    CHECK(s.Cur("q_rf_ashwheat", 0) == 0);
     s.Place(Vec2(47.9, 52));
     const std::vector<Event> ev = s.StepsCollect(31);
-    CHECK(s.Status("q_explore_goblin_camp") == QuestStatus::Completed);
+    CHECK(s.Cur("q_rf_ashwheat", 0) == 1);
+    CHECK(s.Status("q_rf_ashwheat") == QuestStatus::Active);  // the second objective: the Corpseherd
     CHECK(HasLog(ev, "zone.quest.exploreFound"));
+    const EntityId herd = s.FindAlive("miniboss_corpseherd");
+    REQUIRE(herd != kNoEntity);
+    REQUIRE(s.Kill(herd));
+    CHECK(s.Cur("q_rf_ashwheat", 1) == 1);
+    CHECK(s.Status("q_rf_ashwheat") == QuestStatus::Completed);
   }
 
-  TEST_CASE("3.7 delivery: talking to the herbalist completes the gel quest, and her shop opens too") {
+  TEST_CASE("3.7 delivery: talking to Marl completes the breach-blood quest, and her shop opens too") {
     QwSim s;
-    s.Qs().Load({Rec("q_collect_slime_gel", QuestStatus::Active, {6, 0})});
+    s.Qs().Load({Rec("q_rf_black_blood", QuestStatus::Active, {6, 0})});
     s.Qw().InteractNpc("plains_herbalist");
-    CHECK(s.Status("q_collect_slime_gel") == QuestStatus::Completed);
+    CHECK(s.Status("q_rf_black_blood") == QuestStatus::Completed);
     CHECK(s.ctx->sys.shop->State().open);
     CHECK(s.ctx->sys.shop->State().npcId == "plains_herbalist");
   }
 
   TEST_CASE("4.1 turn-in: the card's cached gear is what is granted; exp, gold, achievements, autosave, toast") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15}),
-                 Rec("q_explore_goblin_camp", QuestStatus::TurnedIn, {1}),
-                 Rec("q_find_goblin_chief", QuestStatus::Completed, {1})});
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1}),
+                 Rec("q_rf_ashwheat", QuestStatus::TurnedIn, {1, 1}),
+                 Rec("q_rf_marshal", QuestStatus::Completed, {1})});
     REQUIRE(s.Qw().OpenCard("quest_elder"));
     REQUIRE_FALSE(s.Qw().Card().entries.empty());
     const QuestCardEntry& e = s.Qw().Card().entries[0];
     CHECK(e.turnIn);
-    CHECK(e.quest->id == "q_find_goblin_chief");
+    CHECK(e.quest->id == "q_rf_marshal");
     REQUIRE(e.choices.size() == 2);
     const std::string pick = e.choices[1].uid;
     // reopening never rerolls
@@ -1522,12 +2174,12 @@ TEST_SUITE("quests") {
     CHECK(s.Qw().Card().entries[0].choices[1].uid == pick);
     const int64_t gold0 = s.H().Gold();
     s.sim->ClearEvents();
-    REQUIRE(s.Qw().TurnIn("q_find_goblin_chief", 1));
+    REQUIRE(s.Qw().TurnIn("q_rf_marshal", 1));
     CHECK(s.H().Gold() == gold0 + 80);
     bool granted = false;
     for (const ItemInstance& it : s.ctx->sys.inventory->Items().Bag()) granted = granted || it.uid == pick;
     CHECK(granted);
-    CHECK(s.Qw().RewardChoices("q_find_goblin_chief").empty());
+    CHECK(s.Qw().RewardChoices("q_rf_marshal").empty());
     CHECK_FALSE(s.Qw().Card().open);
     CHECK(s.ctx->sys.achievements->State().ProgressOf("quest") == 1);
     const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
@@ -1538,14 +2190,15 @@ TEST_SUITE("quests") {
     bool toast = false;
     for (const EvBanner* b : Of<EvBanner>(ev)) toast = toast || b->title.key == "sys.questCard.turnedIn";
     CHECK(toast);
-    CHECK_FALSE(s.Qw().TurnIn("q_find_goblin_chief", 0));  // only from completed
+    CHECK_FALSE(s.Qw().TurnIn("q_rf_marshal", 0));  // only from completed
   }
 
   TEST_CASE("turn-in overflow goes to the stash (I10); fixed items stack; the choice index clamps") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_collect_slime_gel", QuestStatus::Completed, {6, 1})});
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_black_blood", QuestStatus::Completed, {6, 1})});
     const size_t bag0 = s.ctx->sys.inventory->Items().Bag().size();
-    REQUIRE(s.Qw().TurnIn("q_collect_slime_gel", 7));  // no choices: the index is irrelevant
+    REQUIRE(s.Qw().TurnIn("q_rf_black_blood", 7));  // no choices: the index is irrelevant
     const auto bag = s.ctx->sys.inventory->Items().Bag();
     int potions = 0;
     for (const ItemInstance& it : bag) potions += it.baseId == "c_hp_potion_s" ? it.quantity : 0;
@@ -1559,15 +2212,17 @@ TEST_SUITE("quests") {
       if (s.ctx->sys.inventory->Grant(*it, OverflowPolicy::Refuse, ItemSource::Debug) != ItemGrantOutcome::Bag) break;
     }
     const size_t stash0 = s.ctx->sys.inventory->Items().Stash().size();
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_lost_pendant", QuestStatus::Completed, {1, 1, 1, 1, 1})});
-    REQUIRE(s.Qw().TurnIn("q_lost_pendant", 99));  // clamps to the last (only) choice
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_tag_thief", QuestStatus::Completed, {1, 1, 1, 1, 1})});
+    REQUIRE(s.Qw().TurnIn("q_rf_tag_thief", 99));  // clamps to the last choice (S3: jewelry / weapon)
     CHECK(s.ctx->sys.inventory->Items().Stash().size() == stash0 + 1);
   }
 
   TEST_CASE("3.9 escort: spawn, wait, join, chip damage death -> failed and offered again; re-accept respawns") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15})});
-    REQUIRE(s.Qs().Accept("q_escort_merchant_plains"));
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
+    REQUIRE(s.Qs().Accept("q_rf_hallowed_ground"));
     const EscortState& e = s.Qw().Escort();
     REQUIRE(e.active);
     CHECK(e.pos == Vec2(30, 40));
@@ -1580,7 +2235,7 @@ TEST_SUITE("quests") {
     CHECK(e.joined);
     CHECK(HasLog(ev, "zone.escort.joined"));
     // an aggro monster next to the escort chips it: max(1, floor(damage * 0.3)) once per 2 s
-    MonsterDef brute = *s.ctx->data.Monsters().Find("goblin");
+    MonsterDef brute = *s.ctx->data.Monsters().Find("gravegnawer");
     brute.damage = 1000;
     MonsterSpawnParams p;
     p.baseDef = &brute;
@@ -1592,16 +2247,17 @@ TEST_SUITE("quests") {
     ev = s.StepsCollect(1);
     s.Kill(m);
     CHECK_FALSE(s.Qw().Escort().active);
-    CHECK(s.Status("q_escort_merchant_plains") == QuestStatus::Failed);
+    CHECK(s.Status("q_rf_hallowed_ground") == QuestStatus::Failed);
     CHECK(HasLog(ev, "zone.escort.npcDied"));
     bool died = false;
     for (const EvEntityDespawned* d : Of<EvEntityDespawned>(ev)) {
       died = died || (d->kind == EntityKind::Escort && d->reason == DespawnReason::Died);
     }
     CHECK(died);
-    const std::vector<std::string> offers = OfferIds(s.Qs().Offers("quest_elder", s.H().Level(), OfferRule::QuestCard));
-    CHECK(std::find(offers.begin(), offers.end(), "q_escort_merchant_plains") != offers.end());
-    REQUIRE(s.Qw().AcceptFromCard("q_escort_merchant_plains"));
+    const std::vector<std::string> offers =
+        OfferIds(s.Qs().Offers("knell_chaplain", s.H().Level(), OfferRule::QuestCard));
+    CHECK(std::find(offers.begin(), offers.end(), "q_rf_hallowed_ground") != offers.end());
+    REQUIRE(s.Qw().AcceptFromCard("q_rf_hallowed_ground"));
     CHECK(s.Qw().Escort().active);
     CHECK(s.Qw().Escort().pos == Vec2(30, 40));
     CHECK(s.Qw().Escort().hp == 200);
@@ -1619,29 +2275,241 @@ TEST_SUITE("quests") {
       MESSAGE("skipped: Pathfinder::FindWalkableNear is still a stub (world area)");
       return;
     }
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15})});
-    REQUIRE(s.Qs().Accept("q_escort_merchant_plains"));
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
+    REQUIRE(s.Qs().Accept("q_rf_hallowed_ground"));
     s.Place(Vec2(31, 40));
     s.Steps(1);
     REQUIRE(s.Qw().Escort().joined);
     s.Place(Vec2(50, 90));  // > 14 tiles: the escort catches up within 2 rings, arriving with the hero
     const std::vector<Event> ev = s.StepsCollect(2);
-    CHECK(s.Status("q_escort_merchant_plains") == QuestStatus::Completed);
+    CHECK(s.Status("q_rf_hallowed_ground") == QuestStatus::Completed);
     CHECK(HasLog(ev, "zone.escort.complete"));
     CHECK_FALSE(s.Qw().Escort().active);
   }
 
-  TEST_CASE("guide: M1 points at the nearest living slime; markers and the guide follow the quest state") {
+  // DECISIONS Q9 (remake): the escort never walks onto a blocked tile and is never stranded where it has no path to the
+  // hero. Seed 7013 (mage, the HEAD art manifest) froze Old Bern at (43.53,60.53): between tiles at (44.38,59.78), its
+  // repath from (44,60) to the hero's (44,64) went round the generator's scatter wall (44,61) by (43,60), (43,61); the
+  // web's path.slice(1, ...) dropped the first step, so it walked straight at (43,61), cut the wall's corner, and the
+  // next repath started on the wall: findPath refuses an unwalkable start, the path stayed empty and nobody moved.
+  TEST_CASE("3.9 escort (Q9): between two tiles it walks the path's first step, never across a blocked corner") {
     QwSim s;
-    REQUIRE(s.Qs().Accept("q_kill_slimes"));
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
+    REQUIRE(s.Qs().Accept("q_rf_hallowed_ground"));
+    s.Place(Vec2(31, 40));
+    s.Steps(1);
+    REQUIRE(s.Qw().Escort().joined);
+    const ZoneGrid& g = s.ctx->sys.zone->Grid();
+    // the 7013 geometry: the scatter wall and the detour the path takes round it (golden map, W10)
+    REQUIRE_FALSE(g.Walkable(44, 61));
+    for (const TilePos t : {TilePos(44, 60), TilePos(43, 60), TilePos(43, 61), TilePos(43, 62), TilePos(44, 63)}) {
+      REQUIRE(g.Walkable(t.col, t.row));
+    }
+    std::vector<EntityId> near;
+    for (const MonsterInstance& m : s.Mon().All()) {
+      if (m.IsAlive() && Dist(m.pos, Vec2(44, 62)) < 20) near.push_back(m.id);
+    }
+    for (EntityId id : near) s.Kill(id);
+    const Vec2 hero(44.171, 64.009);
+    s.Place(hero);
+    EscortState& e = const_cast<EscortState&>(s.Qw().Escort());  // test-only: the escort's state one frame before
+    e.pos = Vec2(44.3791, 59.7773);                                // the 7013 repath
+    e.path.clear();
+    e.repathAtMs = 0;
+    int onBlocked = 0;
+    for (int i = 0; i < 4 * 60; ++i) {
+      s.Steps(1);
+      if (!g.Walkable(JsRoundInt(e.pos.x), JsRoundInt(e.pos.y))) ++onBlocked;
+    }
+    CHECK(onBlocked == 0);
+    CHECK(e.strandedSinceMs < 0);
+    CHECK(Dist(e.pos, hero) <= 2.5);  // followed to a tile short of the hero
+  }
+
+  TEST_CASE("3.9 escort (Q9): an escort with no path to the hero catches up next to it after 2 s") {
+    QwSim s;
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
+    REQUIRE(s.Qs().Accept("q_rf_hallowed_ground"));
+    s.Place(Vec2(31, 40));
+    s.Steps(1);
+    REQUIRE(s.Qw().Escort().joined);
+    const ZoneGrid& g = s.ctx->sys.zone->Grid();
+    REQUIRE_FALSE(g.Walkable(44, 61));
+    std::vector<EntityId> near;
+    for (const MonsterInstance& m : s.Mon().All()) {
+      if (m.IsAlive() && Dist(m.pos, Vec2(44, 62)) < 20) near.push_back(m.id);
+    }
+    for (EntityId id : near) s.Kill(id);
+    // The 7013 freeze: the escort's rounded tile is the wall, the hero 4.97 tiles away (follow range, no catch-up).
+    const Vec2 hero(45.9, 64.9);
+    s.Place(hero);
+    EscortState& e = const_cast<EscortState&>(s.Qw().Escort());
+    e.pos = Vec2(43.53, 60.53);
+    e.path.clear();
+    e.repathAtMs = 0;
+    std::vector<Event> ev = s.StepsCollect(60);  // 1 s: still waiting (a blocked tile for a moment is not stranded)
+    CHECK(e.pos == Vec2(43.53, 60.53));
+    CHECK(e.strandedSinceMs >= 0);
+    ev = s.StepsCollect(75);  // past 2 s: catch-up next to the hero, in its component
+    bool caughtUp = false;
+    for (const EvEntityTeleported* t : Of<EvEntityTeleported>(ev)) {
+      caughtUp = caughtUp || (t->id == e.entity && t->reason == TeleportReason::CatchUp);
+    }
+    CHECK(caughtUp);
+    const TilePos at(JsRoundInt(e.pos.x), JsRoundInt(e.pos.y));
+    CHECK(g.Walkable(at.col, at.row));
+    CHECK(g.Component(at.col, at.row) == g.Component(JsRoundInt(hero.x), JsRoundInt(hero.y)));
+    CHECK(Dist(e.pos, hero) <= 3.0);
+    CHECK(e.strandedSinceMs < 0);
+    // and it follows from there: the hero walks off 6 tiles, the escort keeps a path and comes along
+    const Vec2 hero2(hero.x, hero.y + 6);
+    REQUIRE(g.Walkable(JsRoundInt(hero2.x), JsRoundInt(hero2.y)));
+    s.Place(hero2);
+    s.Steps(5 * 60);
+    CHECK(e.strandedSinceMs < 0);
+    CHECK(Dist(e.pos, hero2) <= 2.5);
+  }
+
+  TEST_CASE("3.9 escort (Q9): the catch-up tile is in the hero's component, never a sealed pocket of the ring") {
+    QwSim s;
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
+    REQUIRE(s.Qs().Accept("q_rf_hallowed_ground"));
+    s.Place(Vec2(31, 40));
+    s.Steps(1);
+    REQUIRE(s.Qw().Escort().joined);
+    // An open 7x7 field more than 14 tiles from the escort (catch-up range), no monster near it.
+    ZoneGrid& g = const_cast<ZoneGrid&>(s.ctx->sys.zone->Grid());  // test-only: carve a pocket into the collision grid
+    TilePos h(-1, -1);
+    for (int32_t r = 50; r < 110 && h.col < 0; ++r) {
+      for (int32_t c = 20; c < 100 && h.col < 0; ++c) {
+        if (Dist(Vec2(c, r), Vec2(30, 40)) < 20) continue;
+        bool open = true;
+        for (int32_t dr = -3; dr <= 3 && open; ++dr) {
+          for (int32_t dc = -3; dc <= 3 && open; ++dc) open = g.Walkable(c + dc, r + dr);
+        }
+        bool quiet = true;
+        for (const MonsterInstance& m : s.Mon().All()) quiet = quiet && !(m.IsAlive() && Dist(m.pos, Vec2(c, r)) < 12);
+        if (open && quiet) h = TilePos(c, r);
+      }
+    }
+    REQUIRE(h.col >= 0);
+    // Seal the ring's first tile in findWalkableNear order, (h - 1, h - 1): block its other neighbours and the two
+    // tiles a diagonal step to the hero needs. It stays walkable, but in a component of its own.
+    const TilePos pocket(h.col - 1, h.row - 1);
+    for (const TilePos t : {TilePos(h.col - 2, h.row - 2), TilePos(h.col - 1, h.row - 2), TilePos(h.col, h.row - 2),
+                            TilePos(h.col - 2, h.row - 1), TilePos(h.col, h.row - 1), TilePos(h.col - 2, h.row),
+                            TilePos(h.col - 1, h.row)}) {
+      g.SetWalkable(t.col, t.row, false);
+    }
+    REQUIRE(g.Walkable(pocket.col, pocket.row));
+    REQUIRE(g.Component(pocket.col, pocket.row) != g.Component(h.col, h.row));
+    TilePos first;
+    REQUIRE(s.ctx->sys.zone->Paths().FindWalkableNear(h, 2, first));
+    REQUIRE(first == pocket);  // where the web's catch-up put it
+    s.Place(h.Center());
+    std::vector<Event> ev = s.StepsCollect(1);  // > 14 tiles: catch-up
+    const EscortState& e = s.Qw().Escort();
+    const TilePos at(JsRoundInt(e.pos.x), JsRoundInt(e.pos.y));
+    CHECK_FALSE(at == pocket);
+    CHECK(g.Component(at.col, at.row) == g.Component(h.col, h.row));
+    CHECK(Dist(e.pos, h.Center()) <= 3.0);
+    // it has a path from there: walk 5 tiles off, it follows without being stranded
+    s.Place(Vec2(h.col + 3, h.row + 3));
+    s.Steps(4 * 60);
+    CHECK(e.strandedSinceMs < 0);
+    CHECK(Dist(e.pos, Vec2(h.col + 3, h.row + 3)) <= 2.5);
+  }
+
+  // Q9, the edges of the catch-up rule: (1) the hero's tile is walkable but no ring tile shares its component (a pocket
+  // of its own): there is no catch-up tile, so the escort stays where it is - it used to fall back to findWalkableNear,
+  // land in another component and be re-teleported to that same tile every 2 s; (2) the hero's tile is not walkable:
+  // any walkable ring tile, once - the stranded re-check on the same tile emits no teleport whose from == to.
+  TEST_CASE("3.9 escort (Q9): no catch-up into another component, and no teleport onto the tile it stands on") {
+    QwSim s;
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
+    REQUIRE(s.Qs().Accept("q_rf_hallowed_ground"));
+    s.Place(Vec2(31, 40));
+    s.Steps(1);
+    REQUIRE(s.Qw().Escort().joined);
+    ZoneGrid& g = const_cast<ZoneGrid&>(s.ctx->sys.zone->Grid());  // test-only: carve pockets into the collision grid
+    // Two open 7x7 fields more than 14 tiles from the escort (catch-up range) and from each other, no monster near.
+    std::vector<TilePos> fields;
+    for (int32_t r = 50; r < 110 && fields.size() < 2; ++r) {
+      for (int32_t c = 20; c < 100 && fields.size() < 2; ++c) {
+        if (Dist(Vec2(c, r), Vec2(30, 40)) < 20) continue;
+        if (!fields.empty() && Dist(Vec2(c, r), fields[0].Center()) < 20) continue;
+        bool open = true;
+        for (int32_t dr = -3; dr <= 3 && open; ++dr) {
+          for (int32_t dc = -3; dc <= 3 && open; ++dc) open = g.Walkable(c + dc, r + dr);
+        }
+        bool quiet = true;
+        for (const MonsterInstance& m : s.Mon().All()) quiet = quiet && !(m.IsAlive() && Dist(m.pos, Vec2(c, r)) < 12);
+        if (open && quiet) fields.push_back(TilePos(c, r));
+      }
+    }
+    REQUIRE(fields.size() == 2);
+    const EscortState& e = s.Qw().Escort();
+    const auto teleports = [&e](const std::vector<Event>& ev) {
+      int n = 0;
+      for (const EvEntityTeleported* t : Of<EvEntityTeleported>(ev)) {
+        if (t->id != e.entity) continue;
+        ++n;
+        CHECK_FALSE(t->from == t->to);
+      }
+      return n;
+    };
+    const auto blockRing1 = [&g](TilePos c) {
+      for (int32_t dr = -1; dr <= 1; ++dr) {
+        for (int32_t dc = -1; dc <= 1; ++dc) {
+          if (dr != 0 || dc != 0) g.SetWalkable(c.col + dc, c.row + dr, false);
+        }
+      }
+    };
+    // (1) The hero alone in a one-tile pocket: walkable, ring 1 blocked, ring 2 walkable in another component.
+    const TilePos a = fields[0];
+    blockRing1(a);
+    REQUIRE(g.Walkable(a.col, a.row));
+    TilePos old;
+    REQUIRE(s.ctx->sys.zone->Paths().FindWalkableNear(a, 2, old));
+    REQUIRE(g.Component(old.col, old.row) != g.Component(a.col, a.row));  // where the old fallback put the escort
+    const Vec2 before = e.pos;
+    s.Place(a.Center());
+    CHECK(teleports(s.StepsCollect(5 * 60)) == 0);
+    CHECK(e.pos == before);
+    // (2) The hero on a blocked tile with ring 1 blocked too: the first walkable ring-2 tile, 2.8 tiles off (follow
+    // range); no path to an unwalkable hero, so the stranded re-check comes every 2 s - on the tile it already holds.
+    const TilePos b = fields[1];
+    blockRing1(b);
+    g.SetWalkable(b.col, b.row, false);
+    TilePos spot;
+    REQUIRE(s.ctx->sys.zone->Paths().FindWalkableNear(b, 2, spot));
+    REQUIRE(Dist(spot.Center(), b.Center()) > 2.0);
+    s.Place(b.Center());
+    std::vector<Event> ev = s.StepsCollect(1);
+    CHECK(teleports(ev) == 1);
+    CHECK(e.pos == spot.Center());
+    s.Steps(1);  // StepsCollect starts with the events of the step before it
+    ev = s.StepsCollect(6 * 60);
+    CHECK(teleports(ev) == 0);
+    CHECK(e.pos == spot.Center());
+  }
+
+  TEST_CASE("guide: M1 points at the nearest living footman; markers and the guide follow the quest state") {
+    QwSim s;
+    REQUIRE(s.Qs().Accept("q_rf_burial_detail"));
     s.Steps(1);
     const GuideTarget g = s.Qw().Guide();
     REQUIRE(g.Valid());
     CHECK(g.kind == GuideTargetKind::Monster);
-    const EntityId near = s.FindAlive("slime_green", s.H().Position());
+    const EntityId near = s.FindAlive("risen_footman", s.H().Position());
     REQUIRE(near != kNoEntity);
     CHECK(g.pos == s.Mon().Find(near)->pos);
-    CHECK(g.questId == "q_kill_slimes");
+    CHECK(g.questId == "q_rf_burial_detail");
   }
 
   TEST_CASE("Q1: a dialogue choice reward is paid once per (npc, node, choice), and saved") {
@@ -1650,9 +2518,9 @@ TEST_SUITE("quests") {
     for (int round = 0; round < 2; ++round) {
       REQUIRE(s.Qw().OpenDialogueTree("quest_elder"));
       DialogueSystem& d = *s.ctx->sys.dialogue;
-      d.Choose(2);  // reward_ask
+      d.Choose(3);  // reward_ask ("Is there pay?")
       REQUIRE(d.View().nodeId == "reward_ask");
-      d.Choose(0);  // "I'll help (supplies)" -> help, +30 gold +50 exp
+      d.Choose(0);  // "Take it." -> help, +30 gold +50 exp (a dead man's pay)
       CHECK(d.View().nodeId == "help");
       d.Close();
       CHECK(s.H().Gold() == gold0 + 30);
@@ -1667,9 +2535,9 @@ TEST_SUITE("quests") {
     s.Place(Vec2(46, 36));
     std::vector<Event> ev = s.StepsCollect(1);
     LoreSystem& lore = *s.ctx->sys.lore;
-    CHECK(lore.IsCollected("lore_ep_01"));
+    CHECK(lore.IsCollected("lore_rf_01"));
     CHECK(lore.Text().open);
-    CHECK(lore.Text().loreId == "lore_ep_01");
+    CHECK(lore.Text().loreId == "lore_rf_01");
     CHECK(Of<EvLoreCollected>(ev).size() == 1);
     CHECK(HasLog(ev, "zone.lore.discovered"));
     lore.CloseText();
@@ -1678,19 +2546,19 @@ TEST_SUITE("quests") {
     // hidden area (108,108) r6: only the centre side explored -> not yet
     s.Place(Vec2(100, 108));
     s.Steps(2);
-    CHECK_FALSE(lore.IsDiscovered("hidden_ep_elven_cache"));
+    CHECK_FALSE(lore.IsDiscovered("hidden_rf_paymaster"));
     s.Place(Vec2(108, 108));
     ev = s.StepsCollect(2);
-    REQUIRE(lore.IsDiscovered("hidden_ep_elven_cache"));
+    REQUIRE(lore.IsDiscovered("hidden_rf_paymaster"));
     CHECK(Of<EvHiddenAreaDiscovered>(ev).size() == 1);
     REQUIRE(lore.HiddenRewards().size() == 2);
     const int64_t gold0 = s.H().Gold();
-    REQUIRE(lore.ClaimHiddenReward("hidden_ep_elven_cache", 1));  // gold pile 200
+    REQUIRE(lore.ClaimHiddenReward("hidden_rf_paymaster", 1));  // gold pile 200
     CHECK(s.H().Gold() == gold0 + 200);
     // Q5: the unclaimed chest lies there again on the next visit; the claimed pile does not
     SaveData save;
     s.sim->BuildSave(save, 0);
-    CHECK(save.loreCollected == std::vector<std::string>{"lore_ep_01"});
+    CHECK(save.loreCollected == std::vector<std::string>{"lore_rf_01"});
     std::string err;
     REQUIRE(s.sim->LoadGame(save, &err) == SaveError::None);
     const LoreSystem& again = *s.sim->Context().sys.lore;
@@ -1704,7 +2572,7 @@ TEST_SUITE("quests") {
     std::vector<Event> ev = s.StepsCollect(1);
     auto f = Of<EvStoryDecorFocus>(ev);
     REQUIRE_FALSE(f.empty());
-    CHECK(f.back()->decorId == "story_ep_ruined_tower");
+    CHECK(f.back()->decorId == "story_rf_belfry");
     CHECK_FALSE(f.back()->showTooltip);
     s.Place(Vec2(55, 46));
     ev = s.StepsCollect(1);
@@ -1720,7 +2588,7 @@ TEST_SUITE("quests") {
 
   TEST_CASE("Q11: escort / defend names resolve through data.escortNpc.<id> / data.defendTarget.<id> without q_") {
     const DataStore& data = test::RealData();
-    CHECK(EscortNpcNameKey("q_escort_merchant_plains") == "data.escortNpc.escort_merchant_plains");
+    CHECK(EscortNpcNameKey("q_rf_hallowed_ground") == "data.escortNpc.rf_hallowed_ground");
     CHECK(DefendTargetNameKey("q_defend_camp_forest") == "data.defendTarget.defend_camp_forest");
     CHECK(EscortNpcNameKey("escort_x") == "data.escortNpc.escort_x");
     // Every escort / defend quest either has its key in both locales, or is a known key-less one (zh name).
@@ -1738,39 +2606,40 @@ TEST_SUITE("quests") {
       CHECK(en.Lookup(LocaleId::En, key) != nullptr);
       ++keyed;
     }
-    CHECK(keyed == 4);
+    CHECK(keyed == 5);  // + the Boneyard Gate of the M5 slot (1B part 1: defend at (10,32), DR4)
   }
 
-  TEST_CASE("Q11: the escort logs and its label use the key, so English shows 'Traveling Merchant'") {
+  TEST_CASE("Q11: the escort logs and its label use the key, so English shows 'Old Bern'") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10}), Rec("q_kill_goblins", QuestStatus::TurnedIn, {15})});
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10}),
+                 Rec("q_rf_gnawed_field", QuestStatus::TurnedIn, {12, 1})});
     s.sim->ClearEvents();
-    REQUIRE(s.Qs().Accept("q_escort_merchant_plains"));
+    REQUIRE(s.Qs().Accept("q_rf_hallowed_ground"));
     const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
     const EvLog* appeared = FindLog(ev, "zone.escort.npcAppeared");
     REQUIRE(appeared != nullptr);
     REQUIRE(appeared->text.args.size() == 1);
     CHECK(appeared->text.args[0].isKey);
-    CHECK(appeared->text.args[0].value == "data.escortNpc.escort_merchant_plains");
+    CHECK(appeared->text.args[0].value == "data.escortNpc.rf_hallowed_ground");
     const I18n en = EnglishStrings();
-    CHECK(en.T(appeared->text) == "Traveling Merchant appeared! Escort target marked.");
+    CHECK(en.T(appeared->text) == "Old Bern appeared! Escort target marked.");
     // the label (snapshot EscortState): NameOr(nameKey, name)
     const EscortState& e = s.Qw().Escort();
-    CHECK(e.nameKey == "data.escortNpc.escort_merchant_plains");
-    CHECK(e.name == s.ctx->data.FindQuest("q_escort_merchant_plains")->escortNpc.name);
-    CHECK(en.NameOr(e.nameKey, e.name) == "Traveling Merchant");
+    CHECK(e.nameKey == "data.escortNpc.rf_hallowed_ground");
+    CHECK(e.name == s.ctx->data.FindQuest("q_rf_hallowed_ground")->escortNpc.name);
+    CHECK(en.NameOr(e.nameKey, e.name) == "Old Bern");
     s.Place(Vec2(32, 40));
     const std::vector<Event> joined = s.StepsCollect(1);
     const EvLog* j = FindLog(joined, "zone.escort.joined");
     REQUIRE(j != nullptr);
-    CHECK(en.T(j->text) == "Traveling Merchant is following you.");
+    CHECK(en.T(j->text) == "Old Bern is following you.");
   }
 
   TEST_CASE("3.5: an examined clue floats '<targetName>\\n<note>'; progress carries targetId and amount (13)") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})});
-    REQUIRE(s.Qs().Accept("q_lost_pendant"));
-    const QuestNode* cloth = NodeOf(s.Qw(), true, "q_lost_pendant", 1);
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10})});
+    REQUIRE(s.Qs().Accept("q_rf_tag_thief"));
+    const QuestNode* cloth = NodeOf(s.Qw(), true, "q_rf_tag_thief", 1);
     REQUIRE(cloth != nullptr);
     const Vec2 at = cloth->pos;
     s.Place(Vec2(at.x + 1.5, at.y));
@@ -1783,39 +2652,39 @@ TEST_SUITE("quests") {
     CHECK(note->pos == at);
     const I18n& zh = s.ctx->data.Strings();
     CHECK(zh.T(note->text) ==
-          zh.T("data.questTarget.clue_pendant_cloth") + "\n" + zh.T("data.questClue.clue_pendant_cloth"));
+          zh.T("data.questTarget.clue_rf_tag_cloth") + "\n" + zh.T("data.questClue.clue_rf_tag_cloth"));
     CHECK(EnglishStrings().T(note->text) ==
-          "Rag Snagged on Thorns\nA green rag reeking of goblin hangs on the thorns. The trail bends southeast.");
+          "The Caltrops\nA scrap of crusade tabard on the caltrops.");
     bool progress = false;
     for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev)) {
-      if (u->kind != EvQuestUpdate::Kind::Progress || u->questId != "q_lost_pendant") continue;
-      progress = u->objectiveIndex == 1 && u->targetId == "clue_pendant_cloth" && u->amount == 1;
+      if (u->kind != EvQuestUpdate::Kind::Progress || u->questId != "q_rf_tag_thief") continue;
+      progress = u->objectiveIndex == 1 && u->targetId == "clue_rf_tag_cloth" && u->amount == 1;
     }
     CHECK(progress);
   }
 
   TEST_CASE("13: kill progress events name the target and the requested amount") {
     QwSim s;
-    REQUIRE(s.Qs().Accept("q_kill_slimes"));
+    REQUIRE(s.Qs().Accept("q_rf_burial_detail"));
     s.sim->ClearEvents();
-    REQUIRE(s.Kill(s.FindAlive("slime_green")));
+    REQUIRE(s.Kill(s.FindAlive("risen_footman")));
     const std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
     const EvQuestUpdate* kill = nullptr;
     for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev)) {
-      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_kill_slimes") kill = u;
+      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_rf_burial_detail") kill = u;
     }
     REQUIRE(kill != nullptr);
-    CHECK(kill->targetId == "slime_green");
+    CHECK(kill->targetId == "risen_footman");
     CHECK(kill->amount == 1);
     CHECK(kill->current == 1);
     CHECK_FALSE(kill->hasFrom);
     // an amount above what is left is reported as requested (the counter clamps)
     s.sim->ClearEvents();
-    s.Qs().UpdateProgress(ObjectiveType::Kill, "slime_green", 50);
+    s.Qs().UpdateProgress(ObjectiveType::Kill, "risen_footman", 50);
     const std::vector<Event> ev2(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
     bool clamped = false;
     for (const EvQuestUpdate* u : Of<EvQuestUpdate>(ev2)) {
-      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_kill_slimes") {
+      if (u->kind == EvQuestUpdate::Kind::Progress && u->questId == "q_rf_burial_detail") {
         clamped = u->amount == 50 && u->current == u->required && u->completesQuest;
       }
     }
@@ -1827,9 +2696,9 @@ TEST_SUITE("quests") {
     s.Place(Vec2(108, 108));
     s.Steps(2);
     LoreSystem& lore = *s.ctx->sys.lore;
-    REQUIRE(lore.IsDiscovered("hidden_ep_elven_cache"));
+    REQUIRE(lore.IsDiscovered("hidden_rf_paymaster"));
     s.sim->ClearEvents();
-    REQUIRE(lore.ClaimHiddenReward("hidden_ep_elven_cache", 1));  // gold pile 200
+    REQUIRE(lore.ClaimHiddenReward("hidden_rf_paymaster", 1));  // gold pile 200
     std::vector<Event> ev(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
     const EvLog* gold = FindLog(ev, "zone.hiddenArea.gotGold");
     REQUIRE(gold != nullptr);
@@ -1837,7 +2706,7 @@ TEST_SUITE("quests") {
     CHECK(EnglishStrings().T(gold->text) == "Gained 200 gold");
     s.sim->ClearEvents();
     const size_t bag0 = s.ctx->sys.inventory->Items().Bag().size();
-    REQUIRE(lore.ClaimHiddenReward("hidden_ep_elven_cache", 0));  // rare chest
+    REQUIRE(lore.ClaimHiddenReward("hidden_rf_paymaster", 0));  // rare chest
     ev.assign(s.ctx->events.Items().begin(), s.ctx->events.Items().end());
     const EvLog* item = FindLog(ev, "zone.hiddenArea.gotItem");
     REQUIRE(item != nullptr);
@@ -1885,18 +2754,19 @@ TEST_SUITE("story") {
     CHECK(card->slide.title == ch->title);
     CHECK(card->slide.subtitle == "story.chapter.emerald_plains.subtitle");
     CHECK(card->slide.text == ch->text);
-    CHECK(EnglishStrings().T(card->slide.subtitle) == "The Emerald Plains");
+    CHECK(EnglishStrings().T(card->slide.subtitle) == "The Red Field");
+    CHECK(EnglishStrings().T(card->slide.title) == "Woken from Ash");
   }
 
   TEST_CASE("Q7: a turn-in cutscene lost to a quit replays on the next entry of the quest's zone, with its pet") {
     QwSim s;
-    s.Qs().Load({Rec("q_kill_slimes", QuestStatus::Completed, {10})});
-    REQUIRE(s.Qw().TurnIn("q_kill_slimes", 0));
+    s.Qs().Load({Rec("q_rf_burial_detail", QuestStatus::Completed, {10})});
+    REQUIRE(s.Qw().TurnIn("q_rf_burial_detail", 0));
     REQUIRE(s.Story().IsBusy());
-    SaveData save;  // the turn-in autosave: turned in, cs_ep_mark not seen yet
+    SaveData save;  // the turn-in autosave: turned in, cs_rf_brand not seen yet
     s.sim->BuildSave(save, 0);
     REQUIRE(save.hasStorySeen);
-    REQUIRE(std::find(save.storySeen.begin(), save.storySeen.end(), "cs_ep_mark") == save.storySeen.end());
+    REQUIRE(std::find(save.storySeen.begin(), save.storySeen.end(), "cs_rf_brand") == save.storySeen.end());
     std::string err;
     REQUIRE(s.sim->LoadGame(save, &err) == SaveError::None);
     s.ctx = &s.sim->Context();
@@ -1904,9 +2774,9 @@ TEST_SUITE("story") {
     CHECK_FALSE(s.Story().IsCinematic());  // the normal 650 ms turn-in delay, world live
     s.Steps(40);
     REQUIRE(s.Story().IsCinematic());
-    CHECK(s.Story().Playback().beat.id == "cs_ep_mark");
+    CHECK(s.Story().Playback().beat.id == "cs_rf_brand");
     s.Story().FinishAllBeats();
-    CHECK(s.Story().Progress().Has("cs_ep_mark"));
+    CHECK(s.Story().Progress().Has("cs_rf_brand"));
     // seen now: the next load plays nothing
     SaveData again;
     s.sim->BuildSave(again, 0);
@@ -1915,7 +2785,7 @@ TEST_SUITE("story") {
     CHECK_FALSE(s.Story().IsBusy());
 
     // Only the quest's own zone replays it; a save without storySeen never does.
-    SaveData elsewhere = SaveIn(s, "twilight_forest", 20, 20, {Rec("q_kill_slimes", QuestStatus::TurnedIn, {10})},
+    SaveData elsewhere = SaveIn(s, "twilight_forest", 20, 20, {Rec("q_rf_burial_detail", QuestStatus::TurnedIn, {10})},
                                 {"prologue", "chapter_emerald_plains", "chapter_twilight_forest"});
     REQUIRE(s.sim->LoadGame(elsewhere, &err) == SaveError::None);
     s.ctx = &s.sim->Context();
@@ -1926,7 +2796,7 @@ TEST_SUITE("story") {
     REQUIRE(s.sim->LoadGame(legacy, &err) == SaveError::None);
     s.ctx = &s.sim->Context();
     s.Story().FinishAllBeats();  // the chapter card a pre-story save still shows
-    CHECK_FALSE(s.Story().Progress().Has("cs_ep_mark"));
+    CHECK_FALSE(s.Story().Progress().Has("cs_rf_brand"));
 
     // A lost grantPet beat comes back too: q_seal_fire_rift -> cs_sd_finale, then cs_sd_helia (pet_phoenix). The pet
     // itself is already back at the load (EmberTower.retroGrantPets, homestead.json storyPets: every zone entry, like
@@ -1977,22 +2847,85 @@ TEST_SUITE("story") {
     std::vector<std::string> bosses;
     for (const BossIntroDef& b : s.bossIntros) bosses.push_back(b.monsterId);
     std::sort(bosses.begin(), bosses.end());
-    CHECK(bosses == std::vector<std::string>{"demon_lord", "dungeon_abyss_lord", "goblin_chief", "mountain_troll",
-                                             "phoenix", "werewolf_alpha"});
-    // Chapter 1 triggers (10.2)
+    CHECK(bosses == std::vector<std::string>{"demon_lord", "dungeon_abyss_lord", "mountain_troll", "phoenix", "valdras",
+                                             "werewolf_alpha"});
+    // chapter1.md 8: cs_boss_valdras, six steps; his Roar plays on the focus step (K1 `anim`).
+    const BossIntroDef* valdras = s.BossIntroFor("valdras");
+    REQUIRE(valdras != nullptr);
+    CHECK(valdras->cutscene == "cs_boss_valdras");
+    CHECK(valdras->name == "story.boss.valdras.name");
+    CHECK(valdras->epithet == "story.boss.valdras.epithet");
+    const Cutscene* intro = s.FindCutscene("cs_boss_valdras");
+    REQUIRE(intro != nullptr);
+    REQUIRE(intro->steps.size() == 6);
+    CHECK(intro->steps[0].kind == StoryStepKind::Focus);
+    CHECK(intro->steps[0].hasAnim);
+    CHECK(intro->steps[0].anim == AnimAction::Roar);
+    CHECK(intro->steps[1].kind == StoryStepKind::Title);
+    CHECK(intro->steps[5].speaker.kind == StoryActorKind::Hero);
+    CHECK(intro->steps[5].text == "story.cs_boss_valdras.6");
+    // Chapter 1 triggers (chapter1.md 8 "Triggers"; cs_rf_pit waits for Wave 3): the quests' beats, the siege on
+    // accept, the Corpseherd's and the Marshal's deaths.
     std::vector<std::string> ch1;
     for (const StoryTriggerDef& t : s.triggers) {
       const QuestDef* q = data.FindQuest(t.subjectId);
-      if (q != nullptr && q->zone == "emerald_plains") ch1.push_back(t.subjectId + ">" + t.cutscene);
+      const std::vector<std::string>& roster = data.Monsters().ZoneList("emerald_plains")->monsterIds;
+      const MiniBossEntry* mini = data.Monsters().MiniBossFor("emerald_plains");
+      const bool ch1Monster = t.on == StoryTriggerOn::MonsterKilled &&
+                              (std::find(roster.begin(), roster.end(), t.subjectId) != roster.end() ||
+                               (mini != nullptr && mini->monsterId == t.subjectId));
+      if ((q != nullptr && q->zone == "emerald_plains") || ch1Monster) {
+        ch1.push_back(std::string(EnumName(t.on)) + ":" + t.subjectId + ">" + t.cutscene);
+      }
     }
-    CHECK(ch1 == std::vector<std::string>{"q_kill_slimes>cs_ep_mark", "q_explore_goblin_camp>cs_ep_whisper",
-                                          "q_secure_plains>cs_ep_finale"});
+    std::string got;
+    for (const std::string& t : ch1) got += t + " ";
+    INFO("Chapter 1 triggers: " << got);
+    CHECK(ch1 == std::vector<std::string>{"quest_turned_in:q_rf_burial_detail>cs_rf_brand",
+                                          "quest_turned_in:q_rf_ashwheat>cs_rf_whisper",
+                                          "quest_accepted:q_rf_last_toll>cs_rf_siege",
+                                          "quest_turned_in:q_rf_last_toll>cs_rf_finale",
+                                          "monster_killed:miniboss_corpseherd>cs_rf_herd",
+                                          "monster_killed:valdras>cs_rf_marshal_falls"});
+    // Step counts (5-14, quests_test) and the beats' shapes: the finale's title card, the Marshal's last words.
+    const std::pair<const char*, size_t> steps[] = {{"cs_rf_brand", 11},        {"cs_rf_whisper", 11},
+                                                    {"cs_rf_herd", 5},          {"cs_rf_marshal_falls", 5},
+                                                    {"cs_rf_siege", 5},         {"cs_rf_finale", 13}};
+    for (const auto& [id, n] : steps) {
+      CAPTURE(id);
+      const Cutscene* c = s.FindCutscene(id);
+      REQUIRE(c != nullptr);
+      CHECK(c->steps.size() == n);
+    }
+    const Cutscene* finale = s.FindCutscene("cs_rf_finale");
+    CHECK(finale->steps[5].kind == StoryStepKind::Title);
+    CHECK(finale->steps[5].title == "story.cs_rf_finale.6.title");
+    CHECK(finale->steps[11].speaker.kind == StoryActorKind::Npc);
+    CHECK(finale->steps[11].speaker.id == "plains_herbalist");  // Marl leaves for the tower (herb garden)
+    const Cutscene* falls = s.FindCutscene("cs_rf_marshal_falls");
+    CHECK(falls->steps[1].speaker.kind == StoryActorKind::Monster);
+    CHECK(falls->steps[1].speaker.id == "valdras");
+    CHECK(falls->steps[4].kind == StoryStepKind::Wait);
+    const Cutscene* herd = s.FindCutscene("cs_rf_herd");
+    CHECK(herd->steps[0].target.kind == StoryActorKind::Tile);  // the Corpseherd is no map spawn: her tile (60,55)
+    CHECK(herd->steps[0].target.tile == TilePos(60, 55));
+    // The prologue: title + text on each slide, no heading line (chapter1.md 8); the chapter card's mood is night.
+    for (const StorySlide& sl : s.prologue.slides) {
+      CHECK(sl.heading.empty());
+      CHECK_FALSE(sl.title.empty());
+      CHECK_FALSE(sl.text.empty());
+    }
+    CHECK(EnglishStrings().T(s.prologue.slides[5].title) == "Woken in Ash");
   }
 }  // TEST_SUITE
 
 // =====================================================================================================================
 // World: the generated emerald_plains map, its routes, camp NPCs, event data, hidden area (from world_test.cpp)
-// The re-baseline of chapter1.md 17 re-pins these (golden facts, RNG checkpoints, A* routes, walkable counts).
+// Re-pinned by the one golden re-baseline (DECISIONS DR4, chapter1.md 17; package 1B part 1): the finale's two explore
+// landmarks (65,30) (50,55) became the Boneyard Gate defend target (10,32), the sealed Pit entrance (17,26) and the
+// echo lore spots (29,15) (38,47) (20,92) were added. The RNG checkpoints did not move (landmarks only clear tiles);
+// tile and decor counts, two A* routes and the walkable count did. The golden fixture is
+// CoreTests/golden/maps/emerald_plains.json (tilesSha 54ce0471e96c5d0e, decorSha 7a501f14066cbb08, 13169 walkable).
 // =====================================================================================================================
 
 TEST_SUITE("world") {
@@ -2006,7 +2939,7 @@ TEST_SUITE("world") {
     MapGenInput in;
     in.map = map;
     in.avoid = map->generatorAvoid;
-    REQUIRE(map->generatorAvoid.size() == 28);
+    REQUIRE(map->generatorAvoid.size() == 30);  // 28 - 2 explore landmarks + the defend target + 3 echo lore spots
     const ZoneGrid g = GenerateMap(data.World().mapGen, in, &trace);
     CHECK(trace.afterSecondary == 114752593);
     CHECK(trace.drawsSecondary == 13924);
@@ -2020,20 +2953,20 @@ TEST_SUITE("world") {
     CHECK(trace.drawsDecorations == 43822);
     std::array<int32_t, 7> counts{};
     for (TileType t : g.Tiles()) ++counts[static_cast<size_t>(t)];
-    CHECK(counts == std::array<int32_t, 7>{11003, 1972, 0, 363, 820, 192, 50});
-    CHECK(WorldWalkableCount(g) == 13167);
-    CHECK(g.Decorations().size() == 1269);
+    CHECK(counts == std::array<int32_t, 7>{11006, 1971, 0, 363, 818, 192, 50});
+    CHECK(WorldWalkableCount(g) == 13169);
+    CHECK(g.Decorations().size() == 1277);
     auto countDecor = [&g](const char* type) {
       return std::count_if(g.Decorations().begin(), g.Decorations().end(), [type](const Decoration& d) { return d.type == type; });
     };
-    CHECK(countDecor("grass") == 538);
-    CHECK(countDecor("flower") == 260);
-    CHECK(countDecor("bush") == 203);
-    CHECK(countDecor("rock") == 105);
-    CHECK(countDecor("tree") == 66);
-    CHECK(countDecor("tree_round") == 51);
-    CHECK(countDecor("mushroom_red") == 45);
-    CHECK(countDecor("boulder") == 1);
+    CHECK(countDecor("grass") == 545);
+    CHECK(countDecor("flower") == 259);
+    CHECK(countDecor("bush") == 208);
+    CHECK(countDecor("rock") == 103);
+    CHECK(countDecor("tree") == 64);
+    CHECK(countDecor("tree_round") == 52);
+    CHECK(countDecor("mushroom_red") == 44);
+    CHECK(countDecor("boulder") == 2);
     // Anchor tiles after generation (3.3).
     CHECK(g.Tile(15, 22) == TileType::Dirt);
     for (const MapSpawnDef& s : map->spawns) CHECK(g.Tile(s.pos.col, s.pos.row) == TileType::Dirt);
@@ -2045,6 +2978,13 @@ TEST_SUITE("world") {
     CHECK(g.Tile(119, 60) == TileType::Wall);
     CHECK(g.Tile(118, 60) == TileType::Grass);
     CHECK(g.Tile(12, 13) == TileType::Camp);
+    // The re-baseline's landmarks stand on open ground: the sealed Pit entrance, the Boneyard Gate and the three echo
+    // lore spots (chapter1.md 12: "provisional until the re-baseline confirms them walkable").
+    for (const TilePos t : {TilePos{17, 26}, TilePos{10, 32}, TilePos{29, 15}, TilePos{38, 47}, TilePos{20, 92}}) {
+      CAPTURE(t.col);
+      CAPTURE(t.row);
+      CHECK(g.Tile(t.col, t.row) == TileType::Grass);
+    }
     // Decorations carry the 15.5 jitter; tall types are flagged for W5.
     for (const Decoration& d : g.Decorations()) {
       CHECK(d.scale >= 0.9);
@@ -2068,10 +3008,12 @@ TEST_SUITE("world") {
     const Route routes[] = {
         {{15, 22}, {15, 15}, 7, 0, 7.000, {{15, 21}, {15, 20}, {15, 19}}},
         {{15, 22}, {118, 60}, 103, 38, 118.732, {{16, 22}, {17, 23}, {18, 24}}},
-        {{15, 22}, {108, 108}, 98, 81, 131.534, {{16, 22}, {17, 23}, {18, 24}}},
+        {{15, 22}, {108, 108}, 98, 81, 131.534, {{16, 23}, {17, 24}, {18, 25}}},
         {{15, 15}, {95, 100}, 86, 79, 118.706, {{16, 16}, {17, 17}, {18, 18}}},
         {{15, 22}, {60, 55}, 45, 33, 58.662, {{16, 22}, {17, 22}, {18, 23}}},
-        {{15, 22}, {18, 25}, 4, 2, 4.828, {{16, 23}, {17, 23}, {18, 24}, {18, 25}}},
+        {{15, 22}, {18, 25}, 3, 3, 4.242, {{16, 23}, {17, 24}, {18, 25}}},
+        // M5: from the burn pit to the Boneyard Gate (the siege).
+        {{15, 22}, {10, 32}, 10, 5, 12.070, {{14, 23}, {13, 24}, {12, 25}, {12, 26}}},
     };
     for (const Route& rt : routes) {
       CAPTURE(rt.to.col);
@@ -2090,8 +3032,9 @@ TEST_SUITE("world") {
       for (size_t i = 0; i < rt.first.size(); ++i) CHECK(path[i] == rt.first[i]);
       CHECK(WorldPathValid(g, rt.from, path));
     }
-    // (17,25) is the wall that blocks the direct diagonal of the last route.
-    CHECK_FALSE(g.Walkable(17, 25));
+    // The sealed Pit entrance (17,26) keeps its surroundings open: (17,25), a wall on the web map, is grass now, so the
+    // route to (18,25) runs the direct diagonal.
+    CHECK(g.Walkable(17, 25));
   }
 
   TEST_CASE("A* routes re-baselined on the full W5 grid (camp blockers + tall decor) stay valid and optimal-ish") {
@@ -2101,7 +3044,8 @@ TEST_SUITE("world") {
     const ZoneGrid g = BuildZoneGrid(data, map);
     Pathfinder praw(raw), pf(g);
     const std::pair<TilePos, TilePos> routes[] = {{{15, 22}, {15, 15}},   {{15, 22}, {118, 60}}, {{15, 22}, {108, 108}},
-                                                  {{15, 15}, {95, 100}},  {{15, 22}, {60, 55}},  {{15, 22}, {18, 25}}};
+                                                  {{15, 15}, {95, 100}},  {{15, 22}, {60, 55}},  {{15, 22}, {18, 25}},
+                                                  {{15, 22}, {10, 32}}};
     for (const auto& [from, to] : routes) {
       std::vector<TilePos> a, b;
       REQUIRE(praw.FindPath(from.col, from.row, to.col, to.row, a));
@@ -2125,13 +3069,15 @@ TEST_SUITE("world") {
     CHECK(at("blacksmith") == Vec2(16.875, 17.375));
     CHECK(at("merchant") == Vec2(16.375, 13.625));  // camp 1 first; camp 2's merchant also exists
     CHECK(at("quest_elder") == Vec2(13.125, 17.375));
-    CHECK(at("stash") == Vec2(12.25, 14.25));       // I7: the stash keeper is the 4th camp-1 NPC
+    CHECK(at("knell_chaplain") == Vec2(12.25, 14.25));  // chapter1.md 3: Brother Aldwin, the 4th camp-1 NPC
+    CHECK(at("stash") == Vec2(17.25, 16.0));            // I7: the stash keeper is appended, the 5th (slot 4)
     // Idle facing (W11): every camp NPC looks at the fire (no tents).
     auto facing = [&w](const char* id) { return w.zone.FindNpc(id) != nullptr ? w.zone.FindNpc(id)->facing : Vec2(); };
     CHECK(facing("blacksmith") == camp::CampNpcFacing(0));
     CHECK(facing("merchant") == camp::CampNpcFacing(1));
     CHECK(facing("quest_elder") == camp::CampNpcFacing(2));
-    CHECK(facing("stash") == camp::CampNpcFacing(3));
+    CHECK(facing("knell_chaplain") == camp::CampNpcFacing(3));
+    CHECK(facing("stash") == camp::CampNpcFacing(4));
     CHECK(facing("blacksmith").Dot((Vec2(15, 15) - at("blacksmith")).Normalized()) > 1.0 - 1e-12);
     CHECK(facing("merchant").Dot(Vec2(-1.0, 1.0).Normalized()) > 1.0 - 1e-12);  // slot 1 (1.375, -1.375) -> the fire
     CHECK(facing("stash").Dot((Vec2(15, 15) - at("stash")).Normalized()) > 1.0 - 1e-12);
@@ -2139,13 +3085,9 @@ TEST_SUITE("world") {
     CHECK(at("plains_herbalist") == Vec2(50, 30));
     CHECK(at("plains_wanderer") == Vec2(70, 65));
     size_t merchants = 0;
-    for (const NpcPlacement& n : w.zone.Npcs()) {
-      if (n.npcId == "merchant") {
-        ++merchants;
-        if (merchants == 2) CHECK(n.pos == Vec2(96.875, 102.375));  // camp 2 (95,100), slot 0
-      }
-    }
-    CHECK(merchants == 2);
+    for (const NpcPlacement& n : w.zone.Npcs()) merchants += n.npcId == "merchant" ? 1 : 0;
+    CHECK(merchants == 1);                                   // Crowmarket's own trader replaced camp 2's shared merchant
+    CHECK(at("crow_trader") == Vec2(96.875, 102.375));        // camp 2 (95,100), slot 0: Mag Crowe
     REQUIRE(w.zone.Exits().size() == 1);
     CHECK(w.zone.Exits()[0].sealed);  // W7
     CHECK(w.zone.SafeZoneRadius() == 9);
@@ -2171,12 +3113,62 @@ TEST_SUITE("world") {
     CHECK(u.zone.MapId() == "emerald_plains");
   }
 
-  TEST_CASE("exploration 10.3: standing at (108,108) sees the whole elven cache; (104,102) misses two corners") {
+  TEST_CASE("Red Field random events (chapter1.md 13): the zone's own lines, zealots guard the Bound Pilgrim") {
+    WorldRig w;
+    REQUIRE(w.ok);
+    MonsterSystem monsters(w.h.ctx);
+    w.h.ctx.sys.monsters = &monsters;
+    const TilePos spot = WorldClearRow(w.zone, 4);
+    REQUIRE(spot.col > 0);
+    w.Place(spot.Center());
+    const ZoneEventDataDef* zd = w.h.ctx.data.World().randomEvents.ForZone("emerald_plains");
+    REQUIRE(zd != nullptr);
+    CHECK(zd->rescueMonsters == std::vector<std::string>{"oath_zealot"});
+    CHECK(zd->ambushMonsters == std::vector<std::string>{"risen_footman", "gravegnawer"});
+    // The rescue: the pilgrim, held by Red-Oath zealots, announced in the Red Field's line.
+    w.events.TriggerEvent(RandomEventType::Rescue, spot.Center());
+    REQUIRE(w.events.Active().size() == 1);
+    const ActiveRandomEvent& rescue = w.events.Active().front();
+    REQUIRE(rescue.monsters.size() >= 2);
+    for (EntityId id : rescue.monsters) {
+      REQUIRE(monsters.Find(id) != nullptr);
+      CHECK(monsters.Find(id)->def.id == "oath_zealot");
+    }
+    CHECK(w.Logged("sys.event.msg.rescue.emerald_plains"));
+    CHECK_FALSE(w.Logged("sys.event.msg.rescue"));
+    // The ambush: hands from the mud (footmen and gnawers), after the toll line.
+    w.events.TriggerEvent(RandomEventType::Ambush, spot.Center() + Vec2(0, 3));
+    CHECK(w.Logged("sys.event.msg.ambush.emerald_plains"));
+    for (const ActiveRandomEvent& e : w.events.Active()) {
+      if (e.type != RandomEventType::Ambush) continue;
+      for (EntityId id : e.monsters) {
+        REQUIRE(monsters.Find(id) != nullptr);
+        const std::string& def = monsters.Find(id)->def.id;
+        CHECK((def == "risen_footman" || def == "gravegnawer"));
+      }
+    }
+    // The pilgrim's line and the Relic Peddler's (chapter1.md 3) are the zone's completion and announce lines. The
+    // completion line does not splice the pilgrim's name in (the core still passes {npcName}; final review: "You cut The
+    // Bound Pilgrim loose" / 被缚的朝圣者的绳子), and the Peddler lays out relics, not white bones (no exposed bones in
+    // Chapter 1, story-bible.md 12).
+    const I18n en = abyss::test::quests_fx::EnglishStrings();
+    const std::vector<I18nArg> args = {KeyArg("npcName", "sys.event.rescue.emerald_plains"), {"gold", "30"}, {"exp", "25"}};
+    CHECK(en.T("zone.event.rescue.complete.emerald_plains", args) ==
+          "You cut the pilgrim loose. \"They said I walked too slowly to keep up with the Flame.\" Gained 30 gold and "
+          "25 EXP");
+    const I18n& zh = w.h.ctx.data.Strings();
+    CHECK(zh.T("zone.event.rescue.complete.emerald_plains", args).find(zh.T("sys.event.rescue.emerald_plains")) ==
+          std::string::npos);
+    CHECK(en.T("zone.event.merchant.announce.emerald_plains").find("At least one of them is.") != std::string::npos);
+    CHECK(en.T("sys.event.msg.wandering_merchant.emerald_plains") == "By the road someone has laid out a tray of relics on an old cloth.");
+  }
+
+  TEST_CASE("exploration 10.3: standing at (108,108) sees the whole Paymaster's Wagon; (104,102) misses two corners") {
     WorldRig w;
     REQUIRE(w.ok);
     REQUIRE(w.zone.Map().hiddenAreas.size() == 1);
     const HiddenAreaDef& cache = w.zone.Map().hiddenAreas[0];
-    CHECK(cache.id == "hidden_ep_elven_cache");
+    CHECK(cache.id == "hidden_rf_paymaster");
     CHECK_FALSE(cache.hasBounds);  // bounds = centre (108,108) +- radius 6
     w.Place({104, 102});
     w.Step();
@@ -2200,13 +3192,13 @@ TEST_SUITE("world") {
   using namespace abyss::test::world_fx;
 
   // Split from "camp blockers (W11)": the generated emerald_plains grid the camp-blocker vectors were cut on.
-  TEST_CASE("camp blockers: the raw emerald_plains grid has 13167 walkable tiles; the two camps' blockers take 2 x 8") {
+  TEST_CASE("camp blockers: the raw emerald_plains grid has 13169 walkable tiles; the two camps' blockers take 2 x 8") {
     const DataStore& data = test::RealData();
     const MapDef& map = *data.FindMap("emerald_plains");
-    REQUIRE(WorldWalkableCount(BuildRawZoneGrid(data, map)) == 13167);
+    REQUIRE(WorldWalkableCount(BuildRawZoneGrid(data, map)) == 13169);
     ZoneGrid full = BuildRawZoneGrid(data, map);
     ApplyCampBlockers(full, map);
-    CHECK(WorldWalkableCount(full) == 13167 - 2 * 8);
+    CHECK(WorldWalkableCount(full) == 13169 - 2 * 8);
   }
 
   // Split from "random events 13.1: exported config, definitions and zone data": the emerald_plains event data.
@@ -2214,7 +3206,7 @@ TEST_SUITE("world") {
     const RandomEventsDef& def = WD().World().randomEvents;
     const ZoneEventDataDef* ep = def.ForZone("emerald_plains");
     REQUIRE(ep != nullptr);
-    CHECK(ep->ambushMonsters == std::vector<std::string>{"slime_green", "goblin"});
+    CHECK(ep->ambushMonsters == std::vector<std::string>{"risen_footman", "gravegnawer"});  // Hands from the Mud
     CHECK(ep->ambushCountMin == 3);
     CHECK(ep->ambushCountMax == 5);
     CHECK(ep->merchantItems == std::vector<std::string>{"iron_sword", "leather_armor", "hp_potion", "mp_potion"});
@@ -2226,10 +3218,91 @@ TEST_SUITE("world") {
   }
 
   // Split from "random events 13.3: a zone without event data gets createEvent's fallbacks": the zone's first monster
-  // def (the fallback ambush / rescue monster) is the green slime.
-  TEST_CASE("random events 13.3: the emerald_plains zone list starts with slime_green (the fallback monster)") {
+  // def (the fallback ambush / rescue monster) is the breachclot.
+  TEST_CASE("random events 13.3: the emerald_plains zone list starts with breachclot (the fallback monster)") {
     const std::string first = WD().Monsters().ZoneList("emerald_plains")->monsterIds.front();
-    CHECK(first == "slime_green");
+    CHECK(first == "breachclot");
+  }
+
+  // chapter1.md 15 (GameData/world.ts overrides): emerald_plains shows the `march` mood, the dawn mood waits for the
+  // chapter, the Breach Rim region has its own; each with its fog, R18 light scale and weather. ember_tower keeps plains.
+  TEST_CASE("zone moods (remake): march, march_dawn and the Breach Rim; fog, light scale, weather; the tower stays plains") {
+    const ZoneMoodTables& m = WD().World().moods;
+    MapTheme t{};
+    REQUIRE(m.ThemeFor("emerald_plains", t));
+    CHECK(t == MapTheme::March);
+    const ZoneMoodDef& march = m.moods[EnumIndex(MapTheme::March)];
+    CHECK(march.defined);
+    CHECK(march.ambient == 0xA8AEBBu);
+    CHECK(march.ambientAlpha == 0.30);
+    CHECK(march.vignette == 0x08070Au);
+    CHECK(march.vignetteAlpha == 0.58);
+    CHECK(march.saturation == 0.68);
+    CHECK(march.contrast == 1.12);
+    CHECK(march.fogColor == 0x4E525Cu);
+    CHECK(march.fogMaxOpacity == 0.40);
+    CHECK(march.fogDensity == 1.15);
+    CHECK(march.lightScale == 0.32);
+    CHECK_FALSE(march.hasMoodWeather);
+    const ZoneMoodDef& dawn = m.moods[EnumIndex(MapTheme::MarchDawn)];
+    CHECK(dawn.defined);
+    CHECK(dawn.ambient == 0xC8B8A0u);
+    CHECK(dawn.fogColor == 0x6A6660u);
+    CHECK(dawn.lightScale == 0.22);
+    REQUIRE(dawn.hasMoodWeather);
+    CHECK(dawn.moodWeather.ambience == "dust_motes");
+    const ZoneMoodDef& rim = m.moods[EnumIndex(MapTheme::BreachRim)];
+    CHECK(rim.defined);
+    CHECK(rim.ambient == 0x6A4A8Au);
+    CHECK(rim.fogColor == 0x3A2A48u);
+    CHECK(rim.lightScale == 0.40);
+    REQUIRE(rim.hasMoodWeather);
+    CHECK(rim.moodWeather.ambience == "sparks");
+    CHECK(rim.moodWeather.tint == 0xB02FD0u);
+    const ZoneWeatherDef* w = m.WeatherFor("emerald_plains");
+    REQUIRE(w != nullptr);
+    CHECK(w->type == "none");
+    CHECK(w->ambience == "ashfall");
+    CHECK(w->tint == 0xCFCAC0u);
+    // The homestead keeps the warm plains look and the pollen it used to borrow from emerald_plains.
+    REQUIRE(m.ThemeFor("ember_tower", t));
+    CHECK(t == MapTheme::Plains);
+    const ZoneWeatherDef* tower = m.WeatherFor("ember_tower");
+    REQUIRE(tower != nullptr);
+    CHECK(tower->ambience == "pollen");
+    CHECK(m.moods[EnumIndex(MapTheme::Plains)].lightScale == 0);  // R18's formula
+  }
+
+  // chapter1.md M5 / 17 (the one re-baseline, DR4): the finale slot defends the Boneyard Gate (10,32), 18 tiles from
+  // camp 1, three authored waves on the half ring away from the camp (K1 waves / approachDeg).
+  TEST_CASE("the Boneyard Gate: the M5 slot's defend target, its three waves and the approach away from camp 1") {
+    const QuestDef* q = WD().FindQuest("q_rf_last_toll");
+    REQUIRE(q != nullptr);
+    REQUIRE(q->hasDefendTarget);
+    const DefendTargetDef& dt = q->defendTarget;
+    CHECK(dt.pos == TilePos{10, 32});
+    CHECK(dt.totalWaves == 3);
+    CHECK(dt.hasApproach);
+    CHECK(dt.approachDeg == 106);
+    CHECK(Dist(Vec2(10, 32), Vec2(15, 15)) > 17.7);  // 18 tiles from the camp centre: outside its safe radius (9)
+    auto flat = [](const std::vector<DefendWaveEntry>& wave) {
+      std::vector<std::string> out;
+      for (const DefendWaveEntry& e : wave) {
+        for (int32_t i = 0; i < e.count; ++i) out.push_back(e.monsterId);
+      }
+      return out;
+    };
+    REQUIRE(dt.waves.size() == 3);
+    CHECK(flat(dt.waves[0]) == std::vector<std::string>(5, "risen_footman"));
+    CHECK(flat(dt.waves[1]) == std::vector<std::string>{"gravegnawer", "gravegnawer", "gravegnawer", "gravegnawer",
+                                                        "cinderbloat", "cinderbloat"});
+    CHECK(flat(dt.waves[2]) == std::vector<std::string>{"risen_shieldbearer", "risen_shieldbearer", "dead_standard_bearer",
+                                                        "oath_zealot", "oath_zealot"});
+    CHECK(q->reacceptable);  // a fallen gate is offered again: the chapter stays completable
+    REQUIRE(q->objectives.size() == 1);
+    CHECK(q->objectives[0].type == ObjectiveType::DefendWave);
+    CHECK(q->objectives[0].required == 3);
+    CHECK(WD().Strings().Lookup(LocaleId::En, DefendTargetNameKey(q->id)) != nullptr);
   }
 }  // TEST_SUITE
 
@@ -2240,13 +3313,13 @@ TEST_SUITE("world") {
 TEST_SUITE("pets") {
   using namespace abyss::test::pets_fx;
 
-  TEST_CASE("embers: the Chapter 1 quests pay 20 in total (4.4.1)") {
+  TEST_CASE("embers: the Chapter 1 quests pay 23 in total (4.4.1; chapter1.md 7: 2 x 4 + 7 main, 1 x 5 + 3 side)") {
     int32_t total = 0;
     for (const QuestDef& q : PD().Quests().quests) {
       if (q.zone != "emerald_plains") continue;
       total += EmbersForQuest(HT(), q.category, q.rewards.hasEmbers, q.rewards.embers);
     }
-    CHECK(total == 20);
+    CHECK(total == 23);
   }
 }  // TEST_SUITE
 
@@ -2287,7 +3360,7 @@ TEST_SUITE("sim") {
     SaveData save;
     sim->BuildSave(save, 0);
     REQUIRE(save.player.currentMap == "emerald_plains");
-    save.discoveredHiddenAreas = {"hidden_ep_elven_cache"};
+    save.discoveredHiddenAreas = {"hidden_rf_paymaster"};
     std::string err;
     REQUIRE(sim->LoadGame(save, &err) == SaveError::None);
     const LoreSystem& lore = *sim->Context().sys.lore;
@@ -2298,15 +3371,15 @@ TEST_SUITE("sim") {
     }
     CHECK(markers == 2);
     const int64_t gold = sim->View().hero.gold;
-    CHECK(sim->Context().sys.lore->ClaimHiddenReward("hidden_ep_elven_cache", 1));
+    CHECK(sim->Context().sys.lore->ClaimHiddenReward("hidden_rf_paymaster", 1));
     CHECK(sim->Context().sys.hero->Gold() == gold + 200);
-    CHECK(lore.IsRewardClaimed("hidden_ep_elven_cache", 1));
-    CHECK_FALSE(sim->Context().sys.lore->ClaimHiddenReward("hidden_ep_elven_cache", 1));
+    CHECK(lore.IsRewardClaimed("hidden_rf_paymaster", 1));
+    CHECK_FALSE(sim->Context().sys.lore->ClaimHiddenReward("hidden_rf_paymaster", 1));
     CHECK(lore.HiddenRewards().size() == 1);
 
     SaveData after;
     sim->BuildSave(after, 0);
-    CHECK(after.hiddenRewardsClaimed == std::vector<std::string>{"hidden_ep_elven_cache#1"});
+    CHECK(after.hiddenRewardsClaimed == std::vector<std::string>{"hidden_rf_paymaster#1"});
     REQUIRE(sim->LoadGame(after, &err) == SaveError::None);
     REQUIRE(sim->Context().sys.lore->HiddenRewards().size() == 1);  // only the unclaimed chest comes back
     CHECK(sim->Context().sys.lore->HiddenRewards()[0].rewardIndex == 0);
@@ -2321,32 +3394,52 @@ TEST_SUITE("sim") {
 
 TEST_SUITE("data") {
   // Split from "monster tables": the roster size and the Chapter 1 spot checks.
-  TEST_CASE("monster tables: roster size, goblin, shaman (M5), the emerald_plains list, mini-boss and hunt") {
+  TEST_CASE("monster tables: roster size, the gnawer, the Corpseherd (M5), the emerald_plains list, mini-boss and hunts") {
     const MonsterTables& m = test::RealData().Monsters();
-    CHECK(m.defs.size() == 29);
-    const MonsterDef* goblin = m.Find("goblin");
-    REQUIRE(goblin);
-    CHECK(goblin->hp == 55);
-    CHECK(goblin->damage == 8);
-    CHECK(goblin->defense == 4);
-    CHECK(goblin->attackSpeedMs == 1200);
-    CHECK_FALSE(goblin->isRanged);
-    CHECK(goblin->nameKey == "data.monster.goblin");
-    const MonsterDef* shaman = m.Find("miniboss_goblin_shaman");
-    REQUIRE(shaman);
-    CHECK(shaman->attackRange == 3);  // M5
-    CHECK(shaman->isRanged);
-    CHECK(m.FindForZone("emerald_plains", "slime_green") != nullptr);
+    CHECK(m.defs.size() == 38);  // 29 - the 4 web Chapter 1 defs + 12 roster defs + the Corpseherd
+    const MonsterDef* gnawer = m.Find("gravegnawer");
+    REQUIRE(gnawer);
+    CHECK(gnawer->hp == 42);
+    CHECK(gnawer->damage == 7);
+    CHECK(gnawer->defense == 3);
+    CHECK(gnawer->attackSpeedMs == 950);
+    CHECK_FALSE(gnawer->isRanged);
+    CHECK(gnawer->nameKey == "data.monster.gravegnawer");
+    const MonsterDef* herd = m.Find("miniboss_corpseherd");
+    REQUIRE(herd);
+    CHECK(herd->attackRange == 3);  // M5's role, authored
+    CHECK(herd->isRanged);
+    const ZoneMonsterList* list = m.ZoneList("emerald_plains");
+    REQUIRE(list);
+    CHECK(list->monsterIds == std::vector<std::string>{"breachclot", "risen_footman", "gravegnawer", "cinderbloat",
+                                                       "risen_arbalest", "oath_zealot", "deserter", "deserter_drummer",
+                                                       "risen_shieldbearer", "dead_standard_bearer", "bonegorger",
+                                                       "valdras"});
+    for (const char* gone : {"slime_green", "goblin", "goblin_chief", "miniboss_goblin_shaman"}) CHECK(m.Find(gone) == nullptr);
     const MiniBossEntry* mb = m.MiniBossFor("emerald_plains");
     REQUIRE(mb);
     CHECK(mb->spawn == TilePos{60, 55});
-    CHECK(m.MiniBossDialogue("miniboss_goblin_shaman")->nodes.size() == 3);
-    CHECK(m.hunts.size() == 17);
-    const HuntDef* thief = m.FindHunt("hunt_pendant_thief");
-    REQUIRE(thief);
-    CHECK(thief->defNormal.hp == 165);
-    CHECK(thief->defNormal.damage == 10);
-    CHECK(thief->revealAfterPrevious);
+    CHECK(m.MiniBossDialogue("miniboss_corpseherd")->nodes.size() == 3);
+    CHECK(m.hunts.size() == 18);  // + Hungerbell (M2); Dreck and Harke hold the S3 / S4 slots
+    const HuntDef* dreck = m.FindHunt("hunt_dreck");
+    REQUIRE(dreck);
+    CHECK(dreck->monsterId == "deserter");
+    CHECK(dreck->defNormal.hp == 240);
+    CHECK(dreck->defNormal.damage == 14);
+    CHECK(dreck->revealAfterPrevious);
+    CHECK(dreck->spawn == TilePos{60, 48});
+    const HuntDef* hungerbell = m.FindHunt("hunt_hungerbell");
+    REQUIRE(hungerbell);
+    CHECK(hungerbell->monsterId == "bonegorger");
+    CHECK(hungerbell->revealAfterPrevious);
+    CHECK(hungerbell->spawn == TilePos{45, 35});
+    CHECK(hungerbell->minionMonsterId == "gravegnawer");
+    CHECK(hungerbell->minionCount == 3);
+    const HuntDef* harke = m.FindHunt("hunt_harke");
+    REQUIRE(harke);
+    CHECK_FALSE(harke->revealAfterPrevious);  // out on accept
+    CHECK(harke->spawn == TilePos{82, 72});
+    CHECK(harke->minionCount == 4);
   }
 
   // Split from "world tables": the emerald_plains map facts, its random-event pool and the first camp's NPCs.
@@ -2358,7 +3451,7 @@ TEST_SUITE("data") {
     CHECK(ep->generated);
     CHECK(ep->generatorSeed == 12345);
     CHECK(ep->generatorTheme == MapTheme::Plains);
-    CHECK(ep->generatorAvoid.size() == 28);
+    CHECK(ep->generatorAvoid.size() == 30);  // DR4
     REQUIRE(ep->camps.size() == 2);
     CHECK(ep->camps[0].pos == TilePos{15, 15});
     CHECK(ep->playerStart == TilePos{15, 22});
@@ -2366,8 +3459,29 @@ TEST_SUITE("data") {
     CHECK(ep->safeZoneRadiusEffective == 9);
     CHECK(ep->orderIndex == 0);
     CHECK(w.randomEvents.ForZone("emerald_plains")->ambushCountMin == 3);
-    // I7: the stash keeper stands in the Chapter 1 camp (appended slot).
-    CHECK(ep->camps[0].npcs == std::vector<std::string>{"blacksmith", "merchant", "quest_elder", "stash"});
+    // chapter1.md 3: Brother Aldwin joins Knellwatch; I7: the stash keeper stands in the camp (appended slot); Mag Crowe
+    // trades in Crowmarket.
+    CHECK(ep->camps[0].npcs == std::vector<std::string>{"blacksmith", "merchant", "quest_elder", "knell_chaplain", "stash"});
+    CHECK(ep->camps[1].npcs == std::vector<std::string>{"crow_trader"});
+    // Dark remake presentation (remake schema map.presentationTheme / map.regions): the march look, the Breach Rim.
+    CHECK(ep->hasPresentationTheme);
+    CHECK(ep->presentationTheme == MapTheme::March);
+    REQUIRE(ep->regions.size() == 1);
+    CHECK(ep->regions[0].id == "breach_rim");
+    CHECK(ep->regions[0].center == TilePos{15, 95});
+    CHECK(ep->regions[0].radius == 16);
+    CHECK(ep->regions[0].mood == MapTheme::BreachRim);
+    // The sealed Pit of the Faithful (Wave 3): a generator input of the re-baseline, a toast until K7.
+    REQUIRE(ep->subDungeonEntrances.size() == 1);
+    CHECK(ep->subDungeonEntrances[0].pos == TilePos{17, 26});
+    CHECK(ep->subDungeonEntrances[0].targetSubDungeon == "sub_rf_pit");
+    CHECK(ep->subDungeonEntrances[0].sealed);
+    CHECK(ep->subDungeonEntrances[0].sealedTextKey == "data.subDungeonSealed.entrance_rf_pit");
+    MapTheme mood{};
+    REQUIRE(w.moods.ThemeFor("emerald_plains", mood));
+    CHECK(mood == MapTheme::March);
+    REQUIRE(w.moods.ThemeFor("ember_tower", mood));
+    CHECK(mood == MapTheme::Plains);  // the homestead keeps the warm plains look
   }
 
   // Split from "quests, npcs, dialogue, story, lore": the table sizes and the Chapter 1 spot checks.
@@ -2375,46 +3489,49 @@ TEST_SUITE("data") {
     const DataStore& d = test::RealData();
     const QuestTables& q = d.Quests();
     CHECK(q.quests.size() == 58);
-    const QuestDef* slimes = q.Find("q_kill_slimes");
-    REQUIRE(slimes);
-    CHECK(slimes->category == QuestCategory::Main);
-    REQUIRE(slimes->objectives.size() == 1);
-    CHECK(slimes->objectives[0].type == ObjectiveType::Kill);
-    CHECK(slimes->objectives[0].targetId == "slime_green");
-    CHECK(slimes->objectives[0].required == 10);
-    CHECK(slimes->giverNpcId == "quest_elder");
-    CHECK(slimes->embersOnTurnIn == 2);
-    const QuestDef* chief = q.Find("q_find_goblin_chief");
-    REQUIRE(chief);
-    CHECK(chief->questArea.col == 15);  // Q4 data fix: centred on the chief's spawn
-    CHECK(chief->questArea.row == 95);
-    CHECK(chief->rewards.choices.size() == 2);
-    const QuestDef* herbs = q.Find("q_herb_gathering");
-    REQUIRE(herbs);
-    CHECK(herbs->objectives[0].sourceKind == ItemSourceKind::Gather);
-    CHECK(herbs->objectives[0].gatherCount == 7);
+    const QuestDef* burial = q.Find("q_rf_burial_detail");
+    REQUIRE(burial);
+    CHECK(burial->category == QuestCategory::Main);
+    REQUIRE(burial->objectives.size() == 1);
+    CHECK(burial->objectives[0].type == ObjectiveType::Kill);
+    CHECK(burial->objectives[0].targetId == "risen_footman");  // the burial detail, still digging
+    CHECK(burial->objectives[0].required == 10);
+    CHECK(burial->giverNpcId == "quest_elder");
+    CHECK(burial->embersOnTurnIn == 2);
+    const QuestDef* marshal = q.Find("q_rf_marshal");
+    REQUIRE(marshal);
+    CHECK(marshal->questArea.col == 15);  // Q4 data fix: centred on Valdras's spawn
+    CHECK(marshal->questArea.row == 95);
+    CHECK(marshal->rewards.choices.size() == 2);
+    const QuestDef* moss = q.Find("q_rf_barrowmoss");
+    REQUIRE(moss);
+    CHECK(moss->objectives[0].sourceKind == ItemSourceKind::Gather);
+    CHECK(moss->objectives[0].gatherCount == 7);
+    CHECK(moss->objectives[0].itemKind == "moss");
     CHECK(q.achievements.size() == 12);
-    CHECK(q.ItemKindFor("mat_herb") == "herb");
+    CHECK(q.ItemKindFor("mat_herb") == "herb");             // the tuning's kind table (web) is unchanged
+    CHECK(q.ItemKindFor("mat_breach_ichor") == "relic");     // not in it: S1's objective carries its own kind
 
-    CHECK(d.Npcs().npcs.size() == 27);
-    CHECK(d.Npcs().GiverOf("q_kill_slimes")->id == "quest_elder");
+    CHECK(d.Npcs().npcs.size() == 29);  // + knell_chaplain, crow_trader
+    CHECK(d.Npcs().GiverOf("q_rf_burial_detail")->id == "quest_elder");
+    CHECK(d.Npcs().GiverOf("q_rf_barrowmoss")->id == "knell_chaplain");
     CHECK(d.Dialogues().trees.size() == 10);
     const DialogueTree* elder = d.Dialogues().Find("quest_elder");
     REQUIRE(elder);
     CHECK(elder->FindNode(elder->startNodeId) != nullptr);
 
     const StoryScript& s = d.Story();
-    CHECK(s.cutscenes.size() == 22);
-    CHECK(s.triggers.size() == 16);
-    CHECK(s.triggers[0].subjectId == "q_kill_slimes");
-    CHECK(s.BossIntroFor("goblin_chief")->cutscene == "cs_boss_goblin_chief");
-    const Cutscene* mark = s.FindCutscene("cs_ep_mark");
-    REQUIRE(mark);
-    CHECK(mark->steps[0].kind == StoryStepKind::Focus);
-    CHECK(mark->steps[0].target.kind == StoryActorKind::Npc);
+    CHECK(s.cutscenes.size() == 25);  // - cs_ep_mark / cs_ep_whisper / cs_ep_finale + the six cs_rf_* beats
+    CHECK(s.triggers.size() == 19);
+    CHECK(s.triggers[0].subjectId == "q_rf_burial_detail");
+    CHECK(s.BossIntroFor("valdras")->cutscene == "cs_boss_valdras");
+    const Cutscene* brand = s.FindCutscene("cs_rf_brand");
+    REQUIRE(brand);
+    CHECK(brand->steps[0].kind == StoryStepKind::Focus);
+    CHECK(brand->steps[0].target.kind == StoryActorKind::Npc);
     CHECK(s.ChapterFor("emerald_plains") != nullptr);
-    CHECK(d.Lore().entries.size() == 21);
-    CHECK(d.Lore().ForZone("emerald_plains").size() == 4);
+    CHECK(d.Lore().entries.size() == 24);
+    CHECK(d.Lore().ForZone("emerald_plains").size() == 7);  // lore_rf_01..04 + the three echoes (chapter1.md 12)
   }
 }  // TEST_SUITE
 
@@ -2424,78 +3541,7 @@ TEST_SUITE("data") {
 
 namespace {
 
-bool SrcIdChar(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
-
-// One string literal of a C++ source: its contents (escapes kept as written) and whether it is a doctest title (the
-// first argument of TEST_SUITE / TEST_CASE / SUBCASE), which names a test rather than pinning data.
-struct SrcLiteral {
-  std::string text;
-  bool title = false;
-};
-
-// The string literals of a C++ source, raw strings included; comments and character literals are skipped.
-std::vector<SrcLiteral> SrcStringLiterals(const std::string& src) {
-  std::vector<SrcLiteral> out;
-  const size_t n = src.size();
-  const auto titled = [&src](size_t quote) {
-    size_t k = quote;
-    while (k > 0 && (src[k - 1] == ' ' || src[k - 1] == '\n')) --k;
-    if (k == 0 || src[k - 1] != '(') return false;
-    --k;
-    for (const std::string_view macro : {std::string_view("TEST_SUITE"), std::string_view("TEST_CASE"),
-                                         std::string_view("SUBCASE")}) {
-      if (k >= macro.size() && src.compare(k - macro.size(), macro.size(), macro) == 0) return true;
-    }
-    return false;
-  };
-  size_t i = 0;
-  while (i < n) {
-    const char c = src[i];
-    const char next = i + 1 < n ? src[i + 1] : '\0';
-    if (c == '/' && next == '/') {
-      i = src.find('\n', i);
-      if (i == std::string::npos) break;
-    } else if (c == '/' && next == '*') {
-      i = src.find("*/", i + 2);
-      if (i == std::string::npos) break;
-      i += 2;
-    } else if (c == '\'') {
-      if (i > 0 && SrcIdChar(src[i - 1])) {  // a digit separator (1'000)
-        ++i;
-        continue;
-      }
-      size_t j = i + 1;
-      while (j < n && src[j] != '\'') j += src[j] == '\\' ? 2 : 1;
-      i = j + 1;
-    } else if (c == 'R' && next == '"' && (i == 0 || !SrcIdChar(src[i - 1]))) {
-      const size_t open = src.find('(', i + 2);
-      if (open == std::string::npos) break;
-      const std::string close = ")" + src.substr(i + 2, open - i - 2) + "\"";
-      const size_t end = src.find(close, open + 1);
-      if (end == std::string::npos) break;
-      out.push_back(SrcLiteral{src.substr(open + 1, end - open - 1), titled(i)});
-      i = end + close.size();
-    } else if (c == '"') {
-      size_t j = i + 1;
-      while (j < n && src[j] != '"' && src[j] != '\n') j += src[j] == '\\' ? 2 : 1;
-      out.push_back(SrcLiteral{src.substr(i + 1, (std::min)(j, n) - i - 1), titled(i)});
-      i = j + 1;
-    } else {
-      ++i;
-    }
-  }
-  return out;
-}
-
-// `id` stands in `text` as a whole token: "goblin", "kill:goblin", "data.monster.goblin" and "hidden_x#1" spell their
-// ids; "monster_goblin" (an art key) and "goblin_chief" do not spell "goblin".
-bool SrcHasToken(std::string_view text, std::string_view id) {
-  for (size_t p = text.find(id); p != std::string_view::npos; p = text.find(id, p + 1)) {
-    const size_t end = p + id.size();
-    if ((p == 0 || !SrcIdChar(text[p - 1])) && (end == text.size() || !SrcIdChar(text[end]))) return true;
-  }
-  return false;
-}
+using namespace abyss::test::src;
 
 // The Chapter 1 ids a source spells inside its string literals (doctest titles excepted).
 std::vector<std::string> SrcSpelledIds(const std::string& src) {
@@ -2566,17 +3612,17 @@ TEST_SUITE("data") {
   TEST_CASE("content isolation: no test file outside the content layer spells a Chapter 1 content id") {
     // The scanner: literals and raw strings count, comments, character literals and titles do not; ids are tokens.
     const std::string sample =
-        "// \"goblin\" in a comment\n"
-        "TEST_CASE(\"goblin hits\") {\n"
-        "  const char q = '\"'; Spawn(\"monster_goblin\"); Find(\"goblin_chief\");\n"
-        "  Key(\"data.monster.slime_green\"); Raw(R\"x(\"cs_ep_mark\":1)x\"); /* \"lore_ep_01\" */\n"
+        "// \"valdras\" in a comment\n"
+        "TEST_CASE(\"valdras hits\") {\n"
+        "  const char q = '\"'; Spawn(\"monster_valdras\"); Find(\"valdras\");\n"
+        "  Key(\"data.monster.breachclot\"); Raw(R\"x(\"cs_rf_brand\":1)x\"); /* \"lore_rf_01\" */\n"
         "}\n";
     const std::vector<SrcLiteral> lits = SrcStringLiterals(sample);
     REQUIRE(lits.size() == 5);
     CHECK(lits[0].title);
-    CHECK(lits[1].text == "monster_goblin");
-    CHECK(lits[4].text == "\"cs_ep_mark\":1");
-    CHECK(SrcSpelledIds(sample) == std::vector<std::string>{"goblin_chief", "slime_green", "cs_ep_mark"});
+    CHECK(lits[1].text == "monster_valdras");
+    CHECK(lits[4].text == "\"cs_rf_brand\":1");
+    CHECK(SrcSpelledIds(sample) == std::vector<std::string>{"valdras", "breachclot", "cs_rf_brand"});
 
     namespace fs = std::filesystem;
     const fs::path dir = fs::path(test::UnrealDir()) / "CoreTests" / "tests";
@@ -2614,43 +3660,57 @@ TEST_SUITE("data") {
 TEST_SUITE("monsters") {
   using namespace abyss::test::monsters_fx;
 
-  // T0 provenance: the combat and AI vectors were cut on these definitions; the fixtures keep their numbers when the
-  // roster changes (the content switch drops or re-points this check, never the fixtures).
-  TEST_CASE("TestContent.h: the synthetic fixtures carry today's goblin, chief, slime and shaman numbers") {
+  // T0 provenance: the combat and AI vectors were cut on the web Chapter 1 roster (goblin, chief, slime, shaman). The
+  // dark remake replaced that roster (package 1B part 1), so the check is re-pointed as planned ("the content switch
+  // drops or re-points this check, never the fixtures"): the fixtures keep the T0 numbers, frozen below, their ids stay
+  // out of the data, and their sprite keys still name shipped art (attack contact beats are read from the asset
+  // manifest by sprite key; the shipped goblin, chief, shaman and slime assets stay in the repository, monsters.md 5).
+  TEST_CASE("TestContent.h: the synthetic fixtures keep the T0 roster numbers and still map their shipped art") {
     struct Row {
       const MonsterDef* fx;
-      const char* from;
+      const char* t0;  // the web def it was cut from (gone from the data since the remake roster)
+      int32_t level;
+      double hp, dmg, def, speed, aggro, range, atkSpeed, exp, g0, g1;
+      const char* spriteKey;
+      AnimRig rig;
+      bool elite, miniBoss;
     };
-    const Row rows[] = {{&test::fixture::Grunt(), "goblin"},
-                        {&test::fixture::Brute(), "goblin_chief"},
-                        {&test::fixture::Ooze(), "slime_green"},
-                        {&test::fixture::Caster(), "miniboss_goblin_shaman"}};
+    const Row rows[] = {
+        {&test::fixture::Grunt(), "goblin", 3, 55, 8, 4, 55, 5, 1.5, 1200, 18, 3, 6, "monster_goblin", AnimRig::Humanoid,
+         false, false},
+        {&test::fixture::Brute(), "goblin_chief", 5, 160, 14, 8, 50, 6, 1.8, 1000, 55, 8, 15, "monster_goblin_chief",
+         AnimRig::Humanoid, true, false},
+        {&test::fixture::Ooze(), "slime_green", 1, 30, 5, 2, 40, 4, 1.2, 1500, 12, 2, 4, "monster_slime", AnimRig::Slime,
+         false, false},
+        {&test::fixture::Caster(), "miniboss_goblin_shaman", 6, 280, 16, 10, 45, 7, 3.0, 1300, 90, 15, 30,
+         "monster_goblin_shaman", AnimRig::Humanoid, true, true},
+    };
+    const AssetManifest& assets = MD().Assets();
     for (const Row& r : rows) {
-      CAPTURE(r.from);
-      const MonsterDef& d = MDef(r.from);
+      CAPTURE(r.t0);
       const MonsterDef& f = *r.fx;
-      CHECK(f.id != d.id);
+      CHECK(MD().FindMonster(r.t0) == nullptr);
+      CHECK(MD().FindMonster(f.id) == nullptr);
       CHECK(f.nameKey == "data.monster." + f.id);
-      CHECK(f.level == d.level);
-      CHECK(f.hp == d.hp);
-      CHECK(f.damage == d.damage);
-      CHECK(f.defense == d.defense);
-      CHECK(f.speed == d.speed);
-      CHECK(f.aggroRange == d.aggroRange);
-      CHECK(f.attackRange == d.attackRange);
-      CHECK(f.attackSpeedMs == d.attackSpeedMs);
-      CHECK(f.expReward == d.expReward);
-      CHECK(f.goldMin == d.goldMin);
-      CHECK(f.goldMax == d.goldMax);
-      CHECK(f.spriteKey == d.spriteKey);
-      CHECK(f.elite == d.elite);
-      CHECK(f.isMiniBoss == d.isMiniBoss);
-      CHECK(f.isSubDungeonMiniBoss == d.isSubDungeonMiniBoss);
-      CHECK(f.animCategory == d.animCategory);
-      CHECK(f.isRanged == d.isRanged);
-      CHECK(f.projectileColor == d.projectileColor);
+      CHECK(f.level == r.level);
+      CHECK(f.hp == r.hp);
+      CHECK(f.damage == r.dmg);
+      CHECK(f.defense == r.def);
+      CHECK(f.speed == r.speed);
+      CHECK(f.aggroRange == r.aggro);
+      CHECK(f.attackRange == r.range);
+      CHECK(f.attackSpeedMs == r.atkSpeed);
+      CHECK(f.expReward == r.exp);
+      CHECK(f.goldMin == r.g0);
+      CHECK(f.goldMax == r.g1);
+      CHECK(f.spriteKey == r.spriteKey);
+      CHECK(f.animCategory == r.rig);
+      CHECK(f.elite == r.elite);
+      CHECK(f.isMiniBoss == r.miniBoss);
+      CHECK(f.isRanged == (r.range > 2.5));
+      CHECK(f.projectileColor == 0xcc44ccu);
       CHECK(f.onHitStatus.empty());
-      CHECK(d.onHitStatus.empty());
+      if (assets.loaded) CHECK(assets.FindByGameId(f.spriteKey) != nullptr);
     }
   }
 }  // TEST_SUITE

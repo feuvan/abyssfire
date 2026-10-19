@@ -3,6 +3,27 @@
 Area owner: quests / NPCs / dialogue / story. Web source of truth: branch `claude/unreal-rebuild`, TypeScript under `src/`.
 Target: portable C++20 core (`AbyssCore`, no UE types, no exceptions/RTTI) + thin UE5 module (render/input/UI).
 
+> **Chapter 1 content: see `unreal/Docs/dark-remake/` (DECISIONS DR1-DR11, the dark remake 焚境 · The Burning March).**
+> The remake replaces this spec's Chapter 1 *content* (the elder's camp, the 11 web quests, the NPC roster and lines, the
+> dialogue tree, prologue, chapter card, cutscenes, boss intro and triggers, lore, the hidden area, story decorations,
+> achievements, random events) with `chapter1.md` (the hub Knellwatch, NPCs, every quest with objectives and lines,
+> story beats, lore, events, sub-areas) and `story-bible.md` (world, voice guide, what to avoid). Ids: new `q_rf_*`,
+> `cs_rf_*`, `lore_rf_*`; NPC ids kept as role keys, zone ids kept (DR3; slot map in chapter1.md §0). This spec stays the
+> reference for the systems (quest model and state machine, rewards, quest world, guide, dialogue, story director,
+> achievements), extended by implementation-plan.md §2.6 and K1. DECISIONS Q4 (this spec's QUIRK Q7 / OQ4) is amended
+> for the remake's story-boss quest. Since the content switch's narrative part (implementation-plan.md §9, 1B part 2;
+> DECISIONS DR3 *narrative as built*) `unreal/Data` exports the remake's Chapter 1 quests, NPC lines, the Captain's tree
+> and the `cs_rf_*` beats instead of the web content described here; the Chapter 1 test pins live in
+> `CoreTests/tests/content_ch1_test.cpp`. The bot plays the route `ch1` of `autopilot_routes.json`
+> (`GameData/autopilot/ch1.ts`, implementation-plan.md §6; DECISIONS DR3 *route and saves as built*), and a zone
+> mini-boss that an open quest still needs returns when that quest is accepted (DECISIONS M7, amendment 1B part 3). K1
+> hooks (DECISIONS DR8 *K1 as built*): a quest's `progressKey` is its giver's line on the quest card while it is active
+> (§5.3), `rewards.choiceLabels` label the pick-one gear (§4.2), and a story `focus` step on a monster may play an
+> `anim` on it (§8.5).
+> *1B review:* a `monster_killed` story trigger may carry `whileQuest` (it fires only while that quest is accepted and
+> not turned in; `cs_rf_herd`, `cs_rf_marshal_falls`); random events log a zone's own line (`<key>.<zone>`) when the
+> strings have it, and `rescueMonsters` names the rescue's guards (DECISIONS M7 / DR3 notes).
+
 This document describes **what the web game does today**, precisely enough to re-implement it without reading the
 TypeScript. Where the web behaviour is a bug or a 2D artefact it is called out as a **QUIRK Qn** (§15) with a
 recommendation; the default is *keep the behaviour* unless the recommendation says FIX and the open question is resolved
@@ -454,6 +475,13 @@ if distSq(escort, dest) <= 25 and distSq(hero, dest) <= 36:
     for obj in quest.objectives where type == escort: updateProgress('escort', obj.targetId)
     log t('zone.escort.complete', {npcName}); destroy escort
 ```
+**Remake (DECISIONS Q9):** the follow path is `p[0 : len(p) − 1]` (the web's `p[1 : …]` dropped the first step although
+`findPath` already excludes the start: an escort between tiles cut a blocked corner, then never found a path from its
+blocked tile again); the catch-up tile is the first ring tile in the hero's connectivity component (any walkable ring
+tile only if the hero's own tile is blocked; none - the escort stays put - when the hero's tile is walkable but no ring
+tile shares its component); a catch-up onto the tile the escort already holds emits no teleport; and an escort that
+should follow but has had no path to the hero for 2000 ms catches up the same way.
+
 **Death** (`:6848-6866`): death burst + 600 ms shrink/fade; `failQuest` → `QUEST_FAILED`; log `zone.escort.npcDied`.
 The quest is `reacceptable` → the giver offers it again (fresh progress, escort respawns at the start tile).
 

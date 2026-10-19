@@ -22,6 +22,7 @@
 #include "abyss/base/Json.h"
 #include "abyss/base/Platform.h"
 #include "abyss/data/AssetManifest.h"
+#include "abyss/data/AutoPilotData.h"
 #include "abyss/data/AudioData.h"
 #include "abyss/data/ClassData.h"
 #include "abyss/data/CombatData.h"
@@ -100,6 +101,7 @@ class ABYSS_API DataStore {
   const UiThemeDef& UiTheme() const { return uiTheme_; }
   const RenderQualityTables& RenderQualityProfiles() const { return renderQuality_; }
   const AbyssRunTables& AbyssRun() const { return abyssRun_; }
+  const AutoPilotRouteTables& AutoPilotRoutes() const { return autopilot_; }  // the bot's routes (tools)
 
   // ---- strings ----
   const I18n& Strings() const { return i18n_; }
@@ -138,6 +140,7 @@ class ABYSS_API DataStore {
   UiThemeDef uiTheme_;
   RenderQualityTables renderQuality_;
   AbyssRunTables abyssRun_;
+  AutoPilotRouteTables autopilot_;
   I18n i18n_;
   std::vector<std::pair<std::string, JsonValue>> raw_;
   std::vector<std::string> loadedFiles_;

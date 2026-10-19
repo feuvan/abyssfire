@@ -52,7 +52,7 @@ struct InteractTarget {
   InteractKind kind = InteractKind::None;
   EntityId id = kNoEntity;
   Vec2 pos;
-  std::string key;  // npc id / area id / ... (for handlers that are not entity based)
+  std::string key;  // npc id / area id / sub-dungeon entrance id / ... (for handlers that are not entity based)
 };
 
 // A pending walk-then-act interaction (W8 / Q6 / Q22): fired when the hero arrives within range. Abandoned when any
@@ -93,9 +93,9 @@ class ABYSS_API ZoneRuntime {
 
   // ---- input ----
   // Pointer press on a world tile (7.1 chain with the port fixes): Secondary = town portal; then (alive hero only)
-  // loot, NPC, hidden reward, event prop, monster, exit, ground (path + hold-to-move start with `pointerId`).
-  // Out-of-range loot / NPCs / hidden rewards / event props are walked to and used on arrival (W5 / W8 / Q6 / Q22);
-  // an exit is walked to and fires by proximity (W6 / W8).
+  // loot, NPC, sealed sub-dungeon entrance (K1), hidden reward, event prop, monster, exit, ground (path + hold-to-move
+  // start with `pointerId`). Out-of-range loot / NPCs / sealed entrances / hidden rewards / event props are walked to
+  // and used on arrival (W5 / W8 / Q6 / Q22); an exit is walked to and fires by proximity (W6 / W8).
   void OnPointerPress(Vec2 tile, PointerButton button, int32_t pointerId = 0);
   // Interact action (7.4): nearest in-range target, then its handler.
   bool Interact();
@@ -103,7 +103,9 @@ class ABYSS_API ZoneRuntime {
   // walk-then-act when out of range (W8 / Q6 / Q22).
   bool InteractWith(EntityId target);
   // FindInteractTarget (7.4): the in-range candidate with the smallest distSq from the hero; ties go to the lower order
-  // (loot, NPC, hidden reward, event puzzle prop), then list order. Kind None when nothing is in range.
+  // (loot, NPC, sealed sub-dungeon entrance, hidden reward, event puzzle prop), then list order. Kind None when nothing
+  // is in range. K1: a sealed entrance (distSq <= 9, no entity: `key` = its id) logs its sealedTextKey as a toast and
+  // does nothing else; unsealed entrances are not targets until sub-dungeon travel (implementation-plan.md K7).
   InteractTarget FindInteractTarget() const;
   // Town portal (9.4 + W3).
   PortalRefusal CanUseTownPortal() const;

@@ -38,6 +38,19 @@ bool ZoneHeroAlive(const SimContext& ctx) {
   return h != nullptr && h->Life() == HeroLife::Alive && h->Hp() > 0;
 }
 
+// 7.1 row 7 / 7.4 order 4: a sub-dungeon entrance is in reach when distSq(hero, entrance) <= 9.
+constexpr double kZoneSubDungeonRangeSq = 9;
+
+// K1: the sealed entrance `id` of the map (nullptr when absent or not sealed). Unsealed entrances stay inert until
+// sub-dungeon travel (implementation-plan.md K7) handles them.
+const SubDungeonEntranceDef* ZoneSealedEntrance(const MapDef* map, std::string_view id) {
+  if (map == nullptr) return nullptr;
+  for (const SubDungeonEntranceDef& e : map->subDungeonEntrances) {
+    if (e.sealed && e.id == id) return &e;
+  }
+  return nullptr;
+}
+
 // The inner tile of a border exit (4.3 g): the walkable pad the hero stands on.
 TilePos ZoneExitInner(const MapExitDef& e, int32_t cols, int32_t rows) {
   const int32_t ic = e.pos.col == 0 ? 1 : e.pos.col == cols - 1 ? cols - 2 : e.pos.col;
@@ -207,6 +220,13 @@ bool ZoneRuntime::ResolveTarget(const InteractTarget& t, Vec2& pos, double& rang
       range = std::sqrt(wc.puzzleRadiusSq);
       return true;
     }
+    case InteractKind::SubDungeon: {
+      const SubDungeonEntranceDef* e = zone_impl::ZoneSealedEntrance(map_, t.key);
+      if (e == nullptr) return false;
+      pos = e->pos.Center();
+      range = std::sqrt(zone_impl::kZoneSubDungeonRangeSq);
+      return true;
+    }
     default:
       return false;
   }
@@ -234,7 +254,7 @@ void ZoneRuntime::TickPending() {
 
 void ZoneRuntime::TickPrompt() {
   const InteractTarget t = zone_impl::ZoneHeroAlive(ctx_) ? FindInteractTarget() : InteractTarget{};
-  if (t.kind == prompt_.kind && t.id == prompt_.id) {
+  if (t.kind == prompt_.kind && t.id == prompt_.id && t.key == prompt_.key) {  // key: entity-less targets (entrances)
     prompt_.pos = t.pos;
     return;
   }
@@ -294,6 +314,11 @@ InteractTarget ZoneRuntime::FindInteractTarget() const {
     }
   }
   for (const NpcPlacement& n : npcs_) consider(InteractKind::Npc, n.id, n.pos, wc.npcRange * wc.npcRange, n.npcId);
+  // 7.4 order 4 (K1): sealed sub-dungeon entrances (no entity: the key is the entrance id).
+  for (const SubDungeonEntranceDef& e : map_->subDungeonEntrances) {
+    if (!e.sealed) continue;
+    consider(InteractKind::SubDungeon, kNoEntity, e.pos.Center(), zone_impl::kZoneSubDungeonRangeSq, e.id);
+  }
   if (ctx_.sys.lore != nullptr) {
     for (const HiddenRewardProp& p : ctx_.sys.lore->HiddenRewards()) {
       consider(InteractKind::HiddenReward, p.id, p.pos, wc.hiddenChestRadiusSq, p.areaId);
@@ -323,6 +348,14 @@ bool ZoneRuntime::ActOn(const InteractTarget& t) {
       return ctx_.sys.lore != nullptr && ctx_.sys.lore->ClaimHiddenReward(t.id);
     case InteractKind::EventPuzzle:
       return ctx_.sys.randomEvents != nullptr && ctx_.sys.randomEvents->InteractProp(t.id);
+    case InteractKind::SubDungeon: {
+      // K1: a sealed entrance only says why it is closed (toast + log); no zone change, no other side effect.
+      const SubDungeonEntranceDef* e = zone_impl::ZoneSealedEntrance(map_, t.key);
+      if (e == nullptr) return false;
+      ctx_.events.Emit(EvBanner{BannerKind::Toast, MakeLoc(e->sealedTextKey), LocText{}});
+      ctx_.events.Log(MakeLoc(e->sealedTextKey), LogType::System);
+      return true;
+    }
     default:
       return false;
   }
@@ -413,7 +446,18 @@ void ZoneRuntime::OnPointerPress(Vec2 tile, PointerButton button, int32_t pointe
       if (ActOrWalk(t)) return;
     }
   }
-  // rows 6-8 (Ember Tower, sub-dungeon entrance, labyrinth portal) are later milestones.
+  // rows 6 and 8 (Ember Tower, labyrinth portal) are later milestones.
+  // row 7 (K1): a sealed sub-dungeon entrance within the 1.5 box (W8: walk within 3 tiles, then its toast). Unsealed
+  // entrances are inert until sub-dungeon travel (K7).
+  for (const SubDungeonEntranceDef& e : map_->subDungeonEntrances) {
+    if (!e.sealed || !inBox(e.pos.Center())) continue;
+    InteractTarget t;
+    t.kind = InteractKind::SubDungeon;
+    t.pos = e.pos.Center();
+    t.key = e.id;
+    if (ActOrWalk(t)) return;
+    break;
+  }
   // row 9: hidden-area reward within the 1.5 box (W8: walk then collect).
   if (ctx_.sys.lore != nullptr) {
     for (const HiddenRewardProp& p : ctx_.sys.lore->HiddenRewards()) {

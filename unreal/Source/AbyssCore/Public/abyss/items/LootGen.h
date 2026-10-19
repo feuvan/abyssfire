@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -101,8 +102,15 @@ ABYSS_API bool IsGroundPotion(const DataStore& data, std::string_view baseId, Po
 // rare : magic); per choice slot: class pool -> usable (levelReq <= itemLevel + 2, and - port rule with I3, loot_rules
 // questRewards.capUsableAtHeroLevel - levelReq <= heroLevel, so every offered piece can be equipped at turn-in) -> top 3
 // by levelReq desc -> uniform pick (one Float01 draw). Generated once per quest per session (QuestWorld caches them).
+// A slot whose pool is empty yields no item, so `slotIndices` (when given) receives, per returned item, the index of
+// its `rewards.choices` slot (K1: the card's choice labels follow the items, QuestRewardChoiceLabels).
 ABYSS_API std::vector<ItemInstance> GenerateQuestRewardChoices(const LootContext& ctx, const QuestDef& quest, ClassId cls,
-                                                               int32_t heroLevel);
+                                                               int32_t heroLevel,
+                                                               std::vector<int32_t>* slotIndices = nullptr);
+// K1 labelled reward choices: the label key of each generated item (rewards.choiceLabels[slotIndices[i]]), aligned with
+// the items; empty when the quest has no labels. An out-of-range slot index yields "".
+ABYSS_API std::vector<std::string> QuestRewardChoiceLabels(const QuestRewardDef& rewards,
+                                                           std::span<const int32_t> slotIndices);
 ABYSS_API int32_t RewardItemLevel(const QuestDef& quest, int32_t heroLevel);
 ABYSS_API ItemQuality RewardChoiceQuality(const DataStore& data, const QuestDef& quest);
 // pickRewardBase: nullptr when the class pool is empty. Draws once from `rng` when a base is returned. `levelReqCap`

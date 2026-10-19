@@ -10,6 +10,7 @@
 #include "abyss/base/Enums.h"
 #include "abyss/base/Platform.h"
 #include "abyss/base/Types.h"
+#include "abyss/sim/SimTypes.h"  // AnimAction (K1 focus step anim)
 
 namespace abyss {
 
@@ -59,6 +60,11 @@ struct CutsceneStep {
   double intensity = 0.01;  // shake
   bool hasColor = false;
   uint32_t color = 0xffffff;  // flash
+  // K1 (remake schema story.focusAnim): a focus step on a {monster} target plays this action on the focused instance
+  // (StoryDirector emits EvPlayAnim when the step starts and the monster resolves). The loader accepts it only on a
+  // focus step with a monster target, and never idle / walk / death.
+  bool hasAnim = false;
+  AnimAction anim = AnimAction::Idle;
 };
 
 struct Cutscene {
@@ -80,6 +86,10 @@ struct StoryTriggerDef {
   std::string subjectId;  // questId / monsterId / zoneId
   std::string cutscene;
   std::string grantPet;   // empty = none
+  // Dark remake (review fix of 1B): a monster_killed trigger with `whileQuest` fires only while that quest is accepted
+  // and not yet turned in (Active or Completed), so a kill the M7 respawn rules allow before its quest (the mini-boss,
+  // the story boss) does not spend the quest's climax beat; the respawned kill plays it. Empty = always.
+  std::string whileQuest;
 };
 
 struct StoryMoodColors {
@@ -136,6 +146,11 @@ struct ABYSS_API StoryScript {
   std::vector<StoryTriggerDef> triggers;  // order matters
   std::vector<StoryMoodColors> moods;
   StoryTiming timing;
+  // story.json `contentUpgrade` (dark remake; GameData/config.ts): beats whose content a content-version bump rewrote
+  // (the remade prologue, the Red Field's chapter card). A save whose contentVersion is below `contentUpgradeVersion`
+  // forgets them (ApplyContentVersion), so they play again. 0 / empty = none.
+  int32_t contentUpgradeVersion = 0;
+  std::vector<std::string> contentReplayBeats;
 
   const Cutscene* FindCutscene(std::string_view id) const;
   const ChapterCard* ChapterFor(std::string_view zoneId) const;

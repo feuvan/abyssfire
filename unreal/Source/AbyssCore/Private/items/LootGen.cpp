@@ -546,11 +546,13 @@ const ItemBaseDef* PickRewardBase(const DataStore& data, RewardSlot choice, Clas
 }
 
 std::vector<ItemInstance> GenerateQuestRewardChoices(const LootContext& ctx, const QuestDef& quest, ClassId cls,
-                                                     int32_t heroLevel) {
+                                                     int32_t heroLevel, std::vector<int32_t>* slotIndices) {
   std::vector<ItemInstance> out;
+  if (slotIndices != nullptr) slotIndices->clear();
   const int32_t level = RewardItemLevel(quest, heroLevel);
   const ItemQuality quality = RewardChoiceQuality(*ctx.data, quest);
-  for (RewardSlot choice : quest.rewards.choices) {
+  for (size_t slot = 0; slot < quest.rewards.choices.size(); ++slot) {
+    const RewardSlot choice = quest.rewards.choices[slot];
     // I3 enforces levelReq on equip: never offer a piece the hero cannot wear at turn-in (the hero level only rises
     // after the choices were generated).
     const int32_t cap = ctx.data->Items().loot.rewardCapUsableAtHeroLevel ? (std::max)(1, heroLevel) : INT32_MAX;
@@ -560,6 +562,17 @@ std::vector<ItemInstance> GenerateQuestRewardChoices(const LootContext& ctx, con
     if (!item.has_value()) continue;
     item->identified = true;
     out.push_back(std::move(*item));
+    if (slotIndices != nullptr) slotIndices->push_back(static_cast<int32_t>(slot));
+  }
+  return out;
+}
+
+std::vector<std::string> QuestRewardChoiceLabels(const QuestRewardDef& rewards, std::span<const int32_t> slotIndices) {
+  std::vector<std::string> out;
+  if (rewards.choiceLabels.empty()) return out;
+  for (const int32_t slot : slotIndices) {
+    const bool known = slot >= 0 && static_cast<size_t>(slot) < rewards.choiceLabels.size();
+    out.push_back(known ? rewards.choiceLabels[static_cast<size_t>(slot)] : std::string());
   }
   return out;
 }

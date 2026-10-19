@@ -139,7 +139,28 @@ export function exportWorld(): TableResult[] {
       desert: { color: 0xffdea6, maxOpacity: 0.26, density: 0.9 },
       abyss: { color: 0x6e2a40, maxOpacity: 0.35, density: 1.2 },
     }),
+    // DECISIONS R18 override (dark remake): a mood's fake-light scale in place of the formula. No web entries.
+    lightScale: overrideEntries('zoneMoods.lightScale', moodsOut, {} as Record<string, number>),
+    // The weather a mood brings where it blends in over a zone (dark remake: the dawn mood, mood regions). No web entries.
+    moodWeather: overrideEntries('zoneMoods.moodWeather', moodsOut, {} as Record<string, unknown>),
   };
+  // Every mood-keyed table names a mood; every zone's mood theme, map presentation theme and mood region exists
+  // (LoadWorld.cpp parses all of them as MapTheme; DataStore re-checks the map side).
+  for (const [table, rows] of [['themeByZone', Object.fromEntries(Object.values(zoneMoodTables.themeByZone).map(t => [t, 1]))],
+    ['fog', zoneMoodTables.fog], ['lightScale', zoneMoodTables.lightScale], ['moodWeather', zoneMoodTables.moodWeather],
+    ['weatherByTheme', zoneMoodTables.weatherByTheme]] as const) {
+    for (const theme of Object.keys(rows)) assert(zoneMoods[theme], `zone_moods.json ${table}: '${theme}' is not a mood`);
+  }
+  for (const [theme, v] of Object.entries(zoneMoodTables.lightScale)) {
+    assert(v > 0 && v <= 1, `zone_moods.json port.lightScale.${theme}: ${v} is not in (0, 1]`);
+  }
+  for (const [theme, zone] of Object.entries(zoneMoodTables.weatherByTheme)) {
+    assert(zoneMoodTables.weather[zone] !== undefined, `zone_moods.json weatherByTheme.${theme}: zone '${zone}' has no weather`);
+  }
+  for (const m of Object.values(AllMaps) as { id: string; presentationTheme?: string; regions?: { id: string; mood: string }[] }[]) {
+    if (m.presentationTheme) assert(zoneMoods[m.presentationTheme], `maps.${m.id}.presentationTheme '${m.presentationTheme}' is not a mood`);
+    for (const r of m.regions ?? []) assert(zoneMoods[r.mood], `maps.${m.id}.regions.${r.id}: mood '${r.mood}' is not a mood`);
+  }
   assertSource(ZS, 'emerald_plains: 0x88cc88,', 'twilight_forest: 0x66aa66,', 'anvil_mountains: 0x998888,',
     'scorching_desert: 0xffaa44,', 'abyss_rift: 0xff6622,', 'const tint = tints[this.currentMapId] || 0xccccaa;',
     'radius: 80, color: 0xffeedd, intensity: 0.4,', 'y: pos.y - 8, radius: 120, color: 0xff8800, intensity: 0.85, flicker: true,',
@@ -233,6 +254,9 @@ export function exportWorld(): TableResult[] {
         port: {
           fog: plain(zoneMoodTables.fog),
           decision: 'P14 (art pass)',
+          // Dark remake (GameData/world.ts): R18 light-scale overrides and the weather a mood brings, by mood theme.
+          ...(Object.keys(zoneMoodTables.lightScale).length ? { lightScale: plain(zoneMoodTables.lightScale) } : {}),
+          ...(Object.keys(zoneMoodTables.moodWeather).length ? { moodWeather: plain(zoneMoodTables.moodWeather) } : {}),
         },
       },
       counts: { themes: Object.keys(zoneMoods).length },

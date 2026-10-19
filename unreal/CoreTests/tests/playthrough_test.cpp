@@ -1,15 +1,17 @@
-// Headless, seeded, scripted CHAPTER 1 playthrough (ARCHITECTURE 3.3, milestone-1 exit criterion 1).
+// Headless, seeded CHAPTER 1 playthrough (ARCHITECTURE 3.3, milestone-1 exit criterion 1; dark remake,
+// implementation-plan.md 6).
 //
-// For each class: new game -> prologue (skipped) -> the camp NPCs (blacksmith, merchant, stash keeper, the elder's
-// dialogue tree and quest card) -> every emerald_plains quest (main M1-M5 and the six side quests: kill, drop-collect,
-// gather, talk delivery, investigate + hunt, bounty hunt, escort, the pet_sprite clues) plus the zone mini-boss and the
-// goblin chief -> the chapter-1 story beats -> save -> load into a fresh GameSim (SaveGame() identical) -> continue to
-// the sealed chapter-2 gate.
+// For each class: new game -> prologue (skipped) -> the Knellwatch camp (Hald's forge, Tamsin's stash, the Captain's
+// dialogue tree and quest card, Aldwin's card) -> every emerald_plains quest (main M1-M5 and the six side quests:
+// kill, drop-collect + delivery, gather, investigate + hunt, bounty hunt, escort, the Lanternwisp's clues, the
+// Boneyard Gate defend) plus the Corpseherd and Valdras -> the Chapter 1 story beats -> save -> load into a fresh
+// GameSim (SaveGame() identical) -> continue to the sealed chapter-2 gate.
 //
 // The player is abyss::AutoPilot (abyss/tools/AutoPilot.h), the same bot the in-game autotest drives (UE
 // UAbyssAutoTestSubsystem, -abyssautotest): it plays only through the public GameSim API - Commands in, Events /
-// Snapshot out, no debug commands - one frame per Tick. Its Chapter1 script stops at named checkpoints (they cost no
-// frame); this test checks the state there.
+// Snapshot out, no debug commands - one frame per Tick. Its script is the route `ch1` of autopilot_routes.json
+// (unreal/GameData/autopilot/ch1.ts); the route stops at named checkpoints (they cost no frame) and this test checks
+// the state there, so a route change re-pins this file (and only this file).
 //
 // Environment switches: ABYSS_PT_VERBOSE=1 prints the bot's notes while it plays; ABYSS_PT_SWEEP=<n> (and
 // ABYSS_PT_SWEEP_BASE=<first seed>) plays n extra seeds per class; ABYSS_PT_DUMP=<dir> writes each run's final save
@@ -21,21 +23,28 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "TestContent.h"
 #include "TestUtil.h"
 #include "abyss/base/Math.h"
 #include "abyss/base/SimClock.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/hero/Hero.h"
+#include "abyss/items/GroundLoot.h"
 #include "abyss/items/Inventory.h"
 #include "abyss/items/Shop.h"
+#include "abyss/monsters/MonsterSystem.h"
 #include "abyss/pets/Homestead.h"
 #include "abyss/pets/PetSystem.h"
 #include "abyss/quests/Achievements.h"
 #include "abyss/quests/QuestWorld.h"
 #include "abyss/sim/GameSim.h"
+#include "abyss/sim/SimContext.h"
 #include "abyss/story/StoryDirector.h"
 #include "abyss/tools/AutoPilot.h"
+#include "abyss/world/Zone.h"
 #include "doctest/doctest.h"
 
 using namespace abyss;
@@ -104,6 +113,12 @@ struct PtPlayer {
     for (int64_t guard = 0; guard < kPtMaxFrames; ++guard) {
       const AutoPilotStatus st = pilot.Tick(sim, kPtFrameMs);
       if (st == AutoPilotStatus::Checkpoint) {
+        if (PtVerbose()) {
+          int64_t total = V().hero.exp;  // the exp granted so far (classes 5.1 curve)
+          for (int32_t l = 1; l < V().hero.level; ++l) total += static_cast<int64_t>(std::floor(3.0 * l * l + 25.0 * l));
+          std::printf("-- checkpoint %s: level %d, exp %lld, kills %d, deaths %d\n", pilot.CurrentCheckpoint().c_str(),
+                      V().hero.level, static_cast<long long>(total), pilot.Stats().kills, pilot.Stats().deaths);
+        }
         if (pilot.CurrentCheckpoint() == id) return true;
         MESSAGE("expected checkpoint " << id << ", the script reached " << pilot.CurrentCheckpoint());
         return false;
@@ -130,6 +145,28 @@ struct PtPlayer {
   AutoPilot pilot;
 };
 
+// Plays until the script reaches the checkpoint `id`, passing any other checkpoint on the way. False when the script
+// finished first or no such checkpoint came within kPtMaxFrames.
+bool PtPlayTo(PtPlayer& p, const std::string& id) {
+  for (int64_t guard = 0; guard < kPtMaxFrames; ++guard) {
+    const AutoPilotStatus st = p.pilot.Tick(p.sim, kPtFrameMs);
+    if (st == AutoPilotStatus::Finished) return false;
+    if (st == AutoPilotStatus::Checkpoint && p.pilot.CurrentCheckpoint() == id) return true;
+  }
+  return false;
+}
+
+// Test-only: kills every living monster of `ids` (as the hero would), so a forced situation leaves nothing behind.
+void PtKillAll(SimContext& ctx, const std::vector<EntityId>& ids) {
+  DamageFlags f;
+  f.attacker = kHeroEntityId;
+  f.source = KillSource::HeroBasic;
+  for (EntityId id : ids) {
+    const MonsterInstance* m = ctx.sys.monsters->Find(id);
+    if (m != nullptr && m->IsAlive()) ctx.sys.monsters->ApplyDamage(id, 1e9, f);
+  }
+}
+
 struct PtResult {
   bool ok = false;
   std::string failure;
@@ -139,124 +176,138 @@ struct PtResult {
 
 constexpr int64_t kPtSaveMs = 1760000000000;
 
+// Chapter 1's quests (chapter1.md 5-7): main M1-M5, side S1-S6.
 const std::vector<std::string> kPtAllCh1Quests = {
-    "q_kill_slimes",       "q_kill_goblins",   "q_explore_goblin_camp",    "q_find_goblin_chief",
-    "q_secure_plains",     "q_collect_slime_gel", "q_herb_gathering",      "q_lost_pendant",
-    "q_bandit_trouble",    "q_pet_sprite_friend", "q_escort_merchant_plains"};
+    test::ch1::kQuestM1, test::ch1::kQuestM2, test::ch1::kQuestM3, test::ch1::kQuestM4, test::ch1::kQuestM5,
+    "q_rf_black_blood",  "q_rf_barrowmoss",   "q_rf_tag_thief",    "q_rf_oathless",     "q_rf_lanternwisp",
+    "q_rf_hallowed_ground"};
 
-// Plays chapter 1 to the finale (no save/load), checking the state at each checkpoint of the script. False when the
-// bot failed or a checkpoint was not reached.
+// Plays chapter 1 to the finale (no save/load), checking the state at each checkpoint of the route. False when the bot
+// failed or a checkpoint was not reached.
 bool PtPlayChapter1(PtPlayer& p) {
+  using test::ch1::kQuestM1;
+  using test::ch1::kQuestM2;
+  using test::ch1::kQuestM3;
+  using test::ch1::kQuestM4;
+  using test::ch1::kQuestM5;
   // ---- new game: prologue (skipped) + chapter card ----
   if (!p.To("start")) return false;
   CHECK(p.V().storyBusy);
   if (!p.To("intro")) return false;
   CHECK(PtContains(p.Stats().beatsEnded, "prologue"));
   CHECK(PtContains(p.Stats().beatsEnded, "chapter_emerald_plains"));
-  CHECK(p.V().zone.mapId == "emerald_plains");
+  CHECK(p.V().zone.mapId == test::ch1::kZone);
 
-  // ---- the camp ----
+  // ---- Knellwatch: Hald, Tamsin, the Captain's tree (reward_ask once, S1 by its trigger), M1, Aldwin's S2 + S5 ----
   if (!p.To("blacksmith")) return false;
   CHECK(p.V().shop != nullptr);
   CHECK((p.V().shop != nullptr && p.V().shop->blacksmith));
   if (!p.To("stash")) return false;
   CHECK(p.V().stash != nullptr);
   CHECK((p.V().stash != nullptr && p.V().stash->open));
-  if (!p.To("elder_tree")) return false;
-  CHECK(p.HasStatus("q_collect_slime_gel", QuestStatus::Active));
-  CHECK(p.V().hero.gold == 30);  // reward_ask supplies (Q1, one-time)
+  if (!p.To("captain_tree")) return false;
+  CHECK(p.HasStatus("q_rf_black_blood", QuestStatus::Active));  // accept_ichor's questTrigger
+  CHECK(p.V().hero.gold == 30);                                  // reward_ask supplies (Q1, one-time)
   if (!p.To("first_quests")) return false;
-  CHECK(p.HasStatus("q_kill_slimes", QuestStatus::Active));
-  CHECK(p.HasStatus("q_herb_gathering", QuestStatus::Active));
-  CHECK(p.HasStatus("q_pet_sprite_friend", QuestStatus::Active));
+  CHECK(p.HasStatus(kQuestM1, QuestStatus::Active));
+  CHECK(p.HasStatus("q_rf_barrowmoss", QuestStatus::Active));
+  CHECK(p.HasStatus("q_rf_lanternwisp", QuestStatus::Active));
 
-  // ---- herbs, slimes, gel ----
-  if (!p.To("herbs")) return false;
-  CHECK(p.HasStatus("q_herb_gathering", QuestStatus::Completed));
-  if (!p.To("slimes")) return false;
-  CHECK(p.HasStatus("q_kill_slimes", QuestStatus::Completed));
-  CHECK(PtObjCurrent(p.V(), "q_collect_slime_gel", 0) == 6);
+  // ---- barrowmoss (S2), the Burial Trenches (M1), the Seep (S1's ichor) ----
+  if (!p.To("barrowmoss")) return false;
+  CHECK(p.HasStatus("q_rf_barrowmoss", QuestStatus::Completed));
+  if (!p.To("trenches")) return false;
+  CHECK(p.HasStatus(kQuestM1, QuestStatus::Completed));
+  if (!p.To("seep")) return false;
+  CHECK(PtObjCurrent(p.V(), "q_rf_black_blood", 0) == 6);
 
-  // ---- turn in M1 + herbs (cs_ep_mark), take M2 + the pendant ----
-  if (!p.To("elder_m1_turned_in")) return false;
-  CHECK(p.HasStatus("q_kill_slimes", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_herb_gathering", QuestStatus::TurnedIn));
-  if (!p.To("elder_m1")) return false;
-  CHECK(PtContains(p.Stats().beatsEnded, "cs_ep_mark"));
-  CHECK(p.HasStatus("q_kill_goblins", QuestStatus::Active));
-  CHECK(p.HasStatus("q_lost_pendant", QuestStatus::Active));
+  // ---- home: M1 (cs_rf_brand), take M2; Aldwin: S2, take S3 ----
+  if (!p.To("captain_m1_turned_in")) return false;
+  CHECK(p.HasStatus(kQuestM1, QuestStatus::TurnedIn));
+  CHECK(p.HasStatus(kQuestM2, QuestStatus::Active));
+  if (!p.To("captain_m1")) return false;
+  CHECK(PtContains(p.Stats().beatsEnded, "cs_rf_brand"));
+  if (!p.To("chaplain_m1")) return false;
+  CHECK(p.HasStatus("q_rf_barrowmoss", QuestStatus::TurnedIn));
+  CHECK(p.HasStatus("q_rf_tag_thief", QuestStatus::Active));
 
-  // ---- pendant clues 1-2, the herbalist (gel delivery), clue 3, the thief ----
-  if (!p.To("herbalist")) return false;
-  CHECK(p.HasStatus("q_collect_slime_gel", QuestStatus::Completed));
-  if (!p.To("pendant")) return false;
-  CHECK(p.HasStatus("q_lost_pendant", QuestStatus::Completed));
+  // ---- the tag thief: clues 1-2, Marl (S1's delivery), clue 3, Dreck ----
+  if (!p.To("marl")) return false;
+  CHECK(p.HasStatus("q_rf_black_blood", QuestStatus::Completed));
+  if (!p.To("dreck")) return false;
+  CHECK(p.HasStatus("q_rf_tag_thief", QuestStatus::Completed));
 
-  // ---- goblins, the sprite's hide-and-seek ----
-  if (!p.To("goblins")) return false;
-  CHECK(p.HasStatus("q_kill_goblins", QuestStatus::Completed));
-  if (!p.To("sprite")) return false;
-  CHECK(p.HasStatus("q_pet_sprite_friend", QuestStatus::Completed));
+  // ---- the Gnawed Field (twelve gravegnawers, the Hungerbell), the lantern graves ----
+  if (!p.To("gnawed_field")) return false;
+  CHECK(p.HasStatus(kQuestM2, QuestStatus::Completed));
+  if (!p.To("lanternwisp")) return false;
+  CHECK(p.HasStatus("q_rf_lanternwisp", QuestStatus::Completed));
 
-  // ---- home: gel, M2, pendant, sprite (pet) ----
-  if (!p.To("elder_m2_turned_in")) return false;
-  CHECK(p.HasStatus("q_collect_slime_gel", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_kill_goblins", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_lost_pendant", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_pet_sprite_friend", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_explore_goblin_camp", QuestStatus::Active));
-  CHECK(p.HasStatus("q_escort_merchant_plains", QuestStatus::Active));
-  if (!p.To("elder_m2")) return false;
+  // ---- home: S1 + M2, take M3; Aldwin: S3 + S5 (the Lanternwisp), take S6 ----
+  if (!p.To("home_m2_turned_in")) return false;
+  CHECK(p.HasStatus("q_rf_black_blood", QuestStatus::TurnedIn));
+  CHECK(p.HasStatus(kQuestM2, QuestStatus::TurnedIn));
+  CHECK(p.HasStatus("q_rf_tag_thief", QuestStatus::TurnedIn));
+  CHECK(p.HasStatus("q_rf_lanternwisp", QuestStatus::TurnedIn));
+  CHECK(p.HasStatus(kQuestM3, QuestStatus::Active));
+  CHECK(p.HasStatus("q_rf_hallowed_ground", QuestStatus::Active));
+  if (!p.To("home_m2")) return false;
   CHECK(p.Stats().petObtained);
   CHECK(p.V().pet.present);
-  CHECK(p.V().pet.petId == "pet_sprite");
+  CHECK(p.V().pet.petId == "pet_sprite");  // the Lanternwisp
 
-  // ---- M3: the goblin camp; escort the merchant south ----
-  if (!p.To("goblin_camp")) return false;
-  CHECK(p.HasStatus("q_explore_goblin_camp", QuestStatus::Completed));
-  if (!p.To("escort")) return false;
-  CHECK(p.HasStatus("q_escort_merchant_plains", QuestStatus::Completed));
-
-  // ---- the wanderer's bounty ----
-  if (!p.To("bounty_accepted")) return false;
-  CHECK(p.HasStatus("q_bandit_trouble", QuestStatus::Active));
-  if (!p.To("bounty_done")) return false;
-  CHECK(p.HasStatus("q_bandit_trouble", QuestStatus::Completed));
-  if (!p.To("bounty")) return false;
-  CHECK(p.HasStatus("q_bandit_trouble", QuestStatus::TurnedIn));
-
-  // ---- the zone mini-boss: goblin shaman ----
-  if (!p.To("miniboss")) return false;
+  // ---- M3: Ashwheat, then the Corpseherd at the Sheepfold (cs_rf_herd) ----
+  if (!p.To("ashwheat")) return false;
+  CHECK(PtObjCurrent(p.V(), kQuestM3, 0) == 1);
+  if (!p.To("corpseherd")) return false;
+  CHECK(p.HasStatus(kQuestM3, QuestStatus::Completed));
   bool miniBossAlive = false;
   for (const MonsterView& m : p.V().monsters) miniBossAlive = miniBossAlive || (m.miniBoss && m.alive);
   CHECK_FALSE(miniBossAlive);
   CHECK(p.Stats().miniBossDialogues >= 1);
+  CHECK(PtContains(p.Stats().beatsBegan, "cs_rf_herd"));
 
-  // ---- home: M3 (cs_ep_whisper), escort; take M4 ----
-  if (!p.To("elder_m3_turned_in")) return false;
-  CHECK(p.HasStatus("q_explore_goblin_camp", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_escort_merchant_plains", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_find_goblin_chief", QuestStatus::Active));
-  if (!p.To("elder_m3")) return false;
-  CHECK(PtContains(p.Stats().beatsEnded, "cs_ep_whisper"));
+  // ---- S6: Old Bern to the last hallowed ground ----
+  if (!p.To("escort")) return false;
+  CHECK(p.HasStatus("q_rf_hallowed_ground", QuestStatus::Completed));
 
-  // ---- M4: the goblin chief (boss intro) ----
-  if (!p.To("chief")) return false;
-  CHECK(p.HasStatus("q_find_goblin_chief", QuestStatus::Completed));
-  CHECK(PtContains(p.Stats().beatsEnded, "boss_goblin_chief"));
+  // ---- S4: Corran's bounty on Harke ----
+  if (!p.To("corran")) return false;
+  CHECK(p.HasStatus("q_rf_oathless", QuestStatus::Active));
+  if (!p.To("harke")) return false;
+  CHECK(p.HasStatus("q_rf_oathless", QuestStatus::Completed));
+  if (!p.To("oathless")) return false;
+  CHECK(p.HasStatus("q_rf_oathless", QuestStatus::TurnedIn));
 
-  // ---- home: M4 (weapon / armour choice); take M5 ----
-  if (!p.To("elder_m4")) return false;
-  CHECK(p.HasStatus("q_find_goblin_chief", QuestStatus::TurnedIn));
-  CHECK(p.HasStatus("q_secure_plains", QuestStatus::Active));
+  // ---- home: M3 (cs_rf_whisper), take M4; Aldwin: S6 ----
+  if (!p.To("home_m3_turned_in")) return false;
+  CHECK(p.HasStatus(kQuestM3, QuestStatus::TurnedIn));
+  CHECK(p.HasStatus(kQuestM4, QuestStatus::Active));
+  if (!p.To("home_m3")) return false;
+  CHECK(PtContains(p.Stats().beatsEnded, "cs_rf_whisper"));
+  CHECK(p.HasStatus("q_rf_hallowed_ground", QuestStatus::TurnedIn));
 
-  // ---- M5: the seal of veins ----
-  if (!p.To("seal")) return false;
-  CHECK(p.HasStatus("q_secure_plains", QuestStatus::Completed));
-  if (!p.To("elder_m5_turned_in")) return false;
-  CHECK(p.HasStatus("q_secure_plains", QuestStatus::TurnedIn));
+  // ---- M4: Lord-Marshal Valdras on the Breach Rim (boss intro, cs_rf_marshal_falls) ----
+  if (!p.To("valdras")) return false;
+  CHECK(p.HasStatus(kQuestM4, QuestStatus::Completed));
+  CHECK(PtContains(p.Stats().beatsEnded, "boss_valdras"));
+  CHECK(PtContains(p.Stats().beatsBegan, "cs_rf_marshal_falls"));
+
+  // ---- home: M4 (weapon / armour choice), take M5 (cs_rf_siege) ----
+  if (!p.To("home_m4_turned_in")) return false;
+  CHECK(p.HasStatus(kQuestM4, QuestStatus::TurnedIn));
+  CHECK(p.HasStatus(kQuestM5, QuestStatus::Active));
+  if (!p.To("home_m4")) return false;
+  CHECK(PtContains(p.Stats().beatsEnded, "cs_rf_siege"));
+
+  // ---- M5: hold the Boneyard Gate till dawn; home (cs_rf_finale) ----
+  if (!p.To("siege")) return false;
+  CHECK(p.HasStatus(kQuestM5, QuestStatus::Completed));
+  CHECK(PtObjCurrent(p.V(), kQuestM5, 0) == 3);  // three waves held
+  if (!p.To("home_m5_turned_in")) return false;
+  CHECK(p.HasStatus(kQuestM5, QuestStatus::TurnedIn));
   if (!p.To("finale")) return false;
-  CHECK(PtContains(p.Stats().beatsEnded, "cs_ep_finale"));
+  CHECK(PtContains(p.Stats().beatsEnded, "cs_rf_finale"));
   if (!p.ToEnd()) return false;
   CHECK(p.pilot.Reached(AutoPilotMilestone::ScenarioDone));
   return true;
@@ -269,26 +320,43 @@ void PtCheckChapterDone(PtPlayer& p) {
     INFO("quest " << q);
     CHECK(p.HasStatus(q, QuestStatus::TurnedIn));
   }
-  for (const char* beat : {"prologue", "chapter_emerald_plains", "cs_ep_mark", "cs_ep_whisper", "boss_goblin_chief",
-                           "cs_ep_finale"}) {
+  for (const char* beat : {"prologue", "chapter_emerald_plains", "cs_rf_brand", "cs_rf_herd", "cs_rf_whisper",
+                           "boss_valdras", "cs_rf_marshal_falls", "cs_rf_siege", "cs_rf_finale"}) {
     INFO("beat " << beat);
     CHECK(PtContains(st.beatsEnded, beat));
     CHECK(v.story != nullptr);
   }
+  // The kill beats play on the kill that counts (story trigger whileQuest, DECISIONS M7 note): cs_rf_herd after M3 was
+  // accepted, cs_rf_marshal_falls after M4 was.
+  const auto firstAt = [&p](AutoPilotMilestone kind, const std::string& detail) -> int64_t {
+    const std::vector<AutoPilotMilestoneRecord>& ms = p.pilot.Milestones();
+    for (size_t i = 0; i < ms.size(); ++i) {
+      if (ms[i].kind == kind && ms[i].detail == detail) return static_cast<int64_t>(i);
+    }
+    return -1;
+  };
+  for (const auto& [beat, quest] : {std::pair<std::string, std::string>{"cs_rf_herd", test::ch1::kQuestM3},
+                                    std::pair<std::string, std::string>{"cs_rf_marshal_falls", test::ch1::kQuestM4}}) {
+    INFO("beat " << beat);
+    const int64_t accepted = firstAt(AutoPilotMilestone::QuestAccepted, quest);
+    const int64_t played = firstAt(AutoPilotMilestone::StoryBeat, beat);
+    CHECK(accepted >= 0);
+    CHECK(played > accepted);
+  }
   // Exp ledger: the level + exp into it account for exactly the exp granted (classes 5.1 curve, 5.2 one level per
-  // grant with the overflow kept), and quest rewards pay the chapter's 2660 (quests 10.1 totals).
+  // grant with the overflow kept), and quest rewards pay the chapter's 2740 (chapter1.md 5-7).
   int64_t granted = 0;
   for (int64_t x : st.expBySource) granted += x;
   int64_t cumulative = 0;
   for (int32_t l = 1; l < v.hero.level; ++l) cumulative += static_cast<int64_t>(std::floor(3.0 * l * l + 25.0 * l));
   CHECK(cumulative + v.hero.exp == granted);
-  CHECK(st.expBySource[static_cast<size_t>(ExpSource::Quest)] == 2660);
+  CHECK(st.expBySource[static_cast<size_t>(ExpSource::Quest)] == 2740);
   CHECK(st.expBySource[static_cast<size_t>(ExpSource::DialogueReward)] == 50);  // reward_ask, once (Q1)
   CHECK(st.expBySource[static_cast<size_t>(ExpSource::DeathPenalty)] == 0);     // Normal: no exp toll
-  // Level band. The chapter's quest rewards alone are 2660 exp (Lv 11 starts at 2530) and the kills every quest needs
-  // (10 slimes, 15 goblins, the pendant thief, Gruk, the chief) add >= 589 more, so a complete chapter 1 ends at Lv 12
-  // or above with the web's numbers (1-10 is the zone's monster band, not where the chapter ends); a bot that also
-  // fights what aggroes on the way lands on 12-14.
+  // Level band (implementation-plan.md 6; DECISIONS DR9): 12-14. The remade quests need more kills than the web's (the
+  // M2 Hungerbell, the M5 waves, Valdras), so the Chapter 1 roster gives round(0.75 x monsters.md 2.0 Exp) and Valdras
+  // 110 (DR9 *as built*): with the 2740 quest exp and what the bot fights on the way a full chapter lands on Lv 13-14
+  // (Lv 12 starts at 3168 exp, Lv 15 at 5670).
   INFO("level " << v.hero.level);
   CHECK(v.hero.level >= 12);
   CHECK(v.hero.level <= 14);
@@ -304,29 +372,36 @@ void PtCheckChapterDone(PtPlayer& p) {
   CHECK(v.inventory->Bag().size() < 100);
   CHECK(v.pet.present);
   REQUIRE(v.pets != nullptr);
-  const PetInstance* sprite = v.pets->Find("pet_sprite");
-  REQUIRE(sprite != nullptr);
+  const PetInstance* wisp = v.pets->Find("pet_sprite");
+  REQUIRE(wisp != nullptr);
   CHECK(v.pets->ActiveId() == "pet_sprite");
-  CHECK(sprite->level > 1);  // beast exp from every kill since the turn-in (18.3 onKill)
-  // the elite kills the chapter requires (the chief and both hunt leaders) and the zone mini-boss
-  for (const char* boss : {"goblin_chief", "miniboss_goblin_shaman", "hunt_pendant_thief", "hunt_redcap_gruk"}) {
+  CHECK(wisp->level > 1);  // beast exp from every kill since the turn-in (18.3 onKill)
+  // the named kills the chapter requires: the story boss, the mini-boss and the three hunt leaders
+  for (const char* boss : {test::ch1::kStoryBoss, "miniboss_corpseherd", "hunt_dreck", "hunt_hungerbell",
+                           "hunt_harke"}) {
     INFO("killed " << boss);
     CHECK(PtContains(st.killedDefs, boss));
   }
-  // embers (quests 4.4): 20 from the eleven turn-ins + 5 per elite / mini-boss / affixed kill (>= the four above)
+  // embers (quests 4.4): 23 from the eleven turn-ins (chapter1.md 7: M5 7 and S5 3, the others their default 2 / 1) + 5 per
+  // elite / mini-boss / affixed kill (>= the five above)
   REQUIRE(v.homestead != nullptr);
   CHECK(v.homestead->Embers() >= 40);
-  CHECK((v.homestead->Embers() - 20) % 5 == 0);
-  CHECK(v.homestead->IsBuildingUnlocked("herb_garden"));  // q_secure_plains (4.6)
-  // achievements a straight chapter-1 run earns (quests 10.5)
+  CHECK((v.homestead->Embers() - 23) % 5 == 0);
+  CHECK(v.homestead->IsBuildingUnlocked("herb_garden"));  // M5 sends Marl to the tower (4.6)
+  // achievements a straight chapter-1 run earns (quests 10.5, chapter1.md 14)
   REQUIRE(v.achievements != nullptr);
-  for (const char* ach : {"ach_first_kill", "ach_kill_goblin_chief", "ach_quest_10", "ach_level_10"}) {
+  for (const char* ach : {"ach_first_kill", "ach_kill_valdras", "ach_quest_10", "ach_level_10"}) {
     INFO("achievement " << ach);
     CHECK(v.achievements->IsUnlocked(ach));
   }
   CHECK(st.deaths <= 2);
   CHECK(st.levelUps >= 11);
   CHECK(st.kills >= 40);
+  // The retry paths (ApEscortWithRetries / ApDefendWithRetries, the defend's retreat): a gate or an escort lost on every
+  // first attempt, or a bot that keeps running home, is a regression even when the retry saves the run.
+  CHECK(st.escortFailures <= 1);
+  CHECK(st.defendFailures <= 1);
+  CHECK(st.defendRetreats <= 2);
   CHECK(st.saveRequests > 0);
   CHECK_FALSE(v.frozen);
   CHECK(v.modals.empty());
@@ -362,7 +437,7 @@ void PtSaveLoadAndGate(PtPlayer& p, ClassId cls) {
     MESSAGE("first difference at " << i << "\n  saved:  " << save.substr(from, 260) << "\n  loaded: "
                                    << again.substr(from, 260));
   }
-  CHECK(fresh->View().zone.mapId == "emerald_plains");
+  CHECK(fresh->View().zone.mapId == test::ch1::kZone);
   CHECK(fresh->View().hero.level == p.V().hero.level);
 
   PtPlayer cont(*fresh, cls, AutoPilotScenario::None);
@@ -372,7 +447,7 @@ void PtSaveLoadAndGate(PtPlayer& p, ClassId cls) {
   cont.pilot.AddCheckpoint("loaded");
   cont.pilot.AddGoTo(Vec2(118, 60), 0.4, 600);  // the exit's inner tile (the exit itself sits on the border wall)
   REQUIRE(cont.To("loaded"));
-  CHECK(cont.V().quests->IsTurnedIn("q_secure_plains"));
+  CHECK(cont.V().quests->IsTurnedIn(test::ch1::kQuestM5));
   // the sealed gate to chapter 2 (W7): a coming-soon banner, no transition
   bool sealedMarker = false;
   for (const WorldMarkerView& m : cont.V().markers) {
@@ -386,7 +461,7 @@ void PtSaveLoadAndGate(PtPlayer& p, ClassId cls) {
   CHECK(cont.Stats().sealedBanners >= 1);
   cont.pilot.AddWait(2);
   cont.ToEnd();
-  CHECK(cont.V().zone.mapId == "emerald_plains");
+  CHECK(cont.V().zone.mapId == test::ch1::kZone);
 }
 
 PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad) {
@@ -427,8 +502,9 @@ PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad) {
   return r;
 }
 
-// The in-game autotest's smoke scenario (UE -abyssautotest=smoke): the first main-quest turn-in, every milestone kind
-// but the chapter's end, and nothing after the smoke script's last checkpoint.
+// The in-game autotest's smoke scenario (UE -abyssautotest=smoke): the route up to its smokeEnd step (the first
+// main-quest turn-in and its cutscene), every milestone kind but the chapter's end, and nothing after the route's last
+// checkpoint before smokeEnd.
 // ueHolds: like UE, hold the bot (SetHold) for 2 s when the first story beat begins and for 1 s when the first quest
 // card opens - the autotest photographs them meanwhile.
 void PtRunSmoke(ClassId cls, uint64_t seed, AutoPilotStoryMode storyMode, double frameMs, bool ueHolds = false) {
@@ -474,13 +550,14 @@ void PtRunSmoke(ClassId cls, uint64_t seed, AutoPilotStoryMode storyMode, double
   REQUIRE(pilot.Ok());
   CHECK(pilot.Finished());
   CHECK(!checkpoints.empty());
-  CHECK(pilot.CurrentCheckpoint() == "elder_m1");
+  CHECK(pilot.CurrentCheckpoint() == "chaplain_m1");  // the route's last checkpoint before its smokeEnd
   const Snapshot& v = sim->View();
-  CHECK(PtHasStatus(v, "q_kill_slimes", QuestStatus::TurnedIn));
-  CHECK(PtHasStatus(v, "q_herb_gathering", QuestStatus::TurnedIn));
-  CHECK(PtHasStatus(v, "q_kill_goblins", QuestStatus::Active));
-  CHECK_FALSE(PtHasStatus(v, "q_secure_plains", QuestStatus::Active));
-  CHECK(PtContains(pilot.Stats().beatsEnded, "cs_ep_mark"));
+  CHECK(PtHasStatus(v, test::ch1::kQuestM1, QuestStatus::TurnedIn));
+  CHECK(PtHasStatus(v, "q_rf_barrowmoss", QuestStatus::TurnedIn));
+  CHECK(PtHasStatus(v, test::ch1::kQuestM2, QuestStatus::Active));
+  CHECK(PtHasStatus(v, "q_rf_tag_thief", QuestStatus::Active));
+  CHECK_FALSE(PtHasStatus(v, test::ch1::kQuestM5, QuestStatus::Active));
+  CHECK(PtContains(pilot.Stats().beatsEnded, "cs_rf_brand"));
   for (AutoPilotMilestone m : {AutoPilotMilestone::ZoneEntered, AutoPilotMilestone::FirstKill,
                                AutoPilotMilestone::QuestAccepted, AutoPilotMilestone::QuestTurnedIn,
                                AutoPilotMilestone::StoryBeat, AutoPilotMilestone::Cutscene,
@@ -512,6 +589,253 @@ TEST_SUITE("playthrough") {
       }
     }
   }
+  // The defend retry path (ApDefendWithRetries): the gate falls once - the test holds the bot when the first wave is
+  // out, stands the hero on the gate and drops the gate to 1 life - then the bot re-takes M5 from the Captain and holds
+  // the gate through every wave.
+  TEST_CASE("autopilot defend: a fallen gate is re-taken from its giver and held") {
+    auto sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 101));
+    PtPlayer p(*sim, ClassId::Warrior, AutoPilotScenario::Chapter1);
+    p.ObserveSessionStart();
+    REQUIRE(PtPlayTo(p, "home_m4"));  // M5 taken
+    REQUIRE(p.HasStatus(test::ch1::kQuestM5, QuestStatus::Active));
+    SimContext& ctx = sim->Context();
+    const QuestWorld& qw = *ctx.sys.questWorld;
+    for (int64_t guard = 0; guard < 600 * kPtFps && !qw.Defend().waveActive; ++guard) {
+      REQUIRE(p.pilot.Tick(*sim, kPtFrameMs) == AutoPilotStatus::NeedFrame);
+    }
+    REQUIRE(qw.Defend().waveActive);
+    p.pilot.SetHold(true);
+    // Test-only: the gate is down to 1 life and one wave monster stands on it, so the next chip brings it down.
+    const_cast<DefendState&>(qw.Defend()).hp = 1;
+    MonsterInstance* raider = nullptr;
+    for (EntityId id : qw.Defend().waveMonsters) {
+      MonsterInstance* m = ctx.sys.monsters->Find(id);
+      if (m != nullptr && m->IsAlive() && raider == nullptr) raider = m;
+    }
+    REQUIRE(raider != nullptr);
+    raider->pos = qw.Defend().pos;
+    for (int64_t guard = 0; guard < 10 * kPtFps && !p.HasStatus(test::ch1::kQuestM5, QuestStatus::Failed); ++guard) {
+      p.Frame();
+    }
+    REQUIRE(p.HasStatus(test::ch1::kQuestM5, QuestStatus::Failed));
+    p.pilot.SetHold(false);
+    REQUIRE(PtPlayTo(p, "siege"));
+    INFO(p.pilot.RecentNotes());
+    CHECK(p.pilot.Ok());
+    CHECK(p.Stats().defendFailures == 1);
+    CHECK(p.HasStatus(test::ch1::kQuestM5, QuestStatus::Completed));
+    CHECK(PtObjCurrent(p.V(), test::ch1::kQuestM5, 0) == 3);
+  }
+
+  // A route step that defends a quest it never accepted fails at once with the reason, not after 900 s of standing.
+  TEST_CASE("autopilot defend: a defend step for a quest that is not open fails at its start") {
+    auto sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 7));
+    PtPlayer p(*sim, ClassId::Warrior, AutoPilotScenario::None);
+    p.ObserveSessionStart();
+    p.pilot.AddWaitIdle(120);
+    p.pilot.AddDefend(test::ch1::kQuestM5, 1, 3.0);
+    for (int64_t guard = 0; guard < 10 * kPtFps && !p.pilot.Finished(); ++guard) p.pilot.Tick(*sim, kPtFrameMs);
+    CHECK(p.pilot.Finished());
+    CHECK_FALSE(p.pilot.Ok());
+    CHECK(p.pilot.Failure().find("not active") != std::string::npos);
+  }
+
+  // A gate that fell BEFORE the defend step is a lost attempt, not a bot failure (ApDefend::Start): M5 is Failed - the
+  // re-acceptable state - when the step starts, so ApDefendWithRetries takes it again from the Captain and holds it.
+  // Here the hero, still in Knellwatch after taking M5, is put at the gate (test-only) until the first wave is out, the
+  // gate drops to 1 life with a raider on it, then the hero is put back and the wave cleared.
+  TEST_CASE("autopilot defend: a gate that fell before its step is re-taken from its giver and held") {
+    auto sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Rogue, Difficulty::Normal, 303));
+    PtPlayer p(*sim, ClassId::Rogue, AutoPilotScenario::Chapter1);
+    p.ObserveSessionStart();
+    REQUIRE(PtPlayTo(p, "home_m4"));  // M5 taken; the town trip and the defend step come next
+    REQUIRE(p.HasStatus(test::ch1::kQuestM5, QuestStatus::Active));
+    p.pilot.SetHold(true);
+    SimContext& ctx = sim->Context();
+    const QuestWorld& qw = *ctx.sys.questWorld;
+    REQUIRE(qw.Defend().active);
+    const Vec2 home = ctx.sys.hero->Position();
+    ctx.sys.hero->SetPosition(qw.Defend().pos + Vec2(1, 0));
+    for (int64_t guard = 0; guard < 30 * kPtFps && !qw.Defend().waveActive; ++guard) p.Frame();
+    REQUIRE(qw.Defend().waveActive);
+    const std::vector<EntityId> wave = qw.Defend().waveMonsters;
+    const_cast<DefendState&>(qw.Defend()).hp = 1;
+    MonsterInstance* raider = nullptr;
+    for (EntityId id : wave) {
+      MonsterInstance* m = ctx.sys.monsters->Find(id);
+      if (m != nullptr && m->IsAlive() && raider == nullptr) raider = m;
+    }
+    REQUIRE(raider != nullptr);
+    raider->pos = qw.Defend().pos;
+    for (int64_t guard = 0; guard < 10 * kPtFps && !p.HasStatus(test::ch1::kQuestM5, QuestStatus::Failed); ++guard) {
+      p.Frame();
+    }
+    REQUIRE(p.HasStatus(test::ch1::kQuestM5, QuestStatus::Failed));
+    PtKillAll(ctx, wave);
+    ctx.sys.hero->SetPosition(home);
+    p.Frame();
+    p.pilot.SetHold(false);
+    REQUIRE(PtPlayTo(p, "siege"));
+    INFO(p.pilot.RecentNotes());
+    CHECK(p.pilot.Ok());
+    CHECK(p.Stats().defendFailures == 1);
+    CHECK(p.pilot.RecentNotes().find("defend failed before its step") != std::string::npos);
+    CHECK(p.HasStatus(test::ch1::kQuestM5, QuestStatus::Completed));
+    CHECK(PtObjCurrent(p.V(), test::ch1::kQuestM5, 0) == 3);
+  }
+
+  // The same for S6 (ApEscort::Start): Old Bern joined the hero on an earlier walk and died in a fight there, so the
+  // escort step finds the quest Failed. Here, at the checkpoint before the step, Bern stands by the hero at 1 life
+  // (test-only) and a chaser chips him; the bot then takes S6 again from the Chaplain and brings Bern home.
+  TEST_CASE("autopilot escort: an escort that died before its step is re-taken from its giver and completed") {
+    const std::string s6 = "q_rf_hallowed_ground";
+    auto sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 101));
+    PtPlayer p(*sim, ClassId::Warrior, AutoPilotScenario::Chapter1);
+    p.ObserveSessionStart();
+    REQUIRE(PtPlayTo(p, "corpseherd"));  // S6 open, its escort step next
+    REQUIRE(p.HasStatus(s6, QuestStatus::Active));
+    p.pilot.SetHold(true);
+    SimContext& ctx = sim->Context();
+    ctx.sys.story->FinishAllBeats();  // cs_rf_herd (the held bot does not page through it; the world is frozen meanwhile)
+    p.Frame();
+    REQUIRE_FALSE(p.V().storyBusy);
+    const QuestWorld& qw = *ctx.sys.questWorld;
+    REQUIRE(qw.Escort().active);
+    REQUIRE(qw.Escort().questId == s6);
+    EscortState& bern = const_cast<EscortState&>(qw.Escort());
+    bern.joined = true;
+    bern.hp = 1;
+    bern.pos = ctx.sys.hero->Position();
+    bern.path.clear();
+    MonsterDef chaser = *ctx.data.Monsters().Find("gravegnawer");
+    chaser.damage = 1;
+    MonsterSpawnParams sp;
+    sp.baseDef = &chaser;
+    sp.alreadyScaled = true;
+    sp.tile = TilePos(JsRoundInt(bern.pos.x), JsRoundInt(bern.pos.y));
+    sp.startChasing = true;
+    const EntityId m = ctx.sys.monsters->Spawn(sp);
+    REQUIRE(m != kNoEntity);
+    for (int64_t guard = 0; guard < 10 * kPtFps && !p.HasStatus(s6, QuestStatus::Failed); ++guard) p.Frame();
+    REQUIRE(p.HasStatus(s6, QuestStatus::Failed));
+    CHECK_FALSE(qw.Escort().active);
+    PtKillAll(ctx, {m});
+    p.Frame();
+    p.pilot.SetHold(false);
+    REQUIRE(PtPlayTo(p, "escort"));
+    INFO(p.pilot.RecentNotes());
+    CHECK(p.pilot.Ok());
+    CHECK(p.Stats().escortFailures == 1);
+    CHECK(p.pilot.RecentNotes().find("escort failed before its step") != std::string::npos);
+    CHECK(p.HasStatus(s6, QuestStatus::Completed));
+  }
+
+  // A route step that escorts a quest it never accepted fails at once with the reason (ApEscort::Start keeps the hard
+  // fail for a quest that is not open and has not failed).
+  TEST_CASE("autopilot escort: an escort step for a quest that was never accepted fails at its start") {
+    auto sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 7));
+    PtPlayer p(*sim, ClassId::Warrior, AutoPilotScenario::None);
+    p.ObserveSessionStart();
+    p.pilot.AddWaitIdle(120);
+    p.pilot.AddEscort("q_rf_hallowed_ground", 3);
+    for (int64_t guard = 0; guard < 10 * kPtFps && !p.pilot.Finished(); ++guard) p.pilot.Tick(*sim, kPtFrameMs);
+    CHECK(p.pilot.Finished());
+    CHECK_FALSE(p.pilot.Ok());
+    CHECK(p.pilot.Failure().find("not active") != std::string::npos);
+    CHECK(p.Stats().escortFailures == 0);
+  }
+
+  // ApLootNearby's potion walk is an optional detour: when its 15 s run out (fights count - here a chaser the hero
+  // cannot kill holds it away from the potion), the bot skips the potion and goes on. It used to fail the whole script:
+  // mage 8018 (art-lane manifest) gave up on the Gnawed Field hunt at 137.1 s, though the hunt was already done.
+  TEST_CASE("autopilot loot: a potion walk that runs out of time is skipped, not a script failure") {
+    auto sim = GameSim::Create(test::RealData(), SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 7));
+    SimContext& ctx = sim->Context();
+    ctx.sys.story->FinishAllBeats();
+    sim->Step();
+    // An open field outside the camps with no monster within 30 tiles; the hero stands in it, a potion 5 tiles east.
+    const ZoneRuntime& zone = *ctx.sys.zone;
+    const ZoneGrid& g = zone.Grid();
+    TilePos field(-1, -1);
+    for (int32_t r = 30; r < 100 && field.col < 0; ++r) {
+      for (int32_t c = 30; c < 100 && field.col < 0; ++c) {
+        bool open = !zone.InSafeZone(Vec2(c, r)) && !zone.InSafeZone(Vec2(c + 5, r));
+        for (int32_t dr = -3; dr <= 3 && open; ++dr) {
+          for (int32_t dc = -3; dc <= 8 && open; ++dc) open = g.Walkable(c + dc, r + dr);
+        }
+        if (open) field = TilePos(c, r);
+      }
+    }
+    REQUIRE(field.col >= 0);
+    std::vector<EntityId> near;
+    for (const MonsterInstance& m : ctx.sys.monsters->All()) {
+      if (m.IsAlive() && Dist(m.pos, field.Center()) < 30) near.push_back(m.id);
+    }
+    for (EntityId id : near) {
+      DamageFlags f;
+      f.attacker = kHeroEntityId;
+      f.source = KillSource::HeroBasic;
+      ctx.sys.monsters->ApplyDamage(id, 1e9, f);
+    }
+    ctx.sys.hero->SetPosition(field.Center());
+    const Vec2 potionAt(field.col + 5, field.row);
+    REQUIRE(ctx.sys.groundLoot->DropPotion(PotionKind::Hp, 50, potionAt) != kNoEntity);
+    sim->Step();
+    PtPlayer p(*sim, ClassId::Warrior, AutoPilotScenario::None);
+    p.ObserveSessionStart();
+    p.pilot.AddLootNearby(7.0);
+    p.pilot.AddCheckpoint("looted");
+    // The bot sets off for the potion ...
+    for (int64_t guard = 0; guard < 5 * kPtFps && !p.V().hero.moving; ++guard) {
+      REQUIRE(p.pilot.Tick(*sim, kPtFrameMs) == AutoPilotStatus::NeedFrame);
+    }
+    REQUIRE(p.V().hero.moving);
+    // ... and a chaser it cannot kill comes at it from the other side (test-only def: huge hp, 1 damage).
+    MonsterDef chaser = *ctx.data.Monsters().Find("risen_footman");
+    chaser.hp = 1e12;
+    chaser.damage = 1;
+    MonsterSpawnParams sp;
+    sp.baseDef = &chaser;
+    sp.alreadyScaled = true;
+    sp.tile = TilePos(field.col - 2, field.row);
+    sp.startChasing = true;
+    REQUIRE(ctx.sys.monsters->Spawn(sp) != kNoEntity);
+    bool looted = false;
+    for (int64_t guard = 0; guard < 120 * kPtFps && !looted; ++guard) {
+      const AutoPilotStatus st = p.pilot.Tick(*sim, kPtFrameMs);
+      if (st == AutoPilotStatus::Finished) break;
+      looted = st == AutoPilotStatus::Checkpoint && p.pilot.CurrentCheckpoint() == "looted";
+    }
+    INFO(p.pilot.RecentNotes());
+    CHECK(p.pilot.Ok());
+    CHECK(looted);
+    CHECK(p.pilot.RecentNotes().find("gave up: timeout walking to") != std::string::npos);
+  }
+
+  // Seeds the wide sweeps (2026-10) found stopping the bot, each in one manifest's clip timings only (the art lane's
+  // manifest moves hit timing, so which seed meets a given geometry drifts whenever the manifest changes): mage 7013 froze
+  // Old Bern on a wall corner with the committed manifest and mage 1023 with the art lane's of 2026-10-19 (QuestWorld,
+  // DECISIONS Q9), mage 8018 timed out a potion detour with the art lane's (ApLootNearby). All three play with whichever
+  // data is checked out; they stay as smoke, but the seed pins are not the guard - the three "3.9 escort (Q9)" tests of
+  // content_ch1_test.cpp (and the catch-up edge test) pin the escort rule itself, and the potion-walk test here ApLootNearby.
+  TEST_CASE("chapter 1 playthrough: sweep regression seeds (mage 7013 + 1023 escort, mage 8018 potion detour)") {
+    CHECK(PtRun(ClassId::Mage, 7013, false).ok);
+    CHECK(PtRun(ClassId::Mage, 1023, false).ok);
+    CHECK(PtRun(ClassId::Mage, 8018, false).ok);
+  }
+
   TEST_CASE("chapter 1 playthrough is deterministic: same seed twice -> identical save JSON") {
     const PtResult a = PtRun(ClassId::Rogue, 404, false);
     const PtResult b = PtRun(ClassId::Rogue, 404, false);

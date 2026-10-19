@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 #include <string>
 
 #include "abyss/base/Assert.h"
@@ -79,9 +80,17 @@ void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
   out.rng.present = true;
   out.rng.streams = rng.GetStates();
   out.visitedZones = session.visitedZones;  // Q2
+  out.contentVersion = kCurrentContentVersion;
 }
 
-SaveError SimImpl::ApplySave(const SaveData& s, std::string* err) {
+SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
+  // implementation-plan.md 2.7: a save of an older content version loses the ids the data no longer has (its hero,
+  // items and gold stay).
+  SaveData s = in;
+  if (const int32_t stale = ApplyContentVersion(data, s); stale > 0) {
+    LogWarning("save: content version " + std::to_string(in.contentVersion) + " -> " +
+               std::to_string(kCurrentContentVersion) + ", " + std::to_string(stale) + " stale id(s) dropped");
+  }
   // Checks that need no state run first, so a refused save leaves the current session untouched.
   if (s.version > kCurrentSaveVersion) {
     if (err != nullptr) *err = "save version too new";
@@ -152,7 +161,17 @@ SaveError SimImpl::ApplySave(const SaveData& s, std::string* err) {
   // walkability fallback (handled by the zone entry using the saved position). A non-finite position is treated like a
   // dead save's position (camps[0]) and never reaches the grid / int conversions (Math.h SaturatingInt32).
   const bool deadSave = !(std::isfinite(s.player.hp) && s.player.hp > 0);
-  const bool badPos = !(std::isfinite(s.player.tileCol) && std::isfinite(s.player.tileRow));
+  bool badPos = !(std::isfinite(s.player.tileCol) && std::isfinite(s.player.tileRow));
+  // A save standing in the Ember Tower while the tower is locked (a content-version upgrade dropped the quest that opens
+  // it, DECISIONS DR3) loads at the camp of the zone it would return to (its saved towerReturn map, else the default
+  // map), as if its position were unusable.
+  std::string mapId = s.player.currentMap;
+  if (!mapId.empty() && mapId == data.Homestead().towerZoneId && !homestead->Tower().TowerUnlocked()) {
+    const std::optional<TowerReturn>& back = homestead->Tower().Return();
+    mapId = back.has_value() && data.FindMap(back->mapId) != nullptr ? back->mapId : data.World().defaultMap;
+    badPos = true;
+    LogWarning("save: the tower is locked; the hero loads in " + mapId);
+  }
   // S3: the zone entry (spawn jitter, elite affix rolls, hunts on RngStream::Ai) runs on streams DERIVED from the loaded
   // states, then the loaded states are put back: the session continues exactly the saved streams (SaveGame() right
   // after LoadGame() reproduces the save) and the first draws in play are not the uniforms that just placed and rolled
@@ -161,7 +180,7 @@ SaveError SimImpl::ApplySave(const SaveData& s, std::string* err) {
   for (size_t i = 0; i < kRngStreamCount; ++i) {
     rng.Get(static_cast<RngStream>(i)).Seed(SimLoadDerivedSeed(loadedStreams[i], i));
   }
-  const bool ok = EnterZone(s.player.currentMap, !badPos, badPos ? Vec2() : Vec2(s.player.tileCol, s.player.tileRow));
+  const bool ok = EnterZone(mapId, !badPos, badPos ? Vec2() : Vec2(s.player.tileCol, s.player.tileRow));
   if (!ok) {
     if (err != nullptr) *err = "unknown map";
     hasSession = false;

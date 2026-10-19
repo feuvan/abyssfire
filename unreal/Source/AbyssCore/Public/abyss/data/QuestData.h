@@ -65,6 +65,9 @@ struct QuestRewardDef {
   bool hasEmbers = false;
   int32_t embers = 0;
   std::vector<RewardSlot> choices;
+  // K1 labelled reward choices (remake schema quest.choiceLabels): one i18n key per `choices` slot, same length (the
+  // loader rejects any other length; Finalize requires zh-CN + en). Empty = unlabelled (the slot names).
+  std::vector<std::string> choiceLabels;
   bool hasChoiceQuality = false;
   ItemQuality choiceQuality = ItemQuality::Rare;
 };
@@ -76,11 +79,25 @@ struct EscortNpcDef {
   TilePos dest;
 };
 
+// One entry of a defend wave's composition (K1): exactly `count` monsters of `monsterId`.
+struct DefendWaveEntry {
+  std::string monsterId;
+  int32_t count = 0;
+};
+
 struct DefendTargetDef {
   std::string name;
   std::string spriteKey;
   TilePos pos;
   int32_t totalWaves = 0;
+  // K1 defend wave composition (remake schema quest.defendWaves): per wave the exact list MonsterSystem::SpawnDefendWave
+  // spawns, in list order (waves.size() == totalWaves, every count >= 1, checked by the loader; unknown monsters fail
+  // Finalize). Empty = the web rule (defendWaveBaseCount + w random picks from the zone list).
+  std::vector<std::vector<DefendWaveEntry>> waves;
+  // K1 approach arc (remake schema quest.defendApproach): waves spawn on the 180 deg half of the ring centred on
+  // approachDeg (degrees in tile space, the ring's own angle: 0 = +col, 90 = +row). Absent = the full ring.
+  bool hasApproach = false;
+  double approachDeg = 0;
 };
 
 struct QuestClueDef {
@@ -126,6 +143,9 @@ struct QuestDef {
   CraftPhasesDef craftPhases;
   bool reacceptable = false;
   std::vector<QuestHuntRef> hunts;
+  // K1 quest progress line (remake schema quest.progressKey): i18n key of the giver's line while the quest is active
+  // (QuestCardState::progress); "" = none.
+  std::string progressKey;
   // derived
   std::string giverNpcId;
   int32_t embersOnTurnIn = 0;

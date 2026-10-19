@@ -46,7 +46,18 @@
       "g_sapphire_2",
       "g_diamond_1"
     ],
-    "plains_herbalist": ["c_hp_potion_s", "c_hp_potion_m", "c_mp_potion_s", "c_antidote"]
+    "plains_herbalist": ["c_hp_potion_s", "c_hp_potion_m", "c_mp_potion_s", "c_antidote"],
+    "crow_trader": [
+      "c_hp_potion_s",
+      "c_hp_potion_m",
+      "c_mp_potion_s",
+      "c_mp_potion_m",
+      "c_antidote",
+      "g_ruby_1",
+      "g_sapphire_1",
+      "g_emerald_1",
+      "g_topaz_1"
+    ]
   },
   "wanderingMerchant": {
     "emerald_plains": {
@@ -105,8 +116,15 @@
       {"npcId": "merchant", "itemId": "c_tp_scroll", "decision": "I4"},
       {"npcId": "merchant", "itemId": "c_id_scroll", "decision": "I2"},
       {"npcId": "merchant_desert", "itemId": "c_tp_scroll", "decision": "I4"},
-      {"npcId": "merchant_desert", "itemId": "c_id_scroll", "decision": "I2"}
+      {"npcId": "merchant_desert", "itemId": "c_id_scroll", "decision": "I2"},
+      {"npcId": "crow_trader", "itemId": "c_tp_scroll", "decision": "I4"},
+      {"npcId": "crow_trader", "itemId": "c_id_scroll", "decision": "I2"}
     ],
     "wanderingMerchantIdMap": "loot Q12 FIX"
+  },
+  "remake": {
+    "source": ["unreal/GameData/npcs.ts", "unreal/GameData/world.ts"],
+    "modules": {"src/data/npcs.ts": "unreal/GameData/npcs.ts"},
+    "replaced": ["randomEvents.emerald_plains"]
   }
 }

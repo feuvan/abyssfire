@@ -8,7 +8,7 @@
     "src/scenes/ZoneScene.ts"
   ],
   "themeByZone": {
-    "emerald_plains": "plains",
+    "emerald_plains": "march",
     "ember_tower": "plains",
     "twilight_forest": "forest",
     "anvil_mountains": "mountain",
@@ -75,6 +75,42 @@
       "contrast": 1.07,
       "lift": [0.024, -0.004, 0.012],
       "gain": [0.03, 0, 0]
+    },
+    "march": {
+      "ambient": 11054779,
+      "ambientAlpha": 0.3,
+      "vignette": 526090,
+      "vignetteAlpha": 0.58,
+      "haze": 6183511,
+      "hazeAlpha": 0.12,
+      "saturation": 0.68,
+      "contrast": 1.12,
+      "lift": [-0.01, -0.006, 0.004],
+      "gain": [0, 0.004, 0.02]
+    },
+    "march_dawn": {
+      "ambient": 13154464,
+      "ambientAlpha": 0.26,
+      "vignette": 1183242,
+      "vignetteAlpha": 0.45,
+      "haze": 8024164,
+      "hazeAlpha": 0.08,
+      "saturation": 0.78,
+      "contrast": 1.08,
+      "lift": [0.004, 0.002, -0.004],
+      "gain": [0.02, 0.012, 0]
+    },
+    "breach_rim": {
+      "ambient": 6965898,
+      "ambientAlpha": 0.35,
+      "vignette": 656912,
+      "vignetteAlpha": 0.62,
+      "haze": 2759222,
+      "hazeAlpha": 0.14,
+      "saturation": 0.6,
+      "contrast": 1.15,
+      "lift": [-0.012, -0.014, 0.01],
+      "gain": [0.01, 0, 0.03]
     }
   },
   "palettes": {
@@ -145,18 +181,20 @@
     }
   },
   "weather": {
-    "emerald_plains": {"type": "none", "ambience": "pollen", "tint": 16771232},
+    "emerald_plains": {"type": "none", "ambience": "ashfall", "tint": 13617856},
     "twilight_forest": {"type": "none", "ambience": "wisps"},
     "anvil_mountains": {"type": "snow", "ambience": "dust_motes", "tint": 14477556},
     "scorching_desert": {"type": "sand", "ambience": "dust_motes", "tint": 15784104},
-    "abyss_rift": {"type": "ember_storm", "ambience": "sparks"}
+    "abyss_rift": {"type": "ember_storm", "ambience": "sparks"},
+    "ember_tower": {"type": "none", "ambience": "pollen", "tint": 16771232}
   },
   "weatherByTheme": {
-    "plains": "emerald_plains",
+    "plains": "ember_tower",
     "forest": "twilight_forest",
     "mountain": "anvil_mountains",
     "desert": "scorching_desert",
-    "abyss": "abyss_rift"
+    "abyss": "abyss_rift",
+    "march": "emerald_plains"
   },
   "ambientDustTint": {
     "emerald_plains": 8965256,
@@ -226,6 +264,17 @@
       "bannerDark": "#5a0a0a",
       "torchFlame": 16720384,
       "tentColor": "#221428"
+    },
+    "march": {
+      "wallColor": "#2e2620",
+      "wallDark": "#1a1512",
+      "wallLight": "#463a30",
+      "wallTop": "#5a4c40",
+      "groundColor": "#24201c",
+      "bannerColor": "#141214",
+      "bannerDark": "#0a090a",
+      "torchFlame": 16756832,
+      "tentColor": "#3a3028"
     }
   },
   "port": {
@@ -234,8 +283,40 @@
       "forest": {"color": 9209544, "maxOpacity": 0.32, "density": 1.1},
       "mountain": {"color": 13556974, "maxOpacity": 0.3, "density": 1},
       "desert": {"color": 16768678, "maxOpacity": 0.26, "density": 0.9},
-      "abyss": {"color": 7219776, "maxOpacity": 0.35, "density": 1.2}
+      "abyss": {"color": 7219776, "maxOpacity": 0.35, "density": 1.2},
+      "march": {"color": 5132892, "maxOpacity": 0.4, "density": 1.15},
+      "march_dawn": {"color": 6973024, "maxOpacity": 0.3, "density": 0.95},
+      "breach_rim": {"color": 3811912, "maxOpacity": 0.45, "density": 1.25}
     },
-    "decision": "P14 (art pass)"
+    "decision": "P14 (art pass)",
+    "lightScale": {"march": 0.32, "march_dawn": 0.22, "breach_rim": 0.4},
+    "moodWeather": {
+      "march_dawn": {"type": "none", "ambience": "dust_motes"},
+      "breach_rim": {"type": "none", "ambience": "sparks", "tint": 11546576}
+    }
+  },
+  "remake": {
+    "source": ["unreal/GameData/world.ts"],
+    "replaced": [
+      "zoneMoods.themeByZone.emerald_plains",
+      "zoneMoods.weather.emerald_plains",
+      "zoneMoods.weatherByTheme.plains"
+    ],
+    "added": [
+      "zoneMoods.moods.march",
+      "zoneMoods.moods.march_dawn",
+      "zoneMoods.moods.breach_rim",
+      "zoneMoods.weather.ember_tower",
+      "zoneMoods.weatherByTheme.march",
+      "zoneMoods.campThemes.march",
+      "zoneMoods.fog.march",
+      "zoneMoods.fog.march_dawn",
+      "zoneMoods.fog.breach_rim",
+      "zoneMoods.lightScale.march",
+      "zoneMoods.lightScale.march_dawn",
+      "zoneMoods.lightScale.breach_rim",
+      "zoneMoods.moodWeather.march_dawn",
+      "zoneMoods.moodWeather.breach_rim"
+    ]
   }
 }

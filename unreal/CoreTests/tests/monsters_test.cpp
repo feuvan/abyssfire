@@ -144,6 +144,9 @@ TEST_SUITE("monsters") {
   TEST_CASE("derived data 1.1: onHitStatus only on fire_elemental and phoenix; projectile colours") {
     for (const MonsterDef& d : MD().Monsters().defs) {
       CAPTURE(d.id);
+      // The remake authors its Chapter 1 statuses and bolt colours (they win over the keyword rule; content_ch1_test.cpp
+      // pins them): the rule below is the web keyword rule the other chapters still run on.
+      if (d.homeZone == test::ch1::kZone) continue;
       const bool fiery = d.spriteKey.find("fire") != std::string::npos || d.spriteKey.find("phoenix") != std::string::npos;
       if (d.id == "fire_elemental" || d.id == "phoenix") {
         REQUIRE(d.onHitStatus.size() == 1);
@@ -297,7 +300,7 @@ TEST_SUITE("monsters") {
   // ===================================================================================================================
   // Elite affixes (combat 17; EliteAffixSystem.test.ts; vector 16; table 2.4)
   // ===================================================================================================================
-  TEST_CASE("elite affix definitions 17.1 are exported verbatim") {
+  TEST_CASE("elite affix definitions 17.1: the mechanics are exported verbatim; no affix glows in the hero's ember") {
     const EliteAffixTable& t = MAffixes();
     REQUIRE(t.order.size() == 7);
     CHECK(t.order[0] == EliteAffixType::FireEnhanced);
@@ -316,7 +319,22 @@ TEST_SUITE("monsters") {
     }
     CHECK(t.Def(EliteAffixType::FireEnhanced).extraFireDamage == doctest::Approx(0.3));
     CHECK(t.Def(EliteAffixType::FireEnhanced).hpMult == doctest::Approx(1.2));
-    CHECK(t.Def(EliteAffixType::FireEnhanced).vfxColor == 0xff4400u);
+    // DR5 (dark remake): ember orange (hue 15-35 deg at saturation > .6) is the hero's; no enemy affix glows in it. The
+    // remake's names and colours are pinned in content_ch1_test.cpp.
+    for (EliteAffixType ty : t.order) {
+      CAPTURE(EnumName(ty));
+      const uint32_t c = t.Def(ty).vfxColor;
+      const double r = ((c >> 16) & 0xFF) / 255.0, g = ((c >> 8) & 0xFF) / 255.0, b = (c & 0xFF) / 255.0;
+      const double mx = std::max({r, g, b}), mn = std::min({r, g, b});
+      const double sat = mx > 0 ? (mx - mn) / mx : 0;
+      double hue = 0;
+      if (mx > mn) {
+        if (mx == r) hue = 60 * std::fmod((g - b) / (mx - mn) + 6, 6.0);
+        else if (mx == g) hue = 60 * ((b - r) / (mx - mn) + 2);
+        else hue = 60 * ((r - g) / (mx - mn) + 4);
+      }
+      CHECK_FALSE((hue >= 15 && hue <= 35 && sat > 0.6));
+    }
     CHECK(t.Def(EliteAffixType::Swift).speedMult == doctest::Approx(1.6));
     CHECK(t.Def(EliteAffixType::Swift).lootQualityBonus == 3);
     CHECK(t.Def(EliteAffixType::Teleporting).teleportCooldownMs == 5000);

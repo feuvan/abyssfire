@@ -4,34 +4,50 @@ import type { MapData } from '../types';
 // Size: 120x120 (expanded from 80x80 for deeper exploration)
 // Tile types: 0=grass, 1=dirt_path, 2=stone, 3=water, 4=wall, 5=camp_ground
 
+/**
+ * Chapter 1 of the dark remake: 赤幡原 / The Red Field (Docs/dark-remake/chapter1.md §1, §17). The zone id stays
+ * `emerald_plains` (DR3) and the generator theme stays `plains`.
+ *
+ * Generator inputs kept (zero churn, chapter1.md §17): the 10 spawn positions, both camps, playerStart, the exit, the
+ * field-NPC tiles, the hidden area, the three story decorations (positions and spriteType), seed and theme. The one
+ * golden re-baseline (DR4) adds the Pit entrance below (17,26); its other two changes are landmarks outside this file
+ * (M5's defend target in ../quests/all_quests.ts, the three echo lore spots in ../loreCollectibles.ts).
+ *
+ * Not generator inputs: spawn monster ids and counts (55 in the same 10 entries, §17 Wave 1 column), the camp NPC lists
+ * (camp 1 adds Brother Aldwin; Mag Crowe replaces the shared merchant in camp 2, §3), the presentation theme and the
+ * mood regions.
+ */
 export const EmeraldPlainsMap: MapData = {
   id: 'emerald_plains',
-  name: '翡翠平原',
+  name: '赤幡原',
   cols: 120,
   rows: 120,
   tiles: [],
   collisions: [],
   theme: 'plains',
   seed: 12345,
+  // U1: art, terrain style, camp kit and mood resolve `march` first (`tree@march` before `tree`); ember_tower stays plains.
+  presentationTheme: 'march',
   spawns: [
     // Q1 — top-left quadrant
-    { col: 25, row: 20, monsterId: 'slime_green', count: 8 },
-    { col: 35, row: 40, monsterId: 'goblin', count: 6 },
-    { col: 20, row: 45, monsterId: 'slime_green', count: 5 },
+    { col: 25, row: 20, monsterId: 'risen_footman', count: 8 },       // Burial Trenches (M1)
+    { col: 35, row: 40, monsterId: 'gravegnawer', count: 8 },         // the Gnawed Field (M2)
+    { col: 20, row: 45, monsterId: 'breachclot', count: 7 },          // the Seep (S1)
     // Q2 — top-right quadrant
-    { col: 85, row: 18, monsterId: 'slime_green', count: 6 },
-    { col: 95, row: 35, monsterId: 'goblin', count: 6 },
-    { col: 75, row: 50, monsterId: 'goblin', count: 4 },
+    { col: 85, row: 18, monsterId: 'cinderbloat', count: 6 },         // the Weeping Ditch
+    { col: 95, row: 35, monsterId: 'oath_zealot', count: 5 },         // the Penitents' Camp
+    { col: 75, row: 50, monsterId: 'risen_arbalest', count: 5 },      // the Broken Redoubt
     // Q3 — bottom-left quadrant
-    { col: 30, row: 80, monsterId: 'goblin', count: 8 },
-    { col: 15, row: 95, monsterId: 'goblin_chief', count: 1 },
+    { col: 30, row: 80, monsterId: 'risen_shieldbearer', count: 6 },  // the Dead Ranks
+    { col: 15, row: 95, monsterId: 'valdras', count: 1 },             // the Breach Rim (story boss, M7)
     // Q4 — bottom-right quadrant
-    { col: 80, row: 75, monsterId: 'goblin', count: 5 },
-    { col: 95, row: 90, monsterId: 'goblin', count: 6 },
+    { col: 80, row: 75, monsterId: 'deserter', count: 6 },            // Deserters' Hollow
+    { col: 95, row: 90, monsterId: 'bonegorger', count: 3 },          // the Crowmarket midden
   ],
   camps: [
-    { col: 15, row: 15, npcs: ['blacksmith', 'merchant', 'quest_elder'] },
-    { col: 95, row: 100, npcs: ['merchant'] },
+    // 丧钟堡 / Knellwatch (the port appends the stash keeper, DECISIONS I7) and 鸦集 / Crowmarket.
+    { col: 15, row: 15, npcs: ['blacksmith', 'merchant', 'quest_elder', 'knell_chaplain'] },
+    { col: 95, row: 100, npcs: ['crow_trader'] },
   ],
   playerStart: { col: 15, row: 22 },
   exits: [
@@ -39,21 +55,21 @@ export const EmeraldPlainsMap: MapData = {
   ],
   levelRange: [1, 7] as [number, number],
 
-  // ─── New Content: Field NPCs ──────────────────────────────────────────
+  // ─── Field NPCs: Mother Marl's dressing station, Corran's culvert ─────
   fieldNpcs: [
     { col: 50, row: 30, npcId: 'plains_herbalist' },
     { col: 70, row: 65, npcId: 'plains_wanderer' },
   ],
 
-  // ─── New Content: Hidden Area ─────────────────────────────────────────
+  // ─── Hidden area: the Paymaster's Wagon (rewards unchanged) ───────────
   hiddenAreas: [
     {
-      id: 'hidden_ep_elven_cache',
-      name: '精灵族秘密宝库',
+      id: 'hidden_rf_paymaster',
+      name: '军饷车',
       col: 108,
       row: 108,
       radius: 6,
-      discoveryText: '你发现了一处被草丛掩盖的精灵族遗迹！这里似乎是远古精灵用来储存珍贵物品的秘密宝库。',
+      discoveryText: '车夫还被铁链锁在钱箱上。没有人来救他，也没有人来拿钱。',
       rewards: [
         { type: 'chest', value: 'rare', col: 108, row: 108 },
         { type: 'gold_pile', value: '200', col: 110, row: 107 },
@@ -61,28 +77,47 @@ export const EmeraldPlainsMap: MapData = {
     },
   ],
 
-  // ─── New Content: Environmental Storytelling Decorations ──────────────
+  // ─── The Pit of the Faithful (信者之坑, Wave 3): sealed until sub-dungeon travel (K7) ───
+  // A generator input (the one re-baseline, DR4): four tiles below where the hero woke, outside camp 1's safe radius.
+  subDungeonEntrances: [
+    {
+      id: 'entrance_rf_pit',
+      name: '信者之坑',
+      col: 17,
+      row: 26,
+      targetSubDungeon: 'sub_rf_pit',
+      sealed: true,
+      sealedTextKey: 'data.subDungeonSealed.entrance_rf_pit',
+    },
+  ],
+
+  // ─── Story decorations (positions and spriteType kept; meshes re-pointed by the presentation theme) ───
   storyDecorations: [
     {
-      id: 'story_ep_ruined_tower',
-      name: '倒塌的精灵塔',
-      description: '这座塔楼曾是精灵族的瞭望塔，如今只剩残垣断壁。石块上仍可辨认出精灵族的蔓藤纹饰，诉说着远古文明的辉煌。',
+      id: 'story_rf_belfry',
+      name: '灰麦村钟楼',
+      description: '灰麦村的钟裂成两半，陷在泥里。钟锤不见了。',
       col: 55, row: 45,
       spriteType: 'ruins',
     },
     {
-      id: 'story_ep_goblin_totem',
-      name: '哥布林图腾柱',
-      description: '一根由杂乱骨头和兽皮拼接而成的图腾柱，散发着淡淡的腥臭。这是哥布林部落的领地标记，预示着前方有更强大的哥布林在等待。',
+      id: 'story_rf_red_banner',
+      name: '赤幡',
+      description: '一面红旗插在盾牌堆成的土丘上。每一面盾，都朝着丧钟堡。',
       col: 40, row: 70,
       spriteType: 'war_banner',
     },
     {
-      id: 'story_ep_ancient_well',
-      name: '干涸的古井',
-      description: '一口被青苔覆盖的石砌古井，井水早已干涸。井壁上刻着精灵文字——这曾是灵脉能量涌出的泉眼，如今灵脉断裂，泉水不再。',
+      id: 'story_rf_penitents_altar',
+      name: '赎罪坛',
+      description: '石盆里的沟槽一路斜向裂口。槽里积着灰，和干了的黑。',
       col: 88, row: 55,
       spriteType: 'broken_altar',
     },
+  ],
+
+  // ─── Mood regions (chapter1.md §9.1 / §15): the Breach Rim, 16 tiles around the dais ───
+  regions: [
+    { id: 'breach_rim', col: 15, row: 95, radius: 16, mood: 'breach_rim' },
   ],
 };

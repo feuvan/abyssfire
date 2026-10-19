@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "source": ["src/data/homestead.ts", "src/systems/EmberTower.ts"],
   "towerZoneId": "ember_tower",
-  "towerUnlockQuest": "q_explore_goblin_camp",
+  "towerUnlockQuest": "q_rf_ashwheat",
   "leyFruitId": "c_ley_fruit",
   "buildings": [
     {
@@ -20,7 +20,7 @@
       "bonusPerLevel": [
         {"stat": "potionDiscount", "value": 5}
       ],
-      "unlockQuest": "q_secure_plains",
+      "unlockQuest": "q_rf_last_toll",
       "allyNpc": "tower_herbalist"
     },
     {
@@ -157,5 +157,9 @@
     {"quest": "q_kill_werewolf_alpha", "petId": "pet_storm_wolf"},
     {"quest": "q_seal_fire_rift", "petId": "pet_phoenix"}
   ],
-  "port": {"towerHiddenInMilestone1": true, "decision": "Q3"}
+  "port": {"towerHiddenInMilestone1": true, "decision": "Q3"},
+  "remake": {
+    "source": ["unreal/GameData/homestead.ts"],
+    "modules": {"src/data/homestead.ts": "unreal/GameData/homestead.ts"}
+  }
 }

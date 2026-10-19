@@ -14,8 +14,11 @@ import { GEM_STAT_MAP, getItemBase } from '@web/data/items/bases';
 
 /** Zone id of the tower (not part of the zone progression). */
 export const TOWER_ZONE_ID = 'ember_tower';
-/** The tower opens once the Ch.1 quest 篝火营地 is turned in. */
-export const TOWER_UNLOCK_QUEST = 'q_explore_goblin_camp';
+/**
+ * The tower opens once the Ch.1 quest 灰麦村 / Ashwheat (M3) is turned in (dark remake, chapter1.md §14; the tower and
+ * its UI stay hidden in milestone 1, DECISIONS Q3).
+ */
+export const TOWER_UNLOCK_QUEST = 'q_rf_ashwheat';
 /** Pet food grown in the herb garden (item defined by the pet system). */
 export const LEY_FRUIT_ID = 'c_ley_fruit';
 
@@ -30,7 +33,8 @@ export const BUILDINGS: HomesteadBuilding[] = [
     maxLevel: 5,
     costPerLevel: [{ gold: 100 }, { gold: 250, embers: 5 }, { gold: 500, embers: 10 }, { gold: 1000, embers: 20 }, { gold: 2000, embers: 35 }],
     bonusPerLevel: [{ stat: 'potionDiscount', value: 5 }],
-    unlockQuest: 'q_secure_plains', allyNpc: 'tower_herbalist',
+    // Ch.1 finale 最后的钟声 / The Last Toll sends Mother Marl (tower_herbalist) to keep the garden (cs_rf_finale).
+    unlockQuest: 'q_rf_last_toll', allyNpc: 'tower_herbalist',
   },
   {
     id: 'pet_house', name: '月井', description: '未出战的灵兽在此修养，提升灵兽经验',

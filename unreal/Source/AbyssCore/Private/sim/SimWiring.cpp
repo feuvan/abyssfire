@@ -82,6 +82,8 @@ void SimImpl::Wire() {
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg& m) { story->OnQuestAccepted(m); });
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg& m) { questWorld->OnQuestAccepted(m); });
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg&) { monsters->SpawnDueHunts(false); });
+  bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg&) { monsters->SpawnMiniBossForQuests(); });
+  bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg&) { monsters->SpawnStoryBossForQuests(); });
   bus.Subscribe<QuestProgressMsg>([this](const QuestProgressMsg& m) { questWorld->OnQuestProgress(m); });
   bus.Subscribe<QuestProgressMsg>([this](const QuestProgressMsg&) { monsters->SpawnDueHunts(true); });
   // audio 3.1: quest / NPC cues (npc_interact, quest_objective / quest_progress, quest_complete, panel_open).

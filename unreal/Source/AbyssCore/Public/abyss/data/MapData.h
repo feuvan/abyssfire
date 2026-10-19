@@ -72,6 +72,11 @@ struct SubDungeonEntranceDef {
   std::string name;
   TilePos pos;
   std::string targetSubDungeon;
+  // K1 sealed entrance (remake schema map.sealedEntrances): inert until its sub-dungeon exists (the Pit before Wave 3).
+  // The interact action / a press on it logs sealedTextKey as a toast and does nothing else (ZoneRuntime); its
+  // targetSubDungeon may name a sub-dungeon that is not in the data yet. A sealed entrance needs a sealedTextKey.
+  bool sealed = false;
+  std::string sealedTextKey;
 };
 
 struct StoryDecorationDef {
@@ -84,6 +89,15 @@ struct StoryDecorationDef {
 struct DecorationDef {
   TilePos pos;
   std::string type;
+};
+
+// A mood region of a map (dark remake, remake schema map.regions; chapter1.md 9.1 / 15: the Breach Rim). Render-only:
+// UE blends the region's mood in within `radius` tiles of `center`. Not a generator input.
+struct MapRegionDef {
+  std::string id;
+  TilePos center;
+  double radius = 0;
+  MapTheme mood = MapTheme::Plains;  // a zone_moods.json mood theme
 };
 
 struct AvoidPointDef {
@@ -115,6 +129,12 @@ struct MapDef {
   std::vector<HiddenAreaDef> hiddenAreas;
   std::vector<SubDungeonEntranceDef> subDungeonEntrances;
   std::vector<StoryDecorationDef> storyDecorations;
+  // Dark remake presentation (remake schema map.presentationTheme / map.regions; render-only, not generator inputs):
+  // the theme whose art (`<gameId>@<theme>` first), terrain style, camp kit and mood the zone shows, and its mood
+  // regions. Absent = the generator theme's look (every web zone, ember_tower).
+  bool hasPresentationTheme = false;
+  MapTheme presentationTheme = MapTheme::Plains;
+  std::vector<MapRegionDef> regions;
   // generator input (W10); generated == true means tiles are produced by world/MapGen at load
   bool generated = false;
   MapTheme generatorTheme = MapTheme::Plains;
@@ -250,6 +270,8 @@ struct ZoneEventDataDef {
   std::string puzzleSpriteKey;
   std::string rescueNpcName;
   std::string rescueNpcSpriteKey;
+  // Dark remake (random_events.json zones.<zone>.rescueMonsters, optional): the rescue's guards; empty = ambushMonsters.
+  std::vector<std::string> rescueMonsters;
   int64_t rescueRewardGold = 0;
   int64_t rescueRewardExp = 0;
 };
@@ -265,6 +287,14 @@ struct ABYSS_API RandomEventsDef {
   bool resetMoveCounterAfterEveryRoll = true;  // W6
 
   const ZoneEventDataDef* ForZone(std::string_view zoneId) const;
+};
+
+struct ZoneWeatherDef {
+  std::string zoneId;
+  std::string type;      // none | snow | sand | ember_storm
+  std::string ambience;  // pollen | wisps | dust_motes | sparks | ashfall (dark remake) | ""
+  bool hasTint = false;
+  uint32_t tint = 0;
 };
 
 // zone_moods.json (render-only atmosphere; the core passes the ids through to UE).
@@ -283,14 +313,15 @@ struct ZoneMoodDef {
   uint32_t fogColor = 0;        // 0xRRGGBB sRGB
   double fogMaxOpacity = 0.25;  // UE FogMaxOpacity
   double fogDensity = 0.9;      // look-dev extinction 2^(-d x m / 10); UE FogDensity = d / ln 2 (x abyss.FogScale)
-};
-
-struct ZoneWeatherDef {
-  std::string zoneId;
-  std::string type;      // none | snow | sand | ember_storm
-  std::string ambience;  // pollen | wisps | dust_motes | sparks | ""
-  bool hasTint = false;
-  uint32_t tint = 0;
+  // True when zone_moods.json `moods` has this theme (a mood region or a presentation theme must name one).
+  bool defined = false;
+  // Dark remake (zone_moods.json port.lightScale.<theme>): the fake-light scale of the mood in place of DECISIONS R18's
+  // max(0.12, ambientAlpha x (1 - luma(ambient)) x 1.4); 0 = use the formula. Render-only.
+  double lightScale = 0;
+  // Dark remake (zone_moods.json port.moodWeather.<theme>): the weather / ambience the mood brings where it blends in
+  // over a zone (the dawn mood after the chapter, a mood region); zoneId stays empty. Render-only.
+  bool hasMoodWeather = false;
+  ZoneWeatherDef moodWeather;
 };
 
 struct ABYSS_API ZoneMoodTables {

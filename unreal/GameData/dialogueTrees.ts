@@ -5,99 +5,107 @@ import type { DialogueTree } from './types';
  * All text in Simplified Chinese.
  */
 
-/** Zone 1: 翡翠平原 — 村长 (quest_elder) */
+/**
+ * Zone 1: 赤幡原 / The Red Field — 瑟琳·哈洛队长 / Captain Serin Harrow (quest_elder), dark remake
+ * (Docs/dark-remake/chapter1.md §4, package 1B part 2). Thirteen nodes, three quest triggers (M1, M2, S1) and the
+ * one-time reward (DECISIONS Q1: 30 gold / 50 exp, paid once per choice). The text is i18n
+ * (`data.dialogue.quest_elder.<node>.text / .choice.<i>`, GameData/i18n/ch1Npcs.ts); the strings here are the zh-CN
+ * data copies. The bot's tree walk is reward_ask → help → other_work → accept_ichor (implementation-plan.md §6).
+ */
 export const elderDialogueTree: DialogueTree = {
   startNodeId: 'root',
   nodes: {
     root: {
       id: 'root',
-      text: '勇士，你来了！翡翠平原正面临严重的威胁。最近村庄周围出现了大量怪物，村民们不敢出门。',
+      text: '坑里爬出来的。能站着，就能拿刀。',
       choices: [
-        { text: '告诉我发生了什么', nextNodeId: 'explain' },
-        { text: '我能帮什么忙？', nextNodeId: 'help' },
-        { text: '这里有什么奖励吗？', nextNodeId: 'reward_ask' },
+        { text: '你是谁？', nextNodeId: 'who' },
+        { text: '那口钟……', nextNodeId: 'bell' },
+        { text: '有什么要我做的？', nextNodeId: 'help' },
+        { text: '有饷吗？', nextNodeId: 'reward_ask' },
+        { text: '告辞。', nextNodeId: 'farewell' },
       ],
     },
-    explain: {
-      id: 'explain',
-      text: '三天前，一群哥布林从南方的山洞里涌出来。它们不仅袭击了几处农田，还抢走了村民的物资。更糟糕的是，史莱姆也开始在北部湿地繁殖失控。',
+    who: {
+      id: 'who',
+      text: '瑟琳·哈洛，第三营队长。现在是这座堡里军衔最高的活人。',
       choices: [
-        { text: '我先去清理史莱姆', nextNodeId: 'accept_slimes', questTrigger: 'q_kill_slimes' },
-        { text: '哥布林更危险，先对付它们', nextNodeId: 'goblin_first', prereqQuests: ['q_kill_slimes'] },
-        { text: '两边我都处理', nextNodeId: 'both' },
+        { text: '元帅呢？', nextNodeId: 'marshal' },
+        { text: '回去', nextNodeId: 'root' },
+      ],
+    },
+    bell: {
+      id: 'bell',
+      text: '钟比教会还老，是守火人留下的。黄昏时，一个名字敲一下。',
+      choices: [
+        { text: '回去', nextNodeId: 'root' },
+      ],
+    },
+    marshal: {
+      id: 'marshal',
+      text: '元帅下令死守，我下令撤退。我们俩，总有一个是叛徒。他的弩手死了都不放下弩。',
+      choices: [
+        { text: '回去', nextNodeId: 'root' },
       ],
     },
     help: {
       id: 'help',
-      text: '太好了！你愿意帮忙真是太棒了。当前最紧急的是清除平原上泛滥的史莱姆，它们正在侵蚀我们的农田。',
+      text: '北边埋骨壕。收尸队没回来。',
       choices: [
-        { text: '交给我了！', nextNodeId: 'accept_slimes', questTrigger: 'q_kill_slimes' },
-        { text: '还有其他任务吗？', nextNodeId: 'other_quests' },
+        { text: '我去。', nextNodeId: 'accept_burial', questTrigger: 'q_rf_burial_detail' },
+        { text: '城下的麦田呢？', nextNodeId: 'gnawers_first', prereqQuests: ['q_rf_burial_detail'] },
+        { text: '还有别的吗？', nextNodeId: 'other_work' },
       ],
+    },
+    accept_burial: {
+      id: 'accept_burial',
+      text: '带上灯。别带希望。',
+      isEnd: true,
+    },
+    gnawers_first: {
+      id: 'gnawers_first',
+      text: '城下的麦田里，有东西在吃我们的人。',
+      choices: [
+        { text: '交给我。', nextNodeId: 'accept_gnawers', questTrigger: 'q_rf_gnawed_field' },
+      ],
+    },
+    accept_gnawers: {
+      id: 'accept_gnawers',
+      text: '十二只。还有那个敲钟的。',
+      isEnd: true,
     },
     reward_ask: {
       id: 'reward_ask',
-      text: '村庄虽然不富裕，但我们会尽力回报帮助我们的人。完成任务后你会获得金币和经验奖励，表现出色的话还有特殊物品。这些是提前给你的补给。',
+      text: '饷？这是死人的饷。拿去吧，他用不上了。',
       choices: [
-        { text: '好的，我来帮忙（获得补给）', nextNodeId: 'help', reward: { gold: 30, exp: 50 } },
-        { text: '我再想想', nextNodeId: 'farewell' },
+        // Q1: paid once per (npc, node, choice); the walk goes on to the work.
+        { text: '收下。', nextNodeId: 'help', reward: { gold: 30, exp: 50 } },
+        { text: '回去', nextNodeId: 'root' },
       ],
     },
-    accept_slimes: {
-      id: 'accept_slimes',
-      text: '感谢你！平原北部的湿地区域史莱姆最多，小心它们的腐蚀攻击。消灭10只后回来找我。',
+    other_work: {
+      id: 'other_work',
+      text: '玛勒要血样。神父那边也缺人手。南边沟里有个逃兵，在等人听他说话。',
+      choices: [
+        { text: '血样？', nextNodeId: 'accept_ichor', questTrigger: 'q_rf_black_blood' },
+        { text: '神父？', nextNodeId: 'chaplain_pointer' },
+      ],
+    },
+    accept_ichor: {
+      id: 'accept_ichor',
+      text: '别用手碰。玛勒会教你。',
       isEnd: true,
     },
-    goblin_first: {
-      id: 'goblin_first',
-      text: '你说得对，哥布林确实更加危险。它们的营地在平原南部，消灭15只哥布林应该能挫败它们的锐气。',
+    chaplain_pointer: {
+      id: 'chaplain_pointer',
+      text: '奥德温还在祈祷。我不知道，还有谁在听。',
       choices: [
-        { text: '立刻出发！', nextNodeId: 'accept_goblins', questTrigger: 'q_kill_goblins' },
-        { text: '我需要更多信息', nextNodeId: 'goblin_info' },
+        { text: '回去', nextNodeId: 'root' },
       ],
-    },
-    accept_goblins: {
-      id: 'accept_goblins',
-      text: '注意安全，勇士。哥布林虽然单个不强，但它们喜欢群体作战。',
-      isEnd: true,
-    },
-    goblin_info: {
-      id: 'goblin_info',
-      text: '哥布林有三种——普通的巡逻兵、弓箭手和首领。首领比较狡猾，会躲在后排指挥。建议你先消灭弓箭手，再处理近战的。',
-      choices: [
-        { text: '明白了，我去清剿', nextNodeId: 'accept_goblins', questTrigger: 'q_kill_goblins' },
-        { text: '我先去做其他准备', nextNodeId: 'farewell' },
-      ],
-    },
-    both: {
-      id: 'both',
-      text: '真是勇敢！先从史莱姆开始吧，它们虽然弱但数量多。清理完后再去对付哥布林。',
-      choices: [
-        { text: '好的，先去清理史莱姆', nextNodeId: 'accept_slimes', questTrigger: 'q_kill_slimes' },
-      ],
-    },
-    other_quests: {
-      id: 'other_quests',
-      text: '除了史莱姆，药师调伤药还缺史莱姆凝胶，她走不开小摊。村里的伤员也等着西边草坡上的草药救命。',
-      choices: [
-        { text: '我去给药师收集凝胶', nextNodeId: 'accept_gel', questTrigger: 'q_collect_slime_gel' },
-        { text: '我去采急救草药', nextNodeId: 'accept_herbs', questTrigger: 'q_herb_gathering' },
-        { text: '先处理史莱姆问题', nextNodeId: 'accept_slimes', questTrigger: 'q_kill_slimes' },
-      ],
-    },
-    accept_gel: {
-      id: 'accept_gel',
-      text: '史莱姆被打散时会留下凝胶，攒够6份，亲手送到药师的小摊上。她会记着你的好。',
-      isEnd: true,
-    },
-    accept_herbs: {
-      id: 'accept_herbs',
-      text: '翡翠草药长在西边的草坡上，叶子泛着一点微光。采5株回来就好，伤员等不起。',
-      isEnd: true,
     },
     farewell: {
       id: 'farewell',
-      text: '好的，勇士。如果改变主意了，随时来找我。',
+      text: '天黑前回来。天黑以后，城门不开。',
       isEnd: true,
     },
   },

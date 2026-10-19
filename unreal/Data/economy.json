@@ -13,5 +13,9 @@
   "sortOrder": {
     "quality": {"legendary": 0, "set": 1, "rare": 2, "magic": 3, "normal": 4},
     "type": {"weapon": 0, "armor": 1, "accessory": 2, "consumable": 3, "gem": 4, "material": 5, "scroll": 6}
+  },
+  "remake": {
+    "source": ["unreal/GameData/homestead.ts"],
+    "modules": {"src/data/homestead.ts": "unreal/GameData/homestead.ts"}
   }
 }

@@ -3,6 +3,23 @@
 Area owner: world / maps / navigation. Web source of truth: branch `claude/unreal-rebuild`, TypeScript under `src/`.
 Target: portable C++20 core (`AbyssCore`: no exceptions, no RTTI, no UE types) + thin UE5 module (render, input, UI).
 
+> **Chapter 1 content: see `unreal/Docs/dark-remake/` (DECISIONS DR1-DR11, the dark remake 焚境 · The Burning March).**
+> The remake keeps the zone id `emerald_plains` (displayed 赤幡原 / The Red Field), the generator theme `plains` and
+> every map-generator input except one planned re-baseline (DR4: the finale quest's two explore landmarks become the
+> Boneyard Gate defend target; the sealed Pit entrance and three echo lore spots are added). The Chapter 1 map content is
+> in `chapter1.md` §1 (areas), §9 (the Breach Rim region, the Pit), §15 (presentation theme and moods `march` /
+> `march_dawn`) and §17 (map and spawn changes, expected re-pins); the overrides for moods, fog, weather, events and the
+> terrain / camp theme are in implementation-plan.md §2.4. The east exit stays sealed until Chapter 2's dark pass
+> (DECISIONS W7, amended). This spec stays the reference for the generator, navigation, camera, exits, fog of war and
+> atmosphere systems. The re-baseline has landed (package 1B part 1, DECISIONS DR4 *as built*): the §3.3 / §4.9 hashes
+> of `emerald_plains` are now `54ce0471e96c5d0e` / `7a501f14066cbb08` with 13169 walkable tiles (30 avoid points; the
+> RNG checkpoints are unchanged), the web values quoted below remain the web map's. The zone shows the `march` mood
+> (`zone_moods.json`: moods `march`, `march_dawn`, `breach_rim`, with fog, `port.lightScale` and `port.moodWeather`;
+> the map's `presentationTheme` and `regions`; MapTheme gains these three mood themes, no generator config uses them);
+> `ember_tower` keeps plains. K1 (DECISIONS DR8 *K1 as built*): a *sealed* sub-dungeon entrance (the Pit before Wave 3) is
+> handled by §7.1 row 7 / §7.4 order 4 as a toast of its `sealedTextKey` and nothing else; unsealed entrances stay
+> "later" until sub-dungeon travel (implementation-plan.md K7).
+
 This document describes **what the web game does today**, precisely enough to re-implement it without reading the
 TypeScript, and proposes the 3D equivalent for everything that is a 2D/Phaser artefact. Markers used below:
 

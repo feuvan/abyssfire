@@ -46,6 +46,33 @@ QuestObjectiveDef ReadObjective(const JNode& n) {
   return o;
 }
 
+// K1 defend hooks (remake schema quest.defendWaves / quest.defendApproach): `waves` = one array of {monsterId, count}
+// per wave (exactly totalWaves of them, each non-empty with counts >= 1), `approachDeg` = the spawn arc's centre.
+void ReadDefendHooks(const JNode& d, DefendTargetDef& out) {
+  if (d.Has("waves")) {
+    const std::vector<JNode> waves = d.Items("waves");
+    if (static_cast<int32_t>(waves.size()) != out.totalWaves) {
+      d.Child("waves").Error("waves must list one composition per wave (totalWaves " + std::to_string(out.totalWaves) +
+                             "), got " + std::to_string(waves.size()));
+    }
+    for (const JNode& w : waves) {
+      std::vector<DefendWaveEntry> wave;
+      for (const JNode& e : w.SelfItems()) {
+        DefendWaveEntry entry{e.Str("monsterId"), e.Int("count")};
+        if (entry.monsterId.empty()) e.Child("monsterId").Error("empty monster id");
+        if (entry.count < 1) e.Child("count").Error("a wave entry needs count >= 1");
+        wave.push_back(std::move(entry));
+      }
+      if (wave.empty()) w.Error("an empty defend wave");
+      out.waves.push_back(std::move(wave));
+    }
+  }
+  if (d.Has("approachDeg")) {
+    out.hasApproach = true;
+    out.approachDeg = d.Num("approachDeg");
+  }
+}
+
 StorySlide ReadSlide(const JNode& n) {
   StorySlide s;
   s.heading = n.Str("heading", "");
@@ -124,6 +151,17 @@ void LoadQuestsFile(const JNode& r, QuestTables& out) {
       q.rewards.embers = rw.Int("embers");
     }
     q.rewards.choices = rw.EnumList<RewardSlot>("choices", true);
+    if (rw.Has("choiceLabels")) {  // K1: one label key per choice slot
+      q.rewards.choiceLabels = rw.StrList("choiceLabels");
+      if (q.rewards.choiceLabels.size() != q.rewards.choices.size()) {
+        rw.Child("choiceLabels").Error("choiceLabels must have one key per choices slot (" +
+                                       std::to_string(q.rewards.choices.size()) + "), got " +
+                                       std::to_string(q.rewards.choiceLabels.size()));
+      }
+      for (size_t i = 0; i < q.rewards.choiceLabels.size(); ++i) {
+        if (q.rewards.choiceLabels[i].empty()) rw.Child("choiceLabels").Error("empty label key");
+      }
+    }
     if (rw.Has("choiceQuality")) {
       q.rewards.hasChoiceQuality = true;
       q.rewards.choiceQuality = rw.Enum<ItemQuality>("choiceQuality");
@@ -149,6 +187,7 @@ void LoadQuestsFile(const JNode& r, QuestTables& out) {
       q.defendTarget.spriteKey = d.Str("spriteKey", "");
       q.defendTarget.pos = TilePos{d.Int("col"), d.Int("row")};
       q.defendTarget.totalWaves = d.Int("totalWaves");
+      ReadDefendHooks(d, q.defendTarget);
     }
     for (const JNode& c : n.Items("clues", true)) {
       q.clues.push_back(QuestClueDef{c.Str("id"), c.Str("name", ""), TilePos{c.Int("col"), c.Int("row")}});
@@ -164,6 +203,10 @@ void LoadQuestsFile(const JNode& r, QuestTables& out) {
     }
     q.reacceptable = n.Bool("reacceptable", false);
     for (const JNode& h : n.Items("hunts", true)) q.hunts.push_back(QuestHuntRef{h.Str("huntId")});
+    if (n.Has("progressKey")) {  // K1
+      q.progressKey = n.Str("progressKey");
+      if (q.progressKey.empty()) n.Child("progressKey").Error("empty progress key");
+    }
     const JNode d = n.Child("derived");
     q.giverNpcId = d.Str("giverNpcId", "");
     const std::vector<JNode> kinds = d.Items("objectiveItemKinds", true);
@@ -312,6 +355,19 @@ void LoadStoryFile(const JNode& r, StoryScript& out) {
         st.hasColor = true;
         st.color = s.Color("color");
       }
+      if (s.Has("anim")) {  // K1 (remake schema story.focusAnim): the focused monster plays this action
+        const JNode a = s.Child("anim");
+        st.hasAnim = true;
+        st.anim = a.AsEnum<AnimAction>();
+        if (st.kind != StoryStepKind::Focus) {
+          a.Error("anim is only valid on a focus step");
+        } else if (st.target.kind != StoryActorKind::Monster) {
+          a.Error("anim needs a {monster} focus target");
+        }
+        if (st.anim == AnimAction::Idle || st.anim == AnimAction::Walk || st.anim == AnimAction::Death) {
+          a.Error("anim must be an action, not idle / walk / death");
+        }
+      }
       cs.steps.push_back(std::move(st));
     }
     out.cutscenes.push_back(std::move(cs));
@@ -330,6 +386,12 @@ void LoadStoryFile(const JNode& r, StoryScript& out) {
     }
     d.cutscene = t.Str("cutscene");
     d.grantPet = t.Str("grantPet", "");
+    if (t.Has("whileQuest")) {
+      const JNode w = t.Child("whileQuest");
+      d.whileQuest = w.AsStr();
+      if (d.whileQuest.empty()) w.Error("whileQuest must name a quest");
+      if (d.on != StoryTriggerOn::MonsterKilled) w.Error("whileQuest is only valid on a monster_killed trigger");
+    }
     out.triggers.push_back(std::move(d));
   }
   for (const auto& [k, m] : r.Members("moods")) {
@@ -340,6 +402,12 @@ void LoadStoryFile(const JNode& r, StoryScript& out) {
     c.glow = m.Str("glow");
     c.embers = m.Color("embers");
     out.moods.push_back(std::move(c));
+  }
+  if (r.Has("contentUpgrade")) {
+    const JNode cu = r.Child("contentUpgrade");
+    out.contentUpgradeVersion = cu.Int("version");
+    if (out.contentUpgradeVersion < 2) cu.Error("version must be >= 2 (content 1 is the web port's)");
+    for (const JNode& b : cu.Items("replayBeats")) out.contentReplayBeats.push_back(b.AsStr());
   }
   const JNode t = r.Child("timing");
   const JNode bd = t.Child("beatDelayMs");

@@ -15,52 +15,89 @@ export interface LoreEntry {
   /** Tile position. */
   col: number;
   row: number;
-  /** Visual sprite type for procedural generation. */
-  spriteType: 'ancient_tablet' | 'old_scroll' | 'crystal_shard' | 'carved_stone' | 'torn_journal' | 'rune_pillar';
+  /**
+   * Visual sprite type for procedural generation. `echo` (dark remake, chapter1.md §12): a translucent shade frozen in
+   * its last pose (UE U1 draws it; until then the prop falls back like any unmapped art id).
+   */
+  spriteType: 'ancient_tablet' | 'old_scroll' | 'crystal_shard' | 'carved_stone' | 'torn_journal' | 'rune_pillar' | 'echo';
   /** Whether this is in a non-obvious / hidden location. */
   hidden: boolean;
 }
 
-// ─── Zone 1: Emerald Plains (翡翠平原) ─────────────────────────────────
+// ─── Zone 1: 赤幡原 / The Red Field (dark remake, Docs/dark-remake/chapter1.md §12) ─────────────────
+// lore_rf_01..04 keep the four web positions (generator landmarks, margin 2); the three echoes are new landmarks, part
+// of the one golden re-baseline (DR4). Text is aftermath, never atrocity (story bible); the catechism quotes Ignaroth's
+// own motive.
 const emeraldPlainsLore: LoreEntry[] = [
   {
-    id: 'lore_ep_01',
+    id: 'lore_rf_01',
     zone: 'emerald_plains',
-    name: '古老石碑',
-    text: '这块石碑上刻着古老的文字："翡翠平原曾是精灵族的圣地，千年前的大灾变摧毁了他们的文明。灵脉之力散布于大地，吸引了各种生灵前来。"石碑的底部还残留着精灵族的纹章。',
+    name: '元帅的最后军令',
+    text: '全军死守赤幡原。退一步者，以叛论处，就地正法。——瓦德拉斯',
     col: 45,
     row: 35,
+    // An order nailed to a post; Wave 1 keeps the tablet look.
     spriteType: 'ancient_tablet',
     hidden: false,
   },
   {
-    id: 'lore_ep_02',
+    id: 'lore_rf_02',
     zone: 'emerald_plains',
-    name: '褪色日记',
-    text: '一本被风雨侵蚀的日记本，字迹模糊但仍可辨认："第七日，哥布林部落的异变越来越严重。它们的萨满似乎在进行某种古老的仪式，试图唤醒沉睡在平原地下的灵脉之力。如果成功，后果不堪设想……"',
+    name: '逃兵的日记',
+    text: '开战前三天，元帅让我们挖坑。很多坑。我问给谁挖。军士说：给不肯死守的人。',
     col: 105,
     row: 15,
     spriteType: 'torn_journal',
     hidden: true,
   },
   {
-    id: 'lore_ep_03',
+    id: 'lore_rf_03',
     zone: 'emerald_plains',
-    name: '水晶碎片',
-    text: '一块散发着微弱光芒的水晶碎片。它的内部似乎封印着某种影像——你看到了远古精灵族在平原上建造高塔、与自然和谐共生的画面。水晶的裂痕中渗出淡淡的绿色光芒，那是灵脉残余的能量。',
+    name: '封印碎片',
+    text: '一块温热的石片，像刚被人握过。纹路和你掌心的烙印一模一样。',
     col: 15,
     row: 108,
     spriteType: 'crystal_shard',
     hidden: true,
   },
   {
-    id: 'lore_ep_04',
+    id: 'lore_rf_04',
     zone: 'emerald_plains',
-    name: '雕刻石柱',
-    text: '一根半埋在泥土中的石柱，上面雕刻着精灵族的历史。根据这些浮雕，翡翠平原的灵脉曾经是连接五大区域的能量枢纽。大灾变后灵脉断裂，各区域从此走向不同的命运。',
+    name: '教会问答石',
+    text: '问：圣火为何必须守？答：因世界会冷，人会被忘。',
     col: 85,
     row: 80,
     spriteType: 'carved_stone',
+    hidden: false,
+  },
+  {
+    id: 'lore_rf_echo_01',
+    zone: 'emerald_plains',
+    name: '第七个人',
+    text: '一个提灯的影子跪在壕沟边，灯已经灭了：“告诉瑟琳……灯是我弄丢的。”',
+    col: 29,
+    row: 15,
+    spriteType: 'echo',
+    hidden: false,
+  },
+  {
+    id: 'lore_rf_echo_02',
+    zone: 'emerald_plains',
+    name: '桥那边',
+    text: '烧断的桥头坐着一家人的影子：“桥着火了。我们就在这边等……等她回来。”',
+    col: 38,
+    row: 47,
+    spriteType: 'echo',
+    hidden: false,
+  },
+  {
+    id: 'lore_rf_echo_03',
+    zone: 'emerald_plains',
+    name: '石台边',
+    text: '一个跪着的影子，双手还被反绑：“我只是想回家种地。”',
+    col: 20,
+    row: 92,
+    spriteType: 'echo',
     hidden: false,
   },
 ];

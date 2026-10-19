@@ -5,24 +5,33 @@ import type { MonsterDefinition, DialogueTree } from './types';
  * Each has elite: true, pre-fight dialogue, and guaranteed enhanced loot.
  */
 
-// ─── Zone 1: Emerald Plains ───────────────────────────────────────────
+// ─── Zone 1: 赤幡原 / The Red Field (dark remake, Docs/dark-remake/chapter1.md §10, monsters.md §2.5) ───
+// 尸牧婆 / the Corpseherd: a washerwoman from the crusade's baggage train who keeps the dead walking "home". On the main
+// path (M3). Wave 1: a ranged elite (range 3.0 authored, so the exporter's DECISIONS M5 override is gone) whose
+// bell-toll bolt slows; Call the Flock, the kite and Keen are Wave 2.
 export const miniBossEmeraldPlains: MonsterDefinition = {
-  id: 'miniboss_goblin_shaman',
-  name: '哥布林萨满',
+  id: 'miniboss_corpseherd',
+  name: '尸牧婆',
   level: 6,
-  hp: 280,
-  damage: 16,
+  hp: 300,
+  damage: 15,
   defense: 10,
   speed: 45,
   aggroRange: 7,
-  attackRange: 2.5,
+  attackRange: 3.0,
   attackSpeed: 1300,
-  expReward: 90,
+  expReward: 95,
   goldReward: [15, 30],
-  spriteKey: 'monster_goblin_shaman',
+  spriteKey: 'monster_miniboss_corpseherd',
   elite: true,
   isMiniBoss: true,
   animCategory: 'humanoid',
+  // The Unburied (1B review; monsters.md §1.2: her breach-violet eyes are the Unburied marker): dead, the bell never
+  // tolled for her (chapter1.md §10). Her voice stays the authored human lullaby and handbell (monsters.md §2.5 Sound).
+  family: 'unburied',
+  // The bell-toll bolt: a breach-violet ripple (DR5) that slows 20 % for 2 s on every hit.
+  projectileColor: 0xb02fd0,
+  onHitStatus: [{ status: 'slow', chance: 1, value: { kind: 'fixed', amount: 20 }, durationMs: 2000 }],
   lootTable: [
     { quality: 'magic', dropRate: 0.8 },
     { quality: 'rare', dropRate: 0.35 },
@@ -142,22 +151,23 @@ export const MiniBossByZone: Record<string, MonsterDefinition> = {
 // ─── Pre-fight Dialogue Trees (3+ lines each) ────────────────────────
 
 export const MiniBossDialogues: Record<string, DialogueTree> = {
-  miniboss_goblin_shaman: {
+  // chapter1.md §10: the Corpseherd holds (Taunt) until the three lines are dismissed.
+  miniboss_corpseherd: {
     startNodeId: 'line1',
     nodes: {
       line1: {
         id: 'line1',
-        text: '哈哈哈……又一个不自量力的人类闯入了我的领地。你以为消灭几只小哥布林就能阻止我们吗？',
+        text: '嘘……别惊了我的羊群。',
         nextNodeId: 'line2',
       },
       line2: {
         id: 'line2',
-        text: '我是部落的萨满祭司，这片翡翠平原上的灵脉之力已被我掌控。你们的村庄不过是待宰的羔羊！',
+        text: '我的两个儿子也在里面。我领着他们走，一圈，又一圈。',
         nextNodeId: 'line3',
       },
       line3: {
         id: 'line3',
-        text: '来吧，让我用古老的咒术将你化为灰烬！这片土地的秘密，你永远无法触及！',
+        text: '天快黑了，他们得回家。你挡着路了。',
         isEnd: true,
       },
     },

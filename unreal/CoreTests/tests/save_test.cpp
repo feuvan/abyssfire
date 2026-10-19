@@ -16,6 +16,7 @@
 #include "TestContent.h"
 #include "TestUtil.h"
 #include "abyss/base/Json.h"
+#include "abyss/base/Math.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/save/SaveIO.h"
 #include "abyss/hero/Hero.h"
@@ -500,9 +501,10 @@ TEST_SUITE("save") {
         "homestead", "achievements", "settings", "difficulty", "completedDifficulties", "mercenary", "dialogueState",
         "miniBossDialogueSeen", "loreCollected", "discoveredHiddenAreas", "storySeen", "soulEcho", "abyss", "slot",
         "hotbar", "potionSlots", "playTimeMs", "rng", "dialogueOnce", "hiddenRewardsClaimed", "itemUidCounter",
-        "visitedZones"};
+        "visitedZones", "contentVersion"};
     CHECK(SaveTestKeys(tree) == expected);
     CHECK(tree.Get("version").AsInt() == 4);
+    CHECK(tree.Get("contentVersion").AsInt() == 1);  // a save without the field is the web port's content
     CHECK(tree.Get("hotbar") == SaveTestTree(R"(["slash",null,"whirlwind",null,null,null])"));
     CHECK(tree.Get("rng").Get("combat") == SaveTestTree("[1,4294967295,0,0]"));
     CHECK(SaveTestKeys(tree.Get("rng")) ==
@@ -526,6 +528,7 @@ TEST_SUITE("save") {
     CHECK(back.hiddenRewardsClaimed == s.hiddenRewardsClaimed);
     CHECK(back.itemUidCounter == 42);
     CHECK(back.visitedZones == s.visitedZones);
+    CHECK(back.contentVersion == 1);
     CHECK(back.slot == 2);
     REQUIRE(back.soulEcho.present);
     CHECK(back.soulEcho.col == 40.25);
@@ -656,6 +659,269 @@ TEST_SUITE("save") {
     newer.replace(newer.find(R"("version":4)"), 11, R"("version":9)");
     CHECK(sim2->LoadGame(newer, &err) == SaveError::VersionTooNew);
     CHECK(sim2->SaveGame(1760000000000) == reloaded);
+  }
+
+  // ===================================================================================================================
+  // The content version (implementation-plan.md 2.7, DECISIONS DR3)
+  // ===================================================================================================================
+  TEST_CASE("content version: parse (missing / invalid -> 1), serialise, defaults") {
+    CHECK(SaveData{}.contentVersion == kCurrentContentVersion);
+    CHECK(kCurrentContentVersion == 2);
+    SaveData s;
+    REQUIRE(ParseSave(SaveTestV2(), s) == SaveError::None);
+    CHECK(s.contentVersion == 1);
+    for (const char* bad : {R"("x")", "0", "-3", "1.5", "null"}) {
+      INFO("contentVersion " << bad);
+      std::string text = SaveTestV2();
+      text.insert(text.size() - 1, std::string(R"(,"contentVersion":)") + bad);
+      REQUIRE(ParseSave(text, s) == SaveError::None);
+      CHECK(s.contentVersion == 1);
+    }
+    std::string text = SaveTestV2();
+    text.insert(text.size() - 1, R"(,"contentVersion":7)");  // a newer content version is kept as written
+    REQUIRE(ParseSave(text, s) == SaveError::None);
+    CHECK(s.contentVersion == 7);
+    CHECK(SaveTestTree(SerializeSave(s)).Get("contentVersion").AsInt() == 7);
+  }
+
+  TEST_CASE("content version: an older save drops every id the data no longer has, and only those") {
+    const DataStore& data = SaveTestData();
+    // Ids that exist: taken from the data (the Captain's tree root and its first choice, this zone's mini-boss, ...).
+    const NpcDef* elder = data.FindNpc(test::ch1::kElder);
+    REQUIRE(elder != nullptr);
+    const DialogueTree* tree = data.Dialogues().Find(elder->dialogueTreeId);
+    REQUIRE(tree != nullptr);
+    const DialogueNode* root = tree->FindNode(tree->startNodeId);
+    REQUIRE(root != nullptr);
+    REQUIRE_FALSE(root->choices.empty());
+    const std::string next = root->choices[0].nextNodeId;
+    const MiniBossEntry* miniBoss = data.Monsters().MiniBossFor(test::ch1::kZone);
+    REQUIRE(miniBoss != nullptr);
+    const MapDef* zone = data.FindMap(test::ch1::kZone);
+    REQUIRE((zone != nullptr && !zone->hiddenAreas.empty()));
+    const std::string area = zone->hiddenAreas[0].id;
+    REQUIRE_FALSE(data.Lore().entries.empty());
+    const std::string lore = data.Lore().entries[0].id;
+    REQUIRE_FALSE(data.Quests().achievements.empty());
+    const std::string ach = data.Quests().achievements[0].id;
+    const std::string elderKey = std::string(test::ch1::kElder) + "|" + tree->startNodeId;
+
+    SaveData s;
+    s.contentVersion = 1;
+    s.player.gold = 777;
+    QuestProgress kept;
+    kept.questId = test::ch1::kQuestM1;
+    kept.status = QuestStatus::TurnedIn;
+    QuestProgress gone = kept;
+    gone.questId = "q_retired_quest";
+    s.quests = {gone, kept};
+    s.hasStorySeen = true;
+    s.storySeen = {"prologue", "chapter_" + std::string(test::ch1::kZone), "chapter_retired_zone", "cs_retired",
+                   "boss_retired_boss", "epilogue"};
+    s.miniBossDialogueSeen = {miniBoss->monsterId, "miniboss_retired"};
+    s.dialogueOnce = {elderKey + "|0", elderKey + "|99", elderKey + "|x", std::string(test::ch1::kElder) + "|gone|0",
+                      "npc_retired|root|0", "malformed"};
+    DialogueNpcState st;
+    st.npcId = test::ch1::kElder;
+    st.visitedNodes = {tree->startNodeId, "gone_node"};
+    st.choicesMade = {{tree->startNodeId, next}, {tree->startNodeId, "gone_node"}};
+    DialogueNpcState goneNpc;
+    goneNpc.npcId = "npc_retired";
+    s.dialogueState = {st, goneNpc};
+    s.loreCollected = {lore, "lore_retired"};
+    s.discoveredHiddenAreas = {"hidden_retired", area};
+    s.hiddenRewardsClaimed = {area + "#0", "hidden_retired#0", "no_hash"};
+    s.achievements = {{ach, 5}, {"ach_retired", 6}};
+    s.visitedZones = {test::ch1::kZone};
+
+    SaveData current = s;
+    current.contentVersion = kCurrentContentVersion;
+    const SaveData untouched = current;
+    CHECK(ApplyContentVersion(data, current) == 0);  // the current content version: nothing is touched
+    CHECK(SerializeSave(current) == SerializeSave(untouched));
+
+    // The kept beats lose those the data's contentUpgrade replays (the remade prologue and chapter card).
+    std::vector<std::string> keptBeats;
+    for (const std::string& b : {std::string("prologue"), "chapter_" + std::string(test::ch1::kZone), std::string("epilogue")}) {
+      const std::vector<std::string>& replay = data.Story().contentReplayBeats;
+      if (s.contentVersion >= data.Story().contentUpgradeVersion ||
+          std::find(replay.begin(), replay.end(), b) == replay.end()) {
+        keptBeats.push_back(b);
+      }
+    }
+    const int32_t replayed = 3 - static_cast<int32_t>(keptBeats.size());
+    CHECK(ApplyContentVersion(data, s) == 1 + 3 + replayed + 1 + 5 + 1 + 1 + 1 + 1 + 1 + 2 + 1);
+    CHECK(s.contentVersion == kCurrentContentVersion);
+    REQUIRE(s.quests.size() == 1);
+    CHECK(s.quests[0].questId == test::ch1::kQuestM1);
+    CHECK(s.storySeen == keptBeats);
+    CHECK(s.miniBossDialogueSeen == std::vector<std::string>{miniBoss->monsterId});
+    CHECK(s.dialogueOnce == std::vector<std::string>{elderKey + "|0"});
+    REQUIRE(s.dialogueState.size() == 1);
+    CHECK(s.dialogueState[0].visitedNodes == std::vector<std::string>{tree->startNodeId});
+    REQUIRE(s.dialogueState[0].choicesMade.size() == 1);
+    CHECK(s.dialogueState[0].choicesMade[0].second == next);
+    CHECK(s.loreCollected == std::vector<std::string>{lore});
+    CHECK(s.discoveredHiddenAreas == std::vector<std::string>{area});
+    CHECK(s.hiddenRewardsClaimed == std::vector<std::string>{area + "#0"});
+    REQUIRE(s.achievements.size() == 1);
+    CHECK(s.achievements[0].first == ach);
+    // the rest is the hero's and stays
+    CHECK(s.player.gold == 777);
+    CHECK(s.visitedZones == std::vector<std::string>{test::ch1::kZone});
+    CHECK(ApplyContentVersion(data, s) == 0);  // idempotent
+  }
+
+  TEST_CASE("content version: GameSim loads an older save without its stale ids and writes the current version") {
+    const DataStore& data = SaveTestData();
+    auto sim = GameSim::Create(data, SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Rogue, Difficulty::Normal, 77, 0));
+    for (int i = 0; i < 5; ++i) sim->Step();
+    const std::string text = sim->SaveGame(1760000000000);
+    JsonValue tree = SaveTestTree(text);
+    CHECK(tree.Get("contentVersion").AsInt() == kCurrentContentVersion);
+    // A dev save of the web port's content: no contentVersion, a quest and a beat the remake no longer has.
+    JsonValue* quests = tree.FindMutable("quests");
+    REQUIRE(quests != nullptr);
+    JsonValue gone = JsonValue::Object();
+    gone.Set("questId", JsonValue::String("q_retired_quest"));
+    gone.Set("status", JsonValue::String("turned_in"));
+    gone.Set("objectives", JsonValue::Array());
+    quests->Append(gone);
+    JsonValue* seen = tree.FindMutable("storySeen");
+    REQUIRE(seen != nullptr);
+    seen->Append(JsonValue::String("cs_retired"));
+    tree.FindMutable("player")->Set("gold", JsonValue::Integer(1234));
+    JsonValue currentTree = tree;
+    REQUIRE(tree.Remove("contentVersion"));
+    JsonWriter w(false);
+    w.Value(tree);
+    const std::string old = w.Take();
+    std::string err;
+    REQUIRE(sim->LoadGame(old, &err) == SaveError::None);
+    SaveData back;
+    REQUIRE(ParseSave(sim->SaveGame(1760000000001), back, &err, &data) == SaveError::None);
+    CHECK(back.contentVersion == kCurrentContentVersion);
+    for (const QuestProgress& p : back.quests) CHECK(p.questId != "q_retired_quest");
+    CHECK(std::find(back.storySeen.begin(), back.storySeen.end(), "cs_retired") == back.storySeen.end());
+    CHECK(back.player.gold == 1234);
+    CHECK(back.classId == ClassId::Rogue);
+    // The same ids in a save of the current content version are kept (QuestSystem::Load keeps unknown quest ids).
+    JsonWriter w2(false);
+    w2.Value(currentTree);
+    REQUIRE(sim->LoadGame(w2.Take(), &err) == SaveError::None);
+    REQUIRE(ParseSave(sim->SaveGame(1760000000002), back, &err, &data) == SaveError::None);
+    bool keptQuest = false;
+    for (const QuestProgress& p : back.quests) keptQuest = keptQuest || p.questId == "q_retired_quest";
+    CHECK(keptQuest);
+  }
+
+  // A dev save written by the web port's Chapter 1 (content 1, before the dark remake): the real web ids of every list a
+  // save carries. Loading it keeps the hero, items, gold and the pet, drops every web Chapter 1 id, forgets the
+  // rewritten prologue and chapter card (story.json contentUpgrade), and moves a hero saved in the Ember Tower, which no
+  // turned-in quest opens any more, to the Red Field's camp.
+  SaveData SaveTestWebChapter1Save(const DataStore& data, const std::string& mapId) {
+    auto sim = GameSim::Create(data, SimConfig{});
+    REQUIRE(sim != nullptr);
+    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 4242, 0));
+    for (int i = 0; i < 5; ++i) sim->Step();
+    SaveData s;
+    REQUIRE(ParseSave(sim->SaveGame(1760000000000), s, nullptr, &data) == SaveError::None);
+    s.contentVersion = 1;
+    s.player.gold = 4321;
+    s.player.level = 12;
+    s.player.currentMap = mapId;
+    s.player.tileCol = 24;
+    s.player.tileRow = 24;
+    s.quests.clear();
+    for (const char* id : {"q_kill_slimes", "q_kill_goblins", "q_explore_goblin_camp", "q_find_goblin_chief",
+                           "q_secure_plains", "q_collect_slime_gel", "q_herb_gathering", "q_lost_pendant",
+                           "q_bandit_trouble", "q_pet_sprite_friend", "q_escort_merchant_plains"}) {
+      s.quests.push_back(QuestProgress{id, QuestStatus::TurnedIn, {1}});
+    }
+    s.hasStorySeen = true;
+    s.storySeen = {"prologue", "chapter_emerald_plains", "cs_ep_mark", "cs_ep_whisper", "cs_ep_finale",
+                   "boss_goblin_chief"};
+    s.miniBossDialogueSeen = {"miniboss_goblin_shaman"};
+    const std::string elder(test::ch1::kElder);  // the Captain keeps the web elder's role key (DECISIONS DR3)
+    s.dialogueOnce = {elder + "|reward_ask|0", elder + "|other_quests|0"};
+    s.loreCollected = {"lore_ep_01", "lore_ep_02", "lore_ep_03", "lore_ep_04"};
+    s.discoveredHiddenAreas = {"hidden_ep_elven_cache"};
+    s.hiddenRewardsClaimed = {"hidden_ep_elven_cache#0"};
+    s.achievements = {{"ach_first_kill", 1}, {"ach_kill_slime", 2}, {"ach_kill_goblin_chief", 3}};
+    s.visitedZones = {"emerald_plains", mapId};
+    return s;
+  }
+
+  TEST_CASE("content version: the web port's Chapter 1 save (its real ids) loads as a fresh remade Chapter 1") {
+    const DataStore& data = SaveTestData();
+    SaveData s = SaveTestWebChapter1Save(data, "emerald_plains");
+    const int32_t dropped = ApplyContentVersion(data, s);
+    CHECK(dropped == 11 + 6 + 1 + 1 + 4 + 1 + 1 + 2);  // the last two counts: the dialogueOnce key and two achievements
+    CHECK(s.quests.empty());
+    CHECK(s.storySeen.empty());            // the web beats are gone; the kept prologue / card ids replay (contentUpgrade)
+    CHECK(s.miniBossDialogueSeen.empty());
+    // reward_ask is still the Captain's one-time pay (same node, same choice): it stays claimed.
+    CHECK(s.dialogueOnce == std::vector<std::string>{std::string(test::ch1::kElder) + "|reward_ask|0"});
+    CHECK(s.loreCollected.empty());
+    CHECK(s.discoveredHiddenAreas.empty());
+    CHECK(s.hiddenRewardsClaimed.empty());
+    REQUIRE(s.achievements.size() == 1);
+    CHECK(s.achievements[0].first == "ach_first_kill");
+    CHECK(s.player.gold == 4321);
+    CHECK(s.player.level == 12);
+
+    // Through GameSim: the remade prologue plays again on load; nothing of the web chapter is open.
+    SaveData raw = SaveTestWebChapter1Save(data, "emerald_plains");
+    JsonValue tree = SaveTestTree(SerializeSave(raw));
+    REQUIRE(tree.Remove("contentVersion"));  // a web-port save has no contentVersion
+    auto sim = GameSim::Create(data, SimConfig{});
+    REQUIRE(sim != nullptr);
+    std::string err;
+    REQUIRE(sim->LoadGame(WriteJson(tree), &err) == SaveError::None);
+    const StoryDirector& story = *sim->Context().sys.story;
+    CHECK(story.IsBusy());
+    CHECK_FALSE(story.Progress().Has("prologue"));
+    CHECK_FALSE(story.Progress().Has("chapter_emerald_plains"));
+    sim->Context().sys.story->FinishAllBeats();
+    CHECK(story.Progress().Has("prologue"));
+    CHECK(story.Progress().Has("chapter_emerald_plains"));
+    CHECK(sim->View().zone.mapId == "emerald_plains");
+    CHECK(sim->View().hero.gold == 4321);
+    for (const QuestDef& q : data.Quests().quests) {
+      if (q.zone != "emerald_plains") continue;
+      INFO(q.id);
+      CHECK(sim->View().quests->Progress(q.id) == nullptr);
+    }
+  }
+
+  TEST_CASE("content version: a web-port save standing in the Ember Tower loads at the Red Field's camp (tower locked)") {
+    const DataStore& data = SaveTestData();
+    const std::string tower = data.Homestead().towerZoneId;
+    REQUIRE(data.FindMap(tower) != nullptr);
+    SaveData raw = SaveTestWebChapter1Save(data, tower);
+    JsonValue tree = SaveTestTree(SerializeSave(raw));
+    REQUIRE(tree.Remove("contentVersion"));
+    auto sim = GameSim::Create(data, SimConfig{});
+    REQUIRE(sim != nullptr);
+    std::string err;
+    REQUIRE(sim->LoadGame(WriteJson(tree), &err) == SaveError::None);
+    CHECK(sim->View().zone.mapId == data.World().defaultMap);
+    REQUIRE(sim->Context().sys.zone != nullptr);
+    CHECK(Dist(sim->View().hero.pos, sim->Context().sys.zone->CampPosition(0)) < 1.5);
+    CHECK_FALSE(sim->Context().sys.homestead->Tower().TowerUnlocked());
+    // A current-content save in the tower with the tower open stays there (the rule only moves a locked tower).
+    for (int i = 0; i < 5; ++i) sim->Step();
+    SaveData open;
+    REQUIRE(ParseSave(sim->SaveGame(1760000000005), open, &err, &data) == SaveError::None);
+    open.player.currentMap = tower;
+    open.player.tileCol = 24;
+    open.player.tileRow = 24;
+    open.quests.push_back(QuestProgress{data.Homestead().towerUnlockQuest, QuestStatus::TurnedIn, {}});
+    auto sim2 = GameSim::Create(data, SimConfig{});
+    REQUIRE(sim2->LoadGame(SerializeSave(open), &err) == SaveError::None);
+    CHECK(sim2->View().zone.mapId == tower);
   }
 
   TEST_CASE("GameSim: a save missing one rng stream restores the other six exactly and seeds only the missing one") {

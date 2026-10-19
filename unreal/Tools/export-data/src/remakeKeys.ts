@@ -1,7 +1,7 @@
 /**
  * Record key lists for the remake field gate (implementation-plan.md §2.6; `checkRecordKeys` in remake.ts).
  *
- * Every content record the exporter writes (monster, quest, map, NPC, cutscene) may only carry keys of its web type or
+ * Every content record the exporter writes (monster, quest, map, NPC, cutscene, story trigger) may only carry keys of its web type or
  * remake-only fields typed in unreal/GameData/types.ts and registered in `REMAKE_FIELDS`; anything else (a typo such as
  * `familly`, a field built through a spread or a cast that tsc cannot see, a field a package typed but never
  * registered) fails the export instead of leaking into unreal/Data past REMAKE_SCHEMA.
@@ -95,6 +95,11 @@ const cutsceneStep = {
   remake: { anim: true } satisfies Exact<Remade<GDStory.CutsceneStep, WebStory.CutsceneStep>>,
 };
 
+const trigger = {
+  web: { on: true, questId: true, monsterId: true, zoneId: true, cutscene: true, grantPet: true } satisfies Exact<KeysOf<WebStory.StoryTrigger>>,
+  remake: { whileQuest: true } satisfies Exact<Remade<GDStory.StoryTrigger, WebStory.StoryTrigger>>,
+};
+
 const level = (l: { web: object; remake: object }): LevelKeys => ({ web: keys(l.web), remake: keys(l.remake) });
 
 /** Per record kind, the checked levels ('' = the record itself) and their allowed keys. */
@@ -104,6 +109,7 @@ export const RECORD_KEYS: Readonly<Record<RemakeKind, Readonly<Record<string, Le
   map: { '': level(map), 'subDungeonEntrances[]': level(mapEntrance), 'spawns[]': level(mapSpawn) },
   npc: { '': level(npc) },
   cutscene: { '': level(cutscene), 'steps[]': level(cutsceneStep) },
+  trigger: { '': level(trigger) },
 };
 
 /**

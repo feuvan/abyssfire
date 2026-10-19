@@ -3,6 +3,28 @@
 Area owner: monsters. Web source of truth: branch `claude/unreal-rebuild`, TypeScript under `src/`.
 Target: portable C++20 core (`AbyssCore`, no UE types, no exceptions/RTTI) + thin UE5 module (render/input/UI).
 
+> **Chapter 1 content: see `unreal/Docs/dark-remake/` (DECISIONS DR1-DR11, the dark remake 焚境 · The Burning March).**
+> The remake replaces this spec's Chapter 1 *roster* (slimes, goblins, the goblin shaman mini-boss, the goblin chief
+> story boss, the pendant-thief and Redcap hunts, the elite affix display names) with `monsters.md` (four families,
+> stats, behaviour, telegraphs, on-death, packs, spawns, sound, art briefs; Chapters 2-5 in outline) and `chapter1.md`
+> §10-11 (the Corpseherd, Lord-Marshal Valdras) and §17 (the spawn table, 55 monsters). This spec stays the reference
+> for the runtime entity, the AI state machine, movement, leash, spawning, safe zones, respawn, the mini-boss, hunt and
+> boss-intro mechanics and the kill-hook contract; the Wave 2 monster systems (abilities and telegraphs, on-death
+> effects and corpses, boss phases and arenas, packs, morale, kite, block) are specified in implementation-plan.md §3
+> (K2-K5). DECISIONS M5 and M7 are amended: the ranged role passes to `miniboss_corpseherd`, and the story boss comes
+> from `GameData/config.ts` (`valdras` after the content switch). Since package 1B part 1 (Chapter 1 world data,
+> DECISIONS DR3 *world data as built*) `unreal/Data` exports the remake roster: the twelve Wave 1 defs of
+> `GameData/monsters/emerald_plains.ts`, `miniboss_corpseherd` (range 3.0 authored, so the exporter's M5 override is
+> gone), the hunts `hunt_hungerbell` / `hunt_dreck` / `hunt_harke` and `valdras` as the story boss; authored on-hit
+> statuses and bolt colours replace the §1.1 keyword rule for them, and the elite affixes keep their §17 mechanics with
+> re-voiced names and recoloured glows. K1 hooks (DECISIONS DR8 *K1 as built*): a
+> defend quest may list each wave's exact composition and an approach arc (§6.4 keeps the web rule without them), the
+> monster actions Roar / Taunt / Stun / Attack02 / Cast02 / Rise exist, and the mini-boss taunts while its pre-fight
+> dialogue holds it (§8.3). Since 1B part 3 (DECISIONS M7, amendment) a zone mini-boss that an open quest of its zone
+> still needs (an unfinished kill objective on it) comes back when that quest is accepted, past once-per-visit (§8.2).
+> *1B review (DECISIONS M7 amendments):* a zone mini-boss or the story boss that an open quest of its zone still needs
+> comes back when that quest is accepted (`MonsterSystem::SpawnMiniBossForQuests` / `SpawnStoryBossForQuests`).
+
 This document describes **what the web game does today**, precisely enough to re-implement it without
 reading the TypeScript. Where the web behaviour is a bug or a 2D artefact it is called out as a
 **QUIRK** with a recommendation. As in the sibling specs, the default is *keep the behaviour* unless
