@@ -13,8 +13,10 @@ Spec: `unreal/Docs/dark-remake/implementation-plan.md` §2. Exporter side: `unre
 node unreal/Tools/export-data/run.mjs                 # write unreal/Data/*.json + CoreTests/golden/maps
 node unreal/Tools/export-data/run.mjs --check         # fail if unreal/Data is stale (CI: data-check)
 node unreal/Tools/export-data/run.mjs --out=/tmp/x    # export elsewhere and `diff -r` to review a content change
-node_modules/.bin/tsc -p unreal/Tools/export-data/tsconfig.json   # type-check GameData + the exporter
+node_modules/.bin/tsc -p unreal/Tools/export-data/tsconfig.json   # type-check GameData + the exporter (every export runs it first)
 ```
+
+Arguments are strict (`--check` or `--out=DIR`; anything else, including `--out DIR`, exits 2 before exporting).
 
 Every content change is a change here followed by the export (never hand-edit `unreal/Data`). Keep `git diff -- src/`
 empty: the web game is read-only for the remake.
@@ -32,7 +34,7 @@ empty: the web game is read-only for the remake.
 | `loreCollectibles.ts` | lore entries | `src/data/loreCollectibles.ts` |
 | `story/script.ts` (+ `story/types.ts`) | prologue, chapter cards, cutscenes, boss intros, triggers | `src/data/story/script.ts` |
 | `homestead.ts` | Ember Tower data (unlock quests, buildings, ...) | `src/data/homestead.ts` |
-| `config.ts` | chapter config: story boss (M7), chapter-complete quest, finale cutscene, final boss, sealed gate (W7) | ids the exporter used to hard-code |
+| `config.ts` | chapter config: story boss (M7), chapter-complete quest, finale cutscene, final boss, sealed gate (W7) | ids the exporter used to hard-code (a changed value is recorded as `remake.replaced: ["config.<key>"]`) |
 | `world.ts` | `REMAKE_OVERRIDES` for tables inside web system files (below) | achievements, events, moods, affixes, terrain |
 | `types.ts` | web types re-exported + remake-only fields (below) | — |
 | `i18n/zh-CN.ts`, `i18n/en.ts` | remake strings (below) | merged over the web tables |
@@ -47,25 +49,34 @@ per-area string files (`i18n/ch1.ts`, `story.ts`, `affixes.ts`, ...) as the tabl
 Each redirected module started as a byte-for-byte copy of the web module it replaces, so the first export equals the
 web's. Imports are unchanged where they resolve to a GameData sibling (`./types`, `../types`, `./dialogueTrees` mirror
 the web layout); imports of web code were rewritten to `@web/...` (only `homestead.ts`: `@web/systems/CombatSystem`,
-`@web/data/items/bases`). Check a snapshot with `diff src/data/<path> unreal/GameData/<path>`. Content edits follow in
-later commits; once a module differs from its web original (other than in import specifiers), every table whose
-`source` cites the web path gets `remake.modules` naming the GameData module.
+`@web/data/items/bases`). `redirects.json` `snapshots` records each copy's sha256 (import / export specifiers blanked)
+when it is taken; content edits follow in later commits. Once a module differs from its recorded digest, every file
+built from it — tables whose `source` cites the web path, tables and golden maps that read it through web code (the
+generator's landmarks: lore, mini-boss spawns, quest locations) — gets `remake.modules` naming the GameData module. The
+live web file is never compared, so a web-only edit of a redirected module changes nothing in `unreal/Data`.
 
 ## Redirects and imports
 
-`redirects.json` → `{"modules": {"src/<web path>.ts": "unreal/GameData/<path>.ts"}}`, repo-relative. The redirect works
-on resolved module ids, so any importer (web systems, the exporter tables) gets the GameData module. Rules, each enforced
-by the export:
+`redirects.json` → `{"modules": {"src/<web path>.ts": "unreal/GameData/<path>.ts"}, "snapshots": {"unreal/GameData/<path>.ts":
+"<sha256>"}}`, repo-relative. The redirect works on resolved module ids, so any importer (web systems, the exporter
+tables) gets the GameData module. Rules, each enforced by the export:
 
-* Both ends must exist, and each target is used once (checked before Vite starts).
+* Both ends must exist, be normalised `.ts` paths (no `.`, `..` or empty segment) inside `src/` and `unreal/GameData/`,
+  and each target is used once (checked before Vite starts). Every target has a `snapshots` digest (a missing one fails
+  and prints the digest to record while the module is still a copy of the web one).
 * Every listed web path must actually be loaded during the export; an entry nobody imports is stale and fails it.
-* A GameData module imports web **code** through `@web/...` (`@web/data/items/bases`), never `../../src/...`.
+* Every GameData module must be loaded during the export (`types.ts` and `story/types.ts` are type-only and may not
+  export values): a module that nothing loads — a dropped `redirects.json` entry, a new module with no redirect or
+  exporter table — fails it instead of silently exporting the web content.
+* A GameData module imports web **code** through `@web/...` (`@web/data/items/bases`), never `../../src/...` or
+  `/src/...`.
 * A GameData module never imports a **redirected** web path (`@web/data/dialogueTrees`): import the GameData sibling
   (`./dialogueTrees`) so the remake content is used everywhere.
 * Types come from `./types` (`../types`), not from `@web/data/types`, so remake fields reach every module.
 
 To take over another web content module: copy it here (rewrite its web imports to `@web/...`), add the redirect, run the
-export (still byte-identical), then edit the content.
+export and record the snapshot digest it prints under `snapshots`, run it again (still byte-identical), then edit the
+content.
 
 ## Overrides (`world.ts`)
 
@@ -82,12 +93,19 @@ file's `remake` block (`"replaced": ["achievements.ach_kill_slime"]`).
 
 `types.ts` extends the web types with the fields of implementation-plan.md §2.6 (Wave 1 fields typed now: monster
 `family`, `damageType`, `onHitStatus`, `projectileColor`; quest `progressKey`, `rewards.choiceLabels`,
-`defendTarget.waves` / `approachDeg`; map `presentationTheme`, `subDungeonEntrances[].sealed` / `sealedTextKey`; story
-`focus` step `anim`). A field may be authored before the core reads it: the exporter writes a remake-only field only once
-its feature is in `REMAKE_SCHEMA` (`unreal/Tools/export-data/src/main.ts`; registry `REMAKE_FIELDS` in `src/remake.ts`)
-and prints what it withheld. A remake-only *value* (objective type `clear_area`) fails the export until its feature lands.
-Authored monster `onHitStatus` / `projectileColor` replace the keyword rules in `derived` right away (the core already
-reads `derived`).
+`defendTarget.waves` / `approachDeg`; map `presentationTheme`, `regions` (the Breach Rim mood region:
+`{id, col, row, radius, mood}`), `subDungeonEntrances[].sealed` / `sealedTextKey`; story `focus` step `anim`). A field
+may be authored before the core reads it: the exporter writes a remake-only field only once its feature is in
+`REMAKE_SCHEMA` (`unreal/Tools/export-data/src/main.ts`; registry `REMAKE_FIELDS` in `src/remake.ts`) and prints what it
+withheld. A remake-only *value* (objective type `clear_area`) fails the export until its feature lands. Authored monster
+`onHitStatus` / `projectileColor` replace the keyword rules in `derived` right away (the core already reads `derived`).
+
+Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
+record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,
+quest (and its `rewards`, `defendTarget`, `objectives[]`), map (`subDungeonEntrances[]`, `spawns[]`), NPC or cutscene
+(`steps[]`) that is neither a web field nor a remake field — also one built through a spread or a cast. To add a remake
+field: type it here, add it to the level's `remake` list in `remakeKeys.ts` (tsc requires it) and register it in
+`REMAKE_FIELDS` with its feature (the export requires it).
 
 ## Strings (`i18n/`)
 

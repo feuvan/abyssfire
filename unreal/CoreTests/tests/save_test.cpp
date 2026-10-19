@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "TestContent.h"
 #include "TestUtil.h"
 #include "abyss/base/Json.h"
 #include "abyss/data/DataStore.h"
@@ -70,7 +71,7 @@ std::string SaveTestV1(const std::string& inventory = "", const std::string& equ
          R"("exploration":{"emerald_plains":[[true,false],[false,true]]},)"
          R"("homestead":{"buildings":{"herb_garden":2,"warehouse":1},"pets":[{"petId":"wolf","level":3,"exp":15}],)"
          R"("activePet":"wolf"},)"
-         R"("achievements":{"kill:slime_green":50,"kill_master":1},)"
+         R"("achievements":{"kill:test_monster":50,"kill_master":1},)"
          R"("settings":{"autoCombat":true,"musicVolume":0.6,"sfxVolume":0.8,"autoLootMode":"magic"})" +
          extra + "}";
 }
@@ -241,7 +242,7 @@ TEST_SUITE("save") {
     CHECK(v.Get("homestead").Get("pets").Size() == 1);
     CHECK(v.Get("homestead").Get("activePet").AsString() == "wolf");
     CHECK(v.Get("exploration") == SaveTestTree(R"({"emerald_plains":[[true,false],[false,true]]})"));
-    CHECK(v.Get("achievements") == SaveTestTree(R"({"kill:slime_green":50,"kill_master":1})"));
+    CHECK(v.Get("achievements") == SaveTestTree(R"({"kill:test_monster":50,"kill_master":1})"));
     CHECK(v.Get("settings").Get("autoCombat").AsBool() == true);
     CHECK(v.Get("settings").Get("musicVolume").AsDouble() == 0.6);
     CHECK(v.Get("settings").Get("sfxVolume").AsDouble() == 0.8);
@@ -483,7 +484,7 @@ TEST_SUITE("save") {
       s.rng.streams[i].s = {static_cast<uint32_t>(i + 1), 0xFFFFFFFFu, 0, static_cast<uint32_t>(i * 7)};
     }
     s.dialogueOnce = {"elder|n1|0"};
-    s.hiddenRewardsClaimed = {"hidden_ep_elven_cache#1"};
+    s.hiddenRewardsClaimed = {"hidden_test_cache#1"};
     s.itemUidCounter = 42;
     s.visitedZones = {"emerald_plains"};
     s.soulEcho.present = true;
@@ -721,10 +722,11 @@ TEST_SUITE("save") {
     Hero& hero = *ctx.sys.hero;
     hero.SetHp(std::floor(hero.MaxHp() * 0.5));
     hero.SetMana(std::floor(hero.MaxMana() * 0.25));
-    ctx.sys.locomotion->Teleport(Vec2(117.4, 60), TeleportReason::Debug);  // distSq 2.56 > 2.25: not yet
+    const Vec2 exitPos = test::ch1::kExit.Center();
+    ctx.sys.locomotion->Teleport(exitPos + Vec2(-1.6, 0), TeleportReason::Debug);  // distSq 2.56 > 2.25: not yet
     sim->Step();
     REQUIRE_FALSE(ctx.session.transitioning);
-    ctx.sys.locomotion->Teleport(Vec2(117.6, 60.25), TeleportReason::Debug);  // distSq 2.0225 < 2.25
+    ctx.sys.locomotion->Teleport(exitPos + Vec2(-1.4, 0.25), TeleportReason::Debug);  // distSq 2.0225 < 2.25
     sim->Step();
     REQUIRE(ctx.session.transitioning);
     bool zoneChangeRequested = false;
@@ -742,7 +744,7 @@ TEST_SUITE("save") {
     std::string err;
     REQUIRE(ParseSave(sim->SaveGame(1760000000000), s, &err, &data) == SaveError::None);
     CHECK(s.player.currentMap == "emerald_plains");  // the old zone (save 3.6)
-    CHECK(s.player.tileCol == live.x);               // the live position, not camps[0] (15, 15)
+    CHECK(s.player.tileCol == live.x);               // the live position, not camps[0] (ch1::kCamp)
     CHECK(s.player.tileRow == live.y);
     CHECK(s.player.hp == hp);                        // not healed
     CHECK(s.player.mana == mana);
@@ -756,8 +758,8 @@ TEST_SUITE("save") {
     // C12: a Dying hero is still written as respawned at camps[0] with full HP / MP.
     hero.SetLife(HeroLife::Dying);
     REQUIRE(ParseSave(sim->SaveGame(1760000000002), s, &err, &data) == SaveError::None);
-    CHECK(s.player.tileCol == 15);
-    CHECK(s.player.tileRow == 15);
+    CHECK(s.player.tileCol == test::ch1::kCamp.col);
+    CHECK(s.player.tileRow == test::ch1::kCamp.row);
     CHECK(s.player.hp == hero.MaxHp());
     CHECK(s.player.mana == hero.MaxMana());
     hero.SetLife(HeroLife::Alive);

@@ -14,7 +14,9 @@
 #include <string>
 #include <vector>
 
+#include "ItemsFixtures.h"
 #include "SimHarness.h"
+#include "TestContent.h"
 #include "abyss/base/Json.h"
 #include "abyss/base/Math.h"
 #include "abyss/combat/StatusEffects.h"
@@ -44,156 +46,9 @@
 #endif
 
 using namespace abyss;
-
-namespace {
-
-const DataStore& D() { return test::RealData(); }
-
-int itmUidSeq = 0;
-
-ItemInstance Itm(std::string_view baseId, ItemQuality q = ItemQuality::Normal, int32_t level = 10) {
-  ItemInstance it;
-  it.uid = "t" + std::to_string(itmUidSeq++);
-  it.baseId = std::string(baseId);
-  const ItemBaseDef* b = D().Items().FindBase(baseId);
-  it.name = b != nullptr ? b->name : std::string(baseId);
-  it.quality = q;
-  it.level = level;
-  return it;
-}
-
-ItemInstance Stack(std::string_view baseId, int32_t qty) {
-  ItemInstance it = Itm(baseId, ItemQuality::Normal, 1);
-  it.quantity = qty;
-  return it;
-}
-
-GemInstance GemOf(std::string_view gemId) {
-  const ItemBaseDef* b = D().Items().FindBase(gemId);
-  REQUIRE(b != nullptr);
-  return GemInstance{b->id, b->name, b->gemStat, b->gemValue, b->gemTier};
-}
-
-ItemAffix FixedAffix(std::string_view affixId, double value) {
-  const AffixDef* a = D().Items().FindAffix(affixId);
-  REQUIRE(a != nullptr);
-  return ItemAffix{a->id, a->name, a->stat, value};
-}
-
-// Test-only affix on a stat (ItemCompare.test.ts style: affixId = stat name).
-ItemAffix StatAffix(Stat s, double v) { return ItemAffix{std::string(EnumName(s)), std::string(EnumName(s)), s, v}; }
-
-std::vector<std::string> Ids(const std::vector<const AffixDef*>& v) {
-  std::vector<std::string> out;
-  for (const AffixDef* a : v) out.push_back(a->id);
-  return out;
-}
-
-std::vector<std::string> BaseIds(const std::vector<const ItemBaseDef*>& v) {
-  std::vector<std::string> out;
-  for (const ItemBaseDef* b : v) out.push_back(b->id);
-  return out;
-}
-
-bool HasEquip(const std::vector<ItemInstance>& items, ItemQuality floor) {
-  for (const ItemInstance& it : items) {
-    if (IsEquipmentItem(it, D()) && QualityMeetsFloor(it.quality, floor)) return true;
-  }
-  return false;
-}
-
-int CountEquip(const std::vector<ItemInstance>& items) {
-  int n = 0;
-  for (const ItemInstance& it : items) n += IsEquipmentItem(it, D()) ? 1 : 0;
-  return n;
-}
-
-AffixKind KindOf(const ItemAffix& a) {
-  const AffixDef* d = D().Items().FindAffix(a.affixId);
-  REQUIRE(d != nullptr);
-  return d->kind;
-}
-
-double StatSum(const ItemInstance& it) {
-  double s = 0;
-  for (const StatValue& sv : it.stats.Items()) s += sv.value;
-  return s;
-}
-
-double AffixSum(const ItemInstance& it) {
-  double s = 0;
-  for (const ItemAffix& a : it.affixes) s += a.value;
-  return s;
-}
-
-template <class E>
-const E* LastEvent(const EventSink& sink) {
-  const E* out = nullptr;
-  for (const Event& e : sink.Items()) {
-    if (const E* p = std::get_if<E>(&e)) out = p;
-  }
-  return out;
-}
-
-bool HasLogKey(const EventSink& sink, std::string_view key) {
-  for (const Event& e : sink.Items()) {
-    if (const EvLog* l = std::get_if<EvLog>(&e)) {
-      if (l->text.key == key) return true;
-    }
-  }
-  return false;
-}
-
-// A collator that reverses byte order (stands in for the culture collation UE installs, SetItemNameCollator).
-int ItmTestReverseCollate(std::string_view a, std::string_view b, void* user) {
-  if (user != nullptr) ++*static_cast<int*>(user);
-  const int r = a.compare(b);
-  return r < 0 ? 1 : (r > 0 ? -1 : 0);
-}
-
-const EvLog* LastLogWithKey(const EventSink& sink, std::string_view key) {
-  const EvLog* out = nullptr;
-  for (const Event& e : sink.Items()) {
-    if (const EvLog* l = std::get_if<EvLog>(&e)) {
-      if (l->text.key == key) out = l;
-    }
-  }
-  return out;
-}
-
-// A full runtime slice: hero, status effects, inventory, rewards, shop and ground loot over the real data.
-struct ItmWorld {
-  ItmWorld()
-      : hero(h.ctx.data, ClassId::Warrior),
-        status(h.ctx.data.Classes().statusRules),
-        inv(h.ctx),
-        rewards(h.ctx),
-        shop(h.ctx),
-        ground(h.ctx) {
-    h.ctx.sys.hero = &hero;
-    h.ctx.sys.status = &status;
-    h.ctx.sys.inventory = &inv;
-    h.ctx.sys.rewards = &rewards;
-    h.ctx.sys.shop = &shop;
-    h.ctx.sys.groundLoot = &ground;
-    h.onTimer = [this](const Timer& t) {
-      if (t.owner == TimerOwner::Items) ground.OnTimer(t);
-    };
-  }
-  void FillBag(int n, std::string_view baseId = "w_rusty_sword") {
-    for (int i = 0; i < n; ++i) inv.Items().MutableBag().push_back(Itm(baseId, ItemQuality::Normal, 1));
-  }
-
-  test::SimHarness h;
-  Hero hero;
-  StatusEffectSystem status;
-  InventorySystem inv;
-  RewardService rewards;
-  ShopSystem shop;
-  GroundLootSystem ground;
-};
-
-}  // namespace
+using namespace abyss::test::items_fx;
+namespace ch1 = abyss::test::ch1;
+namespace fixture = abyss::test::fixture;
 
 TEST_SUITE("items") {
   // ===================================================================================================================
@@ -2380,7 +2235,7 @@ TEST_SUITE("items") {
       ItmWorld w;
       w.h.rng.SeedAll(seed);
       MonsterKilledMsg m;
-      m.defId = "goblin_chief";
+      m.defId = fixture::Brute().id;
       m.level = 5;
       m.elite = true;
       m.affixLootBonus = 5;
@@ -2921,20 +2776,11 @@ TEST_SUITE("items") {
       w.shop.OpenWanderingMerchant(z.merchantItems, 1.0);
       CHECK(w.shop.State().wares.size() == z.merchantItems.size());  // never an empty panel
     }
-    w.h.session.currentMap = "emerald_plains";
-    w.shop.OpenWanderingMerchant(D().World().randomEvents.ForZone("emerald_plains")->merchantItems, 1.0);
-    std::vector<std::string> got;
-    for (const ShopWare& ware : w.shop.State().wares) got.push_back(ware.baseId);
-    CHECK(got == std::vector<std::string>{"w_short_sword", "a_leather_armor", "c_hp_potion_s", "c_mp_potion_s"});
     // The current zone's map wins for ids every zone sells.
     CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "twilight_forest", "hp_potion") == "c_hp_potion_m");
     CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "", "hp_potion") == "c_hp_potion_s");
     CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "emerald_plains", "c_antidote") == "c_antidote");
     CHECK(ShopSystem::ResolveWanderingMerchantId(D(), "emerald_plains", "nope").empty());
-    // Buying from it works like any shop.
-    w.hero.SetGold(1000);
-    CHECK(w.shop.Buy(2) == InvResult::Ok);
-    CHECK(w.inv.Items().CountOf("c_hp_potion_s") == 1);
   }
 
   TEST_CASE("C11 effects in the compare totals: deltas show them and the weaker ring counts them (14, FIX Q18)") {
@@ -3092,8 +2938,10 @@ TEST_SUITE("items") {
     rng.Script({0.5});
     CHECK(PickRewardBase(D(), RewardSlot::Gloves, ClassId::Warrior, 13, rng, 0)->levelReq == 1);
 
-    const QuestDef* secure = D().FindQuest("q_secure_plains");  // L8 main: jewelry + boots + gloves
-    const QuestDef* chief = D().FindQuest("q_find_goblin_chief");  // L7 main: weapon + armor
+    // Main quests with pick-one gear: the chapter finale (today jewelry + boots + gloves, L8) and the story boss quest
+    // (today weapon + armor, L7).
+    const QuestDef* secure = D().FindQuest(ch1::kQuestM5);
+    const QuestDef* chief = D().FindQuest(ch1::kQuestM4);
     REQUIRE(secure != nullptr);
     REQUIRE(chief != nullptr);
     for (ClassId cls : {ClassId::Warrior, ClassId::Mage, ClassId::Rogue}) {

@@ -21,7 +21,7 @@ import type { MonsterDefinition } from '../../../../../src/data/types';
 import type { RemakeOnHitStatus } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
-import { withholdRemakeFields } from '../remake';
+import { noteConfig, withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -182,8 +182,11 @@ export function exportMonsters(): TableResult[] {
     else assert(!found, `getMonsterDef should not find ${id}`);
   }
 
-  const finalBoss = CHAPTER_CONFIG.finalBoss ?? exp<string>(StoryDirectorMod, 'FINAL_BOSS');
+  const webFinalBoss = exp<string>(StoryDirectorMod, 'FINAL_BOSS');
+  const finalBoss = CHAPTER_CONFIG.finalBoss ?? webFinalBoss;
   assert(defs[finalBoss], `GameData/config.ts finalBoss: unknown monster '${finalBoss}'`);
+  for (const key of ['storyBoss', 'chapterCompleteQuest', 'chapterFinaleCutscene'] as const) noteConfig(['monster_ai.json'], key);
+  noteConfig(['monster_ai.json'], 'finalBoss', webFinalBoss);
 
   // ── minibosses.json ──
   const miniBossByZone = Object.fromEntries(Object.entries(MiniBossByZone).map(([z, m]) => [z, m.id]));
@@ -278,6 +281,8 @@ export function exportMonsters(): TableResult[] {
     {
       file: 'quest_hunts.json',
       source: ['src/data/quests/all_quests.ts', 'src/systems/QuestHunts.ts', ZS],
+      // defsNormal: makeHuntDefinition over each hunt's base monster.
+      deps: ['src/data/monsters/*.ts', 'src/data/dungeonData.ts'],
       data: {
         rules: { hpMulDefault: 4, dmgMulDefault: 1.5, defenseMul: 1.2, expMulMin: 3, goldMul: 3, aggroMin: 7, elite: true, isMiniBoss: true,
           rounding: 'Math.round', baseLookup: 'quest zone list first, then getMonsterDef', nameKey: 'data.monster.<huntId>',
@@ -290,6 +295,8 @@ export function exportMonsters(): TableResult[] {
     {
       file: 'monster_ai.json',
       source: ['src/entities/Monster.ts', ZS, 'src/systems/StoryDirector.ts', 'src/systems/QuestHunts.ts'],
+      // port.storyBoss.chapterCompleteQuest: the quest_turned_in trigger of the finale cutscene.
+      deps: ['src/data/story/script.ts'],
       data: ai,
       counts: { constants: Object.keys(ai).length },
     },

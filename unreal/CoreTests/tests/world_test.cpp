@@ -15,6 +15,8 @@
 #include <vector>
 
 #include "SimHarness.h"
+#include "TestContent.h"
+#include "WorldFixtures.h"
 #include "abyss/audio/Audio.h"
 #include "abyss/base/Json.h"
 #include "abyss/base/Math.h"
@@ -38,315 +40,16 @@
 #include "doctest/doctest.h"
 
 using namespace abyss;
+using namespace abyss::test::world_fx;
+namespace ch1 = abyss::test::ch1;
+namespace fixture = abyss::test::fixture;
 
 namespace {
-
-// ---- SHA-256 (golden tilesSha / decorSha: first 16 hex digits) -------------------------------------------------------
-std::string WorldSha256Prefix16(const std::string& msg) {
-  static constexpr uint32_t k[64] = {
-      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,
-      0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
-      0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8,
-      0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-      0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
-      0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
-      0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-      0xc67178f2};
-  uint32_t h[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
-  std::vector<uint8_t> data(msg.begin(), msg.end());
-  const uint64_t bitLen = static_cast<uint64_t>(data.size()) * 8u;
-  data.push_back(0x80);
-  while (data.size() % 64 != 56) data.push_back(0);
-  for (int i = 7; i >= 0; --i) data.push_back(static_cast<uint8_t>(bitLen >> (i * 8)));
-  auto rotr = [](uint32_t x, uint32_t n) { return (x >> n) | (x << (32 - n)); };
-  for (size_t off = 0; off < data.size(); off += 64) {
-    uint32_t w[64];
-    for (int i = 0; i < 16; ++i) {
-      w[i] = (static_cast<uint32_t>(data[off + i * 4]) << 24) | (static_cast<uint32_t>(data[off + i * 4 + 1]) << 16) |
-             (static_cast<uint32_t>(data[off + i * 4 + 2]) << 8) | static_cast<uint32_t>(data[off + i * 4 + 3]);
-    }
-    for (int i = 16; i < 64; ++i) {
-      const uint32_t s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >> 3);
-      const uint32_t s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >> 10);
-      w[i] = w[i - 16] + s0 + w[i - 7] + s1;
-    }
-    uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], hh = h[7];
-    for (int i = 0; i < 64; ++i) {
-      const uint32_t S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
-      const uint32_t ch = (e & f) ^ (~e & g);
-      const uint32_t t1 = hh + S1 + ch + k[i] + w[i];
-      const uint32_t S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
-      const uint32_t mj = (a & b) ^ (a & c) ^ (b & c);
-      const uint32_t t2 = S0 + mj;
-      hh = g;
-      g = f;
-      f = e;
-      e = d + t1;
-      d = c;
-      c = b;
-      b = a;
-      a = t1 + t2;
-    }
-    h[0] += a;
-    h[1] += b;
-    h[2] += c;
-    h[3] += d;
-    h[4] += e;
-    h[5] += f;
-    h[6] += g;
-    h[7] += hh;
-  }
-  static const char* kHex = "0123456789abcdef";
-  std::string out;
-  for (int i = 0; i < 2; ++i) {
-    for (int s = 28; s >= 0; s -= 4) out.push_back(kHex[(h[i] >> s) & 0xF]);
-  }
-  return out;
-}
-
-JsonValue WorldLoadGolden(const std::string& name) {
-  JsonValue v;
-  const std::string text = test::ReadFile(test::GoldenDir() + "/maps/" + name);
-  REQUIRE_FALSE(text.empty());
-  REQUIRE(ParseJson(text, v));
-  return v;
-}
-
-std::string WorldTilesSha(const ZoneGrid& g) {
-  std::string s;
-  for (int32_t r = 0; r < g.Rows(); ++r) {
-    if (r > 0) s.push_back(';');
-    for (int32_t c = 0; c < g.Cols(); ++c) {
-      if (c > 0) s.push_back(',');
-      s += std::to_string(static_cast<int>(g.Tile(c, r)));
-    }
-  }
-  return WorldSha256Prefix16(s);
-}
-
-std::string WorldDecorSha(const ZoneGrid& g) {
-  std::string s;
-  bool first = true;
-  for (const Decoration& d : g.Decorations()) {
-    if (!first) s.push_back(';');
-    first = false;
-    s += std::to_string(static_cast<int>(d.col)) + "," + std::to_string(static_cast<int>(d.row)) + "," + d.type;
-  }
-  return WorldSha256Prefix16(s);
-}
-
-int32_t WorldWalkableCount(const ZoneGrid& g) {
-  int32_t n = 0;
-  for (int32_t r = 0; r < g.Rows(); ++r) {
-    for (int32_t c = 0; c < g.Cols(); ++c) n += g.Walkable(c, r) ? 1 : 0;
-  }
-  return n;
-}
-
-// makeGrid (PathfindingAndMaps.test.ts): all walkable except `blocked` (col,row).
-ZoneGrid WorldOpenGrid(int32_t cols, int32_t rows, const std::vector<TilePos>& blocked = {}) {
-  ZoneGrid g(cols, rows);
-  for (const TilePos& b : blocked) g.SetTile(b.col, b.row, TileType::Wall);
-  return g;
-}
-
-// makeGridWithBorders.
-ZoneGrid WorldBorderGrid(int32_t cols, int32_t rows) {
-  ZoneGrid g(cols, rows);
-  for (int32_t r = 0; r < rows; ++r) {
-    for (int32_t c = 0; c < cols; ++c) {
-      if (!(r > 0 && r < rows - 1 && c > 0 && c < cols - 1)) g.SetTile(c, r, TileType::Wall);
-    }
-  }
-  return g;
-}
-
-// make120x120Map (PathfindingAndMaps.test.ts).
-MapDef WorldTest120Map(MapTheme theme = MapTheme::Plains, int32_t seed = 42) {
-  MapDef m;
-  m.id = "test_120";
-  m.cols = 120;
-  m.rows = 120;
-  m.spawns = {{TilePos{30, 20}, "mob_a", 5}, {TilePos{90, 20}, "mob_b", 5}, {TilePos{30, 100}, "mob_c", 5},
-              {TilePos{90, 100}, "mob_d", 5}};
-  m.camps = {{TilePos{15, 15}, {"npc_a"}}, {TilePos{100, 100}, {"npc_b"}}};
-  m.playerStart = TilePos{15, 20};
-  m.exits = {{TilePos{119, 60}, "other", TilePos{1, 60}}};
-  m.levelMin = 1;
-  m.levelMax = 10;
-  m.hasTheme = true;
-  m.theme = theme;
-  m.seed = seed;
-  m.generated = true;
-  return m;
-}
-
-double WorldPathCost(TilePos start, const std::vector<TilePos>& path) {
-  double cost = 0;
-  TilePos prev = start;
-  for (const TilePos& p : path) {
-    cost += (p.col != prev.col && p.row != prev.row) ? 1.414 : 1.0;
-    prev = p;
-  }
-  return cost;
-}
-
-// Steps are 8-adjacent, walkable and never cut a corner.
-bool WorldPathValid(const ZoneGrid& g, TilePos start, const std::vector<TilePos>& path) {
-  TilePos prev = start;
-  for (const TilePos& p : path) {
-    const int32_t dc = p.col - prev.col, dr = p.row - prev.row;
-    if (std::abs(dc) > 1 || std::abs(dr) > 1 || (dc == 0 && dr == 0)) return false;
-    if (!g.Walkable(p.col, p.row)) return false;
-    if (dc != 0 && dr != 0 && (!g.Walkable(prev.col + dc, prev.row) || !g.Walkable(prev.col, prev.row + dr))) return false;
-    prev = p;
-  }
-  return true;
-}
-
-// 4-connected flood fill from a walkable tile (MapLiquids.test.ts reachable()).
-std::vector<uint8_t> WorldReachable(const ZoneGrid& g, TilePos start) {
-  std::vector<uint8_t> seen(static_cast<size_t>(g.Cols()) * static_cast<size_t>(g.Rows()), 0);
-  auto idx = [&g](int32_t c, int32_t r) { return static_cast<size_t>(r) * static_cast<size_t>(g.Cols()) + static_cast<size_t>(c); };
-  std::vector<TilePos> stack{start};
-  seen[idx(start.col, start.row)] = 1;
-  while (!stack.empty()) {
-    const TilePos p = stack.back();
-    stack.pop_back();
-    static constexpr int32_t kD[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
-    for (const auto& d : kD) {
-      const int32_t nc = p.col + d[0], nr = p.row + d[1];
-      if (g.Walkable(nc, nr) && seen[idx(nc, nr)] == 0) {
-        seen[idx(nc, nr)] = 1;
-        stack.emplace_back(nc, nr);
-      }
-    }
-  }
-  return seen;
-}
-
-const char* const kWorldZoneIds[] = {"emerald_plains", "twilight_forest", "anvil_mountains", "scorching_desert",
-                                     "abyss_rift"};
-
-// ---- Camp layout v2 geometry (DECISIONS W11, abyss/world/CampLayout.h) -----------------------------------------------
-// Prop bodies in tiles (1 tile = 1 m) = Data/assets.json boundsCm / 100, in the mesh frame: x = mesh +X (across),
-// y = mesh +Y = the prop's front (AAbyssZoneActor::BuildCamps yaws it to CampProp.front, or to the camera), z = height.
-struct CampTestBody {
-  const char* type;
-  double minX, maxX, minY, maxY, height;
-};
-constexpr CampTestBody kCampTestBodies[] = {
-    {"campfire", -0.53581, 0.52570, -0.49108, 0.49828, 0.28607},  // SM_Prop_Camp_Campfire
-    {"well", -0.76051, 0.76051, -0.60697, 0.60697, 1.99629},       // SM_Prop_Camp_Well
-    {"banner", -0.17086, 0.63360, -0.13705, 0.18202, 2.60200},     // SM_Prop_Camp_Banner (cloth toward mesh +X)
-    {"torch", -0.18190, 0.18190, -0.18884, 0.18884, 1.72000},      // SM_Prop_Camp_Torch
-    {"crate", -0.39901, 0.39901, -0.39901, 0.39901, 0.75451},      // SM_Prop_Camp_Crate
-    {"barrel", -0.35761, 0.35761, -0.35761, 0.35761, 0.86549},     // SM_Prop_Camp_Barrel
-};
-// SM_Palisade_Plains_GatePost boundsCm x -14.611..14.570, y -14.585..46.051; AAbyssZoneActor::BuildWalls stands one at
-// (camp.x - 1.5, camp.y - 5) and (camp.x + 0.5, camp.y - 5), yaw MeshYawOffsetDeg + 90 = 0 (mesh axes = world axes).
-constexpr double kCampTestGatePostMinX = -0.14611, kCampTestGatePostMaxX = 0.14570;
-constexpr double kCampTestGatePostMinY = -0.14585, kCampTestGatePostMaxY = 0.46051;
-// SM_Palisade_Plains_Stake_A/B/C: radius <= 13.7 cm with a random yaw; the stakes run along the camp-wall tile centres.
-constexpr double kCampTestStakeRadius = 0.15;
-// NPC body: AAbyssZoneActor OccluderSlackCm 25 cm half width; SK_NPC_* stand 172-176 cm.
-constexpr double kCampTestNpcRadius = 0.25, kCampTestNpcHeight = 1.75;
-constexpr double kCampTestNpcClearance = 0.35;  // NPC body to any prop body
-// Hero lanes that stay free (camp-relative): the 2-tile gate (x -1 / 0 on row -5) to the fire, and the open +row side's
-// x = 0 column to the fire.
-constexpr double kCampTestGateLane[4] = {-1.25, 0.25, -5.6, -0.5};  // minX, maxX, minY, maxY
-constexpr double kCampTestSouthLane[4] = {-0.5, 0.5, 0.5, 6.0};
-
-// An oriented rectangle in tile space: local x along V() = front rotated -90 deg (mesh +X), local y along u (front).
-struct CampTestBox {
-  Vec2 c, u{0.0, 1.0};
-  double minX = 0, maxX = 0, minY = 0, maxY = 0, height = 0;
-  Vec2 V() const { return {u.y, -u.x}; }
-  Vec2 Local(Vec2 p) const { return {(p - c).Dot(V()), (p - c).Dot(u)}; }
-  std::array<Vec2, 4> Corners() const {
-    const Vec2 v = V();
-    return {c + v * minX + u * minY, c + v * maxX + u * minY, c + v * maxX + u * maxY, c + v * minX + u * maxY};
-  }
-  double Dist(Vec2 p) const {
-    const Vec2 l = Local(p);
-    const double dx = (std::max)({minX - l.x, 0.0, l.x - maxX});
-    const double dy = (std::max)({minY - l.y, 0.0, l.y - maxY});
-    return std::sqrt(dx * dx + dy * dy);
-  }
-};
-
-CampTestBox CampTestAxisBox(const double (&b)[4]) {
-  CampTestBox r;
-  r.minX = b[0];
-  r.maxX = b[1];
-  r.minY = b[2];
-  r.maxY = b[3];
-  return r;
-}
-
-double CampTestSegPointDist(Vec2 p, Vec2 a, Vec2 b) {
-  const Vec2 ab = b - a;
-  const double l2 = ab.LengthSq();
-  const double t = l2 > 0 ? std::clamp((p - a).Dot(ab) / l2, 0.0, 1.0) : 0.0;
-  return (p - (a + ab * t)).Length();
-}
-
-bool CampTestSegsCross(Vec2 a, Vec2 b, Vec2 c, Vec2 d) {
-  auto orient = [](Vec2 p, Vec2 q, Vec2 r) { return (q - p).Cross(r - p); };
-  return ((orient(a, b, c) > 0) != (orient(a, b, d) > 0)) && ((orient(c, d, a) > 0) != (orient(c, d, b) > 0));
-}
-
-bool CampTestInsideConvex(std::span<const Vec2> poly, Vec2 p) {
-  if (poly.size() < 3) return false;
-  bool pos = false, neg = false;
-  for (size_t i = 0; i < poly.size(); ++i) {
-    const double cr = (poly[(i + 1) % poly.size()] - poly[i]).Cross(p - poly[i]);
-    pos = pos || cr > 0;
-    neg = neg || cr < 0;
-  }
-  return !(pos && neg);
-}
-
-// Distance between two convex polygons (a 2-point polygon is a segment); 0 when they touch or overlap.
-double CampTestPolyDist(std::span<const Vec2> p, std::span<const Vec2> q) {
-  for (size_t i = 0; i < p.size(); ++i) {
-    for (size_t j = 0; j < q.size(); ++j) {
-      if (CampTestSegsCross(p[i], p[(i + 1) % p.size()], q[j], q[(j + 1) % q.size()])) return 0.0;
-    }
-  }
-  if (CampTestInsideConvex(p, q[0]) || CampTestInsideConvex(q, p[0])) return 0.0;
-  double best = 1e9;
-  for (size_t i = 0; i < p.size(); ++i) {
-    for (const Vec2& v : q) best = (std::min)(best, CampTestSegPointDist(v, p[i], p[(i + 1) % p.size()]));
-  }
-  for (size_t j = 0; j < q.size(); ++j) {
-    for (const Vec2& v : p) best = (std::min)(best, CampTestSegPointDist(v, q[j], q[(j + 1) % q.size()]));
-  }
-  return best;
-}
-
-double CampTestBoxDist(const CampTestBox& a, const CampTestBox& b) {
-  const std::array<Vec2, 4> ca = a.Corners(), cb = b.Corners();
-  return CampTestPolyDist(ca, cb);
-}
-
-// A camp prop's body (its manifest bounds), camp-relative. Props without a front face the camera (front = -camera
-// forward).
-CampTestBox CampTestPropBox(const CampProp& p, Vec2 campCentre, Vec2 towardCamera) {
-  CampTestBox b;
-  b.c = p.centre - campCentre;
-  b.u = p.front == Vec2() ? towardCamera : p.front;
-  for (const CampTestBody& body : kCampTestBodies) {
-    if (p.type != body.type) continue;
-    b.minX = body.minX;
-    b.maxX = body.maxX;
-    b.minY = body.minY;
-    b.maxY = body.maxY;
-    b.height = body.height;
-  }
-  return b;
-}
-
+// Live-map anchors through the TestContent.h handles (the remake keeps them, chapter1.md 17): a point `d` tiles off the
+// Chapter 1 exit / the first camp's fire.
+Vec2 AtExit(double dx = 0, double dy = 0) { return ch1::kExit.Center() + Vec2(dx, dy); }
+Vec2 AtCamp(double dx = 0, double dy = 0) { return ch1::kCamp.Center() + Vec2(dx, dy); }
+TilePos ExitTile(int32_t dc, int32_t dr = 0) { return TilePos{ch1::kExit.col + dc, ch1::kExit.row + dr}; }
 }  // namespace
 
 TEST_SUITE("world") {
@@ -454,63 +157,6 @@ TEST_SUITE("world") {
     }
   }
 
-  TEST_CASE("emerald_plains golden facts: tile counts, decor counts and RNG checkpoints (world 3.3)") {
-    const DataStore& data = test::RealData();
-    const MapDef* map = data.FindMap("emerald_plains");
-    REQUIRE(map != nullptr);
-    MapGenTrace trace;
-    MapGenInput in;
-    in.map = map;
-    in.avoid = map->generatorAvoid;
-    REQUIRE(map->generatorAvoid.size() == 28);
-    const ZoneGrid g = GenerateMap(data.World().mapGen, in, &trace);
-    CHECK(trace.afterSecondary == 114752593);
-    CHECK(trace.drawsSecondary == 13924);
-    CHECK(trace.afterWalls == 1438865421);
-    CHECK(trace.drawsWalls == 27380);
-    CHECK(trace.afterPaths == 804188721);
-    CHECK(trace.drawsPaths == 31383);
-    CHECK(trace.afterLakes == 2123587627);
-    CHECK(trace.drawsLakes == 31440);
-    CHECK(trace.afterDecorations == 1699819340);
-    CHECK(trace.drawsDecorations == 43822);
-    std::array<int32_t, 7> counts{};
-    for (TileType t : g.Tiles()) ++counts[static_cast<size_t>(t)];
-    CHECK(counts == std::array<int32_t, 7>{11003, 1972, 0, 363, 820, 192, 50});
-    CHECK(WorldWalkableCount(g) == 13167);
-    CHECK(g.Decorations().size() == 1269);
-    auto countDecor = [&g](const char* type) {
-      return std::count_if(g.Decorations().begin(), g.Decorations().end(), [type](const Decoration& d) { return d.type == type; });
-    };
-    CHECK(countDecor("grass") == 538);
-    CHECK(countDecor("flower") == 260);
-    CHECK(countDecor("bush") == 203);
-    CHECK(countDecor("rock") == 105);
-    CHECK(countDecor("tree") == 66);
-    CHECK(countDecor("tree_round") == 51);
-    CHECK(countDecor("mushroom_red") == 45);
-    CHECK(countDecor("boulder") == 1);
-    // Anchor tiles after generation (3.3).
-    CHECK(g.Tile(15, 22) == TileType::Dirt);
-    for (const MapSpawnDef& s : map->spawns) CHECK(g.Tile(s.pos.col, s.pos.row) == TileType::Dirt);
-    CHECK(g.Tile(50, 30) == TileType::Grass);
-    CHECK(g.Tile(70, 65) == TileType::Grass);
-    CHECK(g.Tile(108, 108) == TileType::Grass);
-    CHECK(g.Tile(110, 107) == TileType::Grass);
-    CHECK(g.Tile(60, 55) == TileType::Grass);
-    CHECK(g.Tile(119, 60) == TileType::Wall);
-    CHECK(g.Tile(118, 60) == TileType::Grass);
-    CHECK(g.Tile(12, 13) == TileType::Camp);
-    // Decorations carry the 15.5 jitter; tall types are flagged for W5.
-    for (const Decoration& d : g.Decorations()) {
-      CHECK(d.scale >= 0.9);
-      CHECK(d.scale < 1.1);
-      CHECK(std::fabs(d.offsetCol) < 0.3);
-      CHECK(std::fabs(d.offsetRow) < 0.3);
-      CHECK(d.blocking == (d.type == "tree" || d.type == "tree_round" || d.type == "boulder"));
-    }
-  }
-
   TEST_CASE("camp stamp layout (world 3.4 / 21 item 2)") {
     const DataStore& data = test::RealData();
     const ZoneGrid g = BuildRawZoneGrid(data, *data.FindMap("emerald_plains"));
@@ -539,7 +185,9 @@ TEST_SUITE("world") {
   TEST_CASE("camp blockers (W11): every blocking prop blocks its anchor + its body grown by 0.3 tile, no pocket") {
     const DataStore& data = test::RealData();
     const MapDef& map = *data.FindMap("emerald_plains");
-    REQUIRE(WorldWalkableCount(BuildRawZoneGrid(data, map)) == 13167);
+    // The generated grid's walkable count is a Chapter 1 pin (content_ch1_test.cpp); the blockers take 2 x 8 of it.
+    const int32_t rawWalkable = WorldWalkableCount(BuildRawZoneGrid(data, map));
+    REQUIRE(rawWalkable > 0);
     // The exact tiles of every blocking prop (camp-relative, row-major as CampPropBlockedTiles appends them): the well,
     // crate and barrel bounds (camp::kCampBlockBodies) grown by kCampBlockPad, plus the anchor. No tents (user request).
     // Smallest margin of a walkable tile centre to a padded body edge: 0.082 tile (the well's (3,-1)).
@@ -559,7 +207,7 @@ TEST_SUITE("world") {
     const int32_t once = WorldWalkableCount(full);
     ApplyCampBlockers(full, map);
     CHECK(WorldWalkableCount(full) == once);  // idempotent
-    CHECK(once == 13167 - 2 * 8);
+    CHECK(once == rawWalkable - 2 * 8);
     for (size_t ci = 0; ci < map.camps.size(); ++ci) {
       CAPTURE(ci);
       const TilePos camp = map.camps[ci].pos;
@@ -1269,64 +917,6 @@ TEST_SUITE("world") {
     CHECK(found < checked);
   }
 
-  TEST_CASE("A* golden routes on the shipped emerald_plains map, node for node (world 3.5)") {
-    const DataStore& data = test::RealData();
-    const ZoneGrid g = BuildRawZoneGrid(data, *data.FindMap("emerald_plains"));
-    Pathfinder pf(g);
-    struct Route {
-      TilePos from, to;
-      size_t steps, diagonals;
-      double cost;
-      std::vector<TilePos> first;
-    };
-    const Route routes[] = {
-        {{15, 22}, {15, 15}, 7, 0, 7.000, {{15, 21}, {15, 20}, {15, 19}}},
-        {{15, 22}, {118, 60}, 103, 38, 118.732, {{16, 22}, {17, 23}, {18, 24}}},
-        {{15, 22}, {108, 108}, 98, 81, 131.534, {{16, 22}, {17, 23}, {18, 24}}},
-        {{15, 15}, {95, 100}, 86, 79, 118.706, {{16, 16}, {17, 17}, {18, 18}}},
-        {{15, 22}, {60, 55}, 45, 33, 58.662, {{16, 22}, {17, 22}, {18, 23}}},
-        {{15, 22}, {18, 25}, 4, 2, 4.828, {{16, 23}, {17, 23}, {18, 24}, {18, 25}}},
-    };
-    for (const Route& rt : routes) {
-      CAPTURE(rt.to.col);
-      CAPTURE(rt.to.row);
-      std::vector<TilePos> path;
-      REQUIRE(pf.FindPath(rt.from.col, rt.from.row, rt.to.col, rt.to.row, path));
-      CHECK(path.size() == rt.steps);
-      size_t diag = 0;
-      TilePos prev = rt.from;
-      for (const TilePos& p : path) {
-        diag += (p.col != prev.col && p.row != prev.row) ? 1 : 0;
-        prev = p;
-      }
-      CHECK(diag == rt.diagonals);
-      CHECK(std::fabs(WorldPathCost(rt.from, path) - rt.cost) < 1e-9);
-      for (size_t i = 0; i < rt.first.size(); ++i) CHECK(path[i] == rt.first[i]);
-      CHECK(WorldPathValid(g, rt.from, path));
-    }
-    // (17,25) is the wall that blocks the direct diagonal of the last route.
-    CHECK_FALSE(g.Walkable(17, 25));
-  }
-
-  TEST_CASE("A* routes re-baselined on the full W5 grid (camp blockers + tall decor) stay valid and optimal-ish") {
-    const DataStore& data = test::RealData();
-    const MapDef& map = *data.FindMap("emerald_plains");
-    const ZoneGrid raw = BuildRawZoneGrid(data, map);
-    const ZoneGrid g = BuildZoneGrid(data, map);
-    Pathfinder praw(raw), pf(g);
-    const std::pair<TilePos, TilePos> routes[] = {{{15, 22}, {15, 15}},   {{15, 22}, {118, 60}}, {{15, 22}, {108, 108}},
-                                                  {{15, 15}, {95, 100}},  {{15, 22}, {60, 55}},  {{15, 22}, {18, 25}}};
-    for (const auto& [from, to] : routes) {
-      std::vector<TilePos> a, b;
-      REQUIRE(praw.FindPath(from.col, from.row, to.col, to.row, a));
-      REQUIRE(pf.FindPath(from.col, from.row, to.col, to.row, b));
-      CHECK(WorldPathValid(g, from, b));
-      CHECK(b.back() == to);
-      CHECK(WorldPathCost(from, b) >= WorldPathCost(from, a) - 1e-9);
-      CHECK(WorldPathCost(from, b) <= WorldPathCost(from, a) * 1.25);
-    }
-  }
-
   TEST_CASE("findWalkableNear / findWalkableTile ring order (world 7.2, 13.3)") {
     ZoneGrid g = WorldOpenGrid(20, 20);
     Pathfinder pf(g);
@@ -1401,159 +991,6 @@ TEST_SUITE("audio") {
 // =====================================================================================================================
 // Runtime: zone, locomotion, exploration, random events (world 6-7, 9-10, 13; W3, W5-W8, S5) and the audio rules
 // =====================================================================================================================
-namespace {
-
-const DataStore& WD() { return test::RealData(); }
-
-// The world systems around a SimHarness, stepped in the world 17 order (hero update -> combat-state slot (random
-// events) -> exits / exploration).
-// The real tables with one file replaced by `edit(parsed JSON)` (data switches and missing-data fallbacks).
-template <class Edit>
-std::unique_ptr<DataStore> WorldEditedData(std::string_view fileName, Edit edit) {
-  JsonValue doc;
-  REQUIRE(ParseJson(test::ReadFile(test::DataDir() + "/" + std::string(fileName)), doc));
-  edit(doc);
-  const std::string edited = WriteJson(doc);
-  auto store = std::make_unique<DataStore>();
-  DataLoadReport report;
-  const bool ok = store->LoadAll(
-      [&](std::string_view name, std::string& out) {
-        out = name == fileName ? edited : test::ReadFile(test::DataDir() + "/" + std::string(name));
-        return !out.empty();
-      },
-      report);
-  INFO(report.Summary(5));
-  REQUIRE(ok);
-  return store;
-}
-
-struct WorldRig {
-  explicit WorldRig(uint64_t seed = 5, bool milestone1 = true, std::string_view mapId = "", bool hasTarget = false,
-                    Vec2 target = {}, const DataStore& data = test::RealData())
-      : h(seed, data),
-        hero(std::make_unique<Hero>(h.ctx.data, ClassId::Warrior)),
-        zone(h.ctx),
-        loco(h.ctx),
-        explore(h.ctx),
-        events(h.ctx),
-        rewards(h.ctx),
-        audio(h.ctx) {
-    h.config.milestone1 = milestone1;
-    SimSystems& s = h.ctx.sys;
-    s.hero = hero.get();
-    s.zone = &zone;
-    s.locomotion = &loco;
-    s.exploration = &explore;
-    s.randomEvents = &events;
-    s.rewards = &rewards;
-    h.onTimer = [this](const Timer& t) {
-      if (t.owner != TimerOwner::World) return;
-      if (t.kind >= kRandomEventTimerKindBase) {
-        events.OnTimer(t);
-      } else {
-        zone.OnTimer(t);
-      }
-    };
-    // SimWiring's world hooks (W3: movement input cancels the portal channel when townPortal.cancelOnMove is on).
-    h.bus.Subscribe<HeroMoveInputMsg>([this](const HeroMoveInputMsg&) { zone.OnHeroMoveInput(); });
-    const std::string map = mapId.empty() ? WD().World().defaultMap : std::string(mapId);
-    h.session.currentMap = map;
-    ok = zone.EnterZone(map, hasTarget, target);
-    hero->Skills().InitStarterLevels();
-    hero->RecalcDerived(h.ctx.equip);
-    hero->FillHpMana();
-    loco.OnZoneEnter();
-    explore.OnZoneEnter();
-    events.OnZoneEnter();
-    h.events.Clear();
-  }
-
-  void Step(int n = 1) {
-    for (int i = 0; i < n; ++i) {
-      h.Step(1);
-      loco.Tick(kSimStepMs);
-      events.Tick();
-      zone.Tick();
-      explore.Tick();
-    }
-  }
-  template <class Pred>
-  bool StepUntil(Pred pred, int maxSteps = 2000) {
-    for (int i = 0; i < maxSteps; ++i) {
-      if (pred()) return true;
-      Step();
-    }
-    return pred();
-  }
-  void Place(Vec2 p) { loco.Teleport(p, TeleportReason::Debug); }
-  template <class E>
-  size_t Count() const {
-    return test::CountEvents<E>(h.events);
-  }
-  template <class E>
-  const E* Last() const {
-    const E* out = nullptr;
-    for (const Event& e : h.events.Items()) {
-      if (const E* p = std::get_if<E>(&e)) out = p;
-    }
-    return out;
-  }
-  size_t SfxCount(SfxId cue) const {
-    size_t n = 0;
-    for (const Event& e : h.events.Items()) {
-      if (const EvSfx* p = std::get_if<EvSfx>(&e); p != nullptr && p->cue == cue) ++n;
-    }
-    return n;
-  }
-  bool Logged(std::string_view key) const {
-    for (const Event& e : h.events.Items()) {
-      if (const EvLog* p = std::get_if<EvLog>(&e); p != nullptr && p->text.key == key) return true;
-    }
-    return false;
-  }
-  // The first log line with that key (nullptr when none) and its position in the event list (`index`).
-  const EvLog* FindLog(std::string_view key, size_t* index = nullptr) const {
-    const std::span<const Event> items = h.events.Items();
-    for (size_t i = 0; i < items.size(); ++i) {
-      if (const EvLog* p = std::get_if<EvLog>(&items[i]); p != nullptr && p->text.key == key) {
-        if (index != nullptr) *index = i;
-        return p;
-      }
-    }
-    return nullptr;
-  }
-
-  test::SimHarness h;
-  std::unique_ptr<Hero> hero;
-  ZoneRuntime zone;
-  HeroLocomotion loco;
-  ExplorationSystem explore;
-  RandomEventSystem events;
-  RewardService rewards;
-  AudioDirector audio;
-  bool ok = false;
-};
-
-// A walkable row segment (c .. c + len - 1, r) with walkable rows above and below (rounding slack), out of every
-// camp's safe zone and at least 6 tiles from any NPC, scanning from (fromCol, fromRow): the runtime tests run on the
-// real map, so they look the segment up instead of hardcoding it.
-TilePos WorldClearRow(const ZoneRuntime& z, int32_t len, int32_t fromCol = 30, int32_t fromRow = 30) {
-  for (int32_t r = fromRow; r < z.Grid().Rows() - 2; ++r) {
-    for (int32_t c = fromCol; c + len < z.Grid().Cols() - 1; ++c) {
-      bool clear = true;
-      for (int32_t i = 0; i < len && clear; ++i) {
-        for (int32_t dr = -1; dr <= 1 && clear; ++dr) clear = z.Walkable(c + i, r + dr);
-        const Vec2 p(c + i, r);
-        clear = clear && !z.InSafeZone(p);
-        for (const NpcPlacement& n : z.Npcs()) clear = clear && DistSq(p, n.pos) >= 36.0;
-      }
-      if (clear) return TilePos{c, r};
-    }
-  }
-  return TilePos{-1, -1};
-}
-
-}  // namespace
 
 TEST_SUITE("world") {
   // ===================================================================================================================
@@ -1717,17 +1154,7 @@ TEST_SUITE("world") {
     CHECK(total == 100);
     for (const char* z : kWorldZoneIds) CHECK(def.ForZone(z) != nullptr);
     CHECK(def.ForZone("nonexistent") == nullptr);
-    const ZoneEventDataDef* ep = def.ForZone("emerald_plains");
-    REQUIRE(ep != nullptr);
-    CHECK(ep->ambushMonsters == std::vector<std::string>{"slime_green", "goblin"});
-    CHECK(ep->ambushCountMin == 3);
-    CHECK(ep->ambushCountMax == 5);
-    CHECK(ep->merchantItems == std::vector<std::string>{"iron_sword", "leather_armor", "hp_potion", "mp_potion"});
-    REQUIRE(ep->puzzles.size() == 1);
-    CHECK(ep->puzzles[0].rewardGold == 50);
-    CHECK(ep->puzzles[0].rewardExp == 30);
-    CHECK(ep->rescueRewardGold == 30);
-    CHECK(ep->rescueRewardExp == 25);
+    // The emerald_plains event data: content_ch1_test.cpp.
     // Zone scaling: ambush counts and puzzle rewards never shrink along the map order.
     int32_t prevMax = 0;
     int64_t prevGold = 0;
@@ -1999,7 +1426,7 @@ TEST_SUITE("world") {
 
     // Ambush: 3-5 monsters (fallback count), every one the zone's first monster def.
     const std::string first = WD().Monsters().ZoneList("emerald_plains")->monsterIds.front();
-    CHECK(first == "slime_green");
+    CHECK_FALSE(first.empty());  // which def is first is a Chapter 1 pin (content_ch1_test.cpp)
     REQUIRE(monsters.All().empty());
     w.events.TriggerEvent(RandomEventType::Ambush, spot.Center());
     CHECK(w.events.Active().empty());  // the ambush resolves once spawned (and is pruned)
@@ -2088,63 +1515,6 @@ TEST_SUITE("world") {
   // ===================================================================================================================
   // Zone runtime (world 3.4, 7.1, 7.4, 9.2, 9.4; W3, W5-W8)
   // ===================================================================================================================
-  TEST_CASE("zone entry: hero at playerStart, camp NPC slots, field NPCs, exits sealed in milestone 1") {
-    WorldRig w;
-    REQUIRE(w.ok);
-    const MapDef& map = *WD().FindMap("emerald_plains");
-    CHECK(w.hero->Position() == Vec2(map.playerStart.col, map.playerStart.row));
-    CHECK(w.hero->Position() == Vec2(15, 22));
-    auto at = [&w](const char* id) { return w.zone.FindNpc(id) != nullptr ? w.zone.FindNpc(id)->pos : Vec2(-1, -1); };
-    // Camp layout v2 slots (W11, CampLayout.h): eighth tiles, exact in binary.
-    CHECK(at("blacksmith") == Vec2(15, 15) + camp::kCampNpcSlots[0]);
-    CHECK(at("blacksmith") == Vec2(16.875, 17.375));
-    CHECK(at("merchant") == Vec2(16.375, 13.625));  // camp 1 first; camp 2's merchant also exists
-    CHECK(at("quest_elder") == Vec2(13.125, 17.375));
-    CHECK(at("stash") == Vec2(12.25, 14.25));       // I7: the stash keeper is the 4th camp-1 NPC
-    // Idle facing (W11): every camp NPC looks at the fire (no tents).
-    auto facing = [&w](const char* id) { return w.zone.FindNpc(id) != nullptr ? w.zone.FindNpc(id)->facing : Vec2(); };
-    CHECK(facing("blacksmith") == camp::CampNpcFacing(0));
-    CHECK(facing("merchant") == camp::CampNpcFacing(1));
-    CHECK(facing("quest_elder") == camp::CampNpcFacing(2));
-    CHECK(facing("stash") == camp::CampNpcFacing(3));
-    CHECK(facing("blacksmith").Dot((Vec2(15, 15) - at("blacksmith")).Normalized()) > 1.0 - 1e-12);
-    CHECK(facing("merchant").Dot(Vec2(-1.0, 1.0).Normalized()) > 1.0 - 1e-12);  // slot 1 (1.375, -1.375) -> the fire
-    CHECK(facing("stash").Dot((Vec2(15, 15) - at("stash")).Normalized()) > 1.0 - 1e-12);
-    CHECK(facing("plains_herbalist") == Vec2(0, 1));  // field NPCs keep the default
-    CHECK(at("plains_herbalist") == Vec2(50, 30));
-    CHECK(at("plains_wanderer") == Vec2(70, 65));
-    size_t merchants = 0;
-    for (const NpcPlacement& n : w.zone.Npcs()) {
-      if (n.npcId == "merchant") {
-        ++merchants;
-        if (merchants == 2) CHECK(n.pos == Vec2(96.875, 102.375));  // camp 2 (95,100), slot 0
-      }
-    }
-    CHECK(merchants == 2);
-    REQUIRE(w.zone.Exits().size() == 1);
-    CHECK(w.zone.Exits()[0].sealed);  // W7
-    CHECK(w.zone.SafeZoneRadius() == 9);
-    CHECK(w.zone.InSafeZone({15, 22}));
-    CHECK_FALSE(w.zone.InSafeZone({15, 24}));  // distSq 81: strict
-    CHECK(w.zone.NearCampfire({15, 20}));
-    CHECK_FALSE(w.zone.NearCampfire({15, 20.01}));
-    CHECK(w.zone.CampPosition(0) == Vec2(15, 15));
-    CHECK(w.zone.CampPosition(7) == Vec2(15, 22));  // missing camp -> playerStart
-    // Camp blockers (W11) are baked into the grid; every camp NPC stands on a walkable tile.
-    CHECK_FALSE(w.zone.Walkable(19, 15));  // well (4, -0.15)
-    CHECK_FALSE(w.zone.Walkable(11, 15));  // crate (-3.9, -0.1)
-    CHECK_FALSE(w.zone.Walkable(19, 11));  // barrel (3.6, -4.25)
-    CHECK(w.zone.Walkable(18, 19));        // (3,4): no tent there any more (user request)
-    CHECK(w.zone.Walkable(15, 15));
-    for (const NpcPlacement& n : w.zone.Npcs()) {
-      const TilePos t = RoundToTile(n.pos);
-      CHECK(w.zone.Walkable(t.col, t.row));
-    }
-    // Unknown map ids fall back to the default map (9.1 step 1).
-    WorldRig u(5, true, "no_such_zone");
-    CHECK(u.ok);
-    CHECK(u.zone.MapId() == "emerald_plains");
-  }
 
   TEST_CASE("exits 9.2: strict 1.5-tile trigger, W8 arming, W7 sealed gate message, transition after the fade") {
     WorldRig w(5, /*milestone1=*/false);
@@ -2152,10 +1522,10 @@ TEST_SUITE("world") {
     REQUIRE_FALSE(w.zone.Exits()[0].sealed);
     w.Step();  // the hero starts far away: armed
     CHECK(w.zone.Exits()[0].armed);
-    w.Place({117.5, 60});  // distSq 2.25: not < 2.25
+    w.Place(AtExit(-1.5));  // distSq 2.25: not < 2.25
     w.Step();
     CHECK_FALSE(w.h.session.transitioning);
-    w.Place({117.5034, 60});  // distSq 2.2398
+    w.Place(AtExit(-1.4966));  // distSq 2.2398
     w.h.events.Clear();
     w.Step();
     CHECK(w.h.session.transitioning);
@@ -2176,19 +1546,19 @@ TEST_SUITE("world") {
   }
 
   TEST_CASE("exits W8: arriving inside an exit trigger never bounces; it fires after walking > sqrt(6) away") {
-    WorldRig w(5, /*milestone1=*/false, "emerald_plains", true, Vec2(118, 60));
+    WorldRig w(5, /*milestone1=*/false, ch1::kZone, true, AtExit(-1));
     REQUIRE(w.ok);
     w.Step(30);
     CHECK_FALSE(w.zone.Exits()[0].armed);
     CHECK_FALSE(w.h.session.transitioning);
-    w.Place({120.4, 60});  // distSq 1.96... still inside 6 (and inside the trigger)
+    w.Place(AtExit(1.4));  // distSq 1.96... still inside 6 (and inside the trigger)
     w.Step();
     CHECK_FALSE(w.h.session.transitioning);
-    w.Place({116.5, 60});  // distSq 6.25 > 6: armed
+    w.Place(AtExit(-2.5));  // distSq 6.25 > 6: armed
     w.Step();
     CHECK(w.zone.Exits()[0].armed);
     CHECK_FALSE(w.h.session.transitioning);
-    w.Place({118, 60});
+    w.Place(AtExit(-1));
     w.Step();
     CHECK(w.h.session.transitioning);
   }
@@ -2197,17 +1567,18 @@ TEST_SUITE("world") {
     const WorldConstants& wc = WD().World().constants;
     CHECK(wc.exitArmDistanceSq == 6);
     CHECK(wc.exitArmDistance * wc.exitArmDistance < 6);  // 5.999999999999999: would arm at exactly 6
-    // A hero position whose DistSq to the exit (119,60) rounds to exactly 6.0.
+    // A hero position whose DistSq to the exit rounds to exactly 6.0 (found for the exit tile (119,60); the REQUIRE
+    // fails loudly if the exit ever moves).
     const Vec2 exact6(116.55052350684032, 60.008056640625);
-    REQUIRE(DistSq(exact6, Vec2(119, 60)) == 6.0);
-    WorldRig w(5, /*milestone1=*/false, "emerald_plains", true, Vec2(118, 60));
+    REQUIRE(DistSq(exact6, AtExit()) == 6.0);
+    WorldRig w(5, /*milestone1=*/false, ch1::kZone, true, AtExit(-1));
     REQUIRE(w.ok);
     w.Step();
     REQUIRE_FALSE(w.zone.Exits()[0].armed);
     w.Place(exact6);
     w.Step(3);
     CHECK_FALSE(w.zone.Exits()[0].armed);  // distSq 6 is not > 6
-    w.Place({116.5, 60});                  // 6.25
+    w.Place(AtExit(-2.5));                 // 6.25
     w.Step();
     CHECK(w.zone.Exits()[0].armed);
   }
@@ -2225,12 +1596,12 @@ TEST_SUITE("world") {
     // A soul echo lying in the exit trigger: the same step fires the exit and reclaims the echo.
     SaveData echo;
     echo.soulEcho.present = true;
-    echo.soulEcho.mapId = "emerald_plains";
-    echo.soulEcho.col = 117.5;
-    echo.soulEcho.row = 60;
+    echo.soulEcho.mapId = ch1::kZone;
+    echo.soulEcho.col = AtExit(-1.5).x;
+    echo.soulEcho.row = AtExit(-1.5).y;
     echo.soulEcho.gold = 12;
     ctx.sys.soulEcho->ReadSave(echo);
-    ctx.sys.locomotion->Teleport(Vec2(117.6, 60), TeleportReason::Debug);
+    ctx.sys.locomotion->Teleport(AtExit(-1.4), TeleportReason::Debug);
     sim->Step();
     size_t exitAt = 0, claimAt = 0;
     bool exitSeen = false, claimSeen = false;
@@ -2351,13 +1722,13 @@ TEST_SUITE("world") {
   TEST_CASE("interact 7.4: NPC range 3.0 / 3.01, prompt events, nothing in range is a silent no-op") {
     WorldRig w;
     REQUIRE(w.ok);
-    const NpcPlacement* herb = w.zone.FindNpc("plains_herbalist");
+    const NpcPlacement* herb = w.zone.FindNpc(ch1::kHerbalist);
     REQUIRE(herb != nullptr);
     w.Place({53, 30});
     InteractTarget t = w.zone.FindInteractTarget();
     CHECK(t.kind == InteractKind::Npc);
     CHECK(t.id == herb->id);
-    CHECK(t.key == "plains_herbalist");
+    CHECK(t.key == ch1::kHerbalist);
     w.Place({53.01, 30});
     CHECK(w.zone.FindInteractTarget().kind == InteractKind::None);
     w.h.events.Clear();
@@ -2382,13 +1753,13 @@ TEST_SUITE("world") {
     w.Place({15.1, 17.375});
     CHECK(w.zone.FindInteractTarget().key == "blacksmith");
     w.Place({14.9, 17.375});
-    CHECK(w.zone.FindInteractTarget().key == "quest_elder");
+    CHECK(w.zone.FindInteractTarget().key == ch1::kElder);
   }
 
   TEST_CASE("pointer 7.1 / W8: a far NPC is walked to (walk-then-act), another order abandons it") {
     WorldRig w;
     REQUIRE(w.ok);
-    const NpcPlacement* herb = w.zone.FindNpc("plains_herbalist");
+    const NpcPlacement* herb = w.zone.FindNpc(ch1::kHerbalist);
     REQUIRE(herb != nullptr);
     w.zone.OnPointerPress(herb->pos, PointerButton::Primary);
     CHECK(w.zone.Pending().active);
@@ -2411,7 +1782,7 @@ TEST_SUITE("world") {
   TEST_CASE("pointer 7.1 rows 3 / 5 / 12: dead hero ignored, NPC pick radius distSq < 3.24 (strict), ground else") {
     WorldRig w;
     REQUIRE(w.ok);
-    const NpcPlacement* herb = w.zone.FindNpc("plains_herbalist");
+    const NpcPlacement* herb = w.zone.FindNpc(ch1::kHerbalist);
     REQUIRE(herb != nullptr);
     // A far NPC is picked when distSq(npc, tile) < 3.24 (the press walks there: pending interaction).
     w.Place({30, 30});
@@ -2436,10 +1807,10 @@ TEST_SUITE("world") {
   TEST_CASE("pointer W11: the campfire and the camp lanes are ground clicks, outside every camp NPC's pick disc") {
     WorldRig w;
     REQUIRE(w.ok);
-    w.Place({15, 19});  // camp 1 (15,15), on the open side's lane
+    w.Place(AtCamp(0, 4));  // camp 1, on the open side's lane
     // The fire (respawn / town-portal point), the gate lane and the open-side lane 2 tiles from the fire (inside the
     // blacksmith / elder discs with the first v2 slots).
-    for (const Vec2 click : {Vec2(15, 15), Vec2(14.5, 12), Vec2(15, 17)}) {
+    for (const Vec2 click : {AtCamp(), AtCamp(-0.5, -3), AtCamp(0, 2)}) {
       CAPTURE(click.x);
       CAPTURE(click.y);
       w.loco.Stop();
@@ -2454,16 +1825,16 @@ TEST_SUITE("world") {
     WorldRig w;
     REQUIRE(w.ok);
     TilePos near;
-    REQUIRE(w.zone.Paths().FindWalkableNear({108, 60}, 3, near));
+    REQUIRE(w.zone.Paths().FindWalkableNear(ExitTile(-11), 3, near));
     w.Place(near.Center());
     w.Step();
     w.h.events.Clear();
-    w.zone.OnPointerPress({119, 60}, PointerButton::Primary);
+    w.zone.OnPointerPress(AtExit(), PointerButton::Primary);
     CHECK(w.Count<EvBanner>() == 0);  // no instant zone change (W6)
     REQUIRE_FALSE(w.loco.Path().empty());
-    CHECK(w.loco.Path().back() == TilePos{118, 60});
+    CHECK(w.loco.Path().back() == ExitTile(-1));
     REQUIRE(w.StepUntil([&w] { return w.Count<EvBanner>() > 0; }, 600));
-    CHECK(DistSq(w.hero->Position(), Vec2(119, 60)) < 2.25);
+    CHECK(DistSq(w.hero->Position(), AtExit()) < 2.25);
   }
 
   // ===================================================================================================================
@@ -2614,27 +1985,6 @@ TEST_SUITE("world") {
   // ===================================================================================================================
   // Exploration + hidden areas (10.1, 10.3; world 21 item 9)
   // ===================================================================================================================
-  TEST_CASE("exploration 10.3: standing at (108,108) sees the whole elven cache; (104,102) misses two corners") {
-    WorldRig w;
-    REQUIRE(w.ok);
-    REQUIRE(w.zone.Map().hiddenAreas.size() == 1);
-    const HiddenAreaDef& cache = w.zone.Map().hiddenAreas[0];
-    CHECK(cache.id == "hidden_ep_elven_cache");
-    CHECK_FALSE(cache.hasBounds);  // bounds = centre (108,108) +- radius 6
-    w.Place({104, 102});
-    w.Step();
-    CHECK_FALSE(w.explore.AreaFullyExplored(cache));
-    CHECK_FALSE(w.explore.Grid().IsExplored(102, 114));
-    CHECK_FALSE(w.explore.Grid().IsExplored(114, 114));
-    w.Place({108, 108});
-    w.Step();
-    CHECK(w.explore.AreaFullyExplored(cache));
-    // The grid is per visit: a zone re-entry resets it.
-    w.zone.ExitZone();
-    REQUIRE(w.zone.EnterZone("emerald_plains", false, {}));
-    w.explore.OnZoneEnter();
-    CHECK_FALSE(w.explore.Grid().IsExplored(108, 108));
-  }
 
   TEST_CASE("exploration 10.3: the fifth check point is the area centre (area.col, area.row), not the bounds midpoint") {
     WorldRig w;
@@ -2688,11 +2038,12 @@ TEST_SUITE("audio") {
     CHECK(SfxForPickup(r, ItemQuality::Rare) == SfxId::LootRare);
     CHECK(SfxForPickup(r, ItemQuality::Legendary) == SfxId::LootLegendary);
     CHECK(SfxForPickup(r, ItemQuality::Set) == SfxId::LootLegendary);
-    CHECK_FALSE(SfxForQuestProgress(r, 5, 5, "goblin", true).has_value());  // the fanfare covers it
-    CHECK(SfxForQuestProgress(r, 5, 5, "goblin", false) == SfxId::QuestObjective);
-    CHECK(SfxForQuestProgress(r, 2, 5, "mat_herb", false) == SfxId::QuestProgress);
+    const std::string kill = fixture::Grunt().id;  // a kill target: no progress prefix
+    CHECK_FALSE(SfxForQuestProgress(r, 5, 5, kill, true).has_value());  // the fanfare covers it
+    CHECK(SfxForQuestProgress(r, 5, 5, kill, false) == SfxId::QuestObjective);
+    CHECK(SfxForQuestProgress(r, 2, 5, "mat_scrap", false) == SfxId::QuestProgress);
     CHECK(SfxForQuestProgress(r, 1, 3, "clue_bones", false) == SfxId::QuestProgress);
-    CHECK_FALSE(SfxForQuestProgress(r, 1, 5, "goblin", false).has_value());  // single kills are silent
+    CHECK_FALSE(SfxForQuestProgress(r, 1, 5, kill, false).has_value());  // single kills are silent
   }
 
   TEST_CASE("theme resolution: theme table, dungeon floors -> abyss_rift, ember tower -> plains, else silence") {
@@ -2770,7 +2121,7 @@ TEST_SUITE("audio") {
     m.TakeCommand();
     m.OnCombatStateChanged(true);
     m.TakeCommand();
-    m.OnBossEngaged("goblin_chief");
+    m.OnBossEngaged(ch1::kStoryBoss);
     std::optional<MusicCommand> c = m.TakeCommand();
     REQUIRE(c.has_value());
     CHECK(c->trackKey == "boss_ch1");
@@ -2779,7 +2130,7 @@ TEST_SUITE("audio") {
     m.OnCombatStateChanged(false);  // boss outranks combat / explore
     CHECK_FALSE(m.TakeCommand().has_value());
     m.OnCombatStateChanged(true);
-    m.OnBossDefeated("goblin_chief");
+    m.OnBossDefeated(ch1::kStoryBoss);
     c = m.TakeCommand();
     REQUIRE(c.has_value());
     CHECK(c->trackKey == "emerald_plains_victory");
@@ -2794,7 +2145,7 @@ TEST_SUITE("audio") {
     CHECK(c->trackKey == "emerald_plains_explore");  // the queued combat flag (off) applies at the end
     // Disengaged without a kill: back to the combat flag's state.
     m.OnCombatStateChanged(true);
-    m.OnBossEngaged("goblin_chief");
+    m.OnBossEngaged(ch1::kStoryBoss);
     m.TakeCommand();
     m.OnBossDisengaged();
     c = m.TakeCommand();
@@ -2823,7 +2174,7 @@ TEST_SUITE("audio") {
     REQUIRE(c.has_value());
     CHECK(c->trackKey == "abyss_rift_explore");
     m.OnCombatStateChanged(true);
-    m.OnBossEngaged("goblin_chief");
+    m.OnBossEngaged(ch1::kStoryBoss);
     CHECK_FALSE(m.TakeCommand().has_value());
     m.SetStoryLock(false);
     c = m.TakeCommand();
@@ -2872,13 +2223,13 @@ TEST_SUITE("audio") {
     CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_explore");
     CHECK(w.Last<EvMusic>()->restart);
     // Boss bar + combat -> boss music; bar cleared by the kill -> victory, 8000 ms -> explore.
-    a.OnBossBar(BossBarMsg{true, 77, "goblin_chief", false});
+    a.OnBossBar(BossBarMsg{true, 77, ch1::kStoryBoss, false});
     a.AdvanceRealTime(16);
     CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_explore");  // not engaged until the combat flag
     a.OnCombatStateChanged(CombatStateChangedMsg{true});
     a.AdvanceRealTime(16);
     CHECK(w.Last<EvMusic>()->trackKey == "boss_ch1");
-    a.OnBossBar(BossBarMsg{false, 77, "goblin_chief", true});
+    a.OnBossBar(BossBarMsg{false, 77, ch1::kStoryBoss, true});
     a.AdvanceRealTime(16);
     CHECK(w.Last<EvMusic>()->trackKey == "emerald_plains_victory");
     a.OnCombatStateChanged(CombatStateChangedMsg{false});
@@ -2908,18 +2259,18 @@ TEST_SUITE("audio") {
     QuestProgressMsg qp;
     qp.current = 1;
     qp.required = 5;
-    qp.targetId = "goblin";
+    qp.targetId = fixture::Grunt().id;
     const size_t before = w.Count<EvSfx>();
     a.OnQuestProgress(qp);
     CHECK(w.Count<EvSfx>() == before);  // silent kill step
-    qp.targetId = "mat_herb";
+    qp.targetId = "mat_scrap";
     a.OnQuestProgress(qp);
     CHECK(w.Last<EvSfx>()->cue == SfxId::QuestProgress);
     a.OnQuestCompleted(QuestCompletedMsg{"q"});
     CHECK(w.Last<EvSfx>()->cue == SfxId::QuestComplete);
     a.OnQuestTurnedIn(QuestTurnedInMsg{"q"});
     CHECK(w.Last<EvSfx>()->cue == SfxId::QuestComplete);
-    a.OnNpcInteracted(NpcInteractedMsg{"quest_elder", 3});
+    a.OnNpcInteracted(NpcInteractedMsg{ch1::kElder, 3});
     CHECK(w.Last<EvSfx>()->cue == SfxId::NpcInteract);
     a.OnNpcInteracted(NpcInteractedMsg{"blacksmith", 4});
     CHECK(w.Last<EvSfx>()->cue == SfxId::PanelOpen);  // SHOP_OPEN
@@ -2932,7 +2283,9 @@ TEST_SUITE("audio") {
     CHECK(r.heavyHitWeights == std::vector<HitWeight>{HitWeight::Heavy, HitWeight::Crit, HitWeight::Kill});
     CHECK(r.heavyHitCue == SfxId::HitHeavy);
     AudioRulesDef only = r;
-    only.heavyHitWeights = {HitWeight::Kill};
+    // (count, value) rather than {Kill}: GCC 13 -O2 + sanitizers reports a false -Warray-bounds on the 1-byte
+    // initializer_list memmove (as in sim_test.cpp).
+    only.heavyHitWeights = std::vector<HitWeight>(1, HitWeight::Kill);
     CHECK(SfxForCombatHit(only, false, false, HitWeight::Heavy) == SfxId::Hit);
     CHECK(SfxForCombatHit(only, false, false, HitWeight::Kill) == SfxId::HitHeavy);
     CHECK(SfxForCombatHit(only, false, true, HitWeight::Kill) == SfxId::Crit);  // crit still first
@@ -2941,12 +2294,15 @@ TEST_SUITE("audio") {
   }
 
   TEST_CASE("10.4 rule 4: bossMusic maps a boss to its score; a boss without one keeps the combat track") {
+    // Which boss is scored with which track is content (content_ch1_test.cpp); here: the lookup and the switch.
     const MusicDirectorDef& def = WD().Audio().music;
     REQUIRE(def.bossMusic.size() == 1);
-    CHECK(def.bossMusic[0].first == "goblin_chief");
-    CHECK(def.bossMusic[0].second == "boss_ch1");
-    REQUIRE(def.BossScore("goblin_chief") != nullptr);
-    CHECK(*def.BossScore("goblin_chief") == "boss_ch1");
+    const std::string boss = def.bossMusic[0].first;
+    const std::string score = def.bossMusic[0].second;
+    CHECK_FALSE(boss.empty());
+    CHECK_FALSE(score.empty());
+    REQUIRE(def.BossScore(boss) != nullptr);
+    CHECK(*def.BossScore(boss) == score);
     CHECK(def.BossScore("werewolf_alpha") == nullptr);
     MusicDirector m(def);
     m.Tick(0);
@@ -2956,15 +2312,15 @@ TEST_SUITE("audio") {
     std::optional<MusicCommand> c = m.TakeCommand();
     REQUIRE(c.has_value());
     CHECK(c->trackKey == "twilight_forest_combat");
-    m.OnBossEngaged("werewolf_alpha");  // a later-chapter story boss: no boss_ch1
+    m.OnBossEngaged("werewolf_alpha");  // a later-chapter story boss: no boss score
     CHECK_FALSE(m.TakeCommand().has_value());
     CHECK(m.State() == MusicState::Combat);
     m.OnBossDisengaged();
     CHECK_FALSE(m.TakeCommand().has_value());
-    m.OnBossEngaged("goblin_chief");
+    m.OnBossEngaged(boss);
     c = m.TakeCommand();
     REQUIRE(c.has_value());
-    CHECK(c->trackKey == "boss_ch1");
+    CHECK(c->trackKey == score);
     // Released story lock with an unscored boss and the combat flag on: the queued combat state applies.
     MusicDirector q(def);
     q.OnZoneEntered("twilight_forest");

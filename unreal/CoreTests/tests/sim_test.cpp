@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 
+#include "SimFixtures.h"
+#include "TestContent.h"
 #include "TestUtil.h"
 #include "abyss/combat/Combat.h"
 #include "abyss/hero/Hero.h"
@@ -19,46 +21,8 @@
 #include "doctest/doctest.h"
 
 using namespace abyss;
-
-namespace {
-template <class E>
-size_t Count(std::span<const Event> events) {
-  size_t n = 0;
-  for (const Event& e : events) {
-    if (std::holds_alternative<E>(e)) ++n;
-  }
-  return n;
-}
-
-bool HasPanelRequest(std::span<const Event> events, PanelId panel, bool open) {
-  for (const Event& e : events) {
-    if (const EvPanelRequest* r = std::get_if<EvPanelRequest>(&e)) {
-      if (r->panel == panel && r->open == open) return true;
-    }
-  }
-  return false;
-}
-
-bool HasModal(const Snapshot& v, PanelId panel) {
-  for (PanelId p : v.modals) {
-    if (p == panel) return true;
-  }
-  return false;
-}
-
-// A new game opens with the prologue and the chapter card (quests-story 16.6), which freeze the world (S2) until they
-// finish on real time. Tests that need a live world play them out at once.
-void FinishNewGameStory(GameSim& sim) { sim.Context().sys.story->FinishAllBeats(); }
-
-std::unique_ptr<GameSim> StartSim(ClassId cls = ClassId::Warrior, uint64_t seed = 11) {
-  auto sim = GameSim::Create(test::RealData(), SimConfig{});
-  REQUIRE(sim != nullptr);
-  REQUIRE(sim->NewGame(cls, Difficulty::Normal, seed));
-  FinishNewGameStory(*sim);
-  sim->Step();
-  return sim;
-}
-}  // namespace
+using namespace abyss::test::sim_fx;
+namespace ch1 = abyss::test::ch1;
 
 TEST_SUITE("sim") {
   TEST_CASE("NewGame enters the default zone at playerStart and steps at 60 Hz") {
@@ -152,7 +116,7 @@ TEST_SUITE("sim") {
     sim->Step();
 
     // The dialogue opens inside the batch; the attack later in the same batch is already rejected.
-    sim->Submit(CmdDialogueOpenTree{"quest_elder"});
+    sim->Submit(CmdDialogueOpenTree{ch1::kElder});
     sim->Submit(CmdAttackTarget{foe});
     sim->Step();
     CHECK(sim->View().hero.target == kNoEntity);
@@ -196,7 +160,7 @@ TEST_SUITE("sim") {
 
   TEST_CASE("the hero's death closes core-owned modals; Dying rejects the system menu (C12)") {
     auto sim = StartSim(ClassId::Rogue);
-    sim->Submit(CmdDialogueOpenTree{"quest_elder"});
+    sim->Submit(CmdDialogueOpenTree{ch1::kElder});
     sim->Step();
     REQUIRE(sim->WorldFrozen());
     sim->Context().bus.Publish(HeroDiedMsg{sim->View().hero.pos});
@@ -267,7 +231,7 @@ TEST_SUITE("sim") {
     std::vector<QuestProgress> all(f.sys.quests->AllProgress().begin(), f.sys.quests->AllProgress().end());
     all.push_back(QuestProgress{"q_kill_werewolf_alpha", QuestStatus::TurnedIn, {1}});
     f.sys.quests->Load(all);
-    f.sys.zone->RequestZoneChange("emerald_plains", f.sys.zone->CampPosition(0));
+    f.sys.zone->RequestZoneChange(ch1::kZone, f.sys.zone->CampPosition(0));
     for (int i = 0; i < 90 && !f.sys.pets->Has("pet_storm_wolf"); ++i) fresh->Step();
     CHECK(f.sys.pets->Has("pet_storm_wolf"));
     // A replay of the beat later adds nothing (no duplicate log): the pet is owned.
@@ -367,36 +331,6 @@ TEST_SUITE("sim") {
     CHECK_FALSE(SummarizeSave(1, base).showDifficultySelector);
   }
 
-  TEST_CASE("hidden-area reward props respawn for discovered areas and claim through RewardService (Q5)") {
-    auto sim = StartSim(ClassId::Warrior, 5);
-    SaveData save;
-    sim->BuildSave(save, 0);
-    REQUIRE(save.player.currentMap == "emerald_plains");
-    save.discoveredHiddenAreas = {"hidden_ep_elven_cache"};
-    std::string err;
-    REQUIRE(sim->LoadGame(save, &err) == SaveError::None);
-    const LoreSystem& lore = *sim->Context().sys.lore;
-    REQUIRE(lore.HiddenRewards().size() == 2);
-    size_t markers = 0;
-    for (const WorldMarkerView& m : sim->View().markers) {
-      if (m.kind == MarkerKind::HiddenReward) ++markers;
-    }
-    CHECK(markers == 2);
-    const int64_t gold = sim->View().hero.gold;
-    CHECK(sim->Context().sys.lore->ClaimHiddenReward("hidden_ep_elven_cache", 1));
-    CHECK(sim->Context().sys.hero->Gold() == gold + 200);
-    CHECK(lore.IsRewardClaimed("hidden_ep_elven_cache", 1));
-    CHECK_FALSE(sim->Context().sys.lore->ClaimHiddenReward("hidden_ep_elven_cache", 1));
-    CHECK(lore.HiddenRewards().size() == 1);
-
-    SaveData after;
-    sim->BuildSave(after, 0);
-    CHECK(after.hiddenRewardsClaimed == std::vector<std::string>{"hidden_ep_elven_cache#1"});
-    REQUIRE(sim->LoadGame(after, &err) == SaveError::None);
-    REQUIRE(sim->Context().sys.lore->HiddenRewards().size() == 1);  // only the unclaimed chest comes back
-    CHECK(sim->Context().sys.lore->HiddenRewards()[0].rewardIndex == 0);
-  }
-
   TEST_CASE("StoryDirector::ResolveActor") {
     auto sim = StartSim(ClassId::Rogue, 9);
     const StoryDirector& story = *sim->Context().sys.story;
@@ -415,11 +349,11 @@ TEST_SUITE("sim") {
 
     StoryActor npc;
     npc.kind = StoryActorKind::Npc;
-    npc.id = "quest_elder";
+    npc.id = ch1::kElder;
     v = story.ResolveActor(npc);
     CHECK(v.resolved);  // stands in the starting camp
     CHECK(v.entity != kNoEntity);
-    CHECK(v.nameKey == "data.npc.quest_elder.name");
+    CHECK(v.nameKey == std::string("data.npc.") + ch1::kElder + ".name");
 
     StoryActor missing;
     missing.kind = StoryActorKind::Monster;

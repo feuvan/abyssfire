@@ -1,5 +1,6 @@
 {
-  "//": "Web content module -> remake module (paths from the repo root). The exporter's redirect plugin (unreal/Tools/export-data/run.mjs) loads the GameData module wherever any module imports the web one. A target that does not exist, a web path that is never loaded during the export, or a GameData module that imports a redirected web path fails the export. See README.md.",
+  "//": "Web content module -> remake module (paths from the repo root, normalised: no '.', '..' or '//'). The exporter's redirect plugin (unreal/Tools/export-data/run.mjs) loads the GameData module wherever any module imports the web one. A target that does not exist, a web path that is never loaded during the export, a GameData module the export never loads, or a GameData module that imports a redirected web path fails the export. See README.md.",
+  "//snapshots": "sha256 of each GameData module as first copied from the web module (import / export specifiers blanked; remake.ts snapshotHash). A module whose digest differs has been remade: the files built from it get remake.modules. Recorded once when the snapshot is taken (the export prints the digest for a missing entry); never updated afterwards, and never compared with the live web file.",
   "modules": {
     "src/data/quests/all_quests.ts": "unreal/GameData/quests/all_quests.ts",
     "src/data/npcs.ts": "unreal/GameData/npcs.ts",
@@ -10,5 +11,16 @@
     "src/data/loreCollectibles.ts": "unreal/GameData/loreCollectibles.ts",
     "src/data/story/script.ts": "unreal/GameData/story/script.ts",
     "src/data/homestead.ts": "unreal/GameData/homestead.ts"
+  },
+  "snapshots": {
+    "unreal/GameData/quests/all_quests.ts": "9f526004ea8df774b8aee979df8304c81c113d50fd8ca768e261d8d4c293e53d",
+    "unreal/GameData/npcs.ts": "26dd0a6b384c395017783dd8d6780b5fcbcc9909a1a9c786932c1aa622833f24",
+    "unreal/GameData/dialogueTrees.ts": "e8b1c2da5763ffb751df35a645857ef660e235f9a26ef08d550556ad8232cdea",
+    "unreal/GameData/miniBosses.ts": "eac7c0b842b2a03e4683ef778ef733dd934fd00a883ae2606e299302e61245b1",
+    "unreal/GameData/monsters/emerald_plains.ts": "c0df77a87768f3c45dd65c8cb1bcf78cf6a40574b617774e204f84c5822e27f5",
+    "unreal/GameData/maps/emerald_plains.ts": "a57f833191b4ec99369b7cca3423ec60af1ec73325e3e49f9fe011dd89fd45d8",
+    "unreal/GameData/loreCollectibles.ts": "8e5e9f09bedbc2b8866bec968c542bd3558e4716b701eae2841eaef682e67151",
+    "unreal/GameData/story/script.ts": "a58538893ee4ff3c36d58690481e11616563235157674a337ebcffe0457b927c",
+    "unreal/GameData/homestead.ts": "d4a79f3e02dd761c2b4833fbce89f9d3901e2bd7eea4e42699715bd1826e07b1"
   }
 }

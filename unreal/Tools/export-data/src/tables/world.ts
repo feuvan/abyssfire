@@ -24,7 +24,7 @@ import { AllMaps } from '../../../../../src/data/maps';
 import type { DialogueTree } from '../../../../../src/data/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
-import { overrideById, overrideEntries, withholdRemakeFields } from '../remake';
+import { noteConfig, overrideById, overrideEntries, withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -147,6 +147,7 @@ export function exportWorld(): TableResult[] {
 
   // ── world_constants.json ──
   const gate = CHAPTER_CONFIG.sealedGate;
+  noteConfig(['world_constants.json'], 'sealedGate');
   assert(AllMaps[gate.exitTo] && Object.values(AllMaps).some(m => m.exits.some(e => e.targetMap === gate.exitTo)),
     `GameData/config.ts sealedGate.exitTo: no exit leads to '${gate.exitTo}'`);
   assertSource(ZS, 'if (dSq < 2.25) {', 'this.mapData.safeZoneRadius ?? 9,', 'this.cameras.main.fadeIn(400);',

@@ -1,0 +1,420 @@
+{
+ "tool": "Art/blender/coherence/darkgate.py",
+ "spec": "Docs/dark-remake/implementation-plan.md A0 / 0C; monsters.md 1.2",
+ "thresholds": {
+  "rimPx": 3.0,
+  "rimFrac": 0.9,
+  "litDeltaL": 15.0,
+  "markerPx": 2
+ },
+ "metrics": {
+  "rim": "cohkit.ink_gate_group at rimPx: visible ink width on every silhouette edge pixel at native 1080p, gate = rimFrac of them (+ the kit's dark / hull colour checks)",
+  "lit": "median over the figure's solid toon pixels in the key light's light band (h = N.L * .5 + .5 >= T_LIGHT) or rim light (weight >= .5), marker and emissive pixels excluded, of |CIELAB L* - median L* of the ground field| >= litDeltaL (signedDeltaL: the region's median L* minus the ground's, a diagnostic)",
+  "marker": "largest solid k x k block (coverage >= .5) of the visible family-marker swatches, the rest of the figure occluding, >= markerPx",
+  "diagnostics": "not gated: rim.inkL / inkDeltaL / fracInkClear (the ink's L* against the ground: the rim gate is ground-independent), lit.signedDeltaL / fracLitClear, marker.medianL / deltaL / emissivePixels"
+ },
+ "runs": {
+  "plains:grass": {
+   "ground": {
+    "theme": "plains",
+    "tile": "grass",
+    "selectedBy": "darkest walkable material by median L* of an 8 x 8 composited field",
+    "L50": 58.7,
+    "L10": 51.9,
+    "L90": 65.1,
+    "meanRgb": "#719E47",
+    "materials": {
+     "grass": {
+      "key": "0",
+      "L50": 58.7,
+      "L10": 51.9,
+      "L90": 65.1,
+      "meanRgb": "#719E47"
+     },
+     "dirt": {
+      "key": "1",
+      "L50": 62.9,
+      "L10": 62.9,
+      "L90": 69.1,
+      "meanRgb": "#BD9860"
+     },
+     "stone": {
+      "key": "2",
+      "L50": 62.6,
+      "L10": 54.9,
+      "L90": 74.1,
+      "meanRgb": "#9D9A82"
+     },
+     "camp": {
+      "key": "5",
+      "L50": 63.6,
+      "L10": 60.9,
+      "L90": 66.6,
+      "meanRgb": "#B99569"
+     }
+    },
+    "note": "the march terrain set (A10) is not exported yet: today's darkest walkable plains material stands in for it"
+   },
+   "camera": {
+    "yawUE": 45.0,
+    "pitchUE": -50.0,
+    "fovH": 35.0,
+    "distance": "default (16 x 12 tiles)",
+    "res": [
+     1920,
+     1080
+    ]
+   },
+   "facing": "se",
+   "pages": 1,
+   "pass": false,
+   "failed": [
+    "GRUK REDCAP",
+    "GOBLIN SHAMAN"
+   ],
+   "figures": [
+    {
+     "asset": "SK_Mon_Goblin",
+     "variant": null,
+     "label": "GOBLIN",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 46,
+      "swatches": [
+       "goblin.eye"
+      ],
+      "source": "darkgate.MARKERS",
+      "medianRgb": "#EACC3A",
+      "medianL": 82.1,
+      "deltaL": 23.4,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9895,
+      "rimPxMedian": 3.71,
+      "rimPxP10": 3.37,
+      "fracDark": 1.0,
+      "hullLumP95": 23.4,
+      "edges": 285,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 7.7,
+      "inkDeltaL": 51.0,
+      "fracInkClear": 1.0
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 15.2,
+      "signedDeltaL": 15.2,
+      "litL": 73.9,
+      "groundL": 58.7,
+      "band": "light band + rim light",
+      "pixels": 374,
+      "litP10": 57.0,
+      "litP90": 77.5,
+      "fracLitClear": 0.607,
+      "shadeL": 25.5,
+      "inkL": 7.7
+     },
+     "ok": true,
+     "atEdge": [
+      "lit"
+     ]
+    },
+    {
+     "asset": "SK_Mon_Goblin",
+     "variant": "hunt_pendant_thief",
+     "label": "SNEEK THE THIEF",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 4,
+      "pixels": 73,
+      "swatches": [
+       "goblin.eye"
+      ],
+      "source": "darkgate.MARKERS",
+      "medianRgb": "#F0CC39",
+      "medianL": 82.7,
+      "deltaL": 24.0,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9682,
+      "rimPxMedian": 3.68,
+      "rimPxP10": 3.31,
+      "fracDark": 1.0,
+      "hullLumP95": 27.7,
+      "edges": 377,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 7.7,
+      "inkDeltaL": 51.0,
+      "fracInkClear": 1.0
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 15.2,
+      "signedDeltaL": 15.2,
+      "litL": 73.9,
+      "groundL": 58.7,
+      "band": "light band + rim light",
+      "pixels": 682,
+      "litP10": 58.4,
+      "litP90": 77.9,
+      "fracLitClear": 0.635,
+      "shadeL": 25.9,
+      "inkL": 7.7
+     },
+     "ok": true,
+     "atEdge": [
+      "lit"
+     ]
+    },
+    {
+     "asset": "SK_Mon_Goblin",
+     "variant": "hunt_redcap_gruk",
+     "label": "GRUK REDCAP",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 4,
+      "pixels": 64,
+      "swatches": [
+       "goblin.eye"
+      ],
+      "source": "darkgate.MARKERS",
+      "medianRgb": "#F1CC3A",
+      "medianL": 83.0,
+      "deltaL": 24.6,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 1.0,
+      "rimPxMedian": 3.82,
+      "rimPxP10": 3.34,
+      "fracDark": 1.0,
+      "hullLumP95": 23.4,
+      "edges": 393,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 7.6,
+      "inkDeltaL": 51.1,
+      "fracInkClear": 1.0
+     },
+     "lit": {
+      "ok": false,
+      "deltaL": 6.6,
+      "signedDeltaL": -0.2,
+      "litL": 58.5,
+      "groundL": 58.7,
+      "band": "light band + rim light",
+      "pixels": 764,
+      "litP10": 44.7,
+      "litP90": 75.4,
+      "fracLitClear": 0.339,
+      "shadeL": 25.5,
+      "inkL": 7.6
+     },
+     "ok": false,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_Mon_GoblinChief",
+     "variant": null,
+     "label": "GOBLIN CHIEF",
+     "class": "boss",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 2,
+      "pixels": 12,
+      "swatches": [
+       "chief.eye"
+      ],
+      "source": "darkgate.MARKERS",
+      "medianRgb": "#FFB744",
+      "medianL": 79.4,
+      "deltaL": 20.7,
+      "emissivePixels": 11
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 1.0,
+      "rimPxMedian": 3.92,
+      "rimPxP10": 3.37,
+      "fracDark": 1.0,
+      "hullLumP95": 30.5,
+      "edges": 436,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 7.0,
+      "inkDeltaL": 51.7,
+      "fracInkClear": 1.0
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 15.0,
+      "signedDeltaL": 12.4,
+      "litL": 71.1,
+      "groundL": 58.7,
+      "band": "light band + rim light",
+      "pixels": 656,
+      "litP10": 49.8,
+      "litP90": 89.3,
+      "fracLitClear": 0.503,
+      "shadeL": 20.0,
+      "inkL": 7.0
+     },
+     "ok": true,
+     "atEdge": [
+      "lit",
+      "marker"
+     ]
+    },
+    {
+     "asset": "SK_Mon_GoblinShaman",
+     "variant": null,
+     "label": "GOBLIN SHAMAN",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": false,
+      "blockPx": 1,
+      "pixels": 5,
+      "swatches": [
+       "shaman.ember"
+      ],
+      "source": "darkgate.MARKERS",
+      "medianRgb": "#C1FFC1",
+      "medianL": 94.6,
+      "deltaL": 35.9,
+      "emissivePixels": 5
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9909,
+      "rimPxMedian": 3.99,
+      "rimPxP10": 3.37,
+      "fracDark": 0.9146,
+      "hullLumP95": 31.2,
+      "edges": 328,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "ignoredEmissive": 21,
+      "inkL": 9.3,
+      "inkDeltaL": 49.4,
+      "fracInkClear": 0.988
+     },
+     "lit": {
+      "ok": false,
+      "deltaL": 11.6,
+      "signedDeltaL": 11.6,
+      "litL": 70.3,
+      "groundL": 58.7,
+      "band": "light band + rim light",
+      "pixels": 299,
+      "litP10": 57.9,
+      "litP90": 83.8,
+      "fracLitClear": 0.201,
+      "shadeL": 27.1,
+      "inkL": 9.3
+     },
+     "ok": false,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_Mon_Slime",
+     "variant": null,
+     "label": "GREEN SLIME",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 6,
+      "pixels": 283,
+      "swatches": [
+       "slime.sclera"
+      ],
+      "source": "darkgate.MARKERS",
+      "medianRgb": "#F7FFEF",
+      "medianL": 99.1,
+      "deltaL": 40.4,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 1.0,
+      "rimPxMedian": 3.59,
+      "rimPxP10": 3.38,
+      "fracDark": 1.0,
+      "hullLumP95": 25.4,
+      "edges": 290,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 9.1,
+      "inkDeltaL": 49.6,
+      "fracInkClear": 1.0
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 15.9,
+      "signedDeltaL": 15.5,
+      "litL": 74.2,
+      "groundL": 58.7,
+      "band": "light band + rim light",
+      "pixels": 3560,
+      "litP10": 69.9,
+      "litP90": 80.6,
+      "fracLitClear": 0.535,
+      "shadeL": 28.9,
+      "inkL": 9.1
+     },
+     "ok": true,
+     "atEdge": [
+      "lit"
+     ]
+    }
+   ],
+   "atEdge": [
+    "GOBLIN (lit)",
+    "SNEEK THE THIEF (lit)",
+    "GOBLIN CHIEF (lit, marker)",
+    "GREEN SLIME (lit)"
+   ]
+  }
+ },
+ "edgeMargins": {
+  "litDeltaL": 1.5,
+  "rimFrac": 0.03,
+  "markerPx": 0,
+  "note": "a PASS within these of its threshold is listed in atEdge"
+ },
+ "status": "metric definitions pending confirmation (Docs/DECISIONS.md R21); the plains:grass run is the Phase 0 baseline, not an acceptance pass"
+}

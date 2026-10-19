@@ -276,7 +276,9 @@ export function exportI18n(_ctx: unknown, tables: readonly TableResult[]): Table
   const onlyEn = Object.keys(remakeEn).filter(k => !(k in remakeZhCN));
   assert(!onlyZh.length && !onlyEn.length, 'GameData i18n: zh-CN and en must define the same keys' +
     (onlyZh.length ? `; only in zh-CN: ${fewKeys(onlyZh)}` : '') + (onlyEn.length ? `; only in en: ${fewKeys(onlyEn)}` : ''));
-  const replaced = remakeKeys.filter(k => k in zh);
+  // Replaced keys, by what they replace: a web string or a port string (PORT_STRINGS keys never collide with web keys).
+  const replacedPort = remakeKeys.filter(k => k in PORT_STRINGS);
+  const replacedWeb = remakeKeys.filter(k => k in zh && !(k in PORT_STRINGS));
   for (const k of remakeKeys) {
     assert(typeof remakeZhCN[k] === 'string' && typeof remakeEn[k] === 'string', `GameData i18n: ${k} is not a string`);
     zh[k] = remakeZhCN[k];
@@ -317,18 +319,23 @@ export function exportI18n(_ctx: unknown, tables: readonly TableResult[]): Table
   const oneSided = Object.keys(zh).filter(k => contentId(k) && !(k in enAll)).concat(Object.keys(enAll).filter(k => contentId(k) && !(k in zh)));
   assert(!oneSided.length, `i18n parity: content keys in only one of zh-CN / en: ${fewKeys(oneSided)}`);
 
-  // remake blocks (only when the remake changed the tables).
+  // remake blocks (only when the remake changed the tables). A port string the remake replaced leaves `portKeys` (it no
+  // longer comes from the exporter's PORT_STRINGS) and is listed in `replacedPortKeys` instead.
   const files = ['i18n_zh-CN.json', 'i18n_en.json', 'i18n_zh-TW.json'];
   if (remakeKeys.length) {
     for (const f of files) {
-      noteExtra(f, f === 'i18n_en.json' ? REMAKE_SOURCE.en : REMAKE_SOURCE.zhCN, 'stringsReplaced', replaced.length);
-      noteExtra(f, f === 'i18n_en.json' ? REMAKE_SOURCE.en : REMAKE_SOURCE.zhCN, 'stringsAdded', remakeKeys.length - replaced.length);
+      const src = f === 'i18n_en.json' ? REMAKE_SOURCE.en : REMAKE_SOURCE.zhCN;
+      noteExtra(f, src, 'stringsReplacedWeb', replacedWeb.length);
+      noteExtra(f, src, 'stringsReplacedPort', replacedPort.length);
+      if (replacedPort.length) noteExtra(f, src, 'replacedPortKeys', replacedPort);
+      noteExtra(f, src, 'stringsAdded', remakeKeys.length - replacedWeb.length - replacedPort.length);
     }
   }
   // Swept keys: content the remake removed (redirected modules / overrides), listed for review.
   if (swept.length) for (const f of files) noteExtra(f, 'unreal/GameData', 'swept', swept);
 
-  const portKeys = Object.fromEntries(Object.entries(PORT_STRINGS).map(([k, v]) => [k, v.decision]));
+  const portKeys = Object.fromEntries(Object.entries(PORT_STRINGS).filter(([k]) => !(k in remakeZhCN) && k in zh)
+    .map(([k, v]) => [k, v.decision]));
   const zhTW: Record<string, string> = {};
   for (const [k, v] of Object.entries(zh)) zhTW[k] = convertToTraditional(v);
   const zhKeys = new Set(Object.keys(zh));

@@ -16,7 +16,9 @@ node unreal/Tools/export-data/run.mjs --out=DIR # export into DIR/Data + DIR/Cor
 node_modules/.bin/tsc -p unreal/Tools/export-data/tsconfig.json   # type-check the exporter, unreal/GameData and the TS they import
 ```
 
-or `npm run export | check | typecheck` inside this directory. A run takes ~3 s and prints a record-count summary.
+or `npm run export | check | typecheck` inside this directory. Every run type-checks first (the tsc line above; a type
+error fails the export) and rejects any other argument (`--out DIR` with a space exits 2 instead of overwriting the
+committed data). A run takes ~6 s and prints a record-count summary.
 Output is deterministic (same source → byte-identical files); re-run and commit the outputs whenever `src/data`,
 `src/i18n` or a cited system changes.
 
@@ -42,9 +44,12 @@ the export is byte-identical to the web's).
 * **Redirect plugin** (`run.mjs`, `abyss-export:redirect`, enforce `pre`): every import that *resolves* to a web path
   listed in `unreal/GameData/redirects.json` loads the GameData module instead, so every web module the exporter reads
   (MapGenerator with `externalLandmarks`, `questGiverOf`, `makeHuntDefinition`, the ZoneScene probes, EmberTower, ...)
-  sees the remake content. Failures, all loud: a target or web path that does not exist (checked before Vite starts),
-  a redirected web path that no module loaded during the export (`checkRedirects` in `main.ts`), a GameData module that
-  imports a redirected web path, or one that reaches `src/` by a relative path instead of `@web/...`.
+  sees the remake content. Failures, all loud: a target or web path that does not exist or is not a normalised path
+  inside `src/` / `unreal/GameData/` (checked before Vite starts), a redirected web path that no module loaded during
+  the export (`checkRedirects` in `main.ts`), a GameData module that no module loaded (`checkGameDataLoaded`: a dropped
+  entry or an unwired module; the `load` hook records them, the summary lists them, `types.ts` / `story/types.ts` are
+  type-only), a GameData module that imports a redirected web path, or one that reaches `src/` by a relative or
+  root-relative path instead of `@web/...`.
   `assertSource` / `readSource` and `src/expose.ts` entries for a redirected web path apply to its GameData module.
 * **`@web` alias** = the web's `src/` (Vite alias here, `paths` in `tsconfig.json`; `unreal/GameData/tsconfig.json`
   maps it for editors).
@@ -54,12 +59,19 @@ the export is byte-identical to the web's).
   moods, palettes, weather, weatherByTheme, campThemes, fog), `combat.ts` (elite affix definitions + `order`, zone affix
   counts) and `ui.ts` (terrain styles). Unknown override tables, entry keys that the web table lacks (replace / remove)
   or already has (add), and a table present in REMAKE_OVERRIDES but never applied fail the export.
-* **`remake` blocks**: `main.ts` appends `{"remake": {...}}` to each written table the remake changed — override
-  records (`replaced` / `added` / `removed`), the redirected modules a table's `source` cites once their GameData module
-  diverges from the web one (`modules`; snapshots differ only in import specifiers), i18n `swept` keys and string counts.
+* **`remake` blocks**: `main.ts` appends `{"remake": {...}}` to each written table and golden fixture the remake
+  changed — override records (`replaced` / `added` / `removed`; `config.<key>` for a GameData/config.ts value that
+  differs from the web chapter's, `noteConfig`), the redirected modules a file is built from once their GameData module
+  no longer matches its snapshot digest (`modules`; `redirects.json` `snapshots`, import specifiers blanked — never the
+  live web file), i18n `swept` keys and string counts. "Built from" = the table's `source` plus its provenance-only
+  `deps` (modules read through web code: the generator landmarks for maps.json and the golden maps, the finale trigger
+  for monster_ai.json, hunt base monsters, quest embers).
 * **`REMAKE_SCHEMA`** (`main.ts`) lists the remake-only features the C++ core parses. `REMAKE_FIELDS` (`src/remake.ts`)
   registers every remake-only field per record kind (monster, quest, map, npc, cutscene) with its feature;
-  `withholdRemakeFields` strips the ones whose feature is not listed (the run summary prints what it withheld) and
+  `withholdRemakeFields` first fails on a record key that is neither a web field nor a remake field (`checkRecordKeys`;
+  per-level key lists in `src/remakeKeys.ts`, pinned to the web and GameData types by `satisfies`, so tsc fails when a
+  type gains a key the lists lack; a typed remake field without a REMAKE_FIELDS row fails at start), then strips the
+  registered fields whose feature is not listed (the run summary prints what it withheld) and
   `gateRemakeValues` fails on a remake-only value (objective type `clear_area`). A core package adds its feature ids in
   the change that teaches the loaders to read them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.

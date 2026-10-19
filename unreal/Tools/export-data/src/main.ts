@@ -4,16 +4,18 @@
  * difference from the committed files instead.
  *
  * Remake content (unreal/GameData/**, implementation-plan.md §2): run.mjs redirects web content modules to their
- * GameData replacements; this driver checks that every redirect was used, that every GameData/world.ts override table
- * was applied, gates remake-only fields with REMAKE_SCHEMA and appends a `remake` block to each table the remake changed.
+ * GameData replacements; this driver checks that every redirect was used and every GameData module was loaded, that
+ * every GameData/world.ts override table was applied, gates remake-only fields with REMAKE_SCHEMA and appends a `remake`
+ * block to each table (and golden fixture) the remake changed.
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
-import { setRepoRoot, setRedirects, writeTable, writeText, formatJson, sha256, mulberry32, assert, SCHEMA_VERSION, type Ctx, type TableResult } from './util';
+import { resolve, relative, dirname } from 'node:path';
+import { setRepoRoot, setRedirects, writeTable, writeText, formatJson, sha256, mulberry32, assert, SCHEMA_VERSION, type Ctx, type TableResult,
+  type GoldenFile } from './util';
 import { configureRemakeSchema, validateOverrides, checkOverridesApplied, divergedRedirects, sourceCites, noteModules, remakeBlock,
   remakeFiles, withheldSummary } from './remake';
 
-type TableOut = TableResult[] | { tables: TableResult[]; golden: { path: string; text: string }[] };
+type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
 
 /**
  * Remake-only features the C++ core can read (feature ids: REMAKE_FIELDS / REMAKE_VALUES in remake.ts). A remake field
@@ -29,8 +31,18 @@ export interface RunOptions {
   check: boolean;
   committedRoot: string;
   /** unreal/GameData/redirects.json as run.mjs loaded it, and the web paths its plugin redirected during this run. */
-  redirects: { file: string; modules: Readonly<Record<string, string>>; hits: ReadonlySet<string> };
+  redirects: { file: string; modules: Readonly<Record<string, string>>; snapshots: Readonly<Record<string, string>>;
+    hits: ReadonlySet<string> };
+  /** The unreal/GameData modules Vite loaded during this run (run.mjs `load` hook). */
+  gameDataLoaded: ReadonlySet<string>;
 }
+
+const GAMEDATA = 'unreal/GameData';
+/**
+ * GameData modules that hold only types (erased at load: `import type`), so the export never loads them. Every other
+ * GameData module must be loaded, and these may not export a value (a value would need loading to take effect).
+ */
+const TYPE_ONLY_MODULES = ['unreal/GameData/types.ts', 'unreal/GameData/story/types.ts'];
 
 /** Self-test: every redirect target exists and every redirected web path was loaded (a stale entry fails the export). */
 function checkRedirects(opts: RunOptions): void {
@@ -40,6 +52,30 @@ function checkRedirects(opts: RunOptions): void {
     assert(hits.has(web), `${file}: stale redirect ${web} -> ${gd}: no module imported ${web} during the export ` +
       '(the web module is no longer used, or the entry is a typo); remove or fix the entry');
   }
+}
+
+/**
+ * Self-test: every unreal/GameData module was loaded by the export. A module nothing loads is content that silently does
+ * not ship — a redirects.json entry was dropped (the web module is exported instead) or a new module was never wired
+ * (no redirect, no exporter table).
+ */
+function checkGameDataLoaded(opts: RunOptions): string[] {
+  const all = listFiles(resolve(opts.repoRoot, GAMEDATA)).map(f => `${GAMEDATA}/${f.replace(/\\/g, '/')}`)
+    .filter(f => /\.(ts|mts|js|mjs)$/.test(f) && !f.endsWith('.d.ts')).sort();
+  for (const t of TYPE_ONLY_MODULES) {
+    assert(all.includes(t), `main.ts TYPE_ONLY_MODULES: ${t} does not exist (stale entry)`);
+    const value = readFileSync(resolve(opts.repoRoot, t), 'utf8').split('\n')
+      .find(l => /^\s*export\s+(?!type\b|interface\b)/.test(l));
+    assert(!value, `${t} is listed as type-only (main.ts TYPE_ONLY_MODULES) but exports a value: ${value?.trim()}`);
+  }
+  const redirectedTo = new Map(Object.entries(opts.redirects.modules).map(([web, gd]) => [gd, web]));
+  for (const f of all) {
+    if (TYPE_ONLY_MODULES.includes(f) || opts.gameDataLoaded.has(f)) continue;
+    assert(false, `GameData module ${f} is never loaded during the export, so its content does not ship: ` + (redirectedTo.has(f)
+      ? `nothing imports ${redirectedTo.get(f)} any more (stale redirect)`
+      : `add its ${opts.redirects.file} entry (the web module it replaces) or the exporter table that reads it`));
+  }
+  return all.filter(f => opts.gameDataLoaded.has(f));
 }
 
 function listFiles(dir: string, base = dir): string[] {
@@ -61,7 +97,7 @@ export async function run(opts: RunOptions): Promise<boolean> {
   const savedRandom = Math.random;
   Math.random = mulberry32(0x5eed);
   const tables: TableResult[] = [];
-  const golden: { path: string; text: string }[] = [];
+  const golden: GoldenFile[] = [];
   try {
     const modules = [
       () => import('./tables/skills'),
@@ -94,19 +130,31 @@ export async function run(opts: RunOptions): Promise<boolean> {
 
   // Remake self-tests and provenance (no-ops while GameData equals the web content).
   checkRedirects(opts);
+  const loaded = checkGameDataLoaded(opts);
   checkOverridesApplied();
-  const diverged = divergedRedirects(opts.repoRoot, opts.redirects.modules);
-  for (const t of tables) {
-    const cited = Object.fromEntries(Object.entries(diverged).filter(([web]) => t.source.some(s => sourceCites(s, web))));
-    if (Object.keys(cited).length) noteModules(t.file, cited);
-  }
-  const written = new Set(tables.map(t => t.file));
-  for (const f of remakeFiles()) assert(written.has(f), `remake record for ${f}, which no table wrote`);
+  const diverged = divergedRedirects(opts.repoRoot, opts.redirects.file, opts.redirects.modules, opts.redirects.snapshots);
+  // A file is built from a remade module when its `source` (written) or `deps` (provenance only: modules it reads through
+  // web code, e.g. the map generator's landmarks) cites the module's web path.
+  const cite = (file: string, refs: readonly string[]) => {
+    const cited = Object.fromEntries(Object.entries(diverged).filter(([web]) => refs.some(s => sourceCites(s, web))));
+    if (Object.keys(cited).length) noteModules(file, cited);
+  };
+  for (const t of tables) cite(t.file, [...t.source, ...(t.deps ?? [])]);
+  for (const g of golden) cite(g.path, g.deps);
+  const written = new Set([...tables.map(t => t.file), ...golden.map(g => g.path)]);
+  for (const f of remakeFiles()) assert(written.has(f), `remake record for ${f}, which no table or golden fixture wrote`);
   for (const t of tables) {
     const block = remakeBlock(t.file);
     if (!block) continue;
     assert(!('remake' in t.data), `${t.file}: the table already has a 'remake' key`);
     t.data = { ...t.data, remake: block };
+  }
+  for (const g of golden) {
+    const block = remakeBlock(g.path);
+    if (!block) continue;
+    const doc = JSON.parse(g.text) as Record<string, unknown>;
+    assert(!('remake' in doc), `${g.path}: the fixture already has a 'remake' key`);
+    g.text = formatJson({ ...doc, remake: block }) + '\n';
   }
 
   // Write tables + index.
@@ -139,12 +187,20 @@ export async function run(opts: RunOptions): Promise<boolean> {
   console.log(`  remake: ${redirected} module(s) redirected to unreal/GameData (${Object.keys(diverged).length} remade), ` +
     `REMAKE_SCHEMA [${REMAKE_SCHEMA.join(', ')}], remake blocks in ${remakeFiles().length ? remakeFiles().join(', ') : 'no file'}`);
   for (const w of withheldSummary()) console.log(`  remake: withheld ${w}`);
+  console.log(`  remake: GameData modules loaded: ${loaded.map(f => f.slice(GAMEDATA.length + 1)).join(', ')} ` +
+    `(type-only: ${TYPE_ONLY_MODULES.map(f => f.slice(GAMEDATA.length + 1)).join(', ')})`);
 
   if (!opts.check) return true;
-  // --check: compare with the committed tree.
+  // --check: compare with the committed tree — every committed Data file (but the hand-written README) and every file in
+  // the golden fixture folders the export writes, so a table or fixture the export no longer produces shows up too.
   let same = true;
-  const produced = new Set([...listFiles(resolve(ctx.outRoot, 'Data')).map(f => `Data/${f}`), ...golden.map(g => g.path)]);
-  const committed = new Set(listFiles(resolve(opts.committedRoot, 'Data')).filter(f => f.endsWith('.json')).map(f => `Data/${f}`));
+  const posixPath = (f: string) => f.replace(/\\/g, '/');
+  const produced = new Set([...listFiles(resolve(ctx.outRoot, 'Data')).map(f => `Data/${posixPath(f)}`), ...golden.map(g => g.path)]);
+  const goldenDirs = [...new Set(golden.map(g => dirname(g.path)))];
+  const committed = new Set([
+    ...listFiles(resolve(opts.committedRoot, 'Data')).map(f => `Data/${posixPath(f)}`).filter(f => f !== 'Data/README.md'),
+    ...goldenDirs.flatMap(d => listFiles(resolve(opts.committedRoot, d)).map(f => `${d}/${posixPath(f)}`)),
+  ]);
   for (const f of new Set([...produced, ...committed])) {
     const a = resolve(ctx.outRoot, f);
     const b = resolve(opts.committedRoot, f);

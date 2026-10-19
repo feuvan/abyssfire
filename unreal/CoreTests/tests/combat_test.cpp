@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "SimHarness.h"
+#include "TestContent.h"
 #include "abyss/base/Math.h"
 #include "abyss/base/Units.h"
 #include "abyss/combat/Combat.h"
@@ -35,6 +36,7 @@
 #include "doctest/doctest.h"
 
 using namespace abyss;
+namespace fixture = abyss::test::fixture;
 
 namespace {
 
@@ -75,10 +77,10 @@ void MakeHero(Fighter& f, ClassId cls, int32_t level = 1) {
   f.c.mana = 30 + s.spi * 8 + s.int_ * 3 + (level - 1) * 8;
 }
 
-// Monster combatant from a def (monsters 1.2).
-void MakeMonster(Fighter& f, std::string_view id, double damageOverride = -1) {
-  const MonsterDef* d = D().FindMonster(id);
-  REQUIRE(d != nullptr);
+// Monster combatant from a def (monsters 1.2); the vectors use the synthetic fixtures (TestContent.h).
+void MakeMonster(Fighter& f, const MonsterDef& def, double damageOverride = -1) {
+  const MonsterDef* d = &def;
+  REQUIRE(d->hp > 0);  // a definition with stats (was: found in the data)
   const double dmg = damageOverride >= 0 ? damageOverride : d->damage;
   f.c.stats = PrimaryStats{static_cast<int32_t>(std::floor(dmg * 0.8)),
                            static_cast<int32_t>(std::floor(d->speed * 0.1)),
@@ -262,10 +264,15 @@ struct CombatRig {
   // "no dodge, no crit" for the next calculateDamage.
   void ScriptNoDodge() { h.rng.Get(RngStream::Combat).Script({0.99, 0.99}); }
 
-  // Spawns a normal-difficulty monster at a tile (kNoEntity while MonsterSystem::Spawn is a stub).
+  // Spawns a normal-difficulty monster at a tile (kNoEntity while MonsterSystem::Spawn is a stub): a data definition by
+  // id, or a synthetic fixture (TestContent.h).
   EntityId Spawn(std::string_view defId, Vec2 tile, bool noDodge = true) {
+    return SpawnDef(h.ctx.data.FindMonster(defId), tile, noDodge);
+  }
+  EntityId Spawn(const MonsterDef& def, Vec2 tile, bool noDodge = true) { return SpawnDef(&def, tile, noDodge); }
+  EntityId SpawnDef(const MonsterDef* def, Vec2 tile, bool noDodge) {
     MonsterSpawnParams p;
-    p.baseDef = h.ctx.data.FindMonster(defId);
+    p.baseDef = def;
     p.tile = RoundToTile(tile);
     p.role = MonsterRole::Regular;
     const EntityId id = monsters.Spawn(p);
@@ -308,8 +315,8 @@ TEST_SUITE("combat") {
     MakeHero(w, ClassId::Warrior);
     CHECK(w.c.baseDamage == doctest::Approx(19.6));
     CHECK(w.c.defense == doctest::Approx(9));
-    MakeMonster(slime, "slime_green");
-    MakeMonster(goblin, "goblin");
+    MakeMonster(slime, fixture::Ooze());
+    MakeMonster(goblin, fixture::Grunt());
     CHECK(Hit(w, slime).damage == 24);
     CHECK(Hit(w, slime, nullptr, 1, 1, true).damage == 38);
     CHECK(Hit(w, slime, nullptr, 1, 1, true).isCrit);
@@ -320,15 +327,15 @@ TEST_SUITE("combat") {
     CHECK(Hit(goblin, w).damage == 3);
     Fighter w2, chief, strong;
     MakeHero(w2, ClassId::Warrior);
-    MakeMonster(chief, "goblin_chief");
+    MakeMonster(chief, fixture::Brute());
     CHECK(Hit(chief, w2).damage == 15);
-    MakeMonster(strong, "goblin_chief", 18);  // extra_strong: dmg floor(14 * 1.35) = 18, str 14
+    MakeMonster(strong, fixture::Brute(), 18);  // extra_strong: dmg floor(14 * 1.35) = 18, str 14
     CHECK(Hit(strong, w2).damage == 20);
   }
 
   TEST_CASE("damage 12.3: skill vectors with scripted rolls") {
     Fighter goblin;
-    MakeMonster(goblin, "goblin");
+    MakeMonster(goblin, fixture::Grunt());
     Fighter w, m, r;
     MakeHero(w, ClassId::Warrior);
     MakeHero(m, ClassId::Mage);
@@ -351,7 +358,7 @@ TEST_SUITE("combat") {
 
   TEST_CASE("damage 12.3: monster crit, mana shield, poison blade + vanish, death mark, dodge") {
     Fighter goblin;
-    MakeMonster(goblin, "goblin");
+    MakeMonster(goblin, fixture::Grunt());
     Fighter w;
     MakeHero(w, ClassId::Warrior);
     CHECK(Hit(goblin, w, nullptr, 1, 1, true).damage == 12);
@@ -389,7 +396,7 @@ TEST_SUITE("combat") {
   TEST_CASE("damage: draw order - dodge always, crit skipped when forced") {
     Fighter w, goblin;
     MakeHero(w, ClassId::Warrior);
-    MakeMonster(goblin, "goblin");
+    MakeMonster(goblin, fixture::Grunt());
     Rng rng(1);
     rng.Script({0.99, 0.99});
     const DamageResult forced = CalculateDamage(Rules(), w.c, goblin.c, SkillHitInput{}, true, rng);
@@ -407,7 +414,7 @@ TEST_SUITE("combat") {
   TEST_CASE("damage: gear terms - flat / percent damage, elemental flat, ignore defense, resist, steal") {
     Fighter a, d;
     MakeHero(a, ClassId::Warrior);
-    MakeMonster(d, "goblin");
+    MakeMonster(d, fixture::Grunt());
     a.UseEq();
     a.eq.Ref(Stat::Damage) = 10;          // base 25.6 + 10
     a.eq.Ref(Stat::DamagePercent) = 50;   // x 1.5 -> 53.4
@@ -554,7 +561,7 @@ TEST_SUITE("combat") {
 
   TEST_CASE("damage: every one of the 40 skills deals positive damage through the formula (skill-combat-integration)") {
     Fighter def;
-    MakeMonster(def, "goblin");
+    MakeMonster(def, fixture::Grunt());
     int32_t count = 0;
     for (const ClassDef& c : D().Classes().classes) {
       Fighter hero;
@@ -1616,7 +1623,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId slime = rig.Spawn("slime_green", hero.Position() + Vec2(1, 0));
+    const EntityId slime = rig.Spawn(fixture::Ooze(), hero.Position() + Vec2(1, 0));
     REQUIRE_MONSTER(slime);
     rig.combat.SetAttackTarget(slime, false);
     rig.Step();
@@ -1648,7 +1655,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(1, 0));
+    const EntityId g = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(1, 0));
     REQUIRE_MONSTER(g);
     hero.lastAttackMs = 1e18;  // the hero does not swing back in this test
     rig.monsters.Find(g)->state = MonsterState::Attack;
@@ -1724,7 +1731,7 @@ TEST_SUITE("combat") {
           continue;
         }
         const Vec2 heroPos = hero.Position();
-        const EntityId target = rig.Spawn("goblin_chief", heroPos + Vec2(1, 0));  // 160 HP: survives one hit
+        const EntityId target = rig.Spawn(fixture::Brute(), heroPos + Vec2(1, 0));  // 160 HP: survives one hit
         REQUIRE_MONSTER(target);
         rig.monsters.Find(target)->def.attackSpeedMs = 1e9;  // keep the monster passive
         rig.combat.SetAttackTarget(target, false);
@@ -1794,7 +1801,7 @@ TEST_SUITE("combat") {
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
     const Vec2 start = hero.Position();
-    const EntityId t = rig.Spawn("goblin_chief", start + Vec2(4, 0));
+    const EntityId t = rig.Spawn(fixture::Brute(), start + Vec2(4, 0));
     REQUIRE_MONSTER(t);
     const int32_t charge = rig.SkillIndex("charge");
     hero.Skills().SetLevel(charge, 1);
@@ -1821,10 +1828,10 @@ TEST_SUITE("combat") {
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
     const Vec2 p = hero.Position();
-    const EntityId a = rig.Spawn("goblin_chief", p + Vec2(3, 0));
+    const EntityId a = rig.Spawn(fixture::Brute(), p + Vec2(3, 0));
     REQUIRE_MONSTER(a);
-    const EntityId b = rig.Spawn("goblin_chief", p + Vec2(1, 0));
-    const EntityId c = rig.Spawn("goblin_chief", p + Vec2(2, 1));
+    const EntityId b = rig.Spawn(fixture::Brute(), p + Vec2(1, 0));
+    const EntityId c = rig.Spawn(fixture::Brute(), p + Vec2(2, 1));
     const int32_t chain = rig.SkillIndex("chain_lightning");
     hero.Skills().SetLevel(chain, 1);
     const double t0 = rig.h.clock.NowMs();
@@ -1852,7 +1859,7 @@ TEST_SUITE("combat") {
     CHECK(vfx.back().staggerMs == 55);
     // Meteor: ground anchor on the lock, one batch 300 ms after the release beat.
     CombatRig m(ClassId::Mage);
-    const EntityId target = m.Spawn("goblin_chief", m.hero->Position() + Vec2(3, 0));
+    const EntityId target = m.Spawn(fixture::Brute(), m.hero->Position() + Vec2(3, 0));
     const int32_t meteor = m.SkillIndex("meteor");
     m.hero->Skills().SetLevel(meteor, 1);
     m.combat.SetAttackTarget(target, false);
@@ -1870,10 +1877,10 @@ TEST_SUITE("combat") {
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
     const Vec2 p = hero.Position();
-    const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(2, 0));
+    const EntityId lock = rig.Spawn(fixture::Brute(), p + Vec2(2, 0));
     REQUIRE_MONSTER(lock);
-    const EntityId side = rig.Spawn("goblin_chief", p + Vec2(0, 2));    // 90 degrees off: outside the fan
-    const EntityId inFan = rig.Spawn("goblin_chief", p + Vec2(3, 0));  // on the aim, at the radius (3)
+    const EntityId side = rig.Spawn(fixture::Brute(), p + Vec2(0, 2));    // 90 degrees off: outside the fan
+    const EntityId inFan = rig.Spawn(fixture::Brute(), p + Vec2(3, 0));  // on the aim, at the radius (3)
     rig.combat.SetAttackTarget(lock, false);
     hero.lastAttackMs = 1e18;
     const int32_t ms = rig.SkillIndex("multishot");
@@ -1895,7 +1902,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Mage);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(3, 0));
+    const EntityId t = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(3, 0));
     REQUIRE_MONSTER(t);
     rig.combat.SetAttackTarget(t, false);
     hero.lastAttackMs = 1e18;
@@ -1926,7 +1933,7 @@ TEST_SUITE("combat") {
     REQUIRE(armed.size() == 1);
     CHECK(armed[0].trigger == GroundTrigger::Armed);
     CHECK(test::CountEvents<EvGroundEffectTriggered>(r.h.events) == 0);
-    const EntityId walker = r.Spawn("goblin_chief", r.hero->Position() + Vec2(1, 1));
+    const EntityId walker = r.Spawn(fixture::Brute(), r.hero->Position() + Vec2(1, 1));
     r.Step(2);
     CHECK(test::CountEvents<EvGroundEffectTriggered>(r.h.events) == 1);
     size_t trapHits = 0;
@@ -1942,7 +1949,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Mage);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(5, 0));
+    const EntityId t = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(5, 0));
     REQUIRE_MONSTER(t);
     rig.combat.SetAttackTarget(t, false);
     hero.lastAttackMs = 1e18;
@@ -1976,9 +1983,9 @@ TEST_SUITE("combat") {
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
     const Vec2 p = hero.Position();
-    const EntityId a = rig.Spawn("goblin_chief", p + Vec2(1, 0));
+    const EntityId a = rig.Spawn(fixture::Brute(), p + Vec2(1, 0));
     REQUIRE_MONSTER(a);
-    const EntityId b = rig.Spawn("goblin_chief", p + Vec2(0, 1));
+    const EntityId b = rig.Spawn(fixture::Brute(), p + Vec2(0, 1));
     rig.combat.SetAttackTarget(a, false);
     hero.lastAttackMs = 1e18;
     const int32_t slash = rig.SkillIndex("slash");
@@ -1995,8 +2002,8 @@ TEST_SUITE("combat") {
     CHECK(onB == 1);
     // The only monster left is far away: the released slash fizzles (cost already paid).
     CombatRig far(ClassId::Warrior);
-    const EntityId near = far.Spawn("goblin_chief", far.hero->Position() + Vec2(1, 0));
-    const EntityId distant = far.Spawn("goblin_chief", far.hero->Position() + Vec2(10, 0));
+    const EntityId near = far.Spawn(fixture::Brute(), far.hero->Position() + Vec2(1, 0));
+    const EntityId distant = far.Spawn(fixture::Brute(), far.hero->Position() + Vec2(10, 0));
     far.combat.SetAttackTarget(near, false);
     far.hero->lastAttackMs = 1e18;
     REQUIRE(far.combat.RequestSkill(far.SkillIndex("slash"), SkillAim{}) == SkillRequestResult::Executed);
@@ -2013,8 +2020,8 @@ TEST_SUITE("combat") {
     // reach is never hit instead (the web's FIX Q7 swapped to it).
     CombatRig walk(ClassId::Warrior);
     const Vec2 w = walk.hero->Position();
-    const EntityId runner = walk.Spawn("goblin_chief", w + Vec2(1, 0));
-    const EntityId stayer = walk.Spawn("goblin_chief", w + Vec2(0, 1));
+    const EntityId runner = walk.Spawn(fixture::Brute(), w + Vec2(1, 0));
+    const EntityId stayer = walk.Spawn(fixture::Brute(), w + Vec2(0, 1));
     walk.combat.SetAttackTarget(runner, false);
     walk.hero->lastAttackMs = 1e18;
     const double w0 = walk.h.clock.NowMs();
@@ -2033,7 +2040,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Mage);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(2, 0));
+    const EntityId t = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(2, 0));
     REQUIRE_MONSTER(t);
     rig.monsters.Find(t)->stats.dex = 100;  // 30 % dodge
     rig.combat.SetAttackTarget(t, false);
@@ -2064,7 +2071,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Mage);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(1, 0));
+    const EntityId g = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(1, 0));
     REQUIRE_MONSTER(g);
     hero.lastAttackMs = 1e18;
     ActiveBuff shield;
@@ -2083,7 +2090,7 @@ TEST_SUITE("combat") {
     CHECK(hero.Mana() == doctest::Approx(mana - 2).epsilon(0.01));  // 7 -> 5 HP + 2 mana (regen < 0.05 per step)
     // Rogue shadow step: the crit buff turns into crit points and is consumed by the next landed hit.
     CombatRig r(ClassId::Rogue);
-    const EntityId t = r.Spawn("goblin_chief", r.hero->Position() + Vec2(3, 0));
+    const EntityId t = r.Spawn(fixture::Brute(), r.hero->Position() + Vec2(3, 0));
     r.combat.SetAttackTarget(t, false);
     r.hero->lastAttackMs = 1e18;
     const int32_t ss = r.SkillIndex("shadow_step");
@@ -2096,7 +2103,7 @@ TEST_SUITE("combat") {
     CHECK_FALSE(r.hero->Buffs().Has(BuffStat::CritBonus));
     // Death mark on a monster expires with its duration (8000 ms at L1).
     CombatRig d(ClassId::Rogue);
-    const EntityId mk = d.Spawn("goblin_chief", d.hero->Position() + Vec2(2, 0));
+    const EntityId mk = d.Spawn(fixture::Brute(), d.hero->Position() + Vec2(2, 0));
     d.combat.SetAttackTarget(mk, false);
     d.hero->lastAttackMs = 1e18;
     const int32_t dm = d.SkillIndex("death_mark");
@@ -2116,7 +2123,7 @@ TEST_SUITE("combat") {
     Hero& hero = *rig.hero;
     rig.h.ctx.equip.Ref(Stat::ExpBonus) = 50;
     rig.h.ctx.equip.Ref(Stat::KillHealPercent) = 10;
-    const EntityId s = rig.Spawn("slime_green", hero.Position() + Vec2(5, 0));
+    const EntityId s = rig.Spawn(fixture::Ooze(), hero.Position() + Vec2(5, 0));
     REQUIRE_MONSTER(s);
     hero.SetHp(50);
     rig.monsters.Find(s)->hp = 1;
@@ -2135,7 +2142,7 @@ TEST_SUITE("combat") {
     CHECK(hits.back().killed);
     // An elite killed by a basic attack: S6 slow motion (0.4 for 200 ms).
     CombatRig e(ClassId::Warrior);
-    const EntityId chief = e.Spawn("goblin_chief", e.hero->Position() + Vec2(1, 0));
+    const EntityId chief = e.Spawn(fixture::Brute(), e.hero->Position() + Vec2(1, 0));
     e.monsters.Find(chief)->hp = 1;
     e.combat.SetAttackTarget(chief, false);
     e.Step(25);
@@ -2150,9 +2157,9 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(2, 0));
+    const EntityId g = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(2, 0));
     REQUIRE_MONSTER(g);
-    const EntityId far = rig.Spawn("goblin", hero.Position() + Vec2(8, 0));
+    const EntityId far = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(8, 0));
     hero.lastAttackMs = 1e18;
     const int32_t tr = rig.SkillIndex("taunt_roar");
     hero.Skills().SetLevel(tr, 1);
@@ -2191,7 +2198,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(4, 0));
+    const EntityId g = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(4, 0));
     REQUIRE_MONSTER(g);
     hero.autoCombat = true;
     hero.lastAttackMs = 1e18;
@@ -2207,7 +2214,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId sh = rig.Spawn("miniboss_goblin_shaman", hero.Position() + Vec2(3, 0));
+    const EntityId sh = rig.Spawn(fixture::Caster(), hero.Position() + Vec2(3, 0));
     REQUIRE_MONSTER(sh);
     REQUIRE(rig.monsters.Find(sh)->def.isRanged);
     hero.lastAttackMs = 1e18;
@@ -2329,7 +2336,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Mage);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(3, 0));
+    const EntityId t = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(3, 0));
     REQUIRE_MONSTER(t);
     rig.combat.SetAttackTarget(t, false);
     hero.lastAttackMs = 1e18;
@@ -2379,7 +2386,7 @@ TEST_SUITE("combat") {
 
     // A dodged roll misses for the whole effect: one MISS, no damage, no status.
     CombatRig d(ClassId::Mage);
-    const EntityId u = d.Spawn("goblin_chief", d.hero->Position() + Vec2(3, 0));
+    const EntityId u = d.Spawn(fixture::Brute(), d.hero->Position() + Vec2(3, 0));
     d.monsters.Find(u)->stats.dex = 100;  // 30 % dodge
     d.combat.SetAttackTarget(u, false);
     d.hero->lastAttackMs = 1e18;
@@ -2407,7 +2414,7 @@ TEST_SUITE("combat") {
     const Vec2 p = hero.Position();
     std::vector<EntityId> ids;
     for (const Vec2 off : {Vec2(3, 0), Vec2(1, 0), Vec2(2, 1)}) {
-      const EntityId id = rig.Spawn("goblin_chief", p + off);
+      const EntityId id = rig.Spawn(fixture::Brute(), p + off);
       REQUIRE_MONSTER(id);
       MonsterInstance* m = rig.monsters.Find(id);
       m->maxHp = 1e6;  // light hits: no per-hit profile shake competes with the batch shake
@@ -2453,7 +2460,7 @@ TEST_SUITE("combat") {
     const int32_t cols = rig.zone.Grid().Cols();
     const int32_t rows = rig.zone.Grid().Rows();
     const Vec2 start = hero.Position();
-    const EntityId near = rig.Spawn("goblin", start + Vec2(5, 0));
+    const EntityId near = rig.Spawn(fixture::Grunt(), start + Vec2(5, 0));
     REQUIRE_MONSTER(near);
     REQUIRE(rig.combat.AttackTarget() == kNoEntity);
     REQUIRE(rig.combat.PreviewCastTarget(rig.SkillIndex("fireball")) == near);  // other skills would auto-pick it (C14)
@@ -2472,7 +2479,7 @@ TEST_SUITE("combat") {
     hero.Skills().ResetCooldowns();
     hero.FillHpMana();
     const Vec2 here = hero.Position();
-    const EntityId locked = rig.Spawn("goblin", here + Vec2(-4, 0));
+    const EntityId locked = rig.Spawn(fixture::Grunt(), here + Vec2(-4, 0));
     rig.combat.SetAttackTarget(locked, false);
     TeleportAim toLock;
     toLock.hasTarget = true;
@@ -2523,7 +2530,7 @@ TEST_SUITE("combat") {
       CombatRig rig(ClassId::Mage);
       REQUIRE(rig.ok);
       rig.hero->lastAttackMs = 1e18;
-      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(5, 0));
+      const EntityId g = rig.Spawn(fixture::Brute(), rig.hero->Position() + Vec2(5, 0));
       REQUIRE_MONSTER(g);
       const double t0 = rig.h.clock.NowMs();
       REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), SkillAim{}) == SkillRequestResult::Executed);
@@ -2546,7 +2553,7 @@ TEST_SUITE("combat") {
     {  // (b) hover: the same
       CombatRig rig(ClassId::Mage);
       rig.hero->lastAttackMs = 1e18;
-      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(4, 0));
+      const EntityId g = rig.Spawn(fixture::Brute(), rig.hero->Position() + Vec2(4, 0));
       SkillAim hover;
       hover.hoverTarget = g;
       REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), hover) == SkillRequestResult::Executed);
@@ -2558,7 +2565,7 @@ TEST_SUITE("combat") {
     {  // auto-battle's acquisition is not the player's lock either
       CombatRig rig(ClassId::Mage);
       rig.hero->lastAttackMs = 1e18;
-      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(3, 0));
+      const EntityId g = rig.Spawn(fixture::Brute(), rig.hero->Position() + Vec2(3, 0));
       rig.hero->autoCombat = true;
       rig.Step();
       REQUIRE(rig.combat.AttackTarget() == g);
@@ -2570,7 +2577,7 @@ TEST_SUITE("combat") {
     {  // a click (CmdAttackTarget) or a target cycle is the player's lock: the blink goes to it
       CombatRig rig(ClassId::Mage);
       rig.hero->lastAttackMs = 1e18;
-      const EntityId g = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(5, 0));
+      const EntityId g = rig.Spawn(fixture::Brute(), rig.hero->Position() + Vec2(5, 0));
       rig.combat.SetAttackTarget(g, false);
       CHECK(rig.combat.PlayerLock() == g);
       Vec2 expect;
@@ -2585,7 +2592,7 @@ TEST_SUITE("combat") {
       kill.monster = g;
       kill.amount = 1e6;
       rig.combat.DamageMonster(kill);
-      const EntityId h2 = rig.Spawn("goblin_chief", rig.hero->Position() + Vec2(0, 4));
+      const EntityId h2 = rig.Spawn(fixture::Brute(), rig.hero->Position() + Vec2(0, 4));
       REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), SkillAim{}) == SkillRequestResult::Executed);
       CHECK(rig.combat.AttackTarget() == h2);
       CHECK(rig.combat.PlayerLock() == kNoEntity);
@@ -2596,7 +2603,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId g = rig.Spawn("goblin", hero.Position() + Vec2(1, 0), false);
+    const EntityId g = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(1, 0), false);
     REQUIRE_MONSTER(g);
     REQUIRE(rig.monsters.Find(g)->stats.dex > 0);
     rig.combat.SetAttackTarget(g, false);
@@ -2672,7 +2679,7 @@ TEST_SUITE("combat") {
     CHECK(field.soul.State().Has());
     // A kill's Spirit gain names its source.
     CombatRig k(ClassId::Warrior);
-    const EntityId slime = k.Spawn("slime_green", k.hero->Position() + Vec2(1, 0));
+    const EntityId slime = k.Spawn(fixture::Ooze(), k.hero->Position() + Vec2(1, 0));
     REQUIRE_MONSTER(slime);
     k.h.events.Clear();
     MonsterHitRequest kill;
@@ -2696,7 +2703,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId slime = rig.Spawn("slime_green", Vec2(40.17, 41));
+    const EntityId slime = rig.Spawn(fixture::Ooze(), Vec2(40.17, 41));
     REQUIRE_MONSTER(slime);
     REQUIRE(rig.loco.MoveTo(Vec2(48, 40)));  // a click-move under way
     rig.Step(3);
@@ -2722,8 +2729,8 @@ TEST_SUITE("combat") {
     // Approaching A, then a click on B next to the hero: B is the lock and the walk toward A ends at once.
     CombatRig two(ClassId::Warrior);
     REQUIRE(two.ok);
-    const EntityId a = two.Spawn("slime_green", Vec2(48, 40));
-    const EntityId b = two.Spawn("slime_green", two.hero->Position() + Vec2(0, 1));
+    const EntityId a = two.Spawn(fixture::Ooze(), Vec2(48, 40));
+    const EntityId b = two.Spawn(fixture::Ooze(), two.hero->Position() + Vec2(0, 1));
     REQUIRE_MONSTER(a);
     two.combat.SetAttackTarget(a, true);
     CHECK(two.loco.IsApproaching());
@@ -2747,23 +2754,24 @@ TEST_SUITE("combat") {
   TEST_CASE("art ids: hero / monster beats read the manifest asset UE plays (player_<class>, UE candidate chains)") {
     // Nothing mapped: the first candidate (the anim_timing fallback applies).
     CHECK(HeroArtGameId(AssetManifest{}, ClassId::Mage) == "player_mage");
-    CHECK(MonsterArtGameId(AssetManifest{}, "monster_slime", "slime_green") == "monster_slime");
+    CHECK(MonsterArtGameId(AssetManifest{}, "monster_slime", fixture::Ooze().id) == "monster_slime");
     // A monster asset keyed by its def id is found through the chain.
     AssetManifest man;
     man.loaded = true;
     AssetEntryDef asset;
     asset.name = "SK_Goblin";
-    asset.gameIds = {"goblin"};
+    asset.gameIds = {fixture::Grunt().id};
     AnimClipDef attack;
     attack.name = "Attack01";
     attack.hasContactMs = true;
     attack.contactMs = 200;
     asset.anims = {attack};
     man.assets.push_back(asset);
-    man.gameIdToAsset.push_back({"goblin", "SK_Goblin"});
-    CHECK(MonsterArtGameId(man, "monster_goblin", "goblin") == "goblin");
+    man.gameIdToAsset.push_back({fixture::Grunt().id, "SK_Goblin"});
+    CHECK(MonsterArtGameId(man, "monster_goblin", fixture::Grunt().id) == fixture::Grunt().id);
     const AnimTimingTable& at = D().Combat().anim;
-    CHECK(ComputeAttackTiming(at, man, MonsterArtGameId(man, "monster_goblin", "goblin"), AnimRig::Humanoid, 1200)
+    const std::string artId = MonsterArtGameId(man, "monster_goblin", fixture::Grunt().id);
+    CHECK(ComputeAttackTiming(at, man, artId, AnimRig::Humanoid, 1200)
               .contactMs == 200);
     if (!D().Assets().loaded) {
       MESSAGE("no exported asset manifest: runtime part skipped");
@@ -2783,7 +2791,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior, 3, moved);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId slime = rig.Spawn("slime_green", hero.Position() + Vec2(1, 0));
+    const EntityId slime = rig.Spawn(fixture::Ooze(), hero.Position() + Vec2(1, 0));
     REQUIRE_MONSTER(slime);
     rig.combat.SetAttackTarget(slime, false);
     rig.Step();
@@ -2852,9 +2860,9 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId g1 = rig.Spawn("goblin", hero.Position() + Vec2(1, 0));
+    const EntityId g1 = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(1, 0));
     REQUIRE_MONSTER(g1);
-    rig.Spawn("goblin", hero.Position() + Vec2(0, 1));
+    rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(0, 1));
     const int32_t stomp = rig.SkillIndex("war_stomp");
     hero.Skills().SetLevel(stomp, 1);
     hero.lastAttackMs = 1e18;
@@ -2958,7 +2966,7 @@ TEST_SUITE("combat") {
 
     // Basic attacks never scorch.
     CombatRig basic(ClassId::Warrior);
-    const EntityId s = basic.Spawn("slime_green", basic.hero->Position() + Vec2(1, 0));
+    const EntityId s = basic.Spawn(fixture::Ooze(), basic.hero->Position() + Vec2(1, 0));
     basic.combat.SetAttackTarget(s, false);
     basic.StepTo(basic.h.clock.NowMs() + 400);
     const auto bh = EventsOf<EvHit>(basic.h.events);
@@ -2969,7 +2977,7 @@ TEST_SUITE("combat") {
   TEST_CASE("9.5: a zone change that drops the shown target emits TARGET_CHANGED{none}") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
-    const EntityId slime = rig.Spawn("slime_green", rig.hero->Position() + Vec2(1, 0));
+    const EntityId slime = rig.Spawn(fixture::Ooze(), rig.hero->Position() + Vec2(1, 0));
     REQUIRE_MONSTER(slime);
     rig.combat.SetAttackTarget(slime, false);
     REQUIRE(rig.combat.IndicatorTarget() == slime);
@@ -2994,7 +3002,7 @@ TEST_SUITE("combat") {
   TEST_CASE("4.2 / 13.1: the killing blow's hit precedes the death and the kill pipeline") {
     CombatRig rig(ClassId::Warrior);
     REQUIRE(rig.ok);
-    const EntityId slime = rig.Spawn("slime_green", rig.hero->Position() + Vec2(1, 0));
+    const EntityId slime = rig.Spawn(fixture::Ooze(), rig.hero->Position() + Vec2(1, 0));
     REQUIRE_MONSTER(slime);
     rig.monsters.Find(slime)->hp = 1;
     rig.combat.SetAttackTarget(slime, false);
@@ -3019,7 +3027,7 @@ TEST_SUITE("combat") {
     CHECK(h.targetHp == 0);
     // A skill kill: hit, death, kill pipeline, then the impact burst's shake (6.5 applyHit order).
     CombatRig k(ClassId::Warrior);
-    const EntityId s2 = k.Spawn("slime_green", k.hero->Position() + Vec2(1, 0));
+    const EntityId s2 = k.Spawn(fixture::Ooze(), k.hero->Position() + Vec2(1, 0));
     k.h.events.Clear();
     MonsterHitRequest r;
     r.monster = s2;
@@ -3149,7 +3157,7 @@ TEST_SUITE("combat") {
       CHECK_FALSE(rig.combat.Buffer().HasPending());
       // A monster beyond the C14 auto-pick radius (8 tiles) is never locked: still nothing (the web's targeted first
       // skill starved the list; C1 must not turn that into casting at the nearest monster on the map).
-      const EntityId far = rig.Spawn("goblin", start + Vec2(12, 0));
+      const EntityId far = rig.Spawn(fixture::Grunt(), start + Vec2(12, 0));
       REQUIRE(far != kNoEntity);
       rig.Step(600);
       CHECK(rig.combat.AttackTarget() == kNoEntity);
@@ -3166,7 +3174,7 @@ TEST_SUITE("combat") {
       SkillBook& book = hero.Skills();
       for (size_t i = 0; i < book.SkillCount(); ++i) book.SetLevel(static_cast<int32_t>(i), 0);
       book.SetLevel(rig.SkillIndex("teleport"), 1);
-      const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(3, 0));
+      const EntityId t = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(3, 0));
       REQUIRE(t != kNoEntity);
       rig.combat.SetAttackTarget(t, false);
       hero.lastAttackMs = 1e18;
@@ -3214,7 +3222,7 @@ TEST_SUITE("combat") {
       for (size_t i = 0; i < book.SkillCount(); ++i) book.SetLevel(static_cast<int32_t>(i), 0);
       book.SetLevel(rig.SkillIndex(k.id), 1);
       const Vec2 p = hero.Position();
-      const EntityId t = rig.Spawn("goblin_chief", p + Vec2(reach + 0.75, 0));
+      const EntityId t = rig.Spawn(fixture::Brute(), p + Vec2(reach + 0.75, 0));
       REQUIRE(t != kNoEntity);
       rig.combat.SetAttackTarget(t, false);  // a held lock, no approach
       hero.lastAttackMs = 1e18;
@@ -3237,14 +3245,14 @@ TEST_SUITE("combat") {
     SkillBook& book = hero.Skills();
     for (size_t i = 0; i < book.SkillCount(); ++i) book.SetLevel(static_cast<int32_t>(i), 0);
     book.SetLevel(rig.SkillIndex("blizzard"), 1);
-    const EntityId lock = rig.Spawn("goblin_chief", hero.Position() + Vec2(12, 0));
+    const EntityId lock = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(12, 0));
     REQUIRE(lock != kNoEntity);
     rig.combat.SetAttackTarget(lock, false);
     hero.lastAttackMs = 1e18;
     hero.autoCombat = true;
     rig.Step(30);
     CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
-    const EntityId other = rig.Spawn("goblin_chief", hero.Position() + Vec2(0, 3));
+    const EntityId other = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(0, 3));
     rig.Step(30);
     CHECK(test::CountEvents<EvSkillUsed>(rig.h.events) == 0);
     // In reach (7.5 tiles): cast on the lock's tile, and it hits the lock, not the other one.
@@ -3264,7 +3272,8 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Mage);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId t = rig.Spawn("goblin", hero.Position() + Vec2(3, 0));  // 55 HP: each share is a 'normal' share
+    // 55 HP: each share is a 'normal' share
+    const EntityId t = rig.Spawn(fixture::Grunt(), hero.Position() + Vec2(3, 0));
     REQUIRE(t != kNoEntity);
     rig.combat.SetAttackTarget(t, false);
     hero.lastAttackMs = 1e18;
@@ -3310,7 +3319,7 @@ TEST_SUITE("combat") {
 
     // A later share that kills keeps the kill weight (the web's killing blow), still without burst or shake.
     CombatRig k(ClassId::Mage);
-    const EntityId u = k.Spawn("goblin", k.hero->Position() + Vec2(3, 0));
+    const EntityId u = k.Spawn(fixture::Grunt(), k.hero->Position() + Vec2(3, 0));
     k.combat.SetAttackTarget(u, false);
     k.hero->lastAttackMs = 1e18;
     k.hero->Skills().SetLevel(k.SkillIndex("fire_wall"), 1);
@@ -3339,7 +3348,7 @@ TEST_SUITE("combat") {
       REQUIRE(rig.ok);
       Hero& hero = *rig.hero;
       if (worn) rig.h.ctx.equip.Add(Stat::DoubleShot, 50);
-      const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(1, 0));
+      const EntityId t = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(1, 0));
       REQUIRE(t != kNoEntity);
       rig.combat.SetAttackTarget(t, false);
       rig.Step();
@@ -3359,7 +3368,7 @@ TEST_SUITE("combat") {
     CombatRig rig(ClassId::Rogue);
     REQUIRE(rig.ok);
     Hero& hero = *rig.hero;
-    const EntityId t = rig.Spawn("goblin_chief", hero.Position() + Vec2(5, 0));
+    const EntityId t = rig.Spawn(fixture::Brute(), hero.Position() + Vec2(5, 0));
     REQUIRE(t != kNoEntity);
     ActiveBuff mark;
     mark.stat = BuffStat::DamageAmplify;
@@ -3441,10 +3450,10 @@ TEST_SUITE("combat") {
       Hero& hero = *rig.hero;
       hero.lastAttackMs = 1e18;
       const Vec2 p = hero.Position();
-      const EntityId nearA = rig.Spawn("goblin_chief", p + Vec2(2, 0));
+      const EntityId nearA = rig.Spawn(fixture::Brute(), p + Vec2(2, 0));
       REQUIRE_MONSTER(nearA);
-      const EntityId lockB = rig.Spawn("goblin_chief", p + Vec2(0, 5));
-      const EntityId hoverC = rig.Spawn("goblin_chief", p + Vec2(-3, 0));
+      const EntityId lockB = rig.Spawn(fixture::Brute(), p + Vec2(0, 5));
+      const EntityId hoverC = rig.Spawn(fixture::Brute(), p + Vec2(-3, 0));
       rig.combat.SetAttackTarget(lockB, false);
       SkillAim aim;
       aim.hoverTarget = hoverC;
@@ -3467,8 +3476,8 @@ TEST_SUITE("combat") {
       Hero& hero = *rig.hero;
       hero.lastAttackMs = 1e18;
       const Vec2 p = hero.Position();
-      const EntityId nearA = rig.Spawn("goblin_chief", p + Vec2(2, 0));
-      const EntityId hoverB = rig.Spawn("goblin_chief", p + Vec2(-5, 0));
+      const EntityId nearA = rig.Spawn(fixture::Brute(), p + Vec2(2, 0));
+      const EntityId hoverB = rig.Spawn(fixture::Brute(), p + Vec2(-5, 0));
       const int32_t ia = rig.SkillIndex("ice_arrow");
       SkillAim aim;
       aim.hoverTarget = hoverB;
@@ -3499,8 +3508,8 @@ TEST_SUITE("combat") {
       Hero& hero = *rig.hero;
       hero.lastAttackMs = 1e18;
       const Vec2 p = hero.Position();
-      const EntityId at75 = rig.Spawn("goblin_chief", p + Vec2(7.5, 0));
-      rig.Spawn("goblin_chief", p + Vec2(0, -9));  // beyond the cast reach: never picked
+      const EntityId at75 = rig.Spawn(fixture::Brute(), p + Vec2(7.5, 0));
+      rig.Spawn(fixture::Brute(), p + Vec2(0, -9));  // beyond the cast reach: never picked
       const int32_t fb = rig.SkillIndex("fireball");
       CHECK(rig.combat.PreviewCastTarget(fb) == at75);
       CHECK(launchedAt(rig, fb, SkillAim{}) == at75);
@@ -3512,8 +3521,8 @@ TEST_SUITE("combat") {
       Hero& hero = *rig.hero;
       hero.lastAttackMs = 1e18;
       const Vec2 p = hero.Position();
-      const EntityId idle = rig.Spawn("goblin_chief", p + Vec2(3, 0));
-      const EntityId chaser = rig.Spawn("goblin_chief", p + Vec2(-6, 0));
+      const EntityId idle = rig.Spawn(fixture::Brute(), p + Vec2(3, 0));
+      const EntityId chaser = rig.Spawn(fixture::Brute(), p + Vec2(-6, 0));
       rig.monsters.Find(chaser)->state = MonsterState::Chase;
       rig.Step();  // the web's 9.5 ring went under the chaser (nearest aggro)
       REQUIRE(rig.combat.AttackTarget() == kNoEntity);
@@ -3527,7 +3536,7 @@ TEST_SUITE("combat") {
     {  // the ring without a lock: nothing beyond the 8-tile auto-pick radius
       CombatRig rig(ClassId::Mage);
       const Vec2 p = rig.hero->Position();
-      const EntityId far = rig.Spawn("goblin_chief", p + Vec2(9, 0));
+      const EntityId far = rig.Spawn(fixture::Brute(), p + Vec2(9, 0));
       REQUIRE_MONSTER(far);
       rig.Step();
       CHECK(rig.combat.IndicatorTarget() == kNoEntity);
@@ -3544,9 +3553,9 @@ TEST_SUITE("combat") {
       CombatRig w(ClassId::Warrior);
       w.hero->lastAttackMs = 1e18;
       const Vec2 p = w.hero->Position();
-      const EntityId adj = w.Spawn("goblin_chief", p + Vec2(1, 0));
+      const EntityId adj = w.Spawn(fixture::Brute(), p + Vec2(1, 0));
       REQUIRE_MONSTER(adj);
-      const EntityId chaser = w.Spawn("goblin_chief", p + Vec2(-5, 0));
+      const EntityId chaser = w.Spawn(fixture::Brute(), p + Vec2(-5, 0));
       w.monsters.Find(chaser)->state = MonsterState::Chase;
       w.Step();
       w.h.events.Clear();
@@ -3566,7 +3575,7 @@ TEST_SUITE("combat") {
     Hero& hero = *rig.hero;
     hero.lastAttackMs = 1e18;
     const Vec2 p = hero.Position();
-    const EntityId far = rig.Spawn("goblin_chief", p + Vec2(9, 0));  // beyond the cast reach
+    const EntityId far = rig.Spawn(fixture::Brute(), p + Vec2(9, 0));  // beyond the cast reach
     REQUIRE_MONSTER(far);
     const int32_t ia = rig.SkillIndex("ice_arrow");
     CHECK(rig.combat.PreviewCastTarget(ia) == kNoEntity);
@@ -3659,7 +3668,7 @@ TEST_SUITE("combat") {
     CHECK(w.combat.RequestSkill(slash, SkillAim{}) == SkillRequestResult::Buffered);
     CHECK(logged("zone.combat.noTarget"));
     const Vec2 wp = w.hero->Position();
-    const EntityId g = w.Spawn("goblin_chief", wp + Vec2(5, 0));
+    const EntityId g = w.Spawn(fixture::Brute(), wp + Vec2(5, 0));
     REQUIRE_MONSTER(g);
     w.h.events.Clear();
     const double mana0 = w.hero->Mana();
@@ -3670,7 +3679,7 @@ TEST_SUITE("combat") {
     CHECK(test::CountEvents<EvTargetChanged>(w.h.events) == 0);
     CHECK(w.hero->Mana() == mana0);
     // An attacker that steps next to the warrior is still auto-attacked (no far lock holds the basic attack).
-    const EntityId adj = w.Spawn("goblin_chief", wp + Vec2(-1, 0));
+    const EntityId adj = w.Spawn(fixture::Brute(), wp + Vec2(-1, 0));
     w.monsters.Find(adj)->state = MonsterState::Attack;
     w.h.events.Clear();
     w.Step(60);
@@ -3690,7 +3699,7 @@ TEST_SUITE("combat") {
     CombatRig m(ClassId::Mage);
     m.hero->lastAttackMs = 1e18;
     const Vec2 mp = m.hero->Position();
-    const EntityId hoverFar = m.Spawn("goblin_chief", mp + Vec2(0, 10));
+    const EntityId hoverFar = m.Spawn(fixture::Brute(), mp + Vec2(0, 10));
     REQUIRE_MONSTER(hoverFar);
     const int32_t mia = m.SkillIndex("ice_arrow");
     SkillAim hoverAim;
@@ -3698,7 +3707,7 @@ TEST_SUITE("combat") {
     CHECK(m.combat.RequestSkill(mia, hoverAim) == SkillRequestResult::Buffered);
     CHECK(m.combat.AttackTarget() == kNoEntity);
     m.Step(20);  // the buffered press expires
-    const EntityId nearA = m.Spawn("goblin_chief", mp + Vec2(2, 0));
+    const EntityId nearA = m.Spawn(fixture::Brute(), mp + Vec2(2, 0));
     m.h.events.Clear();
     const double m0 = m.h.clock.NowMs();
     CHECK(m.combat.RequestSkill(mia, SkillAim{}) == SkillRequestResult::Executed);
@@ -3715,9 +3724,9 @@ TEST_SUITE("combat") {
     Hero& hero = *rig.hero;
     hero.lastAttackMs = 1e18;
     const Vec2 p = hero.Position();
-    const EntityId t = rig.Spawn("goblin_chief", p + Vec2(5, 0));
+    const EntityId t = rig.Spawn(fixture::Brute(), p + Vec2(5, 0));
     REQUIRE_MONSTER(t);
-    const EntityId other = rig.Spawn("goblin_chief", p + Vec2(1, 1));
+    const EntityId other = rig.Spawn(fixture::Brute(), p + Vec2(1, 1));
     rig.combat.SetAttackTarget(t, false);
     const double t0 = rig.h.clock.NowMs();
     REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), SkillAim{}) == SkillRequestResult::Executed);
@@ -3750,9 +3759,9 @@ TEST_SUITE("combat") {
     Hero& hero = *rig.hero;
     hero.lastAttackMs = 1e18;
     const Vec2 p = hero.Position();
-    const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(7, 0));  // the web anchored only within range + 1 = 6
+    const EntityId lock = rig.Spawn(fixture::Brute(), p + Vec2(7, 0));  // the web anchored only within range + 1 = 6
     REQUIRE_MONSTER(lock);
-    const EntityId near = rig.Spawn("goblin_chief", p + Vec2(2, 0));  // 5 tiles from the lock: outside the radius 3
+    const EntityId near = rig.Spawn(fixture::Brute(), p + Vec2(2, 0));  // 5 tiles from the lock: outside the radius 3
     rig.combat.SetAttackTarget(lock, false);
     const int32_t bz = rig.SkillIndex("blizzard");
     hero.Skills().SetLevel(bz, 1);
@@ -3805,7 +3814,7 @@ TEST_SUITE("combat") {
       r.hero->lastAttackMs = 1e18;
       const int32_t idx = r.SkillIndex(k.id);
       r.hero->Skills().SetLevel(idx, 1);
-      const EntityId far = r.Spawn("goblin_chief", r.hero->Position() + Vec2(8.5, 0));
+      const EntityId far = r.Spawn(fixture::Brute(), r.hero->Position() + Vec2(8.5, 0));
       REQUIRE_MONSTER(far);
       r.combat.SetAttackTarget(far, false);
       CHECK(r.combat.RequestSkill(idx, SkillAim{}) == SkillRequestResult::Buffered);
@@ -3825,10 +3834,10 @@ TEST_SUITE("combat") {
       hero.lastAttackMs = 1e18;
       hero.SetFacing(Vec2(1, 0));
       const Vec2 p = hero.Position();
-      const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(-4, 0));
+      const EntityId lock = rig.Spawn(fixture::Brute(), p + Vec2(-4, 0));
       REQUIRE_MONSTER(lock);
-      const EntityId inFan = rig.Spawn("goblin_chief", p + Vec2(-2, 0.5));
-      const EntityId ahead = rig.Spawn("goblin_chief", p + Vec2(2, 0));  // along the old facing
+      const EntityId inFan = rig.Spawn(fixture::Brute(), p + Vec2(-2, 0.5));
+      const EntityId ahead = rig.Spawn(fixture::Brute(), p + Vec2(2, 0));  // along the old facing
       rig.combat.SetAttackTarget(lock, false);
       const double t0 = rig.h.clock.NowMs();
       REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("multishot"), SkillAim{}) == SkillRequestResult::Executed);
@@ -3855,9 +3864,9 @@ TEST_SUITE("combat") {
       const Vec2 p = hero.Position();
       const int32_t pa = rig.SkillIndex("piercing_arrow");
       hero.Skills().SetLevel(pa, 1);
-      const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(0, -7));
-      const EntityId onLine = rig.Spawn("goblin_chief", p + Vec2(0.5, -3));
-      const EntityId behind = rig.Spawn("goblin_chief", p + Vec2(0, 1));
+      const EntityId lock = rig.Spawn(fixture::Brute(), p + Vec2(0, -7));
+      const EntityId onLine = rig.Spawn(fixture::Brute(), p + Vec2(0.5, -3));
+      const EntityId behind = rig.Spawn(fixture::Brute(), p + Vec2(0, 1));
       rig.combat.SetAttackTarget(lock, false);
       const double t0 = rig.h.clock.NowMs();
       REQUIRE(rig.combat.RequestSkill(pa, SkillAim{}) == SkillRequestResult::Executed);
@@ -3879,7 +3888,7 @@ TEST_SUITE("combat") {
       none.hero->lastAttackMs = 1e18;
       const Vec2 q = none.hero->Position();
       none.hero->Skills().SetLevel(pa, 1);
-      const EntityId side = none.Spawn("goblin_chief", q + Vec2(-9, 0));  // out of the cast reach
+      const EntityId side = none.Spawn(fixture::Brute(), q + Vec2(-9, 0));  // out of the cast reach
       SkillAim cursor;
       cursor.hasPoint = true;
       cursor.point = q + Vec2(-1, 0);
@@ -3904,10 +3913,10 @@ TEST_SUITE("combat") {
     const Vec2 p = hero.Position();
     const int32_t chain = rig.SkillIndex("chain_lightning");
     hero.Skills().SetLevel(chain, 1);
-    const EntityId lock = rig.Spawn("goblin_chief", p + Vec2(4.5, 0));  // beyond the hero-centred radius 4
+    const EntityId lock = rig.Spawn(fixture::Brute(), p + Vec2(4.5, 0));  // beyond the hero-centred radius 4
     REQUIRE_MONSTER(lock);
-    const EntityId hop = rig.Spawn("goblin_chief", p + Vec2(6, 1.5));     // 2.1 tiles from the lock
-    const EntityId close = rig.Spawn("goblin_chief", p + Vec2(-1, 0));    // next to the hero, 5.5 from the lock
+    const EntityId hop = rig.Spawn(fixture::Brute(), p + Vec2(6, 1.5));     // 2.1 tiles from the lock
+    const EntityId close = rig.Spawn(fixture::Brute(), p + Vec2(-1, 0));    // next to the hero, 5.5 from the lock
     rig.combat.SetAttackTarget(lock, false);
     const double t0 = rig.h.clock.NowMs();
     REQUIRE(rig.combat.RequestSkill(chain, SkillAim{}) == SkillRequestResult::Executed);
@@ -3938,9 +3947,9 @@ TEST_SUITE("combat") {
     Hero& hero = *rig.hero;
     hero.lastAttackMs = 1e18;
     const Vec2 p = hero.Position();
-    const EntityId nearA = rig.Spawn("goblin_chief", p + Vec2(2, 0));
+    const EntityId nearA = rig.Spawn(fixture::Brute(), p + Vec2(2, 0));
     REQUIRE_MONSTER(nearA);
-    const EntityId hoverB = rig.Spawn("goblin_chief", p + Vec2(0, -5));
+    const EntityId hoverB = rig.Spawn(fixture::Brute(), p + Vec2(0, -5));
     const int32_t ia = rig.SkillIndex("ice_arrow");
     SkillAim aim;
     aim.hoverTarget = hoverB;
@@ -3991,7 +4000,7 @@ TEST_SUITE("combat") {
     const double t0 = rig.h.clock.NowMs();
     REQUIRE(rig.combat.RequestSkill(bz, cursor) == SkillRequestResult::Executed);
     REQUIRE(rig.combat.AttackTarget() == kNoEntity);
-    const EntityId g = rig.Spawn("goblin_chief", p + Vec2(-7, 0));
+    const EntityId g = rig.Spawn(fixture::Brute(), p + Vec2(-7, 0));
     REQUIRE_MONSTER(g);
     rig.StepTo(t0 + 300);
     bool storm = false;
@@ -4012,7 +4021,7 @@ TEST_SUITE("combat") {
     rig.h.events.Clear();
     const double t1 = rig.h.clock.NowMs();
     REQUIRE(rig.combat.RequestSkill(rig.SkillIndex("ice_arrow"), cursor) == SkillRequestResult::Executed);
-    const EntityId g2 = rig.Spawn("goblin_chief", p + Vec2(-6, 0));
+    const EntityId g2 = rig.Spawn(fixture::Brute(), p + Vec2(-6, 0));
     REQUIRE_MONSTER(g2);
     rig.StepTo(t1 + 300);
     const auto l = EventsOf<EvProjectileLaunched>(rig.h.events);
@@ -4044,8 +4053,8 @@ TEST_SUITE("combat") {
     const auto setUp = [](CombatRig& r) {
       r.hero->lastAttackMs = 1e18;
       const Vec2 p = r.hero->Position();
-      r.Spawn("goblin", p + Vec2(4, 0));                // aggro range 5
-      return r.Spawn("goblin", p + Vec2(0, 3));          // the nearest
+      r.Spawn(fixture::Grunt(), p + Vec2(4, 0));                // aggro range 5
+      return r.Spawn(fixture::Grunt(), p + Vec2(0, 3));          // the nearest
     };
     CombatRig manual(ClassId::Mage);
     REQUIRE(manual.ok);
@@ -4077,7 +4086,7 @@ TEST_SUITE("combat") {
       int expect;          // 0 = a, 1 = b
     };
     const Layout layouts[] = {
-        {"beyond its aggro range (goblin 5) but within 8", Vec2(6.5, 0), Vec2(), false, 0},
+        {"beyond its aggro range (5) but within 8", Vec2(6.5, 0), Vec2(), false, 0},
         {"a nearer idle monster over a farther chaser", Vec2(3, 0), Vec2(-6, 0), true, 0},
         {"the nearer of two", Vec2(0, 7), Vec2(-4, 4), false, 1},
     };
@@ -4086,8 +4095,8 @@ TEST_SUITE("combat") {
       const auto place = [&l](CombatRig& r, EntityId& ida, EntityId& idb) {
         r.hero->lastAttackMs = 1e18;
         const Vec2 p = r.hero->Position();
-        ida = r.Spawn("goblin", p + l.a);
-        idb = l.b == Vec2() ? kNoEntity : r.Spawn("goblin", p + l.b);
+        ida = r.Spawn(fixture::Grunt(), p + l.a);
+        idb = l.b == Vec2() ? kNoEntity : r.Spawn(fixture::Grunt(), p + l.b);
         if (l.bChases && idb != kNoEntity) r.monsters.Find(idb)->state = MonsterState::Chase;
       };
       CombatRig man(ClassId::Mage);

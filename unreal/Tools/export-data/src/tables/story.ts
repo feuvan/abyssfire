@@ -7,7 +7,7 @@ import * as StorySceneMod from '../../../../../src/scenes/StoryScene';
 import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
-import { withholdRemakeFields } from '../remake';
+import { noteConfig, withholdRemakeFields } from '../remake';
 
 const exp = <T>(mod: unknown, name: string): T => {
   const v = (mod as Record<string, unknown>)[`__expose_${name}`];
@@ -48,6 +48,7 @@ export function exportStory(): TableResult[] {
     'await this.tweenTo(epi, { alpha: 1 }, 400);', 'await this.waitOrInput(2200);',
     'await this.tweenTo([band, name, epi, slash, halo], { alpha: 0 }, 450);');
   const moods = exp<Record<string, unknown>>(StorySceneMod, 'MOODS');
+  noteConfig(['story.json'], 'finalBoss', exp<string>(StoryDirectorMod, 'FINAL_BOSS'));
   return [{
     file: 'story.json',
     source: ['src/data/story/script.ts', 'src/data/story/types.ts', 'src/scenes/StoryScene.ts', 'src/systems/StoryDirector.ts'],

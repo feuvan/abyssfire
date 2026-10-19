@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "TestContent.h"
 #include "TestUtil.h"
 #include "abyss/base/Json.h"
 #include "abyss/base/StrUtil.h"
@@ -207,31 +208,8 @@ TEST_CASE("shops: milestone-removed wares are not sold (I4 TP scroll, I2 ID scro
 }
 
 TEST_CASE("monster tables") {
+  // The roster spot checks (definition and hunt counts, the Chapter 1 monsters): content_ch1_test.cpp.
   const MonsterTables& m = test::RealData().Monsters();
-  CHECK(m.defs.size() == 29);
-  const MonsterDef* goblin = m.Find("goblin");
-  REQUIRE(goblin);
-  CHECK(goblin->hp == 55);
-  CHECK(goblin->damage == 8);
-  CHECK(goblin->defense == 4);
-  CHECK(goblin->attackSpeedMs == 1200);
-  CHECK_FALSE(goblin->isRanged);
-  CHECK(goblin->nameKey == "data.monster.goblin");
-  const MonsterDef* shaman = m.Find("miniboss_goblin_shaman");
-  REQUIRE(shaman);
-  CHECK(shaman->attackRange == 3);  // M5
-  CHECK(shaman->isRanged);
-  CHECK(m.FindForZone("emerald_plains", "slime_green") != nullptr);
-  const MiniBossEntry* mb = m.MiniBossFor("emerald_plains");
-  REQUIRE(mb);
-  CHECK(mb->spawn == TilePos{60, 55});
-  CHECK(m.MiniBossDialogue("miniboss_goblin_shaman")->nodes.size() == 3);
-  CHECK(m.hunts.size() == 17);
-  const HuntDef* thief = m.FindHunt("hunt_pendant_thief");
-  REQUIRE(thief);
-  CHECK(thief->defNormal.hp == 165);
-  CHECK(thief->defNormal.damage == 10);
-  CHECK(thief->revealAfterPrevious);
   CHECK(m.ai.leashMode == LeashMode::Returning);
   CHECK(m.ai.placementTries == 8);
   CHECK(m.ai.respawnDelayMs == 15000);
@@ -241,19 +219,7 @@ TEST_CASE("world tables") {
   const WorldTables& w = test::RealData().World();
   CHECK(w.maps.size() == 6);
   CHECK(w.mapOrder.size() == 5);
-  const MapDef* ep = w.FindMap("emerald_plains");
-  REQUIRE(ep);
-  CHECK(ep->cols == 120);
-  CHECK(ep->generated);
-  CHECK(ep->generatorSeed == 12345);
-  CHECK(ep->generatorTheme == MapTheme::Plains);
-  CHECK(ep->generatorAvoid.size() == 28);
-  REQUIRE(ep->camps.size() == 2);
-  CHECK(ep->camps[0].pos == TilePos{15, 15});
-  CHECK(ep->playerStart == TilePos{15, 22});
-  CHECK(ep->levelMin == 1);
-  CHECK(ep->safeZoneRadiusEffective == 9);
-  CHECK(ep->orderIndex == 0);
+  // The emerald_plains map facts, its event pool and its camp NPCs: content_ch1_test.cpp.
   const MapDef* tower = w.FindMap("ember_tower");
   REQUIRE(tower);
   CHECK_FALSE(tower->generated);
@@ -266,9 +232,7 @@ TEST_CASE("world tables") {
   CHECK(w.constants.townPortalChannelMs == 1500);
   CHECK(w.constants.cameraPitchDeg == -50);
   CHECK(w.randomEvents.types.size() == 5);
-  CHECK(w.randomEvents.ForZone("emerald_plains")->ambushCountMin == 3);
-  // I7: the stash keeper stands in the Chapter 1 camp (appended slot); W7: the sealed gate message is an i18n key.
-  CHECK(ep->camps[0].npcs == std::vector<std::string>{"blacksmith", "merchant", "quest_elder", "stash"});
+  // W7: the sealed gate message is an i18n key.
   CHECK(w.constants.sealedGateMessageKey == "zone.exit.sealedChapter2");
   CHECK(test::RealData().Strings().Lookup(LocaleId::ZhCN, w.constants.sealedGateMessageKey) != nullptr);
   CHECK(test::RealData().Strings().Lookup(LocaleId::En, w.constants.sealedGateMessageKey) != nullptr);
@@ -291,47 +255,12 @@ TEST_CASE("world tables") {
 
 TEST_CASE("quests, npcs, dialogue, story, lore") {
   const DataStore& d = test::RealData();
+  // The table sizes and the Chapter 1 quests, NPCs, dialogue, beats and lore: content_ch1_test.cpp.
   const QuestTables& q = d.Quests();
-  CHECK(q.quests.size() == 58);
-  const QuestDef* slimes = q.Find("q_kill_slimes");
-  REQUIRE(slimes);
-  CHECK(slimes->category == QuestCategory::Main);
-  REQUIRE(slimes->objectives.size() == 1);
-  CHECK(slimes->objectives[0].type == ObjectiveType::Kill);
-  CHECK(slimes->objectives[0].targetId == "slime_green");
-  CHECK(slimes->objectives[0].required == 10);
-  CHECK(slimes->giverNpcId == "quest_elder");
-  CHECK(slimes->embersOnTurnIn == 2);
-  const QuestDef* chief = q.Find("q_find_goblin_chief");
-  REQUIRE(chief);
-  CHECK(chief->questArea.col == 15);  // Q4 data fix: centred on the chief's spawn
-  CHECK(chief->questArea.row == 95);
-  CHECK(chief->rewards.choices.size() == 2);
-  const QuestDef* herbs = q.Find("q_herb_gathering");
-  REQUIRE(herbs);
-  CHECK(herbs->objectives[0].sourceKind == ItemSourceKind::Gather);
-  CHECK(herbs->objectives[0].gatherCount == 7);
-  CHECK(q.achievements.size() == 12);
   CHECK(q.achievementsCountKillOnce);
-  CHECK(q.ItemKindFor("mat_herb") == "herb");
   CHECK(q.ItemKindFor("unknown") == "relic");
 
-  CHECK(d.Npcs().npcs.size() == 27);
-  CHECK(d.Npcs().GiverOf("q_kill_slimes")->id == "quest_elder");
-  CHECK(d.Dialogues().trees.size() == 10);
-  const DialogueTree* elder = d.Dialogues().Find("quest_elder");
-  REQUIRE(elder);
-  CHECK(elder->FindNode(elder->startNodeId) != nullptr);
-
   const StoryScript& s = d.Story();
-  CHECK(s.cutscenes.size() == 22);
-  CHECK(s.triggers.size() == 16);
-  CHECK(s.triggers[0].subjectId == "q_kill_slimes");
-  CHECK(s.BossIntroFor("goblin_chief")->cutscene == "cs_boss_goblin_chief");
-  const Cutscene* mark = s.FindCutscene("cs_ep_mark");
-  REQUIRE(mark);
-  CHECK(mark->steps[0].kind == StoryStepKind::Focus);
-  CHECK(mark->steps[0].target.kind == StoryActorKind::Npc);
   CHECK(s.timing.beatDelayQuestTurnedInMs == 650);
   // Presentation phases the core step player times (8.5): chapter card 3500 + 3800 + 1600 = 8.9 s uncut.
   CHECK(s.timing.chapterIntroMs + s.timing.chapterHoldMs + s.timing.chapterOutroMs == 8900);
@@ -344,9 +273,6 @@ TEST_CASE("quests, npcs, dialogue, story, lore") {
   CHECK(s.timing.say.inMs == 220);
   CHECK(s.timing.slidePartInMs == 900);
   CHECK(s.timing.sequenceBackdropInMs == 900);
-  CHECK(s.ChapterFor("emerald_plains") != nullptr);
-  CHECK(d.Lore().entries.size() == 21);
-  CHECK(d.Lore().ForZone("emerald_plains").size() == 4);
 }
 
 TEST_CASE("pets, homestead, audio, ui, abyss run") {
@@ -360,7 +286,10 @@ TEST_CASE("pets, homestead, audio, ui, abyss run") {
   CHECK(d.Pets().evolutionMult.size() == 3);
   CHECK(d.Pets().system.feedExp == 120);
   CHECK(d.Homestead().buildings.size() == 6);
-  CHECK(d.Homestead().FindBuilding("herb_garden")->unlockQuest == "q_secure_plains");
+  // The wing opens on a quest the data holds (which one is content: content_ch1_test.cpp pins M5).
+  const BuildingDef* garden = d.Homestead().FindBuilding("herb_garden");
+  REQUIRE(garden != nullptr);
+  CHECK(d.FindQuest(garden->unlockQuest) != nullptr);
   CHECK(d.Homestead().gardenIntervalByLevel.size() == 7);
   CHECK(d.Audio().cues.size() == EnumCount<SfxId>());  // 33 web cues + the A7 port cues
   const AudioCueDef* aggro = d.Audio().Find(SfxId::MonsterAggro);

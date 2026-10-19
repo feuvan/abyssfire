@@ -66,6 +66,8 @@ export function exportQuests(): TableResult[] {
     {
       file: 'quests.json',
       source: ['src/data/quests/all_quests.ts', 'src/systems/QuestWorld.ts', 'src/data/npcs.ts'],
+      // derived.embersOnTurnIn: embersForQuest.
+      deps: ['src/data/homestead.ts'],
       data: { quests },
       counts: { quests: quests.length, emeraldPlains: byZone.emerald_plains ?? 0, hunts: AllQuests.reduce((n, q) => n + (q.hunts?.length ?? 0), 0) },
     },

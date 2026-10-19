@@ -69,6 +69,23 @@ export interface SubDungeonEntrance extends Web.SubDungeonEntrance {
   sealedTextKey?: string;
 }
 
+/**
+ * [W1] A mood region of a map (chapter1.md §9.1 / §15: the Breach Rim, a 16-tile region with its own mood). Not a
+ * generator input. Feature `map.regions`; the core / UE packages that read it (K1, U1) may extend the shape together with
+ * that feature.
+ */
+export interface RemakeRegion {
+  /** Region id (unique per map), e.g. `breach_rim`. */
+  id: string;
+  /** Centre tile. */
+  col: number;
+  row: number;
+  /** Radius in tiles. */
+  radius: number;
+  /** `zone_moods.json` mood id that blends in inside the region (a `zoneMoods.moods` entry, GameData/world.ts). */
+  mood: string;
+}
+
 export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances'> {
   subDungeonEntrances?: SubDungeonEntrance[];
   /**
@@ -76,4 +93,6 @@ export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances'> {
    * maps do not move. Feature `map.presentationTheme`.
    */
   presentationTheme?: string;
+  /** [W1] Mood regions (the Breach Rim). Feature `map.regions`. */
+  regions?: RemakeRegion[];
 }

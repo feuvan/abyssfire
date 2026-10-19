@@ -49,13 +49,13 @@ TEST_CASE("Vec2 / TilePos / RoundToTile") {
 
 TEST_CASE("IdIndex keeps data order and finds by binary search") {
   IdIndex idx;
-  CHECK(idx.Add("goblin"));
-  CHECK(idx.Add("slime_green"));
+  CHECK(idx.Add("gamma"));
+  CHECK(idx.Add("sigma"));
   CHECK(idx.Add("abyss"));
-  CHECK_FALSE(idx.Add("goblin"));
+  CHECK_FALSE(idx.Add("gamma"));
   CHECK(idx.Size() == 3);
-  CHECK(idx.Find("goblin") == 0);
-  CHECK(idx.Find("slime_green") == 1);
+  CHECK(idx.Find("gamma") == 0);
+  CHECK(idx.Find("sigma") == 1);
   CHECK(idx.Find("abyss") == 2);
   CHECK(idx.Find("nope") == -1);
   CHECK(idx.IdAt(2) == "abyss");

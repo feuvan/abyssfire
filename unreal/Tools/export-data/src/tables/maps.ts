@@ -15,7 +15,7 @@ import * as MapGen from '../../../../../src/systems/MapGenerator';
 import { AllSubDungeons, SubDungeonsByZone } from '../../../../../src/data/subDungeons';
 import { NPCDefinitions } from '../../../../../src/data/npcs';
 import type { MapData } from '../../../../../src/data/types';
-import { assert, plain, sha256, formatJson, SCHEMA_VERSION, type TableResult } from '../util';
+import { assert, plain, sha256, formatJson, SCHEMA_VERSION, type TableResult, type GoldenFile } from '../util';
 import { withholdRemakeFields } from '../remake';
 
 const exp = <T>(mod: unknown, name: string): T => {
@@ -43,6 +43,12 @@ const PORT_CAMP_NPCS: Record<string, { campIndex: number; append: string[]; deci
   emerald_plains: [{ campIndex: 0, append: ['stash'], decision: 'I7' }],
 };
 
+/**
+ * The modules `externalLandmarks(mapId)` (src/data/maps/index.ts) reads: generator `avoid` inputs, so they feed
+ * maps.json and the golden maps through web code (provenance `deps`, main.ts).
+ */
+const LANDMARK_SOURCES = ['src/data/loreCollectibles.ts', 'src/data/miniBosses.ts', 'src/data/quests/all_quests.ts'];
+
 const rowsOf = (grid: number[][]): string[] => grid.map(r => r.join(''));
 const boolRows = (grid: boolean[][]): string[] => grid.map(r => r.map(b => (b ? '1' : '0')).join(''));
 
@@ -54,7 +60,7 @@ function hashes(m: MapData): { tilesSha: string; decorSha: string; walkable: num
   };
 }
 
-export function exportMaps(): { tables: TableResult[]; golden: { path: string; text: string }[] } {
+export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
   const externalLandmarks = exp<(id: string) => { col: number; row: number; margin?: number }[]>(MapsIndex, 'externalLandmarks');
   const themeConfigs = exp<Record<string, unknown>>(MapGen, 'THEME_CONFIGS');
   const decorPools = exp<Record<string, unknown>>(MapGen, 'DECOR_POOLS');
@@ -73,7 +79,7 @@ export function exportMaps(): { tables: TableResult[]; golden: { path: string; t
   assert(Object.keys(authored).join() === Object.keys(AllMaps).join(), 'AllMaps registry changed — update maps.ts');
 
   const maps: Record<string, unknown> = {};
-  const golden: { path: string; text: string }[] = [];
+  const golden: GoldenFile[] = [];
   const warnings: string[] = [];
   for (const [id, raw] of Object.entries(authored)) {
     const generated = raw.tiles.length === 0 && !!raw.theme;
@@ -133,7 +139,8 @@ export function exportMaps(): { tables: TableResult[]; golden: { path: string; t
       collisions: generated ? null : boolRows(gen.collisions),
       decorations: (gen.decorations ?? []).map(d => [d.col, d.row, d.type]),
     };
-    golden.push({ path: `CoreTests/golden/maps/${id}.json`, text: formatJson(fixture) + '\n' });
+    golden.push({ path: `CoreTests/golden/maps/${id}.json`, text: formatJson(fixture) + '\n',
+      deps: [...fixture.source, ...(generated ? LANDMARK_SOURCES : [])] });
   }
   for (const w of warnings) console.warn(`  warning: ${w}`);
 
@@ -181,6 +188,7 @@ export function exportMaps(): { tables: TableResult[]; golden: { path: string; t
     text: formatJson({ schemaVersion: SCHEMA_VERSION, source: ['src/systems/MapGenerator.ts'],
       seededRandom: rngVectors, groveNoise: { columns: ['col', 'row', 'seed', 'scale', 'value'], rows: noise },
       mathHypot: { columns: ['a', 'b', 'Math.hypot(a,b)'], rows: hypot, grid: hypotGrid }, pickWeighted: { pool, picks } }) + '\n',
+    deps: ['src/systems/MapGenerator.ts'],
   });
 
   const subDungeons = plain(AllSubDungeons);
@@ -188,6 +196,7 @@ export function exportMaps(): { tables: TableResult[]; golden: { path: string; t
     {
       file: 'maps.json',
       source: ['src/data/maps/*.ts', 'src/data/maps/index.ts', 'src/data/subDungeons.ts', 'src/systems/MapGenerator.ts'],
+      deps: LANDMARK_SOURCES,
       data: {
         order: [...MapOrder],
         defaultMap: 'emerald_plains',

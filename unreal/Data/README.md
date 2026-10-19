@@ -20,12 +20,15 @@ under `src/` is read-only for the remake) or the exporter's mapping tables, and 
 * String fields named `note`, `formula`, `…Rule` (when a string) are documentation only.
 * `source` names the web module paths a table reads. A web content module listed in `unreal/GameData/redirects.json` is
   loaded from its GameData replacement instead (same path in `source`).
-* `remake` block (dark remake, implementation-plan.md §2): present only in a table the remake content changed, last key
-  of the file: `{source: str[] (GameData files), modules? {webPath: gameDataPath} (redirected modules the table cites
-  whose GameData module is no longer a snapshot of the web one), replaced? / added? / removed?: str[]
-  ("<override table>.<entry key>", from `unreal/GameData/world.ts` overrides), swept?: str[] (i18n keys the orphan sweep
-  dropped), stringsReplaced? / stringsAdded?: int (i18n: GameData strings that replaced a web / port string, or are new)}`.
-  Documentation only; the core does not read it.
+* `remake` block (dark remake, implementation-plan.md §2): present only in a table (or a `CoreTests/golden` map fixture)
+  the remake content changed, last key of the file: `{source: str[] (GameData files), modules? {webPath: gameDataPath}
+  (redirected modules the file is built from — its `source`, or modules it reads through web code such as the map
+  generator's landmarks — whose GameData module no longer matches its Phase 0 snapshot digest in `redirects.json`),
+  replaced? / added? / removed?: str[] ("<override table>.<entry key>", from `unreal/GameData/world.ts` overrides;
+  "config.<key>" for a `unreal/GameData/config.ts` value that differs from the web chapter's), swept?: str[] (i18n keys
+  the orphan sweep dropped), stringsReplacedWeb? / stringsReplacedPort? / stringsAdded?: int and replacedPortKeys?:
+  str[] (i18n: GameData strings that replaced a web string, replaced a port string — those leave `portKeys` — or are
+  new)}`. Documentation only; the core does not read it.
 * Remake-only fields (`unreal/GameData/types.ts`) appear only once the core can parse them (`REMAKE_SCHEMA` in
   `Tools/export-data/src/main.ts`); until then they are withheld from these files.
 * `index.json` lists every file with record counts, byte size and SHA-256, plus the golden fixtures.
@@ -107,7 +110,7 @@ Types below: `int`, `num` (double), `str`, `bool`, `T[]`, `{k: T}` (object keyed
 |---|---|
 | `audio_cues.json` | `cues [{id, lengthSec, variants, webReachable, assets: str[] (SW_SFX_<Id>[_0n]), bus: combat｜ui, spatial: 2d｜3d, concurrency{max, rule, minRetriggerMs}}]` (ids = SFXType), `rules` (event → cue, probed from AudioManager: `combatDamage`, `itemPickedByQuality`, `skillUsedByDamageType`, `questProgress`, …, `port` A6 / audio Q1–Q2 + `monsterAggro` / `monsterHurt` A7), `spatial` (A4). Cues may carry `families: AnimRig[]` (per-rig variants: the port-added `monster_aggro` / `monster_hurt` for humanoid and slime); footsteps and ambience beds are UE-side (A7, not cues) |
 | `music.json` | `themes {zone: ZoneTheme}`, `scores {zone: ScoreSpec}`, `scoreTrim`, `composer {modes, rhythms4, rhythms3, bassFloor}`, `director {zoneFadeSec, stateFadeSec, fadeInSec, victoryHoldMs, combatOffDelayMs, port}`, `settingsDefaults`, `portSettingsDefaults` (A3), `bgmFiles {key: path}` |
-| `i18n_zh-CN.json`, `i18n_en.json`, `i18n_zh-TW.json` | `{locale, fallback: str[] (t() chain), placeholder: "{name}", keyCount, strings {key: str}}` — complete flat tables (main + story + questStory + abyssRun + homestead + pets). zh-TW is generated from zh-CN with the web converter. `missingInOtherLocale` lists keys present in only one of zh-CN / en; `portKeys` lists the keys the port adds (not in the web locales: `zone.exit.sealedChapter2`, W7). Merge order per locale: web table → port strings → `unreal/GameData/i18n` (the remake wins; a replaced key keeps its position). Content-namespace keys (`data.quest.`, `data.monster.`, `story.<cutsceneId>.`, …) whose id no exported table references are swept (listed in `remake.swept`); every key the tables reference exists in zh-CN and en (the export fails otherwise) |
+| `i18n_zh-CN.json`, `i18n_en.json`, `i18n_zh-TW.json` | `{locale, fallback: str[] (t() chain), placeholder: "{name}", keyCount, strings {key: str}}` — complete flat tables (main + story + questStory + abyssRun + homestead + pets). zh-TW is generated from zh-CN with the web converter. `missingInOtherLocale` lists keys present in only one of zh-CN / en; `portKeys` lists the keys the port adds (not in the web locales: `zone.exit.sealedChapter2`, W7) and the remake did not replace. Merge order per locale: web table → port strings → `unreal/GameData/i18n` (the remake wins; a replaced key keeps its position). Content-namespace keys (`data.quest.`, `data.monster.`, `story.<cutsceneId>.`, …) whose id no exported table references are swept (listed in `remake.swept`); every key the tables reference exists in zh-CN and en (the export fails otherwise) |
 
 ## Other outputs
 

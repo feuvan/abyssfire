@@ -2,20 +2,28 @@
  * Remake content plumbing (implementation-plan.md §2): the field schema gate, the override hook for tables embedded in
  * web systems, the `remake` blocks and the redirect self-checks. Remake content itself lives in unreal/GameData/**.
  *
- *  - REMAKE_SCHEMA (main.ts) lists the remake-only features the C++ core can read. `withholdRemakeFields` strips every
- *    registered remake field whose feature is not listed (a field may be authored before its core package lands) and
+ *  - REMAKE_SCHEMA (main.ts) lists the remake-only features the C++ core can read. `withholdRemakeFields` fails on a
+ *    record key that is neither a web field nor a registered remake field (remakeKeys.ts), then strips every registered
+ *    remake field whose feature is not listed (a field may be authored before its core package lands);
  *    `gateRemakeValues` fails on a registered value (e.g. objective type `clear_area`) the core cannot read yet.
  *  - `overrideEntries` / `overrideById` apply GameData/world.ts REMAKE_OVERRIDES to one web table, per entry, and record
  *    what changed for the `remake` block of each file the table feeds. Unknown override tables or keys fail the export.
- *  - `remakeBlock(file)` is appended to every written table that the remake changed (main.ts); nothing is added while
- *    the remake changes nothing, so the Phase 0 export is byte-identical to the web's.
+ *  - `noteConfig` records a GameData/config.ts value that differs from the behaviour the exporter hard-coded before the
+ *    remake owned its content (`CONFIG_BASELINE`), like an override.
+ *  - `remakeBlock(file)` is appended to every written table (and golden fixture) that the remake changed (main.ts);
+ *    nothing is added while the remake changes nothing, so the Phase 0 export is byte-identical to the web's.
+ *  - `divergedRedirects` compares each redirected GameData module with the hash of its Phase 0 snapshot
+ *    (redirects.json `snapshots`), never with the live web file, so a web-only edit changes nothing here.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { REMAKE_OVERRIDES, type EntryOverride, type RemakeOverrides } from '../../../GameData/world';
-import { assert } from './util';
+import { CHAPTER_CONFIG, type ChapterConfig } from '../../../GameData/config';
+import { RECORD_KEYS, DERIVED_ONLY, type LevelKeys } from './remakeKeys';
+import { assert, sha256 } from './util';
 
 const WORLD_TS = 'unreal/GameData/world.ts';
+const CONFIG_TS = 'unreal/GameData/config.ts';
 
 // ── Schema gate ─────────────────────────────────────────────────────────────
 
@@ -68,10 +76,64 @@ const KNOWN_FEATURES = new Set([...REMAKE_FIELDS.map(f => f.feature), ...REMAKE_
 let schema = new Set<string>();
 const withheld = new Map<string, { count: number; example: string }>();
 
+/** The level of a REMAKE_FIELDS path ('' for a top-level field, 'rewards' for 'rewards.choiceLabels', ...) and its key. */
+function splitPath(path: string): [string, string] {
+  const i = path.lastIndexOf('.');
+  return i < 0 ? ['', path] : [path.slice(0, i), path.slice(i + 1)];
+}
+
 export function configureRemakeSchema(features: readonly string[]): void {
   for (const f of features) assert(KNOWN_FEATURES.has(f), `REMAKE_SCHEMA: unknown feature '${f}' (registered: ${[...KNOWN_FEATURES].join(', ')})`);
   schema = new Set(features);
   withheld.clear();
+  // The key gate's lists (remakeKeys.ts, pinned to the types by tsc) and the field registry must agree: every typed
+  // remake field is registered (or derived-only), and every registered field sits on a level the gate checks.
+  for (const [kind, levels] of Object.entries(RECORD_KEYS) as [RemakeKind, Record<string, LevelKeys>][]) {
+    for (const [level, k] of Object.entries(levels)) {
+      for (const key of k.remake) {
+        const path = level ? `${level}.${key}` : key;
+        assert(REMAKE_FIELDS.some(f => f.kind === kind && f.path === path) || (!level && DERIVED_ONLY[kind]?.includes(key)),
+          `GameData/types.ts types the ${kind} field '${path}', which REMAKE_FIELDS (remake.ts) does not register: add its row ` +
+          '(kind, path, feature, wave) so REMAKE_SCHEMA gates it');
+      }
+    }
+  }
+  for (const f of REMAKE_FIELDS) {
+    const [level] = splitPath(f.path);
+    assert(RECORD_KEYS[f.kind][level], `REMAKE_FIELDS ${f.kind}.${f.path}: level '${level}' has no key list in remakeKeys.ts RECORD_KEYS`);
+  }
+}
+
+/** Nodes of `obj` at a dotted level ('' = obj; `[]` walks an array); non-objects are skipped. */
+function nodesAt(obj: unknown, level: string): Record<string, unknown>[] {
+  let nodes: unknown[] = [obj];
+  for (const part of level ? level.split('.') : []) {
+    const [key, arr] = part.endsWith('[]') ? [part.slice(0, -2), true] : [part, false];
+    nodes = nodes.flatMap(n => {
+      if (!n || typeof n !== 'object') return [];
+      const v = (n as Record<string, unknown>)[key];
+      return arr ? (Array.isArray(v) ? v : []) : [v];
+    });
+  }
+  return nodes.filter((n): n is Record<string, unknown> => !!n && typeof n === 'object' && !Array.isArray(n));
+}
+
+/**
+ * Fails on a record key that is neither a field of the web type nor a remake-only field (typed in GameData/types.ts or
+ * registered in REMAKE_FIELDS) at every checked level of `kind` — a misspelt or unregistered field must not reach
+ * unreal/Data past the REMAKE_SCHEMA gate.
+ */
+export function checkRecordKeys(kind: RemakeKind, obj: unknown, where: string): void {
+  for (const [level, k] of Object.entries(RECORD_KEYS[kind])) {
+    const registered = REMAKE_FIELDS.filter(f => f.kind === kind && splitPath(f.path)[0] === level).map(f => splitPath(f.path)[1]);
+    const allowed = new Set([...k.web, ...k.remake, ...registered]);
+    for (const node of nodesAt(obj, level)) {
+      for (const key of Object.keys(node)) {
+        assert(allowed.has(key), `${where}${level ? `.${level}` : ''}: unknown ${kind} field '${key}' — neither a web field nor a ` +
+          'registered remake field (typo? a new remake field needs a GameData/types.ts type, a REMAKE_FIELDS row and remakeKeys.ts)');
+      }
+    }
+  }
 }
 
 /** Parents of `path` in `obj` (walking `[]` through arrays), with the last key: [[parent, key], ...]. */
@@ -90,8 +152,12 @@ function walk(obj: unknown, path: string): [Record<string, unknown>, string][] {
   return nodes.filter((n): n is Record<string, unknown> => !!n && typeof n === 'object' && !Array.isArray(n)).map(n => [n, last]);
 }
 
-/** Deletes the registered remake fields of `kind` that REMAKE_SCHEMA does not list yet (in place; returns `obj`). */
+/**
+ * Checks the record's keys (checkRecordKeys), then deletes the registered remake fields of `kind` that REMAKE_SCHEMA does
+ * not list yet (in place; returns `obj`).
+ */
 export function withholdRemakeFields<T>(kind: RemakeKind, obj: T, where: string): T {
+  checkRecordKeys(kind, obj, where);
   for (const f of REMAKE_FIELDS) {
     if (f.kind !== kind || schema.has(f.feature)) continue;
     for (const [parent, key] of walk(obj, f.path)) {
@@ -232,6 +298,34 @@ export function overrideById<T extends { id: string }>(path: OverridePath, files
   return out;
 }
 
+// ── Chapter config (GameData/config.ts) ─────────────────────────────────────
+
+/**
+ * What the exporter hard-coded before the remake owned its content (the web game's chapter: DECISIONS M7 / W7), i.e.
+ * the Phase 0 values of GameData/config.ts. A config value that differs is recorded in the `remake` block of every file
+ * it feeds (`replaced: ["config.storyBoss"]`). `finalBoss` unset = the web StoryDirector's FINAL_BOSS (the caller passes
+ * it).
+ */
+const CONFIG_BASELINE: Omit<ChapterConfig, 'finalBoss'> = {
+  storyBoss: { monsterId: 'goblin_chief', notAfterQuestTurnIn: 'q_find_goblin_chief' },
+  chapterCompleteQuest: 'q_secure_plains',
+  chapterFinaleCutscene: 'cs_ep_finale',
+  sealedGate: { exitTo: 'twilight_forest', messageKey: 'zone.exit.sealedChapter2' },
+};
+
+/** Records `config.<key>` in `files`' remake blocks when GameData/config.ts changes it (see CONFIG_BASELINE). */
+export function noteConfig(files: readonly string[], key: keyof ChapterConfig, webFinalBoss?: string): void {
+  const now = key === 'finalBoss' ? (CHAPTER_CONFIG.finalBoss ?? webFinalBoss) : CHAPTER_CONFIG[key];
+  const base = key === 'finalBoss' ? webFinalBoss : CONFIG_BASELINE[key];
+  assert(key !== 'finalBoss' || webFinalBoss !== undefined, 'noteConfig(finalBoss) needs the web FINAL_BOSS');
+  if (JSON.stringify(now) === JSON.stringify(base)) return;
+  for (const f of files) {
+    const r = record(f);
+    r.source.add(CONFIG_TS);
+    r.replaced.add(`config.${key}`);
+  }
+}
+
 // ── remake blocks ───────────────────────────────────────────────────────────
 
 /** Records that `file` was produced from redirected GameData modules that differ from the web ones they replace. */
@@ -274,9 +368,34 @@ function normalizedModule(repoRoot: string, file: string): string {
     .replace(/(^|\n)(\s*import\s*)(['"])[^'"]*\3/g, '$1$2$3$3');
 }
 
-/** Redirected web modules whose GameData replacement is no longer a snapshot of them (content was remade). */
-export function divergedRedirects(repoRoot: string, modules: Readonly<Record<string, string>>): Record<string, string> {
-  return Object.fromEntries(Object.entries(modules).filter(([web, gd]) => normalizedModule(repoRoot, web) !== normalizedModule(repoRoot, gd)));
+/** sha256 of a module with its import / export specifiers blanked (the redirects.json `snapshots` digest). */
+export function snapshotHash(repoRoot: string, file: string): string {
+  return sha256(normalizedModule(repoRoot, file));
+}
+
+/**
+ * Redirected web modules whose GameData replacement is no longer its Phase 0 snapshot (content was remade): the module
+ * differs from the digest recorded in redirects.json `snapshots` when it was copied. The live web file is never
+ * compared, so a web-only edit of a redirected module changes nothing in the export. A target without a digest fails
+ * (the message gives the digest to record when the module is still a snapshot of the web one).
+ */
+export function divergedRedirects(repoRoot: string, file: string, modules: Readonly<Record<string, string>>,
+  snapshots: Readonly<Record<string, string>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [web, gd] of Object.entries(modules)) {
+    const now = snapshotHash(repoRoot, gd);
+    const recorded = snapshots[gd];
+    if (!recorded) {
+      const same = normalizedModule(repoRoot, web) === normalizedModule(repoRoot, gd);
+      assert(false, `${file}: no snapshot digest for ${gd}. ` + (same
+        ? `It is still a snapshot of ${web}: add "${gd}": "${now}" to "snapshots".`
+        : `It already differs from ${web}: record the digest of the byte-identical copy it started from ` +
+          `(copy ${web}, rewrite its web imports to @web/..., then sha256 with the import / export specifiers blanked; ` +
+          'run.mjs prints it for a fresh copy).'));
+    }
+    if (now !== recorded) out[web] = gd;
+  }
+  return out;
 }
 
 /** True when a table `source` entry (a path, or a `dir/*.ts` glob) names `file`. */

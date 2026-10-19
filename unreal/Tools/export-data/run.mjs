@@ -8,22 +8,35 @@
 //   node unreal/Tools/export-data/run.mjs --check    (export to a temp dir and diff against the committed files)
 //   node unreal/Tools/export-data/run.mjs --out=DIR  (export into DIR/Data + DIR/CoreTests, e.g. to review a change)
 //
-// Nothing under src/ is modified. Module-private constants the exporter needs are re-exported
+// Every run first type-checks unreal/GameData and the exporter (tsc -p tsconfig.json here; a type error fails the
+// export). Nothing under src/ is modified. Module-private constants the exporter needs are re-exported
 // in memory by the `expose` plugin below (see src/expose.ts for the list). Remake-owned content
 // (unreal/GameData/**) replaces web content modules through the `redirect` plugin below
 // (unreal/GameData/redirects.json, unreal/GameData/README.md).
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve, relative, isAbsolute } from 'node:path';
+import { dirname, resolve, relative, isAbsolute, posix } from 'node:path';
 import { readdirSync, mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const check = process.argv.includes('--check');
-const outArg = process.argv.find(a => a.startsWith('--out='))?.slice('--out='.length);
+
+// ── Arguments (strict: a typo must not fall back to overwriting the committed data) ──
+const USAGE = 'usage: node unreal/Tools/export-data/run.mjs [--check | --out=DIR]';
+let check = false;
+let outArg;
+for (const a of process.argv.slice(2)) {
+  if (a === '--check') check = true;
+  else if (a.startsWith('--out=')) {
+    if (outArg !== undefined) { console.error(`--out given twice\n${USAGE}`); process.exit(2); }
+    outArg = a.slice('--out='.length);
+  } else if (a === '--help' || a === '-h') { console.log(USAGE); process.exit(0); }
+  else { console.error(`unknown argument '${a}' (${a === '--out' ? 'write --out=DIR' : 'see usage'})\n${USAGE}`); process.exit(2); }
+}
 if (outArg !== undefined && (check || !outArg)) {
-  console.error('--out=DIR needs a directory and cannot be combined with --check');
+  console.error(`--out=DIR needs a directory and cannot be combined with --check\n${USAGE}`);
   process.exit(2);
 }
 const rel = id => relative(repoRoot, id.split('?')[0]).replace(/\\/g, '/');
@@ -45,33 +58,52 @@ const exposeSrc = readFileSync(resolve(here, 'src/expose.ts'), 'utf8');
 const EXPOSE = JSON.parse(exposeSrc.slice(exposeSrc.indexOf('/*JSON*/') + 8, exposeSrc.indexOf('/*END*/')));
 
 // ── Redirects: web content module -> remake module (unreal/GameData/redirects.json) ──
-// Checked here before Vite starts (shape, both ends exist, one target per module); main.ts fails the export when a
-// redirected web path is never loaded (a stale entry) — see checkRedirects() there.
+// Checked here before Vite starts (shape, normalised paths, both ends exist, one target per module); main.ts fails the
+// export when a redirected web path is never loaded (a stale entry), when a GameData module is never loaded (a missing
+// entry) and checks each module's snapshot hash — see checkRedirects() / checkGameDataLoaded() there.
 const REDIRECTS_FILE = 'unreal/GameData/redirects.json';
-const REDIRECTS = (() => {
+const GAMEDATA = 'unreal/GameData/';
+const { REDIRECTS, SNAPSHOTS } = (() => {
   const fail = msg => {
     console.error(`export failed — ${REDIRECTS_FILE}: ${msg}`);
     process.exit(1);
   };
+  /** A repo-relative POSIX path in normal form ('a/b.ts': no '.', '..' or empty segment, no backslash). */
+  const normal = p => typeof p === 'string' && !p.includes('\\') && !isAbsolute(p) && posix.normalize(p) === p
+    && p.split('/').every(s => s && s !== '.' && s !== '..');
+  const inside = (dir, p) => !relative(resolve(repoRoot, dir), resolve(repoRoot, p)).startsWith('..');
   let doc;
   try { doc = JSON.parse(readFileSync(resolve(repoRoot, REDIRECTS_FILE), 'utf8')); } catch (e) { fail(`unreadable (${e.message})`); }
   const modules = doc?.modules;
-  if (!modules || typeof modules !== 'object' || Array.isArray(modules)) fail('expected {"modules": {"src/...": "unreal/GameData/..."}}');
+  if (!modules || typeof modules !== 'object' || Array.isArray(modules)) fail('expected {"modules": {"src/...": "unreal/GameData/..."}, "snapshots": {...}}');
+  const snapshots = doc.snapshots ?? {};
+  if (typeof snapshots !== 'object' || Array.isArray(snapshots)) fail('"snapshots" must be {"unreal/GameData/...": "<sha256>"}');
   const targets = new Set();
   for (const [from, to] of Object.entries(modules)) {
     if (typeof to !== 'string') fail(`${from}: target must be a string`);
-    if (!from.startsWith('src/') || from.includes('\\') || isAbsolute(from)) fail(`${from}: the web path must be repo-relative under src/`);
-    if (!to.startsWith('unreal/GameData/') || to.includes('\\')) fail(`${from} -> ${to}: the target must be under unreal/GameData/`);
+    if (!normal(from) || !from.startsWith('src/') || !inside('src', from) || !from.endsWith('.ts')) {
+      fail(`${from}: the web path must be a normalised repo-relative .ts path under src/ (no '.', '..' or '//')`);
+    }
+    if (!normal(to) || !to.startsWith(GAMEDATA) || !inside(GAMEDATA, to) || !to.endsWith('.ts')) {
+      fail(`${from} -> ${to}: the target must be a normalised .ts path under ${GAMEDATA} (no '.', '..' or '//')`);
+    }
     if (!existsSync(resolve(repoRoot, from))) fail(`stale redirect: web module ${from} does not exist`);
     if (!existsSync(resolve(repoRoot, to))) fail(`stale redirect: ${from} -> ${to}, which does not exist`);
     if (targets.has(to)) fail(`two web modules redirect to ${to}`);
     targets.add(to);
   }
-  return modules;
+  for (const [gd, sha] of Object.entries(snapshots)) {
+    if (!targets.has(gd)) fail(`snapshots.${gd}: not a redirect target (stale entry)`);
+    if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) fail(`snapshots.${gd}: expected a sha256 hex digest`);
+  }
+  return { REDIRECTS: modules, SNAPSHOTS: snapshots };
 })();
 const REDIRECT_SOURCES = Object.fromEntries(Object.entries(REDIRECTS).map(([from, to]) => [to, from]));
 /** Web paths the export actually loaded through a redirect (main.ts fails on an entry missing here). */
 const redirectHits = new Set();
+/** unreal/GameData modules Vite loaded during the export (main.ts fails on a GameData module missing here). */
+const gameDataLoaded = new Set();
+const webRoot = resolve(repoRoot, 'src') + '/';
 
 function redirectPlugin() {
   return {
@@ -81,12 +113,14 @@ function redirectPlugin() {
       const r = await this.resolve(source, importer, { ...options, skipSelf: true });
       if (!r || r.external) return null;
       const target = rel(r.id);
-      const fromGameData = importer && rel(importer).startsWith('unreal/GameData/');
+      const fromGameData = importer && rel(importer).startsWith(GAMEDATA);
       const to = REDIRECTS[target];
       if (!to) {
-        // GameData reaches the web only through the @web alias (README.md "Imports").
-        if (fromGameData && target.startsWith('src/') && source.startsWith('.')) {
-          throw new Error(`GameData module ${rel(importer)} imports web module ${target} by a relative path; use '@web/${target.slice(4).replace(/\.ts$/, '')}'`);
+        // GameData reaches the web only through the @web alias (README.md "Imports"): Vite's alias hands this hook the
+        // aliased absolute path; a relative ('../../src/…') or root-relative ('/src/…') specifier fails.
+        if (fromGameData && target.startsWith('src/') && !source.replace(/\\/g, '/').startsWith(webRoot)) {
+          throw new Error(`GameData module ${rel(importer)} imports web module ${target} as '${source}'; ` +
+            `use '@web/${target.slice(4).replace(/\.ts$/, '')}'`);
         }
         return null;
       }
@@ -95,6 +129,11 @@ function redirectPlugin() {
       }
       redirectHits.add(target);
       return resolve(repoRoot, to);
+    },
+    load(id) {
+      const file = rel(id);
+      if (file.startsWith(GAMEDATA)) gameDataLoaded.add(file);
+      return null;
     },
   };
 }
@@ -112,6 +151,23 @@ function exposePlugin() {
       return { code: `${code}\n;export { ${list} };\n`, map: null };
     },
   };
+}
+
+// ── Type-check first: GameData records are object literals typed by GameData/types.ts, so tsc catches a misspelt or
+// unregistered remake field (and src/remakeKeys.ts pins the record key lists the runtime gate uses to those types).
+{
+  const tsc = resolve(repoRoot, 'node_modules/typescript/bin/tsc');
+  if (!existsSync(tsc)) {
+    console.error('export failed — node_modules/typescript is missing: run `npm ci` at the repo root');
+    process.exit(1);
+  }
+  const project = relative(repoRoot, resolve(here, 'tsconfig.json'));
+  const r = spawnSync(process.execPath, [tsc, '-p', project, '--pretty', 'false'], { cwd: repoRoot, encoding: 'utf8' });
+  if (r.status !== 0) {
+    process.stderr.write(`${r.stdout ?? ''}${r.stderr ?? ''}${r.error ? `${r.error.message}\n` : ''}`);
+    console.error(`export failed — type errors in unreal/GameData or the exporter (tsc -p ${project})`);
+    process.exit(1);
+  }
 }
 
 const server = await createServer({
@@ -132,7 +188,8 @@ const outRoot = check ? mkdtempSync(resolve(tmpdir(), 'abyss-export-')) : outArg
 try {
   const main = await server.ssrLoadModule('/unreal/Tools/export-data/src/main.ts');
   const ok = await main.run({ repoRoot, outRoot, check, committedRoot: resolve(repoRoot, 'unreal'),
-    redirects: { file: REDIRECTS_FILE, modules: REDIRECTS, hits: redirectHits } });
+    redirects: { file: REDIRECTS_FILE, modules: REDIRECTS, snapshots: SNAPSHOTS, hits: redirectHits },
+    gameDataLoaded });
   if (!ok) code = 1;
 } catch (e) {
   console.error(e instanceof Error ? (e.stack ?? e.message) : e);

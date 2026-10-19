@@ -341,7 +341,9 @@ unreal/CoreTests/run.sh`) over 20 seeds per class must pass before each wave clo
   `monsters_test`, `world_test`, `combat_test`, `pets_test`, `data_test`, `save_test`, `items_test`, `hero_test`,
   `sim_test`, `base_test` into `content_ch1_test.cpp` (suites `quests` / `monsters` / `world`), and move the combat and
   monster fixtures that only need "a melee monster" or "an elite" to a synthetic builder `TestContent.h`. All green on
-  today's data. Then the switch re-pins `content_ch1_test.cpp` and `playthrough_test.cpp` only.
+  today's data. Then the switch re-pins `content_ch1_test.cpp` and `playthrough_test.cpp` only (with the `ch1` handles
+  in `TestContent.h`); systems rigs that stand on the live Chapter 1 map are re-run after the DR4 re-baseline and may
+  move to another open tile (see *Phase 0 outcomes* below).
 - **Content invariants stay generic** and keep running on real data: one quest-type giver per quest in its zone; kill /
   talk / drop targets exist in the zone; side quests differ in shape; every finale offers a gear choice (re-pointed to
   `q_rf_last_toll`); cutscenes 5-14 steps; zh length limits; speakers stand in the zone.
@@ -387,6 +389,21 @@ and the loaders.
 | **0B Test isolation** | `content_ch1_test.cpp`, `TestContent.h`, fixtures moved | `unreal/CoreTests/tests/**` | — | core, core-asan, sweep; test count unchanged |
 | **0C Readability tooling** | A0 | `Art/blender/coherence/darkgate.py`, `Art/blender/vfx/hue_audit.py` | — | kit; both tools run on today's assets and report (today's goblins pass the gate on grass; the report is the baseline) |
 | **0D Decisions** | DECISIONS.md rows DR1-DR11 (from README.md) and amendments to Q4 / M5 / M7 / W7 wording; spec headers point here | `unreal/Docs/DECISIONS.md`, `unreal/Docs/spec/*.md` (headers only) | — | review |
+
+**Phase 0 outcomes (review, 2026-10; pending confirmation).**
+- **0A**: on top of the table, every export type-checks GameData first, fails on a GameData module it never loads, on
+  a record key that is neither a web nor a registered remake field, and on unnormalised redirect paths; remade modules
+  are found by the snapshot digests in `redirects.json`, never by comparing with the live web file.
+- **0B**: "test count unchanged" became "no test and no suite loses assertions": splitting mixed tests into a systems
+  part and a `content_ch1_test.cpp` part raised the case count from 636 to 653 (GCC 205,555 → 205,696 assertions). The
+  moved tests keep their original suites (`monsters`, `quests`, `story`, `world`, `pets`, `items`, `sim`, `data`), so
+  `ctest -R core.<area>` still runs them. Several systems rigs stand on the live map (world_test's `WorldRig`, the
+  monsters / pets zone rigs, combat_test's open tile, positions relative to `ch1::kExit` / `kCamp`): 1B re-runs the
+  whole suite after the switch and moves a rig whose tile the re-baselined decor covers.
+- **0C**: both tools run and report, but the expectation "today's goblins pass the gate on grass" does not hold: on
+  `plains:grass` Gruk Redcap and the goblin shaman fail and the four passes sit within 1 ΔL* of the threshold. The
+  baseline stands as a baseline; the gate's metric definitions (DECISIONS R21) and the hue audit's two relaxations
+  (R22) await confirmation.
 
 ### Phase 1 — Wave 1: the dark chapter on today's core
 

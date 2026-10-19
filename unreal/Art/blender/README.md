@@ -1310,3 +1310,87 @@ everywhere (no texel-density drift), terrain 341 px per tile, UI textures 512 (p
 quest icons) / 128 (glyphs). The vignettes place everything the way the runtime does (`BuildWalls` stakes, `CampLayout.h`
 props, NPC slots and facings, MapGen camp stamp); the goblin camp's props have no runtime placement yet (spec §6.9 leaves
 it to the level script), so its layout here is a proposal.
+
+## 18. Dark-remake readability tooling (`coherence/darkgate.py`, `vfx/hue_audit.py`)
+
+Work package 0C / A0 of `Docs/dark-remake/implementation-plan.md` (rules: `monsters.md` §1.2, README DR5). Both tools
+run on whatever `Art/Export` and `unreal/Data` hold, so they gate every new dark-remake asset (1D: "darkgate on every
+new monster, hue audit clean") and wrote the baseline on today's assets into `Art/Previews/ch1_dark/`.
+
+```bash
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/coherence/darkgate.py   # ~25 s, exit 1 on a FAIL
+#   [SK_… …] only these monsters (a partial roster updates its figures in the report and never overwrites the lineup)
+#   --theme=<t> (default march once A10 exports it, plains until then) · --tile=darkest|grass|dirt|stone|camp
+#   --ground-hex=#RRGGBB (flat stress ground) · --facing=se · --clip=Idle --frame=0 · --no-variants · --per-page=6
+#   --out=<dir> --report=<json> --no-report
+python3 unreal/Art/blender/vfx/hue_audit.py        # stdlib only, ~1 s, exit 1 on a FAIL
+#   --recipes=<json> --out=<dir> --report=<json> --no-report --report-only (exit 0) --quiet
+```
+
+**Darkest-tile gate** (`darkgate.py`). Every shipped monster (manifest `SkeletalMesh` in `Monsters/`, each hunt
+`variants` entry as its own figure with its scale, attachments and elite crown) is re-imported through `cohkit` exactly
+as the lineups do, stood on a field of the darkest walkable terrain material (grass / dirt / stone / camp by the median
+L* of an 8 × 8 composite; never water) at the W1 game camera, native 1080p, contact shadows under the feet, and
+measured on its own coverage:
+
+| Metric | Gate | Measured as |
+|---|---|---|
+| rim | dark ink ≥ 3 px on ≥ 90 % of the silhouette edge pixels | `cohkit.ink_gate_group` at `CHAR_GATE_PX` (+ the kit's dark / hull-colour checks; edges at a bright emissive accent left out as every ship does) |
+| lit | ΔL* ≥ 15 | the lit side = solid toon pixels in the key light's light band (h ≥ `T_LIGHT`) or rim light (weight ≥ .5), from a light pass that evaluates the `kit.shading` terms per pixel; ΔL* = median of \|L* − L*ground\| over them (CIELAB, final frame vs the composited tile). The signed region median is reported as `signedDeltaL` |
+| marker | ≥ 2 px | the family-marker swatches (manifest `"marker": {"swatches": [...]}` → `darkgate.MARKERS` → swatches named `*.eye` / `*.sclera` / `*.marker` on the mesh) rendered as a coverage mask with the rest of the figure occluding; the largest solid k × k block. No marker = FAIL (every hostile carries one) |
+
+These definitions are pending confirmation (`Docs/DECISIONS.md` R21). The rim gate is ground-independent (the ink hull's
+width); the report adds, ungated, how far the ink and the marker sit from the ground's L* (`rim.inkL` / `inkDeltaL` /
+`fracInkClear`, `marker.medianL` / `deltaL` / `emissivePixels`) — on a near-black stress ground (`--ground-hex=#141210`,
+L* 5.6) every figure keeps its rim verdict while its ink sits ≈ 2 ΔL* from the ground, the case the march review has to
+judge. A pass within 1.5 ΔL*, 3 rim points or at exactly 2 marker px is listed in `atEdge` (log and report).
+
+Outputs: `darkgate_<theme>_<tile>.png` (verdict per figure) and `…_map.png` (edge pixels green / red by ink, the lit
+side washed yellow, the visible marker cyan or red), tiled `_2` when a native PNG would pass 200 KB, and
+`darkgate_report.json` with one run per ground key (`plains:grass`; later `march:<tile>`, `hex:<RRGGBB>`, `@<facing>`).
+
+Baseline (`plains:grass`, L* 58.7; the march set does not exist yet, so today's darkest plains tile stands in):
+
+| Figure | Rim (≥ 3 px) | ΔL* (signed) | Marker | |
+|---|---|---|---|---|
+| Goblin | 99.0 % | 15.2 (+15.2) | 3 px eye | PASS, at the edge (lit) |
+| Sneek the Thief | 96.8 % | 15.2 (+15.2) | 4 px | PASS, at the edge (lit) |
+| Gruk Redcap | 100 % | 6.6 (−0.2) | 4 px | FAIL: the red cap's lit top (L* ≈ 45–55) sits on the grass's value |
+| Goblin Chief | 100 % | 15.0 (+12.4) | 2 px | PASS, at the edge (lit, marker; dark leather and fur under bright iron) |
+| Goblin Shaman | 99.1 % | 11.6 (+11.6) | 1 px | FAIL: hide / fur lit side close to the grass; the spirit-ember eyes are a 1 px accent (in game the `maskEmbers` FX glow adds a halo the gate does not count) |
+| Green Slime | 100 % | 15.9 (+15.5) | 6 px | PASS, at the edge (lit) |
+
+**This is the baseline, not an acceptance pass** (DECISIONS R21): the plan's 0C expectation that today's goblins pass
+on grass does not hold — two figures fail and every pass sits within 1 ΔL* of the threshold, so 15.0 is no headroom.
+Every figure keeps its rim; the lit-side misses are value collisions with the bright plains grass that the much darker
+march ground removes (a flat #2B2724 stress ground, L* 16, passes the goblin and both hunt leaders at ΔL* 42–58; on
+#141210 every figure but the shaman (1 px marker) passes). Not applied: the zone grade (`zone_moods`, P14) acts on the
+whole frame and is reviewed in game (*mac-look*).
+
+**Hue audit** (`hue_audit.py`, no bpy). Resolves every colour each recipe layer of `Export/VFX/vfx_recipes.json` can
+draw (colour source × recipe palette × pre-coloured `T_FX_*` texels, through the runtime's palette and preset rules),
+with the event colours `UAbyssVfxSystem` passes read from `unreal/Data` (elite `vfxColor`, ranged monsters'
+`derived.projectileColor`, the monster-kill burst, class / skill impact colours, spirit colours, pet bolt colours), plus
+the monster palettes' emissive / eye swatches and the monster manifest `fx` colours. Sides come from the recipe id
+(docstring). Gating rules: **violet** — no hero colour at HSV sat > .5 within 30° of breach-violet #B02FD0 (hue 288°;
+the mana shield #8A5CFF sits 31.1° away); **fill** — no hero layer draws a filling ground shape (a ground filled sprite
+growing ≥ 1.5 × that still holds ≥ half its peak alpha at 95 % of the growth); **ember** — no enemy colour at hue
+15–35°, sat > .6 (value ≥ .35). Advisory: friendly / neutral hits, later-chapter event colours (monster bolts outside
+`emerald_plains`, pets met after Chapter 1), enemy colours within 5° of the ember band, enemy fills and their hazard
+colours. Writes `hue_audit_report.json` and `hue_audit.png` (hue × saturation per side, guard bands shaded, gating
+failures ringed).
+
+Baseline (FAIL, to be cleared by A12 before 1D closes): **violet** in 10 hero recipes — the rogue's `shadow` palette
+(#7030C0 / #B478FF / #24103E, hue 266–267°) in `skill.backstab`, `skill.death_mark`, `skill.shadow_step`,
+`skill.vanish`, and `arcane_torrent`'s impact colour #B07CFF (264°) in `hit.impact*`; **fill** in 4 hero layers —
+the `Puddle` decals of `proj.poison_arrow.hit`, `skill.bleed_strike`, `skill.poison_blade` and the meteor's growing
+ground glow (`skill.meteor` layer 1); **ember** in `elite.fire_enhanced` (#FF4400 / #FF7A3A / #FF992B). Monster art
+passes the ember rule, but the goblin chief's `eyeEmbers` FX #FF5A2A (14°) and eye swatch #FFB13A (36°) and the
+wind-up tint #FF7A5C (11°) sit just outside the band (near-ember advisory). Unresolved (runtime-only, friendly or
+neutral): loot quality colours, lore props, the `proj.default` fallback.
+
+The ember value floor (.35) and the Chapter-1 scope of event colours (monster bolts gate for `emerald_plains`, pet bolts
+for pets met in Chapter 1) are relaxations of DR5's wording, pending confirmation (`Docs/DECISIONS.md` R22). The
+report's `relaxations` block lists both with their reasons and what they exempt today: the floor only the monsters'
+pupil swatch #1A0E08; the scope `proj.monster_bolt*` in the later fire monsters' #FF6600 and `proj.pet_bolt*` in the
+arcane #CC44CC. Each chapter's dark pass adds its zone and pets to the gating sets (`CH1_ZONES`, `CH1_PET_CHAPTERS`).

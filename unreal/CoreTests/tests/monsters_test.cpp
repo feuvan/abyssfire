@@ -3,7 +3,9 @@
 // Vitest suites: EliteAffixSystem.test.ts, QuestHunts.test.ts, DifficultySystem.test.ts (scaleMonster),
 // mini-bosses-lore.test.ts (mini-boss data), SpatialGrid.test.ts, PhaserOptimizationPass.test.ts (AI culling),
 // MonsterFacing.test.ts (heading wiring). Port decisions: DECISIONS M1-M11, W9.
+#include "MonstersFixtures.h"
 #include "SimHarness.h"
+#include "TestContent.h"
 
 #include <algorithm>
 #include <array>
@@ -38,205 +40,8 @@
 #include "doctest/doctest.h"
 
 using namespace abyss;
-
-namespace {
-
-const DataStore& MD() { return test::RealData(); }
-const MonsterAiDef& MAi() { return MD().Monsters().ai; }
-const EliteAffixTable& MAffixes() { return MD().Combat().eliteAffixes; }
-const DifficultyTable& MDiff() { return MD().Combat().difficulty; }
-
-const MonsterDef& MDef(std::string_view id) {
-  const MonsterDef* d = MD().FindMonster(id);
-  REQUIRE(d != nullptr);
-  return *d;
-}
-
-const HuntDef& MHunt(std::string_view id) {
-  const HuntDef* h = MD().Monsters().FindHunt(id);
-  REQUIRE(h != nullptr);
-  return *h;
-}
-
-// The normal-difficulty definition of a Chapter-1 monster or hunt leader (hunts through makeHuntDefinition).
-MonsterDef MNormalDef(std::string_view id) {
-  if (const HuntDef* h = MD().Monsters().FindHunt(id)) return MakeHuntDefinition(MDef(h->monsterId), *h, MAi(), h->name);
-  return MDef(id);
-}
-
-MonsterInstance MMake(const MonsterDef& def, Vec2 pos, EntityId id = 100) {
-  MonsterInstance m;
-  m.id = id;
-  m.def = def;
-  m.originalDef = def;
-  m.hp = m.maxHp = def.hp;
-  m.stats = MonsterBaseStats(def, MAi());
-  m.pos = pos;
-  m.prevPos = pos;
-  m.spawnAnchor = RoundToTile(pos);
-  return m;
-}
-
-MonsterWorld MOpenWorld(int32_t cols = 120, int32_t rows = 120) {
-  MonsterWorld w;
-  w.cols = cols;
-  w.rows = rows;
-  w.walkable = [](int32_t, int32_t) { return true; };
-  return w;
-}
-
-// A small editable walkability grid with a BFS-shortest 8-direction path service (no corner cutting, start excluded,
-// end included) standing in for the world area's A*.
-struct MTestGrid {
-  int32_t cols = 0, rows = 0;
-  std::vector<uint8_t> walk;
-  MTestGrid(int32_t c, int32_t r) : cols(c), rows(r), walk(static_cast<size_t>(c * r), 1) {}
-  bool Walk(int32_t c, int32_t r) const {
-    return c >= 0 && r >= 0 && c < cols && r < rows && walk[static_cast<size_t>(r * cols + c)] != 0;
-  }
-  void Block(int32_t c, int32_t r) { walk[static_cast<size_t>(r * cols + c)] = 0; }
-  bool Path(Vec2 from, Vec2 to, std::vector<TilePos>& out) const {
-    out.clear();
-    const TilePos s = RoundToTile(from), e = RoundToTile(to);
-    if (!Walk(e.col, e.row) || s == e) return false;
-    std::vector<int32_t> prev(static_cast<size_t>(cols * rows), -2);
-    std::deque<TilePos> q;
-    q.push_back(s);
-    prev[static_cast<size_t>(s.row * cols + s.col)] = -1;
-    const std::array<TilePos, 8> dirs{{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}}};
-    while (!q.empty()) {
-      const TilePos c = q.front();
-      q.pop_front();
-      if (c == e) break;
-      for (const TilePos d : dirs) {
-        const TilePos n{c.col + d.col, c.row + d.row};
-        if (!Walk(n.col, n.row)) continue;
-        if (d.col != 0 && d.row != 0 && (!Walk(c.col + d.col, c.row) || !Walk(c.col, c.row + d.row))) continue;
-        int32_t& p = prev[static_cast<size_t>(n.row * cols + n.col)];
-        if (p != -2) continue;
-        p = c.row * cols + c.col;
-        q.push_back(n);
-      }
-    }
-    if (prev[static_cast<size_t>(e.row * cols + e.col)] == -2) return false;
-    for (int32_t at = e.row * cols + e.col; at != s.row * cols + s.col; at = prev[static_cast<size_t>(at)]) {
-      out.push_back(TilePos{at % cols, at / cols});
-    }
-    std::reverse(out.begin(), out.end());
-    return true;
-  }
-};
-
-MonsterWorld MGridWorld(const std::shared_ptr<MTestGrid>& g, bool withPath) {
-  MonsterWorld w;
-  w.cols = g->cols;
-  w.rows = g->rows;
-  w.walkable = [g](int32_t c, int32_t r) { return g->Walk(c, r); };
-  if (withPath) w.findPath = [g](Vec2 a, Vec2 b, std::vector<TilePos>& out) { return g->Path(a, b, out); };
-  return w;
-}
-
-MonsterAiResult MTick(MonsterInstance& m, const MonsterAiDef& ai, Vec2 hero, const MonsterWorld& w, Rng& rng,
-                      double nowMs, bool visible = true, double speedMul = 1, std::span<const Vec2> neighbours = {}) {
-  MonsterAiInput in;
-  in.nowMs = nowMs;
-  in.dtMs = kSimStepMs;
-  in.heroVisible = visible;
-  in.heroPos = hero;
-  in.speedMul = speedMul;
-  in.neighbours = neighbours;
-  return UpdateMonsterAI(m, ai, in, w, rng);
-}
-
-template <class E>
-std::vector<E> MEvents(const EventSink& sink) {
-  std::vector<E> out;
-  for (const Event& e : sink.Items()) {
-    if (const E* p = std::get_if<E>(&e)) out.push_back(*p);
-  }
-  return out;
-}
-
-bool MHasLog(const EventSink& sink, std::string_view key) {
-  for (const EvLog& l : MEvents<EvLog>(sink)) {
-    if (l.text.key == key) return true;
-  }
-  return false;
-}
-
-std::vector<EliteAffixType> MOne(EliteAffixType t) { return {t}; }
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Runtime rig: MonsterSystem over the real emerald_plains zone with the hero, statuses and (optionally) a quest system.
-// Step() runs the monster parts of a GameSim step in order: timers, mini-boss check, AI, elite behaviours.
-// ---------------------------------------------------------------------------------------------------------------------
-struct MonsterRig {
-  explicit MonsterRig(uint64_t seed = 7, Vec2 heroPos = Vec2(60, 80))
-      : h(seed),
-        hero(std::make_unique<Hero>(h.ctx.data, ClassId::Warrior)),
-        status(h.ctx.data.Classes().statusRules),
-        zone(h.ctx),
-        quests(h.ctx.data, h.events, h.bus),
-        monsters(h.ctx) {
-    SimSystems& s = h.ctx.sys;
-    s.hero = hero.get();
-    s.status = &status;
-    s.zone = &zone;
-    s.quests = &quests;
-    s.monsters = &monsters;
-    h.onTimer = [this](const Timer& t) {
-      if (t.owner == TimerOwner::Monsters) monsters.OnTimer(t);
-    };
-    h.bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
-      kills.push_back(m);
-      monsters.OnMonsterKilled(m);
-    });
-    h.bus.Subscribe<MonsterAggroMsg>([this](const MonsterAggroMsg& m) { aggros.push_back(m); });
-    h.session.currentMap = "emerald_plains";
-    ok = zone.EnterZone("emerald_plains", true, heroPos);
-    hero->RecalcDerived(h.ctx.equip);
-    hero->FillHpMana();
-  }
-
-  void Step(int n = 1) {
-    for (int i = 0; i < n; ++i) {
-      h.Step(1);
-      monsters.CheckMiniBossDialogue();
-      monsters.TickAI(kSimStepMs);
-      monsters.TickEliteBehaviours();
-    }
-  }
-
-  // An open 120 x 120 test world (the zone's camps still define the safe zones).
-  void OpenWorld() { monsters.SetWorldForTesting(MOpenWorld()); }
-
-  EntityId Spawn(std::string_view defId, TilePos tile, MonsterRole role = MonsterRole::Regular, bool affixes = false) {
-    MonsterSpawnParams p;
-    p.baseDef = MD().FindMonster(defId);
-    p.tile = tile;
-    p.role = role;
-    p.rollAffixes = affixes;
-    return monsters.Spawn(p);
-  }
-
-  MonsterInstance& M(EntityId id) {
-    MonsterInstance* m = monsters.Find(id);
-    REQUIRE(m != nullptr);
-    return *m;
-  }
-
-  test::SimHarness h;
-  std::unique_ptr<Hero> hero;
-  StatusEffectSystem status;
-  ZoneRuntime zone;
-  QuestSystem quests;
-  MonsterSystem monsters;
-  std::vector<MonsterKilledMsg> kills;
-  std::vector<MonsterAggroMsg> aggros;
-  bool ok = false;
-};
-
-}  // namespace
+using namespace abyss::test::monsters_fx;
+namespace fixture = abyss::test::fixture;
 
 TEST_SUITE("monsters") {
   // ===================================================================================================================
@@ -335,49 +140,6 @@ TEST_SUITE("monsters") {
   // ===================================================================================================================
   // Data (monsters 1.1, 2.1, 8.1, 17; mini-bosses-lore.test.ts)
   // ===================================================================================================================
-  TEST_CASE("Chapter 1 roster 2.1: base stats, speed in tiles/s, ranged rule (M5 shaman ranged at 3.0)") {
-    struct Row {
-      const char* id;
-      int32_t level;
-      double hp, dmg, def, speed, aggro, range, atkSpeed, exp, g0, g1;
-      bool elite;
-      double tilesPerSec;
-    };
-    const Row rows[] = {
-        {"slime_green", 1, 30, 5, 2, 40, 4, 1.2, 1500, 12, 2, 4, false, 1.20},
-        {"goblin", 3, 55, 8, 4, 55, 5, 1.5, 1200, 18, 3, 6, false, 1.65},
-        {"goblin_chief", 5, 160, 14, 8, 50, 6, 1.8, 1000, 55, 8, 15, true, 1.50},
-        {"miniboss_goblin_shaman", 6, 280, 16, 10, 45, 7, 3.0, 1300, 90, 15, 30, true, 1.35},
-    };
-    for (const Row& r : rows) {
-      CAPTURE(r.id);
-      const MonsterDef& d = MDef(r.id);
-      CHECK(d.level == r.level);
-      CHECK(d.hp == r.hp);
-      CHECK(d.damage == r.dmg);
-      CHECK(d.defense == r.def);
-      CHECK(d.speed == r.speed);
-      CHECK(d.aggroRange == r.aggro);
-      CHECK(d.attackRange == r.range);
-      CHECK(d.attackSpeedMs == r.atkSpeed);
-      CHECK(d.expReward == r.exp);
-      CHECK(d.goldMin == r.g0);
-      CHECK(d.goldMax == r.g1);
-      CHECK(d.elite == r.elite);
-      CHECK(MonsterTopSpeed(d, MAi()) == doctest::Approx(r.tilesPerSec));
-      CHECK(d.nameKey == "data.monster." + std::string(r.id));
-    }
-    CHECK(MDef("miniboss_goblin_shaman").isMiniBoss);
-    CHECK(MDef("miniboss_goblin_shaman").isRanged);  // M5
-    CHECK_FALSE(MDef("goblin_chief").isRanged);
-    // Ranged iff attackRange > 2.5 for every definition (vector 11: 2.5 is melee).
-    for (const MonsterDef& d : MD().Monsters().defs) {
-      CAPTURE(d.id);
-      CHECK(d.isRanged == (d.attackRange > MAi().rangedThreshold));
-    }
-    CHECK_FALSE(MDef("mountain_troll").isRanged);  // exactly 2.5
-    CHECK(MDef("fire_elemental").isRanged);
-  }
 
   TEST_CASE("derived data 1.1: onHitStatus only on fire_elemental and phoenix; projectile colours") {
     for (const MonsterDef& d : MD().Monsters().defs) {
@@ -396,36 +158,6 @@ TEST_SUITE("monsters") {
       } else {
         CHECK(d.projectileColor == 0xcc44ccu);
       }
-    }
-  }
-
-  TEST_CASE("derived per-instance numbers 2.2: stats, chase drop, attack exit, melee reach") {
-    struct Row {
-      const char* id;
-      int32_t str, dex, vit;
-      double chaseDrop, attackExit, reach;
-    };
-    const Row rows[] = {
-        {"slime_green", 4, 4, 3, 6.0, 1.44, 2.12},
-        {"goblin", 6, 5, 5, 7.5, 1.8, 2.525},
-        {"goblin_chief", 11, 5, 16, 9.0, 2.16, 2.93},
-        {"miniboss_goblin_shaman", 12, 4, 28, 10.5, 3.6, 4.55},  // M5: range 3.0 (web 2.5: 3.0 / 3.875)
-        {"hunt_pendant_thief", 8, 5, 16, 10.5, 1.8, 2.525},
-        {"hunt_redcap_gruk", 10, 5, 27, 10.5, 1.8, 2.525},
-    };
-    for (const Row& r : rows) {
-      CAPTURE(r.id);
-      const MonsterDef d = MNormalDef(r.id);
-      const PrimaryStats s = MonsterBaseStats(d, MAi());
-      CHECK(s.str == r.str);
-      CHECK(s.dex == r.dex);
-      CHECK(s.vit == r.vit);
-      CHECK(s.int_ == 3);
-      CHECK(s.spi == 3);
-      CHECK(s.lck == 3);
-      CHECK(d.aggroRange * MAi().chaseDropMul == doctest::Approx(r.chaseDrop));
-      CHECK(d.attackRange * MAi().attackExitMul == doctest::Approx(r.attackExit));
-      CHECK(d.attackRange * MAi().meleeReachMul + MAi().meleeReachAdd == doctest::Approx(r.reach));
     }
   }
 
@@ -478,9 +210,6 @@ TEST_SUITE("monsters") {
       CHECK(reachedEnd);
     }
     CHECK(ids.size() == 5);
-    const MiniBossEntry* ep = t.MiniBossFor("emerald_plains");
-    CHECK(ep->monsterId == "miniboss_goblin_shaman");
-    CHECK(ep->spawn == TilePos{60, 55});
   }
 
   // ===================================================================================================================
@@ -537,41 +266,8 @@ TEST_SUITE("monsters") {
     CHECK(o.goldMax == 22);
   }
 
-  TEST_CASE("difficulty variants 2.3 (vector 17): Chapter 1 roster on nightmare and hell") {
-    struct Row {
-      const char* id;
-      Difficulty diff;
-      double hp, dmg, def, exp, g0, g1;
-    };
-    const Row rows[] = {
-        {"slime_green", Difficulty::Nightmare, 45, 8, 3, 24, 4, 8},
-        {"slime_green", Difficulty::Hell, 60, 10, 3, 36, 6, 12},
-        {"goblin", Difficulty::Nightmare, 83, 12, 5, 36, 6, 12},
-        {"goblin", Difficulty::Hell, 110, 16, 6, 54, 9, 18},
-        {"goblin_chief", Difficulty::Nightmare, 240, 21, 10, 110, 16, 30},
-        {"goblin_chief", Difficulty::Hell, 320, 28, 13, 165, 24, 45},
-        {"miniboss_goblin_shaman", Difficulty::Nightmare, 420, 24, 13, 180, 30, 60},
-        {"miniboss_goblin_shaman", Difficulty::Hell, 560, 32, 16, 270, 45, 90},
-        {"hunt_pendant_thief", Difficulty::Nightmare, 248, 15, 7, 108, 18, 36},
-        {"hunt_pendant_thief", Difficulty::Hell, 330, 20, 8, 162, 27, 54},
-        {"hunt_redcap_gruk", Difficulty::Nightmare, 413, 20, 7, 180, 18, 36},
-        {"hunt_redcap_gruk", Difficulty::Hell, 550, 26, 8, 270, 27, 54},
-    };
-    for (const Row& r : rows) {
-      CAPTURE(r.id);
-      CAPTURE(EnumName(r.diff));
-      const MonsterDef d = ScaleMonsterForDifficulty(MNormalDef(r.id), MDiff(), r.diff);
-      CHECK(d.hp == r.hp);
-      CHECK(d.damage == r.dmg);
-      CHECK(d.defense == r.def);
-      CHECK(d.expReward == r.exp);
-      CHECK(d.goldMin == r.g0);
-      CHECK(d.goldMax == r.g1);
-    }
-  }
-
   TEST_CASE("defend-wave scaling 6.4: floor(hp * (1 + 0.3 w)), floor(damage * (1 + 0.2 w))") {
-    const MonsterDef& g = MDef("goblin");
+    const MonsterDef& g = MFix(fixture::Grunt());
     const MonsterDef w0 = ScaleDefendWave(g, 0, MAi());
     CHECK(w0.hp == 55);
     CHECK(w0.damage == 8);
@@ -584,102 +280,6 @@ TEST_SUITE("monsters") {
   // ===================================================================================================================
   // Quest hunts (monsters 9; QuestHunts.test.ts; vectors 12-14)
   // ===================================================================================================================
-  TEST_CASE("makeHuntDefinition (vector 12): Gruk and Sneek; every exported hunt matches the TS defsNormal") {
-    const MonsterDef& goblin = MDef("goblin");
-    const MonsterDef gruk = MakeHuntDefinition(goblin, MHunt("hunt_redcap_gruk"), MAi(), "Gruk");
-    CHECK(gruk.id == "hunt_redcap_gruk");
-    CHECK(gruk.name == "Gruk");
-    CHECK(gruk.nameKey == "data.monster.hunt_redcap_gruk");
-    CHECK(gruk.hp == 275);
-    CHECK(gruk.damage == 13);
-    CHECK(gruk.defense == 5);
-    CHECK(gruk.expReward == 90);
-    CHECK(gruk.goldMin == 9);
-    CHECK(gruk.goldMax == 18);
-    CHECK(gruk.aggroRange == 7);
-    CHECK(gruk.elite);
-    CHECK(gruk.isMiniBoss);
-    CHECK(gruk.spriteKey == goblin.spriteKey);
-    CHECK(gruk.speed == goblin.speed);
-    CHECK(gruk.attackRange == goblin.attackRange);
-    CHECK(gruk.attackSpeedMs == goblin.attackSpeedMs);
-    CHECK(gruk.level == goblin.level);
-    const MonsterDef sneek = MakeHuntDefinition(goblin, MHunt("hunt_pendant_thief"), MAi(), "Sneek");
-    CHECK(sneek.hp == 165);
-    CHECK(sneek.damage == 10);
-    CHECK(sneek.defense == 5);
-    CHECK(sneek.expReward == 54);
-    CHECK(ScaleMonsterForDifficulty(sneek, MDiff(), Difficulty::Nightmare).hp == 248);
-    // Defaults: hpMul 4, dmgMul 1.5 when the hunt omits them.
-    HuntDef bare = MHunt("hunt_redcap_gruk");
-    bare.hasHpMul = bare.hasDmgMul = false;
-    const MonsterDef def = MakeHuntDefinition(goblin, bare, MAi(), "x");
-    CHECK(def.hp == 220);
-    CHECK(def.damage == 12);
-    CHECK(def.expReward == 72);
-    // Cross-check every hunt of every zone against the exporter's TS-computed definition.
-    for (const HuntDef& h : MD().Monsters().hunts) {
-      CAPTURE(h.huntId);
-      const MonsterDef* base = MD().Monsters().FindForZone(h.zone, h.monsterId);
-      REQUIRE(base != nullptr);
-      const MonsterDef d = MakeHuntDefinition(*base, h, MAi(), h.name);
-      CHECK(d.hp == h.defNormal.hp);
-      CHECK(d.damage == h.defNormal.damage);
-      CHECK(d.defense == h.defNormal.defense);
-      CHECK(d.expReward == h.defNormal.expReward);
-      CHECK(d.goldMin == h.defNormal.goldMin);
-      CHECK(d.goldMax == h.defNormal.goldMax);
-      CHECK(d.aggroRange == h.defNormal.aggroRange);
-      CHECK(d.speed == h.defNormal.speed);
-      CHECK(d.elite == h.defNormal.elite);
-      CHECK(d.isMiniBoss == h.defNormal.isMiniBoss);
-    }
-  }
-
-  TEST_CASE("isHuntDue (vector 13): bounty on accept, tracked quarry after its trail, done / inactive -> not due") {
-    const QuestDef* pendant = MD().FindQuest("q_lost_pendant");
-    const QuestDef* bounty = MD().FindQuest("q_bandit_trouble");
-    REQUIRE(pendant != nullptr);
-    REQUIRE(bounty != nullptr);
-    auto progressOf = [](const QuestDef& q, std::initializer_list<int32_t> done, QuestStatus st = QuestStatus::Active) {
-      QuestProgress p;
-      p.questId = q.id;
-      p.status = st;
-      p.objectives.assign(q.objectives.size(), 0);
-      for (int32_t i : done) p.objectives[static_cast<size_t>(i)] = q.objectives[static_cast<size_t>(i)].required;
-      return p;
-    };
-    const HuntDef& gruk = MHunt("hunt_redcap_gruk");
-    const HuntDef& thief = MHunt("hunt_pendant_thief");
-    CHECK(IsHuntDue(*bounty, progressOf(*bounty, {}), gruk));
-    CHECK_FALSE(IsHuntDue(*bounty, progressOf(*bounty, {0}), gruk));
-    CHECK_FALSE(IsHuntDue(*bounty, progressOf(*bounty, {}, QuestStatus::Completed), gruk));
-    CHECK_FALSE(IsHuntDue(*pendant, progressOf(*pendant, {0, 1}), thief));
-    CHECK(IsHuntDue(*pendant, progressOf(*pendant, {0, 1, 2}), thief));
-    CHECK_FALSE(IsHuntDue(*pendant, progressOf(*pendant, {0, 1, 2, 3}), thief));  // kill objective done
-    CHECK(HuntObjectiveIndex(*pendant, "hunt_pendant_thief") == 3);
-    CHECK(HuntObjectiveIndex(*pendant, "no_such_hunt") == -1);
-    // A short (migrated) progress record counts missing objectives as 0.
-    QuestProgress shortRec;
-    shortRec.questId = bounty->id;
-    CHECK(IsHuntDue(*bounty, shortRec, gruk));
-
-    // huntsToSpawn: this zone only, not already out, quest order then hunt order.
-    const QuestProgress pp = progressOf(*pendant, {0, 1, 2});
-    const QuestProgress bp = progressOf(*bounty, {});
-    const std::vector<std::pair<const QuestDef*, const QuestProgress*>> open{{pendant, &pp}, {bounty, &bp}};
-    std::vector<std::string> present;
-    std::vector<DueHunt> due = HuntsToSpawn(open, "emerald_plains", present, MD().Monsters().hunts);
-    REQUIRE(due.size() == 2);
-    CHECK(due[0].hunt->huntId == "hunt_pendant_thief");
-    CHECK(due[1].hunt->huntId == "hunt_redcap_gruk");
-    CHECK(due[0].quest == pendant);
-    present = {"hunt_redcap_gruk"};
-    due = HuntsToSpawn(open, "emerald_plains", present, MD().Monsters().hunts);
-    REQUIRE(due.size() == 1);
-    CHECK(due[0].hunt->huntId == "hunt_pendant_thief");
-    CHECK(HuntsToSpawn(open, "twilight_forest", {}, MD().Monsters().hunts).empty());
-  }
 
   TEST_CASE("findWalkableNear (vector 14): rings 1..radius, dr outer then dc, centre never returned") {
     std::set<std::pair<int32_t, int32_t>> open{{4, 4}, {5, 4}, {5, 5}};
@@ -842,47 +442,8 @@ TEST_SUITE("monsters") {
     CHECK(m.AffixLootBonus(t) == 16);
   }
 
-  TEST_CASE("elite affix application 2.4 (vector 16): every affix on the chief, shaman and both hunt leaders") {
-    struct Row {
-      const char* id;
-      std::array<std::array<int32_t, 5>, 7> v;  // hp, dmg, speed, def, str per affix in table order
-    };
-    const Row rows[] = {
-        {"goblin_chief",
-         {{{192, 14, 50, 8, 11}, {160, 14, 80, 8, 11}, {184, 15, 50, 8, 12}, {208, 18, 50, 9, 14}, {192, 15, 50, 8, 12},
-           {200, 15, 50, 8, 12}, {192, 14, 45, 8, 11}}}},
-        {"miniboss_goblin_shaman",
-         {{{336, 16, 45, 10, 12}, {280, 16, 72, 10, 12}, {322, 17, 45, 10, 13}, {364, 21, 45, 11, 16},
-           {336, 17, 45, 10, 13}, {350, 17, 45, 10, 13}, {336, 16, 40, 11, 12}}}},
-        {"hunt_pendant_thief",
-         {{{198, 10, 55, 5, 8}, {165, 10, 88, 5, 8}, {189, 11, 55, 5, 8}, {214, 13, 55, 5, 10}, {198, 11, 55, 5, 8},
-           {206, 11, 55, 5, 8}, {198, 10, 49, 5, 8}}}},
-        {"hunt_redcap_gruk",
-         {{{330, 13, 55, 5, 10}, {275, 13, 88, 5, 10}, {316, 14, 55, 5, 11}, {357, 17, 55, 5, 13},
-           {330, 14, 55, 5, 11}, {343, 14, 55, 5, 11}, {330, 13, 49, 5, 10}}}},
-    };
-    for (const Row& r : rows) {
-      const MonsterDef base = MNormalDef(r.id);
-      for (size_t i = 0; i < 7; ++i) {
-        const EliteAffixType ty = MAffixes().order[i];
-        CAPTURE(r.id);
-        CAPTURE(EnumName(ty));
-        MonsterInstance m = MMake(base, {5, 5});
-        const int32_t dexBefore = m.stats.dex;
-        ApplyEliteAffixes(m, MOne(ty), MAffixes(), MAi());
-        CHECK(m.maxHp == r.v[i][0]);
-        CHECK(m.hp == r.v[i][0]);
-        CHECK(m.def.damage == r.v[i][1]);
-        CHECK(m.def.speed == r.v[i][2]);
-        CHECK(m.def.defense == r.v[i][3]);
-        CHECK(m.stats.str == r.v[i][4]);
-        CHECK(m.stats.dex == dexBefore);  // Q18 parity: dex not recomputed
-      }
-    }
-  }
-
   TEST_CASE("elite on-hit 17.4: extra fire, lifesteal (floors), frozen roll draws only with a freeze chance") {
-    MonsterInstance m = MMake(MDef("goblin_chief"), {5, 5});
+    MonsterInstance m = MMake(MFix(fixture::Brute()), {5, 5});
     Rng rng(3);
     rng.Script({0.1});
     EliteOnHit none = EvaluateEliteOnHit(m, MAffixes(), 100, rng);
@@ -909,7 +470,7 @@ TEST_SUITE("monsters") {
   }
 
   TEST_CASE("teleporting 17.4: cooldown (first check immediate, boundary inclusive), window, offsets, clamp") {
-    MonsterInstance m = MMake(MDef("goblin_chief"), {60, 80});
+    MonsterInstance m = MMake(MFix(fixture::Brute()), {60, 80});
     ApplyEliteAffixes(m, MOne(EliteAffixType::Teleporting), MAffixes(), MAi());
     m.state = MonsterState::Chase;
     Rng rng(5);
@@ -931,19 +492,19 @@ TEST_SUITE("monsters") {
     CHECK(rng.ScriptedRemaining() == 1);
     CHECK_FALSE(EliteTeleportTarget(m, MAffixes(), Vec2(75, 80), 19999, 120, 120, rng, out));
     // Clamp to [1, size - 2].
-    MonsterInstance edge = MMake(MDef("goblin_chief"), {5, 5});
+    MonsterInstance edge = MMake(MFix(fixture::Brute()), {5, 5});
     ApplyEliteAffixes(edge, MOne(EliteAffixType::Teleporting), MAffixes(), MAi());
     rng.ClearScript();
     rng.Script({0.1, 0.99, 0.1, 0.99});
     REQUIRE(EliteTeleportTarget(edge, MAffixes(), Vec2(1.5, 1.5), 0, 120, 120, rng, out));
     CHECK(out == TilePos{1, 1});
     // No teleporting affix: never.
-    MonsterInstance plain = MMake(MDef("goblin_chief"), {60, 80});
+    MonsterInstance plain = MMake(MFix(fixture::Brute()), {60, 80});
     CHECK_FALSE(EliteTeleportTarget(plain, MAffixes(), Vec2(60, 85), 0, 120, 120, rng, out));
   }
 
   TEST_CASE("curse aura 17.4: radius 4 inclusive, log at most every 2000 ms (strictly more)") {
-    MonsterInstance m = MMake(MDef("goblin_chief"), {60, 80});
+    MonsterInstance m = MMake(MFix(fixture::Brute()), {60, 80});
     ApplyEliteAffixes(m, MOne(EliteAffixType::CurseAura), MAffixes(), MAi());
     bool logNow = false;
     CHECK(EliteCurseAuraInRange(m, MAffixes(), Vec2(64, 80), 1000, logNow));
@@ -954,7 +515,7 @@ TEST_SUITE("monsters") {
     CHECK(logNow);
     CHECK_FALSE(EliteCurseAuraInRange(m, MAffixes(), Vec2(64.01, 80), 9000, logNow));
     CHECK_FALSE(logNow);
-    MonsterInstance plain = MMake(MDef("goblin_chief"), {60, 80});
+    MonsterInstance plain = MMake(MFix(fixture::Brute()), {60, 80});
     CHECK_FALSE(EliteCurseAuraInRange(plain, MAffixes(), Vec2(60, 80), 0, logNow));
   }
 
@@ -962,7 +523,7 @@ TEST_SUITE("monsters") {
   // AI tick (monsters 3; vectors 1-7; MonsterFacing.test.ts)
   // ===================================================================================================================
   TEST_CASE("movement ramp (vector 1): slime from rest, per-tick steps and cumulative distance") {
-    MonsterInstance m = MMake(MDef("slime_green"), {10, 10});
+    MonsterInstance m = MMake(MFix(fixture::Ooze()), {10, 10});
     m.state = MonsterState::Chase;
     m.def.aggroRange = 1000;
     const MonsterWorld w = MOpenWorld(400, 400);
@@ -996,7 +557,7 @@ TEST_SUITE("monsters") {
     CHECK(m.heading == Vec2(1, 0));
     CHECK(m.moveSpeed < MonsterTopSpeed(m.def, MAi()));
     // A slow halves the steady-state speed (movement only).
-    MonsterInstance s = MMake(MDef("slime_green"), {10, 10});
+    MonsterInstance s = MMake(MFix(fixture::Ooze()), {10, 10});
     s.state = MonsterState::Chase;
     s.def.aggroRange = 1000;
     for (int t = 1; t <= 600; ++t) MTick(s, MAi(), Vec2(300, 10), w, rng, t * kSimStepMs, true, 0.5);
@@ -1006,17 +567,17 @@ TEST_SUITE("monsters") {
   TEST_CASE("aggro edge (vector 2), chase / attack hysteresis (vector 3), chase drop (vector 4), facing") {
     const MonsterWorld w = MOpenWorld();
     Rng rng(1);
-    MonsterInstance g = MMake(MDef("goblin"), {10, 10});
+    MonsterInstance g = MMake(MFix(fixture::Grunt()), {10, 10});
     MonsterAiResult r = MTick(g, MAi(), Vec2(15, 10), w, rng, 100);  // dP = 5 = aggroRange
     CHECK(g.state == MonsterState::Chase);
     CHECK(r.stateChanged);
     CHECK(g.pos == Vec2(10, 10));  // no move on the transition tick
-    MonsterInstance g2 = MMake(MDef("goblin"), {10, 10});
+    MonsterInstance g2 = MMake(MFix(fixture::Grunt()), {10, 10});
     MTick(g2, MAi(), Vec2(15.01, 10), w, rng, 100);
     CHECK(g2.state == MonsterState::Idle);
 
     // Chase -> attack at <= 1.5 (no move), stays until > 1.8 (1.5 * 1.2 = 1.7999999999999998).
-    MonsterInstance c = MMake(MDef("goblin"), {10, 10});
+    MonsterInstance c = MMake(MFix(fixture::Grunt()), {10, 10});
     c.state = MonsterState::Chase;
     MTick(c, MAi(), Vec2(11.5, 10), w, rng, 100);
     CHECK(c.state == MonsterState::Attack);
@@ -1029,13 +590,13 @@ TEST_SUITE("monsters") {
     CHECK(c.heading.y == doctest::Approx(-1));  // still squared up to the hero on the exit tick
 
     // Chase drop at 1.5 x aggro: 7.5 keeps chasing (and moves), 7.5001 -> idle with speed 0.
-    MonsterInstance d = MMake(MDef("goblin"), {10, 10});
+    MonsterInstance d = MMake(MFix(fixture::Grunt()), {10, 10});
     d.state = MonsterState::Chase;
     MTick(d, MAi(), Vec2(17.5, 10), w, rng, 100);
     CHECK(d.state == MonsterState::Chase);
     CHECK(d.pos.x > 10);
     CHECK(d.moveSpeed > 0);
-    MonsterInstance e = MMake(MDef("goblin"), {10, 10});
+    MonsterInstance e = MMake(MFix(fixture::Grunt()), {10, 10});
     e.state = MonsterState::Chase;
     e.moveSpeed = 1;
     MTick(e, MAi(), Vec2(17.5001, 10), w, rng, 100);
@@ -1044,14 +605,14 @@ TEST_SUITE("monsters") {
     CHECK(e.pos == Vec2(10, 10));
 
     // MonsterFacing.test.ts: chase faces the hero (up / down), attack keeps facing it.
-    MonsterInstance up = MMake(MDef("goblin"), {10, 10});
+    MonsterInstance up = MMake(MFix(fixture::Grunt()), {10, 10});
     up.state = MonsterState::Chase;
     up.def.aggroRange = 20;
     MTick(up, MAi(), Vec2(10, 5), w, rng, 100);
     CHECK(up.heading.y < 0);
     MTick(up, MAi(), Vec2(10, 15), w, rng, 117);
     CHECK(up.heading.y > 0);
-    MonsterInstance at = MMake(MDef("goblin"), {10, 10});
+    MonsterInstance at = MMake(MFix(fixture::Grunt()), {10, 10});
     at.state = MonsterState::Attack;
     MTick(at, MAi(), Vec2(9, 10), w, rng, 100);
     CHECK(at.state == MonsterState::Attack);
@@ -1063,7 +624,7 @@ TEST_SUITE("monsters") {
     ai.leashMode = LeashMode::WebParity;
     const MonsterWorld w = MOpenWorld();
     Rng rng(1);
-    MonsterInstance g = MMake(MDef("goblin"), {18.5, 10});
+    MonsterInstance g = MMake(MFix(fixture::Grunt()), {18.5, 10});
     g.spawnAnchor = TilePos{10, 10};
     g.state = MonsterState::Chase;
     g.hp = 40;
@@ -1094,7 +655,7 @@ TEST_SUITE("monsters") {
     REQUIRE(ai.leashMode == LeashMode::Returning);
     const MonsterWorld w = MOpenWorld();
     Rng rng(1);
-    MonsterInstance g = MMake(MDef("goblin"), {18.5, 10});
+    MonsterInstance g = MMake(MFix(fixture::Grunt()), {18.5, 10});
     g.spawnAnchor = TilePos{10, 10};
     g.state = MonsterState::Chase;
     g.hp = 20;
@@ -1131,7 +692,7 @@ TEST_SUITE("monsters") {
   TEST_CASE("patrol (vector 7): tick 181 with draws (-2, +1); blocked target stays idle; M10 timeout; arrival") {
     const MonsterWorld w = MOpenWorld();
     Rng rng(1);
-    MonsterInstance g = MMake(MDef("goblin"), {20, 20});
+    MonsterInstance g = MMake(MFix(fixture::Grunt()), {20, 20});
     rng.Script({0.0, 0.7});  // randomInt(-2, 2): floor(0 * 5) - 2 = -2; floor(0.7 * 5) - 2 = 1
     for (int t = 1; t <= 180; ++t) MTick(g, MAi(), Vec2(90, 90), w, rng, t * kSimStepMs);
     CHECK(g.state == MonsterState::Idle);
@@ -1154,7 +715,7 @@ TEST_SUITE("monsters") {
     auto grid = std::make_shared<MTestGrid>(40, 40);
     grid->Block(18, 21);
     const MonsterWorld bw = MGridWorld(grid, false);
-    MonsterInstance b = MMake(MDef("goblin"), {20, 20});
+    MonsterInstance b = MMake(MFix(fixture::Grunt()), {20, 20});
     b.patrolTimerMs = 3000;
     rng.Script({0.0, 0.7});
     MTick(b, MAi(), Vec2(90, 90), bw, rng, 1000);
@@ -1169,7 +730,7 @@ TEST_SUITE("monsters") {
       }
     }
     const MonsterWorld boxw = MGridWorld(box, false);
-    MonsterInstance s = MMake(MDef("goblin"), {20, 20});
+    MonsterInstance s = MMake(MFix(fixture::Grunt()), {20, 20});
     s.patrolTimerMs = 3000;
     rng.Script({0.0, 0.7});
     MTick(s, MAi(), Vec2(90, 90), boxw, rng, 1000);
@@ -1184,7 +745,7 @@ TEST_SUITE("monsters") {
     CHECK(n * kSimStepMs >= MAi().patrolTimeoutMs - 1e-6);
     CHECK(n * kSimStepMs < MAi().patrolTimeoutMs + 2 * kSimStepMs);
     // The patrol timer keeps its value across a chase: a monster that drops aggro after > 3 s retries at once.
-    MonsterInstance k = MMake(MDef("goblin"), {20, 20});
+    MonsterInstance k = MMake(MFix(fixture::Grunt()), {20, 20});
     k.patrolTimerMs = 3500;
     k.state = MonsterState::Chase;
     rng.Script({0.5, 0.5});
@@ -1225,7 +786,7 @@ TEST_SUITE("monsters") {
   TEST_CASE("M2 provoked chase ignores the 1.5x aggro drop for 5 s (leash still applies)") {
     const MonsterWorld w = MOpenWorld();
     Rng rng(1);
-    MonsterInstance s = MMake(MDef("slime_green"), {20, 20});  // aggro 4: drops at 6
+    MonsterInstance s = MMake(MFix(fixture::Ooze()), {20, 20});  // aggro 4: drops at 6
     REQUIRE(ProvokeMonster(s, MAi(), 0, 7.0));
     MTick(s, MAi(), Vec2(27, 20), w, rng, 100);
     CHECK(s.state == MonsterState::Chase);
@@ -1241,7 +802,7 @@ TEST_SUITE("monsters") {
     auto grid = std::make_shared<MTestGrid>(30, 30);
     for (int32_t r = 0; r <= 15; ++r) grid->Block(10, r);
     Rng rng(1);
-    MonsterInstance g = MMake(MDef("goblin"), {5, 5});
+    MonsterInstance g = MMake(MFix(fixture::Grunt()), {5, 5});
     g.state = MonsterState::Chase;
     g.def.aggroRange = 30;
     g.spawnAnchor = TilePos{10, 10};  // the whole detour stays inside the 8-tile leash ring
@@ -1256,7 +817,7 @@ TEST_SUITE("monsters") {
     CHECK(Dist(g.pos, Vec2(15, 5)) <= g.def.attackRange);
     CHECK(g.path.empty());
     // Without the path service the straight chase is blocked by the wall (sliding has no free component here).
-    MonsterInstance stuck = MMake(MDef("goblin"), {5, 5});
+    MonsterInstance stuck = MMake(MFix(fixture::Grunt()), {5, 5});
     stuck.state = MonsterState::Chase;
     stuck.def.aggroRange = 30;
     stuck.spawnAnchor = TilePos{10, 10};
@@ -1269,7 +830,7 @@ TEST_SUITE("monsters") {
     // Wall sliding: a diagonal step into a wall column keeps its row component.
     auto wall = std::make_shared<MTestGrid>(30, 30);
     for (int32_t r = 0; r < 30; ++r) wall->Block(11, r);
-    MonsterInstance sl = MMake(MDef("goblin"), {10.49, 10});
+    MonsterInstance sl = MMake(MFix(fixture::Grunt()), {10.49, 10});
     sl.moveSpeed = MonsterTopSpeed(sl.def, MAi());
     CHECK_FALSE(MonsterMoveToward(sl, MAi(), Vec2(20, 20), kSimStepMs, 1, MGridWorld(wall, false)));
     CHECK(sl.pos.x == 10.49);
@@ -1277,8 +838,8 @@ TEST_SUITE("monsters") {
 
     // Separation: two goblins stacked on one tile drift apart; an attacker never leaves its attack range.
     const MonsterWorld open = MOpenWorld();
-    MonsterInstance a = MMake(MDef("goblin"), {20, 20}, 201);
-    MonsterInstance b = MMake(MDef("goblin"), {20, 20}, 202);
+    MonsterInstance a = MMake(MFix(fixture::Grunt()), {20, 20}, 201);
+    MonsterInstance b = MMake(MFix(fixture::Grunt()), {20, 20}, 202);
     for (int i = 1; i <= 120; ++i) {
       const std::vector<Vec2> na{b.pos};
       MTick(a, MAi(), Vec2(90, 90), open, rng, i * kSimStepMs, true, 1, na);
@@ -1286,7 +847,7 @@ TEST_SUITE("monsters") {
       MTick(b, MAi(), Vec2(90, 90), open, rng, i * kSimStepMs, true, 1, nb);
     }
     CHECK(Dist(a.pos, b.pos) >= MAi().separationRadius - 0.05);
-    MonsterInstance att = MMake(MDef("goblin"), {21.5, 20}, 203);
+    MonsterInstance att = MMake(MFix(fixture::Grunt()), {21.5, 20}, 203);
     att.state = MonsterState::Attack;
     const std::vector<Vec2> pushFromHeroSide{Vec2(21.2, 20)};
     for (int i = 1; i <= 60; ++i) {
@@ -1309,7 +870,7 @@ TEST_SUITE("monsters") {
     m.QueryAlive({10, 10}, 5, none);
     CHECK(none.empty());
     CHECK(m.NearestAlive({10, 10}, 50) == kNoEntity);
-    CHECK(m.NearestAliveOfDef("goblin", {0, 0}) == kNoEntity);
+    CHECK(m.NearestAliveOfDef(fixture::Grunt().id, {0, 0}) == kNoEntity);
     CHECK(m.NearestAggro({0, 0}) == kNoEntity);
     m.TickAI(kSimStepMs);  // no hero, no zone: nothing happens
     MonsterInstance inst;
@@ -1318,194 +879,12 @@ TEST_SUITE("monsters") {
           h.ctx.data.Combat().eliteAffixes.Def(EliteAffixType::Swift).lootQualityBonus);
   }
 
-  TEST_CASE("M7 story boss is data: id, quests and the storyBoss role") {
-    const MonsterAiDef& ai = MAi();
-    CHECK(ai.storyBossId == "goblin_chief");
-    CHECK(ai.storyBossNotAfterQuestTurnIn == "q_find_goblin_chief");
-    CHECK(ai.chapterCompleteQuest == "q_secure_plains");
-    CHECK(ai.storyBossOncePerVisit);
-    CHECK(ai.storyBossFarmableAfterChapter);
-    CHECK(std::find(ai.noRespawnRoles.begin(), ai.noRespawnRoles.end(), "storyBoss") != ai.noRespawnRoles.end());
-    MonsterRole r{};
-    CHECK(ParseEnum("storyBoss", r));
-    CHECK(r == MonsterRole::StoryBoss);
-    const QuestDef* q = MD().FindQuest(ai.storyBossNotAfterQuestTurnIn);
-    REQUIRE(q != nullptr);
-    CHECK(q->questArea.col == 15);
-    CHECK(q->questArea.row == 95);
-  }
-
-  TEST_CASE("zone population 6.1 / 6.3: 55 monsters, jitter <= 3, walkable, outside camps, chief = story boss") {
-    MonsterRig rig(11);
-    REQUIRE(rig.ok);
-    rig.monsters.SpawnZonePopulation();
-    const MapDef& map = rig.zone.Map();
-    int32_t total = 0;
-    for (const MapSpawnDef& s : map.spawns) total += s.count;
-    CHECK(total == 55);
-    const auto all = rig.monsters.All();
-    CHECK(static_cast<int32_t>(all.size()) == total);  // M10: 8 tries then the (walkable) anchor
-    std::map<std::string, int32_t> perDef;
-    for (const MonsterInstance& m : all) {
-      CAPTURE(m.def.id);
-      ++perDef[m.def.id];
-      CHECK(m.IsAlive());
-      CHECK(m.state == MonsterState::Idle);
-      CHECK(rig.zone.Walkable(m.spawnAnchor.col, m.spawnAnchor.row));
-      CHECK(m.pos == m.spawnAnchor.Center());
-      // Within +-3 of its spawn entry anchor (or on it).
-      bool nearEntry = false;
-      for (const MapSpawnDef& s : map.spawns) {
-        if (s.monsterId == m.def.id && std::abs(s.pos.col - m.spawnAnchor.col) <= 3 &&
-            std::abs(s.pos.row - m.spawnAnchor.row) <= 3) {
-          nearEntry = true;
-        }
-      }
-      CHECK(nearEntry);
-      CHECK_FALSE(rig.zone.InSafeZone(m.pos));
-      if (m.def.id == "goblin_chief") {
-        CHECK(m.role == MonsterRole::StoryBoss);
-        CHECK(m.noRespawn);
-        CHECK(m.AffixCount() == 1);  // emerald_plains: exactly one affix
-      } else {
-        CHECK(m.role == MonsterRole::Regular);
-        CHECK_FALSE(m.noRespawn);
-        CHECK(m.affixes.empty());
-        CHECK(m.maxHp == MDef(m.def.id).hp);
-      }
-    }
-    CHECK(perDef["slime_green"] == 19);
-    CHECK(perDef["goblin"] == 35);
-    CHECK(perDef["goblin_chief"] == 1);
-    CHECK(MEvents<EvEntitySpawned>(rig.h.events).size() == all.size());
-    // Deterministic for a seed.
-    MonsterRig again(11);
-    again.monsters.SpawnZonePopulation();
-    REQUIRE(again.monsters.All().size() == all.size());
-    for (size_t i = 0; i < all.size(); ++i) {
-      CHECK(again.monsters.All()[i].pos == all[i].pos);
-      CHECK(again.monsters.All()[i].def.id == all[i].def.id);
-    }
-    // Nightmare spawns scaled definitions.
-    MonsterRig nm(11);
-    nm.h.session.difficulty = Difficulty::Nightmare;
-    nm.monsters.SpawnZonePopulation();
-    for (const MonsterInstance& m : nm.monsters.All()) {
-      if (m.def.id == "goblin") CHECK(m.maxHp == 83);
-    }
-  }
-
-  TEST_CASE("M7 story boss: skipped after q_find_goblin_chief, back once the chapter is complete") {
-    MonsterRig rig(3);
-    QuestProgress chief;
-    chief.questId = "q_find_goblin_chief";
-    chief.status = QuestStatus::TurnedIn;
-    chief.objectives.assign(MD().FindQuest(chief.questId)->objectives.size(), 1);
-    rig.quests.Load({chief});
-    if (!rig.quests.IsTurnedIn("q_find_goblin_chief")) {
-      MESSAGE("QuestSystem::Load is not implemented yet (quests area): M7 runtime part skipped");
-      return;
-    }
-    rig.monsters.SpawnZonePopulation();
-    CHECK(rig.monsters.NearestAliveOfDef("goblin_chief", {15, 95}) == kNoEntity);
-    QuestProgress fin;
-    fin.questId = "q_secure_plains";
-    fin.status = QuestStatus::TurnedIn;
-    fin.objectives.assign(MD().FindQuest(fin.questId)->objectives.size(), 1);
-    rig.quests.Load({chief, fin});
-    rig.monsters.OnZoneExit();
-    rig.monsters.SpawnZonePopulation();
-    const EntityId boss = rig.monsters.NearestAliveOfDef("goblin_chief", {15, 95});
-    REQUIRE(boss != kNoEntity);
-    CHECK(rig.M(boss).role == MonsterRole::StoryBoss);
-  }
-
-  TEST_CASE("mini-boss 8.2: (60,55), elite with one affix, once per visit, back on the next visit") {
-    MonsterRig rig(5);
-    rig.monsters.SpawnZonePopulation();
-    rig.monsters.SpawnMiniBoss();
-    const EntityId boss = rig.monsters.MiniBoss();
-    REQUIRE(boss != kNoEntity);
-    const MonsterInstance& b = rig.M(boss);
-    CHECK(b.def.id == "miniboss_goblin_shaman");
-    CHECK(b.pos == Vec2(60, 55));
-    CHECK(b.role == MonsterRole::ZoneMiniBoss);
-    CHECK(b.noRespawn);
-    CHECK(b.AffixCount() == 1);
-    CHECK(b.def.isMiniBoss);
-    const size_t count = rig.monsters.All().size();
-    rig.monsters.SpawnMiniBoss();  // M7: once per visit
-    CHECK(rig.monsters.All().size() == count);
-    CHECK(rig.monsters.MiniBoss() == boss);
-    rig.monsters.OnZoneExit();
-    CHECK(rig.monsters.All().empty());
-    CHECK(rig.monsters.MiniBoss() == kNoEntity);
-    rig.monsters.SpawnZonePopulation();
-    rig.monsters.SpawnMiniBoss();
-    CHECK(rig.monsters.MiniBoss() != kNoEntity);
-    CHECK(rig.monsters.MiniBoss() != boss);  // fresh id
-  }
-
-  TEST_CASE("mini-boss dialogue 8.3: within aggro, once per save, boss frozen while open, chase on dismiss") {
-    MonsterRig rig(5, Vec2(60, 70));
-    rig.OpenWorld();
-    rig.monsters.SpawnMiniBoss();
-    const EntityId boss = rig.monsters.MiniBoss();
-    REQUIRE(boss != kNoEntity);
-    rig.h.events.Clear();
-    rig.Step();
-    CHECK_FALSE(rig.monsters.MiniBossDialogueActive());  // 15 tiles away
-    rig.hero->SetPosition(Vec2(60, 62.01));               // 7.01 > 7
-    rig.Step();
-    CHECK_FALSE(rig.monsters.MiniBossDialogueActive());
-    rig.hero->SetPosition(Vec2(60, 62));  // exactly 7: dSq 49 is not > 49
-    rig.Step();
-    REQUIRE(rig.monsters.MiniBossDialogueActive());
-    const std::vector<EvMiniBossDialogue> opened = MEvents<EvMiniBossDialogue>(rig.h.events);
-    REQUIRE(opened.size() == 1);
-    CHECK(opened[0].opened);
-    CHECK(opened[0].monster == boss);
-    CHECK(opened[0].monsterId == "miniboss_goblin_shaman");
-    CHECK(rig.M(boss).state == MonsterState::Idle);
-    const Vec2 frozenAt = rig.M(boss).pos;
-    rig.hero->SetPosition(Vec2(60, 57));
-    rig.Step(30);
-    CHECK(rig.M(boss).state == MonsterState::Idle);  // the AI holds the boss
-    CHECK(rig.M(boss).pos == frozenAt);
-    SaveData save;
-    rig.monsters.WriteSave(save);
-    CHECK(save.miniBossDialogueSeen == std::vector<std::string>{"miniboss_goblin_shaman"});
-    rig.h.events.Clear();
-    rig.monsters.DismissMiniBossDialogue();
-    CHECK_FALSE(rig.monsters.MiniBossDialogueActive());
-    CHECK(rig.M(boss).state == MonsterState::Chase);
-    REQUIRE(MEvents<EvMiniBossDialogue>(rig.h.events).size() == 1);
-    CHECK_FALSE(MEvents<EvMiniBossDialogue>(rig.h.events)[0].opened);
-    CHECK_FALSE(rig.aggros.empty());
-    rig.Step(5);
-    CHECK_FALSE(rig.monsters.MiniBossDialogueActive());  // seen: never again this save
-    // A loaded save that has seen it: no dialogue on the next visit either.
-    MonsterRig other(6, Vec2(60, 58));
-    other.OpenWorld();
-    other.monsters.ReadSave(save);
-    other.monsters.SpawnMiniBoss();
-    other.Step();
-    CHECK_FALSE(other.monsters.MiniBossDialogueActive());
-    // A dead hero never opens it.
-    MonsterRig dead(6, Vec2(60, 58));
-    dead.OpenWorld();
-    dead.monsters.SpawnMiniBoss();
-    dead.hero->SetHp(0);
-    dead.Step();
-    CHECK_FALSE(dead.monsters.MiniBossDialogueActive());
-  }
-
   TEST_CASE("activity set 3.8 (AI culling): 30 tiles inclusive, far aggro monsters stay active, 250 ms refresh") {
     MonsterRig rig(4, Vec2(50, 50));
     rig.OpenWorld();
-    const EntityId edge = rig.Spawn("goblin", {80, 50});    // exactly 30
-    const EntityId beyond = rig.Spawn("goblin", {81, 50});  // 31
-    const EntityId farAggro = rig.Spawn("goblin", {50, 110});
+    const EntityId edge = rig.Spawn(fixture::Grunt(), {80, 50});    // exactly 30
+    const EntityId beyond = rig.Spawn(fixture::Grunt(), {81, 50});  // 31
+    const EntityId farAggro = rig.Spawn(fixture::Grunt(), {50, 110});
     rig.M(farAggro).state = MonsterState::Chase;
     rig.Step();
     CHECK(rig.M(edge).patrolTimerMs == doctest::Approx(kSimStepMs));
@@ -1514,7 +893,7 @@ TEST_SUITE("monsters") {
     CHECK(rig.M(edge).active);
     CHECK_FALSE(rig.M(beyond).active);
     // A spawn between refreshes joins at the next refresh (<= 250 ms).
-    const EntityId late = rig.Spawn("goblin", {55, 50});
+    const EntityId late = rig.Spawn(fixture::Grunt(), {55, 50});
     rig.Step();
     CHECK(rig.M(late).patrolTimerMs == 0);
     rig.Step(15);  // 17 steps in total: past the 250 ms refresh
@@ -1528,11 +907,11 @@ TEST_SUITE("monsters") {
   TEST_CASE("safe zones (vector 8): hidden hero, forced idle inside a camp radius, no aggro message spam") {
     MonsterRig rig(4, Vec2(15, 20));  // camp (15,15), radius 9: the hero is inside
     rig.OpenWorld();
-    const EntityId idle = rig.Spawn("goblin", {15, 25});
+    const EntityId idle = rig.Spawn(fixture::Grunt(), {15, 25});
     rig.M(idle).pos = Vec2(15, 24.5);  // 4.5 from the hero (< aggro 5) but outside the camp
     rig.Step();
     CHECK(rig.M(idle).state == MonsterState::Idle);  // the hero in camp is invisible to non-aggro monsters
-    const EntityId chaser = rig.Spawn("goblin", {15, 24});
+    const EntityId chaser = rig.Spawn(fixture::Grunt(), {15, 24});
     rig.M(chaser).pos = Vec2(15, 23.9);  // inside the radius (8.9)
     rig.M(chaser).state = MonsterState::Chase;
     rig.Step(16);  // refresh the activity set
@@ -1541,7 +920,7 @@ TEST_SUITE("monsters") {
     // never moves, and the aggro message is not repeated every tick.
     MonsterRig edge(4, Vec2(15, 28));
     edge.OpenWorld();
-    const EntityId inside = edge.Spawn("goblin", {15, 23});
+    const EntityId inside = edge.Spawn(fixture::Grunt(), {15, 23});
     edge.Step();
     CHECK(edge.M(inside).state == MonsterState::Chase);
     const Vec2 p = edge.M(inside).pos;
@@ -1553,7 +932,7 @@ TEST_SUITE("monsters") {
   TEST_CASE("immobilized monsters skip the AI; slow scales movement; idle -> chase publishes MonsterAggroMsg") {
     MonsterRig rig(4, Vec2(60, 80));
     rig.OpenWorld();
-    const EntityId g = rig.Spawn("goblin", {60, 84});
+    const EntityId g = rig.Spawn(fixture::Grunt(), {60, 84});
     rig.status.Apply(g, StatusType::Freeze, 1, 2000, kNoEntity, rig.h.clock.NowMs());
     REQUIRE(rig.status.IsImmobilized(g));
     rig.Step(30);
@@ -1564,7 +943,7 @@ TEST_SUITE("monsters") {
     CHECK(rig.M(g).state == MonsterState::Chase);
     REQUIRE(rig.aggros.size() == 1);
     CHECK(rig.aggros[0].monster == g);
-    CHECK(rig.aggros[0].defId == "goblin");
+    CHECK(rig.aggros[0].defId == fixture::Grunt().id);
     CHECK(rig.aggros[0].previous == MonsterState::Idle);
     rig.status.Apply(g, StatusType::Slow, 50, 60000, kNoEntity, rig.h.clock.NowMs());
     rig.hero->SetPosition(Vec2(60, 90));  // keep it chasing
@@ -1576,7 +955,7 @@ TEST_SUITE("monsters") {
   TEST_CASE("damage 5: weight, single kill message with every field, provoke M2, heal clamps, dead ignores hits") {
     MonsterRig rig(8, Vec2(60, 80));
     rig.OpenWorld();
-    const EntityId g = rig.Spawn("goblin_chief", {60, 90}, MonsterRole::Regular, true);  // 10 tiles: idle
+    const EntityId g = rig.Spawn(fixture::Brute(), {60, 90}, MonsterRole::Regular, true);  // 10 tiles: idle
     const double maxHp = rig.M(g).maxHp;
     DamageFlags f;
     f.hasFrom = true;
@@ -1607,7 +986,7 @@ TEST_SUITE("monsters") {
     REQUIRE(rig.kills.size() == 1);
     const MonsterKilledMsg& k = rig.kills[0];
     CHECK(k.monster == g);
-    CHECK(k.defId == "goblin_chief");
+    CHECK(k.defId == fixture::Brute().id);
     CHECK(k.level == 5);
     CHECK(k.elite);
     CHECK_FALSE(k.isMiniBoss);
@@ -1644,8 +1023,8 @@ TEST_SUITE("monsters") {
   TEST_CASE("respawn 7 (vector 15): 15 s, original anchor (M3), fresh instance, elites re-roll; no-respawn roles") {
     MonsterRig rig(12, Vec2(60, 60));
     rig.OpenWorld();
-    const EntityId g = rig.Spawn("goblin", {70, 80});
-    const EntityId chief = rig.Spawn("goblin_chief", {72, 80}, MonsterRole::Regular, true);
+    const EntityId g = rig.Spawn(fixture::Grunt(), {70, 80});
+    const EntityId chief = rig.Spawn(fixture::Brute(), {72, 80}, MonsterRole::Regular, true);
     rig.M(g).pos = Vec2(71.3, 80.4);  // wandered off: the anchor stays (70,80)
     const size_t gIdx = 0;
     REQUIRE(rig.monsters.All()[gIdx].id == g);
@@ -1693,7 +1072,7 @@ TEST_SUITE("monsters") {
       CAPTURE(EnumName(role));
       MonsterRig r2(13, Vec2(60, 60));
       r2.OpenWorld();
-      const EntityId id = r2.Spawn("goblin", {70, 70}, role);
+      const EntityId id = r2.Spawn(fixture::Grunt(), {70, 70}, role);
       CHECK(r2.M(id).noRespawn);
       r2.monsters.ApplyDamage(id, 1e6, DamageFlags{});
       CHECK(r2.h.timers.Empty());
@@ -1713,7 +1092,7 @@ TEST_SUITE("monsters") {
     // Zone exit drops pending respawns.
     MonsterRig r4(15, Vec2(60, 60));
     r4.OpenWorld();
-    const EntityId z = r4.Spawn("goblin", {70, 70});
+    const EntityId z = r4.Spawn(fixture::Grunt(), {70, 70});
     r4.monsters.ApplyDamage(z, 1e6, DamageFlags{});
     CHECK_FALSE(r4.h.timers.Empty());
     r4.monsters.OnZoneExit();
@@ -1721,137 +1100,10 @@ TEST_SUITE("monsters") {
     CHECK(MEvents<EvEntityDespawned>(r4.h.events).back().reason == DespawnReason::ZoneUnload);
   }
 
-  TEST_CASE("hunts 9.4: leader (hunt def, difficulty, affixes, x1.25), minions without affixes, announce") {
-    MonsterRig rig(21, Vec2(60, 60));
-    rig.OpenWorld();
-    const QuestDef* pendant = MD().FindQuest("q_lost_pendant");
-    const QuestDef* bounty = MD().FindQuest("q_bandit_trouble");
-    const std::vector<DueHunt> due{{pendant, &MHunt("hunt_pendant_thief")}, {bounty, &MHunt("hunt_redcap_gruk")}};
-    rig.monsters.SpawnHunts(due, true);
-    CHECK(rig.monsters.IsHuntPresent("hunt_pendant_thief"));
-    CHECK(rig.monsters.IsHuntPresent("hunt_redcap_gruk"));
-    const auto all = rig.monsters.All();
-    REQUIRE(all.size() == 1 + 2 + 1 + 4);  // open world: every minion placement succeeds
-    const MonsterInstance& thief = all[0];
-    CHECK(thief.def.id == "hunt_pendant_thief");
-    CHECK(thief.huntId == "hunt_pendant_thief");
-    CHECK(thief.role == MonsterRole::HuntLeader);
-    CHECK(thief.noRespawn);
-    CHECK(thief.pos == Vec2(60, 48));
-    CHECK(thief.visualScale == doctest::Approx(1.25));
-    CHECK(thief.AffixCount() == 1);
-    CHECK(thief.originalDef.hp == 165);
-    CHECK(thief.def.nameKey == "data.monster.hunt_pendant_thief");
-    for (size_t i = 1; i <= 2; ++i) {
-      CHECK(all[i].def.id == "goblin");
-      CHECK(all[i].role == MonsterRole::HuntMinion);
-      CHECK(all[i].affixes.empty());
-      CHECK(std::abs(all[i].spawnAnchor.col - 60) <= 3);
-      CHECK(std::abs(all[i].spawnAnchor.row - 48) <= 3);
-    }
-    CHECK(all[3].def.id == "hunt_redcap_gruk");
-    CHECK(all[3].pos == Vec2(82, 72));
-    CHECK(all[3].originalDef.hp == 275);
-    // Announce: one log + shake + reveal event per hunt.
-    size_t logs = 0;
-    for (const EvLog& l : MEvents<EvLog>(rig.h.events)) {
-      if (l.text.key == "zone.quest.huntRevealed") {
-        ++logs;
-        REQUIRE(l.text.args.size() == 1);
-        CHECK(l.text.args[0].isKey);
-      }
-    }
-    CHECK(logs == 2);
-    const std::vector<EvCameraShake> shakes = MEvents<EvCameraShake>(rig.h.events);
-    REQUIRE(shakes.size() == 2);
-    CHECK(shakes[0].durationMs == 260);
-    CHECK(shakes[0].intensity == doctest::Approx(0.004));
-    CHECK(MEvents<EvHuntRevealed>(rig.h.events).size() == 2);
-    // Kill credit uses the hunt id; leaders never respawn; a dead leader is no longer present.
-    rig.monsters.ApplyDamage(thief.id, 1e6, DamageFlags{});
-    REQUIRE(rig.kills.size() == 1);
-    CHECK(rig.kills[0].defId == "hunt_pendant_thief");
-    CHECK(rig.kills[0].isMiniBoss);
-    CHECK(rig.kills[0].role == MonsterRole::HuntLeader);
-    CHECK_FALSE(rig.monsters.IsHuntPresent("hunt_pendant_thief"));
-    CHECK(rig.h.timers.Empty());
-    // A silent spawn (zone entry / accept) has no announcement; a blocked spot falls back to the nearest ring tile.
-    MonsterRig quiet(22, Vec2(60, 60));
-    auto grid = std::make_shared<MTestGrid>(120, 120);
-    grid->Block(82, 72);
-    quiet.monsters.SetWorldForTesting(MGridWorld(grid, false));
-    const std::vector<DueHunt> one{{bounty, &MHunt("hunt_redcap_gruk")}};
-    quiet.monsters.SpawnHunts(one, false);
-    REQUIRE_FALSE(quiet.monsters.All().empty());
-    CHECK(quiet.monsters.All()[0].pos == Vec2(81, 71));  // ring 1, dr = -1, dc = -1
-    CHECK_FALSE(MHasLog(quiet.h.events, "zone.quest.huntRevealed"));
-    CHECK(MEvents<EvHuntRevealed>(quiet.h.events).empty());
-  }
-
-  TEST_CASE("SpawnDueHunts through the QuestSystem: accept -> bounty out (silent); not twice; zone filter") {
-    MonsterRig rig(23, Vec2(60, 60));
-    rig.OpenWorld();
-    QuestProgress p;
-    p.questId = "q_bandit_trouble";
-    p.status = QuestStatus::Active;
-    p.objectives.assign(1, 0);
-    rig.quests.Load({p});
-    if (rig.quests.OpenQuests().empty()) {
-      MESSAGE("QuestSystem::Load is not implemented yet (quests area): SpawnDueHunts runtime part skipped");
-      return;
-    }
-    rig.monsters.SpawnDueHunts(false);
-    CHECK(rig.monsters.IsHuntPresent("hunt_redcap_gruk"));
-    const size_t n = rig.monsters.All().size();
-    rig.monsters.SpawnDueHunts(true);  // already out: nothing new
-    CHECK(rig.monsters.All().size() == n);
-    CHECK(MEvents<EvHuntRevealed>(rig.h.events).empty());
-  }
-
-  TEST_CASE("event spawns 6.4: ambush around a point, chasing, no affixes, never respawn, Events stream") {
-    MonsterRig rig(31, Vec2(60, 60));
-    rig.OpenWorld();
-    const RngState aiBefore = rig.h.rng.Get(RngStream::Ai).GetState();
-    const std::vector<std::string> ids{"slime_green", "goblin"};
-    const std::vector<EntityId> spawned =
-        rig.monsters.SpawnAmbush(ids, 4, Vec2(60, 60), 3, 2, MonsterRole::AmbushSpawn);
-    REQUIRE(spawned.size() == 4);
-    CHECK(rig.h.rng.Get(RngStream::Ai).GetState() == aiBefore);
-    for (EntityId id : spawned) {
-      const MonsterInstance& m = rig.M(id);
-      CHECK(m.state == MonsterState::Chase);
-      CHECK(m.role == MonsterRole::AmbushSpawn);
-      CHECK(m.noRespawn);
-      CHECK(m.affixes.empty());
-      const double d = Dist(m.pos, Vec2(60, 60));
-      CHECK(d >= 3 - 0.71);
-      CHECK(d <= 5 + 0.71);
-    }
-    CHECK(rig.aggros.size() == 4);
-    // Scripted draws: index, angle, distance per monster.
-    MonsterRig s(32, Vec2(60, 60));
-    s.OpenWorld();
-    s.h.rng.Get(RngStream::Events).Script({0.6, 0.0, 0.5});  // goblin; angle 0; dist 2 + 0.5 * 3 = 3.5
-    const std::vector<EntityId> one = s.monsters.SpawnAmbush(ids, 1, Vec2(40, 40), 2, 3, MonsterRole::RescueSpawn);
-    REQUIRE(one.size() == 1);
-    CHECK(s.M(one[0]).def.id == "goblin");
-    CHECK(s.M(one[0]).pos == Vec2(JsRoundInt(43.5), 40));
-    CHECK(s.M(one[0]).role == MonsterRole::RescueSpawn);
-    // Blocked preferred tile: the ring search (row-major per ring) inside [1, size - 2].
-    MonsterRig b(33, Vec2(60, 60));
-    auto grid = std::make_shared<MTestGrid>(120, 120);
-    grid->Block(44, 40);
-    b.monsters.SetWorldForTesting(MGridWorld(grid, false));
-    b.h.rng.Get(RngStream::Events).Script({0.6, 0.0, 0.5});
-    const std::vector<EntityId> moved = b.monsters.SpawnAmbush(ids, 1, Vec2(40, 40), 2, 3, MonsterRole::AmbushSpawn);
-    REQUIRE(moved.size() == 1);
-    CHECK(b.M(moved[0]).pos == Vec2(43, 39));
-  }
-
   TEST_CASE("elite behaviours 17.4 in the system: teleport blink next to the hero, curse aura buff + log") {
     MonsterRig rig(41, Vec2(60, 80));
     rig.OpenWorld();
-    const EntityId t = rig.Spawn("goblin_chief", {60, 85});
+    const EntityId t = rig.Spawn(fixture::Brute(), {60, 85});
     ApplyEliteAffixes(rig.M(t), MOne(EliteAffixType::Teleporting), MAffixes(), MAi());
     rig.M(t).state = MonsterState::Chase;
     rig.h.rng.Get(RngStream::Ai).Script({0.2, 0.5, 0.7, 0.0});
@@ -1865,14 +1117,14 @@ TEST_SUITE("monsters") {
     // Not aggro: no blink.
     MonsterRig idle(42, Vec2(60, 80));
     idle.OpenWorld();
-    const EntityId it = idle.Spawn("goblin_chief", {60, 85});
+    const EntityId it = idle.Spawn(fixture::Brute(), {60, 85});
     ApplyEliteAffixes(idle.M(it), MOne(EliteAffixType::Teleporting), MAffixes(), MAi());
     idle.monsters.TickEliteBehaviours();
     CHECK(idle.M(it).pos == Vec2(60, 85));
 
     MonsterRig c(43, Vec2(60, 80));
     c.OpenWorld();
-    const EntityId cu = c.Spawn("goblin_chief", {60, 83});
+    const EntityId cu = c.Spawn(fixture::Brute(), {60, 83});
     ApplyEliteAffixes(c.M(cu), MOne(EliteAffixType::CurseAura), MAffixes(), MAi());
     c.h.Step(1);
     c.monsters.TickEliteBehaviours();
@@ -1893,15 +1145,15 @@ TEST_SUITE("monsters") {
   TEST_CASE("queries: nearest alive / aggro, monster at tile, candidates, attacking, snapshot views") {
     MonsterRig rig(51, Vec2(60, 60));
     rig.OpenWorld();
-    const EntityId a = rig.Spawn("goblin", {62, 60});
-    const EntityId b = rig.Spawn("slime_green", {70, 60});
-    const EntityId c = rig.Spawn("goblin", {100, 100});
+    const EntityId a = rig.Spawn(fixture::Grunt(), {62, 60});
+    const EntityId b = rig.Spawn(fixture::Ooze(), {70, 60});
+    const EntityId c = rig.Spawn(fixture::Grunt(), {100, 100});
     rig.M(c).state = MonsterState::Chase;
     CHECK(rig.monsters.NearestAlive(Vec2(60, 60), 50) == a);
     CHECK(rig.monsters.NearestAggro(Vec2(60, 60)) == c);
     CHECK(rig.monsters.MonsterAtTile(Vec2(62.4, 61.4)) == a);
     CHECK(rig.monsters.MonsterAtTile(Vec2(63.6, 60)) == kNoEntity);  // |dcol| = 1.6
-    CHECK(rig.monsters.NearestAliveOfDef("slime_green", Vec2(0, 0)) == b);
+    CHECK(rig.monsters.NearestAliveOfDef(fixture::Ooze().id, Vec2(0, 0)) == b);
     std::vector<EntityId> alive;
     rig.monsters.QueryAlive(Vec2(60, 60), 10, alive);
     CHECK(alive == std::vector<EntityId>{a, b});
@@ -1923,21 +1175,22 @@ TEST_SUITE("monsters") {
     rig.monsters.FillSnapshot(snap);
     REQUIRE(snap.monsters.size() == 3);
     CHECK(snap.monsters[1].id == b);
-    CHECK(snap.monsters[1].defId == "slime_green");
-    CHECK(snap.monsters[1].artId == MDef("slime_green").spriteKey);
-    CHECK(snap.monsters[1].nameKey == "data.monster.slime_green");
+    CHECK(snap.monsters[1].defId == fixture::Ooze().id);
+    CHECK(snap.monsters[1].artId == MFix(fixture::Ooze()).spriteKey);
+    CHECK(snap.monsters[1].nameKey == "data.monster." + fixture::Ooze().id);
     CHECK(snap.monsters[1].alive);
     CHECK(snap.monsters[1].hp == 30);
     CHECK_FALSE(snap.monsters[0].alive);
     CHECK_FALSE(snap.miniBossDialogue);
-    // Story 8.3: once the boss label is renamed the view carries the intro name key.
-    const EntityId chief = rig.Spawn("goblin_chief", {5, 110});
+    // Story 8.3: a renamed label shows storyNamed; a monster without a boss intro keeps its own name key (the story
+    // boss's intro name key: content_ch1_test.cpp).
+    const EntityId chief = rig.Spawn(fixture::Brute(), {5, 110});
     rig.M(chief).storyNameShown = true;
     Snapshot named;
     rig.monsters.FillSnapshot(named);
     REQUIRE(named.monsters.size() == 4);
     CHECK(named.monsters[3].storyNamed);
-    CHECK(named.monsters[3].nameKey == "story.boss.goblin_chief.name");
+    CHECK(named.monsters[3].nameKey == fixture::Brute().nameKey);  // no boss intro: its own key (intro names: content)
     // Teleport keeps the grid in sync and emits the event.
     rig.monsters.Teleport(b, Vec2(30, 30), TeleportReason::Debug);
     CHECK(rig.monsters.MonsterAtTile(Vec2(30, 30)) == b);
@@ -1978,15 +1231,15 @@ TEST_SUITE("monsters") {
       if (t.owner == TimerOwner::Monsters) monsters.OnTimer(t);
     };
     h.bus.Subscribe<MonsterKilledMsg>([&](const MonsterKilledMsg& m) { combat.OnMonsterKilled(m); });
-    h.session.currentMap = "emerald_plains";
-    REQUIRE(zone.EnterZone("emerald_plains", true, Vec2(60, 80)));
+    h.session.currentMap = test::ch1::kZone;
+    REQUIRE(zone.EnterZone(test::ch1::kZone, true, Vec2(60, 80)));
     hero->RecalcDerived(h.ctx.equip);
     hero->FillHpMana();
     loco.OnZoneEnter();
     combat.OnZoneEnter();
     monsters.SetWorldForTesting(MOpenWorld());
     MonsterSpawnParams p;
-    p.baseDef = MD().FindMonster("goblin");
+    p.baseDef = &fixture::Grunt();
     p.tile = TilePos{60, 83};
     const EntityId g = monsters.Spawn(p);
     MonsterInstance* gm = monsters.Find(g);
@@ -2029,37 +1282,6 @@ TEST_SUITE("monsters") {
     CHECK(swings[0] == enteredAttackAt);
     CHECK(swings[1] - swings[0] >= 1200 - 1e-6);
     CHECK(swings[1] - swings[0] < 1200 + kSimStepMs);
-  }
-
-  TEST_CASE("GameSim integration: NewGame spawns the plains population and the mini-boss; the AI runs in the step") {
-    auto sim = GameSim::Create(MD(), SimConfig{});
-    REQUIRE(sim != nullptr);
-    REQUIRE(sim->NewGame(ClassId::Warrior, Difficulty::Normal, 77));
-    sim->Step();
-    size_t alive = 0, shamans = 0;
-    for (const MonsterView& v : sim->View().monsters) {
-      if (v.alive) ++alive;
-      if (v.defId == "miniboss_goblin_shaman") ++shamans;
-    }
-    CHECK(alive >= 56);  // 55 zone spawns + the mini-boss (no hunt is due at a new game)
-    CHECK(shamans == 1);
-    for (int i = 0; i < 20 && sim->WorldFrozen(); ++i) {  // a prologue, if the story plays one
-      sim->Submit(CmdStorySkip{});
-      sim->Step();
-    }
-    std::map<EntityId, Vec2> start;
-    for (const MonsterView& v : sim->View().monsters) start[v.id] = v.pos;
-    for (int i = 0; i < 400; ++i) sim->Step();
-    if (sim->WorldFrozen()) {
-      MESSAGE("the world is still frozen after NewGame: AI movement part skipped");
-      return;
-    }
-    size_t moved = 0;
-    for (const MonsterView& v : sim->View().monsters) {
-      const auto it = start.find(v.id);
-      if (it != start.end() && it->second != v.pos) ++moved;
-    }
-    CHECK(moved > 0);  // patrols start after 3 s of idling
   }
 
   // ===================================================================================================================
@@ -2154,11 +1376,6 @@ TEST_SUITE("monsters") {
     const MonsterDef& mid = MDef(t.dungeon.midBoss);
     CHECK(mid.isMiniBoss);
     CHECK_FALSE(mid.isSubDungeonMiniBoss);  // magic floor only
-    // Regular zone monsters have no loot floor.
-    for (const char* id : {"slime_green", "goblin", "goblin_chief"}) {
-      CHECK_FALSE(MDef(id).isMiniBoss);
-      CHECK_FALSE(MDef(id).isSubDungeonMiniBoss);
-    }
   }
 
   TEST_CASE("sub-dungeons (zone-content-runtime-wiring): bosses defined, spawns valid, parent zones exist") {
@@ -2322,7 +1539,6 @@ TEST_SUITE("monsters") {
     REQUIRE(en.LoadTable(test::ReadFile(test::DataDir() + "/i18n_en.json")));
     en.SetLocale(LocaleId::En);
     REQUIRE(en.Current() == LocaleId::En);
-    const std::string dot = "\xC2\xB7";
     for (EliteAffixType t : MAffixes().order) {
       CAPTURE(EnumName(t));
       const std::string key = EliteAffixNameKey(t);
@@ -2332,21 +1548,8 @@ TEST_SUITE("monsters") {
       CHECK(zh.T(key) == MAffixes().Def(t).name);    // the zh-CN names of the affix table
       CHECK(en.T(key) == MAffixes().Def(t).nameEn);  // and the English ones
     }
-    const MonsterDef& chief = MDef("goblin_chief");
-    CHECK(MonsterNameKey(chief) == "data.monster.goblin_chief");
-    CHECK(MonsterLabelText(en, MonsterNameKey(chief), {}) == en.T("data.monster.goblin_chief"));
+    // An empty base name keeps the bracket (the named labels of the Chapter 1 chief and hunt: content_ch1_test.cpp).
     const std::vector<EliteAffixType> one{EliteAffixType::FireEnhanced};
-    CHECK(MonsterLabelText(en, MonsterNameKey(chief), one) ==
-          "[" + en.T("sys.eliteAffix.name.fire_enhanced") + "] " + en.T("data.monster.goblin_chief"));
-    const std::vector<EliteAffixType> three{EliteAffixType::Swift, EliteAffixType::Vampiric, EliteAffixType::Frozen};
-    CHECK(MonsterLabelText(zh, MonsterNameKey(chief), three) ==
-          "[" + zh.T("sys.eliteAffix.name.swift") + dot + zh.T("sys.eliteAffix.name.vampiric") + dot +
-              zh.T("sys.eliteAffix.name.frozen") + "] " + zh.T("data.monster.goblin_chief"));
-    CHECK(zh.T("data.monster.goblin_chief") == chief.name);  // FIX Q11: the key resolves to the zh name
-    // Hunt leaders are named by their hunt id (localized), an empty base name keeps the bracket.
-    const MonsterDef gruk = MNormalDef("hunt_redcap_gruk");
-    CHECK(MonsterNameKey(gruk) == "data.monster.hunt_redcap_gruk");
-    CHECK(en.Has("data.monster.hunt_redcap_gruk"));
     CHECK(MonsterLabelText(en, "", one) == "[" + en.T("sys.eliteAffix.name.fire_enhanced") + "] ");
   }
 
@@ -2390,19 +1593,6 @@ TEST_SUITE("monsters") {
     DialogueTree empty;
     empty.startNodeId = "nope";
     CHECK(MiniBossDialogueLineKeys(empty, "z").empty());
-    // The opened event carries the header key and the lines.
-    MonsterRig rig(5, Vec2(60, 60));
-    rig.OpenWorld();
-    rig.monsters.SpawnMiniBoss();
-    rig.h.events.Clear();
-    rig.Step();
-    REQUIRE(rig.monsters.MiniBossDialogueActive());
-    const std::vector<EvMiniBossDialogue> ev = MEvents<EvMiniBossDialogue>(rig.h.events);
-    REQUIRE(ev.size() == 1);
-    CHECK(ev[0].nameKey == "data.monster.miniboss_goblin_shaman");
-    CHECK(ev[0].lineKeys == MiniBossDialogueLineKeys(*MD().Monsters().MiniBossDialogue("miniboss_goblin_shaman"),
-                                                     "miniboss_goblin_shaman"));
-    CHECK(ev[0].lineKeys.size() == 3);
   }
 
   // ===================================================================================================================
@@ -2448,10 +1638,10 @@ TEST_SUITE("monsters") {
     MonsterRig rig(51, Vec2(100, 100));
     rig.OpenWorld();
     const Vec2 escort(60, 60);
-    const EntityId a = rig.Spawn("goblin", {62, 60});
-    const EntityId b = rig.Spawn("goblin", {60, 63});
-    const EntityId idle = rig.Spawn("goblin", {61, 61});       // not aggro: never chips
-    const EntityId edge = rig.Spawn("slime_green", {64, 60});  // distSq 16 is not < 16
+    const EntityId a = rig.Spawn(fixture::Grunt(), {62, 60});
+    const EntityId b = rig.Spawn(fixture::Grunt(), {60, 63});
+    const EntityId idle = rig.Spawn(fixture::Grunt(), {61, 61});       // not aggro: never chips
+    const EntityId edge = rig.Spawn(fixture::Ooze(), {64, 60});  // distSq 16 is not < 16
     rig.M(a).state = MonsterState::Chase;
     rig.M(b).state = MonsterState::Attack;
     rig.M(edge).state = MonsterState::Chase;
@@ -2480,8 +1670,8 @@ TEST_SUITE("monsters") {
     // The escort dies mid-loop: the loop stops (web `return`), the next monster keeps its timer.
     MonsterRig r2(52, Vec2(100, 100));
     r2.OpenWorld();
-    const EntityId c = r2.Spawn("goblin_chief", {60, 61});
-    const EntityId d = r2.Spawn("goblin", {61, 60});
+    const EntityId c = r2.Spawn(fixture::Brute(), {60, 61});
+    const EntityId d = r2.Spawn(fixture::Grunt(), {61, 60});
     r2.M(c).state = MonsterState::Chase;
     r2.M(d).state = MonsterState::Chase;
     double escortHp = 3;
@@ -2501,60 +1691,13 @@ TEST_SUITE("monsters") {
     CHECK(r2.monsters.ChipEscort(escort, nullptr) == 4);  // only the chief, null apply allowed
   }
 
-  TEST_CASE("defend waves (quests 3.10 / monsters 6.4): 3 + w on a radius-8 circle, scaled, chasing, never respawn") {
-    MonsterRig rig(53, Vec2(100, 100));
-    rig.OpenWorld();
-    // emerald_plains list [slime_green, goblin, goblin_chief]: RandomInt(0, 2) picks.
-    rig.h.rng.Get(RngStream::Ai).Script({0.0, 0.5, 0.9});
-    const std::vector<EntityId> w0 = rig.monsters.SpawnDefendWave(Vec2(60, 60), 0);
-    REQUIRE(w0.size() == 3);
-    CHECK(rig.M(w0[0]).def.id == "slime_green");
-    CHECK(rig.M(w0[1]).def.id == "goblin");
-    CHECK(rig.M(w0[2]).def.id == "goblin_chief");  // bosses included (quests Q8, later)
-    CHECK(rig.M(w0[0]).pos == Vec2(68, 60));
-    CHECK(rig.M(w0[1]).pos == Vec2(56, 67));  // 60 + 8 cos 120 = 56, 60 + 8 sin 120 = 66.93
-    CHECK(rig.M(w0[2]).pos == Vec2(56, 53));
-    for (EntityId id : w0) {
-      const MonsterInstance& m = rig.M(id);
-      CHECK(m.state == MonsterState::Chase);
-      CHECK(m.role == MonsterRole::DefendWave);
-      CHECK(m.noRespawn);
-      CHECK(m.affixes.empty());  // even the elite chief
-    }
-    CHECK(rig.M(w0[2]).maxHp == 160);
-    CHECK(rig.aggros.size() == 3);
-    // Wave 2 on nightmare: n = 5, difficulty then wave scaling.
-    rig.h.session.difficulty = Difficulty::Nightmare;
-    rig.h.rng.Get(RngStream::Ai).Script({0.5, 0.5, 0.5, 0.5, 0.5});
-    const std::vector<EntityId> w2 = rig.monsters.SpawnDefendWave(Vec2(60, 60), 2);
-    REQUIRE(w2.size() == 5);
-    for (EntityId id : w2) {
-      CHECK(rig.M(id).def.id == "goblin");
-      CHECK(rig.M(id).maxHp == std::floor(83 * 1.6));    // nightmare 83, x(1 + 0.3 x 2)
-      CHECK(rig.M(id).def.damage == std::floor(12 * 1.4));  // nightmare 12, x(1 + 0.2 x 2)
-      CHECK(Dist(rig.M(id).pos, Vec2(60, 60)) == doctest::Approx(8).epsilon(0.1));
-    }
-    // Clamped to [2, size - 3] without a walkability check.
-    MonsterRig edge(54, Vec2(100, 100));
-    auto grid = std::make_shared<MTestGrid>(120, 120);
-    grid->Block(2, 2);
-    edge.monsters.SetWorldForTesting(MGridWorld(grid, false));
-    const std::vector<EntityId> e = edge.monsters.SpawnDefendWave(Vec2(1, 1), 0);
-    REQUIRE(e.size() == 3);
-    CHECK(edge.M(e[0]).pos == Vec2(9, 2));
-    CHECK(edge.M(e[2]).pos == Vec2(2, 2));  // (-3, -6) clamped onto a blocked tile (web: no check)
-    // Killed wave monsters never respawn.
-    edge.monsters.ApplyDamage(e[0], 1e6, DamageFlags{});
-    CHECK(edge.h.timers.Empty());
-  }
-
   TEST_CASE("defend chip (quests 3.10): wave monsters within 3 tiles, first hit after 2000 ms, floor(dmg x 0.2)") {
     MonsterRig rig(55, Vec2(100, 100));
     rig.OpenWorld();
     const Vec2 target(60, 60);
-    const EntityId near = rig.Spawn("goblin_chief", {62, 60}, MonsterRole::DefendWave);
-    const EntityId far = rig.Spawn("goblin", {63, 60}, MonsterRole::DefendWave);  // distSq 9 is not < 9
-    const EntityId other = rig.Spawn("goblin", {60, 61});                         // not a wave monster
+    const EntityId near = rig.Spawn(fixture::Brute(), {62, 60}, MonsterRole::DefendWave);
+    const EntityId far = rig.Spawn(fixture::Grunt(), {63, 60}, MonsterRole::DefendWave);  // distSq 9 is not < 9
+    const EntityId other = rig.Spawn(fixture::Grunt(), {60, 61});                         // not a wave monster
     const std::vector<EntityId> wave{near, far};
     double total = 0;
     while (rig.h.clock.NowMs() <= 4100) {
@@ -2577,32 +1720,11 @@ TEST_SUITE("monsters") {
   // ===================================================================================================================
   // Boss rename hook (monsters 10), Returning monsters in the activity set (M1), wind-up snapshot (combat 10.3)
   // ===================================================================================================================
-  TEST_CASE("boss rename hook: once per live instance, the snapshot shows the intro name, a respawn starts unmarked") {
-    MonsterRig rig(56, Vec2(100, 100));
-    rig.OpenWorld();
-    const EntityId chief = rig.Spawn("goblin_chief", {15, 95});
-    CHECK(rig.monsters.MarkStoryNamed(chief));
-    CHECK_FALSE(rig.monsters.MarkStoryNamed(chief));  // already renamed
-    CHECK_FALSE(rig.monsters.MarkStoryNamed(999999));
-    Snapshot snap;
-    rig.monsters.FillSnapshot(snap);
-    REQUIRE(snap.monsters.size() == 1);
-    CHECK(snap.monsters[0].storyNamed);
-    const BossIntroDef* intro = MD().Story().BossIntroFor("goblin_chief");
-    if (intro != nullptr) CHECK(snap.monsters[0].nameKey == intro->name);
-    rig.monsters.ApplyDamage(chief, 1e6, DamageFlags{});
-    CHECK_FALSE(rig.monsters.MarkStoryNamed(chief));  // dead
-    rig.h.Step(static_cast<int>(MAi().respawnDelayMs / kSimStepMs) + 2);
-    const MonsterInstance& again = rig.monsters.All()[0];
-    REQUIRE(again.IsAlive());
-    CHECK_FALSE(again.storyNameShown);
-    CHECK(rig.monsters.MarkStoryNamed(again.id));
-  }
 
   TEST_CASE("M1: a Returning monster stays in the activity set beyond 30 tiles and walks home") {
     MonsterRig rig(57, Vec2(10, 10));
     rig.OpenWorld();
-    const EntityId g = rig.Spawn("goblin", {90, 90});
+    const EntityId g = rig.Spawn(fixture::Grunt(), {90, 90});
     rig.M(g).pos = Vec2(99.5, 90);  // 9.5 from home, 89.6 from the hero
     rig.M(g).state = MonsterState::Chase;
     rig.M(g).hp = 20;
@@ -2649,8 +1771,8 @@ TEST_SUITE("monsters") {
       };
       h.bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { combat.OnMonsterKilled(m); });
       h.bus.Subscribe<HeroDamagedMsg>([this](const HeroDamagedMsg&) { ++heroHits; });
-      h.session.currentMap = "emerald_plains";
-      ok = zone.EnterZone("emerald_plains", true, heroPos);
+      h.session.currentMap = test::ch1::kZone;
+      ok = zone.EnterZone(test::ch1::kZone, true, heroPos);
       hero->SetPosition(heroPos);
       hero->RecalcDerived(h.ctx.equip);
       hero->FillHpMana();
@@ -2658,9 +1780,9 @@ TEST_SUITE("monsters") {
       combat.OnZoneEnter();
       monsters.SetWorldForTesting(MOpenWorld());
     }
-    EntityId Spawn(std::string_view id, TilePos tile) {
+    EntityId Spawn(const MonsterDef& def, TilePos tile) {  // a synthetic fixture (TestContent.h)
       MonsterSpawnParams p;
-      p.baseDef = MD().FindMonster(id);
+      p.baseDef = &def;
       p.tile = tile;
       const EntityId e = monsters.Spawn(p);
       MonsterInstance* m = monsters.Find(e);
@@ -2687,7 +1809,7 @@ TEST_SUITE("monsters") {
       CAPTURE(at);
       MCombatRig rig(58, Vec2(60, 60));
       REQUIRE(rig.ok);
-      const EntityId g = rig.Spawn("goblin", {60, 61});  // 1 tile: in attack range when the swing starts
+      const EntityId g = rig.Spawn(fixture::Grunt(), {60, 61});  // 1 tile: in attack range when the swing starts
       rig.monsters.Find(g)->state = MonsterState::Attack;
       rig.h.rng.Get(RngStream::Combat).Script({0.99, 0.99, 0.99, 0.99, 0.99, 0.99});  // no dodge, no crit
       rig.combat.TickCombat();                                                          // swing starts now
@@ -2701,7 +1823,7 @@ TEST_SUITE("monsters") {
   TEST_CASE("ranged rule (vector 11, M5): attackRange > 2.5 launches a bolt at contact, 2.5 resolves as melee") {
     MCombatRig rig(59, Vec2(60, 60));
     REQUIRE(rig.ok);
-    const EntityId shaman = rig.Spawn("miniboss_goblin_shaman", {60, 63});  // range 3.0 -> ranged
+    const EntityId shaman = rig.Spawn(fixture::Caster(), {60, 63});  // range 3.0 -> ranged
     rig.monsters.Find(shaman)->state = MonsterState::Attack;
     rig.monsters.Find(shaman)->affixes.clear();
     rig.combat.TickCombat();
@@ -2712,10 +1834,10 @@ TEST_SUITE("monsters") {
     CHECK(bolts[0].source == shaman);
     CHECK(bolts[0].kind == ProjectileKind::MonsterBolt);
     CHECK(bolts[0].to == Vec2(60, 60));
-    CHECK(bolts[0].color == MDef("miniboss_goblin_shaman").projectileColor);
+    CHECK(bolts[0].color == MFix(fixture::Caster()).projectileColor);
     // A 2.5-range definition is melee (no bolt).
     MCombatRig m2(60, Vec2(60, 60));
-    MonsterDef melee = MDef("goblin");
+    MonsterDef melee = MFix(fixture::Grunt());
     melee.attackRange = 2.5;
     melee.isRanged = melee.attackRange > MAi().rangedThreshold;
     CHECK_FALSE(melee.isRanged);
@@ -2733,7 +1855,7 @@ TEST_SUITE("monsters") {
   TEST_CASE("snapshot wind-up (combat 10.3): windingUp for 0.62 x contact after a swing start") {
     MCombatRig rig(61, Vec2(60, 60));
     REQUIRE(rig.ok);
-    const EntityId g = rig.Spawn("goblin", {60, 61});
+    const EntityId g = rig.Spawn(fixture::Grunt(), {60, 61});
     auto winding = [&]() {
       Snapshot s;
       rig.monsters.FillSnapshot(s);

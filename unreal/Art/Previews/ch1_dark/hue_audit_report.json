@@ -1,0 +1,2333 @@
+{
+ "tool": "Art/blender/vfx/hue_audit.py",
+ "spec": "Docs/dark-remake/implementation-plan.md A0 / 0C; README.md DR5; monsters.md 1.2",
+ "source": "Art/Export/VFX/vfx_recipes.json",
+ "eventColourTables": [
+  "Data/classes.json",
+  "Data/elite_affixes.json",
+  "Data/hit_feedback.json",
+  "Data/monsters.json",
+  "Data/pets.json",
+  "Data/spirit_profiles.json"
+ ],
+ "ok": false,
+ "constants": {
+  "breachViolet": "#B02FD0",
+  "breachVioletHue": 288.1,
+  "manaShield": "#8A5CFF",
+  "manaShieldHue": 256.9,
+  "violetToManaDeg": 31.1,
+  "violetToManaOk": true,
+  "violetGuardDeg": 30.0,
+  "violetSat": 0.5,
+  "emberHue": [
+   15.0,
+   35.0
+  ],
+  "emberSat": 0.6,
+  "emberMinVal": 0.35,
+  "nearEmberDeg": 5.0,
+  "hazard": {
+   "rim": "#D11F2E",
+   "fill": "#FFE8DC"
+  },
+  "fill": {
+   "grow": 1.5,
+   "keep": 0.5,
+   "minAlpha": 0.15
+  },
+  "colourSpace": "display sRGB, HSV hue / saturation"
+ },
+ "rules": [
+  {
+   "rule": "violet",
+   "subject": "hero recipes",
+   "ok": false,
+   "detail": "no hero colour with HSV sat > 0.5 within 30 deg of breach-violet #B02FD0 (hue 288.1); 62 hits in 10 recipes"
+  },
+  {
+   "rule": "fill",
+   "subject": "hero recipes",
+   "ok": false,
+   "detail": "no hero layer draws a filling ground shape (ground filled sprite growing >= 1.5x, >= 0.5 of its peak alpha at 95 % of the growth); 4 layers"
+  },
+  {
+   "rule": "ember",
+   "subject": "enemy recipes",
+   "ok": false,
+   "detail": "no enemy colour in the ember family (hue 15-35, sat > 0.6); 12 hits in 1 recipes"
+  },
+  {
+   "rule": "ember",
+   "subject": "enemy art (monster emissive / eye swatches, manifest fx)",
+   "ok": true,
+   "detail": "33 colours checked; 0 ember"
+  }
+ ],
+ "sides": {
+  "hero": {
+   "recipes": 88,
+   "colours": 2132
+  },
+  "friendly": {
+   "recipes": 27,
+   "colours": 158
+  },
+  "neutral": {
+   "recipes": 16,
+   "colours": 72
+  },
+  "enemy": {
+   "recipes": 12,
+   "colours": 237
+  }
+ },
+ "violations": {
+  "violet": {
+   "hit.impact": [
+    {
+     "layer": 0,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 1,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 4,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 6,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "translucent"
+    },
+    {
+     "layer": 7,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 8,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "translucent"
+    },
+    {
+     "layer": 9,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 10,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 11,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    }
+   ],
+   "hit.impact.crit": [
+    {
+     "layer": 0,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    }
+   ],
+   "hit.impact.heavy": [
+    {
+     "layer": 0,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    }
+   ],
+   "hit.impact.kill": [
+    {
+     "layer": 0,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    }
+   ],
+   "hit.impact.light": [
+    {
+     "layer": 0,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    }
+   ],
+   "hit.impact.normal": [
+    {
+     "layer": 0,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event classes.mage.arcane_torrent.impactColor",
+     "hex": "#B07CFF",
+     "hue": 263.8,
+     "sat": 0.514,
+     "blend": "additive"
+    }
+   ],
+   "skill.backstab": [
+    {
+     "layer": 0,
+     "what": "SM_FX_SlashArc_Rogue",
+     "slot": "color",
+     "source": "shadow.rim",
+     "hex": "#7030C0",
+     "hue": 266.7,
+     "sat": 0.75,
+     "blend": "translucent"
+    },
+    {
+     "layer": 1,
+     "what": "SM_FX_SlashArc_Rogue",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "translucent"
+    },
+    {
+     "layer": 2,
+     "what": "Slash",
+     "slot": "color",
+     "source": "shadow.rim",
+     "hex": "#7030C0",
+     "hue": 266.7,
+     "sat": 0.75,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Slash",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 4,
+     "what": "Glow",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Core",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 7,
+     "what": "Streak",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    }
+   ],
+   "skill.death_mark": [
+    {
+     "layer": 0,
+     "what": "Rune",
+     "slot": "color",
+     "source": "shadow.rim",
+     "hex": "#7030C0",
+     "hue": 266.7,
+     "sat": 0.75,
+     "blend": "additive"
+    },
+    {
+     "layer": 1,
+     "what": "Glow",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Skull",
+     "slot": "color",
+     "source": "shadow.dark",
+     "hex": "#24103E",
+     "hue": 266.1,
+     "sat": 0.742,
+     "blend": "translucent"
+    },
+    {
+     "layer": 3,
+     "what": "Skull",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Skull",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 6,
+     "what": "Ring",
+     "slot": "color",
+     "source": "shadow.rim",
+     "hex": "#7030C0",
+     "hue": 266.7,
+     "sat": 0.75,
+     "blend": "additive"
+    },
+    {
+     "layer": 8,
+     "what": "Ember",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    }
+   ],
+   "skill.shadow_step": [
+    {
+     "layer": 1,
+     "what": "Ring",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "translucent"
+    },
+    {
+     "layer": 2,
+     "what": "Ring",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Streak",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Glow",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 6,
+     "what": "Core",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 7,
+     "what": "SM_FX_SlashArc_Rogue",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "translucent"
+    },
+    {
+     "layer": 8,
+     "what": "Spark",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    }
+   ],
+   "skill.vanish": [
+    {
+     "layer": 0,
+     "what": "Glow",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 1,
+     "what": "Core",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Ring",
+     "slot": "color",
+     "source": "shadow.rim",
+     "hex": "#7030C0",
+     "hue": 266.7,
+     "sat": 0.75,
+     "blend": "translucent"
+    },
+    {
+     "layer": 3,
+     "what": "Ring",
+     "slot": "color",
+     "source": "shadow.rim",
+     "hex": "#7030C0",
+     "hue": 266.7,
+     "sat": 0.75,
+     "blend": "additive"
+    },
+    {
+     "layer": 7,
+     "what": "Streak",
+     "slot": "color",
+     "source": "shadow.mid",
+     "hex": "#B478FF",
+     "hue": 266.7,
+     "sat": 0.529,
+     "blend": "additive"
+    },
+    {
+     "layer": 8,
+     "what": "Scorch",
+     "slot": "color",
+     "source": "fixed #24103E",
+     "hex": "#24103E",
+     "hue": 266.1,
+     "sat": 0.742,
+     "blend": "translucent"
+    }
+   ]
+  },
+  "fill": [
+   {
+    "recipe": "proj.poison_arrow.hit",
+    "layer": 4,
+    "side": "hero",
+    "sprite": "Puddle",
+    "grow": 1.529,
+    "peakAlpha": 0.75,
+    "alphaAt95": 0.581,
+    "t95": 0.632,
+    "colors": [
+     "#3FAE2E"
+    ]
+   },
+   {
+    "recipe": "skill.bleed_strike",
+    "layer": 7,
+    "side": "hero",
+    "sprite": "Puddle",
+    "grow": 1.647,
+    "peakAlpha": 0.8,
+    "alphaAt95": 0.62,
+    "t95": 0.632,
+    "colors": [
+     "#A01420"
+    ]
+   },
+   {
+    "recipe": "skill.meteor",
+    "layer": 1,
+    "side": "hero",
+    "sprite": "Glow",
+    "grow": 3.2,
+    "peakAlpha": 0.6,
+    "alphaAt95": 0.549,
+    "t95": 0.95,
+    "colors": [
+     "#1A0E08"
+    ]
+   },
+   {
+    "recipe": "skill.poison_blade",
+    "layer": 10,
+    "side": "hero",
+    "sprite": "Puddle",
+    "grow": 1.529,
+    "peakAlpha": 0.75,
+    "alphaAt95": 0.581,
+    "t95": 0.632,
+    "colors": [
+     "#3FAE2E"
+    ]
+   }
+  ],
+  "ember": {
+   "elite.fire_enhanced": [
+    {
+     "layer": 0,
+     "what": "Shock",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 1,
+     "what": "Puff",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 2,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #FF7A3A",
+     "hex": "#FF7A3A",
+     "hue": 19.5,
+     "sat": 0.773,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Glow",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 6,
+     "what": "Glow",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 9,
+     "what": "Flame",
+     "slot": "color",
+     "source": "white x T_FX_Flame texel",
+     "hex": "#FF992B",
+     "hue": 31.2,
+     "sat": 0.832,
+     "blend": "translucent"
+    },
+    {
+     "layer": 10,
+     "what": "Shock",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 11,
+     "what": "Puff",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 12,
+     "what": "Ring",
+     "slot": "color",
+     "source": "fixed #FF7A3A",
+     "hex": "#FF7A3A",
+     "hue": 19.5,
+     "sat": 0.773,
+     "blend": "additive"
+    },
+    {
+     "layer": 15,
+     "what": "Glow",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 16,
+     "what": "Glow",
+     "slot": "color",
+     "source": "fixed #FF4400",
+     "hex": "#FF4400",
+     "hue": 16.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 19,
+     "what": "Flame",
+     "slot": "color",
+     "source": "white x T_FX_Flame texel",
+     "hex": "#FF992B",
+     "hue": 31.2,
+     "sat": 0.832,
+     "blend": "translucent"
+    }
+   ]
+  },
+  "emberArt": []
+ },
+ "advisory": {
+  "violetFriendlyNeutral": {},
+  "fillFriendlyNeutral": [],
+  "enemyFills": [],
+  "emberLaterChapters": {
+   "proj.monster_bolt": [
+    {
+     "layer": 0,
+     "what": "SM_FX_SpiritBolt",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 0,
+     "what": "SM_FX_SpiritBolt",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 1,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 1,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 2,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 4,
+     "what": "Ember",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 4,
+     "what": "Ember",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    }
+   ],
+   "proj.monster_bolt.hit": [
+    {
+     "layer": 2,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 3,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 4,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 5,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "translucent"
+    },
+    {
+     "layer": 6,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event monsters.fire_elemental.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    },
+    {
+     "layer": 6,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event monsters.phoenix.projectileColor (scorching_desert)",
+     "hex": "#FF6600",
+     "hue": 24.0,
+     "sat": 1.0,
+     "blend": "additive"
+    }
+   ]
+  },
+  "violetLaterChapters": {
+   "proj.pet_bolt": [
+    {
+     "layer": 0,
+     "what": "SM_FX_SpiritBolt",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "translucent"
+    },
+    {
+     "layer": 0,
+     "what": "SM_FX_SpiritBolt",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "translucent"
+    },
+    {
+     "layer": 1,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "translucent"
+    },
+    {
+     "layer": 1,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "translucent"
+    },
+    {
+     "layer": 2,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Comet",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Glow",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    }
+   ],
+   "proj.pet_bolt.hit": [
+    {
+     "layer": 2,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 2,
+     "what": "Impact",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 3,
+     "what": "Streak",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "translucent"
+    },
+    {
+     "layer": 4,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "translucent"
+    },
+    {
+     "layer": 5,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.combat.color (chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    },
+    {
+     "layer": 5,
+     "what": "Ring",
+     "slot": "color",
+     "source": "event pets.pet_void_butterfly.butterfly_void_bolt (arcane, chapter 5)",
+     "hex": "#CC44CC",
+     "hue": 300.0,
+     "sat": 0.667,
+     "blend": "additive"
+    }
+   ]
+  },
+  "nearEmber": {
+   "recipes": {
+    "elite.fire_enhanced": [
+     {
+      "layer": 3,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #E8400E",
+      "hex": "#E8400E",
+      "hue": 13.8,
+      "sat": 0.94,
+      "blend": "translucent"
+     },
+     {
+      "layer": 4,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #E8400E",
+      "hex": "#E8400E",
+      "hue": 13.8,
+      "sat": 0.94,
+      "blend": "translucent"
+     },
+     {
+      "layer": 7,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #FFC060",
+      "hex": "#FFC060",
+      "hue": 36.2,
+      "sat": 0.624,
+      "blend": "additive"
+     },
+     {
+      "layer": 8,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #FFC060",
+      "hex": "#FFC060",
+      "hue": 36.2,
+      "sat": 0.624,
+      "blend": "additive"
+     },
+     {
+      "layer": 9,
+      "what": "Flame",
+      "slot": "color",
+      "source": "white x T_FX_Flame texel",
+      "hex": "#E8401C",
+      "hue": 10.5,
+      "sat": 0.878,
+      "blend": "translucent"
+     },
+     {
+      "layer": 13,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #E8400E",
+      "hex": "#E8400E",
+      "hue": 13.8,
+      "sat": 0.94,
+      "blend": "translucent"
+     },
+     {
+      "layer": 14,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #E8400E",
+      "hex": "#E8400E",
+      "hue": 13.8,
+      "sat": 0.94,
+      "blend": "translucent"
+     },
+     {
+      "layer": 17,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #FFC060",
+      "hex": "#FFC060",
+      "hue": 36.2,
+      "sat": 0.624,
+      "blend": "additive"
+     },
+     {
+      "layer": 18,
+      "what": "Core",
+      "slot": "color",
+      "source": "fixed #FFC060",
+      "hex": "#FFC060",
+      "hue": 36.2,
+      "sat": 0.624,
+      "blend": "additive"
+     },
+     {
+      "layer": 19,
+      "what": "Flame",
+      "slot": "color",
+      "source": "white x T_FX_Flame texel",
+      "hex": "#E8401C",
+      "hue": 10.5,
+      "sat": 0.878,
+      "blend": "translucent"
+     }
+    ],
+    "hit.claw": [
+     {
+      "layer": 3,
+      "what": "Streak",
+      "slot": "color",
+      "source": "fixed #FF6A4A",
+      "hex": "#FF6A4A",
+      "hue": 10.6,
+      "sat": 0.71,
+      "blend": "additive"
+     }
+    ]
+   },
+   "art": [
+    {
+     "source": "manifest SK_Mon_Goblin.fx.telegraph.elite",
+     "hex": "#FF7A5C",
+     "hue": 11.0,
+     "sat": 0.639,
+     "val": 1.0,
+     "ember": false
+    },
+    {
+     "source": "manifest SK_Mon_GoblinChief.fx.eyeEmbers.color",
+     "hex": "#FF5A2A",
+     "hue": 13.5,
+     "sat": 0.835,
+     "val": 1.0,
+     "ember": false
+    },
+    {
+     "source": "manifest SK_Mon_GoblinChief.fx.telegraph.elite",
+     "hex": "#FF7A5C",
+     "hue": 11.0,
+     "sat": 0.639,
+     "val": 1.0,
+     "ember": false
+    },
+    {
+     "source": "manifest SK_Mon_GoblinShaman.fx.telegraph.elite",
+     "hex": "#FF7A5C",
+     "hue": 11.0,
+     "sat": 0.639,
+     "val": 1.0,
+     "ember": false
+    },
+    {
+     "source": "manifest SK_Mon_Slime.fx.telegraph.elite",
+     "hex": "#FF7A5C",
+     "hue": 11.0,
+     "sat": 0.639,
+     "val": 1.0,
+     "ember": false
+    },
+    {
+     "source": "palette Monsters_Plains[27] chief.eye (emissive 0.60)",
+     "hex": "#FFB13A",
+     "hue": 36.2,
+     "sat": 0.773,
+     "val": 1.0,
+     "ember": false
+    }
+   ],
+   "note": "enemy colours within 5 deg outside the ember hue band (sat > 0.6, value >= 0.35): ember in all but the number"
+  }
+ },
+ "relaxations": {
+  "status": "pending confirmation (Docs/DECISIONS.md R22); every exemption below is reported, none is silent",
+  "emberValueFloor": {
+   "rule": "ember",
+   "minValue": 0.35,
+   "reason": "DR5 reserves ember orange (#FF7A2A family) for the hero; a colour in the hue / saturation band but darker than this reads as black / brown (pupils, soot, leather), not as ember",
+   "exempted": {
+    "recipes": {},
+    "art": [
+     {
+      "source": "palette Monsters_Plains[13] chief.pupil/goblin.pupil/shaman.pupil (eye)",
+      "hex": "#1A0E08",
+      "hue": 20.0,
+      "sat": 0.692,
+      "val": 0.102,
+      "ember": false
+     }
+    ]
+   }
+  },
+  "chapterScope": {
+   "rules": [
+    "ember: monster bolt colours (proj.monster_bolt*)",
+    "violet: pet bolt colours (proj.pet_bolt*)"
+   ],
+   "gatingZones": [
+    "emerald_plains"
+   ],
+   "gatingPetChapters": [
+    1
+   ],
+   "reason": "event colours of later-chapter monsters and pets are web data until each chapter's dark pass (DR11) and stay out of the Chapter 1 build (the W7 sealed gate); their dark pass re-runs the audit with that chapter added to the gating set",
+   "exempted": {
+    "ember": [
+     "proj.monster_bolt",
+     "proj.monster_bolt.hit"
+    ],
+    "violet": [
+     "proj.pet_bolt",
+     "proj.pet_bolt.hit"
+    ]
+   }
+  }
+ },
+ "unresolved": [
+  {
+   "recipe": "loot.drop",
+   "layer": 0,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop",
+   "layer": 1,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop",
+   "layer": 2,
+   "what": "Core",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop",
+   "layer": 3,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop",
+   "layer": 4,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 0,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 1,
+   "what": "Beam",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 2,
+   "what": "Beam",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 4,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 5,
+   "what": "Core",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 6,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 7,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.legendary",
+   "layer": 8,
+   "what": "Star",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.magic",
+   "layer": 0,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.magic",
+   "layer": 1,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.magic",
+   "layer": 2,
+   "what": "Core",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.magic",
+   "layer": 3,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.magic",
+   "layer": 4,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.rare",
+   "layer": 0,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.rare",
+   "layer": 1,
+   "what": "Beam",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.rare",
+   "layer": 2,
+   "what": "Beam",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.rare",
+   "layer": 4,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.rare",
+   "layer": 5,
+   "what": "Core",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.rare",
+   "layer": 6,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.rare",
+   "layer": 7,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 0,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 1,
+   "what": "Beam",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 2,
+   "what": "Beam",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 4,
+   "what": "Glow",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 5,
+   "what": "Core",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 6,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 7,
+   "what": "Ring",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "loot.drop.set",
+   "layer": 8,
+   "what": "Star",
+   "color": "event",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "proj.default",
+   "layer": 0,
+   "what": "Glow",
+   "color": "rim",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default",
+   "layer": 1,
+   "what": "Comet",
+   "color": "mid",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default",
+   "layer": 2,
+   "what": "Ember",
+   "color": "rim",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default.fizzle",
+   "layer": 0,
+   "what": "Glow",
+   "color": "mid",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default.hit",
+   "layer": 0,
+   "what": "Glow",
+   "color": "mid",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default.hit",
+   "layer": 1,
+   "what": "Core",
+   "color": "core",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default.hit",
+   "layer": 2,
+   "what": "Streak",
+   "color": "mid",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default.hit",
+   "layer": 3,
+   "what": "Ring",
+   "color": "rim",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "proj.default.hit",
+   "layer": 4,
+   "what": "Ring",
+   "color": "rim",
+   "palette": "event",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "prop.lore",
+   "layer": 0,
+   "what": "Glow",
+   "color": "event",
+   "palette": "holy",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "prop.lore",
+   "layer": 1,
+   "what": "Spark",
+   "color": "event",
+   "palette": "holy",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "prop.lore",
+   "layer": 2,
+   "what": "Glow",
+   "color": "event",
+   "palette": "holy",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  },
+  {
+   "recipe": "prop.lore",
+   "layer": 3,
+   "what": "Spark",
+   "color": "event",
+   "palette": "holy",
+   "why": "event colour set at runtime",
+   "side": "friendly"
+  }
+ ],
+ "recipesBySide": {
+  "hero": [
+   "ground.arrow_rain",
+   "ground.arrow_rain.end",
+   "ground.chain_trap",
+   "ground.chain_trap.trigger",
+   "ground.default",
+   "ground.default.end",
+   "ground.default.trigger",
+   "ground.explosive_trap",
+   "ground.explosive_trap.trigger",
+   "ground.fire_wall",
+   "ground.slow_trap",
+   "ground.slow_trap.trigger",
+   "hero.dash",
+   "hero.dodge",
+   "hero.levelup",
+   "hero.resonance",
+   "hero.resonance.aura",
+   "hit.basic",
+   "hit.basic.mage",
+   "hit.basic.rogue",
+   "hit.basic.warrior",
+   "hit.evade",
+   "hit.impact",
+   "hit.impact.crit",
+   "hit.impact.heavy",
+   "hit.impact.kill",
+   "hit.impact.light",
+   "hit.impact.normal",
+   "hit.mark.fire",
+   "hit.mark.ice",
+   "hit.mark.other",
+   "proj.arrow",
+   "proj.arrow.hit",
+   "proj.fireball",
+   "proj.fireball.hit",
+   "proj.fireball.launch",
+   "proj.ice_arrow",
+   "proj.ice_arrow.hit",
+   "proj.ice_arrow.launch",
+   "proj.multishot",
+   "proj.multishot.hit",
+   "proj.pet_bolt",
+   "proj.pet_bolt.hit",
+   "proj.piercing_arrow",
+   "proj.piercing_arrow.hit",
+   "proj.poison_arrow",
+   "proj.poison_arrow.hit",
+   "skill.arcane_torrent",
+   "skill.arrow_rain",
+   "skill.backstab",
+   "skill.bleed_strike",
+   "skill.blizzard",
+   "skill.chain_lightning",
+   "skill.chain_trap",
+   "skill.charge",
+   "skill.combustion",
+   "skill.death_mark",
+   "skill.default",
+   "skill.dual_wield_mastery",
+   "skill.explosive_trap",
+   "skill.fire_wall",
+   "skill.fireball",
+   "skill.freeze",
+   "skill.frenzy",
+   "skill.ice_armor",
+   "skill.ice_arrow",
+   "skill.iron_fortress",
+   "skill.lethal_strike",
+   "skill.life_regen",
+   "skill.mana_shield",
+   "skill.meteor",
+   "skill.multishot",
+   "skill.piercing_arrow",
+   "skill.poison_arrow",
+   "skill.poison_blade",
+   "skill.poison_cloud",
+   "skill.rampage",
+   "skill.shadow_step",
+   "skill.shield_wall",
+   "skill.slash",
+   "skill.slow_trap",
+   "skill.taunt_roar",
+   "skill.teleport",
+   "skill.unyielding",
+   "skill.vanish",
+   "skill.vengeful_wrath",
+   "skill.war_stomp",
+   "skill.whirlwind"
+  ],
+  "friendly": [
+   "camp.campfire",
+   "camp.hearthstone",
+   "camp.torch",
+   "exit.portal",
+   "loot.beam.legendary",
+   "loot.beam.magic",
+   "loot.beam.rare",
+   "loot.beam.set",
+   "loot.drop",
+   "loot.drop.legendary",
+   "loot.drop.magic",
+   "loot.drop.rare",
+   "loot.drop.set",
+   "loot.pickup",
+   "portal.arrive",
+   "portal.channel",
+   "prop.chest",
+   "prop.chest.open",
+   "prop.clue",
+   "prop.event",
+   "prop.gather",
+   "prop.lore",
+   "prop.soul_echo",
+   "quest.pop",
+   "reward.gold",
+   "reward.heal",
+   "reward.mana"
+  ],
+  "neutral": [
+   "ambient.dust",
+   "ambient.dust_motes",
+   "ambient.pollen",
+   "ambient.sparks",
+   "ambient.wisps",
+   "exit.sealed",
+   "npc.FX_HammerStrike",
+   "proj.default",
+   "proj.default.fizzle",
+   "proj.default.hit",
+   "status.bleed",
+   "status.burn",
+   "status.freeze",
+   "status.poison",
+   "status.slow",
+   "status.stun"
+  ],
+  "enemy": [
+   "death.burst",
+   "elite.curse_aura",
+   "elite.extra_strong",
+   "elite.fire_enhanced",
+   "elite.frozen",
+   "elite.swift",
+   "elite.teleporting",
+   "elite.vampiric",
+   "hit.claw",
+   "proj.monster_bolt",
+   "proj.monster_bolt.hit",
+   "teleport.blink"
+  ]
+ },
+ "enemyArt": [
+  {
+   "source": "manifest SK_Mon_Goblin.fx.attackTrail.color",
+   "hex": "#E8E0CC",
+   "hue": 42.9,
+   "sat": 0.121,
+   "val": 0.91,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Goblin.fx.telegraph.elite",
+   "hex": "#FF7A5C",
+   "hue": 11.0,
+   "sat": 0.639,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Goblin.fx.telegraph.normal",
+   "hex": "#FFC4B0",
+   "hue": 15.2,
+   "sat": 0.31,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinChief.fx.attackTrail.color",
+   "hex": "#E8ECF4",
+   "hue": 220.0,
+   "sat": 0.049,
+   "val": 0.957,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinChief.fx.eyeEmbers.color",
+   "hex": "#FF5A2A",
+   "hue": 13.5,
+   "sat": 0.835,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinChief.fx.eyeEmbers.coreColor",
+   "hex": "#FFD08A",
+   "hue": 35.9,
+   "sat": 0.459,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinChief.fx.telegraph.elite",
+   "hex": "#FF7A5C",
+   "hue": 11.0,
+   "sat": 0.639,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinChief.fx.telegraph.normal",
+   "hex": "#FFC4B0",
+   "hue": 15.2,
+   "sat": 0.31,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.castRuneRing.color",
+   "hex": "#7DFFA0",
+   "hue": 136.2,
+   "sat": 0.51,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.maskEmbers.color",
+   "hex": "#4DFF7A",
+   "hue": 135.2,
+   "sat": 0.698,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.spiritBolt.color",
+   "hex": "#4DFF7A",
+   "hue": 135.2,
+   "sat": 0.698,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.spiritBolt.coreColor",
+   "hex": "#D4FFB0",
+   "hue": 92.7,
+   "sat": 0.31,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.spiritFire.color",
+   "hex": "#4DFF7A",
+   "hue": 135.2,
+   "sat": 0.698,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.spiritFire.coreColor",
+   "hex": "#D4FFB0",
+   "hue": 92.7,
+   "sat": 0.31,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.spiritStone.color",
+   "hex": "#4DFF7A",
+   "hue": 135.2,
+   "sat": 0.698,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.telegraph.elite",
+   "hex": "#FF7A5C",
+   "hue": 11.0,
+   "sat": 0.639,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_GoblinShaman.fx.telegraph.normal",
+   "hex": "#FFC4B0",
+   "hue": 15.2,
+   "sat": 0.31,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Slime.fx.jellyRim.color",
+   "hex": "#E6FFDC",
+   "hue": 102.9,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Slime.fx.puddle.color",
+   "hex": "#5FCF5A",
+   "hue": 117.4,
+   "sat": 0.565,
+   "val": 0.812,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Slime.fx.telegraph.elite",
+   "hex": "#FF7A5C",
+   "hue": 11.0,
+   "sat": 0.639,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Slime.fx.telegraph.normal",
+   "hex": "#FFC4B0",
+   "hue": 15.2,
+   "sat": 0.31,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[12] goblin.eye/shaman.eye (eye)",
+   "hex": "#FFD83A",
+   "hue": 48.1,
+   "sat": 0.773,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[13] chief.pupil/goblin.pupil/shaman.pupil (eye)",
+   "hex": "#1A0E08",
+   "hue": 20.0,
+   "sat": 0.692,
+   "val": 0.102,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[27] chief.eye (emissive 0.60)",
+   "hex": "#FFB13A",
+   "hue": 36.2,
+   "sat": 0.773,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[63] shaman.ember (emissive 1.00)",
+   "hex": "#BEFFBE",
+   "hue": 120.0,
+   "sat": 0.255,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[64] shaman.gem (emissive 0.75)",
+   "hex": "#4DFF88",
+   "hue": 139.9,
+   "sat": 0.698,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[72] shaman_totem.glint (emissive 1.00)",
+   "hex": "#B8FFC0",
+   "hue": 126.8,
+   "sat": 0.278,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[73] shaman_totem.fire (emissive 1.00)",
+   "hex": "#4DFF7A",
+   "hue": 135.2,
+   "sat": 0.698,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[74] shaman_totem.fire_hot (emissive 1.00)",
+   "hex": "#D4FFB0",
+   "hue": 92.7,
+   "sat": 0.31,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[78] slime.sclera (eye)",
+   "hex": "#F7FFF0",
+   "hue": 92.0,
+   "sat": 0.059,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[80] slime.pupil (eye)",
+   "hex": "#10200F",
+   "hue": 116.5,
+   "sat": 0.531,
+   "val": 0.125,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[87] elite_crown.gem (emissive 0.30)",
+   "hex": "#FF3A4A",
+   "hue": 355.1,
+   "sat": 0.773,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_Plains[94] goblin_lootsack.gem/goblin_pendant.gem/goblin_redcap.gem (emissive 0.55)",
+   "hex": "#E0283C",
+   "hue": 353.5,
+   "sat": 0.821,
+   "val": 0.878,
+   "ember": false
+  }
+ ]
+}

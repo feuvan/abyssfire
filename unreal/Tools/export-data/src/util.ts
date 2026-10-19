@@ -22,6 +22,18 @@ export interface TableResult {
   data: Record<string, unknown>;
   /** Record counts for the run summary (label → count). */
   counts: Record<string, number>;
+  /**
+   * Modules the table also reads through web code (provenance only, never written; same notation as `source`): a remade
+   * GameData module that only reaches the table this way still gets it a `remake.modules` entry (main.ts).
+   */
+  deps?: string[];
+}
+
+/** A golden fixture (path relative to `unreal/`) and the modules it is built from, for its `remake` block (main.ts). */
+export interface GoldenFile {
+  path: string;
+  text: string;
+  deps: string[];
 }
 
 // ── Deterministic JSON ──────────────────────────────────────────────────────

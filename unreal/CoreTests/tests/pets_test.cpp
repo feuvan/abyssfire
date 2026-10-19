@@ -8,7 +8,9 @@
 #include <string>
 #include <vector>
 
+#include "PetsFixtures.h"
 #include "SimHarness.h"
+#include "TestContent.h"
 #include "abyss/base/Json.h"
 #include "abyss/base/Math.h"
 #include "abyss/base/StrUtil.h"
@@ -36,233 +38,11 @@
 
 using namespace abyss;
 
-namespace {
-
-const DataStore& PD() { return test::RealData(); }
-const PetTables& PT() { return PD().Pets(); }
-const HomesteadTables& HT() { return PD().Homestead(); }
-
-// The ley sprite's cast release: the shipped clip's Release notify (assets.json SK_Pet_Sprite Cast01 releaseMs) when
-// the art exists (the clip is authoritative, like every hero / monster contact beat); else the flying rig's 161 ms
-// (quests-story-ch1.md 18.5.7).
-double SpriteCastReleaseMs() {
-  const AssetEntryDef* a = PD().Assets().FindByGameId("beast_pet_sprite");
-  const AnimClipDef* c = a != nullptr ? a->FindClip("Cast01") : nullptr;
-  return c != nullptr && c->hasReleaseMs ? c->releaseMs : 161.0;
-}
-
-const std::vector<std::string>& OriginalPetIds() {
-  static const std::vector<std::string> ids = {"pet_sprite",  "pet_dragon",     "pet_owl",           "pet_cat",
-                                               "pet_phoenix", "pet_storm_wolf", "pet_jade_tortoise", "pet_void_butterfly"};
-  return ids;
-}
-
-const std::vector<std::string>& ChapterFinales() {
-  static const std::vector<std::string> ids = {"q_secure_plains", "q_seal_dark_source", "q_kill_stone_guardian",
-                                               "q_seal_fire_rift", "q_collect_demon_essence"};
-  return ids;
-}
-
-// Log lines (keys) in emission order.
-std::vector<std::string> PtLogKeys(const EventSink& s) {
-  std::vector<std::string> out;
-  for (const Event& e : s.Items()) {
-    if (const EvLog* l = std::get_if<EvLog>(&e)) out.push_back(l->text.key);
-  }
-  return out;
-}
-
-std::vector<EvLog> PtLogs(const EventSink& s) {
-  std::vector<EvLog> out;
-  for (const Event& e : s.Items()) {
-    if (const EvLog* l = std::get_if<EvLog>(&e)) out.push_back(*l);
-  }
-  return out;
-}
-
-template <class E>
-std::vector<E> PtEvents(const EventSink& s) {
-  std::vector<E> out;
-  for (const Event& e : s.Items()) {
-    if (const E* x = std::get_if<E>(&e)) out.push_back(*x);
-  }
-  return out;
-}
-
-// The web tests' levelTo: feeds exactly one level of exp at a time (silent).
-void LevelTo(PetSystem& ps, std::string_view petId, int32_t level) {
-  for (int guard = 0; guard < 100 && ps.Find(petId)->level < level; ++guard) {
-    ps.AddExp(petId, static_cast<double>(PetExpToNext(PT().system, ps.Find(petId)->level)), true);
-  }
-}
-
-std::vector<std::string> AbilityIds(const std::vector<const PetAbilityDef*>& list) {
-  std::vector<std::string> out;
-  for (const PetAbilityDef* a : list) out.push_back(a->id);
-  return out;
-}
-
-const PetAbilityDef* PrimaryOf(std::string_view petId) { return PrimaryPetAbility(*PD().FindPet(petId)); }
-
-// A fixed sequence repeated like the web tests' seq(...): scripts `count` values cycling through `values`.
-void ScriptSeq(Rng& rng, std::initializer_list<double> values, size_t count) {
-  std::vector<double> v;
-  const std::vector<double> src(values);
-  for (size_t i = 0; i < count; ++i) v.push_back(src[i % src.size()]);
-  rng.Script(std::span<const double>(v));
-}
-
-JsonValue PtParse(std::string_view text) {
-  JsonValue v;
-  const bool ok = ParseJson(text, v);
-  REQUIRE(ok);
-  return v;
-}
-
-std::string PtJson(const std::function<void(JsonWriter&)>& write) {
-  JsonWriter w;
-  write(w);
-  return w.Take();
-}
-
-std::string Render(const LocText& t) { return PD().Strings().T(t); }
-
-// The web's choosePetAction test context (PetSystem.test.ts ctx()): owl abilities, target at 3, ready.
-PetDecisionContext OwlCtx() {
-  PetDecisionContext c;
-  c.nowMs = 10000;
-  c.abilities = UnlockedPetAbilities(*PD().FindPet("pet_owl"), 0);
-  c.exhausted = false;
-  c.peaceful = false;
-  c.heroDist = 2;
-  c.heroHpRatio = 1;
-  c.heroAttackers = 0;
-  c.hasTarget = true;
-  c.targetDist = 3;
-  c.targetMarked = false;
-  c.enemiesNearTarget = 1;
-  c.basicRange = 5;
-  c.basicReadyAt = 0;
-  return c;
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Runtime rig: the systems the companion and the homestead talk to, around a SimHarness over the real data.
-// ---------------------------------------------------------------------------------------------------------------------
-struct PetRig {
-  explicit PetRig(Vec2 heroPos = Vec2(40, 40), ClassId cls = ClassId::Warrior, uint64_t seed = 5)
-      : h(seed),
-        hero(std::make_unique<Hero>(h.ctx.data, cls)),
-        status(h.ctx.data.Classes().statusRules),
-        zone(h.ctx),
-        monsters(h.ctx),
-        projectiles(h.ctx),
-        combat(h.ctx),
-        rewards(h.ctx),
-        inventory(h.ctx),
-        quests(h.ctx.data, h.events, h.bus),
-        homestead(h.ctx),
-        pets(h.ctx.data, h.events, h.bus),
-        companion(h.ctx) {
-    SimSystems& s = h.ctx.sys;
-    s.hero = hero.get();
-    s.status = &status;
-    s.zone = &zone;
-    s.monsters = &monsters;
-    s.projectiles = &projectiles;
-    s.combat = &combat;
-    s.rewards = &rewards;
-    s.inventory = &inventory;
-    s.quests = &quests;
-    s.homestead = &homestead;
-    s.pets = &pets;
-    s.petCompanion = &companion;
-    pets.SetBuildingLevelSource([this](std::string_view id) { return homestead.BuildingLevel(id); });
-    pets.SetAwaySource([this](std::string_view id) { return homestead.IsPetAway(id); });
-    h.onTimer = [this](const Timer& t) {
-      switch (t.owner) {
-        case TimerOwner::Combat: combat.OnTimer(t); break;
-        case TimerOwner::Projectiles: projectiles.OnTimer(t); break;
-        case TimerOwner::Monsters: monsters.OnTimer(t); break;
-        case TimerOwner::Pets: companion.OnTimer(t); break;
-        default: break;
-      }
-    };
-    h.bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { combat.OnMonsterKilled(m); });
-    h.bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { pets.OnKill(m.level); });
-    h.bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { homestead.OnMonsterKilled(m); });
-    h.bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { kills.push_back(m); });
-    h.bus.Subscribe<PetChangedMsg>([this](const PetChangedMsg& m) {
-      petChanges.push_back(m);
-      companion.OnPetChanged(m);
-    });
-    h.bus.Subscribe<QuestTurnedInMsg>([this](const QuestTurnedInMsg& m) { homestead.OnQuestTurnedIn(m); });
-    h.session.currentMap = "emerald_plains";
-    ok = zone.EnterZone("emerald_plains", true, heroPos);
-    hero->Skills().InitStarterLevels();
-    hero->RecalcDerived(h.ctx.equip);
-    hero->FillHpMana();
-    combat.OnZoneEnter();
-    companion.OnZoneEnter();
-    h.events.Clear();
-  }
-
-  void Step(int n = 1) {
-    for (int i = 0; i < n; ++i) {
-      h.Step(1);
-      hero->RecalcDerived(h.ctx.equip);
-      companion.Tick(kSimStepMs);
-    }
-  }
-  template <class Pred>
-  bool StepUntil(Pred pred, int maxSteps = 600) {
-    for (int i = 0; i < maxSteps; ++i) {
-      if (pred()) return true;
-      Step();
-    }
-    return pred();
-  }
-
-  EntityId Spawn(std::string_view defId, TilePos tile, MonsterState state = MonsterState::Chase) {
-    MonsterSpawnParams p;
-    p.baseDef = PD().FindMonster(defId);
-    p.tile = tile;
-    p.role = MonsterRole::Regular;
-    const EntityId id = monsters.Spawn(p);
-    if (MonsterInstance* m = monsters.Find(id)) m->state = state;
-    return id;
-  }
-
-  // The beast at a fixed spot (tests that need exact distances).
-  void PlacePet(Vec2 p) {
-    companion.MutableStateForTesting().pos = p;
-    companion.MutableStateForTesting().prevPos = p;
-  }
-
-  double Now() const { return h.clock.NowMs(); }
-  Rng& PetRng() { return h.rng.Get(RngStream::Pets); }
-
-  test::SimHarness h;
-  std::unique_ptr<Hero> hero;
-  StatusEffectSystem status;
-  ZoneRuntime zone;
-  MonsterSystem monsters;
-  ProjectileSystem projectiles;
-  CombatSystem combat;
-  RewardService rewards;
-  InventorySystem inventory;
-  QuestSystem quests;
-  HomesteadSystem homestead;
-  PetSystem pets;
-  PetCompanion companion;
-  std::vector<MonsterKilledMsg> kills;
-  std::vector<PetChangedMsg> petChanges;
-  bool ok = false;
-};
+using namespace abyss::test::pets_fx;
+namespace ch1 = abyss::test::ch1;
+namespace fixture = abyss::test::fixture;
 
 #define REQUIRE_MONSTER(id) REQUIRE((id) != kNoEntity)
-
-}  // namespace
 
 TEST_SUITE("pets") {
   // ===================================================================================================================
@@ -1087,7 +867,10 @@ TEST_SUITE("pets") {
     CHECK(unlocks == finales);
     CHECK(HT().FindBuilding("altar")->unlockQuest == "q_collect_demon_essence");
     CHECK(HT().FindBuilding("warehouse")->unlockQuest.empty());
-    CHECK(HT().towerUnlockQuest == "q_explore_goblin_camp");
+    // The tower opens on a main quest (which one is content: content_ch1_test.cpp pins M3).
+    const QuestDef* towerQuest = PD().FindQuest(HT().towerUnlockQuest);
+    REQUIRE(towerQuest != nullptr);
+    CHECK(towerQuest->category == QuestCategory::Main);
     CHECK(HT().towerZoneId == "ember_tower");
   }
 
@@ -1097,10 +880,10 @@ TEST_SUITE("pets") {
     CHECK(t.IsBuildingUnlocked("warehouse"));
     CHECK_FALSE(t.IsBuildingUnlocked("herb_garden"));
     CHECK_FALSE(t.IsBuildingUnlocked("nope"));
-    const std::vector<std::string> first = {"q_kill_slimes", "q_kill_goblins", HT().towerUnlockQuest};
+    const std::vector<std::string> first = {ch1::kQuestM1, ch1::kQuestM2, HT().towerUnlockQuest};
     CHECK(t.SyncUnlocks(first).empty());
     CHECK(t.TowerUnlocked());
-    const std::vector<std::string> second = {HT().towerUnlockQuest, "q_secure_plains"};
+    const std::vector<std::string> second = {HT().towerUnlockQuest, ch1::kQuestM5};
     CHECK(t.SyncUnlocks(second) == std::vector<std::string>{"herb_garden"});
     CHECK(t.IsBuildingUnlocked("herb_garden"));
     CHECK(t.BuildingLevel("herb_garden") == 1);  // the ally restores the wing: Lv1 for free
@@ -1119,7 +902,7 @@ TEST_SUITE("pets") {
     SaveHomestead old;
     old.buildings = {{"herb_garden", 4}, {"gem_workshop", 2}, {"altar", 0}};
     t.Load(old);
-    const std::vector<std::string> done = {HT().towerUnlockQuest, "q_secure_plains", "q_seal_dark_source",
+    const std::vector<std::string> done = {HT().towerUnlockQuest, ch1::kQuestM5, "q_seal_dark_source",
                                            "q_kill_stone_guardian"};
     t.SyncUnlocks(done);
     CHECK(t.BuildingLevel("herb_garden") == 4);
@@ -1146,7 +929,7 @@ TEST_SUITE("pets") {
   // ===================================================================================================================
   TEST_CASE("upgrade: charges embers and returns the gold cost") {
     HomesteadTower t(HT());
-    const std::vector<std::string> done = {HT().towerUnlockQuest, "q_secure_plains"};
+    const std::vector<std::string> done = {HT().towerUnlockQuest, ch1::kQuestM5};
     t.SyncUnlocks(done);
     BuildingLevelCost c;
     REQUIRE(t.UpgradeCost("herb_garden", c));
@@ -1213,15 +996,6 @@ TEST_SUITE("pets") {
     CHECK(t.Embers() == 5);
   }
 
-  TEST_CASE("embers: the Chapter 1 quests pay 20 in total (4.4.1)") {
-    int32_t total = 0;
-    for (const QuestDef& q : PD().Quests().quests) {
-      if (q.zone != "emerald_plains") continue;
-      total += EmbersForQuest(HT(), q.category, q.rewards.hasEmbers, q.rewards.embers);
-    }
-    CHECK(total == 20);
-  }
-
   // ===================================================================================================================
   // herb garden (4.7.1)
   // ===================================================================================================================
@@ -1240,7 +1014,7 @@ TEST_SUITE("pets") {
     Rng rng(1);
     for (int i = 0; i < 30; ++i) CHECK(t.OnKillGarden(rng).empty());  // locked: nothing grows
     CHECK(t.Garden().progress == 0);
-    const std::vector<std::string> done = {"q_secure_plains"};
+    const std::vector<std::string> done = {ch1::kQuestM5};
     t.SyncUnlocks(done);
     ScriptSeq(rng, {0.9, 0.1}, 64);  // potion, hp
     std::vector<std::string> grown;
@@ -1447,7 +1221,7 @@ TEST_SUITE("pets") {
   // ===================================================================================================================
   TEST_CASE("homestead save: round-trips the tower state through JSON") {
     HomesteadTower t(HT());
-    const std::vector<std::string> done = {HT().towerUnlockQuest, "q_secure_plains", "q_seal_fire_rift",
+    const std::vector<std::string> done = {HT().towerUnlockQuest, ch1::kQuestM5, "q_seal_fire_rift",
                                            "q_collect_demon_essence"};
     t.SyncUnlocks(done);
     t.AddEmbers(42);
@@ -1689,7 +1463,7 @@ TEST_SUITE("pets") {
     REQUIRE(r.ok);
     r.h.ctx.equip.Ref(Stat::Damage) = 100;
     REQUIRE(r.pets.AddPet("pet_sprite"));
-    const EntityId g = r.Spawn("goblin", TilePos{42, 40});
+    const EntityId g = r.Spawn(fixture::Grunt(), TilePos{42, 40});
     REQUIRE_MONSTER(g);
     r.PlacePet(Vec2(39, 41));
     const double hp0 = r.monsters.Find(g)->hp;
@@ -1730,7 +1504,7 @@ TEST_SUITE("pets") {
     PetRig r;
     r.h.ctx.equip.Ref(Stat::Damage) = -1000;
     REQUIRE(r.pets.AddPet("pet_sprite"));
-    const EntityId g = r.Spawn("goblin", TilePos{42, 40});
+    const EntityId g = r.Spawn(fixture::Grunt(), TilePos{42, 40});
     REQUIRE_MONSTER(g);
     r.PlacePet(Vec2(39, 41));
     const double hp0 = r.monsters.Find(g)->hp;
@@ -1771,7 +1545,7 @@ TEST_SUITE("pets") {
 
   TEST_CASE("companion: never heals inside a camp's safe zone, nor a dead hero (QP1 fix)") {
     {
-      const MapDef* map = PD().FindMap("emerald_plains");
+      const MapDef* map = PD().FindMap(ch1::kZone);
       REQUIRE(!map->camps.empty());
       PetRig r(map->camps[0].pos.Center());
       REQUIRE(r.pets.AddPet("pet_sprite"));
@@ -1801,7 +1575,7 @@ TEST_SUITE("pets") {
     r.h.ctx.equip.Ref(Stat::Damage) = -1000;  // the beast deals nothing: no crit rolls on the Pets stream
     REQUIRE(r.pets.AddPet("pet_sprite"));
     r.PlacePet(Vec2(38, 42));
-    const EntityId g = r.Spawn("goblin", TilePos{37, 42}, MonsterState::Attack);
+    const EntityId g = r.Spawn(fixture::Grunt(), TilePos{37, 42}, MonsterState::Attack);
     REQUIRE_MONSTER(g);
     MonsterInstance* m = r.monsters.Find(g);
     REQUIRE(JsHypot(m->pos - Vec2(38, 42)) <= m->def.attackRange + 0.5);
@@ -1835,7 +1609,7 @@ TEST_SUITE("pets") {
     r.h.ctx.equip.Ref(Stat::Damage) = -1000;
     REQUIRE(r.pets.AddPet("pet_sprite"));
     r.PlacePet(Vec2(38, 42));
-    const EntityId g = r.Spawn("goblin", TilePos{37, 42}, MonsterState::Attack);
+    const EntityId g = r.Spawn(fixture::Grunt(), TilePos{37, 42}, MonsterState::Attack);
     REQUIRE_MONSTER(g);
     r.companion.MutableStateForTesting().hp = 1;
     r.PetRng().Script({0.1, 0.5});
@@ -1899,7 +1673,7 @@ TEST_SUITE("pets") {
     PetRig r;
     r.h.ctx.equip.Ref(Stat::Damage) = 100;
     REQUIRE(r.pets.AddPet("pet_sprite"));
-    const EntityId g = r.Spawn("goblin", TilePos{42, 40});
+    const EntityId g = r.Spawn(fixture::Grunt(), TilePos{42, 40});
     REQUIRE_MONSTER(g);
     r.PlacePet(Vec2(39, 41));
     r.monsters.Find(g)->hp = 1;
@@ -1919,7 +1693,7 @@ TEST_SUITE("pets") {
     r.pets.AddExp("pet_sprite", 2340, true);
     REQUIRE(r.pets.Active()->evolved == 1);
     r.hero->SetHp(r.hero->MaxHp() * 0.8);
-    const EntityId g = r.Spawn("goblin", TilePos{41, 40}, MonsterState::Attack);
+    const EntityId g = r.Spawn(fixture::Grunt(), TilePos{41, 40}, MonsterState::Attack);
     REQUIRE_MONSTER(g);
     r.Step();
     REQUIRE(r.StepUntil([&] { return r.hero->Buffs().FindTag(BuffTag::PetShield) != nullptr; }, 20));
@@ -1933,7 +1707,7 @@ TEST_SUITE("pets") {
     PetRig r;
     r.h.ctx.equip.Ref(Stat::Damage) = 300;
     REQUIRE(r.pets.AddPet("pet_owl"));
-    const EntityId g = r.Spawn("goblin_chief", TilePos{42, 40});
+    const EntityId g = r.Spawn(fixture::Brute(), TilePos{42, 40});
     REQUIRE_MONSTER(g);
     r.PlacePet(Vec2(39, 41));
     r.Step();
@@ -1954,7 +1728,7 @@ TEST_SUITE("pets") {
     PetRig r;
     r.h.ctx.equip.Ref(Stat::Damage) = 300;
     REQUIRE(r.pets.AddPet("pet_storm_wolf"));
-    const EntityId g = r.Spawn("goblin_chief", TilePos{42, 40});
+    const EntityId g = r.Spawn(fixture::Brute(), TilePos{42, 40});
     REQUIRE_MONSTER(g);
     r.PlacePet(Vec2(39, 41));
     const double hp0 = r.monsters.Find(g)->hp;
@@ -1979,8 +1753,8 @@ TEST_SUITE("pets") {
     r.h.ctx.equip.Ref(Stat::Damage) = 300;
     REQUIRE(r.pets.AddPet("pet_dragon"));
     r.PlacePet(Vec2(40, 42));
-    const EntityId front = r.Spawn("goblin_chief", TilePos{42, 42});
-    const EntityId behind = r.Spawn("goblin_chief", TilePos{37, 42}, MonsterState::Idle);
+    const EntityId front = r.Spawn(fixture::Brute(), TilePos{42, 42});
+    const EntityId behind = r.Spawn(fixture::Brute(), TilePos{37, 42}, MonsterState::Idle);
     REQUIRE_MONSTER(front);
     REQUIRE_MONSTER(behind);
     const double f0 = r.monsters.Find(front)->hp, b0 = r.monsters.Find(behind)->hp;
@@ -1998,7 +1772,7 @@ TEST_SUITE("pets") {
   TEST_CASE("companion: tortoise taunt redirects swings without a roll") {
     PetRig r;
     REQUIRE(r.pets.AddPet("pet_jade_tortoise"));
-    const EntityId g = r.Spawn("goblin", TilePos{41, 40}, MonsterState::Attack);
+    const EntityId g = r.Spawn(fixture::Grunt(), TilePos{41, 40}, MonsterState::Attack);
     REQUIRE_MONSTER(g);
     r.PlacePet(Vec2(39, 41));
     r.Step();
@@ -2017,7 +1791,7 @@ TEST_SUITE("pets") {
     PetRig r;
     r.h.ctx.equip.Ref(Stat::Damage) = 300;
     REQUIRE(r.pets.AddPet("pet_void_butterfly"));
-    const EntityId g = r.Spawn("goblin_chief", TilePos{43, 40});
+    const EntityId g = r.Spawn(fixture::Brute(), TilePos{43, 40});
     REQUIRE_MONSTER(g);
     r.PlacePet(Vec2(39, 41));
     r.hero->SetMana(0);
@@ -2127,8 +1901,8 @@ TEST_SUITE("pets") {
     CHECK(r.homestead.Tower().Embers() == 5);
     CHECK(r.h.events.Items().empty());
     CHECK(r.homestead.Tower().Garden().progress == 0);  // garden locked until q_secure_plains
-    r.quests.Load({QuestProgress{"q_secure_plains", QuestStatus::TurnedIn, {}}});
-    r.homestead.OnQuestTurnedIn(QuestTurnedInMsg{"q_secure_plains"});
+    r.quests.Load({QuestProgress{ch1::kQuestM5, QuestStatus::TurnedIn, {}}});
+    r.homestead.OnQuestTurnedIn(QuestTurnedInMsg{ch1::kQuestM5});
     CHECK(r.homestead.BuildingLevel("herb_garden") == 1);
     for (int i = 0; i < 13; ++i) r.homestead.OnMonsterKilled(plain);
     CHECK(r.homestead.Tower().Garden().progress == 13);
@@ -2139,9 +1913,9 @@ TEST_SUITE("pets") {
 
   TEST_CASE("homestead: quest embers + unlock records; milestone 1 hides the unlock lines (OQ8)") {
     PetRig r;
-    r.quests.Load({QuestProgress{"q_explore_goblin_camp", QuestStatus::TurnedIn, {}}});
-    r.homestead.OnQuestTurnedIn(QuestTurnedInMsg{"q_explore_goblin_camp"});
-    const QuestDef* q = PD().FindQuest("q_explore_goblin_camp");
+    r.quests.Load({QuestProgress{ch1::kQuestM3, QuestStatus::TurnedIn, {}}});
+    r.homestead.OnQuestTurnedIn(QuestTurnedInMsg{ch1::kQuestM3});
+    const QuestDef* q = PD().FindQuest(ch1::kQuestM3);
     const int32_t n = EmbersForQuest(HT(), q->category, q->rewards.hasEmbers, q->rewards.embers);
     CHECK(r.homestead.Tower().Embers() == n);
     CHECK(r.homestead.Tower().TowerUnlocked());
@@ -2155,9 +1929,9 @@ TEST_SUITE("pets") {
     // The later-milestone build logs the tower and wing lines.
     PetRig t;
     t.h.config.milestone1 = false;
-    t.quests.Load({QuestProgress{"q_explore_goblin_camp", QuestStatus::TurnedIn, {}},
-                   QuestProgress{"q_secure_plains", QuestStatus::TurnedIn, {}}});
-    t.homestead.OnQuestTurnedIn(QuestTurnedInMsg{"q_explore_goblin_camp"});
+    t.quests.Load({QuestProgress{ch1::kQuestM3, QuestStatus::TurnedIn, {}},
+                   QuestProgress{ch1::kQuestM5, QuestStatus::TurnedIn, {}}});
+    t.homestead.OnQuestTurnedIn(QuestTurnedInMsg{ch1::kQuestM3});
     CHECK(PtLogKeys(t.h.events) == std::vector<std::string>{"homestead.log.questEmbers", "homestead.log.wingUnlocked",
                                                             "homestead.log.towerUnlocked"});
   }
@@ -2192,8 +1966,8 @@ TEST_SUITE("pets") {
     r.homestead.WriteSave(out);
     CHECK(out.homestead.embers == 23);
     PetRig s;
-    s.quests.Load({QuestProgress{"q_explore_goblin_camp", QuestStatus::TurnedIn, {}},
-                   QuestProgress{"q_secure_plains", QuestStatus::TurnedIn, {}}});
+    s.quests.Load({QuestProgress{ch1::kQuestM3, QuestStatus::TurnedIn, {}},
+                   QuestProgress{ch1::kQuestM5, QuestStatus::TurnedIn, {}}});
     s.h.events.Clear();
     s.homestead.ReadSave(out);
     CHECK(s.homestead.Tower().Embers() == 23);
@@ -2210,7 +1984,7 @@ TEST_SUITE("pets") {
     PetRig r;
     HomesteadTower& t = r.homestead.MutableTower();
     std::vector<QuestProgress> done;
-    for (const char* q : {"q_explore_goblin_camp", "q_secure_plains", "q_kill_stone_guardian", "q_seal_fire_rift",
+    for (const char* q : {ch1::kQuestM3, ch1::kQuestM5, "q_kill_stone_guardian", "q_seal_fire_rift",
                           "q_collect_demon_essence"}) {
       done.push_back(QuestProgress{q, QuestStatus::TurnedIn, {}});
     }
