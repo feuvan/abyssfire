@@ -120,6 +120,11 @@ public:
 	 * the hero halo draw at intensity x this; the toon light slots carry it too.
 	 */
 	float GetLightScale() const { return LightScale; }
+	/**
+	 * Dark remake (U1): the zone mood's light scale (zone_moods.json port.lightScale, blended over a mood region by the
+	 * zone actor), pushed by the world builder every frame. <= 0: no override, the R18 formula of the zone mood.
+	 */
+	void SetMoodLightScale(float Scale);
 
 	/** Recipe-authored camera shakes (the web FxEngine.shake, own 120 ms throttle). Bound by the world builder. */
 	FOnAbyssVfxShake OnShake;
@@ -423,6 +428,9 @@ private:
 
 	// fake lights (DECISIONS R18 / P11 revised)
 	float LightScale = 0.12f;
+	/** The zone mood's own scale (port.lightScale, else R18's formula) and the world builder's live override (<= 0: none). */
+	float ZoneLightScale = 0.12f;
+	float MoodLightScale = -1.f;
 	std::string LightScaleMapId;
 	bool bLightScaleKnown = false;
 	float LightSlotRefreshSec = 0.f;

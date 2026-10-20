@@ -61,6 +61,7 @@
     "ui.settings.quality.low": "U9",
     "ui.settings.quality.balanced": "U9",
     "ui.settings.quality.high": "U9",
+    "ui.settings.brightness": "U1",
     "ui.settings.controls": "U9",
     "ui.settings.controls.auto": "U9",
     "ui.settings.controls.desktop": "U9",
@@ -126,7 +127,7 @@
     "zone.combat.noTarget": "C14",
     "zone.combat.outOfRange": "C14"
   },
-  "keyCount": 2791,
+  "keyCount": 2795,
   "strings": {
     "boot.title": "淵  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2635,6 +2636,7 @@
     "ui.settings.quality.low": "低",
     "ui.settings.quality.balanced": "中",
     "ui.settings.quality.high": "高",
+    "ui.settings.brightness": "亮度",
     "ui.settings.controls": "操作方式",
     "ui.settings.controls.auto": "自動",
     "ui.settings.controls.desktop": "鼠標與鍵盤",
@@ -2774,6 +2776,9 @@
     "sys.event.msg.rescue.emerald_plains": "一個朝聖者被綁在樁上。看著他的，是赤誓會的人。",
     "sys.event.msg.environmental_puzzle.emerald_plains": "斷樁上掛著五口小鐘。",
     "zone.event.merchant.announce.emerald_plains": "聖骨販子：“聖骨，真貨。至少有一塊是真的。”",
+    "zone.event.merchant.label.emerald_plains": "聖骨販子",
+    "zone.event.puzzle.label.emerald_plains": "五口小鐘",
+    "zone.event.treasureChest.label.emerald_plains": "陣亡騎士的鐵箱",
     "zone.event.rescue.complete.emerald_plains": "你割斷了朝聖者身上的繩子。“他們說我走得太慢，跟不上聖火。”獲得 {gold} 金幣和 {exp} 經驗",
     "data.quest.q_rf_burial_detail.name": "收屍隊",
     "data.quest.q_rf_burial_detail.desc": "收屍隊十個人黃昏出了門，再沒回來。去北邊的埋骨壕，放倒站起來的人。",
@@ -2924,7 +2929,7 @@
     "source": ["unreal/GameData", "unreal/GameData/i18n/zh-CN.ts", "unreal/GameData/i18n/zhTWExtra.ts"],
     "stringsReplacedWeb": 95,
     "stringsReplacedPort": 0,
-    "stringsAdded": 220,
+    "stringsAdded": 223,
     "swept": [
       "data.monster.slime_green",
       "data.monster.goblin",
@@ -3089,6 +3094,6 @@
       "story.cs_boss_goblin_chief.3",
       "story.cs_boss_goblin_chief.5"
     ],
-    "zhTWSupplement": {"keys": 315, "changed": 131, "chars": 258, "phrases": 230}
+    "zhTWSupplement": {"keys": 318, "changed": 131, "chars": 258, "phrases": 230}
   }
 }

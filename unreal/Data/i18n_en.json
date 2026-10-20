@@ -59,6 +59,7 @@
     "ui.settings.quality.low": "U9",
     "ui.settings.quality.balanced": "U9",
     "ui.settings.quality.high": "U9",
+    "ui.settings.brightness": "U1",
     "ui.settings.controls": "U9",
     "ui.settings.controls.auto": "U9",
     "ui.settings.controls.desktop": "U9",
@@ -124,7 +125,7 @@
     "zone.combat.noTarget": "C14",
     "zone.combat.outOfRange": "C14"
   },
-  "keyCount": 2792,
+  "keyCount": 2796,
   "strings": {
     "boot.title": "Abyssfire",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2634,6 +2635,7 @@
     "ui.settings.quality.low": "Low",
     "ui.settings.quality.balanced": "Medium",
     "ui.settings.quality.high": "High",
+    "ui.settings.brightness": "Brightness",
     "ui.settings.controls": "Controls",
     "ui.settings.controls.auto": "Auto",
     "ui.settings.controls.desktop": "Mouse & Keys",
@@ -2773,6 +2775,9 @@
     "sys.event.msg.rescue.emerald_plains": "A pilgrim is tied to a stake. The Red-Oath are watching him.",
     "sys.event.msg.environmental_puzzle.emerald_plains": "Five handbells hang from a broken post.",
     "zone.event.merchant.announce.emerald_plains": "The Relic Peddler: \"Saint's bones, genuine. At least one of them is.\"",
+    "zone.event.merchant.label.emerald_plains": "The Relic Peddler",
+    "zone.event.puzzle.label.emerald_plains": "Five Handbells",
+    "zone.event.treasureChest.label.emerald_plains": "A Dead Knight's Strongbox",
     "zone.event.rescue.complete.emerald_plains": "You cut the pilgrim loose. \"They said I walked too slowly to keep up with the Flame.\" Gained {gold} gold and {exp} EXP",
     "data.quest.q_rf_burial_detail.name": "The Burial Detail",
     "data.quest.q_rf_burial_detail.desc": "Ten men of the burial detail went out at dusk and never came back. Go north to the trenches and put down whoever is standing.",
@@ -2923,7 +2928,7 @@
     "source": ["unreal/GameData", "unreal/GameData/i18n/en.ts"],
     "stringsReplacedWeb": 95,
     "stringsReplacedPort": 0,
-    "stringsAdded": 220,
+    "stringsAdded": 223,
     "swept": [
       "data.monster.slime_green",
       "data.monster.goblin",

@@ -10,14 +10,28 @@
 //   played here on AppState MainMenu (the core has no session there). The manifest's zoneOverrides swap a track key
 //   for the current zone (audio.md 11: the Ember Tower plays the procedural plains score).
 // * SFX (EvSfx): per-cue concurrency (max voices, stop oldest, minimum retrigger), random variant without immediate
-//   repeat (audio.md 9.5), monster family variants (A7, the source's animCategory) plus the family death vocal on
-//   monster_death. World cues (EvSfx::spatial) get the A4 mild panning: the source's lateral offset from the hero on
-//   screen, scaled by the 25 % spread, becomes the azimuth of a virtual emitter next to the listener (camera), with no
-//   distance attenuation. UI cues are 2D.
+//   repeat (audio.md 9.5), monster family variants (A7) plus the family death vocal on monster_death. The family comes
+//   from data (U7, AbyssVoiceRules): the manifest's voiceFamilies.monsters (the dark remake's Chapter 1 roster: undead,
+//   human, gnawer, breach), else the source's animCategory (humanoid / slime and the later chapters, as before); a
+//   silent monster has no family cue; voiceFamilies.overrides swap in named cues (Valdras, the Corpseherd) and add
+//   them on beats (anim.<action>, miniboss.opened, story.say). World cues (EvSfx::spatial) get the A4 mild panning: the
+//   source's lateral offset from the hero on screen, scaled by the 25 % spread, becomes the azimuth of a virtual
+//   emitter next to the listener (camera), with no distance attenuation. UI cues are 2D.
+// * Dark remake music (U7, AbyssMusicRules; manifest musicDirector): the core's EvMusic is arbitrated per frame against
+//   the director's layers in its priority (story > victory > boss > siege > region > zone): silence / track regions with
+//   hysteresis and `while`, the siege track bound to its quest, the finale's silence then lute. A zone-overridden request
+//   that resolves to the track already sounding is a no-op even with restart (the remake's combat edge keeps the
+//   drones). Encounter stingers (hunts, the mini-boss) duck the music like the story stingers.
+// * Cue triggers (U7, AbyssCueTriggerRules; manifest cueTriggers): the bells (tolls near / far, self-ring, dawn toll,
+//   cracked bell, ambush tell) and beat-bound voices on story steps / beat ends / random events / decoration focus /
+//   timers. OnCuePlayed reports each one (the set-piece layer ripples the bell frame).
 // * Story (audio.md 10.2): letterbox-in stinger on cutscene / boss intro beats, chapter-card stinger by mood, boss
 //   intro title stinger, whisper loop while whisper steps show; music ducks under them.
-// * A7: the zone ambience bed (by zone, then by theme) and hero footsteps from the hero actor's FootL / FootR anim
-//   notifies with the surface of the tile under the hero (a distance cadence takes over when a clip has no notifies).
+// * A7: the zone ambience bed (by zone, then by theme: the map's presentation theme when it has one) and hero footsteps
+//   from the hero actor's FootL / FootR anim notifies with the surface of the tile under the hero (a distance cadence
+//   takes over when a clip has no notifies). AU2 (U7, AbyssAmbienceRules): region beds that crossfade with the bed
+//   (the Breach Rim), layers over it while a monster lives (the Gnawed Field's ringing), looping point emitters with
+//   linear distance attenuation (Ashwheat's knocking at the set pieces' spots, Knellwatch's hearth).
 // * Volumes: master x bus (music / SFX) from FAbyssUserSettings, applied as component volume multipliers (no sound
 //   class assets needed). App background (mobile): everything pauses, one-shots stop; resumed on foreground.
 // * Title-menu soundtrack (audio.md 8.3, FIX Q10): packaged tracks with real lengths, real pause and seek, auto-advance;
@@ -38,6 +52,10 @@
 #include "Audio/AbyssAudioManifest.h"
 #include "Framework/AbyssTypes.h"
 
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include "AbyssAudioSystem.generated.h"
 
 class AAbyssCharacterActor;
@@ -46,6 +64,12 @@ class APlayerController;
 class UAudioComponent;
 class USoundAttenuation;
 class USoundBase;
+
+/** A cue a remake trigger played (U7 cueTriggers: bell_toll, bell_toll_far, bell_self_ring, bell_dawn_toll, ...). */
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnAbyssCuePlayed, FName /*CueId*/);
+
+/** Dark-remake audio state (rule helpers' tables, music arbiter, region trackers, trigger scheduler); AbyssAudioSystem.cpp. */
+struct FAbyssAudioRemake;
 
 /** A row of the title-menu soundtrack (audio.md 8.3). */
 struct FAbyssJukeboxTrack
@@ -114,6 +138,16 @@ public:
 	float GetJukeboxPositionSec() const;
 	float GetJukeboxLengthSec() const;
 
+	// ---- set pieces (U4, the world layer) ----
+	/**
+	 * The spots (tile coordinates) of a zone emitter of the manifest's ambience.emitters (e.g. "ashwheat_knock": the
+	 * barred doors' knock sockets) for the zone being built; spot i plays the emitter's asset i % n. Cleared on
+	 * EvZone{Exited}. Without spots an emitter plays at its manifest placement (camp slot, anchor or area centre).
+	 */
+	void SetZoneEmitterSpots(FName EmitterId, const TArray<FVector2D>& Tiles);
+	/** Broadcast after a cue trigger played a cue (the cue id actually played, e.g. bell_toll_far). */
+	FOnAbyssCuePlayed OnCuePlayed;
+
 	/** Credits of the packaged recorded tracks (title, author, licence, url), deduplicated, manifest order. */
 	TArray<FAbyssMusicCreditRow> GetMusicCredits() const;
 	/** The track key now playing (None = silence). */
@@ -154,6 +188,31 @@ private:
 	void HandleStoryBeat(const abyss::EvStoryBeat& Event);
 	void HandleStoryStep(const abyss::EvStoryStep& Event);
 	void HandleFrame(const abyss::Snapshot& Snap, const FAbyssFrameInfo& Frame);
+	void HandlePlayAnim(const abyss::EvPlayAnim& Event);
+	void HandleMiniBossDialogue(const abyss::EvMiniBossDialogue& Event);
+	void HandleRandomEvent(const abyss::EvRandomEvent& Event);
+	void HandleStoryDecorFocus(const abyss::EvStoryDecorFocus& Event);
+
+	// ---- dark remake (U7): tables, music arbitration, ambience layers, cue triggers ----
+	/** Parses the manifest's U7 sections into the remake state (once the manifest is loaded). */
+	void BuildRemakeTables();
+	void ResetRemakeSession();
+	/** Per frame: regions, siege, the arbiter's decision, ambience layers and emitters, trigger timers. */
+	void TickRemake(const abyss::Snapshot& Snap, float RealDeltaSec);
+	void TickRemakeAmbience(const abyss::Snapshot& Snap, float RealDeltaSec);
+	void StopRemakeAmbience(float FadeOutSec);
+	/** The track key sounding now for the arbiter ("" = silence or nothing sounding). */
+	FName SoundingTrack() const;
+	/** Plays a manifest cue by id at a tile (spatial when the cue is 3d); false when the cue has no row. */
+	bool PlayNamedCue(FName CueId, const FVector2D& Tile);
+	/** Plays cue-trigger row Row now (near / far by the hero's position) and reports it on OnCuePlayed. */
+	void PlayTriggerRow(size_t Row);
+	void StartTriggerRows(const std::vector<size_t>& Rows, std::string_view BoundBeat);
+	/** The def id of a monster entity (spawn record, else the snapshot); None when unknown. */
+	FName DefNameOfEntity(abyss::EntityId Id) const;
+	FVector2D EntityTile(abyss::EntityId Id) const;
+	/** Encounter stingers (musicDirector.encounters): engaged once per instance, slain at its death. */
+	void PlayEncounterStinger(abyss::EntityId Entity, std::string_view DefId, bool bSlain);
 
 	// ---- music ----
 	struct FMusicVoice
@@ -194,7 +253,24 @@ private:
 	UAudioComponent* PlayCue(const FAbyssAudioCueDef& Cue, FName Family, bool bSpatial, const FVector2D& Tile);
 	UAudioComponent* PlayOneShot(USoundBase* Sound, float Volume, bool bSpatial, const FVector2D& Tile);
 	FName PickVariant(TArray<FName> const& Candidates, FCueState& State, FName Family);
-	FName FamilyOfEntity(abyss::EntityId Id) const;
+	/**
+	 * A monster def's voice (AbyssVoiceRules::ResolveDefVoice) plus its encounter / mini-boss flags, resolved once per
+	 * def (at its first spawn) and kept in DefVoices: the per-event SFX and anim path reads FNames and flags only.
+	 */
+	struct FDefVoice
+	{
+		std::string DefId;            // the core id, for the rare paths that need it (stingers, anim cue keys)
+		FName Family;                 // None: no family cue (silent, or nothing known)
+		bool bSilent = false;
+		bool bMiniBoss = false;
+		bool bHasEncounter = false;   // musicDirector.encounters lists the def (engaged / slain stingers)
+		bool bHasAnimCue = false;     // some anim.<action> named cue (else EvPlayAnim is skipped at once)
+		FName AggroCue;               // named cues replacing the family's (None: the family cue)
+		FName HurtCue;
+		FName DeathVocalCue;
+	};
+	/** The cached voice of DefId (an empty one for None). Cleared when the remake tables are (re)built. */
+	const FDefVoice& VoiceOfDef(FName DefId);
 	bool ComputeVirtualEmitter(const FVector2D& Tile, FVector& OutLocation) const;
 	APlayerController* GetListenerController() const;
 	float SfxBusGain() const;
@@ -244,6 +320,13 @@ private:
 	TArray<FMusicVoice> MusicVoices;
 	TMap<FName, double> ResumePositions;
 	FName CurrentTrack;
+	/**
+	 * The last track PlayMusic could not voice: its sound is missing, or no component could be made (no audio device
+	 * under -nosound, no audio world). SoundingTrack reports it as asked until UnvoicedRetrySec (a missing sound: never
+	 * again; no component: one retry a second), so the music arbiter does not request it again every frame.
+	 */
+	FName UnvoicedTrack;
+	double UnvoicedRetrySec = 0.0;
 	/** Soundtrack mode: the playing row of JukeboxRows (INDEX_NONE = off). */
 	int32 JukeboxIndex = INDEX_NONE;
 	/** Manifest jukebox rows whose sound is packaged (built once the manifest is loaded). */
@@ -257,8 +340,10 @@ private:
 	float AppliedMusicGain = -1.f;
 
 	TMap<FName, FCueState> CueStates;
-	/** Monster entity -> family (animCategory), from EvEntitySpawned (deaths can arrive after the snapshot dropped it). */
-	TMap<uint32, FName> EntityFamilies;
+	/** Monster entity -> def id, from EvEntitySpawned (deaths can arrive after the snapshot dropped it). */
+	TMap<uint32, FName> EntityDefs;
+	/** Monster def -> its resolved voice (VoiceOfDef). */
+	TMap<FName, FDefVoice> DefVoices;
 
 	// Stingers and duck.
 	UPROPERTY(Transient)
@@ -284,7 +369,21 @@ private:
 	FName CurrentAmbience;
 	float AmbienceAssetGain = 1.f;
 	float AmbienceDuckDb = 0.f;
+	/** 1 - the weight of a region bed that replaces the bed (U7 crossfade). */
+	float AmbienceBedScale = 1.f;
 	bool bCinematic = false;
+
+	// Dark remake (U7). Components: region beds then layers (table order), emitters (one per spot), encounter stingers.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAudioComponent>> AreaLoopComponents;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAudioComponent>> EmitterComponents;
+	UPROPERTY(Transient)
+	TObjectPtr<UAudioComponent> EncounterStingerComponent;
+	bool bEncounterDucking = false;
+	FAbyssDuckDef EncounterDuck;
+	float EncounterStingerGain = 1.f;
+	TSharedPtr<FAbyssAudioRemake> Remake;
 
 	// Footsteps / hero state from the last frame.
 	TWeakObjectPtr<AAbyssCharacterActor> BoundHero;

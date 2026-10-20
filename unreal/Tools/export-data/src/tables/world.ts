@@ -143,16 +143,25 @@ export function exportWorld(): TableResult[] {
     lightScale: overrideEntries('zoneMoods.lightScale', moodsOut, {} as Record<string, number>),
     // The weather a mood brings where it blends in over a zone (dark remake: the dawn mood, mood regions). No web entries.
     moodWeather: overrideEntries('zoneMoods.moodWeather', moodsOut, {} as Record<string, unknown>),
+    // The monsters' wind-up body tint under a mood (dark remake DR5); moods without a row keep the web port's
+    // #FFC4B0 / #FF7A5C (UE AbyssThemeRules::WindupTintFor). No web entries.
+    windupTint: overrideEntries('zoneMoods.windupTint', moodsOut, {} as Record<string, { normal: number; elite: number }>),
   };
   // Every mood-keyed table names a mood; every zone's mood theme, map presentation theme and mood region exists
   // (LoadWorld.cpp parses all of them as MapTheme; DataStore re-checks the map side).
   for (const [table, rows] of [['themeByZone', Object.fromEntries(Object.values(zoneMoodTables.themeByZone).map(t => [t, 1]))],
     ['fog', zoneMoodTables.fog], ['lightScale', zoneMoodTables.lightScale], ['moodWeather', zoneMoodTables.moodWeather],
-    ['weatherByTheme', zoneMoodTables.weatherByTheme]] as const) {
+    ['windupTint', zoneMoodTables.windupTint], ['weatherByTheme', zoneMoodTables.weatherByTheme]] as const) {
     for (const theme of Object.keys(rows)) assert(zoneMoods[theme], `zone_moods.json ${table}: '${theme}' is not a mood`);
   }
   for (const [theme, v] of Object.entries(zoneMoodTables.lightScale)) {
     assert(v > 0 && v <= 1, `zone_moods.json port.lightScale.${theme}: ${v} is not in (0, 1]`);
+  }
+  for (const [theme, row] of Object.entries(zoneMoodTables.windupTint)) {
+    for (const key of ['normal', 'elite'] as const) {
+      const c = row[key];
+      assert(Number.isInteger(c) && c >= 0 && c <= 0xffffff, `zone_moods.json port.windupTint.${theme}.${key}: ${c} is not a 0xRRGGBB colour`);
+    }
   }
   for (const [theme, zone] of Object.entries(zoneMoodTables.weatherByTheme)) {
     assert(zoneMoodTables.weather[zone] !== undefined, `zone_moods.json weatherByTheme.${theme}: zone '${zone}' has no weather`);
@@ -254,9 +263,11 @@ export function exportWorld(): TableResult[] {
         port: {
           fog: plain(zoneMoodTables.fog),
           decision: 'P14 (art pass)',
-          // Dark remake (GameData/world.ts): R18 light-scale overrides and the weather a mood brings, by mood theme.
+          // Dark remake (GameData/world.ts): R18 light-scale overrides, the weather a mood brings and the monsters' wind-up
+          // tint (DR5), by mood theme.
           ...(Object.keys(zoneMoodTables.lightScale).length ? { lightScale: plain(zoneMoodTables.lightScale) } : {}),
           ...(Object.keys(zoneMoodTables.moodWeather).length ? { moodWeather: plain(zoneMoodTables.moodWeather) } : {}),
+          ...(Object.keys(zoneMoodTables.windupTint).length ? { windupTint: plain(zoneMoodTables.windupTint) } : {}),
         },
       },
       counts: { themes: Object.keys(zoneMoods).length },

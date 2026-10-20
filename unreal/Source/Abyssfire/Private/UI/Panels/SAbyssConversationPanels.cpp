@@ -17,6 +17,7 @@
 
 #include "Framework/AbyssText.h"
 #include "UI/AbyssUiStyle.h"
+#include "UI/Core/AbyssTextFitRules.h"
 #include "UI/Widgets/AbyssUiWidgets.h"
 
 namespace
@@ -425,6 +426,59 @@ void SAbyssPuzzlePanel::Refresh(const abyss::Snapshot& Snap)
 	};
 	const FString Prompt = PuzzleText("prompt");
 	const FString Solution = PuzzleText("solution");
+	// U5 text-fit pass: the solution is the answer button's label, and the remake's answers are sentences ("Ring them by
+	// their numbers, one to five" is ~250 px at 13 px). The button grows from 200 px to the panel's content width (its
+	// label padding is 8 px a side) and shrinks its font to fit beyond that; when it no longer fits beside Leave the two
+	// buttons stack.
+	const float ButtonPx = bTouch ? 16.f : 13.f;
+	const float ButtonH = bTouch ? 50.f : 34.f;
+	const float LeaveW = 140.f;
+	const double ContentW = GetDesignSize().X - 28.0;  // SAbyssPanelFrame's 14 px side padding
+	const double SolveMaxW = ContentW - 12.0;            // the slot's 6 px side padding
+	const double LabelW = FAbyssPainter::Measure(Solution, Ctx->Style().Body(ButtonPx, true, 1)).X;
+	const float SolveW = static_cast<float>(FMath::Clamp(LabelW + 24.0, 200.0, SolveMaxW));
+	const float SolvePx = AbyssTextFitRules::FitFontPx(LabelW, ButtonPx, SolveW - 20.0, 10.f);
+	const bool bStack = SolveW + LeaveW + 24.0 > ContentW;
+	const TSharedRef<SWidget> SolveButton = SNew(SAbyssButton, Context)
+		.Text(FText::AsCultureInvariant(Solution))
+		.Kind(EAbyssButtonKind::Primary)
+		.FontPx(SolvePx)
+		.Width(SolveW)
+		.Height(ButtonH)
+		.IsEnabled(!Ctx->IsHeroDying())
+		.OnClicked_Lambda([Context, Prop]() { Context->Submit(abyss::CmdPuzzleAnswer{ Prop, abyss::kPuzzleChoiceSolve }); });
+	const TSharedRef<SWidget> LeaveButton = SNew(SAbyssButton, Context)
+		.Text(Ctx->LocOr("ui.dialogue.leave", TEXT("Leave")))
+		.Kind(EAbyssButtonKind::Ghost)
+		.FontPx(ButtonPx)
+		.Width(LeaveW)
+		.Height(ButtonH)
+		.OnClicked_Lambda([Context, Prop]() { Context->Submit(abyss::CmdPuzzleAnswer{ Prop, abyss::kPuzzleChoiceLeave }); });
+	TSharedRef<SWidget> Buttons = SNullWidget::NullWidget;
+	if (bStack)
+	{
+		Buttons = SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+			[
+				SolveButton
+			]
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 6.f, 0.f, 0.f))
+			[
+				LeaveButton
+			];
+	}
+	else
+	{
+		Buttons = SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(6.f, 0.f))
+			[
+				SolveButton
+			]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(6.f, 0.f))
+			[
+				LeaveButton
+			];
+	}
 	Content->SetContent(
 		SNew(SAbyssPanelFrame, Context)
 		.Size(GetDesignSize())
@@ -438,28 +492,7 @@ void SAbyssPuzzlePanel::Refresh(const abyss::Snapshot& Snap)
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 8.f, 0.f, 4.f))
 			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(6.f, 0.f))
-				[
-					SNew(SAbyssButton, Context)
-					.Text(FText::AsCultureInvariant(Solution))
-					.Kind(EAbyssButtonKind::Primary)
-					.FontPx(bTouch ? 16.f : 13.f)
-					.Width(200.f)
-					.Height(bTouch ? 50.f : 34.f)
-					.IsEnabled(!Ctx->IsHeroDying())
-					.OnClicked_Lambda([Context, Prop]() { Context->Submit(abyss::CmdPuzzleAnswer{ Prop, abyss::kPuzzleChoiceSolve }); })
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(6.f, 0.f))
-				[
-					SNew(SAbyssButton, Context)
-					.Text(Ctx->LocOr("ui.dialogue.leave", TEXT("Leave")))
-					.Kind(EAbyssButtonKind::Ghost)
-					.FontPx(bTouch ? 16.f : 13.f)
-					.Width(140.f)
-					.Height(bTouch ? 50.f : 34.f)
-					.OnClicked_Lambda([Context, Prop]() { Context->Submit(abyss::CmdPuzzleAnswer{ Prop, abyss::kPuzzleChoiceLeave }); })
-				]
+				Buttons
 			]
 		]);
 }

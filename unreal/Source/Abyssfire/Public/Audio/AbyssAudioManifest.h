@@ -5,6 +5,10 @@
 // amounts): which cue plays when is decided by the core (EvSfx / EvMusic). Every field has a default that matches the
 // renderer's naming, so a missing manifest still plays the SFX listed by the core's cue table (AudioTables::assets) and
 // music by the SW_MUS_<PascalCaseTrackKey> convention.
+//
+// The dark remake's tables (U7: `voiceFamilies`, `musicDirector`, the AU2 rows of `ambience`, `cueTriggers`) are kept
+// as parsed JSON here and read by the pure rule helpers (Private/Audio/Abyss*Rules.h) in UAbyssAudioSystem; a manifest
+// without them leaves them Null, which keeps today's behaviour.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -12,6 +16,8 @@
 #include "UObject/SoftObjectPath.h"
 
 #include <string_view>
+
+#include "abyss/base/Json.h"
 
 namespace abyss
 {
@@ -166,6 +172,12 @@ public:
 	FAbyssJukeboxDefs Jukebox;
 	/** zone id -> (core track key -> track key played instead). */
 	TMap<FName, TMap<FName, FName>> ZoneOverrides;
+	/** U7 sections as parsed JSON (Null = absent): AbyssVoiceRules / AbyssMusicRules / AbyssAmbienceRules /
+	 *  AbyssCueTriggerRules parse them. */
+	abyss::JsonValue VoiceFamiliesJson;
+	abyss::JsonValue MusicDirectorJson;
+	abyss::JsonValue AmbienceJson;
+	abyss::JsonValue CueTriggersJson;
 	float DefaultMusicVolume = 0.6f;
 	float DefaultSfxVolume = 0.8f;
 	bool IsFromFile() const { return bFromFile; }

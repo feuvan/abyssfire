@@ -799,13 +799,13 @@
           "accents": [4999488]
         },
         "3": {
-          "base": 1184792,
+          "base": 2501168,
           "rank": 0,
           "layers": [
             {
               "kind": "patch",
               "count": 3,
-              "colors": [987412, 1448222],
+              "colors": [2237995, 2895926],
               "r": [14, 26]
             },
             {
@@ -818,7 +818,7 @@
           ],
           "details": ["stones"],
           "accents": [2762288],
-          "liquid": {"shallow": 2237738, "foam": 5591642, "bank": 2893344}
+          "liquid": {"shallow": 3159098, "foam": 5132888, "bank": 2893344}
         },
         "5": {
           "base": 4670012,

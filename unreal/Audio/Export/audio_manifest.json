@@ -1361,6 +1361,7 @@
   },
   "emerald_plains": {
    "emerald_plains_explore": "march_drones",
+   "emerald_plains_combat": "march_drones",
    "emerald_plains_victory": "valdras_falls"
   }
  },
@@ -1576,14 +1577,151 @@
    "valdras": {
     "monster_aggro": "vox_valdras_order",
     "monster_hurt": "vox_valdras_hurt",
-    "monster_death.vocal": "vox_valdras_death"
+    "monster_death.vocal": "vox_valdras_death",
+    "anim.roar": "vox_valdras_roar",
+    "anim.attack": "vox_valdras_plate",
+    "story.say": "vox_valdras_order"
    },
    "miniboss_corpseherd": {
     "monster_aggro": "vox_corpseherd_bell",
     "monster_hurt": "vox_corpseherd_hurt",
-    "monster_death.vocal": "vox_corpseherd_home"
+    "monster_death.vocal": "vox_corpseherd_home",
+    "anim.attack": "vox_corpseherd_bell",
+    "anim.cast": "vox_corpseherd_bell",
+    "miniboss.opened": "vox_corpseherd_lullaby"
    }
+  },
+  "overrideKeys": {
+   "monster_aggro": "replaces the family's monster_aggro cue (EvSfx monster_aggro whose source is the monster)",
+   "monster_hurt": "replaces the family's monster_hurt cue (EvSfx monster_hurt whose source is the monster)",
+   "monster_death.vocal": "replaces the family death vocal layered on monster_death (the base groan still plays)",
+   "anim.<action>": "plays at the monster when the core starts that AnimAction on it (EvPlayAnim; e.g. the boss intro's focus-step roar, every attack swing)",
+   "miniboss.opened": "plays at the monster when its pre-fight dialogue opens (EvMiniBossDialogue opened)",
+   "story.say": "plays at the nearest living instance when a cutscene `say` step has the monster as its speaker (EvStoryStep: the boss intro's lines)"
   }
+ },
+ "cueTriggers": {
+  "decision": "U7",
+  "kinds": [
+   "storyEnd",
+   "storyStep",
+   "storySlide",
+   "randomEvent",
+   "decorFocus",
+   "every"
+  ],
+  "rule": "story indices are the core's 0-based EvStoryStep::index; `every` never fires while a story beat plays and waits one interval first; farCue plays when the hero is outside the musicDirector region nearRegion; tile places a 3d cue (else the hero); a burst (count, spacingSec) started by a story beat stops when that beat ends",
+  "rows": [
+   {
+    "id": "prologue_tolls",
+    "cue": "bell_toll",
+    "farCue": "bell_toll_far",
+    "nearRegion": "knellwatch",
+    "on": "storySlide",
+    "sequence": "prologue",
+    "index": 5,
+    "count": 10,
+    "spacingSec": 2.8,
+    "use": "the prologue's last slide (Woken in Ash: above the lip of the pit, a bell is tolling): ten tolls, one per name, 2.8 s apart (the bell's swing); they stop when the prologue ends"
+   },
+   {
+    "id": "toll_after_brand",
+    "cue": "bell_toll",
+    "farCue": "bell_toll_far",
+    "nearRegion": "knellwatch",
+    "on": "storyEnd",
+    "beat": "cs_rf_brand",
+    "use": "the end of the M1 turn-in cutscene (a main turn-in: one toll)"
+   },
+   {
+    "id": "toll_after_whisper",
+    "cue": "bell_toll",
+    "farCue": "bell_toll_far",
+    "nearRegion": "knellwatch",
+    "on": "storyEnd",
+    "beat": "cs_rf_whisper",
+    "use": "the end of the M3 turn-in cutscene (a main turn-in: one toll)"
+   },
+   {
+    "id": "siege_self_ring",
+    "cue": "bell_self_ring",
+    "on": "storyStep",
+    "beat": "cs_rf_siege",
+    "index": 1,
+    "use": "cs_rf_siege step 2: the bell rings with no hand on it"
+   },
+   {
+    "id": "siege_self_ring_again",
+    "cue": "bell_self_ring",
+    "on": "every",
+    "everySec": [
+     20.0,
+     30.0
+    ],
+    "zone": "emerald_plains",
+    "whileQuestActive": "q_rf_last_toll",
+    "use": "during the siege (q_rf_last_toll active: until the last wave falls), every 20-30 s"
+   },
+   {
+    "id": "finale_dawn_toll",
+    "cue": "bell_dawn_toll",
+    "on": "storyStep",
+    "beat": "cs_rf_finale",
+    "index": 3,
+    "use": "cs_rf_finale step 4: the flash after the palm on the bell (then silence, then the lute)"
+   },
+   {
+    "id": "ambush_tell",
+    "cue": "bell_ambush_tell",
+    "on": "randomEvent",
+    "event": "ambush",
+    "zone": "emerald_plains",
+    "use": "the ambush (Hands from the Mud) starts: the core raises the hands at once, so the tell sounds with them (no 1.5 s lead in W1)"
+   },
+   {
+    "id": "belfry_inspect",
+    "cue": "bell_cracked",
+    "on": "decorFocus",
+    "decor": "story_rf_belfry",
+    "tile": [
+     55,
+     45
+    ],
+    "use": "inspecting Ashwheat's split bell (story_rf_belfry)"
+   },
+   {
+    "id": "belfry_now_and_then",
+    "cue": "bell_cracked",
+    "on": "every",
+    "everySec": [
+     35.0,
+     60.0
+    ],
+    "zone": "emerald_plains",
+    "within": {
+     "col": 55,
+     "row": 45,
+     "radius": 10
+    },
+    "tile": [
+     55,
+     45
+    ],
+    "use": "now and then from the split bell while the hero is within 10 tiles of it"
+   },
+   {
+    "id": "herd_single_ring",
+    "cue": "vox_corpseherd_bell",
+    "on": "storyStep",
+    "beat": "cs_rf_herd",
+    "index": 2,
+    "tile": [
+     60,
+     55
+    ],
+    "use": "cs_rf_herd step 3: dying, she rings the handbell once, softly (the wagon ring, 60,55)"
+   }
+  ]
  },
  "plannedCues": {
   "sfx_footman_blade_drag": {
@@ -1788,10 +1926,7 @@
    "combat": "march_drones",
    "victory": "valdras_falls"
   },
-  "heldOverrides": {
-   "combat": "held out of the manifest's zoneOverrides until U7 makes an override that resolves to the track already sounding a no-op even with restart = true (or the core sends restart = false on the combat edge of a one-track zone): today the combat edge's restart would restart the drones from their silent start at every fight (1.5 s crossfade against themselves). Until then the zone's combat key keeps the A7 combat track. To release: delete this entry, run render_all.py --manifest-only"
-  },
-  "combat": "keep: the remake has no combat music (chapter1.md 16 lists none). A fight keeps whatever plays (the lute, the dirge, the drones, a silence); the encounters below get stingers instead. While the core still switches state, zoneTracks maps the combat state to the explore track; that row reaches the manifest's zoneOverrides only once the player treats an override that resolves to the track already sounding as a no-op (see heldOverrides)",
+  "combat": "keep: the remake has no combat music (chapter1.md 16 lists none). A fight keeps whatever plays (the lute, the dirge, the drones, a silence); the encounters below get stingers instead. While the core still switches state, zoneTracks maps the combat state to the explore track (the manifest's zoneOverrides carry it): UAbyssAudioSystem treats a zone-overridden request that resolves to the track already sounding as a no-op even with restart = true (U7), so the combat edge never restarts the drones",
   "tracks": {
    "knellwatch_lute": "SW_MUS_KnellwatchLute",
    "march_drones": "SW_MUS_MarchDrones",
@@ -1906,6 +2041,9 @@
     "beat": "cs_rf_siege",
     "at": "end",
     "track": "siege",
+    "quest": "q_rf_last_toll",
+    "fadeInSec": 2.0,
+    "fadeOutSec": 3.0,
     "until": "q_rf_last_toll's defend objective completes (the last wave falls)",
     "then": "",
     "note": "the bell rings by itself during the siege (AU2 bell_self_ring every 20-30 s); after the last wave: silence until the turn-in"
@@ -1913,6 +2051,7 @@
    {
     "beat": "cs_rf_finale",
     "at": "step 1",
+    "stepIndex": 0,
     "track": "",
     "fadeOutSec": 3.0,
     "then": {

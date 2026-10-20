@@ -69,8 +69,32 @@ of one id are picked with the web tile hash). Resolution chains:
 | Exits | `exit_portal`; sealed (W7): `exit_gate_sealed`, `exit_sealed` |
 | Story decorations | `decor_<spriteType>`, `<spriteType>`, `story_<id>` |
 
-`<theme>` is `plains | forest | mountain | desert | abyss`. Weapons attach by `FindWeapon(weaponType, heldBy)`
-(`weaponType` = `sword | axe | mace | dagger | bow | staff | wand | shield`, socket = the asset's `attachSocket`).
+`<theme>` is `plains | forest | mountain | desert | abyss` (the zone's generator theme). Weapons attach by
+`FindWeapon(weaponType, heldBy)` (`weaponType` = `sword | axe | mace | dagger | bow | staff | wand | shield`, socket = the
+asset's `attachSocket`).
+
+**Presentation theme variants (dark remake U1, `AbyssThemeRules.h`).** In a zone whose map has a `presentationTheme`
+(emerald_plains: `march`) every chain above except the hero, the soul echo, ground items and potions first tries
+`<id>@<presentationTheme>` for each of its ids, in chain order, and only then the plain chain (`{tree, decor_tree}` ->
+`tree@march`, `decor_tree@march`, `tree`, `decor_tree`). The variants hang off the plain id strings, including the
+generator-theme patterns (`outcrop_plains@march`, `palisade_plains@march`, `lily_pad_plains@march`); the elite crown takes
+`elite_crown@<theme>` before `SM_FX_EliteCrown`, a zone loop recipe `<recipe>@<theme>` before `<recipe>`. A variant must
+keep its plain id's `footprintTiles` / `blocking` (the core bakes walkability from the plain ids; the manifest load warns,
+`verify_march.py` checks at ship). A missing variant shows today's asset. Zones without a presentation theme never look
+at `@` ids.
+
+**Set pieces (dark remake U4, `Private/World/AbyssSetPieces.cpp`, `AbyssSetPieceRules.h`).** `Data/set_pieces.json`
+pieces resolve `gameId` then `fallbackIds` through the same themed `ResolveFirst` (variant = the piece's fixed `variant`,
+else `TileHash(round(col), round(row), 37)`, modulo the id's assets in asset-name order); `partners` (ground layers)
+take the same hash, spot and yaw. The world reads the resolved static mesh's manifest `sockets[].locCm` (x, y in the mesh
+frame, turned by the placement's yaw, times the piece and asset scale; z is left to the recipe's own `height`) and
+`boundsCm` (the tiles a piece covers: non-blocking zone decorations there are not drawn). Sockets the table names
+(Chapter 1: `smoke`, `smoulder`, `knock`, `bell`) must exist on every variant of the id (PresentationTests
+`setpieces_test` checks the shipped art); a missing one is skipped with one zone-build warning. An echo whose
+`MI_AF_Echo` entry was authored `nextTo` a set-piece mesh is posed in that piece's frame (offsets and facing turned by
+its yaw + `echoTurnDeg`). A defend target whose art is the same mesh as a `yieldsToDefendTarget` piece (the Boneyard
+Gate: `decor_defend_boneyard_gate` / `setpiece_boneyard_gate`) hides the piece's instance while it stands within 1.5
+tiles and takes its facing.
 
 ### 2.3 Skeletons, sockets, clips
 

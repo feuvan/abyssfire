@@ -50,6 +50,16 @@ export interface RemakeFog {
   density: number;
 }
 
+/**
+ * zone_moods.json `port.windupTint` row (DECISIONS DR5): the body tint a monster's wind-up ramps to (UE
+ * AAbyssCharacterActor, CPD Telegraph at up to 0.85) under that mood; `elite` for elites and mini-bosses. Moods without
+ * a row keep the web port's #FFC4B0 / #FF7A5C.
+ */
+export interface RemakeWindupTint {
+  normal: number;
+  elite: number;
+}
+
 export interface RemakeOverrides {
   /** achievements.json `achievements` (AchievementSystem ACHIEVEMENTS), by id. */
   readonly achievements?: EntryOverride<AchievementDefinition>;
@@ -81,6 +91,11 @@ export interface RemakeOverrides {
      * zone (the dawn mood after the chapter, a mood region). A zone's own weather stays `weather`. The web table is empty.
      */
     readonly moodWeather?: EntryOverride<RemakeWeather>;
+    /**
+     * `port.windupTint` (exporter table; DECISIONS DR5), by mood theme: the monsters' wind-up body tint under that mood
+     * in place of the web port's #FFC4B0 / #FF7A5C (UE AbyssThemeRules::WindupTintFor). The web table is empty.
+     */
+    readonly windupTint?: EntryOverride<RemakeWindupTint>;
   };
   /** elite_affixes.json. */
   readonly eliteAffixes?: {
@@ -113,7 +128,7 @@ const affixDefinitions = Object.fromEntries((Object.keys(AFFIX_LOOK) as EliteAff
 
 // ── Terrain style `march` (chapter1.md §15): trampled mud, ash-grey dead grass, scorched patches, wheel ruts, still black
 // water with an oily sheen. Bases from the art lane's reference march ground (Art/blender/README.md "Review": ash grass
-// #4C4940, mud #3A332D, stone #55524C, camp ash #47423C, water #121418); the layer kinds and ranks are the plains ones.
+// #4C4940, mud #3A332D, stone #55524C, camp ash #47423C; water lifted to #262A30 below); the layer kinds and ranks are the plains ones.
 // No bones (DR6: no exposed bone in Chapter 1). ──
 const MARCH_TERRAIN: TerrainTheme = {
   ground: {
@@ -148,16 +163,19 @@ const MARCH_TERRAIN: TerrainTheme = {
       details: ['bigTuft', 'crackStar', 'stones'],
       accents: [0x4c4940],
     },
+    // Water: the env art review's lift (Art/blender/README.md, terrain_march `waterOverride`): the tar-black #121418
+    // (L* 6) read as a dead hole once the runtime sampled this theme; L* 17 with L* 21.5 shallows and a faint grey sheen
+    // band at the shore, matching the painted T_Water_March_BC.
     3: {
-      base: 0x121418, rank: 0,
+      base: 0x262a30, rank: 0,
       layers: [
-        { kind: 'patch', count: 3, colors: [0x0f1114, 0x16191e], r: [14, 26] },
+        { kind: 'patch', count: 3, colors: [0x22262b, 0x2c3036], r: [14, 26] },
         // The oily sheen.
         { kind: 'wave', count: 3, color: 0x3a3550, len: [6, 11], alpha: 0.4 },
       ],
       details: ['stones'],
       accents: [0x2a2630],
-      liquid: { shallow: 0x22252a, foam: 0x55525a, bank: 0x2c2620 },
+      liquid: { shallow: 0x30343a, foam: 0x4e5258, bank: 0x2c2620 },
     },
     5: {
       base: 0x47423c, rank: 2,
@@ -291,6 +309,15 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
       add: {
         march_dawn: { type: 'none', ambience: 'dust_motes' },
         breach_rim: { type: 'none', ambience: 'sparks', tint: 0xb02fd0 },
+      },
+    },
+    // DR5 hazard language on the body: the wind-up ramps to warning-crimson (the telegraph rim #D11F2E), elites to the
+    // contact flash #FF3A48 (M_AF_Telegraph contact); nothing in the hero's ember family.
+    windupTint: {
+      add: {
+        march: { normal: 0xd11f2e, elite: 0xff3a48 },
+        march_dawn: { normal: 0xd11f2e, elite: 0xff3a48 },
+        breach_rim: { normal: 0xd11f2e, elite: 0xff3a48 },
       },
     },
   },

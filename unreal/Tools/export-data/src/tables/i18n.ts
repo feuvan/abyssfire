@@ -82,6 +82,8 @@ const PORT_STRINGS: Record<string, { 'zh-CN': string; en: string; decision: stri
   'ui.settings.quality.low': { 'zh-CN': '低', en: 'Low', decision: 'U9' },
   'ui.settings.quality.balanced': { 'zh-CN': '中', en: 'Medium', decision: 'U9' },
   'ui.settings.quality.high': { 'zh-CN': '高', en: 'High', decision: 'U9' },
+  // Dark remake U1: the brightness / gamma slider (settings.json video.brightness, an exposure bias on the zone).
+  'ui.settings.brightness': { 'zh-CN': '亮度', en: 'Brightness', decision: 'U1' },
   'ui.settings.controls': { 'zh-CN': '操作方式', en: 'Controls', decision: 'U9' },
   'ui.settings.controls.auto': { 'zh-CN': '自动', en: 'Auto', decision: 'U9' },
   'ui.settings.controls.desktop': { 'zh-CN': '鼠标与键盘', en: 'Mouse & Keys', decision: 'U9' },

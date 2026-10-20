@@ -166,6 +166,11 @@ export const CH1_WORLD_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   'sys.event.msg.environmental_puzzle.emerald_plains': ['断桩上挂着五口小钟。', 'Five handbells hang from a broken post.'],
   'zone.event.merchant.announce.emerald_plains': ['圣骨贩子：“圣骨，真货。至少有一块是真的。”',
     'The Relic Peddler: "Saint\'s bones, genuine. At least one of them is."'],
+  // The labels the UE world layer draws over the event props (SAbyssWorldLayer: `<key>.<zone>` first, like RevZoneKey;
+  // implementation-plan.md §4 U4; chapter1.md §13). The rescue's label is `sys.event.rescue.<zone>` below.
+  'zone.event.merchant.label.emerald_plains': ['圣骨贩子', 'The Relic Peddler'],
+  'zone.event.puzzle.label.emerald_plains': ['五口小钟', 'Five Handbells'],
+  'zone.event.treasureChest.label.emerald_plains': ['阵亡骑士的铁箱', "A Dead Knight's Strongbox"],
   // The pilgrim is named by the event line before it, so the completion line does not splice {npcName} in (the core
   // still passes it; an unused placeholder is fine).
   'zone.event.rescue.complete.emerald_plains': ['你割断了朝圣者身上的绳子。“他们说我走得太慢，跟不上圣火。”获得 {gold} 金币和 {exp} 经验',

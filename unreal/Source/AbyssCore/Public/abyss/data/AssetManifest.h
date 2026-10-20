@@ -4,6 +4,8 @@
 // anim_timing.json's contact table as the fallback. Footprint/blocking of props feed W5 tall-decor blocking.
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -49,6 +51,10 @@ struct ABYSS_API AssetEntryDef {
   int32_t footprintW = 1, footprintH = 1;
   bool hasBlocking = false;
   bool blocking = false;
+  // boundsCm (UE cm, the mesh frame): the set-piece layer's covered tiles (abyss/world/SetPieces.h).
+  bool hasBounds = false;
+  std::array<double, 3> boundsMinCm{};
+  std::array<double, 3> boundsMaxCm{};
 
   const AnimClipDef* FindClip(std::string_view clipName) const;
 };
@@ -61,6 +67,10 @@ struct ABYSS_API AssetManifest {
 
   const AssetEntryDef* FindAsset(std::string_view assetName) const;
   const AssetEntryDef* FindByGameId(std::string_view gameId) const;
+  // How many assets list the game id (its variants).
+  size_t CountByGameId(std::string_view gameId) const;
+  // Every asset listing the game id, in asset-name order (the presentation's variant order: variant i = out[i]).
+  std::vector<const AssetEntryDef*> FindAllByGameId(std::string_view gameId) const;
 };
 
 }  // namespace abyss

@@ -131,6 +131,8 @@ export async function run(opts: RunOptions): Promise<boolean> {
       () => import('./tables/assets'),
       // The bot's routes check their ids against the content tables above (implementation-plan.md §6).
       () => import('./tables/autopilot'),
+      // The UE set-piece layer (implementation-plan.md §4 U4): anchors checked against the maps, quests and lore.
+      () => import('./tables/setpieces'),
       // Last: the i18n orphan sweep and key parity read every other exported table (the second argument).
       () => import('./tables/i18n'),
     ];

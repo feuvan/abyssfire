@@ -364,3 +364,13 @@ python3 unreal/Scripts/tests/fetch_ue_stub.py             # optional: UE Python 
   TEXT("English") }` rows) and fails when one is missing from `Data/i18n_zh-CN.json` or `Data/i18n_en.json` (the UI
   would silently show the English fallback in the zh-CN build). New UI text goes into `PORT_STRINGS`
   (`Tools/export-data/src/tables/i18n.ts`); then re-run the exporter and `Scripts/fonts/build_fonts.py`.
+* `test_ui_text_fit.py` (dark remake 1C U5) measures every Chapter 1 string with the bundled fonts (fontTools advance
+  widths; skipped without fontTools) against the budgets of the UE panels that show it (quest card, quest log, tracker,
+  toasts and banners, combat log, puzzle, frame titles), zh-CN and en, desktop and touch. A failure names the string,
+  the panel and the overflow: shorten the text or change the panel (the budgets mirror the Slate code; keep them in
+  step).
+* `test_font_coverage.py` (1C review) is `fonts/build_fonts.py --check` as a test: every CJK character of
+  `Data/*.json` must be in the four bundled Simplified Chinese faces (Sans / Serif, Regular / Bold; the fallback of every
+  UI face), or it would draw as a tofu box in UE. A content change that adds a character fails here until
+  `python3 unreal/Scripts/fonts/build_fonts.py` (downloads verified against `fonts/fonts.lock.json`; `--offline
+  --cache <dir>` with a populated cache) rewrites `unreal/Fonts`, which is committed. Skipped without fontTools.

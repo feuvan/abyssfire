@@ -174,5 +174,6 @@ void LoadUiThemeFile(const JNode& r, UiThemeDef& out);
 void LoadRenderQualityFile(const JNode& r, RenderQualityTables& out);
 void LoadAbyssRunFile(const JNode& r, AbyssRunTables& out);
 void LoadAutoPilotRoutesFile(const JNode& r, AutoPilotRouteTables& out);
+void LoadSetPiecesFile(const JNode& r, SetPieceTables& out);
 
 }  // namespace abyss::dataload

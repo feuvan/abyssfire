@@ -23,6 +23,9 @@
 #include "Input/AbyssInputSubsystem.h"
 #include "UI/AbyssUiStyle.h"
 #include "UI/AbyssUiSubsystem.h"
+#include "World/AbyssArtManifest.h"
+#include "World/AbyssAssetLibrary.h"
+#include "World/AbyssThemeRules.h"
 
 namespace
 {
@@ -716,6 +719,33 @@ const FSlateBrush* FAbyssUiContext::Portrait(const std::string& ArtId) const
 			break;
 		}
 	}
+	// U1: the asset the speaker is drawn with names its portrait (manifest `portrait`). In a zone with a presentation
+	// theme its `@theme` variant comes first (npc_quest_elder@march -> T_UI_Portrait_QuestElder_March); elsewhere the name
+	// probes below keep today's portraits, and the asset's portrait only replaces the generic emblem (a monster whose
+	// sprite key is not its texture name: miniboss_corpseherd -> T_UI_Portrait_Corpseherd).
+	FName Theme = NAME_None;
+	const FAbyssArtAsset* SpeakerArt = nullptr;
+	const UAbyssGameInstance* OwningGameInstance = GetGameInstance();
+	if (const UAbyssAssetLibrary* Assets = OwningGameInstance != nullptr ? UAbyssAssetLibrary::Get(OwningGameInstance) : nullptr)
+	{
+		const abyss::Snapshot* Snap = GetSnapshot();
+		const abyss::DataStore* Data = GetData();
+		if (Snap != nullptr && Data != nullptr)
+		{
+			const std::string_view ThemeName = AbyssThemeRules::ThemeOf(Data->FindMap(Snap->zone.mapId));
+			Theme = ThemeName.empty() ? NAME_None : FName(*AbyssText::ToFString(ThemeName));
+		}
+		const FName SpeakerIds[] = { FName(*Id), FName(*(TEXT("npc_") + Stripped)), FName(*(TEXT("monster_") + Stripped)),
+			FName(*Stripped) };
+		SpeakerArt = Assets->GetManifest().ResolveFirst(SpeakerIds, 0, Theme);
+	}
+	if (!Theme.IsNone() && SpeakerArt != nullptr && !SpeakerArt->Portrait.IsNone())
+	{
+		if (const FSlateBrush* ThemedPortrait = TextureBrush(SpeakerArt->Portrait, false))
+		{
+			return ThemedPortrait;
+		}
+	}
 	if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_") + AbyssUiContext_Pascal(Stripped))), false))
 	{
 		return Found;
@@ -725,6 +755,13 @@ const FSlateBrush* FAbyssUiContext::Portrait(const std::string& ArtId) const
 		if (const FSlateBrush* Found = TextureBrush(FName(*(TEXT("T_UI_Portrait_") + AbyssUiContext_Pascal(Id))), false))
 		{
 			return Found;
+		}
+	}
+	if (SpeakerArt != nullptr && !SpeakerArt->Portrait.IsNone())
+	{
+		if (const FSlateBrush* AssetPortrait = TextureBrush(SpeakerArt->Portrait, false))
+		{
+			return AssetPortrait;
 		}
 	}
 	return TextureBrush(FName(TEXT("T_UI_Emblem_Generic")));

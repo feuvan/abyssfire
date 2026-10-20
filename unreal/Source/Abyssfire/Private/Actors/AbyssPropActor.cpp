@@ -132,6 +132,7 @@ bool AAbyssPropActor::InitProp(const FAbyssPropSetup& Setup, UAbyssAssetLibrary&
 	bCpdDirty = true;
 
 	const FAbyssArtAsset* Art = Setup.Art;
+	FacingYawDeg = Setup.YawDeg;
 	const FRotator BodyRotation(0.f, Setup.YawDeg + MeshYawOffsetDeg, 0.f);
 	if (Art != nullptr && Art->IsSkeletal())
 	{
@@ -330,6 +331,24 @@ void AAbyssPropActor::SetHighlight(float Amount)
 void AAbyssPropActor::SetOcclusionFade(float Amount)
 {
 	OcclusionFade = FMath::Clamp(Amount, 0.f, 1.f);
+}
+
+void AAbyssPropActor::SetFacingYaw(float YawDeg)
+{
+	if (FMath::IsNearlyEqual(FacingYawDeg, YawDeg, 0.01f))
+	{
+		return;
+	}
+	FacingYawDeg = YawDeg;
+	const FRotator BodyRotation(0.f, YawDeg + MeshYawOffsetDeg, 0.f);
+	if (bSkeletal)
+	{
+		SkeletalMesh->SetRelativeRotation(BodyRotation);
+	}
+	else
+	{
+		Mesh->SetRelativeRotation(BodyRotation);
+	}
 }
 
 FVector AAbyssPropActor::GetAnchorLocation(EAbyssAnchor Anchor) const

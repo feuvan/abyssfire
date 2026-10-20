@@ -20,6 +20,7 @@
 #include "abyss/items/ItemCompare.h"
 
 #include "Framework/AbyssText.h"
+#include "UI/Core/AbyssTextFitRules.h"
 
 // =====================================================================================================================
 // Helpers
@@ -1461,6 +1462,14 @@ void SAbyssPanelFrame::Construct(const FArguments& InArgs, const TSharedRef<FAby
 	const FSimpleDelegate OnClose = InArgs._OnClose;
 	const TAttribute<FText> Title = InArgs._Title;
 	const float CloseSize = InContext->IsTouch() ? 42.f : 30.f;
+	// U5 text-fit pass: a title wider than the header band between its flourishes (40 px side padding, two 46 px
+	// flourishes with 8 px gaps) shrinks, down to 13 px, instead of pushing the flourishes under the close button
+	// ("Tamsin the Gravewarden" in Cinzel 18 px is ~250 px; a 420 px panel leaves 232). Measured once, at construction.
+	const double TitleRoom = Size.X - 80.0 - 108.0;
+	const FSlateFontInfo TitleFont = InContext->Style().Font(EAbyssFontFace::Title, 18.f, true, 3, InContext->Style().Colors().Ink);
+	const float TitlePx = TitleRoom > 0.0
+		? AbyssTextFitRules::FitFontPx(FAbyssPainter::Measure(Title.Get(FText::GetEmpty()).ToString(), TitleFont).X, 18.f, TitleRoom, 13.f)
+		: 18.f;
 
 	TSharedRef<SOverlay> Overlay = SNew(SOverlay)
 		+ SOverlay::Slot()
@@ -1498,7 +1507,7 @@ void SAbyssPanelFrame::Construct(const FArguments& InArgs, const TSharedRef<FAby
 				.AutoWidth()
 				.VAlign(VAlign_Center)
 				[
-					AbyssUi::TitleLabel(*Ctx, Title, 18.f, Ctx->Style().Colors().Parchment, true, 3)
+					AbyssUi::TitleLabel(*Ctx, Title, TitlePx, Ctx->Style().Colors().Parchment, true, 3)
 				]
 				+ SHorizontalBox::Slot()
 				.AutoWidth()

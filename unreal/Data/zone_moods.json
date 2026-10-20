@@ -293,6 +293,11 @@
     "moodWeather": {
       "march_dawn": {"type": "none", "ambience": "dust_motes"},
       "breach_rim": {"type": "none", "ambience": "sparks", "tint": 11546576}
+    },
+    "windupTint": {
+      "march": {"normal": 13705006, "elite": 16726600},
+      "march_dawn": {"normal": 13705006, "elite": 16726600},
+      "breach_rim": {"normal": 13705006, "elite": 16726600}
     }
   },
   "remake": {
@@ -316,7 +321,10 @@
       "zoneMoods.lightScale.march_dawn",
       "zoneMoods.lightScale.breach_rim",
       "zoneMoods.moodWeather.march_dawn",
-      "zoneMoods.moodWeather.breach_rim"
+      "zoneMoods.moodWeather.breach_rim",
+      "zoneMoods.windupTint.march",
+      "zoneMoods.windupTint.march_dawn",
+      "zoneMoods.windupTint.breach_rim"
     ]
   }
 }

@@ -300,6 +300,7 @@ void UAbyssVfxSystem::ClearAll()
 	HitBursts.Reset();
 	LiveSmokeParticles = 0;
 	bLightScaleKnown = false;
+	MoodLightScale = -1.f;   // the world builder pushes the next zone's mood scale every frame
 	// The toon light slots are rewritten (to 0 when no light is left) on the next tick.
 	LightSlotRefreshSec = 0.f;
 	bLightSlotsClear = false;
@@ -1543,10 +1544,20 @@ void UAbyssVfxSystem::UpdateLightScale(const abyss::Snapshot& Snap)
 	}
 	WorldData.moods.ThemeFor(Snap.zone.mapId, Theme);
 	const abyss::ZoneMoodDef& Mood = WorldData.moods.moods[static_cast<size_t>(Theme)];
-	LightScale = AbyssVfxLighting::LightScaleFromMood(Mood.ambient, static_cast<float>(Mood.ambientAlpha));
+	// Dark remake: a mood's port.lightScale replaces the formula (march 0.32; its formula value would be 0.134).
+	ZoneLightScale = Mood.lightScale > 0.0 ? static_cast<float>(Mood.lightScale)
+										   : AbyssVfxLighting::LightScaleFromMood(Mood.ambient, static_cast<float>(Mood.ambientAlpha));
+	LightScale = MoodLightScale > 0.f ? MoodLightScale : ZoneLightScale;
 	LightScaleMapId = Snap.zone.mapId;
 	bLightScaleKnown = true;
-	UE_LOG(LogAbyss, Log, TEXT("VFX: zone '%s' light scale %.4f (DECISIONS R18)"), *AbyssText::ToFString(Snap.zone.mapId), LightScale);
+	UE_LOG(LogAbyss, Log, TEXT("VFX: zone '%s' light scale %.4f (DECISIONS R18%s)"), *AbyssText::ToFString(Snap.zone.mapId), LightScale,
+		Mood.lightScale > 0.0 ? TEXT(", port.lightScale") : TEXT(""));
+}
+
+void UAbyssVfxSystem::SetMoodLightScale(float Scale)
+{
+	MoodLightScale = Scale > 0.f ? Scale : -1.f;
+	LightScale = MoodLightScale > 0.f ? MoodLightScale : ZoneLightScale;
 }
 
 void UAbyssVfxSystem::UpdateLightSlots(float RealDeltaSec)

@@ -1,9 +1,12 @@
 #include "World/AbyssWorldBuilder.h"
 
 #include "Abyssfire.h"
+#include "Animation/AnimSequence.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/StaticMesh.h"
@@ -22,6 +25,7 @@
 #include "abyss/data/CombatData.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/data/ItemData.h"
+#include "abyss/data/LoreData.h"
 #include "abyss/data/MapData.h"
 #include "abyss/data/MonsterData.h"
 #include "abyss/data/NpcData.h"
@@ -36,6 +40,7 @@
 
 #include "Actors/AbyssCharacterActor.h"
 #include "Actors/AbyssPropActor.h"
+#include "Audio/AbyssAudioSystem.h"
 #include "Camera/AbyssCameraRig.h"
 #include "Framework/AbyssActorRegistry.h"
 #include "Framework/AbyssGameInstance.h"
@@ -49,6 +54,8 @@
 #include "Vfx/AbyssVfxSystem.h"
 #include "World/AbyssArtManifest.h"
 #include "World/AbyssAssetLibrary.h"
+#include "World/AbyssSetPieceRules.h"
+#include "World/AbyssThemeRules.h"
 #include "World/AbyssZoneActor.h"
 
 static TAutoConsoleVariable<float> CVarAbyssInkScale(
@@ -92,10 +99,18 @@ namespace AbyssWorldBuilderPrivate
 	/**
 	 * Game ids of the entity props that can appear after a zone is built, as SpawnProp's fallback chains resolve them
 	 * (keep in step): quest gather / quest-item nodes, lore pickups, random-event chests and rune pillars, revealed
-	 * hidden rewards (gold pile, chest).
+	 * hidden rewards (gold pile, chest). A theme variant id (`gather_herb@march`) is matched by its plain id.
 	 */
-	bool IsLateEntityPropGameId(FName GameId)
+	bool IsLateEntityPropGameId(FName InGameId)
 	{
+		FName GameId = InGameId;
+		std::string_view Base;
+		std::string_view ThemeName;
+		const std::string IdText = AbyssText::ToStd(InGameId.ToString());
+		if (AbyssThemeRules::SplitThemedId(IdText, Base, ThemeName))
+		{
+			GameId = FName(*AbyssText::ToFString(Base));
+		}
 		static const TCHAR* const Prefixes[] = { TEXT("gather_"), TEXT("quest_item_"), TEXT("lore_") };
 		static const TCHAR* const Exact[] = { TEXT("gather_node"), TEXT("decor_treasure_chest"), TEXT("treasure_chest"),
 			TEXT("decor_event_puzzle_rune_pillar"), TEXT("decor_gold_pile"), TEXT("gold_pile") };
@@ -117,13 +132,44 @@ namespace AbyssWorldBuilderPrivate
 		return false;
 	}
 
+	/**
+	 * Whether an asset is what SpawnProp resolves for one of its late entity-prop ids in a zone of presentation theme
+	 * Theme: a plain id without a variant of that theme, or the theme's own variant (U1; other themes' variants are
+	 * never shown there).
+	 */
+	bool IsLateEntityPropArtFor(const FAbyssArtManifest& Manifest, const FAbyssArtAsset& Asset, FName Theme)
+	{
+		for (const FName GameId : Asset.GameIds)
+		{
+			if (!IsLateEntityPropGameId(GameId))
+			{
+				continue;
+			}
+			std::string_view Base;
+			std::string_view ThemeName;
+			const std::string IdText = AbyssText::ToStd(GameId.ToString());
+			if (AbyssThemeRules::SplitThemedId(IdText, Base, ThemeName))
+			{
+				if (!Theme.IsNone() && FName(*AbyssText::ToFString(ThemeName)) == Theme)
+				{
+					return true;
+				}
+			}
+			else if (Manifest.FindThemedGameId(GameId, Theme).IsNone())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/** Loads the art of IsLateEntityPropGameId (mesh, and a skeletal chest's clips) for the current zone; returns the meshes. */
-	int32 WarmLateEntityPropArt(UAbyssAssetLibrary& Assets)
+	int32 WarmLateEntityPropArt(UAbyssAssetLibrary& Assets, FName Theme)
 	{
 		int32 Count = 0;
 		for (const FAbyssArtAsset& Asset : Assets.GetManifest().GetAssets())
 		{
-			if (!Asset.GameIds.ContainsByPredicate([](FName GameId) { return IsLateEntityPropGameId(GameId); }))
+			if (!IsLateEntityPropArtFor(Assets.GetManifest(), Asset, Theme))
 			{
 				continue;
 			}
@@ -163,9 +209,10 @@ namespace AbyssWorldBuilderPrivate
 		return FLinearColor::White;
 	}
 
-	/** Lore pool colours of the web lore props (LoreProps.ts; art-inventory-ch1.md 6.7). */
+	/** Lore pool colours of the web lore props (LoreProps.ts; art-inventory-ch1.md 6.7); echoes: MI_AF_Echo's tint. */
 	FLinearColor LorePoolColor(const std::string& SpriteType)
 	{
+		if (AbyssThemeRules::IsEchoSpriteType(SpriteType)) return AbyssWorldUtil::ColorFromRgb(AbyssThemeRules::DefaultEchoRgb);
 		if (SpriteType == "ancient_tablet") return AbyssWorldUtil::ColorFromRgb(0xFFC850);
 		if (SpriteType == "crystal_shard") return AbyssWorldUtil::ColorFromRgb(0x66D8FF);
 		if (SpriteType == "carved_stone") return AbyssWorldUtil::ColorFromRgb(0xB0D0FF);
@@ -233,6 +280,7 @@ void UAbyssWorldBuilder::Deinitialize()
 		bRegistered = false;
 	}
 	UnbindEvents();
+	DestroyEchoes();
 	DestroyAllEntities(/*bKeepHero*/ false);
 	if (ZoneActor != nullptr)
 	{
@@ -302,14 +350,29 @@ void UAbyssWorldBuilder::BindEvents()
 	Router.On<abyss::EvPet>().AddUObject(this, &UAbyssWorldBuilder::HandlePet);
 	Router.On<abyss::EvMonsterRenamed>().AddUObject(this, &UAbyssWorldBuilder::HandleRenamed);
 	Router.On<abyss::EvEmbersGained>().AddUObject(this, &UAbyssWorldBuilder::HandleEmbersGained);
+	Router.On<abyss::EvLoreCollected>().AddUObject(this, &UAbyssWorldBuilder::HandleLoreCollected);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssWorldBuilder::HandleSessionEnded);
 	SettingsHandle = GameInstance->OnSettingsChanged.AddUObject(this, &UAbyssWorldBuilder::ApplySettings);
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
 	{
 		VfxShakeHandle = Vfx->OnShake.AddUObject(this, &UAbyssWorldBuilder::HandleVfxShake);
 	}
+	BindAudioCues();
 	ApplySettings(GameInstance->GetUserSettings());
 	bEventsBound = true;
+}
+
+void UAbyssWorldBuilder::BindAudioCues()
+{
+	if (CueHandle.IsValid() && CueAudio.IsValid())
+	{
+		return;
+	}
+	if (UAbyssAudioSystem* Audio = UAbyssAudioSystem::Get(this))
+	{
+		CueHandle = Audio->OnCuePlayed.AddUObject(this, &UAbyssWorldBuilder::HandleCuePlayed);
+		CueAudio = Audio;
+	}
 }
 
 void UAbyssWorldBuilder::UnbindEvents()
@@ -327,8 +390,14 @@ void UAbyssWorldBuilder::UnbindEvents()
 	{
 		Vfx->OnShake.Remove(VfxShakeHandle);
 	}
+	if (UAbyssAudioSystem* Audio = CueAudio.Get())
+	{
+		Audio->OnCuePlayed.Remove(CueHandle);
+	}
 	SettingsHandle.Reset();
 	VfxShakeHandle.Reset();
+	CueHandle.Reset();
+	CueAudio.Reset();
 	bEventsBound = false;
 }
 
@@ -336,6 +405,12 @@ void UAbyssWorldBuilder::ApplySettings(const FAbyssUserSettings& Settings)
 {
 	bCameraShakeEnabled = Settings.bCameraShake;
 	bDamageNumbers = Settings.bDamageNumbers;
+	// Brightness (U1): log2 of the 0.5..1.5 setting, added to the zone's exposure bias.
+	BrightnessEv = AbyssThemeRules::BrightnessToEv(Settings.Brightness);
+	if (ZoneActor != nullptr)
+	{
+		ZoneActor->SetUserExposureEv(BrightnessEv);
+	}
 	if (CameraRig != nullptr)
 	{
 		CameraRig->SetShakeEnabled(bCameraShakeEnabled);
@@ -563,7 +638,21 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 	{
 		ZoneActor->UpdateView(CameraRig->GetCurrentDistance());   // shadow distance / fog start before the first frame
 	}
+	ZoneActor->SetUserExposureEv(BrightnessEv);
 	ZoneActor->BuildZone(Snap, *Data, *Assets, Quality);
+	// U4: the set pieces' audio emitter spots (Ashwheat's barred doors knock from their knock sockets). The audio system
+	// cleared the last zone's on EvZone{Exited}; its EvZone{Entered} handler runs after this build.
+	BindAudioCues();
+	if (UAbyssAudioSystem* Audio = UAbyssAudioSystem::Get(this))
+	{
+		TArray<TPair<FName, TArray<FVector2D>>> EmitterSpots;
+		ZoneActor->GetSetPieceEmitterSpots(EmitterSpots);
+		for (const TPair<FName, TArray<FVector2D>>& Emitter : EmitterSpots)
+		{
+			Audio->SetZoneEmitterSpots(Emitter.Key, Emitter.Value);
+		}
+	}
+	const FName ZoneTheme = PresentationThemeOf(Snap.zone.mapId);
 	// Ground loot (bags, gold, potions, gems, scrolls, quest items, the reward.gold coin): loaded behind the zone fade
 	// instead of on the first kill, where the synchronous load (and, uncooked, the "Waiting on static mesh" build) was a
 	// hitch. Uncooked, the zone entry's compile wait finishes their builds before the first frame.
@@ -571,8 +660,36 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 	// Likewise the Props meshes of entity props that appear mid-zone (random-event chests and rune pillars, revealed
 	// hidden rewards, quest gather nodes, lore pickups). The second playtest's log line ("Waiting on static mesh
 	// /Game/Abyssfire/?rops/...", cut off) named a Props mesh: there is no Drops folder.
-	const int32 LatePropMeshes = AbyssWorldBuilderPrivate::WarmLateEntityPropArt(*Assets);
-	UE_LOG(LogAbyss, Log, TEXT("Zone build: %d ground-loot and %d late entity-prop meshes loaded"), LootMeshes, LatePropMeshes);
+	const int32 LatePropMeshes = AbyssWorldBuilderPrivate::WarmLateEntityPropArt(*Assets, ZoneTheme);
+	// Echo lore figures (U1): their NPC meshes and frozen clips, so reading an echo does not load on the spot.
+	int32 EchoAssets = 0;
+	if (const abyss::MapDef* EchoMap = Data->FindMap(Snap.zone.mapId); EchoMap != nullptr)
+	{
+		const AbyssThemeRules::FEchoLook EchoLook = AbyssThemeRules::ParseEchoLook(Assets->GetManifest().GetMaterialsJson().Get("MI_AF_Echo"));
+		for (const abyss::LoreEntryDef* Lore : Data->Lore().ForZone(Snap.zone.mapId))
+		{
+			const AbyssThemeRules::FEchoEntry* Echo = Lore != nullptr && AbyssThemeRules::IsEchoSpriteType(Lore->spriteType)
+				? EchoLook.Find(Lore->id) : nullptr;
+			if (Echo == nullptr)
+			{
+				continue;
+			}
+			for (const AbyssThemeRules::FEchoFigure& Figure : Echo->Figures)
+			{
+				const FAbyssArtAsset* Art = Assets->GetManifest().FindAsset(FName(*AbyssText::ToFString(Figure.Asset)));
+				const FAbyssArtAsset* ClipOwner = Figure.ClipAsset.empty() ? Art
+					: Assets->GetManifest().FindAsset(FName(*AbyssText::ToFString(Figure.ClipAsset)));
+				const FAbyssArtClip* Clip = ClipOwner != nullptr ? ClipOwner->FindClip(FName(*AbyssText::ToFString(Figure.Clip))) : nullptr;
+				if (Art != nullptr && Art->IsSkeletal() && Assets->LoadSkeletalMesh(*Art) != nullptr && Clip != nullptr
+					&& Assets->LoadClip(*Clip) != nullptr)
+				{
+					++EchoAssets;
+				}
+			}
+		}
+	}
+	UE_LOG(LogAbyss, Log, TEXT("Zone build: %d ground-loot and %d late entity-prop meshes loaded, %d echo figures warmed"),
+		LootMeshes, LatePropMeshes, EchoAssets);
 	const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
 	Assets->TrimToRecentZones(GameInstance != nullptr && GameInstance->IsTouchMode() ? 1 : 2);
 
@@ -585,21 +702,27 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 			Context.Origin = Context.Target = Context.Point = Spot.Location;
 			Context.bHasColor = Spot.bHasColor;
 			Context.Color = Spot.Color;
-			if (const int32 Handle = Vfx->Play(Spot.RecipeId, Context))
+			// U1: the theme's variant first (camp.torch@march: the brazier's smoulder, no light pool), else today's recipe
+			// (not for a themed-only loop: the march's sealed exit plays nothing until exit.sealed@march exists).
+			TArray<FName, TInlineAllocator<2>> Recipes;
+			if (!Spot.ThemedRecipeId.IsNone())
 			{
-				ZoneVfxHandles.Add(Handle);
+				Recipes.Add(Spot.ThemedRecipeId);
 			}
-		}
-		if (!ZoneActor->GetAmbienceRecipe().IsNone())
-		{
-			FAbyssVfxContext Context;
-			Context.Origin = Context.Target = Context.Point = GroundAt(Snap.hero.pos);
-			if (const int32 Handle = Vfx->Play(ZoneActor->GetAmbienceRecipe(), Context))
+			if (!Spot.bThemedOnly)
+			{
+				Recipes.Add(Spot.RecipeId);
+			}
+			if (const int32 Handle = Vfx->PlayFirst(Recipes, Context))
 			{
 				ZoneVfxHandles.Add(Handle);
 			}
 		}
 	}
+	AmbienceHandle = 0;
+	PlayingAmbience = NAME_None;
+	bPlayingAmbienceColor = false;
+	RefreshAmbience(Snap);
 
 	// Actors spawned before the zone existed sit at Z = 0: they are placed on the terrain by SyncFrame. The camera
 	// snaps onto the hero and the zone fades in (zoneFadeInMs).
@@ -633,6 +756,10 @@ void UAbyssWorldBuilder::ClearZone()
 		Vfx->ClearAll();
 	}
 	ZoneVfxHandles.Reset();
+	AmbienceHandle = 0;
+	PlayingAmbience = NAME_None;
+	bPlayingAmbienceColor = false;
+	DestroyEchoes();
 	DestroyAllEntities(/*bKeepHero*/ true);
 	if (ZoneActor != nullptr)
 	{
@@ -710,8 +837,15 @@ bool UAbyssWorldBuilder::PickGround(const APlayerController& Controller, const F
 // IAbyssWorldView: entities
 // =====================================================================================================================
 
+FName UAbyssWorldBuilder::PresentationThemeOf(const std::string& MapId) const
+{
+	const abyss::DataStore* Data = GetData();
+	const std::string_view Theme = AbyssThemeRules::ThemeOf(Data != nullptr ? Data->FindMap(MapId) : nullptr);
+	return Theme.empty() ? NAME_None : FName(*AbyssText::ToFString(Theme));
+}
+
 const FAbyssArtAsset* UAbyssWorldBuilder::ResolveCharacterArt(abyss::EntityKind Kind, const std::string& DefId,
-	const std::string& ArtId) const
+	const std::string& ArtId, FName Theme) const
 {
 	using namespace AbyssWorldBuilderPrivate;
 	const UAbyssAssetLibrary* Assets = GetAssets();
@@ -753,7 +887,10 @@ const FAbyssArtAsset* UAbyssWorldBuilder::ResolveCharacterArt(abyss::EntityKind 
 		break;
 	}
 	Ids.RemoveAll([](FName Name) { return Name.IsNone(); });
-	return Assets->GetManifest().ResolveFirst(Ids, AbyssWorldUtil::TileHash(static_cast<int32>(DefId.size()), 7, 41));
+	// U1: NPC looks, monsters, pets, escorts and defend targets take the zone theme's variants (npc_quest_elder@march);
+	// the hero keeps its own look everywhere.
+	const FName ArtTheme = Kind == abyss::EntityKind::Hero ? NAME_None : Theme;
+	return Assets->GetManifest().ResolveFirst(Ids, AbyssWorldUtil::TileHash(static_cast<int32>(DefId.size()), 7, 41), ArtTheme);
 }
 
 void UAbyssWorldBuilder::SpawnEntity(const abyss::EvEntitySpawned& Event, const abyss::Snapshot& Snap)
@@ -769,7 +906,7 @@ void UAbyssWorldBuilder::SpawnEntity(const abyss::EvEntitySpawned& Event, const 
 		return;
 	case abyss::EntityKind::DefendTarget:
 	{
-		const FAbyssArtAsset* Art = ResolveCharacterArt(Event.kind, Event.defId, Event.artId);
+		const FAbyssArtAsset* Art = ResolveCharacterArt(Event.kind, Event.defId, Event.artId, PresentationThemeOf(Snap.zone.mapId));
 		if (Art != nullptr && Art->IsSkeletal())
 		{
 			SpawnCharacter(Event, Snap);
@@ -828,7 +965,10 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 	Setup.Kind = Event.kind;
 	Setup.DefId = ToF(Event.defId);
 	Setup.ArtId = ToF(Event.artId);
-	Setup.Art = ResolveCharacterArt(Event.kind, Event.defId, Event.artId);
+	// The theme of the snapshot's zone: on a zone change the spawns come before BuildZone, but the snapshot already
+	// describes the zone being entered.
+	const FName ZoneTheme = PresentationThemeOf(Snap.zone.mapId);
+	Setup.Art = ResolveCharacterArt(Event.kind, Event.defId, Event.artId, ZoneTheme);
 	Setup.VisualScale = static_cast<float>(Event.visualScale > 0.0 ? Event.visualScale : 1.0);
 	Setup.AnimTiming = &Data->Combat().anim;
 	const abyss::HitFeedbackTable& Feedback = Data->Combat().hitFeedback;
@@ -913,7 +1053,7 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 		{
 			if (Monster.id == Event.id)
 			{
-				UpdateElite(*Actor, Monster);
+				UpdateElite(*Actor, Monster, ZoneTheme);
 				break;
 			}
 		}
@@ -937,7 +1077,7 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 	return Actor;
 }
 
-void UAbyssWorldBuilder::UpdateElite(AAbyssCharacterActor& Actor, const abyss::MonsterView& Monster)
+void UAbyssWorldBuilder::UpdateElite(AAbyssCharacterActor& Actor, const abyss::MonsterView& Monster, FName Theme)
 {
 	UAbyssAssetLibrary* Assets = GetAssets();
 	const abyss::DataStore* Data = GetData();
@@ -951,7 +1091,20 @@ void UAbyssWorldBuilder::UpdateElite(AAbyssCharacterActor& Actor, const abyss::M
 	{
 		Colors.Add(AbyssWorldUtil::ColorFromRgb(Data->Combat().eliteAffixes.Def(Affix).vfxColor));
 	}
-	UStaticMesh* Crown = bMarked ? Assets->LoadStaticMeshByName(FName(TEXT("SM_FX_EliteCrown"))) : nullptr;
+	UStaticMesh* Crown = nullptr;
+	if (bMarked)
+	{
+		// U1: the theme's crown (elite_crown@march, SM_FX_EliteCrown_March: tarnished), else today's SM_FX_EliteCrown.
+		const FName ThemedCrown = Assets->GetManifest().FindThemedGameId(FName(TEXT("elite_crown")), Theme);
+		if (const FAbyssArtAsset* CrownArt = ThemedCrown.IsNone() ? nullptr : Assets->GetManifest().ResolveGameId(ThemedCrown))
+		{
+			Crown = Assets->LoadStaticMesh(*CrownArt);
+		}
+		if (Crown == nullptr)
+		{
+			Crown = Assets->LoadStaticMeshByName(FName(TEXT("SM_FX_EliteCrown")));
+		}
+	}
 	static const TCHAR* const FxFolders[] = { TEXT("FX"), TEXT("FX/Meshes") };
 	UStaticMesh* Quad = Colors.Num() > 0
 		? Cast<UStaticMesh>(Assets->LoadFromFolders(FxFolders, FName(TEXT("SM_FX_Quad")), UStaticMesh::StaticClass()))
@@ -1069,7 +1222,12 @@ AAbyssPropActor* UAbyssWorldBuilder::SpawnProp(abyss::EntityId Id, abyss::Entity
 	else if (StartsWith(DefId, "lore:"))
 	{
 		Setup.Style = EAbyssPropStyle::Lore;
-		Ids = { N(TEXT("lore_") + Art), N(Art), N(TEXT("decor_") + Art) };
+		// Echo lore (U1, MI_AF_Echo): no mesh, only the prop.lore ground mark in the echo's cold tint; reading it shows the
+		// ghost figure (HandleLoreCollected).
+		if (!AbyssThemeRules::IsEchoSpriteType(ArtId))
+		{
+			Ids = { N(TEXT("lore_") + Art), N(Art), N(TEXT("decor_") + Art) };
+		}
 		LoopRecipe = FName(TEXT("prop.lore"));
 		LoopColor = LorePoolColor(ArtId);
 		bLoopColor = true;
@@ -1122,7 +1280,10 @@ AAbyssPropActor* UAbyssWorldBuilder::SpawnProp(abyss::EntityId Id, abyss::Entity
 		bWidget = DefId == "wandering_merchant" || DefId == "rescue";
 	}
 	Ids.RemoveAll([](FName Name) { return Name.IsNone(); });
-	Setup.Art = Assets->GetManifest().ResolveFirst(Ids, Id);
+	// U1: the zone theme's variants (lore_ancient_tablet@march, treasure_chest@march, gather_herb@march, the random
+	// events' npc_*@march); the soul echo keeps the hero's look. The snapshot's map id is the zone the prop is in.
+	const FName PropTheme = Snap != nullptr && DefId != "soul_echo" ? PresentationThemeOf(Snap->zone.mapId) : NAME_None;
+	Setup.Art = Ids.Num() > 0 ? Assets->GetManifest().ResolveFirst(Ids, Id, PropTheme) : nullptr;
 	Setup.YawDeg = Setup.Style == EAbyssPropStyle::Ghost ? 0.f : static_cast<float>(AbyssWorldUtil::TileHash(static_cast<int32>(Id), 3, 19) % 360u);
 	Setup.bCastShadow = !Quality.bMobile && (Setup.Style == EAbyssPropStyle::Static || Setup.Style == EAbyssPropStyle::Chest);
 
@@ -1588,6 +1749,16 @@ void UAbyssWorldBuilder::PresentCharacters(const abyss::Snapshot& Snap, const FA
 			CharacterFrame.bWindingUp = Monster->windingUp;
 			CharacterFrame.StatusMask = Monster->statusMask;
 			CharacterFrame.bElite = Monster->elite;
+			// K1 holds (the mini-boss's Taunt while its dialogue holds it) and the stun pose (status Stun).
+			CharacterFrame.HoldAction = Monster->holdAction;
+			CharacterFrame.bStunned = (Monster->statusMask & (1u << static_cast<uint32>(abyss::StatusType::Stun))) != 0;
+			// DR5: the mood's wind-up tint (zone_moods.json port.windupTint; else the web port's #FFC4B0 / #FF7A5C).
+			if (ZoneActor != nullptr)
+			{
+				CharacterFrame.bHasWindupTint = true;
+				CharacterFrame.WindupTint = ZoneActor->GetWindupTint(/*bElite*/ false);
+				CharacterFrame.WindupTintElite = ZoneActor->GetWindupTint(/*bElite*/ true);
+			}
 			break;
 		}
 		case abyss::EntityKind::Npc:
@@ -1668,6 +1839,13 @@ void UAbyssWorldBuilder::PresentProps(const abyss::Snapshot& Snap, const FAbyssF
 			else if (const abyss::WorldMarkerView* Marker = Index->FindMarker(Pair.Key))
 			{
 				Location = GroundAt(Marker->pos);
+				// U4: a defend target standing on a yielding set piece (the Boneyard Gate) takes the piece's facing.
+				float FacingYawDeg = 0.f;
+				if (Marker->kind == abyss::MarkerKind::DefendTarget && ZoneActor != nullptr
+					&& ZoneActor->GetSetPieceYieldFacing(Marker->pos, FacingYawDeg))
+				{
+					Actor->SetFacingYaw(FacingYawDeg);
+				}
 			}
 			else
 			{
@@ -1941,9 +2119,24 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 	}
 
 	ReconcileMarkers(Snap);
+	UpdateZoneMood(Snap);
+	// U4: a yielding set piece is hidden while a defend target of the same art stands on it.
+	if (ZoneActor != nullptr)
+	{
+		TArray<abyss::Vec2, TInlineAllocator<4>> DefendTargets;
+		for (const abyss::WorldMarkerView& Marker : Snap.markers)
+		{
+			if (Marker.kind == abyss::MarkerKind::DefendTarget)
+			{
+				DefendTargets.Add(Marker.pos);
+			}
+		}
+		ZoneActor->UpdateSetPieceYields(DefendTargets);
+	}
 	PresentCharacters(Snap, Frame, VisualDelta, RealDelta);
 	PresentProps(Snap, Frame, VisualDelta);
 	UpdateLeaving(VisualDelta);
+	UpdateEchoes(RealDelta);
 	UpdateCamera(Snap, RealDelta);
 
 	// Occlusion fade (R1): the hero (chest, head) and living monsters near it; ground loot near the hero also fades the
@@ -2035,6 +2228,34 @@ void UAbyssWorldBuilder::HandleVfxShake(float DurationMs, float Intensity)
 	}
 }
 
+void UAbyssWorldBuilder::HandleCuePlayed(FName CueId)
+{
+	if (ZoneActor == nullptr || !bZoneBuilt)
+	{
+		return;
+	}
+	TArray<FAbyssZoneEffectSpot> Spots;
+	ZoneActor->GetSetPieceCueSpots(CueId, Spots);
+	UAbyssVfxSystem* Vfx = Spots.Num() > 0 ? UAbyssVfxSystem::Get(this) : nullptr;
+	if (Vfx == nullptr)
+	{
+		return;
+	}
+	for (const FAbyssZoneEffectSpot& Spot : Spots)
+	{
+		// The bell frame's ripple (camp.bell_toll: rings off the bell, a ground ring, falling ash) at its bell socket.
+		FAbyssVfxContext Context;
+		Context.Origin = Context.Target = Context.Point = Spot.Location;
+		TArray<FName, TInlineAllocator<2>> Recipes;
+		if (!Spot.ThemedRecipeId.IsNone())
+		{
+			Recipes.Add(Spot.ThemedRecipeId);
+		}
+		Recipes.Add(Spot.RecipeId);
+		Vfx->PlayFirst(Recipes, Context);
+	}
+}
+
 void UAbyssWorldBuilder::HandleCameraFlash(const abyss::EvCameraFlash& Event)
 {
 	if (CameraRig != nullptr)
@@ -2061,6 +2282,7 @@ void UAbyssWorldBuilder::HandleZone(const abyss::EvZone& Event)
 	{
 		return;
 	}
+	const FName NextTheme = PresentationThemeOf(Event.mapId);
 	TArray<FSoftObjectPath> Paths;
 	auto AddAsset = [&Paths](const FAbyssArtAsset* Asset)
 	{
@@ -2081,14 +2303,14 @@ void UAbyssWorldBuilder::HandleZone(const abyss::EvZone& Event)
 	{
 		if (const abyss::MonsterDef* Monster = Data->FindMonster(Spawn.monsterId))
 		{
-			AddAsset(ResolveCharacterArt(abyss::EntityKind::Monster, Monster->id, Monster->spriteKey));
+			AddAsset(ResolveCharacterArt(abyss::EntityKind::Monster, Monster->id, Monster->spriteKey, NextTheme));
 		}
 	}
 	for (const abyss::MapCampDef& Camp : Map->camps)
 	{
 		for (const std::string& NpcId : Camp.npcs)
 		{
-			AddAsset(ResolveCharacterArt(abyss::EntityKind::Npc, NpcId, NpcId));
+			AddAsset(ResolveCharacterArt(abyss::EntityKind::Npc, NpcId, NpcId, NextTheme));
 		}
 	}
 	Assets->PreloadAsync(Paths);
@@ -2375,6 +2597,10 @@ void UAbyssWorldBuilder::HandleSessionEnded()
 		Vfx->ClearAll();
 	}
 	ZoneVfxHandles.Reset();
+	AmbienceHandle = 0;
+	PlayingAmbience = NAME_None;
+	bPlayingAmbienceColor = false;
+	DestroyEchoes();
 	DestroyAllEntities(/*bKeepHero*/ false);
 	if (ZoneActor != nullptr)
 	{
@@ -2391,4 +2617,240 @@ void UAbyssWorldBuilder::HandleSessionEnded()
 	Tracks.Reset();
 	bZoneBuilt = false;
 	bStoryFocusActive = false;
+}
+
+// =====================================================================================================================
+// Presentation theme and mood (dark remake U1, AbyssThemeRules.h)
+// =====================================================================================================================
+
+void UAbyssWorldBuilder::UpdateZoneMood(const abyss::Snapshot& Snap)
+{
+	const abyss::DataStore* Data = GetData();
+	if (ZoneActor == nullptr || Data == nullptr || !bZoneBuilt)
+	{
+		return;
+	}
+	// The dawn after the chapter's turn-in and the Breach Rim blend follow the hero; the zone actor re-applies its look
+	// only when the blend moved (AbyssThemeRules::LookChanged).
+	ZoneActor->UpdateMood(Snap, *Data);
+	RefreshAmbience(Snap);
+	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
+	{
+		Vfx->SetMoodLightScale(ZoneActor->GetMoodLightScaleOverride());
+	}
+}
+
+void UAbyssWorldBuilder::RefreshAmbience(const abyss::Snapshot& Snap)
+{
+	UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this);
+	if (ZoneActor == nullptr || Vfx == nullptr)
+	{
+		return;
+	}
+	const FName Recipe = ZoneActor->GetAmbienceRecipe();
+	const bool bColor = ZoneActor->HasAmbienceColor();
+	const FLinearColor Color = ZoneActor->GetAmbienceColor();
+	// Started once per recipe / tint (a recipe the library lacks is not retried every frame).
+	if (Recipe == PlayingAmbience && bColor == bPlayingAmbienceColor && (!bColor || Color.Equals(PlayingAmbienceColor, 1.e-4f)))
+	{
+		return;
+	}
+	if (AmbienceHandle != 0)
+	{
+		// The old weather's particles live out their life (no pop); the new loop starts beside them.
+		Vfx->Stop(AmbienceHandle, /*bKillParticles*/ false);
+		ZoneVfxHandles.Remove(AmbienceHandle);
+		AmbienceHandle = 0;
+	}
+	PlayingAmbience = Recipe;
+	bPlayingAmbienceColor = bColor;
+	PlayingAmbienceColor = Color;
+	if (Recipe.IsNone())
+	{
+		return;
+	}
+	FAbyssVfxContext Context;
+	Context.Origin = Context.Target = Context.Point = GroundAt(Snap.hero.pos);
+	// The weather tint (ashfall #CFCAC0, the Breach Rim's violet sparks) only in a zone with a presentation theme: other
+	// zones' weather tints exist but never coloured their particles.
+	Context.bHasColor = bColor;
+	Context.Color = Color;
+	AmbienceHandle = Vfx->Play(Recipe, Context);
+	if (AmbienceHandle != 0)
+	{
+		ZoneVfxHandles.Add(AmbienceHandle);
+	}
+	UE_LOG(LogAbyss, Log, TEXT("Zone ambience %s%s"), *Recipe.ToString(), bColor ? *FString::Printf(TEXT(" tint %s"), *Color.ToString()) : TEXT(""));
+}
+
+void UAbyssWorldBuilder::HandleLoreCollected(const abyss::EvLoreCollected& Event)
+{
+	const abyss::DataStore* Data = GetData();
+	const abyss::LoreEntryDef* Lore = Data != nullptr ? Data->Lore().Find(Event.loreId) : nullptr;
+	if (Lore != nullptr && AbyssThemeRules::IsEchoSpriteType(Lore->spriteType))
+	{
+		SpawnEcho(Event.loreId);
+	}
+}
+
+void UAbyssWorldBuilder::SpawnEcho(const std::string& LoreId)
+{
+	using namespace AbyssWorldBuilderPrivate;
+	UWorld* OwningWorld = GetWorld();
+	UAbyssAssetLibrary* Assets = GetAssets();
+	const abyss::DataStore* Data = GetData();
+	if (OwningWorld == nullptr || Assets == nullptr || Data == nullptr || !bZoneBuilt)
+	{
+		return;
+	}
+	const FAbyssArtManifest& Manifest = Assets->GetManifest();
+	const AbyssThemeRules::FEchoLook Look = AbyssThemeRules::ParseEchoLook(Manifest.GetMaterialsJson().Get("MI_AF_Echo"));
+	const AbyssThemeRules::FEchoEntry* Entry = Look.Find(LoreId);
+	if (Entry == nullptr || Entry->Figures.empty())
+	{
+		UE_LOG(LogAbyss, Warning, TEXT("Echo %s: no MI_AF_Echo figures in the art manifest"), *ToF(LoreId));
+		return;
+	}
+	// The echo's tile: the lore spot (the core's data), else the manifest's tile.
+	abyss::Vec2 Tile(static_cast<double>(Entry->TileCol), static_cast<double>(Entry->TileRow));
+	if (const abyss::LoreEntryDef* Lore = Data->Lore().Find(LoreId))
+	{
+		Tile = abyss::Vec2(static_cast<double>(Lore->pos.col), static_cast<double>(Lore->pos.row));
+	}
+	// U4: figures A10 posed beside a set piece (the art contract's nextTo) stand by that piece, turned with it.
+	double AnchorYawDeg = 0.0;
+	abyss::Vec2 AnchorTile;
+	const bool bAnchored = ZoneActor != nullptr && ZoneActor->GetSetPieceEchoAnchor(LoreId, Tile, AnchorTile, AnchorYawDeg);
+	if (bAnchored)
+	{
+		Tile = AnchorTile;
+	}
+	FActorSpawnParameters Params;
+	Params.ObjectFlags |= RF_Transient;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AActor* EchoActor = OwningWorld->SpawnActor<AActor>(AActor::StaticClass(), FTransform(GroundAt(Tile)), Params);
+	if (EchoActor == nullptr)
+	{
+		return;
+	}
+	USceneComponent* Root = NewObject<USceneComponent>(EchoActor, TEXT("Root"));
+	Root->SetMobility(EComponentMobility::Movable);
+	EchoActor->SetRootComponent(Root);
+	Root->RegisterComponent();
+
+	FEchoPlayback& Playback = Echoes.AddDefaulted_GetRef();
+	Playback.Actor = EchoActor;
+	Playback.FadeInMs = Look.Timeline.FadeInMs;
+	Playback.HoldMs = Look.Timeline.HoldMs;
+	Playback.FadeOutMs = Look.Timeline.FadeOutMs;
+	Playback.FlickerAmplitude = Look.Timeline.FlickerAmplitude;
+	Playback.FlickerHz = Look.Timeline.FlickerHz;
+	const float MeshYawOffset = Manifest.GetShading().MeshYawOffsetDeg;
+	UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this);
+	for (const AbyssThemeRules::FEchoFigure& Figure : Entry->Figures)
+	{
+		const FAbyssArtAsset* Art = Manifest.FindAsset(FName(*ToF(Figure.Asset)));
+		const FAbyssArtAsset* ClipOwner = Figure.ClipAsset.empty() ? Art : Manifest.FindAsset(FName(*ToF(Figure.ClipAsset)));
+		const FAbyssArtClip* Clip = ClipOwner != nullptr ? ClipOwner->FindClip(FName(*ToF(Figure.Clip))) : nullptr;
+		USkeletalMesh* Mesh = Art != nullptr && Art->IsSkeletal() ? Assets->LoadSkeletalMesh(*Art) : nullptr;
+		UAnimSequence* Sequence = Clip != nullptr ? Assets->LoadClip(*Clip) : nullptr;
+		if (Mesh == nullptr)
+		{
+			UE_LOG(LogAbyss, Warning, TEXT("Echo %s: figure mesh %s not available"), *ToF(LoreId), *ToF(Figure.Asset));
+			continue;
+		}
+		USkeletalMeshComponent* Body = NewObject<USkeletalMeshComponent>(EchoActor);
+		Body->SetMobility(EComponentMobility::Movable);
+		Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Body->SetGenerateOverlapEvents(false);
+		Body->SetCanEverAffectNavigation(false);
+		Body->SetCastShadow(false);
+		Body->SetSkeletalMeshAsset(Mesh);
+		Body->SetupAttachment(Root);
+		// A10's frame: offset (x, -y) metres = tiles around the echo tile, the mesh turned to FacingYawDeg (+ the manifest's
+		// mesh yaw offset, as every character); by a set piece, offset and facing turn with the piece (yaw 0 = as authored).
+		const AbyssSetPieceRules::FigurePose Pose =
+			AbyssSetPieceRules::EchoFigurePose(AnchorYawDeg, Figure.OffsetCol, Figure.OffsetRow, Figure.FacingYawDeg);
+		const FVector Offset(Pose.Offset.x * AbyssUnits::TileUU, Pose.Offset.y * AbyssUnits::TileUU, 0.0);
+		const FVector FigureGround = GroundAt(Tile + Pose.Offset);
+		Body->SetRelativeLocation(FVector(Offset.X, Offset.Y, FigureGround.Z - EchoActor->GetActorLocation().Z));
+		Body->SetRelativeRotation(FRotator(0.f, static_cast<float>(Pose.FacingYawDeg) + MeshYawOffset, 0.f));
+		Body->SetRelativeScale3D(FVector(FMath::Max(0.01f, Art->Scale)));
+		Body->RegisterComponent();
+		// Frozen in its last pose (AAbyssPropActor's single-node idiom): the clip at the figure's frame, play rate 0.
+		if (Sequence != nullptr)
+		{
+			Body->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+			Body->PlayAnimation(Sequence, /*bLooping*/ false);
+			Body->SetPosition(static_cast<float>(AbyssThemeRules::ClipFrameSec(Figure.Frame, Clip->Fps)), /*bFireNotifies*/ false);
+			Body->SetPlayRate(0.f);
+		}
+		// Every slot (toon and ink) draws with the ghost material; colour = the echo tint, Ghost 1, Fade per timeline.
+		if (GhostMaterial != nullptr)
+		{
+			for (int32 Slot = 0; Slot < Body->GetNumMaterials(); ++Slot)
+			{
+				Body->SetMaterial(Slot, GhostMaterial);
+			}
+		}
+		Body->SetCustomPrimitiveDataVector4(AbyssCpd::TintR,
+			FVector4(Look.TintLinear[0], Look.TintLinear[1], Look.TintLinear[2], 1.0));   // Tint RGB, TintAmount 1
+		Body->SetCustomPrimitiveDataFloat(AbyssCpd::Fade, 1.f);
+		Body->SetCustomPrimitiveDataFloat(AbyssCpd::Ghost, Look.Ghost);
+		Playback.Figures.Add(Body);
+		if (Vfx != nullptr)
+		{
+			FAbyssVfxContext Context;
+			Context.Origin = Context.Target = Context.Point = FigureGround;
+			Vfx->Play(FName(TEXT("prop.echo")), Context);
+		}
+	}
+	const FString AnchorNote = bAnchored ? FString::Printf(TEXT(" by its set piece, turned %.0f deg"), AnchorYawDeg) : FString();
+	UE_LOG(LogAbyss, Log, TEXT("Echo %s: %d figures at (%.1f, %.1f)%s for %.0f ms"), *ToF(LoreId), Playback.Figures.Num(), Tile.x,
+		Tile.y, *AnchorNote, Look.Timeline.TotalMs());
+}
+
+void UAbyssWorldBuilder::UpdateEchoes(float RealDelta)
+{
+	for (int32 Index = Echoes.Num() - 1; Index >= 0; --Index)
+	{
+		FEchoPlayback& Playback = Echoes[Index];
+		Playback.ElapsedMs += RealDelta * 1000.f;
+		AbyssThemeRules::FEchoTimeline Timeline;
+		Timeline.FadeInMs = Playback.FadeInMs;
+		Timeline.HoldMs = Playback.HoldMs;
+		Timeline.FadeOutMs = Playback.FadeOutMs;
+		Timeline.FlickerAmplitude = Playback.FlickerAmplitude;
+		Timeline.FlickerHz = Playback.FlickerHz;
+		AActor* EchoActor = Playback.Actor.Get();
+		if (EchoActor == nullptr || Playback.ElapsedMs >= Timeline.TotalMs())
+		{
+			if (EchoActor != nullptr)
+			{
+				EchoActor->Destroy();
+			}
+			Echoes.RemoveAt(Index);
+			continue;
+		}
+		const float Fade = static_cast<float>(AbyssThemeRules::EchoFade(Timeline, Playback.ElapsedMs));
+		for (const TWeakObjectPtr<USkeletalMeshComponent>& Figure : Playback.Figures)
+		{
+			if (USkeletalMeshComponent* Body = Figure.Get())
+			{
+				Body->SetCustomPrimitiveDataFloat(AbyssCpd::Fade, Fade);
+			}
+		}
+	}
+}
+
+void UAbyssWorldBuilder::DestroyEchoes()
+{
+	for (const FEchoPlayback& Playback : Echoes)
+	{
+		if (AActor* EchoActor = Playback.Actor.Get())
+		{
+			EchoActor->Destroy();
+		}
+	}
+	Echoes.Reset();
 }

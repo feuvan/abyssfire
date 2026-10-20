@@ -34,6 +34,7 @@
 #include "abyss/data/NpcData.h"
 #include "abyss/data/PetData.h"
 #include "abyss/data/QuestData.h"
+#include "abyss/data/SetPieceData.h"
 #include "abyss/data/SkillData.h"
 #include "abyss/data/StoryData.h"
 #include "abyss/data/UiData.h"
@@ -63,7 +64,7 @@ using DataFileReader = std::function<bool(std::string_view fileName, std::string
 
 // Every table file the store expects (required unless listed in kOptionalDataFiles).
 ABYSS_API std::span<const std::string_view> RequiredDataFiles();
-ABYSS_API std::span<const std::string_view> OptionalDataFiles();  // assets.json, index.json, i18n_zh-TW.json
+ABYSS_API std::span<const std::string_view> OptionalDataFiles();  // assets.json, index.json, i18n_zh-TW.json, set_pieces.json
 
 class ABYSS_API DataStore {
  public:
@@ -102,6 +103,8 @@ class ABYSS_API DataStore {
   const RenderQualityTables& RenderQualityProfiles() const { return renderQuality_; }
   const AbyssRunTables& AbyssRun() const { return abyssRun_; }
   const AutoPilotRouteTables& AutoPilotRoutes() const { return autopilot_; }  // the bot's routes (tools)
+  // The UE set-piece layer (set_pieces.json, optional; presentation only, never read by the sim).
+  const SetPieceTables& SetPieces() const { return setPieces_; }
 
   // ---- strings ----
   const I18n& Strings() const { return i18n_; }
@@ -141,6 +144,7 @@ class ABYSS_API DataStore {
   RenderQualityTables renderQuality_;
   AbyssRunTables abyssRun_;
   AutoPilotRouteTables autopilot_;
+  SetPieceTables setPieces_;
   I18n i18n_;
   std::vector<std::pair<std::string, JsonValue>> raw_;
   std::vector<std::string> loadedFiles_;

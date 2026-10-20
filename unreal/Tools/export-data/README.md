@@ -33,7 +33,7 @@ Output is deterministic (same source → byte-identical files); re-run and commi
   modules **in memory**. Nothing under `src/` is modified. A renamed constant makes the module fail to load.
 * `Math.random` is replaced by a seeded PRNG while the exporter runs, so module-load randomness cannot leak in.
 * One module per area under `src/tables/` (`skills, combat, items, monsters, maps, world, quests, story, pets, audio,
-  i18n, ui, assets, autopilot`); every exported function named `export*` returns `TableResult`s, and `src/main.ts` writes them
+  i18n, ui, assets, autopilot, setpieces`); every exported function named `export*` returns `TableResult`s, and `src/main.ts` writes them
   with `{schemaVersion: 1, source: [...]}` and the deterministic formatter in `src/util.ts`, then `Data/index.json`.
 
 ### Remake content (unreal/GameData)
@@ -93,6 +93,13 @@ the export is byte-identical to the web's).
   objective index and count against the tables it exports, every tile against the map, clue tiles and explore tiles
   against their objective's circle, at most one `smokeEnd`, unique checkpoints, and that a step accepts every quest of
   the route's zone. Runs before i18n.
+* **set pieces** (`src/tables/setpieces.ts`, 1C U4): writes `set_pieces.json` from `unreal/GameData/setPieces.ts`
+  with every optional field filled (`variant` -1, `offset` [0, 0], `ring` null or complete with `stepDeg` = 360 / count,
+  `turnDeg` / `echoTurnDeg` 0, `scale` 1, empty lists, `walkOver` ""). Checks: a zone the maps export, unique ids,
+  anchors (camp index, entrance, region, a defend-target quest of the zone), rings (count 1-64, radius > 0, skip in
+  range), facings, the art ids in `Data/assets.json`, effect / cue recipes in `Art/Export/VFX/vfx_recipes.json`, emitters
+  in `Audio/Export/audio_manifest.json` `ambience.emitters` and cue ids in its `cues`, echoes = echo lore of the zone,
+  `echoTurnDeg` only with echoes, a non-empty `walkOver` reason.
 * **i18n** (`src/tables/i18n.ts`, runs last and reads every other table): web table → `PORT_STRINGS` →
   `unreal/GameData/i18n/{zh-CN,en}.ts` (same key set in both, else the export fails; the remake wins). Orphan sweep:
   in the content namespaces (`CONTENT_NAMESPACES`: quest, questTarget, questClue, questChoice, monster, npc, dialogue

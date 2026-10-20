@@ -27,6 +27,8 @@
 #include "Framework/AbyssWorldView.h"
 #include "UI/AbyssUiStyle.h"
 #include "UI/Core/AbyssUiDraw.h"
+#include "World/AbyssSetPieceRules.h"
+#include "World/AbyssThemeRules.h"
 
 namespace
 {
@@ -715,6 +717,7 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 			{
 				Signature.Str(EchoMarker->key);
 			}
+			Signature.Str(Snap.zone.mapId);   // event labels read the zone's own string first (U4)
 			if (NeedsName(Label, Signature))
 			{
 				FString Text;
@@ -730,17 +733,26 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 					Text = DefId.Contains(TEXT("gold")) ? Ctx->LocOrStr("zone.hiddenArea.rewardGoldPile", TEXT("Gold pile"))
 						: Ctx->LocOrStr("zone.hiddenArea.rewardChest", TEXT("Chest"));
 				}
-				else if (DefId == TEXT("treasure_cache"))
+				else if (DefId == TEXT("treasure_cache") || DefId == TEXT("wandering_merchant")
+					|| DefId == TEXT("environmental_puzzle") || DefId == TEXT("rescue"))
 				{
-					Text = Ctx->LocOrStr("zone.event.treasureChest.label", TEXT("Treasure chest"));
-				}
-				else if (DefId == TEXT("wandering_merchant"))
-				{
-					Text = Ctx->LocOrStr("zone.event.merchant.label", TEXT("Wandering merchant"));
-				}
-				else if (DefId == TEXT("environmental_puzzle"))
-				{
-					Text = Ctx->LocOrStr("zone.event.puzzle.label", TEXT("Puzzle device"));
+					// Random-event props (U4, AbyssSetPieceRules::EventLabelKey): `<key>.<zone>` before `<key>` (the core's
+					// RevZoneKey rule; emerald_plains: the relic peddler, five handbells, a dead knight's strongbox); in a
+					// zone with a presentation theme the rescue's captive by name (sys.event.rescue.<zone>, else
+					// zone.event.rescue.fallbackName). An unthemed zone's rescue prop stays unlabelled, as before U4.
+					const abyss::DataStore* Data = Ctx->GetData();
+					const bool bThemedZone =
+						Data != nullptr && !AbyssThemeRules::ThemeOf(Data->FindMap(Snap.zone.mapId)).empty();
+					const std::string Key = AbyssSetPieceRules::EventLabelKey(AbyssText::ToStd(DefId), Snap.zone.mapId,
+						bThemedZone, [this](std::string_view Candidate) { return Ctx->HasKey(Candidate); });
+					if (!Key.empty())
+					{
+						const TCHAR* Fallback = DefId == TEXT("treasure_cache") ? TEXT("Treasure chest")
+							: DefId == TEXT("wandering_merchant") ? TEXT("Wandering merchant")
+							: DefId == TEXT("environmental_puzzle") ? TEXT("Puzzle device")
+							: TEXT("Stranded traveler");
+						Text = Ctx->LocOrStr(Key, Fallback);
+					}
 				}
 				else if (bSoulEcho)
 				{

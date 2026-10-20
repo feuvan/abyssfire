@@ -39,9 +39,32 @@ def test_family_maps_point_at_known_families_and_cues():
     assert set(dark_vox.MONSTER_FAMILY.values()) <= set(dark_vox.FAMILIES)
     assert not set(dark_vox.SILENT_MONSTERS) & set(dark_vox.MONSTER_FAMILY)
     assert set(dark_vox.FAMILY_ALIASES.values()) <= set(dark_vox.FAMILIES)
+    actions = _core_anim_actions()
     for overrides in dark_vox.NAMED_OVERRIDES.values():
         assert set(overrides.values()) <= set(dark_vox.NAMED_CUES)
-        assert set(overrides) <= {"monster_aggro", "monster_hurt", "monster_death.vocal"}
+        for key in overrides:
+            if key.startswith("anim."):
+                assert "anim.<action>" in dark_vox.OVERRIDE_KEYS and key[len("anim."):] in actions, key
+                assert key not in ("anim.idle", "anim.walk", "anim.death"), key  # every frame / the death vocal
+            else:
+                assert key in dark_vox.OVERRIDE_KEYS, key
+    # The overrides U7 needs (implementation-plan.md 4; chapter1.md 10-11): the intro roar, the lullaby, the boss's
+    # intro lines.
+    assert dark_vox.NAMED_OVERRIDES["valdras"]["anim.roar"] == "vox_valdras_roar"
+    assert dark_vox.NAMED_OVERRIDES["valdras"]["story.say"] == "vox_valdras_order"
+    assert dark_vox.NAMED_OVERRIDES["miniboss_corpseherd"]["miniboss.opened"] == "vox_corpseherd_lullaby"
+    for row in dark_vox.VOX_TRIGGERS:
+        assert row["cue"] in dark_vox.NAMED_CUES and row["on"] in ("storyStep", "storyEnd") and row["use"]
+
+
+def _core_anim_actions() -> set:
+    """The core's AnimAction names (abyss/sim/SimTypes.h ABYSS_ENUM_STRINGS), the vocabulary of `anim.<action>`."""
+    header = pathlib.Path(__file__).resolve().parents[3] / "Source/AbyssCore/Public/abyss/sim/SimTypes.h"
+    m = re.search(r"ABYSS_ENUM_STRINGS\(AnimAction,([^)]*)\)", header.read_text(encoding="utf-8"))
+    assert m, "AnimAction strings not found"
+    names = set(re.findall(r'"([a-z0-9_]+)"', m.group(1)))
+    assert {"attack", "cast", "roar", "taunt"} <= names
+    return names
 
 
 def test_manifest_asset_names_are_family_major():

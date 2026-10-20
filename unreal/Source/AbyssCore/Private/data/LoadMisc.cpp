@@ -146,6 +146,20 @@ void LoadAssetsFile(const JNode& r, AssetManifest& out) {
       e.hasBlocking = true;
       e.blocking = a.Bool("blocking");
     }
+    if (a.Has("boundsCm")) {
+      const JNode b = a.Child("boundsCm");
+      const std::vector<double> lo = b.NumList("min");
+      const std::vector<double> hi = b.NumList("max");
+      if (lo.size() == 3 && hi.size() == 3) {
+        e.hasBounds = true;
+        for (size_t i = 0; i < 3; ++i) {
+          e.boundsMinCm[i] = lo[i];
+          e.boundsMaxCm[i] = hi[i];
+        }
+      } else {
+        b.Error("expected {min: [x, y, z], max: [x, y, z]}");
+      }
+    }
     for (const std::string& gid : e.gameIds) out.gameIdToAsset.emplace_back(gid, e.name);
     out.assets.push_back(std::move(e));
   }

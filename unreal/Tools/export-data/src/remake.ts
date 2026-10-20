@@ -193,13 +193,13 @@ export function withheldSummary(): string[] {
 export type OverridePath =
   | 'achievements' | 'randomEvents'
   | 'zoneMoods.themeByZone' | 'zoneMoods.moods' | 'zoneMoods.palettes' | 'zoneMoods.weather' | 'zoneMoods.weatherByTheme'
-  | 'zoneMoods.campThemes' | 'zoneMoods.fog' | 'zoneMoods.lightScale' | 'zoneMoods.moodWeather'
+  | 'zoneMoods.campThemes' | 'zoneMoods.fog' | 'zoneMoods.lightScale' | 'zoneMoods.moodWeather' | 'zoneMoods.windupTint'
   | 'eliteAffixes.definitions' | 'eliteAffixes.zoneAffixCounts'
   | 'terrainStyles';
 
 const OVERRIDE_PATHS: readonly OverridePath[] = ['achievements', 'randomEvents', 'zoneMoods.themeByZone', 'zoneMoods.moods',
   'zoneMoods.palettes', 'zoneMoods.weather', 'zoneMoods.weatherByTheme', 'zoneMoods.campThemes', 'zoneMoods.fog',
-  'zoneMoods.lightScale', 'zoneMoods.moodWeather',
+  'zoneMoods.lightScale', 'zoneMoods.moodWeather', 'zoneMoods.windupTint',
   'eliteAffixes.definitions', 'eliteAffixes.zoneAffixCounts', 'terrainStyles'];
 const ENTRY_KEYS = new Set(['replace', 'add', 'remove']);
 const applied = new Set<OverridePath>();

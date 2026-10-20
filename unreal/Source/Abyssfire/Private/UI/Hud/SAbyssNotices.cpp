@@ -6,6 +6,7 @@
 
 #include "Framework/AbyssText.h"
 #include "UI/AbyssUiStyle.h"
+#include "UI/Core/AbyssTextFitRules.h"
 #include "UI/Core/AbyssUiDraw.h"
 #include "UI/Widgets/AbyssUiWidgets.h"
 
@@ -31,6 +32,33 @@ namespace
 			return static_cast<float>(1.0 - (T - Hold) / Out);
 		}
 		return 0.f;
+	}
+
+	/**
+	 * Centre-banner text wraps at this width (U5 text-fit pass): the remake's discoveries are sentences, and in English a
+	 * 22 px Cinzel line ran across most of the 1280 px layout ("The driver is still chained to the strongbox. ..." is
+	 * ~1080 px), past it on the web's longer lines. A line that fits is drawn exactly as before.
+	 */
+	constexpr double GAbyssNoticesBannerWrap = 720.0;
+
+	/** Text wrapped at MaxWidth in Font (AbyssTextFitRules::WrapLines over the measured code units). */
+	TArray<FString> AbyssNotices_Wrap(const FString& Text, const FSlateFontInfo& Font, double MaxWidth)
+	{
+		TArray<FString> Out;
+		if (Text.IsEmpty())
+		{
+			return Out;
+		}
+		const auto CharAt = [&Text](size_t Index) { return static_cast<uint32>(Text[static_cast<int32>(Index)]); };
+		const auto Measure = [&Text, &Font](size_t Start, size_t End)
+		{
+			return FAbyssPainter::Measure(Text.Mid(static_cast<int32>(Start), static_cast<int32>(End - Start)), Font).X;
+		};
+		for (const AbyssTextFitRules::FLineRange& Line : AbyssTextFitRules::WrapLines(static_cast<size_t>(Text.Len()), MaxWidth, CharAt, Measure))
+		{
+			Out.Add(Text.Mid(static_cast<int32>(Line.Start), static_cast<int32>(Line.End - Line.Start)));
+		}
+		return Out;
 	}
 }
 
@@ -101,11 +129,25 @@ void SAbyssNotices::ShowBanner(abyss::BannerKind Kind, const abyss::LocText& Tit
 		return;
 	case abyss::BannerKind::QuestComplete:
 		Banner.Duration = 4.1;   // in 500, hold 3000, out 600
+		Banner.TitleLines = AbyssNotices_Wrap(Banner.Title, Ctx->Style().Body(18.f, true, 3), GAbyssNoticesBannerWrap);
+		Banner.SubtitleLines = AbyssNotices_Wrap(Banner.Subtitle, Ctx->Style().Body(14.f, false, 2), GAbyssNoticesBannerWrap);
 		break;
 	case abyss::BannerKind::Discovery:
 	case abyss::BannerKind::ComingSoon:
 		Banner.Duration = 3.6;
+		Banner.TitleLines = AbyssNotices_Wrap(Banner.Title, Ctx->Style().Title(22.f, true, 3), GAbyssNoticesBannerWrap);
+		Banner.SubtitleLines = AbyssNotices_Wrap(Banner.Subtitle, Ctx->Style().Body(14.f, false, 2), GAbyssNoticesBannerWrap);
 		break;
+	}
+	// Every queued banner carries its lines (PaintBanners binds them by reference: no copy per paint). A title always
+	// has a row (an empty one draws nothing, as before); a subtitle only when it has text.
+	if (Banner.TitleLines.Num() == 0)
+	{
+		Banner.TitleLines.Add(Banner.Title);
+	}
+	if (Banner.SubtitleLines.Num() == 0 && !Banner.Subtitle.IsEmpty())
+	{
+		Banner.SubtitleLines.Add(Banner.Subtitle);
 	}
 	// queue: a banner starts when the previous one ends
 	if (Banners.Num() > 0)
@@ -286,27 +328,46 @@ void SAbyssNotices::PaintBanners(FAbyssPainter& P, const FVector2D& Size, double
 			const bool bQuest = Banner.Kind == abyss::BannerKind::QuestComplete;
 			const float Alpha = bQuest ? AbyssNotices_Envelope(T, 0.5, 3.5, 0.6) : AbyssNotices_Envelope(T, 0.4, 3.0, 0.6);
 			const double Y = Size.Y * (bQuest ? 0.22 : 0.30);
+			// Wrapped lines stack downward from today's single-line positions (title rows 24 / 28 px apart, subtitle rows
+			// 19 px); a banner whose lines all fit draws exactly as before.
+			const TArray<FString>& TitleLines = Banner.TitleLines;         // filled in ShowBanner (never empty)
+			const TArray<FString>& SubtitleLines = Banner.SubtitleLines;
+			const double SubtitleStep = 19.0;
 			if (bQuest)
 			{
+				const double TitleStep = 24.0;
+				const double TitleExtra = TitleStep * FMath::Max(0, TitleLines.Num() - 1);
 				P.TextCentered(FVector2D(CenterX, Y), Ctx->LocOrStr("zone.questComplete", TEXT("Quest complete!")), Ctx->Style().Title(26.f, true, 3),
 					FAbyssUiStyle::WithAlpha(FAbyssUiStyle::Rgb(0xf1c40f), Alpha));
-				P.TextCentered(FVector2D(CenterX, Y + 32.0), Banner.Title, Ctx->Style().Body(18.f, true, 3), FAbyssUiStyle::WithAlpha(C.Parchment, Alpha));
-				if (!Banner.Subtitle.IsEmpty())
+				for (int32 Line = 0; Line < TitleLines.Num(); ++Line)
 				{
-					P.TextCentered(FVector2D(CenterX, Y + 58.0), Banner.Subtitle, Ctx->Style().Body(14.f, false, 2),
+					P.TextCentered(FVector2D(CenterX, Y + 32.0 + TitleStep * Line), TitleLines[Line], Ctx->Style().Body(18.f, true, 3),
+						FAbyssUiStyle::WithAlpha(C.Parchment, Alpha));
+				}
+				for (int32 Line = 0; Line < SubtitleLines.Num(); ++Line)
+				{
+					P.TextCentered(FVector2D(CenterX, Y + 58.0 + TitleExtra + SubtitleStep * Line), SubtitleLines[Line], Ctx->Style().Body(14.f, false, 2),
 						FAbyssUiStyle::WithAlpha(C.TextSoft, Alpha));
 				}
 			}
 			else
 			{
+				const double TitleStep = 28.0;
+				const double TitleExtra = TitleStep * FMath::Max(0, TitleLines.Num() - 1);
 				const FLinearColor Color = Banner.Kind == abyss::BannerKind::ComingSoon ? C.Heading : FAbyssUiStyle::Rgb(0x9fe0ff);
 				P.Divider(FVector2D(CenterX, Y - 22.0), 260.f, true, FAbyssUiStyle::WithAlpha(C.Gold, Alpha));
-				P.TextCentered(FVector2D(CenterX, Y), Banner.Title, Ctx->Style().Title(22.f, true, 3), FAbyssUiStyle::WithAlpha(Color, Alpha));
-				if (!Banner.Subtitle.IsEmpty())
+				for (int32 Line = 0; Line < TitleLines.Num(); ++Line)
 				{
-					P.TextCentered(FVector2D(CenterX, Y + 28.0), Banner.Subtitle, Ctx->Style().Body(14.f, false, 2), FAbyssUiStyle::WithAlpha(C.TextSoft, Alpha));
+					P.TextCentered(FVector2D(CenterX, Y + TitleStep * Line), TitleLines[Line], Ctx->Style().Title(22.f, true, 3),
+						FAbyssUiStyle::WithAlpha(Color, Alpha));
 				}
-				P.Divider(FVector2D(CenterX, Y + 22.0 + (Banner.Subtitle.IsEmpty() ? 0.0 : 22.0)), 260.f, false, FAbyssUiStyle::WithAlpha(C.Gold, Alpha));
+				for (int32 Line = 0; Line < SubtitleLines.Num(); ++Line)
+				{
+					P.TextCentered(FVector2D(CenterX, Y + 28.0 + TitleExtra + SubtitleStep * Line), SubtitleLines[Line], Ctx->Style().Body(14.f, false, 2),
+						FAbyssUiStyle::WithAlpha(C.TextSoft, Alpha));
+				}
+				const double SubtitleH = SubtitleLines.Num() > 0 ? 22.0 + SubtitleStep * (SubtitleLines.Num() - 1) : 0.0;
+				P.Divider(FVector2D(CenterX, Y + 22.0 + TitleExtra + SubtitleH), 260.f, false, FAbyssUiStyle::WithAlpha(C.Gold, Alpha));
 			}
 		}
 	}

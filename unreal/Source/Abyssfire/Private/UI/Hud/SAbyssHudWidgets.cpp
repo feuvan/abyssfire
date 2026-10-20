@@ -400,6 +400,9 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 		return;
 	}
 	const float Width = GetWidth();
+	// The lines wrap inside the frame's 9 px side padding (they used to wrap at Width - 6, so a title or objective that
+	// needed the last 12 px ran past the frame; U5 text-fit pass, e.g. "[Side] Bounty: Harke the Oathless" on desktop).
+	const float ContentW = Width - 18.f;
 	const float TitlePx = bTouch ? 19.f : 12.f;
 	const float SummaryPx = bTouch ? 16.f : 10.f;
 	const float ObjectivePx = bTouch ? 14.f : 9.f;
@@ -430,7 +433,7 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 				.Font(Ctx->Style().Body(TitlePx, true, 2))
 				.ColorAndOpacity(FSlateColor(Entry.TitleColor))
 				.AutoWrapText(false)
-				.WrapTextAt(Width - 6.f)
+				.WrapTextAt(ContentW)
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()
@@ -469,7 +472,7 @@ void SAbyssQuestTracker::Refresh(const abyss::Snapshot& Snap, bool bForce)
 						.Font(Ctx->Style().Body(ObjectivePx, false, 1))
 						.ColorAndOpacity(FSlateColor(LineColor))
 						.AutoWrapText(false)
-						.WrapTextAt(Width - 6.f - Indent - (Objective.Icon != nullptr ? IconPx + 3.f : 0.f))
+						.WrapTextAt(ContentW - Indent - (Objective.Icon != nullptr ? IconPx + 3.f : 0.f))
 					];
 				Lines->AddSlot()
 					.AutoHeight()

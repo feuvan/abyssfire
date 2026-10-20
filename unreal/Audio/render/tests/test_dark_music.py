@@ -241,7 +241,7 @@ def test_director_references_resolve():
     tracks, stingers = set(DATA["tracks"]), set(DATA["stingers"])
     assert d["zone"] == "emerald_plains"
     assert set(d["zoneTracks"]) == {"explore", "combat", "victory"} and set(d["zoneTracks"].values()) <= tracks
-    assert set(d.get("heldOverrides", {})) <= set(d["zoneTracks"]) and all(d["heldOverrides"].values())
+    assert set(d.get("heldOverrides", {})) <= set(d["zoneTracks"]) and all(d.get("heldOverrides", {}).values())
     assert d["priority"][0] == "story"
     ids = [r["id"] for r in d["regions"]]
     assert len(ids) == len(set(ids)) and {"breach_rim", "knellwatch", "red_field"} <= set(ids)
@@ -269,6 +269,12 @@ def test_director_references_resolve():
         then = beat.get("then")
         if isinstance(then, dict):
             assert then["track"] in tracks
+    # U7 reads the beats it acts on from these fields, not from the prose (`until`, `at`).
+    siege = next(b for b in d["story"] if b["beat"] == "cs_rf_siege")
+    assert (siege["at"], siege["track"], siege["quest"], siege["then"]) == ("end", "siege", "q_rf_last_toll", "")
+    finale = next(b for b in d["story"] if b["beat"] == "cs_rf_finale")
+    assert (finale["at"], finale["stepIndex"], finale["track"]) == ("step 1", 0, "")
+    assert finale["then"] == {"afterSec": 6.0, "track": "knellwatch_lute", "fadeInSec": 6.0}
     # Every track and stinger is used by the director.
     used = set(d["zoneTracks"].values()) | {r["track"] for r in d["regions"]} | \
         {b.get("track") for b in d["story"]} | {b["then"]["track"] for b in d["story"] if isinstance(b.get("then"),
@@ -286,13 +292,13 @@ def test_manifest_tables():
 
     over = render_all.zone_overrides(DATA)
     assert over["ember_tower"] == render_all.ZONE_OVERRIDES["ember_tower"]
-    # The combat -> drones row is held until U7's same-track no-op lands (the core restarts the track on the combat
-    # edge: with today's player the drones would restart at every fight); the director table keeps it for U7.
-    assert set(DATA["director"]["heldOverrides"]) == {"combat"}
-    assert over["emerald_plains"] == {"emerald_plains_explore": "march_drones",
+    # U7 released the combat -> drones row (UAbyssAudioSystem: a zone-overridden request that resolves to the track
+    # already sounding is a no-op even with restart = true, so the combat edge keeps the drones going).
+    assert "heldOverrides" not in DATA["director"]
+    assert over["emerald_plains"] == {"emerald_plains_explore": "march_drones", "emerald_plains_combat": "march_drones",
                                       "emerald_plains_victory": "valdras_falls"}
-    released = dict(DATA, director=dict(DATA["director"], heldOverrides={}))
-    assert render_all.zone_overrides(released)["emerald_plains"]["emerald_plains_combat"] == "march_drones"
+    held = dict(DATA, director=dict(DATA["director"], heldOverrides={"combat": "waits for a reader"}))
+    assert "emerald_plains_combat" not in render_all.zone_overrides(held)["emerald_plains"]
     entries = render_all.dark_entries(DATA)
     assert {e["key"] for e in entries} == set(DATA["tracks"])
     assert all(e["kind"] == "dark" and e["asset"].startswith("SW_MUS_") for e in entries)
@@ -301,7 +307,7 @@ def test_manifest_tables():
     assets = {p.asset: {"lengthSec": 1.0} for p in PIECES.values()}
     t = render_all.music_director_table(DATA, music, assets)
     assert t["decision"] == "AU3" and t["tracks"]["boss_ch1"] == "SW_MUS_BossCh1"
-    assert t["zoneTracks"]["combat"] == "march_drones" and set(t["heldOverrides"]) == {"combat"}
+    assert t["zoneTracks"]["combat"] == "march_drones" and "heldOverrides" not in t
     assert t["bosses"]["valdras"]["phaseStingers"] == {"1": "stinger_valdras_roll_call",
                                                        "2": "stinger_valdras_no_retreat"}
     assert set(t["stingers"]) == set(DATA["stingers"])

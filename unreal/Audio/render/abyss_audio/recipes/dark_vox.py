@@ -1063,13 +1063,34 @@ NAMED_CUES = {
     "vox_valdras_fire": (lambda v: valdras_fire(), 1, -4.0, False, _conc(1, 0), "P3 No Retreat: the standard ignites"),
 }
 
-# Per-monster replacements of the family cues (UE U7: play the named cue instead of the family's).
+# Per-monster named cues (UE U7, UAbyssAudioSystem): a key of OVERRIDE_KEYS -> the named cue that plays instead of the
+# family's cue (monster_*) or on that beat of the monster (anim.*, miniboss.opened, story.say). `anim.<action>` uses
+# the core's AnimAction names (abyss/sim/SimTypes.h: attack, cast, roar, ...).
 NAMED_OVERRIDES = {
     "valdras": {"monster_aggro": "vox_valdras_order", "monster_hurt": "vox_valdras_hurt",
-                "monster_death.vocal": "vox_valdras_death"},
+                "monster_death.vocal": "vox_valdras_death", "anim.roar": "vox_valdras_roar",
+                "anim.attack": "vox_valdras_plate", "story.say": "vox_valdras_order"},
     "miniboss_corpseherd": {"monster_aggro": "vox_corpseherd_bell", "monster_hurt": "vox_corpseherd_hurt",
-                            "monster_death.vocal": "vox_corpseherd_home"},
+                            "monster_death.vocal": "vox_corpseherd_home", "anim.attack": "vox_corpseherd_bell",
+                            "anim.cast": "vox_corpseherd_bell", "miniboss.opened": "vox_corpseherd_lullaby"},
 }
+# What each NAMED_OVERRIDES key means (the manifest's voiceFamilies.overrideKeys; read by U7).
+OVERRIDE_KEYS = {
+    "monster_aggro": "replaces the family's monster_aggro cue (EvSfx monster_aggro whose source is the monster)",
+    "monster_hurt": "replaces the family's monster_hurt cue (EvSfx monster_hurt whose source is the monster)",
+    "monster_death.vocal": "replaces the family death vocal layered on monster_death (the base groan still plays)",
+    "anim.<action>": "plays at the monster when the core starts that AnimAction on it (EvPlayAnim; e.g. the boss "
+                     "intro's focus-step roar, every attack swing)",
+    "miniboss.opened": "plays at the monster when its pre-fight dialogue opens (EvMiniBossDialogue opened)",
+    "story.say": "plays at the nearest living instance when a cutscene `say` step has the monster as its speaker "
+                 "(EvStoryStep: the boss intro's lines)",
+}
+# Named cues tied to a story beat rather than to a monster (the manifest's cueTriggers rows; dark_ambience.BELL_TRIGGERS
+# documents the row format). Step indices are the core's 0-based EvStoryStep::index.
+VOX_TRIGGERS = [
+    {"id": "herd_single_ring", "cue": "vox_corpseherd_bell", "on": "storyStep", "beat": "cs_rf_herd", "index": 2,
+     "tile": [60, 55], "use": "cs_rf_herd step 3: dying, she rings the handbell once, softly (the wagon ring, 60,55)"},
+]
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Planned cues: the design's non-vocal monster sounds (monsters.md 2.1-2.7 "Sound" rows) that no AU package renders yet.

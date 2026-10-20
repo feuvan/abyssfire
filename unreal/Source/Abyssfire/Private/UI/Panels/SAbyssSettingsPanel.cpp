@@ -117,6 +117,10 @@ void SAbyssSettingsPanel::Refresh(const abyss::Snapshot& Snap)
 			Ctx->LocOr("ui.settings.quality.balanced", TEXT("Medium")), Ctx->LocOr("ui.settings.quality.high", TEXT("High")) },
 		[](const FAbyssUserSettings& S) { return static_cast<int32>(S.Quality); },
 		[](FAbyssUserSettings& S, int32 Index) { S.Quality = static_cast<EAbyssQualitySetting>(FMath::Clamp(Index, 0, 3)); }));
+	// Brightness (U1): 50-150 %, an exposure bias on the 3D scene (the UI keeps its colours).
+	Row(MakeSliderRow(Ctx->LocOr("ui.settings.brightness", TEXT("Brightness")),
+		[](const FAbyssUserSettings& S) { return S.Brightness; },
+		[](FAbyssUserSettings& S, float V) { S.Brightness = V; }, 0.5f, 1.5f));
 	Row(MakeChoiceRow(Ctx->LocOr("ui.settings.controls", TEXT("Controls")),
 		{ Ctx->LocOr("ui.settings.controls.auto", TEXT("Auto")), Ctx->LocOr("ui.settings.controls.desktop", TEXT("Mouse & Keys")),
 			Ctx->LocOr("ui.settings.controls.touch", TEXT("Touch")) },

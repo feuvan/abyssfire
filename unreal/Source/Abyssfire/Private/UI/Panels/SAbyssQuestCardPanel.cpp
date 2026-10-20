@@ -15,6 +15,7 @@
 
 #include "Framework/AbyssText.h"
 #include "UI/AbyssUiStyle.h"
+#include "UI/Panels/AbyssQuestCardRules.h"
 #include "UI/Widgets/AbyssUiWidgets.h"
 
 namespace
@@ -49,30 +50,40 @@ void SAbyssQuestCardPanel::Construct(const FArguments& InArgs, const TSharedRef<
 void SAbyssQuestCardPanel::Refresh(const abyss::Snapshot& Snap)
 {
 	const abyss::DataStore* Data = Ctx->GetData();
-	if (Data == nullptr || Snap.questCard == nullptr || !Snap.questCard->open || Snap.questCard->entries.empty() || Snap.quests == nullptr)
+	if (Data == nullptr || Snap.questCard == nullptr || !Snap.questCard->open || Snap.quests == nullptr)
+	{
+		return;
+	}
+	namespace QC = AbyssQuestCardRules;
+	const abyss::QuestCardState& Card = *Snap.questCard;
+	// U5 (AbyssQuestCardRules.h): the page's entry, or the K1 progress lines alone (a progress-only card used to draw
+	// nothing: the core opened its modal and the panel returned on the empty entry list).
+	const QC::FCardModel Model = QC::BuildCardModel(Card, EntryIndex, Data);
+	if (!Model.bVisible)
 	{
 		return;
 	}
 	const TSharedRef<FAbyssUiContext> Context = Ctx.ToSharedRef();
 	const FAbyssUiPalette& C = Ctx->Style().Colors();
-	const abyss::QuestCardState& Card = *Snap.questCard;
 	const bool bTouch = Ctx->IsTouch();
 	const bool bDying = Ctx->IsHeroDying();
 	NpcId = Card.npcId;
-	const int32 EntryCount = static_cast<int32>(Card.entries.size());
-	EntryIndex = FMath::Clamp(EntryIndex, 0, EntryCount - 1);
-	const abyss::QuestCardEntry& Entry = Card.entries[static_cast<size_t>(EntryIndex)];
-	if (Entry.quest == nullptr)
+	const int32 EntryCount = Model.EntryCount;
+	EntryIndex = Model.EntryIndex;
+	const abyss::QuestCardEntry* const EntryPtr = Model.Entry;
+	const abyss::QuestDef* const QuestPtr = EntryPtr != nullptr ? EntryPtr->quest : nullptr;
+	if (QuestPtr == nullptr)
 	{
-		return;
+		ShownQuest.clear();
+		Choice = -1;
 	}
-	const abyss::QuestDef& Quest = *Entry.quest;
-	if (Quest.id != ShownQuest)
+	else if (QuestPtr->id != ShownQuest)
 	{
-		ShownQuest = Quest.id;
-		Choice = Entry.choices.empty() ? -1 : 0;  // the index resets the choice selection
+		ShownQuest = QuestPtr->id;
+		Choice = EntryPtr->choices.empty() ? -1 : 0;  // the index resets the choice selection
 	}
-	const bool bMain = Quest.category == abyss::QuestCategory::Main;
+	const bool bMain = QuestPtr != nullptr ? QuestPtr->category == abyss::QuestCategory::Main
+		: (!Model.Progress.empty() && Model.Progress.front().bMain);
 	const float Wrap = 380.f;
 	double ContentH = 0.0;
 	TSharedRef<SVerticalBox> Lines = SNew(SVerticalBox);
@@ -93,6 +104,15 @@ void SAbyssQuestCardPanel::Refresh(const abyss::Snapshot& Snap)
 			.ColorAndOpacity(FSlateColor(Color))
 			.WrapTextAt(Wrap)
 		];
+	};
+	// caption texts of a reward choice: the narrative label (when its key resolves) and the slot name
+	const auto LabelText = [this](const std::string& Key)
+	{
+		return !Key.empty() && Ctx->HasKey(Key) ? Ctx->LocStr(Key) : FString();
+	};
+	const auto SlotName = [this](const std::string& SlotId)
+	{
+		return SlotId.empty() ? FString() : Ctx->NameOr(QC::SlotCaptionKey(SlotId), SlotId);
 	};
 
 	// navigation < n/N > when the NPC has several entries
@@ -136,137 +156,151 @@ void SAbyssQuestCardPanel::Refresh(const abyss::Snapshot& Snap)
 			];
 	}
 
-	// name, badge, giver, type
-	AddText(Ctx->QuestName(Quest), 17.f, bMain ? FAbyssUiStyle::Rgb(0xffd98a) : C.Parchment, true, 0.f);
-	const std::string TypeId(abyss::EnumName(Quest.type));
-	AddText(FString::Printf(TEXT("%s  %s  \x00B7  %s"),
-		*(bMain ? Ctx->LocOrStr("ui.questCard.mainBadge", TEXT("[Main]")) : Ctx->LocOrStr("ui.questCard.sideBadge", TEXT("[Side]"))),
-		*Ctx->NpcName(NpcId), *Ctx->NameOr("sys.quest.type." + TypeId, TypeId)), 11.f, C.Muted, false, 2.f);
+	if (QuestPtr != nullptr)
+	{
+		const abyss::QuestCardEntry& Entry = *EntryPtr;
+		const abyss::QuestDef& Quest = *QuestPtr;
 
-	// the NPC's speech: offer line on an accept card, complete line on a turn-in card (in quotes when the key exists)
-	const std::string SpeechKey = Entry.turnIn ? (Quest.completeKey.empty() ? "data.quest." + Quest.id + ".complete" : Quest.completeKey)
-		: (Quest.offerKey.empty() ? "data.quest." + Quest.id + ".offer" : Quest.offerKey);
-	const bool bSpeech = Ctx->HasKey(SpeechKey);
-	if (bSpeech)
-	{
-		AddText(FString::Printf(TEXT("\x201C%s\x201D"), *Ctx->LocStr(SpeechKey)), 13.f, FAbyssUiStyle::Rgb(0xf0dcc8), false, 8.f, true);
-	}
-	if (!(Entry.turnIn && bSpeech))
-	{
-		AddText(Ctx->NameOr(Quest.descKey.empty() ? "data.quest." + Quest.id + ".desc" : Quest.descKey, Quest.description), 12.f, C.TextSoft, false, 8.f);
-	}
+		// name, badge, giver, type
+		AddText(Ctx->QuestName(Quest), 17.f, bMain ? FAbyssUiStyle::Rgb(0xffd98a) : C.Parchment, true, 0.f);
+		const std::string TypeId(abyss::EnumName(Quest.type));
+		AddText(FString::Printf(TEXT("%s  %s  \x00B7  %s"),
+			*(bMain ? Ctx->LocOrStr("ui.questCard.mainBadge", TEXT("[Main]")) : Ctx->LocOrStr("ui.questCard.sideBadge", TEXT("[Side]"))),
+			*Ctx->NpcName(NpcId), *Ctx->NameOr("sys.quest.type." + TypeId, TypeId)), 11.f, C.Muted, false, 2.f);
 
-	// objectives
-	const abyss::QuestProgress* Progress = Snap.quests->Progress(Quest.id);
-	AddText(Ctx->LocOrStr("ui.questCard.objectives", TEXT("Objectives:")), 12.f, C.Heading, true, 8.f);
-	for (size_t Index = 0; Index < Quest.objectives.size(); ++Index)
-	{
-		const abyss::QuestObjectiveDef& Objective = Quest.objectives[Index];
-		const int32 Current = Progress != nullptr && Index < Progress->objectives.size()
-			? FMath::Min(Progress->objectives[Index], Objective.required) : 0;
-		const bool bDone = Current >= Objective.required;
-		const FString ObjectiveText = FString::Printf(TEXT("%s %s %s  %d/%d"), bDone ? TEXT("\x2713") : TEXT("\x25CB"),
-			*Ctx->ObjectiveTypeLabel(Objective, Quest.type), *Ctx->ObjectiveTargetLabel(Quest, static_cast<int32>(Index)), Current,
-			Objective.required);
-		const FLinearColor ObjectiveColor = bDone ? C.Good : C.Text;
-		const FSlateBrush* KindIcon = Ctx->QuestObjectiveIcon(Objective);
-		if (KindIcon == nullptr)
+		// the NPC's speech: offer line on an accept card, complete line on a turn-in card (in quotes when the key exists)
+		const std::string SpeechKey = Entry.turnIn ? (Quest.completeKey.empty() ? "data.quest." + Quest.id + ".complete" : Quest.completeKey)
+			: (Quest.offerKey.empty() ? "data.quest." + Quest.id + ".offer" : Quest.offerKey);
+		const bool bSpeech = Ctx->HasKey(SpeechKey);
+		if (bSpeech)
 		{
-			AddText(ObjectiveText, 12.f, ObjectiveColor, false, 2.f);
-			continue;
+			AddText(FString::Printf(TEXT("\x201C%s\x201D"), *Ctx->LocStr(SpeechKey)), 13.f, FAbyssUiStyle::Rgb(0xf0dcc8), false, 8.f, true);
 		}
-		// U11: a collect objective shows its quest-item icon (T_UI_QuestItem_<kind>, 20 px) before the line.
-		const FSlateFontInfo ObjectiveFont = Context->Style().Body(12.f, false, 1);
-		const float TextWrap = Wrap - 24.f;
-		ContentH += 2.0 + FMath::Max(20.0, AbyssQuestCard_TextHeight(ObjectiveText, ObjectiveFont, TextWrap));
-		Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 0.f))
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
-			[
-				AbyssUi::Icon(Context, KindIcon, 20.f, bDone ? FLinearColor(1.f, 1.f, 1.f, 0.75f) : FLinearColor::White)
-			]
-			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Text(FText::AsCultureInvariant(ObjectiveText))
-				.Font(ObjectiveFont)
-				.ColorAndOpacity(FSlateColor(ObjectiveColor))
-				.WrapTextAt(TextWrap)
-			]
-		];
-	}
-
-	// reward summary (embers are not listed)
-	const abyss::QuestRewardDef& Rewards = Quest.rewards;
-	TArray<FString> Parts;
-	if (Rewards.exp > 0)
-	{
-		Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardExp", TEXT("{exp} EXP"), { FAbyssUiContext::Arg("exp", Rewards.exp) }));
-	}
-	if (Rewards.gold > 0)
-	{
-		Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardGold", TEXT("{gold} Gold"), { FAbyssUiContext::Arg("gold", Rewards.gold) }));
-	}
-	if (!Rewards.items.empty())
-	{
-		Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardItems", TEXT("{count} Items"), { FAbyssUiContext::Arg("count", static_cast<int64>(Rewards.items.size())) }));
-	}
-	if (!Rewards.choices.empty())
-	{
-		Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardChoice", TEXT("pick 1 of {count} gear"),
-			{ FAbyssUiContext::Arg("count", static_cast<int64>(Rewards.choices.size())) }));
-	}
-	if (!Rewards.petReward.empty())
-	{
-		Parts.Add(Ctx->LocOrStr("sys.questCard.rewardPet", TEXT("Pet")));
-	}
-	if (Parts.Num() > 0)
-	{
-		AddText(Ctx->LocOrStr("ui.questCard.rewards", TEXT("Rewards:")), 12.f, C.Heading, true, 8.f);
-		AddText(FString::Join(Parts, TEXT("  \x00B7  ")), 12.f, FAbyssUiStyle::Rgb(0xffd35a), false, 2.f);
-	}
-	// fixed reward items
-	if (!Rewards.items.empty())
-	{
-		TSharedRef<SHorizontalBox> Icons = SNew(SHorizontalBox);
-		for (const std::string& BaseId : Rewards.items)
+		if (!(Entry.turnIn && bSpeech))
 		{
-			abyss::ItemInstance Item;
-			Item.baseId = BaseId;
-			Item.quality = abyss::ItemQuality::Normal;
-			FAbyssSlotItem SlotEntry;
-			SlotEntry.Item = Item;
-			SlotEntry.bCompare = false;
-			Icons->AddSlot().AutoWidth().Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+			AddText(Ctx->NameOr(Quest.descKey.empty() ? "data.quest." + Quest.id + ".desc" : Quest.descKey, Quest.description), 12.f, C.TextSoft, false, 8.f);
+		}
+
+		// objectives
+		const abyss::QuestProgress* Progress = Snap.quests->Progress(Quest.id);
+		AddText(Ctx->LocOrStr("ui.questCard.objectives", TEXT("Objectives:")), 12.f, C.Heading, true, 8.f);
+		for (size_t Index = 0; Index < Quest.objectives.size(); ++Index)
+		{
+			const abyss::QuestObjectiveDef& Objective = Quest.objectives[Index];
+			const int32 Current = Progress != nullptr && Index < Progress->objectives.size()
+				? FMath::Min(Progress->objectives[Index], Objective.required) : 0;
+			const bool bDone = Current >= Objective.required;
+			const FString ObjectiveText = FString::Printf(TEXT("%s %s %s  %d/%d"), bDone ? TEXT("\x2713") : TEXT("\x25CB"),
+				*Ctx->ObjectiveTypeLabel(Objective, Quest.type), *Ctx->ObjectiveTargetLabel(Quest, static_cast<int32>(Index)), Current,
+				Objective.required);
+			const FLinearColor ObjectiveColor = bDone ? C.Good : C.Text;
+			const FSlateBrush* KindIcon = Ctx->QuestObjectiveIcon(Objective);
+			if (KindIcon == nullptr)
+			{
+				AddText(ObjectiveText, 12.f, ObjectiveColor, false, 2.f);
+				continue;
+			}
+			// U11: a collect objective shows its quest-item icon (T_UI_QuestItem_<kind>, 20 px) before the line.
+			const FSlateFontInfo ObjectiveFont = Context->Style().Body(12.f, false, 1);
+			const float TextWrap = Wrap - 24.f;
+			ContentH += 2.0 + FMath::Max(20.0, AbyssQuestCard_TextHeight(ObjectiveText, ObjectiveFont, TextWrap));
+			Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 0.f))
 			[
-				SNew(SAbyssItemSlot, Context).SlotSize(34.f).Entry(SlotEntry)
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+				[
+					AbyssUi::Icon(Context, KindIcon, 20.f, bDone ? FLinearColor(1.f, 1.f, 1.f, 0.75f) : FLinearColor::White)
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(FText::AsCultureInvariant(ObjectiveText))
+					.Font(ObjectiveFont)
+					.ColorAndOpacity(FSlateColor(ObjectiveColor))
+					.WrapTextAt(TextWrap)
+				]
 			];
 		}
-		ContentH += 40.0;
-		Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))[Icons];
-	}
-	// pick-one gear: generated choices on a turn-in card, the slot preview on an accept card
-	if (!Rewards.choices.empty())
-	{
-		if (Entry.turnIn && !Entry.choices.empty())
+
+		// reward summary (embers are not listed)
+		const abyss::QuestRewardDef& Rewards = Quest.rewards;
+		TArray<FString> Parts;
+		if (Rewards.exp > 0)
 		{
-			AddText(Ctx->LocOrStr("ui.questCard.chooseReward", TEXT("Choose one reward")), 12.f, C.Heading, true, 8.f);
-			TSharedRef<SHorizontalBox> Choices = SNew(SHorizontalBox);
-			for (int32 Index = 0; Index < static_cast<int32>(Entry.choices.size()); ++Index)
+			Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardExp", TEXT("{exp} EXP"), { FAbyssUiContext::Arg("exp", Rewards.exp) }));
+		}
+		if (Rewards.gold > 0)
+		{
+			Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardGold", TEXT("{gold} Gold"), { FAbyssUiContext::Arg("gold", Rewards.gold) }));
+		}
+		if (!Rewards.items.empty())
+		{
+			Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardItems", TEXT("{count} Items"), { FAbyssUiContext::Arg("count", static_cast<int64>(Rewards.items.size())) }));
+		}
+		if (!Rewards.choices.empty())
+		{
+			Parts.Add(Ctx->LocArgsOrStr("sys.questCard.rewardChoice", TEXT("pick 1 of {count} gear"),
+				{ FAbyssUiContext::Arg("count", static_cast<int64>(Rewards.choices.size())) }));
+		}
+		if (!Rewards.petReward.empty())
+		{
+			Parts.Add(Ctx->LocOrStr("sys.questCard.rewardPet", TEXT("Pet")));
+		}
+		if (Parts.Num() > 0)
+		{
+			AddText(Ctx->LocOrStr("ui.questCard.rewards", TEXT("Rewards:")), 12.f, C.Heading, true, 8.f);
+			AddText(FString::Join(Parts, TEXT("  \x00B7  ")), 12.f, FAbyssUiStyle::Rgb(0xffd35a), false, 2.f);
+		}
+		// fixed reward items
+		if (!Rewards.items.empty())
+		{
+			TSharedRef<SHorizontalBox> Icons = SNew(SHorizontalBox);
+			for (const std::string& BaseId : Rewards.items)
 			{
+				abyss::ItemInstance Item;
+				Item.baseId = BaseId;
+				Item.quality = abyss::ItemQuality::Normal;
 				FAbyssSlotItem SlotEntry;
-				SlotEntry.Item = Entry.choices[static_cast<size_t>(Index)];
-				SlotEntry.bSelected = Index == Choice;
-				const std::string SlotId = static_cast<size_t>(Index) < Rewards.choices.size()
-					? std::string(abyss::EnumName(Rewards.choices[static_cast<size_t>(Index)])) : std::string();
-				Choices->AddSlot().AutoWidth().Padding(FMargin(0.f, 0.f, 10.f, 0.f))
+				SlotEntry.Item = Item;
+				SlotEntry.bCompare = false;
+				Icons->AddSlot().AutoWidth().Padding(FMargin(0.f, 0.f, 4.f, 0.f))
 				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-					[
-						SNew(SAbyssItemSlot, Context)
-						.SlotSize(bTouch ? 56.f : 44.f)
+					SNew(SAbyssItemSlot, Context).SlotSize(34.f).Entry(SlotEntry)
+				];
+			}
+			ContentH += 40.0;
+			Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))[Icons];
+		}
+		// pick-one gear: generated choices on a turn-in card, the slot preview on an accept card
+		if (!Rewards.choices.empty())
+		{
+			if (Entry.turnIn && !Entry.choices.empty())
+			{
+				AddText(Ctx->LocOrStr("ui.questCard.chooseReward", TEXT("Choose one reward")), 12.f, C.Heading, true, 8.f);
+				// K1 labelled choices: each item carries the label of the slot it was generated for (primary caption, the
+				// narrative choice) over its slot name; the columns share the card width and wrap their captions. An
+				// unlabelled card keeps today's layout (slot name under each item).
+				bool bLabelled = false;
+				for (const QC::FChoiceCaption& Caption : Model.Choices)
+				{
+					bLabelled = bLabelled || !LabelText(Caption.LabelKey).IsEmpty();
+				}
+				const int32 ChoiceCount = static_cast<int32>(Entry.choices.size());
+				const float SlotSize = bTouch ? 56.f : 44.f;
+				const float ColumnW = QC::ChoiceColumnWidth(ChoiceCount, Wrap, SlotSize, 10.f, 150.f);
+				const FSlateFontInfo SecondaryFont = Context->Style().Body(bTouch ? 11.f : 9.f, false, 1);
+				double RowH = 0.0;
+				TSharedRef<SHorizontalBox> Choices = SNew(SHorizontalBox);
+				for (int32 Index = 0; Index < ChoiceCount; ++Index)
+				{
+					const QC::FChoiceCaption Caption = Index < static_cast<int32>(Model.Choices.size())
+						? Model.Choices[static_cast<size_t>(Index)] : QC::FChoiceCaption();
+					const bool bSelected = Index == Choice;
+					FAbyssSlotItem SlotEntry;
+					SlotEntry.Item = Entry.choices[static_cast<size_t>(Index)];
+					SlotEntry.bSelected = bSelected;
+					const TSharedRef<SWidget> ItemSlot = SNew(SAbyssItemSlot, Context)
+						.SlotSize(SlotSize)
 						.Entry(SlotEntry)
 						.OnClicked_Lambda([this, Index, Context](const FVector2D& Position)
 						{
@@ -288,67 +322,150 @@ void SAbyssQuestCardPanel::Refresh(const abyss::Snapshot& Snap)
 									}
 								}
 							}
-						})
-					]
-					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 2.f, 0.f, 0.f))
+						});
+					const FString LabelStr = LabelText(Caption.LabelKey);
+					const FString SlotStr = SlotName(Caption.SlotId);
+					if (!bLabelled)
+					{
+						Choices->AddSlot().AutoWidth().Padding(FMargin(0.f, 0.f, 10.f, 0.f))
+						[
+							SNew(SVerticalBox)
+							+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+							[
+								ItemSlot
+							]
+							+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 2.f, 0.f, 0.f))
+							[
+								AbyssUi::Label(*Ctx, FText::AsCultureInvariant(SlotStr), 10.f, bSelected ? C.GoldBright : C.Muted, bSelected, 1)
+							]
+						];
+						continue;
+					}
+					const FString Primary = LabelStr.IsEmpty() ? SlotStr : LabelStr;
+					const FString Secondary = LabelStr.IsEmpty() ? FString() : SlotStr;
+					const FSlateFontInfo PrimaryFont = Context->Style().Body(bTouch ? 13.f : 11.f, bSelected, 1);
+					double ColumnH = SlotSize + 2.0 + AbyssQuestCard_TextHeight(Primary, PrimaryFont, ColumnW);
+					TSharedRef<SVerticalBox> Column = SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+						[
+							ItemSlot
+						]
+						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 2.f, 0.f, 0.f))
+						[
+							SNew(STextBlock)
+							.Text(FText::AsCultureInvariant(Primary))
+							.Font(PrimaryFont)
+							.ColorAndOpacity(FSlateColor(bSelected ? C.GoldBright : C.Text))
+							.Justification(ETextJustify::Center)
+							.WrapTextAt(ColumnW)
+						];
+					if (!Secondary.IsEmpty())
+					{
+						ColumnH += 1.0 + AbyssQuestCard_TextHeight(Secondary, SecondaryFont, ColumnW);
+						Column->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 1.f, 0.f, 0.f))
+						[
+							SNew(STextBlock)
+							.Text(FText::AsCultureInvariant(Secondary))
+							.Font(SecondaryFont)
+							.ColorAndOpacity(FSlateColor(C.Muted))
+							.Justification(ETextJustify::Center)
+							.WrapTextAt(ColumnW)
+						];
+					}
+					RowH = FMath::Max(RowH, ColumnH);
+					Choices->AddSlot().AutoWidth().Padding(FMargin(0.f, 0.f, Index + 1 < ChoiceCount ? 10.f : 0.f, 0.f))
 					[
-						AbyssUi::Label(*Ctx, FText::AsCultureInvariant(Ctx->NameOr("sys.questCard.choice." + SlotId, SlotId)), 10.f,
-							Index == Choice ? C.GoldBright : C.Muted, Index == Choice, 1)
-					]
-				];
+						SNew(SBox)
+						.WidthOverride(ColumnW)
+						[
+							Column
+						]
+					];
+				}
+				ContentH += bLabelled ? 4.0 + RowH : (bTouch ? 80.0 : 66.0);
+				Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))[Choices];
 			}
-			ContentH += bTouch ? 80.0 : 66.0;
-			Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))[Choices];
-		}
-		else if (!Entry.turnIn)
-		{
-			TArray<FString> SlotNames;
-			for (const abyss::RewardSlot Slot : Rewards.choices)
+			else if (!Entry.turnIn)
 			{
-				const std::string SlotId(abyss::EnumName(Slot));
-				SlotNames.Add(Ctx->NameOr("sys.questCard.choice." + SlotId, SlotId));
+				// slot names, each after its narrative label when the quest labels its choices ("label \x00B7 slot")
+				TArray<FString> SlotNames;
+				for (const QC::FChoiceCaption& Caption : Model.Preview)
+				{
+					const FString LabelStr = LabelText(Caption.LabelKey);
+					const FString SlotStr = SlotName(Caption.SlotId);
+					SlotNames.Add(LabelStr.IsEmpty() ? SlotStr : FString::Printf(TEXT("%s \x00B7 %s"), *LabelStr, *SlotStr));
+				}
+				AddText(Ctx->LocArgsOrStr("ui.questCard.choicePreview", TEXT("Reward choice: {slots}"),
+					{ FAbyssUiContext::Arg("slots", FString::Join(SlotNames, TEXT(" / "))) }), 11.f, C.Info, false, 4.f);
 			}
-			AddText(Ctx->LocArgsOrStr("ui.questCard.choicePreview", TEXT("Reward choice: {slots}"),
-				{ FAbyssUiContext::Arg("slots", FString::Join(SlotNames, TEXT(" / "))) }), 11.f, C.Info, false, 4.f);
 		}
 	}
 
-	// buttons: Accept / Turn in, View story (NPC with a dialogue tree)
+	// K1 progress lines: the giver's line for each of its active quests (quest name, then the line in the speech style).
+	// Alone on a progress-only card; under an "Active" rule after the entry otherwise.
+	if (!Model.Progress.empty())
+	{
+		const bool bAlone = QuestPtr == nullptr;
+		if (!bAlone)
+		{
+			ContentH += 12.0 + 18.0;
+			Lines->AddSlot().AutoHeight().Padding(FMargin(0.f, 12.f, 0.f, 0.f))
+			[
+				AbyssUi::SectionHeader(Context, Ctx->LocOr("ui.questLog.tab.active", TEXT("Active")), Wrap, 12.f)
+			];
+		}
+		for (size_t Index = 0; Index < Model.Progress.size(); ++Index)
+		{
+			const QC::FProgressLine& Line = Model.Progress[Index];
+			const float NameTop = Index == 0 ? (bAlone ? 0.f : 4.f) : (bAlone ? 14.f : 10.f);
+			AddText(Ctx->QuestName(*Line.Quest), bAlone ? 15.f : 12.f, Line.bMain ? FAbyssUiStyle::Rgb(0xffd98a) : C.Parchment, true, NameTop);
+			const FString Said = LabelText(Line.LineKey);
+			if (!Said.IsEmpty())
+			{
+				AddText(FString::Printf(TEXT("\x201C%s\x201D"), *Said), 13.f, FAbyssUiStyle::Rgb(0xf0dcc8), false, 4.f, true);
+			}
+		}
+	}
+
+	// buttons: Accept / Turn in (entry), View story (NPC with a dialogue tree), Leave (progress-only card)
 	const abyss::NpcDef* Npc = Data->FindNpc(NpcId);
 	const bool bHasTree = Npc != nullptr && !Npc->dialogueTreeId.empty();
-	const std::string QuestId = Quest.id;
 	const std::string Giver = NpcId;
-	const bool bTurnIn = Entry.turnIn;
-	const int32 SelectedChoice = FMath::Max(0, Choice);
 	TSharedRef<SHorizontalBox> Buttons = SNew(SHorizontalBox);
-	Buttons->AddSlot()
-		.AutoWidth()
-		.Padding(FMargin(6.f, 0.f))
-		[
-			SNew(SAbyssButton, Context)
-			.Text(bTurnIn ? Ctx->LocOr("ui.questCard.turnIn", TEXT("Turn In")) : Ctx->LocOr("ui.questCard.accept", TEXT("Accept")))
-			.Kind(bTurnIn ? EAbyssButtonKind::Success : EAbyssButtonKind::Primary)
-			.FontPx(bTouch ? 17.f : 14.f)
-			.Width(bTouch ? 170.f : 140.f)
-			.Height(bTouch ? 50.f : 34.f)
-			.IsEnabled(!bDying)
-			.OnClicked_Lambda([Context, QuestId, Giver, bTurnIn, SelectedChoice]()
-			{
-				if (bTurnIn)
+	if (QuestPtr != nullptr)
+	{
+		const std::string QuestId = QuestPtr->id;
+		const bool bTurnIn = Model.Action == QC::ECardAction::TurnIn;
+		const int32 SelectedChoice = FMath::Max(0, Choice);
+		Buttons->AddSlot()
+			.AutoWidth()
+			.Padding(FMargin(6.f, 0.f))
+			[
+				SNew(SAbyssButton, Context)
+				.Text(bTurnIn ? Ctx->LocOr("ui.questCard.turnIn", TEXT("Turn In")) : Ctx->LocOr("ui.questCard.accept", TEXT("Accept")))
+				.Kind(bTurnIn ? EAbyssButtonKind::Success : EAbyssButtonKind::Primary)
+				.FontPx(bTouch ? 17.f : 14.f)
+				.Width(bTouch ? 170.f : 140.f)
+				.Height(bTouch ? 50.f : 34.f)
+				.IsEnabled(!bDying)
+				.OnClicked_Lambda([Context, QuestId, Giver, bTurnIn, SelectedChoice]()
 				{
-					// T17: the host arms the chain offer only once the core reports the turn-in (not on a rejected one).
-					if (IAbyssUiHost* Host = Context->GetHost())
+					if (bTurnIn)
 					{
-						Host->RequestQuestChainOffer(QuestId, Giver);
+						// T17: the host arms the chain offer only once the core reports the turn-in (not on a rejected one).
+						if (IAbyssUiHost* Host = Context->GetHost())
+						{
+							Host->RequestQuestChainOffer(QuestId, Giver);
+						}
+						Context->Submit(abyss::CmdQuestTurnIn{ QuestId, SelectedChoice });
 					}
-					Context->Submit(abyss::CmdQuestTurnIn{ QuestId, SelectedChoice });
-				}
-				else
-				{
-					Context->Submit(abyss::CmdQuestAccept{ QuestId });
-				}
-			})
-		];
+					else
+					{
+						Context->Submit(abyss::CmdQuestAccept{ QuestId });
+					}
+				})
+			];
+	}
 	if (bHasTree)
 	{
 		Buttons->AddSlot()
@@ -362,6 +479,22 @@ void SAbyssQuestCardPanel::Refresh(const abyss::Snapshot& Snap)
 				.Width(bTouch ? 150.f : 120.f)
 				.Height(bTouch ? 50.f : 34.f)
 				.OnClicked_Lambda([Context, Giver]() { Context->Submit(abyss::CmdDialogueOpenTree{ Giver }); })
+			];
+	}
+	if (QuestPtr == nullptr)
+	{
+		// a progress-only card has no quest action: Leave closes it (same as the frame's close button)
+		Buttons->AddSlot()
+			.AutoWidth()
+			.Padding(FMargin(6.f, 0.f))
+			[
+				SNew(SAbyssButton, Context)
+				.Text(Ctx->LocOr("ui.dialogue.leave", TEXT("Leave")))
+				.Kind(EAbyssButtonKind::Secondary)
+				.FontPx(bTouch ? 17.f : 14.f)
+				.Width(bTouch ? 170.f : 140.f)
+				.Height(bTouch ? 50.f : 34.f)
+				.OnClicked_Lambda([this]() { RequestClose(); })
 			];
 	}
 

@@ -41,10 +41,18 @@ empty: the web game is read-only for the remake.
 | `i18n/ch1World.ts` | Chapter 1 world strings as `[zh-CN, en]` pairs (zone, roster, mini-boss lines, hunts, boss intro, lore, hidden area, story decorations, the sealed Pit, new NPCs, achievements, events, elite affixes) | spread into both locales |
 | `i18n/ch1Quests.ts`, `i18n/ch1Npcs.ts`, `i18n/ch1Story.ts` | Chapter 1 narrative strings, same form: quests (name, quest-log line, offer, progress, turn-in), targets, clue notes, choice labels, the escort and the gate; the re-cast NPCs, their quest-gated lines (Wave 2), the Captain's tree, the Lanternwisp; prologue, chapter card, cutscenes | spread into both locales |
 | `autopilot/ch1.ts` (+ `autopilot/types.ts`) | the bot's Chapter 1 route: checkpoints, notes and steps (talk, dialogue tree, quest card, shop, gather, hunt, boss by role, clues, explore, escort, defend, walk, portal, equip) | new: `autopilot_routes.json` (no web module) |
+| `setPieces.ts` | the UE set-piece layer (1C U4, DECISIONS DR15): authored prop groups per zone (Knellwatch's bell frame, hearth dressing and Name Wall, the sealed Pit mouth, the Boneyard Gate, Ashwheat's bridge and cottages, the Sheepfold's wagon ring, the Breach Rim's dais / ash circles / banner ring, helmet stakes) with anchor (tile, camp prop, entrance, region, defend target), offset, ring, facing, art id chain / variant, socket effects / audio emitters / cue ripples, echo poses, occluder, `walkOver` reason, `yieldsToDefendTarget`. Presentation only: not generator input, not walkability | new: `set_pieces.json` (no web module) |
 | `tsconfig.json` | editor / `tsc -p` project (`@web/*` paths) | — |
 
-Added by later packages (implementation-plan.md §2.1, §9): `setPieces.ts` with its exporter table (`set_pieces.json`)
-and `maps/sub_rf_pit.ts` in Wave 3.
+Added by later packages (implementation-plan.md §2.1, §9): `maps/sub_rf_pit.ts` in Wave 3.
+
+**Set pieces (package 1C U4).** `setPieces.ts` is checked twice: by the exporter (`src/tables/setpieces.ts`: zone,
+anchors, art ids in the manifest, recipes in `Art/Export/VFX/vfx_recipes.json`, emitters / cue ids in
+`Audio/Export/audio_manifest.json`, echoes = echo lore of the zone) and by `CoreTests/tests/setpieces_test.cpp` on the
+placed pieces: on the map, off water / rock / blocking decorations, art resolving, and no piece without a `walkOver`
+reason covering a tile the bot's route walks or an interaction point (NPC, lore, clue, explore centre, story
+decoration, entrance, defend target). Moving a piece means re-running both; positions follow chapter1.md and the art
+lane's vignettes (`Art/blender/README.md` §29), the notes in the file say why each one stands where it does.
 
 **The bot's route (package 1B part 3, implementation-plan.md §6).** `autopilot/ch1.ts` is the script the headless
 playthrough test and the in-game autotest play (`abyss::AutoPilot` interprets it; `playthrough_test.cpp` checks the
@@ -106,8 +114,8 @@ Tables that live inside web system files (code, so not redirected) are overridde
 new entry may carry a new id: a rename in place), `add` appends, `remove` drops. Entries are replaced whole (spread the
 web entry from `@web/...` to change one field). Tables: `achievements`, `randomEvents` (per zone; also feeds the
 wandering merchant), `zoneMoods.{themeByZone, moods, palettes, weather, weatherByTheme, campThemes, fog, lightScale,
-moodWeather}` (the last two are remake tables with no web entries: R18 light-scale overrides and the weather a mood
-brings, per mood theme, written to `zone_moods.json` `port`),
+moodWeather, windupTint}` (the last three are remake tables with no web entries: R18 light-scale overrides, the weather a
+mood brings and the monsters' wind-up body tint (DR5), per mood theme, written to `zone_moods.json` `port`),
 `eliteAffixes.{definitions, zoneAffixCounts}`, `terrainStyles`. A table name the exporter does not know, a `replace` /
 `remove` key the web table lacks or an `add` key it already has fails the export. Each change is recorded in the written
 file's `remake` block (`"replaced": ["achievements.ach_kill_slime"]`).

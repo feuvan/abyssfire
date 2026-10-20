@@ -4,6 +4,7 @@ manifest tables and asset names."""
 
 import json
 import math
+import pathlib
 
 import numpy as np
 import pytest
@@ -288,3 +289,56 @@ def test_the_breach_hum_is_the_bells_hum():
     tones = [s["freq"][0][1] for lay in r.layers if lay["bus"] == "tone" for s in lay["sources"]]
     assert min(abs(f - hum) for f in tones) < 0.05
     assert math.isclose(hum, 73.415, abs_tol=0.01)
+
+
+def test_bell_triggers_are_structured_and_resolve():
+    """U7 reads when each bell plays from these rows (the manifest's cueTriggers), not from the BELL_CUES prose: every
+    row names a known cue and kind, its beat / step / slide exists in the story data (0-based EvStoryStep indices), its
+    region in the music director, its quest in the quest data."""
+    import render_all
+    from abyss_audio.recipes import dark_music
+
+    data = pathlib.Path(__file__).resolve().parents[3] / "Data"
+    story = json.loads((data / "story.json").read_text(encoding="utf-8"))
+    quests = json.loads((data / "quests.json").read_text(encoding="utf-8"))
+    quest_ids = {q["id"] for q in (quests["quests"] if isinstance(quests.get("quests"), list) else
+                                   quests["quests"].values())}
+    regions = {r["id"] for r in dark_music.load()["director"]["regions"]}
+    named = set(da.BELL_CUES) | set(dark_vox.NAMED_CUES)
+    rows = da.BELL_TRIGGERS + dark_vox.VOX_TRIGGERS
+    ids = [r["id"] for r in rows]
+    assert len(ids) == len(set(ids))
+    for r in rows:
+        assert r["cue"] in named and r["on"] in da.TRIGGER_KINDS and r["use"], r["id"]
+        if "farCue" in r:
+            assert r["farCue"] in named and r["nearRegion"] in regions, r["id"]
+        if r["on"] in ("storyEnd", "storyStep"):
+            steps = story["cutscenes"][r["beat"]]["steps"]
+            if r["on"] == "storyStep":
+                assert 0 <= r["index"] < len(steps), r["id"]
+        if r["on"] == "storySlide":
+            assert 0 <= r["index"] < len(story[r["sequence"]]["slides"]), r["id"]
+        if "tile" in r:
+            assert len(r["tile"]) == 2 and all(0 <= v < 120 for v in r["tile"]), r["id"]
+        if r["on"] == "every":
+            lo, hi = r["everySec"]
+            assert 0 < lo <= hi and r["zone"], r["id"]
+            if "whileQuestActive" in r:
+                assert r["whileQuestActive"] in quest_ids, r["id"]
+        if "count" in r:
+            assert r["count"] >= 1 and r["spacingSec"] > 0, r["id"]
+    # The beats the prose names (BELL_CUES `use`, chapter1.md 8 / 16): the siege self-ring at step 2 (index 1), the
+    # dawn toll at step 4 (index 3, the flash), a toll after each main turn-in cutscene, the ambush tell.
+    by_id = {r["id"]: r for r in rows}
+    assert (by_id["siege_self_ring"]["beat"], by_id["siege_self_ring"]["index"]) == ("cs_rf_siege", 1)
+    assert story["cutscenes"]["cs_rf_siege"]["steps"][1]["kind"] == "narrate"
+    assert (by_id["finale_dawn_toll"]["beat"], by_id["finale_dawn_toll"]["index"]) == ("cs_rf_finale", 3)
+    assert story["cutscenes"]["cs_rf_finale"]["steps"][3]["kind"] == "flash"
+    assert {r["beat"] for r in rows if r["on"] == "storyEnd" and r["cue"] == "bell_toll"} == \
+        {"cs_rf_brand", "cs_rf_whisper"}
+    assert by_id["ambush_tell"]["event"] == "ambush" and by_id["prologue_tolls"]["count"] == 10
+    # The manifest keeps a row only when its cues are rendered.
+    table = render_all.cue_triggers({c: {} for c in named})
+    assert table["decision"] == "U7" and [r["id"] for r in table["rows"]] == ids
+    assert render_all.cue_triggers({c: {} for c in named if c != "bell_toll_far"})["rows"] == \
+        [r for r in rows if r.get("farCue") != "bell_toll_far"]

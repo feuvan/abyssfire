@@ -168,6 +168,161 @@ void UAbyssUiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 `FPaths::ProjectDir() / "Fonts"` (ue58-platform.md 9.4). zh-TW: use the TC face with an SC fallback (the exported zh-TW
 table still contains some simplified-only characters).
 
+## Dark remake presentation: theme, mood, actions (1C U1)
+
+Chapter 1 is "The Burning March" (`Docs/dark-remake/`). The decisions of this layer live in UE-free, header-only helpers
+(`Private/World/AbyssThemeRules.h`, `Private/Actors/AbyssAnimActionRules.h`; std + AbyssCore public headers only), unit
+tested by `unreal/PresentationTests/run.sh` (GCC + Clang, doctest; real `Data/*.json` + synthetic tables; a macro shim
+compiles every `Private/**/Abyss*Rules.h` after the UE / Windows / Apple macros). The glue below only converts types.
+
+* **Presentation theme.** `maps.json` `presentationTheme` (emerald_plains: `march`). In such a zone every art chain
+  resolves `<gameId>@<theme>` for **all** of its ids before any plain id (`FAbyssArtManifest::ResolveFirst(Ids, Hash,
+  Theme)`; `{decor_tree, tree}` reaches `tree@march` before the plain `decor_tree`); a missing variant falls back to
+  today's asset. Covered: zone dressing (decor, outcrops / palisades / gate posts / reeds on the generator-theme id
+  strings, e.g. `outcrop_plains@march`, camp kit `camp_*@march`, story decor, the sealed exit, skirt), characters and
+  props (`npc_*@march`, lore / gather / chest / puzzle props, random-event NPC looks; the hero and its soul echo never),
+  the elite crown (`elite_crown@march`, else `SM_FX_EliteCrown`), zone loops (`camp.torch@march`: the brazier's smoulder,
+  no light pool) and portraits (the resolved asset's manifest `portrait`; elsewhere the name probes keep today's, and the
+  asset portrait only replaces the generic emblem, e.g. the Corpseherd). Two exceptions (1C review): only the hub camp
+  (the map's first: Knellwatch) flies the themed camp banner, the fort's own standard (`AbyssThemeRules::PlacesCampProp`;
+  Crowmarket keeps the rest of the kit), and a themed-only loop (`ThemedOnlyRecipe`: `exit.sealed`) plays its `@theme`
+  recipe or nothing, never today's crimson ring (DR5), until `exit.sealed@march` exists. The theme is derived per call from the map id
+  of the snapshot / event at hand (spawns of the next zone arrive before `BuildZone`), never cached at the zone build.
+  The manifest load warns when a variant's footprint / blocking differs from its plain id (the core bakes walkability
+  from the plain ids). The terrain style (`terrain_styles.json themes.march`) and `MI_AF_Terrain_March` follow the
+  presentation theme (the procedural `M_AF_Terrain` in march colours until the content build made the instance).
+* **Mood** (`AAbyssZoneActor::UpdateMood`, every frame from the world builder): the zone's mood (themeByZone), its
+  `<theme>_dawn` mood once `monster_ai.json chapterCompleteQuest` is turned in (march -> march_dawn; a naming convention
+  until W2's flag), and a map `regions` mood (the Breach Rim, r 16 around (15, 95)) blended in over the last 4 tiles of its
+  radius (smoothstep). Sun colour, fog and grade are re-applied only when the blend moved by more than 0.01. The dominant
+  mood (region weight >= .5 to enter, < .4 to leave) brings its `port.moodWeather` ambience, else the zone's weather; the
+  world builder swaps the ambience loop when its recipe or tint changes. The weather tint colours the recipe only in a
+  zone with a presentation theme (ashfall #CFCAC0, the Rim's violet sparks; other zones' tints stay unused). The blended
+  `port.lightScale` reaches `UAbyssVfxSystem::SetMoodLightScale` (march .32, dawn .22, Rim .40; moods without one keep
+  R18's formula).
+* **Wind-up tint** (DR5): `zone_moods.json port.windupTint.<mood> {normal, elite}` of the dominant mood, else the base
+  mood (the march moods: crimson #D11F2E, elites #FF3A48), else the web port's #FFC4B0 / #FF7A5C; through
+  `FAbyssCharacterFrame::WindupTint*` into CPD Telegraph (x 0.85).
+* **Echo lore** (lore `spriteType` echo, manifest `materials.MI_AF_Echo`): the lore prop has no mesh, only the
+  `prop.lore` ground mark in #A8B0C4. On `EvLoreCollected` the figures (`asset`, `clip` from `clipAsset`, `frame`,
+  `offsetM` around the lore tile with UE Y = -Blender Y, `yawDeg` -> mesh yaw -yawDeg) spawn as single-node skeletal
+  components frozen at the frame (`PlayAnimation`, `SetPosition`, `SetPlayRate(0)`), every slot `M_AF_Ghost`, CPD Tint =
+  the linear echo tint, Ghost 1, Fade along the timeline (1 -> 0 in 450 ms ease-out, flicker <= 0.08 at 4 Hz for 2100 ms,
+  -> 1 in 450 ms ease-in; real time) and `prop.echo` at each figure; the echo zone's figure meshes / clips load at the zone
+  build.
+* **Brightness**: `FAbyssUserSettings::Brightness` 0.5..1.5 (settings.json `video.brightness`, default 1; older files
+  load as 1), the settings panel's Display slider, `log2(brightness)` EV added to `abyss.ExposureBias` on the zone
+  post-process (`AAbyssZoneActor::SetUserExposureEv`).
+* **Monster actions** (K1 `AnimAction` Roar / Taunt / Stun / Attack02 / Cast02 / Rise): the clip of the same name (an
+  asset without it keeps its pose); Attack02 is an attack (contact beat, wind-up tint), Cast02 a cast, the rest an
+  `Emote` (blend state "cast", no beat: the boss intro's Roar plays through the frozen world). Holds: while
+  `MonsterView::holdAction` is Taunt (the mini-boss's pre-fight dialogue) the Taunt clip loops (forced loop; the
+  `EvPlayAnim{Taunt}` that starts it sets the facing toward the hero for the whole hold), and a stunned monster (status
+  Stun) loops its Stun clip while no action plays. Priority death > action > hold > stun > move > idle.
+
+## Dark remake audio (1C U7)
+
+The audio decisions of the remake's Chapter 1 live in UE-free helpers beside the player (`Private/Audio/`:
+`AbyssAudioDataRules.h` (manifest JSON, region geometry and hysteresis, `while`), `AbyssVoiceRules.h`,
+`AbyssMusicRules.h`, `AbyssAmbienceRules.h`, `AbyssCueTriggerRules.h`), tested by `unreal/PresentationTests/`
+(`tests/audio_*_test.cpp` on the committed `Audio/Export/audio_manifest.json` and the real `Data/`). The manifest keeps
+the sections as JSON (`FAbyssAudioManifest::{VoiceFamilies,MusicDirector,Ambience,CueTriggers}Json`); a manifest
+without them changes nothing. `UAbyssAudioSystem` (details: `unreal/Audio/README.md`, *Runtime*):
+
+* **Voices**: the family of a monster comes from `voiceFamilies.monsters[defId]` (hunt ids included), else the design
+  family (withheld from the W1 export), else its animCategory (every later chapter, as before); silent monsters play no
+  family cue; named cues replace the family's aggro / hurt / death vocal and play on beats (`EvPlayAnim` → `anim.<action>`,
+  `EvMiniBossDialogue` opened → `miniboss.opened`, a cutscene `say` step whose speaker is the monster → `story.say`).
+  Spawns are remembered by def id (`EntityDefs`), so a death after the snapshot dropped the monster keeps its voice; a
+  def's voice is resolved once (`VoiceOfDef` → `AbyssVoiceRules::ResolveDefVoice`: family, silent, the three named
+  EvSfx cues, whether an `anim.<action>` cue exists, encounter / mini-boss flags) and cached in `DefVoices`, so the
+  per-event `monster_aggro` / `monster_hurt` / `monster_death` / `EvPlayAnim` path is two map lookups.
+* **Music**: `HandleMusic` hands the core's request (after `zoneOverrides`, classified zone / victory / boss) to the
+  `AbyssMusicRules::Arbiter`; `HandleFrame` → `TickRemake` resolves it against the director's layers once per frame
+  (story > victory > boss > siege > region > zone; the decision is applied in the same rendered frame, the router's
+  `OnFrame` follows the event dispatch) and crossfades through `PlayMusic`. Layers keep their choice during a cutscene
+  / boss intro. A zone-overridden request resolving to the track already sounding is a no-op even with restart (the
+  released combat row), a stale one-shot is never replayed. A track `PlayMusic` could not voice (missing sound; no
+  component under `-nosound` / without an audio world) counts as asked (`UnvoicedTrack`; a missing component is
+  retried once a second), so the arbiter does not request it every frame. `abyss.Audio.Music` in a session goes
+  through the arbiter.
+* **Ambience**: the bed key uses the map's presentation theme; region beds / layers / emitters run in `TickRemakeAmbience`
+  on their own persistent components (`AreaLoopComponents`, `EmitterComponents`), volumes on the ambience bus (SFX
+  volume, cinematic duck). The set-piece layer hands emitter spots over with
+  `UAbyssAudioSystem::SetZoneEmitterSpots(EmitterId, Tiles)` when it builds a zone (cleared on `EvZone{Exited}`; the
+  spots are re-read on the next frame); without spots an emitter plays at its manifest placement. An emitter that had
+  to start as a plain 2D loop (no listener on its first frames) is recreated as a panned source once a listener exists.
+* **Cue triggers**: `EvStoryBeat` (end), `EvStoryStep` (step / slide), `EvRandomEvent`, `EvStoryDecorFocus` and timers
+  (`AbyssCueTriggerRules::Scheduler`, real time) play the bells and the beat-bound voices; every one played is reported
+  on `UAbyssAudioSystem::OnCuePlayed(FName CueId)` (e.g. `bell_toll` / `bell_toll_far`; bind it for the bell frame's
+  ripple).
+* **Encounter stingers**: `EvSfx{monster_aggro}` of a hunt (first per instance), `EvMiniBossDialogue{opened = false}`,
+  `EvSfx{monster_death}` (the core's `EvEntityDespawned{Died}` only comes at the respawn), through
+  `EncounterStingerComponent` with the stinger's duck (it joins the story ducks: the deepest wins).
+* `abyss.Audio.Status` lists the region, siege, hold, arbitration source, bed scale, region / layer weights and the
+  emitters.
+
+## Dark remake UI: quest card and text fit (1C U5, Wave 1 parts)
+
+The quest card's decisions live in `Private/UI/Panels/AbyssQuestCardRules.h` and the text fitting of painted / fixed-box
+text in `Private/UI/Core/AbyssTextFitRules.h` (UE-free, header-only; `unreal/PresentationTests/tests/questcard_test.cpp`
+on the real Chapter 1 quests and the core's reward generator, `textfit_test.cpp`). DECISIONS DR14.
+
+* **Progress lines** (K1 `QuestCardState::progress`): `BuildCardModel` turns the card into the page's entry plus the
+  giver's lines (entry quests and duplicates dropped). A card with lines only (the core opens it for an NPC whose active
+  quest has a `progressKey`, e.g. the Captain during *The Sleepless Marshal*) is a progress-only card: quest name, the
+  line in quotes in the speech style, View Story when the NPC has a tree, and Leave (`ui.dialogue.leave`; it used to
+  render nothing while the core held its modal). With an entry the lines follow it under an *Active* rule
+  (`ui.questLog.tab.active`).
+* **Labelled choices** (K1 `QuestCardEntry::choiceLabels`): the label is the primary caption (11 / 13 px, bold when
+  selected) and the slot name (`sys.questCard.choice.<slot>`) the secondary one, in columns that share the card's 380 px
+  (`ChoiceColumnWidth`, ≤ 150 px) and wrap. The slot of each generated item is recovered from the labels / item bases
+  when a slot yielded nothing (`ChoiceSlotIndices`), so caption and item never disagree; an unlabelled card keeps today's
+  layout. The accept card's preview line reads `label · slot` per slot.
+* **Text fit** (every Chapter 1 string measured against these in `Scripts/tests/test_ui_text_fit.py`, zh-CN + en,
+  desktop + touch): centre banners (quest complete, discovery, coming soon) wrap at 720 px and stack their lines
+  (`SAbyssNotices::ShowBanner` wraps once, `PaintBanners` draws); `SAbyssPanelFrame` shrinks a title wider than its
+  header band (panel width - 188 px) down to 13 px; the puzzle's answer button grows from 200 px to the content width,
+  then shrinks its font, and stacks above Leave when the two no longer fit side by side; the quest tracker wraps its
+  title and objectives inside the frame's 9 px padding. Toasts, the quest log rows, the combat log and the card
+  captions fit as they are (pinned by the test).
+
+## Dark remake set pieces (1C U4)
+
+The set-piece layer places the authored prop groups of `Data/set_pieces.json` (`unreal/GameData/setPieces.ts`, DECISIONS
+DR15) when a zone is built. Placements are the core's (`abyss/world/SetPieces.h`: anchor on the map, offset, ring,
+facing -> tile position + actor yaw; CoreTests `setpieces_test` keeps every piece on the map, off rock / water /
+blocking decorations and, unless it names a `walkOver` reason, off the bot's route and every interaction point). The
+decisions on top live in `Private/World/AbyssSetPieceRules.h` (UE-free; `PresentationTests/tests/setpieces_test.cpp` on
+the real tables and art manifest); `Private/World/AbyssSetPieces.cpp` only converts.
+
+* **Placement** (`AAbyssZoneActor::BuildSetPieces`, after the walls, before the decorations): each placement's id chain
+  (`gameId`, `fallbackIds`; `<id>@<theme>` first) through `PlaceArt` at its tile and yaw, the variant by its fixed index
+  or the tile hash (salt 37), `partners` (the bridge's ditch bed, the circles' poured ash) at the same spot; tall pieces
+  (`occluder`) are R1 occluders (bounds ellipsoid, decor fade). Nothing collides and nothing changes walkability; the
+  zone decorations that are not blocking are left out on the tiles a piece covers (no grass through a cottage floor or
+  the dais). One log line per zone (`Zone emerald_plains set pieces: 36 of 36 placements drawn ...`); unresolved art or
+  missing sockets: one warning, the piece (or the spot) is skipped.
+* **Spots** (socket `locCm` turned by the yaw): `effects` join the zone loops (the sealed Pit mouth's smoke and the burned
+  bridge's smoulder: `camp.torch@march`, played as named), `emitters` go to `UAbyssAudioSystem::SetZoneEmitterSpots`
+  right after the build (`ashwheat_knock` from the three barred doors' `knock` sockets), `cues` wait for the audio
+  system's `OnCuePlayed`: `bell_toll` / `bell_toll_far` / `bell_dawn_toll` / `bell_self_ring` ripple the Knellwatch bell
+  frame (`camp.bell_toll` at its `bell` socket; the bell that rings by itself at the siege is the fort's), and
+  `bell_self_ring` also ripples the Boneyard Gate's bell (its echo, where the player stands during the siege).
+* **Echoes**: an echo a piece lists (`lore_rf_echo_02` at the burned bridge, `lore_rf_echo_03` at the dais) shows its
+  `MI_AF_Echo` figures by that piece, offsets and facings turned by the piece's yaw plus `echoTurnDeg` (the dais keeps its
+  crack toward the chasm at yaw 0 and turns the kneeling deserter's group 135 deg so he kneels on the lore spot's side);
+  other echoes stay at their lore tile.
+* **Yield**: while a defend target stands within 1.5 tiles of a `yieldsToDefendTarget` piece (the Boneyard Gate under
+  *The Last Toll*'s gate, same mesh), the piece's instance is hidden (scale 0, its occluder suppressed) and the target
+  prop takes the piece's facing (`AAbyssPropActor::SetFacingYaw`); the piece returns when the target is gone.
+* **Event labels** (`SAbyssWorldLayer`): the treasure cache, wandering merchant and puzzle read
+  `zone.event.<kind>.label.<zone>` before `zone.event.<kind>.label` (the core's RevZoneKey rule; emerald_plains:
+  圣骨贩子 / The Relic Peddler, 五口小钟 / Five Handbells, 阵亡骑士的铁箱 / A Dead Knight's Strongbox); in a zone with a
+  presentation theme only, the rescue's captive is labelled by `sys.event.rescue.<zone>` (被缚的朝圣者 / The Bound
+  Pilgrim), else `zone.event.rescue.fallbackName`. Chapters 2-5 keep today's unlabelled rescue prop (setpieces_test pins
+  every unthemed zone to the generic labels and no rescue label).
+
 ## In-game autotest (`-abyssautotest`)
 
 `UAbyssAutoTestSubsystem` (`Private/Framework/AbyssAutoTestSubsystem.{h,cpp}`, switches in `AbyssAutoTest.h`) plays
@@ -259,7 +414,7 @@ renderer it takes longer). `report.json` records `maxFps` and `fixedTimeStep`.
 | **world** | `Public|Private/World/`, `Actors/`, `Anim/`, `Vfx/`, `Camera/` — implements `IAbyssWorldView` (world builder, terrain, props, lights, post-process, quality-tier application) and `IAbyssPresenter` (character actors, `UAbyssAnimInstance`), VFX from router events, the camera rig (view target, follow, zoom, shake from `EvCameraShake` honouring `bCameraShake`) | `Framework/`, `Platform/` (request changes) |
 | **input** | `Public|Private/Input/` and the "input agent region" of `Framework/AbyssPlayerController.h` + all of `Private/Input/AbyssPlayerControllerInput.cpp` (runtime Enhanced Input, KBM / gamepad / touch, picking, virtual-control injection, `IA_Back -> IAbyssUiRoot::HandleBack`) | the rest of `Framework/` |
 | **ui** | `Public|Private/UI/` — implements `IAbyssUiRoot` (menus, HUD, panels, story overlay, touch controls, settings panel, error screen), Slate style with the bundled fonts, world-anchored widgets | `Framework/`, `Platform/` |
-| **audio** | `Public|Private/Audio/` and `unreal/Audio/` — music state machine from `EvMusic`, SFX from `EvSfx` (A4 panning), volumes from `FAbyssUserSettings`, menu music on `MainMenu` | `Framework/` |
+| **audio** | `Public|Private/Audio/` and `unreal/Audio/` — music state machine from `EvMusic`, SFX from `EvSfx` (A4 panning), volumes from `FAbyssUserSettings`, menu music on `MainMenu`; the dark remake's voices, music director, ambience layers / emitters and cue triggers (`Private/Audio/Abyss*Rules.h`, *Dark remake audio*) | `Framework/` |
 | **content** | `unreal/Scripts/` (except `Scripts/fonts/`, backbone) — editor Python: import FBX / textures / audio, materials + `MPC_AF_Lighting`, `L_Main` | `Source/` |
 
 Backbone (this agent / lead): `Abyssfire.Build.cs`, `Public/Abyssfire.h`, `Private/Abyssfire.cpp`, `Private/AbyssfirePCH.h`,

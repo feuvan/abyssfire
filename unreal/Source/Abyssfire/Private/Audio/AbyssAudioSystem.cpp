@@ -14,8 +14,11 @@
 #include "Sound/SoundBase.h"
 #include "Stats/Stats.h"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "abyss/base/Enums.h"
 #include "abyss/base/Types.h"
@@ -23,10 +26,16 @@
 #include "abyss/data/MonsterData.h"
 #include "abyss/data/StoryData.h"
 #include "abyss/hero/Hero.h"
+#include "abyss/quests/QuestSystem.h"
 #include "abyss/world/Grid.h"
 
 #include "Abyssfire.h"
 #include "Actors/AbyssCharacterActor.h"
+#include "Audio/AbyssAmbienceRules.h"
+#include "Audio/AbyssAudioDataRules.h"
+#include "Audio/AbyssCueTriggerRules.h"
+#include "Audio/AbyssMusicRules.h"
+#include "Audio/AbyssVoiceRules.h"
 #include "Framework/AbyssActorRegistry.h"
 #include "Framework/AbyssEventRouter.h"
 #include "Framework/AbyssGameInstance.h"
@@ -120,6 +129,136 @@ namespace AbyssAudioSystemPrivate
 }
 
 // =====================================================================================================================
+// Dark remake state (U7, implementation-plan.md 4): the rule helpers' tables and their per-session state
+// =====================================================================================================================
+
+struct FAbyssAudioRemake
+{
+	// Tables (manifest voiceFamilies / musicDirector / ambience / cueTriggers), parsed once the manifest is loaded.
+	AbyssVoiceRules::VoiceTables Voices;
+	AbyssMusicRules::DirectorTables Director;
+	AbyssAmbienceRules::AmbienceTables Ambience;
+	AbyssCueTriggerRules::TriggerTables Triggers;
+	std::vector<AbyssAudioData::TileCircle> AmbienceRegionAreas;
+	std::vector<AbyssAudioData::TileCircle> AmbienceLayerAreas;
+	/** Track keys the core plays as boss music (music.json bossMusic, the director's bosses). */
+	std::vector<std::string> BossScores;
+	/** Monster ids a `while` names (music regions, region beds, layers): their liveness is read each frame. */
+	std::vector<std::string> WatchedMonsters;
+
+	// Music.
+	AbyssMusicRules::Arbiter Arbiter;
+	AbyssAudioData::CircleTracker MusicRegions;
+	int Region = -1;
+	AbyssMusicRules::QuestTrackPick Siege;
+	std::string ZoneId;
+	std::string PlayingBeat;  // the story beat playing ("" = none)
+	abyss::StoryBeatKind PlayingKind = abyss::StoryBeatKind::Cutscene;
+
+	// Ambience: region beds and layers (weights 0..1), emitters (one entry per spot, EmitterComponents parallel).
+	AbyssAudioData::CircleTracker AmbienceRegions;
+	AbyssAudioData::CircleTracker AmbienceLayers;
+	std::vector<double> RegionWeights;
+	std::vector<double> LayerWeights;
+	/** The asset of each area loop (regions, then layers), converted once with the tables (TickRemakeAmbience). */
+	TArray<FName> AreaLoopAssets;
+	/** The sounding track as last handed to the arbiter: converted to a std::string only when it changes. */
+	FName SoundingName;
+	std::string SoundingStd;
+	struct FEmitterSpot
+	{
+		FName Asset;
+		double Col = 0.0;
+		double Row = 0.0;
+		double InnerTiles = 1.0;
+		double FalloffTiles = 6.0;
+	};
+	std::vector<FEmitterSpot> EmitterSpots;
+	bool bEmittersDirty = true;
+	TMap<FName, TArray<FVector2D>> SetPieceSpots;
+	/** Until then a stopped zone's loops finish their fade-out (StopRemakeAmbience) instead of being cut. */
+	double FadeOutUntilSec = -1.0;
+	/** Between EvZone{TransitionBegan} and {Entered}: no area loop or emitter starts. */
+	bool bZoneTransition = false;
+
+	// Cue triggers, voices.
+	AbyssCueTriggerRules::Scheduler Scheduler;
+	std::string DecorFocus;
+	TSet<uint32> EngagedEntities;
+	std::vector<std::string> AliveNow;
+
+	bool IsAlive(std::string_view MonsterId) const { return AbyssAudioData::Contains(AliveNow, MonsterId); }
+
+	/** A cutscene or boss intro plays: music layers keep what they chose (the core holds its own changes too). */
+	bool IsCutscene() const
+	{
+		return !PlayingBeat.empty() && (PlayingKind == abyss::StoryBeatKind::Cutscene ||
+			PlayingKind == abyss::StoryBeatKind::BossIntro);
+	}
+
+	void ResetSession()
+	{
+		Arbiter.Reset();
+		MusicRegions.Reset();
+		Region = -1;
+		Siege = AbyssMusicRules::QuestTrackPick{};
+		ZoneId.clear();
+		PlayingBeat.clear();
+		AmbienceRegions.Reset();
+		AmbienceLayers.Reset();
+		RegionWeights.assign(Ambience.regions.size(), 0.0);
+		LayerWeights.assign(Ambience.layers.size(), 0.0);
+		EmitterSpots.clear();
+		bEmittersDirty = true;
+		SetPieceSpots.Reset();
+		FadeOutUntilSec = -1.0;
+		bZoneTransition = false;
+		Scheduler.Reset();
+		DecorFocus.clear();
+		EngagedEntities.Reset();
+		AliveNow.clear();
+	}
+};
+
+namespace AbyssAudioSystemPrivate
+{
+	std::string ToStd(FName Name)
+	{
+		return Name.IsNone() ? std::string() : AbyssText::ToStd(Name.ToString());
+	}
+
+	/** The voice tables (empty without a remake state: today's animCategory rule). */
+	const AbyssVoiceRules::VoiceTables& VoicesOf(const TSharedPtr<FAbyssAudioRemake>& Remake)
+	{
+		static const AbyssVoiceRules::VoiceTables Empty;
+		return Remake.IsValid() ? Remake->Voices : Empty;
+	}
+
+	AbyssMusicRules::QuestPhase PhaseOf(const abyss::QuestSystem* Quests, std::string_view QuestId)
+	{
+		if (Quests == nullptr || QuestId.empty())
+		{
+			return AbyssMusicRules::QuestPhase::None;
+		}
+		bool bHasRecord = false;
+		const abyss::QuestStatus Status = Quests->StatusOf(QuestId, bHasRecord);
+		if (!bHasRecord)
+		{
+			return AbyssMusicRules::QuestPhase::None;
+		}
+		switch (Status)
+		{
+		case abyss::QuestStatus::Active:
+			return AbyssMusicRules::QuestPhase::Active;
+		case abyss::QuestStatus::Completed:
+			return AbyssMusicRules::QuestPhase::Completed;
+		default:
+			return AbyssMusicRules::QuestPhase::None;
+		}
+	}
+}
+
+// =====================================================================================================================
 // Setup
 // =====================================================================================================================
 
@@ -152,6 +291,7 @@ void UAbyssAudioSystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 	Random.Initialize(0x0A0D10);
+	Remake = MakeShared<FAbyssAudioRemake>();
 	MusicVoices.SetNum(AbyssAudioSystemPrivate::MusicSlots);
 	MusicComponents.SetNum(AbyssAudioSystemPrivate::MusicSlots);
 
@@ -166,6 +306,11 @@ void UAbyssAudioSystem::Initialize(FSubsystemCollectionBase& Collection)
 	Router.On<abyss::EvZone>().AddUObject(this, &UAbyssAudioSystem::HandleZone);
 	Router.On<abyss::EvStoryBeat>().AddUObject(this, &UAbyssAudioSystem::HandleStoryBeat);
 	Router.On<abyss::EvStoryStep>().AddUObject(this, &UAbyssAudioSystem::HandleStoryStep);
+	// U7 (dark remake): named voices on anim / dialogue beats, encounter stingers, bells on world events.
+	Router.On<abyss::EvPlayAnim>().AddUObject(this, &UAbyssAudioSystem::HandlePlayAnim);
+	Router.On<abyss::EvMiniBossDialogue>().AddUObject(this, &UAbyssAudioSystem::HandleMiniBossDialogue);
+	Router.On<abyss::EvRandomEvent>().AddUObject(this, &UAbyssAudioSystem::HandleRandomEvent);
+	Router.On<abyss::EvStoryDecorFocus>().AddUObject(this, &UAbyssAudioSystem::HandleStoryDecorFocus);
 	Router.OnFrame.AddUObject(this, &UAbyssAudioSystem::HandleFrame);
 	Router.OnSessionStarted.AddUObject(this, &UAbyssAudioSystem::HandleSessionStarted);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssAudioSystem::HandleSessionEnded);
@@ -208,7 +353,9 @@ void UAbyssAudioSystem::Deinitialize()
 	BoundHero.Reset();
 	StopAllSfx();
 	StopAllMusic();
-	for (UAudioComponent* Comp : { StingerComponent.Get(), WhisperComponent.Get(), AmbienceComponent.Get() })
+	StopRemakeAmbience(0.f);
+	for (UAudioComponent* Comp : { StingerComponent.Get(), WhisperComponent.Get(), AmbienceComponent.Get(),
+			 EncounterStingerComponent.Get() })
 	{
 		if (IsValid(Comp))
 		{
@@ -218,6 +365,10 @@ void UAbyssAudioSystem::Deinitialize()
 	StingerComponent = nullptr;
 	WhisperComponent = nullptr;
 	AmbienceComponent = nullptr;
+	EncounterStingerComponent = nullptr;
+	AreaLoopComponents.Reset();
+	EmitterComponents.Reset();
+	Remake.Reset();
 	MusicComponents.Reset();
 	Sounds.Reset();
 	bReady = false;
@@ -251,6 +402,7 @@ void UAbyssAudioSystem::EnsureReady()
 	UE_LOG(LogAbyss, Log, TEXT("Audio manifest: %s (%d assets, %d cues, %d tracks)"), *Source, Manifest.GetAssets().Num(),
 		Manifest.GetCues().Num(), Manifest.GetTracks().Num());
 	bReady = true;
+	BuildRemakeTables();
 	RefreshVolumes(/*bForce*/ true);
 }
 
@@ -420,8 +572,9 @@ void UAbyssAudioSystem::HandleAppStateChanged(EAbyssAppState NewState)
 void UAbyssAudioSystem::HandleSessionStarted()
 {
 	bInSession = true;
-	EntityFamilies.Reset();
+	EntityDefs.Reset();
 	CueStates.Reset();
+	ResetRemakeSession();
 	LastFootNotifySec = -1000.0;
 	FallbackDistanceCm = 0.0;
 }
@@ -432,13 +585,15 @@ void UAbyssAudioSystem::HandleSessionEnded()
 	StopAllSfx();
 	EndStoryAudio();
 	StopAmbience(Manifest.Ambience.FadeOutSec);
+	StopRemakeAmbience(Manifest.Ambience.FadeOutSec);
+	ResetRemakeSession();
 	if (AAbyssCharacterActor* Hero = BoundHero.Get())
 	{
 		Hero->OnCharacterNotify.Remove(HeroNotifyHandle);
 	}
 	BoundHero.Reset();
 	HeroNotifyHandle.Reset();
-	EntityFamilies.Reset();
+	EntityDefs.Reset();
 	bCinematic = false;
 }
 
@@ -493,6 +648,15 @@ void UAbyssAudioSystem::SetSuspended(bool bSuspend)
 	Persistent.Add(StingerComponent.Get());
 	Persistent.Add(WhisperComponent.Get());
 	Persistent.Add(AmbienceComponent.Get());
+	Persistent.Add(EncounterStingerComponent.Get());
+	for (const TObjectPtr<UAudioComponent>& Comp : AreaLoopComponents)
+	{
+		Persistent.Add(Comp.Get());
+	}
+	for (const TObjectPtr<UAudioComponent>& Comp : EmitterComponents)
+	{
+		Persistent.Add(Comp.Get());
+	}
 	for (UAudioComponent* Comp : Persistent)
 	{
 		if (IsValid(Comp))
@@ -524,6 +688,8 @@ void UAbyssAudioSystem::RefreshVolumes(bool bForce)
 	// Music voices follow in TickMusic; the persistent beds update here.
 	AbyssAudioSystemPrivate::SetVolumeIfChanged(StingerComponent, StingerGain * MasterVolume * MusicVolume);
 	AbyssAudioSystemPrivate::SetVolumeIfChanged(WhisperComponent, WhisperGain * MasterVolume * MusicVolume);
+	AbyssAudioSystemPrivate::SetVolumeIfChanged(EncounterStingerComponent, EncounterStingerGain * MasterVolume *
+		MusicVolume);
 	AbyssAudioSystemPrivate::SetVolumeIfChanged(AmbienceComponent, AmbienceGain());
 }
 
@@ -539,7 +705,8 @@ float UAbyssAudioSystem::SfxBusGain() const
 
 float UAbyssAudioSystem::AmbienceGain() const
 {
-	return AmbienceAssetGain * Manifest.Ambience.Gain * MasterVolume * SfxVolume *
+	// AmbienceBedScale: a region bed that replaces the bed (U7, the Breach Rim) crossfades with it.
+	return AmbienceAssetGain * Manifest.Ambience.Gain * MasterVolume * SfxVolume * AmbienceBedScale *
 		AbyssAudioSystemPrivate::DbToLinear(AmbienceDuckDb);
 }
 
@@ -551,7 +718,8 @@ void UAbyssAudioSystem::HandleMusic(const abyss::EvMusic& Event)
 {
 	EnsureReady();
 	EndJukebox();
-	FName TrackKey = AbyssAudioSystemPrivate::ToName(Event.trackKey);
+	const FName CoreKey = AbyssAudioSystemPrivate::ToName(Event.trackKey);
+	FName TrackKey = CoreKey;
 	// Presentation override per zone (manifest zoneOverrides): the zone is the snapshot's, which during dispatch is
 	// already the zone the command was issued for.
 	if (!TrackKey.IsNone() && Manifest.ZoneOverrides.Num() > 0)
@@ -562,8 +730,35 @@ void UAbyssAudioSystem::HandleMusic(const abyss::EvMusic& Event)
 			TrackKey = Manifest.ApplyZoneOverride(AbyssAudioSystemPrivate::ToName(Snap->zone.mapId), TrackKey);
 		}
 	}
-	PlayMusic(TrackKey, static_cast<float>(Event.fadeOutSec), static_cast<float>(Event.fadeInSec), Event.restart,
-		Event.loop);
+	if (!Remake.IsValid())
+	{
+		PlayMusic(TrackKey, static_cast<float>(Event.fadeOutSec), static_cast<float>(Event.fadeInSec), Event.restart,
+			Event.loop);
+		return;
+	}
+	// U7: the request joins the arbitration with the remake's layers (story hold, siege, regions); the decision is
+	// applied in this frame's HandleFrame (the router's OnFrame follows the event dispatch in the same rendered frame).
+	AbyssMusicRules::CoreRequest Request;
+	Request.track = AbyssAudioSystemPrivate::ToStd(TrackKey);
+	Request.kind = AbyssMusicRules::Classify(Event.trackKey, Remake->BossScores);
+	Request.fadeOutSec = Event.fadeOutSec;
+	Request.fadeInSec = Event.fadeInSec;
+	Request.loop = Event.loop;
+	Request.restart = Event.restart;
+	Request.overridden = TrackKey != CoreKey;
+	Remake->Arbiter.SetCore(Request);
+}
+
+FName UAbyssAudioSystem::SoundingTrack() const
+{
+	if (CurrentTrack.IsNone() || FindActiveMusicVoice() != INDEX_NONE)
+	{
+		return CurrentTrack;
+	}
+	// A one-shot that ended (nothing sounds) is not "the same track"; a track PlayMusic could not voice counts as asked
+	// (no new request every frame for a sound that cannot load, or under -nosound where no component can be made; a
+	// missing component is retried once a second).
+	return UnvoicedTrack == CurrentTrack && NowSec < UnvoicedRetrySec ? CurrentTrack : FName(NAME_None);
 }
 
 int32 UAbyssAudioSystem::FindFreeMusicSlot() const
@@ -696,6 +891,7 @@ void UAbyssAudioSystem::PlayMusic(FName TrackKey, float FadeOutSec, float FadeIn
 	}
 
 	CurrentTrack = TrackKey;
+	UnvoicedTrack = NAME_None;
 	if (TrackKey.IsNone())
 	{
 		return;  // silence (no theme for the zone)
@@ -704,12 +900,16 @@ void UAbyssAudioSystem::PlayMusic(FName TrackKey, float FadeOutSec, float FadeIn
 	USoundBase* Sound = GetSound(Track.Asset, AbyssAudioSystemPrivate::MusicFolder);
 	if (Sound == nullptr)
 	{
+		UnvoicedTrack = TrackKey;   // asked for good (SoundingTrack): the sound will not load on a retry either
+		UnvoicedRetrySec = TNumericLimits<double>::Max();
 		return;
 	}
 	const int32 Slot = FindFreeMusicSlot();
 	UAudioComponent* Comp = Slot != INDEX_NONE ? EnsureMusicComponent(Slot, Sound) : nullptr;
 	if (Comp == nullptr)
 	{
+		UnvoicedTrack = TrackKey;   // -nosound / no audio world: asked, retried once a second (SoundingTrack)
+		UnvoicedRetrySec = NowSec + 1.0;
 		return;
 	}
 
@@ -772,6 +972,7 @@ void UAbyssAudioSystem::StopAllMusic()
 		MusicVoices[I] = FMusicVoice();
 	}
 	CurrentTrack = NAME_None;
+	UnvoicedTrack = NAME_None;
 }
 
 void UAbyssAudioSystem::TickMusic(float RealDeltaSec)
@@ -845,13 +1046,32 @@ void UAbyssAudioSystem::HandleSfx(const abyss::EvSfx& Event)
 		return;
 	}
 	const FName CueId = AbyssAudioSystemPrivate::ToName(abyss::EnumName(Event.cue));
+	// U7: the source monster's voice (family, named cues, encounter stingers) on the three voiced beats, resolved once
+	// per def (VoiceOfDef): two map lookups per event, no table scan or string conversion.
+	const bool bVoicedBeat = Event.cue == abyss::SfxId::MonsterAggro || Event.cue == abyss::SfxId::MonsterHurt ||
+		Event.cue == abyss::SfxId::MonsterDeath;
+	const FName DefName = bVoicedBeat ? DefNameOfEntity(Event.source) : FName(NAME_None);
+	const FDefVoice& Voice = VoiceOfDef(DefName);
+	if (Voice.bHasEncounter)
+	{
+		if (Event.cue == abyss::SfxId::MonsterAggro && !Voice.bMiniBoss)
+		{
+			// A hunt's fight starts with its first aggro (a mini-boss's when its pre-fight lines are dismissed).
+			PlayEncounterStinger(Event.source, Voice.DefId, /*bSlain*/ false);
+		}
+		else if (Event.cue == abyss::SfxId::MonsterDeath)
+		{
+			PlayEncounterStinger(Event.source, Voice.DefId, /*bSlain*/ true);
+		}
+	}
 	const FAbyssAudioCueDef* Cue = Manifest.FindCue(CueId);
 	if (Cue == nullptr)
 	{
 		return;
 	}
-	const FName Family = (Cue->Families.Num() > 0 || Cue->VocalLayer.Num() > 0) ? FamilyOfEntity(Event.source)
-		: FName(NAME_None);
+	const bool bFamilyCue = Cue->Families.Num() > 0 || Cue->VocalLayer.Num() > 0;
+	const bool bSilent = bFamilyCue && Voice.bSilent;
+	const FName Family = bFamilyCue ? Voice.Family : FName(NAME_None);
 	const bool bSpatial = Event.spatial && !Cue->bUiBus;
 	FVector2D Tile(Event.pos.x, Event.pos.y);
 	if (bSpatial && Event.source != abyss::kNoEntity && Event.pos.x == 0.0 && Event.pos.y == 0.0)
@@ -866,10 +1086,32 @@ void UAbyssAudioSystem::HandleSfx(const abyss::EvSfx& Event)
 			}
 		}
 	}
+	// U7: a named cue replaces the family's aggro / hurt (Valdras, the Corpseherd); a silent monster has no family cue.
+	if (Event.cue == abyss::SfxId::MonsterAggro || Event.cue == abyss::SfxId::MonsterHurt)
+	{
+		const FName Named = Event.cue == abyss::SfxId::MonsterAggro ? Voice.AggroCue : Voice.HurtCue;
+		if (const FAbyssAudioCueDef* NamedCue = Named.IsNone() ? nullptr : Manifest.FindCue(Named))
+		{
+			PlayCue(*NamedCue, NAME_None, bSpatial, Tile);
+			return;
+		}
+	}
+	if (bSilent && Cue->Families.Num() > 0)
+	{
+		return;
+	}
 	PlayCue(*Cue, Family, bSpatial, Tile);
 
-	// A7: the family's death vocal on top of the web's monster_death groan.
-	if (!Family.IsNone())
+	// A7: the family's death vocal on top of the web's monster_death groan (U7: or the monster's named death cue).
+	if (Event.cue == abyss::SfxId::MonsterDeath && !bSilent && !Voice.DeathVocalCue.IsNone())
+	{
+		if (const FAbyssAudioCueDef* NamedCue = Manifest.FindCue(Voice.DeathVocalCue))
+		{
+			PlayCue(*NamedCue, NAME_None, bSpatial, Tile);
+			return;
+		}
+	}
+	if (!Family.IsNone() && !bSilent)
 	{
 		if (const TArray<FName>* Layer = Cue->VocalLayer.Find(Family); Layer != nullptr && Layer->Num() > 0)
 		{
@@ -1035,31 +1277,73 @@ bool UAbyssAudioSystem::ComputeVirtualEmitter(const FVector2D& Tile, FVector& Ou
 	return true;
 }
 
-FName UAbyssAudioSystem::FamilyOfEntity(abyss::EntityId Id) const
+FName UAbyssAudioSystem::DefNameOfEntity(abyss::EntityId Id) const
 {
-	if (Id == abyss::kNoEntity)
+	if (Id == abyss::kNoEntity || Id == abyss::kHeroEntityId)
 	{
 		return NAME_None;
 	}
-	if (const FName* Found = EntityFamilies.Find(Id))
+	if (const FName* Found = EntityDefs.Find(Id))
 	{
 		return *Found;
 	}
-	const UAbyssGameInstance* GI = GetAbyssGameInstance();
-	const abyss::DataStore* Data = GI ? GI->GetData() : nullptr;
 	const UAbyssSimDriver* Driver = UAbyssSimDriver::Get(GetAudioWorld());
-	if (Data == nullptr || Driver == nullptr)
+	if (const abyss::MonsterView* Monster = Driver ? Driver->GetSnapshotIndex().FindMonster(Id) : nullptr)
 	{
-		return NAME_None;
-	}
-	if (const abyss::MonsterView* Monster = Driver->GetSnapshotIndex().FindMonster(Id))
-	{
-		if (const abyss::MonsterDef* Def = Data->FindMonster(Monster->defId))
-		{
-			return AbyssAudioSystemPrivate::ToName(abyss::EnumName(Def->animCategory));
-		}
+		return AbyssAudioSystemPrivate::ToName(Monster->defId);   // no spawn record: rare
 	}
 	return NAME_None;
+}
+
+FVector2D UAbyssAudioSystem::EntityTile(abyss::EntityId Id) const
+{
+	if (const UAbyssSimDriver* Driver = UAbyssSimDriver::Get(GetAudioWorld()))
+	{
+		abyss::Vec2 Prev, Cur;
+		if (Driver->GetSnapshotIndex().FindEntityPosition(Id, Prev, Cur))
+		{
+			return FVector2D(Cur.x, Cur.y);
+		}
+	}
+	return HeroTile;
+}
+
+const UAbyssAudioSystem::FDefVoice& UAbyssAudioSystem::VoiceOfDef(FName DefName)
+{
+	static const FDefVoice NoVoice;
+	if (DefName.IsNone())
+	{
+		return NoVoice;
+	}
+	if (const FDefVoice* Found = DefVoices.Find(DefName))
+	{
+		return *Found;
+	}
+	FDefVoice Out;
+	Out.DefId = AbyssAudioSystemPrivate::ToStd(DefName);
+	const UAbyssGameInstance* GI = GetAbyssGameInstance();
+	const abyss::DataStore* Data = GI ? GI->GetData() : nullptr;
+	// The def's rig (today's rule); a def the data does not list (a hunt leader's hunt id) has none, as before.
+	const abyss::MonsterDef* Def = Data ? Data->FindMonster(Out.DefId) : nullptr;
+	const std::string_view AnimCategory = Def ? abyss::EnumName(Def->animCategory) : std::string_view();
+	// U7: voiceFamilies.monsters, then the design family (withheld from the W1 export: none yet), then the rig.
+	const AbyssVoiceRules::DefVoice Voice = AbyssVoiceRules::ResolveDefVoice(AbyssAudioSystemPrivate::VoicesOf(Remake),
+		Out.DefId, std::string_view(), AnimCategory);
+	Out.Family = AbyssAudioSystemPrivate::ToName(Voice.voice.family);   // "" -> None
+	Out.bSilent = Voice.voice.IsSilent();
+	Out.bMiniBoss = Def != nullptr && Def->isMiniBoss;
+	Out.bHasAnimCue = Voice.hasAnimCue;
+	Out.AggroCue = AbyssAudioSystemPrivate::ToName(Voice.aggroCue);
+	Out.HurtCue = AbyssAudioSystemPrivate::ToName(Voice.hurtCue);
+	Out.DeathVocalCue = AbyssAudioSystemPrivate::ToName(Voice.deathVocalCue);
+	if (Remake.IsValid())
+	{
+		using AbyssMusicRules::EncounterBeat;
+		const AbyssMusicRules::DirectorTables& Director = Remake->Director;
+		Out.bHasEncounter = AbyssMusicRules::EncounterStinger(Director, Out.DefId, EncounterBeat::Engaged) != nullptr ||
+			AbyssMusicRules::EncounterStinger(Director, Out.DefId, EncounterBeat::Slain) != nullptr;
+	}
+	return DefVoices.Add(DefName, MoveTemp(Out));
 }
 
 void UAbyssAudioSystem::HandleEntitySpawned(const abyss::EvEntitySpawned& Event)
@@ -1068,11 +1352,11 @@ void UAbyssAudioSystem::HandleEntitySpawned(const abyss::EvEntitySpawned& Event)
 	{
 		return;
 	}
-	const UAbyssGameInstance* GI = GetAbyssGameInstance();
-	const abyss::DataStore* Data = GI ? GI->GetData() : nullptr;
-	if (const abyss::MonsterDef* Def = Data ? Data->FindMonster(Event.defId) : nullptr)
+	const FName DefName = AbyssAudioSystemPrivate::ToName(Event.defId);
+	EntityDefs.Add(Event.id, DefName);
+	if (bReady)
 	{
-		EntityFamilies.Add(Event.id, AbyssAudioSystemPrivate::ToName(abyss::EnumName(Def->animCategory)));
+		VoiceOfDef(DefName);   // resolved at spawn, not on the first hit
 	}
 }
 
@@ -1094,6 +1378,18 @@ void UAbyssAudioSystem::StopAllSfx()
 void UAbyssAudioSystem::DebugPlayMusic(FName TrackKey, bool bRestart)
 {
 	EnsureReady();
+	if (bInSession && Remake.IsValid())
+	{
+		// As an EvMusic would: the remake's layers (regions, siege, story hold) still take precedence (U7).
+		AbyssMusicRules::CoreRequest Request;
+		Request.track = AbyssAudioSystemPrivate::ToStd(TrackKey);
+		Request.kind = AbyssMusicRules::Classify(Request.track, Remake->BossScores);
+		Request.fadeOutSec = 1.5;
+		Request.fadeInSec = 1.0;
+		Request.restart = bRestart;
+		Remake->Arbiter.SetCore(Request);
+		return;
+	}
 	PlayMusic(TrackKey, 1.5f, 1.f, bRestart, /*bLoopRequested*/ true);
 }
 
@@ -1122,28 +1418,56 @@ void UAbyssAudioSystem::HandleZone(const abyss::EvZone& Event)
 	{
 	case abyss::EvZone::Phase::TransitionBegan:
 		StopAmbience(Manifest.Ambience.FadeOutSec);
+		StopRemakeAmbience(Manifest.Ambience.FadeOutSec);
+		if (Remake.IsValid())
+		{
+			Remake->bZoneTransition = true;
+		}
 		break;
 	case abyss::EvZone::Phase::Exited:
 		StopAmbience(Manifest.Ambience.FadeOutSec);
-		EntityFamilies.Reset();  // the next zone's spawns follow
+		StopRemakeAmbience(Manifest.Ambience.FadeOutSec);
+		EntityDefs.Reset();  // the next zone's spawns follow
+		if (Remake.IsValid())
+		{
+			// The set-piece layer hands the next zone's emitter spots over when it builds that zone (after this).
+			Remake->SetPieceSpots.Reset();
+			Remake->EngagedEntities.Reset();
+		}
 		break;
 	case abyss::EvZone::Phase::Entered:
 	{
 		FName Asset;
+		const UAbyssGameInstance* GI = GetAbyssGameInstance();
 		if (const FName* ByZone = Manifest.Ambience.ByZone.Find(AbyssAudioSystemPrivate::ToName(Event.mapId)))
 		{
 			Asset = *ByZone;
 		}
-		else if (const UAbyssGameInstance* GI = GetAbyssGameInstance())
+		else if (const abyss::Snapshot* Snap = GI ? GI->GetSnapshot() : nullptr)
 		{
-			if (const abyss::Snapshot* Snap = GI->GetSnapshot())
+			// U7: the map's presentation theme (the dark remake's `march`) keys the bed, else its theme (as before).
+			const abyss::DataStore* Data = GI->GetData();
+			const std::string_view Theme = AbyssAmbienceRules::BedThemeName(Data ? Data->FindMap(Event.mapId) : nullptr,
+				abyss::EnumName(Snap->zone.theme));
+			if (const FName* ByTheme = Manifest.Ambience.ByTheme.Find(AbyssAudioSystemPrivate::ToName(Theme)))
 			{
-				if (const FName* ByTheme = Manifest.Ambience.ByTheme.Find(
-						AbyssAudioSystemPrivate::ToName(abyss::EnumName(Snap->zone.theme))))
-				{
-					Asset = *ByTheme;
-				}
+				Asset = *ByTheme;
 			}
+		}
+		if (Remake.IsValid())
+		{
+			// Hysteresis, trigger timers and the story hold start over in the new zone; the emitters are placed anew.
+			Remake->ZoneId = Event.mapId;
+			Remake->MusicRegions.Reset();
+			Remake->Region = -1;
+			Remake->Siege = AbyssMusicRules::QuestTrackPick{};
+			Remake->Arbiter.OnZoneChanged();
+			Remake->AmbienceRegions.Reset();
+			Remake->AmbienceLayers.Reset();
+			Remake->Scheduler.OnZoneChanged();
+			Remake->DecorFocus.clear();
+			Remake->bEmittersDirty = true;
+			Remake->bZoneTransition = false;
 		}
 		if (Asset.IsNone())
 		{
@@ -1227,7 +1551,23 @@ void UAbyssAudioSystem::HandleStoryBeat(const abyss::EvStoryBeat& Event)
 	if (Event.phase == abyss::EvStoryBeat::Phase::Ended)
 	{
 		EndStoryAudio();
+		if (Remake.IsValid())
+		{
+			// U7: the story hold's `then` timer starts, the beat's bursts stop, the beat-end bells ring.
+			Remake->Arbiter.OnStoryEnded(Remake->Director, Event.beatId, NowSec);
+			Remake->Scheduler.StopBound(Event.beatId);
+			if (Remake->PlayingBeat == Event.beatId)
+			{
+				Remake->PlayingBeat.clear();
+			}
+			StartTriggerRows(AbyssCueTriggerRules::MatchStoryEnd(Remake->Triggers, Event.beatId), std::string_view());
+		}
 		return;
+	}
+	if (Remake.IsValid())
+	{
+		Remake->PlayingBeat = Event.beatId;
+		Remake->PlayingKind = Event.kind;
 	}
 	bBeatActive = true;
 	CurrentBeatKind = Event.kind;
@@ -1274,6 +1614,40 @@ void UAbyssAudioSystem::HandleStoryBeat(const abyss::EvStoryBeat& Event)
 
 void UAbyssAudioSystem::HandleStoryStep(const abyss::EvStoryStep& Event)
 {
+	if (Remake.IsValid() && bReady)
+	{
+		// U7: a story hold (cs_rf_finale's silence) from its step; the bells / voices of this step or slide; a monster's
+		// `say` lines in its named voice (story.say).
+		Remake->Arbiter.OnStoryStep(Remake->Director, Event.beatId, Event.index, Event.isSlide);
+		StartTriggerRows(AbyssCueTriggerRules::MatchStoryStep(Remake->Triggers, Event.beatId, Event.sequenceId,
+			Event.index, Event.isSlide), Event.beatId);
+		if (!Event.isSlide && Event.step.kind == abyss::StoryStepKind::Say &&
+			Event.step.speaker.kind == abyss::StoryActorKind::Monster)
+		{
+			const std::string_view Named = AbyssVoiceRules::OverrideCue(Remake->Voices, Event.step.speaker.id,
+				AbyssVoiceRules::KeyStorySay);
+			if (!Named.empty())
+			{
+				// At the nearest living instance of the speaker (the boss facing the hero), else at the hero.
+				FVector2D Tile = HeroTile;
+				double BestSq = TNumericLimits<double>::Max();
+				const UAbyssGameInstance* GI = GetAbyssGameInstance();
+				if (const abyss::Snapshot* Snap = GI ? GI->GetSnapshot() : nullptr)
+				{
+					for (const abyss::MonsterView& Monster : Snap->monsters)
+					{
+						const double DistSq = FVector2D::DistSquared(FVector2D(Monster.pos.x, Monster.pos.y), HeroTile);
+						if (Monster.alive && Monster.defId == Event.step.speaker.id && DistSq < BestSq)
+						{
+							BestSq = DistSq;
+							Tile = FVector2D(Monster.pos.x, Monster.pos.y);
+						}
+					}
+				}
+				PlayNamedCue(AbyssAudioSystemPrivate::ToName(Named), Tile);
+			}
+		}
+	}
 	if (Event.isSlide)
 	{
 		return;
@@ -1439,6 +1813,10 @@ void UAbyssAudioSystem::ReleaseDuck(const FAbyssDuckDef& Duck)
 	{
 		Target = FMath::Min(Target, Manifest.Stingers.WhisperDuck.Db);
 	}
+	if (bEncounterDucking)
+	{
+		Target = FMath::Min(Target, EncounterDuck.Db);
+	}
 	DuckTargetDb = Target;
 	DuckOutSec = Duck.OutSec;
 }
@@ -1450,6 +1828,11 @@ void UAbyssAudioSystem::TickDuck(float RealDeltaSec)
 	{
 		bStingerDucking = false;
 		ReleaseDuck(StingerDuck);
+	}
+	if (bEncounterDucking && !AbyssAudioSystemPrivate::IsSounding(EncounterStingerComponent) && !bSuspended)
+	{
+		bEncounterDucking = false;
+		ReleaseDuck(EncounterDuck);
 	}
 	if (DuckCurrentDb == DuckTargetDb)
 	{
@@ -1475,7 +1858,7 @@ void UAbyssAudioSystem::EndStoryAudio()
 	StopWhisper();
 	bBeatActive = false;
 	bTitleStinger = false;
-	if (!bStingerDucking && !bWhisperActive)
+	if (!bStingerDucking && !bWhisperActive && !bEncounterDucking)
 	{
 		DuckTargetDb = 0.f;
 	}
@@ -1509,6 +1892,7 @@ void UAbyssAudioSystem::HandleFrame(const abyss::Snapshot& Snap, const FAbyssFra
 	}
 	BindHero(Snap);
 	TickFootstepFallback(Snap, static_cast<float>(Frame.RealDeltaMs / 1000.0));
+	TickRemake(Snap, static_cast<float>(FMath::Max(0.0, Frame.RealDeltaMs) / 1000.0));
 }
 
 void UAbyssAudioSystem::BindHero(const abyss::Snapshot& Snap)
@@ -1603,6 +1987,639 @@ void UAbyssAudioSystem::PlayFootstep()
 	const FAbyssAudioAssetDef* Def = Manifest.FindAsset(Asset);
 	PlayOneShot(Sound, (Def ? Def->Gain : 1.f) * Manifest.Footsteps.Gain * SfxBusGain(), /*bSpatial*/ false, HeroTile);
 	LastFootstepSec = NowSec;
+}
+
+// =====================================================================================================================
+// Dark remake (U7): music arbitration, ambience layers and emitters, cue triggers, voices on beats
+// =====================================================================================================================
+
+void UAbyssAudioSystem::BuildRemakeTables()
+{
+	if (!Remake.IsValid())
+	{
+		return;
+	}
+	FAbyssAudioRemake& R = *Remake;
+	DefVoices.Reset();   // resolved against the tables built here
+	R.Voices = AbyssVoiceRules::Parse(Manifest.VoiceFamiliesJson);
+	R.Director = AbyssMusicRules::Parse(Manifest.MusicDirectorJson);
+	R.Ambience = AbyssAmbienceRules::Parse(Manifest.AmbienceJson);
+	R.Triggers = AbyssCueTriggerRules::Parse(Manifest.CueTriggersJson);
+	R.AmbienceRegionAreas = AbyssAmbienceRules::Areas(R.Ambience.regions);
+	R.AmbienceLayerAreas = AbyssAmbienceRules::Areas(R.Ambience.layers);
+	R.AreaLoopAssets.Reset();
+	for (const std::vector<AbyssAmbienceRules::AreaLoop>* Loops : { &R.Ambience.regions, &R.Ambience.layers })
+	{
+		for (const AbyssAmbienceRules::AreaLoop& Loop : *Loops)
+		{
+			R.AreaLoopAssets.Add(AbyssAudioSystemPrivate::ToName(Loop.asset));
+		}
+	}
+
+	// Boss scores: what the core plays as boss music (classified above the siege and the regions).
+	R.BossScores.clear();
+	const UAbyssGameInstance* GI = GetAbyssGameInstance();
+	if (const abyss::DataStore* Data = GI ? GI->GetData() : nullptr)
+	{
+		const abyss::MusicDirectorDef& Music = Data->Audio().music;
+		R.BossScores.push_back(Music.bossCh1Score);
+		for (const std::pair<std::string, std::string>& Row : Music.bossMusic)
+		{
+			R.BossScores.push_back(Row.second);
+		}
+	}
+	for (const AbyssMusicRules::Boss& Boss : R.Director.bosses)
+	{
+		if (!Boss.track.empty())
+		{
+			R.BossScores.push_back(Boss.track);
+		}
+	}
+
+	// The monsters a `while` reads (their liveness is gathered from the snapshot each frame).
+	R.WatchedMonsters.clear();
+	const auto Watch = [&R](const AbyssAudioData::WhileCondition& When)
+	{
+		if (!When.monsterAlive.empty() && !AbyssAudioData::Contains(R.WatchedMonsters, When.monsterAlive))
+		{
+			R.WatchedMonsters.push_back(When.monsterAlive);
+		}
+	};
+	for (const AbyssMusicRules::Region& Region : R.Director.regions)
+	{
+		Watch(Region.when);
+	}
+	for (const AbyssAmbienceRules::AreaLoop& Loop : R.Ambience.regions)
+	{
+		Watch(Loop.when);
+	}
+	for (const AbyssAmbienceRules::AreaLoop& Loop : R.Ambience.layers)
+	{
+		Watch(Loop.when);
+	}
+	R.ResetSession();
+	UE_LOG(LogAbyss, Log, TEXT("Audio U7: %d voiced monsters, %d named cues, %d music regions, %d region beds, %d layers, "
+		"%d emitters, %d cue triggers"), static_cast<int32>(R.Voices.monsters.size()),
+		static_cast<int32>(R.Voices.overrides.size()), static_cast<int32>(R.Director.regions.size()),
+		static_cast<int32>(R.Ambience.regions.size()), static_cast<int32>(R.Ambience.layers.size()),
+		static_cast<int32>(R.Ambience.emitters.size()), static_cast<int32>(R.Triggers.rows.size()));
+}
+
+void UAbyssAudioSystem::ResetRemakeSession()
+{
+	if (Remake.IsValid())
+	{
+		Remake->ResetSession();
+	}
+	AmbienceBedScale = 1.f;
+	if (bEncounterDucking)
+	{
+		bEncounterDucking = false;
+		ReleaseDuck(EncounterDuck);
+	}
+	if (AbyssAudioSystemPrivate::IsSounding(EncounterStingerComponent))
+	{
+		EncounterStingerComponent->Stop();
+	}
+}
+
+void UAbyssAudioSystem::SetZoneEmitterSpots(FName EmitterId, const TArray<FVector2D>& Tiles)
+{
+	if (!Remake.IsValid() || EmitterId.IsNone())
+	{
+		return;
+	}
+	if (Tiles.Num() > 0)
+	{
+		Remake->SetPieceSpots.Add(EmitterId, Tiles);
+	}
+	else
+	{
+		Remake->SetPieceSpots.Remove(EmitterId);
+	}
+	Remake->bEmittersDirty = true;  // re-placed on the next frame
+}
+
+void UAbyssAudioSystem::TickRemake(const abyss::Snapshot& Snap, float RealDeltaSec)
+{
+	if (!bReady || !Remake.IsValid() || !bInSession)
+	{
+		return;
+	}
+	FAbyssAudioRemake& R = *Remake;
+	if (R.ZoneId != Snap.zone.mapId)
+	{
+		R.ZoneId = Snap.zone.mapId;
+	}
+
+	// The watched monsters alive now (`while monsterAlive`).
+	R.AliveNow.clear();
+	for (const std::string& Id : R.WatchedMonsters)
+	{
+		for (const abyss::MonsterView& Monster : Snap.monsters)
+		{
+			if (Monster.alive && Monster.defId == Id)
+			{
+				R.AliveNow.push_back(Id);
+				break;
+			}
+		}
+	}
+	const AbyssAudioData::TilePoint Tile = AbyssAudioData::TileOf(HeroTile.X, HeroTile.Y);
+	const bool bInDirectorZone = R.Director.loaded && !R.Director.zone.empty() && Snap.zone.mapId == R.Director.zone;
+	const abyss::QuestSystem* Quests = Snap.quests;
+	const auto PhaseOf = [Quests](std::string_view QuestId)
+	{
+		return AbyssAudioSystemPrivate::PhaseOf(Quests, QuestId);
+	};
+
+	// Music layers. During a cutscene / boss intro they keep their choice (the core holds its own changes as well).
+	if (!R.IsCutscene())
+	{
+		if (bInDirectorZone)
+		{
+			R.MusicRegions.Update(R.Director.regionAreas, Tile);
+			R.Region = AbyssMusicRules::PickRegion(R.Director, R.MusicRegions,
+				[&R](std::string_view Id) { return R.IsAlive(Id); });
+			R.Siege = AbyssMusicRules::PickQuestTrack(R.Director, R.PlayingBeat, PhaseOf);
+		}
+		else
+		{
+			R.Region = -1;
+			R.Siege = AbyssMusicRules::QuestTrackPick{};
+		}
+	}
+	AbyssMusicRules::FrameState State;
+	State.inDirectorZone = bInDirectorZone;
+	State.sequence = !R.PlayingBeat.empty() && R.PlayingKind == abyss::StoryBeatKind::Sequence;
+	State.siege = R.Siege;
+	State.region = R.Region;
+	AbyssMusicRules::DefaultFades Fades;
+	const UAbyssGameInstance* GI = GetAbyssGameInstance();
+	if (const abyss::DataStore* Data = GI ? GI->GetData() : nullptr)
+	{
+		Fades.stateFadeSec = Data->Audio().music.stateFadeSec;
+		Fades.fadeInSec = Data->Audio().music.fadeInSec;
+	}
+	const FName Sounding = SoundingTrack();
+	if (Sounding != R.SoundingName)
+	{
+		R.SoundingName = Sounding;
+		R.SoundingStd = AbyssAudioSystemPrivate::ToStd(Sounding);
+	}
+	const AbyssMusicRules::Decision Decision = R.Arbiter.Update(R.Director, State, Fades, R.SoundingStd, NowSec);
+	if (Decision.change)
+	{
+		PlayMusic(AbyssAudioSystemPrivate::ToName(Decision.track), static_cast<float>(Decision.fadeOutSec),
+			static_cast<float>(Decision.fadeInSec), Decision.restart, Decision.loop);
+	}
+
+	TickRemakeAmbience(Snap, RealDeltaSec);
+
+	// Cue trigger timers: burst members, `every` rows (never while a story beat plays).
+	const bool bStoryBeat = !R.PlayingBeat.empty();
+	const auto Holds = [&R, &Snap, &PhaseOf, Tile, bStoryBeat](size_t Row)
+	{
+		const AbyssCueTriggerRules::Trigger& T = R.Triggers.rows[Row];
+		if (bStoryBeat || (!T.zone.empty() && T.zone != Snap.zone.mapId))
+		{
+			return false;
+		}
+		if (!T.whileQuestActive.empty() && PhaseOf(T.whileQuestActive) != AbyssMusicRules::QuestPhase::Active)
+		{
+			return false;
+		}
+		return !T.hasWithin || AbyssAudioData::Inside(T.within, Tile, /*bWasInside*/ false);
+	};
+	const std::vector<size_t> Due = R.Scheduler.Tick(R.Triggers, NowSec, Holds,
+		[this]() { return static_cast<double>(Random.FRand()); });
+	for (const size_t Row : Due)
+	{
+		PlayTriggerRow(Row);
+	}
+}
+
+void UAbyssAudioSystem::TickRemakeAmbience(const abyss::Snapshot& Snap, float RealDeltaSec)
+{
+	FAbyssAudioRemake& R = *Remake;
+	const AbyssAmbienceRules::AmbienceTables& Tables = R.Ambience;
+	UWorld* AudioWorld = GetAudioWorld();
+	if (AudioWorld == nullptr || R.bZoneTransition)
+	{
+		return;  // leaving the zone: what plays fades out (StopRemakeAmbience), nothing new starts
+	}
+	// The bed's bus: ambience gain, master x SFX volume, the cinematic duck.
+	const float Shared = Manifest.Ambience.Gain * MasterVolume * SfxVolume *
+		AbyssAudioSystemPrivate::DbToLinear(AmbienceDuckDb);
+	const auto AssetGain = [this](FName Asset)
+	{
+		const FAbyssAudioAssetDef* Def = Manifest.FindAsset(Asset);
+		return Def ? Def->Gain : 1.f;
+	};
+	const auto StartOffset = [this](FName Asset)
+	{
+		const FAbyssAudioAssetDef* Def = Manifest.FindAsset(Asset);
+		const float Length = Def && Def->LengthSec > 1.f ? Def->LengthSec : 0.f;
+		return Length > 0.f ? static_cast<float>(Random.FRandRange(0.f, Length - 1.f)) : 0.f;
+	};
+
+	// Region beds and layers: a weight ramps in / out with the area and its `while`; a region bed that replaces the
+	// bed scales the bed by 1 - its weight (the crossfade).
+	const AbyssAudioData::TilePoint Tile = AbyssAudioData::TileOf(HeroTile.X, HeroTile.Y);
+	R.AmbienceRegions.Update(R.AmbienceRegionAreas, Tile);
+	R.AmbienceLayers.Update(R.AmbienceLayerAreas, Tile);
+	const size_t NumRegions = Tables.regions.size();
+	const size_t NumLoops = NumRegions + Tables.layers.size();
+	R.RegionWeights.resize(NumRegions, 0.0);
+	R.LayerWeights.resize(Tables.layers.size(), 0.0);
+	if (AreaLoopComponents.Num() != static_cast<int32>(NumLoops))
+	{
+		AreaLoopComponents.SetNum(static_cast<int32>(NumLoops));
+	}
+	const bool bFadingOut = NowSec < R.FadeOutUntilSec;  // the last zone's loops finish their fade-out
+	double Replaced = 0.0;
+	for (size_t I = 0; I < NumLoops; ++I)
+	{
+		const bool bRegion = I < NumRegions;
+		const AbyssAmbienceRules::AreaLoop& Loop = bRegion ? Tables.regions[I] : Tables.layers[I - NumRegions];
+		double& Weight = bRegion ? R.RegionWeights[I] : R.LayerWeights[I - NumRegions];
+		const bool bInside = bRegion ? R.AmbienceRegions.IsInside(I) : R.AmbienceLayers.IsInside(I - NumRegions);
+		const bool bOn = (Loop.zone.empty() || Loop.zone == Snap.zone.mapId) && bInside &&
+			AbyssAudioData::Holds(Loop.when, [&R](std::string_view Id) { return R.IsAlive(Id); });
+		Weight = AbyssAudioData::Ramp(Weight, bOn, Loop.fadeInSec, Loop.fadeOutSec, RealDeltaSec);
+		if (bRegion && Loop.replacesBed)
+		{
+			Replaced = FMath::Max(Replaced, Weight);
+		}
+		TObjectPtr<UAudioComponent>& Comp = AreaLoopComponents[static_cast<int32>(I)];
+		if (Weight <= 0.0)
+		{
+			if (AbyssAudioSystemPrivate::IsSounding(Comp) && !bFadingOut)
+			{
+				Comp->Stop();
+			}
+			continue;
+		}
+		const FName Asset = R.AreaLoopAssets.IsValidIndex(static_cast<int32>(I)) ? R.AreaLoopAssets[static_cast<int32>(I)]
+			: AbyssAudioSystemPrivate::ToName(Loop.asset);
+		const float Volume = static_cast<float>(Weight) * AssetGain(Asset) * Shared;
+		if (!AbyssAudioSystemPrivate::IsSounding(Comp))
+		{
+			USoundBase* Sound = GetSound(Asset, AbyssAudioSystemPrivate::AmbienceFolder);
+			if (Sound == nullptr)
+			{
+				continue;
+			}
+			if (!IsValid(Comp) || Comp->GetWorld() != AudioWorld)
+			{
+				Comp = UGameplayStatics::CreateSound2D(AudioWorld, Sound, 1.f, 1.f, 0.f, nullptr, true, false);
+				if (Comp == nullptr)
+				{
+					continue;
+				}
+				Comp->bIsUISound = true;
+				Comp->bAllowSpatialization = false;
+			}
+			else
+			{
+				Comp->SetSound(Sound);
+			}
+			Comp->SetVolumeMultiplier(Volume);
+			Comp->Play(StartOffset(Asset));
+			if (bSuspended)
+			{
+				Comp->SetPaused(true);
+			}
+		}
+		AbyssAudioSystemPrivate::SetVolumeIfChanged(Comp, Volume);
+	}
+	AmbienceBedScale = static_cast<float>(1.0 - Replaced);
+	AbyssAudioSystemPrivate::SetVolumeIfChanged(AmbienceComponent, AmbienceGain());
+
+	// Emitters: placed once per zone (or when the set pieces hand their spots over), each spot a looping point source
+	// with linear distance attenuation and the A4 panning of its direction.
+	if (R.bEmittersDirty && !bFadingOut)
+	{
+		R.bEmittersDirty = false;
+		for (const TObjectPtr<UAudioComponent>& Comp : EmitterComponents)
+		{
+			if (AbyssAudioSystemPrivate::IsSounding(Comp))
+			{
+				Comp->Stop();
+			}
+		}
+		R.EmitterSpots.clear();
+		const abyss::DataStore* Data = GetAbyssGameInstance() ? GetAbyssGameInstance()->GetData() : nullptr;
+		const abyss::MapDef* Map = Data ? Data->FindMap(Snap.zone.mapId) : nullptr;
+		std::vector<AbyssAmbienceRules::Spot> Spots;
+		for (const AbyssAmbienceRules::Emitter& Emitter : Tables.emitters)
+		{
+			if (!Emitter.zone.empty() && Emitter.zone != Snap.zone.mapId)
+			{
+				continue;
+			}
+			std::vector<std::pair<double, double>> Pieces;
+			if (const TArray<FVector2D>* Found = R.SetPieceSpots.Find(AbyssAudioSystemPrivate::ToName(Emitter.id)))
+			{
+				for (const FVector2D& Spot : *Found)
+				{
+					Pieces.emplace_back(Spot.X, Spot.Y);
+				}
+			}
+			AbyssAmbienceRules::EmitterSpots(Emitter, Pieces, Map, Spots);
+			for (const AbyssAmbienceRules::Spot& Spot : Spots)
+			{
+				R.EmitterSpots.push_back(FAbyssAudioRemake::FEmitterSpot{ AbyssAudioSystemPrivate::ToName(Spot.asset),
+					Spot.col, Spot.row, Emitter.innerTiles, Emitter.falloffTiles });
+			}
+		}
+		EmitterComponents.SetNum(static_cast<int32>(R.EmitterSpots.size()));
+	}
+	for (size_t I = 0; I < R.EmitterSpots.size(); ++I)
+	{
+		const FAbyssAudioRemake::FEmitterSpot& Spot = R.EmitterSpots[I];
+		TObjectPtr<UAudioComponent>& Comp = EmitterComponents[static_cast<int32>(I)];
+		const FVector2D SpotTile(Spot.Col, Spot.Row);
+		const double Gain = AbyssAmbienceRules::EmitterGain(FVector2D::Distance(HeroTile, SpotTile), Spot.InnerTiles,
+			Spot.FalloffTiles);
+		if (Gain <= 0.0)
+		{
+			if (AbyssAudioSystemPrivate::IsSounding(Comp))
+			{
+				Comp->Stop();
+			}
+			continue;
+		}
+		const FName Asset = Spot.Asset;
+		const float Volume = static_cast<float>(Gain) * AssetGain(Asset) * Shared;
+		FVector Location;
+		const bool bPanned = ComputeVirtualEmitter(SpotTile, Location);
+		if (bPanned && IsValid(Comp) && !Comp->bAllowSpatialization)
+		{
+			// A loop that started as a plain 2D sound (no listener on its first frames) becomes a panned point source
+			// as soon as a listener exists: the 2D component is dropped and the spot starts again below through
+			// SpawnSoundAtLocation (the slot is reused across zones, so it would otherwise stay unpanned for good).
+			Comp->Stop();
+			Comp->DestroyComponent();
+			Comp = nullptr;
+		}
+		if (!AbyssAudioSystemPrivate::IsSounding(Comp))
+		{
+			USoundBase* Sound = GetSound(Asset, AbyssAudioSystemPrivate::AmbienceFolder);
+			if (Sound == nullptr)
+			{
+				continue;
+			}
+			if (!IsValid(Comp) || Comp->GetWorld() != AudioWorld)
+			{
+				Comp = bPanned
+					? UGameplayStatics::SpawnSoundAtLocation(AudioWorld, Sound, Location, FRotator::ZeroRotator, Volume,
+						1.f, StartOffset(Asset), GetSpatialAttenuation(), nullptr, /*bAutoDestroy*/ false)
+					: UGameplayStatics::CreateSound2D(AudioWorld, Sound, Volume, 1.f, 0.f, nullptr, true, false);
+				if (Comp == nullptr)
+				{
+					continue;
+				}
+				if (!bPanned)
+				{
+					// No listener yet (loading): a plain 2D loop, attenuated like the panned one.
+					Comp->bIsUISound = true;
+					Comp->bAllowSpatialization = false;
+					Comp->Play(StartOffset(Asset));
+				}
+			}
+			else
+			{
+				Comp->SetSound(Sound);
+				Comp->SetVolumeMultiplier(Volume);
+				Comp->Play(StartOffset(Asset));
+			}
+			if (bSuspended)
+			{
+				Comp->SetPaused(true);
+			}
+		}
+		if (bPanned && Comp->bAllowSpatialization)
+		{
+			Comp->SetWorldLocation(Location);
+		}
+		AbyssAudioSystemPrivate::SetVolumeIfChanged(Comp, Volume);
+	}
+}
+
+void UAbyssAudioSystem::StopRemakeAmbience(float FadeOutSec)
+{
+	for (const TArray<TObjectPtr<UAudioComponent>>* List : { &AreaLoopComponents, &EmitterComponents })
+	{
+		for (const TObjectPtr<UAudioComponent>& Comp : *List)
+		{
+			if (!AbyssAudioSystemPrivate::IsSounding(Comp))
+			{
+				continue;
+			}
+			if (FadeOutSec > 0.f)
+			{
+				Comp->FadeOut(FadeOutSec, 0.f, EAudioFaderCurve::Linear);
+			}
+			else
+			{
+				Comp->Stop();
+			}
+		}
+	}
+	AmbienceBedScale = 1.f;
+	if (Remake.IsValid())
+	{
+		std::fill(Remake->RegionWeights.begin(), Remake->RegionWeights.end(), 0.0);
+		std::fill(Remake->LayerWeights.begin(), Remake->LayerWeights.end(), 0.0);
+		Remake->EmitterSpots.clear();
+		Remake->bEmittersDirty = true;
+		Remake->FadeOutUntilSec = FadeOutSec > 0.f ? NowSec + FadeOutSec : -1.0;
+	}
+}
+
+bool UAbyssAudioSystem::PlayNamedCue(FName CueId, const FVector2D& Tile)
+{
+	EnsureReady();
+	if (!bReady || bSuspended || CueId.IsNone())
+	{
+		return false;
+	}
+	const FAbyssAudioCueDef* Cue = Manifest.FindCue(CueId);
+	if (Cue == nullptr)
+	{
+		return false;
+	}
+	return PlayCue(*Cue, NAME_None, Cue->bSpatial && !Cue->bUiBus, Tile) != nullptr;
+}
+
+void UAbyssAudioSystem::PlayTriggerRow(size_t Row)
+{
+	if (!Remake.IsValid() || Row >= Remake->Triggers.rows.size())
+	{
+		return;
+	}
+	const FAbyssAudioRemake& R = *Remake;
+	const AbyssCueTriggerRules::Trigger& T = R.Triggers.rows[Row];
+	// Near / far: the far cue only when the hero is known to be outside the named music region.
+	bool bInsideNear = true;
+	if (AbyssCueTriggerRules::NeedsRegion(T))
+	{
+		for (const AbyssMusicRules::Region& Region : R.Director.regions)
+		{
+			if (Region.id == T.nearRegion)
+			{
+				bInsideNear = R.ZoneId == R.Director.zone &&
+					AbyssAudioData::Inside(Region.area, AbyssAudioData::TileOf(HeroTile.X, HeroTile.Y), false);
+				break;
+			}
+		}
+	}
+	const FName CueId = AbyssAudioSystemPrivate::ToName(AbyssCueTriggerRules::CueFor(T, bInsideNear));
+	const FVector2D Tile = T.hasTile ? FVector2D(T.tileCol, T.tileRow) : HeroTile;
+	if (PlayNamedCue(CueId, Tile))
+	{
+		OnCuePlayed.Broadcast(CueId);
+	}
+}
+
+void UAbyssAudioSystem::StartTriggerRows(const std::vector<size_t>& Rows, std::string_view BoundBeat)
+{
+	if (!Remake.IsValid() || Rows.empty())
+	{
+		return;
+	}
+	for (const size_t Row : Rows)
+	{
+		Remake->Scheduler.Start(Remake->Triggers, Row, NowSec, BoundBeat);
+	}
+	for (const size_t Row : Remake->Scheduler.TakeDue(NowSec))
+	{
+		PlayTriggerRow(Row);  // the first member at once; a burst's others follow on the frame timer
+	}
+}
+
+void UAbyssAudioSystem::PlayEncounterStinger(abyss::EntityId Entity, std::string_view DefId, bool bSlain)
+{
+	if (!Remake.IsValid() || DefId.empty() || bSuspended)
+	{
+		return;
+	}
+	FAbyssAudioRemake& R = *Remake;
+	const AbyssMusicRules::Stinger* Stinger = AbyssMusicRules::EncounterStinger(R.Director, DefId,
+		bSlain ? AbyssMusicRules::EncounterBeat::Slain : AbyssMusicRules::EncounterBeat::Engaged);
+	if (Stinger == nullptr)
+	{
+		return;
+	}
+	if (bSlain)
+	{
+		R.EngagedEntities.Remove(Entity);
+	}
+	else
+	{
+		if (R.EngagedEntities.Contains(Entity))
+		{
+			return;  // once per fight with that instance
+		}
+		R.EngagedEntities.Add(Entity);
+	}
+	const FName Asset = AbyssAudioSystemPrivate::ToName(Stinger->asset);
+	USoundBase* Sound = GetSound(Asset, AbyssAudioSystemPrivate::StingerFolder);
+	UWorld* AudioWorld = GetAudioWorld();
+	if (Sound == nullptr || AudioWorld == nullptr)
+	{
+		return;
+	}
+	if (!IsValid(EncounterStingerComponent) || EncounterStingerComponent->GetWorld() != AudioWorld)
+	{
+		EncounterStingerComponent = UGameplayStatics::CreateSound2D(AudioWorld, Sound, 1.f, 1.f, 0.f, nullptr, true, false);
+		if (EncounterStingerComponent == nullptr)
+		{
+			return;
+		}
+		EncounterStingerComponent->bIsUISound = true;
+		EncounterStingerComponent->bAllowSpatialization = false;
+	}
+	else
+	{
+		EncounterStingerComponent->Stop();
+		EncounterStingerComponent->SetSound(Sound);
+	}
+	const FAbyssAudioAssetDef* Def = Manifest.FindAsset(Asset);
+	EncounterStingerGain = Def ? Def->Gain : 1.f;
+	EncounterStingerComponent->SetVolumeMultiplier(EncounterStingerGain * MasterVolume * MusicVolume);
+	EncounterStingerComponent->Play();
+	// The stinger's own duck (musicDirector.stingers.<id>.duck), released when it ends (TickDuck).
+	EncounterDuck.Db = static_cast<float>(Stinger->duckDb);
+	EncounterDuck.InSec = static_cast<float>(FMath::Max(0.0, Stinger->duckInSec));
+	EncounterDuck.OutSec = static_cast<float>(FMath::Max(0.0, Stinger->duckOutSec));
+	bEncounterDucking = true;
+	SetDuck(EncounterDuck);
+}
+
+void UAbyssAudioSystem::HandlePlayAnim(const abyss::EvPlayAnim& Event)
+{
+	if (!bReady || !Remake.IsValid() || Remake->Voices.overrides.empty() || Event.entity == abyss::kNoEntity ||
+		Event.entity == abyss::kHeroEntityId)
+	{
+		return;
+	}
+	const FDefVoice& Voice = VoiceOfDef(DefNameOfEntity(Event.entity));
+	if (!Voice.bHasAnimCue)
+	{
+		return;   // nearly every monster: no anim.<action> cue, no string work
+	}
+	const std::string_view Named =
+		AbyssVoiceRules::OverrideCue(Remake->Voices, Voice.DefId, AbyssVoiceRules::AnimKey(abyss::EnumName(Event.action)));
+	if (!Named.empty())
+	{
+		// e.g. the boss intro's focus-step roar (vox_valdras_roar), every Corpseherd cast (her handbell).
+		PlayNamedCue(AbyssAudioSystemPrivate::ToName(Named), EntityTile(Event.entity));
+	}
+}
+
+void UAbyssAudioSystem::HandleMiniBossDialogue(const abyss::EvMiniBossDialogue& Event)
+{
+	EnsureReady();
+	if (!bReady || !Remake.IsValid())
+	{
+		return;
+	}
+	if (Event.opened)
+	{
+		// Her lullaby, hummed once under the pre-fight lines (miniboss.opened).
+		const std::string_view Named = AbyssVoiceRules::OverrideCue(Remake->Voices, Event.monsterId,
+			AbyssVoiceRules::KeyMiniBossOpened);
+		if (!Named.empty())
+		{
+			PlayNamedCue(AbyssAudioSystemPrivate::ToName(Named), EntityTile(Event.monster));
+		}
+		return;
+	}
+	PlayEncounterStinger(Event.monster, Event.monsterId, /*bSlain*/ false);  // the lines dismissed: the fight starts
+}
+
+void UAbyssAudioSystem::HandleRandomEvent(const abyss::EvRandomEvent& Event)
+{
+	EnsureReady();
+	if (!bReady || !Remake.IsValid())
+	{
+		return;
+	}
+	StartTriggerRows(AbyssCueTriggerRules::MatchRandomEvent(Remake->Triggers, abyss::EnumName(Event.type),
+		Event.resolved, Event.zoneId), std::string_view());
+}
+
+void UAbyssAudioSystem::HandleStoryDecorFocus(const abyss::EvStoryDecorFocus& Event)
+{
+	EnsureReady();
+	if (!bReady || !Remake.IsValid() || Event.decorId == Remake->DecorFocus)
+	{
+		return;  // the same decoration (its tooltip toggled): nothing new
+	}
+	Remake->DecorFocus = Event.decorId;
+	StartTriggerRows(AbyssCueTriggerRules::MatchDecorFocus(Remake->Triggers, Event.decorId), std::string_view());
 }
 
 // =====================================================================================================================
@@ -1872,6 +2889,28 @@ FString UAbyssAudioSystem::DescribeState() const
 	Out += FString::Printf(TEXT("  ambience: %s, stinger playing=%d, whisper=%d, hero surface %s\n"),
 		*CurrentAmbience.ToString(), AbyssAudioSystemPrivate::IsSounding(StingerComponent) ? 1 : 0, bWhisperActive ? 1 : 0,
 		*SurfaceUnderHero().ToString());
+	if (Remake.IsValid())
+	{
+		const FAbyssAudioRemake& R = *Remake;
+		const FString RegionId = R.Region >= 0 && static_cast<size_t>(R.Region) < R.Director.regions.size()
+			? AbyssText::ToFString(R.Director.regions[static_cast<size_t>(R.Region)].id) : FString(TEXT("-"));
+		Out += FString::Printf(TEXT("  remake: zone %s, music region %s, siege %d%s, hold %d, source %d, beat %s, "
+			"bed scale %.2f, emitters %d, triggers %d, voice families %d\n"), *AbyssText::ToFString(R.ZoneId), *RegionId,
+			R.Siege.index, R.Siege.then ? TEXT(" (then)") : TEXT(""), R.Arbiter.IsHolding() ? 1 : 0,
+			static_cast<int32>(R.Arbiter.CurrentSource()), *AbyssText::ToFString(R.PlayingBeat), AmbienceBedScale,
+			static_cast<int32>(R.EmitterSpots.size()), static_cast<int32>(R.Triggers.rows.size()),
+			static_cast<int32>(R.Voices.monsters.size()));
+		for (size_t I = 0; I < R.RegionWeights.size() && I < R.Ambience.regions.size(); ++I)
+		{
+			Out += FString::Printf(TEXT("  region bed %s weight %.2f\n"), *AbyssText::ToFString(R.Ambience.regions[I].id),
+				R.RegionWeights[I]);
+		}
+		for (size_t I = 0; I < R.LayerWeights.size() && I < R.Ambience.layers.size(); ++I)
+		{
+			Out += FString::Printf(TEXT("  layer %s weight %.2f\n"), *AbyssText::ToFString(R.Ambience.layers[I].id),
+				R.LayerWeights[I]);
+		}
+	}
 	Out += FString::Printf(TEXT("  sounds loaded %d, missing %d"), Sounds.Num(), MissingSounds.Num());
 	for (const FName Missing : MissingSounds)
 	{

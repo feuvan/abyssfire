@@ -804,4 +804,16 @@ The data follows this document except where listed here (DECISIONS DR3 / DR5 / D
 | §8 epilogue slide 2 | 赤幡原 / The Red Field, re-voiced (the web's Emerald Plains slide) | the ending is Chapter 5's, but this slide is Chapter 1's land |
 | Jukebox | 赤幡原 · 探索 / 战斗, and 渊火 · 低语 / Abyssfire · The Whisper (the prologue's abyss slide) for the abyss_rift recording the prologue plays; the title-menu track keeps 渊火 · 序章 / Abyssfire · Prologue | the web plains names showed in the title menu; no two rows share a title |
 
+Amendments as built in the UE presentation (1C review, 2026-10, pending review; `implementation-plan.md` "1C review
+outcomes", DECISIONS DR15):
+
+| Where | As built | Why |
+|---|---|---|
+| §2 Crowmarket | the march camp kit's generic pieces (well, supply crates, ration sacks, braziers, the hearth as its cookfire) but **no banners**: only Knellwatch (the map's first camp) flies the fort's bell standard (`AbyssThemeRules::PlacesCampProp`). The chapel-pew palisade of the march wall art stays. The Gleaners' salvage carts, boot lines, crows on the cart rails and a cold cookfire are not built yet (art lane A10; the U4 "Not placed" list) | `camp_banner@march` is Knellwatch's own emblem; the camp kit theme is zone-wide |
+| §5 M5 / §16 Siege | the bell that rings by itself is **Knellwatch's bell frame**: `bell_self_ring` ripples it like every other toll of the fort's bell; the Boneyard Gate's bell (the art lane's "self-ringing siege bell") answers it as an echo, so at the gate the gate's bell moves too | story-bible §2: the keepers' bell is the one the fort was built around; the gate is where the player stands during the siege |
+| §10 Sheepfold | six wagons on a 10-slot ring of r 5.8 about (60, 54.5): gaps north and south (one slot each) and **west** (two slots, where the wagon ruts come in from Ashwheat) | the bot's Chapter 1 route walks through both west slots (CoreTests `setpieces_test`: a wagon on either slot covers a route tile); set pieces are not walkability, so a wagon there would stand on the road |
+| §9.1 `lore_rf_echo_03` | the kneeling figure's group is turned 135° about the dais (`echoTurnDeg`): it kneels by the north-east kerb, facing the seal, ~2.9 tiles from the lore spot (20,92) instead of 8.5 (the screen edge) | U1 / U4 handoff; **pending A10 review**: art review r1 placed it in the west gap with its back to the camera and rejected a kneeler on the kerb; the alternatives are moving the lore spot or an A10 re-pose on the lore's side. The contract's `poseOverride` (arms bound behind) is not applied in UE: the figure kneels with the escort rig's Death frame 22 until A9's `Kneel_Bound` clip ships |
+| §1 east exit (119,60) | the march wagon barricade with **no** ground loop: in a themed zone the sealed exit's web loop (crimson ring + runes, palette `blood`) is not played (`AbyssThemeRules::ThemedOnlyRecipe`) until A12 ships `exit.sealed@march` (smoke / ash at the barricade, breach violet beyond) | DR5 keeps crimson ground decals for enemy telegraphs |
+| §13 Rescue label | the bound pilgrim's ground label (被缚的朝圣者 / The Bound Pilgrim) shows in emerald_plains only; chapters 2-5 keep their unlabelled rescue prop | "other zones look exactly as today" |
+
 Still open from the review: 「那里的火，不要人偿。」 (cs_rf_finale.12, story-bible §8) reads as dropping 偿's object; the story owner decides (「不用拿命来换」 or keep).

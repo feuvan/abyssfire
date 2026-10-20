@@ -18,6 +18,17 @@
 //   dodge afterimages, equipment weapon meshes (I6).
 // * Ground picking for the input agent: RaycastGround / PickGround (ray vs the terrain height field, no collision,
 //   ue58-platform.md 8.4).
+// * Presentation theme (dark remake U1, Private/World/AbyssThemeRules.h): characters, props and the elite crown of a zone
+//   with a presentation theme resolve `<gameId>@<theme>` first (the theme comes from the map id of the snapshot / event
+//   at hand, never from the zone build: the next zone's spawns arrive before it); zone loops play `<recipe>@<theme>`
+//   when it exists; every frame the zone actor's mood state (dawn, Breach Rim blend) is updated, the ambience loop is
+//   swapped when its recipe or tint changes and the mood's light scale reaches the VFX system; monsters get the mood's
+//   wind-up tint; echo lore (spriteType echo) shows no mesh and, when read, a ghost figure frozen in its pose for 3 s
+//   (manifest materials.MI_AF_Echo); the brightness setting biases the zone exposure.
+// * Set pieces (dark remake U4, AAbyssZoneActor::BuildSetPieces): after a zone build the pieces' audio emitter spots go to
+//   UAbyssAudioSystem::SetZoneEmitterSpots (Ashwheat's knocking doors); a bell cue the audio system plays
+//   (OnCuePlayed) ripples the bell frame / the Boneyard Gate's bell; an echo a piece poses stands by that piece, turned
+//   with it; a defend target standing on a yielding piece (the Boneyard Gate) hides it and takes its facing.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -43,9 +54,11 @@ class AAbyssPropActor;
 class AAbyssZoneActor;
 class APlayerController;
 class UAbyssAssetLibrary;
+class UAbyssAudioSystem;
 class UAbyssGameInstance;
 class UAbyssVfxSystem;
 class UMaterialInterface;
+class USkeletalMeshComponent;
 class UStaticMeshComponent;
 struct FAbyssArtAsset;
 struct FAbyssUserSettings;
@@ -123,12 +136,27 @@ private:
 		TWeakObjectPtr<AActor> Actor;
 	};
 
+	/** A playing echo (MI_AF_Echo): its figure components and the timeline it fades along. */
+	struct FEchoPlayback
+	{
+		TWeakObjectPtr<AActor> Actor;
+		TArray<TWeakObjectPtr<USkeletalMeshComponent>> Figures;
+		float ElapsedMs = 0.f;
+		double FadeInMs = 450.0;
+		double HoldMs = 2100.0;
+		double FadeOutMs = 450.0;
+		double FlickerAmplitude = 0.08;
+		double FlickerHz = 4.0;
+	};
+
 	// ---- setup ----
 	UAbyssGameInstance* GetAbyssGameInstance() const;
 	const abyss::DataStore* GetData() const;
 	UAbyssAssetLibrary* GetAssets() const;
 	void BindEvents();
 	void UnbindEvents();
+	/** U4: OnCuePlayed of the audio system (a game-instance subsystem), bound once it exists. */
+	void BindAudioCues();
 	void ApplySettings(const FAbyssUserSettings& Settings);
 	void RefreshQuality();
 	void EnsureCameraRig();
@@ -139,9 +167,13 @@ private:
 	/** Quality: ground items the snapshot does not list yet (EvLootDropped arrives before the next snapshot). */
 	AAbyssPropActor* SpawnProp(abyss::EntityId Id, abyss::EntityKind Kind, const std::string& DefId, const std::string& ArtId,
 		const abyss::Vec2& Pos, const abyss::Snapshot* Snap, abyss::ItemQuality Quality = abyss::ItemQuality::Normal);
-	const FAbyssArtAsset* ResolveCharacterArt(abyss::EntityKind Kind, const std::string& DefId, const std::string& ArtId) const;
+	/** Theme: the presentation theme of the zone the entity is in (PresentationThemeOf), NAME_None = today's chain. */
+	const FAbyssArtAsset* ResolveCharacterArt(abyss::EntityKind Kind, const std::string& DefId, const std::string& ArtId,
+		FName Theme = NAME_None) const;
+	/** The map's presentation theme (`@theme` suffix of its art ids), NAME_None for maps without one or unknown ids. */
+	FName PresentationThemeOf(const std::string& MapId) const;
 	void ApplyHeroEquipment(const abyss::Snapshot& Snap);
-	void UpdateElite(AAbyssCharacterActor& Actor, const abyss::MonsterView& Monster);
+	void UpdateElite(AAbyssCharacterActor& Actor, const abyss::MonsterView& Monster, FName Theme);
 	void RemoveEntity(abyss::EntityId Id, bool bImmediate, abyss::DespawnReason Reason);
 	void DestroyAllEntities(bool bKeepHero);
 	void ReconcileMarkers(const abyss::Snapshot& Snap);
@@ -160,6 +192,18 @@ private:
 	/** Selection rims (DECISIONS R16): hero, attack target, hovered monster; the rest None. */
 	void UpdateSelectionRims(const abyss::Snapshot& Snap);
 	void UpdateLightingCollection(float RealDelta);
+	/** The zone's mood at the hero (zone actor), the ambience loop swap and the mood light scale for the VFX system. */
+	void UpdateZoneMood(const abyss::Snapshot& Snap);
+	/** (Re)starts the ambience loop when the zone actor's recipe or tint differs from the one playing. */
+	void RefreshAmbience(const abyss::Snapshot& Snap);
+	/**
+	 * Echo lore (U1): the figures of MI_AF_Echo.figures[LoreId] at the echo's tile, ghosted, frozen in their pose; when a
+	 * set piece poses the echo (U4) they stand by that piece, turned with it.
+	 */
+	void SpawnEcho(const std::string& LoreId);
+	/** Echo figures' fade timeline (real time: the lore text panel may freeze the world); removes finished echoes. */
+	void UpdateEchoes(float RealDelta);
+	void DestroyEchoes();
 	void UpdateWorldWidgets();
 
 	// ---- events ----
@@ -181,8 +225,11 @@ private:
 	void HandlePet(const abyss::EvPet& Event);
 	void HandleRenamed(const abyss::EvMonsterRenamed& Event);
 	void HandleEmbersGained(const abyss::EvEmbersGained& Event);
+	void HandleLoreCollected(const abyss::EvLoreCollected& Event);
 	void HandleSessionEnded();
 	void HandleVfxShake(float DurationMs, float Intensity);
+	/** U4: a played audio cue ripples the set-piece sockets that listen for it (the bells). */
+	void HandleCuePlayed(FName CueId);
 
 	UPROPERTY(Transient)
 	TObjectPtr<AAbyssZoneActor> ZoneActor;
@@ -220,11 +267,21 @@ private:
 	TMap<uint32, abyss::HitNumberSlot> HitSlots;
 	uint64 HitSlotsFrame = 0;
 	TArray<int32> ZoneVfxHandles;
+	/** The ambience loop playing (U1: swapped when the mood's ambience recipe or tint changes). */
+	int32 AmbienceHandle = 0;
+	FName PlayingAmbience;
+	bool bPlayingAmbienceColor = false;
+	FLinearColor PlayingAmbienceColor = FLinearColor::White;
+	TArray<FEchoPlayback> Echoes;
+	/** Brightness setting as an exposure bias (EV), pushed to every zone actor. */
+	float BrightnessEv = 0.f;
 	TWeakInterfacePtr<IAbyssWorldUi> WorldUi;
 	FAbyssQualityProfile Quality;
 	FName FocusedStoryDecor;
 	FDelegateHandle SettingsHandle;
 	FDelegateHandle VfxShakeHandle;
+	FDelegateHandle CueHandle;
+	TWeakObjectPtr<UAbyssAudioSystem> CueAudio;
 	FAbyssFrameInfo LastFrame;
 	double TimeSec = 0.0;
 	float LightingRefreshSec = 0.f;

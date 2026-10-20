@@ -411,6 +411,12 @@ bool FAbyssAudioManifest::LoadFromJson(std::string_view Json, const abyss::Audio
 		Spatial.VirtualDistanceCm = FMath::Max(1.f, JsonFloat(Sp.Get("virtualDistanceCm"), Spatial.VirtualDistanceCm));
 	}
 
+	// ---- dark remake (U7): kept as JSON for the rule helpers ----
+	VoiceFamiliesJson = Root.Get("voiceFamilies");
+	MusicDirectorJson = Root.Get("musicDirector");
+	AmbienceJson = Root.Get("ambience");
+	CueTriggersJson = Root.Get("cueTriggers");
+
 	const abyss::JsonValue& Defaults = Root.Get("defaults");
 	DefaultMusicVolume = JsonFloat(Defaults.Get("musicVolume"), DefaultMusicVolume);
 	DefaultSfxVolume = JsonFloat(Defaults.Get("sfxVolume"), DefaultSfxVolume);

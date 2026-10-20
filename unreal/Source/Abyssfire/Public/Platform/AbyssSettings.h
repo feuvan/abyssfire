@@ -51,6 +51,11 @@ struct ABYSSFIRE_API FAbyssUserSettings
 	float TouchControlOpacity = 1.0f;
 	bool bCameraShake = true;
 	bool bDamageNumbers = true;
+	/**
+	 * Brightness 0.5..1.5 (dark remake U1; settings.json video.brightness): an exposure bias of log2(brightness) EV on the
+	 * zone's post-process (AAbyssZoneActor::SetUserExposureEv), the dark chapter's answer to too dark a screen.
+	 */
+	float Brightness = 1.0f;
 
 	/** Clamps every field into its valid range. */
 	void Sanitize();

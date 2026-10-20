@@ -28,6 +28,8 @@
 #include "abyss/base/Json.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/data/MapData.h"
+#include "abyss/data/MonsterData.h"
+#include "abyss/quests/QuestSystem.h"
 #include "abyss/sim/Snapshot.h"
 #include "abyss/world/Grid.h"
 #include "abyss/world/MapGen.h"
@@ -36,6 +38,8 @@
 #include "Framework/AbyssUnits.h"
 #include "World/AbyssArtManifest.h"
 #include "World/AbyssAssetLibrary.h"
+#include "World/AbyssSetPieces.h"
+#include "World/AbyssThemeRules.h"
 
 static TAutoConsoleVariable<float> CVarAbyssSunScale(
 	TEXT("abyss.SunScale"),
@@ -426,6 +430,7 @@ void AAbyssZoneActor::ClearZone()
 	FocusedStory = NAME_None;
 	EffectSpots.Reset();
 	ExitTiles.Reset();
+	SetPieceState.Reset();
 	MissingArtIds.Reset();
 	PlacedArtCount = 0;
 	UnresolvedArtCount = 0;
@@ -470,19 +475,27 @@ void AAbyssZoneActor::BuildZone(const abyss::Snapshot& Snap, const abyss::DataSt
 	Theme = Snap.zone.theme;
 	ThemeName = std::string(abyss::EnumName(Theme));
 	WallPaintTile = Data.World().mapGen.Theme(Theme).primaryTile;
+	// Presentation theme (U1): derived here from the map id, never cached across zones (spawns of the next zone are
+	// announced before this build; the world builder resolves their art from the snapshot's map id itself).
+	const abyss::MapDef* PresentationMap = Data.FindMap(Snap.zone.mapId);
+	const std::string_view PresentationThemeName = AbyssThemeRules::ThemeOf(PresentationMap);
+	PresentationTheme = PresentationThemeName.empty() ? NAME_None : FName(*AbyssZonePrivate::ToF(PresentationThemeName));
+	TerrainThemeName = std::string(AbyssThemeRules::TerrainThemeName(PresentationMap, ThemeName));
+	bMoodApplied = false;
 
 	BuildLighting(Snap, Data);
 	BuildTerrain(Snap, Data);
 	BuildWalls(Snap);
+	BuildSetPieces(Snap, Data);
 	BuildDecorations(Snap, Data);
 	BuildCamps(Snap, Data);
 	BuildMarkers(Snap, Data);
 	BuildSkirt(Data);
 	FlushInstances();
 	ApplyQuality(Quality);
-	UE_LOG(LogAbyss, Log, TEXT("Zone %s built: %d instanced meshes (%d art placed, %d unresolved, %d not loaded), %d occluders, %d effect spots"),
+	UE_LOG(LogAbyss, Log, TEXT("Zone %s built: %d instanced meshes (%d art placed, %d unresolved, %d not loaded), %d occluders, %d effect spots, presentation theme %s"),
 		*AbyssText::ToFString(Snap.zone.mapId), DecorInstanceComponents.Num(), PlacedArtCount, UnresolvedArtCount, UnloadedArtCount,
-		Occluders.Num(), EffectSpots.Num());
+		Occluders.Num(), EffectSpots.Num(), PresentationTheme.IsNone() ? TEXT("none") : *PresentationTheme.ToString());
 	if (MissingArtIds.Num() > 0)
 	{
 		// A stale Data/assets.json (UAbyssAssetLibrary warns) or an id the art pipeline has not shipped yet.
@@ -564,11 +577,13 @@ void AAbyssZoneActor::BuildTerrain(const abyss::Snapshot& Snap, const abyss::Dat
 	FString WaterMaterialName(TEXT("NONE"));
 	// The painted ground (WorldContract 3.1): MI_AF_Terrain_<Theme> is M_AF_Terrain_Painted with the theme's art layers
 	// and detail atlas bound by the content build (manifest terrain.<theme>). Themes without painted art keep the
-	// procedural M_AF_Terrain; both take the same TileIds / Tile<i>* / Water* parameters (ApplyTerrainStyle).
+	// procedural M_AF_Terrain; both take the same TileIds / Tile<i>* / Water* parameters (ApplyTerrainStyle). A zone with a
+	// presentation theme paints that theme (MI_AF_Terrain_March; before the content build made it, the procedural
+	// material in the march style colours).
 	UMaterialInterface* TerrainBase = nullptr;
 	if (Assets != nullptr)
 	{
-		const FString ThemeKey = AbyssZonePrivate::ToF(ThemeName);
+		const FString ThemeKey = AbyssZonePrivate::ToF(TerrainThemeName);
 		const FString PaintedName = FString(TEXT("MI_AF_Terrain_")) + ThemeKey.Left(1).ToUpper() + ThemeKey.Mid(1);
 		if (!ThemeKey.IsEmpty()
 			&& Assets->DoesAssetExist(FAbyssArtManifest::MakeObjectPath(TEXT("Materials/Instances"), FName(*PaintedName))))
@@ -670,7 +685,13 @@ void AAbyssZoneActor::ApplyTerrainStyle(const abyss::DataStore& Data)
 		UE_LOG(LogAbyss, Warning, TEXT("terrain_styles.json not loaded: M_AF_Terrain draws its default tile colours"));
 		return;
 	}
-	const abyss::JsonValue& ThemeStyle = Styles->Get("themes").Get(ThemeName);
+	// The presentation theme's style (themes.march), else the generator theme's (a theme without a style keeps today's).
+	std::string StyleName = TerrainThemeName.empty() ? ThemeName : TerrainThemeName;
+	if (!Styles->Get("themes").Get(StyleName).Get("ground").IsObject())
+	{
+		StyleName = ThemeName;
+	}
+	const abyss::JsonValue& ThemeStyle = Styles->Get("themes").Get(StyleName);
 	const abyss::JsonValue& Ground = ThemeStyle.Get("ground");
 	int32 GroundStyles = 0;
 	for (const abyss::JsonMember& Member : Ground.Members())
@@ -728,8 +749,8 @@ void AAbyssZoneActor::ApplyTerrainStyle(const abyss::DataStore& Data)
 		}
 	}
 	UE_CLOG(GroundStyles == 0, LogAbyss, Warning, TEXT("terrain_styles.json has no ground styles for theme '%s': "
-		"M_AF_Terrain draws its default tile colours"), *ToF(ThemeName));
-	UE_CLOG(GroundStyles > 0, LogAbyss, Log, TEXT("Terrain style '%s': %d ground tile styles"), *ToF(ThemeName), GroundStyles);
+		"M_AF_Terrain draws its default tile colours"), *ToF(StyleName));
+	UE_CLOG(GroundStyles > 0, LogAbyss, Log, TEXT("Terrain style '%s': %d ground tile styles"), *ToF(StyleName), GroundStyles);
 }
 
 // =====================================================================================================================
@@ -739,11 +760,12 @@ void AAbyssZoneActor::ApplyTerrainStyle(const abyss::DataStore& Data)
 const FAbyssArtAsset* AAbyssZoneActor::ResolveArt(TConstArrayView<FName> GameIds, uint32 Hash) const
 {
 	const UAbyssAssetLibrary* Assets = AssetLibrary.Get();
-	return Assets != nullptr ? Assets->GetManifest().ResolveFirst(GameIds, Hash) : nullptr;
+	// U1: `<id>@<theme>` of the whole chain first in a zone with a presentation theme, then today's chain.
+	return Assets != nullptr ? Assets->GetManifest().ResolveFirst(GameIds, Hash, PresentationTheme) : nullptr;
 }
 
 bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, const FVector& Location, float YawDeg, float Scale,
-	bool bOccluder, float FadeTarget, FName StoryId)
+	bool bOccluder, float FadeTarget, FName StoryId, const FAbyssArtAsset** OutArt, FTransform* OutTransform)
 {
 	const FAbyssArtAsset* Art = ResolveArt(GameIds, Hash);
 	UAbyssAssetLibrary* Assets = AssetLibrary.Get();
@@ -765,6 +787,14 @@ bool AAbyssZoneActor::PlaceArt(TConstArrayView<FName> GameIds, uint32 Hash, cons
 	++PlacedArtCount;
 	const float FinalScale = FMath::Max(0.05f, Scale * Art->Scale);
 	const FTransform Transform(FRotator(0.f, YawDeg, 0.f), Location, FVector(FinalScale));
+	if (OutArt != nullptr)
+	{
+		*OutArt = Art;
+	}
+	if (OutTransform != nullptr)
+	{
+		*OutTransform = Transform;
+	}
 	const FBox Bounds = Art->BoundsCm.IsValid ? Art->BoundsCm : Mesh->GetBoundingBox();
 	const FVector Extent = Bounds.GetExtent() * FinalScale;
 	// R1 occlusion radius: the bounds (the camp tents' canvas-width override went with the tents, DECISIONS W11 / R1).
@@ -1108,6 +1138,12 @@ void AAbyssZoneActor::BuildDecorations(const abyss::Snapshot& Snap, const abyss:
 		const FName Ids[] = { FName(*Type), Id(TEXT("decor_%s"), Type) };
 		const int32 Col = FMath::RoundToInt32(Decor.col);
 		const int32 Row = FMath::RoundToInt32(Decor.row);
+		// U4: no grass, flowers or bushes through a set piece (a cottage floor, the dais, the bridge's ditch bed); a
+		// blocking decoration stays (the core blocks its tile, and CoreTests keeps every piece off them).
+		if (SetPieceState.IsValid() && AbyssSetPieceRules::HidesDecoration(SetPieceState->Spots, abyss::TilePos(Col, Row), Decor.blocking))
+		{
+			continue;
+		}
 		const uint32 Hash = AbyssWorldUtil::TileHash(Col, Row, 5);
 		bool bTall = Decor.blocking;
 		for (const std::string& Tall : ThemeDef.tall)
@@ -1128,8 +1164,13 @@ void AAbyssZoneActor::BuildCamps(const abyss::Snapshot& Snap, const abyss::DataS
 		return;
 	}
 	const float FaceCameraYaw = CameraYawDeg + 180.f;   // toward the viewer
+	const std::string_view CampTheme = AbyssThemeRules::ThemeOf(Map);
 	for (const abyss::CampProp& Prop : abyss::CampProps(*Map))
 	{
+		if (!AbyssThemeRules::PlacesCampProp(CampTheme, Prop.campIndex, Prop.type))
+		{
+			continue;   // themed zone: only the hub camp flies the hub's banner (Crowmarket is not Knellwatch)
+		}
 		const FString Type = ToF(Prop.type);
 		const FName Ids[] = { Id(TEXT("camp_%s"), Type), Id(TEXT("decor_camp_%s"), Type), FName(*Type) };
 		// Camp layout v2 (DECISIONS W11, abyss/world/CampLayout.h; no tents): the core gives the sub-tile centre and the
@@ -1144,11 +1185,11 @@ void AAbyssZoneActor::BuildCamps(const abyss::Snapshot& Snap, const abyss::DataS
 		PlaceArt(Ids, Hash, Location, FacingYaw + MeshYawOffsetDeg, 1.f, bTall, DecorFadeTarget);
 		if (Prop.type == "campfire")
 		{
-			EffectSpots.Add({ FName(TEXT("camp.campfire")), Location });
+			AddEffectSpot(FName(TEXT("camp.campfire")), Location);
 		}
 		else if (Prop.type == "torch")
 		{
-			EffectSpots.Add({ FName(TEXT("camp.torch")), Location });
+			AddEffectSpot(FName(TEXT("camp.torch")), Location);   // march: camp.torch@march, the brazier's smoulder (no light)
 		}
 	}
 }
@@ -1179,7 +1220,7 @@ void AAbyssZoneActor::BuildMarkers(const abyss::Snapshot& Snap, const abyss::Dat
 			{
 				PlaceArt(OpenIds, 0, Location, FacingYaw + MeshYawOffsetDeg, 1.f, true, DecorFadeTarget);
 			}
-			EffectSpots.Add({ Marker.sealed ? FName(TEXT("exit.sealed")) : FName(TEXT("exit.portal")), Location });
+			AddEffectSpot(Marker.sealed ? FName(TEXT("exit.sealed")) : FName(TEXT("exit.portal")), Location);
 		}
 		else if (Marker.kind == abyss::MarkerKind::StoryDecoration)
 		{
@@ -1252,10 +1293,91 @@ void AAbyssZoneActor::BuildSkirt(const abyss::DataStore& Data)
 void AAbyssZoneActor::BuildLighting(const abyss::Snapshot& Snap, const abyss::DataStore& Data)
 {
 	using namespace AbyssZonePrivate;
-	const abyss::ZoneMoodTables& Moods = Data.World().moods;
-	abyss::MapTheme MoodTheme = Theme;
-	Moods.ThemeFor(Snap.zone.mapId, MoodTheme);
-	const abyss::ZoneMoodDef& MoodDef = Moods.moods[static_cast<size_t>(MoodTheme)];
+	// The mood at the hero's tile (sun, fog, grade values; ambience; light scale; wind-up tints). The post-process is
+	// applied by ApplyQuality at the end of BuildZone.
+	bMoodApplied = false;
+	UpdateMood(Snap, Data);
+
+	// SSAO composite (P14; desktop balanced / high). The exact web grade (M_AF_PP_Grade) is no longer bound: the built-in
+	// grade at 55 % of the mood replaces it (ApplyPostProcess).
+	AOCompositeMaterial = nullptr;
+	if (UAbyssAssetLibrary* Assets = AssetLibrary.Get())
+	{
+		static const TCHAR* const Folders[] = { TEXT("Materials"), TEXT("Materials/PostProcess") };
+		AOCompositeMaterial = Cast<UMaterialInterface>(
+			Assets->LoadFromFolders(Folders, FName(TEXT("M_AF_PP_AOComposite")), UMaterialInterface::StaticClass()));
+	}
+}
+
+void AAbyssZoneActor::UpdateMood(const abyss::Snapshot& Snap, const abyss::DataStore& Data)
+{
+	using namespace AbyssZonePrivate;
+	// zone_moods.json (world-map-nav.md 14.1-14.2): the zone's mood theme (themeByZone; an unknown zone id uses its
+	// generator theme), the dawn mood after the chapter and the mood regions of the dark remake (AbyssThemeRules).
+	AbyssThemeRules::FMoodInputs In;
+	In.Moods = &Data.World().moods;
+	In.Map = Data.FindMap(Snap.zone.mapId);
+	In.ZoneId = Snap.zone.mapId;
+	In.GeneratorTheme = Theme;
+	const std::string& ChapterQuest = Data.Monsters().ai.chapterCompleteQuest;
+	In.bChapterComplete = !ChapterQuest.empty() && Snap.quests != nullptr && Snap.quests->IsTurnedIn(ChapterQuest);
+	In.bHasHero = true;
+	In.HeroCol = Snap.hero.pos.x;
+	In.HeroRow = Snap.hero.pos.y;
+	In.bRegionWasDominant = bMoodApplied && bMoodRegionDominant;
+	const AbyssThemeRules::FMoodState State = AbyssThemeRules::EffectiveMood(In);
+
+	AbyssThemeRules::FMoodState Applied;
+	Applied.Base = AppliedMoodBase;
+	Applied.Region = AppliedMoodRegion;
+	Applied.bHasRegion = bAppliedMoodHasRegion;
+	Applied.RegionWeight = AppliedMoodRegionWeight;
+	if (!bMoodApplied || AbyssThemeRules::LookChanged(Applied, State))
+	{
+		// Live changes (dawn, walking into the Breach Rim) re-apply the fog and post-process now; the zone build applies
+		// them once at its end (ApplyQuality).
+		ApplyMoodDef(State.Mood, /*bLive*/ bMoodApplied);
+		AppliedMoodBase = State.Base;
+		AppliedMoodRegion = State.Region;
+		bAppliedMoodHasRegion = State.bHasRegion;
+		AppliedMoodRegionWeight = State.RegionWeight;
+		if (bMoodApplied)
+		{
+			UE_LOG(LogAbyss, Verbose, TEXT("Zone mood %s -> %s weight %.2f"), *ToF(abyss::EnumName(State.Base)),
+				*ToF(abyss::EnumName(State.Region)), State.RegionWeight);
+		}
+	}
+	const bool bFirstFrame = !bMoodApplied;
+	bMoodRegionDominant = State.bRegionDominant;
+	bMoodApplied = true;
+
+	// DECISIONS R18 override (port.lightScale), blended over the region; < 0 keeps the formula (UAbyssVfxSystem).
+	MoodLightScaleOverride = State.bLightScaleOverride ? State.LightScale : -1.f;
+
+	// The ambience and the wind-up tints depend on the dominant and base moods only (the zone and its map are fixed for
+	// this actor's build): recomputed when one of them changes or the zone was (re)built, not every frame.
+	if (bFirstFrame || !bMoodLookCached || State.Dominant != CachedLookDominant || State.Base != CachedLookBase)
+	{
+		bMoodLookCached = true;
+		CachedLookDominant = State.Dominant;
+		CachedLookBase = State.Base;
+		// Weather / ambience (world-map-nav.md 14.2): the dominant mood's port.moodWeather, else the zone's own weather;
+		// the weather tint colours the recipe only in a zone with a presentation theme (ashfall #CFCAC0, the Rim's sparks).
+		const std::string Recipe = AbyssThemeRules::AmbienceRecipeId(State);
+		AmbienceRecipe = Recipe.empty() ? NAME_None : FName(*ToF(Recipe));
+		bAmbienceHasColor = State.bHasTint;
+		AmbienceColor = State.bHasTint ? AbyssWorldUtil::ColorFromRgb(State.Tint) : FLinearColor::White;
+		// DR5 wind-up tint of the dominant mood (port.windupTint), else the base mood's, else the web port's tints.
+		const AbyssThemeRules::FWindupTints Tints = AbyssThemeRules::WindupTintFor(Data.RawTable("zone_moods.json"),
+			abyss::EnumName(State.Dominant), abyss::EnumName(State.Base));
+		WindupTintNormal = AbyssWorldUtil::ColorFromRgb(Tints.Normal);
+		WindupTintElite = AbyssWorldUtil::ColorFromRgb(Tints.Elite);
+	}
+}
+
+void AAbyssZoneActor::ApplyMoodDef(const abyss::ZoneMoodDef& MoodDef, bool bLive)
+{
+	using namespace AbyssZonePrivate;
 	Mood.Ambient = AbyssWorldUtil::ColorFromRgb(MoodDef.ambient);
 	Mood.AmbientAlpha = static_cast<float>(MoodDef.ambientAlpha);
 	Mood.Vignette = AbyssWorldUtil::ColorFromRgb(MoodDef.vignette);
@@ -1266,28 +1388,6 @@ void AAbyssZoneActor::BuildLighting(const abyss::Snapshot& Snap, const abyss::Da
 	Mood.Contrast = static_cast<float>(MoodDef.contrast);
 	Mood.Lift = FVector(MoodDef.lift[0], MoodDef.lift[1], MoodDef.lift[2]);
 	Mood.Gain = FVector(MoodDef.gain[0], MoodDef.gain[1], MoodDef.gain[2]);
-
-	// Weather / ambience (world-map-nav.md 14.2): unknown zone ids use an entry of a zone with the same theme.
-	AmbienceRecipe = NAME_None;
-	const abyss::ZoneWeatherDef* Weather = Moods.WeatherFor(Snap.zone.mapId);
-	if (Weather == nullptr)
-	{
-		for (const std::pair<std::string, abyss::MapTheme>& Entry : Moods.themeByZone)
-		{
-			if (Entry.second == MoodTheme)
-			{
-				Weather = Moods.WeatherFor(Entry.first);
-				if (Weather != nullptr)
-				{
-					break;
-				}
-			}
-		}
-	}
-	if (Weather != nullptr && !Weather->ambience.empty())
-	{
-		AmbienceRecipe = FName(*(FString(TEXT("ambient.")) + ToF(Weather->ambience)));
-	}
 
 	// Sun: the manifest key light (the toon materials and the ground must agree), warm mood tint. DECISIONS P11 (art
 	// pass): the shadow-catcher toon is DefaultLit with BaseColor k (lit - shade) under a fake normal = KeyLightDir, so a
@@ -1320,15 +1420,31 @@ void AAbyssZoneActor::BuildLighting(const abyss::Snapshot& Snap, const abyss::Da
 	Mood.FogMaxOpacity = static_cast<float>(FMath::Clamp(MoodDef.fogMaxOpacity, 0.0, 1.0));
 	Mood.FogDensity = static_cast<float>(FMath::Max(0.0, MoodDef.fogDensity));
 	ApplyFog();
-
-	// SSAO composite (P14; desktop balanced / high). The exact web grade (M_AF_PP_Grade) is no longer bound: the built-in
-	// grade at 55 % of the mood replaces it (ApplyPostProcess).
-	AOCompositeMaterial = nullptr;
-	if (UAbyssAssetLibrary* Assets = AssetLibrary.Get())
+	if (bLive)
 	{
-		static const TCHAR* const Folders[] = { TEXT("Materials"), TEXT("Materials/PostProcess") };
-		AOCompositeMaterial = Cast<UMaterialInterface>(
-			Assets->LoadFromFolders(Folders, FName(TEXT("M_AF_PP_AOComposite")), UMaterialInterface::StaticClass()));
+		ApplyPostProcess();
+	}
+}
+
+void AAbyssZoneActor::SetUserExposureEv(float Ev)
+{
+	UserExposureEv = FMath::IsFinite(Ev) ? Ev : 0.f;
+	if (!FMath::IsNearlyEqual(UserExposureEv, AppliedUserExposureEv, 1.e-4f))
+	{
+		ApplyPostProcess();
+	}
+}
+
+void AAbyssZoneActor::AddEffectSpot(FName RecipeId, const FVector& Location)
+{
+	FAbyssZoneEffectSpot& Spot = EffectSpots.AddDefaulted_GetRef();
+	Spot.RecipeId = RecipeId;
+	Spot.Location = Location;
+	// An id that names its theme already (a set piece's camp.torch@march) is played as it is.
+	if (!PresentationTheme.IsNone() && !RecipeId.ToString().Contains(TEXT("@")))
+	{
+		Spot.ThemedRecipeId = FName(*(RecipeId.ToString() + TEXT("@") + PresentationTheme.ToString()));
+		Spot.bThemedOnly = AbyssThemeRules::ThemedOnlyRecipe(AbyssText::ToStd(RecipeId.ToString()));
 	}
 }
 
@@ -1447,7 +1563,9 @@ void AAbyssZoneActor::ApplyPostProcess()
 	S.bOverride_AutoExposureApplyPhysicalCameraExposure = true;
 	S.AutoExposureApplyPhysicalCameraExposure = false;
 	S.bOverride_AutoExposureBias = true;
-	S.AutoExposureBias = AppliedExposureBias;
+	// The brightness setting (U1, settings.json video.brightness: log2 of 0.5..1.5) adds to the calibrated bias.
+	AppliedUserExposureEv = UserExposureEv;
+	S.AutoExposureBias = AppliedExposureBias + AppliedUserExposureEv;
 	// DECISIONS P14 (art pass): a partial filmic tone curve on every tier (Film* keep the engine defaults), no blue
 	// correction / gamut expansion, no local exposure.
 	S.bOverride_ToneCurveAmount = true;
@@ -1571,7 +1689,7 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstAr
 				for (const int32 Index : *Bucket)
 				{
 					const FOccluder& Occluder = Occluders[Index];
-					if (Occluder.bLootOnly != bLoot)
+					if (Occluder.bLootOnly != bLoot || Occluder.bSuppressed)
 					{
 						continue;
 					}

@@ -49,6 +49,9 @@ private:
 		abyss::BannerKind Kind = abyss::BannerKind::Toast;
 		FString Title;
 		FString Subtitle;
+		// centre banners: the title / subtitle wrapped at the banner width when queued (U5 text-fit pass)
+		TArray<FString> TitleLines;
+		TArray<FString> SubtitleLines;
 		double Start = 0.0;
 		double Duration = 0.0;
 	};

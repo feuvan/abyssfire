@@ -2,6 +2,8 @@
 
 #include "abyss/base/Json.h"
 
+#include "World/AbyssThemeRules.h"
+
 namespace
 {
 	// settings.json schema version (bump when a field changes meaning).
@@ -79,6 +81,7 @@ void FAbyssUserSettings::Sanitize()
 	SfxVolume = FMath::Clamp(SfxVolume, 0.0f, 1.0f);
 	TouchControlScale = FMath::Clamp(TouchControlScale, 0.75f, 1.5f);
 	TouchControlOpacity = FMath::Clamp(TouchControlOpacity, 0.3f, 1.0f);
+	Brightness = AbyssThemeRules::ClampBrightness(Brightness);
 	if (static_cast<size_t>(Locale) >= abyss::EnumCount<abyss::LocaleId>())
 	{
 		Locale = abyss::LocaleId::ZhCN;
@@ -101,6 +104,11 @@ std::string FAbyssUserSettings::ToJson() const
 	Writer.Double(AbyssSettings_Rounded(MusicVolume));
 	Writer.Key("sfx");
 	Writer.Double(AbyssSettings_Rounded(SfxVolume));
+	Writer.EndObject();
+	Writer.Key("video");
+	Writer.StartObject();
+	Writer.Key("brightness");
+	Writer.Double(AbyssSettings_Rounded(Brightness));
 	Writer.EndObject();
 	Writer.Key("renderQuality");
 	Writer.String(AbyssSettings_QualityName(Quality));
@@ -140,6 +148,11 @@ bool FAbyssUserSettings::FromJson(std::string_view Json, FAbyssUserSettings& Out
 		AbyssSettings_ReadUnit(*Audio, "master", Out.MasterVolume);
 		AbyssSettings_ReadUnit(*Audio, "music", Out.MusicVolume);
 		AbyssSettings_ReadUnit(*Audio, "sfx", Out.SfxVolume);
+	}
+	// Older settings.json files have no `video` object: brightness stays 1 (no exposure change).
+	if (const abyss::JsonValue* Video = Root.Find("video"); Video != nullptr && Video->IsObject())
+	{
+		AbyssSettings_ReadUnit(*Video, "brightness", Out.Brightness);
 	}
 	if (const abyss::JsonValue* QualityValue = Root.Find("renderQuality"); QualityValue != nullptr && QualityValue->IsString())
 	{

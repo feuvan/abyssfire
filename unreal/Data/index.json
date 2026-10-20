@@ -113,21 +113,21 @@
     },
     {
       "file": "i18n_en.json",
-      "counts": {"keys": 2792},
-      "bytes": 232444,
-      "sha256": "cd2607cb0537cbd3388e7f82ea46b3d25bfd96c46b03b40c29f9c52d8b2fc7f2"
+      "counts": {"keys": 2796},
+      "bytes": 232739,
+      "sha256": "79d7106f2d014fa89e7a819b12dd0e98a3e4ce772ca5755675cb76a81ec01fec"
     },
     {
       "file": "i18n_zh-CN.json",
-      "counts": {"keys": 2791},
-      "bytes": 224646,
-      "sha256": "6dd48e9e01791568979710b4015e920b5c253a6c387e81a7270dec13a7446e5d"
+      "counts": {"keys": 2795},
+      "bytes": 224926,
+      "sha256": "2d4fa621e327227ebd72e56503beb1138964cb9e5aa189d8a1ead1761935ef20"
     },
     {
       "file": "i18n_zh-TW.json",
-      "counts": {"keys": 2791},
-      "bytes": 224813,
-      "sha256": "2333b3b95daa69e0a695e6f7b83c9498d8269beae0dec895894f4eef9d2ea877"
+      "counts": {"keys": 2795},
+      "bytes": 225093,
+      "sha256": "5f4a350cefe55aedf4d8e394cbf0cf0cde17842c1174c7834157d5d82cf42bb0"
     },
     {
       "file": "item_bases.json",
@@ -246,6 +246,12 @@
       "sha256": "65aba683e77b39bbf78b0ae16590e1eac22d89f67e0a5eb3eaa26cd9e0877a53"
     },
     {
+      "file": "set_pieces.json",
+      "counts": {"zones": 1, "pieces": 20},
+      "bytes": 17175,
+      "sha256": "651227d4412604e1423e6d315d3ebc847277fe5f004a1a73debb3631df502dfc"
+    },
+    {
       "file": "sets.json",
       "counts": {"sets": 6, "pieces": 21},
       "bytes": 10822,
@@ -296,8 +302,8 @@
     {
       "file": "terrain_styles.json",
       "counts": {"themes": 6},
-      "bytes": 22813,
-      "sha256": "d1795c7276df5b4a9b4bdcef1b407501a6976904120ebd2da222e508de7d3f2e"
+      "bytes": 22814,
+      "sha256": "84da411bf301b67d7c34b6d8fdb877aed19ee6a77b1fba861e16f2d01af43d69"
     },
     {
       "file": "ui_theme.json",
@@ -314,8 +320,8 @@
     {
       "file": "zone_moods.json",
       "counts": {"themes": 8},
-      "bytes": 9761,
-      "sha256": "c8dd6137fa54e93bc6fbab78a6ceb77e53dc9bd72fcbfb7c0c7b080640e0d2ae"
+      "bytes": 10083,
+      "sha256": "9ba96feae94a5006c1b172b147885535ff3c34122f5931c8950ac3ef17dc8373"
     }
   ],
   "golden": [

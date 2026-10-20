@@ -373,4 +373,23 @@ const AssetEntryDef* AssetManifest::FindByGameId(std::string_view gameId) const 
   return FindAsset(it->second);
 }
 
+size_t AssetManifest::CountByGameId(std::string_view gameId) const {
+  auto it = std::lower_bound(gameIdToAsset.begin(), gameIdToAsset.end(), gameId,
+                             [](const std::pair<std::string, std::string>& e, std::string_view k) { return e.first < k; });
+  size_t n = 0;
+  for (; it != gameIdToAsset.end() && it->first == gameId; ++it) ++n;
+  return n;
+}
+
+std::vector<const AssetEntryDef*> AssetManifest::FindAllByGameId(std::string_view gameId) const {
+  std::vector<const AssetEntryDef*> out;
+  auto it = std::lower_bound(gameIdToAsset.begin(), gameIdToAsset.end(), gameId,
+                             [](const std::pair<std::string, std::string>& e, std::string_view k) { return e.first < k; });
+  for (; it != gameIdToAsset.end() && it->first == gameId; ++it) {
+    if (const AssetEntryDef* a = FindAsset(it->second)) out.push_back(a);
+  }
+  std::sort(out.begin(), out.end(), [](const AssetEntryDef* x, const AssetEntryDef* y) { return x->name < y->name; });
+  return out;
+}
+
 }  // namespace abyss

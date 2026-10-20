@@ -602,6 +602,182 @@ manifest moves hit timing, so the seeds differ by manifest):
 - **Seeds and balance.** Mage 1023 pinned beside 7013 and 8018 (above); DR9 re-measured: 4319-5131 exp on the art lane's manifest of that day, 4338-5329 on the committed one, Lv 13-14
   on both.
 
+**1C U1 outcomes (presentation theme, mood, W1 anim map; 2026-10, pending review; DECISIONS DR12).**
+- **Test target.** `unreal/PresentationTests/` (1C-0): the UE-free helpers `Source/Abyssfire/Private/**/Abyss*Rules.h`
+  built with the core's flags, GCC + Clang, doctest over `tests/*.cpp`, a macro shim (UE / Windows / Apple macros) over
+  every helper. U1's helpers: `World/AbyssThemeRules.h` (themed ids, terrain theme, moods, ambience, light scale, wind-up
+  tints, echo look, brightness) and `Actors/AbyssAnimActionRules.h` (action kinds, clips, holds, layer priority); tests
+  `theme_test.cpp` (real `Data/*.json` + the art manifest) and `anim_test.cpp`.
+- **Theme.** Every UE art chain in a zone with a presentation theme tries all its `@march` ids first (zone dressing,
+  camp kit, story decor, sealed exit, NPCs, props, elite crown, zone loops, portraits); heroes, the soul echo and loot
+  never theme. Terrain style and `MI_AF_Terrain_March` follow the presentation theme. The manifest load warns when a
+  variant's footprint / blocking differs (none today; pinned in `theme_test`). The late entity-prop warm loads only the
+  variants the zone resolves.
+- **Mood.** `AAbyssZoneActor::UpdateMood` every frame: base mood, `march_dawn` after `q_rf_last_toll`, the Breach Rim
+  blend (4-tile smoothstep, ambience hysteresis .5 / .4, re-applied past .01), the dominant mood's weather (march
+  ashfall #CFCAC0, dawn dust motes, the Rim's violet sparks), the blended `port.lightScale` pushed to the VFX system.
+  Web zones: mood, ambience and light scale identical to before (pinned per zone in `theme_test`).
+- **Data.** `zone_moods.json port.windupTint` (new exporter override table `zoneMoods.windupTint`, `GameData/world.ts`):
+  the march moods' crimson #D11F2E, elites #FF3A48; `ui.settings.brightness` (PORT_STRINGS; 亮度 / Brightness, glyphs
+  already in the subsets). The art lane's water handoff is applied: `terrain_styles.json themes.march.ground.3` base
+  #262A30, patches #22262B / #2C3036, shallow #30343A, foam #4E5258 (was the tar-black #121418), so the runtime water
+  under the now-live march terrain style matches the painted `T_Water_March_BC`.
+- **Anim map (W1 part of U2's map).** `AnimAction` Roar / Taunt / Stun / Attack02 / Cast02 / Rise → the clip of the same
+  name; the mini-boss Taunt hold and the Stun status loop their clip; the boss intro's Roar plays through the frozen world.
+- **Echo, brightness.** As DR12 (6) / (7); `FAbyssUserSettings::Brightness` round-trips (mock-compiled `AbyssSettings.cpp`).
+- **For the Mac.** Not compiled here (no UE): the look of the march mood / dawn / Rim blend, the crimson wind-up at 0.85,
+  the echo figures' placement against the set pieces (the figures sit at the lore tile + A10's offsets: the dais proposal
+  (15,95) is 5.8 tiles from `lore_rf_echo_03` (20,92), so U4 should stand the dais at the echo or the echo moves), and
+  the brightness range (mac-look).
+- **Known gap (1C review).** The `MI_AF_Echo` contract's `poseOverride` (`lore_rf_echo_03`: arms behind the back, wrists
+  crossed) is not read by `ParseEchoLook` (asset, clip, clipAsset, frame, offsetM, yawDeg only): the figure kneels with
+  its arms in the Death clip's pose until A9's `Kneel_Bound` clip (the contract's `followUp`) replaces the clip.
+
+**1C U7 outcomes (audio integration; 2026-10, pending review; DECISIONS DR13).**
+- **Helpers.** `Source/Abyssfire/Private/Audio/`: `AbyssAudioDataRules.h` (manifest JSON, the region rule with
+  hysteresis, `while`, weight ramps), `AbyssVoiceRules.h`, `AbyssMusicRules.h` (tables, request classes, region / siege
+  picks, the arbiter), `AbyssAmbienceRules.h`, `AbyssCueTriggerRules.h` (matching, bursts, `every` timers); tests
+  `PresentationTests/tests/audio_{voice,music,ambience,triggers}_test.cpp` on the committed audio manifest and the real
+  `Data/` (story steps, the emerald_plains map and its camp slots).
+- **Voices.** Family = `voiceFamilies.monsters[defId]` (hunt leaders report their hunt id) → design family via
+  `aliases` (monster `family` stays withheld: the step is tested, inert in W1) → animCategory (later chapters unchanged);
+  `silent` → no family cue. Named cues: the AU1 replacements plus `anim.<action>` (Valdras roar on the intro's focus
+  step, plate on attacks; the Corpseherd's handbell on attacks / casts), `miniboss.opened` (the lullaby), `story.say`
+  (Valdras's intro lines) — keys documented in `dark_vox.OVERRIDE_KEYS` / manifest `voiceFamilies.overrideKeys`.
+- **Music.** EvMusic is arbitrated per frame against `musicDirector` (story > victory > boss > siege > region > zone).
+  The held combat override is released (`dark_scores.json` `heldOverrides` deleted, manifest rebuilt with
+  `--manifest-only`): a zone-overridden request resolving to the sounding track is a no-op even with restart. The
+  director's story rows got structured fields: siege `quest` (+ fades), finale `stepIndex` 0. Layers freeze during a
+  cutscene / boss intro. Encounter stingers on their own component and duck; the slain stinger comes from
+  `EvSfx{monster_death}` (EvEntityDespawned{Died} is only emitted at the respawn).
+- **Ambience.** Bed by presentation theme; the Breach Rim bed crossfades with the bed; the Gnawed Field ringing while
+  hunt_hungerbell lives (`untilFlag` waits for W2); emitters with linear attenuation and A4 panning; Ashwheat's knock
+  spots come from U4 through `UAbyssAudioSystem::SetZoneEmitterSpots` (fallback: one emitter at the area centre (40,52)),
+  the hearth from `abyss::CampProps` (camp 1's campfire, tested at (15,15)).
+- **Bells.** Manifest `cueTriggers` (`dark_ambience.BELL_TRIGGERS`, `dark_vox.VOX_TRIGGERS`): prologue slide 6 (ten tolls,
+  2.8 s apart, stopped with the prologue), a toll after cs_rf_brand / cs_rf_whisper (near / far by the knellwatch region),
+  self-ring at cs_rf_siege index 1 and every 20-30 s while q_rf_last_toll is active, dawn toll at cs_rf_finale index 3,
+  ambush tell at the ambush start (no lead: the core spawns at once), the split bell on story_rf_belfry focus and every
+  35-60 s within 10 tiles, the Corpseherd's ring at cs_rf_herd index 2. `OnCuePlayed(FName)` for U4's bell ripple.
+- **Deferred.** The dusk tolls (no day clock in W1), phase stingers / P3 roar / standard snaps (W2 `EvMonsterPhase`),
+  `untilFlag` (W2 flags), the planned non-vocal cues (`plannedCues`, the next AU package). The jukebox row "赤幡原 ·
+  探索" still plays the bright web recording `emerald_plains_explore` (the audio owner's call).
+- **For the Mac.** Not compiled here (mock-compiled against UE 5.6 signatures only): the Knellwatch lute on arrival
+  after the prologue, the drones through a fight (no restart), silence in the Rim / Ashwheat / Sheepfold, the siege and
+  the finale's silence → lute, the tolls (near inside the fort, far outside), the bed crossfade at the Rim edge, the
+  knock / hearth attenuation and panning, encounter stinger ducks, Valdras's and the Corpseherd's named voices.
+
+**1C U5 outcomes (quest card W1 parts, Chapter 1 text fit; 2026-10, pending review; DECISIONS DR14).**
+- **Helpers.** `Source/Abyssfire/Private/UI/Panels/AbyssQuestCardRules.h` (card model: entry page, progress lines,
+  choice captions with slot recovery, column width) and `Private/UI/Core/AbyssTextFitRules.h` (greedy wrap with Latin /
+  CJK rules, one-line font fit); tests `PresentationTests/tests/questcard_test.cpp` (real Chapter 1 quests; every class ×
+  8 seeds through the core's `GenerateQuestRewardChoices`: each caption names the slot and label of its item, also with
+  a slot dropped) and `textfit_test.cpp`.
+- **Progress lines.** A progress-only card renders (it was blank while the core held its modal): per line the quest name
+  and the giver's line in quotes, View Story when the NPC has a tree, Leave. With an entry the lines follow it under an
+  *Active* rule. No new UI key (`ui.dialogue.leave`, `ui.questLog.tab.active`).
+- **Labelled choices.** Label primary, slot name secondary, columns sharing the card width (≤ 150 px) that wrap; the
+  captions follow the generated items (a slot that yields nothing no longer shifts the slot names: today's card took
+  `rewards.choices[i]` for item i); the accept preview reads `label · slot`. Unlabelled cards draw as before.
+- **Text-fit audit** (`Scripts/tests/test_ui_text_fit.py`: fontTools advance widths of the bundled fonts, zh-CN + en,
+  desktop + touch; skipped without fontTools). Pinned: quest card (giver titles, choice captions, progress lines, accept
+  preview), quest log rows and details, tracker, toasts (the sealed entrance is the longest: 428 px in English),
+  quest-complete and discovery banners, every Chapter 1 event / system line in the combat log (≤ 3 rows; the rescue
+  line is the longest), puzzle prompt and answer, lore and dialogue titles. Found and fixed: the tracker wrapped 12 px
+  past its frame (Width − 6 against its 9 px padding; "[Side] Bounty: Harke the Oathless"); the puzzle answer "Ring them
+  by their numbers, one to five" (253 px at 13 px) overflowed its fixed 200 px button (it now grows and stacks above
+  Leave); the hidden-area discovery is ~1080 px in Cinzel 22 px (centre banners now wrap at 720 px: two lines); frame
+  titles at or over their band ("Tamsin the Gravewarden" 249 / 232 px in a 420 px frame, "The Marshal's Last Order"
+  253 / 252 px) now shrink, down to 13 px. Quest log rows (≤ 208 / 234 px), toasts and combat-log lines fit as they were.
+- **Content handoff** (not U5's files): objective labels that already carry a verb read doubled behind the objective
+  type the UI prefixes (card, log, tracker): "Escort Escort Bern to the hallowed ground" / "护送 护送伯恩去最后的圣地"
+  (q_rf_hallowed_ground), less glaringly "Talk Bring the samples to Marl" and "Defend Hold the Boneyard Gate". Rephrase
+  those `data.questTarget.*` strings as targets ("Bern" / "伯恩"), content lane or 1C close.
+- **For the Mac.** Not compiled here (no UE; the glue was read against the module's Slate idioms, the logic is in the
+  tested helpers): the Captain's progress-only card while *The Sleepless Marshal* runs, desktop and touch (Leave, View
+  Story); the Tag-Thief and Oathless turn-in cards (two labelled columns, selection highlight, the touch tap card) and
+  their accept previews; the paymaster's discovery banner on two lines; the puzzle answer stacked above Leave in English,
+  side by side in Chinese; the tracker's two-line "Bounty: Harke the Oathless"; the lore card title of
+  lore_rf_01 in English (17.5 px).
+
+**1C U4 outcomes (set-piece layer; 2026-10, pending review; DECISIONS DR15).**
+- **Data.** `GameData/setPieces.ts` → `Data/set_pieces.json` (exporter `src/tables/setpieces.ts`): 19 pieces, 36 placements
+  in emerald_plains, each with the reason it stands where it does (chapter1.md §1 / §2 / §5 / §9.1 / §10, the art lane's
+  vignettes and `placement` notes). Knellwatch: the hearth dressing on the campfire (`walkOver`: stools, its
+  `blockingCells` stay walkable in W1), the bell frame south-west of the hearth facing it (off the south lane and the
+  south-east exit road the bot walks), the Name Wall on the camp's west side facing in. The sealed Pit mouth on
+  `entrance_rf_pit` (smoke). The Boneyard Gate on `q_rf_last_toll`'s defend target, yaw 180, `walkOver` (the burial road
+  runs through the lychgate), yields to the target. Ashwheat: the burned bridge at (38,48) yaw 90 with its ditch bed
+  (smoulder; its echo socket lands 0.9 tile from `lore_rf_echo_02`), three cottages (variants A / B / A) off the cart
+  track, each knocking. The Sheepfold: six wagons on a 10-ring (r 5.8) with gaps north, south and west (the ruts the
+  bot takes). The Breach Rim: the dais at the centre, yaw 0 (crack toward the chasm), ash circles at (11,91) and (19,99),
+  12 banners at r 9 (start 3.54° keeps them off the route and the rock), helmet stakes along the Dead Ranks approach and
+  the rim. Three label strings: `zone.event.{merchant,puzzle,treasureChest}.label.emerald_plains` (圣骨贩子 / The Relic
+  Peddler, 五口小钟 / Five Handbells, 阵亡骑士的铁箱 / A Dead Knight's Strongbox; zh-TW through the converter). Goldens
+  unchanged.
+- **Core.** `abyss/data/SetPieceData.h` + `LoadSetPieces.cpp` (optional table; shape errors fail, unresolved references
+  warn), `abyss/world/SetPieces.h` (anchors, rings, facings → tile + actor yaw, socket / bounds transforms; Det trig),
+  `AssetManifest` `boundsCm` + `FindAllByGameId`. `CoreTests/tests/setpieces_test.cpp` (7 cases, 2401 assertions): every
+  piece on its map, its art (and partners, every variant) resolving, nothing under it on water / rock / a blocking
+  decoration, and every piece without `walkOver` off the A* paths of the bot's whole route and off every interaction
+  point. Placements were moved until it held (bell frame, south cottage, wagon ring, banner start, stakes, gate).
+- **UE.** `Private/World/AbyssSetPieceRules.h` (`PresentationTests/tests/setpieces_test.cpp`, 8 cases, 459 assertions:
+  synthetic socket turns / emitter grouping / covered tiles / yields / labels, and on the shipped data every socket on
+  every variant, spots by their piece, each echo figure within 3.5 tiles of its lore spot), `AbyssSetPieces.cpp`
+  (`AAbyssZoneActor::BuildSetPieces`), world builder (emitter spots after the build, `OnCuePlayed` ripple, echo anchor,
+  defend-target yield + `AAbyssPropActor::SetFacingYaw`), `SAbyssWorldLayer` event labels. Details: module README
+  *Dark remake set pieces*.
+- **Echo by the dais.** U1's handoff (the dais 5.8 tiles from `lore_rf_echo_03`): the dais keeps the art contract's yaw
+  0 and the echo's figure group turns 135° about it (`echoTurnDeg`), so the deserter kneels at the north-east kerb,
+  still facing the seal, 2.9 tiles from the lore spot (8.5 before: the screen's edge when the hero reads it).
+- **Not placed (no art yet, no placeholders):** Hald's sword heap by the forge, Crowmarket's salvage carts / boot lines,
+  the bell-frame lantern's warm light (no `camp.lantern` recipe), the dais breach's violet uplight (no recipe for socket
+  `breach`), the cottages' `candle` sockets. The wagon barricade and the order post are not set pieces: U1 shows them
+  as the sealed exit (`exit_gate_sealed@march`) and the lore prop (`lore_ancient_tablet@march`). Added by the 1C review
+  (chapter1.md presents them; each waits for the art id or recipe named, then becomes a set-piece row):
+
+  | Piece (chapter1.md) | Needs | Owner |
+  |---|---|---|
+  | the dropped lantern at (29,15) beside `lore_rf_echo_01` (§5 M1; the `MI_AF_Echo` contract: "the real prop beside him") | a `gameId` on the lantern prop (`SM_NPCKit_Prop_Lantern` has none), then a `tile` piece at (29,15) | A10 (id), U4 (row) |
+  | the chapel crypt door where the stash lives (§2) | a crypt-door mesh + `gameId` | A10 |
+  | the chasm decal of the breach on the dais's west side (§9.1; the dais's yaw-0 crack points at it) | a ground decal mesh / material + `gameId` | A10 |
+  | Marl's dressing-station dressing at (50,30) (§1) | cots / bandage line meshes + `gameId` | A10 |
+  | Hald's forge warm light (§15: warm light only at the hearth, forge, bell-frame lantern, cookfire) | a `camp.forge` / lantern recipe | A12 |
+  | Crowmarket's Gleaners identity (§2: banner, salvage carts, boots strung on lines, crows on the cart rails, a cold cookfire) | meshes + `gameId`s; until then Crowmarket shows the march kit's generic pieces without Knellwatch's banner (1C review) | A10 |
+  | the sealed exit's march loop (`exit.sealed@march`: smoke / ash at the barricade, breach violet beyond; no crimson ground ring) | the recipe; until then the march exit plays no loop (1C review) | A12 |
+- **For the Mac.** Not compiled here (no UE; the glue was read against the zone actor's instancing / occlusion and the
+  VFX pool idioms): the 36 placements in emerald_plains (log line `Zone emerald_plains set pieces: 36 of 36 placements
+  drawn`), the R1 fade of the bell frame / Name Wall / cottages / wagons / banners, the bell ripple on the dusk toll and
+  the Boneyard Gate's self-ring, the knocking from the three doors, both echoes beside their pieces, the gate hidden under
+  the defend target during *The Last Toll* (no double gate, same facing), and the event labels (zh-CN, en).
+
+**1C review outcomes (2026-10, pending review; the findings of the 1C review and what became of them).**
+- **Fonts (major).** The bundled subsets were built before the 1B content switch: 130 zh-CN characters of the data
+  (赤幡原's 幡, 丧钟堡, 帅, 瓦, 德, 冢, 卒, 贩, ...) drew as tofu boxes. `Scripts/fonts/build_fonts.py --offline` rebuilt
+  every face from downloads matching `fonts.lock.json` (sha256); `build_fonts.py --check` passes. New
+  `Scripts/tests/test_font_coverage.py` fails whenever a data character is missing from any Simplified Chinese face, so
+  the gap now fails the scripts acceptance. **Owner:** whoever changes `Data/*.json` strings re-runs `build_fonts.py`
+  and commits `unreal/Fonts` (the test names the command); the fonts are loaded raw at runtime (staged `Fonts/`), no
+  re-import.
+- **Chapters 2-5 unchanged.** The rescue prop's new ground label is drawn only in a zone with a presentation theme
+  (`AbyssSetPieceRules::EventLabelKey(.., bThemedZone, ..)`; `setpieces_test` pins every unthemed zone to today's labels).
+- **Audio glue.** A track `PlayMusic` cannot voice (missing sound; `-nosound` / no audio world) counts as asked
+  (`UnvoicedTrack`), so the arbiter no longer re-requests it every frame; an emitter started as a plain 2D loop (no
+  listener yet) becomes a panned source once a listener exists; a monster def's voice is resolved once per def
+  (`AbyssVoiceRules::ResolveDefVoice`, cached in `DefVoices`: two map lookups per SFX / anim event, no string work, no
+  table scan); area-loop / emitter assets are FNames converted once, the sounding track string only when it changes.
+- **World / UI glue.** The zone's ambience recipe and wind-up tints are recomputed only when the dominant or base mood
+  changes; the hold / stun clip names are a once-built FName table; the centre banners bind their wrapped lines by
+  reference (filled in `ShowBanner`).
+- **Content as built** (chapter1.md §19, second table): Crowmarket keeps the march kit's generic pieces but not
+  Knellwatch's banner; `bell_self_ring` ripples Knellwatch's bell frame (the gate's bell echoes it); the Sheepfold's west
+  opening stays two slots (the bot's route crosses both); the march sealed exit plays no crimson web loop until
+  `exit.sealed@march`.
+- **Pending review, not changed:** `lore_rf_echo_03`'s 135° turn (U4) puts the kneeler on the north-east kerb in a
+  three-quarter view, which art review r1 had rejected (west gap, back to the camera); A10 decides between the turn, a
+  re-pose on the lore spot's side, or moving the lore spot (mac-look item). The contract's `poseOverride` (arms bound
+  behind) is not applied in UE; the figure uses the escort rig's Death frame 22 until A9's `Kneel_Bound` clip ships.
+
 ### Phase 2 — Wave 2: the monster systems
 
 | WP | Scope | Owns | Depends | Acceptance |

@@ -9,6 +9,7 @@
 #include "abyss/base/StrUtil.h"
 #include "abyss/base/Units.h"
 #include "abyss/save/SaveData.h"
+#include "abyss/world/CampLayout.h"
 
 namespace abyss {
 
@@ -32,7 +33,8 @@ constexpr std::string_view kRequired[] = {
     "terrain_styles.json", "ui_theme.json",       "world_constants.json", "zone_moods.json",
     "autopilot_routes.json",  // the bot's routes (tools/AutoPilot, implementation-plan.md 6)
 };
-constexpr std::string_view kOptional[] = {"i18n_zh-TW.json", "assets.json", "index.json"};
+// set_pieces.json: the UE set-piece layer (presentation only; implementation-plan.md 4 U4).
+constexpr std::string_view kOptional[] = {"i18n_zh-TW.json", "assets.json", "index.json", "set_pieces.json"};
 
 // Tables whose raw JSON stays available after loading (presentation / offline tables).
 bool KeepRaw(std::string_view file) {
@@ -161,6 +163,7 @@ bool DataStore::LoadFile(std::string_view fileName, std::string_view bytes, Data
     else if (fileName == "render_quality.json") LoadRenderQualityFile(r, renderQuality_);
     else if (fileName == "abyss_run.json") LoadAbyssRunFile(r, abyssRun_);
     else if (fileName == "autopilot_routes.json") LoadAutoPilotRoutesFile(r, autopilot_);
+    else if (fileName == "set_pieces.json") LoadSetPiecesFile(r, setPieces_);
     else if (fileName == "terrain_styles.json" || fileName == "index.json") { /* raw only */ }
     else report.warnings.push_back(DataIssue{file, "", "unknown data file (ignored)"});
     if (KeepRaw(fileName)) {
@@ -745,6 +748,67 @@ bool DataStore::Finalize(DataLoadReport& report) {
       for (const AutoPilotCondition& c : s.until) {
         const QuestDef* cq = quest(c.quest, sp + ".until");
         if (c.kind == AutoPilotConditionKind::Objective) objective(cq, c.obj, sp + ".until");
+      }
+    }
+  }
+
+  // ---- the UE set-piece layer (implementation-plan.md 4 U4): presentation only, so a reference that does not resolve
+  // is a warning (the piece is skipped; the exporter fails on it, CoreTests setpieces_test pins the shipped table) ----
+  for (const SetPieceZoneDef& z : setPieces_.zones) {
+    constexpr std::string_view kFile = "set_pieces.json";
+    const std::string zp = "zones." + z.zone;
+    const MapDef* map = world_.FindMap(z.zone);
+    if (map == nullptr) {
+      ck.Warn(kFile, zp, "unknown zone '" + z.zone + "' (its pieces are skipped)");
+      continue;
+    }
+    for (const SetPieceDef& p : z.pieces) {
+      const std::string pp = zp + "." + p.id;
+      switch (p.anchor) {
+        case SetPieceAnchorKind::Tile: break;
+        case SetPieceAnchorKind::Camp: {
+          if (p.camp < 1 || static_cast<size_t>(p.camp) > map->camps.size()) {
+            ck.Warn(kFile, pp + ".anchor", StrCat(z.zone, " has no camp ", p.camp));
+          }
+          bool known = p.ref.empty();
+          for (const camp::CampPropSpec& spec : camp::kCampProps) known = known || p.ref == spec.type;
+          if (!known) ck.Warn(kFile, pp + ".anchor", "no camp prop '" + p.ref + "' (CampLayout.h)");
+          break;
+        }
+        case SetPieceAnchorKind::Entrance: {
+          bool found = false;
+          for (const SubDungeonEntranceDef& e : map->subDungeonEntrances) found = found || e.id == p.ref;
+          if (!found) ck.Warn(kFile, pp + ".anchor", "no entrance '" + p.ref + "' on " + z.zone);
+          break;
+        }
+        case SetPieceAnchorKind::Region: {
+          bool found = false;
+          for (const MapRegionDef& r : map->regions) found = found || r.id == p.ref;
+          if (!found) ck.Warn(kFile, pp + ".anchor", "no region '" + p.ref + "' on " + z.zone);
+          break;
+        }
+        case SetPieceAnchorKind::DefendTarget: {
+          const QuestDef* q = quests_.Find(p.ref);
+          if (q == nullptr || !q->hasDefendTarget || q->zone != z.zone) {
+            ck.Warn(kFile, pp + ".anchor", "'" + p.ref + "' is no defend quest of " + z.zone);
+          }
+          break;
+        }
+      }
+      for (const std::string& id : p.echoes) {
+        const LoreEntryDef* e = lore_.Find(id);
+        if (e == nullptr || e->zone != z.zone || e->spriteType != "echo") {
+          ck.Warn(kFile, pp + ".echoes", "'" + id + "' is no echo lore of " + z.zone);
+        }
+      }
+      if (assets_.loaded) {
+        // Presentation art: a missing id is a warning (the art pipeline runs in parallel; UE logs the skipped piece).
+        bool resolves = assets_.FindByGameId(p.gameId) != nullptr;
+        for (const std::string& id : p.fallbackIds) resolves = resolves || assets_.FindByGameId(id) != nullptr;
+        if (!resolves) ck.Warn(kFile, pp + ".gameId", "no asset for '" + p.gameId + "' or its fallbacks (assets.json)");
+        for (const std::string& id : p.partners) {
+          if (assets_.FindByGameId(id) == nullptr) ck.Warn(kFile, pp + ".partners", "no asset for '" + id + "' (assets.json)");
+        }
       }
     }
   }

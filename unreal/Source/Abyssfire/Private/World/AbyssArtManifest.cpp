@@ -10,6 +10,7 @@
 #include "abyss/base/Json.h"
 
 #include "Framework/AbyssText.h"
+#include "World/AbyssThemeRules.h"
 #include "World/AbyssWorldTypes.h"
 
 namespace AbyssArtManifestPrivate
@@ -102,6 +103,7 @@ namespace AbyssArtManifestPrivate
 			Out.ReleaseSec = JsonFloat(Json.Get("releaseMs"), 0.f) / 1000.f;
 		}
 		Out.RefSpeedCmS = JsonFloat(Json.Get("refSpeedCmS"), 0.f);
+		Out.Fps = FMath::Max(0.f, JsonFloat(Json.Get("fps"), 0.f));
 		for (const abyss::JsonValue& Notify : Json.Get("notifies").Items())
 		{
 			FAbyssArtNotify& N = Out.Notifies.AddDefaulted_GetRef();
@@ -299,6 +301,11 @@ namespace AbyssArtManifestPrivate
 				Out.OutlineClass = Class;
 			}
 		}
+		// "Portraits/T_UI_Portrait_QuestElder_March.png" -> T_UI_Portrait_QuestElder_March (the imported texture's name).
+		if (const FString PortraitPath = JsonString(Json.Get("portrait")); !PortraitPath.IsEmpty())
+		{
+			Out.Portrait = FName(*FPaths::GetBaseFilename(PortraitPath));
+		}
 		ParseFootprint(Json, Out);
 		if (const abyss::JsonValue* Blocking = Json.Find("blocking"); Blocking != nullptr && Blocking->IsBool())
 		{
@@ -404,6 +411,9 @@ void FAbyssArtManifest::Reset()
 	Assets.Reset();
 	AssetsByName.Reset();
 	AssetsByGameId.Reset();
+	ThemedIds.Reset();
+	ThemeParityMismatches.Reset();
+	MaterialsJson = abyss::JsonValue();
 	Shading = FAbyssArtShading();
 	bLoaded = false;
 }
@@ -475,6 +485,47 @@ bool FAbyssArtManifest::LoadFromJson(std::string_view Json, FString& OutError)
 			{ return Assets[A].Name.ToString().Compare(Assets[B].Name.ToString(), ESearchCase::CaseSensitive) < 0; });
 	}
 
+	// Theme variants (U1): `<id>@<theme>` ids indexed by theme and plain id. A variant whose footprint / blocking differs
+	// from its plain id's would draw a blocker where the core's walkability (baked from the plain ids) has none.
+	for (const TPair<FName, TArray<int32>>& Pair : AssetsByGameId)
+	{
+		const std::string Id = AbyssText::ToStd(Pair.Key.ToString());
+		std::string_view Base;
+		std::string_view ThemeName;
+		if (!AbyssThemeRules::SplitThemedId(Id, Base, ThemeName))
+		{
+			continue;
+		}
+		const FName PlainId(*AbyssText::ToFString(Base));
+		ThemedIds.FindOrAdd(FName(*AbyssText::ToFString(ThemeName))).Add(PlainId, Pair.Key);
+		const TArray<int32>* Plain = AssetsByGameId.Find(PlainId);
+		const FAbyssArtAsset* PlainAsset = Plain != nullptr && Plain->Num() > 0 ? &Assets[(*Plain)[0]] : nullptr;
+		for (const int32 Index : Pair.Value)
+		{
+			const FAbyssArtAsset& Variant = Assets[Index];
+			if (PlainAsset != nullptr && (Variant.bHasFootprint != PlainAsset->bHasFootprint || Variant.FootprintW != PlainAsset->FootprintW
+				|| Variant.FootprintH != PlainAsset->FootprintH || Variant.bBlocking != PlainAsset->bBlocking))
+			{
+				ThemeParityMismatches.AddUnique(Pair.Key);
+			}
+		}
+	}
+	if (ThemeParityMismatches.Num() > 0)
+	{
+		TArray<FString> Names;
+		for (const FName Mismatch : ThemeParityMismatches)
+		{
+			Names.Add(Mismatch.ToString());
+		}
+		Names.Sort();
+		UE_LOG(LogAbyss, Warning, TEXT("Art manifest: %d theme variants differ from their plain id in footprint / blocking "
+			"(the core bakes walkability from the plain ids): %s"), Names.Num(), *FString::Join(Names, TEXT(", ")));
+	}
+
+	if (const abyss::JsonValue* Materials = Manifest->Find("materials"); Materials != nullptr && Materials->IsObject())
+	{
+		MaterialsJson = *Materials;
+	}
 	ParseShading(Manifest->Get("shading"), Manifest->Get("units"), Shading);
 	bLoaded = true;
 	return true;
@@ -557,6 +608,29 @@ const FAbyssArtAsset* FAbyssArtManifest::ResolveFirst(TConstArrayView<FName> Gam
 		}
 	}
 	return nullptr;
+}
+
+const FAbyssArtAsset* FAbyssArtManifest::ResolveFirst(TConstArrayView<FName> GameIds, uint32 VariantHash, FName Theme) const
+{
+	const TMap<FName, FName>* Variants = Theme.IsNone() ? nullptr : ThemedIds.Find(Theme);
+	return AbyssThemeRules::ResolveThemedFirst<const FAbyssArtAsset*>(GameIds, Variants != nullptr,
+		[this, Variants, VariantHash](FName GameId) -> const FAbyssArtAsset*
+		{
+			const FName* Themed = Variants->Find(GameId);
+			return Themed != nullptr ? ResolveGameId(*Themed, VariantHash) : nullptr;
+		},
+		[this, VariantHash](FName GameId) -> const FAbyssArtAsset*
+		{
+			const FName Single[] = { GameId };
+			return ResolveFirst(Single, VariantHash);
+		});
+}
+
+FName FAbyssArtManifest::FindThemedGameId(FName GameId, FName Theme) const
+{
+	const TMap<FName, FName>* Variants = Theme.IsNone() ? nullptr : ThemedIds.Find(Theme);
+	const FName* Themed = Variants != nullptr ? Variants->Find(GameId) : nullptr;
+	return Themed != nullptr ? *Themed : NAME_None;
 }
 
 const FAbyssArtAsset* FAbyssArtManifest::FindWeapon(FName WeaponType, FName HeldBy) const

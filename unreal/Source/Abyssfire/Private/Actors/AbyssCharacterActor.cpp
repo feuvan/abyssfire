@@ -15,9 +15,14 @@
 #include "Rendering/SkeletalMeshLODRenderData.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 
+#include <array>
+
+#include "abyss/base/Enums.h"
 #include "abyss/data/CombatData.h"
 
+#include "Actors/AbyssAnimActionRules.h"
 #include "Anim/AbyssAnimInstance.h"
+#include "Framework/AbyssText.h"
 #include "Framework/AbyssUnits.h"
 #include "World/AbyssAssetLibrary.h"
 
@@ -36,9 +41,32 @@ namespace AbyssCharacterPrivate
 	constexpr float AfterimageLifeSec = 0.26f;
 	constexpr float JoltPainSec = 0.09f;
 
-	// Render-only feedback colours (art-inventory-ch1.md 1.8 / R8; sRGB hex in the spec).
+	// Render-only feedback colours (art-inventory-ch1.md 1.8 / R8; sRGB hex in the spec). The wind-up tint comes from the
+	// zone mood (zone_moods.json port.windupTint, DR5: the march's crimson) through the frame; these are the web port's
+	// tints every mood without an entry keeps (AbyssThemeRules::DefaultWindupNormal / Elite).
 	FLinearColor TelegraphNormal() { return AbyssWorldUtil::ColorFromRgb(0xFFC4B0); }
 	FLinearColor TelegraphElite() { return AbyssWorldUtil::ColorFromRgb(0xFF7A5C); }
+
+	/**
+	 * The manifest clip name of a K1 action (Roar, Taunt, Stun, Attack02, Cast02, Rise); NAME_None for the others. The
+	 * names are made once (UpdateLocomotion asks for the hold / stun clip of every held or stunned monster each frame).
+	 */
+	FName NamedActionClip(abyss::AnimAction Action)
+	{
+		using FNamedClips = std::array<FName, abyss::EnumCount<abyss::AnimAction>()>;
+		static const FNamedClips Names = []()
+		{
+			FNamedClips Out;
+			for (size_t I = 0; I < Out.size(); ++I)
+			{
+				const std::string_view Name = AbyssAnimActionRules::NamedClip(static_cast<abyss::AnimAction>(I));
+				Out[I] = Name.empty() ? FName(NAME_None) : FName(*AbyssText::ToFString(Name));
+			}
+			return Out;
+		}();
+		const size_t Index = static_cast<size_t>(Action);
+		return Index < Names.size() ? Names[Index] : FName(NAME_None);
+	}
 
 	struct FStatusTint
 	{
@@ -687,6 +715,7 @@ void AAbyssCharacterActor::ResetPresentation()
 {
 	ActionState = FActionState();
 	LocomotionClip = NAME_None;
+	HoldFaceDir = FVector2D::ZeroVector;
 	FreezeRemainingMs = 0.f;
 	ActionBeatSimMs = -1.0;
 	bWorldHold = false;
@@ -759,7 +788,7 @@ float AAbyssCharacterActor::BlendSecFor(const char* FromState, const char* ToSta
 	return static_cast<float>(AnimTiming->TransitionMs(FromState, ToState)) / 1000.f;
 }
 
-void AAbyssCharacterActor::PlayClip(const FAbyssArtClip& Clip, float Rate, float StartSec, const char* ToState)
+void AAbyssCharacterActor::PlayClip(const FAbyssArtClip& Clip, float Rate, float StartSec, const char* ToState, bool bForceLoop)
 {
 	UAbyssAnimInstance* Anim = GetAnim();
 	UAnimSequence* Seq = FindClip(Clip.Name);
@@ -767,7 +796,7 @@ void AAbyssCharacterActor::PlayClip(const FAbyssArtClip& Clip, float Rate, float
 	{
 		return;
 	}
-	Anim->Play(Seq, Clip.bLoop, Rate, BlendSecFor(CurrentState, ToState), StartSec, Clip.Notifies);
+	Anim->Play(Seq, Clip.bLoop || bForceLoop, Rate, BlendSecFor(CurrentState, ToState), StartSec, Clip.Notifies);
 	CurrentState = ToState;
 }
 
@@ -851,6 +880,21 @@ const FAbyssArtClip* AAbyssCharacterActor::ResolveActionClip(const abyss::EvPlay
 		return !Requested.IsNone() && FindArtClip(Requested) ? FindArtClip(Requested) : ByName(TEXT("Work"));
 	case abyss::AnimAction::Talk:
 		return !Requested.IsNone() && FindArtClip(Requested) ? FindArtClip(Requested) : ByName(TEXT("Talk"));
+	case abyss::AnimAction::Roar:
+	case abyss::AnimAction::Taunt:
+	case abyss::AnimAction::Stun:
+	case abyss::AnimAction::Attack02:
+	case abyss::AnimAction::Cast02:
+	case abyss::AnimAction::Rise:
+		// K1 contract (SimTypes.h): the clip of the same name; an asset without it keeps its current pose (nullptr).
+		if (!Requested.IsNone())
+		{
+			if (const FAbyssArtClip* Clip = FindArtClip(Requested))
+			{
+				return Clip;
+			}
+		}
+		return FindArtClip(NamedActionClip(Event.action));
 	case abyss::AnimAction::Idle:
 	case abyss::AnimAction::Walk:
 		break;
@@ -891,7 +935,7 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 			// P5: play the clip so its authored Contact / Release lands exactly on the core's beat.
 			Rate = BeatSec / static_cast<float>(Event.contactMs / 1000.0);
 		}
-		else if (Event.durationMs > 0.0 && Clip->LengthSec > 0.f && Event.action != abyss::AnimAction::Attack)
+		else if (Event.durationMs > 0.0 && Clip->LengthSec > 0.f && AbyssAnimActionRules::StretchesToDuration(Event.action))
 		{
 			Rate = Clip->LengthSec / static_cast<float>(Event.durationMs / 1000.0);
 		}
@@ -901,16 +945,20 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	ActionState = FActionState();
 	// The beat the core waits for (T3 / T4): a frozen world holds the clip before it (PresentFrame).
 	ActionBeatSimMs = Event.contactMs > 0.0 ? Event.startMs + Event.contactMs : -1.0;
-	switch (Event.action)
+	// AbyssAnimActionRules: Attack02 is an attack (contact beat, wind-up tint), Cast02 a cast (release beat), Roar /
+	// Taunt / Stun / Rise an emote (no beat: a frozen world does not hold it, the boss intro's Roar plays through).
+	switch (AbyssAnimActionRules::KindOf(Event.action))
 	{
-	case abyss::AnimAction::Attack: ActionState.Action = EAbyssCharacterAction::Attack; break;
-	case abyss::AnimAction::Cast: ActionState.Action = EAbyssCharacterAction::Cast; break;
-	case abyss::AnimAction::Dodge: ActionState.Action = EAbyssCharacterAction::Dodge; break;
-	case abyss::AnimAction::Hurt: ActionState.Action = EAbyssCharacterAction::Hurt; break;
-	case abyss::AnimAction::Signature: ActionState.Action = EAbyssCharacterAction::Signature; break;
-	case abyss::AnimAction::Work: ActionState.Action = EAbyssCharacterAction::Work; break;
-	case abyss::AnimAction::Talk: ActionState.Action = EAbyssCharacterAction::Talk; break;
-	default: ActionState.Action = EAbyssCharacterAction::Cast; break;
+	case AbyssAnimActionRules::EActionKind::Attack: ActionState.Action = EAbyssCharacterAction::Attack; break;
+	case AbyssAnimActionRules::EActionKind::Cast: ActionState.Action = EAbyssCharacterAction::Cast; break;
+	case AbyssAnimActionRules::EActionKind::Dodge: ActionState.Action = EAbyssCharacterAction::Dodge; break;
+	case AbyssAnimActionRules::EActionKind::Hurt: ActionState.Action = EAbyssCharacterAction::Hurt; break;
+	case AbyssAnimActionRules::EActionKind::Signature: ActionState.Action = EAbyssCharacterAction::Signature; break;
+	case AbyssAnimActionRules::EActionKind::Work: ActionState.Action = EAbyssCharacterAction::Work; break;
+	case AbyssAnimActionRules::EActionKind::Talk: ActionState.Action = EAbyssCharacterAction::Talk; break;
+	case AbyssAnimActionRules::EActionKind::Emote: ActionState.Action = EAbyssCharacterAction::Emote; break;
+	case AbyssAnimActionRules::EActionKind::None:
+	case AbyssAnimActionRules::EActionKind::Death: ActionState.Action = EAbyssCharacterAction::Cast; break;
 	}
 	float DurationSec = Event.durationMs > 0.0 ? static_cast<float>(Event.durationMs / 1000.0) : 0.f;
 	if (DurationSec <= 0.f && Clip != nullptr)
@@ -926,6 +974,11 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 		{
 			ActionState.bFaceLock = true;
 			ActionState.FaceDir = Dir;
+			// K1: the mini-boss keeps facing the hero for as long as its dialogue holds the Taunt (UpdateFacing).
+			if (AbyssAnimActionRules::IsHoldAction(Event.action))
+			{
+				HoldFaceDir = Dir;
+			}
 			const bool bAimedAction = ActionState.Action == EAbyssCharacterAction::Attack
 				|| ActionState.Action == EAbyssCharacterAction::Cast || ActionState.Action == EAbyssCharacterAction::Signature;
 			if (EntityKind == abyss::EntityKind::Hero && bAimedAction)
@@ -947,15 +1000,8 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 
 	if (Clip != nullptr)
 	{
-		const char* State = "cast";
-		switch (ActionState.Action)
-		{
-		case EAbyssCharacterAction::Attack: State = "attack"; break;
-		case EAbyssCharacterAction::Dodge: State = "dodge"; break;
-		case EAbyssCharacterAction::Hurt: State = "hurt"; break;
-		default: State = "cast"; break;
-		}
-		PlayClip(*Clip, Rate, ElapsedSec * Rate, State);
+		const char* State = AbyssAnimActionRules::BlendState(AbyssAnimActionRules::KindOf(Event.action));
+		PlayClip(*Clip, Rate, ElapsedSec * Rate, State, AbyssAnimActionRules::ForcesLoop(Event.action));
 		LocomotionClip = NAME_None;
 	}
 }
@@ -1402,6 +1448,15 @@ void AAbyssCharacterActor::UpdateFacing(const FAbyssCharacterFrame& Frame, float
 	}
 	FVector2D Desired = Frame.Facing;
 	bool bAimed = false;
+	// K1 hold: the Taunt's facing toward the hero lasts while the core holds the pose; it ends with the hold.
+	if (!AbyssAnimActionRules::IsHoldAction(Frame.HoldAction))
+	{
+		HoldFaceDir = FVector2D::ZeroVector;
+	}
+	else if (!HoldFaceDir.IsNearlyZero())
+	{
+		Desired = HoldFaceDir;
+	}
 	if (ActionState.bFaceLock && ActionState.Action != EAbyssCharacterAction::None)
 	{
 		if (ActionState.bFaceFollowsCore && !Frame.Facing.IsNearlyZero())
@@ -1455,8 +1510,37 @@ void AAbyssCharacterActor::UpdateLocomotion(const FAbyssCharacterFrame& Frame)
 {
 	using namespace AbyssCharacterPrivate;
 	UAbyssAnimInstance* Anim = GetAnim();
-	if (Anim == nullptr || bDying || ActionState.Action != EAbyssCharacterAction::None)
+	if (Anim == nullptr)
 	{
+		return;
+	}
+	// Who owns the body (AbyssAnimActionRules): death > action > hold (K1 Taunt) > stun pose > locomotion > idle. A hold or
+	// stun whose clip the asset lacks keeps today's locomotion.
+	const FAbyssArtClip* HoldClip = AbyssAnimActionRules::IsHoldAction(Frame.HoldAction)
+		? FindArtClip(NamedActionClip(Frame.HoldAction)) : nullptr;
+	const FAbyssArtClip* StunClip = Frame.bStunned ? FindArtClip(NamedActionClip(abyss::AnimAction::Stun)) : nullptr;
+	AbyssAnimActionRules::FLayerInputs LayerInputs;
+	LayerInputs.bDying = bDying;
+	LayerInputs.bInAction = ActionState.Action != EAbyssCharacterAction::None;
+	LayerInputs.bHoldClip = HoldClip != nullptr;
+	LayerInputs.bStunClip = StunClip != nullptr;
+	LayerInputs.bMoving = Frame.bMoving && Frame.SpeedCmS > MinMovingSpeedCmS;
+	const AbyssAnimActionRules::ELayer BodyLayer = AbyssAnimActionRules::PickLayer(LayerInputs);
+	if (BodyLayer == AbyssAnimActionRules::ELayer::Death || BodyLayer == AbyssAnimActionRules::ELayer::Action)
+	{
+		return;
+	}
+	if (BodyLayer == AbyssAnimActionRules::ELayer::Hold || BodyLayer == AbyssAnimActionRules::ELayer::Stun)
+	{
+		const FAbyssArtClip* Pose = BodyLayer == AbyssAnimActionRules::ELayer::Hold ? HoldClip : StunClip;
+		if (Anim->GetCurrentSequence() == FindClip(Pose->Name))
+		{
+			// Already showing it (the EvPlayAnim{Taunt} that started the hold): keep looping, no restart.
+			LocomotionClip = Pose->Name;
+			return;
+		}
+		PlayClip(*Pose, 1.f, 0.f, "idle", /*bForceLoop*/ true);
+		LocomotionClip = Pose->Name;
 		return;
 	}
 	const FAbyssArtClip* Chosen = nullptr;
@@ -1581,7 +1665,10 @@ void AAbyssCharacterActor::UpdateMaterialFeedback(const FAbyssCharacterFrame& Fr
 	{
 		Telegraph = 1.f;
 	}
-	SetCpdColor(AbyssCpd::TelegraphR, (bElite || Frame.bElite) ? TelegraphElite() : TelegraphNormal());
+	const bool bEliteTint = bElite || Frame.bElite;
+	const FLinearColor WindupTint = Frame.bHasWindupTint ? (bEliteTint ? Frame.WindupTintElite : Frame.WindupTint)
+														 : (bEliteTint ? TelegraphElite() : TelegraphNormal());
+	SetCpdColor(AbyssCpd::TelegraphR, WindupTint);
 	SetCpd(AbyssCpd::TelegraphAmount, Telegraph > 0.f ? FMath::Clamp(Telegraph, 0.f, 1.f) * 0.85f : 0.f);
 
 	// Status tints (R8).

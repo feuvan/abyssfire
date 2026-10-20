@@ -8,8 +8,7 @@
     "zone": "emerald_plains",
     "priority": ["story", "victory", "boss", "siege", "region", "zone"],
     "zoneTracks": {"explore": "march_drones", "combat": "march_drones", "victory": "valdras_falls"},
-    "combat": "keep: the remake has no combat music (chapter1.md 16 lists none). A fight keeps whatever plays (the lute, the dirge, the drones, a silence); the encounters below get stingers instead. While the core still switches state, zoneTracks maps the combat state to the explore track; that row reaches the manifest's zoneOverrides only once the player treats an override that resolves to the track already sounding as a no-op (see heldOverrides)",
-    "heldOverrides": {"combat": "held out of the manifest's zoneOverrides until U7 makes an override that resolves to the track already sounding a no-op even with restart = true (or the core sends restart = false on the combat edge of a one-track zone): today the combat edge's restart would restart the drones from their silent start at every fight (1.5 s crossfade against themselves). Until then the zone's combat key keeps the A7 combat track. To release: delete this entry, run render_all.py --manifest-only"},
+    "combat": "keep: the remake has no combat music (chapter1.md 16 lists none). A fight keeps whatever plays (the lute, the dirge, the drones, a silence); the encounters below get stingers instead. While the core still switches state, zoneTracks maps the combat state to the explore track (the manifest's zoneOverrides carry it): UAbyssAudioSystem treats a zone-overridden request that resolves to the track already sounding as a no-op even with restart = true (U7), so the combat edge never restarts the drones",
     "regions": [
       {"id": "breach_rim", "col": 15, "row": 95, "radius": 16, "exitRadius": 17, "track": "", "while": {"monsterAlive": "valdras"},
        "fadeOutSec": 4.0, "source": "design", "use": "silence inside 16 tiles of the dais while Valdras lives (the AU2 region bed plays: wind and the breach hum); boss music from the intro (boss beats region)"},
@@ -34,9 +33,10 @@
     },
     "story": [
       {"beat": "chapter_emerald_plains", "stinger": "stinger_chapter_night", "note": "the chapter card's mood is night (chapter1.md); the manifest maps stingers.chapterCard.night"},
-      {"beat": "cs_rf_siege", "at": "end", "track": "siege", "until": "q_rf_last_toll's defend objective completes (the last wave falls)", "then": "",
+      {"beat": "cs_rf_siege", "at": "end", "track": "siege", "quest": "q_rf_last_toll", "fadeInSec": 2.0, "fadeOutSec": 3.0,
+       "until": "q_rf_last_toll's defend objective completes (the last wave falls)", "then": "",
        "note": "the bell rings by itself during the siege (AU2 bell_self_ring every 20-30 s); after the last wave: silence until the turn-in"},
-      {"beat": "cs_rf_finale", "at": "step 1", "track": "", "fadeOutSec": 3.0,
+      {"beat": "cs_rf_finale", "at": "step 1", "stepIndex": 0, "track": "", "fadeOutSec": 3.0,
        "then": {"afterSec": 6.0, "track": "knellwatch_lute", "fadeInSec": 6.0},
        "note": "the dawn toll (AU2 bell_dawn_toll at step 4), then silence, then the lute: when the beat ends, 6 s of silence, then the lute fades in"},
       {"beat": "cs_rf_marshal_falls", "note": "plays inside the victory hold: valdras_falls (one-shot) under the cutscene"}

@@ -12,12 +12,19 @@
 // Game ids (web texture keys, e.g. player_warrior, monster_goblin, decor_tree, camp_tent, exit_portal, loot_bag) map to
 // one or more assets: the top-level `gameIds` object plus each asset's `gameIds` array. Several assets listing the same
 // id are VARIANTS, picked by a deterministic hash in asset-name order (e.g. SM_Foliage_Plains_Oak_A/B/C <- decor_tree).
+//
+// Theme variants (dark remake U1, AbyssThemeRules.h): an id `<gameId>@<theme>` (tree@march, npc_quest_elder@march,
+// outcrop_plains@march) is the art a zone with that presentation theme shows in place of `<gameId>`. ResolveFirst with a
+// theme tries every id's variant before any plain id; a missing variant falls back to today's asset. The load warns when
+// a variant's footprint / blocking differs from its plain id's (the core bakes walkability from the plain ids).
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/SoftObjectPath.h"
 
 #include <string_view>
+
+#include "abyss/base/Json.h"
 
 struct FAbyssArtNotify
 {
@@ -38,6 +45,7 @@ struct FAbyssArtClip
 	float ContactSec = -1.f;    // attack contact at play rate 1 (< 0 = none)
 	float ReleaseSec = -1.f;    // cast release at play rate 1 (< 0 = none)
 	float RefSpeedCmS = 0.f;    // locomotion clips: ground speed the stride was authored for
+	float Fps = 0.f;            // authored frame rate (frame -> seconds for frozen poses); 0 = unknown (60)
 	TArray<FAbyssArtNotify> Notifies;
 	TArray<FName> Skills;       // skill ids this clip presents (signature `skill` + `skills` list)
 
@@ -140,6 +148,8 @@ struct FAbyssArtAsset
 	FName WeaponType;              // weapons: sword / axe / mace / dagger / bow / staff / wand / shield
 	TArray<FName> HeldBy;          // weapons: the skeletal meshes they were authored for
 	FName OutlineClass;            // hero / monster / npc / interactive / decor / ...
+	/** UI portrait texture (manifest `portrait`, e.g. T_UI_Portrait_QuestElder_March); NAME_None when the asset has none. */
+	FName Portrait;
 	bool bHasFootprint = false;
 	int32 FootprintW = 1;
 	int32 FootprintH = 1;
@@ -205,8 +215,26 @@ public:
 	const FAbyssArtAsset* ResolveGameId(FName GameId, uint32 VariantHash = 0) const;
 	/** First game id of the list that resolves (fallback chains such as {decor_tree, tree}). */
 	const FAbyssArtAsset* ResolveFirst(TConstArrayView<FName> GameIds, uint32 VariantHash = 0) const;
+	/**
+	 * Theme-aware ResolveFirst (U1): with a presentation theme (march), every id's `<id>@<theme>` variant first, in chain
+	 * order, then the plain chain; NAME_None = the plain ResolveFirst. A missing variant is not an error: the plain asset
+	 * is the intended fallback.
+	 */
+	const FAbyssArtAsset* ResolveFirst(TConstArrayView<FName> GameIds, uint32 VariantHash, FName Theme) const;
+	/** `<GameId>@<Theme>` when the manifest has that variant, else NAME_None. */
+	FName FindThemedGameId(FName GameId, FName Theme) const;
+	/** Whether any asset is authored for the theme (`<id>@<Theme>` ids). */
+	bool HasTheme(FName Theme) const { return ThemedIds.Contains(Theme); }
 	/** Weapon mesh of a weapon type, preferring one authored for `HeldBy` (I6 / R4). */
 	const FAbyssArtAsset* FindWeapon(FName WeaponType, FName HeldBy) const;
+
+	/**
+	 * The manifest's `materials` object (material contracts the runtime reads: MI_AF_Echo's figures / timeline / tint,
+	 * M_AF_Telegraph's parameters); a null value without one.
+	 */
+	const abyss::JsonValue& GetMaterialsJson() const { return MaterialsJson; }
+	/** Theme variants whose footprint or blocking differs from the plain id (logged at load). */
+	const TArray<FName>& GetThemeParityMismatches() const { return ThemeParityMismatches; }
 
 	static const TCHAR* ContentRoot() { return TEXT("/Game/Abyssfire"); }
 	/** /Game/Abyssfire/<Folder>/<Asset>.<Asset> */
@@ -216,6 +244,10 @@ private:
 	TArray<FAbyssArtAsset> Assets;
 	TMap<FName, int32> AssetsByName;
 	TMap<FName, TArray<int32>> AssetsByGameId;
+	/** Theme -> plain game id -> its `<id>@<theme>` variant id (built from AssetsByGameId's keys at load). */
+	TMap<FName, TMap<FName, FName>> ThemedIds;
+	TArray<FName> ThemeParityMismatches;
+	abyss::JsonValue MaterialsJson;
 	FAbyssArtShading Shading;
 	bool bLoaded = false;
 };

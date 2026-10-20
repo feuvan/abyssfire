@@ -93,6 +93,11 @@ public:
 	void SetHighlight(float Amount);
 	/** Occlusion fade (AbyssCpd::Fade) applied by the world builder, 0 = opaque. */
 	void SetOcclusionFade(float Amount);
+	/**
+	 * Turns the body to a facing yaw (FAbyssPropSetup::YawDeg convention: the manifest's mesh yaw offset is added); a
+	 * no-op when unchanged. A defend target standing on a set piece of the same art takes the piece's facing (U4).
+	 */
+	void SetFacingYaw(float YawDeg);
 
 	abyss::EntityId GetEntityId() const { return EntityId; }
 	abyss::EntityKind GetEntityKind() const { return EntityKind; }
@@ -141,6 +146,7 @@ private:
 	bool bSkeletal = false;
 	float VisualHeightCm = 50.f;
 	float MeshYawOffsetDeg = -90.f;
+	float FacingYawDeg = 0.f;
 	float BaseScale = 1.f;
 	float PhaseSec = 0.f;
 	float PoolRadiusCm = 0.f;

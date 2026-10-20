@@ -134,9 +134,10 @@ ZONE_OVERRIDES = {
 
 def zone_overrides(dark: dict) -> dict:
     """ZONE_OVERRIDES + AU3: the remake's zone plays the dark tracks for the core's `<theme>_<state>` keys (the drones
-    for explore, Valdras falls for the boss victory). The Ember Tower keeps its plains score. A state listed in
-    `director.heldOverrides` stays out (the combat -> drones row waits for U7's same-track no-op: with today's player the
-    core's restart on the combat edge would restart the drones at every fight); `musicDirector.zoneTracks` keeps it."""
+    for explore and combat, Valdras falls for the boss victory). The Ember Tower keeps its plains score. A state listed
+    in `director.heldOverrides` stays out until the player can take it (`musicDirector.zoneTracks` keeps it). The combat
+    row was held until U7: UAbyssAudioSystem now treats a zone-overridden request that resolves to the track already
+    sounding as a no-op even with restart = true, so the combat edge does not restart the drones."""
     d = dark["director"]
     held = d.get("heldOverrides", {})
     out = {z: dict(t) for z, t in ZONE_OVERRIDES.items()}
@@ -742,8 +743,8 @@ def music_director_table(dark: dict, music: dict, assets: dict) -> dict:
         "zone": d["zone"],
         "priority": d["priority"],
         "zoneTracks": {k: v for k, v in d["zoneTracks"].items() if known(v)},
-        # States whose zoneTracks row is not in `zoneOverrides` yet (what the reader must land first).
-        "heldOverrides": d.get("heldOverrides", {}),
+        # States whose zoneTracks row is not in `zoneOverrides` yet (what the reader must land first); none since U7.
+        **({"heldOverrides": d["heldOverrides"]} if d.get("heldOverrides") else {}),
         "combat": d["combat"],
         "tracks": tracks,
         "regions": [r for r in d["regions"] if known(r["track"])],
@@ -755,6 +756,18 @@ def music_director_table(dark: dict, music: dict, assets: dict) -> dict:
         "story": d["story"],
         "stingers": stingers_out,
     }
+
+
+def cue_triggers(cues: dict) -> dict:
+    """U7 (implementation-plan.md 4): the structured `use` of the AU2 bells and of the beat-bound AU1 voices."""
+    rows = [dict(r) for r in dark_ambience.BELL_TRIGGERS + dark_vox.VOX_TRIGGERS
+            if r["cue"] in cues and r.get("farCue", r["cue"]) in cues]
+    return {"decision": "U7", "kinds": list(dark_ambience.TRIGGER_KINDS),
+            "rule": "story indices are the core's 0-based EvStoryStep::index; `every` never fires while a story beat "
+                    "plays and waits one interval first; farCue plays when the hero is outside the musicDirector "
+                    "region nearRegion; tile places a 3d cue (else the hero); a burst (count, spacingSec) started by a "
+                    "story beat stops when that beat ends",
+            "rows": rows}
 
 
 def build_manifest(assets: dict, levels: dict, cue_table: dict, music_entries: list[dict], dark: dict) -> dict:
@@ -865,7 +878,11 @@ def build_manifest(assets: dict, levels: dict, cue_table: dict, music_entries: l
             "silent": dark_vox.SILENT_MONSTERS,
             "overrides": {m: {k: c for k, c in o.items() if c in cues}
                           for m, o in dark_vox.NAMED_OVERRIDES.items()},
+            "overrideKeys": dark_vox.OVERRIDE_KEYS,
         },
+        # U7: when the AU2 bells and the beat-bound AU1 voices play (dark_ambience.BELL_TRIGGERS documents the rows;
+        # a row whose cue is not rendered is left out).
+        "cueTriggers": cue_triggers(cues),
         # The design's non-vocal monster sounds (monsters.md 2) that no AU package renders yet: ids reserved for the
         # core (no assets; UE plays nothing for a cue without a `cues` row). A rendered cue moves to `cues`.
         "plannedCues": {cid: {"monsters": mons, "sound": sound, "wave": wave, "spatial": spatial, "bus": "combat",

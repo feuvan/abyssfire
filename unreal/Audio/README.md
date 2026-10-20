@@ -118,14 +118,15 @@ the A5 owner decides to drop it.
 |---|---|
 | `assets.<Name>` | `file` (relative to Export/), `ue` (object path), `kind` (sfx / vocal / bell / footstep / ambience / stinger / music), `channels`, `loop`, `loopStartSample`, `loopEndSample` (whole file), `lengthSec`, `gain` (runtime trim, 1), measured `peakDbfs`, `truePeakDbtp`, `rmsDbfs`, `lufs`, `momentaryMaxLufs`, `seamRatio`, `masterGainDb`, `sha256` of the OGG, render metadata (seed, recipe, chain, `sourceFile` / `sourceSha256` of a recording, credit) |
 | `cues.<id>` | audio_cues.json row: `assets`, `variants`, `families`, `bus`, `spatial`, `concurrency {max, rule, minRetriggerMs}`, `gain`; `monster_death.vocalLayer`; `monster_aggro` / `monster_hurt` / the vocal layer extended with every rendered voice family (family-major); AU1 named rows `vox_*` and AU2 bell rows `bell_*` (+ `loop` (false: EvSfx has no stop), `use`, `decision`) until audio_cues.json lists them |
-| `voiceFamilies` | AU1: `families` (cue order), `aliases` (design family names → voice family), `monsters` (Chapter 1 monster id → voice family, stretch `ash_outrider` too), `silent` (monster → why it plays no family cue: `false_lantern`), `overrides` (monster → named cue replacing `monster_aggro` / `monster_hurt` / `monster_death.vocal`) |
+| `voiceFamilies` | AU1: `families` (cue order), `aliases` (design family names → voice family), `monsters` (Chapter 1 monster id → voice family, hunt ids and stretch `ash_outrider` too), `silent` (monster → why it plays no family cue: `false_lantern`), `overrides` (monster → {key → named cue}: `monster_aggro` / `monster_hurt` / `monster_death.vocal` replace the family cue; U7 adds `anim.<action>` (the core's AnimAction names: Valdras's roar and plate on attacks, the Corpseherd's handbell on attacks / casts), `miniboss.opened` (her lullaby) and `story.say` (Valdras's boss-intro lines)), `overrideKeys` (what each key means; `dark_vox.OVERRIDE_KEYS`) |
 | `plannedCues` | the design's non-vocal monster sounds no AU package renders yet (monsters.md 2 "Sound" rows): `sfx_<monster>_<what>` → {`monsters`, `sound`, `wave` (W1 / W2 / stretch), `spatial`, `bus`, `owner`}; ids for the core to reserve, no assets (`dark_vox.PLANNED_CUES`) |
 | `music.<trackKey>` | `asset`, `loop`, `lengthSec`, `gain`, `source` (score / recording / darkScore), `credit {title, author, license, url}`; AU3 rows add `use`, `decision` |
 | `menuTrack` | the title theme track key |
-| `zoneOverrides` | zone → {core track key → track played instead} (audio.md §11; `ember_tower` plays the procedural plains score; AU3: `emerald_plains` plays `march_drones` for explore and `valdras_falls` for the boss victory; its combat row is held, see `musicDirector.heldOverrides`) |
+| `zoneOverrides` | zone → {core track key → track played instead} (audio.md §11; `ember_tower` plays the procedural plains score; AU3: `emerald_plains` plays `march_drones` for explore **and combat** (released by U7: a zone-overridden request resolving to the track already sounding is a no-op) and `valdras_falls` for the boss victory) |
 | `stingers` | chapter card by mood (AU3 adds `night` → `SW_STG_ChapterCardNight`), boss intro, whisper, cutscene-in; duck amounts (dB, in / out s); fades |
-| `musicDirector` | AU3 (`decision`), from `dark_scores.json` `director`, for the core's MusicDirector and U7: `priority` (story > victory > boss > siege > region > zone), `zoneTracks` (explore / combat / victory), `heldOverrides` (state → what must land before its zoneTracks row joins `zoneOverrides`: combat → drones waits for U7's same-track no-op), `combat` (keep), `tracks` (key → asset), `regions[]` {`id`, `col`, `row`, `radius`, `exitRadius`, `track` ("" = silence), `while {monsterAlive}`, fades, `source` (design / AU3 proposal), `use`} (breach_rim silence, knellwatch lute, red_field dirge, ashwheat and sheepfold silences), `regionRule` (Euclidean tile distance from the hero's tile, enter at `radius`, leave past `exitRadius`), `bosses.valdras` {`track` boss_ch1, `phaseStingers` {phase index → stinger}, `victory`}, `encounters` (hunts, mini-boss: engaged / slain stingers), `story[]` (chapter card, siege, finale: the dawn toll, 6 s of silence, then the lute), `stingers.<id>` {`asset`, `lengthSec`, `duck {db, inSec, outSec}`, `use`} |
+| `musicDirector` | AU3 (`decision`), from `dark_scores.json` `director`, read by U7 (`AbyssMusicRules`): `priority` (story > victory > boss > siege > region > zone), `zoneTracks` (explore / combat / victory), `heldOverrides` (only when a state waits for a reader; none since U7), `combat` (keep), `tracks` (key → asset), `regions[]` {`id`, `col`, `row`, `radius`, `exitRadius`, `track` ("" = silence), `while {monsterAlive}`, fades, `source` (design / AU3 proposal), `use`} (breach_rim silence, knellwatch lute, red_field dirge, ashwheat and sheepfold silences), `regionRule` (Euclidean tile distance from the hero's tile, enter at `radius`, leave past `exitRadius`), `bosses.valdras` {`track` boss_ch1, `phaseStingers` {phase index → stinger}, `victory`}, `encounters` (hunts, mini-boss: engaged / slain stingers), `story[]` (chapter card; siege: `track` siege while `quest` q_rf_last_toll is active after its beat, `then` silence until the turn-in, own fades; finale: from `stepIndex` 0 (the 0-based EvStoryStep index of "step 1") silence over 3 s, then 6 s after the beat the lute over 6 s), `stingers.<id>` {`asset`, `lengthSec`, `duck {db, inSec, outSec}`, `use`} |
 | `ambience` | `themes` / `zones` (string → asset: the bed per map theme and per zone; AU2: `march` and `emerald_plains` → `SW_AMB_March`, `ember_tower` keeps `SW_AMB_Plains`), fades, cinematic duck; AU2 (`decision`): `regions.<regionId>` {`asset`, `zone`, `mapRegion` (the map's `regions[]` id), `col`, `row`, `radius`, `exitRadius`, `replacesBed`, fades, `use`} (`breach_rim`; no `while`: always), `layers.<id>` {`asset`, `zone`, `col`, `row`, `radius`, `exitRadius`, `while {monsterAlive}`, `untilFlag` (W2), fades, `use`} (`gnawed_field_ringing`), `emitters.<id>` {`assets` (one per placed emitter, neighbours different), `spatial`, `attenuation {innerTiles, falloffTiles}`, `placement` (`area` or `anchor` tile, set piece or camp slot), `use`} (`ashwheat_knock`, `knellwatch_hearth`), `regionRule` (as the music director's), `emitterAttenuationRule` (full volume inside `innerTiles`, linear to silence over `falloffTiles`) |
+| `cueTriggers` | U7 (`decision`): `rows[]` of `dark_ambience.BELL_TRIGGERS` + `dark_vox.VOX_TRIGGERS` (a row whose cue is not rendered is left out): {`id`, `cue`, `on` (`storyEnd` {beat}, `storyStep` {beat, index}, `storySlide` {sequence, index}, `randomEvent` {event, zone}, `decorFocus` {decor}, `every` {everySec [lo, hi], zone, whileQuestActive?, within? {col, row, radius}}), `farCue` + `nearRegion` (outside that musicDirector region the far toll plays), `tile` (a 3d cue's position), `count` + `spacingSec` (a burst), `use`}; `kinds`, `rule`. Indices are the core's 0-based EvStoryStep::index (the bell `use` prose counts from 1) |
 | `footsteps` | variants per surface, tile type → surface, notify names, fallback stride, timings |
 | `spatial` | A4 spread (0.25), play-area half width (800 cm), virtual emitter distance |
 | `jukebox` | title-menu soundtrack rows `{titleKey, track}` (packaged tracks only), fades |
@@ -170,26 +171,44 @@ The core decides **what** plays (`AudioDirector` / `MusicDirector` emit `EvMusic
   victory); the debounce, boss precedence and the 8 s boss-victory hold (A5) are the core's. The manifest's
   `zoneOverrides` swap a key for the zone in the snapshot (Ember Tower → procedural plains score). The title theme is played
   on `MainMenu` (no session there) and restarts on every return to the menu.
-* **AU3, still to wire (core MusicDirector / U7)**: the `musicDirector` regions (the hero's tile → the smallest region
-  that holds it and whose `while` holds; `""` = silence), the siege and finale beats, encounter and phase stingers
-  (`EvMonsterPhase` index → `bosses.valdras.phaseStingers`, through the stinger component with each stinger's duck).
-  Until then the zone plays `march_drones` for explore (zoneOverrides), Valdras gets the reworked `boss_ch1` and his
-  death `valdras_falls`. The design has no combat music (`musicDirector.zoneTracks.combat` = the drones), but that row
-  is held out of `zoneOverrides` (`heldOverrides`): the core sends `restart = true` on the combat edge and `PlayMusic`
-  only treats a same-track request as a no-op without a restart, so the drones would restart from their silent start
-  at every fight. Until U7 makes an override that resolves to the track already sounding a no-op (or the core sends
-  `restart = false` on that edge), the zone's combat key plays the A7 combat track; then delete the held entry in
-  `dark_scores.json` and run `render_all.py --manifest-only`.
+* **AU3 director (U7, `Source/Abyssfire/Private/Audio/AbyssMusicRules.h`)**: EvMusic is no longer played as it
+  arrives; it joins a per-frame arbitration with the `musicDirector` layers in their priority (story > victory > boss >
+  siege > region > zone). Regions: the hero's tile picks the smallest region that holds it (enter at `radius`, leave
+  past `exitRadius`) whose `while` holds (`""` = silence: the Breach Rim while Valdras lives, Ashwheat, the Sheepfold
+  while the Corpseherd lives; Knellwatch the lute, the Red Field the dirge). The siege track plays while
+  q_rf_last_toll is active (after its beat), then silence until the turn-in; cs_rf_finale holds silence from its first
+  step, then the lute 6 s after the beat. Victory and boss requests beat the siege and the regions; a story sequence
+  plays the core's track; a cutscene freezes the layers (the core holds its changes too). A zone-overridden request
+  that resolves to the track already sounding is a no-op even with `restart = true`, so the zone's combat row maps to
+  the drones (the remake has no combat music: a fight keeps whatever plays). Other zones: the core's requests play as
+  before. Encounter stingers (`encounters`, `stingers.<id>` duck): `stinger_hunt` on a hunt's first aggro,
+  `stinger_miniboss` when the Corpseherd's pre-fight lines close, `stinger_slain` on their death, on their own
+  component (music volume) with their own duck. Phase stingers wait for W2's `EvMonsterPhase`.
+* **Cue triggers (U7, `AbyssCueTriggerRules.h`; manifest `cueTriggers`)**: the prologue's last slide (ten tolls 2.8 s
+  apart, stopped with the prologue), a toll at the end of cs_rf_brand / cs_rf_whisper (`bell_toll` inside the
+  knellwatch region, else `bell_toll_far`), the self-ring at cs_rf_siege's step 2 and every 20-30 s while the siege
+  lasts, the dawn toll at cs_rf_finale's step 4, the ambush tell when an ambush starts in emerald_plains (the core raises
+  the hands at once: no 1.5 s lead), the split bell when the hero reaches story_rf_belfry and every 35-60 s within 10
+  tiles of it, the Corpseherd's single ring at cs_rf_herd's step 3. `UAbyssAudioSystem::OnCuePlayed(CueId)` reports
+  each (the set-piece layer can ripple the bell frame). The dusk tolls wait for a day clock (none in W1).
 * **SFX** (`EvSfx`): per-cue concurrency (max voices, stop oldest, minimum retrigger 20 ms for hit / crit / miss), a
   random variant never repeated twice in a row, the source monster's family for A7 cues (+ the death vocal layer on
-  `monster_death`). World cues (`spatial`) get the A4 mild panning: the source's lateral offset from the hero across
+  `monster_death`). U7 (`AbyssVoiceRules.h`): the family is `voiceFamilies.monsters[defId]` (the Chapter 1 roster and
+  hunt ids), else the design family through `aliases` (once the data exports it), else the animCategory (humanoid /
+  slime and every later chapter, as before); `silent` monsters play no family cue; `overrides` swap in the named cues
+  (Valdras, the Corpseherd) and add them on beats (`anim.<action>` on EvPlayAnim, `miniboss.opened`, `story.say`); a
+  named cue without a manifest row falls back to the family cue. World cues (`spatial`) get the A4 mild panning: the source's lateral offset from the hero across
   the screen × 0.25 spread becomes the azimuth of a virtual emitter 1 m from the engine's audio listener, with no
   distance attenuation; UI cues are 2D.
 * **Story** (audio.md §10.2): letterbox whoosh when a cutscene / boss intro begins; chapter-card stinger by the
   card's mood (ducks music −8 dB); boss-intro title stinger (−10 dB during the title step); whisper bed looping while
   whisper steps show (−6 dB). The prologue's music change is the core's (`PlayTrack` under the story lock).
-* **Ambience** (A7): bed by zone id, else by map theme; 2.5 s fade-in at a random offset, 1.5 s fade-out on zone
-  exit, −6 dB during cinematics.
+* **Ambience** (A7): bed by zone id, else by map theme (U7: the map's presentation theme when it has one); 2.5 s
+  fade-in at a random offset, 1.5 s fade-out on zone exit, −6 dB during cinematics. U7 (`AbyssAmbienceRules.h`): the
+  Breach Rim's region bed crossfades with the bed (weights over its fades, the bed scaled by 1 − weight), the Gnawed
+  Field's ringing plays over the bed while hunt_hungerbell lives, the emitters loop at their spots (Ashwheat's doors
+  from `SetZoneEmitterSpots`, else the area centre; Knellwatch's hearth at camp 1's campfire slot) with full volume
+  inside `innerTiles` and linear silence over `falloffTiles`, panned like the A4 world cues.
 * **Footsteps** (A7): the hero actor's `FootL` / `FootR` anim notifies (`AAbyssCharacterActor::OnCharacterNotify`)
   with the surface of the tile under the hero; a distance cadence (116.7 cm stride) covers clips without notifies.
 * **Volumes**: `FAbyssUserSettings` master × music / SFX (ambience and footsteps on the SFX volume, stingers on the

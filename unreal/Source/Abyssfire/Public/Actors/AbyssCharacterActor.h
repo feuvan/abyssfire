@@ -93,6 +93,14 @@ struct FAbyssCharacterFrame
 	uint32 StatusMask = 0;
 	/** Monsters: the world builder's elite / affix state (re-rolled on respawn). */
 	bool bElite = false;
+	/** Monsters (K1): a pose the core holds (MonsterView::holdAction: Taunt while the mini-boss's dialogue holds it). */
+	abyss::AnimAction HoldAction = abyss::AnimAction::Idle;
+	/** Monsters: stunned (status Stun): the Stun clip loops while no action plays. */
+	bool bStunned = false;
+	/** Monsters: the zone mood's wind-up tints (DR5, zone_moods.json port.windupTint); unset = the web port's tints. */
+	bool bHasWindupTint = false;
+	FLinearColor WindupTint = FLinearColor::White;
+	FLinearColor WindupTintElite = FLinearColor::White;
 };
 
 class AAbyssCharacterActor;
@@ -122,6 +130,7 @@ enum class EAbyssCharacterAction : uint8
 	Signature,
 	Work,
 	Talk,
+	Emote,   // K1 monster actions without a beat: Roar, Taunt, Stun, Rise (AbyssAnimActionRules)
 };
 
 UCLASS(NotBlueprintable)
@@ -224,7 +233,8 @@ private:
 	const FAbyssArtClip* FindArtClip(FName ClipName) const;
 	/** Clip for an EvPlayAnim (signature / skill-listed / variant cycling), or nullptr. */
 	const FAbyssArtClip* ResolveActionClip(const abyss::EvPlayAnim& Event);
-	void PlayClip(const FAbyssArtClip& Clip, float Rate, float StartSec, const char* ToState);
+	/** bForceLoop: hold / stun poses loop whatever the clip's own loop flag (AbyssAnimActionRules::ForcesLoop). */
+	void PlayClip(const FAbyssArtClip& Clip, float Rate, float StartSec, const char* ToState, bool bForceLoop = false);
 	void UpdateLocomotion(const FAbyssCharacterFrame& Frame);
 	void UpdateFacing(const FAbyssCharacterFrame& Frame, float DeltaSec);
 	/** bSingleView: the facing shown for a desired one (se / sw toward the camera; bAimed keeps an aim in front). */
@@ -353,6 +363,8 @@ private:
 	// animation state
 	FActionState ActionState;
 	FName LocomotionClip;
+	/** Monsters (K1): facing toward the hero from the Taunt event while the hold lasts (the dialogue freezes the world). */
+	FVector2D HoldFaceDir = FVector2D::ZeroVector;
 	const char* CurrentState = "idle";   // anim_timing.json transition state names
 	int32 AttackVariant = 0;
 	float FreezeRemainingMs = 0.f;

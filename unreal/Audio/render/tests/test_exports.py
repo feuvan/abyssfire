@@ -9,7 +9,7 @@ checks CI can run). The other tests rebuild recipes and scores in memory; this o
   every hit-relative group (A7, AU1, AU2) at its offset; true peak <= -1 dBTP; no limiting;
 * loops are whole-file (loopEndSample = frames) with a clean seam; no SFX cue loops (EvSfx has no stop);
 * every table reference resolves (cues, vocal layer, voice families, zone overrides, music director, ambience,
-  stingers, jukebox); the held combat override is not live;
+  stingers, jukebox, cue triggers); a held zone override is not live, the released combat one is;
 * the Chapter 1 package budget (README "Package budget"): OGG per folder, retained (ADPCM) memory under the import
   rules of ue/import_audio.py.
 
@@ -177,6 +177,12 @@ def test_references_resolve(manifest):
     assert set(vf["monsters"].values()) <= set(vf["families"]) and not set(vf["silent"]) & set(vf["monsters"])
     for m, o in vf["overrides"].items():
         assert m in vf["monsters"] and set(o.values()) <= set(cues), m
+        assert all(k in vf["overrideKeys"] or k.startswith("anim.") for k in o), m
+    ct = manifest["cueTriggers"]
+    assert ct["rows"] and all(r["on"] in ct["kinds"] for r in ct["rows"])
+    for r in ct["rows"]:
+        assert r["cue"] in cues and r.get("farCue", r["cue"]) in cues, r["id"]
+        assert "nearRegion" not in r or any(x["id"] == r["nearRegion"] for x in manifest["musicDirector"]["regions"])
     assert not set(manifest["plannedCues"]) & set(cues)
     for key, row in music.items():
         assert row["asset"] in a and a[row["asset"]]["kind"] == "music", key
@@ -197,14 +203,17 @@ def test_references_resolve(manifest):
         assert set(s) <= set(a)
 
 
-def test_held_combat_override_is_not_live(manifest):
-    """The core restarts the zone track on the combat edge; until U7 makes a same-track override a no-op, mapping
-    combat to the drones would restart them at every fight (dark_scores.json director.heldOverrides)."""
+def test_held_overrides_are_not_live_and_combat_is(manifest):
+    """A state held in dark_scores.json director.heldOverrides stays out of zoneOverrides. The combat row is live since
+    U7 (UAbyssAudioSystem treats a zone-overridden request resolving to the track already sounding as a no-op even with
+    restart = true): the remake's zone plays the drones through fights."""
     held = dark_music.load()["director"].get("heldOverrides", {})
     zone = manifest["musicDirector"]["zone"]
     for state in held:
         assert f"{zone}_{state}" not in manifest["zoneOverrides"].get(zone, {}), state
-    assert set(manifest["musicDirector"]["heldOverrides"]) == set(held)
+    assert set(manifest["musicDirector"].get("heldOverrides", {})) == set(held)
+    over = manifest["zoneOverrides"][zone]
+    assert over[f"{zone}_combat"] == over[f"{zone}_explore"] == manifest["musicDirector"]["zoneTracks"]["combat"]
 
 
 def test_named_voice_tails_are_trimmed(manifest, decoded):

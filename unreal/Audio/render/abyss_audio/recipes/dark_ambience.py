@@ -816,6 +816,46 @@ BELL_CUES = {
                          "centred (2d): the hands rise around the hero, so the tell points nowhere"),
 }
 
+# When each bell cue plays (U7: the manifest's cueTriggers rows, read by UAbyssAudioSystem; BELL_CUES `use` is the
+# prose). Story indices are the core's 0-based EvStoryStep::index (the prose above counts steps from 1). `on`:
+#   storyEnd    {beat}              the beat ended (EvStoryBeat Ended)
+#   storyStep   {beat, index}       that cutscene step started (EvStoryStep, not a slide)
+#   storySlide  {sequence, index}   that sequence slide started (EvStoryStep slide: prologue / epilogue / credits)
+#   randomEvent {event, zone}       a random event of that type started in that zone (EvRandomEvent, not resolved)
+#   decorFocus  {decor}             the hero came within reach of that story decoration (EvStoryDecorFocus)
+#   every       {everySec [lo, hi], zone, whileQuestActive?, within? {col, row, radius}}
+#               repeats at a random interval in [lo, hi] s while the hero is in the zone (and the quest is active /
+#               the hero is within the circle); the first one after one interval; never while a story beat plays
+# Options: farCue + nearRegion (a musicDirector.regions id: outside it the far cue plays), tile [col, row] (a 3d cue
+# is emitted there, else at the hero), count + spacingSec (a burst; a burst started by a story beat stops with it).
+# The dusk tolls (one per name, 2.8 s apart) wait for a day clock: the core has none in W1.
+TRIGGER_KINDS = ("storyEnd", "storyStep", "storySlide", "randomEvent", "decorFocus", "every")
+BELL_TRIGGERS = [
+    {"id": "prologue_tolls", "cue": "bell_toll", "farCue": "bell_toll_far", "nearRegion": "knellwatch",
+     "on": "storySlide", "sequence": "prologue", "index": 5, "count": 10, "spacingSec": 2.8,
+     "use": "the prologue's last slide (Woken in Ash: above the lip of the pit, a bell is tolling): ten tolls, one per "
+            "name, 2.8 s apart (the bell's swing); they stop when the prologue ends"},
+    {"id": "toll_after_brand", "cue": "bell_toll", "farCue": "bell_toll_far", "nearRegion": "knellwatch",
+     "on": "storyEnd", "beat": "cs_rf_brand", "use": "the end of the M1 turn-in cutscene (a main turn-in: one toll)"},
+    {"id": "toll_after_whisper", "cue": "bell_toll", "farCue": "bell_toll_far", "nearRegion": "knellwatch",
+     "on": "storyEnd", "beat": "cs_rf_whisper", "use": "the end of the M3 turn-in cutscene (a main turn-in: one toll)"},
+    {"id": "siege_self_ring", "cue": "bell_self_ring", "on": "storyStep", "beat": "cs_rf_siege", "index": 1,
+     "use": "cs_rf_siege step 2: the bell rings with no hand on it"},
+    {"id": "siege_self_ring_again", "cue": "bell_self_ring", "on": "every", "everySec": [20.0, 30.0],
+     "zone": "emerald_plains", "whileQuestActive": "q_rf_last_toll",
+     "use": "during the siege (q_rf_last_toll active: until the last wave falls), every 20-30 s"},
+    {"id": "finale_dawn_toll", "cue": "bell_dawn_toll", "on": "storyStep", "beat": "cs_rf_finale", "index": 3,
+     "use": "cs_rf_finale step 4: the flash after the palm on the bell (then silence, then the lute)"},
+    {"id": "ambush_tell", "cue": "bell_ambush_tell", "on": "randomEvent", "event": "ambush", "zone": "emerald_plains",
+     "use": "the ambush (Hands from the Mud) starts: the core raises the hands at once, so the tell sounds with them "
+            "(no 1.5 s lead in W1)"},
+    {"id": "belfry_inspect", "cue": "bell_cracked", "on": "decorFocus", "decor": "story_rf_belfry", "tile": [55, 45],
+     "use": "inspecting Ashwheat's split bell (story_rf_belfry)"},
+    {"id": "belfry_now_and_then", "cue": "bell_cracked", "on": "every", "everySec": [35.0, 60.0],
+     "zone": "emerald_plains", "within": {"col": 55, "row": 45, "radius": 10}, "tile": [55, 45],
+     "use": "now and then from the split bell while the hero is within 10 tiles of it"},
+]
+
 # Region membership (ambience regions and layers, and musicDirector.regions): the hero's tile (col, row) is inside
 # when (col - c)^2 + (row - r)^2 <= radius^2 (Euclidean tile distance, as ExplorationGrid::Reveal) and leaves when it
 # exceeds exitRadius (hysteresis); a `while` condition must hold too. Emitter attenuation: full volume within
