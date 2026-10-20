@@ -1,0 +1,237 @@
+{
+ "ground": {
+  "key": "hex:3A332D",
+  "L50": 21.8,
+  "L10": 21.8,
+  "L90": 21.8,
+  "meanRgb": "#3A332D"
+ },
+ "pages": {
+  "unburied": [
+   {
+    "asset": "SK_Hero_Warrior",
+    "label": "WARRIOR",
+    "class": "hero",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 176.0,
+    "posedTopCm": 181.1,
+    "fracRim": 0.9862,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_RisenFootman",
+    "label": "RISEN FOOTMAN",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 176.0,
+    "posedTopCm": 170.9,
+    "fracRim": 0.9775,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_RisenShieldbearer",
+    "label": "RISEN SHIELDBEARER",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 176.0,
+    "posedTopCm": 171.2,
+    "fracRim": 0.9831,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_RisenArbalest",
+    "label": "RISEN ARBALESTER",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 176.0,
+    "posedTopCm": 171.3,
+    "fracRim": 0.9915,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_DeadStandardBearer",
+    "label": "DEAD STANDARD-BEARER",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 178.0,
+    "posedTopCm": 292.8,
+    "fracRim": 0.9812,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_Valdras",
+    "label": "LORD-MARSHAL VALDRAS",
+    "class": "boss",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 210.0,
+    "posedTopCm": 264.7,
+    "fracRim": 0.9829,
+    "ok": true,
+    "markers": []
+   }
+  ],
+  "living": [
+   {
+    "asset": "SK_Hero_Warrior",
+    "label": "WARRIOR",
+    "class": "hero",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 176.0,
+    "posedTopCm": 181.1,
+    "fracRim": 0.9862,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_OathZealot",
+    "label": "RED-OATH ZEALOT",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 175.0,
+    "posedTopCm": 173.1,
+    "fracRim": 0.9564,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_Deserter",
+    "label": "DESERTER",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 173.0,
+    "posedTopCm": 169.6,
+    "fracRim": 0.9976,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_DeserterDrummer",
+    "label": "DESERTER DRUMMER",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 172.0,
+    "posedTopCm": 173.9,
+    "fracRim": 0.9852,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_Gravegnawer",
+    "label": "GRAVEGNAWER",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 89.7,
+    "posedTopCm": 63.7,
+    "fracRim": 0.9706,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_Bonegorger",
+    "label": "BONEGORGER",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 107.4,
+    "posedTopCm": 91.3,
+    "fracRim": 1.0,
+    "ok": true,
+    "markers": []
+   }
+  ],
+  "breach_elites": [
+   {
+    "asset": "SK_Hero_Warrior",
+    "label": "WARRIOR",
+    "class": "hero",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 176.0,
+    "posedTopCm": 181.1,
+    "fracRim": 0.9862,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_Breachclot",
+    "label": "BREACHCLOT",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 43.0,
+    "posedTopCm": 44.9,
+    "fracRim": 1.0,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_Cinderbloat",
+    "label": "CINDERBLOAT",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 65.0,
+    "posedTopCm": 67.4,
+    "fracRim": 1.0,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_Corpseherd",
+    "label": "THE CORPSEHERD",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 3.0,
+    "heightCm": 129.7,
+    "posedTopCm": 128.4,
+    "fracRim": 0.9943,
+    "ok": true,
+    "markers": []
+   },
+   {
+    "asset": "SK_Mon_RisenFootman",
+    "label": "ELITE W1 CROWN",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 2.5,
+    "heightCm": 176.0,
+    "posedTopCm": 170.8,
+    "fracRim": 0.9825,
+    "ok": true,
+    "markers": [
+     "SM_FX_EliteCrown_March"
+    ]
+   },
+   {
+    "asset": "SK_Mon_Gravegnawer",
+    "label": "ELITE W2 SIGIL",
+    "class": "monster",
+    "outlinePx1080": 3.5,
+    "gatePx": 2.5,
+    "heightCm": 89.7,
+    "posedTopCm": 63.7,
+    "fracRim": 1.0,
+    "ok": true,
+    "markers": [
+     "SM_FX_EliteSigil"
+    ]
+   }
+  ]
+ }
+}

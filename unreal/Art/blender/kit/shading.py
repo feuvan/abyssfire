@@ -262,12 +262,19 @@ TOON_TERMS = {"rim": True, "grounding": True}     # the terms the AF_ToonCore gr
 
 
 def build_toon_group(l_key: Sequence[float] | None = None, rim: bool = True,
-                     grounding: bool = True) -> bpy.types.NodeTree:
+                     grounding: bool = True, rim_hex: str | None = None, rim_alpha: float | None = None,
+                     name: str = TOON_GROUP) -> bpy.types.NodeTree:
     """AF_ToonCore(Base sRGB, Params(s,l,e), Grounding) → Color (linear). ``rim`` / ``grounding`` = False leave
-    that term out (review A/B cells only; every shipped preview uses the full stack)."""
+    that term out (review A/B cells only; every shipped preview uses the full stack). ``rim_hex`` / ``rim_alpha``
+    (with another ``name``) build the core of an instance that overrides the rim — the masters' ``RimOverride`` 1 +
+    ``RimOverrideColor`` / ``RimOverrideAlpha`` (same banded Fresnel on the key-lit half, another colour / alpha);
+    see :func:`rim_override_group`."""
     lk = Vector(l_key) if l_key is not None else L_KEY
-    TOON_TERMS.update(rim=rim, grounding=grounding)
-    ng, gi, go = _group(TOON_GROUP,
+    if name == TOON_GROUP:
+        TOON_TERMS.update(rim=rim, grounding=grounding)
+    rim_c = RIM_HEX if rim_hex is None else rim_hex
+    rim_a = RIM_ALPHA if rim_alpha is None else float(rim_alpha)
+    ng, gi, go = _group(name,
                         [("Base", "NodeSocketVector"), ("Params", "NodeSocketVector"), ("Grounding", "NodeSocketFloat")],
                         [("Color", "NodeSocketVector")])
     b = NB(ng)
@@ -295,13 +302,22 @@ def build_toon_group(l_key: Sequence[float] | None = None, rim: bool = True,
         ndv = b.math("MAXIMUM", b.vmath("DOT_PRODUCT", n, v), 0.0)
         fres = b.math("POWER", b.math("SUBTRACT", 1.0, ndv), RIM_POWER)
         band = b.smooth(fres, RIM_T0, RIM_T1)
-        rim_w = b.math("MULTIPLY", b.math("MULTIPLY", band, RIM_ALPHA), b.smooth(ndl, 0.0, RIM_MASK_EDGE))
-        col = b.mix(rim_w, col, b.const_vec(_srgb01(RIM_HEX)))
+        rim_w = b.math("MULTIPLY", b.math("MULTIPLY", band, rim_a), b.smooth(ndl, 0.0, RIM_MASK_EDGE))
+        col = b.mix(rim_w, col, b.const_vec(_srgb01(rim_c)))
     col = b.mix(e, col, c)
     lin = b.srgb_to_linear(col)
     lin = b.vmath("SCALE", lin, scale=b.math("MULTIPLY_ADD", e, EMISSIVE_BOOST, 1.0))
     ng.links.new(lin, go.inputs["Color"])
     return ng
+
+
+def rim_override_group(rim_hex: str, rim_alpha: float) -> bpy.types.NodeTree:
+    """The toon core of a material instance with ``RimOverride`` 1 (``RimOverrideColor`` ``rim_hex``,
+    ``RimOverrideAlpha`` ``rim_alpha``): built once per colour / alpha as ``AF_ToonCore_Rim_<hex>_<alpha%>``. A
+    preview material swaps its ``GROUP`` node's tree for this one (monsters/breach.py, coherence/cohkit.py)."""
+    name = f"{TOON_GROUP}_Rim_{rim_hex.lstrip('#').upper()}_{int(round(float(rim_alpha) * 100))}"
+    ng = bpy.data.node_groups.get(name)
+    return ng if ng is not None else build_toon_group(rim_hex=rim_hex, rim_alpha=rim_alpha, name=name)
 
 
 def build_outline_group() -> bpy.types.NodeTree:

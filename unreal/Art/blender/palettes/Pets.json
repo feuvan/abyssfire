@@ -27,8 +27,15 @@
    "s": 0.2980392156862745
   },
   {
-   "free": true,
-   "i": 2
+   "e": 0.0,
+   "hex": "#F4C460",
+   "i": 2,
+   "l": 0.5019607843137255,
+   "names": [
+    "lanternwisp.core"
+   ],
+   "o": 0.4,
+   "s": 0.2784313725490196
   },
   {
    "e": 0.0,
@@ -140,6 +147,9 @@
    "i": 11,
    "l": 0.10196078431372549,
    "names": [
+    "lanternwisp.glint",
+    "lanternwisp_e1.glint",
+    "lanternwisp_e2.glint",
     "sprite.glint",
     "sprite_e1.glint",
     "sprite_e2.glint"
@@ -279,8 +289,17 @@
    "s": 0.34901960784313724
   },
   {
-   "free": true,
-   "i": 23
+   "e": 0.0,
+   "hex": "#F2985A",
+   "i": 23,
+   "l": 0.2980392156862745,
+   "names": [
+    "lanternwisp.blush",
+    "lanternwisp_e1.blush",
+    "lanternwisp_e2.blush"
+   ],
+   "o": 0.4,
+   "s": 0.2
   },
   {
    "e": 0.0,
@@ -305,8 +324,15 @@
    "s": 0.2980392156862745
   },
   {
-   "free": true,
-   "i": 26
+   "e": 0.0,
+   "hex": "#F0A040",
+   "i": 26,
+   "l": 0.4588235294117647,
+   "names": [
+    "lanternwisp.flame"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
   },
   {
    "e": 0.45098039215686275,
@@ -332,6 +358,405 @@
    ],
    "o": 0.4,
    "s": 0.0
+  },
+  {
+   "e": 0.1803921568627451,
+   "hex": "#FFE2A8",
+   "i": 29,
+   "l": 0.25098039215686274,
+   "names": [
+    "lanternwisp.tail_tip",
+    "lanternwisp_e1.tail_tip",
+    "lanternwisp_e2.tail_tip"
+   ],
+   "o": 0.4,
+   "s": 0.0
+  },
+  {
+   "e": 0.0,
+   "hex": "#625A54",
+   "i": 30,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp.wisp"
+   ],
+   "o": 0.4,
+   "s": 0.23921568627450981
+  },
+  {
+   "e": 0.0,
+   "hex": "#A39A90",
+   "i": 31,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp.wisp_tip"
+   ],
+   "o": 0.4,
+   "s": 0.2
+  },
+  {
+   "e": 0.0,
+   "hex": "#C2B8AA",
+   "i": 32,
+   "l": 0.25098039215686274,
+   "names": [
+    "lanternwisp.wisp_vein"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#2E1C10",
+   "i": 33,
+   "l": 0.12156862745098039,
+   "names": [
+    "lanternwisp.iris",
+    "lanternwisp_e1.iris",
+    "lanternwisp_e2.iris"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#140A04",
+   "i": 34,
+   "l": 0.050980392156862744,
+   "names": [
+    "lanternwisp.pupil",
+    "lanternwisp_e1.pupil",
+    "lanternwisp_e2.pupil"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#6E3418",
+   "i": 35,
+   "l": 0.10196078431372549,
+   "names": [
+    "lanternwisp.mouth",
+    "lanternwisp_e1.mouth",
+    "lanternwisp_e2.mouth"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#4A200C",
+   "i": 36,
+   "l": 0.050980392156862744,
+   "names": [
+    "lanternwisp.mouth_in",
+    "lanternwisp_e1.mouth_in",
+    "lanternwisp_e2.mouth_in"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#A27A48",
+   "i": 37,
+   "l": 0.4588235294117647,
+   "names": [
+    "lanternwisp.bronze",
+    "lanternwisp_e1.bronze"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#6A4C2C",
+   "i": 38,
+   "l": 0.3411764705882353,
+   "names": [
+    "lanternwisp.bronze_dark",
+    "lanternwisp_e1.bronze_dark"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#3A2818",
+   "i": 39,
+   "l": 0.10196078431372549,
+   "names": [
+    "lanternwisp.clapper",
+    "lanternwisp_e1.clapper",
+    "lanternwisp_e2.clapper"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#F7CC70",
+   "i": 40,
+   "l": 0.5019607843137255,
+   "names": [
+    "lanternwisp_e1.core"
+   ],
+   "o": 0.4,
+   "s": 0.2784313725490196
+  },
+  {
+   "e": 0.0,
+   "hex": "#F2AA48",
+   "i": 41,
+   "l": 0.4588235294117647,
+   "names": [
+    "lanternwisp_e1.flame"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#665E58",
+   "i": 42,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp_e1.wisp"
+   ],
+   "o": 0.4,
+   "s": 0.23921568627450981
+  },
+  {
+   "e": 0.0,
+   "hex": "#AAA096",
+   "i": 43,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp_e1.wisp_tip"
+   ],
+   "o": 0.4,
+   "s": 0.2
+  },
+  {
+   "e": 0.0,
+   "hex": "#D8C8A4",
+   "i": 44,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp_e2.smoke",
+    "lanternwisp_e2.wisp"
+   ],
+   "o": 0.2,
+   "s": 0.23921568627450981
+  },
+  {
+   "e": 0.45098039215686275,
+   "hex": "#FFE89C",
+   "i": 45,
+   "l": 0.2,
+   "names": [
+    "lanternwisp_e1.halo",
+    "lanternwisp_e2.halo"
+   ],
+   "o": 0.4,
+   "s": 0.0
+  },
+  {
+   "e": 0.0,
+   "hex": "#FAD684",
+   "i": 46,
+   "l": 0.5019607843137255,
+   "names": [
+    "lanternwisp_e2.core"
+   ],
+   "o": 0.4,
+   "s": 0.2784313725490196
+  },
+  {
+   "e": 0.0,
+   "hex": "#F4B456",
+   "i": 47,
+   "l": 0.4588235294117647,
+   "names": [
+    "lanternwisp_e2.flame"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#F0E4C4",
+   "i": 48,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp_e2.smoke_tip",
+    "lanternwisp_e2.wisp_tip"
+   ],
+   "o": 0.2,
+   "s": 0.2
+  },
+  {
+   "e": 0.0,
+   "hex": "#FCCB76",
+   "i": 49,
+   "l": 0.4392156862745098,
+   "names": [
+    "lanternwisp.flame_pale",
+    "lanternwisp_e1.flame_pale",
+    "lanternwisp_e2.flame_pale"
+   ],
+   "o": 0.4,
+   "s": 0.25882352941176473
+  },
+  {
+   "e": 0.0,
+   "hex": "#C29A50",
+   "i": 50,
+   "l": 0.4588235294117647,
+   "names": [
+    "lanternwisp_e2.bronze"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#8A6A34",
+   "i": 51,
+   "l": 0.3411764705882353,
+   "names": [
+    "lanternwisp_e2.bronze_dark"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.3215686274509804,
+   "hex": "#FFE08C",
+   "i": 52,
+   "l": 0.4,
+   "names": [
+    "lanternwisp_e1.crown_flame",
+    "lanternwisp_e2.crown_flame"
+   ],
+   "o": 0.4,
+   "s": 0.2196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#3E3834",
+   "i": 53,
+   "l": 0.1411764705882353,
+   "names": [
+    "lanternwisp.smoke",
+    "lanternwisp_e1.smoke"
+   ],
+   "o": 0.4,
+   "s": 0.2196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#4E4741",
+   "i": 54,
+   "l": 0.1607843137254902,
+   "names": [
+    "lanternwisp.smoke_1",
+    "lanternwisp_e1.smoke_1"
+   ],
+   "o": 0.4,
+   "s": 0.2196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#645C55",
+   "i": 55,
+   "l": 0.2,
+   "names": [
+    "lanternwisp.smoke_2",
+    "lanternwisp_e1.smoke_2"
+   ],
+   "o": 0.4,
+   "s": 0.2196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#7E756C",
+   "i": 56,
+   "l": 0.25882352941176473,
+   "names": [
+    "lanternwisp.smoke_3",
+    "lanternwisp_e1.smoke_3"
+   ],
+   "o": 0.4,
+   "s": 0.2196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#A39A90",
+   "i": 57,
+   "l": 0.3215686274509804,
+   "names": [
+    "lanternwisp.smoke_tip",
+    "lanternwisp_e1.smoke_tip"
+   ],
+   "o": 0.4,
+   "s": 0.2
+  },
+  {
+   "e": 0.0,
+   "hex": "#FFF0C4",
+   "i": 58,
+   "l": 0.4,
+   "names": [
+    "lanternwisp_e1.core_band"
+   ],
+   "o": 0.4,
+   "s": 0.1607843137254902
+  },
+  {
+   "e": 0.0,
+   "hex": "#DDCEAC",
+   "i": 59,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp_e2.smoke_1"
+   ],
+   "o": 0.2,
+   "s": 0.23921568627450981
+  },
+  {
+   "e": 0.0,
+   "hex": "#E3D5B4",
+   "i": 60,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp_e2.smoke_2"
+   ],
+   "o": 0.2,
+   "s": 0.23921568627450981
+  },
+  {
+   "e": 0.0,
+   "hex": "#EADCBC",
+   "i": 61,
+   "l": 0.3607843137254902,
+   "names": [
+    "lanternwisp_e2.smoke_3"
+   ],
+   "o": 0.2,
+   "s": 0.23921568627450981
+  },
+  {
+   "e": 0.0,
+   "hex": "#FFF4D2",
+   "i": 62,
+   "l": 0.4,
+   "names": [
+    "lanternwisp_e2.core_band"
+   ],
+   "o": 0.4,
+   "s": 0.1607843137254902
   }
  ]
 }

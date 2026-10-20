@@ -428,7 +428,10 @@ def bake(rig: Rig, clip: Clip, asset_token: str, bones: Iterable[str] | None = N
         dp_l = f'pose.bones["{name}"].location'
         for i in range(4):
             _write_fcurve(cb, dp_q, i, name, [q[i] for q in quats])
-        if any(l.length > 1e-7 for l in locs):
+        # ``clip.key_locations``: bones whose location is keyed even when it stays at rest — a bone translated in one
+        # clip only (the Corpseherd's crook sliding down weapon_r in Death) would otherwise keep that clip's last
+        # value in every clip exported or previewed after it (the FBX bake takes every bone's current transform)
+        if any(l.length > 1e-7 for l in locs) or name in getattr(clip, "key_locations", ()):
             for i in range(3):
                 _write_fcurve(cb, dp_l, i, name, [l[i] for l in locs])
     for nm, ms in [(d["name"], d["ms"]) for d in clip.notify_list()]:

@@ -31,10 +31,10 @@
    "flameCell": 2
   },
   "shadow": {
-   "core": "#F0DCFF",
-   "mid": "#B478FF",
-   "rim": "#7030C0",
-   "dark": "#24103E",
+   "core": "#ECE6FA",
+   "mid": "#A898D8",
+   "rim": "#5E5294",
+   "dark": "#1C1828",
    "flameCell": 3
   },
   "holy": {
@@ -99,6 +99,55 @@
    "rim": "#2A5AE8",
    "dark": "#102A72",
    "flameCell": 1
+  },
+  "breach": {
+   "core": "#F0E0FF",
+   "mid": "#D08CFF",
+   "rim": "#B02FD0",
+   "dark": "#1A0820",
+   "flameCell": 3
+  },
+  "ash": {
+   "core": "#EEEAE2",
+   "mid": "#B8B2A6",
+   "rim": "#8A8480",
+   "dark": "#3A3631",
+   "flameCell": 6
+  },
+  "hazard": {
+   "core": "#FFF4EE",
+   "mid": "#FFE8DC",
+   "rim": "#D11F2E",
+   "dark": "#4A0810",
+   "flameCell": 5
+  },
+  "echo": {
+   "core": "#F4F8FF",
+   "mid": "#DCE4F2",
+   "rim": "#A8B0C4",
+   "dark": "#2E3440",
+   "flameCell": 6
+  },
+  "crimson": {
+   "core": "#F2B8B4",
+   "mid": "#C0283A",
+   "rim": "#A3221E",
+   "dark": "#3A0A0C",
+   "flameCell": 5
+  },
+  "gravecold": {
+   "core": "#F2F6FA",
+   "mid": "#C8D8E6",
+   "rim": "#7E98B0",
+   "dark": "#1E2A36",
+   "flameCell": 1
+  },
+  "embers": {
+   "core": "#FFE0B0",
+   "mid": "#FF6A3A",
+   "rim": "#E8401A",
+   "dark": "#5A1A08",
+   "flameCell": 0
   }
  },
  "flameGradients": {
@@ -183,13 +232,13 @@
   "set": "#3ECF6A"
  },
  "eliteAffixColors": {
-  "fire_enhanced": "#FF4400",
-  "swift": "#44FF88",
-  "teleporting": "#AA44FF",
-  "extra_strong": "#FF2222",
-  "curse_aura": "#8844AA",
-  "vampiric": "#CC0000",
-  "frozen": "#4488FF"
+  "fire_enhanced": "#B02FD0",
+  "swift": "#D8CCB0",
+  "teleporting": "#D08CFF",
+  "extra_strong": "#C0283A",
+  "curse_aura": "#7A2A90",
+  "vampiric": "#6A0F2A",
+  "frozen": "#CFE8FF"
  },
  "spiritColors": {
   "warrior": "#FFB45C",

@@ -158,12 +158,16 @@ class InstanceParameterTests(EditorTestCase):
         fake_unreal.use_content_library("stale")
         fake_unreal.STATE["mel_refuse"] = {"BodyOpacity"}
         report = self.run_build("--only", "textures,mpc,materials,instances")
-        self.assertEqual(len(report.errors), 1, report.errors)
-        self.assertIn("MI_AF_Toon_Slime: scalar parameter BodyOpacity not applied", report.errors[0])
-        self.assertIn("helper unavailable", report.errors[0])
-        slime = fake_unreal.REGISTRY[f"{paths.INSTANCES_DIR}/MI_AF_Toon_Slime"]
-        self.assertIn(("t", "PaletteBC"), slime._params)
-        self.assertIn(slime._package, fake_unreal.STATE["saved"])
+        # One error per instance that sets BodyOpacity (the slime and every slime-rig variant, e.g. the breachclot).
+        refused = sorted(name for name, inst in self.plan.instances.items() if "BodyOpacity" in inst.scalars)
+        self.assertIn("MI_AF_Toon_Slime", refused)
+        self.assertEqual(len(report.errors), len(refused), report.errors)
+        for name in refused:
+            error, = (e for e in report.errors if e.startswith(f"{name}: scalar parameter BodyOpacity not applied"))
+            self.assertIn("helper unavailable", error)
+            mi = fake_unreal.REGISTRY[f"{paths.INSTANCES_DIR}/{name}"]
+            self.assertIn(("t", "PaletteBC"), mi._params)
+            self.assertIn(mi._package, fake_unreal.STATE["saved"])
 
 
 class CustomOutputPinTests(EditorTestCase):

@@ -1,0 +1,1293 @@
+{
+ "SM_Prop_March_AshwheatCottage_A": {
+  "gameIds": [
+   "setpiece_ashwheat_cottage",
+   "goblin_hut@march"
+  ],
+  "hullTris": 1828,
+  "ink": {
+   "bakedRimPx": 1.31,
+   "maxHullLumP95": 26.4,
+   "medianRimPx": 1.38,
+   "minFracDark": 1.0,
+   "minFracRim": 1.0,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0078,
+    "flipped": 66,
+    "loops": 10402,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 4422,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "walls_hull",
+     11.95
+    ],
+    [
+     "thatch_hull",
+     11.94
+    ],
+    [
+     "thatch_hull",
+     8.78
+    ],
+    [
+     "thatch_hull",
+     6.33
+    ]
+   ],
+   "lod1": [
+    [
+     "walls_hull",
+     11.9
+    ],
+    [
+     "plinth_hull",
+     0.5
+    ],
+    [
+     "gable_hull",
+     0.5
+    ],
+    [
+     "gable_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 11.95,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 4874,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_AshwheatCottage_B": {
+  "gameIds": [
+   "setpiece_ashwheat_cottage",
+   "goblin_hut@march"
+  ],
+  "hullTris": 1790,
+  "ink": {
+   "bakedRimPx": 1.31,
+   "maxHullLumP95": 27.3,
+   "medianRimPx": 1.38,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9993,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0051,
+    "flipped": 32,
+    "loops": 9402,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 4374,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "walls_hull",
+     11.95
+    ],
+    [
+     "thatch_hull",
+     11.5
+    ],
+    [
+     "thatch_hull",
+     8.37
+    ],
+    [
+     "thatch_hull",
+     8.33
+    ]
+   ],
+   "lod1": [
+    [
+     "walls_hull",
+     11.9
+    ],
+    [
+     "plinth_hull",
+     0.5
+    ],
+    [
+     "gable_hull",
+     0.5
+    ],
+    [
+     "gable_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 11.95,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 4356,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_BoneyardGate": {
+  "gameIds": [
+   "decor_defend_boneyard_gate",
+   "setpiece_boneyard_gate"
+  ],
+  "hullTris": 2386,
+  "ink": {
+   "bakedRimPx": 1.46,
+   "maxHullLumP95": 22.5,
+   "medianRimPx": 1.39,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9987,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 9796,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 3814,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "bell_hull",
+     21.94
+    ],
+    [
+     "post_hull",
+     17.43
+    ],
+    [
+     "post_hull",
+     17.37
+    ],
+    [
+     "post_hull",
+     16.73
+    ]
+   ],
+   "lod1": [
+    [
+     "bell_hull",
+     0.99
+    ],
+    [
+     "pad_hull",
+     0.5
+    ],
+    [
+     "post_hull",
+     0.5
+    ],
+    [
+     "pad_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 21.94,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 4698,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_BreachDais": {
+  "gameIds": [
+   "setpiece_breach_dais"
+  ],
+  "hullTris": 2320,
+  "ink": {
+   "bakedRimPx": 1.25,
+   "maxHullLumP95": 19.7,
+   "medianRimPx": 1.33,
+   "minFracDark": 0.9754,
+   "minFracRim": 0.9152,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0015,
+    "flipped": 0,
+    "loops": 9140,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.001,
+    "flipped": 0,
+    "loops": 8024,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "pillar_hull",
+     1.39
+    ],
+    [
+     "seal_hull",
+     1.22
+    ],
+    [
+     "seal_hull",
+     1.02
+    ],
+    [
+     "slab_hull",
+     0.5
+    ]
+   ],
+   "lod1": [
+    [
+     "seal_hull",
+     1.22
+    ],
+    [
+     "seal_hull",
+     1.02
+    ],
+    [
+     "slab_hull",
+     0.5
+    ],
+    [
+     "slab_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 1.39,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 4108,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_BurnedBridge": {
+  "gameIds": [
+   "setpiece_burned_bridge"
+  ],
+  "hullTris": 3036,
+  "ink": {
+   "bakedRimPx": 1.37,
+   "maxHullLumP95": 19.2,
+   "medianRimPx": 1.39,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9995,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0006,
+    "flipped": 0,
+    "loops": 8500,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 3688,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "plank_hull",
+     21.68
+    ],
+    [
+     "deck_hull",
+     18.41
+    ],
+    [
+     "deck_hull",
+     16.72
+    ],
+    [
+     "plank_hull",
+     13.37
+    ]
+   ],
+   "lod1": [
+    [
+     "plank_hull",
+     7.34
+    ],
+    [
+     "plank_hull",
+     7.26
+    ],
+    [
+     "plank_hull",
+     0.92
+    ],
+    [
+     "bank_stone_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 21.68,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 3164,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_BurnedBridge_Ditch": {
+  "gameIds": [
+   "setpiece_burned_bridge_ditch"
+  ],
+  "hullTris": 0,
+  "ink": null,
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2160,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2160,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [],
+   "lod1": [],
+   "maxMm": 0.0,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 972,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_HelmetStake_A": {
+  "gameIds": [
+   "setpiece_helmet_stake"
+  ],
+  "hullTris": 696,
+  "ink": {
+   "bakedRimPx": 1.49,
+   "maxHullLumP95": 20.3,
+   "medianRimPx": 1.48,
+   "minFracDark": 1.0,
+   "minFracRim": 1.0,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 1790,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 1126,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "helm_hull",
+     12.97
+    ],
+    [
+     "spear_hull",
+     0.5
+    ],
+    [
+     "spear_head_hull",
+     0.5
+    ],
+    [
+     "spear_socket_hull",
+     0.5
+    ]
+   ],
+   "lod1": [
+    [
+     "helm_hull",
+     0.58
+    ],
+    [
+     "spear_hull",
+     0.5
+    ],
+    [
+     "spear_head_hull",
+     0.5
+    ],
+    [
+     "spear_socket_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 12.97,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 808,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_HelmetStake_B": {
+  "gameIds": [
+   "setpiece_helmet_stake"
+  ],
+  "hullTris": 1888,
+  "ink": {
+   "bakedRimPx": 1.49,
+   "maxHullLumP95": 20.3,
+   "medianRimPx": 1.48,
+   "minFracDark": 1.0,
+   "minFracRim": 1.0,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0012,
+    "flipped": 0,
+    "loops": 5032,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0013,
+    "flipped": 0,
+    "loops": 3110,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "shield_hull",
+     14.55
+    ],
+    [
+     "helm_hull",
+     12.97
+    ],
+    [
+     "helm_hull",
+     12.08
+    ],
+    [
+     "helm_fallen_hull",
+     12.08
+    ]
+   ],
+   "lod1": [
+    [
+     "helm_fallen_hull",
+     0.89
+    ],
+    [
+     "helm_hull",
+     0.72
+    ],
+    [
+     "helm_hull",
+     0.58
+    ],
+    [
+     "spear_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 14.55,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 2316,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_NameWall": {
+  "gameIds": [
+   "setpiece_name_wall"
+  ],
+  "hullTris": 1512,
+  "ink": {
+   "bakedRimPx": 1.35,
+   "maxHullLumP95": 21.0,
+   "medianRimPx": 1.31,
+   "minFracDark": 1.0,
+   "minFracRim": 1.0,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0001,
+    "flipped": 0,
+    "loops": 18070,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 3042,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "stake_hull",
+     0.5
+    ],
+    [
+     "stake_hull",
+     0.5
+    ],
+    [
+     "stake_hull",
+     0.5
+    ],
+    [
+     "stake_hull",
+     0.5
+    ]
+   ],
+   "lod1": [
+    [
+     "stake_hull",
+     0.5
+    ],
+    [
+     "stake_hull",
+     0.5
+    ],
+    [
+     "stake_hull",
+     0.5
+    ],
+    [
+     "stake_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 0.5,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 7628,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_OrderPost": {
+  "gameIds": [
+   "lore_order_post",
+   "lore_ancient_tablet@march"
+  ],
+  "hullTris": 368,
+  "ink": {
+   "bakedRimPx": 1.25,
+   "maxHullLumP95": 46.3,
+   "medianRimPx": 1.85,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9501,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 1572,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 886,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "post_hull",
+     0.5
+    ],
+    [
+     "order_hull",
+     0.5
+    ],
+    [
+     "scrap_hull",
+     0.5
+    ],
+    [
+     "foot_hull",
+     0.5
+    ]
+   ],
+   "lod1": [
+    [
+     "order_hull",
+     5.45
+    ],
+    [
+     "post_hull",
+     0.5
+    ],
+    [
+     "scrap_hull",
+     0.5
+    ],
+    [
+     "foot_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 5.45,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 684,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_PitMouthSealed": {
+  "gameIds": [
+   "setpiece_pit_mouth_sealed"
+  ],
+  "hullTris": 2150,
+  "ink": {
+   "bakedRimPx": 1.34,
+   "maxHullLumP95": 21.0,
+   "medianRimPx": 1.4,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9573,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0009,
+    "flipped": 0,
+    "loops": 6444,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 3552,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "seal_plank_hull",
+     23.51
+    ],
+    [
+     "seal_plank_hull",
+     18.79
+    ],
+    [
+     "chain_stake_hull",
+     14.9
+    ],
+    [
+     "chain_stake_hull",
+     12.9
+    ]
+   ],
+   "lod1": [
+    [
+     "seal_plank_hull",
+     2.7
+    ],
+    [
+     "chain_stake_hull",
+     0.91
+    ],
+    [
+     "rim_stone_hull",
+     0.5
+    ],
+    [
+     "rim_stone_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 23.51,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 2566,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_RingBanner_A": {
+  "gameIds": [
+   "setpiece_banner_ring"
+  ],
+  "hullTris": 834,
+  "ink": {
+   "bakedRimPx": 1.37,
+   "maxHullLumP95": 22.5,
+   "medianRimPx": 1.37,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9946,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2574,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2022,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "cloth_hull",
+     6.2
+    ],
+    [
+     "spear_hull",
+     0.5
+    ],
+    [
+     "spear_head_hull",
+     0.5
+    ],
+    [
+     "spear_socket_hull",
+     0.5
+    ]
+   ],
+   "lod1": [
+    [
+     "cloth_hull",
+     5.98
+    ],
+    [
+     "spear_hull",
+     0.5
+    ],
+    [
+     "spear_head_hull",
+     0.5
+    ],
+    [
+     "spear_socket_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 6.2,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 1186,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_RingBanner_B": {
+  "gameIds": [
+   "setpiece_banner_ring"
+  ],
+  "hullTris": 638,
+  "ink": {
+   "bakedRimPx": 1.37,
+   "maxHullLumP95": 23.4,
+   "medianRimPx": 1.36,
+   "minFracDark": 1.0,
+   "minFracRim": 1.0,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2182,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 1728,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "cloth_hull",
+     5.95
+    ],
+    [
+     "spear_hull",
+     0.5
+    ],
+    [
+     "spear_head_hull",
+     0.5
+    ],
+    [
+     "spear_socket_hull",
+     0.5
+    ]
+   ],
+   "lod1": [
+    [
+     "cloth_hull",
+     13.2
+    ],
+    [
+     "spear_hull",
+     0.5
+    ],
+    [
+     "spear_head_hull",
+     0.5
+    ],
+    [
+     "spear_socket_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 13.2,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 990,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_RitualCircle": {
+  "gameIds": [
+   "setpiece_ritual_circle"
+  ],
+  "hullTris": 1072,
+  "ink": {
+   "bakedRimPx": 1.41,
+   "maxHullLumP95": 36.5,
+   "medianRimPx": 1.47,
+   "minFracDark": 1.0,
+   "minFracRim": 1.0,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0082,
+    "flipped": 2,
+    "loops": 2684,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 1080,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "stake_hull",
+     13.94
+    ],
+    [
+     "stake_hull",
+     13.85
+    ],
+    [
+     "stake_hull",
+     13.27
+    ],
+    [
+     "stake_hull",
+     12.5
+    ]
+   ],
+   "lod1": [
+    [
+     "stake_hull",
+     7.67
+    ],
+    [
+     "stake_hull",
+     3.16
+    ],
+    [
+     "stake_hull",
+     1.39
+    ],
+    [
+     "stake_hull",
+     1.39
+    ]
+   ],
+   "maxMm": 13.94,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 1072,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_RitualCircle_Ash": {
+  "gameIds": [
+   "setpiece_ritual_circle_ash"
+  ],
+  "hullTris": 0,
+  "ink": null,
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2426,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2426,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [],
+   "lod1": [],
+   "maxMm": 0.0,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 1120,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_SheepfoldWagon_A": {
+  "gameIds": [
+   "setpiece_sheepfold_wagon"
+  ],
+  "hullTris": 1724,
+  "ink": {
+   "bakedRimPx": 1.42,
+   "maxHullLumP95": 19.7,
+   "medianRimPx": 1.45,
+   "minFracDark": 1.0,
+   "minFracRim": 1.0,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 6180,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2620,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "sack_hull",
+     20.41
+    ],
+    [
+     "sack_hull",
+     20.34
+    ],
+    [
+     "plank_hull",
+     12.96
+    ],
+    [
+     "wagon_floor_hull",
+     9.22
+    ]
+   ],
+   "lod1": [
+    [
+     "plank_hull",
+     8.18
+    ],
+    [
+     "wheel_loose_hull",
+     0.91
+    ],
+    [
+     "wagon_wheel_hull",
+     0.9
+    ],
+    [
+     "wagon_floor_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 20.41,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 2772,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_SheepfoldWagon_B": {
+  "gameIds": [
+   "setpiece_sheepfold_wagon"
+  ],
+  "hullTris": 1886,
+  "ink": {
+   "bakedRimPx": 1.52,
+   "maxHullLumP95": 19.7,
+   "medianRimPx": 1.62,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9992,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0002,
+    "flipped": 0,
+    "loops": 6378,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 2962,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "sack_hull",
+     20.67
+    ],
+    [
+     "wagon_floor_hull",
+     9.22
+    ],
+    [
+     "wagon_side_hull",
+     0.5
+    ],
+    [
+     "wagon_side_hull",
+     0.5
+    ]
+   ],
+   "lod1": [
+    [
+     "wagon_wheel_hull",
+     6.58
+    ],
+    [
+     "wagon_wheel_hull",
+     1.39
+    ],
+    [
+     "wheel_loose_hull",
+     1.37
+    ],
+    [
+     "wagon_floor_hull",
+     0.5
+    ]
+   ],
+   "maxMm": 20.67,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 2834,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ },
+ "SM_Prop_March_WagonBarricade": {
+  "gameIds": [
+   "exit_gate_sealed@march",
+   "exit_sealed@march"
+  ],
+  "hullTris": 5308,
+  "ink": {
+   "bakedRimPx": 1.56,
+   "maxHullLumP95": 23.3,
+   "medianRimPx": 2.04,
+   "minFracDark": 1.0,
+   "minFracRim": 0.9711,
+   "pass": true
+  },
+  "inkFailures": [],
+  "normals": {
+   "lod0": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 19012,
+    "pass": true
+   },
+   "lod1": {
+    "badFrac": 0.0,
+    "flipped": 0,
+    "loops": 7706,
+    "pass": true
+   },
+   "pass": true
+  },
+  "pad": {
+   "lod0": [
+    [
+     "sack_hull",
+     20.35
+    ],
+    [
+     "sack_hull",
+     20.27
+    ],
+    [
+     "sack_hull",
+     20.18
+    ],
+    [
+     "sack_hull",
+     20.17
+    ]
+   ],
+   "lod1": [
+    [
+     "wagon_wheel_hull",
+     2.72
+    ],
+    [
+     "wagon_wheel_hull",
+     1.35
+    ],
+    [
+     "wagon_wheel_hull",
+     0.93
+    ],
+    [
+     "wagon_wheel_hull",
+     0.92
+    ]
+   ],
+   "maxMm": 20.35,
+   "over": [],
+   "pass": true
+  },
+  "toonTris": 8696,
+  "verify": {
+   "failures": [],
+   "pass": true
+  }
+ }
+}

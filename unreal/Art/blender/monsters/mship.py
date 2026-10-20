@@ -53,6 +53,15 @@ class MReview(review.Review):
     / ``specPx`` in each ink report (the brief asks for ≥ 3 px on ≥ 90 % of character edges; the kit's gate is
     unchanged). Same renders and passes as ``Review.game_shot`` — one more ``ink_stats`` on the same coverage."""
 
+    native_prefixes: tuple = ()          # sheets stored truecolour at scale 1 (``pngio.write_png_native``: tiled)
+
+    def _save(self, name: str, img: np.ndarray) -> Path:
+        if any(name.startswith(pfx) for pfx in self.native_prefixes):
+            written = pngio.write_png_native(self.out / name, img)
+            self.written.extend(written)
+            return written[0][0]
+        return super()._save(name, img)
+
     def game_shot(self, border=None, res=(1920, 1080), measure: bool = False, tag: str = "", glow: bool = True,
                   bloom_on=None):
         if not measure:
@@ -117,6 +126,9 @@ class Item:
     category: str = "Weapons"
     preview_obj: bpy.types.Object | None = None          # review stand-in (e.g. the totem without its flame)
     fx_objs: list = field(default_factory=list)          # runtime-lit FX parts: off for the ink measurement
+    preview_up: str = "y"                                # items.png: the item axis laid up the frame ("z": a shield;
+                                                         # "weapon": a variant held item laid out like a weapon;
+                                                         # "weapon_flat": the same rolled 90° about +Y, a flat blade)
 
 
 @dataclass
@@ -156,6 +168,8 @@ class MonsterShip:
     portrait: Callable | None = None                 # fn(ship, rv, actions) → manifest path (``Portraits/T_UI_…``)
     outline_px: float | None = None                  # per-asset OutlinePx1080 of the hull slot (None = the class's)
     outline_px_note: str = ""                        # why the asset asks for more ink than its class (manifest)
+    native_sheets: bool = False                      # game_* sheets truecolour at scale 1, tiled <stem>_2.png … (a
+                                                     # tall figure's big 1080p cells would otherwise be downscaled)
 
 
 def ink_px(ms: MonsterShip) -> float:
@@ -462,6 +476,8 @@ def render_previews(ms: MonsterShip, out: Path, actions) -> tuple[list, dict]:
     rv.gate = gate_for(ms.outline_class, ink_px(ms))
     rv.ground_occludes = True          # hull under planted soles is hidden by the terrain (UE) and the stage here
     rv.extra_body_slots = True         # a dithered shell slot (the slime) is body in the ink coverage
+    if ms.native_sheets:
+        rv.native_prefixes = ("game_",)
     acts = dict(zip([c.name for c in ms.clips], actions))
     anim.assign(rig, acts["Idle"])
     anim.set_frame(0)
@@ -673,8 +689,12 @@ def items_sheet(ms: MonsterShip, rv) -> None:
         o = it.obj
         o.hide_render = False
         for yaw, side in ((135, "A"), (-45, "B")):
-            if it.variant is None:   # weapons: lay the +Y blade axis up the frame
-                o.matrix_world = Matrix.Rotation(math.radians(yaw), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X")
+            if it.variant is None and it.preview_up == "z":     # a shield: upright, face and back
+                o.matrix_world = Matrix.Rotation(math.radians(yaw + 45.0), 4, "Z")
+            elif it.variant is None or it.preview_up.startswith("weapon"):   # weapons: the +Y blade axis up the frame
+                roll = Matrix.Rotation(math.radians(90), 4, "Y") if it.preview_up == "weapon_flat" else Matrix()
+                o.matrix_world = (Matrix.Rotation(math.radians(yaw), 4, "Z") @ Matrix.Rotation(math.radians(90), 4, "X")
+                                  @ roll)
             else:                    # attachments (bone-local): upright as worn on the rest pose
                 bm = ms.A.rig.obj.data.bones[it.socket].matrix_local.to_3x3().to_4x4()
                 o.matrix_world = Matrix.Rotation(math.radians(yaw - 90), 4, "Z") @ bm

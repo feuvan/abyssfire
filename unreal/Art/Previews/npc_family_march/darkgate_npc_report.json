@@ -1,0 +1,605 @@
+{
+ "tool": "Art/blender/coherence/darkgate.py",
+ "spec": "Docs/dark-remake/implementation-plan.md A0 / 0C; monsters.md 1.2",
+ "thresholds": {
+  "rimPx": 3.0,
+  "rimFrac": 0.9,
+  "litDeltaL": 15.0,
+  "markerPx": 2
+ },
+ "edgeMargins": {
+  "litDeltaL": 1.5,
+  "rimFrac": 0.03,
+  "markerPx": 0,
+  "note": "a PASS within these of its threshold is listed in atEdge"
+ },
+ "status": "metric definitions pending confirmation (Docs/DECISIONS.md R21); the plains:grass run is the Phase 0 baseline, not an acceptance pass",
+ "metrics": {
+  "rim": "cohkit.ink_gate_group at rimPx: visible ink width on every silhouette edge pixel at native 1080p, gate = rimFrac of them (+ the kit's dark / hull colour checks)",
+  "lit": "median over the figure's solid toon pixels in the key light's light band (h = N.L * .5 + .5 >= T_LIGHT) or rim light (weight >= .5), marker and emissive pixels excluded, of |CIELAB L* - median L* of the ground field| >= litDeltaL (signedDeltaL: the region's median L* minus the ground's, a diagnostic)",
+  "marker": "largest solid k x k block (coverage >= .5) of the visible family-marker swatches, the rest of the figure occluding, >= markerPx",
+  "diagnostics": "not gated: rim.inkL / inkDeltaL / fracInkClear (the ink's L* against the ground: the rim gate is ground-independent), lit.signedDeltaL / fracLitClear, marker.medianL / deltaL / emissivePixels"
+ },
+ "runs": {
+  "march:dirt": {
+   "ground": {
+    "theme": "march",
+    "tile": "dirt",
+    "selectedBy": "darkest walkable material by median L* of an 8 x 8 composited field",
+    "L50": 19.5,
+    "L10": 19.1,
+    "L90": 24.1,
+    "meanRgb": "#38312B",
+    "materials": {
+     "grass": {
+      "key": "0",
+      "L50": 32.3,
+      "L10": 28.5,
+      "L90": 36.7,
+      "meanRgb": "#4F4B42"
+     },
+     "dirt": {
+      "key": "1",
+      "L50": 19.5,
+      "L10": 19.1,
+      "L90": 24.1,
+      "meanRgb": "#38312B"
+     },
+     "stone": {
+      "key": "2",
+      "L50": 32.4,
+      "L10": 25.9,
+      "L90": 41.7,
+      "meanRgb": "#504D47"
+     },
+     "camp": {
+      "key": "5",
+      "L50": 28.3,
+      "L10": 25.2,
+      "L90": 31.0,
+      "meanRgb": "#48423C"
+     }
+    }
+   },
+   "camera": {
+    "yawUE": 45.0,
+    "pitchUE": -50.0,
+    "fovH": 35.0,
+    "distance": "default (16 x 12 tiles)",
+    "res": [
+     1920,
+     1080
+    ]
+   },
+   "facing": "se",
+   "pages": 2,
+   "pass": true,
+   "failed": [],
+   "figures": [
+    {
+     "asset": "SK_NPC_QuestElder_March",
+     "variant": null,
+     "label": "CAPTAIN SERIN HARROW",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9821,
+      "rimPxMedian": 4.03,
+      "rimPxP10": 3.41,
+      "fracDark": 1.0,
+      "hullLumP95": 27.5,
+      "edges": 391,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 7.1,
+      "inkDeltaL": 12.4,
+      "fracInkClear": 0.176
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 61.9,
+      "signedDeltaL": 61.9,
+      "litL": 81.4,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 919,
+      "litP10": 51.3,
+      "litP90": 84.9,
+      "fracLitClear": 0.929,
+      "shadeL": 13.0,
+      "inkL": 7.1
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_KnellChaplain",
+     "variant": null,
+     "label": "BROTHER ALDWIN",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9588,
+      "rimPxMedian": 3.92,
+      "rimPxP10": 3.32,
+      "fracDark": 1.0,
+      "hullLumP95": 25.8,
+      "edges": 364,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.8,
+      "inkDeltaL": 13.7,
+      "fracInkClear": 0.482
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 42.4,
+      "signedDeltaL": 42.4,
+      "litL": 61.9,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 1122,
+      "litP10": 45.2,
+      "litP90": 75.7,
+      "fracLitClear": 0.987,
+      "shadeL": 6.5,
+      "inkL": 5.8
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_Blacksmith_March",
+     "variant": null,
+     "label": "HALD SWORDMELTER",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9447,
+      "rimPxMedian": 3.69,
+      "rimPxP10": 3.28,
+      "fracDark": 0.9427,
+      "hullLumP95": 25.3,
+      "edges": 506,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.8,
+      "inkDeltaL": 13.8,
+      "fracInkClear": 0.268
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 51.9,
+      "signedDeltaL": 51.9,
+      "litL": 71.4,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 1070,
+      "litP10": 44.8,
+      "litP90": 81.7,
+      "fracLitClear": 0.964,
+      "shadeL": 13.4,
+      "inkL": 5.8
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_Merchant_March",
+     "variant": null,
+     "label": "QUARTERMASTER VIRA",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9702,
+      "rimPxMedian": 3.64,
+      "rimPxP10": 3.23,
+      "fracDark": 1.0,
+      "hullLumP95": 30.5,
+      "edges": 403,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 7.6,
+      "inkDeltaL": 11.9,
+      "fracInkClear": 0.301
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 38.1,
+      "signedDeltaL": 38.1,
+      "litL": 57.6,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 1410,
+      "litP10": 33.6,
+      "litP90": 74.0,
+      "fracLitClear": 0.884,
+      "shadeL": 11.8,
+      "inkL": 7.6
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_StashKeeper_March",
+     "variant": null,
+     "label": "TAMSIN THE GRAVEWARDEN",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9514,
+      "rimPxMedian": 3.97,
+      "rimPxP10": 3.24,
+      "fracDark": 1.0,
+      "hullLumP95": 25.8,
+      "edges": 391,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.6,
+      "inkDeltaL": 13.9,
+      "fracInkClear": 0.343
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 33.5,
+      "signedDeltaL": 33.5,
+      "litL": 53.0,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 1077,
+      "litP10": 42.7,
+      "litP90": 71.7,
+      "fracLitClear": 0.981,
+      "shadeL": 15.1,
+      "inkL": 5.6
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_PlainsHerbalist_March",
+     "variant": null,
+     "label": "MOTHER MARL",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.96,
+      "rimPxMedian": 3.96,
+      "rimPxP10": 3.36,
+      "fracDark": 1.0,
+      "hullLumP95": 26.4,
+      "edges": 400,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 6.4,
+      "inkDeltaL": 13.1,
+      "fracInkClear": 0.197
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 54.8,
+      "signedDeltaL": 54.8,
+      "litL": 74.3,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 1411,
+      "litP10": 51.8,
+      "litP90": 82.1,
+      "fracLitClear": 0.927,
+      "shadeL": 13.4,
+      "inkL": 6.4
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_PlainsWanderer_March",
+     "variant": null,
+     "label": "CORRAN THE DESERTER",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9858,
+      "rimPxMedian": 3.86,
+      "rimPxP10": 3.37,
+      "fracDark": 1.0,
+      "hullLumP95": 27.5,
+      "edges": 424,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.0,
+      "inkDeltaL": 14.5,
+      "fracInkClear": 0.095
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 35.8,
+      "signedDeltaL": 35.8,
+      "litL": 55.3,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 1081,
+      "litP10": 55.0,
+      "litP90": 68.4,
+      "fracLitClear": 0.993,
+      "shadeL": 13.5,
+      "inkL": 5.0
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_CrowTrader",
+     "variant": null,
+     "label": "MAG CROWE",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9479,
+      "rimPxMedian": 4.01,
+      "rimPxP10": 3.3,
+      "fracDark": 1.0,
+      "hullLumP95": 25.3,
+      "edges": 403,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 3.9,
+      "inkDeltaL": 15.6,
+      "fracInkClear": 0.644
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 24.8,
+      "signedDeltaL": 24.8,
+      "litL": 44.3,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 1265,
+      "litP10": 33.6,
+      "litP90": 69.3,
+      "fracLitClear": 0.877,
+      "shadeL": 6.7,
+      "inkL": 3.9
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_RescueLostTraveler_March",
+     "variant": null,
+     "label": "THE BOUND PILGRIM",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9946,
+      "rimPxMedian": 3.86,
+      "rimPxP10": 3.41,
+      "fracDark": 1.0,
+      "hullLumP95": 25.4,
+      "edges": 371,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 7.1,
+      "inkDeltaL": 12.4,
+      "fracInkClear": 0.046
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 42.9,
+      "signedDeltaL": 42.9,
+      "litL": 62.4,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 992,
+      "litP10": 50.8,
+      "litP90": 75.3,
+      "fracLitClear": 0.995,
+      "shadeL": 22.7,
+      "inkL": 7.1
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_WanderingMerchant_March",
+     "variant": null,
+     "label": "THE RELIC PEDDLER",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9568,
+      "rimPxMedian": 3.88,
+      "rimPxP10": 3.27,
+      "fracDark": 1.0,
+      "hullLumP95": 25.0,
+      "edges": 440,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.0,
+      "inkDeltaL": 14.5,
+      "fracInkClear": 0.079
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 35.1,
+      "signedDeltaL": 35.1,
+      "litL": 54.6,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 2635,
+      "litP10": 51.9,
+      "litP90": 73.3,
+      "fracLitClear": 0.953,
+      "shadeL": 14.8,
+      "inkL": 5.0
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_NPC_EscortTravelingMerchant_March",
+     "variant": null,
+     "label": "OLD BERN THE GRAVEDIGGER",
+     "class": "npc",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "IdleNPC",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "na": true,
+      "blockPx": 0,
+      "pixels": 0,
+      "note": "friendly NPC: no family marker (monsters.md 1.2) — not gated"
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.986,
+      "rimPxMedian": 4.0,
+      "rimPxP10": 3.28,
+      "fracDark": 1.0,
+      "hullLumP95": 25.4,
+      "edges": 931,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.6,
+      "inkDeltaL": 13.9,
+      "fracInkClear": 0.047
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 52.7,
+      "signedDeltaL": 52.7,
+      "litL": 72.2,
+      "groundL": 19.5,
+      "band": "light band + rim light",
+      "pixels": 3878,
+      "litP10": 54.7,
+      "litP90": 81.5,
+      "fracLitClear": 0.994,
+      "shadeL": 14.8,
+      "inkL": 5.6
+     },
+     "ok": true,
+     "atEdge": []
+    }
+   ],
+   "atEdge": [],
+   "npcVerdict": {
+    "pass": true,
+    "rimAndLit": "11/11",
+    "note": "friendly NPCs carry no family marker (monsters.md 1.2): the marker column is N/A (marker.na) and every figure's ok / PASS is rim + lit"
+   }
+  }
+ }
+}

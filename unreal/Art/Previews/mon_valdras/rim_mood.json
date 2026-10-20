@@ -1,0 +1,159 @@
+{
+ "tool": "monsters/valdras_rim.py",
+ "mood": {
+  "ambient": "#6A4A8A",
+  "alpha": 0.35,
+  "sat": 0.6,
+  "con": 1.15,
+  "lift": [
+   -0.012,
+   -0.014,
+   0.01
+  ],
+  "gain": [
+   0.01,
+   0.0,
+   0.03
+  ],
+  "haze": "#2A1A36",
+  "haze_alpha": 0.14,
+  "vignette": "#0A0610",
+  "vignette_alpha": 0.62
+ },
+ "p14": 0.55,
+ "uplight": {
+  "color": "#B02FD0",
+  "alpha": 0.6,
+  "light_scale": 0.4,
+  "gain": 3.5,
+  "radius": 4.0
+ },
+ "cells": [
+  {
+   "clip": "Idle",
+   "frame": 0,
+   "mood": "neutral",
+   "marker": {
+    "blockPx": 3,
+    "L": 100.0,
+    "dLvsPlate": 52.1
+   },
+   "seams": {
+    "pixels": 606,
+    "L": 58.5,
+    "dE": 79.1,
+    "dL": 30.5
+   },
+   "lit": {
+    "daisL": 32.0,
+    "litL": 53.6,
+    "deltaL": 21.7
+   }
+  },
+  {
+   "clip": "Idle",
+   "frame": 0,
+   "mood": "breach_rim",
+   "marker": {
+    "blockPx": 3,
+    "L": 97.6,
+    "dLvsPlate": 54.5
+   },
+   "seams": {
+    "pixels": 606,
+    "L": 55.6,
+    "dE": 63.5,
+    "dL": 32.9
+   },
+   "lit": {
+    "daisL": 26.8,
+    "litL": 48.9,
+    "deltaL": 22.1
+   }
+  },
+  {
+   "clip": "Roar",
+   "frame": 27,
+   "mood": "neutral",
+   "marker": {
+    "blockPx": 4,
+    "L": 100.0,
+    "dLvsPlate": 47.7
+   },
+   "seams": {
+    "pixels": 785,
+    "L": 58.7,
+    "dE": 77.1,
+    "dL": 29.1
+   },
+   "lit": {
+    "daisL": 31.8,
+    "litL": 55.0,
+    "deltaL": 23.2
+   }
+  },
+  {
+   "clip": "Roar",
+   "frame": 27,
+   "mood": "breach_rim",
+   "marker": {
+    "blockPx": 4,
+    "L": 97.6,
+    "dLvsPlate": 49.8
+   },
+   "seams": {
+    "pixels": 785,
+    "L": 55.7,
+    "dE": 60.7,
+    "dL": 31.3
+   },
+   "lit": {
+    "daisL": 26.7,
+    "litL": 50.2,
+    "deltaL": 23.6
+   }
+  },
+  {
+   "clip": "Death",
+   "frame": 120,
+   "mood": "neutral",
+   "marker": {
+    "blockPx": 1,
+    "L": 93.7,
+    "dLvsPlate": 65.6
+   },
+   "seams": {
+    "pixels": 301,
+    "L": 57.8,
+    "dE": 79.2,
+    "dL": 22.5
+   },
+   "lit": {
+    "daisL": 31.9,
+    "litL": 54.2,
+    "deltaL": 22.2
+   }
+  },
+  {
+   "clip": "Death",
+   "frame": 120,
+   "mood": "breach_rim",
+   "marker": {
+    "blockPx": 1,
+    "L": 91.1,
+    "dLvsPlate": 67.9
+   },
+   "seams": {
+    "pixels": 301,
+    "L": 54.7,
+    "dE": 63.2,
+    "dL": 24.2
+   },
+   "lit": {
+    "daisL": 26.7,
+    "litL": 49.5,
+    "deltaL": 22.8
+   }
+  }
+ ]
+}

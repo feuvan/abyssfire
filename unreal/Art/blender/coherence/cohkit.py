@@ -7,6 +7,12 @@ held items / body items / variant attachments on their sockets, static meshes, e
 (``AAbyssZoneActor`` / ``UAbyssWorldBuilder``: mesh yaw −90°, camp props facing the fire, variants by tile hash,
 the elite crown on ``fx_overhead`` at absolute scale, yawed to the camera). The ground is the shipped plains terrain
 set composited with the exact transition rules (``environment/terrain.composite``) plus the web contact shadows.
+
+**Presentation theme** (dark remake U1, ``kit/theme.py``): ``set_theme("march")`` makes every lookup resolve
+``<id>@march`` before ``<id>`` as the runtime does for ``emerald_plains`` (``variant_names``), stands hunt variants under
+the themed elite crown (``elite_crown@march`` → ``SM_FX_EliteCrown_March``; the plains crown was hard-coded before) and
+composites the ground from the theme's shipped terrain set (``environment/terrain_march``: the march textures with the
+march ranks, lips and liquid colours). The default (``None``) is the plains look of the Phase-0 coherence pass.
 """
 from __future__ import annotations
 
@@ -28,7 +34,7 @@ import bpy  # noqa: E402
 import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
-from kit import outline, paths, pngio, review, scene  # noqa: E402
+from kit import outline, paths, pngio, review, scene, shading  # noqa: E402
 from kit import rig as krig  # noqa: E402
 
 import envkit as E  # noqa: E402
@@ -44,6 +50,14 @@ EMISSIVE_EDGE_MIN = 0.25                  # linear bloom-source level (lin(c)·e
                                           # (the gel's e .10 body ≈ 0.08)
 _MAN: dict | None = None
 _MATS: dict[str, tuple] = {}
+THEME: str | None = None                  # presentation theme of the lookups (None = the plains base ids)
+PLAINS_CROWN = "SM_FX_EliteCrown"
+
+
+def set_theme(theme: str | None) -> None:
+    """Resolve themed ids (``<id>@<theme>`` first), the elite crown and the ground under ``theme``."""
+    global THEME
+    THEME = None if theme in (None, "", "plains") else theme
 
 
 def manifest() -> dict:
@@ -55,6 +69,25 @@ def manifest() -> dict:
 
 def entry(name: str) -> dict:
     return manifest()["assets"][name]
+
+
+def variant_names(game_id: str, theme: str | None = "__module__") -> list[str]:
+    """Every asset listing ``<game_id>@<theme>`` (sorted by name, the runtime's variant order), else every asset
+    listing ``<game_id>`` — the runtime lookup (U1) under the presentation theme."""
+    th = THEME if theme == "__module__" else theme
+    assets = manifest()["assets"]
+    cands = ([f"{game_id}@{th}"] if th else []) + [game_id]
+    for gid in cands:
+        names = sorted(n for n, e in assets.items() if gid in (e.get("gameIds") or []))
+        if names:
+            return names
+    return []
+
+
+def crown_asset() -> str:
+    """The elite crown the runtime stands over an elite under the current theme (``elite_crown@<theme>``)."""
+    names = variant_names("elite_crown")
+    return names[0] if names else PLAINS_CROWN
 
 
 def reset() -> None:
@@ -88,9 +121,96 @@ def slot_info(e: dict) -> tuple[str, str, float, float]:
 
 
 def _import(fbx: Path) -> list:
+    """Import ``fbx``; a clip file whose bone nodes carry a static scale is imported from a patched copy (see
+    :func:`_unit_static_scale`), so the re-imported pose is the one UE plays."""
+    src, tmp = fbx, _unit_static_scale(fbx)
     before = set(bpy.data.objects)
-    bpy.ops.import_scene.fbx(filepath=str(fbx))
+    try:
+        bpy.ops.import_scene.fbx(filepath=str(tmp or src))
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
     return [o for o in bpy.data.objects if o not in before]
+
+
+def _fbx_records(data: bytes, pos: int, end: int, wide: bool):
+    """Binary FBX node records in ``data[pos:end]`` → [(name, props, children)]; props = [(type, value, offset)]
+    (the offset of a scalar's value bytes, so a value can be patched in place)."""
+    import struct
+    out = []
+    hw = 8 if wide else 4
+    while pos < end:
+        if wide:
+            e_off, n_props, plen = struct.unpack_from("<QQQ", data, pos)
+        else:
+            e_off, n_props, plen = struct.unpack_from("<III", data, pos)
+        if e_off == 0:
+            break
+        nlen = data[pos + 3 * hw]
+        name = bytes(data[pos + 3 * hw + 1: pos + 3 * hw + 1 + nlen])
+        q = pos + 3 * hw + 1 + nlen
+        props = []
+        for _ in range(n_props):
+            t = chr(data[q])
+            q += 1
+            if t in "SR":
+                ln = struct.unpack_from("<I", data, q)[0]
+                props.append((t, bytes(data[q + 4:q + 4 + ln]), q + 4))
+                q += 4 + ln
+            elif t in "fdlib":
+                _n, _enc, clen = struct.unpack_from("<III", data, q)
+                props.append((t, None, q))
+                q += 12 + clen
+            else:
+                size, fmt = {"Y": (2, "<h"), "C": (1, "<?"), "I": (4, "<i"), "F": (4, "<f"), "D": (8, "<d"),
+                             "L": (8, "<q")}[t]
+                props.append((t, struct.unpack_from(fmt, data, q)[0], q))
+                q += size
+        kids = _fbx_records(data, q, e_off, wide) if q < e_off else []
+        out.append((name, props, kids))
+        pos = e_off
+    return out
+
+
+def _unit_static_scale(fbx: Path) -> Path | None:
+    """A copy of clip file ``fbx`` with every bone node's static ``Lcl Scaling`` set to 1, or None when there is none
+    to fix. The exporter writes the clip's first pose as the nodes' static transform, so a bone keyed at a scale there
+    (the slime family's X-eyes / lids at .05, the cinderbloat's fuse ridges at .55 and burst shards at .001, the
+    sprites' mouth, cloth chains' stretch) carries it as its static scale. Blender's FBX importer builds the rest from
+    the static transform and keys the pose relative to it, but an edit bone cannot hold a scale: the scale is dropped
+    from the rest while the keys stay divided by it, so pose space came out ``1 / static`` too large (the cinderbloat's
+    ridges ×1.82 through its fuse, its shards ×1000 after the burst; every hidden part shown at frame 0). UE evaluates
+    the curves — absolute local transforms, which this leaves untouched — against the skeleton's bind pose; with unit
+    static scales the importer's pose space is exactly that."""
+    import struct
+    data = bytearray(fbx.read_bytes())
+    if not data.startswith(b"Kaydara FBX Binary") or b"AnimationCurve" not in data:
+        return None
+    version = struct.unpack_from("<I", data, 23)[0]
+    recs = _fbx_records(data, 27, len(data), version >= 7500)
+    patched = 0
+    for name, _p, kids in recs:
+        if name != b"Objects":
+            continue
+        for mname, mprops, mkids in kids:
+            if mname != b"Model" or len(mprops) < 3 or mprops[2][1] != b"LimbNode":
+                continue
+            for pname, _pp, pkids in mkids:
+                if pname != b"Properties70":
+                    continue
+                for _n, pr, _k in pkids:
+                    if pr and pr[0][1] == b"Lcl Scaling":
+                        ds = [x for x in pr if x[0] == "D"][:3]
+                        if len(ds) == 3 and max(abs(x[1] - 1.0) for x in ds) > 1e-9:
+                            for _t, _v, off in ds:
+                                struct.pack_into("<d", data, off, 1.0)
+                            patched += 1
+    if not patched:
+        return None
+    out = SCRATCH / "clip_fbx" / f"{os.getpid()}_{fbx.name}"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(bytes(data))
+    return out
 
 
 def _dither_shell(mt, opacity: float):
@@ -116,13 +236,43 @@ def _dither_shell(mt, opacity: float):
     return m
 
 
+def _rim_override(e: dict, name: str):
+    """(colour, alpha) of a manifest slot whose instance overrides the rim (``params`` ``RimOverrideColor``, with
+    ``RimOverride`` > 0), else None — e.g. the breach-blood shells / crust (monsters/breach.py)."""
+    base = name.split(".")[0]                      # an imported material may come back as "<name>.001"
+    for sl in e.get("materialSlots", []):
+        if sl.get("name") in (name, base):
+            p = sl.get("params") or {}
+            if p.get("RimOverrideColor") and float(p.get("RimOverride", 1.0)) > 0:
+                return _rim_hex(p["RimOverrideColor"]), float(p.get("RimOverrideAlpha", shading.RIM_ALPHA))
+    return None
+
+
+def _rim_hex(v) -> str:
+    """A manifest ``RimOverrideColor`` as "#RRGGBB": a hex string, or a list of **sRGB-encoded** floats — the
+    importer workaround of README §23 (the HLSL input is sRGB; a list passes the UE importer unchanged)."""
+    if isinstance(v, (list, tuple)):
+        return "#" + "".join(f"{int(round(max(0.0, min(1.0, float(c))) * 255)):02X}" for c in v[:3])
+    return str(v)
+
+
+def _with_rim(m, rim):
+    """``m`` with its toon core swapped for the rim-override core (``shading.rim_override_group``)."""
+    grp = next(n for n in m.node_tree.nodes if n.type == "GROUP")
+    grp.node_tree = shading.rim_override_group(*rim)
+    return m
+
+
 def _assign(mesh, e: dict) -> None:
-    """Family toon / outline (/ slime shell) by the imported material names, back in manifest slot order."""
+    """Family toon / outline (/ slime shell) by the imported material names, back in manifest slot order. A slot
+    whose manifest ``params`` override the rim keeps that rim: a slime-type shell gets it on the dithered shell, a
+    toon slot becomes its own material (index 3)."""
     fam, cls, px, width = slot_info(e)
     mt, mo = mats(fam)
     mats_ = mesh.data.materials
     names = [m.name if m is not None else "" for m in mats_]
-    want = {i: (1 if "Outline" in nm else 2 if "Slime" in nm else 0) for i, nm in enumerate(names)}
+    want = {i: (1 if "Outline" in nm else 2 if "Slime" in nm else 3 if _rim_override(e, nm) else 0)
+            for i, nm in enumerate(names)}
     if len(names) == 0:
         mats_.append(mt)
         want = {0: 0}
@@ -133,9 +283,20 @@ def _assign(mesh, e: dict) -> None:
     n_slots = max(want.values()) + 1
     new = [mt, mo]
     if n_slots > 2:
-        op = next((x.get("params", {}).get("BodyOpacity", 0.62) for x in e["materialSlots"]
-                   if x["name"] == "MI_AF_Toon_Slime"), 0.62)
-        new.append(_dither_shell(mt, op))
+        shell = next((x for x in e["materialSlots"] if "Slime" in str(x.get("name", ""))), None)
+        if shell is not None:
+            op = (shell.get("params") or {}).get("BodyOpacity", 0.62)
+            sm = _dither_shell(mt, op)
+            rim = _rim_override(e, shell["name"])
+            new.append(_with_rim(sm, rim) if rim else sm)
+        else:
+            new.append(mt)
+    if n_slots > 3:
+        rim = next(_rim_override(e, nm) for i, nm in enumerate(names) if want[i] == 3)
+        rm = mt.copy()
+        rm.name = "AF_Coh_RimToon"
+        rm["af_toon_slot"] = True          # an extra toon slot: its own emissive regions in the bloom pass, no more
+        new.append(_with_rim(rm, rim))
     while len(mats_) < n_slots:
         mats_.append(None)
     while len(mats_) > n_slots:
@@ -232,7 +393,15 @@ def import_character(asset: str, at, yaw_deg: float, clip: str | None = None, fr
     atts = list(e.get("attachments", []) or []) + (list(var.get("attachments", [])) if var else [])
     for att in atts:
         it = import_static(att["object"])
-        krig.attach_to_bone(it, rig, att["socket"])
+        bone = att["socket"]
+        if bone not in arm.data.bones:                 # a named socket on another bone (Old Bern's ``barrow`` socket
+            sk = next((x for x in e.get("sockets", []) if x["name"] == bone), None)    # on ``barrow_01``, rel 0)
+            if sk is None or sk.get("bone") not in arm.data.bones:
+                raise KeyError(f"{asset}: attachment socket {bone!r} is neither a bone nor a socket on one")
+            if any(abs(float(v)) > 1e-6 for v in list(sk.get("relLocCm", [])) + list(sk.get("relRotDeg", []))):
+                raise NotImplementedError(f"{asset}: socket {bone!r} has a bone-relative offset")
+            bone = sk["bone"]
+        krig.attach_to_bone(it, rig, bone)
         items[att["object"]] = it
         meshes.append(it)
     for ia in e.get("itemAttachments", []) or []:
@@ -274,8 +443,9 @@ def import_character(asset: str, at, yaw_deg: float, clip: str | None = None, fr
     root.scale = (scale, scale, scale)
     bpy.context.view_layer.update()
     if var and var.get("elite"):
-        ce = entry("SM_FX_EliteCrown")
-        crown = import_static("SM_FX_EliteCrown")
+        cname = crown_asset()
+        ce = entry(cname)
+        crown = import_static(cname)
         wp = _socket_world(e, arm, "fx_overhead")
         yaw = 0.0
         if cam is not None:
@@ -290,11 +460,18 @@ def import_character(asset: str, at, yaw_deg: float, clip: str | None = None, fr
 
 # ── ground ──────────────────────────────────────────────────────────────────────────────────────────────
 def ground(tiles: np.ndarray, origin: tuple[int, int], ppt: int = 64, shadows=(), name: str = "coh_ground"):
-    """Composited plains ground over ``tiles[row, col]`` (origin = (col0, row0)) + web contact shadows
-    ``[(col, row, radius_m, alpha)]`` (true circles, the web radial falloff); a textured emission plane."""
-    tex = T.load_textures()
-    layers = T.Layers(tex["tex"], tex["details"])
-    img = T.composite(tiles, layers, ppt=ppt, origin=origin).astype(np.float32)
+    """Composited ground of the current theme (plains, or the shipped march set: ``set_theme``) over
+    ``tiles[row, col]`` (origin = (col0, row0)) + web contact shadows ``[(col, row, radius_m, alpha)]`` (true circles,
+    the web radial falloff); a textured emission plane."""
+    if THEME == "march":
+        import terrain_march as TM                     # the march textures + ranks / lips / liquid colours
+        tex = TM.load_textures()
+        layers = T.Layers(tex["tex"], tex["details"])
+        img = TM.composite(tiles, layers, ppt=ppt, origin=origin).astype(np.float32)
+    else:
+        tex = T.load_textures()
+        layers = T.Layers(tex["tex"], tex["details"])
+        img = T.composite(tiles, layers, ppt=ppt, origin=origin).astype(np.float32)
     H, W = img.shape[:2]
     c0, r0 = origin
     for (c, r, rad, alpha) in shadows:

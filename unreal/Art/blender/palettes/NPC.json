@@ -11,7 +11,9 @@
    "l": 0.25098039215686274,
    "names": [
     "npc.blacksmith.skin",
-    "npc.blacksmith.sleeve"
+    "npc.blacksmith.sleeve",
+    "npc.march.blacksmith.skin",
+    "npc.march.blacksmith.sleeve"
    ],
    "o": 0.4,
    "s": 0.2980392156862745
@@ -22,7 +24,8 @@
    "i": 1,
    "l": 0.14901960784313725,
    "names": [
-    "npc.blacksmith.skin_shade"
+    "npc.blacksmith.skin_shade",
+    "npc.march.blacksmith.skin_shade"
    ],
    "o": 0.4,
    "s": 0.25098039215686274
@@ -33,7 +36,8 @@
    "i": 2,
    "l": 0.25098039215686274,
    "names": [
-    "npc.blacksmith.blush"
+    "npc.blacksmith.blush",
+    "npc.march.blacksmith.blush"
    ],
    "o": 0.4,
    "s": 0.2980392156862745
@@ -46,6 +50,17 @@
    "names": [
     "npc.blacksmith.eye_white",
     "npc.escort_traveling_merchant.eye_white",
+    "npc.march.blacksmith.eye_white",
+    "npc.march.crow_trader.eye_white",
+    "npc.march.escort_traveling_merchant.eye_white",
+    "npc.march.knell_chaplain.eye_white",
+    "npc.march.merchant.eye_white",
+    "npc.march.plains_herbalist.eye_white",
+    "npc.march.plains_wanderer.eye_white",
+    "npc.march.quest_elder.eye_white",
+    "npc.march.rescue_lost_traveler.eye_white",
+    "npc.march.stash_keeper.eye_white",
+    "npc.march.wandering_merchant.eye_white",
     "npc.merchant.eye_white",
     "npc.plains_herbalist.eye_white",
     "npc.plains_wanderer.eye_white",
@@ -65,6 +80,17 @@
    "names": [
     "npc.blacksmith.pupil",
     "npc.escort_traveling_merchant.pupil",
+    "npc.march.blacksmith.pupil",
+    "npc.march.crow_trader.pupil",
+    "npc.march.escort_traveling_merchant.pupil",
+    "npc.march.knell_chaplain.pupil",
+    "npc.march.merchant.pupil",
+    "npc.march.plains_herbalist.pupil",
+    "npc.march.plains_wanderer.pupil",
+    "npc.march.quest_elder.pupil",
+    "npc.march.rescue_lost_traveler.pupil",
+    "npc.march.stash_keeper.pupil",
+    "npc.march.wandering_merchant.pupil",
     "npc.merchant.pupil",
     "npc.plains_herbalist.pupil",
     "npc.plains_wanderer.pupil",
@@ -84,6 +110,17 @@
    "names": [
     "npc.blacksmith.eye_hi",
     "npc.escort_traveling_merchant.eye_hi",
+    "npc.march.blacksmith.eye_hi",
+    "npc.march.crow_trader.eye_hi",
+    "npc.march.escort_traveling_merchant.eye_hi",
+    "npc.march.knell_chaplain.eye_hi",
+    "npc.march.merchant.eye_hi",
+    "npc.march.plains_herbalist.eye_hi",
+    "npc.march.plains_wanderer.eye_hi",
+    "npc.march.quest_elder.eye_hi",
+    "npc.march.rescue_lost_traveler.eye_hi",
+    "npc.march.stash_keeper.eye_hi",
+    "npc.march.wandering_merchant.eye_hi",
     "npc.merchant.eye_hi",
     "npc.plains_herbalist.eye_hi",
     "npc.plains_wanderer.eye_hi",
@@ -101,7 +138,8 @@
    "i": 6,
    "l": 0.10196078431372549,
    "names": [
-    "npc.blacksmith.mouth"
+    "npc.blacksmith.mouth",
+    "npc.march.blacksmith.mouth"
    ],
    "o": 0.4,
    "s": 0.2
@@ -112,7 +150,9 @@
    "i": 7,
    "l": 0.3215686274509804,
    "names": [
-    "npc.blacksmith.top"
+    "npc.blacksmith.top",
+    "npc.march.blacksmith.top",
+    "npc.march.quest_elder.sleeve"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -123,7 +163,8 @@
    "i": 8,
    "l": 0.14901960784313725,
    "names": [
-    "npc.blacksmith.top_shade"
+    "npc.blacksmith.top_shade",
+    "npc.march.blacksmith.top_shade"
    ],
    "o": 0.4,
    "s": 0.25098039215686274
@@ -134,7 +175,8 @@
    "i": 9,
    "l": 0.3215686274509804,
    "names": [
-    "npc.blacksmith.legs"
+    "npc.blacksmith.legs",
+    "npc.march.blacksmith.legs"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -145,7 +187,11 @@
    "i": 10,
    "l": 0.3215686274509804,
    "names": [
-    "npc.blacksmith.boots"
+    "npc.blacksmith.boots",
+    "npc.march.blacksmith.boots",
+    "npc.march.crow_trader.slung_boots",
+    "npc.march.escort_traveling_merchant.boots",
+    "npckit.march.slung_boots"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -156,7 +202,10 @@
    "i": 11,
    "l": 0.10196078431372549,
    "names": [
-    "npc.blacksmith.boot_line"
+    "npc.blacksmith.boot_line",
+    "npc.march.blacksmith.boot_line",
+    "npc.march.crow_trader.slung_boots_line",
+    "npc.march.escort_traveling_merchant.boot_line"
    ],
    "o": 0.4,
    "s": 0.2980392156862745
@@ -168,6 +217,9 @@
    "l": 0.3215686274509804,
    "names": [
     "npc.blacksmith.belt",
+    "npc.march.blacksmith.belt",
+    "npc.march.plains_herbalist.belt",
+    "npc.march.wandering_merchant.belt",
     "npc.wandering_merchant.belt"
    ],
    "o": 0.4,
@@ -181,6 +233,17 @@
    "names": [
     "npc.blacksmith.gold",
     "npc.escort_traveling_merchant.gold",
+    "npc.march.blacksmith.gold",
+    "npc.march.crow_trader.gold",
+    "npc.march.escort_traveling_merchant.gold",
+    "npc.march.knell_chaplain.gold",
+    "npc.march.merchant.gold",
+    "npc.march.plains_herbalist.gold",
+    "npc.march.plains_wanderer.gold",
+    "npc.march.quest_elder.gold",
+    "npc.march.rescue_lost_traveler.gold",
+    "npc.march.stash_keeper.gold",
+    "npc.march.wandering_merchant.gold",
     "npc.merchant.gold",
     "npc.plains_herbalist.gold",
     "npc.plains_wanderer.gold",
@@ -195,6 +258,7 @@
     "npcprop.scroll.gold",
     "npcprop.staff.gold",
     "npcprop.sword.gold",
+    "npcprop.swordnotched.gold",
     "npcprop.tongs.gold"
    ],
    "o": 0.4,
@@ -208,6 +272,17 @@
    "names": [
     "npc.blacksmith.leather",
     "npc.escort_traveling_merchant.leather",
+    "npc.march.blacksmith.leather",
+    "npc.march.crow_trader.leather",
+    "npc.march.escort_traveling_merchant.leather",
+    "npc.march.knell_chaplain.leather",
+    "npc.march.merchant.leather",
+    "npc.march.plains_herbalist.leather",
+    "npc.march.plains_wanderer.leather",
+    "npc.march.quest_elder.leather",
+    "npc.march.rescue_lost_traveler.leather",
+    "npc.march.stash_keeper.leather",
+    "npc.march.wandering_merchant.leather",
     "npc.merchant.leather",
     "npc.plains_herbalist.leather",
     "npc.plains_wanderer.leather",
@@ -215,14 +290,22 @@
     "npc.rescue_lost_traveler.leather",
     "npc.stash_keeper.leather",
     "npc.wandering_merchant.leather",
+    "npckit.march.ledger",
+    "npcprop.barrow.leather",
     "npcprop.book.leather",
     "npcprop.hammer.leather",
+    "npcprop.handbell.leather",
     "npcprop.herbpouch.leather",
+    "npcprop.lantern.leather",
+    "npcprop.ledger.leather",
     "npcprop.pouch.leather",
     "npcprop.scroll.leather",
+    "npcprop.spade.leather",
     "npcprop.staff.leather",
     "npcprop.sword.leather",
-    "npcprop.tongs.leather"
+    "npcprop.swordnotched.leather",
+    "npcprop.tongs.leather",
+    "npcprop.vial.leather"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -288,7 +371,9 @@
    "i": 20,
    "l": 0.3215686274509804,
    "names": [
-    "npc.blacksmith.apron"
+    "npc.blacksmith.apron",
+    "npc.march.blacksmith.apron",
+    "npc.march.plains_herbalist.apron"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -299,7 +384,9 @@
    "i": 21,
    "l": 0.12156862745098039,
    "names": [
-    "npc.blacksmith.apron_line"
+    "npc.blacksmith.apron_line",
+    "npc.march.blacksmith.apron_line",
+    "npc.march.plains_herbalist.apron_line"
    ],
    "o": 0.4,
    "s": 0.2784313725490196
@@ -310,6 +397,8 @@
    "i": 22,
    "l": 0.5019607843137255,
    "names": [
+    "npc.march.quest_elder.gorget",
+    "npckit.march.gorget",
     "npcprop.book.metal",
     "npcprop.hammer.metal",
     "npcprop.herbpouch.metal",
@@ -317,6 +406,7 @@
     "npcprop.scroll.metal",
     "npcprop.staff.metal",
     "npcprop.sword.metal",
+    "npcprop.swordnotched.metal",
     "npcprop.tongs.metal"
    ],
    "o": 0.4,
@@ -329,17 +419,32 @@
    "l": 0.3215686274509804,
    "names": [
     "npc.escort_traveling_merchant.metal_dark",
+    "npc.march.crow_trader.feather_rib",
+    "npc.march.crow_trader.feather_sheen",
+    "npc.march.escort_traveling_merchant.wheel_iron",
+    "npc.march.plains_herbalist.metal_dark",
+    "npc.march.plains_wanderer.metal_dark",
+    "npc.march.quest_elder.halfplate_dark",
+    "npc.march.wandering_merchant.metal_dark",
     "npc.plains_herbalist.metal_dark",
     "npc.rescue_lost_traveler.metal_dark",
     "npc.wandering_merchant.metal_dark",
+    "npckit.march.halfplate_dark",
+    "npcprop.barrow.metal_dark",
     "npcprop.book.metal_dark",
     "npcprop.hammer.metal_dark",
+    "npcprop.handbell.metal_dark",
     "npcprop.herbpouch.metal_dark",
+    "npcprop.lantern.metal_dark",
+    "npcprop.ledger.metal_dark",
     "npcprop.pouch.metal_dark",
     "npcprop.scroll.metal_dark",
+    "npcprop.spade.metal_dark",
     "npcprop.staff.metal_dark",
     "npcprop.sword.metal_dark",
-    "npcprop.tongs.metal_dark"
+    "npcprop.swordnotched.metal_dark",
+    "npcprop.tongs.metal_dark",
+    "npcprop.vial.metal_dark"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -354,6 +459,7 @@
     "npcprop.book.metal_face",
     "npcprop.hammer.metal_face",
     "npcprop.herbpouch.metal_face",
+    "npcprop.march_anvil.iron_face",
     "npcprop.marker_excl_gold.iron_face",
     "npcprop.marker_quest_gold.iron_face",
     "npcprop.marker_quest_grey.iron_face",
@@ -361,6 +467,7 @@
     "npcprop.scroll.metal_face",
     "npcprop.staff.metal_face",
     "npcprop.sword.metal_face",
+    "npcprop.swordnotched.metal_face",
     "npcprop.tongs.metal_face"
    ],
    "o": 0.4,
@@ -372,14 +479,25 @@
    "i": 25,
    "l": 0.2980392156862745,
    "names": [
+    "npc.march.escort_traveling_merchant.wheel_wood",
+    "npc.march.wandering_merchant.tray",
+    "npckit.march.barrow_wood",
+    "npckit.march.tray",
+    "npcprop.barrow.wood",
     "npcprop.book.wood",
     "npcprop.hammer.wood",
+    "npcprop.handbell.wood",
     "npcprop.herbpouch.wood",
+    "npcprop.lantern.wood",
+    "npcprop.ledger.wood",
     "npcprop.pouch.wood",
     "npcprop.scroll.wood",
+    "npcprop.spade.wood",
     "npcprop.staff.wood",
     "npcprop.sword.wood",
-    "npcprop.tongs.wood"
+    "npcprop.swordnotched.wood",
+    "npcprop.tongs.wood",
+    "npcprop.vial.wood"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -390,14 +508,23 @@
    "i": 26,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.escort_traveling_merchant.wheel_dark",
+    "npc.march.wandering_merchant.tray_dark",
+    "npcprop.barrow.wood_dark",
     "npcprop.book.wood_dark",
     "npcprop.hammer.wood_dark",
+    "npcprop.handbell.wood_dark",
     "npcprop.herbpouch.wood_dark",
+    "npcprop.lantern.wood_dark",
+    "npcprop.ledger.wood_dark",
     "npcprop.pouch.wood_dark",
     "npcprop.scroll.wood_dark",
+    "npcprop.spade.wood_dark",
     "npcprop.staff.wood_dark",
     "npcprop.sword.wood_dark",
-    "npcprop.tongs.wood_dark"
+    "npcprop.swordnotched.wood_dark",
+    "npcprop.tongs.wood_dark",
+    "npcprop.vial.wood_dark"
    ],
    "o": 0.4,
    "s": 0.2980392156862745
@@ -408,14 +535,24 @@
    "i": 27,
    "l": 0.4,
    "names": [
+    "npc.march.wandering_merchant.relic",
+    "npckit.march.ledger_pages",
+    "npckit.march.relic",
+    "npcprop.barrow.paper",
     "npcprop.book.paper",
     "npcprop.hammer.paper",
+    "npcprop.handbell.paper",
     "npcprop.herbpouch.paper",
+    "npcprop.lantern.paper",
+    "npcprop.ledger.paper",
     "npcprop.pouch.paper",
     "npcprop.scroll.paper",
+    "npcprop.spade.paper",
     "npcprop.staff.paper",
     "npcprop.sword.paper",
-    "npcprop.tongs.paper"
+    "npcprop.swordnotched.paper",
+    "npcprop.tongs.paper",
+    "npcprop.vial.paper"
    ],
    "o": 0.4,
    "s": 0.25098039215686274
@@ -426,14 +563,21 @@
    "i": 28,
    "l": 0.14901960784313725,
    "names": [
+    "npcprop.barrow.ink_line",
     "npcprop.book.ink_line",
     "npcprop.hammer.ink_line",
+    "npcprop.handbell.ink_line",
     "npcprop.herbpouch.ink_line",
+    "npcprop.lantern.ink_line",
+    "npcprop.ledger.ink_line",
     "npcprop.pouch.ink_line",
     "npcprop.scroll.ink_line",
+    "npcprop.spade.ink_line",
     "npcprop.staff.ink_line",
     "npcprop.sword.ink_line",
-    "npcprop.tongs.ink_line"
+    "npcprop.swordnotched.ink_line",
+    "npcprop.tongs.ink_line",
+    "npcprop.vial.ink_line"
    ],
    "o": 0.4,
    "s": 0.2
@@ -444,21 +588,35 @@
    "i": 29,
    "l": 0.12156862745098039,
    "names": [
+    "npcprop.barrow.leather_dark",
     "npcprop.book.leather_dark",
     "npcprop.hammer.leather_dark",
+    "npcprop.handbell.leather_dark",
     "npcprop.herbpouch.leather_dark",
+    "npcprop.lantern.leather_dark",
+    "npcprop.ledger.leather_dark",
     "npcprop.pouch.leather_dark",
     "npcprop.scroll.leather_dark",
+    "npcprop.spade.leather_dark",
     "npcprop.staff.leather_dark",
     "npcprop.sword.leather_dark",
-    "npcprop.tongs.leather_dark"
+    "npcprop.swordnotched.leather_dark",
+    "npcprop.tongs.leather_dark",
+    "npcprop.vial.leather_dark"
    ],
    "o": 0.4,
    "s": 0.2980392156862745
   },
   {
-   "free": true,
-   "i": 30
+   "e": 0.0,
+   "hex": "#6E2422",
+   "i": 30,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.quest_elder.top"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
   },
   {
    "e": 1.0,
@@ -473,6 +631,7 @@
     "npcprop.scroll.orb_hot",
     "npcprop.staff.orb_hot",
     "npcprop.sword.orb_hot",
+    "npcprop.swordnotched.orb_hot",
     "npcprop.tongs.orb_hot"
    ],
    "o": 0.4,
@@ -491,6 +650,7 @@
     "npcprop.scroll.book",
     "npcprop.staff.book",
     "npcprop.sword.book",
+    "npcprop.swordnotched.book",
     "npcprop.tongs.book"
    ],
    "o": 0.4,
@@ -509,6 +669,7 @@
     "npcprop.scroll.book_dark",
     "npcprop.staff.book_dark",
     "npcprop.sword.book_dark",
+    "npcprop.swordnotched.book_dark",
     "npcprop.tongs.book_dark"
    ],
    "o": 0.4,
@@ -527,6 +688,7 @@
     "npcprop.scroll.hot_iron",
     "npcprop.staff.hot_iron",
     "npcprop.sword.hot_iron",
+    "npcprop.swordnotched.hot_iron",
     "npcprop.tongs.hot_iron"
    ],
    "o": 0.4,
@@ -545,6 +707,7 @@
     "npcprop.scroll.hot_core",
     "npcprop.staff.hot_core",
     "npcprop.sword.hot_core",
+    "npcprop.swordnotched.hot_core",
     "npcprop.tongs.hot_core"
    ],
    "o": 0.4,
@@ -563,6 +726,7 @@
     "npcprop.scroll.herb",
     "npcprop.staff.herb",
     "npcprop.sword.herb",
+    "npcprop.swordnotched.herb",
     "npcprop.tongs.herb"
    ],
    "o": 0.4,
@@ -581,6 +745,7 @@
     "npcprop.scroll.herb_light",
     "npcprop.staff.herb_light",
     "npcprop.sword.herb_light",
+    "npcprop.swordnotched.herb_light",
     "npcprop.tongs.herb_light"
    ],
    "o": 0.4,
@@ -599,6 +764,7 @@
     "npcprop.scroll.blade",
     "npcprop.staff.blade",
     "npcprop.sword.blade",
+    "npcprop.swordnotched.blade",
     "npcprop.tongs.blade"
    ],
    "o": 0.4,
@@ -617,6 +783,7 @@
     "npcprop.scroll.blade_edge",
     "npcprop.staff.blade_edge",
     "npcprop.sword.blade_edge",
+    "npcprop.swordnotched.blade_edge",
     "npcprop.tongs.blade_edge"
    ],
    "o": 0.4,
@@ -685,6 +852,7 @@
    "l": 0.4,
    "names": [
     "npcprop.anvil.iron",
+    "npcprop.march_anvil.iron",
     "npcprop.marker_excl_gold.iron",
     "npcprop.marker_quest_gold.iron",
     "npcprop.marker_quest_grey.iron"
@@ -787,6 +955,9 @@
    "i": 52,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.merchant.mouth",
+    "npc.march.plains_herbalist.mouth",
+    "npc.march.wandering_merchant.mouth",
     "npc.merchant.mouth",
     "npc.wandering_merchant.mouth"
    ],
@@ -832,6 +1003,10 @@
    "i": 56,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.escort_traveling_merchant.legs",
+    "npc.march.merchant.legs",
+    "npc.march.plains_herbalist.legs",
+    "npc.march.wandering_merchant.legs",
     "npc.merchant.legs",
     "npc.wandering_merchant.legs"
    ],
@@ -844,6 +1019,10 @@
    "i": 57,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.crow_trader.boots",
+    "npc.march.merchant.boots",
+    "npc.march.plains_herbalist.boots",
+    "npc.march.wandering_merchant.boots",
     "npc.merchant.boots",
     "npc.quest_elder.boots",
     "npc.wandering_merchant.boots"
@@ -857,6 +1036,10 @@
    "i": 58,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.crow_trader.boot_line",
+    "npc.march.merchant.boot_line",
+    "npc.march.plains_herbalist.boot_line",
+    "npc.march.wandering_merchant.boot_line",
     "npc.merchant.boot_line",
     "npc.quest_elder.boot_line",
     "npc.wandering_merchant.boot_line"
@@ -870,6 +1053,7 @@
    "i": 59,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.merchant.belt",
     "npc.merchant.belt"
    ],
    "o": 0.4,
@@ -893,6 +1077,7 @@
    "i": 61,
    "l": 0.34901960784313724,
    "names": [
+    "npc.march.merchant.hair",
     "npc.merchant.beard",
     "npc.merchant.hair"
    ],
@@ -905,6 +1090,7 @@
    "i": 62,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.merchant.hair_line",
     "npc.merchant.beard_line",
     "npc.merchant.hair_line"
    ],
@@ -917,6 +1103,7 @@
    "i": 63,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.merchant.brow",
     "npc.merchant.brow"
    ],
    "o": 0.4,
@@ -951,6 +1138,9 @@
    "l": 0.25098039215686274,
    "names": [
     "npc.escort_traveling_merchant.skin",
+    "npc.march.escort_traveling_merchant.skin",
+    "npc.march.quest_elder.skin",
+    "npc.march.rescue_lost_traveler.skin",
     "npc.quest_elder.skin",
     "npc.rescue_lost_traveler.skin"
    ],
@@ -964,6 +1154,9 @@
    "l": 0.14901960784313725,
    "names": [
     "npc.escort_traveling_merchant.skin_shade",
+    "npc.march.escort_traveling_merchant.skin_shade",
+    "npc.march.quest_elder.skin_shade",
+    "npc.march.rescue_lost_traveler.skin_shade",
     "npc.quest_elder.skin_shade",
     "npc.rescue_lost_traveler.skin_shade"
    ],
@@ -977,6 +1170,9 @@
    "l": 0.25098039215686274,
    "names": [
     "npc.escort_traveling_merchant.blush",
+    "npc.march.escort_traveling_merchant.blush",
+    "npc.march.quest_elder.blush",
+    "npc.march.rescue_lost_traveler.blush",
     "npc.quest_elder.blush",
     "npc.rescue_lost_traveler.blush"
    ],
@@ -990,6 +1186,9 @@
    "l": 0.10196078431372549,
    "names": [
     "npc.escort_traveling_merchant.mouth",
+    "npc.march.escort_traveling_merchant.mouth",
+    "npc.march.quest_elder.mouth",
+    "npc.march.rescue_lost_traveler.mouth",
     "npc.quest_elder.mouth",
     "npc.rescue_lost_traveler.mouth"
    ],
@@ -1058,6 +1257,9 @@
    "i": 75,
    "l": 0.34901960784313724,
    "names": [
+    "npc.march.escort_traveling_merchant.hair",
+    "npc.march.plains_herbalist.hair",
+    "npc.march.quest_elder.hair",
     "npc.quest_elder.hair"
    ],
    "o": 0.4,
@@ -1069,6 +1271,9 @@
    "i": 76,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.escort_traveling_merchant.hair_line",
+    "npc.march.plains_herbalist.hair_line",
+    "npc.march.quest_elder.hair_line",
     "npc.quest_elder.hair_line"
    ],
    "o": 0.4,
@@ -1080,6 +1285,7 @@
    "i": 77,
    "l": 0.4,
    "names": [
+    "npc.march.escort_traveling_merchant.beard",
     "npc.quest_elder.beard"
    ],
    "o": 0.4,
@@ -1091,6 +1297,7 @@
    "i": 78,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.escort_traveling_merchant.beard_line",
     "npc.quest_elder.beard_line"
    ],
    "o": 0.4,
@@ -1102,6 +1309,9 @@
    "i": 79,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.escort_traveling_merchant.brow",
+    "npc.march.plains_herbalist.brow",
+    "npc.march.quest_elder.brow",
     "npc.quest_elder.brow"
    ],
    "o": 0.4,
@@ -1113,6 +1323,7 @@
    "i": 80,
    "l": 0.34901960784313724,
    "names": [
+    "npc.march.rescue_lost_traveler.mantle",
     "npc.quest_elder.mantle"
    ],
    "o": 0.4,
@@ -1124,6 +1335,7 @@
    "i": 81,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.rescue_lost_traveler.mantle_line",
     "npc.quest_elder.mantle_line"
    ],
    "o": 0.4,
@@ -1246,6 +1458,7 @@
    "i": 92,
    "l": 0.45098039215686275,
    "names": [
+    "npc.march.plains_herbalist.trim",
     "npc.plains_herbalist.trim"
    ],
    "o": 0.4,
@@ -1334,6 +1547,7 @@
    "i": 100,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.plains_herbalist.pack",
     "npc.plains_herbalist.pack"
    ],
    "o": 0.4,
@@ -1345,6 +1559,7 @@
    "i": 101,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.plains_herbalist.pack_line",
     "npc.plains_herbalist.pack_line"
    ],
    "o": 0.4,
@@ -1357,9 +1572,29 @@
    "l": 0.3215686274509804,
    "names": [
     "npc.escort_traveling_merchant.bedroll",
+    "npc.march.blacksmith.cord",
+    "npc.march.crow_trader.boot_tan",
+    "npc.march.crow_trader.cord",
+    "npc.march.knell_chaplain.belt",
+    "npc.march.merchant.cord",
+    "npc.march.plains_herbalist.bedroll",
+    "npc.march.plains_wanderer.bedroll",
+    "npc.march.rescue_lost_traveler.belt",
+    "npc.march.rescue_lost_traveler.cord",
+    "npc.march.wandering_merchant.bedroll",
+    "npc.march.wandering_merchant.cord",
     "npc.plains_herbalist.bedroll",
     "npc.rescue_lost_traveler.bedroll",
-    "npc.wandering_merchant.bedroll"
+    "npc.wandering_merchant.bedroll",
+    "npckit.march.cord",
+    "npcprop.barrow.cord",
+    "npcprop.barrow.earth",
+    "npcprop.handbell.cord",
+    "npcprop.lantern.cord",
+    "npcprop.ledger.cord",
+    "npcprop.spade.cord",
+    "npcprop.swordnotched.cord",
+    "npcprop.vial.cord"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -1370,6 +1605,8 @@
    "i": 103,
    "l": 0.25098039215686274,
    "names": [
+    "npc.march.crow_trader.skin",
+    "npc.march.plains_wanderer.skin",
     "npc.plains_wanderer.skin"
    ],
    "o": 0.4,
@@ -1381,6 +1618,8 @@
    "i": 104,
    "l": 0.14901960784313725,
    "names": [
+    "npc.march.crow_trader.skin_shade",
+    "npc.march.plains_wanderer.skin_shade",
     "npc.plains_wanderer.skin_shade"
    ],
    "o": 0.4,
@@ -1392,6 +1631,8 @@
    "i": 105,
    "l": 0.25098039215686274,
    "names": [
+    "npc.march.crow_trader.blush",
+    "npc.march.plains_wanderer.blush",
     "npc.plains_wanderer.blush"
    ],
    "o": 0.4,
@@ -1403,6 +1644,8 @@
    "i": 106,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.crow_trader.mouth",
+    "npc.march.plains_wanderer.mouth",
     "npc.plains_wanderer.mouth"
    ],
    "o": 0.4,
@@ -1437,6 +1680,10 @@
    "i": 109,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.crow_trader.legs",
+    "npc.march.knell_chaplain.legs",
+    "npc.march.plains_wanderer.legs",
+    "npc.march.quest_elder.legs",
     "npc.plains_wanderer.legs"
    ],
    "o": 0.4,
@@ -1448,6 +1695,9 @@
    "i": 110,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.knell_chaplain.boots",
+    "npc.march.plains_wanderer.boots",
+    "npc.march.quest_elder.boots",
     "npc.plains_wanderer.boots"
    ],
    "o": 0.4,
@@ -1459,6 +1709,9 @@
    "i": 111,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.knell_chaplain.boot_line",
+    "npc.march.plains_wanderer.boot_line",
+    "npc.march.quest_elder.boot_line",
     "npc.plains_wanderer.boot_line"
    ],
    "o": 0.4,
@@ -1470,6 +1723,11 @@
    "i": 112,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.crow_trader.belt",
+    "npc.march.escort_traveling_merchant.belt",
+    "npc.march.plains_wanderer.belt",
+    "npc.march.quest_elder.belt",
+    "npc.march.stash_keeper.belt",
     "npc.plains_wanderer.belt"
    ],
    "o": 0.4,
@@ -1493,6 +1751,9 @@
    "i": 114,
    "l": 0.34901960784313724,
    "names": [
+    "npc.march.crow_trader.hair",
+    "npc.march.plains_wanderer.beard",
+    "npc.march.plains_wanderer.hair",
     "npc.plains_wanderer.beard",
     "npc.plains_wanderer.hair"
    ],
@@ -1505,6 +1766,9 @@
    "i": 115,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.crow_trader.hair_line",
+    "npc.march.plains_wanderer.beard_line",
+    "npc.march.plains_wanderer.hair_line",
     "npc.plains_wanderer.beard_line",
     "npc.plains_wanderer.hair_line"
    ],
@@ -1517,6 +1781,7 @@
    "i": 116,
    "l": 0.2,
    "names": [
+    "npc.march.plains_wanderer.stubble",
     "npc.plains_wanderer.stubble"
    ],
    "o": 0.4,
@@ -1528,6 +1793,8 @@
    "i": 117,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.crow_trader.brow",
+    "npc.march.plains_wanderer.brow",
     "npc.plains_wanderer.brow"
    ],
    "o": 0.4,
@@ -1596,7 +1863,11 @@
    "names": [
     "npc.escort_traveling_merchant.hat",
     "npc.escort_traveling_merchant.sleeve",
-    "npc.escort_traveling_merchant.top"
+    "npc.escort_traveling_merchant.top",
+    "npc.march.escort_traveling_merchant.sleeve",
+    "npc.march.escort_traveling_merchant.top",
+    "npc.march.wandering_merchant.sleeve",
+    "npc.march.wandering_merchant.top"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -1607,7 +1878,9 @@
    "i": 124,
    "l": 0.14901960784313725,
    "names": [
-    "npc.escort_traveling_merchant.top_shade"
+    "npc.escort_traveling_merchant.top_shade",
+    "npc.march.escort_traveling_merchant.top_shade",
+    "npc.march.wandering_merchant.top_shade"
    ],
    "o": 0.4,
    "s": 0.25098039215686274
@@ -1676,7 +1949,9 @@
    "l": 0.34901960784313724,
    "names": [
     "npc.escort_traveling_merchant.beard",
-    "npc.escort_traveling_merchant.hair"
+    "npc.escort_traveling_merchant.hair",
+    "npc.march.blacksmith.beard",
+    "npc.march.blacksmith.hair"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -1688,7 +1963,9 @@
    "l": 0.12156862745098039,
    "names": [
     "npc.escort_traveling_merchant.beard_line",
-    "npc.escort_traveling_merchant.hair_line"
+    "npc.escort_traveling_merchant.hair_line",
+    "npc.march.blacksmith.beard_line",
+    "npc.march.blacksmith.hair_line"
    ],
    "o": 0.4,
    "s": 0.2784313725490196
@@ -1699,7 +1976,8 @@
    "i": 132,
    "l": 0.10196078431372549,
    "names": [
-    "npc.escort_traveling_merchant.brow"
+    "npc.escort_traveling_merchant.brow",
+    "npc.march.blacksmith.brow"
    ],
    "o": 0.4,
    "s": 0.2784313725490196
@@ -1755,6 +2033,8 @@
    "i": 137,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.rescue_lost_traveler.legs",
+    "npc.march.stash_keeper.legs",
     "npc.rescue_lost_traveler.legs"
    ],
    "o": 0.4,
@@ -1766,6 +2046,8 @@
    "i": 138,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.rescue_lost_traveler.boots",
+    "npc.march.stash_keeper.boots",
     "npc.rescue_lost_traveler.boots"
    ],
    "o": 0.4,
@@ -1777,6 +2059,8 @@
    "i": 139,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.rescue_lost_traveler.boot_line",
+    "npc.march.stash_keeper.boot_line",
     "npc.rescue_lost_traveler.boot_line"
    ],
    "o": 0.4,
@@ -1788,6 +2072,7 @@
    "i": 140,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.plains_wanderer.pack",
     "npc.rescue_lost_traveler.belt",
     "npc.rescue_lost_traveler.pack"
    ],
@@ -1811,6 +2096,7 @@
    "i": 142,
    "l": 0.34901960784313724,
    "names": [
+    "npc.march.rescue_lost_traveler.hair",
     "npc.rescue_lost_traveler.hair"
    ],
    "o": 0.4,
@@ -1822,6 +2108,7 @@
    "i": 143,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.rescue_lost_traveler.hair_line",
     "npc.rescue_lost_traveler.hair_line"
    ],
    "o": 0.4,
@@ -1833,6 +2120,7 @@
    "i": 144,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.rescue_lost_traveler.brow",
     "npc.rescue_lost_traveler.brow"
    ],
    "o": 0.4,
@@ -1844,6 +2132,7 @@
    "i": 145,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.plains_wanderer.pack_line",
     "npc.rescue_lost_traveler.pack_line"
    ],
    "o": 0.4,
@@ -1855,6 +2144,9 @@
    "i": 146,
    "l": 0.25098039215686274,
    "names": [
+    "npc.march.merchant.skin",
+    "npc.march.plains_herbalist.skin",
+    "npc.march.wandering_merchant.skin",
     "npc.wandering_merchant.skin"
    ],
    "o": 0.4,
@@ -1866,6 +2158,9 @@
    "i": 147,
    "l": 0.14901960784313725,
    "names": [
+    "npc.march.merchant.skin_shade",
+    "npc.march.plains_herbalist.skin_shade",
+    "npc.march.wandering_merchant.skin_shade",
     "npc.wandering_merchant.skin_shade"
    ],
    "o": 0.4,
@@ -1877,6 +2172,9 @@
    "i": 148,
    "l": 0.25098039215686274,
    "names": [
+    "npc.march.merchant.blush",
+    "npc.march.plains_herbalist.blush",
+    "npc.march.wandering_merchant.blush",
     "npc.wandering_merchant.blush"
    ],
    "o": 0.4,
@@ -1888,6 +2186,7 @@
    "i": 149,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.merchant.top",
     "npc.wandering_merchant.sleeve",
     "npc.wandering_merchant.top"
    ],
@@ -1900,6 +2199,7 @@
    "i": 150,
    "l": 0.14901960784313725,
    "names": [
+    "npc.march.merchant.top_shade",
     "npc.wandering_merchant.top_shade"
    ],
    "o": 0.4,
@@ -1911,6 +2211,10 @@
    "i": 151,
    "l": 0.45098039215686275,
    "names": [
+    "npc.march.merchant.trim",
+    "npc.march.quest_elder.trim",
+    "npc.march.wandering_merchant.hat_accent",
+    "npc.march.wandering_merchant.trim",
     "npc.wandering_merchant.trim"
    ],
    "o": 0.4,
@@ -1922,6 +2226,8 @@
    "i": 152,
    "l": 0.34901960784313724,
    "names": [
+    "npc.march.wandering_merchant.beard",
+    "npc.march.wandering_merchant.hair",
     "npc.wandering_merchant.beard",
     "npc.wandering_merchant.hair"
    ],
@@ -1934,6 +2240,8 @@
    "i": 153,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.wandering_merchant.beard_line",
+    "npc.march.wandering_merchant.hair_line",
     "npc.wandering_merchant.beard_line",
     "npc.wandering_merchant.hair_line"
    ],
@@ -1946,6 +2254,7 @@
    "i": 154,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.wandering_merchant.brow",
     "npc.wandering_merchant.brow"
    ],
    "o": 0.4,
@@ -1957,6 +2266,8 @@
    "i": 155,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.plains_herbalist.hat",
+    "npc.march.wandering_merchant.hat",
     "npc.wandering_merchant.hat"
    ],
    "o": 0.4,
@@ -1968,6 +2279,8 @@
    "i": 156,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.plains_herbalist.hat_line",
+    "npc.march.wandering_merchant.hat_line",
     "npc.wandering_merchant.hat_line"
    ],
    "o": 0.4,
@@ -1979,6 +2292,7 @@
    "i": 157,
    "l": 0.3215686274509804,
    "names": [
+    "npc.march.wandering_merchant.pack",
     "npc.wandering_merchant.pack"
    ],
    "o": 0.4,
@@ -1990,6 +2304,7 @@
    "i": 158,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.wandering_merchant.pack_line",
     "npc.wandering_merchant.pack_line"
    ],
    "o": 0.4,
@@ -2001,6 +2316,8 @@
    "i": 159,
    "l": 0.25098039215686274,
    "names": [
+    "npc.march.knell_chaplain.skin",
+    "npc.march.stash_keeper.skin",
     "npc.stash_keeper.skin"
    ],
    "o": 0.4,
@@ -2012,6 +2329,8 @@
    "i": 160,
    "l": 0.14901960784313725,
    "names": [
+    "npc.march.knell_chaplain.skin_shade",
+    "npc.march.stash_keeper.skin_shade",
     "npc.stash_keeper.skin_shade"
    ],
    "o": 0.4,
@@ -2023,6 +2342,8 @@
    "i": 161,
    "l": 0.25098039215686274,
    "names": [
+    "npc.march.knell_chaplain.blush",
+    "npc.march.stash_keeper.blush",
     "npc.stash_keeper.blush"
    ],
    "o": 0.4,
@@ -2034,6 +2355,8 @@
    "i": 162,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.knell_chaplain.mouth",
+    "npc.march.stash_keeper.mouth",
     "npc.stash_keeper.mouth"
    ],
    "o": 0.4,
@@ -2113,6 +2436,8 @@
    "i": 169,
    "l": 0.34901960784313724,
    "names": [
+    "npc.march.knell_chaplain.hair",
+    "npc.march.stash_keeper.hair",
     "npc.stash_keeper.hair"
    ],
    "o": 0.4,
@@ -2124,6 +2449,8 @@
    "i": 170,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.knell_chaplain.hair_line",
+    "npc.march.stash_keeper.hair_line",
     "npc.stash_keeper.hair_line"
    ],
    "o": 0.4,
@@ -2135,6 +2462,8 @@
    "i": 171,
    "l": 0.10196078431372549,
    "names": [
+    "npc.march.knell_chaplain.brow",
+    "npc.march.stash_keeper.brow",
     "npc.stash_keeper.brow"
    ],
    "o": 0.4,
@@ -2157,7 +2486,10 @@
    "i": 173,
    "l": 0.4,
    "names": [
-    "npc.stash_keeper.brass"
+    "npc.march.blacksmith.brass",
+    "npc.march.stash_keeper.brass",
+    "npc.stash_keeper.brass",
+    "npckit.march.crypt_keys"
    ],
    "o": 0.4,
    "s": 0.4196078431372549
@@ -2168,6 +2500,7 @@
    "i": 174,
    "l": 0.12156862745098039,
    "names": [
+    "npc.march.stash_keeper.brass_dark",
     "npc.stash_keeper.brass_dark"
    ],
    "o": 0.4,
@@ -2186,10 +2519,406 @@
     "npcprop.scroll.orb",
     "npcprop.staff.orb",
     "npcprop.sword.orb",
+    "npcprop.swordnotched.orb",
     "npcprop.tongs.orb"
    ],
    "o": 0.4,
    "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#301219",
+   "i": 176,
+   "l": 0.14901960784313725,
+   "names": [
+    "npc.march.quest_elder.top_shade"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#2C292C",
+   "i": 177,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.crow_trader.sleeve",
+    "npc.march.crow_trader.top",
+    "npc.march.knell_chaplain.sleeve",
+    "npc.march.knell_chaplain.top",
+    "npckit.march.cassock"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#17141D",
+   "i": 178,
+   "l": 0.14901960784313725,
+   "names": [
+    "npc.march.crow_trader.top_shade",
+    "npc.march.knell_chaplain.top_shade"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#5E5A4A",
+   "i": 179,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.plains_herbalist.sleeve",
+    "npc.march.plains_herbalist.top"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#2A2628",
+   "i": 180,
+   "l": 0.14901960784313725,
+   "names": [
+    "npc.march.plains_herbalist.top_shade"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#4E5040",
+   "i": 181,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.plains_wanderer.sleeve",
+    "npc.march.plains_wanderer.top"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#232224",
+   "i": 182,
+   "l": 0.14901960784313725,
+   "names": [
+    "npc.march.plains_wanderer.top_shade"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#4A5058",
+   "i": 183,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.plains_wanderer.hat"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#22222D",
+   "i": 184,
+   "l": 0.12156862745098039,
+   "names": [
+    "npc.march.plains_wanderer.hat_line"
+   ],
+   "o": 0.4,
+   "s": 0.2784313725490196
+  },
+  {
+   "e": 0.0,
+   "hex": "#8A8270",
+   "i": 185,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.rescue_lost_traveler.sleeve",
+    "npc.march.rescue_lost_traveler.top"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#3A3536",
+   "i": 186,
+   "l": 0.14901960784313725,
+   "names": [
+    "npc.march.rescue_lost_traveler.top_shade"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#1E1C22",
+   "i": 187,
+   "l": 0.34901960784313724,
+   "names": [
+    "npc.march.crow_trader.mantle"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#110F19",
+   "i": 188,
+   "l": 0.12156862745098039,
+   "names": [
+    "npc.march.crow_trader.mantle_line"
+   ],
+   "o": 0.4,
+   "s": 0.2784313725490196
+  },
+  {
+   "e": 0.0,
+   "hex": "#6E7076",
+   "i": 189,
+   "l": 0.5019607843137255,
+   "names": [
+    "npc.march.quest_elder.halfplate",
+    "npckit.march.halfplate"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#8E5A50",
+   "i": 190,
+   "l": 0.25098039215686274,
+   "names": [
+    "npc.march.quest_elder.burn_scar",
+    "npckit.march.burn_scar"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#6E6A66",
+   "i": 191,
+   "l": 0.25098039215686274,
+   "names": [
+    "npc.march.knell_chaplain.ash_brow",
+    "npc.march.knell_chaplain.fringe",
+    "npckit.march.ash_brow"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#8A6A3A",
+   "i": 192,
+   "l": 0.45098039215686275,
+   "names": [
+    "npckit.march.handbell",
+    "npcprop.barrow.bronze",
+    "npcprop.handbell.bronze",
+    "npcprop.lantern.bronze",
+    "npcprop.ledger.bronze",
+    "npcprop.spade.bronze",
+    "npcprop.vial.bronze"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#4A3A22",
+   "i": 193,
+   "l": 0.12156862745098039,
+   "names": [
+    "npckit.march.handbell_dark",
+    "npcprop.barrow.bronze_dark",
+    "npcprop.handbell.bronze_dark",
+    "npcprop.lantern.bronze_dark",
+    "npcprop.ledger.bronze_dark",
+    "npcprop.spade.bronze_dark",
+    "npcprop.vial.bronze_dark"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#2E2A26",
+   "i": 194,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.wandering_merchant.lining",
+    "npckit.march.lantern_frame",
+    "npcprop.barrow.frame",
+    "npcprop.handbell.frame",
+    "npcprop.lantern.frame",
+    "npcprop.ledger.frame",
+    "npcprop.march_anvil.bark",
+    "npcprop.spade.frame",
+    "npcprop.vial.frame"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.5490196078431373,
+   "hex": "#F0A060",
+   "i": 195,
+   "l": 0.0,
+   "names": [
+    "npckit.march.lantern_glow",
+    "npcprop.barrow.glow",
+    "npcprop.handbell.glow",
+    "npcprop.lantern.glow",
+    "npcprop.ledger.glow",
+    "npcprop.spade.glow",
+    "npcprop.vial.glow"
+   ],
+   "o": 0.4,
+   "s": 0.0
+  },
+  {
+   "e": 0.0,
+   "hex": "#3A2A26",
+   "i": 196,
+   "l": 0.2,
+   "names": [
+    "npc.march.escort_traveling_merchant.stain",
+    "npc.march.plains_herbalist.stain",
+    "npc.march.wandering_merchant.stain",
+    "npckit.march.stain",
+    "npcprop.spade.earth"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#B8B0A0",
+   "i": 197,
+   "l": 0.2980392156862745,
+   "names": [
+    "npckit.march.shroud",
+    "npcprop.handbell.shroud",
+    "npcprop.lantern.shroud",
+    "npcprop.ledger.shroud",
+    "npcprop.spade.shroud",
+    "npcprop.vial.shroud"
+   ],
+   "o": 0.4,
+   "s": 0.34901960784313724
+  },
+  {
+   "e": 0.0,
+   "hex": "#9A9080",
+   "i": 198,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.merchant.sleeve",
+    "npcprop.barrow.shroud"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#3E3630",
+   "i": 199,
+   "l": 0.3215686274509804,
+   "names": [
+    "npc.march.stash_keeper.sleeve",
+    "npc.march.stash_keeper.top"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#1D181E",
+   "i": 200,
+   "l": 0.14901960784313725,
+   "names": [
+    "npc.march.stash_keeper.top_shade"
+   ],
+   "o": 0.4,
+   "s": 0.25098039215686274
+  },
+  {
+   "e": 0.0,
+   "hex": "#554F51",
+   "i": 201,
+   "l": 0.12156862745098039,
+   "names": [
+    "npcprop.barrow.shroud_line",
+    "npcprop.handbell.shroud_line",
+    "npcprop.lantern.shroud_line",
+    "npcprop.ledger.shroud_line",
+    "npcprop.spade.shroud_line",
+    "npcprop.vial.shroud_line"
+   ],
+   "o": 0.4,
+   "s": 0.2784313725490196
+  },
+  {
+   "e": 0.0,
+   "hex": "#302E39",
+   "i": 202,
+   "l": 0.12156862745098039,
+   "names": [
+    "npc.march.quest_elder.halfplate_line"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#1C1916",
+   "i": 203,
+   "l": 0.12156862745098039,
+   "names": [
+    "npcprop.march_anvil.bark_dark"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#4A3A2E",
+   "i": 204,
+   "l": 0.25882352941176473,
+   "names": [
+    "npcprop.march_anvil.wood_top"
+   ],
+   "o": 0.4,
+   "s": 0.4196078431372549
+  },
+  {
+   "e": 0.0,
+   "hex": "#221A1E",
+   "i": 205,
+   "l": 0.12156862745098039,
+   "names": [
+    "npcprop.march_anvil.rings"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#868C95",
+   "i": 206,
+   "l": 0.4,
+   "names": [
+    "npcprop.march_anvil.iron_face_worn"
+   ],
+   "o": 0.4,
+   "s": 0.2980392156862745
   }
  ]
 }

@@ -15,6 +15,16 @@ item_bases,pets,story}.json``, ``Art/Export/VFX/vfx_recipes.json``, ``Source/Aby
 
 Status per row: **OK** (resolves to existing files with complete fields), **GAP** (the game asks for it and gets
 nothing / a fallback), **NOTE** (intentional and documented: fallback chain, later milestone, runtime-owned).
+
+**Presentation theme** (dark remake, U1): the zone's ``presentationTheme`` (``Data/maps.json``; ``march`` for
+``emerald_plains``, 焚境 · The Burning March) makes every lookup try ``<id>@<theme>`` before ``<id>``, as the runtime
+does. Under a theme the checklist also requires: every slot ``march/march_palettes.VARIANTS`` plans a themed variant for
+resolves to it (a plains fallback there is a GAP), the speaking NPCs' portraits of their themed looks, the boss and
+mini-boss portraits, the echo lore through the ``MI_AF_Echo`` figure contract, the U4 set pieces (``setpiece_*``, the
+defend gate), the elite markers (``elite_crown@march`` W1, ``elite_sigil`` W2), the theme's terrain set, the
+monsters.md §5 budgets of the remake roster, and the march coherence metrics (``coherence/lineup_metrics_march.json``,
+``lineup.py --march``: DR5 ember / violet discipline and the value hierarchy on the rendered lineup). The plains
+generator theme still picks the decor pools (a map-generator input, chapter1.md §15).
 """
 from __future__ import annotations
 
@@ -32,8 +42,9 @@ PREVIEWS = ART / "Previews"
 DATA = UNREAL / "Data"
 OUT = EXPORT / "CHECKLIST.md"
 METRICS = HERE / "lineup_metrics.json"
+METRICS_MARCH = HERE / "lineup_metrics_march.json"
 ZONE = "emerald_plains"
-THEME = "plains"
+THEME = "plains"                 # the map generator's theme (decor pools, wall ids): a generator input
 PREVIEW_MAX = 200 * 1024
 
 # spec §1.3 outline classes: screen px at 1080p and baked width (cm); §1.6 / DECISIONS R2 heights (cm, tolerance)
@@ -41,8 +52,17 @@ CLASS_PX = {"hero": 3.5, "boss": 3.5, "weapon": 3.5, "npc": 3.0, "monster": 3.0,
             "interactive": 2.0, "decor": 1.2}
 CLASS_CM = {"hero": 1.8, "boss": 1.8, "npc": 1.6, "monster": 1.5, "small_monster": 1.4, "interactive": 1.3,
             "weapon": 1.3, "decor": 1.2}
-# documented family-wide departures (envkit.PX_OVERRIDE: Props_Plains decor 1.4 px, see envkit.py)
-PX_OVERRIDE = {("Props_Plains", "decor"): 1.4}
+# documented family-wide departures (envkit.PX_OVERRIDE: Props_Plains decor 1.4 px, see envkit.py; the march props
+# keep the same decor ink, envkit_march.py / DECISIONS R14)
+PX_OVERRIDE = {("Props_Plains", "decor"): 1.4, ("Props_March", "decor"): 1.4}
+# monsters.md §5 budgets of the dark-remake Chapter 1 roster (LOD0 toon max, LOD1 toon max)
+REMAKE_BUDGET = {"SK_Mon_RisenFootman": (7000, 3000), "SK_Mon_RisenArbalest": (7000, 3000),
+                 "SK_Mon_RisenShieldbearer": (7000, 3000), "SK_Mon_DeadStandardBearer": (7500, 3000),
+                 "SK_Mon_OathZealot": (7000, 3000), "SK_Mon_Deserter": (7000, 3000),
+                 "SK_Mon_DeserterDrummer": (7000, 3000), "SK_Mon_Gravegnawer": (6100, 3200),
+                 "SK_Mon_Bonegorger": (9000, 3300), "SK_Mon_Corpseherd": (9000, 3400),
+                 "SK_Mon_Breachclot": (2900, 1500), "SK_Mon_Cinderbloat": (2900, 1500),
+                 "SK_Mon_Valdras": (11000, 4000)}
 R2_HEIGHT = {"SK_Hero_Warrior": (176, 2), "SK_Hero_Mage": (171, 2), "SK_Hero_Rogue": (162, 2),
              "SK_Mon_Goblin": (92, 2), "SK_Mon_GoblinChief": (117, 2), "SK_Mon_GoblinShaman": (95, 2.5),
              "SK_Mon_Slime": (43, 1.5)}
@@ -86,11 +106,30 @@ class Check:
         for name in sorted(self.assets):
             for g in self.assets[name].get("gameIds", []) or []:
                 self.by_gid[g].append(name)
+        self.zmap = load(DATA / "maps.json")["maps"][ZONE]
+        self.ptheme = self.zmap.get("presentationTheme") or None    # the zone's presentation theme (U1)
+        if self.ptheme == "plains":
+            self.ptheme = None
+        self.planned = self._planned_variants()
+
+    def _planned_variants(self) -> dict[str, str]:
+        """{base game id: planned asset} of the theme's slots (``march/march_palettes.VARIANTS``, pure Python)."""
+        if self.ptheme != "march":
+            return {}
+        sys.path.insert(0, str(HERE.parent / "march"))
+        try:
+            import march_palettes as MP
+        finally:
+            sys.path.pop(0)
+        return {base: asset for base, asset, _pkg, _note in MP.VARIANTS}
 
     # ── resolution ──────────────────────────────────────────────────────────────────────────────────
     def resolve(self, cands: list[str]) -> tuple[str | None, list[str]]:
-        """First candidate that is a game id (all variants listing it, asset-name order) or an asset name."""
+        """First candidate that is a game id (all variants listing it, asset-name order) or an asset name; under a
+        presentation theme each candidate is tried as ``<id>@<theme>`` first (the runtime's U1 lookup)."""
         for c in cands:
+            if self.ptheme and f"{c}@{self.ptheme}" in self.by_gid:
+                return f"{c}@{self.ptheme}", self.by_gid[f"{c}@{self.ptheme}"]
             if c in self.by_gid:
                 return c, self.by_gid[c]
             if c in self.assets:
@@ -196,12 +235,27 @@ class Check:
             self.row(section, gid, [], "GAP", f"no asset for any of {', '.join(cands)}" + (f"; {note}" if note else ""))
             return []
         probs = []
+        if self.ptheme and hit and "@" not in hit and hit in self.planned:
+            probs.append(f"the {self.ptheme} theme plans {self.planned[hit]} for `{hit}@{self.ptheme}` "
+                         f"(march_palettes.VARIANTS): the {hit} slot falls back to the plains art")
         for n in names:
             probs += [f"{n}: {p}" for p in self.asset_problems(n, clips, gated)]
             self.used[n].append(gid)
         self.row(section, gid, names, "GAP" if probs else "OK",
                  "; ".join(probs) if probs else (f"via `{hit}`" + (f" — {note}" if note else "")))
         return names
+
+    def portrait_cands(self, cands_ids: list[str], base: str) -> list[str]:
+        """Portrait texture candidates of a speaker: the ``portrait`` of the asset its look resolves to (the themed
+        look's own portrait first), then ``T_UI_Portrait_<Base>``."""
+        out = []
+        _, names = self.resolve(cands_ids)
+        for n in names[:1]:
+            f = self.assets[n].get("portrait")
+            if isinstance(f, str):
+                out.append(Path(f).stem)
+        out.append(f"T_UI_Portrait_{base}")
+        return out
 
     def need_ui(self, section: str, gid: str, cands: list[str], note: str = "", gap: bool = True) -> None:
         for c in cands:
@@ -285,10 +339,28 @@ class Check:
                 self.row("Monsters", f"{h['huntId']} (variant)", names[:1], "OK" if v else "GAP",
                          f"×{v.get('scale')} + {', '.join(a['object'] for a in v.get('attachments', []))}" if v else
                          "no `variants` entry (scale / attachments) on the base asset")
-        self.need("Monsters", "elite crown", ["elite_crown", "SM_FX_EliteCrown"])
+        self.need("Monsters", "elite crown", ["elite_crown", "SM_FX_EliteCrown"],
+                  note="W1 elite marker on fx_overhead (an asset with eliteMarker none opts out)")
+        if self.ptheme:
+            self.need("Monsters", "elite sigil (W2)", ["elite_sigil"], note="W2 elite marker (monsters.md §3)")
+            no_marker = sorted(n for n, e in self.assets.items() if e.get("eliteMarker") == "none")
+            self.row("Monsters", "elite marker opt-outs", no_marker, "NOTE",
+                     "eliteMarker none (the story boss: monsters.md §2.6 bans a crown; the runtime skips the overhead "
+                     "marker, core lane AbyssWorldBuilder::UpdateElite)")
+        boss_cs = set()
         for bi in story.get("bossIntros", []):
             if bi["monsterId"] in mids:
-                self.need_ui("Portraits", f"boss {bi['monsterId']}", [f"T_UI_Portrait_{pascal(bi['monsterId'])}"])
+                boss_cs.add(bi.get("cutscene"))
+                d = defs[bi["monsterId"]]
+                cands = self.portrait_cands([d.get("spriteKey", ""), bi["monsterId"], f"monster_{bi['monsterId']}"],
+                                            pascal(bi["monsterId"]))
+                self.need_ui("Portraits", f"boss {bi['monsterId']}", cands)
+        if mini and self.ptheme:
+            mdef = (mb.get("defs") or {}).get(mini) or {}
+            art = mdef.get("spriteKey") or mini
+            cands = self.portrait_cands([art, f"monster_{art}", mini, f"monster_{mini}"],
+                                        pascal(mini.removeprefix("miniboss_")))
+            self.need_ui("Portraits", f"mini-boss {mini}", cands, note="the mini-boss's pre-fight lines")
 
         # NPCs: camps, field NPCs, quest escort, random-event NPCs; portraits; quest markers
         npc_ids = []
@@ -304,16 +376,18 @@ class Check:
             sp = n.get("spriteId")
             cands = ([f"npc_{sp}", sp] if sp else []) + [f"npc_{nid}", nid]
             self.need("NPCs", nid, cands, NPC_CLIPS)
-            self.need_ui("Portraits", f"npc {nid}", [f"T_UI_Portrait_{pascal(nid)}"])
+            self.need_ui("Portraits", f"npc {nid}", self.themed_portrait(cands, pascal(nid)))
         for q in zq:
             if q.get("escortNpc"):
                 art = q["escortNpc"].get("spriteKey")
                 self.need("NPCs", f"escort ({q['id']})", [art, f"npc_{art}"], NPC_CLIPS + ESCORT_CLIPS)
-                self.need_ui("Portraits", f"escort {art}", [f"T_UI_Portrait_{pascal(art.removeprefix('npc_'))}"])
+                self.need_ui("Portraits", f"escort {art}",
+                             self.themed_portrait([art, f"npc_{art}"], pascal(art.removeprefix('npc_'))))
         for art in (rev.get("rescueNpcSpriteKey"), "npc_wandering_merchant"):
             if art:
                 self.need("NPCs", f"event {art}", [art, f"npc_{art}"], NPC_CLIPS)
-                self.need_ui("Portraits", f"event {art}", [f"T_UI_Portrait_{pascal(art.removeprefix('npc_'))}"])
+                self.need_ui("Portraits", f"event {art}",
+                             self.themed_portrait([art, f"npc_{art}"], pascal(art.removeprefix('npc_'))))
         for g in ("quest_marker_available", "quest_marker_complete", "quest_marker_progress"):
             self.need("NPCs", g, [g], gated=False, note="overhead marker (gated with the NPC look)")
         self.need("NPCs", "npc_scenery_anvil", ["npc_scenery_anvil"])
@@ -356,6 +430,9 @@ class Check:
                     self.need("Hidden areas", f"{ha['id']} {rw['type']}", [f"decor_{rw['type']}", rw["type"]])
         for lo in lore:
             st = lo["spriteType"]
+            if st == "echo":
+                self.echo_row(lo["id"])
+                continue
             self.need("Lore", lo["id"], [f"lore_{st}", st, f"decor_{st}"])
         for ex in zmap.get("exits", []):
             self.need("Exits", f"exit → {ex['targetMap']} (W7 sealed)", ["exit_gate_sealed", "exit_sealed"])
@@ -374,8 +451,15 @@ class Check:
             self.need_ui("Quest-item icons", kind, [f"T_UI_QuestItem_{kind}"])
         self.need("Quests", "clue marker", ["clue_mark", "fx_clue", "SM_FX_ClueMagnifier"])
         self.need("Quests", "guide arrow", ["guide_arrow", "SM_FX_GuideArrow"])
-        for g in ("goblin_hut", "goblin_fire_pit", "goblin_bone_totem", "goblin_spear_rack", "goblin_crates"):
-            self.need("Goblin camp (§6.9)", g, [g], note="placed by the level script (no Source/Data placement yet)")
+        if not self.ptheme:
+            for g in ("goblin_hut", "goblin_fire_pit", "goblin_bone_totem", "goblin_spear_rack", "goblin_crates"):
+                self.need("Goblin camp (§6.9)", g, [g], note="placed by the level script (no Source/Data placement yet)")
+        else:
+            # the UE set-piece layer (U4, implementation-plan.md §4.4): every set piece the theme ships, the M5 defend
+            # gate, the order post (lore_rf_01's own look)
+            sp_ids = sorted(g for g in self.by_gid if g.startswith("setpiece_"))
+            for g in sp_ids + ["decor_defend_boneyard_gate", "lore_order_post"]:
+                self.need("Set pieces (U4)", g, [g], note="placed by the UE set-piece layer (U4)")
 
         # ground loot
         self.need("Loot", "loot_bag", ["loot_bag", "SM_Loot_Bag"])
@@ -398,20 +482,27 @@ class Check:
                   "quest_complete", "close", "sort"):
             self.need_ui("Glyphs", g, [f"T_UI_Glyph_{g}"])
         speakers = set()
+        prefix = "cs_rf_" if self.ptheme == "march" else "cs_ep_"     # the chapter's cutscenes + its boss intro
         for cid, cs in story["cutscenes"].items():
-            if not (cid.startswith("cs_ep_") or cid == "cs_boss_goblin_chief"):
+            if not (cid.startswith(prefix) or cid in boss_cs or (not self.ptheme and cid == "cs_boss_goblin_chief")):
                 continue
             for stp in cs["steps"]:
                 spk = stp.get("speaker")
                 if isinstance(spk, dict):
-                    speakers.add(next(iter(spk.values())))
+                    speakers.add(next(iter(spk.items())))
                 if stp.get("kind") == "whisper":
-                    speakers.add("emblem_villain")
-        for s in sorted(speakers):
-            if s.startswith("emblem_"):
-                self.need_ui("Portraits", f"speaker {s}", [f"T_UI_Emblem_{pascal(s[7:])}"])
+                    speakers.add(("emblem", "villain"))
+        for kind, sid in sorted(speakers):
+            if kind == "emblem":
+                self.need_ui("Portraits", f"speaker emblem_{sid}", [f"T_UI_Emblem_{pascal(sid)}"])
+            elif kind == "npc":
+                sp = (npcs.get(sid) or {}).get("spriteId")
+                cands = ([f"npc_{sp}", sp] if sp else []) + [f"npc_{sid}", sid]
+                self.need_ui("Portraits", f"speaker {sid}", self.themed_portrait(cands, pascal(sid)))
             else:
-                self.need_ui("Portraits", f"speaker {s}", [f"T_UI_Portrait_{pascal(s)}"])
+                d = defs.get(sid) or {}
+                cands = self.portrait_cands([d.get("spriteKey", ""), sid, f"monster_{sid}"], pascal(sid))
+                self.need_ui("Portraits", f"speaker {sid}", cands)
         self.need_ui("Portraits", "emblem_generic", ["T_UI_Emblem_Generic"])
 
         # palettes, terrain, VFX sprites
@@ -420,18 +511,22 @@ class Check:
             miss = [f for f in files if not f or not (EXPORT / f).is_file()]
             self.row("Palettes", fam, [pe.get("material", "")], "GAP" if miss else "OK",
                      f"missing {miss}" if miss else "BC + P atlases")
-        ter = self.man.get("terrain", {}).get(THEME)
-        if not ter:
-            self.row("Terrain", THEME, [], "GAP", "manifest.terrain.plains missing")
-        else:
+        for th in [THEME] + ([self.ptheme] if self.ptheme else []):
+            ter = self.man.get("terrain", {}).get(th)
+            mi = f"MI_AF_Terrain_{pascal(th)}"
+            if not ter:
+                self.row("Terrain", th, [], "GAP", f"manifest.terrain.{th} missing")
+                continue
             files = [v["file"] for v in ter["layers"].values()] + [ter["details"]["file"]]
             for k in ("noise", "water"):
                 v = ter.get(k)
                 if isinstance(v, dict) and v.get("file"):
                     files.append(v["file"])
             miss = [f for f in files if not (EXPORT / f).is_file()]
-            self.row("Terrain", THEME, ["MI_AF_Terrain_Plains"], "GAP" if miss else "OK",
-                     f"missing {miss}" if miss else f"{len(files)} textures")
+            used = (f"presentation theme of {ZONE}" if th == self.ptheme else
+                    "generator theme; the presentation of zones without a theme (ember_tower)")
+            self.row("Terrain", th, [mi], "GAP" if miss else "OK",
+                     f"missing {miss}" if miss else f"{len(files)} textures ({used})")
         for sp, se in sorted(recipes.get("sprites", {}).items()):
             tex = se.get("texture") or f"T_FX_{sp}"
             ok = (EXPORT / "VFX" / f"{tex}.png").is_file()
@@ -440,6 +535,44 @@ class Check:
             ok = mn in self.assets and (EXPORT / me.get("fbx", "")).is_file()
             self.row("VFX meshes", mn, [mn], "OK" if ok else "GAP", "" if ok else "not exported")
             self.used[mn].append("vfx")
+
+    def themed_portrait(self, cands_ids: list[str], base: str) -> list[str]:
+        """An NPC's portrait candidates; when its look resolves to a themed asset, only that look's own portrait
+        counts (the plains portrait would show the plains look)."""
+        hit, names = self.resolve(cands_ids)
+        pc = self.portrait_cands(cands_ids, base)
+        if self.ptheme and hit and "@" in hit and names and self.assets[names[0]].get("portrait"):
+            return pc[:1]
+        return pc
+
+    def echo_row(self, lid: str) -> None:
+        """Echo lore (spriteType ``echo``, U1 draws translucent figures frozen in a pose): the ``MI_AF_Echo`` figure
+        contract of the manifest names the figures, their assets and clips."""
+        echo = (self.man.get("materials") or {}).get("MI_AF_Echo") or {}
+        fig = (echo.get("figures") or {}).get(lid)
+        if not fig:
+            self.row("Lore", lid, [], "GAP", "no MI_AF_Echo figure contract for this echo")
+            return
+        probs, used = [], []
+        for f in fig.get("figures", []):
+            a = f.get("asset")
+            if a not in self.assets:
+                probs.append(f"figure asset {a} missing")
+                continue
+            used.append(a)
+            src = f.get("clipAsset") or a
+            if f.get("clip") not in {c.get("name") for c in self.assets.get(src, {}).get("anims", [])}:
+                probs.append(f"{a}: clip {f.get('clip')} not on {src}")
+            for p in self.asset_problems(a, gated=True):
+                probs.append(f"{a}: {p}")
+            self.used[a].append(lid)
+        for pr in fig.get("props", []) or []:
+            if pr not in self.assets:
+                probs.append(f"prop {pr} missing")
+        follow = [f.get("followUp") for f in fig.get("figures", []) if f.get("followUp")]
+        self.row("Lore", lid, used + ["MI_AF_Echo"], "GAP" if probs else "OK",
+                 "; ".join(probs) if probs else f"MI_AF_Echo: {len(fig.get('figures', []))} figure(s) at "
+                 f"{tuple(fig.get('tile', ()))}" + (f" (follow-up: {', '.join(follow)})" if follow else ""))
 
     def camp_types(self) -> list[str]:
         src = (UNREAL / "Source/AbyssCore/Public/abyss/world/CampLayout.h").read_text()
@@ -462,8 +595,9 @@ class Check:
     def coherence(self) -> list[dict]:
         out = []
 
-        def add(rule, subject, ok, detail):
-            out.append({"rule": rule, "subject": subject, "status": "OK" if ok else "GAP", "detail": detail})
+        def add(rule, subject, ok, detail, status=None):
+            out.append({"rule": rule, "subject": subject, "status": status or ("OK" if ok else "GAP"),
+                        "detail": detail})
         per_asset: dict[str, list[str]] = defaultdict(list)      # documented per-asset ink requests
         char_gate: list[str] = []
         n_chars = 0
@@ -532,7 +666,11 @@ class Check:
                 fam = "ground"
             if fam and tri is not None:
                 lo, hi, lod1 = BUDGET[fam]
-                if not lo <= tri <= hi:
+                if fam == "npc" and tri < lo:
+                    # §1.9 is a performance budget: a lighter NPC costs nothing (the band floor is a detail target)
+                    add("§1.9 LOD0 budget", name, True, f"{tri} toon tris under the {lo}-{hi} NPC band "
+                        "(performance budget, lighter is allowed)", status="NOTE")
+                elif not lo <= tri <= hi:
                     add("§1.9 LOD0 budget", name, False, f"{tri} toon tris outside {lo}-{hi}")
                 if lod1:
                     lods = e.get("lods") or []
@@ -540,6 +678,12 @@ class Check:
                         add("§1.9 LOD1", name, False, f"no LOD1 (budget {lod1})")
                     elif (lods[0].get("triangles") or {}).get("toon", 0) > lod1 * 1.05:
                         add("§1.9 LOD1", name, False, f"LOD1 {lods[0]['triangles']['toon']} > {lod1}")
+            if name in REMAKE_BUDGET and tri is not None:
+                hi, lod1 = REMAKE_BUDGET[name]
+                lods = e.get("lods") or []
+                l1 = (lods[0].get("triangles") or {}).get("toon") if lods else None
+                ok = tri <= hi and l1 is not None and l1 <= lod1
+                add("monsters.md §5 budget", name, ok, f"LOD0 {tri} / {hi}, LOD1 {l1} / {lod1} toon tris")
             if e.get("kind") == "SkeletalMesh":
                 cap = BONES_PER_SECTION.get(e.get("skeleton"))
                 wb = (e.get("budget") or {}).get("weightedBones")
@@ -561,6 +705,15 @@ class Check:
         else:
             add("§1.5 saturation hierarchy", "lineup", False, "coherence/lineup_metrics.json missing "
                 "(run coherence/lineup.py)")
+        if self.ptheme:
+            # the presentation theme's lineup (the zone as shipped): DR5 discipline + value hierarchy on the render
+            if METRICS_MARCH.is_file():
+                met = load(METRICS_MARCH)
+                for r in met.get("rules", []):
+                    add(f"[{self.ptheme}] {r['rule']}", r["subject"], r["ok"], r["detail"])
+            else:
+                add(f"[{self.ptheme}] lineup", "lineup", False, "coherence/lineup_metrics_march.json missing "
+                    "(run coherence/lineup.py --march)")
         return out
 
     # ── report ──────────────────────────────────────────────────────────────────────────────────────
@@ -568,16 +721,21 @@ class Check:
         gaps = [r for r in self.rows if r["status"] == "GAP"]
         cgaps = [c for c in coh if c["status"] == "GAP"]
         shipped = sorted(n for n in self.assets if not n.startswith(("SK_Test_", "SM_Test_")))
-        L = ["# Chapter-1 art checklist (`emerald_plains`)", "",
+        th = self.ptheme
+        L = [f"# Chapter-1 art checklist (`{ZONE}`" + (f", presentation theme `{th}`)" if th else ")"), "",
              "Generated by `Art/blender/coherence/checklist.py` from `Art/Export/manifest.json` and the game data "
              "(`Data/*.json`, `CampLayout.h`) with the runtime's own id resolution (`WorldContract.md` §2.2, "
-             "`AbyssUiContext`). Do not edit by hand: re-run the script.", "",
+             "`AbyssUiContext`" + (f"; every id tried as `<id>@{th}` first, U1 — the zone's `presentationTheme` in "
+                                   "`Data/maps.json`" if th else "") + "). Do not edit by hand: re-run the script.",
+             "",
              f"**{len(self.rows)} requirements: {sum(r['status'] == 'OK' for r in self.rows)} OK, {len(gaps)} GAP, "
              f"{sum(r['status'] == 'NOTE' for r in self.rows)} NOTE · coherence rules: {len(cgaps)} GAP** · "
              f"{len(shipped)} manifest assets, {len(self.ui)} UI textures.", "",
              "Status: **OK** = resolves to existing files with complete manifest fields (FBX, clips, LODs, previews "
              "≤ 200 KB, ink gate passed); **GAP** = the game asks for it and gets nothing or a fallback; **NOTE** = "
-             "intentional, documented fallback.", ""]
+             "intentional, documented fallback." + (
+                 f" Under the `{th}` theme a slot that `march/march_palettes.VARIANTS` plans a themed variant for "
+                 "is a GAP when it falls back to its plains asset." if th else ""), ""]
         if gaps or cgaps:
             L += ["## Open gaps", ""]
             for r in gaps:
@@ -607,7 +765,12 @@ class Check:
               "(every hero, monster, NPC and companion ship gated at ≥ 3 px dark rim on ≥ 90 % of the silhouette edges of "
               "every 1080p cell), R2 heights, §1.9 LOD0 / LOD1 / bone budgets, and the render-measured rules of the "
               "coherence lineup (`Previews/ch1_coherence/`): §1.5 saturation hierarchy, measured ink per family at "
-              "1080p, the character gate on the lineup figures, key-light side, FBX re-import scale.", "",
+              "1080p, the character gate on the lineup figures, key-light side, FBX re-import scale." + (
+                  f" Under the `{th}` theme also the monsters.md §5 budgets of the remake roster and the rules of the "
+                  "march lineup (`Previews/ch1_coherence_march/`, rows prefixed `[march]`): the same family rules on "
+                  "the themed assets plus DR5 — no ember on enemies, breach-violet only on enemies and breach-sourced "
+                  "props, warm light only on refuges / interaction / loot — and the value hierarchy (actors above "
+                  "decor)." if th else ""), "",
               "| Rule | Subject | Status | Detail |", "|---|---|---|---|"]
         for c in coh:
             L.append(f"| {c['rule']} | {c['subject']} | {c['status']} | {c['detail'].replace('|', chr(92) + '|')} |")

@@ -9,6 +9,28 @@
   ],
   "texture": "T_FX_Arrow"
  },
+ "AshFlake": {
+  "cells": 4,
+  "blend": "translucent",
+  "texture": "T_FX_AshFlake",
+  "size": [
+   128,
+   32
+  ],
+  "note": "cel ash flakes (tint ash grey): 0 plate_a, 1 plate_b, 2 plate_c, 3 curl",
+  "owner": "A12 (vfx/fx_textures_dark.py)"
+ },
+ "AshNoise": {
+  "cells": 1,
+  "blend": "translucent",
+  "texture": "T_FX_AshNoise",
+  "size": [
+   256,
+   256
+  ],
+  "note": "M_AF_AshDissolve data: R fBm front, G crack mask, B per-plate random (tileable)",
+  "owner": "A12 (vfx/fx_textures_dark.py)"
+ },
  "Beam": {
   "blend": "additive",
   "cells": 2,
@@ -159,6 +181,17 @@
   ],
   "texture": "T_FX_Flame"
  },
+ "FlameBreach": {
+  "cells": 4,
+  "blend": "translucent",
+  "texture": "T_FX_FlameBreach",
+  "size": [
+   256,
+   128
+  ],
+  "note": "pre-coloured breach fire (violet-black, never ember): 0 tall, 1 forked, 2 lick, 3 wisp",
+  "owner": "A12 (vfx/fx_textures_dark.py)"
+ },
  "Frost": {
   "blend": "additive",
   "cells": 1,
@@ -245,6 +278,17 @@
   ],
   "texture": "T_FX_Puff"
  },
+ "RaiseSigil": {
+  "cells": 1,
+  "blend": "additive",
+  "texture": "T_FX_RaiseSigil",
+  "size": [
+   256,
+   256
+  ],
+  "note": "raise marker: ring + seven inward hooked fingers",
+  "owner": "A12 (vfx/fx_textures_dark.py)"
+ },
  "Ring": {
   "blend": "additive",
   "cells": 1,
@@ -254,6 +298,17 @@
    256
   ],
   "texture": "T_FX_Ring"
+ },
+ "Ripple": {
+  "cells": 2,
+  "blend": "additive",
+  "texture": "T_FX_Ripple",
+  "size": [
+   512,
+   256
+  ],
+  "note": "bell sound ripple: two broken rings, outer at 0.4375 of the quad; 0 standard, 1 fine (radii of metres)",
+  "owner": "A12 (vfx/fx_textures_dark.py)"
  },
  "Rock": {
   "blend": "translucent",
@@ -384,6 +439,28 @@
    256
   ],
   "texture": "T_FX_Swirl"
+ },
+ "TelegraphFill": {
+  "cells": 1,
+  "blend": "translucent",
+  "texture": "T_FX_TelegraphFill",
+  "size": [
+   256,
+   256
+  ],
+  "note": "M_AF_Telegraph fill grain (tileable cracked ash, values .66-1, world XY)",
+  "owner": "A12 (vfx/fx_textures_dark.py)"
+ },
+ "TelegraphRim": {
+  "cells": 1,
+  "blend": "translucent",
+  "texture": "T_FX_TelegraphRim",
+  "size": [
+   256,
+   64
+  ],
+  "note": "M_AF_Telegraph rim profile strip (row 0 = the boundary, tileable along the edge): scorched line + decaying 45-degree hatch",
+  "owner": "A12 (vfx/fx_textures_dark.py)"
  },
  "Wisp": {
   "blend": "additive",

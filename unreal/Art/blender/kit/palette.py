@@ -33,7 +33,10 @@ UNUSED_RGB = (255, 0, 255)
 
 FAMILIES = ("Heroes", "Monsters_Plains", "NPC", "Props_Plains", "Foliage_Plains", "FX", "Test",
             "Weapons", "Pickups",   # Weapons: generic equipment meshes (+ tier atlases, items/), Pickups: ground loot
-            "Pets")                 # Pets: ley-beast companions (pets/, DECISIONS Q3)
+            "Pets",                 # Pets: ley-beast companions (pets/, DECISIONS Q3)
+            # dark remake 焚境 (Docs/dark-remake, package A1): the Chapter-1 `march` theme's monster / prop /
+            # foliage atlases (colour script and usage: march/march_palettes.py); NPCs append to "NPC"
+            "Monsters_March", "Props_March", "Foliage_March")
 
 
 def _q8(v: float) -> int:

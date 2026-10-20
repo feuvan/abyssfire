@@ -1332,12 +1332,56 @@ def scene_shot(meshes: Sequence, focus: V3, out: Path, label: str, size_px=(1280
     if extra_post is not None:
         img = extra_post(img, cam, box)
     out.parent.mkdir(parents=True, exist_ok=True)
-
-    def annotate(t, i, k):
-        review.draw_text(t, 6, 6, label + (f"  TILE {i + 1}/{k}" if k > 1 else ""))
-    pngio.write_png_native(out, img, annotate=annotate)
+    write_banded(out, img, label)
     print(f"  {out}")
     return out
+
+
+# ── preview labels in a reserved band (env art review: headers overprinted the props' top edge) ─────────────
+HEADER_BG = (24, 20, 30)
+HEADER_TICK = (40, 34, 48)
+HEADER_BAND = 16          # one text line (the 5 × 7 font + shadow at y 4)
+ROW_BAND = 26             # a sheet row's band: line 1 = the sheet header (drawn per tile), line 2 = the cell labels
+
+
+def label_band(width: int, h: int = HEADER_BAND) -> np.ndarray:
+    """A label band (``HEADER_BG``) with a 1-px tick at x 0, so its rows are never uniform: ``pngio`` cuts tiles
+    only on uniform pad lines, never inside or right under a band."""
+    band = np.zeros((h, width, 3), np.uint8)
+    band[:, :] = HEADER_BG
+    band[:, 0] = HEADER_TICK
+    return band
+
+
+def write_banded(path, img: np.ndarray, label: str, h: int = HEADER_BAND):
+    """A single native render under a reserved header band: the label is drawn in the band, never over the render;
+    oversized renders are cut side by side (axis 1) so every tile keeps its band."""
+    def annotate(t, i, k):
+        review.draw_text(t, 4, 4, label + (f"  TILE {i + 1}/{k}" if k > 1 else ""))
+    return pngio.write_png_native(path, np.vstack([label_band(img.shape[1], h), img]), annotate=annotate, axis=1)
+
+
+def banded_grid(cells: Sequence[np.ndarray], labels: Sequence[str], cols: int, pad: int = 2) -> np.ndarray:
+    """``review.grid`` with a ``ROW_BAND`` label band above every row of cells (after the row's pad): line 1 stays
+    free for the sheet header (``annotate`` draws it at y 4 of every tile — tiles are cut on the pads, so each
+    starts at most ``pad`` px above a band), line 2 carries each cell's label above its own column."""
+    g = review.grid(list(cells), cols, pad=pad)
+    h = max(c.shape[0] for c in cells)
+    w = max(c.shape[1] for c in cells)
+    rows = (len(cells) + cols - 1) // cols
+    parts = []
+    for r in range(rows):
+        y0 = pad + r * (h + pad)
+        parts.append(g[y0 - pad:y0])
+        band = label_band(g.shape[1], ROW_BAND)
+        for k in range(cols):
+            i = r * cols + k
+            if i < len(labels):
+                review.draw_text(band, pad + k * (w + pad) + 3, ROW_BAND - 11, labels[i])
+        parts.append(band)
+        parts.append(g[y0:y0 + h])
+    parts.append(g[g.shape[0] - pad:])
+    return np.vstack(parts)
 
 
 # ── family sheet: variants at the W1 camera, native 1080p, with the warrior ─────────────────────────────
@@ -1391,7 +1435,8 @@ def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_
     out_dir.mkdir(parents=True, exist_ok=True)
     review.stage(blob_radius=0.3)
     # every other mesh in the scene (a second family built in the same scene) stays hidden for the whole sheet
-    others = [o for o in bpy.data.objects if o.type == "MESH" and o not in objs and o.name != "AF_Stage"
+    members = set(objs) | {c for o in objs for c in o.children_recursive}
+    others = [o for o in bpy.data.objects if o.type == "MESH" and o not in members and o.name != "AF_Stage"
               and not o.hide_render]
     for o in others:
         o.hide_render = True
@@ -1402,12 +1447,17 @@ def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_
     entries = []                       # (label, meshes, box px)
     for o in objs:
         o.rotation_euler = (0, 0, math.radians(facing_deg))
-        cls = o.get("af_outline_class", "decor")
-        px = (px_map or {}).get(o.name, ink_px(o.get("af_family", ""), cls))
-        if px:
-            review.set_outline_px([o], px)
+        # mesh children render in their parent's cell (a prop and its dressing placed together)
+        group = [o] + [c for c in o.children_recursive if c.type == "MESH"]
+        for m in group:
+            m.hide_render = True
+            cls = m.get("af_outline_class", "decor")
+            px = (px_map or {}).get(m.name, ink_px(m.get("af_family", ""), cls))
+            if px:
+                review.set_outline_px([m], px)
         bpy.context.view_layer.update()
-        entries.append((short_name(o.name), [o], projected_box(cam, [o])))
+        cell = short_name(o.name) + "".join(" + " + short_name(c.name) for c in group[1:])
+        entries.append((cell, group, projected_box(cam, group)))
     w_meshes = []
     if warrior:
         w = import_warrior()
@@ -1438,20 +1488,19 @@ def family_sheet(objs: Sequence, out_name: str, label: str, cols: int = 4, half_
         img = review.render_array(box)
         for m in meshes:
             m.hide_render = True
-        review.draw_text(img, 3, 3, text)
         cells.append(img)
-    for o in objs:
-        o.hide_render = False
+    for o in members:
+        if o.type == "MESH":
+            o.hide_render = False
     for o in others:
         o.hide_render = False
-    sheet = review.grid(cells, cols, pad=2)
-    lab = np.zeros((14, sheet.shape[1], 3), np.uint8)
-    lab[:, :] = (24, 20, 30)
+    # labels live in reserved bands (env art review: the header and cell names overprinted the props' top edge)
+    sheet = banded_grid(cells, [t for t, _, _ in entries], cols, pad=2)
     text = f"{label}  W1 GAME CAMERA  NATIVE 1080P 1:1  SHIPPED INK"
 
-    def annotate(t, i, k):                 # the band stays blank until the tiles are cut (pads remain separators)
+    def annotate(t, i, k):                 # line 1 of the band at the top of every tile
         review.draw_text(t, 4, 4, text + (f"  {i + 1}/{k}" if k > 1 else ""))
     p = out_dir / out_name
-    pngio.write_png_native(p, np.vstack([lab, sheet]), annotate=annotate)
+    pngio.write_png_native(p, sheet, annotate=annotate)
     print(f"  {p}")
     return p

@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import os
 import struct
 import zlib
 from pathlib import Path
@@ -113,7 +114,11 @@ def write_png(path: str | Path, img: np.ndarray, *, palette: bool = False, level
     data = b"".join(chunks)
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_bytes(data)
+    # atomic: parallel ships rewrite a shared family atlas (``Palette.save``) while other processes render with it —
+    # a reader must see the old file or the new one, never a half-written PNG (Cycles: "Not a PNG file" → magenta)
+    tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, p)
     return len(data)
 
 

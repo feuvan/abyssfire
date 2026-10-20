@@ -10,6 +10,13 @@
                                        march terrain exists)
         [--facing=se] [--clip=Idle] [--frame=0] [--no-variants] [--per-page=6]
         [--out=<dir>] [--report=<json>] [--no-report]
+        [--zone=<id>] [--all]          roster: on a themed ground (march, or a flat colour while the manifest has the
+                                       march set) the monsters of the zones that theme presents (``kit.theme.THEMES``:
+                                       ``emerald_plains``' Data roster + mini-boss + hunt bases), else every shipped
+                                       monster; ``--zone`` picks the zone, ``--all`` keeps every shipped monster
+
+Presentation theme: the run resolves ``<id>@<theme>`` first (``cohkit.set_theme``), so a hunt's elite crown is the
+theme's (``elite_crown@march`` → ``SM_FX_EliteCrown_March``) as the runtime places it.
 
 Every monster the game ships (manifest ``SkeletalMesh`` entries in ``Monsters/``; each quest-hunt ``variants`` entry as
 its own figure: scale, attachments, elite crown) is re-imported from ``Art/Export`` exactly as the coherence lineups do
@@ -69,6 +76,7 @@ from mathutils import Vector  # noqa: E402
 
 import terrain as T  # noqa: E402
 from kit import palette, paths, pngio, review, scene, shading  # noqa: E402
+from kit.theme import THEMES  # noqa: E402
 
 OUT = paths.preview_root() / "ch1_dark"
 REPORT = "darkgate_report.json"
@@ -119,13 +127,41 @@ def _label(name: str) -> str:
     return re.sub(r"[^A-Z0-9 .\-_:/()+#=%]", "", name) or "?"
 
 
-def roster(only: list[str], variants: bool = True) -> list[tuple[str, str | None, str]]:
-    """[(asset, variant, label)] of every shipped monster (+ its hunt variants), manifest order."""
+def zone_assets(zone: str) -> list[str]:
+    """The monster assets a zone spawns (``Data/monsters.json`` ``byZone``, its mini-boss, the bases of its quest
+    hunts), resolved like the runtime / ``coherence/checklist.py``: ``spriteKey`` → ``monster_<spriteKey>`` → the id →
+    ``monster_<id>``, first game id any manifest asset lists (``cohkit.variant_names`` under the theme)."""
+    data = paths.UNREAL_ROOT / "Data"
+    mon = json.loads((data / "monsters.json").read_text())
+    defs = mon["defs"]
+    ids = list(mon["byZone"].get(zone, []))
+    mb = json.loads((data / "minibosses.json").read_text())
+    mini = mb["byZone"].get(zone)
+    hunts = [h["monsterId"] for h in json.loads((data / "quest_hunts.json").read_text())["hunts"] if h["zone"] == zone]
+    out: list[str] = []
+    for mid in ids + ([mini] if mini else []) + hunts:
+        d = defs.get(mid) or ((mb.get("defs") or {}).get(mid) or {})
+        art = d.get("spriteKey") or mid
+        for c in (art, f"monster_{art}", mid, f"monster_{mid}"):
+            names = K.variant_names(c)
+            if names:
+                out += [n for n in names if n not in out]
+                break
+        else:
+            raise SystemExit(f"zone {zone}: no shipped asset for monster {mid!r}")
+    return out
+
+
+def roster(only: list[str], variants: bool = True, among: list[str] | None = None) -> list[tuple[str, str | None, str]]:
+    """[(asset, variant, label)] of every shipped monster (+ its hunt variants), manifest order; ``among`` limits the
+    roster to those assets (a zone's monsters) without making it a partial run."""
     out = []
     for name, e in K.manifest()["assets"].items():
         if e.get("kind") != "SkeletalMesh" or e.get("category") != "Monsters":
             continue
         if only and name not in only:
+            continue
+        if among is not None and name not in among:
             continue
         if K.slot_info(e)[1] not in MONSTER_CLASSES:
             continue
@@ -388,9 +424,10 @@ def _clear_material():
 
 
 def figure_pass(fig: K.Figure, every: list, box, body_mat, shell_mat=None, samples: int = 8) -> np.ndarray:
-    """A data render (EXR, linear) of one figure over ``box``: ``body_mat(mesh)`` on the toon slot of its meshes
-    (``None`` = black), black on the ink hulls and on its extras (the elite crown occludes), ``shell_mat`` on
-    dithered shell slots (≥ 2; ``None`` = left out), every other object and the stage hidden, black world."""
+    """A data render (EXR, linear) of one figure over ``box``: ``body_mat(mesh)`` on the toon slots of its meshes
+    (0, and 3 = a rim-override toon, ``cohkit._assign``; ``None`` = black), black on the ink hulls and on its extras
+    (the elite crown occludes), ``shell_mat`` on dithered shell slots (2; ``None`` = left out), every other object
+    and the stage hidden, black world."""
     black = review._flat_emission("AF_DG_Black", (0, 0, 0))
     black_hull = review._flat_emission("AF_DG_BlackHull", (0, 0, 0), hull=True)
     mine = [m for m in fig.all() if m.type == "MESH"]
@@ -403,7 +440,8 @@ def figure_pass(fig: K.Figure, every: list, box, body_mat, shell_mat=None, sampl
         saved.append((m, [mats[i] for i in range(len(mats))]))
         body = (body_mat(m) if m in fig.meshes else None) or black
         for i in range(len(mats)):
-            mats[i] = body if i == 0 else black_hull if i == 1 else (shell_mat or _clear_material())
+            # slot 3 (cohkit): an opaque toon slot with its own rim (``RimOverride``, the cinderbloat's crust) is body
+            mats[i] = body if i in (0, 3) else black_hull if i == 1 else (shell_mat or _clear_material())
     review.hide_stage(True)
     sc = bpy.context.scene
     keep = sc.cycles.samples
@@ -654,7 +692,7 @@ def write(path: Path, img: np.ndarray, label: str) -> None:
 # ── main ────────────────────────────────────────────────────────────────────────────────────────────────
 def parse(argv: list[str]) -> dict:
     opt = {"theme": None, "tile": "darkest", "ground-hex": None, "facing": "se", "clip": None, "frame": "0",
-           "per-page": "6", "out": None, "report": None}
+           "per-page": "6", "out": None, "report": None, "zone": None}
     flags, only = set(), []
     for a in argv:
         if a.startswith("--") and "=" in a:
@@ -666,12 +704,13 @@ def parse(argv: list[str]) -> dict:
             flags.add(a[2:])
         else:
             only.append(a)
-    unknown = flags - {"no-variants", "no-report"}
+    unknown = flags - {"no-variants", "no-report", "all"}
     if unknown:
         raise SystemExit(f"unknown flag(s): {', '.join(sorted(unknown))}")
     if opt["facing"] not in review.FACINGS:
         raise SystemExit(f"--facing: one of {', '.join(review.FACINGS)}")
-    opt.update(only=only, variants="no-variants" not in flags, write_report="no-report" not in flags)
+    opt.update(only=only, variants="no-variants" not in flags, write_report="no-report" not in flags,
+               all="all" in flags)
     return opt
 
 
@@ -681,11 +720,20 @@ def main(argv: list[str]) -> int:
     out.mkdir(parents=True, exist_ok=True)
     report_path = Path(o["report"]).resolve() if o["report"] else out / REPORT
     ground = Ground(o["theme"], o["tile"], o["ground-hex"])
+    theme = ground.theme if ground.theme != "hex" else default_theme()
+    K.set_theme(theme)                                     # themed lookups: the elite crown@march on the hunts
     print(f"  ground {ground.run_key} ({ground.selected_by}): L* {ground.stats['L50']} "
-          f"(p10 {ground.stats['L10']}, p90 {ground.stats['L90']})")
+          f"(p10 {ground.stats['L10']}, p90 {ground.stats['L90']}); presentation theme {theme}")
     for n, s in ground.materials.items():
         print(f"    {n:8s} L* {s['L50']:5.1f}  mean {s['meanRgb']}")
-    figs = roster(o["only"], o["variants"])
+    # the roster: on a themed ground the monsters of the zone(s) that theme presents (the march: emerald_plains'
+    # Chapter 1 roster; the legacy goblins / slime never stand on it), else every shipped monster; --all overrides
+    zones = [o["zone"]] if o["zone"] else (list(THEMES.get(theme, {}).get("zones", ())) if theme else [])
+    among = None
+    if zones and not o["all"]:
+        among = [a for z in zones for a in zone_assets(z)]
+        print(f"  roster: the monsters of {', '.join(zones)} ({len(among)} assets; --all for every shipped monster)")
+    figs = roster(o["only"], o["variants"], among)
     if not figs:
         raise SystemExit("no monster to gate")
     per = max(1, int(o["per-page"]))
@@ -698,7 +746,10 @@ def main(argv: list[str]) -> int:
         tag += (f"_p{k + 1}" if len(pages) > 1 else "") + (f"_{o['facing']}" if o["facing"] != "se" else "")
         recs += shoot(page, ground, o["facing"], o["clip"], int(o["frame"]), tag, out)
     ok = all(r["ok"] for r in recs)
-    run = {"ground": {"theme": ground.theme, "tile": ground.name, "selectedBy": ground.selected_by, **ground.stats,
+    run = {"roster": (f"the monsters of {', '.join(zones)} (Data byZone + mini-boss + hunt bases; legacy assets left "
+                      "out, --all keeps them)") if among is not None else "every shipped monster",
+           "presentationTheme": theme,
+           "ground": {"theme": ground.theme, "tile": ground.name, "selectedBy": ground.selected_by, **ground.stats,
                       **({"materials": ground.materials} if ground.materials else {}),
                       **({"note": "the march terrain set (A10) is not exported yet: today's darkest walkable "
                                   "plains material stands in for it"}

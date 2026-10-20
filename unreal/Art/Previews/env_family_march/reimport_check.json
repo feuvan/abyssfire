@@ -1,0 +1,266 @@
+{
+ "assets": {
+  "SK_Prop_March_Strongbox": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_AshCap_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_AshCap_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_AshGrass_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_AshGrass_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_AshGrass_C": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_AshPoppy_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_AshPoppy_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_Briar_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_Briar_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_CharredOrchard_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_CharredOrchard_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_DeadOak_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_DeadOak_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_DeadOak_C": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_Reeds_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Foliage_March_Reeds_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Outcrop_March_V0": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Outcrop_March_V1": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Outcrop_March_V2": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Outcrop_March_V3": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Outcrop_March_V4": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Outcrop_March_V5": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Palisade_March_GatePost": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Palisade_March_Pew_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Palisade_March_Pew_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Palisade_March_Pew_C": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_AshwheatCottage_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_AshwheatCottage_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_BellFrame": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_BoneyardGate": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_Brazier": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_BreachDais": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_BrokenBelfry": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_BurnedBridge": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_BurnedBridge_Ditch": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_CatechismStone": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_HandbellPost": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_Hearth": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_HearthDressing": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_HelmetStake_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_HelmetStake_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_KnellwatchBanner": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_NameWall": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_OrderPost": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_PenitentsAltar": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_PitMouthSealed": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_RationSacks": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_RedBanner": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_RingBanner_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_RingBanner_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_RitualCircle": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_RitualCircle_Ash": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_SealShard": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_SheepfoldWagon_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_SheepfoldWagon_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_SupplyCrate": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_TornJournal": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_WagonBarricade": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_Well": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Rock_March_AshBoulder_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Rock_March_BrokenStone_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Rock_March_BrokenStone_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Rock_March_BrokenStone_C": {
+   "pass": true,
+   "errors": []
+  }
+ },
+ "themeAudit": [],
+ "summary": {
+  "assets": 64,
+  "failures": 0,
+  "themeAuditProblems": 0
+ }
+}

@@ -1,0 +1,103 @@
+{
+ "tool": "Art/blender/monsters/lineup_living.py",
+ "ground": {
+  "key": "hex:3A332D",
+  "L50": 21.8,
+  "L10": 21.8,
+  "L90": 21.8,
+  "meanRgb": "#3A332D"
+ },
+ "headShare": "head screen height / figure screen height at the W1 camera, Idle F0, se (head-weighted toon vertices + rigid head attachments; held items left out)",
+ "figures": [
+  {
+   "asset": "SK_Hero_Warrior",
+   "label": "WARRIOR H30%",
+   "class": "hero",
+   "outlinePx1080": 3.5,
+   "gatePx": 3.0,
+   "heightCm": 176.0,
+   "posedTopCm": 181.1,
+   "fracRim": 0.9862,
+   "ok": true,
+   "markers": [],
+   "headPx": 57.1,
+   "figurePx": 187.7,
+   "headShare": 0.3043
+  },
+  {
+   "asset": "SK_Mon_RisenFootman",
+   "label": "FOOTMAN H23%",
+   "class": "monster",
+   "outlinePx1080": 3.5,
+   "gatePx": 3.0,
+   "heightCm": 176.0,
+   "posedTopCm": 170.9,
+   "fracRim": 0.9775,
+   "ok": true,
+   "markers": [],
+   "headPx": 33.9,
+   "figurePx": 150.2,
+   "headShare": 0.2255
+  },
+  {
+   "asset": "SK_Mon_RisenShieldbearer",
+   "label": "SHIELDBEARER H23%",
+   "class": "monster",
+   "outlinePx1080": 3.5,
+   "gatePx": 3.0,
+   "heightCm": 176.0,
+   "posedTopCm": 171.2,
+   "fracRim": 0.9831,
+   "ok": true,
+   "markers": [],
+   "headPx": 35.5,
+   "figurePx": 153.5,
+   "headShare": 0.2311
+  },
+  {
+   "asset": "SK_Mon_OathZealot",
+   "label": "ZEALOT H20%",
+   "class": "monster",
+   "outlinePx1080": 3.5,
+   "gatePx": 3.0,
+   "heightCm": 175.0,
+   "posedTopCm": 173.1,
+   "fracRim": 0.9615,
+   "ok": true,
+   "markers": [],
+   "headPx": 32.3,
+   "figurePx": 164.3,
+   "headShare": 0.1966
+  },
+  {
+   "asset": "SK_Mon_Deserter",
+   "label": "DESERTER H22%",
+   "class": "monster",
+   "outlinePx1080": 3.5,
+   "gatePx": 3.0,
+   "heightCm": 173.0,
+   "posedTopCm": 169.6,
+   "fracRim": 0.9976,
+   "ok": true,
+   "markers": [],
+   "headPx": 31.8,
+   "figurePx": 143.3,
+   "headShare": 0.2218
+  },
+  {
+   "asset": "SK_Mon_DeserterDrummer",
+   "label": "DRUMMER H22%",
+   "class": "monster",
+   "outlinePx1080": 3.5,
+   "gatePx": 3.0,
+   "heightCm": 172.0,
+   "posedTopCm": 173.9,
+   "fracRim": 0.9825,
+   "ok": true,
+   "markers": [],
+   "headPx": 33.3,
+   "figurePx": 155.0,
+   "headShare": 0.2152
+  }
+ ]
+}

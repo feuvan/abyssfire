@@ -2159,6 +2159,10 @@ def build() -> dict:
     recipes = {}
     for group in (combat, utility, world, projectiles, warrior, mage, rogue):
         recipes.update(group())
+    # dark remake A12 (vfx/fx_recipes_dark.py): the march recipes, palettes and recolours, registered before the post
+    # passes so they get the same strike offsets, camera bias, ground lift, prewarm and mesh dissolve
+    import fx_recipes_dark
+    dark = fx_recipes_dark.apply(recipes, PAL)
     strike_offsets(recipes)
     camera_bias(recipes)
     ground_lift(recipes)
@@ -2176,7 +2180,7 @@ def build() -> dict:
         "meshes": mesh_table(),
         "recipes": dict(sorted(recipes.items())),
         "aliases": {"proj.multishot": "proj.arrow", "proj.multishot.hit": "proj.arrow.hit",
-                    "loot.drop.magic": "loot.drop"},
+                    "loot.drop.magic": "loot.drop", **fx_recipes_dark.ALIASES},
         "integration": {
             "groundSoftFade": "M_AF_FX_Sprite fades every quad with DepthFade(8 cm) and the runtime has no ground "
                               "special case, so every ground-oriented sprite quad (rings, shocks, decals, runes, pools, "
@@ -2255,7 +2259,9 @@ def build() -> dict:
                             "`crystal` socket when it has one (the previews draw it so).",
             "impactShake": "meteor / fireball shakes belong to the impact (combat-feel 11.5); recipe shakes start "
                            "with the recipe, so the impact recipes (proj.fireball.hit) carry them.",
+            **fx_recipes_dark.INTEGRATION,
         },
+        "dark": fx_recipes_dark.doc_section(dark),
     }
     return doc
 

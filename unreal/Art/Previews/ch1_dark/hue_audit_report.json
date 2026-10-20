@@ -43,25 +43,25 @@
    "rule": "violet",
    "subject": "hero recipes",
    "ok": false,
-   "detail": "no hero colour with HSV sat > 0.5 within 30 deg of breach-violet #B02FD0 (hue 288.1); 62 hits in 10 recipes"
+   "detail": "no hero colour with HSV sat > 0.5 within 30 deg of breach-violet #B02FD0 (hue 288.1); 35 hits in 6 recipes"
   },
   {
    "rule": "fill",
    "subject": "hero recipes",
-   "ok": false,
-   "detail": "no hero layer draws a filling ground shape (ground filled sprite growing >= 1.5x, >= 0.5 of its peak alpha at 95 % of the growth); 4 layers"
+   "ok": true,
+   "detail": "no hero layer draws a filling ground shape (ground filled sprite growing >= 1.5x, >= 0.5 of its peak alpha at 95 % of the growth); 0 layers"
   },
   {
    "rule": "ember",
    "subject": "enemy recipes",
-   "ok": false,
-   "detail": "no enemy colour in the ember family (hue 15-35, sat > 0.6); 12 hits in 1 recipes"
+   "ok": true,
+   "detail": "no enemy colour in the ember family (hue 15-35, sat > 0.6); 0 hits in 0 recipes"
   },
   {
    "rule": "ember",
    "subject": "enemy art (monster emissive / eye swatches, manifest fx)",
    "ok": true,
-   "detail": "33 colours checked; 0 ember"
+   "detail": "117 colours checked; 0 ember"
   }
  ],
  "sides": {
@@ -70,16 +70,16 @@
    "colours": 2132
   },
   "friendly": {
-   "recipes": 27,
-   "colours": 158
+   "recipes": 30,
+   "colours": 175
   },
   "neutral": {
-   "recipes": 16,
-   "colours": 72
+   "recipes": 21,
+   "colours": 93
   },
   "enemy": {
-   "recipes": 12,
-   "colours": 237
+   "recipes": 48,
+   "colours": 658
   }
  },
  "violations": {
@@ -445,464 +445,10 @@
      "sat": 0.514,
      "blend": "additive"
     }
-   ],
-   "skill.backstab": [
-    {
-     "layer": 0,
-     "what": "SM_FX_SlashArc_Rogue",
-     "slot": "color",
-     "source": "shadow.rim",
-     "hex": "#7030C0",
-     "hue": 266.7,
-     "sat": 0.75,
-     "blend": "translucent"
-    },
-    {
-     "layer": 1,
-     "what": "SM_FX_SlashArc_Rogue",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "translucent"
-    },
-    {
-     "layer": 2,
-     "what": "Slash",
-     "slot": "color",
-     "source": "shadow.rim",
-     "hex": "#7030C0",
-     "hue": 266.7,
-     "sat": 0.75,
-     "blend": "additive"
-    },
-    {
-     "layer": 3,
-     "what": "Slash",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 4,
-     "what": "Glow",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 5,
-     "what": "Core",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 7,
-     "what": "Streak",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    }
-   ],
-   "skill.death_mark": [
-    {
-     "layer": 0,
-     "what": "Rune",
-     "slot": "color",
-     "source": "shadow.rim",
-     "hex": "#7030C0",
-     "hue": 266.7,
-     "sat": 0.75,
-     "blend": "additive"
-    },
-    {
-     "layer": 1,
-     "what": "Glow",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 2,
-     "what": "Skull",
-     "slot": "color",
-     "source": "shadow.dark",
-     "hex": "#24103E",
-     "hue": 266.1,
-     "sat": 0.742,
-     "blend": "translucent"
-    },
-    {
-     "layer": 3,
-     "what": "Skull",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "translucent"
-    },
-    {
-     "layer": 4,
-     "what": "Skull",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 6,
-     "what": "Ring",
-     "slot": "color",
-     "source": "shadow.rim",
-     "hex": "#7030C0",
-     "hue": 266.7,
-     "sat": 0.75,
-     "blend": "additive"
-    },
-    {
-     "layer": 8,
-     "what": "Ember",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    }
-   ],
-   "skill.shadow_step": [
-    {
-     "layer": 1,
-     "what": "Ring",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "translucent"
-    },
-    {
-     "layer": 2,
-     "what": "Ring",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 3,
-     "what": "Streak",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 5,
-     "what": "Glow",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 6,
-     "what": "Core",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 7,
-     "what": "SM_FX_SlashArc_Rogue",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "translucent"
-    },
-    {
-     "layer": 8,
-     "what": "Spark",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    }
-   ],
-   "skill.vanish": [
-    {
-     "layer": 0,
-     "what": "Glow",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 1,
-     "what": "Core",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 2,
-     "what": "Ring",
-     "slot": "color",
-     "source": "shadow.rim",
-     "hex": "#7030C0",
-     "hue": 266.7,
-     "sat": 0.75,
-     "blend": "translucent"
-    },
-    {
-     "layer": 3,
-     "what": "Ring",
-     "slot": "color",
-     "source": "shadow.rim",
-     "hex": "#7030C0",
-     "hue": 266.7,
-     "sat": 0.75,
-     "blend": "additive"
-    },
-    {
-     "layer": 7,
-     "what": "Streak",
-     "slot": "color",
-     "source": "shadow.mid",
-     "hex": "#B478FF",
-     "hue": 266.7,
-     "sat": 0.529,
-     "blend": "additive"
-    },
-    {
-     "layer": 8,
-     "what": "Scorch",
-     "slot": "color",
-     "source": "fixed #24103E",
-     "hex": "#24103E",
-     "hue": 266.1,
-     "sat": 0.742,
-     "blend": "translucent"
-    }
    ]
   },
-  "fill": [
-   {
-    "recipe": "proj.poison_arrow.hit",
-    "layer": 4,
-    "side": "hero",
-    "sprite": "Puddle",
-    "grow": 1.529,
-    "peakAlpha": 0.75,
-    "alphaAt95": 0.581,
-    "t95": 0.632,
-    "colors": [
-     "#3FAE2E"
-    ]
-   },
-   {
-    "recipe": "skill.bleed_strike",
-    "layer": 7,
-    "side": "hero",
-    "sprite": "Puddle",
-    "grow": 1.647,
-    "peakAlpha": 0.8,
-    "alphaAt95": 0.62,
-    "t95": 0.632,
-    "colors": [
-     "#A01420"
-    ]
-   },
-   {
-    "recipe": "skill.meteor",
-    "layer": 1,
-    "side": "hero",
-    "sprite": "Glow",
-    "grow": 3.2,
-    "peakAlpha": 0.6,
-    "alphaAt95": 0.549,
-    "t95": 0.95,
-    "colors": [
-     "#1A0E08"
-    ]
-   },
-   {
-    "recipe": "skill.poison_blade",
-    "layer": 10,
-    "side": "hero",
-    "sprite": "Puddle",
-    "grow": 1.529,
-    "peakAlpha": 0.75,
-    "alphaAt95": 0.581,
-    "t95": 0.632,
-    "colors": [
-     "#3FAE2E"
-    ]
-   }
-  ],
-  "ember": {
-   "elite.fire_enhanced": [
-    {
-     "layer": 0,
-     "what": "Shock",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "translucent"
-    },
-    {
-     "layer": 1,
-     "what": "Puff",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "translucent"
-    },
-    {
-     "layer": 2,
-     "what": "Ring",
-     "slot": "color",
-     "source": "fixed #FF7A3A",
-     "hex": "#FF7A3A",
-     "hue": 19.5,
-     "sat": 0.773,
-     "blend": "additive"
-    },
-    {
-     "layer": 5,
-     "what": "Glow",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "additive"
-    },
-    {
-     "layer": 6,
-     "what": "Glow",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "additive"
-    },
-    {
-     "layer": 9,
-     "what": "Flame",
-     "slot": "color",
-     "source": "white x T_FX_Flame texel",
-     "hex": "#FF992B",
-     "hue": 31.2,
-     "sat": 0.832,
-     "blend": "translucent"
-    },
-    {
-     "layer": 10,
-     "what": "Shock",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "translucent"
-    },
-    {
-     "layer": 11,
-     "what": "Puff",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "translucent"
-    },
-    {
-     "layer": 12,
-     "what": "Ring",
-     "slot": "color",
-     "source": "fixed #FF7A3A",
-     "hex": "#FF7A3A",
-     "hue": 19.5,
-     "sat": 0.773,
-     "blend": "additive"
-    },
-    {
-     "layer": 15,
-     "what": "Glow",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "additive"
-    },
-    {
-     "layer": 16,
-     "what": "Glow",
-     "slot": "color",
-     "source": "fixed #FF4400",
-     "hex": "#FF4400",
-     "hue": 16.0,
-     "sat": 1.0,
-     "blend": "additive"
-    },
-    {
-     "layer": 19,
-     "what": "Flame",
-     "slot": "color",
-     "source": "white x T_FX_Flame texel",
-     "hex": "#FF992B",
-     "hue": 31.2,
-     "sat": 0.832,
-     "blend": "translucent"
-    }
-   ]
-  },
+  "fill": [],
+  "ember": {},
   "emberArt": []
  },
  "advisory": {
@@ -1283,108 +829,6 @@
   },
   "nearEmber": {
    "recipes": {
-    "elite.fire_enhanced": [
-     {
-      "layer": 3,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #E8400E",
-      "hex": "#E8400E",
-      "hue": 13.8,
-      "sat": 0.94,
-      "blend": "translucent"
-     },
-     {
-      "layer": 4,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #E8400E",
-      "hex": "#E8400E",
-      "hue": 13.8,
-      "sat": 0.94,
-      "blend": "translucent"
-     },
-     {
-      "layer": 7,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #FFC060",
-      "hex": "#FFC060",
-      "hue": 36.2,
-      "sat": 0.624,
-      "blend": "additive"
-     },
-     {
-      "layer": 8,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #FFC060",
-      "hex": "#FFC060",
-      "hue": 36.2,
-      "sat": 0.624,
-      "blend": "additive"
-     },
-     {
-      "layer": 9,
-      "what": "Flame",
-      "slot": "color",
-      "source": "white x T_FX_Flame texel",
-      "hex": "#E8401C",
-      "hue": 10.5,
-      "sat": 0.878,
-      "blend": "translucent"
-     },
-     {
-      "layer": 13,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #E8400E",
-      "hex": "#E8400E",
-      "hue": 13.8,
-      "sat": 0.94,
-      "blend": "translucent"
-     },
-     {
-      "layer": 14,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #E8400E",
-      "hex": "#E8400E",
-      "hue": 13.8,
-      "sat": 0.94,
-      "blend": "translucent"
-     },
-     {
-      "layer": 17,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #FFC060",
-      "hex": "#FFC060",
-      "hue": 36.2,
-      "sat": 0.624,
-      "blend": "additive"
-     },
-     {
-      "layer": 18,
-      "what": "Core",
-      "slot": "color",
-      "source": "fixed #FFC060",
-      "hex": "#FFC060",
-      "hue": 36.2,
-      "sat": 0.624,
-      "blend": "additive"
-     },
-     {
-      "layer": 19,
-      "what": "Flame",
-      "slot": "color",
-      "source": "white x T_FX_Flame texel",
-      "hex": "#E8401C",
-      "hue": 10.5,
-      "sat": 0.878,
-      "blend": "translucent"
-     }
-    ],
     "hit.claw": [
      {
       "layer": 3,
@@ -1458,7 +902,156 @@
    "minValue": 0.35,
    "reason": "DR5 reserves ember orange (#FF7A2A family) for the hero; a colour in the hue / saturation band but darker than this reads as black / brown (pupils, soot, leather), not as ember",
    "exempted": {
-    "recipes": {},
+    "recipes": {
+     "death.cinderbloat": [
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A3A2E x T_FX_Rock texel",
+       "hex": "#402111",
+       "hue": 20.8,
+       "sat": 0.74,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A3A2E x T_FX_Rock texel",
+       "hex": "#2D1509",
+       "hue": 19.7,
+       "sat": 0.801,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A3A2E x T_FX_Rock texel",
+       "hex": "#2B1308",
+       "hue": 19.4,
+       "sat": 0.811,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A3A2E x T_FX_Rock texel",
+       "hex": "#402111",
+       "hue": 20.8,
+       "sat": 0.74,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A3A2E x T_FX_Rock texel",
+       "hex": "#2D1509",
+       "hue": 19.7,
+       "sat": 0.801,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A3A2E x T_FX_Rock texel",
+       "hex": "#3F2010",
+       "hue": 20.6,
+       "sat": 0.741,
+       "blend": "translucent"
+      }
+     ],
+     "death.living": [
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C130A",
+       "hue": 28.9,
+       "sat": 0.654,
+       "blend": "translucent"
+      },
+      {
+       "layer": 2,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C1209",
+       "hue": 29.1,
+       "sat": 0.665,
+       "blend": "translucent"
+      }
+     ],
+     "elite.extra_strong": [
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C130A",
+       "hue": 28.9,
+       "sat": 0.654,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C1209",
+       "hue": 29.1,
+       "sat": 0.665,
+       "blend": "translucent"
+      },
+      {
+       "layer": 12,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C130A",
+       "hue": 28.9,
+       "sat": 0.654,
+       "blend": "translucent"
+      },
+      {
+       "layer": 12,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C1209",
+       "hue": 29.1,
+       "sat": 0.665,
+       "blend": "translucent"
+      }
+     ],
+     "notify.FX_Dig": [
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C130A",
+       "hue": 28.9,
+       "sat": 0.654,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #8A7F70 x T_FX_Rock texel",
+       "hex": "#1C1209",
+       "hue": 29.1,
+       "sat": 0.665,
+       "blend": "translucent"
+      }
+     ]
+    },
     "art": [
      {
       "source": "palette Monsters_Plains[13] chief.pupil/goblin.pupil/shaman.pupil (eye)",
@@ -1496,6 +1089,51 @@
   }
  },
  "unresolved": [
+  {
+   "recipe": "ambient.ashfall",
+   "layer": 0,
+   "what": "AshFlake",
+   "color": "event",
+   "palette": "ash",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "ambient.ashfall",
+   "layer": 1,
+   "what": "Core",
+   "color": "event",
+   "palette": "ash",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "ambient.sparks",
+   "layer": 0,
+   "what": "Ember",
+   "color": "event",
+   "palette": "embers",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "corpse.burn",
+   "layer": 0,
+   "what": "Flame",
+   "color": "event",
+   "palette": "ash",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
+  {
+   "recipe": "corpse.burn",
+   "layer": 1,
+   "what": "Glow",
+   "color": "event",
+   "palette": "ash",
+   "why": "event colour set at runtime",
+   "side": "neutral"
+  },
   {
    "recipe": "loot.drop",
    "layer": 0,
@@ -2003,9 +1641,11 @@
    "skill.whirlwind"
   ],
   "friendly": [
+   "camp.bell_toll",
    "camp.campfire",
    "camp.hearthstone",
    "camp.torch",
+   "camp.torch@march",
    "exit.portal",
    "loot.beam.legendary",
    "loot.beam.magic",
@@ -2022,6 +1662,7 @@
    "prop.chest",
    "prop.chest.open",
    "prop.clue",
+   "prop.echo",
    "prop.event",
    "prop.gather",
    "prop.lore",
@@ -2032,11 +1673,16 @@
    "reward.mana"
   ],
   "neutral": [
+   "ambient.ashfall",
    "ambient.dust",
    "ambient.dust_motes",
    "ambient.pollen",
    "ambient.sparks",
    "ambient.wisps",
+   "corpse.burn",
+   "corpse.consume",
+   "corpse.crumble",
+   "corpse.expire",
    "exit.sealed",
    "npc.FX_HammerStrike",
    "proj.default",
@@ -2050,21 +1696,369 @@
    "status.stun"
   ],
   "enemy": [
+   "death.breach",
    "death.burst",
+   "death.cinderbloat",
+   "death.gravegnawers",
+   "death.living",
+   "death.unburied",
+   "death.valdras",
    "elite.curse_aura",
    "elite.extra_strong",
    "elite.fire_enhanced",
+   "elite.fire_enhanced.death",
    "elite.frozen",
+   "elite.frozen.death",
    "elite.swift",
    "elite.teleporting",
+   "elite.unburied",
    "elite.vampiric",
+   "hazard.banner_ring",
+   "hazard.breach_fire",
+   "hazard.breach_seep",
    "hit.claw",
+   "monster.ash_flakes",
+   "monster.block",
+   "monster.dead_standard_bearer.aura",
+   "monster.raise",
+   "monster.raise.mark",
+   "monster.valdras.feed",
+   "monster.valdras.standard_fire",
+   "notify.FX_BannerSnap",
+   "notify.FX_BellRing",
+   "notify.FX_BellToll",
+   "notify.FX_Brand",
+   "notify.FX_Burst",
+   "notify.FX_Dig",
+   "notify.FX_DrumBeat_1",
+   "notify.FX_DrumBeat_2",
+   "notify.FX_DrumBeat_3",
+   "notify.FX_DrumBeat_4",
+   "notify.FX_Fuse",
+   "notify.FX_Land",
+   "notify.FX_Roar",
+   "notify.FX_bell_ring",
    "proj.monster_bolt",
    "proj.monster_bolt.hit",
+   "telegraph.contact",
+   "telegraph.contact.cone",
+   "telegraph.contact.line",
    "teleport.blink"
   ]
  },
  "enemyArt": [
+  {
+   "source": "manifest SK_Mon_Bonegorger.fx.attackTrail.color",
+   "hex": "#E8E0CC",
+   "hue": 42.9,
+   "sat": 0.121,
+   "val": 0.91,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Bonegorger.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Bonegorger.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Breachclot.fx.breachRim.color",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Breachclot.fx.puddle.color",
+   "hex": "#2A0E14",
+   "hue": 347.1,
+   "sat": 0.667,
+   "val": 0.165,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Breachclot.fx.sparks.color",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Breachclot.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Breachclot.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.ashFlakes.color",
+   "hex": "#8A8480",
+   "hue": 24.0,
+   "sat": 0.072,
+   "val": 0.541,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.breachRim.color",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.fuse.burst.ashRing",
+   "hex": "#8A8480",
+   "hue": 24.0,
+   "sat": 0.072,
+   "val": 0.541,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.fuse.burst.colors[0]",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.fuse.burst.colors[1]",
+   "hex": "#1A0820",
+   "hue": 285.0,
+   "sat": 0.75,
+   "val": 0.125,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.fuse.glow.color",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.fuse.glow.coreColor",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.fuse.ringDecal.fill",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.fuse.ringDecal.rim",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.puddle.color",
+   "hex": "#1A0A0A",
+   "hue": 0.0,
+   "sat": 0.615,
+   "val": 0.102,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Cinderbloat.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Corpseherd.fx.bellRing.color",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Corpseherd.fx.bellToll.color",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Corpseherd.fx.bellToll.coreColor",
+   "hex": "#1A0820",
+   "hue": 285.0,
+   "sat": 0.75,
+   "val": 0.125,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Corpseherd.fx.eyeGlow.color",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Corpseherd.fx.eyeGlow.coreColor",
+   "hex": "#F4E8FF",
+   "hue": 271.3,
+   "sat": 0.09,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Corpseherd.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Corpseherd.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeadStandardBearer.fx.attackTrail.color",
+   "hex": "#C8C4BC",
+   "hue": 40.0,
+   "sat": 0.06,
+   "val": 0.784,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeadStandardBearer.fx.eyeGlow.color",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeadStandardBearer.fx.eyeGlow.coreColor",
+   "hex": "#F4E8FF",
+   "hue": 271.3,
+   "sat": 0.09,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeadStandardBearer.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeadStandardBearer.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Deserter.fx.attackTrail.color",
+   "hex": "#E8E0CC",
+   "hue": 42.9,
+   "sat": 0.121,
+   "val": 0.91,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Deserter.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Deserter.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeserterDrummer.fx.attackTrail.color",
+   "hex": "#E8E0CC",
+   "hue": 42.9,
+   "sat": 0.121,
+   "val": 0.91,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeserterDrummer.fx.drumBeat.dust",
+   "hex": "#8A8070",
+   "hue": 36.9,
+   "sat": 0.188,
+   "val": 0.541,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeserterDrummer.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_DeserterDrummer.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
   {
    "source": "manifest SK_Mon_Goblin.fx.attackTrail.color",
    "hex": "#E8E0CC",
@@ -2202,6 +2196,174 @@
    "ember": false
   },
   {
+   "source": "manifest SK_Mon_Gravegnawer.fx.attackTrail.color",
+   "hex": "#E8E0CC",
+   "hue": 42.9,
+   "sat": 0.121,
+   "val": 0.91,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Gravegnawer.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Gravegnawer.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_OathZealot.fx.attackTrail.color",
+   "hex": "#E8E0CC",
+   "hue": 42.9,
+   "sat": 0.121,
+   "val": 0.91,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_OathZealot.fx.oathScar.color",
+   "hex": "#C0283A",
+   "hue": 352.9,
+   "sat": 0.792,
+   "val": 0.753,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_OathZealot.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_OathZealot.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenArbalest.fx.eyeGlow.color",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenArbalest.fx.eyeGlow.coreColor",
+   "hex": "#F4E8FF",
+   "hue": 271.3,
+   "sat": 0.09,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenArbalest.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenArbalest.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenFootman.fx.attackTrail.color",
+   "hex": "#C8C4BC",
+   "hue": 40.0,
+   "sat": 0.06,
+   "val": 0.784,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenFootman.fx.eyeGlow.color",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenFootman.fx.eyeGlow.coreColor",
+   "hex": "#F4E8FF",
+   "hue": 271.3,
+   "sat": 0.09,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenFootman.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenFootman.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenShieldbearer.fx.attackTrail.color",
+   "hex": "#C8C4BC",
+   "hue": 40.0,
+   "sat": 0.06,
+   "val": 0.784,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenShieldbearer.fx.eyeGlow.color",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenShieldbearer.fx.eyeGlow.coreColor",
+   "hex": "#F4E8FF",
+   "hue": 271.3,
+   "sat": 0.09,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenShieldbearer.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_RisenShieldbearer.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
    "source": "manifest SK_Mon_Slime.fx.jellyRim.color",
    "hex": "#E6FFDC",
    "hue": 102.9,
@@ -2231,6 +2393,198 @@
    "hue": 15.2,
    "sat": 0.31,
    "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Valdras.fx.attackTrail.color",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Valdras.fx.seams.color",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Valdras.fx.seams.core",
+   "hex": "#F0E0FF",
+   "hue": 271.0,
+   "sat": 0.122,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Valdras.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Valdras.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Valdras.fx.visorGlow.color",
+   "hex": "#E8D8FF",
+   "hue": 264.6,
+   "sat": 0.153,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Valdras.fx.visorGlow.coreColor",
+   "hex": "#F4ECFF",
+   "hue": 265.3,
+   "sat": 0.075,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[0] breach.glow/valdras.seam (emissive 0.85)",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[2] breach.pinpoint/clot.marker/clot.spark (emissive 1.00)",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[3] breach.hot/valdras.seam_core (emissive 1.00)",
+   "hex": "#F0E0FF",
+   "hue": 271.0,
+   "sat": 0.122,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[51] zealot.marker/zealot.robe (eye)",
+   "hex": "#7E1416",
+   "hue": 358.9,
+   "sat": 0.841,
+   "val": 0.494,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[54] zealot.scar (emissive 0.25)",
+   "hex": "#C0283A",
+   "hue": 352.9,
+   "sat": 0.792,
+   "val": 0.753,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[61] deserter.marker (eye)",
+   "hex": "#7A1C1E",
+   "hue": 358.7,
+   "sat": 0.77,
+   "val": 0.478,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[65] harke.marker/harke.scarf (eye)",
+   "hex": "#A3221E",
+   "hue": 1.8,
+   "sat": 0.816,
+   "val": 0.639,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[78] bonegorger.eye/gnawer.eye (emissive 0.35)",
+   "hex": "#EDE6B0",
+   "hue": 53.1,
+   "sat": 0.257,
+   "val": 0.929,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[79] gnawer.pupil (eye)",
+   "hex": "#1A1410",
+   "hue": 24.0,
+   "sat": 0.385,
+   "val": 0.102,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[104] valdras.marker/valdras.visor (emissive 1.00)",
+   "hex": "#E8D8FF",
+   "hue": 264.6,
+   "sat": 0.153,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[113] clot.rim (emissive 0.60)",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[118] bloat.fissure/bloat.marker (emissive 0.80)",
+   "hex": "#B02FD0",
+   "hue": 288.1,
+   "sat": 0.774,
+   "val": 0.816,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[123] elite_crown.gem (emissive 0.30)",
+   "hex": "#C0283A",
+   "hue": 352.9,
+   "sat": 0.792,
+   "val": 0.753,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[126] elite_sigil.core (emissive 0.90)",
+   "hex": "#C0283A",
+   "hue": 352.9,
+   "sat": 0.792,
+   "val": 0.753,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[130] clot.depth (emissive 1.00)",
+   "hex": "#1D0B1A",
+   "hue": 310.0,
+   "sat": 0.621,
+   "val": 0.114,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[139] clot.pitchdepth (emissive 1.00)",
+   "hex": "#110509",
+   "hue": 340.0,
+   "sat": 0.706,
+   "val": 0.067,
+   "ember": false
+  },
+  {
+   "source": "palette Monsters_March[154] valdras.slit_deep (emissive 1.00)",
+   "hex": "#4A1466",
+   "hue": 279.5,
+   "sat": 0.804,
+   "val": 0.4,
    "ember": false
   },
   {

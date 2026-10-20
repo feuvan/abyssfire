@@ -97,7 +97,12 @@ RELEASE_MS = 200.0
 HEIGHT = 0.70 * U / 0.0186 + (0.0 if STAGE == 0 else 0.03 * STAGE)   # rest top (sprout leaves; crown / halo)
 SKIN = ("#C8F4B0", "#D0F8B8", "#E0FCC8")[STAGE]
 PREVIEW_DIR = "pet_sprite" if STAGE == 0 else f"pet_sprite_e{STAGE}"
-GAME_IDS = ["beast_pet_sprite", "pet_sprite"] if STAGE == 0 else [f"beast_pet_sprite_e{STAGE}"]   # artId per PetStage
+LEGACY_GAME_IDS = ["beast_pet_sprite", "pet_sprite"] if STAGE == 0 else [f"beast_pet_sprite_e{STAGE}"]   # artId per PetStage
+# Dark remake A11: pet_sprite is re-dressed as 灯魂 / the Lanternwisp (pets/sprite_lanternwisp.py, the same rig and clips),
+# which ships under these ids and the portrait name; the seed sprite keeps its files but claims no ids, so a re-run of
+# this script never takes them back.
+SUPERSEDED_BY = "SK_Pet_Lanternwisp" + SUFFIX
+GAME_IDS: list[str] = []
 DISPLAY = ({"zh-CN": "灵脉精灵", "en": "Ley Sprite"}, {"zh-CN": "灵脉精灵·觉醒", "en": "Ley Sprite (Awakened)"},
            {"zh-CN": "灵脉精灵·花冠", "en": "Ley Sprite (Bloom)"})[STAGE]
 TAIL = ("#8AE07A", "#9AE880", "#B0F090")[STAGE]
@@ -833,7 +838,8 @@ def ship(previews: bool = True, verify: bool = True) -> int:
                                  "wing_r_01", "wing_r_02", "arm_l", "arm_r", "sprout", "eye_l", "eye_r", "mouth",
                                  "mouth_o"),
         extra={"refSpeedCmS": REF_SPEED * 100.0, "hoverCm": round(C0.z * 100, 1), "flyer": True,
-               "stage": STAGE, **({"evolvedLooks": {"beast_pet_sprite_e1": "SK_Pet_Sprite_E1",
+               "stage": STAGE, "supersededBy": SUPERSEDED_BY, "legacyGameIds": LEGACY_GAME_IDS,
+               **({"evolvedLooks": {"beast_pet_sprite_e1": "SK_Pet_Sprite_E1",
                                                      "beast_pet_sprite_e2": "SK_Pet_Sprite_E2"}} if STAGE == 0 else
                                   {"evolvedFrom": "SK_Pet_Sprite" if STAGE == 1 else "SK_Pet_Sprite_E1",
                                    "sharesClipsWith": "SK_Pet_Sprite (same SKEL_Pet_Sprite bones and clip set)"}),
@@ -844,7 +850,7 @@ def ship(previews: bool = True, verify: bool = True) -> int:
                         "PET_CAST_RELEASE_FRAME at the web frame rates."},
         lod_note="Pet companion budget (no §1.9 row; the slime's small-creature row): LOD0 <= 4k toon tris, LOD1 "
                  "<= 2k, 17 bones.",
-        lod1=body1, portrait=portrait if STAGE == 0 else None,
+        lod1=body1, portrait=None,           # T_UI_Portrait_Pet_Sprite is the Lanternwisp's now (SUPERSEDED_BY)
         outline_px=OUTLINE_PX, outline_px_note=OUTLINE_PX_NOTE,
     )
     if not issubclass(mship.MReview, BehindGlow):      # this process only: the pet's cards sit behind it

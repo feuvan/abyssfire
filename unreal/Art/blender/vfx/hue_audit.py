@@ -43,11 +43,11 @@ goblin chief's "eyeEmbers" sit at 14°); enemy filling ground shapes and whether
 ``proj.default`` fallback) are listed as unresolved.
 
 Sides come from the recipe id (``SIDES``, first match): ``elite.*``, ``proj.monster_bolt*``, ``hit.claw``,
-``teleport.blink`` (the elite blink), ``death.burst`` and the dark-remake prefixes ``breach.`` / ``telegraph.`` /
-``hazard.`` / ``enemy.`` / ``monster.`` are enemy; ``skill.*``, ``hero.*``, ``hit.*``, ``ground.*`` and the hero
-projectiles (pet bolts included) are hero; ``loot.*``, ``reward.*``, ``camp.*``, ``portal.*``, ``exit.portal``,
-``prop.*``, ``quest.*`` are friendly; ``notify.<N>`` / ``npc.<N>`` follow the manifest assets whose clips carry notify
-``N`` (monsters → enemy, heroes → hero, NPCs → neutral); everything else is neutral.
+``teleport.blink`` (the elite blink), ``death.burst``, the family deaths ``death.<family>`` and the dark-remake
+prefixes ``breach.`` / ``telegraph.`` / ``hazard.`` / ``enemy.`` / ``monster.`` are enemy; ``skill.*``, ``hero.*``,
+``hit.*``, ``ground.*`` and the hero projectiles (pet bolts included) are hero; ``loot.*``, ``reward.*``, ``camp.*``,
+``portal.*``, ``exit.portal``, ``prop.*``, ``quest.*`` are friendly; ``notify.<N>`` / ``npc.<N>`` follow the manifest
+assets whose clips carry notify ``N`` (monsters → enemy, heroes → hero, NPCs → neutral); everything else is neutral.
 
 Writes ``Art/Previews/ch1_dark/hue_audit_report.json`` (the baseline on today's assets: every rule, every hit with
 recipe / layer / colour source / hue / saturation, the advisories, the unresolved event usages) and ``hue_audit.png``
@@ -110,7 +110,9 @@ PET_FIRE, PET_ARCANE = "#FF7A2A", "#CC44CC"     # PetCompanion.cpp PcAbilityColo
 # Sprites that draw an outline or a glyph, never a filled disc (a ground ring / rune / crack is not a telegraph fill).
 OUTLINE_SPRITES = {"Ring", "Rune", "Crack", "CrackGlow", "Slash", "Swirl", "Chain", "Arrow", "Streak", "Bolt", "Beam",
                    "Claw", "Skull", "Spark", "Star", "Flake", "Ember", "Wisp", "Comet", "Drop", "Rock", "Coin", "Shard",
-                   "ShardFrost", "Flame", "Impact", "Plus"}
+                   "ShardFrost", "Flame", "Impact", "Plus",
+                   # dark remake (A12): broken sound rings, the raise sigil, flame tongues, flakes
+                   "Ripple", "RaiseSigil", "FlameBreach", "AshFlake"}
 
 # Layer defaults of the runtime presets (AbyssVfxRecipe.cpp ApplyPreset, as vfx/fx_preview.PRESETS) — only the fields
 # the audit reads.
@@ -143,7 +145,8 @@ PRESETS = {
 # (id prefix or exact id, side) — first match wins; ``notify.`` / ``npc.`` are resolved from the manifest first.
 SIDES = [
     ("proj.monster_bolt", "enemy"), ("proj.pet_bolt", "hero"), ("proj.default", "neutral"),
-    ("hit.claw", "enemy"), ("teleport.blink", "enemy"), ("death.burst", "enemy"), ("exit.portal", "friendly"),
+    ("hit.claw", "enemy"), ("teleport.blink", "enemy"), ("death.burst", "enemy"), ("death.", "enemy"),
+    ("exit.portal", "friendly"),
     ("exit.", "neutral"),
     ("elite.", "enemy"), ("breach.", "enemy"), ("telegraph.", "enemy"), ("hazard.", "enemy"), ("enemy.", "enemy"),
     ("monster.", "enemy"),
