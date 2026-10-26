@@ -20,6 +20,7 @@
 #include "abyss/data/CombatData.h"
 #include "abyss/data/ItemData.h"
 #include "abyss/data/MapData.h"
+#include "abyss/data/MonsterData.h"
 #include "abyss/data/SkillData.h"
 #include "abyss/data/StoryData.h"
 #include "abyss/hero/Spirit.h"
@@ -96,9 +97,44 @@ struct EvHit {
   bool scorch = false;
   DamageType scorchType = DamageType::Fire;
 };
+// A pending monster contact that will not land: F2 (a cinematic cancels every contact and bolt), and for a K2 ability
+// also its abort (S7: the caster died or was stunned during the windup): UE drops the caster's telegraph and stops the
+// wind-up tint.
 struct EvMonsterAttackCancelled {
   EntityId monster = kNoEntity;
   bool projectile = false;  // false = contact
+};
+// Dark remake K2 (implementation-plan.md 3 K2, 4 U2; DR5): a monster ability started its windup with a ground shape
+// (circle / cone / line / ring / hazard). UE draws the decal at `origin` facing `dir` (crimson rim, bone fill that
+// sweeps to full exactly at contactMs) in the style's variant; it ends at contactMs (EvHazard follows when the ability
+// leaves ground fire) or on EvMonsterAttackCancelled for the entity. Times are absolute sim ms:
+// fill = (now - startMs) / (contactMs - startMs). The monster's animation is the EvPlayAnim emitted just before it
+// (action Attack / Attack02 / Cast / Cast02 / Roar, `clip` = the ability's clip, contactMs = the same beat): that
+// EvPlayAnim is the plan's "EvMonsterAnim {entity, action}".
+struct EvTelegraph {
+  EntityId entity = kNoEntity;  // the caster
+  std::string abilityId;
+  AbilityKind kind = AbilityKind::Circle;
+  AbilityShapeDef shape;        // kind + radius / arcDeg / length / width / innerRadius (tiles, degrees)
+  Vec2 origin;
+  Vec2 dir{1, 0};               // unit (cones and lines)
+  double startMs = 0;
+  double contactMs = 0;
+  TelegraphStyle style = TelegraphStyle::Normal;
+};
+// Dark remake K2: a ground hazard placed by a monster ability (combat/HazardField.h) at `origin` facing `dir`; it ticks on
+// the sim clock until untilMs (absolute sim ms; UE fades it out then). A zone change drops every hazard silently.
+struct EvHazard {
+  uint32_t id = 0;
+  EntityId source = kNoEntity;  // the caster
+  std::string abilityId;
+  AbilityShapeDef shape;
+  Vec2 origin;
+  Vec2 dir{1, 0};
+  DamageType damageType = DamageType::Physical;
+  double startMs = 0;
+  double untilMs = 0;
+  double tickMs = 0;
 };
 struct EvProjectileLaunched {
   EntityId projectile = kNoEntity;
@@ -498,7 +534,8 @@ using Event = std::variant<EvEntitySpawned, EvEntityDespawned, EvEntityTeleporte
                            EvLoreCollected, EvHiddenAreaDiscovered, EvAchievementUnlocked, EvStoryState, EvStoryBeat,
                            EvStoryStep, EvBossBar, EvMonsterRenamed, EvHuntRevealed, EvPet, EvEmbersGained, EvZone,
                            EvInteractPrompt, EvRandomEvent, EvPuzzlePrompt, EvStoryDecorFocus, EvLog, EvBanner,
-                           EvPanelRequest, EvSaveRequested, EvMusic, EvSfx, EvCameraShake, EvCameraFlash, EvSlowMotion>;
+                           EvPanelRequest, EvSaveRequested, EvMusic, EvSfx, EvCameraShake, EvCameraFlash, EvSlowMotion,
+                           EvTelegraph, EvHazard>;
 
 // Append-only event list shared by every subsystem of one GameSim.
 class EventSink {

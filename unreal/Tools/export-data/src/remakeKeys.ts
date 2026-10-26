@@ -38,7 +38,7 @@ const monster = {
   web: { id: true, name: true, level: true, hp: true, damage: true, defense: true, speed: true, aggroRange: true, attackRange: true,
     attackSpeed: true, expReward: true, goldReward: true, spriteKey: true, elite: true, isMiniBoss: true, isSubDungeonMiniBoss: true,
     lootTable: true, bossSkills: true, animCategory: true } satisfies Exact<KeysOf<Web.MonsterDefinition>>,
-  remake: { family: true, damageType: true, onHitStatus: true, projectileColor: true } satisfies Exact<MonsterRemade>,
+  remake: { family: true, damageType: true, onHitStatus: true, projectileColor: true, abilities: true, hitCapHeroMaxHpPct: true } satisfies Exact<MonsterRemade>,
 };
 
 const quest = {

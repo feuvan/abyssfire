@@ -179,6 +179,31 @@ struct GroundEffectView {
   double progress = 0;
 };
 
+// A monster ability winding up with a ground shape (dark remake K2; EvTelegraph is its start): continuous state for a late
+// view (UE after a load / zone build, the bot's step-out rule). `progress` = the fill, 0..1 at contact.
+struct TelegraphView {
+  EntityId entity = kNoEntity;
+  std::string abilityId;
+  AbilityShapeDef shape;
+  Vec2 origin;
+  Vec2 dir{1, 0};
+  double startMs = 0, contactMs = 0;  // absolute sim ms
+  double progress = 0;
+  TelegraphStyle style = TelegraphStyle::Normal;
+};
+
+// A live ground hazard (dark remake K2; EvHazard is its start).
+struct HazardView {
+  uint32_t id = 0;
+  EntityId source = kNoEntity;
+  std::string abilityId;
+  AbilityShapeDef shape;
+  Vec2 origin;
+  Vec2 dir{1, 0};
+  DamageType damageType = DamageType::Physical;
+  double startMs = 0, untilMs = 0;  // absolute sim ms
+};
+
 // Static or quest-driven world props the UE layer spawns actors for.
 enum class MarkerKind : uint8_t {
   GatherNode,
@@ -255,6 +280,8 @@ struct ABYSS_API Snapshot {
   std::vector<PotionDropView> potions;
   std::vector<ProjectileView> projectiles;
   std::vector<GroundEffectView> groundEffects;
+  std::vector<TelegraphView> telegraphs;  // K2 abilities winding up (caster order of the pending strikes)
+  std::vector<HazardView> hazards;        // K2 ground hazards (placement order)
   std::vector<WorldMarkerView> markers;
   // ---- zone / HUD ----
   ZoneView zone;

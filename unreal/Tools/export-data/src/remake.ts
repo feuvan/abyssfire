@@ -71,6 +71,12 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
 /** Remake-only values of existing fields: a record using one before its feature lands fails the export. */
 export const REMAKE_VALUES: readonly { kind: RemakeKind; path: string; value: string; feature: string; wave: 1 | 2 | 3 }[] = [
   { kind: 'quest', path: 'objectives[].type', value: 'clear_area', feature: 'quest.clearArea', wave: 3 },
+  // K2 parses every ability kind but runs only circle / cone / line / ring / bolt / hazard (MonsterAbilities.h
+  // AbilityKindRuns); each of these lands with its package, which adds its feature to REMAKE_SCHEMA.
+  { kind: 'monster', path: 'abilities[].kind', value: 'raise', feature: 'monster.abilityRaise', wave: 2 },
+  { kind: 'monster', path: 'abilities[].kind', value: 'summon', feature: 'monster.abilitySummon', wave: 2 },
+  { kind: 'monster', path: 'abilities[].kind', value: 'buff', feature: 'monster.abilityBuff', wave: 2 },
+  { kind: 'monster', path: 'abilities[].kind', value: 'call', feature: 'monster.abilityCall', wave: 2 },
 ];
 
 const KNOWN_FEATURES = new Set([...REMAKE_FIELDS.map(f => f.feature), ...REMAKE_VALUES.map(v => v.feature)]);

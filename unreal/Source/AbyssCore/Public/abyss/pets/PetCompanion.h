@@ -138,6 +138,9 @@ class ABYSS_API PetCompanion {
   // beast (taunted, or a 25 % stray swing when the beast is within reach and closer than the hero); the monster's swing
   // clock restarts and the hit lands on the beast at its contact beat.
   bool InterceptMonsterAttack(EntityId monster);
+  // The deterministic half of InterceptMonsterAttack (no RNG): the beast is out and not exhausted and its taunt holds
+  // the living `monster`, so its next swing goes to the beast. K2: a taunted monster starts no ability.
+  bool TauntHolds(EntityId monster) const;
   // Pets panel "feed" (18.8): no fruit -> sys.pet.noFruit; !CanFeed -> sys.pet.feedFull; else one c_ley_fruit leaves
   // the first stack in bag order, PetSystem::Feed, EvInventoryChanged.
   bool FeedFromBag(std::string_view petId);

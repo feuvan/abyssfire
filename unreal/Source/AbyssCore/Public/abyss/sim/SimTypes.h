@@ -96,6 +96,11 @@ enum class AnimAction : uint8_t {
 ABYSS_ENUM_STRINGS(AnimAction, "idle", "walk", "attack", "cast", "hurt", "dodge", "death", "signature", "work", "talk",
                    "roar", "taunt", "stun", "attack02", "cast02", "rise")
 
+// Telegraph decal variant (dark remake K2 EvTelegraph, DR5: crimson rim, bone fill; implementation-plan.md U2): Boss for
+// the story boss, zone / sub-dungeon mini-bosses and seal keepers, Elite for elites (affixes, hunt leaders), else Normal.
+enum class TelegraphStyle : uint8_t { Normal, Elite, Boss };
+ABYSS_ENUM_STRINGS(TelegraphStyle, "normal", "elite", "boss")
+
 enum class DespawnReason : uint8_t { Died, Removed, ZoneUnload, PickedUp, Expired, Collected };
 ABYSS_ENUM_STRINGS(DespawnReason, "died", "removed", "zoneUnload", "pickedUp", "expired", "collected")
 

@@ -703,6 +703,7 @@ void MonsterSystem::TickAI(double dtMs) {
     if (m == nullptr || !m->IsAlive()) continue;
     if (miniBossDialogueActive_ && id == miniBossDialogueMonster_) continue;  // frozen during its dialogue
     if (status != nullptr && status->IsImmobilized(id)) continue;           // no AI, safe-zone check or grid update
+    if (now < m->abilityRootedUntilMs) continue;                            // K2: rooted while an ability winds up
     const MonsterState before = m->state;
     // Safe-zone repel: an aggro monster inside a camp radius drops aggro.
     if (m->IsAggro() && InSafeZone(m->pos)) {
@@ -726,7 +727,8 @@ void MonsterSystem::TickAI(double dtMs) {
       }
     }
     in.neighbours = neighbours;
-    UpdateMonsterAI(*m, ai, in, world_, rng);
+    const MonsterAiResult res = UpdateMonsterAI(*m, ai, in, world_, rng);
+    if (res.leashed) m->abilityClockStarted = false;  // K2: a fight that ends at the leash restarts its ability clock
     if (dtMs > 0) m->groundSpeed = Dist(m->pos, m->prevPos) * 1000.0 / dtMs;
     grid_.Update(id, m->pos);
     if (m->state == MonsterState::Chase &&

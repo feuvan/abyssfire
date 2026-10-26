@@ -77,7 +77,12 @@ the export is byte-identical to the web's).
   `quest.defendWaves`, `quest.defendApproach`, `map.sealedEntrances` and `story.focusAnim`; the 1B review added
   `story.triggerWhileQuest` (a story trigger's `whileQuest`, record kind `trigger`; story.ts checks it names a quest and sits
   on a monster_killed trigger, and writes `GameData/config.ts` `contentUpgrade` into story.json); 1B part 1 enabled
-  `map.presentationTheme` and `map.regions` (world.ts checks that each names a mood); `quests.ts`, `maps.ts` and
+  `map.presentationTheme` and `map.regions` (world.ts checks that each names a mood); K2 (package 2A) enabled
+  `monster.abilities`, `monster.damageType` and `monster.hitCap` (`monsters.ts` `checkK2Monster` checks keys, kinds, aims,
+  shapes, blocks, the windup floors and the timing fields' upper bounds at every level, fails an ability whose `rangeMin`
+  lies past the swing reach (attackRange x 1.2: never picked) and warns on a `rangeMax` past it, and calls `gateRemakeValues` on every definition and hunt
+  definition: the ability kinds raise / summon / buff / call stay gated by `monster.abilityRaise` / `abilitySummon` /
+  `abilityBuff` / `abilityCall` until K3 / K5); `quests.ts`, `maps.ts` and
   `story.ts` check their shapes (one label per choice slot, one composition per wave with counts ≥ 1, `sealed` with
   `sealedTextKey`, `anim` only on a `{monster}` focus step) before the core loader would refuse them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.

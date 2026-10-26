@@ -40,6 +40,18 @@ enum class MonsterRole : uint8_t {
 ABYSS_ENUM_STRINGS(MonsterRole, "regular", "miniBoss", "subDungeonMiniBoss", "hunt", "huntMinion", "ambush", "rescue",
                    "defendWave", "labyrinth", "sealKeeper", "storyBoss")
 
+// The ability a monster is winding up (K2, implementation-plan.md 3): resolved once, at windup start, and resolved at
+// contact through the pending-strike path (CombatSystem). `origin` / `dir` place the ground shape (the telegraph);
+// `target` is the aim point (the hero's position at windup start, the caster, or its anchor).
+struct MonsterAbilityCast {
+  double startMs = 0;
+  double contactMs = 0;  // absolute sim ms
+  Vec2 origin;
+  Vec2 dir{1, 0};        // unit
+  Vec2 target;
+  AbilityShapeDef shape;
+};
+
 // One rolled elite affix with its behaviour timers (combat-feel.md 17).
 struct MonsterAffix {
   EliteAffixType type = EliteAffixType::FireEnhanced;
@@ -83,6 +95,16 @@ struct ABYSS_API MonsterInstance {
   Vec2 lastHitFrom;                 // death throw direction (render)
   double lastEscortChipMs = -1e300; // quests 3.9
   double lastDefendChipMs = 0;      // quests 3.10
+  // K2 abilities (MonsterAbilities.h). The ability clock starts at the monster's first swing opportunity of a fight
+  // (each ability ready initialCooldownMs later) and stops when it leashes home (M1); abilityReadyAtMs is per
+  // def.abilities index. One pending ability at a time; while it winds up the monster is rooted (no AI tick) and
+  // starts no other swing.
+  bool abilityClockStarted = false;
+  std::vector<double> abilityReadyAtMs;
+  int32_t pendingAbility = -1;      // def.abilities index, -1 = none
+  MonsterAbilityCast abilityCast;   // the pending ability's resolved aim
+  double abilityRootedUntilMs = 0;  // = the pending ability's contact
+  int32_t phase = 0;                // boss phase index (K4 sets it; abilities' phases[] read it)
   // presentation flags
   bool storyNameShown = false;      // boss label renamed (story 8.3)
   bool active = true;               // in the AI activity set (30 tiles / aggro), monsters 3.8

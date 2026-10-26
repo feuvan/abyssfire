@@ -50,6 +50,11 @@ its rim ≥ 3 px, a lit-side ΔL* ≥ 15 against the ground, and an eye or marke
   exp or loot and never respawn, and every Raised collapses when its raiser dies.
 - No invulnerable phases. Soft enrages shrink space; they never one-shot.
 
+**As built (K2, package 2A, pending review; implementation-plan.md *2A outcomes*):** the core holds an ability's contact
+at the floor even when its clip's beat is earlier (600 ms; 700 ms for the story boss, mini-bosses and seal keepers) and the
+loader refuses an authored `windupMs` under it (under 700 ms for the story boss and mini-bosses); "scaled by the
+difficulty table" is the difficulty's monster damage multiplier (35 % on Normal, 52.5 % on Nightmare, 70 % on Hell).
+
 ### 1.4 The mechanic ramp
 
 | Level | New idea | Where |

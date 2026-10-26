@@ -1016,6 +1016,15 @@ void PetCompanion::ResolveAbility(const PendingAction& pa) {
 // hits on the beast, exhaustion (18.5.9-18.5.10)
 // =====================================================================================================================
 
+bool PetCompanion::TauntHolds(EntityId monster) const {
+  if (!state_.present || IsExhausted() || ctx_.sys.pets == nullptr || ctx_.sys.pets->Active() == nullptr ||
+      ctx_.sys.monsters == nullptr || ctx_.sys.hero == nullptr) {
+    return false;
+  }
+  const MonsterInstance* m = ctx_.sys.monsters->Find(monster);
+  return m != nullptr && m->IsAlive() && Until(state_.taunts, monster) > ctx_.Now();
+}
+
 bool PetCompanion::InterceptMonsterAttack(EntityId monster) {
   if (!state_.present || IsExhausted() || ctx_.sys.pets == nullptr || ctx_.sys.pets->Active() == nullptr ||
       ctx_.sys.monsters == nullptr || ctx_.sys.hero == nullptr) {
@@ -1025,7 +1034,7 @@ bool PetCompanion::InterceptMonsterAttack(EntityId monster) {
   if (m == nullptr || !m->IsAlive()) return false;
   const PetCompanionConstants& k = ctx_.data.Pets().companion;
   const double now = ctx_.Now();
-  bool redirect = Until(state_.taunts, monster) > now;
+  bool redirect = TauntHolds(monster);
   if (!redirect) {
     const double reach = m->def.attackRange + k.straySwingReachPad;
     const double dPet = JsHypot(m->pos - state_.pos);

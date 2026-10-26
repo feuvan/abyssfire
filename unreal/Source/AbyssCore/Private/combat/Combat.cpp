@@ -24,6 +24,7 @@
 #include "abyss/hero/Rewards.h"
 #include "abyss/items/Inventory.h"
 #include "abyss/monsters/EliteAffixes.h"
+#include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/MonsterSystem.h"
 #include "abyss/pets/Homestead.h"
 #include "abyss/pets/PetCompanion.h"
@@ -626,11 +627,17 @@ void CombatSystem::ResolveHeroStrike(EntityId target) {
 
 // resolveMonsterStrike (combat 5.2) at the contact beat (T1).
 void CombatSystem::ResolveMonsterStrike(EntityId monster) {
+  bool ability = false;
   for (size_t i = 0; i < strikes_.size(); ++i) {
     if (strikes_[i].monster == monster) {
+      ability = strikes_[i].ability;
       strikes_.erase(strikes_.begin() + static_cast<std::ptrdiff_t>(i));
       break;
     }
+  }
+  if (ability) {
+    ResolveAbility(monster);
+    return;
   }
   MonsterSystem* ms = ctx_.sys.monsters;
   const MonsterInstance* m = ms != nullptr ? ms->Find(monster) : nullptr;
@@ -660,19 +667,29 @@ void CombatSystem::ResolveMonsterStrike(EntityId monster) {
 void CombatSystem::OnMonsterBoltArrived(const Projectile& p) {
   const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(p.spec.source) : nullptr;
   if (m == nullptr || !m->IsAlive() || !HeroAlive() || ctx_.session.transitioning) return;
+  // K2: an ability bolt carries its ability (payload = index + 1).
+  if (p.spec.payload > 0 && static_cast<size_t>(p.spec.payload) <= m->def.abilities.size()) {
+    const MonsterHitMods mods = AbilityHitMods(*m, m->def.abilities[static_cast<size_t>(p.spec.payload - 1)]);
+    ApplyMonsterHit(p.spec.source, true, &mods);
+    return;
+  }
   ApplyMonsterHit(p.spec.source, true);
 }
 
-// applyMonsterHit (combat 5.3).
-void CombatSystem::ApplyMonsterHit(EntityId monsterId, bool ranged) {
+// applyMonsterHit (combat 5.3). K2: the hit is the monster's damageType (an ability's own type and x dmgMul through
+// `mods`), and the HP it takes is capped at the monster's hitCapHeroMaxHpPct of the hero's max life (difficulty-scaled).
+void CombatSystem::ApplyMonsterHit(EntityId monsterId, bool ranged, const MonsterHitMods* mods) {
   MonsterSystem* ms = ctx_.sys.monsters;
   const MonsterInstance* m = ms->Find(monsterId);
   if (m == nullptr) return;
   Hero& hero = *ctx_.sys.hero;
   const double now = ctx_.Now();
   // The roll comes first (RNG consumed even when the i-frames avoid the hit).
-  const DamageResult r = CalculateDamage(Rules(), MonsterCombatant(*m), HeroCombatant(), SkillHitInput{}, false,
-                                         ctx_.Rand(RngStream::Combat));
+  SkillHitInput hitIn;
+  hitIn.basicType = mods != nullptr ? mods->type : m->def.damageType;
+  hitIn.basicMultiplier = mods != nullptr ? mods->dmgMul : 1.0;
+  const DamageResult r =
+      CalculateDamage(Rules(), MonsterCombatant(*m), HeroCombatant(), hitIn, false, ctx_.Rand(RngStream::Combat));
   // 1. dodge-roll i-frames.
   if (dodge_.IsInvulnerable(now)) {
     if (dodge_.ClaimAvoidanceReward(now)) GainSpirit(SpiritSource::Dodge, false);
@@ -689,27 +706,36 @@ void CombatSystem::ApplyMonsterHit(EntityId monsterId, bool ranged) {
     }
     return;
   }
-  // 3. hit.
-  const double dmg = r.damage;
+  // 3. hit (K2 hit cap: no single hit above the monster's share of the hero's max life).
+  const double dmg = ApplyMonsterHitCap(r.damage, hero.MaxHp(), m->def.hitCapHeroMaxHpPct, DifficultyDamageMul());
   if (r.manaDamage > 0) hero.SpendMana(r.manaDamage);  // FIX Q16: the mana shield drains mana
   const HitFeedbackTable& t = ctx_.data.Combat().hitFeedback;
   const HitWeight w = ClassifyHit(t, dmg, hero.MaxHp(), r.isCrit, false, false);
   // hp loss with its feedback (recoil weight from this hit, monster hit-stop round(attackerStopMs x 0.6)), then
   // thornsHeal while still alive.
-  HurtHero(dmg, r.isCrit, false, DamageType::Physical, monsterId, !ranged, w, MonsterAttackerStopMs(t, w));
+  HurtHero(dmg, r.isCrit, false, r.type, monsterId, !ranged, w, MonsterAttackerStopMs(t, w));
   const double thorns = ctx_.equip.Get(Stat::ThornsHeal);
   if (thorns > 0 && hero.Hp() > 0) hero.Heal(PercentOfMaxHp(hero.MaxHp(), thorns));
 
-  // Monster on-hit statuses (C6: data rules, evaluated in order).
+  // Monster on-hit statuses (C6: data rules, evaluated in order); a K2 ability hit rolls the ability's status instead.
   m = ms->Find(monsterId);
   if (m == nullptr) return;
   const double monsterDamage = m->def.damage;
-  const std::vector<StatusRule> rules = m->def.onHitStatus;
-  for (const StatusRule& rule : rules) {
-    StatusRuleInput sin;
-    sin.monsterDamage = monsterDamage;
-    const StatusRuleRoll roll = RollStatusRule(rule, sin, ctx_.Rand(RngStream::Combat));
-    if (roll.applies) ApplyStatus(kHeroEntityId, roll.status, roll.value, roll.durationMs, monsterId);
+  if (mods != nullptr) {
+    if (mods->hasStatus) {
+      StatusRuleInput sin;
+      sin.monsterDamage = monsterDamage;
+      const StatusRuleRoll roll = RollStatusRule(mods->status, sin, ctx_.Rand(RngStream::Combat));
+      if (roll.applies) ApplyStatus(kHeroEntityId, roll.status, roll.value, roll.durationMs, monsterId);
+    }
+  } else {
+    const std::vector<StatusRule> rules = m->def.onHitStatus;
+    for (const StatusRule& rule : rules) {
+      StatusRuleInput sin;
+      sin.monsterDamage = monsterDamage;
+      const StatusRuleRoll roll = RollStatusRule(rule, sin, ctx_.Rand(RngStream::Combat));
+      if (roll.applies) ApplyStatus(kHeroEntityId, roll.status, roll.value, roll.durationMs, monsterId);
+    }
   }
   // Elite on-hit (17.4).
   m = ms->Find(monsterId);
@@ -731,6 +757,303 @@ void CombatSystem::ApplyMonsterHit(EntityId monsterId, bool ranged) {
   if (hero.Hp() <= 0) {
     if (TryDeathSave()) return;
     KillHero(HeroDeathCause::MonsterHit);
+  }
+}
+
+// =====================================================================================================================
+// K2 monster abilities (implementation-plan.md 3 K2; rules: monsters/MonsterAbilities.h)
+// =====================================================================================================================
+
+double CombatSystem::DifficultyDamageMul() const {
+  return ctx_.data.Combat().difficulty.Def(ctx_.session.difficulty).damageMul;
+}
+
+CombatSystem::MonsterHitMods CombatSystem::AbilityHitMods(const MonsterInstance& m, const MonsterAbilityDef& a) {
+  MonsterHitMods mods;
+  mods.dmgMul = a.dmgMul;
+  mods.type = a.hasDamageType ? a.damageType : m.def.damageType;
+  if (a.status.present) {
+    mods.hasStatus = true;
+    mods.status = AbilityStatusRule(a.status);
+  }
+  return mods;
+}
+
+// The ability clock starts on the first swing opportunity of a fight (each ability ready initialCooldownMs later).
+void CombatSystem::StartAbilityClock(MonsterInstance& m, double now) {
+  const size_t n = m.def.abilities.size();
+  if (m.abilityClockStarted && m.abilityReadyAtMs.size() == n) return;
+  m.abilityReadyAtMs.assign(n, 0.0);
+  for (size_t i = 0; i < n; ++i) m.abilityReadyAtMs[i] = now + m.def.abilities[i].initialCooldownMs;
+  m.abilityClockStarted = true;
+}
+
+// The pick (Combat.h K2 notes): the first ready ability by priority replaces the swing.
+bool CombatSystem::TryStartAbility(MonsterInstance& m, double now) {
+  const Hero& hero = *ctx_.sys.hero;
+  StartAbilityClock(m, now);
+  AbilityPickInput in;
+  in.nowMs = now;
+  in.heroDist = Dist(m.pos, hero.Position());
+  in.hpPct = m.maxHp > 0 ? m.hp / m.maxHp * 100.0 : 100.0;
+  in.phase = m.phase;
+  in.readyAtMs = m.abilityReadyAtMs;
+  const int32_t pick = PickMonsterAbility(m.def.abilities, in);
+  if (pick < 0) return false;
+  const MonsterAbilityDef& a = m.def.abilities[static_cast<size_t>(pick)];
+  const TelegraphStyle style = TelegraphStyleOf(m);
+  const AssetManifest& manifest = ctx_.data.Assets();
+  const AssetEntryDef* art =
+      manifest.loaded ? manifest.FindByGameId(MonsterArtGameId(manifest, m.def.spriteKey, m.def.id)) : nullptr;
+  const AnimClipDef* clip = art != nullptr ? art->FindClip(a.clip) : nullptr;
+  const AbilityTiming timing =
+      ComputeAbilityTiming(a, clip, AbilityMinWindupMs(style), ctx_.data.Combat().anim, m.def.animCategory);
+  AbilityAimInput aim;
+  aim.casterPos = m.pos;
+  aim.casterHeading = m.heading;
+  aim.anchor = m.spawnAnchor;
+  aim.heroPos = hero.Position();
+  const MonsterAbilityCast cast = ResolveAbilityCast(a, aim, now, now + timing.contactMs);
+  m.lastAttackMs = now;
+  m.abilityReadyAtMs[static_cast<size_t>(pick)] = now + a.cooldownMs;
+  m.pendingAbility = pick;
+  m.abilityCast = cast;
+  m.abilityRootedUntilMs = cast.contactMs;
+  const bool directional =
+      a.hasShape && (a.shape.kind == AbilityShapeKind::Cone || a.shape.kind == AbilityShapeKind::Line);
+  EvPlayAnim anim;  // the plan's EvMonsterAnim {entity, action}: the action, its clip and its beat
+  anim.entity = m.id;
+  anim.action = AbilityAnimAction(a.clip);
+  anim.clip = a.clip;
+  anim.startMs = now;
+  anim.contactMs = timing.contactMs;
+  anim.windupMs = timing.contactMs;
+  anim.durationMs = timing.durationMs;
+  anim.playRate = timing.playRate;
+  anim.hasFaceTarget = true;
+  anim.faceTarget = a.aim == AbilityAim::Self && directional ? m.pos + cast.dir : hero.Position();
+  ctx_.events.Emit(anim);
+  if (AbilityHasGroundShape(a.kind)) {
+    EvTelegraph tg;
+    tg.entity = m.id;
+    tg.abilityId = a.id;
+    tg.kind = a.kind;
+    tg.shape = cast.shape;
+    tg.origin = cast.origin;
+    tg.dir = cast.dir;
+    tg.startMs = cast.startMs;
+    tg.contactMs = cast.contactMs;
+    tg.style = style;
+    ctx_.events.Emit(std::move(tg));
+  }
+  PendingStrike st;
+  st.monster = m.id;
+  st.startMs = now;
+  st.windupMs = timing.contactMs;
+  st.timer = ctx_.timers.Schedule(cast.contactMs, TimerOwner::Combat,
+                                  static_cast<uint16_t>(CombatTimerKind::MonsterStrikeContact), m.id);
+  st.ability = true;
+  strikes_.push_back(st);
+  return true;
+}
+
+// S7 for abilities: a caster stunned or frozen at any moment of its windup aborts the ability at once, visibly
+// (EvMonsterAttackCancelled ends the telegraph; the root ends, the cooldown stays spent). Strikes in add order. A basic
+// swing keeps the web rule (checked at contact, ResolveMonsterStrike).
+void CombatSystem::AbortImmobilizedAbilities() {
+  if (ctx_.sys.status == nullptr || strikes_.empty()) return;
+  for (size_t i = 0; i < strikes_.size();) {
+    const PendingStrike s = strikes_[i];
+    if (!s.ability || !ctx_.sys.status->IsImmobilized(s.monster)) {
+      ++i;
+      continue;
+    }
+    ctx_.timers.Cancel(s.timer);
+    strikes_.erase(strikes_.begin() + static_cast<std::ptrdiff_t>(i));
+    if (MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(s.monster) : nullptr) {
+      m->pendingAbility = -1;
+      m->abilityRootedUntilMs = 0;
+    }
+    ctx_.events.Emit(EvMonsterAttackCancelled{s.monster, false});
+  }
+}
+
+// Contact of the pending ability (T1 timer). S7: a caster immobilized since the last TickCombat aborts it visibly here
+// (AbortImmobilizedAbilities catches the rest of the windup); a dead caster never gets here (OnMonsterKilled cancelled
+// the timer).
+void CombatSystem::ResolveAbility(EntityId monster) {
+  MonsterSystem* ms = ctx_.sys.monsters;
+  MonsterInstance* m = ms != nullptr ? ms->Find(monster) : nullptr;
+  if (m == nullptr) return;
+  const int32_t idx = m->pendingAbility;
+  m->pendingAbility = -1;
+  m->abilityRootedUntilMs = 0;
+  if (!m->IsAlive() || idx < 0 || static_cast<size_t>(idx) >= m->def.abilities.size()) return;
+  if (ctx_.sys.status != nullptr && ctx_.sys.status->IsImmobilized(monster)) {
+    ctx_.events.Emit(EvMonsterAttackCancelled{monster, false});
+    return;
+  }
+  if (!HeroAlive() || ctx_.session.transitioning) return;
+  // Copies: a hit may grow the monster list (kill pipeline) and move the instance.
+  const MonsterAbilityDef a = m->def.abilities[static_cast<size_t>(idx)];
+  const MonsterAbilityCast cast = m->abilityCast;
+  const Hero& hero = *ctx_.sys.hero;
+  if (a.kind == AbilityKind::Bolt) {
+    ProjectileSpec p;
+    p.kind = ProjectileKind::MonsterBolt;
+    p.source = monster;
+    p.target = kHeroEntityId;
+    p.from = m->pos;
+    p.to = hero.Position();
+    p.travelMs = MonsterBoltTravelMs(ctx_.data.Combat().projectiles, p.from, p.to);
+    p.vfxId = "monster_bolt";
+    p.color = m->def.projectileColor;
+    p.payload = idx + 1;
+    if (ctx_.sys.projectiles != nullptr) ctx_.sys.projectiles->Launch(p);
+    return;
+  }
+  if (a.kind == AbilityKind::Hazard) {  // the ground is the attack: its first pulse lands now (TickHazards)
+    PlaceHazard(*m, a, cast);
+    return;
+  }
+  const MonsterHitMods mods = AbilityHitMods(*m, a);
+  if (ShapeContains(cast.shape, cast.origin, cast.dir, hero.Position())) ApplyMonsterHit(monster, true, &mods);
+  if (a.hitsMonsters) HitMonstersInShape(monster, a, cast);
+  if (a.hazard.present) {
+    if (const MonsterInstance* caster = ms->Find(monster)) PlaceHazard(*caster, a, cast);
+  }
+}
+
+void CombatSystem::HitMonstersInShape(EntityId caster, const MonsterAbilityDef& a, const MonsterAbilityCast& cast) {
+  MonsterSystem* ms = ctx_.sys.monsters;
+  std::vector<EntityId> ids;
+  ms->QueryAlive(cast.origin, ShapeReach(cast.shape) + kAbilityBodyRadiusTiles, ids);
+  for (EntityId id : ids) {
+    if (id == caster) continue;
+    const MonsterInstance* target = ms->Find(id);
+    const MonsterInstance* source = ms->Find(caster);
+    if (source == nullptr) break;
+    if (target == nullptr || !target->IsAlive()) continue;
+    if (!ShapeContains(cast.shape, cast.origin, cast.dir, target->pos)) continue;
+    SkillHitInput in;
+    in.basicType = a.hasDamageType ? a.damageType : source->def.damageType;
+    in.basicMultiplier = a.dmgMul * a.monsterDmgMul;
+    const DamageResult r = CalculateDamage(Rules(), MonsterCombatant(*source), MonsterCombatant(*target), in, false,
+                                           ctx_.Rand(RngStream::Combat));
+    if (r.isDodged) {
+      EmitMiss(id, Faction::Monster, caster, std::string(), false);
+      continue;
+    }
+    MonsterHitRequest req;
+    req.monster = id;
+    req.amount = r.damage;
+    req.isCrit = r.isCrit;
+    req.hasFrom = true;
+    req.from = cast.origin;
+    req.attacker = caster;
+    req.source = KillSource::Other;
+    req.element = r.type;
+    req.provokes = false;
+    DamageMonster(req);
+  }
+}
+
+void CombatSystem::PlaceHazard(const MonsterInstance& m, const MonsterAbilityDef& a, const MonsterAbilityCast& cast) {
+  HazardEntry e;
+  e.source = m.id;
+  e.abilityId = a.id;
+  e.shape = a.kind != AbilityKind::Hazard && a.hazard.hasShape ? a.hazard.shape : cast.shape;
+  e.origin = cast.origin;
+  e.dir = cast.dir;
+  e.startMs = ctx_.Now();
+  e.tickMs = a.hazard.tickMs;
+  e.pulseAtStart = a.kind == AbilityKind::Hazard;
+  e.heroTickDamage = HazardTickDamage(m.def.damage, a.hazard.tickDmgMul);
+  e.hitsMonsters = a.hitsMonsters;
+  e.monsterTickDamage = a.hitsMonsters ? HazardTickDamage(m.def.damage, a.hazard.tickDmgMul * a.monsterDmgMul) : 0.0;
+  e.damageType = a.hasDamageType ? a.damageType : m.def.damageType;
+  if (a.hazard.status.present) {
+    e.hasStatus = true;
+    e.status = AbilityStatusRule(a.hazard.status);
+  }
+  e.hitCapPct = m.def.hitCapHeroMaxHpPct;
+  const uint32_t id = hazards_.Add(std::move(e), a.hazard.durationMs);
+  const HazardEntry* h = hazards_.Find(id);
+  if (h == nullptr) return;
+  EvHazard ev;
+  ev.id = h->id;
+  ev.source = h->source;
+  ev.abilityId = h->abilityId;
+  ev.shape = h->shape;
+  ev.origin = h->origin;
+  ev.dir = h->dir;
+  ev.damageType = h->damageType;
+  ev.startMs = h->startMs;
+  ev.untilMs = h->untilMs;
+  ev.tickMs = h->tickMs;
+  ctx_.events.Emit(std::move(ev));
+}
+
+void CombatSystem::TickHazards() {
+  if (hazards_.Entries().empty()) return;
+  const double now = ctx_.Now();
+  std::vector<HazardTick>& due = scratchHazardTicks_;  // only TickHazards uses it (ticks never run TickHazards)
+  hazards_.CollectDue(now, due);
+  for (size_t i = 0; i < due.size(); ++i) {
+    const HazardEntry* found = hazards_.Find(due[i].hazard);
+    if (found == nullptr) continue;
+    const HazardEntry h = *found;  // a copy: a tick's hit may add hazards
+    ResolveHazardTick(h);
+  }
+  hazards_.DropExpired(now);
+}
+
+// One hazard tick: the hero inside takes the fixed tick less its resistance, capped (a DoT-like tick: no roll, no
+// defense, no i-frames, but Death Save applies as to a monster hit), then the status roll; with hitsMonsters every
+// monster inside takes the monster tick.
+void CombatSystem::ResolveHazardTick(const HazardEntry& h) {
+  Hero& hero = *ctx_.sys.hero;
+  if (HeroAlive() && !ctx_.session.transitioning && ShapeContains(h.shape, h.origin, h.dir, hero.Position())) {
+    if (h.heroTickDamage > 0) {
+      double amount = h.heroTickDamage;
+      if (h.damageType != DamageType::Physical) {
+        const double resist = ResistancePercent(ctx_.data.Classes().formulas, &ctx_.equip, h.damageType);
+        amount = (std::max)(1.0, std::floor(amount * (1 - resist / 100.0)));
+      }
+      amount = ApplyMonsterHitCap(amount, hero.MaxHp(), h.hitCapPct, DifficultyDamageMul());
+      HeroHitRequest req;
+      req.amount = amount;
+      req.isTick = true;
+      req.source = h.source;
+      req.element = h.damageType;
+      req.allowDeathSave = true;  // monster damage, not a status DoT (whose 5.3 QUIRK stays): Death Save holds
+      DamageHero(req);
+    }
+    if (h.hasStatus && HeroAlive()) {
+      StatusRuleInput sin;
+      const StatusRuleRoll roll = RollStatusRule(h.status, sin, ctx_.Rand(RngStream::Combat));
+      if (roll.applies) ApplyStatus(kHeroEntityId, roll.status, roll.value, roll.durationMs, h.source);
+    }
+  }
+  if (!h.hitsMonsters || !(h.monsterTickDamage > 0) || ctx_.sys.monsters == nullptr) return;
+  MonsterSystem* ms = ctx_.sys.monsters;
+  std::vector<EntityId> ids;
+  ms->QueryAlive(h.origin, ShapeReach(h.shape) + kAbilityBodyRadiusTiles, ids);
+  for (EntityId id : ids) {
+    if (id == h.source) continue;
+    const MonsterInstance* target = ms->Find(id);
+    if (target == nullptr || !target->IsAlive() || !ShapeContains(h.shape, h.origin, h.dir, target->pos)) continue;
+    MonsterHitRequest req;
+    req.monster = id;
+    req.amount = h.monsterTickDamage;
+    req.isTick = true;
+    req.hasFrom = true;
+    req.from = h.origin;
+    req.attacker = h.source;
+    req.source = KillSource::Other;
+    req.element = h.damageType;
+    req.provokes = false;
+    DamageMonster(req);
   }
 }
 
@@ -902,11 +1225,19 @@ void CombatSystem::OnMonsterKilled(const MonsterKilledMsg& m) {
   // Target cleanup (the web cleared it on basic-attack kills; every kill path does here).
   if (hero.attackTarget == m.monster) SetTargetInternal(kNoEntity, false);
   if (indicator_ == m.monster) UpdateIndicator();
-  // The dead monster's pending swing can never land.
+  // The dead monster's pending swing can never land. A K2 ability aborts visibly (S7): its telegraph goes.
   for (size_t i = 0; i < strikes_.size(); ++i) {
     if (strikes_[i].monster == m.monster) {
+      const bool ability = strikes_[i].ability;
       ctx_.timers.Cancel(strikes_[i].timer);
       strikes_.erase(strikes_.begin() + static_cast<std::ptrdiff_t>(i));
+      if (ability) {
+        if (MonsterInstance* dead = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(m.monster) : nullptr) {
+          dead->pendingAbility = -1;
+          dead->abilityRootedUntilMs = 0;
+        }
+        ctx_.events.Emit(EvMonsterAttackCancelled{m.monster, false});
+      }
       break;
     }
   }
@@ -2149,6 +2480,7 @@ void CombatSystem::TickCombat() {
   const double now = ctx_.Now();
   MonsterSystem* ms = ctx_.sys.monsters;
   if (ms != nullptr) ms->PruneBuffs(now);
+  AbortImmobilizedAbilities();  // K2 (S7): before the dead-hero gate, like the buff prune
   if (!HeroAlive()) return;
   hero.Buffs().Prune(now);
   if (ms == nullptr) return;
@@ -2162,7 +2494,16 @@ void CombatSystem::TickCombat() {
     MonsterInstance* m = ms->Find(id);
     if (m == nullptr || !m->IsAlive() || m->state != MonsterState::Attack) continue;
     if (ctx_.sys.status != nullptr && ctx_.sys.status->IsImmobilized(id)) continue;
+    if (m->pendingAbility >= 0) continue;  // K2: one action at a time (a windup may outlast the attack interval)
     if (m->lastAttackMs != 0 && now - m->lastAttackMs + kCombatSwingEpsilonMs < m->def.attackSpeedMs) continue;
+    // K2: a due swing becomes the first ready ability, unless a pet's taunt holds the monster (the taunt draws the
+    // swing to the beast below; the ability clock runs on). The pick comes before the stray-swing draw, so a stray
+    // roll never takes an ability from the hero.
+    if (!m->def.abilities.empty()) {
+      StartAbilityClock(*m, now);
+      const bool taunted = ctx_.sys.petCompanion != nullptr && ctx_.sys.petCompanion->TauntHolds(id);
+      if (!taunted && TryStartAbility(*m, now)) continue;
+    }
     if (ctx_.sys.petCompanion != nullptr && ctx_.sys.petCompanion->InterceptMonsterAttack(id)) continue;
     m = ms->Find(id);
     if (m == nullptr) continue;
@@ -2461,6 +2802,12 @@ void CombatSystem::OnTimer(const Timer& t) {
 
 void CombatSystem::CancelPendingStrikes(bool emitCancelled) {
   for (const PendingStrike& s : strikes_) {
+    if (s.ability && ctx_.sys.monsters != nullptr) {
+      if (MonsterInstance* m = ctx_.sys.monsters->Find(s.monster)) {
+        m->pendingAbility = -1;
+        m->abilityRootedUntilMs = 0;
+      }
+    }
     if (ctx_.timers.Cancel(s.timer) && emitCancelled) ctx_.events.Emit(EvMonsterAttackCancelled{s.monster, false});
   }
   strikes_.clear();
@@ -2493,6 +2840,7 @@ void CombatSystem::OnZoneExit() {
   strikes_.clear();
   releases_.clear();
   hits_.clear();
+  hazards_.Clear();  // K2: UE drops the zone's hazards with the zone
   DropGroundRolls(kNoEntity);
   buffer_.Clear();
   if (inCombat_) {
@@ -2570,6 +2918,42 @@ void CombatSystem::FillSnapshot(Snapshot& out) const {
                             false) == CastGate::Ok;
   }
   for (MonsterView& m : out.monsters) m.windingUp = IsWindingUp(m.id);
+  // K2: abilities winding up with a ground shape, then the live hazards.
+  if (const MonsterSystem* ms = ctx_.sys.monsters) {
+    for (const PendingStrike& s : strikes_) {
+      if (!s.ability) continue;
+      const MonsterInstance* m = ms->Find(s.monster);
+      if (m == nullptr || m->pendingAbility < 0) continue;
+      if (static_cast<size_t>(m->pendingAbility) >= m->def.abilities.size()) continue;
+      const MonsterAbilityDef& a = m->def.abilities[static_cast<size_t>(m->pendingAbility)];
+      if (!AbilityHasGroundShape(a.kind)) continue;
+      const MonsterAbilityCast& c = m->abilityCast;
+      TelegraphView v;
+      v.entity = m->id;
+      v.abilityId = a.id;
+      v.shape = c.shape;
+      v.origin = c.origin;
+      v.dir = c.dir;
+      v.startMs = c.startMs;
+      v.contactMs = c.contactMs;
+      v.progress = c.contactMs > c.startMs ? Clamp((now - c.startMs) / (c.contactMs - c.startMs), 0.0, 1.0) : 1.0;
+      v.style = TelegraphStyleOf(*m);
+      out.telegraphs.push_back(std::move(v));
+    }
+  }
+  for (const HazardEntry& h : hazards_.Entries()) {
+    HazardView v;
+    v.id = h.id;
+    v.source = h.source;
+    v.abilityId = h.abilityId;
+    v.shape = h.shape;
+    v.origin = h.origin;
+    v.dir = h.dir;
+    v.damageType = h.damageType;
+    v.startMs = h.startMs;
+    v.untilMs = h.untilMs;
+    out.hazards.push_back(std::move(v));
+  }
 }
 
 }  // namespace abyss

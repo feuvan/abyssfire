@@ -160,7 +160,8 @@ class ABYSS_API MonsterSystem {
   // 3.8: activity set (250 ms), safe-zone repel, immobilized skip, AI, grid update. Every Idle / Patrol / Returning ->
   // Chase transition publishes MonsterAggroMsg (A7 aggro vocalisation). The activity set is the monsters within
   // aiCullRadius of the hero (grid order) plus every aggro AND every Returning (M1) monster anywhere (list order), so a
-  // leashed monster always finishes its walk home.
+  // leashed monster always finishes its walk home. K2: a monster winding up an ability (now < abilityRootedUntilMs) is
+  // skipped like an immobilized one, and a leash (M1) stops its ability clock (MonsterInstance::abilityClockStarted).
   void TickAI(double dtMs);
   void TickEliteBehaviours();    // 17.4: teleporting + curse aura
   // FIX Q19: prunes every monster's buffs (list order; no publish, so no re-entrancy).

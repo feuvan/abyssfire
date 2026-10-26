@@ -29,8 +29,8 @@ DATA (implemented and tested; loads all 50 Data/*.json, 0 errors)
 SIM CONTRACT (lead; facade and loop implemented)
 - GameSim.h: GameSim {Create, NewGame, LoadGame, SaveGame, CanSave, BuildSave, Step, Frame, AdvanceRealTime, Submit, Events, ClearEvents, View, WorldFrozen, NowMs, Context}.
 - Commands.h: Command = variant of 53 Cmd* structs (move, pointer, combat, world, items, progression, pets, quests, dialogue, story, panels, lifecycle, debug); IsHeroGameplayCommand.
-- Events.h: Event = variant of about 68 Ev* structs; EventSink.
-- Snapshot.h: Snapshot with Hero/Monster/Npc/Pet/GroundItem/Projectile/GroundEffect/WorldMarker/Zone/BossBar views, prevPos plus interpolationAlpha, and live pointers (Inventory, QuestSystem, Dialogue, Story, Pets...).
+- Events.h: Event = variant of about 70 Ev* structs (append only: UE builds its delegates from the variant); EventSink.
+- Snapshot.h: Snapshot with Hero/Monster/Npc/Pet/GroundItem/Projectile/GroundEffect/Telegraph/Hazard/WorldMarker/Zone/BossBar views, prevPos plus interpolationAlpha, and live pointers (Inventory, QuestSystem, Dialogue, Story, Pets...).
 - SimContext.h: SimContext (shared services by reference, SimSystems pointers, merged EquipStats `equip`), SimConfig, RNG stream placement rules.
 - GameplayBus.h: typed synchronous bus. Messages: MonsterKilledMsg, Hero*Msg, Quest*Msg, ZoneEntered/Exited, SaveRequestMsg, EquipStatsDirtyMsg, ...
 - SimTypes.h: PanelId, LogType, AnimAction, InteractKind, StoryBeatKind, PotionSlot, ...
@@ -50,6 +50,7 @@ COMBAT
 - CombatInput.h: InputBuffer, DodgeController, ComputeDodgeDestination, CycleTarget.
 - SkillTargeting.h: C14 cast shapes, cast reach, ground cast point, cast direction, chain links, line/cone/radius targets, teleport/shadow-step/charge destinations.
 - Projectiles.h: ProjectileSystem (projectiles and C4 ground effects), travel-time functions.
+- HazardField.h: the per-zone ground hazards of monster abilities (dark remake K2): tick schedule, CollectDue, DropExpired.
 - Combat.h: CombatSystem (skill requests, dodge, targeting, progression commands, per-step ticks, DamageMonster/DamageHero, KillHero, ResolvePendingDeath, OnMonsterKilled).
 - SoulEcho.h: ComputeDeathPenalty, SoulEchoState, SoulEchoSystem.
 
@@ -58,6 +59,7 @@ MONSTERS
 - MonsterDefs.h: difficulty scaling, hunt definitions, base stats, CombineAffixes/ApplyEliteAffixes.
 - EliteAffixes.h: RollEliteAffixes, on-hit, teleport, curse.
 - MonsterAI.h: UpdateMonsterAI, MonsterMoveToward, ProvokeMonster.
+- MonsterAbilities.h: dark remake K2 pure rules (ability picker, ground shapes, contact timing, aim, telegraph style, hit cap).
 - SpatialGrid.h: implemented in the header.
 - Hunts.h: IsHuntDue, HuntsToSpawn, FindWalkableNear.
 - MonsterSystem.h: spawn, mini-boss, hunts, ambush, TickAI, ApplyDamage (publishes MonsterKilledMsg exactly once), Heal, queries, save.
@@ -74,7 +76,7 @@ QUESTS, STORY, PETS
 - QuestWorld.h: NPC interaction, quest card, TurnIn, drops/gather/clues/escort/defend, guide.
 - Dialogue.h (DialogueSystem, Q1 dialogueOnce), Achievements.h (AchievementState/System), Lore.h (LoreSystem).
 - StoryDirector.h: StoryProgress, StoryDirector (queue, T15 timers, IsCinematic, real-time step player, Advance/Skip, Q7 seen-on-finish).
-- PetSystem.h: pet formulas, PetSystem. PetCompanion.h: ChoosePetAction, PetCompanion. Homestead.h: ember/garden functions, HomesteadTower, HomesteadSystem.
+- PetSystem.h: pet formulas, PetSystem. PetCompanion.h: ChoosePetAction, PetCompanion (TauntHolds: CombatSystem's K2 pick reads it). Homestead.h: ember/garden functions, HomesteadTower, HomesteadSystem.
 
 WORLD
 - Grid.h: TileType, ZoneGrid (implemented).
@@ -108,13 +110,13 @@ Adding a message, event, command, snapshot field, SimSystems pointer or bus subs
 
 ### hero+combat
 
-**Files:** Public/abyss/hero/{Hero,Skills,Spirit,Buffs}.h, Public/abyss/combat/{Damage,StatusEffects,HitFeedback,CombatInput,SkillTargeting,Projectiles,Combat,SoulEcho}.h, the matching Private/hero/*.cpp and Private/combat/*.cpp, Private/save/SaveHero.cpp, data/{ClassData,SkillData,CombatData}.h with Private/data/{LoadClasses,LoadCombat}.cpp, CoreTests/tests/{hero_test,combat_test}.cpp
+**Files:** Public/abyss/hero/{Hero,Skills,Spirit,Buffs}.h, Public/abyss/combat/{Damage,StatusEffects,HitFeedback,CombatInput,SkillTargeting,Projectiles,Combat,SoulEcho,HazardField}.h, the matching Private/hero/*.cpp and Private/combat/*.cpp, Private/save/SaveHero.cpp, data/{ClassData,SkillData,CombatData}.h with Private/data/{LoadClasses,LoadCombat}.cpp, CoreTests/tests/{hero_test,combat_test}.cpp
 
 Spec: classes-stats-skills.md and combat-feel.md; follow D13 (timers via TimerOwner::Combat and ::Projectiles; F1/F2 in OnFreezeBegin). RNG: RngStream::Combat, plus Loot for kill gold. Monster swings, hero strikes, skill releases and all hit application live in CombatSystem. Monster damage always goes through MonsterSystem::ApplyDamage, which publishes MonsterKilledMsg, and CombatSystem::OnMonsterKilled is the first kill handler. KillHero, the Dying gate, ResolvePendingDeath, the respawn timer (T12) and the soul-echo penalty belong here. Implement Hero::ToSave/FromSave and the savejson player/settings/soulEcho sections. BuffList is already implemented and shared with monsters. ComputeAttackTiming must read AssetManifest contact/release times first. Stubs to fill: Spirit, Skills formulas and invest rules, CalculateDamage, StatusEffectSystem Apply/Tick (Q21 fix), CombatSystem, ProjectileSystem, SoulEcho.
 
 ### monsters
 
-**Files:** Public/abyss/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,SpatialGrid,Hunts,MonsterSystem}.h, Private/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,Hunts,MonsterSystem}.cpp, data/MonsterData.h with Private/data/LoadMonsters.cpp, CoreTests/tests/monsters_test.cpp
+**Files:** Public/abyss/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,MonsterAbilities,SpatialGrid,Hunts,MonsterSystem}.h, Private/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,MonsterAbilities,Hunts,MonsterSystem}.cpp, data/MonsterData.h with Private/data/LoadMonsters.cpp, CoreTests/tests/{monsters_test,monster_abilities_test}.cpp
 
 Spec: monsters-ai.md and combat-feel.md 14 and 17. RNG: RngStream::Ai (Combat for elite on-hit rolls). Respawn uses TimerOwner::Monsters (T9). ApplyDamage is the only way a monster dies and must publish exactly one MonsterKilledMsg with every field filled (expReward spawn-scaled, affixLootBonus, role, killer/source). MonsterSystem::OnMonsterKilled is the last kill handler (log plus M4/M7/W9 respawn decision). Provide the queries CombatSystem, PetCompanion and QuestWorld rely on (QueryAlive, NearestAlive, NearestAggro, MonsterAtTile, NearestAliveOfDef, Candidates). Spawn order: SpawnZonePopulation, then SpawnMiniBoss, then SpawnDueHunts(false). SpatialGrid is complete and tested. M1 Returning leash and M6 A* need world's Pathfinder through MonsterWorld.findPath. The mini-boss pre-fight dialogue (EvMiniBossDialogue, miniBossDialogueSeen) belongs here.
 

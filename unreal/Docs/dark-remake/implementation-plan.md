@@ -791,6 +791,110 @@ manifest moves hit timing, so the seeds differ by manifest):
 | **2G UE Wave 2** | U2, U3, U5 (W2 parts) | `Private/Vfx/AbyssTelegraphs.cpp`, `Private/Actors/AbyssCorpses.cpp`, anim map in `AbyssCharacterActor.cpp`, UI files, `Scripts/abyss_content/*` (telegraph material) | 2A-2E events | scripts, mac-content, mac-autotest, mac-look (telegraphs read on the darkest tile, mobile tiers) |
 | **2H Art Wave 2** | Rise / Attack02 / Cast01 clips where W1 shipped without them, elite sigil, A12 W2 recipes | Art files of 1D (re-ship) | 1D | kit, ship, coherence, hue audit |
 
+**2A outcomes (K2 as built, 2026-10; pending review; DECISIONS M9 amendment, DR8 *K2 as built*).**
+- **Schema.** `MonsterData.h` `MonsterAbilityDef` carries every K2 field (`abilities[]` as in K2 "Data"), parsed by
+  `LoadMonsters.cpp` (`ReadMonsterAbility`; also for hunt `defsNormal`, so a hunt leader keeps its base's abilities) and
+  `MonsterDef::damageType` / `hitCapHeroMaxHpPct` / `bossSkills`. Shape rules at load, mirrored by the exporter
+  (`tables/monsters.ts` `checkK2Monster`): unknown keys at every level fail (a misspelt optional field would otherwise be
+  dropped silently); `windupMs` 600..5000; `cooldownMs` / `initialCooldownMs` 0..600000; `clip` and `aim` required; per
+  kind a `shape` (circle radius > 0, ring radius > innerRadius >= 0, cone 0 < arcDeg <= 360, line length / width > 0),
+  `hazard` (`durationMs` <= 60000, `tickMs` 100..durationMs; `HazardField::TickCount` saturates at `kHazardMaxTicks`),
+  `summon`, `buff`; a status needs `value` > 0 (a status of value 0 is rejected by `StatusEffectSystem::Apply`); a hazard ability
+  takes neither `dmgMul` nor `status` (its pulses are the hazard's ticks); `hitCapHeroMaxHpPct` is a percent in (0, 100].
+  `DataStore::Finalize`: summoned ids exist; a mini-boss, sub-dungeon mini-boss or the story boss winds up >= 700 ms;
+  `bossSkills` ids must name abilities once a monster has any, else they stay inert with one warning per monster (the
+  web's `demon_lord` / Labyrinth bosses today); an ability timed by its clip warns when the manifest has no beat for it;
+  an ability whose `rangeMin` lies past the swing reach (attackRange x `attackExitMul`) warns "never picked" and one whose
+  `rangeMax` does warns "no effect" (the exporter fails the first and warns on the second).
+- **Two schema additions the plan did not spell.** `shape.kind` (circle | cone | line | ring): optional where the
+  ability's kind implies it, required for a `hazard` ability and for `hazard.shape`, which have no implied geometry.
+  `summon.at` is `self` | `anchors` | `corpse` (raise: corpse). Buff `stat` is `damage` | `attackSpeed` | `moveSpeed` |
+  `fearImmune` (K5 may append).
+- **Aims (resolved once, at windup start).** Ground shapes without a direction (circle, ring, hazard on one) sit on the
+  aim point: `heroAtWindup` = the hero's position then, `self` = the caster, `anchor` = the caster's spawn anchor (the
+  dais; K4 may move it to the phase's leash centre). Cones and lines start at the caster (the anchor for `anchor`) and
+  point at the hero's windup position (`self`: the heading). **Deviation:** `hero` is refused for circle / ring / hazard
+  (a decal that followed the hero to contact could not be dodged, monsters.md 1.3) and is the only aim of `bolt` (the
+  bolt locks on the hero like the basic ranged swing). `corpse` is K3's.
+- **Runtime** (`MonsterAbilities.{h,cpp}` pure; `CombatSystem` runs it; Combat.h *K2* notes). A swing that comes due
+  becomes the first ready ability by priority (higher first, ties in data order) whose kind runs, cooldown is over, hero
+  distance is in [rangeMin, rangeMax], life is below `hpBelowPct` and phase is listed (`MonsterInstance::phase`, 0 until
+  K4). A monster held by a pet's taunt (`PetCompanion::TauntHolds`) starts no ability: the taunt draws the due swing to
+  the beast as a basic swing, and the ability clock runs on; otherwise the pick runs before the beast's stray-swing draw,
+  so that 25 % roll never takes an ability from the hero. The ability clock starts at the monster's first swing
+  opportunity of a fight (each ability ready `initialCooldownMs` later) and restarts after a leash. Cooldowns count from windup start.
+  The pending ability is a `PendingStrike` on the `MonsterStrikeContact` timer; the caster is rooted (no AI tick) and
+  starts no other swing until contact. Contact = `windupMs`, else the clip's Contact notify, else its Release, never
+  below 600 ms (700 ms for TelegraphStyle::Boss); the clip plays at the rate that puts its beat there. At contact: a ground
+  shape hits the hero whose 0.35-tile body touches the shape placed at windup start, then every other living monster in it
+  when `hitsMonsters` (x `monsterDmgMul`, no provoke), then leaves its hazard; a bolt flies (payload = ability index + 1)
+  and hits on arrival; a `hazard` ability places its hazard, whose first pulse lands at once. Aborts (S7): the caster
+  dies, or is stunned or frozen at any moment of its windup (`EvMonsterAttackCancelled` at once, from the next
+  `TickCombat`, even for a stun that ends before contact; a basic swing keeps the web's check at contact); the hero is
+  dead or the zone is changing at contact (silent); F2 cancels it with the swings; the cooldown stays spent. Kinds raise / summon (K3) and buff / call
+  (K5) are parsed but never picked (`AbilityKindRuns`), and the exporter value-gates them (`REMAKE_VALUES`
+  `monster.abilityRaise` / `abilitySummon` / `abilityBuff` / `abilityCall`) until their package lands.
+- **Damage.** Every monster hit on the hero runs `CalculateDamage` with `SkillHitInput::basicType` (the monster's
+  `damageType`, an ability's own when set) and `basicMultiplier` (`dmgMul`; 1 for swings), so non-physical hits meet the
+  resistance step; the HP taken is capped at `MonsterHitCap` = floor(hero max life x `hitCapHeroMaxHpPct` x the
+  difficulty's `damageMul` / 100), at least 1. **Interpretation:** "scaled by the difficulty table" (monsters.md 1.3) is
+  the difficulty's monster damage multiplier (Normal 35 %, Nightmare 52.5 %, Hell 70 %), so the cap binds at the same
+  point of the scaled damage; no new difficulty field. An ability hit rolls the ability's status instead of the def's
+  `onHitStatus`; elite on-hit effects apply to both (Oathfire's extra fire is its own small hit, not capped). No cap and
+  physical are the defaults: the shipped data deals what it dealt.
+- **Hazards** (`combat/HazardField.h`): per zone, ticked after the status effects every step (`CombatSystem::TickHazards`),
+  ticks in (time, id) order. A hazard ability pulses at start + k x tickMs while k x tickMs < durationMs (Breach-seep 1000 /
+  500: two pulses, the first at contact); a hazard a strike leaves ticks at start + (k + 1) x tickMs while <= durationMs
+  (Oath-Brand 4000 / 500: eight). A tick deals floor(damage x tickDmgMul) (>= 1) less the hero's resistance, capped like a
+  hit, with no roll, defense or i-frames (a DoT tick), rolls its status, and hurts monsters inside with `hitsMonsters`.
+  Unlike a status DoT tick (whose Death Save skip is the web's 5.3 quirk), a lethal hazard tick checks Death Save as a
+  monster hit does: it is monster damage. A zone change drops them.
+- **Events.** `EvTelegraph {entity, abilityId, kind, shape (AbilityShapeDef: kind + radius / arcDeg / length / width /
+  innerRadius), origin, dir, startMs, contactMs (absolute), style}` after the windup's `EvPlayAnim`, for ground kinds;
+  `EvHazard {id, source, abilityId, shape, origin, dir, damageType, startMs, untilMs, tickMs}`; `EvMonsterAttackCancelled`
+  also ends an ability's telegraph. **The plan's `EvMonsterAnim {entity, action}` is the existing `EvPlayAnim`**: it
+  already carries entity and action plus what UE needs to time the clip (`clip` = the ability's clip, `contactMs` =
+  `windupMs` = the contact, `durationMs`, `playRate`, `faceTarget`); actions Attack02 / Cast02 / Roar by clip name, Cast
+  for Cast01, else Attack with the explicit clip (UE's Attack branch plays a named clip, so Lunge / Consume need no new
+  AnimAction). Both events are appended to `abyss::Event`; the UE router builds its delegates from the variant. Snapshot:
+  `telegraphs` (fill progress) and `hazards`; `MonsterView::windingUp` covers an ability's whole windup.
+- **Exporter.** `REMAKE_SCHEMA` gains `monster.abilities`, `monster.damageType`, `monster.hitCap`; `tables/monsters.ts`
+  calls `gateRemakeValues` on every definition and hunt definition (it did not before). The export is byte-identical (no
+  GameData record uses the fields yet; 2F authors them); an end-to-end run with a temporary ability on a monster loaded in
+  the core with its hunt carrying it, and a typo / a raise / a 500 ms windup / `aim: hero` on a circle / a status of
+  value 0 each failed the export.
+- **Tests.** `monster_abilities_test.cpp` (suite `monsters`, 36 cases, 2068 assertions on GCC): schema load and
+  refusals (28 broken abilities, the upper bounds), Finalize checks (boss floor, summons, bossSkills, clip beat, the
+  swing-reach warnings), shape boundaries (inside / edge / outside, body 0.35), picker order and conditions, timing (clip
+  beat, authored windup, floors), hit cap per difficulty, HazardField schedule (and its saturation), aims; runtime through
+  the combat systems: contact equals the clip's, priority and cooldown order with the basic swing between, initial
+  cooldown, hpBelowPct / range, the leash reset, snapshot vs facing aim (circle, cone, line), rooting, one action at a
+  time (a 2400 ms windup on a 1500 ms swing interval), aborts on death / stun / freeze mid-windup (also one that ends
+  before contact) / F2 / a hero dead at contact, hazard ticks and expiry, zone drop, damage types through resistances
+  (abilities, swings, ticks; an ability, its hazard, its monster hits and a bolt without their own type take the
+  monster's), the hit cap on swings, ability hits, hazard pulses and hazard ticks on Normal, Nightmare and Hell, bolts,
+  `hitsMonsters` (exact damage = dmgMul x monsterDmgMul through the formula; a cone strike and hazard ticks spare a monster
+  inside the reach but outside the shape), telegraph style (elite flag, affixes, hunt leaders) and the boss floor, a pet's
+  taunt, Death Save on hazard ticks, kinds not run yet, the GameSim wiring (contact timer, `TickHazards` in the step, the
+  snapshot views), and a seeded 20 s fight whose event-log digest is pinned (`aeebb747324d47b9`, identical on GCC and
+  Clang). No existing assertion changed. The playthrough's final saves are byte-identical to the previous commit's (22
+  runs: the three pinned, the regression seeds, a 5-seed sweep per class).
+- **For 2F / 2G.** Content authors `abilities`, `damageType` and `hitCapHeroMaxHpPct` (35) per monster. A pick happens
+  only on a due swing, i.e. in the Attack state (within `attackRange`, kept to 1.2x): a `rangeMin` past that never fires
+  (the export fails, DataStore warns) and a `rangeMax` past it changes nothing (warned), so a long reach (Lunge 5) needs
+  the monster's own range or a later chase rule. Valdras's
+  Breach-seep needs three lines (three abilities, or a `count` field the schema does not have yet); Lunge is a line strike
+  that does not move the caster (a dash would be a new field). UE (U2): draw `EvTelegraph` / `TelegraphView`, end it at
+  contact or on `EvMonsterAttackCancelled`, draw `EvHazard` / `HazardView` until `untilMs`, clear both on zone unload.
+- **Review fixes (2A review, 2026-10).** R1: the rules above that no case pinned now have one (one action at a time,
+  per-difficulty caps on abilities and ticks, damage-type fallbacks, shape-bound monster hits and their exact damage, a
+  dead hero at contact, affix telegraphs); each was checked by mutating the core and watching the case fail. R2: a stun or
+  freeze mid-windup aborts the ability at once (it used to be checked only at contact, so a short stun let the slam land
+  with no windup clip). R3: a pet's taunt holds the monster's abilities (they used to fire at the hero through it). R4: the
+  swing-reach warnings. R5: Death Save on hazard ticks (deviation 5's "like a DoT tick" no longer skips it). R6: upper
+  bounds on the timing fields, `TickCount` saturates (an int32 counter overflowed past ~2e11 ms), and the exporter's kind
+  check uses `Object.hasOwn` (`'toString' in {}` passed and then threw).
+
 ### Phase 3 — Wave 3: the descent
 
 | WP | Scope | Owns | Depends | Acceptance |

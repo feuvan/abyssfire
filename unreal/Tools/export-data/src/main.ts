@@ -33,13 +33,20 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  *
  * 1B part 1 (Chapter 1 world data): map `presentationTheme` and `regions` (LoadWorld.cpp → MapDef::presentationTheme /
  * regions, mood themes of zone_moods.json; DataStore checks them; UE U1 resolves art, terrain, camp kit and the region
- * blend from them). Still withheld: monster `family` / `damageType` (no core reader yet) and every Wave 2 / 3 feature.
+ * blend from them).
+ *
+ * K2 monster abilities (package 2A): monster `abilities` (LoadMonsters.cpp → MonsterDef::abilities, shapes checked here
+ * first by tables/monsters.ts; CombatSystem runs them), `damageType` (→ MonsterDef::damageType: monster swings, bolts and
+ * abilities stop being physical-only) and `hitCapHeroMaxHpPct` (→ MonsterDef::hitCapHeroMaxHpPct, the per-difficulty
+ * hit cap). The ability kinds raise / summon / buff / call stay value-gated (REMAKE_VALUES) until K3 / K5.
+ * Still withheld: monster `family` (no core reader yet) and every other Wave 2 / 3 feature.
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
   'map.sealedEntrances', 'map.presentationTheme', 'map.regions',
   'story.focusAnim',
   'story.triggerWhileQuest',
+  'monster.abilities', 'monster.damageType', 'monster.hitCap',
 ];
 
 export interface RunOptions {

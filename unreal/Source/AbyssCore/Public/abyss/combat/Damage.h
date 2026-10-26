@@ -48,11 +48,20 @@ struct DamageRules {
 };
 
 // Optional skill input: skill + level + synergy factor (1 when the caller passes no skill levels).
+// Without a skill (a basic attack) the hit is `basicType` (resistances apply to every type but physical) and its base
+// is multiplied by `basicMultiplier` like a skill's damage multiplier: a monster swing of its def damageType, a K2
+// monster ability (dmgMul, damageType; dark remake). The defaults are the web's basic attack (physical, x1).
 struct SkillHitInput {
   const SkillDef* skill = nullptr;
   int32_t level = 1;
   double synergyFactor = 1.0;
+  DamageType basicType = DamageType::Physical;
+  double basicMultiplier = 1.0;
 };
+
+// getResistance (classes 12 step 15): the defender's allResist + the type's own resist (arcane: allResist only), clamped to
+// [0, resistCapPercent]; 0 for physical and for a defender without equip stats (monsters).
+ABYSS_API double ResistancePercent(const HeroFormulas& f, const EquipStats* eq, DamageType type);
 
 // calculateDamage (classes 12) with exactly the web's pipeline and draw order. Dodged results (damage 0) are
 // returned as such; callers apply the C1/Q9 fix (a dodged skill hit applies nothing).

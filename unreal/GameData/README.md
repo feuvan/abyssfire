@@ -137,7 +137,12 @@ Written now (the core's K1 hooks read them, DECISIONS DR8 *K1 as built*): quest 
 neither), and the `anim` of a `focus` step on a `{monster}` target (`roar` / `taunt`). The export checks those shapes;
 the core checks that every key exists in zh-CN and en and every wave monster exists. Since 1B part 1 also map
 `presentationTheme` and `regions` (`MapDef::presentationTheme` / `regions`; each must name a `zone_moods.json` mood,
-checked by the export and by DataStore). Still withheld: monster `family` / `damageType` and every Wave 2 / 3 field.
+checked by the export and by DataStore). Since K2 (package 2A, DECISIONS DR8 *K2 as built*) also monster `abilities`
+(`RemakeMonsterAbility[]`: kind, clip, windup / cooldowns, conditions, aim, shape, dmgMul / damageType / status, hazard,
+summon, buff; the kinds raise / summon / buff / call fail the export until K3 / K5), `damageType` and
+`hitCapHeroMaxHpPct` (percent of the hero's max life, scaled by the difficulty's damage multiplier); `Tools/export-data`
+`tables/monsters.ts` checks every ability field and key, and DataStore checks them again (implementation-plan.md
+*2A outcomes*). Still withheld: monster `family` and every other Wave 2 / 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

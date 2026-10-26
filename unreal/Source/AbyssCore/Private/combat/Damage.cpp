@@ -28,22 +28,23 @@ double DamageBuff(const DamageRules& rules, const Combatant& c, BuffStat s) {
   return rules.caps != nullptr ? c.buffs->Value(s, *rules.caps) : c.buffs->RawSum(s);
 }
 
-// getResistance (CombatSystem.ts:200): allResist + the type's own resist (arcane: allResist only), clamped.
-double DamageResist(const HeroFormulas& f, const Combatant& d, DamageType type) {
-  if (d.eq == nullptr) return 0.0;
-  double res = d.eq->Get(Stat::AllResist);
+}  // namespace
+
+// getResistance (CombatSystem.ts:200): allResist + the type's own resist (arcane: allResist only), clamped. Physical
+// hits never read it (step 15).
+double ResistancePercent(const HeroFormulas& f, const EquipStats* eq, DamageType type) {
+  if (eq == nullptr || type == DamageType::Physical) return 0.0;
+  double res = eq->Get(Stat::AllResist);
   switch (type) {
-    case DamageType::Fire: res += d.eq->Get(Stat::FireResist); break;
-    case DamageType::Ice: res += d.eq->Get(Stat::IceResist); break;
-    case DamageType::Lightning: res += d.eq->Get(Stat::LightningResist); break;
-    case DamageType::Poison: res += d.eq->Get(Stat::PoisonResist); break;
+    case DamageType::Fire: res += eq->Get(Stat::FireResist); break;
+    case DamageType::Ice: res += eq->Get(Stat::IceResist); break;
+    case DamageType::Lightning: res += eq->Get(Stat::LightningResist); break;
+    case DamageType::Poison: res += eq->Get(Stat::PoisonResist); break;
     case DamageType::Physical:
     case DamageType::Arcane: break;
   }
   return Clamp(res, 0.0, f.resistCapPercent);
 }
-
-}  // namespace
 
 DamageResult CalculateDamage(const DamageRules& rules, const Combatant& attacker, const Combatant& defender,
                              const SkillHitInput& skill, bool forceCrit, Rng& rng) {
@@ -73,7 +74,7 @@ DamageResult CalculateDamage(const DamageRules& rules, const Combatant& attacker
              : 1.0;
 
   // 4-5. Type, base and multiplier (raw allocated stats, not gear).
-  const DamageType type = skill.skill != nullptr ? skill.skill->damageType : DamageType::Physical;
+  const DamageType type = skill.skill != nullptr ? skill.skill->damageType : skill.basicType;
   double base = 0;
   double mult = 1;
   if (skill.skill != nullptr) {
@@ -84,6 +85,7 @@ DamageResult CalculateDamage(const DamageRules& rules, const Combatant& attacker
     mult *= skill.synergyFactor;
   } else {
     base = attacker.baseDamage + attacker.stats.str * f.statToDamage;
+    mult = skill.basicMultiplier;  // 1 for every basic attack (x1 is exact: the web's pipeline is unchanged)
   }
 
   // 6-7. Flat and percent gear damage.
@@ -130,7 +132,7 @@ DamageResult CalculateDamage(const DamageRules& rules, const Combatant& attacker
   if (amplify > 0) fin *= 1 + amplify;
 
   // 15. Resistance (non-physical only).
-  if (type != DamageType::Physical) fin *= 1 - DamageResist(f, defender, type) / 100.0;
+  if (type != DamageType::Physical) fin *= 1 - ResistancePercent(f, defender.eq, type) / 100.0;
 
   // 16.
   double finalDamage = static_cast<double>(SaturatingInt32((std::max)(f.minDamage, std::floor(fin))));

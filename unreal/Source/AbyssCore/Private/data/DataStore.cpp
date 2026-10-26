@@ -8,6 +8,7 @@
 #include "JsonReader.h"
 #include "abyss/base/StrUtil.h"
 #include "abyss/base/Units.h"
+#include "abyss/combat/HitFeedback.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/world/CampLayout.h"
 
@@ -327,6 +328,58 @@ bool DataStore::Finalize(DataLoadReport& report) {
     if (!monsters_.Find(h.monsterId)) ck.Error("quest_hunts.json", "hunts." + h.huntId, "unknown base monster");
     if (h.hasMinions && !monsters_.Find(h.minionMonsterId)) ck.Error("quest_hunts.json", "hunts." + h.huntId, "unknown minion monster");
     if (!quests_.Find(h.questId)) ck.Error("quest_hunts.json", "hunts." + h.huntId, "unknown quest '" + h.questId + "'");
+  }
+  // K2 abilities (implementation-plan.md 3 K2; the loader checked each ability's own shape): summoned monsters exist,
+  // bossSkills name abilities (M9: inert until the monster has any), a boss winds up >= 700 ms (monsters.md 1.3), and an
+  // ability timed by its clip has that clip's Contact / Release in the manifest (else the 600 / 700 ms floor times it).
+  // An ability is picked only on a due swing (Attack state: the hero within attackRange x attackExitMul), so a rangeMin
+  // past that reach never fires and a rangeMax past it changes nothing (warnings: the data loads).
+  {
+    const auto checkAbilities = [&](const MonsterDef& m, std::string_view file, const std::string& path, bool boss) {
+      // The same product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998), with a hair of slack so a range authored as
+      // that reach (1.8) passes; shown rounded.
+      const double swingReach = m.attackRange * monsters_.ai.attackExitMul;
+      const double shownReach = std::round(swingReach * 1000) / 1000;
+      for (const MonsterAbilityDef& a : m.abilities) {
+        const std::string ap = path + ".abilities." + a.id;
+        if (a.summon.present && !monsters_.Find(a.summon.monsterId)) {
+          ck.Error(file, ap + ".summon.monsterId", "unknown monster '" + a.summon.monsterId + "'");
+        }
+        if (a.rangeMin > swingReach + 1e-9) {
+          ck.Warn(file, ap + ".rangeMin",
+                  StrCat("never picked: abilities fire only on a due swing, within attackRange x attackExitMul (",
+                         shownReach, " tiles)"));
+        } else if (a.hasRangeMax && a.rangeMax > swingReach + 1e-9) {
+          ck.Warn(file, ap + ".rangeMax",
+                  StrCat("no effect past attackRange x attackExitMul (", shownReach,
+                         " tiles): abilities fire only on a due swing"));
+        }
+        if (boss && a.hasWindupMs && a.windupMs < 700) ck.Error(file, ap + ".windupMs", "a boss special winds up >= 700 ms");
+        if (!a.hasWindupMs && assets_.loaded) {
+          const AssetEntryDef* art = assets_.FindByGameId(MonsterArtGameId(assets_, m.spriteKey, m.id));
+          const AnimClipDef* clip = art != nullptr ? art->FindClip(a.clip) : nullptr;
+          if (clip == nullptr || !(clip->hasContactMs || clip->hasReleaseMs)) {
+            ck.Warn(file, ap + ".clip", "no Contact / Release for clip '" + a.clip + "' in assets.json: the windup floor times it");
+          }
+        }
+      }
+      if (m.abilities.empty()) {
+        if (!m.bossSkills.empty()) {
+          ck.Warn(file, path + ".bossSkills", "inert: the monster has no abilities yet (M9; the ids name abilities once it does)");
+        }
+      } else {
+        for (const std::string& id : m.bossSkills) {
+          bool found = false;
+          for (const MonsterAbilityDef& a : m.abilities) found = found || a.id == id;
+          if (!found) ck.Error(file, path + ".bossSkills", "'" + id + "' names no ability of the monster");
+        }
+      }
+    };
+    for (const MonsterDef& m : monsters_.defs) {
+      const bool boss = m.isMiniBoss || m.isSubDungeonMiniBoss || m.id == monsters_.ai.storyBossId;
+      checkAbilities(m, "monsters.json", "defs." + m.id, boss);
+    }
+    for (const HuntDef& h : monsters_.hunts) checkAbilities(h.defNormal, "quest_hunts.json", "defsNormal." + h.huntId, false);
   }
 
   // ---- world ----

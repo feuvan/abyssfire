@@ -7,8 +7,8 @@
  *
  * Remake-only fields are optional. The exporter withholds each one from `unreal/Data` until the core package that parses
  * it has landed (`REMAKE_SCHEMA` in unreal/Tools/export-data/src/main.ts, field registry in .../src/remake.ts), so a
- * field may be authored before the core reads it. Only the Wave 1 fields are typed here; the Wave 2 / Wave 3 packages
- * (K2-K7) add theirs together with their `REMAKE_SCHEMA` feature.
+ * field may be authored before the core reads it. The Wave 1 fields and K2's (monster abilities, hit cap) are typed here;
+ * the later Wave 2 / Wave 3 packages (K3-K7) add theirs together with their `REMAKE_SCHEMA` feature.
  */
 import type * as Web from '@web/data/types';
 import type { StatusEffectType } from '@web/systems/StatusEffectSystem';
@@ -29,15 +29,87 @@ export interface RemakeOnHitStatus {
   durationMs: number;
 }
 
+/** [W2] Ground shape of an ability or hazard (tiles, degrees; MonsterData.h AbilityShapeDef). */
+export interface RemakeAbilityShape {
+  /** Defaults to the ability's kind for circle / cone / line / ring; required for a hazard ability and `hazard.shape`. */
+  kind?: 'circle' | 'cone' | 'line' | 'ring';
+  /** Circle radius, ring outer radius, cone reach. */
+  radius?: number;
+  /** Cone opening (total degrees, 0 < arcDeg <= 360). */
+  arcDeg?: number;
+  /** Line: a length x width rectangle from the origin along the direction. */
+  length?: number;
+  width?: number;
+  /** Ring inner radius. */
+  innerRadius?: number;
+}
+
+/** [W2] A status an ability (or its hazard) rolls on a landed hit: `value` (> 0) = slow / freeze percent or DoT per tick. */
+export interface RemakeAbilityStatus {
+  type: StatusEffectType;
+  /** 0 < chance <= 1 (default 1, no roll). */
+  chance?: number;
+  ms: number;
+  value: number;
+}
+
+/**
+ * [W2] One monster ability (implementation-plan.md §3 K2; MonsterData.h MonsterAbilityDef has the rules). Feature
+ * `monster.abilities`; the kinds whose runtime lands later are value-gated (raise / summon: `monster.abilityRaise` /
+ * `monster.abilitySummon`, K3; buff / call: `monster.abilityBuff` / `monster.abilityCall`, K5).
+ */
+export interface RemakeMonsterAbility {
+  id: string;
+  kind: 'circle' | 'cone' | 'line' | 'ring' | 'bolt' | 'raise' | 'summon' | 'hazard' | 'buff' | 'call';
+  /** Manifest clip it plays (Attack02, Cast01, Lunge, ...); its Contact (else Release) notify is the contact. */
+  clip: string;
+  /** Contact from windup start (>= 600, a boss >= 700); omitted = the clip's beat. */
+  windupMs?: number;
+  cooldownMs: number;
+  /** From the monster's first swing of a fight (default 0: ready at once). */
+  initialCooldownMs?: number;
+  rangeMin?: number;
+  rangeMax?: number;
+  /** Usable while life < hpBelowPct percent. */
+  hpBelowPct?: number;
+  /** Boss phases (K4) it is used in; omitted = every phase. */
+  phases?: number[];
+  /** Higher first (default 0). */
+  priority?: number;
+  /** circle / ring / hazard: heroAtWindup | self | anchor; cone / line: not corpse; bolt: hero; raise: corpse; buff / call: self. */
+  aim: 'hero' | 'heroAtWindup' | 'self' | 'corpse' | 'anchor';
+  shape?: RemakeAbilityShape;
+  /** x the monster's damage roll (default 1). */
+  dmgMul?: number;
+  /** Default: the monster's damageType. */
+  damageType?: RemakeDamageType;
+  status?: RemakeAbilityStatus;
+  hitsMonsters?: boolean;
+  monsterDmgMul?: number;
+  hazard?: { durationMs: number; tickMs: number; tickDmgMul: number; status?: RemakeAbilityStatus; shape?: RemakeAbilityShape };
+  summon?: {
+    monsterId: string; count?: number; at?: 'self' | 'anchors' | 'corpse'; anchors?: { col: number; row: number }[];
+    capAlive?: number; perWindowCap?: number; windowMs?: number; hpPct?: number;
+  };
+  buff?: { stat: 'damage' | 'attackSpeed' | 'moveSpeed' | 'fearImmune'; mul?: number; ms: number; radius?: number; family?: string };
+}
+
 export interface MonsterDefinition extends Web.MonsterDefinition {
   /** [W1] Family id (monsters.md §1.1): voice set, marker colour, family rules. Feature `monster.family`. */
   family?: string;
-  /** [W1] Damage type of its attacks (today every monster hit is physical). Feature `monster.damageType`. */
+  /** [W1] Damage type of its attacks (today every monster hit is physical). Feature `monster.damageType` (K2 reads it). */
   damageType?: RemakeDamageType;
   /** [W1] Authored on-hit statuses; win over the keyword rule. Feature `monster.onHitStatus`. */
   onHitStatus?: RemakeOnHitStatus[];
   /** [W1] Bolt tint 0xRRGGBB for a ranged monster; wins over the keyword rule. Feature `monster.projectileColor`. */
   projectileColor?: number;
+  /** [W2] Abilities and telegraphs (K2). Feature `monster.abilities`. */
+  abilities?: RemakeMonsterAbility[];
+  /**
+   * [W2] No single hit above this percent of the hero's max life on Normal (scaled by the difficulty's damage multiplier
+   * on Nightmare / Hell; monsters.md §1.3: 35). Feature `monster.hitCap`.
+   */
+  hitCapHeroMaxHpPct?: number;
 }
 
 /** One defend wave: exactly these monsters (K1 `SpawnDefendWave`). */

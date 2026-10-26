@@ -58,6 +58,25 @@
 //   penalty permanently (SoulEchoSystem::OnHeroDied inDungeon, combat 15).
 // * TickPassives computes the step's regen modifiers (Hero::stepRegen, pre-movement campfire) and applies Life Regen
 //   (Hero::TickLifeRegen) before the Unyielding check; TickHeroUpdate applies mana / HP regen (Hero::TickRegen).
+// * Dark remake K2 monster abilities (implementation-plan.md 3 K2; rules in monsters/MonsterAbilities.h): a monster
+//   swing that comes due (Attack state, interval elapsed) starts the ability clock on the first swing opportunity of a
+//   fight, then tries the monster's abilities unless a pet's taunt holds it (PetCompanion::TauntHolds: the taunt draws
+//   the swing to the beast as a basic swing) and before the pet's stray-swing draw: the pick puts the ability on its
+//   cooldown, sets lastAttackMs, resolves the aim once (MonsterInstance::abilityCast), roots the monster until contact
+//   (MonsterSystem skips its AI tick) and emits EvPlayAnim (the ability's clip and beat; it is the plan's
+//   EvMonsterAnim) then EvTelegraph for a ground shape. The ability is a PendingStrike (MonsterStrikeContact timer) and
+//   resolves at contact like a swing: it aborts when the caster dies (EvMonsterAttackCancelled) or is stunned / frozen
+//   at any moment of the windup (EvMonsterAttackCancelled at the next TickCombat, or at contact; S7), or the hero is
+//   dead / the zone changes (silently, at contact); F2 cancels it with the swings.
+//   At contact a ground shape hits the hero whose body touches it (ShapeContains, the shape placed at windup start)
+//   and, with hitsMonsters, every other living monster in it (x monsterDmgMul, no provoke); a bolt launches a monster
+//   bolt locked on the hero (ProjectileSpec::payload = ability index + 1) that hits on arrival; a hazard (kind hazard,
+//   or what a strike leaves) joins the HazardField (EvHazard) and ticks from TickHazards. A monster's hits use its
+//   damageType (an ability's own when set) through the formula's resistance step and are capped at
+//   MonsterHitCap(hero max life, def.hitCapHeroMaxHpPct, the difficulty's damageMul); an ability hit rolls the
+//   ability's status instead of the def's onHitStatus (elite on-hit effects apply to both). Hazard ticks deal their
+//   fixed damage less the hero's resistance (no roll, no defense, no i-frames: like a DoT tick), capped the same way;
+//   unlike a status DoT tick, a lethal hazard tick checks Death Save (it is monster damage).
 #pragma once
 
 #include <cstdint>
@@ -70,6 +89,7 @@
 #include "abyss/base/Types.h"
 #include "abyss/combat/CombatInput.h"
 #include "abyss/combat/Damage.h"
+#include "abyss/combat/HazardField.h"
 #include "abyss/combat/HitFeedback.h"
 #include "abyss/combat/Projectiles.h"
 #include "abyss/combat/SkillTargeting.h"
@@ -84,6 +104,7 @@ namespace abyss {
 struct SimContext;
 struct Snapshot;
 struct MonsterInstance;
+struct MonsterAbilityCast;
 struct EvSkillVfx;
 
 enum class CombatTimerKind : uint16_t {
@@ -197,6 +218,9 @@ class ABYSS_API CombatSystem {
   void ConsumeBufferedSkill();      // step 3
   void TickCombat();                // step 9: monster buffs (FIX Q19, even dying), hero buffs, swings, basic attack
   void TickStatusEffects();         // step 11: ticks then expiry; DoT kills go through MonsterSystem::ApplyDamage
+  // K2: the HazardField's due ticks in (time, id) order (hero inside: damage + status; monsters inside when the ability
+  // hits monsters), then expired hazards are dropped. GameSim calls it right after TickStatusEffects.
+  void TickHazards();
   void TickAutoCombat();            // step 12 (C1: first skill that CanExecute, only while a living lock is held; C14
                                     // acquires that lock with the press's auto-pick)
   void TickCombatState();           // 9.6 rising edge immediate, falling edge debounced 1500 ms
@@ -246,8 +270,11 @@ class ABYSS_API CombatSystem {
   bool InCombat() const { return inCombat_; }
   // Exp / gold of the last kill credited by OnMonsterKilled (for MonsterSystem's zone.monsterKill log line).
   const KillRewardInfo& LastKillReward() const { return lastKill_; }
-  // A monster swing is in its wind-up telegraph (0.62 x contact after the swing start, combat 10.3).
+  // A monster swing is in its wind-up telegraph (0.62 x contact after the swing start, combat 10.3; a K2 ability: its
+  // whole windup).
   bool IsWindingUp(EntityId monster) const;
+  // K2 ground hazards of the zone (cleared on zone exit).
+  const HazardField& Hazards() const { return hazards_; }
   const DodgeController& Dodge() const { return dodge_; }
   const InputBuffer& Buffer() const { return buffer_; }
   // Combatant views for the damage formula (combat-feel 1.2).
@@ -315,12 +342,22 @@ class ABYSS_API CombatSystem {
     // later shares land as ticks (combat 6.5 / 11.1, DECISIONS C4: the feel of one hit, spread damage).
     bool impactDone = false;
   };
-  // A monster swing waiting for its contact beat (T1): telegraph state for the snapshot and the F2 cancel event.
+  // A monster swing waiting for its contact beat (T1): telegraph state for the snapshot and the F2 cancel event. A K2
+  // ability rides the same path (`ability`; its index and aim live on MonsterInstance::pendingAbility / abilityCast).
   struct PendingStrike {
     EntityId monster = kNoEntity;
     double startMs = 0;
     double windupMs = 0;
     TimerId timer = kNoTimer;
+    bool ability = false;
+  };
+  // What a K2 ability changes on a monster hit (ApplyMonsterHit): x dmgMul, its damage type, its status instead of the
+  // def's onHitStatus. A copy, so a hit that grows the monster list never reads a moved definition.
+  struct MonsterHitMods {
+    double dmgMul = 1;
+    DamageType type = DamageType::Physical;
+    bool hasStatus = false;
+    StatusRule status;
   };
   // One hero hit on a monster (basic attack, proc extra hit, skill hit, ground-effect tick).
   struct HeroHitSpec {
@@ -408,7 +445,23 @@ class ABYSS_API CombatSystem {
   HeroHitOutcome HeroHitMonster(const HeroHitSpec& h);
   void ResolveHeroStrike(EntityId target);
   void ResolveMonsterStrike(EntityId monster);
-  void ApplyMonsterHit(EntityId monster, bool ranged);
+  // `ranged`: not a melee swing (bolts, K2 ground strikes: EvHit::melee false). `mods`: a K2 ability's hit.
+  void ApplyMonsterHit(EntityId monster, bool ranged, const MonsterHitMods* mods = nullptr);
+  // ---- K2 monster abilities ----
+  // The ability clock of `m` (no-op once started for this fight).
+  static void StartAbilityClock(MonsterInstance& m, double now);
+  // A due swing of `m` becomes an ability (true) or stays a basic swing (false).
+  bool TryStartAbility(MonsterInstance& m, double now);
+  // S7: aborts every pending ability whose caster is stunned or frozen (TickCombat, before the dead-hero gate).
+  void AbortImmobilizedAbilities();
+  // Contact of the pending ability (PendingStrike::ability).
+  void ResolveAbility(EntityId monster);
+  static MonsterHitMods AbilityHitMods(const MonsterInstance& m, const MonsterAbilityDef& a);
+  // hitsMonsters: every living monster but the caster whose body touches the cast shape.
+  void HitMonstersInShape(EntityId caster, const MonsterAbilityDef& a, const MonsterAbilityCast& cast);
+  void PlaceHazard(const MonsterInstance& m, const MonsterAbilityDef& a, const MonsterAbilityCast& cast);
+  void ResolveHazardTick(const HazardEntry& h);
+  double DifficultyDamageMul() const;
   // Raw HP loss with feedback (EvHit, number, SFX, shake, HeroDamagedMsg); no death check.
   void HurtHero(double amount, bool crit, bool tick, DamageType element, EntityId source, bool melee, HitWeight weight,
                 double attackerStopMs);
@@ -451,6 +504,8 @@ class ABYSS_API CombatSystem {
   std::vector<GroundRoll> groundRolls_;  // C4: per (effect, target), dropped after the effect's last tick
   std::vector<PendingStrike> strikes_;
   std::vector<EntityId> scratchNearby_;  // TickCombat swing scan (capacity kept)
+  HazardField hazards_;                   // K2 ground hazards of the zone
+  std::vector<HazardTick> scratchHazardTicks_;
   bool inCombat_ = false;
   TimerId combatOffTimer_ = kNoTimer;
   TimerId respawnTimer_ = kNoTimer;

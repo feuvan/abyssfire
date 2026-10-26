@@ -11,6 +11,8 @@ void Snapshot::ClearDynamic() {
   potions.clear();
   projectiles.clear();
   groundEffects.clear();
+  telegraphs.clear();
+  hazards.clear();
   markers.clear();
   bossBar = BossBarView{};
   prompt = InteractPromptView{};

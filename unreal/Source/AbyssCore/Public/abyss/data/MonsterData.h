@@ -17,6 +17,123 @@ namespace abyss {
 enum class MonsterSource : uint8_t { Zone, Dungeon, MiniBoss, SubDungeonBoss, Hunt };
 ABYSS_ENUM_STRINGS(MonsterSource, "zone", "dungeon", "miniBoss", "subDungeonBoss", "hunt")
 
+// ---- K2 monster abilities (dark remake, implementation-plan.md 3 K2; monsters.md 1.3 fairness) ----------------------
+// A monster's `abilities[]` (remake schema `monster.abilities`). MonsterAbilities.h holds the rules (picker, shapes,
+// timing); CombatSystem runs them through the monster swing path. Kinds whose runtime a later package lands (raise and
+// summon: K3, buff and call: K5) are parsed and validated here but never picked until then (AbilityKindRuns).
+enum class AbilityKind : uint8_t { Circle, Cone, Line, Ring, Bolt, Raise, Summon, Hazard, Buff, Call };
+ABYSS_ENUM_STRINGS(AbilityKind, "circle", "cone", "line", "ring", "bolt", "raise", "summon", "hazard", "buff", "call")
+
+// Where an ability aims (resolved once, at windup start):
+//   hero          bolts: launched at contact, locked on the hero (the basic ranged swing's flight); cones / lines: from
+//                 the caster toward the hero's position at windup start.
+//   heroAtWindup  the hero's position at windup start (slams land where the hero stood); cones / lines as `hero`.
+//   self          centred on the caster (cones / lines along its heading).
+//   corpse        a corpse (raise, K3).
+//   anchor        the caster's spawn anchor tile (Valdras's dais); cones / lines point from it toward the hero.
+// A ground shape that hurts on contact (circle, ring, hazard) never takes `hero`: its decal is placed at windup start
+// and fills to contact, so the loader refuses a target that would follow the hero (monsters.md 1.3).
+enum class AbilityAim : uint8_t { Hero, HeroAtWindup, Self, Corpse, Anchor };
+ABYSS_ENUM_STRINGS(AbilityAim, "hero", "heroAtWindup", "self", "corpse", "anchor")
+
+// Geometry of a ground telegraph / hazard (tiles, degrees). Circle: `radius` around the origin. Ring: between
+// `innerRadius` and `radius`. Cone: `radius` reach, `arcDeg` total opening, centred on the direction. Line: a
+// `length` x `width` rectangle starting at the origin along the direction (width centred on it).
+enum class AbilityShapeKind : uint8_t { Circle, Cone, Line, Ring };
+ABYSS_ENUM_STRINGS(AbilityShapeKind, "circle", "cone", "line", "ring")
+
+struct AbilityShapeDef {
+  AbilityShapeKind kind = AbilityShapeKind::Circle;
+  double radius = 0;
+  double arcDeg = 0;
+  double length = 0;
+  double width = 0;
+  double innerRadius = 0;
+};
+
+// {type, chance, ms, value}: rolled on a landed hit (chance 0..1; 1 = no draw); `value` (> 0) is the status value (slow
+// / freeze percent, DoT damage per tick, any positive value for stun), `ms` its duration.
+struct AbilityStatusDef {
+  bool present = false;
+  StatusType type = StatusType::Slow;
+  double chance = 1;
+  double ms = 0;
+  double value = 0;
+};
+
+// A hazard the ability leaves on the ground (or, for kind `hazard`, the ability itself), ticking on the sim clock
+// (combat/HazardField.h): per tick floor(damage x tickDmgMul) (at least 1 when tickDmgMul > 0), the status rolled per
+// tick. `shape` defaults to the ability's shape.
+struct AbilityHazardDef {
+  bool present = false;
+  double durationMs = 0;
+  double tickMs = 0;
+  double tickDmgMul = 0;
+  AbilityStatusDef status;
+  bool hasShape = false;
+  AbilityShapeDef shape;
+};
+
+// raise / summon (runtime: K3 corpses and raises). `at`: around the caster, at its `anchors`, or on a corpse.
+enum class AbilitySummonAt : uint8_t { Self, Anchors, Corpse };
+ABYSS_ENUM_STRINGS(AbilitySummonAt, "self", "anchors", "corpse")
+
+struct AbilitySummonDef {
+  bool present = false;
+  std::string monsterId;
+  int32_t count = 1;
+  AbilitySummonAt at = AbilitySummonAt::Self;
+  std::vector<TilePos> anchors;
+  int32_t capAlive = 0;       // live summons per caster (0 = no cap)
+  int32_t perWindowCap = 0;   // summons per `windowMs` (0 = no cap)
+  double windowMs = 0;
+  double hpPct = 100;         // summoned at this percent of their life
+};
+
+// buff / call (runtime: K5 packs and morale): `stat` x `mul` for `ms` on allies within `radius` (of `family` when set).
+enum class MonsterBuffStat : uint8_t { Damage, AttackSpeed, MoveSpeed, FearImmune };
+ABYSS_ENUM_STRINGS(MonsterBuffStat, "damage", "attackSpeed", "moveSpeed", "fearImmune")
+
+struct AbilityBuffDef {
+  bool present = false;
+  MonsterBuffStat stat = MonsterBuffStat::Damage;
+  double mul = 1;
+  double ms = 0;
+  double radius = 0;
+  std::string family;
+};
+
+// One ability (implementation-plan.md 3 K2 "Data"). Contact: `windupMs` when authored (>= 600 ms, >= 700 ms for a
+// boss), else the clip's Contact notify (else its Release) from the asset manifest; the telegraph fills to full then.
+struct MonsterAbilityDef {
+  std::string id;
+  AbilityKind kind = AbilityKind::Circle;
+  std::string clip;                 // the manifest clip it plays (Attack02, Cast01, Lunge, ...)
+  bool hasWindupMs = false;
+  double windupMs = 0;
+  double cooldownMs = 0;            // from windup start to the next use
+  double initialCooldownMs = 0;     // from the monster's first swing of a fight
+  double rangeMin = 0;              // hero distance (tiles) at the pick
+  bool hasRangeMax = false;
+  double rangeMax = 0;
+  bool hasHpBelowPct = false;
+  double hpBelowPct = 100;          // usable while life < hpBelowPct percent
+  std::vector<int32_t> phases;      // usable in these phases (K4); empty = every phase
+  int32_t priority = 0;             // higher first; ties in data order
+  AbilityAim aim = AbilityAim::HeroAtWindup;
+  bool hasShape = false;
+  AbilityShapeDef shape;
+  double dmgMul = 1;                // x the monster's damage roll (contact hit)
+  bool hasDamageType = false;
+  DamageType damageType = DamageType::Physical;  // default: the monster's damageType
+  AbilityStatusDef status;
+  bool hitsMonsters = false;
+  double monsterDmgMul = 1;
+  AbilityHazardDef hazard;
+  AbilitySummonDef summon;
+  AbilityBuffDef buff;
+};
+
 // MonsterDefinition verbatim + exporter `derived` block (monsters-ai.md 1.1). This is also the runtime "current
 // definition" type: difficulty scaling, hunt transforms and elite affixes produce modified copies (1.3).
 struct MonsterDef {
@@ -44,6 +161,16 @@ struct MonsterDef {
   std::string homeZone;
   std::string nameKey;  // i18n data.monster.<id>
   std::vector<MonsterSource> sources;
+  // ---- dark remake K2 (remake schema monster.damageType / monster.hitCap / monster.abilities) ----
+  // Damage type of its swings and bolts (resistances apply to every type but physical; default physical).
+  DamageType damageType = DamageType::Physical;
+  // No single hit of this monster takes more than this percent of the hero's maximum life on Normal; Nightmare / Hell
+  // scale it by the difficulty's damage multiplier (MonsterHitCap, monsters.md 1.3). 0 = no cap.
+  double hitCapHeroMaxHpPct = 0;
+  std::vector<MonsterAbilityDef> abilities;
+  // The web's bossSkills ids (M9: inert until K2). Every id must name one of `abilities` once the monster has any;
+  // a monster without abilities keeps them as inert data (DataStore warns).
+  std::vector<std::string> bossSkills;
 };
 
 struct ZoneMonsterList {

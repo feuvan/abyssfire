@@ -18,10 +18,10 @@ import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
 import { STORY_TRIGGERS, BOSS_INTROS } from '../../../../../src/data/story/script';
 import { EmeraldPlainsMap } from '../../../../../src/data/maps';
 import type { MonsterDefinition } from '../../../../../src/data/types';
-import type { RemakeOnHitStatus } from '../../../../GameData/types';
+import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, RemakeAbilityStatus } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
-import { noteConfig, withholdRemakeFields } from '../remake';
+import { gateRemakeValues, noteConfig, withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -125,6 +125,158 @@ function takeAuthored(d: MonsterDefinition): Authored {
   return out;
 }
 
+// ── K2 abilities (implementation-plan.md §3 K2) ──
+
+const ABILITY_KEYS = ['id', 'kind', 'clip', 'windupMs', 'cooldownMs', 'initialCooldownMs', 'rangeMin', 'rangeMax', 'hpBelowPct',
+  'phases', 'priority', 'aim', 'shape', 'dmgMul', 'damageType', 'status', 'hitsMonsters', 'monsterDmgMul', 'hazard', 'summon', 'buff'];
+const SHAPE_KINDS = ['circle', 'cone', 'line', 'ring'];
+const STATUS_TYPES = ['burn', 'freeze', 'poison', 'bleed', 'slow', 'stun'];
+const DAMAGE_TYPES = ['physical', 'fire', 'ice', 'lightning', 'poison', 'arcane'];
+const AIMS_BY_KIND: Record<RemakeMonsterAbility['kind'], readonly RemakeMonsterAbility['aim'][]> = {
+  circle: ['heroAtWindup', 'self', 'anchor'], ring: ['heroAtWindup', 'self', 'anchor'], hazard: ['heroAtWindup', 'self', 'anchor'],
+  cone: ['hero', 'heroAtWindup', 'self', 'anchor'], line: ['hero', 'heroAtWindup', 'self', 'anchor'], bolt: ['hero'],
+  raise: ['corpse'], summon: ['hero', 'heroAtWindup', 'self', 'anchor'], buff: ['self'], call: ['self'],
+};
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+// Monster.ts `distToPlayer > attackRange * 1.2` (asserted below; monster_ai.json `attackExitMul`): the Attack state holds
+// within this multiple of attackRange, and an ability is picked only on a due swing in that state.
+const ATTACK_EXIT_MUL = 1.2;
+// Upper bounds of the timing fields (LoadMonsters.cpp): a windup <= 5 s, a hazard <= 60 s, a cooldown <= 10 min.
+const MAX_WINDUP_MS = 5000, MAX_HAZARD_MS = 60000, MAX_COOLDOWN_MS = 600000;
+
+function checkKeys(o: object, known: readonly string[], where: string): void {
+  for (const k of Object.keys(o)) assert(known.includes(k), `${where}: unknown field '${k}' (known: ${known.join(', ')})`);
+}
+
+function checkShape(sh: RemakeAbilityShape, implied: string | null, where: string): void {
+  checkKeys(sh, ['kind', 'radius', 'arcDeg', 'length', 'width', 'innerRadius'], where);
+  const kind = sh.kind ?? implied;
+  assert(kind !== null && SHAPE_KINDS.includes(kind), `${where}.kind: a hazard shape names its kind (circle | cone | line | ring)`);
+  assert(implied === null || sh.kind === undefined || sh.kind === implied, `${where}.kind: differs from the ability's kind '${implied}'`);
+  const r = sh.radius ?? 0, arc = sh.arcDeg ?? 0, len = sh.length ?? 0, w = sh.width ?? 0, inner = sh.innerRadius ?? 0;
+  if (kind === 'circle') assert(r > 0, `${where}: a circle needs radius > 0`);
+  if (kind === 'ring') assert(inner >= 0 && r > inner, `${where}: a ring needs radius > innerRadius >= 0`);
+  if (kind === 'cone') assert(r > 0 && arc > 0 && arc <= 360, `${where}: a cone needs radius > 0, 0 < arcDeg <= 360`);
+  if (kind === 'line') assert(len > 0 && w > 0, `${where}: a line needs length > 0 and width > 0`);
+}
+
+function checkStatus(st: RemakeAbilityStatus, where: string): void {
+  checkKeys(st, ['type', 'chance', 'ms', 'value'], where);
+  assert(STATUS_TYPES.includes(st.type), `${where}.type: unknown status '${st.type}'`);
+  assert(st.chance === undefined || (st.chance > 0 && st.chance <= 1), `${where}.chance: expected 0 < chance <= 1`);
+  assert(isNum(st.ms) && st.ms > 0, `${where}.ms: expected > 0`);
+  assert(isNum(st.value) && st.value > 0, `${where}.value: expected > 0 (a status of value 0 never applies)`);
+}
+
+/**
+ * The K2 rules the C++ loader (LoadMonsters.cpp ReadMonsterAbility) and DataStore::Finalize enforce, checked here first
+ * so a content error fails the export: known keys at every level (a misspelt optional field would otherwise be dropped
+ * silently), the windup floor (600 ms; 700 ms for a mini-boss / sub-dungeon boss / the story boss, monsters.md §1.3),
+ * shapes and aims per kind, hazard / summon / buff blocks only where they apply, unique ids, `bossSkills` naming an
+ * ability once the monster has any, the hit cap a percent. Summoned monster ids are returned for the caller to resolve.
+ */
+function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): string[] {
+  const d = def as MonsterDefinition & { abilities?: RemakeMonsterAbility[]; hitCapHeroMaxHpPct?: number; damageType?: string };
+  const summoned: string[] = [];
+  if (d.damageType !== undefined) assert(DAMAGE_TYPES.includes(d.damageType), `${where}.damageType: unknown '${d.damageType}'`);
+  if (d.hitCapHeroMaxHpPct !== undefined) {
+    assert(isNum(d.hitCapHeroMaxHpPct) && d.hitCapHeroMaxHpPct > 0 && d.hitCapHeroMaxHpPct <= 100,
+      `${where}.hitCapHeroMaxHpPct: expected a percent in (0, 100]`);
+  }
+  const abilities = d.abilities ?? [];
+  const ids = new Set<string>();
+  abilities.forEach((a, i) => {
+    const at = `${where}.abilities[${i}]`;
+    checkKeys(a, ABILITY_KEYS, at);
+    assert(typeof a.id === 'string' && a.id !== '' && !ids.has(a.id), `${at}.id: empty or duplicate ability id '${a.id}'`);
+    ids.add(a.id);
+    assert(Object.hasOwn(AIMS_BY_KIND, a.kind), `${at}.kind: unknown kind '${a.kind}'`);
+    assert(typeof a.clip === 'string' && a.clip !== '', `${at}.clip: empty clip`);
+    if (a.windupMs !== undefined) {
+      assert(isNum(a.windupMs) && a.windupMs >= (boss ? 700 : 600), `${at}.windupMs: a ${boss ? 'boss ' : ''}special winds up >= ${boss ? 700 : 600} ms`);
+      assert(a.windupMs <= MAX_WINDUP_MS, `${at}.windupMs: expected <= ${MAX_WINDUP_MS}`);
+    }
+    assert(isNum(a.cooldownMs) && a.cooldownMs >= 0 && a.cooldownMs <= MAX_COOLDOWN_MS, `${at}.cooldownMs: expected 0..${MAX_COOLDOWN_MS}`);
+    const initialCd = a.initialCooldownMs ?? 0;
+    assert(isNum(initialCd) && initialCd >= 0 && initialCd <= MAX_COOLDOWN_MS, `${at}.initialCooldownMs: expected 0..${MAX_COOLDOWN_MS}`);
+    assert((a.rangeMin ?? 0) >= 0, `${at}.rangeMin: expected >= 0`);
+    assert(a.rangeMax === undefined || a.rangeMax > (a.rangeMin ?? 0), `${at}.rangeMax: expected > rangeMin`);
+    // Picked only on a due swing (Attack state, within attackRange x 1.2): DataStore::Finalize warns on the same rule.
+    // The product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998) with a hair of slack, so a range authored as the reach
+    // (1.8) passes.
+    const swingReach = def.attackRange * ATTACK_EXIT_MUL;
+    const shownReach = Math.round(swingReach * 1000) / 1000;
+    assert((a.rangeMin ?? 0) <= swingReach + 1e-9,
+      `${at}.rangeMin: ${a.rangeMin} is past the swing reach (attackRange ${def.attackRange} x ${ATTACK_EXIT_MUL} = ${shownReach}): never picked, abilities fire only on a due swing`);
+    if (a.rangeMax !== undefined && a.rangeMax > swingReach + 1e-9) {
+      console.warn(`  warning: ${at}.rangeMax: ${a.rangeMax} past the swing reach (${shownReach} tiles) has no effect: abilities fire only on a due swing`);
+    }
+    assert(a.hpBelowPct === undefined || (a.hpBelowPct > 0 && a.hpBelowPct <= 100), `${at}.hpBelowPct: expected (0, 100]`);
+    assert((a.phases ?? []).every(p => Number.isInteger(p) && p >= 0), `${at}.phases: phase indices are integers >= 0`);
+    assert(a.priority === undefined || Number.isInteger(a.priority), `${at}.priority: an integer`);
+    assert(AIMS_BY_KIND[a.kind].includes(a.aim), `${at}.aim: '${a.aim}' does not fit a ${a.kind} ability (${AIMS_BY_KIND[a.kind].join(' | ')})`);
+    assert((a.dmgMul ?? 1) >= 0 && (a.monsterDmgMul ?? 1) >= 0, `${at}: dmgMul / monsterDmgMul >= 0`);
+    if (a.damageType !== undefined) assert(DAMAGE_TYPES.includes(a.damageType), `${at}.damageType: unknown '${a.damageType}'`);
+    if (a.status) checkStatus(a.status, `${at}.status`);
+    const implied = SHAPE_KINDS.includes(a.kind) ? a.kind : null;
+    const ground = implied !== null || a.kind === 'hazard';
+    if (ground) {
+      assert(a.shape !== undefined, `${at}: a ${a.kind} ability needs a shape`);
+      checkShape(a.shape!, implied, `${at}.shape`);
+    } else {
+      assert(a.shape === undefined, `${at}.shape: only circle / cone / line / ring / hazard abilities have a shape`);
+    }
+    if (a.hazard) {
+      const h = a.hazard;
+      checkKeys(h, ['durationMs', 'tickMs', 'tickDmgMul', 'status', 'shape'], `${at}.hazard`);
+      assert(ground, `${at}.hazard: only ground abilities leave a hazard`);
+      assert(isNum(h.durationMs) && h.durationMs > 0 && h.durationMs <= MAX_HAZARD_MS, `${at}.hazard.durationMs: expected 0 < durationMs <= ${MAX_HAZARD_MS}`);
+      assert(isNum(h.tickMs) && h.tickMs >= 100 && h.tickMs <= h.durationMs, `${at}.hazard.tickMs: expected 100 <= tickMs <= durationMs`);
+      assert(isNum(h.tickDmgMul) && h.tickDmgMul >= 0, `${at}.hazard.tickDmgMul: expected >= 0`);
+      if (h.status) checkStatus(h.status, `${at}.hazard.status`);
+      if (h.shape) {
+        assert(a.kind !== 'hazard', `${at}.hazard.shape: a hazard ability's shape is the ability's own 'shape'`);
+        checkShape(h.shape, null, `${at}.hazard.shape`);
+      }
+    } else {
+      assert(a.kind !== 'hazard', `${at}: a hazard ability needs its 'hazard' block`);
+    }
+    assert(a.kind !== 'hazard' || (a.dmgMul === undefined && a.status === undefined),
+      `${at}: a hazard ability hits through its hazard: use hazard.tickDmgMul / hazard.status`);
+    const summons = a.kind === 'raise' || a.kind === 'summon';
+    if (a.summon) {
+      const m = a.summon;
+      checkKeys(m, ['monsterId', 'count', 'at', 'anchors', 'capAlive', 'perWindowCap', 'windowMs', 'hpPct'], `${at}.summon`);
+      assert(summons, `${at}.summon: only raise / summon abilities summon`);
+      assert(typeof m.monsterId === 'string' && m.monsterId !== '', `${at}.summon.monsterId: empty`);
+      summoned.push(m.monsterId);
+      assert(m.count === undefined || (Number.isInteger(m.count) && m.count >= 1), `${at}.summon.count: an integer >= 1`);
+      const where2 = m.at ?? (a.kind === 'raise' ? 'corpse' : 'self');
+      assert(['self', 'anchors', 'corpse'].includes(where2), `${at}.summon.at: unknown '${where2}'`);
+      assert(a.kind !== 'raise' || where2 === 'corpse', `${at}.summon.at: a raise stands a corpse up`);
+      assert(where2 !== 'anchors' || (m.anchors ?? []).length > 0, `${at}.summon.anchors: at 'anchors' needs anchors`);
+      assert((m.capAlive ?? 0) >= 0 && (m.perWindowCap ?? 0) >= 0 && (m.windowMs ?? 0) >= 0, `${at}.summon: caps and window >= 0`);
+      assert(!(m.perWindowCap ?? 0) || (m.windowMs ?? 0) > 0, `${at}.summon.windowMs: a per-window cap needs windowMs > 0`);
+      assert(m.hpPct === undefined || (m.hpPct > 0 && m.hpPct <= 100), `${at}.summon.hpPct: expected (0, 100]`);
+    } else {
+      assert(!summons, `${at}: a ${a.kind} ability needs its 'summon' block`);
+    }
+    if (a.buff) {
+      const b = a.buff;
+      checkKeys(b, ['stat', 'mul', 'ms', 'radius', 'family'], `${at}.buff`);
+      assert(a.kind === 'buff' || a.kind === 'call', `${at}.buff: only buff / call abilities buff`);
+      assert(['damage', 'attackSpeed', 'moveSpeed', 'fearImmune'].includes(b.stat), `${at}.buff.stat: unknown '${b.stat}'`);
+      assert((b.mul ?? 1) > 0 && isNum(b.ms) && b.ms > 0 && (b.radius ?? 0) >= 0, `${at}.buff: mul > 0, ms > 0, radius >= 0`);
+    } else {
+      assert(a.kind !== 'buff', `${at}: a buff ability needs its 'buff' block`);
+    }
+  });
+  if (abilities.length > 0) {
+    for (const id of def.bossSkills ?? []) assert(ids.has(id), `${where}.bossSkills: '${id}' names no ability of the monster`);
+  }
+  return summoned;
+}
+
 export function exportMonsters(): TableResult[] {
   assertSource(ZS,
     "const projColor = spriteKey.includes('fire') || spriteKey.includes('phoenix') ? 0xff6600 : spriteKey.includes('ice') ? 0x4488ff : 0xcc44cc;",
@@ -132,6 +284,7 @@ export function exportMonsters(): TableResult[] {
 
   const defs: Record<string, Record<string, unknown>> = {};
   const sources: Record<string, Source[]> = {};
+  const summonedIds: [string, string][] = [];  // [summoner, summoned] (K2), resolved once every definition is known
   const overridesApplied: Record<string, unknown>[] = [];
   const add = (def: MonsterDefinition, source: Source, zone: string | null) => {
     const prior = defs[def.id];
@@ -141,6 +294,9 @@ export function exportMonsters(): TableResult[] {
       sources[def.id].push(source);
       return;
     }
+    gateRemakeValues('monster', def, `monsters.${def.id}`);
+    const boss = !!def.isMiniBoss || !!def.isSubDungeonMiniBoss || def.id === STORY_BOSS.monsterId;
+    summonedIds.push(...checkK2Monster(def, `monsters.${def.id}`, boss).map(id => [def.id, id] as [string, string]));
     const d: MonsterDefinition = withholdRemakeFields('monster', plain(def), `monsters.${def.id}`);
     const authored = takeAuthored(d);
     const web = plain(def);
@@ -172,6 +328,7 @@ export function exportMonsters(): TableResult[] {
   for (const [zone, m] of Object.entries(MiniBossByZone)) add(m, 'miniBoss', zone);
   for (const m of Object.values(SubDungeonMiniBosses)) add(m, 'subDungeonBoss', null);
   for (const o of OVERRIDES) assert(defs[o.id], `override for unknown monster ${o.id}`);
+  for (const [by, id] of summonedIds) assert(defs[id], `monsters.${by}: an ability summons unknown monster '${id}'`);
   for (const id of Object.keys(defs)) {
     (defs[id].derived as Record<string, unknown>).sources = sources[id];
     delete defs[id].__web;
@@ -200,6 +357,7 @@ export function exportMonsters(): TableResult[] {
     const base = (MonstersByZone[q.zone] ?? []).find(m => m.id === h.monsterId) ?? getMonsterDef(h.monsterId);
     assert(base, `hunt ${h.huntId}: base monster ${h.monsterId} not found`);
     const def = makeHuntDefinition(base, h, h.name);
+    gateRemakeValues('monster', def, `huntDefs.${h.huntId}`);
     takeAuthored(withholdRemakeFields('monster', def, `huntDefs.${h.huntId}`));
     const hpMul = h.hpMul ?? 4, dmgMul = h.dmgMul ?? 1.5;
     assert(def.hp === Math.round(base.hp * hpMul) && def.damage === Math.round(base.damage * dmgMul)
@@ -225,7 +383,7 @@ export function exportMonsters(): TableResult[] {
   const ai = {
     leashRange: 8, leashHealFractionPerTick: 0.01,
     patrolIntervalMs: 3000, patrolRadius: 2, arriveEpsilon: 0.1,
-    chaseDropMul: 1.5, attackExitMul: 1.2, moveSpeedScale: 0.03, moveAccel: 6,
+    chaseDropMul: 1.5, attackExitMul: ATTACK_EXIT_MUL, moveSpeedScale: 0.03, moveAccel: 6,
     rangedThreshold: 2.5, meleeReachMul: 1.35, meleeReachAdd: 0.5, swingQueryRadius: 12,
     aiCullRadius: 30, activeRefreshMs: 250,
     spawnJitter: 3, respawnDelayMs: 15000, respawnJitter: 2, safeZoneRadiusDefault: 9,
