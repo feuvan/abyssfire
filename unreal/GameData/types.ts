@@ -7,9 +7,9 @@
  *
  * Remake-only fields are optional. The exporter withholds each one from `unreal/Data` until the core package that parses
  * it has landed (`REMAKE_SCHEMA` in unreal/Tools/export-data/src/main.ts, field registry in .../src/remake.ts), so a
- * field may be authored before the core reads it. The Wave 1 fields, K2's (monster abilities, hit cap) and K3's (on-death
- * effects, corpses, the Unburied rise, map corpse seeds, elite affix on-death / rise / families) are typed here; the
- * later Wave 2 / Wave 3 packages (K4-K7) add theirs together with their `REMAKE_SCHEMA` feature.
+ * field may be authored before the core reads it. The Wave 1 fields, K2's (monster abilities, hit cap), K3's (on-death
+ * effects, corpses, the Unburied rise, map corpse seeds, elite affix on-death / rise / families) and K4's (monster phases)
+ * are typed here; the later Wave 2 / Wave 3 packages (K5-K7) add theirs together with their `REMAKE_SCHEMA` feature.
  */
 import type * as Web from '@web/data/types';
 import type { StatusEffectType } from '@web/systems/StatusEffectSystem';
@@ -76,7 +76,7 @@ export interface RemakeMonsterAbility {
   rangeMax?: number;
   /** Usable while life < hpBelowPct percent. */
   hpBelowPct?: number;
-  /** Boss phases (K4) it is used in; omitted = every phase. */
+  /** Phases (K4: the rows of the monster's `phases` entered, 0 = none yet) it is used in; omitted = every phase. */
   phases?: number[];
   /** Higher first (default 0). */
   priority?: number;
@@ -145,6 +145,43 @@ export interface RemakeRiseAgain {
 }
 
 /**
+ * [W2] One row of a monster's phase table (implementation-plan.md §3 K4; MonsterData.h MonsterPhaseDef has the rules).
+ * Feature `monster.phases`. Rows strictly decrease in `hpBelowPct`; entering row i makes the monster's phase i + 1 (0 = as
+ * defined), once, in order. A row's multipliers and tether hold while it is the current phase (x the base, not x the
+ * previous row); its arena stays until a later row lights another; abilitiesOn / abilitiesOff switch in sequence (an
+ * ability first switched by an abilitiesOn starts off). Every `centre` defaults to the monster's spawn anchor.
+ */
+export interface RemakeMonsterPhase {
+  /** Entered when life < hpBelowPct percent (0 < hpBelowPct <= 100). */
+  hpBelowPct: number;
+  /** An AnimAction played on entry (roar, taunt, cast02, ...; not idle / walk / death): rooted, still takes damage. */
+  enterAction?: 'attack' | 'cast' | 'hurt' | 'dodge' | 'signature' | 'work' | 'talk' | 'roar' | 'taunt' | 'stun' | 'attack02'
+    | 'cast02' | 'rise';
+  /** Multipliers in (0, 10], default 1: move speed, swings per second, damage taken. */
+  speedMul?: number;
+  attackSpeedMul?: number;
+  damageTakenMul?: number;
+  /** The tether: chase / patrol goals held within `radius` (<= 30) of the centre (no M1 reset). */
+  leash?: { centre?: { col: number; row: number }; radius: number };
+  abilitiesOn?: string[];
+  abilitiesOff?: string[];
+  /** Raised bodies (raiser = the monster) stood up `delayMs` after the entry; `respawns` x again `respawnMs` after a kill. */
+  summons?: {
+    monsterId: string; count?: number; at?: 'self' | 'anchors'; anchors?: { col: number; row: number }[]; radius?: number;
+    hpPct?: number; delayMs?: number; respawnMs?: number; respawns?: number;
+  }[];
+  /** The soft enrage: a ring from fromR to toR over overMs; the hero outside takes dpsPctMaxHp % of max life per second. */
+  arena?: {
+    kind: 'ringShrink'; centre?: { col: number; row: number }; fromR: number; toR: number; overMs: number; dpsPctMaxHp: number;
+    damageType?: RemakeDamageType;
+  };
+  /** A Raised killed within `radius` of the centre is drawn in after `delayMs` (fire can burn it first): heals healPct %. */
+  feed?: { centre?: { col: number; row: number }; radius: number; healPct: number; delayMs?: number };
+  /** Music stinger id UE plays on entry. */
+  stinger?: string;
+}
+
+/**
  * An elite affix definition (EliteAffixSystem) as the remake's `eliteAffixes.definitions` override writes it (K3):
  * the new type `unburied` (monsters.md §3), and the optional `onDeath` (Scorched's burst, Gravecold's ring), `riseAgain`
  * and `families` (the monster families that may roll it; empty / omitted = every monster).
@@ -178,6 +215,8 @@ export interface MonsterDefinition extends Web.MonsterDefinition {
   corpse?: RemakeCorpse;
   /** [W2] The Unburied rise (K3). Feature `monster.riseAgain`. */
   riseAgain?: RemakeRiseAgain;
+  /** [W2] Boss phases and arenas (K4). Feature `monster.phases`. */
+  phases?: RemakeMonsterPhase[];
 }
 
 /** One defend wave: exactly these monsters (K1 `SpawnDefendWave`). */

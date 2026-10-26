@@ -812,7 +812,8 @@ manifest moves hit timing, so the seeds differ by manifest):
   `fearImmune` (K5 may append).
 - **Aims (resolved once, at windup start).** Ground shapes without a direction (circle, ring, hazard on one) sit on the
   aim point: `heroAtWindup` = the hero's position then, `self` = the caster, `anchor` = the caster's spawn anchor (the
-  dais; K4 may move it to the phase's leash centre). Cones and lines start at the caster (the anchor for `anchor`) and
+  dais; K4 may move it to the phase's leash centre; since the 2C review the caster's authored spawn tile,
+  `MonsterInstance::homeTile`, not the tile M10's placement jitter picked). Cones and lines start at the caster (the anchor for `anchor`) and
   point at the hero's windup position (`self`: the heading). **Deviation:** `hero` is refused for circle / ring / hazard
   (a decal that followed the hero to contact could not be dodged, monsters.md 1.3) and is the only aim of `bolt` (the
   bolt locks on the hero like the basic ranged swing). `corpse` is K3's.
@@ -1075,6 +1076,164 @@ manifest moves hit timing, so the seeds differ by manifest):
   on-death fuses (source OnDeath: the crimson decal on the dead monster's spot, ended at contact); play `Rise` on
   EvPlayAnim{Rise} and `Consume` on EvPlayAnim{Attack, clip Consume} (looped for its durationMs, stopped by
   EvMonsterAttackCancelled); EvMonsterCollapsed is a fall without a kill (no loot beam, no kill vocal).
+
+**2C outcomes (K4 as built, 2026-10; pending review; DECISIONS DR8 *K4 as built*, M1 amendment).**
+- **Schema** (`MonsterData.h` `MonsterPhaseDef`, parsed by `LoadMonsters.cpp` `ReadMonsterPhase`, mirrored by the
+  exporter's `tables/monsters.ts` `checkK4Monster`; unknown keys fail at every level). Monster `phases [{hpBelowPct,
+  enterAction, speedMul, attackSpeedMul, damageTakenMul, leash {centre, radius}, abilitiesOn[], abilitiesOff[], summons[],
+  arena {kind: ringShrink, centre, fromR, toR, overMs, dpsPctMaxHp, damageType}, feed {centre, radius, healPct, delayMs},
+  stinger}]` as K4 "Data" lists, plus `feed` (below). Rules: thresholds strictly decrease in (0, 100]; `enterAction` is an
+  AnimAction string but idle / walk / death (the K1 focus `anim` convention); multipliers in (0, 10], default 1; a tether,
+  feed or summon ring within 30 tiles, an arena within 60 (`0 < toR <= fromR`: a ring shrinks or holds), `overMs` <= 10
+  min, `dpsPctMaxHp` in (0, 100]; a summon `{monsterId, count 1..20, at: self | anchors, anchors[], radius, hpPct, delayMs
+  <= 60 s, respawnMs <= 10 min, respawns 0..10}`; a feed `{radius, healPct, delayMs <= 10 s}`; `abilitiesOn` / `abilitiesOff`
+  name the monster's own abilities, never both in one row; a `centre` is `{col, row}` (default: the monster's authored
+  spawn tile, `MonsterInstance::homeTile`: the dais; 2C review). `DataStore::Finalize`: phase summon ids exist; warnings
+  for an ability whose `phases[]` lists only phases the monster never reaches (the exporter warns too), for an enter
+  action whose clip the monster's art lacks (it then roots for `phaseActionMsDefault`, 1200 ms) and (2C review; the
+  exporter's `warnTetherPastLeash` too) for a tether that can reach past the M1 leash range from the spawn anchor: the
+  centre's farthest offset from it (0 for a default centre on a non-map spawn; + spawnJitter x sqrt 2 for a map spawn,
+  whose anchor is jittered; the distance to each known spawn for an authored centre) + radius + 0.25 slack > leashRange. Exporter: `REMAKE_SCHEMA` gains `monster.phases`; the export stays byte-identical (no
+  GameData record has phases; 2F authors them).
+- **Indices.** `MonsterInstance::phase` counts the rows entered: 0 = the monster as defined (Valdras's P1), row i entered =
+  phase i + 1 (P2 = 1, P3 = 2; the zealot's frenzy = 1). An ability's `phases[]` (K2) lists these numbers; EvMonsterPhase
+  carries them.
+- **Runtime** (`monsters/Phases.h` pure, `Private/monsters/MonsterPhases.cpp` MonsterSystem; Combat.h / MonsterSystem.h
+  *K4* notes). `MonsterSystem::TickPhases` runs in GameSim right after `TickCorpses` (all of the step's damage is in; no
+  RNG): (1) every living monster with a table enters each row its life crossed, one at a time, in order (`hp < hpBelowPct`
+  strictly, the abilities' rule; a hit through two thresholds enters both, in that step; a kill enters none; nothing goes
+  back but the reset); (2) arenas tick; (3) queued phase summons stand up; (4) Feeds come due. Entering a row: its
+  multipliers and tether replace the previous row's (x the affixed definition: `MonsterMoveToward` top speed,
+  `MonsterInstance::AttackIntervalMs` = attackSpeed / attackSpeedMul for the swing scan and its anim timing (also the
+  pet's stray swing), `PhaseScaledDamage` on every hit in `CombatSystem::DamageMonster` - hero, pet, DoT tick,
+  environment - floor(amount x mul), never below min(amount, 1)); the switches apply in row order (an ability whose first
+  switch is an `abilitiesOn` starts off; one the entry makes usable is ready `initialCooldownMs` after the entry when the
+  fight's ability clock runs; the picker reads `AbilityPickInput::off`); with an `enterAction`, the monster's swing or
+  ability on its way to contact, a swing drawn to the beast (2C review: a pet timer, which `CombatSystem::CancelMonsterStrike`
+  cancels through `PetCompanion::CancelMonsterSwing`) and a consume channel are cancelled (`CombatSystem::CancelMonsterStrike`,
+  EvMonsterAttackCancelled), then EvMonsterPhase, then `EvPlayAnim{enterAction, clip}` (the clip by the action's name:
+  Roar, Taunt, Cast02, ...; Attack01 / Cast01 for Attack / Cast) and the monster is rooted - no AI step, swing or cast - for
+  the clip's length (`assets.json`), else `phaseActionMsDefault`; every hit lands meanwhile (monsters.md 1.3: no invulnerable
+  phase); its arena lights (EvArena; a later row's arena replaces it, a row without one keeps it); its summons are queued.
+- **Tether** (`leash`; MonsterAI): while the row holds, a chase or patrol goal outside the circle becomes the circle's
+  point nearest it (`TetherGoal`), so the monster waits at the edge nearest the hero, and it attacks only from inside
+  (0.25 tiles of slack): one standing outside when the row starts walks back in first. A row without `leash` frees it.
+- **Arena** (ringShrink): radius `fromR + (toR - fromR) x clamp(t / overMs)` about its centre; every `arenaTickMs` (500)
+  from the entry the hero strictly outside the radius at the tick's time takes `CombatSystem::ArenaTickHero` =
+  floor(maxHp x dpsPctMaxHp / 100 x 0.5 s x the difficulty's damage multiplier) (>= 1), less its resistance, capped by the
+  monster's hit cap; a DoT-like tick (no roll, defense or i-frames) that Death Save holds (monster damage, as K2's hazard
+  ticks). It ticks only while its monster fights (Chase / Attack) and never on a hero inside a camp's safe zone. Monsters
+  are never hurt by it. It goes out (EvArena{cleared}) when its monster dies, collapses or resets.
+- **Summons** stand up through K3's `SummonAt` (Raised, raiser = the monster: no rewards, no respawn, they collapse with it;
+  EvMonsterRaised `abilityId` "phase.<n>") on a ring of `radius` around the monster (slot k of `count` at 2 pi k / count;
+  default 1.5) or on its `anchors` (round robin), `delayMs` after the entry (a row entered in a hit through two thresholds
+  still stands its bodies up); a body killed while its row is still the current phase stands up again `respawnMs` later in
+  its slot (the same anchor; the same ring slot around where the monster stands then), at most `respawns` times. They
+  count toward the monster's own raise / summon `capAlive`.
+- **Feed** (the 2B handoff; chapter1.md 11): when a Raised is killed (a kill, not a collapse) within a feeding row's `radius`
+  of its centre, the first such monster (list order) holds its corpse (EvMonsterFeed {entity, fed, corpseId, pos, startMs,
+  dueMs}); `delayMs` later, if fire, the TTL or the cap has not taken it, EvCorpseRemoved{consumed, by} and the monster heals
+  floor(maxHp x healPct / 100). A fire killing blow (the body burns at once) or a fire over the held corpse denies it
+  ("burn their corpses"); the feeder's death or reset lets the corpse go. Its own abilities do not (2C review: an
+  ability's contact, abort or cancel lets go only of the corpses that ability held, `CombatSystem::ClearPendingAbility`),
+  so no eater or raise takes the body meanwhile.
+- **The reset** (M1 amendment): a monster with a phase table walks home at its normal speed (2C review: a row's `speedMul`
+  does not apply while Returning, M1) and, when it arrives (Returning ends), heals to full and goes back to phase 0 (EvMonsterPhase{0, reset} when it had entered a row), its multipliers, tether, switches and root back to phase
+  0, its arena out, its queued summons and Feeds dropped, every Raised it stood up collapses. A zone change drops arenas,
+  queued summons and Feeds silently.
+- **Events** (appended to `abyss::Event`; the UE router needs no change): `EvMonsterPhase {entity, phase, phaseCount,
+  hpBelowPct, stinger, reset}`, `EvArena {entity, kind, centre, radius, targetRadius, startMs, endMs, tickMs, dpsPctMaxHp,
+  damageType, cleared}` (the plan's {centre, radius, targetRadius, endMs} plus what UE needs to draw and clear it),
+  `EvMonsterFeed`. Snapshot: `MonsterView::phase`, `arenas` (ArenaView: the radius now), `BossBarView::phase` and
+  `phaseThresholdsPct` (the bar's ticks).
+- **Deviations / interpretations** (all pending review). (1) `leash` is a tether, not the M1 leash: a Returning leash at r3
+  would have reset the fight (K4's own reset rule) every time the hero stepped off the dais; "he holds the dais" / "leaves
+  the dais" are a tether on P2 and none on P3. (2) Multipliers are per row, x the base: P3's "move x1.15" is not x P2's 0.6.
+  (3) Damage taken applies to every hit through `DamageMonster` (DoT ticks too, unlike the web's death-mark amplify), so the
+  zealot's "+10 %" is felt by every class. (4) The enter action cancels a windup (a phase change interrupts) and roots the
+  monster; a row without an action changes nothing in flight. (5) An arena ticks only while its monster fights and not on a
+  hero in a camp (a boss that lost the hero would otherwise burn it anywhere in the zone); a later row without an arena
+  keeps the earlier one. (6) The arena's damage scales with the difficulty's damage multiplier (like K3's `dmg`). (7) The
+  reset also collapses the monster's Raised and drops its queued work (the fight it started is undone). (8) Two schema
+  additions the plan did not spell: `feed` (2B handed Feed to K4) and the phase summon's `delayMs` / `respawnMs` /
+  `respawns` (chapter1.md 11: "one new bearer rises 20 s later, once"). (9) The K2 `anchor` aim keeps the dais, not
+  the tether's centre: every K4 default centre and the `anchor` aim are the monster's authored spawn tile
+  (`MonsterInstance::homeTile`; 2C review: they used to read the spawn anchor, which M10 jitters up to 3 tiles per axis
+  per seed for a map spawn, so the dais moved off its art and its ash circles), so the dais is one fixed point. The M1
+  leash and the M3 respawn keep the jittered spawn anchor (no RNG draw changed: the playthrough is byte-identical). (10) A row's switches use "first switch" order, so an ability
+  can be on, off, then on again. (11) Only the M1 walk home resets: a monster that drops the fight where it stands (the
+  hero died, ran past 1.5x its aggro range inside the leash range, or reached a camp) keeps its phase, life and arena,
+  and the arena does not tick until it fights again. (12) The attacker's side of a hit (life / mana steal, computed by
+  `CalculateDamage`) reads the hit as dealt, before the target's `damageTakenMul`; the numbers, the HitWeight and the
+  life lost read it after. (13) A row entered during an earlier row's enter action plays its own action at once and the
+  root runs to the later of the two ends.
+- **Tests.** `phases_test.cpp` (suite `monsters`; 30 cases, 4690 assertions on GCC and Clang since the 2C review): the
+  schema (every field and its defaults; 50 refused rows; Finalize: summon ids, unreachable phases, the enter action's clip;
+  the tether past the M1 leash and a hunt's unreachable phases), the pure rules
+  (entry order, switches, the picker skipping a switched-off ability, the arena radius / edge / tick, the tether goal,
+  scaled damage, clips), and the runtime: single in-order entry (the threshold itself, a heal back, a hit through two and
+  through three, a kill), multipliers on top of Swift (the first moveToward step, swing starts every 1300 / 1.35 ms with
+  the anim timed on it, hits and ticks x1.1, the HitWeight of the scaled hit; a second row's multipliers x the base),
+  a pet's hits (through CombatSystem and through PetCompanion::Hit's fallback) and a swing drawn to the beast (timed on
+  the row's interval; an enter action cancels it), switches (an
+  ability off then on, ready `initialCooldownMs` after the entry, a `phases[]`-listed one; off and on again inside its
+  cooldown; a summon cast between swings switched on by a row), the enter action (cancel, Roar for the clip's length, rooted, no swing / cast / hit, every hit
+  lands; a row without one; the default length; a consume channel ended; a row entered during another's action and the
+  later end of the root), summons (anchors, the delayed ring body, one replacement, none after its phase, collapse on
+  death; a hit through the summoning row and the next), the arena (EvArena / ArenaView and a reused snapshot, inside /
+  outside, four ticks in 2 s less resistance, the radius at the tick's time, toR after overMs, idle, a camp, cleared at
+  death; the difficulty multiplier, the hit cap, Death Save, a tick resistance rounds to 0, a zone transition; a later
+  row's arena replacing it, a row without one keeping it, a collapse putting it out), the reset (full life, phase 0,
+  switches, EvArena{cleared}, a collapse, the Feed let go, queued work dropped, re-entry, the walk home at normal speed;
+  home before the first row: full life, no event; a monster without phases unchanged), the tether (the edge nearest the
+  hero, following it, walking back in, the 0.25 slack, the path dropped when the tether changes, a later row freeing
+  it; a patrol goal), Feed (the hold, the
+  delay, the heal; range, fire killing blow, burned while held, the feeder's death, phase 0, an authored centre; the
+  hold kept through the feeder's ability contacts and a later row's enter action, an eater kept off), the dais (default
+  centres and the `anchor` aim on the authored tile, kept by a respawn), the zealot's one-row frenzy, a zone exit, the
+  GameSim wiring (TickPhases in the step, MonsterView / ArenaView / the boss bar's ticks on the story boss given a table
+  in memory; on four seeds, the story boss placed by the zone population keeps its authored tile as every default
+  centre while M10 jittered its spawn anchor on at least one), and
+  a seeded 40 s boss fight whose event-log digest is pinned (`4567bd8648a82662`, GCC = Clang). Each rule was also
+  checked by mutating the core in a scratch copy: 42 of 43 mutations (entry, multipliers, switches, the root, the
+  arena's edge / idle / camp / difficulty / cap / Death Save / resistance / replacement / collapse, the reset, Feed,
+  respawns, the tether on chase and patrol, the loader, the snapshot) make a K4 case fail; the 43rd (a body killed after
+  its phase ended is queued for a replacement anyway) is equivalent, because the due-time check drops it. The 2C review
+  added 22 mutations (each review fix undone, and the review's survivors: the pet fallback and the pet's stray-swing
+  timing, the first stand-up of a row passed in one hit, the HitWeight under damageTakenMul, readiness across off / on,
+  a reused snapshot, the hunt Finalize pass, the transition guard and the min-1 tick, the slack, the path re-plan): all
+  22 make a K4 case fail. Five more are equivalent and stay uncovered: the arena's radius read at `now` instead of the
+  tick's time (500 ms is exactly 30 steps of 1000 / 60 ms, so a tick is handled on its own step), one tick per step
+  instead of four (no step spans two 500 ms ticks), readiness written while the ability clock is stopped
+  (`StartAbilityClock` rewrites every ability when the fight starts), and a collapse or a dead feeder keeping its queued
+  work (the collapse already lets every hold go, and the due-time checks drop a dead owner's work silently). Existing
+  tests: no assertion changed. The 20-seed playthrough dumps (base 1000, and base 3000 since the review) are
+  byte-identical to a build of 4a796202 on GCC and Clang.
+- **2C review fixes** (2026-10, pending review). (R1) Every K4 default centre and K2's `anchor` aim read
+  `MonsterInstance::homeTile`, the authored spawn tile (`MonsterSpawnParams::hasHome` / `home`: SpawnZonePopulation passes
+  the map spawn's tile; other spawns stand on theirs; a respawn keeps it), not `spawnAnchor`, which M10 jitters up to 3
+  tiles per axis per seed: the tether, the Feed zone and the ring used to sit off the dais and its ash circles, by a
+  different amount each visit. No RNG draw changed. (R2) `CombatSystem::ClearPendingAbility` lets go only of the
+  ability's own corpses (`MonsterSystem::ReleaseCorpse`; `ReleaseCorpses(holder)` is gone): an ability's contact, abort or
+  cancel used to drop a Feed's hold, so an eater could start eating the fed body. (R3) An enter action also cancels a
+  swing drawn to the beast (`PetCompanion::CancelMonsterSwing`, called by `CombatSystem::CancelMonsterStrike`): it is a
+  pet timer, not a strike, and used to land on the beast mid-Roar. (R4) Cases for the review's surviving mutations (the
+  Tests bullet). (R5) The walk home ignores the row's `speedMul` (M1: normal speed). (R6) A tether that can reach past
+  the M1 leash range is a DataStore and exporter warning (Schema bullet). (R7) CORE_OWNERSHIP lists the K4 files.
+- **For 2F (content).** Valdras: P2 = `{hpBelowPct 65, enterAction roar, speedMul 0.6, leash {radius 3}, summons
+  [{the bearer (a dedicated definition whose summon ability raises at the two ash circles every 10 s, capAlive 4), at
+  anchors, respawnMs 20000, respawns 1}], feed {radius 4, healPct 3, delayMs ~1000}, stinger stinger_valdras_roll_call}`;
+  P3 = `{hpBelowPct 30, enterAction roar, attackSpeedMul 1.25, speedMul 1.15, abilitiesOn [lunge], arena {ringShrink,
+  fromR 9, toR 5, overMs 40000, dpsPctMaxHp 4, damageType fire}, stinger stinger_valdras_no_retreat}` (Lunge's
+  `abilitiesOn` keeps it off in P1 / P2; Breach-seep in P2 via `phases [1]`). The zealot: one row `{hpBelowPct 50,
+  enterAction roar, attackSpeedMul 1.35, speedMul 1.2, damageTakenMul 1.1}` (its Roar clip carries FX_Frenzy). Valdras's
+  centres can stay unauthored: each defaults to his map spawn tile (15,95), the dais, wherever M10's jitter stands him; a
+  default-centred P2 tether up to r 3 stays inside the M1 leash (r 4 warns: 4 + 3 x sqrt 2 + 0.25 > 8). The bot
+  (AutoPilot) should stand inside `arenas` and kill adds away from a feeding boss's centre.
+- **For 2G (UE).** Play `stinger` and the phase look on EvMonsterPhase (drop it on `reset`); draw EvArena / ArenaView
+  (a ring that closes from radius to targetRadius by endMs; remove it on `cleared` and on zone unload); EvMonsterFeed: the
+  corpse drawn into the monster until dueMs (then EvCorpseRemoved{consumed}); boss bar ticks from
+  `BossBarView::phaseThresholdsPct`.
 
 ### Phase 3 — Wave 3: the descent
 

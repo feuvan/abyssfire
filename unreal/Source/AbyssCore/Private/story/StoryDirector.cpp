@@ -703,6 +703,9 @@ void StoryDirector::FillSnapshot(Snapshot& out) const {
   if (m != nullptr && m->IsAlive()) {
     out.bossBar.hp = m->hp;
     out.bossBar.maxHp = m->maxHp;
+    // K4: the bar's phase ticks (the thresholds of its phase table) and the rows entered.
+    out.bossBar.phase = m->phase;
+    for (const MonsterPhaseDef& p : m->def.phases) out.bossBar.phaseThresholdsPct.push_back(p.hpBelowPct);
   }
 }
 

@@ -9,6 +9,7 @@
 #include "abyss/base/StrUtil.h"
 #include "abyss/base/Units.h"
 #include "abyss/combat/HitFeedback.h"
+#include "abyss/monsters/Phases.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/world/CampLayout.h"
 
@@ -408,6 +409,96 @@ bool DataStore::Finalize(DataLoadReport& report) {
     for (const EliteAffixDef& a : combat_.eliteAffixes.defs) {
       checkOnDeath(a.onDeath, "elite_affixes.json", "definitions." + std::string(EnumName(a.type)));
       checkRise(a.riseAgain, "elite_affixes.json", "definitions." + std::string(EnumName(a.type)));
+    }
+  }
+  // K4 (implementation-plan.md 3 K4; the loader checked each row's own shape): a phase summon names a monster; an
+  // ability whose phases[] lists only phases the monster never reaches never fires (warning); an enter action whose clip
+  // the monster's art lacks roots it for MonsterAiDef::phaseActionMsDefault (warning: UE keeps the current pose); a
+  // tether that reaches past the M1 leash (warning, below).
+  {
+    const auto checkPhases = [&](const MonsterDef& m, std::string_view file, const std::string& path) {
+      for (size_t i = 0; i < m.phases.size(); ++i) {
+        const MonsterPhaseDef& p = m.phases[i];
+        const std::string pp = StrCat(path, ".phases[", i, "]");
+        for (const PhaseSummonDef& s : p.summons) {
+          if (!monsters_.Find(s.monsterId)) ck.Error(file, pp + ".summons", "unknown monster '" + s.monsterId + "'");
+        }
+        if (p.hasEnterAction && assets_.loaded) {
+          const AssetEntryDef* art = assets_.FindByGameId(MonsterArtGameId(assets_, m.spriteKey, m.id));
+          const std::string clip(PhaseActionClip(p.enterAction));
+          if (art == nullptr || art->FindClip(clip) == nullptr) {
+            ck.Warn(file, pp + ".enterAction",
+                    StrCat("no clip '", clip, "' in assets.json: the action roots for ", monsters_.ai.phaseActionMsDefault,
+                           " ms"));
+          }
+        }
+      }
+      const int32_t last = static_cast<int32_t>(m.phases.size());
+      for (const MonsterAbilityDef& a : m.abilities) {
+        bool reachable = a.phases.empty();
+        for (int32_t ph : a.phases) reachable = reachable || ph <= last;
+        if (!reachable) {
+          ck.Warn(file, path + ".abilities." + a.id + ".phases",
+                  StrCat("never usable: the monster reaches phases 0..", last, " (phases[] counts the rows entered)"));
+        }
+      }
+    };
+    for (const MonsterDef& m : monsters_.defs) checkPhases(m, "monsters.json", "defs." + m.id);
+    for (const HuntDef& h : monsters_.hunts) checkPhases(h.defNormal, "quest_hunts.json", "defsNormal." + h.huntId);
+    // A tether reaching past the M1 leash (leashRange from the spawn anchor) would send its monster home - and reset its
+    // phases - from inside the tether (warning). A map spawn's anchor lies within spawnJitter tiles per axis of its
+    // authored tile (M10 placement); every other spawn's anchor is its tile. A default centre is that authored tile
+    // (MonsterInstance::homeTile); an authored centre is checked against each known spawn (none known: not checked).
+    struct TetherHome {
+      TilePos tile;
+      double jitter = 0;  // the largest anchor-to-tile distance
+    };
+    const double mapJitter = static_cast<double>(monsters_.ai.spawnJitter) * std::sqrt(2.0);
+    const auto checkTether = [&](const MonsterDef& m, const std::vector<TetherHome>& homes, std::string_view file,
+                                 const std::string& path) {
+      for (size_t i = 0; i < m.phases.size(); ++i) {
+        const PhaseLeashDef& l = m.phases[i].leash;
+        if (!l.present) continue;
+        double offset = l.hasCentre ? -1.0 : 0.0;  // the farthest the centre can lie from the spawn anchor
+        for (const TetherHome& h : homes) {
+          const double d = l.hasCentre ? (l.centre.Center() - h.tile.Center()).Length() : 0.0;
+          offset = (std::max)(offset, d + h.jitter);
+        }
+        if (offset < 0) continue;
+        const double reach = offset + l.radius + kTetherSlackTiles;
+        if (reach > monsters_.ai.leashRange) {
+          ck.Warn(file, StrCat(path, ".phases[", i, "].leash"),
+                  StrCat("the tether reaches ", std::round(reach * 100) / 100, " tiles from the spawn anchor, past the M1 ",
+                         "leash (leashRange ", monsters_.ai.leashRange, "): the monster would walk home and reset its ",
+                         "phases from inside it"));
+        }
+      }
+    };
+    const auto homesOf = [&](std::string_view id) {
+      std::vector<TetherHome> out;
+      for (const MapDef& map : world_.maps) {
+        for (const MapSpawnDef& s : map.spawns) {
+          if (s.monsterId == id) out.push_back(TetherHome{s.pos, mapJitter});
+        }
+      }
+      for (const SubDungeonDef& sd : world_.subDungeons) {
+        for (const MapSpawnDef& s : sd.spawns) {
+          if (s.monsterId == id) out.push_back(TetherHome{s.pos, mapJitter});
+        }
+        if (sd.miniBossId == id) out.push_back(TetherHome{sd.miniBossPos, 0});
+      }
+      for (const MiniBossEntry& e : monsters_.miniBosses) {
+        if (e.monsterId == id && e.hasSpawn) out.push_back(TetherHome{e.spawn, 0});
+      }
+      return out;
+    };
+    for (const MonsterDef& m : monsters_.defs) {
+      if (!m.phases.empty()) checkTether(m, homesOf(m.id), "monsters.json", "defs." + m.id);
+    }
+    for (const HuntDef& h : monsters_.hunts) {
+      if (!h.defNormal.phases.empty()) {
+        checkTether(h.defNormal, {TetherHome{h.spawn, 0}}, "quest_hunts.json", "defsNormal." + h.huntId);
+      }
     }
   }
 

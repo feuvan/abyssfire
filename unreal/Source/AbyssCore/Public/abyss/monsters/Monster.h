@@ -56,6 +56,19 @@ struct MonsterAbilityCast {
   AbilityShapeDef shape;
 };
 
+// K4: the soft enrage a phase lit (MonsterPhaseDef::arena; Phases.h ArenaRadiusAt): resolved at the phase entry.
+struct MonsterArena {
+  bool active = false;
+  ArenaKind kind = ArenaKind::RingShrink;
+  int32_t phase = 0;      // the phase that lit it
+  Vec2 centre;
+  double fromR = 0, toR = 0;
+  double startMs = 0, overMs = 0;
+  double dpsPctMaxHp = 0;
+  DamageType damageType = DamageType::Physical;
+  double nextTickMs = 0;  // absolute sim ms of its next tick on the hero
+};
+
 // One rolled elite affix with its behaviour timers (combat-feel.md 17).
 struct MonsterAffix {
   EliteAffixType type = EliteAffixType::FireEnhanced;
@@ -83,6 +96,8 @@ struct ABYSS_API MonsterInstance {
   double moveSpeed = 0;     // current smoothed speed, tiles/s (velocity form of monsters 3.4)
   double groundSpeed = 0;   // actual displacement speed of the last AI step, tiles/s (locomotion blend)
   TilePos spawnAnchor;      // original zone-entry anchor (M3: respawn and leash use it, never drifts)
+  TilePos homeTile;         // the authored spawn tile (a map spawn's tile before the M10 placement jitter; else the
+                            // tile it spawned on): the dais. K2's `anchor` aim and every K4 default centre use it
   // AI
   MonsterState state = MonsterState::Idle;
   double patrolTimerMs = 0;
@@ -108,7 +123,20 @@ struct ABYSS_API MonsterInstance {
   int32_t pendingAbility = -1;      // def.abilities index, -1 = none
   MonsterAbilityCast abilityCast;   // the pending ability's resolved aim
   double abilityRootedUntilMs = 0;  // = the pending ability's contact
-  int32_t phase = 0;                // boss phase index (K4 sets it; abilities' phases[] read it)
+  // K4 boss phases (monsters/Phases.h; MonsterSystem.h "K4"). `phase` = the phase rows entered (0 = the monster as
+  // defined; abilities' phases[] read it). The current row's multipliers (1 = none; on top of the affixed definition:
+  // move speed in MonsterMoveToward, the swing interval in AttackIntervalMs, damage taken in CombatSystem::DamageMonster)
+  // and its tether (MonsterAI: chase and patrol goals held inside the circle); abilityOff = abilities switched off by the
+  // phase table (empty without phases); phaseActionUntilMs roots it (no AI step, no swing or cast) while its enter
+  // action plays; `arena` = the soft enrage its phases lit.
+  int32_t phase = 0;
+  double phaseSpeedMul = 1, phaseAttackSpeedMul = 1, phaseDamageTakenMul = 1;
+  bool hasTether = false;
+  Vec2 tetherCentre;
+  double tetherRadius = 0;
+  std::vector<uint8_t> abilityOff;
+  double phaseActionUntilMs = 0;
+  MonsterArena arena;
   // K3 (Corpses.h; Combat.h / MonsterSystem.h "K3"). A Raised body (MonsterRole::Raised: it rose once, so its own
   // corpse is spent) stands for `raiserId` (kNoEntity for a self-risen or an on-death-spawned one: it collapses with
   // nobody). A raise / summon winding up keeps its corpses / spots (abilityCorpses / abilitySpots: the corpse positions
@@ -128,6 +156,8 @@ struct ABYSS_API MonsterInstance {
   bool IsAlive() const { return state != MonsterState::Dead && hp > 0; }
   bool IsAggro() const { return state == MonsterState::Chase || state == MonsterState::Attack; }
   int32_t AffixCount() const { return static_cast<int32_t>(affixes.size()); }
+  // ms between swing starts: the definition's attackSpeed, divided by the K4 phase's attackSpeedMul.
+  double AttackIntervalMs() const { return def.attackSpeedMs / phaseAttackSpeedMul; }
   double AffixLootBonus(const EliteAffixTable& table) const;
 };
 

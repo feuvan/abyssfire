@@ -27,6 +27,7 @@
 #include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/MonsterDefs.h"
 #include "abyss/monsters/OnDeath.h"
+#include "abyss/monsters/Phases.h"
 #include "abyss/quests/QuestSystem.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/SimContext.h"
@@ -96,6 +97,8 @@ void MonsterSystem::PrepareZone() {
   huntLeaders_.clear();
   corpses_.Clear();  // K3: a zone's bodies stay in it
   rises_.clear();
+  phaseSummons_.clear();  // K4
+  feeds_.clear();
   if (worldOverride_) return;  // a test world stays until the zone exits
   preparedMapId_.clear();
   preparedCols_ = preparedRows_ = 0;
@@ -182,6 +185,8 @@ void MonsterSystem::SpawnZonePopulation() {
       p.baseDef = &def;
       p.alreadyScaled = true;
       p.tile = tile;
+      p.hasHome = true;  // K2 / K4: the dais is the authored tile, not the jittered one (no RNG draw)
+      p.home = spawn.pos;
       p.role = role;
       p.rollAffixes = def.elite;
       Spawn(p);
@@ -314,6 +319,8 @@ void MonsterSystem::OnZoneExit() {
   huntLeaders_.clear();
   corpses_.Clear();  // K3: dropped silently with the zone (UE drops its husks with the zone)
   rises_.clear();
+  phaseSummons_.clear();  // K4: queued phase summons and Feeds go with the zone (arenas with their monsters)
+  feeds_.clear();
   worldOverride_ = false;
   world_ = MonsterWorld{};
   preparedMapId_.clear();
@@ -338,8 +345,10 @@ MonsterInstance MonsterSystem::MakeInstance(const MonsterDef& def, TilePos tile,
   m.pos = tile.Center();
   m.prevPos = m.pos;
   m.spawnAnchor = tile;
+  m.homeTile = tile;
   m.state = MonsterState::Idle;
   m.active = false;  // joins the activity set at its next refresh (3.8)
+  PhaseAbilitiesOff(def, 0, m.abilityOff);  // K4: abilities its phase table switches on later start off
   return m;
 }
 
@@ -378,6 +387,7 @@ EntityId MonsterSystem::Spawn(const MonsterSpawnParams& p) {
                              ? *p.baseDef
                              : ScaleMonsterForDifficulty(*p.baseDef, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
   MonsterInstance m = MakeInstance(def, p.tile, p.role);
+  if (p.hasHome) m.homeTile = p.home;
   m.huntId = p.huntId;
   m.visualScale = p.visualScale;
   if (p.rollAffixes) RollAffixesInto(m, p.affixZone.empty() ? std::string_view(CurrentZoneId()) : p.affixZone);
@@ -714,6 +724,7 @@ void MonsterSystem::TickAI(double dtMs) {
     if (status != nullptr && status->IsImmobilized(id)) continue;           // no AI, safe-zone check or grid update
     if (now < m->abilityRootedUntilMs) continue;                            // K2: rooted while an ability winds up
                                                                             // (K3: a consume channel, a Rise clip)
+    if (now < m->phaseActionUntilMs) continue;                              // K4: a phase's enter action
     // K3: a monster that eats corpses may start its consume channel instead of its AI step.
     if (m->def.corpse.consumes && TryStartConsume(*m, now)) continue;
     const MonsterState before = m->state;
@@ -741,6 +752,11 @@ void MonsterSystem::TickAI(double dtMs) {
     in.neighbours = neighbours;
     const MonsterAiResult res = UpdateMonsterAI(*m, ai, in, world_, rng);
     if (res.leashed) m->abilityClockStarted = false;  // K2: a fight that ends at the leash restarts its ability clock
+    if (res.arrivedHome && !m->def.phases.empty()) {  // K4: home again (M1): full life, phase 0, its fight undone
+      ResetPhases(*m);
+      m = Find(id);
+      if (m == nullptr) continue;
+    }
     if (dtMs > 0) m->groundSpeed = Dist(m->pos, m->prevPos) * 1000.0 / dtMs;
     grid_.Update(id, m->pos);
     if (m->state == MonsterState::Chase &&
@@ -970,6 +986,7 @@ void MonsterSystem::Respawn(EntityId deadId) {
   const MonsterInstance& dead = monsters_[idx];
   MonsterInstance fresh = MakeInstance(dead.originalDef, tile, dead.role);  // fresh id, full HP, idle, no swing yet
   fresh.spawnAnchor = anchor;
+  fresh.homeTile = dead.homeTile;
   fresh.huntId = dead.huntId;
   fresh.visualScale = dead.visualScale;
   fresh.noRespawn = dead.noRespawn;
@@ -1117,6 +1134,8 @@ void MonsterSystem::OnMonsterDied(const MonsterKilledMsg& msg) {
       }
     }
   }
+  // K4: its arena and queued phase work, the phase-summon bookkeeping of its body, Feed.
+  OnPhaseDeath(msg, corpse);
   // Every Raised it stood up falls with it.
   CollapseRaisedOf(msg.monster);
 }
@@ -1152,6 +1171,12 @@ void MonsterSystem::Collapse(EntityId id) {
   ctx_.events.Emit(anim);
   ctx_.events.Emit(EvMonsterCollapsed{id, raiser});
   if (ctx_.sys.combat != nullptr) ctx_.sys.combat->OnMonsterCollapsed(id);  // statuses, its pending swing, the target
+  m = Find(id);
+  if (m != nullptr) ClearArena(*m, true);  // K4: a collapse is no kill, but its phase work ends with it
+  DropPhaseWork(id);
+  phaseSummons_.erase(std::remove_if(phaseSummons_.begin(), phaseSummons_.end(),
+                                     [id](const PhaseSummonEntry& e) { return e.body == id; }),
+                      phaseSummons_.end());
   m = Find(id);
   if (m != nullptr) AddBody(*m, m->pos, true);
   CollapseRaisedOf(id);
@@ -1503,6 +1528,23 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     v.holdAction = miniBossDialogueActive_ && m.id == miniBossDialogueMonster_ ? AnimAction::Taunt : AnimAction::Idle;
     v.raiser = m.raiserId;
     v.consumingCorpse = m.consumeCorpse;
+    v.phase = m.phase;  // K4
+  }
+  // K4: the arenas the monsters' phases lit (list order).
+  for (const MonsterInstance& m : monsters_) {
+    if (!m.arena.active) continue;
+    ArenaView a;
+    a.entity = m.id;
+    a.kind = m.arena.kind;
+    a.centre = m.arena.centre;
+    a.radius = ArenaRadiusAt(m.arena.fromR, m.arena.toR, m.arena.overMs, ctx_.Now() - m.arena.startMs);
+    a.fromRadius = m.arena.fromR;
+    a.targetRadius = m.arena.toR;
+    a.startMs = m.arena.startMs;
+    a.endMs = m.arena.startMs + m.arena.overMs;
+    a.dpsPctMaxHp = m.arena.dpsPctMaxHp;
+    a.damageType = m.arena.damageType;
+    out.arenas.push_back(a);
   }
   // K3: the zone's bodies (registry order).
   out.corpses.reserve(corpses_.Entries().size());

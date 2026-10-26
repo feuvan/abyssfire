@@ -99,6 +99,13 @@
 //   hazard, a fire burst / ring, and a hero fire skill's area where it lands (ground / trap / nova circles, cones, lines;
 //   a meteor at its fall; a fire wall / trap on each tick). Kills of Raised bodies pay nothing: no Spirit 'kill', exp,
 //   gold (no Loot draw), kill heal or kill text.
+// * Dark remake K4 boss phases (implementation-plan.md 3 K4; MonsterSystem.h "K4", monsters/Phases.h): a monster's swing
+//   interval is MonsterInstance::AttackIntervalMs (its definition's attackSpeed / the phase's attackSpeedMul; the swing's
+//   anim is timed on it) and it starts no swing or cast while a phase's enter action roots it (phaseActionUntilMs); every
+//   hit on a monster (DamageMonster: hero, pet, DoT tick, environment) is PhaseScaledDamage by its phase's
+//   damageTakenMul before anything announces it; the picker skips the abilities its phase table switched off
+//   (AbilityPickInput::off). CancelMonsterStrike (an enter action's interrupt) and ArenaTickHero (the ring's ticks) are
+//   MonsterSystem::TickPhases' entry points.
 #pragma once
 
 #include <cstdint>
@@ -266,6 +273,14 @@ class ABYSS_API CombatSystem {
   // K3: a Raised body collapsed (MonsterSystem::Collapse): its statuses, pending swing / ability (EvMonsterAttackCancelled
   // for an ability) and the hero's lock on it go, as for a kill.
   void OnMonsterCollapsed(EntityId monster);
+  // K4 (MonsterSystem.h "K4"): a phase's enter action cancels the monster's swing or ability on its way to contact,
+  // and a swing it aimed at the beast (PetCompanion::CancelMonsterSwing) (EvMonsterAttackCancelled for each; an ability
+  // lets its own held corpses go; the cooldown stays spent). False when nothing was pending.
+  bool CancelMonsterStrike(EntityId monster);
+  // K4: one arena tick on the hero outside the ring: Phases.h ArenaTickDamage (x the difficulty's damage multiplier)
+  // less the hero's resistance, capped by `hitCapPct` (the monster's hitCapHeroMaxHpPct, MonsterHitCap); a DoT-like tick
+  // (no roll, defense or i-frames) that Death Save holds. Nothing while the hero is dead or a zone change is under way.
+  void ArenaTickHero(EntityId source, double dpsPctMaxHp, DamageType type, double tickMs, double hitCapPct);
   // K3: an on-death effect every monster killed in this zone leaves (`label` names it in the events, e.g.
   // "curse.volatile"); `present` false clears it. The Labyrinth runtime sets its floor's curse here
   // (VolatileCurseOnDeath); a zone exit clears it.
@@ -509,7 +524,7 @@ class ABYSS_API CombatSystem {
     std::vector<Vec2> spots;        // where each body stands (a raise: its corpse's position)
   };
   SummonPlan PlanSummon(const MonsterInstance& m, const MonsterAbilityDef& a, double now) const;
-  // Ends `m`'s pending ability (index, root, held corpses and spots).
+  // Ends `m`'s pending ability (index, root, spots, and the holds on its own corpses only: a K4 Feed keeps its hold).
   void ClearPendingAbility(MonsterInstance& m);
   // K3: burns the bodies a fire area touches (no-op for another type).
   void BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir);

@@ -58,9 +58,13 @@ struct AbilityPickInput {
   std::span<const uint8_t> available;
   // K3: the cast between swings (Chase, or Attack before the swing is due): only raise / summon kinds are usable.
   bool summonsOnly = false;
+  // K4, per ability index: nonzero = switched off by the phase table (MonsterInstance::abilityOff, Phases.h
+  // PhaseAbilitiesOff); empty = nothing switched off.
+  std::span<const uint8_t> off;
 };
 
-// The conditions of one ability (kind runs, ready, range, life, phase; K3: a raise / summon has bodies to stand up).
+// The conditions of one ability (kind runs, ready, range, life, phase; K3: a raise / summon has bodies to stand up; K4:
+// not switched off by the phase table).
 ABYSS_API bool AbilityUsable(const MonsterAbilityDef& a, size_t index, const AbilityPickInput& in);
 // The ability a due swing becomes (index into `abilities`), -1 = the basic swing (with `summonsOnly`: the raise / summon
 // cast between swings, -1 = none).

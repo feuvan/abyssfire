@@ -3,6 +3,9 @@
 // DECISIONS M1 (Returning leash: walk home at normal speed, heal 0.6 maxHp/s, ignore the hero), M2 (provoked: 5 s forced
 // chase that ignores the 1.5x aggro drop), M6 (A* when line-of-walk is blocked + separation steering + wall sliding),
 // M10 (4000 ms patrol timeout, 8 placement tries), S1 (fixed 60 Hz dt).
+// Dark remake K4: a phase's tether (MonsterInstance::hasTether) holds the chase and patrol goals inside its circle
+// (Phases.h TetherGoal) and lets the monster attack only from inside it (0.25 tiles of slack): one standing outside walks
+// back in first. The M1 leash and Returning are unchanged (the walk home ignores the row's speedMul).
 //
 // Owner area: monsters. `UpdateMonsterAI` mutates one MonsterInstance; MonsterSystem runs it for the activity set in
 // list order (3.8) with the safe-zone and immobilized rules applied before the call. RNG = RngStream::Ai
@@ -54,9 +57,10 @@ struct MonsterAiResult {
 ABYSS_API MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, const MonsterAiInput& in,
                                           const MonsterWorld& world, Rng& rng);
 
-// moveToward (3.4) in velocity form: v += (speed * 0.03 * speedMul - v) * 6 * dt_s; pos += dir * v * dt_s; a blocked
-// step (rounded tile not walkable) slides along the free axis, dominant axis first (M6), instead of cancelling both.
-// heading = the intended direction even when blocked. Returns true (no move) when already within arriveEpsilon.
+// moveToward (3.4) in velocity form: v += (speed * 0.03 * speedMul * phase - v) * 6 * dt_s; pos += dir * v * dt_s; a
+// blocked step (rounded tile not walkable) slides along the free axis, dominant axis first (M6), instead of cancelling
+// both. heading = the intended direction even when blocked. Returns true (no move) when already within arriveEpsilon.
+// phase = the K4 row's phaseSpeedMul, except 1 while Returning (M1: the walk home is at normal speed).
 ABYSS_API bool MonsterMoveToward(MonsterInstance& m, const MonsterAiDef& ai, Vec2 target, double dtMs, double speedMul,
                                  const MonsterWorld& world);
 

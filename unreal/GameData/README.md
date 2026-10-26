@@ -145,8 +145,10 @@ summon, buff; the kinds raise / summon / buff / call fail the export until K3 / 
 *2A outcomes*). Since K3 (package 2B, DECISIONS DR8 *K3 as built*) also monster `family`, `onDeath`
 (`RemakeOnDeath`), `corpse` (`RemakeCorpse`) and `riseAgain` (`RemakeRiseAgain`), the raise / summon ability kinds (summon
 `radius`), map `corpseSeeds` and, through `world.ts` `eliteAffixes.definitions` (`RemakeEliteAffixDefinition`), an elite
-affix's `onDeath`, `riseAgain` and `families` (implementation-plan.md *2B outcomes*). Still withheld: every other Wave 2 / 3
-field.
+affix's `onDeath`, `riseAgain` and `families` (implementation-plan.md *2B outcomes*). Since K4 (package 2C, DECISIONS
+DR8 *K4 as built*) also monster `phases` (`RemakeMonsterPhase[]`: thresholds, the enter action, multipliers, the tether
+`leash`, ability switches, phase `summons`, the shrinking-ring `arena`, `feed`, a music `stinger`; a centre left out is the
+monster's map spawn tile; implementation-plan.md *2C outcomes*). Still withheld: every other Wave 2 / 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

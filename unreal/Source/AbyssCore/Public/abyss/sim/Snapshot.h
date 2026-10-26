@@ -118,6 +118,8 @@ struct MonsterView {
   // K3: a Raised body's raiser (kNoEntity: none, or not Raised); the corpse a consume channel eats (0 = none).
   EntityId raiser = kNoEntity;
   uint32_t consumingCorpse = 0;
+  // K4: the phase rows entered (0 = none; EvMonsterPhase marks each entry).
+  int32_t phase = 0;
 };
 
 struct NpcView {
@@ -227,6 +229,19 @@ struct HazardView {
   double startMs = 0, untilMs = 0;  // absolute sim ms
 };
 
+// A soft-enrage arena a monster's phase lit (dark remake K4; EvArena is its start): `radius` now (Phases.h ArenaRadiusAt),
+// going from fromRadius at startMs to targetRadius at endMs.
+struct ArenaView {
+  EntityId entity = kNoEntity;
+  ArenaKind kind = ArenaKind::RingShrink;
+  Vec2 centre;
+  double radius = 0;
+  double fromRadius = 0, targetRadius = 0;
+  double startMs = 0, endMs = 0;  // absolute sim ms
+  double dpsPctMaxHp = 0;
+  DamageType damageType = DamageType::Physical;
+};
+
 // Static or quest-driven world props the UE layer spawns actors for.
 enum class MarkerKind : uint8_t {
   GatherNode,
@@ -271,6 +286,10 @@ struct BossBarView {
   EntityId monster = kNoEntity;
   std::string nameKey, epithetKey;
   double hp = 0, maxHp = 0;
+  // K4: the phase rows entered and the thresholds of the monster's phase table (percent of max life, row order): the
+  // bar's ticks.
+  int32_t phase = 0;
+  std::vector<double> phaseThresholdsPct;
 };
 
 struct InteractPromptView {
@@ -306,6 +325,7 @@ struct ABYSS_API Snapshot {
   std::vector<TelegraphView> telegraphs;  // K2 abilities winding up (caster order of the pending strikes)
   std::vector<HazardView> hazards;        // K2 ground hazards (placement order)
   std::vector<CorpseView> corpses;        // K3 corpse registry of the zone (registry order)
+  std::vector<ArenaView> arenas;          // K4 phase arenas (monster list order)
   std::vector<WorldMarkerView> markers;
   // ---- zone / HUD ----
   ZoneView zone;

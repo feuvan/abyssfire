@@ -141,6 +141,9 @@ class ABYSS_API PetCompanion {
   // The deterministic half of InterceptMonsterAttack (no RNG): the beast is out and not exhausted and its taunt holds
   // the living `monster`, so its next swing goes to the beast. K2: a taunted monster starts no ability.
   bool TauntHolds(EntityId monster) const;
+  // K4: a phase's enter action interrupts `monster`'s swing on its way to the beast (the TakeHit timer goes,
+  // EvMonsterAttackCancelled); its swing clock stays restarted. False when no such swing is pending.
+  bool CancelMonsterSwing(EntityId monster);
   // Pets panel "feed" (18.8): no fruit -> sys.pet.noFruit; !CanFeed -> sys.pet.feedFull; else one c_ley_fruit leaves
   // the first stack in bag order, PetSystem::Feed, EvInventoryChanged.
   bool FeedFromBag(std::string_view petId);

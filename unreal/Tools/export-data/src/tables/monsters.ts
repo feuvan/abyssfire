@@ -10,16 +10,16 @@
 import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
 import { AllDungeonMonsters, DungeonExclusiveMonsters, DungeonBossDef, DungeonMidBossDef, DungeonMonsterPool } from '../../../../../src/data/dungeonData';
 import { MiniBossByZone, MiniBossDialogues, MiniBossSpawns } from '../../../../../src/data/miniBosses';
-import { SubDungeonMiniBosses } from '../../../../../src/data/subDungeons';
+import { AllSubDungeons, SubDungeonMiniBosses } from '../../../../../src/data/subDungeons';
 import { AllQuests } from '../../../../../src/data/quests/all_quests';
 import { makeHuntDefinition } from '../../../../../src/systems/QuestHunts';
 import { ZoneScene } from '../../../../../src/scenes/ZoneScene';
 import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
 import { STORY_TRIGGERS, BOSS_INTROS } from '../../../../../src/data/story/script';
-import { EmeraldPlainsMap } from '../../../../../src/data/maps';
+import { AllMaps, EmeraldPlainsMap } from '../../../../../src/data/maps';
 import type { MonsterDefinition } from '../../../../../src/data/types';
 import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, RemakeAbilityStatus, RemakeOnDeath, RemakeCorpse,
-  RemakeRiseAgain } from '../../../../GameData/types';
+  RemakeRiseAgain, RemakeMonsterPhase } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
 import { gateRemakeValues, noteConfig, withholdRemakeFields } from '../remake';
@@ -381,6 +381,151 @@ function checkK3Monster(def: MonsterDefinition, where: string): string[] {
   return spawned;
 }
 
+// ── K4 boss phases and arenas (implementation-plan.md §3 K4) ──
+
+const PHASE_KEYS = ['hpBelowPct', 'enterAction', 'speedMul', 'attackSpeedMul', 'damageTakenMul', 'leash', 'abilitiesOn',
+  'abilitiesOff', 'summons', 'arena', 'feed', 'stinger'];
+// AnimAction (SimTypes.h) less idle / walk / death.
+const ENTER_ACTIONS = ['attack', 'cast', 'hurt', 'dodge', 'signature', 'work', 'talk', 'roar', 'taunt', 'stun', 'attack02',
+  'cast02', 'rise'];
+// LoadMonsters.cpp: multipliers in (0, 10]; a tether, a feed or a summon ring within 30 tiles, an arena within 60; an arena
+// closes over <= 10 min; a phase summon waits <= 60 s and stands back up <= 10 times, each <= 10 min later; a feed draws
+// its corpse in <= 10 s.
+const MAX_PHASE_MUL = 10, MAX_PHASE_RADIUS = 30, MAX_ARENA_RADIUS = 60, MAX_PHASE_SUMMON_DELAY_MS = 60000,
+  MAX_PHASE_RESPAWNS = 10, MAX_FEED_DELAY_MS = 10000;
+
+function checkCentre(c: { col: number; row: number } | undefined, where: string): void {
+  if (c === undefined) return;
+  checkKeys(c, ['col', 'row'], where);
+  assert(Number.isInteger(c.col) && Number.isInteger(c.row), `${where}: {col, row} integers`);
+}
+
+/**
+ * The rules of LoadMonsters.cpp ReadMonsterPhase / ReadMonsterDef (K4): known keys at every level, thresholds strictly
+ * decreasing in (0, 100], an enter action that is an action (not idle / walk / death), multipliers in (0, 10], the
+ * tether / arena / feed / summon bounds, switched abilities that are the monster's own (and not both on and off in a
+ * row). Warns (as DataStore::Finalize does) on an ability whose phases[] lists only phases the monster never reaches.
+ * Returns the summoned monster ids for the caller to resolve.
+ */
+function checkK4Monster(def: MonsterDefinition, where: string): string[] {
+  const d = def as MonsterDefinition & { phases?: RemakeMonsterPhase[]; abilities?: RemakeMonsterAbility[] };
+  const summoned: string[] = [];
+  const abilityIds = new Set((d.abilities ?? []).map(a => a.id));
+  const rows = d.phases ?? [];
+  const mul = (v: number | undefined, at: string) =>
+    assert(v === undefined || (isNum(v) && v > 0 && v <= MAX_PHASE_MUL), `${at}: expected 0 < multiplier <= ${MAX_PHASE_MUL}`);
+  rows.forEach((p, i) => {
+    const at = `${where}.phases[${i}]`;
+    checkKeys(p, PHASE_KEYS, at);
+    assert(isNum(p.hpBelowPct) && p.hpBelowPct > 0 && p.hpBelowPct <= 100, `${at}.hpBelowPct: expected (0, 100]`);
+    assert(i === 0 || p.hpBelowPct < rows[i - 1].hpBelowPct, `${at}.hpBelowPct: phase thresholds strictly decrease`);
+    assert(p.enterAction === undefined || ENTER_ACTIONS.includes(p.enterAction),
+      `${at}.enterAction: '${p.enterAction}' is not an action (${ENTER_ACTIONS.join(' | ')})`);
+    mul(p.speedMul, `${at}.speedMul`);
+    mul(p.attackSpeedMul, `${at}.attackSpeedMul`);
+    mul(p.damageTakenMul, `${at}.damageTakenMul`);
+    if (p.leash) {
+      checkKeys(p.leash, ['centre', 'radius'], `${at}.leash`);
+      checkCentre(p.leash.centre, `${at}.leash.centre`);
+      assert(isNum(p.leash.radius) && p.leash.radius > 0 && p.leash.radius <= MAX_PHASE_RADIUS, `${at}.leash.radius: expected 0 < radius <= ${MAX_PHASE_RADIUS}`);
+    }
+    for (const id of p.abilitiesOn ?? []) {
+      assert(abilityIds.has(id), `${at}.abilitiesOn: '${id}' names no ability of the monster`);
+      assert(!(p.abilitiesOff ?? []).includes(id), `${at}.abilitiesOff: '${id}' is switched both on and off`);
+    }
+    for (const id of p.abilitiesOff ?? []) assert(abilityIds.has(id), `${at}.abilitiesOff: '${id}' names no ability of the monster`);
+    (p.summons ?? []).forEach((m, j) => {
+      const sat = `${at}.summons[${j}]`;
+      checkKeys(m, ['monsterId', 'count', 'at', 'anchors', 'radius', 'hpPct', 'delayMs', 'respawnMs', 'respawns'], sat);
+      assert(typeof m.monsterId === 'string' && m.monsterId !== '', `${sat}.monsterId: empty`);
+      summoned.push(m.monsterId);
+      assert(m.count === undefined || (Number.isInteger(m.count) && m.count >= 1 && m.count <= MAX_ON_DEATH_SPAWN), `${sat}.count: an integer 1..${MAX_ON_DEATH_SPAWN}`);
+      const where2 = m.at ?? 'self';
+      assert(where2 === 'self' || where2 === 'anchors', `${sat}.at: a phase summons at 'self' or 'anchors'`);
+      assert(where2 !== 'anchors' || (m.anchors ?? []).length > 0, `${sat}.anchors: at 'anchors' needs anchors`);
+      assert(where2 === 'anchors' || m.anchors === undefined || m.anchors.length === 0, `${sat}.anchors: anchors need at 'anchors'`);
+      (m.anchors ?? []).forEach((t, k) => checkCentre(t, `${sat}.anchors[${k}]`));
+      assert(m.radius === undefined || (isNum(m.radius) && m.radius > 0 && m.radius <= MAX_PHASE_RADIUS), `${sat}.radius: expected 0 < radius <= ${MAX_PHASE_RADIUS}`);
+      assert(m.radius === undefined || where2 !== 'anchors', `${sat}.radius: a summon at 'anchors' stands its bodies on the anchors: no radius`);
+      assert(m.hpPct === undefined || (m.hpPct > 0 && m.hpPct <= 100), `${sat}.hpPct: expected (0, 100]`);
+      assert(m.delayMs === undefined || (isNum(m.delayMs) && m.delayMs >= 0 && m.delayMs <= MAX_PHASE_SUMMON_DELAY_MS), `${sat}.delayMs: expected 0..${MAX_PHASE_SUMMON_DELAY_MS}`);
+      assert(m.respawnMs === undefined || (isNum(m.respawnMs) && m.respawnMs >= 0 && m.respawnMs <= MAX_COOLDOWN_MS), `${sat}.respawnMs: expected 0..${MAX_COOLDOWN_MS}`);
+      assert(m.respawns === undefined || (Number.isInteger(m.respawns) && m.respawns >= 0 && m.respawns <= MAX_PHASE_RESPAWNS), `${sat}.respawns: an integer 0..${MAX_PHASE_RESPAWNS}`);
+    });
+    if (p.arena) {
+      const a = p.arena;
+      checkKeys(a, ['kind', 'centre', 'fromR', 'toR', 'overMs', 'dpsPctMaxHp', 'damageType'], `${at}.arena`);
+      assert(a.kind === 'ringShrink', `${at}.arena.kind: unknown '${a.kind}' (ringShrink)`);
+      checkCentre(a.centre, `${at}.arena.centre`);
+      assert(isNum(a.fromR) && a.fromR > 0 && a.fromR <= MAX_ARENA_RADIUS, `${at}.arena.fromR: expected 0 < fromR <= ${MAX_ARENA_RADIUS}`);
+      assert(isNum(a.toR) && a.toR > 0 && a.toR <= a.fromR, `${at}.arena.toR: expected 0 < toR <= fromR (a ring shrinks)`);
+      assert(isNum(a.overMs) && a.overMs > 0 && a.overMs <= MAX_COOLDOWN_MS, `${at}.arena.overMs: expected 0 < overMs <= ${MAX_COOLDOWN_MS}`);
+      assert(isNum(a.dpsPctMaxHp) && a.dpsPctMaxHp > 0 && a.dpsPctMaxHp <= 100, `${at}.arena.dpsPctMaxHp: expected a percent in (0, 100]`);
+      if (a.damageType !== undefined) assert(DAMAGE_TYPES.includes(a.damageType), `${at}.arena.damageType: unknown '${a.damageType}'`);
+    }
+    if (p.feed) {
+      const f = p.feed;
+      checkKeys(f, ['centre', 'radius', 'healPct', 'delayMs'], `${at}.feed`);
+      checkCentre(f.centre, `${at}.feed.centre`);
+      assert(isNum(f.radius) && f.radius > 0 && f.radius <= MAX_PHASE_RADIUS, `${at}.feed.radius: expected 0 < radius <= ${MAX_PHASE_RADIUS}`);
+      assert(isNum(f.healPct) && f.healPct > 0 && f.healPct <= 100, `${at}.feed.healPct: expected (0, 100]`);
+      assert(f.delayMs === undefined || (isNum(f.delayMs) && f.delayMs >= 0 && f.delayMs <= MAX_FEED_DELAY_MS), `${at}.feed.delayMs: expected 0..${MAX_FEED_DELAY_MS}`);
+    }
+    assert(p.stinger === undefined || (typeof p.stinger === 'string' && p.stinger !== ''), `${at}.stinger: an empty stinger id`);
+  });
+  for (const a of d.abilities ?? []) {
+    const listed = a.phases ?? [];
+    if (listed.length > 0 && listed.every(ph => ph > rows.length)) {
+      console.warn(`  warning: ${where}.abilities.${a.id}.phases: never usable: the monster reaches phases 0..${rows.length}`);
+    }
+  }
+  return summoned;
+}
+
+// Phases.h kTetherSlackTiles: a tethered monster attacks from within its radius plus this.
+const TETHER_SLACK_TILES = 0.25;
+
+interface TetherHome { col: number; row: number; jitter: number }
+
+/** Where `id` is placed: map and sub-dungeon spawns (the anchor within `jitter` of the tile, M10), mini-boss spots. */
+function tetherHomes(id: string, mapJitter: number): TetherHome[] {
+  const out: TetherHome[] = [];
+  for (const map of Object.values(AllMaps)) {
+    for (const s of map.spawns) if (s.monsterId === id) out.push({ col: s.col, row: s.row, jitter: mapJitter });
+  }
+  for (const sd of Object.values(AllSubDungeons)) {
+    for (const s of sd.spawns) if (s.monsterId === id) out.push({ col: s.col, row: s.row, jitter: mapJitter });
+    if (sd.miniBoss.monsterId === id) out.push({ col: sd.miniBoss.col, row: sd.miniBoss.row, jitter: 0 });
+  }
+  for (const [zone, m] of Object.entries(MiniBossByZone)) {
+    const at = MiniBossSpawns[zone];
+    if (m.id === id && at) out.push({ col: at.col, row: at.row, jitter: 0 });
+  }
+  return out;
+}
+
+/**
+ * DataStore::Finalize's tether warning (K4): a phase `leash` (a tether) reaching past the M1 leash (`leashRange` from
+ * the spawn anchor) would send its monster home - and reset its phases - from inside the tether. A default centre is
+ * the authored spawn tile (MonsterInstance::homeTile); an authored centre is checked against each known spawn (none
+ * known: not checked).
+ */
+function warnTetherPastLeash(def: MonsterDefinition, where: string, homes: TetherHome[], leashRange: number): void {
+  const rows = (def as MonsterDefinition & { phases?: RemakeMonsterPhase[] }).phases ?? [];
+  rows.forEach((p, i) => {
+    if (!p.leash) return;
+    const c = p.leash.centre;
+    let offset = c ? -1 : 0;  // the farthest the centre can lie from the spawn anchor
+    for (const h of homes) offset = Math.max(offset, (c ? Math.hypot(c.col - h.col, c.row - h.row) : 0) + h.jitter);
+    if (offset < 0) return;
+    const reach = offset + p.leash.radius + TETHER_SLACK_TILES;
+    if (reach > leashRange) {
+      console.warn(`  warning: ${where}.phases[${i}].leash: the tether reaches ${Math.round(reach * 100) / 100} tiles from the ` +
+        `spawn anchor, past the M1 leash (leashRange ${leashRange}): the monster would walk home and reset its phases from inside it`);
+    }
+  });
+}
+
 export function exportMonsters(): TableResult[] {
   assertSource(ZS,
     "const projColor = spriteKey.includes('fire') || spriteKey.includes('phoenix') ? 0xff6600 : spriteKey.includes('ice') ? 0x4488ff : 0xcc44cc;",
@@ -389,6 +534,7 @@ export function exportMonsters(): TableResult[] {
   const defs: Record<string, Record<string, unknown>> = {};
   const sources: Record<string, Source[]> = {};
   const summonedIds: [string, string][] = [];  // [summoner, summoned] (K2), resolved once every definition is known
+  const tethered: [MonsterDefinition, string, TetherHome[] | null][] = [];  // K4: checked once monster_ai.json is known
   const overridesApplied: Record<string, unknown>[] = [];
   const add = (def: MonsterDefinition, source: Source, zone: string | null) => {
     const prior = defs[def.id];
@@ -402,6 +548,8 @@ export function exportMonsters(): TableResult[] {
     const boss = !!def.isMiniBoss || !!def.isSubDungeonMiniBoss || def.id === STORY_BOSS.monsterId;
     summonedIds.push(...checkK2Monster(def, `monsters.${def.id}`, boss).map(id => [def.id, id] as [string, string]));
     summonedIds.push(...checkK3Monster(def, `monsters.${def.id}`).map(id => [def.id, id] as [string, string]));
+    summonedIds.push(...checkK4Monster(def, `monsters.${def.id}`).map(id => [def.id, id] as [string, string]));
+    tethered.push([def, `monsters.${def.id}`, null]);
     const d: MonsterDefinition = withholdRemakeFields('monster', plain(def), `monsters.${def.id}`);
     const authored = takeAuthored(d);
     const web = plain(def);
@@ -433,7 +581,7 @@ export function exportMonsters(): TableResult[] {
   for (const [zone, m] of Object.entries(MiniBossByZone)) add(m, 'miniBoss', zone);
   for (const m of Object.values(SubDungeonMiniBosses)) add(m, 'subDungeonBoss', null);
   for (const o of OVERRIDES) assert(defs[o.id], `override for unknown monster ${o.id}`);
-  for (const [by, id] of summonedIds) assert(defs[id], `monsters.${by}: an ability or on-death effect summons unknown monster '${id}'`);
+  for (const [by, id] of summonedIds) assert(defs[id], `monsters.${by}: an ability, on-death effect or phase summons unknown monster '${id}'`);
   for (const id of Object.keys(defs)) {
     (defs[id].derived as Record<string, unknown>).sources = sources[id];
     delete defs[id].__web;
@@ -463,6 +611,7 @@ export function exportMonsters(): TableResult[] {
     assert(base, `hunt ${h.huntId}: base monster ${h.monsterId} not found`);
     const def = makeHuntDefinition(base, h, h.name);
     gateRemakeValues('monster', def, `huntDefs.${h.huntId}`);
+    tethered.push([def, `huntDefs.${h.huntId}`, [{ col: h.col, row: h.row, jitter: 0 }]]);  // its spot is its anchor
     takeAuthored(withholdRemakeFields('monster', def, `huntDefs.${h.huntId}`));
     const hpMul = h.hpMul ?? 4, dmgMul = h.dmgMul ?? 1.5;
     assert(def.hp === Math.round(base.hp * hpMul) && def.damage === Math.round(base.damage * dmgMul)
@@ -514,6 +663,9 @@ export function exportMonsters(): TableResult[] {
   };
   assertSource(ZS, 'const dmg = Math.max(1, Math.floor(monster.definition.damage * 0.3));',
     'const dmg = Math.max(1, Math.floor(monster.definition.damage * 0.2));');
+  for (const [def, where, homes] of tethered) {
+    warnTetherPastLeash(def, where, homes ?? tetherHomes(def.id, ai.spawnJitter * Math.SQRT2), ai.leashRange);
+  }
 
   const totalDefs = Object.keys(defs).length;
   return [

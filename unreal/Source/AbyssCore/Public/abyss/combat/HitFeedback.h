@@ -43,7 +43,8 @@ struct ActionTiming {
 // while the Contact is on or before the rig's frame beat; a later Contact (an authored long swing, monsters.md 1.3)
 // stretches it in proportion, max(attackDuration, min(contact x attackDuration / frameContact, the clip's lengthMs when
 // that ends after the contact)): continuous in the Contact, the preset exactly for every web-timed clip. The hero passes
-// its derived attackSpeed, monsters def.attackSpeedMs.
+// its derived attackSpeed, monsters MonsterInstance::AttackIntervalMs (def.attackSpeedMs; K4: / the phase's
+// attackSpeedMul).
 ABYSS_API ActionTiming ComputeAttackTiming(const AnimTimingTable& t, const AssetManifest& manifest, std::string_view artId,
                                            AnimRig rig, double attackIntervalMs, std::string_view clip = "Attack01");
 

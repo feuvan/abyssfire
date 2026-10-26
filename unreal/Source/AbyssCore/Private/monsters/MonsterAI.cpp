@@ -17,6 +17,7 @@
 #include <cmath>
 
 #include "abyss/base/Math.h"
+#include "abyss/monsters/Phases.h"
 
 namespace abyss {
 
@@ -41,6 +42,20 @@ bool MonsterAiLineOfWalk(Vec2 from, Vec2 to, const MonsterWorld& w, double step)
     if (!MonsterAiWalkable(w, JsRoundInt(p.x), JsRoundInt(p.y))) return false;
   }
   return true;
+}
+
+// K4 tether (MonsterInstance::hasTether, a phase's `leash`): a chase / patrol goal outside the circle becomes the
+// circle's point nearest it, so the monster waits at the edge (and walks back in when it stands outside).
+Vec2 MonsterAiGoal(const MonsterInstance& m, Vec2 goal) {
+  return m.hasTether ? TetherGoal(m.tetherCentre, m.tetherRadius, goal) : goal;
+}
+
+// K4: a tethered monster attacks only from inside its circle (with kTetherSlackTiles of slack, Phases.h); one standing
+// outside walks back in first.
+bool MonsterAiInTether(const MonsterInstance& m) {
+  if (!m.hasTether) return true;
+  const double r = m.tetherRadius + kTetherSlackTiles;
+  return DistSq(m.pos, m.tetherCentre) <= r * r;
 }
 
 void MonsterAiSetIdle(MonsterInstance& m) {
@@ -162,7 +177,7 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
         } else if (m.hasPatrolTarget) {
           if (ai.patrolTimeoutMs > 0 && in.nowMs - m.patrolStartedMs >= ai.patrolTimeoutMs) {
             MonsterAiSetIdle(m);  // M10: a blocked patrol target gives up (Q13)
-          } else if (MonsterMoveToward(m, ai, m.patrolTarget.Center(), in.dtMs, in.speedMul, world)) {
+          } else if (MonsterMoveToward(m, ai, MonsterAiGoal(m, m.patrolTarget.Center()), in.dtMs, in.speedMul, world)) {
             MonsterAiSetIdle(m);
           }
         } else {
@@ -174,16 +189,18 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
         const bool provoked = in.nowMs < m.provokedUntilMs;  // M2
         if (!provoked && dP > m.def.aggroRange * ai.chaseDropMul) {
           MonsterAiSetIdle(m);
-        } else if (dP <= m.def.attackRange) {
+        } else if (dP <= m.def.attackRange && MonsterAiInTether(m)) {
           m.state = MonsterState::Attack;  // no movement this tick
           m.path.clear();
         } else {
-          MonsterAiNavigate(m, ai, hero, in, world);
+          MonsterAiNavigate(m, ai, MonsterAiGoal(m, hero), in, world);  // K4: a tether holds the goal inside its circle
         }
         break;
       }
       case MonsterState::Attack: {
-        if (dP > m.def.attackRange * ai.attackExitMul) m.state = MonsterState::Chase;  // no movement this tick
+        if (dP > m.def.attackRange * ai.attackExitMul || !MonsterAiInTether(m)) {
+          m.state = MonsterState::Chase;  // no movement this tick (K4: a tether outside the circle walks it back)
+        }
         const Vec2 d = hero - m.pos;  // squared up to the hero every tick, even on the exit tick
         if (d.LengthSq() > 0) m.heading = d.Normalized();
         break;
@@ -215,7 +232,9 @@ bool MonsterMoveToward(MonsterInstance& m, const MonsterAiDef& ai, Vec2 target, 
   const double d = std::sqrt(dx * dx + dy * dy);
   if (d < ai.arriveEpsilon) return true;  // arrived: no snap, no move
   const double dtS = dtMs / 1000.0;
-  const double top = m.def.speed * ai.moveSpeedScale * speedMul;
+  // K4: x the phase's speedMul, but the M1 walk home is at normal speed (the reset on arrival restores phase 0).
+  const double phaseMul = m.state == MonsterState::Returning ? 1.0 : m.phaseSpeedMul;
+  const double top = m.def.speed * ai.moveSpeedScale * speedMul * phaseMul;
   m.moveSpeed += (top - m.moveSpeed) * ai.moveAccel * dtS;
   const double nx = dx / d;
   const double ny = dy / d;

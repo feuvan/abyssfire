@@ -47,6 +47,10 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * run). Elite affix `onDeath` / `riseAgain` / `families` and the `unburied` affix type are checked by tables/combat.ts
  * (an override table, no record gate). Still withheld: every other Wave 2 / 3 feature; buff / call stay value-gated
  * until K5.
+ *
+ * K4 boss phases and arenas (package 2C): monster `phases` (LoadMonsters.cpp → MonsterDef::phases, rows checked here
+ * first by tables/monsters.ts; MonsterSystem::TickPhases enters them, ticks the arenas, stands the phase summons up and
+ * resolves Feed).
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
@@ -56,6 +60,7 @@ export const REMAKE_SCHEMA: readonly string[] = [
   'monster.abilities', 'monster.damageType', 'monster.hitCap',
   'monster.family', 'monster.onDeath', 'monster.corpse', 'monster.riseAgain', 'monster.abilityRaise', 'monster.abilitySummon',
   'map.corpseSeeds',
+  'monster.phases',
 ];
 
 export interface RunOptions {

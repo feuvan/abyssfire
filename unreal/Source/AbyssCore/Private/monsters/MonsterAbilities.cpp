@@ -69,6 +69,7 @@ bool AbilityUsable(const MonsterAbilityDef& a, size_t index, const AbilityPickIn
   if (a.hasRangeMax && in.heroDist > a.rangeMax) return false;
   if (a.hasHpBelowPct && !(in.hpPct < a.hpBelowPct)) return false;
   if (!a.phases.empty() && std::find(a.phases.begin(), a.phases.end(), in.phase) == a.phases.end()) return false;
+  if (index < in.off.size() && in.off[index] != 0) return false;  // K4: switched off by the phase table
   if (AbilityKindSummons(a.kind) && (index >= in.available.size() || in.available[index] == 0)) return false;
   return true;
 }

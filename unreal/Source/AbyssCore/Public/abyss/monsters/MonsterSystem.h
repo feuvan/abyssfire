@@ -52,6 +52,8 @@ struct MonsterSpawnParams {
   std::string huntId;
   double visualScale = 1.0;
   std::string affixZone;                // zone whose affix count applies ("" = the current zone; sub-dungeons: parent)
+  bool hasHome = false;                 // MonsterInstance::homeTile = `home` (a map spawn's authored tile; else `tile`)
+  TilePos home;
 };
 
 // What one defend wave spawns (dark remake K1; QuestWorld builds it from the quest's DefendTargetDef). `composition`
@@ -112,9 +114,10 @@ class ABYSS_API MonsterSystem {
   void OnZoneExit();     // drops every monster (EvEntityDespawned ZoneUnload) and respawn timer (monsters are not saved)
 
   // ---- spawning ----
-  // One monster at a tile: difficulty scaling unless alreadyScaled, stats, spawn anchor = tile, role flags (noRespawn
-  // from monster_ai.json port.noRespawn + mini-bosses / seal keepers), optional affixes for the zone, EvEntitySpawned;
-  // startChasing spawns publish MonsterAggroMsg. No walkability check (callers place).
+  // One monster at a tile: difficulty scaling unless alreadyScaled, stats, spawn anchor = tile (home tile = `home` when
+  // hasHome, else tile), role flags (noRespawn from monster_ai.json port.noRespawn + mini-bosses / seal keepers),
+  // optional affixes for the zone, EvEntitySpawned; startChasing spawns publish MonsterAggroMsg. No walkability check
+  // (callers place).
   EntityId Spawn(const MonsterSpawnParams& p);
   // Quest hunts (9.4): spawns every due hunt of the current zone not present. announce -> zone.quest.huntRevealed
   // log + camera shake + EvHuntRevealed. Triggers: zone entry (false), QuestAcceptedMsg (false), QuestProgressMsg (true).
@@ -164,6 +167,8 @@ class ABYSS_API MonsterSystem {
   // aiCullRadius of the hero (grid order) plus every aggro AND every Returning (M1) monster anywhere (list order), so a
   // leashed monster always finishes its walk home. K2: a monster winding up an ability (now < abilityRootedUntilMs) is
   // skipped like an immobilized one, and a leash (M1) stops its ability clock (MonsterInstance::abilityClockStarted).
+  // K4: so is one playing a phase's enter action (now < phaseActionUntilMs); a monster with a phase table that arrives
+  // home resets its phases (header "K4").
   void TickAI(double dtMs);
   void TickEliteBehaviours();    // 17.4: teleporting + curse aura
   // FIX Q19: prunes every monster's buffs (list order; no publish, so no re-entrancy).
@@ -222,12 +227,41 @@ class ABYSS_API MonsterSystem {
   // pending swing dropped (CombatSystem::OnMonsterCollapsed), its corpse (spent) when it leaves one, then its own Raised.
   // No kill credit, no on-death effect, no rise, no respawn.
   void Collapse(EntityId id);
+  // ---- dark remake K4: boss phases and arenas (implementation-plan.md 3 K4; rules in monsters/Phases.h) ----
+  // Per step (GameSim, right after TickCorpses), no RNG:
+  //  1. every living monster with a phase table enters the rows its life crossed (NextPhaseToEnter, one at a time, in
+  //     order: a hit that crosses two thresholds enters both). Entering row i: phase = i + 1; the row's multipliers and
+  //     tether replace the previous row's (x the affixed definition); abilitiesOn / abilitiesOff switch (an ability the
+  //     entry makes usable is ready initialCooldownMs after it, when the fight's ability clock runs); with an
+  //     enterAction, its swing or ability on its way to contact and a consume channel are cancelled
+  //     (EvMonsterAttackCancelled); EvMonsterPhase; the action plays (EvPlayAnim{enterAction, its clip}) and roots it -
+  //     no AI step, swing or cast - for the clip's length (assets.json), else MonsterAiDef::phaseActionMsDefault, while
+  //     every hit still lands (no invulnerable phase, monsters.md 1.3); its arena lights (EvArena, replacing an older
+  //     one); its summons are queued (delayMs).
+  //  2. arenas tick (list order): every arenaTickMs from the entry, the hero outside the ring (Phases.h ArenaOutside at
+  //     the tick's radius) takes CombatSystem::ArenaTickHero while the monster is in its fight (chase / attack) and the
+  //     hero is not in a camp's safe zone.
+  //  3. queued phase summons stand up (SummonAt: Raised, raiser = the monster, abilityId "phase.<n>"); a body of a
+  //     summon with respawns, killed while its phase still holds, is queued again respawnMs later (same slot).
+  //  4. Feeds come due: a corpse still there is consumed (EvCorpseRemoved{consumed, by the monster}) and the monster
+  //     heals floor(maxHp x healPct / 100); otherwise nothing.
+  // Feed starts in the kill pipeline (OnMonsterDied): a Raised kill whose body leaves an unburned corpse within the
+  // current row's feed radius of its centre is held for the first such monster (list order; EvMonsterFeed).
+  // The M1 reset (TickAI: a monster with a phase table arrives home): full life, phase 0 (EvMonsterPhase{reset} when it
+  // had entered a row), multipliers, tether and switches back to phase 0, its arena out (EvArena{cleared}), its queued
+  // summons and Feeds dropped, every Raised it stood up collapses. Its death or collapse puts its arena out and drops its
+  // queued work too; a zone change drops everything silently.
+  void TickPhases();
+  // How long a phase's enter action roots `def`: its art's clip for the action (Phases.h PhaseActionClip) when the
+  // manifest has it, else MonsterAiDef::phaseActionMsDefault.
+  double PhaseActionMs(const MonsterDef& def, AnimAction action) const;
+
   const Corpses& CorpseRegistry() const { return corpses_; }
   void QueryCorpses(Vec2 centre, double radius, CorpseFilter filter, std::vector<uint32_t>& out) const {
     corpses_.Query(centre, radius, filter, out);
   }
   bool HoldCorpse(uint32_t id, EntityId holder) { return corpses_.Hold(id, holder); }
-  void ReleaseCorpses(EntityId holder) { corpses_.ReleaseAll(holder); }
+  void ReleaseCorpse(uint32_t id, EntityId holder) { corpses_.Release(id, holder); }
   // Where body k of n of a summon around `centre` stands: the tile at angle 2 pi k / n on a ring of `radius` (rounded;
   // radius 0 = the centre's tile), else the nearest walkable tile within 3 rings, else `centre`. No RNG.
   Vec2 SummonSpot(Vec2 centre, double radius, int32_t k, int32_t n) const;
@@ -289,6 +323,35 @@ class ABYSS_API MonsterSystem {
   bool TryStartConsume(MonsterInstance& m, double now);
   void EndConsume(MonsterInstance& m, bool cancelled);
   void CollapseRaisedOf(EntityId raiser);
+  // K4 helpers (header "K4"). A queued or standing phase summon (one body: slot k of its summon's count).
+  struct PhaseSummonEntry {
+    uint32_t seq = 0;            // queue identity (a stand-up may publish; the entry is found again by it)
+    EntityId owner = kNoEntity;
+    int32_t phase = 0;           // the phase that queued it (1-based: row phase - 1)
+    uint32_t summon = 0;         // index into the row's summons
+    int32_t slot = 0;
+    EntityId body = kNoEntity;   // the standing body (kNoEntity while queued)
+    bool queued = true;
+    bool respawn = false;        // queued again after a kill: only while its phase still holds
+    double dueMs = 0;
+    int32_t respawnsLeft = 0;
+  };
+  struct PendingFeed {
+    EntityId owner = kNoEntity;
+    uint32_t corpse = 0;
+    double dueMs = 0;
+    double healPct = 0;
+  };
+  void EnterPhase(MonsterInstance& m, int32_t row);
+  void ResetPhases(MonsterInstance& m);
+  // The multipliers and tether of `m`'s current phase (1 / none at phase 0).
+  void ApplyPhaseRow(MonsterInstance& m);
+  void ClearArena(MonsterInstance& m, bool emit);
+  // Drops the queued summons, the standing-summon bookkeeping and the Feeds (their holds let go) of `owner`.
+  void DropPhaseWork(EntityId owner);
+  // Kill pipeline K4 step (OnMonsterDied): the dead monster's arena and queued work, its summon bookkeeping, Feed.
+  void OnPhaseDeath(const MonsterKilledMsg& msg, uint32_t corpse);
+  void StandPhaseSummon(PhaseSummonEntry& e);
   bool InSafeZone(Vec2 p) const;
   bool Walkable(int32_t col, int32_t row) const;
   void PrepareZone();      // zone entry: clears the population, sizes the grid, builds the world service
@@ -334,6 +397,10 @@ class ABYSS_API MonsterSystem {
   Corpses corpses_;
   std::vector<PendingRise> rises_;
   std::vector<uint32_t> scratchCorpses_;
+  // K4: phase summons (queue order) and pending Feeds (schedule order).
+  std::vector<PhaseSummonEntry> phaseSummons_;
+  std::vector<PendingFeed> feeds_;
+  uint32_t nextPhaseSummonSeq_ = 1;
 };
 
 }  // namespace abyss

@@ -1,6 +1,8 @@
 #include "abyss/base/Platform.h"
 
+#include <algorithm>
 #include <initializer_list>
+#include <string>
 #include <string_view>
 
 #include "JsonReader.h"
@@ -31,6 +33,15 @@ constexpr double kLoadOnDeathMaxDelayMs = 10000;
 constexpr double kLoadRiseMaxDelayMs = 60000;
 constexpr double kLoadSummonMaxRadius = 30;
 constexpr int32_t kLoadOnDeathMaxSpawn = 20;
+// K4 (implementation-plan.md 3 K4): phase multipliers in (0, 10]; a tether, a feed or a summon ring within 30 tiles, an
+// arena within 60; an arena closes over <= 10 min; a phase summon waits <= 60 s, stands back up <= 10 times, each after
+// <= 10 min; a feed draws its corpse in <= 10 s.
+constexpr double kLoadPhaseMaxMul = 10;
+constexpr double kLoadPhaseMaxRadius = 30;
+constexpr double kLoadArenaMaxRadius = 60;
+constexpr double kLoadPhaseSummonMaxDelayMs = 60000;
+constexpr int32_t kLoadPhaseSummonMaxRespawns = 10;
+constexpr double kLoadFeedMaxDelayMs = 10000;
 
 // An object's keys must all be known (a misspelt optional field would otherwise be silently ignored).
 void LoadMonsterCheckKeys(const JNode& n, std::initializer_list<std::string_view> known, std::string_view what) {
@@ -298,6 +309,136 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
   return a;
 }
 
+// K4: an optional {col, row} centre (default: the monster's authored spawn tile, MonsterInstance::homeTile).
+void ReadPhaseCentre(const JNode& n, bool& has, TilePos& out) {
+  if (!n.Has("centre")) return;
+  const JNode c = n.Child("centre");
+  LoadMonsterCheckKeys(c, {"col", "row"}, "centre");
+  has = true;
+  out = c.AsTile();
+}
+
+// A multiplier in (0, 10] (default 1).
+double ReadPhaseMul(const JNode& n, std::string_view key) {
+  const double v = n.Num(key, 1.0);
+  if (!(v > 0) || !(v <= kLoadPhaseMaxMul)) n.Child(key).Error("expected 0 < " + std::string(key) + " <= 10");
+  return v;
+}
+
+// K4 phase row (MonsterData.h MonsterPhaseDef): every key known at every level; ability ids are checked by the caller.
+MonsterPhaseDef ReadMonsterPhase(const JNode& n) {
+  MonsterPhaseDef p;
+  LoadMonsterCheckKeys(n,
+                       {"hpBelowPct", "enterAction", "speedMul", "attackSpeedMul", "damageTakenMul", "leash",
+                        "abilitiesOn", "abilitiesOff", "summons", "arena", "feed", "stinger"},
+                       "phase");
+  p.hpBelowPct = n.Num("hpBelowPct");
+  if (!(p.hpBelowPct > 0) || !(p.hpBelowPct <= 100)) n.Child("hpBelowPct").Error("expected 0 < hpBelowPct <= 100");
+  if (n.Has("enterAction")) {
+    p.hasEnterAction = true;
+    p.enterAction = n.Enum<AnimAction>("enterAction");
+    if (p.enterAction == AnimAction::Idle || p.enterAction == AnimAction::Walk || p.enterAction == AnimAction::Death) {
+      n.Child("enterAction").Error("enterAction must be an action, not idle / walk / death");
+    }
+  }
+  p.speedMul = ReadPhaseMul(n, "speedMul");
+  p.attackSpeedMul = ReadPhaseMul(n, "attackSpeedMul");
+  p.damageTakenMul = ReadPhaseMul(n, "damageTakenMul");
+  if (n.Has("leash")) {
+    const JNode l = n.Child("leash");
+    LoadMonsterCheckKeys(l, {"centre", "radius"}, "leash");
+    p.leash.present = true;
+    ReadPhaseCentre(l, p.leash.hasCentre, p.leash.centre);
+    p.leash.radius = l.Num("radius");
+    if (!(p.leash.radius > 0) || !(p.leash.radius <= kLoadPhaseMaxRadius)) l.Child("radius").Error("expected 0 < radius <= 30");
+  }
+  p.abilitiesOn = n.StrList("abilitiesOn", true);
+  p.abilitiesOff = n.StrList("abilitiesOff", true);
+  for (const std::string& id : p.abilitiesOn) {
+    if (std::find(p.abilitiesOff.begin(), p.abilitiesOff.end(), id) != p.abilitiesOff.end()) {
+      n.Child("abilitiesOff").Error("'" + id + "' is switched both on and off");
+    }
+  }
+  for (const JNode& s : n.Items("summons", true)) {
+    LoadMonsterCheckKeys(s, {"monsterId", "count", "at", "anchors", "radius", "hpPct", "delayMs", "respawnMs", "respawns"},
+                         "phase summon");
+    PhaseSummonDef d;
+    d.monsterId = s.Str("monsterId");
+    d.count = s.Int("count", 1);
+    d.at = s.Enum<AbilitySummonAt>("at", AbilitySummonAt::Self);
+    for (const JNode& t : s.Items("anchors", true)) {
+      LoadMonsterCheckKeys(t, {"col", "row"}, "anchor");
+      d.anchors.push_back(t.AsTile());
+    }
+    d.hpPct = s.Num("hpPct", 100.0);
+    d.delayMs = s.Num("delayMs", 0.0);
+    d.respawnMs = s.Num("respawnMs", 0.0);
+    d.respawns = s.Int("respawns", 0);
+    if (d.monsterId.empty()) s.Child("monsterId").Error("empty monster id");
+    if (d.count < 1 || d.count > kLoadOnDeathMaxSpawn) s.Child("count").Error("expected 1 <= count <= 20");
+    if (d.at == AbilitySummonAt::Corpse) s.Child("at").Error("a phase summons at 'self' or 'anchors'");
+    if (d.at == AbilitySummonAt::Anchors && d.anchors.empty()) s.Child("anchors").Error("at 'anchors' needs anchors");
+    if (d.at != AbilitySummonAt::Anchors && !d.anchors.empty()) s.Child("anchors").Error("anchors need at 'anchors'");
+    if (s.Has("radius")) {
+      d.hasRadius = true;
+      d.radius = s.Num("radius");
+      if (!(d.radius > 0) || !(d.radius <= kLoadPhaseMaxRadius)) {
+        s.Child("radius").Error("expected 0 < radius <= 30");
+      } else if (d.at == AbilitySummonAt::Anchors) {
+        s.Child("radius").Error("a summon at 'anchors' stands its bodies on the anchors: no radius");
+      }
+    }
+    if (!(d.hpPct > 0) || !(d.hpPct <= 100)) s.Child("hpPct").Error("expected 0 < hpPct <= 100");
+    if (!(d.delayMs >= 0) || !(d.delayMs <= kLoadPhaseSummonMaxDelayMs)) {
+      s.Child("delayMs").Error("expected 0 <= delayMs <= 60000");
+    }
+    if (!(d.respawnMs >= 0) || !(d.respawnMs <= kLoadAbilityMaxCooldownMs)) {
+      s.Child("respawnMs").Error("expected 0 <= respawnMs <= 600000");
+    }
+    if (d.respawns < 0 || d.respawns > kLoadPhaseSummonMaxRespawns) s.Child("respawns").Error("expected 0 <= respawns <= 10");
+    p.summons.push_back(std::move(d));
+  }
+  if (n.Has("arena")) {
+    const JNode a = n.Child("arena");
+    LoadMonsterCheckKeys(a, {"kind", "centre", "fromR", "toR", "overMs", "dpsPctMaxHp", "damageType"}, "arena");
+    p.arena.present = true;
+    p.arena.kind = a.Enum<ArenaKind>("kind");
+    ReadPhaseCentre(a, p.arena.hasCentre, p.arena.centre);
+    p.arena.fromR = a.Num("fromR");
+    p.arena.toR = a.Num("toR");
+    p.arena.overMs = a.Num("overMs");
+    p.arena.dpsPctMaxHp = a.Num("dpsPctMaxHp");
+    p.arena.damageType = a.Enum<DamageType>("damageType", DamageType::Physical);
+    if (!(p.arena.fromR > 0) || !(p.arena.fromR <= kLoadArenaMaxRadius)) a.Child("fromR").Error("expected 0 < fromR <= 60");
+    if (!(p.arena.toR > 0) || !(p.arena.toR <= p.arena.fromR)) a.Child("toR").Error("expected 0 < toR <= fromR (a ring shrinks)");
+    if (!(p.arena.overMs > 0) || !(p.arena.overMs <= kLoadAbilityMaxCooldownMs)) {
+      a.Child("overMs").Error("expected 0 < overMs <= 600000");
+    }
+    if (!(p.arena.dpsPctMaxHp > 0) || !(p.arena.dpsPctMaxHp <= 100)) {
+      a.Child("dpsPctMaxHp").Error("expected 0 < dpsPctMaxHp <= 100 (percent of the hero's max life per second)");
+    }
+  }
+  if (n.Has("feed")) {
+    const JNode f = n.Child("feed");
+    LoadMonsterCheckKeys(f, {"centre", "radius", "healPct", "delayMs"}, "feed");
+    p.feed.present = true;
+    ReadPhaseCentre(f, p.feed.hasCentre, p.feed.centre);
+    p.feed.radius = f.Num("radius");
+    p.feed.healPct = f.Num("healPct");
+    p.feed.delayMs = f.Num("delayMs", 0.0);
+    if (!(p.feed.radius > 0) || !(p.feed.radius <= kLoadPhaseMaxRadius)) f.Child("radius").Error("expected 0 < radius <= 30");
+    if (!(p.feed.healPct > 0) || !(p.feed.healPct <= 100)) f.Child("healPct").Error("expected 0 < healPct <= 100");
+    if (!(p.feed.delayMs >= 0) || !(p.feed.delayMs <= kLoadFeedMaxDelayMs)) {
+      f.Child("delayMs").Error("expected 0 <= delayMs <= 10000");
+    }
+  }
+  if (n.Has("stinger")) {
+    p.stinger = n.Str("stinger");
+    if (p.stinger.empty()) n.Child("stinger").Error("an empty stinger id");
+  }
+  return p;
+}
+
 }  // namespace
 
 // K3 on-death block (MonsterData.h MonsterOnDeathDef): every key known; per kind its shape, damage and blocks.
@@ -482,6 +623,26 @@ MonsterDef ReadMonsterDef(const JNode& n, bool withDerived) {
     if (m.corpse.leaves != CorpseLeaves::Corpse) {
       n.Child("riseAgain").Error("a monster rises from its own corpse: corpse.leaves must be 'corpse'");
     }
+  }
+  // Dark remake K4 (monster.phases): thresholds strictly decreasing; switched abilities are the monster's own.
+  for (const JNode& pn : n.Items("phases", true)) {
+    MonsterPhaseDef phase = ReadMonsterPhase(pn);
+    if (!m.phases.empty() && !(phase.hpBelowPct < m.phases.back().hpBelowPct)) {
+      pn.Child("hpBelowPct").Error("phase thresholds strictly decrease (each row is entered below the previous one)");
+    }
+    const auto known = [&](const std::string& id) {
+      for (const MonsterAbilityDef& a : m.abilities) {
+        if (a.id == id) return true;
+      }
+      return false;
+    };
+    for (const std::string& id : phase.abilitiesOn) {
+      if (!known(id)) pn.Child("abilitiesOn").Error("'" + id + "' names no ability of the monster");
+    }
+    for (const std::string& id : phase.abilitiesOff) {
+      if (!known(id)) pn.Child("abilitiesOff").Error("'" + id + "' names no ability of the monster");
+    }
+    m.phases.push_back(std::move(phase));
   }
   if (withDerived) {
     const JNode d = n.Child("derived");

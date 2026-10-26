@@ -189,6 +189,47 @@ struct EvMonsterCollapsed {
   EntityId entity = kNoEntity;
   EntityId raiser = kNoEntity;
 };
+// Dark remake K4 (implementation-plan.md 3 K4; monsters/Phases.h): a monster entered phase `phase` (MonsterInstance::
+// phase: the rows entered) because its life dropped below the row's hpBelowPct (the boss bar ticks; UE plays `stinger`
+// when set, and the phase's look, e.g. a standard that ignites). A hit that crosses two thresholds emits two, in order.
+// The row's enter action is the EvPlayAnim right after it (rooted for its durationMs; it still takes damage). `reset`:
+// the monster walked home (M1) and is back to phase 0 at full life (UE drops the phase look; no stinger).
+struct EvMonsterPhase {
+  EntityId entity = kNoEntity;
+  int32_t phase = 0;
+  int32_t phaseCount = 0;   // rows in the monster's phase table
+  double hpBelowPct = 0;    // the entered row's threshold (0 on a reset)
+  std::string stinger;      // music stinger id ("" = none)
+  bool reset = false;
+};
+// Dark remake K4: a phase lit a soft-enrage arena around `centre` (kind ringShrink: its radius goes from `radius` at
+// startMs to `targetRadius` at endMs, linearly, then stays); the hero outside it takes damage every tickMs. `cleared`:
+// the arena went out (its monster died, collapsed or walked home, or a later phase lit another one: a new EvArena for
+// the same entity replaces it); a zone change drops it silently.
+struct EvArena {
+  EntityId entity = kNoEntity;  // the monster whose phase lit it
+  ArenaKind kind = ArenaKind::RingShrink;
+  Vec2 centre;
+  double radius = 0;
+  double targetRadius = 0;
+  double startMs = 0;
+  double endMs = 0;
+  double tickMs = 0;
+  double dpsPctMaxHp = 0;
+  DamageType damageType = DamageType::Physical;
+  bool cleared = false;
+};
+// Dark remake K4 Feed: a Raised monster (`fed`) killed within a feeding phase's radius is drawn into `entity`: its corpse
+// is held from startMs; at dueMs, if fire has not burned it, EvCorpseRemoved{consumed, by entity} follows and the monster
+// heals (its life in the snapshot).
+struct EvMonsterFeed {
+  EntityId entity = kNoEntity;
+  EntityId fed = kNoEntity;
+  uint32_t corpseId = 0;
+  Vec2 pos;
+  double startMs = 0;
+  double dueMs = 0;
+};
 struct EvProjectileLaunched {
   EntityId projectile = kNoEntity;
   ProjectileKind kind = ProjectileKind::HeroSkill;
@@ -589,7 +630,7 @@ using Event = std::variant<EvEntitySpawned, EvEntityDespawned, EvEntityTeleporte
                            EvInteractPrompt, EvRandomEvent, EvPuzzlePrompt, EvStoryDecorFocus, EvLog, EvBanner,
                            EvPanelRequest, EvSaveRequested, EvMusic, EvSfx, EvCameraShake, EvCameraFlash, EvSlowMotion,
                            EvTelegraph, EvHazard, EvCorpseAdded, EvCorpseRemoved, EvMonsterRaised,
-                           EvMonsterCollapsed>;
+                           EvMonsterCollapsed, EvMonsterPhase, EvArena, EvMonsterFeed>;
 
 // Append-only event list shared by every subsystem of one GameSim.
 class EventSink {

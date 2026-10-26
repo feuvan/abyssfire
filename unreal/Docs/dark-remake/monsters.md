@@ -65,6 +65,15 @@ caster stood up, across its abilities), a raise only when a free corpse lies in 
 (never raised again); Raised pay no exp, gold, loot, Spirit or life on kill (they still count as kills for quests and
 achievements), never respawn, and collapse (no kill, no on-death effect) when their raiser dies.
 
+**As built (K4, package 2C, pending review; implementation-plan.md *2C outcomes*):** no phase is invulnerable: an enter
+action (Roar) roots the boss and cancels its windup, and every hit lands meanwhile. The soft enrage is an arena ring
+(`ringShrink`) that hurts the hero only strictly outside it, every 500 ms, for a percent of its maximum life per second (x
+the difficulty's damage multiplier, less resistance, under the boss's hit cap, Death Save holding), only while the boss
+fights and never in a camp; it never one-shots. A phase's `leash` is a tether that holds the boss on its dais (it waits at
+the edge), not the M1 leash; a boss that walks home (M1, at its normal speed) resets to phase 0 at full life. The dais is
+the boss's authored spawn tile (every phase centre and the `anchor` aim default to it), not the tile the spawn's placement
+jitter picked.
+
 ### 1.4 The mechanic ramp
 
 | Level | New idea | Where |

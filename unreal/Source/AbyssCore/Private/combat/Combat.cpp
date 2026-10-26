@@ -27,6 +27,7 @@
 #include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/MonsterSystem.h"
 #include "abyss/monsters/OnDeath.h"
+#include "abyss/monsters/Phases.h"
 #include "abyss/pets/Homestead.h"
 #include "abyss/pets/PetCompanion.h"
 #include "abyss/pets/PetSystem.h"
@@ -291,19 +292,21 @@ HitWeight CombatSystem::DamageMonster(const MonsterHitRequest& r) {
   const bool elite = before->def.elite;
   const Vec2 pos = before->pos;
   const double maxHp = before->maxHp;
+  // K4: a phase's damageTakenMul scales every hit (hero, pet, tick, environment) before anything announces it.
+  const double amount = PhaseScaledDamage(r.amount, before->phaseDamageTakenMul);
   // takeDamage's outcome is known up front (MonsterSystem::ApplyDamage: hp = max(0, hp - amount), killed at 0, weight =
   // classifyHit), so the hit's events go out BEFORE ApplyDamage runs the kill pipeline (death anim, exp / gold texts,
   // loot, quest progress): UE gets the hit before the death it causes (combat 4.2 / 13.1 order).
-  const double hpAfter = (std::max)(0.0, before->hp - r.amount);
+  const double hpAfter = (std::max)(0.0, before->hp - amount);
   const bool killed = hpAfter <= 0;
   const HitFeedbackTable& t = ctx_.data.Combat().hitFeedback;
-  const HitWeight w = ClassifyHit(t, r.amount, maxHp, r.isCrit, killed, r.isTick);
+  const HitWeight w = ClassifyHit(t, amount, maxHp, r.isCrit, killed, r.isTick);
 
   EvHit hit;
   hit.target = r.monster;
   hit.source = r.attacker;
   hit.targetFaction = Faction::Monster;
-  hit.amount = r.amount;
+  hit.amount = amount;
   hit.weight = w;
   hit.profile = t.Profile(w);
   hit.crit = r.isCrit;
@@ -328,7 +331,7 @@ HitWeight CombatSystem::DamageMonster(const MonsterHitRequest& r) {
   ft.kind = FloatingTextKind::MonsterDamage;
   ft.anchor = r.monster;
   ft.pos = pos;
-  ft.value = r.amount;
+  ft.value = amount;
   ft.crit = r.isCrit;
   ft.element = r.element;
   ctx_.events.Emit(ft);
@@ -356,7 +359,7 @@ HitWeight CombatSystem::DamageMonster(const MonsterHitRequest& r) {
   flags.source = r.source;
   flags.provokes = r.provokes && !r.isTick;
   flags.element = r.element;
-  const HitWeight applied = ms->ApplyDamage(r.monster, r.amount, flags);
+  const HitWeight applied = ms->ApplyDamage(r.monster, amount, flags);
   ABYSS_ASSERT(applied == w, "DamageMonster: ApplyDamage outcome differs from the announced hit");
 
   if (!impactFirst) impact();
@@ -802,6 +805,7 @@ bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool summonsO
   in.hpPct = m.maxHp > 0 ? m.hp / m.maxHp * 100.0 : 100.0;
   in.phase = m.phase;
   in.readyAtMs = m.abilityReadyAtMs;
+  in.off = m.abilityOff;  // K4: the phase table's switches
   // K3: a raise / summon is usable only with bodies to stand up (planned for the ready ones only).
   std::vector<uint8_t> available;
   std::vector<SummonPlan> plans;
@@ -843,7 +847,7 @@ bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool summonsO
   AbilityAimInput aim;
   aim.casterPos = m.pos;
   aim.casterHeading = m.heading;
-  aim.anchor = m.spawnAnchor;
+  aim.anchor = m.homeTile;  // the authored spawn tile (the dais), not the jittered spawn anchor
   aim.heroPos = hero.Position();
   const MonsterAbilityCast cast = ResolveAbilityCast(a, aim, now, now + timing.contactMs);
   m.lastAttackMs = now;
@@ -1052,11 +1056,14 @@ CombatSystem::SummonPlan CombatSystem::PlanSummon(const MonsterInstance& m, cons
 }
 
 void CombatSystem::ClearPendingAbility(MonsterInstance& m) {
+  // Only the ability's own holds go: a Feed (K4) holds its corpse under the same monster until its due time.
+  if (ctx_.sys.monsters != nullptr) {
+    for (uint32_t corpse : m.abilityCorpses) ctx_.sys.monsters->ReleaseCorpse(corpse, m.id);
+  }
   m.pendingAbility = -1;
   m.abilityRootedUntilMs = 0;
   m.abilityCorpses.clear();
   m.abilitySpots.clear();
-  if (ctx_.sys.monsters != nullptr) ctx_.sys.monsters->ReleaseCorpses(m.id);
 }
 
 void CombatSystem::BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir) {
@@ -1589,6 +1596,51 @@ void CombatSystem::OnMonsterCollapsed(EntityId monster) {
     }
     break;
   }
+}
+
+// K4: a phase's enter action interrupts what the monster was doing: its swing or ability on its way to contact goes,
+// visibly (EvMonsterAttackCancelled: UE drops the wind-up tint and the telegraph); the cooldown stays spent. So does a
+// swing the beast drew (its taunt or a stray swing: a pet timer, not one of strikes_).
+bool CombatSystem::CancelMonsterStrike(EntityId monster) {
+  bool cancelled = false;
+  for (size_t i = 0; i < strikes_.size(); ++i) {
+    if (strikes_[i].monster != monster) continue;
+    const bool ability = strikes_[i].ability;
+    ctx_.timers.Cancel(strikes_[i].timer);
+    strikes_.erase(strikes_.begin() + static_cast<std::ptrdiff_t>(i));
+    if (ability) {
+      if (MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(monster) : nullptr) {
+        ClearPendingAbility(*m);
+      }
+    }
+    ctx_.events.Emit(EvMonsterAttackCancelled{monster, false});
+    cancelled = true;
+    break;
+  }
+  if (ctx_.sys.petCompanion != nullptr && ctx_.sys.petCompanion->CancelMonsterSwing(monster)) cancelled = true;
+  return cancelled;
+}
+
+// K4: one arena tick on the hero standing outside the ring (MonsterSystem::TickPhases): the tick less the hero's
+// resistance, capped by the monster's hit cap; like a hazard tick, no roll, defense or i-frames, and Death Save holds
+// (monster damage, not a status DoT).
+void CombatSystem::ArenaTickHero(EntityId source, double dpsPctMaxHp, DamageType type, double tickMs, double hitCapPct) {
+  if (!HeroAlive() || ctx_.session.transitioning) return;
+  const Hero& hero = *ctx_.sys.hero;
+  double amount = ArenaTickDamage(hero.MaxHp(), dpsPctMaxHp, tickMs, DifficultyDamageMul());
+  if (type != DamageType::Physical) {
+    const double resist = ResistancePercent(ctx_.data.Classes().formulas, &ctx_.equip, type);
+    amount = (std::max)(1.0, std::floor(amount * (1 - resist / 100.0)));
+  }
+  const double cap = MonsterHitCap(hero.MaxHp(), hitCapPct, DifficultyDamageMul());
+  if (cap > 0) amount = (std::min)(amount, cap);
+  HeroHitRequest req;
+  req.amount = amount;
+  req.isTick = true;
+  req.source = source;
+  req.element = type;
+  req.allowDeathSave = true;
+  DamageHero(req);
 }
 
 // =====================================================================================================================
@@ -2879,7 +2931,8 @@ void CombatSystem::TickCombat() {
     if (ctx_.sys.status != nullptr && ctx_.sys.status->IsImmobilized(id)) continue;
     if (m->pendingAbility >= 0) continue;  // K2: one action at a time (a windup may outlast the attack interval)
     if (m->consumeCorpse != 0) continue;   // K3: eating (the consume channel roots it)
-    if (!attacking || (m->lastAttackMs != 0 && now - m->lastAttackMs + kCombatSwingEpsilonMs < m->def.attackSpeedMs)) {
+    if (now < m->phaseActionUntilMs) continue;  // K4: rooted while a phase's enter action plays (no swing or cast)
+    if (!attacking || (m->lastAttackMs != 0 && now - m->lastAttackMs + kCombatSwingEpsilonMs < m->AttackIntervalMs())) {
       if (!m->def.abilities.empty()) TryStartSummonCast(*m, now);  // no swing due: a raise / summon may start
       continue;
     }
@@ -2897,7 +2950,7 @@ void CombatSystem::TickCombat() {
     m->lastAttackMs = now;
     const ActionTiming timing =
         ComputeAttackTiming(at, ctx_.data.Assets(), MonsterArtGameId(ctx_.data.Assets(), m->def.spriteKey, m->def.id),
-                            m->def.animCategory, m->def.attackSpeedMs);
+                            m->def.animCategory, m->AttackIntervalMs());
     EvPlayAnim anim;
     anim.entity = id;
     anim.action = AnimAction::Attack;

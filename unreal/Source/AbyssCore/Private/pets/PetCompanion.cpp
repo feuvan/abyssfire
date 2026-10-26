@@ -18,6 +18,7 @@
 #include "abyss/hero/Hero.h"
 #include "abyss/items/Inventory.h"
 #include "abyss/monsters/MonsterSystem.h"
+#include "abyss/monsters/Phases.h"
 #include "abyss/pets/PetSystem.h"
 #include "abyss/sim/SimContext.h"
 #include "abyss/sim/Snapshot.h"
@@ -591,7 +592,9 @@ int32_t PetCompanion::Hit(EntityId target, double mult, bool forceCrit, DamageTy
     f.source = KillSource::Pet;
     f.provokes = false;
     f.element = element;
-    ctx_.sys.monsters->ApplyDamage(target, dmg, f);
+    const MonsterInstance* tm = ctx_.sys.monsters->Find(target);
+    // K4: a phase's damageTakenMul, as CombatSystem::DamageMonster applies it.
+    ctx_.sys.monsters->ApplyDamage(target, tm != nullptr ? PhaseScaledDamage(dmg, tm->phaseDamageTakenMul) : dmg, f);
   }
   return SaturatingInt32(dmg);
 }
@@ -1046,7 +1049,7 @@ bool PetCompanion::InterceptMonsterAttack(EntityId monster) {
   if (!redirect) return false;
   m->lastAttackMs = now;
   const ActionTiming t = ComputeAttackTiming(ctx_.data.Combat().anim, ctx_.data.Assets(), m->def.spriteKey,
-                                             m->def.animCategory, m->def.attackSpeedMs);
+                                             m->def.animCategory, m->AttackIntervalMs());
   EvPlayAnim anim;
   anim.entity = monster;
   anim.action = AnimAction::Attack;
@@ -1061,6 +1064,15 @@ bool PetCompanion::InterceptMonsterAttack(EntityId monster) {
   ctx_.events.Emit(anim);
   ctx_.timers.Schedule(now + t.contactMs, TimerOwner::Pets, static_cast<uint16_t>(PetTimerKind::TakeHit), monster,
                        state_.entity);
+  return true;
+}
+
+bool PetCompanion::CancelMonsterSwing(EntityId monster) {
+  const size_t n = ctx_.timers.CancelIf([monster](const Timer& t) {
+    return t.owner == TimerOwner::Pets && t.kind == static_cast<uint16_t>(PetTimerKind::TakeHit) && t.entity == monster;
+  });
+  if (n == 0) return false;
+  ctx_.events.Emit(EvMonsterAttackCancelled{monster, false});
   return true;
 }
 

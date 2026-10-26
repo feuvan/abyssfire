@@ -11,6 +11,7 @@
 #include "abyss/base/Types.h"
 #include "abyss/data/DialogueData.h"
 #include "abyss/data/SkillData.h"
+#include "abyss/sim/SimTypes.h"  // AnimAction (K4 phase enterAction)
 
 namespace abyss {
 
@@ -30,7 +31,8 @@ ABYSS_ENUM_STRINGS(AbilityKind, "circle", "cone", "line", "ring", "bolt", "raise
 //   heroAtWindup  the hero's position at windup start (slams land where the hero stood); cones / lines as `hero`.
 //   self          centred on the caster (cones / lines along its heading).
 //   corpse        a corpse (raise, K3).
-//   anchor        the caster's spawn anchor tile (Valdras's dais); cones / lines point from it toward the hero.
+//   anchor        the caster's authored spawn tile (MonsterInstance::homeTile: Valdras's dais, not the M10-jittered
+//                 spawn anchor); cones / lines point from it toward the hero.
 // A ground shape that hurts on contact (circle, ring, hazard) never takes `hero`: its decal is placed at windup start
 // and fills to contact, so the loader refuses a target that would follow the hero (monsters.md 1.3).
 enum class AbilityAim : uint8_t { Hero, HeroAtWindup, Self, Corpse, Anchor };
@@ -204,6 +206,90 @@ struct MonsterRiseAgainDef {
   bool notOnCrit = false;
 };
 
+// ---- K4 boss phases and arenas (dark remake, implementation-plan.md 3 K4; monsters.md 1.3 "no invulnerable phases";
+// runtime: monsters/Phases.h rules, MonsterSystem::TickPhases) ---------------------------------------------------------
+// A monster's `phases[]` (remake schema `monster.phases`): rows in strictly decreasing `hpBelowPct`. Phase 0 is the
+// monster as defined (no row); entering row i makes MonsterInstance::phase i + 1, once, in order, when its life drops
+// below the row's threshold (a hit that crosses two thresholds enters both, in order). Each row describes the monster
+// while that phase holds: its multipliers (x the base, composing with elite affixes: not with the previous row's), its
+// tether, its Feed; a row's arena stays until a later row lights another one; abilitiesOn / abilitiesOff switch
+// abilities in sequence (an ability whose first switch is an abilitiesOn starts switched off). Every centre defaults to
+// the monster's authored spawn tile (MonsterInstance::homeTile, the dais; not the M10-jittered spawn anchor).
+
+// The tether (`leash`): while the phase holds, the monster's chase / patrol goals are held inside `radius` of the centre
+// (it walks to the edge nearest the hero and waits there; it walks back in when outside). Not the M1 leash: a tether
+// never sends it home or resets the fight.
+struct PhaseLeashDef {
+  bool present = false;
+  bool hasCentre = false;
+  TilePos centre;
+  double radius = 0;
+};
+
+// The soft enrage (`arena`, kind ringShrink): a ring around the centre whose radius goes from `fromR` to `toR` over
+// `overMs` (linear; it stays at toR after) from the phase entry; every MonsterAiDef::arenaTickMs the hero outside it
+// takes dpsPctMaxHp percent of its maximum life per second (x the difficulty's damage multiplier, less its resistance,
+// capped by the monster's hit cap; a DoT-like tick that Death Save holds). Monsters are never hurt by it.
+enum class ArenaKind : uint8_t { RingShrink };
+ABYSS_ENUM_STRINGS(ArenaKind, "ringShrink")
+
+struct PhaseArenaDef {
+  bool present = false;
+  ArenaKind kind = ArenaKind::RingShrink;
+  bool hasCentre = false;
+  TilePos centre;
+  double fromR = 0;
+  double toR = 0;
+  double overMs = 0;
+  double dpsPctMaxHp = 0;
+  DamageType damageType = DamageType::Physical;
+};
+
+// Bodies the phase stands up at its entry (`summons[]`, after `delayMs`): `count` of `monsterId` as Raised with the
+// monster as raiser (no rewards, no respawn, collapse with it), on a ring of `radius` around it (`at` self; default
+// MonsterAiDef::summonRingRadius) or on its `anchors` (round robin). A body killed while its phase still holds stands up
+// again in its slot (its anchor, or its ring slot around the monster then) `respawnMs` later, at most `respawns` times.
+struct PhaseSummonDef {
+  std::string monsterId;
+  int32_t count = 1;
+  AbilitySummonAt at = AbilitySummonAt::Self;  // self | anchors
+  std::vector<TilePos> anchors;
+  bool hasRadius = false;
+  double radius = 0;
+  double hpPct = 100;
+  double delayMs = 0;
+  double respawnMs = 0;
+  int32_t respawns = 0;
+};
+
+// Feed: while the phase holds, a Raised monster killed within `radius` of the centre is drawn into the monster: its
+// corpse is held for `delayMs` (fire can still burn it), then consumed, and the monster heals healPct percent of its
+// maximum life.
+struct PhaseFeedDef {
+  bool present = false;
+  bool hasCentre = false;
+  TilePos centre;
+  double radius = 0;
+  double healPct = 0;
+  double delayMs = 0;
+};
+
+struct MonsterPhaseDef {
+  double hpBelowPct = 0;                       // entered when life < hpBelowPct percent
+  bool hasEnterAction = false;
+  AnimAction enterAction = AnimAction::Roar;   // played on entry (rooted, no swing, still takes damage)
+  double speedMul = 1;
+  double attackSpeedMul = 1;                   // swings per second x attackSpeedMul (the interval / attackSpeedMul)
+  double damageTakenMul = 1;
+  PhaseLeashDef leash;
+  std::vector<std::string> abilitiesOn;
+  std::vector<std::string> abilitiesOff;
+  std::vector<PhaseSummonDef> summons;
+  PhaseArenaDef arena;
+  PhaseFeedDef feed;
+  std::string stinger;                         // music stinger id for UE ("" = none)
+};
+
 // MonsterDefinition verbatim + exporter `derived` block (monsters-ai.md 1.1). This is also the runtime "current
 // definition" type: difficulty scaling, hunt transforms and elite affixes produce modified copies (1.3).
 struct MonsterDef {
@@ -248,6 +334,8 @@ struct MonsterDef {
   MonsterOnDeathDef onDeath;
   MonsterCorpseDef corpse;
   MonsterRiseAgainDef riseAgain;
+  // ---- dark remake K4 (remake schema monster.phases) ----
+  std::vector<MonsterPhaseDef> phases;
 };
 
 struct ZoneMonsterList {
@@ -384,6 +472,11 @@ struct MonsterAiDef {
   double summonRingRadius = 1.5;
   double riseMsDefault = 1200;
   double raiseMarkerRadius = 0.75;
+  // Dark remake K4 tuning (implementation-plan.md 3 K4; port-only, not loaded): a phase's enter action roots the
+  // monster for its clip's length (assets.json), else phaseActionMsDefault (chapter1.md 11: "Roar (1.2 s)"); an arena
+  // hurts the hero outside it every arenaTickMs ("every 500 ms").
+  double phaseActionMsDefault = 1200;
+  double arenaTickMs = 500;
 };
 
 struct MonsterOverride {

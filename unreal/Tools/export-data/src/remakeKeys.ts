@@ -39,7 +39,7 @@ const monster = {
     attackSpeed: true, expReward: true, goldReward: true, spriteKey: true, elite: true, isMiniBoss: true, isSubDungeonMiniBoss: true,
     lootTable: true, bossSkills: true, animCategory: true } satisfies Exact<KeysOf<Web.MonsterDefinition>>,
   remake: { family: true, damageType: true, onHitStatus: true, projectileColor: true, abilities: true, hitCapHeroMaxHpPct: true,
-    onDeath: true, corpse: true, riseAgain: true } satisfies Exact<MonsterRemade>,
+    onDeath: true, corpse: true, riseAgain: true, phases: true } satisfies Exact<MonsterRemade>,
 };
 
 const quest = {
