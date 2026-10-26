@@ -1948,7 +1948,7 @@
      "orient": "billboard",
      "blend": "translucent",
      "at": "origin",
-     "height": 14,
+     "height": 10,
      "spawnRadiusCm": 30,
      "onRing": true,
      "dir": "out",
@@ -1978,7 +1978,7 @@
      "rate": 5,
      "durationMs": 2000,
      "offsetCm": [
-      28.0,
+      36.0,
       0.0,
       0.0
      ]
@@ -1989,7 +1989,7 @@
      "orient": "billboard",
      "blend": "translucent",
      "at": "origin",
-     "height": 62,
+     "height": 34,
      "spawnRadiusCm": 14,
      "speedCmS": [
       60,
@@ -2027,7 +2027,7 @@
      ],
      "color": "#CFCAC0",
      "offsetCm": [
-      28.0,
+      36.0,
       0.0,
       0.0
      ],
@@ -2041,9 +2041,9 @@
      "orient": "billboard",
      "blend": "translucent",
      "at": "origin",
-     "height": 56,
+     "height": 30,
      "offsetCm": [
-      28.0,
+      36.0,
       0.0,
       0.0
      ],
@@ -13047,6 +13047,127 @@
    ],
    "note": "the dead standard-bearer's +15 % aura (W2, r 5 tiles, loop on the bearer while it lives): a soft cloth-dark crimson stain breathing on the ground, ash drifting off the banner over it \u2014 no rim line, no fill sweep, never the telegraph crimson (DR5)"
   },
+  "monster.oath_zealot.frenzy": {
+   "palette": "ash",
+   "layers": [
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 150.0,
+     "offsetCm": [
+      32.0,
+      0.0,
+      0.0
+     ],
+     "rate": 3.4,
+     "durationMs": -1,
+     "attach": true,
+     "spawnRadiusCm": 5,
+     "dir": "blow",
+     "coneDeg": 34,
+     "speedCmS": [
+      30,
+      60
+     ],
+     "upCmS": [
+      14,
+      34
+     ],
+     "drag": 2.2,
+     "lifeMs": [
+      700,
+      950
+     ],
+     "sizeCm": [
+      24,
+      34
+     ],
+     "grow": 1.7,
+     "sizePow": 1.3,
+     "alpha": [
+      0.62,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.1,
+     "color": "#DCD6CA"
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "spawnRadiusCm": 26,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      30,
+      70
+     ],
+     "gravityCmS2": -6,
+     "drag": 2.4,
+     "lifeMs": [
+      560,
+      780
+     ],
+     "sizeCm": [
+      34,
+      48
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#8A8478",
+     "rate": 2.6,
+     "durationMs": -1,
+     "attach": true
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "spawnRadiusCm": 26,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      30,
+      70
+     ],
+     "gravityCmS2": -6,
+     "drag": 2.4,
+     "lifeMs": [
+      560,
+      780
+     ],
+     "sizeCm": [
+      34,
+      48
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#8A8478",
+     "attach": true,
+     "count": 1
+    }
+   ],
+   "note": "the zealot's frenzy loop (W2: EvMonsterPhase zealot index 1 until death; Blow = his facing): panting breath out of the hood \u2014 a pale cloud always before the hood, the frenzy's persistent read (the scar is ~1 px at 1080p) \u2014 and dust kicked at his feet; no light (the Living carry none)"
+  },
   "monster.raise": {
    "palette": "breach",
    "layers": [
@@ -14871,6 +14992,196 @@
    ],
    "note": "a drum beat: dust off the drum head and a faint pale beat ripple; no light"
   },
+  "notify.FX_Frenzy": {
+   "palette": "ash",
+   "layers": [
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 162.0,
+     "offsetCm": [
+      10.0,
+      0.0,
+      0.0
+     ],
+     "count": 5,
+     "spawnRadiusCm": 6,
+     "dir": "blow",
+     "coneDeg": 36,
+     "speedCmS": [
+      110,
+      190
+     ],
+     "upCmS": [
+      20,
+      60
+     ],
+     "drag": 2.6,
+     "lifeMs": [
+      380,
+      560
+     ],
+     "sizeCm": [
+      18,
+      28
+     ],
+     "grow": 1.9,
+     "sizePow": 1.4,
+     "alpha": [
+      0.46,
+      0
+     ],
+     "fadeIn": 0.08,
+     "alphaPow": 1.4,
+     "color": "#D4CEC2"
+    },
+    {
+     "sprite": "Ripple",
+     "orient": "billboard",
+     "at": "origin",
+     "height": 162.0,
+     "sizeCm": 36,
+     "grow": 3.611,
+     "sizePow": 1.6,
+     "lifeMs": 320,
+     "alpha": [
+      0.3,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 1.3,
+     "color": "#E8E4DC",
+     "intensity": 1.2,
+     "offsetCm": [
+      10.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10.0,
+     "sizeCm": 77.7,
+     "grow": 4.412,
+     "sizePow": 2.6,
+     "lifeMs": 400,
+     "alpha": [
+      0.42,
+      0
+     ],
+     "fadeIn": 0.06,
+     "alphaPow": 1.4,
+     "color": "#3A3631"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 11.0,
+     "sizeCm": 77.7,
+     "grow": 4.412,
+     "sizePow": 2.6,
+     "lifeMs": 400,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "fadeIn": 0.06,
+     "alphaPow": 1.4,
+     "color": "#B8B2A6",
+     "intensity": 1.2
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "count": 9,
+     "spawnRadiusCm": 42,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      90,
+      180
+     ],
+     "gravityCmS2": -6,
+     "drag": 2.4,
+     "lifeMs": [
+      600,
+      900
+     ],
+     "sizeCm": [
+      46,
+      68
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.64,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#8A8478"
+    },
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 90,
+     "count": 10,
+     "spawnRadiusCm": 30,
+     "speedCmS": [
+      80,
+      180
+     ],
+     "upCmS": [
+      40,
+      120
+     ],
+     "dir": "flat",
+     "gravityCmS2": 300,
+     "drag": 1.6,
+     "lifeMs": [
+      700,
+      1100
+     ],
+     "sizeCm": [
+      8,
+      12
+     ],
+     "grow": 0.9,
+     "alpha": [
+      0.9,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 2.2,
+     "spinDegS": [
+      -240,
+      240
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#8A8480"
+    }
+   ],
+   "shake": [
+    90,
+    0.2
+   ],
+   "note": "the zealot's frenzy (W2, Roar FX_Frenzy @480): the chant breaks out of the hood as a pale breath, dust shoved off his feet, ash shaken off the whipping robe \u2014 no light (the scar flare is fx.frenzy's material parameter)"
+  },
   "notify.FX_Fuse": {
    "palette": "breach",
    "layers": [
@@ -15036,6 +15347,274 @@
     }
    ],
    "note": "cinderbloat Death @0 \u2192 800 ms: the fuse \u2014 light swelling from below, violet spits, ash shaken off the crust, a ring tightening (the crimson r2.2 hazard ring is U2's telegraph, not this recipe)"
+  },
+  "notify.FX_Keen": {
+   "palette": "breach",
+   "layers": [
+    {
+     "sprite": "Ripple",
+     "orient": "billboard",
+     "at": "origin",
+     "height": 112.0,
+     "sizeCm": 30,
+     "grow": 5.667,
+     "sizePow": 1.6,
+     "lifeMs": 460,
+     "alpha": [
+      0.85,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 1.3,
+     "color": "#B02FD0",
+     "intensity": 1.2,
+     "offsetCm": [
+      6.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Ripple",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 112.0,
+     "sizeCm": 30,
+     "grow": 5.667,
+     "sizePow": 1.6,
+     "lifeMs": 460,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 1.3,
+     "color": "#1A0820",
+     "intensity": 1.2,
+     "offsetCm": [
+      6.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Ripple",
+     "orient": "billboard",
+     "at": "origin",
+     "height": 112.0,
+     "sizeCm": 30,
+     "grow": 5.667,
+     "sizePow": 1.6,
+     "lifeMs": 460,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 1.3,
+     "color": "#B02FD0",
+     "intensity": 1.2,
+     "delayMs": 150,
+     "offsetCm": [
+      6.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Ripple",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10.0,
+     "sizeCm": 91.4,
+     "grow": 10.0,
+     "sizePow": 1.0,
+     "lifeMs": 220,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "fadeIn": 0.06,
+     "alphaPow": 1.4,
+     "color": "#3A0E4A",
+     "variant": 1
+    },
+    {
+     "sprite": "Ripple",
+     "orient": "ground",
+     "at": "origin",
+     "height": 11.0,
+     "sizeCm": 91.4,
+     "grow": 10.0,
+     "sizePow": 1.0,
+     "lifeMs": 220,
+     "alpha": [
+      0.85,
+      0
+     ],
+     "fadeIn": 0.06,
+     "alphaPow": 1.4,
+     "color": "#B02FD0",
+     "intensity": 1.2,
+     "variant": 1
+    },
+    {
+     "sprite": "Ripple",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10.0,
+     "sizeCm": 886.9,
+     "grow": 1.062,
+     "sizePow": 1.0,
+     "lifeMs": 480,
+     "alpha": [
+      0.32,
+      0
+     ],
+     "fadeIn": 0.06,
+     "alphaPow": 1.4,
+     "color": "#3A0E4A",
+     "delayMs": 180,
+     "variant": 1
+    },
+    {
+     "sprite": "Ripple",
+     "orient": "ground",
+     "at": "origin",
+     "height": 11.0,
+     "sizeCm": 886.9,
+     "grow": 1.062,
+     "sizePow": 1.0,
+     "lifeMs": 480,
+     "alpha": [
+      0.7,
+      0
+     ],
+     "fadeIn": 0.06,
+     "alphaPow": 1.4,
+     "color": "#B02FD0",
+     "intensity": 1.2,
+     "delayMs": 180,
+     "variant": 1
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "count": 14,
+     "spawnRadiusCm": 90,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      220,
+      360
+     ],
+     "gravityCmS2": -4,
+     "drag": 2.4,
+     "lifeMs": [
+      700,
+      1000
+     ],
+     "sizeCm": [
+      44,
+      64
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#8A8478"
+    },
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10,
+     "count": 16,
+     "spawnRadiusCm": 120,
+     "speedCmS": [
+      140,
+      260
+     ],
+     "upCmS": [
+      40,
+      120
+     ],
+     "dir": "out",
+     "gravityCmS2": 220,
+     "drag": 1.6,
+     "lifeMs": [
+      700,
+      1100
+     ],
+     "sizeCm": [
+      7,
+      11
+     ],
+     "grow": 0.9,
+     "alpha": [
+      0.9,
+      0
+     ],
+     "fadeIn": 0.05,
+     "alphaPow": 2.2,
+     "spinDegS": [
+      -240,
+      240
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#B8B2A6"
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Ember",
+     "at": "origin",
+     "height": 112.0,
+     "count": 8,
+     "spawnRadiusCm": 12,
+     "speedCmS": [
+      40,
+      100
+     ],
+     "gravityCmS2": -60,
+     "lifeMs": [
+      500,
+      800
+     ],
+     "sizeCm": [
+      5,
+      7
+     ],
+     "color": "#D08CFF",
+     "altEvery": 3,
+     "altColor": "#F0E0FF",
+     "alpha": [
+      1.0,
+      0
+     ],
+     "intensity": 1.4,
+     "offsetCm": [
+      6.0,
+      0.0,
+      0.0
+     ]
+    }
+   ],
+   "note": "the Corpseherd's Keen (W2 stretch, Cast02 FX_Keen @800): the lament breaks out \u2014 violet sound rings before the veil (the voice, slower), a hairline ripple sweeping the ground to r 4 m in 220 ms and flaring at the rim (everyone inside is slowed at 800), the ash blown outward; the crimson ring is U2's telegraph decal (filled to its rim at 800), the slow is status.slow"
   },
   "notify.FX_Land": {
    "palette": "ash",
@@ -27005,6 +27584,210 @@
     }
    ]
   },
+  "status.ashnumb": {
+   "palette": "ash",
+   "layers": [
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "target",
+     "height": "chest",
+     "rate": 12,
+     "durationMs": -1,
+     "attach": true,
+     "spawnRadiusCm": 42,
+     "onRing": true,
+     "spawnHeightJitterCm": 70,
+     "dir": "out",
+     "speedCmS": [
+      8,
+      22
+     ],
+     "gravityCmS2": 140,
+     "drag": 1.4,
+     "lifeMs": [
+      900,
+      1250
+     ],
+     "sizeCm": [
+      20,
+      28
+     ],
+     "spinDegS": [
+      -160,
+      160
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "alpha": [
+      1.0,
+      0
+     ],
+     "fadeIn": 0.08,
+     "alphaPow": 2.2,
+     "color": "#B8B2A6",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "target",
+     "height": "chest",
+     "rate": 8,
+     "durationMs": -1,
+     "attach": true,
+     "spawnRadiusCm": 40,
+     "onRing": true,
+     "spawnHeightJitterCm": 70,
+     "dir": "out",
+     "speedCmS": [
+      8,
+      22
+     ],
+     "gravityCmS2": 140,
+     "drag": 1.4,
+     "lifeMs": [
+      900,
+      1250
+     ],
+     "sizeCm": [
+      18,
+      26
+     ],
+     "spinDegS": [
+      -160,
+      160
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "alpha": [
+      1.0,
+      0
+     ],
+     "fadeIn": 0.08,
+     "alphaPow": 2.2,
+     "color": "#4C4944",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "target",
+     "height": 12,
+     "rate": 1.8,
+     "durationMs": -1,
+     "attach": true,
+     "spawnRadiusCm": 22,
+     "dir": "out",
+     "speedCmS": [
+      8,
+      20
+     ],
+     "gravityCmS2": -6,
+     "drag": 2.0,
+     "lifeMs": [
+      800,
+      1100
+     ],
+     "sizeCm": [
+      34,
+      46
+     ],
+     "grow": 1.3,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "fadeIn": 0.2,
+     "color": "#8A8480"
+    },
+    {
+     "sprite": "Core",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "target",
+     "height": "chest",
+     "rate": 5,
+     "durationMs": -1,
+     "attach": true,
+     "spawnRadiusCm": 26,
+     "spawnHeightJitterCm": 70,
+     "gravityCmS2": 60,
+     "speedCmS": [
+      4,
+      12
+     ],
+     "lifeMs": [
+      600,
+      900
+     ],
+     "sizeCm": [
+      4,
+      6
+     ],
+     "alpha": [
+      0.8,
+      0
+     ],
+     "color": "#6E6A62",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "target",
+     "height": 12,
+     "attach": true,
+     "spawnRadiusCm": 22,
+     "dir": "out",
+     "speedCmS": [
+      8,
+      20
+     ],
+     "gravityCmS2": -6,
+     "drag": 2.0,
+     "lifeMs": [
+      800,
+      1100
+     ],
+     "sizeCm": [
+      34,
+      46
+     ],
+     "grow": 1.3,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "fadeIn": 0.2,
+     "color": "#8A8480",
+     "count": 1
+    }
+   ],
+   "note": "\u9ebb\u7070 Ashnumb (W2, K6): ash flaking off the hero's limbs and settling at the feet; the grey band creeping up the limbs per stack is the StatusTint contract dark.materials.AshnumbTint (runtime)"
+  },
   "status.bleed": {
    "palette": "blood",
    "layers": [
@@ -28705,6 +29488,9 @@
   "ashDissolve": "M_AF_AshDissolve (dark.materials.M_AF_AshDissolve) + corpse.* recipes on the husk timeline",
   "eliteDeath": "W2 on-death affix effects: play elite.<affix>.death (elite.fire_enhanced.death, elite.frozen.death) at the kill beside death.<family>, point = the corpse; the recipe carries the delay (burst +1000 ms, ring +600 ms), the core resolves the damage / slow at the same beat, and U2 draws the Scorched burst's r2 decal in the elite style",
   "monsterAuras": "W2 aura loops: monster.dead_standard_bearer.aura on the bearer (origin, attach) while it lives (stop on death); no telegraph decal (it is a buff, not a damage zone: DECISIONS_DARK DR5-aura)",
+  "frenzy": "W2 (2H): the zealot's phase 1 (K4 enterAction Roar) plays Roar; at its FX_Frenzy notify the scar swatch's emissive ramps to the manifest fx.frenzy.scarEmissive and monster.oath_zealot.frenzy loops on the zealot until death (stop it on death; a leash reset that returns to phase 0 stops it too)",
+  "ashnumb": "W2 (2H): status.ashnumb is the K6 Ashnumb status loop (play / stop as the other status.<type> loops); the per-stack band is dark.materials.AshnumbTint (the StatusTint path is its fallback)",
+  "consumeClip": "W2 (2H): corpse.consume is timed for SK_Mon_Gravegnawer's Consume clip (loop 1000 ms, two bites; the 2 s channel plays it twice): play the recipe once at the channel start with origin = the gnawer, Blow = gnawer -> corpse",
   "monsterProjectiles": "proj.monster_bolt serves the arbalester (bone-white bolt, violet trail) and the Corpseherd's bell toll alike (#B02FD0): a per-monster projectile vfxId would let the toll fly as a ripple"
  },
  "dark": {
@@ -28830,6 +29616,10 @@
     "event": "W2 the standard-bearer's +15 % aura (r 5 tiles): loop on the bearer (origin, attach; Blow = its facing, as PlayNotify) from spawn to death",
     "wave": "W2"
    },
+   "monster.oath_zealot.frenzy": {
+    "event": "EvMonsterPhase oath_zealot index 1, loop until death (origin, attach; Blow = his facing)",
+    "wave": "W2"
+   },
    "monster.raise": {
     "event": "EvMonsterRaised",
     "wave": "W2"
@@ -28874,9 +29664,17 @@
     "event": "SK_Mon_DeserterDrummer Cast01 beats 1-4 (aliases _2.._4)",
     "wave": "W2"
    },
+   "notify.FX_Frenzy": {
+    "event": "SK_Mon_OathZealot Roar @480 (the frenzy's enter action, K4 phase enterAction)",
+    "wave": "W2"
+   },
    "notify.FX_Fuse": {
     "event": "SK_Mon_Cinderbloat Death @0",
     "wave": "W1"
+   },
+   "notify.FX_Keen": {
+    "event": "SK_Mon_Corpseherd Cast02 @800 (the Keen: U2 draws the crimson r4 ring decal to 800)",
+    "wave": "W2"
    },
    "notify.FX_Land": {
     "event": "Breachclot / Cinderbloat / Slime Walk",
@@ -28893,6 +29691,10 @@
    "prop.echo": {
     "event": "U1 echo lore look: at the figure, with MI_AF_Echo's 3 s",
     "wave": "W1"
+   },
+   "status.ashnumb": {
+    "event": "K6 StatusType::Ashnumb on the hero (status loop, as status.<type>) + the AshnumbTint band (dark.materials.AshnumbTint)",
+    "wave": "W2"
    },
    "telegraph.contact": {
     "event": "U2 telegraph contact (circle / ring), Context.RadiusCm",
@@ -29046,6 +29848,27 @@
      "rise": "monster.raise: Dissolve and grey reverse over the Rise clip's first 60 %"
     },
     "owner": "A12 (vfx/fx_recipes_dark.py ASH_DISSOLVE, T_FX_AshNoise by vfx/fx_textures_dark.py); built by U3"
+   },
+   "AshnumbTint": {
+    "kind": "StatusPresentation",
+    "name": "AshnumbTint",
+    "use": "K6 StatusType::Ashnumb on the hero (stacks 1-5, 6 s, refreshed on hit; the antidote cleanses it): the hero's toon slots grey from the feet up \u2014 a band whose top rises with the stacks \u2014 plus the status.ashnumb loop (ash flaking off, dust at the feet). Never violet, never a ground decal",
+    "params": {
+     "AshColor": "#8A8480",
+     "AshShade": "#4C4944",
+     "EdgeColor": "#B8B2A6",
+     "EdgeWidth": 0.04,
+     "BandTopBase": 0.12,
+     "BandTopPerStack": 0.1,
+     "BandSoftness": 0.06,
+     "MaxBandTop": 0.62,
+     "Strength": 0.85
+    },
+    "map": "per vertex the height fraction h = z / heroHeight (object space, the feet at 0); band = 1 - smoothstep(top - BandSoftness, top, h) with top = min(BandTopBase + stacks x BandTopPerStack, MaxBandTop) (1 stack: over the boots to mid-shin; 3: the thighs; 5: the hips); toon colour lerps to AshColor where the toon's key light is in its lit bands, AshShade in its shade band (N.L x .5 + .5 < T_SHADE), by band x Strength; an EdgeColor line EdgeWidth tall on the band's top edge (top - EdgeWidth .. top, full strength); the ink hull and held items are untouched. On a renderer without the per-stack band (mobile low) use the StatusTint path: #8A8480 multiply at .25 + .05 x stacks",
+    "preview": "vfx_effects/AshnumbTint/band_stacks*.png (vfx/ashnumb_band.py: this contract as material nodes on the three heroes at 0 / 1 / 3 / 5 stacks, W1 camera, 1080p, march dirt)",
+    "readNote": "art review r1: with the r0 top (stacks x 0.12) one stack was the boots alone, hidden under the warrior's shield and legs at the W1 camera; the base lifts one stack to mid-shin. Reads clearly on the mage's robe and the rogue's leather; on the warrior's pale steel the ash reads darker and warmer (a dull band) and the EdgeColor line marks its top",
+    "slowAt5": "at 5 stacks the hero is also slowed 20 %: status.slow is NOT added (the band at its top is the read; the slow's own frost look is the wrong element)",
+    "owner": "A12 W2 (vfx/fx_recipes_dark.py ASHNUMB); built by the UE status presentation (2G)"
    }
   },
   "decisions": {

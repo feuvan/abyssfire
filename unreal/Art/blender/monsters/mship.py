@@ -245,9 +245,27 @@ def parts_except(body, exclude: Sequence[str]) -> list[str]:
 
 
 # ── ship ────────────────────────────────────────────────────────────────────────────────────────────────
+ELITE_TABLE = Path(__file__).resolve().parent / "fx_elite_w2.json"
+
+
+def apply_elite(asset: str, rig) -> dict | None:
+    """Wave 2 (2H): the asset's ``fx_elite`` from ``fx_elite_w2.json`` (``elite_sigil.py --solve-elite``: the socket
+    SM_FX_EliteSigil rides — clear of the figure in every facing at its bob's trough, close over the head in the front
+    views), so a re-ship writes the solved socket. ``fx_overhead`` is never touched here: nameplates, floating text,
+    stun stars, the death mark and the W1 crown ride it."""
+    if not ELITE_TABLE.exists():
+        return None
+    t = json.loads(ELITE_TABLE.read_text()).get("assets", {}).get(asset)
+    if t:
+        R.add_socket(rig, "fx_elite", t["bone"], Vector(t["posM"]))
+    return t
+
+
 def ship(ms: MonsterShip, previews: bool = True, verify: bool = True) -> dict:
     t0 = time.time()
     rig, body, pal = ms.A.rig, ms.body, ms.pal
+    if apply_elite(ms.asset, rig):
+        print(f"[socket] {ms.asset}: fx_elite from {ELITE_TABLE.name}")
     print(f"[build] {ms.asset}: body {toon_tris(body)} toon + {M.tri_count(body, 1)} hull tris, "
           f"bones {len(rig.obj.data.bones)}; items " + ", ".join(
               f"{it.asset} {M.tri_count(it.obj, 0)}+{M.tri_count(it.obj, 1)}" for it in ms.items))
@@ -567,6 +585,24 @@ def game_sheet(ms: MonsterShip, rv, keys, fname, actions, cols: int = 4) -> None
     rv._save(fname, review.grid(cells, cols))
     anim.assign(rig, acts["Idle"])
     anim.set_frame(0)
+
+
+def w2_sheet(keys, fname: str = "game_w2.png", cols: int = 4):
+    """``extra_previews`` hook of the Wave 2 clips (dark remake 2H): the game-camera cells of the clips Wave 2 added
+    (``keys`` = [(clip, frame, facing)]) on a sheet of their own, so ``clip_patch.py`` can add a clip to a shipped
+    monster and take only that clip's previews (the shipped sheets of the unchanged clips stay as reviewed)."""
+    def fn(ms, rv, actions):
+        game_sheet(ms, rv, keys, fname, actions, cols)
+    return fn
+
+
+def chain_previews(*fns):
+    """Several ``extra_previews`` hooks in order (``None`` entries skipped)."""
+    def fn(ms, rv, actions):
+        for f in fns:
+            if f is not None:
+                f(ms, rv, actions)
+    return fn
 
 
 def fx_view(ms: MonsterShip, rv, facing: str = "se") -> None:

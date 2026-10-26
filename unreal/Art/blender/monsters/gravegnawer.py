@@ -13,7 +13,9 @@ Clips (the goblin's set, retimed): Idle 900 (knuckle-drag: the back near level, 
 ground on its knuckles, the head sweeping and sniffing), Walk 480 (lower and faster: 1.98 m/s = speed 66 × 0.03, no
 slide, the free hand lifted off the ground), Attack01 600 (a lunging stab and bite: the jaw gapes on the wind-up and
 snaps shut on the Contact; WindupEnd 186, Contact 300 — monsters.md "quick bites, Contact ≈ 300 ms"), Hurt 220,
-Death 600 (the chest pitches into the ground, then the carcass rolls onto its side), Stun 600. Game id
+Death 600 (the chest pitches into the ground, then the carcass rolls onto its side), Stun 600; Wave 2 (2H):
+Consume 1000 loop (crouched over a husk, the claws raking, two bites and tearing head-shakes per loop — the 2 s
+corpse channel plays it twice; ``Bite`` 330 / ``Bite_2`` 830; added with ``clip_patch.py``). Game id
 ``monster_gravegnawer`` (Data ``spriteKey``).
 
 Ink: every protruding detail inks on its own hull (claws, toe claws, the belt knot and ends, the rag tails, the
@@ -306,9 +308,69 @@ def anims(kit):
     return A
 
 
+# ── Consume [W2] (Wave 2 art, 2H; monsters.md 2.4 / implementation-plan.md K3) ─────────────────────────────
+# The core's Consume channels 2 s on a corpse within 1 tile (heals 30 %, removes it); the gnawer faces the corpse's
+# position, and the husk lies ~0-60 cm ahead of that point (the dead actor's Death clip carries the body forward),
+# so the jaws work ~40-50 cm ahead of the gnawer's root at husk height (~15-35 cm). One loop = two bites; the 2 s
+# channel plays it twice (play rate 1). A12's ``corpse.consume`` (2 s, the grit at the jaws) is the channel's
+# VFX; the ``Bite`` notifies are the snaps (audio cue, no VFX of their own).
+CONSUME_MS = 1000.0
+CONSUME_BITES = (330.0, 830.0)
+# u (lat, fwd, up) of the hands; the crouch: pelvis (web root offsets), lean and the muzzle pitch below level
+CONSUME_PELVIS = (2.0, 4.2)            # web (dx, dy) from READY's root: forward and 9 cm lower
+CONSUME_LEAN = 40.0
+CONSUME_HAND_R = (-9.5, 13.0, 6.5)     # the spear fist low beside the right foot
+CONSUME_SPEAR = 82.0                   # the spear held level, pointing out to the right (clear of the husk)
+CONSUME_SPEAR_LAT = -2.6
+
+
+def consume(A):
+    """``Consume`` (loop, 1000 ms): crouched low over the husk, the long neck down — the left claws rake the ash
+    toward the jaws, the head drives down and bites (``Bite`` 330 / 830), then jerks back and up shaking the
+    mouthful (a hard yaw shake), twice per loop; the spear fist rests on its knuckles beside the right foot, the
+    spear held level and pointing out to the right, clear of the husk. Starts and ends on the same pose."""
+    R0 = A.ready()
+    rx, ry = WEB_READY["root"]
+    pel = A.web_pelvis(rx + CONSUME_PELVIS[0], ry + CONSUME_PELVIS[1])
+
+    def body(muzzle: float, lean: float = CONSUME_LEAN, **kw) -> BP:
+        return R0.but(**{**dict(pelvis=pel, lean=lean, head_pitch=muzzle - lean, twist=2.0, hip_yaw=-4.0,
+                                hand_r=u3(A, *CONSUME_HAND_R), elbow_r=V(-0.9, 0.1, -0.3),
+                                **A._wkw(R0, CONSUME_SPEAR, lat=CONSUME_SPEAR_LAT), elbow_l=V(0.9, 0.0, -0.3),
+                                clav_l=(-6.0, 10.0), clav_r=(-4.0, 2.0), flow=0.15), **kw})
+    # down: the jaws closed on the husk, the claws dug in ahead
+    down = body(46.0, jaw=4.0, hand_l=u3(A, 4.5, 17.0, 5.6), wrist_l=(-30.0, 0.0, 0.0), head_yaw=0.0)
+    # tear: the head jerks back and up and shakes, the claws pull the ash back under the chest
+    tear_r = body(30.0, lean=CONSUME_LEAN - 7.0, jaw=8.0, head_yaw=16.0, head_roll=-8.0, twist=-4.0,
+                  hand_l=u3(A, 5.5, 11.5, 5.0), wrist_l=(-15.0, 0.0, 0.0),
+                  pelvis=pel + u3(A, 0.0, -1.2, 0.6), flow=0.35)
+    tear_l = tear_r.but(head_yaw=-16.0, head_roll=8.0, twist=6.0, hand_l=u3(A, 6.0, 12.5, 5.2))
+    # gape: the head lifts a little, the jaw wide, the claws raised forward for the next rake
+    gape = body(38.0, lean=CONSUME_LEAN - 3.0, jaw=34.0, hand_l=u3(A, 5.0, 19.5, 9.5), wrist_l=(-55.0, 0.0, 0.0),
+                pelvis=pel + u3(A, 0.0, -0.4, 0.4))
+    # bite: the head drives down hard (a little past ``down``), the jaws snap, the claws rake down into the ash
+    bite = body(50.0, lean=CONSUME_LEAN + 2.0, jaw=0.0, hand_l=u3(A, 4.5, 16.5, 5.6), wrist_l=(-28.0, 0.0, 0.0),
+                pelvis=pel + u3(A, 0.0, 0.5, -0.1), flow=0.3)
+    L = CONSUME_MS
+    b1, b2 = CONSUME_BITES
+    keys = [K(0.0, down), K(120.0 / L, tear_r, "out"), K(250.0 / L, gape, "smooth"), K(b1 / L, bite, "in"),
+            K(500.0 / L, down, "out"), K(620.0 / L, tear_l, "out"), K(750.0 / L, gape, "smooth"),
+            K(b2 / L, bite, "in"), K(1.0, down, "out")]
+    c = A.clip("Consume", L, keys, L, loop=True, notifies={"Bite": b1, "Bite_2": b2})
+    c.key_poses_ms = [0.0, 120.0, 250.0, b1, 500.0, 620.0, 750.0, b2]
+    c.manifest_extra = {
+        "usage": "[W2] Consume (monsters.md 2.4, implementation-plan.md K3): the 2 s channel on a corpse within 1 tile "
+                 "(heals 30 %, removes it); loop, play it twice at rate 1 facing the corpse's position (the jaws "
+                 "work 40-50 cm ahead of the root at husk height). Bite / Bite_2 = the snaps (audio; the channel's VFX "
+                 "is corpse.consume, played once at the channel start). No AnimAction yet: the core emits it as an "
+                 "explicit clip (EvPlayAnim.clip = Consume) or U3 plays it by name on the channel",
+        "channelMs": 2000.0, "loopsPerChannel": 2}
+    return c
+
+
 def clips(A) -> list:
     return [A.idle(length=IDLE_MS, weapon_wave=1.5, extra=idle_layer(A)), A.walk(), A.attack(), A.hurt(220.0),
-            A.death(600.0), A.stun(droop=STUN_DROOP, wlat=STUN_WLAT, hand_r=u3(A, *STUN_HAND))]
+            A.death(600.0), A.stun(droop=STUN_DROOP, wlat=STUN_WLAT, hand_r=u3(A, *STUN_HAND)), consume(A)]
 
 
 GRIP_PARTS = ("fist_r", "knuckle_r", "thumb_r", "claw_r")
@@ -375,13 +437,18 @@ def make_ship():
         close_keys=[("Attack01", 9, "se"), ("Attack01", 14, "se"), ("Attack01", 18, "se"), ("Attack01", 18, "side"),
                     ("Hurt", 0, "se"), ("Death", 12, "se"), ("Death", 24, "se"), ("Death", 36, "se"),
                     ("Stun", 10, "front"), ("Walk", 9, "side")],
+        back_clips=("Attack01", "Death", "Consume"),
+        extra_previews=mship.w2_sheet([("Consume", 0, "se"), ("Consume", 8, "se"), ("Consume", 15, "se"),
+                                       ("Consume", 20, "se"), ("Consume", 20, "sw"), ("Consume", 50, "ne"),
+                                       ("Consume", 8, "nw"), ("Consume", 20, "front")]),
         skeleton_bones_required=("root", "pelvis", "head", "jaw", "weapon_r", "weapon_l", "ear_l_02", "loin_f_02",
                                  "pelt_03", "headdress_04", "totem_feather_02", "ik_foot_l", "ik_hand_gun"),
         lod_note="LOD0 budget 6.1k / LOD1 3.2k toon tris (monsters.md 5: gravegnawer = the goblin's budget).",
         extra={**GN.remake_extra("thrust_bite", CONTACT_MS, REF_SPEED,
                                  "Clips in place; the core moves the actor (play rate = v / ref). Attack01 is a lunging "
                                  "stab and bite (the jaw snaps shut on Contact). Death collapses face down (W2: the "
-                                 "carcass the other gnawers ignore). Stun (C5) loops."),
+                                 "carcass the other gnawers ignore). Stun (C5) loops. [W2] Consume loops (1000 ms, two "
+                                 "bites) over the 2 s corpse channel, facing the corpse."),
                **GN.marker_extra(MARKER)},
     )
     return ms

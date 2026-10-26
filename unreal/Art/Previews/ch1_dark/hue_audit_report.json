@@ -74,12 +74,12 @@
    "colours": 175
   },
   "neutral": {
-   "recipes": 21,
-   "colours": 93
+   "recipes": 22,
+   "colours": 98
   },
   "enemy": {
-   "recipes": 48,
-   "colours": 658
+   "recipes": 51,
+   "colours": 678
   }
  },
  "violations": {
@@ -1688,6 +1688,7 @@
    "proj.default",
    "proj.default.fizzle",
    "proj.default.hit",
+   "status.ashnumb",
    "status.bleed",
    "status.burn",
    "status.freeze",
@@ -1720,6 +1721,7 @@
    "monster.ash_flakes",
    "monster.block",
    "monster.dead_standard_bearer.aura",
+   "monster.oath_zealot.frenzy",
    "monster.raise",
    "monster.raise.mark",
    "monster.valdras.feed",
@@ -1734,7 +1736,9 @@
    "notify.FX_DrumBeat_2",
    "notify.FX_DrumBeat_3",
    "notify.FX_DrumBeat_4",
+   "notify.FX_Frenzy",
    "notify.FX_Fuse",
+   "notify.FX_Keen",
    "notify.FX_Land",
    "notify.FX_Roar",
    "notify.FX_bell_ring",

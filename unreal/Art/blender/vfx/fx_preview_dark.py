@@ -4,7 +4,7 @@ that cast or carry it — plus per-pixel emulations of the two material contract
 ``M_AF_AshDissolve`` on a dead body) and of the echo figure (A10's ``MI_AF_Echo``).
 
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/vfx/fx_preview_dark.py [ids…|groups…]
-    #   groups: ambient elite notify death monster telegraph hazard corpse world hero (default: all)
+    #   groups: ambient elite notify death monster telegraph hazard corpse world status wave2 (default: all)
     #   --scratch   write to the scratchpad instead of Art/Previews/vfx_effects
     #   --list      print the scenario ids and exit
     #   --index     write Previews/vfx_effects/README_dark.md (binding → preview directory) and exit
@@ -1046,14 +1046,43 @@ def scenarios() -> dict:
                           [(0, "point", "d", "corpse.burn")], [100, 300, 600, 1000, 1500],
                           crop=(520, 440), focus="d", color="#FF6600", ash={"fig": "d", "grey": 120.0},
                           note="burned by the hero's fire (event colour #FF6600)")
-    # the husk's body lies ~0-60 cm ahead of its root (--measure: Death @890 chest (-6, -1, 71), head (59, 5, 73));
-    # the gnawer stands beside it, ~58 cm off the body's middle and facing it, so its Attack01 contact (head
-    # (44, -11, 48) at 300 ms) lands on the body
+    # Wave 2 (2H): the gnawer plays its real Consume clip (loop, bites at 330 / 830). The footman's husk (manifest
+    # corpse.husk: centre (29, 24) forward / right of its root, the body ~1.5 m long) lies here facing (-1, -0.3): its
+    # centre is at (-34, 14) on screen, the legs toward screen-right; the gnawer stands past the legs' end, 95 cm
+    # from the centre along the body, facing it (screen-left: a profile, its grey clear of the grey husk), so the jaws
+    # (~45 cm ahead, 6-25 cm up) work into the husk's legs
     sc["corpse.consume"] = S("corpse.consume", [Fig("d", FOOT, (0, 0), (-1, -0.3), clip="Death", t0=890.0, hold=True),
-                                                Fig("g", GNAW, (20, -45), (-44, 38), clip="Attack01", t0=0.0)],
-                             [(0, "path", ("g", "d"), "corpse.consume")], [300, 900, 1500], crop=(560, 460),
-                             focus=(0, -10), ash={"fig": "d", "grey": -5000.0},
-                             note="Consume: the gnawer beside the husk tearing at it (bite contact at 300 ms)")
+                                                Fig("g", GNAW, (57, 41), (-0.958, -0.287), clip="Consume", t0=0.0)],
+                             [(0, "path", ("g", "d"), "corpse.consume")], [330, 900, 1500], crop=(640, 460),
+                             focus=(10, 25), ash={"fig": "d", "grey": -5000.0},
+                             note="Consume: the gnawer at the husk's legs tearing at it (its Consume clip, bites at "
+                                  "330 / 830; the 2 s recipe once at the channel start)")
+    # Wave 2 (2H): the zealot's frenzy, the Corpseherd's Keen, Ashnumb on the hero
+    sc["notify.FX_Frenzy"] = S("notify.FX_Frenzy", [Fig("m", ZEAL, (0, 0), (-1, -0.4), clip="Roar", t0=480.0)],
+                               [(0, "notify", "m", "notify.FX_Frenzy"), (0, "notify", "m", "monster.oath_zealot.frenzy")],
+                               [0, 90, 200, 360, 560], crop=(560, 600), focus="m",
+                               note="Roar's chant (FX_Frenzy @480) + the frenzy loop starting with it")
+    sc["monster.oath_zealot.frenzy"] = S("monster.oath_zealot.frenzy",
+                                         [Fig("m", ZEAL, (0, 0), (-1, -0.4), clip="Idle"),
+                                          Fig("h", HERO, (-260, -60), "m")],
+                                         [(0, "notify", "m", "monster.oath_zealot.frenzy")], [1600, 2400, 3200],
+                                         crop=(720, 520), focus=(-90, -10),
+                                         note="the frenzied zealot (loop): panting breath, dust at his feet; no light")
+    sc["notify.FX_Keen"] = S("notify.FX_Keen", [Fig("m", HERD, (0, 0), (-1, -0.4), clip="Cast02", t0=0.0),
+                                                Fig("h", HERO, (-230, -80), "m")],
+                             [(800, "notify", "m", "notify.FX_Keen"), (800, "point", "m", "telegraph.contact")],
+                             [400, 790, 880, 1020, 1300], crop=(1000, 760), focus=(-20, -10), radius=400,
+                             telegraph={"shape": "circle", "at": (0, 0), "radius": 400, "start": 0, "contact": 800,
+                                        "style": "elite"},
+                             note="the Keen (Cast02): the crimson r4 ring (U2, elite style: she is an elite mini-boss) "
+                                  "fills over the 800 ms windup; at contact the lament's violet ripple sweeps to its "
+                                  "rim in 220 ms and flares there")
+    sc["status.ashnumb"] = S("status.ashnumb", [Fig("h", HERO, (0, 0), (1, -0.4)),
+                                                Fig("c", CLOT, (170, 40), "h", clip="Idle")],
+                             [(0, "self", "h", "status.ashnumb")], [1200, 2000, 2800], crop=(560, 520),
+                             focus=(40, 10),
+                             note="Ashnumb on the hero (status loop): ash flaking off the limbs, dust at the feet; the "
+                                  "per-stack grey band is the AshnumbTint contract (not emulated)")
     # world
     sc["prop.echo"] = S("prop.echo", [Fig("e", "SK_NPC_EscortTravelingMerchant_March", (0, 0), (-0.6, -1.0),
                                           clip="Death", t0=22 * 1000.0 / 60.0, hold=True, visible=False, bare=True)],
@@ -1080,6 +1109,10 @@ GROUPS = {
     "hazard": lambda k: k.startswith("hazard."),
     "corpse": lambda k: k.startswith("corpse."),
     "world": lambda k: k.startswith(("prop.", "camp.")),
+    "status": lambda k: k.startswith("status."),
+    # Wave 2 (2H): the scenes of the recipes the wave added or re-timed
+    "wave2": lambda k: k in ("notify.FX_Frenzy", "monster.oath_zealot.frenzy", "notify.FX_Keen", "status.ashnumb",
+                             "corpse.consume"),
 }
 
 
@@ -1106,6 +1139,13 @@ MEASURE = [   # (asset, clip, ms, body sockets, (item, item sockets))
                                                              ["finial", "crossbar_l", "crossbar_r", "mid"])),
     (FOOT, "Idle_Order_Dig", 760.0, ["fx_hand_r"], ("SM_MonWeapon_Shovel", ["blade_tip", "blade_mid"]), "shovel"),
     (SHIELD, "Idle", 0.0, ["fx_chest", "fx_hand_l"], None),
+    # Wave 2 (2H): the clips the wave added
+    (GNAW, "Consume", 0.0, ["fx_head", "fx_hand_l", "fx_chest"], None),
+    (GNAW, "Consume", 330.0, ["fx_head", "fx_hand_l", "fx_chest"], None),
+    (ZEAL, "Roar", 480.0, ["fx_head", "fx_chest", "fx_hand_l", "fx_feet"], None),
+    (ZEAL, "Idle", 0.0, ["fx_head", "fx_chest"], None),
+    (HERD, "Cast02", 800.0, ["fx_head", "fx_hand_l", "fx_bell", "fx_chest"], None),
+    (HERD, "Rise", 0.0, ["fx_head", "fx_chest"], None),
 ]
 
 
@@ -1168,6 +1208,9 @@ def write_index(sc: dict, out_dir: Path) -> Path:
     for k in sorted(sc):
         rows.append(f"| `{k}` | {', '.join(f'`{r}`' for r in sorted(plays[k]))} | {', '.join(tel.get(k, [])) or '—'} |")
     rows += ["", f"Bindings without a scene: {', '.join(missing) or 'none'}.", ""]
+    if (out_dir / "AshnumbTint").is_dir():
+        rows += ["Material contract mocks (not recipe scenes): [`AshnumbTint/`](AshnumbTint/) — "
+                 "`dark.materials.AshnumbTint` on the three heroes at 0 / 1 / 3 / 5 stacks (`vfx/ashnumb_band.py`).", ""]
     path = out_dir / "README_dark.md"
     path.write_text("\n".join(rows))
     return path

@@ -1466,6 +1466,50 @@
           "weightedBones": 29
         },
         "category": "Monsters",
+        "corpse": {
+          "carcassNote": "monsters.md 1.5: the other gnawers ignore it (no Consume); not Unburied / Living (no raise)",
+          "consumable": false,
+          "deathClip": "Death",
+          "family": "gnawers",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [1, 16.1, 90.8],
+              "head": [45.6, 7.5, 85],
+              "pelvis": [2.5, 1.9, 85.2]
+            },
+            "boundsCm": {
+              "max": [93.6, 36.7, 126.7],
+              "min": [-11.6, -34.1, 0]
+            },
+            "centerCm": [41, 1.3, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 46.4,
+            "topCm": 126.7
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "carcass",
+          "note": "on the belly, rolled onto its side (Hungerbell at x1.25)",
+          "previews": [
+            "corpse_husks/SK_Mon_Bonegorger/00016-00830ms.png",
+            "corpse_husks/SK_Mon_Bonegorger/01280-02130ms.png"
+          ],
+          "raisable": false,
+          "recipes": {"burn": "corpse.burn", "crumble": "corpse.crumble", "expire": "corpse.expire"},
+          "registry": true,
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Bonegorger", "zh-CN": "饕骸者"},
         "fbx": "Monsters/SK_Mon_Bonegorger.fbx",
         "fx": {
@@ -1636,6 +1680,13 @@
             "relLocCm": [0, 0, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-5.743, 38.939, 93.763]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [0, -148.754, 32],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 32, 148.754]
           }
         ],
         "triangles": {"outline": 4144, "toon": 5738},
@@ -1770,6 +1821,33 @@
           "weightedBones": 12
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "breach",
+          "holdFromMs": 500,
+          "husk": {
+            "anchors": {
+              "chest": [-2.2, 0, 5.9],
+              "head": [-2.2, 0, 8.6]
+            },
+            "boundsCm": {
+              "max": [71.3, 73.5, 11.1],
+              "min": [-75.7, -73.5, -0.4]
+            },
+            "centerCm": [-2.2, 0, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 72.7,
+            "topCm": 11.1
+          },
+          "look": "puddle",
+          "note": "melts into the tar puddle (fx.puddle: dries in 3 s), the helm lying in it; no corpse entry",
+          "previews": ["corpse_husks/SK_Mon_Breachclot/00016ms.png"],
+          "puddle": "manifest fx.puddle",
+          "recipes": {},
+          "registry": false,
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": null
+        },
         "displayName": {"en": "Breachclot", "zh-CN": "渊血凝块"},
         "fbx": "Monsters/SK_Mon_Breachclot.fbx",
         "footprintRadiusCm": 44,
@@ -1947,6 +2025,13 @@
             "relLocCm": [0, -3, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [0, -4, 19]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [0, -100, 1.463],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 1.463, 100]
           }
         ],
         "triangles": {
@@ -2083,6 +2168,33 @@
           "weightedBones": 12
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "breach",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [0, 0, 0],
+              "head": [0, 0, 0.1]
+            },
+            "boundsCm": {
+              "max": [43.3, 52.9, 8],
+              "min": [-41.1, -34.8, 0]
+            },
+            "centerCm": [1.1, 9.1, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 38,
+            "topCm": 8
+          },
+          "look": "puddle",
+          "note": "the fuse bursts (FX_Burst 800): the crust collapses, six char shards on the scorched puddle; no corpse entry",
+          "previews": ["corpse_husks/SK_Mon_Cinderbloat/00016ms.png"],
+          "puddle": "manifest fx.puddle",
+          "recipes": {},
+          "registry": false,
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": null
+        },
         "displayName": {"en": "Cinderbloat", "zh-CN": "烬胀囊"},
         "fbx": "Monsters/SK_Mon_Cinderbloat.fbx",
         "footprintRadiusCm": 59.4,
@@ -2311,6 +2423,13 @@
             "relLocCm": [0, -14.608, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [0, 0, 66.016]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [0, -125.571, 1.321],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 1.321, 125.571]
           }
         ],
         "triangles": {
@@ -2421,6 +2540,38 @@
             "loop": true,
             "name": "Stun",
             "notifies": []
+          },
+          {
+            "asset": "A_Mon_Corpseherd_Cast02",
+            "contactMs": 800,
+            "fbx": "Monsters/A_Mon_Corpseherd_Cast02.fbx",
+            "fps": 60,
+            "frames": 96,
+            "lengthMs": 1600,
+            "loop": false,
+            "name": "Cast02",
+            "notifies": [
+              {"ms": 496, "name": "WindupEnd"},
+              {"ms": 800, "name": "Contact"},
+              {"ms": 800, "name": "FX_Keen"},
+              {"ms": 800, "name": "Release"}
+            ],
+            "releaseMs": 800,
+            "skill": "corpseherd_keen",
+            "usage": "[W2 stretch] Keen (chapter1.md 10, below 50 %): a crimson ring telegraph r 4, windup 800 ms (Contact = Release 800: the ring fills to its rim then), slow 25 % for 3 s. Her voice, not the bell: bowed over the crook (the breath), she straightens with the hood thrown back and the free hand flung at the sky; FX_Keen = the lament's ripple (A12 notify.FX_Keen). The clip of AnimAction Cast02 (UE maps it by name)"
+          },
+          {
+            "asset": "A_Mon_Corpseherd_Rise",
+            "fbx": "Monsters/A_Mon_Corpseherd_Rise.fbx",
+            "fps": 60,
+            "frames": 84,
+            "lengthMs": 1400,
+            "loop": false,
+            "name": "Rise",
+            "notifies": [
+              {"ms": 980, "name": "RiseUp"}
+            ],
+            "usage": "[W2] an Unburied rise of the Corpseherd (her data family is unburied: the trait / the unburied affix re-raise the monster's own corpse) and any spawn that starts kneeling; Death reversed and retimed (monsters.md 2.2: Rise)"
           }
         ],
         "attachments": [
@@ -2442,6 +2593,69 @@
           "weightedBones": 32
         },
         "category": "Monsters",
+        "corpse": {
+          "consumable": false,
+          "deathClip": "Death",
+          "family": "unburied",
+          "holdFromMs": 1400,
+          "husk": {
+            "anchors": {
+              "chest": [-3.9, -0.9, 59.7],
+              "head": [41.3, 2.6, 72.7],
+              "pelvis": [0.4, 0, 43.3]
+            },
+            "boundsCm": {
+              "max": [71.7, 51.7, 88.9],
+              "min": [-68.3, -33.8, -3.2]
+            },
+            "centerCm": [1.7, 8.9, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 56.9,
+            "topCm": 88.9
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "on her knees, folded over them, the hood bowed over her right hand on the bell (cs_rf_herd looks at it: the grey waits for the beat)",
+          "previews": [
+            "corpse_husks/SK_Mon_Corpseherd/00016-00830ms.png",
+            "corpse_husks/SK_Mon_Corpseherd/01280-02130ms.png"
+          ],
+          "raisable": false,
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise; raisable false wins here (storyGuard)",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "rise": {
+            "clip": "Rise",
+            "dissolve": "reverse the grey + dissolve over the clip's first 60 % (contract 'rise')",
+            "lengthMs": 1400,
+            "riseUpMs": 980,
+            "use": "the self-rise only (the Unburied trait / affix re-raises this monster's own corpse); a raise by another monster stands it up as raisedAs"
+          },
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "storyGuard": "cs_rf_herd looks at this body: never Consumed, never raised by another monster (permanent, not only while holdUntil story holds); its own rise (the Unburied trait) is the core's rule",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "holdNote": "the death pose holds (no grey, no crumble) while the beat that looks at it plays; the timeline starts when it ends",
+            "holdUntil": "story",
+            "material": "M_AF_AshDissolve",
+            "story": "cs_rf_herd",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "the Corpseherd", "zh-CN": "尸牧婆"},
         "elite": true,
         "fbx": "Monsters/SK_Mon_Corpseherd.fbx",
@@ -2542,20 +2756,24 @@
           }
         ],
         "miniBoss": true,
-        "notes": "Clips in place; the core moves the actor (play rate = v / ref). Attack01 releases the bell-toll bolt from fx_bell (the handbell's mouth) on Contact 500 (FX_BellToll, Release). Cast01 = [W2] Call the Flock (FX_bell_ring 650). Taunt loops under the pre-fight lines. Death: she sinks to her knees and folds forward over them, the hood bowed low over her right hand; the crook slides through her fist as it falls (weapon_r keys a translation down its axis: attach the crook to the weapon_r bone) and lies along her right side, the fist closed under the hook and the bell on the ground against her knuckles (cs_rf_herd: her hand still on the bell). Taunt: the lulling sway and the hush (the hand at the veil around 1000 ms). The family marker is the violet eyes; no ember anywhere (the bell bronze #8A6A3A is hue 36, sat .58).",
+        "notes": "Clips in place; the core moves the actor (play rate = v / ref). Attack01 releases the bell-toll bolt from fx_bell (the handbell's mouth) on Contact 500 (FX_BellToll, Release). Cast01 = [W2] Call the Flock (FX_bell_ring 650). [W2] Cast02 = the Keen (Contact / Release / FX_Keen 800); Rise = Death reversed. Taunt loops under the pre-fight lines. Death: she sinks to her knees and folds forward over them, the hood bowed low over her right hand; the crook slides through her fist as it falls (weapon_r keys a translation down its axis: attach the crook to the weapon_r bone) and lies along her right side, the fist closed under the hook and the bell on the ground against her knuckles (cs_rf_herd: her hand still on the bell). Taunt: the lulling sway and the hush (the hand at the veil around 1000 ms). The family marker is the violet eyes; no ember anywhere (the bell bronze #8A6A3A is hue 36, sat .58).",
         "portrait": "Portraits/T_UI_Portrait_Corpseherd.png",
         "previews": [
           "mon_corpseherd/anim_Attack01.png",
           "mon_corpseherd/anim_Cast01.png",
+          "mon_corpseherd/anim_Cast02.png",
           "mon_corpseherd/anim_Death.png",
           "mon_corpseherd/anim_Hurt.png",
           "mon_corpseherd/anim_Idle.png",
+          "mon_corpseherd/anim_Rise.png",
           "mon_corpseherd/anim_Stun.png",
           "mon_corpseherd/anim_Taunt.png",
           "mon_corpseherd/anim_Walk.png",
           "mon_corpseherd/anim_back_Attack01.png",
           "mon_corpseherd/anim_back_Cast01.png",
+          "mon_corpseherd/anim_back_Cast02.png",
           "mon_corpseherd/anim_back_Death.png",
+          "mon_corpseherd/anim_back_Rise.png",
           "mon_corpseherd/closeup_front.png",
           "mon_corpseherd/closeup_ne.png",
           "mon_corpseherd/closeup_se.png",
@@ -2566,6 +2784,7 @@
           "mon_corpseherd/game_facings.png",
           "mon_corpseherd/game_inkgate.png",
           "mon_corpseherd/game_poses.png",
+          "mon_corpseherd/game_w2.png",
           "mon_corpseherd/items.png",
           "mon_corpseherd/lod1.png",
           "mon_corpseherd/material_ab.png",
@@ -2651,6 +2870,13 @@
             "relLocCm": [0, -16.99, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-45.509, 80.236, 45.217]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [-22.837, -178.143, 8.075],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-22.837, 8.075, 178.143]
           }
         ],
         "triangles": {"outline": 3990, "toon": 8180}
@@ -2805,6 +3031,63 @@
           "weightedBones": 29
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "unburied",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [-5.8, -3.3, 72.1],
+              "head": [58.4, 2.9, 74.6],
+              "pelvis": [0, 0, 53.3]
+            },
+            "boundsCm": {
+              "max": [74.2, 79.1, 314.8],
+              "min": [-62.2, -37.2, -1.7]
+            },
+            "centerCm": [6, 21, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 67.7,
+            "topCm": 314.8
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "kneeling folded at the foot of the planted standard, the hand still on it (the standard dissolves with him)",
+          "previews": [
+            "corpse_husks/SK_Mon_DeadStandardBearer/00016-00830ms.png",
+            "corpse_husks/SK_Mon_DeadStandardBearer/01280-02130ms.png"
+          ],
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "rise": {
+            "clip": "Rise",
+            "dissolve": "reverse the grey + dissolve over the clip's first 60 % (contract 'rise')",
+            "lengthMs": 1200,
+            "riseUpMs": 840,
+            "use": "the self-rise only (the Unburied trait / affix re-raises this monster's own corpse); a raise by another monster stands it up as raisedAs"
+          },
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Dead Standard-Bearer", "zh-CN": "亡旗手"},
         "family": "unburied",
         "fbx": "Monsters/SK_Mon_DeadStandardBearer.fbx",
@@ -3063,6 +3346,13 @@
             "relLocCm": [0, 0, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-4.178, 8.577, 163.741]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [44.645, -245.5, 16.693],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [44.645, 16.693, 245.5]
           }
         ],
         "triangles": {
@@ -3161,6 +3451,53 @@
           "weightedBones": 33
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "living",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [100.9, 0, 38.4],
+              "head": [165.3, -1.9, 39.5],
+              "pelvis": [101.5, 0, 35.5]
+            },
+            "boundsCm": {
+              "max": [180.4, 85.7, 65.2],
+              "min": [-6.4, -46, 8]
+            },
+            "centerCm": [87, 19.8, 8],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 91.5,
+            "topCm": 65.2
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "face down, the axe beside him (Dreck / Harke: their attachments dissolve with the body)",
+          "previews": ["corpse_husks/SK_Mon_Deserter/00016-00830ms.png", "corpse_husks/SK_Mon_Deserter/01280-02130ms.png"],
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Deserter", "zh-CN": "逃兵"},
         "fbx": "Monsters/SK_Mon_Deserter.fbx",
         "fx": {
@@ -3335,6 +3672,13 @@
             "relLocCm": [-3.688, -7.765, 10.101],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-3.688, 10.101, 161.212]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [-2.098, -206.172, 18.285],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-2.098, 18.285, 206.172]
           }
         ],
         "triangles": {"outline": 5064, "toon": 6906},
@@ -3482,6 +3826,56 @@
           "weightedBones": 32
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "living",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [100.3, 24.7, 31.3],
+              "head": [164, 25.7, 33.4],
+              "pelvis": [100.7, 21.9, 31.1]
+            },
+            "boundsCm": {
+              "max": [182, 41.6, 103.9],
+              "min": [-6.9, -36.1, -0.2]
+            },
+            "centerCm": [87.5, 2.7, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 92.7,
+            "topCm": 103.9
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "on his side, the drum showing",
+          "previews": [
+            "corpse_husks/SK_Mon_DeserterDrummer/00016-00830ms.png",
+            "corpse_husks/SK_Mon_DeserterDrummer/01280-02130ms.png"
+          ],
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Deserter Drummer", "zh-CN": "军鼓手"},
         "fbx": "Monsters/SK_Mon_DeserterDrummer.fbx",
         "fx": {
@@ -3670,6 +4064,13 @@
             "relLocCm": [6.091, -15.021, 34.071],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [6.091, 34.071, 110.017]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [0.078, -209.704, 5.793],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0.078, 5.793, 209.704]
           }
         ],
         "triangles": {"outline": 3616, "toon": 6814}
@@ -4592,6 +4993,22 @@
             "loop": true,
             "name": "Stun",
             "notifies": []
+          },
+          {
+            "asset": "A_Mon_Gravegnawer_Consume",
+            "channelMs": 2000,
+            "fbx": "Monsters/A_Mon_Gravegnawer_Consume.fbx",
+            "fps": 60,
+            "frames": 60,
+            "lengthMs": 1000,
+            "loop": true,
+            "loopsPerChannel": 2,
+            "name": "Consume",
+            "notifies": [
+              {"ms": 330, "name": "Bite"},
+              {"ms": 830, "name": "Bite_2"}
+            ],
+            "usage": "[W2] Consume (monsters.md 2.4, implementation-plan.md K3): the 2 s channel on a corpse within 1 tile (heals 30 %, removes it); loop, play it twice at rate 1 facing the corpse's position (the jaws work 40-50 cm ahead of the root at husk height). Bite / Bite_2 = the snaps (audio; the channel's VFX is corpse.consume, played once at the channel start). No AnimAction yet: the core emits it as an explicit clip (EvPlayAnim.clip = Consume) or U3 plays it by name on the channel"
           }
         ],
         "attachments": [
@@ -4613,6 +5030,50 @@
           "weightedBones": 31
         },
         "category": "Monsters",
+        "corpse": {
+          "carcassNote": "monsters.md 1.5: the other gnawers ignore it (no Consume); not Unburied / Living (no raise)",
+          "consumable": false,
+          "deathClip": "Death",
+          "family": "gnawers",
+          "holdFromMs": 600,
+          "husk": {
+            "anchors": {
+              "chest": [-1.2, 7.2, 29.7],
+              "head": [39.2, 8.9, 25],
+              "pelvis": [1.1, 2, 28.1]
+            },
+            "boundsCm": {
+              "max": [75.1, 27.7, 58.3],
+              "min": [-9.2, -30.7, -1.4]
+            },
+            "centerCm": [32.9, -1.5, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 38.7,
+            "topCm": 58.3
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "carcass",
+          "note": "the carcass on its side, knees drawn up (the other gnawers ignore it: no Consume, no raise)",
+          "previews": [
+            "corpse_husks/SK_Mon_Gravegnawer/00016-00830ms.png",
+            "corpse_husks/SK_Mon_Gravegnawer/01280-02130ms.png"
+          ],
+          "raisable": false,
+          "recipes": {"burn": "corpse.burn", "crumble": "corpse.crumble", "expire": "corpse.expire"},
+          "registry": true,
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Gravegnawer", "zh-CN": "啃冢者"},
         "fbx": "Monsters/SK_Mon_Gravegnawer.fbx",
         "fx": {
@@ -4686,15 +5147,17 @@
             "widthCm": 1.5
           }
         ],
-        "notes": "Clips in place; the core moves the actor (play rate = v / ref). Attack01 is a lunging stab and bite (the jaw snaps shut on Contact). Death collapses face down (W2: the carcass the other gnawers ignore). Stun (C5) loops.",
+        "notes": "Clips in place; the core moves the actor (play rate = v / ref). Attack01 is a lunging stab and bite (the jaw snaps shut on Contact). Death collapses face down (W2: the carcass the other gnawers ignore). Stun (C5) loops. [W2] Consume loops (1000 ms, two bites) over the 2 s corpse channel, facing the corpse.",
         "previews": [
           "mon_gravegnawer/anim_Attack01.png",
+          "mon_gravegnawer/anim_Consume.png",
           "mon_gravegnawer/anim_Death.png",
           "mon_gravegnawer/anim_Hurt.png",
           "mon_gravegnawer/anim_Idle.png",
           "mon_gravegnawer/anim_Stun.png",
           "mon_gravegnawer/anim_Walk.png",
           "mon_gravegnawer/anim_back_Attack01.png",
+          "mon_gravegnawer/anim_back_Consume.png",
           "mon_gravegnawer/anim_back_Death.png",
           "mon_gravegnawer/closeup_front.png",
           "mon_gravegnawer/closeup_ne.png",
@@ -4705,6 +5168,7 @@
           "mon_gravegnawer/game_facings.png",
           "mon_gravegnawer/game_inkgate.png",
           "mon_gravegnawer/game_poses.png",
+          "mon_gravegnawer/game_w2.png",
           "mon_gravegnawer/items.png",
           "mon_gravegnawer/lod1.png",
           "mon_gravegnawer/material_ab.png",
@@ -4778,6 +5242,13 @@
             "relLocCm": [0, 0, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-4.009, 39.753, 76.476]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [0, -120.331, 24],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0, 24, 120.331]
           }
         ],
         "triangles": {"outline": 3940, "toon": 5923}
@@ -4851,6 +5322,19 @@
             "loop": true,
             "name": "Stun",
             "notifies": []
+          },
+          {
+            "asset": "A_Mon_OathZealot_Roar",
+            "fbx": "Monsters/A_Mon_OathZealot_Roar.fbx",
+            "fps": 60,
+            "frames": 72,
+            "lengthMs": 1200,
+            "loop": false,
+            "name": "Roar",
+            "notifies": [
+              {"ms": 480, "name": "FX_Frenzy"}
+            ],
+            "usage": "[W2] the frenzy (implementation-plan.md K4: the zealot's one-row phase table at <= 50 % life, enterAction Roar; still takes damage): the shouted chant — he rears up, the scarred fist over the hood, the flail whirled overhead; FX_Frenzy 480 = the chant's breath and the scar flare (fx.frenzy: the scar emissive rises to frenzyEmissive and stays for the phase; A12 notify.FX_Frenzy + the monster.oath_zealot.frenzy loop)"
           }
         ],
         "attachments": [
@@ -4872,6 +5356,56 @@
           "weightedBones": 33
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "living",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [102, 0, 21.2],
+              "head": [166.6, -2, 22.5],
+              "pelvis": [102.3, 0, 18.4]
+            },
+            "boundsCm": {
+              "max": [182.4, 87.9, 39.1],
+              "min": [-6.8, -50.1, -4.3]
+            },
+            "centerCm": [87.8, 18.9, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 92.8,
+            "topCm": 39.1
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "face down, the flail flung flat",
+          "previews": [
+            "corpse_husks/SK_Mon_OathZealot/00016-00830ms.png",
+            "corpse_husks/SK_Mon_OathZealot/01280-02130ms.png"
+          ],
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Red-Oath Zealot", "zh-CN": "赤誓狂信徒"},
         "fbx": "Monsters/SK_Mon_OathZealot.fbx",
         "fx": {
@@ -4888,6 +5422,17 @@
             "deathFollowBone": "pelvis",
             "deathFollowMs": [380, 760],
             "note": "Death: the body folds forward and lies ~0.8-1.0 m in front of the actor's root (the drummer on his side). Move the blob shadow under the pelvis bone's ground projection (XY, Z stays on the ground) between the kneel (380 ms) and the face-down pose (760 ms) and keep it there; a runtime that cannot follow a bone fades it to deathFadeAlpha over the same span instead (the fallen body's contact shadow is the floor ink)"
+          },
+          "frenzy": {
+            "atMs": 480,
+            "clip": "Roar",
+            "loop": "monster.oath_zealot.frenzy",
+            "note": "[W2] Wave 2 art (2H): the frenzy's enter action (K4 phase enterAction Roar) plays Roar; at FX_Frenzy (480) the scar's emissive ramps 0.25 -> 0.7 over scarRampMs and stays until death, and the loop recipe runs on the zealot (origin, attach; Blow = its facing) for the rest of the phase. The Living carry no light: the loop is breath and dust, the only glow is the scar (crimson, never ember)",
+            "notify": "FX_Frenzy",
+            "read": "art review r1 (oath_zealot.py --frenzy-read, Previews mon_oath_zealot/game_w2_frenzy.png): at scarEmissive the scar is a 1 px block at 1080p on the darkest march tile (2 px only in Walk sw), so it is a close-up detail; the persistent read of a frenzied zealot is the loop's breath cloud before the hood (monster.oath_zealot.frenzy, a pant every ~0.3 s) plus the faster clips",
+            "recipe": "notify.FX_Frenzy",
+            "scarEmissive": 0.7,
+            "scarRampMs": 160
           },
           "oathScar": {
             "color": "#C0283A",
@@ -4960,16 +5505,18 @@
             "widthCm": 1.5
           }
         ],
-        "notes": "Clips in place; the core moves the actor (play rate = v / ref). Death folds forward face down (W2: the ash husk takes its pose). Stun (C5) loops. [W2] frenzy at <= 50 % life plays the same clips faster (attack speed x1.35).",
+        "notes": "Clips in place; the core moves the actor (play rate = v / ref). Death folds forward face down (W2: the ash husk takes its pose). Stun (C5) loops. [W2] frenzy at <= 50 % life: Roar (the shouted chant, FX_Frenzy 480; fx.frenzy), then the same clips faster (attack speed x1.35, move x1.2).",
         "previews": [
           "mon_oath_zealot/anim_Attack01.png",
           "mon_oath_zealot/anim_Death.png",
           "mon_oath_zealot/anim_Hurt.png",
           "mon_oath_zealot/anim_Idle.png",
+          "mon_oath_zealot/anim_Roar.png",
           "mon_oath_zealot/anim_Stun.png",
           "mon_oath_zealot/anim_Walk.png",
           "mon_oath_zealot/anim_back_Attack01.png",
           "mon_oath_zealot/anim_back_Death.png",
+          "mon_oath_zealot/anim_back_Roar.png",
           "mon_oath_zealot/closeup_front.png",
           "mon_oath_zealot/closeup_ne.png",
           "mon_oath_zealot/closeup_se.png",
@@ -4980,6 +5527,11 @@
           "mon_oath_zealot/game_facings.png",
           "mon_oath_zealot/game_inkgate.png",
           "mon_oath_zealot/game_poses.png",
+          "mon_oath_zealot/game_w2.png",
+          "mon_oath_zealot/game_w2_frenzy.png",
+          "mon_oath_zealot/game_w2_frenzy_2.png",
+          "mon_oath_zealot/game_w2_frenzy_3.png",
+          "mon_oath_zealot/game_w2_frenzy_4.png",
           "mon_oath_zealot/items.png",
           "mon_oath_zealot/lod1.png",
           "mon_oath_zealot/material_ab.png",
@@ -5060,6 +5612,13 @@
             "relLocCm": [0, -16.78, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-57.874, 59.204, 82.361]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [-1.538, -205.724, 16.517],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-1.538, 16.517, 205.724]
           }
         ],
         "triangles": {"outline": 4916, "toon": 6794}
@@ -5199,6 +5758,63 @@
           "weightedBones": 26
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "unburied",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [-4.8, 9.3, 69.3],
+              "head": [57.5, -7.6, 75.3],
+              "pelvis": [0, 0, 52.5]
+            },
+            "boundsCm": {
+              "max": [106.8, 94.2, 107.8],
+              "min": [-50, -34.5, -1.6]
+            },
+            "centerCm": [28.4, 29.9, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 77.4,
+            "topCm": 107.8
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "folded and rolled onto the flank, the pavise on its edge beside him, the crossbow under the arm",
+          "previews": [
+            "corpse_husks/SK_Mon_RisenArbalest/00016-00830ms.png",
+            "corpse_husks/SK_Mon_RisenArbalest/01280-02130ms.png"
+          ],
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "rise": {
+            "clip": "Rise",
+            "dissolve": "reverse the grey + dissolve over the clip's first 60 % (contract 'rise')",
+            "lengthMs": 1200,
+            "riseUpMs": 840,
+            "use": "the self-rise only (the Unburied trait / affix re-raises this monster's own corpse); a raise by another monster stands it up as raisedAs"
+          },
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Risen Arbalester", "zh-CN": "复起弩手"},
         "family": "unburied",
         "fbx": "Monsters/SK_Mon_RisenArbalest.fbx",
@@ -5431,6 +6047,13 @@
             "relLocCm": [0, 0, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-4.178, 8.577, 161.897]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [0.561, -211.5, -1.447],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0.561, -1.447, 211.5]
           }
         ],
         "triangles": {
@@ -5589,6 +6212,63 @@
           "weightedBones": 26
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "unburied",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [-6, -1.2, 71.4],
+              "head": [58.5, 4.8, 72.9],
+              "pelvis": [0, 0, 52.5]
+            },
+            "boundsCm": {
+              "max": [107.3, 85, 107.5],
+              "min": [-50, -37.9, -1.6]
+            },
+            "centerCm": [28.7, 23.6, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 77.2,
+            "topCm": 107.5
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "folded forward over the knees, face down (the kneel-fold the kit calls the ash-husk pose); the sword / shovel beside him",
+          "previews": [
+            "corpse_husks/SK_Mon_RisenFootman/00016-00830ms.png",
+            "corpse_husks/SK_Mon_RisenFootman/01280-02130ms.png"
+          ],
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "rise": {
+            "clip": "Rise",
+            "dissolve": "reverse the grey + dissolve over the clip's first 60 % (contract 'rise')",
+            "lengthMs": 1200,
+            "riseUpMs": 840,
+            "use": "the self-rise only (the Unburied trait / affix re-raises this monster's own corpse); a raise by another monster stands it up as raisedAs"
+          },
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Risen Footman", "zh-CN": "复起步卒"},
         "family": "unburied",
         "fbx": "Monsters/SK_Mon_RisenFootman.fbx",
@@ -5837,6 +6517,13 @@
             "relLocCm": [0, 0, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-4.178, 8.577, 161.897]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [0.398, -206.266, 3.337],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [0.398, 3.337, 206.266]
           }
         ],
         "triangles": {
@@ -5983,6 +6670,63 @@
           "weightedBones": 26
         },
         "category": "Monsters",
+        "corpse": {
+          "deathClip": "Death",
+          "family": "unburied",
+          "holdFromMs": 900,
+          "husk": {
+            "anchors": {
+              "chest": [-5.6, -3.9, 102.3],
+              "head": [58.2, 7.9, 104],
+              "pelvis": [0, 0, 83.7]
+            },
+            "boundsCm": {
+              "max": [111.6, 75.6, 137.2],
+              "min": [-50, -79.7, 0]
+            },
+            "centerCm": [30.8, -2, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 85.8,
+            "topCm": 137.2
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "folded forward, the tower shield laid on the ground beside him",
+          "previews": [
+            "corpse_husks/SK_Mon_RisenShieldbearer/00016-00830ms.png",
+            "corpse_husks/SK_Mon_RisenShieldbearer/01280-02130ms.png"
+          ],
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "rise": {
+            "clip": "Rise",
+            "dissolve": "reverse the grey + dissolve over the clip's first 60 % (contract 'rise')",
+            "lengthMs": 1200,
+            "riseUpMs": 840,
+            "use": "the self-rise only (the Unburied trait / affix re-raises this monster's own corpse); a raise by another monster stands it up as raisedAs"
+          },
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "material": "M_AF_AshDissolve",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Risen Shieldbearer", "zh-CN": "复起盾卒"},
         "family": "unburied",
         "fbx": "Monsters/SK_Mon_RisenShieldbearer.fbx",
@@ -6223,6 +6967,13 @@
             "relLocCm": [0, 0, 0],
             "relRotDeg": [0, 0, 0],
             "restLocCm": [-4.178, 8.577, 161.897]
+          },
+          {
+            "bone": "root",
+            "name": "fx_elite",
+            "relLocCm": [-1.564, -221.213, 21.269],
+            "relRotDeg": [0, 0, 0],
+            "restLocCm": [-1.564, 21.269, 221.213]
           }
         ],
         "triangles": {
@@ -6677,6 +7428,66 @@
           "weightedBones": 31
         },
         "category": "Monsters",
+        "corpse": {
+          "consumable": false,
+          "deathClip": "Death",
+          "family": "unburied",
+          "holdFromMs": 2000,
+          "husk": {
+            "anchors": {
+              "chest": [-6.3, 0, 77.1],
+              "head": [21.9, -0.8, 149.6],
+              "pelvis": [4, 0, 77.3]
+            },
+            "boundsCm": {
+              "max": [64.3, 44.6, 200.4],
+              "min": [-92.7, -68.3, -1.8]
+            },
+            "centerCm": [-14.2, -11.8, 0],
+            "frame": "actor frame at the Death clip's last frame: forward, right, up cm (the VFX offset convention; UE: +X forward, +Y right of the actor's facing)",
+            "radiusCm": 76.7,
+            "topCm": 200.4
+          },
+          "items": "every held item / attachment takes the same dissolve (no weapon lingers on the ground)",
+          "look": "husk",
+          "note": "kneeling on the dais, sword point-down, the standard drooped (cs_rf_marshal_falls looks at it: the grey waits for the beat)",
+          "previews": ["corpse_husks/SK_Mon_Valdras/00016-00830ms.png", "corpse_husks/SK_Mon_Valdras/01280-02130ms.png"],
+          "raisable": false,
+          "raisedAs": "monster_risen_footman",
+          "raisedNote": "a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise; raisable false wins here (storyGuard)",
+          "recipes": {
+            "burn": "corpse.burn",
+            "consume": "corpse.consume",
+            "crumble": "corpse.crumble",
+            "expire": "corpse.expire",
+            "raise": "monster.raise",
+            "raiseMark": "monster.raise.mark"
+          },
+          "registry": true,
+          "rise": {
+            "clip": "Rise",
+            "dissolve": "reverse the grey + dissolve over the clip's first 60 % (contract 'rise')",
+            "lengthMs": 1500,
+            "riseUpMs": 1050,
+            "use": "the self-rise only (the Unburied trait / affix re-raises this monster's own corpse); a raise by another monster stands it up as raisedAs"
+          },
+          "shadow": "the blob shadow follows the pelvis (fx.blobShadow deathFollowBone where set) and fades with the crumble to 0.35, gone at expire",
+          "spec": "Docs/dark-remake/monsters.md 1.5 (DR6 ash mode); implementation-plan.md U3",
+          "storyGuard": "cs_rf_marshal_falls looks at this body: never Consumed, never raised by another monster (permanent, not only while holdUntil story holds); its own rise (the Unburied trait) is the core's rule",
+          "timeline": {
+            "contract": "manifest.materials.M_AF_AshDissolve (timeline)",
+            "crumbleMs": 900,
+            "crumbleTo": 0.38,
+            "expireMs": 700,
+            "greyMs": 380,
+            "holdMs": 450,
+            "holdNote": "the death pose holds (no grey, no crumble) while the beat that looks at it plays; the timeline starts when it ends",
+            "holdUntil": "story",
+            "material": "M_AF_AshDissolve",
+            "story": "cs_rf_marshal_falls",
+            "ttlMs": 20000
+          }
+        },
         "displayName": {"en": "Lord-Marshal Valdras", "zh-CN": "焚旗元帅·瓦德拉斯"},
         "eliteMarker": "none",
         "eliteMarkerNote": "story boss: the visor slit is his marker. GameData gives valdras elite: true, but monsters.md §2.6 bans a crown on him (no face, no crown, no skull, no throne) and fx_overhead projects onto the standard's pole at the W1 camera: the runtime skips the overhead elite marker (SM_FX_EliteCrown_March / SM_FX_EliteSigil) for an asset with eliteMarker none (core lane: AbyssWorldBuilder::UpdateElite). If one must ever show, attach it to fx_elite (head, 36 cm forward of and 70 cm over the head centre: >= 6.6 px clear of helm, plume, pole and banner in se / sw / ne / nw at the W1 camera, 1080p)",
@@ -17119,12 +17930,32 @@
         "widthCm": 32.8
       },
       "SM_FX_EliteSigil": {
-        "attachSocket": "fx_overhead",
+        "attachSocket": "fx_elite",
         "boundsCm": {
           "max": [16.155, 16.61, 16.861],
           "min": [-16.502, -16.045, 4.857]
         },
         "category": "VFX",
+        "clearance": {
+          "gate": {
+            "capAt": "rest",
+            "capFacings": ["se", "sw"],
+            "capPx": 20,
+            "facings": ["se", "sw", "ne", "nw"],
+            "frame": "Idle F0",
+            "measuredAt": "bob trough (rest - 3 cm)",
+            "minGapPx": 4,
+            "res": "1080p",
+            "socket": "fx_elite"
+          },
+          "note": "Wave 2 (2H, art review round 1): the sigil rides fx_elite on every march monster that can be elite (regulars, hunt leaders at x1.25, the mini-boss; Valdras opts out, his fx_elite is the W1 fallback forward of his standard); fx_overhead is Wave 1's (nameplates, floating text, stun stars, the death mark, the W1 crown). Gates: >= minGapPx clear of the figure at the bob's trough in every facing, <= capPx off it at rest in se / sw (elite_sigil.py --solve-elite / --roster)",
+          "pass": true,
+          "report": "SM_FX_EliteSigil/sigil_over_roster.json",
+          "socket": "fx_elite",
+          "table": "Art/blender/monsters/fx_elite_w2.json",
+          "widestFrontGapPx": 19.6,
+          "worstTroughGapPx": 5
+        },
         "displayName": {"en": "Elite sigil", "zh-CN": "精英印记"},
         "fbx": "VFX/SM_FX_EliteSigil.fbx",
         "fx": {
@@ -17140,14 +17971,16 @@
             "socket": "ember"
           },
           "motion": {
+            "bob": "symmetric",
             "bobCm": 3,
             "bobPeriodMs": 1600,
             "faceCameraYaw": false,
-            "note": "W2: replaces SM_FX_EliteCrown over elites; floats level 6 cm over fx_overhead and turns slowly about its own axis (the break and the shards come round every 8 s)",
+            "note": "W2: replaces SM_FX_EliteCrown over elites; floats level 6 cm over fx_elite, bobs as a symmetric sine of bobCm about that rest (rest - bobCm .. rest + bobCm: the clearance gate is measured at the trough) and turns slowly about its own axis (the break and the shards come round every 8 s)",
             "spinDegPerSec": 45
           },
           "scaleNote": "keeps its 29 cm on scaled elites (hunt leaders x1.25, the 2.1 m boss): attach with absolute scale",
-          "socket": "fx_overhead"
+          "socket": "fx_elite",
+          "socketNote": "fx_elite (Wave 2), not fx_overhead: fx_overhead carries the nameplates, floating text, stun stars, the death mark and the W1 crown and stays where Wave 1 shipped it; fx_elite is solved per asset (clearance + closeness, elite_sigil.py --solve-elite). An asset without fx_elite falls back to fx_overhead"
         },
         "gameIds": ["elite_sigil"],
         "inkGate": {
@@ -17194,10 +18027,36 @@
           "SM_FX_EliteSigil/game_glow.png",
           "SM_FX_EliteSigil/game_inkgate.png",
           "SM_FX_EliteSigil/sigil_over_gnawers_facings.png",
+          "SM_FX_EliteSigil/sigil_over_gnawers_facings_2.png",
           "SM_FX_EliteSigil/sigil_over_monsters.png",
           "SM_FX_EliteSigil/sigil_over_monsters_2.png",
           "SM_FX_EliteSigil/sigil_over_monsters_3.png",
           "SM_FX_EliteSigil/sigil_over_monsters_4.png",
+          "SM_FX_EliteSigil/sigil_over_roster_arbalester.png",
+          "SM_FX_EliteSigil/sigil_over_roster_arbalester_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_bonegorger.png",
+          "SM_FX_EliteSigil/sigil_over_roster_breachclot.png",
+          "SM_FX_EliteSigil/sigil_over_roster_cinderbloat.png",
+          "SM_FX_EliteSigil/sigil_over_roster_corpseherd.png",
+          "SM_FX_EliteSigil/sigil_over_roster_deserter.png",
+          "SM_FX_EliteSigil/sigil_over_roster_deserter_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_dreck.png",
+          "SM_FX_EliteSigil/sigil_over_roster_dreck_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_drummer.png",
+          "SM_FX_EliteSigil/sigil_over_roster_drummer_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_footman.png",
+          "SM_FX_EliteSigil/sigil_over_roster_footman_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_gnawer.png",
+          "SM_FX_EliteSigil/sigil_over_roster_harke.png",
+          "SM_FX_EliteSigil/sigil_over_roster_harke_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_hungerbell.png",
+          "SM_FX_EliteSigil/sigil_over_roster_hungerbell_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_shieldbearer.png",
+          "SM_FX_EliteSigil/sigil_over_roster_shieldbearer_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_standard_bearer.png",
+          "SM_FX_EliteSigil/sigil_over_roster_standard_bearer_2.png",
+          "SM_FX_EliteSigil/sigil_over_roster_zealot.png",
+          "SM_FX_EliteSigil/sigil_over_roster_zealot_2.png",
           "SM_FX_EliteSigil/turnaround.png"
         ],
         "replaces": "SM_FX_EliteCrown / SM_FX_EliteCrown_March (W2)",

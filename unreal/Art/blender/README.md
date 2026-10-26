@@ -2934,3 +2934,158 @@ it was not re-run (the slime's X-eyes and lids were drawn over its eye marker th
 **Handoffs.** Core lane: `arcane_torrent.impactColor` (above); re-export `Data/assets.json` from the manifest (it
 lacks the five lore / event assets of `lore_march.py` and the re-shipped OathSword / anvil entries). U4: the set-piece
 placements above.
+
+## 32. Wave 2 art — dark-remake 2H (`monsters/clip_patch.py`, `corpse_husks.py`, `elite_sigil.py`, `vfx/fx_recipes_dark.py`, `vfx/ashnumb_band.py`)
+
+Work package 2H (implementation-plan.md §5 / Phase 2): the art the Wave 2 core (K2-K6) drives — the clips monsters.md
+assigns that Wave 1 shipped without, the elite sigil on the whole roster, the ash-husk corpse hooks U3 reads, and the
+A12 W2 recipe gaps. Nothing of the shipped meshes changed (no mesh re-export): new clips go in with `clip_patch.py`.
+
+```bash
+/opt/venvs/blender/bin/python unreal/Art/blender/monsters/clip_patch.py <generator> <Clip> … [--keys notes,fx] \
+    [--sockets fx_elite] [--replace Clip,…] [--dry-run]    # add clips to a shipped monster (below)
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/elite_sigil.py --solve-elite \
+    [--only=FOOTMAN,…] [--cap=20|none] [--dry-run]         # fx_elite per asset -> fx_elite_w2.json + manifest
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/elite_sigil.py --roster [--scratch]
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/elite_sigil.py --over
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/corpse_husks.py [assets…] \
+    [--no-previews] [--dry-run] [--scratch]                # manifest corpse blocks + Previews/corpse_husks/
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/oath_zealot.py --frenzy-read
+python3 unreal/Art/blender/vfx/fx_recipes.py && python3 unreal/Art/blender/vfx/fx_validate.py
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/vfx/fx_preview_dark.py wave2
+EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/vfx/ashnumb_band.py   # the band mock
+```
+
+**Clip audit** (monsters.md §2 / chapter1.md §10-11 against the manifest; contact / release in ms at play rate 1):
+
+| Monster | Wave 2 mechanic | Clip | Beat | State |
+|---|---|---|---|---|
+| `breachclot` | Ashnumb on hit, tar puddle | — (Death melts) | — | nothing to add |
+| `cinderbloat` | on-death burst (fuse ≥ 800) | Death | FX_Fuse 0, FX_Burst 800 | W1 |
+| `risen_footman` / `risen_arbalest` / `risen_shieldbearer` | the Unburied rise; kite (Walk); frontal block (`monster.block` at socket `face`) | Rise | RiseUp 840 (1200) | W1 |
+| `dead_standard_bearer` | Muster, aura | Cast01 / Rise | Plant 450, Release 900 / RiseUp 840 | W1 |
+| `oath_zealot` | frenzy (K4 one-row phase, enterAction Roar) | **Roar** 1200 | **FX_Frenzy 480** (no Contact) | **2H** |
+| `deserter` | morale flee | Walk at a run rate (manifest notes) | — | W1 |
+| `deserter_drummer` | the drum call (2 s channel) | Cast01 loop 1000 | FX_DrumBeat 125 / 375 / 625 / 875, Release 125 | W1 |
+| `gravegnawer` | Consume (2 s channel on a corpse) | **Consume** loop 1000 | **Bite 330, Bite_2 830** | **2H** |
+| `bonegorger` / Hungerbell | Clapper Slam (+ the call) | Attack02 1400 | WindupEnd 496, Contact 800, FX_BellRing 800 | W1 |
+| `miniboss_corpseherd` | Call the Flock | Cast01 1300 | FX_bell_ring = Release 650 | W1 |
+| | Keen (stretch, below 50 %: r4, 800 ms) | **Cast02** 1600 | **WindupEnd 496, Contact = Release = FX_Keen 800** | **2H** |
+| | an Unburied rise (her data family) | **Rise** 1400 | **RiseUp 980** | **2H** |
+| `valdras` | P1 Banner Sweep / Oath-Brand, P2-P3 Roar, P3 Lunge, combo | Attack02 700 / Cast01 900 (FX_Brand) / Roar (FX_Roar 450) / Lunge 800 / Attack01 650 + Contact2 1000 | as listed | W1 (Breach-seep, Feed, the banner ring are hazards / VFX: no clip) |
+
+* **Names.** The Keen is `Cast02` (K1's AnimAction Cast02; UE 1C already plays the clip of that name with its Release
+  beat); Consume has no AnimAction yet — the core emits it as an explicit clip (`EvPlayAnim.clip`, the hero signature
+  path) or U3 plays it by name, like Valdras' `Lunge`. Every new attack-like clip carries both Contact and Release.
+* **`clip_patch.py`.** Blender's FBX exporter stamps each file with its creation time and the builders do not keep a
+  stable vertex order, so a full re-ship rewrites every FBX of an asset. The tool ships the generator into a scratch
+  root (QA, ink gate, re-import verify as usual), proves that every shipped clip is unchanged (curve by curve, every
+  key; the clip entries, bones, triangle counts and palette registries too) and only then copies the new clip FBXs, the
+  requested entry keys / sockets and the new clips' previews (`anim_<Clip>`, `anim_back_<Clip>`, `game_w2` from
+  `mship.w2_sheet`). All three patches: every shipped clip SAME (0 delta), QA PASS on every limited pair (the gnawer's left knee
+  first went 1.4 cm into the ground in a deeper crouch: raised), ink gate PASS.
+* **The zealot** also got `fx.frenzy` (the scar emissive .25 → .7 at FX_Frenzy, the frenzy loop). Its `fx_overhead`
+  is the kit's again (art review r1: the first pass raised it 10 cm for the sigil; the sigil now has `fx_elite`).
+  `--replace` (art review r1): Roar went back in alone after its brace was eased (below) — every other clip SAME.
+
+**Elite sigil over the roster** (`Previews/SM_FX_EliteSigil/sigil_over_roster_*.png` + `.json`; Idle F0 at the W1
+camera, native 1080p, the four diagonals, hunt leaders at ×1.25). A8 measured five monsters in se; the whole roster
+failed on 11 of 15 figures on the kit's `fx_overhead` (crown + 25 cm on the head bone: it tilts with the hunch, so in
+the back views the hoop's near rim lands on the helm / hood; the clots' dome; the standard-bearer's banner). The sigil
+rides its own socket, **`fx_elite`** (art review r1: the first pass moved `fx_overhead` itself on 10 assets, but UE
+hangs much more there — nameplates and floating text, `status.stun` stars, the `skill.death_mark` skull, the W1 crown
+— so the standard-bearer's nameplate and stun stars went 1.5 m over his helm and the hunched figures' stun stars
+stopped following the head; `fx_overhead` is back to Wave 1 on every asset, byte for byte). `--solve-elite` walks
+candidates around the W1 socket's posed position (on `root`, level and steady, or on its own bone; offsets left /
+forward / up, cheapest by a lateral-heavy distance first) and takes the first that passes both gates for the asset and
+all its variants:
+
+* **clear** — ≥ 4 px (solved to 5) between the sigil (ink included) and the figure in se / sw / ne / nw at the
+  **trough of the bob** (`fx.motion` `bob: symmetric`: a sine of ±`bobCm` 3 cm about the rest; at ~0.9 px/cm the
+  r0 "5 px at rest" cases were 2-3 px at the trough);
+* **close** — ≤ 20 px at rest in se / sw (art review r1: the root sockets left the shieldbearer's, the Corpseherd's and
+  Hungerbell's sigil 33-99 px off the head, shifted sideways; in a crowd that reads as a neighbour's marker).
+
+Result (`monsters/fx_elite_w2.json`, `mship.ship` writes it on every re-ship; the manifest sockets — UE builds them
+from `relLocCm`, the shipped SK FBX stand): all on `root`; footman 8 cm right, 16 forward, 16 up of the W1 socket;
+arbalester 8 right, 8 fwd, 20 up; shieldbearer 16 right, 32 fwd, 32 up (the shield's rim); zealot, deserters and
+drummer straight up 12-16 cm; gnawer 24 fwd; bonegorger 32 fwd, 4 up; breachclot / cinderbloat 32 / 36 up; the
+Corpseherd 24 right, 8 fwd, 36 up (her crook); the standard-bearer 45 cm to his left (off the pole) and 17 forward at 2.46 m (his crown 1.78 m): no candidate over the helm clears the banner in every facing, so the sigil floats over the banner's free side instead of crowning the finial (3.54 m, the first pass); his pick is the passing candidate nearest the head on screen in se / sw (`ELITE_CLOSEST`, the whole grid walked: 78 px; opened down to the helm's height the nearest one floats beside the helm 69 cm out, which in the Muster reads as a footman's — rejected). Measured (rest / trough): worst trough 5 px
+(zealot se / sw), widest se / sw gap 19.6 px (Hungerbell se, was 99), the shieldbearer se 10.4 (was 35), the
+Corpseherd se 18 (was 33.5); 15 / 15 figures pass both gates. `sigil_over_monsters` / `_gnawers_facings` show the
+sigil on `fx_elite`; the crown sheets are the committed W1 ones (re-rendered on the restored sockets: identical within
+render noise, kept). Manifest `SM_FX_EliteSigil`: `attachSocket` / `fx.socket` = `fx_elite` (`socketNote`: fall back to
+`fx_overhead` on an asset without one), `fx.motion.bob`, `clearance` from the report. The swap crown → sigil itself is
+UE's (2G): `elite_crown@march` still names `SM_FX_EliteCrown_March` on `fx_overhead` (PresentationTests `theme_test`
+pins it; `UpdateElite` attaches statically, no `fx.motion`).
+
+**Corpse hooks** (manifest `corpse` on the 13 roster assets; `corpse_husks.py`; previews `Previews/corpse_husks/
+<asset>/`: the Death end +16 ms, the grey done +830, the crumble +1280 with `corpse.crumble`, the husk +2130). The block
+is presentation only: `look` (`husk` — Unburied, Living, the Corpseherd, Valdras; `carcass` — the gnawers, same ash
+timeline, `consumable` / `raisable` false; `puddle` — breach-blood, `registry` false), `deathClip` / `holdFromMs`,
+`timeline` (the `M_AF_AshDissolve` numbers by reference; `holdUntil: "story"` for the Corpseherd's `cs_rf_herd` and
+Valdras' `cs_rf_marshal_falls`), `husk` measured on the shipped FBX at the Death clip's last frame (actor frame:
+forward, right, up cm; `centerCm`, `boundsCm`, `radiusCm`, `topCm`, `anchors` chest / head / pelvis), `rise` (own Rise
+clip + RiseUp: the **self-rise only**, the Unburied trait / affix), `raisedAs: monster_risen_footman` on every husk (what
+a raise by another monster stands up, monsters.md §2.0 — the Unburied with their own Rise too; art review r1: U3 could
+not tell a third-party raise from the self-rise), `raisable` / `consumable` false on the carcasses and on the two story
+bodies (`storyGuard`: the Corpseherd and Valdras are never eaten or raised by another monster, permanently),
+`recipes`, `items` (held items dissolve with the body), `shadow`. Measured: the Unburied fold ~1-1.4 m tall (the shieldbearer's shield on its edge 137 cm, the
+standard-bearer's planted standard 315 cm), the Living lie flat 0.9 m ahead of the root (top 40-104 cm), the carcasses
+59 / 127 cm, the puddles ≤ 12 cm.
+
+**A12 W2 recipes** (`fx_recipes_dark.wave2`; bindings in the JSON's `dark` section; previews in
+`Previews/vfx_effects/<id>/`): `notify.FX_Frenzy` (the chant: a pale breath out of the hood, dust shoved off his feet,
+ash off the robe — the Living carry no light), `monster.oath_zealot.frenzy` (the phase loop: panting breath, dust),
+`notify.FX_Keen` (violet sound rings before the veil, a hairline ripple sweeping to r 4 in 220 ms and flaring at the
+rim, ash blown outward; U2's crimson ring fills to 800), `status.ashnumb` (ash flaking off the hero's limbs, dust at the
+feet; the per-stack grey band is the `dark.materials.AshnumbTint` contract — never violet, never a ground fill, mocked
+on the heroes in `Previews/vfx_effects/AshnumbTint/`) and `corpse.consume` re-timed for the real
+Consume clip (the jaws at 45-52 cm, 6-25 cm up: the grit spawns at 36 cm forward, 30-34 cm up). Lesson: a rate emitter
+without `durationMs: -1` stops at once; a status loop previewed with a zero blow loses its camera bias (play it as a
+blow-less `self` event, as the runtime's +X frame) and its flakes hide inside the body.
+
+**Art review round 1** (the nine points, as resolved):
+
+1. `fx_overhead` moved on 10 assets → **restored** to Wave 1 on all of them; the sigil has `fx_elite` (above). No
+   `fx_overhead` move is kept, so no stun / death-mark / nameplate re-check is needed.
+2. Bob trough → gated: clearance measured at rest − 3 cm (`fx.motion.bob: symmetric`), 5 px worst.
+3. Zealot frenzy read → `oath_zealot.py --frenzy-read` (`Previews/mon_oath_zealot/game_w2_frenzy*.png`: darkgate's
+   lineup on march dirt, 1080p, bloom, the darkgate marker metric on the scar swatch): at `scarEmissive` .7 the scar is a
+   **1 px** block (3-11 px of it) in Idle / Walk / Attack01 se / sw — 2 px only in Walk sw. So the breath carries it:
+   `monster.oath_zealot.frenzy` pants every ~0.3 s (rate 3.4, puffs 24-34 cm, alpha .62, 0.7-0.95 s) — a pale cloud
+   always before the hood (`Previews/vfx_effects/monster.oath_zealot.frenzy/`); no glow. `fx.frenzy.read` says so.
+4. Ashnumb → `vfx/ashnumb_band.py` mocks `AshnumbTint` as material nodes (height-fraction band, `Strength` .85 to
+   AshColor / AshShade by the toon's lit / shade split, the EdgeColor line) on the warrior, mage and rogue at 0 / 1 / 3 /
+   5 stacks, march dirt, 1080p (`Previews/vfx_effects/AshnumbTint/band_stacks*.png`). The r0 top (stacks × .12) made
+   one stack the boots alone, hidden under the warrior's shield at the W1 camera: now `BandTopBase` .12 + .10 / stack
+   (mid-shin, thighs, hips at 1 / 3 / 5). Reads clearly on the mage's robe and the rogue's leather; on the warrior's
+   pale steel the ash reads as a darker, warmer band from 3 stacks (1 stack barely shows there: the flakes carry it).
+   Flakes: 18-28 cm (were 12-16), two tones (pale + `#4C4944`, which reads on steel), spawned on a 40-42 cm ring (the
+   30 cm ring put most inside or behind the body), rate 20.
+5. Keen ripple → the ground ripple sweeps r 0.4 → 4 m in **220 ms** after contact and flares at the rim for 480 ms
+   (was 700 ms linear: a hero at the rim saw it ~650 ms after the slow); the air rings at the veil stay slower.
+6. Corpse blocks → `storyGuard` + `raisable` / `consumable` false on the Corpseherd and Valdras; `raisedAs` on every
+   husk; `rise.use` = the self-rise only.
+7. Roar brace → pelvis 3 cm down (was 8), lean 14 (22), hip_pitch 0 (6), flow .12 (.25): the robe stays a cone
+   (`game_w2.png` Roar F13 SE, `anim_back_Roar.png` BACK F13); `clip_patch.py --replace Roar`, every other clip SAME.
+8. Sigil offsets → the close gate (≤ 20 px in se / sw) and the lateral-heavy cost (above).
+9. Wave 1 darkgate previews → re-run on the restored sockets: **pixel-identical** to the committed
+   `Previews/ch1_dark/darkgate_march_dirt_p*.png` and the same report numbers (16 / 16 PASS), so the hunts' crowns in
+   them match the shipped `fx_overhead` again.
+
+**Checks (2H, after review round 1).** kit smoke PASS (62 ok); `fx_validate` 185 recipes, 0 / 0; hue audit: fill OK,
+ember OK on 51 enemy recipes and 117 art colours, violet fails only on the core-lane `arcane_torrent.impactColor`
+(as before); checklist 419 OK / NOTE, 0 GAP (CHECKLIST.md unchanged); `verify_march.py` 64 / 64; darkgate on march dirt
+16 / 16 PASS, previews and numbers unchanged; `Scripts/build_content.py --plan --strict` OK, 317 animations, 0
+problems; the zealot's scratch ship: QA within limits on Roar, ink gate PASS (32 cells, min rim 91.9 %), re-import
+verify PASS.
+
+**Handoffs.** Data: re-export (`node unreal/Tools/export-data/run.mjs`: only `Data/assets.json` + `Data/index.json`
+change, from the manifest; the core reads clip contacts there). Core (2A-2E): ability `clip` names and beats above
+(Keen = `Cast02` 800, Clapper Slam = `Attack02` 800, Banner Sweep `Attack02` 700, Oath-Brand `Cast01` 900, Lunge
+`Lunge` 800, Call the Flock `Cast01` 650, Muster `Cast01` 900, the frenzy `Roar`, Consume `Consume` × 2 loops), an
+AnimAction or explicit clip for `Consume` / `Lunge`; the corpse guards (`raisable` / `consumable` / `raisedAs`) mirror
+K3's rules. UE (2G): the sigil swap on **`fx_elite`** (fallback `fx_overhead`; `fx.motion` with the symmetric bob;
+absolute scale), `fx.frenzy` (+ its `read`), `AshnumbTint` (new `BandTopBase`), the corpse blocks (U3),
+`corpse.consume` once per channel.

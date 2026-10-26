@@ -1,0 +1,601 @@
+{
+ "_doc": "Wave 2 art (2H, monsters/elite_sigil.py --solve-elite): fx_elite, the socket SM_FX_EliteSigil rides (fx_overhead stays Wave 1's: nameplates, floating text, stun stars, the death mark and the W1 crown hang there). Per asset the candidate nearest the W1 fx_overhead (Idle F0, lateral weighted most) that clears the figure by >= 5 px at the bob's trough (rest - 3 cm) in se / sw / ne / nw and stays <= 20 px off it at rest in se / sw, 1080p, the W1 camera, hunt variants included. gapsPx = {rest, trough} px per variant and facing; pick / headDistPx where the closest-to-the-head walk ran (ELITE_CLOSEST). posM = Blender armature space (m) on bone; mship.ship applies it on every re-ship.",
+ "assets": {
+  "SK_Mon_Bonegorger": {
+   "bone": "root",
+   "posM": [
+    0.0,
+    -0.32,
+    1.48754
+   ],
+   "restLocCm": [
+    0.0,
+    32.0,
+    148.754
+   ],
+   "relLocCm": [
+    0.0,
+    -148.754,
+    32.0
+   ],
+   "choice": "root left 0 fwd 32 up 4",
+   "offsetCm": {
+    "left": 0,
+    "forward": 32,
+    "up": 4,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 9.2,
+      "rest": 12.0
+     },
+     "sw": {
+      "trough": 7.2,
+      "rest": 9.4
+     },
+     "ne": {
+      "trough": 20.4,
+      "rest": 22.8
+     },
+     "nw": {
+      "trough": 23.0,
+      "rest": 25.9
+     }
+    },
+    "hunt_hungerbell": {
+     "se": {
+      "trough": 17.2,
+      "rest": 19.6
+     },
+     "sw": {
+      "trough": 15.5,
+      "rest": 17.7
+     },
+     "ne": {
+      "trough": 31.3,
+      "rest": 33.7
+     },
+     "nw": {
+      "trough": 34.1,
+      "rest": 37.0
+     }
+    }
+   }
+  },
+  "SK_Mon_Breachclot": {
+   "bone": "root",
+   "posM": [
+    0.0,
+    -0.01463,
+    1.0
+   ],
+   "restLocCm": [
+    0.0,
+    1.463,
+    100.0
+   ],
+   "relLocCm": [
+    0.0,
+    -100.0,
+    1.463
+   ],
+   "choice": "root left 0 fwd 0 up 32",
+   "offsetCm": {
+    "left": 0,
+    "forward": 0,
+    "up": 32,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 7.0,
+      "rest": 9.0
+     },
+     "ne": {
+      "trough": 8.0,
+      "rest": 10.0
+     },
+     "sw": {
+      "trough": 7.0,
+      "rest": 9.0
+     },
+     "nw": {
+      "trough": 9.0,
+      "rest": 11.0
+     }
+    }
+   }
+  },
+  "SK_Mon_Cinderbloat": {
+   "bone": "root",
+   "posM": [
+    0.0,
+    -0.01321,
+    1.25571
+   ],
+   "restLocCm": [
+    0.0,
+    1.321,
+    125.571
+   ],
+   "relLocCm": [
+    0.0,
+    -125.571,
+    1.321
+   ],
+   "choice": "root left 0 fwd 0 up 36",
+   "offsetCm": {
+    "left": 0,
+    "forward": 0,
+    "up": 36,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 8.0,
+      "rest": 11.0
+     },
+     "sw": {
+      "trough": 6.0,
+      "rest": 9.0
+     },
+     "ne": {
+      "trough": 7.0,
+      "rest": 9.0
+     },
+     "nw": {
+      "trough": 8.0,
+      "rest": 10.0
+     }
+    }
+   }
+  },
+  "SK_Mon_Corpseherd": {
+   "bone": "root",
+   "posM": [
+    -0.22837,
+    -0.08075,
+    1.78143
+   ],
+   "restLocCm": [
+    -22.837,
+    8.075,
+    178.143
+   ],
+   "relLocCm": [
+    -22.837,
+    -178.143,
+    8.075
+   ],
+   "choice": "root left -24 fwd 8 up 36",
+   "offsetCm": {
+    "left": -24,
+    "forward": 8,
+    "up": 36,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 15.6,
+      "rest": 18.0
+     },
+     "ne": {
+      "trough": 5.7,
+      "rest": 8.2
+     },
+     "sw": {
+      "trough": 7.2,
+      "rest": 9.8
+     },
+     "nw": {
+      "trough": 8.2,
+      "rest": 11.0
+     }
+    }
+   }
+  },
+  "SK_Mon_DeadStandardBearer": {
+   "bone": "root",
+   "posM": [
+    0.44645,
+    -0.16693,
+    2.455
+   ],
+   "restLocCm": [
+    44.645,
+    16.693,
+    245.5
+   ],
+   "relLocCm": [
+    44.645,
+    -245.5,
+    16.693
+   ],
+   "choice": "root left 32 fwd 24 up 52",
+   "offsetCm": {
+    "left": 32,
+    "forward": 24,
+    "up": 52,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 10.2,
+      "rest": 10.0
+     },
+     "ne": {
+      "trough": 10.0,
+      "rest": 10.0
+     },
+     "sw": {
+      "trough": 7.0,
+      "rest": 9.0
+     },
+     "nw": {
+      "trough": 9.0,
+      "rest": 9.0
+     }
+    }
+   },
+   "pick": "closest to the head on screen (se / sw)",
+   "headDistPx": 78.0
+  },
+  "SK_Mon_Deserter": {
+   "bone": "root",
+   "posM": [
+    -0.02098,
+    -0.18285,
+    2.06172
+   ],
+   "restLocCm": [
+    -2.098,
+    18.285,
+    206.172
+   ],
+   "relLocCm": [
+    -2.098,
+    -206.172,
+    18.285
+   ],
+   "choice": "root left 0 fwd 0 up 16",
+   "offsetCm": {
+    "left": 0,
+    "forward": 0,
+    "up": 16,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 7.0,
+      "rest": 10.0
+     },
+     "sw": {
+      "trough": 8.5,
+      "rest": 11.0
+     },
+     "ne": {
+      "trough": 14.0,
+      "rest": 16.0
+     },
+     "nw": {
+      "trough": 13.0,
+      "rest": 16.0
+     }
+    },
+    "hunt_dreck": {
+     "sw": {
+      "trough": 16.0,
+      "rest": 19.0
+     },
+     "se": {
+      "trough": 15.0,
+      "rest": 17.0
+     },
+     "ne": {
+      "trough": 22.0,
+      "rest": 25.0
+     },
+     "nw": {
+      "trough": 22.0,
+      "rest": 25.0
+     }
+    },
+    "hunt_harke": {
+     "se": {
+      "trough": 15.0,
+      "rest": 17.0
+     },
+     "sw": {
+      "trough": 16.0,
+      "rest": 19.0
+     },
+     "ne": {
+      "trough": 22.0,
+      "rest": 25.0
+     },
+     "nw": {
+      "trough": 22.0,
+      "rest": 25.0
+     }
+    }
+   }
+  },
+  "SK_Mon_DeserterDrummer": {
+   "bone": "root",
+   "posM": [
+    0.00078,
+    -0.05793,
+    2.09704
+   ],
+   "restLocCm": [
+    0.078,
+    5.793,
+    209.704
+   ],
+   "relLocCm": [
+    0.078,
+    -209.704,
+    5.793
+   ],
+   "choice": "root left 0 fwd 0 up 16",
+   "offsetCm": {
+    "left": 0,
+    "forward": 0,
+    "up": 16,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 9.0,
+      "rest": 12.0
+     },
+     "ne": {
+      "trough": 7.0,
+      "rest": 9.2
+     },
+     "sw": {
+      "trough": 10.0,
+      "rest": 13.0
+     },
+     "nw": {
+      "trough": 9.0,
+      "rest": 11.0
+     }
+    }
+   }
+  },
+  "SK_Mon_Gravegnawer": {
+   "bone": "root",
+   "posM": [
+    0.0,
+    -0.24,
+    1.20331
+   ],
+   "restLocCm": [
+    0.0,
+    24.0,
+    120.331
+   ],
+   "relLocCm": [
+    -0.0,
+    -120.331,
+    24.0
+   ],
+   "choice": "root left 0 fwd 24 up 0",
+   "offsetCm": {
+    "left": 0,
+    "forward": 24,
+    "up": 0,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 15.5,
+      "rest": 18.1
+     },
+     "sw": {
+      "trough": 15.1,
+      "rest": 17.4
+     },
+     "ne": {
+      "trough": 16.0,
+      "rest": 18.1
+     },
+     "nw": {
+      "trough": 16.0,
+      "rest": 18.2
+     }
+    }
+   }
+  },
+  "SK_Mon_OathZealot": {
+   "bone": "root",
+   "posM": [
+    -0.01538,
+    -0.16517,
+    2.05724
+   ],
+   "restLocCm": [
+    -1.538,
+    16.517,
+    205.724
+   ],
+   "relLocCm": [
+    -1.538,
+    -205.724,
+    16.517
+   ],
+   "choice": "root left 0 fwd 0 up 12",
+   "offsetCm": {
+    "left": 0,
+    "forward": 0,
+    "up": 12,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "se": {
+      "trough": 5.0,
+      "rest": 7.0
+     },
+     "sw": {
+      "trough": 5.0,
+      "rest": 7.2
+     },
+     "ne": {
+      "trough": 10.0,
+      "rest": 12.0
+     },
+     "nw": {
+      "trough": 10.0,
+      "rest": 12.0
+     }
+    }
+   }
+  },
+  "SK_Mon_RisenArbalest": {
+   "bone": "root",
+   "posM": [
+    0.00561,
+    0.01447,
+    2.115
+   ],
+   "restLocCm": [
+    0.561,
+    -1.447,
+    211.5
+   ],
+   "relLocCm": [
+    0.561,
+    -211.5,
+    -1.447
+   ],
+   "choice": "root left -8 fwd 8 up 20",
+   "offsetCm": {
+    "left": -8,
+    "forward": 8,
+    "up": 20,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "sw": {
+      "trough": 14.0,
+      "rest": 17.0
+     },
+     "ne": {
+      "trough": 6.0,
+      "rest": 9.0
+     },
+     "se": {
+      "trough": 13.3,
+      "rest": 15.8
+     },
+     "nw": {
+      "trough": 6.0,
+      "rest": 9.0
+     }
+    }
+   }
+  },
+  "SK_Mon_RisenFootman": {
+   "bone": "root",
+   "posM": [
+    0.00398,
+    -0.03337,
+    2.06266
+   ],
+   "restLocCm": [
+    0.398,
+    3.337,
+    206.266
+   ],
+   "relLocCm": [
+    0.398,
+    -206.266,
+    3.337
+   ],
+   "choice": "root left -8 fwd 16 up 16",
+   "offsetCm": {
+    "left": -8,
+    "forward": 16,
+    "up": 16,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "ne": {
+      "trough": 6.0,
+      "rest": 8.0
+     },
+     "se": {
+      "trough": 7.1,
+      "rest": 10.0
+     },
+     "sw": {
+      "trough": 8.0,
+      "rest": 10.0
+     },
+     "nw": {
+      "trough": 6.0,
+      "rest": 9.0
+     }
+    }
+   }
+  },
+  "SK_Mon_RisenShieldbearer": {
+   "bone": "root",
+   "posM": [
+    -0.01564,
+    -0.21269,
+    2.21213
+   ],
+   "restLocCm": [
+    -1.564,
+    21.269,
+    221.213
+   ],
+   "relLocCm": [
+    -1.564,
+    -221.213,
+    21.269
+   ],
+   "choice": "root left -16 fwd 32 up 32",
+   "offsetCm": {
+    "left": -16,
+    "forward": 32,
+    "up": 32,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "ne": {
+      "trough": 7.5,
+      "rest": 10.0
+     },
+     "sw": {
+      "trough": 10.7,
+      "rest": 13.3
+     },
+     "se": {
+      "trough": 7.9,
+      "rest": 10.4
+     },
+     "nw": {
+      "trough": 28.7,
+      "rest": 31.3
+     }
+    }
+   }
+  }
+ }
+}

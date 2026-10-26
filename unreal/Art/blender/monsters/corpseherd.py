@@ -59,7 +59,11 @@ the crook raised high and shaken, the free hand over the flock — ``FX_bell_rin
 veil, palm to her lips — hush — for a third of the loop), Hurt 300, Death 1400 (she sinks onto her knees, the skirt
 pooling on the floor, and folds forward over her knees, the hood bowed low over her right hand; the crook tips over
 and slides through her fist as it falls, so it lies along her right side with the fist closed under the hook and the
-bell on the ground against her knuckles — ``cs_rf_herd``: "her hand still on the bell"), Stun 700. Cloth × limb QA (``QA_PAIRS``, limit 0 on every frame): skirt × legs, shawl × forearms / cuffs / hands,
+bell on the ground against her knuckles — ``cs_rf_herd``: "her hand still on the bell"), Stun 700; Wave 2 (2H, added
+with ``clip_patch.py``): **Cast02** 1600 = the Keen (chapter1.md §10 stretch: bowed over the crook for the breath, then
+arched back with the hood thrown to the sky and the free hand flung up — ``WindupEnd`` 496, ``Contact`` = ``Release`` =
+``FX_Keen`` 800), **Rise** 1400 (Death reversed: off her knees, the crook drawn back up through her fist, ``RiseUp``
+980). Cloth × limb QA (``QA_PAIRS``, limit 0 on every frame): skirt × legs, shawl × forearms / cuffs / hands,
 hood × the free hand, crook × body, crook × bell, ground.
 """
 from __future__ import annotations
@@ -1497,6 +1501,18 @@ def death(A):
     it comes to rest along her right side with the fist closed under the hook and the bell on the ground against her
     knuckles (``cs_rf_herd``: "her hand still on the bell" — she can ring it once more; "the dead around her sit
     down"). Art review r1: the old end left her hand on the shaft and the bell a metre away at the hook."""
+    rec, buckle, kneel, slump, rest = death_poses(A)
+    S = 1400.0
+    keys = [K(0.0, rec), K(160.0 / S, rec, "out"), K(420.0 / S, buckle, "in"), K(620.0 / S, kneel, "out"),
+            K(1000.0 / S, slump, "in"), K(1.0, rest, "out")]
+    g = A.grounded(snap=True)          # twice: lifted, the floor solver relaxes the chains and the hem settles again
+    c = A.clip("Death", S, keys, S, post=lambda bp, t: g(g(bp, t), t))
+    c.key_poses_ms = [0.0, 160.0, 420.0, 620.0, 1000.0, S]
+    return c
+
+
+def death_poses(A) -> tuple:
+    """The Death keys (recoil, buckle, kneel, slump, rest): shared by :func:`death` and :func:`rise` (Wave 2)."""
     R0 = A.ready()
     rec = A.recoil()
     D = DEATH_KNEEL                                    # hips down: kneeling upright, the shins flat on the floor
@@ -1524,12 +1540,87 @@ def death(A):
                      hand_r=V(*DEATH_HAND_R), **A._wkw(R0, 90.0, lat=DEATH_CROOK_LAT), slide=DEATH_SLIDE,
                      hand_l=V(0.08, 0.28, 0.05), wrist_l=(-10.0, 0.0, 0.0), curl_l=60.0, bell=DEATH_BELL[0],
                      bell_side=DEATH_BELL[1], flow=0.05)
-    S = 1400.0
-    keys = [K(0.0, rec), K(160.0 / S, rec, "out"), K(420.0 / S, buckle, "in"), K(620.0 / S, kneel, "out"),
-            K(1000.0 / S, slump, "in"), K(1.0, rest, "out")]
-    g = A.grounded(snap=True)          # twice: lifted, the floor solver relaxes the chains and the hem settles again
-    c = A.clip("Death", S, keys, S, post=lambda bp, t: g(g(bp, t), t))
-    c.key_poses_ms = [0.0, 160.0, 420.0, 620.0, 1000.0, S]
+    return rec, buckle, kneel, slump, rest
+
+
+# ── Wave 2 clips (dark remake 2H): Keen (Cast02) and Rise ─────────────────────────────────────────────────────
+# Keen (chapter1.md 10, the [W2] stretch below 50 %: a crimson ring telegraph r4, windup 800 ms, slow 25 % for 3 s):
+# her voice, not her bell — she bows over the crook and draws the breath (the windup), straightens out of her stoop
+# with the hood thrown back and the free hand clawing up at the sky, and at the contact the lament breaks out of her
+# (the ring reaches its rim on the K2 telegraph); she holds it, trembling, then sinks back into the stoop.
+KEEN_MS, KEEN_CONTACT = 1600.0, 800.0
+RISE_MS = 1400.0
+
+
+def keen(A):
+    """``Cast02`` 1600 ms = the Keen: ``WindupEnd`` 496, ``Contact`` = ``Release`` = ``FX_Keen`` 800 (the clip of
+    AnimAction Cast02, which UE 1C already maps to the clip of that name; the K2 ability names it as its clip)."""
+    R0 = A.ready()
+    # draw the breath: bowed deep over the crook pulled in to her side, the free hand clutching her breast
+    gather = R0.but(lean=R0.lean + 10.0, head_pitch=R0.head_pitch + 8.0, twist=R0.twist - 6.0,
+                    pelvis=R0.pelvis + V(0.0, -0.01, -0.02), hand_r=V(-0.29, 0.03, 0.54),
+                    **A._wkw(R0, 0.0, lat=0.04), hand_l=V(0.14, 0.20, 0.57), curl_l=75.0, bell=-8.0, flow=0.15)
+    # rising: out of the stoop, the head going back, the free hand lifting out to her left, the crook raised
+    rise_ = R0.but(lean=R0.lean - 14.0, head_pitch=R0.head_pitch - 22.0, twist=R0.twist + 2.0,
+                   pelvis=R0.pelvis + V(0.0, 0.0, 0.015), hand_r=V(-0.30, 0.08, 0.80), elbow_r=V(-0.8, -0.2, -0.5),
+                   **A._wkw(R0, 6.0, lat=-0.10), hand_l=V(0.27, 0.20, 0.86), elbow_l=V(0.8, -0.1, -0.5),
+                   wrist_l=(30.0, 0.0, 0.0), curl_l=10.0, clav_l=(10.0, 0.0), clav_r=(8.0, 0.0), bell=24.0,
+                   flow=0.3)
+    # the keen: arched back, the hood thrown back to the sky, the free hand flung up and out, fingers spread
+    peak = R0.but(lean=R0.lean - 24.0, head_pitch=R0.head_pitch - 34.0, twist=R0.twist + 4.0, side=-3.0,
+                  pelvis=R0.pelvis + V(0.0, -0.01, 0.02), hand_r=V(-0.32, 0.06, 0.88), elbow_r=V(-0.9, -0.1, -0.4),
+                  **A._wkw(R0, 10.0, lat=-0.16), hand_l=V(0.34, 0.14, 1.00), elbow_l=V(0.9, 0.0, -0.4),
+                  wrist_l=(45.0, 0.0, 0.0), curl_l=0.0, clav_l=(16.0, 0.0), clav_r=(10.0, 0.0), bell=-30.0,
+                  flow=0.45)
+    hold = peak.but(lean=peak.lean + 3.0, head_pitch=peak.head_pitch + 4.0, hand_l=peak.hand_l + V(0.0, 0.0, -0.04),
+                    bell=10.0, flow=0.35)
+    S, Cm = KEEN_MS, KEEN_CONTACT
+    keys = [K(0.0, R0), K(380.0 / S, gather, "out"), K(640.0 / S, rise_, "in"), K(Cm / S, peak, "out"),
+            K(1150.0 / S, hold, "smooth"), K(1.0, R0, "smooth")]
+
+    def layer(bp, t):
+        bp = A.waver(S)(bp, t)
+        if Cm - 40.0 <= t <= 1250.0:                 # the lament trembles through her and the bell
+            k = math.sin(math.pi * (t - (Cm - 40.0)) / (1250.0 - (Cm - 40.0)))
+            ph = (t - Cm) * 2.0 * math.pi / 110.0
+            bp = bp.but(head_roll=bp.head_roll + 3.0 * k * math.sin(ph),
+                        hand_l=bp.hand_l + V(0.0, 0.0, 0.006 * k * math.sin(ph + 0.8)),
+                        bell=bp.bell + 12.0 * k * math.sin(ph * 0.5 - 0.4))
+        return bp
+    wu = round(0.62 * Cm, 1)
+    nt = {"WindupEnd": wu, "Contact": Cm, "Release": Cm, "FX_Keen": Cm}
+    c = A.clip("Cast02", S, keys, S, notifies=nt, layer=layer)
+    c.key_poses_ms = [0.0, 380.0, 640.0, Cm, 1150.0, S]
+    c.manifest_extra = {"usage": "[W2 stretch] Keen (chapter1.md 10, below 50 %): a crimson ring telegraph r 4, windup "
+                                 "800 ms (Contact = Release 800: the ring fills to its rim then), slow 25 % for 3 s. "
+                                 "Her voice, not the bell: bowed over the crook (the breath), she straightens with the "
+                                 "hood thrown back and the free hand flung at the sky; FX_Keen = the lament's ripple "
+                                 "(A12 notify.FX_Keen). The clip of AnimAction Cast02 (UE maps it by name)",
+                        "skill": "corpseherd_keen", "contactMs": Cm, "releaseMs": Cm}
+    return c
+
+
+def rise(A):
+    """``Rise`` 1400 ms (Death reversed and retimed; her family is the Unburied's, so an Unburied rise / raise plays
+    it): from the folded kneel she straightens over her knees, the crook drawn back up through her fist (``slide``
+    back to 0) and planted, she climbs off her knees (``RiseUp`` 980) and settles into the stoop."""
+    rec, buckle, kneel, slump, rest = death_poses(A)
+    R0 = A.ready()
+    lift = rest.but(head_pitch=rest.head_pitch - 10.0, lean=rest.lean - 6.0, curl_l=50.0, flow=0.15)
+    S = RISE_MS
+    keys = [K(0.0, rest), K(0.16, lift, "smooth"), K(0.42, slump.but(bell=0.0), "smooth"),
+            K(0.62, kneel.but(head_pitch=kneel.head_pitch - 8.0, bell=-10.0), "smooth"),
+            K(0.80, buckle.but(head_pitch=buckle.head_pitch - 4.0), "in"), K(1.0, R0, "out")]
+    g_floor, g_free = A.grounded(snap=True), A.grounded(snap=False)
+
+    def post(bp, t):                 # on the floor (from Death's last frame) until she kneels up, then free
+        g = g_floor if t <= 0.62 * S else g_free
+        return g(g(bp, t), t)
+    c = A.clip("Rise", S, keys, S, notifies={"RiseUp": round(0.70 * S, 1)}, post=post)
+    c.key_poses_ms = [0.0, 0.16 * S, 0.42 * S, 0.62 * S, 0.80 * S, S]
+    c.manifest_extra = {"usage": "[W2] an Unburied rise of the Corpseherd (her data family is unburied: the trait / the "
+                                 "unburied affix re-raise the monster's own corpse) and any spawn that starts kneeling; "
+                                 "Death reversed and retimed (monsters.md 2.2: Rise)"}
     return c
 
 
@@ -1573,7 +1664,8 @@ def hurt(A):
 
 def clips(A) -> list:
     READY_CACHE["bp"] = A.ready()
-    cs = [idle(A), A.walk(extra=walk_hand), attack(A), cast(A), hurt(A), death(A), taunt(A), stun(A)]
+    cs = [idle(A), A.walk(extra=walk_hand), attack(A), cast(A), hurt(A), death(A), taunt(A), stun(A), keen(A),
+          rise(A)]
     for c in cs:                     # weapon_r's location is keyed in every clip (zero but in Death's slide): an unkeyed
         c.key_locations = ("weapon_r",)      # channel kept Death's 60 cm in the clips exported / previewed after it
     return cs
@@ -1886,14 +1978,17 @@ def make_ship():
         display=DISPLAY, fx=FX, glows=bell_glows(kit.rig, body),
         qa_groups=groups, qa_pairs=pairs, qa_limits={"ground": -0.5, **{k: 0 for k in pairs}},
         outline_px=OUTLINE_PX, outline_px_note=OUTLINE_PX_NOTE, portrait=portrait, native_sheets=True,
-        extra_previews=lambda ms_, rv, acts: LS.corpse_preview(ms_, rv, acts),
+        extra_previews=mship.chain_previews(
+            lambda ms_, rv, acts: LS.corpse_preview(ms_, rv, acts),
+            mship.w2_sheet([("Cast02", 23, "se"), ("Cast02", 38, "se"), ("Cast02", 48, "se"), ("Cast02", 48, "sw"),
+                            ("Rise", 0, "se"), ("Rise", 34, "se"), ("Rise", 59, "se"), ("Rise", 84, "se")])),
         game_keys=[("Idle", 0, "se"), ("Walk", 8, "se"), ("Attack01", 18, "se"), ("Attack01", 30, "se"),
                    ("Cast01", 39, "se"), ("Taunt", 60, "se"), ("Hurt", 0, "se"), ("Death", 84, "se")],
         contact_keys=[("Attack01", 30, f) for f in ("se", "sw", "ne", "nw")],
         close_keys=[("Attack01", 18, "se"), ("Attack01", 30, "se"), ("Attack01", 30, "side"), ("Cast01", 39, "se"),
                     ("Cast01", 39, "front"), ("Taunt", 60, "front"), ("Hurt", 0, "se"), ("Death", 34, "se"),
                     ("Death", 84, "se"), ("Stun", 10, "front")],
-        back_clips=("Attack01", "Cast01", "Death"),
+        back_clips=("Attack01", "Cast01", "Death", "Cast02", "Rise"),
         skeleton_bones_required=("root", "pelvis", "head", "jaw", "weapon_r", "weapon_l", "ear_l_02", "loin_f_02",
                                  "pelt_03", "headdress_04", "totem_feather_01", "totem_feather_02", "ik_foot_l",
                                  "ik_hand_gun"),
@@ -1916,7 +2011,8 @@ def make_ship():
                           "kind": "violet pinpoint eyes #D08CFF in the hood's void (emissive; monsters.md 1.2)"},
                "notes": "Clips in place; the core moves the actor (play rate = v / ref). Attack01 releases the "
                         "bell-toll bolt from fx_bell (the handbell's mouth) on Contact 500 (FX_BellToll, Release). "
-                        "Cast01 = [W2] Call the Flock (FX_bell_ring 650). Taunt loops under the pre-fight lines. "
+                        "Cast01 = [W2] Call the Flock (FX_bell_ring 650). [W2] Cast02 = the Keen (Contact / "
+                        "Release / FX_Keen 800); Rise = Death reversed. Taunt loops under the pre-fight lines. "
                         "Death: she sinks to her knees and folds forward over them, the hood bowed low over her right "
                         "hand; the crook slides through her fist as it falls (weapon_r keys a translation down its "
                         "axis: attach the crook to the weapon_r bone) and lies along her right side, the fist closed "

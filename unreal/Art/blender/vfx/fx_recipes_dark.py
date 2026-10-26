@@ -33,6 +33,9 @@ packages; ``doc_section()`` lists every id with its event and owner, written to 
 | ``telegraph.contact`` (+ ``.line``, ``.cone``) | the telegraph decal's contact beat (U2), scaled by the context radius | W2 |
 | ``hazard.breach_fire`` / ``hazard.breach_seep`` / ``hazard.banner_ring`` | EvHazard loops: the Oath-Brand brand, the seep lines, the closing banner ring | W2 |
 | ``corpse.crumble`` / ``corpse.expire`` / ``corpse.burn`` / ``corpse.consume`` | the ash husk (U3): crumble, fade at TTL, burned, eaten | W2 |
+| ``notify.FX_Frenzy`` / ``monster.oath_zealot.frenzy`` | the zealot's frenzy: Roar's chant (breath and dust, no light) / the loop for the rest of the phase (2H) | W2 |
+| ``notify.FX_Keen`` | the Corpseherd's Keen (Cast02 @800): violet sound rings, a hairline ripple out to r 4, ash blown outward (2H) | W2 |
+| ``status.ashnumb`` (+ ``ASHNUMB`` contract) | 麻灰 Ashnumb on the hero: ash flaking off the limbs; the per-stack grey band is the contract (2H) | W2 |
 | ``prop.echo`` | the echo lore look (U1: the figure fades in, holds, fades out, 3 s): cold ash motes | W1 (U1) |
 | ``camp.bell_toll`` | the Knellwatch bell frame's ``bell`` socket (story tolls, set-piece audio cue) | W1 (U4 / U7) |
 | ``camp.torch@march`` | the march brazier (``camp_torch@march``): a smoulder — smoke, dull sparks, ash, **no light** (env art review: ``camp.torch``'s flame + #FFB060 light at every brazier broke chapter1.md §15) | runtime (U1: themed recipe id) |
@@ -958,14 +961,16 @@ def corpses() -> dict:
     # the gnawer's jaws reach ~44 cm along its facing at Attack01 Contact (--measure: head (44, -11, 48) @300), i.e.
     # into the husk's surface: spawn a little short of them, above the body, and throw it back toward the gnawer
     # (spawned at the jaws, inside the slumped husk, the grit never drew)
-    bite = [28.0, 0.0, 0.0]
+    # Wave 2 (2H): re-timed for the real Consume clip (it used Attack01 as a stand-in, the head at 48 cm): crouched
+    # over the husk the head works at (40, 1, 29) and the jaw tip at ~45-52 cm forward, 6-25 cm up (--measure)
+    bite = [36.0, 0.0, 0.0]
     rec["corpse.consume"] = R("ash", [
         ash_dust("origin", 0, radius=30, rate=5, durationMs=2000, offsetCm=bite, color="#A39C8E", alpha=0.7,
-                 size=(46, 66), life=(600, 900), speed=(30, 80), rise=14, h=14),
-        ash_flakes("origin", 0, h=62, offsetCm=bite, radius=14, rate=18, durationMs=2000, speed=(60, 140),
+                 size=(46, 66), life=(600, 900), speed=(30, 80), rise=14, h=10),
+        ash_flakes("origin", 0, h=34, offsetCm=bite, radius=14, rate=18, durationMs=2000, speed=(60, 140),
                    up=(100, 220), gravity=620, life=(500, 800), size=(11, 16), color="#CFCAC0", alpha=1.0,
                    dir="back", coneDeg=150),
-        lay(sprite="Rock", randomVariants=2, orient="billboard", blend="translucent", at="origin", height=56,
+        lay(sprite="Rock", randomVariants=2, orient="billboard", blend="translucent", at="origin", height=30,
             offsetCm=bite, rate=6, durationMs=2000, spawnRadiusCm=12, dir="back", coneDeg=140,
             speedCmS=[70, 140], upCmS=[120, 220], gravityCmS2=1000, lifeMs=[320, 460], sizeCm=[9, 13],
             spinDegS=[-400, 400], alpha=[1, 1], color="#B8B2A6"),
@@ -973,6 +978,138 @@ def corpses() -> dict:
             "husk): pale ash, flakes and grit tossed up and back at its jaws, in front of the body (spawned inside "
             "the slumped husk they never drew)")
     return rec
+
+
+# ── Wave 2 (dark remake 2H): the clips the wave added, the frenzy, the Keen, Ashnumb ──────────────────────────
+# offsets from fx_preview_dark --measure on the Wave 2 exports (actor frame: forward, right, up cm):
+# OathZealot Roar @480 fx_head (-10, -2, 158), Idle @0 fx_head (14, 1, 156); Corpseherd Cast02 @800 fx_head
+# (-7, 2, 108), fx_hand_l (19, -44, 120); Gravegnawer Consume @330 fx_head (40, 1, 29), the jaw tip ~(45-52, 0, 6-25)
+ZEALOT_SHOUT = [10.0, 0.0, 162.0]     # in front of the hood's mouth as he shouts, chin up
+ZEALOT_BREATH = [32.0, 0.0, 150.0]    # in front of the hood at READY (frenzied crouch)
+HERD_KEEN = [6.0, 0.0, 112.0]         # in front of the veil as she keens, the hood thrown back
+KEEN_SWEEP_MS = 220                   # the Keen's ground ripple reaches r4 this soon after contact (review: <= 250)
+ASHNUMB_ASH = "#8A8480"               # the ash on the hero's limbs (ash mid; StatusTint, see ASHNUMB)
+ASHNUMB_FLAKE_DARK = "#4C4944"        # dark ash flakes (= AshShade): the ones that read on steel
+
+
+def wave2() -> dict:
+    rec = {}
+    # the zealot's frenzy (K4 enterAction Roar; FX_Frenzy @480): the shouted chant — the Living carry no light, so the
+    # frenzy is breath and dust: a pale burst of breath out of the hood, dust shoved off his feet as he rears, ash
+    # shaken off the whipping robe; the scar's flare is the material (manifest fx.frenzy), not this recipe
+    rec["notify.FX_Frenzy"] = R("ash", [
+        lay(sprite="Dust", orient="billboard", blend="translucent", at="origin", height="custom",
+            offsetCm=ZEALOT_SHOUT, count=5, spawnRadiusCm=6, dir="blow", coneDeg=36, speedCmS=[110, 190],
+            upCmS=[20, 60], drag=2.6, lifeMs=[380, 560], sizeCm=[18, 28], grow=1.9, sizePow=1.4, alpha=[0.46, 0],
+            fadeIn=0.08, alphaPow=1.4, color="#D4CEC2"),
+        ripple_air("origin", 36, 130, 320, "#E8E4DC", alpha=0.3, h="custom", offset=ZEALOT_SHOUT),
+        ground_ring("origin", 34, 150, 400, "#B8B2A6", alpha=0.4, body="#3A3631", body_alpha=0.42, pow=2.6),
+        ash_dust("origin", 9, radius=42, color="#8A8478", alpha=0.64, size=(46, 68), life=(600, 900),
+                 speed=(90, 180), rise=6),
+        ash_flakes("origin", 10, h=90, radius=30, speed=(80, 180), up=(40, 120), gravity=300, life=(700, 1100),
+                   size=(8, 12), color=ASH_MID, dir="flat"),
+    ], shake=[90, 0.2], note="the zealot's frenzy (W2, Roar FX_Frenzy @480): the chant breaks out of the hood as a "
+                             "pale breath, dust shoved off his feet, ash shaken off the whipping robe — no light (the "
+                             "scar flare is fx.frenzy's material parameter)")
+    # the frenzy for the rest of the phase (loop on the zealot, origin + attach, Blow = his facing): panting breath
+    # out of the hood and dust kicked at his feet — he is alive and spent, not glowing. Art review r1: the oath-scar
+    # at its frenzy emissive is a 1 px block at 1080p (oath_zealot.py --frenzy-read: 3-11 px of it in se / sw), so
+    # the breath is the persistent read: a pant every ~0.3 s, each puff living ~0.8 s (two or three always in the
+    # air), large and pale enough to hold a ~25 px cloud before the hood on the darkest ground
+    rec["monster.oath_zealot.frenzy"] = R("ash", [
+        lay(sprite="Dust", orient="billboard", blend="translucent", at="origin", height="custom",
+            offsetCm=ZEALOT_BREATH, rate=3.4, durationMs=-1, attach=True, spawnRadiusCm=5, dir="blow",
+            coneDeg=34, speedCmS=[30, 60], upCmS=[14, 34], drag=2.2, lifeMs=[700, 950], sizeCm=[24, 34],
+            grow=1.7, sizePow=1.3, alpha=[0.62, 0], fadeIn=0.1, alphaPow=1.1, color="#DCD6CA"),
+        ash_dust("origin", 0, rate=2.6, durationMs=-1, attach=True, radius=26, color="#8A8478", alpha=0.5,
+                 size=(34, 48), life=(560, 780), speed=(30, 70), rise=6),
+    ], note="the zealot's frenzy loop (W2: EvMonsterPhase zealot index 1 until death; Blow = his facing): panting "
+            "breath out of the hood — a pale cloud always before the hood, the frenzy's persistent read (the scar "
+            "is ~1 px at 1080p) — and dust kicked at his feet; no light (the Living carry none)")
+    # the Corpseherd's Keen (Cast02 FX_Keen @800; chapter1.md §10 stretch: crimson ring telegraph r4, slow 25 % 3 s):
+    # her voice, not her bell — the crimson ring is U2's decal (it fills to its rim at 800); this is the lament
+    # breaking out at contact: violet sound rings in the air before the veil (the slow part: the voice), a hairline
+    # violet ripple that sweeps the ground to the 4-tile rim in KEEN_SWEEP_MS and flares there (art review: the slow
+    # lands on everyone inside r4 at 800, so the ground read must arrive at once — a 700 ms linear ripple reached a
+    # hero at the rim ~650 ms after the hit), the ash on the ground blown outward by it
+    rec["notify.FX_Keen"] = R("breach", [
+        ripple_air("origin", 30, 170, 460, VIOLET, alpha=0.85, h="custom", offset=HERD_KEEN),
+        ripple_air("origin", 30, 170, 460, VIOLET_DARK, alpha=0.5, h="custom", offset=HERD_KEEN,
+                   blend="translucent"),
+        ripple_air("origin", 30, 170, 460, VIOLET, alpha=0.6, h="custom", offset=HERD_KEEN, delay=150),
+        ripple_ground("origin", 40, 400, KEEN_SWEEP_MS, VIOLET, alpha=0.85, body=VIOLET_DEEP, body_alpha=0.4,
+                      pow=1.0, variant=1),
+        ripple_ground("origin", 388, 412, 480, VIOLET, alpha=0.7, body=VIOLET_DEEP, body_alpha=0.32, pow=1.0,
+                      delay=KEEN_SWEEP_MS - 40, variant=1),
+        ash_dust("origin", 14, radius=90, color="#8A8478", alpha=0.6, size=(44, 64), life=(700, 1000),
+                 speed=(220, 360), rise=4),
+        ash_flakes("origin", 16, h=10, radius=120, speed=(140, 260), up=(40, 120), gravity=220, life=(700, 1100),
+                   size=(7, 11), color=ASH_LIGHT, dir="out"),
+        violet_motes("origin", 8, h="custom", offsetCm=HERD_KEEN, radius=12, speed=(40, 100), rise=60,
+                     life=(500, 800), size=(5, 7)),
+    ], note="the Corpseherd's Keen (W2 stretch, Cast02 FX_Keen @800): the lament breaks out — violet sound rings "
+            "before the veil (the voice, slower), a hairline ripple sweeping the ground to r 4 m in 220 ms and "
+            "flaring at the rim (everyone inside is slowed at 800), the ash blown outward; the crimson ring is U2's "
+            "telegraph decal (filled to its rim at 800), the slow is status.slow")
+    # 麻灰 Ashnumb (K6 StatusType::Ashnumb, monsters.md §4: -10 % healing received per stack up to 5, slowed 20 % at
+    # 5, 6 s): grey ash creeping up the hero's limbs — the band is the StatusTint contract (ASHNUMB: the runtime raises
+    # it per stack), this loop is the ash flaking off the limbs and settling round the feet (neutral: a status loop
+    # on the hero; never violet, never a filling ground shape)
+    # art review r1: the r0 flakes (12-16 cm, pale only) all but vanished at 1080p — pale ash on the warrior's pale
+    # steel has no contrast, the flakes were too small to separate from the dark ground and, spawned on a 30 cm ring,
+    # most were inside or behind the body. Now larger, more, slower to fade, spawned just outside the silhouette
+    # (ring 40-42 cm), in two tones: pale flakes (read on cloth, leather and the ground) and dark ash (reads on steel
+    # and the mage's light trims)
+    rec["status.ashnumb"] = R("ash", [
+        lay(sprite="AshFlake", randomVariants=4, orient="billboard", blend="translucent", at="target",
+            height="chest", rate=12, durationMs=-1, attach=True, spawnRadiusCm=42, onRing=True,
+            spawnHeightJitterCm=70, dir="out", speedCmS=[8, 22], gravityCmS2=140, drag=1.4, lifeMs=[900, 1250],
+            sizeCm=[20, 28], spinDegS=[-160, 160],
+            rotationDeg=[0, 360], alpha=[1.0, 0], fadeIn=0.08, alphaPow=2.2, color=ASH_LIGHT),
+        lay(sprite="AshFlake", randomVariants=4, orient="billboard", blend="translucent", at="target",
+            height="chest", rate=8, durationMs=-1, attach=True, spawnRadiusCm=40, onRing=True,
+            spawnHeightJitterCm=70, dir="out", speedCmS=[8, 22], gravityCmS2=140, drag=1.4, lifeMs=[900, 1250],
+            sizeCm=[18, 26], spinDegS=[-160, 160],
+            rotationDeg=[0, 360], alpha=[1.0, 0], fadeIn=0.08, alphaPow=2.2, color=ASHNUMB_FLAKE_DARK),
+        lay(sprite="Dust", orient="billboard", blend="translucent", at="target", height=12, rate=1.8, durationMs=-1,
+            attach=True, spawnRadiusCm=22, dir="out", speedCmS=[8, 20], gravityCmS2=-6, drag=2.0,
+            lifeMs=[800, 1100], sizeCm=[34, 46], grow=1.3, alpha=[0.5, 0], fadeIn=0.2, color=ASHNUMB_ASH),
+        lay(sprite="Core", orient="billboard", blend="translucent", at="target", height="chest", rate=5,
+            durationMs=-1, attach=True, spawnRadiusCm=26, spawnHeightJitterCm=70, gravityCmS2=60, speedCmS=[4, 12],
+            lifeMs=[600, 900], sizeCm=[4, 6], alpha=[0.8, 0], color="#6E6A62"),
+    ], note="麻灰 Ashnumb (W2, K6): ash flaking off the hero's limbs and settling at the feet; the grey band "
+            "creeping up the limbs per stack is the StatusTint contract dark.materials.AshnumbTint (runtime)")
+    return rec
+
+
+# the Ashnumb body band (K6 / monsters.md §4: "grey ash creeping up the hero's limbs, a CPD tint band"): the contract
+# the UE status presentation implements next to the existing StatusTint (a multiply tint over the whole body)
+ASHNUMB = {
+    "kind": "StatusPresentation",
+    "name": "AshnumbTint",
+    "use": "K6 StatusType::Ashnumb on the hero (stacks 1-5, 6 s, refreshed on hit; the antidote cleanses it): the "
+           "hero's toon slots grey from the feet up — a band whose top rises with the stacks — plus the "
+           "status.ashnumb loop (ash flaking off, dust at the feet). Never violet, never a ground decal",
+    "params": {"AshColor": "#8A8480", "AshShade": "#4C4944", "EdgeColor": "#B8B2A6", "EdgeWidth": 0.04,
+               "BandTopBase": 0.12, "BandTopPerStack": 0.10, "BandSoftness": 0.06, "MaxBandTop": 0.62,
+               "Strength": 0.85},
+    "map": "per vertex the height fraction h = z / heroHeight (object space, the feet at 0); band = 1 - "
+           "smoothstep(top - BandSoftness, top, h) with top = min(BandTopBase + stacks x BandTopPerStack, "
+           "MaxBandTop) (1 stack: over the boots to mid-shin; 3: the thighs; 5: the hips); toon colour lerps to "
+           "AshColor where the toon's key light is in its lit bands, AshShade in its shade band (N.L x .5 + .5 < "
+           "T_SHADE), by band x Strength; an EdgeColor line EdgeWidth tall on the band's top edge (top - EdgeWidth .. "
+           "top, full strength); the ink hull and held items are untouched. On a renderer without the per-stack "
+           "band (mobile low) use the StatusTint path: #8A8480 multiply at .25 + .05 x stacks",
+    "preview": "vfx_effects/AshnumbTint/band_stacks*.png (vfx/ashnumb_band.py: this contract as material nodes on "
+               "the three heroes at 0 / 1 / 3 / 5 stacks, W1 camera, 1080p, march dirt)",
+    "readNote": "art review r1: with the r0 top (stacks x 0.12) one stack was the boots alone, hidden under the "
+                "warrior's shield and legs at the W1 camera; the base lifts one stack to mid-shin. Reads clearly on "
+                "the mage's robe and the rogue's leather; on the warrior's pale steel the ash reads darker and "
+                "warmer (a dull band) and the EdgeColor line marks its top",
+    "slowAt5": "at 5 stacks the hero is also slowed 20 %: status.slow is NOT added (the band at its top is the read; "
+               "the slow's own frost look is the wrong element)",
+    "owner": "A12 W2 (vfx/fx_recipes_dark.py ASHNUMB); built by the UE status presentation (2G)",
+}
 
 
 # ── the echo ghost and the keepers' bell (friendly / neutral) ──────────────────────────────────────────────
@@ -1239,6 +1376,12 @@ BINDINGS = {
     "corpse.burn": ("U3 corpse burned, Context.Color = the fire's colour", "W2"),
     "corpse.consume": ("U3 Consume channel (2 s): origin = the gnawer, target / point = the husk, Blow = gnawer -> "
                        "husk (the jaws ~44 cm along it; the grit spawns just short of them)", "W2"),
+    "notify.FX_Frenzy": ("SK_Mon_OathZealot Roar @480 (the frenzy's enter action, K4 phase enterAction)", "W2"),
+    "monster.oath_zealot.frenzy": ("EvMonsterPhase oath_zealot index 1, loop until death (origin, attach; Blow = "
+                                   "his facing)", "W2"),
+    "notify.FX_Keen": ("SK_Mon_Corpseherd Cast02 @800 (the Keen: U2 draws the crimson r4 ring decal to 800)", "W2"),
+    "status.ashnumb": ("K6 StatusType::Ashnumb on the hero (status loop, as status.<type>) + the AshnumbTint "
+                       "band (dark.materials.AshnumbTint)", "W2"),
     "prop.echo": ("U1 echo lore look: at the figure, with MI_AF_Echo's 3 s", "W1"),
     "camp.bell_toll": ("U4 / U7 bell cue at SM_Prop_March_BellFrame socket bell", "W1"),
     "camp.torch@march": ("U1: AAbyssZoneActor::BuildCamps' EffectSpot at a torch prop resolves camp.torch@<zone "
@@ -1273,6 +1416,14 @@ INTEGRATION = {
                   "draws the Scorched burst's r2 decal in the elite style",
     "monsterAuras": "W2 aura loops: monster.dead_standard_bearer.aura on the bearer (origin, attach) while it lives "
                     "(stop on death); no telegraph decal (it is a buff, not a damage zone: DECISIONS_DARK DR5-aura)",
+    "frenzy": "W2 (2H): the zealot's phase 1 (K4 enterAction Roar) plays Roar; at its FX_Frenzy notify the scar "
+              "swatch's emissive ramps to the manifest fx.frenzy.scarEmissive and monster.oath_zealot.frenzy loops on "
+              "the zealot until death (stop it on death; a leash reset that returns to phase 0 stops it too)",
+    "ashnumb": "W2 (2H): status.ashnumb is the K6 Ashnumb status loop (play / stop as the other status.<type> loops); "
+               "the per-stack band is dark.materials.AshnumbTint (the StatusTint path is its fallback)",
+    "consumeClip": "W2 (2H): corpse.consume is timed for SK_Mon_Gravegnawer's Consume clip (loop 1000 ms, two bites; "
+                   "the 2 s channel plays it twice): play the recipe once at the channel start with origin = the "
+                   "gnawer, Blow = gnawer -> corpse",
     "monsterProjectiles": "proj.monster_bolt serves the arbalester (bone-white bolt, violet trail) and the "
                           "Corpseherd's bell toll alike (#B02FD0): a per-monster projectile vfxId would let the toll "
                           "fly as a ripple",
@@ -1318,7 +1469,7 @@ def normalise(recs: dict) -> None:
 def recipes() -> dict:
     FR.load_diameters()
     out = {}
-    for group in (ambience, elites, notifies, deaths, monsters, telegraphs, corpses, world):
+    for group in (ambience, elites, notifies, deaths, monsters, telegraphs, corpses, wave2, world):
         out.update(group())
     normalise(out)
     return out
@@ -1353,7 +1504,7 @@ def doc_section(report: dict) -> dict:
                 "the recolours of shipped recipes",
         "bindings": {k: {"event": e, "wave": w} for k, (e, w) in sorted(BINDINGS.items())},
         "aliases": ALIASES,
-        "materials": {"M_AF_Telegraph": TELEGRAPH, "M_AF_AshDissolve": ASH_DISSOLVE},
+        "materials": {"M_AF_Telegraph": TELEGRAPH, "M_AF_AshDissolve": ASH_DISSOLVE, "AshnumbTint": ASHNUMB},
         "decisions": DECISIONS_DARK,
         "recoloured": report.get("replaced", []),
         "heroFixes": report.get("heroFixes", []),

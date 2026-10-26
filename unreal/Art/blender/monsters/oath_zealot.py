@@ -1,6 +1,7 @@
 """赤誓狂信徒 Red-Oath Zealot — ``SK_Mon_OathZealot`` + ``SM_MonWeapon_Flail`` (dark remake A3; monsters.md §2.3).
 
     EGL_PLATFORM=surfaceless /opt/venvs/blender/bin/python unreal/Art/blender/monsters/oath_zealot.py [--quick] [--anims [Clip …]] [--no-previews] [--no-verify]
+        --frenzy-read [--scratch]   (Wave 2: the oath-scar at the frenzy's emissive, measured → game_w2_frenzy.png)
 
 The Living's frenzy melee (L6, speed 52 → 1.56 m/s, Contact ≈ 420 ms, bleed on hit). Art brief: a hooded red robe
 over mail (``zealot.robe`` #7E1416 — the family marker: crimson cloth, no glow), rope belts, bare forearms with the
@@ -12,10 +13,15 @@ the knee in a ragged hem over a mail hem, sleeves torn off at the elbow.
 Clips (``ZealotAnims`` on ``living_clips.LivingAnims``): Idle 1200 (the flail swinging low), Walk 900 @ 1.56 m/s
 (a stalking lean), Attack01 750 (an overhead flail blow: WindupEnd 260, Contact 420), Hurt 300, Death 900 (folds
 forward, face down, the flail flung flat), Stun 600. [W2] frenzy at ≤ 50 % life (the oath-scar's emissive is a
-material parameter: the runtime raises it).
+material parameter: the runtime raises it); Wave 2 (2H, ``clip_patch.py``): **Roar** 1200 (the frenzy's enter action:
+he gathers over the scarred fist, rears up shouting the oath with the fist over the hood and the flail whirled
+overhead, ``FX_Frenzy`` 480 = the scar flare, manifest ``fx.frenzy``). ``fx_overhead`` stays the kit's (crown + 25 cm:
+nameplates, stun stars, the death mark and the W1 crown ride it); the elite sigil rides its own ``fx_elite``
+(``elite_sigil.py --solve-elite`` → ``fx_elite_w2.json``, written by ``mship.ship``).
 """
 from __future__ import annotations
 
+import json
 import math
 import sys
 from pathlib import Path
@@ -35,7 +41,7 @@ from kit.palette import Palette  # noqa: E402
 from kit.rig import Bind  # noqa: E402
 
 import common as C  # noqa: E402
-from common import BP, V  # noqa: E402
+from common import BP, K, V  # noqa: E402
 import folk as F  # noqa: E402
 import living as LV  # noqa: E402
 from living_clips import LivingAnims  # noqa: E402
@@ -256,6 +262,54 @@ class ZealotAnims(LivingAnims):
                          **self.wkw(140.0, lat=0.02), flow=0.4)
         return [(230.0, wind, "out"), (340.0, mid, "in"), (420.0, hit, "linear"), (520.0, follow, "out")]
 
+    # ── Roar [W2] (Wave 2 art, 2H): the frenzy's enter action (implementation-plan.md K4: the zealot's one-row phase
+    # table, monsters.md 2.3 "the robe whips, the oath-scar flares, a shouted chant") ─────────────────────────────
+    ROAR_MS = 1200.0
+    ROAR_SHOUT = 480.0               # FX_Frenzy: the chant breaks out, the scar flares (fx.frenzy)
+
+    def roar(self):
+        """``Roar`` 1200 ms: he gathers (crouched over the left fist pulled to the chest, the scar turned up), then rears
+        out of the crouch shouting the oath — chin up, chest out, the scarred left fist punched up over the hood, the
+        flail hauled up and round overhead so the chain whips — holds the chant (a shaking head, the robe streaming)
+        and drops back into the frenzied READY (``FX_Frenzy`` 480; the core enters the phase at the start)."""
+        R0 = self.ready()
+        # art review r1: the r0 brace (pelvis 8 cm down, lean 22, hip_pitch 6, flow .25) flared the robe into a flat,
+        # hard-cornered wedge for ~200 ms (F6-F13, the frenzy's announcement); a shallower crouch keeps the knees from
+        # shoving the hem out, so the skirt stays a cone and the gather is carried by the torso over the fist
+        brace = R0.but(pelvis=V(0, 0.0, -0.03), lean=14.0, hip_pitch=0.0, twist=10.0, hip_yaw=-4.0, head_pitch=-2.0,
+                       head_yaw=-2.0, hand_l=self.side_pt("l", 0.0, 0.24, -0.22), elbow_l=V(0.8, -0.3, -0.6),
+                       wrist_l=(-40.0, 0.0, -40.0), hand_r=self.side_pt("r", 0.18, 0.04, -0.44),
+                       elbow_r=V(-0.8, 0.0, -0.5), **self.wkw(150.0, lat=-0.42), flow=0.12)
+        shout = R0.but(pelvis=V(0, 0.02, -0.02), lean=-6.0, hip_pitch=-2.0, twist=-6.0, hip_yaw=-6.0,
+                       head_pitch=-30.0, head_yaw=-4.0, hand_l=self.side_pt("l", 0.08, 0.10, 0.44),
+                       elbow_l=V(0.9, 0.0, -0.4), wrist_l=(0.0, 0.0, -50.0),
+                       hand_r=self.side_pt("r", 0.24, 0.02, 0.28), elbow_r=V(-0.9, 0.0, -0.4),
+                       **self.wkw(-24.0, lat=-0.45), clav_l=(18.0, 0.0), clav_r=(14.0, 0.0), flow=0.75)
+        whirl = shout.but(lean=-3.0, twist=4.0, head_pitch=-26.0, hand_r=self.side_pt("r", 0.12, 0.22, 0.34),
+                          **self.wkw(28.0, lat=0.10), flow=0.65)
+        L, Cm = self.ROAR_MS, self.ROAR_SHOUT
+        keys = [K(0.0, R0), K(220.0 / L, brace, "out"), K(Cm / L, shout, "out"), K(700.0 / L, whirl, "smooth"),
+                K(880.0 / L, shout.but(flow=0.5), "smooth"), K(1.0, R0, "smooth")]
+
+        def layer(bp: BP, t: float) -> BP:
+            if Cm <= t <= 900.0:                       # the chant shakes his head and fist
+                k = math.sin(math.pi * (t - Cm) / (900.0 - Cm))
+                ph = (t - Cm) * 2.0 * math.pi / 95.0
+                bp = bp.but(head_roll=bp.head_roll + 4.0 * k * math.sin(ph),
+                            head_yaw=bp.head_yaw + 3.0 * k * math.sin(ph * 0.5 + 0.7),
+                            hand_l=bp.hand_l + V(0.0, 0.0, 0.012 * k * math.sin(ph + 0.4)))
+            return bp
+        wave = self.waver(L)
+        c = self.clip("Roar", L, keys, L, notifies={"FX_Frenzy": Cm}, layer=lambda bp, t: layer(wave(bp, t), t),
+                      key_poses=[0.0, 220.0, Cm, 700.0, 880.0, L])
+        c.manifest_extra = {"usage": "[W2] the frenzy (implementation-plan.md K4: the zealot's one-row phase table at "
+                                     "<= 50 % life, enterAction Roar; still takes damage): the shouted chant — he rears "
+                                     "up, the scarred fist over the hood, the flail whirled overhead; FX_Frenzy 480 = "
+                                     "the chant's breath and the scar flare (fx.frenzy: the scar emissive rises to "
+                                     "frenzyEmissive and stays for the phase; A12 notify.FX_Frenzy + the "
+                                     "monster.oath_zealot.frenzy loop)"}
+        return c
+
     def death_items(self) -> dict:
         up = Vector((0.0, 1.0, 0.0))
         return {"hit": self.wkw(70.0, lat=-0.4), "kneel": self.wkw(150.0, lat=-0.55),
@@ -413,7 +467,7 @@ class ZealotAnims(LivingAnims):
         self.flail_chain(p, bp)
 
     def monster_clips(self) -> list:
-        clips = super().monster_clips()
+        clips = super().monster_clips() + [self.roar()]
         for c in clips:
             f0 = c.sampler
 
@@ -504,7 +558,19 @@ def ship(previews: bool = True, verify: bool = True) -> int:
             "blobShadow": LS.DEATH_SHADOW,
             "oathScar": {"region": "zealot.scar", "color": "#C0283A", "emissive": 0.25, "frenzyEmissive": 0.7,
                          "note": "[W2] the scar flares on frenzy (<= 50 % life): raise the emissive of the scar "
-                                 "swatch on the instance (crimson, never ember)"}},
+                                 "swatch on the instance (crimson, never ember)"},
+            "frenzy": {"clip": "Roar", "atMs": A.ROAR_SHOUT, "notify": "FX_Frenzy", "recipe": "notify.FX_Frenzy",
+                       "loop": "monster.oath_zealot.frenzy", "scarEmissive": 0.7, "scarRampMs": 160,
+                       "note": "[W2] Wave 2 art (2H): the frenzy's enter action (K4 phase enterAction Roar) plays "
+                               "Roar; at FX_Frenzy (480) the scar's emissive ramps 0.25 -> 0.7 over scarRampMs and "
+                               "stays until death, and the loop recipe runs on the zealot (origin, attach; Blow = its "
+                               "facing) for the rest of the phase. The Living carry no light: the loop is breath and "
+                               "dust, the only glow is the scar (crimson, never ember)",
+                       "read": "art review r1 (oath_zealot.py --frenzy-read, Previews mon_oath_zealot/"
+                               "game_w2_frenzy.png): at scarEmissive the scar is a 1 px block at 1080p on the darkest "
+                               "march tile (2 px only in Walk sw), so it is a close-up detail; the persistent read of "
+                               "a frenzied zealot is the loop's breath cloud before the hood (monster.oath_zealot."
+                               "frenzy, a pant every ~0.3 s) plus the faster clips"}},
         qa_groups=groups,
         qa_pairs={"flailBody": ("item:" + FLAIL, "body_nf"), "ballBody": ("flailHead", "body_noflail")},
         qa_limits={"ground": -0.5, "flailBody": 0, "ballBody": 0, "coatLegs": 0},
@@ -514,7 +580,11 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         outline_px=LV.OUTLINE_PX, outline_px_note=LV.OUTLINE_PX_NOTE,
         game_keys=[("Idle", 0, "se"), ("Walk", 13, "se"), ("Attack01", 14, "se"), ("Attack01", 25, "se"),
                    ("Attack01", 25, "sw"), ("Hurt", 4, "se"), ("Death", 30, "se"), ("Stun", 10, "se")],
-        extra_previews=LS.corpse_preview,
+        extra_previews=mship.chain_previews(
+            LS.corpse_preview,
+            mship.w2_sheet([("Roar", 13, "se"), ("Roar", 29, "se"), ("Roar", 41, "se"), ("Roar", 29, "sw"),
+                            ("Roar", 29, "ne"), ("Roar", 41, "nw"), ("Roar", 51, "front"), ("Roar", 62, "se")])),
+        back_clips=("Attack01", "Death", "Roar"),
         contact_keys=[("Attack01", 25, "se"), ("Attack01", 25, "sw"), ("Attack01", 25, "front"),
                       ("Attack01", 25, "ne")],
         close_keys=[("Attack01", 8, "se"), ("Attack01", 16, "se"), ("Attack01", 25, "se"), ("Attack01", 25, "side"),
@@ -527,7 +597,8 @@ def ship(previews: bool = True, verify: bool = True) -> int:
         extra={**LS.remake_extra("flail_overhead", A.CONTACT_MS, REF_SPEED,
                                  "Clips in place; the core moves the actor (play rate = v / ref). Death folds forward "
                                  "face down (W2: the ash husk takes its pose). Stun (C5) loops. [W2] frenzy at <= 50 % "
-                                 "life plays the same clips faster (attack speed x1.35)."),
+                                 "life: Roar (the shouted chant, FX_Frenzy 480; fx.frenzy), then the same clips "
+                                 "faster (attack speed x1.35, move x1.2)."),
                **LS.marker_extra(MARKER)},
     )
     LS.report_budget(ms)
@@ -536,10 +607,114 @@ def ship(previews: bool = True, verify: bool = True) -> int:
     return mship.main_result(res)
 
 
+# ── the frenzy's read at the game camera (Wave 2 art review r1) ─────────────────────────────────────────────────────
+# After Roar nothing but the oath-scar persists on a frenzied zealot (the Living carry no light; the loop's breath is
+# faint), so the scar at fx.frenzy's emissive has to read as a marker of its own: ``frenzy_read`` runs
+# coherence/darkgate.py's lineup on the darkest march tile (W1 camera, native 1080p, bloom on) with the scar swatch at
+# FRENZY_E and measures it with the darkgate marker metric (the largest solid k x k block of the visible swatch, the
+# rest of the figure occluding; gate >= 2 px) — the calm scar (.25) beside it for comparison.
+FRENZY_E = 0.7
+CALM_E = 0.25
+FRENZY_KEYS = [("Idle", 0, "se", FRENZY_E), ("Idle", 0, "sw", FRENZY_E), ("Walk", 13, "se", FRENZY_E),
+               ("Walk", 13, "sw", FRENZY_E), ("Attack01", 14, "se", FRENZY_E), ("Attack01", 14, "sw", FRENZY_E),
+               ("Idle", 0, "se", CALM_E), ("Idle", 0, "sw", CALM_E)]
+
+
+def _set_swatch_emissive(family: str, index: int, e: float) -> None:
+    """The emissive (params B) of one swatch in the loaded palette image, in memory only (nothing is saved)."""
+    from kit import palette as P
+    img = bpy.data.images.get(f"T_AF_Palette_{family}_P")
+    if img is None:
+        raise RuntimeError(f"palette image of {family} not loaded")
+    w, h = img.size
+    px = np.array(img.pixels[:], np.float32).reshape(h, w, 4)
+    row, col = index // P.GRID, index % P.GRID
+    y0, y1 = h - (row + 1) * P.SWATCH_PX, h - row * P.SWATCH_PX
+    px[y0:y1, col * P.SWATCH_PX:(col + 1) * P.SWATCH_PX, 2] = round(e * 255.0) / 255.0
+    img.pixels = px.ravel()
+    img.update()
+
+
+def frenzy_read(out_dir: Path, scratch: Path) -> list[dict]:
+    """``game_w2_frenzy.png``: per ``FRENZY_KEYS`` cell the darkgate render (left) and its gate map (right, the
+    visible scar cyan / red) of the zealot with the oath-scar at that emissive; returns the scar's marker records."""
+    if str(HERE.parent / "coherence") not in sys.path:
+        sys.path.insert(0, str(HERE.parent / "coherence"))
+    import cohkit as K
+    import darkgate as DG
+    from kit import pngio, review
+    ground = DG.Ground(None, "darkest", None)
+    K.set_theme(ground.theme)
+    reg = DG.registry(LV.FAMILY)
+    scar = reg["zealot.scar"]
+    spec0, imp0 = DG.marker_spec, K.import_character
+    state = {"e": FRENZY_E}
+
+    def spec(fig):
+        sp = spec0(fig)
+        return {**sp, "swatches": ["zealot.scar"], "indices": [scar], "source": "the oath-scar (frenzy read)"}
+
+    def imp(*a, **kw):
+        fig = imp0(*a, **kw)
+        _set_swatch_emissive(LV.FAMILY, scar, state["e"])
+        return fig
+    DG.marker_spec, K.import_character = spec, imp
+    cells, recs = [], []
+    try:
+        for clip, fr, fac, e in FRENZY_KEYS:
+            state["e"] = e
+            tag = f"frenzy_{clip}_{fr}_{fac}_{int(e * 100)}"
+            rec = DG.shoot([(ASSET, None, "ZEALOT")], ground, fac, clip, fr, tag, scratch)[0]
+            mk = rec["marker"]
+            recs.append({"clip": clip, "frame": fr, "facing": fac, "scarEmissive": e, "blockPx": mk["blockPx"],
+                         "pixels": mk["pixels"], "medianRgb": mk.get("medianRgb"), "deltaL": mk.get("deltaL"),
+                         "ok": mk["blockPx"] >= DG.MARKER_PX})
+            pair = []
+            for f in (scratch / f"{tag}.png", scratch / f"{tag}_map.png"):
+                im = np.ascontiguousarray(pngio.read_png(f)[:, :, :3])
+                pair.append(im)
+            h = max(x.shape[0] for x in pair)
+            pair = [np.pad(x, ((0, h - x.shape[0]), (0, 0), (0, 0)), constant_values=24) for x in pair]
+            cell = np.ascontiguousarray(np.concatenate(pair, axis=1))
+            cell[:24] = 24
+            review.draw_text(cell, 3, 3, f"{clip} F{fr} {fac.upper()}  SCAR E {e:.2f}" +
+                             ("  FRENZY" if e >= FRENZY_E else "  CALM"))
+            review.draw_text(cell, 3, 13, f"SCAR BLOCK {mk['blockPx']}PX ({mk['pixels']} PX) "
+                             + ("OK" if mk["blockPx"] >= DG.MARKER_PX else "BELOW 2PX (DARKGATE MK = THE SCAR)"),
+                             rgb=(160, 230, 160) if mk["blockPx"] >= DG.MARKER_PX else (240, 90, 90))
+            cells.append(cell)
+            print(f"  [frenzy] {clip} F{fr} {fac} e {e}: scar block {mk['blockPx']} px ({mk['pixels']} px)",
+                  flush=True)
+    finally:
+        DG.marker_spec, K.import_character = spec0, imp0
+    hh = max(c.shape[0] for c in cells)
+    ww = max(c.shape[1] for c in cells)
+    cells = [np.pad(c, ((0, hh - c.shape[0]), (0, ww - c.shape[1]), (0, 0)), constant_values=24) for c in cells]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for q, sz in pngio.write_png_native(out_dir / "game_w2_frenzy.png", review.grid(cells, 2)):
+        print(f"  {q.name} {sz // 1024} KB")
+    (scratch / "frenzy_read.json").write_text(json.dumps(recs, indent=1) + "\n")
+    return recs
+
+
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
     scratch = scratch_root("living", "oath_zealot")
-    if "--quick" in args:
+    if "--frenzy-read" in args:
+        from kit import paths
+        out = scratch_root("living", "frenzy") if "--scratch" in args else paths.preview_dir(PREVIEW_DIR)
+        recs = frenzy_read(out, scratch_root("living", "frenzy_dg"))
+        if "--scratch" not in args:
+            from kit import export
+            man = export.Manifest()
+            e = man.data["assets"][ASSET]
+            e["previews"] = sorted(set(e.get("previews", [])) | {f"{PREVIEW_DIR}/{q.name}"
+                                                                 for q in out.glob("game_w2_frenzy*.png")})
+            man.save()
+        hot = [r for r in recs if r["scarEmissive"] >= FRENZY_E]
+        print(f"[frenzy] the scar at e {FRENZY_E}: block >= 2 px in {sum(r['ok'] for r in hot)} / {len(hot)} cells "
+              "(a report, not a gate: fx.frenzy.read)")
+    elif "--quick" in args:
         k = args.index("--quick")
         quick(Path(args[k + 1]) if len(args) > k + 1 and not args[k + 1].startswith("--") else scratch)
     elif "--anims" in args:

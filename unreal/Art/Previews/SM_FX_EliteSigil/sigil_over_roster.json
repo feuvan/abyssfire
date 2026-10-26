@@ -1,0 +1,294 @@
+{
+ "failures": [],
+ "gaps": {
+  "SK_Mon_Bonegorger:ne": {
+   "rest": 22.8,
+   "trough": 20.4
+  },
+  "SK_Mon_Bonegorger:nw": {
+   "rest": 25.9,
+   "trough": 23.0
+  },
+  "SK_Mon_Bonegorger:se": {
+   "rest": 12.0,
+   "trough": 9.2
+  },
+  "SK_Mon_Bonegorger:sw": {
+   "rest": 9.4,
+   "trough": 7.2
+  },
+  "SK_Mon_Bonegorger@hunt_hungerbell:ne": {
+   "rest": 33.7,
+   "trough": 31.3
+  },
+  "SK_Mon_Bonegorger@hunt_hungerbell:nw": {
+   "rest": 37.0,
+   "trough": 34.1
+  },
+  "SK_Mon_Bonegorger@hunt_hungerbell:se": {
+   "rest": 19.6,
+   "trough": 17.2
+  },
+  "SK_Mon_Bonegorger@hunt_hungerbell:sw": {
+   "rest": 17.7,
+   "trough": 15.5
+  },
+  "SK_Mon_Breachclot:ne": {
+   "rest": 10.0,
+   "trough": 8.0
+  },
+  "SK_Mon_Breachclot:nw": {
+   "rest": 11.0,
+   "trough": 9.0
+  },
+  "SK_Mon_Breachclot:se": {
+   "rest": 9.0,
+   "trough": 7.0
+  },
+  "SK_Mon_Breachclot:sw": {
+   "rest": 9.0,
+   "trough": 7.0
+  },
+  "SK_Mon_Cinderbloat:ne": {
+   "rest": 9.0,
+   "trough": 7.0
+  },
+  "SK_Mon_Cinderbloat:nw": {
+   "rest": 10.0,
+   "trough": 8.0
+  },
+  "SK_Mon_Cinderbloat:se": {
+   "rest": 11.0,
+   "trough": 8.0
+  },
+  "SK_Mon_Cinderbloat:sw": {
+   "rest": 9.0,
+   "trough": 6.0
+  },
+  "SK_Mon_Corpseherd:ne": {
+   "rest": 8.2,
+   "trough": 5.7
+  },
+  "SK_Mon_Corpseherd:nw": {
+   "rest": 11.0,
+   "trough": 8.2
+  },
+  "SK_Mon_Corpseherd:se": {
+   "rest": 18.0,
+   "trough": 15.6
+  },
+  "SK_Mon_Corpseherd:sw": {
+   "rest": 9.8,
+   "trough": 7.2
+  },
+  "SK_Mon_DeadStandardBearer:ne": {
+   "rest": 10.0,
+   "trough": 10.0
+  },
+  "SK_Mon_DeadStandardBearer:nw": {
+   "rest": 9.0,
+   "trough": 9.0
+  },
+  "SK_Mon_DeadStandardBearer:se": {
+   "rest": 10.0,
+   "trough": 10.2
+  },
+  "SK_Mon_DeadStandardBearer:sw": {
+   "rest": 9.0,
+   "trough": 7.0
+  },
+  "SK_Mon_Deserter:ne": {
+   "rest": 16.0,
+   "trough": 14.0
+  },
+  "SK_Mon_Deserter:nw": {
+   "rest": 16.0,
+   "trough": 13.0
+  },
+  "SK_Mon_Deserter:se": {
+   "rest": 10.0,
+   "trough": 7.0
+  },
+  "SK_Mon_Deserter:sw": {
+   "rest": 11.0,
+   "trough": 8.5
+  },
+  "SK_Mon_Deserter@hunt_dreck:ne": {
+   "rest": 25.0,
+   "trough": 22.0
+  },
+  "SK_Mon_Deserter@hunt_dreck:nw": {
+   "rest": 25.0,
+   "trough": 22.0
+  },
+  "SK_Mon_Deserter@hunt_dreck:se": {
+   "rest": 17.0,
+   "trough": 15.0
+  },
+  "SK_Mon_Deserter@hunt_dreck:sw": {
+   "rest": 19.0,
+   "trough": 16.0
+  },
+  "SK_Mon_Deserter@hunt_harke:ne": {
+   "rest": 25.0,
+   "trough": 22.0
+  },
+  "SK_Mon_Deserter@hunt_harke:nw": {
+   "rest": 25.0,
+   "trough": 22.0
+  },
+  "SK_Mon_Deserter@hunt_harke:se": {
+   "rest": 17.0,
+   "trough": 15.0
+  },
+  "SK_Mon_Deserter@hunt_harke:sw": {
+   "rest": 19.0,
+   "trough": 16.0
+  },
+  "SK_Mon_DeserterDrummer:ne": {
+   "rest": 9.2,
+   "trough": 7.0
+  },
+  "SK_Mon_DeserterDrummer:nw": {
+   "rest": 11.0,
+   "trough": 9.0
+  },
+  "SK_Mon_DeserterDrummer:se": {
+   "rest": 12.0,
+   "trough": 9.0
+  },
+  "SK_Mon_DeserterDrummer:sw": {
+   "rest": 13.0,
+   "trough": 10.0
+  },
+  "SK_Mon_Gravegnawer:ne": {
+   "rest": 18.1,
+   "trough": 16.0
+  },
+  "SK_Mon_Gravegnawer:nw": {
+   "rest": 18.2,
+   "trough": 16.0
+  },
+  "SK_Mon_Gravegnawer:se": {
+   "rest": 18.1,
+   "trough": 15.5
+  },
+  "SK_Mon_Gravegnawer:sw": {
+   "rest": 17.4,
+   "trough": 15.1
+  },
+  "SK_Mon_OathZealot:ne": {
+   "rest": 12.0,
+   "trough": 10.0
+  },
+  "SK_Mon_OathZealot:nw": {
+   "rest": 12.0,
+   "trough": 10.0
+  },
+  "SK_Mon_OathZealot:se": {
+   "rest": 7.0,
+   "trough": 5.0
+  },
+  "SK_Mon_OathZealot:sw": {
+   "rest": 7.2,
+   "trough": 5.0
+  },
+  "SK_Mon_RisenArbalest:ne": {
+   "rest": 9.0,
+   "trough": 6.0
+  },
+  "SK_Mon_RisenArbalest:nw": {
+   "rest": 9.0,
+   "trough": 6.0
+  },
+  "SK_Mon_RisenArbalest:se": {
+   "rest": 15.8,
+   "trough": 13.3
+  },
+  "SK_Mon_RisenArbalest:sw": {
+   "rest": 17.0,
+   "trough": 14.0
+  },
+  "SK_Mon_RisenFootman:ne": {
+   "rest": 8.0,
+   "trough": 6.0
+  },
+  "SK_Mon_RisenFootman:nw": {
+   "rest": 9.0,
+   "trough": 6.0
+  },
+  "SK_Mon_RisenFootman:se": {
+   "rest": 10.0,
+   "trough": 7.1
+  },
+  "SK_Mon_RisenFootman:sw": {
+   "rest": 10.0,
+   "trough": 8.0
+  },
+  "SK_Mon_RisenShieldbearer:ne": {
+   "rest": 10.0,
+   "trough": 7.5
+  },
+  "SK_Mon_RisenShieldbearer:nw": {
+   "rest": 31.3,
+   "trough": 28.7
+  },
+  "SK_Mon_RisenShieldbearer:se": {
+   "rest": 10.4,
+   "trough": 7.9
+  },
+  "SK_Mon_RisenShieldbearer:sw": {
+   "rest": 13.3,
+   "trough": 10.7
+  }
+ },
+ "gate": {
+  "capAt": "rest",
+  "capFacings": [
+   "se",
+   "sw"
+  ],
+  "capPx": 20,
+  "facings": [
+   "se",
+   "sw",
+   "ne",
+   "nw"
+  ],
+  "frame": "Idle F0",
+  "measuredAt": "bob trough (rest - 3 cm)",
+  "minGapPx": 4,
+  "res": "1080p",
+  "socket": "fx_elite"
+ },
+ "pass": true,
+ "sheets": [
+  "sigil_over_roster_footman.png",
+  "sigil_over_roster_footman_2.png",
+  "sigil_over_roster_arbalester.png",
+  "sigil_over_roster_arbalester_2.png",
+  "sigil_over_roster_shieldbearer.png",
+  "sigil_over_roster_shieldbearer_2.png",
+  "sigil_over_roster_standard_bearer.png",
+  "sigil_over_roster_standard_bearer_2.png",
+  "sigil_over_roster_zealot.png",
+  "sigil_over_roster_zealot_2.png",
+  "sigil_over_roster_deserter.png",
+  "sigil_over_roster_deserter_2.png",
+  "sigil_over_roster_drummer.png",
+  "sigil_over_roster_drummer_2.png",
+  "sigil_over_roster_dreck.png",
+  "sigil_over_roster_dreck_2.png",
+  "sigil_over_roster_harke.png",
+  "sigil_over_roster_harke_2.png",
+  "sigil_over_roster_gnawer.png",
+  "sigil_over_roster_bonegorger.png",
+  "sigil_over_roster_hungerbell.png",
+  "sigil_over_roster_hungerbell_2.png",
+  "sigil_over_roster_breachclot.png",
+  "sigil_over_roster_cinderbloat.png",
+  "sigil_over_roster_corpseherd.png"
+ ],
+ "widestFrontRestPx": 19.6,
+ "worstTroughPx": 5.0
+}
