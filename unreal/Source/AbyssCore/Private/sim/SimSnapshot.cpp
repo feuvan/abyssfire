@@ -13,6 +13,7 @@ void Snapshot::ClearDynamic() {
   groundEffects.clear();
   telegraphs.clear();
   hazards.clear();
+  corpses.clear();
   markers.clear();
   bossBar = BossBarView{};
   prompt = InteractPromptView{};

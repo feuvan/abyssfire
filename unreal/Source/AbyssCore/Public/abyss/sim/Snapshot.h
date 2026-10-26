@@ -115,6 +115,9 @@ struct MonsterView {
   // A pose the core holds the monster in (K1): Taunt while the mini-boss's pre-fight dialogue holds it (looped until
   // the dialogue is dismissed; EvPlayAnim{Taunt} marks the start); Idle = none.
   AnimAction holdAction = AnimAction::Idle;
+  // K3: a Raised body's raiser (kNoEntity: none, or not Raised); the corpse a consume channel eats (0 = none).
+  EntityId raiser = kNoEntity;
+  uint32_t consumingCorpse = 0;
 };
 
 struct NpcView {
@@ -190,6 +193,26 @@ struct TelegraphView {
   double startMs = 0, contactMs = 0;  // absolute sim ms
   double progress = 0;
   TelegraphStyle style = TelegraphStyle::Normal;
+  // K3: what draws it (EvTelegraph): a K2 strike (kind = the ability's), a raise / summon marker (kind Raise / Summon:
+  // one view per corpse / spot), or an on-death fuse (source OnDeath; kind = its shape's).
+  AbilityKind kind = AbilityKind::Circle;
+  TelegraphSource source = TelegraphSource::Ability;
+};
+
+// A body in the zone's corpse registry (dark remake K3; EvCorpseAdded is its start): continuous state for a late view (UE
+// after a load / zone build). `holder`: a raise winding up, a consume channel or a pending Unburied rise holding it.
+struct CorpseView {
+  uint32_t id = 0;
+  std::string defId;
+  std::string artId;
+  std::string family;
+  CorpseKind kind = CorpseKind::Corpse;
+  Vec2 pos;
+  double deathMs = 0;
+  double expiresMs = 0;  // 0 = never (a seed)
+  bool seeded = false;
+  bool spent = false;
+  EntityId holder = kNoEntity;
 };
 
 // A live ground hazard (dark remake K2; EvHazard is its start).
@@ -282,6 +305,7 @@ struct ABYSS_API Snapshot {
   std::vector<GroundEffectView> groundEffects;
   std::vector<TelegraphView> telegraphs;  // K2 abilities winding up (caster order of the pending strikes)
   std::vector<HazardView> hazards;        // K2 ground hazards (placement order)
+  std::vector<CorpseView> corpses;        // K3 corpse registry of the zone (registry order)
   std::vector<WorldMarkerView> markers;
   // ---- zone / HUD ----
   ZoneView zone;

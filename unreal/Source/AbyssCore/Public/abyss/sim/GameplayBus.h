@@ -45,6 +45,10 @@ struct MonsterKilledMsg {
   EntityId killer = kNoEntity;
   KillSource source = KillSource::Other;
   bool killedByEliteBasic = false;  // elite killed by a hero basic attack (slow-mo trigger, combat 11.6)
+  // Dark remake K3: the killing blow's damage type and crit (a fire killing blow burns the body; a crit, or fire, stops
+  // the Unburied rise, monsters.md 2.2).
+  DamageType element = DamageType::Physical;
+  bool crit = false;
 };
 
 // A monster started chasing the hero: Idle / Patrol / Returning -> Chase (aggro range, provoke M2, taunt, ambush spawn).

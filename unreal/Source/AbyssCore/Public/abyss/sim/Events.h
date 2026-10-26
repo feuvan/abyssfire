@@ -121,6 +121,11 @@ struct EvTelegraph {
   double startMs = 0;
   double contactMs = 0;
   TelegraphStyle style = TelegraphStyle::Normal;
+  // K3: an on-death fuse (source OnDeath: `entity` is the dead monster, `abilityId` "onDeath" / "affix.<type>" /
+  // "curse.<id>", `kind` the shape's: Circle / Ring) ends at contactMs (no cancel: a dead monster's fuse always goes off).
+  // A raise / summon (kind Raise / Summon, source Ability) draws a breach-violet marker (DR5: enemy magic that is not a
+  // damage hazard) per corpse / spot, ended like a strike's telegraph.
+  TelegraphSource source = TelegraphSource::Ability;
 };
 // Dark remake K2: a ground hazard placed by a monster ability (combat/HazardField.h) at `origin` facing `dir`; it ticks on
 // the sim clock until untilMs (absolute sim ms; UE fades it out then). A zone change drops every hazard silently.
@@ -135,6 +140,54 @@ struct EvHazard {
   double startMs = 0;
   double untilMs = 0;
   double tickMs = 0;
+};
+// Dark remake K3 (implementation-plan.md 3 K3, 4 U3; monsters/Corpses.h): a body joined the zone's corpse registry: a
+// kill (its Death pose holds, then it crumbles to the ash husk / the carcass, DR6), or a map seed at zone entry (already
+// a husk). expiresMs (absolute sim ms) is when it fades (0 = never: a seed). A fire killing blow registers the body
+// burned: EvCorpseRemoved{burned} follows at once. `monster` is the dead instance (kNoEntity for a seed); `spent` = it
+// rose once already (never raised again).
+struct EvCorpseAdded {
+  uint32_t corpseId = 0;
+  EntityId monster = kNoEntity;
+  std::string defId;
+  std::string artId;
+  std::string family;
+  CorpseKind kind = CorpseKind::Corpse;
+  Vec2 pos;
+  double deathMs = 0;
+  double expiresMs = 0;
+  bool seeded = false;
+  bool spent = false;
+};
+// A body left the registry: it faded (expired: its time ran out or the per-zone cap pushed it out), stood up (raised:
+// `by` = the raiser, kNoEntity for the Unburied rise; EvMonsterRaised follows), was eaten (consumed: `by` = the eater,
+// at the end of its channel) or burned (fire over it). A zone change drops every body silently.
+struct EvCorpseRemoved {
+  uint32_t corpseId = 0;
+  CorpseRemoveReason reason = CorpseRemoveReason::Expired;
+  EntityId by = kNoEntity;
+};
+// A monster stood up (MonsterRole::Raised): from corpse `corpseId` (a raise; `selfRise` = the Unburied rise of the dead
+// monster's own body) or summoned at `pos` (corpseId 0: a summon ability, an on-death spawn). EvEntitySpawned comes
+// first, EvPlayAnim{Rise} right after; the body is rooted for riseMs. `raiser` = the caster it collapses with
+// (kNoEntity: nobody). abilityId = the raise / summon ability, "riseAgain", or the on-death label.
+struct EvMonsterRaised {
+  EntityId entity = kNoEntity;
+  EntityId raiser = kNoEntity;
+  uint32_t corpseId = 0;
+  std::string defId;
+  std::string abilityId;
+  Vec2 pos;
+  double startMs = 0;
+  double riseMs = 0;
+  bool selfRise = false;
+};
+// A Raised body fell because its raiser died (monsters.md 1.3: every Raised collapses with its raiser): no kill (no
+// credit, no on-death effect, no rise); its body stays as a spent corpse (EvCorpseAdded follows when it leaves one). The
+// EvPlayAnim{Death} before it plays the fall.
+struct EvMonsterCollapsed {
+  EntityId entity = kNoEntity;
+  EntityId raiser = kNoEntity;
 };
 struct EvProjectileLaunched {
   EntityId projectile = kNoEntity;
@@ -535,7 +588,8 @@ using Event = std::variant<EvEntitySpawned, EvEntityDespawned, EvEntityTeleporte
                            EvStoryStep, EvBossBar, EvMonsterRenamed, EvHuntRevealed, EvPet, EvEmbersGained, EvZone,
                            EvInteractPrompt, EvRandomEvent, EvPuzzlePrompt, EvStoryDecorFocus, EvLog, EvBanner,
                            EvPanelRequest, EvSaveRequested, EvMusic, EvSfx, EvCameraShake, EvCameraFlash, EvSlowMotion,
-                           EvTelegraph, EvHazard>;
+                           EvTelegraph, EvHazard, EvCorpseAdded, EvCorpseRemoved, EvMonsterRaised,
+                           EvMonsterCollapsed>;
 
 // Append-only event list shared by every subsystem of one GameSim.
 class EventSink {

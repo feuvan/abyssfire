@@ -24,7 +24,9 @@
 #include "abyss/data/MapData.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/monsters/EliteAffixes.h"
+#include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/MonsterDefs.h"
+#include "abyss/monsters/OnDeath.h"
 #include "abyss/quests/QuestSystem.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/SimContext.h"
@@ -92,6 +94,8 @@ void MonsterSystem::PrepareZone() {
   miniBossSpawnedThisVisit_ = false;
   miniBossDialogueActive_ = false;
   huntLeaders_.clear();
+  corpses_.Clear();  // K3: a zone's bodies stay in it
+  rises_.clear();
   if (worldOverride_) return;  // a test world stays until the zone exits
   preparedMapId_.clear();
   preparedCols_ = preparedRows_ = 0;
@@ -112,8 +116,10 @@ bool MonsterSystem::InSafeZone(Vec2 p) const {
 }
 
 bool MonsterSystem::RoleNeverRespawns(MonsterRole role) const {
-  // Mini-bosses (zone / sub-dungeon) and seal keepers never respawn in the web; the rest is data (M4 / W9 / M7).
-  if (role == MonsterRole::ZoneMiniBoss || role == MonsterRole::SubDungeonMiniBoss || role == MonsterRole::SealKeeper) {
+  // Mini-bosses (zone / sub-dungeon) and seal keepers never respawn in the web; the rest is data (M4 / W9 / M7). K3: a
+  // Raised body never respawns (monsters.md 1.3).
+  if (role == MonsterRole::ZoneMiniBoss || role == MonsterRole::SubDungeonMiniBoss || role == MonsterRole::SealKeeper ||
+      role == MonsterRole::Raised) {
     return true;
   }
   const std::string_view name = EnumName(role);
@@ -181,6 +187,7 @@ void MonsterSystem::SpawnZonePopulation() {
       Spawn(p);
     }
   }
+  SeedCorpses();  // K3: after the population (no RNG)
 }
 
 void MonsterSystem::SpawnMiniBoss() {
@@ -305,6 +312,8 @@ void MonsterSystem::OnZoneExit() {
   miniBossSpawnedThisVisit_ = false;
   miniBossDialogueActive_ = false;
   huntLeaders_.clear();
+  corpses_.Clear();  // K3: dropped silently with the zone (UE drops its husks with the zone)
+  rises_.clear();
   worldOverride_ = false;
   world_ = MonsterWorld{};
   preparedMapId_.clear();
@@ -336,7 +345,7 @@ MonsterInstance MonsterSystem::MakeInstance(const MonsterDef& def, TilePos tile,
 
 void MonsterSystem::RollAffixesInto(MonsterInstance& m, std::string_view zoneId) {
   const std::vector<EliteAffixType> affixes =
-      RollEliteAffixes(ctx_.data.Combat().eliteAffixes, zoneId, ctx_.Rand(RngStream::Ai));
+      RollEliteAffixes(ctx_.data.Combat().eliteAffixes, zoneId, ctx_.Rand(RngStream::Ai), m.def.family);
   if (!affixes.empty()) ApplyEliteAffixes(m, affixes, ctx_.data.Combat().eliteAffixes, ctx_.data.Monsters().ai);
 }
 
@@ -704,6 +713,9 @@ void MonsterSystem::TickAI(double dtMs) {
     if (miniBossDialogueActive_ && id == miniBossDialogueMonster_) continue;  // frozen during its dialogue
     if (status != nullptr && status->IsImmobilized(id)) continue;           // no AI, safe-zone check or grid update
     if (now < m->abilityRootedUntilMs) continue;                            // K2: rooted while an ability winds up
+                                                                            // (K3: a consume channel, a Rise clip)
+    // K3: a monster that eats corpses may start its consume channel instead of its AI step.
+    if (m->def.corpse.consumes && TryStartConsume(*m, now)) continue;
     const MonsterState before = m->state;
     // Safe-zone repel: an aggro monster inside a camp radius drops aggro.
     if (m->IsAggro() && InSafeZone(m->pos)) {
@@ -839,6 +851,8 @@ HitWeight MonsterSystem::ApplyDamage(EntityId id, double amount, const DamageFla
     msg.killer = flags.attacker;
     msg.source = flags.source;
     msg.killedByEliteBasic = m->def.elite && flags.source == KillSource::HeroBasic;
+    msg.element = flags.element;
+    msg.crit = flags.isCrit;
     ctx_.bus.Publish(msg);  // `m` may dangle from here on (hunt reveals grow the list)
     return weight;
   }
@@ -967,6 +981,378 @@ void MonsterSystem::Respawn(EntityId deadId) {
   IndexAdd(monsters_[idx].id, static_cast<uint32_t>(idx));
   grid_.Insert(monsters_[idx].id, monsters_[idx].pos);
   EmitSpawned(monsters_[idx]);
+}
+
+// =====================================================================================================================
+// dark remake K3: corpses, raises, the Unburied rise, consume, collapse (header "K3"; implementation-plan.md 3 K3)
+// =====================================================================================================================
+
+namespace {
+// A boss role's body never rises again (its death is a story beat; its loot floor would pay twice).
+bool MonsterSysBossRole(MonsterRole r) {
+  return r == MonsterRole::ZoneMiniBoss || r == MonsterRole::SubDungeonMiniBoss || r == MonsterRole::StoryBoss ||
+         r == MonsterRole::SealKeeper || r == MonsterRole::HuntLeader;
+}
+}  // namespace
+
+void MonsterSystem::SeedCorpses() {
+  ZoneRuntime* zone = ctx_.sys.zone;
+  if (zone == nullptr || !zone->HasZone()) return;
+  const MapDef& map = zone->Map();
+  const std::string zoneId = zone->MapId();
+  const MonsterTables& tables = ctx_.data.Monsters();
+  const double now = ctx_.Now();
+  for (const MapCorpseSeedDef& seed : map.corpseSeeds) {  // data order
+    const MonsterDef* def = tables.FindForZone(zoneId, seed.monsterId);
+    if (def == nullptr || def->corpse.leaves == CorpseLeaves::None) continue;  // DataStore reports both
+    CorpseEntry e;
+    e.defId = def->id;
+    e.artId = def->spriteKey;
+    e.family = def->family;
+    e.kind = def->corpse.leaves == CorpseLeaves::Remains ? CorpseKind::Remains : CorpseKind::Corpse;
+    e.pos = seed.pos.Center();
+    e.deathMs = now;
+    e.expiresMs = 0;
+    e.seeded = true;
+    std::vector<uint32_t> evicted;  // seeds never evict
+    const uint32_t id = corpses_.Add(std::move(e), ctx_.data.Monsters().ai.corpseCap, evicted);
+    const CorpseEntry* c = corpses_.Find(id);
+    if (c == nullptr) continue;
+    EvCorpseAdded ev;
+    ev.corpseId = c->id;
+    ev.defId = c->defId;
+    ev.artId = c->artId;
+    ev.family = c->family;
+    ev.kind = c->kind;
+    ev.pos = c->pos;
+    ev.deathMs = c->deathMs;
+    ev.seeded = true;
+    ctx_.events.Emit(std::move(ev));
+  }
+}
+
+uint32_t MonsterSystem::AddBody(const MonsterInstance& m, Vec2 pos, bool spent) {
+  if (m.def.corpse.leaves == CorpseLeaves::None) return 0;
+  const MonsterAiDef& ai = ctx_.data.Monsters().ai;
+  const double now = ctx_.Now();
+  CorpseEntry e;
+  e.defId = m.def.id;
+  e.artId = m.def.spriteKey;
+  e.family = m.def.family;
+  e.kind = m.def.corpse.leaves == CorpseLeaves::Remains ? CorpseKind::Remains : CorpseKind::Corpse;
+  e.pos = pos;
+  e.deathMs = now;
+  e.expiresMs = now + ai.corpseTtlMs;
+  e.spent = spent;
+  e.monster = m.id;
+  std::vector<uint32_t> evicted;
+  const uint32_t id = corpses_.Add(std::move(e), ai.corpseCap, evicted);
+  if (const CorpseEntry* c = corpses_.Find(id)) {
+    EvCorpseAdded ev;
+    ev.corpseId = c->id;
+    ev.monster = c->monster;
+    ev.defId = c->defId;
+    ev.artId = c->artId;
+    ev.family = c->family;
+    ev.kind = c->kind;
+    ev.pos = c->pos;
+    ev.deathMs = c->deathMs;
+    ev.expiresMs = c->expiresMs;
+    ev.spent = c->spent;
+    ctx_.events.Emit(std::move(ev));
+  }
+  for (uint32_t out : evicted) {
+    ctx_.events.Emit(EvCorpseRemoved{out, CorpseRemoveReason::Expired, kNoEntity});  // the cap pushed it out
+  }
+  return id;
+}
+
+void MonsterSystem::RemoveCorpse(uint32_t id, CorpseRemoveReason reason, EntityId by) {
+  if (!corpses_.Remove(id)) return;
+  ctx_.events.Emit(EvCorpseRemoved{id, reason, by});
+}
+
+void MonsterSystem::OnMonsterDied(const MonsterKilledMsg& msg) {
+  MonsterInstance* m = Find(msg.monster);
+  if (m == nullptr) return;
+  const double now = ctx_.Now();
+  // Its holds go (a consume channel; a raise winding up was let go by CombatSystem::OnMonsterKilled).
+  corpses_.ReleaseAll(msg.monster);
+  m->consumeCorpse = 0;
+  m->consumeUntilMs = 0;
+  // The body: a Raised body rose once already (spent); a fire killing blow burns it at once.
+  uint32_t corpse = AddBody(*m, msg.pos, m->role == MonsterRole::Raised);
+  if (corpse != 0 && msg.element == DamageType::Fire) {
+    RemoveCorpse(corpse, CorpseRemoveReason::Burned, kNoEntity);
+    corpse = 0;
+  }
+  // The Unburied rise (affix first, else the trait).
+  m = Find(msg.monster);
+  const CorpseEntry* body = corpse != 0 ? corpses_.Find(corpse) : nullptr;
+  if (m != nullptr && body != nullptr && body->kind == CorpseKind::Corpse && !body->spent &&
+      m->role != MonsterRole::Raised && !MonsterSysBossRole(m->role)) {
+    const EliteAffixTable& table = ctx_.data.Combat().eliteAffixes;
+    const MonsterRiseAgainDef* rise = nullptr;
+    for (const MonsterAffix& a : m->affixes) {
+      if (table.Def(a.type).riseAgain.present) {
+        rise = &table.Def(a.type).riseAgain;
+        break;
+      }
+    }
+    if (rise == nullptr && m->def.riseAgain.present) rise = &m->def.riseAgain;
+    if (rise != nullptr && RiseAgainApplies(*rise, msg.element, msg.crit)) {
+      const bool rises = rise->chance >= 1 || ctx_.Rand(RngStream::Ai).Float01() < rise->chance;
+      if (rises && corpses_.Hold(corpse, msg.monster)) {
+        PendingRise r;
+        r.corpse = corpse;
+        r.dead = msg.monster;
+        r.dueMs = now + rise->delayMs;
+        r.hpPct = rise->hpPct;
+        r.def = m->def;
+        r.originalDef = m->originalDef;
+        r.affixes = m->affixes;
+        r.maxHp = m->maxHp;
+        r.visualScale = m->visualScale;
+        rises_.push_back(std::move(r));
+      }
+    }
+  }
+  // Every Raised it stood up falls with it.
+  CollapseRaisedOf(msg.monster);
+}
+
+void MonsterSystem::CollapseRaisedOf(EntityId raiser) {
+  if (raiser == kNoEntity) return;
+  std::vector<EntityId> ids;
+  for (const MonsterInstance& r : monsters_) {
+    if (r.IsAlive() && r.role == MonsterRole::Raised && r.raiserId == raiser) ids.push_back(r.id);
+  }
+  for (EntityId id : ids) Collapse(id);
+}
+
+void MonsterSystem::Collapse(EntityId id) {
+  MonsterInstance* m = Find(id);
+  if (m == nullptr || !m->IsAlive()) return;
+  const double now = ctx_.Now();
+  const EntityId raiser = m->raiserId;
+  m->hp = 0;
+  m->state = MonsterState::Dead;
+  m->moveSpeed = 0;
+  m->groundSpeed = 0;
+  m->hasPatrolTarget = false;
+  m->path.clear();
+  corpses_.ReleaseAll(id);
+  m->consumeCorpse = 0;
+  m->consumeUntilMs = 0;
+  EvPlayAnim anim;
+  anim.entity = id;
+  anim.action = AnimAction::Death;
+  anim.startMs = now;
+  anim.durationMs = ctx_.data.Combat().anim.Preset(m->def.animCategory).deathDuration;
+  ctx_.events.Emit(anim);
+  ctx_.events.Emit(EvMonsterCollapsed{id, raiser});
+  if (ctx_.sys.combat != nullptr) ctx_.sys.combat->OnMonsterCollapsed(id);  // statuses, its pending swing, the target
+  m = Find(id);
+  if (m != nullptr) AddBody(*m, m->pos, true);
+  CollapseRaisedOf(id);
+}
+
+int32_t MonsterSystem::RaisedAliveOf(EntityId raiser) const {
+  if (raiser == kNoEntity) return 0;
+  int32_t n = 0;
+  for (const MonsterInstance& r : monsters_) {
+    if (r.IsAlive() && r.role == MonsterRole::Raised && r.raiserId == raiser) ++n;
+  }
+  return n;
+}
+
+double MonsterSystem::RiseMsFor(const MonsterDef& def) const {
+  const AssetManifest& manifest = ctx_.data.Assets();
+  if (manifest.loaded) {
+    const AssetEntryDef* art = manifest.FindByGameId(MonsterArtGameId(manifest, def.spriteKey, def.id));
+    const AnimClipDef* clip = art != nullptr ? art->FindClip("Rise") : nullptr;
+    if (clip != nullptr && clip->lengthMs > 0) return clip->lengthMs;
+  }
+  return ctx_.data.Monsters().ai.riseMsDefault;
+}
+
+Vec2 MonsterSystem::SummonSpot(Vec2 centre, double radius, int32_t k, int32_t n) const {
+  int32_t cols = world_.cols, rows = world_.rows;
+  if ((cols <= 0 || rows <= 0) && ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) {
+    cols = ctx_.sys.zone->Map().cols;
+    rows = ctx_.sys.zone->Map().rows;
+  }
+  const double angle = n > 0 ? kTwoPi * static_cast<double>(k) / static_cast<double>(n) : 0.0;
+  const TilePos preferred{JsRoundInt(centre.x + DetCos(angle) * radius), JsRoundInt(centre.y + DetSin(angle) * radius)};
+  if (cols < 3 || rows < 3) return preferred.Center();
+  const std::function<bool(int32_t, int32_t)> walkable = [this](int32_t c, int32_t r) { return Walkable(c, r); };
+  TilePos tile;
+  if (MonsterSysFindWalkableTile(preferred, cols, rows, 3, walkable, tile)) return tile.Center();
+  return centre;
+}
+
+EntityId MonsterSystem::StandUp(MonsterInstance&& fresh, Vec2 pos, uint32_t corpseId, EntityId raiser,
+                                std::string_view abilityId, bool selfRise) {
+  const double now = ctx_.Now();
+  const double riseMs = RiseMsFor(fresh.def);
+  fresh.role = MonsterRole::Raised;
+  fresh.noRespawn = true;
+  fresh.raiserId = raiser;
+  fresh.def.expReward = 0;  // no rewards (monsters.md 1.3); the kill pipeline also skips them by role
+  fresh.def.goldMin = fresh.def.goldMax = 0;
+  fresh.pos = pos;
+  fresh.prevPos = pos;
+  fresh.abilityRootedUntilMs = now + riseMs;  // rooted while its Rise clip plays
+  const std::string defId = fresh.def.id;
+  const EntityId id = AddInstance(std::move(fresh), /*startChasing=*/true);
+  if (raiser != kNoEntity) {
+    if (MonsterInstance* caster = Find(raiser)) {
+      // A window is at most 10 min (LoadMonsters.cpp): older stamps can never count again.
+      std::vector<double>& log = caster->summonedAtMs;
+      log.erase(std::remove_if(log.begin(), log.end(), [now](double t) { return now - t >= 600000.0; }), log.end());
+      log.push_back(now);
+    }
+  }
+  EvMonsterRaised ev;
+  ev.entity = id;
+  ev.raiser = raiser;
+  ev.corpseId = corpseId;
+  ev.defId = defId;
+  ev.abilityId = std::string(abilityId);
+  ev.pos = pos;
+  ev.startMs = now;
+  ev.riseMs = riseMs;
+  ev.selfRise = selfRise;
+  ctx_.events.Emit(std::move(ev));
+  EvPlayAnim anim;
+  anim.entity = id;
+  anim.action = AnimAction::Rise;
+  anim.clip = "Rise";
+  anim.startMs = now;
+  anim.durationMs = riseMs;
+  ctx_.events.Emit(anim);
+  return id;
+}
+
+EntityId MonsterSystem::RaiseCorpse(uint32_t corpseId, const MonsterDef& base, EntityId raiser, double hpPct,
+                                    std::string_view abilityId) {
+  const CorpseEntry* c = corpses_.Find(corpseId);
+  if (c == nullptr) return kNoEntity;
+  const Vec2 pos = c->pos;
+  RemoveCorpse(corpseId, CorpseRemoveReason::Raised, raiser);
+  const MonsterDef def = ScaleMonsterForDifficulty(base, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
+  MonsterInstance m = MakeInstance(def, RoundToTile(pos), MonsterRole::Raised);
+  m.hp = (std::max)(1.0, std::floor(m.maxHp * hpPct / 100.0));
+  return StandUp(std::move(m), pos, corpseId, raiser, abilityId, false);
+}
+
+EntityId MonsterSystem::SummonAt(const MonsterDef& base, Vec2 pos, EntityId raiser, double hpPct,
+                                 std::string_view abilityId) {
+  const MonsterDef def = ScaleMonsterForDifficulty(base, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
+  MonsterInstance m = MakeInstance(def, RoundToTile(pos), MonsterRole::Raised);
+  m.hp = (std::max)(1.0, std::floor(m.maxHp * hpPct / 100.0));
+  return StandUp(std::move(m), pos, 0, raiser, abilityId, false);
+}
+
+int32_t MonsterSystem::BurnCorpses(const AbilityShapeDef& shape, Vec2 origin, Vec2 dir) {
+  if (corpses_.Entries().empty()) return 0;
+  std::vector<uint32_t> burn;
+  for (const CorpseEntry& c : corpses_.Entries()) {
+    if (ShapeContains(shape, origin, dir, c.pos)) burn.push_back(c.id);
+  }
+  for (uint32_t id : burn) RemoveCorpse(id, CorpseRemoveReason::Burned, kNoEntity);
+  return static_cast<int32_t>(burn.size());
+}
+
+bool MonsterSystem::TryStartConsume(MonsterInstance& m, double now) {
+  if (m.consumeCorpse != 0 || m.pendingAbility >= 0 || m.state == MonsterState::Returning) return false;
+  // One action at a time: a swing on its way to contact lands first (the channel never bites).
+  if (ctx_.sys.combat != nullptr && ctx_.sys.combat->HasPendingStrike(m.id)) return false;
+  const MonsterAiDef& ai = ctx_.data.Monsters().ai;
+  const bool outOfCombat = m.state == MonsterState::Idle || m.state == MonsterState::Patrol;
+  if (!outOfCombat && !(m.hp < m.maxHp * ai.consumeBelowHpFraction)) return false;
+  corpses_.Query(m.pos, ai.consumeRadius, CorpseFilter::Consumable, scratchCorpses_);
+  if (scratchCorpses_.empty()) return false;
+  const uint32_t corpse = scratchCorpses_.front();
+  if (!corpses_.Hold(corpse, m.id)) return false;
+  const CorpseEntry* c = corpses_.Find(corpse);
+  m.consumeCorpse = corpse;
+  m.consumeUntilMs = now + ai.consumeChannelMs;
+  m.abilityRootedUntilMs = m.consumeUntilMs;  // rooted, no swing (CombatSystem::TickCombat skips an eater)
+  m.hasPatrolTarget = false;
+  m.path.clear();
+  m.moveSpeed = 0;
+  EvPlayAnim anim;  // the Consume clip loops for the channel (UE's Attack branch plays a named clip)
+  anim.entity = m.id;
+  anim.action = AnimAction::Attack;
+  anim.clip = "Consume";
+  anim.startMs = now;
+  anim.durationMs = ai.consumeChannelMs;
+  anim.hasFaceTarget = c != nullptr;
+  if (c != nullptr) anim.faceTarget = c->pos;
+  ctx_.events.Emit(anim);
+  return true;
+}
+
+void MonsterSystem::EndConsume(MonsterInstance& m, bool cancelled) {
+  const uint32_t corpse = m.consumeCorpse;
+  m.consumeCorpse = 0;
+  m.consumeUntilMs = 0;
+  m.abilityRootedUntilMs = 0;
+  corpses_.Release(corpse, m.id);
+  if (cancelled) ctx_.events.Emit(EvMonsterAttackCancelled{m.id, false});
+}
+
+void MonsterSystem::TickCorpses() {
+  const double now = ctx_.Now();
+  // 1. Bodies whose time ran out.
+  if (!corpses_.Entries().empty()) {
+    corpses_.CollectExpired(now, scratchCorpses_);
+    for (uint32_t id : scratchCorpses_) RemoveCorpse(id, CorpseRemoveReason::Expired, kNoEntity);  // no scratch reuse
+  }
+  // 2. Consume channels (list order): aborted by a stun / freeze or a vanished corpse, else finished at their end.
+  for (MonsterInstance& m : monsters_) {
+    if (m.consumeCorpse == 0) continue;
+    if (!m.IsAlive()) {
+      EndConsume(m, false);
+      continue;
+    }
+    const bool immobilized = ctx_.sys.status != nullptr && ctx_.sys.status->IsImmobilized(m.id);
+    if (immobilized || corpses_.Find(m.consumeCorpse) == nullptr) {
+      EndConsume(m, true);
+      continue;
+    }
+    if (now + 1e-6 < m.consumeUntilMs) continue;
+    const uint32_t corpse = m.consumeCorpse;
+    const double heal = std::floor(m.maxHp * ctx_.data.Monsters().ai.consumeHealFraction);
+    EndConsume(m, false);
+    Heal(m.id, heal);
+    RemoveCorpse(corpse, CorpseRemoveReason::Consumed, m.id);
+  }
+  // 3. Due rises (schedule order): the body stands up if its corpse is still there.
+  if (rises_.empty()) return;
+  std::vector<PendingRise> due;
+  for (size_t i = 0; i < rises_.size();) {
+    if (rises_[i].dueMs <= now + 1e-6) {
+      due.push_back(std::move(rises_[i]));
+      rises_.erase(rises_.begin() + static_cast<std::ptrdiff_t>(i));
+    } else {
+      ++i;
+    }
+  }
+  for (PendingRise& r : due) {
+    const CorpseEntry* c = corpses_.Find(r.corpse);
+    if (c == nullptr) continue;  // burned, raised or eaten first
+    const Vec2 pos = c->pos;
+    RemoveCorpse(r.corpse, CorpseRemoveReason::Raised, kNoEntity);
+    MonsterInstance m = MakeInstance(r.def, RoundToTile(pos), MonsterRole::Raised);
+    m.originalDef = r.originalDef;
+    m.affixes = r.affixes;
+    m.visualScale = r.visualScale;
+    m.maxHp = r.maxHp;
+    m.hp = (std::max)(1.0, std::floor(r.maxHp * r.hpPct / 100.0));
+    StandUp(std::move(m), pos, r.corpse, kNoEntity, "riseAgain", true);
+  }
 }
 
 // =====================================================================================================================
@@ -1115,6 +1501,25 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     // pending strike, its windup from the manifest timing and whether it was aborted.
     v.windingUp = false;
     v.holdAction = miniBossDialogueActive_ && m.id == miniBossDialogueMonster_ ? AnimAction::Taunt : AnimAction::Idle;
+    v.raiser = m.raiserId;
+    v.consumingCorpse = m.consumeCorpse;
+  }
+  // K3: the zone's bodies (registry order).
+  out.corpses.reserve(corpses_.Entries().size());
+  for (const CorpseEntry& c : corpses_.Entries()) {
+    CorpseView v;
+    v.id = c.id;
+    v.defId = c.defId;
+    v.artId = c.artId;
+    v.family = c.family;
+    v.kind = c.kind;
+    v.pos = c.pos;
+    v.deathMs = c.deathMs;
+    v.expiresMs = c.expiresMs;
+    v.seeded = c.seeded;
+    v.spent = c.spent;
+    v.holder = c.holder;
+    out.corpses.push_back(std::move(v));
   }
 }
 

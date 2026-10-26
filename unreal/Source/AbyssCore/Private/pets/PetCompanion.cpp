@@ -590,6 +590,7 @@ int32_t PetCompanion::Hit(EntityId target, double mult, bool forceCrit, DamageTy
     f.attacker = r.attacker;
     f.source = KillSource::Pet;
     f.provokes = false;
+    f.element = element;
     ctx_.sys.monsters->ApplyDamage(target, dmg, f);
   }
   return SaturatingInt32(dmg);

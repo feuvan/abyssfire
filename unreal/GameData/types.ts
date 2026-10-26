@@ -7,11 +7,13 @@
  *
  * Remake-only fields are optional. The exporter withholds each one from `unreal/Data` until the core package that parses
  * it has landed (`REMAKE_SCHEMA` in unreal/Tools/export-data/src/main.ts, field registry in .../src/remake.ts), so a
- * field may be authored before the core reads it. The Wave 1 fields and K2's (monster abilities, hit cap) are typed here;
- * the later Wave 2 / Wave 3 packages (K3-K7) add theirs together with their `REMAKE_SCHEMA` feature.
+ * field may be authored before the core reads it. The Wave 1 fields, K2's (monster abilities, hit cap) and K3's (on-death
+ * effects, corpses, the Unburied rise, map corpse seeds, elite affix on-death / rise / families) are typed here; the
+ * later Wave 2 / Wave 3 packages (K4-K7) add theirs together with their `REMAKE_SCHEMA` feature.
  */
 import type * as Web from '@web/data/types';
 import type { StatusEffectType } from '@web/systems/StatusEffectSystem';
+import type { EliteAffixDefinition, EliteAffixType } from '@web/systems/EliteAffixSystem';
 
 export type * from '@web/data/types';
 
@@ -66,8 +68,10 @@ export interface RemakeMonsterAbility {
   /** Contact from windup start (>= 600, a boss >= 700); omitted = the clip's beat. */
   windupMs?: number;
   cooldownMs: number;
-  /** From the monster's first swing of a fight (default 0: ready at once). */
+  /** From the monster's first swing of a fight (default 0: ready at once); a raise / summon caster's first fight step. */
   initialCooldownMs?: number;
+  /** Hero distance bounds, tiles. Swing-picked kinds act only within the swing reach (attackRange x 1.2); raise / summon
+   * are casts between swings (Chase or Attack) and are not bound by it. */
   rangeMin?: number;
   rangeMax?: number;
   /** Usable while life < hpBelowPct percent. */
@@ -90,8 +94,66 @@ export interface RemakeMonsterAbility {
   summon?: {
     monsterId: string; count?: number; at?: 'self' | 'anchors' | 'corpse'; anchors?: { col: number; row: number }[];
     capAlive?: number; perWindowCap?: number; windowMs?: number; hpPct?: number;
+    /** [K3] A raise's corpse search radius from the caster (default 6); a summon at `self`: its ring (default 1.5). */
+    radius?: number;
   };
   buff?: { stat: 'damage' | 'attackSpeed' | 'moveSpeed' | 'fearImmune'; mul?: number; ms: number; radius?: number; family?: string };
+}
+
+/**
+ * [W2] An on-death effect (implementation-plan.md §3 K3; MonsterData.h MonsterOnDeathDef has the rules). Feature
+ * `monster.onDeath` (on a monster); the elite affix field of the same shape needs no feature (elite_affixes.json, K3).
+ * burst: a circle hit after a fuse (`delayMs` >= 800, `capHeroMaxHpPct` required: monsters.md §1.3); ring: a circle or
+ * ring hit (damage or a status); puddle: a ground hazard ticking the damage; spawn: `spawn.count` bodies (Raised, no
+ * raiser). Damage: `dmg` (x the difficulty's monster damage) or `hpPct` of the dying monster's life.
+ */
+export interface RemakeOnDeath {
+  kind: 'burst' | 'ring' | 'puddle' | 'spawn';
+  delayMs?: number;
+  /** burst: a circle; ring / puddle: a circle or a ring (`kind` names it; ring defaults to ring, puddle to circle). */
+  shape?: RemakeAbilityShape;
+  dmg?: number;
+  hpPct?: number;
+  damageType?: RemakeDamageType;
+  status?: RemakeAbilityStatus;
+  hitsMonsters?: boolean;
+  /** Monsters inside take floor(damage x monsterDmgMul) (default 1). */
+  monsterDmgMul?: number;
+  /** No hit on the hero above this percent of its max life (x the difficulty's damage multiplier). */
+  capHeroMaxHpPct?: number;
+  puddle?: { durationMs: number; tickMs: number };
+  spawn?: { monsterId: string; count?: number };
+}
+
+/** [W2] What a killed monster's body leaves (monsters.md §1.5, K3). Feature `monster.corpse`. */
+export interface RemakeCorpse {
+  /** corpse: raised and eaten (Unburied, Living); remains: neither (a carcass, a boss's body); none: no entry. */
+  leaves: 'corpse' | 'remains' | 'none';
+  /** It eats corpses (the Gravegnawer). */
+  consumes?: boolean;
+}
+
+/** [W2] The Unburied rise (monsters.md §2.2 trait / §3 affix, K3); needs `corpse.leaves: 'corpse'`. Feature `monster.riseAgain`. */
+export interface RemakeRiseAgain {
+  /** 0 < chance <= 1 (default 1). */
+  chance?: number;
+  delayMs?: number;
+  /** Stands up at this percent of its life (default 100). */
+  hpPct?: number;
+  /** A critical killing blow stops it too (a fire killing blow always does). */
+  notOnCrit?: boolean;
+}
+
+/**
+ * An elite affix definition (EliteAffixSystem) as the remake's `eliteAffixes.definitions` override writes it (K3):
+ * the new type `unburied` (monsters.md §3), and the optional `onDeath` (Scorched's burst, Gravecold's ring), `riseAgain`
+ * and `families` (the monster families that may roll it; empty / omitted = every monster).
+ */
+export interface RemakeEliteAffixDefinition extends Omit<EliteAffixDefinition, 'type'> {
+  type: EliteAffixType | 'unburied';
+  onDeath?: RemakeOnDeath;
+  riseAgain?: RemakeRiseAgain;
+  families?: string[];
 }
 
 export interface MonsterDefinition extends Web.MonsterDefinition {
@@ -110,6 +172,12 @@ export interface MonsterDefinition extends Web.MonsterDefinition {
    * on Nightmare / Hell; monsters.md §1.3: 35). Feature `monster.hitCap`.
    */
   hitCapHeroMaxHpPct?: number;
+  /** [W2] What happens where it dies (K3). Feature `monster.onDeath`. */
+  onDeath?: RemakeOnDeath;
+  /** [W2] Its body (K3). Feature `monster.corpse`. */
+  corpse?: RemakeCorpse;
+  /** [W2] The Unburied rise (K3). Feature `monster.riseAgain`. */
+  riseAgain?: RemakeRiseAgain;
 }
 
 /** One defend wave: exactly these monsters (K1 `SpawnDefendWave`). */
@@ -167,4 +235,9 @@ export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances'> {
   presentationTheme?: string;
   /** [W1] Mood regions (the Breach Rim). Feature `map.regions`. */
   regions?: RemakeRegion[];
+  /**
+   * [W2] Bodies lying in the zone at entry (K3; the Sheepfold's six, chapter1.md §10): a corpse of `monsterId` (its
+   * `corpse.leaves` must leave one) at the tile; it never fades. Feature `map.corpseSeeds`.
+   */
+  corpseSeeds?: { col: number; row: number; monsterId: string }[];
 }

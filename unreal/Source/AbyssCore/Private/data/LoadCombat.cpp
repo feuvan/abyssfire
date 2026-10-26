@@ -248,6 +248,10 @@ void LoadHitFeedbackFile(const JNode& r, CombatTables& out) {
 
 void LoadEliteAffixesFile(const JNode& r, CombatTables& out) {
   EliteAffixTable& e = out.eliteAffixes;
+  for (size_t i = 0; i < e.defs.size(); ++i) {  // a type the file does not define keeps its own type (never rolled)
+    e.defs[i] = EliteAffixDef();
+    e.defs[i].type = static_cast<EliteAffixType>(i);
+  }
   e.order = r.EnumList<EliteAffixType>("order");
   for (const auto& [k, n] : r.Members("definitions")) {
     EliteAffixType t{};
@@ -255,8 +259,19 @@ void LoadEliteAffixesFile(const JNode& r, CombatTables& out) {
       n.Error("unknown elite affix");
       continue;
     }
+    // Every key known (dark remake K3 adds the optional onDeath / riseAgain / families; a misspelt one would be lost).
+    for (const auto& [key, child] : n.SelfMembers(true)) {
+      static constexpr std::string_view kKnown[] = {
+          "type", "name", "nameEn", "damageMult", "speedMult", "hpMult", "defenseMult", "extraFireDamage",
+          "teleportCooldownMs", "curseAuraRadius", "curseAuraReduction", "lifestealFraction", "freezeChance", "vfxColor",
+          "lootQualityBonus", "onDeath", "riseAgain", "families"};
+      bool known = false;
+      for (std::string_view kk : kKnown) known = known || kk == key;
+      if (!known) child.Error("unknown elite affix field '" + key + "'");
+    }
     EliteAffixDef& d = e.defs[EnumIndex(t)];
     d.type = n.Enum<EliteAffixType>("type");
+    if (d.type != t) n.Child("type").Error("differs from its key");
     d.name = n.Str("name");
     d.nameEn = n.Str("nameEn", "");
     d.damageMult = n.Num("damageMult");
@@ -271,6 +286,18 @@ void LoadEliteAffixesFile(const JNode& r, CombatTables& out) {
     d.freezeChance = n.Num("freezeChance");
     d.vfxColor = n.Color("vfxColor");
     d.lootQualityBonus = n.Num("lootQualityBonus");
+    // Dark remake K3 (implementation-plan.md 3 K3, monsters.md 3).
+    if (n.Has("onDeath")) d.onDeath = ReadMonsterOnDeath(n.Child("onDeath"));
+    if (n.Has("riseAgain")) d.riseAgain = ReadMonsterRiseAgain(n.Child("riseAgain"));
+    d.families = n.StrList("families", true);
+    for (const std::string& f : d.families) {
+      if (f.empty()) n.Child("families").Error("an empty family id");
+    }
+  }
+  for (EliteAffixType t : e.order) {
+    bool defined = false;
+    for (const auto& [k, n] : r.Members("definitions")) defined = defined || k == EnumName(t);
+    if (!defined) r.Child("order").Error("affix '" + std::string(EnumName(t)) + "' has no definition");
   }
   e.zoneCounts.clear();
   for (const auto& [k, n] : r.Members("zoneAffixCounts")) {

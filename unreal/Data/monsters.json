@@ -50,6 +50,7 @@
       "goldReward": [2, 4],
       "spriteKey": "monster_breachclot",
       "animCategory": "slime",
+      "family": "breach",
       "derived": {
         "isRanged": false,
         "onHitStatus": [
@@ -81,6 +82,7 @@
       "goldReward": [2, 5],
       "spriteKey": "monster_risen_footman",
       "animCategory": "humanoid",
+      "family": "unburied",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -105,6 +107,7 @@
       "goldReward": [1, 4],
       "spriteKey": "monster_gravegnawer",
       "animCategory": "humanoid",
+      "family": "gravegnawers",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -129,6 +132,7 @@
       "goldReward": [1, 3],
       "spriteKey": "monster_cinderbloat",
       "animCategory": "slime",
+      "family": "breach",
       "derived": {
         "isRanged": false,
         "onHitStatus": [
@@ -160,6 +164,7 @@
       "goldReward": [3, 6],
       "spriteKey": "monster_risen_arbalest",
       "animCategory": "humanoid",
+      "family": "unburied",
       "derived": {
         "isRanged": true,
         "onHitStatus": [],
@@ -184,6 +189,7 @@
       "goldReward": [4, 8],
       "spriteKey": "monster_oath_zealot",
       "animCategory": "humanoid",
+      "family": "living",
       "derived": {
         "isRanged": false,
         "onHitStatus": [
@@ -215,6 +221,7 @@
       "goldReward": [6, 12],
       "spriteKey": "monster_deserter",
       "animCategory": "humanoid",
+      "family": "living",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -239,6 +246,7 @@
       "goldReward": [4, 9],
       "spriteKey": "monster_deserter_drummer",
       "animCategory": "humanoid",
+      "family": "living",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -263,6 +271,7 @@
       "goldReward": [3, 7],
       "spriteKey": "monster_risen_shieldbearer",
       "animCategory": "humanoid",
+      "family": "unburied",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -287,6 +296,7 @@
       "goldReward": [4, 8],
       "spriteKey": "monster_dead_standard_bearer",
       "animCategory": "humanoid",
+      "family": "unburied",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -311,6 +321,7 @@
       "goldReward": [6, 12],
       "spriteKey": "monster_bonegorger",
       "animCategory": "humanoid",
+      "family": "gravegnawers",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -336,6 +347,7 @@
       "spriteKey": "monster_valdras",
       "elite": true,
       "animCategory": "humanoid",
+      "family": "unburied",
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -940,6 +952,7 @@
       "elite": true,
       "isMiniBoss": true,
       "animCategory": "humanoid",
+      "family": "unburied",
       "lootTable": [
         {"quality": "magic", "dropRate": 0.8},
         {"quality": "rare", "dropRate": 0.35},

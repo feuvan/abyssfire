@@ -188,8 +188,8 @@
     {
       "file": "monsters.json",
       "counts": {"defs": 38, "zoneMonsters": 27, "emeraldPlains": 12, "miniBosses": 5},
-      "bytes": 31585,
-      "sha256": "d76e2e87084cfc672547a0148492b1c143f05f3601312a8d66cfae04dd61a85b"
+      "bytes": 31947,
+      "sha256": "9145caec2e4784d1eae98bec702009487c3bb06ad4847ca7fbcf7a31f25a394f"
     },
     {
       "file": "music.json",
@@ -218,8 +218,8 @@
     {
       "file": "quest_hunts.json",
       "counts": {"hunts": 18},
-      "bytes": 16985,
-      "sha256": "ea01891c2bcee3df8f29fbd03e3aee6a646477430ff35658fb5345b8fbdc0966"
+      "bytes": 17069,
+      "sha256": "2b54a1d97d73e8cafd31f2de888880a49c873f36bae335fcf4812e3dcb2a7eaa"
     },
     {
       "file": "quest_tuning.json",

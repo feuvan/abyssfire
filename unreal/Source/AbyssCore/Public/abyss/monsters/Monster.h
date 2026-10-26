@@ -24,6 +24,9 @@ ABYSS_ENUM_STRINGS(MonsterState, "idle", "patrol", "chase", "attack", "returning
 
 // Why a monster exists; drives respawn eligibility (M4/W9), affix rolls and loot floors (monsters 1.2).
 // StoryBoss (M7): the zone spawn of MonsterAiDef::storyBossId (Ch1 goblin_chief); once per visit, no respawn.
+// Raised (dark remake K3, appended): a body stood up from a corpse by a raise or the Unburied rise, or summoned (a summon
+// ability, an on-death spawn): no exp, gold, loot, quest drop, embers or pet exp; never respawns; collapses (dies without
+// a kill) when its raiser (MonsterInstance::raiserId) dies.
 enum class MonsterRole : uint8_t {
   Regular,
   ZoneMiniBoss,
@@ -36,9 +39,10 @@ enum class MonsterRole : uint8_t {
   LabyrinthFloor,
   SealKeeper,
   StoryBoss,
+  Raised,
 };
 ABYSS_ENUM_STRINGS(MonsterRole, "regular", "miniBoss", "subDungeonMiniBoss", "hunt", "huntMinion", "ambush", "rescue",
-                   "defendWave", "labyrinth", "sealKeeper", "storyBoss")
+                   "defendWave", "labyrinth", "sealKeeper", "storyBoss", "raised")
 
 // The ability a monster is winding up (K2, implementation-plan.md 3): resolved once, at windup start, and resolved at
 // contact through the pending-strike path (CombatSystem). `origin` / `dir` place the ground shape (the telegraph);
@@ -105,6 +109,18 @@ struct ABYSS_API MonsterInstance {
   MonsterAbilityCast abilityCast;   // the pending ability's resolved aim
   double abilityRootedUntilMs = 0;  // = the pending ability's contact
   int32_t phase = 0;                // boss phase index (K4 sets it; abilities' phases[] read it)
+  // K3 (Corpses.h; Combat.h / MonsterSystem.h "K3"). A Raised body (MonsterRole::Raised: it rose once, so its own
+  // corpse is spent) stands for `raiserId` (kNoEntity for a self-risen or an on-death-spawned one: it collapses with
+  // nobody). A raise / summon winding up keeps its corpses / spots (abilityCorpses / abilitySpots: the corpse positions
+  // for a raise) until contact; summonedAtMs holds when this caster stood each body up (perWindowCap). A consume
+  // channel holds consumeCorpse until consumeUntilMs (rooted; no swing). abilityRootedUntilMs also roots a risen body
+  // while its Rise clip plays.
+  EntityId raiserId = kNoEntity;
+  std::vector<double> summonedAtMs;
+  std::vector<uint32_t> abilityCorpses;
+  std::vector<Vec2> abilitySpots;
+  uint32_t consumeCorpse = 0;       // 0 = not eating
+  double consumeUntilMs = 0;
   // presentation flags
   bool storyNameShown = false;      // boss label renamed (story 8.3)
   bool active = true;               // in the AI activity set (30 tiles / aggro), monsters 3.8

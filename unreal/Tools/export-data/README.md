@@ -80,9 +80,15 @@ the export is byte-identical to the web's).
   `map.presentationTheme` and `map.regions` (world.ts checks that each names a mood); K2 (package 2A) enabled
   `monster.abilities`, `monster.damageType` and `monster.hitCap` (`monsters.ts` `checkK2Monster` checks keys, kinds, aims,
   shapes, blocks, the windup floors and the timing fields' upper bounds at every level, fails an ability whose `rangeMin`
-  lies past the swing reach (attackRange x 1.2: never picked) and warns on a `rangeMax` past it, and calls `gateRemakeValues` on every definition and hunt
+  lies past the swing reach (attackRange x 1.2: never picked) and warns on a `rangeMax` past it (not for raise /
+  summon, which are casts between swings since the 2B review), and calls `gateRemakeValues` on every definition and hunt
   definition: the ability kinds raise / summon / buff / call stay gated by `monster.abilityRaise` / `abilitySummon` /
-  `abilityBuff` / `abilityCall` until K3 / K5); `quests.ts`, `maps.ts` and
+  `abilityBuff` / `abilityCall` until K3 / K5); K3 (package 2B) enabled `monster.family`, `monster.onDeath`,
+  `monster.corpse`, `monster.riseAgain`, `map.corpseSeeds` and lifted `monster.abilityRaise` / `abilitySummon`
+  (`monsters.ts` `checkK3Monster` / `checkOnDeath` / `checkRiseAgain`: keys, kinds, the 800 ms burst fuse and its required
+  hero cap, shapes per kind, `dmg` / `hpPct` exclusive, spawn ids, delays, a rise only on a `corpse` body, summon `radius`
+  and `windowMs` bounds; `combat.ts` checks the elite affix definitions' keys, type, `onDeath` / `riseAgain` / `families`;
+  `maps.ts` checks each corpse seed's tile and monster); `quests.ts`, `maps.ts` and
   `story.ts` check their shapes (one label per choice slot, one composition per wave with counts ≥ 1, `sealed` with
   `sealedTextKey`, `anim` only on a `{monster}` focus step) before the core loader would refuse them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.

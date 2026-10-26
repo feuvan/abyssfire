@@ -24,6 +24,13 @@ constexpr double kLoadHazardMinTickMs = 100;
 constexpr double kLoadAbilityMaxWindupMs = 5000;
 constexpr double kLoadHazardMaxDurationMs = 60000;
 constexpr double kLoadAbilityMaxCooldownMs = 600000;
+// K3 (implementation-plan.md 3 K3, monsters.md 1.3): an exploder's fuse lasts >= 800 ms; no on-death effect or rise
+// waits more than 10 s / 60 s; a raise searches at most 30 tiles; an on-death spawn stands at most 20 bodies.
+constexpr double kLoadBurstMinFuseMs = 800;
+constexpr double kLoadOnDeathMaxDelayMs = 10000;
+constexpr double kLoadRiseMaxDelayMs = 60000;
+constexpr double kLoadSummonMaxRadius = 30;
+constexpr int32_t kLoadOnDeathMaxSpawn = 20;
 
 // An object's keys must all be known (a misspelt optional field would otherwise be silently ignored).
 void LoadMonsterCheckKeys(const JNode& n, std::initializer_list<std::string_view> known, std::string_view what) {
@@ -227,7 +234,8 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
   const bool summons = a.kind == AbilityKind::Raise || a.kind == AbilityKind::Summon;
   if (n.Has("summon")) {
     const JNode s = n.Child("summon");
-    LoadMonsterCheckKeys(s, {"monsterId", "count", "at", "anchors", "capAlive", "perWindowCap", "windowMs", "hpPct"},
+    LoadMonsterCheckKeys(s, {"monsterId", "count", "at", "anchors", "capAlive", "perWindowCap", "windowMs", "hpPct",
+                             "radius"},
                          "summon");
     if (!summons) s.Error("only raise / summon abilities summon");
     a.summon.present = true;
@@ -243,7 +251,9 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
     if (a.summon.monsterId.empty()) s.Child("monsterId").Error("empty monster id");
     if (a.summon.count < 1) s.Child("count").Error("expected >= 1");
     if (a.summon.capAlive < 0 || a.summon.perWindowCap < 0) s.Error("caps are >= 0");
-    if (!(a.summon.windowMs >= 0)) s.Child("windowMs").Error("expected >= 0");
+    if (!(a.summon.windowMs >= 0) || !(a.summon.windowMs <= kLoadAbilityMaxCooldownMs)) {
+      s.Child("windowMs").Error("expected 0 <= windowMs <= 600000");  // K3: the caster keeps 10 min of its summons
+    }
     if (a.summon.perWindowCap > 0 && !(a.summon.windowMs > 0)) {
       s.Child("windowMs").Error("a per-window cap needs windowMs > 0");
     }
@@ -253,6 +263,16 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
     }
     if (a.kind == AbilityKind::Raise && a.summon.at != AbilitySummonAt::Corpse) {
       s.Child("at").Error("a raise stands a corpse up");
+    }
+    // K3: the corpse search radius of a raise, the ring of a summon at `self`.
+    if (s.Has("radius")) {
+      a.summon.hasRadius = true;
+      a.summon.radius = s.Num("radius");
+      if (!(a.summon.radius > 0) || !(a.summon.radius <= kLoadSummonMaxRadius)) {
+        s.Child("radius").Error("expected 0 < radius <= 30");
+      } else if (a.summon.at == AbilitySummonAt::Anchors) {
+        s.Child("radius").Error("a summon at 'anchors' stands its bodies on the anchors: no radius");
+      }
     }
   } else if (summons) {
     n.Error("a " + std::string(EnumName(a.kind)) + " ability needs its 'summon' block");
@@ -279,6 +299,128 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
 }
 
 }  // namespace
+
+// K3 on-death block (MonsterData.h MonsterOnDeathDef): every key known; per kind its shape, damage and blocks.
+MonsterOnDeathDef ReadMonsterOnDeath(const JNode& n) {
+  MonsterOnDeathDef d;
+  LoadMonsterCheckKeys(n,
+                       {"kind", "delayMs", "shape", "dmg", "hpPct", "damageType", "status", "hitsMonsters",
+                        "monsterDmgMul", "capHeroMaxHpPct", "puddle", "spawn"},
+                       "onDeath");
+  d.present = true;
+  d.kind = n.Enum<OnDeathKind>("kind");
+  d.delayMs = n.Num("delayMs", 0.0);
+  if (!(d.delayMs >= 0) || !(d.delayMs <= kLoadOnDeathMaxDelayMs)) {
+    n.Child("delayMs").Error("expected 0 <= delayMs <= 10000");
+  } else if (d.kind == OnDeathKind::Burst && !(d.delayMs >= kLoadBurstMinFuseMs)) {
+    n.Child("delayMs").Error("an exploder's fuse lasts >= 800 ms (monsters.md 1.3)");
+  }
+  const bool spawns = d.kind == OnDeathKind::Spawn;
+  // Shape: a burst is a circle; a ring or a puddle a ring or a circle (`kind` names which; a ring defaults to a ring,
+  // a puddle to a circle); a spawn has none.
+  if (n.Has("shape")) {
+    const JNode sh = n.Child("shape");
+    if (spawns) {
+      sh.Error("a spawn has no shape");
+    } else if (d.kind == OnDeathKind::Burst) {
+      d.shape = ReadAbilityShape(sh, true, AbilityShapeKind::Circle);
+    } else {
+      const AbilityShapeKind implied = d.kind == OnDeathKind::Ring ? AbilityShapeKind::Ring : AbilityShapeKind::Circle;
+      d.shape = ReadAbilityShape(sh, !sh.Has("kind"), implied);
+      if (d.shape.kind != AbilityShapeKind::Circle && d.shape.kind != AbilityShapeKind::Ring) {
+        sh.Child("kind").Error("an on-death shape is a circle or a ring");
+      }
+    }
+  } else if (!spawns) {
+    n.Error("a " + std::string(EnumName(d.kind)) + " needs a shape");
+  }
+  // Damage: dmg or hpPct (not both); a burst needs one, a ring / puddle without one needs a status.
+  if (n.Has("dmg")) {
+    d.hasDmg = true;
+    d.dmg = n.Num("dmg");
+    if (!(d.dmg > 0)) n.Child("dmg").Error("expected > 0");
+  }
+  if (n.Has("hpPct")) {
+    d.hasHpPct = true;
+    d.hpPct = n.Num("hpPct");
+    if (!(d.hpPct > 0) || !(d.hpPct <= 100)) n.Child("hpPct").Error("expected 0 < hpPct <= 100");
+  }
+  if (d.hasDmg && d.hasHpPct) n.Error("an on-death effect deals dmg or hpPct, not both");
+  if (n.Has("damageType")) {
+    d.hasDamageType = true;
+    d.damageType = n.Enum<DamageType>("damageType");
+  }
+  if (n.Has("status")) d.status = ReadAbilityStatus(n.Child("status"));
+  d.hitsMonsters = n.Bool("hitsMonsters", false);
+  d.monsterDmgMul = n.Num("monsterDmgMul", 1.0);
+  if (!(d.monsterDmgMul >= 0)) n.Child("monsterDmgMul").Error("expected >= 0");
+  if (n.Has("capHeroMaxHpPct")) {
+    d.capHeroMaxHpPct = n.Num("capHeroMaxHpPct");
+    if (!(d.capHeroMaxHpPct > 0) || !(d.capHeroMaxHpPct <= 100)) {
+      n.Child("capHeroMaxHpPct").Error("expected 0 < capHeroMaxHpPct <= 100 (percent of the hero's max life)");
+    }
+  }
+  const bool damages = d.hasDmg || d.hasHpPct;
+  switch (d.kind) {
+    case OnDeathKind::Burst:
+      if (!damages) n.Error("a burst deals damage: dmg or hpPct");
+      if (!n.Has("capHeroMaxHpPct")) n.Error("an exploder's damage is capped: capHeroMaxHpPct (monsters.md 1.3)");
+      break;
+    case OnDeathKind::Ring:
+    case OnDeathKind::Puddle:
+      if (!damages && !d.status.present) n.Error("a " + std::string(EnumName(d.kind)) + " needs damage or a status");
+      break;
+    case OnDeathKind::Spawn:
+      for (std::string_view k : {"dmg", "hpPct", "damageType", "status", "hitsMonsters", "monsterDmgMul",
+                                 "capHeroMaxHpPct"}) {
+        if (n.Has(k)) n.Child(k).Error("a spawn deals no damage");
+      }
+      break;
+  }
+  // Blocks: puddle {durationMs, tickMs}, spawn {monsterId, count}, each only for its kind.
+  if (n.Has("puddle")) {
+    const JNode p = n.Child("puddle");
+    LoadMonsterCheckKeys(p, {"durationMs", "tickMs"}, "puddle");
+    if (d.kind != OnDeathKind::Puddle) p.Error("only a puddle has a 'puddle' block");
+    d.puddle.durationMs = p.Num("durationMs");
+    d.puddle.tickMs = p.Num("tickMs");
+    if (!(d.puddle.durationMs > 0) || !(d.puddle.durationMs <= kLoadHazardMaxDurationMs)) {
+      p.Child("durationMs").Error("expected 0 < durationMs <= 60000");
+    }
+    if (!(d.puddle.tickMs >= kLoadHazardMinTickMs) || !(d.puddle.tickMs <= d.puddle.durationMs)) {
+      p.Child("tickMs").Error("expected 100 <= tickMs <= durationMs");
+    }
+  } else if (d.kind == OnDeathKind::Puddle) {
+    n.Error("a puddle needs its 'puddle' block");
+  }
+  if (n.Has("spawn")) {
+    const JNode s = n.Child("spawn");
+    LoadMonsterCheckKeys(s, {"monsterId", "count"}, "spawn");
+    if (!spawns) s.Error("only a spawn has a 'spawn' block");
+    d.spawn.monsterId = s.Str("monsterId");
+    d.spawn.count = s.Int("count", 1);
+    if (d.spawn.monsterId.empty()) s.Child("monsterId").Error("empty monster id");
+    if (d.spawn.count < 1 || d.spawn.count > kLoadOnDeathMaxSpawn) s.Child("count").Error("expected 1 <= count <= 20");
+  } else if (spawns) {
+    n.Error("a spawn needs its 'spawn' block");
+  }
+  return d;
+}
+
+// K3 rise block (MonsterData.h MonsterRiseAgainDef).
+MonsterRiseAgainDef ReadMonsterRiseAgain(const JNode& n) {
+  MonsterRiseAgainDef r;
+  LoadMonsterCheckKeys(n, {"chance", "delayMs", "hpPct", "notOnCrit"}, "riseAgain");
+  r.present = true;
+  r.chance = n.Num("chance", 1.0);
+  r.delayMs = n.Num("delayMs", 0.0);
+  r.hpPct = n.Num("hpPct", 100.0);
+  r.notOnCrit = n.Bool("notOnCrit", false);
+  if (!(r.chance > 0) || !(r.chance <= 1)) n.Child("chance").Error("expected 0 < chance <= 1");
+  if (!(r.delayMs >= 0) || !(r.delayMs <= kLoadRiseMaxDelayMs)) n.Child("delayMs").Error("expected 0 <= delayMs <= 60000");
+  if (!(r.hpPct > 0) || !(r.hpPct <= 100)) n.Child("hpPct").Error("expected 0 < hpPct <= 100");
+  return r;
+}
 
 MonsterDef ReadMonsterDef(const JNode& n, bool withDerived) {
   MonsterDef m;
@@ -323,6 +465,24 @@ MonsterDef ReadMonsterDef(const JNode& n, bool withDerived) {
     m.abilities.push_back(std::move(ability));
   }
   m.bossSkills = n.StrList("bossSkills", true);
+  // Dark remake K3 (monster.family, monster.onDeath, monster.corpse, monster.riseAgain).
+  if (n.Has("family")) {
+    m.family = n.Str("family");
+    if (m.family.empty()) n.Child("family").Error("an empty family id");
+  }
+  if (n.Has("onDeath")) m.onDeath = ReadMonsterOnDeath(n.Child("onDeath"));
+  if (n.Has("corpse")) {
+    const JNode c = n.Child("corpse");
+    LoadMonsterCheckKeys(c, {"leaves", "consumes"}, "corpse");
+    m.corpse.leaves = c.Enum<CorpseLeaves>("leaves");
+    m.corpse.consumes = c.Bool("consumes", false);
+  }
+  if (n.Has("riseAgain")) {
+    m.riseAgain = ReadMonsterRiseAgain(n.Child("riseAgain"));
+    if (m.corpse.leaves != CorpseLeaves::Corpse) {
+      n.Child("riseAgain").Error("a monster rises from its own corpse: corpse.leaves must be 'corpse'");
+    }
+  }
   if (withDerived) {
     const JNode d = n.Child("derived");
     if (!d.Exists()) {

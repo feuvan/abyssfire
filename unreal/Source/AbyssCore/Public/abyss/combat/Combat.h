@@ -77,6 +77,28 @@
 //   ability's status instead of the def's onHitStatus (elite on-hit effects apply to both). Hazard ticks deal their
 //   fixed damage less the hero's resistance (no roll, no defense, no i-frames: like a DoT tick), capped the same way;
 //   unlike a status DoT tick, a lethal hazard tick checks Death Save (it is monster damage).
+// * Dark remake K3 on-death effects, raises and burning (implementation-plan.md 3 K3; rules in monsters/OnDeath.h,
+//   bodies in monsters/Corpses.h through MonsterSystem). The kill pipeline's K3 step (SimWiring, after MonsterSystem::
+//   OnMonsterDied) schedules the dead monster's onDeath, then each of its affixes' (elite_affixes.json), then the zone's
+//   (SetZoneOnDeath: the Labyrinth's volatile curse, VolatileCurseOnDeath) at the death spot, each with its damage fixed
+//   at the death (OnDeathBaseDamage) and an EvTelegraph{source OnDeath} for a fuse; TickOnDeath (GameSim, after
+//   TickHazards) resolves the due ones in (time, schedule) order: a burst / ring hits the hero whose body touches it
+//   (dodge-roll i-frames avoid it; else the fixed damage less the hero's resistance, capped by OnDeathHeroCap, then its
+//   status; Death Save holds: monster damage) and, with hitsMonsters, every living monster in it (raw, x monsterDmgMul,
+//   no provoke, KillSource::Environment); a puddle joins the HazardField (first pulse at once; both caps); a spawn stands
+//   its bodies up as Raised without a raiser. A cinematic does not cancel a fuse (the clock waits); a zone change drops
+//   them. Raise / summon abilities run now: the pick holds the bodies they would stand up (PlanSummon: count, the
+//   caster's live Raised under capAlive, the bodies it stood up within windowMs under perWindowCap; a raise's free
+//   corpses within its radius in query order; a summon's spots on its anchors or a ring around it) and draws a marker
+//   per corpse / spot (EvTelegraph kind Raise / Summon); at contact the bodies still there stand up (capAlive checked
+//   again). A raise / summon is a timed cast, not a swing: besides competing on a due swing, it starts between swings
+//   from Chase or Attack (TryStartSummonCast: its own cooldown, rangeMin / rangeMax to the hero, bodies found; never
+//   while a swing or ability of the caster is on its way to contact, nor under a pet's taunt; such a caster's ability
+//   clock starts at its first Chase / Attack step in the swing scan); every K2 abort applies and lets its corpses go.
+//   Fire burns bodies: a fire killing blow (MonsterSystem), a fire ground strike at its contact, each tick of a fire
+//   hazard, a fire burst / ring, and a hero fire skill's area where it lands (ground / trap / nova circles, cones, lines;
+//   a meteor at its fall; a fire wall / trap on each tick). Kills of Raised bodies pay nothing: no Spirit 'kill', exp,
+//   gold (no Loot draw), kill heal or kill text.
 #pragma once
 
 #include <cstdint>
@@ -98,6 +120,7 @@
 #include "abyss/data/SkillData.h"
 #include "abyss/hero/Spirit.h"
 #include "abyss/sim/GameplayBus.h"
+#include "abyss/sim/SimTypes.h"
 
 namespace abyss {
 
@@ -224,6 +247,8 @@ class ABYSS_API CombatSystem {
   void TickAutoCombat();            // step 12 (C1: first skill that CanExecute, only while a living lock is held; C14
                                     // acquires that lock with the press's auto-pick)
   void TickCombatState();           // 9.6 rising edge immediate, falling edge debounced 1500 ms
+  // K3: resolves the due on-death effects (header "K3"). GameSim calls it right after TickHazards.
+  void TickOnDeath();
   void OnTimer(const Timer& t);
   // F1: clear the input buffer (cinematic: also the attack target). F2 (cinematic): cancel every pending
   // MonsterStrikeContact (EvMonsterAttackCancelled); the monster keeps lastAttackMs.
@@ -236,6 +261,15 @@ class ABYSS_API CombatSystem {
   void OnMonsterBoltArrived(const Projectile& p);
   void OnGroundEffectTick(const GroundEffect& g, int32_t tickIndex);
   void OnMonsterKilled(const MonsterKilledMsg& m);
+  // K3 kill pipeline step (after MonsterSystem::OnMonsterDied): schedules the dead monster's on-death effects.
+  void OnMonsterDeathEffects(const MonsterKilledMsg& m);
+  // K3: a Raised body collapsed (MonsterSystem::Collapse): its statuses, pending swing / ability (EvMonsterAttackCancelled
+  // for an ability) and the hero's lock on it go, as for a kill.
+  void OnMonsterCollapsed(EntityId monster);
+  // K3: an on-death effect every monster killed in this zone leaves (`label` names it in the events, e.g.
+  // "curse.volatile"); `present` false clears it. The Labyrinth runtime sets its floor's curse here
+  // (VolatileCurseOnDeath); a zone exit clears it.
+  void SetZoneOnDeath(const MonsterOnDeathDef& d, std::string label);
 
   // ---- shared hit API ----
   // takeDamage on a monster with feedback events (EvHit, floating text, impact); kill credit via MonsterSystem.
@@ -273,8 +307,27 @@ class ABYSS_API CombatSystem {
   // A monster swing is in its wind-up telegraph (0.62 x contact after the swing start, combat 10.3; a K2 ability: its
   // whole windup).
   bool IsWindingUp(EntityId monster) const;
+  // A monster swing or K2 ability waiting for its contact beat (the whole strike, past the windup telegraph): one action
+  // at a time (K3: no raise / summon cast and no consume channel starts while one is on its way).
+  bool HasPendingStrike(EntityId monster) const;
   // K2 ground hazards of the zone (cleared on zone exit).
   const HazardField& Hazards() const { return hazards_; }
+  // K3 on-death effects waiting for their delay (schedule order; cleared on zone exit).
+  struct PendingOnDeath {
+    uint32_t seq = 0;
+    EntityId source = kNoEntity;  // the dead monster
+    std::string label;            // "onDeath", "affix.<type>", the zone label
+    MonsterOnDeathDef def;
+    Vec2 origin;
+    Vec2 dir{1, 0};
+    double startMs = 0;
+    double dueMs = 0;
+    double damage = 0;            // OnDeathBaseDamage at the death
+    DamageType type = DamageType::Physical;
+    double monsterCapPct = 0;     // the dead monster's hitCapHeroMaxHpPct
+    TelegraphStyle style = TelegraphStyle::Normal;
+  };
+  const std::vector<PendingOnDeath>& PendingOnDeathEffects() const { return onDeath_; }
   const DodgeController& Dodge() const { return dodge_; }
   const InputBuffer& Buffer() const { return buffer_; }
   // Combatant views for the damage formula (combat-feel 1.2).
@@ -450,8 +503,22 @@ class ABYSS_API CombatSystem {
   // ---- K2 monster abilities ----
   // The ability clock of `m` (no-op once started for this fight).
   static void StartAbilityClock(MonsterInstance& m, double now);
-  // A due swing of `m` becomes an ability (true) or stays a basic swing (false).
-  bool TryStartAbility(MonsterInstance& m, double now);
+  // K3: what a raise / summon would stand up now (header "K3"); empty = it cannot fire.
+  struct SummonPlan {
+    std::vector<uint32_t> corpses;  // a raise's corpses
+    std::vector<Vec2> spots;        // where each body stands (a raise: its corpse's position)
+  };
+  SummonPlan PlanSummon(const MonsterInstance& m, const MonsterAbilityDef& a, double now) const;
+  // Ends `m`'s pending ability (index, root, held corpses and spots).
+  void ClearPendingAbility(MonsterInstance& m);
+  // K3: burns the bodies a fire area touches (no-op for another type).
+  void BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir);
+  void ResolveOnDeath(const PendingOnDeath& e);
+  // A due swing of `m` becomes an ability (true) or stays a basic swing (false). `summonsOnly` (K3): the cast between
+  // swings, where only a raise / summon may start.
+  bool TryStartAbility(MonsterInstance& m, double now, bool summonsOnly = false);
+  // K3: a raise / summon cast between swings (Chase, or Attack before the swing is due): header "K3".
+  bool TryStartSummonCast(MonsterInstance& m, double now);
   // S7: aborts every pending ability whose caster is stunned or frozen (TickCombat, before the dead-hero gate).
   void AbortImmobilizedAbilities();
   // Contact of the pending ability (PendingStrike::ability).
@@ -506,6 +573,10 @@ class ABYSS_API CombatSystem {
   std::vector<EntityId> scratchNearby_;  // TickCombat swing scan (capacity kept)
   HazardField hazards_;                   // K2 ground hazards of the zone
   std::vector<HazardTick> scratchHazardTicks_;
+  std::vector<PendingOnDeath> onDeath_;   // K3 on-death effects waiting for their delay (schedule order)
+  uint32_t nextOnDeathSeq_ = 1;
+  MonsterOnDeathDef zoneOnDeath_;         // K3: the zone's on-death effect (SetZoneOnDeath)
+  std::string zoneOnDeathLabel_;
   bool inCombat_ = false;
   TimerId combatOffTimer_ = kNoTimer;
   TimerId respawnTimer_ = kNoTimer;

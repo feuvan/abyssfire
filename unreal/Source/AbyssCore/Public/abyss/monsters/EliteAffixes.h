@@ -18,8 +18,11 @@ namespace abyss {
 struct MonsterInstance;
 
 // rollAffixes (17.2): count = rng.RandomInt(min, max) for the zone (CountFor), then without replacement:
-// idx = RandomInt(0, remaining - 1) over table.order, splice. Rng = RngStream::Ai.
-ABYSS_API std::vector<EliteAffixType> RollEliteAffixes(const EliteAffixTable& table, std::string_view zoneId, Rng& rng);
+// idx = RandomInt(0, remaining - 1) over table.order, splice. Rng = RngStream::Ai. Dark remake K3: the pool holds only
+// the affixes a monster of `family` may roll (EliteAffixTable::RollableFor: an affix with `families` needs one of them;
+// the shipped seven have none, so their pool and draws are unchanged).
+ABYSS_API std::vector<EliteAffixType> RollEliteAffixes(const EliteAffixTable& table, std::string_view zoneId, Rng& rng,
+                                                       std::string_view family = {});
 
 // On-hit results of a landed monster hit (17.4), given the final damage dealt to the hero.
 struct EliteOnHit {

@@ -300,9 +300,12 @@ void SimImpl::Update(double dtMs) {
   // 10. pet, escort / defend (quest world), elite behaviours
   petCompanion->Tick(dtMs);
   monsters->TickEliteBehaviours();
-  // 11. status effects (ticks then expiry), then the K2 ground hazards (their ticks are DoT-like)
+  // 11. status effects (ticks then expiry), then the K2 ground hazards (their ticks are DoT-like), then the K3 on-death
+  // effects that come due and the corpse registry (TTLs, consume channels, Unburied rises)
   combat->TickStatusEffects();
   combat->TickHazards();
+  combat->TickOnDeath();
+  monsters->TickCorpses();
   // combat state, random events, auto-combat (12)
   combat->TickCombatState();
   randomEvents->Tick();

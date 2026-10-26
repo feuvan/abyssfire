@@ -74,7 +74,8 @@ struct AbilityHazardDef {
   AbilityShapeDef shape;
 };
 
-// raise / summon (runtime: K3 corpses and raises). `at`: around the caster, at its `anchors`, or on a corpse.
+// raise / summon (runtime: K3 corpses and raises, Combat.h "K3"). `at`: around the caster, at its `anchors`, or on a
+// corpse (a raise). Every body stands as MonsterRole::Raised with the caster as its raiser.
 enum class AbilitySummonAt : uint8_t { Self, Anchors, Corpse };
 ABYSS_ENUM_STRINGS(AbilitySummonAt, "self", "anchors", "corpse")
 
@@ -84,10 +85,15 @@ struct AbilitySummonDef {
   int32_t count = 1;
   AbilitySummonAt at = AbilitySummonAt::Self;
   std::vector<TilePos> anchors;
-  int32_t capAlive = 0;       // live summons per caster (0 = no cap)
-  int32_t perWindowCap = 0;   // summons per `windowMs` (0 = no cap)
+  int32_t capAlive = 0;       // live Raised per caster (0 = no cap)
+  int32_t perWindowCap = 0;   // bodies the caster raised / summoned within the last `windowMs` (0 = no cap)
   double windowMs = 0;
   double hpPct = 100;         // summoned at this percent of their life
+  // K3: a raise takes corpses within `radius` tiles of the caster (default MonsterAiDef::raiseRadiusDefault, monsters.md
+  // "within 6 tiles"); a summon at `self` stands its bodies on a ring of `radius` around the caster (default
+  // MonsterAiDef::summonRingRadius). Unused by `anchors`.
+  bool hasRadius = false;
+  double radius = 0;
 };
 
 // buff / call (runtime: K5 packs and morale): `stat` x `mul` for `ms` on allies within `radius` (of `family` when set).
@@ -134,6 +140,70 @@ struct MonsterAbilityDef {
   AbilityBuffDef buff;
 };
 
+// ---- K3 on-death effects, corpses and the Unburied rise (dark remake, implementation-plan.md 3 K3; monsters.md 1.3 /
+// 1.5; runtime: Combat.h "K3" and Corpses.h) ----------------------------------------------------------------------------
+// What happens where a monster died, `delayMs` after its death (on the sim clock):
+//   burst   a circle hit (the exploder: fuse >= 800 ms under a telegraph, damage capped, monsters x monsterDmgMul);
+//   ring    a circle or ring hit (the Gravecold frost ring: a status, damage optional);
+//   puddle  a ground hazard (HazardField) that ticks the damage every puddle.tickMs for puddle.durationMs;
+//   spawn   spawn.count of spawn.monsterId around the spot (MonsterRole::Raised without a raiser: no rewards, no respawn).
+// Damage: `dmg` (x the difficulty's monster damage multiplier) or `hpPct` percent of the dying monster's maximum life;
+// the hero's resistance applies to a non-physical type, then the cap (capHeroMaxHpPct and the monster's
+// hitCapHeroMaxHpPct, each a percent of the hero's max life x the difficulty's damage multiplier; the smaller binds).
+enum class OnDeathKind : uint8_t { Burst, Ring, Puddle, Spawn };
+ABYSS_ENUM_STRINGS(OnDeathKind, "burst", "ring", "puddle", "spawn")
+
+struct OnDeathPuddleDef {
+  double durationMs = 0;
+  double tickMs = 0;
+};
+
+struct OnDeathSpawnDef {
+  std::string monsterId;
+  int32_t count = 1;
+};
+
+struct MonsterOnDeathDef {
+  bool present = false;
+  OnDeathKind kind = OnDeathKind::Burst;
+  double delayMs = 0;          // after the death (bursts >= 800: the fuse)
+  AbilityShapeDef shape;       // burst: a circle; ring: a ring or a circle; puddle: either (circle when omitted)
+  bool hasDmg = false;
+  double dmg = 0;              // fixed (x the difficulty's damageMul); a puddle: per tick
+  bool hasHpPct = false;
+  double hpPct = 0;            // percent of the dying monster's maximum life (the Labyrinth's volatile curse)
+  bool hasDamageType = false;
+  DamageType damageType = DamageType::Physical;  // default: the monster's damageType
+  AbilityStatusDef status;     // rolled on a landed hit (a puddle: per tick)
+  bool hitsMonsters = false;
+  double monsterDmgMul = 1;    // monsters inside take floor(damage x monsterDmgMul) (raw, no cap)
+  double capHeroMaxHpPct = 0;  // 0 = only the monster's own hit cap (a burst must name one: monsters.md 1.3)
+  OnDeathPuddleDef puddle;
+  OnDeathSpawnDef spawn;
+};
+
+// What the body leaves (monsters.md 1.5): `corpse` an entry other monsters raise (Unburied, Living) and eat; `remains`
+// an entry nothing raises or eats (the Gravegnawers' carcass, a boss's body); `none` no entry (Breach-blood's tar
+// puddle). Both kinds burn. `consumes`: this monster eats corpses (the Gravegnawer).
+enum class CorpseLeaves : uint8_t { None, Corpse, Remains };
+ABYSS_ENUM_STRINGS(CorpseLeaves, "none", "corpse", "remains")
+
+struct MonsterCorpseDef {
+  CorpseLeaves leaves = CorpseLeaves::None;
+  bool consumes = false;
+};
+
+// The Unburied rise (monsters.md 2.2 trait, 3 affix): with `chance` (RngStream::Ai; 1 = no draw) the monster's own
+// corpse stands up once, `delayMs` after the death, at `hpPct` of its life; a fire killing blow or a burned (or raised,
+// or eaten) corpse prevents it, and `notOnCrit` a critical killing blow too.
+struct MonsterRiseAgainDef {
+  bool present = false;
+  double chance = 1;
+  double delayMs = 0;
+  double hpPct = 100;
+  bool notOnCrit = false;
+};
+
 // MonsterDefinition verbatim + exporter `derived` block (monsters-ai.md 1.1). This is also the runtime "current
 // definition" type: difficulty scaling, hunt transforms and elite affixes produce modified copies (1.3).
 struct MonsterDef {
@@ -171,6 +241,13 @@ struct MonsterDef {
   // The web's bossSkills ids (M9: inert until K2). Every id must name one of `abilities` once the monster has any;
   // a monster without abilities keeps them as inert data (DataStore warns).
   std::vector<std::string> bossSkills;
+  // ---- dark remake K3 (remake schema monster.family / monster.onDeath / monster.corpse / monster.riseAgain) ----
+  // Family id (monsters.md 1.1: unburied, living, gravegnawers, breach; "" = none): copied onto its corpse entries;
+  // elite affixes with `families` roll only for these (the Unburied affix).
+  std::string family;
+  MonsterOnDeathDef onDeath;
+  MonsterCorpseDef corpse;
+  MonsterRiseAgainDef riseAgain;
 };
 
 struct ZoneMonsterList {
@@ -289,6 +366,24 @@ struct MonsterAiDef {
   double returnHomeRadius = 1;
   // Hero position while hidden by a safe zone (monsters 3.8: update(..., -999, -999)).
   double hiddenHeroCoord = -999;
+  // Dark remake K3 tuning (implementation-plan.md 3 K3, monsters.md 1.5 / 2.4; port-only, not loaded): a corpse entry
+  // lasts corpseTtlMs, at most corpseCap killed bodies per zone (the oldest goes first; map seeds do not count and never
+  // expire); a monster that `consumes` eats a corpse within consumeRadius tiles while out of combat (idle / patrol) or
+  // below consumeBelowHpFraction of its life: a consumeChannelMs channel (the Consume clip), then it heals
+  // consumeHealFraction of its maximum life. A raise takes corpses within raiseRadiusDefault tiles of the caster unless
+  // the ability names its radius; a summon at `self` stands its bodies on a ring of summonRingRadius. A risen body is
+  // rooted while its Rise clip plays (the manifest clip's length, else riseMsDefault); raise / summon markers are drawn
+  // with a radius of raiseMarkerRadius.
+  double corpseTtlMs = 20000;
+  int32_t corpseCap = 24;
+  double consumeRadius = 1;
+  double consumeChannelMs = 2000;
+  double consumeHealFraction = 0.3;
+  double consumeBelowHpFraction = 0.5;
+  double raiseRadiusDefault = 6;
+  double summonRingRadius = 1.5;
+  double riseMsDefault = 1200;
+  double raiseMarkerRadius = 0.75;
 };
 
 struct MonsterOverride {

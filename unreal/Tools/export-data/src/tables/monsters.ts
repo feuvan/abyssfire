@@ -18,7 +18,8 @@ import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
 import { STORY_TRIGGERS, BOSS_INTROS } from '../../../../../src/data/story/script';
 import { EmeraldPlainsMap } from '../../../../../src/data/maps';
 import type { MonsterDefinition } from '../../../../../src/data/types';
-import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, RemakeAbilityStatus } from '../../../../GameData/types';
+import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, RemakeAbilityStatus, RemakeOnDeath, RemakeCorpse,
+  RemakeRiseAgain } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
 import { gateRemakeValues, noteConfig, withholdRemakeFields } from '../remake';
@@ -203,12 +204,13 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
     assert(a.rangeMax === undefined || a.rangeMax > (a.rangeMin ?? 0), `${at}.rangeMax: expected > rangeMin`);
     // Picked only on a due swing (Attack state, within attackRange x 1.2): DataStore::Finalize warns on the same rule.
     // The product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998) with a hair of slack, so a range authored as the reach
-    // (1.8) passes.
+    // (1.8) passes. K3: a raise / summon is a cast between swings, from Chase as well, so its range is not bound by reach.
     const swingReach = def.attackRange * ATTACK_EXIT_MUL;
     const shownReach = Math.round(swingReach * 1000) / 1000;
-    assert((a.rangeMin ?? 0) <= swingReach + 1e-9,
+    const castBetweenSwings = a.kind === 'raise' || a.kind === 'summon';
+    assert(castBetweenSwings || (a.rangeMin ?? 0) <= swingReach + 1e-9,
       `${at}.rangeMin: ${a.rangeMin} is past the swing reach (attackRange ${def.attackRange} x ${ATTACK_EXIT_MUL} = ${shownReach}): never picked, abilities fire only on a due swing`);
-    if (a.rangeMax !== undefined && a.rangeMax > swingReach + 1e-9) {
+    if (!castBetweenSwings && a.rangeMax !== undefined && a.rangeMax > swingReach + 1e-9) {
       console.warn(`  warning: ${at}.rangeMax: ${a.rangeMax} past the swing reach (${shownReach} tiles) has no effect: abilities fire only on a due swing`);
     }
     assert(a.hpBelowPct === undefined || (a.hpBelowPct > 0 && a.hpBelowPct <= 100), `${at}.hpBelowPct: expected (0, 100]`);
@@ -246,7 +248,7 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
     const summons = a.kind === 'raise' || a.kind === 'summon';
     if (a.summon) {
       const m = a.summon;
-      checkKeys(m, ['monsterId', 'count', 'at', 'anchors', 'capAlive', 'perWindowCap', 'windowMs', 'hpPct'], `${at}.summon`);
+      checkKeys(m, ['monsterId', 'count', 'at', 'anchors', 'capAlive', 'perWindowCap', 'windowMs', 'hpPct', 'radius'], `${at}.summon`);
       assert(summons, `${at}.summon: only raise / summon abilities summon`);
       assert(typeof m.monsterId === 'string' && m.monsterId !== '', `${at}.summon.monsterId: empty`);
       summoned.push(m.monsterId);
@@ -256,8 +258,12 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
       assert(a.kind !== 'raise' || where2 === 'corpse', `${at}.summon.at: a raise stands a corpse up`);
       assert(where2 !== 'anchors' || (m.anchors ?? []).length > 0, `${at}.summon.anchors: at 'anchors' needs anchors`);
       assert((m.capAlive ?? 0) >= 0 && (m.perWindowCap ?? 0) >= 0 && (m.windowMs ?? 0) >= 0, `${at}.summon: caps and window >= 0`);
+      assert((m.windowMs ?? 0) <= MAX_COOLDOWN_MS, `${at}.summon.windowMs: expected <= ${MAX_COOLDOWN_MS}`);
       assert(!(m.perWindowCap ?? 0) || (m.windowMs ?? 0) > 0, `${at}.summon.windowMs: a per-window cap needs windowMs > 0`);
       assert(m.hpPct === undefined || (m.hpPct > 0 && m.hpPct <= 100), `${at}.summon.hpPct: expected (0, 100]`);
+      // K3: a raise's corpse search radius / a summon's ring around the caster (LoadMonsters.cpp kLoadSummonMaxRadius).
+      assert(m.radius === undefined || (isNum(m.radius) && m.radius > 0 && m.radius <= 30), `${at}.summon.radius: expected 0 < radius <= 30`);
+      assert(m.radius === undefined || where2 !== 'anchors', `${at}.summon.radius: a summon at 'anchors' stands its bodies on the anchors: no radius`);
     } else {
       assert(!summons, `${at}: a ${a.kind} ability needs its 'summon' block`);
     }
@@ -275,6 +281,104 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
     for (const id of def.bossSkills ?? []) assert(ids.has(id), `${where}.bossSkills: '${id}' names no ability of the monster`);
   }
   return summoned;
+}
+
+// ── K3 on-death effects, corpses and the Unburied rise (implementation-plan.md §3 K3) ──
+
+const ON_DEATH_KEYS = ['kind', 'delayMs', 'shape', 'dmg', 'hpPct', 'damageType', 'status', 'hitsMonsters', 'monsterDmgMul',
+  'capHeroMaxHpPct', 'puddle', 'spawn'];
+// LoadMonsters.cpp: an exploder's fuse >= 800 ms (monsters.md §1.3); an on-death delay <= 10 s, a rise <= 60 s; an on-death
+// spawn of 1..20 bodies.
+const BURST_MIN_FUSE_MS = 800, MAX_ON_DEATH_DELAY_MS = 10000, MAX_RISE_DELAY_MS = 60000, MAX_ON_DEATH_SPAWN = 20;
+
+/**
+ * The rules of LoadMonsters.cpp ReadMonsterOnDeath (also elite_affixes.json `onDeath`, combat.ts): known keys at every
+ * level; per kind its shape (burst: a circle; ring / puddle: a circle or a ring; spawn: none), its damage (dmg or hpPct,
+ * not both; a burst needs one and a cap, a ring / puddle damage or a status; a spawn none) and its block (puddle / spawn
+ * only for their kind). Returns the spawned monster id for the caller to resolve.
+ */
+export function checkOnDeath(d: RemakeOnDeath, where: string): string[] {
+  checkKeys(d, ON_DEATH_KEYS, where);
+  assert(['burst', 'ring', 'puddle', 'spawn'].includes(d.kind), `${where}.kind: unknown '${d.kind}' (burst | ring | puddle | spawn)`);
+  const delay = d.delayMs ?? 0;
+  assert(isNum(delay) && delay >= 0 && delay <= MAX_ON_DEATH_DELAY_MS, `${where}.delayMs: expected 0..${MAX_ON_DEATH_DELAY_MS}`);
+  assert(d.kind !== 'burst' || delay >= BURST_MIN_FUSE_MS, `${where}.delayMs: an exploder's fuse lasts >= ${BURST_MIN_FUSE_MS} ms (monsters.md §1.3)`);
+  if (d.kind === 'spawn') {
+    assert(d.shape === undefined, `${where}.shape: a spawn has no shape`);
+    for (const k of ['dmg', 'hpPct', 'damageType', 'status', 'hitsMonsters', 'monsterDmgMul', 'capHeroMaxHpPct'] as const) {
+      assert(d[k] === undefined, `${where}.${k}: a spawn deals no damage`);
+    }
+  } else {
+    assert(d.shape !== undefined, `${where}: a ${d.kind} needs a shape`);
+    if (d.kind === 'burst') {
+      checkShape(d.shape!, 'circle', `${where}.shape`);
+    } else {
+      checkShape(d.shape!, d.shape!.kind === undefined ? (d.kind === 'ring' ? 'ring' : 'circle') : null, `${where}.shape`);
+      assert(d.shape!.kind === undefined || d.shape!.kind === 'circle' || d.shape!.kind === 'ring', `${where}.shape.kind: an on-death shape is a circle or a ring`);
+    }
+  }
+  assert(d.dmg === undefined || (isNum(d.dmg) && d.dmg > 0), `${where}.dmg: expected > 0`);
+  assert(d.hpPct === undefined || (isNum(d.hpPct) && d.hpPct > 0 && d.hpPct <= 100), `${where}.hpPct: expected (0, 100]`);
+  assert(d.dmg === undefined || d.hpPct === undefined, `${where}: an on-death effect deals dmg or hpPct, not both`);
+  if (d.damageType !== undefined) assert(DAMAGE_TYPES.includes(d.damageType), `${where}.damageType: unknown '${d.damageType}'`);
+  if (d.status) checkStatus(d.status, `${where}.status`);
+  assert(d.hitsMonsters === undefined || typeof d.hitsMonsters === 'boolean', `${where}.hitsMonsters: a boolean`);
+  assert(d.monsterDmgMul === undefined || (isNum(d.monsterDmgMul) && d.monsterDmgMul >= 0), `${where}.monsterDmgMul: expected >= 0`);
+  assert(d.capHeroMaxHpPct === undefined || (isNum(d.capHeroMaxHpPct) && d.capHeroMaxHpPct > 0 && d.capHeroMaxHpPct <= 100),
+    `${where}.capHeroMaxHpPct: expected a percent in (0, 100]`);
+  const damages = d.dmg !== undefined || d.hpPct !== undefined;
+  if (d.kind === 'burst') {
+    assert(damages, `${where}: a burst deals damage: dmg or hpPct`);
+    assert(d.capHeroMaxHpPct !== undefined, `${where}: an exploder's damage is capped: capHeroMaxHpPct (monsters.md §1.3)`);
+  }
+  if (d.kind === 'ring' || d.kind === 'puddle') assert(damages || d.status !== undefined, `${where}: a ${d.kind} needs damage or a status`);
+  if (d.puddle) {
+    checkKeys(d.puddle, ['durationMs', 'tickMs'], `${where}.puddle`);
+    assert(d.kind === 'puddle', `${where}.puddle: only a puddle has a 'puddle' block`);
+    assert(isNum(d.puddle.durationMs) && d.puddle.durationMs > 0 && d.puddle.durationMs <= MAX_HAZARD_MS, `${where}.puddle.durationMs: expected 0 < durationMs <= ${MAX_HAZARD_MS}`);
+    assert(isNum(d.puddle.tickMs) && d.puddle.tickMs >= 100 && d.puddle.tickMs <= d.puddle.durationMs, `${where}.puddle.tickMs: expected 100 <= tickMs <= durationMs`);
+  } else {
+    assert(d.kind !== 'puddle', `${where}: a puddle needs its 'puddle' block`);
+  }
+  if (d.spawn) {
+    checkKeys(d.spawn, ['monsterId', 'count'], `${where}.spawn`);
+    assert(d.kind === 'spawn', `${where}.spawn: only a spawn has a 'spawn' block`);
+    assert(typeof d.spawn.monsterId === 'string' && d.spawn.monsterId !== '', `${where}.spawn.monsterId: empty`);
+    const n = d.spawn.count ?? 1;
+    assert(Number.isInteger(n) && n >= 1 && n <= MAX_ON_DEATH_SPAWN, `${where}.spawn.count: an integer 1..${MAX_ON_DEATH_SPAWN}`);
+    return [d.spawn.monsterId];
+  }
+  assert(d.kind !== 'spawn', `${where}: a spawn needs its 'spawn' block`);
+  return [];
+}
+
+/** LoadMonsters.cpp ReadMonsterRiseAgain (also elite_affixes.json `riseAgain`). */
+export function checkRiseAgain(r: RemakeRiseAgain, where: string): void {
+  checkKeys(r, ['chance', 'delayMs', 'hpPct', 'notOnCrit'], where);
+  assert(r.chance === undefined || (isNum(r.chance) && r.chance > 0 && r.chance <= 1), `${where}.chance: expected 0 < chance <= 1`);
+  assert(r.delayMs === undefined || (isNum(r.delayMs) && r.delayMs >= 0 && r.delayMs <= MAX_RISE_DELAY_MS), `${where}.delayMs: expected 0..${MAX_RISE_DELAY_MS}`);
+  assert(r.hpPct === undefined || (isNum(r.hpPct) && r.hpPct > 0 && r.hpPct <= 100), `${where}.hpPct: expected (0, 100]`);
+  assert(r.notOnCrit === undefined || typeof r.notOnCrit === 'boolean', `${where}.notOnCrit: a boolean`);
+}
+
+/**
+ * K3 on a monster (LoadMonsters.cpp ReadMonsterDef): `family` a non-empty id, `onDeath`, `corpse {leaves, consumes}`, and
+ * `riseAgain` only on a monster whose body leaves a corpse. Returns the on-death spawn ids.
+ */
+function checkK3Monster(def: MonsterDefinition, where: string): string[] {
+  const d = def as MonsterDefinition & { family?: string; onDeath?: RemakeOnDeath; corpse?: RemakeCorpse; riseAgain?: RemakeRiseAgain };
+  if (d.family !== undefined) assert(typeof d.family === 'string' && d.family !== '', `${where}.family: an empty family id`);
+  const spawned = d.onDeath ? checkOnDeath(d.onDeath, `${where}.onDeath`) : [];
+  if (d.corpse) {
+    checkKeys(d.corpse, ['leaves', 'consumes'], `${where}.corpse`);
+    assert(['corpse', 'remains', 'none'].includes(d.corpse.leaves), `${where}.corpse.leaves: unknown '${d.corpse.leaves}' (corpse | remains | none)`);
+    assert(d.corpse.consumes === undefined || typeof d.corpse.consumes === 'boolean', `${where}.corpse.consumes: a boolean`);
+  }
+  if (d.riseAgain) {
+    checkRiseAgain(d.riseAgain, `${where}.riseAgain`);
+    assert(d.corpse?.leaves === 'corpse', `${where}.riseAgain: a monster rises from its own corpse: corpse.leaves must be 'corpse'`);
+  }
+  return spawned;
 }
 
 export function exportMonsters(): TableResult[] {
@@ -297,6 +401,7 @@ export function exportMonsters(): TableResult[] {
     gateRemakeValues('monster', def, `monsters.${def.id}`);
     const boss = !!def.isMiniBoss || !!def.isSubDungeonMiniBoss || def.id === STORY_BOSS.monsterId;
     summonedIds.push(...checkK2Monster(def, `monsters.${def.id}`, boss).map(id => [def.id, id] as [string, string]));
+    summonedIds.push(...checkK3Monster(def, `monsters.${def.id}`).map(id => [def.id, id] as [string, string]));
     const d: MonsterDefinition = withholdRemakeFields('monster', plain(def), `monsters.${def.id}`);
     const authored = takeAuthored(d);
     const web = plain(def);
@@ -328,7 +433,7 @@ export function exportMonsters(): TableResult[] {
   for (const [zone, m] of Object.entries(MiniBossByZone)) add(m, 'miniBoss', zone);
   for (const m of Object.values(SubDungeonMiniBosses)) add(m, 'subDungeonBoss', null);
   for (const o of OVERRIDES) assert(defs[o.id], `override for unknown monster ${o.id}`);
-  for (const [by, id] of summonedIds) assert(defs[id], `monsters.${by}: an ability summons unknown monster '${id}'`);
+  for (const [by, id] of summonedIds) assert(defs[id], `monsters.${by}: an ability or on-death effect summons unknown monster '${id}'`);
   for (const id of Object.keys(defs)) {
     (defs[id].derived as Record<string, unknown>).sources = sources[id];
     delete defs[id].__web;

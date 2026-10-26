@@ -25,6 +25,7 @@
 #include "abyss/base/Types.h"
 #include "abyss/combat/CombatInput.h"
 #include "abyss/data/QuestData.h"
+#include "abyss/monsters/Corpses.h"
 #include "abyss/monsters/Hunts.h"
 #include "abyss/monsters/Monster.h"
 #include "abyss/monsters/MonsterAI.h"
@@ -70,6 +71,7 @@ struct DamageFlags {
   EntityId attacker = kNoEntity;
   KillSource source = KillSource::Other;
   bool provokes = true;  // M2: hero hits provoke
+  DamageType element = DamageType::Physical;  // K3: a fire killing blow burns the body (MonsterKilledMsg::element)
 };
 
 class ABYSS_API MonsterSystem {
@@ -189,6 +191,49 @@ class ABYSS_API MonsterSystem {
   // ---- kill pipeline (last handler) ----
   void OnMonsterKilled(const MonsterKilledMsg& m);
 
+  // ---- dark remake K3: corpses, raises, the Unburied rise, consume, collapse (implementation-plan.md 3 K3) ----
+  // The zone's corpse registry (Corpses.h) is cleared at zone entry / exit; SpawnZonePopulation seeds the map's
+  // corpseSeeds after the population (EvCorpseAdded{seeded}).
+  //
+  // Kill pipeline K3 step (SimWiring, right after the quest drops; before CombatSystem::OnMonsterDeathEffects): the dead
+  // monster's corpse holds are let go, its body joins the registry when its definition leaves one (corpse.leaves; a fire
+  // killing blow registers it burned: EvCorpseAdded then EvCorpseRemoved{burned}; a Raised body's is spent), its
+  // Unburied rise is scheduled (the first of its affixes with riseAgain, else the definition's trait; RiseAgainApplies;
+  // chance < 1 draws once on RngStream::Ai; never for a Raised or a boss role - mini-boss, sub-dungeon mini-boss, story
+  // boss, seal keeper, hunt leader -; the pending rise holds the corpse), then every Raised it stood up collapses.
+  void OnMonsterDied(const MonsterKilledMsg& m);
+  // Per step (GameSim, right after CombatSystem::TickOnDeath): expired bodies go (EvCorpseRemoved{expired}); consume
+  // channels end (aborted when the eater is stunned / frozen or its corpse is gone: EvMonsterAttackCancelled; finished:
+  // it heals floor(maxHp x consumeHealFraction) and the corpse goes, EvCorpseRemoved{consumed, by}); due rises stand up
+  // when their corpse is still there (else nothing: fire, a raise or an eater got it first).
+  void TickCorpses();
+  // A raise's contact: `base` (pre-difficulty) stands up as Raised on corpse `corpseId` at hpPct of its life for `raiser`
+  // (EvCorpseRemoved{raised, raiser}, EvEntitySpawned, EvMonsterRaised, EvPlayAnim{Rise}; rooted for the Rise clip;
+  // chasing). kNoEntity (nothing) when the corpse is gone.
+  EntityId RaiseCorpse(uint32_t corpseId, const MonsterDef& base, EntityId raiser, double hpPct, std::string_view abilityId);
+  // A summon's / an on-death spawn's body at `pos` (EvMonsterRaised with corpseId 0), else as RaiseCorpse.
+  EntityId SummonAt(const MonsterDef& base, Vec2 pos, EntityId raiser, double hpPct, std::string_view abilityId);
+  // Every body (corpse or remains, seeds too) whose 0.35-tile body touches the shape burns: EvCorpseRemoved{burned}.
+  // Returns how many burned.
+  int32_t BurnCorpses(const AbilityShapeDef& shape, Vec2 origin, Vec2 dir);
+  // Raised bodies standing for `raiser` (alive).
+  int32_t RaisedAliveOf(EntityId raiser) const;
+  // A Raised body falls without a kill because its raiser died: EvPlayAnim{Death}, EvMonsterCollapsed, statuses and its
+  // pending swing dropped (CombatSystem::OnMonsterCollapsed), its corpse (spent) when it leaves one, then its own Raised.
+  // No kill credit, no on-death effect, no rise, no respawn.
+  void Collapse(EntityId id);
+  const Corpses& CorpseRegistry() const { return corpses_; }
+  void QueryCorpses(Vec2 centre, double radius, CorpseFilter filter, std::vector<uint32_t>& out) const {
+    corpses_.Query(centre, radius, filter, out);
+  }
+  bool HoldCorpse(uint32_t id, EntityId holder) { return corpses_.Hold(id, holder); }
+  void ReleaseCorpses(EntityId holder) { corpses_.ReleaseAll(holder); }
+  // Where body k of n of a summon around `centre` stands: the tile at angle 2 pi k / n on a ring of `radius` (rounded;
+  // radius 0 = the centre's tile), else the nearest walkable tile within 3 rings, else `centre`. No RNG.
+  Vec2 SummonSpot(Vec2 centre, double radius, int32_t k, int32_t n) const;
+  // How long a risen body of `def` is rooted: its art's Rise clip length (assets.json), else MonsterAiDef::riseMsDefault.
+  double RiseMsFor(const MonsterDef& def) const;
+
   // ---- queries (alive filtering is explicit) ----
   MonsterInstance* Find(EntityId id);
   const MonsterInstance* Find(EntityId id) const;
@@ -219,6 +264,31 @@ class ABYSS_API MonsterSystem {
  private:
   void Respawn(EntityId deadId);
   bool RespawnPending(EntityId deadId) const;  // a MonsterTimerKind::Respawn timer for this dead instance is queued
+  // K3 helpers (header "K3").
+  struct PendingRise {
+    uint32_t corpse = 0;
+    EntityId dead = kNoEntity;
+    double dueMs = 0;
+    double hpPct = 100;
+    MonsterDef def;          // the dead instance's current definition (affixes applied)
+    MonsterDef originalDef;
+    std::vector<MonsterAffix> affixes;
+    double maxHp = 0;
+    double visualScale = 1;
+  };
+  void SeedCorpses();
+  // Registers the body of `m` at `pos`; returns its corpse id (0 when the definition leaves none). Evictions emit
+  // EvCorpseRemoved{expired} after the EvCorpseAdded.
+  uint32_t AddBody(const MonsterInstance& m, Vec2 pos, bool spent);
+  void RemoveCorpse(uint32_t id, CorpseRemoveReason reason, EntityId by);
+  // Lists a Raised body (role, raiser, life, root for the Rise clip, chasing) and emits its rise events.
+  EntityId StandUp(MonsterInstance&& m, Vec2 pos, uint32_t corpseId, EntityId raiser, std::string_view abilityId,
+                   bool selfRise);
+  // A monster that consumes may start eating (TickAI): true when it did (it skips its AI tick). Never while returning,
+  // casting or with a swing on its way to contact (CombatSystem::HasPendingStrike: the swing lands first).
+  bool TryStartConsume(MonsterInstance& m, double now);
+  void EndConsume(MonsterInstance& m, bool cancelled);
+  void CollapseRaisedOf(EntityId raiser);
   bool InSafeZone(Vec2 p) const;
   bool Walkable(int32_t col, int32_t row) const;
   void PrepareZone();      // zone entry: clears the population, sizes the grid, builds the world service
@@ -260,6 +330,10 @@ class ABYSS_API MonsterSystem {
   bool miniBossDialogueActive_ = false;
   std::vector<std::string> miniBossDialogueSeen_;
   std::vector<std::pair<std::string, EntityId>> huntLeaders_;  // huntId -> leader
+  // K3: the zone's corpse registry and the pending Unburied rises (schedule order).
+  Corpses corpses_;
+  std::vector<PendingRise> rises_;
+  std::vector<uint32_t> scratchCorpses_;
 };
 
 }  // namespace abyss

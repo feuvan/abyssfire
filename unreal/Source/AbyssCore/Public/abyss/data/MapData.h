@@ -100,6 +100,14 @@ struct MapRegionDef {
   MapTheme mood = MapTheme::Plains;  // a zone_moods.json mood theme
 };
 
+// A body lying on the map at zone entry (dark remake K3, remake schema map.corpseSeeds; the Sheepfold's six seated
+// crusaders, chapter1.md 10): a corpse entry of `monsterId` (whose corpse.leaves gives its kind) at the tile, re-seeded
+// on every zone entry; it never expires and does not count toward the per-zone cap (Corpses.h).
+struct MapCorpseSeedDef {
+  TilePos pos;
+  std::string monsterId;
+};
+
 struct AvoidPointDef {
   TilePos pos;
   bool hasMargin = false;
@@ -135,6 +143,8 @@ struct MapDef {
   bool hasPresentationTheme = false;
   MapTheme presentationTheme = MapTheme::Plains;
   std::vector<MapRegionDef> regions;
+  // Dark remake K3 (remake schema map.corpseSeeds): bodies seeded into the zone's corpse registry at entry.
+  std::vector<MapCorpseSeedDef> corpseSeeds;
   // generator input (W10); generated == true means tiles are produced by world/MapGen at load
   bool generated = false;
   MapTheme generatorTheme = MapTheme::Plains;

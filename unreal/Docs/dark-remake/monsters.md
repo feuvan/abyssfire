@@ -55,6 +55,16 @@ at the floor even when its clip's beat is earlier (600 ms; 700 ms for the story 
 loader refuses an authored `windupMs` under it (under 700 ms for the story boss and mini-bosses); "scaled by the
 difficulty table" is the difficulty's monster damage multiplier (35 % on Normal, 52.5 % on Nightmare, 70 % on Hell).
 
+**As built (K3, package 2B, pending review; implementation-plan.md *2B outcomes*):** the loader refuses a burst fuse under
+800 ms and a burst without `capHeroMaxHpPct`; an on-death hit on the hero is capped by the smaller of that cap and the
+monster's own hit cap (both x the difficulty's damage multiplier), the dodge roll's i-frames avoid a burst or ring and
+Death Save holds; the fuse is a telegraph (`EvTelegraph` source OnDeath) from the death on. `hitsMonsters` with
+`monsterDmgMul` 2 is the "x2". Raisers: `capAlive` (live Raised per caster), `perWindowCap` per `windowMs` (bodies the
+caster stood up, across its abilities), a raise only when a free corpse lies in reach; a raise / summon is a timed cast
+(between swings, from Chase or Attack, on its own cooldown and hero range; 2B review); a Raised body leaves a spent corpse
+(never raised again); Raised pay no exp, gold, loot, Spirit or life on kill (they still count as kills for quests and
+achievements), never respawn, and collapse (no kill, no on-death effect) when their raiser dies.
+
 ### 1.4 The mechanic ramp
 
 | Level | New idea | Where |
@@ -74,6 +84,13 @@ default for every locale, the body greys and collapses into an **ash husk** that
 and fades; the same rules (raise, consume, burn) apply to husks. Breach-blood leaves a tar puddle, not a corpse; the
 Gravegnawers leave a carcass the other gnawers ignore. A fire killing blow or a fire skill over a corpse burns it
 (unraisable, unconsumable). The optional gore layer adds blood decals and keeps the body instead of the husk.
+
+**As built (K3, package 2B, pending review):** the registry is per zone in the core (`monsters/Corpses.h`); a definition
+says what its body leaves (`corpse.leaves`: `corpse`, raisable and edible; `remains`, neither, for the gnawers' carcass and
+boss bodies; `none` for breach-blood, whose puddle is presentation only). The cap counts kill bodies only: the 25th pushes
+the oldest out. Map `corpseSeeds` (the Sheepfold's six) never expire, sit outside the cap and come back on every zone
+entry. A fire killing blow registers the body and burns it at once; fire burns any entry it touches (both kinds). Ash
+mode is UE's rendering of an entry (DECISIONS DR6 K3 note); the core does not know it.
 
 ## 2. Chapter 1 roster
 

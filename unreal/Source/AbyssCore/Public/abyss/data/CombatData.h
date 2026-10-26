@@ -11,6 +11,7 @@
 
 #include "abyss/base/Enums.h"
 #include "abyss/base/Platform.h"
+#include "abyss/data/MonsterData.h"
 
 namespace abyss {
 
@@ -152,10 +153,20 @@ struct HitFeedbackTable {
   }
 };
 
-// elite_affixes.json (combat-feel.md 17).
-enum class EliteAffixType : uint8_t { FireEnhanced, Swift, Teleporting, ExtraStrong, CurseAura, Vampiric, Frozen };
+// elite_affixes.json (combat-feel.md 17). Dark remake K3 appends `unburied` (monsters.md 3: the Unburied rise as
+// an affix): a type the roll pool holds only when elite_affixes.json defines it and lists it in `order`.
+enum class EliteAffixType : uint8_t {
+  FireEnhanced,
+  Swift,
+  Teleporting,
+  ExtraStrong,
+  CurseAura,
+  Vampiric,
+  Frozen,
+  Unburied,
+};
 ABYSS_ENUM_STRINGS(EliteAffixType, "fire_enhanced", "swift", "teleporting", "extra_strong", "curse_aura", "vampiric",
-                   "frozen")
+                   "frozen", "unburied")
 
 struct EliteAffixDef {
   EliteAffixType type = EliteAffixType::FireEnhanced;
@@ -168,6 +179,12 @@ struct EliteAffixDef {
   double freezeChance = 0;
   uint32_t vfxColor = 0;
   double lootQualityBonus = 0;
+  // Dark remake K3 (implementation-plan.md 3 K3, monsters.md 3; optional keys of a definition): what an elite with
+  // this affix leaves where it dies (Scorched's burst, Gravecold's frost ring), its own rise (the Unburied affix), and
+  // the monster families that may roll it (empty = every monster; MonsterDef::family).
+  MonsterOnDeathDef onDeath;
+  MonsterRiseAgainDef riseAgain;
+  std::vector<std::string> families;
 };
 
 struct ZoneAffixCount {
@@ -189,6 +206,8 @@ struct ABYSS_API EliteAffixTable {
   double frozenOnHitValue = 30, frozenOnHitDurationMs = 2500;
 
   const EliteAffixDef& Def(EliteAffixType t) const { return defs[static_cast<size_t>(t)]; }
+  // K3: whether a monster of `family` may roll the affix (its `families`, empty = any).
+  bool RollableFor(EliteAffixType t, std::string_view family) const;
   // [min, max] affix count for a zone (default when unknown).
   void CountFor(std::string_view zoneId, int32_t& outMin, int32_t& outMax) const;
 };

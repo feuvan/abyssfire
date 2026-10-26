@@ -15,6 +15,9 @@ import * as MapGen from '../../../../../src/systems/MapGenerator';
 import { AllSubDungeons, SubDungeonsByZone } from '../../../../../src/data/subDungeons';
 import { NPCDefinitions } from '../../../../../src/data/npcs';
 import type { MapData } from '../../../../../src/data/types';
+import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
+import { MiniBossByZone } from '../../../../../src/data/miniBosses';
+import type { MapData as RemakeMapData, MonsterDefinition as RemakeMonster } from '../../../../GameData/types';
 import { assert, plain, sha256, formatJson, SCHEMA_VERSION, type TableResult, type GoldenFile } from '../util';
 import { withholdRemakeFields } from '../remake';
 
@@ -92,6 +95,19 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
       // K1 (ZoneRuntime / LoadWorld.cpp): a sealed entrance shows its sealedTextKey; only a sealed one has one.
       assert(!!e.sealed === !!e.sealedTextKey, `maps.${id}.subDungeonEntrances.${e.id}: sealed and sealedTextKey go together`);
     }
+    // K3 (LoadWorld.cpp, DataStore::Finalize): a corpse seed is {col, row, monsterId} on the grid, of a monster whose body
+    // leaves a corpse entry (corpse.leaves corpse / remains).
+    ((raw as unknown as RemakeMapData).corpseSeeds ?? []).forEach((seed, i) => {
+      const at = `maps.${id}.corpseSeeds[${i}]`;
+      for (const k of Object.keys(seed)) assert(['col', 'row', 'monsterId'].includes(k), `${at}: unknown field '${k}'`);
+      assert(Number.isInteger(seed.col) && Number.isInteger(seed.row) && seed.col >= 0 && seed.row >= 0 &&
+        seed.col < raw.cols && seed.row < raw.rows, `${at}: tile (${seed.col},${seed.row}) outside the ${raw.cols}x${raw.rows} grid`);
+      const def = ((MonstersByZone[id] ?? []).find(m => m.id === seed.monsterId) ?? getMonsterDef(seed.monsterId) ??
+        Object.values(MiniBossByZone).find(m => m.id === seed.monsterId)) as RemakeMonster | undefined;
+      assert(def, `${at}.monsterId: unknown monster '${seed.monsterId}'`);
+      const leaves = def!.corpse?.leaves ?? 'none';
+      assert(leaves !== 'none', `${at}.monsterId: '${seed.monsterId}' leaves no corpse (corpse.leaves)`);
+    });
     const { tiles, collisions, decorations, ...anchors } = withholdRemakeFields('map', plain(raw), `maps.${id}`);
     const landmarks = generated ? externalLandmarks(id) : [];
     const portCampNpcs = PORT_CAMP_NPCS[id] ?? [];

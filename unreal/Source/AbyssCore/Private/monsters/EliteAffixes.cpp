@@ -12,13 +12,18 @@
 
 namespace abyss {
 
-std::vector<EliteAffixType> RollEliteAffixes(const EliteAffixTable& table, std::string_view zoneId, Rng& rng) {
+std::vector<EliteAffixType> RollEliteAffixes(const EliteAffixTable& table, std::string_view zoneId, Rng& rng,
+                                             std::string_view family) {
   int32_t lo = 1, hi = 1;
   table.CountFor(zoneId, lo, hi);
   if (hi < lo) hi = lo;
   const int32_t count = rng.RandomInt(lo, hi);
-  // selectAffixes: without replacement over the table order (idx = randomInt(0, len - 1), splice).
-  std::vector<EliteAffixType> available = table.order;
+  // selectAffixes: without replacement over the table order (idx = randomInt(0, len - 1), splice); K3: the affixes the
+  // monster's family may roll.
+  std::vector<EliteAffixType> available;
+  for (EliteAffixType t : table.order) {
+    if (table.RollableFor(t, family)) available.push_back(t);
+  }
   std::vector<EliteAffixType> selected;
   const int32_t actual = (std::min)(count, static_cast<int32_t>(available.size()));
   for (int32_t i = 0; i < actual; ++i) {

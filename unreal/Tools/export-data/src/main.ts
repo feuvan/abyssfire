@@ -39,7 +39,14 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * first by tables/monsters.ts; CombatSystem runs them), `damageType` (→ MonsterDef::damageType: monster swings, bolts and
  * abilities stop being physical-only) and `hitCapHeroMaxHpPct` (→ MonsterDef::hitCapHeroMaxHpPct, the per-difficulty
  * hit cap). The ability kinds raise / summon / buff / call stay value-gated (REMAKE_VALUES) until K3 / K5.
- * Still withheld: monster `family` (no core reader yet) and every other Wave 2 / 3 feature.
+ *
+ * K3 on-death effects and corpses (package 2B): monster `family` (→ MonsterDef::family: corpse entries, the elite affix
+ * `families` roll restriction), `onDeath` (→ MonsterDef::onDeath, CombatSystem's on-death effects), `corpse`
+ * (→ MonsterDef::corpse: the corpse registry, consume), `riseAgain` (→ MonsterDef::riseAgain: the Unburied rise), map
+ * `corpseSeeds` (LoadWorld.cpp → MapDef::corpseSeeds), and the ability kinds raise / summon (value gates lifted: they
+ * run). Elite affix `onDeath` / `riseAgain` / `families` and the `unburied` affix type are checked by tables/combat.ts
+ * (an override table, no record gate). Still withheld: every other Wave 2 / 3 feature; buff / call stay value-gated
+ * until K5.
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
@@ -47,6 +54,8 @@ export const REMAKE_SCHEMA: readonly string[] = [
   'story.focusAnim',
   'story.triggerWhileQuest',
   'monster.abilities', 'monster.damageType', 'monster.hitCap',
+  'monster.family', 'monster.onDeath', 'monster.corpse', 'monster.riseAgain', 'monster.abilityRaise', 'monster.abilitySummon',
+  'map.corpseSeeds',
 ];
 
 export interface RunOptions {

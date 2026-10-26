@@ -38,9 +38,12 @@ inline constexpr double kAbilityBodyRadiusTiles = 0.35;
 inline constexpr double kAbilityMinWindupMs = 600;
 inline constexpr double kAbilityBossMinWindupMs = 700;
 
-// The kinds whose runtime has landed (K2: circle, cone, line, ring, bolt, hazard). raise / summon (K3) and buff / call
-// (K5) are parsed and validated but never picked until their package flips them here.
+// The kinds whose runtime has landed (K2: circle, cone, line, ring, bolt, hazard; K3: raise, summon). buff / call (K5)
+// are parsed and validated but never picked until their package flips them here.
 ABYSS_API bool AbilityKindRuns(AbilityKind kind);
+// K3: kinds that stand bodies up (raise, summon); they are usable only when the runtime found bodies to stand up
+// (AbilityPickInput::available).
+ABYSS_API bool AbilityKindSummons(AbilityKind kind);
 // Kinds that draw a ground telegraph (circle, cone, line, ring, hazard).
 ABYSS_API bool AbilityHasGroundShape(AbilityKind kind);
 
@@ -50,11 +53,17 @@ struct AbilityPickInput {
   double hpPct = 100;                // caster life, percent of max
   int32_t phase = 0;                 // MonsterInstance::phase (K4)
   std::span<const double> readyAtMs; // per ability index (MonsterInstance::abilityReadyAtMs)
+  // K3, per ability index: nonzero when a raise / summon has bodies to stand up now (CombatSystem's plan: corpses in
+  // reach, room under its caps). A raise / summon without an entry is not usable; other kinds ignore it.
+  std::span<const uint8_t> available;
+  // K3: the cast between swings (Chase, or Attack before the swing is due): only raise / summon kinds are usable.
+  bool summonsOnly = false;
 };
 
-// The conditions of one ability (kind runs, ready, range, life, phase).
+// The conditions of one ability (kind runs, ready, range, life, phase; K3: a raise / summon has bodies to stand up).
 ABYSS_API bool AbilityUsable(const MonsterAbilityDef& a, size_t index, const AbilityPickInput& in);
-// The ability a due swing becomes (index into `abilities`), -1 = the basic swing.
+// The ability a due swing becomes (index into `abilities`), -1 = the basic swing (with `summonsOnly`: the raise / summon
+// cast between swings, -1 = none).
 ABYSS_API int32_t PickMonsterAbility(std::span<const MonsterAbilityDef> abilities, const AbilityPickInput& in);
 
 // Whether a body of `bodyRadius` at `point` touches the shape placed at `origin` facing `dir` (unit; cones and lines).

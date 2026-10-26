@@ -142,7 +142,11 @@ checked by the export and by DataStore). Since K2 (package 2A, DECISIONS DR8 *K2
 summon, buff; the kinds raise / summon / buff / call fail the export until K3 / K5), `damageType` and
 `hitCapHeroMaxHpPct` (percent of the hero's max life, scaled by the difficulty's damage multiplier); `Tools/export-data`
 `tables/monsters.ts` checks every ability field and key, and DataStore checks them again (implementation-plan.md
-*2A outcomes*). Still withheld: monster `family` and every other Wave 2 / 3 field.
+*2A outcomes*). Since K3 (package 2B, DECISIONS DR8 *K3 as built*) also monster `family`, `onDeath`
+(`RemakeOnDeath`), `corpse` (`RemakeCorpse`) and `riseAgain` (`RemakeRiseAgain`), the raise / summon ability kinds (summon
+`radius`), map `corpseSeeds` and, through `world.ts` `eliteAffixes.definitions` (`RemakeEliteAffixDefinition`), an elite
+affix's `onDeath`, `riseAgain` and `families` (implementation-plan.md *2B outcomes*). Still withheld: every other Wave 2 / 3
+field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

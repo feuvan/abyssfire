@@ -44,15 +44,17 @@ bool AbilityKindRuns(AbilityKind kind) {
     case AbilityKind::Ring:
     case AbilityKind::Bolt:
     case AbilityKind::Hazard:
-      return true;
     case AbilityKind::Raise:   // K3 (corpses)
     case AbilityKind::Summon:  // K3 (raise caps)
+      return true;
     case AbilityKind::Buff:    // K5 (packs, morale)
     case AbilityKind::Call:    // K5 (social call)
       return false;
   }
   return false;
 }
+
+bool AbilityKindSummons(AbilityKind kind) { return kind == AbilityKind::Raise || kind == AbilityKind::Summon; }
 
 bool AbilityHasGroundShape(AbilityKind kind) {
   return kind == AbilityKind::Circle || kind == AbilityKind::Cone || kind == AbilityKind::Line ||
@@ -61,11 +63,13 @@ bool AbilityHasGroundShape(AbilityKind kind) {
 
 bool AbilityUsable(const MonsterAbilityDef& a, size_t index, const AbilityPickInput& in) {
   if (!AbilityKindRuns(a.kind)) return false;
+  if (in.summonsOnly && !AbilityKindSummons(a.kind)) return false;
   if (index >= in.readyAtMs.size() || in.nowMs + kAbilityEpsilonMs < in.readyAtMs[index]) return false;
   if (in.heroDist < a.rangeMin) return false;
   if (a.hasRangeMax && in.heroDist > a.rangeMax) return false;
   if (a.hasHpBelowPct && !(in.hpPct < a.hpBelowPct)) return false;
   if (!a.phases.empty() && std::find(a.phases.begin(), a.phases.end(), in.phase) == a.phases.end()) return false;
+  if (AbilityKindSummons(a.kind) && (index >= in.available.size() || in.available[index] == 0)) return false;
   return true;
 }
 

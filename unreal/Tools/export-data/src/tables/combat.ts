@@ -28,6 +28,10 @@ import * as ZoneSceneMod from '../../../../../src/scenes/ZoneScene';
 import { TILE_WIDTH, TILE_HEIGHT } from '../../../../../src/config';
 import { assert, assertSource, plain, readSource, type TableResult } from '../util';
 import { overrideEntries } from '../remake';
+import { checkOnDeath, checkRiseAgain } from './monsters';
+import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
+import { MiniBossByZone } from '../../../../../src/data/miniBosses';
+import type { RemakeEliteAffixDefinition } from '../../../../GameData/types';
 
 const exp = <T>(mod: unknown, name: string): T => {
   const v = (mod as Record<string, unknown>)[`__expose_${name}`];
@@ -454,9 +458,41 @@ function hitFeedback(): TableResult {
 
 // ── elite_affixes.json / difficulty.json / soul_echo.json ───────────────────
 
+/** Any monster definition by id (zone lists, dungeon tables, mini-bosses): an affix's on-death spawn must name one. */
+function anyMonster(id: string): boolean {
+  return Object.values(MonstersByZone).some(list => list.some(m => m.id === id)) || !!getMonsterDef(id) ||
+    Object.values(MiniBossByZone).some(m => m.id === id);
+}
+
+/**
+ * Dark remake K3 (implementation-plan.md §3 K3, monsters.md §3): the elite affix definitions LoadCombat.cpp reads — every
+ * key a web field or `onDeath` / `riseAgain` / `families` (a misspelt one would be lost), `type` = its key and a core
+ * affix type (the web's seven and `unburied`), the K3 blocks by the monster rules (tables/monsters.ts), `families` a list
+ * of family ids.
+ */
+const AFFIX_WEB_KEYS = ['type', 'name', 'nameEn', 'damageMult', 'speedMult', 'hpMult', 'defenseMult', 'extraFireDamage',
+  'teleportCooldownMs', 'curseAuraRadius', 'curseAuraReduction', 'lifestealFraction', 'freezeChance', 'vfxColor', 'lootQualityBonus'];
+const CORE_AFFIX_TYPES = ['fire_enhanced', 'swift', 'teleporting', 'extra_strong', 'curse_aura', 'vampiric', 'frozen', 'unburied'];
+function checkAffixDefinition(key: string, def: RemakeEliteAffixDefinition): void {
+  const where = `elite_affixes.definitions.${key}`;
+  for (const k of Object.keys(def)) {
+    assert([...AFFIX_WEB_KEYS, 'onDeath', 'riseAgain', 'families'].includes(k), `${where}: unknown field '${k}'`);
+  }
+  assert(def.type === key, `${where}.type: '${def.type}' differs from its key`);
+  assert(CORE_AFFIX_TYPES.includes(key), `${where}: '${key}' is not an affix type the core knows (${CORE_AFFIX_TYPES.join(', ')})`);
+  if (def.onDeath) {
+    for (const id of checkOnDeath(def.onDeath, `${where}.onDeath`)) assert(anyMonster(id), `${where}.onDeath.spawn: unknown monster '${id}'`);
+  }
+  if (def.riseAgain) checkRiseAgain(def.riseAgain, `${where}.riseAgain`);
+  if (def.families !== undefined) {
+    assert(Array.isArray(def.families) && def.families.every(f => typeof f === 'string' && f !== ''), `${where}.families: a list of family ids`);
+  }
+}
+
 function eliteAffixes(): TableResult {
   // The web tables with the remake's entries (GameData/world.ts); `order` = the roll pool = the definitions' key order.
   const definitions = overrideEntries('eliteAffixes.definitions', ['elite_affixes.json'], ELITE_AFFIX_DEFINITIONS);
+  for (const [key, def] of Object.entries(definitions)) checkAffixDefinition(key, def as RemakeEliteAffixDefinition);
   const webOrder = exp<string[]>(EliteMod, 'ALL_AFFIX_TYPES');
   assert(webOrder.join() === Object.keys(ELITE_AFFIX_DEFINITIONS).join(), 'ALL_AFFIX_TYPES is no longer the definitions key order');
   const order = Object.keys(definitions);

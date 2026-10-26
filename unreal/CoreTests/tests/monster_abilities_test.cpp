@@ -889,7 +889,8 @@ TEST_SUITE("monsters") {
     CHECK(PickMonsterAbility(a, in) == 0);
     in.phase = 2;
     CHECK(PickMonsterAbility(a, in) == 1);
-    // A kind whose runtime lands later is never picked (K3 raise / summon, K5 buff / call).
+    // A kind whose runtime lands later is never picked (K5 buff / call); a K3 raise / summon only with bodies to stand up
+    // (AbilityPickInput::available, none here; corpses_test.cpp "K3 picker").
     std::vector<MonsterAbilityDef> later = {K2Ability("raise", AbilityKind::Raise, "Cast01", AbilityAim::Corpse),
                                             K2Ability("summon", AbilityKind::Summon, "Cast01", AbilityAim::Self),
                                             K2Ability("buff", AbilityKind::Buff, "Cast01", AbilityAim::Self),
@@ -1632,6 +1633,7 @@ TEST_SUITE("monsters") {
     }
   }
 
+  // Since K3 a raise runs, but only with a corpse in reach (none here), so the due swing stays a basic one.
   TEST_CASE("K2 runtime: abilities of kinds that land later never start; the monster swings") {
     K2Rig rig;
     MonsterAbilityDef raise = K2Ability("raise", AbilityKind::Raise, "Cast01", AbilityAim::Corpse);

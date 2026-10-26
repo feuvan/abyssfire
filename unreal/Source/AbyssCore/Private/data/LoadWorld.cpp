@@ -132,6 +132,18 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
       if (!(rg.radius > 0)) g.Child("radius").Error("expected > 0");
       m.regions.push_back(std::move(rg));
     }
+    // Dark remake K3 (remake schema map.corpseSeeds): bodies in the corpse registry at zone entry (DataStore checks the
+    // monster ids and the tiles).
+    for (const JNode& c : n.Items("corpseSeeds", true)) {
+      for (const auto& [key, child] : c.SelfMembers(true)) {
+        if (key != "col" && key != "row" && key != "monsterId") child.Error("unknown corpse seed field '" + key + "'");
+      }
+      MapCorpseSeedDef seed;
+      seed.pos = TilePos{c.Int("col"), c.Int("row")};
+      seed.monsterId = c.Str("monsterId");
+      if (seed.monsterId.empty()) c.Child("monsterId").Error("empty monster id");
+      m.corpseSeeds.push_back(std::move(seed));
+    }
     m.generated = n.Bool("generated");
     if (n.Has("generator")) {
       const JNode g = n.Child("generator");

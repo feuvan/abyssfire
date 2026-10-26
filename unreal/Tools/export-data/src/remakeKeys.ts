@@ -38,7 +38,8 @@ const monster = {
   web: { id: true, name: true, level: true, hp: true, damage: true, defense: true, speed: true, aggroRange: true, attackRange: true,
     attackSpeed: true, expReward: true, goldReward: true, spriteKey: true, elite: true, isMiniBoss: true, isSubDungeonMiniBoss: true,
     lootTable: true, bossSkills: true, animCategory: true } satisfies Exact<KeysOf<Web.MonsterDefinition>>,
-  remake: { family: true, damageType: true, onHitStatus: true, projectileColor: true, abilities: true, hitCapHeroMaxHpPct: true } satisfies Exact<MonsterRemade>,
+  remake: { family: true, damageType: true, onHitStatus: true, projectileColor: true, abilities: true, hitCapHeroMaxHpPct: true,
+    onDeath: true, corpse: true, riseAgain: true } satisfies Exact<MonsterRemade>,
 };
 
 const quest = {
@@ -67,7 +68,7 @@ const map = {
   web: { id: true, name: true, cols: true, rows: true, tiles: true, collisions: true, spawns: true, camps: true, playerStart: true,
     exits: true, levelRange: true, bgColor: true, theme: true, seed: true, decorations: true, safeZoneRadius: true, petSpawns: true,
     hiddenAreas: true, subDungeonEntrances: true, storyDecorations: true, fieldNpcs: true } satisfies Exact<KeysOf<Web.MapData>>,
-  remake: { presentationTheme: true, regions: true } satisfies Exact<Remade<GD.MapData, Web.MapData>>,
+  remake: { presentationTheme: true, regions: true, corpseSeeds: true } satisfies Exact<Remade<GD.MapData, Web.MapData>>,
 };
 const mapEntrance = {
   web: { id: true, name: true, col: true, row: true, targetSubDungeon: true } satisfies Exact<KeysOf<Web.SubDungeonEntrance>>,

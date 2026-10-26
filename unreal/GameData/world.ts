@@ -18,7 +18,7 @@
  * and the seven elite affixes re-voiced and recoloured off the hero's ember hue (DR5). The Ember Tower keeps the warm
  * plains look (its mood theme stays `plains`; it keeps the plains pollen it used to borrow from emerald_plains).
  */
-import type { AchievementDefinition, CampTheme } from './types';
+import type { AchievementDefinition, CampTheme, RemakeEliteAffixDefinition } from './types';
 import type { ZoneEventData } from '@web/systems/RandomEventSystem';
 import { ZONE_EVENT_DATA } from '@web/systems/RandomEventSystem';
 import type { ZoneMood, ZonePaletteEntry } from '@web/graphics/ZonePalette';
@@ -99,8 +99,12 @@ export interface RemakeOverrides {
   };
   /** elite_affixes.json. */
   readonly eliteAffixes?: {
-    /** `definitions` (EliteAffixSystem ELITE_AFFIX_DEFINITIONS; `order` follows), by affix type. */
-    readonly definitions?: EntryOverride<EliteAffixDefinition>;
+    /**
+     * `definitions` (EliteAffixSystem ELITE_AFFIX_DEFINITIONS; `order` follows), by affix type. K3: an entry may carry
+     * `onDeath`, `riseAgain` and `families`, and `add` may append the `unburied` type (RemakeEliteAffixDefinition;
+     * checked by the exporter's combat.ts).
+     */
+    readonly definitions?: EntryOverride<RemakeEliteAffixDefinition>;
     /** `zoneAffixCounts` (EliteAffixSystem ZONE_AFFIX_COUNTS), zone id -> [min, max]. */
     readonly zoneAffixCounts?: EntryOverride<[number, number]>;
   };

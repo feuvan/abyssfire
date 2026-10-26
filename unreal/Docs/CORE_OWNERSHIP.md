@@ -50,8 +50,8 @@ COMBAT
 - CombatInput.h: InputBuffer, DodgeController, ComputeDodgeDestination, CycleTarget.
 - SkillTargeting.h: C14 cast shapes, cast reach, ground cast point, cast direction, chain links, line/cone/radius targets, teleport/shadow-step/charge destinations.
 - Projectiles.h: ProjectileSystem (projectiles and C4 ground effects), travel-time functions.
-- HazardField.h: the per-zone ground hazards of monster abilities (dark remake K2): tick schedule, CollectDue, DropExpired.
-- Combat.h: CombatSystem (skill requests, dodge, targeting, progression commands, per-step ticks, DamageMonster/DamageHero, KillHero, ResolvePendingDeath, OnMonsterKilled).
+- HazardField.h: the per-zone ground hazards of monster abilities (dark remake K2) and on-death puddles (K3): tick schedule, CollectDue, DropExpired.
+- Combat.h: CombatSystem (skill requests, dodge, targeting, progression commands, per-step ticks, DamageMonster/DamageHero, KillHero, ResolvePendingDeath, OnMonsterKilled; dark remake K3: raise / summon planning and casts between swings, on-death effects (OnMonsterDeathEffects, TickOnDeath, SetZoneOnDeath), burning bodies under fire).
 - SoulEcho.h: ComputeDeathPenalty, SoulEchoState, SoulEchoSystem.
 
 MONSTERS
@@ -60,9 +60,11 @@ MONSTERS
 - EliteAffixes.h: RollEliteAffixes, on-hit, teleport, curse.
 - MonsterAI.h: UpdateMonsterAI, MonsterMoveToward, ProvokeMonster.
 - MonsterAbilities.h: dark remake K2 pure rules (ability picker, ground shapes, contact timing, aim, telegraph style, hit cap).
+- OnDeath.h: dark remake K3 pure rules (on-death damage and caps, the volatile curse as a burst, RiseAgainApplies).
+- Corpses.h: dark remake K3 corpse registry (TTL, cap and eviction, seeds, holds, ordered queries); MonsterSystem owns one per zone.
 - SpatialGrid.h: implemented in the header.
 - Hunts.h: IsHuntDue, HuntsToSpawn, FindWalkableNear.
-- MonsterSystem.h: spawn, mini-boss, hunts, ambush, TickAI, ApplyDamage (publishes MonsterKilledMsg exactly once), Heal, queries, save.
+- MonsterSystem.h: spawn, mini-boss, hunts, ambush, TickAI, ApplyDamage (publishes MonsterKilledMsg exactly once), Heal, queries, save; dark remake K3: corpses (OnMonsterDied, TickCorpses, seeds), Raised bodies (RaiseCorpse, SummonAt, collapse), the Unburied rise, consume, BurnCorpses.
 
 ITEMS
 - Item.h: ItemInstance, ComputeItemStats, ItemUidGenerator.
@@ -116,9 +118,9 @@ Spec: classes-stats-skills.md and combat-feel.md; follow D13 (timers via TimerOw
 
 ### monsters
 
-**Files:** Public/abyss/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,MonsterAbilities,SpatialGrid,Hunts,MonsterSystem}.h, Private/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,MonsterAbilities,Hunts,MonsterSystem}.cpp, data/MonsterData.h with Private/data/LoadMonsters.cpp, CoreTests/tests/{monsters_test,monster_abilities_test}.cpp
+**Files:** Public/abyss/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,MonsterAbilities,OnDeath,Corpses,SpatialGrid,Hunts,MonsterSystem}.h, Private/monsters/{Monster,MonsterDefs,EliteAffixes,MonsterAI,MonsterAbilities,OnDeath,Corpses,Hunts,MonsterSystem}.cpp, data/MonsterData.h with Private/data/LoadMonsters.cpp, CoreTests/tests/{monsters_test,monster_abilities_test,corpses_test}.cpp
 
-Spec: monsters-ai.md and combat-feel.md 14 and 17. RNG: RngStream::Ai (Combat for elite on-hit rolls). Respawn uses TimerOwner::Monsters (T9). ApplyDamage is the only way a monster dies and must publish exactly one MonsterKilledMsg with every field filled (expReward spawn-scaled, affixLootBonus, role, killer/source). MonsterSystem::OnMonsterKilled is the last kill handler (log plus M4/M7/W9 respawn decision). Provide the queries CombatSystem, PetCompanion and QuestWorld rely on (QueryAlive, NearestAlive, NearestAggro, MonsterAtTile, NearestAliveOfDef, Candidates). Spawn order: SpawnZonePopulation, then SpawnMiniBoss, then SpawnDueHunts(false). SpatialGrid is complete and tested. M1 Returning leash and M6 A* need world's Pathfinder through MonsterWorld.findPath. The mini-boss pre-fight dialogue (EvMiniBossDialogue, miniBossDialogueSeen) belongs here.
+Spec: monsters-ai.md and combat-feel.md 14 and 17. RNG: RngStream::Ai (Combat for elite on-hit rolls). Respawn uses TimerOwner::Monsters (T9). ApplyDamage is the only way a monster dies and must publish exactly one MonsterKilledMsg with every field filled (expReward spawn-scaled, affixLootBonus, role, killer/source). MonsterSystem::OnMonsterKilled is the last kill handler (log plus M4/M7/W9 respawn decision). Provide the queries CombatSystem, PetCompanion and QuestWorld rely on (QueryAlive, NearestAlive, NearestAggro, MonsterAtTile, NearestAliveOfDef, Candidates). Spawn order: SpawnZonePopulation, then SpawnMiniBoss, then SpawnDueHunts(false). SpatialGrid is complete and tested. M1 Returning leash and M6 A* need world's Pathfinder through MonsterWorld.findPath. The mini-boss pre-fight dialogue (EvMiniBossDialogue, miniBossDialogueSeen) belongs here. Dark remake K3: MonsterSystem::OnMonsterDied (kill pipeline step 8b, before CombatSystem::OnMonsterDeathEffects) registers the body, schedules the Unburied rise (RngStream::Ai for its chance) and collapses the dead monster's Raised; a collapse is never a kill (no MonsterKilledMsg); SpawnZonePopulation seeds the map's corpses after its spawns.
 
 ### items
 

@@ -333,7 +333,8 @@ bool DataStore::Finalize(DataLoadReport& report) {
   // bossSkills name abilities (M9: inert until the monster has any), a boss winds up >= 700 ms (monsters.md 1.3), and an
   // ability timed by its clip has that clip's Contact / Release in the manifest (else the 600 / 700 ms floor times it).
   // An ability is picked only on a due swing (Attack state: the hero within attackRange x attackExitMul), so a rangeMin
-  // past that reach never fires and a rangeMax past it changes nothing (warnings: the data loads).
+  // past that reach never fires and a rangeMax past it changes nothing (warnings: the data loads). K3: a raise / summon
+  // is a cast between swings from Chase as well (CombatSystem::TryStartSummonCast), so its range is not bound by reach.
   {
     const auto checkAbilities = [&](const MonsterDef& m, std::string_view file, const std::string& path, bool boss) {
       // The same product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998), with a hair of slack so a range authored as
@@ -345,11 +346,12 @@ bool DataStore::Finalize(DataLoadReport& report) {
         if (a.summon.present && !monsters_.Find(a.summon.monsterId)) {
           ck.Error(file, ap + ".summon.monsterId", "unknown monster '" + a.summon.monsterId + "'");
         }
-        if (a.rangeMin > swingReach + 1e-9) {
+        const bool cast = a.kind == AbilityKind::Raise || a.kind == AbilityKind::Summon;  // between swings
+        if (!cast && a.rangeMin > swingReach + 1e-9) {
           ck.Warn(file, ap + ".rangeMin",
                   StrCat("never picked: abilities fire only on a due swing, within attackRange x attackExitMul (",
                          shownReach, " tiles)"));
-        } else if (a.hasRangeMax && a.rangeMax > swingReach + 1e-9) {
+        } else if (!cast && a.hasRangeMax && a.rangeMax > swingReach + 1e-9) {
           ck.Warn(file, ap + ".rangeMax",
                   StrCat("no effect past attackRange x attackExitMul (", shownReach,
                          " tiles): abilities fire only on a due swing"));
@@ -380,6 +382,33 @@ bool DataStore::Finalize(DataLoadReport& report) {
       checkAbilities(m, "monsters.json", "defs." + m.id, boss);
     }
     for (const HuntDef& h : monsters_.hunts) checkAbilities(h.defNormal, "quest_hunts.json", "defsNormal." + h.huntId, false);
+  }
+  // K3 (implementation-plan.md 3 K3; the loader checked each block's own shape): an on-death spawn names a monster, and
+  // so does an elite affix's; a rise that waits as long as a corpse lasts never happens (warning: the body fades first).
+  {
+    const auto checkOnDeath = [&](const MonsterOnDeathDef& d, std::string_view file, const std::string& path) {
+      if (d.present && d.kind == OnDeathKind::Spawn && !monsters_.Find(d.spawn.monsterId)) {
+        ck.Error(file, path + ".onDeath.spawn.monsterId", "unknown monster '" + d.spawn.monsterId + "'");
+      }
+    };
+    const auto checkRise = [&](const MonsterRiseAgainDef& r, std::string_view file, const std::string& path) {
+      if (r.present && r.delayMs >= monsters_.ai.corpseTtlMs) {
+        ck.Warn(file, path + ".riseAgain.delayMs",
+                StrCat("never rises: its corpse fades after ", monsters_.ai.corpseTtlMs, " ms (MonsterAiDef corpseTtlMs)"));
+      }
+    };
+    for (const MonsterDef& m : monsters_.defs) {
+      checkOnDeath(m.onDeath, "monsters.json", "defs." + m.id);
+      checkRise(m.riseAgain, "monsters.json", "defs." + m.id);
+    }
+    for (const HuntDef& h : monsters_.hunts) {
+      checkOnDeath(h.defNormal.onDeath, "quest_hunts.json", "defsNormal." + h.huntId);
+      checkRise(h.defNormal.riseAgain, "quest_hunts.json", "defsNormal." + h.huntId);
+    }
+    for (const EliteAffixDef& a : combat_.eliteAffixes.defs) {
+      checkOnDeath(a.onDeath, "elite_affixes.json", "definitions." + std::string(EnumName(a.type)));
+      checkRise(a.riseAgain, "elite_affixes.json", "definitions." + std::string(EnumName(a.type)));
+    }
   }
 
   // ---- world ----
@@ -443,6 +472,18 @@ bool DataStore::Finalize(DataLoadReport& report) {
     }
     for (const MapSpawnDef& s : m.spawns) {
       if (!monsters_.FindForZone(m.id, s.monsterId)) ck.Error("maps.json", path + ".spawns", "unknown monster '" + s.monsterId + "'");
+    }
+    // K3 corpse seeds: on the grid, of a monster that leaves a body (corpse.leaves corpse or remains).
+    for (size_t i = 0; i < m.corpseSeeds.size(); ++i) {
+      const MapCorpseSeedDef& c = m.corpseSeeds[i];
+      const std::string cPath = StrCat(path, ".corpseSeeds[", i, "]");
+      checkPos(m, cPath, c.pos);
+      const MonsterDef* d = monsters_.FindForZone(m.id, c.monsterId);
+      if (d == nullptr) {
+        ck.Error("maps.json", cPath + ".monsterId", "unknown monster '" + c.monsterId + "'");
+      } else if (d->corpse.leaves == CorpseLeaves::None) {
+        ck.Error("maps.json", cPath + ".monsterId", "'" + c.monsterId + "' leaves no corpse (corpse.leaves)");
+      }
     }
     for (const MapCampDef& c : m.camps) {
       for (const std::string& n : c.npcs) {

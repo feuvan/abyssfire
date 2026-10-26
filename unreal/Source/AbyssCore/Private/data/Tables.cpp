@@ -96,6 +96,15 @@ void EliteAffixTable::CountFor(std::string_view zoneId, int32_t& outMin, int32_t
   outMax = defaultCountMax;
 }
 
+bool EliteAffixTable::RollableFor(EliteAffixType t, std::string_view family) const {
+  const std::vector<std::string>& fams = Def(t).families;
+  if (fams.empty()) return true;
+  for (const std::string& f : fams) {
+    if (!family.empty() && f == family) return true;
+  }
+  return false;
+}
+
 // ---- ItemData -----------------------------------------------------------------------------------------------------
 const std::vector<FixedAffixDef>* SetDef::AffixesForPiece(std::string_view pieceId) const {
   for (const SetPieceAffixes& p : pieceAffixes) {

@@ -11,9 +11,14 @@
 //   6 homestead  embers, garden, expedition
 //   7 flow       difficulty completion (unlock boss in the unlock zone)
 //   8 quests     quest drops (3.3)
+//   8b K3        monsters: the body's corpse entry, the Unburied rise, its Raised collapse; combat: on-death effects
+//                scheduled (dark remake, implementation-plan.md 3 K3)
 //   9 items      ley fruit + generateLoot -> ground items / potion pickups
 //  10 audio      monster_death SFX (FIX combat 19)
 //  11 monsters   zone.monsterKill log + respawn decision (7)
+// A Raised body (MonsterRole::Raised, K3) pays no rewards: step 1 skips its Spirit 'kill', exp, gold (no Loot draw)
+// and kill heal, and steps 2 (pet exp), 6 (embers, garden, expedition), 8 (quest drops) and 9 (loot) skip it; it still
+// counts as a kill (achievements, quest kill objectives, story triggers, totalKills).
 #include "abyss/base/Platform.h"
 
 #include "SimImpl.h"
@@ -23,14 +28,26 @@ namespace abyss {
 void SimImpl::Wire() {
   // ---- kill pipeline ----
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { combat->OnMonsterKilled(m); });
-  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { pets->OnKill(m.level); });
+  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
+    if (m.role != MonsterRole::Raised) pets->OnKill(m.level);
+  });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { achievements->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { questWorld->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { story->OnMonsterKilled(m); });
-  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { homestead->OnMonsterKilled(m); });
+  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
+    if (m.role != MonsterRole::Raised) homestead->OnMonsterKilled(m);
+  });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { OnMonsterKilledDifficulty(m); });
-  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { questWorld->RollQuestDrops(m); });
-  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { groundLoot->OnMonsterKilled(m); });
+  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
+    if (m.role != MonsterRole::Raised) questWorld->RollQuestDrops(m);
+  });
+  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
+    monsters->OnMonsterDied(m);
+    combat->OnMonsterDeathEffects(m);
+  });
+  bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
+    if (m.role != MonsterRole::Raised) groundLoot->OnMonsterKilled(m);
+  });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) { audio->OnMonsterKilled(m); });
   bus.Subscribe<MonsterKilledMsg>([this](const MonsterKilledMsg& m) {
     ++session.totalKills;

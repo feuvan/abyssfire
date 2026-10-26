@@ -895,6 +895,187 @@ manifest moves hit timing, so the seeds differ by manifest):
   bounds on the timing fields, `TickCount` saturates (an int32 counter overflowed past ~2e11 ms), and the exporter's kind
   check uses `Object.hasOwn` (`'toString' in {}` passed and then threw).
 
+**2B outcomes (K3 as built, 2026-10; pending review; DECISIONS DR8 *K3 as built*, DR6, M4 / M5 notes).**
+- **Schema** (`MonsterData.h`, parsed by `LoadMonsters.cpp`, mirrored by the exporter's `tables/monsters.ts`; unknown keys
+  fail at every level). Monster `family` (an id: `unburied`, `living`, `gravegnawers`, `breach`), `onDeath {kind: burst |
+  ring | puddle | spawn, delayMs, shape, dmg | hpPct, damageType, status, hitsMonsters, monsterDmgMul, capHeroMaxHpPct,
+  puddle {durationMs, tickMs}, spawn {monsterId, count}}`, `corpse {leaves: corpse | remains | none, consumes}`,
+  `riseAgain {chance, delayMs, hpPct, notOnCrit}`; the K2 `summon` block gains `radius`. Map `corpseSeeds [{col, row,
+  monsterId}]` (`LoadWorld.cpp`). Elite affix definitions (`LoadCombat.cpp`, `tables/combat.ts`) take optional `onDeath`,
+  `riseAgain` and `families`, and the core knows an eighth type, `unburied` (appended to `EliteAffixType`; in the roll pool
+  only when elite_affixes.json defines it and lists it in `order`). Rules: a burst's fuse >= 800 ms and its
+  `capHeroMaxHpPct` required (monsters.md 1.3); a ring or puddle deals damage or carries a status; a burst is a circle, a
+  ring or puddle a circle or a ring (a ring's shape defaults to a ring, a puddle's to a circle); `puddle` / `spawn` blocks
+  only on their kind (spawn 1..20 bodies, no damage fields); `dmg` and `hpPct` exclusive; delays <= 10 s (on-death) / 60 s
+  (rise); `riseAgain` needs `corpse.leaves: corpse`; summon `radius` 0..30 and none at `anchors`; summon `windowMs`
+  <= 600000. `DataStore::Finalize`: on-death spawn ids (monster and affix) exist; a corpse seed lies on its grid and names a
+  monster whose body leaves an entry; a rise that waits as long as a corpse lasts warns ("never rises"). Exporter:
+  `REMAKE_SCHEMA` gains `monster.family`, `monster.onDeath`, `monster.corpse`, `monster.riseAgain`, `map.corpseSeeds` and
+  lifts the value gates of `monster.abilityRaise` / `monster.abilitySummon` (buff / call stay gated for K5). Since the core
+  reads `family`, the export now writes the Wave 1 families: the only Data change is `family` on the 13 Chapter 1
+  definitions in monsters.json and the 3 hunts in quest_hunts.json (index.json follows); nothing in the core acts on a
+  family alone, and the playthrough's final saves stay byte-identical.
+- **Corpses** (`monsters/Corpses.h`, owned by MonsterSystem, per zone). An entry is `{id, defId, artId, family, kind:
+  corpse | remains, pos, deathMs, expiresMs, seeded, spent, monster, holder}`; ids count up for the session. A kill's body
+  lasts 20 s (`MonsterAiDef::corpseTtlMs`); at most 24 kill bodies (`corpseCap`): the 25th pushes the oldest (death time,
+  then id) out with reason `expired`; map seeds never expire and are outside the cap, and are seeded again on every zone
+  entry (`SpawnZonePopulation`, after the population; no RNG). A `corpse` is raised (unless `spent`: the body of a Raised,
+  which rose once) and eaten; `remains` are neither (the Gravegnawers' carcass, a boss's body); both burn. A holder (a
+  raise winding up, a consume channel, a pending Unburied rise) keeps everyone else off a corpse; fire, the TTL and the
+  cap remove it anyway and the holder finds it gone. Queries sort by distance, then death time, then id. A zone change
+  drops every body silently.
+- **Kill pipeline** (`SimWiring.cpp`, new step 8b after the quest drops, before the loot): `MonsterSystem::OnMonsterDied`
+  lets go of the dead monster's holds, registers its body when its definition leaves one (`MonsterKilledMsg` now carries
+  the killing blow's `element` and `crit`: a fire killing blow registers the body burned, EvCorpseAdded then
+  EvCorpseRemoved{burned}), schedules its Unburied rise, then collapses every Raised it stood up; then
+  `CombatSystem::OnMonsterDeathEffects` schedules its on-death effects. A Raised body's kill pays nothing (Spirit 'kill',
+  exp, gold - no Loot draw -, the kill heal and their floating texts in step 1; pet exp, embers / garden / expedition,
+  quest drops and loot are skipped by role) but still counts as a kill (achievements, quest kill objectives, story
+  triggers, totalKills).
+- **Raised** (`MonsterRole::Raised`, appended): a raise's or summon's body (raiser = the caster), the Unburied rise's
+  (raiser none) or an on-death spawn's (raiser none); `def.expReward` and gold zeroed, `noRespawn`, `raiserId`; it stands up
+  chasing, rooted while its art's Rise clip plays (`EvPlayAnim{Rise}`; the clip's length, else `riseMsDefault` 1200 ms).
+  When its raiser dies, every Raised of it **collapses** (`MonsterSystem::Collapse`): EvPlayAnim{Death},
+  EvMonsterCollapsed {entity, raiser}, no MonsterKilledMsg (no credit, no on-death effect, no rise, no respawn), its body
+  joins the registry spent, and its own Raised collapse after it.
+- **Raise / summon abilities run, as timed casts.** A raise / summon competes on a due swing like any ability, and between
+  swings - from Chase or Attack, no swing due - `CombatSystem::TryStartSummonCast` picks among the raise / summon kinds
+  alone (`AbilityPickInput::summonsOnly`) on their own cooldown and `rangeMin` / `rangeMax` to the hero (not bound by the
+  swing reach: DataStore no longer warns and the exporter no longer fails on them), never while a swing or ability of
+  the caster is on its way to contact (`CombatSystem::HasPendingStrike`) or under a pet's taunt; such a caster's ability
+  clock starts at its first Chase / Attack step within the swing scan (12 tiles of the hero). Either way the picker sees
+  a raise / summon only when the runtime planned bodies for it (`AbilityPickInput::available`; `CombatSystem::PlanSummon`): `count`, cut to the room under `capAlive` (the caster's
+  live Raised) and under `perWindowCap` (the bodies the caster stood up within `windowMs`, all its abilities together); a
+  raise's free raisable corpses within `summon.radius` of the caster (default 6, query order); a summon's spots on its
+  `anchors` (round robin; the anchor tile, else the nearest walkable) or on a ring of `radius` around the caster (default
+  1.5; body k at 2 pi k / n). The pick holds those corpses, plays the clip and draws one breach-violet marker per corpse /
+  spot (EvTelegraph kind Raise / Summon, radius `raiseMarkerRadius` 0.75); at contact the bodies still there stand up
+  (EvCorpseRemoved{raised, by caster}, EvEntitySpawned, EvMonsterRaised, EvPlayAnim{Rise}) at `hpPct` of their life, the
+  live cap checked again. Every abort of K2 (death, stun / freeze, F2, a dead hero at contact) lets the corpses go.
+- **The Unburied rise.** At a death that leaves a raisable corpse, the first of the monster's affixes with `riseAgain`
+  (the `unburied` affix), else its own trait, may stand the body up once: not after a fire killing blow, nor a critical one
+  when `notOnCrit`; never for a Raised or a boss role (mini-boss, sub-dungeon mini-boss, story boss, seal keeper, hunt
+  leader); `chance` < 1 draws once on RngStream::Ai. The pending rise holds the corpse; `delayMs` later it stands up as
+  Raised (EvMonsterRaised{selfRise}) - the dead instance's definition, affixes and maximum life at `hpPct` - unless fire, the
+  TTL or the cap took the body first. Elite affixes with `families` roll only for monsters of those families
+  (`EliteAffixTable::RollableFor`; the shipped seven have none, so their pool and draws are unchanged).
+- **Consume.** A monster with `corpse.consumes`, idle or patrolling (or below half its life in a fight; never while
+  returning, casting or with a swing on its way to contact: the bite lands first), starts eating the nearest consumable corpse within 1 tile instead of its AI step: a 2 s channel
+  (rooted, no swing; `EvPlayAnim{Attack, clip Consume}`), then it heals floor(30 % of its maximum life) and the body goes
+  (EvCorpseRemoved{consumed, by}). Damage does not interrupt it; a stun or freeze, or the corpse vanishing (fire), ends it
+  with EvMonsterAttackCancelled and no heal. Constants in `MonsterAiDef` (port tuning, not loaded).
+- **On-death effects** (`monsters/OnDeath.h` pure rules, CombatSystem runtime). Scheduled at the death spot in the order:
+  the definition's, its affixes' (in affix order), the zone's (`CombatSystem::SetZoneOnDeath`); each fixes its damage at the
+  death (`dmg` x the difficulty's monster damage multiplier, or `hpPct` of the dying monster's maximum life, rounded half
+  up, >= 1) and draws its fuse (EvTelegraph{source OnDeath, kind = its shape's}; also a TelegraphView). `TickOnDeath`
+  (GameSim, after TickHazards) resolves the due ones in (time, schedule) order: a burst or ring hits the hero whose 0.35
+  body touches it (dodge-roll i-frames avoid it; else the damage less the hero's resistance, capped by the smaller of
+  `capHeroMaxHpPct` and the monster's own hit cap, both x the difficulty's damage multiplier; Death Save holds; then its
+  status) and, with `hitsMonsters`, each living monster in it (raw, x `monsterDmgMul`, KillSource::Environment, no
+  provoke); a puddle joins the HazardField (first pulse at once, both caps); a spawn stands its bodies up around the spot.
+  A cinematic does not cancel a fuse; a zone change drops them.
+- **Fire burns bodies** (MonsterSystem::BurnCorpses, a body touching the area): a fire killing blow, a fire ground strike at
+  its contact, every tick of a fire hazard (abilities' and puddles'), a fire burst / ring, and a hero fire skill where its
+  area lands (ground / trap / nova circles, cones and lines at release; the meteor at its fall; each tick of a fire wall or
+  an armed trap).
+- **The volatile curse** maps onto a burst: `VolatileCurseOnDeath(curse)` = fire, `hpPct` = deathBurst x 100 (12), radius 2
+  (the web's), fuse 800 ms, cap 20 %, monsters spared; the Labyrinth runtime installs it with
+  `SetZoneOnDeath(VolatileCurseOnDeath(curse), "curse.<id>")` on a floor's entry (no Labyrinth runtime exists yet).
+- **Events** (appended to `abyss::Event`; the UE router needs no change): `EvCorpseAdded {corpseId, monster, defId, artId,
+  family, kind, pos, deathMs, expiresMs, seeded, spent}`, `EvCorpseRemoved {corpseId, reason: expired | raised | consumed |
+  burned, by}`, `EvMonsterRaised {entity, raiser, corpseId, defId, abilityId, pos, startMs, riseMs, selfRise}`,
+  `EvMonsterCollapsed {entity, raiser}`; `EvTelegraph` gains `source` (Ability | OnDeath). Snapshot: `corpses`
+  (CorpseView), TelegraphView `kind` / `source` (strikes, raise / summon markers, on-death fuses), MonsterView `raiser` /
+  `consumingCorpse`.
+- **Deviations** (all pending review). (1) `corpse.leaves` has three values: the plan named the field, not its values;
+  `remains` covers the art lane's carcasses and boss bodies (`raisable: false`). (2) The core reads `family` (corpse
+  entries, the affix family restriction), so `monster.family` is exported now. (3) A fire killing blow registers the body
+  and burns it at once (two events) so UE can play the burn. (4) The cap's eviction reports `expired`. (5) Seeds never
+  expire and do not count toward the cap (a seed that faded in 20 s would be gone before the hero reaches the Sheepfold).
+  (6) The Unburied rise is a new Raised instance, not the dead one revived: its second death pays nothing; bosses and
+  Raised never rise. (7) Raised bodies still count as kills; every kill reward is withheld (exp, gold, loot, pet exp, embers,
+  quest drops; since the review also Spirit 'kill' and life on kill). (8) A collapse is not a kill. (9) An
+  on-death hit takes no roll or defense (like a hazard tick) but the dodge-roll i-frames avoid a burst / ring, and Death
+  Save holds; the volatile curse therefore takes the fairness fuse (800, the web's 650), the exploder cap (20 %) and Death
+  Save (combat-feel 5.3's quirk exempted it), but keeps the web's radius 2 and spares monsters. (10) `dmg` scales with the
+  difficulty's monster damage. (11) K3 also runs `summon` (2A assigned it to K3); `summon.radius` is new; `perWindowCap`
+  counts the caster's bodies across its abilities. (12) Consume never walks to a corpse (it eats what lies within a tile).
+  (13) Fire ground strikes of monsters burn bodies too. (14) The `unburied` affix type and the affix `families` restriction.
+  (15) The plan's entry flags `raised`, `consumed`, `burned` are removal reasons (`EvCorpseRemoved.reason`): a raised,
+  eaten or burned body leaves the registry at once; `spent` marks a Raised's own body (it rose once). (16) Since the
+  review a raise / summon is a cast between swings (from Chase or Attack), not only a pick on a due swing (K2's "the pick
+  replaces a basic swing"): Muster and Call the Flock are timed in the design (monsters.md 2.2 / 2.5, chapter1.md), and
+  a raise bound to the swing fired only while the hero stood in the caster's swing reach (never from a 3-5 tile kite).
+- **Tests.** `corpses_test.cpp` (suite `monsters`; 24 cases, 2024 assertions on GCC and Clang): the schema (loads, 32
+  refused monster blocks, 6 refused affix rows, seed fields; Finalize: spawn ids, seeds), the pure rules, the picker's
+  availability, the Corpses container (cap and eviction order, seeds, TTL, query order, holds; six seeds beside a full
+  cap), and the runtime: bodies (corpse / remains / none, fire killing blow, TTL, the cap), a raise (holds, markers,
+  contact = the clip's, 40 % life, Rise root), raise caps (live, per window, the opening raise of two), Raised rewards
+  and respawn, collapse (chained), burning (fire strike, hazard tick, a corpse burned mid-windup is not raised, the
+  hero's fire wall and meteor), consume (idle, under half life, remains ignored, stun abort, spent corpses, burned
+  mid-channel), the Unburied trait (delay, hp, once, fire / crit / burned / boss stop it, the Ai chance) and affix (crit
+  does not stop it, the copy keeps its affixes; the family-restricted roll), a burst (fuse telegraph and view, cap,
+  monsters x2, burns, radius, i-frames, Death Save), Scorched / Gravecold, a puddle's ticks, a spawn, the volatile curse
+  and its zone exit, summons at anchors and around the caster, a zone exit, the GameSim wiring (seeds at zone entry, the
+  K3 step, TickOnDeath / TickCorpses, snapshot views, a Raised kill through the real pipeline), and a seeded 30 s fight
+  whose event-log digest is pinned (`746f38be25201751`, identical on GCC and Clang). Existing tests: no assertion
+  changed; two comments in `monster_abilities_test.cpp` now say why the K2 "kinds not run yet" cases still hold (a raise
+  without a corpse in reach is not usable); the K1 grep gate runs 4 more checks (one per new core file). Totals 770
+  cases (GCC 215241 / Clang 215177 assertions; was 746 / 213213 on GCC); the 20-seed playthrough dumps (base 1000) are
+  byte-identical to 2A's on GCC and Clang. An exporter end to end (temporary GameData edits, then restored and
+  checksummed): a valid set (footman trait, gnawer consumes, bloat burst, standard-bearer raise, two seeds, Scorched's
+  burst and the `unburied` affix) exported and loaded in the core with 0 errors; 13 broken ones (a 700 ms fuse, a burst
+  without a cap, an unknown on-death key, a rise on remains, a seed of a puddle / unknown / off-grid monster, a raise
+  radius 0, a 700 s window, an unknown spawn, an affix typo, an unknown affix type, an affix burst without a cap) each
+  failed the export with its message.
+- **Review fixes (2B review, 2026-10; pending review).** R1: raise / summon are casts between swings (above; deviation
+  16): `TryStartSummonCast`, `AbilityPickInput::summonsOnly`, `CombatSystem::HasPendingStrike`; DataStore and the
+  exporter exempt them from the swing-reach rules (an exporter end to end: a raise with `rangeMin` 3 / `rangeMax` 9 and a
+  summon with `rangeMax` 9 on the footman (reach 1.8) export with no warning; a circle with `rangeMin` 2 still fails and
+  one with `rangeMax` 5 still warns). R2: cases for every release of a hold (a stun, F2, a dead hero at contact and the
+  raiser's death mid-raise free both corpses and a second raiser takes them; an eater killed mid-channel frees its
+  corpse for another eater). R3: a consume channel waits for a swing already on its way (it bit during the channel);
+  cases for that, for no swing or bite while eating and for no channel while returning. R4: the Raised reward skips
+  through GameSim (an elite body, an active beast, a quest whose drop comes from it, life on kill): no exp, gold, pet exp,
+  embers, quest progress, Spirit 'kill' or kill heal, and the Loot and Quests streams do not move; the same body as a
+  regular monster pays each. R5: a Raised kill withholds Spirit 'kill' and life on kill (they were paid; raisers fed a
+  renewable heal). R6: on-death damage on Nightmare and Hell (damage and cap x the difficulty multiplier), through a fire
+  resistance, under the monster's smaller hit cap, a puddle's own cap on every tick, and two effects due in one step in
+  (time, schedule) order. R7: every boss role stays down, the affix's rise wins over the trait, a sure rise draws nothing
+  from RngStream::Ai (a 50 % one draws once), a collapse ends the Raised's windup (EvMonsterAttackCancelled), its
+  statuses and the hero's lock. R8: a hero's fire nova, ground circle, cone and line (one area skill per shape from the
+  real data, turned to fire in memory) burn the body inside their area at release and not the one outside; a fire
+  beast's kill burns its body through the combat path and through `PetCompanion::Hit`'s fallback. Each rule was checked
+  by mutating the core in a scratch copy and watching a new case fail: the hold releases in ClearPendingAbility and
+  OnMonsterDied, the consume rules (Returning, the TickCombat skip, the pending-swing wait), the four Raised skips in
+  SimWiring, the Loot draw, Spirit and the kill heal, the resistance step, the difficulty factor of the cap, both caps,
+  the puddle's cap, the (time, schedule) sort, the boss roles, affix-before-trait, the chance-1 draw, the collapse
+  call and its cleanup, the ReleaseAoe burn, the pet's element, and the R1 cast (the between-swings call, the pending
+  strike guard, `summonsOnly`, the DataStore exemption). Totals after the review: `corpses_test.cpp` 32 cases / 3071
+  assertions (GCC = Clang); 778 cases (GCC 216288 / Clang 216224; shared Clang 773 / 216098); the replay digest is
+  re-pinned to `022a6e97d326a70c` (GCC = Clang: the raiser of that fight now casts between swings and the eater waits
+  for its swing); one existing case changed its event loop, not its assertions (the raise caps case reads the log in
+  order, since a cast may now start in the step its predecessor stood its bodies up). The 20-seed playthrough dumps
+  (base 1000) stay byte-identical to 2A's on GCC and Clang (no shipped definition has a raise, summon or consume yet).
+- **For 2F (content).** Corpse blocks per family: Unburied / Living `corpse`, the gnawers `remains` (+ `consumes` on the
+  gravegnawer), Breach-blood `none`, the Corpseherd and Valdras `remains` (their bodies are story beats). The footman's
+  trait `riseAgain {chance .25, delayMs 3000, hpPct 40, notOnCrit}`; the cinderbloat's burst (800, r2.2, 18 fire,
+  `hitsMonsters`, x2, cap 20); Scorched / Gravecold `onDeath` and the `unburied` affix row (`families: [unburied]`;
+  `sys.eliteAffix.name.unburied` in zh-CN / en; note the Corpseherd is Unburied family and would roll it unless the row
+  says otherwise); the Sheepfold's six `corpseSeeds`; Call the Flock (`raise`, count 1 / 8 s, `capAlive` 3,
+  `perWindowCap` 1 per 8000, hpPct 40, plus the opening raise of two with a long cooldown and a higher priority) and the
+  standard-bearer's Muster (`raise`, 10 s, `capAlive` 2); Valdras's P2 circles as a `summon` at `anchors`. Raises and
+  summons are casts between swings (review R1): they need only `cooldownMs`, the caps and a `rangeMax` to the hero (say
+  the aggro range); the opening raise of two fires on the fight's first step, from Chase. Feed (Valdras P2) is not `consumes` (a boss healing from Raised that die near the dais): K4.
+  The art manifest's corpse blocks name the gnawers' family `gnawers`; GameData says `gravegnawers`.
+- **For 2G (UE).** U3: hold the death pose and crumble to the husk / carcass on EvCorpseAdded (look by `artId` /
+  `defId`), keep it per CorpseView, remove it on EvCorpseRemoved by reason (expired: fade; raised: remove, the risen
+  monster's own Rise plays; consumed: after the Consume loop; burned: `corpse.burn`), clear all on zone unload; seeds show
+  as husks at zone build. U2: draw raise / summon markers (TelegraphView kind Raise / Summon: breach-violet, DR5) and
+  on-death fuses (source OnDeath: the crimson decal on the dead monster's spot, ended at contact); play `Rise` on
+  EvPlayAnim{Rise} and `Consume` on EvPlayAnim{Attack, clip Consume} (looped for its durationMs, stopped by
+  EvMonsterAttackCancelled); EvMonsterCollapsed is a fall without a kill (no loot beam, no kill vocal).
+
 ### Phase 3 — Wave 3: the descent
 
 | WP | Scope | Owns | Depends | Acceptance |

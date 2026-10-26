@@ -101,6 +101,21 @@ ABYSS_ENUM_STRINGS(AnimAction, "idle", "walk", "attack", "cast", "hurt", "dodge"
 enum class TelegraphStyle : uint8_t { Normal, Elite, Boss };
 ABYSS_ENUM_STRINGS(TelegraphStyle, "normal", "elite", "boss")
 
+// What drew a telegraph (dark remake EvTelegraph / TelegraphView): a monster ability winding up (K2; `kind` says which:
+// a ground strike, or a raise / summon marker), or an on-death effect's fuse (K3: the dead monster's burst, ring or
+// puddle; `kind` follows its shape).
+enum class TelegraphSource : uint8_t { Ability, OnDeath };
+ABYSS_ENUM_STRINGS(TelegraphSource, "ability", "onDeath")
+
+// Corpse registry vocabulary (dark remake K3, monsters/Corpses.h; EvCorpseAdded / EvCorpseRemoved / CorpseView). Kind:
+// a `corpse` other monsters raise and eat, or `remains` nothing raises or eats (a carcass, a boss's body); both burn.
+// Removal: its time ran out (or the per-zone cap pushed it out), it stood up (a raise or the Unburied rise), a monster
+// ate it, or fire burned it.
+enum class CorpseKind : uint8_t { Corpse, Remains };
+ABYSS_ENUM_STRINGS(CorpseKind, "corpse", "remains")
+enum class CorpseRemoveReason : uint8_t { Expired, Raised, Consumed, Burned };
+ABYSS_ENUM_STRINGS(CorpseRemoveReason, "expired", "raised", "consumed", "burned")
+
 enum class DespawnReason : uint8_t { Died, Removed, ZoneUnload, PickedUp, Expired, Collected };
 ABYSS_ENUM_STRINGS(DespawnReason, "died", "removed", "zoneUnload", "pickedUp", "expired", "collected")
 

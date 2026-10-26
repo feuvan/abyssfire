@@ -49,6 +49,7 @@ struct HazardEntry {
   bool hasStatus = false;
   StatusRule status;             // rolled per tick on the hero inside
   double hitCapPct = 0;          // the caster's hitCapHeroMaxHpPct (copied: the caster may die)
+  double extraCapPct = 0;        // K3: an on-death puddle's own cap (capHeroMaxHpPct); the smaller cap binds
 
   double TickAtMs(int32_t k) const { return startMs + (pulseAtStart ? k : k + 1) * tickMs; }
 };

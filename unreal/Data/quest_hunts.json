@@ -254,6 +254,7 @@
       "goldReward": [18, 36],
       "spriteKey": "monster_bonegorger",
       "animCategory": "humanoid",
+      "family": "gravegnawers",
       "elite": true,
       "isMiniBoss": true
     },
@@ -272,6 +273,7 @@
       "goldReward": [18, 36],
       "spriteKey": "monster_deserter",
       "animCategory": "humanoid",
+      "family": "living",
       "elite": true,
       "isMiniBoss": true
     },
@@ -290,6 +292,7 @@
       "goldReward": [18, 36],
       "spriteKey": "monster_deserter",
       "animCategory": "humanoid",
+      "family": "living",
       "elite": true,
       "isMiniBoss": true
     },

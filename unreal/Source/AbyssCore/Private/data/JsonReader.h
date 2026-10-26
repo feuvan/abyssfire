@@ -147,6 +147,9 @@ void LoadQuestHuntsFile(const JNode& r, MonsterTables& out);
 void LoadMonsterAiFile(const JNode& r, MonsterTables& out);
 // Shared by monsters.json and quest_hunts.json.
 MonsterDef ReadMonsterDef(const JNode& n, bool withDerived);
+// Dark remake K3 blocks, shared by monster definitions and elite_affixes.json definitions (LoadMonsters.cpp).
+MonsterOnDeathDef ReadMonsterOnDeath(const JNode& n);
+MonsterRiseAgainDef ReadMonsterRiseAgain(const JNode& n);
 DialogueTree ReadDialogueTree(const JNode& n, std::string id, DialogueKind kind);
 StatusRule ReadStatusRule(const JNode& n);
 
