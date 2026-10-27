@@ -81,6 +81,9 @@ void SimImpl::BuildSave(SaveData& out, int64_t unixMs) const {
   out.rng.streams = rng.GetStates();
   out.visitedZones = session.visitedZones;  // Q2
   out.contentVersion = kCurrentContentVersion;
+  // Dark remake K6: the world flags and the permanent rewards granted (SerializeSave writes them only when not empty).
+  out.worldFlags = session.worldFlags;
+  out.permanentRewards = session.permanentRewards;
 }
 
 SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
@@ -132,6 +135,13 @@ SaveError SimImpl::ApplySave(const SaveData& in, std::string* err) {
   session.playTimeMs = s.playTimeMs;
   session.nextAutosaveAtMs = config.autosaveIntervalMs;
   session.visitedZones = s.visitedZones;  // Q2: zones seen before do not count as first visits again
+  // Dark remake K6: before the zone entry, so its spawn variants and NPC visibility read them. The permanent rewards'
+  // stat / skill points are already in the saved hero's free points; maxLife joins the equip-stat merge below.
+  // A SaveData built in code (LoadGame(const SaveData&)) is normalised as a parsed one is: the flags a sorted set.
+  session.worldFlags = s.worldFlags;
+  NormalizeWorldFlags(session.worldFlags);
+  session.permanentRewards = s.permanentRewards;
+  session.permanentRewards.Normalize();
 
   // 3.5 order: 1 hero (no position) -> 3 items (equipment before deriving maxima, FIX Q8) -> 4 quests / story / echo ->
   // 5 homestead -> 6 pets -> 7 achievements -> 9 settings / difficulty -> 11-12 dialogue + id sets.

@@ -27,7 +27,8 @@ import * as SoulEchoMod from '../../../../../src/systems/SoulEcho';
 import * as ZoneSceneMod from '../../../../../src/scenes/ZoneScene';
 import { TILE_WIDTH, TILE_HEIGHT } from '../../../../../src/config';
 import { assert, assertSource, plain, readSource, type TableResult } from '../util';
-import { overrideEntries } from '../remake';
+import { noteRequiredKey, overrideEntries, requireTableFeature } from '../remake';
+import { REMAKE_OVERRIDES, type RemakeStatusEffectRow } from '../../../../GameData/world';
 import { checkOnDeath, checkRiseAgain } from './monsters';
 import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
 import { MiniBossByZone } from '../../../../../src/data/miniBosses';
@@ -149,6 +150,45 @@ function buffCaps(): TableResult {
   };
 }
 
+/** Status types the core knows beyond the web's six (Enums.h StatusType appends them; K6). */
+const CORE_REMAKE_STATUS_TYPES: readonly string[] = ['ashnumb'];
+/** StatusStackRule bounds (SkillData.h kStatusMaxStacks; LoadClasses.cpp). */
+const MAX_STACKS = 100;
+
+/**
+ * K6 (GameData/world.ts REMAKE_OVERRIDES.statusEffects; LoadClasses.cpp LoadStatusEffectsFile): `add` only (the web's six
+ * keep their rules), a type the core knows, its feature in REMAKE_SCHEMA, `stacking: 'stackCount'` with a `stacks` row
+ * (maxStacks 1..100, healingReceivedPerStack 0..1, slowAtMaxStacksPct 0..100) and `tickIntervalMs` 0 (a stack count is
+ * no damage per tick). Its name key `sys.statusEffect.name.<type>` joins the i18n parity check.
+ */
+function remakeStatusRows(webRows: Record<string, { tickIntervalMs: number; stacking: string }>): [string, RemakeStatusEffectRow][] {
+  const ov = REMAKE_OVERRIDES.statusEffects;
+  const where = 'GameData/world.ts REMAKE_OVERRIDES.statusEffects';
+  assert(!ov?.replace && !ov?.remove, `${where}: add only (the web's statuses keep their rules)`);
+  overrideEntries('statusEffects', ['status_effects.json'], webRows);  // applied + the remake block's `added`
+  const rows = Object.entries(ov?.add ?? {});
+  for (const [type, row] of rows) {
+    const at = `${where}.add.${type}`;
+    assert(CORE_REMAKE_STATUS_TYPES.includes(type), `${at}: a status type the core does not know (known: ${CORE_REMAKE_STATUS_TYPES.join(', ')})`);
+    requireTableFeature(`status.${type}`, at);
+    for (const k of Object.keys(row)) assert(['tickIntervalMs', 'stacking', 'stacks'].includes(k), `${at}: unknown field '${k}'`);
+    assert(row.tickIntervalMs === 0, `${at}.tickIntervalMs: a stack count does not tick (0)`);
+    assert(row.stacking === 'stackCount', `${at}.stacking: expected 'stackCount'`);
+    const st = row.stacks as Record<string, unknown>;
+    assert(st && typeof st === 'object', `${at}.stacks: a stackCount status needs its stacks row`);
+    for (const k of Object.keys(st)) {
+      assert(['maxStacks', 'healingReceivedPerStack', 'slowAtMaxStacksPct'].includes(k), `${at}.stacks: unknown field '${k}'`);
+    }
+    assert(Number.isInteger(st.maxStacks) && (st.maxStacks as number) >= 1 && (st.maxStacks as number) <= MAX_STACKS,
+      `${at}.stacks.maxStacks: expected an integer 1..${MAX_STACKS}`);
+    const heal = st.healingReceivedPerStack ?? 0, slow = st.slowAtMaxStacksPct ?? 0;
+    assert(typeof heal === 'number' && heal >= 0 && heal <= 1, `${at}.stacks.healingReceivedPerStack: expected 0..1`);
+    assert(typeof slow === 'number' && slow >= 0 && slow <= 100, `${at}.stacks.slowAtMaxStacksPct: expected 0..100`);
+    noteRequiredKey(`sys.statusEffect.name.${type}`, `status_effects.json types.${type}`);
+  }
+  return rows;
+}
+
 function statusEffects(skillRules: Record<string, unknown>): TableResult {
   assertSource(ZS,
     "if (spriteKey.includes('fire') || spriteKey.includes('phoenix') || spriteKey.includes('lava') || monsterId.includes('fire') || monsterId.includes('phoenix') || monsterId.includes('lava')) {",
@@ -159,12 +199,18 @@ function statusEffects(skillRules: Record<string, unknown>): TableResult {
     "if (spriteKey.includes('ice') || spriteKey.includes('frost') || monsterId.includes('ice') || monsterId.includes('frost')) {",
     "if (Math.random() < 0.2) { this.statusEffects.apply('player', 'slow', 30, 3000, monster.id, time);",
     "this.statusEffects.apply('player', 'slow', 30, 2500, monster.id, time);");
+  const webTypes = ['burn', 'freeze', 'poison', 'bleed', 'slow', 'stun'];
+  const webTicks = plain(StatusFx.DEFAULT_TICK_INTERVALS) as Record<string, number>;
+  const webStacking: Record<string, string> = { burn: 'stack', bleed: 'stack', poison: 'refreshKeepStronger', slow: 'refreshKeepStronger',
+    freeze: 'replace', stun: 'replace' };
+  // K6: the remake's status rows (Ashnumb) after the web's; nothing changes without them.
+  const added = remakeStatusRows(Object.fromEntries(webTypes.map(t => [t, { tickIntervalMs: webTicks[t], stacking: webStacking[t] }])));
   return {
     file: 'status_effects.json',
     source: ['src/systems/StatusEffectSystem.ts', ZS],
     data: {
-      types: ['burn', 'freeze', 'poison', 'bleed', 'slow', 'stun'],
-      tickIntervalMs: plain(StatusFx.DEFAULT_TICK_INTERVALS),
+      types: [...webTypes, ...added.map(([t]) => t)],
+      tickIntervalMs: { ...webTicks, ...Object.fromEntries(added.map(([t, r]) => [t, r.tickIntervalMs])) },
       diminishing: {
         appliesTo: ['freeze', 'stun'],
         factor: StatusFx.DIMINISH_FACTOR,
@@ -172,7 +218,8 @@ function statusEffects(skillRules: Record<string, unknown>): TableResult {
         windowMs: StatusFx.DIMINISH_WINDOW,
       },
       slowMinSpeedFactor: StatusFx.SLOW_MIN_SPEED_FACTOR,
-      stacking: { burn: 'stack', bleed: 'stack', poison: 'refreshKeepStronger', slow: 'refreshKeepStronger', freeze: 'replace', stun: 'replace' },
+      stacking: { ...webStacking, ...Object.fromEntries(added.map(([t, r]) => [t, r.stacking])) },
+      ...(added.length ? { stacks: Object.fromEntries(added.map(([t, r]) => [t, plain(r.stacks)])) } : {}),
       poisonedHpRegenMultiplier: 0.5,
       // Generator rules for MonsterDefinition.derived.onHitStatus (ZoneScene.applyMonsterStatusEffect, :6204-6237);
       // each rule rolls independently, value from the (scaled) monster damage.
@@ -184,7 +231,7 @@ function statusEffects(skillRules: Record<string, unknown>): TableResult {
       eliteFrozenOnHit: { status: 'slow', value: 30, durationMs: 2500, chanceFrom: 'eliteAffix.freezeChance' },
       skillRules,
     },
-    counts: { types: 6, skillsWithRules: Object.keys(skillRules).length },
+    counts: { types: webTypes.length + added.length, skillsWithRules: Object.keys(skillRules).length },
   };
 }
 

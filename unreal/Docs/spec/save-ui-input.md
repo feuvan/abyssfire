@@ -10,7 +10,13 @@ module (render / input / UMG).
 > `miniBossDialogueSeen`, `dialogueOnce`, `dialogueState`, lore, hidden areas and their rewards, achievements;
 > `ApplyContentVersion`); the hero, items and gold stay. It also forgets the beats story.json `contentUpgrade` names
 > (ids kept, content rewritten: the remade prologue and the Red Field's chapter card), and a hero saved in a locked Ember
-> Tower loads at the camp of its return zone (1B review). Everything else in §3 is unchanged.
+> Tower loads at the camp of its return zone (1B review). K6 (2E, DECISIONS DR8 *K6 as built*) adds `worldFlags` (a
+> sorted list of flag ids) and `permanentRewards` (`{claimed: [{questId, difficulty}], maxLife, statPoints, skillPoints,
+> respecTokens}`), written after `contentVersion` and only when not empty (a save without world state is byte-identical
+> to before; a save without them loads with none; the content-version upgrade keeps them). Parsing and the load of a
+> `SaveData` built in code (`ApplySave`) both normalise them: the flags sorted, without empty ids or repeats, the claims
+> without an empty quest id, an unknown difficulty or a repeated pair, the totals at least 0 (2E review). Everything
+> else in §3 is unchanged.
 
 This document describes **what the web game does today**, precisely enough to re-implement it without reading the
 TypeScript. Web behaviour that is a bug or a 2D artefact is called out as a **QUIRK (Qn)** with a recommendation; the

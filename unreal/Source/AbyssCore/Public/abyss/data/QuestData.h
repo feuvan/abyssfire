@@ -57,6 +57,20 @@ struct QuestObjectiveDef {
   std::string labelKey;                   // overrides the label when set
 };
 
+// Dark remake K6 (remake schema quest.permanentRewards; chapter1.md S1 / S6 / S7): granted once per (quest, difficulty)
+// at the turn-in (SessionState::permanentRewards, saved as `permanentRewards`). maxLife joins the merged equip stats as
+// a flat MaxHp; the points go to the hero's free points; respec tokens wait for the respec UI. Each 0..its bound (the
+// loader's kPermanent*Max), at least one > 0 when present.
+inline constexpr int32_t kPermanentMaxLifeMax = 1000;
+inline constexpr int32_t kPermanentPointsMax = 100;
+struct QuestPermanentRewardDef {
+  bool present = false;
+  int32_t maxLife = 0;
+  int32_t statPoints = 0;
+  int32_t skillPoints = 0;
+  int32_t respecTokens = 0;
+};
+
 struct QuestRewardDef {
   int64_t exp = 0;
   int64_t gold = 0;
@@ -70,6 +84,7 @@ struct QuestRewardDef {
   std::vector<std::string> choiceLabels;
   bool hasChoiceQuality = false;
   ItemQuality choiceQuality = ItemQuality::Rare;
+  QuestPermanentRewardDef permanent;  // K6
 };
 
 struct EscortNpcDef {
@@ -146,6 +161,9 @@ struct QuestDef {
   // K1 quest progress line (remake schema quest.progressKey): i18n key of the giver's line while the quest is active
   // (QuestCardState::progress); "" = none.
   std::string progressKey;
+  // K6 world flags (remake schema quest.setsFlags): set on the turn-in, before the turn-in's listeners run (SimWiring);
+  // data order, duplicates refused.
+  std::vector<std::string> setsFlags;
   // derived
   std::string giverNpcId;
   int32_t embersOnTurnIn = 0;

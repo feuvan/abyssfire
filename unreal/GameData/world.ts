@@ -32,9 +32,39 @@ export interface EntryOverride<T> {
   readonly remove?: readonly string[];
 }
 
+/**
+ * [W2] A zone's ambush champion pack (K6, the 2D review's event champion packs; chapter1.md §13: the Muster, a
+ * standard-bearer and three footmen sharing one affix, 10 % of ambushes; MapData.h AmbushChampionDef). Only when present,
+ * an ambush draws once more and, under `chance` (0 < chance <= 1), spawns `mix` (counts >= 1, 20 members at most; the
+ * zone's monsters, never the story boss) as one pack in its place, `leader` (a member's id) leading it; `sharedAffix`
+ * rolls the zone's affixes once and gives them to every member (each keeps those its family may roll); `leaderLoot`
+ * (needs `leader`; monsters.md §2.8 "a champion Muster drops one guaranteed magic item"): the leader's kill drops one
+ * more equipment item of exactly that quality at its level, after its regular loot. Feature `events.ambushChampion`
+ * (checked by the exporter's world.ts).
+ */
+export interface RemakeAmbushChampion {
+  chance: number;
+  mix: { monsterId: string; count: number }[];
+  leader?: string;
+  sharedAffix?: boolean;
+  leaderLoot?: 'magic' | 'rare';
+}
+
 /** A zone's event data plus the remake's rescue guards (random_events.json `zones.<zone>.rescueMonsters`; the core uses
- * `ambushMonsters` when it is absent). */
-export type RemakeZoneEventData = ZoneEventData & { rescueMonsters?: string[] };
+ * `ambushMonsters` when it is absent) and its [W2] ambush champion pack. */
+export type RemakeZoneEventData = ZoneEventData & { rescueMonsters?: string[]; ambushChampion?: RemakeAmbushChampion };
+
+/**
+ * [W2] A status row the remake adds to status_effects.json (K6; SkillData.h StatusStackRule): Ashnumb's `stackCount`
+ * rules (one instance whose value counts stacks; each application adds them up to maxStacks and restarts the shared
+ * timer): `healingReceivedPerStack` (0..1) off every heal and the regeneration, `slowAtMaxStacksPct` (0..100) at full
+ * stacks. `tickIntervalMs` 0 (it deals no damage). Its name key `sys.statusEffect.name.<type>` must exist (i18n).
+ */
+export interface RemakeStatusEffectRow {
+  tickIntervalMs: number;
+  stacking: 'stackCount';
+  stacks: { maxStacks: number; healingReceivedPerStack?: number; slowAtMaxStacksPct?: number };
+}
 
 /** WeatherSystem's (module-private) WeatherConfig, widened for remake ambiences. */
 export interface RemakeWeather {
@@ -110,6 +140,11 @@ export interface RemakeOverrides {
   };
   /** terrain_styles.json `themes` (TerrainStyles TERRAIN_THEMES), by theme. */
   readonly terrainStyles?: EntryOverride<TerrainTheme>;
+  /**
+   * status_effects.json (K6), by status type: `add` only (the web's six keep their rules): the remake's statuses the core
+   * knows (`ashnumb`). Feature `status.ashnumb` (checked by the exporter's combat.ts).
+   */
+  readonly statusEffects?: EntryOverride<RemakeStatusEffectRow>;
 }
 
 // ── Elite affixes (monsters.md §3): same mechanics and stats, re-voiced, recoloured off the ember hue (DR5) ──

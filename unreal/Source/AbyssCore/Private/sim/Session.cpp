@@ -4,6 +4,7 @@
 #include "abyss/sim/Session.h"
 
 #include <algorithm>
+#include <functional>
 
 namespace abyss {
 
@@ -56,6 +57,40 @@ bool PanelState::AnyHudPanelOpen() const {
 
 bool SessionState::HasVisited(std::string_view mapId) const {
   return std::find(visitedZones.begin(), visitedZones.end(), mapId) != visitedZones.end();
+}
+
+bool SessionState::HasFlag(std::string_view flag) const {
+  return std::binary_search(worldFlags.begin(), worldFlags.end(), flag, std::less<>());
+}
+
+bool SessionState::SetFlag(std::string_view flag) {
+  if (flag.empty()) return false;
+  const auto it = std::lower_bound(worldFlags.begin(), worldFlags.end(), flag, std::less<>());
+  if (it != worldFlags.end() && *it == flag) return false;
+  worldFlags.insert(it, std::string(flag));
+  return true;
+}
+
+bool PermanentRewardsState::Claimed(std::string_view questId, Difficulty d) const {
+  return std::any_of(claimed.begin(), claimed.end(),
+                     [&](const PermanentRewardClaim& c) { return c.questId == questId && c.difficulty == d; });
+}
+
+void PermanentRewardsState::Normalize() {
+  std::vector<PermanentRewardClaim> kept;
+  for (PermanentRewardClaim& c : claimed) {
+    if (c.questId.empty() || static_cast<size_t>(c.difficulty) >= EnumCount<Difficulty>()) continue;
+    const bool repeated = std::any_of(kept.begin(), kept.end(), [&](const PermanentRewardClaim& k) { return k == c; });
+    if (!repeated) kept.push_back(std::move(c));
+  }
+  claimed = std::move(kept);
+  for (int32_t* total : {&maxLife, &statPoints, &skillPoints, &respecTokens}) *total = (std::max)(0, *total);
+}
+
+void NormalizeWorldFlags(std::vector<std::string>& flags) {
+  flags.erase(std::remove_if(flags.begin(), flags.end(), [](const std::string& f) { return f.empty(); }), flags.end());
+  std::sort(flags.begin(), flags.end());
+  flags.erase(std::unique(flags.begin(), flags.end()), flags.end());
 }
 
 }  // namespace abyss

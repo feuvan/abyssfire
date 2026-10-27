@@ -7,7 +7,10 @@
 //
 // Owner area: world. `RandomEventRules` is pure (trigger decision); `RandomEventSystem` is the runtime wrapper.
 // RNG: RngStream::Events (trigger roll, type pick, event contents, ambush / rescue placement, cache gold); the cache's
-// items come from GenerateLoot on RngStream::Loot.
+// items come from GenerateLoot on RngStream::Loot. Dark remake K6: an ambush in a zone whose event data names an
+// `ambushChampion` draws once more on the Events stream right after its count; under the champion's chance it spawns
+// the champion pack (MonsterSystem::SpawnChampionPack: one pack, its leader, a shared affix roll on RngStream::Ai) in
+// place of the ambush (ActiveRandomEvent / EvRandomEvent `champion`). A zone without the block draws exactly as before.
 #pragma once
 
 #include <cstdint>
@@ -89,6 +92,7 @@ struct ActiveRandomEvent {
   int32_t puzzleIndex = -1;                // environmental puzzle: index into ZoneEventDataDef::puzzles
   int64_t rewardGold = 0, rewardExp = 0;   // rescue reward
   TimerId timer = kNoTimer;                // rescue poll / chest fade
+  bool champion = false;                   // dark remake K6: an ambush that spawned the zone's champion pack
 };
 
 // The environmental puzzle prompt (world 13.3): a core-owned modal (PanelId::Puzzle). Opened by interacting with an

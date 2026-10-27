@@ -31,6 +31,7 @@ void SimImpl::BuildSystems(ClassId cls) {
   // SimSystems order. Constructors only store references (SimContext.h rules).
   hero = std::make_unique<Hero>(data, cls);
   status = std::make_unique<StatusEffectSystem>(data.Classes().statusRules);
+  hero->BindStatusEffects(status.get());  // K6: Ashnumb scales the healing the hero receives
   zone = std::make_unique<ZoneRuntime>(ctx);
   locomotion = std::make_unique<HeroLocomotion>(ctx);
   exploration = std::make_unique<ExplorationSystem>(ctx);

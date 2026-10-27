@@ -47,6 +47,38 @@ function checkK1Hooks(q: unknown): void {
   }
 }
 
+/** Permanent reward bounds (QuestData.h kPermanentMaxLifeMax / kPermanentPointsMax). */
+const PERMANENT_MAX = { maxLife: 1000, statPoints: 100, skillPoints: 100, respecTokens: 100 } as const;
+
+/**
+ * K6 shapes the C++ loader rejects (LoadQuests.cpp), checked here first: `setsFlags` a non-empty list of non-empty ids,
+ * each once; `rewards.permanent` known keys, integers within their bounds, at least one above 0.
+ */
+function checkK6Quest(q: unknown): void {
+  const r = q as { id: string; setsFlags?: unknown; rewards: { permanent?: Record<string, unknown> } };
+  const where = `quests.${r.id}`;
+  if (r.setsFlags !== undefined) {
+    assert(Array.isArray(r.setsFlags) && r.setsFlags.length > 0, `${where}.setsFlags: an empty or malformed list (omit it)`);
+    const seen = new Set<string>();
+    for (const f of r.setsFlags as unknown[]) {
+      assert(typeof f === 'string' && f !== '', `${where}.setsFlags: empty or malformed flag ${JSON.stringify(f)}`);
+      assert(!seen.has(f as string), `${where}.setsFlags: duplicate flag '${f}'`);
+      seen.add(f as string);
+    }
+  }
+  const p = r.rewards.permanent;
+  if (p !== undefined) {
+    let any = false;
+    for (const [k, v] of Object.entries(p)) {
+      assert(Object.hasOwn(PERMANENT_MAX, k), `${where}.rewards.permanent: unknown field '${k}' (known: ${Object.keys(PERMANENT_MAX).join(', ')})`);
+      const max = PERMANENT_MAX[k as keyof typeof PERMANENT_MAX];
+      assert(Number.isInteger(v) && (v as number) >= 0 && (v as number) <= max, `${where}.rewards.permanent.${k}: expected an integer 0..${max}`);
+      any = any || (v as number) > 0;
+    }
+    assert(any, `${where}.rewards.permanent: grants nothing (omit it)`);
+  }
+}
+
 export function exportQuests(): TableResult[] {
   const ids = new Set<string>();
   const quests = AllQuests.map(q => {
@@ -55,6 +87,7 @@ export function exportQuests(): TableResult[] {
     const giver = questGiverOf(q.id);
     gateRemakeValues('quest', q, `quests.${q.id}`);
     checkK1Hooks(q);
+    checkK6Quest(q);
     return {
       ...withholdRemakeFields('quest', plain(q), `quests.${q.id}`),
       derived: {

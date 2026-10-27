@@ -22,7 +22,7 @@ import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, Remak
   RemakeRiseAgain, RemakeMonsterPhase, RemakeKite, RemakeBlock, RemakeMorale, RemakeAura, MapSpawn as RemakeMapSpawn } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
-import { gateRemakeValues, noteConfig, withholdRemakeFields } from '../remake';
+import { gateRemakeValues, noteConfig, remakeStatusTypes, withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -161,9 +161,20 @@ function checkShape(sh: RemakeAbilityShape, implied: string | null, where: strin
   if (kind === 'line') assert(len > 0 && w > 0, `${where}: a line needs length > 0 and width > 0`);
 }
 
+/**
+ * A status a monster may put on the hero: the web's six, and (K6) a type GameData/world.ts `statusEffects` adds a row for
+ * (`ashnumb`; the value itself is gated by REMAKE_VALUES `status.ashnumb`): without its row it would never land.
+ */
+function checkStatusType(type: string, where: string): void {
+  if (STATUS_TYPES.includes(type)) return;
+  assert(type === 'ashnumb', `${where}: unknown status '${type}'`);
+  assert(remakeStatusTypes().includes(type), `${where}: status '${type}' has no status_effects.json row ` +
+    '(GameData/world.ts REMAKE_OVERRIDES.statusEffects.add): it would never land');
+}
+
 function checkStatus(st: RemakeAbilityStatus, where: string): void {
   checkKeys(st, ['type', 'chance', 'ms', 'value'], where);
-  assert(STATUS_TYPES.includes(st.type), `${where}.type: unknown status '${st.type}'`);
+  checkStatusType(st.type, `${where}.type`);
   assert(st.chance === undefined || (st.chance > 0 && st.chance <= 1), `${where}.chance: expected 0 < chance <= 1`);
   assert(isNum(st.ms) && st.ms > 0, `${where}.ms: expected > 0`);
   assert(isNum(st.value) && st.value > 0, `${where}.value: expected > 0 (a status of value 0 never applies)`);
@@ -635,6 +646,7 @@ export function exportMonsters(): TableResult[] {
       overridesApplied.push({ id: o.id, field: o.field, web: d[o.field] as number, port: o.port, decision: o.decision, note: o.note });
       (d as unknown as Record<string, unknown>)[o.field] = o.port;
     }
+    (authored.onHitStatus ?? []).forEach((r, i) => checkStatusType(r.status, `monsters.${def.id}.onHitStatus[${i}].status`));  // K6
     const onHitStatus = authored.onHitStatus ? plain(authored.onHitStatus) as unknown as Record<string, unknown>[] : onHitStatusRule(def);
     if (!authored.onHitStatus) checkOnHit(def, onHitStatus);
     sources[def.id] = [source];

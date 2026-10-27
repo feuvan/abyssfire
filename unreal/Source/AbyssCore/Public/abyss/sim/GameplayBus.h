@@ -49,6 +49,8 @@ struct MonsterKilledMsg {
   // the Unburied rise, monsters.md 2.2).
   DamageType element = DamageType::Physical;
   bool crit = false;
+  // Dark remake K6: MonsterInstance::guaranteedLoot (a champion leader's drop; Normal = none), GroundLootSystem drops it.
+  ItemQuality guaranteedLoot = ItemQuality::Normal;
 };
 
 // A monster started chasing the hero: Idle / Patrol / Returning -> Chase (aggro range, provoke M2, taunt, ambush spawn).

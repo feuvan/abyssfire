@@ -33,6 +33,18 @@ struct MapSpawnLeaderDef {
   bool elite = false;
 };
 
+// Dark remake K6 (remake schema map.spawnVariants; chapter1.md 8 `rf_chapter_dawn`): once the world flag `whenFlag` is set,
+// the entry spawns `count` x monsterId instead of its mix / monsterId (still one pack, no leader). The first variant (list
+// order) whose flag is set wins; MonsterSystem reads it at the zone's spawn and at each respawn (MonsterSystem.h "K6").
+// count 0..kSpawnVariantMaxCount (0 = the entry spawns nothing once the flag is set); one variant per flag. Map spawns
+// only (a sub-dungeon's spawns refuse it until K7). Not generator inputs (DECISIONS DR4: Wave 2 is golden-neutral).
+inline constexpr int32_t kSpawnVariantMaxCount = 100;
+struct MapSpawnVariantDef {
+  std::string whenFlag;
+  std::string monsterId;
+  int32_t count = 1;
+};
+
 struct MapSpawnDef {
   TilePos pos;
   std::string monsterId;
@@ -40,6 +52,7 @@ struct MapSpawnDef {
   // K5 (default member initializers: aggregate initialisations that predate them stay complete).
   std::vector<MapSpawnMixDef> mix{};  // empty = `count` x monsterId
   MapSpawnLeaderDef leader{};
+  std::vector<MapSpawnVariantDef> variants{};  // K6
 };
 
 struct MapCampDef {
@@ -301,6 +314,25 @@ struct ZoneEventDataDef {
   std::vector<std::string> rescueMonsters;
   int64_t rescueRewardGold = 0;
   int64_t rescueRewardExp = 0;
+  // Dark remake K6 (random_events.json zones.<zone>.ambushChampion, remake schema events.ambushChampion; the 2D review's
+  // event champion packs, chapter1.md 13 Muster): only when present, an ambush draws once more on the Events stream
+  // (right after its count) and, when that draw is below `chance` (0 < chance <= 1), spawns this pack in place of the
+  // ambush (MonsterSystem::SpawnChampionPack): `mix` in list order (counts >= 1, kChampionMaxMembers in all) as one K5
+  // pack, `leader` (a member's id; the first member of that id leads it), and with `sharedAffix` the zone's affixes
+  // rolled once (the Ai stream, as every affix roll; the pool of the leader's family, else the first member's) and given
+  // to every member, each keeping the ones its family may roll (a member that keeps one is elite). `leaderLoot`
+  // (monsters.md 2.8 "a champion Muster drops one guaranteed magic item"; needs `leader`): the leader's kill drops one
+  // more equipment item of exactly that quality (magic or rare) at its level, after its regular loot
+  // (GroundLootSystem::OnMonsterKilled, the Loot stream; MonsterInstance::guaranteedLoot).
+  static constexpr int32_t kChampionMaxMembers = 20;
+  struct AmbushChampionDef {
+    bool present = false;
+    double chance = 0;
+    std::vector<MapSpawnMixDef> mix;
+    std::string leader;  // a member's monster id ("" = no leader)
+    bool sharedAffix = false;
+    ItemQuality leaderLoot = ItemQuality::Normal;  // Normal = none
+  } ambushChampion;
 };
 
 struct ABYSS_API RandomEventsDef {

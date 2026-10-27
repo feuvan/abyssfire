@@ -273,6 +273,23 @@ struct EvMonsterBuffCast {
   int32_t buffed = 0;
   int32_t called = 0;
 };
+// Dark remake K6 (world/WorldState.h): a world flag was set (a quest's setsFlags on its turn-in; flags are never
+// cleared). Emitted once per flag, in the quest's data order, before the turn-in's other events. UE re-reads moods /
+// audio emitters from Snapshot::worldFlags.
+struct EvWorldFlag {
+  std::string flag;
+  std::string questId;  // the quest whose turn-in set it
+};
+// Dark remake K6: a quest's permanent reward was granted (once per quest and difficulty; QuestWorld::TurnIn, after the
+// items): the amounts this grant added (the running totals are Snapshot::permanentRewards).
+struct EvPermanentReward {
+  std::string questId;
+  Difficulty difficulty = Difficulty::Normal;
+  int32_t maxLife = 0;
+  int32_t statPoints = 0;
+  int32_t skillPoints = 0;
+  int32_t respecTokens = 0;
+};
 struct EvProjectileLaunched {
   EntityId projectile = kNoEntity;
   ProjectileKind kind = ProjectileKind::HeroSkill;
@@ -325,6 +342,8 @@ struct EvSkillVfx {
   // arrows' SkillArrowDelayMs) times from this, not from the frame's snapshot time.
   double atMs = -1;
 };
+// `value`: the status value applied (DoT per tick, slow percent, ...); for a stackCount status (dark remake K6 Ashnumb)
+// the stacks the target carries after this application (UE's AshnumbTint band).
 struct EvStatusApplied {
   EntityId target = kNoEntity;
   StatusType type = StatusType::Burn;
@@ -598,6 +617,7 @@ struct EvRandomEvent {
   Vec2 pos;
   std::string zoneId;           // sys.event.* keys are per zone
   EntityId prop = kNoEntity;    // chest / merchant / puzzle prop / rescue NPC
+  bool champion = false;        // dark remake K6: an ambush that rolled the zone's champion pack (ambushChampion)
 };
 // The environmental puzzle prompt (world 13.3; core-owned modal PanelId::Puzzle). Text keys:
 // sys.event.puzzle.<zoneId>.<puzzleIndex>.{prompt,solution,reward}; answer with CmdPuzzleAnswer (0 solution, 1 leave).
@@ -674,7 +694,7 @@ using Event = std::variant<EvEntitySpawned, EvEntityDespawned, EvEntityTeleporte
                            EvPanelRequest, EvSaveRequested, EvMusic, EvSfx, EvCameraShake, EvCameraFlash, EvSlowMotion,
                            EvTelegraph, EvHazard, EvCorpseAdded, EvCorpseRemoved, EvMonsterRaised,
                            EvMonsterCollapsed, EvMonsterPhase, EvArena, EvMonsterFeed, EvBlock, EvMonsterFlee,
-                           EvMonsterBuffCast>;
+                           EvMonsterBuffCast, EvWorldFlag, EvPermanentReward>;
 
 // Append-only event list shared by every subsystem of one GameSim.
 class EventSink {

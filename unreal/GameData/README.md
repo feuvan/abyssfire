@@ -152,7 +152,19 @@ monster's map spawn tile; implementation-plan.md *2C outcomes*). Since K5 (packa
 monster `packAggro`, `kite` (`RemakeKite`), `block` (`RemakeBlock`), `morale` (`RemakeMorale`), `aura` (`RemakeAura`),
 the buff / call ability kinds (`RemakeBuff`: a call's `stat` is optional) and map spawn `mix` / `leader` (`MapSpawn`; a
 spawn entry is a pack: the mix sums to its `count` and keeps the entry's `monsterId` among its members;
-implementation-plan.md *2D outcomes*). Still withheld: every other Wave 2 / 3 field.
+implementation-plan.md *2D outcomes*). Since K6 (package 2E, DECISIONS DR8 *K6 as built*) also quest `setsFlags`
+(world flags its turn-in sets) and `rewards.permanent` (`RemakePermanentReward`: `maxLife` 0..1000, `statPoints` /
+`skillPoints` / `respecTokens` 0..100, at least one above 0; once per quest and difficulty), map spawn `variants`
+(`RemakeSpawnVariant[]` `{whenFlag, monsterId, count 0..100}`: the first whose flag is set replaces the entry), NPC
+`lines` (`RemakeNpcLine[]` `{key, when?}`) and `visibleWhen` (`RemakeCondition`: `flag`, `notFlag`, `quest` + `state`,
+`any` of single leaves; the export refuses a condition that could hide an NPC while an open quest needs it, or that
+hides a giver for sure whenever its quest is offered with nothing else offering it), the
+`ashnumb` value of a monster status (`RemakeStatusType`), and two override-table fields in `world.ts` that no record gate
+sees (`REMAKE_TABLE_FEATURES` in `src/remake.ts`): `statusEffects.add.ashnumb` (`RemakeStatusEffectRow`, Ashnumb's
+`stackCount` row; feature `status.ashnumb`; without the row the status never lands and its value fails the export) and
+`randomEvents` `zones.<zone>.ambushChampion` (`RemakeAmbushChampion`, its `leaderLoot` the leader's guaranteed magic /
+rare drop; feature `events.ambushChampion`)
+(implementation-plan.md *2E outcomes*). Still withheld: every Wave 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

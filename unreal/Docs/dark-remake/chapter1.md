@@ -135,6 +135,14 @@ Quest-gated lines [W2 hook; W1 fallback: the first line only]:
 | `knell_chaplain` | `q_rf_last_toll` | 愿钟声护你。……我会一直听着它。 | May the bell keep you. ...I will always be listening to it. |
 | `knell_chaplain` | (always, second line) | 我替每个名字念一遍经。念到第三百个，我开始怕自己忘了念给谁。 | I say a prayer for every name. By the three hundredth I began to fear I'd forget who it was for. |
 
+*K6 as built (2E, pending review):* the hook is npcs.json `lines [{key, when?}]` (`when`: `{quest: <id>, state:
+turnedIn}`, or a flag): the lines that hold replace `dialogue`; the first is logged on interaction, the linear panel shows
+the second (else the first); none holding keeps the W1 lines. Author the "after" line first, gate the W1 line it replaces
+with the opposite state (`{quest: <id>, state: notTurnedIn}`) and keep the other W1 lines without a `when`, so the same
+slots hold before and after: the chaplain is `[{after, when: turnedIn}, {line 0, when: notTurnedIn}, {line 1}]` (logged:
+line 0, then the after line; the panel keeps his always-on second line). Listing the after line in front of both W1 lines
+would push line 1 off the panel once the quest is turned in (implementation-plan.md *2E outcomes*; 2E review R6).
+
 ## 4. The Captain's dialogue tree (`quest_elder`, 13 nodes)
 
 New node ids; the tree keeps 13 nodes, three quest triggers and the one-time reward (Q1).
@@ -546,6 +554,12 @@ Epilogue hook: step 13 seeds Chapter 2 (Aldwin follows the voice east). The east
 | `rf_chapter_dawn` | M5 turned in | ashfall stops; the grade warms (`march_dawn` mood); the trench and Dead Ranks Unburied spawns are replaced by Gravegnawers ("the dead lie down; the scavengers remain"); Valdras stays farmable once per visit (M7) | W2 (W1: mood switch only, via `chapterCompleteQuest`) |
 | `rf_pit_cleansed` | S7 cleared | the Pit's embers rise; the Pit stays lit; no respawn inside | W3 |
 
+*K6 as built (2E, pending review):* quest `setsFlags` sets a flag at the turn-in (saved `worldFlags`, never cleared;
+`EvWorldFlag`, `Snapshot::worldFlags` for UE's mood and audio); the Gravegnawer replacement is map spawn `variants
+[{whenFlag: rf_chapter_dawn, monsterId: gravegnawer, count}]` on the trench and Dead Ranks entries, read at the zone's
+spawn and at every respawn. `rf_pit_cleansed` (set by a clear, not a turn-in) is K7's (implementation-plan.md *2E
+outcomes*).
+
 ## 9. Sub-areas
 
 ### 9.1 The Breach Rim (surface region, [W1])
@@ -661,7 +675,7 @@ Same five kinds, weights, cooldown and frequency (ambush 30, treasure 25, mercha
 
 | Kind | Remake | Content |
 |---|---|---|
-| ambush | 泥里伸出的手 / Hands from the Mud | 3-5 of [`risen_footman`, `gravegnawer`]. A distant toll plays 1.5 s before the hands rise (presentation). [W2] 10 % chance of a champion **Muster**: `dead_standard_bearer` + 3 `risen_footman` sharing one affix |
+| ambush | 泥里伸出的手 / Hands from the Mud | 3-5 of [`risen_footman`, `gravegnawer`]. A distant toll plays 1.5 s before the hands rise (presentation). [W2] 10 % chance of a champion **Muster**: `dead_standard_bearer` + 3 `risen_footman` sharing one affix; the standard-bearer drops one guaranteed magic item (K6 `ambushChampion.leaderLoot`) |
 | treasure_cache | 阵亡骑士的铁箱 / A Dead Knight's Strongbox | as today |
 | wandering_merchant | 圣骨贩子 / the Relic Peddler | as today (Mag's Gleaners' wagon in later chapters) |
 | rescue | 被缚的朝圣者 / the Bound Pilgrim | tied to a stake by zealots and freed before any harm; guards from [`oath_zealot`]; 30 gold / 25 exp |

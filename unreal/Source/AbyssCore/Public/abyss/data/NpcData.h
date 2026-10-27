@@ -8,6 +8,7 @@
 
 #include "abyss/base/Enums.h"
 #include "abyss/base/Platform.h"
+#include "abyss/data/WorldStateData.h"
 
 namespace abyss {
 
@@ -24,6 +25,14 @@ struct NpcDef {
   std::string spriteId;                // borrowed look (tower allies); empty = own
   std::string dialogueTreeId;          // empty = no tree
   std::string nameKey;
+  // Dark remake K6 (remake schema npc.lines / npc.visibleWhen; world/WorldState.h). `lines`: when not empty they replace
+  // `dialogue` as what the NPC says: the lines whose `when` holds, in data order (NpcLinesNow); the interaction logs the
+  // first, the linear panel shows the second, else the first (the web's dialogue[1] ?? [0]). `visibleWhen`: the NPC is
+  // placed only while it holds (hidden NPCs are not interactable, not in the snapshot; they appear and leave with
+  // EvEntitySpawned / EvEntityDespawned). DataStore refuses an NPC that could hide while an open quest needs it.
+  std::vector<NpcLineDef> lines;
+  bool hasVisibleWhen = false;
+  WorldCondition visibleWhen;
 };
 
 struct ABYSS_API NpcTables {

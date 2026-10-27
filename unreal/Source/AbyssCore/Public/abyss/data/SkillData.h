@@ -241,17 +241,40 @@ struct ABYSS_API SkillRules {
 };
 
 // status_effects.json
-enum class StatusStacking : uint8_t { Stack, RefreshKeepStronger, Replace };
-ABYSS_ENUM_STRINGS(StatusStacking, "stack", "refreshKeepStronger", "replace")
+// StackCount (dark remake K6, Ashnumb): ONE instance whose value is its stack count; an application adds its value in
+// whole stacks up to the type's `stacks` row maxStacks, and restarts the shared timer with its duration.
+enum class StatusStacking : uint8_t { Stack, RefreshKeepStronger, Replace, StackCount };
+ABYSS_ENUM_STRINGS(StatusStacking, "stack", "refreshKeepStronger", "replace", "stackCount")
+
+// status_effects.json `stacks.<type>` (dark remake K6, a remake row: monsters.md 4 Ashnumb): the rules of a StackCount
+// status. maxStacks 0 = no row: every application of the type is rejected (a StackCount status without its row never
+// lands). healingReceivedPerStack: each stack takes this fraction off the healing the bearer receives (potions,
+// regeneration, life steal: every Hero::Heal and the regen ticks), floored at 0; slowAtMaxStacksPct: a slow (percent, as
+// the Slow status) while the stacks are at maxStacks.
+inline constexpr int32_t kStatusMaxStacks = 100;  // the loader's upper bound for maxStacks
+struct StatusStackRule {
+  int32_t maxStacks = 0;
+  double healingReceivedPerStack = 0;
+  double slowAtMaxStacksPct = 0;
+};
 
 struct MonsterKeywordRule {
   std::vector<std::string> keywords;
   StatusRule rule;
 };
 
+// The stacking of a status before status_effects.json says otherwise: Stack (the web's zero value), except Ashnumb, whose
+// rule is StackCount even without its row (and so never lands without one, StatusStackRule).
+constexpr std::array<StatusStacking, EnumCount<StatusType>()> DefaultStatusStacking() {
+  std::array<StatusStacking, EnumCount<StatusType>()> out{};
+  out[static_cast<size_t>(StatusType::Ashnumb)] = StatusStacking::StackCount;
+  return out;
+}
+
 struct ABYSS_API StatusEffectRules {
   std::array<int32_t, EnumCount<StatusType>()> tickIntervalMs{};
-  std::array<StatusStacking, EnumCount<StatusType>()> stacking{};
+  std::array<StatusStacking, EnumCount<StatusType>()> stacking = DefaultStatusStacking();
+  std::array<StatusStackRule, EnumCount<StatusType>()> stacks{};  // K6: StackCount types (status_effects.json `stacks`)
   std::vector<StatusType> diminishingAppliesTo;  // freeze, stun
   double diminishingFactor = 0.5;
   double diminishingImmunityMs = 3000.0;
@@ -266,6 +289,9 @@ struct ABYSS_API StatusEffectRules {
 
   int32_t TickInterval(StatusType t) const { return tickIntervalMs[static_cast<size_t>(t)]; }
   StatusStacking Stacking(StatusType t) const { return stacking[static_cast<size_t>(t)]; }
+  const StatusStackRule& Stacks(StatusType t) const { return stacks[static_cast<size_t>(t)]; }
+  // A StackCount type with its row (maxStacks >= 1); every other type is "defined" as the web's.
+  bool Lands(StatusType t) const { return Stacking(t) != StatusStacking::StackCount || Stacks(t).maxStacks >= 1; }
   bool Diminishes(StatusType t) const;
 };
 

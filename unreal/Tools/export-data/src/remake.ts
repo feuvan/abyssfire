@@ -79,9 +79,26 @@ export const REMAKE_VALUES: readonly { kind: RemakeKind; path: string; value: st
   { kind: 'monster', path: 'abilities[].kind', value: 'summon', feature: 'monster.abilitySummon', wave: 2 },
   { kind: 'monster', path: 'abilities[].kind', value: 'buff', feature: 'monster.abilityBuff', wave: 2 },
   { kind: 'monster', path: 'abilities[].kind', value: 'call', feature: 'monster.abilityCall', wave: 2 },
+  // K6: the Ashnumb status (StatusType::Ashnumb) on a monster's hits, abilities, hazards and on-death effects. It lands
+  // only with its status_effects.json row (REMAKE_OVERRIDES.statusEffects; combat.ts / monsters.ts check that).
+  { kind: 'monster', path: 'onHitStatus[].status', value: 'ashnumb', feature: 'status.ashnumb', wave: 2 },
+  { kind: 'monster', path: 'abilities[].status.type', value: 'ashnumb', feature: 'status.ashnumb', wave: 2 },
+  { kind: 'monster', path: 'abilities[].hazard.status.type', value: 'ashnumb', feature: 'status.ashnumb', wave: 2 },
+  { kind: 'monster', path: 'onDeath.status.type', value: 'ashnumb', feature: 'status.ashnumb', wave: 2 },
 ];
 
-const KNOWN_FEATURES = new Set([...REMAKE_FIELDS.map(f => f.feature), ...REMAKE_VALUES.map(v => v.feature)]);
+/**
+ * Remake-only fields of override tables (GameData/world.ts REMAKE_OVERRIDES), which no record gate sees: the exporter
+ * table that applies the override calls `requireTableFeature` when one is used, so it fails until REMAKE_SCHEMA lists
+ * the feature (the core reads it).
+ */
+export const REMAKE_TABLE_FEATURES: readonly { table: OverridePath; field: string; feature: string; wave: 1 | 2 | 3 }[] = [
+  { table: 'randomEvents', field: 'ambushChampion', feature: 'events.ambushChampion', wave: 2 },
+  { table: 'statusEffects', field: 'add.ashnumb', feature: 'status.ashnumb', wave: 2 },
+];
+
+const KNOWN_FEATURES = new Set([...REMAKE_FIELDS.map(f => f.feature), ...REMAKE_VALUES.map(v => v.feature),
+  ...REMAKE_TABLE_FEATURES.map(f => f.feature)]);
 let schema = new Set<string>();
 const withheld = new Map<string, { count: number; example: string }>();
 
@@ -95,6 +112,7 @@ export function configureRemakeSchema(features: readonly string[]): void {
   for (const f of features) assert(KNOWN_FEATURES.has(f), `REMAKE_SCHEMA: unknown feature '${f}' (registered: ${[...KNOWN_FEATURES].join(', ')})`);
   schema = new Set(features);
   withheld.clear();
+  requiredKeys.clear();
   // The key gate's lists (remakeKeys.ts, pinned to the types by tsc) and the field registry must agree: every typed
   // remake field is registered (or derived-only), and every registered field sits on a level the gate checks.
   for (const [kind, levels] of Object.entries(RECORD_KEYS) as [RemakeKind, Record<string, LevelKeys>][]) {
@@ -191,6 +209,28 @@ export function gateRemakeValues(kind: RemakeKind, obj: unknown, where: string):
   }
 }
 
+/** Fails unless REMAKE_SCHEMA lists `feature` (a registered REMAKE_TABLE_FEATURES feature): an override-table field. */
+export function requireTableFeature(feature: string, where: string): void {
+  const f = REMAKE_TABLE_FEATURES.find(x => x.feature === feature);
+  assert(f, `requireTableFeature: '${feature}' is not a REMAKE_TABLE_FEATURES feature`);
+  assert(schema.has(feature), `${where}: needs REMAKE_SCHEMA feature '${feature}' (wave ${f!.wave}); the core cannot read it yet`);
+}
+
+/**
+ * i18n keys the core builds from exported data (no table spells them as a string), recorded by the table that exports
+ * the data so the i18n parity check requires them in zh-CN and en (tables/i18n.ts). K6: a status type the remake adds
+ * needs `sys.statusEffect.name.<type>` (the applied / expired log lines).
+ */
+const requiredKeys = new Map<string, string>();
+export function noteRequiredKey(key: string, where: string): void { if (!requiredKeys.has(key)) requiredKeys.set(key, where); }
+export function remakeRequiredKeys(): ReadonlyMap<string, string> { return requiredKeys; }
+
+/**
+ * The status types GameData/world.ts `statusEffects` adds (K6; `ashnumb`), which a monster may then put on the hero. The
+ * rows themselves are checked by tables/combat.ts.
+ */
+export function remakeStatusTypes(): string[] { return Object.keys(REMAKE_OVERRIDES.statusEffects?.add ?? {}); }
+
 export function withheldSummary(): string[] {
   return [...withheld].map(([f, w]) => `${f}: ${w.count} field(s) withheld (e.g. ${w.example})`);
 }
@@ -203,12 +243,13 @@ export type OverridePath =
   | 'zoneMoods.themeByZone' | 'zoneMoods.moods' | 'zoneMoods.palettes' | 'zoneMoods.weather' | 'zoneMoods.weatherByTheme'
   | 'zoneMoods.campThemes' | 'zoneMoods.fog' | 'zoneMoods.lightScale' | 'zoneMoods.moodWeather' | 'zoneMoods.windupTint'
   | 'eliteAffixes.definitions' | 'eliteAffixes.zoneAffixCounts'
-  | 'terrainStyles';
+  | 'terrainStyles'
+  | 'statusEffects';
 
 const OVERRIDE_PATHS: readonly OverridePath[] = ['achievements', 'randomEvents', 'zoneMoods.themeByZone', 'zoneMoods.moods',
   'zoneMoods.palettes', 'zoneMoods.weather', 'zoneMoods.weatherByTheme', 'zoneMoods.campThemes', 'zoneMoods.fog',
   'zoneMoods.lightScale', 'zoneMoods.moodWeather', 'zoneMoods.windupTint',
-  'eliteAffixes.definitions', 'eliteAffixes.zoneAffixCounts', 'terrainStyles'];
+  'eliteAffixes.definitions', 'eliteAffixes.zoneAffixCounts', 'terrainStyles', 'statusEffects'];
 const ENTRY_KEYS = new Set(['replace', 'add', 'remove']);
 const applied = new Set<OverridePath>();
 

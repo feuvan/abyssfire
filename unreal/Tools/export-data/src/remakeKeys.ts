@@ -47,12 +47,12 @@ const quest = {
   web: { id: true, name: true, description: true, zone: true, type: true, category: true, objectives: true, rewards: true,
     prereqQuests: true, level: true, questArea: true, escortNpc: true, defendTarget: true, clues: true, craftPhases: true,
     reacceptable: true, hunts: true } satisfies Exact<KeysOf<Web.QuestDefinition>>,
-  remake: { progressKey: true } satisfies Exact<Remade<GD.QuestDefinition, Web.QuestDefinition>>,
+  remake: { progressKey: true, setsFlags: true } satisfies Exact<Remade<GD.QuestDefinition, Web.QuestDefinition>>,
 };
 type QuestReward = Web.QuestReward;
 const questRewards = {
   web: { exp: true, gold: true, items: true, petReward: true, embers: true, choices: true, choiceQuality: true } satisfies Exact<KeysOf<QuestReward>>,
-  remake: { choiceLabels: true } satisfies Exact<Remade<GD.QuestReward, Web.QuestReward>>,
+  remake: { choiceLabels: true, permanent: true } satisfies Exact<Remade<GD.QuestReward, Web.QuestReward>>,
 };
 type WebDefend = NonNullable<Web.QuestDefinition['defendTarget']>;
 const questDefend = {
@@ -78,13 +78,13 @@ const mapEntrance = {
 type WebSpawn = Elem<Web.MapData['spawns']>;
 const mapSpawn = {
   web: { col: true, row: true, monsterId: true, count: true } satisfies Exact<KeysOf<WebSpawn>>,
-  remake: { mix: true, leader: true } satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
+  remake: { mix: true, leader: true, variants: true } satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
 };
 
 type Npc = Web.NPCDefinition;
 const npc = {
   web: { id: true, name: true, type: true, dialogue: true, shopItems: true, quests: true, dialogueTree: true, spriteId: true } satisfies Exact<KeysOf<Npc>>,
-  remake: {} satisfies Exact<Remade<GD.NPCDefinition, Web.NPCDefinition>>,
+  remake: { lines: true, visibleWhen: true } satisfies Exact<Remade<GD.NPCDefinition, Web.NPCDefinition>>,
 };
 
 const cutscene = {

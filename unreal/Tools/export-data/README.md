@@ -99,7 +99,22 @@ the export is byte-identical to the web's).
   ending within its attackRange, a block arc in (0, 360] with `damageMul` in [0, 1), a flee of (0, 60] s, a sustain family
   with its radius, an aura stat; `checkK2Monster`'s buff block: a buff's `stat` and `ms`, a call's `radius` > 0 and its
   optional `stat`, buff / call outside the swing-reach rules; `maps.ts`: a spawn's mix keys, counts >= 1, known ids that
-  sum to its `count` and are not the story boss, the entry's own `monsterId` among them, a leader that is a member); `quests.ts`, `maps.ts` and
+  sum to its `count` and are not the story boss, the entry's own `monsterId` among them, a leader that is a member); K6
+  (package 2E) enabled `quest.setsFlags`, `quest.permanentRewards`, `map.spawnVariants`, `npc.lines`, `npc.visibleWhen`
+  and the override-table features `status.ashnumb` / `events.ambushChampion` (`remake.ts` `REMAKE_TABLE_FEATURES`: an
+  override table has no record gate, so the table that applies it calls `requireTableFeature`; the `ashnumb` value on a
+  monster status is a `REMAKE_VALUES` row of the same feature) (`quests.ts` `checkK6Quest`: non-empty unique flag ids, a
+  permanent reward's keys, bounds and at least one grant; `maps.ts`: a variant's keys, a known monster that is not the
+  story boss, `count` 0..100, one variant per flag, none on the story boss's entry, a warning for a flag no quest sets;
+  `world.ts` `checkK6Npcs`: line keys present in zh-CN and en, condition keys and leaves, known quests, the NPC
+  visibility validator (`npcVisibilityIssues`, a mirror of WorldState.cpp `CheckNpcVisibility`: an error when an NPC
+  could hide while an open quest needs it, or when a giver is hidden for sure whenever its quest is offered (a
+  reacceptable quest also when offered again after failing) and no other NPC visible then lists it or owns a dialogue
+  tree whose `questTrigger` names it; a warning when it could hide only while the quest is offered) and
+  `checkAmbushChampion` (also `leaderLoot`: magic | rare, with a `leader`);
+  `combat.ts` builds `status_effects.json`'s added rows (`add` only; `stackCount`, tick 0, `stacks` bounds) and records
+  `sys.statusEffect.name.<type>` with `noteRequiredKey`, which the i18n parity check requires; `monsters.ts` fails an
+  `ashnumb` status without its row); `quests.ts`, `maps.ts` and
   `story.ts` check their shapes (one label per choice slot, one composition per wave with counts ≥ 1, `sealed` with
   `sealedTextKey`, `anim` only on a `{monster}` focus step) before the core loader would refuse them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.

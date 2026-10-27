@@ -40,6 +40,10 @@ struct NpcPlacement {
   Vec2 pos;
   Vec2 facing{0, 1};
   bool field = false;  // field NPC (fieldNpcs) vs camp NPC
+  // Dark remake K6: false while the NPC's visibleWhen does not hold (world/WorldState.h NpcVisibleNow). A hidden NPC
+  // keeps its placement and entity id (ids stay as they were) but is absent from every query, the interact target, the
+  // pointer chain and the snapshot; it appears / leaves with EvEntitySpawned / EvEntityDespawned{Removed}.
+  bool visible = true;
 };
 
 struct ExitState {
@@ -88,7 +92,13 @@ class ABYSS_API ZoneRuntime {
   bool HasZone() const { return map_ != nullptr; }
 
   // ---- per step ----
-  void Tick();  // exits (armed/sealed), pending interaction arrival, interact prompt (EvInteractPrompt on change)
+  // K6 NPC visibility first (an NPC whose visibleWhen changed appears or leaves), then exits (armed/sealed), pending
+  // interaction arrival, interact prompt (EvInteractPrompt on change).
+  void Tick();
+  // Dark remake K6: re-evaluates the visibleWhen of the zone's NPCs against the session's world flags and quest states
+  // (EnterZone sets the first state silently; GameSim's zone entry announces only the visible NPCs). Returns how many
+  // changed; with `emit` each change emits EvEntitySpawned / EvEntityDespawned{Removed}.
+  int32_t RefreshNpcVisibility(bool emit);
   void OnTimer(const Timer& t);
 
   // ---- input ----
@@ -122,9 +132,12 @@ class ABYSS_API ZoneRuntime {
   const ZoneGrid& Grid() const { return grid_; }
   const Pathfinder& Paths() const { return *pathfinder_; }
   bool Walkable(int32_t col, int32_t row) const { return grid_.Walkable(col, row); }
+  // Every placement, hidden ones included (NpcPlacement::visible); FindNpc / FindNpcEntity see the visible ones only.
   std::span<const NpcPlacement> Npcs() const { return npcs_; }
   const NpcPlacement* FindNpc(std::string_view npcId) const;
   const NpcPlacement* FindNpcEntity(EntityId id) const;
+  // K6: the NPC is placed in this zone but hidden by its visibleWhen.
+  bool IsNpcHidden(std::string_view npcId) const;
   std::span<const ExitState> Exits() const { return exits_; }
   double SafeZoneRadius() const;
   bool InSafeZone(Vec2 p) const;           // any camp: distSq < safeR^2 (strict)

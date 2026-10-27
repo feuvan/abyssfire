@@ -25,6 +25,8 @@ StatusApplyResult StatusEffectSystem::Apply(EntityId target, StatusType type, do
   StatusApplyResult res;
   if (!(durationMs > 0) || !(value > 0)) return res;  // Rejected (also NaN)
 
+  if (!rules_->Lands(type)) return res;  // K6: a StackCount status without its row (Rejected)
+
   double duration = durationMs;
   if (rules_->Diminishes(type)) {
     duration = Diminish(target, type, durationMs, nowMs);
@@ -36,6 +38,26 @@ StatusApplyResult StatusEffectSystem::Apply(EntityId target, StatusType type, do
 
   EntityEffects* ent = FindEntity(target);
   const StatusStacking stacking = rules_->Stacking(type);
+  if (stacking == StatusStacking::StackCount) {
+    // K6: one instance; the value counts whole stacks (an application adds at least one), capped at the row's max. The
+    // timer is shared: every application restarts it with its duration.
+    const double cap = static_cast<double>(rules_->Stacks(type).maxStacks);
+    const double add = (std::max)(1.0, std::floor(value));
+    if (ent != nullptr) {
+      for (StatusEffect& e : ent->effects) {
+        if (e.type != type) continue;
+        e.value = (std::min)(cap, e.value + add);
+        e.startMs = nowMs;
+        e.durationMs = duration;
+        e.source = source;
+        res.outcome = StatusApplyOutcome::Refreshed;
+        res.effectiveDurationMs = duration;
+        res.value = e.value;
+        return res;
+      }
+    }
+    value = (std::min)(cap, add);
+  }
   if (stacking == StatusStacking::RefreshKeepStronger && ent != nullptr) {
     for (StatusEffect& e : ent->effects) {
       if (e.type != type) continue;
@@ -48,6 +70,7 @@ StatusApplyResult StatusEffectSystem::Apply(EntityId target, StatusType type, do
       e.ticksApplied = 0;
       res.outcome = StatusApplyOutcome::Refreshed;
       res.effectiveDurationMs = duration;
+      res.value = value;
       return res;
     }
   }
@@ -76,6 +99,7 @@ StatusApplyResult StatusEffectSystem::Apply(EntityId target, StatusType type, do
   ent->effects.push_back(e);
   res.outcome = StatusApplyOutcome::Applied;
   res.effectiveDurationMs = duration;
+  res.value = value;
   return res;
 }
 
@@ -172,12 +196,44 @@ double StatusEffectSystem::SpeedMultiplier(EntityId target) const {
   const EntityEffects* e = FindEntity(target);
   if (e == nullptr) return 1.0;
   if (IsImmobilized(target)) return 0.0;
+  // The first Slow instance (refreshed in place: the only one), and K6's StackCount statuses at their maxStacks: the
+  // stronger slow applies.
+  bool slowed = false;
+  double slowPct = 0;
   for (const StatusEffect& s : e->effects) {
     if (s.type != StatusType::Slow) continue;
-    const double mul = 1.0 - Clamp(s.value, 0.0, 100.0) / 100.0;
-    return (std::max)(rules_->slowMinSpeedFactor, mul);
+    slowed = true;
+    slowPct = Clamp(s.value, 0.0, 100.0);
+    break;
   }
-  return 1.0;
+  for (const StatusEffect& s : e->effects) {
+    if (rules_->Stacking(s.type) != StatusStacking::StackCount) continue;
+    const StatusStackRule& r = rules_->Stacks(s.type);
+    if (!(r.slowAtMaxStacksPct > 0) || s.value < static_cast<double>(r.maxStacks)) continue;
+    const double pct = Clamp(r.slowAtMaxStacksPct, 0.0, 100.0);
+    if (!slowed || pct > slowPct) slowPct = pct;
+    slowed = true;
+  }
+  if (!slowed) return 1.0;
+  return (std::max)(rules_->slowMinSpeedFactor, 1.0 - slowPct / 100.0);
+}
+
+int32_t StatusEffectSystem::Stacks(EntityId target, StatusType type) const {
+  if (rules_->Stacking(type) != StatusStacking::StackCount) return 0;
+  for (const StatusEffect& s : EffectsOf(target)) {
+    if (s.type == type) return static_cast<int32_t>(s.value);
+  }
+  return 0;
+}
+
+double StatusEffectSystem::HealingReceivedMul(EntityId target) const {
+  double mul = 1.0;
+  for (const StatusEffect& s : EffectsOf(target)) {
+    if (rules_->Stacking(s.type) != StatusStacking::StackCount) continue;
+    const double per = rules_->Stacks(s.type).healingReceivedPerStack;
+    if (per > 0) mul *= (std::max)(0.0, 1.0 - s.value * per);
+  }
+  return mul;
 }
 
 std::span<const StatusEffect> StatusEffectSystem::EffectsOf(EntityId target) const {

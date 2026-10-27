@@ -9,6 +9,7 @@
 
 #include "abyss/base/Assert.h"
 #include "abyss/base/Units.h"
+#include "abyss/combat/StatusEffects.h"
 #include "abyss/data/DataStore.h"
 #include "abyss/save/SaveData.h"
 
@@ -78,6 +79,15 @@ bool Hero::AllocateStat(PrimaryStat s) {
   return true;
 }
 
+void Hero::GrantFreePoints(int32_t statPoints, int32_t skillPoints) {
+  // Saturating (a loaded hero's free points may sit at int32 max).
+  const auto add = [](int32_t& pool, int32_t amount) {
+    if (amount > 0) pool = static_cast<int32_t>((std::min)(int64_t{pool} + amount, int64_t{INT32_MAX}));
+  };
+  add(freeStatPoints_, statPoints);
+  add(freeSkillPoints_, skillPoints);
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Derived (3): recalcDerived with equipStats present. An all-zero bag reproduces the gear-less constructor values.
 // ---------------------------------------------------------------------------------------------------------------------
@@ -123,9 +133,15 @@ double Hero::Heal(double amount) {
   // 5.1.1: no HP gain unless Alive. Every web heal is `hp = Math.min(maxHp, hp + x)`, which also snaps an hp above a
   // lowered maxHp (3: recalcDerived does not clamp) down to maxHp.
   if (life_ != HeroLife::Alive || !std::isfinite(amount) || amount < 0) return 0;
+  const double mul = HealingReceivedMul();
+  if (mul < 1.0) amount *= mul;  // K6 Ashnumb (an untouched amount without it: the web's heals stay bit-exact)
   const double before = hp_;
   hp_ = (std::min)(derived_.maxHp, before + amount);
   return (std::max)(0.0, hp_ - before);
+}
+
+double Hero::HealingReceivedMul() const {
+  return status_ != nullptr ? status_->HealingReceivedMul(kHeroEntityId) : 1.0;
 }
 
 double Hero::RestoreMana(double amount) {

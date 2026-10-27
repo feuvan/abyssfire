@@ -337,6 +337,9 @@ SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMess
   if (const JsonValue& cv = raw.Get("contentVersion"); cv.IsInteger() && cv.AsInt64() >= 1) {
     s.contentVersion = static_cast<int32_t>(std::min<int64_t>(cv.AsInt64(), std::numeric_limits<int32_t>::max()));
   }
+  // Dark remake K6: absent in every save written before (and in one without world state) -> none.
+  savejson::ReadWorldFlags(raw.Get("worldFlags"), s.worldFlags);
+  savejson::ReadPermanentRewards(raw.Get("permanentRewards"), s.permanentRewards);
 
   out = std::move(s);
   if (errorMessage != nullptr) errorMessage->clear();
@@ -458,6 +461,15 @@ std::string SerializeSave(const SaveData& s, bool pretty) {
   savejson::WriteStringList(w, s.visitedZones);
   w.Key("contentVersion");
   w.Int(s.contentVersion);
+  // Dark remake K6: only when there is world state (a save without it is byte-identical to before).
+  if (!s.worldFlags.empty()) {
+    w.Key("worldFlags");
+    savejson::WriteWorldFlags(w, s.worldFlags);
+  }
+  if (!s.permanentRewards.Empty()) {
+    w.Key("permanentRewards");
+    savejson::WritePermanentRewards(w, s.permanentRewards);
+  }
   w.EndObject();
   std::string out = w.Take();
   ABYSS_ASSERT(!out.empty(), "SerializeSave produced incomplete JSON");
@@ -603,6 +615,65 @@ void ReadStringList(const JsonValue& v, std::vector<std::string>& out) {
   for (const JsonValue& e : v.Items()) {
     if (e.Type() == JsonType::String) out.emplace_back(e.AsString());
   }
+}
+
+// ---- dark remake K6: world flags and permanent rewards ----
+
+void WriteWorldFlags(JsonWriter& w, const std::vector<std::string>& flags) { WriteStringList(w, flags); }
+
+void ReadWorldFlags(const JsonValue& v, std::vector<std::string>& out) {
+  ReadStringList(v, out);
+  NormalizeWorldFlags(out);
+}
+
+void WritePermanentRewards(JsonWriter& w, const PermanentRewardsState& p) {
+  w.StartObject();
+  w.Key("claimed");
+  w.StartArray();
+  for (const PermanentRewardClaim& c : p.claimed) {
+    w.StartObject();
+    w.Key("questId");
+    w.String(c.questId);
+    w.Key("difficulty");
+    w.String(EnumName(c.difficulty));
+    w.EndObject();
+  }
+  w.EndArray();
+  w.Key("maxLife");
+  w.Int(p.maxLife);
+  w.Key("statPoints");
+  w.Int(p.statPoints);
+  w.Key("skillPoints");
+  w.Int(p.skillPoints);
+  w.Key("respecTokens");
+  w.Int(p.respecTokens);
+  w.EndObject();
+}
+
+void ReadPermanentRewards(const JsonValue& v, PermanentRewardsState& out) {
+  out = PermanentRewardsState{};
+  if (!v.IsObject()) return;
+  if (const JsonValue& claimed = v.Get("claimed"); claimed.IsArray()) {
+    for (const JsonValue& e : claimed.Items()) {
+      if (!e.IsObject()) continue;
+      const JsonValue& q = e.Get("questId");
+      const JsonValue& d = e.Get("difficulty");
+      Difficulty diff{};
+      if (!q.IsString() || q.AsString().empty() || !d.IsString() || !ParseEnum(d.AsString(), diff)) continue;
+      if (out.Claimed(q.AsString(), diff)) continue;
+      out.claimed.push_back(PermanentRewardClaim{std::string(q.AsString()), diff});
+    }
+  }
+  const auto total = [&v](std::string_view key) {
+    const JsonValue& n = v.Get(key);
+    if (!n.IsNumber() || !std::isfinite(n.AsDouble())) return int32_t{0};
+    const double x = std::floor(n.AsDouble());
+    return x <= 0 ? int32_t{0} : SaturatingInt32(x);
+  };
+  out.maxLife = total("maxLife");
+  out.statPoints = total("statPoints");
+  out.skillPoints = total("skillPoints");
+  out.respecTokens = total("respecTokens");
 }
 
 }  // namespace savejson

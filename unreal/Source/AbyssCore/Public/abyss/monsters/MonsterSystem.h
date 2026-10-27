@@ -57,6 +57,12 @@ struct MonsterSpawnParams {
   TilePos home;
   uint32_t packId = 0;                  // K5: its pack (MonsterSystem::NewPackId; 0 = none)
   bool packLeader = false;              // K5: it leads that pack
+  int32_t spawnEntry = -1;              // K6: the map spawn entry and member slot (MonsterInstance::spawnEntry)
+  int32_t spawnMember = -1;
+  // K6: affixes given instead of a roll (a champion pack's shared roll); it keeps those its family may roll
+  // (EliteAffixTable::RollableFor) and is elite when it keeps one. Ignored when rollAffixes.
+  const std::vector<EliteAffixType>* givenAffixes = nullptr;
+  ItemQuality guaranteedLoot = ItemQuality::Normal;  // K6: MonsterInstance::guaranteedLoot (a champion leader's drop)
 };
 
 // What one defend wave spawns (dark remake K1; QuestWorld builds it from the quest's DefendTargetDef). `composition`
@@ -137,6 +143,15 @@ class ABYSS_API MonsterSystem {
   // else the first walkable tile of rings 1..5 (dr outer, dc inner).
   std::vector<EntityId> SpawnAmbush(std::span<const std::string> monsterIds, int32_t count, Vec2 centre,
                                     double minDist, double distRange, MonsterRole role);
+  // Dark remake K6 event champion pack (MapData.h ZoneEventDataDef::AmbushChampionDef; RandomEventSystem's ambush when
+  // its champion draw hits): the mix's members in list order, each placed as SpawnAmbush places one (angle and distance
+  // draws on RngStream::Events; no id draw; an unknown id is skipped before its draws), chasing, no respawn (`role`), one
+  // K5 pack (NewPackId) whose leader is the first member of `leader`'s id. With sharedAffix the zone's affixes are rolled
+  // once first (RngStream::Ai, the leader's family pool, else the first member's) and every member keeps the ones its
+  // family may roll (elite when it keeps one). The leader carries `leaderLoot` (MonsterInstance::guaranteedLoot: its kill
+  // drops one more item of that quality, GroundLootSystem). Returns the ids in spawn order.
+  std::vector<EntityId> SpawnChampionPack(const ZoneEventDataDef::AmbushChampionDef& champion, Vec2 centre,
+                                          double minDist, double distRange, MonsterRole role);
   // Defend wave `waveIndex` (0-based; quests 3.10, monsters 6.4) around `target`: n = defendWaveBaseCount + w monsters
   // at angles 2 pi k / n on a circle of defendWaveRadius, JsRound, clamped to [edgeMargin, size - 1 - edgeMargin], NO
   // walkability check (web, quests Q8 later); each a uniformly random def of the zone's monster list
@@ -290,6 +305,14 @@ class ABYSS_API MonsterSystem {
   // idle, patrolling, returning or fleeing blocker keeps its own and joins no wall.
   // A new pack id for the zone (1, 2, ... from the zone's entry).
   uint32_t NewPackId() { return nextPackId_++; }
+
+  // ---- dark remake K6: spawn variants (implementation-plan.md 3 K6; world/WorldState.h) ----
+  // SpawnZonePopulation spawns each map entry's members now (WorldState.h ExpandSpawnMembersNow: the first variant
+  // whose world flag is set replaces the entry's mix / monsterId with `count` x its monster, one pack without a leader),
+  // each with its entry index and member slot (MonsterInstance::spawnEntry / spawnMember). A respawn reads the entry
+  // again: with a variant active the slot comes back as the variant's monster (difficulty-scaled, no leadership; a slot
+  // past the variant's count stays down, before any draw), else as it was (unchanged rules and draws). Flags are never
+  // cleared, so a variant once active stays so for the rest of the save.
   // A sustain member steadies `m` (its morale's sustainRadius > 0): a living monster other than `m`, of its
   // sustainFamily (any when empty), with a buff / call granting fearImmune (Packs.h GrantsFearImmunity), within reach.
   bool Sustained(const MonsterInstance& m) const;

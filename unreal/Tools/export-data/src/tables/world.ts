@@ -24,7 +24,9 @@ import { AllMaps } from '../../../../../src/data/maps';
 import type { DialogueTree } from '../../../../../src/data/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, type TableResult } from '../util';
-import { noteConfig, overrideById, overrideEntries, withholdRemakeFields } from '../remake';
+import { noteConfig, overrideById, overrideEntries, requireTableFeature, withholdRemakeFields } from '../remake';
+import { AllQuests } from '../../../../../src/data/quests/all_quests';
+import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -53,6 +55,222 @@ const WANDERING_MERCHANT_IDS: Record<string, Record<string, string>> = {
   abyss_rift: { abyssal_blade: 'w_demon_blade', demon_armor: 'a_demon_armor', hp_potion: 'c_hp_potion_l', mp_potion: 'c_mp_potion_m' },
 };
 
+// ── K6 NPC lines and visibility (LoadQuests.cpp ReadWorldCondition / LoadNpcsFile; world/WorldState.cpp) ──
+
+const QUEST_GATES = ['notStarted', 'active', 'completed', 'open', 'turnedIn', 'notTurnedIn'];
+type Leaf = { kind: 'flag' | 'notFlag' | 'quest'; id: string; state?: string };
+type Condition = { all: Leaf[]; any: Leaf[] };
+
+/** A condition's shape (the loader's rules): known keys, at least one, `state` with `quest`, `any` leaves of one kind. */
+function readCondition(c: unknown, where: string): Condition {
+  assert(c && typeof c === 'object' && !Array.isArray(c), `${where}: expected a condition object`);
+  const o = c as Record<string, unknown>;
+  const leafOf = (n: Record<string, unknown>, at: string, known: string[]): Leaf[] => {
+    for (const k of Object.keys(n)) assert(known.includes(k), `${at}: unknown condition field '${k}'`);
+    assert(!('state' in n) || 'quest' in n, `${at}.state: state without a quest`);
+    const out: Leaf[] = [];
+    for (const kind of ['flag', 'notFlag', 'quest'] as const) {
+      if (!(kind in n)) continue;
+      assert(typeof n[kind] === 'string' && n[kind] !== '', `${at}.${kind}: an empty id`);
+      if (kind === 'quest') {
+        assert(typeof n.state === 'string' && QUEST_GATES.includes(n.state as string),
+          `${at}.state: a quest condition needs its state (${QUEST_GATES.join(' | ')})`);
+      }
+      out.push({ kind, id: n[kind] as string, state: kind === 'quest' ? n.state as string : undefined });
+    }
+    return out;
+  };
+  const all = leafOf(Object.fromEntries(Object.entries(o).filter(([k]) => k !== 'any')), where, ['flag', 'notFlag', 'quest', 'state']);
+  const any: Leaf[] = [];
+  if (o.any !== undefined) {
+    assert(Array.isArray(o.any) && o.any.length > 0, `${where}.any: an empty or malformed list (omit it)`);
+    (o.any as unknown[]).forEach((e, i) => {
+      assert(e && typeof e === 'object' && !Array.isArray(e), `${where}.any[${i}]: expected a leaf object`);
+      const leaves = leafOf(e as Record<string, unknown>, `${where}.any[${i}]`, ['flag', 'notFlag', 'quest', 'state']);
+      assert(leaves.length === 1, `${where}.any[${i}]: a leaf names exactly one of flag / notFlag / quest`);
+      any.push(leaves[0]);
+    });
+  }
+  assert(all.length + any.length > 0, `${where}: an empty condition (omit it)`);
+  return { all, any };
+}
+
+type QuestLike = { id: string; prereqQuests?: string[]; setsFlags?: string[]; reacceptable?: boolean;
+  objectives: { type: string; targetId: string }[]; craftPhases?: { craftNpc: string; deliverNpc: string } };
+type NpcLike = { id: string; quests?: string[]; dialogueTreeId?: string | null; lines?: unknown; visibleWhen?: unknown };
+type QuestStatusLike = 'active' | 'completed' | 'turned_in' | 'failed';
+type Tri = 'T' | 'F' | 'U';
+
+/** QuestGateHolds (WorldState.cpp). */
+function gateHolds(gate: string, hasRecord: boolean, status: QuestStatusLike): boolean {
+  switch (gate) {
+    case 'notStarted': return !hasRecord;
+    case 'active': return hasRecord && status === 'active';
+    case 'completed': return hasRecord && status === 'completed';
+    case 'open': return hasRecord && (status === 'active' || status === 'completed');
+    case 'turnedIn': return hasRecord && status === 'turned_in';
+    case 'notTurnedIn': return !(hasRecord && status === 'turned_in');
+  }
+  return false;
+}
+
+/**
+ * The visibility validator (WorldState.cpp CheckNpcVisibility, mirrored): every NPC with a visibleWhen against every
+ * quest that needs it (it lists the quest; a talk objective or the craft phases name it). While quest Q is offered (no
+ * record; a reacceptable one also offered again after failing) / active / completed, its prerequisites (transitively)
+ * are turned in, the quests after it have no record, a flag is set when a prerequisite sets it, unset when no quest or
+ * only Q / later quests set it, else unknown; the condition must hold for sure. A giver hidden for sure whenever Q is
+ * offered, with no other NPC (visible for sure then) listing Q or owning a dialogue tree whose questTrigger names Q, is
+ * an error (Q could never be accepted). Returns [message, offerOnly].
+ */
+function npcVisibilityIssues(npcs: Record<string, NpcLike>, quests: readonly QuestLike[],
+  trees: Record<string, DialogueTree>): [string, boolean][] {
+  const byId = new Map(quests.map(q => [q.id, q]));
+  const before = (id: string, out: Set<string>) => {
+    for (const p of byId.get(id)?.prereqQuests ?? []) if (p !== id && !out.has(p)) { out.add(p); before(p, out); }
+    return out;
+  };
+  const after = (id: string, out: Set<string>) => {
+    for (const q of quests) if (q.id !== id && (q.prereqQuests ?? []).includes(id) && !out.has(q.id)) { out.add(q.id); after(q.id, out); }
+    return out;
+  };
+  const issues: [string, boolean][] = [];
+  for (const npc of Object.values(npcs)) {
+    if (npc.visibleWhen === undefined) continue;
+    const cond = readCondition(npc.visibleWhen, `npcs.${npc.id}.visibleWhen`);
+    for (const q of quests) {
+      const giver = (npc.quests ?? []).includes(q.id);
+      const talk = q.objectives.some(o => o.type === 'talk' && o.targetId === npc.id);
+      const craft = !!q.craftPhases && (q.craftPhases.craftNpc === npc.id || q.craftPhases.deliverNpc === npc.id);
+      if (!giver && !talk && !craft) continue;
+      const pre = before(q.id, new Set()), post = after(q.id, new Set());
+      type Phase = 'offered' | 'offered again after failing' | 'active' | 'completed';
+      const evalAt = (phase: Phase, c: Condition = cond): Tri => {
+        const flag = (f: string): Tri => {
+          let other = false;
+          for (const s of quests) {
+            if (!(s.setsFlags ?? []).includes(f)) continue;
+            if (pre.has(s.id)) return 'T';
+            if (s.id !== q.id && !post.has(s.id)) other = true;
+          }
+          return other ? 'U' : 'F';
+        };
+        const leaf = (l: Leaf): Tri => {
+          if (l.kind === 'flag') return flag(l.id);
+          if (l.kind === 'notFlag') { const t = flag(l.id); return t === 'T' ? 'F' : t === 'F' ? 'T' : 'U'; }
+          const b = (v: boolean): Tri => (v ? 'T' : 'F');
+          if (l.id === q.id) {
+            if (phase === 'offered') return b(gateHolds(l.state!, false, 'active'));
+            return b(gateHolds(l.state!, true, phase === 'offered again after failing' ? 'failed' : phase));
+          }
+          if (pre.has(l.id)) return b(gateHolds(l.state!, true, 'turned_in'));
+          if (post.has(l.id)) return b(gateHolds(l.state!, false, 'active'));
+          return 'U';
+        };
+        let all: Tri = 'T';
+        for (const l of c.all) { const t = leaf(l); if (t === 'F') return 'F'; if (t === 'U') all = 'U'; }
+        if (!c.any.length) return all;
+        let any: Tri = 'F';
+        for (const l of c.any) { const t = leaf(l); if (t === 'T') { any = 'T'; break; } if (t === 'U') any = 'U'; }
+        if (any === 'F') return 'F';
+        return all === 'T' && any === 'T' ? 'T' : 'U';
+      };
+      const need = (phase: Phase, what: string, offerOnly: boolean): boolean => {
+        if (evalAt(phase) === 'T') return false;
+        issues.push([`npcs.${npc.id}.visibleWhen could hide '${npc.id}' while quest '${q.id}' is ${phase} and needs it (${what})`, offerOnly]);
+        return true;
+      };
+      // WsOtherOfferRoute: another NPC lists Q or owns a tree with a questTrigger of Q, and is visible for sure.
+      const otherRoute = (phase: Phase): boolean => Object.values(npcs).some(n => {
+        if (n.id === npc.id) return false;
+        const tree = n.dialogueTreeId ? trees[n.dialogueTreeId] : undefined;
+        const offers = (n.quests ?? []).includes(q.id) ||
+          (!!tree && Object.values(tree.nodes).some(node => (node.choices ?? []).some(c => c.questTrigger === q.id)));
+        return offers && (n.visibleWhen === undefined || evalAt(phase, readCondition(n.visibleWhen, `npcs.${n.id}.visibleWhen`)) === 'T');
+      });
+      const offer = (phase: Phase): boolean => {
+        const t = evalAt(phase);
+        if (t === 'T') return false;
+        if (t === 'U' || otherRoute(phase)) return need(phase, 'giver', true);
+        issues.push([`npcs.${npc.id}.visibleWhen hides '${npc.id}' whenever quest '${q.id}' is ${phase} and nothing else offers it: the quest can never be accepted (giver)`, false]);
+        return true;
+      };
+      if (giver && !need('active', 'giver', false) && !need('completed', 'giver', false) && !offer('offered') && q.reacceptable) {
+        offer('offered again after failing');
+      }
+      if (talk) need('active', 'talk', false);
+      if (craft) need('active', 'craft', false);
+    }
+  }
+  return issues;
+}
+
+/**
+ * K6 NPC fields (LoadQuests.cpp LoadNpcsFile, DataStore::Finalize): `lines` a non-empty list of {key (non-empty), when?};
+ * conditions well formed and naming known quests (a flag no quest sets warns); no NPC may hide while an open quest needs
+ * it, nor a giver for sure whenever its quest is offered with no other route to it (errors; could hide while the quest
+ * is only offered: a warning). The line keys meet the i18n parity check (they are strings in npcs.json).
+ */
+function checkK6Npcs(npcs: Record<string, NpcLike>, quests: readonly QuestLike[],
+  trees: Record<string, DialogueTree>): void {
+  const questIds = new Set(quests.map(q => q.id));
+  const setters = new Set(quests.flatMap(q => q.setsFlags ?? []));
+  const checkCond = (c: unknown, where: string) => {
+    const cond = readCondition(c, where);
+    for (const l of [...cond.all, ...cond.any]) {
+      if (l.kind === 'quest') assert(questIds.has(l.id), `${where}: unknown quest '${l.id}'`);
+      else if (!setters.has(l.id)) console.warn(`  warning: ${where}: no quest sets flag '${l.id}' (setsFlags)`);
+    }
+  };
+  for (const npc of Object.values(npcs)) {
+    const where = `npcs.${npc.id}`;
+    if (npc.lines !== undefined) {
+      assert(Array.isArray(npc.lines) && npc.lines.length > 0, `${where}.lines: an empty or malformed list (omit it)`);
+      (npc.lines as Record<string, unknown>[]).forEach((l, i) => {
+        assert(l && typeof l === 'object', `${where}.lines[${i}]: expected {key, when?}`);
+        for (const k of Object.keys(l)) assert(['key', 'when'].includes(k), `${where}.lines[${i}]: unknown field '${k}'`);
+        assert(typeof l.key === 'string' && l.key !== '', `${where}.lines[${i}].key: an empty key`);
+        if (l.when !== undefined) checkCond(l.when, `${where}.lines[${i}].when`);
+      });
+    }
+    if (npc.visibleWhen !== undefined) checkCond(npc.visibleWhen, `${where}.visibleWhen`);
+  }
+  for (const [msg, offerOnly] of npcVisibilityIssues(npcs, quests, trees)) {
+    if (offerOnly) console.warn(`  warning: ${msg} (the quest is not offered there meanwhile)`);
+    else assert(false, msg);
+  }
+}
+
+// ── K6 ambush champion packs (LoadWorld.cpp LoadRandomEventsFile; MapData.h AmbushChampionDef) ──
+const CHAMPION_MAX_MEMBERS = 20;
+function checkAmbushChampion(zone: string, c: Record<string, unknown>): void {
+  const where = `random_events.json zones.${zone}.ambushChampion`;
+  requireTableFeature('events.ambushChampion', where);
+  for (const k of Object.keys(c)) assert(['chance', 'mix', 'leader', 'sharedAffix', 'leaderLoot'].includes(k), `${where}: unknown field '${k}'`);
+  assert(typeof c.chance === 'number' && c.chance > 0 && c.chance <= 1, `${where}.chance: expected 0 < chance <= 1`);
+  assert(Array.isArray(c.mix) && c.mix.length > 0, `${where}.mix: a champion pack needs members`);
+  const storyBoss = CHAPTER_CONFIG.storyBoss.monsterId;
+  let total = 0;
+  (c.mix as Record<string, unknown>[]).forEach((e, i) => {
+    for (const k of Object.keys(e)) assert(['monsterId', 'count'].includes(k), `${where}.mix[${i}]: unknown field '${k}'`);
+    assert(Number.isInteger(e.count) && (e.count as number) >= 1, `${where}.mix[${i}].count: an integer >= 1`);
+    const id = e.monsterId as string;
+    const known = typeof id === 'string' && !!((MonstersByZone[zone] ?? []).find(m => m.id === id) ?? getMonsterDef(id));
+    assert(known, `${where}.mix[${i}].monsterId: unknown monster '${id}'`);
+    assert(id !== storyBoss, `${where}.mix[${i}].monsterId: the story boss is never an ambush member`);
+    total += e.count as number;
+  });
+  assert(total <= CHAMPION_MAX_MEMBERS, `${where}.mix: ${total} members (at most ${CHAMPION_MAX_MEMBERS})`);
+  if (c.leader !== undefined) {
+    assert((c.mix as { monsterId: string }[]).some(e => e.monsterId === c.leader), `${where}.leader: '${c.leader}' is not a member of the pack`);
+  }
+  assert(c.sharedAffix === undefined || typeof c.sharedAffix === 'boolean', `${where}.sharedAffix: a boolean`);
+  if (c.leaderLoot !== undefined) {
+    assert(c.leaderLoot === 'magic' || c.leaderLoot === 'rare', `${where}.leaderLoot: expected magic | rare`);
+    assert(c.leader !== undefined, `${where}.leaderLoot: a guaranteed leader drop needs a leader`);
+  }
+}
+
 function treeIdOf(tree: DialogueTree | undefined): string | null {
   if (!tree) return null;
   const id = Object.entries(DialogueTrees).find(([, t]) => t === tree)?.[0];
@@ -70,6 +288,9 @@ export function exportWorld(): TableResult[] {
     if (npc.shopItems) out.shopItems = npc.shopItems.filter(item => !REMOVED_WARES[item]);
     npcs[id] = out;
   }
+
+  checkK6Npcs(npcs as Record<string, NpcLike>, AllQuests as unknown as QuestLike[],
+    DialogueTrees);
 
   // ── dialogue_trees.json ──
   const trees: Record<string, unknown> = {};
@@ -99,6 +320,10 @@ export function exportWorld(): TableResult[] {
   for (const item of Object.keys(REMOVED_WARES)) assert(removedWares.some(r => r.itemId === item), `REMOVED_WARES: nobody sells ${item}`);
   // RandomEventSystem ZONE_EVENT_DATA, with the remake's per-zone pools (GameData/world.ts) — feeds both files.
   const zoneEvents = overrideEntries('randomEvents', ['random_events.json', 'shops.json'], ZONE_EVENT_DATA);
+  for (const [zone, z] of Object.entries(zoneEvents)) {
+    const champion = (z as { ambushChampion?: Record<string, unknown> }).ambushChampion;
+    if (champion !== undefined) checkAmbushChampion(zone, champion);  // K6
+  }
   const eventMerchant: Record<string, unknown> = {};
   for (const [zone, z] of Object.entries(zoneEvents)) {
     const idMap = WANDERING_MERCHANT_IDS[zone] ?? {};

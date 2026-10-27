@@ -9,8 +9,10 @@
  * it has landed (`REMAKE_SCHEMA` in unreal/Tools/export-data/src/main.ts, field registry in .../src/remake.ts), so a
  * field may be authored before the core reads it. The Wave 1 fields, K2's (monster abilities, hit cap), K3's (on-death
  * effects, corpses, the Unburied rise, map corpse seeds, elite affix on-death / rise / families), K4's (monster phases)
- * and K5's (pack aggro, kite, block, morale, auras, spawn mixes and leaders; buff / call abilities) are typed here; the
- * later Wave 2 / Wave 3 packages (K6-K7) add theirs together with their `REMAKE_SCHEMA` feature.
+ * K5's (pack aggro, kite, block, morale, auras, spawn mixes and leaders; buff / call abilities) and K6's (the Ashnumb
+ * status, quest `setsFlags` and permanent rewards, spawn variants, NPC `lines` / `visibleWhen`) are typed here; K7 adds
+ * its own together with its `REMAKE_SCHEMA` feature. (K6's status row and ambush champion packs are override-table
+ * fields: GameData/world.ts.)
  */
 import type * as Web from '@web/data/types';
 import type { StatusEffectType } from '@web/systems/StatusEffectSystem';
@@ -22,11 +24,18 @@ export type * from '@web/data/types';
 export type RemakeDamageType = Web.SkillDefinition['damageType'];
 
 /**
+ * A status a monster can put on the hero: the web's six, and [W2] K6 `ashnumb` (麻灰, monsters.md §4: -10 % healing
+ * received per stack, max 5, slowed 20 % at 5; it lands only once GameData/world.ts `statusEffects` adds its row; feature
+ * `status.ashnumb` gates the value on monsters).
+ */
+export type RemakeStatusType = StatusEffectType | 'ashnumb';
+
+/**
  * An authored monster -> hero on-hit status (replaces the web's spriteKey / id keyword rule for this monster; same shape
  * as `monsters.json` `derived.onHitStatus`). `value`: `monsterDamage` = max(min, floor(scaled damage × fraction)).
  */
 export interface RemakeOnHitStatus {
-  status: StatusEffectType;
+  status: RemakeStatusType;
   chance: number;
   value: { kind: 'monsterDamage'; fraction: number; min: number } | { kind: 'fixed'; amount: number };
   durationMs: number;
@@ -49,7 +58,7 @@ export interface RemakeAbilityShape {
 
 /** [W2] A status an ability (or its hazard) rolls on a landed hit: `value` (> 0) = slow / freeze percent or DoT per tick. */
 export interface RemakeAbilityStatus {
-  type: StatusEffectType;
+  type: RemakeStatusType;
   /** 0 < chance <= 1 (default 1, no roll). */
   chance?: number;
   ms: number;
@@ -297,9 +306,23 @@ export interface MonsterDefinition extends Web.MonsterDefinition {
 /** One defend wave: exactly these monsters (K1 `SpawnDefendWave`). */
 export type RemakeDefendWave = { monsterId: string; count: number }[];
 
+/**
+ * [W2] A quest's permanent reward (K6; QuestData.h QuestPermanentRewardDef): granted once per (quest, difficulty) at the
+ * turn-in and saved (`permanentRewards`). maxLife 0..1000 is a flat max life on the hero's stat merge; statPoints /
+ * skillPoints 0..100 go to the free points; respecTokens 0..100 wait for the respec UI. At least one above 0.
+ */
+export interface RemakePermanentReward {
+  maxLife?: number;
+  statPoints?: number;
+  skillPoints?: number;
+  respecTokens?: number;
+}
+
 export interface QuestReward extends Web.QuestReward {
   /** [W1] i18n keys labelling `choices` slot by slot (same length). Feature `quest.choiceLabels`. */
   choiceLabels?: string[];
+  /** [W2] Permanent reward (K6). Feature `quest.permanentRewards`. */
+  permanent?: RemakePermanentReward;
 }
 
 export type RemakeDefendTarget = NonNullable<Web.QuestDefinition['defendTarget']> & {
@@ -314,6 +337,12 @@ export interface QuestDefinition extends Omit<Web.QuestDefinition, 'rewards' | '
   defendTarget?: RemakeDefendTarget;
   /** [W1] i18n key of the giver's line while the quest is active (`data.quest.<id>.progress`). Feature `quest.progressKey`. */
   progressKey?: string;
+  /**
+   * [W2] World flags its turn-in sets (K6; chapter1.md §8 `rf_hungerbell_silenced`, `rf_chapter_dawn`): saved, never
+   * cleared; NPC conditions and spawn variants read them, UE moods / audio follow them. Non-empty ids, each once.
+   * Feature `quest.setsFlags`.
+   */
+  setsFlags?: string[];
 }
 
 export interface SubDungeonEntrance extends Web.SubDungeonEntrance {
@@ -351,7 +380,21 @@ export interface RemakeRegion {
 export type MapSpawn = Web.MapData['spawns'][number] & {
   mix?: { monsterId: string; count: number }[];
   leader?: { monsterId: string; elite?: boolean };
+  /**
+   * [W2] K6 spawn variants (feature `map.spawnVariants`; chapter1.md §8: after `rf_chapter_dawn` the trench and Dead
+   * Ranks spawn Gravegnawers): the first whose world flag is set replaces the entry's mix / monsterId with `count`
+   * (0..100; 0 = nothing) x `monsterId`, one pack without a leader, at the zone's spawn and at every respawn. One variant
+   * per flag; never the story boss, nor on its entry.
+   */
+  variants?: RemakeSpawnVariant[];
 };
+
+/** [W2] One K6 spawn variant (MapData.h MapSpawnVariantDef). */
+export interface RemakeSpawnVariant {
+  whenFlag: string;
+  monsterId: string;
+  count: number;
+}
 
 export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances' | 'spawns'> {
   spawns: MapSpawn[];
@@ -368,4 +411,45 @@ export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances' | 'spaw
    * `corpse.leaves` must leave one) at the tile; it never fades. Feature `map.corpseSeeds`.
    */
   corpseSeeds?: { col: number; row: number; monsterId: string }[];
+}
+
+/**
+ * [W2] K6 condition leaves (WorldStateData.h): a world flag set / not set, or a quest in a state (notStarted: never
+ * accepted; active; completed: done, not turned in; open: active or completed; turnedIn; notTurnedIn: anything else).
+ */
+export type RemakeQuestGate = 'notStarted' | 'active' | 'completed' | 'open' | 'turnedIn' | 'notTurnedIn';
+export type RemakeConditionLeaf = { flag: string } | { notFlag: string } | { quest: string; state: RemakeQuestGate };
+
+/**
+ * [W2] A K6 condition (npcs.json `lines[].when`, `visibleWhen`): every key holds together (`flag`, `notFlag`, `quest` +
+ * `state`), and one leaf of `any` when present (each leaf names exactly one of flag / notFlag / quest; no nesting). At
+ * least one key.
+ */
+export interface RemakeCondition {
+  flag?: string;
+  notFlag?: string;
+  quest?: string;
+  state?: RemakeQuestGate;
+  any?: RemakeConditionLeaf[];
+}
+
+/** [W2] One K6 NPC line: an i18n key said while `when` holds (always without it). */
+export interface RemakeNpcLine {
+  key: string;
+  when?: RemakeCondition;
+}
+
+export interface NPCDefinition extends Web.NPCDefinition {
+  /**
+   * [W2] K6 quest-gated lines (chapter1.md §3; feature `npc.lines`): when one holds they replace `dialogue` as what the NPC
+   * says: the first holding line is logged on interaction, the linear panel shows the second (else the first). None
+   * holding: the web's `dialogue` lines. Keys exist in zh-CN and en.
+   */
+  lines?: RemakeNpcLine[];
+  /**
+   * [W2] K6: the NPC stands in its camp / field spot only while this holds (feature `npc.visibleWhen`). The export (and
+   * DataStore) refuse a condition that could hide it while an open quest needs it (its giver, a talk target, a craft
+   * NPC); hiding it only before a quest is offered warns.
+   */
+  visibleWhen?: RemakeCondition;
 }

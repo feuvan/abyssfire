@@ -32,6 +32,7 @@
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/SimContext.h"
 #include "abyss/sim/Snapshot.h"
+#include "abyss/world/WorldState.h"
 #include "abyss/world/Zone.h"
 
 namespace abyss {
@@ -163,11 +164,13 @@ void MonsterSystem::SpawnZonePopulation() {
   const int32_t cols = world_.cols > 0 ? world_.cols : map.cols;
   const int32_t rows = world_.rows > 0 ? world_.rows : map.rows;
   const bool storyBlocked = StoryBossBlocked();
-  for (const MapSpawnDef& spawn : map.spawns) {  // data order
+  for (size_t entry = 0; entry < map.spawns.size(); ++entry) {  // data order
+    const MapSpawnDef& spawn = map.spawns[entry];
     // K5: the entry is one pack; its members in mix order (else count x monsterId), the leader the first of its id. A
     // member whose definition is unknown (or the story boss after its quest) is skipped before its placement draws.
+    // K6: a spawn variant whose world flag is set replaces the members (`count` x its monster, no leader).
     std::vector<SpawnMember> members;
-    ExpandSpawnMembers(spawn, members);
+    ExpandSpawnMembersNow(spawn, ctx_.session.worldFlags, members);
     const uint32_t pack = members.empty() ? 0 : NewPackId();
     const MonsterDef* base = nullptr;
     MonsterRole role = MonsterRole::Regular;
@@ -214,6 +217,8 @@ void MonsterSystem::SpawnZonePopulation() {
       p.rollAffixes = def.elite;
       p.packId = pack;  // K5
       p.packLeader = members[i].leader;
+      p.spawnEntry = static_cast<int32_t>(entry);  // K6
+      p.spawnMember = static_cast<int32_t>(i);
       MonsterDef leaderDef;
       if (members[i].leader && spawn.leader.elite && !def.elite) {  // K5: an elite leader rolls the zone's affixes
         leaderDef = def;
@@ -422,9 +427,26 @@ EntityId MonsterSystem::Spawn(const MonsterSpawnParams& p) {
   if (p.hasHome) m.homeTile = p.home;
   m.packId = p.packId;  // K5
   m.packLeader = p.packLeader;
+  m.spawnEntry = p.spawnEntry;  // K6
+  m.spawnMember = p.spawnMember;
+  m.guaranteedLoot = p.guaranteedLoot;
   m.huntId = p.huntId;
   m.visualScale = p.visualScale;
-  if (p.rollAffixes) RollAffixesInto(m, p.affixZone.empty() ? std::string_view(CurrentZoneId()) : p.affixZone);
+  if (p.rollAffixes) {
+    RollAffixesInto(m, p.affixZone.empty() ? std::string_view(CurrentZoneId()) : p.affixZone);
+  } else if (p.givenAffixes != nullptr) {
+    // K6: a shared roll; the member keeps the affixes its family may roll, and is elite when it keeps one.
+    const EliteAffixTable& table = ctx_.data.Combat().eliteAffixes;
+    std::vector<EliteAffixType> kept;
+    for (EliteAffixType t : *p.givenAffixes) {
+      if (table.RollableFor(t, m.def.family)) kept.push_back(t);
+    }
+    if (!kept.empty()) {
+      m.def.elite = true;
+      m.originalDef.elite = true;
+      ApplyEliteAffixes(m, kept, table, ctx_.data.Monsters().ai);
+    }
+  }
   return AddInstance(std::move(m), p.startChasing);
 }
 
@@ -571,6 +593,61 @@ std::vector<EntityId> MonsterSystem::SpawnAmbush(std::span<const std::string> mo
     p.startChasing = true;
     const EntityId e = Spawn(p);
     if (e != kNoEntity) out.push_back(e);
+  }
+  return out;
+}
+
+std::vector<EntityId> MonsterSystem::SpawnChampionPack(const ZoneEventDataDef::AmbushChampionDef& champion, Vec2 centre,
+                                                       double minDist, double distRange, MonsterRole role) {
+  std::vector<EntityId> out;
+  if (!champion.present) return out;
+  EnsureZoneGrid();
+  const std::string zoneId = CurrentZoneId();
+  const MonsterTables& tables = ctx_.data.Monsters();
+  int32_t cols = world_.cols, rows = world_.rows;
+  if ((cols <= 0 || rows <= 0) && ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) {
+    cols = ctx_.sys.zone->Map().cols;
+    rows = ctx_.sys.zone->Map().rows;
+  }
+  // The shared roll (Ai stream, once): the leader's family pool, else the first known member's.
+  std::vector<EliteAffixType> shared;
+  if (champion.sharedAffix) {
+    const MonsterDef* lead = champion.leader.empty() ? nullptr : tables.FindForZone(zoneId, champion.leader);
+    for (size_t k = 0; lead == nullptr && k < champion.mix.size(); ++k) {
+      lead = tables.FindForZone(zoneId, champion.mix[k].monsterId);
+    }
+    if (lead != nullptr) {
+      shared = RollEliteAffixes(ctx_.data.Combat().eliteAffixes, zoneId, ctx_.Rand(RngStream::Ai), lead->family);
+    }
+  }
+  Rng& rng = ctx_.Rand(RngStream::Events);
+  const std::function<bool(int32_t, int32_t)> walkable = [this](int32_t c, int32_t r) { return Walkable(c, r); };
+  const uint32_t pack = NewPackId();
+  bool led = false;
+  for (const MapSpawnMixDef& e : champion.mix) {
+    const MonsterDef* base = tables.FindForZone(zoneId, e.monsterId);
+    for (int32_t i = 0; i < e.count; ++i) {
+      if (base == nullptr) continue;  // before the placement draws (as SpawnAmbush)
+      const double angle = rng.Float01() * kTwoPi;
+      const double dist = minDist + rng.Float01() * distRange;
+      const TilePos preferred{JsRoundInt(centre.x + DetCos(angle) * dist), JsRoundInt(centre.y + DetSin(angle) * dist)};
+      TilePos tile;
+      if (cols < 3 || rows < 3 || !MonsterSysFindWalkableTile(preferred, cols, rows, 5, walkable, tile)) continue;
+      MonsterSpawnParams p;
+      p.baseDef = base;  // difficulty-scaled by Spawn
+      p.tile = tile;
+      p.role = role;
+      p.rollAffixes = false;
+      p.givenAffixes = champion.sharedAffix ? &shared : nullptr;
+      p.startChasing = true;
+      p.packId = pack;
+      p.packLeader = !led && !champion.leader.empty() && e.monsterId == champion.leader;
+      p.guaranteedLoot = p.packLeader ? champion.leaderLoot : ItemQuality::Normal;
+      const EntityId id = Spawn(p);
+      if (id == kNoEntity) continue;
+      led = led || p.packLeader;
+      out.push_back(id);
+    }
   }
   return out;
 }
@@ -926,6 +1003,7 @@ HitWeight MonsterSystem::ApplyDamage(EntityId id, double amount, const DamageFla
     msg.killedByEliteBasic = m->def.elite && flags.source == KillSource::HeroBasic;
     msg.element = flags.element;
     msg.crit = flags.isCrit;
+    msg.guaranteedLoot = m->guaranteedLoot;
     ctx_.bus.Publish(msg);  // `m` may dangle from here on (hunt reveals grow the list)
     return weight;
   }
@@ -1028,6 +1106,22 @@ void MonsterSystem::Respawn(EntityId deadId) {
   if (monsters_[idx].IsAlive()) return;
   EnsureZoneGrid();
   const MonsterAiDef& ai = ctx_.data.Monsters().ai;
+  // K6: a map spawn whose entry now has an active spawn variant comes back as the variant's monster; its slot stays down
+  // (before any draw) when the variant spawns fewer, or when the variant's monster is unknown in the zone.
+  const MapSpawnVariantDef* variant = nullptr;
+  MonsterDef variantDef;
+  const int32_t entry = monsters_[idx].spawnEntry;
+  if (entry >= 0 && ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone()) {
+    const std::vector<MapSpawnDef>& spawns = ctx_.sys.zone->Map().spawns;
+    if (static_cast<size_t>(entry) < spawns.size()) {
+      variant = ActiveSpawnVariant(spawns[static_cast<size_t>(entry)], ctx_.session.worldFlags);
+    }
+    if (variant != nullptr) {
+      const MonsterDef* base = ctx_.data.Monsters().FindForZone(CurrentZoneId(), variant->monsterId);
+      if (base == nullptr || monsters_[idx].spawnMember >= variant->count) return;
+      variantDef = ScaleMonsterForDifficulty(*base, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
+    }
+  }
   Rng& rng = ctx_.Rand(RngStream::Ai);
   // M3: jitter around the ORIGINAL anchor (no drift); up to placementTries walkable tiles outside safe zones, else the
   // anchor itself (no safe-zone check, web).
@@ -1042,14 +1136,16 @@ void MonsterSystem::Respawn(EntityId deadId) {
     break;
   }
   const MonsterInstance& dead = monsters_[idx];
-  MonsterInstance fresh = MakeInstance(dead.originalDef, tile, dead.role);  // fresh id, full HP, idle, no swing yet
-  fresh.spawnAnchor = anchor;
+  MonsterInstance fresh = MakeInstance(variant != nullptr ? variantDef : dead.originalDef, tile, dead.role);
+  fresh.spawnAnchor = anchor;  // fresh id, full HP, idle, no swing yet
   fresh.homeTile = dead.homeTile;
   fresh.huntId = dead.huntId;
   fresh.visualScale = dead.visualScale;
   fresh.noRespawn = dead.noRespawn;
   fresh.packId = dead.packId;  // K5: it rejoins its pack (and leads it again)
-  fresh.packLeader = dead.packLeader;
+  fresh.packLeader = variant != nullptr ? false : dead.packLeader;  // K6: a variant's pack has no leader
+  fresh.spawnEntry = dead.spawnEntry;
+  fresh.spawnMember = dead.spawnMember;
   if (fresh.originalDef.elite) RollAffixesInto(fresh, CurrentZoneId());  // re-rolled, never compounded
   grid_.Remove(deadId);
   ctx_.events.Emit(EvEntityDespawned{deadId, EntityKind::Monster, DespawnReason::Died});

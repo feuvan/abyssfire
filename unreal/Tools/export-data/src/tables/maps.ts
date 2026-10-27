@@ -17,7 +17,9 @@ import { NPCDefinitions } from '../../../../../src/data/npcs';
 import type { MapData } from '../../../../../src/data/types';
 import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
 import { MiniBossByZone } from '../../../../../src/data/miniBosses';
-import type { MapData as RemakeMapData, MapSpawn as RemakeMapSpawn, MonsterDefinition as RemakeMonster } from '../../../../GameData/types';
+import type { MapData as RemakeMapData, MapSpawn as RemakeMapSpawn, MonsterDefinition as RemakeMonster,
+  QuestDefinition as RemakeQuest } from '../../../../GameData/types';
+import { AllQuests } from '../../../../../src/data/quests/all_quests';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, plain, sha256, formatJson, SCHEMA_VERSION, type TableResult, type GoldenFile } from '../util';
 import { withholdRemakeFields } from '../remake';
@@ -117,6 +119,7 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
     const knownMonster = (monsterId: string) => !!((MonstersByZone[id] ?? []).find(m => m.id === monsterId) ??
       getMonsterDef(monsterId) ?? Object.values(MiniBossByZone).find(m => m.id === monsterId));
     const storyBoss = CHAPTER_CONFIG.storyBoss.monsterId;
+    const flagSetters = new Set((AllQuests as RemakeQuest[]).flatMap(q => q.setsFlags ?? []));
     (raw.spawns as RemakeMapSpawn[]).forEach((sp, i) => {
       const at = `maps.${id}.spawns[${i}]`;
       if (sp.mix !== undefined) {
@@ -139,6 +142,25 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
         const members = sp.mix ? sp.mix.map(e => e.monsterId) : sp.count > 0 ? [sp.monsterId] : [];
         assert(members.includes(sp.leader.monsterId), `${at}.leader: '${sp.leader.monsterId}' is not a member of the pack`);
         assert(!members.includes(storyBoss), `${at}.leader: the story boss keeps a spawn entry of its own`);
+      }
+      // K6 (LoadWorld.cpp, DataStore::Finalize): variants {whenFlag, monsterId, count 0..100}, one per flag, a known
+      // monster of the zone, never the story boss nor on its entry; a flag no quest sets warns (it never holds).
+      if (sp.variants !== undefined) {
+        assert(Array.isArray(sp.variants) && sp.variants.length > 0, `${at}.variants: an empty list (omit it)`);
+        const bossEntry = sp.monsterId === storyBoss || (sp.mix ?? []).some(e => e.monsterId === storyBoss);
+        assert(!bossEntry, `${at}.variants: the story boss's entry has no variants (its spawn reads the entry)`);
+        const flags = new Set<string>();
+        sp.variants.forEach((v, k) => {
+          const vAt = `${at}.variants[${k}]`;
+          for (const key of Object.keys(v)) assert(['whenFlag', 'monsterId', 'count'].includes(key), `${vAt}: unknown field '${key}'`);
+          assert(typeof v.whenFlag === 'string' && v.whenFlag !== '', `${vAt}.whenFlag: an empty flag`);
+          assert(!flags.has(v.whenFlag), `${vAt}.whenFlag: a second variant of flag '${v.whenFlag}'`);
+          flags.add(v.whenFlag);
+          assert(Number.isInteger(v.count) && v.count >= 0 && v.count <= 100, `${vAt}.count: an integer 0..100`);
+          assert(typeof v.monsterId === 'string' && knownMonster(v.monsterId), `${vAt}.monsterId: unknown monster '${v.monsterId}'`);
+          assert(v.monsterId !== storyBoss, `${vAt}.monsterId: the story boss keeps a spawn entry of its own`);
+          if (!flagSetters.has(v.whenFlag)) console.warn(`  warning: ${vAt}.whenFlag: no quest sets flag '${v.whenFlag}' (setsFlags)`);
+        });
       }
     });
     const { tiles, collisions, decorations, ...anchors } = withholdRemakeFields('map', plain(raw), `maps.${id}`);

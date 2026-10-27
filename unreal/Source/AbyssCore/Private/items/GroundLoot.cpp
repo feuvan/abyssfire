@@ -162,6 +162,12 @@ void GroundLootSystem::OnMonsterKilled(const MonsterKilledMsg& m) {
       Drop(std::move(item), m.pos);
     }
   }
+  // Dark remake K6: a champion leader's guaranteed drop (AmbushChampionDef::leaderLoot), after its regular loot; no draw
+  // without one.
+  if (m.guaranteedLoot != ItemQuality::Normal) {
+    std::optional<ItemInstance> item = GenerateEquipment(lc, m.level, m.guaranteedLoot);
+    if (item.has_value()) Drop(std::move(*item), m.pos);
+  }
 }
 
 void GroundLootSystem::Tick() {

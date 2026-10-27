@@ -21,7 +21,7 @@ import remakeZhCN from '../../../../GameData/i18n/zh-CN';
 import remakeEn from '../../../../GameData/i18n/en';
 import { ZH_TW_CHARS, ZH_TW_PHRASES } from '../../../../GameData/i18n/zhTWExtra';
 import { assert, type TableResult } from '../util';
-import { noteExtra } from '../remake';
+import { noteExtra, remakeRequiredKeys } from '../remake';
 
 const SOURCES = ['src/i18n/locales/zh-CN.ts', 'src/i18n/locales/en.ts', 'src/i18n/locales/story.ts', 'src/i18n/locales/questStory.ts',
   'src/i18n/locales/abyssRun.ts', 'src/i18n/locales/homestead.ts', 'src/i18n/locales/pets.ts'];
@@ -382,6 +382,8 @@ export function exportI18n(_ctx: unknown, tables: readonly TableResult[]): Table
   const refs = new Map<string, string>();
   for (const t of tables) collectKeyRefs(t.data, roots, refs, t.file, '');
   for (const ns of CONTENT_NAMESPACES) for (const k of ns.required?.(lookup) ?? []) if (!refs.has(k)) refs.set(k, `convention ${ns.prefix}*`);
+  // Keys the core builds from exported data (remake.ts noteRequiredKey; K6: a remake status type's name).
+  for (const [k, where] of remakeRequiredKeys()) if (!refs.has(k)) refs.set(k, where);
   const missing = [...refs].filter(([k]) => !(k in zh) || !(k in enAll)).map(([k, where]) =>
     `${k} (${!(k in zh) && !(k in enAll) ? 'zh-CN, en' : !(k in zh) ? 'zh-CN' : 'en'}; ${where})`);
   assert(!missing.length, `i18n parity: referenced keys missing: ${fewKeys(missing)}`);

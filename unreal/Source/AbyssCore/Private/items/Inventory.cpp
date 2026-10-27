@@ -483,9 +483,12 @@ InvResult InventorySystem::UseItem(std::string_view uid) {
       if (hero != nullptr) hero->RestoreMana(base->consumableValue);
       break;
     case ConsumableEffect::Antidote:
-      // FIX Q8 (I4): the antidote cleanses poison.
+      // FIX Q8 (I4): the antidote cleanses poison; dark remake K6 (monsters.md 4): and Ashnumb, every stack.
       if (ctx_.sys.status != nullptr && ctx_.sys.status->Remove(kHeroEntityId, StatusType::Poison)) {
         ctx_.events.Emit(EvStatusExpired{kHeroEntityId, StatusType::Poison});
+      }
+      if (ctx_.sys.status != nullptr && ctx_.sys.status->Remove(kHeroEntityId, StatusType::Ashnumb)) {
+        ctx_.events.Emit(EvStatusExpired{kHeroEntityId, StatusType::Ashnumb});
       }
       break;
     case ConsumableEffect::Teleport:

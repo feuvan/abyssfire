@@ -16,6 +16,8 @@
 //   9 items      ley fruit + generateLoot -> ground items / potion pickups
 //  10 audio      monster_death SFX (FIX combat 19)
 //  11 monsters   zone.monsterKill log + respawn decision (7)
+// Quest turn-in (QuestTurnedInMsg, QuestSystem::TurnIn inside QuestWorld::TurnIn): K6 world flags (setsFlags) first,
+// then audio, story, homestead; QuestWorld pays exp, gold, items, the K6 permanent reward and the pet after them.
 // A Raised body (MonsterRole::Raised, K3) pays no rewards: step 1 skips its Spirit 'kill', exp, gold (no Loot draw)
 // and kill heal, and steps 2 (pet exp), 6 (embers, garden, expedition), 8 (quest drops) and 9 (loot) skip it; it still
 // counts as a kill (achievements, quest kill objectives, story triggers, totalKills).
@@ -96,6 +98,10 @@ void SimImpl::Wire() {
   bus.Subscribe<ItemPickedMsg>([this](const ItemPickedMsg& m) { audio->OnItemPicked(m); });  // audio 3.1
 
   // ---- quests / story / pets ----
+  // Dark remake K6: a quest's world flags are set first on its turn-in (the first QuestTurnedInMsg listener: before the
+  // audio cue, the cutscene enqueue, the embers and the rewards), so every later listener sees them; NPC visibility and
+  // spawn variants read them from the next ZoneRuntime / MonsterSystem step.
+  bus.Subscribe<QuestTurnedInMsg>([this](const QuestTurnedInMsg& m) { SetQuestFlags(m); });
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg& m) { story->OnQuestAccepted(m); });
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg& m) { questWorld->OnQuestAccepted(m); });
   bus.Subscribe<QuestAcceptedMsg>([this](const QuestAcceptedMsg&) { monsters->SpawnDueHunts(false); });
@@ -128,6 +134,14 @@ void SimImpl::Wire() {
     RequestSave(SaveReason::DifficultyCompleted);
   });
   bus.Subscribe<SaveRequestMsg>([this](const SaveRequestMsg& m) { RequestSave(m.reason); });
+}
+
+void SimImpl::SetQuestFlags(const QuestTurnedInMsg& m) {
+  const QuestDef* q = data.FindQuest(m.questId);
+  if (q == nullptr) return;
+  for (const std::string& flag : q->setsFlags) {
+    if (session.SetFlag(flag)) events.Emit(EvWorldFlag{flag, q->id});
+  }
 }
 
 // combat-feel.md 14: killing the unlock boss in the unlock zone (not in a labyrinth) completes the difficulty.

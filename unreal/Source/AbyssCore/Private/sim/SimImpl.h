@@ -134,6 +134,8 @@ struct SimImpl {
   // SimWiring.cpp
   void Wire();
   void OnMonsterKilledDifficulty(const MonsterKilledMsg& m);
+  // Dark remake K6: a turned-in quest's setsFlags join session.worldFlags (EvWorldFlag per new flag).
+  void SetQuestFlags(const QuestTurnedInMsg& m);
   // SimCommands.cpp
   void ApplyCommands(bool frozen);
   void ApplyCommand(const Command& c);

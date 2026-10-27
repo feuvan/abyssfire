@@ -49,6 +49,7 @@ struct PetCompanionState;
 struct ActiveRandomEvent;
 struct PuzzlePromptState;
 struct LoreTextState;
+struct PermanentRewardsState;
 
 struct SkillSlotView {
   int32_t skillIndex = -1;  // -1 = empty slot
@@ -91,6 +92,10 @@ struct HeroView {
   PortalRefusal portalRefusal = PortalRefusal::None;  // CanUseTownPortal now (touch button dim rule, world 7.4)
   bool dashing = false;            // C4 Charge dash in progress (HeroLocomotion::IsDashing)
   bool lowHp = false;              // danger vignette (combat 11.7)
+  // Dark remake K6: the Ashnumb stacks on the hero (UE's AshnumbTint band; slowed at the row's maxStacks) and the share
+  // of healing the hero receives now (StatusEffectSystem::HealingReceivedMul; 1 = none taken).
+  int32_t ashnumbStacks = 0;
+  double healingReceivedMul = 1;
 };
 
 struct MonsterView {
@@ -368,6 +373,10 @@ struct ABYSS_API Snapshot {
   const LoreTextState* loreText = nullptr;
   const std::vector<ActiveRandomEvent>* randomEvents = nullptr;  // active world events of the zone
   const PuzzlePromptState* puzzle = nullptr;
+  // Dark remake K6 (world/WorldState.h): the world flags set so far (sorted ids: UE moods, audio emitters) and the
+  // quests' permanent rewards granted (claims and totals).
+  const std::vector<std::string>* worldFlags = nullptr;
+  const PermanentRewardsState* permanentRewards = nullptr;
 
   // Clears the per-step vectors (keeps capacity). `monsters` / `npcs` are not cleared: MonsterSystem / ZoneRuntime
   // FillSnapshot resize them and assign EVERY field of each reused view (a new MonsterView / NpcView field must be set

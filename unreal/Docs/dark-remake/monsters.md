@@ -336,7 +336,7 @@ Fight design (three phases, adds, telegraphs, Feed, soft enrage, numbers) in cha
 | Source | Hook |
 |---|---|
 | Regulars | today's level-based drops (`loot_rules.json`); deserters roll the higher gold range; Gravegnawers drop little gold (they carry nothing) |
-| Elites and champions | the affix loot bonus (3-8 per affix) as today; a champion Muster drops one guaranteed magic item [W2] |
+| Elites and champions | the affix loot bonus (3-8 per affix) as today; a champion Muster drops one guaranteed magic item [W2] (K6 `ambushChampion.leaderLoot: magic`: the leader's kill drops one more equipment item of that quality at its level, after its regular loot) |
 | Hunts | the mini-boss floor plus their quest items: `mat_tag_pouch` (Dreck, chance 1); Hungerbell and Harke drop a guaranteed magic item |
 | Mini-boss | the existing mini-boss floor (magic .8 / rare .35 / legendary .03, `lootTable` still inert per M9); first kill per visit only |
 | Act boss | the existing story-boss floor; farmable once per visit after the finale (M7) |
@@ -367,7 +367,13 @@ faction and 丧钟 as the hub 丧钟堡, and the elite label puts the affix befo
 **Champion packs [W2]:** the **Muster** (a standard-bearer and three footmen sharing one affix, from the ambush event),
 the **Hollow Watch** (Deserters' Hollow leader, elite with one affix, drummer and four deserters). *As built (2D,
 pending review):* the Hollow Watch is a K5 spawn `mix` with `leader {monsterId: deserter, elite: true}`; the Muster needs
-an event-spawn pack and a shared affix roll, assigned to 2E (K6) by the 2D review (implementation-plan.md K6). **The elite marker:**
+an event-spawn pack and a shared affix roll, assigned to 2E (K6) by the 2D review (implementation-plan.md K6). *As built
+(2E, pending review):* a zone's `random_events.json` `ambushChampion {chance, mix, leader, sharedAffix}` (the Muster row
+is 2F's: `dead_standard_bearer` + 3 `risen_footman`, 10 %, leader the standard-bearer, `sharedAffix`); an ambush draws
+once more and on a hit spawns the mix as one pack, the leader first, every member given the one shared roll (each keeps
+the affixes its family may roll); the guaranteed magic drop (§2.8) is the block's `leaderLoot` (magic | rare; needs a
+`leader`): the leader's kill drops one more equipment item of that quality at its level after its regular loot (built
+by the 2E review, R5; implementation-plan.md *2E outcomes*). **The elite marker:**
 W1 recolours `SM_FX_EliteCrown` to tarnished iron with a crimson stone; W2 replaces it with `SM_FX_EliteSigil`, a small
 floating broken iron halo with a crimson ember (~0.5 task).
 
@@ -376,6 +382,14 @@ floating broken iron halo with a crimson ember (~0.5 task).
 From breach-blood contact. Each stack reduces healing received by 10 % (potions, regeneration, life steal), up to 5
 stacks; at 5 stacks the hero is also slowed 20 %. Stacks last 6 s and refresh on hit. The antidote cleanses it (as
 poison, I4). Visual: grey ash creeping up the hero's limbs (a CPD tint band plus ash flakes). W1 fallback: poison.
+
+*As built (2E, K6; pending review):* `StatusType::Ashnumb` with the `stackCount` rule: one instance whose value counts
+stacks, each landed application adds one (a `fixed` value of 1; larger values add `floor(value)`) up to the
+`status_effects.json` `stacks` row's `maxStacks` and restarts the shared timer. The healing cut applies to every hero heal
+(also kill heal, thorns and pet heals) and the HP regeneration step, as a share `max(0, 1 - stacks x per stack)` (a row
+whose cut passes 100 % stops healing, never drains); the slow is the stronger of it and a Slow. The row comes from
+`REMAKE_OVERRIDES.statusEffects` (2F; without it the status never lands and the export refuses it on a monster). UE
+reads `HeroView::ashnumbStacks` for the tint band and the HUD's status row (implementation-plan.md *2E outcomes*).
 
 ## 5. Art plan for Chapter 1 monsters
 

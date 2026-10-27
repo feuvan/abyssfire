@@ -57,6 +57,15 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * auras, CombatSystem's block), map `spawns[].mix` / `leader` (LoadWorld.cpp → MapSpawnDef; checked by tables/maps.ts;
  * SpawnZonePopulation spawns the mix as one pack), and the ability kinds buff / call (value gates lifted: they run as casts
  * between swings).
+ *
+ * K6 status, permanent rewards, world flags, NPC lines and spawn variants (package 2E): quest `setsFlags` (LoadQuests.cpp →
+ * QuestDef::setsFlags; set on the turn-in, saved `worldFlags`) and `rewards.permanent` (→ QuestPermanentRewardDef; once
+ * per quest and difficulty, saved `permanentRewards`), map `spawns[].variants` (LoadWorld.cpp → MapSpawnVariantDef;
+ * MonsterSystem's spawn and respawn), NPC `lines` / `visibleWhen` (LoadQuests.cpp → NpcDef; DataStore's visibility
+ * validator, mirrored in tables/world.ts), all checked here first by tables/quests.ts, maps.ts and world.ts; and two
+ * override-table features (remake.ts REMAKE_TABLE_FEATURES): `status.ashnumb` (the `statusEffects` row, tables/combat.ts,
+ * and the `ashnumb` value on monster statuses) and `events.ambushChampion` (random_events.json zones.<zone>
+ * .ambushChampion, tables/world.ts; RandomEventSystem's champion pack).
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
@@ -69,6 +78,8 @@ export const REMAKE_SCHEMA: readonly string[] = [
   'monster.phases',
   'monster.packAggro', 'monster.kite', 'monster.block', 'monster.morale', 'monster.aura', 'monster.abilityBuff',
   'monster.abilityCall', 'map.spawnMix',
+  'quest.setsFlags', 'quest.permanentRewards', 'map.spawnVariants', 'npc.lines', 'npc.visibleWhen', 'status.ashnumb',
+  'events.ambushChampion',
 ];
 
 export interface RunOptions {

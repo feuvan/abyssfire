@@ -32,6 +32,8 @@ void SimImpl::BuildSnapshot() {
   s.difficulty = session.difficulty;
   s.playTimeMs = session.playTimeMs;
   s.canSave = CanSave();
+  s.worldFlags = &session.worldFlags;  // K6
+  s.permanentRewards = &session.permanentRewards;
   if (hero == nullptr) {
     s.monsters.clear();
     s.npcs.clear();
@@ -70,6 +72,8 @@ void SimImpl::BuildSnapshot() {
   h.resonating = sp.IsResonating();
   h.resonanceRemainingMs = sp.ResonanceRemainingMs();
   h.statusMask = status->StatusMask(kHeroEntityId);
+  h.ashnumbStacks = status->Stacks(kHeroEntityId, StatusType::Ashnumb);  // K6
+  h.healingReceivedMul = status->HealingReceivedMul(kHeroEntityId);
   h.autoCombat = hero->autoCombat;
   h.autoLoot = hero->autoLoot;
   h.lowHp = h.maxHp > 0 && h.hp > 0 && h.hp / h.maxHp < data.Combat().hitFeedback.lowHpBelowRatio;

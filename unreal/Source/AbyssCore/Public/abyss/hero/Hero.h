@@ -22,6 +22,7 @@
 namespace abyss {
 
 class DataStore;
+class StatusEffectSystem;
 struct SaveHero;
 
 enum class HeroLife : uint8_t { Alive, Dying };
@@ -81,6 +82,9 @@ class ABYSS_API Hero {
   int32_t FreeSkillPoints() const { return freeSkillPoints_; }
   // One point per call; false when no points.
   bool AllocateStat(PrimaryStat s);
+  // Dark remake K6: a quest's permanent reward adds free stat / skill points (negative amounts are ignored; the pools
+  // saturate at int32 max).
+  void GrantFreePoints(int32_t statPoints, int32_t skillPoints);
 
   // ---- derived ----
   // recalcDerived (3) with the merged equip stats and the current spirit move multiplier. Does not clamp hp/mana.
@@ -100,8 +104,13 @@ class ABYSS_API Hero {
   // thorns heals, pet / merc heals, free-cast refunds; classes 3 "heals clamp", 4.3, 12.1). So a gain - even of 0 -
   // SNAPS a value that sits above a lowered max (unequipped +maxHp gear; recalcDerived does not clamp) down to the
   // max. Refused (no change) unless Alive (save-ui-input 5.1.1), or for a negative / non-finite amount (no web site
-  // passes one). Returns the gain, >= 0 (0 when the value was snapped down).
+  // passes one). Returns the gain, >= 0 (0 when the value was snapped down). K6: the amount is first scaled by the
+  // healing the hero receives (HealingReceivedMul: Ashnumb).
   double Heal(double amount);
+  // K6: the bound status system's StatusEffectSystem::HealingReceivedMul for the hero (1 when none is bound: a
+  // standalone Hero). GameSim binds its status system at construction; TickPassives scales the regen of the step by it.
+  void BindStatusEffects(const StatusEffectSystem* status) { status_ = status; }
+  double HealingReceivedMul() const;
   double RestoreMana(double amount);
   void SpendMana(double amount);       // floor at 0
   double ApplyDamage(double amount);   // hp = max(0, hp - amount); returns the hp removed
@@ -164,6 +173,7 @@ class ABYSS_API Hero {
 
  private:
   const DataStore* data_;
+  const StatusEffectSystem* status_ = nullptr;  // K6 (BindStatusEffects)
   ClassId cls_;
   const ClassDef* class_;
   int32_t level_ = 1;

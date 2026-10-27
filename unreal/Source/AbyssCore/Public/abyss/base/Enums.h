@@ -21,7 +21,9 @@ enum class ItemType : uint8_t { Weapon, Armor, Accessory, Consumable, Gem, Mater
 // The 10 equipment slots, in the web's declaration order (loot spec 2.1).
 enum class EquipSlot : uint8_t { Helmet, Armor, Gloves, Boots, Weapon, Offhand, Necklace, Ring1, Ring2, Belt };
 enum class WeaponType : uint8_t { Sword, Axe, Mace, Dagger, Bow, Staff, Wand, Shield };
-enum class StatusType : uint8_t { Burn, Freeze, Poison, Bleed, Slow, Stun };
+// Ashnumb (dark remake K6, monsters.md 4: breach-blood contact) is appended: the web's six keep their values and mask
+// bits.
+enum class StatusType : uint8_t { Burn, Freeze, Poison, Bleed, Slow, Stun, Ashnumb };
 // Hit feedback weight (combat-feel.md 11.0).
 enum class HitWeight : uint8_t { Tick, Light, Normal, Heavy, Crit, Kill };
 // Animation rig presets (anim_timing.json "presets"; monster animCategory + the 3 hero rigs).
@@ -54,7 +56,7 @@ ABYSS_ENUM_STRINGS(ItemType, "weapon", "armor", "accessory", "consumable", "gem"
 ABYSS_ENUM_STRINGS(EquipSlot, "helmet", "armor", "gloves", "boots", "weapon", "offhand", "necklace", "ring1", "ring2",
                    "belt")
 ABYSS_ENUM_STRINGS(WeaponType, "sword", "axe", "mace", "dagger", "bow", "staff", "wand", "shield")
-ABYSS_ENUM_STRINGS(StatusType, "burn", "freeze", "poison", "bleed", "slow", "stun")
+ABYSS_ENUM_STRINGS(StatusType, "burn", "freeze", "poison", "bleed", "slow", "stun", "ashnumb")
 ABYSS_ENUM_STRINGS(HitWeight, "tick", "light", "normal", "heavy", "crit", "kill")
 ABYSS_ENUM_STRINGS(AnimRig, "humanoid", "slime", "beast", "large", "flying", "serpentine", "demonic", "warrior", "mage",
                    "rogue")

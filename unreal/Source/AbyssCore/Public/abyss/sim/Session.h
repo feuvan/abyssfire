@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "abyss/base/Enums.h"
@@ -24,6 +25,29 @@ struct AbyssRecord {
   int32_t bestTier = 0;
   bool hasBestTime = false;
   double bestTimeMs = 0;
+};
+
+// Dark remake K6 (implementation-plan.md 3 K6): the quests' permanent rewards granted so far (save `permanentRewards`,
+// QuestDef rewards.permanent). One claim per (quest, difficulty), in grant order; the running totals: maxLife joins the
+// merged equip stats (a flat MaxHp, SimImpl::RebuildEquipStats), the points went to the hero's free points when granted
+// (kept here for a later respec), the respec tokens wait for the respec UI.
+struct PermanentRewardClaim {
+  std::string questId;
+  Difficulty difficulty = Difficulty::Normal;
+  bool operator==(const PermanentRewardClaim& o) const = default;
+};
+struct ABYSS_API PermanentRewardsState {
+  std::vector<PermanentRewardClaim> claimed;
+  int32_t maxLife = 0;
+  int32_t statPoints = 0;
+  int32_t skillPoints = 0;
+  int32_t respecTokens = 0;
+  bool Claimed(std::string_view questId, Difficulty d) const;
+  // Drops the claims without a quest id or of an unknown difficulty and the repeated pairs (the first kept) and floors
+  // the totals at 0 (ApplySave: a SaveData built in code is not normalised like a parsed one).
+  void Normalize();
+  bool Empty() const { return claimed.empty() && maxLife == 0 && statPoints == 0 && skillPoints == 0 && respecTokens == 0; }
+  bool operator==(const PermanentRewardsState& o) const = default;
 };
 
 enum class DifficultyState : uint8_t { Completed, Available, Locked };
@@ -67,8 +91,19 @@ struct ABYSS_API SessionState {
   bool touchMode = false;                 // U7: HUD panels pause on touch
   bool appBackground = false;
   bool newGame = false;                   // set by NewGame until the first zone entry finished (prologue)
+  // Dark remake K6 (saved): the world flags (a sorted set of ids: set by a quest's setsFlags on its turn-in, never
+  // cleared; chapter1.md 8) and the permanent rewards granted.
+  std::vector<std::string> worldFlags;
+  PermanentRewardsState permanentRewards;
 
   bool HasVisited(std::string_view mapId) const;
+  bool HasFlag(std::string_view flag) const;
+  // Inserts the flag in order; false when it was already set (or is empty).
+  bool SetFlag(std::string_view flag);
 };
+
+// Makes `flags` the sorted set HasFlag / SetFlag / the conditions binary-search: sorted, no empty id, no repeat
+// (SaveIO's parse and ApplySave).
+ABYSS_API void NormalizeWorldFlags(std::vector<std::string>& flags);
 
 }  // namespace abyss

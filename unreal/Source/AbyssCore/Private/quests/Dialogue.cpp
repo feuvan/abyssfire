@@ -18,6 +18,7 @@
 #include "abyss/save/SaveData.h"
 #include "abyss/sim/SimContext.h"
 #include "abyss/sim/Snapshot.h"
+#include "abyss/world/WorldState.h"
 
 namespace abyss {
 
@@ -58,6 +59,9 @@ void DialogueSystem::OpenLinear(std::string_view npcId) {
   view_.open = true;
   view_.linear = true;
   view_.npcId = std::string(npcId);
+  if (const NpcDef* npc = ctx_.data.FindNpc(npcId); npc != nullptr && !npc->lines.empty()) {
+    view_.lineKey = NpcPanelLineNow(*npc, WorldStateView{ctx_.session.worldFlags, ctx_.sys.quests});  // K6
+  }
   ctx_.events.Emit(EvDialogue{EvDialogue::Kind::Opened, view_.npcId, std::string(), std::string()});
 }
 

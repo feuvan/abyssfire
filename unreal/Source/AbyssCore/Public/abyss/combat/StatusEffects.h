@@ -54,6 +54,7 @@ enum class StatusApplyOutcome : uint8_t { Rejected, Blocked, Applied, Refreshed 
 struct StatusApplyResult {
   StatusApplyOutcome outcome = StatusApplyOutcome::Rejected;
   double effectiveDurationMs = 0;  // 0 when Rejected (value/duration <= 0) or Blocked (diminishing returns)
+  double value = 0;                // K6: a StackCount type's stacks after the application (else the value passed)
 };
 
 class ABYSS_API StatusEffectSystem {
@@ -62,7 +63,10 @@ class ABYSS_API StatusEffectSystem {
 
   // apply (classes 13.2): rejects duration <= 0 || value <= 0; freeze/stun go through diminishing returns (keyed
   // (target, type)); poison/slow refresh (start = now, duration replaced, value = max, source updated; lastTick kept);
-  // freeze/stun replace; burn/bleed stack. Logging is the caller's job (sys.statusEffect.applied / refreshed).
+  // freeze/stun replace; burn/bleed stack. K6 StackCount (Ashnumb): rejected without its `stacks` row; else one
+  // instance whose value counts the stacks: an application adds max(1, floor(value)) stacks up to maxStacks (Applied for
+  // the first, then Refreshed: start = now, duration replaced, source updated), so every hit restarts the shared timer.
+  // Logging is the caller's job (sys.statusEffect.applied / refreshed).
   StatusApplyResult Apply(EntityId target, StatusType type, double value, double durationMs, EntityId source,
                           double nowMs);
 
@@ -77,8 +81,14 @@ class ABYSS_API StatusEffectSystem {
   bool Has(EntityId target, StatusType type) const;
   // freeze or stun.
   bool IsImmobilized(EntityId target) const;
-  // 0 if immobilized; else max(slowMinSpeedFactor, 1 - clamp(slow, 0, 100) / 100); 1 without slow.
+  // 0 if immobilized; else max(slowMinSpeedFactor, 1 - clamp(slow, 0, 100) / 100); 1 without slow. K6: a StackCount
+  // status at its maxStacks slows by its row's slowAtMaxStacksPct; with a Slow as well the stronger slow applies.
   double SpeedMultiplier(EntityId target) const;
+  // K6: the stacks of a StackCount status on the target (0 = none).
+  int32_t Stacks(EntityId target, StatusType type) const;
+  // K6: the share of healing the target receives: the product over its StackCount statuses of
+  // max(0, 1 - stacks x healingReceivedPerStack); 1 without them (Ashnumb 10 % per stack: 0.5 at 5).
+  double HealingReceivedMul(EntityId target) const;
   std::span<const StatusEffect> EffectsOf(EntityId target) const;
   // Bit (1 << StatusType) per active type (Snapshot / render tints).
   uint32_t StatusMask(EntityId target) const;

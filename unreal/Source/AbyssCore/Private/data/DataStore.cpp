@@ -12,6 +12,7 @@
 #include "abyss/monsters/Phases.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/world/CampLayout.h"
+#include "abyss/world/WorldState.h"
 
 namespace abyss {
 
@@ -483,6 +484,7 @@ bool DataStore::Finalize(DataLoadReport& report) {
         for (const MapSpawnDef& s : map.spawns) {
           bool member = s.mix.empty() && s.monsterId == id;  // K5: a mix spawns its members instead
           for (const MapSpawnMixDef& e : s.mix) member = member || e.monsterId == id;
+          for (const MapSpawnVariantDef& v : s.variants) member = member || v.monsterId == id;  // K6: a variant too
           if (member) out.push_back(TetherHome{s.pos, mapJitter});
         }
       }
@@ -864,6 +866,120 @@ bool DataStore::Finalize(DataLoadReport& report) {
     for (size_t i = 0; i < m.subDungeonEntrances.size(); ++i) {
       requireKey("maps.json", StrCat("maps.", m.id, ".subDungeonEntrances[", i, "].sealedTextKey"),
                  m.subDungeonEntrances[i].sealedTextKey);
+    }
+  }
+  // ---- dark remake K6 (implementation-plan.md 3 K6; world/WorldState.h) ----
+  {
+    // Statuses: a StackCount type (Ashnumb) lands only with its stacks row (StatusEffectRules::Lands); a landing one needs
+    // its name key (the applied / expired log lines); a monster, affix or keyword rule naming one that never lands is an
+    // error (the hit would roll it for nothing).
+    const StatusEffectRules& sr = classes_.statusRules;
+    for (size_t i = 0; i < EnumCount<StatusType>(); ++i) {
+      const StatusType t = static_cast<StatusType>(i);
+      if (sr.Stacking(t) == StatusStacking::StackCount && sr.Lands(t)) {
+        requireKey("status_effects.json", StrCat("stacks.", EnumName(t)), StrCat("sys.statusEffect.name.", EnumName(t)));
+      }
+    }
+    const auto checkLands = [&](std::string_view file, const std::string& path, StatusType t) {
+      if (!sr.Lands(t)) {
+        ck.Error(file, path,
+                 StrCat("status '", EnumName(t), "' never lands: status_effects.json has no stacks row for it"));
+      }
+    };
+    const auto checkMonsterStatuses = [&](const MonsterDef& m, std::string_view file, const std::string& path) {
+      for (const StatusRule& r : m.onHitStatus) checkLands(file, path + ".onHitStatus", r.status);
+      for (const MonsterAbilityDef& a : m.abilities) {
+        if (a.status.present) checkLands(file, path + ".abilities." + a.id + ".status", a.status.type);
+        if (a.hazard.status.present) {
+          checkLands(file, path + ".abilities." + a.id + ".hazard.status", a.hazard.status.type);
+        }
+      }
+      if (m.onDeath.status.present) checkLands(file, path + ".onDeath.status", m.onDeath.status.type);
+    };
+    for (const MonsterDef& m : monsters_.defs) checkMonsterStatuses(m, "monsters.json", "defs." + m.id);
+    for (const HuntDef& h : monsters_.hunts) {
+      checkMonsterStatuses(h.defNormal, "quest_hunts.json", "defsNormal." + h.huntId);
+    }
+    for (const EliteAffixDef& a : combat_.eliteAffixes.defs) {
+      if (a.onDeath.status.present) {
+        checkLands("elite_affixes.json", StrCat("definitions.", EnumName(a.type), ".onDeath.status"),
+                   a.onDeath.status.type);
+      }
+    }
+    for (const MonsterKeywordRule& k : sr.monsterKeywordRules) {
+      checkLands("status_effects.json", "monsterKeywordRules", k.rule.status);
+    }
+    checkLands("status_effects.json", "eliteFrozenOnHit.status", sr.eliteFrozenStatus);
+
+    // World flags: a flag a condition or a spawn variant reads that no quest sets (setsFlags) never holds (warning: a
+    // later package's source, e.g. K7's cleanse, may set it).
+    const auto flagSet = [&](const std::string& flag) { return !QuestsSettingFlag(quests_, flag).empty(); };
+    const auto checkCondition = [&](const WorldCondition& c, const std::string& path) {
+      for (const std::vector<WorldConditionLeaf>* leaves : {&c.all, &c.any}) {
+        for (const WorldConditionLeaf& l : *leaves) {
+          if (l.kind == WorldLeafKind::Quest) {
+            if (!quests_.Find(l.id)) ck.Error("npcs.json", path, "unknown quest '" + l.id + "'");
+          } else if (!flagSet(l.id)) {
+            ck.Warn("npcs.json", path, "no quest sets flag '" + l.id + "' (setsFlags)");
+          }
+        }
+      }
+    };
+    // NPC lines and visibility: line keys exist; conditions name known quests; an NPC never hides while an open quest
+    // needs it, nor for sure whenever its quest is offered with no other route to it (CheckNpcVisibility: an error;
+    // could hide only while the quest is offered: a warning, the quest waits for it).
+    for (const NpcDef& n : npcs_.npcs) {
+      const std::string path = "npcs." + n.id;
+      for (size_t i = 0; i < n.lines.size(); ++i) {
+        requireKey("npcs.json", StrCat(path, ".lines[", i, "].key"), n.lines[i].key);
+        if (n.lines[i].hasWhen) checkCondition(n.lines[i].when, StrCat(path, ".lines[", i, "].when"));
+      }
+      if (n.hasVisibleWhen) checkCondition(n.visibleWhen, path + ".visibleWhen");
+    }
+    for (const NpcVisibilityIssue& issue : CheckNpcVisibility(npcs_, quests_, &dialogues_)) {
+      if (issue.offerOnly) {
+        ck.Warn("npcs.json", "npcs." + issue.npcId + ".visibleWhen",
+                issue.message + " (the quest is not offered there meanwhile)");
+      } else {
+        ck.Error("npcs.json", "npcs." + issue.npcId + ".visibleWhen", issue.message);
+      }
+    }
+    // Spawn variants: a known monster of the zone, never the story boss, never on the story boss's own entry (its
+    // once-per-visit spawn reads the entry's monsterId); a flag no quest sets warns.
+    const std::string& storyBoss = monsters_.ai.storyBossId;
+    for (const MapDef& m : world_.maps) {
+      for (size_t i = 0; i < m.spawns.size(); ++i) {
+        const MapSpawnDef& sp = m.spawns[i];
+        if (sp.variants.empty()) continue;
+        const std::string spPath = StrCat("maps.", m.id, ".spawns[", i, "].variants");
+        bool bossEntry = !storyBoss.empty() && sp.monsterId == storyBoss;
+        for (const MapSpawnMixDef& e : sp.mix) bossEntry = bossEntry || (!storyBoss.empty() && e.monsterId == storyBoss);
+        if (bossEntry) ck.Error("maps.json", spPath, "the story boss's entry has no variants (its spawn reads the entry)");
+        for (size_t k = 0; k < sp.variants.size(); ++k) {
+          const MapSpawnVariantDef& v = sp.variants[k];
+          const std::string vPath = StrCat(spPath, "[", k, "]");
+          if (!monsters_.FindForZone(m.id, v.monsterId)) {
+            ck.Error("maps.json", vPath + ".monsterId", "unknown monster '" + v.monsterId + "'");
+          } else if (!storyBoss.empty() && v.monsterId == storyBoss) {
+            ck.Error("maps.json", vPath + ".monsterId", "the story boss keeps a spawn entry of its own");
+          }
+          if (!flagSet(v.whenFlag)) {
+            ck.Warn("maps.json", vPath + ".whenFlag", "no quest sets flag '" + v.whenFlag + "' (setsFlags)");
+          }
+        }
+      }
+    }
+    // Champion packs: known monsters of the zone, never the story boss.
+    for (const ZoneEventDataDef& z : world_.randomEvents.zones) {
+      if (!z.ambushChampion.present) continue;
+      const std::string path = "zones." + z.zoneId + ".ambushChampion.mix";
+      for (const MapSpawnMixDef& e : z.ambushChampion.mix) {
+        if (!monsters_.FindForZone(z.zoneId, e.monsterId)) {
+          ck.Error("random_events.json", path, "unknown monster '" + e.monsterId + "'");
+        } else if (!storyBoss.empty() && e.monsterId == storyBoss) {
+          ck.Error("random_events.json", path, "the story boss is never an ambush member");
+        }
+      }
     }
   }
   for (const BossIntroDef& b : story_.bossIntros) {

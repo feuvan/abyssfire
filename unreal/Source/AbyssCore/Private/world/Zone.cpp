@@ -25,6 +25,7 @@
 #include "abyss/world/Locomotion.h"
 #include "abyss/world/MapGen.h"
 #include "abyss/world/RandomEvents.h"
+#include "abyss/world/WorldState.h"
 
 namespace abyss {
 
@@ -93,6 +94,7 @@ bool ZoneRuntime::EnterZone(std::string_view mapId, bool hasTarget, Vec2 target)
     p.field = true;
     npcs_.push_back(std::move(p));
   }
+  RefreshNpcVisibility(/*emit=*/false);  // K6: the zone entry announces the visible ones (SimZone)
 
   exits_.clear();
   const WorldConstants& wc = ctx_.data.World().constants;
@@ -158,9 +160,30 @@ bool ZoneRuntime::TakePendingTransition(std::string& mapId, Vec2& target) {
 // ---------------------------------------------------------------------------------------------------------------------
 void ZoneRuntime::Tick() {
   if (map_ == nullptr) return;
+  RefreshNpcVisibility(/*emit=*/true);
   TickExits();
   TickPending();
   TickPrompt();
+}
+
+int32_t ZoneRuntime::RefreshNpcVisibility(bool emit) {
+  int32_t changed = 0;
+  const WorldStateView w{ctx_.session.worldFlags, ctx_.sys.quests};
+  for (NpcPlacement& n : npcs_) {
+    const NpcDef* def = ctx_.data.FindNpc(n.npcId);
+    if (def == nullptr || !def->hasVisibleWhen) continue;
+    const bool now = NpcVisibleNow(*def, w);
+    if (now == n.visible) continue;
+    n.visible = now;
+    ++changed;
+    if (!emit) continue;
+    if (now) {
+      ctx_.events.Emit(EvEntitySpawned{n.id, EntityKind::Npc, n.npcId, n.npcId, n.pos, n.facing, 1.0});
+    } else {
+      ctx_.events.Emit(EvEntityDespawned{n.id, EntityKind::Npc, DespawnReason::Removed});
+    }
+  }
+  return changed;
 }
 
 void ZoneRuntime::TickExits() {
@@ -313,7 +336,9 @@ InteractTarget ZoneRuntime::FindInteractTarget() const {
       consider(InteractKind::Loot, g.id, g.pos, wc.lootRadiusSq, g.item.uid);
     }
   }
-  for (const NpcPlacement& n : npcs_) consider(InteractKind::Npc, n.id, n.pos, wc.npcRange * wc.npcRange, n.npcId);
+  for (const NpcPlacement& n : npcs_) {
+    if (n.visible) consider(InteractKind::Npc, n.id, n.pos, wc.npcRange * wc.npcRange, n.npcId);
+  }
   // 7.4 order 4 (K1): sealed sub-dungeon entrances (no entity: the key is the entrance id).
   for (const SubDungeonEntranceDef& e : map_->subDungeonEntrances) {
     if (!e.sealed) continue;
@@ -433,6 +458,7 @@ void ZoneRuntime::OnPointerPress(Vec2 tile, PointerButton button, int32_t pointe
     const NpcPlacement* nearest = nullptr;
     double nearestSq = 0;
     for (const NpcPlacement& n : npcs_) {
+      if (!n.visible) continue;  // K6
       const double d = DistSq(n.pos, tile);
       if (d < pickSq && (nearest == nullptr || d < nearestSq)) {
         nearest = &n;
@@ -566,16 +592,26 @@ const std::string& ZoneRuntime::MapId() const {
 
 const NpcPlacement* ZoneRuntime::FindNpc(std::string_view npcId) const {
   for (const NpcPlacement& n : npcs_) {
-    if (n.npcId == npcId) return &n;
+    if (n.visible && n.npcId == npcId) return &n;
   }
   return nullptr;
 }
 
 const NpcPlacement* ZoneRuntime::FindNpcEntity(EntityId id) const {
   for (const NpcPlacement& n : npcs_) {
-    if (n.id == id) return &n;
+    if (n.visible && n.id == id) return &n;
   }
   return nullptr;
+}
+
+bool ZoneRuntime::IsNpcHidden(std::string_view npcId) const {
+  bool placed = false;
+  for (const NpcPlacement& n : npcs_) {
+    if (n.npcId != npcId) continue;
+    if (n.visible) return false;
+    placed = true;
+  }
+  return placed;
 }
 
 double ZoneRuntime::SafeZoneRadius() const {
@@ -653,10 +689,14 @@ void ZoneRuntime::FillSnapshot(Snapshot& out) const {
   out.zone.camps.clear();
   for (const MapCampDef& c : map_->camps) out.zone.camps.emplace_back(c.pos.col, c.pos.row);
   out.zone.grid = &grid_;
-  out.npcs.resize(npcs_.size());  // views reused in place (ClearDynamic keeps them): no per-frame string allocations
-  for (size_t i = 0; i < npcs_.size(); ++i) {
-    const NpcPlacement& n = npcs_[i];
-    NpcView& v = out.npcs[i];
+  // Views reused in place (ClearDynamic keeps them): no per-frame string allocations. K6: hidden NPCs have none.
+  size_t shown = 0;
+  for (const NpcPlacement& n : npcs_) shown += n.visible ? 1 : 0;
+  out.npcs.resize(shown);
+  size_t i = 0;
+  for (const NpcPlacement& n : npcs_) {
+    if (!n.visible) continue;
+    NpcView& v = out.npcs[i++];
     v.id = n.id;
     v.npcId = n.npcId;
     const NpcDef* def = ctx_.data.FindNpc(n.npcId);

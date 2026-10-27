@@ -1,5 +1,9 @@
 #include "abyss/base/Platform.h"
 
+#include <initializer_list>
+#include <string>
+#include <string_view>
+
 #include "JsonReader.h"
 
 namespace abyss::dataload {
@@ -71,6 +75,97 @@ void ReadDefendHooks(const JNode& d, DefendTargetDef& out) {
     out.hasApproach = true;
     out.approachDeg = d.Num("approachDeg");
   }
+}
+
+// Every key of a K6 block is known (a misspelt field would otherwise be dropped silently).
+void ReadK6CheckKeys(const JNode& n, std::initializer_list<std::string_view> known, std::string_view what) {
+  for (const auto& [key, child] : n.SelfMembers(true)) {
+    bool ok = false;
+    for (std::string_view k : known) ok = ok || k == key;
+    if (!ok) child.Error("unknown " + std::string(what) + " field '" + key + "'");
+  }
+}
+
+// K6 permanent reward (remake schema quest.permanentRewards): each amount 0..its bound, at least one above 0.
+QuestPermanentRewardDef ReadPermanentReward(const JNode& n) {
+  ReadK6CheckKeys(n, {"maxLife", "statPoints", "skillPoints", "respecTokens"}, "permanent reward");
+  QuestPermanentRewardDef p;
+  p.present = true;
+  p.maxLife = n.Int("maxLife", 0);
+  p.statPoints = n.Int("statPoints", 0);
+  p.skillPoints = n.Int("skillPoints", 0);
+  p.respecTokens = n.Int("respecTokens", 0);
+  const auto bound = [&](const char* key, int32_t v, int32_t hi) {
+    if (v < 0 || v > hi) n.Child(key).Error("expected 0.." + std::to_string(hi));
+  };
+  bound("maxLife", p.maxLife, kPermanentMaxLifeMax);
+  bound("statPoints", p.statPoints, kPermanentPointsMax);
+  bound("skillPoints", p.skillPoints, kPermanentPointsMax);
+  bound("respecTokens", p.respecTokens, kPermanentPointsMax);
+  if (p.maxLife <= 0 && p.statPoints <= 0 && p.skillPoints <= 0 && p.respecTokens <= 0) {
+    n.Error("a permanent reward grants nothing (omit it)");
+  }
+  return p;
+}
+
+// One K6 condition leaf: exactly one of flag / notFlag / quest (+ state). `inAny`: an element of `any` (no other keys).
+bool ReadWorldLeaf(const JNode& n, std::string_view kind, WorldConditionLeaf& out) {
+  if (kind == "flag" || kind == "notFlag") {
+    out.kind = kind == "flag" ? WorldLeafKind::Flag : WorldLeafKind::NotFlag;
+    out.id = n.Str(kind);
+    if (out.id.empty()) n.Child(kind).Error("empty flag id");
+    return true;
+  }
+  if (kind == "quest") {
+    out.kind = WorldLeafKind::Quest;
+    out.id = n.Str("quest");
+    if (out.id.empty()) n.Child("quest").Error("empty quest id");
+    if (!n.Has("state")) {
+      n.Error("a quest condition needs its state (" + std::string(EnumName(QuestGate::TurnedIn)) + ", ...)");
+    } else {
+      out.state = n.Enum<QuestGate>("state");
+    }
+    return true;
+  }
+  return false;
+}
+
+// K6 condition (npcs.json lines[].when, visibleWhen; WorldStateData.h): {flag?, notFlag?, quest + state?, any?}, at least
+// one key; `any` holds leaves of one kind each (no nesting).
+WorldCondition ReadWorldCondition(const JNode& n) {
+  WorldCondition c;
+  if (!n.Exists() || !n.V().IsObject()) {
+    n.Error("expected a condition object");
+    return c;
+  }
+  ReadK6CheckKeys(n, {"flag", "notFlag", "quest", "state", "any"}, "condition");
+  for (const char* kind : {"flag", "notFlag", "quest"}) {
+    if (!n.Has(kind)) continue;
+    WorldConditionLeaf leaf;
+    ReadWorldLeaf(n, kind, leaf);
+    c.all.push_back(std::move(leaf));
+  }
+  if (n.Has("state") && !n.Has("quest")) n.Child("state").Error("state without a quest");
+  if (n.Has("any")) {
+    for (const JNode& e : n.Items("any")) {
+      ReadK6CheckKeys(e, {"flag", "notFlag", "quest", "state"}, "condition leaf");
+      int32_t kinds = 0;
+      for (const char* kind : {"flag", "notFlag", "quest"}) kinds += e.Has(kind) ? 1 : 0;
+      if (kinds != 1) {
+        e.Error("an `any` leaf names exactly one of flag / notFlag / quest");
+        continue;
+      }
+      if (e.Has("state") && !e.Has("quest")) e.Child("state").Error("state without a quest");
+      WorldConditionLeaf leaf;
+      for (const char* kind : {"flag", "notFlag", "quest"}) {
+        if (e.Has(kind)) ReadWorldLeaf(e, kind, leaf);
+      }
+      c.any.push_back(std::move(leaf));
+    }
+    if (c.any.empty()) n.Child("any").Error("an empty `any` (omit it)");
+  }
+  if (c.Empty()) n.Error("an empty condition (omit it)");
+  return c;
 }
 
 StorySlide ReadSlide(const JNode& n) {
@@ -166,6 +261,7 @@ void LoadQuestsFile(const JNode& r, QuestTables& out) {
       q.rewards.hasChoiceQuality = true;
       q.rewards.choiceQuality = rw.Enum<ItemQuality>("choiceQuality");
     }
+    if (rw.Has("permanent")) q.rewards.permanent = ReadPermanentReward(rw.Child("permanent"));  // K6
     q.prereqQuests = n.StrList("prereqQuests", true);
     q.level = n.Int("level");
     if (n.Has("questArea")) {
@@ -206,6 +302,16 @@ void LoadQuestsFile(const JNode& r, QuestTables& out) {
     if (n.Has("progressKey")) {  // K1
       q.progressKey = n.Str("progressKey");
       if (q.progressKey.empty()) n.Child("progressKey").Error("empty progress key");
+    }
+    if (n.Has("setsFlags")) {  // K6 world flags: non-empty ids, each once
+      q.setsFlags = n.StrList("setsFlags");
+      if (q.setsFlags.empty()) n.Child("setsFlags").Error("an empty setsFlags list (omit it)");
+      for (size_t i = 0; i < q.setsFlags.size(); ++i) {
+        if (q.setsFlags[i].empty()) n.Child("setsFlags").Error("empty flag id");
+        for (size_t k = 0; k < i; ++k) {
+          if (q.setsFlags[k] == q.setsFlags[i]) n.Child("setsFlags").Error("duplicate flag '" + q.setsFlags[i] + "'");
+        }
+      }
     }
     const JNode d = n.Child("derived");
     q.giverNpcId = d.Str("giverNpcId", "");
@@ -298,6 +404,26 @@ void LoadNpcsFile(const JNode& r, NpcTables& out) {
     d.spriteId = n.Str("spriteId", "");
     d.dialogueTreeId = n.Str("dialogueTreeId", "");
     d.nameKey = n.Str("nameKey");
+    // Dark remake K6 (remake schema npc.lines / npc.visibleWhen): gated lines and visibility (DataStore checks the quest
+    // ids, the keys and that the NPC never hides while an open quest needs it).
+    if (n.Has("lines")) {
+      for (const JNode& l : n.Items("lines")) {
+        ReadK6CheckKeys(l, {"key", "when"}, "npc line");
+        NpcLineDef line;
+        line.key = l.Str("key");
+        if (line.key.empty()) l.Child("key").Error("empty line key");
+        if (l.Has("when")) {
+          line.hasWhen = true;
+          line.when = ReadWorldCondition(l.Child("when"));
+        }
+        d.lines.push_back(std::move(line));
+      }
+      if (d.lines.empty()) n.Child("lines").Error("an empty lines list (omit it)");
+    }
+    if (n.Has("visibleWhen")) {
+      d.hasVisibleWhen = true;
+      d.visibleWhen = ReadWorldCondition(n.Child("visibleWhen"));
+    }
     out.npcs.push_back(std::move(d));
   }
 }

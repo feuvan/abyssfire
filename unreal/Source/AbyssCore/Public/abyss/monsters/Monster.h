@@ -170,6 +170,13 @@ struct ABYSS_API MonsterInstance {
   // fearImmune in morale.
   uint32_t packId = 0;
   bool packLeader = false;
+  // K6 (MonsterSystem.h "K6"): the map spawn entry it stands for (index into the zone's MapDef::spawns; -1 = not a map
+  // spawn) and its slot among the entry's members; a respawn reads the entry's spawn variant again.
+  int32_t spawnEntry = -1;
+  int32_t spawnMember = -1;
+  // K6: one more equipment item of this quality its kill drops after its regular loot (a champion pack's leader with
+  // AmbushChampionDef::leaderLoot; Normal = none; MonsterKilledMsg::guaranteedLoot). Not carried over by a respawn.
+  ItemQuality guaranteedLoot = ItemQuality::Normal;
   double fleeUntilMs = 0;
   Vec2 fleeFrom;
   Vec2 fleeDir;  // its last flee step's direction (zero when a flee starts): the next never doubles back on it

@@ -31,6 +31,7 @@ bool SimImpl::EnterZone(std::string_view mapId, bool hasTarget, Vec2 target) {
   events.Emit(EvEntitySpawned{kHeroEntityId, EntityKind::Hero, std::string(EnumName(hero->Class())),
                               std::string(EnumName(hero->Class())), hero->Position(), hero->Facing(), 1.0});
   for (const NpcPlacement& n : zone->Npcs()) {
+    if (!n.visible) continue;  // K6: an NPC its visibleWhen hides appears when it holds (ZoneRuntime::Tick)
     events.Emit(EvEntitySpawned{n.id, EntityKind::Npc, n.npcId, n.npcId, n.pos, n.facing, 1.0});
   }
   monsters->SpawnZonePopulation();
@@ -108,6 +109,9 @@ void SimImpl::RebuildEquipStats() {
     e.Add(petStat, petValue);
   }
   homestead->BlessingStats().AddTo(e);
+  // Dark remake K6: the quests' permanent max life (a flat MaxHp; added only when granted, so the merge is unchanged
+  // without it).
+  if (session.permanentRewards.maxLife > 0) e.Add(Stat::MaxHp, static_cast<double>(session.permanentRewards.maxLife));
   ctx.equip = e;
 }
 

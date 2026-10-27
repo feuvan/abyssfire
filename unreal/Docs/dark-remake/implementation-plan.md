@@ -153,7 +153,8 @@ The exporter emits a field only once the core package that parses it has landed 
 Bump the content version (save v4 → v4 with `contentVersion: 2`). On load, ids that no longer exist in data are dropped
 from quests, `storySeen`, `miniBossDialogueSeen` and `dialogueOnce` (QuestSystem::Load already keeps unknown quest ids;
 the new rule removes them for the content version), so dev saves lose Chapter 1 progress and keep the hero, items and
-gold. No player saves exist yet (U5, I8).
+gold. No player saves exist yet (U5, I8). K6 (2E) adds `worldFlags` and `permanentRewards` without a version bump:
+written after `contentVersion` only when not empty, absent = none, kept by the content-version upgrade (*2E outcomes*).
 
 ## 3. Core features
 
@@ -257,7 +258,8 @@ names so CMake needs no change; both compilers, ASan, the shared-library build).
   draws once more on the Events stream (no draw without it: golden-neutral) and on a hit spawns the champion pack in
   place of the ambush (one K5 pack id, the leader `packLeader`, the zone's affixes rolled once and given to every member
   when `sharedAffix`). 2F authors the Muster row (a standard-bearer and three footmen, 10 %). Cut order: champion packs
-  go third (the risk table's *Scope* row).
+  go third (the risk table's *Scope* row). (The 2E review added `leaderLoot`, the Muster's guaranteed magic drop of
+  monsters.md 2.8, which no package owned: *2E outcomes*.)
 - **Tests** (`world_state_test.cpp`): ashnumb arithmetic and cleanse; permanent rewards once per difficulty and the save
   round-trip; flags save round-trip and an old save loads with none; spawn variant selection; NPC line selection; a
   champion ambush (the draw only with the block, the pack and its leader, the shared affix).
@@ -1468,6 +1470,231 @@ manifest moves hit timing, so the seeds differ by manifest):
   halo from `auraRadius` / `auraStat` (crimson for the banner), the buffed glow from `buffMask`, the drum / call pulse
   on EvMonsterBuffCast (breach-violet, DR5), and a champion marker on `packLeader`. EvBlock's `amount` and `blocked` are
   in the same units (amount + blocked = the unblocked hit).
+
+**2E outcomes (K6 as built, 2026-10; pending review, 2E review fixes folded in; DECISIONS DR8 *K6 as built*).**
+- **Schema** (all parsed with unknown keys refused at every level; mirrored by the exporter first). Status rows
+  (`SkillData.h` `StatusStacking::StackCount`, `StatusStackRule`; `LoadClasses.cpp`): `status_effects.json` takes
+  `stacking: stackCount` and a `stacks.<type> {maxStacks 1..100, healingReceivedPerStack [0, 1], slowAtMaxStacksPct [0,
+  100]}` row; a `stackCount` type ticks no damage (`tickIntervalMs` 0, else refused). Quests (`QuestData.h`,
+  `LoadQuests.cpp`): `setsFlags` (non-empty ids, each once; an empty list refused) and `rewards.permanent {maxLife
+  0..1000, statPoints / skillPoints / respecTokens 0..100}` (at least one above 0: "grants nothing (omit it)"). NPCs
+  (`NpcData.h`, `data/WorldStateData.h`): `lines [{key, when?}]` (non-empty keys, a non-empty list) and `visibleWhen`; a
+  condition is an object of `flag`, `notFlag`, `quest` + `state` (`notStarted`, `active`, `completed`, `open`,
+  `turnedIn`, `notTurnedIn`; a state needs its quest and a quest its state) and `any` (leaves naming exactly one of
+  flag / notFlag / quest; no nesting), every key holding together; an empty condition or `any` is refused. Map spawns
+  (`MapData.h` `MapSpawnVariantDef`, `LoadWorld.cpp`): `variants [{whenFlag, monsterId, count 0..100}]`, one per flag,
+  map spawns only (a sub-dungeon spawn refuses them until K7, like K5's mix). Random events (`MapData.h`
+  `ZoneEventDataDef::AmbushChampionDef`): `zones.<zone>.ambushChampion {chance (0, 1], mix [{monsterId, count >= 1}] (20
+  members at most), leader? (a member's id), sharedAffix? (false), leaderLoot? (magic | rare; needs leader)}`.
+  `DataStore::Finalize`: a `stackCount` status with
+  its row needs `sys.statusEffect.name.<type>`; a monster `onHitStatus`, ability / hazard / on-death status (definitions
+  and hunts), an elite affix's on-death status, a keyword rule or `eliteFrozenOnHit` naming a status that never lands (a
+  `stackCount` type without its row) is an error; NPC line keys exist in zh-CN and en; a condition's quest exists; a flag
+  that a condition or a variant reads and no quest sets is a warning (K7's cleanse may set one); a variant names a
+  monster of its zone, never the story boss, and the story boss's entry has none; a champion member is a monster of its
+  zone and not the story boss; the visibility validator (below). Exporter: `REMAKE_SCHEMA` gains `quest.setsFlags`,
+  `quest.permanentRewards`, `map.spawnVariants`, `npc.lines`, `npc.visibleWhen`, `status.ashnumb` and
+  `events.ambushChampion`; the last two are override-table features (`remake.ts` `REMAKE_TABLE_FEATURES` +
+  `requireTableFeature`: `GameData/world.ts` `REMAKE_OVERRIDES.statusEffects` (a new `add`-only override path, the
+  `RemakeStatusEffectRow`) and the `randomEvents` override's `ambushChampion`), and the `ashnumb` value on a monster's
+  `onHitStatus[].status`, `abilities[].status.type`, `abilities[].hazard.status.type` and `onDeath.status.type` is a
+  `REMAKE_VALUES` row of `status.ashnumb`. `tables/combat.ts` builds the added rows (`stacks` written only when a row is
+  added) and records the name key (`noteRequiredKey`, required by the i18n parity check); `tables/quests.ts`
+  `checkK6Quest`, `tables/maps.ts` (variants) and `tables/world.ts` (`checkK6Npcs`, `npcVisibilityIssues`,
+  `checkAmbushChampion`) refuse what the loader and Finalize refuse. The export stays byte-identical (no GameData record
+  uses a K6 field; 2F authors them).
+- **Ashnumb** (`StatusType::Ashnumb`, appended, "ashnumb"; its default stacking is `StackCount` even without a row, so it
+  never lands without one: `StatusEffectRules::Lands`). One instance per target whose value counts stacks: an
+  application adds `max(1, floor(value))` stacks up to `maxStacks` and restarts the shared timer with its duration (the
+  first is Applied, later ones Refreshed; `EvStatusApplied::value` is the stacks after the application). Healing
+  received is multiplied by `max(0, 1 - stacks x healingReceivedPerStack)` (`StatusEffectSystem::HealingReceivedMul`)
+  in `Hero::Heal` (every hero heal: potions used or picked up, life steal, kill heal, thorns heal, pet heals) and on the hero's HP
+  regeneration step (`CombatSystem::TickPassives`, next to the poison multiplier); at `maxStacks` the bearer is slowed by
+  `slowAtMaxStacksPct` (`SpeedMultiplier`: the stronger of it and a Slow). The antidote removes every stack
+  (`EvStatusExpired`, after poison's). An untouched path without stacks: a heal multiplies only when the multiplier is
+  below 1, so the web's heals stay bit-exact. Monster hits put it on through the existing status paths (`onHitStatus`,
+  abilities, hazards, on-death), one roll per landed hit as any status.
+- **Permanent rewards** (`QuestWorld::TurnIn`, after the items and the cache, before the pet). `ClaimPermanentReward`
+  records `(questId, difficulty)` in `SessionState::permanentRewards` and adds the reward to its running totals unless
+  that pair was claimed (the totals saturate at int32 max, a negative one counting as 0; 2E review); then the stat / skill
+  points go to the hero's free points (`Hero::GrantFreePoints`, saturating too), `maxLife`
+  is a flat `MaxHp` in `SimImpl::RebuildEquipStats` (added only when above 0: the merge is unchanged without it;
+  `EquipStatsDirtyMsg` on a grant), `respecTokens` are stored for the respec UI, and `EvPermanentReward` carries the
+  grant. No log line (its strings would move the export; UE can show one from the event). A turned-in quest is never
+  turned in again today (a reacceptable quest restarts only after it failed; a difficulty switch keeps the quest log),
+  so the per-difficulty key matters once quest progress resets per difficulty; the ledger is ready for it.
+- **World flags** (`SessionState::worldFlags`, a sorted vector; `HasFlag` / `SetFlag`). `SimImpl::SetQuestFlags` is the
+  first `QuestTurnedInMsg` listener: it sets the quest's `setsFlags` in data order and emits `EvWorldFlag {flag,
+  questId}` per newly set flag, before the audio cue, the cutscene enqueue, the embers and the rewards. Flags are never
+  cleared. The snapshot points at them (`Snapshot::worldFlags`).
+- **Spawn variants** (`world/WorldState.h` `ActiveSpawnVariant`, `ExpandSpawnMembersNow`). The first variant (list order)
+  whose flag is set replaces the entry's members with `count` x its monster, one pack without a leader. The zone's spawn
+  reads it (each instance records its entry and member slot: `MonsterInstance::spawnEntry` / `spawnMember`), and so
+  does every respawn (before any draw): with a variant active the slot comes back as the variant's monster
+  (difficulty-scaled, no leadership), a slot past the variant's count (or with an unknown monster) stays down like a
+  no-respawn monster until the next zone entry, which spawns the variant's full count; without one the respawn is
+  unchanged. QuestWorld's guide spawn points read the active variant (none for count 0).
+- **NPC lines and visibility** (`WorldState.h` `NpcLinesNow`, `NpcPanelLineNow`, `NpcVisibleNow`). An NPC's `lines`
+  whose `when` holds (none: always) replace its web `dialogue` as what it says: `QuestWorld::InteractNpc` logs the first
+  holding line, the linear panel shows the second (else the first; `DialogueView::lineKey`, set at open); none holding
+  keeps the web's lines. `visibleWhen`: `ZoneRuntime` keeps every placement (ids unchanged) with a `visible` flag,
+  computed silently at the zone's entry (SimZone announces only the visible ones) and at the start of each
+  `ZoneRuntime::Tick` (`EvEntitySpawned` / `EvEntityDespawned{Removed}` on a change); a hidden NPC is not in the
+  snapshot, not an interact or pointer target, not found by `FindNpc` / `FindNpcEntity`, and `InteractNpc` ignores it.
+  **The validator** (`CheckNpcVisibility`, mirrored by the exporter's `npcVisibilityIssues`) checks every NPC with a
+  `visibleWhen` against each quest that needs it (it lists the quest: giver and receiver; a talk objective names it; the
+  quest's craft phases name it) with a three-valued static model of the quest graph: while quest Q is offered / active /
+  completed, Q's prerequisites (transitively) are turned in, the quests needing Q (transitively) have no record, and a
+  flag is set when one of Q's prerequisites sets it, unset when no quest sets it or only Q and the quests after it do,
+  else unknown; an unknown leaf counts as "could hide". A giver that could hide while Q is active or completed, or a
+  talk / craft NPC while Q is active, is an error. The offer phases (Q has no record; a `reacceptable` Q also once it
+  failed: a Failed record, re-offered by QuestSystem) are checked when the open ones are fine: a giver hidden *for sure*
+  there is an error (Q could never be accepted) unless another route offers Q then (`WsOtherOfferRoute`: another NPC
+  that lists Q or owns a dialogue tree with a choice whose `questTrigger` is Q, with no `visibleWhen` or one that holds
+  for sure in that phase; `CheckNpcVisibility`'s `trees`, DataStore passes its dialogue trees); a giver that only
+  *could* hide there, or is hidden while another route offers Q, is a warning (the quest is not offered there
+  meanwhile). (2E review R1 / R2: an offer-phase False was a warning, and the model had no Failed phase, so a giver
+  shown only `{quest: Q, state: open}`, or only `notStarted` / `open` for a reacceptable Q, loaded and could never give
+  Q.) Flags set outside `setsFlags` (K7) are outside the model until their package extends it.
+- **Event champion packs** (`RandomEventSystem::TriggerEvent`, `MonsterSystem::SpawnChampionPack`). Only in a zone with
+  an `ambushChampion` block, an ambush draws once more on the Events stream right after its count; below `chance` it is
+  a champion ambush (`ActiveRandomEvent::champion`, `EvRandomEvent::champion`): the mix's members in list order, each
+  placed as `SpawnAmbush` places one (angle and distance on the Events stream; no id draw; an unknown id skipped before
+  its draws), chasing, `MonsterRole::AmbushSpawn` (no respawn), one K5 pack (`NewPackId`) led by the first member of the
+  leader's id. With `sharedAffix` the zone's affixes are rolled once first (RngStream::Ai; the leader's family pool, else
+  the first member's) and given to every member, which keeps those its family may roll (`MonsterSpawnParams::
+  givenAffixes`, `EliteAffixTable::RollableFor`) and is elite when it keeps one; without it nothing is rolled (no Ai
+  draw) and the members stay plain. `leaderLoot` (2E review R5: monsters.md 2.8's "a champion Muster drops one
+  guaranteed magic item" had no owner) marks the leader (`MonsterSpawnParams` / `MonsterInstance::guaranteedLoot`, not
+  carried by a respawn; ambush members never respawn); its kill (`MonsterKilledMsg::guaranteedLoot`) makes
+  `GroundLootSystem::OnMonsterKilled` drop one more `GenerateEquipment` item of exactly that quality at the monster's
+  level after its regular loot (the Loot stream; no draw without it). A Raised leader would get nothing (the Raised
+  loot skip), but a champion leader is never Raised.
+- **Saves** (`SaveData::worldFlags`, `permanentRewards {claimed [{questId, difficulty}], maxLife, statPoints,
+  skillPoints, respecTokens}`; `SaveIO`, `SimSave`). Written after `contentVersion` and only when not empty, so a save
+  without world state serialises byte-identically to before (no version bump); a save without them (every save before
+  K6) loads with none. Parsing sorts the flags and drops empty / duplicate / non-string ids, drops claims without a quest
+  id or a known difficulty and repeated pairs, and floors the totals, clamped to [0, int32 max]; the totals are trusted
+  (what the hero earned stays even if the data later changes). `ApplyContentVersion` keeps both (they are not data ids).
+  `ApplySave` restores them before the zone entry, so visibility and variants hold from the first step, and normalises
+  them as parsing does (`NormalizeWorldFlags`, `PermanentRewardsState::Normalize`; 2E review R4: `LoadGame(const
+  SaveData&)` with unsorted flags made every binary search miss).
+- **Events and snapshot.** New events (appended to `Event`): `EvWorldFlag {flag, questId}`, `EvPermanentReward
+  {questId, difficulty, maxLife, statPoints, skillPoints, respecTokens}`; `EvRandomEvent::champion`; `EvStatusApplied::
+  value` = stacks for a stackCount status. Snapshot: `worldFlags`, `permanentRewards` (set before the hero-less early
+  return), `HeroView::ashnumbStacks`, `HeroView::healingReceivedMul`; `DialogueView::lineKey`.
+- **Byte identity.** Without K6 data nothing changes: the K6 save fields are omitted, Ashnumb never lands without its
+  row, a variant or champion block draws nothing when absent, `SetQuestFlags` emits nothing without `setsFlags`, a heal
+  is multiplied only below 1, a leader without `leaderLoot` draws nothing more. The 20-seed playthrough dumps (base 1000
+  and 3000) are byte-identical to a build of 644f7b7e on GCC and Clang, re-checked after the 2E review fixes; `node
+  unreal/Tools/export-data/run.mjs --check` reports the committed data up to date.
+- **Tests.** `world_state_test.cpp` (suite `world`; 24 cases, 3768 assertions, GCC = Clang) on synthetic `fx_k6_*` data
+  (no Chapter 1 content): the schema (every block loads; the loader's refusals of broken status rows, quests,
+  conditions, lines, variants and champion blocks; Finalize's statuses that never land, missing keys, unknown condition
+  quests, the validator's errors and warnings, variants (unknown, the story boss, on the story boss's entry) and
+  champion members); the pure rules (quest gates, flag leaves, all /
+  any; lines now and the panel's line; the validator over prerequisites, dependents, flag setters, offer-only and talk /
+  craft needs; variant selection and members; one claim per (quest, difficulty); the sorted flag set); Ashnumb (the
+  stack arithmetic, the cap, the shared timer, healing and the slow at the cap, heals / potions / regeneration on the
+  hero, the antidote, the snapshot, a monster's hits stacking to five); permanent rewards at the turn-in (max life, free
+  points, tokens, once per pair, the save round trip); flags at the turn-in (first listener, data order, the snapshot,
+  the save round trip, an old save loading with none); the save format (written last and only when present,
+  normalisation, the content-version upgrade); variants at the zone's spawn and at respawns, count 0, the guide, a led
+  entry's leader slot coming back leaderless; NPC lines (logged, panel, fallback) and visibility (hidden at the entry
+  and never announced or despawned there, appearing and leaving, ids kept, not interactable); champion ambushes (no
+  block draws exactly as before, a block draws once more; the pack in mix order, one pack id, the leader (the first of
+  several of its id), chasing, no respawn, the shared affix and the plain members without it); a seeded replay
+  digest (`c7818c21b25eac9b`, GCC = Clang). Other suites: base's "Enums round-trip their data spellings" gains 2
+  assertions (its StatusType loop meets `ashnumb`) and the world suite's K1 grep gate 3 (one per new core source file);
+  no existing assertion changed. Totals 861 cases (GCC 233930 assertions, Clang 233866; 837 / 230157 / 230093 before).
+  Mutation check (scratch copy, GCC): 88 single-point mutations of the K6 core (conditions, lines, visibility and the
+  validator, variants at spawn / respawn / guide, claims, flags, saves and parsing, Ashnumb stacking / timer / healing /
+  slow / antidote / snapshot, permanent rewards, champion draws / pack / leader / affixes, Finalize and loader checks):
+  a first pass left 8 alive (a first application above the cap, the silent zone-entry refresh, a variant slot keeping
+  its leader, the guide at a count-0 variant, a leader id with several members, the story boss's entry / champion
+  member checks, and one equivalent: the champion's `monsterCount` reset, which nothing reads once the ambush is pruned
+  in the same call); each but the equivalent got the cases above and now fails one (87 / 88; 7 first-pass mutations
+  that did not compile were rewritten and fail too). A GCC 13 `-Warray-bounds` false positive in the ASan build (a
+  one-element `= {...}` assignment) made the test use `assign`.
+  A scratch end-to-end run (exporter + core) exported a full synthetic K6 set and loaded it with no error, and failed or
+  warned on each broken variant as the loader / Finalize do.
+  *2E review:* 28 cases, 4438 assertions (GCC = Clang; digest unchanged): the validator's offer phases (an offer-phase
+  False is an error; another NPC's list or dialogue tree is a route only when visible for sure, the giver's own tree is
+  none; Unknown warns; a reacceptable quest's re-offer), saturating claims and free points (a parsed `1e12` total, one
+  grant more), `Normalize` / `NormalizeWorldFlags` and `ApplySave` of a `SaveData` built in code, `leaderLoot` (loader
+  refusals; two sims on one seed whose data differ only in it: the leader's kill drops exactly one magic item more, last,
+  a member's the same), the chaplain's two-line order, a healing share past 100 % (no heal or regeneration takes life),
+  Nightmare variant spawns / respawns and champion members scaled like any spawn, a pointer press passing over a hidden
+  NPC to a visible one, an NPC appearing as that step's prompt, the hunt / keyword-rule / `eliteFrozenOnHit` never-lands
+  refusals and a story boss in a mix entry refusing variants. Totals 865 cases (GCC 234600 assertions, Clang 234536).
+  Mutation re-check (the working tree, GCC, world suite): the review's 10 survivors and 20 mutations of the fixes; 29 / 30
+  fail a case (the pointer case first pressed next to a hidden NPC that shared a camp slot's tile with a visible one, so
+  M1 survived until the NPC moved to a slot of its own; R1's mutation was rewritten to compile); 1 is equivalent
+  (`WsOtherOfferRoute` skipping the NPC itself: its own condition never holds there for sure, so it is never its own
+  route). A scratch exporter + core run (38 cases, the K6 set above plus R1 / R2 / R5's) agrees with the core on every new
+  refusal and warning.
+- **Deviations.** (1) Ashnumb needs a new stacking rule and a status row: `stackCount` + `stacks` (the plan said "a row
+  via the override"; the web has no per-type stack cap or heal factor to reuse). (2) It scales every `Hero::Heal` (also
+  kill heal, thorns, pet heals), not only the plan's three sources: one rule at the single heal entry point. (3) The
+  plan's `rewards.permanent` maxLife joins the equip-stat merge as a flat MaxHp (derived stats follow), points are given
+  once as free points (the hero's save holds them), tokens are stored only. (4) "Once per (quest, difficulty)" is
+  recorded, but no flow turns a quest in twice today (above). (5) Conditions are flat objects (no nesting beyond one
+  `any`); a quest leaf requires its `state`. (6) Lines fall back to the web `dialogue` when none holds; the panel line
+  comes from `DialogueView::lineKey`. (7) A hidden NPC keeps its placement and entity id. (8) The validator is static:
+  "unknown" is an error in an open phase; in an offer phase a giver hidden for sure with no other route to the quest is
+  an error, one that only could hide (or is hidden while another NPC offers the quest) a warning. (9) Variants: the first set flag
+  wins; `count` 0 empties the entry; a respawned slot past the count stays down until the next zone entry; no leader;
+  refused on the story boss's entry and on sub-dungeon spawns (until K7). (10) Champion packs: the shared roll uses the
+  leader's family pool; members keep only family-rollable affixes; role `AmbushSpawn`; the guaranteed drop is a block
+  field (`leaderLoot`, one extra item of exactly that quality, the leader only), not a loot-table floor; enabled through
+  `REMAKE_TABLE_FEATURES` (an override table has no record gate). (11) No log line for a permanent
+  reward or a flag (strings would change the export; the events carry them).
+- **2E review fixes** (2026-10, pending review). (R1) An offer-phase False (the giver hidden whenever its quest is
+  offered) is an error unless another route offers the quest (*NPC lines and visibility* above); the case that pinned
+  `{quest: Q, state: open}` on Q's only giver as a warning now expects the error. (R2) The model's re-offer phase: a
+  `reacceptable` quest is checked with a Failed record too. (R3) `ClaimPermanentReward` and `Hero::GrantFreePoints`
+  saturate at int32 max (a loaded total of int32 max used to wrap negative and drop the hero's permanent max life).
+  (R4) `ApplySave` normalises the K6 save fields like `ParseSave`. (R5) `ambushChampion.leaderLoot`, the guaranteed
+  champion drop (*Event champion packs* above), with loader / exporter checks and a two-sim case. (R6) The 2F guidance on
+  quest-gated lines (below) and chapter1.md §3; a two-line case pins the chaplain's order. (R7) Cases for the review's
+  surviving mutations: a healing share past 100 % floors at 0 (no heal or regeneration takes life), a Nightmare variant
+  spawn / respawn and champion pack scaled like any spawn, a pointer press passing over a hidden NPC to a visible one, an
+  NPC appearing as that step's prompt, the hunt / keyword-rule / `eliteFrozenOnHit` never-lands refusals and a story boss
+  in a mix entry refusing variants. (R8) The UE status tables in *For 2G*.
+- **For 2F (content).** Ashnumb: add the row through `REMAKE_OVERRIDES.statusEffects` (`add: {ashnumb: {tickIntervalMs:
+  0, stacking: 'stackCount', stacks: {maxStacks: 5, healingReceivedPerStack: 0.1, slowAtMaxStacksPct: 20}}}`) with
+  `sys.statusEffect.name.ashnumb` (麻灰 / Ashnumb) in both locales, then put `ashnumb` on the breach-blood monsters'
+  `onHitStatus` (value `fixed` 1 = one stack per landed hit, `durationMs` 6000) in place of W1's poison. World flags:
+  `setsFlags: ['rf_hungerbell_silenced']` on M2, `['rf_chapter_dawn']` on M5; spawn `variants` on the trench and Dead
+  Ranks entries (`{whenFlag: 'rf_chapter_dawn', monsterId: 'gravegnawer', count}`; not on Valdras's entry). Permanent
+  rewards: S1 `{maxLife: 15}`, S6 `{statPoints: 3}`, S7 `{skillPoints: 1}` (W3, with the Pit). Quest-gated lines as
+  `lines` with `data.npc.<id>.after.<questId>` keys and `when: {quest: '<questId>', state: 'turnedIn'}` (e.g. Marl's
+  「血里有声音……」 after `q_rf_black_blood`). The log takes the first holding line and the linear panel the second (else the
+  first), so keep the slots stable: gate the W1 line the after line replaces with `{quest: '<questId>', state:
+  'notTurnedIn'}` and keep the other W1 lines condition-free. The chaplain (two W1 lines, the second always on, chapter1.md
+  §3) is `[{key: after.q_rf_last_toll, when: turnedIn}, {key: dialogue.0, when: notTurnedIn}, {key: dialogue.1}]`; a
+  one-line NPC (`blacksmith`, `quest_elder`: the logged line only) is `[{after, when: turnedIn}, {dialogue.0, when:
+  notTurnedIn}]` or the after line with the W1 line condition-free behind it. (2E review R6: the first guidance, the after
+  line in front of every W1 line, would have shown the chaplain's line 0 on the panel after the quest and dropped his
+  always-on line.) Any `visibleWhen` must pass the validator (the export fails otherwise; a giver hidden whenever its
+  quest is offered is an error too). The Muster: `randomEvents` override `zones.emerald_plains.ambushChampion {chance:
+  0.1, mix: [{monsterId: 'dead_standard_bearer', count: 1}, {monsterId: 'risen_footman', count: 3}], leader:
+  'dead_standard_bearer', sharedAffix: true, leaderLoot: 'magic'}` (an ambush draws once more: the playthrough moves
+  when it lands; the standard-bearer's kill draws one more item on the Loot stream). AutoPilot has no antidote rule: a
+  bot rule for Ashnumb (`HeroView::ashnumbStacks`) is 2F's if the sweep's fight lengths need it.
+- **For 2G (UE).** The Ashnumb tint band from `HeroView::ashnumbStacks` (or `EvStatusApplied::value` for Ashnumb) and its
+  removal on `EvStatusExpired`; re-read moods / audio emitters from `Snapshot::worldFlags` on `EvWorldFlag` (the Gnawed
+  Field's ringing stops at `rf_hungerbell_silenced`, `march_dawn` at `rf_chapter_dawn`); a permanent-reward line or
+  toast from `EvPermanentReward`; the linear NPC panel shows `DialogueView::lineKey` when it is not empty; NPC actors
+  appear and leave on `EvEntitySpawned` / `EvEntityDespawned{Removed}` mid-zone; a champion marker on an
+  `EvRandomEvent::champion` ambush (with K5's `packLeader`). Two UE tables still know only the web's six statuses and
+  skip Ashnumb (bit 6) without a crash (2E review R8): the HUD status row (`Source/Abyssfire/Private/UI/Hud/
+  SAbyssHudWidgets.cpp`, `StatusColors[6]` and its `Index < 6` loop: extend it to `EnumCount<StatusType>()` with an
+  Ashnumb colour and the stack count from `HeroView::ashnumbStacks`) and the character tint table
+  (`Source/Abyssfire/Private/Actors/AbyssCharacterActor.cpp` `StatusTints[]`: an Ashnumb entry, or hand Ashnumb to the
+  band). The VFX status loops already iterate `EnumCount<StatusType>()` (a missing recipe is remembered, not retried).
+- **For 3A (K7).** A flag set by the cleanse needs the validator's model and the "no quest sets flag" warnings extended;
+  sub-dungeon spawns take `variants` (the loader refuses them now) once sub-dungeons spawn.
 
 ### Phase 3 — Wave 3: the descent
 

@@ -566,6 +566,7 @@ class ABYSS_API CombatSystem {
   void ApplySteal(int32_t damage, bool crit, int32_t lifeStolen, int32_t manaStolen);
   void ConsumeCritBonus();
   void GainSpirit(SpiritSource source, bool crit);
+  // StatusEffectSystem::Apply + EvStatusApplied (K6: a stackCount status reports its stacks) + the applied log line.
   StatusApplyOutcome ApplyStatus(EntityId target, StatusType type, double value, double durationMs,
                                      EntityId source);
   void Shake(double durationMs, double intensity);  // ShakeChannel::Hit (VFXManager.cameraShake)

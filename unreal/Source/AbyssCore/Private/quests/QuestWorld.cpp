@@ -30,6 +30,7 @@
 #include "abyss/quests/Dialogue.h"
 #include "abyss/sim/SimContext.h"
 #include "abyss/sim/Snapshot.h"
+#include "abyss/world/WorldState.h"
 #include "abyss/world/Zone.h"
 
 namespace abyss {
@@ -173,8 +174,15 @@ void QuestWorld::OnZoneExit() {
 void QuestWorld::InteractNpc(std::string_view npcId) {
   const NpcDef* def = ctx_.data.FindNpc(npcId);
   if (def == nullptr) return;
+  // Dark remake K6: an NPC its visibleWhen hides is not there to talk to.
+  if (ctx_.sys.zone != nullptr && ctx_.sys.zone->HasZone() && ctx_.sys.zone->IsNpcHidden(npcId)) return;
   const std::string id = def->id;
-  if (!def->dialogue.empty()) {
+  // K6 `lines`: the first line that holds now is the one logged; none holding (or no `lines`) keeps the web's line 0.
+  const WorldStateView world{ctx_.session.worldFlags, ctx_.sys.quests};
+  const std::vector<std::string> lines = def->lines.empty() ? std::vector<std::string>{} : NpcLinesNow(*def, world);
+  if (!lines.empty()) {
+    ctx_.events.Log(MakeLoc(lines.front()), LogType::Info);
+  } else if (!def->dialogue.empty()) {
     // A LocText whose key is missing renders as the key itself, so the zh fallback travels as the key.
     const std::string key = "data.npc." + id + ".dialogue.0";
     ctx_.events.Log(MakeLoc(ctx_.data.Strings().Has(key) ? key : def->dialogue[0]), LogType::Info);
@@ -340,6 +348,15 @@ bool QuestWorld::TurnIn(std::string_view questId, int32_t choiceIndex) {
       rewardCache_.erase(rewardCache_.begin() + static_cast<std::ptrdiff_t>(i));
       break;
     }
+  }
+  // Dark remake K6: the permanent reward, once per (quest, difficulty) (SessionState::permanentRewards, saved). Max life
+  // joins the equip-stat merge (SimImpl::RebuildEquipStats); stat / skill points go to the hero's free points.
+  const QuestPermanentRewardDef& perm = reward->permanent;
+  if (ClaimPermanentReward(ctx_.session.permanentRewards, q->id, ctx_.session.difficulty, perm)) {
+    if (hero != nullptr) hero->GrantFreePoints(perm.statPoints, perm.skillPoints);
+    ctx_.events.Emit(EvPermanentReward{q->id, ctx_.session.difficulty, perm.maxLife, perm.statPoints, perm.skillPoints,
+                                       perm.respecTokens});
+    if (perm.maxLife > 0) ctx_.bus.Publish(EquipStatsDirtyMsg{});
   }
   if (!reward->petReward.empty() && ctx_.sys.pets != nullptr) ctx_.sys.pets->AddPet(reward->petReward);
   if (ctx_.sys.achievements != nullptr) ctx_.sys.achievements->OnQuestTurnedIn(QuestTurnedInMsg{q->id});
@@ -998,12 +1015,19 @@ GuideWorld QuestWorld::MakeGuideWorld() const {
       if (std::find(ids.begin(), ids.end(), m.def.id) != ids.end()) out.push_back(m.pos);
     }
   };
-  w.spawns = [zone](const std::vector<std::string>& ids, std::vector<Vec2>& out) {
+  const std::vector<std::string>* flags = &ctx_.session.worldFlags;
+  w.spawns = [zone, flags](const std::vector<std::string>& ids, std::vector<Vec2>& out) {
     if (zone == nullptr || !zone->HasZone()) return;
     for (const MapSpawnDef& s : zone->Map().spawns) {
-      // K5: a mixed entry spawns its mix's members (the entry's monsterId is one of them, DataStore::Finalize).
-      bool match = s.mix.empty() && std::find(ids.begin(), ids.end(), s.monsterId) != ids.end();
-      for (const MapSpawnMixDef& e : s.mix) match = match || std::find(ids.begin(), ids.end(), e.monsterId) != ids.end();
+      bool match = false;
+      if (const MapSpawnVariantDef* v = ActiveSpawnVariant(s, *flags)) {
+        // K6: the entry now spawns its variant's monster (none when its count is 0).
+        match = v->count > 0 && std::find(ids.begin(), ids.end(), v->monsterId) != ids.end();
+      } else {
+        // K5: a mixed entry spawns its mix's members (the entry's monsterId is one of them, DataStore::Finalize).
+        match = s.mix.empty() && std::find(ids.begin(), ids.end(), s.monsterId) != ids.end();
+        for (const MapSpawnMixDef& e : s.mix) match = match || std::find(ids.begin(), ids.end(), e.monsterId) != ids.end();
+      }
       if (match) out.push_back(s.pos.Center());
     }
   };

@@ -196,7 +196,8 @@ class ABYSS_API InventorySystem {
   InvResult Equip(std::string_view uid);
   InvResult Unequip(EquipSlot slot);
   // 7.4 + I4: heal / mana potions restore the hero (Hero::Heal / RestoreMana); antidote: StatusEffectSystem::Remove(hero,
-  // Poison) (keeps the diminishing-returns records) and, when a poison was removed, EvStatusExpired{hero, Poison}.
+  // Poison) (keeps the diminishing-returns records) and, when a poison was removed, EvStatusExpired{hero, Poison}; then
+  // the same for Ashnumb (dark remake K6: every stack).
   // Removed items (TP scroll, I4) and items without an effect (ley fruit, ID scroll) are NotUsable and not consumed.
   InvResult UseItem(std::string_view uid);
   InvResult UsePotionSlot(PotionSlot slot);       // I4: ResolvePotionSlot(slot), one unit of the first stack

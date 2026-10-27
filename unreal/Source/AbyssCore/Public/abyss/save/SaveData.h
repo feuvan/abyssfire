@@ -143,6 +143,12 @@ struct SaveData {
   std::vector<std::string> visitedZones;
   // implementation-plan.md 2.7: the content version (missing = 1, the web port's content).
   int32_t contentVersion = kCurrentContentVersion;
+  // ---- dark remake K6 (implementation-plan.md 3 K6; written after contentVersion, and only when not empty, so a save
+  // without world state serialises exactly as before) ----
+  // SessionState::worldFlags: a sorted set of flag ids (parse sorts it and drops empty / duplicate ids).
+  std::vector<std::string> worldFlags;
+  // SessionState::permanentRewards: the (quest, difficulty) claims in grant order and the running totals.
+  PermanentRewardsState permanentRewards;
 };
 
 }  // namespace abyss

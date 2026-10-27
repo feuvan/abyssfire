@@ -34,7 +34,7 @@ SIM CONTRACT (lead; facade and loop implemented)
 - SimContext.h: SimContext (shared services by reference, SimSystems pointers, merged EquipStats `equip`), SimConfig, RNG stream placement rules.
 - GameplayBus.h: typed synchronous bus. Messages: MonsterKilledMsg, Hero*Msg, Quest*Msg, ZoneEntered/Exited, SaveRequestMsg, EquipStatsDirtyMsg, ...
 - SimTypes.h: PanelId, LogType, AnimAction, InteractKind, StoryBeatKind, PotionSlot, ...
-- Session.h: SessionState, PanelState, AbyssRecord, difficulty ladder functions.
+- Session.h: SessionState, PanelState, AbyssRecord, difficulty ladder functions; dark remake K6: worldFlags (a sorted set, HasFlag / SetFlag, NormalizeWorldFlags) and PermanentRewardsState (claims per quest and difficulty, saturating totals, Normalize).
 - Private/sim: SimImpl.h, GameSim.cpp (D13 step loop, freeze F1/F2, timer dispatch by owner, update order from classes spec section 16), SimWiring.cpp (bus subscriptions, kill pipeline order from monsters spec section 11), SimCommands.cpp, SimZone.cpp (zone entry/exit order from world spec 9.1; equip-stat merge), SimSave.cpp (save 3.4/3.5 order), SimSnapshot.cpp, Session.cpp.
 
 HERO
@@ -45,7 +45,7 @@ HERO
 
 COMBAT
 - Damage.h: Combatant, CalculateDamage, proc checks.
-- StatusEffects.h: StatusEffectSystem, RollStatusRule.
+- StatusEffects.h: StatusEffectSystem, RollStatusRule; dark remake K6: the StackCount rule (Ashnumb: Stacks, HealingReceivedMul, the slow at max stacks).
 - HitFeedback.h: ClassifyHit, ComputeAttackTiming/ComputeCastTiming (manifest first, anim_timing fallback), shake helpers, ShakeThrottle.
 - CombatInput.h: InputBuffer, DodgeController, ComputeDodgeDestination, CycleTarget.
 - SkillTargeting.h: C14 cast shapes, cast reach, ground cast point, cast direction, chain links, line/cone/radius targets, teleport/shadow-step/charge destinations.
@@ -66,18 +66,18 @@ MONSTERS
 - Packs.h: dark remake K5 pure rules (spawn members and the leader, the block arc and blocked damage, the wall heading, buff multipliers and the mask, family filters, sustain casters).
 - SpatialGrid.h: implemented in the header.
 - Hunts.h: IsHuntDue, HuntsToSpawn, FindWalkableNear.
-- MonsterSystem.h: spawn, mini-boss, hunts, ambush, TickAI, ApplyDamage (publishes MonsterKilledMsg exactly once), Heal, queries, save; dark remake K3: corpses (OnMonsterDied, TickCorpses, seeds), Raised bodies (RaiseCorpse, SummonAt, collapse), the Unburied rise, consume, BurnCorpses; K4 (Private/monsters/MonsterPhases.cpp): TickPhases (phase entries, arenas, phase summons, Feed), the M1 reset, PhaseActionMs; K5 (Private/monsters/MonsterPacks.cpp): packs (mix, leader, pack ids), PackAlarm, morale (OnPackDeath, Flee start / end, Sustained), buffs and auras (RefreshBuffsAndAuras, ResolveBuffCast), AlignShieldWalls.
+- MonsterSystem.h: spawn, mini-boss, hunts, ambush, TickAI, ApplyDamage (publishes MonsterKilledMsg exactly once), Heal, queries, save; dark remake K3: corpses (OnMonsterDied, TickCorpses, seeds), Raised bodies (RaiseCorpse, SummonAt, collapse), the Unburied rise, consume, BurnCorpses; K4 (Private/monsters/MonsterPhases.cpp): TickPhases (phase entries, arenas, phase summons, Feed), the M1 reset, PhaseActionMs; K5 (Private/monsters/MonsterPacks.cpp): packs (mix, leader, pack ids), PackAlarm, morale (OnPackDeath, Flee start / end, Sustained), buffs and auras (RefreshBuffsAndAuras, ResolveBuffCast), AlignShieldWalls; K6: spawn variants at the zone's spawn and every respawn (MonsterInstance::spawnEntry / spawnMember), SpawnChampionPack (the ambush's champion pack, a shared affix roll).
 
 ITEMS
 - Item.h: ItemInstance, ComputeItemStats, ItemUidGenerator.
 - LootGen.h: CreateItem, GenerateLoot, RollQuality, quest reward choices.
 - Inventory.h: Inventory (pure bag/equipment/stash/buyback) and InventorySystem (runtime).
-- Crafting.h, ItemCompare.h, Shop.h (ShopSystem), GroundLoot.h (GroundLootSystem).
+- Crafting.h, ItemCompare.h, Shop.h (ShopSystem), GroundLoot.h (GroundLootSystem; dark remake K6: a champion leader's guaranteed drop, MonsterKilledMsg::guaranteedLoot).
 
 QUESTS, STORY, PETS
 - QuestSystem.h: QuestSystem, QuestProgress, NpcMarker, OfferRule.
 - QuestGuide.h: ComputeGuideTarget, ResolveGatherSpots.
-- QuestWorld.h: NPC interaction, quest card, TurnIn, drops/gather/clues/escort/defend, guide.
+- QuestWorld.h: NPC interaction, quest card, TurnIn, drops/gather/clues/escort/defend, guide; dark remake K6: the permanent reward at the turn-in, NPC lines on interaction, a hidden NPC ignored, the guide reading spawn variants.
 - Dialogue.h (DialogueSystem, Q1 dialogueOnce), Achievements.h (AchievementState/System), Lore.h (LoreSystem).
 - StoryDirector.h: StoryProgress, StoryDirector (queue, T15 timers, IsCinematic, real-time step player, Advance/Skip, Q7 seen-on-finish).
 - PetSystem.h: pet formulas, PetSystem. PetCompanion.h: ChoosePetAction, PetCompanion (TauntHolds: CombatSystem's K2 pick reads it). Homestead.h: ember/garden functions, HomesteadTower, HomesteadSystem.
@@ -87,15 +87,16 @@ WORLD
 - MapGen.h: ParkMillerRng (implemented and tested), GenerateMap, BuildZoneGrid (placeholder open grid until the port lands), ApplyCampBlockers.
 - Pathfinding.h: Pathfinder.
 - Exploration.h: ExplorationGrid (implemented), FogOfWarCore, ExplorationSystem.
-- Zone.h: ZoneRuntime (EnterZone implemented; pointer chain, Interact/InteractWith, town portal, exits W7/W8, transitions).
+- Zone.h: ZoneRuntime (EnterZone implemented; pointer chain, Interact/InteractWith, town portal, exits W7/W8, transitions; dark remake K6: NPC visibility, RefreshNpcVisibility / IsNpcHidden).
 - Locomotion.h: HeroLocomotion, ScreenDirToTile.
-- RandomEvents.h: RandomEventRules, RandomEventSystem.
+- RandomEvents.h: RandomEventRules, RandomEventSystem (dark remake K6: the ambush's champion draw and pack).
+- WorldState.h: dark remake K6 pure rules: conditions over the world flags and quest states, NPC lines and visibility, the NPC visibility validator (CheckNpcVisibility), spawn variants (ActiveSpawnVariant, ExpandSpawnMembersNow), permanent reward claims (ClaimPermanentReward).
 
 AUDIO
 - audio/Audio.h: Sfx* rule functions, MusicDirector, AudioDirector.
 
 SAVE
-- SaveData.h: SaveData v4 (SaveHero, SaveSettings, SaveHomestead, SavePets, SaveSoulEcho, SaveRng, hotbar, potionSlots, playTimeMs, dialogueOnce, hiddenRewardsClaimed, itemUidCounter).
+- SaveData.h: SaveData v4 (SaveHero, SaveSettings, SaveHomestead, SavePets, SaveSoulEcho, SaveRng, hotbar, potionSlots, playTimeMs, dialogueOnce, hiddenRewardsClaimed, itemUidCounter; dark remake K6: worldFlags, permanentRewards, written only when not empty).
 - SaveIO.h: MigrateRaw, ParseSave, SerializeSave, FindNearestWalkablePosition (implemented and tested), item/quest/pet JSON helpers, ISaveStorage, SummarizeSave.
 - Private/save: SaveSections.h plus per-area SaveHero/SaveItems/SaveQuests/SavePets/SaveIO .cpp files.
 
@@ -138,6 +139,6 @@ Spec: quests-story-ch1.md (including section 18 pets) and the save-ui-input.md 3
 
 ### world
 
-**Files:** Public/abyss/world/{Grid,MapGen,Pathfinding,Exploration,Zone,Locomotion,RandomEvents}.h, Public/abyss/audio/Audio.h, Public/abyss/save/{SaveData,SaveIO}.h, Private/world/*.cpp, Private/audio/Audio.cpp, Private/save/{SaveIO.cpp,SaveSections.h}, data/{MapData,AudioData,AssetManifest,UiData}.h with Private/data/LoadWorld.cpp, CoreTests/tests/{world_test,save_test}.cpp, CoreTests/golden/maps/*
+**Files:** Public/abyss/world/{Grid,MapGen,Pathfinding,Exploration,Zone,Locomotion,RandomEvents,WorldState}.h, Public/abyss/audio/Audio.h, Public/abyss/save/{SaveData,SaveIO}.h, Private/world/*.cpp, Private/audio/Audio.cpp, Private/save/{SaveIO.cpp,SaveSections.h}, data/{MapData,AudioData,AssetManifest,UiData,WorldStateData}.h with Private/data/LoadWorld.cpp, CoreTests/tests/{world_test,save_test,world_state_test}.cpp, CoreTests/golden/maps/*
 
-Spec: world-map-nav.md, save-ui-input.md (flow, save, input), audio.md 9.8; decisions W1-W10, S5, U1-U3, A2-A6. RNG: RngStream::World and RngStream::Events. MapGen uses its own ParkMillerRng, which is implemented and tested. Timers: TimerOwner::World; random-event timer kinds must be >= kRandomEventTimerKindBase. First priority: port GenerateMap bit-exact against the golden maps and A* with the web tie-breaking, because BuildZoneGrid is a placeholder open grid until then and Pathfinder::FindPath is a stub. ZoneRuntime owns the pointer chain, interact, the W3 town portal, exits (armed/sealed) and RequestZoneChange/TakePendingTransition; GameSim runs the actual exit and entry sequences. HeroLocomotion owns movement, hold-to-move and S5 speeds, and publishes HeroMoveInputMsg. Also owns SaveIO top level (MigrateRaw v1 to v4, ParseSave, SerializeSave, key order) and AudioDirector/MusicDirector.
+Spec: world-map-nav.md, save-ui-input.md (flow, save, input), audio.md 9.8; decisions W1-W10, S5, U1-U3, A2-A6. RNG: RngStream::World and RngStream::Events. MapGen uses its own ParkMillerRng, which is implemented and tested. Timers: TimerOwner::World; random-event timer kinds must be >= kRandomEventTimerKindBase. First priority: port GenerateMap bit-exact against the golden maps and A* with the web tie-breaking, because BuildZoneGrid is a placeholder open grid until then and Pathfinder::FindPath is a stub. ZoneRuntime owns the pointer chain, interact, the W3 town portal, exits (armed/sealed) and RequestZoneChange/TakePendingTransition; GameSim runs the actual exit and entry sequences. HeroLocomotion owns movement, hold-to-move and S5 speeds, and publishes HeroMoveInputMsg. Also owns SaveIO top level (MigrateRaw v1 to v4, ParseSave, SerializeSave, key order) and AudioDirector/MusicDirector. Dark remake K6 (world/WorldState.h, pure, no RNG): the world flags (SessionState::worldFlags, set by SimImpl::SetQuestFlags, the first QuestTurnedInMsg listener; EvWorldFlag), NPC `lines` / `visibleWhen` (ZoneRuntime refreshes visibility at the zone entry, silently, and first in every Tick: EvEntitySpawned / EvEntityDespawned{Removed}; a hidden NPC keeps its placement and id and is skipped by the snapshot, interact, pointer and FindNpc), the visibility validator (DataStore::Finalize; the exporter's tables/world.ts mirrors it), spawn variants (MonsterSystem reads them at the zone's spawn and every respawn), permanent reward claims (QuestWorld::TurnIn; SimImpl::RebuildEquipStats adds the max life) and the ambush's champion pack (RandomEventSystem draws once more on RngStream::Events only when the zone's event data names one; MonsterSystem::SpawnChampionPack, the shared affix roll on RngStream::Ai). SaveIO writes worldFlags / permanentRewards after contentVersion only when not empty. 2E touched other areas' files for K6 (small, K6-only): StatusEffects / Combat (the StackCount rule, the regeneration step), Hero (Heal scaled, GrantFreePoints), LoadClasses (the stacks row), Inventory (the antidote), MonsterSystem (variants, SpawnChampionPack, the leader's MonsterInstance::guaranteedLoot), GroundLoot (the leader's guaranteed drop, 2E review), QuestWorld / Dialogue / LoadQuests (rewards, lines, conditions), Session / Snapshot / Events / SimWiring / SimZone / SimSave (lead).

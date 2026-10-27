@@ -256,7 +256,7 @@ void RandomEventSystem::PruneFinished() {
 void RandomEventSystem::Resolve(ActiveRandomEvent& e) {
   if (e.resolved) return;
   e.resolved = true;
-  ctx_.events.Emit(EvRandomEvent{true, e.type, e.pos, ctx_.session.currentMap, e.prop});
+  ctx_.events.Emit(EvRandomEvent{true, e.type, e.pos, ctx_.session.currentMap, e.prop, e.champion});
 }
 
 void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
@@ -276,6 +276,13 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
       const int32_t mn = zd != nullptr ? zd->ambushCountMin : kRevAmbushFallbackMin;
       const int32_t mx = zd != nullptr ? zd->ambushCountMax : kRevAmbushFallbackMax;
       e.monsterCount = static_cast<int32_t>(std::floor(rng.Float01() * (mx - mn + 1))) + mn;
+      // Dark remake K6: a zone with a champion pack draws once more (only then: no draw without the block); a hit spawns
+      // the pack in place of the ambush.
+      if (zd != nullptr && zd->ambushChampion.present && rng.Float01() < zd->ambushChampion.chance) {
+        e.champion = true;
+        e.monsterCount = 0;
+        for (const MapSpawnMixDef& m : zd->ambushChampion.mix) e.monsterCount += m.count;
+      }
       break;
     }
     case RandomEventType::Rescue: {
@@ -303,11 +310,14 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
   switch (type) {
     case RandomEventType::Ambush: {
       // No ambush list (a zone without event data): SpawnAmbush falls back to the zone's first monster (web parity).
-      if (ctx_.sys.monsters != nullptr) {
+      if (ctx_.sys.monsters != nullptr && ev.champion) {
+        ev.monsters = ctx_.sys.monsters->SpawnChampionPack(zd->ambushChampion, ev.pos, kRevAmbushMinDist,
+                                                           kRevAmbushDistRange, MonsterRole::AmbushSpawn);  // K6
+      } else if (ctx_.sys.monsters != nullptr) {
         ev.monsters = ctx_.sys.monsters->SpawnAmbush(ids, ev.monsterCount, ev.pos, kRevAmbushMinDist,
                                                      kRevAmbushDistRange, MonsterRole::AmbushSpawn);
       }
-      ctx_.events.Emit(EvRandomEvent{false, ev.type, ev.pos, zoneId, kNoEntity});
+      ctx_.events.Emit(EvRandomEvent{false, ev.type, ev.pos, zoneId, kNoEntity, ev.champion});
       Resolve(ev);  // ambush auto-resolves once spawned
       break;
     }

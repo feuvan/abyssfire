@@ -43,6 +43,9 @@ struct DialogueView {
   std::string nodeId;
   std::vector<DialogueButton> buttons;
   std::vector<std::string> completedQuests;  // turned-in ids captured at open (7.1 step 2)
+  // Dark remake K6: the linear panel's line key (world/WorldState.h NpcPanelLineNow: the second of the NPC's `lines` that
+  // hold at open, else the first); "" when the NPC has no `lines` or none holds (UE keeps the web's dialogue[1] ?? [0]).
+  std::string lineKey;
 };
 
 class ABYSS_API DialogueSystem {

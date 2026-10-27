@@ -440,6 +440,48 @@ void LoadStatusEffectsFile(const JNode& r, ClassTables& out) {
     }
     s.stacking[EnumIndex(t)] = n.AsEnum<StatusStacking>();
   }
+  // Dark remake K6 (status_effects.json `stacks`, a remake row: Ashnumb): the rules of each stackCount status. A
+  // stackCount type needs its row and a row needs a stackCount type (a misspelt or orphaned row would silently leave the
+  // status unable to land, or never read).
+  for (const auto& [k, n] : r.Members("stacks", true)) {
+    StatusType t{};
+    if (!ParseEnum(k, t)) {
+      n.Error("unknown status type");
+      continue;
+    }
+    for (const auto& [key, child] : n.SelfMembers()) {
+      if (key != "maxStacks" && key != "healingReceivedPerStack" && key != "slowAtMaxStacksPct") {
+        child.Error("unknown stacks field '" + key + "'");
+      }
+    }
+    StatusStackRule& rule = s.stacks[EnumIndex(t)];
+    rule.maxStacks = n.Int("maxStacks");
+    rule.healingReceivedPerStack = n.Num("healingReceivedPerStack", 0.0);
+    rule.slowAtMaxStacksPct = n.Num("slowAtMaxStacksPct", 0.0);
+    if (rule.maxStacks < 1 || rule.maxStacks > kStatusMaxStacks) {
+      n.Child("maxStacks").Error("expected 1.." + std::to_string(kStatusMaxStacks));
+      rule.maxStacks = 0;
+    }
+    if (!(rule.healingReceivedPerStack >= 0 && rule.healingReceivedPerStack <= 1)) {
+      n.Child("healingReceivedPerStack").Error("expected a fraction in [0, 1]");
+    }
+    if (!(rule.slowAtMaxStacksPct >= 0 && rule.slowAtMaxStacksPct <= 100)) {
+      n.Child("slowAtMaxStacksPct").Error("expected a percent in [0, 100]");
+    }
+    if (s.Stacking(t) != StatusStacking::StackCount) {
+      n.Error("a stacks row needs stacking '" + std::string(EnumName(StatusStacking::StackCount)) + "'");
+    }
+  }
+  for (size_t i = 0; i < EnumCount<StatusType>(); ++i) {
+    const StatusType t = static_cast<StatusType>(i);
+    if (s.Stacking(t) == StatusStacking::StackCount && s.Stacks(t).maxStacks < 1 && r.Child("stacking").Has(EnumName(t))) {
+      r.Child("stacking").Child(EnumName(t)).Error("a stackCount status needs its stacks row");
+    }
+    // Its value counts stacks, not damage: a tick would deal the stack count.
+    if (s.Stacking(t) == StatusStacking::StackCount && s.TickInterval(t) != 0) {
+      r.Child("tickIntervalMs").Child(EnumName(t)).Error("a stackCount status does not tick (0)");
+    }
+  }
   const JNode d = r.Child("diminishing");
   s.diminishingAppliesTo = d.EnumList<StatusType>("appliesTo");
   s.diminishingFactor = d.Num("factor");

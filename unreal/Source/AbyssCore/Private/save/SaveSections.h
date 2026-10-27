@@ -42,6 +42,15 @@ ABYSS_API void ReadPets(const JsonValue& v, SavePets& out);
 ABYSS_API void WriteHomestead(JsonWriter& w, const SaveHomestead& h);
 ABYSS_API void ReadHomestead(const JsonValue& v, SaveHomestead& out);
 
+// Dark remake K6 (world): worldFlags (a JSON array of strings) and permanentRewards ({claimed: [{questId, difficulty}],
+// maxLife, statPoints, skillPoints, respecTokens}). Readers: flags sorted, empty / duplicate / non-string entries dropped;
+// claims without a string questId or a known difficulty dropped (a repeated pair kept once); totals a finite number,
+// floored and clamped to 0..INT32_MAX, else 0.
+ABYSS_API void WriteWorldFlags(JsonWriter& w, const std::vector<std::string>& flags);
+ABYSS_API void ReadWorldFlags(const JsonValue& v, std::vector<std::string>& out);
+ABYSS_API void WritePermanentRewards(JsonWriter& w, const PermanentRewardsState& p);
+ABYSS_API void ReadPermanentRewards(const JsonValue& v, PermanentRewardsState& out);
+
 // Shared helpers.
 ABYSS_API void WriteStringList(JsonWriter& w, const std::vector<std::string>& v);
 ABYSS_API void ReadStringList(const JsonValue& v, std::vector<std::string>& out);

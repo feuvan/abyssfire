@@ -232,11 +232,13 @@ StatusApplyOutcome CombatSystem::ApplyStatus(EntityId target, StatusType type, d
                                              EntityId source) {
   if (ctx_.sys.status == nullptr) return StatusApplyOutcome::Rejected;
   const StatusApplyResult r = ctx_.sys.status->Apply(target, type, value, durationMs, source, ctx_.Now());
+  // K6: a StackCount status (Ashnumb) reports its stacks after the application; every other type the value passed.
+  const double shown = ctx_.data.Classes().statusRules.Stacking(type) == StatusStacking::StackCount ? r.value : value;
   if (r.outcome == StatusApplyOutcome::Applied) {
-    ctx_.events.Emit(EvStatusApplied{target, type, value, r.effectiveDurationMs, false});
+    ctx_.events.Emit(EvStatusApplied{target, type, shown, r.effectiveDurationMs, false});
     ctx_.events.Log(MakeLoc("sys.statusEffect.applied", {CmbStatusNameArg(type)}), LogType::Combat);
   } else if (r.outcome == StatusApplyOutcome::Refreshed) {
-    ctx_.events.Emit(EvStatusApplied{target, type, value, r.effectiveDurationMs, true});
+    ctx_.events.Emit(EvStatusApplied{target, type, shown, r.effectiveDurationMs, true});
     if (type == StatusType::Poison) {  // the web logs only the poison refresh
       ctx_.events.Log(MakeLoc("sys.statusEffect.refreshed", {CmbStatusNameArg(type)}), LogType::Combat);
     }
@@ -2859,6 +2861,11 @@ void CombatSystem::TickPassives(double dtMs) {
   }
   if (ctx_.sys.status != nullptr && ctx_.sys.status->Has(kHeroEntityId, StatusType::Poison)) {
     mods.hpMul *= ctx_.data.Classes().statusRules.poisonedHpRegenMultiplier;
+  }
+  // K6: Ashnumb takes its share off the step's HP regeneration as off every heal (Hero::Heal).
+  if (ctx_.sys.status != nullptr) {
+    const double healMul = ctx_.sys.status->HealingReceivedMul(kHeroEntityId);
+    if (healMul < 1.0) mods.hpMul *= healMul;
   }
   hero.stepRegen = mods;
   hero.TickLifeRegen(dtMs, mods);

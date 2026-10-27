@@ -1,5 +1,6 @@
 #include "abyss/base/Platform.h"
 
+#include <algorithm>
 #include <initializer_list>
 #include <string>
 #include <string_view>
@@ -41,6 +42,7 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
       for (const char* key : {"mix", "leader"}) {
         if (s.Has(key)) s.Child(key).Error("a sub-dungeon spawn has no pack (mix / leader) until K7");
       }
+      if (s.Has("variants")) s.Child("variants").Error("a sub-dungeon spawn has no variants until K7");
       out.push_back(std::move(sp));
       continue;
     }
@@ -64,6 +66,25 @@ std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
       sp.leader.elite = l.Bool("elite", false);
       if (sp.leader.monsterId.empty()) l.Child("monsterId").Error("empty monster id");
     }
+    // Dark remake K6 (remake schema map.spawnVariants): what the entry spawns once a world flag is set (DataStore checks
+    // the ids; the first variant whose flag is set wins).
+    for (const JNode& v : s.Items("variants", true)) {
+      ReadSpawnCheckKeys(v, {"whenFlag", "monsterId", "count"}, "spawn variant");
+      MapSpawnVariantDef d;
+      d.whenFlag = v.Str("whenFlag");
+      d.monsterId = v.Str("monsterId");
+      d.count = v.Int("count");
+      if (d.whenFlag.empty()) v.Child("whenFlag").Error("empty flag id");
+      if (d.monsterId.empty()) v.Child("monsterId").Error("empty monster id");
+      if (d.count < 0 || d.count > kSpawnVariantMaxCount) {
+        v.Child("count").Error("expected 0.." + std::to_string(kSpawnVariantMaxCount));
+      }
+      for (const MapSpawnVariantDef& prev : sp.variants) {
+        if (prev.whenFlag == d.whenFlag) v.Child("whenFlag").Error("a second variant of flag '" + d.whenFlag + "'");
+      }
+      sp.variants.push_back(std::move(d));
+    }
+    if (s.Has("variants") && sp.variants.empty()) s.Child("variants").Error("an empty variants list (omit it)");
     out.push_back(std::move(sp));
   }
   return out;
@@ -392,6 +413,47 @@ void LoadRandomEventsFile(const JNode& r, WorldTables& out) {
     d.rescueNpcName = z.Str("rescueNpcName");
     d.rescueNpcSpriteKey = z.Str("rescueNpcSpriteKey");
     if (z.Has("rescueMonsters")) d.rescueMonsters = z.StrList("rescueMonsters");
+    if (z.Has("ambushChampion")) {  // dark remake K6 (remake schema events.ambushChampion)
+      const JNode ch = z.Child("ambushChampion");
+      ReadSpawnCheckKeys(ch, {"chance", "mix", "leader", "sharedAffix", "leaderLoot"}, "ambush champion");
+      ZoneEventDataDef::AmbushChampionDef& a = d.ambushChampion;
+      a.present = true;
+      a.chance = ch.Num("chance");
+      if (!(a.chance > 0 && a.chance <= 1)) ch.Child("chance").Error("expected 0 < chance <= 1");
+      int32_t total = 0;
+      for (const JNode& me : ch.Items("mix")) {
+        ReadSpawnCheckKeys(me, {"monsterId", "count"}, "ambush champion mix");
+        MapSpawnMixDef m;
+        m.monsterId = me.Str("monsterId");
+        m.count = me.Int("count");
+        if (m.monsterId.empty()) me.Child("monsterId").Error("empty monster id");
+        if (m.count < 1) me.Child("count").Error("expected >= 1");
+        total = (std::min)(total + (std::clamp)(m.count, 0, ZoneEventDataDef::kChampionMaxMembers + 1),
+                           ZoneEventDataDef::kChampionMaxMembers + 1);  // no overflow
+        a.mix.push_back(std::move(m));
+      }
+      if (a.mix.empty()) ch.Child("mix").Error("a champion pack needs members");
+      if (total > ZoneEventDataDef::kChampionMaxMembers) {
+        ch.Child("mix").Error("more than " + std::to_string(ZoneEventDataDef::kChampionMaxMembers) + " members");
+      }
+      a.leader = ch.Str("leader", "");
+      if (ch.Has("leader")) {
+        bool member = false;
+        for (const MapSpawnMixDef& m : a.mix) member = member || m.monsterId == a.leader;
+        if (!member) ch.Child("leader").Error("'" + a.leader + "' is not a member of the pack");
+      }
+      a.sharedAffix = ch.Bool("sharedAffix", false);
+      if (ch.Has("leaderLoot")) {
+        const JNode ll = ch.Child("leaderLoot");
+        if (!ParseEnum(ll.AsStr(), a.leaderLoot) ||
+            (a.leaderLoot != ItemQuality::Magic && a.leaderLoot != ItemQuality::Rare)) {
+          ll.Error("expected magic | rare");
+          a.leaderLoot = ItemQuality::Normal;
+        } else if (a.leader.empty()) {
+          ll.Error("a guaranteed leader drop needs a leader");
+        }
+      }
+    }
     d.rescueRewardGold = z.Child("rescueReward").I64("gold");
     d.rescueRewardExp = z.Child("rescueReward").I64("exp");
     e.zones.push_back(std::move(d));
