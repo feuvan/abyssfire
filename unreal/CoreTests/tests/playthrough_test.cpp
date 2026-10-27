@@ -15,8 +15,12 @@
 //
 // Environment switches: ABYSS_PT_VERBOSE=1 prints the bot's notes while it plays; ABYSS_PT_SWEEP=<n> (and
 // ABYSS_PT_SWEEP_BASE=<first seed>) plays n extra seeds per class; ABYSS_PT_DUMP=<dir> writes each run's final save
-// (<class>_<seed>.json) so GCC and Clang builds can be diffed - they must agree bit for bit.
+// (<class>_<seed>.json) so GCC and Clang builds can be diffed - they must agree bit for bit; ABYSS_PT_STATS=<file>
+// appends one tab-separated line per run (level, exp, kills, deaths, the largest hit taken, the W2 counters and the named
+// fights with their lengths: the sweep's balance report, dark remake 2F). 2F review: ABYSS_PT_REACTION_MS=<ms> and
+// ABYSS_PT_NO_DODGE=1 play the reaction-limited bot (AutoPilotConfig::reactionMs / dodgeRoll: DR9's second sweep).
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -35,6 +39,7 @@
 #include "abyss/items/GroundLoot.h"
 #include "abyss/items/Inventory.h"
 #include "abyss/items/Shop.h"
+#include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/MonsterSystem.h"
 #include "abyss/pets/Homestead.h"
 #include "abyss/pets/PetSystem.h"
@@ -90,6 +95,8 @@ AutoPilotConfig PtConfig(ClassId cls, AutoPilotScenario scenario) {
   cfg.cls = cls;
   cfg.scenario = scenario;
   cfg.storyMode = AutoPilotStoryMode::PlayerLike;
+  if (const char* r = std::getenv("ABYSS_PT_REACTION_MS")) cfg.reactionMs = std::atof(r);
+  if (const char* d = std::getenv("ABYSS_PT_NO_DODGE")) cfg.dodgeRoll = !(*d != '\0' && *d != '0');
   if (PtVerbose()) cfg.onNote = [](const std::string& line) { std::printf("%s\n", line.c_str()); };
   return cfg;
 }
@@ -172,7 +179,20 @@ struct PtResult {
   std::string failure;
   std::string recent;
   std::string finalSave;  // SaveGame(kPtSaveMs) after the finale
+  // 2F review (DR9 per class): the story boss's fight (s; < 0 when not fought to a kill) and the hero's deaths in it; the
+  // mini-boss's fights and how many of them saw its opening raise (its first raise-kind ability) and its Keen (its first
+  // ground strike) start.
+  double storyBossSec = -1;
+  int storyBossDeaths = 0;
+  int miniBossFights = 0, miniBossOpeningRaise = 0, miniBossStrike = 0;
 };
+
+// 2F review: the run's bot mode for the sweep's bands (ABYSS_PT_REACTION_MS / ABYSS_PT_NO_DODGE, PtConfig).
+bool PtReactionLimited() {
+  const char* r = std::getenv("ABYSS_PT_REACTION_MS");
+  const char* d = std::getenv("ABYSS_PT_NO_DODGE");
+  return (r != nullptr && std::atof(r) > 0) || (d != nullptr && *d != '\0' && *d != '0');
+}
 
 constexpr int64_t kPtSaveMs = 1760000000000;
 
@@ -491,6 +511,70 @@ PtResult PtRun(ClassId cls, uint64_t seed, bool saveLoad) {
           << st.itemsSold << ", casts " << st.skillCasts << ", play time " << sim->View().playTimeMs / 60000.0
           << " min, exp kill " << st.expBySource[0] << " quest " << st.expBySource[1] << " dialogue "
           << st.expBySource[2] << " event " << st.expBySource[3] << ", pet feeds " << st.petFeeds);
+  // The fairness rules the bot can see (monsters.md 1.3, DECISIONS DR9): no death to one hit, and no single hit above the
+  // hit cap (35 % of max life on Normal; a status or hazard tick is not a hit, and one more point for the floor). 2F
+  // review: nor half the hero's life inside one second (hits and ticks together, the on-death window cap included), the
+  // burst a player who reacts late cannot step out of.
+  CHECK(st.oneHitDeaths == 0);
+  CHECK(st.maxHitTakenPct <= 35.0 + 1e-6);
+  CHECK(st.maxBurstTakenPct <= 50.0);
+  // 2F review (DR9 per class): the named fights the sweep's bands read. The story boss's fight stays well inside the
+  // route's step (450 s); the mini-boss's lessons are its opening raise and Keen (chapter1.md 10, the 2F review).
+  const MonsterDef* storyDef = test::RealData().Monsters().Find(test::ch1::kStoryBoss);
+  const MonsterDef* miniDef = test::RealData().Monsters().Find("miniboss_corpseherd");
+  for (const AutoPilotFight& f : st.fights) {
+    if (f.defId == test::ch1::kStoryBoss && f.endMs >= 0) {
+      r.storyBossSec = (f.endMs - f.startMs) / 1000.0;
+      r.storyBossDeaths = f.heroDeaths;
+      INFO("story boss fight " << r.storyBossSec << " s");
+      CHECK(r.storyBossSec <= 400.0);
+      CHECK(f.resets == 0);  // the leash covers his ring (CORE-R1): he never walks home mid-fight
+    }
+    if (f.role == MonsterRole::ZoneMiniBoss && miniDef != nullptr) {
+      ++r.miniBossFights;
+      // Its opening raise is its raise of the highest priority (the pull's); its strike any ground-shape ability (Keen).
+      int32_t pullPriority = INT32_MIN;
+      for (const MonsterAbilityDef& a : miniDef->abilities) {
+        if (a.kind == AbilityKind::Raise) pullPriority = (std::max)(pullPriority, a.priority);
+      }
+      bool raised = false, struck = false;
+      for (const AutoPilotFight::AbilityUse& u : f.abilities) {
+        for (const MonsterAbilityDef& a : miniDef->abilities) {
+          if (a.id != u.id || u.started - u.cancelled <= 0) continue;
+          raised = raised || (a.kind == AbilityKind::Raise && a.priority == pullPriority);
+          struck = struck || AbilityHasGroundShape(a.kind);
+        }
+      }
+      r.miniBossOpeningRaise += raised ? 1 : 0;
+      r.miniBossStrike += struck ? 1 : 0;
+    }
+  }
+  CHECK(storyDef != nullptr);
+  // ABYSS_PT_STATS=<file>: one line per run (class, seed, level, exp, kills, deaths, the named fights and their lengths,
+  // the largest hit taken) appended for the sweep's report (dark remake 2F).
+  if (const char* statsFile = std::getenv("ABYSS_PT_STATS")) {
+    int64_t total = p.V().hero.exp;
+    for (int32_t l = 1; l < p.V().hero.level; ++l) total += static_cast<int64_t>(std::floor(3.0 * l * l + 25.0 * l));
+    std::ofstream out(statsFile, std::ios::app);
+    out << PtClassName(cls) << '\t' << seed << "\tlevel=" << p.V().hero.level << "\texp=" << total << "\tkills=" << st.kills
+        << "\tdeaths=" << st.deaths << "\toneHit=" << st.oneHitDeaths << "\tmaxHitPct=" << st.maxHitTakenPct
+        << "\tburstPct=" << st.maxBurstTakenPct
+        << "\tmaxHitBy=" << st.maxHitTakenBy << "\tpotions=" << st.potionsDrunk << "\tdodges=" << st.telegraphDodges
+        << "\tpriority=" << st.priorityTargets << "\tminutes=" << sim->View().playTimeMs / 60000.0 << "\tw2=raised:"
+        << st.raised << ",selfRises:" << st.selfRises << ",blocks:" << st.blocks << ",flees:" << st.flees << ",casts:"
+        << st.supportCasts << ",eaten:" << st.corpsesEaten << ",fuses:" << st.onDeathFuses << ",ashnumb:" << st.ashnumbHits
+        << "/" << st.ashnumbMaxStacks << ",champions:" << st.championAmbushes << ",flags:" << st.worldFlags << ",perm:"
+        << st.permanentRewards << ",phases:" << st.phases << "\treaction=" << (PtReactionLimited() ? 1 : 0) << "\tfights=";
+    for (const AutoPilotFight& f : st.fights) {
+      out << f.defId << ':' << (f.endMs >= 0 ? (f.endMs - f.startMs) / 1000.0 : -1.0) << ':' << f.heroDeaths << ':'
+          << f.affixes << ':';
+      for (double ms : f.phaseMs) out << (ms - f.startMs) / 1000.0 << '/';
+      out << ':' << f.feeds << ':' << f.resets << ':';
+      for (const AutoPilotFight::AbilityUse& u : f.abilities) out << u.id << '/' << u.started << '/' << u.cancelled << ',';
+      out << ';';
+    }
+    out << '\n';
+  }
   r.finalSave = sim->SaveGame(kPtSaveMs);
   // ABYSS_PT_DUMP=<dir>: keep the final saves (e.g. to diff GCC and Clang builds, which must agree bit for bit).
   if (const char* dir = std::getenv("ABYSS_PT_DUMP")) {
@@ -582,11 +666,46 @@ TEST_SUITE("playthrough") {
     const char* base = std::getenv("ABYSS_PT_SWEEP_BASE");
     const int count = n != nullptr ? std::atoi(n) : 0;
     const uint64_t first = base != nullptr ? static_cast<uint64_t>(std::atoll(base)) : 1000;
+    std::vector<std::vector<PtResult>> byClass(3);
     for (int i = 0; i < count; ++i) {
       for (ClassId cls : {ClassId::Warrior, ClassId::Mage, ClassId::Rogue}) {
         INFO(std::string(PtClassName(cls)) << " seed " << first + static_cast<uint64_t>(i));
-        PtRun(cls, first + static_cast<uint64_t>(i), true);
+        byClass[static_cast<size_t>(cls)].push_back(PtRun(cls, first + static_cast<uint64_t>(i), true));
       }
+    }
+    // 2F review (DECISIONS DR9 *2F review*: the per-class bands, for the frame-perfect and the reaction-limited bot): over
+    // at least ten seeds per class, every class's median story boss fight lies in 30-180 s with its 90th percentile
+    // under 240 s, the hero dies in at most 2 % of those fights (10 % for the reaction-limited bot; one death of slack per
+    // sweep), and the mini-boss shows its opening raise in at least 95 % of its fights and Keen (the design's stretch
+    // mechanic below 50 %) in at least 60 %.
+    if (count < 10) return;
+    const bool limited = PtReactionLimited();
+    for (ClassId cls : {ClassId::Warrior, ClassId::Mage, ClassId::Rogue}) {
+      const std::vector<PtResult>& rs = byClass[static_cast<size_t>(cls)];
+      std::vector<double> secs;
+      int deaths = 0, miniFights = 0, raises = 0, strikes = 0;
+      for (const PtResult& r : rs) {
+        if (r.storyBossSec >= 0) secs.push_back(r.storyBossSec);
+        deaths += r.storyBossDeaths;
+        miniFights += r.miniBossFights;
+        raises += r.miniBossOpeningRaise;
+        strikes += r.miniBossStrike;
+      }
+      INFO(PtClassName(cls) << (limited ? " (reaction-limited)" : ""));
+      REQUIRE(secs.size() >= 10);
+      std::sort(secs.begin(), secs.end());
+      const double median = secs[secs.size() / 2];
+      const double p90 = secs[(std::min)(secs.size() - 1, secs.size() * 9 / 10)];
+      INFO("story boss median " << median << " s, p90 " << p90 << " s, deaths " << deaths << " in " << secs.size()
+                                << ", mini-boss " << raises << " / " << strikes << " of " << miniFights);
+      CHECK(median >= 30.0);
+      CHECK(median <= 180.0);
+      CHECK(p90 <= 240.0);
+      // The death budget is a rate (2 % of the fights, 10 % for the reaction-limited bot) with one death of slack for a
+      // sweep's small sample (20 seeds: 1 / 3 deaths): the rate itself is read over all the sweeps (DR9 *2F review*).
+      CHECK(deaths * 100 <= static_cast<int>(secs.size()) * (limited ? 10 : 2) + 100);
+      CHECK(raises * 100 >= miniFights * 95);
+      CHECK(strikes * 100 >= miniFights * 60);
     }
   }
   // The defend retry path (ApDefendWithRetries): the gate falls once - the test holds the bot when the first wave is

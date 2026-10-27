@@ -13,16 +13,78 @@
       "seed": 12345,
       "presentationTheme": "march",
       "spawns": [
-        {"col": 25, "row": 20, "monsterId": "risen_footman", "count": 8},
+        {
+          "col": 25,
+          "row": 20,
+          "monsterId": "risen_footman",
+          "count": 8,
+          "variants": [
+            {"whenFlag": "rf_chapter_dawn", "monsterId": "gravegnawer", "count": 8}
+          ]
+        },
         {"col": 35, "row": 40, "monsterId": "gravegnawer", "count": 8},
         {"col": 20, "row": 45, "monsterId": "breachclot", "count": 7},
-        {"col": 85, "row": 18, "monsterId": "cinderbloat", "count": 6},
+        {
+          "col": 85,
+          "row": 18,
+          "monsterId": "cinderbloat",
+          "count": 6,
+          "mix": [
+            {"monsterId": "cinderbloat", "count": 3},
+            {"monsterId": "breachclot", "count": 3}
+          ]
+        },
         {"col": 95, "row": 35, "monsterId": "oath_zealot", "count": 5},
-        {"col": 75, "row": 50, "monsterId": "risen_arbalest", "count": 5},
-        {"col": 30, "row": 80, "monsterId": "risen_shieldbearer", "count": 6},
+        {
+          "col": 75,
+          "row": 50,
+          "monsterId": "risen_arbalest",
+          "count": 5,
+          "mix": [
+            {"monsterId": "risen_arbalest", "count": 3},
+            {"monsterId": "risen_shieldbearer", "count": 2}
+          ],
+          "variants": [
+            {"whenFlag": "rf_chapter_dawn", "monsterId": "gravegnawer", "count": 5}
+          ]
+        },
+        {
+          "col": 30,
+          "row": 80,
+          "monsterId": "risen_shieldbearer",
+          "count": 6,
+          "mix": [
+            {"monsterId": "risen_shieldbearer", "count": 3},
+            {"monsterId": "risen_footman", "count": 2},
+            {"monsterId": "dead_standard_bearer", "count": 1}
+          ],
+          "leader": {"monsterId": "dead_standard_bearer"},
+          "variants": [
+            {"whenFlag": "rf_chapter_dawn", "monsterId": "gravegnawer", "count": 6}
+          ]
+        },
         {"col": 15, "row": 95, "monsterId": "valdras", "count": 1},
-        {"col": 80, "row": 75, "monsterId": "deserter", "count": 6},
-        {"col": 95, "row": 90, "monsterId": "bonegorger", "count": 3}
+        {
+          "col": 80,
+          "row": 75,
+          "monsterId": "deserter",
+          "count": 6,
+          "mix": [
+            {"monsterId": "deserter", "count": 5},
+            {"monsterId": "deserter_drummer", "count": 1}
+          ],
+          "leader": {"monsterId": "deserter", "elite": true}
+        },
+        {
+          "col": 95,
+          "row": 90,
+          "monsterId": "bonegorger",
+          "count": 3,
+          "mix": [
+            {"monsterId": "bonegorger", "count": 1},
+            {"monsterId": "gravegnawer", "count": 2}
+          ]
+        }
       ],
       "camps": [
         {
@@ -95,6 +157,14 @@
           "row": 55,
           "spriteType": "broken_altar"
         }
+      ],
+      "corpseSeeds": [
+        {"col": 57, "row": 54, "monsterId": "risen_footman"},
+        {"col": 58, "row": 57, "monsterId": "risen_footman"},
+        {"col": 61, "row": 58, "monsterId": "risen_footman"},
+        {"col": 63, "row": 56, "monsterId": "risen_footman"},
+        {"col": 62, "row": 52, "monsterId": "risen_footman"},
+        {"col": 59, "row": 52, "monsterId": "risen_footman"}
       ],
       "regions": [
         {"id": "breach_rim", "col": 15, "row": 95, "radius": 16, "mood": "breach_rim"}

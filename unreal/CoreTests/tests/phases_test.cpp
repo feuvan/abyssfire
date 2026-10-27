@@ -36,6 +36,7 @@
 #include "abyss/items/Inventory.h"
 #include "abyss/monsters/Corpses.h"
 #include "abyss/monsters/MonsterAbilities.h"
+#include "abyss/monsters/MonsterAI.h"
 #include "abyss/monsters/Phases.h"
 #include "abyss/pets/Homestead.h"
 #include "abyss/pets/PetCompanion.h"
@@ -763,7 +764,7 @@ TEST_SUITE("monsters") {
     CHECK_FALSE(K4HasIssue(roar.warnings, "fx_k4_roar2", "enterAction"));
   }
 
-  TEST_CASE("K4 data: Finalize warns on a tether reaching past the M1 leash and on a hunt's unreachable phases") {
+  TEST_CASE("K4 data: no tether passes the M1 leash any more (2F review: a bound fight's leash covers it); a hunt's unreachable phases warn") {
     const DataStore& real = test::RealData();
     const MonsterAiDef& ai = real.Monsters().ai;
     const std::string boss = ai.storyBossId;  // read, never spelled
@@ -816,15 +817,28 @@ TEST_SUITE("monsters") {
                  report);
     INFO(report.Summary());
     CHECK(report.Ok());
-    CHECK_FALSE(K4HasIssue(report.warnings, "fx_k4_t_in.phases[0].leash", "past the M1 leash"));
-    CHECK(K4HasIssue(report.warnings, "fx_k4_t_out.phases[0].leash", "past the M1 leash"));
-    CHECK_FALSE(K4HasIssue(report.warnings, boss + ".phases[0].leash", "past the M1 leash"));
-    CHECK(K4HasIssue(report.warnings, boss + ".phases[1].leash", "past the M1 leash"));
-    CHECK_FALSE(K4HasIssue(report.warnings, boss + ".phases[2].leash", "past the M1 leash"));  // centred on the tile
-    CHECK(K4HasIssue(report.warnings, boss + ".phases[3].leash", "past the M1 leash"));        // centred off it
+    // The 2C review's warning measured a tether from the jittered spawn anchor against leashRange. A monster whose phase
+    // table holds a tether (or an arena) is a bound fight now: leashed to its authored home over its whole fight's reach
+    // (MonsterLeashCentre / MonsterLeashRange), so no tether can send it home from inside and nothing warns.
+    for (const DataIssue& w : report.warnings) CHECK_FALSE(Contains(w.message, "past the M1 leash"));
+    const MonsterDef* edited = real.Monsters().Find(boss);
+    REQUIRE(edited != nullptr);
+    // The leash the rows above would give the boss (from its authored tile): each tether's reach, the largest wins.
+    MonsterDef rows = *edited;
+    MonsterPhaseDef t;
+    t.leash.present = true;
+    t.leash.radius = fits + 1;
+    rows.phases = {t};
+    CHECK(PhaseTableBindsFight(rows));
+    CHECK(PhaseFightReach(rows, home, ai.attackExitMul) == doctest::Approx(fits + 1 + kTetherSlackTiles));
+    t.leash.hasCentre = true;
+    t.leash.centre = TilePos{home.col + static_cast<int32_t>(offset), home.row};
+    t.leash.radius = 1;
+    rows.phases.push_back(t);
+    CHECK(PhaseFightReach(rows, home, ai.attackExitMul) ==
+          doctest::Approx((std::max)(fits + 1, offset + 1) + kTetherSlackTiles));
     // A hunt's normal definition is checked too (its spot is its anchor).
     CHECK(K4HasIssue(report.warnings, "defsNormal." + hunt + ".abilities.late.phases", "never usable"));
-    CHECK(K4HasIssue(report.warnings, "defsNormal." + hunt + ".phases[0].leash", "past the M1 leash"));
   }
 
   // =================================================================================================================
@@ -1741,12 +1755,12 @@ TEST_SUITE("monsters") {
     PhaseSummonDef now;
     now.monsterId = "fx_k4_risen";
     PhaseSummonDef later = now;
-    later.delayMs = 15000;
+    later.delayMs = 25000;  // after the walk home (2F review: the bound fight's leash is 11.4 tiles, a longer walk)
     p.summons = {now, later};
     p.feed.present = true;
     p.feed.radius = 4;
     p.feed.healPct = 3;
-    p.feed.delayMs = 10000;
+    p.feed.delayMs = 20000;
     const MonsterDef def = K4Boss({p}, {K4Circle("late", 60000)});
     rig.PlaceHero(Vec2(42, 40));
     const EntityId b = rig.Spawn(def, Vec2(40, 40), MonsterState::Chase);
@@ -1763,14 +1777,17 @@ TEST_SUITE("monsters") {
     const uint32_t corpse = K4Events<EvMonsterFeed>(rig.h.events)[0].corpseId;
     REQUIRE(rig.monsters.CorpseRegistry().Find(corpse) != nullptr);
     CHECK(rig.monsters.CorpseRegistry().Find(corpse)->holder == b);
-    // Drag it past its leash (8 tiles from its anchor): it walks home ignoring the hero.
+    // Drag it past its leash: it walks home ignoring the hero. Its arena makes it a bound fight (2F review): the leash
+    // is the ring's reach plus its swing reach from its home (9 + 2 x 1.2 = 11.4), not the 8 tiles of a plain monster.
     rig.Step(100);  // let the roar end
-    rig.M(b).pos = Vec2(49.5, 40);
+    const double leash = MonsterLeashRange(rig.M(b), rig.h.ctx.data.Monsters().ai);
+    CHECK(leash == doctest::Approx(9 + 2 * rig.h.ctx.data.Monsters().ai.attackExitMul));
+    rig.M(b).pos = Vec2(40 + leash + 0.5, 40);
     rig.M(b).state = MonsterState::Chase;
-    rig.PlaceHero(Vec2(50.5, 40));
+    rig.PlaceHero(Vec2(40 + leash + 1.5, 40));
     REQUIRE(rig.StepUntil([&] { return rig.M(b).state == MonsterState::Returning; }, 60));
     CHECK(rig.M(b).phase == 1);  // walking home is no reset yet
-    REQUIRE(rig.StepUntil([&] { return Dist(rig.M(b).pos, Vec2(40, 40)) < 1.4; }, 600));
+    REQUIRE(rig.StepUntil([&] { return Dist(rig.M(b).pos, Vec2(40, 40)) < 1.4; }, 900));
     // M1: it walks home at its normal speed, not its row's x1.5 (the smoothed speed has settled on the base top speed).
     CHECK(rig.M(b).phaseSpeedMul == 1.5);
     CHECK(rig.M(b).moveSpeed ==
@@ -1796,11 +1813,11 @@ TEST_SUITE("monsters") {
     REQUIRE(rig.monsters.CorpseRegistry().Find(corpse) != nullptr);
     CHECK(rig.monsters.CorpseRegistry().Find(corpse)->holder == kNoEntity);  // the Feed let go
     // The queued summon and the Feed never come due.
-    REQUIRE(rig.Now() < 9000);
+    REQUIRE(rig.Now() < 19000);
     const double hpAfter = rig.M(b).hp;
     rig.PlaceHero(Vec2(80, 40));
     rig.h.events.Clear();
-    rig.Step(60 * 16);
+    rig.Step(60 * 26);
     CHECK(K4Events<EvMonsterRaised>(rig.h.events).empty());
     for (const EvCorpseRemoved& r : K4Events<EvCorpseRemoved>(rig.h.events)) CHECK(r.reason != CorpseRemoveReason::Consumed);
     CHECK(rig.M(b).hp == hpAfter);
@@ -2646,5 +2663,96 @@ TEST_SUITE("monsters") {
     std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(r.digest));
     INFO("digest " << hex);
     CHECK(std::string(hex) == "4567bd8648a82662");
+  }
+  TEST_CASE("2F review (M1 amended): a bound fight is leashed to its authored home over its whole fight's reach") {
+    // A Valdras-like table: a tether on the dais in P2, the shrinking ring in P3; M10's jitter put the boss 3.6 tiles off
+    // its authored tile (the dais), on the east side.
+    MonsterPhaseDef p2 = K4Row(65);
+    p2.leash.present = true;
+    p2.leash.radius = 3;
+    MonsterPhaseDef p3 = K4Row(30);
+    p3.arena.present = true;
+    p3.arena.fromR = 9;
+    p3.arena.toR = 5;
+    p3.arena.overMs = 40000;
+    p3.arena.dpsPctMaxHp = 1;
+    const MonsterDef def = K4Boss({p2, p3});
+    const MonsterAiDef& ai = K4Data().Monsters().ai;
+    CHECK(PhaseTableBindsFight(def));
+    CHECK_FALSE(PhaseTableBindsFight(K4Boss({K4Row(50)})));
+    const double reach = PhaseFightReach(def, TilePos{40, 40}, ai.attackExitMul);
+    CHECK(reach == doctest::Approx(9 + 2 * ai.attackExitMul));  // the ring's start plus his reach; the tether's is 3.25
+    REQUIRE(reach > ai.leashRange);
+    const auto spawn = [&](K4Rig& rig) {
+      MonsterSpawnParams sp;
+      sp.baseDef = &def;
+      sp.tile = TilePos{43, 42};
+      sp.hasHome = true;
+      sp.home = TilePos{40, 40};
+      const EntityId b = rig.monsters.Spawn(sp);
+      REQUIRE(b != kNoEntity);
+      rig.M(b).stats.dex = 0;
+      rig.M(b).stats.lck = 0;
+      return b;
+    };
+    // The hero at the ring's west edge, 0.7 tiles inside it: the boss follows him there, 9.5+ tiles from where it was
+    // spawned, and fights on (the 2F rule leashed it from the jittered anchor over 8 tiles: a reset at 30 %).
+    {
+      K4Rig rig;
+      const EntityId b = spawn(rig);
+      CHECK(MonsterLeashCentre(rig.M(b)) == Vec2(40, 40));
+      CHECK(MonsterLeashRange(rig.M(b), ai) == doctest::Approx(reach));
+      Snapshot v = rig.View();
+      const MonsterView* mv = nullptr;
+      for (const MonsterView& x : v.monsters) mv = x.id == b ? &x : mv;
+      REQUIRE(mv != nullptr);
+      CHECK(mv->leashCentre == Vec2(40, 40));
+      CHECK(mv->leashRange == doctest::Approx(reach));
+      rig.HitTo(b, 29);
+      rig.M(b).state = MonsterState::Chase;
+      rig.PlaceHero(Vec2(40 - 9 + 0.7, 40));
+      rig.Step();
+      REQUIRE(rig.M(b).phase == 2);
+      double farFromSpawn = 0;
+      for (int i = 0; i < 60 * 12; ++i) {
+        rig.Step();
+        CHECK(rig.M(b).state != MonsterState::Returning);
+        farFromSpawn = std::max(farFromSpawn, Dist(rig.M(b).pos, TilePos{43, 42}.Center()));
+      }
+      CHECK(farFromSpawn > ai.leashRange);
+      CHECK(rig.M(b).phase == 2);
+      CHECK(rig.M(b).state == MonsterState::Attack);
+      CHECK(Dist(rig.M(b).pos, rig.hero->Position()) <= 2 * ai.attackExitMul);
+    }
+    // Dragged past the fight's reach it still walks home (M1): Returning, then phase 0 at home (the dais).
+    {
+      K4Rig rig;
+      const EntityId b = spawn(rig);
+      rig.HitTo(b, 29);
+      rig.Step();
+      REQUIRE(rig.M(b).phase == 2);
+      rig.Step(100);  // (no enter action: nothing roots it)
+      rig.M(b).pos = rig.M(b).prevPos = Vec2(40 - reach - 0.5, 40);
+      rig.M(b).state = MonsterState::Chase;
+      rig.PlaceHero(Vec2(40 - reach - 1.5, 40));
+      REQUIRE(rig.StepUntil([&] { return rig.M(b).state == MonsterState::Returning; }, 60));
+      REQUIRE(rig.StepUntil([&] { return rig.M(b).state == MonsterState::Idle; }, 60 * 30));
+      CHECK(Dist(rig.M(b).pos, Vec2(40, 40)) < 1.5);  // home is the dais, not the jittered tile
+      CHECK(rig.M(b).phase == 0);
+    }
+    // A monster without a bound fight keeps the plain leash: its spawn anchor, leashRange.
+    {
+      K4Rig rig;
+      const MonsterDef plain = K4Boss({K4Row(50)}, {}, 1, "fx_k4_plain");
+      MonsterSpawnParams sp;
+      sp.baseDef = &plain;
+      sp.tile = TilePos{43, 42};
+      sp.hasHome = true;
+      sp.home = TilePos{40, 40};
+      const EntityId c = rig.monsters.Spawn(sp);
+      REQUIRE(c != kNoEntity);
+      CHECK(MonsterLeashCentre(rig.M(c)) == TilePos{43, 42}.Center());
+      CHECK(MonsterLeashRange(rig.M(c), ai) == ai.leashRange);
+    }
   }
 }

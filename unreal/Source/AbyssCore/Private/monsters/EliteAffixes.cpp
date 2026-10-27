@@ -13,7 +13,7 @@
 namespace abyss {
 
 std::vector<EliteAffixType> RollEliteAffixes(const EliteAffixTable& table, std::string_view zoneId, Rng& rng,
-                                             std::string_view family) {
+                                             std::string_view family, bool canRise) {
   int32_t lo = 1, hi = 1;
   table.CountFor(zoneId, lo, hi);
   if (hi < lo) hi = lo;
@@ -22,7 +22,9 @@ std::vector<EliteAffixType> RollEliteAffixes(const EliteAffixTable& table, std::
   // monster's family may roll.
   std::vector<EliteAffixType> available;
   for (EliteAffixType t : table.order) {
-    if (table.RollableFor(t, family)) available.push_back(t);
+    if (!table.RollableFor(t, family)) continue;
+    if (!canRise && table.Def(t).riseAgain.present) continue;  // 2F review: a rise that could never apply
+    available.push_back(t);
   }
   std::vector<EliteAffixType> selected;
   const int32_t actual = (std::min)(count, static_cast<int32_t>(available.size()));

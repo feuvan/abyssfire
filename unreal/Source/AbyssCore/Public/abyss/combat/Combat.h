@@ -528,6 +528,8 @@ class ABYSS_API CombatSystem {
   void ResolveMonsterStrike(EntityId monster);
   // `ranged`: not a melee swing (bolts, K2 ground strikes: EvHit::melee false). `mods`: a K2 ability's hit.
   void ApplyMonsterHit(EntityId monster, bool ranged, const MonsterHitMods* mods = nullptr);
+  // 2F review: a status-only ability strike (dmgMul 0) on the hero: i-frames avoid it, else its status rolls.
+  void ApplyMonsterStatusOnly(EntityId monster, const MonsterHitMods& mods);
   // ---- K2 monster abilities ----
   // The ability clock of `m` (no-op once started for this fight).
   static void StartAbilityClock(MonsterInstance& m, double now);
@@ -543,7 +545,7 @@ class ABYSS_API CombatSystem {
   void BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir);
   void ResolveOnDeath(const PendingOnDeath& e);
   // A due swing of `m` becomes an ability (true) or stays a basic swing (false). `castsOnly` (K3 / K5): the cast between
-  // swings, where only a raise / summon / buff / call may start.
+  // swings, where only a raise / summon / buff / call or (2F review) a ranged special may start.
   bool TryStartAbility(MonsterInstance& m, double now, bool castsOnly = false);
   // K3 / K5: a support cast between swings (Chase, or Attack before the swing is due): a raise / summon (header "K3")
   // or a buff / call (header "K5").
@@ -605,6 +607,13 @@ class ABYSS_API CombatSystem {
   std::vector<HazardTick> scratchHazardTicks_;
   std::vector<PendingOnDeath> onDeath_;   // K3 on-death effects waiting for their delay (schedule order)
   uint32_t nextOnDeathSeq_ = 1;
+  // 2F review (monsters.md 1.3): on-death damage the hero took, {sim ms, amount}, within the last kOnDeathWindowMs
+  // (OnDeath.h): bursts and rings landing together share one cap.
+  std::vector<std::pair<double, double>> onDeathTaken_;
+  // 2F review (a held lock that steps away): the lock the hero last had in reach and the locomotion's MoveGeneration
+  // then; while neither changed the hero walks to it again when it steps out of reach (TickCombat).
+  EntityId reachLock_ = kNoEntity;
+  uint32_t reachLockGeneration_ = 0;
   MonsterOnDeathDef zoneOnDeath_;         // K3: the zone's on-death effect (SetZoneOnDeath)
   std::string zoneOnDeathLabel_;
   bool inCombat_ = false;

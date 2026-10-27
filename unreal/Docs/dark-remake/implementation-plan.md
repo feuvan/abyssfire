@@ -333,12 +333,25 @@ after M2.
 
 **W2 bot rules.** Step out of active telegraphs (for each `EvTelegraph` whose shape contains the hero, move to the
 nearest walkable tile outside it before contact); target priority from `botPriority` (raisers, standard-bearers,
-drummers first); do not stand on the dais in Valdras P2; leave cinderbloats to burst away from the hero.
+drummers first); do not stand on the dais in Valdras P2; leave cinderbloats to burst away from the hero. *As built
+(2F):* the telegraph, hazard and arena rule (with a dodge roll for a contact due within 200 ms), priority from the data
+(a support caster or an aura owner, then a pack leader; no `botPriority` field), Raised lured out of a Feed zone before
+they die, a boss followed home and its fight kept inside its leash; on-death fuses are telegraphs like any other
+(*2F outcomes*). *2F review:* the frame-perfect bot is one of two models. `AutoPilotConfig::reactionMs` makes a
+telegraph or hazard a danger only that long after it appeared, and `dodgeRoll` false walks out without the i-frame roll;
+the sweep runs both (`ABYSS_PT_REACTION_MS=400 ABYSS_PT_NO_DODGE=1`: the reaction-limited bot, a human-like 400 ms, no
+dodge roll). The fence keeps a named fight inside the monster's real leash (`MonsterView::leashCentre` / `leashRange`).
+`AutoPilotStats` adds `maxBurstTakenPct` (the most damage taken within any 1000 ms, a percent of max life) and, per named
+fight, the abilities each monster started and how many of them were cancelled before contact (`AutoPilotFight::abilities`).
 
 **Playthrough pins** (`playthrough_test.cpp`): three classes, seeds 101 / 202 / 303; hero level 12-14 at the end of
 Chapter 1, embers ≥ 40, kills ≥ 40, levelUps ≥ 11; achievements `ach_first_kill`, `ach_kill_valdras`, `ach_quest_10`,
 `ach_level_10`; checkpoints renamed to the route's. A sweep (`ABYSS_PT_SWEEP=1 ABYSS_PT_SWEEP_BASE=<seed>
-unreal/CoreTests/run.sh`) over 20 seeds per class must pass before each wave closes.
+unreal/CoreTests/run.sh`) over 20 seeds per class must pass before each wave closes. *2F review:* every run also holds
+its largest 1 s burst at or under 50 % of max life and its story boss fight at or under 400 s with no reset; a sweep of
+at least ten seeds per class holds DR9's per-class band (*2F review*): the median story boss fight 30-180 s with its 90th
+percentile under 240 s, hero deaths in at most 2 % of those fights (10 % for the reaction-limited bot), the mini-boss's
+opening raise in at least 95 % of its fights and Keen in at least 60 %.
 
 ## 7. Audio
 
@@ -1695,6 +1708,232 @@ manifest moves hit timing, so the seeds differ by manifest):
   band). The VFX status loops already iterate `EnumCount<StatusType>()` (a missing recipe is remembered, not retried).
 - **For 3A (K7).** A flag set by the cleanse needs the validator's model and the "no quest sets flag" warnings extended;
   sub-dungeon spawns take `variants` (the loader refuses them now) once sub-dungeons spawn.
+
+**2F outcomes (Content W2 / C2 as built, 2026-10; pending review; DECISIONS DR9 *2F*, M5 *2F note*, DR8 *2F*).**
+- **Monsters** (`GameData/monsters/emerald_plains.ts`, `miniBosses.ts`; monsters.md 2, chapter1.md 10 / 11). Every
+  Chapter 1 definition, the Corpseherd and the three hunts carry `hitCapHeroMaxHpPct: 35` and an authored `windupMs` on
+  every ability (>= 600 ms; >= 700 for a boss special). Breach-blood: `breachclot` lays one Ashnumb stack per landed hit
+  (`fixed` 1, 6 s, chance 1; W1's poison gone), `cinderbloat` keeps its 30 % burn and lays Ashnumb too, and bursts 800
+  ms after death (circle r2.2, 18 fire, `hitsMonsters` x2, capped at 20 % of the hero's life); both leave no body. The
+  Unburied (`risen_footman`, `risen_arbalest`, `risen_shieldbearer`, `dead_standard_bearer`): `corpse`, the family trait
+  `riseAgain {0.25, 3000, 40 %, notOnCrit}`; the arbalester kites (`kite {3, 6}` inside its range 6); the shieldbearer
+  blocks (`block {arcDeg 100, damageMul 0.5, wall 2}`); the standard-bearer musters (`muster`: raise, Cast01, 900 ms,
+  every 10 s, one footman at 40 % from a corpse within 6 tiles, `capAlive` 2, one per 10 s) under its banner (`aura`
+  damage x1.15, r5, the Unburied). The Living: `oath_zealot` frenzies below 50 % (a phase row: Roar, attack speed x1.35,
+  move x1.2, damage taken x1.1); `deserter` flees its dead leader (`morale {5000, r8, sustain living r8}`); the drummer
+  drums (`war_drum`: a call, Cast01, 2000 ms, every 8 s, `fearImmune` 6 s to the Living within 8; `aura` attack speed
+  x1.1, r8, the Living), so the Hollow holds while it lives. The Gravegnawers: `gravegnawer` `packAggro 6`, eats corpses
+  (`corpse {remains, consumes}`); `bonegorger` slams (`clapper_slam`: circle r2, Attack02, 800 ms, x1.6, every 6 s),
+  `remains`. The Corpseherd: Call the Flock as two raises (`call_the_flock_pull`: two footmen at the pull, priority 2, a
+  600 s cooldown; `call_the_flock`: one per 8 s, `capAlive` 3, `perWindowCap` 1 / 8000; both 900 ms, at 40 %), Keen
+  below 50 % (circle r4 on herself, Cast02, 800 ms, x0.4, slow 25 % 3 s), `kite {2, 3}` (range 3.0 kept: M5 *2F note*),
+  `remains`; HP 300 unchanged. Valdras (chapter1.md 11): P1 Banner Sweep (cone r2.6 120 degrees, Attack02, 700 ms, x1.3,
+  5 s) and Oath-Brand (circle r1.8, Cast01, 900 ms, x1.8 fire, a 4 s brand ticking x0.15 every 500 ms, 8 s); P2 below 65
+  % (Roar, move x0.6, the tether r3 on the dais, Feed r4 / 3 % / 1 s, a `rollcall_standard_bearer` summoned at the west
+  ash circle (11, 91), once more 20 s after its death, Breach-seep: a `hazard` line 8 x 1 from the dais, 700 ms, two
+  fire ticks x0.5 and slow 30 % 2 s, every 6 s, P2 only, stinger `stinger_valdras_roll_call`); P3 below 30 % (Roar,
+  attack speed x1.25, move x1.15, Lunge switched on: line 5 x 1.2, 800 ms, x1.5, 7 s; the ring closing from 9 to 5 over
+  40 s, 4 % of max life per second of fire outside; stinger `stinger_valdras_no_retreat`); `remains`. **Numbers: 14000
+  HP, damage 32** (below). `rollcall_standard_bearer` 亡旗手 (new, appended to the zone list; the standard-bearer's numbers
+  and look, `spriteKey monster_dead_standard_bearer`): `roll_call` (summon, Cast01, 900 ms, every 10 s from 3 s, a
+  footman at each ash circle (11, 91) and (19, 99), 40 %, `capAlive` 4) and the banner aura. Hungerbell's bell is a hunt
+  ability (`supper_bell`: a call, Attack02, 800 ms, every 9 s, provokes the gnawers within 10; below).
+- **World** (`maps/emerald_plains.ts`, `world.ts`, `quests/all_quests.ts`, `npcs.ts`; chapter1.md 3 / 7 / 8 / 10 / 13 /
+  17). The §17 W2 mixes (same counts, 55): the Weeping Ditch 3 bloats + 3 clots; the Broken Redoubt 3 arbalesters + 2
+  shieldbearers; the Dead Ranks 3 shieldbearers + 2 footmen + the standard-bearer (leader); the Hollow 5 deserters (the
+  first an elite leader) + the drummer; the midden a bonegorger + 2 gnawers. Dawn variants (`rf_chapter_dawn`): the
+  trenches become 8 gnawers, the Dead Ranks 6. The Sheepfold's six `corpseSeeds` (footmen). The Muster: `ambushChampion
+  {0.1, standard-bearer + 3 footmen, leader the standard-bearer, sharedAffix, leaderLoot magic}`. The Ashnumb row
+  (`statusEffects.add.ashnumb`: 5 stacks, -10 % healing each, slowed 20 % at 5) with `sys.statusEffect.name.ashnumb` 麻灰
+  / Ashnumb; Scorched bursts (1000 ms, r2, 20 fire, cap 20 %) and Gravecold rings (600 ms, r2.5, ice, slow 30 % 2.5 s)
+  on death; the `unburied` affix 不葬 / Unburied (`riseAgain {1, 3000, 50 %}`, `families [unburied]`, loot +3, no stat
+  change, the Unburied violet #D08CFF). Flags: M2 sets `rf_hungerbell_silenced`, M5 `rf_chapter_dawn`. Permanent
+  rewards: S1 +15 max life, S6 +3 stat points. Quest-gated lines (the `after` strings 1B wrote): the blacksmith after
+  S3, the Captain after S4, Marl after S1 (each the after line in front of its condition-free W1 line), Brother Aldwin
+  after M5 (his line 0 gated `notTurnedIn`, line 1 kept; the 2E guidance). New strings:
+  `data.monster.rollcall_standard_bearer`, `sys.eliteAffix.name.unburied`, `sys.statusEffect.name.ashnumb` (zh-CN, en;
+  zh-TW derived).
+- **Hunt abilities** (new remake feature `quest.huntAbilities`; the plan's schema had none for a hunt). A quest's hunt
+  may carry `abilities` (`GameData/types.ts` `RemakeQuestHunt`, the key gate's `hunts[]` level, `REMAKE_FIELDS`); the
+  exporter writes them on the `quest_hunts.json` hunt row (`hunts[].abilities`) and merges them after the base's into
+  `defsNormal` (checked by `checkK2Monster`; an id the base already has fails), and keeps `quests.json`'s hunts
+  web-only. Core: `HuntDef::abilities` (loaded with the monster ability reader, duplicate ids refused),
+  `MakeHuntDefinition` appends them to the base's (the runtime builds a hunt from its base, so `defsNormal` alone never
+  reached a fight), and `DataStore::Finalize` refuses a hunt ability that repeats a base id and warns when
+  `defsNormal`'s ability ids are not the base's followed by the hunt's own.
+- **Core fix: an elite blink stays in bounds** (`MonsterSystem::TickEliteBehaviours`). With the M1 Returning leash a
+  Breachwalker blink that would land past the leash range of the monster's spawn anchor, or outside a K4 tether, is
+  skipped (its draws made as before, like a blink onto a blocked tile; web-parity leash mode unchanged). Found by the
+  sweep: a Breachwalker Valdras blinked off his tethered dais after a hero who was luring Raised out of the Feed zone,
+  landed past his leash and walked home healed to full and back to P1, five times in one fight (mage, seed 2018: 850 s,
+  three deaths); the same seed now fights him in 149 s.
+- **AutoPilot W2 rules** (`AutoPilot.cpp`; plan 6; no content id, no class branch: every rule reads the snapshot and the
+  definitions). (1) *Telegraphs and hazards*: every damaging `TelegraphView` (circle / cone / line / ring / hazard
+  strikes, on-death fuses) before its contact and every live `HazardView` is a danger (`ShapeContains` with the body
+  radius); a hero inside one, or outside a K4 arena's ring, walks to the nearest safe spot (16 directions on rings of
+  0.5-5.5 tiles, straight walkable, inside the arenas, nearest the fight) and dodge-rolls (`CmdDodge`, i-frames) when
+  the contact is due within 200 ms; a named fight's spot stays inside its leash (below). While the approach to the
+  target crosses a strike about to land (a hazard only in its last 1.5 s) the hero holds (3 s at most). (2) *Priority
+  targets*: a monster with an aura or a between-swings ability (raise / summon / buff / call; the definition or the
+  hunt's `defsNormal`) ranks 2, a pack leader 1; the fight picks the best rank within the threat radius + 1.5 and
+  switches to a higher rank every 20 frames (the standard-bearer before its shieldbearers, the drummer before the
+  deserters, the roll-call bearer before Valdras, the Corpseherd before her flock). (3) *Feed*: a Raised standing in a
+  feeding phase's zone (the row's centre, else the boss's map spawn tile) is lured 2.5 tiles past its edge before it
+  dies (5 s at most). (4) *Boss phases and the leash*: a monster walking home is followed in, not shot from outside; in
+  a named fight the hero stays within the leash range less 4 tiles of the monster's first-seen spot (its home); a target
+  lock whose approach ended short (a tether, a kite) is clicked again. `boss` / `hunt` steps and the walks pick targets
+  with (2). The route's Valdras step allows 900 s (was 400: the rogue's long fight).
+- **Instrumentation** (`AutoPilotStats`, observational: dumps of base 1000 stay identical with it on the W1 data):
+  `fights` (named fights: start / end, hero deaths, affixes, phase entry times, Feeds, resets), `maxHitTakenPct` /
+  `maxHitTakenBy` (the largest non-tick hit as a percent of the hero's life), `oneHitDeaths` (a blow from >= 50 % to 0),
+  `telegraphDodges`, `priorityTargets` and W2 event counters (raised, Unburied rises, blocks, flees, support casts,
+  corpses eaten, on-death fuses, Ashnumb hits and peak stacks, champion ambushes, flags, permanent rewards, phases).
+  `playthrough_test.cpp` checks `oneHitDeaths == 0` and `maxHitTakenPct <= 35` on every run and appends one line per run
+  to `ABYSS_PT_STATS=<file>` (class, seed, level, exp, kills, deaths, the hit numbers, dodges, priority switches,
+  minutes, the W2 counters, the fights).
+- **Balance** (DR9, plan 6 targets). With the W1 numbers the bot warrior killed a three-phase Valdras in about 2 s (the
+  hero's Lv 12-13 damage against 900-1100 HP). Valdras is **14000 HP / 32 damage** (x12.7 / x1.6 the design's ~1100 /
+  20): the bot warrior's fight lands in the 60-90 s target at the median; his largest hit stays under the cap. Sweep
+  (GCC: 600 runs, 20 seeds x 3 classes from each of the bases 1000-10000 step 1000; Clang: bases 1000 and 7000, their
+  final saves identical to GCC's): every run passes; Lv 13 (402) / 14 (198) (warrior 139 / 61, mage 132 / 68, rogue 131
+  / 69), 4331-5276 exp, 91-147 kills, so DR9's 12-14 band holds (no amendment). Valdras: the warrior's fight takes a
+  median 74.1 s (p10 49.6, p90 99.3, range 24.6-128.2; 113 of 200 inside 60-90, 46 shorter, 41 longer; the affix moves
+  it: Driven / Unburied medians 56 / 61, the rest 75-84), the mage's 136.1 s (40.5-255.3), the rogue's 228.9 s
+  (65.3-348.7: his mana-bound damage); no fight reset (before the blink fix one mage fight reset five times). Hunts and
+  the Corpseherd keep the W1 numbers and die in seconds (medians 0.2-3.9 s, at most 25.9 s). Deaths: warrior 0, mage 2,
+  rogue 7 (one per run at most; 8 of the 9 to Valdras, 7 of them a Brutish Valdras); no death to a single hit; the
+  largest hit taken is 23.4 % of the hero's life (rogue, Valdras; warrior 13.9 %, mage 16.9 %), under the 35 % cap. The
+  W2 systems show up in every run: per run 10-15 bodies raised, 2.5-8 Unburied rises, 6-14 blocked hits, 3.5 flees, 1.3
+  support casts (the drummer and the bearers die first), 0.3-0.9 corpses eaten, 4.8 bloat fuses, 4-7 Ashnumb stacks laid
+  (5 at once at the peak), 3.6-5.7 phase rows, both flags and both permanent rewards; a champion Muster in about 6 % of
+  the runs. The bot steps out of 45 / 72 / 112 telegraphs per run (warrior / mage / rogue) and switches to a priority
+  target about 4 times.
+- **Tests.** `content_ch1_test.cpp` re-pins: the roster table (Valdras 14000 / 32, the roll-call bearer), derived stats
+  and difficulty rows (Valdras str 25 / vit 1400; NM 21000 / 48, Hell 28000 / 64), the affix application table (8
+  affixes; Unburied changes no number), the zone population (members matched through `spawnEntry` and the mix; 2
+  leaders; the Hollow leader with one affix; per-definition counts), the defend-wave fallback list (13 ids), the W1
+  on-hit table (Ashnumb on clots and bloats), the roster size (39) and zone list, the affix look (Unburied); new cases
+  pin the W2 ability table and telegraph floors, families / corpses / traits / burst / packs / morale / kite / block /
+  auras / the zealot, Valdras's phases (and his dais and circles walkable), the world (mixes, leaders, variants, seeds,
+  the Muster) and the world state (flags, permanent rewards, the NPC lines before and after their quests through
+  `NpcLinesNow` / `NpcPanelLineNow`, Ashnumb, the remade affixes), and every hunt's ability ids against `defsNormal`.
+  Engine cases that read the shipped data moved off it: `data_test` (8 affixes), `monsters_test` (Unburied last; a new
+  blink-bounds case: past the leash, inside it, past a tether, inside a wider one), `packs_test` (leaders counted
+  against a plain run), `corpses_test` (the Unburied row is shipped: the edit appends it once; the shipped-table
+  assertions live in content_ch1), `world_state_test` (the Ashnumb row is shipped: the bare-rules cases take it out of a
+  copy; `K6StripChampions` removes the shipped Muster; the K6 replay digest re-pinned to `cf95a829ec9b134e`, GCC =
+  Clang). Totals: 870 cases (GCC 235593 assertions, Clang 235529; the gap of 64 is the world suite's, as before).
+- **Deviations.** (1) `botPriority` (plan 2.6) is not a field: the bot ranks targets from the data it already has
+  (abilities, auras, pack leaders), so no record names one. (2) Breach-seep is one line, not three (no `count` field;
+  three abilities would share one cooldown poorly): the dais line aims at the hero (`aim anchor`). (3) The Corpseherd's
+  kite is [2, 3], not 3-5 (her range 3.0 kept; M5). (4) The arbalester kites below 3 tiles (band [3, 6]; monsters.md
+  says "within 2 tiles (band 3-6)"). (5) Valdras 14000 / 32 (above; chapter1.md 11's numbers were "tuning targets set by
+  the gate"). (6) The P2 muster circles are a `rollcall_standard_bearer` (a new definition with `roll_call` at both
+  circles) rather than the zone's `dead_standard_bearer` raising at both (its muster is a raise at a corpse; the circles
+  need a summon at anchors). (7) The trench / Dead Ranks dawn variants keep the entries' counts (8 / 6). (8)
+  Hungerbell's call is its own 9 s ability (monsters.md 2.4 "every slam calls"; one ability cannot both slam and call).
+  (9) The Unburied affix can roll on an Unburied boss (the Corpseherd, Valdras: one affix in Chapter 1, now 1 in 8)
+  where it does nothing (K3: bosses never rise) but still gives its loot bonus: excluding it needs a core rule (an affix
+  whose only effect cannot apply is not rollable) for a later package. (10) The core changes above (hunt abilities,
+  blink bounds) are outside "content only".
+- **For 2G (UE).** The drummer's `war_drum` and Hungerbell's `supper_bell` are calls with long windups on short clips
+  (Cast01, Attack02): ComputeAbilityTiming slows the clip to the windup (playRate = clip contact / windupMs), so the
+  drum loop plays at a crawl until a looping drum clip (or a 2000 ms Cast01) ships; Hungerbell's call plays its slam
+  clip with no damage (a bell-ring clip would read better). Draw the roll-call bearer with the standard-bearer's art
+  (its `spriteKey`), the P2 / P3 stingers on `EvMonsterPhase`, the Unburied affix in the Unburied violet, the Muster
+  leader's champion marker (`packLeader` on an `EvRandomEvent::champion` ambush), the dawn variants' gnawers in the
+  trenches after M5. The 2E UE status tables (Ashnumb) now see real stacks in Chapter 1.
+
+**2F review outcomes (2026-10; pending review; DECISIONS M1 / M7 / DR8 / DR9 *2F review*, chapter1.md §19, monsters.md
+§1.3 / §2 / §3).** The review's 17 findings (2F-D1..D11, CORE-R1, BOT-R2, BAL-R3, BAL-R4, SAVE-R5, BOT-R6) were all
+real; every one is fixed, three with a recorded remainder (below).
+- **Core rules** (DECISIONS DR8 *2F review*). *Ranged specials* (2F-D1): a damaging ability whose `rangeMax` passes
+  attackRange x attackExitMul (`AbilityIsRangedSpecial`) also starts between swings from Chase or Attack, like a raise
+  or a call (`TryStartSupportCast`; `AbilityPickInput::swingReach`); the DataStore / exporter "no effect past the reach"
+  warning is gone (a `rangeMin` past the reach still warns / fails: never picked). *Clipless abilities*: a hazard or a
+  call may leave out `clip` (it then authors `windupMs`); it emits no EvPlayAnim and does not root its caster (2F-D9).
+  *Status-only strikes*: `dmgMul` 0 on a ground strike rolls no damage; a body inside takes its status, the dodge roll's
+  i-frames avoid it (`CombatSystem::ApplyMonsterStatusOnly`; the loader wants `status` and no `hitsMonsters`; 2F-D6).
+  *Charges*: `dash` on a line ability (not aim `anchor`): the end is fixed at windup start (`MonsterSystem::DashEnd`
+  over `AbilityDashEnd`: every 0.25 tiles walkable, outside the camps, inside the leash and the tether), shown on
+  `EvTelegraph` / TelegraphView `hasDash` / `dashTo`; at contact, after the hit, the caster is teleported there
+  (`TeleportReason::Dash`, appended; a stun or death mid-windup cancels it). *The bound fight's leash* (CORE-R1, 2F-D3;
+  DECISIONS M1 *2F review*): a monster whose phase table holds an arena or a tether is leashed to its authored home over
+  max(leashRange, `PhaseFightReach`) (`MonsterLeashCentre` / `MonsterLeashRange`, used by the M1 check, the Returning
+  walk, flee / kite bounds, the elite blink and the dash; `MonsterView::leashCentre` / `leashRange`); Valdras's is 11.4
+  tiles from the dais; the 2C review's tether-past-leash warning is removed (DataStore and `warnTetherPastLeash`).
+  *Affix rollability* (2F-D5): `RollEliteAffixes(..., canRise)` leaves the rise affixes out for a monster that can never
+  rise (`MonsterMayRise`: boss roles, Raised, a body that is not a corpse), and a shared champion roll's member drops
+  them. *The on-death window cap* (2F-D7): bursts and rings that land on the hero share 35 % of its max life per 1000 ms
+  (`OnDeathWindowRoom`, x the difficulty's damage multiplier) on top of each one's own cap. *Ambush variants* (2F-D11;
+  feature `events.ambushVariants`): `ambushVariants [{whenFlag, monsters}]` replaces a zone's ambush list (and the
+  rescue guards' fallback) while its flag is set; a champion's `notFlag` turns the champion off with no extra draw.
+  *Boss affix pins* (SAVE-R5; DECISIONS M7 *2F review*): the story boss's and a zone mini-boss's roll is pinned per
+  (zone, monster id) at its first fight (`PinAffixesInFight`, Chase / Attack in TickAI), dropped at its death, saved
+  (`SaveData::bossAffixes`, written last only when present, normalised, dropped by the content-version upgrade for an
+  unknown monster); a spawn takes the pin without a draw. *A held lock re-approached* (BOT-R6): when the locked target
+  leaves the hero's reach by itself after the hero reached it, an idle hero walks to it again (C7 approach, within
+  targetCycleRangeTiles) until the player's next move order (`HeroLocomotion::MoveGeneration`); the bot's own re-click
+  stays for its dodges and step-outs (they end the rule like a player's move); a zone exit drops the rule's lock.
+- **AutoPilot** (BOT-R2, 2F-D4). `AutoPilotConfig::reactionMs` (a telegraph / hazard is a danger only that long after it
+  appeared) and `dodgeRoll`; the fence reads `MonsterView::leashCentre` / `leashRange` (the first-seen spot is gone);
+  `AutoPilotStats::maxBurstTakenPct` (the most damage within any 1000 ms) and `AutoPilotFight::abilities` (per named
+  fight: each ability started, and cancelled before contact). `playthrough_test.cpp`: env `ABYSS_PT_REACTION_MS` /
+  `ABYSS_PT_NO_DODGE`; per run a burst <= 50 %, the story boss fight <= 400 s with no reset; per sweep (>= 10 seeds per
+  class) DR9's per-class band (plan 6). The route's Valdras step is back to 450 s (from 900).
+- **Content.** Valdras 9000 HP / 20 damage, the design's damage (BAL-R3, 2F-D2: at 24 a Brutish Valdras killed the
+  reaction-limited rogue in 10 of 18 fights); Breach-seep clipless with `rangeMax` 10; Lunge a fire charge at 2.5-5
+  tiles (`rangeMin` 2.5, `rangeMax` 5, `dash`); Banner Sweep fire. The Corpseherd 600 HP (BAL-R4, 2F-D4); Keen `dmgMul`
+  0. Scorched's burst `hitsMonsters` x2. The zealot's frenzy without its Roar (2F-D8). Hungerbell's `supper_bell`
+  clipless. Marl `visibleWhen {any: [M5 not turned in, S1 active]}`; `data.quest.q_rf_black_blood.permanent` 玛勒的苦药 /
+  Marl's Bitter Draught (2F-D10). The Broken Redoubt's dawn variant (5 gravegnawers), `ambushVariants` (gravegnawers
+  after dawn) and the Muster's `notFlag` (2F-D11). The hunts keep their numbers (their exp is hpMul-scaled: a sturdier
+  hunt pushed the hero to Lv 14-15). Recorded: the drummer's aura (2F-D6) and Breach-seep's one line (2F deviation 2)
+  stay as built.
+- **Balance** (DR9 *2F review*; GCC sweeps, bases 1000-10000 step 1000, 20 seeds x 3 classes each, in both bot models:
+  1200 runs, every one passing; Clang bases 1000 / 7000 in the frame-perfect model: final saves and stats lines
+  identical to GCC's). Frame-perfect bot: Lv 13 (405) / 14 (195), 4334-5331 exp, 92-153 kills; Valdras median / p90 /
+  max: warrior 38.0 / 51.3 / 71.8 s, mage 50.1 / 77.6 / 104.9 s, rogue 142.1 / 184.2 / 239.1 s; no death to him and no
+  reset; the Corpseherd's opening raise in every fight, Keen in 85 / 86 / 99 % of them (warrior / mage / rogue); the
+  largest hit 10.2 % of the hero's life, the largest 1 s burst 17.2 %; one rogue death in 600 runs (outside the named
+  fights). Reaction-limited bot (400 ms, no dodge roll): Lv 13 (395) / 14 (205), 4241-5181 exp; Valdras median / p90 /
+  max 35.9 / 48.6 / 60.2, 54.2 / 90.0 / 116.0 and 131.4 / 161.2 / 200.0 s; deaths to him 0 / 0 / 1 in 200 fights each
+  (the one a Brutish Valdras); the largest hit 15.6 %, the largest 1 s burst 19.6 %; Keen in 90 / 89 / 99.5 %. At 24
+  damage the same sweep had 0 / 2 / 12 deaths to him, 12 of them against Brutish (the rogue died in 10 of its 18 Brutish
+  fights); before the review the reaction-limited model died 2 / 89 / 197 times in 100 runs per class (the review's
+  harness). Hunts: medians 0.2-3.1 s; Hungerbell's slam lands in 90-100 % of its fights, its call in all.
+- **Tests.** New cases: `monster_abilities_test.cpp` (ranged specials, pure and at runtime from Chase and from a tether;
+  clipless hazards and the loader's rules; status-only strikes with and without i-frames; the dash end, teleport, stun
+  cancel, snapshot and loader rules, and a wall, a camp's safe zone, a tether and the leash each stopping a dash short), `phases_test.cpp` (the bound fight's leash: a hero at the ring's edge opposite the
+  jittered anchor keeps the boss fighting; dragged past the reach it walks home to the dais and resets; a monster
+  without a bound fight leashes as before), `corpses_test.cpp` (the on-death window cap; `MonsterMayRise` and the affix
+  pool), `world_state_test.cpp` (ambush variants and `notFlag`: load, refusals, Finalize, no extra draw, the variant
+  list; boss affix pins: serialisation, normalisation, content version, pinned at the fight, a load spawns the pin, a
+  kill ends it), `combat_test.cpp` (the held lock re-approached, a move order ending it, the cycle range),
+  `content_ch1_test.cpp` (the review's content pins), `monsters_test.cpp` (blink bounds; the mini-boss life order from
+  the second zone: the remade Corpseherd outlasts the web's zone-2 mini-boss behind the sealed gate). Re-pinned: the K6
+  replay digest (`2a75b9e104969bc9`: the content's numbers and the affix rule; GCC = Clang); the K2-K5 digests are
+  unchanged. The scripts check found the 2F affix name 不葬 missing from the bundled CJK subsets: `build_fonts.py` rebuilt
+  the eight Noto subsets (one glyph, 葬, added to each). Totals: 881 cases, GCC 241053 assertions, Clang 240989 (the
+  world suite's known gap of 64).
+- **Verification of the leash fix** (CORE-R1, 2F-D3). The review's probe (the bot stopped at P3's entry, the hero held
+  0.7 tiles inside the ring on the side away from the jittered spawn anchor for 15 s) on seeds 30000-30029 x 3 classes:
+  0 of 87 probes walked him home (the review: 68 of 90); held 7 tiles off the dais in P1, 0 of 87 (44 of 90). With the
+  bot's fence switched off (a scratch build of AutoPilot.cpp), 100 seeds per class in each bot model: 0 resets in 600
+  fights (the review: 3 rogue resets in 300, one 452.7 s fight).
+- **Remainders.** (1) The rogue's fight is long (median 131-142 s against the warrior's 36-38 s) because his damage is
+  mana-bound (class balance, out of this package). (2) A Brutish Valdras is still the hardest roll (the one
+  reaction-limited death); excluding damage affixes from the story boss stays a design call. (3) The hunts still die in
+  seconds at the level the hero meets them.
+- **For 2G (UE).** Draw `EvTelegraph` and `HazardView` before any W2 content reaches a playtest build (the
+  reaction-limited bot is the evidence: without visible decals players die). A telegraph with `hasDash` is a charge:
+  slide Valdras toward `dashTo` through the windup or on the contact's `EvEntityTeleported {reason: dash}` (not a blink
+  effect). Clipless abilities (Breach-seep, Hungerbell's call) have no EvPlayAnim: the crack decal and the call's ripple
+  are the whole tell. Keen lands as `EvStatusApplied` (slow) or a dodged `EvHit` (i-frames), never a damage number. The
+  zealot's frenzy has no Roar: play its look on `EvMonsterPhase`. Marl hides when M5 is turned in (`NpcView` visibility)
+  while `cs_rf_finale` still focuses her: keep her drawn until the cutscene ends. The S1 toast reads
+  `data.quest.<id>.permanent` when present. The drummer's aura (MonsterView aura fields) needs a look under the Living's
+  no-glow rule. `MonsterView::leashCentre` / `leashRange` are there for a debug overlay.
 
 ### Phase 3 — Wave 3: the descent
 

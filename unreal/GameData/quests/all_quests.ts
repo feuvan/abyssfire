@@ -43,11 +43,26 @@ export const AllQuests: QuestDefinition[] = [
     prereqQuests: ['q_rf_burial_detail'],
     level: 3,
     questArea: { col: 34, row: 40, radius: 15 },
+    // chapter1.md §5 M2 / §8: the night ringing over the Gnawed Field stops (UE's mood and emitters read the flag).
+    setsFlags: ['rf_hungerbell_silenced'],
     hunts: [
       // 1B review (chapter1.md §5 M2 as built): hp x2 / dmg x1.0, not x3 / x1.3. The bonegorger is Lv 7 and M2 is the
       // Lv 3 quest: the M2 climax stays a bruiser a Lv 4-5 hero can take (420 HP, 17 damage per 1.7 s), not an elite
       // with 630 HP and 22 damage. Exp stays 3 x the base (the hunt minimum).
-      { huntId: 'hunt_hungerbell', monsterId: 'bonegorger', name: '饿钟', col: 45, row: 35, hpMul: 2, dmgMul: 1.0, revealAfterPrevious: true, minions: { monsterId: 'gravegnawer', count: 3 } },
+      // Wave 2 (monsters.md §2.4, 2F): its clapper rings the field to supper: a call that wakes every gravegnawer within 10
+      // tiles (K5 social call), its own ability after the bonegorger's Clapper Slam. 2F review: no caster clip (its slam's
+      // Attack02 told a harmless call and a lethal slam apart only by the slam's decal): the bell's ripple at the call
+      // (EvMonsterBuffCast) is its tell until the art lane ships a bell-ring clip.
+      {
+        huntId: 'hunt_hungerbell', monsterId: 'bonegorger', name: '饿钟', col: 45, row: 35, hpMul: 2, dmgMul: 1.0, revealAfterPrevious: true,
+        minions: { monsterId: 'gravegnawer', count: 3 },
+        abilities: [
+          {
+            id: 'supper_bell', kind: 'call', windupMs: 800, cooldownMs: 9000, rangeMax: 12, aim: 'self',
+            buff: { radius: 10, family: 'gravegnawers' },
+          },
+        ],
+      },
     ],
     progressKey: 'data.quest.q_rf_gnawed_field.progress',
   },
@@ -116,6 +131,9 @@ export const AllQuests: QuestDefinition[] = [
     },
     reacceptable: true,
     progressKey: 'data.quest.q_rf_last_toll.progress',
+    // chapter1.md §8: dawn. The ashfall stops (march_dawn), and the trench and the Dead Ranks spawn gravegnawers (the
+    // spawn variants, maps/emerald_plains.ts).
+    setsFlags: ['rf_chapter_dawn'],
   },
 
   // --- Side quests: each a plea, an order or a dying word, each a different shape (S5 and S6 hold the pet and escort
@@ -132,7 +150,8 @@ export const AllQuests: QuestDefinition[] = [
       { type: 'collect', targetId: 'mat_breach_ichor', targetName: '渊血样本', required: 6, current: 0, source: { kind: 'drop', monsters: ['breachclot'], chance: 0.5 }, itemKind: 'ichor' },
       { type: 'talk', targetId: 'plains_herbalist', targetName: '把血样交给玛勒', required: 1, current: 0 },
     ],
-    rewards: { exp: 110, gold: 35, items: ['c_hp_potion_s', 'c_hp_potion_s'] },
+    // chapter1.md §6 S1 [W2]: + 15 maximum life for good, once per difficulty (玛勒的苦药 / Marl's Bitter Draught).
+    rewards: { exp: 110, gold: 35, items: ['c_hp_potion_s', 'c_hp_potion_s'], permanent: { maxLife: 15 } },
     level: 2,
     questArea: { col: 25, row: 20, radius: 10 },
     progressKey: 'data.quest.q_rf_black_blood.progress',
@@ -941,7 +960,8 @@ export const AllQuests: QuestDefinition[] = [
     objectives: [
       { type: 'escort', targetId: 'escort_rf_bern', targetName: '护送伯恩去最后的圣地', required: 1, current: 0, location: { col: 50, row: 90, radius: 5 } },
     ],
-    rewards: { exp: 350, gold: 60, items: ['c_hp_potion_m'] },
+    // chapter1.md §6 S6 [W2]: + 3 stat points for good, once per difficulty.
+    rewards: { exp: 350, gold: 60, items: ['c_hp_potion_m'], permanent: { statPoints: 3 } },
     prereqQuests: ['q_rf_gnawed_field'],
     level: 5,
     questArea: { col: 50, row: 90, radius: 8 },

@@ -139,7 +139,7 @@ TEST_CASE("combat tables") {
   CHECK(c.hitFeedback.Profile(HitWeight::Normal).targetStopMs == 60);
   CHECK(c.hitFeedback.Profile(HitWeight::Kill).sparks == 14);
   CHECK(c.hitFeedback.heavyRatio == 0.25);
-  CHECK(c.eliteAffixes.order.size() == 7);
+  CHECK(c.eliteAffixes.order.size() == 8);  // the web's seven, then the remake's `unburied` (2F, monsters.md 3)
   CHECK(c.eliteAffixes.Def(EliteAffixType::ExtraStrong).damageMult == 1.35);
   int32_t mn = 0, mx = 0;
   c.eliteAffixes.CountFor("abyss_rift", mn, mx);

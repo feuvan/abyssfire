@@ -56,7 +56,22 @@ struct MonsterAbilityCast {
   Vec2 dir{1, 0};        // unit
   Vec2 target;
   AbilityShapeDef shape;
+  // 2F review: a dash (MonsterAbilityDef::dash) ends here at contact (the caster's position when it cannot move).
+  bool hasDash = false;
+  Vec2 dashTo;
 };
+
+// 2F review (SAVE-R5; MonsterSystem.h PinnedAffixesInto): a named boss's elite affix roll (the story boss, a zone
+// mini-boss), kept from its first fight until it dies so that loading a save mid-fight never rolls it again
+// (SaveData::bossAffixes).
+struct BossAffixPin {
+  std::string zone;
+  std::string monsterId;
+  std::vector<EliteAffixType> affixes;
+  bool operator==(const BossAffixPin& o) const = default;
+};
+// Sorted by (zone, monsterId), one pin per pair (the first kept), no empty id (SaveIO's parse, MonsterSystem::ReadSave).
+ABYSS_API void NormalizeBossAffixPins(std::vector<BossAffixPin>& pins);
 
 // K4: the soft enrage a phase lit (MonsterPhaseDef::arena; Phases.h ArenaRadiusAt): resolved at the phase entry.
 struct MonsterArena {
@@ -191,6 +206,9 @@ struct ABYSS_API MonsterInstance {
   uint8_t auraMask = 0;                       // bit per MonsterBuffStat: an aura of that stat reaches it
   double buffDamageMul = 1, buffAttackSpeedMul = 1, buffMoveSpeedMul = 1;
   bool fearImmune = false;
+  // 2F review (SAVE-R5): a story boss / zone mini-boss whose affix roll is pinned (MonsterSystem::bossAffixes_): it
+  // spawned from a pin, or entered its first fight (MonsterSystem.h PinnedAffixesInto).
+  bool affixesPinned = false;
   // presentation flags
   bool storyNameShown = false;      // boss label renamed (story 8.3)
   bool active = true;               // in the AI activity set (30 tiles / aggro), monsters 3.8

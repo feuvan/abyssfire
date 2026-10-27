@@ -50,6 +50,10 @@ ABYSS_API void WriteWorldFlags(JsonWriter& w, const std::vector<std::string>& fl
 ABYSS_API void ReadWorldFlags(const JsonValue& v, std::vector<std::string>& out);
 ABYSS_API void WritePermanentRewards(JsonWriter& w, const PermanentRewardsState& p);
 ABYSS_API void ReadPermanentRewards(const JsonValue& v, PermanentRewardsState& out);
+// 2F review: bossAffixes ([{zone, monsterId, affixes: [affix data spellings]}]). Reader: entries without a string zone
+// and monsterId dropped, unknown affix names dropped, then NormalizeBossAffixPins.
+ABYSS_API void WriteBossAffixes(JsonWriter& w, const std::vector<BossAffixPin>& pins);
+ABYSS_API void ReadBossAffixes(const JsonValue& v, std::vector<BossAffixPin>& out);
 
 // Shared helpers.
 ABYSS_API void WriteStringList(JsonWriter& w, const std::vector<std::string>& v);

@@ -332,7 +332,18 @@ struct ZoneEventDataDef {
     std::string leader;  // a member's monster id ("" = no leader)
     bool sharedAffix = false;
     ItemQuality leaderLoot = ItemQuality::Normal;  // Normal = none
+    // 2F review (remake schema events.ambushVariants; chapter1.md 8 "the dead who still stood lie down"): once this world
+    // flag is set the champion block is off (no extra draw). "" = always on.
+    std::string notFlag;
   } ambushChampion;
+  // 2F review (random_events.json zones.<zone>.ambushVariants, remake schema events.ambushVariants): the first variant
+  // whose world flag is set replaces `ambushMonsters` for the zone's ambushes (and the rescue guards that fall back to
+  // them); none set = ambushMonsters. The draws are the same (one pick per ambusher from the list in use).
+  struct AmbushVariantDef {
+    std::string whenFlag;
+    std::vector<std::string> monsters;
+  };
+  std::vector<AmbushVariantDef> ambushVariants;
 };
 
 struct ABYSS_API RandomEventsDef {

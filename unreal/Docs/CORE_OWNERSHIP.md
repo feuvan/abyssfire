@@ -51,22 +51,22 @@ COMBAT
 - SkillTargeting.h: C14 cast shapes, cast reach, ground cast point, cast direction, chain links, line/cone/radius targets, teleport/shadow-step/charge destinations.
 - Projectiles.h: ProjectileSystem (projectiles and C4 ground effects), travel-time functions.
 - HazardField.h: the per-zone ground hazards of monster abilities (dark remake K2) and on-death puddles (K3): tick schedule, CollectDue, DropExpired.
-- Combat.h: CombatSystem (skill requests, dodge, targeting, progression commands, per-step ticks, DamageMonster/DamageHero, KillHero, ResolvePendingDeath, OnMonsterKilled; dark remake K3: raise / summon planning and casts between swings, on-death effects (OnMonsterDeathEffects, TickOnDeath, SetZoneOnDeath), burning bodies under fire; K4: the phase multipliers on swings and damage taken, CancelMonsterStrike, ArenaTickHero; K5: buff / call abilities as support casts (TryStartSupportCast), the block in DamageMonster (EvBlock), a monster's damage buff on its hits).
+- Combat.h: CombatSystem (skill requests, dodge, targeting, progression commands, per-step ticks, DamageMonster/DamageHero, KillHero, ResolvePendingDeath, OnMonsterKilled; dark remake K3: raise / summon planning and casts between swings, on-death effects (OnMonsterDeathEffects, TickOnDeath, SetZoneOnDeath), burning bodies under fire; K4: the phase multipliers on swings and damage taken, CancelMonsterStrike, ArenaTickHero; K5: buff / call abilities as support casts (TryStartSupportCast), the block in DamageMonster (EvBlock), a monster's damage buff on its hits; 2F review: ranged specials between swings, clipless abilities, status-only strikes (ApplyMonsterStatusOnly), a dash's Teleport at contact, the on-death window cap, the held-lock re-approach in TickCombat).
 - SoulEcho.h: ComputeDeathPenalty, SoulEchoState, SoulEchoSystem.
 
 MONSTERS
-- Monster.h: MonsterInstance, MonsterState (with Returning; dark remake K5: Flee), MonsterRole.
-- MonsterDefs.h: difficulty scaling, hunt definitions, base stats, CombineAffixes/ApplyEliteAffixes.
-- EliteAffixes.h: RollEliteAffixes, on-hit, teleport, curse.
-- MonsterAI.h: UpdateMonsterAI, MonsterMoveToward, ProvokeMonster (dark remake K4: a phase's tether and speed multiplier; K5: the Flee step, the kite step and target, MonsterKiteTarget / MonsterFleeStep, the move speed buff).
-- MonsterAbilities.h: dark remake K2 pure rules (ability picker, ground shapes, contact timing, aim, telegraph style, hit cap).
-- OnDeath.h: dark remake K3 pure rules (on-death damage and caps, the volatile curse as a burst, RiseAgainApplies).
+- Monster.h: MonsterInstance, MonsterState (with Returning; dark remake K5: Flee), MonsterRole; 2F review: BossAffixPin / NormalizeBossAffixPins (a named boss's pinned affix roll, saved).
+- MonsterDefs.h: difficulty scaling, hunt definitions (dark remake 2F: a hunt's own abilities after its base's), base stats, CombineAffixes/ApplyEliteAffixes.
+- EliteAffixes.h: RollEliteAffixes (2F review: `canRise` false leaves the rise affixes out of the pool), on-hit, teleport, curse.
+- MonsterAI.h: UpdateMonsterAI, MonsterMoveToward, ProvokeMonster (dark remake K4: a phase's tether and speed multiplier; K5: the Flee step, the kite step and target, MonsterKiteTarget / MonsterFleeStep, the move speed buff; 2F review: MonsterLeashCentre / MonsterLeashRange, a bound fight's leash from its authored home).
+- MonsterAbilities.h: dark remake K2 pure rules (ability picker, ground shapes, contact timing, aim, telegraph style, hit cap; 2F review: AbilityIsRangedSpecial / AbilityCastsBetweenSwings, AbilityDashEnd).
+- OnDeath.h: dark remake K3 pure rules (on-death damage and caps, the volatile curse as a burst, RiseAgainApplies; 2F review: the 1 s on-death window cap OnDeathWindowRoom, MonsterMayRise).
 - Corpses.h: dark remake K3 corpse registry (TTL, cap and eviction, seeds, holds, ordered queries); MonsterSystem owns one per zone.
-- Phases.h: dark remake K4 pure rules (phase entry order, ability switches, the arena's radius / outside test / tick damage, the tether goal, damage taken through a phase, the enter action's clip).
+- Phases.h: dark remake K4 pure rules (phase entry order, ability switches, the arena's radius / outside test / tick damage, the tether goal, damage taken through a phase, the enter action's clip; 2F review: PhaseTableBindsFight / PhaseFightReach).
 - Packs.h: dark remake K5 pure rules (spawn members and the leader, the block arc and blocked damage, the wall heading, buff multipliers and the mask, family filters, sustain casters).
 - SpatialGrid.h: implemented in the header.
 - Hunts.h: IsHuntDue, HuntsToSpawn, FindWalkableNear.
-- MonsterSystem.h: spawn, mini-boss, hunts, ambush, TickAI, ApplyDamage (publishes MonsterKilledMsg exactly once), Heal, queries, save; dark remake K3: corpses (OnMonsterDied, TickCorpses, seeds), Raised bodies (RaiseCorpse, SummonAt, collapse), the Unburied rise, consume, BurnCorpses; K4 (Private/monsters/MonsterPhases.cpp): TickPhases (phase entries, arenas, phase summons, Feed), the M1 reset, PhaseActionMs; K5 (Private/monsters/MonsterPacks.cpp): packs (mix, leader, pack ids), PackAlarm, morale (OnPackDeath, Flee start / end, Sustained), buffs and auras (RefreshBuffsAndAuras, ResolveBuffCast), AlignShieldWalls; K6: spawn variants at the zone's spawn and every respawn (MonsterInstance::spawnEntry / spawnMember), SpawnChampionPack (the ambush's champion pack, a shared affix roll).
+- MonsterSystem.h: spawn, mini-boss, hunts, ambush, TickAI, ApplyDamage (publishes MonsterKilledMsg exactly once), Heal, queries, save; dark remake K3: corpses (OnMonsterDied, TickCorpses, seeds), Raised bodies (RaiseCorpse, SummonAt, collapse), the Unburied rise, consume, BurnCorpses; K4 (Private/monsters/MonsterPhases.cpp): TickPhases (phase entries, arenas, phase summons, Feed), the M1 reset, PhaseActionMs; K5 (Private/monsters/MonsterPacks.cpp): packs (mix, leader, pack ids), PackAlarm, morale (OnPackDeath, Flee start / end, Sustained), buffs and auras (RefreshBuffsAndAuras, ResolveBuffCast), AlignShieldWalls; K6: spawn variants at the zone's spawn and every respawn (MonsterInstance::spawnEntry / spawnMember), SpawnChampionPack (the ambush's champion pack, a shared affix roll); 2F: an elite blink skipped past the M1 leash or a K4 tether; 2F review: DashEnd (a charge's end), the boss affix pins (PinnedAffixesInto, PinAffixesInFight; saved), MonsterView leashCentre / leashRange.
 
 ITEMS
 - Item.h: ItemInstance, ComputeItemStats, ItemUidGenerator.
@@ -96,7 +96,7 @@ AUDIO
 - audio/Audio.h: Sfx* rule functions, MusicDirector, AudioDirector.
 
 SAVE
-- SaveData.h: SaveData v4 (SaveHero, SaveSettings, SaveHomestead, SavePets, SaveSoulEcho, SaveRng, hotbar, potionSlots, playTimeMs, dialogueOnce, hiddenRewardsClaimed, itemUidCounter; dark remake K6: worldFlags, permanentRewards, written only when not empty).
+- SaveData.h: SaveData v4 (SaveHero, SaveSettings, SaveHomestead, SavePets, SaveSoulEcho, SaveRng, hotbar, potionSlots, playTimeMs, dialogueOnce, hiddenRewardsClaimed, itemUidCounter; dark remake K6: worldFlags, permanentRewards, written only when not empty; 2F review: bossAffixes, written last and only when not empty).
 - SaveIO.h: MigrateRaw, ParseSave, SerializeSave, FindNearestWalkablePosition (implemented and tested), item/quest/pet JSON helpers, ISaveStorage, SummarizeSave.
 - Private/save: SaveSections.h plus per-area SaveHero/SaveItems/SaveQuests/SavePets/SaveIO .cpp files.
 

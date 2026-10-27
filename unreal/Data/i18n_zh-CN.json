@@ -127,7 +127,7 @@
     "zone.combat.noTarget": "C14",
     "zone.combat.outOfRange": "C14"
   },
-  "keyCount": 2795,
+  "keyCount": 2799,
   "strings": {
     "boot.title": "渊  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2714,6 +2714,7 @@
     "data.monster.bonegorger": "饕骸者",
     "data.monster.miniboss_corpseherd": "尸牧婆",
     "data.monster.valdras": "焚旗元帅·瓦德拉斯",
+    "data.monster.rollcall_standard_bearer": "亡旗手",
     "data.monster.hunt_hungerbell": "饿钟",
     "data.monster.hunt_dreck": "拾银者·德雷克",
     "data.monster.hunt_harke": "断誓者·哈克",
@@ -2780,6 +2781,8 @@
     "zone.event.puzzle.label.emerald_plains": "五口小钟",
     "zone.event.treasureChest.label.emerald_plains": "阵亡骑士的铁箱",
     "zone.event.rescue.complete.emerald_plains": "你割断了朝圣者身上的绳子。“他们说我走得太慢，跟不上圣火。”获得 {gold} 金币和 {exp} 经验",
+    "sys.eliteAffix.name.unburied": "不葬",
+    "sys.statusEffect.name.ashnumb": "麻灰",
     "data.quest.q_rf_burial_detail.name": "收尸队",
     "data.quest.q_rf_burial_detail.desc": "收尸队十个人黄昏出了门，再没回来。去北边的埋骨壕，放倒站起来的人。",
     "data.quest.q_rf_burial_detail.offer": "收尸队黄昏时出了门，带着一盏灯。一个时辰前，那盏灯不动了。去北边的埋骨壕。要是他们站起来了……别犹豫。",
@@ -2810,6 +2813,7 @@
     "data.quest.q_rf_black_blood.offer": "玛勒在城外的救护站。沾了渊血的伤员会变灰，然后不再喊疼。她要六团还温着的血块。",
     "data.quest.q_rf_black_blood.progress": "别用手碰。玛勒会教你。",
     "data.quest.q_rf_black_blood.complete": "玛勒说，血里有声音。……别问我是谁的。",
+    "data.quest.q_rf_black_blood.permanent": "玛勒的苦药",
     "data.quest.q_rf_barrowmoss.name": "苦冢苔",
     "data.quest.q_rf_barrowmoss.desc": "旧礼说，坟上烧苦冢苔，死人睡得沉些。去埋骨壕边采五把，连根拔。",
     "data.quest.q_rf_barrowmoss.offer": "旧礼说：在坟上烧苦冢苔，死人就睡得沉些。埋骨壕边长着一些。采五把来——在他们醒来之前。",
@@ -2929,7 +2933,7 @@
     "source": ["unreal/GameData", "unreal/GameData/i18n/zh-CN.ts"],
     "stringsReplacedWeb": 95,
     "stringsReplacedPort": 0,
-    "stringsAdded": 223,
+    "stringsAdded": 227,
     "swept": [
       "data.monster.slime_green",
       "data.monster.goblin",

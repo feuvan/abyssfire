@@ -28,7 +28,18 @@
       "hpMul": 2,
       "dmgMul": 1,
       "revealAfterPrevious": true,
-      "minions": {"monsterId": "gravegnawer", "count": 3}
+      "minions": {"monsterId": "gravegnawer", "count": 3},
+      "abilities": [
+        {
+          "id": "supper_bell",
+          "kind": "call",
+          "windupMs": 800,
+          "cooldownMs": 9000,
+          "rangeMax": 12,
+          "aim": "self",
+          "buff": {"radius": 10, "family": "gravegnawers"}
+        }
+      ]
     },
     {
       "questId": "q_rf_tag_thief",
@@ -255,6 +266,30 @@
       "spriteKey": "monster_bonegorger",
       "animCategory": "humanoid",
       "family": "gravegnawers",
+      "hitCapHeroMaxHpPct": 35,
+      "abilities": [
+        {
+          "id": "clapper_slam",
+          "kind": "circle",
+          "clip": "Attack02",
+          "windupMs": 800,
+          "cooldownMs": 6000,
+          "initialCooldownMs": 1500,
+          "aim": "heroAtWindup",
+          "shape": {"radius": 2},
+          "dmgMul": 1.6
+        },
+        {
+          "id": "supper_bell",
+          "kind": "call",
+          "windupMs": 800,
+          "cooldownMs": 9000,
+          "rangeMax": 12,
+          "aim": "self",
+          "buff": {"radius": 10, "family": "gravegnawers"}
+        }
+      ],
+      "corpse": {"leaves": "remains"},
       "elite": true,
       "isMiniBoss": true
     },
@@ -274,6 +309,9 @@
       "spriteKey": "monster_deserter",
       "animCategory": "humanoid",
       "family": "living",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "corpse"},
+      "morale": {"fleeOnLeaderDeathMs": 5000, "fleeRadius": 8, "sustainFamily": "living", "sustainRadius": 8},
       "elite": true,
       "isMiniBoss": true
     },
@@ -293,6 +331,9 @@
       "spriteKey": "monster_deserter",
       "animCategory": "humanoid",
       "family": "living",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "corpse"},
+      "morale": {"fleeOnLeaderDeathMs": 5000, "fleeRadius": 8, "sustainFamily": "living", "sustainRadius": 8},
       "elite": true,
       "isMiniBoss": true
     },

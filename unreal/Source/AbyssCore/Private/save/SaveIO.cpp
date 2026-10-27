@@ -340,6 +340,7 @@ SaveError ParseSave(std::string_view json, SaveData& out, std::string* errorMess
   // Dark remake K6: absent in every save written before (and in one without world state) -> none.
   savejson::ReadWorldFlags(raw.Get("worldFlags"), s.worldFlags);
   savejson::ReadPermanentRewards(raw.Get("permanentRewards"), s.permanentRewards);
+  savejson::ReadBossAffixes(raw.Get("bossAffixes"), s.bossAffixes);  // 2F review
 
   out = std::move(s);
   if (errorMessage != nullptr) errorMessage->clear();
@@ -470,6 +471,10 @@ std::string SerializeSave(const SaveData& s, bool pretty) {
     w.Key("permanentRewards");
     savejson::WritePermanentRewards(w, s.permanentRewards);
   }
+  if (!s.bossAffixes.empty()) {  // 2F review
+    w.Key("bossAffixes");
+    savejson::WriteBossAffixes(w, s.bossAffixes);
+  }
   w.EndObject();
   std::string out = w.Take();
   ABYSS_ASSERT(!out.empty(), "SerializeSave produced incomplete JSON");
@@ -528,6 +533,7 @@ int32_t ApplyContentVersion(const DataStore& data, SaveData& s) {
   }
   // MonsterSystem records the boss's def id (a sub-dungeon boss too, which has no tree): the monster must still exist.
   dropped += SaveIoDropIf(s.miniBossDialogueSeen, [&](const std::string& id) { return data.FindMonster(id) != nullptr; });
+  dropped += SaveIoDropIf(s.bossAffixes, [&](const BossAffixPin& p) { return data.FindMonster(p.monsterId) != nullptr; });
   // Q1 keys "<npcId>|<nodeId>|<choiceIndex>": the NPC's tree still has that node and that choice.
   dropped += SaveIoDropIf(s.dialogueOnce, [&](const std::string& key) {
     const size_t a = key.find('|');
@@ -650,6 +656,45 @@ void WritePermanentRewards(JsonWriter& w, const PermanentRewardsState& p) {
   w.EndObject();
 }
 
+void WriteBossAffixes(JsonWriter& w, const std::vector<BossAffixPin>& pins) {
+  w.StartArray();
+  for (const BossAffixPin& p : pins) {
+    w.StartObject();
+    w.Key("zone");
+    w.String(p.zone);
+    w.Key("monsterId");
+    w.String(p.monsterId);
+    w.Key("affixes");
+    w.StartArray();
+    for (EliteAffixType a : p.affixes) w.String(EnumName(a));
+    w.EndArray();
+    w.EndObject();
+  }
+  w.EndArray();
+}
+
+void ReadBossAffixes(const JsonValue& v, std::vector<BossAffixPin>& out) {
+  out.clear();
+  if (!v.IsArray()) return;
+  for (const JsonValue& e : v.Items()) {
+    if (!e.IsObject()) continue;
+    const JsonValue& zone = e.Get("zone");
+    const JsonValue& id = e.Get("monsterId");
+    if (!zone.IsString() || !id.IsString()) continue;
+    BossAffixPin p;
+    p.zone = std::string(zone.AsString());
+    p.monsterId = std::string(id.AsString());
+    if (const JsonValue& affixes = e.Get("affixes"); affixes.IsArray()) {
+      for (const JsonValue& a : affixes.Items()) {
+        EliteAffixType t{};
+        if (a.IsString() && ParseEnum(a.AsString(), t)) p.affixes.push_back(t);
+      }
+    }
+    out.push_back(std::move(p));
+  }
+  NormalizeBossAffixPins(out);
+}
+
 void ReadPermanentRewards(const JsonValue& v, PermanentRewardsState& out) {
   out = PermanentRewardsState{};
   if (!v.IsObject()) return;
@@ -677,4 +722,5 @@ void ReadPermanentRewards(const JsonValue& v, PermanentRewardsState& out) {
 }
 
 }  // namespace savejson
+
 }  // namespace abyss

@@ -43,6 +43,7 @@
       "prereqQuests": ["q_rf_burial_detail"],
       "level": 3,
       "questArea": {"col": 34, "row": 40, "radius": 15},
+      "setsFlags": ["rf_hungerbell_silenced"],
       "hunts": [
         {
           "huntId": "hunt_hungerbell",
@@ -182,6 +183,7 @@
       },
       "reacceptable": true,
       "progressKey": "data.quest.q_rf_last_toll.progress",
+      "setsFlags": ["rf_chapter_dawn"],
       "derived": {
         "giverNpcId": "quest_elder",
         "objectiveItemKinds": [null],
@@ -220,7 +222,8 @@
       "rewards": {
         "exp": 110,
         "gold": 35,
-        "items": ["c_hp_potion_s", "c_hp_potion_s"]
+        "items": ["c_hp_potion_s", "c_hp_potion_s"],
+        "permanent": {"maxLife": 15}
       },
       "level": 2,
       "questArea": {"col": 25, "row": 20, "radius": 10},
@@ -2279,7 +2282,8 @@
       "rewards": {
         "exp": 350,
         "gold": 60,
-        "items": ["c_hp_potion_m"]
+        "items": ["c_hp_potion_m"],
+        "permanent": {"statPoints": 3}
       },
       "prereqQuests": ["q_rf_gnawed_field"],
       "level": 5,

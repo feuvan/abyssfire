@@ -45,6 +45,7 @@
 #include "abyss/base/Enums.h"
 #include "abyss/base/Platform.h"
 #include "abyss/base/Types.h"
+#include "abyss/monsters/Monster.h"
 #include "abyss/sim/Commands.h"
 #include "abyss/sim/Events.h"
 #include "abyss/sim/SimTypes.h"
@@ -109,6 +110,28 @@ struct AutoPilotMilestoneRecord {
   double simMs = 0;   // sim clock
 };
 
+// A named fight (dark remake 2F: the sweep reports how long the bosses last): a hunt leader, the zone mini-boss, a
+// sub-dungeon mini-boss or the story boss, from the first hit it and the hero trade (either way) to its kill.
+struct AutoPilotFight {
+  std::string defId;
+  MonsterRole role = MonsterRole::Regular;
+  EntityId entity = kNoEntity;
+  double startMs = 0;  // sim ms of the first hit
+  double endMs = -1;   // sim ms of the kill (< 0: not killed)
+  int heroDeaths = 0;  // the hero's deaths while it was open
+  std::string affixes; // its elite affixes when it began ("+"-joined data spellings; "" for none)
+  std::vector<double> phaseMs;  // sim ms of each K4 phase row it entered (a reset clears them)
+  int feeds = 0, resets = 0;    // K4 Feeds it started, walks home that reset it
+  // 2F review: its abilities, in first-use order: casts started (a strike's or a raise's telegraph, a buff / call
+  // resolving) and the started ones cancelled before contact (EvMonsterAttackCancelled: a stun, a freeze, a phase's
+  // enter action, F2).
+  struct AbilityUse {
+    std::string id;
+    int started = 0, cancelled = 0;
+  };
+  std::vector<AbilityUse> abilities;
+};
+
 // Counters of what the bot did and saw (all from events and its own commands).
 struct AutoPilotStats {
   int deaths = 0, levelUps = 0, kills = 0, potionsDrunk = 0, itemsPicked = 0, equipChanges = 0, saveRequests = 0;
@@ -118,6 +141,26 @@ struct AutoPilotStats {
   std::array<int64_t, EnumCount<ExpSource>()> expBySource{};  // exp granted, indexed by ExpSource
   std::vector<std::string> killedDefs;        // distinct monster defs killed, first-kill order
   std::vector<std::string> beatsBegan, beatsEnded;
+  // Dark remake 2F (the W2 fairness rules, monsters.md 1.3): the named fights in the order they began; the largest
+  // single hit the hero took (not a DoT tick), as a percent of its maximum life then, and the monster definition that
+  // dealt it ("" for a source that is no monster); deaths to one hit (a blow that took the hero from at least half its
+  // life to 0).
+  std::vector<AutoPilotFight> fights;
+  double maxHitTakenPct = 0;
+  std::string maxHitTakenBy;
+  int oneHitDeaths = 0;
+  // 2F review: the most damage the hero took inside any 1000 ms (hits and ticks, before a heal), as a percent of its
+  // maximum life (the burst a reaction-limited player cannot dodge out of).
+  double maxBurstTakenPct = 0;
+  // Dark remake 2F (the W2 bot rules, implementation-plan.md 6): telegraphs the bot stepped out of, and priority targets
+  // (a support caster, an aura owner or a pack leader) it switched to.
+  int telegraphDodges = 0, priorityTargets = 0;
+  // Dark remake 2F: how often the Wave 2 monster systems showed up in the run (evidence that the content runs): bodies
+  // stood up (raises, summons, the Unburied rise), blocked hits, flees, support casts (drum, call, muster), corpses
+  // eaten, on-death fuses, Ashnumb applications (and the most stacks at once), champion ambushes, world flags set,
+  // permanent rewards granted, phase rows entered.
+  int raised = 0, selfRises = 0, blocks = 0, flees = 0, supportCasts = 0, corpsesEaten = 0, onDeathFuses = 0;
+  int ashnumbHits = 0, ashnumbMaxStacks = 0, championAmbushes = 0, worldFlags = 0, permanentRewards = 0, phases = 0;
 };
 
 using AutoPilotSubmit = std::function<void(const Command&)>;
@@ -131,6 +174,12 @@ struct AutoPilotConfig {
   std::function<void(const std::string&)> onNote;
   // Every milestone as it is recorded; may be empty.
   std::function<void(const AutoPilotMilestoneRecord&)> onMilestone;
+  // 2F review (a player's reflexes, implementation-plan.md 6): a telegraph, hazard or on-death fuse is a danger for the
+  // W2 rules only `reactionMs` after it appeared (0: at once, the frame-perfect bot); `dodgeRoll` false never uses the
+  // dodge roll's i-frames against a contact the walk cannot outrun. The DR9 sweep runs both the default and the
+  // reaction-limited bot (playthrough_test ABYSS_PT_REACTION_MS / ABYSS_PT_NO_DODGE).
+  double reactionMs = 0;
+  bool dodgeRoll = true;
 };
 
 class ABYSS_API AutoPilot {

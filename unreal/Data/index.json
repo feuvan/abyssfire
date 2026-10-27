@@ -43,7 +43,7 @@
       "file": "autopilot_routes.json",
       "counts": {"routes": 1, "steps": 106},
       "bytes": 9283,
-      "sha256": "fc67a6a0cf9002ccc865e4d36e2b8d5066725732bad0c06a4c95915c542746b6"
+      "sha256": "152c462cdcb023493c6a3a8b5dd74fb1fc157beb5e705f54405a62498226c78c"
     },
     {
       "file": "buff_caps.json",
@@ -89,9 +89,9 @@
     },
     {
       "file": "elite_affixes.json",
-      "counts": {"affixes": 7, "zones": 5},
-      "bytes": 4178,
-      "sha256": "599867615a070aa13f2bbbb85797ac4c47f9a841f2f6a0ba7f50dab5d3ba9278"
+      "counts": {"affixes": 8, "zones": 5},
+      "bytes": 5240,
+      "sha256": "5f113956a31ebe8a01683b4367183ec3564278a07f54513256dc019222fa231a"
     },
     {
       "file": "hero_formulas.json",
@@ -113,21 +113,21 @@
     },
     {
       "file": "i18n_en.json",
-      "counts": {"keys": 2796},
-      "bytes": 232739,
-      "sha256": "79d7106f2d014fa89e7a819b12dd0e98a3e4ce772ca5755675cb76a81ec01fec"
+      "counts": {"keys": 2800},
+      "bytes": 232974,
+      "sha256": "da0bf4969be79cc345149e938c3bfab1d4064cc8a5b43ea1ef91856f250f15a4"
     },
     {
       "file": "i18n_zh-CN.json",
-      "counts": {"keys": 2795},
-      "bytes": 224926,
-      "sha256": "2d4fa621e327227ebd72e56503beb1138964cb9e5aa189d8a1ead1761935ef20"
+      "counts": {"keys": 2799},
+      "bytes": 225141,
+      "sha256": "ae716040f14ba2c9099e1f74945df16142552bfecb62e91de659eae443857e1e"
     },
     {
       "file": "i18n_zh-TW.json",
-      "counts": {"keys": 2795},
-      "bytes": 225093,
-      "sha256": "5f4a350cefe55aedf4d8e394cbf0cf0cde17842c1174c7834157d5d82cf42bb0"
+      "counts": {"keys": 2799},
+      "bytes": 225308,
+      "sha256": "d8868da8b8d2cb5499d238945e481460e9bcea5f616fdb15ee626edefff46969"
     },
     {
       "file": "item_bases.json",
@@ -170,8 +170,8 @@
     {
       "file": "maps.json",
       "counts": {"maps": 6, "subDungeons": 2},
-      "bytes": 46303,
-      "sha256": "be892af226673cdb7cb7bf98d00ef4e70d507b9e244b976c293f0055ea3283a7"
+      "bytes": 48267,
+      "sha256": "fa3e1f46fecfb95d04ea48d6107d6464025c184ba705b0586a898ca0787efe6d"
     },
     {
       "file": "minibosses.json",
@@ -187,9 +187,9 @@
     },
     {
       "file": "monsters.json",
-      "counts": {"defs": 38, "zoneMonsters": 27, "emeraldPlains": 12, "miniBosses": 5},
-      "bytes": 31947,
-      "sha256": "9145caec2e4784d1eae98bec702009487c3bb06ad4847ca7fbcf7a31f25a394f"
+      "counts": {"defs": 39, "zoneMonsters": 28, "emeraldPlains": 13, "miniBosses": 5},
+      "bytes": 41097,
+      "sha256": "e641646018c9e5521be482bc515c9c49bbea2464509f1fd58856ec286712f539"
     },
     {
       "file": "music.json",
@@ -200,8 +200,8 @@
     {
       "file": "npcs.json",
       "counts": {"npcs": 29},
-      "bytes": 14180,
-      "sha256": "313c0b76951f868e4b1fdef4674b4ef3f4d4da49abd075f1003b7dc64f9da314"
+      "bytes": 15431,
+      "sha256": "173968f25a808976a397a4fb1037e1b77baacc13756d395e9de90895c4963343"
     },
     {
       "file": "pets.json",
@@ -218,8 +218,8 @@
     {
       "file": "quest_hunts.json",
       "counts": {"hunts": 18},
-      "bytes": 17069,
-      "sha256": "2b54a1d97d73e8cafd31f2de888880a49c873f36bae335fcf4812e3dcb2a7eaa"
+      "bytes": 18346,
+      "sha256": "a7614b21c06ca721fa25841627bfdb58f797eaa3ddb8a561b09458082c72a732"
     },
     {
       "file": "quest_tuning.json",
@@ -230,14 +230,14 @@
     {
       "file": "quests.json",
       "counts": {"quests": 58, "emeraldPlains": 11, "hunts": 18},
-      "bytes": 90759,
-      "sha256": "21c0c330fe42bc960dc4273fef8c92f6bc1e9715df236a8ff262111d258a645a"
+      "bytes": 90924,
+      "sha256": "ba30a8727ec5ee64304b920c89482c1dbc2e258d17357a99414038e713249231"
     },
     {
       "file": "random_events.json",
       "counts": {"types": 5, "zones": 5},
-      "bytes": 4757,
-      "sha256": "3e2136875095404a200a5583cd0c90cb0fc29dbe3d37e3acaaa3fcb2a7ea13b2"
+      "bytes": 5230,
+      "sha256": "a72e5b0428d3292572f12386657e61613ce89ea66f9a83738a4b0799bc147d8a"
     },
     {
       "file": "render_quality.json",
@@ -289,9 +289,9 @@
     },
     {
       "file": "status_effects.json",
-      "counts": {"types": 6, "skillsWithRules": 14},
-      "bytes": 3868,
-      "sha256": "695973660326c22cfc3d886e831fb3b6c1bf41d937525aaf9758143e803d3ee0"
+      "counts": {"types": 7, "skillsWithRules": 14},
+      "bytes": 4133,
+      "sha256": "6db3bf0d7f2452187bbdf7aa7bf47f8eb098a5fa19d0b9d7f9dfc4698ab8ae1c"
     },
     {
       "file": "story.json",

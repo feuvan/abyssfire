@@ -15,10 +15,13 @@
 #pragma once
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "abyss/base/Platform.h"
 #include "abyss/data/MonsterData.h"
 #include "abyss/data/UiData.h"
+#include "abyss/monsters/Monster.h"
 
 namespace abyss {
 
@@ -27,6 +30,15 @@ inline constexpr double kOnDeathBurstMinFuseMs = 800;
 inline constexpr double kOnDeathExploderCapPct = 20;
 // The volatile curse's burst radius (ZoneScene.volatileBurst: Math.hypot(...) > 2 misses).
 inline constexpr double kVolatileBurstRadiusTiles = 2;
+// 2F review (monsters.md 1.3; DR9 "no single enemy hit exceeds 35 %"): bursts and rings that land on the hero together
+// share one cap - within any kOnDeathWindowMs the on-death damage it takes stays under kOnDeathWindowCapPct percent of
+// its maximum life (x the difficulty's damage multiplier, MonsterHitCap): a Scorched champion pack or a chain of bloats
+// dying around a melee hero cannot add four 20 % bursts in one second.
+inline constexpr double kOnDeathWindowMs = 1000;
+inline constexpr double kOnDeathWindowCapPct = 35;
+// The room left under that cap: `cap` less the sum of `taken` amounts newer than nowMs - kOnDeathWindowMs (>= 0); the
+// caller prunes older entries.
+ABYSS_API double OnDeathWindowRoom(double cap, double nowMs, const std::vector<std::pair<double, double>>& taken);
 
 // The effect's damage before resistances and caps (header rule); 0 for a status-only ring / puddle and a spawn.
 ABYSS_API double OnDeathBaseDamage(const MonsterOnDeathDef& d, double monsterMaxHp, double difficultyDamageMul);
@@ -42,5 +54,9 @@ ABYSS_API MonsterOnDeathDef VolatileCurseOnDeath(const CurseDef& curse);
 // Whether a death may start the rise `r` (before its chance roll): a rise is defined, the killing blow was not fire,
 // and not a critical one when the rise says notOnCrit.
 ABYSS_API bool RiseAgainApplies(const MonsterRiseAgainDef& r, DamageType killingElement, bool killingCrit);
+// Whether a monster of `role` and `def` can ever rise (K3): its body is a raisable corpse (corpse.leaves `corpse`), it
+// is not Raised (a body rises once) and not a boss (story boss, mini-bosses, seal keeper, hunt leader stay down). 2F
+// review: an elite affix with a rise (the Unburied) is not rolled for a monster that never rises (EliteAffixes.h).
+ABYSS_API bool MonsterMayRise(MonsterRole role, const MonsterDef& def);
 
 }  // namespace abyss

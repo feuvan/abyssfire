@@ -9,6 +9,7 @@
 #include "abyss/base/StrUtil.h"
 #include "abyss/base/Units.h"
 #include "abyss/combat/HitFeedback.h"
+#include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/Phases.h"
 #include "abyss/save/SaveData.h"
 #include "abyss/world/CampLayout.h"
@@ -334,10 +335,10 @@ bool DataStore::Finalize(DataLoadReport& report) {
   // K2 abilities (implementation-plan.md 3 K2; the loader checked each ability's own shape): summoned monsters exist,
   // bossSkills name abilities (M9: inert until the monster has any), a boss winds up >= 700 ms (monsters.md 1.3), and an
   // ability timed by its clip has that clip's Contact / Release in the manifest (else the 600 / 700 ms floor times it).
-  // An ability is picked only on a due swing (Attack state: the hero within attackRange x attackExitMul), so a rangeMin
-  // past that reach never fires and a rangeMax past it changes nothing (warnings: the data loads). K3: a raise / summon
-  // is a cast between swings from Chase as well (CombatSystem::TryStartSupportCast), so its range is not bound by reach;
-  // K5: so are buff / call.
+  // An ability is picked on a due swing (Attack state: the hero within attackRange x attackExitMul), so a rangeMin past
+  // that reach never fires (warning: the data loads) unless the ability also casts between swings: K3 raise / summon and
+  // K5 buff / call from Chase as well (CombatSystem::TryStartSupportCast), and (2F review) a ranged special, whose
+  // rangeMax passes the reach (MonsterAbilities.h AbilityIsRangedSpecial).
   {
     const auto checkAbilities = [&](const MonsterDef& m, std::string_view file, const std::string& path, bool boss) {
       // The same product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998), with a hair of slack so a range authored as
@@ -349,20 +350,15 @@ bool DataStore::Finalize(DataLoadReport& report) {
         if (a.summon.present && !monsters_.Find(a.summon.monsterId)) {
           ck.Error(file, ap + ".summon.monsterId", "unknown monster '" + a.summon.monsterId + "'");
         }
-        // Between swings (K3 raise / summon; K5 buff / call): AbilityKindCastsBetweenSwings.
-        const bool cast = a.kind == AbilityKind::Raise || a.kind == AbilityKind::Summon || a.kind == AbilityKind::Buff ||
-                          a.kind == AbilityKind::Call;
+        // Between swings: AbilityCastsBetweenSwings (the support kinds, a rangeMax past the reach).
+        const bool cast = AbilityCastsBetweenSwings(a, swingReach);
         if (!cast && a.rangeMin > swingReach + 1e-9) {
           ck.Warn(file, ap + ".rangeMin",
-                  StrCat("never picked: abilities fire only on a due swing, within attackRange x attackExitMul (",
-                         shownReach, " tiles)"));
-        } else if (!cast && a.hasRangeMax && a.rangeMax > swingReach + 1e-9) {
-          ck.Warn(file, ap + ".rangeMax",
-                  StrCat("no effect past attackRange x attackExitMul (", shownReach,
-                         " tiles): abilities fire only on a due swing"));
+                  StrCat("never picked: a due swing needs the hero within attackRange x attackExitMul (", shownReach,
+                         " tiles); a rangeMax past it makes a ranged special"));
         }
         if (boss && a.hasWindupMs && a.windupMs < 700) ck.Error(file, ap + ".windupMs", "a boss special winds up >= 700 ms");
-        if (!a.hasWindupMs && assets_.loaded) {
+        if (!a.hasWindupMs && !a.clip.empty() && assets_.loaded) {
           const AssetEntryDef* art = assets_.FindByGameId(MonsterArtGameId(assets_, m.spriteKey, m.id));
           const AnimClipDef* clip = art != nullptr ? art->FindClip(a.clip) : nullptr;
           if (clip == nullptr || !(clip->hasContactMs || clip->hasReleaseMs)) {
@@ -387,6 +383,26 @@ bool DataStore::Finalize(DataLoadReport& report) {
       checkAbilities(m, "monsters.json", "defs." + m.id, boss);
     }
     for (const HuntDef& h : monsters_.hunts) checkAbilities(h.defNormal, "quest_hunts.json", "defsNormal." + h.huntId, false);
+    // A hunt's definition carries its base's abilities, then its own (quest.huntAbilities). The runtime builds it from
+    // those two (MakeHuntDefinition): a repeated id is refused; an exported definition that disagrees is only stale.
+    for (const HuntDef& h : monsters_.hunts) {
+      const MonsterDef* base = monsters_.FindForZone(h.zone, h.monsterId);
+      if (base == nullptr) continue;
+      std::vector<std::string> ids;
+      for (const MonsterAbilityDef& a : base->abilities) ids.push_back(a.id);
+      for (const MonsterAbilityDef& a : h.abilities) {
+        if (std::find(ids.begin(), ids.end(), a.id) != ids.end()) {
+          ck.Error("quest_hunts.json", "hunts." + h.huntId + ".abilities." + a.id, "repeats an ability id of its base");
+        }
+        ids.push_back(a.id);
+      }
+      std::vector<std::string> exported;
+      for (const MonsterAbilityDef& a : h.defNormal.abilities) exported.push_back(a.id);
+      if (ids != exported) {
+        ck.Warn("quest_hunts.json", "defsNormal." + h.huntId + ".abilities",
+                "differ from its base's abilities followed by the hunt's own (the runtime uses those)");
+      }
+    }
   }
   // K3 (implementation-plan.md 3 K3; the loader checked each block's own shape): an on-death spawn names a monster, and
   // so does an elite affix's; a rise that waits as long as a corpse lasts never happens (warning: the body fades first).
@@ -417,8 +433,7 @@ bool DataStore::Finalize(DataLoadReport& report) {
   }
   // K4 (implementation-plan.md 3 K4; the loader checked each row's own shape): a phase summon names a monster; an
   // ability whose phases[] lists only phases the monster never reaches never fires (warning); an enter action whose clip
-  // the monster's art lacks roots it for MonsterAiDef::phaseActionMsDefault (warning: UE keeps the current pose); a
-  // tether that reaches past the M1 leash (warning, below).
+  // the monster's art lacks roots it for MonsterAiDef::phaseActionMsDefault (warning: UE keeps the current pose).
   {
     const auto checkPhases = [&](const MonsterDef& m, std::string_view file, const std::string& path) {
       for (size_t i = 0; i < m.phases.size(); ++i) {
@@ -449,64 +464,9 @@ bool DataStore::Finalize(DataLoadReport& report) {
     };
     for (const MonsterDef& m : monsters_.defs) checkPhases(m, "monsters.json", "defs." + m.id);
     for (const HuntDef& h : monsters_.hunts) checkPhases(h.defNormal, "quest_hunts.json", "defsNormal." + h.huntId);
-    // A tether reaching past the M1 leash (leashRange from the spawn anchor) would send its monster home - and reset its
-    // phases - from inside the tether (warning). A map spawn's anchor lies within spawnJitter tiles per axis of its
-    // authored tile (M10 placement); every other spawn's anchor is its tile. A default centre is that authored tile
-    // (MonsterInstance::homeTile); an authored centre is checked against each known spawn (none known: not checked).
-    struct TetherHome {
-      TilePos tile;
-      double jitter = 0;  // the largest anchor-to-tile distance
-    };
-    const double mapJitter = static_cast<double>(monsters_.ai.spawnJitter) * std::sqrt(2.0);
-    const auto checkTether = [&](const MonsterDef& m, const std::vector<TetherHome>& homes, std::string_view file,
-                                 const std::string& path) {
-      for (size_t i = 0; i < m.phases.size(); ++i) {
-        const PhaseLeashDef& l = m.phases[i].leash;
-        if (!l.present) continue;
-        double offset = l.hasCentre ? -1.0 : 0.0;  // the farthest the centre can lie from the spawn anchor
-        for (const TetherHome& h : homes) {
-          const double d = l.hasCentre ? (l.centre.Center() - h.tile.Center()).Length() : 0.0;
-          offset = (std::max)(offset, d + h.jitter);
-        }
-        if (offset < 0) continue;
-        const double reach = offset + l.radius + kTetherSlackTiles;
-        if (reach > monsters_.ai.leashRange) {
-          ck.Warn(file, StrCat(path, ".phases[", i, "].leash"),
-                  StrCat("the tether reaches ", std::round(reach * 100) / 100, " tiles from the spawn anchor, past the M1 ",
-                         "leash (leashRange ", monsters_.ai.leashRange, "): the monster would walk home and reset its ",
-                         "phases from inside it"));
-        }
-      }
-    };
-    const auto homesOf = [&](std::string_view id) {
-      std::vector<TetherHome> out;
-      for (const MapDef& map : world_.maps) {
-        for (const MapSpawnDef& s : map.spawns) {
-          bool member = s.mix.empty() && s.monsterId == id;  // K5: a mix spawns its members instead
-          for (const MapSpawnMixDef& e : s.mix) member = member || e.monsterId == id;
-          for (const MapSpawnVariantDef& v : s.variants) member = member || v.monsterId == id;  // K6: a variant too
-          if (member) out.push_back(TetherHome{s.pos, mapJitter});
-        }
-      }
-      for (const SubDungeonDef& sd : world_.subDungeons) {
-        for (const MapSpawnDef& s : sd.spawns) {
-          if (s.monsterId == id) out.push_back(TetherHome{s.pos, mapJitter});
-        }
-        if (sd.miniBossId == id) out.push_back(TetherHome{sd.miniBossPos, 0});
-      }
-      for (const MiniBossEntry& e : monsters_.miniBosses) {
-        if (e.monsterId == id && e.hasSpawn) out.push_back(TetherHome{e.spawn, 0});
-      }
-      return out;
-    };
-    for (const MonsterDef& m : monsters_.defs) {
-      if (!m.phases.empty()) checkTether(m, homesOf(m.id), "monsters.json", "defs." + m.id);
-    }
-    for (const HuntDef& h : monsters_.hunts) {
-      if (!h.defNormal.phases.empty()) {
-        checkTether(h.defNormal, {TetherHome{h.spawn, 0}}, "quest_hunts.json", "defsNormal." + h.huntId);
-      }
-    }
+    // No tether or arena check against the M1 leash: a monster whose phase table holds one is leashed to its authored
+    // home over its whole fight's reach (2F review; MonsterAI.h MonsterLeashRange, Phases.h PhaseFightReach), so neither
+    // can send it home from inside (the 2C review's warning measured from the jittered spawn anchor).
   }
 
   // K5 (implementation-plan.md 3 K5; the loader checked each block's own shape): a kite is a ranged monster's rule
@@ -967,6 +927,28 @@ bool DataStore::Finalize(DataLoadReport& report) {
             ck.Warn("maps.json", vPath + ".whenFlag", "no quest sets flag '" + v.whenFlag + "' (setsFlags)");
           }
         }
+      }
+    }
+    // Ambush variants (2F review): known monsters of the zone, never the story boss; a flag no quest sets warns, and so
+    // does a champion pack's notFlag.
+    for (const ZoneEventDataDef& z : world_.randomEvents.zones) {
+      for (size_t k = 0; k < z.ambushVariants.size(); ++k) {
+        const ZoneEventDataDef::AmbushVariantDef& v = z.ambushVariants[k];
+        const std::string vPath = StrCat("zones.", z.zoneId, ".ambushVariants[", k, "]");
+        for (const std::string& id : v.monsters) {
+          if (!monsters_.FindForZone(z.zoneId, id)) {
+            ck.Error("random_events.json", vPath + ".monsters", "unknown monster '" + id + "'");
+          } else if (!storyBoss.empty() && id == storyBoss) {
+            ck.Error("random_events.json", vPath + ".monsters", "the story boss is never an ambush member");
+          }
+        }
+        if (!flagSet(v.whenFlag)) {
+          ck.Warn("random_events.json", vPath + ".whenFlag", "no quest sets flag '" + v.whenFlag + "' (setsFlags)");
+        }
+      }
+      if (z.ambushChampion.present && !z.ambushChampion.notFlag.empty() && !flagSet(z.ambushChampion.notFlag)) {
+        ck.Warn("random_events.json", "zones." + z.zoneId + ".ambushChampion.notFlag",
+                "no quest sets flag '" + z.ambushChampion.notFlag + "' (setsFlags)");
       }
     }
     // Champion packs: known monsters of the zone, never the story boss.

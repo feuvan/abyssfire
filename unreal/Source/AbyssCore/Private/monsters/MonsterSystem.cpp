@@ -390,9 +390,45 @@ MonsterInstance MonsterSystem::MakeInstance(const MonsterDef& def, TilePos tile,
 }
 
 void MonsterSystem::RollAffixesInto(MonsterInstance& m, std::string_view zoneId) {
-  const std::vector<EliteAffixType> affixes =
-      RollEliteAffixes(ctx_.data.Combat().eliteAffixes, zoneId, ctx_.Rand(RngStream::Ai), m.def.family);
+  const std::vector<EliteAffixType> affixes = RollEliteAffixes(ctx_.data.Combat().eliteAffixes, zoneId,
+                                                               ctx_.Rand(RngStream::Ai), m.def.family,
+                                                               MonsterMayRise(m.role, m.def));
   if (!affixes.empty()) ApplyEliteAffixes(m, affixes, ctx_.data.Combat().eliteAffixes, ctx_.data.Monsters().ai);
+}
+
+namespace {
+// 2F review (SAVE-R5): the roles whose affix roll is pinned until they die.
+bool MonsterSysPinsAffixes(MonsterRole r) { return r == MonsterRole::StoryBoss || r == MonsterRole::ZoneMiniBoss; }
+}  // namespace
+
+void MonsterSystem::PinnedAffixesInto(MonsterInstance& m, std::string_view zoneId) {
+  const std::string zone = CurrentZoneId();
+  const EliteAffixTable& table = ctx_.data.Combat().eliteAffixes;
+  for (const BossAffixPin& pin : bossAffixes_) {
+    if (pin.zone != zone || pin.monsterId != m.def.id) continue;
+    // A pin from older data keeps only what the monster may still roll.
+    const bool canRise = MonsterMayRise(m.role, m.def);
+    std::vector<EliteAffixType> kept;
+    for (EliteAffixType t : pin.affixes) {
+      if (table.RollableFor(t, m.def.family) && (canRise || !table.Def(t).riseAgain.present)) kept.push_back(t);
+    }
+    if (!kept.empty()) ApplyEliteAffixes(m, kept, table, ctx_.data.Monsters().ai);
+    m.affixesPinned = true;
+    return;
+  }
+  RollAffixesInto(m, zoneId);  // pinned at its first fight (PinAffixesInFight)
+}
+
+void MonsterSystem::PinAffixesInFight(MonsterInstance& m) {
+  if (m.affixesPinned || !MonsterSysPinsAffixes(m.role)) return;
+  m.affixesPinned = true;
+  BossAffixPin pin;
+  pin.zone = CurrentZoneId();
+  pin.monsterId = m.def.id;
+  for (const MonsterAffix& a : m.affixes) pin.affixes.push_back(a.type);
+  std::erase_if(bossAffixes_, [&](const BossAffixPin& p) { return p.zone == pin.zone && p.monsterId == pin.monsterId; });
+  bossAffixes_.push_back(std::move(pin));
+  NormalizeBossAffixPins(bossAffixes_);
 }
 
 void MonsterSystem::EmitSpawned(const MonsterInstance& m) {
@@ -433,13 +469,19 @@ EntityId MonsterSystem::Spawn(const MonsterSpawnParams& p) {
   m.huntId = p.huntId;
   m.visualScale = p.visualScale;
   if (p.rollAffixes) {
-    RollAffixesInto(m, p.affixZone.empty() ? std::string_view(CurrentZoneId()) : p.affixZone);
+    const std::string zone = p.affixZone.empty() ? CurrentZoneId() : p.affixZone;
+    if (MonsterSysPinsAffixes(m.role)) {
+      PinnedAffixesInto(m, zone);  // 2F review: the story boss / zone mini-boss keep their roll until they die
+    } else {
+      RollAffixesInto(m, zone);
+    }
   } else if (p.givenAffixes != nullptr) {
     // K6: a shared roll; the member keeps the affixes its family may roll, and is elite when it keeps one.
     const EliteAffixTable& table = ctx_.data.Combat().eliteAffixes;
     std::vector<EliteAffixType> kept;
+    const bool canRise = MonsterMayRise(m.role, m.def);
     for (EliteAffixType t : *p.givenAffixes) {
-      if (table.RollableFor(t, m.def.family)) kept.push_back(t);
+      if (table.RollableFor(t, m.def.family) && (canRise || !table.Def(t).riseAgain.present)) kept.push_back(t);
     }
     if (!kept.empty()) {
       m.def.elite = true;
@@ -529,6 +571,14 @@ void MonsterSystem::SpawnHunts(std::span<const DueHunt> due, bool announce) {
 }
 
 namespace {
+// TickEliteBehaviours: where an elite blink may land (2F; web parity keeps the web's blink anywhere).
+bool BlinkInBounds(const MonsterInstance& m, const MonsterAiDef& ai, Vec2 to) {
+  if (ai.leashMode != LeashMode::Returning) return true;
+  const double range = MonsterLeashRange(m, ai);  // 2F review: a bound fight's leash (MonsterAI.h)
+  if (DistSq(to, MonsterLeashCentre(m)) > range * range) return false;
+  return !m.hasTether || DistSq(to, m.tetherCentre) <= m.tetherRadius * m.tetherRadius;
+}
+
 // findWalkableTile (RandomEventSystem, monsters 6.4): the clamped tile itself, else rings 1..maxRadius (dr outer, dc
 // inner, ring edges only) inside [1, size - 2].
 bool MonsterSysFindWalkableTile(TilePos preferred, int32_t cols, int32_t rows, int32_t maxRadius,
@@ -617,7 +667,8 @@ std::vector<EntityId> MonsterSystem::SpawnChampionPack(const ZoneEventDataDef::A
       lead = tables.FindForZone(zoneId, champion.mix[k].monsterId);
     }
     if (lead != nullptr) {
-      shared = RollEliteAffixes(ctx_.data.Combat().eliteAffixes, zoneId, ctx_.Rand(RngStream::Ai), lead->family);
+      shared = RollEliteAffixes(ctx_.data.Combat().eliteAffixes, zoneId, ctx_.Rand(RngStream::Ai), lead->family,
+                                MonsterMayRise(role, *lead));
     }
   }
   Rng& rng = ctx_.Rand(RngStream::Events);
@@ -837,6 +888,7 @@ void MonsterSystem::TickAI(double dtMs) {
   for (EntityId id : ids) {
     MonsterInstance* m = Find(id);
     if (m == nullptr || !m->IsAlive()) continue;
+    if (!m->affixesPinned && m->IsAggro()) PinAffixesInFight(*m);  // 2F review: a named boss's roll, from its fight
     if (miniBossDialogueActive_ && id == miniBossDialogueMonster_) continue;  // frozen during its dialogue
     if (status != nullptr && status->IsImmobilized(id)) continue;           // no AI, safe-zone check or grid update
     if (now < m->abilityRootedUntilMs) continue;                            // K2: rooted while an ability winds up
@@ -921,10 +973,14 @@ void MonsterSystem::TickEliteBehaviours() {
     MonsterInstance* m = Find(id);
     if (m == nullptr || !m->IsAlive()) continue;
     const Vec2 heroPos = hero.Position();
-    // Teleporting: periodic blink next to the hero while aggro (17.4); no safe-zone check.
+    // Teleporting: periodic blink next to the hero while aggro (17.4); no safe-zone check. Dark remake (2F): with the
+    // M1 Returning leash a blink never lands outside the monster's own bounds - its leash range (MonsterLeashRange: it
+    // would walk home at once, healed in full, its phases reset) or a K4 tether (off the dais its phase holds it on); the
+    // draws are made as before, the blink is skipped like one onto a blocked tile.
     if (m->IsAggro() && cols > 2 && rows > 2) {
       TilePos tile;
-      if (EliteTeleportTarget(*m, table, heroPos, now, cols, rows, rng, tile) && Walkable(tile.col, tile.row)) {
+      if (EliteTeleportTarget(*m, table, heroPos, now, cols, rows, rng, tile) && Walkable(tile.col, tile.row) &&
+          BlinkInBounds(*m, ctx_.data.Monsters().ai, tile.Center())) {
         Teleport(id, tile.Center(), TeleportReason::EliteBlink);
         m = Find(id);
         if (m == nullptr) continue;
@@ -1263,7 +1319,7 @@ void MonsterSystem::OnMonsterDied(const MonsterKilledMsg& msg) {
   m = Find(msg.monster);
   const CorpseEntry* body = corpse != 0 ? corpses_.Find(corpse) : nullptr;
   if (m != nullptr && body != nullptr && body->kind == CorpseKind::Corpse && !body->spent &&
-      m->role != MonsterRole::Raised && !MonsterSysBossRole(m->role)) {
+      m->role != MonsterRole::Raised && !MonsterSysBossRole(m->role)) {  // = MonsterMayRise with its body there
     const EliteAffixTable& table = ctx_.data.Combat().eliteAffixes;
     const MonsterRiseAgainDef* rise = nullptr;
     for (const MonsterAffix& a : m->affixes) {
@@ -1289,6 +1345,12 @@ void MonsterSystem::OnMonsterDied(const MonsterKilledMsg& msg) {
         rises_.push_back(std::move(r));
       }
     }
+  }
+  // 2F review: a pinned boss roll ends with the boss (the next one rolls anew).
+  if (m != nullptr && MonsterSysPinsAffixes(m->role)) {
+    const std::string zone = CurrentZoneId();
+    const std::string id = m->def.id;
+    std::erase_if(bossAffixes_, [&](const BossAffixPin& p) { return p.zone == zone && p.monsterId == id; });
   }
   // K4: its arena and queued phase work, the phase-summon bookkeeping of its body, Feed.
   OnPhaseDeath(msg, corpse);
@@ -1374,6 +1436,17 @@ Vec2 MonsterSystem::SummonSpot(Vec2 centre, double radius, int32_t k, int32_t n)
   TilePos tile;
   if (MonsterSysFindWalkableTile(preferred, cols, rows, 3, walkable, tile)) return tile.Center();
   return centre;
+}
+
+Vec2 MonsterSystem::DashEnd(const MonsterInstance& m, Vec2 dir, double length) const {
+  const MonsterAiDef& ai = ctx_.data.Monsters().ai;
+  const Vec2 centre = MonsterLeashCentre(m);
+  const double range = MonsterLeashRange(m, ai);
+  return AbilityDashEnd(m.pos, dir, length, [&](Vec2 p) {
+    if (!Walkable(JsRoundInt(p.x), JsRoundInt(p.y)) || InSafeZone(p)) return false;
+    if (DistSq(p, centre) > range * range) return false;
+    return !m.hasTether || DistSq(p, m.tetherCentre) <= m.tetherRadius * m.tetherRadius;
+  });
 }
 
 EntityId MonsterSystem::StandUp(MonsterInstance&& fresh, Vec2 pos, uint32_t corpseId, EntityId raiser,
@@ -1700,6 +1773,8 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     v.auraRadius = m.def.aura.present && m.IsAlive() ? m.def.aura.radius : 0;
     v.auraStat = m.def.aura.stat;
     v.blockArcDeg = m.def.block.present ? m.def.block.arcDeg : 0;
+    v.leashCentre = MonsterLeashCentre(m);
+    v.leashRange = MonsterLeashRange(m, ctx_.data.Monsters().ai);
   }
   // K4: the arenas the monsters' phases lit (list order).
   for (const MonsterInstance& m : monsters_) {
@@ -1736,8 +1811,15 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
   }
 }
 
-void MonsterSystem::WriteSave(SaveData& out) const { out.miniBossDialogueSeen = miniBossDialogueSeen_; }
+void MonsterSystem::WriteSave(SaveData& out) const {
+  out.miniBossDialogueSeen = miniBossDialogueSeen_;
+  out.bossAffixes = bossAffixes_;
+}
 
-void MonsterSystem::ReadSave(const SaveData& in) { miniBossDialogueSeen_ = in.miniBossDialogueSeen; }
+void MonsterSystem::ReadSave(const SaveData& in) {
+  miniBossDialogueSeen_ = in.miniBossDialogueSeen;
+  bossAffixes_ = in.bossAffixes;
+  NormalizeBossAffixPins(bossAffixes_);  // a SaveData built in code is normalised like a parsed one
+}
 
 }  // namespace abyss

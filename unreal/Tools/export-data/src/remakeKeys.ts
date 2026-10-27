@@ -59,6 +59,12 @@ const questDefend = {
   web: { name: true, spriteKey: true, col: true, row: true, totalWaves: true } satisfies Exact<KeysOf<WebDefend>>,
   remake: { waves: true, approachDeg: true } satisfies Exact<Remade<GD.RemakeDefendTarget, WebDefend>>,
 };
+type WebHunt = Web.QuestHunt;
+const questHunt = {
+  web: { huntId: true, monsterId: true, name: true, col: true, row: true, hpMul: true, dmgMul: true, revealAfterPrevious: true,
+    minions: true } satisfies Exact<KeysOf<WebHunt>>,
+  remake: { abilities: true } satisfies Exact<Remade<Elem<GD.QuestDefinition['hunts']>, WebHunt>>,
+};
 const questObjective = {
   web: { type: true, targetId: true, targetName: true, required: true, current: true, location: true, source: true, itemKind: true,
     labelKey: true } satisfies Exact<KeysOf<Web.QuestObjective>>,
@@ -107,7 +113,8 @@ const level = (l: { web: object; remake: object }): LevelKeys => ({ web: keys(l.
 /** Per record kind, the checked levels ('' = the record itself) and their allowed keys. */
 export const RECORD_KEYS: Readonly<Record<RemakeKind, Readonly<Record<string, LevelKeys>>>> = {
   monster: { '': level(monster) },
-  quest: { '': level(quest), rewards: level(questRewards), defendTarget: level(questDefend), 'objectives[]': level(questObjective) },
+  quest: { '': level(quest), rewards: level(questRewards), defendTarget: level(questDefend), 'objectives[]': level(questObjective),
+    'hunts[]': level(questHunt) },
   map: { '': level(map), 'subDungeonEntrances[]': level(mapEntrance), 'spawns[]': level(mapSpawn) },
   npc: { '': level(npc) },
   cutscene: { '': level(cutscene), 'steps[]': level(cutsceneStep) },

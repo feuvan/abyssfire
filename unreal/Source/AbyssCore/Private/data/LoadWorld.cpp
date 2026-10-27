@@ -415,7 +415,7 @@ void LoadRandomEventsFile(const JNode& r, WorldTables& out) {
     if (z.Has("rescueMonsters")) d.rescueMonsters = z.StrList("rescueMonsters");
     if (z.Has("ambushChampion")) {  // dark remake K6 (remake schema events.ambushChampion)
       const JNode ch = z.Child("ambushChampion");
-      ReadSpawnCheckKeys(ch, {"chance", "mix", "leader", "sharedAffix", "leaderLoot"}, "ambush champion");
+      ReadSpawnCheckKeys(ch, {"chance", "mix", "leader", "sharedAffix", "leaderLoot", "notFlag"}, "ambush champion");
       ZoneEventDataDef::AmbushChampionDef& a = d.ambushChampion;
       a.present = true;
       a.chance = ch.Num("chance");
@@ -452,6 +452,24 @@ void LoadRandomEventsFile(const JNode& r, WorldTables& out) {
         } else if (a.leader.empty()) {
           ll.Error("a guaranteed leader drop needs a leader");
         }
+      }
+      if (ch.Has("notFlag")) {  // 2F review (remake schema events.ambushVariants)
+        a.notFlag = ch.Str("notFlag");
+        if (a.notFlag.empty()) ch.Child("notFlag").Error("an empty flag id");
+      }
+    }
+    if (z.Has("ambushVariants")) {  // 2F review (remake schema events.ambushVariants)
+      for (const JNode& v : z.Items("ambushVariants")) {
+        ReadSpawnCheckKeys(v, {"whenFlag", "monsters"}, "ambush variant");
+        ZoneEventDataDef::AmbushVariantDef av;
+        av.whenFlag = v.Str("whenFlag");
+        av.monsters = v.StrList("monsters");
+        if (av.whenFlag.empty()) v.Child("whenFlag").Error("an empty flag id");
+        if (av.monsters.empty()) v.Child("monsters").Error("an ambush variant names its monsters");
+        for (const std::string& id : av.monsters) {
+          if (id.empty()) v.Child("monsters").Error("an empty monster id");
+        }
+        d.ambushVariants.push_back(std::move(av));
       }
     }
     d.rescueRewardGold = z.Child("rescueReward").I64("gold");

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "source": ["src/systems/EliteAffixSystem.ts", "src/scenes/ZoneScene.ts"],
-  "order": ["fire_enhanced", "swift", "teleporting", "extra_strong", "curse_aura", "vampiric", "frozen"],
+  "order": ["fire_enhanced", "swift", "teleporting", "extra_strong", "curse_aura", "vampiric", "frozen", "unburied"],
   "definitions": {
     "fire_enhanced": {
       "type": "fire_enhanced",
@@ -18,7 +18,17 @@
       "lifestealFraction": 0,
       "freezeChance": 0,
       "vfxColor": 11546576,
-      "lootQualityBonus": 5
+      "lootQualityBonus": 5,
+      "onDeath": {
+        "kind": "burst",
+        "delayMs": 1000,
+        "shape": {"kind": "circle", "radius": 2},
+        "dmg": 20,
+        "damageType": "fire",
+        "capHeroMaxHpPct": 20,
+        "hitsMonsters": true,
+        "monsterDmgMul": 2
+      }
     },
     "swift": {
       "type": "swift",
@@ -120,7 +130,33 @@
       "lifestealFraction": 0,
       "freezeChance": 0.25,
       "vfxColor": 13625599,
-      "lootQualityBonus": 5
+      "lootQualityBonus": 5,
+      "onDeath": {
+        "kind": "ring",
+        "delayMs": 600,
+        "shape": {"kind": "circle", "radius": 2.5},
+        "damageType": "ice",
+        "status": {"type": "slow", "ms": 2500, "value": 30}
+      }
+    },
+    "unburied": {
+      "type": "unburied",
+      "name": "不葬",
+      "nameEn": "Unburied",
+      "damageMult": 1,
+      "speedMult": 1,
+      "hpMult": 1,
+      "defenseMult": 1,
+      "extraFireDamage": 0,
+      "teleportCooldownMs": 0,
+      "curseAuraRadius": 0,
+      "curseAuraReduction": 0,
+      "lifestealFraction": 0,
+      "freezeChance": 0,
+      "vfxColor": 13667583,
+      "lootQualityBonus": 3,
+      "riseAgain": {"chance": 1, "delayMs": 3000, "hpPct": 50},
+      "families": ["unburied"]
     }
   },
   "zoneAffixCounts": {
@@ -148,6 +184,7 @@
       "eliteAffixes.definitions.curse_aura",
       "eliteAffixes.definitions.vampiric",
       "eliteAffixes.definitions.frozen"
-    ]
+    ],
+    "added": ["eliteAffixes.definitions.unburied"]
   }
 }

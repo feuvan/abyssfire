@@ -7,13 +7,20 @@ import type { MonsterDefinition, DialogueTree } from './types';
 
 // ─── Zone 1: 赤幡原 / The Red Field (dark remake, Docs/dark-remake/chapter1.md §10, monsters.md §2.5) ───
 // 尸牧婆 / the Corpseherd: a washerwoman from the crusade's baggage train who keeps the dead walking "home". On the main
-// path (M3). Wave 1: a ranged elite (range 3.0 authored, so the exporter's DECISIONS M5 override is gone) whose
-// bell-toll bolt slows; Call the Flock, the kite and Keen are Wave 2.
+// path (M3). A ranged elite (range 3.0 authored, so the exporter's DECISIONS M5 override is gone) whose bell-toll bolt
+// slows; Wave 2 (package 2F): Call the Flock (two raised at the pull, then one every 8 s, at most 3 alive; they collapse
+// when she dies), the kite and Keen (chapter1.md §10). The Sheepfold's six seated dead are map corpse seeds
+// (maps/emerald_plains.ts).
+// 2F review: 600 HP (was 300). The main path brings the hero at Lv 10 (DR9's exp flow), where 300 HP died before Keen;
+// at 600 every class sees the opening raise and, in most fights, Keen (500 left the warrior's Keen at 55-80 % of fights);
+// the 8 s repeat raise is for a slower or earlier hero (chapter1.md §10, §19). More (1200+) made an early Lv 5 meeting a
+// two-minute fight. She now has more life than the web's zone-2 mini-boss (520), which stays behind the sealed east gate
+// (W7) until Chapter 2 is remade.
 export const miniBossEmeraldPlains: MonsterDefinition = {
   id: 'miniboss_corpseherd',
   name: '尸牧婆',
   level: 6,
-  hp: 300,
+  hp: 600,
   damage: 15,
   defense: 10,
   speed: 45,
@@ -32,6 +39,33 @@ export const miniBossEmeraldPlains: MonsterDefinition = {
   // The bell-toll bolt: a breach-violet ripple (DR5) that slows 20 % for 2 s on every hit.
   projectileColor: 0xb02fd0,
   onHitStatus: [{ status: 'slow', chance: 1, value: { kind: 'fixed', amount: 20 }, durationMs: 2000 }],
+  hitCapHeroMaxHpPct: 35,
+  abilities: [
+    // 召羊 Call the Flock at the pull: she rings her bell (Cast01) and two corpses within 6 tiles stand as footmen at 40 %
+    // life (no exp or loot, never respawn) under breach-violet markers for 900 ms; once per fight.
+    {
+      id: 'call_the_flock_pull', kind: 'raise', clip: 'Cast01', windupMs: 900, cooldownMs: 600000, rangeMax: 12, aim: 'corpse',
+      priority: 2,
+      summon: { monsterId: 'risen_footman', count: 2, at: 'corpse', radius: 6, capAlive: 3, hpPct: 40 },
+    },
+    // Then one every 8 s: at most 3 alive, at most one raise per 8 s (with the pull's two, the window holds the next).
+    {
+      id: 'call_the_flock', kind: 'raise', clip: 'Cast01', windupMs: 900, cooldownMs: 8000, initialCooldownMs: 8000, rangeMax: 12,
+      aim: 'corpse', priority: 1,
+      summon: { monsterId: 'risen_footman', count: 1, at: 'corpse', radius: 6, capAlive: 3, perWindowCap: 1, windowMs: 8000, hpPct: 40 },
+    },
+    // Keen (below 50 %): a crimson circle r4 round her, 800 ms (Cast02, FX_Keen), slow 25 % for 3 s and no damage
+    // (chapter1.md §10; 2F review: a status-only strike, dmgMul 0); every 12 s (the design names no cooldown).
+    {
+      id: 'keen', kind: 'circle', clip: 'Cast02', windupMs: 800, cooldownMs: 12000, hpBelowPct: 50, aim: 'self',
+      shape: { radius: 4 }, dmgMul: 0, status: { type: 'slow', ms: 3000, value: 25 },
+    },
+  ],
+  // She holds 2-3 tiles from the hero (chapter1.md §10's 3-5 band fitted to her range 3.0, decision M5: a kite ends
+  // within the attack range; 2F outcomes).
+  kite: { min: 2, max: 3 },
+  // Her body is a story beat (cs_rf_herd): remains, never raised or eaten.
+  corpse: { leaves: 'remains' },
   lootTable: [
     { quality: 'magic', dropRate: 0.8 },
     { quality: 'rare', dropRate: 0.35 },

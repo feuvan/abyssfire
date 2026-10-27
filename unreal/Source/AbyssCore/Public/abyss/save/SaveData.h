@@ -24,6 +24,7 @@
 #include "abyss/hero/Skills.h"
 #include "abyss/hero/Spirit.h"
 #include "abyss/items/Item.h"
+#include "abyss/monsters/Monster.h"
 #include "abyss/pets/Homestead.h"
 #include "abyss/pets/PetSystem.h"
 #include "abyss/quests/Dialogue.h"
@@ -149,6 +150,9 @@ struct SaveData {
   std::vector<std::string> worldFlags;
   // SessionState::permanentRewards: the (quest, difficulty) claims in grant order and the running totals.
   PermanentRewardsState permanentRewards;
+  // ---- 2F review (written last, only when not empty) ----
+  // MonsterSystem's boss affix pins (Monster.h BossAffixPin).
+  std::vector<BossAffixPin> bossAffixes;
 };
 
 }  // namespace abyss

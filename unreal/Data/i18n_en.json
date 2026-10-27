@@ -125,7 +125,7 @@
     "zone.combat.noTarget": "C14",
     "zone.combat.outOfRange": "C14"
   },
-  "keyCount": 2796,
+  "keyCount": 2800,
   "strings": {
     "boot.title": "Abyssfire",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2713,6 +2713,7 @@
     "data.monster.bonegorger": "Bonegorger",
     "data.monster.miniboss_corpseherd": "The Corpseherd",
     "data.monster.valdras": "Lord-Marshal Valdras",
+    "data.monster.rollcall_standard_bearer": "Dead Standard-Bearer",
     "data.monster.hunt_hungerbell": "Hungerbell",
     "data.monster.hunt_dreck": "Dreck the Silverpicker",
     "data.monster.hunt_harke": "Harke the Oathless",
@@ -2779,6 +2780,8 @@
     "zone.event.puzzle.label.emerald_plains": "Five Handbells",
     "zone.event.treasureChest.label.emerald_plains": "A Dead Knight's Strongbox",
     "zone.event.rescue.complete.emerald_plains": "You cut the pilgrim loose. \"They said I walked too slowly to keep up with the Flame.\" Gained {gold} gold and {exp} EXP",
+    "sys.eliteAffix.name.unburied": "Unburied",
+    "sys.statusEffect.name.ashnumb": "Ashnumb",
     "data.quest.q_rf_burial_detail.name": "The Burial Detail",
     "data.quest.q_rf_burial_detail.desc": "Ten men of the burial detail went out at dusk and never came back. Go north to the trenches and put down whoever is standing.",
     "data.quest.q_rf_burial_detail.offer": "The burial detail went out at dusk with one lantern. An hour ago the lantern stopped moving. Go north to the trenches. If they're standing... don't hesitate.",
@@ -2809,6 +2812,7 @@
     "data.quest.q_rf_black_blood.offer": "Marl keeps a dressing station outside the walls. The wounded who touch breach-blood turn grey and stop crying out. She needs six clots, still warm.",
     "data.quest.q_rf_black_blood.progress": "Don't touch it bare-handed. Marl will show you.",
     "data.quest.q_rf_black_blood.complete": "Marl says the blood has voices in it. ...Don't ask me whose.",
+    "data.quest.q_rf_black_blood.permanent": "Marl's Bitter Draught",
     "data.quest.q_rf_barrowmoss.name": "Barrowmoss",
     "data.quest.q_rf_barrowmoss.desc": "The old rite says barrowmoss burned over a grave makes the dead sleep deeper. Pull five handfuls by the trenches, roots and all.",
     "data.quest.q_rf_barrowmoss.offer": "The old rite says: burn barrowmoss over a grave and the dead sleep deeper. Some grows by the trenches. Bring five handfuls, before they wake.",
@@ -2928,7 +2932,7 @@
     "source": ["unreal/GameData", "unreal/GameData/i18n/en.ts"],
     "stringsReplacedWeb": 95,
     "stringsReplacedPort": 0,
-    "stringsAdded": 223,
+    "stringsAdded": 227,
     "swept": [
       "data.monster.slime_green",
       "data.monster.goblin",

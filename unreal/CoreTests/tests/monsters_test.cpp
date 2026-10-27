@@ -183,7 +183,10 @@ TEST_SUITE("monsters") {
       CHECK(d.speed > 0);
       CHECK(d.goldMax >= d.goldMin);
       CHECK(d.level > prevLevel);
-      CHECK(d.hp > prevHp);
+      // The web's mini-bosses gain life zone by zone. The dark remake retunes Chapter 1's (the Corpseherd: 600 HP for the
+      // Lv 10 hero its main path brings, 2F review) while Chapters 2-5 keep the web's numbers behind the sealed east gate
+      // (W7), so life is compared from the second zone on (the remade first zone is pinned in content_ch1_test.cpp).
+      if (z != zones[1]) CHECK(d.hp > prevHp);
       prevLevel = d.level;
       prevHp = d.hp;
       ids.insert(d.id);
@@ -302,9 +305,11 @@ TEST_SUITE("monsters") {
   // ===================================================================================================================
   TEST_CASE("elite affix definitions 17.1: the mechanics are exported verbatim; no affix glows in the hero's ember") {
     const EliteAffixTable& t = MAffixes();
-    REQUIRE(t.order.size() == 7);
+    // The web's seven in their order, then the dark remake's `unburied` (2F; its row is pinned in content_ch1_test.cpp).
+    REQUIRE(t.order.size() == 8);
     CHECK(t.order[0] == EliteAffixType::FireEnhanced);
     CHECK(t.order[6] == EliteAffixType::Frozen);
+    CHECK(t.order[7] == EliteAffixType::Unburied);
     for (EliteAffixType ty : t.order) {
       const EliteAffixDef& d = t.Def(ty);
       CAPTURE(EnumName(ty));
@@ -1139,6 +1144,28 @@ TEST_SUITE("monsters") {
     ApplyEliteAffixes(idle.M(it), MOne(EliteAffixType::Teleporting), MAffixes(), MAi());
     idle.monsters.TickEliteBehaviours();
     CHECK(idle.M(it).pos == Vec2(60, 85));
+    // Dark remake (2F, the M1 Returning leash): a blink that would land past the leash range of its spawn anchor, or
+    // outside a K4 tether, is skipped (the same draws: the same tile as above, from a farther hero / a tighter tether).
+    const auto blinkFrom = [](uint64_t seed, Vec2 heroPos, double tetherRadius) {
+      MonsterRig r(seed, heroPos);
+      r.OpenWorld();
+      const EntityId e = r.Spawn(fixture::Brute(), {60, 85});
+      ApplyEliteAffixes(r.M(e), MOne(EliteAffixType::Teleporting), MAffixes(), MAi());
+      r.M(e).state = MonsterState::Chase;
+      if (tetherRadius > 0) {
+        r.M(e).hasTether = true;
+        r.M(e).tetherCentre = Vec2(60, 85);
+        r.M(e).tetherRadius = tetherRadius;
+      }
+      r.h.rng.Get(RngStream::Ai).Script({0.2, 0.5, 0.7, 0.0});
+      r.monsters.TickEliteBehaviours();
+      CHECK(MEvents<EvEntityTeleported>(r.h.events).size() == (r.M(e).pos == Vec2(60, 85) ? 0u : 1u));
+      return r.M(e).pos;
+    };
+    CHECK(blinkFrom(44, Vec2(60, 72), 0) == Vec2(60, 85));  // (59, 73): 12 tiles from the anchor, past the leash (8)
+    CHECK(blinkFrom(45, Vec2(60, 77), 0) == Vec2(59, 78));  // 7.1 tiles: inside it
+    CHECK(blinkFrom(46, Vec2(60, 80), 3) == Vec2(60, 85));  // (59, 81): 4.1 tiles from the tether's centre, past r3
+    CHECK(blinkFrom(47, Vec2(60, 80), 5) == Vec2(59, 81));  // inside r5
 
     MonsterRig c(43, Vec2(60, 80));
     c.OpenWorld();

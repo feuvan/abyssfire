@@ -59,6 +59,16 @@ bool AbilityKindCastsBetweenSwings(AbilityKind kind) {
   return AbilityKindSummons(kind) || kind == AbilityKind::Buff || kind == AbilityKind::Call;
 }
 
+bool AbilityIsRangedSpecial(const MonsterAbilityDef& a, double swingReach) {
+  // The same slack as the loader's reach checks (DataStore): a range authored as the reach itself (1.5 x 1.2 =
+  // 1.7999999999999998 against 1.8) stays bound by it.
+  return !AbilityKindCastsBetweenSwings(a.kind) && a.hasRangeMax && a.rangeMax > swingReach + 1e-9;
+}
+
+bool AbilityCastsBetweenSwings(const MonsterAbilityDef& a, double swingReach) {
+  return AbilityKindCastsBetweenSwings(a.kind) || AbilityIsRangedSpecial(a, swingReach);
+}
+
 bool AbilityHasGroundShape(AbilityKind kind) {
   return kind == AbilityKind::Circle || kind == AbilityKind::Cone || kind == AbilityKind::Line ||
          kind == AbilityKind::Ring || kind == AbilityKind::Hazard;
@@ -66,7 +76,7 @@ bool AbilityHasGroundShape(AbilityKind kind) {
 
 bool AbilityUsable(const MonsterAbilityDef& a, size_t index, const AbilityPickInput& in) {
   if (!AbilityKindRuns(a.kind)) return false;
-  if (in.castsOnly && !AbilityKindCastsBetweenSwings(a.kind)) return false;
+  if (in.castsOnly && !AbilityCastsBetweenSwings(a, in.swingReach)) return false;
   if (index >= in.readyAtMs.size() || in.nowMs + kAbilityEpsilonMs < in.readyAtMs[index]) return false;
   if (in.heroDist < a.rangeMin) return false;
   if (a.hasRangeMax && in.heroDist > a.rangeMax) return false;
@@ -230,6 +240,24 @@ double MonsterHitCap(double heroMaxHp, double capPct, double difficultyDamageMul
 double ApplyMonsterHitCap(double damage, double heroMaxHp, double capPct, double difficultyDamageMul) {
   const double cap = MonsterHitCap(heroMaxHp, capPct, difficultyDamageMul);
   return cap > 0 ? (std::min)(damage, cap) : damage;
+}
+
+Vec2 AbilityDashEnd(Vec2 from, Vec2 dir, double length, const std::function<bool(Vec2)>& open) {
+  const Vec2 u = AbilityUnitOr(dir, Vec2(1, 0));
+  Vec2 end = from;
+  if (!(length > 0) || !open) return end;
+  const int32_t n = FloorInt(length / kDashSampleTiles + 1e-9);
+  for (int32_t i = 1; i <= n; ++i) {
+    const Vec2 p = from + u * (kDashSampleTiles * static_cast<double>(i));
+    if (!open(p)) break;
+    end = p;
+  }
+  // The line's own end when it is not a whole number of samples away.
+  if (end == from + u * (kDashSampleTiles * static_cast<double>(n)) && n * kDashSampleTiles < length - 1e-9) {
+    const Vec2 last = from + u * length;
+    if (open(last)) end = last;
+  }
+  return end;
 }
 
 StatusRule AbilityStatusRule(const AbilityStatusDef& s) {

@@ -21,7 +21,8 @@
       "risen_shieldbearer",
       "dead_standard_bearer",
       "bonegorger",
-      "valdras"
+      "valdras",
+      "rollcall_standard_bearer"
     ],
     "twilight_forest": ["skeleton", "zombie", "werewolf", "werewolf_alpha"],
     "anvil_mountains": ["gargoyle", "stone_golem", "mountain_troll"],
@@ -51,14 +52,16 @@
       "spriteKey": "monster_breachclot",
       "animCategory": "slime",
       "family": "breach",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "none"},
       "derived": {
         "isRanged": false,
         "onHitStatus": [
           {
-            "status": "poison",
-            "chance": 0.2,
-            "value": {"kind": "monsterDamage", "fraction": 0.15, "min": 1},
-            "durationMs": 3000
+            "status": "ashnumb",
+            "chance": 1,
+            "value": {"kind": "fixed", "amount": 1},
+            "durationMs": 6000
           }
         ],
         "projectileColor": 13386956,
@@ -83,6 +86,9 @@
       "spriteKey": "monster_risen_footman",
       "animCategory": "humanoid",
       "family": "unburied",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "corpse"},
+      "riseAgain": {"chance": 0.25, "delayMs": 3000, "hpPct": 40, "notOnCrit": true},
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -108,6 +114,9 @@
       "spriteKey": "monster_gravegnawer",
       "animCategory": "humanoid",
       "family": "gravegnawers",
+      "hitCapHeroMaxHpPct": 35,
+      "packAggro": 6,
+      "corpse": {"leaves": "remains", "consumes": true},
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -133,6 +142,18 @@
       "spriteKey": "monster_cinderbloat",
       "animCategory": "slime",
       "family": "breach",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "none"},
+      "onDeath": {
+        "kind": "burst",
+        "delayMs": 800,
+        "shape": {"kind": "circle", "radius": 2.2},
+        "dmg": 18,
+        "damageType": "fire",
+        "hitsMonsters": true,
+        "monsterDmgMul": 2,
+        "capHeroMaxHpPct": 20
+      },
       "derived": {
         "isRanged": false,
         "onHitStatus": [
@@ -141,6 +162,12 @@
             "chance": 0.3,
             "value": {"kind": "monsterDamage", "fraction": 0.2, "min": 1},
             "durationMs": 3000
+          },
+          {
+            "status": "ashnumb",
+            "chance": 1,
+            "value": {"kind": "fixed", "amount": 1},
+            "durationMs": 6000
           }
         ],
         "projectileColor": 13386956,
@@ -165,6 +192,10 @@
       "spriteKey": "monster_risen_arbalest",
       "animCategory": "humanoid",
       "family": "unburied",
+      "hitCapHeroMaxHpPct": 35,
+      "kite": {"min": 3, "max": 6},
+      "corpse": {"leaves": "corpse"},
+      "riseAgain": {"chance": 0.25, "delayMs": 3000, "hpPct": 40, "notOnCrit": true},
       "derived": {
         "isRanged": true,
         "onHitStatus": [],
@@ -190,6 +221,11 @@
       "spriteKey": "monster_oath_zealot",
       "animCategory": "humanoid",
       "family": "living",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "corpse"},
+      "phases": [
+        {"hpBelowPct": 50, "attackSpeedMul": 1.35, "speedMul": 1.2, "damageTakenMul": 1.1}
+      ],
       "derived": {
         "isRanged": false,
         "onHitStatus": [
@@ -222,6 +258,9 @@
       "spriteKey": "monster_deserter",
       "animCategory": "humanoid",
       "family": "living",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "corpse"},
+      "morale": {"fleeOnLeaderDeathMs": 5000, "fleeRadius": 8, "sustainFamily": "living", "sustainRadius": 8},
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -247,6 +286,22 @@
       "spriteKey": "monster_deserter_drummer",
       "animCategory": "humanoid",
       "family": "living",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "corpse"},
+      "abilities": [
+        {
+          "id": "war_drum",
+          "kind": "call",
+          "clip": "Cast01",
+          "windupMs": 2000,
+          "cooldownMs": 8000,
+          "initialCooldownMs": 1000,
+          "rangeMax": 12,
+          "aim": "self",
+          "buff": {"stat": "fearImmune", "ms": 6000, "radius": 8, "family": "living"}
+        }
+      ],
+      "aura": {"stat": "attackSpeed", "mul": 1.1, "radius": 8, "family": "living"},
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -272,6 +327,10 @@
       "spriteKey": "monster_risen_shieldbearer",
       "animCategory": "humanoid",
       "family": "unburied",
+      "hitCapHeroMaxHpPct": 35,
+      "block": {"arcDeg": 100, "damageMul": 0.5, "wall": 2},
+      "corpse": {"leaves": "corpse"},
+      "riseAgain": {"chance": 0.25, "delayMs": 3000, "hpPct": 40, "notOnCrit": true},
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -297,6 +356,32 @@
       "spriteKey": "monster_dead_standard_bearer",
       "animCategory": "humanoid",
       "family": "unburied",
+      "hitCapHeroMaxHpPct": 35,
+      "abilities": [
+        {
+          "id": "muster",
+          "kind": "raise",
+          "clip": "Cast01",
+          "windupMs": 900,
+          "cooldownMs": 10000,
+          "initialCooldownMs": 2000,
+          "rangeMax": 12,
+          "aim": "corpse",
+          "summon": {
+            "monsterId": "risen_footman",
+            "count": 1,
+            "at": "corpse",
+            "radius": 6,
+            "capAlive": 2,
+            "perWindowCap": 1,
+            "windowMs": 10000,
+            "hpPct": 40
+          }
+        }
+      ],
+      "aura": {"stat": "damage", "mul": 1.15, "radius": 5, "family": "unburied"},
+      "corpse": {"leaves": "corpse"},
+      "riseAgain": {"chance": 0.25, "delayMs": 3000, "hpPct": 40, "notOnCrit": true},
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -322,6 +407,21 @@
       "spriteKey": "monster_bonegorger",
       "animCategory": "humanoid",
       "family": "gravegnawers",
+      "hitCapHeroMaxHpPct": 35,
+      "abilities": [
+        {
+          "id": "clapper_slam",
+          "kind": "circle",
+          "clip": "Attack02",
+          "windupMs": 800,
+          "cooldownMs": 6000,
+          "initialCooldownMs": 1500,
+          "aim": "heroAtWindup",
+          "shape": {"radius": 2},
+          "dmgMul": 1.6
+        }
+      ],
+      "corpse": {"leaves": "remains"},
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
@@ -335,7 +435,7 @@
       "id": "valdras",
       "name": "焚旗元帅·瓦德拉斯",
       "level": 9,
-      "hp": 900,
+      "hp": 9000,
       "damage": 20,
       "defense": 12,
       "speed": 48,
@@ -348,12 +448,172 @@
       "elite": true,
       "animCategory": "humanoid",
       "family": "unburied",
+      "hitCapHeroMaxHpPct": 35,
+      "corpse": {"leaves": "remains"},
+      "abilities": [
+        {
+          "id": "banner_sweep",
+          "kind": "cone",
+          "clip": "Attack02",
+          "windupMs": 700,
+          "cooldownMs": 5000,
+          "initialCooldownMs": 2000,
+          "aim": "heroAtWindup",
+          "shape": {"radius": 2.6, "arcDeg": 120},
+          "dmgMul": 1.3,
+          "damageType": "fire",
+          "priority": 1
+        },
+        {
+          "id": "oath_brand",
+          "kind": "circle",
+          "clip": "Cast01",
+          "windupMs": 900,
+          "cooldownMs": 8000,
+          "initialCooldownMs": 4000,
+          "aim": "heroAtWindup",
+          "shape": {"radius": 1.8},
+          "dmgMul": 1.8,
+          "damageType": "fire",
+          "priority": 2,
+          "hazard": {
+            "durationMs": 4000,
+            "tickMs": 500,
+            "tickDmgMul": 0.15,
+            "shape": {"kind": "circle", "radius": 1.8}
+          }
+        },
+        {
+          "id": "breach_seep",
+          "kind": "hazard",
+          "windupMs": 700,
+          "cooldownMs": 6000,
+          "initialCooldownMs": 1500,
+          "rangeMax": 10,
+          "aim": "anchor",
+          "shape": {"kind": "line", "length": 8, "width": 1},
+          "damageType": "fire",
+          "phases": [1],
+          "priority": 3,
+          "hazard": {
+            "durationMs": 1000,
+            "tickMs": 500,
+            "tickDmgMul": 0.5,
+            "status": {"type": "slow", "ms": 2000, "value": 30}
+          }
+        },
+        {
+          "id": "lunge",
+          "kind": "line",
+          "clip": "Lunge",
+          "windupMs": 800,
+          "cooldownMs": 7000,
+          "initialCooldownMs": 1000,
+          "rangeMin": 2.5,
+          "rangeMax": 5,
+          "aim": "heroAtWindup",
+          "shape": {"length": 5, "width": 1.2},
+          "dmgMul": 1.5,
+          "damageType": "fire",
+          "priority": 2,
+          "dash": true
+        }
+      ],
+      "phases": [
+        {
+          "hpBelowPct": 65,
+          "enterAction": "roar",
+          "speedMul": 0.6,
+          "leash": {"radius": 3},
+          "summons": [
+            {
+              "monsterId": "rollcall_standard_bearer",
+              "count": 1,
+              "at": "anchors",
+              "anchors": [
+                {"col": 11, "row": 91}
+              ],
+              "respawnMs": 20000,
+              "respawns": 1
+            }
+          ],
+          "feed": {"radius": 4, "healPct": 3, "delayMs": 1000},
+          "stinger": "stinger_valdras_roll_call"
+        },
+        {
+          "hpBelowPct": 30,
+          "enterAction": "roar",
+          "attackSpeedMul": 1.25,
+          "speedMul": 1.15,
+          "abilitiesOn": ["lunge"],
+          "arena": {
+            "kind": "ringShrink",
+            "fromR": 9,
+            "toR": 5,
+            "overMs": 40000,
+            "dpsPctMaxHp": 4,
+            "damageType": "fire"
+          },
+          "stinger": "stinger_valdras_no_retreat"
+        }
+      ],
       "derived": {
         "isRanged": false,
         "onHitStatus": [],
         "projectileColor": 13386956,
         "homeZone": "emerald_plains",
         "nameKey": "data.monster.valdras",
+        "sources": ["zone"]
+      }
+    },
+    "rollcall_standard_bearer": {
+      "id": "rollcall_standard_bearer",
+      "name": "亡旗手",
+      "level": 7,
+      "hp": 140,
+      "damage": 8,
+      "defense": 8,
+      "speed": 30,
+      "aggroRange": 6,
+      "attackRange": 1.6,
+      "attackSpeed": 1700,
+      "expReward": 30,
+      "goldReward": [4, 8],
+      "spriteKey": "monster_dead_standard_bearer",
+      "animCategory": "humanoid",
+      "family": "unburied",
+      "hitCapHeroMaxHpPct": 35,
+      "abilities": [
+        {
+          "id": "roll_call",
+          "kind": "summon",
+          "clip": "Cast01",
+          "windupMs": 900,
+          "cooldownMs": 10000,
+          "initialCooldownMs": 3000,
+          "rangeMax": 30,
+          "aim": "self",
+          "summon": {
+            "monsterId": "risen_footman",
+            "count": 2,
+            "at": "anchors",
+            "anchors": [
+              {"col": 11, "row": 91},
+              {"col": 19, "row": 99}
+            ],
+            "capAlive": 4,
+            "hpPct": 40
+          }
+        }
+      ],
+      "aura": {"stat": "damage", "mul": 1.15, "radius": 5, "family": "unburied"},
+      "corpse": {"leaves": "corpse"},
+      "derived": {
+        "isRanged": false,
+        "onHitStatus": [],
+        "projectileColor": 13386956,
+        "homeZone": "emerald_plains",
+        "nameKey": "data.monster.rollcall_standard_bearer",
         "sources": ["zone"]
       }
     },
@@ -939,7 +1199,7 @@
       "id": "miniboss_corpseherd",
       "name": "尸牧婆",
       "level": 6,
-      "hp": 300,
+      "hp": 600,
       "damage": 15,
       "defense": 10,
       "speed": 45,
@@ -953,6 +1213,55 @@
       "isMiniBoss": true,
       "animCategory": "humanoid",
       "family": "unburied",
+      "hitCapHeroMaxHpPct": 35,
+      "abilities": [
+        {
+          "id": "call_the_flock_pull",
+          "kind": "raise",
+          "clip": "Cast01",
+          "windupMs": 900,
+          "cooldownMs": 600000,
+          "rangeMax": 12,
+          "aim": "corpse",
+          "priority": 2,
+          "summon": {"monsterId": "risen_footman", "count": 2, "at": "corpse", "radius": 6, "capAlive": 3, "hpPct": 40}
+        },
+        {
+          "id": "call_the_flock",
+          "kind": "raise",
+          "clip": "Cast01",
+          "windupMs": 900,
+          "cooldownMs": 8000,
+          "initialCooldownMs": 8000,
+          "rangeMax": 12,
+          "aim": "corpse",
+          "priority": 1,
+          "summon": {
+            "monsterId": "risen_footman",
+            "count": 1,
+            "at": "corpse",
+            "radius": 6,
+            "capAlive": 3,
+            "perWindowCap": 1,
+            "windowMs": 8000,
+            "hpPct": 40
+          }
+        },
+        {
+          "id": "keen",
+          "kind": "circle",
+          "clip": "Cast02",
+          "windupMs": 800,
+          "cooldownMs": 12000,
+          "hpBelowPct": 50,
+          "aim": "self",
+          "shape": {"radius": 4},
+          "dmgMul": 0,
+          "status": {"type": "slow", "ms": 3000, "value": 25}
+        }
+      ],
+      "kite": {"min": 2, "max": 3},
+      "corpse": {"leaves": "remains"},
       "lootTable": [
         {"quality": "magic", "dropRate": 0.8},
         {"quality": "rare", "dropRate": 0.35},

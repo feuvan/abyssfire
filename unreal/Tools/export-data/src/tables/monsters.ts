@@ -10,19 +10,20 @@
 import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
 import { AllDungeonMonsters, DungeonExclusiveMonsters, DungeonBossDef, DungeonMidBossDef, DungeonMonsterPool } from '../../../../../src/data/dungeonData';
 import { MiniBossByZone, MiniBossDialogues, MiniBossSpawns } from '../../../../../src/data/miniBosses';
-import { AllSubDungeons, SubDungeonMiniBosses } from '../../../../../src/data/subDungeons';
+import { SubDungeonMiniBosses } from '../../../../../src/data/subDungeons';
 import { AllQuests } from '../../../../../src/data/quests/all_quests';
 import { makeHuntDefinition } from '../../../../../src/systems/QuestHunts';
 import { ZoneScene } from '../../../../../src/scenes/ZoneScene';
 import * as StoryDirectorMod from '../../../../../src/systems/StoryDirector';
 import { STORY_TRIGGERS, BOSS_INTROS } from '../../../../../src/data/story/script';
-import { AllMaps, EmeraldPlainsMap } from '../../../../../src/data/maps';
+import { EmeraldPlainsMap } from '../../../../../src/data/maps';
 import type { MonsterDefinition } from '../../../../../src/data/types';
 import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, RemakeAbilityStatus, RemakeOnDeath, RemakeCorpse,
-  RemakeRiseAgain, RemakeMonsterPhase, RemakeKite, RemakeBlock, RemakeMorale, RemakeAura, MapSpawn as RemakeMapSpawn } from '../../../../GameData/types';
+  RemakeRiseAgain, RemakeMonsterPhase, RemakeKite, RemakeBlock, RemakeMorale, RemakeAura,
+  RemakeQuestHunt } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
-import { gateRemakeValues, noteConfig, remakeStatusTypes, withholdRemakeFields } from '../remake';
+import { gateRemakeValues, noteConfig, remakeFeatureOn, remakeStatusTypes, withholdRemakeFields } from '../remake';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -129,7 +130,8 @@ function takeAuthored(d: MonsterDefinition): Authored {
 // ── K2 abilities (implementation-plan.md §3 K2) ──
 
 const ABILITY_KEYS = ['id', 'kind', 'clip', 'windupMs', 'cooldownMs', 'initialCooldownMs', 'rangeMin', 'rangeMax', 'hpBelowPct',
-  'phases', 'priority', 'aim', 'shape', 'dmgMul', 'damageType', 'status', 'hitsMonsters', 'monsterDmgMul', 'hazard', 'summon', 'buff'];
+  'phases', 'priority', 'aim', 'shape', 'dmgMul', 'damageType', 'status', 'hitsMonsters', 'monsterDmgMul', 'hazard', 'summon', 'buff',
+  'dash'];
 const SHAPE_KINDS = ['circle', 'cone', 'line', 'ring'];
 const STATUS_TYPES = ['burn', 'freeze', 'poison', 'bleed', 'slow', 'stun'];
 const DAMAGE_TYPES = ['physical', 'fire', 'ice', 'lightning', 'poison', 'arcane'];
@@ -140,7 +142,8 @@ const AIMS_BY_KIND: Record<RemakeMonsterAbility['kind'], readonly RemakeMonsterA
 };
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 // Monster.ts `distToPlayer > attackRange * 1.2` (asserted below; monster_ai.json `attackExitMul`): the Attack state holds
-// within this multiple of attackRange, and an ability is picked only on a due swing in that state.
+// within this multiple of attackRange, and a due swing picks its abilities in that state (2F review: a ranged special,
+// rangeMax past this reach, also starts between swings: MonsterAbilities.h AbilityIsRangedSpecial).
 const ATTACK_EXIT_MUL = 1.2;
 // Upper bounds of the timing fields (LoadMonsters.cpp): a windup <= 5 s, a hazard <= 60 s, a cooldown <= 10 min.
 const MAX_WINDUP_MS = 5000, MAX_HAZARD_MS = 60000, MAX_COOLDOWN_MS = 600000;
@@ -203,7 +206,13 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
     assert(typeof a.id === 'string' && a.id !== '' && !ids.has(a.id), `${at}.id: empty or duplicate ability id '${a.id}'`);
     ids.add(a.id);
     assert(Object.hasOwn(AIMS_BY_KIND, a.kind), `${at}.kind: unknown kind '${a.kind}'`);
-    assert(typeof a.clip === 'string' && a.clip !== '', `${at}.clip: empty clip`);
+    // 2F review: a hazard or a call may play no clip (the caster is not rooted; its windup is authored then).
+    if (a.clip === undefined) {
+      assert(a.kind === 'hazard' || a.kind === 'call', `${at}: a ${a.kind} ability names its clip (only a hazard or a call may play none)`);
+      assert(a.windupMs !== undefined, `${at}: an ability without a clip authors its windupMs (no clip times it)`);
+    } else {
+      assert(typeof a.clip === 'string' && a.clip !== '', `${at}.clip: empty clip`);
+    }
     if (a.windupMs !== undefined) {
       assert(isNum(a.windupMs) && a.windupMs >= (boss ? 700 : 600), `${at}.windupMs: a ${boss ? 'boss ' : ''}special winds up >= ${boss ? 700 : 600} ms`);
       assert(a.windupMs <= MAX_WINDUP_MS, `${at}.windupMs: expected <= ${MAX_WINDUP_MS}`);
@@ -213,18 +222,16 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
     assert(isNum(initialCd) && initialCd >= 0 && initialCd <= MAX_COOLDOWN_MS, `${at}.initialCooldownMs: expected 0..${MAX_COOLDOWN_MS}`);
     assert((a.rangeMin ?? 0) >= 0, `${at}.rangeMin: expected >= 0`);
     assert(a.rangeMax === undefined || a.rangeMax > (a.rangeMin ?? 0), `${at}.rangeMax: expected > rangeMin`);
-    // Picked only on a due swing (Attack state, within attackRange x 1.2): DataStore::Finalize warns on the same rule.
-    // The product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998) with a hair of slack, so a range authored as the reach
-    // (1.8) passes. K3: a raise / summon is a cast between swings, from Chase as well, so its range is not bound by reach.
+    // A due swing (Attack state, within attackRange x 1.2) picks it; DataStore::Finalize warns on the same rule. The
+    // product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998) with a hair of slack, so a range authored as the reach (1.8)
+    // stays bound by it. K3 raise / summon and K5 buff / call are casts between swings, from Chase as well, and so (2F
+    // review) is a ranged special: a damaging ability whose rangeMax passes the reach.
     const swingReach = def.attackRange * ATTACK_EXIT_MUL;
     const shownReach = Math.round(swingReach * 1000) / 1000;
-    // K5: so are buff / call (support casts on their own cooldown).
-    const castBetweenSwings = a.kind === 'raise' || a.kind === 'summon' || a.kind === 'buff' || a.kind === 'call';
+    const castBetweenSwings = a.kind === 'raise' || a.kind === 'summon' || a.kind === 'buff' || a.kind === 'call' ||
+      (a.rangeMax !== undefined && a.rangeMax > swingReach + 1e-9);
     assert(castBetweenSwings || (a.rangeMin ?? 0) <= swingReach + 1e-9,
-      `${at}.rangeMin: ${a.rangeMin} is past the swing reach (attackRange ${def.attackRange} x ${ATTACK_EXIT_MUL} = ${shownReach}): never picked, abilities fire only on a due swing`);
-    if (!castBetweenSwings && a.rangeMax !== undefined && a.rangeMax > swingReach + 1e-9) {
-      console.warn(`  warning: ${at}.rangeMax: ${a.rangeMax} past the swing reach (${shownReach} tiles) has no effect: abilities fire only on a due swing`);
-    }
+      `${at}.rangeMin: ${a.rangeMin} is past the swing reach (attackRange ${def.attackRange} x ${ATTACK_EXIT_MUL} = ${shownReach}): never picked (a rangeMax past the reach makes a ranged special)`);
     assert(a.hpBelowPct === undefined || (a.hpBelowPct > 0 && a.hpBelowPct <= 100), `${at}.hpBelowPct: expected (0, 100]`);
     assert((a.phases ?? []).every(p => Number.isInteger(p) && p >= 0), `${at}.phases: phase indices are integers >= 0`);
     assert(a.priority === undefined || Number.isInteger(a.priority), `${at}.priority: an integer`);
@@ -257,6 +264,17 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
     }
     assert(a.kind !== 'hazard' || (a.dmgMul === undefined && a.status === undefined),
       `${at}: a hazard ability hits through its hazard: use hazard.tickDmgMul / hazard.status`);
+    // 2F review: dmgMul 0 makes a strike status-only (the Corpseherd's Keen): it needs its status and hurts no monster.
+    if (implied !== null && a.dmgMul !== undefined && !(a.dmgMul > 0)) {
+      assert(a.status !== undefined, `${at}.dmgMul: a status-only strike (dmgMul 0) needs its 'status'`);
+      assert(!a.hitsMonsters, `${at}.hitsMonsters: a status-only strike (dmgMul 0) hits no monster`);
+    }
+    // 2F review: a dash (a charge) runs along a line from the caster.
+    if (a.dash !== undefined) {
+      assert(typeof a.dash === 'boolean', `${at}.dash: a boolean`);
+      assert(!a.dash || a.kind === 'line', `${at}.dash: only a line ability dashes`);
+      assert(!a.dash || a.aim !== 'anchor', `${at}.dash: a dash starts at the caster: not aim 'anchor'`);
+    }
     const summons = a.kind === 'raise' || a.kind === 'summon';
     if (a.summon) {
       const m = a.summon;
@@ -567,52 +585,9 @@ function checkK5Monster(def: MonsterDefinition, where: string): void {
   }
 }
 
-// Phases.h kTetherSlackTiles: a tethered monster attacks from within its radius plus this.
-const TETHER_SLACK_TILES = 0.25;
-
-interface TetherHome { col: number; row: number; jitter: number }
-
-/** Where `id` is placed: map and sub-dungeon spawns (the anchor within `jitter` of the tile, M10), mini-boss spots. */
-function tetherHomes(id: string, mapJitter: number): TetherHome[] {
-  const out: TetherHome[] = [];
-  for (const map of Object.values(AllMaps)) {
-    for (const s of map.spawns as RemakeMapSpawn[]) {
-      const member = s.mix ? s.mix.some(e => e.monsterId === id) : s.monsterId === id;  // K5: a mix spawns its members
-      if (member) out.push({ col: s.col, row: s.row, jitter: mapJitter });
-    }
-  }
-  for (const sd of Object.values(AllSubDungeons)) {
-    for (const s of sd.spawns) if (s.monsterId === id) out.push({ col: s.col, row: s.row, jitter: mapJitter });
-    if (sd.miniBoss.monsterId === id) out.push({ col: sd.miniBoss.col, row: sd.miniBoss.row, jitter: 0 });
-  }
-  for (const [zone, m] of Object.entries(MiniBossByZone)) {
-    const at = MiniBossSpawns[zone];
-    if (m.id === id && at) out.push({ col: at.col, row: at.row, jitter: 0 });
-  }
-  return out;
-}
-
-/**
- * DataStore::Finalize's tether warning (K4): a phase `leash` (a tether) reaching past the M1 leash (`leashRange` from
- * the spawn anchor) would send its monster home - and reset its phases - from inside the tether. A default centre is
- * the authored spawn tile (MonsterInstance::homeTile); an authored centre is checked against each known spawn (none
- * known: not checked).
- */
-function warnTetherPastLeash(def: MonsterDefinition, where: string, homes: TetherHome[], leashRange: number): void {
-  const rows = (def as MonsterDefinition & { phases?: RemakeMonsterPhase[] }).phases ?? [];
-  rows.forEach((p, i) => {
-    if (!p.leash) return;
-    const c = p.leash.centre;
-    let offset = c ? -1 : 0;  // the farthest the centre can lie from the spawn anchor
-    for (const h of homes) offset = Math.max(offset, (c ? Math.hypot(c.col - h.col, c.row - h.row) : 0) + h.jitter);
-    if (offset < 0) return;
-    const reach = offset + p.leash.radius + TETHER_SLACK_TILES;
-    if (reach > leashRange) {
-      console.warn(`  warning: ${where}.phases[${i}].leash: the tether reaches ${Math.round(reach * 100) / 100} tiles from the ` +
-        `spawn anchor, past the M1 leash (leashRange ${leashRange}): the monster would walk home and reset its phases from inside it`);
-    }
-  });
-}
+// No tether / arena check against the M1 leash (the 2C review's warnTetherPastLeash): a monster whose phase table holds an
+// arena or a tether is leashed to its authored home over its whole fight's reach (2F review; MonsterAI.h
+// MonsterLeashRange, Phases.h PhaseFightReach), so neither can send it home from inside.
 
 export function exportMonsters(): TableResult[] {
   assertSource(ZS,
@@ -622,7 +597,6 @@ export function exportMonsters(): TableResult[] {
   const defs: Record<string, Record<string, unknown>> = {};
   const sources: Record<string, Source[]> = {};
   const summonedIds: [string, string][] = [];  // [summoner, summoned] (K2), resolved once every definition is known
-  const tethered: [MonsterDefinition, string, TetherHome[] | null][] = [];  // K4: checked once monster_ai.json is known
   const overridesApplied: Record<string, unknown>[] = [];
   const add = (def: MonsterDefinition, source: Source, zone: string | null) => {
     const prior = defs[def.id];
@@ -638,7 +612,6 @@ export function exportMonsters(): TableResult[] {
     summonedIds.push(...checkK3Monster(def, `monsters.${def.id}`).map(id => [def.id, id] as [string, string]));
     summonedIds.push(...checkK4Monster(def, `monsters.${def.id}`).map(id => [def.id, id] as [string, string]));
     checkK5Monster(def, `monsters.${def.id}`);
-    tethered.push([def, `monsters.${def.id}`, null]);
     const d: MonsterDefinition = withholdRemakeFields('monster', plain(def), `monsters.${def.id}`);
     const authored = takeAuthored(d);
     const web = plain(def);
@@ -695,13 +668,27 @@ export function exportMonsters(): TableResult[] {
   // ── quest_hunts.json ──
   const hunts: Record<string, unknown>[] = [];
   const huntDefs: Record<string, unknown> = {};
-  for (const q of AllQuests) for (const h of q.hunts ?? []) {
-    hunts.push({ questId: q.id, zone: q.zone, ...plain(h) });
+  for (const q of AllQuests) for (const remakeHunt of (q.hunts ?? []) as RemakeQuestHunt[]) {
+    // 2F (`quest.huntAbilities`): a hunt's own abilities join its definition after its base's (the core's
+    // MakeHuntDefinition appends quest_hunts.json `hunts[].abilities` to the base's; `defsNormal` carries the result).
+    // quests.json keeps the web hunt fields only.
+    const { abilities: huntAbilities, ...h } = remakeHunt;
+    const ownAbilities = huntAbilities !== undefined && remakeFeatureOn('quest.huntAbilities') ? huntAbilities : undefined;
+    hunts.push({ questId: q.id, zone: q.zone, ...plain(h), ...(ownAbilities ? { abilities: plain(ownAbilities) } : {}) });
     const base = (MonstersByZone[q.zone] ?? []).find(m => m.id === h.monsterId) ?? getMonsterDef(h.monsterId);
     assert(base, `hunt ${h.huntId}: base monster ${h.monsterId} not found`);
     const def = makeHuntDefinition(base, h, h.name);
+    if (ownAbilities !== undefined) {
+      assert(Array.isArray(ownAbilities) && ownAbilities.length > 0, `quests.${q.id}.hunts.${h.huntId}.abilities: an empty list (omit it)`);
+      const own = (base as MonsterDefinition & { abilities?: RemakeMonsterAbility[] }).abilities ?? [];
+      for (const a of ownAbilities) {
+        assert(!own.some(b => b.id === a.id), `quests.${q.id}.hunts.${h.huntId}.abilities.${a.id}: repeats an ability id of its base`);
+      }
+      (def as MonsterDefinition & { abilities?: RemakeMonsterAbility[] }).abilities = [...own, ...ownAbilities];
+      const where = `huntDefs.${h.huntId}`;
+      for (const id of checkK2Monster(def, where, true)) assert(defs[id], `${where}: an ability summons unknown monster '${id}'`);
+    }
     gateRemakeValues('monster', def, `huntDefs.${h.huntId}`);
-    tethered.push([def, `huntDefs.${h.huntId}`, [{ col: h.col, row: h.row, jitter: 0 }]]);  // its spot is its anchor
     takeAuthored(withholdRemakeFields('monster', def, `huntDefs.${h.huntId}`));
     const hpMul = h.hpMul ?? 4, dmgMul = h.dmgMul ?? 1.5;
     assert(def.hp === Math.round(base.hp * hpMul) && def.damage === Math.round(base.damage * dmgMul)
@@ -753,9 +740,6 @@ export function exportMonsters(): TableResult[] {
   };
   assertSource(ZS, 'const dmg = Math.max(1, Math.floor(monster.definition.damage * 0.3));',
     'const dmg = Math.max(1, Math.floor(monster.definition.damage * 0.2));');
-  for (const [def, where, homes] of tethered) {
-    warnTetherPastLeash(def, where, homes ?? tetherHomes(def.id, ai.spawnJitter * Math.SQRT2), ai.leashRange);
-  }
 
   const totalDefs = Object.keys(defs).length;
   return [

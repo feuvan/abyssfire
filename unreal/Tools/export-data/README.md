@@ -80,8 +80,10 @@ the export is byte-identical to the web's).
   `map.presentationTheme` and `map.regions` (world.ts checks that each names a mood); K2 (package 2A) enabled
   `monster.abilities`, `monster.damageType` and `monster.hitCap` (`monsters.ts` `checkK2Monster` checks keys, kinds, aims,
   shapes, blocks, the windup floors and the timing fields' upper bounds at every level, fails an ability whose `rangeMin`
-  lies past the swing reach (attackRange x 1.2: never picked) and warns on a `rangeMax` past it (not for raise /
-  summon, which are casts between swings since the 2B review), and calls `gateRemakeValues` on every definition and hunt
+  lies past the swing reach (attackRange x 1.2: never picked) and, until the 2F review, warned on a `rangeMax` past it
+  (since then such an ability is a ranged special, cast between swings like raise / summon; the 2F review also checks a
+  clipless ability (hazard / call only, with its `windupMs`), a status-only strike (`dmgMul` 0: its `status`, no
+  `hitsMonsters`) and `dash` (a line, not aim `anchor`)), and calls `gateRemakeValues` on every definition and hunt
   definition: the ability kinds raise / summon / buff / call stay gated by `monster.abilityRaise` / `abilitySummon` /
   `abilityBuff` / `abilityCall` until K3 / K5); K3 (package 2B) enabled `monster.family`, `monster.onDeath`,
   `monster.corpse`, `monster.riseAgain`, `map.corpseSeeds` and lifted `monster.abilityRaise` / `abilitySummon`
@@ -93,7 +95,8 @@ the export is byte-identical to the web's).
   (not idle / walk / death), multipliers in (0, 10], the tether / arena / feed / phase-summon bounds, switched abilities
   that are the monster's own, summoned ids resolved; a warning for an ability whose `phases[]` lists only phases the
   monster never reaches, and one for a tether that can reach past the M1 leash range from the spawn anchor:
-  `warnTetherPastLeash`, as DataStore::Finalize); K5 (package 2D) enabled `monster.packAggro`, `monster.kite`,
+  `warnTetherPastLeash`, as DataStore::Finalize; the 2F review removed it with DECISIONS M1's amendment: a bound fight is
+  leashed to its authored home over its whole fight's reach, so no tether or arena passes it); K5 (package 2D) enabled `monster.packAggro`, `monster.kite`,
   `monster.block`, `monster.morale`, `monster.aura`, `map.spawnMix` and lifted `monster.abilityBuff` / `abilityCall`
   (`monsters.ts` `checkK5Monster`: keys in every block, radii in (0, 30], a kite band `min < max` on a ranged monster
   ending within its attackRange, a block arc in (0, 360] with `damageMul` in [0, 1), a flee of (0, 60] s, a sustain family
@@ -101,7 +104,9 @@ the export is byte-identical to the web's).
   optional `stat`, buff / call outside the swing-reach rules; `maps.ts`: a spawn's mix keys, counts >= 1, known ids that
   sum to its `count` and are not the story boss, the entry's own `monsterId` among them, a leader that is a member); K6
   (package 2E) enabled `quest.setsFlags`, `quest.permanentRewards`, `map.spawnVariants`, `npc.lines`, `npc.visibleWhen`
-  and the override-table features `status.ashnumb` / `events.ambushChampion` (`remake.ts` `REMAKE_TABLE_FEATURES`: an
+  and the override-table features `status.ashnumb` / `events.ambushChampion` (the 2F review added
+  `events.ambushVariants`: a zone's `ambushVariants` and a champion's `notFlag`, `world.ts` checking their keys, known
+  monsters and flags some quest sets) (`remake.ts` `REMAKE_TABLE_FEATURES`: an
   override table has no record gate, so the table that applies it calls `requireTableFeature`; the `ashnumb` value on a
   monster status is a `REMAKE_VALUES` row of the same feature) (`quests.ts` `checkK6Quest`: non-empty unique flag ids, a
   permanent reward's keys, bounds and at least one grant; `maps.ts`: a variant's keys, a known monster that is not the
@@ -114,7 +119,11 @@ the export is byte-identical to the web's).
   `checkAmbushChampion` (also `leaderLoot`: magic | rare, with a `leader`);
   `combat.ts` builds `status_effects.json`'s added rows (`add` only; `stackCount`, tick 0, `stacks` bounds) and records
   `sys.statusEffect.name.<type>` with `noteRequiredKey`, which the i18n parity check requires; `monsters.ts` fails an
-  `ashnumb` status without its row); `quests.ts`, `maps.ts` and
+  `ashnumb` status without its row); package 2F enabled `quest.huntAbilities` (a quest hunt's own `abilities`, record key
+  gate level `hunts[]`: `monsters.ts` writes them on the `quest_hunts.json` hunt row, where the core's
+  `MakeHuntDefinition` appends them to the base's, merges them after the base's into `defsNormal` and checks them with
+  `checkK2Monster` (an id the base already has fails; a summon names a known monster); `quests.ts` keeps `quests.json`'s
+  hunts web-only); `quests.ts`, `maps.ts` and
   `story.ts` check their shapes (one label per choice slot, one composition per wave with counts ≥ 1, `sealed` with
   `sealedTextKey`, `anim` only on a `{monster}` focus step) before the core loader would refuse them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.

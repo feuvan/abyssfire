@@ -1104,20 +1104,22 @@ TEST_SUITE("monsters") {
       CHECK_FALSE(mb[entryStart + static_cast<size_t>(k)]->packLeader);
       CHECK(mb[entryStart + static_cast<size_t>(k)]->packId == mb[entryStart]->packId);
     }
-    int leaders = 0;
+    // The edit adds exactly one leader (the shipped data's own leaders, the dark remake's W2 packs, lead in both runs).
+    int leaders = 0, plainLeaders = 0;
     std::vector<uint32_t> packs;
     for (const MonsterInstance* m : mb) {
       leaders += m->packLeader ? 1 : 0;
       CHECK(m->packId != 0);  // every map spawn is a pack
       if (std::find(packs.begin(), packs.end(), m->packId) == packs.end()) packs.push_back(m->packId);
     }
-    CHECK(leaders == 1);
+    for (const MonsterInstance* m : ma) plainLeaders += m->packLeader ? 1 : 0;
+    CHECK(leaders == plainLeaders + 1);
     // One pack per entry that spawned (entries spawn contiguously).
     int entries = 0;
     for (size_t k = 0; k < mb.size(); ++k) entries += k == 0 || mb[k]->packId != mb[k - 1]->packId ? 1 : 0;
     CHECK(entries == static_cast<int>(packs.size()));
-    // Nothing else changed: the plain run has packs too, and no leader.
-    for (const MonsterInstance* m : ma) CHECK_FALSE(m->packLeader);
+    // Nothing else changed: the plain run has packs too, and the plain entry no leader.
+    for (int32_t k = 0; k < plain.count; ++k) CHECK_FALSE(ma[entryStart + static_cast<size_t>(k)]->packLeader);
     // An elite leader rolls the zone's affixes right after its placement (an elite definition's rule): on the Ai stream,
     // so the placements up to and including its own stay, and the zone's later ones move (as they would for an elite
     // definition; a mix alone moves nothing).

@@ -137,7 +137,10 @@ void K6AddStrings(JsonValue& doc) {
 // The Ashnumb row (monsters.md 4): -10 % healing per stack, at most 5, slowed 20 % at 5.
 constexpr char kAshnumbStacks[] = R"({"maxStacks": 5, "healingReceivedPerStack": 0.1, "slowAtMaxStacksPct": 20})";
 void K6AddAshnumb(JsonValue& doc) {
-  K6At(doc, {"types"})->Append(JsonValue::String("ashnumb"));
+  // The shipped export has the row since the dark remake's content (2F): written again here, listed once.
+  bool listed = false;
+  for (const JsonValue& t : K6At(doc, {"types"})->Items()) listed = listed || t.AsString() == "ashnumb";
+  if (!listed) K6At(doc, {"types"})->Append(JsonValue::String("ashnumb"));
   K6At(doc, {"tickIntervalMs"})->Set("ashnumb", JsonValue::Integer(0));
   K6At(doc, {"stacking"})->Set("ashnumb", JsonValue::String("stackCount"));
   JsonValue stacks = JsonValue::Object();
@@ -281,11 +284,18 @@ void K6EditAffixes(JsonValue& doc) {
 }
 
 // Every K6 record but the champion pack (the base of the runtime cases).
+// The engine cases start from no champion pack: the shipped one (the dark remake's Muster, 2F; content_ch1_test.cpp)
+// is taken out, so "no block" is the block's absence and the cases' own blocks are the only ones.
+void K6StripChampions(JsonValue& doc) {
+  for (JsonMember& z : K6At(doc, {"zones"})->MutableMembers()) z.value.Remove("ambushChampion");
+}
+
 K6Edits K6BaseEdits() {
   const size_t plain = K6PlainSpawn(test::RealData(), 3);
   return {{"i18n_zh-CN.json", K6AddStrings}, {"i18n_en.json", K6AddStrings}, {"status_effects.json", K6AddAshnumb},
           {"monsters.json", K6AddMonsters},  {"quests.json", K6AddQuests},    {"npcs.json", K6AddNpcs},
-          {"maps.json", K6AddCampNpcs},      {"maps.json", K6EditVariants(plain, K6Variants())}};
+          {"maps.json", K6AddCampNpcs},      {"maps.json", K6EditVariants(plain, K6Variants())},
+          {"random_events.json", K6StripChampions}};
 }
 
 const DataStore& K6Data() {
@@ -562,25 +572,16 @@ TEST_SUITE("world") {
     CHECK(sp.variants[0].monsterId == kGnaw);
     CHECK(sp.variants[0].count == 2);
     CHECK(sp.variants[1].whenFlag == kFlagBell);
-    // No ambush champion without the block; the real export's records carry none of the K6 fields.
+    // No ambush champion without the block (K6BaseEdits takes the shipped one out). The real export's K6 records are
+    // the dark remake's Chapter 1 content (2F), pinned in content_ch1_test.cpp; a status of stackCount type whose row
+    // is missing never lands (the K6 rule; the Ashnumb case below).
     const ZoneEventDataDef* z = d.World().randomEvents.ForZone(test::ch1::kZone);
     REQUIRE(z != nullptr);
     CHECK_FALSE(z->ambushChampion.present);
-    const DataStore& real = test::RealData();
-    CHECK_FALSE(real.Classes().statusRules.Lands(StatusType::Ashnumb));  // no row: it never lands
-    CHECK(real.Classes().statusRules.Stacking(StatusType::Ashnumb) == StatusStacking::StackCount);
-    for (const QuestDef& q : real.Quests().quests) {
-      CHECK(q.setsFlags.empty());
-      CHECK_FALSE(q.rewards.permanent.present);
-    }
-    for (const NpcDef& n : real.Npcs().npcs) {
-      CHECK(n.lines.empty());
-      CHECK_FALSE(n.hasVisibleWhen);
-    }
-    for (const MapDef& m : real.World().maps) {
-      for (const MapSpawnDef& s : m.spawns) CHECK(s.variants.empty());
-    }
-    for (const ZoneEventDataDef& e : real.World().randomEvents.zones) CHECK_FALSE(e.ambushChampion.present);
+    StatusEffectRules noRow = test::RealData().Classes().statusRules;
+    noRow.stacks[EnumIndex(StatusType::Ashnumb)] = StatusStackRule{};
+    CHECK_FALSE(noRow.Lands(StatusType::Ashnumb));  // no row: it never lands
+    CHECK(noRow.Stacking(StatusType::Ashnumb) == StatusStacking::StackCount);
   }
 
   TEST_CASE("K6 data: the ambush champion block loads") {
@@ -1442,8 +1443,11 @@ TEST_SUITE("world") {
     CHECK(fx.Apply(hero, StatusType::Ashnumb, 0, 6000, 9, 0).outcome == StatusApplyOutcome::Rejected);
     CHECK(fx.Apply(hero, StatusType::Ashnumb, 1, 0, 9, 0).outcome == StatusApplyOutcome::Rejected);
     CHECK(fx.Stacks(hero, StatusType::Slow) == 0);
-    // Without its row (the real export today) Ashnumb never lands and changes nothing.
-    StatusEffectSystem bare(test::RealData().Classes().statusRules);
+    // Without its row Ashnumb never lands and changes nothing (the row taken out of a copy of the real rules, which carry
+    // it since the dark remake's content, 2F).
+    StatusEffectRules noRow = test::RealData().Classes().statusRules;
+    noRow.stacks[EnumIndex(StatusType::Ashnumb)] = StatusStackRule{};
+    StatusEffectSystem bare(noRow);
     const StatusApplyResult none = bare.Apply(hero, StatusType::Ashnumb, 1, 6000, 9, 0);
     CHECK(none.outcome == StatusApplyOutcome::Rejected);
     CHECK_FALSE(bare.Has(hero, StatusType::Ashnumb));
@@ -2628,6 +2632,257 @@ TEST_SUITE("world") {
     char hex[17];
     std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(a));
     MESSAGE("K6 replay digest " << hex);
-    CHECK(std::string(hex) == "c7818c21b25eac9b");  // pinned (GCC = Clang)
+    CHECK(std::string(hex) == "2a75b9e104969bc9");  // pinned (GCC = Clang; 2F review: Valdras / Corpseherd numbers, affix rules)
+  }
+  // ===================================================================================================================
+  // 2F review: ambush variants, the champion's notFlag, boss affix pins
+  // ===================================================================================================================
+
+  TEST_CASE("2F review: ambush variants and the champion's notFlag load; the loader and Finalize refuse broken ones") {
+    const auto withBlocks = [](std::string champion, std::string variants) {
+      return [champion, variants](JsonValue& doc) {
+        JsonValue* z = K6At(doc, {"zones", test::ch1::kZone});
+        if (!champion.empty()) z->Set("ambushChampion", K6Parse(champion));
+        if (!variants.empty()) z->Set("ambushVariants", K6Parse(variants));
+      };
+    };
+    const std::string champ = StrCat(R"({"chance": 1, "mix": [{"monsterId": ")", kDead, R"(", "count": 1}], "notFlag": ")",
+                                     kFlagDawn, R"("})");
+    const std::string vars = StrCat(R"([{"whenFlag": ")", kFlagBell, R"(", "monsters": [")", kGnaw, R"("]}, {"whenFlag": ")",
+                                    kFlagDawn, R"(", "monsters": [")", kDead, R"(", ")", kGnaw, R"("]}])");
+    {
+      DataLoadReport r = K6BadLoad("random_events.json", withBlocks(champ, vars));
+      INFO(r.Summary());
+      REQUIRE(r.Ok());
+    }
+    K6Edits e = K6BaseEdits();
+    e.emplace_back("random_events.json", withBlocks(champ, vars));
+    DataLoadReport report;
+    const auto store = K6LoadEdited(e, report);
+    REQUIRE(report.Ok());
+    const ZoneEventDataDef* z = store->World().randomEvents.ForZone(test::ch1::kZone);
+    REQUIRE(z != nullptr);
+    CHECK(z->ambushChampion.notFlag == kFlagDawn);
+    REQUIRE(z->ambushVariants.size() == 2);
+    CHECK(z->ambushVariants[0].whenFlag == kFlagBell);
+    CHECK(z->ambushVariants[0].monsters == std::vector<std::string>{kGnaw});
+    CHECK(z->ambushVariants[1].monsters == std::vector<std::string>{kDead, kGnaw});
+    for (const DataIssue& w : report.warnings) CHECK(w.path.find("ambushVariants") == std::string::npos);  // flags set
+    // Loader refusals.
+    struct Bad {
+      std::string champion, variants, path, text;
+    };
+    const Bad bad[] = {
+        {"", R"([{"whenFlag": "", "monsters": ["x"]}])", "ambushVariants[0].whenFlag", "an empty flag id"},
+        {"", StrCat(R"([{"whenFlag": ")", kFlagBell, R"(", "monsters": []}])"), "ambushVariants[0].monsters",
+         "names its monsters"},
+        {"", StrCat(R"([{"whenFlag": ")", kFlagBell, R"(", "monsters": [""]}])"), "ambushVariants[0].monsters",
+         "an empty monster id"},
+        {"", StrCat(R"([{"whenFlag": ")", kFlagBell, R"(", "monsters": ["a"], "count": 2}])"), "ambushVariants[0]",
+         "unknown ambush variant field"},
+        {StrCat(R"({"chance": 1, "mix": [{"monsterId": ")", kDead, R"(", "count": 1}], "notFlag": ""})"), "",
+         "ambushChampion.notFlag", "an empty flag id"},
+    };
+    for (const Bad& b : bad) {
+      INFO(b.path << ": " << b.text);
+      const DataLoadReport r = K6BadLoad("random_events.json", withBlocks(b.champion, b.variants));
+      CHECK_FALSE(r.Ok());
+      CHECK(K6HasIssue(r.errors, "random_events.json", b.path, b.text));
+    }
+    // Finalize: known monsters of the zone, never the story boss; a flag no quest sets warns.
+    const std::string boss = test::RealData().Monsters().ai.storyBossId;
+    {
+      const DataLoadReport r = K6BadLoad("random_events.json", withBlocks("", StrCat(R"([{"whenFlag": ")", kFlagBell,
+          R"(", "monsters": ["fx_k6_nobody", ")", boss, R"("]}])")));
+      CHECK(K6HasIssue(r.errors, "random_events.json", "ambushVariants[0].monsters", "unknown monster 'fx_k6_nobody'"));
+      CHECK(K6HasIssue(r.errors, "random_events.json", "ambushVariants[0].monsters", "the story boss is never"));
+    }
+    {
+      const DataLoadReport r = K6BadLoad(
+          "random_events.json",
+          withBlocks(StrCat(R"({"chance": 1, "mix": [{"monsterId": ")", kDead, R"(", "count": 1}], "notFlag": "fx_unset"})"),
+                     StrCat(R"([{"whenFlag": "fx_unset2", "monsters": [")", kGnaw, R"("]}])")));
+      CHECK(r.Ok());
+      CHECK(K6HasIssue(r.warnings, "random_events.json", "ambushChampion.notFlag", "no quest sets flag 'fx_unset'"));
+      CHECK(K6HasIssue(r.warnings, "random_events.json", "ambushVariants[0].whenFlag", "no quest sets flag 'fx_unset2'"));
+    }
+  }
+
+  TEST_CASE("2F review: once its notFlag is set the champion draws nothing; the first set variant replaces the ambush") {
+    K6Edits e = K6BaseEdits();
+    e.emplace_back("random_events.json", [](JsonValue& doc) {
+      JsonValue* z = K6At(doc, {"zones", test::ch1::kZone});
+      z->Set("ambushChampion", K6Parse(StrCat(R"({"chance": 1, "mix": [{"monsterId": ")", kDead,
+                                              R"(", "count": 1}], "notFlag": ")", kFlagDawn, R"("})")));
+      z->Set("ambushVariants", K6Parse(StrCat(R"([{"whenFlag": ")", kFlagBell, R"(", "monsters": [")", kGnaw, R"("]}])")));
+    });
+    DataLoadReport report;
+    const auto store = K6LoadEdited(e, report);
+    REQUIRE(report.Ok());
+    const DataStore& d = *store;
+    const Vec2 at = d.FindMap(test::ch1::kZone)->spawns[K6PlainSpawn(test::RealData(), 3)].pos.Center();
+    struct Out {
+      bool champion = false;
+      RngState events{}, ai{};
+      std::vector<std::string> ids;
+    };
+    const auto run = [&](const DataStore& data, std::vector<std::string> flags) {
+      std::unique_ptr<GameSim> sim = K6Start(data, 57);
+      SimContext& ctx = sim->Context();
+      for (const std::string& f : flags) ctx.session.SetFlag(f);
+      ctx.events.Clear();
+      ctx.sys.randomEvents->TriggerEvent(RandomEventType::Ambush, at);
+      Out o;
+      for (const EvRandomEvent& r : K6Of<EvRandomEvent>(ctx.events)) o.champion = o.champion || r.champion;
+      for (const EntityId id : K6SpawnedMonsters(ctx.events)) o.ids.push_back(ctx.sys.monsters->Find(id)->def.id);
+      o.events = ctx.Rand(RngStream::Events).GetState();
+      o.ai = ctx.Rand(RngStream::Ai).GetState();
+      return o;
+    };
+    // No flag: the champion (chance 1).
+    CHECK(run(d, {}).champion);
+    // Dawn set: no champion draw at all - the same draws and the same ambush as a zone without the block.
+    const Out dawn = run(d, {kFlagDawn});
+    const Out plain = run(K6Data(), {kFlagDawn});
+    CHECK_FALSE(dawn.champion);
+    CHECK(dawn.events == plain.events);
+    CHECK(dawn.ai == plain.ai);
+    CHECK(dawn.ids == plain.ids);
+    CHECK_FALSE(dawn.ids.empty());
+    // The bell set too: the ambush is the variant's (gnawers only), the same draws.
+    const Out bell = run(d, {kFlagDawn, kFlagBell});
+    CHECK_FALSE(bell.champion);
+    CHECK(bell.ids.size() == plain.ids.size());
+    for (const std::string& id : bell.ids) CHECK(id == kGnaw);
+    CHECK(bell.events == plain.events);
+  }
+
+  TEST_CASE("2F review: a named boss's affix roll is pinned from its first fight until it dies; saves carry the pins") {
+    const DataStore& real = test::RealData();
+    // The plains' two named bosses, read from the data (never spelled here).
+    const std::string boss = real.Monsters().ai.storyBossId;
+    const MiniBossEntry* mb = real.Monsters().MiniBossFor(test::ch1::kZone);
+    REQUIRE(mb != nullptr);
+    const std::string herd = mb->monsterId;
+    // Serialisation: written last, only when present; parsed back the same; normalised.
+    {
+      SaveData s;
+      s.hasStorySeen = true;
+      CHECK(SerializeSave(s).find("bossAffixes") == std::string::npos);
+      s.bossAffixes = {BossAffixPin{"fx_zone", "fx_pin_b", {EliteAffixType::ExtraStrong, EliteAffixType::Swift}},
+                       BossAffixPin{"fx_zone", "fx_pin_a", {}}};
+      NormalizeBossAffixPins(s.bossAffixes);
+      CHECK(s.bossAffixes[0].monsterId == "fx_pin_a");  // sorted by (zone, monster id)
+      const std::string json = SerializeSave(s);
+      CHECK(json.find(R"("bossAffixes":[{"zone":"fx_zone","monsterId":"fx_pin_a","affixes":[]},)"
+                      R"({"zone":"fx_zone","monsterId":"fx_pin_b","affixes":["extra_strong","swift"]}])") !=
+            std::string::npos);
+      CHECK(json.find("\"permanentRewards\"") == std::string::npos);
+      SaveData back;
+      REQUIRE(ParseSave(json, back) == SaveError::None);
+      CHECK(back.bossAffixes == s.bossAffixes);
+      CHECK(SerializeSave(back) == json);
+      JsonValue raw;
+      REQUIRE(ParseJson(json, raw));
+      raw.Set("bossAffixes", K6Parse(R"([{"zone": "z", "monsterId": "b", "affixes": ["swift", "holy", 3]},
+        {"zone": "z", "monsterId": "b", "affixes": ["frozen"]}, {"zone": "", "monsterId": "c"}, {"monsterId": "d"},
+        {"zone": "a", "monsterId": "e"}, 7])"));
+      SaveData norm;
+      REQUIRE(ParseSave(WriteJson(raw), norm) == SaveError::None);
+      REQUIRE(norm.bossAffixes.size() == 2);
+      CHECK(norm.bossAffixes[0] == BossAffixPin{"a", "e", {}});
+      CHECK(norm.bossAffixes[1] == BossAffixPin{"z", "b", {EliteAffixType::Swift}});  // the first pin of a pair
+      raw.Set("bossAffixes", K6Parse(R"({"a": 1})"));
+      SaveData wrong;
+      REQUIRE(ParseSave(WriteJson(raw), wrong) == SaveError::None);
+      CHECK(wrong.bossAffixes.empty());
+      // The content-version upgrade drops the pins of monsters the data no longer has.
+      SaveData old;
+      old.bossAffixes = {BossAffixPin{test::ch1::kZone, boss, {EliteAffixType::Swift}},
+                         BossAffixPin{test::ch1::kZone, herd, {}}, BossAffixPin{test::ch1::kZone, "fx_gone", {}}};
+      NormalizeBossAffixPins(old.bossAffixes);
+      std::vector<BossAffixPin> kept = old.bossAffixes;
+      std::erase_if(kept, [](const BossAffixPin& p) { return p.monsterId == "fx_gone"; });
+      old.contentVersion = 1;
+      ApplyContentVersion(real, old);
+      CHECK(old.bossAffixes == kept);
+    }
+    // Runtime: the mini-boss of a new game rolls at the zone's entry; her first fight pins the roll; a load spawns her
+    // with the pinned roll (even an edited one); a kill ends the pin. Before her fight nothing is pinned, and a load
+    // leaves the save as it was.
+    const auto bossAffixes = [](GameSim& sim, MonsterRole role) {
+      std::vector<EliteAffixType> out;
+      bool found = false;
+      for (const MonsterInstance& m : sim.Context().sys.monsters->All()) {
+        if (m.role != role || !m.IsAlive()) continue;
+        found = true;
+        for (const MonsterAffix& a : m.affixes) out.push_back(a.type);
+      }
+      REQUIRE(found);
+      return out;
+    };
+    const auto pinOf = [&](const SaveData& s) -> const BossAffixPin* {
+      for (const BossAffixPin& p : s.bossAffixes) {
+        if (p.monsterId == herd) return &p;
+      }
+      return nullptr;
+    };
+    int elites = 0;
+    for (uint64_t seed = 1; seed <= 6; ++seed) {
+      CAPTURE(seed);
+      std::unique_ptr<GameSim> sim = K6Start(real, seed);
+      SimContext& ctx = sim->Context();
+      const std::vector<EliteAffixType> rolled = bossAffixes(*sim, MonsterRole::ZoneMiniBoss);
+      elites += rolled.empty() ? 0 : 1;
+      REQUIRE(sim->CanSave());
+      std::string err;
+      {
+        const std::string before = sim->SaveGame(1760000000000);
+        SaveData parsed;
+        REQUIRE(ParseSave(before, parsed) == SaveError::None);
+        CHECK(pinOf(parsed) == nullptr);
+        std::unique_ptr<GameSim> l0 = GameSim::Create(real, SimConfig{});
+        REQUIRE(l0->LoadGame(before, &err) == SaveError::None);
+        CHECK(l0->SaveGame(1760000000000) == before);
+      }
+      // Her fight: the hero 12 tiles off (in her activity range, past her aggro and her lines), she is set chasing.
+      EntityId herdId = kNoEntity;
+      for (const MonsterInstance& m : ctx.sys.monsters->All()) herdId = m.role == MonsterRole::ZoneMiniBoss ? m.id : herdId;
+      REQUIRE(herdId != kNoEntity);
+      ctx.sys.locomotion->Teleport(ctx.sys.monsters->Find(herdId)->pos + Vec2(-12, 0), TeleportReason::Debug);
+      sim->Step();
+      CHECK_FALSE(ctx.sys.monsters->Find(herdId)->affixesPinned);
+      ctx.sys.monsters->ForceChase(herdId);
+      for (int i = 0; i < 60 && !ctx.sys.monsters->Find(herdId)->affixesPinned; ++i) sim->Step();
+      REQUIRE(ctx.sys.monsters->Find(herdId)->affixesPinned);
+      REQUIRE(sim->CanSave());
+      const std::string save = sim->SaveGame(1760000000000);
+      SaveData parsed;
+      REQUIRE(ParseSave(save, parsed) == SaveError::None);
+      const BossAffixPin* pin = pinOf(parsed);
+      REQUIRE(pin != nullptr);
+      CHECK(pin->zone == test::ch1::kZone);
+      CHECK(pin->affixes == rolled);
+      // A load re-spawns the zone: the pinned roll, not a new one.
+      std::unique_ptr<GameSim> loaded = GameSim::Create(real, SimConfig{});
+      REQUIRE(loaded->LoadGame(save, &err) == SaveError::None);
+      CHECK(bossAffixes(*loaded, MonsterRole::ZoneMiniBoss) == rolled);
+      CHECK(loaded->SaveGame(1760000000000) == save);
+      // The pin drives it: an edited pin is what the load spawns.
+      SaveData edited = parsed;
+      for (BossAffixPin& p : edited.bossAffixes) {
+        if (p.monsterId == herd) p.affixes = {EliteAffixType::Swift};
+      }
+      std::unique_ptr<GameSim> e2 = GameSim::Create(real, SimConfig{});
+      REQUIRE(e2->LoadGame(edited, &err) == SaveError::None);
+      CHECK(bossAffixes(*e2, MonsterRole::ZoneMiniBoss) == std::vector<EliteAffixType>{EliteAffixType::Swift});
+      // A kill ends the pin.
+      K6Kill(ctx, herdId);
+      sim->Step();
+      SaveData after;
+      REQUIRE(ParseSave(sim->SaveGame(1760000000000), after) == SaveError::None);
+      CHECK(pinOf(after) == nullptr);
+    }
+    CHECK(elites > 0);  // some seeds rolled affixes for her
   }
 }

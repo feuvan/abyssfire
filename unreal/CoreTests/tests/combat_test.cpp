@@ -4183,4 +4183,47 @@ TEST_SUITE("combat") {
       CHECK(aut.combat.IndicatorTarget() == autoPick);
     }
   }
+  TEST_CASE("2F review: a held lock that steps out of reach by itself is walked to again; a move order or the range ends it") {
+    CombatRig rig(ClassId::Warrior);
+    REQUIRE(rig.ok);
+    Hero& hero = *rig.hero;
+    const EntityId t = rig.Spawn(fixture::Ooze(), hero.Position() + Vec2(1, 0));
+    REQUIRE_MONSTER(t);
+    MonsterInstance* m = rig.monsters.Find(t);
+    m->maxHp = m->hp = 1e7;  // the hero's swings never end the fight
+    rig.combat.SetAttackTarget(t, true);  // in reach: no walk
+    CHECK_FALSE(rig.loco.IsApproaching());
+    rig.Step(10);
+    const double range = hero.Derived().attackRange;
+    // It steps back (a kite, a blink, a tether's pull): the idle hero walks to it again and swings.
+    rig.monsters.Teleport(t, hero.Position() + Vec2(5, 0), TeleportReason::EliteBlink);
+    rig.Step();
+    CHECK(rig.loco.IsApproaching());
+    REQUIRE(rig.StepUntil([&] { return !rig.loco.IsApproaching(); }, 600));
+    CHECK(DistSq(hero.Position(), rig.monsters.Find(t)->pos) <= range * range);
+    rig.h.events.Clear();
+    rig.Step(90);
+    size_t swings = 0;
+    for (const EvPlayAnim& a : EventsOf<EvPlayAnim>(rig.h.events)) swings += a.entity == kHeroEntityId ? 1 : 0;
+    CHECK(swings >= 1);
+    // A move order of the player's own (a click-move out of reach here) ends it: the lock stays, the hero stays put.
+    REQUIRE(rig.loco.MoveTo(hero.Position() + Vec2(-4, 0)));
+    REQUIRE(rig.StepUntil([&] { return !rig.loco.IsMoving(); }, 300));
+    REQUIRE(DistSq(hero.Position(), rig.monsters.Find(t)->pos) > range * range);
+    const Vec2 stay = hero.Position();
+    rig.Step(60);
+    CHECK_FALSE(rig.loco.IsApproaching());
+    CHECK(Dist(hero.Position(), stay) < 1e-9);
+    CHECK(rig.combat.AttackTarget() == t);
+    // Clicking it again walks there (C7) and arms the rule again; past targetCycleRangeTiles it never walks.
+    rig.combat.SetAttackTarget(t, true);
+    REQUIRE(rig.StepUntil([&] { return !rig.loco.IsApproaching(); }, 600));
+    rig.Step(5);
+    const double far = rig.h.ctx.data.Combat().input.targetCycleRangeTiles;
+    rig.monsters.Teleport(t, hero.Position() + Vec2(far + 1, 0), TeleportReason::EliteBlink);
+    const Vec2 here = hero.Position();
+    rig.Step(30);
+    CHECK_FALSE(rig.loco.IsApproaching());
+    CHECK(Dist(hero.Position(), here) < 1e-9);
+  }
 }

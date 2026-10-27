@@ -62,6 +62,9 @@ export const CH1_QUEST_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   // for K6 as her quest-gated line (./ch1Npcs.ts data.npc.plains_herbalist.after.q_rf_black_blood).
   'data.quest.q_rf_black_blood.complete': ['玛勒说，血里有声音。……别问我是谁的。',
     "Marl says the blood has voices in it. ...Don't ask me whose."],
+  // 2F review: the name of S1's permanent reward (chapter1.md §6 S1: +15 max life), the line or toast UE shows on its
+  // EvPermanentReward (`data.quest.<questId>.permanent`, optional: a quest without one shows the generic reward text).
+  'data.quest.q_rf_black_blood.permanent': ['玛勒的苦药', "Marl's Bitter Draught"],
   'data.quest.q_rf_barrowmoss.name': ['苦冢苔', 'Barrowmoss'],
   'data.quest.q_rf_barrowmoss.desc': ['旧礼说，坟上烧苦冢苔，死人睡得沉些。去埋骨壕边采五把，连根拔。',
     'The old rite says barrowmoss burned over a grave makes the dead sleep deeper. Pull five handfuls by the trenches, roots and all.'],

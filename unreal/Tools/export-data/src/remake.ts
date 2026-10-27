@@ -54,6 +54,7 @@ export const REMAKE_FIELDS: readonly { kind: RemakeKind; path: string; feature: 
   { kind: 'quest', path: 'defendTarget.approachDeg', feature: 'quest.defendApproach', wave: 1 },
   { kind: 'quest', path: 'setsFlags', feature: 'quest.setsFlags', wave: 2 },
   { kind: 'quest', path: 'rewards.permanent', feature: 'quest.permanentRewards', wave: 2 },
+  { kind: 'quest', path: 'hunts[].abilities', feature: 'quest.huntAbilities', wave: 2 },
   { kind: 'quest', path: 'objectives[].zone', feature: 'quest.objectiveZone', wave: 3 },
   { kind: 'map', path: 'presentationTheme', feature: 'map.presentationTheme', wave: 1 },
   { kind: 'map', path: 'subDungeonEntrances[].sealed', feature: 'map.sealedEntrances', wave: 1 },
@@ -94,6 +95,8 @@ export const REMAKE_VALUES: readonly { kind: RemakeKind; path: string; value: st
  */
 export const REMAKE_TABLE_FEATURES: readonly { table: OverridePath; field: string; feature: string; wave: 1 | 2 | 3 }[] = [
   { table: 'randomEvents', field: 'ambushChampion', feature: 'events.ambushChampion', wave: 2 },
+  // 2F review: ambush variants by world flag, and the champion pack's notFlag.
+  { table: 'randomEvents', field: 'ambushVariants', feature: 'events.ambushVariants', wave: 2 },
   { table: 'statusEffects', field: 'add.ashnumb', feature: 'status.ashnumb', wave: 2 },
 ];
 
@@ -106,6 +109,13 @@ const withheld = new Map<string, { count: number; example: string }>();
 function splitPath(path: string): [string, string] {
   const i = path.lastIndexOf('.');
   return i < 0 ? ['', path] : [path.slice(0, i), path.slice(i + 1)];
+}
+
+/** Whether REMAKE_SCHEMA lists `feature` (a table that merges a gated field elsewhere, e.g. hunt abilities into the hunt's
+ * definition, asks before it does). */
+export function remakeFeatureOn(feature: string): boolean {
+  assert(KNOWN_FEATURES.has(feature), `remakeFeatureOn: unknown feature '${feature}'`);
+  return schema.has(feature);
 }
 
 export function configureRemakeSchema(features: readonly string[]): void {

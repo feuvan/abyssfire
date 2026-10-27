@@ -126,6 +126,10 @@ struct EvTelegraph {
   // A raise / summon (kind Raise / Summon, source Ability) draws a breach-violet marker (DR5: enemy magic that is not a
   // damage hazard) per corpse / spot, ended like a strike's telegraph.
   TelegraphSource source = TelegraphSource::Ability;
+  // 2F review: a dash (a charge, MonsterAbilityDef::dash): the caster moves to `dashTo` at contact (EvEntityTeleported
+  // reason Dash), after the hit.
+  bool hasDash = false;
+  Vec2 dashTo;
 };
 // Dark remake K2: a ground hazard placed by a monster ability (combat/HazardField.h) at `origin` facing `dir`; it ticks on
 // the sim clock until untilMs (absolute sim ms; UE fades it out then). A zone change drops every hazard silently.

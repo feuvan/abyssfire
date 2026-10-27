@@ -29,7 +29,8 @@ ABYSS_API MonsterDef ScaleMonsterForDifficulty(const MonsterDef& def, const Diff
 
 // makeHuntDefinition (monsters 9.3): id = huntId, name = localized name, hp round(hp * hpMul), damage
 // round(damage * dmgMul), defense round(defense * 1.2), expReward round(exp * max(3, hpMul)), gold x3,
-// aggroRange max(base, 7), elite + isMiniBoss true. Difficulty scaling is applied by the caller afterwards.
+// aggroRange max(base, 7), elite + isMiniBoss true; the hunt's own abilities (HuntDef::abilities, dark remake) follow
+// the base's. Difficulty scaling is applied by the caller afterwards.
 ABYSS_API MonsterDef MakeHuntDefinition(const MonsterDef& base, const HuntDef& hunt, const MonsterAiDef& ai,
                                         std::string_view localizedName);
 

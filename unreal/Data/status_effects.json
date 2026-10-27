@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "source": ["src/systems/StatusEffectSystem.ts", "src/scenes/ZoneScene.ts"],
-  "types": ["burn", "freeze", "poison", "bleed", "slow", "stun"],
-  "tickIntervalMs": {"burn": 1000, "freeze": 0, "poison": 1000, "bleed": 1000, "slow": 0, "stun": 0},
+  "types": ["burn", "freeze", "poison", "bleed", "slow", "stun", "ashnumb"],
+  "tickIntervalMs": {"burn": 1000, "freeze": 0, "poison": 1000, "bleed": 1000, "slow": 0, "stun": 0, "ashnumb": 0},
   "diminishing": {
     "appliesTo": ["freeze", "stun"],
     "factor": 0.5,
@@ -16,7 +16,11 @@
     "poison": "refreshKeepStronger",
     "slow": "refreshKeepStronger",
     "freeze": "replace",
-    "stun": "replace"
+    "stun": "replace",
+    "ashnumb": "stackCount"
+  },
+  "stacks": {
+    "ashnumb": {"maxStacks": 5, "healingReceivedPerStack": 0.1, "slowAtMaxStacksPct": 20}
   },
   "poisonedHpRegenMultiplier": 0.5,
   "monsterKeywordRules": [
@@ -156,5 +160,9 @@
         "durationMs": 1000
       }
     ]
+  },
+  "remake": {
+    "source": ["unreal/GameData/world.ts"],
+    "added": ["statusEffects.ashnumb"]
   }
 }

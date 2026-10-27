@@ -137,6 +137,10 @@ struct MonsterView {
   double auraRadius = 0;
   MonsterBuffStat auraStat = MonsterBuffStat::Damage;
   double blockArcDeg = 0;
+  // 2F review: its M1 leash (MonsterAI.h MonsterLeashCentre / MonsterLeashRange): past `leashRange` tiles of
+  // `leashCentre` it walks home (and a phase-table monster resets there). A bound fight's centre is its authored home.
+  Vec2 leashCentre;
+  double leashRange = 0;
 };
 
 struct NpcView {
@@ -216,6 +220,8 @@ struct TelegraphView {
   // one view per corpse / spot), or an on-death fuse (source OnDeath; kind = its shape's).
   AbilityKind kind = AbilityKind::Circle;
   TelegraphSource source = TelegraphSource::Ability;
+  bool hasDash = false;  // 2F review: the caster dashes to dashTo at contact (EvTelegraph)
+  Vec2 dashTo;
 };
 
 // A body in the zone's corpse registry (dark remake K3; EvCorpseAdded is its start): continuous state for a late view (UE

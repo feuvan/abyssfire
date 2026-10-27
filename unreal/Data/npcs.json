@@ -7,6 +7,13 @@
       "name": "哈尔德·熔剑",
       "type": "blacksmith",
       "dialogue": ["每把剑的柄脚都刻着名字。剑我熔了，名字留给队长。"],
+      "lines": [
+        {
+          "key": "data.npc.blacksmith.after.q_rf_tag_thief",
+          "when": {"quest": "q_rf_tag_thief", "state": "turnedIn"}
+        },
+        {"key": "data.npc.blacksmith.dialogue.0"}
+      ],
       "shopItems": [
         "w_short_sword",
         "w_broad_sword",
@@ -56,6 +63,13 @@
       "name": "瑟琳·哈洛队长",
       "type": "quest",
       "dialogue": ["坑里爬出来的。能站着，就能拿刀。"],
+      "lines": [
+        {
+          "key": "data.npc.quest_elder.after.q_rf_oathless",
+          "when": {"quest": "q_rf_oathless", "state": "turnedIn"}
+        },
+        {"key": "data.npc.quest_elder.dialogue.0"}
+      ],
       "quests": [
         "q_rf_burial_detail",
         "q_rf_black_blood",
@@ -185,6 +199,19 @@
       "name": "军医玛勒",
       "type": "merchant",
       "dialogue": ["别碰那黑血。碰过的人都不喊疼了——那才最疼。"],
+      "lines": [
+        {
+          "key": "data.npc.plains_herbalist.after.q_rf_black_blood",
+          "when": {"quest": "q_rf_black_blood", "state": "turnedIn"}
+        },
+        {"key": "data.npc.plains_herbalist.dialogue.0"}
+      ],
+      "visibleWhen": {
+        "any": [
+          {"quest": "q_rf_last_toll", "state": "notTurnedIn"},
+          {"quest": "q_rf_black_blood", "state": "active"}
+        ]
+      },
       "shopItems": ["c_hp_potion_s", "c_hp_potion_m", "c_mp_potion_s", "c_antidote"],
       "dialogueTreeId": null,
       "nameKey": "data.npc.plains_herbalist.name"
@@ -203,6 +230,17 @@
       "name": "奥德温修士",
       "type": "quest",
       "dialogue": ["钟声是给活人听的。死人……另有人在跟他们说话。", "我替每个名字念一遍经。念到第三百个，我开始怕自己忘了念给谁。"],
+      "lines": [
+        {
+          "key": "data.npc.knell_chaplain.after.q_rf_last_toll",
+          "when": {"quest": "q_rf_last_toll", "state": "turnedIn"}
+        },
+        {
+          "key": "data.npc.knell_chaplain.dialogue.0",
+          "when": {"quest": "q_rf_last_toll", "state": "notTurnedIn"}
+        },
+        {"key": "data.npc.knell_chaplain.dialogue.1"}
+      ],
       "quests": ["q_rf_barrowmoss", "q_rf_tag_thief", "q_rf_lanternwisp", "q_rf_hallowed_ground"],
       "dialogueTreeId": null,
       "nameKey": "data.npc.knell_chaplain.name"

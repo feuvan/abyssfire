@@ -127,7 +127,7 @@
     "zone.combat.noTarget": "C14",
     "zone.combat.outOfRange": "C14"
   },
-  "keyCount": 2795,
+  "keyCount": 2799,
   "strings": {
     "boot.title": "淵  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2714,6 +2714,7 @@
     "data.monster.bonegorger": "饕骸者",
     "data.monster.miniboss_corpseherd": "屍牧婆",
     "data.monster.valdras": "焚旗元帥·瓦德拉斯",
+    "data.monster.rollcall_standard_bearer": "亡旗手",
     "data.monster.hunt_hungerbell": "餓鐘",
     "data.monster.hunt_dreck": "拾銀者·德雷克",
     "data.monster.hunt_harke": "斷誓者·哈克",
@@ -2780,6 +2781,8 @@
     "zone.event.puzzle.label.emerald_plains": "五口小鐘",
     "zone.event.treasureChest.label.emerald_plains": "陣亡騎士的鐵箱",
     "zone.event.rescue.complete.emerald_plains": "你割斷了朝聖者身上的繩子。“他們說我走得太慢，跟不上聖火。”獲得 {gold} 金幣和 {exp} 經驗",
+    "sys.eliteAffix.name.unburied": "不葬",
+    "sys.statusEffect.name.ashnumb": "麻灰",
     "data.quest.q_rf_burial_detail.name": "收屍隊",
     "data.quest.q_rf_burial_detail.desc": "收屍隊十個人黃昏出了門，再沒回來。去北邊的埋骨壕，放倒站起來的人。",
     "data.quest.q_rf_burial_detail.offer": "收屍隊黃昏時出了門，帶著一盞燈。一個時辰前，那盞燈不動了。去北邊的埋骨壕。要是他們站起來了……別猶豫。",
@@ -2810,6 +2813,7 @@
     "data.quest.q_rf_black_blood.offer": "瑪勒在城外的救護站。沾了淵血的傷員會變灰，然後不再喊疼。她要六團還溫著的血塊。",
     "data.quest.q_rf_black_blood.progress": "別用手碰。瑪勒會教你。",
     "data.quest.q_rf_black_blood.complete": "瑪勒說，血裡有聲音。……別問我是誰的。",
+    "data.quest.q_rf_black_blood.permanent": "瑪勒的苦藥",
     "data.quest.q_rf_barrowmoss.name": "苦冢苔",
     "data.quest.q_rf_barrowmoss.desc": "舊禮說，墳上燒苦冢苔，死人睡得沉些。去埋骨壕邊採五把，連根拔。",
     "data.quest.q_rf_barrowmoss.offer": "舊禮說：在墳上燒苦冢苔，死人就睡得沉些。埋骨壕邊長著一些。採五把來——在他們醒來之前。",
@@ -2929,7 +2933,7 @@
     "source": ["unreal/GameData", "unreal/GameData/i18n/zh-CN.ts", "unreal/GameData/i18n/zhTWExtra.ts"],
     "stringsReplacedWeb": 95,
     "stringsReplacedPort": 0,
-    "stringsAdded": 223,
+    "stringsAdded": 227,
     "swept": [
       "data.monster.slime_green",
       "data.monster.goblin",
@@ -3094,6 +3098,6 @@
       "story.cs_boss_goblin_chief.3",
       "story.cs_boss_goblin_chief.5"
     ],
-    "zhTWSupplement": {"keys": 318, "changed": 131, "chars": 258, "phrases": 230}
+    "zhTWSupplement": {"keys": 322, "changed": 131, "chars": 258, "phrases": 230}
   }
 }

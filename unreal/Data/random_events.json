@@ -34,7 +34,24 @@
       "rescueNpcName": "被缚的朝圣者",
       "rescueNpcSpriteKey": "npc_rescue_lost_traveler",
       "rescueReward": {"gold": 30, "exp": 25},
-      "rescueMonsters": ["oath_zealot"]
+      "rescueMonsters": ["oath_zealot"],
+      "ambushChampion": {
+        "chance": 0.1,
+        "mix": [
+          {"monsterId": "dead_standard_bearer", "count": 1},
+          {"monsterId": "risen_footman", "count": 3}
+        ],
+        "leader": "dead_standard_bearer",
+        "sharedAffix": true,
+        "leaderLoot": "magic",
+        "notFlag": "rf_chapter_dawn"
+      },
+      "ambushVariants": [
+        {
+          "whenFlag": "rf_chapter_dawn",
+          "monsters": ["gravegnawer"]
+        }
+      ]
     },
     "twilight_forest": {
       "ambushMonsters": ["wolf", "bandit"],

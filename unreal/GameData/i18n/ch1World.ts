@@ -26,6 +26,8 @@ export const CH1_WORLD_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   'data.monster.bonegorger': ['饕骸者', 'Bonegorger'],
   'data.monster.miniboss_corpseherd': ['尸牧婆', 'The Corpseherd'],
   'data.monster.valdras': ['焚旗元帅·瓦德拉斯', 'Lord-Marshal Valdras'],
+  // Wave 2 (2F): Valdras's P2 standard-bearer (chapter1.md §11 Roll Call), a standard-bearer by name and look.
+  'data.monster.rollcall_standard_bearer': ['亡旗手', 'Dead Standard-Bearer'],
   // Hunts (quest_hunts.json).
   'data.monster.hunt_hungerbell': ['饿钟', 'Hungerbell'],
   'data.monster.hunt_dreck': ['拾银者·德雷克', 'Dreck the Silverpicker'],
@@ -201,6 +203,9 @@ export const CH1_WORLD_STRINGS: Readonly<Record<string, readonly [zhCN: string, 
   'sys.eliteAffix.name.curse_aura': ['哀咒', 'Dirgecursed'],
   'sys.eliteAffix.name.vampiric': ['噬渊', 'Breach-Drinker'],
   'sys.eliteAffix.name.frozen': ['墓寒', 'Gravecold'],
+  // Wave 2 (2F): the Unburied affix (monsters.md §3) and the Ashnumb status (monsters.md §4).
+  'sys.eliteAffix.name.unburied': ['不葬', 'Unburied'],
+  'sys.statusEffect.name.ashnumb': ['麻灰', 'Ashnumb'],
 };
 
 /** One locale column of a [zh-CN, en] string table. */

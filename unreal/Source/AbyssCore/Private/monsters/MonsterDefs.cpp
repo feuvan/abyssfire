@@ -43,6 +43,7 @@ MonsterDef MakeHuntDefinition(const MonsterDef& base, const HuntDef& hunt, const
   d.aggroRange = (std::max)(base.aggroRange, ai.huntAggroMin);
   d.elite = true;
   d.isMiniBoss = true;
+  d.abilities.insert(d.abilities.end(), hunt.abilities.begin(), hunt.abilities.end());
   // assign(1, x), not `= {x}`: GCC 13 with -fsanitize reports a false -Warray-bounds in the initializer_list assign.
   d.sources.assign(1, MonsterSource::Hunt);
   return d;

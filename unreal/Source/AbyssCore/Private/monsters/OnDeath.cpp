@@ -63,10 +63,33 @@ MonsterOnDeathDef VolatileCurseOnDeath(const CurseDef& curse) {
   return d;
 }
 
+double OnDeathWindowRoom(double cap, double nowMs, const std::vector<std::pair<double, double>>& taken) {
+  double sum = 0;
+  for (const auto& [t, amount] : taken) {
+    if (t > nowMs - kOnDeathWindowMs) sum += amount;
+  }
+  return (std::max)(0.0, cap - sum);
+}
+
 bool RiseAgainApplies(const MonsterRiseAgainDef& r, DamageType killingElement, bool killingCrit) {
   if (!r.present) return false;
   if (killingElement == DamageType::Fire) return false;  // a fire killing blow burns the body
   return !(r.notOnCrit && killingCrit);
+}
+
+bool MonsterMayRise(MonsterRole role, const MonsterDef& def) {
+  switch (role) {
+    case MonsterRole::Raised:
+    case MonsterRole::ZoneMiniBoss:
+    case MonsterRole::SubDungeonMiniBoss:
+    case MonsterRole::StoryBoss:
+    case MonsterRole::SealKeeper:
+    case MonsterRole::HuntLeader:
+      return false;
+    default:
+      break;
+  }
+  return def.corpse.leaves == CorpseLeaves::Corpse;
 }
 
 }  // namespace abyss

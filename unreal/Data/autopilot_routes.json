@@ -272,7 +272,7 @@
           "kind": "boss",
           "role": "storyBoss",
           "anchor": [15, 95],
-          "maxSec": 400,
+          "maxSec": 450,
           "until": [
             {"kind": "questDone", "quest": "q_rf_marshal"}
           ]

@@ -73,15 +73,20 @@ export interface RemakeAbilityStatus {
 export interface RemakeMonsterAbility {
   id: string;
   kind: 'circle' | 'cone' | 'line' | 'ring' | 'bolt' | 'raise' | 'summon' | 'hazard' | 'buff' | 'call';
-  /** Manifest clip it plays (Attack02, Cast01, Lunge, ...); its Contact (else Release) notify is the contact. */
-  clip: string;
+  /**
+   * Manifest clip it plays (Attack02, Cast01, Lunge, ...); its Contact (else Release) notify is the contact. [2F review] A
+   * hazard or a call may name none: the caster plays nothing and is not rooted while it winds up (then `windupMs` is
+   * required): the ground decal / the call's ripple is the tell.
+   */
+  clip?: string;
   /** Contact from windup start (>= 600, a boss >= 700); omitted = the clip's beat. */
   windupMs?: number;
   cooldownMs: number;
   /** From the monster's first swing of a fight (default 0: ready at once); a raise / summon caster's first fight step. */
   initialCooldownMs?: number;
-  /** Hero distance bounds, tiles. Swing-picked kinds act only within the swing reach (attackRange x 1.2); raise / summon /
-   * buff / call are casts between swings (Chase or Attack) and are not bound by it. */
+  /** Hero distance bounds, tiles. Swing-picked kinds act within the swing reach (attackRange x 1.2); raise / summon /
+   * buff / call are casts between swings (Chase or Attack) and are not bound by it, and [2F review] neither is a ranged
+   * special: a damaging ability whose rangeMax passes the swing reach also starts between swings (Breach-seep, Lunge). */
   rangeMin?: number;
   rangeMax?: number;
   /** Usable while life < hpBelowPct percent. */
@@ -93,7 +98,8 @@ export interface RemakeMonsterAbility {
   /** circle / ring / hazard: heroAtWindup | self | anchor; cone / line: not corpse; bolt: hero; raise: corpse; buff / call: self. */
   aim: 'hero' | 'heroAtWindup' | 'self' | 'corpse' | 'anchor';
   shape?: RemakeAbilityShape;
-  /** x the monster's damage roll (default 1). */
+  /** x the monster's damage roll (default 1). [2F review] 0 on a circle / cone / line / ring: a status-only strike (no
+   * damage roll; `status` required, no `hitsMonsters`). */
   dmgMul?: number;
   /** Default: the monster's damageType. */
   damageType?: RemakeDamageType;
@@ -114,6 +120,11 @@ export interface RemakeMonsterAbility {
    * caster) only when it names a `stat` with its `ms`.
    */
   buff?: RemakeBuff;
+  /**
+   * [2F review] A charge (line abilities, not aim `anchor`): at contact, after the hit, the caster stands at the farthest
+   * point of the line it reaches in a straight walkable line inside its leash and tether, outside the camps.
+   */
+  dash?: boolean;
 }
 
 /** [W2] A buff / call ability's block (K5; MonsterData.h AbilityBuffDef). `stat` and `ms` are required for a buff. */
@@ -332,9 +343,18 @@ export type RemakeDefendTarget = NonNullable<Web.QuestDefinition['defendTarget']
   approachDeg?: number;
 };
 
-export interface QuestDefinition extends Omit<Web.QuestDefinition, 'rewards' | 'defendTarget'> {
+/**
+ * A quest's hunt (the web QuestHunt: makeHuntDefinition over its base monster) with [W2] remake extras (package 2F):
+ * `abilities` follow the base's on the hunt's own definition (exported as quest_hunts.json `hunts[].abilities`, which the
+ * core's MakeHuntDefinition appends, and merged into `defsNormal`; checked like a monster's), so a unique hunt can do what
+ * its base cannot (monsters.md §2.4: Hungerbell's bell calls the field). Feature `quest.huntAbilities`.
+ */
+export type RemakeQuestHunt = Web.QuestHunt & { abilities?: RemakeMonsterAbility[] };
+
+export interface QuestDefinition extends Omit<Web.QuestDefinition, 'rewards' | 'defendTarget' | 'hunts'> {
   rewards: QuestReward;
   defendTarget?: RemakeDefendTarget;
+  hunts?: RemakeQuestHunt[];
   /** [W1] i18n key of the giver's line while the quest is active (`data.quest.<id>.progress`). Feature `quest.progressKey`. */
   progressKey?: string;
   /**

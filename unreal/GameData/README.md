@@ -73,6 +73,21 @@ per giver), the Captain's 13-node tree replaces the elder's (`dialogueTrees.ts`)
 `cs_rf_*` cutscenes and their triggers replace the web's Chapter 1 beats (`story/script.ts`). `config.ts` and
 `homestead.ts` point the story boss, the finale and the tower wings at the new quests. Chapters 2-5 stay as copied.
 
+**Chapter 1 Wave 2 content (package 2F, DECISIONS DR9 / DR8 *2F*; implementation-plan.md *2F outcomes*).** The roster
+carries its abilities (every one with an authored `windupMs`), phases (the zealot's frenzy, Valdras's Roll Call and No
+Retreat), on-death bursts, corpse blocks and the Unburied trait, packs (`packAggro`), morale, kite, block, auras and the
+35 % hit cap (`monsters/emerald_plains.ts`, `miniBosses.ts`: the Corpseherd's raises, Keen and kite); the map its §17
+mixes and leaders, the dawn `variants` and the Sheepfold's `corpseSeeds` (`maps/emerald_plains.ts`); `world.ts` the
+Ashnumb row, the Scorched / Gravecold bursts, the `unburied` affix and the champion Muster; the quests their flags and
+permanent rewards and Hungerbell's hunt ability (`quests/all_quests.ts`); `npcs.ts` the quest-gated lines. Valdras's
+numbers (9000 HP / 20 damage since the 2F review; the Corpseherd 600 HP) are the playthrough gate's: a change to his fight
+or the heroes' damage needs the sweep again, in both bot models (`playthrough_test.cpp`, `ABYSS_PT_STATS=<file>` writes
+each run's fight lengths and ability uses; `ABYSS_PT_REACTION_MS=400 ABYSS_PT_NO_DODGE=1` the reaction-limited bot; the
+sweep asserts DR9's per-class band). The 2F review added: Breach-seep and Hungerbell's call without a clip, Keen
+status-only (`dmgMul: 0`), Banner Sweep / Lunge fire, Lunge a `dash` at a hero 2.5-5 tiles off, Scorched hurting
+monsters, the zealot's frenzy without its Roar, Marl's `visibleWhen` and S1's reward name, the Redoubt's dawn variant, and
+`world.ts` `randomEvents` `ambushVariants` / the Muster's `notFlag` (feature `events.ambushVariants`).
+
 ## Snapshots (Phase 0)
 
 Each redirected module started as a byte-for-byte copy of the web module it replaces, so the first export equals the
@@ -163,8 +178,10 @@ hides a giver for sure whenever its quest is offered with nothing else offering 
 sees (`REMAKE_TABLE_FEATURES` in `src/remake.ts`): `statusEffects.add.ashnumb` (`RemakeStatusEffectRow`, Ashnumb's
 `stackCount` row; feature `status.ashnumb`; without the row the status never lands and its value fails the export) and
 `randomEvents` `zones.<zone>.ambushChampion` (`RemakeAmbushChampion`, its `leaderLoot` the leader's guaranteed magic /
-rare drop; feature `events.ambushChampion`)
-(implementation-plan.md *2E outcomes*). Still withheld: every Wave 3 field.
+rare drop; feature `events.ambushChampion`; since the 2F review its `notFlag` and the zone's `ambushVariants`
+(`RemakeAmbushVariant`), feature `events.ambushVariants`) (implementation-plan.md *2E outcomes*). Since package 2F also a quest hunt's `abilities` (`RemakeQuestHunt`: they follow
+the base's on the hunt's definition; feature `quest.huntAbilities`; implementation-plan.md *2F outcomes*). Still
+withheld: every Wave 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

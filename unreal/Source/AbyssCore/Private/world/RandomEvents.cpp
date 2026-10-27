@@ -276,9 +276,11 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
       const int32_t mn = zd != nullptr ? zd->ambushCountMin : kRevAmbushFallbackMin;
       const int32_t mx = zd != nullptr ? zd->ambushCountMax : kRevAmbushFallbackMax;
       e.monsterCount = static_cast<int32_t>(std::floor(rng.Float01() * (mx - mn + 1))) + mn;
-      // Dark remake K6: a zone with a champion pack draws once more (only then: no draw without the block); a hit spawns
-      // the pack in place of the ambush.
-      if (zd != nullptr && zd->ambushChampion.present && rng.Float01() < zd->ambushChampion.chance) {
+      // Dark remake K6: a zone with a champion pack draws once more (only then: no draw without the block, or once its
+      // notFlag is set - 2F review); a hit spawns the pack in place of the ambush.
+      const bool championOn = zd != nullptr && zd->ambushChampion.present &&
+                              (zd->ambushChampion.notFlag.empty() || !ctx_.session.HasFlag(zd->ambushChampion.notFlag));
+      if (championOn && rng.Float01() < zd->ambushChampion.chance) {
         e.champion = true;
         e.monsterCount = 0;
         for (const MapSpawnMixDef& m : zd->ambushChampion.mix) e.monsterCount += m.count;
@@ -306,7 +308,17 @@ void RandomEventSystem::TriggerEvent(RandomEventType type, Vec2 pos) {
   events_.push_back(std::move(e));
   ActiveRandomEvent& ev = events_.back();
   const std::vector<std::string> noIds;
-  const std::vector<std::string>& ids = zd != nullptr ? zd->ambushMonsters : noIds;
+  // 2F review: the first ambush variant whose world flag is set replaces the zone's list.
+  const std::vector<std::string>* list = zd != nullptr ? &zd->ambushMonsters : &noIds;
+  if (zd != nullptr) {
+    for (const ZoneEventDataDef::AmbushVariantDef& v : zd->ambushVariants) {
+      if (ctx_.session.HasFlag(v.whenFlag)) {
+        list = &v.monsters;
+        break;
+      }
+    }
+  }
+  const std::vector<std::string>& ids = *list;
   switch (type) {
     case RandomEventType::Ambush: {
       // No ambush list (a zone without event data): SpawnAmbush falls back to the zone's first monster (web parity).

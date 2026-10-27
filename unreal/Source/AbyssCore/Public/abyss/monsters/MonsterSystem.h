@@ -188,7 +188,7 @@ class ABYSS_API MonsterSystem {
   // K4: so is one playing a phase's enter action (now < phaseActionUntilMs); a monster with a phase table that arrives
   // home resets its phases (header "K4").
   void TickAI(double dtMs);
-  void TickEliteBehaviours();    // 17.4: teleporting + curse aura
+  void TickEliteBehaviours();    // 17.4: teleporting (2F: never past its leash / tether) + curse aura
   // FIX Q19: prunes every monster's buffs (list order; no publish, so no re-entrancy).
   void PruneBuffs(double nowMs);
   void OnTimer(const Timer& t);
@@ -331,6 +331,10 @@ class ABYSS_API MonsterSystem {
   // Where body k of n of a summon around `centre` stands: the tile at angle 2 pi k / n on a ring of `radius` (rounded;
   // radius 0 = the centre's tile), else the nearest walkable tile within 3 rings, else `centre`. No RNG.
   Vec2 SummonSpot(Vec2 centre, double radius, int32_t k, int32_t n) const;
+  // 2F review (MonsterAbilityDef::dash): where a dash of `m` from its position along `dir` over `length` tiles ends
+  // (MonsterAbilities.h AbilityDashEnd): every sample walkable, inside its M1 leash range (MonsterLeashRange) and its K4
+  // tether, outside every camp's safe zone. No RNG.
+  Vec2 DashEnd(const MonsterInstance& m, Vec2 dir, double length) const;
   // How long a risen body of `def` is rooted: its art's Rise clip length (assets.json), else MonsterAiDef::riseMsDefault.
   double RiseMsFor(const MonsterDef& def) const;
 
@@ -438,6 +442,14 @@ class ABYSS_API MonsterSystem {
   // A fresh instance from a final (scaled) definition at a tile (stats, hp, anchor, role flags); not yet listed.
   MonsterInstance MakeInstance(const MonsterDef& def, TilePos tile, MonsterRole role);
   void RollAffixesInto(MonsterInstance& m, std::string_view zoneId);
+  // 2F review (SAVE-R5, "Boss affixes"): the story boss and a zone mini-boss take their pinned roll for this zone when
+  // there is one (no draw), else roll (RollAffixesInto's draws). The roll is pinned when the boss enters its first fight
+  // (PinAffixesInFight, from TickAI: Chase / Attack) and unpinned when it dies; pins are saved (SaveData::bossAffixes),
+  // so loading a save mid-fight never rolls the boss again. A boss that never fought is not pinned: a save made before
+  // the fight rolls it anew on its load, and a load leaves the save as it was (SaveGame right after LoadGame reproduces
+  // it, whatever the zone entry spawned).
+  void PinnedAffixesInto(MonsterInstance& m, std::string_view zoneId);
+  void PinAffixesInFight(MonsterInstance& m);
   EntityId AddInstance(MonsterInstance&& m, bool startChasing);
   void PublishAggro(const MonsterInstance& m, MonsterState previous);
   void EmitSpawned(const MonsterInstance& m);
@@ -466,6 +478,7 @@ class ABYSS_API MonsterSystem {
   bool miniBossSpawnedThisVisit_ = false;
   bool miniBossDialogueActive_ = false;
   std::vector<std::string> miniBossDialogueSeen_;
+  std::vector<BossAffixPin> bossAffixes_;  // 2F review: PinnedAffixesInto (sorted by zone, monster id)
   std::vector<std::pair<std::string, EntityId>> huntLeaders_;  // huntId -> leader
   // K3: the zone's corpse registry and the pending Unburied rises (schedule order).
   Corpses corpses_;

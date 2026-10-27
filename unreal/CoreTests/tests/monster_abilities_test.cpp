@@ -752,7 +752,7 @@ TEST_SUITE("monsters") {
     CHECK(HazardField::TickCount(1e300, 1, true) == kHazardMaxTicks);
   }
 
-  TEST_CASE("K2 data: Finalize warns on an ability whose range lies past the swing reach (never picked)") {
+  TEST_CASE("K2 data: Finalize warns on an ability whose rangeMin lies past the swing reach (never picked)") {
     // The fixture's attackRange is 2; the Attack state holds within 2 x attackExitMul.
     const double reach = 2 * K2Data().Monsters().ai.attackExitMul;
     REQUIRE(reach == doctest::Approx(2.4));
@@ -764,11 +764,11 @@ TEST_SUITE("monsters") {
               report);
     CHECK(report.Ok());  // warnings only: the data loads
     CHECK(K2HasIssue(report.warnings, "fx_k2.abilities.far.rangeMin", "never picked"));
-    CHECK(K2HasIssue(report.warnings, "fx_k2.abilities.long.rangeMax", "no effect past"));
-    CHECK_FALSE(K2HasIssue(report.warnings, "fx_k2.abilities.edge.rangeMin", "never picked"));
-    CHECK(K2HasIssue(report.warnings, "fx_k2.abilities.edge.rangeMax", "no effect past"));
-    CHECK_FALSE(K2HasIssue(report.warnings, "fx_k2.abilities.near", "never picked"));
-    CHECK_FALSE(K2HasIssue(report.warnings, "fx_k2.abilities.near", "no effect past"));
+    // 2F review: a rangeMax past the reach makes a ranged special (it also starts between swings, MonsterAbilities.h
+    // AbilityIsRangedSpecial), so neither "long" nor "edge" (rangeMax a hair past 2.4) warns any more.
+    CHECK_FALSE(K2HasIssue(report.warnings, "fx_k2.abilities.long", ""));
+    CHECK_FALSE(K2HasIssue(report.warnings, "fx_k2.abilities.edge", ""));
+    CHECK_FALSE(K2HasIssue(report.warnings, "fx_k2.abilities.near", ""));
     // The rule the warning states: with the hero at the edge of the Attack state (2.39 of 2.4 tiles) the swings go on
     // and an ability whose rangeMin lies past the reach never starts.
     MonsterAbilityDef far = K2Circle("far", 1.0, AbilityAim::Self, 900);
@@ -2254,5 +2254,387 @@ TEST_SUITE("monsters") {
     std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(r.digest));
     INFO("digest " << hex);
     CHECK(std::string(hex) == "aeebb747324d47b9");
+  }
+  // =================================================================================================================
+  // 2F review: ranged specials, clipless abilities, status-only strikes, dashes
+  // =================================================================================================================
+  TEST_CASE("2F review: a ranged special (rangeMax past the swing reach) starts between swings, from Chase") {
+    // Pure: the kind and the range decide.
+    MonsterAbilityDef far = K2Circle("far", 1.5, AbilityAim::HeroAtWindup, 900);
+    far.hasRangeMax = true;
+    far.rangeMax = 10;
+    CHECK(AbilityIsRangedSpecial(far, 2.4));
+    CHECK(AbilityCastsBetweenSwings(far, 2.4));
+    CHECK_FALSE(AbilityIsRangedSpecial(far, 10));  // the reach itself: bound by it
+    MonsterAbilityDef edge = far;
+    edge.rangeMax = 2.4;
+    CHECK_FALSE(AbilityIsRangedSpecial(edge, 1.7999999999999998 + 0.6));  // within the 1e-9 slack
+    MonsterAbilityDef open = K2Circle("open", 1.5);
+    CHECK_FALSE(AbilityIsRangedSpecial(open, 2.4));  // no rangeMax: bound by the reach
+    MonsterAbilityDef raise = K2Ability("raise", AbilityKind::Raise, "Cast01", AbilityAim::Corpse);
+    raise.hasRangeMax = true;
+    raise.rangeMax = 10;
+    CHECK_FALSE(AbilityIsRangedSpecial(raise, 2.4));  // a support kind already casts between swings
+    CHECK(AbilityCastsBetweenSwings(raise, 2.4));
+    // The picker: castsOnly takes the ranged special at 6 tiles, not the reach-bound ability; with castsOnly off both.
+    {
+      const MonsterAbilityDef list[] = {open, far};
+      const double ready[] = {0, 0};
+      AbilityPickInput in;
+      in.readyAtMs = ready;
+      in.heroDist = 6;
+      in.swingReach = 2.4;
+      in.castsOnly = true;
+      CHECK(PickMonsterAbility(list, in) == 1);
+      in.heroDist = 11;  // past its rangeMax
+      CHECK(PickMonsterAbility(list, in) == -1);
+      in.heroDist = 2;
+      in.castsOnly = false;  // a due swing: the first by priority, then data order
+      CHECK(PickMonsterAbility(list, in) == 0);
+      in.swingReach = 0;  // an input without the reach: every ability with a rangeMax counts as one
+      in.castsOnly = true;
+      CHECK(PickMonsterAbility(list, in) == 1);
+    }
+    // Runtime: a caster in Chase, the hero 6 tiles off (no swing could reach him): the special starts at once from where
+    // the caster stands, rooted, and lands at the clip's beat.
+    {
+      far.cooldownMs = 3000;
+      K2Rig rig;
+      const MonsterDef def = K2Caster({far}, 20);
+      rig.PlaceHero(Vec2(46, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40), MonsterState::Chase);
+      rig.ScriptNoDodge(4);
+      const double hp0 = rig.hero->Hp();
+      rig.Step();
+      const std::vector<EvTelegraph> tgs = K2Events<EvTelegraph>(rig.h.events);
+      REQUIRE(tgs.size() == 1);
+      CHECK(tgs[0].abilityId == "far");
+      CHECK(tgs[0].origin == Vec2(46, 40));
+      CHECK(rig.M(c).pendingAbility == 0);
+      CHECK(Dist(rig.M(c).pos, rig.hero->Position()) > 2.4);
+      const double contact = tgs[0].contactMs;
+      const Vec2 at = rig.M(c).pos;  // where it stood when the windup started (the AI stepped first)
+      CHECK(Dist(at, Vec2(40, 40)) < 0.1);
+      while (rig.Now() + kSimStepMs < contact - 1e-6) {
+        rig.Step();
+        CHECK(rig.M(c).pos == at);  // rooted through its windup
+      }
+      rig.StepUntil([&] { return rig.hero->Hp() < hp0; }, 20);
+      CHECK(HeroHits(rig.h.events, false).size() == 1);
+      rig.Step(5);
+      CHECK(rig.M(c).pos.x > at.x);  // then it chases
+    }
+    // Held on a dais (a tether of radius 1): the special keeps coming on its cooldown at a hero far off it.
+    {
+      far.cooldownMs = 3000;
+      K2Rig rig;
+      const MonsterDef def = K2Caster({far}, 5);
+      rig.PlaceHero(Vec2(46, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40), MonsterState::Chase);
+      rig.M(c).hasTether = true;
+      rig.M(c).tetherCentre = Vec2(40, 40);
+      rig.M(c).tetherRadius = 1;
+      rig.h.rng.Get(RngStream::Combat).Script(std::vector<double>(40, 0.99));
+      size_t casts = 0;
+      for (int i = 0; i < 10 * 60; ++i) {
+        rig.Step();
+        for (const EvTelegraph& t : K2Events<EvTelegraph>(rig.h.events)) casts += t.entity == c ? 1 : 0;
+        rig.h.events.Clear();
+        CHECK(Dist(rig.M(c).pos, Vec2(40, 40)) <= 1 + 1e-6);
+      }
+      CHECK(casts == 4);  // 0, 3, 6, 9 s
+    }
+    // The same ability without its rangeMax is bound by the reach: nothing starts at 6 tiles; the caster walks in.
+    {
+      K2Rig rig;
+      const MonsterDef def = K2Caster({open}, 20);
+      rig.PlaceHero(Vec2(46, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40), MonsterState::Chase);
+      rig.Step(30);
+      CHECK(K2Events<EvTelegraph>(rig.h.events).empty());
+      CHECK(rig.M(c).pos.x > 40);
+    }
+  }
+
+  TEST_CASE("2F review: a hazard without a clip plays nothing and does not root its caster; the loader's rules") {
+    MonsterAbilityDef pool = K2Ability("pool", AbilityKind::Hazard, "", AbilityAim::HeroAtWindup, 900);
+    pool.hasShape = true;
+    pool.shape = K2Shape(AbilityShapeKind::Circle, 1.2);
+    pool.cooldownMs = 100000;
+    pool.hazard.present = true;
+    pool.hazard.durationMs = 1000;
+    pool.hazard.tickMs = 500;
+    pool.hazard.tickDmgMul = 0.5;
+    K2Rig rig;
+    const MonsterDef def = K2Caster({pool}, 20);
+    rig.PlaceHero(Vec2(41.5, 40));
+    const EntityId c = rig.Spawn(def, Vec2(40, 40));
+    rig.Step();
+    REQUIRE(rig.M(c).pendingAbility == 0);
+    CHECK(K2Events<EvTelegraph>(rig.h.events).size() == 1);
+    for (const EvPlayAnim& a : K2Events<EvPlayAnim>(rig.h.events)) CHECK(a.entity != c);  // no clip, no anim
+    CHECK(rig.M(c).abilityRootedUntilMs == 0);
+    CHECK(rig.combat.IsWindingUp(c));
+    const double contact = rig.M(c).abilityCast.contactMs;
+    CHECK(contact - rig.M(c).abilityCast.startMs == 900);  // its authored windup
+    rig.PlaceHero(Vec2(46, 40));  // out of reach: the caster follows while the ground fills
+    rig.StepUntilMs(contact - 100);
+    CHECK(rig.M(c).pos.x > 40);
+    CHECK(rig.M(c).pendingAbility == 0);
+    rig.StepUntil([&] { return !K2Events<EvHazard>(rig.h.events).empty(); }, 30);
+    REQUIRE(K2Events<EvHazard>(rig.h.events).size() == 1);
+    CHECK(K2Events<EvHazard>(rig.h.events)[0].origin == Vec2(41.5, 40));  // where the hero stood at windup start
+    // Loader: only a hazard or a call may leave its clip out, and then it authors its windup.
+    struct Case {
+      const char* ability;
+      const char* text;  // nullptr = loads
+    };
+    const Case cases[] = {
+        {R"({"id": "a", "kind": "circle", "windupMs": 900, "cooldownMs": 0, "aim": "self", "shape": {"radius": 1}})",
+         "names its clip"},
+        {R"({"id": "a", "kind": "hazard", "cooldownMs": 0, "aim": "self", "shape": {"kind": "circle", "radius": 1}, "hazard": {"durationMs": 1000, "tickMs": 500, "tickDmgMul": 1}})",
+         "authors its windupMs"},
+        {R"({"id": "a", "kind": "hazard", "clip": "", "windupMs": 900, "cooldownMs": 0, "aim": "self", "shape": {"kind": "circle", "radius": 1}, "hazard": {"durationMs": 1000, "tickMs": 500, "tickDmgMul": 1}})",
+         "empty clip"},
+        {R"({"id": "a", "kind": "hazard", "windupMs": 900, "cooldownMs": 0, "aim": "self", "shape": {"kind": "circle", "radius": 1}, "hazard": {"durationMs": 1000, "tickMs": 500, "tickDmgMul": 1}})",
+         nullptr},
+    };
+    for (const Case& k : cases) {
+      INFO(k.ability);
+      DataLoadReport report;
+      K2LoadDef(K2DefJson("fx_k2", std::string("[") + k.ability + "]"), report);
+      if (k.text == nullptr) {
+        CHECK(report.Ok());
+        CHECK_FALSE(K2HasIssue(report.warnings, "fx_k2.abilities.a", ""));  // no clip beat to check
+      } else {
+        CHECK_FALSE(report.Ok());
+        CHECK(K2HasIssue(report.errors, "fx_k2", k.text));
+      }
+    }
+  }
+
+  TEST_CASE("2F review: a status-only strike (dmgMul 0) rolls no damage; the dodge roll's i-frames avoid it") {
+    MonsterAbilityDef keen = K2Circle("keen", 4, AbilityAim::Self, 900, "Cast02");
+    keen.cooldownMs = 100000;
+    keen.dmgMul = 0;
+    keen.status.present = true;
+    keen.status.type = StatusType::Slow;
+    keen.status.chance = 1;
+    keen.status.ms = 2000;
+    keen.status.value = 30;
+    keen.hitsMonsters = false;
+    for (const bool dodge : {false, true}) {
+      INFO("dodge " << dodge);
+      K2Rig rig;
+      const MonsterDef def = K2Caster({keen}, 20);
+      rig.PlaceHero(Vec2(41, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40));
+      const EntityId other = rig.Spawn(def, Vec2(39, 40), MonsterState::Idle);  // inside the ring: never hurt
+      rig.Silence(other);
+      const double hp0 = rig.hero->Hp();
+      const double otherHp = rig.M(other).hp;
+      rig.Step();
+      REQUIRE(rig.M(c).pendingAbility == 0);
+      const double contact = rig.M(c).abilityCast.contactMs;
+      if (dodge) {
+        rig.StepUntilMs(contact - 100);
+        REQUIRE(rig.combat.RequestDodge(Vec2(0, 1)));  // 1.8 tiles: still inside the ring, invulnerable at contact
+      }
+      rig.h.events.Clear();
+      rig.StepUntilMs(contact + 2 * kSimStepMs);
+      CHECK(rig.M(c).pendingAbility == -1);
+      CHECK(rig.hero->Hp() == hp0);
+      CHECK(rig.M(other).hp == otherHp);
+      size_t slows = 0, misses = 0;
+      for (const EvStatusApplied& s : K2Events<EvStatusApplied>(rig.h.events)) {
+        slows += s.target == kHeroEntityId && s.type == StatusType::Slow ? 1 : 0;
+      }
+      for (const EvHit& h : K2Events<EvHit>(rig.h.events)) {
+        if (h.target != kHeroEntityId) continue;
+        CHECK(h.amount == 0);
+        misses += h.dodged && h.iframeAvoided ? 1 : 0;
+      }
+      CHECK(slows == (dodge ? 0u : 1u));
+      CHECK(misses == (dodge ? 1u : 0u));
+      CHECK(rig.status.Has(kHeroEntityId, StatusType::Slow) == !dodge);
+    }
+    // Loader: a status-only strike needs its status and hits no monster.
+    struct Case {
+      const char* ability;
+      const char* text;
+    };
+    const Case cases[] = {
+        {R"({"id": "a", "kind": "circle", "clip": "Cast02", "windupMs": 900, "cooldownMs": 0, "aim": "self", "shape": {"radius": 1}, "dmgMul": 0})",
+         "needs its 'status'"},
+        {R"({"id": "a", "kind": "circle", "clip": "Cast02", "windupMs": 900, "cooldownMs": 0, "aim": "self", "shape": {"radius": 1}, "dmgMul": 0, "status": {"type": "slow", "ms": 1000, "value": 30}, "hitsMonsters": true})",
+         "hits no monster"},
+    };
+    for (const Case& k : cases) {
+      INFO(k.ability);
+      DataLoadReport report;
+      K2LoadDef(K2DefJson("fx_k2", std::string("[") + k.ability + "]"), report);
+      CHECK_FALSE(report.Ok());
+      CHECK(K2HasIssue(report.errors, "fx_k2", k.text));
+    }
+    DataLoadReport ok;
+    K2LoadDef(K2DefJson("fx_k2", R"([{"id": "a", "kind": "circle", "clip": "Cast02", "windupMs": 900, "cooldownMs": 0, "aim": "self", "shape": {"radius": 1}, "dmgMul": 0, "status": {"type": "slow", "ms": 1000, "value": 30}}])"),
+              ok);
+    CHECK(ok.Ok());
+  }
+
+  TEST_CASE("2F review: a dash ends where its windup fixed it, after the hit; walls, camps and bounds stop it short") {
+    // Pure: the samples every kDashSampleTiles, the exact end, the first closed sample.
+    const auto all = [](Vec2) { return true; };
+    CHECK(AbilityDashEnd(Vec2(40, 40), Vec2(2, 0), 4, all) == Vec2(44, 40));
+    const Vec2 odd = AbilityDashEnd(Vec2(40, 40), Vec2(1, 0), 3.1, all);
+    CHECK(odd == Vec2(43.1, 40));
+    CHECK(AbilityDashEnd(Vec2(40, 40), Vec2(1, 0), 4, [](Vec2 p) { return p.x < 42.6; }) == Vec2(42.5, 40));
+    CHECK(AbilityDashEnd(Vec2(40, 40), Vec2(1, 0), 4, [](Vec2 p) { return p.x < 40.1; }) == Vec2(40, 40));
+    CHECK(AbilityDashEnd(Vec2(40, 40), Vec2(1, 0), 3.1, [](Vec2 p) { return p.x < 43.05; }) == Vec2(43, 40));
+    CHECK(AbilityDashEnd(Vec2(40, 40), Vec2(1, 0), 0, all) == Vec2(40, 40));
+    // Runtime.
+    MonsterAbilityDef lunge = K2Ability("lunge", AbilityKind::Line, "Attack02", AbilityAim::HeroAtWindup, 800);
+    lunge.hasShape = true;
+    lunge.shape = K2Shape(AbilityShapeKind::Line, 0, 0, 4, 1.2);
+    lunge.cooldownMs = 100000;
+    lunge.dash = true;
+    const MonsterDef def = K2Caster({lunge}, 20);
+    {
+      K2Rig rig;
+      rig.PlaceHero(Vec2(42, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40));
+      rig.ScriptNoDodge();
+      rig.Step();
+      const std::vector<EvTelegraph> tgs = K2Events<EvTelegraph>(rig.h.events);
+      REQUIRE(tgs.size() == 1);
+      CHECK(tgs[0].hasDash);
+      CHECK(tgs[0].dashTo == Vec2(44, 40));
+      Snapshot snap;
+      rig.combat.FillSnapshot(snap);
+      REQUIRE(snap.telegraphs.size() == 1);
+      CHECK(snap.telegraphs[0].hasDash);
+      CHECK(snap.telegraphs[0].dashTo == Vec2(44, 40));
+      const double contact = tgs[0].contactMs;
+      rig.h.events.Clear();
+      rig.StepUntil([&] { return !K2Events<EvEntityTeleported>(rig.h.events).empty(); }, 80);
+      CHECK(rig.Now() >= contact - 1e-6);
+      CHECK(rig.Now() < contact + kSimStepMs);
+      const std::vector<EvEntityTeleported> tp = K2Events<EvEntityTeleported>(rig.h.events);
+      REQUIRE(tp.size() == 1);
+      CHECK(tp[0].id == c);
+      CHECK(tp[0].from == Vec2(40, 40));
+      CHECK(tp[0].to == Vec2(44, 40));
+      CHECK(tp[0].reason == TeleportReason::Dash);
+      CHECK(rig.M(c).pos == Vec2(44, 40));
+      CHECK(HeroHits(rig.h.events, false).size() == 1);  // the hit came first, along the line it then ran
+      size_t hitAt = 0, tpAt = 0;
+      for (size_t i = 0; i < rig.h.events.Size(); ++i) {
+        if (const EvHit* h = std::get_if<EvHit>(&rig.h.events.Items()[i]); h != nullptr && h->target == kHeroEntityId) hitAt = i;
+        if (std::holds_alternative<EvEntityTeleported>(rig.h.events.Items()[i])) tpAt = i;
+      }
+      CHECK(hitAt < tpAt);
+    }
+    {  // the leash range stops it: a spawn anchor 7.5 tiles behind, leash 8 -> the dash ends 0.5 tiles on
+      K2Rig rig;
+      rig.PlaceHero(Vec2(49, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40));
+      rig.M(c).pos = Vec2(47.5, 40);
+      rig.M(c).prevPos = rig.M(c).pos;
+      const double leash = rig.h.ctx.data.Monsters().ai.leashRange;
+      rig.ScriptNoDodge();
+      rig.Step();
+      const std::vector<EvTelegraph> tgs = K2Events<EvTelegraph>(rig.h.events);
+      REQUIRE(tgs.size() == 1);
+      CHECK(tgs[0].hasDash);
+      CHECK(tgs[0].dashTo.x <= 40 + leash + 1e-9);
+      CHECK(tgs[0].dashTo.x > 40 + leash - kDashSampleTiles - 1e-9);
+    }
+    {  // a wall across the line: the dash ends on the last sample before it (its tile, JS-rounded, is closed)
+      K2Rig rig;
+      MonsterWorld w = MOpenWorld(rig.zone.Map().cols, rig.zone.Map().rows);
+      w.walkable = [](int32_t col, int32_t) { return col != 43; };
+      rig.monsters.SetWorldForTesting(std::move(w));
+      rig.PlaceHero(Vec2(42, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40));
+      rig.ScriptNoDodge();
+      rig.Step();
+      const std::vector<EvTelegraph> tgs = K2Events<EvTelegraph>(rig.h.events);
+      REQUIRE(tgs.size() == 1);
+      CHECK(tgs[0].hasDash);
+      CHECK(tgs[0].dashTo == Vec2(42.25, 40));  // 42.5 rounds to column 43
+      rig.h.events.Clear();
+      REQUIRE(rig.StepUntil([&] { return !K2Events<EvEntityTeleported>(rig.h.events).empty(); }, 80));
+      CHECK(K2Events<EvEntityTeleported>(rig.h.events)[0].id == c);
+      CHECK(rig.M(c).pos == Vec2(42.25, 40));
+    }
+    {  // a camp's safe zone across the line: the dash stops outside it
+      K2Rig rig;
+      REQUIRE_FALSE(rig.zone.Map().camps.empty());
+      const Vec2 camp = rig.zone.Map().camps[0].pos.Center();
+      REQUIRE(rig.zone.InSafeZone(camp));
+      Vec2 edge = camp;  // the first point west of the camp's centre outside its safe zone
+      while (rig.zone.InSafeZone(edge)) edge.x -= 0.05;
+      const Vec2 from = edge - Vec2(2, 0);
+      REQUIRE_FALSE(rig.zone.InSafeZone(from));
+      rig.PlaceHero(from + Vec2(1.5, 0));
+      rig.Spawn(def, from);
+      rig.ScriptNoDodge();
+      rig.Step();
+      const std::vector<EvTelegraph> tgs = K2Events<EvTelegraph>(rig.h.events);
+      REQUIRE(tgs.size() == 1);
+      CHECK(tgs[0].hasDash);
+      CHECK_FALSE(rig.zone.InSafeZone(tgs[0].dashTo));
+      CHECK(tgs[0].dashTo.x > from.x + 1.5);  // it ran up to the camp's edge
+      CHECK(rig.zone.InSafeZone(tgs[0].dashTo + Vec2(kDashSampleTiles, 0)));
+    }
+    {  // a K4 tether (radius 2 round its spot): the dash ends on the circle
+      K2Rig rig;
+      rig.PlaceHero(Vec2(42, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40));
+      rig.M(c).hasTether = true;
+      rig.M(c).tetherCentre = Vec2(40, 40);
+      rig.M(c).tetherRadius = 2;
+      rig.ScriptNoDodge();
+      rig.Step();
+      const std::vector<EvTelegraph> tgs = K2Events<EvTelegraph>(rig.h.events);
+      REQUIRE(tgs.size() == 1);
+      CHECK(tgs[0].dashTo == Vec2(42, 40));
+    }
+    {  // a stun mid-windup: no hit, no dash
+      K2Rig rig;
+      rig.PlaceHero(Vec2(42, 40));
+      const EntityId c = rig.Spawn(def, Vec2(40, 40));
+      rig.Step();
+      REQUIRE(rig.M(c).pendingAbility == 0);
+      rig.Step(10);
+      rig.status.Apply(c, StatusType::Stun, 1, 2000, kHeroEntityId, rig.Now());
+      rig.Step(80);
+      CHECK(CancelsOf(rig.h.events, c) == 1);
+      for (const EvEntityTeleported& t : K2Events<EvEntityTeleported>(rig.h.events)) CHECK(t.id != c);
+      CHECK(rig.M(c).pos == Vec2(40, 40));
+      CHECK(HeroHits(rig.h.events, false).empty());
+    }
+    // Loader: a dash runs along a line from the caster.
+    struct Case {
+      const char* ability;
+      const char* text;
+    };
+    const Case cases[] = {
+        {R"({"id": "a", "kind": "circle", "clip": "Attack02", "cooldownMs": 0, "aim": "self", "shape": {"radius": 1}, "dash": true})",
+         "only a line ability dashes"},
+        {R"({"id": "a", "kind": "line", "clip": "Attack02", "cooldownMs": 0, "aim": "anchor", "shape": {"length": 4, "width": 1}, "dash": true})",
+         "not aim 'anchor'"},
+    };
+    for (const Case& k : cases) {
+      INFO(k.ability);
+      DataLoadReport report;
+      K2LoadDef(K2DefJson("fx_k2", std::string("[") + k.ability + "]"), report);
+      CHECK_FALSE(report.Ok());
+      CHECK(K2HasIssue(report.errors, "fx_k2", k.text));
+    }
+    DataLoadReport ok;
+    K2LoadDef(K2DefJson("fx_k2", R"([{"id": "a", "kind": "line", "clip": "Attack02", "cooldownMs": 0, "aim": "hero", "shape": {"length": 4, "width": 1}, "dash": true}])"),
+              ok);
+    CHECK(ok.Ok());
   }
 }

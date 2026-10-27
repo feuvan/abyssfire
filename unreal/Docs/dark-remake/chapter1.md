@@ -818,6 +818,37 @@ The data follows this document except where listed here (DECISIONS DR3 / DR5 / D
 | §8 epilogue slide 2 | 赤幡原 / The Red Field, re-voiced (the web's Emerald Plains slide) | the ending is Chapter 5's, but this slide is Chapter 1's land |
 | Jukebox | 赤幡原 · 探索 / 战斗, and 渊火 · 低语 / Abyssfire · The Whisper (the prologue's abyss slide) for the abyss_rift recording the prologue plays; the title-menu track keeps 渊火 · 序章 / Abyssfire · Prologue | the web plains names showed in the title menu; no two rows share a title |
 
+Amendments as built in the Wave 2 content (2F, 2026-10, pending review; `implementation-plan.md` "2F outcomes",
+DECISIONS DR9 / M5 / DR8 *2F*):
+
+| Where | As built | Why |
+|---|---|---|
+| §11 Numbers | Valdras 9000 HP, damage 20 (2F review: the design's damage; 2F had 14000 / 32; defence, speed, range, attack interval unchanged); every special winds up 700-900 ms | the gate sets the numbers: at ~1100 HP the bot warrior killed the three-phase boss in about 2 s. 14000 / 32 fitted the bot warrior alone (mage 136 s, rogue 229 s; a reaction-limited bot died in 66-86 % of mage / rogue runs); 9000 HP puts every class in DR9's per-class band (*2F review*), and the design's damage 20 keeps a Brutish Valdras (x1.35) from killing a late-reacting rogue in most of its fights (it did in 10 of 18 at 24) |
+| §11 P2 Breach-seep | one crack line (8 x 1) from the dais toward the hero every 6 s, P2 only (700 ms, two fire ticks x0.5, slow 30 % 2 s); 2F review: no caster clip (the cracks are the tell; he is not rooted) and a ranged special (`rangeMax` 10): it comes between swings at a hero up to 10 tiles off while he is held on the dais | an ability has one shape and the schema no `count`; three abilities would fire as one. As 2F built it the seep fired only on a due swing, so a hero 5.4+ tiles from the dais took nothing in P2 |
+| §11 P2 muster | the bearer that rises at the west ash circle (11, 91) is `rollcall_standard_bearer` (亡旗手: the standard-bearer's numbers, look and banner aura), whose `roll_call` summons a footman at each circle ((11, 91), (19, 99)) every 10 s, at most 4 alive | the zone's `dead_standard_bearer` raises from a corpse within 6 tiles (its Muster); the circles need a summon at fixed anchors |
+| §10 Kite | the Corpseherd holds 2-3 tiles (range 3.0 kept, DECISIONS M5 *2F note*) | a kite band must end inside the attack range (K5) |
+| §10 Call the Flock | two Raised at the pull (a separate raise with a long cooldown), then one per 8 s, 900 ms, at most 3 alive | as specified; the pull is its own ability |
+| §5 M2 Hungerbell | its call (`supper_bell`, every 9 s, 800 ms: every gnawer within 10 tiles is provoked) is a hunt ability next to the bonegorger's slam, not part of every slam | one ability cannot both slam and call; hunts gained `abilities` for it (remake feature `quest.huntAbilities`) |
+| §17 Dawn | `rf_chapter_dawn` turns the trenches into 8 gravegnawers and the Dead Ranks into 6 | the entries keep their counts |
+| §3 lines | the blacksmith, the Captain and Marl say their after line once its quest is turned in, their Wave 1 line kept behind it (the panel shows it); Brother Aldwin's line 0 gives way to his blessing after M5, his line 1 stays | K6's slots: the log takes the first holding line, the panel the second |
+| monsters.md §3 | the 不葬 Unburied affix is not rolled for a monster that can never rise (a boss, a Raised body, a body that leaves no corpse; 2F review core rule) | 2F let it roll on the Corpseherd and Valdras, where its label promised a rise that never came |
+
+Amendments as built in the 2F review (2026-10, pending review; `implementation-plan.md` "2F review outcomes", DECISIONS
+M1 / M7 / DR8 / DR9 *2F review*):
+
+| Where | As built | Why |
+|---|---|---|
+| §10 Fight | the Corpseherd has 600 HP (was 300) | at the main path's Lv 10 she died in 0.4-2.3 s, before Keen; at 600 her opening raise shows in every fight and Keen in most (500 left the warrior's Keen at 55-80 %); the 8 s repeat raise is for a slower or earlier hero. She now outlasts the web's zone-2 mini-boss (520), which stays behind the sealed east gate (W7) until Chapter 2 is remade |
+| §10 Keen | a status-only strike (`dmgMul 0`: no damage, slow 25 % 3 s), every 12 s below 50 % | the design's ring slows only (2F gave it x0.4 damage); the design names no cooldown |
+| §11 Banner Sweep, Lunge | fire (`damageType`), like Oath-Brand and the seep | monsters.md §2.6 "specials fire": the resistance and the corpse burn (Feed's counterplay) follow |
+| §11 P3 Lunge | 冲锋 a charge: at a hero 2.5-5 tiles off (a ranged special), the line 5 x 1.2 hits, then he stands at its end (`dash`: the farthest open point, never past his leash, out of a camp); 800 ms, x1.5, 7 s | 2F's Lunge was a swing pick that never closed distance |
+| §11 leash | his leash is the dais (the authored tile) over his whole fight's reach: max(8, the ring's 9 + his reach 2.4) = 11.4 tiles (DECISIONS M1 *2F review*) | the M1 leash measured 8 tiles from his jittered spawn, inside the 9-tile ring: a hero obeying the ring could walk him home, healed, to P1 |
+| §8 / §17 Dawn | the Broken Redoubt also turns to 5 gravegnawers at dawn; after dawn an ambush is the gnawers' (`ambushVariants`) and the champion Muster no longer comes (`notFlag`) | cs_rf_finale step 7: the dead who still stood lie down across the Red Field |
+| §3 Marl | Mother Marl leaves the dressing station once M5 is turned in (the finale), unless S1 is still open (`visibleWhen`); S1's reward is named 玛勒的苦药 / Marl's Bitter Draught (`data.quest.q_rf_black_blood.permanent`) | §3: she goes to the tower in the finale; the reward's name had no string |
+| §5 M2 Hungerbell, §11 seep | Hungerbell's call plays no clip (its ripple is the tell; it is not rooted); the seep plays none on Valdras | they reused the slam clips of a damaging special at the same beat |
+| monsters.md §2.3 | the zealot's frenzy has no Roar enter action (it surges at once; the frenzy look rides on EvMonsterPhase) | a rooting 1.2 s Roar read as a stagger at the moment it should surge |
+| monsters.md §2.3 | the drummer's +10 % attack speed is an aura while he lives (not only while he drums); its look follows 2G's no-glow rule for the Living | a buff tied to the call would end with each 6 s drum; kept as built, the look is 2G's |
+
 Amendments as built in the UE presentation (1C review, 2026-10, pending review; `implementation-plan.md` "1C review
 outcomes", DECISIONS DR15):
 

@@ -13,6 +13,7 @@ import { NPCDefinitions } from '../../../../../src/data/npcs';
 import * as Homestead from '../../../../../src/data/homestead';
 import { assert, assertSource, plain, type TableResult } from '../util';
 import { gateRemakeValues, withholdRemakeFields } from '../remake';
+import type { RemakeQuestHunt } from '../../../../GameData/types';
 
 const ZS = 'src/scenes/ZoneScene.ts';
 const exp = <T>(mod: unknown, name: string): T => {
@@ -88,8 +89,11 @@ export function exportQuests(): TableResult[] {
     gateRemakeValues('quest', q, `quests.${q.id}`);
     checkK1Hooks(q);
     checkK6Quest(q);
+    const out = withholdRemakeFields('quest', plain(q), `quests.${q.id}`);
+    // 2F: a hunt's own abilities live on its definition (quest_hunts.json defsNormal, tables/monsters.ts), not here.
+    if (out.hunts) out.hunts = (out.hunts as RemakeQuestHunt[]).map(({ abilities: _abilities, ...h }) => h);
     return {
-      ...withholdRemakeFields('quest', plain(q), `quests.${q.id}`),
+      ...out,
       derived: {
         giverNpcId: giver,
         objectiveItemKinds: q.objectives.map(o => (isCollectObjective(o) ? questItemKindOf(o) : null)),

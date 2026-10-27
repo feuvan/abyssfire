@@ -119,10 +119,14 @@ struct AbilityBuffDef {
 
 // One ability (implementation-plan.md 3 K2 "Data"). Contact: `windupMs` when authored (>= 600 ms, >= 700 ms for a
 // boss), else the clip's Contact notify (else its Release) from the asset manifest; the telegraph fills to full then.
+// 2F review: a hazard or call ability may name no clip: the caster plays nothing and is not rooted while it winds up (the
+// ground decal, the call's ripple are the tell: Valdras's Breach-seep pulses from the dais, Hungerbell's bell rings), and
+// a damaging ability whose rangeMax passes the caster's swing reach is a ranged special that also starts between swings
+// (MonsterAbilities.h AbilityIsRangedSpecial).
 struct MonsterAbilityDef {
   std::string id;
   AbilityKind kind = AbilityKind::Circle;
-  std::string clip;                 // the manifest clip it plays (Attack02, Cast01, Lunge, ...)
+  std::string clip;                 // the manifest clip it plays (Attack02, Cast01, Lunge, ...); "" = none (hazard / call)
   bool hasWindupMs = false;
   double windupMs = 0;
   double cooldownMs = 0;            // from windup start to the next use
@@ -146,6 +150,10 @@ struct MonsterAbilityDef {
   AbilityHazardDef hazard;
   AbilitySummonDef summon;
   AbilityBuffDef buff;
+  // 2F review (a charge, chapter1.md 11 Lunge): a line ability whose caster rushes along it at contact, to the farthest
+  // point of the line it can reach in a straight walkable line inside its M1 leash and K4 tether and outside every camp
+  // (resolved at windup start: MonsterAbilityCast::dashTo; the hit lands first, then the caster stands there).
+  bool dash = false;
 };
 
 // ---- K3 on-death effects, corpses and the Unburied rise (dark remake, implementation-plan.md 3 K3; monsters.md 1.3 /
@@ -426,6 +434,9 @@ struct HuntDef {
   bool hasMinions = false;
   std::string minionMonsterId;
   int32_t minionCount = 0;
+  // Dark remake (remake schema quest.huntAbilities, package 2F): the hunt's own abilities (quest_hunts.json
+  // `hunts[].abilities`), after its base's in its definition (MakeHuntDefinition; Hungerbell's supper bell).
+  std::vector<MonsterAbilityDef> abilities;
   MonsterDef defNormal;  // makeHuntDefinition result before difficulty scaling / affixes
 };
 

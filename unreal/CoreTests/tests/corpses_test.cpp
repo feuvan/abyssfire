@@ -38,6 +38,7 @@
 #include "abyss/hero/Skills.h"
 #include "abyss/items/Inventory.h"
 #include "abyss/monsters/Corpses.h"
+#include "abyss/monsters/EliteAffixes.h"
 #include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/OnDeath.h"
 #include "abyss/pets/Homestead.h"
@@ -153,7 +154,10 @@ void K3EditAffixes(JsonValue& doc) {
   defs->Set("unburied", std::move(unburied));
   JsonValue* order = doc.FindMutable("order");
   REQUIRE(order != nullptr);
-  order->Append(JsonValue::String("unburied"));
+  // The shipped table lists `unburied` since the dark remake's content (2F): listed once.
+  bool listed = false;
+  for (const JsonValue& t : order->Items()) listed = listed || t.AsString() == "unburied";
+  if (!listed) order->Append(JsonValue::String("unburied"));
 }
 
 // The real export plus the synthetic asset, definitions and affix rows (loaded once).
@@ -716,15 +720,9 @@ TEST_SUITE("monsters") {
     CHECK((u.riseAgain.present && u.riseAgain.chance == 1 && u.riseAgain.delayMs == 3000 && u.riseAgain.hpPct == 50));
     CHECK(u.families == std::vector<std::string>{"unburied"});
     CHECK(t.order.back() == EliteAffixType::Unburied);
-    // The shipped table: no K3 field yet, and the unburied type undefined (never in the pool).
-    const EliteAffixTable& real = test::RealData().Combat().eliteAffixes;
-    for (EliteAffixType a : real.order) {
-      CHECK_FALSE(real.Def(a).onDeath.present);
-      CHECK_FALSE(real.Def(a).riseAgain.present);
-      CHECK(real.Def(a).families.empty());
-      CHECK(a != EliteAffixType::Unburied);
-    }
-    CHECK(real.Def(EliteAffixType::Unburied).type == EliteAffixType::Unburied);
+    CHECK(std::count(t.order.begin(), t.order.end(), EliteAffixType::Unburied) == 1);
+    // The shipped table's K3 rows (Scorched, Gravecold, the Unburied affix) are the dark remake's content (2F), pinned in
+    // content_ch1_test.cpp.
     // Corpse seeds on a map.
     DataLoadReport report;
     const auto store = K3LoadEdited(
@@ -744,8 +742,7 @@ TEST_SUITE("monsters") {
     REQUIRE(map != nullptr);
     REQUIRE(map->corpseSeeds.size() == 2);
     CHECK(map->corpseSeeds[1].pos == TilePos{62, 55});
-    CHECK(map->corpseSeeds[1].monsterId == "fx_k3_risen");
-    CHECK(test::RealData().World().FindMap("emerald_plains")->corpseSeeds.empty());
+    CHECK(map->corpseSeeds[1].monsterId == "fx_k3_risen");  // the shipped seeds (the Sheepfold's six): content_ch1_test
   }
 
   TEST_CASE("K3 data: the loader refuses broken on-death / corpse / rise / seed / affix blocks") {
@@ -816,7 +813,14 @@ TEST_SUITE("monsters") {
          "unknown elite affix field 'onDeth'"},
         {[](JsonValue& d) { d.FindMutable("definitions")->FindMutable("swift")->Set("type", JsonValue::String("frozen")); },
          "differs from its key"},
-        {[](JsonValue& d) { d.FindMutable("order")->Append(JsonValue::String("unburied")); }, "has no definition"},
+        {[](JsonValue& d) {
+           // `unburied` listed without its definition (the shipped table defines it since 2F: taken out here).
+           d.FindMutable("definitions")->Remove("unburied");
+           bool listed = false;
+           for (const JsonValue& t : d.FindMutable("order")->Items()) listed = listed || t.AsString() == "unburied";
+           if (!listed) d.FindMutable("order")->Append(JsonValue::String("unburied"));
+         },
+         "has no definition"},
         {[](JsonValue& d) {
            d.FindMutable("definitions")->FindMutable("swift")->Set("riseAgain", K3Parse(R"({"chance": 2})"));
          },
@@ -2858,5 +2862,112 @@ TEST_SUITE("monsters") {
     std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(r.digest));
     INFO("digest " << hex);
     CHECK(std::string(hex) == "022a6e97d326a70c");
+  }
+  TEST_CASE("2F review: bursts and rings landing together share one cap: 35 % of the hero's life per second") {
+    // Pure: the room left under the cap, from the amounts of the last second.
+    CHECK(kOnDeathWindowMs == 1000);
+    CHECK(kOnDeathWindowCapPct == 35);
+    const std::vector<std::pair<double, double>> taken{{1000, 20}, {1500, 10}};
+    CHECK(OnDeathWindowRoom(35, 1500, taken) == 5);
+    CHECK(OnDeathWindowRoom(35, 1999, taken) == 5);
+    CHECK(OnDeathWindowRoom(35, 2000, taken) == 25);  // the first one is a second old: out
+    CHECK(OnDeathWindowRoom(35, 2500, taken) == 35);
+    CHECK(OnDeathWindowRoom(25, 1500, taken) == 0);   // never below 0
+    CHECK(OnDeathWindowRoom(35, 1500, {}) == 35);
+    // Runtime: four bloats (each burst capped at 20 %) die round the hero at once: 20 %, then the 15 % left, then nothing.
+    // (Bloats worth no exp: a level-up between the bursts would raise the caps, which follow the hero's life.)
+    MonsterDef bloat = K3Bloat(1000);
+    bloat.expReward = 0;
+    K3Rig rig;
+    rig.PlaceHero(Vec2(51.5, 50));
+    const Vec2 spots[] = {Vec2(50, 50), Vec2(53, 50), Vec2(51.5, 51.5), Vec2(51.5, 48.5)};
+    std::vector<EntityId> bloats;
+    for (const Vec2 p : spots) bloats.push_back(rig.Spawn(bloat, p, MonsterState::Idle));
+    const double death = rig.Now();
+    for (const EntityId b : bloats) rig.Kill(b);
+    rig.h.events.Clear();
+    rig.StepUntilMs(death + 800);
+    std::vector<EvHit> hits = HeroHits(rig.h.events);
+    REQUIRE(hits.size() == 2);
+    const double maxHp = hits[0].targetMaxHp;
+    const double cap20 = std::floor(maxHp * 20 / 100.0);
+    const double cap35 = std::floor(maxHp * 35 / 100.0);
+    CHECK(hits[0].amount == cap20);
+    CHECK(hits[1].amount == cap35 - cap20);
+    for (const EvHit& h : hits) CHECK(std::find(bloats.begin(), bloats.end(), h.source) != bloats.end());
+    // Two more (silenced: they never swing): the fifth, killed now, bursts 800 ms after the first four, still in that
+    // second: nothing; the sixth, killed 300 ms later, bursts 1.1 s after them: in full.
+    const EntityId fifth = rig.Spawn(bloat, Vec2(50, 51), MonsterState::Idle);
+    const EntityId sixth = rig.Spawn(bloat, Vec2(53, 51), MonsterState::Idle);
+    rig.Silence(fifth);
+    rig.Silence(sixth);
+    rig.Kill(fifth);
+    rig.StepUntilMs(death + 1100);
+    rig.Kill(sixth);
+    rig.h.events.Clear();
+    rig.StepUntilMs(death + 1600 + kSimStepMs);
+    CHECK(HeroHits(rig.h.events, fifth).empty());
+    rig.h.events.Clear();
+    rig.StepUntilMs(death + 1900 + kSimStepMs);
+    hits = HeroHits(rig.h.events, sixth);
+    REQUIRE(hits.size() == 1);
+    CHECK(hits[0].amount == std::floor(hits[0].targetMaxHp * 20 / 100.0));
+  }
+
+  TEST_CASE("2F review: an affix with a rise is rolled only for a monster that can rise (MonsterMayRise)") {
+    const MonsterDef foot = K3Footman("fx_k3_elite");
+    CHECK(MonsterMayRise(MonsterRole::Regular, foot));
+    CHECK(MonsterMayRise(MonsterRole::AmbushSpawn, foot));
+    CHECK(MonsterMayRise(MonsterRole::HuntMinion, foot));
+    for (const MonsterRole r : {MonsterRole::Raised, MonsterRole::ZoneMiniBoss, MonsterRole::SubDungeonMiniBoss,
+                                MonsterRole::StoryBoss, MonsterRole::SealKeeper, MonsterRole::HuntLeader}) {
+      CAPTURE(EnumName(r));
+      CHECK_FALSE(MonsterMayRise(r, foot));
+    }
+    MonsterDef remains = foot;
+    remains.corpse.leaves = CorpseLeaves::Remains;
+    CHECK_FALSE(MonsterMayRise(MonsterRole::Regular, remains));
+    MonsterDef none = foot;
+    none.corpse.leaves = CorpseLeaves::None;
+    CHECK_FALSE(MonsterMayRise(MonsterRole::Regular, none));
+    // Pure: the pool leaves the rise out; the other draws are those of a pool without it.
+    const EliteAffixTable& table = K3Data().Combat().eliteAffixes;
+    EliteAffixTable only = table;
+    only.order.assign(1, EliteAffixType::Unburied);
+    Rng a(9);
+    CHECK(RollEliteAffixes(only, "emerald_plains", a, "unburied", true) ==
+          std::vector<EliteAffixType>(1, EliteAffixType::Unburied));
+    CHECK(RollEliteAffixes(only, "emerald_plains", a, "unburied", false).empty());
+    for (int seed = 1; seed < 40; ++seed) {
+      Rng r1(static_cast<uint64_t>(seed)), r2(static_cast<uint64_t>(seed));
+      const std::vector<EliteAffixType> noRise = RollEliteAffixes(table, "abyss_rift", r1, "unburied", false);
+      const std::vector<EliteAffixType> plain = RollEliteAffixes(table, "abyss_rift", r2, "living");  // no Unburied
+      CHECK(noRise == plain);
+    }
+    // Runtime: a story boss / mini-boss / remains of the unburied family never roll it; a regular footman does.
+    const auto rolls = [&](const MonsterDef& def, MonsterRole role) {
+      int n = 0;
+      for (uint64_t seed = 1; seed <= 25; ++seed) {
+        K3Rig rig(seed);
+        MonsterSpawnParams p;
+        p.baseDef = &def;
+        p.tile = TilePos{50, 50};
+        p.role = role;
+        p.rollAffixes = true;
+        p.affixZone = "abyss_rift";
+        const EntityId id = rig.monsters.Spawn(p);
+        REQUIRE(id != kNoEntity);
+        for (const MonsterAffix& x : rig.M(id).affixes) n += x.type == EliteAffixType::Unburied ? 1 : 0;
+      }
+      return n;
+    };
+    MonsterDef elite = foot;
+    elite.elite = true;
+    CHECK(rolls(elite, MonsterRole::Regular) > 0);
+    CHECK(rolls(elite, MonsterRole::StoryBoss) == 0);
+    CHECK(rolls(elite, MonsterRole::ZoneMiniBoss) == 0);
+    MonsterDef eliteRemains = remains;
+    eliteRemains.elite = true;
+    CHECK(rolls(eliteRemains, MonsterRole::Regular) == 0);
   }
 }

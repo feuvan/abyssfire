@@ -246,7 +246,12 @@ const CHAMPION_MAX_MEMBERS = 20;
 function checkAmbushChampion(zone: string, c: Record<string, unknown>): void {
   const where = `random_events.json zones.${zone}.ambushChampion`;
   requireTableFeature('events.ambushChampion', where);
-  for (const k of Object.keys(c)) assert(['chance', 'mix', 'leader', 'sharedAffix', 'leaderLoot'].includes(k), `${where}: unknown field '${k}'`);
+  for (const k of Object.keys(c)) assert(['chance', 'mix', 'leader', 'sharedAffix', 'leaderLoot', 'notFlag'].includes(k), `${where}: unknown field '${k}'`);
+  if (c.notFlag !== undefined) {  // 2F review
+    requireTableFeature('events.ambushVariants', `${where}.notFlag`);
+    assert(typeof c.notFlag === 'string' && c.notFlag !== '', `${where}.notFlag: an empty flag id`);
+    warnUnsetFlag(c.notFlag as string, `${where}.notFlag`);
+  }
   assert(typeof c.chance === 'number' && c.chance > 0 && c.chance <= 1, `${where}.chance: expected 0 < chance <= 1`);
   assert(Array.isArray(c.mix) && c.mix.length > 0, `${where}.mix: a champion pack needs members`);
   const storyBoss = CHAPTER_CONFIG.storyBoss.monsterId;
@@ -269,6 +274,30 @@ function checkAmbushChampion(zone: string, c: Record<string, unknown>): void {
     assert(c.leaderLoot === 'magic' || c.leaderLoot === 'rare', `${where}.leaderLoot: expected magic | rare`);
     assert(c.leader !== undefined, `${where}.leaderLoot: a guaranteed leader drop needs a leader`);
   }
+}
+
+// ── 2F review: ambush variants (LoadWorld.cpp; MapData.h ZoneEventDataDef::ambushVariants) ──
+/** DataStore::Finalize's warning: a flag no quest sets (setsFlags) never holds. */
+function warnUnsetFlag(flag: string, where: string): void {
+  const set = (AllQuests as unknown as { setsFlags?: string[] }[]).some(q => (q.setsFlags ?? []).includes(flag));
+  if (!set) console.warn(`  warning: ${where}: no quest sets flag '${flag}' (setsFlags)`);
+}
+function checkAmbushVariants(zone: string, list: unknown): void {
+  const where = `random_events.json zones.${zone}.ambushVariants`;
+  requireTableFeature('events.ambushVariants', where);
+  assert(Array.isArray(list), `${where}: expected an array`);
+  const storyBoss = CHAPTER_CONFIG.storyBoss.monsterId;
+  (list as Record<string, unknown>[]).forEach((v, i) => {
+    for (const k of Object.keys(v)) assert(['whenFlag', 'monsters'].includes(k), `${where}[${i}]: unknown field '${k}'`);
+    assert(typeof v.whenFlag === 'string' && v.whenFlag !== '', `${where}[${i}].whenFlag: an empty flag id`);
+    assert(Array.isArray(v.monsters) && v.monsters.length > 0, `${where}[${i}].monsters: an ambush variant names its monsters`);
+    for (const id of v.monsters as string[]) {
+      const known = typeof id === 'string' && !!((MonstersByZone[zone] ?? []).find(m => m.id === id) ?? getMonsterDef(id));
+      assert(known, `${where}[${i}].monsters: unknown monster '${id}'`);
+      assert(id !== storyBoss, `${where}[${i}].monsters: the story boss is never an ambush member`);
+    }
+    warnUnsetFlag(v.whenFlag as string, `${where}[${i}].whenFlag`);
+  });
 }
 
 function treeIdOf(tree: DialogueTree | undefined): string | null {
@@ -323,6 +352,8 @@ export function exportWorld(): TableResult[] {
   for (const [zone, z] of Object.entries(zoneEvents)) {
     const champion = (z as { ambushChampion?: Record<string, unknown> }).ambushChampion;
     if (champion !== undefined) checkAmbushChampion(zone, champion);  // K6
+    const variants = (z as { ambushVariants?: unknown }).ambushVariants;
+    if (variants !== undefined) checkAmbushVariants(zone, variants);  // 2F review
   }
   const eventMerchant: Record<string, unknown> = {};
   for (const [zone, z] of Object.entries(zoneEvents)) {

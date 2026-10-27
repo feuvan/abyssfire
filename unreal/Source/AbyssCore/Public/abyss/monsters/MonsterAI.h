@@ -101,6 +101,13 @@ ABYSS_API bool ProvokeMonster(MonsterInstance& m, const MonsterAiDef& ai, double
 // Ground speed in tiles/s at full speed (def.speed * 0.03).
 ABYSS_API double MonsterTopSpeed(const MonsterDef& def, const MonsterAiDef& ai);
 
+// The M1 leash (header): its centre and range. A monster with a bound fight (Phases.h PhaseTableBindsFight: an arena or a
+// tether in its phase table; 2F review, DECISIONS M1) is leashed to its authored home (MonsterInstance::homeTile) over
+// max(leashRange, PhaseFightReach); every other monster to its spawn anchor over leashRange. The Returning walk goes to
+// the centre; flee / kite steps and an elite blink stay inside the range.
+ABYSS_API Vec2 MonsterLeashCentre(const MonsterInstance& m);
+ABYSS_API double MonsterLeashRange(const MonsterInstance& m, const MonsterAiDef& ai);
+
 // K5 kite target (header "Kite"): the first point, from kite.max tiles from the hero down to heroDist + kiteSampleTiles
 // (every kiteSampleTiles; at each distance along the away vector - monster - hero, else the reverse heading, else +col -
 // then that vector turned 30 and 60 degrees each way about the hero, in that order) whose tile is walkable, that lies

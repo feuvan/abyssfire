@@ -5,6 +5,8 @@
 // with the port decisions layered on:
 //   M1  leash -> Returning (walk home with the normal ramp, heal leashHealFractionPerSecond * maxHp / s, ignore the
 //       hero, idle on arrival or within returnHomeRadius). ai.leashMode == WebParity keeps the one-tick web leash (Q1).
+//       2F review: a bound fight (an arena or a tether in its phase table) is leashed to its authored home over its
+//       whole fight's reach (MonsterLeashCentre / MonsterLeashRange).
 //   M2  a provoked chase ignores the chaseDropMul drop until provokedUntilMs (ProvokeMonster).
 //   M6  chase / return use A* waypoints while the straight line is blocked, a blocked step slides along the free axis,
 //       and nearby monsters push apart (separation; attackers never leave their attack range).
@@ -82,9 +84,10 @@ Vec2 MonsterAiAwayOr(Vec2 v, Vec2 heading) {
   return Vec2(1, 0);
 }
 
-// K5: `p` lies within the M1 leash range of the spawn anchor and inside the K4 tether (when one holds).
+// K5: `p` lies within the M1 leash range of the leash centre and inside the K4 tether (when one holds).
 bool MonsterAiInBounds(const MonsterInstance& m, const MonsterAiDef& ai, Vec2 p) {
-  if (DistSq(p, m.spawnAnchor.Center()) > ai.leashRange * ai.leashRange) return false;
+  const double range = MonsterLeashRange(m, ai);
+  if (DistSq(p, MonsterLeashCentre(m)) > range * range) return false;
   return !m.hasTether || DistSq(p, m.tetherCentre) <= m.tetherRadius * m.tetherRadius;
 }
 
@@ -166,13 +169,13 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
   if (m.state == MonsterState::Dead) return r;
   const Vec2 start = m.pos;
   const Vec2 hero = in.heroVisible ? in.heroPos : Vec2(ai.hiddenHeroCoord, ai.hiddenHeroCoord);
-  const Vec2 home = m.spawnAnchor.Center();
+  const Vec2 home = MonsterLeashCentre(m);  // the spawn anchor; a bound fight's authored home (2F review)
   // Distances are measured once, before any movement this tick (3.2).
   const double dP = Dist(m.pos, hero);
   const double dS = Dist(m.pos, home);
 
   bool webLeashTick = false;
-  if (dS > ai.leashRange && m.state != MonsterState::Idle && m.state != MonsterState::Returning) {
+  if (dS > MonsterLeashRange(m, ai) && m.state != MonsterState::Idle && m.state != MonsterState::Returning) {
     r.leashed = true;
     m.provokedUntilMs = 0;
     m.hasPatrolTarget = false;
@@ -372,6 +375,15 @@ bool ProvokeMonster(MonsterInstance& m, const MonsterAiDef& ai, double nowMs, do
 }
 
 double MonsterTopSpeed(const MonsterDef& def, const MonsterAiDef& ai) { return def.speed * ai.moveSpeedScale; }
+
+Vec2 MonsterLeashCentre(const MonsterInstance& m) {
+  return PhaseTableBindsFight(m.def) ? m.homeTile.Center() : m.spawnAnchor.Center();
+}
+
+double MonsterLeashRange(const MonsterInstance& m, const MonsterAiDef& ai) {
+  if (!PhaseTableBindsFight(m.def)) return ai.leashRange;
+  return (std::max)(ai.leashRange, PhaseFightReach(m.def, m.homeTile, ai.attackExitMul));
+}
 
 // cos / sin of 30, 45 and 60 degrees as exact double literals (the nearest doubles to the true values).
 namespace {

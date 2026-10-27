@@ -126,9 +126,13 @@ ABYSS_ENUM_STRINGS(FleeEnd, "expired", "sustained", "blocked", "interrupted")
 enum class DespawnReason : uint8_t { Died, Removed, ZoneUnload, PickedUp, Expired, Collected };
 ABYSS_ENUM_STRINGS(DespawnReason, "died", "removed", "zoneUnload", "pickedUp", "expired", "collected")
 
-enum class TeleportReason : uint8_t { Skill, Dodge, TownPortal, Respawn, Load, ZoneEntry, EliteBlink, CatchUp, Debug };
+// Dash (2F review): a monster's charge (MonsterAbilityDef::dash) at its contact; the ability's telegraph announced
+// `to` (EvTelegraph::dashTo) at windup start, so UE may slide the body there before the snap.
+enum class TeleportReason : uint8_t {
+  Skill, Dodge, TownPortal, Respawn, Load, ZoneEntry, EliteBlink, CatchUp, Debug, Dash
+};
 ABYSS_ENUM_STRINGS(TeleportReason, "skill", "dodge", "townPortal", "respawn", "load", "zoneEntry", "eliteBlink",
-                   "catchUp", "debug")
+                   "catchUp", "debug", "dash")
 
 enum class ProjectileKind : uint8_t { HeroSkill, MonsterBolt, PetBolt };
 ABYSS_ENUM_STRINGS(ProjectileKind, "heroSkill", "monsterBolt", "petBolt")

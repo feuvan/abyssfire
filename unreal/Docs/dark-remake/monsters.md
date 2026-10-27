@@ -74,6 +74,24 @@ the edge), not the M1 leash; a boss that walks home (M1, at its normal speed) re
 the boss's authored spawn tile (every phase centre and the `anchor` aim default to it), not the tile the spawn's placement
 jitter picked.
 
+**As built (2F review, pending review; implementation-plan.md *2F review outcomes*, DECISIONS M1 / DR8 *2F review*):**
+- *On-death stacking:* the bursts and rings that land on the hero within any 1000 ms share one cap, 35 % of its maximum
+  life (x the difficulty's damage multiplier), on top of each one's own cap: four Scorched bursts round a melee hero
+  (a champion Muster) can no longer add up to 80 % in a second. Scorched's burst hurts monsters too (x2), like the
+  exploders'.
+- *Ranged specials:* a damaging ability whose `rangeMax` passes the caster's swing reach (attackRange x attackExitMul)
+  also starts between swings, from Chase or Attack, on its own cooldown with the hero inside [rangeMin, rangeMax], like a
+  raise or a call (Valdras's Breach-seep at a hero far off the dais, his Lunge at one who stepped back). Without a
+  `rangeMax` an ability stays bound by the swing reach.
+- *Status-only strikes:* `dmgMul 0` on a ground strike rolls no damage; a body inside takes its status (the dodge roll's
+  i-frames avoid it). The loader wants its `status` and no `hitsMonsters`.
+- *Clipless abilities:* a hazard or a call may name no clip (the ground decal or the call's ripple is the tell); it then
+  authors its `windupMs`, plays no animation and does not root its caster.
+- *Charges:* a line ability may `dash`: the caster stands at the line's far end at contact, after the hit (the farthest
+  point every 0.25 tiles of which is walkable, outside the camps and inside its leash and tether, fixed at windup start).
+- *Bound fights:* a monster whose phase table holds an arena or a tether is leashed to its authored home (the dais) over
+  its whole fight's reach (DECISIONS M1 *2F review*), so obeying the ring never sends the boss home.
+
 ### 1.4 The mechanic ramp
 
 | Level | New idea | Where |
@@ -154,6 +172,26 @@ regular round(0.75 × Exp) (8 / 11 / 13 / 14 / 18 / 23 / 21 / 21 / 26 / 30 / 36 
 Corpseherd keeps 95), so a full Chapter 1 ends at Lv 13-14 (DR9's 12-14). `hunt_hungerbell` is hp ×2 / dmg ×1.0 (below).
 The Corpseherd's `family` is `unburied` (her violet eyes are the Unburied marker, §1.2; her voice stays the authored
 lullaby and handbell, §2.5).
+
+**As built (2F, the Wave 2 content; DECISIONS DR9 / M5 / DR8 *2F*, pending review; implementation-plan.md *2F
+outcomes*, chapter1.md §19):** every [W2] behaviour of this section is authored with the numbers given here, with these
+differences. Valdras is 14000 HP / 32 damage (the playthrough gate's numbers; the table's 900 / 20 is the W1 fallback);
+his P2 muster circles belong to `rollcall_standard_bearer` 亡旗手 (a second standard-bearer definition whose `roll_call`
+summons a footman at each ash circle); his Breach-seep is one line. The arbalester kites below 3 tiles (`kite {3, 6}`),
+the Corpseherd holds 2-3 (range 3.0 kept). Hungerbell's call is a hunt ability every 9 s next to the slam (`supper_bell`,
+remake feature `quest.huntAbilities`), not part of each slam. Every Chapter 1 definition and hunt carries the 35 % hit
+cap and an authored wind-up on every ability (Muster and Call the Flock 900 ms, the drum 2000 ms). The 不葬 Unburied
+affix can roll on an Unburied boss, where it only adds its loot bonus (bosses never rise).
+
+**As built (2F review, pending review; implementation-plan.md *2F review outcomes*, chapter1.md §19):** Valdras is 9000
+HP / 20 damage (DR9's per-class band, *2F review*; the design's damage); Banner Sweep and Lunge are fire like his other
+specials (§2.6); Breach-seep plays no clip and reaches a hero 10 tiles off the dais (a ranged special, §1.3); Lunge is a
+charge at a hero 2.5-5 tiles off (`dash`). The Corpseherd has 600 HP (was 300; the hero meets her at Lv 10) and her Keen
+is a status-only ring (slow 25 % 3 s, no damage) every 12 s. The zealot's frenzy has no Roar (it surges at once, §2.3).
+Hungerbell's call plays no clip. The drummer's +10 % attack speed is an aura while he lives, not only while he drums
+(its look under the Living's no-glow rule is 2G's). The Unburied affix is not rolled for a monster that can never rise
+(§3). The hunts keep their numbers: their exp is a multiple of their HP multiplier, so a sturdier hunt would push the
+hero past DR9's band.
 
 Hunts (quest_hunts.json; hunt defaults def ×1.2, exp × max(3, hpMul), gold ×3, aggro ≥ 7, visual scale 1.25):
 
@@ -363,6 +401,13 @@ effects [W2]. `emerald_plains` keeps exactly one affix.
 **As built (1B review, DECISIONS DR5, pending review):** `fire_enhanced` is 焦灼 / Scorched, `extra_strong` 蛮力 / Brutish
 and `curse_aura` 哀咒 / Dirgecursed: 焚誓 is the prologue's Burned Oath (and Ignaroth's 焚誓者), 赤誓 reads as the Red-Oath
 faction and 丧钟 as the hub 丧钟堡, and the elite label puts the affix before the monster's name.
+
+**As built (2F review, pending review):** an affix with a rise (`riseAgain`: the Unburied) is not rolled for a monster
+that can never rise (`MonsterMayRise`: a story boss, mini-boss, seal keeper or hunt leader, a Raised body, a body that
+leaves no corpse), nor kept by such a member of a champion pack's shared roll; the pool's draws are those of a pool
+without it. Scorched's burst also hurts monsters (x2), and on-death damage shares a 35 %-per-second cap (§1.3). The
+story boss's and a zone mini-boss's roll is pinned from their first fight until they die and saved (DECISIONS M7 *2F
+review*), so reloading mid-fight does not re-roll it.
 
 **Champion packs [W2]:** the **Muster** (a standard-bearer and three footmen sharing one affix, from the ambush event),
 the **Hollow Watch** (Deserters' Hollow leader, elite with one affix, drummer and four deserters). *As built (2D,

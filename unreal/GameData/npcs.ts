@@ -5,16 +5,24 @@ import { DialogueTrees } from './dialogueTrees';
 // (DECISIONS DR3) re-cast for Knellwatch (丧钟堡): blacksmith = Hald Swordmelter, merchant = Quartermaster Vira, stash =
 // Tamsin the Gravewarden, quest_elder = Captain Serin Harrow, plains_herbalist = Mother Marl, plains_wanderer = Corran
 // the deserter; knell_chaplain (Brother Aldwin) and crow_trader (Mag Crowe) are new. `blacksmith`, `merchant` and `stash`
-// also stand in later chapters' camps, which stay sealed in milestone 1 (DECISIONS W7) until their own dark pass. Each
-// keeps one line in Wave 1 (chapter1.md §3: the quest-gated lines need the Wave 2 NPC `lines`; their strings are ready as
-// `data.npc.<id>.after.<questId>`, GameData/i18n/ch1Npcs.ts). The words live in i18n; `name` / `dialogue` here are the
-// zh-CN data copies.
+// also stand in later chapters' camps, which stay sealed in milestone 1 (DECISIONS W7) until their own dark pass. The
+// words live in i18n; `name` / `dialogue` here are the zh-CN data copies.
+//
+// Wave 2 (package 2F, chapter1.md §3 *Quest-gated lines*, K6 `lines`): once a quest is turned in an NPC says its after
+// line (`data.npc.<id>.after.<questId>`, GameData/i18n/ch1Npcs.ts). The first holding line is logged on interaction, the
+// linear panel shows the second (else the first): a one-line NPC puts the after line in front of its Wave 1 line, so
+// before the turn-in the W1 line is both logged and shown, after it the after line is logged and the panel keeps the W1
+// line; Brother Aldwin gates his line 0 with `notTurnedIn` and keeps his always-on second line (2E review R6).
+const afterTurnIn = (npcId: string, questId: string) =>
+  ({ key: `data.npc.${npcId}.after.${questId}`, when: { quest: questId, state: 'turnedIn' as const } });
 export const NPCDefinitions: Record<string, NPCDefinition> = {
   blacksmith: {
     id: 'blacksmith',
     name: '哈尔德·熔剑',
     type: 'blacksmith',
     dialogue: ['每把剑的柄脚都刻着名字。剑我熔了，名字留给队长。'],
+    // After S3: the boy's tag by the forge.
+    lines: [afterTurnIn('blacksmith', 'q_rf_tag_thief'), { key: 'data.npc.blacksmith.dialogue.0' }],
     shopItems: ['w_short_sword', 'w_broad_sword', 'w_dagger', 'w_stiletto', 'w_short_bow', 'w_oak_staff', 'w_wooden_shield', 'a_leather_helm', 'a_leather_armor', 'a_leather_gloves', 'a_leather_boots', 'a_leather_belt'],
   },
   merchant: {
@@ -35,6 +43,8 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
     name: '瑟琳·哈洛队长',
     type: 'quest',
     dialogue: ['坑里爬出来的。能站着，就能拿刀。'],
+    // After S4, whichever hand took Harke's head: 「逃兵就是逃兵。……我也是。」
+    lines: [afterTurnIn('quest_elder', 'q_rf_oathless'), { key: 'data.npc.quest_elder.dialogue.0' }],
     // The main line and S1 (chapter1.md §7: six quests).
     quests: ['q_rf_burial_detail', 'q_rf_black_blood', 'q_rf_gnawed_field', 'q_rf_ashwheat', 'q_rf_marshal', 'q_rf_last_toll'],
     dialogueTree: DialogueTrees['quest_elder'],
@@ -100,6 +110,11 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
     type: 'merchant',
     // S1's talk target (the breach-blood samples); leaves for the Ember Tower in the finale (tower_herbalist).
     dialogue: ['别碰那黑血。碰过的人都不喊疼了——那才最疼。'],
+    // After S1 (the Captain's card turns it in): S1's discovery is hers, 「血里有声音……」 (chapter1.md §19).
+    lines: [afterTurnIn('plains_herbalist', 'q_rf_black_blood'), { key: 'data.npc.plains_herbalist.dialogue.0' }],
+    // 2F review (chapter1.md §3, cs_rf_finale step 12: she leaves for the tower in the finale; K6 `visibleWhen`): gone from
+    // the dressing station once M5 is turned in - unless S1 is under way then, which needs her (the validator's rule).
+    visibleWhen: { any: [{ quest: 'q_rf_last_toll', state: 'notTurnedIn' }, { quest: 'q_rf_black_blood', state: 'active' }] },
     shopItems: ['c_hp_potion_s', 'c_hp_potion_m', 'c_mp_potion_s', 'c_antidote'],
   },
   plains_wanderer: {
@@ -120,6 +135,12 @@ export const NPCDefinitions: Record<string, NPCDefinition> = {
     name: '奥德温修士',
     type: 'quest',
     dialogue: ['钟声是给活人听的。死人……另有人在跟他们说话。', '我替每个名字念一遍经。念到第三百个，我开始怕自己忘了念给谁。'],
+    // After M5 his blessing replaces line 0; line 1 stays on (chapter1.md §3).
+    lines: [
+      afterTurnIn('knell_chaplain', 'q_rf_last_toll'),
+      { key: 'data.npc.knell_chaplain.dialogue.0', when: { quest: 'q_rf_last_toll', state: 'notTurnedIn' } },
+      { key: 'data.npc.knell_chaplain.dialogue.1' },
+    ],
     quests: ['q_rf_barrowmoss', 'q_rf_tag_thief', 'q_rf_lanternwisp', 'q_rf_hallowed_ground'],
   },
   // Mag Crowe trades in Crowmarket (camp 2), which used the shared `merchant` before: same wares.

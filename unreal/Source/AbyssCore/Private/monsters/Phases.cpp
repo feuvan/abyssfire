@@ -79,6 +79,29 @@ double ArenaTickDamage(double heroMaxHp, double dpsPctMaxHp, double tickMs, doub
   return (std::max)(1.0, std::floor(raw + kPhaseFloorSlack));
 }
 
+bool PhaseTableBindsFight(const MonsterDef& def) {
+  for (const MonsterPhaseDef& row : def.phases) {
+    if (row.arena.present || row.leash.present) return true;
+  }
+  return false;
+}
+
+double PhaseFightReach(const MonsterDef& def, TilePos home, double attackExitMul) {
+  double reach = 0;
+  const Vec2 h = home.Center();
+  for (const MonsterPhaseDef& row : def.phases) {
+    if (row.arena.present) {
+      const double off = row.arena.hasCentre ? Dist(row.arena.centre.Center(), h) : 0.0;
+      reach = (std::max)(reach, off + (std::max)(row.arena.fromR, row.arena.toR) + def.attackRange * attackExitMul);
+    }
+    if (row.leash.present) {
+      const double off = row.leash.hasCentre ? Dist(row.leash.centre.Center(), h) : 0.0;
+      reach = (std::max)(reach, off + row.leash.radius + kTetherSlackTiles);
+    }
+  }
+  return reach;
+}
+
 Vec2 TetherGoal(Vec2 centre, double radius, Vec2 target) {
   const Vec2 d = target - centre;
   const double len2 = d.LengthSq();

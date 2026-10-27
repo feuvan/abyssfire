@@ -32,6 +32,7 @@
 #include "abyss/items/Inventory.h"
 #include "abyss/items/ItemCompare.h"
 #include "abyss/items/Shop.h"
+#include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/pets/PetSystem.h"
 #include "abyss/quests/Dialogue.h"
 #include "abyss/quests/Lore.h"
@@ -39,6 +40,7 @@
 #include "abyss/sim/GameSim.h"
 #include "abyss/sim/Snapshot.h"
 #include "abyss/story/StoryDirector.h"
+#include "abyss/world/Grid.h"
 #include "abyss/world/RandomEvents.h"
 
 namespace abyss {
@@ -122,6 +124,15 @@ struct AutoPilotImpl {
   std::vector<SeenMonster> monsterDefs;  // the monsters before the frame (kill attribution)
   int32_t lastSteps = 0;
   bool lastFrozen = false;
+  double heroHpTrack = 0;  // the hero's life before the next hit of the frame (one-hit deaths)
+  std::deque<std::pair<double, double>> burst;  // 2F review: {sim ms, damage} the hero took in the last second
+  // 2F review: the ability each monster is winding up ({entity, ability id, contact}): a cancel before contact counts.
+  struct PendingUse {
+    EntityId entity = kNoEntity;
+    std::string id;
+    double contactMs = 0;
+  };
+  std::vector<PendingUse> pendingUses;
 
   // ---- script ----
   struct Step {
@@ -349,6 +360,234 @@ struct AutoPilotImpl {
     }
     return false;
   }
+  // ---- W2 rules (dark remake 2F; implementation-plan.md 6): telegraphs, hazards, arenas, priority targets, Feed ----
+  // Every rule reads the snapshot (and the definitions in `data`), never a content id, and works for every class.
+  //
+  // Danger: a damaging ground telegraph whose contact has not come (a K2 strike: circle / cone / line / ring / hazard;
+  // a K3 on-death fuse), or a live K2 hazard. Raise / summon markers are no danger.
+  struct ApDanger {
+    AbilityShapeDef shape;
+    Vec2 origin, dir{1, 0};
+    double contactMs = 0;  // a telegraph's contact; a hazard's end
+    bool hazard = false;
+  };
+  static bool DamagingTelegraph(AbilityKind k) {
+    return k == AbilityKind::Circle || k == AbilityKind::Cone || k == AbilityKind::Line || k == AbilityKind::Ring ||
+           k == AbilityKind::Hazard;
+  }
+  std::vector<ApDanger> Dangers() const {
+    std::vector<ApDanger> out;
+    const double now = Now();
+    for (const TelegraphView& t : V().telegraphs) {
+      if (!DamagingTelegraph(t.kind) || t.contactMs <= now) continue;
+      if (now < t.startMs + cfg.reactionMs) continue;  // 2F review: not seen yet (AutoPilotConfig::reactionMs)
+      out.push_back(ApDanger{t.shape, t.origin, t.dir, t.contactMs, false});
+    }
+    for (const HazardView& hz : V().hazards) {
+      if (hz.untilMs <= now || now < hz.startMs + cfg.reactionMs) continue;
+      out.push_back(ApDanger{hz.shape, hz.origin, hz.dir, hz.untilMs, true});
+    }
+    return out;
+  }
+  // The hero's body (0.35) plus `margin` touches a danger.
+  static bool InDanger(const std::vector<ApDanger>& ds, Vec2 p, double margin) {
+    for (const ApDanger& d : ds) {
+      if (ShapeContains(d.shape, d.origin, d.dir, p, kAbilityBodyRadiusTiles + margin)) return true;
+    }
+    return false;
+  }
+  // Inside every K4 arena with `margin` to spare (its ring hurts outside).
+  bool InsideArenas(Vec2 p, double margin) const {
+    for (const ArenaView& a : V().arenas) {
+      if (Dist(p, a.centre) > a.radius - margin) return false;
+    }
+    return true;
+  }
+  bool WalkableAt(Vec2 p) const { return V().zone.grid == nullptr || V().zone.grid->WalkableAt(p); }
+  bool StraightWalkable(Vec2 a, Vec2 b) const {
+    const double len = Dist(a, b);
+    const int n = static_cast<int>(std::ceil(len / 0.4));
+    for (int i = 1; i <= n; ++i) {
+      if (!WalkableAt(a + (b - a) * (static_cast<double>(i) / n))) return false;
+    }
+    return true;
+  }
+  // The nearest spot out of every danger and inside the arenas, reached in a straight walkable line; among spots as near
+  // (16 directions on rings of growing radius), the one nearest `prefer` (the fight).
+  // `fence` (a named fight's home and radius, else none): no spot farther out than both the radius and the hero now.
+  std::optional<Vec2> SafeSpot(const std::vector<ApDanger>& ds, Vec2 prefer, const Vec2* fence = nullptr,
+                               double fenceR = 0) const {
+    const Vec2 h = HeroPos();
+    static constexpr double kRadii[] = {0.5, 0.9, 1.3, 1.8, 2.3, 2.9, 3.6, 4.5, 5.5};
+    for (double r : kRadii) {
+      std::optional<Vec2> best;
+      double bestD = 1e18;
+      for (int k = 0; k < 16; ++k) {
+        const double a = k * kPi / 8.0;
+        const Vec2 p = h + Vec2(DetCos(a), DetSin(a)) * r;
+        if (!WalkableAt(p) || InDanger(ds, p, 0.25) || !InsideArenas(p, 0.75) || !StraightWalkable(h, p)) continue;
+        if (fence != nullptr && Dist(p, *fence) > fenceR && Dist(p, *fence) > Dist(h, *fence)) continue;
+        const double d = DistSq(p, prefer);
+        if (d < bestD) {
+          bestD = d;
+          best = p;
+        }
+      }
+      if (best.has_value()) return best;
+    }
+    return std::nullopt;
+  }
+  // Tile vector -> CmdDodge's screen direction (the inverse of Locomotion's ScreenDirToTile).
+  static Vec2 TileDirToScreen(Vec2 t) { return Vec2((t.x - t.y) * 0.5, (t.x + t.y) * 0.5); }
+  // Out of a danger / back inside an arena: true when it moved the hero (the caller skips its attack this frame).
+  int64_t evadeOrderFrame = -1000;
+  Vec2 evadeSpot;
+  bool evading = false;
+  bool Evade(Vec2 prefer, const Vec2* fence = nullptr, double fenceR = 0) {
+    const Vec2 h = HeroPos();
+    const std::vector<ApDanger> ds = Dangers();
+    const bool danger = InDanger(ds, h, 0.1);
+    const bool outside = !InsideArenas(h, 0.4);
+    if (!danger && !outside) {
+      evading = false;
+      return false;
+    }
+    std::optional<Vec2> spot = SafeSpot(ds, prefer, fence, fenceR);
+    if (!spot.has_value() && fence != nullptr) spot = SafeSpot(ds, prefer);
+    if (!spot.has_value() && outside) {  // no spot in reach: walk toward the arena's centre
+      for (const ArenaView& a : V().arenas) {
+        if (Dist(h, a.centre) > a.radius - 0.4) {
+          spot = a.centre + (h - a.centre).Normalized() * (std::max)(0.0, a.radius - 2.0);
+        }
+      }
+    }
+    if (!spot.has_value()) return false;  // cornered: fight on
+    if (!evading) {
+      evading = true;
+      ++stats.telegraphDodges;
+    }
+    // The dodge roll's i-frames take a contact the walk cannot outrun (a strike due within 200 ms).
+    double soonest = 1e18;
+    for (const ApDanger& d : ds) {
+      if (!d.hazard && ShapeContains(d.shape, d.origin, d.dir, h, kAbilityBodyRadiusTiles)) {
+        soonest = (std::min)(soonest, d.contactMs);
+      }
+    }
+    if (cfg.dodgeRoll && soonest - Now() <= 200 && V().hero.dodgeCooldownRemainingMs <= 0 && Dist(*spot, h) > 0.3) {
+      Submit(CmdDodge{TileDirToScreen(*spot - h).Normalized()});
+      evadeOrderFrame = frames;
+      evadeSpot = *spot;
+      return true;
+    }
+    if (frames - evadeOrderFrame > 8 || Dist(*spot, evadeSpot) > 0.75) {
+      Submit(CmdMoveTo{*spot});
+      evadeOrderFrame = frames;
+      evadeSpot = *spot;
+    }
+    return true;
+  }
+  // A strike is coming: hold off an attack that would walk into it (the target stands in it, or the approach to the
+  // hero's reach crosses it). Long hazards hold only near their end (else the hero would wait out a 4 s brand).
+  bool ApproachBlocked(const MonsterView& m) const {
+    const std::vector<ApDanger> all = Dangers();
+    std::vector<ApDanger> ds;
+    const double now = Now();
+    for (const ApDanger& d : all) {
+      if (!d.hazard || d.contactMs - now <= 1500) ds.push_back(d);
+    }
+    if (ds.empty()) return false;
+    const Vec2 h = HeroPos();
+    const double reach = V().hero.derived.attackRange;
+    const double d = Dist(h, m.pos);
+    if (d <= reach + 0.5) return false;  // it can strike from where it stands
+    const Vec2 stop = m.pos + (h - m.pos).Normalized() * reach;
+    const int n = static_cast<int>(std::ceil(Dist(h, stop) / 0.4));
+    for (int i = 1; i <= n; ++i) {
+      if (InDanger(ds, h + (stop - h) * (static_cast<double>(i) / n), 0.1)) return true;
+    }
+    return false;
+  }
+  // Priority targets (implementation-plan.md 6 "target priority": raisers, standard-bearers, drummers first): a support
+  // caster (a raise / summon / buff / call ability) or an aura owner 2, a pack leader 1, the rest 0.
+  const MonsterDef* DefOf(const std::string& defId) const {
+    if (const MonsterDef* d = data.Monsters().Find(defId)) return d;
+    const HuntDef* h = data.Monsters().FindHunt(defId);
+    return h != nullptr ? &h->defNormal : nullptr;
+  }
+  int ThreatPriority(const MonsterView& m) const {
+    if (m.auraRadius > 0) return 2;
+    if (const MonsterDef* d = DefOf(m.defId)) {
+      for (const MonsterAbilityDef& a : d->abilities) {
+        if (AbilityKindCastsBetweenSwings(a.kind)) return 2;
+      }
+    }
+    return m.packLeader ? 1 : 0;
+  }
+  // The fight to take within `radius`: a priority target first (within the radius + 1.5), else the nearest.
+  EntityId BestThreat(double radius) const {
+    EntityId best = kNoEntity;
+    int bestP = -1;
+    double bestD = 0;
+    for (const MonsterView& m : V().monsters) {
+      if (!m.alive || (m.state != MonsterState::Chase && m.state != MonsterState::Attack)) continue;
+      const double d = Dist(m.pos, HeroPos());
+      const int p = ThreatPriority(m);
+      if (d > (p > 0 ? radius + 1.5 : radius)) continue;
+      if (p > bestP || (p == bestP && d < bestD)) {
+        bestP = p;
+        bestD = d;
+        best = m.id;
+      }
+    }
+    return best;
+  }
+  // Feed (K4, a boss healing from its Raised killed near its centre; 2C handoff "kill adds away from a feeding boss's
+  // centre"): the zones of the living monsters in a feeding phase, centre = the row's, else the monster's authored map
+  // spawn tile (its dais), radius = the row's.
+  struct ApFeedZone {
+    Vec2 centre;
+    double radius = 0;
+  };
+  std::vector<ApFeedZone> FeedZones() const {
+    std::vector<ApFeedZone> out;
+    for (const MonsterView& m : V().monsters) {
+      if (!m.alive || m.phase <= 0) continue;
+      const MonsterDef* d = DefOf(m.defId);
+      if (d == nullptr || static_cast<size_t>(m.phase) > d->phases.size()) continue;
+      const PhaseFeedDef& f = d->phases[static_cast<size_t>(m.phase - 1)].feed;
+      if (!f.present) continue;
+      std::optional<Vec2> centre;
+      if (f.hasCentre) centre = f.centre.Center();
+      if (!centre.has_value()) {
+        if (const MapDef* map = data.World().FindMap(V().zone.mapId)) {
+          for (const MapSpawnDef& s : map->spawns) {
+            if (s.monsterId == m.defId && !centre.has_value()) centre = s.pos.Center();
+          }
+        }
+      }
+      if (centre.has_value()) out.push_back(ApFeedZone{*centre, f.radius});
+    }
+    return out;
+  }
+  // A Raised standing inside a feed zone: the spot to lure it out to (the zone's edge + 2.5 on the hero's side).
+  std::optional<Vec2> LureSpot(const MonsterView& m) const {
+    if (m.role != MonsterRole::Raised) return std::nullopt;
+    for (const ApFeedZone& z : FeedZones()) {
+      if (Dist(m.pos, z.centre) >= z.radius + 0.5) continue;
+      Vec2 away = HeroPos() - z.centre;
+      if (away.Length() < 0.5) away = m.pos - z.centre;
+      if (away.Length() < 1e-6) away = Vec2(1, 0);
+      away = away.Normalized();
+      for (int k = 0; k < 8; ++k) {  // the away vector, then turned 30 degrees each way
+        const double turn = (k % 2 == 0 ? 1 : -1) * ((k + 1) / 2) * (kPi / 6.0);
+        const Vec2 dir(away.x * DetCos(turn) - away.y * DetSin(turn), away.x * DetSin(turn) + away.y * DetCos(turn));
+        const Vec2 p = z.centre + dir * (z.radius + 2.5);
+        if (WalkableAt(p) && InsideArenas(p, 0.75)) return p;
+      }
+    }
+    return std::nullopt;
+  }
+
   PrimaryStat MainStat() const {
     switch (cfg.cls) {
       case ClassId::Warrior: return PrimaryStat::Str;
@@ -540,6 +779,9 @@ struct AutoPilotImpl {
       Milestone(AutoPilotMilestone::LevelUp, std::to_string(l->level));
     } else if (std::holds_alternative<EvHeroDied>(e)) {
       ++stats.deaths;
+      for (AutoPilotFight& f : stats.fights) {
+        if (f.endMs < 0) ++f.heroDeaths;
+      }
       Note("hero died");
       Milestone(AutoPilotMilestone::HeroDied, std::string());
     } else if (const EvExpGained* x = std::get_if<EvExpGained>(&e)) {
@@ -570,6 +812,7 @@ struct AutoPilotImpl {
         Milestone(AutoPilotMilestone::PetObtained, p->petId);
       }
     } else if (const EvHit* h = std::get_if<EvHit>(&e)) {
+      ObserveFightHit(*h);
       if (h->killed && h->targetFaction == Faction::Monster) {
         ++stats.kills;
         std::string killedDef;
@@ -587,6 +830,54 @@ struct AutoPilotImpl {
         }
         if (stats.kills == 1) Milestone(AutoPilotMilestone::FirstKill, killedDef);
       }
+    } else if (const EvMonsterRaised* rs = std::get_if<EvMonsterRaised>(&e)) {
+      ++stats.raised;
+      if (rs->selfRise) ++stats.selfRises;
+    } else if (std::holds_alternative<EvBlock>(e)) {
+      ++stats.blocks;
+    } else if (const EvMonsterFlee* fl = std::get_if<EvMonsterFlee>(&e)) {
+      if (!fl->ended) ++stats.flees;
+    } else if (const EvMonsterBuffCast* bc = std::get_if<EvMonsterBuffCast>(&e)) {
+      ++stats.supportCasts;
+      if (AutoPilotFight::AbilityUse* u = FightAbility(bc->entity, bc->abilityId)) ++u->started;  // resolved at contact
+    } else if (const EvMonsterAttackCancelled* ac = std::get_if<EvMonsterAttackCancelled>(&e)) {
+      const double now = view != nullptr ? view->simNowMs : 0;
+      for (const PendingUse& pu : pendingUses) {
+        if (pu.entity != ac->monster || now > pu.contactMs) continue;
+        if (AutoPilotFight::AbilityUse* u = FightAbility(pu.entity, pu.id)) ++u->cancelled;
+      }
+      std::erase_if(pendingUses, [ac](const PendingUse& pu) { return pu.entity == ac->monster; });
+    } else if (const EvCorpseRemoved* cr = std::get_if<EvCorpseRemoved>(&e)) {
+      if (cr->reason == CorpseRemoveReason::Consumed) ++stats.corpsesEaten;
+    } else if (const EvTelegraph* tg = std::get_if<EvTelegraph>(&e)) {
+      if (tg->source == TelegraphSource::OnDeath) {
+        ++stats.onDeathFuses;
+      } else {
+        ObserveAbilityStart(tg->entity, tg->abilityId, tg->contactMs);
+      }
+    } else if (const EvStatusApplied* sa = std::get_if<EvStatusApplied>(&e)) {
+      if (sa->target == kHeroEntityId && sa->type == StatusType::Ashnumb) {
+        ++stats.ashnumbHits;
+        stats.ashnumbMaxStacks = (std::max)(stats.ashnumbMaxStacks, static_cast<int>(sa->value));
+      }
+    } else if (const EvRandomEvent* re = std::get_if<EvRandomEvent>(&e)) {
+      if (re->champion && !re->resolved) ++stats.championAmbushes;
+    } else if (std::holds_alternative<EvWorldFlag>(e)) {
+      ++stats.worldFlags;
+    } else if (std::holds_alternative<EvPermanentReward>(e)) {
+      ++stats.permanentRewards;
+    } else if (const EvMonsterPhase* ph = std::get_if<EvMonsterPhase>(&e)) {
+      if (!ph->reset) ++stats.phases;
+      if (AutoPilotFight* f = OpenFight(ph->entity)) {
+        if (ph->reset) {
+          f->phaseMs.clear();
+          ++f->resets;
+        } else {
+          f->phaseMs.push_back(view != nullptr ? view->simNowMs : 0);
+        }
+      }
+    } else if (const EvMonsterFeed* fd = std::get_if<EvMonsterFeed>(&e)) {
+      if (AutoPilotFight* f = OpenFight(fd->entity)) ++f->feeds;
     } else if (std::holds_alternative<EvSaveRequested>(e)) {
       ++stats.saveRequests;
     } else if (const EvMiniBossDialogue* mb = std::get_if<EvMiniBossDialogue>(&e)) {
@@ -596,6 +887,125 @@ struct AutoPilotImpl {
       }
     } else if (const EvZone* z = std::get_if<EvZone>(&e)) {
       if (z->phase == EvZone::Phase::Entered) Milestone(AutoPilotMilestone::ZoneEntered, z->mapId);
+    }
+  }
+
+  // Dark remake 2F: named fights (hunt leaders, mini-bosses, the story boss) from the first hit they and the hero trade
+  // to their kill; the largest hit the hero takes; deaths to one hit. The stats only observe them (no command depends
+  // on a fight record); a named monster's leash (MonsterView::leashCentre / leashRange) keeps the bot's fight inside it
+  // (ApEngage).
+  static bool NamedRole(MonsterRole r) {
+    return r == MonsterRole::HuntLeader || r == MonsterRole::ZoneMiniBoss || r == MonsterRole::SubDungeonMiniBoss ||
+           r == MonsterRole::StoryBoss;
+  }
+  // 2F review: an ability use of a named monster (AutoPilotFight::abilities); the uses before its fight opened (a raise
+  // at the pull, before the first hit) wait in earlyUses and join the fight when it opens.
+  std::vector<std::pair<EntityId, std::vector<AutoPilotFight::AbilityUse>>> earlyUses;
+  AutoPilotFight::AbilityUse* FightAbility(EntityId entity, const std::string& id) {
+    std::vector<AutoPilotFight::AbilityUse>* uses = nullptr;
+    if (AutoPilotFight* f = OpenFight(entity)) {
+      uses = &f->abilities;
+    } else {
+      const SeenMonster* m = SeenById(entity);
+      if (m == nullptr || !NamedRole(m->role)) return nullptr;
+      for (const AutoPilotFight& done : stats.fights) {
+        if (done.entity == entity) return nullptr;  // its fight is over
+      }
+      for (auto& [e, v] : earlyUses) {
+        if (e == entity) uses = &v;
+      }
+      if (uses == nullptr) {
+        earlyUses.emplace_back(entity, std::vector<AutoPilotFight::AbilityUse>());
+        uses = &earlyUses.back().second;
+      }
+    }
+    for (AutoPilotFight::AbilityUse& u : *uses) {
+      if (u.id == id) return &u;
+    }
+    uses->push_back(AutoPilotFight::AbilityUse{id, 0, 0});
+    return &uses->back();
+  }
+  void ObserveAbilityStart(EntityId entity, const std::string& id, double contactMs) {
+    for (const PendingUse& p : pendingUses) {
+      if (p.entity == entity && p.id == id && p.contactMs == contactMs) return;  // a raise's other markers
+    }
+    std::erase_if(pendingUses, [entity](const PendingUse& p) { return p.entity == entity; });
+    pendingUses.push_back(PendingUse{entity, id, contactMs});
+    if (AutoPilotFight::AbilityUse* u = FightAbility(entity, id)) ++u->started;
+  }
+  const SeenMonster* SeenById(EntityId id) const {
+    for (const SeenMonster& m : monsterDefs) {
+      if (m.id == id) return &m;
+    }
+    return nullptr;
+  }
+  AutoPilotFight* OpenFight(EntityId id) {
+    for (AutoPilotFight& f : stats.fights) {
+      if (f.entity == id && f.endMs < 0) return &f;
+    }
+    return nullptr;
+  }
+  void ObserveFightHit(const EvHit& h) {
+    const double now = view != nullptr ? view->simNowMs : 0;
+    const bool onHero = h.target == kHeroEntityId;
+    const bool byHero = h.source == kHeroEntityId;
+    if (onHero && !h.dodged && !h.iframeAvoided && h.amount > 0) {
+      const double before = heroHpTrack;
+      heroHpTrack = h.targetHp;
+      // 2F review: the burst - every hit and tick of the last 1000 ms.
+      burst.emplace_back(now, h.amount);
+      while (!burst.empty() && burst.front().first <= now - 1000.0) burst.pop_front();
+      if (h.targetMaxHp > 0) {
+        double sum = 0;
+        for (const auto& [t, amount] : burst) sum += amount;
+        stats.maxBurstTakenPct = (std::max)(stats.maxBurstTakenPct, 100.0 * sum / h.targetMaxHp);
+      }
+      const SeenMonster* by = SeenById(h.source);
+      if (!h.tick && h.targetMaxHp > 0) {
+        const double pct = 100.0 * h.amount / h.targetMaxHp;
+        if (pct > stats.maxHitTakenPct) {
+          stats.maxHitTakenPct = pct;
+          stats.maxHitTakenBy = by != nullptr ? by->defId : std::string();
+        }
+      }
+      if (h.killed && h.targetMaxHp > 0 && before >= 0.5 * h.targetMaxHp) {
+        ++stats.oneHitDeaths;
+        Note("killed by one hit of " + std::to_string(static_cast<int>(h.amount)) + " from " +
+             (by != nullptr ? by->defId : std::string("?")));
+      }
+    }
+    const EntityId other = onHero ? h.source : (byHero ? h.target : kNoEntity);
+    if (other != kNoEntity && OpenFight(other) == nullptr) {
+      const SeenMonster* m = SeenById(other);
+      // A fight never reopens on its killed monster (its brand ticking on, an overkill hit in the kill's frame).
+      bool fought = false;
+      for (const AutoPilotFight& f : stats.fights) fought = fought || f.entity == other;
+      if (m != nullptr && NamedRole(m->role) && !fought) {
+        AutoPilotFight nf;
+        nf.defId = m->defId;
+        nf.role = m->role;
+        nf.entity = other;
+        nf.startMs = now;
+        if (const MonsterView* mv = FindMonster(other)) {
+          for (EliteAffixType a : mv->affixes) nf.affixes += (nf.affixes.empty() ? "" : "+") + std::string(EnumName(a));
+        }
+        for (size_t k = 0; k < earlyUses.size(); ++k) {  // 2F review: its uses before the first hit
+          if (earlyUses[k].first != other) continue;
+          nf.abilities = std::move(earlyUses[k].second);
+          earlyUses.erase(earlyUses.begin() + static_cast<std::ptrdiff_t>(k));
+          break;
+        }
+        stats.fights.push_back(nf);
+      }
+    }
+    // A kill ends its fight, whoever dealt it (the hero, its beast, a burst).
+    if (h.killed && h.targetFaction == Faction::Monster) {
+      if (AutoPilotFight* f = OpenFight(h.target)) {
+        f->endMs = now;
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), " fight %.1f s", (f->endMs - f->startMs) / 1000.0);
+        Note(f->defId + buf);
+      }
     }
   }
 
@@ -737,6 +1147,8 @@ class ApEngage final : public ApTask {
   double timeoutSec_;
   int depth_;
   int64_t end_ = 0, lastOrder_ = -1000, lastCast_ = -1000;
+  // W2 (2F): the last priority check, a lure under way (its end) and a hold (the frame it began).
+  int64_t lastPriorityCheck_ = -1000, lureEnd_ = -1, holdFrom_ = -1;
 };
 
 // Walks to `goal` (fighting whatever attacks on the way). True once within `arrive` tiles. A `required` walk that times
@@ -783,6 +1195,77 @@ ApRun ApEngage::Run(AutoPilotImpl& b) {
       st_ = St::Loop;
       return ApRun::Frame;
     }
+    st_ = St::Loop;
+    // W2: out of a strike's shape, a hazard or an arena's burning ring first (a named fight's spot stays near its home:
+    // its leash, below; the core's own, MonsterView::leashCentre / leashRange).
+    const Vec2 leashCentre = m->leashCentre;
+    const Vec2* fightHome = AutoPilotImpl::NamedRole(m->role) && m->leashRange > 0 ? &leashCentre : nullptr;
+    const double homeR = m->leashRange - 4.0;
+    if (b.Evade(m->pos, fightHome, homeR)) return ApRun::Frame;
+    // W2: a priority target (a raiser, a drummer, a banner, a pack's leader) in the fight takes over from a lesser one.
+    if (depth_ == 0 && b.frames - lastPriorityCheck_ >= 20) {
+      lastPriorityCheck_ = b.frames;
+      const EntityId better = b.BestThreat(kApThreatRadius);
+      const MonsterView* bm = better != kNoEntity && better != target_ ? b.FindMonster(better) : nullptr;
+      if (bm != nullptr && b.ThreatPriority(*bm) > b.ThreatPriority(*m)) {
+        b.Note("priority target " + bm->defId);
+        ++b.stats.priorityTargets;
+        target_ = better;
+        lastOrder_ = -1000;
+        lureEnd_ = -1;
+        return ApRun::Frame;
+      }
+    }
+    // W2: a Raised inside a feeding boss's zone is lured out before it dies (its body would heal the boss).
+    if (const std::optional<Vec2> lure = b.LureSpot(*m)) {
+      if (lureEnd_ < 0) lureEnd_ = b.frames + 5 * kApFps;
+      if (b.frames < lureEnd_) {
+        if (Dist(b.HeroPos(), *lure) > 0.75 && (!b.V().hero.moving || b.frames - lastOrder_ > 30)) {
+          b.Submit(CmdMoveTo{*lure});
+          lastOrder_ = b.frames;
+        }
+        return ApRun::Frame;
+      }
+    } else {
+      lureEnd_ = -1;
+    }
+    // A monster walking home (M1) ignores the hero and heals: follow it in instead of shooting it from outside its
+    // leash, and take the fight up again where it stands (a boss's long fight, 2F: a ranged hero shooting from past the
+    // leash kept a boss walking home and healing).
+    if (m->state == MonsterState::Returning) {
+      if (Dist(b.HeroPos(), m->pos) > 2.5 && (!b.V().hero.moving || b.frames - lastOrder_ > 30)) {
+        b.Submit(CmdMoveTo{m->pos});
+        lastOrder_ = b.frames;
+      }
+      return ApRun::Frame;
+    }
+    // A named monster's fight stays inside its leash: a hero (a ranged one shooting from afar) farther than the leash
+    // range less 3.5 tiles from its home walks back in first, so its chase does not take it past the leash, home, healed
+    // to full and back to phase 0 (2F: a long boss fight; a Breachwalker blink past the leash is the core's to skip).
+    if (depth_ == 0 && fightHome != nullptr) {
+      const Vec2* home = fightHome;
+      if (Dist(b.HeroPos(), *home) > homeR + 0.5) {
+        const Vec2 in = *home + (b.HeroPos() - *home).Normalized() * (homeR - 1.0);
+        if (b.WalkableAt(in) && (!b.V().hero.moving || b.frames - lastOrder_ > 30)) {
+          b.Submit(CmdMoveTo{in});
+          lastOrder_ = b.frames;
+          return ApRun::Frame;
+        }
+        if (b.V().hero.moving) return ApRun::Frame;
+      }
+    }
+    // W2: a strike is about to land between the hero and its target: wait it out (3 s at most).
+    if (b.ApproachBlocked(*m)) {
+      if (holdFrom_ < 0) holdFrom_ = b.frames;
+      if (b.frames - holdFrom_ < 3 * kApFps) {
+        if (b.V().hero.target != kNoEntity || b.V().hero.moving) b.Submit(CmdClearTarget{});
+        if (b.V().hero.moving) b.Submit(CmdStop{});
+        lastOrder_ = -1000;
+        return ApRun::Frame;
+      }
+    } else {
+      holdFrom_ = -1;
+    }
     // Something else is hitting us while the target is still far: deal with it first.
     if (depth_ == 0 && Dist(m->pos, b.HeroPos()) > 4.0) {
       const EntityId close = b.NearestThreat(2.5);
@@ -791,7 +1274,12 @@ ApRun ApEngage::Run(AutoPilotImpl& b) {
         return b.Call<ApEngage>(close, 30.0, 1);
       }
     }
-    if (b.V().hero.target != target_ && b.frames - lastOrder_ > 15) {
+    // A lock whose approach ended short is clicked again, so the hero walks in rather than stand idle with the target out
+    // of its reach (2F: a long boss fight). Since the 2F review the core walks a held lock that stepped back by itself
+    // (a tether, a kite, a blink: CombatSystem::TickCombat's re-approach) for a player too; this click still covers the
+    // bot's own orders (a dodge, a hazard step-out), which end that rule as a player's move would.
+    const bool outOfReach = Dist(m->pos, b.HeroPos()) > b.V().hero.derived.attackRange + 0.6 && !b.V().hero.moving;
+    if ((b.V().hero.target != target_ || outOfReach) && b.frames - lastOrder_ > 15) {
       b.Submit(CmdAttackTarget{target_});
       lastOrder_ = b.frames;
     }
@@ -838,8 +1326,15 @@ ApRun ApGoTo::Run(AutoPilotImpl& b) {
       st_ = St::AfterBusyFrame;
       return ApRun::Frame;
     }
+    // W2: out of a strike's shape or a hazard on the way (the walk resumes after it).
+    if (fight_ && b.Evade(goal_)) {
+      lastOrder_ = -1000;
+      lastProgress_ = b.frames;
+      st_ = St::AfterBusyFrame;
+      return ApRun::Frame;
+    }
     if (fight_) {
-      const EntityId t = b.NearestThreat(kApThreatRadius);
+      const EntityId t = b.BestThreat(kApThreatRadius);
       if (t != kNoEntity) {
         st_ = St::AfterFight;
         return b.Call<ApEngage>(t, 45.0, 0);
@@ -1072,7 +1567,7 @@ class ApHunt final : public ApTask {
         st_ = St::Loop;
         return ApRun::Frame;
       }
-      const EntityId threat = b.NearestThreat(kApThreatRadius);
+      const EntityId threat = b.BestThreat(kApThreatRadius);
       if (threat != kNoEntity) {
         st_ = St::Loop;
         return b.Call<ApEngage>(threat, 45.0, 0);
@@ -1674,7 +2169,7 @@ class ApPortalHome final : public ApTask {
     return Finish(false);
   }
   ApRun Fight(AutoPilotImpl& b) {
-    const EntityId t = b.NearestThreat(kApThreatRadius);
+    const EntityId t = b.BestThreat(kApThreatRadius);
     if (t != kNoEntity) {
       st_ = St::AfterFight;
       return b.Call<ApEngage>(t, 45.0, 0);
@@ -1762,7 +2257,7 @@ class ApEscort final : public ApTask {
       return Finish(false);
     }
     // protect: anything near the merchant or us
-    EntityId threat = b.NearestThreat(kApThreatRadius);
+    EntityId threat = b.BestThreat(kApThreatRadius);
     if (threat == kNoEntity) {
       for (const MonsterView& m : b.V().monsters) {
         if (m.alive && Dist(m.pos, e->pos) < 4.5 && m.state != MonsterState::Returning &&
@@ -1934,6 +2429,7 @@ class ApDefend final : public ApTask {
         return b.Call<ApGoTo>(camp, 3.0, 120.0, false);
       }
     }
+    if (b.Evade(target_)) return ApRun::Frame;  // W2: out of a strike's shape or a hazard
     // The wave first (nearest to the target), then whatever else is on us.
     EntityId threat = kNoEntity;
     double bestD = 20.0;
@@ -1945,7 +2441,7 @@ class ApDefend final : public ApTask {
         threat = m.id;
       }
     }
-    if (threat == kNoEntity) threat = b.NearestThreat(kApThreatRadius);
+    if (threat == kNoEntity) threat = b.BestThreat(kApThreatRadius);
     if (threat != kNoEntity) {
       st_ = St::AfterEngage;
       return b.Call<ApEngage>(threat, 30.0, 0);
@@ -2280,7 +2776,10 @@ void AutoPilot::PrepareFrame(const Snapshot& view) {
   b.view = &view;
   if (!b.hold) b.AutoUi();
   b.monsterDefs.clear();
-  for (const MonsterView& m : view.monsters) b.monsterDefs.push_back(AutoPilotImpl::SeenMonster{m.id, m.defId, m.role});
+  for (const MonsterView& m : view.monsters) {
+    b.monsterDefs.push_back(AutoPilotImpl::SeenMonster{m.id, m.defId, m.role});
+  }
+  b.heroHpTrack = view.hero.hp;
   b.lastFrozen = view.frozen;
   b.frameOpen = true;
 }

@@ -118,13 +118,21 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
   LoadMonsterCheckKeys(n,
             {"id", "kind", "clip", "windupMs", "cooldownMs", "initialCooldownMs", "rangeMin", "rangeMax", "hpBelowPct",
              "phases", "priority", "aim", "shape", "dmgMul", "damageType", "status", "hitsMonsters", "monsterDmgMul",
-             "hazard", "summon", "buff"},
+             "hazard", "summon", "buff", "dash"},
             "ability");
   a.id = n.Str("id");
   if (a.id.empty()) n.Child("id").Error("empty ability id");
   a.kind = n.Enum<AbilityKind>("kind");
-  a.clip = n.Str("clip");
-  if (a.clip.empty()) n.Child("clip").Error("empty clip");
+  // 2F review: a hazard or a call may play no clip (the ground decal, the call's ripple are its tell; the caster is not
+  // rooted); every other kind is the caster's own action and names one.
+  if (n.Has("clip")) {
+    a.clip = n.Str("clip");
+    if (a.clip.empty()) n.Child("clip").Error("empty clip");
+  } else if (a.kind != AbilityKind::Hazard && a.kind != AbilityKind::Call) {
+    n.Error("a " + std::string(EnumName(a.kind)) + " ability names its clip (only a hazard or a call may play none)");
+  } else if (!n.Has("windupMs")) {
+    n.Error("an ability without a clip authors its windupMs (no clip times it)");
+  }
   if (n.Has("windupMs")) {
     a.hasWindupMs = true;
     a.windupMs = n.Num("windupMs");
@@ -243,6 +251,15 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
   if (a.kind == AbilityKind::Hazard && (n.Has("dmgMul") || n.Has("status"))) {
     n.Error("a hazard ability hits through its hazard: use hazard.tickDmgMul / hazard.status");
   }
+  // 2F review: dmgMul 0 makes a strike status-only (no damage roll): it needs its status and hurts no monster.
+  if (hasImplied && n.Has("dmgMul") && !(a.dmgMul > 0)) {
+    if (!a.status.present) n.Child("dmgMul").Error("a status-only strike (dmgMul 0) needs its 'status'");
+    if (a.hitsMonsters) n.Child("hitsMonsters").Error("a status-only strike (dmgMul 0) hits no monster");
+  }
+  // 2F review: a dash (a charge) runs along a line from the caster.
+  a.dash = n.Bool("dash", false);
+  if (a.dash && a.kind != AbilityKind::Line) n.Child("dash").Error("only a line ability dashes");
+  if (a.dash && a.aim == AbilityAim::Anchor) n.Child("dash").Error("a dash starts at the caster: not aim 'anchor'");
 
   // Summon (raise / summon).
   const bool summons = a.kind == AbilityKind::Raise || a.kind == AbilityKind::Summon;
@@ -849,6 +866,15 @@ void LoadQuestHuntsFile(const JNode& r, MonsterTables& out) {
       h.hasMinions = true;
       h.minionMonsterId = n.Child("minions").Str("monsterId");
       h.minionCount = n.Child("minions").Int("count");
+    }
+    // Dark remake (quest.huntAbilities): the hunt's own abilities; DataStore checks they and its base's are its
+    // definition's.
+    for (const JNode& a : n.Items("abilities", true)) {
+      MonsterAbilityDef ability = ReadMonsterAbility(a);
+      for (const MonsterAbilityDef& other : h.abilities) {
+        if (other.id == ability.id) a.Child("id").Error("duplicate ability id '" + ability.id + "'");
+      }
+      h.abilities.push_back(std::move(ability));
     }
     const JNode def = defs.Child(h.huntId);
     if (def.Exists()) {

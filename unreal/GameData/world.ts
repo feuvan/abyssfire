@@ -22,7 +22,7 @@ import type { AchievementDefinition, CampTheme, RemakeEliteAffixDefinition } fro
 import type { ZoneEventData } from '@web/systems/RandomEventSystem';
 import { ZONE_EVENT_DATA } from '@web/systems/RandomEventSystem';
 import type { ZoneMood, ZonePaletteEntry } from '@web/graphics/ZonePalette';
-import type { EliteAffixDefinition, EliteAffixType } from '@web/systems/EliteAffixSystem';
+import type { EliteAffixType } from '@web/systems/EliteAffixSystem';
 import { ELITE_AFFIX_DEFINITIONS } from '@web/systems/EliteAffixSystem';
 import type { TerrainTheme } from '@web/graphics/terrain/TerrainStyles';
 
@@ -48,11 +48,27 @@ export interface RemakeAmbushChampion {
   leader?: string;
   sharedAffix?: boolean;
   leaderLoot?: 'magic' | 'rare';
+  /** [2F review] Once this world flag is set the champion pack is off (no extra draw). Feature `events.ambushVariants`. */
+  notFlag?: string;
+}
+
+/**
+ * [2F review] An ambush variant (random_events.json `zones.<zone>.ambushVariants`, feature `events.ambushVariants`): the
+ * first whose world flag is set replaces `ambushMonsters` for the zone's ambushes (and the rescue guards that fall back to
+ * them).
+ */
+export interface RemakeAmbushVariant {
+  whenFlag: string;
+  monsters: string[];
 }
 
 /** A zone's event data plus the remake's rescue guards (random_events.json `zones.<zone>.rescueMonsters`; the core uses
- * `ambushMonsters` when it is absent) and its [W2] ambush champion pack. */
-export type RemakeZoneEventData = ZoneEventData & { rescueMonsters?: string[]; ambushChampion?: RemakeAmbushChampion };
+ * `ambushMonsters` when it is absent), its [W2] ambush champion pack and its [2F review] ambush variants. */
+export type RemakeZoneEventData = ZoneEventData & {
+  rescueMonsters?: string[];
+  ambushChampion?: RemakeAmbushChampion;
+  ambushVariants?: RemakeAmbushVariant[];
+};
 
 /**
  * [W2] A status row the remake adds to status_effects.json (K6; SkillData.h StatusStackRule): Ashnumb's `stackCount`
@@ -162,8 +178,35 @@ const AFFIX_LOOK: Record<EliteAffixType, { name: string; nameEn: string; vfxColo
   vampiric: { name: '噬渊', nameEn: 'Breach-Drinker', vfxColor: 0x6a0f2a },
   frozen: { name: '墓寒', nameEn: 'Gravecold', vfxColor: 0xcfe8ff },
 };
+// Wave 2 (package 2F, monsters.md §3 *Added*): Scorched bursts in breach fire 1 s after it dies (r2, crimson decal,
+// capped like an exploder; and, an exploder's rule (monsters.md §1.3, 2F review), it hurts monsters x2 so the player can
+// use it), Gravecold leaves a frost ring 600 ms after (r2.5, slow 30 % for 2.5 s). K3 on-death blocks: the burst's damage
+// scales with the difficulty, the dodge roll's i-frames avoid it, Death Save holds; bursts landing together share one
+// 35 % cap per second (2F review, OnDeath.h kOnDeathWindowCapPct: a Scorched Muster's four bursts).
+const AFFIX_ON_DEATH: Partial<Record<EliteAffixType, Pick<RemakeEliteAffixDefinition, 'onDeath'>>> = {
+  fire_enhanced: {
+    onDeath: {
+      kind: 'burst', delayMs: 1000, shape: { kind: 'circle', radius: 2 }, dmg: 20, damageType: 'fire', capHeroMaxHpPct: 20,
+      hitsMonsters: true, monsterDmgMul: 2,
+    },
+  },
+  frozen: {
+    onDeath: { kind: 'ring', delayMs: 600, shape: { kind: 'circle', radius: 2.5 }, damageType: 'ice', status: { type: 'slow', ms: 2500, value: 30 } },
+  },
+};
 const affixDefinitions = Object.fromEntries((Object.keys(AFFIX_LOOK) as EliteAffixType[])
-  .map(type => [type, { ...ELITE_AFFIX_DEFINITIONS[type], ...AFFIX_LOOK[type] }])) as Record<EliteAffixType, EliteAffixDefinition>;
+  .map(type => [type, { ...ELITE_AFFIX_DEFINITIONS[type], ...AFFIX_LOOK[type], ...AFFIX_ON_DEATH[type] }])) as Record<EliteAffixType, RemakeEliteAffixDefinition>;
+// monsters.md §3 (new, Wave 2): 不葬 Unburied, the Unburied family only: the elite rises once at 50 % life 3 s after it dies
+// (a crit does not stop it; a fire killing blow or a burned corpse does; K3). No other stat; the loot bonus of Driven.
+// 2F review: never rolled for a monster that cannot rise (EliteAffixes.h: a boss role - the Corpseherd, Valdras, the hunt
+// leaders - a Raised body, a body that leaves no raisable corpse).
+const UNBURIED_AFFIX: RemakeEliteAffixDefinition = {
+  type: 'unburied', name: '不葬', nameEn: 'Unburied',
+  damageMult: 1.0, speedMult: 1.0, hpMult: 1.0, defenseMult: 1.0, extraFireDamage: 0, teleportCooldownMs: 0, curseAuraRadius: 0,
+  curseAuraReduction: 0, lifestealFraction: 0, freezeChance: 0, vfxColor: 0xd08cff, lootQualityBonus: 3,
+  riseAgain: { chance: 1, delayMs: 3000, hpPct: 50 },
+  families: ['unburied'],
+};
 
 // ── Terrain style `march` (chapter1.md §15): trampled mud, ash-grey dead grass, scorched patches, wheel ruts, still black
 // water with an oily sheen. Bases from the art lane's reference march ground (Art/blender/README.md "Review": ash grass
@@ -290,6 +333,17 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
         ],
         rescueNpcName: '被缚的朝圣者',
         rescueMonsters: ['oath_zealot'],
+        // Wave 2 (K6, chapter1.md §13): one ambush in ten is the champion Muster: a standard-bearer and three footmen
+        // sharing one affix (the zone's one, rolled from the standard-bearer's Unburied pool), the standard-bearer leading;
+        // it drops one guaranteed magic item (monsters.md §2.8).
+        // 2F review (chapter1.md §8 cs_rf_finale: "the dead who still stood lie down"): no Muster after dawn.
+        ambushChampion: {
+          chance: 0.1,
+          mix: [{ monsterId: 'dead_standard_bearer', count: 1 }, { monsterId: 'risen_footman', count: 3 }],
+          leader: 'dead_standard_bearer', sharedAffix: true, leaderLoot: 'magic', notFlag: 'rf_chapter_dawn',
+        },
+        // 2F review: after dawn the hands from the mud are the scavengers' (the footmen lie down).
+        ambushVariants: [{ whenFlag: 'rf_chapter_dawn', monsters: ['gravegnawer'] }],
       },
     },
   },
@@ -361,7 +415,12 @@ export const REMAKE_OVERRIDES: RemakeOverrides = {
     },
   },
   eliteAffixes: {
-    definitions: { replace: affixDefinitions },
+    definitions: { replace: affixDefinitions, add: { unburied: UNBURIED_AFFIX } },
   },
   terrainStyles: { add: { march: MARCH_TERRAIN } },
+  // monsters.md §4 (Wave 2, K6): 麻灰 Ashnumb, from breach-blood contact: each stack -10 % healing received, at most 5,
+  // slowed 20 % at 5; one shared 6 s timer refreshed by every landed hit; the antidote cleanses it.
+  statusEffects: {
+    add: { ashnumb: { tickIntervalMs: 0, stacking: 'stackCount', stacks: { maxStacks: 5, healingReceivedPerStack: 0.1, slowAtMaxStacksPct: 20 } } },
+  },
 };

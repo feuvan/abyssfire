@@ -813,12 +813,13 @@ void CombatSystem::StartAbilityClock(MonsterInstance& m, double now) {
 }
 
 // The pick (Combat.h K2 notes): the first ready ability by priority replaces the swing (`castsOnly`: the K3 / K5 cast
-// between swings, raise / summon / buff / call kinds only).
+// between swings, raise / summon / buff / call kinds and, 2F review, the ranged specials only).
 bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool castsOnly) {
   const Hero& hero = *ctx_.sys.hero;
   StartAbilityClock(m, now);
   AbilityPickInput in;
   in.castsOnly = castsOnly;
+  in.swingReach = m.def.attackRange * ctx_.data.Monsters().ai.attackExitMul;
   in.nowMs = now;
   in.heroDist = Dist(m.pos, hero.Position());
   in.hpPct = m.maxHp > 0 ? m.hp / m.maxHp * 100.0 : 100.0;
@@ -868,27 +869,35 @@ bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool castsOnl
   aim.casterHeading = m.heading;
   aim.anchor = m.homeTile;  // the authored spawn tile (the dais), not the jittered spawn anchor
   aim.heroPos = hero.Position();
-  const MonsterAbilityCast cast = ResolveAbilityCast(a, aim, now, now + timing.contactMs);
+  MonsterAbilityCast cast = ResolveAbilityCast(a, aim, now, now + timing.contactMs);
+  if (a.dash && ctx_.sys.monsters != nullptr) {  // 2F review: a charge's end, fixed at windup start
+    cast.hasDash = true;
+    cast.dashTo = ctx_.sys.monsters->DashEnd(m, cast.dir, a.shape.length);
+  }
   m.lastAttackMs = now;
   if (!AbilityKindCastsBetweenSwings(a.kind)) m.lastStrikeMs = now;  // K5: a support cast is no strike (the kite gate)
   m.abilityReadyAtMs[static_cast<size_t>(pick)] = now + a.cooldownMs;
   m.pendingAbility = pick;
   m.abilityCast = cast;
-  m.abilityRootedUntilMs = cast.contactMs;
+  // 2F review: an ability without a clip (a hazard or a call) plays nothing and does not root its caster.
+  const bool animated = !a.clip.empty();
+  m.abilityRootedUntilMs = animated ? cast.contactMs : 0.0;
   const bool directional =
       a.hasShape && (a.shape.kind == AbilityShapeKind::Cone || a.shape.kind == AbilityShapeKind::Line);
-  EvPlayAnim anim;  // the plan's EvMonsterAnim {entity, action}: the action, its clip and its beat
-  anim.entity = m.id;
-  anim.action = AbilityAnimAction(a.clip);
-  anim.clip = a.clip;
-  anim.startMs = now;
-  anim.contactMs = timing.contactMs;
-  anim.windupMs = timing.contactMs;
-  anim.durationMs = timing.durationMs;
-  anim.playRate = timing.playRate;
-  anim.hasFaceTarget = true;
-  anim.faceTarget = a.aim == AbilityAim::Self && directional ? m.pos + cast.dir : hero.Position();
-  ctx_.events.Emit(anim);
+  if (animated) {
+    EvPlayAnim anim;  // the plan's EvMonsterAnim {entity, action}: the action, its clip and its beat
+    anim.entity = m.id;
+    anim.action = AbilityAnimAction(a.clip);
+    anim.clip = a.clip;
+    anim.startMs = now;
+    anim.contactMs = timing.contactMs;
+    anim.windupMs = timing.contactMs;
+    anim.durationMs = timing.durationMs;
+    anim.playRate = timing.playRate;
+    anim.hasFaceTarget = true;
+    anim.faceTarget = a.aim == AbilityAim::Self && directional ? m.pos + cast.dir : hero.Position();
+    ctx_.events.Emit(anim);
+  }
   if (AbilityHasGroundShape(a.kind)) {
     EvTelegraph tg;
     tg.entity = m.id;
@@ -900,6 +909,8 @@ bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool castsOnl
     tg.startMs = cast.startMs;
     tg.contactMs = cast.contactMs;
     tg.style = style;
+    tg.hasDash = cast.hasDash;
+    tg.dashTo = cast.dashTo;
     ctx_.events.Emit(std::move(tg));
   } else if (AbilityKindSummons(a.kind)) {  // K3: a breach-violet marker under each corpse / spot
     AbilityShapeDef marker;
@@ -932,13 +943,15 @@ bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool castsOnl
 
 // K3 (Combat.h "K3"): a raise / summon is a timed cast (monsters.md 2.2 Muster, chapter1.md Call the Flock), not a swing:
 // between swings, from Chase or Attack, it starts on its own cooldown when its hero range holds and the runtime found
-// bodies for it. K5: so does a buff / call (the drummer's drum "2 s every 8 s", monsters.md 2.3). Such a monster's ability
+// bodies for it. K5: so does a buff / call (the drummer's drum "2 s every 8 s", monsters.md 2.3); 2F review: and a ranged
+// special (a damaging ability whose rangeMax passes the swing reach: Breach-seep, Lunge). Such a monster's ability
 // clock starts at its first moment in a fight (its first Chase / Attack step in the swing scan). One action at a time:
 // never while a swing or ability is on its way to contact; a pet's taunt holds it like any ability (the clock runs on).
 // TickCombat has already skipped an immobilized, casting or eating monster.
 bool CombatSystem::TryStartSupportCast(MonsterInstance& m, double now) {
   bool casts = false;
-  for (const MonsterAbilityDef& a : m.def.abilities) casts = casts || AbilityKindCastsBetweenSwings(a.kind);
+  const double reach = m.def.attackRange * ctx_.data.Monsters().ai.attackExitMul;
+  for (const MonsterAbilityDef& a : m.def.abilities) casts = casts || AbilityCastsBetweenSwings(a, reach);
   if (!casts) return false;
   StartAbilityClock(m, now);
   if (HasPendingStrike(m.id)) return false;
@@ -1032,12 +1045,47 @@ void CombatSystem::ResolveAbility(EntityId monster) {
     return;
   }
   const MonsterHitMods mods = AbilityHitMods(*m, a);
-  if (ShapeContains(cast.shape, cast.origin, cast.dir, hero.Position())) ApplyMonsterHit(monster, true, &mods);
-  if (a.hitsMonsters) HitMonstersInShape(monster, a, cast);
+  // 2F review: dmgMul 0 is a status-only strike (the Corpseherd's Keen): no damage roll, the status on a body inside.
+  const bool damaging = a.dmgMul > 0;
+  if (ShapeContains(cast.shape, cast.origin, cast.dir, hero.Position())) {
+    if (damaging) {
+      ApplyMonsterHit(monster, true, &mods);
+    } else {
+      ApplyMonsterStatusOnly(monster, mods);
+    }
+  }
+  if (a.hitsMonsters && damaging) HitMonstersInShape(monster, a, cast);
   BurnCorpsesIfFire(mods.type, cast.shape, cast.origin, cast.dir);  // K3: a fire strike burns the bodies under it
   if (a.hazard.present) {
     if (const MonsterInstance* caster = ms->Find(monster)) PlaceHazard(*caster, a, cast);
   }
+  // 2F review: a charge ends where its windup fixed it, after the hit (MonsterAbilityDef::dash).
+  if (cast.hasDash) {
+    if (MonsterInstance* caster = ms->Find(monster); caster != nullptr && caster->IsAlive()) {
+      if (caster->pos != cast.dashTo) {
+        caster->heading = cast.dir;
+        ms->Teleport(monster, cast.dashTo, TeleportReason::Dash);
+      }
+    }
+  }
+}
+
+// 2F review: a status-only strike on the hero (an ability with dmgMul 0): no roll, no damage; the dodge roll's i-frames
+// avoid it, else its status rolls (Combat stream) and lands.
+void CombatSystem::ApplyMonsterStatusOnly(EntityId monsterId, const MonsterHitMods& mods) {
+  const MonsterInstance* m = ctx_.sys.monsters != nullptr ? ctx_.sys.monsters->Find(monsterId) : nullptr;
+  if (m == nullptr || !HeroAlive()) return;
+  const double now = ctx_.Now();
+  if (dodge_.IsInvulnerable(now)) {
+    if (dodge_.ClaimAvoidanceReward(now)) GainSpirit(SpiritSource::Dodge, false);
+    EmitMiss(kHeroEntityId, Faction::Hero, monsterId, std::string(), true);
+    return;
+  }
+  if (!mods.hasStatus) return;
+  StatusRuleInput sin;
+  sin.monsterDamage = m->def.damage;
+  const StatusRuleRoll roll = RollStatusRule(mods.status, sin, ctx_.Rand(RngStream::Combat));
+  if (roll.applies) ApplyStatus(kHeroEntityId, roll.status, roll.value, roll.durationMs, monsterId);
 }
 
 // K3 (Combat.h "K3"): count, then the live cap, then the window cap; a raise takes its free corpses in query order.
@@ -1378,12 +1426,19 @@ void CombatSystem::ResolveOnDeath(const PendingOnDeath& e) {
         }
         const double cap = OnDeathHeroCap(hero.MaxHp(), d.capHeroMaxHpPct, e.monsterCapPct, DifficultyDamageMul());
         if (cap > 0) amount = (std::min)(amount, cap);
-        HeroHitRequest req;
-        req.amount = amount;
-        req.source = e.source;
-        req.element = e.type;
-        req.allowDeathSave = true;  // monster damage
-        DamageHero(req);
+        // 2F review: the bursts and rings of the last second share one cap (OnDeath.h kOnDeathWindowCapPct).
+        const double windowCap = MonsterHitCap(hero.MaxHp(), kOnDeathWindowCapPct, DifficultyDamageMul());
+        std::erase_if(onDeathTaken_, [now](const std::pair<double, double>& t) { return t.first <= now - kOnDeathWindowMs; });
+        amount = (std::min)(amount, OnDeathWindowRoom(windowCap, now, onDeathTaken_));
+        if (amount > 0) {
+          onDeathTaken_.emplace_back(now, amount);
+          HeroHitRequest req;
+          req.amount = amount;
+          req.source = e.source;
+          req.element = e.type;
+          req.allowDeathSave = true;  // monster damage
+          DamageHero(req);
+        }
       }
       if (d.status.present && HeroAlive()) {
         StatusRuleInput sin;
@@ -3019,6 +3074,21 @@ void CombatSystem::TickCombat() {
     }
     const MonsterInstance* tm = target != kNoEntity ? ms->Find(target) : nullptr;
     const HeroDerived& d = hero.Derived();
+    // 2F review (a held lock that steps away: a kite, a tether, a blink): the hero walks to its lock again (the C7
+    // approach) when the lock left its reach by itself - the hero reached it and has had no movement order since (the
+    // locomotion's MoveGeneration is unchanged: a click-move, keyboard walk, dodge or hold-move ends this) - and the
+    // hero stands idle; never past targetCycleRangeTiles. The web pathed once to the monster's tile per click.
+    if (tm != nullptr && tm->IsAlive() && hero.attackTarget == target && loco != nullptr) {
+      const double d2 = DistSq(hero.Position(), tm->pos);
+      if (d2 <= d.attackRange * d.attackRange) {
+        reachLock_ = target;
+        reachLockGeneration_ = loco->MoveGeneration();
+      } else if (reachLock_ == target && reachLockGeneration_ == loco->MoveGeneration() && !loco->IsMoving() &&
+                 !loco->IsApproaching()) {
+        const double far = in.targetCycleRangeTiles;
+        if (d2 <= far * far && loco->Approach(target, d.attackRange)) reachLockGeneration_ = loco->MoveGeneration();
+      }
+    }
     if (tm != nullptr && tm->IsAlive() && DistSq(hero.Position(), tm->pos) <= d.attackRange * d.attackRange &&
         (hero.lastAttackMs == 0 || now - hero.lastAttackMs + kCombatSwingEpsilonMs >= d.attackSpeedMs)) {
       hero.lastAttackMs = now;
@@ -3312,6 +3382,9 @@ void CombatSystem::OnZoneExit() {
   hits_.clear();
   hazards_.Clear();  // K2: UE drops the zone's hazards with the zone
   onDeath_.clear();  // K3: pending on-death effects and the zone's own go with the zone
+  onDeathTaken_.clear();
+  reachLock_ = kNoEntity;  // 2F review: the held lock's re-approach ends with the zone (its target is gone)
+  reachLockGeneration_ = 0;
   zoneOnDeath_ = MonsterOnDeathDef{};
   zoneOnDeathLabel_.clear();
   DropGroundRolls(kNoEntity);
@@ -3421,6 +3494,8 @@ void CombatSystem::FillSnapshot(Snapshot& out) const {
         v.progress = progress;
         v.style = TelegraphStyleOf(*m);
         v.kind = a.kind;
+        v.hasDash = c.hasDash;  // 2F review: a charge's end (EvTelegraph::dashTo)
+        v.dashTo = c.dashTo;
         out.telegraphs.push_back(std::move(v));
       } else if (AbilityKindSummons(a.kind)) {  // K3: one marker per corpse / spot
         for (const Vec2 spot : m->abilitySpots) {

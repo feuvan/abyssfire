@@ -52,10 +52,19 @@ ABYSS_API double ArenaTickDamage(double heroMaxHp, double dpsPctMaxHp, double ti
 // The tether's goal for `target`: the target when it lies within `radius` of `centre`, else the circle's point nearest
 // it (the centre itself for a target on the centre).
 ABYSS_API Vec2 TetherGoal(Vec2 centre, double radius, Vec2 target);
-// A tethered monster attacks only from within radius + this of the centre (the arrival epsilon, separation pushes). So
-// it can stand up to |centre - spawn anchor| + radius + slack from its anchor: past MonsterAiDef::leashRange the M1
-// leash would send it home (and reset its phases) from inside its own tether (DataStore::Finalize warns).
+// A tethered monster attacks only from within radius + this of the centre (the arrival epsilon, separation pushes), so
+// it can stand up to |centre - home| + radius + slack from its home (PhaseFightReach counts it).
 inline constexpr double kTetherSlackTiles = 0.25;
+
+// 2F review (DECISIONS M1 amendment): a bound fight - a phase table with an arena or a tether in any row (Valdras's
+// dais). Such a monster measures its M1 leash from its authored spawn tile (MonsterInstance::homeTile, the dais; not
+// the M10-jittered spawn anchor) over at least PhaseFightReach, so a hero who stays inside the ring (or the monster
+// inside its tether) never sends it home to heal and reset (MonsterAI.h MonsterLeashCentre / MonsterLeashRange).
+ABYSS_API bool PhaseTableBindsFight(const MonsterDef& def);
+// The reach of a bound fight from `home`, tiles (0 when not bound): per row, an arena's |centre - home| + fromR + the
+// monster's swing reach (attackRange x attackExitMul: it fights a hero standing on the ring's edge from inside), a
+// tether's |centre - home| + radius + kTetherSlackTiles; the largest.
+ABYSS_API double PhaseFightReach(const MonsterDef& def, TilePos home, double attackExitMul);
 
 // Damage a monster takes through its phase's damageTakenMul: `amount` itself at x1, else floor(amount x mul) and never
 // below min(amount, 1) (a landed hit stays a hit).

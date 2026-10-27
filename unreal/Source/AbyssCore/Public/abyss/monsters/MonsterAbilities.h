@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string_view>
 
@@ -47,6 +48,14 @@ ABYSS_API bool AbilityKindSummons(AbilityKind kind);
 // K3 / K5: support casts that also start between swings, from Chase or Attack, on their own cooldown and hero range
 // (raise, summon, buff, call; CombatSystem::TryStartSupportCast), not bound by the swing reach.
 ABYSS_API bool AbilityKindCastsBetweenSwings(AbilityKind kind);
+// 2F review: a ranged special - a damaging ability (any kind but raise / summon / buff / call) whose rangeMax passes
+// `swingReach` (the caster's attackRange x attackExitMul: a due swing needs the hero within it). Like a support cast it
+// also starts between swings, from Chase or Attack, on its own cooldown with the hero inside [rangeMin, rangeMax]
+// (Valdras's Breach-seep from the dais at a hero far off it, his Lunge at a hero who stepped back); a due swing still
+// picks it like any ability. Without a rangeMax an ability is bound by the swing reach.
+ABYSS_API bool AbilityIsRangedSpecial(const MonsterAbilityDef& a, double swingReach);
+// The abilities that start between swings: the support kinds and the ranged specials.
+ABYSS_API bool AbilityCastsBetweenSwings(const MonsterAbilityDef& a, double swingReach);
 // Kinds that draw a ground telegraph (circle, cone, line, ring, hazard).
 ABYSS_API bool AbilityHasGroundShape(AbilityKind kind);
 
@@ -59,9 +68,11 @@ struct AbilityPickInput {
   // K3, per ability index: nonzero when a raise / summon has bodies to stand up now (CombatSystem's plan: corpses in
   // reach, room under its caps). A raise / summon without an entry is not usable; other kinds ignore it.
   std::span<const uint8_t> available;
-  // K3 / K5: the cast between swings (Chase, or Attack before the swing is due): only the kinds that cast between
-  // swings are usable (AbilityKindCastsBetweenSwings: raise, summon, buff, call).
+  // K3 / K5: the cast between swings (Chase, or Attack before the swing is due): only the abilities that cast between
+  // swings are usable (AbilityCastsBetweenSwings: raise, summon, buff, call; 2F review: the ranged specials, whose
+  // rangeMax passes `swingReach`).
   bool castsOnly = false;
+  double swingReach = 0;             // the caster's attackRange x attackExitMul (tiles)
   // K4, per ability index: nonzero = switched off by the phase table (MonsterInstance::abilityOff, Phases.h
   // PhaseAbilitiesOff); empty = nothing switched off.
   std::span<const uint8_t> off;
@@ -92,7 +103,8 @@ struct AbilityTiming {
 ABYSS_API AbilityTiming ComputeAbilityTiming(const MonsterAbilityDef& a, const AnimClipDef* clip, double minWindupMs,
                                              const AnimTimingTable& t, AnimRig rig);
 // The EvPlayAnim action of a clip: Attack02 / Cast02 / Roar by name, Cast for Cast01 (and other Cast* clips), Attack for
-// the rest (the event carries the clip, which UE plays by name: Lunge, Consume, ...).
+// the rest (the event carries the clip, which UE plays by name: Lunge, Consume, ...). An ability without a clip (a hazard
+// or a call, 2F review) plays nothing: no EvPlayAnim, and the caster is not rooted while it winds up.
 ABYSS_API AnimAction AbilityAnimAction(std::string_view clip);
 
 // Where an ability lands, resolved once at windup start (MonsterData.h AbilityAim). Ground shapes without a direction
@@ -116,6 +128,12 @@ ABYSS_API double AbilityMinWindupMs(TelegraphStyle style);
 ABYSS_API double MonsterHitCap(double heroMaxHp, double capPct, double difficultyDamageMul);
 // min(damage, MonsterHitCap(...)) when the monster has a cap, else `damage`.
 ABYSS_API double ApplyMonsterHitCap(double damage, double heroMaxHp, double capPct, double difficultyDamageMul);
+
+// 2F review (a charge): where a dash along `dir` from `from` ends - the farthest sample (every kDashSampleTiles, up to
+// `length`) such that every sample up to it is `open` (walkable, inside the caster's bounds, outside the camps); `from`
+// itself when the first sample is closed.
+inline constexpr double kDashSampleTiles = 0.25;
+ABYSS_API Vec2 AbilityDashEnd(Vec2 from, Vec2 dir, double length, const std::function<bool(Vec2)>& open);
 
 // The status an ability (or its hazard) applies, as a C6 rule: fixed value, no draw at chance 1.
 ABYSS_API StatusRule AbilityStatusRule(const AbilityStatusDef& s);

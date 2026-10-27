@@ -143,10 +143,11 @@ export const CH1_ROUTE: AutoPilotRoute = {
     { kind: 'checkpoint', id: 'home_m3' },
     { kind: 'townTrip', npc: 'merchant' },
 
-    // ---- M4: Lord-Marshal Valdras on the Breach Rim (boss intro, cs_rf_marshal_falls) ----
+    // ---- M4: Lord-Marshal Valdras on the Breach Rim (boss intro, cs_rf_marshal_falls); 450 s (2F review: the longest
+    // sweep fight is under 240 s, the rest is the walk back from a death) ----
     { kind: 'note', text: '== Valdras' },
     { kind: 'goTo', tile: [18, 88], arrive: 3, maxSec: 400 },
-    { kind: 'boss', role: 'storyBoss', anchor: [15, 95], maxSec: 400,
+    { kind: 'boss', role: 'storyBoss', anchor: [15, 95], maxSec: 450,
       until: [{ kind: 'questDone', quest: 'q_rf_marshal' }] },
     { kind: 'checkpoint', id: 'valdras' },
 

@@ -66,6 +66,11 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * override-table features (remake.ts REMAKE_TABLE_FEATURES): `status.ashnumb` (the `statusEffects` row, tables/combat.ts,
  * and the `ashnumb` value on monster statuses) and `events.ambushChampion` (random_events.json zones.<zone>
  * .ambushChampion, tables/world.ts; RandomEventSystem's champion pack).
+ *
+ * 2F review: `events.ambushVariants` (random_events.json zones.<zone>.ambushVariants and ambushChampion.notFlag,
+ * tables/world.ts; RandomEventSystem picks the ambush list and the champion draw by world flag). The ability fields the
+ * review added inside `abilities[]` (an optional clip for a hazard / call, `dash`, a status-only dmgMul 0) ride on
+ * `monster.abilities` (checked by tables/monsters.ts; the core reads them in the same change).
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
@@ -79,7 +84,8 @@ export const REMAKE_SCHEMA: readonly string[] = [
   'monster.packAggro', 'monster.kite', 'monster.block', 'monster.morale', 'monster.aura', 'monster.abilityBuff',
   'monster.abilityCall', 'map.spawnMix',
   'quest.setsFlags', 'quest.permanentRewards', 'map.spawnVariants', 'npc.lines', 'npc.visibleWhen', 'status.ashnumb',
-  'events.ambushChampion',
+  'events.ambushChampion', 'quest.huntAbilities',
+  'events.ambushVariants',
 ];
 
 export interface RunOptions {

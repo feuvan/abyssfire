@@ -34,6 +34,9 @@
 #include "abyss/base/Json.h"
 #include "abyss/combat/HitFeedback.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/monsters/MonsterAbilities.h"
+#include "abyss/quests/QuestSystem.h"
+#include "abyss/world/WorldState.h"
 #include "doctest/doctest.h"
 
 using namespace abyss;
@@ -58,8 +61,10 @@ TEST_SUITE("monsters") {
       double tilesPerSec;
     };
     const Row rows[] = {
-        // monsters.md 2.0 (Wave 1: Valdras is the single-phase ~900 HP fallback of chapter1.md 11); exp as built (1B
-        // review, DECISIONS DR9): round(0.75 x the 2.0 Exp) for the regulars, Valdras 110.
+        // monsters.md 2.0; exp as built (1B review, DECISIONS DR9): round(0.75 x the 2.0 Exp) for the regulars, Valdras
+        // 110. Valdras as tuned by package 2F and its review (Wave 2, three phases: 9000 HP / 20 dmg, every class's
+        // median fight in DR9's 30-180 s band; implementation-plan.md "2F review outcomes"); the Corpseherd 600 HP (2F
+        // review: Keen at the main path's Lv 10); the roll-call standard-bearer is his phase-2 summon.
         {"breachclot", 1, 28, 5, 2, 38, 4, 1.2, 1500, 8, 2, 4, false, 1.14},
         {"risen_footman", 2, 50, 7, 5, 32, 4, 1.5, 1600, 11, 2, 5, false, 0.96},
         {"gravegnawer", 3, 42, 7, 3, 66, 6, 1.3, 950, 13, 1, 4, false, 1.98},
@@ -71,8 +76,9 @@ TEST_SUITE("monsters") {
         {"risen_shieldbearer", 7, 130, 12, 14, 30, 5, 1.6, 1700, 26, 3, 7, false, 0.90},
         {"dead_standard_bearer", 7, 140, 8, 8, 30, 6, 1.6, 1700, 30, 4, 8, false, 0.90},
         {"bonegorger", 7, 210, 17, 9, 42, 6, 2.0, 1700, 36, 6, 12, false, 1.26},
-        {"miniboss_corpseherd", 6, 300, 15, 10, 45, 7, 3.0, 1300, 95, 15, 30, true, 1.35},
-        {"valdras", 9, 900, 20, 12, 48, 8, 2.0, 1300, 110, 30, 60, true, 1.44},
+        {"miniboss_corpseherd", 6, 600, 15, 10, 45, 7, 3.0, 1300, 95, 15, 30, true, 1.35},
+        {"valdras", 9, 9000, 20, 12, 48, 8, 2.0, 1300, 110, 30, 60, true, 1.44},
+        {"rollcall_standard_bearer", 7, 140, 8, 8, 30, 6, 1.6, 1700, 30, 4, 8, false, 0.90},
     };
     for (const Row& r : rows) {
       CAPTURE(r.id);
@@ -124,8 +130,9 @@ TEST_SUITE("monsters") {
         {"risen_shieldbearer", 9, 3, 13, 7.5, 1.92, 2.66},
         {"dead_standard_bearer", 6, 3, 14, 9.0, 1.92, 2.66},
         {"bonegorger", 13, 4, 21, 9.0, 2.4, 3.2},
-        {"miniboss_corpseherd", 12, 4, 30, 10.5, 3.6, 4.55},  // range 3.0
-        {"valdras", 16, 4, 90, 12.0, 2.4, 3.2},
+        {"miniboss_corpseherd", 12, 4, 60, 10.5, 3.6, 4.55},  // range 3.0
+        {"valdras", 16, 4, 900, 12.0, 2.4, 3.2},
+        {"rollcall_standard_bearer", 6, 3, 14, 9.0, 1.92, 2.66},
         {"hunt_hungerbell", 13, 4, 42, 10.5, 2.4, 3.2},  // 420 HP / 17 dmg (hp x2, dmg x1.0)
         {"hunt_dreck", 11, 5, 24, 10.5, 1.92, 2.66},
         {"hunt_harke", 15, 5, 40, 10.5, 1.92, 2.66},
@@ -174,10 +181,10 @@ TEST_SUITE("monsters") {
         {"dead_standard_bearer", Difficulty::Hell, 280, 16, 13, 90, 12, 24},
         {"bonegorger", Difficulty::Nightmare, 315, 26, 12, 72, 12, 24},
         {"bonegorger", Difficulty::Hell, 420, 34, 14, 108, 18, 36},
-        {"miniboss_corpseherd", Difficulty::Nightmare, 450, 23, 13, 190, 30, 60},
-        {"miniboss_corpseherd", Difficulty::Hell, 600, 30, 16, 285, 45, 90},
-        {"valdras", Difficulty::Nightmare, 1350, 30, 16, 220, 60, 120},
-        {"valdras", Difficulty::Hell, 1800, 40, 19, 330, 90, 180},
+        {"miniboss_corpseherd", Difficulty::Nightmare, 900, 23, 13, 190, 30, 60},
+        {"miniboss_corpseherd", Difficulty::Hell, 1200, 30, 16, 285, 45, 90},
+        {"valdras", Difficulty::Nightmare, 13500, 30, 16, 220, 60, 120},
+        {"valdras", Difficulty::Hell, 18000, 40, 19, 330, 90, 180},
         {"hunt_hungerbell", Difficulty::Nightmare, 630, 26, 14, 216, 36, 72},
         {"hunt_hungerbell", Difficulty::Hell, 840, 34, 18, 324, 54, 108},
         {"hunt_dreck", Difficulty::Nightmare, 360, 21, 10, 126, 36, 72},
@@ -254,7 +261,13 @@ TEST_SUITE("monsters") {
       CHECK(d.speed == h.defNormal.speed);
       CHECK(d.elite == h.defNormal.elite);
       CHECK(d.isMiniBoss == h.defNormal.isMiniBoss);
+      // Its base's abilities, then its own (2F quest.huntAbilities: Hungerbell's supper bell).
+      REQUIRE(d.abilities.size() == h.defNormal.abilities.size());
+      for (size_t i = 0; i < d.abilities.size(); ++i) CHECK(d.abilities[i].id == h.defNormal.abilities[i].id);
     }
+    CHECK(MHunt("hunt_hungerbell").abilities.size() == 1);
+    CHECK(MHunt("hunt_harke").abilities.empty());
+    CHECK(MHunt("hunt_dreck").abilities.empty());
   }
 
   TEST_CASE("isHuntDue (vector 13): bounty on accept, tracked quarry after its trail, done / inactive -> not due") {
@@ -305,26 +318,29 @@ TEST_SUITE("monsters") {
   TEST_CASE("elite affix application 2.4 (vector 16): every affix on Valdras, the Corpseherd and two hunt leaders") {
     struct Row {
       const char* id;
-      std::array<std::array<int32_t, 5>, 7> v;  // hp, dmg, speed, def, str per affix in table order
+      std::array<std::array<int32_t, 5>, 8> v;  // hp, dmg, speed, def, str per affix in table order
     };
-    // floor(x * mult) per affix (the mechanics are the web's; the remake re-voices and recolours them only).
+    // floor(x * mult) per affix (the mechanics are the web's; the remake re-voices and recolours them only). The eighth,
+    // Unburied (Wave 2, package 2F), changes no number: it only makes the monster rise again once (K3).
     const Row rows[] = {
         {"valdras",
-         {{{1080, 20, 48, 12, 16}, {900, 20, 76, 12, 16}, {1035, 22, 48, 12, 17}, {1170, 27, 48, 13, 21},
-           {1080, 22, 48, 12, 17}, {1125, 22, 48, 12, 17}, {1080, 21, 43, 13, 16}}}},
+         {{{10800, 20, 48, 12, 16}, {9000, 20, 76, 12, 16}, {10350, 22, 48, 12, 17}, {11700, 27, 48, 13, 21},
+           {10800, 22, 48, 12, 17}, {11250, 22, 48, 12, 17}, {10800, 21, 43, 13, 16}, {9000, 20, 48, 12, 16}}}},
         {"miniboss_corpseherd",
-         {{{360, 15, 45, 10, 12}, {300, 15, 72, 10, 12}, {345, 16, 45, 10, 12}, {390, 20, 45, 11, 16},
-           {360, 16, 45, 10, 12}, {375, 16, 45, 10, 12}, {360, 15, 40, 11, 12}}}},
+         {{{720, 15, 45, 10, 12}, {600, 15, 72, 10, 12}, {690, 16, 45, 10, 12}, {780, 20, 45, 11, 16},
+           {720, 16, 45, 10, 12}, {750, 16, 45, 10, 12}, {720, 15, 40, 11, 12}, {600, 15, 45, 10, 12}}}},
         {"hunt_dreck",
          {{{288, 14, 56, 8, 11}, {240, 14, 89, 8, 11}, {276, 15, 56, 8, 12}, {312, 18, 56, 9, 14}, {288, 15, 56, 8, 12},
-           {300, 15, 56, 8, 12}, {288, 14, 50, 8, 11}}}},
+           {300, 15, 56, 8, 12}, {288, 14, 50, 8, 11}, {240, 14, 56, 8, 11}}}},
         {"hunt_harke",
          {{{480, 19, 56, 8, 15}, {400, 19, 89, 8, 15}, {459, 20, 56, 8, 16}, {520, 25, 56, 9, 20},
-           {480, 20, 56, 8, 16}, {500, 20, 56, 8, 16}, {480, 19, 50, 8, 15}}}},
+           {480, 20, 56, 8, 16}, {500, 20, 56, 8, 16}, {480, 19, 50, 8, 15}, {400, 19, 56, 8, 15}}}},
     };
+    REQUIRE(MAffixes().order.size() == 8);
+    CHECK(MAffixes().order[7] == EliteAffixType::Unburied);
     for (const Row& r : rows) {
       const MonsterDef base = MNormalDef(r.id);
-      for (size_t i = 0; i < 7; ++i) {
+      for (size_t i = 0; i < 8; ++i) {
         const EliteAffixType ty = MAffixes().order[i];
         CAPTURE(r.id);
         CAPTURE(EnumName(ty));
@@ -370,6 +386,7 @@ TEST_SUITE("monsters") {
     const auto all = rig.monsters.All();
     CHECK(static_cast<int32_t>(all.size()) == total);  // M10: 8 tries then the (walkable) anchor
     std::map<std::string, int32_t> perDef;
+    int32_t leaders = 0;
     for (const MonsterInstance& m : all) {
       CAPTURE(m.def.id);
       ++perDef[m.def.id];
@@ -377,20 +394,26 @@ TEST_SUITE("monsters") {
       CHECK(m.state == MonsterState::Idle);
       CHECK(rig.zone.Walkable(m.spawnAnchor.col, m.spawnAnchor.row));
       CHECK(m.pos == m.spawnAnchor.Center());
-      // Within +-3 of its spawn entry anchor (or on it).
-      bool nearEntry = false;
-      for (const MapSpawnDef& s : map.spawns) {
-        if (s.monsterId == m.def.id && std::abs(s.pos.col - m.spawnAnchor.col) <= 3 &&
-            std::abs(s.pos.row - m.spawnAnchor.row) <= 3) {
-          nearEntry = true;
-        }
-      }
-      CHECK(nearEntry);
+      // Within +-3 of its spawn entry's anchor (or on it), a member of that entry (its monsterId or one of its mix).
+      REQUIRE(m.spawnEntry >= 0);
+      REQUIRE(static_cast<size_t>(m.spawnEntry) < map.spawns.size());
+      const MapSpawnDef& s = map.spawns[static_cast<size_t>(m.spawnEntry)];
+      bool member = s.mix.empty() && s.monsterId == m.def.id;
+      for (const MapSpawnMixDef& x : s.mix) member = member || x.monsterId == m.def.id;
+      CHECK(member);
+      CHECK(std::abs(s.pos.col - m.spawnAnchor.col) <= 3);
+      CHECK(std::abs(s.pos.row - m.spawnAnchor.row) <= 3);
       CHECK_FALSE(rig.zone.InSafeZone(m.pos));
+      if (m.packLeader) ++leaders;
       if (m.def.id == "valdras") {
         CHECK(m.role == MonsterRole::StoryBoss);
         CHECK(m.noRespawn);
         CHECK(m.AffixCount() == 1);  // emerald_plains: exactly one affix
+      } else if (m.packLeader && m.def.id == "deserter") {
+        // The Hollow Watch's leader (chapter1.md 17 W2): an elite with the zone's one affix.
+        CHECK(m.role == MonsterRole::Regular);
+        CHECK_FALSE(m.noRespawn);
+        CHECK(m.AffixCount() == 1);
       } else {
         CHECK(m.role == MonsterRole::Regular);
         CHECK_FALSE(m.noRespawn);
@@ -398,19 +421,24 @@ TEST_SUITE("monsters") {
         CHECK(m.maxHp == MDef(m.def.id).hp);
       }
     }
-    // chapter1.md 17: 55 in the same 10 entries (one monster id each in Wave 1).
+    // chapter1.md 17: 55 in the same 10 entries; Wave 2 mixes (package 2F) - the Weeping Ditch 3 bloats + 3 clots, the
+    // Broken Redoubt 3 arbalests + 2 shieldbearers, the Dead Ranks 3 shieldbearers + 2 footmen + their standard-bearer
+    // (leader), the Hollow 5 deserters (an elite leader) + the drummer, the midden a bonegorger + 2 gnawers.
     CHECK(map.spawns.size() == 10);
-    CHECK(perDef["risen_footman"] == 8);
-    CHECK(perDef["gravegnawer"] == 8);
-    CHECK(perDef["breachclot"] == 7);
-    CHECK(perDef["cinderbloat"] == 6);
+    CHECK(leaders == 2);
+    CHECK(perDef["risen_footman"] == 10);
+    CHECK(perDef["gravegnawer"] == 10);
+    CHECK(perDef["breachclot"] == 10);
+    CHECK(perDef["cinderbloat"] == 3);
     CHECK(perDef["oath_zealot"] == 5);
-    CHECK(perDef["risen_arbalest"] == 5);
-    CHECK(perDef["risen_shieldbearer"] == 6);
+    CHECK(perDef["risen_arbalest"] == 3);
+    CHECK(perDef["risen_shieldbearer"] == 5);
+    CHECK(perDef["dead_standard_bearer"] == 1);
     CHECK(perDef["valdras"] == 1);
-    CHECK(perDef["deserter"] == 6);
-    CHECK(perDef["bonegorger"] == 3);
-    CHECK(perDef.size() == 10);
+    CHECK(perDef["deserter"] == 5);
+    CHECK(perDef["deserter_drummer"] == 1);
+    CHECK(perDef["bonegorger"] == 1);
+    CHECK(perDef.size() == 12);
     CHECK(MEvents<EvEntitySpawned>(rig.h.events).size() == all.size());
     // Deterministic for a seed.
     MonsterRig again(11);
@@ -774,10 +802,11 @@ TEST_SUITE("monsters") {
   TEST_CASE("defend waves (quests 3.10 / monsters 6.4): 3 + w on a radius-8 circle, scaled, chasing, never respawn") {
     MonsterRig rig(53, Vec2(100, 100));
     rig.OpenWorld();
-    // Without a wave composition (K1 `waves`), the web rule: RandomInt(0, 11) picks from the emerald_plains list
+    // Without a wave composition (K1 `waves`), the web rule: RandomInt(0, 12) picks from the emerald_plains list
     // [breachclot, risen_footman, gravegnawer, cinderbloat, risen_arbalest, oath_zealot, deserter, deserter_drummer,
-    //  risen_shieldbearer, dead_standard_bearer, bonegorger, valdras].
-    rig.h.rng.Get(RngStream::Ai).Script({0.0, 0.5, 0.99});
+    //  risen_shieldbearer, dead_standard_bearer, bonegorger, valdras, rollcall_standard_bearer] (2F appended Valdras's
+    //  phase-2 summon; 0.9 -> 11 = valdras).
+    rig.h.rng.Get(RngStream::Ai).Script({0.0, 0.5, 0.9});
     const std::vector<EntityId> w0 = rig.monsters.SpawnDefendWave(Vec2(60, 60), 0);
     REQUIRE(w0.size() == 3);
     CHECK(rig.M(w0[0]).def.id == "breachclot");
@@ -793,7 +822,7 @@ TEST_SUITE("monsters") {
       CHECK(m.noRespawn);
       CHECK(m.affixes.empty());  // even the elite boss
     }
-    CHECK(rig.M(w0[2]).maxHp == 900);
+    CHECK(rig.M(w0[2]).maxHp == 9000);
     CHECK(rig.aggros.size() == 3);
     // Wave 2 on nightmare: n = 5, difficulty then wave scaling.
     rig.h.session.difficulty = Difficulty::Nightmare;
@@ -915,23 +944,29 @@ TEST_SUITE("monsters") {
   TEST_CASE("Chapter 1 roster W1 fields: authored on-hit statuses, breach-violet bolts, art ids, names") {
     struct Hit {
       const char* id;
+      size_t slot;  // index into onHitStatus
+      size_t count; // onHitStatus.size()
       StatusType status;
       double chance;
       StatusValueKind kind;
       double value;  // fraction (MonsterDamage) or amount (Fixed)
       int32_t durationMs;
     };
+    // Wave 2 (package 2F, chapter1.md 7): the Breach's ash numbs - every breachclot and cinderbloat hit lays one Ashnumb
+    // stack (the clot's W1 poison gave way to it; the bloat keeps its burn).
     const Hit hits[] = {
-        {"breachclot", StatusType::Poison, 0.2, StatusValueKind::MonsterDamage, 0.15, 3000},  // W2: Ashnumb
-        {"cinderbloat", StatusType::Burn, 0.3, StatusValueKind::MonsterDamage, 0.2, 3000},
-        {"oath_zealot", StatusType::Bleed, 0.15, StatusValueKind::MonsterDamage, 0.25, 5000},
-        {"miniboss_corpseherd", StatusType::Slow, 1.0, StatusValueKind::Fixed, 20, 2000},  // the bell-toll bolt
+        {"breachclot", 0, 1, StatusType::Ashnumb, 1.0, StatusValueKind::Fixed, 1, 6000},
+        {"cinderbloat", 0, 2, StatusType::Burn, 0.3, StatusValueKind::MonsterDamage, 0.2, 3000},
+        {"cinderbloat", 1, 2, StatusType::Ashnumb, 1.0, StatusValueKind::Fixed, 1, 6000},
+        {"oath_zealot", 0, 1, StatusType::Bleed, 0.15, StatusValueKind::MonsterDamage, 0.25, 5000},
+        {"miniboss_corpseherd", 0, 1, StatusType::Slow, 1.0, StatusValueKind::Fixed, 20, 2000},  // the bell-toll bolt
     };
     for (const Hit& h : hits) {
       CAPTURE(h.id);
+      CAPTURE(h.slot);
       const MonsterDef& d = MDef(h.id);
-      REQUIRE(d.onHitStatus.size() == 1);
-      const StatusRule& r = d.onHitStatus[0];
+      REQUIRE(d.onHitStatus.size() == h.count);
+      const StatusRule& r = d.onHitStatus[h.slot];
       CHECK(r.status == h.status);
       CHECK(r.hasChance);
       CHECK(r.chance == doctest::Approx(h.chance));
@@ -945,7 +980,8 @@ TEST_SUITE("monsters") {
     for (const MonsterDef& d : MD().Monsters().defs) {
       if (d.homeZone != "emerald_plains") continue;
       CAPTURE(d.id);
-      CHECK(d.spriteKey == "monster_" + d.id);  // the art lane's plain remake ids (march_palettes.py)
+      // The art lane's plain remake ids (march_palettes.py); Valdras's roll-call summon wears the standard-bearer's.
+      CHECK(d.spriteKey == "monster_" + (d.id == "rollcall_standard_bearer" ? std::string("dead_standard_bearer") : d.id));
       // Graceful art fallback: with or without the asset in the manifest the swing gets a contact beat (the clip's when
       // shipped, else the anim_timing rig beat).
       const ActionTiming at = ComputeAttackTiming(MD().Combat().anim, MD().Assets(),
@@ -967,7 +1003,7 @@ TEST_SUITE("monsters") {
   }
 
   // monsters.md 3: the seven affixes keep their mechanics; the remake re-voices them and moves their glow off the
-  // hero's ember (DR5). `emerald_plains` keeps exactly one affix.
+  // hero's ember (DR5); Wave 2 adds Unburied. `emerald_plains` keeps exactly one affix.
   TEST_CASE("elite affix look (remake): re-voiced names in both locales, recoloured glows; one affix in Chapter 1") {
     struct Row {
       EliteAffixType type;
@@ -983,6 +1019,7 @@ TEST_SUITE("monsters") {
         {EliteAffixType::CurseAura, "\xE5\x93\x80\xE5\x92\x92", "Dirgecursed", 0x7A2A90},
         {EliteAffixType::Vampiric, "\xE5\x99\xAC\xE6\xB8\x8A", "Breach-Drinker", 0x6A0F2A},
         {EliteAffixType::Frozen, "\xE5\xA2\x93\xE5\xAF\x92", "Gravecold", 0xCFE8FF},
+        {EliteAffixType::Unburied, "\xE4\xB8\x8D\xE8\x91\xAC", "Unburied", 0xD08CFF},  // W2 (2F): the Unburied eyes
     };
     I18n en;
     REQUIRE(en.LoadTable(test::ReadFile(test::DataDir() + "/i18n_en.json")));
@@ -1019,6 +1056,563 @@ TEST_SUITE("monsters") {
     CHECK(ev[0].lineKeys == std::vector<std::string>{"data.miniBossDialogue.miniboss_corpseherd.line1",
                                                      "data.miniBossDialogue.miniboss_corpseherd.line2",
                                                      "data.miniBossDialogue.miniboss_corpseherd.line3"});
+  }
+
+  // ===================================================================================================================
+  // Wave 2 content (package 2F; monsters.md 2, chapter1.md 7 / 9 / 11 / 17): the abilities, phases, on-death effects,
+  // corpses, packs, morale, kite, block and auras the K2-K5 engines run on the Chapter 1 roster. The engines are tested on
+  // synthetic fixtures (monster_abilities / corpses / phases / packs tests); these pin the authored numbers.
+  // ===================================================================================================================
+
+  // Every Chapter 1 definition (the roster, the Corpseherd, the hunts): the 35 % hit cap (plan 6: no death to one hit)
+  // and an authored wind-up on every ability (>= 600 ms; >= 700 ms for a boss special: DataStore refuses less).
+  TEST_CASE("Chapter 1 W2 roster: hit caps, authored wind-ups, the ability table") {
+    std::vector<MonsterDef> defs;
+    for (const MonsterDef& d : MD().Monsters().defs) {
+      if (d.homeZone == "emerald_plains" || d.id == "miniboss_corpseherd") defs.push_back(d);
+    }
+    for (const HuntDef& h : MD().Monsters().hunts) {
+      if (h.zone == "emerald_plains") defs.push_back(MNormalDef(h.huntId));
+    }
+    CHECK(defs.size() == 17);  // 13 roster (with the roll-call bearer) + the Corpseherd + 3 hunts
+    size_t abilities = 0;
+    for (const MonsterDef& d : defs) {
+      CAPTURE(d.id);
+      CHECK(d.hitCapHeroMaxHpPct == 35);
+      const bool boss = d.isMiniBoss || d.id == "valdras";
+      for (const MonsterAbilityDef& a : d.abilities) {
+        CAPTURE(a.id);
+        ++abilities;
+        CHECK(a.hasWindupMs);
+        CHECK(a.windupMs >= (boss ? 700 : 600));
+      }
+    }
+    CHECK(abilities == 13);  // drummer, standard-bearer, bonegorger 1 each; Valdras 4; roll-call 1; Corpseherd 3; Hungerbell 2
+    struct Row {
+      const char* monster;
+      const char* id;
+      AbilityKind kind;
+      const char* clip;
+      double windupMs, cooldownMs, initialCooldownMs;
+      int32_t priority;
+      AbilityAim aim;
+    };
+    const Row rows[] = {
+        {"deserter_drummer", "war_drum", AbilityKind::Call, "Cast01", 2000, 8000, 1000, 0, AbilityAim::Self},
+        {"dead_standard_bearer", "muster", AbilityKind::Raise, "Cast01", 900, 10000, 2000, 0, AbilityAim::Corpse},
+        {"bonegorger", "clapper_slam", AbilityKind::Circle, "Attack02", 800, 6000, 1500, 0, AbilityAim::HeroAtWindup},
+        {"hunt_hungerbell", "clapper_slam", AbilityKind::Circle, "Attack02", 800, 6000, 1500, 0, AbilityAim::HeroAtWindup},
+        {"hunt_hungerbell", "supper_bell", AbilityKind::Call, "", 800, 9000, 0, 0, AbilityAim::Self},  // 2F review: no clip
+        {"miniboss_corpseherd", "call_the_flock_pull", AbilityKind::Raise, "Cast01", 900, 600000, 0, 2, AbilityAim::Corpse},
+        {"miniboss_corpseherd", "call_the_flock", AbilityKind::Raise, "Cast01", 900, 8000, 8000, 1, AbilityAim::Corpse},
+        {"miniboss_corpseherd", "keen", AbilityKind::Circle, "Cast02", 800, 12000, 0, 0, AbilityAim::Self},
+        {"valdras", "banner_sweep", AbilityKind::Cone, "Attack02", 700, 5000, 2000, 1, AbilityAim::HeroAtWindup},
+        {"valdras", "oath_brand", AbilityKind::Circle, "Cast01", 900, 8000, 4000, 2, AbilityAim::HeroAtWindup},
+        {"valdras", "breach_seep", AbilityKind::Hazard, "", 700, 6000, 1500, 3, AbilityAim::Anchor},  // the dais pulses
+        {"valdras", "lunge", AbilityKind::Line, "Lunge", 800, 7000, 1000, 2, AbilityAim::HeroAtWindup},
+        {"rollcall_standard_bearer", "roll_call", AbilityKind::Summon, "Cast01", 900, 10000, 3000, 0, AbilityAim::Self},
+    };
+    for (const Row& r : rows) {
+      CAPTURE(r.monster);
+      CAPTURE(r.id);
+      const MonsterDef d = MNormalDef(r.monster);
+      const MonsterAbilityDef* a = nullptr;
+      for (const MonsterAbilityDef& x : d.abilities) a = x.id == r.id ? &x : a;
+      REQUIRE(a != nullptr);
+      CHECK(a->kind == r.kind);
+      CHECK(a->clip == r.clip);
+      CHECK(a->windupMs == r.windupMs);
+      CHECK(a->cooldownMs == r.cooldownMs);
+      CHECK(a->initialCooldownMs == r.initialCooldownMs);
+      CHECK(a->priority == r.priority);
+      CHECK(a->aim == r.aim);
+    }
+    // The regulars and the bosses' telegraphed shapes, damage and leftovers.
+    const MonsterDef& valdras = MDef("valdras");
+    REQUIRE(valdras.abilities.size() == 4);
+    const MonsterAbilityDef& sweep = valdras.abilities[0];
+    CHECK(sweep.shape.kind == AbilityShapeKind::Cone);
+    CHECK(sweep.shape.radius == 2.6);
+    CHECK(sweep.shape.arcDeg == 120);
+    CHECK(sweep.dmgMul == 1.3);
+    CHECK(sweep.damageType == DamageType::Fire);  // 2F review (2F-D): his fire specials are fire (chapter1.md 11)
+    const double valdrasReach = valdras.attackRange * MAi().attackExitMul;
+    const MonsterAbilityDef& brand = valdras.abilities[1];
+    CHECK(brand.shape.radius == 1.8);
+    CHECK(brand.dmgMul == 1.8);
+    CHECK(brand.damageType == DamageType::Fire);
+    CHECK(brand.hazard.present);
+    CHECK(brand.hazard.durationMs == 4000);
+    CHECK(brand.hazard.tickMs == 500);
+    CHECK(brand.hazard.tickDmgMul == 0.15);
+    const MonsterAbilityDef& seep = valdras.abilities[2];  // P2 only; one crack line from the dais (2F outcomes)
+    CHECK(seep.phases == std::vector<int32_t>{1});
+    CHECK(seep.shape.kind == AbilityShapeKind::Line);
+    CHECK(seep.shape.length == 8);
+    CHECK(seep.shape.width == 1);
+    CHECK(seep.damageType == DamageType::Fire);
+    CHECK(seep.hazard.durationMs == 1000);
+    CHECK(seep.hazard.tickMs == 500);
+    CHECK(seep.hazard.tickDmgMul == 0.5);
+    CHECK(seep.hazard.status.present);
+    CHECK(seep.hazard.status.type == StatusType::Slow);
+    CHECK(seep.hazard.status.ms == 2000);
+    CHECK(seep.hazard.status.value == 30);
+    // 2F review (CORE-R1): a hazard of the dais itself (no clip: the cracks are the tell, he is not rooted), cast at a hero
+    // up to 10 tiles off - a ranged special, so it comes between swings while he is held on the dais.
+    CHECK(seep.clip.empty());
+    CHECK(seep.hasWindupMs);
+    CHECK(seep.hasRangeMax);
+    CHECK(seep.rangeMax == 10);
+    CHECK(AbilityIsRangedSpecial(seep, valdrasReach));
+    CHECK_FALSE(AbilityIsRangedSpecial(sweep, valdrasReach));
+    CHECK_FALSE(AbilityIsRangedSpecial(brand, valdrasReach));
+    const MonsterAbilityDef& lunge = valdras.abilities[3];
+    CHECK(lunge.shape.length == 5);
+    CHECK(lunge.shape.width == 1.2);
+    CHECK(lunge.dmgMul == 1.5);
+    // 2F review: the charge (chapter1.md 11 "Lunge"): at a hero 2.5 - 5 tiles off, fire, and he runs the line.
+    CHECK(lunge.rangeMin == 2.5);
+    CHECK(lunge.hasRangeMax);
+    CHECK(lunge.rangeMax == 5);
+    CHECK(lunge.damageType == DamageType::Fire);
+    CHECK(lunge.dash);
+    CHECK(AbilityIsRangedSpecial(lunge, valdrasReach));
+    for (const MonsterDef& m : MD().Monsters().defs) {
+      for (const MonsterAbilityDef& a : m.abilities) {
+        CAPTURE(m.id);
+        CAPTURE(a.id);
+        CHECK(a.dash == (m.id == "valdras" && a.id == "lunge"));  // the only charge of the chapter
+        CHECK(a.clip.empty() == ((m.id == "valdras" && a.id == "breach_seep") || a.id == "supper_bell"));
+      }
+    }
+    const MonsterAbilityDef& slam = MDef("bonegorger").abilities.at(0);
+    CHECK(slam.shape.radius == 2);
+    CHECK(slam.dmgMul == 1.6);
+    const MonsterDef& herd = MDef("miniboss_corpseherd");
+    REQUIRE(herd.abilities.size() == 3);
+    CHECK(herd.abilities[0].summon.monsterId == "risen_footman");
+    CHECK(herd.abilities[0].summon.count == 2);
+    CHECK(herd.abilities[0].summon.capAlive == 3);
+    CHECK(herd.abilities[1].summon.count == 1);
+    CHECK(herd.abilities[1].summon.perWindowCap == 1);
+    CHECK(herd.abilities[1].summon.windowMs == 8000);
+    for (size_t i = 0; i < 2; ++i) {
+      CHECK(herd.abilities[i].summon.at == AbilitySummonAt::Corpse);
+      CHECK(herd.abilities[i].summon.radius == 6);
+      CHECK(herd.abilities[i].summon.hpPct == 40);
+    }
+    CHECK(herd.abilities[2].hasHpBelowPct);
+    CHECK(herd.abilities[2].hpBelowPct == 50);
+    CHECK(herd.abilities[2].shape.radius == 4);
+    CHECK(herd.abilities[2].dmgMul == 0);  // 2F review: Keen slows only (chapter1.md 10), a status-only strike
+    CHECK(herd.abilities[2].status.type == StatusType::Slow);
+    CHECK(herd.abilities[2].status.ms == 3000);
+    CHECK(herd.abilities[2].status.value == 25);
+    const AbilitySummonDef& muster = MDef("dead_standard_bearer").abilities.at(0).summon;
+    CHECK(muster.monsterId == "risen_footman");
+    CHECK(muster.count == 1);
+    CHECK(muster.at == AbilitySummonAt::Corpse);
+    CHECK(muster.radius == 6);
+    CHECK(muster.capAlive == 2);
+    CHECK(muster.perWindowCap == 1);
+    CHECK(muster.windowMs == 10000);
+    CHECK(muster.hpPct == 40);
+    const AbilitySummonDef& roll = MDef("rollcall_standard_bearer").abilities.at(0).summon;
+    CHECK(roll.monsterId == "risen_footman");
+    CHECK(roll.count == 2);
+    CHECK(roll.at == AbilitySummonAt::Anchors);
+    CHECK(roll.anchors == std::vector<TilePos>{{11, 91}, {19, 99}});  // the two ash circles by the dais
+    CHECK(roll.capAlive == 4);
+    CHECK(roll.hpPct == 40);
+    const AbilityBuffDef& drum = MDef("deserter_drummer").abilities.at(0).buff;
+    CHECK(drum.hasStat);
+    CHECK(drum.stat == MonsterBuffStat::FearImmune);
+    CHECK(drum.ms == 6000);
+    CHECK(drum.radius == 8);
+    CHECK(drum.family == "living");
+    const MonsterDef hungerbell = MNormalDef("hunt_hungerbell");  // a copy: the hunt's definition is built here
+    const AbilityBuffDef& bell = hungerbell.abilities.at(1).buff;
+    CHECK_FALSE(bell.hasStat);  // the call only provokes: every gnawer within 10 tiles comes
+    CHECK(bell.radius == 10);
+    CHECK(bell.family == "gravegnawers");
+    // Only Hungerbell rings the bell: the midden's bonegorger has the slam alone.
+    CHECK(MDef("bonegorger").abilities.size() == 1);
+  }
+
+  TEST_CASE("Chapter 1 W2 roster: families, corpses, the Unburied trait, the bloat's burst, packs, morale, kite, block, auras") {
+    struct Row {
+      const char* id;
+      const char* family;
+      CorpseLeaves leaves;
+      bool consumes, rises;
+    };
+    const Row rows[] = {
+        {"breachclot", "breach", CorpseLeaves::None, false, false},
+        {"risen_footman", "unburied", CorpseLeaves::Corpse, false, true},
+        {"gravegnawer", "gravegnawers", CorpseLeaves::Remains, true, false},
+        {"cinderbloat", "breach", CorpseLeaves::None, false, false},
+        {"risen_arbalest", "unburied", CorpseLeaves::Corpse, false, true},
+        {"oath_zealot", "living", CorpseLeaves::Corpse, false, false},
+        {"deserter", "living", CorpseLeaves::Corpse, false, false},
+        {"deserter_drummer", "living", CorpseLeaves::Corpse, false, false},
+        {"risen_shieldbearer", "unburied", CorpseLeaves::Corpse, false, true},
+        {"dead_standard_bearer", "unburied", CorpseLeaves::Corpse, false, true},
+        {"bonegorger", "gravegnawers", CorpseLeaves::Remains, false, false},
+        {"valdras", "unburied", CorpseLeaves::Remains, false, false},
+        {"rollcall_standard_bearer", "unburied", CorpseLeaves::Corpse, false, false},
+        {"miniboss_corpseherd", "unburied", CorpseLeaves::Remains, false, false},
+    };
+    for (const Row& r : rows) {
+      CAPTURE(r.id);
+      const MonsterDef& d = MDef(r.id);
+      CHECK(d.family == r.family);
+      CHECK(d.corpse.leaves == r.leaves);
+      CHECK(d.corpse.consumes == r.consumes);
+      CHECK(d.riseAgain.present == r.rises);
+      if (r.rises) {  // monsters.md 2.2: 25 %, 3 s after death, at 40 %; never after a crit
+        CHECK(d.riseAgain.chance == 0.25);
+        CHECK(d.riseAgain.delayMs == 3000);
+        CHECK(d.riseAgain.hpPct == 40);
+        CHECK(d.riseAgain.notOnCrit);
+      }
+      CHECK(d.onDeath.present == (std::string_view(r.id) == "cinderbloat"));
+      CHECK(d.packAggro == (std::string_view(r.id) == "gravegnawer" ? 6 : 0));
+      CHECK(d.kite.present == (std::string_view(r.id) == "risen_arbalest" || std::string_view(r.id) == "miniboss_corpseherd"));
+      CHECK(d.block.present == (std::string_view(r.id) == "risen_shieldbearer"));
+      CHECK(d.morale.present == (std::string_view(r.id) == "deserter"));
+    }
+    const MonsterOnDeathDef& burst = MDef("cinderbloat").onDeath;
+    CHECK(burst.kind == OnDeathKind::Burst);
+    CHECK(burst.delayMs == 800);  // the fuse
+    CHECK(burst.shape.kind == AbilityShapeKind::Circle);
+    CHECK(burst.shape.radius == 2.2);
+    CHECK(burst.dmg == 18);
+    CHECK(burst.damageType == DamageType::Fire);
+    CHECK(burst.hitsMonsters);
+    CHECK(burst.monsterDmgMul == 2);
+    CHECK(burst.capHeroMaxHpPct == 20);
+    CHECK(MDef("risen_arbalest").kite.min == 3);
+    CHECK(MDef("risen_arbalest").kite.max == 6);
+    CHECK(MDef("miniboss_corpseherd").kite.min == 2);  // M5: range 3.0 kept, so the band is [2, 3] (monsters.md 1.4)
+    CHECK(MDef("miniboss_corpseherd").kite.max == 3);
+    const MonsterBlockDef& block = MDef("risen_shieldbearer").block;
+    CHECK(block.arcDeg == 100);
+    CHECK(block.damageMul == 0.5);
+    CHECK(block.wall == 2);
+    const MonsterMoraleDef& morale = MDef("deserter").morale;
+    CHECK(morale.fleeOnLeaderDeathMs == 5000);
+    CHECK(morale.fleeRadius == 8);
+    CHECK(morale.sustainFamily == "living");
+    CHECK(morale.sustainRadius == 8);
+    struct Aura {
+      const char* id;
+      MonsterBuffStat stat;
+      double mul, radius;
+      const char* family;
+    };
+    const Aura auras[] = {
+        {"deserter_drummer", MonsterBuffStat::AttackSpeed, 1.1, 8, "living"},
+        {"dead_standard_bearer", MonsterBuffStat::Damage, 1.15, 5, "unburied"},
+        {"rollcall_standard_bearer", MonsterBuffStat::Damage, 1.15, 5, "unburied"},
+    };
+    for (const Aura& a : auras) {
+      CAPTURE(a.id);
+      const MonsterAuraDef& x = MDef(a.id).aura;
+      CHECK(x.present);
+      CHECK(x.stat == a.stat);
+      CHECK(x.mul == a.mul);
+      CHECK(x.radius == a.radius);
+      CHECK(x.family == a.family);
+    }
+    // The zealot's frenzy (monsters.md 2.3): below half, swings faster at once and takes a little more (2F review: no
+    // rooting enter action; UE plays the frenzy look on its EvMonsterPhase).
+    const MonsterDef& zealot = MDef("oath_zealot");
+    REQUIRE(zealot.phases.size() == 1);
+    CHECK(zealot.phases[0].hpBelowPct == 50);
+    CHECK_FALSE(zealot.phases[0].hasEnterAction);
+    CHECK(zealot.phases[0].attackSpeedMul == 1.35);
+    CHECK(zealot.phases[0].speedMul == 1.2);
+    CHECK(zealot.phases[0].damageTakenMul == 1.1);
+  }
+
+  // chapter1.md 11 (the as-built numbers: 2F outcomes): P1 Banner Sweep + Oath-Brand; P2 Roll Call below 65 % (held on
+  // the dais, the standard-bearer at the west ash circle, Feed, Breach-seep); P3 No Retreat below 30 % (frenzy, Lunge, the
+  // closing ring).
+  TEST_CASE("Chapter 1 W2 Valdras: three phases, the roll call, Feed, the closing ring") {
+    const MonsterDef& v = MDef("valdras");
+    CHECK(v.hp == 9000);
+    CHECK(v.damage == 20);  // 2F review (BOT-R2 / BAL-R3 / 2F-D2): 14000 / 32 -> 9000 / 20 (the design's damage)
+    REQUIRE(v.phases.size() == 2);
+    const MonsterPhaseDef& p2 = v.phases[0];
+    CHECK(p2.hpBelowPct == 65);
+    CHECK(p2.enterAction == AnimAction::Roar);
+    CHECK(p2.speedMul == 0.6);
+    CHECK(p2.attackSpeedMul == 1);
+    CHECK(p2.leash.present);
+    CHECK_FALSE(p2.leash.hasCentre);  // the dais: his authored spawn tile (15, 95)
+    CHECK(p2.leash.radius == 3);
+    REQUIRE(p2.summons.size() == 1);
+    CHECK(p2.summons[0].monsterId == "rollcall_standard_bearer");
+    CHECK(p2.summons[0].count == 1);
+    CHECK(p2.summons[0].at == AbilitySummonAt::Anchors);
+    CHECK(p2.summons[0].anchors == std::vector<TilePos>{{11, 91}});
+    CHECK(p2.summons[0].respawnMs == 20000);  // one new bearer 20 s later, once
+    CHECK(p2.summons[0].respawns == 1);
+    CHECK(p2.feed.present);
+    CHECK(p2.feed.radius == 4);
+    CHECK(p2.feed.healPct == 3);
+    CHECK(p2.feed.delayMs == 1000);
+    CHECK(p2.stinger == "stinger_valdras_roll_call");
+    CHECK_FALSE(p2.arena.present);
+    const MonsterPhaseDef& p3 = v.phases[1];
+    CHECK(p3.hpBelowPct == 30);
+    CHECK(p3.enterAction == AnimAction::Roar);
+    CHECK(p3.attackSpeedMul == 1.25);
+    CHECK(p3.speedMul == 1.15);
+    CHECK_FALSE(p3.leash.present);
+    CHECK(p3.abilitiesOn == std::vector<std::string>{"lunge"});
+    CHECK(p3.arena.present);
+    CHECK(p3.arena.kind == ArenaKind::RingShrink);
+    CHECK(p3.arena.fromR == 9);
+    CHECK(p3.arena.toR == 5);
+    CHECK(p3.arena.overMs == 40000);
+    CHECK(p3.arena.dpsPctMaxHp == 4);
+    CHECK(p3.arena.damageType == DamageType::Fire);
+    CHECK(p3.stinger == "stinger_valdras_no_retreat");
+    // Valdras's Breach-seep belongs to P2 (phase index 1), his Lunge is switched on by P3; the dais and the circles are
+    // walkable on the generated map.
+    MonsterRig rig(7);
+    REQUIRE(rig.ok);
+    for (TilePos t : {TilePos{15, 95}, TilePos{11, 91}, TilePos{19, 99}}) {
+      CAPTURE(t.col);
+      CAPTURE(t.row);
+      CHECK(rig.zone.Walkable(t.col, t.row));
+    }
+  }
+
+  TEST_CASE("Chapter 1 W2 world: pack mixes and leaders, dawn variants, the Sheepfold's seeds, the Muster ambush") {
+    const MapDef* map = MD().FindMap(test::ch1::kZone);
+    REQUIRE(map != nullptr);
+    REQUIRE(map->spawns.size() == 10);
+    const auto mixOf = [](const MapSpawnDef& s) {
+      std::vector<std::pair<std::string, int32_t>> out;
+      for (const MapSpawnMixDef& m : s.mix) out.emplace_back(m.monsterId, m.count);
+      return out;
+    };
+    using Mix = std::vector<std::pair<std::string, int32_t>>;
+    // The trenches: footmen until dawn, then gnawers (rf_chapter_dawn, chapter1.md 8).
+    const MapSpawnDef& trench = map->spawns[0];
+    CHECK(trench.pos == TilePos{25, 20});
+    CHECK(trench.mix.empty());
+    REQUIRE(trench.variants.size() == 1);
+    CHECK(trench.variants[0].whenFlag == "rf_chapter_dawn");
+    CHECK(trench.variants[0].monsterId == "gravegnawer");
+    CHECK(trench.variants[0].count == 8);
+    CHECK(mixOf(map->spawns[3]) == Mix{{"cinderbloat", 3}, {"breachclot", 3}});         // the Weeping Ditch
+    CHECK(mixOf(map->spawns[5]) == Mix{{"risen_arbalest", 3}, {"risen_shieldbearer", 2}});  // the Broken Redoubt
+    // 2F review (2F-D): the Redoubt falls to the gnawers at dawn too (chapter1.md 8: the dead lie down, the feeders come).
+    REQUIRE(map->spawns[5].variants.size() == 1);
+    CHECK(map->spawns[5].variants[0].whenFlag == "rf_chapter_dawn");
+    CHECK(map->spawns[5].variants[0].monsterId == "gravegnawer");
+    CHECK(map->spawns[5].variants[0].count == 5);
+    const MapSpawnDef& ranks = map->spawns[6];  // the Dead Ranks
+    CHECK(mixOf(ranks) == Mix{{"risen_shieldbearer", 3}, {"risen_footman", 2}, {"dead_standard_bearer", 1}});
+    CHECK(ranks.leader.present);
+    CHECK(ranks.leader.monsterId == "dead_standard_bearer");
+    CHECK_FALSE(ranks.leader.elite);
+    REQUIRE(ranks.variants.size() == 1);
+    CHECK(ranks.variants[0].whenFlag == "rf_chapter_dawn");
+    CHECK(ranks.variants[0].monsterId == "gravegnawer");
+    CHECK(ranks.variants[0].count == 6);
+    const MapSpawnDef& hollow = map->spawns[8];  // the Hollow Watch
+    CHECK(mixOf(hollow) == Mix{{"deserter", 5}, {"deserter_drummer", 1}});
+    CHECK(hollow.leader.present);
+    CHECK(hollow.leader.monsterId == "deserter");
+    CHECK(hollow.leader.elite);
+    CHECK(mixOf(map->spawns[9]) == Mix{{"bonegorger", 1}, {"gravegnawer", 2}});  // the Crowmarket midden
+    for (size_t i : {size_t{1}, size_t{2}, size_t{4}, size_t{7}}) {
+      CAPTURE(i);
+      CHECK(map->spawns[i].mix.empty());
+      CHECK_FALSE(map->spawns[i].leader.present);
+      CHECK(map->spawns[i].variants.empty());
+    }
+    // The Sheepfold's six seated crusaders (chapter1.md 10): the Corpseherd's first raise.
+    REQUIRE(map->corpseSeeds.size() == 6);
+    const std::vector<TilePos> seeds{{57, 54}, {58, 57}, {61, 58}, {63, 56}, {62, 52}, {59, 52}};
+    for (size_t i = 0; i < seeds.size(); ++i) {
+      CAPTURE(i);
+      CHECK(map->corpseSeeds[i].pos == seeds[i]);
+      CHECK(map->corpseSeeds[i].monsterId == "risen_footman");
+    }
+    // The champion Muster (an ambush event, chapter1.md 9): a standard-bearer leading three footmen, one shared affix, a
+    // magic item from the leader.
+    const ZoneEventDataDef* z = MD().World().randomEvents.ForZone(test::ch1::kZone);
+    REQUIRE(z != nullptr);
+    const auto& champ = z->ambushChampion;
+    CHECK(champ.present);
+    CHECK(champ.chance == 0.1);
+    REQUIRE(champ.mix.size() == 2);
+    CHECK(champ.mix[0].monsterId == "dead_standard_bearer");
+    CHECK(champ.mix[0].count == 1);
+    CHECK(champ.mix[1].monsterId == "risen_footman");
+    CHECK(champ.mix[1].count == 3);
+    CHECK(champ.leader == "dead_standard_bearer");
+    CHECK(champ.sharedAffix);
+    CHECK(champ.leaderLoot == ItemQuality::Magic);
+    // 2F review (2F-D): after dawn the dead no longer muster, and an ambush is the gnawers' (chapter1.md 8).
+    CHECK(champ.notFlag == "rf_chapter_dawn");
+    REQUIRE(z->ambushVariants.size() == 1);
+    CHECK(z->ambushVariants[0].whenFlag == "rf_chapter_dawn");
+    CHECK(z->ambushVariants[0].monsters == std::vector<std::string>{"gravegnawer"});
+    for (const ZoneEventDataDef& e : MD().World().randomEvents.zones) {
+      if (e.zoneId == test::ch1::kZone) continue;
+      CHECK_FALSE(e.ambushChampion.present);
+      CHECK(e.ambushVariants.empty());
+    }
+  }
+
+  TEST_CASE("Chapter 1 W2 world state: flags, permanent rewards, quest-gated NPC lines, Ashnumb, the remade affixes") {
+    for (const QuestDef& q : MD().Quests().quests) {
+      CAPTURE(q.id);
+      if (q.id == "q_rf_gnawed_field") {
+        CHECK(q.setsFlags == std::vector<std::string>{"rf_hungerbell_silenced"});
+      } else if (q.id == "q_rf_last_toll") {
+        CHECK(q.setsFlags == std::vector<std::string>{"rf_chapter_dawn"});
+      } else {
+        CHECK(q.setsFlags.empty());
+      }
+      const QuestPermanentRewardDef& p = q.rewards.permanent;
+      if (q.id == "q_rf_black_blood") {  // S1: Marl's Bitter Draught
+        CHECK(p.present);
+        CHECK(p.maxLife == 15);
+        CHECK(p.statPoints == 0);
+      } else if (q.id == "q_rf_hallowed_ground") {  // S6
+        CHECK(p.present);
+        CHECK(p.maxLife == 0);
+        CHECK(p.statPoints == 3);
+      } else {
+        CHECK_FALSE(p.present);
+      }
+    }
+    // The after lines (chapter1.md 3): said once the quest is turned in; Brother Aldwin's first line gives way to his.
+    test::SimHarness h(3, MD());
+    QuestSystem qs(h.ctx.data, h.events, h.bus);
+    const auto turnedIn = [&](const char* id) {
+      QuestProgress p;
+      p.questId = id;
+      p.status = QuestStatus::TurnedIn;
+      p.objectives.assign(MD().FindQuest(id)->objectives.size(), 1);
+      return p;
+    };
+    std::vector<std::string> flags;
+    const WorldStateView before{flags, &qs};
+    struct Npc {
+      const char* id;
+      const char* quest;
+      std::vector<std::string> before, after;
+    };
+    const Npc npcs[] = {
+        {"blacksmith", "q_rf_tag_thief", {"data.npc.blacksmith.dialogue.0"},
+         {"data.npc.blacksmith.after.q_rf_tag_thief", "data.npc.blacksmith.dialogue.0"}},
+        {"quest_elder", "q_rf_oathless", {"data.npc.quest_elder.dialogue.0"},
+         {"data.npc.quest_elder.after.q_rf_oathless", "data.npc.quest_elder.dialogue.0"}},
+        {"plains_herbalist", "q_rf_black_blood", {"data.npc.plains_herbalist.dialogue.0"},
+         {"data.npc.plains_herbalist.after.q_rf_black_blood", "data.npc.plains_herbalist.dialogue.0"}},
+        {"knell_chaplain", "q_rf_last_toll", {"data.npc.knell_chaplain.dialogue.0", "data.npc.knell_chaplain.dialogue.1"},
+         {"data.npc.knell_chaplain.after.q_rf_last_toll", "data.npc.knell_chaplain.dialogue.1"}},
+    };
+    I18n en;
+    REQUIRE(en.LoadTable(test::ReadFile(test::DataDir() + "/i18n_en.json")));
+    en.SetLocale(LocaleId::En);
+    // 2F review (2F-D): S1's permanent reward has its name (the toast UE shows on EvPermanentReward); S6 shows the
+    // generic reward text.
+    CHECK(en.T("data.quest.q_rf_black_blood.permanent") == "Marl's Bitter Draught");
+    CHECK(MD().Strings().Lookup(LocaleId::ZhCN, "data.quest.q_rf_black_blood.permanent") != nullptr);
+    for (const Npc& n : npcs) {
+      CAPTURE(n.id);
+      const NpcDef* npc = MD().FindNpc(n.id);
+      REQUIRE(npc != nullptr);
+      CHECK(npc->hasVisibleWhen == (n.id == std::string("plains_herbalist")));  // 2F review: Marl leaves in the finale
+      CHECK(NpcLinesNow(*npc, before) == n.before);
+      QuestSystem done(h.ctx.data, h.events, h.bus);
+      done.Load({turnedIn(n.quest)});
+      const WorldStateView after{flags, &done};
+      CHECK(NpcLinesNow(*npc, after) == n.after);
+      CHECK(NpcPanelLineNow(*npc, after) == n.after[1]);  // the panel keeps the standing line
+      for (const std::string& k : n.after) {
+        CHECK(en.Has(k));
+        CHECK(MD().Strings().Lookup(LocaleId::ZhCN, k) != nullptr);
+      }
+    }
+    // 2F review (2F-D): Marl leaves once the last toll is turned in (the finale; chapter1.md 7), unless her own quest is
+    // still open (S1 stays finishable).
+    {
+      const NpcDef* marl = MD().FindNpc("plains_herbalist");
+      REQUIRE(marl != nullptr);
+      const auto rec = [&](const char* id, QuestStatus st) {
+        QuestProgress p;
+        p.questId = id;
+        p.status = st;
+        p.objectives.assign(MD().FindQuest(id)->objectives.size(), st == QuestStatus::Active ? 0 : 1);
+        return p;
+      };
+      const auto visible = [&](std::vector<QuestProgress> recs) {
+        QuestSystem q(h.ctx.data, h.events, h.bus);
+        q.Load(std::move(recs));
+        return NpcVisibleNow(*marl, WorldStateView{flags, &q});
+      };
+      CHECK(visible({}));
+      CHECK(visible({rec("q_rf_last_toll", QuestStatus::Completed)}));
+      CHECK_FALSE(visible({rec("q_rf_last_toll", QuestStatus::TurnedIn)}));
+      CHECK(visible({rec("q_rf_last_toll", QuestStatus::TurnedIn), rec("q_rf_black_blood", QuestStatus::Active)}));
+      CHECK_FALSE(visible({rec("q_rf_last_toll", QuestStatus::TurnedIn), rec("q_rf_black_blood", QuestStatus::TurnedIn)}));
+    }
+    size_t withLines = 0;
+    for (const NpcDef& n : MD().Npcs().npcs) withLines += n.lines.empty() ? 0 : 1;
+    CHECK(withLines == 4);
+    // Ashnumb (monsters.md 4): -10 % healing per stack, at most 5, slowed 20 % at 5; laid by the Breach's clots and bloats.
+    const StatusEffectRules& rules = MD().Classes().statusRules;
+    CHECK(rules.Lands(StatusType::Ashnumb));
+    CHECK(rules.Stacking(StatusType::Ashnumb) == StatusStacking::StackCount);
+    CHECK(rules.Stacks(StatusType::Ashnumb).maxStacks == 5);
+    CHECK(rules.Stacks(StatusType::Ashnumb).healingReceivedPerStack == 0.1);
+    CHECK(rules.Stacks(StatusType::Ashnumb).slowAtMaxStacksPct == 20);
+    CHECK(en.T("sys.statusEffect.name.ashnumb") == "Ashnumb");
+    // The remade affixes (monsters.md 3): Scorched bursts, Gravecold rings, Unburied rises (its family only).
+    const EliteAffixDef& scorched = MAffixes().Def(EliteAffixType::FireEnhanced);
+    CHECK(scorched.onDeath.present);
+    CHECK(scorched.onDeath.kind == OnDeathKind::Burst);
+    CHECK(scorched.onDeath.delayMs == 1000);
+    CHECK(scorched.onDeath.shape.radius == 2);
+    CHECK(scorched.onDeath.dmg == 20);
+    CHECK(scorched.onDeath.damageType == DamageType::Fire);
+    CHECK(scorched.onDeath.capHeroMaxHpPct == 20);
+    CHECK(scorched.onDeath.hitsMonsters);  // 2F review (2F-D): the blast scorches the pack too (monsters.md 3)
+    CHECK(scorched.onDeath.monsterDmgMul == 2);
+    const EliteAffixDef& gravecold = MAffixes().Def(EliteAffixType::Frozen);
+    CHECK(gravecold.onDeath.present);
+    CHECK(gravecold.onDeath.kind == OnDeathKind::Ring);
+    CHECK(gravecold.onDeath.delayMs == 600);
+    CHECK(gravecold.onDeath.shape.radius == 2.5);
+    CHECK(gravecold.onDeath.damageType == DamageType::Ice);
+    CHECK(gravecold.onDeath.status.type == StatusType::Slow);
+    CHECK(gravecold.onDeath.status.ms == 2500);
+    CHECK(gravecold.onDeath.status.value == 30);
+    CHECK_FALSE(gravecold.onDeath.hasDmg);
+    const EliteAffixDef& unburied = MAffixes().Def(EliteAffixType::Unburied);
+    CHECK(unburied.riseAgain.present);
+    CHECK(unburied.riseAgain.chance == 1);
+    CHECK(unburied.riseAgain.delayMs == 3000);
+    CHECK(unburied.riseAgain.hpPct == 50);
+    CHECK(unburied.families == std::vector<std::string>{"unburied"});
+    CHECK(unburied.lootQualityBonus == 3);
+    CHECK(unburied.hpMult == 1);
+    CHECK(unburied.damageMult == 1);
+    for (EliteAffixType t : MAffixes().order) {
+      if (t != EliteAffixType::FireEnhanced && t != EliteAffixType::Frozen) CHECK_FALSE(MAffixes().Def(t).onDeath.present);
+      if (t != EliteAffixType::Unburied) CHECK_FALSE(MAffixes().Def(t).riseAgain.present);
+    }
   }
 }  // TEST_SUITE
 
@@ -3396,7 +3990,8 @@ TEST_SUITE("data") {
   // Split from "monster tables": the roster size and the Chapter 1 spot checks.
   TEST_CASE("monster tables: roster size, the gnawer, the Corpseherd (M5), the emerald_plains list, mini-boss and hunts") {
     const MonsterTables& m = test::RealData().Monsters();
-    CHECK(m.defs.size() == 38);  // 29 - the 4 web Chapter 1 defs + 12 roster defs + the Corpseherd
+    // 29 - the 4 web Chapter 1 defs + 12 roster defs + the Corpseherd + Valdras's roll-call standard-bearer (2F)
+    CHECK(m.defs.size() == 39);
     const MonsterDef* gnawer = m.Find("gravegnawer");
     REQUIRE(gnawer);
     CHECK(gnawer->hp == 42);
@@ -3414,7 +4009,7 @@ TEST_SUITE("data") {
     CHECK(list->monsterIds == std::vector<std::string>{"breachclot", "risen_footman", "gravegnawer", "cinderbloat",
                                                        "risen_arbalest", "oath_zealot", "deserter", "deserter_drummer",
                                                        "risen_shieldbearer", "dead_standard_bearer", "bonegorger",
-                                                       "valdras"});
+                                                       "valdras", "rollcall_standard_bearer"});
     for (const char* gone : {"slime_green", "goblin", "goblin_chief", "miniboss_goblin_shaman"}) CHECK(m.Find(gone) == nullptr);
     const MiniBossEntry* mb = m.MiniBossFor("emerald_plains");
     REQUIRE(mb);
