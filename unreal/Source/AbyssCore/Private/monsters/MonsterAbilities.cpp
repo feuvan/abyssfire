@@ -46,15 +46,18 @@ bool AbilityKindRuns(AbilityKind kind) {
     case AbilityKind::Hazard:
     case AbilityKind::Raise:   // K3 (corpses)
     case AbilityKind::Summon:  // K3 (raise caps)
-      return true;
     case AbilityKind::Buff:    // K5 (packs, morale)
     case AbilityKind::Call:    // K5 (social call)
-      return false;
+      return true;
   }
   return false;
 }
 
 bool AbilityKindSummons(AbilityKind kind) { return kind == AbilityKind::Raise || kind == AbilityKind::Summon; }
+
+bool AbilityKindCastsBetweenSwings(AbilityKind kind) {
+  return AbilityKindSummons(kind) || kind == AbilityKind::Buff || kind == AbilityKind::Call;
+}
 
 bool AbilityHasGroundShape(AbilityKind kind) {
   return kind == AbilityKind::Circle || kind == AbilityKind::Cone || kind == AbilityKind::Line ||
@@ -63,7 +66,7 @@ bool AbilityHasGroundShape(AbilityKind kind) {
 
 bool AbilityUsable(const MonsterAbilityDef& a, size_t index, const AbilityPickInput& in) {
   if (!AbilityKindRuns(a.kind)) return false;
-  if (in.summonsOnly && !AbilityKindSummons(a.kind)) return false;
+  if (in.castsOnly && !AbilityKindCastsBetweenSwings(a.kind)) return false;
   if (index >= in.readyAtMs.size() || in.nowMs + kAbilityEpsilonMs < in.readyAtMs[index]) return false;
   if (in.heroDist < a.rangeMin) return false;
   if (a.hasRangeMax && in.heroDist > a.rangeMax) return false;

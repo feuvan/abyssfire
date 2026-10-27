@@ -4,6 +4,7 @@
 // MonsterSystem.h (spawning, damage, death, respawn, queries).
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -18,9 +19,10 @@
 
 namespace abyss {
 
-// AI states (monsters 3.1) + the port's leash `Returning` state (M1).
-enum class MonsterState : uint8_t { Idle, Patrol, Chase, Attack, Returning, Dead };
-ABYSS_ENUM_STRINGS(MonsterState, "idle", "patrol", "chase", "attack", "returning", "dead")
+// AI states (monsters 3.1) + the port's leash `Returning` state (M1) + the dark remake's `Flee` (K5 morale, appended:
+// its pack's leader died; it runs from the leader's body until MonsterInstance::fleeUntilMs, no swing or cast).
+enum class MonsterState : uint8_t { Idle, Patrol, Chase, Attack, Returning, Dead, Flee };
+ABYSS_ENUM_STRINGS(MonsterState, "idle", "patrol", "chase", "attack", "returning", "dead", "flee")
 
 // Why a monster exists; drives respawn eligibility (M4/W9), affix rolls and loot floors (monsters 1.2).
 // StoryBoss (M7): the zone spawn of MonsterAiDef::storyBossId (Ch1 goblin_chief); once per visit, no respawn.
@@ -67,6 +69,14 @@ struct MonsterArena {
   double dpsPctMaxHp = 0;
   DamageType damageType = DamageType::Physical;
   double nextTickMs = 0;  // absolute sim ms of its next tick on the hero
+};
+
+// K5: a buff a buff / call ability gave (MonsterData.h AbilityBuffDef): `stat` x `mul` until untilMs (sim ms).
+struct MonsterAbilityBuff {
+  MonsterBuffStat stat = MonsterBuffStat::Damage;
+  double mul = 1;
+  double untilMs = 0;
+  EntityId source = kNoEntity;
 };
 
 // One rolled elite affix with its behaviour timers (combat-feel.md 17).
@@ -149,6 +159,31 @@ struct ABYSS_API MonsterInstance {
   std::vector<Vec2> abilitySpots;
   uint32_t consumeCorpse = 0;       // 0 = not eating
   double consumeUntilMs = 0;
+  // K5 (monsters/Packs.h; MonsterSystem.h "K5"). Its pack (a map spawn entry, a hunt with its minions; 0 = none) and
+  // whether it leads it. Flee (MonsterState::Flee): away from fleeFrom (the leader's body) until fleeUntilMs. Kite: a
+  // step to kiteTarget under way (state Chase); after it ends (kiteEndedMs) it strikes before it kites again
+  // (lastStrikeMs: the start of its last swing, at the hero or a beast, or of a damaging ability; a support cast between
+  // swings, raise / summon / buff / call, sets lastAttackMs but is no strike). Buffs from
+  // buff / call abilities (pruned when they run out), and the multipliers its buffs and the auras around it give this
+  // step (MonsterSystem refreshes them at the start of every TickAI and when a buff lands; 1 / false = none): attack
+  // speed in AttackIntervalMs, move speed in MonsterMoveToward, damage as the formula's outgoing multiplier (CombatSystem),
+  // fearImmune in morale.
+  uint32_t packId = 0;
+  bool packLeader = false;
+  double fleeUntilMs = 0;
+  Vec2 fleeFrom;
+  Vec2 fleeDir;  // its last flee step's direction (zero when a flee starts): the next never doubles back on it
+  bool kiting = false;
+  Vec2 kiteTarget;
+  double kiteUntilMs = 0;  // the step gives up then (MonsterAiDef::kiteTimeoutMs, or twice its walk)
+  bool kiteNeedsSwing = false;
+  double kiteEndedMs = 0;
+  double lastStrikeMs = 0;
+  std::vector<MonsterAbilityBuff> abilityBuffs;
+  std::array<double, 4> auraMul{1, 1, 1, 1};  // per MonsterBuffStat: the largest aura reaching it this step
+  uint8_t auraMask = 0;                       // bit per MonsterBuffStat: an aura of that stat reaches it
+  double buffDamageMul = 1, buffAttackSpeedMul = 1, buffMoveSpeedMul = 1;
+  bool fearImmune = false;
   // presentation flags
   bool storyNameShown = false;      // boss label renamed (story 8.3)
   bool active = true;               // in the AI activity set (30 tiles / aggro), monsters 3.8
@@ -156,8 +191,9 @@ struct ABYSS_API MonsterInstance {
   bool IsAlive() const { return state != MonsterState::Dead && hp > 0; }
   bool IsAggro() const { return state == MonsterState::Chase || state == MonsterState::Attack; }
   int32_t AffixCount() const { return static_cast<int32_t>(affixes.size()); }
-  // ms between swing starts: the definition's attackSpeed, divided by the K4 phase's attackSpeedMul.
-  double AttackIntervalMs() const { return def.attackSpeedMs / phaseAttackSpeedMul; }
+  // ms between swing starts: the definition's attackSpeed, divided by the K4 phase's attackSpeedMul and the K5
+  // attackSpeed buff / aura.
+  double AttackIntervalMs() const { return def.attackSpeedMs / (phaseAttackSpeedMul * buffAttackSpeedMul); }
   double AffixLootBonus(const EliteAffixTable& table) const;
 };
 

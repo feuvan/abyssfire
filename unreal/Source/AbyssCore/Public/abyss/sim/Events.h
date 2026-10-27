@@ -230,6 +230,49 @@ struct EvMonsterFeed {
   double startMs = 0;
   double dueMs = 0;
 };
+// Dark remake K5 (implementation-plan.md 3 K5; monsters/Packs.h): a monster's block took a hit from within its front arc
+// (MonsterDef::block): `amount` is the damage it took (the EvHit that follows carries it), `blocked` what the shield
+// stopped, in the same units (both after a K4 phase's damageTakenMul: amount + blocked is what the hit would have dealt
+// unblocked); `from` is where the hit came from. UE sparks the shield (the art's EvBlock VFX at socket `face`) and plays
+// the clang.
+struct EvBlock {
+  EntityId entity = kNoEntity;  // the blocker
+  EntityId source = kNoEntity;  // the attacker (kHeroEntityId, a pet, a monster)
+  Vec2 from;
+  double amount = 0;
+  double blocked = 0;
+};
+// Dark remake K5 morale: a monster broke and flees (MonsterState::Flee) because `leader`, its pack's leader, died at
+// `from` (it runs away from there until untilMs), or (`ended`) its flee ended: `reason` expired, sustained (a sustain
+// member or a fearImmune buff steadied it), blocked (no step led away: it fights) or interrupted (the leash or a camp).
+// A death or a zone change ends a flee silently.
+struct EvMonsterFlee {
+  EntityId entity = kNoEntity;
+  EntityId leader = kNoEntity;
+  Vec2 from;
+  double startMs = 0;
+  double untilMs = 0;
+  bool ended = false;
+  FleeEnd reason = FleeEnd::Expired;
+};
+// Dark remake K5: a buff / call ability resolved at its contact around `centre` (the caster) within `radius`: a call
+// reached `called` other monsters (of `family`; each is provoked unless already fighting: the social call), and `buffed`
+// monsters (the caster included) got `stat` x `mul` until untilMs (when `hasBuff`). UE plays the pulse (DR5:
+// breach-violet, enemy magic that is not a damage hazard).
+struct EvMonsterBuffCast {
+  EntityId entity = kNoEntity;
+  std::string abilityId;
+  AbilityKind kind = AbilityKind::Buff;
+  Vec2 centre;
+  double radius = 0;
+  std::string family;
+  bool hasBuff = false;
+  MonsterBuffStat stat = MonsterBuffStat::Damage;
+  double mul = 1;
+  double untilMs = 0;
+  int32_t buffed = 0;
+  int32_t called = 0;
+};
 struct EvProjectileLaunched {
   EntityId projectile = kNoEntity;
   ProjectileKind kind = ProjectileKind::HeroSkill;
@@ -630,7 +673,8 @@ using Event = std::variant<EvEntitySpawned, EvEntityDespawned, EvEntityTeleporte
                            EvInteractPrompt, EvRandomEvent, EvPuzzlePrompt, EvStoryDecorFocus, EvLog, EvBanner,
                            EvPanelRequest, EvSaveRequested, EvMusic, EvSfx, EvCameraShake, EvCameraFlash, EvSlowMotion,
                            EvTelegraph, EvHazard, EvCorpseAdded, EvCorpseRemoved, EvMonsterRaised,
-                           EvMonsterCollapsed, EvMonsterPhase, EvArena, EvMonsterFeed>;
+                           EvMonsterCollapsed, EvMonsterPhase, EvArena, EvMonsterFeed, EvBlock, EvMonsterFlee,
+                           EvMonsterBuffCast>;
 
 // Append-only event list shared by every subsystem of one GameSim.
 class EventSink {

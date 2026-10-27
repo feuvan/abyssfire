@@ -19,7 +19,7 @@ import { STORY_TRIGGERS, BOSS_INTROS } from '../../../../../src/data/story/scrip
 import { AllMaps, EmeraldPlainsMap } from '../../../../../src/data/maps';
 import type { MonsterDefinition } from '../../../../../src/data/types';
 import type { RemakeOnHitStatus, RemakeMonsterAbility, RemakeAbilityShape, RemakeAbilityStatus, RemakeOnDeath, RemakeCorpse,
-  RemakeRiseAgain, RemakeMonsterPhase } from '../../../../GameData/types';
+  RemakeRiseAgain, RemakeMonsterPhase, RemakeKite, RemakeBlock, RemakeMorale, RemakeAura, MapSpawn as RemakeMapSpawn } from '../../../../GameData/types';
 import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, assertSource, plain, withRandom, type TableResult } from '../util';
 import { gateRemakeValues, noteConfig, withholdRemakeFields } from '../remake';
@@ -207,7 +207,8 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
     // (1.8) passes. K3: a raise / summon is a cast between swings, from Chase as well, so its range is not bound by reach.
     const swingReach = def.attackRange * ATTACK_EXIT_MUL;
     const shownReach = Math.round(swingReach * 1000) / 1000;
-    const castBetweenSwings = a.kind === 'raise' || a.kind === 'summon';
+    // K5: so are buff / call (support casts on their own cooldown).
+    const castBetweenSwings = a.kind === 'raise' || a.kind === 'summon' || a.kind === 'buff' || a.kind === 'call';
     assert(castBetweenSwings || (a.rangeMin ?? 0) <= swingReach + 1e-9,
       `${at}.rangeMin: ${a.rangeMin} is past the swing reach (attackRange ${def.attackRange} x ${ATTACK_EXIT_MUL} = ${shownReach}): never picked, abilities fire only on a due swing`);
     if (!castBetweenSwings && a.rangeMax !== undefined && a.rangeMax > swingReach + 1e-9) {
@@ -268,13 +269,27 @@ function checkK2Monster(def: MonsterDefinition, where: string, boss: boolean): s
       assert(!summons, `${at}: a ${a.kind} ability needs its 'summon' block`);
     }
     if (a.buff) {
+      // LoadMonsters.cpp ReadMonsterAbility (K5): a buff names its stat and ms; a call provokes within radius > 0 and buffs
+      // only with a stat (then with its ms).
       const b = a.buff;
       checkKeys(b, ['stat', 'mul', 'ms', 'radius', 'family'], `${at}.buff`);
       assert(a.kind === 'buff' || a.kind === 'call', `${at}.buff: only buff / call abilities buff`);
-      assert(['damage', 'attackSpeed', 'moveSpeed', 'fearImmune'].includes(b.stat), `${at}.buff.stat: unknown '${b.stat}'`);
-      assert((b.mul ?? 1) > 0 && isNum(b.ms) && b.ms > 0 && (b.radius ?? 0) >= 0, `${at}.buff: mul > 0, ms > 0, radius >= 0`);
+      const hasStat = a.kind === 'buff' || b.stat !== undefined;
+      if (hasStat) {
+        assert(b.stat !== undefined, `${at}.buff.stat: a buff names its stat (${BUFF_STATS.join(', ')})`);
+        assert(BUFF_STATS.includes(b.stat), `${at}.buff.stat: unknown '${b.stat}'`);
+        assert(isNum(b.ms) && b.ms > 0 && b.ms <= MAX_COOLDOWN_MS, `${at}.buff.ms: expected 0 < ms <= ${MAX_COOLDOWN_MS}`);
+      } else {
+        assert(b.ms === undefined && b.mul === undefined, `${at}.buff: a call buffs (ms, mul) only with a stat`);
+      }
+      assert(b.mul === undefined || (isNum(b.mul) && b.mul > 0 && b.mul <= 10), `${at}.buff.mul: expected 0 < mul <= 10`);
+      const r = b.radius ?? 0;
+      assert(isNum(r) && r >= 0 && r <= MAX_PACK_RADIUS, `${at}.buff.radius: expected 0 <= radius <= ${MAX_PACK_RADIUS}`);
+      assert(a.kind !== 'call' || r > 0, `${at}.buff.radius: a call reaches radius > 0 tiles`);
+      assert(b.family === undefined || (typeof b.family === 'string' && b.family !== ''), `${at}.buff.family: an empty family id`);
     } else {
       assert(a.kind !== 'buff', `${at}: a buff ability needs its 'buff' block`);
+      assert(a.kind !== 'call', `${at}: a call ability needs its 'buff' block (its radius, family and optional buff)`);
     }
   });
   if (abilities.length > 0) {
@@ -482,6 +497,65 @@ function checkK4Monster(def: MonsterDefinition, where: string): string[] {
   return summoned;
 }
 
+// ── K5 packs, morale, kite, block and auras (implementation-plan.md §3 K5) ──
+
+const BUFF_STATS = ['damage', 'attackSpeed', 'moveSpeed', 'fearImmune'];
+// LoadMonsters.cpp kLoadPackMaxRadius / kLoadFleeMaxMs: every K5 radius within 30 tiles; a flee lasts <= 60 s.
+const MAX_PACK_RADIUS = 30, MAX_FLEE_MS = 60000;
+// monster_ai.json `rangedThreshold` (Monster.ts `attackRange > 2.5`): a kite is a ranged monster's rule.
+const RANGED_THRESHOLD = 2.5;
+
+/**
+ * The rules of LoadMonsters.cpp ReadMonsterK5 and DataStore::Finalize's K5 checks: known keys in every block, radii in
+ * (0, 30], a kite band 0 < min < max on a ranged monster (attackRange > 2.5) ending within its attack range (a kite runs
+ * in Chase and ends in Attack only with the hero within attackRange; past it the monster walks back in before it shoots;
+ * DataStore warns, the export fails), a block arc in (0, 360] reducing hits (0 <= damageMul < 1), a flee of (0, 60] s,
+ * a sustain family with its radius, an aura stat.
+ */
+function checkK5Monster(def: MonsterDefinition, where: string): void {
+  const d = def as MonsterDefinition & { packAggro?: number; kite?: RemakeKite; block?: RemakeBlock; morale?: RemakeMorale;
+    aura?: RemakeAura };
+  const radius = (v: unknown, at: string) =>
+    assert(isNum(v) && v > 0 && v <= MAX_PACK_RADIUS, `${at}: expected 0 < radius <= ${MAX_PACK_RADIUS}`);
+  if (d.packAggro !== undefined) radius(d.packAggro, `${where}.packAggro`);
+  if (d.kite) {
+    const k = d.kite;
+    checkKeys(k, ['min', 'max'], `${where}.kite`);
+    radius(k.min, `${where}.kite.min`);
+    radius(k.max, `${where}.kite.max`);
+    assert(k.max > k.min, `${where}.kite.max: expected max > min (the band it keeps from the hero)`);
+    assert(def.attackRange > RANGED_THRESHOLD, `${where}.kite: a kite is a ranged monster's rule (attackRange ${def.attackRange} <= ${RANGED_THRESHOLD})`);
+    assert(k.max <= def.attackRange + 1e-9, `${where}.kite.max: ${k.max} is past the attack range (attackRange ` +
+      `${def.attackRange}): the kite would end in Chase and the monster walk back in before it shoots`);
+  }
+  if (d.block) {
+    const b = d.block;
+    checkKeys(b, ['arcDeg', 'damageMul', 'wall'], `${where}.block`);
+    assert(isNum(b.arcDeg) && b.arcDeg > 0 && b.arcDeg <= 360, `${where}.block.arcDeg: expected 0 < arcDeg <= 360`);
+    assert(isNum(b.damageMul) && b.damageMul >= 0 && b.damageMul < 1, `${where}.block.damageMul: expected 0 <= damageMul < 1`);
+    if (b.wall !== undefined) radius(b.wall, `${where}.block.wall`);
+  }
+  if (d.morale) {
+    const m = d.morale;
+    checkKeys(m, ['fleeOnLeaderDeathMs', 'fleeRadius', 'sustainFamily', 'sustainRadius'], `${where}.morale`);
+    assert(isNum(m.fleeOnLeaderDeathMs) && m.fleeOnLeaderDeathMs > 0 && m.fleeOnLeaderDeathMs <= MAX_FLEE_MS,
+      `${where}.morale.fleeOnLeaderDeathMs: expected 0 < fleeOnLeaderDeathMs <= ${MAX_FLEE_MS}`);
+    if (m.fleeRadius !== undefined) radius(m.fleeRadius, `${where}.morale.fleeRadius`);
+    if (m.sustainRadius !== undefined) radius(m.sustainRadius, `${where}.morale.sustainRadius`);
+    assert(m.sustainFamily === undefined || (typeof m.sustainFamily === 'string' && m.sustainFamily !== ''),
+      `${where}.morale.sustainFamily: an empty family id`);
+    assert(m.sustainFamily === undefined || m.sustainRadius !== undefined, `${where}.morale.sustainFamily: a sustain needs its sustainRadius`);
+  }
+  if (d.aura) {
+    const a = d.aura;
+    checkKeys(a, ['stat', 'mul', 'radius', 'family'], `${where}.aura`);
+    assert(BUFF_STATS.includes(a.stat), `${where}.aura.stat: unknown '${a.stat}'`);
+    assert(a.mul === undefined || (isNum(a.mul) && a.mul > 0 && a.mul <= 10), `${where}.aura.mul: expected 0 < mul <= 10`);
+    radius(a.radius, `${where}.aura.radius`);
+    assert(a.family === undefined || (typeof a.family === 'string' && a.family !== ''), `${where}.aura.family: an empty family id`);
+  }
+}
+
 // Phases.h kTetherSlackTiles: a tethered monster attacks from within its radius plus this.
 const TETHER_SLACK_TILES = 0.25;
 
@@ -491,7 +565,10 @@ interface TetherHome { col: number; row: number; jitter: number }
 function tetherHomes(id: string, mapJitter: number): TetherHome[] {
   const out: TetherHome[] = [];
   for (const map of Object.values(AllMaps)) {
-    for (const s of map.spawns) if (s.monsterId === id) out.push({ col: s.col, row: s.row, jitter: mapJitter });
+    for (const s of map.spawns as RemakeMapSpawn[]) {
+      const member = s.mix ? s.mix.some(e => e.monsterId === id) : s.monsterId === id;  // K5: a mix spawns its members
+      if (member) out.push({ col: s.col, row: s.row, jitter: mapJitter });
+    }
   }
   for (const sd of Object.values(AllSubDungeons)) {
     for (const s of sd.spawns) if (s.monsterId === id) out.push({ col: s.col, row: s.row, jitter: mapJitter });
@@ -549,6 +626,7 @@ export function exportMonsters(): TableResult[] {
     summonedIds.push(...checkK2Monster(def, `monsters.${def.id}`, boss).map(id => [def.id, id] as [string, string]));
     summonedIds.push(...checkK3Monster(def, `monsters.${def.id}`).map(id => [def.id, id] as [string, string]));
     summonedIds.push(...checkK4Monster(def, `monsters.${def.id}`).map(id => [def.id, id] as [string, string]));
+    checkK5Monster(def, `monsters.${def.id}`);
     tethered.push([def, `monsters.${def.id}`, null]);
     const d: MonsterDefinition = withholdRemakeFields('monster', plain(def), `monsters.${def.id}`);
     const authored = takeAuthored(d);

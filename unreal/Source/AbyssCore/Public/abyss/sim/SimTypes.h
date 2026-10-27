@@ -116,6 +116,13 @@ ABYSS_ENUM_STRINGS(CorpseKind, "corpse", "remains")
 enum class CorpseRemoveReason : uint8_t { Expired, Raised, Consumed, Burned };
 ABYSS_ENUM_STRINGS(CorpseRemoveReason, "expired", "raised", "consumed", "burned")
 
+// Morale vocabulary (dark remake K5, EvMonsterFlee; MonsterState::Flee): why a flee ended - its time ran out, a sustain
+// steadied it (a living sustain member within the morale's sustainRadius, or a fearImmune buff / aura on it), no step
+// led away from the leader's corpse (a blocked monster fights instead), or the M1 leash or a camp's safe zone took it
+// out of the flee (interrupted).
+enum class FleeEnd : uint8_t { Expired, Sustained, Blocked, Interrupted };
+ABYSS_ENUM_STRINGS(FleeEnd, "expired", "sustained", "blocked", "interrupted")
+
 enum class DespawnReason : uint8_t { Died, Removed, ZoneUnload, PickedUp, Expired, Collected };
 ABYSS_ENUM_STRINGS(DespawnReason, "died", "removed", "zoneUnload", "pickedUp", "expired", "collected")
 

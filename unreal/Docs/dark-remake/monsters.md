@@ -101,6 +101,29 @@ the oldest out. Map `corpseSeeds` (the Sheepfold's six) never expire, sit outsid
 entry. A fire killing blow registers the body and burns it at once; fire burns any entry it touches (both kinds). Ash
 mode is UE's rendering of an entry (DECISIONS DR6 K3 note); the core does not know it.
 
+### 1.6 Packs, morale, kite and block [W2]
+
+**As built (K5, package 2D, pending review, with the 2D review's amendments; implementation-plan.md *2D outcomes*):** a
+map spawn entry is a pack; its W2 `mix` spawns in list order where the plain entry stood (golden-neutral; the entry's
+own `monsterId` stays one of its members), and its `leader` (optionally elite: its affix roll moves the zone's later
+placements, as an elite monster's does) leads it; a hunt's leader leads its minions. **Pack aggro** is a member's own
+trait (`packAggro`, 6 for the gravegnawers): when a pack-mate within that many tiles is provoked or enters the fight, it
+is provoked too, once (it does not pass the alarm on). **Morale** (`morale`): when the pack's leader dies, members
+within `fleeRadius` (8) flee for `fleeOnLeaderDeathMs` (5 s) away from the body, inside their leash and never into a
+camp; a cornered one fights instead; a living drummer within `sustainRadius` (8; a sustain member is one whose buff /
+call grants fearImmune) or a fearImmune buff holds them and ends a flee under way. The drum ends with the drummer (a
+buff ends when its caster dies): kill the drummer, then the leader. **Kite** (`kite {min, max}`): a ranged monster with
+the hero closer than `min` backs off to `max` (turning about the hero when straight back is closed, inside its leash,
+never into a camp), then shoots (a cast between shots does not count) before it kites again; the band must end within
+its attack range (a kite ends in its attack stance only with the hero in range: the Corpseherd's 3-5 at range 3.0
+becomes [2, 3], or her range is raised). **Block** (`block {arcDeg, damageMul, wall}`): a blow from the front arc is cut
+(the 100 degree arc, -50 %) and sparks; ticks and a stunned or frozen shieldbearer get through (no hero skill is flagged
+shield-breaking yet), and so do flanks: a fighting shieldbearer turns to face the hero every moment, so the hero cannot
+flank one on his own, but his beast, another monster's blow or a blast centred behind it can; fighting shieldbearers
+within `wall` tiles share their facing. The drum and the social call are `call` abilities (a call provokes its family
+within its radius and may buff; Hungerbell's call is its own ability, not part of the slam), the standard-bearer's
+banner an `aura` (Unburied within 5 tiles: damage x1.15).
+
 ## 2. Chapter 1 roster
 
 ### 2.0 Summary
@@ -342,7 +365,9 @@ and `curse_aura` 哀咒 / Dirgecursed: 焚誓 is the prologue's Burned Oath (and
 faction and 丧钟 as the hub 丧钟堡, and the elite label puts the affix before the monster's name.
 
 **Champion packs [W2]:** the **Muster** (a standard-bearer and three footmen sharing one affix, from the ambush event),
-the **Hollow Watch** (Deserters' Hollow leader, elite with one affix, drummer and four deserters). **The elite marker:**
+the **Hollow Watch** (Deserters' Hollow leader, elite with one affix, drummer and four deserters). *As built (2D,
+pending review):* the Hollow Watch is a K5 spawn `mix` with `leader {monsterId: deserter, elite: true}`; the Muster needs
+an event-spawn pack and a shared affix roll, assigned to 2E (K6) by the 2D review (implementation-plan.md K6). **The elite marker:**
 W1 recolours `SM_FX_EliteCrown` to tarnished iron with a crimson stone; W2 replaces it with `SM_FX_EliteSigil`, a small
 floating broken iron halo with a crimson ember (~0.5 task).
 

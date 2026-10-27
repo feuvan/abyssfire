@@ -46,7 +46,7 @@ struct GuideWorld {
   std::function<bool(std::string_view npcId, Vec2& out)> npcTile;
   // Living monsters whose def id is one of `ids`, in monster-list order.
   std::function<void(const std::vector<std::string>& ids, std::vector<Vec2>& out)> monsters;
-  // Map spawn points of those monster ids (map order).
+  // Map spawn points of those monster ids (map order; K5: a mixed entry's points for each of its mix's members).
   std::function<void(const std::vector<std::string>& ids, std::vector<Vec2>& out)> spawns;
   // Ungathered node tiles of a gather objective (node order).
   std::function<void(std::string_view questId, int32_t objectiveIndex, std::vector<Vec2>& out)> gatherSpots;

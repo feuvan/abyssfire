@@ -120,6 +120,18 @@ struct MonsterView {
   uint32_t consumingCorpse = 0;
   // K4: the phase rows entered (0 = none; EvMonsterPhase marks each entry).
   int32_t phase = 0;
+  // K5: its pack (0 = none) and whether it leads it (the champion marker); while fleeing (state Flee) the time it stops;
+  // a kite step under way (state Chase: it backs off); the stats its buffs and the auras around it raise now (bit per
+  // MonsterBuffStat); its own aura's radius (0 = none: the ground halo UE draws) and stat; its block arc (0 = none: its
+  // guard faces `heading`, which a shield wall shares).
+  uint32_t packId = 0;
+  bool packLeader = false;
+  double fleeUntilMs = 0;
+  bool kiting = false;
+  uint32_t buffMask = 0;
+  double auraRadius = 0;
+  MonsterBuffStat auraStat = MonsterBuffStat::Damage;
+  double blockArcDeg = 0;
 };
 
 struct NpcView {

@@ -1001,7 +1001,10 @@ GuideWorld QuestWorld::MakeGuideWorld() const {
   w.spawns = [zone](const std::vector<std::string>& ids, std::vector<Vec2>& out) {
     if (zone == nullptr || !zone->HasZone()) return;
     for (const MapSpawnDef& s : zone->Map().spawns) {
-      if (std::find(ids.begin(), ids.end(), s.monsterId) != ids.end()) out.push_back(s.pos.Center());
+      // K5: a mixed entry spawns its mix's members (the entry's monsterId is one of them, DataStore::Finalize).
+      bool match = s.mix.empty() && std::find(ids.begin(), ids.end(), s.monsterId) != ids.end();
+      for (const MapSpawnMixDef& e : s.mix) match = match || std::find(ids.begin(), ids.end(), e.monsterId) != ids.end();
+      if (match) out.push_back(s.pos.Center());
     }
   };
   w.gatherSpots = [this](std::string_view questId, int32_t objectiveIndex, std::vector<Vec2>& out) {

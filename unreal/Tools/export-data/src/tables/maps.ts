@@ -17,7 +17,8 @@ import { NPCDefinitions } from '../../../../../src/data/npcs';
 import type { MapData } from '../../../../../src/data/types';
 import { MonstersByZone, getMonsterDef } from '../../../../../src/data/monsters';
 import { MiniBossByZone } from '../../../../../src/data/miniBosses';
-import type { MapData as RemakeMapData, MonsterDefinition as RemakeMonster } from '../../../../GameData/types';
+import type { MapData as RemakeMapData, MapSpawn as RemakeMapSpawn, MonsterDefinition as RemakeMonster } from '../../../../GameData/types';
+import { CHAPTER_CONFIG } from '../../../../GameData/config';
 import { assert, plain, sha256, formatJson, SCHEMA_VERSION, type TableResult, type GoldenFile } from '../util';
 import { withholdRemakeFields } from '../remake';
 
@@ -107,6 +108,38 @@ export function exportMaps(): { tables: TableResult[]; golden: GoldenFile[] } {
       assert(def, `${at}.monsterId: unknown monster '${seed.monsterId}'`);
       const leaves = def!.corpse?.leaves ?? 'none';
       assert(leaves !== 'none', `${at}.monsterId: '${seed.monsterId}' leaves no corpse (corpse.leaves)`);
+    });
+    // K5 (LoadWorld.cpp, DataStore::Finalize): a spawn's mix {monsterId, count >= 1} names monsters and sums to the entry's
+    // count, and the entry's own monsterId is one of them (the story-boss spawn and the quest guide's spawn points read
+    // it); its leader {monsterId, elite?} is a member (the entry's monsterId without a mix); the story boss keeps a spawn
+    // entry of its own (its once-per-visit spawn reads the entry's monsterId). Not generator inputs: the golden is
+    // unchanged. Sub-dungeon spawns (src/data/subDungeons.ts) carry no mix / leader: the core refuses them until K7.
+    const knownMonster = (monsterId: string) => !!((MonstersByZone[id] ?? []).find(m => m.id === monsterId) ??
+      getMonsterDef(monsterId) ?? Object.values(MiniBossByZone).find(m => m.id === monsterId));
+    const storyBoss = CHAPTER_CONFIG.storyBoss.monsterId;
+    (raw.spawns as RemakeMapSpawn[]).forEach((sp, i) => {
+      const at = `maps.${id}.spawns[${i}]`;
+      if (sp.mix !== undefined) {
+        assert(Array.isArray(sp.mix) && sp.mix.length > 0, `${at}.mix: an empty mix (omit it for the entry's one monster)`);
+        let sum = 0;
+        sp.mix.forEach((e, k) => {
+          for (const key of Object.keys(e)) assert(['monsterId', 'count'].includes(key), `${at}.mix[${k}]: unknown field '${key}'`);
+          assert(Number.isInteger(e.count) && e.count >= 1, `${at}.mix[${k}].count: an integer >= 1`);
+          assert(typeof e.monsterId === 'string' && knownMonster(e.monsterId), `${at}.mix[${k}].monsterId: unknown monster '${e.monsterId}'`);
+          assert(e.monsterId !== storyBoss, `${at}.mix[${k}].monsterId: the story boss keeps a spawn entry of its own`);
+          sum += e.count;
+        });
+        assert(sum === sp.count, `${at}.mix: the mix sums to ${sum}, the entry's count is ${sp.count}`);
+        assert(sp.mix.some(e => e.monsterId === sp.monsterId),
+          `${at}.monsterId: '${sp.monsterId}' is not in the entry's mix (name one of its members)`);
+      }
+      if (sp.leader !== undefined) {
+        for (const key of Object.keys(sp.leader)) assert(['monsterId', 'elite'].includes(key), `${at}.leader: unknown field '${key}'`);
+        assert(sp.leader.elite === undefined || typeof sp.leader.elite === 'boolean', `${at}.leader.elite: a boolean`);
+        const members = sp.mix ? sp.mix.map(e => e.monsterId) : sp.count > 0 ? [sp.monsterId] : [];
+        assert(members.includes(sp.leader.monsterId), `${at}.leader: '${sp.leader.monsterId}' is not a member of the pack`);
+        assert(!members.includes(storyBoss), `${at}.leader: the story boss keeps a spawn entry of its own`);
+      }
     });
     const { tiles, collisions, decorations, ...anchors } = withholdRemakeFields('map', plain(raw), `maps.${id}`);
     const landmarks = generated ? externalLandmarks(id) : [];

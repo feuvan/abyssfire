@@ -93,7 +93,13 @@ the export is byte-identical to the web's).
   (not idle / walk / death), multipliers in (0, 10], the tether / arena / feed / phase-summon bounds, switched abilities
   that are the monster's own, summoned ids resolved; a warning for an ability whose `phases[]` lists only phases the
   monster never reaches, and one for a tether that can reach past the M1 leash range from the spawn anchor:
-  `warnTetherPastLeash`, as DataStore::Finalize); `quests.ts`, `maps.ts` and
+  `warnTetherPastLeash`, as DataStore::Finalize); K5 (package 2D) enabled `monster.packAggro`, `monster.kite`,
+  `monster.block`, `monster.morale`, `monster.aura`, `map.spawnMix` and lifted `monster.abilityBuff` / `abilityCall`
+  (`monsters.ts` `checkK5Monster`: keys in every block, radii in (0, 30], a kite band `min < max` on a ranged monster
+  ending within its attackRange, a block arc in (0, 360] with `damageMul` in [0, 1), a flee of (0, 60] s, a sustain family
+  with its radius, an aura stat; `checkK2Monster`'s buff block: a buff's `stat` and `ms`, a call's `radius` > 0 and its
+  optional `stat`, buff / call outside the swing-reach rules; `maps.ts`: a spawn's mix keys, counts >= 1, known ids that
+  sum to its `count` and are not the story boss, the entry's own `monsterId` among them, a leader that is a member); `quests.ts`, `maps.ts` and
   `story.ts` check their shapes (one label per choice slot, one composition per wave with counts ≥ 1, `sealed` with
   `sealedTextKey`, `anim` only on a `{monster}` focus step) before the core loader would refuse them. Authored monster `onHitStatus` / `projectileColor` need no feature:
   they replace the keyword rules in `derived` (which the core already reads) and are never written at top level.

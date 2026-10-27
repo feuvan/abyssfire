@@ -250,8 +250,17 @@ names so CMake needs no change; both compilers, ASan, the shared-library build).
 - `SaveData.worldFlags` (a sorted set); `QuestDef.setsFlags` on turn-in; consumers: spawn `variants[] {whenFlag,
   monsterId, count}` (MonsterSystem picks at spawn and respawn), the snapshot exposes flags (UE mood, audio emitters).
 - NPC `lines[] {key, when}` and `visibleWhen`; the validator refuses an NPC that would hide while an open quest needs it.
+- **Event champion packs** (added by the 2D review: the ambush's champion Muster, chapter1.md's ambush row and
+  monsters.md 3, needs core work that neither 2D nor 2F (content only) owns). A zone's random-event data may name a
+  champion pack for its ambush (a remake field behind `REMAKE_SCHEMA`, e.g. `random_events.json
+  zones.<zone>.ambushChampion {chance, mix [{monsterId, count}], leader, sharedAffix?}`): only when present, an ambush
+  draws once more on the Events stream (no draw without it: golden-neutral) and on a hit spawns the champion pack in
+  place of the ambush (one K5 pack id, the leader `packLeader`, the zone's affixes rolled once and given to every member
+  when `sharedAffix`). 2F authors the Muster row (a standard-bearer and three footmen, 10 %). Cut order: champion packs
+  go third (the risk table's *Scope* row).
 - **Tests** (`world_state_test.cpp`): ashnumb arithmetic and cleanse; permanent rewards once per difficulty and the save
-  round-trip; flags save round-trip and an old save loads with none; spawn variant selection; NPC line selection.
+  round-trip; flags save round-trip and an old save loads with none; spawn variant selection; NPC line selection; a
+  champion ambush (the draw only with the block, the pack and its leader, the shared affix).
 
 ### K7 Sub-dungeon travel and the cleanse [W3] (~4 tasks)
 
@@ -786,7 +795,7 @@ manifest moves hit timing, so the seeds differ by manifest):
 | **2B** | K3 on-death + corpses | core lane + `corpses_test.cpp` | 2A | same |
 | **2C** | K4 phases + arenas | core lane + `phases_test.cpp` | 2B | same |
 | **2D** | K5 packs, morale, kite, block | core lane + `packs_test.cpp` | 2C | same |
-| **2E** | K6 status, rewards, flags, NPC lines, spawn variants | core lane + `world_state_test.cpp` | 2D | same + save round-trip |
+| **2E** | K6 status, rewards, flags, NPC lines, spawn variants, event champion packs (2D review) | core lane + `world_state_test.cpp` | 2D | same + save round-trip |
 | **2F Content W2 (C2)** | Chapter 1 abilities, phases, mixes, on-death, auras, morale, Ashnumb, permanent rewards, flags, quest-gated lines, champion Muster; AutoPilot W2 rules | `GameData/**`, `Data/**`, `AutoPilot.cpp`, `content_ch1_test.cpp`, `playthrough_test.cpp` | 2A-2E (each lands its schema in `REMAKE_SCHEMA`) | data, core, sweep (fight lengths: Valdras 60-90 s for the bot warrior; no bot death to a single hit) |
 | **2G UE Wave 2** | U2, U3, U5 (W2 parts) | `Private/Vfx/AbyssTelegraphs.cpp`, `Private/Actors/AbyssCorpses.cpp`, anim map in `AbyssCharacterActor.cpp`, UI files, `Scripts/abyss_content/*` (telegraph material) | 2A-2E events | scripts, mac-content, mac-autotest, mac-look (telegraphs read on the darkest tile, mobile tiers) |
 | **2H Art Wave 2** | Rise / Attack02 / Cast01 clips where W1 shipped without them, elite sigil, A12 W2 recipes | Art files of 1D (re-ship) | 1D | kit, ship, coherence, hue audit |
@@ -1234,6 +1243,231 @@ manifest moves hit timing, so the seeds differ by manifest):
   (a ring that closes from radius to targetRadius by endMs; remove it on `cleared` and on zone unload); EvMonsterFeed: the
   corpse drawn into the monster until dueMs (then EvCorpseRemoved{consumed}); boss bar ticks from
   `BossBarView::phaseThresholdsPct`.
+
+**2D outcomes (K5 as built, 2026-10; pending review; DECISIONS DR8 *K5 as built*, M1 / M2 / M5 notes).**
+- **Schema** (`MonsterData.h` "K5", parsed by `LoadMonsters.cpp` `ReadMonsterK5`; `MapData.h` `MapSpawnDef::mix` /
+  `leader`, parsed by `LoadWorld.cpp`; mirrored by the exporter's `tables/monsters.ts` `checkK5Monster` and
+  `tables/maps.ts`; unknown keys fail at every level). Monster `packAggro` (tiles, (0, 30]), `kite {min, max}` (0 < min
+  < max <= 30), `block {arcDeg (0, 360], damageMul [0, 1), wall?}` (wall in (0, 30] tiles), `morale {fleeOnLeaderDeathMs
+  (0, 60000], fleeRadius?, sustainFamily?, sustainRadius?}` (radii in (0, 30]; a sustain family needs its radius), `aura
+  {stat, mul? (0, 10], radius (0, 30], family?}`. The K2 buff block: a `buff` names its `stat` and `ms` (<= 600000),
+  `mul` in (0, 10], `radius` 0..30 (0 = the caster alone); a `call` needs its block for a `radius` > 0 and buffs only
+  when it names a `stat` (with its `ms`; `ms` / `mul` alone are refused). Map spawn `mix [{monsterId, count >= 1}]` and
+  `leader {monsterId, elite?}`. `DataStore::Finalize`: a mix sums to the entry's `count`, names monsters and never the
+  story boss (its once-per-visit spawn reads the entry's `monsterId`), and the entry's own `monsterId` is one of its
+  members (2D review: the story-boss spawn and QuestWorld's guide spawn points read it); the leader is a member (the
+  entry's own monster without a mix) and not the story boss; warnings for a kite on a melee monster (attackRange <=
+  rangedThreshold) and for a kite `max` past the monster's `attackRange` (2D review: a kite runs in Chase and ends in
+  Attack only with the hero within attackRange, Chase's own entry rule, so a band edge between attackRange and the swing
+  reach x attackExitMul still walks it back in before it shoots; the exporter fails on both); buff / call join raise /
+  summon outside the swing-reach rules (casts between swings). A sub-dungeon spawn takes no `mix` / `leader` until K7
+  (the loader refuses them: nothing spawns sub-dungeons yet and the pack checks read the maps only; its spawns come from
+  the web source, so the exporter cannot write one). Exporter: `REMAKE_SCHEMA` gains `monster.packAggro` (a new field
+  row), `monster.kite`, `monster.block`, `monster.morale`, `monster.aura`, `map.spawnMix` and lifts the value gates
+  `monster.abilityBuff` / `monster.abilityCall`; the export stays byte-identical (no GameData record uses them; 2F
+  authors them). Not generator inputs: the golden maps do not move.
+- **Packs** (`monsters/Packs.h` pure rules, `Private/monsters/MonsterPacks.cpp`; MonsterSystem.h "K5"). A map spawn
+  entry is a pack (monsters-ai.md 6.1): `SpawnZonePopulation` gives each entry a pack id (`MonsterInstance::packId`, 1,
+  2, ... per zone entry) and spawns its members in mix order (`ExpandSpawnMembers`; no mix: `count` x `monsterId`), each
+  placed by the same M10 draws as before, so a mix of the entry's count stands where the plain entry stood
+  (golden-neutral, positions unchanged; pinned). The leader is the first member of the leader's id
+  (`MonsterInstance::packLeader`); `leader.elite` makes that member elite (it rolls the zone's affixes right after its
+  placement, as an elite definition does; its `originalDef` stays elite, so a respawn rolls again). That roll draws on
+  the Ai stream, which also places the zone's monsters, so an elite leader moves every later placement of the zone and
+  the hunts drawn after the population, exactly as authoring an elite definition would (2D review: not golden-neutral;
+  pinned: the placements up to and including the leader's stay, later ones move). A hunt's leader leads its minions'
+  pack. A respawn keeps its pack and leadership. Event spawns (ambush, rescue, defend waves), Raised bodies and phase
+  summons have no pack.
+- **Pack aggro.** A member with `packAggro` is provoked (M2 `ProvokeMonster`: idle / patrolling, or chasing with the
+  hero beyond its aggro range; MonsterAggroMsg when it leaves Idle / Patrol) when another living member of its pack
+  within its `packAggro` tiles is provoked by a hit (`ApplyDamage`), enters Chase from Idle / Patrol / Returning
+  (`TickAI`) or is forced to (`ForceChase`): one wave per trigger (`MonsterSystem::PackAlarm`), never passed on by a
+  member it provoked, nor by a call; a Returning member ignores it (M1). Without `packAggro` in the data nothing happens
+  (no RNG, no state).
+- **Morale and Flee** (`MonsterState::Flee`, appended after Dead; enum strings `... "dead", "flee"`). The kill
+  pipeline's K5 step (`MonsterSystem::OnMonsterDied`, after the K3 / K4 steps): a pack leader's death breaks its pack:
+  each living member with `morale` (list order; not one walking home or already fleeing: a second break leaves a flee
+  under way alone), within `fleeRadius` of the body (none = the whole pack), neither fearImmune (a live fearImmune buff
+  or aura, `MonsterFearImmune`) nor `Sustained` (a living monster other than itself, of `sustainFamily`, any when empty,
+  with a buff / call that grants fearImmune, within `sustainRadius`), flees (the step first drops every buff the dead
+  monster gave, `DropBuffsOf`: a buff ends with its caster, so the drum holds the deserters only while the drummer
+  lives): its swing or ability on the way, a swing drawn to the beast and a consume channel are cancelled
+  (`CombatSystem::CancelMonsterStrike`, EvMonsterAttackCancelled), state Flee until `fleeOnLeaderDeathMs` from now, away
+  from the body (EvMonsterFlee). The AI (`MonsterFleeStep`): each tick the first of the away vector (from the body; on
+  the body: from the hero) and it turned 45 and 90 degrees each way whose point `fleeProbeTiles` (1) ahead is walkable,
+  in a straight walkable line, inside the M1 leash range and the K4 tether, outside every camp's safe zone (point and
+  line, `MonsterWorld::safeZone`; 2D review), at least `fleeMinGainTiles` (0.1) farther from the body, and not turned
+  more than 120 degrees from its last flee step (`MonsterInstance::fleeDir`; 2D review: at a curved edge, a tether, a
+  camp, the two 90-degree sidesteps took turns being open and the monster dithered on the spot for its whole flee);
+  none, or a step that does not move it: it fights instead (Chase, EvMonsterFlee{ended, blocked}); its time out: Chase
+  (expired). `TickAI` ends a flee a sustain or a fearImmune buff now steadies (sustained) and one that reaches a camp's
+  safe zone (Idle, interrupted; the leash too). A fleeing monster stays in the activity set (like Returning), never
+  swings, casts or eats, is not aggro, and a hit does not stop it (M2 provokes ignore Flee).
+- **Kite** (MonsterAI.h "K5"). In Chase or Attack, with the hero visible and closer than `kite.min`, no strike of its
+  own on the way (`MonsterAiInput::strikePending`) and a strike since its last kite (`kiteNeedsSwing`, `lastStrikeMs`: a
+  swing at the hero or a beast, or a damaging ability; 2D review: a support cast between swings sets `lastAttackMs` but
+  is no strike, so a raiser that kites, e.g. the Corpseherd, cannot kite-cast-kite without shooting), a monster picks
+  its kite target (`MonsterKiteTarget`: from `kite.max` tiles from the hero down to its distance + `kiteSampleTiles`
+  (0.5), every 0.5, and at each distance the away vector then it turned 30 and 60 degrees each way about the hero: the
+  first point on a walkable tile, inside the M1 leash range and the tether, outside every camp's safe zone, reached in a
+  straight walkable line that stays out of the camps; so it keeps the band's far edge and circles the hero when straight
+  back is closed) and walks there in Chase (no movement on the tick it starts; `MonsterView::kiting`); it ends on
+  arrival, when blocked, or at `kiteUntilMs` (the later of `kiteTimeoutMs` 2000 and twice the straight walk at its top
+  speed): Attack when the hero is in reach, else Chase. No target: it fights. Raise / summon / buff / call casts may
+  start while it kites.
+- **Block** (`CombatSystem::DamageMonster`). A hit on a monster with `block`, not a tick, with a direction (`hasFrom`,
+  `from` off the monster), from within `arcDeg` (total) around its heading (`BlockArcContains`; the edge counts), and
+  the monster not stunned or frozen, is `BlockedDamage`d (floor(amount x damageMul), at least min(amount, 1)) before the
+  K4 damageTakenMul and emits EvBlock {entity, source, from, amount (the damage it took), blocked (what the shield
+  stopped, in the same units: both after damageTakenMul; 2D review)} right before its EvHit (which carries the reduced
+  amount; the HitWeight is classified on it; life / mana steal read the hit as dealt, as for damageTakenMul). Any
+  attacker counts: a beast or another monster's strike behind it gets through (flanking). A fighting blocker squares up
+  to the hero every AI tick (Attack; there is no sim turn rate, M11 is presentation only), so the hero alone cannot
+  flank a lone fighting shieldbearer: flanks come from a beast, another monster's strike, a blast centred behind it, or
+  a blocker that is not fighting (2D review). **Wall**: after the AI loop (`AlignShieldWalls`), living blockers with
+  `block.wall` that are fighting (Chase / Attack; 2D review: a neighbour walking home, fleeing or idle turned a
+  fighter's guard away from the hero) and stand within the smaller of their walls of each other (chained, list order)
+  share one heading, the mean of theirs (`WallHeading`; opposite headings: the first's); a lone one keeps its own.
+- **Buff / call abilities** (`AbilityKindRuns`: every kind runs). Like raise / summon they are support casts: on a due
+  swing they compete by priority, and between swings, from Chase or Attack, `CombatSystem::TryStartSupportCast` (the K3
+  `TryStartSummonCast`, renamed; `AbilityPickInput::castsOnly`, the K3 `summonsOnly`, renamed;
+  `AbilityKindCastsBetweenSwings`) starts them on their own cooldown and hero range, not bound by the swing reach; one
+  action at a time, a pet's taunt holds them, every K2 abort applies; no telegraph (the clip is the tell). At contact
+  `MonsterSystem::ResolveBuffCast`: within `buff.radius` of the caster (list order; radius 0 = the caster alone) a call
+  provokes (M2) every other living monster of its `family` (no pack alarm), and a buff with a stat gives each living
+  monster of its family, the caster included, `stat` x `mul` until now + `ms` (one buff per caster and stat: a recast
+  refreshes it; the target's multipliers refresh at once; the buff ends early when its caster dies); EvMonsterBuffCast.
+  Stats: damage (the damage formula's outgoing multiplier on the monster's swings, ability contact hits on the hero and
+  on monsters, and bolts, read at the hit: `MonsterDamageBuffMul`; not its hazards' or on-death effects' fixed damage,
+  nor its hits on the beast), attackSpeed (`MonsterInstance::AttackIntervalMs` / mul), moveSpeed (`MonsterMoveToward`'s
+  top speed, also while Returning: not a phase rule), fearImmune (morale). Buffs of one stat do not stack: the largest
+  live buff or aura applies.
+- **Auras** (`aura`). At the start of every `TickAI` each living aura owner (list order) reaches every living monster
+  within its radius, itself included, of its family: per stat the largest aura holds (`MonsterInstance::auraMul` /
+  `auraMask`); then every monster's multipliers are refreshed from its live buffs and auras (`RefreshMonsterBuffs`,
+  expired buffs dropped) and hold for the step. A dead owner's aura is gone the next step.
+- **Events** (appended to `abyss::Event`; the UE router needs no change): `EvBlock {entity, source, from, amount,
+  blocked}`, `EvMonsterFlee {entity, leader, from, startMs, untilMs, ended, reason: expired | sustained | blocked |
+  interrupted}` (`FleeEnd`, SimTypes.h; `leader` / `startMs` on the start), `EvMonsterBuffCast {entity, abilityId, kind,
+  centre, radius, family, hasBuff, stat, mul, untilMs, buffed, called}`. Snapshot `MonsterView`: `packId`, `packLeader`,
+  `fleeUntilMs` (while fleeing), `kiting`, `buffMask` (bit per MonsterBuffStat raised now), `auraRadius` / `auraStat` (a
+  living owner's halo), `blockArcDeg` (its guard faces `heading`, which a wall shares). Port-only tuning
+  (`MonsterAiDef`, not loaded): `kiteTimeoutMs` 2000, `kiteSampleTiles` 0.5, `fleeProbeTiles` 1, `fleeMinGainTiles` 0.1.
+- **Deviations / interpretations** (all pending review). (1) Pack aggro is opt-in per monster (`packAggro`, a field the
+  plan did not list): the plan's "a member provoked or entering Chase provokes members within 6 tiles once" applied to
+  every pack would change every existing spawn entry's fights (the playthrough must stay byte-identical until 2F) and
+  monsters.md gives it to the gravegnawers; the radius is the listening member's (6 in the design), "once" = one wave
+  per trigger, never chained. (2) `morale.fleeRadius` is added ("every deserter within 8 tiles", monsters.md 2.3); none
+  = the whole pack. (3) A sustain member is a living monster of `sustainFamily` (any when empty) whose buff / call
+  grants fearImmune (the plan's "the drummer's call buff fearImmune"); the deserters and the drummer share the Living
+  family, so the family alone cannot single the drummer out; a live fearImmune buff or aura also holds a monster. (4)
+  Flee is bounded by the M1 leash range (a flee into the leash would walk the monster home and heal it to full: a reward
+  for breaking it), and a flee step must gain 0.1 tile (a 90-degree sidestep always gains a hair, so a monster at its
+  leash edge would orbit the body for its whole flee) and never turns more than 120 degrees from its last step (2D
+  review: at a curved edge the two sidesteps took turns and the monster dithered in place). (5) A kite needs a strike
+  between two kites ("then attacks": a swing or a damaging ability, not a support cast), keeps to the band's far edge by
+  turning up to 60 degrees about the hero before it shortens, and does not start while its own strike is on the way; it
+  runs in Chase (UE's walk). (6) Block: ticks, hits without a direction and stunned / frozen blockers are not blocked
+  (the core's "shield-breaking" until a skill names it: no skill data flags one); every attacker counts (a beast behind
+  it flanks); the hero alone cannot flank a fighting blocker (it squares up to him every AI tick; a sim turn rate would
+  be a design change). (7) `wall` is a radius (2 in the design) and the shared heading is the mean of the fighting
+  (Chase / Attack) members' headings. (8) buff / call are support casts between swings (like raise / summon since the 2B
+  review): the drum is timed ("2 s every 8 s"); a call needs a radius and may buff (`stat` optional), so "every slam
+  calls" (Hungerbell) is a separate call ability, not a slam option. (9) `aura` (plan 2.6 lists the field with no K
+  package; 2F authors "auras") lands here: it shares the buff stats. (10) An elite leader (`leader.elite`) is the Hollow
+  Watch's "elite leader with one affix"; the ambush Muster (a standard-bearer and three footmen sharing one affix, 10 %
+  of ambushes) is not built here: it needs an event-spawn pack with a leader, a shared affix roll and a new Events draw,
+  core work that 2F (content only) cannot do, so the 2D review assigns it to 2E (K6 "Event champion packs"; cut order:
+  champion packs go third). (11) Event spawns have no pack (until K6 builds the Muster). (12) `MonsterState::Flee` is
+  appended after `Dead` (the numeric values of the others stay). (13) A flee or a kite never steps into a camp's safe
+  zone (2D review: the repel would drop it to Idle and the aggro scan put it back in Chase on a no-movement tick every
+  step, frozen at the camp's edge while the hero outside struck it for free). (14) A buff ends with its caster (2D
+  review: "while he drums", monsters.md 2.3; the drum outliving the drummer silently held the pack when the leader fell
+  soon after).
+- **Tests.** `packs_test.cpp` (suite `monsters`; 29 cases, 9170 assertions since the 2D review, GCC = Clang): the schema
+  (every block and its defaults; 35 refused monster blocks and 3 refused stats; spawn mix / leader loads and 11
+  refusals; the Finalize warnings, buff / call outside the reach rules), the pure rules (members and the leader, the
+  block arc front / edge / side / back / no direction / 360, blocked damage, the wall heading, buff multipliers and the
+  mask, families and sustain casters, the cast-between-swings kinds; the kite target in the open, a corridor, the leash,
+  the tether, a block behind it, a dead end, no gain; the flee step away, turned, cornered, a probe past a one-tile
+  wall, on the body, at the leash), and the runtime: the population (a mix stands where the plain entry stood, one pack
+  per entry, the leader, an elite leader's affixes), hunts (the leader leads; a hunt's minions break), a respawn keeps
+  its pack; pack aggro (radius per member, no chain, no packAggro (one standing on the provoked one's spot included), no
+  pack, another pack, a repeated provoke, the AI's scan, ForceChase, Returning); morale (flee time, the body, direction,
+  no swing, a cancelled swing, fleeRadius, a member without morale, one walking home, a non-leader's death; an ability
+  windup and a consume channel cancelled, a wounded eater does not stop to eat, a hit does not stop it; cornered:
+  blocked; the leash bound without a heal; a camp: interrupted); sustain (a drummer holds and steadies, kill order,
+  another family, no sustainRadius, a fearImmune buff and aura); the kite (start, target, arrival, a swing first, not
+  during its strike, a second target circling the hero, a dead end, the leash); block (front, 45 degrees, side, 63
+  degrees, back, a tick, no direction, a beast behind and in front, before damageTakenMul, min 1, stunned, in the
+  fight); the wall (chained, a narrow wall, no wall, the block reads it, the snapshot, a fallen link); the drum (a cast
+  between swings out of reach, contact at the Release, no telegraph, call / buff counts, family, the call passes no
+  alarm, fearImmune and its expiry, the cooldown); a buff (attack speed, radius 0, a recast refreshes, a stun aborts, a
+  contact refreshes the multipliers and the snapshot at once); auras (owner included, family, radius, the largest, a
+  dead owner, attack and move speed, the damage reaching its blows); the GameSim wiring (a mixed pack with an elite
+  leader through the population, the snapshot, the kill pipeline breaking it, a provoke alarming it, the quest guide's
+  spawn points for mix members); the 2D review's cases (camps closed to a flee and a kite with the hero just outside, a
+  kiter pushed into a camp; a buff ending with its caster, the drummer then the leader; a drummer not holding itself; a
+  flee bounded by a tether, ending blocked without dithering; the leash interrupting a flee; a second break, and a later
+  flee starting afresh; a kiting archer that breaks; the kite's end inside / outside a tether; a support cast that is no
+  strike; a damage buff on hitsMonsters ability hits; fighting-only walls next to a returning and an idle blocker;
+  EvBlock's units; the kite band past attackRange; a stale mixed monsterId and a sub-dungeon pack refused; an elite
+  leader moving the later placements); a seeded 40 s pack fight whose event-log digest is pinned (`3126917caf246261`
+  since the 2D review, `99df5ac2d13e51bc` before; GCC = Clang; all three members now break: the drummer falls first).
+  Existing assertions changed where the plan says behaviour changes (buff / call run): monster_abilities_test.cpp "K2
+  picker" (`PickMonsterAbility(later, in2) == -1` became `== 2`, the buff, and a new check keeps raise / summon unpicked
+  without bodies) and corpses_test.cpp "K3 picker" (`CHECK_FALSE (AbilityKindRuns(k))` for buff / call became
+  `CHECK(AbilityKindRuns(k))` plus `CHECK_FALSE(AbilityKindSummons(k))`). Mutation check (scratch copy, GCC): 83
+  single-point mutations of the K5 core (pack alarm, morale, sustain, flee, kite, block, wall, buff / call, auras, packs
+  and hunts, respawn, Finalize and loader checks, snapshot, consume) all fail a packs_test case (5 survived a first
+  pass: a Returning member breaking, the flee's line of walk, a buff's immediate refresh, a fleeing eater, a coincident
+  member without packAggro; each got the check above); the 2D review reverted each of its own fixes in a scratch copy
+  (27 mutations): 25 fail a case and 2 are equivalent (the flee / kite point's safe-zone test, which the line's last
+  sample repeats; the guide's own-monsterId match, which Finalize makes a mix member). Other suites: the world suite's
+  K1 grep gate gains 3 assertions (one per new core source file). The 20-seed playthrough dumps (base 1000 and 3000) are
+  byte-identical to a build of da0a3ab3 on GCC and Clang (before and after the 2D review).
+- **2D review (2026-10; R1-R10).** Fixed: (R1) the flee step and the kite target treat a camp's safe zone as closed
+  (point and line; `MonsterWorld::safeZone`): a monster fleeing or kiting toward a camp with the hero just outside used
+  to walk in and freeze (repel to Idle, the aggro scan back to Chase on a no-movement tick, every step, never swinging).
+  (R2) A buff ends with its caster (`DropBuffsOf` in the kill pipeline, before the morale step): the drum outlived a
+  drummer killed just before the leader and silently held the pack. (R3) The kite band ends within `attackRange`, not
+  the swing reach (DataStore warning, exporter failure, docs; the 2F handoff's Corpseherd band is [2, 3]). (R4) Walls
+  form from fighting (Chase / Attack) blockers only. (R5) Cases for the documented rules a mutation pass found untested
+  (above), which also found a flee dithering at a curved edge: a flee step never turns more than 120 degrees from its
+  last one (`MonsterInstance::fleeDir`). (R6) `leader.elite`'s Ai-stream roll moves the zone's later placements: stated
+  and pinned, not changed (an elite definition already does the same; a derived RNG stream would be a new convention).
+  (R7) A mixed entry's `monsterId` must be one of its members (Finalize, exporter), QuestWorld's guide spawn points read
+  the mix, and a sub-dungeon spawn refuses `mix` / `leader` until K7. (R8) The kite gate reads `lastStrikeMs` (a swing
+  or a damaging ability), not `lastAttackMs` (which support casts set). (R9) The Muster's core is assigned to 2E (K6)
+  and the docs state that the hero alone cannot flank a fighting blocker. (R10) EvBlock's `blocked` is in the units of
+  `amount`; the unused `MonsterSystem::scratchMembers_` is gone. Not changed: the pre-existing safe-zone repel itself (a
+  monster pushed into a camp still flip-flops Idle / Chase there; it is the web's rule and changing it could move the
+  playthrough), and a support cast still restarts the swing clock (`lastAttackMs`, the K3 rule in Combat.h), so a cast
+  whose cooldown is shorter than the swing interval starves the swings (2F: keep support cooldowns above the interval).
+  The playthrough dumps stay byte-identical to da0a3ab3 (no GameData record uses a K5 field).
+- **For 2F (content).** Gravegnawer `packAggro: 6` (Gnawed Field, the Crowmarket mix, Hungerbell's minions); the W2
+  mixes of chapter1.md 17 (Weeping Ditch, Broken Redoubt, Dead Ranks with `leader: {monsterId: dead_standard_bearer}`,
+  Deserters' Hollow with `leader: {monsterId: deserter, elite: true}`, Crowmarket); deserter `morale
+  {fleeOnLeaderDeathMs: 5000, fleeRadius: 8, sustainFamily: living, sustainRadius: 8}` (Dreck's and Harke's minions
+  break with it: a hunt's leader leads them); the drummer's drum: a `call` (clip Cast01, its 1000 ms loop; windupMs for
+  the channel, `cooldownMs` 8000, `buff {stat: fearImmune, ms: ~2000, radius: 8, family: living}`) plus a `buff` of
+  `attackSpeed` 1.1 (or fold the attack speed into an aura while it lives); the arbalester `kite {min: 2 or 3, max: 6}`
+  (range 6: the band ends within it); the Corpseherd's "kite 3-5" does not fit her range 3.0 (the export fails a `max`
+  past her attackRange): a band of [2, 3], or her range raised with an M5 amendment; the shieldbearer `block {arcDeg:
+  100, damageMul: 0.5, wall: 2}`; the standard-bearer `aura {stat: damage, mul: 1.15, radius: 5, family: unburied}`;
+  Hungerbell's social call: a `call` `{radius: 10, family: gravegnawers}` on its own cooldown (clip Attack02 or Roar).
+  The zealot and the footman never flee (no `morale`). The bot (AutoPilot) should kill the drummer before the Hollow's
+  leader (the drum ends with him). A mixed entry keeps a `monsterId` that is one of its members (Finalize and the
+  exporter refuse a stale one); `leader.elite` moves the zone's later placements (expect the playthrough to move when
+  the Hollow Watch lands); `content_ch1_test`'s "zone population" case matches monsters to entries by `s.monsterId`:
+  read `MapSpawnDef::mix` there once mixes land. The ambush Muster's core is 2E's (K6); 2F authors its row.
+- **For 2G (UE).** Treat `MonsterState::Flee` as moving (walk / run, face `heading`; today only Chase / Patrol /
+  Returning set `bMoving`), and play the flee vocal ("走！") on EvMonsterFlee (not `ended`); a kiting monster is in Chase
+  (it backs off facing away); spark the shield on EvBlock (the art's EvBlock VFX at socket `face`) with the clang; a
+  blocker (`blockArcDeg` > 0) faces `MonsterView::heading` even in Attack (the wall's shared heading); draw the aura
+  halo from `auraRadius` / `auraStat` (crimson for the banner), the buffed glow from `buffMask`, the drum / call pulse
+  on EvMonsterBuffCast (breach-violet, DR5), and a champion marker on `packLeader`. EvBlock's `amount` and `blocked` are
+  in the same units (amount + blocked = the unblocked hit).
 
 ### Phase 3 — Wave 3: the descent
 

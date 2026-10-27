@@ -1,5 +1,9 @@
 #include "abyss/base/Platform.h"
 
+#include <initializer_list>
+#include <string>
+#include <string_view>
+
 #include "JsonReader.h"
 
 namespace abyss::dataload {
@@ -15,10 +19,52 @@ void ReadRange(const JNode& n, std::string_view key, int32_t& a, int32_t& b) {
   b = v[1];
 }
 
-std::vector<MapSpawnDef> ReadSpawns(const JNode& n) {
+// Every key of a K5 block is known (a misspelt field would otherwise be dropped silently).
+void ReadSpawnCheckKeys(const JNode& n, std::initializer_list<std::string_view> known, std::string_view what) {
+  for (const auto& [key, child] : n.SelfMembers(true)) {
+    bool ok = false;
+    for (std::string_view k : known) ok = ok || k == key;
+    if (!ok) child.Error("unknown " + std::string(what) + " field '" + key + "'");
+  }
+}
+
+// `packs`: a map's spawns (K5 mix / leader); a sub-dungeon's spawn has no pack until K7 (nothing spawns it yet, and
+// DataStore's pack checks read the maps only), so mix / leader are refused there.
+std::vector<MapSpawnDef> ReadSpawns(const JNode& n, bool packs) {
   std::vector<MapSpawnDef> out;
   for (const JNode& s : n.Items("spawns", true)) {
-    out.push_back(MapSpawnDef{TilePos{s.Int("col"), s.Int("row")}, s.Str("monsterId"), s.Int("count")});
+    MapSpawnDef sp;
+    sp.pos = TilePos{s.Int("col"), s.Int("row")};
+    sp.monsterId = s.Str("monsterId");
+    sp.count = s.Int("count");
+    if (!packs) {
+      for (const char* key : {"mix", "leader"}) {
+        if (s.Has(key)) s.Child(key).Error("a sub-dungeon spawn has no pack (mix / leader) until K7");
+      }
+      out.push_back(std::move(sp));
+      continue;
+    }
+    // Dark remake K5 (remake schema map.spawnMix): the pack's composition and its leader (DataStore checks the sum, the
+    // ids, the entry's own monsterId and that the leader is a member).
+    for (const JNode& e : s.Items("mix", true)) {
+      ReadSpawnCheckKeys(e, {"monsterId", "count"}, "spawn mix");
+      MapSpawnMixDef m;
+      m.monsterId = e.Str("monsterId");
+      m.count = e.Int("count");
+      if (m.monsterId.empty()) e.Child("monsterId").Error("empty monster id");
+      if (m.count < 1) e.Child("count").Error("expected >= 1");
+      sp.mix.push_back(std::move(m));
+    }
+    if (s.Has("mix") && sp.mix.empty()) s.Child("mix").Error("an empty mix (omit it for the entry's one monster)");
+    if (s.Has("leader")) {
+      const JNode l = s.Child("leader");
+      ReadSpawnCheckKeys(l, {"monsterId", "elite"}, "spawn leader");
+      sp.leader.present = true;
+      sp.leader.monsterId = l.Str("monsterId");
+      sp.leader.elite = l.Bool("elite", false);
+      if (sp.leader.monsterId.empty()) l.Child("monsterId").Error("empty monster id");
+    }
+    out.push_back(std::move(sp));
   }
   return out;
 }
@@ -57,7 +103,7 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
     }
     m.seed = n.Int("seed", 42);
     m.bgColor = n.Str("bgColor", "");
-    m.spawns = ReadSpawns(n);
+    m.spawns = ReadSpawns(n, /*packs=*/true);
     for (const JNode& c : n.Items("camps")) {
       m.camps.push_back(MapCampDef{TilePos{c.Int("col"), c.Int("row")}, c.StrList("npcs")});
     }
@@ -182,7 +228,7 @@ void LoadMapsFile(const JNode& r, WorldTables& out) {
     s.rows = n.Int("rows");
     s.theme = n.Enum<MapTheme>("theme");
     s.seed = n.Int("seed");
-    s.spawns = ReadSpawns(n);
+    s.spawns = ReadSpawns(n, /*packs=*/false);
     s.miniBossPos = n.Tile("miniBoss");
     s.miniBossId = n.Child("miniBoss").Str("monsterId");
     s.playerStart = n.Tile("playerStart");

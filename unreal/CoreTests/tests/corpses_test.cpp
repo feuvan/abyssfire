@@ -973,7 +973,10 @@ TEST_SUITE("monsters") {
       CHECK(AbilityKindRuns(k));
       CHECK(AbilityKindSummons(k));
     }
-    for (AbilityKind k : {AbilityKind::Buff, AbilityKind::Call}) CHECK_FALSE(AbilityKindRuns(k));  // K5
+    for (AbilityKind k : {AbilityKind::Buff, AbilityKind::Call}) {  // K5 (2D): they run now, standing nothing up
+      CHECK(AbilityKindRuns(k));
+      CHECK_FALSE(AbilityKindSummons(k));
+    }
     CHECK_FALSE(AbilityKindSummons(AbilityKind::Circle));
   }
 

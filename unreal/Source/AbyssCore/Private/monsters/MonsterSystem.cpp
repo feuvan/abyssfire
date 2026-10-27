@@ -58,10 +58,18 @@ void MonsterSystem::BuildWorld() {
   world_.findPath = [zone](Vec2 from, Vec2 to, std::vector<TilePos>& out) {
     return zone->Paths().FindPath(from.x, from.y, to.x, to.y, out);
   };
+  world_.safeZone = [zone](Vec2 p) { return zone->InSafeZone(p); };  // K5: the flee / kite steps keep out of camps
 }
 
 void MonsterSystem::SetWorldForTesting(MonsterWorld world) {
   world_ = std::move(world);
+  if (!world_.safeZone) {  // K5: a test world keeps the zone's camps (read through the context at each call)
+    SimContext* ctx = &ctx_;
+    world_.safeZone = [ctx](Vec2 p) {
+      const ZoneRuntime* zone = ctx->sys.zone;
+      return zone != nullptr && zone->HasZone() && zone->InSafeZone(p);
+    };
+  }
   worldOverride_ = true;
   if (world_.cols > 0 && world_.rows > 0 && (world_.cols != preparedCols_ || world_.rows != preparedRows_)) {
     preparedCols_ = world_.cols;
@@ -99,6 +107,7 @@ void MonsterSystem::PrepareZone() {
   rises_.clear();
   phaseSummons_.clear();  // K4
   feeds_.clear();
+  nextPackId_ = 1;  // K5
   if (worldOverride_) return;  // a test world stays until the zone exits
   preparedMapId_.clear();
   preparedCols_ = preparedRows_ = 0;
@@ -155,15 +164,29 @@ void MonsterSystem::SpawnZonePopulation() {
   const int32_t rows = world_.rows > 0 ? world_.rows : map.rows;
   const bool storyBlocked = StoryBossBlocked();
   for (const MapSpawnDef& spawn : map.spawns) {  // data order
-    const MonsterDef* base = tables.FindForZone(zoneId, spawn.monsterId);
-    if (base == nullptr) continue;
+    // K5: the entry is one pack; its members in mix order (else count x monsterId), the leader the first of its id. A
+    // member whose definition is unknown (or the story boss after its quest) is skipped before its placement draws.
+    std::vector<SpawnMember> members;
+    ExpandSpawnMembers(spawn, members);
+    const uint32_t pack = members.empty() ? 0 : NewPackId();
+    const MonsterDef* base = nullptr;
     MonsterRole role = MonsterRole::Regular;
-    if (!ai.storyBossId.empty() && base->id == ai.storyBossId) {
-      if (storyBlocked) continue;  // M7: not after its quest is turned in (unless the chapter is complete)
-      if (ai.storyBossOncePerVisit) role = MonsterRole::StoryBoss;  // never respawns within the visit
-    }
-    const MonsterDef def = ScaleMonsterForDifficulty(*base, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
-    for (int32_t i = 0; i < spawn.count; ++i) {
+    MonsterDef def;
+    for (size_t i = 0; i < members.size(); ++i) {
+      if (i == 0 || members[i].monsterId != members[i - 1].monsterId) {
+        base = tables.FindForZone(zoneId, members[i].monsterId);
+        if (base == nullptr) continue;
+        role = MonsterRole::Regular;
+        if (!ai.storyBossId.empty() && base->id == ai.storyBossId) {
+          if (storyBlocked) {  // M7: not after its quest is turned in (unless the chapter is complete)
+            base = nullptr;
+            continue;
+          }
+          if (ai.storyBossOncePerVisit) role = MonsterRole::StoryBoss;  // never respawns within the visit
+        }
+        def = ScaleMonsterForDifficulty(*base, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
+      }
+      if (base == nullptr) continue;
       // M10 (FIX Q16): up to placementTries jittered tiles (2 draws each, col first; walkable, outside safe zones),
       // then the anchor itself.
       bool placed = false;
@@ -189,6 +212,15 @@ void MonsterSystem::SpawnZonePopulation() {
       p.home = spawn.pos;
       p.role = role;
       p.rollAffixes = def.elite;
+      p.packId = pack;  // K5
+      p.packLeader = members[i].leader;
+      MonsterDef leaderDef;
+      if (members[i].leader && spawn.leader.elite && !def.elite) {  // K5: an elite leader rolls the zone's affixes
+        leaderDef = def;
+        leaderDef.elite = true;
+        p.baseDef = &leaderDef;
+        p.rollAffixes = true;
+      }
       Spawn(p);
     }
   }
@@ -388,6 +420,8 @@ EntityId MonsterSystem::Spawn(const MonsterSpawnParams& p) {
                              : ScaleMonsterForDifficulty(*p.baseDef, ctx_.data.Combat().difficulty, ctx_.session.difficulty);
   MonsterInstance m = MakeInstance(def, p.tile, p.role);
   if (p.hasHome) m.homeTile = p.home;
+  m.packId = p.packId;  // K5
+  m.packLeader = p.packLeader;
   m.huntId = p.huntId;
   m.visualScale = p.visualScale;
   if (p.rollAffixes) RollAffixesInto(m, p.affixZone.empty() ? std::string_view(CurrentZoneId()) : p.affixZone);
@@ -432,7 +466,10 @@ void MonsterSystem::SpawnHunts(std::span<const DueHunt> due, bool announce) {
     }
     const MonsterDef def =
         ScaleMonsterForDifficulty(MakeHuntDefinition(*base, hunt, ai, hunt.name), diff, ctx_.session.difficulty);
+    const uint32_t pack = NewPackId();  // K5: the hunt's leader leads its minions
     MonsterSpawnParams lp;
+    lp.packId = pack;
+    lp.packLeader = true;
     lp.baseDef = &def;
     lp.alreadyScaled = true;
     lp.tile = spot;
@@ -456,6 +493,7 @@ void MonsterSystem::SpawnHunts(std::span<const DueHunt> due, bool announce) {
         mp.tile = TilePos{c, r};
         mp.role = MonsterRole::HuntMinion;
         mp.rollAffixes = false;  // never, even for an elite base
+        mp.packId = pack;
         Spawn(mp);
       }
     }
@@ -691,6 +729,7 @@ void MonsterSystem::TickAI(double dtMs) {
     m.prevPos = m.pos;
     m.groundSpeed = 0;
   }
+  RefreshBuffsAndAuras(now);  // K5: the step's auras and buff multipliers (no RNG)
 
   // Activity set (3.8): every activeRefreshMs (first refresh of a zone immediately), monsters within aiCullRadius of
   // the hero (grid order) plus every aggro monster anywhere (list order).
@@ -703,7 +742,8 @@ void MonsterSystem::TickAI(double dtMs) {
       if (MonsterInstance* m = Find(id)) m->active = true;
     }
     for (MonsterInstance& m : monsters_) {
-      if ((m.IsAggro() || m.state == MonsterState::Returning) && !m.active) {  // M1: returning monsters reach home
+      // M1: returning monsters reach home; K5: fleeing ones run their flee out.
+      if ((m.IsAggro() || m.state == MonsterState::Returning || m.state == MonsterState::Flee) && !m.active) {
         active_.push_back(m.id);
         m.active = true;
       }
@@ -727,11 +767,15 @@ void MonsterSystem::TickAI(double dtMs) {
     if (now < m->phaseActionUntilMs) continue;                              // K4: a phase's enter action
     // K3: a monster that eats corpses may start its consume channel instead of its AI step.
     if (m->def.corpse.consumes && TryStartConsume(*m, now)) continue;
+    // K5: a sustain or a fearImmune buff now steadies a fleeing monster (it fights again this step).
+    if (m->state == MonsterState::Flee && (m->fearImmune || Sustained(*m))) EndFlee(*m, FleeEnd::Sustained);
     const MonsterState before = m->state;
-    // Safe-zone repel: an aggro monster inside a camp radius drops aggro.
-    if (m->IsAggro() && InSafeZone(m->pos)) {
+    // Safe-zone repel: an aggro monster inside a camp radius drops aggro (K5: a fleeing one stops there too).
+    if ((m->IsAggro() || m->state == MonsterState::Flee) && InSafeZone(m->pos)) {
+      if (m->state == MonsterState::Flee) EndFlee(*m, FleeEnd::Interrupted);
       m->state = MonsterState::Idle;
       m->provokedUntilMs = 0;
+      m->kiting = false;
       m->path.clear();
     }
     MonsterAiInput in;
@@ -750,7 +794,18 @@ void MonsterSystem::TickAI(double dtMs) {
       }
     }
     in.neighbours = neighbours;
+    // K5: a kite waits for the monster's own strike on its way (one action at a time).
+    in.strikePending = m->def.kite.present && ctx_.sys.combat != nullptr && ctx_.sys.combat->HasPendingStrike(id);
     const MonsterAiResult res = UpdateMonsterAI(*m, ai, in, world_, rng);
+    if (res.fleeEnded) {  // K5: the AI ended the flee (expired, blocked, or the leash)
+      EvMonsterFlee ev;
+      ev.entity = id;
+      ev.from = m->fleeFrom;
+      ev.untilMs = m->fleeUntilMs;
+      ev.ended = true;
+      ev.reason = res.fleeEndReason;
+      ctx_.events.Emit(ev);
+    }
     if (res.leashed) m->abilityClockStarted = false;  // K2: a fight that ends at the leash restarts its ability clock
     if (res.arrivedHome && !m->def.phases.empty()) {  // K4: home again (M1): full life, phase 0, its fight undone
       ResetPhases(*m);
@@ -762,8 +817,10 @@ void MonsterSystem::TickAI(double dtMs) {
     if (m->state == MonsterState::Chase &&
         (before == MonsterState::Idle || before == MonsterState::Patrol || before == MonsterState::Returning)) {
       PublishAggro(*m, before);
+      PackAlarm(id);  // K5: it entered Chase - its pack within reach joins in
     }
   }
+  AlignShieldWalls();  // K5: after every monster moved and turned this step
 }
 
 void MonsterSystem::TickEliteBehaviours() {
@@ -876,9 +933,9 @@ HitWeight MonsterSystem::ApplyDamage(EntityId id, double amount, const DamageFla
     // M2: a hit provokes an idle / patrolling monster, or a chasing one hit from beyond its aggro range.
     const MonsterState before = m->state;
     const double heroDist = ctx_.sys.hero != nullptr ? Dist(m->pos, ctx_.sys.hero->Position()) : 0.0;
-    if (ProvokeMonster(*m, ctx_.data.Monsters().ai, now, heroDist) &&
-        (before == MonsterState::Idle || before == MonsterState::Patrol)) {
-      PublishAggro(*m, before);
+    if (ProvokeMonster(*m, ctx_.data.Monsters().ai, now, heroDist)) {
+      if (before == MonsterState::Idle || before == MonsterState::Patrol) PublishAggro(*m, before);
+      PackAlarm(id);  // K5: a provoked member wakes its pack (`m` may dangle after this)
     }
   }
   return weight;
@@ -917,6 +974,7 @@ void MonsterSystem::ForceChase(EntityId id) {
   m->hasPatrolTarget = false;
   m->path.clear();
   PublishAggro(*m, before);
+  PackAlarm(id);  // K5
 }
 
 // =====================================================================================================================
@@ -990,6 +1048,8 @@ void MonsterSystem::Respawn(EntityId deadId) {
   fresh.huntId = dead.huntId;
   fresh.visualScale = dead.visualScale;
   fresh.noRespawn = dead.noRespawn;
+  fresh.packId = dead.packId;  // K5: it rejoins its pack (and leads it again)
+  fresh.packLeader = dead.packLeader;
   if (fresh.originalDef.elite) RollAffixesInto(fresh, CurrentZoneId());  // re-rolled, never compounded
   grid_.Remove(deadId);
   ctx_.events.Emit(EvEntityDespawned{deadId, EntityKind::Monster, DespawnReason::Died});
@@ -1138,6 +1198,10 @@ void MonsterSystem::OnMonsterDied(const MonsterKilledMsg& msg) {
   OnPhaseDeath(msg, corpse);
   // Every Raised it stood up falls with it.
   CollapseRaisedOf(msg.monster);
+  // K5: the buffs it gave end with it ("while he drums", monsters.md 2.3: kill the drummer, then the leader), then a
+  // pack leader's death breaks its pack (morale).
+  DropBuffsOf(msg.monster, now);
+  OnPackDeath(msg);
 }
 
 void MonsterSystem::CollapseRaisedOf(EntityId raiser) {
@@ -1290,7 +1354,10 @@ int32_t MonsterSystem::BurnCorpses(const AbilityShapeDef& shape, Vec2 origin, Ve
 }
 
 bool MonsterSystem::TryStartConsume(MonsterInstance& m, double now) {
-  if (m.consumeCorpse != 0 || m.pendingAbility >= 0 || m.state == MonsterState::Returning) return false;
+  if (m.consumeCorpse != 0 || m.pendingAbility >= 0 || m.state == MonsterState::Returning ||
+      m.state == MonsterState::Flee) {  // K5: a fleeing monster does not stop to eat
+    return false;
+  }
   // One action at a time: a swing on its way to contact lands first (the channel never bites).
   if (ctx_.sys.combat != nullptr && ctx_.sys.combat->HasPendingStrike(m.id)) return false;
   const MonsterAiDef& ai = ctx_.data.Monsters().ai;
@@ -1529,6 +1596,14 @@ void MonsterSystem::FillSnapshot(Snapshot& out) const {
     v.raiser = m.raiserId;
     v.consumingCorpse = m.consumeCorpse;
     v.phase = m.phase;  // K4
+    v.packId = m.packId;  // K5
+    v.packLeader = m.packLeader;
+    v.fleeUntilMs = m.state == MonsterState::Flee ? m.fleeUntilMs : 0;
+    v.kiting = m.kiting;
+    v.buffMask = MonsterBuffMask(m);
+    v.auraRadius = m.def.aura.present && m.IsAlive() ? m.def.aura.radius : 0;
+    v.auraStat = m.def.aura.stat;
+    v.blockArcDeg = m.def.block.present ? m.def.block.arcDeg : 0;
   }
   // K4: the arenas the monsters' phases lit (list order).
   for (const MonsterInstance& m : monsters_) {

@@ -8,8 +8,9 @@
  * Remake-only fields are optional. The exporter withholds each one from `unreal/Data` until the core package that parses
  * it has landed (`REMAKE_SCHEMA` in unreal/Tools/export-data/src/main.ts, field registry in .../src/remake.ts), so a
  * field may be authored before the core reads it. The Wave 1 fields, K2's (monster abilities, hit cap), K3's (on-death
- * effects, corpses, the Unburied rise, map corpse seeds, elite affix on-death / rise / families) and K4's (monster phases)
- * are typed here; the later Wave 2 / Wave 3 packages (K5-K7) add theirs together with their `REMAKE_SCHEMA` feature.
+ * effects, corpses, the Unburied rise, map corpse seeds, elite affix on-death / rise / families), K4's (monster phases)
+ * and K5's (pack aggro, kite, block, morale, auras, spawn mixes and leaders; buff / call abilities) are typed here; the
+ * later Wave 2 / Wave 3 packages (K6-K7) add theirs together with their `REMAKE_SCHEMA` feature.
  */
 import type * as Web from '@web/data/types';
 import type { StatusEffectType } from '@web/systems/StatusEffectSystem';
@@ -57,8 +58,8 @@ export interface RemakeAbilityStatus {
 
 /**
  * [W2] One monster ability (implementation-plan.md §3 K2; MonsterData.h MonsterAbilityDef has the rules). Feature
- * `monster.abilities`; the kinds whose runtime lands later are value-gated (raise / summon: `monster.abilityRaise` /
- * `monster.abilitySummon`, K3; buff / call: `monster.abilityBuff` / `monster.abilityCall`, K5).
+ * `monster.abilities`; the kinds whose runtime landed later are value-gated by their own features (raise / summon:
+ * `monster.abilityRaise` / `monster.abilitySummon`, K3; buff / call: `monster.abilityBuff` / `monster.abilityCall`, K5).
  */
 export interface RemakeMonsterAbility {
   id: string;
@@ -70,8 +71,8 @@ export interface RemakeMonsterAbility {
   cooldownMs: number;
   /** From the monster's first swing of a fight (default 0: ready at once); a raise / summon caster's first fight step. */
   initialCooldownMs?: number;
-  /** Hero distance bounds, tiles. Swing-picked kinds act only within the swing reach (attackRange x 1.2); raise / summon
-   * are casts between swings (Chase or Attack) and are not bound by it. */
+  /** Hero distance bounds, tiles. Swing-picked kinds act only within the swing reach (attackRange x 1.2); raise / summon /
+   * buff / call are casts between swings (Chase or Attack) and are not bound by it. */
   rangeMin?: number;
   rangeMax?: number;
   /** Usable while life < hpBelowPct percent. */
@@ -97,8 +98,26 @@ export interface RemakeMonsterAbility {
     /** [K3] A raise's corpse search radius from the caster (default 6); a summon at `self`: its ring (default 1.5). */
     radius?: number;
   };
-  buff?: { stat: 'damage' | 'attackSpeed' | 'moveSpeed' | 'fearImmune'; mul?: number; ms: number; radius?: number; family?: string };
+  /**
+   * buff: `stat` x `mul` (0 < mul <= 10) for `ms` on the monsters within `radius` (0..30; 0 = the caster) of `family`
+   * (it ends early when the caster dies).
+   * call [K5]: provokes every other monster within `radius` (> 0) of `family` (the social call), and buffs them (and the
+   * caster) only when it names a `stat` with its `ms`.
+   */
+  buff?: RemakeBuff;
 }
+
+/** [W2] A buff / call ability's block (K5; MonsterData.h AbilityBuffDef). `stat` and `ms` are required for a buff. */
+export interface RemakeBuff {
+  stat?: RemakeBuffStat;
+  mul?: number;
+  ms?: number;
+  radius?: number;
+  family?: string;
+}
+
+/** [W2] What a buff or an aura raises (K5): damage (outgoing), attackSpeed (swings per second), moveSpeed, fearImmune. */
+export type RemakeBuffStat = 'damage' | 'attackSpeed' | 'moveSpeed' | 'fearImmune';
 
 /**
  * [W2] An on-death effect (implementation-plan.md §3 K3; MonsterData.h MonsterOnDeathDef has the rules). Feature
@@ -193,6 +212,49 @@ export interface RemakeEliteAffixDefinition extends Omit<EliteAffixDefinition, '
   families?: string[];
 }
 
+/**
+ * [W2] Kite (K5; MonsterData.h MonsterKiteDef): a ranged monster with the hero closer than `min` steps away to about `max`
+ * tiles from it (inside its leash, in a straight walkable line, never into a camp), then strikes before it kites again.
+ * 0 < min < max <= 30, max within its attackRange (the kite ends in Attack only with the hero within attackRange: a band
+ * edge past it walks the monster back in before it shoots). Feature `monster.kite`.
+ */
+export interface RemakeKite {
+  min: number;
+  max: number;
+}
+
+/**
+ * [W2] Block (K5; MonsterData.h MonsterBlockDef): a hit from within `arcDeg` (0..360, total) around its heading is
+ * multiplied by `damageMul` (0 <= damageMul < 1) and sparks (EvBlock); `wall` (0..30 tiles): fighting blockers that close
+ * share one heading. Feature `monster.block`.
+ */
+export interface RemakeBlock {
+  arcDeg: number;
+  damageMul: number;
+  wall?: number;
+}
+
+/**
+ * [W2] Morale (K5; MonsterData.h MonsterMoraleDef): flees for `fleeOnLeaderDeathMs` (<= 60000) when its pack's leader
+ * dies, if within `fleeRadius` (omitted: the whole pack) of the body, unless fearImmune or a living sustain member
+ * (`sustainFamily`, any when omitted; a buff / call granting fearImmune) stands within `sustainRadius`. Feature
+ * `monster.morale`.
+ */
+export interface RemakeMorale {
+  fleeOnLeaderDeathMs: number;
+  fleeRadius?: number;
+  sustainFamily?: string;
+  sustainRadius?: number;
+}
+
+/** [W2] Aura (K5; MonsterData.h MonsterAuraDef): monsters within `radius` (it included; of `family`) have `stat` x `mul`. */
+export interface RemakeAura {
+  stat: RemakeBuffStat;
+  mul?: number;
+  radius: number;
+  family?: string;
+}
+
 export interface MonsterDefinition extends Web.MonsterDefinition {
   /** [W1] Family id (monsters.md §1.1): voice set, marker colour, family rules. Feature `monster.family`. */
   family?: string;
@@ -217,6 +279,19 @@ export interface MonsterDefinition extends Web.MonsterDefinition {
   riseAgain?: RemakeRiseAgain;
   /** [W2] Boss phases and arenas (K4). Feature `monster.phases`. */
   phases?: RemakeMonsterPhase[];
+  /**
+   * [W2] Pack aggro (K5): tiles (0 < packAggro <= 30) within which another member of its pack being provoked or entering
+   * Chase provokes this monster (once; it does not pass the alarm on). Feature `monster.packAggro`.
+   */
+  packAggro?: number;
+  /** [W2] Kite band (K5). Feature `monster.kite`. */
+  kite?: RemakeKite;
+  /** [W2] Frontal block and shield wall (K5). Feature `monster.block`. */
+  block?: RemakeBlock;
+  /** [W2] Morale: flee when the pack's leader falls (K5). Feature `monster.morale`. */
+  morale?: RemakeMorale;
+  /** [W2] Aura (K5). Feature `monster.aura`. */
+  aura?: RemakeAura;
 }
 
 /** One defend wave: exactly these monsters (K1 `SpawnDefendWave`). */
@@ -265,7 +340,21 @@ export interface RemakeRegion {
   mood: string;
 }
 
-export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances'> {
+/**
+ * A map spawn entry (a pack, monsters-ai.md §6.1) with its [W2] K5 fields (feature `map.spawnMix`): `mix` spawns these
+ * monsters in list order instead of `count` x `monsterId` (the counts sum to `count`; the entry's `monsterId` stays and
+ * must be one of the mix's members: the story-boss spawn and the quest guide's spawn points read it); `leader` names the
+ * member that leads the pack (the first of its id), optionally elite (an elite leader rolls its affixes on the Ai stream
+ * right after its placement, as an elite definition does, so the zone's later placements move). Map spawns only: a
+ * sub-dungeon's spawns have no pack until K7. Not generator inputs (DECISIONS DR4: Wave 2 is golden-neutral).
+ */
+export type MapSpawn = Web.MapData['spawns'][number] & {
+  mix?: { monsterId: string; count: number }[];
+  leader?: { monsterId: string; elite?: boolean };
+};
+
+export interface MapData extends Omit<Web.MapData, 'subDungeonEntrances' | 'spawns'> {
+  spawns: MapSpawn[];
   subDungeonEntrances?: SubDungeonEntrance[];
   /**
    * [W1] Presentation theme (art, terrain style, camp kit, mood); the generator `theme` stays the web's so the golden

@@ -19,10 +19,27 @@ namespace abyss {
 // grid and the minimap texture are allocated from cols x rows).
 inline constexpr int32_t kMaxMapDim = 512;
 
+// Dark remake K5 (remake schema map.spawnMix; implementation-plan.md 3 K5): a spawn entry is a pack (monsters-ai.md 6.1).
+// `mix` replaces the entry's one monsterId with these, in list order (their counts sum to the entry's `count`;
+// DataStore checks); `leader` names the member that leads the pack (the first of its id in mix order) and may make it
+// elite (it rolls the zone's affixes like an elite definition). Not generator inputs: the golden maps stay.
+struct MapSpawnMixDef {
+  std::string monsterId;
+  int32_t count = 1;
+};
+struct MapSpawnLeaderDef {
+  bool present = false;
+  std::string monsterId;
+  bool elite = false;
+};
+
 struct MapSpawnDef {
   TilePos pos;
   std::string monsterId;
   int32_t count = 1;
+  // K5 (default member initializers: aggregate initialisations that predate them stay complete).
+  std::vector<MapSpawnMixDef> mix{};  // empty = `count` x monsterId
+  MapSpawnLeaderDef leader{};
 };
 
 struct MapCampDef {

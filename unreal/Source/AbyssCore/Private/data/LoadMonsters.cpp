@@ -42,6 +42,9 @@ constexpr double kLoadArenaMaxRadius = 60;
 constexpr double kLoadPhaseSummonMaxDelayMs = 60000;
 constexpr int32_t kLoadPhaseSummonMaxRespawns = 10;
 constexpr double kLoadFeedMaxDelayMs = 10000;
+// K5 (implementation-plan.md 3 K5): pack, kite, wall, morale, aura and buff radii within 30 tiles; a flee lasts <= 60 s.
+constexpr double kLoadPackMaxRadius = 30;
+constexpr double kLoadFleeMaxMs = 60000;
 
 // An object's keys must all be known (a misspelt optional field would otherwise be silently ignored).
 void LoadMonsterCheckKeys(const JNode& n, std::initializer_list<std::string_view> known, std::string_view what) {
@@ -289,22 +292,38 @@ MonsterAbilityDef ReadMonsterAbility(const JNode& n) {
     n.Error("a " + std::string(EnumName(a.kind)) + " ability needs its 'summon' block");
   }
 
-  // Buff (buff / call).
+  // Buff (buff / call). K5: a call provokes within `radius` (> 0, required) and buffs only when it names a `stat` (with
+  // its `ms`); a buff always names both (radius 0 = the caster alone).
   if (n.Has("buff")) {
     const JNode b = n.Child("buff");
     LoadMonsterCheckKeys(b, {"stat", "mul", "ms", "radius", "family"}, "buff");
     if (a.kind != AbilityKind::Buff && a.kind != AbilityKind::Call) b.Error("only buff / call abilities buff");
     a.buff.present = true;
-    a.buff.stat = b.Enum<MonsterBuffStat>("stat");
+    const bool call = a.kind == AbilityKind::Call;
+    a.buff.hasStat = !call || b.Has("stat");
+    if (a.buff.hasStat) a.buff.stat = b.Enum<MonsterBuffStat>("stat");
     a.buff.mul = b.Num("mul", 1.0);
-    a.buff.ms = b.Num("ms");
+    a.buff.ms = a.buff.hasStat || b.Has("ms") ? b.Num("ms") : 0.0;
     a.buff.radius = b.Num("radius", 0.0);
     a.buff.family = b.Str("family", "");
-    if (!(a.buff.mul > 0)) b.Child("mul").Error("expected > 0");
-    if (!(a.buff.ms > 0)) b.Child("ms").Error("expected > 0");
-    if (!(a.buff.radius >= 0)) b.Child("radius").Error("expected >= 0");
+    if (!(a.buff.mul > 0) || !(a.buff.mul <= kLoadPhaseMaxMul)) b.Child("mul").Error("expected 0 < mul <= 10");
+    if (a.buff.hasStat && !(a.buff.ms > 0)) {
+      b.Child("ms").Error("expected > 0");
+    } else if (!(a.buff.ms <= kLoadAbilityMaxCooldownMs)) {
+      b.Child("ms").Error("expected <= 600000");
+    }
+    if (!a.buff.hasStat && b.Has("ms")) b.Child("ms").Error("a call buffs for `ms` only with a `stat`");
+    if (!a.buff.hasStat && b.Has("mul")) b.Child("mul").Error("a call buffs by `mul` only with a `stat`");
+    if (!(a.buff.radius >= 0) || !(a.buff.radius <= kLoadPackMaxRadius)) {
+      b.Child("radius").Error("expected 0 <= radius <= 30");
+    } else if (call && !(a.buff.radius > 0)) {
+      b.Child("radius").Error("a call reaches radius > 0 tiles");
+    }
+    if (b.Has("family") && a.buff.family.empty()) b.Child("family").Error("an empty family id");
   } else if (a.kind == AbilityKind::Buff) {
     n.Error("a buff ability needs its 'buff' block");
+  } else if (a.kind == AbilityKind::Call) {
+    n.Error("a call ability needs its 'buff' block (its radius, family and optional buff)");
   }
   return a;
 }
@@ -437,6 +456,67 @@ MonsterPhaseDef ReadMonsterPhase(const JNode& n) {
     if (p.stinger.empty()) n.Child("stinger").Error("an empty stinger id");
   }
   return p;
+}
+
+// K5 blocks (MonsterData.h "K5"): every key known; radii and times bounded; DataStore::Finalize checks what needs the
+// rest of the data (a kite on a ranged monster within its swing reach).
+void ReadMonsterK5(const JNode& n, MonsterDef& m) {
+  const auto radius = [](const JNode& node, std::string_view key, bool required) {
+    if (!required && !node.Has(key)) return 0.0;
+    const double v = node.Num(key);
+    if (!(v > 0) || !(v <= kLoadPackMaxRadius)) node.Child(key).Error("expected 0 < " + std::string(key) + " <= 30");
+    return v;
+  };
+  if (n.Has("packAggro")) m.packAggro = radius(n, "packAggro", true);
+  if (n.Has("kite")) {
+    const JNode k = n.Child("kite");
+    LoadMonsterCheckKeys(k, {"min", "max"}, "kite");
+    m.kite.present = true;
+    m.kite.min = radius(k, "min", true);
+    m.kite.max = radius(k, "max", true);
+    if (!(m.kite.max > m.kite.min)) k.Child("max").Error("expected max > min (the band it keeps from the hero)");
+  }
+  if (n.Has("block")) {
+    const JNode b = n.Child("block");
+    LoadMonsterCheckKeys(b, {"arcDeg", "damageMul", "wall"}, "block");
+    m.block.present = true;
+    m.block.arcDeg = b.Num("arcDeg");
+    m.block.damageMul = b.Num("damageMul");
+    m.block.wall = radius(b, "wall", false);
+    if (!(m.block.arcDeg > 0) || !(m.block.arcDeg <= 360)) b.Child("arcDeg").Error("expected 0 < arcDeg <= 360");
+    if (!(m.block.damageMul >= 0) || !(m.block.damageMul < 1)) {
+      b.Child("damageMul").Error("expected 0 <= damageMul < 1 (a blocked hit is reduced)");
+    }
+  }
+  if (n.Has("morale")) {
+    const JNode o = n.Child("morale");
+    LoadMonsterCheckKeys(o, {"fleeOnLeaderDeathMs", "fleeRadius", "sustainFamily", "sustainRadius"}, "morale");
+    m.morale.present = true;
+    m.morale.fleeOnLeaderDeathMs = o.Num("fleeOnLeaderDeathMs");
+    if (!(m.morale.fleeOnLeaderDeathMs > 0) || !(m.morale.fleeOnLeaderDeathMs <= kLoadFleeMaxMs)) {
+      o.Child("fleeOnLeaderDeathMs").Error("expected 0 < fleeOnLeaderDeathMs <= 60000");
+    }
+    m.morale.fleeRadius = radius(o, "fleeRadius", false);
+    m.morale.sustainRadius = radius(o, "sustainRadius", false);
+    if (o.Has("sustainFamily")) {
+      m.morale.sustainFamily = o.Str("sustainFamily");
+      if (m.morale.sustainFamily.empty()) o.Child("sustainFamily").Error("an empty family id");
+      if (!o.Has("sustainRadius")) o.Child("sustainFamily").Error("a sustain needs its sustainRadius");
+    }
+  }
+  if (n.Has("aura")) {
+    const JNode a = n.Child("aura");
+    LoadMonsterCheckKeys(a, {"stat", "mul", "radius", "family"}, "aura");
+    m.aura.present = true;
+    m.aura.stat = a.Enum<MonsterBuffStat>("stat");
+    m.aura.mul = a.Num("mul", 1.0);
+    m.aura.radius = radius(a, "radius", true);
+    if (!(m.aura.mul > 0) || !(m.aura.mul <= kLoadPhaseMaxMul)) a.Child("mul").Error("expected 0 < mul <= 10");
+    if (a.Has("family")) {
+      m.aura.family = a.Str("family");
+      if (m.aura.family.empty()) a.Child("family").Error("an empty family id");
+    }
+  }
 }
 
 }  // namespace
@@ -644,6 +724,8 @@ MonsterDef ReadMonsterDef(const JNode& n, bool withDerived) {
     }
     m.phases.push_back(std::move(phase));
   }
+  // Dark remake K5 (monster.packAggro, monster.kite, monster.block, monster.morale, monster.aura).
+  ReadMonsterK5(n, m);
   if (withDerived) {
     const JNode d = n.Child("derived");
     if (!d.Exists()) {

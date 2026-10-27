@@ -1048,6 +1048,7 @@ bool PetCompanion::InterceptMonsterAttack(EntityId monster) {
   }
   if (!redirect) return false;
   m->lastAttackMs = now;
+  m->lastStrikeMs = now;  // K5: a swing at the beast is a strike too (the kite gate)
   const ActionTiming t = ComputeAttackTiming(ctx_.data.Combat().anim, ctx_.data.Assets(), m->def.spriteKey,
                                              m->def.animCategory, m->AttackIntervalMs());
   EvPlayAnim anim;

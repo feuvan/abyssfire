@@ -51,6 +51,12 @@ type TableOut = TableResult[] | { tables: TableResult[]; golden: GoldenFile[] };
  * K4 boss phases and arenas (package 2C): monster `phases` (LoadMonsters.cpp → MonsterDef::phases, rows checked here
  * first by tables/monsters.ts; MonsterSystem::TickPhases enters them, ticks the arenas, stands the phase summons up and
  * resolves Feed).
+ *
+ * K5 packs, morale, kite and block (package 2D): monster `packAggro`, `kite`, `block`, `morale`, `aura` (LoadMonsters.cpp
+ * → MonsterDef; checked here first by tables/monsters.ts; MonsterSystem's pack alarm, Flee, kite step, shield wall and
+ * auras, CombatSystem's block), map `spawns[].mix` / `leader` (LoadWorld.cpp → MapSpawnDef; checked by tables/maps.ts;
+ * SpawnZonePopulation spawns the mix as one pack), and the ability kinds buff / call (value gates lifted: they run as casts
+ * between swings).
  */
 export const REMAKE_SCHEMA: readonly string[] = [
   'quest.progressKey', 'quest.choiceLabels', 'quest.defendWaves', 'quest.defendApproach',
@@ -61,6 +67,8 @@ export const REMAKE_SCHEMA: readonly string[] = [
   'monster.family', 'monster.onDeath', 'monster.corpse', 'monster.riseAgain', 'monster.abilityRaise', 'monster.abilitySummon',
   'map.corpseSeeds',
   'monster.phases',
+  'monster.packAggro', 'monster.kite', 'monster.block', 'monster.morale', 'monster.aura', 'monster.abilityBuff',
+  'monster.abilityCall', 'map.spawnMix',
 ];
 
 export interface RunOptions {

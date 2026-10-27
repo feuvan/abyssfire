@@ -139,7 +139,7 @@ the core checks that every key exists in zh-CN and en and every wave monster exi
 `presentationTheme` and `regions` (`MapDef::presentationTheme` / `regions`; each must name a `zone_moods.json` mood,
 checked by the export and by DataStore). Since K2 (package 2A, DECISIONS DR8 *K2 as built*) also monster `abilities`
 (`RemakeMonsterAbility[]`: kind, clip, windup / cooldowns, conditions, aim, shape, dmgMul / damageType / status, hazard,
-summon, buff; the kinds raise / summon / buff / call fail the export until K3 / K5), `damageType` and
+summon, buff; the kinds raise / summon / buff / call failed the export until K3 / K5), `damageType` and
 `hitCapHeroMaxHpPct` (percent of the hero's max life, scaled by the difficulty's damage multiplier); `Tools/export-data`
 `tables/monsters.ts` checks every ability field and key, and DataStore checks them again (implementation-plan.md
 *2A outcomes*). Since K3 (package 2B, DECISIONS DR8 *K3 as built*) also monster `family`, `onDeath`
@@ -148,7 +148,11 @@ summon, buff; the kinds raise / summon / buff / call fail the export until K3 / 
 affix's `onDeath`, `riseAgain` and `families` (implementation-plan.md *2B outcomes*). Since K4 (package 2C, DECISIONS
 DR8 *K4 as built*) also monster `phases` (`RemakeMonsterPhase[]`: thresholds, the enter action, multipliers, the tether
 `leash`, ability switches, phase `summons`, the shrinking-ring `arena`, `feed`, a music `stinger`; a centre left out is the
-monster's map spawn tile; implementation-plan.md *2C outcomes*). Still withheld: every other Wave 2 / 3 field.
+monster's map spawn tile; implementation-plan.md *2C outcomes*). Since K5 (package 2D, DECISIONS DR8 *K5 as built*) also
+monster `packAggro`, `kite` (`RemakeKite`), `block` (`RemakeBlock`), `morale` (`RemakeMorale`), `aura` (`RemakeAura`),
+the buff / call ability kinds (`RemakeBuff`: a call's `stat` is optional) and map spawn `mix` / `leader` (`MapSpawn`; a
+spawn entry is a pack: the mix sums to its `count` and keeps the entry's `monsterId` among its members;
+implementation-plan.md *2D outcomes*). Still withheld: every other Wave 2 / 3 field.
 
 Unknown fields fail the export twice over: tsc (run before every export) rejects a misspelt key in a typed record, and the
 record key gate (`checkRecordKeys`, key lists in `Tools/export-data/src/remakeKeys.ts`) rejects any key of a monster,

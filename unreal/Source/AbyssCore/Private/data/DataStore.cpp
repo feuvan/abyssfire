@@ -335,7 +335,8 @@ bool DataStore::Finalize(DataLoadReport& report) {
   // ability timed by its clip has that clip's Contact / Release in the manifest (else the 600 / 700 ms floor times it).
   // An ability is picked only on a due swing (Attack state: the hero within attackRange x attackExitMul), so a rangeMin
   // past that reach never fires and a rangeMax past it changes nothing (warnings: the data loads). K3: a raise / summon
-  // is a cast between swings from Chase as well (CombatSystem::TryStartSummonCast), so its range is not bound by reach.
+  // is a cast between swings from Chase as well (CombatSystem::TryStartSupportCast), so its range is not bound by reach;
+  // K5: so are buff / call.
   {
     const auto checkAbilities = [&](const MonsterDef& m, std::string_view file, const std::string& path, bool boss) {
       // The same product MonsterAI tests (1.5 x 1.2 = 1.7999999999999998), with a hair of slack so a range authored as
@@ -347,7 +348,9 @@ bool DataStore::Finalize(DataLoadReport& report) {
         if (a.summon.present && !monsters_.Find(a.summon.monsterId)) {
           ck.Error(file, ap + ".summon.monsterId", "unknown monster '" + a.summon.monsterId + "'");
         }
-        const bool cast = a.kind == AbilityKind::Raise || a.kind == AbilityKind::Summon;  // between swings
+        // Between swings (K3 raise / summon; K5 buff / call): AbilityKindCastsBetweenSwings.
+        const bool cast = a.kind == AbilityKind::Raise || a.kind == AbilityKind::Summon || a.kind == AbilityKind::Buff ||
+                          a.kind == AbilityKind::Call;
         if (!cast && a.rangeMin > swingReach + 1e-9) {
           ck.Warn(file, ap + ".rangeMin",
                   StrCat("never picked: abilities fire only on a due swing, within attackRange x attackExitMul (",
@@ -478,7 +481,9 @@ bool DataStore::Finalize(DataLoadReport& report) {
       std::vector<TetherHome> out;
       for (const MapDef& map : world_.maps) {
         for (const MapSpawnDef& s : map.spawns) {
-          if (s.monsterId == id) out.push_back(TetherHome{s.pos, mapJitter});
+          bool member = s.mix.empty() && s.monsterId == id;  // K5: a mix spawns its members instead
+          for (const MapSpawnMixDef& e : s.mix) member = member || e.monsterId == id;
+          if (member) out.push_back(TetherHome{s.pos, mapJitter});
         }
       }
       for (const SubDungeonDef& sd : world_.subDungeons) {
@@ -500,6 +505,29 @@ bool DataStore::Finalize(DataLoadReport& report) {
         checkTether(h.defNormal, {TetherHome{h.spawn, 0}}, "quest_hunts.json", "defsNormal." + h.huntId);
       }
     }
+  }
+
+  // K5 (implementation-plan.md 3 K5; the loader checked each block's own shape): a kite is a ranged monster's rule
+  // (attackRange > rangedThreshold) and its band ends within its attack range: a kite runs in Chase and ends in Attack
+  // only with the hero within attackRange (Chase's own entry rule; attackExitMul only keeps a monster already in
+  // Attack), so a band edge past attackRange walks it back in before it shoots (warnings: the data loads; the exporter
+  // fails on both).
+  {
+    const auto checkKite = [&](const MonsterDef& m, std::string_view file, const std::string& path) {
+      if (!m.kite.present) return;
+      if (!(m.attackRange > monsters_.ai.rangedThreshold)) {
+        ck.Warn(file, path + ".kite",
+                StrCat("a kite is a ranged monster's rule (attackRange ", m.attackRange, " <= ",
+                       monsters_.ai.rangedThreshold, ")"));
+      }
+      if (m.kite.max > m.attackRange + 1e-9) {
+        ck.Warn(file, path + ".kite.max",
+                StrCat("past the attack range (attackRange ", m.attackRange,
+                       " tiles): the kite ends in Chase and the monster walks back in before it shoots"));
+      }
+    };
+    for (const MonsterDef& m : monsters_.defs) checkKite(m, "monsters.json", "defs." + m.id);
+    for (const HuntDef& h : monsters_.hunts) checkKite(h.defNormal, "quest_hunts.json", "defsNormal." + h.huntId);
   }
 
   // ---- world ----
@@ -529,6 +557,42 @@ bool DataStore::Finalize(DataLoadReport& report) {
       const std::string spPath = StrCat(path, ".spawns[", i, "]");
       checkPos(m, spPath, sp.pos);
       if (sp.count < 0) ck.Error("maps.json", spPath + ".count", "negative spawn count");
+      // K5 packs (implementation-plan.md 3 K5): a mix's counts sum to the entry's count, its ids are monsters, the leader
+      // is a member, and the story boss keeps an entry of its own (its once-per-visit spawn reads the entry's monsterId).
+      int32_t sum = 0;
+      for (size_t k = 0; k < sp.mix.size(); ++k) {
+        const MapSpawnMixDef& e = sp.mix[k];
+        sum += e.count;
+        if (!monsters_.Find(e.monsterId)) {
+          ck.Error("maps.json", StrCat(spPath, ".mix[", k, "].monsterId"), "unknown monster '" + e.monsterId + "'");
+        }
+        if (!monsters_.ai.storyBossId.empty() && e.monsterId == monsters_.ai.storyBossId) {
+          ck.Error("maps.json", StrCat(spPath, ".mix[", k, "].monsterId"), "the story boss keeps a spawn entry of its own");
+        }
+      }
+      if (!sp.mix.empty() && sum != sp.count) {
+        ck.Error("maps.json", spPath + ".mix", StrCat("the mix sums to ", sum, ", the entry's count is ", sp.count));
+      }
+      // The entry's own monsterId stays one of its members: the story-boss spawn and the quest guide's spawn points read
+      // it (a stale id would spawn a story boss from the entry or point the guide at a monster that never stands there).
+      if (!sp.mix.empty()) {
+        bool member = false;
+        for (const MapSpawnMixDef& e : sp.mix) member = member || e.monsterId == sp.monsterId;
+        if (!member) {
+          ck.Error("maps.json", spPath + ".monsterId",
+                   "'" + sp.monsterId + "' is not in the entry's mix (name one of its members)");
+        }
+      }
+      if (sp.leader.present) {
+        bool member = sp.mix.empty() && sp.leader.monsterId == sp.monsterId && sp.count > 0;
+        for (const MapSpawnMixDef& e : sp.mix) member = member || e.monsterId == sp.leader.monsterId;
+        if (!member) {
+          ck.Error("maps.json", spPath + ".leader", "'" + sp.leader.monsterId + "' is not a member of the pack");
+        }
+        if (!monsters_.ai.storyBossId.empty() && sp.mix.empty() && sp.monsterId == monsters_.ai.storyBossId) {
+          ck.Error("maps.json", spPath + ".leader", "the story boss keeps a spawn entry of its own");
+        }
+      }
     }
     for (size_t i = 0; i < m.camps.size(); ++i) checkPos(m, StrCat(path, ".camps[", i, "]"), m.camps[i].pos);
     for (size_t i = 0; i < m.exits.size(); ++i) {

@@ -92,7 +92,7 @@
 //   corpses within its radius in query order; a summon's spots on its anchors or a ring around it) and draws a marker
 //   per corpse / spot (EvTelegraph kind Raise / Summon); at contact the bodies still there stand up (capAlive checked
 //   again). A raise / summon is a timed cast, not a swing: besides competing on a due swing, it starts between swings
-//   from Chase or Attack (TryStartSummonCast: its own cooldown, rangeMin / rangeMax to the hero, bodies found; never
+//   from Chase or Attack (TryStartSupportCast: its own cooldown, rangeMin / rangeMax to the hero, bodies found; never
 //   while a swing or ability of the caster is on its way to contact, nor under a pet's taunt; such a caster's ability
 //   clock starts at its first Chase / Attack step in the swing scan); every K2 abort applies and lets its corpses go.
 //   Fire burns bodies: a fire killing blow (MonsterSystem), a fire ground strike at its contact, each tick of a fire
@@ -106,6 +106,19 @@
 //   damageTakenMul before anything announces it; the picker skips the abilities its phase table switched off
 //   (AbilityPickInput::off). CancelMonsterStrike (an enter action's interrupt) and ArenaTickHero (the ring's ticks) are
 //   MonsterSystem::TickPhases' entry points.
+// * Dark remake K5 packs, morale, kite and block (implementation-plan.md 3 K5; MonsterSystem.h "K5", monsters/Packs.h):
+//   buff / call abilities run as support casts like a raise / summon: on a due swing they compete by priority, and between
+//   swings, from Chase or Attack, TryStartSupportCast starts them on their own cooldown and hero range (not bound by the
+//   swing reach); one action at a time, a pet's taunt holds them, every K2 abort applies. They draw no telegraph (the
+//   clip is the tell); at contact MonsterSystem::ResolveBuffCast buffs / provokes (EvMonsterBuffCast). A monster's damage
+//   buff / aura is the damage formula's outgoing multiplier on its swings, ability contact hits (on the hero and, with
+//   hitsMonsters, on monsters) and bolts (Packs.h MonsterDamageBuffMul, read at the hit); its hazards' and on-death
+//   effects' fixed damage, and its hits on the beast, do not take it. Block: every hit on a monster with `block` (not a
+//   tick; with a direction: MonsterHitRequest::hasFrom, `from` off the monster) from within its front arc
+//   (Packs.h BlockArcContains on its heading) is BlockedDamage'd before the K4 damageTakenMul and emits EvBlock right
+//   before the EvHit; a stunned or frozen monster does not block. A fleeing monster (MonsterState::Flee) neither swings
+//   nor casts (the swing scan takes Chase / Attack only); its morale cancels the strike on its way
+//   (CancelMonsterStrike).
 #pragma once
 
 #include <cstdint>
@@ -529,11 +542,12 @@ class ABYSS_API CombatSystem {
   // K3: burns the bodies a fire area touches (no-op for another type).
   void BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir);
   void ResolveOnDeath(const PendingOnDeath& e);
-  // A due swing of `m` becomes an ability (true) or stays a basic swing (false). `summonsOnly` (K3): the cast between
-  // swings, where only a raise / summon may start.
-  bool TryStartAbility(MonsterInstance& m, double now, bool summonsOnly = false);
-  // K3: a raise / summon cast between swings (Chase, or Attack before the swing is due): header "K3".
-  bool TryStartSummonCast(MonsterInstance& m, double now);
+  // A due swing of `m` becomes an ability (true) or stays a basic swing (false). `castsOnly` (K3 / K5): the cast between
+  // swings, where only a raise / summon / buff / call may start.
+  bool TryStartAbility(MonsterInstance& m, double now, bool castsOnly = false);
+  // K3 / K5: a support cast between swings (Chase, or Attack before the swing is due): a raise / summon (header "K3")
+  // or a buff / call (header "K5").
+  bool TryStartSupportCast(MonsterInstance& m, double now);
   // S7: aborts every pending ability whose caster is stunned or frozen (TickCombat, before the dead-hero gate).
   void AbortImmobilizedAbilities();
   // Contact of the pending ability (PendingStrike::ability).

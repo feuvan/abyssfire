@@ -14,6 +14,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -889,8 +890,9 @@ TEST_SUITE("monsters") {
     CHECK(PickMonsterAbility(a, in) == 0);
     in.phase = 2;
     CHECK(PickMonsterAbility(a, in) == 1);
-    // A kind whose runtime lands later is never picked (K5 buff / call); a K3 raise / summon only with bodies to stand up
-    // (AbilityPickInput::available, none here; corpses_test.cpp "K3 picker").
+    // A K3 raise / summon is picked only with bodies to stand up (AbilityPickInput::available, none here;
+    // corpses_test.cpp "K3 picker"). K5 (2D): buff / call run since their package landed (they used to be "kinds not run
+    // yet", never picked), so the buff is picked (data order); packs_test.cpp "K5 buff / call" covers their runtime.
     std::vector<MonsterAbilityDef> later = {K2Ability("raise", AbilityKind::Raise, "Cast01", AbilityAim::Corpse),
                                             K2Ability("summon", AbilityKind::Summon, "Cast01", AbilityAim::Self),
                                             K2Ability("buff", AbilityKind::Buff, "Cast01", AbilityAim::Self),
@@ -898,7 +900,8 @@ TEST_SUITE("monsters") {
     std::vector<double> ready4(4, 0.0);
     AbilityPickInput in2;
     in2.readyAtMs = ready4;
-    CHECK(PickMonsterAbility(later, in2) == -1);
+    CHECK(PickMonsterAbility(std::span<const MonsterAbilityDef>(later).first(2), in2) == -1);
+    CHECK(PickMonsterAbility(later, in2) == 2);
     for (AbilityKind k : {AbilityKind::Circle, AbilityKind::Cone, AbilityKind::Line, AbilityKind::Ring, AbilityKind::Bolt,
                           AbilityKind::Hazard}) {
       CHECK(AbilityKindRuns(k));

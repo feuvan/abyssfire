@@ -29,6 +29,7 @@
 #include "abyss/monsters/Hunts.h"
 #include "abyss/monsters/Monster.h"
 #include "abyss/monsters/MonsterAI.h"
+#include "abyss/monsters/Packs.h"
 #include "abyss/monsters/SpatialGrid.h"
 #include "abyss/sim/GameplayBus.h"
 #include "abyss/sim/SimTypes.h"
@@ -54,6 +55,8 @@ struct MonsterSpawnParams {
   std::string affixZone;                // zone whose affix count applies ("" = the current zone; sub-dungeons: parent)
   bool hasHome = false;                 // MonsterInstance::homeTile = `home` (a map spawn's authored tile; else `tile`)
   TilePos home;
+  uint32_t packId = 0;                  // K5: its pack (MonsterSystem::NewPackId; 0 = none)
+  bool packLeader = false;              // K5: it leads that pack
 };
 
 // What one defend wave spawns (dark remake K1; QuestWorld builds it from the quest's DefendTargetDef). `composition`
@@ -256,6 +259,46 @@ class ABYSS_API MonsterSystem {
   // manifest has it, else MonsterAiDef::phaseActionMsDefault.
   double PhaseActionMs(const MonsterDef& def, AnimAction action) const;
 
+  // ---- dark remake K5: packs, morale, kite, block, buffs and auras (implementation-plan.md 3 K5; rules in
+  // monsters/Packs.h, the kite and flee steps in MonsterAI.h "K5") ----
+  // Packs: SpawnZonePopulation spawns each map spawn entry as one pack (its members in mix order, Packs.h
+  // ExpandSpawnMembers, each placed by the same M10 draws as before; the leader is MonsterInstance::packLeader and, when
+  // the entry's leader says elite, rolls the zone's affixes on the Ai stream right after its placement, as an elite
+  // definition does, so every later placement of the zone moves); SpawnHunts a hunt's leader with its minions (the
+  // leader leads). A respawn keeps its pack and leadership. Event spawns, Raised and summons have no pack.
+  // Pack aggro (MonsterDef::packAggro): when a pack member is provoked by a hit (M2, ApplyDamage), enters Chase from
+  // Idle / Patrol / Returning (TickAI) or is forced to (ForceChase), every other living member of its pack with
+  // packAggro, standing within its packAggro of that member, is provoked (ProvokeMonster; MonsterAggroMsg when it leaves
+  // Idle / Patrol), once: a member provoked so does not pass the alarm on, and neither does a call.
+  // Morale (kill pipeline K5 step, OnMonsterDied, after the dead monster's buffs ended): a pack leader's death breaks
+  // its pack: each living member with `morale` (in list order; not one walking home, not one already fleeing: its flee
+  // runs on unchanged), within fleeRadius of the body (0 = any), neither fearImmune (MonsterFearImmune) nor steadied by
+  // a sustain (Sustained), flees: its swing / ability on the way and a consume channel are cancelled
+  // (EvMonsterAttackCancelled), state Flee until now + fleeOnLeaderDeathMs away from the body (EvMonsterFlee). TickAI
+  // ends a flee that a sustain or a fearImmune buff now steadies (Chase, EvMonsterFlee{ended, sustained}); the AI ends
+  // the rest (expired, blocked; interrupted by the leash or a camp's safe zone, which also drops a fleeing monster to
+  // Idle; the flee step itself never enters a safe zone). A fleeing monster stays in the activity set, never swings,
+  // casts or eats, and is not aggro.
+  // Buffs and auras: TickAI first gives every living monster the auras around it this step (each living aura owner, list
+  // order, reaches the living monsters within its radius, itself included, of its family; the largest of a stat holds),
+  // then refreshes every monster's multipliers (Packs.h RefreshMonsterBuffs: live buffs and auras; the largest of a stat
+  // applies), which hold for the step: attack speed (the swing interval), move speed; damage and fearImmune are also
+  // read live at their use (Packs.h). A buff ends with its caster: the kill pipeline's K5 step drops every buff a dead
+  // monster gave (monsters.md 2.3 "while he drums": kill the drummer, then the leader) before the morale step.
+  // Shield wall: after the AI loop, living blockers with block.wall > 0 that are fighting (Chase / Attack) and stand
+  // within the smaller of their walls of each other (chained, list order) share one heading (Packs.h WallHeading); an
+  // idle, patrolling, returning or fleeing blocker keeps its own and joins no wall.
+  // A new pack id for the zone (1, 2, ... from the zone's entry).
+  uint32_t NewPackId() { return nextPackId_++; }
+  // A sustain member steadies `m` (its morale's sustainRadius > 0): a living monster other than `m`, of its
+  // sustainFamily (any when empty), with a buff / call granting fearImmune (Packs.h GrantsFearImmunity), within reach.
+  bool Sustained(const MonsterInstance& m) const;
+  // The contact of a buff / call ability of `caster` (CombatSystem::ResolveAbility): within a.buff.radius of the caster
+  // (list order; radius 0 = the caster alone) a call provokes every other living monster of its family (M2; no pack
+  // alarm), and a buff with a stat gives each living monster of its family (the caster included) stat x mul until now +
+  // ms (one buff per caster and stat: a recast refreshes it; the target's multipliers refresh at once); EvMonsterBuffCast.
+  void ResolveBuffCast(EntityId caster, const MonsterAbilityDef& a);
+
   const Corpses& CorpseRegistry() const { return corpses_; }
   void QueryCorpses(Vec2 centre, double radius, CorpseFilter filter, std::vector<uint32_t>& out) const {
     corpses_.Query(centre, radius, filter, out);
@@ -352,6 +395,14 @@ class ABYSS_API MonsterSystem {
   // Kill pipeline K4 step (OnMonsterDied): the dead monster's arena and queued work, its summon bookkeeping, Feed.
   void OnPhaseDeath(const MonsterKilledMsg& msg, uint32_t corpse);
   void StandPhaseSummon(PhaseSummonEntry& e);
+  // K5 helpers (header "K5").
+  void PackAlarm(EntityId from);
+  void OnPackDeath(const MonsterKilledMsg& msg);
+  void DropBuffsOf(EntityId source, double now);
+  void StartFlee(EntityId id, EntityId leader, Vec2 from, double now);
+  void EndFlee(MonsterInstance& m, FleeEnd reason);
+  void RefreshBuffsAndAuras(double now);
+  void AlignShieldWalls();
   bool InSafeZone(Vec2 p) const;
   bool Walkable(int32_t col, int32_t row) const;
   void PrepareZone();      // zone entry: clears the population, sizes the grid, builds the world service
@@ -401,6 +452,12 @@ class ABYSS_API MonsterSystem {
   std::vector<PhaseSummonEntry> phaseSummons_;
   std::vector<PendingFeed> feeds_;
   uint32_t nextPhaseSummonSeq_ = 1;
+  // K5: the zone's next pack id; per-step scratch (capacity kept).
+  uint32_t nextPackId_ = 1;
+  std::vector<EntityId> scratchPack_;
+  std::vector<size_t> scratchWall_;
+  std::vector<size_t> scratchWallRoot_;
+  std::vector<Vec2> scratchWallHeadings_;
 };
 
 }  // namespace abyss

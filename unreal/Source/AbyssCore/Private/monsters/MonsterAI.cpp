@@ -14,7 +14,9 @@
 #include "abyss/monsters/MonsterAI.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <utility>
 
 #include "abyss/base/Math.h"
 #include "abyss/monsters/Phases.h"
@@ -31,8 +33,12 @@ bool MonsterAiWalkable(const MonsterWorld& w, int32_t col, int32_t row) {
   return w.walkable(col, row);
 }
 
-// M6 line-of-walk: every sample along the segment (step ai.lineOfWalkStep) lies on a walkable tile.
-bool MonsterAiLineOfWalk(Vec2 from, Vec2 to, const MonsterWorld& w, double step) {
+// K5: `p` lies in a camp's safe zone (MonsterWorld::safeZone; none when the world has no such service).
+bool MonsterAiInSafeZone(const MonsterWorld& w, Vec2 p) { return w.safeZone && w.safeZone(p); }
+
+// M6 line-of-walk: every sample along the segment (step ai.lineOfWalkStep) lies on a walkable tile. K5 `avoidSafe` (the
+// flee and kite steps): and outside every camp's safe zone.
+bool MonsterAiLineOfWalk(Vec2 from, Vec2 to, const MonsterWorld& w, double step, bool avoidSafe = false) {
   const Vec2 d = to - from;
   const double len = d.Length();
   if (!(len > 0)) return true;
@@ -40,8 +46,14 @@ bool MonsterAiLineOfWalk(Vec2 from, Vec2 to, const MonsterWorld& w, double step)
   for (int32_t i = 1; i <= n; ++i) {
     const Vec2 p = from + d * (static_cast<double>(i) / static_cast<double>(n));
     if (!MonsterAiWalkable(w, JsRoundInt(p.x), JsRoundInt(p.y))) return false;
+    if (avoidSafe && MonsterAiInSafeZone(w, p)) return false;
   }
   return true;
+}
+
+// K5: a flee / kite point: a walkable tile outside every camp's safe zone.
+bool MonsterAiOpen(const MonsterWorld& w, Vec2 p) {
+  return MonsterAiWalkable(w, JsRoundInt(p.x), JsRoundInt(p.y)) && !MonsterAiInSafeZone(w, p);
 }
 
 // K4 tether (MonsterInstance::hasTether, a phase's `leash`): a chase / patrol goal outside the circle becomes the
@@ -56,6 +68,32 @@ bool MonsterAiInTether(const MonsterInstance& m) {
   if (!m.hasTether) return true;
   const double r = m.tetherRadius + kTetherSlackTiles;
   return DistSq(m.pos, m.tetherCentre) <= r * r;
+}
+
+// K5: `v` turned by the angle whose cosine / sine are c / s (exact literals below: no trig on the AI path).
+Vec2 MonsterAiTurn(Vec2 v, double c, double s) { return Vec2(v.x * c - v.y * s, v.x * s + v.y * c); }
+
+// K5: unit `v`, else the reverse heading, else +col.
+Vec2 MonsterAiAwayOr(Vec2 v, Vec2 heading) {
+  const double l2 = v.LengthSq();
+  if (l2 > 1e-18) return v / std::sqrt(l2);
+  const double h2 = heading.LengthSq();
+  if (h2 > 1e-18) return heading * (-1.0 / std::sqrt(h2));
+  return Vec2(1, 0);
+}
+
+// K5: `p` lies within the M1 leash range of the spawn anchor and inside the K4 tether (when one holds).
+bool MonsterAiInBounds(const MonsterInstance& m, const MonsterAiDef& ai, Vec2 p) {
+  if (DistSq(p, m.spawnAnchor.Center()) > ai.leashRange * ai.leashRange) return false;
+  return !m.hasTether || DistSq(p, m.tetherCentre) <= m.tetherRadius * m.tetherRadius;
+}
+
+// K5: ends a kite step (the next one waits for a swing).
+void MonsterAiEndKite(MonsterInstance& m, double nowMs) {
+  m.kiting = false;
+  m.kiteNeedsSwing = true;
+  m.kiteEndedMs = nowMs;
+  m.path.clear();
 }
 
 void MonsterAiSetIdle(MonsterInstance& m) {
@@ -139,6 +177,11 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
     m.provokedUntilMs = 0;
     m.hasPatrolTarget = false;
     m.path.clear();
+    if (m.kiting) MonsterAiEndKite(m, in.nowMs);  // K5
+    if (m.state == MonsterState::Flee) {          // K5: the leash takes it out of the flee
+      r.fleeEnded = true;
+      r.fleeEndReason = FleeEnd::Interrupted;
+    }
     if (ai.leashMode == LeashMode::WebParity) {
       // Q1 parity: idle, one smoothed step home from rest, heal 1 % maxHp, tick ends.
       m.state = MonsterState::Idle;
@@ -151,8 +194,43 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
     }
   }
 
+  // K5 kite (header): a step under way, or one that starts now, replaces the Chase / Attack rules this tick.
+  bool kiteTick = false;
+  if (!webLeashTick && m.def.kite.present && (m.state == MonsterState::Chase || m.state == MonsterState::Attack)) {
+    if (m.kiting) {
+      kiteTick = true;
+      bool end = in.nowMs >= m.kiteUntilMs;
+      if (!end) {
+        const Vec2 before = m.pos;
+        end = MonsterMoveToward(m, ai, m.kiteTarget, in.dtMs, in.speedMul, world) || m.pos == before;
+      }
+      if (end) {
+        MonsterAiEndKite(m, in.nowMs);
+        m.state = dP <= m.def.attackRange && MonsterAiInTether(m) ? MonsterState::Attack : MonsterState::Chase;
+        r.kiteEnded = true;
+      }
+    } else if (in.heroVisible && !in.strikePending && dP < m.def.kite.min &&
+               !(m.kiteNeedsSwing && m.lastStrikeMs < m.kiteEndedMs)) {
+      Vec2 target;
+      if (MonsterKiteTarget(m, ai, hero, dP, world, target)) {
+        kiteTick = true;  // no movement on the tick it starts (a transition, 3.2)
+        m.kiting = true;
+        m.kiteTarget = target;
+        // It gives up at the later of kiteTimeoutMs and twice its straight walk at top speed (walls, pushes).
+        const double top = MonsterTopSpeed(m.def, ai) * in.speedMul * m.phaseSpeedMul * m.buffMoveSpeedMul;
+        const double walkMs = top > 0 ? 2000.0 * Dist(m.pos, target) / top : 0.0;
+        m.kiteUntilMs = in.nowMs + (std::max)(ai.kiteTimeoutMs, walkMs);
+        m.kiteNeedsSwing = false;
+        m.state = MonsterState::Chase;
+        m.hasPatrolTarget = false;
+        m.path.clear();
+        r.kiteStarted = true;
+      }
+    }
+  }
+
   if (!webLeashTick) {
-    switch (m.state) {
+    if (!kiteTick) switch (m.state) {
       case MonsterState::Idle: {
         m.patrolTimerMs += in.dtMs;
         if (dP <= m.def.aggroRange) {
@@ -214,6 +292,29 @@ MonsterAiResult UpdateMonsterAI(MonsterInstance& m, const MonsterAiDef& ai, cons
         }
         break;
       }
+      case MonsterState::Flee: {
+        // K5 morale (header "Flee"): away from the leader's body until the time runs out; blocked -> it fights.
+        if (in.nowMs >= m.fleeUntilMs) {
+          m.state = MonsterState::Chase;  // no movement this tick
+          m.path.clear();
+          r.fleeEnded = true;
+          r.fleeEndReason = FleeEnd::Expired;
+          break;
+        }
+        Vec2 dir;
+        const Vec2 before = m.pos;
+        if (MonsterFleeStep(m, ai, hero, in.heroVisible, world, dir) &&
+            (MonsterMoveToward(m, ai, m.pos + dir, in.dtMs, in.speedMul, world) || m.pos != before)) {
+          m.fleeDir = dir;  // stepped away
+        } else {
+          m.state = MonsterState::Chase;  // no step leads away: a blocked monster fights instead
+          m.moveSpeed = 0;
+          m.path.clear();
+          r.fleeEnded = true;
+          r.fleeEndReason = FleeEnd::Blocked;
+        }
+        break;
+      }
       case MonsterState::Dead:
         break;
     }
@@ -234,7 +335,7 @@ bool MonsterMoveToward(MonsterInstance& m, const MonsterAiDef& ai, Vec2 target, 
   const double dtS = dtMs / 1000.0;
   // K4: x the phase's speedMul, but the M1 walk home is at normal speed (the reset on arrival restores phase 0).
   const double phaseMul = m.state == MonsterState::Returning ? 1.0 : m.phaseSpeedMul;
-  const double top = m.def.speed * ai.moveSpeedScale * speedMul * phaseMul;
+  const double top = m.def.speed * ai.moveSpeedScale * speedMul * phaseMul * m.buffMoveSpeedMul;  // K5 buff / aura
   m.moveSpeed += (top - m.moveSpeed) * ai.moveAccel * dtS;
   const double nx = dx / d;
   const double ny = dy / d;
@@ -271,5 +372,61 @@ bool ProvokeMonster(MonsterInstance& m, const MonsterAiDef& ai, double nowMs, do
 }
 
 double MonsterTopSpeed(const MonsterDef& def, const MonsterAiDef& ai) { return def.speed * ai.moveSpeedScale; }
+
+// cos / sin of 30, 45 and 60 degrees as exact double literals (the nearest doubles to the true values).
+namespace {
+constexpr double kCos30 = 0.8660254037844386, kSin30 = 0.5;
+constexpr double kCos45 = 0.7071067811865476;
+constexpr double kCos60 = 0.5, kSin60 = 0.8660254037844386;
+}  // namespace
+
+bool MonsterKiteTarget(const MonsterInstance& m, const MonsterAiDef& ai, Vec2 heroPos, double heroDist,
+                       const MonsterWorld& world, Vec2& out) {
+  if (!m.def.kite.present || !(ai.kiteSampleTiles > 0)) return false;
+  const double step = ai.kiteSampleTiles;
+  const double nearest = heroDist + step;  // the point must gain at least one sample of distance
+  if (m.def.kite.max + 1e-9 < nearest) return false;
+  const int32_t samples = FloorInt((m.def.kite.max - nearest) / step + 1e-9);
+  const Vec2 away = MonsterAiAwayOr(m.pos - heroPos, m.heading);
+  const std::array<std::pair<double, double>, 5> turns{
+      {{1.0, 0.0}, {kCos30, kSin30}, {kCos30, -kSin30}, {kCos60, kSin60}, {kCos60, -kSin60}}};
+  for (int32_t k = 0; k <= samples; ++k) {  // the farthest distance first, then the turns at it
+    const double dist = m.def.kite.max - step * static_cast<double>(k);
+    for (const auto& [c, sn] : turns) {
+      const Vec2 p = heroPos + MonsterAiTurn(away, c, sn) * dist;
+      if (!MonsterAiOpen(world, p)) continue;
+      if (!MonsterAiInBounds(m, ai, p)) continue;
+      if (!MonsterAiLineOfWalk(m.pos, p, world, ai.lineOfWalkStep, /*avoidSafe=*/true)) continue;
+      out = p;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool MonsterFleeStep(const MonsterInstance& m, const MonsterAiDef& ai, Vec2 heroPos, bool heroVisible,
+                     const MonsterWorld& world, Vec2& dir) {
+  const Vec2 fromBody = m.pos - m.fleeFrom;
+  const Vec2 away = fromBody.LengthSq() > 1e-18 || !heroVisible ? MonsterAiAwayOr(fromBody, m.heading)
+                                                                : MonsterAiAwayOr(m.pos - heroPos, m.heading);
+  const double probe = ai.fleeProbeTiles > 0 ? ai.fleeProbeTiles : 1.0;
+  const double now = Dist(m.pos, m.fleeFrom);
+  const std::array<std::pair<double, double>, 5> turns{
+      {{1.0, 0.0}, {kCos45, kCos45}, {kCos45, -kCos45}, {0.0, 1.0}, {0.0, -1.0}}};
+  for (const auto& [c, sn] : turns) {
+    const Vec2 d = MonsterAiTurn(away, c, sn);
+    // Never back on its last step (turned more than 120 degrees from it): at a curved edge (a tether, a camp, the leash)
+    // the two 90-degree sidesteps can take turns being open and would cancel out, the monster dithering on the spot.
+    if (d.x * m.fleeDir.x + d.y * m.fleeDir.y < -0.5) continue;
+    const Vec2 p = m.pos + d * probe;
+    if (!MonsterAiOpen(world, p)) continue;
+    if (!MonsterAiInBounds(m, ai, p)) continue;
+    if (!(Dist(p, m.fleeFrom) >= now + ai.fleeMinGainTiles)) continue;  // a real gain, not an orbit
+    if (!MonsterAiLineOfWalk(m.pos, p, world, ai.lineOfWalkStep, /*avoidSafe=*/true)) continue;
+    dir = d;
+    return true;
+  }
+  return false;
+}
 
 }  // namespace abyss

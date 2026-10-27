@@ -27,6 +27,7 @@
 #include "abyss/monsters/MonsterAbilities.h"
 #include "abyss/monsters/MonsterSystem.h"
 #include "abyss/monsters/OnDeath.h"
+#include "abyss/monsters/Packs.h"
 #include "abyss/monsters/Phases.h"
 #include "abyss/pets/Homestead.h"
 #include "abyss/pets/PetCompanion.h"
@@ -292,8 +293,23 @@ HitWeight CombatSystem::DamageMonster(const MonsterHitRequest& r) {
   const bool elite = before->def.elite;
   const Vec2 pos = before->pos;
   const double maxHp = before->maxHp;
+  // K5: a hit (not a tick) from within a blocker's front arc is reduced first (a stunned or frozen one cannot block).
+  double dealt = r.amount;
+  const MonsterBlockDef& block = before->def.block;
+  if (block.present && !r.isTick && r.hasFrom && BlockArcContains(pos, before->heading, block.arcDeg, r.from) &&
+      !(ctx_.sys.status != nullptr && ctx_.sys.status->IsImmobilized(r.monster))) {
+    dealt = BlockedDamage(r.amount, block.damageMul);
+    EvBlock blocked;
+    blocked.entity = r.monster;
+    blocked.source = r.attacker;
+    blocked.from = r.from;
+    blocked.amount = PhaseScaledDamage(dealt, before->phaseDamageTakenMul);
+    // In the units of `amount` (both after the K4 damageTakenMul): what the hit would have dealt unblocked, less it.
+    blocked.blocked = PhaseScaledDamage(r.amount, before->phaseDamageTakenMul) - blocked.amount;
+    ctx_.events.Emit(blocked);
+  }
   // K4: a phase's damageTakenMul scales every hit (hero, pet, tick, environment) before anything announces it.
-  const double amount = PhaseScaledDamage(r.amount, before->phaseDamageTakenMul);
+  const double amount = PhaseScaledDamage(dealt, before->phaseDamageTakenMul);
   // takeDamage's outcome is known up front (MonsterSystem::ApplyDamage: hp = max(0, hp - amount), killed at 0, weight =
   // classifyHit), so the hit's events go out BEFORE ApplyDamage runs the kill pipeline (death anim, exp / gold texts,
   // loot, quest progress): UE gets the hit before the death it causes (combat 4.2 / 13.1 order).
@@ -693,8 +709,9 @@ void CombatSystem::ApplyMonsterHit(EntityId monsterId, bool ranged, const Monste
   SkillHitInput hitIn;
   hitIn.basicType = mods != nullptr ? mods->type : m->def.damageType;
   hitIn.basicMultiplier = mods != nullptr ? mods->dmgMul : 1.0;
-  const DamageResult r =
-      CalculateDamage(Rules(), MonsterCombatant(*m), HeroCombatant(), hitIn, false, ctx_.Rand(RngStream::Combat));
+  Combatant attacker = MonsterCombatant(*m);
+  attacker.outgoingMultiplier = MonsterDamageBuffMul(*m, now);  // K5: its damage buff / aura (1 = none)
+  const DamageResult r = CalculateDamage(Rules(), attacker, HeroCombatant(), hitIn, false, ctx_.Rand(RngStream::Combat));
   // 1. dodge-roll i-frames.
   if (dodge_.IsInvulnerable(now)) {
     if (dodge_.ClaimAvoidanceReward(now)) GainSpirit(SpiritSource::Dodge, false);
@@ -793,13 +810,13 @@ void CombatSystem::StartAbilityClock(MonsterInstance& m, double now) {
   m.abilityClockStarted = true;
 }
 
-// The pick (Combat.h K2 notes): the first ready ability by priority replaces the swing (`summonsOnly`: the K3 cast
-// between swings, raise / summon kinds only).
-bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool summonsOnly) {
+// The pick (Combat.h K2 notes): the first ready ability by priority replaces the swing (`castsOnly`: the K3 / K5 cast
+// between swings, raise / summon / buff / call kinds only).
+bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool castsOnly) {
   const Hero& hero = *ctx_.sys.hero;
   StartAbilityClock(m, now);
   AbilityPickInput in;
-  in.summonsOnly = summonsOnly;
+  in.castsOnly = castsOnly;
   in.nowMs = now;
   in.heroDist = Dist(m.pos, hero.Position());
   in.hpPct = m.maxHp > 0 ? m.hp / m.maxHp * 100.0 : 100.0;
@@ -851,6 +868,7 @@ bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool summonsO
   aim.heroPos = hero.Position();
   const MonsterAbilityCast cast = ResolveAbilityCast(a, aim, now, now + timing.contactMs);
   m.lastAttackMs = now;
+  if (!AbilityKindCastsBetweenSwings(a.kind)) m.lastStrikeMs = now;  // K5: a support cast is no strike (the kite gate)
   m.abilityReadyAtMs[static_cast<size_t>(pick)] = now + a.cooldownMs;
   m.pendingAbility = pick;
   m.abilityCast = cast;
@@ -912,17 +930,18 @@ bool CombatSystem::TryStartAbility(MonsterInstance& m, double now, bool summonsO
 
 // K3 (Combat.h "K3"): a raise / summon is a timed cast (monsters.md 2.2 Muster, chapter1.md Call the Flock), not a swing:
 // between swings, from Chase or Attack, it starts on its own cooldown when its hero range holds and the runtime found
-// bodies for it. Such a monster's ability clock starts at its first moment in a fight (its first Chase / Attack step in
-// the swing scan). One action at a time: never while a swing or ability is on its way to contact; a pet's taunt holds it
-// like any ability (the clock runs on). TickCombat has already skipped an immobilized, casting or eating monster.
-bool CombatSystem::TryStartSummonCast(MonsterInstance& m, double now) {
-  bool summons = false;
-  for (const MonsterAbilityDef& a : m.def.abilities) summons = summons || AbilityKindSummons(a.kind);
-  if (!summons) return false;
+// bodies for it. K5: so does a buff / call (the drummer's drum "2 s every 8 s", monsters.md 2.3). Such a monster's ability
+// clock starts at its first moment in a fight (its first Chase / Attack step in the swing scan). One action at a time:
+// never while a swing or ability is on its way to contact; a pet's taunt holds it like any ability (the clock runs on).
+// TickCombat has already skipped an immobilized, casting or eating monster.
+bool CombatSystem::TryStartSupportCast(MonsterInstance& m, double now) {
+  bool casts = false;
+  for (const MonsterAbilityDef& a : m.def.abilities) casts = casts || AbilityKindCastsBetweenSwings(a.kind);
+  if (!casts) return false;
   StartAbilityClock(m, now);
   if (HasPendingStrike(m.id)) return false;
   if (ctx_.sys.petCompanion != nullptr && ctx_.sys.petCompanion->TauntHolds(m.id)) return false;
-  return TryStartAbility(m, now, /*summonsOnly=*/true);
+  return TryStartAbility(m, now, /*castsOnly=*/true);
 }
 
 // S7 for abilities: a caster stunned or frozen at any moment of its windup aborts the ability at once, visibly
@@ -1006,6 +1025,10 @@ void CombatSystem::ResolveAbility(EntityId monster) {
     PlaceHazard(*m, a, cast);
     return;
   }
+  if (a.kind == AbilityKind::Buff || a.kind == AbilityKind::Call) {  // K5: the drum, the call (MonsterSystem.h "K5")
+    ms->ResolveBuffCast(monster, a);
+    return;
+  }
   const MonsterHitMods mods = AbilityHitMods(*m, a);
   if (ShapeContains(cast.shape, cast.origin, cast.dir, hero.Position())) ApplyMonsterHit(monster, true, &mods);
   if (a.hitsMonsters) HitMonstersInShape(monster, a, cast);
@@ -1085,8 +1108,10 @@ void CombatSystem::HitMonstersInShape(EntityId caster, const MonsterAbilityDef& 
     SkillHitInput in;
     in.basicType = a.hasDamageType ? a.damageType : source->def.damageType;
     in.basicMultiplier = a.dmgMul * a.monsterDmgMul;
-    const DamageResult r = CalculateDamage(Rules(), MonsterCombatant(*source), MonsterCombatant(*target), in, false,
-                                           ctx_.Rand(RngStream::Combat));
+    Combatant attacker = MonsterCombatant(*source);
+    attacker.outgoingMultiplier = MonsterDamageBuffMul(*source, ctx_.Now());  // K5
+    const DamageResult r =
+        CalculateDamage(Rules(), attacker, MonsterCombatant(*target), in, false, ctx_.Rand(RngStream::Combat));
     if (r.isDodged) {
       EmitMiss(id, Faction::Monster, caster, std::string(), false);
       continue;
@@ -2925,7 +2950,7 @@ void CombatSystem::TickCombat() {
   for (EntityId id : nearby) {
     MonsterInstance* m = ms->Find(id);
     if (m == nullptr || !m->IsAlive()) continue;
-    // K3: Chase as well as Attack, for the raise / summon cast between swings (TryStartSummonCast).
+    // K3: Chase as well as Attack, for the raise / summon / buff / call cast between swings (TryStartSupportCast).
     const bool attacking = m->state == MonsterState::Attack;
     if (!attacking && m->state != MonsterState::Chase) continue;
     if (ctx_.sys.status != nullptr && ctx_.sys.status->IsImmobilized(id)) continue;
@@ -2933,7 +2958,7 @@ void CombatSystem::TickCombat() {
     if (m->consumeCorpse != 0) continue;   // K3: eating (the consume channel roots it)
     if (now < m->phaseActionUntilMs) continue;  // K4: rooted while a phase's enter action plays (no swing or cast)
     if (!attacking || (m->lastAttackMs != 0 && now - m->lastAttackMs + kCombatSwingEpsilonMs < m->AttackIntervalMs())) {
-      if (!m->def.abilities.empty()) TryStartSummonCast(*m, now);  // no swing due: a raise / summon may start
+      if (!m->def.abilities.empty()) TryStartSupportCast(*m, now);  // no swing due: a support cast may start
       continue;
     }
     // K2: a due swing becomes the first ready ability, unless a pet's taunt holds the monster (the taunt draws the
@@ -2948,6 +2973,7 @@ void CombatSystem::TickCombat() {
     m = ms->Find(id);
     if (m == nullptr) continue;
     m->lastAttackMs = now;
+    m->lastStrikeMs = now;  // K5
     const ActionTiming timing =
         ComputeAttackTiming(at, ctx_.data.Assets(), MonsterArtGameId(ctx_.data.Assets(), m->def.spriteKey, m->def.id),
                             m->def.animCategory, m->AttackIntervalMs());

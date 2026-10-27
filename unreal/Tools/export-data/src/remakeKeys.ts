@@ -39,7 +39,8 @@ const monster = {
     attackSpeed: true, expReward: true, goldReward: true, spriteKey: true, elite: true, isMiniBoss: true, isSubDungeonMiniBoss: true,
     lootTable: true, bossSkills: true, animCategory: true } satisfies Exact<KeysOf<Web.MonsterDefinition>>,
   remake: { family: true, damageType: true, onHitStatus: true, projectileColor: true, abilities: true, hitCapHeroMaxHpPct: true,
-    onDeath: true, corpse: true, riseAgain: true, phases: true } satisfies Exact<MonsterRemade>,
+    onDeath: true, corpse: true, riseAgain: true, phases: true, packAggro: true, kite: true, block: true, morale: true,
+    aura: true } satisfies Exact<MonsterRemade>,
 };
 
 const quest = {
@@ -77,7 +78,7 @@ const mapEntrance = {
 type WebSpawn = Elem<Web.MapData['spawns']>;
 const mapSpawn = {
   web: { col: true, row: true, monsterId: true, count: true } satisfies Exact<KeysOf<WebSpawn>>,
-  remake: {} satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
+  remake: { mix: true, leader: true } satisfies Exact<Remade<Elem<GD.MapData['spawns']>, WebSpawn>>,
 };
 
 type Npc = Web.NPCDefinition;

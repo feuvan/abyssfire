@@ -20,8 +20,8 @@ ABYSS_ENUM_STRINGS(MonsterSource, "zone", "dungeon", "miniBoss", "subDungeonBoss
 
 // ---- K2 monster abilities (dark remake, implementation-plan.md 3 K2; monsters.md 1.3 fairness) ----------------------
 // A monster's `abilities[]` (remake schema `monster.abilities`). MonsterAbilities.h holds the rules (picker, shapes,
-// timing); CombatSystem runs them through the monster swing path. Kinds whose runtime a later package lands (raise and
-// summon: K3, buff and call: K5) are parsed and validated here but never picked until then (AbilityKindRuns).
+// timing); CombatSystem runs them through the monster swing path. Every kind runs since K5 (raise and summon: K3, buff
+// and call: K5; AbilityKindRuns).
 enum class AbilityKind : uint8_t { Circle, Cone, Line, Ring, Bolt, Raise, Summon, Hazard, Buff, Call };
 ABYSS_ENUM_STRINGS(AbilityKind, "circle", "cone", "line", "ring", "bolt", "raise", "summon", "hazard", "buff", "call")
 
@@ -98,12 +98,18 @@ struct AbilitySummonDef {
   double radius = 0;
 };
 
-// buff / call (runtime: K5 packs and morale): `stat` x `mul` for `ms` on allies within `radius` (of `family` when set).
+// buff / call (runtime: K5 packs and morale, Combat.h "K5"): `stat` x `mul` for `ms` on the living monsters within
+// `radius` of the caster, the caster included (of `family` when set). A call also provokes (M2) every other living
+// monster within `radius` (of `family`): the social call; its `stat` / `ms` are optional (a call without them buffs
+// nothing). Stats: damage (the damage formula's outgoing multiplier on its swings, ability hits and bolts), attackSpeed
+// (swings per second: the interval / mul), moveSpeed (its top speed), fearImmune (it never flees: morale; `mul` unused).
+// Buffs of one stat do not stack: the largest mul among its live buffs and auras applies.
 enum class MonsterBuffStat : uint8_t { Damage, AttackSpeed, MoveSpeed, FearImmune };
 ABYSS_ENUM_STRINGS(MonsterBuffStat, "damage", "attackSpeed", "moveSpeed", "fearImmune")
 
 struct AbilityBuffDef {
   bool present = false;
+  bool hasStat = false;  // always for a buff; a call may only provoke
   MonsterBuffStat stat = MonsterBuffStat::Damage;
   double mul = 1;
   double ms = 0;
@@ -290,6 +296,52 @@ struct MonsterPhaseDef {
   std::string stinger;                         // music stinger id for UE ("" = none)
 };
 
+// ---- K5 packs, morale, kite, block and auras (dark remake, implementation-plan.md 3 K5; monsters.md 2.2-2.5; runtime:
+// monsters/Packs.h rules, MonsterSystem.h "K5", Combat.h "K5") ---------------------------------------------------------
+
+// Kite (`kite`, a ranged monster's band): when the hero stands closer than `min` tiles, the monster steps away to a
+// walkable point about `max` tiles from the hero along the away vector (the nearest it can reach in a straight line,
+// inside its M1 leash and its K4 tether), then swings at least once before it kites again.
+struct MonsterKiteDef {
+  bool present = false;
+  double min = 0;
+  double max = 0;
+};
+
+// Block (`block`, the shield wall): a hit (not a tick) from within `arcDeg` (total) around the monster's heading, measured
+// toward where the hit came from, is multiplied by `damageMul` (floored, at least 1) and emits EvBlock; a stunned or
+// frozen monster does not block. `wall` > 0: blockers within `wall` tiles of each other (chained) share one heading, the
+// mean of theirs (the line holds).
+struct MonsterBlockDef {
+  bool present = false;
+  double arcDeg = 0;
+  double damageMul = 1;
+  double wall = 0;
+};
+
+// Morale (`morale`): when the leader of its pack dies, this monster flees (MonsterState::Flee) for fleeOnLeaderDeathMs,
+// away from the leader's body, if it stands within `fleeRadius` of it (0 = anywhere: the whole pack) - unless it is
+// fearImmune (a buff or aura) or a living sustain member (a monster of `sustainFamily`, any family when empty, with a
+// buff / call ability that grants fearImmune) stands within `sustainRadius` of it; either also ends a flee under way.
+struct MonsterMoraleDef {
+  bool present = false;
+  double fleeOnLeaderDeathMs = 0;
+  double fleeRadius = 0;
+  std::string sustainFamily;
+  double sustainRadius = 0;
+};
+
+// Aura (`aura`, the standard-bearer's banner): while the monster lives, every living monster within `radius` of it (it
+// included; of `family` when set) has `stat` x `mul` (MonsterBuffStat; no stacking with buffs of the same stat: the
+// largest applies).
+struct MonsterAuraDef {
+  bool present = false;
+  MonsterBuffStat stat = MonsterBuffStat::Damage;
+  double mul = 1;
+  double radius = 0;
+  std::string family;
+};
+
 // MonsterDefinition verbatim + exporter `derived` block (monsters-ai.md 1.1). This is also the runtime "current
 // definition" type: difficulty scaling, hunt transforms and elite affixes produce modified copies (1.3).
 struct MonsterDef {
@@ -336,6 +388,14 @@ struct MonsterDef {
   MonsterRiseAgainDef riseAgain;
   // ---- dark remake K4 (remake schema monster.phases) ----
   std::vector<MonsterPhaseDef> phases;
+  // ---- dark remake K5 (remake schema monster.packAggro / kite / block / morale / aura) ----
+  // Pack aggro: when another living member of its pack within this many tiles is provoked (M2) or enters Chase, this
+  // monster is provoked too, once per trigger (it does not pass the alarm on). 0 = it keeps to itself.
+  double packAggro = 0;
+  MonsterKiteDef kite;
+  MonsterBlockDef block;
+  MonsterMoraleDef morale;
+  MonsterAuraDef aura;
 };
 
 struct ZoneMonsterList {
@@ -477,6 +537,15 @@ struct MonsterAiDef {
   // hurts the hero outside it every arenaTickMs ("every 500 ms").
   double phaseActionMsDefault = 1200;
   double arenaTickMs = 500;
+  // Dark remake K5 tuning (implementation-plan.md 3 K5; port-only, not loaded): a kite step gives up at the later of
+  // kiteTimeoutMs and twice its straight walk at top speed after it starts; its target is sampled every kiteSampleTiles
+  // along the away vector and must gain at least that much distance from the hero; a fleeing monster tests the point
+  // fleeProbeTiles ahead in each direction, which must gain at least fleeMinGainTiles of distance from the body (so a
+  // sidestep does not circle the body forever; MonsterAI.h "K5").
+  double kiteTimeoutMs = 2000;
+  double kiteSampleTiles = 0.5;
+  double fleeProbeTiles = 1.0;
+  double fleeMinGainTiles = 0.1;
 };
 
 struct MonsterOverride {
