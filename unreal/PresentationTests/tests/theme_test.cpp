@@ -239,6 +239,13 @@ TEST_SUITE("theme")
 		CHECK(Resolve({ "exit_gate_sealed", "exit_sealed", "exit_portal" }, "march") == "SM_Prop_March_WagonBarricade");
 		CHECK(Resolve({ "gather_herb", "quest_item_herb", "herb", "gather_node" }, "march") == "SM_Prop_Gather_Barrowmoss");
 		CHECK(Resolve({ "elite_crown" }, "march") == "SM_FX_EliteCrown_March");
+		// 2G stage C: in a themed zone the Wave 2 sigil goes before the crown chain (AbyssMonsterLookRules::
+		// EliteMarkerFor); it has no theme variant, and an unthemed zone never asks for it.
+		CHECK(Resolve({ "elite_sigil" }, "march") == "SM_FX_EliteSigil");
+		// one themed chain would try elite_crown@march before the plain sigil: the glue resolves the sigil on its own
+		CHECK(Resolve({ "elite_sigil", "elite_crown" }, "march") == "SM_FX_EliteCrown_March");
+		CHECK(Resolve({ "elite_sigil" }, "") == "SM_FX_EliteSigil");
+		CHECK(Resolve({ "elite_crown" }, "") == "SM_FX_EliteCrown");
 		// No march variant: today's plains asset.
 		const std::string Portal = Resolve({ "exit_portal" }, "");
 		CHECK_FALSE(Portal.empty());

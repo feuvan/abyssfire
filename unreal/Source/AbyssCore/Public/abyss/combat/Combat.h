@@ -541,8 +541,8 @@ class ABYSS_API CombatSystem {
   SummonPlan PlanSummon(const MonsterInstance& m, const MonsterAbilityDef& a, double now) const;
   // Ends `m`'s pending ability (index, root, spots, and the holds on its own corpses only: a K4 Feed keeps its hold).
   void ClearPendingAbility(MonsterInstance& m);
-  // K3: burns the bodies a fire area touches (no-op for another type).
-  void BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir);
+  // K3: burns the bodies a fire area touches (no-op for another type); `burner` = the fire's source (EvCorpseRemoved).
+  void BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir, EntityId burner);
   void ResolveOnDeath(const PendingOnDeath& e);
   // A due swing of `m` becomes an ability (true) or stays a basic swing (false). `castsOnly` (K3 / K5): the cast between
   // swings, where only a raise / summon / buff / call or (2F review) a ranged special may start.

@@ -31,6 +31,7 @@
 
 #include "Abyssfire.h"
 #include "Actors/AbyssCharacterActor.h"
+#include "Actors/AbyssMonsterLookRules.h"
 #include "Audio/AbyssAmbienceRules.h"
 #include "Audio/AbyssAudioDataRules.h"
 #include "Audio/AbyssCueTriggerRules.h"
@@ -313,6 +314,9 @@ void UAbyssAudioSystem::Initialize(FSubsystemCollectionBase& Collection)
 	Router.On<abyss::EvStoryDecorFocus>().AddUObject(this, &UAbyssAudioSystem::HandleStoryDecorFocus);
 	// 2G (U2): Valdras's P2 / P3 stingers on EvMonsterPhase.
 	Router.On<abyss::EvMonsterPhase>().AddUObject(this, &UAbyssAudioSystem::HandleMonsterPhase);
+	// 2G (U3): the shield's clang (EvBlock) and the Living's hissed flight (EvMonsterFlee).
+	Router.On<abyss::EvBlock>().AddUObject(this, &UAbyssAudioSystem::HandleBlock);
+	Router.On<abyss::EvMonsterFlee>().AddUObject(this, &UAbyssAudioSystem::HandleMonsterFlee);
 	Router.OnFrame.AddUObject(this, &UAbyssAudioSystem::HandleFrame);
 	Router.OnSessionStarted.AddUObject(this, &UAbyssAudioSystem::HandleSessionStarted);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssAudioSystem::HandleSessionEnded);
@@ -2541,6 +2545,43 @@ void UAbyssAudioSystem::HandleMonsterPhase(const abyss::EvMonsterPhase& Event)
 			Event.stinger, Event.reset))
 	{
 		PlayStinger(AbyssAudioSystemPrivate::ToName(Stinger->asset), Stinger->duckDb, Stinger->duckInSec, Stinger->duckOutSec);
+	}
+}
+
+void UAbyssAudioSystem::HandleBlock(const abyss::EvBlock& Event)
+{
+	// AbyssMonsterLookRules::BlockCueChain: the shieldbearer's own clang once it is rendered, else the port's block cue.
+	if (!bReady || bSuspended || Event.entity == abyss::kNoEntity)
+	{
+		return;
+	}
+	const FVector2D Tile = EntityTile(Event.entity);
+	for (const std::string_view Cue : AbyssMonsterLookRules::BlockCueChain())
+	{
+		if (PlayNamedCue(AbyssAudioSystemPrivate::ToName(Cue), Tile))
+		{
+			break;
+		}
+	}
+}
+
+void UAbyssAudioSystem::HandleMonsterFlee(const abyss::EvMonsterFlee& Event)
+{
+	// AbyssMonsterLookRules::FleeCue: the Living's hissed flight when a flee starts (nothing on its end, nothing for the
+	// other families); silent while the planned cue has no rendered asset.
+	if (!bReady || bSuspended || Event.ended || Event.entity == abyss::kNoEntity)
+	{
+		return;
+	}
+	const FName DefName = DefNameOfEntity(Event.entity);
+	const UAbyssGameInstance* GI = GetAbyssGameInstance();
+	const abyss::DataStore* Data = GI != nullptr ? GI->GetData() : nullptr;
+	const abyss::MonsterDef* Def = Data != nullptr && !DefName.IsNone()
+		? AbyssMonsterLookRules::FindMonsterDef(*Data, AbyssAudioSystemPrivate::ToStd(DefName)) : nullptr;
+	const std::string_view Cue = AbyssMonsterLookRules::FleeCue(Event.ended, Def != nullptr ? std::string_view(Def->family) : std::string_view());
+	if (!Cue.empty())
+	{
+		PlayNamedCue(AbyssAudioSystemPrivate::ToName(Cue), EntityTile(Event.entity));
 	}
 }
 

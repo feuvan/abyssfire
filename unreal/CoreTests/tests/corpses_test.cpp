@@ -1119,6 +1119,7 @@ TEST_SUITE("monsters") {
     REQUIRE(burned.size() == 1);
     CHECK(burned[0].corpseId == added[0].corpseId);
     CHECK(burned[0].by == kNoEntity);
+    CHECK(burned[0].burner == kHeroEntityId);  // 2G review C-m2: the killer is the fire's source (presentation only)
     CHECK(rig.monsters.CorpseRegistry().Entries().size() == 2);
     // TTL: the first body fades 20 s after its death.
     rig.h.events.Clear();
@@ -1411,6 +1412,12 @@ TEST_SUITE("monsters") {
       rig.StepUntil([&] { return rig.M(c).pendingAbility < 0; }, 120);
       CHECK((rig.Corpse(under) == nullptr) == (type == DamageType::Fire));
       CHECK(rig.Corpse(outside) != nullptr);
+      const std::vector<EvCorpseRemoved> burned = Removals(rig.h.events, CorpseRemoveReason::Burned);
+      CHECK(burned.size() == (type == DamageType::Fire ? 1u : 0u));
+      for (const EvCorpseRemoved& r : burned) {
+        CHECK(r.burner == c);  // the striking monster
+        CHECK(r.by == kNoEntity);
+      }
     }
     // A fire hazard burns what lies in it on each tick (a body that dies in it later burns on the next tick).
     {
@@ -1436,7 +1443,9 @@ TEST_SUITE("monsters") {
       REQUIRE(rig.Corpse(late) != nullptr);
       rig.h.events.Clear();
       REQUIRE(rig.StepUntil([&] { return rig.Corpse(late) == nullptr; }, 40));
-      CHECK(Removals(rig.h.events, CorpseRemoveReason::Burned).size() == 1);
+      const std::vector<EvCorpseRemoved> burned = Removals(rig.h.events, CorpseRemoveReason::Burned);
+      REQUIRE(burned.size() == 1);
+      CHECK(burned[0].burner == c);  // the hazard's source
     }
     // Burn blocks raise: a corpse burned during the windup that held it does not stand up.
     {
@@ -1484,7 +1493,23 @@ TEST_SUITE("monsters") {
       rig.StepUntilMs(t0 + 1500);
       CHECK(rig.Corpse(on) == nullptr);
       CHECK(rig.Corpse(off) != nullptr);
-      CHECK(Removals(rig.h.events, CorpseRemoveReason::Burned).size() == 1);
+      const std::vector<EvCorpseRemoved> burned = Removals(rig.h.events, CorpseRemoveReason::Burned);
+      REQUIRE(burned.size() == 1);
+      CHECK(burned[0].burner == kHeroEntityId);  // the hero's skill
+    }
+    // Every other removal carries no burner; a direct burn without a source names none.
+    {
+      K3Rig rig;
+      const uint32_t body = rig.CorpseAt(K3Footman(), Vec2(41, 41));
+      AbilityShapeDef fire;
+      fire.kind = AbilityShapeKind::Circle;
+      fire.radius = 0.5;
+      rig.h.events.Clear();
+      CHECK(rig.monsters.BurnCorpses(fire, Vec2(41, 41), Vec2(1, 0)) == 1);
+      const std::vector<EvCorpseRemoved> burned = Removals(rig.h.events, CorpseRemoveReason::Burned);
+      REQUIRE(burned.size() == 1);
+      CHECK(burned[0].corpseId == body);
+      CHECK(burned[0].burner == kNoEntity);
     }
   }
 
@@ -1735,6 +1760,9 @@ TEST_SUITE("monsters") {
       CHECK(rig.M(near).hp == (std::max)(0.0, nearHp - std::floor(dmg * 2)));  // x monsterDmgMul 2, raw
       CHECK(rig.M(far).hp == farHp);
       CHECK(rig.Corpse(body) == nullptr);  // a fire burst burns the bodies in it
+      const std::vector<EvCorpseRemoved> burned = Removals(rig.h.events, CorpseRemoveReason::Burned);
+      CHECK_FALSE(burned.empty());
+      for (const EvCorpseRemoved& r : burned) CHECK(r.burner == b);  // the dead bloat's burst
       CHECK(rig.combat.PendingOnDeathEffects().empty());
     }
     // A hero outside the radius takes nothing; a dodge roll through the blast avoids it.
@@ -2744,6 +2772,7 @@ TEST_SUITE("monsters") {
       const std::vector<EvCorpseRemoved> burned = Removals(rig.h.events, CorpseRemoveReason::Burned);
       REQUIRE(burned.size() == 1);
       CHECK(burned[0].corpseId == on);
+      CHECK(burned[0].burner == kHeroEntityId);
     }
     // A beast whose hits are fire kills a footman: its body registers and burns at once, through the combat path and
     // through PetCompanion::Hit's fallback straight into MonsterSystem (no CombatSystem).
@@ -2777,6 +2806,9 @@ TEST_SUITE("monsters") {
       const std::vector<EvCorpseRemoved> burned = Removals(rig.h.events, CorpseRemoveReason::Burned);
       REQUIRE(burned.size() == 1);
       CHECK(burned[0].corpseId == added[0].corpseId);
+      CHECK(burned[0].burner != kNoEntity);   // the beast that killed it
+      CHECK(burned[0].burner != kHeroEntityId);
+      CHECK(burned[0].burner == rig.companion.MutableStateForTesting().entity);
     }
   }
 

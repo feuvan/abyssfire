@@ -72,6 +72,11 @@ MI_SELECT_RIM = "MI_AF_SelectRim"
 # The enemy ground telegraph (dark remake U2 / 2G; manifest materials.M_AF_Telegraph): one translucent unlit master on
 # SM_FX_Quad, every per-decal value custom primitive data (UAbyssTelegraphSystem, AbyssTelegraphRules.h Cpd).
 M_TELEGRAPH = "M_AF_Telegraph"
+# The ash husk (dark remake U3 / 2G stage C; manifest materials.M_AF_AshDissolve): runtime-only twins of M_AF_Toon /
+# M_AF_Outline a dead body's slots swap to (AAbyssCharacterActor::SetAshLook: dynamic instances that copy the slot's
+# parameters, with the scalars Grey / Dissolve / HuskTopCm); no manifest slot names them.
+M_TOON_ASH = "M_AF_Toon_Ash"
+M_OUTLINE_ASH = "M_AF_Outline_Ash"
 
 TOON_MASTERS = (M_TOON, M_TOON_FOLIAGE, M_TOON_SLIME)
 OUTLINE_MASTERS = (M_OUTLINE, M_OUTLINE_FOLIAGE)

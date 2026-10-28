@@ -39,6 +39,8 @@
 #include "abyss/sim/Snapshot.h"
 
 #include "Actors/AbyssCharacterActor.h"
+#include "Actors/AbyssCorpses.h"
+#include "Actors/AbyssMonsterLookRules.h"
 #include "Actors/AbyssPropActor.h"
 #include "Audio/AbyssAudioSystem.h"
 #include "Camera/AbyssCameraRig.h"
@@ -254,6 +256,7 @@ void UAbyssWorldBuilder::Initialize(FSubsystemCollectionBase& Collection)
 	Collection.InitializeDependency<UAbyssActorRegistry>();
 	Collection.InitializeDependency<UAbyssVfxSystem>();
 	Collection.InitializeDependency<UAbyssTelegraphSystem>();
+	Collection.InitializeDependency<UAbyssCorpseLayer>();
 	if (UAbyssSimDriver* Driver = Collection.InitializeDependency<UAbyssSimDriver>())
 	{
 		Driver->RegisterWorldView(this);
@@ -503,6 +506,10 @@ void UAbyssWorldBuilder::RefreshQuality()
 	if (UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(this))
 	{
 		Telegraphs->ApplyQuality(Quality);   // 2G: the decal cap, the arena's outer wash (off on mobile low)
+	}
+	if (UAbyssCorpseLayer* Corpses = UAbyssCorpseLayer::Get(this))
+	{
+		Corpses->ApplyQuality(Quality);   // 2G (U3): the visible husk cap
 	}
 	if (ZoneActor != nullptr)
 	{
@@ -761,6 +768,10 @@ void UAbyssWorldBuilder::ClearZone()
 	{
 		Telegraphs->ClearAll();   // 2G: decals, markers and their loop handles (the VFX clear below ends the loops)
 	}
+	if (UAbyssCorpseLayer* Corpses = UAbyssCorpseLayer::Get(this))
+	{
+		Corpses->ClearAll();   // 2G (U3): a zone change drops every body silently (the husk actors go with it)
+	}
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
 	{
 		Vfx->ClearAll();
@@ -1011,30 +1022,12 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 	default:
 		break;
 	}
-	// Radial rigs have one front view in the web (Slime.ts: no back view, mirrored only): the actor keeps it toward the
-	// camera.
-	Setup.bSingleView = Rig == abyss::AnimRig::Slime;
-	Setup.CameraYawDeg = CameraRig != nullptr ? CameraRig->GetYawDegrees() : Assets->GetManifest().GetShading().CameraYawDeg;
-	const abyss::AnimConfigDef& Preset = Data->Combat().anim.Preset(Rig);
-	Setup.HurtKnockbackPx = static_cast<float>(Preset.hurtKnockback > 0.0 ? Preset.hurtKnockback : 8.0);
-	Setup.HurtDurationMs = static_cast<float>(Preset.hurtDuration > 0.0 ? Preset.hurtDuration : 200.0);
-	Setup.DeathDurationMs = static_cast<float>(Preset.deathDuration > 0.0 ? Preset.deathDuration : 500.0);
-	Setup.DodgeDurationMs = static_cast<float>(Preset.dodgeDuration > 0.0 ? Preset.dodgeDuration : 260.0);
-	if (Rig == abyss::AnimRig::Flying)
+	FillRigSetup(Rig, Setup);
+	const bool bCsm = Setup.bCastShadow;
+	if (Event.kind == abyss::EntityKind::Monster)
 	{
-		Setup.bFlying = true;
+		ApplyCorpseHold(Event.defId, Setup);   // 2G (U3): a death that holds its pose for the corpse layer
 	}
-	if (Setup.bFlying)
-	{
-		Setup.HoverCm = FlyingHoverCm;
-	}
-	if (Setup.Art != nullptr && Setup.Art->bHasSpiritColor)
-	{
-		Setup.SpiritColor = Setup.Art->SpiritColor;
-	}
-	// DECISIONS P10 (revised): blob on every tier, sun CSM cast wherever the sun has one (RefreshQuality).
-	const bool bCsm = !Quality.bMobile || Quality.Tier >= 2;
-	Setup.bCastShadow = bCsm;
 
 	FActorSpawnParameters Params;
 	Params.ObjectFlags |= RF_Transient;
@@ -1087,6 +1080,125 @@ AAbyssCharacterActor* UAbyssWorldBuilder::SpawnCharacter(const abyss::EvEntitySp
 	return Actor;
 }
 
+void UAbyssWorldBuilder::FillRigSetup(abyss::AnimRig Rig, FAbyssCharacterSetup& Setup) const
+{
+	using namespace AbyssWorldBuilderPrivate;
+	const UAbyssAssetLibrary* Assets = GetAssets();
+	const abyss::DataStore* Data = GetData();
+	if (Assets == nullptr || Data == nullptr)
+	{
+		return;
+	}
+	// Radial rigs have one front view in the web (Slime.ts: no back view, mirrored only): the actor keeps it toward the
+	// camera.
+	Setup.bSingleView = Rig == abyss::AnimRig::Slime;
+	Setup.CameraYawDeg = CameraRig != nullptr ? CameraRig->GetYawDegrees() : Assets->GetManifest().GetShading().CameraYawDeg;
+	const abyss::AnimConfigDef& Preset = Data->Combat().anim.Preset(Rig);
+	Setup.HurtKnockbackPx = static_cast<float>(Preset.hurtKnockback > 0.0 ? Preset.hurtKnockback : 8.0);
+	Setup.HurtDurationMs = static_cast<float>(Preset.hurtDuration > 0.0 ? Preset.hurtDuration : 200.0);
+	Setup.DeathDurationMs = static_cast<float>(Preset.deathDuration > 0.0 ? Preset.deathDuration : 500.0);
+	Setup.DodgeDurationMs = static_cast<float>(Preset.dodgeDuration > 0.0 ? Preset.dodgeDuration : 260.0);
+	if (Rig == abyss::AnimRig::Flying)
+	{
+		Setup.bFlying = true;
+	}
+	if (Setup.bFlying)
+	{
+		Setup.HoverCm = FlyingHoverCm;
+	}
+	if (Setup.Art != nullptr && Setup.Art->bHasSpiritColor)
+	{
+		Setup.SpiritColor = Setup.Art->SpiritColor;
+	}
+	// DECISIONS P10 (revised): blob on every tier, sun CSM cast wherever the sun has one (RefreshQuality).
+	Setup.bCastShadow = !Quality.bMobile || Quality.Tier >= 2;
+}
+
+void UAbyssWorldBuilder::ApplyCorpseHold(const std::string& DefId, FAbyssCharacterSetup& Setup)
+{
+	UAbyssCorpseLayer* Corpses = UAbyssCorpseLayer::Get(this);
+	float HoldFromMs = 0.f;
+	float TopCm = 0.f;
+	Setup.bCorpseHold = Corpses != nullptr && Setup.Art != nullptr
+		&& Corpses->CorpseHoldFor(DefId, Setup.Art->Name, HoldFromMs, TopCm);
+	Setup.CorpseHoldFromMs = Setup.bCorpseHold ? HoldFromMs : 0.f;
+	Setup.HuskTopCm = Setup.bCorpseHold ? TopCm : 0.f;
+}
+
+AAbyssCharacterActor* UAbyssWorldBuilder::ReleaseCorpseActor(abyss::EntityId Id)
+{
+	TObjectPtr<AAbyssCharacterActor>* Found = Id != abyss::kHeroEntityId ? Characters.Find(Id) : nullptr;
+	AAbyssCharacterActor* Actor = Found != nullptr ? Found->Get() : nullptr;
+	if (Actor == nullptr || !Actor->HoldsCorpsePose())
+	{
+		return nullptr;
+	}
+	// The body leaves the entity maps (the corpse layer presents it from now on); its registry entry and nameplate widget
+	// stay until the core despawns the instance (the label hides with the life).
+	Characters.Remove(Id);
+	Tracks.Remove(Id);
+	if (RimmedCharacters.Remove(Id) > 0)
+	{
+		Actor->SetSelectionRim(EAbyssSelectionRim::None);
+	}
+	return Actor;
+}
+
+AAbyssCharacterActor* UAbyssWorldBuilder::SpawnHuskActor(const std::string& DefId, const std::string& ArtId,
+	const abyss::Vec2& Pos, float YawDeg)
+{
+	using namespace AbyssWorldBuilderPrivate;
+	UWorld* OwningWorld = GetWorld();
+	UAbyssAssetLibrary* Assets = GetAssets();
+	const abyss::DataStore* Data = GetData();
+	if (OwningWorld == nullptr || Assets == nullptr || Data == nullptr)
+	{
+		return nullptr;
+	}
+	// The theme of the zone the sim describes (seeds arrive at zone entry, before BuildZone; a new game's in the session's
+	// first batch, before the driver's snapshot index exists).
+	const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
+	const abyss::Snapshot* Snap = GameInstance != nullptr ? GameInstance->GetSnapshot() : nullptr;
+	FAbyssCharacterSetup Setup;
+	Setup.Id = abyss::kNoEntity;
+	Setup.Kind = abyss::EntityKind::Monster;
+	Setup.DefId = ToF(DefId);
+	Setup.ArtId = ToF(ArtId);
+	Setup.Art = ResolveCharacterArt(abyss::EntityKind::Monster, DefId, ArtId, Snap != nullptr ? PresentationThemeOf(Snap->zone.mapId) : NAME_None);
+	Setup.VisualScale = 1.f;
+	Setup.AnimTiming = &Data->Combat().anim;
+	const abyss::HitFeedbackTable& Feedback = Data->Combat().hitFeedback;
+	Setup.PainTintColor = AbyssWorldUtil::ColorFromRgb(Feedback.painTintColor != 0 ? Feedback.painTintColor : 0xFF6B6B);
+	Setup.PainTintMs = static_cast<float>(Feedback.painTintMs);
+	Setup.bOptimizeAnimation = true;
+	const abyss::MonsterDef* Def = AbyssMonsterLookRules::FindMonsterDef(*Data, DefId);
+	FillRigSetup(Def != nullptr ? Def->animCategory : abyss::AnimRig::Humanoid, Setup);
+	ApplyCorpseHold(DefId, Setup);
+	if (!Setup.bCorpseHold)
+	{
+		return nullptr;   // its art draws no husk
+	}
+	FActorSpawnParameters Params;
+	Params.ObjectFlags |= RF_Transient;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const FVector Location = GroundAt(Pos);
+	AAbyssCharacterActor* Actor = OwningWorld->SpawnActor<AAbyssCharacterActor>(AAbyssCharacterActor::StaticClass(), Location,
+		FRotator(0.0, YawDeg, 0.0), Params);
+	if (Actor == nullptr)
+	{
+		return nullptr;
+	}
+	if (!Actor->InitCharacter(Setup, *Assets) || !Actor->HasArt())
+	{
+		Actor->Destroy();
+		return nullptr;
+	}
+	Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ Setup.bCastShadow);
+	const float YawRad = FMath::DegreesToRadians(YawDeg);
+	Actor->SnapTo(Location, FVector2D(FMath::Cos(YawRad), FMath::Sin(YawRad)));
+	return Actor;
+}
+
 void UAbyssWorldBuilder::UpdateElite(AAbyssCharacterActor& Actor, const abyss::MonsterView& Monster, FName Theme)
 {
 	UAbyssAssetLibrary* Assets = GetAssets();
@@ -1102,7 +1214,34 @@ void UAbyssWorldBuilder::UpdateElite(AAbyssCharacterActor& Actor, const abyss::M
 		Colors.Add(AbyssWorldUtil::ColorFromRgb(Data->Combat().eliteAffixes.Def(Affix).vfxColor));
 	}
 	UStaticMesh* Crown = nullptr;
-	if (bMarked)
+	FAbyssEliteMarker Marker;
+	// 2G (U3, AbyssMonsterLookRules::EliteMarkerFor): in a zone with a presentation theme the Wave 2 sigil (elite_sigil,
+	// resolved on its own: a themed crown must not win over it), none for art that opts out (eliteMarker "none": Valdras);
+	// elsewhere, or without a sigil asset, the crown chain below.
+	const FAbyssArtManifest& Manifest = Assets->GetManifest();
+	const AbyssMonsterLookRules::EEliteMarker MarkerKind = AbyssMonsterLookRules::EliteMarkerFor(bMarked, !Theme.IsNone(),
+		Manifest.GetAssetJson(Actor.GetArtName()).Get("eliteMarker").AsString());
+	if (MarkerKind == AbyssMonsterLookRules::EEliteMarker::Sigil)
+	{
+		const FName SigilIds[] = { FName(TEXT("elite_sigil")) };
+		if (const FAbyssArtAsset* SigilArt = Manifest.ResolveFirst(SigilIds, 0, Theme))
+		{
+			Crown = Assets->LoadStaticMesh(*SigilArt);
+			if (Crown != nullptr)
+			{
+				const AbyssMonsterLookRules::FSigilMotion Motion = AbyssMonsterLookRules::ParseSigilMotion(Manifest.GetAssetJson(SigilArt->Name));
+				Marker.bSigil = true;
+				Marker.Socket = FName(*AbyssText::ToFString(Motion.Socket));
+				Marker.FallbackSocket = FName(*AbyssText::ToFString(Motion.FallbackSocket));
+				Marker.FloatCm = static_cast<float>(Motion.FloatCm);
+				Marker.BobCm = static_cast<float>(Motion.BobCm);
+				Marker.BobPeriodMs = static_cast<float>(Motion.BobPeriodMs);
+				Marker.SpinDegPerSec = static_cast<float>(Motion.SpinDegPerSec);
+				Marker.bAbsoluteScale = Motion.bAbsoluteScale;
+			}
+		}
+	}
+	if (Crown == nullptr && MarkerKind != AbyssMonsterLookRules::EEliteMarker::None)
 	{
 		// U1: the theme's crown (elite_crown@march, SM_FX_EliteCrown_March: tarnished), else today's SM_FX_EliteCrown.
 		const FName ThemedCrown = Assets->GetManifest().FindThemedGameId(FName(TEXT("elite_crown")), Theme);
@@ -1120,7 +1259,7 @@ void UAbyssWorldBuilder::UpdateElite(AAbyssCharacterActor& Actor, const abyss::M
 		? Cast<UStaticMesh>(Assets->LoadFromFolders(FxFolders, FName(TEXT("SM_FX_Quad")), UStaticMesh::StaticClass()))
 		: nullptr;
 	UMaterialInterface* AuraMaterial = Colors.Num() > 0 ? Assets->LoadMaterial(TEXT("M_AF_AffixAura")) : nullptr;
-	Actor.SetElite(bMarked, Colors, Crown, Quad, AuraMaterial);
+	Actor.SetElite(bMarked, Colors, Crown, Quad, AuraMaterial, Marker);
 }
 
 AAbyssPropActor* UAbyssWorldBuilder::SpawnProp(abyss::EntityId Id, abyss::EntityKind Kind, const std::string& DefId,
@@ -1749,12 +1888,12 @@ void UAbyssWorldBuilder::PresentCharacters(const abyss::Snapshot& Snap, const FA
 				continue;
 			}
 			Tile = AbyssUnits::LerpTile(Monster->prevPos, Monster->pos, Alpha);
-			const bool bAttacking = Monster->state == abyss::MonsterState::Attack;
-			CharacterFrame.Facing = bAttacking ? DirectionTo(Tile, HeroTile) : ToFlat(Monster->heading).GetSafeNormal();
+			// Its heading, but the hero while it attacks (a blocker keeps its shield front: AbyssMonsterLookRules); a
+			// fleeing monster walks / runs like a chasing one (2G U3).
+			const bool bFacesHeading = AbyssMonsterLookRules::FacesHeading(Monster->state, Monster->blockArcDeg);
+			CharacterFrame.Facing = bFacesHeading ? ToFlat(Monster->heading).GetSafeNormal() : DirectionTo(Tile, HeroTile);
 			CharacterFrame.SpeedCmS = static_cast<float>(Monster->speedTilesPerSec * AbyssUnits::TileUU);
-			CharacterFrame.bMoving = Monster->speedTilesPerSec > 0.05
-				&& (Monster->state == abyss::MonsterState::Chase || Monster->state == abyss::MonsterState::Patrol
-					|| Monster->state == abyss::MonsterState::Returning);
+			CharacterFrame.bMoving = AbyssMonsterLookRules::CountsAsMoving(Monster->state, Monster->speedTilesPerSec);
 			CharacterFrame.bAlive = Monster->alive;
 			CharacterFrame.bWindingUp = Monster->windingUp;
 			CharacterFrame.StatusMask = Monster->statusMask;
@@ -2194,6 +2333,12 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 
 	UpdateIndicators(Snap, RealDelta);
 	UpdateLightingCollection(RealDelta);
+	// Dark remake 2G (U3): the corpses (ash husks on the sim clock) and the monster-state loops, after the characters are
+	// placed and before the VFX tick so the recipes they start this frame are emitted this frame.
+	if (UAbyssCorpseLayer* Corpses = UAbyssCorpseLayer::Get(this))
+	{
+		Corpses->Tick(Frame, Snap, VisualDelta, RealDelta);
+	}
 	// Dark remake 2G (U2): the enemy telegraphs on the sim clock (decals, hazards, the arena), before the VFX tick so the
 	// contact / hazard / ring recipes they start this frame are emitted this frame.
 	if (UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(this))
@@ -2315,11 +2460,23 @@ void UAbyssWorldBuilder::HandleZone(const abyss::EvZone& Event)
 			}
 		}
 	};
-	for (const abyss::MapSpawnDef& Spawn : Map->spawns)
+	// 2G (U3, AbyssMonsterLookRules::PreloadDefIds): every definition the zone can show - spawns with their mixes,
+	// leaders and variants, corpse seeds, hunts, the mini-boss, and what they stand up - and the art a corpse rises as.
+	for (const std::string& DefId : AbyssMonsterLookRules::PreloadDefIds(*Data, *Map))
 	{
-		if (const abyss::MonsterDef* Monster = Data->FindMonster(Spawn.monsterId))
+		const abyss::MonsterDef* Monster = AbyssMonsterLookRules::FindMonsterDef(*Data, DefId);
+		if (Monster == nullptr)
 		{
-			AddAsset(ResolveCharacterArt(abyss::EntityKind::Monster, Monster->id, Monster->spriteKey, NextTheme));
+			continue;
+		}
+		const FAbyssArtAsset* Art = ResolveCharacterArt(abyss::EntityKind::Monster, DefId, Monster->spriteKey, NextTheme);
+		AddAsset(Art);
+		const std::string_view RaisedAs = Art != nullptr
+			? Assets->GetManifest().GetAssetJson(Art->Name).Get("corpse").Get("raisedAs").AsString() : std::string_view();
+		if (!RaisedAs.empty())
+		{
+			const std::string RaisedArt(RaisedAs);
+			AddAsset(ResolveCharacterArt(abyss::EntityKind::Monster, RaisedArt, RaisedArt, NextTheme));
 		}
 	}
 	for (const abyss::MapCampDef& Camp : Map->camps)
@@ -2611,6 +2768,10 @@ void UAbyssWorldBuilder::HandleSessionEnded()
 	if (UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(this))
 	{
 		Telegraphs->ClearAll();
+	}
+	if (UAbyssCorpseLayer* Corpses = UAbyssCorpseLayer::Get(this))
+	{
+		Corpses->ClearAll();
 	}
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
 	{

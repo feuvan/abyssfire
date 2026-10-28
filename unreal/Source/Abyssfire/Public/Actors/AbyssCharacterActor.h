@@ -11,6 +11,13 @@
 //   + fade (combat-feel.md 13.2). All material feedback goes through custom primitive data (AbyssCpd).
 // * Selection rim (DECISIONS R16, WorldContract.md 7): a hull-only follower (leader-pose copy of the body + weapon copies)
 //   drawn with MI_AF_SelectRim outside the whole figure's silhouette; the world builder picks the kind every frame.
+// * Dark remake 2G (U3, Private/Actors/AbyssCorpseRules.h): held items beyond the two hands (the Unburied's kettle helm)
+//   are components of their own (with selection-rim copies like the hands'); a corpse-holding death plays the Death clip
+//   at rate 1 and holds its last frame for the corpse layer (no throw, spin, hop or fade; today's fade when no entry
+//   adopts it in time; once the held pose has been drawn the body stops ticking its pose); the ash look swaps every
+//   toon / ink slot of the body and the held items to the M_AF_Toon_Ash / M_AF_Outline_Ash twins (dynamic instances
+//   with the slot's parameters; scalars Grey / Dissolve / HuskTopCm), and a risen body reverses it over its Rise; the
+//   elite marker can be the Wave 2 sigil (socket fx_elite, absolute scale, level float + symmetric bob + turn).
 // * The actor does not tick: UAbyssWorldBuilder calls PresentFrame once per rendered frame with the interpolated state.
 #pragma once
 
@@ -33,6 +40,7 @@ class UAnimSequence;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
 class UPoseableMeshComponent;
+class UPrimitiveComponent;
 class USceneComponent;
 class USkeletalMeshComponent;
 class UStaticMesh;
@@ -77,6 +85,32 @@ struct FAbyssCharacterSetup
 	float CameraYawDeg = 45.f;
 	/** Ghost / afterimage tint (class Spirit colour). */
 	FLinearColor SpiritColor = FLinearColor(1.f, 0.7f, 0.36f);
+	/**
+	 * Dark remake U3 (AbyssCorpseRules::HoldsCorpsePose): the death holds the Death clip's frame CorpseHoldFromMs (rate 1)
+	 * for the corpse layer instead of today's thrown fade: the definition leaves a registry entry, its art draws one, the
+	 * ash twins exist.
+	 */
+	bool bCorpseHold = false;
+	float CorpseHoldFromMs = 0.f;
+	/** The husk's top above the ground (cm, manifest corpse.husk.topCm): the ash dissolve's height fraction. */
+	float HuskTopCm = 0.f;
+};
+
+/**
+ * The elite marker of a marked monster (UAbyssWorldBuilder::UpdateElite): today's crown (fx_overhead, bob / turn of the
+ * W1 crown) or, in a zone with a presentation theme, the Wave 2 sigil (AbyssMonsterLookRules::FSigilMotion: socket
+ * fx_elite else fx_overhead, absolute scale, a level float with a symmetric bob and a steady turn).
+ */
+struct FAbyssEliteMarker
+{
+	bool bSigil = false;
+	FName Socket;
+	FName FallbackSocket;
+	float FloatCm = 6.f;
+	float BobCm = 3.f;
+	float BobPeriodMs = 1600.f;
+	float SpinDegPerSec = 45.f;
+	bool bAbsoluteScale = true;
 };
 
 /** Interpolated per-frame state handed to the actor by the world builder. */
@@ -162,15 +196,41 @@ public:
 	// ---- world builder hooks ----
 	/** Hero equipment (I6): mesh per hand socket; nullptr = the class default attachment of that socket. */
 	void SetWeaponMeshes(UStaticMesh* MainHand, FName MainSocket, UStaticMesh* OffHand, FName OffSocket);
-	/** Elite state can change on respawn-in-place (affix re-roll). */
+	/** Elite state can change on respawn-in-place (affix re-roll). Marker: the crown (default) or the Wave 2 sigil. */
 	void SetElite(bool bInElite, const TArray<FLinearColor>& AffixColors, UStaticMesh* CrownMesh, UStaticMesh* AuraMesh,
-		UMaterialInterface* AuraMaterial);
+		UMaterialInterface* AuraMaterial, const FAbyssEliteMarker& Marker = FAbyssEliteMarker());
 	/** Two dodge afterimages along the path (art-inventory-ch1.md 8.7 NS_Hero_DodgeAfterimage). */
 	void SpawnAfterimages(const FVector& From, const FVector& To, UMaterialInterface* GhostMaterial);
 	/** Hero death / respawn presentation (sink + fade, combat-feel.md 13.3). */
 	void OnHeroRespawned();
 	/** A hard reset of feedback state (zone change for the reused hero actor). */
 	void ResetPresentation();
+
+	// ---- corpse layer hooks (dark remake U3, UAbyssCorpseLayer) ----
+	/** Dying with its pose held for the corpse layer (setup bCorpseHold), not yet faded by the fallback. */
+	bool HoldsCorpsePose() const { return bCorpseDeath; }
+	/** The corpse layer took the body: the pose holds for as long as the layer keeps the actor (no fallback fade). */
+	void AdoptAsCorpse();
+	/** A husk that did not die here (a map seed, a late view): the Death clip at its hold frame, frozen, no fade. */
+	void PoseAsHusk();
+	/**
+	 * The ash look: every toon / ink slot of the body and the held items on the M_AF_Toon_Ash / M_AF_Outline_Ash twins,
+	 * Grey and Dissolve 0..1, TopCm the dissolve's height (<= 0: the setup's husk top, else the visual height). Nothing is
+	 * swapped while both are 0. False when the twins are missing (an older content build: logged once).
+	 */
+	bool SetAshLook(float Grey, float Dissolve, float TopCm = 0.f);
+	/** Back to the slots' own materials. */
+	void ClearAshLook();
+	/** A risen body: the ash it rose with reverses linearly to none over SpanMs of sim time from StartSimMs. */
+	void BeginAshRise(float StartGrey, float StartDissolve, double StartSimMs, double SpanMs);
+	/** The husk's blob shadow alpha (1 = as alive); it follows the pelvis while the body lies. */
+	void SetHuskShadowAlpha(float Alpha);
+	/** World location of Socket on the held item showing the static mesh ItemAsset (EvBlock: the tower shield's face). */
+	bool GetHeldItemSocket(FName ItemAsset, FName Socket, FVector& OutLocation) const;
+	/** The art clip ClipName carries FX_* notifies of its own (a buff / call clip that shows its pulse on its beats). */
+	bool ClipHasFxNotifies(FName ClipName) const;
+	/** The body's drawn scale (the art's scale x the instance's visual scale: a hunt leader's x1.25). */
+	float GetBodyScale() const { return BodyScale; }
 	/**
 	 * Shadow presentation of the render tier (DECISIONS P10 revised): the blob shadow shows whenever bBlob (every tier),
 	 * at 0.7 of its alpha where the sun casts a CSM (bCastDynamic: the body and weapons cast the sun shadow and contact
@@ -201,6 +261,9 @@ public:
 	UStaticMeshComponent* GetMainHandMesh() const { return MainHandMesh; }
 	/** fx attachments of the art asset (heroes: visor glow, trails, blade glow, halo, bloom; empty otherwise). */
 	const FAbyssArtFx& GetArtFx() const { return ArtFx; }
+	/** The definition id and the art asset this actor was built from (NAME_None without art). */
+	const FString& GetDefId() const { return DefId; }
+	FName GetArtName() const { return ArtName; }
 	EAbyssCharacterAction GetCurrentAction() const { return ActionState.Action; }
 	/** Death clip progress 0..1 (0 while alive). */
 	float GetDeathProgress() const { return bDying ? FMath::Clamp(DeathElapsedSec / FMath::Max(0.001f, DeathTotalSec), 0.f, 1.f) : 0.f; }
@@ -248,6 +311,16 @@ private:
 	void StartRecoil(const FVector& FromWorld, float Strength);
 	void StartJolt(float Strength);
 	void BeginDeath(const abyss::EvPlayAnim& Event);
+	/** Corpse-holding death (U3): the Death clip at rate 1 to its hold frame, standing in place, no fade. */
+	void BeginCorpseDeath();
+	/** The twins on every toon / ink slot (once); false without them. */
+	bool EnsureAshMaterials(float TopCm);
+	/** The ash rise of a risen body, per frame on the sim clock. */
+	void UpdateAshRise(double RenderSimMs);
+	/** A held pose that has been drawn stops the body's tick (no pose evaluation / bone refresh); anything else resumes it. */
+	void UpdateHeldPoseTick();
+	/** Held items beyond the two hands (AbyssMonsterLookRules::ClassifyAttachments), each on its own socket. */
+	void SetExtraItems(const TArray<TPair<UStaticMesh*, FName>>& Items);
 	void SetCpd(int32 Index, float Value);
 	void SetCpdColor(int32 Index, const FLinearColor& Color);
 	void ApplyCpdTo(UPrimitiveComponent* Component) const;
@@ -295,6 +368,14 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> CrownMesh;
 
+	/** Held items beyond the two hands (U3: the Unburied's kettle helm on `head`), parallel to ExtraItemSockets. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> ExtraItems;
+
+	/** The ash look's dynamic instances (one per converted slot, parallel to AshSlots). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> AshMaterials;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> AuraMesh;
 
@@ -311,6 +392,10 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> RimOffHand;
 
+	/** Rim copies of the held items beyond the two hands (parallel to ExtraItems; created with the rim, kept for reuse). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> RimExtraItems;
+
 	/** MI_AF_SelectRim (the parent of every rim instance). */
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> RimParent;
@@ -323,7 +408,7 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> RimBodyMaterials;
 
-	/** Rim instances of the weapon copies' ink-hull slots (index 0 main hand, 1 off hand; reused across weapon swaps). */
+	/** Rim instances of the held copies' ink-hull slots (0 main hand, 1 off hand, 2 + i extra item i; reused on swaps). */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> RimWeaponMaterials;
 
@@ -339,6 +424,8 @@ private:
 
 	TArray<FAbyssArtClip> ArtClips;
 	FAbyssArtFx ArtFx;
+	FName ArtName;
+	TArray<FName> ExtraItemSockets;
 	const abyss::AnimTimingTable* AnimTiming = nullptr;
 	abyss::EntityId EntityId = abyss::kNoEntity;
 	abyss::EntityKind EntityKind = abyss::EntityKind::None;
@@ -420,10 +507,46 @@ private:
 	bool bDeathRuntimeHop = true;
 	bool bDeathRuntimeSpin = true;
 
+	// corpse (dark remake U3)
+	bool bCorpseHold = false;
+	float CorpseHoldFromSec = 0.f;
+	float HuskTopCm = 0.f;
+	/** This death holds its pose for the corpse layer (until the fallback fade when nobody adopts it). */
+	bool bCorpseDeath = false;
+	bool bCorpseAdopted = false;
+	/** The clip reached its hold frame: the anim clock stays frozen (no further pose updates). */
+	bool bPoseHeld = false;
+	/** Rendered frames drawn since the pose froze; the body's tick stops after a few (bBodyTickPaused). */
+	int32 HeldPoseRenderedFrames = 0;
+	bool bBodyTickPaused = false;
+	/** The body's drawn scale (AssetScale: the art's scale x VisualScale). */
+	float BodyScale = 1.f;
+	float HuskShadowAlpha = 1.f;
+
+	// ash look (dark remake U3): the slots on the twins (component, slot, the material it had)
+	struct FAshSlot
+	{
+		TWeakObjectPtr<UPrimitiveComponent> Component;
+		int32 Slot = 0;
+		TWeakObjectPtr<UMaterialInterface> Original;
+	};
+	TArray<FAshSlot> AshSlots;
+	bool bAshApplied = false;
+	bool bAshUnavailable = false;
+	float AshGrey = -1.f;
+	float AshDissolve = -1.f;
+	float AshTopCm = -1.f;
+	bool bAshRise = false;
+	float RiseStartGrey = 0.f;
+	float RiseStartDissolve = 0.f;
+	double RiseStartSimMs = 0.0;
+	double RiseSpanMs = 0.0;
+
 	// elite
 	bool bElite = false;
 	TArray<FLinearColor> AffixColors;
 	float EliteTimeSec = 0.f;
+	FAbyssEliteMarker EliteMarker;
 
 	// afterimages
 	TArray<float> AfterimageAge;

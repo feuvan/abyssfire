@@ -1291,14 +1291,22 @@ uint32_t MonsterSystem::AddBody(const MonsterInstance& m, Vec2 pos, bool spent) 
     ctx_.events.Emit(std::move(ev));
   }
   for (uint32_t out : evicted) {
-    ctx_.events.Emit(EvCorpseRemoved{out, CorpseRemoveReason::Expired, kNoEntity});  // the cap pushed it out
+    EvCorpseRemoved ev;  // the cap pushed it out
+    ev.corpseId = out;
+    ev.reason = CorpseRemoveReason::Expired;
+    ctx_.events.Emit(ev);
   }
   return id;
 }
 
-void MonsterSystem::RemoveCorpse(uint32_t id, CorpseRemoveReason reason, EntityId by) {
+void MonsterSystem::RemoveCorpse(uint32_t id, CorpseRemoveReason reason, EntityId by, EntityId burner) {
   if (!corpses_.Remove(id)) return;
-  ctx_.events.Emit(EvCorpseRemoved{id, reason, by});
+  EvCorpseRemoved ev;
+  ev.corpseId = id;
+  ev.reason = reason;
+  ev.by = by;
+  ev.burner = reason == CorpseRemoveReason::Burned ? burner : kNoEntity;
+  ctx_.events.Emit(ev);
 }
 
 void MonsterSystem::OnMonsterDied(const MonsterKilledMsg& msg) {
@@ -1312,7 +1320,7 @@ void MonsterSystem::OnMonsterDied(const MonsterKilledMsg& msg) {
   // The body: a Raised body rose once already (spent); a fire killing blow burns it at once.
   uint32_t corpse = AddBody(*m, msg.pos, m->role == MonsterRole::Raised);
   if (corpse != 0 && msg.element == DamageType::Fire) {
-    RemoveCorpse(corpse, CorpseRemoveReason::Burned, kNoEntity);
+    RemoveCorpse(corpse, CorpseRemoveReason::Burned, kNoEntity, msg.killer);
     corpse = 0;
   }
   // The Unburied rise (affix first, else the trait).
@@ -1512,13 +1520,13 @@ EntityId MonsterSystem::SummonAt(const MonsterDef& base, Vec2 pos, EntityId rais
   return StandUp(std::move(m), pos, 0, raiser, abilityId, false);
 }
 
-int32_t MonsterSystem::BurnCorpses(const AbilityShapeDef& shape, Vec2 origin, Vec2 dir) {
+int32_t MonsterSystem::BurnCorpses(const AbilityShapeDef& shape, Vec2 origin, Vec2 dir, EntityId burner) {
   if (corpses_.Entries().empty()) return 0;
   std::vector<uint32_t> burn;
   for (const CorpseEntry& c : corpses_.Entries()) {
     if (ShapeContains(shape, origin, dir, c.pos)) burn.push_back(c.id);
   }
-  for (uint32_t id : burn) RemoveCorpse(id, CorpseRemoveReason::Burned, kNoEntity);
+  for (uint32_t id : burn) RemoveCorpse(id, CorpseRemoveReason::Burned, kNoEntity, burner);
   return static_cast<int32_t>(burn.size());
 }
 

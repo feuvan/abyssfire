@@ -25,6 +25,11 @@
 //   swapped when its recipe or tint changes and the mood's light scale reaches the VFX system; monsters get the mood's
 //   wind-up tint; echo lore (spriteType echo) shows no mesh and, when read, a ghost figure frozen in its pose for 3 s
 //   (manifest materials.MI_AF_Echo); the brightness setting biases the zone exposure.
+// * Dark remake 2G (U3, Private/Actors/AbyssMonsterLookRules.h): a monster whose death leaves a husk holds its Death pose
+//   (setup from UAbyssCorpseLayer::CorpseHoldFor) and is handed to the corpse layer on EvCorpseAdded (ReleaseCorpseActor);
+//   map seeds and late views are spawned for it as posed husks (SpawnHuskActor). A fleeing monster walks / runs and a
+//   blocker faces its heading even while it attacks; in a themed zone the elite marker is the Wave 2 sigil (absolute
+//   scale on fx_elite, else fx_overhead); the zone's art warm-up covers every definition it can stand up.
 // * Set pieces (dark remake U4, AAbyssZoneActor::BuildSetPieces): after a zone build the pieces' audio emitter spots go to
 //   UAbyssAudioSystem::SetZoneEmitterSpots (Ashwheat's knocking doors); a bell cue the audio system plays
 //   (OnCuePlayed) ripples the bell frame / the Boneyard Gate's bell; an echo a piece poses stands by that piece, turned
@@ -61,6 +66,7 @@ class UMaterialInterface;
 class USkeletalMeshComponent;
 class UStaticMeshComponent;
 struct FAbyssArtAsset;
+struct FAbyssCharacterSetup;
 struct FAbyssUserSettings;
 
 namespace abyss
@@ -110,6 +116,19 @@ public:
 	AAbyssCharacterActor* FindCharacter(abyss::EntityId Id) const;
 	AAbyssPropActor* FindProp(abyss::EntityId Id) const;
 	const FAbyssQualityProfile& GetQualityProfile() const { return Quality; }
+
+	// ---- corpse layer (dark remake U3, UAbyssCorpseLayer) ----
+	/**
+	 * Hands the dying actor of monster Id over to the corpse layer when it holds its Death pose for it (removed from the
+	 * entity maps and the selection rims; its registry entry and nameplate go with the core's despawn). nullptr when it
+	 * does not (its death fades as today).
+	 */
+	AAbyssCharacterActor* ReleaseCorpseActor(abyss::EntityId Id);
+	/**
+	 * A husk that did not die here (a map seed, a late view): an unregistered monster actor of DefId / ArtId at tile Pos
+	 * facing YawDeg, set up to hold its Death pose (the caller poses it). nullptr when its art draws no husk.
+	 */
+	AAbyssCharacterActor* SpawnHuskActor(const std::string& DefId, const std::string& ArtId, const abyss::Vec2& Pos, float YawDeg);
 
 protected:
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
@@ -174,6 +193,10 @@ private:
 	FName PresentationThemeOf(const std::string& MapId) const;
 	void ApplyHeroEquipment(const abyss::Snapshot& Snap);
 	void UpdateElite(AAbyssCharacterActor& Actor, const abyss::MonsterView& Monster, FName Theme);
+	/** The rig-driven part of a character setup (view, anim preset durations, flight, spirit colour, shadow casting). */
+	void FillRigSetup(abyss::AnimRig Rig, FAbyssCharacterSetup& Setup) const;
+	/** 2G (U3): bCorpseHold / CorpseHoldFromMs / HuskTopCm of a monster setup (UAbyssCorpseLayer::CorpseHoldFor). */
+	void ApplyCorpseHold(const std::string& DefId, FAbyssCharacterSetup& Setup);
 	void RemoveEntity(abyss::EntityId Id, bool bImmediate, abyss::DespawnReason Reason);
 	void DestroyAllEntities(bool bKeepHero);
 	void ReconcileMarkers(const abyss::Snapshot& Snap);

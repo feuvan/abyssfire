@@ -215,7 +215,7 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 | Portraits, icons, glyphs | `/Game/Abyssfire/UI/{Portraits,Icons}/T_UI_*` | UserInterface2D, no mips |
 | FX sprites | `/Game/Abyssfire/FX/Textures/T_FX_*` | linear (masks); `T_AF_FX_DefaultGlow` is the generated fallback |
 | `MPC_AF_Lighting` | `/Game/Abyssfire/Materials` | `SunDir`, `KeyLightDir` (manifest key light), `SunColor`, `Ambient`, `RimColor`, `CameraTanHalfFovY`, `TimeSec`, `SunScale` (.55), `InkScale` (1.5), toon light slots `Light0PosR..Light7PosR` / `Light0Col..Light7Col` (0); writers in WorldContract §3.5 |
-| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_SelectRim`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`, `M_AF_PP_AOComposite`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow`, `M_AF_Telegraph` | shader code in `abyss_content/hlsl.py` |
+| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Toon_Ash`, `M_AF_Outline_Ash`, `M_AF_SelectRim`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`, `M_AF_PP_AOComposite`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow`, `M_AF_Telegraph` | shader code in `abyss_content/hlsl.py` |
 | Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>`, `MI_AF_Terrain_<Theme>`, `MI_AF_SelectRim` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow. Toon instances carry their family's `CastShadowStrength` (heroes / monsters / NPCs / pets / weapons .7, pickups .8, props 1, foliage canopies .6, ground cover 1; `manifest.plan_look_parameters`), the plains ground cover `BaseSaturation` / `BaseValue` .85 / .93. `MI_AF_Terrain_<Theme>`: `M_AF_Terrain_Painted` with the manifest `terrain.<theme>` layers + detail atlas (only when all of them were exported); plains `GroundSaturation` / `GroundValue` .85 / .93. `MI_AF_SelectRim`: the hero selection rim (#FFF4DC, 2 px) |
 | Terrain textures | `/Game/Abyssfire/Textures/T_Terrain_<Theme>_*_BC`, `T_Water_<Theme>_BC` | world (sRGB, mips, wrap); the `_Details_BC` atlas BC7, clamp; imported even without the texture scan (the manifest names them) |
 | `SM_FX_Quad` | `/Game/Abyssfire/FX` | 100 × 100 cm XY quad (unless the art ships one) |
@@ -287,6 +287,17 @@ Material behaviour in short:
   corners, a ring's hole, the arena's inside) return before any texture sample. `tests/test_hlsl.py` runs the node
   through the HLSL emulation against the art's preview port and the runtime's CPD layout, and checks the early exit is
   exact on a dense grid.
+* **`M_AF_Toon_Ash` / `M_AF_Outline_Ash`** (dark remake U3 / 2G, DECISIONS DR6 / DR16) — the twins a dying monster's toon
+  / ink slots move to (`UAbyssCorpseLayer`, a dynamic instance per slot copying the slot's parameters): built by
+  `build_toon(..., ash=True)` / `build_outline(..., ash=True)` with the originals' settings, outputs and CPD; the ash
+  branch adds `AF_AshMask` (`hlsl.ash_mask_node`: object-space noise plates cut from the top down by `Dissolve` over
+  `HuskTopCm`, multiplied into the dither and shadow masks, a pale edge band) and, on the toon twin, `AF_AshGrey`
+  (`hlsl.ash_grey_node`: the toon split's Emit / Lit to the ash colours by `Grey`). Scalars `Grey`, `Dissolve`,
+  `HuskTopCm`, `EdgeWidth`, `NoiseTileCm` and the colours are plain parameters (not CPD); their defaults are the
+  manifest's `materials.M_AF_AshDissolve` contract (`manifest.ash_contract`), the noise `T_FX_AshNoise` (planned even
+  without a scan; a plan without it warns). The originals' graphs are untouched (the dry-run material fingerprints match
+  the last build). `tests/test_hlsl.py` checks both nodes against the art's preview math and the runtime header's
+  defaults; `tests/test_flow.py` the twins' settings, outputs and parameters.
 
 **Art pass: one-time rebuild.** The art pass changes the graphs of `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`,
 `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`,

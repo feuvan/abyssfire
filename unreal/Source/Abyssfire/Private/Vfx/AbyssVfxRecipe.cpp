@@ -801,6 +801,19 @@ bool FAbyssVfxLibrary::MergeJson(std::string_view Json, const FString& SourceNam
 	return true;
 }
 
+bool FAbyssVfxLibrary::ParseRecipeJson(FName Id, std::string_view Json, FAbyssVfxRecipe& Out, FString& OutError) const
+{
+	abyss::JsonValue Root;
+	abyss::JsonParseError ParseError;
+	if (!abyss::ParseJson(Json, Root, &ParseError))
+	{
+		OutError = FString::Printf(TEXT("JSON parse error at byte %d: %s"), static_cast<int32>(ParseError.offset),
+			*AbyssText::ToFString(ParseError.message));
+		return false;
+	}
+	return ParseRecipe(Id, Root, Out, OutError);
+}
+
 bool FAbyssVfxLibrary::ParseRecipe(FName Id, const abyss::JsonValue& Json, FAbyssVfxRecipe& Out, FString& OutError) const
 {
 	using namespace AbyssVfxRecipePrivate;

@@ -104,6 +104,13 @@ public:
 	int32 Play(FName RecipeId, const FAbyssVfxContext& Context);
 	/** The first recipe of the list that exists (specific -> generic). */
 	int32 PlayFirst(TConstArrayView<FName> RecipeIds, const FAbyssVfxContext& Context);
+	/**
+	 * Dark remake 2G (U3): plays a recipe the runtime builds from an art contract (RecipeJson: one recipe object; the
+	 * breach puddle from the manifest's puddleDecal, AbyssCorpseRules::PuddleRecipeJson), parsed once per Id and kept
+	 * for the session apart from the library (so live emitters never point into a map that grows). 0 when it does not
+	 * parse (logged once) or nothing can be drawn.
+	 */
+	int32 PlayRuntimeRecipe(FName Id, std::string_view RecipeJson, const FAbyssVfxContext& Context);
 	/** Stops the continuous emitters of a handle (bKillParticles also removes its live particles). */
 	void Stop(int32 Handle, bool bKillParticles = false);
 	bool IsPlaying(int32 Handle) const;
@@ -114,6 +121,11 @@ public:
 	 * spawned keep theirs): the closing arena ring's `hazard.banner_ring` follows the ring's radius.
 	 */
 	void SetHandleRadius(int32 Handle, float RadiusCm);
+	/**
+	 * Dark remake 2G (U3): the blow (unit, XY) a handle's emitters spawn along from now on (particles already spawned keep
+	 * theirs): a monster loop played in its body's frame (the zealot's frenzy breath before the hood) turns with it.
+	 */
+	void SetHandleBlow(int32 Handle, const FVector2D& Blow);
 	/** Named anim notify of a character (FX_HammerStrike, FX_*, Foot*): plays `notify.<Name>` / `npc.<Name>` when it exists. */
 	void PlayNotify(AActor* Actor, FName NotifyName);
 
@@ -319,6 +331,8 @@ private:
 	/** Ground point of an entity (actor, else snapshot position), true when found. */
 	bool EntityGround(abyss::EntityId Id, FVector& Out) const;
 	FAbyssVfxPalette ResolvePalette(const FAbyssVfxRecipe& Recipe, const FAbyssVfxContext& Context) const;
+	/** Play() of a resolved recipe (library or runtime; it must outlive its emitters). */
+	int32 PlayRecipe(const FAbyssVfxRecipe& Recipe, const FAbyssVfxContext& Context);
 	int32 AddAnchor(AActor* Actor, EAbyssVfxHeight Height, float HeightCm, const FVector& Fixed, uint32 ProjectileId = 0);
 	FVector AnchorPosition(int32 AnchorIndex) const;
 	void UpdateAnchors();
@@ -365,6 +379,8 @@ private:
 		const FAbyssVfxContext& Context);
 
 	FAbyssVfxLibrary Library;
+	/** PlayRuntimeRecipe's parsed recipes by id (heap-owned: stable addresses for the emitters); nullptr = did not parse. */
+	TMap<FName, TUniquePtr<FAbyssVfxRecipe>> RuntimeRecipes;
 	FRandomStream Random;
 
 	UPROPERTY(Transient)

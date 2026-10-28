@@ -30,6 +30,7 @@
 #include "abyss/data/SkillData.h"
 
 #include "Actors/AbyssCharacterActor.h"
+#include "Actors/AbyssMonsterLookRules.h"
 #include "Actors/AbyssPropActor.h"
 #include "Framework/AbyssActorRegistry.h"
 #include "Framework/AbyssGameInstance.h"
@@ -650,7 +651,34 @@ FAbyssVfxPalette UAbyssVfxSystem::ResolvePalette(const FAbyssVfxRecipe& Recipe, 
 int32 UAbyssVfxSystem::Play(FName RecipeId, const FAbyssVfxContext& Context)
 {
 	const FAbyssVfxRecipe* Recipe = Library.Find(RecipeId);
-	if (Recipe == nullptr || !EnsureRenderer())
+	return Recipe != nullptr ? PlayRecipe(*Recipe, Context) : 0;
+}
+
+int32 UAbyssVfxSystem::PlayRuntimeRecipe(FName Id, std::string_view RecipeJson, const FAbyssVfxContext& Context)
+{
+	if (Id.IsNone())
+	{
+		return 0;
+	}
+	TUniquePtr<FAbyssVfxRecipe>* Found = RuntimeRecipes.Find(Id);
+	if (Found == nullptr)
+	{
+		TUniquePtr<FAbyssVfxRecipe> Parsed = MakeUnique<FAbyssVfxRecipe>();
+		FString Error;
+		if (!Library.ParseRecipeJson(Id, RecipeJson, *Parsed, Error))
+		{
+			UE_LOG(LogAbyss, Warning, TEXT("VFX runtime recipe '%s' skipped: %s"), *Id.ToString(), *Error);
+			Parsed.Reset();
+		}
+		Found = &RuntimeRecipes.Add(Id, MoveTemp(Parsed));
+	}
+	return Found->IsValid() ? PlayRecipe(**Found, Context) : 0;
+}
+
+int32 UAbyssVfxSystem::PlayRecipe(const FAbyssVfxRecipe& RecipeRef, const FAbyssVfxContext& Context)
+{
+	const FAbyssVfxRecipe* Recipe = &RecipeRef;
+	if (!EnsureRenderer())
 	{
 		return 0;
 	}
@@ -797,6 +825,22 @@ void UAbyssVfxSystem::SetHandleRadius(int32 Handle, float RadiusCm)
 		if (Emitter.Handle == Handle)
 		{
 			Emitter.Context.RadiusCm = FMath::Max(1.f, RadiusCm);   // read by SpawnFromEmitter at every spawn
+		}
+	}
+}
+
+void UAbyssVfxSystem::SetHandleBlow(int32 Handle, const FVector2D& Blow)
+{
+	if (Handle == 0 || Blow.IsNearlyZero())
+	{
+		return;
+	}
+	const FVector2D Unit = Blow.GetSafeNormal();
+	for (FEmitter& Emitter : Emitters)
+	{
+		if (Emitter.Handle == Handle)
+		{
+			Emitter.Context.Blow = Unit;   // read by SpawnFromEmitter at every spawn (the anchor frame of new particles)
 		}
 	}
 }
@@ -2064,15 +2108,59 @@ void UAbyssVfxSystem::HandleHit(const abyss::EvHit& Event)
 			Play(FName(Mark), Context);
 		}
 	}
-	// Kill: death burst + coins at the victim (combat-feel.md 13.1 step 7).
+	// Kill: death burst + coins at the victim (combat-feel.md 13.1 step 7). Dark remake 2G (U3,
+	// AbyssMonsterLookRules::DeathFxFor): `death.<defId>`, else `death.<family>` (the Wave 2 families: their own palette,
+	// played in the victim's frame), else today's `death.burst` (#FF4444 along the blow); no coins for a body that pays
+	// nothing (a Raised one). Monsters without a family (chapters 2-5) keep the burst and the coins.
 	if (Event.killed && Event.targetFaction == abyss::Faction::Monster)
 	{
+		std::string DefId;
+		std::string Family;
+		abyss::MonsterRole Role = abyss::MonsterRole::Regular;
+		if (const UAbyssSimDriver* Driver = UAbyssSimDriver::Get(this))
+		{
+			if (const abyss::MonsterView* Monster = Driver->GetSnapshotIndex().FindMonster(Event.target))
+			{
+				DefId = Monster->defId;
+				Role = Monster->role;
+			}
+		}
+		const UAbyssGameInstance* GameInstance = UAbyssGameInstance::Get(this);
+		const abyss::DataStore* Data = GameInstance != nullptr ? GameInstance->GetData() : nullptr;
+		if (const abyss::MonsterDef* Def = Data != nullptr ? AbyssMonsterLookRules::FindMonsterDef(*Data, DefId) : nullptr)
+		{
+			Family = Def->family;
+		}
+		const AbyssMonsterLookRules::FDeathFx Fx = AbyssMonsterLookRules::DeathFxFor(DefId, Family, Role);
 		FAbyssVfxContext Death = Context;
 		Death.bHasColor = true;
 		Death.Color = AbyssWorldUtil::ColorFromRgb(0xFF4444);
-		Play(FName(TEXT("death.burst")), Death);
-		Death.CountScale = 1.f;   // 6 coins
-		Play(FName(TEXT("reward.gold")), Death);
+		for (const std::string& Id : Fx.Chain)
+		{
+			const FName RecipeId(*AbyssText::ToFString(Id));
+			if (Library.Find(RecipeId) == nullptr)
+			{
+				continue;
+			}
+			FAbyssVfxContext Recipe = Death;
+			if (AbyssMonsterLookRules::DeathUsesVictimFacing(Id))
+			{
+				Recipe.bHasColor = false;   // the recipe's own palette
+				if (const AActor* Victim = Context.TargetActor.Get())
+				{
+					const FVector Forward = Victim->GetActorForwardVector();
+					const FVector2D Facing(Forward.X, Forward.Y);
+					Recipe.Blow = Facing.IsNearlyZero() ? Recipe.Blow : Facing.GetSafeNormal();
+				}
+			}
+			Play(RecipeId, Recipe);
+			break;
+		}
+		if (Fx.bCoins)
+		{
+			Death.CountScale = 1.f;   // 6 coins
+			Play(FName(TEXT("reward.gold")), Death);
+		}
 	}
 }
 

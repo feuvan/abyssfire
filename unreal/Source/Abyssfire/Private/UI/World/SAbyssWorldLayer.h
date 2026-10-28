@@ -67,6 +67,8 @@ private:
 		bool bHpBar = false;
 		bool bSmallBar = false;
 		abyss::NpcMarker Marker = abyss::NpcMarker::None;
+		/** Dark remake 2G (U3): a living pack leader (AbyssMonsterLookRules::ShowsChampionMarker): the crimson glyph. */
+		bool bChampion = false;
 		int32 NameFontPx = 12;
 		bool bTitleFont = false;
 		/** Ground items: quality (rare+ drops show 4 s) and when the widget appeared (the drop, Ctx->Now()). */

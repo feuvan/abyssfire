@@ -18,8 +18,8 @@ from typing import Any, Callable
 import unreal
 
 from .. import hlsl, paths
-from ..manifest import (SELECT_RIM_DEFAULTS, Asset, InstancePlan, Plan, Shading, TelegraphContract, hex_to_linear,
-                        hex_to_rgb255, srgb_to_linear1)
+from ..manifest import (SELECT_RIM_DEFAULTS, AshContract, Asset, InstancePlan, Plan, Shading, TelegraphContract,
+                        hex_to_linear, hex_to_rgb255, srgb_to_linear1)
 from ..report import BuildReport
 from .core import BuildError, Editor, linear_color, set_props, shaders_disabled
 from .graph import C, E, Graph
@@ -50,6 +50,10 @@ class Ctx:
     telegraph: TelegraphContract = dataclasses.field(default_factory=TelegraphContract)
     tex_telegraph_rim: str = ""
     tex_telegraph_fill: str = ""
+    # M_AF_Toon_Ash / M_AF_Outline_Ash (dark remake U3): the contract's constants and its noise (the generated glow when
+    # the art's texture is not in the plan; a warning at plan time)
+    ash: AshContract = dataclasses.field(default_factory=AshContract)
+    tex_ash_noise: str = ""
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -234,9 +238,31 @@ def _wind(g: Graph, ctx: Ctx) -> Any:
     })
 
 
-def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
+ASH_GROUP = "Ash (per body: AAbyssCharacterActor::SetAshLook)"
+
+
+def _ash_mask(g: Graph, ctx: Ctx) -> Any:
+    """AF_AshMask (hlsl.ash_mask_node): keep 0 / 1 and the Edge band, from the per-body scalars Dissolve and HuskTopCm,
+    the pre-skinned (object-space) position, the height over the actor's feet and T_FX_AshNoise."""
+    pos = g.node("MaterialExpressionWorldPosition",
+                 world_position_shader_offset=E("WorldPositionIncludedOffsets", "WPT_CAMERA_RELATIVE"))
+    feet = g.node("MaterialExpressionActorPositionWS", origin_type=E("PositionOrigin", "CAMERA_RELATIVE"))
+    return g.custom(hlsl.ash_mask_node(), {
+        "LP": g.node("MaterialExpressionPreSkinnedPosition"),
+        "Pw": pos,
+        "Feet": feet,
+        "Dissolve": g.scalar("Dissolve", 0.0, group=ASH_GROUP),
+        "TopCm": g.scalar("HuskTopCm", 100.0, group=ASH_GROUP),
+        "TileCm": g.scalar("NoiseTileCm", ctx.ash.noise_tile_cm, group=ASH_GROUP),
+        "EdgeWidth": g.scalar("EdgeWidth", ctx.ash.edge_width, group=ASH_GROUP),
+        "Noise": g.texture_object("Noise", ctx.tex_ash_noise or ctx.tex_glow, "SAMPLERTYPE_LINEAR_COLOR"),
+    })
+
+
+def build_toon(g: Graph, ctx: Ctx, variant: str, ash: bool = False) -> None:
     """variant: toon | foliage (masked, dithered fade; shadow-catcher lit, DECISIONS P11 revised) | slime | fade |
-    fade_foliage (translucent, blended fade; unlit AF_Toon)."""
+    fade_foliage (translucent, blended fade; unlit AF_Toon). ash (variant toon only): M_AF_Toon_Ash, the same graph with
+    the ash dissolve after the split (_ash_mask, hlsl.ash_grey_node); without it the graph is exactly M_AF_Toon's."""
     sh = ctx.shading
     slime = variant == "slime"
     blended = variant in ("slime", "fade", "fade_foliage")
@@ -295,8 +321,23 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
     toon = g.custom(hlsl.toon_split_node(sh), wires)
     body = g.scalar("BodyOpacity", 1.0, group="Look")
     mask = g.custom(hlsl.dither_node(), {"Fade": fb["Fade"], "Inst": inst, "BodyOpacity": body})
-    g.output(toon, "MP_EMISSIVE_COLOR")
-    g.output(toon["Lit"], "MP_BASE_COLOR")
+    emit: Any = toon
+    lit_out: Any = toon["Lit"]
+    keep: Any = None
+    if ash:
+        keep = _ash_mask(g, ctx)
+        grey = g.custom(hlsl.ash_grey_node(), {
+            "Emit": toon, "Lit": toon["Lit"], "SunCol": wires["SunCol"],
+            "Grey": g.scalar("Grey", 0.0, group=ASH_GROUP),
+            "AshColor": g.vector("AshColor", (*hex_to_linear(ctx.ash.ash_color), 1.0), group=ASH_GROUP),
+            "AshShade": g.vector("AshShade", (*hex_to_linear(ctx.ash.ash_shade), 1.0), group=ASH_GROUP),
+            "EdgeColor": g.vector("EdgeColor", (*hex_to_linear(ctx.ash.edge_color), 1.0), group=ASH_GROUP),
+            "Edge": keep["Edge"],
+        })
+        emit, lit_out = grey, grey["AshLit"]
+        mask = g.mul(mask, keep)
+    g.output(emit, "MP_EMISSIVE_COLOR")
+    g.output(lit_out, "MP_BASE_COLOR")
     g.output(g.rgb(g.mpc(ctx.mpc, "KeyLightDir")), "MP_NORMAL")
     g.output(g.const(0.0), "MP_SPECULAR")
     g.output(g.const(0.0), "MP_METALLIC")
@@ -304,6 +345,8 @@ def build_toon(g: Graph, ctx: Ctx, variant: str) -> None:
     # Shadow pass (ShadowPassSwitch): the death / prop fade and BodyOpacity only. The occlusion fade of instanced
     # dressing keeps its full sun shadow, also while the instance is hidden behind its translucent ghost (R1).
     shadow = g.custom(hlsl.dither_shadow_node(), {"Fade": fb["Fade"], "BodyOpacity": body})
+    if keep is not None:
+        shadow = g.mul(shadow, keep)   # a dropped plate casts no shadow either
     switch = g.node("MaterialExpressionShadowReplace")
     g.connect(mask, switch, "Default")
     g.connect(shadow, switch, "Shadow")
@@ -328,7 +371,9 @@ def _view_inputs(g: Graph) -> tuple[Any, Any, Any]:
     return pos, forward, tan
 
 
-def build_outline(g: Graph, ctx: Ctx, foliage: bool) -> None:
+def build_outline(g: Graph, ctx: Ctx, foliage: bool, ash: bool = False) -> None:
+    """M_AF_Outline / M_AF_Outline_Foliage; ash: M_AF_Outline_Ash, the hull dropping the same plates as the body
+    (_ash_mask: no ink floats over a dissolved part); without it the graph is exactly M_AF_Outline's."""
     sh = ctx.shading
     bc = g.texture("PaletteBC", ctx.tex_white, "SAMPLERTYPE_COLOR")
     pp = g.texture("PaletteP", ctx.tex_palette_p, "SAMPLERTYPE_LINEAR_COLOR")
@@ -343,6 +388,8 @@ def build_outline(g: Graph, ctx: Ctx, foliage: bool) -> None:
     })
     mask = g.custom(hlsl.dither_node(), {"Fade": fade, "Inst": inst,
                                          "BodyOpacity": g.scalar("BodyOpacity", 1.0, group="Look")})
+    if ash:
+        mask = g.mul(mask, _ash_mask(g, ctx))
     pos, forward, tan = _view_inputs(g)
     wpo = g.custom(hlsl.outline_wpo_node(sh), {
         "Pos": pos, "N": g.node("MaterialExpressionVertexNormalWS"), "F": forward, "T": tan,
@@ -623,6 +670,10 @@ MASTERS: tuple[Master, ...] = (
     Master(paths.M_TOON_FOLIAGE_FADE, paths.MATERIALS_DIR, FADE_SETTINGS,
            lambda g, c: build_toon(g, c, "fade_foliage")),
     Master(paths.M_OUTLINE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, False)),
+    # dark remake U3 (2G stage C): the ash husk's twins (runtime-only; same settings as their originals)
+    Master(paths.M_TOON_ASH, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "toon", ash=True)),
+    Master(paths.M_OUTLINE_ASH, paths.MATERIALS_DIR, OUTLINE_SETTINGS,
+           lambda g, c: build_outline(g, c, False, ash=True)),
     Master(paths.M_OUTLINE_FOLIAGE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, True)),
     Master(paths.M_SELECT_RIM, paths.MATERIALS_DIR, SELECT_RIM_SETTINGS, build_select_rim),
     Master(paths.M_TERRAIN, paths.MATERIALS_DIR, TERRAIN_SETTINGS, build_terrain),
@@ -740,6 +791,8 @@ def make_context(plan: Plan, report: BuildReport) -> Ctx:
         telegraph=plan.telegraph,
         tex_telegraph_rim=_planned_texture(plan, plan.telegraph.rim_texture),
         tex_telegraph_fill=_planned_texture(plan, plan.telegraph.fill_texture),
+        ash=plan.ash,
+        tex_ash_noise=_planned_texture(plan, plan.ash.noise_texture),
     )
 
 

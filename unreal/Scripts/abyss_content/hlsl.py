@@ -1383,6 +1383,108 @@ def telegraph_node() -> CustomNode:
                       }))
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Ash dissolve (dark remake U3 / 2G stage C; manifest materials.M_AF_AshDissolve, Art/blender/vfx/fx_recipes_dark.py
+# ASH_DISSOLVE, preview port fx_preview_dark.apply_ash): the twins M_AF_Toon_Ash / M_AF_Outline_Ash a dead body swaps to
+# (AAbyssCharacterActor::SetAshLook; per actor dynamic instances with the scalars Grey / Dissolve / HuskTopCm).
+#
+# AF_AshMask: a pixel drops when (B x .6 + R x .3 + (1 - G) x .15 + heightFraction x .3) < Dissolve x 1.4 - T_FX_AshNoise
+# sampled at the pre-skinned (object-space) XZ / NoiseTileCm (R fBm front, G cracks, B per-plate random: whole plates
+# fall), heightFraction = the height over the actor's feet / HuskTopCm; the surviving band EdgeWidth above the cut is the
+# edge (additional output). Dissolve 0 keeps every pixel; Dissolve 1 drops every pixel (the score never reaches 1.4).
+# The texture is clamped at import (FX sprites): the node wraps it (frac) with explicit gradients of the continuous UV.
+# AF_AshGrey: the toon's two parts (Emit, Lit: the shadow-catcher split) lerp toward the ash colours by Grey, as the
+# preview greys the final image: the luminance L of the unshadowed colour (Emit + Lit x sun) and of the shadowed one (Emit)
+# picks lerp(AshShade, AshColor, saturate((L - .02) / .12)); a near-black texel (L < .012: pupils, slits) keeps x .9; the
+# edge band glows EdgeColor at .6. Grey 0 and no edge return Emit / Lit unchanged (the swap is invisible).
+# ---------------------------------------------------------------------------------------------------------------------
+ASH_SCORE_WEIGHTS = (0.6, 0.3, 0.15, 0.3)    # B (plates), R (front), 1 - G (cracks), height fraction
+ASH_CUT_SCALE = 1.4
+ASH_LUMA = (0.2126, 0.7152, 0.0722)          # linear luminance (the preview's lin_lum)
+ASH_LUMA_FLOOR = 0.02
+ASH_LUMA_SPAN = 0.12
+ASH_INK_LUMA = 0.012
+ASH_INK_KEEP = 0.9
+ASH_EDGE_MIX = 0.6
+ASH_MASK_INPUTS = (
+    NodeInput("LP", "float3"),         # PreSkinnedPosition (object space, cm)
+    NodeInput("Pw", "float3"),         # WorldPosition, camera relative
+    NodeInput("Feet", "float3"),       # ActorPositionWS, camera relative
+    NodeInput("Dissolve", "float"),    # MID scalar 0..1
+    NodeInput("TopCm", "float"),       # MID scalar HuskTopCm
+    NodeInput("TileCm", "float"),      # NoiseTileCm (60)
+    NodeInput("EdgeWidth", "float"),
+    NodeInput("Noise", "Texture2D"),   # T_FX_AshNoise
+)
+ASH_MASK_OUTPUTS = (NodeInput("Edge", "float"),)
+_ASH_MASK = """
+float2 nuv = float2(LP.x, LP.z) / max(TileCm, 1.0);
+float2 ngx = ddx(nuv);
+float2 ngy = ddy(nuv);
+float4 nz = Noise.SampleGrad(NoiseSampler, float2(frac(nuv.x), frac(nuv.y)), ngx, ngy);
+float hf = saturate((Pw.z - Feet.z) / max(TopCm, 1.0));
+float score = nz.b * @WB@ + nz.r * @WR@ + (1.0 - nz.g) * @WG@ + hf * @WH@;
+float cut = saturate(Dissolve) * @CUT@;
+float on = Dissolve > 0.0 ? 1.0 : 0.0;
+float keep = (on > 0.5 && score < cut) ? 0.0 : 1.0;
+Edge = (on > 0.5 && keep > 0.5 && score < cut + EdgeWidth) ? 1.0 : 0.0;
+return keep;
+"""
+
+
+def ash_mask_node() -> CustomNode:
+    wb, wr, wg, wh = ASH_SCORE_WEIGHTS
+    return CustomNode("AF_AshMask", "ash dissolve: plates drop below Dissolve (keep 0 / 1) and the edge band",
+                      "float", ASH_MASK_INPUTS,
+                      _fill(_ASH_MASK, {"WB": lit(wb), "WR": lit(wr), "WG": lit(wg), "WH": lit(wh),
+                                        "CUT": lit(ASH_CUT_SCALE)}),
+                      additional_outputs=ASH_MASK_OUTPUTS)
+
+
+ASH_GREY_INPUTS = (
+    NodeInput("Emit", "float3"),       # AF_ToonSplit's main output
+    NodeInput("Lit", "float3"),        # AF_ToonSplit's Lit
+    NodeInput("SunCol", "float4"),     # MPC SunColor (linear)
+    NodeInput("Grey", "float"),        # MID scalar 0..1
+    NodeInput("AshColor", "float3"),   # linear
+    NodeInput("AshShade", "float3"),
+    NodeInput("EdgeColor", "float3"),
+    NodeInput("Edge", "float"),        # AF_AshMask's Edge
+)
+ASH_GREY_OUTPUTS = (NodeInput("AshLit", "float3"),)
+_ASH_GREY = """
+float3 sunC = max(float3(SunCol.r, SunCol.g, SunCol.b), float3(0.05, 0.05, 0.05));
+float3 cSun = Emit + Lit * sunC;
+float3 cSh = Emit;
+float3 lw = @LUMA@;
+float lSun = dot(cSun, lw);
+float lSh = dot(cSh, lw);
+float3 ashC = float3(AshColor.r, AshColor.g, AshColor.b);
+float3 ashS = float3(AshShade.r, AshShade.g, AshShade.b);
+float3 aSun = lerp(ashS, ashC, saturate((lSun - @FLOOR@) / @SPAN@));
+float3 aSh = lerp(ashS, ashC, saturate((lSh - @FLOOR@) / @SPAN@));
+aSun = lSun < @INK@ ? cSun * @INK_KEEP@ : aSun;
+aSh = lSh < @INK@ ? cSh * @INK_KEEP@ : aSh;
+float g = saturate(Grey);
+float3 outSun = lerp(cSun, aSun, g);
+float3 outSh = lerp(cSh, aSh, g);
+float e = saturate(Edge) * @EDGE_MIX@;
+float3 edgeC = float3(EdgeColor.r, EdgeColor.g, EdgeColor.b);
+outSun = lerp(outSun, edgeC, e);
+outSh = lerp(outSh, edgeC, e);
+AshLit = max(outSun - outSh, float3(0.0, 0.0, 0.0)) / sunC;
+return outSh;
+"""
+
+
+def ash_grey_node() -> CustomNode:
+    return CustomNode("AF_AshGrey", "ash dissolve: the toon split greyed to the ash colours (Emit; AshLit = base colour)",
+                      "float3", ASH_GREY_INPUTS,
+                      _fill(_ASH_GREY, {"LUMA": vec3(ASH_LUMA), "FLOOR": lit(ASH_LUMA_FLOOR), "SPAN": lit(ASH_LUMA_SPAN),
+                                        "INK": lit(ASH_INK_LUMA), "INK_KEEP": lit(ASH_INK_KEEP),
+                                        "EDGE_MIX": lit(ASH_EDGE_MIX)}),
+                      additional_outputs=ASH_GREY_OUTPUTS)
+
 def all_nodes(sh: Shading) -> list[CustomNode]:
     """Every node the build creates (tests compile them all)."""
     split = toon_split_node(sh)
@@ -1391,6 +1493,8 @@ def all_nodes(sh: Shading) -> list[CustomNode]:
              fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(), ao_composite_node(),
              terrain_node(True), terrain_node(False), terrain_painted_node(True), terrain_painted_node(False),
              terrain_emissive_node(), telegraph_node()]
+    ash_mask, ash_grey = ash_mask_node(), ash_grey_node()
+    nodes += [ash_mask, ash_mask.twin("Edge"), ash_grey, ash_grey.twin("AshLit")]
     nodes += list(fx_nodes().values()) + list(quad_nodes().values()) + list(water_nodes().values())
     return nodes
 

@@ -271,6 +271,11 @@ public:
 	bool MergeJson(std::string_view Json, const FString& SourceName, FString& OutError);
 
 	const FAbyssVfxRecipe* Find(FName Id) const;
+	/**
+	 * Dark remake 2G (U3): parses one recipe object (the `recipes.<id>` value of a document) into Out without adding it to
+	 * the library (a recipe the runtime builds from an art contract: the breach puddle). False with the reason otherwise.
+	 */
+	bool ParseRecipeJson(FName Id, std::string_view Json, FAbyssVfxRecipe& Out, FString& OutError) const;
 	/** First existing id of the list (specific -> generic fallbacks). */
 	const FAbyssVfxRecipe* FindFirst(TConstArrayView<FName> Ids) const;
 	const FAbyssVfxPalette* FindPalette(FName Name) const;

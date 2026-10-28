@@ -238,8 +238,10 @@ public:
 	/**
 	 * Dark remake 2G: the raw JSON of an asset's blocks the typed parse does not cover, for the pure presentation rules
 	 * (AbyssAnimActionRules::ParseDeathRuntime; the corpse / monster-look rules): an object with the asset's `fx` (fuse,
-	 * frenzy, block, ...) and `corpse` blocks and `clips.<clip name>` holding each clip's `runtime`, `puddleDecal` and
-	 * `corpse` blocks (only the keys present). A null value for an asset without any of them or an unknown name.
+	 * frenzy, block, motion, ...) and `corpse` blocks, its `eliteMarker` opt-out and `clips.<clip name>` holding each
+	 * clip's `runtime`, `puddleDecal` and `corpse` blocks (only the keys present), with the asset's `footprintRadiusCm` /
+	 * `blobShadowRadiusCm` beside them (the half-width their radius factors scale). A null value for an asset without any
+	 * of the blocks or an unknown name.
 	 */
 	const abyss::JsonValue& GetAssetJson(FName AssetName) const;
 

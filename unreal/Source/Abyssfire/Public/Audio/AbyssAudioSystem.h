@@ -194,6 +194,10 @@ private:
 	void HandleStoryDecorFocus(const abyss::EvStoryDecorFocus& Event);
 	/** 2G (U2): a boss phase's stinger (EvMonsterPhase: the event's id, else musicDirector.bosses.<id>.phaseStingers). */
 	void HandleMonsterPhase(const abyss::EvMonsterPhase& Event);
+	/** 2G (U3): a blocker's clang (EvBlock: sfx_shieldbearer_block once rendered, else the port's block cue). */
+	void HandleBlock(const abyss::EvBlock& Event);
+	/** 2G (U3): a Living monster's hissed flight when it breaks (EvMonsterFlee start; sfx_deserter_flee, planned). */
+	void HandleMonsterFlee(const abyss::EvMonsterFlee& Event);
 
 	// ---- dark remake (U7): tables, music arbitration, ambience layers, cue triggers ----
 	/** Parses the manifest's U7 sections into the remake state (once the manifest is loaded). */

@@ -1983,6 +1983,71 @@ real; every one is fixed, three with a recorded remainder (below).
   its `FX_Fuse` / `FX_Burst` notifies carry the read); a ghost marker at `dashTo` during the Lunge windup (the line
   decal already points there); the darkest-tile readability capture (stage H / mac-look); EvBlock and the other U2 / U3
   / U5 parts belong to the other 2G stages.
+- **Stage C: corpses, raising, monster states.** Rules in `Source/Abyssfire/Private/Actors/AbyssCorpseRules.h` (the
+  `M_AF_AshDissolve` contract, the corpse block, the ash timeline on the sim clock, removals and their recipes, the story
+  hold, the Feed drain, the rise reversal, the burn colour, reconcile, the visible cap, the adoption timeout, the breach
+  puddle and its runtime recipe) and `Private/Actors/AbyssMonsterLookRules.h` (flight / shield facing, held items, phase
+  looks, aura / body / affix loops, pulse / block / flight chains, the elite sigil and its motion, the champion glyph,
+  the death recipe chain, the zone's art warm-up); tests `PresentationTests/tests/corpse_test.cpp` (15 cases) and
+  `monsterlook_test.cpp` (12) on the real `Data/` (the 13 roster corpse blocks), `vfx_recipes.json` and the audio
+  manifest, `theme_test.cpp` (+ the sigil chain). Glue: `UAbyssCorpseLayer` (`Public/Actors/AbyssCorpses.h`,
+  `Private/Actors/AbyssCorpses.cpp`, a world subsystem the world builder ticks after the characters), the character
+  actor (corpse-holding death, adoption, posed husks, the ash twins as dynamic instances per slot, the rise reversal, the
+  husk shadow on the pelvis, held items beyond the two hands, the sigil marker), the world builder (`ReleaseCorpseActor`,
+  `SpawnHuskActor`, flight / shield facing, the sigil chain, the warm-up), `UAbyssVfxSystem` (the death chain,
+  `SetHandleBlow`, `PlayRuntimeRecipe`), `UAbyssAudioSystem` (`EvBlock` clang, `EvMonsterFlee` cue), the world layer's
+  champion glyph, `FAbyssArtManifest::GetAssetJson` (`eliteMarker`). Content: the twin masters `M_AF_Toon_Ash` /
+  `M_AF_Outline_Ash` (`Scripts/abyss_content`: `hlsl.ash_mask_node` / `ash_grey_node`, `manifest.ash_contract`, the
+  `T_FX_AshNoise` plan entry; every existing master's material fingerprint unchanged). Counts: PresentationTests 129
+  cases, 8549 assertions on GCC and Clang (27 of 27 hand mutations of the two rules headers caught); Scripts 135 tests;
+  the strict content plan 0 errors, 0 warnings.
+- **What it presents** (README *Dark remake corpses and monster states* lists the Mac look checks). A Chapter 1 kill
+  holds its Death pose where it fell, greys and crumbles into an ash husk by plates (sim clock: frozen in a cinematic),
+  blows away at the TTL; the removals' looks (expire, raise with the risen body reversing the ash, consume, burn in the
+  fire's colour); posed seed husks; the Corpseherd's and Valdras's bodies held through their beats; the gnawer's
+  `corpse.consume`, Valdras's Feed; breach-blood tar puddles; blockers' sparks + clang, the shield wall's front; fleeing
+  monsters walk / run (the deserter's hissed cue once rendered); the drummer's / Hungerbell's pulses, the bearer's aura
+  stain, the Unburied affix's cracks, the Cinderbloat's ash flakes, the zealot's frenzy surge and breath, Valdras's burning
+  standard; the Wave 2 sigil over march elites, the champion diamond on pack leaders; family death recipes without
+  coins for Raised bodies; the Unburied's kettle helm worn with the weapon (it used to replace it).
+- **Interpretations** (DR16 (15)-(27)): the husk is the monster's own actor (seeds / late views get posed actors); the ash
+  look is twin masters with per-slot dynamic instances (no free custom-primitive-data slot); a burn's colour is the
+  side of the fire's source the core names (`EvCorpseRemoved::burner`): the hero's ember (or its own fire kill's
+  impact colour), an enemy's breach violet, none: the recipe's grey; a consumed body crumbles in 350 ms, a Feed drains
+  it to .85 by its due time; the cap retires the oldest (seeds and story bodies kept) with `corpse.expire`;
+  `monster.block` keeps its authored chest frame with its point on the shield's `face`; the zealot's
+  `notify.FX_Frenzy` plays at the phase entry (his row has no enter action, 2F-D8: only a row entering with the clip
+  that carries the notify would leave it to that notify); a pulse's family fallback plays only when the clip the
+  ability's definition casts with has FX notifies (the drummer's four beats already are the pulse; the Hungerbell's
+  call has no clip), violet for the breach-touched, pale dust for the Living and the beasts; the sigil floats in world
+  units along world up (absolute scale); the puddle's radius is radiusFactor x the body's half-width
+  (`footprintRadiusCm`) x the drawn scale, drawn by a runtime recipe of the shipped `decal` emitter (no art recipe
+  carries it); the corpse block's geometry is scaled by the body's drawn scale (hunt leaders x1.25).
+- **Chapters 2-5.** No corpse-leaving definitions, families, phases, packs, blockers, auras, puddle looks or
+  presentation theme: every kill bursts red with its coins and fades as before, elites wear today's crown; the W1
+  slime's puddle decal (no corpse block) stays undrawn. AbyssCore: one additive event field (`EvCorpseRemoved::burner`,
+  review C-m2), read by nothing in the sim; the K3 / K4 replay digests and the playthrough's final saves are unchanged.
+- **Fixed in passing** (the stage's §6): an asset's attachments beyond `weapon_r` / `weapon_l` (the Unburied's kettle helm
+  on `head`) replaced the main-hand weapon; each is now a held item of its own on its socket.
+- **Deferred (stage C).** The zealot's scar emissive ramp (`fx.frenzy.scarEmissive` .25 -> .7: needs a per-swatch emissive
+  on `M_AF_Toon`, which would change every master's fingerprint; the art review measured the scar at ~1 px at 1080p,
+  the breath loop is the read); the sigil's optional additive ember glow (`fx.glow` on its `ember` socket: no glow
+  recipe ships for it); the `buffMask` buffed glow (no recipe: no look, as the survey decided); a rendered
+  `sfx_shieldbearer_block` / `sfx_deserter_flee` (the audio lane: the clang falls back to `block`, the flee cue is silent);
+  the deserter drummer's aura look (the 2F handoff: the Living's no-glow rule; no `monster.deserter_drummer.aura` recipe
+  ships - the art lane's follow-up is a dust stain with no light; nothing is drawn until then, the aura still works);
+  the Hungerbell's own call recipe (`monster.hunt_hungerbell.supper_bell`: until it ships the supper bell pulses the
+  drum's pale dust).
+- **Review fixes (stage C).** C-M1 the zealot's frenzy surge plays at the phase entry (the as-built row has no Roar);
+  C-m1 the puddle's radius scales the body's half-width, not the husk's footprint (Breachclot 80 -> 48 cm, Cinderbloat
+  46 -> 71 cm); C-m2 the burn colour comes from the fire's source (`EvCorpseRemoved::burner`, a core field) instead of
+  the frame's hits (no global enemy-hit flag, no 3-tile guess, no hazard probe); C-m3 the pulse's clip test reads the
+  ability's definition (not the playing action) and beasts pulse dust, not violet; C-m4 the husk geometry follows the
+  body's drawn scale; C-m5 a settled husk stops its body's tick, the cap sorts a scratch buffer, loops are re-turned
+  only when the body turned; C-m6 the extra held items get selection-rim copies; C-m7 the drummer's aura gap is
+  recorded above. Counts after the review: PresentationTests 131 cases, 8631 assertions on GCC and Clang (19 hand
+  mutations of the new rules caught); CoreTests 881 cases on GCC and Clang (the burner checks in `corpses_test`; the
+  K3 / K4 digests unchanged; the three playthroughs' final saves byte-identical to HEAD's).
 
 ### Phase 3 — Wave 3: the descent
 

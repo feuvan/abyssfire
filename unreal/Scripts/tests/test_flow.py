@@ -163,6 +163,42 @@ class FlowTest(unittest.TestCase):
                     for e in telegraph._expressions if type(e).__name__ == "MaterialExpressionTextureObjectParameter"}
         self.assertIs(textures["Rim"], reg[f"{paths.FX_TEXTURES_DIR}/T_FX_TelegraphRim"])
         self.assertIs(textures["Fill"], reg[f"{paths.FX_TEXTURES_DIR}/T_FX_TelegraphFill"])
+        # the ash husk's twins (dark remake U3): M_AF_Toon's / M_AF_Outline's settings, the dissolve (and on the toon the
+        # grey) after the original graph, per-body scalars (no custom primitive data), the noise as the default texture
+        ash_toon = reg[f"{paths.MATERIALS_DIR}/{paths.M_TOON_ASH}"]
+        ash_ink = reg[f"{paths.MATERIALS_DIR}/{paths.M_OUTLINE_ASH}"]
+        outline = reg[f"{paths.MATERIALS_DIR}/{paths.M_OUTLINE}"]
+        for twin, original in ((ash_toon, toon), (ash_ink, outline)):
+            for prop in ("blend_mode", "shading_model", "two_sided", "used_with_skeletal_mesh"):
+                self.assertEqual(twin.get_editor_property(prop), original.get_editor_property(prop), prop)
+            self.assertEqual(set(twin._outputs), set(original._outputs))
+        self.assertEqual(ash_toon.get_editor_property("blend_mode"), "BlendMode.BLEND_MASKED")
+
+        def described(mat):
+            return sorted(str(e.get_editor_property("description")) for e in mat._expressions
+                          if type(e).__name__ == "MaterialExpressionCustom")
+
+        self.assertEqual(described(ash_toon), sorted(described(toon) + ["AF_AshMask", "AF_AshGrey"]))
+        self.assertEqual(described(ash_ink), sorted(described(outline) + ["AF_AshMask"]))
+        self.assertEqual(ash_toon._outputs["MaterialProperty.MP_EMISSIVE_COLOR"].get_editor_property("description"),
+                         "AF_AshGrey")
+        self.assertEqual(ash_toon._output_pins["MaterialProperty.MP_BASE_COLOR"], "AshLit")
+        for mat in (ash_toon, ash_ink):
+            scalars = {str(e.get_editor_property("parameter_name")): e for e in mat._expressions
+                       if type(e).__name__ == "MaterialExpressionScalarParameter"}
+            for name in ("Dissolve", "HuskTopCm", "NoiseTileCm", "EdgeWidth"):
+                self.assertIn(name, scalars)
+                self.assertFalse(scalars[name].get_editor_property("use_custom_primitive_data"), name)
+            textures = {str(e.get_editor_property("parameter_name")): e.get_editor_property("texture")
+                        for e in mat._expressions if type(e).__name__ == "MaterialExpressionTextureObjectParameter"}
+            self.assertIs(textures["Noise"], reg[f"{paths.FX_TEXTURES_DIR}/T_FX_AshNoise"])
+        self.assertIn("Grey", {str(e.get_editor_property("parameter_name")) for e in ash_toon._expressions
+                               if type(e).__name__ == "MaterialExpressionScalarParameter"})
+        # the originals carry none of it (chapters 2-5 keep today's materials: no rebuild, no recompile)
+        for mat in (toon, outline):
+            self.assertFalse({"Dissolve", "Grey", "HuskTopCm"} & {str(e.get_editor_property("parameter_name"))
+                                                                   for e in mat._expressions
+                                                                   if type(e).__name__ == "MaterialExpressionScalarParameter"})
         # the selection rim instance and the art-pass look parameters
         rim = reg[f"{paths.INSTANCES_DIR}/{paths.MI_SELECT_RIM}"]
         self.assertIs(rim.get_editor_property("parent"), reg[f"{paths.MATERIALS_DIR}/{paths.M_SELECT_RIM}"])

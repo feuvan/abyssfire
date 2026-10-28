@@ -1055,7 +1055,8 @@ void CombatSystem::ResolveAbility(EntityId monster) {
     }
   }
   if (a.hitsMonsters && damaging) HitMonstersInShape(monster, a, cast);
-  BurnCorpsesIfFire(mods.type, cast.shape, cast.origin, cast.dir);  // K3: a fire strike burns the bodies under it
+  // K3: a fire strike burns the bodies under it.
+  BurnCorpsesIfFire(mods.type, cast.shape, cast.origin, cast.dir, monster);
   if (a.hazard.present) {
     if (const MonsterInstance* caster = ms->Find(monster)) PlaceHazard(*caster, a, cast);
   }
@@ -1139,9 +1140,10 @@ void CombatSystem::ClearPendingAbility(MonsterInstance& m) {
   m.abilitySpots.clear();
 }
 
-void CombatSystem::BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir) {
+void CombatSystem::BurnCorpsesIfFire(DamageType type, const AbilityShapeDef& shape, Vec2 origin, Vec2 dir,
+                                     EntityId burner) {
   if (type != DamageType::Fire || ctx_.sys.monsters == nullptr) return;
-  ctx_.sys.monsters->BurnCorpses(shape, origin, dir);
+  ctx_.sys.monsters->BurnCorpses(shape, origin, dir, burner);
 }
 
 void CombatSystem::HitMonstersInShape(EntityId caster, const MonsterAbilityDef& a, const MonsterAbilityCast& cast) {
@@ -1259,7 +1261,8 @@ void CombatSystem::ResolveHazardTick(const HazardEntry& h) {
       if (roll.applies) ApplyStatus(kHeroEntityId, roll.status, roll.value, roll.durationMs, h.source);
     }
   }
-  BurnCorpsesIfFire(h.damageType, h.shape, h.origin, h.dir);  // K3: every tick of a fire hazard burns the bodies in it
+  // K3: every tick of a fire hazard burns the bodies in it.
+  BurnCorpsesIfFire(h.damageType, h.shape, h.origin, h.dir, h.source);
   if (!h.hitsMonsters || !(h.monsterTickDamage > 0) || ctx_.sys.monsters == nullptr) return;
   MonsterSystem* ms = ctx_.sys.monsters;
   std::vector<EntityId> ids;
@@ -1466,7 +1469,7 @@ void CombatSystem::ResolveOnDeath(const PendingOnDeath& e) {
       DamageMonster(req);
     }
   }
-  BurnCorpsesIfFire(e.type, d.shape, e.origin, e.dir);
+  BurnCorpsesIfFire(e.type, d.shape, e.origin, e.dir, e.source);
 }
 
 // =====================================================================================================================
@@ -2480,7 +2483,7 @@ void CombatSystem::ReleaseAoe(const SkillDef& s, int32_t level, const CastTarget
       area.kind = AbilityShapeKind::Circle;
       area.radius = radius;
     }
-    BurnCorpsesIfFire(s.damageType, area, areaOrigin, dir);
+    BurnCorpsesIfFire(s.damageType, area, areaOrigin, dir, kHeroEntityId);
   }
 
   // Delays: the meteor batch, per-target arrows, the chain stagger; everything else lands now.
@@ -2568,7 +2571,7 @@ void CombatSystem::FireDelayedHit(int32_t slot) {
       AbilityShapeDef area;
       area.kind = AbilityShapeKind::Circle;
       area.radius = SkillAoeRadius(ctx_.data.Classes().skillRules, s, ph.level);
-      BurnCorpsesIfFire(s.damageType, area, ph.center, Vec2(1, 0));
+      BurnCorpsesIfFire(s.damageType, area, ph.center, Vec2(1, 0), kHeroEntityId);
     }
     if (ph.batchShake && hits > 0) {
       const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, hits);
@@ -2782,7 +2785,7 @@ void CombatSystem::ResolveGroundTick(const GroundEffect& g, const GroundTick& ti
     AbilityShapeDef area;
     area.kind = AbilityShapeKind::Circle;
     area.radius = g.spec.radius;
-    BurnCorpsesIfFire(s.damageType, area, g.spec.center, Vec2(1, 0));
+    BurnCorpsesIfFire(s.damageType, area, g.spec.center, Vec2(1, 0), kHeroEntityId);
   }
   if (hits > 0) {
     const ShakeRequest sh = AoeHitShake(ctx_.data.Combat().hitFeedback, hits);

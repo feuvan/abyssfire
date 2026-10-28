@@ -135,6 +135,20 @@ class LookParameterTests(unittest.TestCase):
         # the shipped defaults are the contract (the runtime keeps the same copy: AbyssTelegraphRules DefaultContract)
         self.assertEqual(manifest.TelegraphContract(present=True), t)
 
+    def test_ash_contract(self):
+        """M_AF_Toon_Ash / M_AF_Outline_Ash's constants (dark remake U3) from materials.M_AF_AshDissolve; the noise is
+        planned without the texture scan."""
+        a = self.plan.ash
+        self.assertTrue(a.present)
+        self.assertEqual((a.ash_color, a.ash_shade, a.edge_color), ("#6E6A62", "#3E3B37", "#B8B2A6"))
+        self.assertEqual((a.edge_width, a.noise_tile_cm, a.noise_texture), (0.06, 60.0, "T_FX_AshNoise"))
+        entry = self.plan.texture(a.noise_texture)
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.folder, paths.FX_TEXTURES_DIR)
+        self.assertFalse(entry.srgb)
+        # the shipped defaults are the contract (the runtime keeps the same copy: AbyssCorpseRules FAshContract)
+        self.assertEqual(manifest.AshContract(present=True), a)
+
     def test_manifest_params_win(self):
         inst = manifest.InstancePlan("MI_AF_Toon_Heroes_X", paths.M_TOON, "Heroes", scalars={"CastShadowStrength": 0.2})
         manifest.plan_look_parameters({inst.name: inst})
@@ -269,6 +283,34 @@ class SyntheticManifestTests(unittest.TestCase):
         data["materials"]["M_AF_Telegraph"]["params"]["RimColor"] = "crimson"
         plan = manifest.build_plan(self.make(data), scan_textures=False)
         self.assertTrue(any("params.RimColor" in p.message for p in plan.errors), [str(p) for p in plan.problems])
+
+    def test_ash_contract_fields_and_texture(self):
+        data = copy.deepcopy(self.BASE)
+        plan = manifest.build_plan(self.make(data), scan_textures=False)
+        self.assertFalse(plan.ash.present)      # no contract: the shipped defaults, nothing planned
+        self.assertEqual(plan.ash, manifest.AshContract())
+        self.assertIsNone(plan.texture("T_FX_AshNoise"))
+        data["materials"] = {"M_AF_AshDissolve": {
+            "params": {"AshColor": "#102030", "EdgeWidth": 2.0},
+            "textures": {"Noise": {"texture": "T_FX_NoiseTest", "map": "object-space XZ / 45 cm (R, G, B)"}}}}
+        path = self.make(data)
+        (path.parent / "VFX").mkdir(parents=True, exist_ok=True)
+        pngio.write_png(path.parent / "VFX" / "T_FX_NoiseTest.png", 4, 4, bytes(64))
+        plan = manifest.build_plan(path, scan_textures=False)
+        a = plan.ash
+        self.assertTrue(a.present)
+        self.assertEqual((a.ash_color, a.ash_shade), ("#102030", "#3E3B37"))
+        self.assertEqual(a.edge_width, 0.06)            # out of 0..1: the default
+        self.assertEqual((a.noise_texture, a.noise_tile_cm), ("T_FX_NoiseTest", 45.0))
+        self.assertEqual(plan.texture("T_FX_NoiseTest").kind, "fx")
+        self.assertEqual(plan.errors, [])
+        # a missing noise is a warning (the dissolve samples the default glow), a malformed colour an error
+        (path.parent / "VFX" / "T_FX_NoiseTest.png").unlink()
+        data["materials"]["M_AF_AshDissolve"]["params"]["EdgeColor"] = "pale"
+        plan = manifest.build_plan(self.make(data), scan_textures=False)
+        self.assertTrue(any("T_FX_NoiseTest.png missing" in p.message and p.level == "warning" for p in plan.problems),
+                        [str(p) for p in plan.problems])
+        self.assertTrue(any("params.EdgeColor" in p.message for p in plan.errors), [str(p) for p in plan.problems])
 
     def test_conflicting_instance_definitions_are_errors(self):
         data = copy.deepcopy(self.BASE)

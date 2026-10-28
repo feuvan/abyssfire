@@ -27,6 +27,7 @@
 #include "Framework/AbyssWorldView.h"
 #include "UI/AbyssUiStyle.h"
 #include "UI/Core/AbyssUiDraw.h"
+#include "Actors/AbyssMonsterLookRules.h"
 #include "World/AbyssSetPieceRules.h"
 #include "World/AbyssThemeRules.h"
 
@@ -585,7 +586,11 @@ void SAbyssWorldLayer::Sync(const abyss::Snapshot& Snap)
 				const FLinearColor StoryColor = Label.Desc.bHasNameColor ? FAbyssUiStyle::Rgb(Label.Desc.NameColorRgb) : FAbyssUiStyle::Rgb(0xffcf6a);
 				Label.NameColor = Monster->storyNamed ? StoryColor
 					: (!Monster->affixes.empty() ? FAbyssUiStyle::Rgb(0xff6600) : (Monster->elite || Monster->miniBoss ? FAbyssUiStyle::Rgb(0xe74c3c) : FAbyssUiStyle::Rgb(0xcccccc)));
-				Label.bAlwaysShowName = Monster->storyNamed || Monster->elite || Monster->miniBoss || !Monster->affixes.empty();
+				// Dark remake 2G (U3): a living pack leader (a K5 mix's leader, the champion ambush's Muster) always shows its
+				// name, with the crimson champion glyph before it.
+				Label.bChampion = AbyssMonsterLookRules::ShowsChampionMarker(Monster->packLeader, Monster->alive);
+				Label.bAlwaysShowName = Monster->storyNamed || Monster->elite || Monster->miniBoss || !Monster->affixes.empty()
+					|| Label.bChampion;
 				Label.NameFontPx = 12;
 				Label.bTitleFont = true;
 			}
@@ -986,6 +991,14 @@ void SAbyssWorldLayer::PaintLabel(FAbyssPainter& P, const FLabel& Label, const F
 			Color = FAbyssUiStyle::Lighten(Color, 0.2f);
 		}
 		P.TextCentered(FVector2D(Anchor.X, Y - TextSize.Y * 0.5), Label.Name, Font, FAbyssUiStyle::WithAlpha(Color, Alpha));
+		if (Label.bChampion && Label.Desc.Kind == EAbyssWorldWidgetKind::Monster)
+		{
+			// The champion glyph: a crimson diamond (the sigil's ember, DR5: never ember orange) on a dark keyline, left of
+			// the name.
+			const FVector2D Glyph(Anchor.X - TextSize.X * 0.5 - 7.0, Y - TextSize.Y * 0.5);
+			P.Diamond(Glyph, 9.f, FLinearColor(0.f, 0.f, 0.f, 0.8f * Alpha));
+			P.Diamond(Glyph, 6.f, FAbyssUiStyle::WithAlpha(FAbyssUiStyle::Rgb(AbyssMonsterLookRules::ChampionRgb), Alpha));
+		}
 		Y -= TextSize.Y + 2.0;
 	}
 	// NPC quest marker (quests 5.6): "!" available, "?" turn-in (gold) / in progress (grey), bobbing 4 px over 600 ms. The

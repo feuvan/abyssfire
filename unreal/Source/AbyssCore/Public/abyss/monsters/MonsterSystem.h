@@ -236,9 +236,9 @@ class ABYSS_API MonsterSystem {
   EntityId RaiseCorpse(uint32_t corpseId, const MonsterDef& base, EntityId raiser, double hpPct, std::string_view abilityId);
   // A summon's / an on-death spawn's body at `pos` (EvMonsterRaised with corpseId 0), else as RaiseCorpse.
   EntityId SummonAt(const MonsterDef& base, Vec2 pos, EntityId raiser, double hpPct, std::string_view abilityId);
-  // Every body (corpse or remains, seeds too) whose 0.35-tile body touches the shape burns: EvCorpseRemoved{burned}.
-  // Returns how many burned.
-  int32_t BurnCorpses(const AbilityShapeDef& shape, Vec2 origin, Vec2 dir);
+  // Every body (corpse or remains, seeds too) whose 0.35-tile body touches the shape burns: EvCorpseRemoved{burned,
+  // burner} (`burner`: the fire's source, presentation only). Returns how many burned.
+  int32_t BurnCorpses(const AbilityShapeDef& shape, Vec2 origin, Vec2 dir, EntityId burner = kNoEntity);
   // Raised bodies standing for `raiser` (alive).
   int32_t RaisedAliveOf(EntityId raiser) const;
   // A Raised body falls without a kill because its raiser died: EvPlayAnim{Death}, EvMonsterCollapsed, statuses and its
@@ -384,7 +384,7 @@ class ABYSS_API MonsterSystem {
   // Registers the body of `m` at `pos`; returns its corpse id (0 when the definition leaves none). Evictions emit
   // EvCorpseRemoved{expired} after the EvCorpseAdded.
   uint32_t AddBody(const MonsterInstance& m, Vec2 pos, bool spent);
-  void RemoveCorpse(uint32_t id, CorpseRemoveReason reason, EntityId by);
+  void RemoveCorpse(uint32_t id, CorpseRemoveReason reason, EntityId by, EntityId burner = kNoEntity);
   // Lists a Raised body (role, raiser, life, root for the Rise clip, chasing) and emits its rise events.
   EntityId StandUp(MonsterInstance&& m, Vec2 pos, uint32_t corpseId, EntityId raiser, std::string_view abilityId,
                    bool selfRise);

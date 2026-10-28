@@ -407,6 +407,139 @@ and imports `T_FX_TelegraphRim` / `T_FX_TelegraphFill`; the plan warns when they
    before (no decal, no `elite.*.death`, not even for a Scorched / Gravecold elite or a cursed corpse).
 9. Mobile low, Valdras's P3: `stat unit` / GPU time with the arena up (one 18.6 m translucent quad) against the budget.
 
+## Dark remake corpses and monster states (2G U3)
+
+The Wave 2 core's corpse registry (K3), phases (K4), packs, morale, blocks and buffs (K5) shown on screen. The decisions
+live in `Private/Actors/AbyssCorpseRules.h` (the ash contract, the corpse block, the timeline, removals, the story hold,
+reconcile, the cap, the burn colour) and `Private/Actors/AbyssMonsterLookRules.h` (flight and shield facing, held
+items, phase looks, auras, pulses, block / flight cues, the elite sigil, the champion glyph, the death recipe chain,
+the art warm-up) - UE-free, header-only, tested by `PresentationTests/tests/corpse_test.cpp` and
+`monsterlook_test.cpp` (and `theme_test.cpp` for the sigil chain) on the real `Data/` (`monsters.json`, `maps.json`,
+`assets.json`), `vfx_recipes.json` and the audio manifest. `UAbyssCorpseLayer` (`Public/Actors/AbyssCorpses.h`,
+`Private/Actors/AbyssCorpses.cpp`, a world subsystem ticked by `UAbyssWorldBuilder::SyncFrame` after the characters
+and before the telegraphs / VFX) only converts. DECISIONS DR6 (ash mode), DR5, DR16.
+
+* **Ash husks**: a monster whose definition leaves a registry entry (`corpse.leaves` corpse / remains) and whose art
+  carries a drawable `corpse` block holds its Death pose (`AAbyssCharacterActor` corpse-holding death: the Death clip
+  at rate 1 to `holdFromMs`, standing where it fell: no throw, hop, spin or fade; the elite marker and affix halo go).
+  Once the held pose has been drawn three frames on screen the body's component tick stops (no pose evaluation or bone
+  refresh for a lying husk); a reset, a rise or the fade fallback resumes it. The block's geometry (centre, radius,
+  top) is authored at scale 1 and scaled by the body's drawn scale (`GetBodyScale`: a hunt leader is x1.25).
+  On `EvCorpseAdded` the world builder hands the actor over (`ReleaseCorpseActor`) and the layer runs the timeline on
+  the **sim clock** (`Frame.RenderSimMs`): hold 450 ms, grey 380 ms (every toon / ink slot of the body and its held
+  items on the twin masters `M_AF_Toon_Ash` / `M_AF_Outline_Ash`, a dynamic instance per slot with the slot's own
+  parameters; scalars `Grey`, `Dissolve`, `HuskTopCm`; ash #6E6A62 lit / #3E3B37 shadow, emissive markers out),
+  crumble by plates to .38 over 900 ms with `corpse.crumble` at the husk centre, then a husk until the core removes the
+  entry (20 s). The blob shadow follows the pelvis and thins to .35 with the crumble. The removal picks the end:
+  `expired` dissolves to nothing over 700 ms with `corpse.expire` (the ash blows along world +X); `raised` goes at once
+  (`monster.raise` at the spot; the risen monster starts with the husk's grey / dissolve and reverses it over the
+  first 60 % of its Rise); `consumed` crumbles away in 350 ms; `burned` flares `corpse.burn` in the colour of the
+  fire's side, named by the core (`EvCorpseRemoved::burner`, 2G review: the hero for its skills, the monster whose
+  strike, hazard or on-death burst it was, the killer of a fire killing blow): the hero's or its beast's fire is ember
+  #FF7A2A (or the impact colour of the fire kill that made this very body), an enemy's breach violet #B02FD0 whether
+  or not it hit anyone, no source the recipe's grey; then it greys, crumbles and blows away.
+* **Breach-blood**: a breach body (the Breachclot, the Cinderbloat: corpse block `look: puddle`, no registry entry)
+  leaves its Death clip's tar puddle (`puddleDecal`: #2A0E14 at .7 / the Cinderbloat's scorched #1A0A0A at .6, radius
+  1.1 / 1.2 x the body's half-width W, the art's `footprintRadiusCm` - the convention of its `radiusFactorOfWidth`
+  and the blob shadow's -, x the drawn scale: 48 cm / 71 cm) at the death: the shipped `Puddle` decal sprite through a
+  runtime recipe
+  (`AbyssCorpseRules::PuddleRecipeJson`, `UAbyssVfxSystem::PlayRuntimeRecipe`), fading in over the Death clip and drying
+  in 3 s; the body itself dies as today. The Wave 1 slime's puddle decal has no corpse block: it is not drawn.
+* **Seeds and late views**: map `corpseSeeds` (and registry entries the events never announced) are spawned as posed
+  husks (`SpawnHuskActor` + `PoseAsHusk`: the Death clip's hold frame, frozen; grey, crumbled), at a yaw spread by the
+  entry id, on the ground once the zone is built. Entries gone from the snapshot without an event dissolve like an
+  expiry.
+* **Story hold**: the Corpseherd's body during `cs_rf_herd` and Valdras's during `cs_rf_marshal_falls` keep their death
+  pose (no grey) while the beat plays or the director is busy before it ends; the hold counts from the beat's end.
+* **Cap** (`ApplyQuality`): 32 husks on desktop; mobile 12 / 20 / 32 (low / balanced / high). Overflow retires the
+  oldest early (seeds and story-held bodies kept first) with `corpse.expire`.
+* **Gnawers and the Feed**: the gnawer's Consume channel (`EvPlayAnim{clip Consume}`) plays `corpse.consume` once from
+  its jaws toward the husk (stopped when the channel is cut short: `EvMonsterAttackCancelled`, a stun, the body
+  burned); the eaten body crumbles away. A boss Feed (`EvMonsterFeed`) drains the held body toward .85 dissolve by its
+  due time and plays `monster.<defId>.feed` from the body to the feeder (Valdras: `monster.valdras.feed`).
+* **Monster states**: a fleeing monster (`MonsterState::Flee`) walks / runs and faces its heading; a blocker
+  (`blockArcDeg` > 0) keeps facing its heading while it attacks (the shield wall keeps one front). `EvBlock` sparks
+  `monster.block` across the blow at the blocker's chest (its point on the tower shield's `face` socket, manifest
+  `fx.block`) and the audio system plays the clang. The aura loop (`monster.<defId>.aura`, else the art's: the
+  roll-call bearer shows the standard-bearer's) runs while `auraRadius` > 0 at the aura's radius (no decal); the
+  Unburied affix loops `elite.unburied`; `EvMonsterPhase` starts the phase look: the zealot's frenzy from his phase 1
+  - the surge `notify.FX_Frenzy` at the phase entry (his row has no enter action, 2F-D8: no Roar plays; a row that
+  entered with the Roar would leave it to the clip's own `FX_Frenzy` notify) and the breath loop -, Valdras's burning
+  standard from his third phase (`monster.valdras.standard_fire`); a reset or the death drops it. Loops in the body's
+  frame turn with it (`UAbyssVfxSystem::SetHandleBlow`, pushed only once the facing moved more than 2 degrees). The
+  Cinderbloat's vent sheds `monster.ash_flakes` while it lives (manifest `fx.ashFlakes`). A buff / call
+  (`EvMonsterBuffCast`) pulses `monster.<defId>.<abilityId>`, else - when the clip the ability's definition casts with
+  carries no FX notifies of its own (the drummer's Cast01 beats `FX_DrumBeat_1..4`, so nothing doubles them; the
+  Hungerbell's supper bell has no clip, so a Clapper Slam playing at the time no longer hides it) - the bell's violet
+  ring (`notify.FX_bell_ring`) for the breach-touched (Unburied, breach) and the drum's pale dust
+  (`notify.FX_DrumBeat_1`) for the Living and the Gravegnawers (beasts carry no violet). The drummer's own aura has no
+  look yet (no `monster.deserter_drummer.aura` recipe: an art follow-up, dust and no light).
+* **Markers**: in a zone with a presentation theme an elite or mini-boss carries the Wave 2 sigil (`elite_sigil`,
+  `SM_FX_EliteSigil`) on `fx_elite` (else `fx_overhead`), at one world size on every body (absolute scale), floating
+  6 cm over the socket with a symmetric 3 cm bob over 1600 ms and a 45 deg/s turn; art with `eliteMarker: "none"`
+  (Valdras) shows none; elsewhere (chapters 2-5, the Labyrinth) today's crown. A living pack leader (a mix's leader, the
+  champion ambush's Muster) always shows its name with a crimson champion diamond (#C0283A on a dark keyline) before
+  it.
+* **Kills**: the death recipe is `death.<defId>`, else `death.<family>` (unburied, living, gravegnawers, breach: their
+  own palette, in the victim's frame), else today's `death.burst` (#FF4444 along the blow); a Raised body drops no
+  coins. Monsters without a family keep the burst and the coins.
+* **Held items**: every attachment of the art beyond the two hands is a component of its own on its socket (the
+  Unburied's kettle helm on `head` no longer replaces the sword, crossbow, mace or standard pole); it casts, takes the
+  CPD feedback, gets its own selection-rim copy (R16: the whole silhouette) and turns to ash with the body.
+* **Art warm-up**: a zone transition preloads every definition the zone can show (spawn mixes, leaders, variants,
+  corpse seeds, hunts, the mini-boss, what they raise / summon / spawn on death) and the art a corpse rises as.
+* **Fallbacks**: without the ash twins (an older content build: one warning `Corpses: M_AF_Toon_Ash / M_AF_Outline_Ash
+  missing`) no death holds and nothing is drawn here: every monster fades as before. An art asset without a corpse
+  block, a missing recipe or sigil asset falls back to today's fade, nothing, or the crown. Chapters 2-5 have no
+  corpse-leaving definitions, families, leaders, phases, blockers or auras and no presentation theme: they look and
+  sound exactly as before.
+
+**On the Mac, look at** (after `Scripts/build_content.sh`, which builds `/Game/Abyssfire/Materials/M_AF_Toon_Ash` and
+`M_AF_Outline_Ash` and imports `T_FX_AshNoise`; the plan warns when the noise is missing):
+
+1. The log has no `M_AF_Toon_Ash / M_AF_Outline_Ash missing` line; both masters open in the editor (`M_AF_Toon_Ash`:
+   custom nodes `AF_AshMask` and `AF_AshGrey`, scalars `Grey` / `Dissolve` / `HuskTopCm` / `EdgeWidth` /
+   `NoiseTileCm`, texture `Noise` = `T_FX_AshNoise`; previews with `Grey` 1 / `Dissolve` .38 show a grey body with
+   plates missing from the top down and a pale edge).
+2. A Risen Footman kill on the darkest march tile: the Death clip plays to its end at normal speed where it fell, holds
+   ~0.45 s, greys over ~0.4 s (ink stays dark, no glowing eyes), crumbles to a husk in ~0.9 s with ash dust; the blob
+   shadow sits under the pelvis and fades to a faint smudge. After ~20 s the husk blows away along +X. Its kettle helm
+   stays on its head in life and turns to ash with it (the sword is still in its hand); hovering it, the selection rim
+   rings the helm too. A hunt leader's kill (Dreck, Harke: drawn x1.25): the crumble dust, the expiry and a burn play on
+   the body's middle, not short of it, and the dissolve eats the whole body from the top (no band left standing).
+3. A fire kill (the mage's fireball) on a Living deserter: an ember flare (#FF7A2A) and soot, the body greys at once and
+   crumbles; a fire wall over husks with no living target: ember too. Valdras's Oath Brand hazard burning a husk: a
+   violet flare; his Banner Sweep missing the hero (a dodge) over husks: violet, not grey; a hero fire area cast while
+   his P3 ring burns the hero: still ember.
+4. The Corpseherd's Call the Flock raising a husk: the ash bursts, the footman stands up grey and the grey drains off
+   over the first ~60 % of its Rise; its self-rise (the Unburied trait) the same with its own body. Killing the
+   Corpseherd collapses its raised flock: their bodies become husks, and its own body stays posed (no grey) through
+   `cs_rf_herd`, then greys.
+5. A Gravegnawer eating a husk: ash and grit tossed at its jaws for 2 s, the husk crumbles away; stun it mid-channel:
+   the tearing stops at once.
+6. Valdras: P1 shows no sigil over him (eliteMarker none); P3 the standard burns (violet, turning with him); a raised
+   footman killed near him streams violet into the standard (Feed) while its body drains; his death plays
+   `death.valdras` and his body holds through `cs_rf_marshal_falls`.
+7. The oath zealot's frenzy (<= 50 % life): no Roar (he surges at once): the `FX_Frenzy` puff of breath and a pale ring
+   at his head the moment he crosses 50 %, then the breath cloud before the hood every ~0.3 s, staying in front as he
+   turns, gone on his death or when he walks home.
+8. The Dead Standard-Bearer's crimson aura stain (5 tiles) breathing on the ground while it lives; an Unburied-affix
+   elite's violet cracks under its feet; the Deserter Drummer's war drum beats dust four times, no extra pulse (its
+   aura shows nothing yet); the Hungerbell's supper bell puffs pale dust (no violet), also when it calls during a
+   Clapper Slam; a Cinderbloat sheds ash flakes from its vent until it bursts.
+   A Breachclot kill leaves a dark tar puddle (about 1 m across, a little wider than its body) that spreads as it melts
+   and dries in ~3 s; a Cinderbloat leaves a scorched one (about 1.4 m) with its shards inside it.
+9. A shieldbearer wall: hitting it from the front sparks white on the shield face with a clang; the wall keeps facing
+   its heading while swinging. Breaking a deserter pack (kill the leader): the deserters run (walk / run clips, facing
+   away), the leader showed the crimson champion diamond before its name.
+10. An elite in the march: the sigil floats level over the head at the same size on a hunt leader (x1.25) and a
+    regular, never dipping into the helm, turning slowly; the Twilight Forest's elites still wear today's crown.
+11. Thirty husks on screen (`stat unit`, mobile low: 12 drawn, the oldest blow away early): the husks' skeletal meshes
+    stop ticking once lying (`stat anim` drops back to the living bodies' cost a few frames after each husk settles;
+    no husk pops to a reference pose when panned back on screen); a zone change clears them without a hitch; entering
+    the march shows its seeded husks lying grey at once.
+12. Chapters 2-5 and a Labyrinth floor: kills burst red with coins and fade exactly as before; no sigil, no husks.
+
 ## In-game autotest (`-abyssautotest`)
 
 `UAbyssAutoTestSubsystem` (`Private/Framework/AbyssAutoTestSubsystem.{h,cpp}`, switches in `AbyssAutoTest.h`) plays

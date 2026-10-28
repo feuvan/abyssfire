@@ -16,7 +16,10 @@ Contract with the runtime (Source/Abyssfire/Public/World/WorldContract.md 2.1, A
   plan always holds MI_AF_SelectRim (plan_look_parameters, SELECT_RIM_DEFAULTS);
 * the enemy telegraph (dark remake U2 / 2G): manifest `materials.M_AF_Telegraph` -> the constants M_AF_Telegraph bakes
   as parameter defaults (telegraph_contract) and its two textures (T_FX_TelegraphRim / _Fill), planned even without the
-  texture scan.
+  texture scan;
+* the ash husk (dark remake U3 / 2G stage C): manifest `materials.M_AF_AshDissolve` -> the colours, edge width and noise
+  tile M_AF_Toon_Ash / M_AF_Outline_Ash bake as parameter defaults (ash_contract) and the noise (T_FX_AshNoise), planned
+  even without the texture scan.
 """
 from __future__ import annotations
 
@@ -120,6 +123,51 @@ def telegraph_contract(data: dict[str, Any], problems: list[Problem] | None = No
         if isinstance(name, str) and _NAME_RE.match(name):
             setattr(t, attr, name)
     return t
+
+@dataclass
+class AshContract:
+    """M_AF_AshDissolve's constants (manifest materials.M_AF_AshDissolve; Art/blender/vfx/fx_recipes_dark.py
+    ASH_DISSOLVE). The defaults are the contract as shipped (the runtime's AbyssCorpseRules::FAshContract keeps the same
+    copy); Grey / Dissolve / HuskTopCm are the runtime's per-body scalars, the timeline is the runtime's."""
+    ash_color: str = "#6E6A62"
+    ash_shade: str = "#3E3B37"
+    edge_color: str = "#B8B2A6"
+    edge_width: float = 0.06
+    noise_tile_cm: float = 60.0        # textures.Noise.map: "object-space XZ / 60 cm"
+    noise_texture: str = "T_FX_AshNoise"
+    present: bool = False              # the manifest carries the contract (else these defaults)
+
+
+def ash_contract(data: dict[str, Any], problems: list[Problem] | None = None) -> AshContract:
+    """The contract's material constants; a malformed colour is an error, a missing field keeps the default."""
+    a = AshContract()
+    raw = (data.get("materials") or {}).get("M_AF_AshDissolve")
+    if not isinstance(raw, dict):
+        return a
+    a.present = True
+    params = raw.get("params") or {}
+    for attr, key in (("ash_color", "AshColor"), ("ash_shade", "AshShade"), ("edge_color", "EdgeColor")):
+        value = params.get(key)
+        if value is None:
+            continue
+        text = str(value)
+        if not _HEX_RE.match(text):
+            if problems is not None:
+                problems.append(Problem("error", "materials M_AF_AshDissolve", f"params.{key}: not a #RRGGBB colour"))
+            continue
+        setattr(a, attr, text if text.startswith("#") else f"#{text}")
+    edge = params.get("EdgeWidth")
+    if isinstance(edge, (int, float)) and 0.0 <= float(edge) <= 1.0:
+        a.edge_width = float(edge)
+    noise = (raw.get("textures") or {}).get("Noise") or {}
+    name = noise.get("texture")
+    if isinstance(name, str) and _NAME_RE.match(name):
+        a.noise_texture = name
+    tile = re.search(r"([0-9]+(?:\.[0-9]+)?) cm", str(noise.get("map") or ""))
+    if tile and float(tile.group(1)) > 0.0:
+        a.noise_tile_cm = float(tile.group(1))
+    return a
+
 
 # Additive base pose: manifest `additiveBase.type` -> unreal.AdditiveBasePoseType member.
 ADDITIVE_BASE_TYPES = {
@@ -392,6 +440,7 @@ class Plan:
     problems: list[Problem] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)  # assets dropped by the family filter or errors
     telegraph: TelegraphContract = field(default_factory=TelegraphContract)   # M_AF_Telegraph's constants
+    ash: AshContract = field(default_factory=AshContract)                     # M_AF_Toon_Ash / _Outline_Ash's constants
 
     def texture(self, name: str) -> TextureEntry | None:
         for t in self.textures:
@@ -891,6 +940,7 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
 
     # ---- textures ----
     telegraph = telegraph_contract(data, problems)
+    ash = ash_contract(data, problems)
     textures = plan_textures(export_dir, palettes, data, problems, scan=scan_textures)
     # ---- painted ground: MI_AF_Terrain_<Theme> per manifest terrain section (needs the planned textures) ----
     for terrain_instance, subject in plan_terrain_instances(data, textures, problems):
@@ -901,7 +951,7 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
 
     return Plan(manifest_path=manifest_path, export_dir=export_dir, shading=shading, palettes=palettes, assets=assets,
                 skeleton_families=families_map, textures=textures, instances=instances, slot_materials=slot_materials,
-                problems=problems, skipped=skipped, telegraph=telegraph)
+                problems=problems, skipped=skipped, telegraph=telegraph, ash=ash)
 
 
 def classify_texture(name: str) -> tuple[str, str, bool]:
@@ -978,6 +1028,15 @@ def plan_textures(export_dir: Path, palettes: dict[str, Palette], data: dict[str
                 problems.append(Problem("warning", f"materials {paths.M_TELEGRAPH}",
                                         f"{path.name} missing: the decal draws on the default glow texture"))
             add(path, f"materials {paths.M_TELEGRAPH}", False)
+    # the ash husk's noise (Art/Export/VFX), planned even without the scan: M_AF_Toon_Ash / M_AF_Outline_Ash bake it as
+    # their texture default; a missing one leaves the dissolve on the default glow (warned)
+    ash = ash_contract(data)
+    if ash.present:
+        path = export_dir / "VFX" / f"{ash.noise_texture}.png"
+        if not path.is_file():
+            problems.append(Problem("warning", "materials M_AF_AshDissolve",
+                                    f"{path.name} missing: the ash dissolve samples the default glow texture"))
+        add(path, "materials M_AF_AshDissolve", False)
     # the painted ground's layers and detail atlas (plan_terrain_instances binds them; a missing one is reported there)
     for theme, section in sorted((data.get("terrain") or {}).items()):
         if not isinstance(section, dict):

@@ -319,8 +319,10 @@ namespace AbyssArtManifestPrivate
 	}
 
 	/**
-	 * An asset's raw blocks for GetAssetJson: `fx`, `corpse`, and `clips.<name>` with each clip's `runtime`,
-	 * `puddleDecal` and `corpse` blocks; a null value when the asset carries none of them.
+	 * An asset's raw blocks for GetAssetJson: `fx`, `corpse`, the `eliteMarker` opt-out (2G U3: "none" on Valdras), and
+	 * `clips.<name>` with each clip's `runtime`, `puddleDecal` and `corpse` blocks; alongside them the body half-width
+	 * their radius factors scale (`footprintRadiusCm`, `blobShadowRadiusCm`: AbyssCorpseRules::BodyHalfWidthCm); a null
+	 * value when the asset carries none of the blocks.
 	 */
 	abyss::JsonValue AssetBlocks(const abyss::JsonValue& Json)
 	{
@@ -331,6 +333,10 @@ namespace AbyssArtManifestPrivate
 			{
 				Out.Set(Key, *Block);
 			}
+		}
+		if (const abyss::JsonValue* Marker = Json.Find("eliteMarker"); Marker != nullptr && Marker->IsString())
+		{
+			Out.Set("eliteMarker", *Marker);
 		}
 		abyss::JsonValue Clips;
 		for (const abyss::JsonValue& Clip : Json.Get("anims").Items())
@@ -356,6 +362,16 @@ namespace AbyssArtManifestPrivate
 		if (Clips.IsObject())
 		{
 			Out.Set("clips", MoveTemp(Clips));
+		}
+		if (Out.IsObject())
+		{
+			for (const char* Key : { "footprintRadiusCm", "blobShadowRadiusCm" })
+			{
+				if (const abyss::JsonValue* Value = Json.Find(Key); Value != nullptr && Value->IsNumber())
+				{
+					Out.Set(Key, *Value);
+				}
+			}
 		}
 		return Out;
 	}

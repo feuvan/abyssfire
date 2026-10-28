@@ -166,10 +166,14 @@ struct EvCorpseAdded {
 // A body left the registry: it faded (expired: its time ran out or the per-zone cap pushed it out), stood up (raised:
 // `by` = the raiser, kNoEntity for the Unburied rise; EvMonsterRaised follows), was eaten (consumed: `by` = the eater,
 // at the end of its channel) or burned (fire over it). A zone change drops every body silently.
+// `burner` (burned only; 2G review C-m2, presentation: the colour of the flare): the fire's source - the hero for its
+// skills, the monster whose strike, hazard or on-death effect it was, the killer of a fire killing blow; kNoEntity
+// otherwise. Nothing in the sim reads it.
 struct EvCorpseRemoved {
   uint32_t corpseId = 0;
   CorpseRemoveReason reason = CorpseRemoveReason::Expired;
   EntityId by = kNoEntity;
+  EntityId burner = kNoEntity;
 };
 // A monster stood up (MonsterRole::Raised): from corpse `corpseId` (a raise; `selfRise` = the Unburied rise of the dead
 // monster's own body) or summoned at `pos` (corpseId 0: a summon ability, an on-death spawn). EvEntitySpawned comes

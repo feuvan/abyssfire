@@ -194,9 +194,19 @@ class CustomOutputPinTests(EditorTestCase):
             self.assertIn("return Lit;", src.get_editor_property("code"))
             self.assertEqual(mat._outputs["MaterialProperty.MP_EMISSIVE_COLOR"].get_editor_property("description"),
                              "AF_ToonSplit")
-        (note, subjects), = self.compat(report, "additional output")
-        self.assertEqual(sorted(subjects), sorted(f"{paths.MATERIALS_DIR}/{n}" for n in (paths.M_TOON,
-                                                                                         paths.M_TOON_FOLIAGE)))
+        notes = dict(self.compat(report, "additional output"))
+        by_output = {note.split(": ")[1].split(" built as")[0]: sorted(subjects) for note, subjects in notes.items()}
+        # the shadow-catcher toons (and the ash husk's twin, which also greys the split's Lit and reads the dissolve's
+        # edge band: 2G stage C); the ash outline uses AF_AshMask's main output only
+        self.assertEqual(by_output, {
+            "AF_ToonSplit.Lit": sorted(f"{paths.MATERIALS_DIR}/{n}" for n in (paths.M_TOON, paths.M_TOON_FOLIAGE,
+                                                                               paths.M_TOON_ASH)),
+            "AF_AshMask.Edge": [f"{paths.MATERIALS_DIR}/{paths.M_TOON_ASH}"],
+            "AF_AshGrey.AshLit": [f"{paths.MATERIALS_DIR}/{paths.M_TOON_ASH}"],
+        })
+        ash = fake_unreal.REGISTRY[f"{paths.MATERIALS_DIR}/{paths.M_TOON_ASH}"]
+        self.assertEqual(ash._outputs["MaterialProperty.MP_BASE_COLOR"].get_editor_property("description"),
+                         "AF_AshGrey_AshLit")
 
 
 class StaleEditorTests(EditorTestCase):

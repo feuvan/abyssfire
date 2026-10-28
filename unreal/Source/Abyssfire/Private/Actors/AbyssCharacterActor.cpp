@@ -10,17 +10,23 @@
 #include "Engine/SkinnedAssetCommon.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/Material.h"
+#include "Materials/MaterialInstance.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Rendering/SkeletalMeshLODRenderData.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 
 #include <array>
+#include <limits>
+#include <string>
+#include <vector>
 
 #include "abyss/base/Enums.h"
 #include "abyss/data/CombatData.h"
 
 #include "Actors/AbyssAnimActionRules.h"
+#include "Actors/AbyssCorpseRules.h"
+#include "Actors/AbyssMonsterLookRules.h"
 #include "Anim/AbyssAnimInstance.h"
 #include "Framework/AbyssText.h"
 #include "Framework/AbyssUnits.h"
@@ -189,6 +195,26 @@ namespace AbyssCharacterPrivate
 		}
 	}
 
+	// ---- dark remake U3: corpses and the ash look ----
+	/** Rendered frames a frozen held pose is drawn before the body's tick stops (UpdateHeldPoseTick). */
+	constexpr int32 HeldPoseSettleFrames = 3;
+	/** The bone the husk's blob shadow follows while the body lies (manifest corpse `shadow`). */
+	const FName& PelvisBone()
+	{
+		static const FName Name(TEXT("pelvis"));
+		return Name;
+	}
+
+	/** The ash twin of a slot's master (M_AF_Toon -> M_AF_Toon_Ash, M_AF_Outline -> M_AF_Outline_Ash), else nullptr. */
+	UMaterialInterface* AshTwinFor(UMaterialInterface* Material, UMaterialInterface* ToonAsh, UMaterialInterface* InkAsh)
+	{
+		static const FName ToonName(TEXT("M_AF_Toon"));
+		static const FName OutlineName(TEXT("M_AF_Outline"));
+		const UMaterial* Base = Material != nullptr ? Material->GetBaseMaterial() : nullptr;
+		const FName BaseName = Base != nullptr ? Base->GetFName() : NAME_None;
+		return BaseName == ToonName ? ToonAsh : (BaseName == OutlineName ? InkAsh : nullptr);
+	}
+
 	void ConfigureRimComponent(UPrimitiveComponent& Component)
 	{
 		Component.SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -273,6 +299,7 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	}
 
 	const float AssetScale = FMath::Max(0.01f, Art->Scale) * VisualScale;
+	BodyScale = AssetScale;
 	Body->SetSkeletalMeshAsset(Mesh);
 	Body->SetRelativeRotation(FRotator(0.f, MeshYawOffsetDeg, 0.f));
 	Body->SetRelativeScale3D(FVector(AssetScale));
@@ -285,6 +312,11 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 
 	ArtClips = Art->Clips;
 	ArtFx = Art->Fx;
+	ArtName = Art->Name;
+	// Dark remake U3: a death that holds its pose for the corpse layer (the world builder decided: AbyssCorpseRules).
+	bCorpseHold = Setup.bCorpseHold && EntityKind != abyss::EntityKind::Hero && Setup.CorpseHoldFromMs > 0.f;
+	CorpseHoldFromSec = Setup.CorpseHoldFromMs / 1000.f;
+	HuskTopCm = Setup.HuskTopCm * AssetScale;   // authored at scale 1; the dissolve measures the body as drawn
 	// Dark remake 2G: a death the art times itself (the Cinderbloat's fuse; every other asset keeps today's death).
 	const AbyssAnimActionRules::FDeathRuntime Runtime =
 		AbyssAnimActionRules::ParseDeathRuntime(Assets.GetManifest().GetAssetJson(Art->Name));
@@ -315,32 +347,58 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 		Anim->OnNotify.AddUObject(this, &AAbyssCharacterActor::HandleAnimNotify);
 	}
 
-	// Weapons: the class default attachments of the manifest (I6 swaps them for the equipped weapon type later).
+	// Weapons: the class default attachments of the manifest (I6 swaps them for the equipped weapon type later). The main
+	// and off hand by AbyssMonsterLookRules::ClassifyAttachments; any further attachment (dark remake U3: the Unburied's
+	// kettle helm on `head`, which used to replace their weapon) is a held item of its own on its socket.
 	DefaultMainHand = nullptr;
 	DefaultOffHand = nullptr;
 	DefaultMainSocket = FName(TEXT("weapon_r"));
 	DefaultOffSocket = FName(TEXT("weapon_l"));
+	std::vector<std::string> SocketNames;
 	for (const FAbyssArtAttachment& Attachment : Art->Attachments)
 	{
-		const FAbyssArtAsset* WeaponArt = Assets.GetManifest().FindAsset(Attachment.Object);
-		UStaticMesh* WeaponMesh = WeaponArt != nullptr ? Assets.LoadStaticMesh(*WeaponArt) : nullptr;
-		if (WeaponMesh == nullptr)
+		SocketNames.push_back(Attachment.Socket.IsNone() ? std::string() : AbyssText::ToStd(Attachment.Socket.ToString()));
+	}
+	const std::vector<std::string_view> SocketViews(SocketNames.begin(), SocketNames.end());
+	const AbyssMonsterLookRules::FAttachmentSlots Slots = AbyssMonsterLookRules::ClassifyAttachments(SocketViews);
+	auto LoadAttachment = [&Assets, Art](int32 Index) -> UStaticMesh*
+	{
+		if (Index < 0 || Index >= Art->Attachments.Num())
 		{
-			continue;
+			return nullptr;
 		}
-		if (Attachment.Socket == DefaultOffSocket)
+		const FAbyssArtAsset* WeaponArt = Assets.GetManifest().FindAsset(Art->Attachments[Index].Object);
+		return WeaponArt != nullptr ? Assets.LoadStaticMesh(*WeaponArt) : nullptr;
+	};
+	if (UStaticMesh* OffMesh = LoadAttachment(Slots.Off))
+	{
+		DefaultOffHand = OffMesh;
+	}
+	if (UStaticMesh* MainMesh = LoadAttachment(Slots.Main))
+	{
+		DefaultMainHand = MainMesh;
+		const FName MainSocket = Art->Attachments[Slots.Main].Socket;
+		DefaultMainSocket = MainSocket.IsNone() ? DefaultMainSocket : MainSocket;
+	}
+	TArray<TPair<UStaticMesh*, FName>> Extras;
+	for (const int Extra : Slots.Extras)
+	{
+		if (UStaticMesh* ExtraMesh = LoadAttachment(Extra))
 		{
-			DefaultOffHand = WeaponMesh;
-		}
-		else
-		{
-			DefaultMainHand = WeaponMesh;
-			DefaultMainSocket = Attachment.Socket.IsNone() ? DefaultMainSocket : Attachment.Socket;
+			Extras.Emplace(ExtraMesh, Art->Attachments[Extra].Socket);
 		}
 	}
 	MainHandMesh->SetCastShadow(Setup.bCastShadow);
 	OffHandMesh->SetCastShadow(Setup.bCastShadow);
 	SetWeaponMeshes(nullptr, NAME_None, nullptr, NAME_None);
+	SetExtraItems(Extras);
+	for (UStaticMeshComponent* Item : ExtraItems)
+	{
+		if (Item != nullptr)
+		{
+			Item->SetCastShadow(Setup.bCastShadow);
+		}
+	}
 
 	// Sizes: manifest bounds / height (R2), blob radius (art-inventory-ch1.md 1.4: radius per character).
 	VisualHeightCm = (Art->GetVisualHeightCm() > 1.f ? Art->GetVisualHeightCm() : 170.f) * AssetScale;
@@ -385,8 +443,12 @@ void AAbyssCharacterActor::SetShadowMode(bool bBlob, bool bCastDynamic)
 		BlobShadow->SetCustomPrimitiveDataFloat(AbyssCpd::Fade,
 			1.f - (1.f - CpdValues[AbyssCpd::Fade]) * (bCastDynamic ? BlobAlphaUnderSunShadow : 1.f));
 	}
-	for (UPrimitiveComponent* Component : { static_cast<UPrimitiveComponent*>(Body.Get()),
-			 static_cast<UPrimitiveComponent*>(MainHandMesh.Get()), static_cast<UPrimitiveComponent*>(OffHandMesh.Get()) })
+	TArray<UPrimitiveComponent*, TInlineAllocator<6>> Casters = { Body.Get(), MainHandMesh.Get(), OffHandMesh.Get() };
+	for (UStaticMeshComponent* Item : ExtraItems)
+	{
+		Casters.Add(Item);
+	}
+	for (UPrimitiveComponent* Component : Casters)
 	{
 		if (Component != nullptr)
 		{
@@ -603,7 +665,7 @@ void AAbyssCharacterActor::SyncRimWeapons()
 	{
 		return;
 	}
-	while (RimWeaponMaterials.Num() < 2)
+	while (RimWeaponMaterials.Num() < 2 + ExtraItems.Num())
 	{
 		RimWeaponMaterials.Add(nullptr);
 	}
@@ -661,6 +723,19 @@ void AAbyssCharacterActor::SyncRimWeapons()
 	};
 	Sync(RimMainHand, MainHandMesh, 0);
 	Sync(RimOffHand, OffHandMesh, 1);
+	// U3: the held items beyond the two hands (the Unburied's kettle helm) are part of the silhouette too.
+	while (RimExtraItems.Num() < ExtraItems.Num())
+	{
+		UStaticMeshComponent* Rim = NewObject<UStaticMeshComponent>(this);
+		ConfigureRimComponent(*Rim);
+		Rim->SetupAttachment(ExtraItems[RimExtraItems.Num()].Get());
+		Rim->RegisterComponent();
+		RimExtraItems.Add(Rim);
+	}
+	for (int32 Index = 0; Index < RimExtraItems.Num(); ++Index)
+	{
+		Sync(RimExtraItems[Index], ExtraItems.IsValidIndex(Index) ? ExtraItems[Index].Get() : nullptr, 2 + Index);
+	}
 	ApplyRimLook();
 	UpdateSelectionRimVisibility(/*bForce*/ true);
 }
@@ -720,6 +795,15 @@ void AAbyssCharacterActor::UpdateSelectionRimVisibility(bool bForce)
 	{
 		RimOffHand->SetVisibility(bShow && RimOffHand->GetStaticMesh() != nullptr && OffHandMesh != nullptr && OffHandMesh->IsVisible());
 	}
+	for (int32 Index = 0; Index < RimExtraItems.Num(); ++Index)
+	{
+		UStaticMeshComponent* Rim = RimExtraItems[Index];
+		const UStaticMeshComponent* Item = ExtraItems.IsValidIndex(Index) ? ExtraItems[Index].Get() : nullptr;
+		if (Rim != nullptr)
+		{
+			Rim->SetVisibility(bShow && Rim->GetStaticMesh() != nullptr && Item != nullptr && Item->IsVisible());
+		}
+	}
 }
 
 void AAbyssCharacterActor::ResetPresentation()
@@ -739,6 +823,13 @@ void AAbyssCharacterActor::ResetPresentation()
 	bDeathFinished = false;
 	bHeroDeath = false;
 	DeathElapsedSec = 0.f;
+	bCorpseDeath = false;
+	bCorpseAdopted = false;
+	bPoseHeld = false;
+	UpdateHeldPoseTick();   // the body ticks again
+	HuskShadowAlpha = 1.f;
+	bAshRise = false;
+	ClearAshLook();
 	for (float& Value : CpdValues)
 	{
 		Value = 0.f;
@@ -1018,6 +1109,15 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	}
 }
 
+bool AAbyssCharacterActor::ClipHasFxNotifies(FName InClipName) const
+{
+	const FAbyssArtClip* Clip = FindArtClip(InClipName);
+	return Clip != nullptr && Clip->Notifies.ContainsByPredicate([](const FAbyssArtNotify& Notify)
+	{
+		return Notify.Name.ToString().StartsWith(TEXT("FX_"));
+	});
+}
+
 void AAbyssCharacterActor::OnHitTaken(const abyss::EvHit& Event)
 {
 	if (!bHasArt || Event.dodged || bDying)
@@ -1191,6 +1291,14 @@ void AAbyssCharacterActor::BeginDeath(const abyss::EvPlayAnim& Event)
 	{
 		Anim->SetFrozen(false);
 	}
+	bCorpseDeath = false;
+	bCorpseAdopted = false;
+	bPoseHeld = false;
+	if (bCorpseHold && !bHeroDeath)
+	{
+		BeginCorpseDeath();
+		return;
+	}
 	// Dark remake 2G: a death the art times (the Cinderbloat's fuse: its Death clip at rate 1 for 900 ms, so FX_Burst @800
 	// lands on the core's 800 ms burst; the rig preset's 500 ms played it at 1.8 and put FX_Burst at 444 ms).
 	const bool bArtTimed = bDeathRuntime && !bHeroDeath && DeathRuntimeMs > 0.f;
@@ -1237,6 +1345,341 @@ void AAbyssCharacterActor::BeginDeath(const abyss::EvPlayAnim& Event)
 	}
 }
 
+void AAbyssCharacterActor::BeginCorpseDeath()
+{
+	// Dark remake U3 (DR6 ash mode): the Death clip at rate 1 to its hold frame, standing where it fell (no throw, hop or
+	// spin: the husk lies where the core's corpse entry is), never faded here: the corpse layer adopts the body on
+	// EvCorpseAdded and turns it to ash; without an entry in time the fallback fade of UpdateDeath runs.
+	bCorpseDeath = true;
+	bAshRise = false;   // a risen body that falls again: the corpse layer's timeline owns the ash from here
+	DeathTotalSec = FMath::Max(0.001f, CorpseHoldFromSec);
+	if (const FAbyssArtClip* Death = FindArtClip(FName(TEXT("Death"))))
+	{
+		PlayClip(*Death, 1.f, 0.f, "death");
+		LocomotionClip = NAME_None;
+	}
+	DeathThrowDir = FVector::ZeroVector;
+	DeathThrowCm = 0.f;
+	DeathHopCm = 0.f;
+	DeathSpinDeg = 0.f;
+	DeathAirSec = 0.f;
+	DeathFadeDelaySec = std::numeric_limits<float>::max();
+	DeathFadeSec = 0.f;
+	// The marker and the affix halo leave with the life (they would float over the husk for its 20 s).
+	if (CrownMesh != nullptr)
+	{
+		CrownMesh->SetVisibility(false);
+	}
+	if (AuraMesh != nullptr)
+	{
+		AuraMesh->SetVisibility(false);
+	}
+	bElite = false;
+}
+
+void AAbyssCharacterActor::AdoptAsCorpse()
+{
+	if (bCorpseDeath)
+	{
+		bCorpseAdopted = true;
+	}
+}
+
+void AAbyssCharacterActor::PoseAsHusk()
+{
+	if (!bHasArt)
+	{
+		return;
+	}
+	bDying = true;
+	bDeathFinished = false;
+	bHeroDeath = false;
+	ActionState = FActionState();
+	ActionState.Action = EAbyssCharacterAction::Death;
+	BeginCorpseDeath();
+	bCorpseAdopted = true;
+	// Posed at the clip's hold frame (the echo idiom's frozen pose, through the actor's own player): no notifies fire.
+	DeathElapsedSec = DeathTotalSec;
+	if (const FAbyssArtClip* Death = FindArtClip(FName(TEXT("Death"))))
+	{
+		if (UAbyssAnimInstance* Anim = GetAnim())
+		{
+			if (UAnimSequence* Seq = FindClip(Death->Name))
+			{
+				Anim->Play(Seq, false, 1.f, 0.f, FMath::Min(CorpseHoldFromSec, Death->LengthSec), {});
+				CurrentState = "death";
+				LocomotionClip = NAME_None;
+			}
+		}
+	}
+	bPoseHeld = true;
+	if (UAbyssAnimInstance* Anim = GetAnim())
+	{
+		Anim->SetFrozen(true);
+	}
+}
+
+bool AAbyssCharacterActor::EnsureAshMaterials(float TopCm)
+{
+	using namespace AbyssCharacterPrivate;
+	if (bAshApplied)
+	{
+		return true;
+	}
+	if (bAshUnavailable || !bHasArt || Body == nullptr)
+	{
+		return false;
+	}
+	UAbyssAssetLibrary* Assets = UAbyssAssetLibrary::Get(this);
+	UMaterialInterface* ToonAsh = Assets != nullptr ? Assets->LoadMaterial(TEXT("M_AF_Toon_Ash")) : nullptr;
+	UMaterialInterface* InkAsh = Assets != nullptr ? Assets->LoadMaterial(TEXT("M_AF_Outline_Ash")) : nullptr;
+	if (ToonAsh == nullptr || InkAsh == nullptr)
+	{
+		static bool bLogged = false;
+		UE_CLOG(!bLogged, LogAbyss, Warning,
+			TEXT("M_AF_Toon_Ash / M_AF_Outline_Ash not found (run Scripts/build_content.py): corpses fade as before"));
+		bLogged = true;
+		bAshUnavailable = true;
+		return false;
+	}
+	static const FName TopName(TEXT("HuskTopCm"));
+	AshSlots.Reset();
+	AshMaterials.Reset();
+	// Every toon / ink slot of the body and of each held item takes the same dissolve (no weapon lingers on the ground).
+	TArray<UPrimitiveComponent*, TInlineAllocator<6>> Components = { Body.Get(), MainHandMesh.Get(), OffHandMesh.Get() };
+	for (UStaticMeshComponent* Item : ExtraItems)
+	{
+		Components.Add(Item);
+	}
+	for (UPrimitiveComponent* Component : Components)
+	{
+		if (Component == nullptr || !Component->IsVisible())
+		{
+			continue;
+		}
+		const int32 NumSlots = Component->GetNumMaterials();
+		for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+		{
+			UMaterialInterface* Material = Component->GetMaterial(Slot);
+			UMaterialInterface* Twin = AshTwinFor(Material, ToonAsh, InkAsh);
+			UMaterialInstanceDynamic* Ash = Twin != nullptr ? UMaterialInstanceDynamic::Create(Twin, this) : nullptr;
+			if (Ash == nullptr)
+			{
+				continue;
+			}
+			if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Material))
+			{
+				Ash->CopyParameterOverrides(Instance);   // palette textures, look scalars, the hull's widths
+			}
+			Ash->SetScalarParameterValue(TopName, TopCm);
+			FAshSlot& Record = AshSlots.AddDefaulted_GetRef();
+			Record.Component = Component;
+			Record.Slot = Slot;
+			Record.Original = Material;
+			AshMaterials.Add(Ash);
+			Component->SetMaterial(Slot, Ash);
+		}
+	}
+	bAshApplied = AshSlots.Num() > 0;
+	AshGrey = AshDissolve = -1.f;
+	AshTopCm = TopCm;
+	return bAshApplied;
+}
+
+bool AAbyssCharacterActor::SetAshLook(float Grey, float Dissolve, float TopCm)
+{
+	const float G = FMath::Clamp(Grey, 0.f, 1.f);
+	const float D = FMath::Clamp(Dissolve, 0.f, 1.f);
+	if (!bAshApplied && G <= 0.f && D <= 0.f)
+	{
+		return !bAshUnavailable;   // nothing to show yet: the slots keep their own materials
+	}
+	const float Top = TopCm > 0.f ? TopCm : (HuskTopCm > 0.f ? HuskTopCm : VisualHeightCm);
+	if (!EnsureAshMaterials(Top))
+	{
+		return false;
+	}
+	static const FName GreyName(TEXT("Grey"));
+	static const FName DissolveName(TEXT("Dissolve"));
+	static const FName TopName(TEXT("HuskTopCm"));
+	const bool bGrey = !FMath::IsNearlyEqual(G, AshGrey, 0.0005f);
+	const bool bDissolve = !FMath::IsNearlyEqual(D, AshDissolve, 0.0005f);
+	const bool bTop = !FMath::IsNearlyEqual(Top, AshTopCm, 0.01f);
+	for (UMaterialInstanceDynamic* Ash : AshMaterials)
+	{
+		if (Ash == nullptr)
+		{
+			continue;
+		}
+		if (bGrey)
+		{
+			Ash->SetScalarParameterValue(GreyName, G);
+		}
+		if (bDissolve)
+		{
+			Ash->SetScalarParameterValue(DissolveName, D);
+		}
+		if (bTop)
+		{
+			Ash->SetScalarParameterValue(TopName, Top);
+		}
+	}
+	AshGrey = G;
+	AshDissolve = D;
+	AshTopCm = Top;
+	return true;
+}
+
+void AAbyssCharacterActor::ClearAshLook()
+{
+	for (const FAshSlot& Record : AshSlots)
+	{
+		UPrimitiveComponent* Component = Record.Component.Get();
+		UMaterialInterface* Original = Record.Original.Get();
+		if (Component != nullptr && Original != nullptr)
+		{
+			Component->SetMaterial(Record.Slot, Original);
+		}
+	}
+	AshSlots.Reset();
+	AshMaterials.Reset();
+	bAshApplied = false;
+	AshGrey = AshDissolve = AshTopCm = -1.f;
+}
+
+void AAbyssCharacterActor::BeginAshRise(float StartGrey, float StartDissolve, double StartSimMs, double SpanMs)
+{
+	if (!(StartGrey > 0.f) && !(StartDissolve > 0.f))
+	{
+		return;   // raised before it greyed (or summoned): nothing to reverse
+	}
+	bAshRise = true;
+	RiseStartGrey = StartGrey;
+	RiseStartDissolve = StartDissolve;
+	RiseStartSimMs = StartSimMs;
+	RiseSpanMs = FMath::Max(1.0, SpanMs);
+	if (!SetAshLook(StartGrey, StartDissolve, VisualHeightCm))
+	{
+		bAshRise = false;
+	}
+}
+
+void AAbyssCharacterActor::UpdateAshRise(double RenderSimMs)
+{
+	if (!bAshRise)
+	{
+		return;
+	}
+	const AbyssCorpseRules::FRiseAsh Ash = AbyssCorpseRules::RiseAsh(AbyssCorpseRules::FRiseStart{ RiseStartGrey, RiseStartDissolve },
+		RiseStartSimMs, RiseSpanMs, 1.0, RenderSimMs);
+	if (Ash.bDone)
+	{
+		bAshRise = false;
+		ClearAshLook();
+		return;
+	}
+	SetAshLook(static_cast<float>(Ash.Grey), static_cast<float>(Ash.Dissolve), VisualHeightCm);
+}
+
+void AAbyssCharacterActor::UpdateHeldPoseTick()
+{
+	// A husk's pose never changes once held: after it has been drawn a few times with the clock frozen (so the frozen
+	// frame is the evaluated one - a posed seed starts its clip at the hold frame and needs one evaluation), the body's
+	// component tick stops (no anim graph, no bone refresh, no skinning update for up to HuskCap bodies); the material
+	// scalars and the blob shadow do not need it. Off screen (OnlyTickPoseWhenRendered skips the pose) nothing counts.
+	if (Body == nullptr)
+	{
+		return;
+	}
+	if (!bPoseHeld)
+	{
+		HeldPoseRenderedFrames = 0;
+		if (bBodyTickPaused)
+		{
+			Body->SetComponentTickEnabled(true);
+			bBodyTickPaused = false;
+		}
+		return;
+	}
+	if (bBodyTickPaused)
+	{
+		return;
+	}
+	if (Body->WasRecentlyRendered(0.1f))
+	{
+		++HeldPoseRenderedFrames;
+	}
+	if (HeldPoseRenderedFrames >= AbyssCharacterPrivate::HeldPoseSettleFrames)
+	{
+		Body->SetComponentTickEnabled(false);
+		bBodyTickPaused = true;
+	}
+}
+
+void AAbyssCharacterActor::SetHuskShadowAlpha(float Alpha)
+{
+	HuskShadowAlpha = FMath::Clamp(Alpha, 0.f, 1.f);
+}
+
+bool AAbyssCharacterActor::GetHeldItemSocket(FName ItemAsset, FName Socket, FVector& OutLocation) const
+{
+	TArray<const UStaticMeshComponent*, TInlineAllocator<6>> Items = { MainHandMesh.Get(), OffHandMesh.Get() };
+	for (const UStaticMeshComponent* Item : ExtraItems)
+	{
+		Items.Add(Item);
+	}
+	for (const UStaticMeshComponent* Item : Items)
+	{
+		const UStaticMesh* Mesh = Item != nullptr && Item->IsVisible() ? Item->GetStaticMesh() : nullptr;
+		if (Mesh != nullptr && (ItemAsset.IsNone() || Mesh->GetFName() == ItemAsset) && Item->DoesSocketExist(Socket))
+		{
+			OutLocation = Item->GetSocketLocation(Socket);
+			return true;
+		}
+	}
+	return false;
+}
+
+void AAbyssCharacterActor::SetExtraItems(const TArray<TPair<UStaticMesh*, FName>>& Items)
+{
+	using namespace AbyssCharacterPrivate;
+	while (ExtraItems.Num() < Items.Num())
+	{
+		UStaticMeshComponent* Item = NewObject<UStaticMeshComponent>(this);
+		ConfigureAttachmentMesh(Item);
+		Item->SetupAttachment(Body);
+		Item->RegisterComponent();
+		ExtraItems.Add(Item);
+	}
+	ExtraItemSockets.SetNum(ExtraItems.Num());
+	for (int32 Index = 0; Index < ExtraItems.Num(); ++Index)
+	{
+		UStaticMeshComponent* Item = ExtraItems[Index];
+		if (Item == nullptr)
+		{
+			continue;
+		}
+		const bool bValid = Items.IsValidIndex(Index) && Items[Index].Key != nullptr && Body != nullptr
+			&& Body->DoesSocketExist(Items[Index].Value);
+		if (!bValid)
+		{
+			Item->SetStaticMesh(nullptr);
+			Item->SetVisibility(false);
+			ExtraItemSockets[Index] = NAME_None;
+			continue;
+		}
+		Item->SetStaticMesh(Items[Index].Key);
+		Item->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Items[Index].Value);
+		Item->SetVisibility(true);
+		ExtraItemSockets[Index] = Items[Index].Value;
+		ApplyCpdTo(Item);
+	}
+	if (RimBody != nullptr)
+	{
+		SyncRimWeapons();   // their selection-rim copies follow them (R16: the whole figure's silhouette)
+	}
+}
+
 void AAbyssCharacterActor::OnHeroRespawned()
 {
 	ResetPresentation();
@@ -1277,10 +1720,11 @@ void AAbyssCharacterActor::SetWeaponMeshes(UStaticMesh* MainHand, FName MainSock
 }
 
 void AAbyssCharacterActor::SetElite(bool bInElite, const TArray<FLinearColor>& InAffixColors, UStaticMesh* InCrownMesh,
-	UStaticMesh* InAuraMesh, UMaterialInterface* AuraMaterial)
+	UStaticMesh* InAuraMesh, UMaterialInterface* AuraMaterial, const FAbyssEliteMarker& Marker)
 {
 	bElite = bInElite;
 	AffixColors = InAffixColors;
+	EliteMarker = Marker;
 	if (bElite && InCrownMesh != nullptr && CrownMesh == nullptr)
 	{
 		CrownMesh = NewObject<UStaticMeshComponent>(this, TEXT("EliteCrown"));
@@ -1292,10 +1736,25 @@ void AAbyssCharacterActor::SetElite(bool bInElite, const TArray<FLinearColor>& I
 	if (CrownMesh != nullptr)
 	{
 		CrownMesh->SetStaticMesh(InCrownMesh);
-		const FName Overhead = AbyssAnchorSocketName(EAbyssAnchor::Overhead);
-		if (Body != nullptr && Body->DoesSocketExist(Overhead))
+		// Wave 2 sigil (AbyssMonsterLookRules::FSigilMotion): its own fx_elite socket (fx_overhead on older rigs), one world
+		// size on every body (absolute scale); today's crown keeps fx_overhead and the body's scale.
+		FName Socket = AbyssAnchorSocketName(EAbyssAnchor::Overhead);
+		if (EliteMarker.bSigil && Body != nullptr)
 		{
-			CrownMesh->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Overhead);
+			if (!EliteMarker.Socket.IsNone() && Body->DoesSocketExist(EliteMarker.Socket))
+			{
+				Socket = EliteMarker.Socket;
+			}
+			else if (!EliteMarker.FallbackSocket.IsNone())
+			{
+				Socket = EliteMarker.FallbackSocket;
+			}
+		}
+		CrownMesh->SetUsingAbsoluteScale(EliteMarker.bSigil && EliteMarker.bAbsoluteScale);
+		CrownMesh->SetRelativeScale3D(FVector::OneVector);
+		if (Body != nullptr && Body->DoesSocketExist(Socket))
+		{
+			CrownMesh->AttachToComponent(Body, FAttachmentTransformRules::SnapToTargetNotIncludingScale, Socket);
 		}
 		else
 		{
@@ -1667,6 +2126,25 @@ void AAbyssCharacterActor::UpdateDeath(float DeltaSec)
 		return;
 	}
 	DeathElapsedSec += DeltaSec;
+	if (bCorpseDeath)
+	{
+		// U3: the Death clip stops on its hold frame (the anim clock freezes there); the body stays until the corpse layer
+		// lets it go. Not adopted within the clip + 1 s (the core registered no body for it): today's in-place fade from
+		// here.
+		if (!bPoseHeld && DeathElapsedSec >= DeathTotalSec)
+		{
+			bPoseHeld = true;
+		}
+		if (!bCorpseAdopted && AbyssCorpseRules::AdoptionTimedOut(static_cast<double>(DeathElapsedSec) * 1000.0,
+				static_cast<double>(DeathTotalSec) * 1000.0))
+		{
+			bCorpseDeath = false;
+			bPoseHeld = false;
+			DeathFadeDelaySec = DeathElapsedSec;
+			DeathFadeSec = 0.3f;
+		}
+		return;
+	}
 	if (!bDeathFinished && DeathElapsedSec >= DeathFadeDelaySec + DeathFadeSec)
 	{
 		bDeathFinished = true;
@@ -1736,11 +2214,19 @@ void AAbyssCharacterActor::UpdateMaterialFeedback(const FAbyssCharacterFrame& Fr
 		ApplyCpdTo(MainHandMesh);
 		ApplyCpdTo(OffHandMesh);
 		ApplyCpdTo(CrownMesh);
+		for (UStaticMeshComponent* Item : ExtraItems)
+		{
+			ApplyCpdTo(Item);
+		}
 		// Selection rim (R16): the follower carries the body's custom data, so M_AF_SelectRim dithers its Fade (13) on the
 		// same pixels as the body.
 		ApplyCpdTo(RimBody);
 		ApplyCpdTo(RimMainHand);
 		ApplyCpdTo(RimOffHand);
+		for (UStaticMeshComponent* Rim : RimExtraItems)
+		{
+			ApplyCpdTo(Rim);
+		}
 		bCpdDirty = false;
 	}
 }
@@ -1753,7 +2239,30 @@ void AAbyssCharacterActor::UpdateEliteVisuals(float DeltaSec)
 		return;
 	}
 	EliteTimeSec += DeltaSec;
-	if (CrownMesh != nullptr && CrownMesh->IsVisible())
+	if (CrownMesh != nullptr && CrownMesh->IsVisible() && EliteMarker.bSigil)
+	{
+		// The sigil: a level float over its socket with a symmetric bob about it (never into the head) and a steady turn,
+		// the offset taken in world units along world up whatever the socket's pose and scale.
+		AbyssMonsterLookRules::FSigilMotion Motion;
+		Motion.FloatCm = EliteMarker.FloatCm;
+		Motion.BobCm = EliteMarker.BobCm;
+		Motion.BobPeriodMs = EliteMarker.BobPeriodMs;
+		Motion.SpinDegPerSec = EliteMarker.SpinDegPerSec;
+		const double TimeMs = static_cast<double>(EliteTimeSec) * 1000.0;
+		const float LiftCm = static_cast<float>(AbyssMonsterLookRules::SigilLiftCm(Motion, TimeMs));
+		const FName Socket = CrownMesh->GetAttachSocketName();
+		if (!Socket.IsNone() && Body != nullptr && CrownMesh->GetAttachParent() == Body.Get())
+		{
+			const FTransform SocketXf = Body->GetSocketTransform(Socket, RTS_World);
+			CrownMesh->SetRelativeLocation(SocketXf.InverseTransformVector(FVector(0.f, 0.f, LiftCm)));
+		}
+		else
+		{
+			CrownMesh->SetRelativeLocation(FVector(0.f, 0.f, VisualHeightCm + 25.f + LiftCm));
+		}
+		CrownMesh->SetWorldRotation(FRotator(0.f, static_cast<float>(AbyssMonsterLookRules::SigilYawDeg(Motion, TimeMs)), 0.f));
+	}
+	else if (CrownMesh != nullptr && CrownMesh->IsVisible())
 	{
 		const float Bob = FMath::Sin(EliteTimeSec * 2.f * UE_PI / AuraPeriodSec) * 3.f;
 		const FName Overhead = AbyssAnchorSocketName(EAbyssAnchor::Overhead);
@@ -1821,7 +2330,7 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 	const bool bHitStop = FreezeRemainingMs > 0.f;
 	if (UAbyssAnimInstance* Anim = GetAnim())
 	{
-		const bool bAnimFrozen = bHitStop || bWorldHold;
+		const bool bAnimFrozen = bHitStop || bWorldHold || bPoseHeld;
 		if (Anim->IsFrozen() != bAnimFrozen)
 		{
 			Anim->SetFrozen(bAnimFrozen);
@@ -1870,6 +2379,8 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 	UpdateRecoil(ActionDelta);
 	UpdateDodgeOffset(VisualDeltaSec);
 	UpdateDeath(ActionDelta);
+	UpdateAshRise(Info.RenderSimMs);
+	UpdateHeldPoseTick();
 
 	FVector WorldOffset = FVector::ZeroVector;
 	FQuat WorldTilt = FQuat::Identity;
@@ -1944,10 +2455,18 @@ void AAbyssCharacterActor::PresentFrame(const FAbyssCharacterFrame& Frame, const
 		const float LiftPx = FMath::Max(0.f, Lift) / AbyssWorldUtil::VfxPxToCm;
 		const float K = FMath::Max(0.45f, 1.f - LiftPx / 24.f);
 		const float Diameter = BlobRadiusCm * 2.f / 100.f * K;
-		BlobShadow->SetRelativeLocation(FVector(LocalOffset.X, LocalOffset.Y, 1.5f));
+		FVector BlobOffset(LocalOffset.X, LocalOffset.Y, 1.5f);
+		if (bCorpseDeath && Body != nullptr && Body->DoesSocketExist(AbyssCharacterPrivate::PelvisBone()))
+		{
+			// U3: a lying body's shadow sits under its pelvis, not under the feet it stood on.
+			const FVector Pelvis = RootQuat.UnrotateVector(Body->GetSocketLocation(AbyssCharacterPrivate::PelvisBone()) - GetActorLocation());
+			BlobOffset = FVector(Pelvis.X, Pelvis.Y, 1.5f);
+		}
+		BlobShadow->SetRelativeLocation(BlobOffset);
 		BlobShadow->SetRelativeScale3D(FVector(Diameter, Diameter, 1.f));
-		// The body's fade, and 0.7 of the blob's alpha where the sun CSM casts the real shadow (DECISIONS P10 revised).
-		const float BlobAlpha = (1.f - CpdValues[AbyssCpd::Fade])
+		// The body's fade, and 0.7 of the blob's alpha where the sun CSM casts the real shadow (DECISIONS P10 revised);
+		// a husk's shadow thins with its ash (HuskShadowAlpha).
+		const float BlobAlpha = (1.f - CpdValues[AbyssCpd::Fade]) * HuskShadowAlpha
 			* (bBlobUnderSunShadow ? AbyssCharacterPrivate::BlobAlphaUnderSunShadow : 1.f);
 		BlobShadow->SetCustomPrimitiveDataFloat(AbyssCpd::Fade, 1.f - BlobAlpha);
 	}

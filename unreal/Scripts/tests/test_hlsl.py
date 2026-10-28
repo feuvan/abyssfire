@@ -1401,5 +1401,178 @@ class TelegraphMathTests(unittest.TestCase):
                     self.assertAlmostEqual(blue, 0.0, places=5)     # FillColor (yellow here) x grain 1
 
 
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The ash husk (dark remake U3 / 2G stage C): AF_AshMask / AF_AshGrey against the art's preview port
+# (Art/blender/vfx/fx_preview_dark.py apply_ash) and the real T_FX_AshNoise
+# ---------------------------------------------------------------------------------------------------------------------
+ASH_N = 4
+
+
+def ash_texel(col: int, row: int) -> tuple[float, float, float, float]:
+    """A synthetic 4 x 4 noise: R front, G cracks, B plates (distinct per texel)."""
+    r = ((col * 5 + row * 3) % 7) / 6.0
+    g = ((col * 2 + row * 7) % 5) / 4.0
+    b = ((col * 3 + row * 11) % 16) / 15.0
+    return r, g, b, 1.0
+
+
+def ash_mask_reference(lp: tuple, dz: float, dissolve: float, top: float, tile: float, edge_w: float,
+                       texel=ash_texel, n: int = ASH_N) -> tuple[float, float]:
+    """apply_ash's crumble for one pixel: (keep, edge) with nearest sampling (as the emulation)."""
+    u = (lp[0] / tile) % 1.0
+    v = (lp[2] / tile) % 1.0
+    r, g, b, _ = nearest(texel, n, n, u, v)
+    hf = min(max(dz / top, 0.0), 1.0)
+    w_b, w_r, w_g, w_h = hlsl.ASH_SCORE_WEIGHTS
+    score = b * w_b + r * w_r + (1.0 - g) * w_g + hf * w_h
+    cut = min(max(dissolve, 0.0), 1.0) * hlsl.ASH_CUT_SCALE
+    if dissolve <= 0.0:
+        return 1.0, 0.0
+    if score < cut:
+        return 0.0, 0.0
+    return 1.0, 1.0 if score < cut + edge_w else 0.0
+
+
+def ash_grey_reference(img: tuple, grey: float, edge: float, ash: tuple, shade: tuple, edge_c: tuple) -> list[float]:
+    """apply_ash's grey (and the crumble's edge glow) on one linear colour."""
+    lum = sum(c * w for c, w in zip(img, hlsl.ASH_LUMA))
+    k = min(max((lum - hlsl.ASH_LUMA_FLOOR) / hlsl.ASH_LUMA_SPAN, 0.0), 1.0)
+    ashed = [s + (a - s) * k for a, s in zip(ash, shade)]
+    if lum < hlsl.ASH_INK_LUMA:
+        ashed = [c * hlsl.ASH_INK_KEEP for c in img]
+    out = [c + (a - c) * grey for c, a in zip(img, ashed)]
+    e = min(max(edge, 0.0), 1.0) * hlsl.ASH_EDGE_MIX
+    return [c + (ec - c) * e for c, ec in zip(out, edge_c)]
+
+
+class AshContractTests(unittest.TestCase):
+    def test_nodes(self):
+        mask = hlsl.ash_mask_node()
+        self.assertEqual([o.name for o in mask.additional_outputs], ["Edge"])
+        self.assertIn("Noise.SampleGrad(NoiseSampler", mask.code)
+        before = mask.code.split("?")[0]
+        for d in ("ddx(nuv)", "ddy(nuv)"):
+            self.assertIn(d, before, "explicit gradients from the continuous UV before any branch")
+        self.assertIn("frac(nuv.x)", mask.code)   # the FX import clamps: the node wraps
+        grey = hlsl.ash_grey_node()
+        self.assertEqual([o.name for o in grey.additional_outputs], ["AshLit"])
+        # the runtime's contract copy (AbyssCorpseRules::FAshContract) has the same defaults as the plan's
+        rules = (HERE.parent.parent / "Source/Abyssfire/Private/Actors/AbyssCorpseRules.h").read_text(encoding="utf-8")
+        from abyss_content.manifest import AshContract
+        a = AshContract()
+        for field, value in (("AshRgb", a.ash_color), ("ShadeRgb", a.ash_shade), ("EdgeRgb", a.edge_color)):
+            self.assertRegex(rules, rf"uint32_t {field} = 0x{value[1:]};")
+        self.assertRegex(rules, rf"double EdgeWidth = {a.edge_width:g};")
+        self.assertRegex(rules, rf"double NoiseTileCm = {a.noise_tile_cm:g}\.0;")
+        self.assertRegex(rules, rf'std::string NoiseTexture = "{a.noise_texture}";')
+
+    def test_real_noise_leaves_a_husk(self):
+        """On the shipped T_FX_AshNoise the crumble removes plates monotonically, leaves most of the body standing at
+        crumbleTo (.38) and nothing at 1; the plates (B) decide more than the height."""
+        from abyss_content import pngio
+        path = HERE.parent.parent / "Art/Export/VFX/T_FX_AshNoise.png"
+        if not path.is_file():
+            self.skipTest("T_FX_AshNoise not exported")
+        w, h, px = pngio.decode_png_rgba(path.read_bytes())
+
+        def kept(dissolve: float) -> float:
+            n = keep = 0
+            for y in range(0, h, 4):
+                for x in range(0, w, 4):
+                    i = (y * w + x) * 4
+                    for hf in (0.1, 0.5, 0.9):
+                        k, _ = ash_mask_reference((x / w * 60.0, 0.0, y / h * 60.0), hf * 100.0, dissolve, 100.0, 60.0,
+                                                  0.06, texel=lambda c, r, i=i: (px[i] / 255, px[i + 1] / 255,
+                                                                                 px[i + 2] / 255, 1.0), n=1)
+                        keep += k
+                        n += 1
+            return keep / n
+
+        fractions = [kept(d) for d in (0.0, 0.1, 0.2, 0.38, 0.6, 0.8, 1.0)]
+        self.assertEqual(fractions[0], 1.0)
+        self.assertEqual(fractions[-1], 0.0)
+        for a, b in zip(fractions, fractions[1:]):
+            self.assertGreaterEqual(a, b)
+        self.assertGreater(fractions[3], 0.55)   # the husk
+        self.assertLess(fractions[3], 0.95)
+
+
+@unittest.skipIf(CXX is None, "no C++ compiler")
+class AshMathTests(unittest.TestCase):
+    def test_mask_matches_the_preview(self):
+        cases = []
+        for lp in ((5.0, 0.0, 7.0), (31.0, 4.0, 52.0), (-12.0, 0.0, 88.0), (130.0, -9.0, -40.0), (59.0, 0.0, 1.0)):
+            for dz in (0.0, 40.0, 95.0, 160.0):
+                for dissolve in (0.0, 0.1, 0.38, 0.7, 1.0):
+                    cases.append((lp, dz, dissolve, 100.0, 60.0, 0.06))
+        texels = ", ".join(f"float4({c[0]!r}f, {c[1]!r}f, {c[2]!r}f, {c[3]!r}f)"
+                           for c in (ash_texel(x, y) for y in range(ASH_N) for x in range(ASH_N)))
+        calls = []
+        for lp, dz, d, top, tile, ew in cases:
+            calls.append(f"    {{ float e = 0.f; float k = AF_AshMask(float3({lp[0]!r}f, {lp[1]!r}f, {lp[2]!r}f), "
+                         f"float3(1.f, 2.f, {dz + 500.0!r}f), float3(0.f, 0.f, 500.f), {d!r}f, {top!r}f, {tile!r}f, "
+                         f"{ew!r}f, noise, ss, e); std::printf(\"%.1f %.1f\\n\", k, e); }}")
+        main = (f"int main() {{\n    Texture2D noise; noise.Width = {ASH_N}; noise.Height = {ASH_N}; "
+                f"noise.Texels = {{ {texels} }};\n    SamplerState ss;\n" + "\n".join(calls) + "\n    return 0;\n}")
+        out = [list(map(float, line.split())) for line in
+               compile_and_run(cpp_unit([hlsl.ash_mask_node()], main), run=True).splitlines() if line.strip()]
+        self.assertEqual(len(out), len(cases))
+        dropped = edges = 0
+        for case, got in zip(cases, out):
+            want = ash_mask_reference(case[0], case[1], case[2], case[3], case[4], case[5])
+            with self.subTest(case=case):
+                self.assertEqual(tuple(got), want)
+            dropped += got[0] == 0.0
+            edges += got[1] == 1.0
+        self.assertGreater(dropped, 10)
+        self.assertGreater(edges, 0)
+        # Dissolve 0 keeps everything, 1 drops everything
+        for case, got in zip(cases, out):
+            if case[2] == 0.0:
+                self.assertEqual(got, [1.0, 0.0])
+            if case[2] == 1.0:
+                self.assertEqual(got[0], 0.0)
+
+    def test_grey_matches_the_preview_in_sun_and_in_shadow(self):
+        """The split's two parts grey so that the sunlit pixel (Emit + AshLit x sun) and the shadowed one (Emit) are what
+        apply_ash makes of the unshadowed and shadowed toon colours; Grey 0 without an edge changes nothing."""
+        from abyss_content.manifest import AshContract, hex_to_linear
+        a = AshContract()
+        ash, shade, edge_c = hex_to_linear(a.ash_color), hex_to_linear(a.ash_shade), hex_to_linear(a.edge_color)
+        cases = []
+        for emit in ((0.30, 0.12, 0.08), (0.02, 0.02, 0.03), (0.005, 0.004, 0.006), (0.7, 0.6, 0.9), (0.0, 0.0, 0.0)):
+            for lit_ in ((0.25, 0.20, 0.10), (0.0, 0.0, 0.0), (0.05, 0.08, 0.02)):
+                for sun in ((1.0, 0.95, 0.85), (0.6, 0.5, 0.45), (0.02, 1.0, 1.0)):
+                    for grey in (0.0, 0.5, 1.0):
+                        for edge in (0.0, 1.0):
+                            cases.append((emit, lit_, sun, grey, edge))
+        fmt = "float3({0!r}f, {1!r}f, {2!r}f)"
+        calls = []
+        for emit, lit_, sun, grey, edge in cases:
+            calls.append(f"    {{ float3 l = float3(0.f, 0.f, 0.f); float3 e = AF_AshGrey({fmt.format(*emit)}, "
+                         f"{fmt.format(*lit_)}, float4({sun[0]!r}f, {sun[1]!r}f, {sun[2]!r}f, 1.f), {grey!r}f, "
+                         f"{fmt.format(*ash)}, {fmt.format(*shade)}, {fmt.format(*edge_c)}, {edge!r}f, l); "
+                         f"std::printf(\"%.7f %.7f %.7f %.7f %.7f %.7f\\n\", e.x, e.y, e.z, l.x, l.y, l.z); }}")
+        main = "int main() {\n" + "\n".join(calls) + "\n    return 0;\n}"
+        out = [list(map(float, line.split())) for line in
+               compile_and_run(cpp_unit([hlsl.ash_grey_node()], main), run=True).splitlines() if line.strip()]
+        self.assertEqual(len(out), len(cases))
+        for (emit, lit_, sun, grey, edge), got in zip(cases, out):
+            with self.subTest(emit=emit, lit=lit_, sun=sun, grey=grey, edge=edge):
+                sun_c = [max(x, 0.05) for x in sun]
+                c_sun = [e + l * s for e, l, s in zip(emit, lit_, sun_c)]
+                want_sh = ash_grey_reference(emit, grey, edge, ash, shade, edge_c)
+                want_sun = ash_grey_reference(c_sun, grey, edge, ash, shade, edge_c)
+                got_sun = [got[i] + got[3 + i] * sun_c[i] for i in range(3)]
+                for i in range(3):
+                    self.assertAlmostEqual(got[i], want_sh[i], places=5)
+                    # the sunlit sum (AshLit clamps at 0 where the ash of the shadowed colour is the brighter)
+                    self.assertAlmostEqual(got_sun[i], max(want_sun[i], want_sh[i]), places=5)
+                if grey == 0.0 and edge == 0.0:
+                    for i in range(3):
+                        self.assertAlmostEqual(got[i], emit[i], places=6)
+                        self.assertAlmostEqual(got[3 + i], lit_[i], places=5)
+
 if __name__ == "__main__":
     unittest.main()

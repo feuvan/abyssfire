@@ -78,7 +78,9 @@ asset's `attachSocket`).
 `<id>@<presentationTheme>` for each of its ids, in chain order, and only then the plain chain (`{tree, decor_tree}` ->
 `tree@march`, `decor_tree@march`, `tree`, `decor_tree`). The variants hang off the plain id strings, including the
 generator-theme patterns (`outcrop_plains@march`, `palisade_plains@march`, `lily_pad_plains@march`); the elite crown takes
-`elite_crown@<theme>` before `SM_FX_EliteCrown`, a zone loop recipe `<recipe>@<theme>` before `<recipe>`. A variant must
+`elite_crown@<theme>` before `SM_FX_EliteCrown` (2G U3: in a themed zone the Wave 2 sigil `elite_sigil` is resolved on
+its own first, the crown chain only when it is missing; art with `eliteMarker: "none"` shows neither), a zone loop
+recipe `<recipe>@<theme>` before `<recipe>`. A variant must
 keep its plain id's `footprintTiles` / `blocking` (the core bakes walkability from the plain ids; the manifest load warns,
 `verify_march.py` checks at ship). A missing variant shows today's asset. Zones without a presentation theme never look
 at `@` ids.
@@ -99,7 +101,9 @@ tiles and takes its facing.
 ### 2.3 Skeletons, sockets, clips
 
 Sockets read by the world: `fx_feet`, `fx_chest`, `fx_head`, `fx_overhead`, `fx_hand_r`, `fx_hand_l` (missing sockets
-fall back to fractions of the asset height). Clip names used: `Idle`, `IdleNPC`, `Walk`, `Run`, `Hurt` (or additive
+fall back to fractions of the asset height); 2G U3: `fx_elite` (the Wave 2 sigil, else `fx_overhead`), `pelvis` (a lying
+husk's blob shadow), held items' `face` (the tower shield's block spark). Attachments beyond `weapon_r` / `weapon_l`
+(the Unburied's kettle helm on `head`) are held items of their own. Clip names used: `Idle`, `IdleNPC`, `Walk`, `Run`, `Hurt` (or additive
 `HurtAdd`), `Death`, `Dodge`, `Talk`, `Work`, `Open` (chests), attack / cast / signature clips from the manifest
 (`FindClipForSkill`). Anim notifies named `<N>` on clips play recipe `notify.<N>` (else `npc.<N>`).
 
@@ -260,6 +264,7 @@ renders the 3D scene, it no longer imitates the web canvas.
 | `M_AF_AffixAura` | elite affix ground aura | CPD Tint RGB + alpha |
 | `M_AF_BlobShadow` | blob shadow under every character on every tier (manifest `blobShadowRadiusCm`; 0.7 of its alpha where the sun CSM is on, DECISIONS P10 revised) | CPD Fade |
 | `M_AF_Telegraph` | enemy ground telegraphs on `SM_FX_Quad` (dark remake U2 / 2G, DECISIONS DR5 / DR16; `UAbyssTelegraphSystem`): strike / fuse decals, hazard zones, the arena ring. Unlit, translucent, two-sided; component sort priority -1, 8 cm over the ground; the quad yawed along the shape (+X = its direction) and scaled to its bounds | CPD (five float4 groups, `AbyssTelegraphRules::Cpd` = `hlsl.TELEGRAPH_CPD`; each vector parameter reaches the node as AppendVector(RGB, A), only the groups that moved since they were last sent are re-sent): `ShapeP` 0..3 (shape 0 circle / 1 ring / 2 cone / 3 line, A = radius / length cm, B = inner radius cm / half opening rad / half width cm, rim width cm), `QuadP` 4..7 (quad size cm, the shape's origin in the quad's frame cm), `InnerP` 8..11 (inner rim alpha, inset cm, width cm; arena wash band cm), `ModeP` 12..15 (fill on, rim outside, flash 0..1, progress 0..1), `AlphaP` 16..19 (fill / wash alpha, front alpha, rim alpha, spare). Vectors `FillColor` #FFE8DC, `RimColor` #D11F2E, `FrontColor` #FFF4EE, `FlashRimColor` #FF3A48, `WashColor` #D11F2E; scalars `FillGrain` .3, `FillTileCm` 160, `FrontWidthCm` 5, `RimTileCm` 120, `WashFadeInCm` 60 (manifest `materials.M_AF_Telegraph`); texture objects `Rim` (`T_FX_TelegraphRim`, 256x64 strip along the rim) and `Fill` (`T_FX_TelegraphFill`, 256² grain), wrapped in the shader (imported clamped) |
+| `M_AF_Toon_Ash`, `M_AF_Outline_Ash` | dark remake U3 / 2G (DECISIONS DR6, DR16; `UAbyssCorpseLayer`): the twins of `M_AF_Toon` / `M_AF_Outline` a dying monster's toon / ink slots (body and every held item) move to for the ash look - a dynamic instance per slot (`UMaterialInstanceDynamic::Create` + `CopyParameterOverrides` of the slot's instance: palette, look scalars, hull widths); the slot's own material comes back on a reset. Same blend / shading / settings as their originals, the same CPD (3.3), plus `AF_AshMask` (object-space noise plates cut from the top down: kept 0/1 into the dither mask and the shadow mask, a pale edge band) and `AF_AshGrey` (the toon split's Emit / Lit to the ash colours by `Grey`, emissive markers out) | scalars (MID, not CPD): `Grey` 0..1, `Dissolve` 0..1 (the plates gone: .38 = the husk, 1 = nothing), `HuskTopCm` (the dissolve's height: the corpse block's `husk.topCm`, else the visual height), `EdgeWidth` .06, `NoiseTileCm` 60; vectors `AshColor` #6E6A62, `AshShade` #3E3B37, `EdgeColor` #B8B2A6 (manifest `materials.M_AF_AshDissolve`); texture object `Noise` (`T_FX_AshNoise`, wrapped). Every existing master compiles exactly as before (the build's material fingerprints are unchanged) |
 | `M_AF_SelectRim` / `MI_AF_SelectRim` | selection rim follower (section 7; unlit, masked, skeletal usage, no shadow) | vector `RimColor` (linear, #FFF4DC); scalars `RimPx720` 2, `RimDepthPushCm` 30, `OutlinePx1080` 3.5, `BakedWidthCm` 1.8, `BodyMask` 0, `BodyOpacity` 1, `OutlineScreenSpace` 1; CPD Fade (13); MPC `InkScale` |
 | `M_AF_PP_AOComposite` | zone post-process blendable, desktop balanced / high (3.6) | scalar `AOStrength` (.25) |
 
@@ -329,7 +334,7 @@ Presets: `glow`, `flash`, `glint`, `sparks`, `streak`, `motes`, `flames`, `smoke
 | Trigger | Recipe ids (first existing wins) |
 | --- | --- |
 | EvHit (impactBurst) | `hit.impact`; hero basic attack `hit.basic`; melee hit on the hero `hit.claw`; i-frame evade `hit.evade`; single-target elemental skill `hit.mark.fire / ice / other` |
-| Monster killed (EvHit.killed) | `death.burst` (#FF4444) + `reward.gold` |
+| Monster killed (EvHit.killed) | `death.<defId>`, `death.<family>` (their palette, Blow = the victim's facing), else `death.burst` (#FF4444) + `reward.gold` (none for a Raised body) |
 | Escort died | `death.burst` (#E67E22) |
 | Hero died | `death.burst` (#CC2222) (respawn stops the hero's status loops) |
 | EvLevelUp | `hero.levelup` |
@@ -352,6 +357,17 @@ Presets: `glow`, `flash`, `glint`, `sparks`, `streak`, `motes`, `flames`, `smoke
 | EvTelegraph on-death fuse from an elite affix (`affix.<type>`) | in a themed zone, `elite.<type>.death` from the kill (Gravecold: the recipe alone, no decal); unthemed zones (chapters 2-5, the Labyrinth) present no on-death fuse, the curse's included |
 | EvHazard | the hazard decal + loop `hazard.<abilityId>`, else `hazard.breach_seep` (line) / `hazard.breach_fire`, stopped at `untilMs` |
 | EvArena (until `cleared`) | the arena decal + loop `hazard.banner_ring`, its radius following `abyss::ArenaRadiusAt` (`UAbyssVfxSystem::SetHandleRadius`) |
+| Corpse timeline (`UAbyssCorpseLayer`, sim clock) | the crumble's start `corpse.crumble` (the corpse block's `recipes.crumble`) at the husk centre |
+| EvCorpseRemoved | expired (and a cap / reconcile retirement): `corpse.expire` (Blow = world +X); burned: `corpse.burn` (event colour by the side of `EvCorpseRemoved::burner`: the hero or its beast - its own fire kill's impact colour, else ember #FF7A2A -, a monster: breach violet #B02FD0, none: no colour); raised: see EvMonsterRaised; consumed: none |
+| EvMonsterRaised | `monster.raise` (the corpse block's `recipes.raise`) at `pos`, target = the risen monster |
+| EvPlayAnim{clip Consume} (the gnawer's channel) | `corpse.consume` once, origin = the eater, Blow = eater -> husk; stopped on EvMonsterAttackCancelled / the channel's end |
+| EvMonsterFeed | `monster.<feeder defId>.feed`, origin = the held body, target = the feeder, Blow = body -> feeder |
+| EvMonsterPhase | the art's `fx.frenzy.loop` from phase 1 and its `recipe` at once, unless the entered row's enter action plays the clip (`fx.frenzy.clip`) whose `notify` fires it (the as-built zealot has none: the surge plays here), the table's loop (`monster.valdras.standard_fire` from phase index 2); stopped on a reset or the death; Blow follows the body (`SetHandleBlow`, pushed once the facing moved > 2 deg) |
+| MonsterView::auraRadius > 0 / an Unburied affix (snapshot) | loop `monster.<defId>.aura`, else `monster.<art id without monster_>.aura` (RadiusCm = the aura's) / loop `elite.unburied`; stopped with the life |
+| EvMonsterBuffCast | `monster.<defId>.<abilityId>`, else (when the clip the ability's definition casts with has no FX notifies of its own; a clipless call never has) `notify.FX_bell_ring` for the breach-touched families (unburied, breach), `notify.FX_DrumBeat_1` for the rest (living, gravegnawers) |
+| EvBlock | `monster.block` (the art's `fx.block`), target = the blocker, Point = the held item's `face` socket, Blow = attacker -> blocker |
+| EvPlayAnim{Death} of a body whose corpse block looks `puddle` (breach-blood) | runtime recipe `runtime.puddle.<asset>.<radius cm>` (`AbyssCorpseRules::PuddleRecipeJson`: one translucent `decal` of the `Puddle` sprite in the clip's `puddleDecal` colour / alpha, 2 x radiusFactor x the body's half-width (`footprintRadiusCm`) x its drawn scale across, fading in over the Death clip, drying over `driesMs`) at the husk centre |
+| A living monster whose manifest `fx` has `ashFlakes` (snapshot) | loop `monster.ash_flakes` (origin = the monster); stopped with the life |
 
 ### 5.4 Sprites
 
