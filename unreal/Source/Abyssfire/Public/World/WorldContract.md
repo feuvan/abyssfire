@@ -389,7 +389,10 @@ Rune, ShardFrost, Skull.
 recalibrated for the tone curve), `abyss.Bloom` (-1 = the art manifest's hero `fx.bloom.strength`), `abyss.ShakeScale`
 (camera shake amplitude), `abyss.FadeGhost` (occlusion fade of the dressing, 3.4: 0 = dithered on every tier, 1 = auto:
 translucent ghosts without temporal AA (default), 2 = ghosts on every tier), `abyss.DebugLeash` (0; 1 draws every living
-monster's M1 leash within 24 tiles of the hero as a rim-only telegraph ring, dark remake 2G).
+monster's M1 leash within 24 tiles of the hero as a rim-only telegraph ring, dark remake 2G). Console command
+`abyss.Vfx.Status` logs the particle budget (live / peak / cap; in a zone with a presentation theme the loop ceiling at
+75 % of the cap, loops culled beyond 30 m of the camera focus, the mobile loop-density floor; spawns dropped since the
+zone build: `AbyssVfxBudgetRules`, 2G cross-stage review).
 
 Art pass (DECISIONS P11 revised, P14, R3, R18, R20):
 

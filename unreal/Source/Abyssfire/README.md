@@ -364,8 +364,7 @@ characters and before `UAbyssVfxSystem::Tick`) only converts. DECISIONS DR5 (the
   outer wash: that trims the quad from 23.1 m to 18.6 m across at 9 tiles (about 35 % less area), but one translucent
   quad still spans the whole disc; its blank inside (and every decal's blank corners, a ring's hole) exits
   `AF_Telegraph` before any texture sample, so it costs rasterisation and blending, not shading. Budget the arena as an
-  18.6 m square of translucency on mobile low; an annulus mesh waits for the device profile (the Mac look check 10 of
-  *Dark remake HUD and world state*). One hidden quad is registered as soon as the quad and material load (M_AF_Telegraph's pipeline states
+  18.6 m square of translucency on mobile low; an annulus mesh waits for the device profile (*Mac playtest script* 5.3). One hidden quad is registered as soon as the quad and material load (M_AF_Telegraph's pipeline states
   precache before the first strike).
 * **Dash** (`EvEntityTeleported{Dash}`: Valdras's Lunge, `hasDash`): the actor slides from where it stood to `dashTo`
   over 200 ms on the dodge's offset ease (`AbyssWorldUtil::EaseOutQuad`), no blink effect.
@@ -382,31 +381,8 @@ characters and before `UAbyssVfxSystem::Tick`) only converts. DECISIONS DR5 (the
 * **Debug**: `abyss.DebugLeash 1` draws every living monster's M1 leash (`MonsterView::leashCentre` / `leashRange`,
   within 24 tiles of the hero) as a rim-only ring, last in the budget.
 
-**On the Mac, look at** (after `Scripts/build_content.sh`, which builds `/Game/Abyssfire/Materials/FX/M_AF_Telegraph`
-and imports `T_FX_TelegraphRim` / `T_FX_TelegraphFill`; the plan warns when they are missing):
-
-1. The log has no `Telegraph decals disabled` line; `M_AF_Telegraph` opens in the editor (translucent, unlit, the custom
-   node `AF_Telegraph`, preview a half-filled 1 m circle).
-2. The Bonegorger's Clapper Slam (circle 2) on the darkest march tile, every quality tier and the mobile tiers: the
-   crimson rim reads, the bone fill reaches the rim exactly as the clapper lands (Attack02's beat at 800 ms), flash,
-   fade; the decal never hides the hero's blob shadow or ink, and no z-fighting on slopes.
-3. Valdras: Banner Sweep (120° cone 2.6), Oath Brand (circle 1.8, then its 4 s pulsing hazard with
-   `hazard.breach_fire`), the boss rim width and the longer urgency pulse. P2 (65 %): the roll-call stinger,
-   Breach-seep's 8-tile line decal handing over to its 1 s pulsing hazard (`hazard.breach_seep`) with no gap or double
-   rim. P3 (30 %): the no-retreat stinger, the arena ring closing 9 -> 5 tiles with its outer wash (mobile low: rim
-   only) and the banner-ring loop on the same radius; the Lunge's line decal, then the 200 ms slide (no teleport pop).
-   Walking him home (leash reset) plays no stinger and clears the ring.
-4. The Corpseherd's Keen (circle 4, slow) draws; its Call the Flock and the Dead Standard-Bearer's Muster show the
-   violet raise mark, not a decal; stunning or killing a caster during its windup fades the decal / stops the mark,
-   also when the stun lands in the windup's last frame (no flash).
-5. A Cinderbloat kill: the 2.2-tile ring fills over 800 ms while it stands and swells, the burst on the full ring, the
-   body fading only after its 900 ms clip. A Scorched elite's death: decal + `elite.fire_enhanced.death`; a Gravecold
-   elite's: the recipe only.
-6. The Deserter Drummer's war drum: Cast01 loops at normal speed for the 2 s windup (no 16x slow-motion drum).
-7. `abyss.DebugLeash 1` near Valdras and a pack; `stat unit` with ten decals up (the cap is overflow only).
-8. Chapters 2-5 (e.g. the Twilight Forest) and a Labyrinth floor with the volatile curse: monsters attack and die as
-   before (no decal, no `elite.*.death`, not even for a Scorched / Gravecold elite or a cursed corpse).
-9. Mobile low, Valdras's P3: `stat unit` / GPU time with the arena up (one 18.6 m translucent quad) against the budget.
+**On the Mac**: *Mac playtest script* below (1.1 the master; P6.2, P8.3, P9, P10.2, P11.1, P14 the fights; 4.2
+Chapters 2-5; 5.1 and 5.3 the darkest tile and the arena on the devices).
 
 ## Dark remake corpses and monster states (2G U3)
 
@@ -495,53 +471,9 @@ and before the telegraphs / VFX) only converts. DECISIONS DR6 (ash mode), DR5, D
   corpse-leaving definitions, families, leaders, phases, blockers or auras and no presentation theme: they look and
   sound exactly as before.
 
-**On the Mac, look at** (after `Scripts/build_content.sh`, which builds `/Game/Abyssfire/Materials/M_AF_Toon_Ash` and
-`M_AF_Outline_Ash` and imports `T_FX_AshNoise`; the plan warns when the noise is missing):
-
-1. The log has no `M_AF_Toon_Ash / M_AF_Outline_Ash missing` line; both masters open in the editor and compile without
-   errors (the build log and the material editor's stats show none; in particular no "Pre-skinned position is only
-   available in the vertex shader": `AF_AshMask` reads it through a `VertexInterpolator`, 2G review H-M1)
-   (`M_AF_Toon_Ash`: custom nodes `AF_AshMask` and `AF_AshGrey`, scalars `Grey` / `Dissolve` / `HuskTopCm` /
-   `EdgeWidth` / `NoiseTileCm`, texture `Noise` = `T_FX_AshNoise`; previews with `Grey` 1 / `Dissolve` .38 show a grey
-   body with plates missing from the top down and a pale edge).
-2. A Risen Footman kill on the darkest march tile: the Death clip plays to its end at normal speed where it fell, holds
-   ~0.45 s, greys over ~0.4 s (ink stays dark, no glowing eyes), crumbles to a husk in ~0.9 s with ash dust; the blob
-   shadow sits under the pelvis and fades to a faint smudge. After ~20 s the husk blows away along +X. Its kettle helm
-   stays on its head in life and turns to ash with it (the sword is still in its hand); hovering it, the selection rim
-   rings the helm too. A hunt leader's kill (Dreck, Harke: drawn x1.25): the crumble dust, the expiry and a burn play on
-   the body's middle, not short of it, and the dissolve eats the whole body from the top (no band left standing).
-3. A fire kill (the mage's fireball) on a Living deserter: an ember flare (#FF7A2A) and soot, the body greys at once and
-   crumbles; a fire wall over husks with no living target: ember too. Valdras's Oath Brand hazard burning a husk: a
-   violet flare; his Banner Sweep missing the hero (a dodge) over husks: violet, not grey; a hero fire area cast while
-   his P3 ring burns the hero: still ember.
-4. The Corpseherd's Call the Flock raising a husk: the ash bursts, the footman stands up grey and the grey drains off
-   over the first ~60 % of its Rise; its self-rise (the Unburied trait) the same with its own body. Killing the
-   Corpseherd collapses its raised flock: their bodies become husks, and its own body stays posed (no grey) through
-   `cs_rf_herd`, then greys.
-5. A Gravegnawer eating a husk: ash and grit tossed at its jaws for 2 s, the husk crumbles away; stun it mid-channel:
-   the tearing stops at once.
-6. Valdras: P1 shows no sigil over him (eliteMarker none); P3 the standard burns (violet, turning with him); a raised
-   footman killed near him streams violet into the standard (Feed) while its body drains; his death plays
-   `death.valdras` and his body holds through `cs_rf_marshal_falls`.
-7. The oath zealot's frenzy (<= 50 % life): no Roar (he surges at once): the `FX_Frenzy` puff of breath and a pale ring
-   at his head the moment he crosses 50 %, then the breath cloud before the hood every ~0.3 s, staying in front as he
-   turns, gone on his death or when he walks home.
-8. The Dead Standard-Bearer's crimson aura stain (5 tiles) breathing on the ground while it lives; an Unburied-affix
-   elite's violet cracks under its feet; the Deserter Drummer's war drum beats dust four times, no extra pulse (its
-   aura shows nothing yet); the Hungerbell's supper bell puffs pale dust (no violet), also when it calls during a
-   Clapper Slam; a Cinderbloat sheds ash flakes from its vent until it bursts.
-   A Breachclot kill leaves a dark tar puddle (about 1 m across, a little wider than its body) that spreads as it melts
-   and dries in ~3 s; a Cinderbloat leaves a scorched one (about 1.4 m) with its shards inside it.
-9. A shieldbearer wall: hitting it from the front sparks white on the shield face with a clang; the wall keeps facing
-   its heading while swinging. Breaking a deserter pack (kill the leader): the deserters run (walk / run clips, facing
-   away), the leader showed the crimson champion diamond before its name.
-10. An elite in the march: the sigil floats level over the head at the same size on a hunt leader (x1.25) and a
-    regular, never dipping into the helm, turning slowly; the Twilight Forest's elites still wear today's crown.
-11. Thirty husks on screen (`stat unit`, mobile low: 12 drawn, the oldest blow away early): the husks' skeletal meshes
-    stop ticking once lying (`stat anim` drops back to the living bodies' cost a few frames after each husk settles;
-    no husk pops to a reference pose when panned back on screen); a zone change clears them without a hitch; entering
-    the march shows its seeded husks lying grey at once.
-12. Chapters 2-5 and a Labyrinth floor: kills burst red with coins and fade exactly as before; no sigil, no husks.
+**On the Mac**: *Mac playtest script* below (1.1 the twins; P4 the husk timeline and the warm-up; P5.1 and P9 the
+puddles; P6.3, P8 and P14 the raises, feeds and burns; P10 to P12 the monster states and markers; 4.2 Chapters 2-5;
+5.2 and 5.4 the devices).
 
 ## Dark remake HUD and world state (2G U5 / K6)
 
@@ -611,41 +543,261 @@ status tints), plus `untilFlag` in `Private/Audio/AbyssAudioDataRules.h` and the
 * **Not shipped**: the gore setting (no gore art; DR6 keeps it out of zh-CN builds entirely). Chapters 2-5 have no phase
   tables, Ashnumb, permanent rewards, flags, NPC visibility or dawn mood: they look and sound as before.
 
-**On the Mac, look at** (after `Scripts/build_content.sh`, which builds `/Game/Abyssfire/Materials/M_AF_Toon_Ashnumb`):
+**On the Mac**: *Mac playtest script* below (1.1 the band twin; P5.2 and P8.3 Ashnumb; P5.3, P6.1, P7.2, P15 and P16
+the world state; P14.2 to P14.6 the boss bar; 4.3 Chapters 2-5; 5.1 and 5.3 the darkest-tile capture and the arena's
+GPU time).
 
-1. The log has no `M_AF_Toon_Ashnumb not found` line; the master opens in the editor and compiles without errors (the
-   build log and the material editor's stats show none; in particular no "Pre-skinned position is only available in
-   the vertex shader": `AF_AshnumbBand` reads it through a `VertexInterpolator`, 2G review H-M1) (masked, DefaultLit
-   like `M_AF_Toon`, the custom nodes `AF_ToonSplit` and `AF_AshnumbBand`; the Ashnumb group's `BandTop` /
-   `BandHeightCm`).
-2. Let Breachclots stack Ashnumb on the warrior, the mage and the rogue on the darkest march tile (`ashnumb_band.py`'s
-   previews are the reference): the band climbs from mid-shin (1) to the hips (5), the pale edge line marks its top
-   (on the warrior's steel too), the lit side greys lighter than the shade side and the band stays on the legs while
-   running and dodging; the ink and the weapons are untouched; the antidote clears it at once; a zone change keeps it
-   while the stacks last. The status row shows the grey cell with its count. At 5 stacks a hit still flashes the
-   whole hero white, legs included, and a Slow (Keen) tints the ash legs blue like the rest of the body. Mobile low: a
-   grey multiply on the whole hero instead (no band), stronger with the stacks; no hitch on the first stack (the twin
-   loads with the hero).
-3. Valdras's boss bar: two ticks (65 %, 30 %), each dimming as he crosses it; walking him home brightens them. The
-   Corpseherd's bar and every Chapter 2-5 boss bar have none.
-4. S1 (`q_rf_black_blood`) turned in: the gold toast 玛勒的苦药：最大生命 +15 / Marl's Bitter Draught: Max Life +15 for
-   ~2.4 s; S6 (`q_rf_hallowed_ground`): its quest name and 属性点 +3 / Stat Points +3. Both locales fit on one line.
-5. The Gnawed Field at night: the ringing goes on after the Hungerbell dies and stops (6 s fade) only when M2 is turned
-   in; re-entering the field afterwards stays quiet.
-6. M5 turned in: during `cs_rf_finale` Marl stands where she was (no nameplate), the camera pans to her at her focus
-   step and her line plays; she is gone when the cutscene ends. Loading a save with the finale already seen and turning
-   in nothing: she is simply absent.
-7. After M5: the march's dawn grade and dust motes replace the ashfall the moment the flag is set, and the trenches
-   respawn as gravegnawers; leaving and re-entering keeps the dawn.
-8. Talking to Marl after S1: the combat log gets her `after.q_rf_black_blood` line, the linear panel the core's
-   `lineKey` (the second line that holds: her `dialogue.0`); the chaplain after M5: the log his `after.q_rf_last_toll`
-   line, the panel his `dialogue.1` (2E's slot rule).
-9. Keen on the hero: the Slow cell, no damage number.
-10. The darkest-tile decal capture deferred by stage T: every Chapter 1 decal (Clapper Slam, Valdras's four, Keen, the
-    Cinderbloat's fuse, the arena) read on the darkest march tile on every quality tier and the mobile tiers; on mobile
-    low `stat unit` / GPU time with the arena up (one 18.6 m translucent quad) - the annulus mesh is built only if this
-    is over budget.
-11. Chapters 2-5: status rows, boss bars, hero materials and moods exactly as before.
+## Dark remake budgets, warm-up and the autotest probe (2G cross-stage review)
+
+What the three stages share, from the cross-stage review (DECISIONS DR16 (43)-(47)):
+
+* **Particle budget** (`Private/Vfx/AbyssVfxBudgetRules.h`, `vfxbudget_test.cpp`): the VFX system's cap (700
+  desktop / 450 mobile, R20) drops any spawn past it, and Chapter 1's loops (the march's ashfall, the Rim's sparks,
+  Valdras's banner ring and standing fire, hazards, auras, Ashnumb, every camp torch of the zone) filled the mobile
+  cap in Valdras's last phase, so hit sparks, contact dust and death bursts went first. In a zone with a presentation
+  theme (`UAbyssVfxSystem::SetPresentationTheme` from the zone build): continuous emitters stop at 75 % of the cap
+  (bursts keep a quarter), a continuous emitter farther than 30 m from the camera focus spawns nothing (the zone camera
+  shows at most ~17 m at the widest zoom on a 2.4:1 screen), and mobile tiers emit loops at most at the balanced
+  density (interval x1.5; mobile low keeps its x2). The test builds every Chapter 1 fight scene from the data (zone
+  loops, the weather where it stands, every monster loop within the cull radius, the fight's phase loop, arena,
+  hazards, summons, the hero's statuses, three loot beams) and checks each fits under the ceiling on every platform and
+  tier (worst: the champion ambush in the ashfall, 455 of 525 on desktop high, 303 of 337 on mobile high; Valdras's
+  P3 432 on desktop high, where every zone loop would have made 651). `abyss.Vfx.Status` logs the budget. Other zones
+  keep the old budget exactly.
+* **Husk shadows**: on mobile a husk keeps its blob and casts no sun CSM (`AbyssCorpseRules::HuskCastsSunShadow`), so
+  mobile high's 32 lying bodies stay out of the shadow depth pass; desktop as before.
+* **Pipeline warm-up** (the telegraph quad's idiom for every new master): at a themed zone build
+  `UAbyssCorpseLayer::WarmAshPipelines` registers one hidden copy per distinct body / held-item mesh of the zone's
+  corpse-holding monsters, its toon / ink slots on `M_AF_Toon_Ash` / `M_AF_Outline_Ash`; the hero registers a hidden
+  copy of its body with `M_AF_Toon_Ashnumb` on its toon slots when it is built. Their pipeline states precache behind
+  the zone fade, not at the first kill's grey or the first Ashnumb stack.
+* **Autotest probe** (`Private/Framework/AbyssPresenceRules.h`, `presence_test.cpp`): see *In-game autotest*.
+
+## Mac playtest script (1C + 2G)
+
+Everything this module cannot prove on Linux, in one ordered session: the content build and the first real compile,
+the autotest runs, one pass through Chapter 1 in quest order (look and listen, grouped by place), Chapter 2
+regressions, then a mobile pass on a device. It replaces the per-stage lists of 1C (implementation-plan.md, the "For
+the Mac" bullets of U1 / U7 / U5 / U4 and the `mac-look` row) and 2G (T, C, H). Items are numbered so a report can
+cite them (`P14.6`); "as before" means as the last accepted Mac build.
+
+**Reaching states.** Development builds take the console commands `abyss.NewGame <class> <slot>`, `abyss.Save`,
+`abyss.Continue <slot>`, `abyss.ReturnToMenu`, `abyss.Locale en|zh-CN`, `abyss.Quality 0|1|2` (low / balanced / high) and
+`abyss.Debug <op> <arg> <value> <col> <row>`, whose core ops are `teleport` (e.g. `abyss.Debug teleport _ 0 15 95`),
+`addExp`, `addGold`, `freeze` and `unfreeze` (no spawn, status or flag ops: states come from play). Saves hold no
+fight state (no monster, windup, hazard or arena is saved), so a reload restarts a fight from a fresh zone. Keep a
+copy of `Saved/SaveGames/abyssfire_slot0.json` after M5 (P15) as the "finale seen" fixture. Statuses come from the
+monsters that lay them (Ashnumb: Breachclots at the Seep; Slow: the Corpseherd's Keen). Elite affixes are rolled:
+re-enter the zone until the elite you need (Scorched, Gravecold, Unburied) stands.
+
+**Thresholds.** Frame times from `stat unit` averaged over 10 s in the named scene, with no hitch over 100 ms (the
+autotest's hitch measure; Insights for the frame that spikes). Desktop (the Mac, every tier): Frame <= 16.7 ms.
+Device: high and balanced <= 16.7 ms, low <= 33.3 ms (the 30 fps profile). Particles from `abyss.Vfx.Status` (one
+log line: live / peak / cap, the loop ceiling, loops culled, spawns dropped since the zone build): in every Chapter 1
+fight the burst spawns dropped stay 0 and the loop spawns dropped stay 0 (a non-zero loop count names a scene whose
+loops outgrew `vfxbudget_test`'s model: report it); Valdras's P3 at the high multiplier keeps about 430 loop
+particles alive on desktop (ceiling 525) and about 290 on a high-tier device (ceiling 337).
+
+### 1. Build (mac-content)
+
+1. `Scripts/build_content.sh` (headless `build_content.py`): the report has 0 errors and 0 warnings and imports
+   `T_FX_TelegraphRim`, `T_FX_TelegraphFill`, `T_FX_AshNoise`. Every master compiles clean (the build log and the
+   material editor's stats), with no "Pre-skinned position is only available in the vertex shader" (`AF_AshMask` and
+   `AF_AshnumbBand` read it through a `VertexInterpolator`):
+   - `/Game/Abyssfire/Materials/FX/M_AF_Telegraph`: translucent, unlit, two-sided, the custom node `AF_Telegraph`;
+     its preview is a half-filled 1 m circle.
+   - `M_AF_Toon_Ash` / `M_AF_Outline_Ash`: custom nodes `AF_AshMask` and `AF_AshGrey`, scalars `Grey` / `Dissolve` /
+     `HuskTopCm` / `EdgeWidth` / `NoiseTileCm`, texture `Noise` = `T_FX_AshNoise`; with `Grey` 1 and `Dissolve` .38 the
+     preview is a grey body with plates missing from the top down and a pale edge.
+   - `M_AF_Toon_Ashnumb`: masked, DefaultLit like `M_AF_Toon`, custom nodes `AF_ToonSplit` and `AF_AshnumbBand`, the
+     Ashnumb group's `BandTop` / `BandHeightCm`.
+2. Build `AbyssfireEditor` (Development). This is the 2G glue's first compile: the calls each stage asked the Mac to
+   confirm are listed in implementation-plan.md *2G outcomes* (stages T, C, H and the cross-stage review).
+3. Launch once and read the log for the emerald_plains build: `Zone emerald_plains set pieces: 36 of 36 placements
+   drawn`, `Corpses: N ash pipeline warm-up components (M meshes) registered for the zone` with N > 0, and none of
+   `Telegraph decals disabled`, `the art manifest has no materials.M_AF_Telegraph`, `M_AF_Toon_Ash / M_AF_Outline_Ash
+   missing`, `M_AF_Toon_Ashnumb not found`.
+
+### 2. Autotest (mac-autotest)
+
+1. `-abyssautotest=smoke` and `-abyssautotest=chapter` for `-abyssclass=warrior`, `mage` and `rogue` (six runs; the
+   commands under *In-game autotest*, one `-abyssautotestdir` each). Each exits 0 with `report.json` `passed`, and
+   its `presentation.failure` is empty (the probe below fails a run that announced strikes, arenas, corpses or
+   Ashnumb and drew none).
+2. In each `chapter` report: `presentation.peakDecals` >= 1, `peakArenaDecals` >= 1, `peakHusks` >= 1, and
+   `bandFrames` > 0 whenever `ashnumbFrames` >= 30; `log.warningMessages` holds none of 1.3's lines.
+3. `frames`: `p95Ms` <= 16.7 on a real-RHI run (balanced / high), and `hitches` no higher than the last accepted run's;
+   the screenshots `story_*`, `combat`, `boss_fight` show the march mood, not the plains.
+4. One more warrior `chapter` run with `-abyssautotestshotsec=10`: its screenshots are the darkest-tile set for
+   `Art/Previews/ch1_dark/` (1F).
+
+### 3. Chapter 1 in quest order (look and listen; warrior unless named, desktop high unless named)
+
+**P1. Main menu and settings.** The brightness slider spans 0.5 to 1.5 and moves the exposure (`log2` EV) live.
+
+**P2. Prologue and the burn pit (15,22).**
+1. The prologue's last slide tolls ten times, 2.8 s apart, and stops with the prologue; the Knellwatch lute starts on
+   arrival.
+2. The march mood: sun, fog and grade; the ashfall (#CFCAC0); ink and rim read on the march terrain; the crimson
+   wind-up tint (x .85) on the first enemy swings. Darkest-tile review: the hero, a footman and a decal stay readable
+   on the darkest march tile at brightness 1.
+
+**P3. Knellwatch (15,15).**
+1. The set pieces stand (1.3's 36); the bell frame, Name Wall, cottages, wagons and banners fade (R1) when the hero
+   walks behind them; only Knellwatch flies the fort's banner.
+2. The hearth emitter: full inside its radius, fading to silence with distance, panned like the world cues. Tolls
+   after `cs_rf_brand` / `cs_rf_whisper` are `bell_toll` inside the fort and `bell_toll_far` outside, and ripple the
+   bell frame.
+3. The event labels in zh-CN and en (圣骨贩子 / The Relic Peddler, 五口小钟 / Five Handbells, 阵亡骑士的铁箱 / A Dead
+   Knight's Strongbox; the rescue's 被缚的朝圣者 / The Bound Pilgrim) when those random events appear.
+4. The seeded husks of the march lie grey at once on the first entry.
+
+**P4. The Burial Trenches (25,20), M1.**
+1. A Risen Footman kill: the Death clip at normal speed where it fell, a ~0.45 s hold, grey over ~0.4 s (the ink stays
+   dark, no glowing eyes), a ~0.9 s crumble with ash dust (`death.unburied` on the kill); the blob shadow under the
+   pelvis fading to a smudge; after ~20 s the husk blows away along +X. Its kettle helm stays on in life and turns to
+   ash with the body (the sword still in hand); hovering it, the selection rim rings the helm too.
+2. The first kill of the session shows no frame spike and no flicker as the body greys (`stat unit` / Insights: the
+   ash twins precached at the zone build: 1.3's warm-up line).
+3. As many husks as the core keeps (24 kill bodies plus the Trenches' seeds): `stat anim` falls back to the living
+   bodies' cost a few frames after each husk settles; panning away and back, no husk pops to its reference pose.
+4. The drones play through the fight without restarting; an encounter stinger ducks the music.
+
+**P5. The Seep (20,45), S1 Black Blood; Marl's dressing station (50,30).**
+1. A Breachclot kill leaves a dark tar puddle (about 1 m across, a little wider than the body) that spreads and dries
+   in ~3 s (`death.breach`).
+2. Ashnumb, on the warrior, then the mage and the rogue (`abyss.NewGame mage 1`, `abyss.Debug addExp _ 3000`,
+   teleport here; `ashnumb_band.py`'s previews are the reference): the band climbs from mid-shin (1 stack) to the hips
+   (5), the pale edge line marks its top (on the warrior's steel too), the lit side greys lighter than the shade side,
+   and it stays on the legs while running and dodging; ink and weapons untouched. The status row shows the grey cell
+   (麻 / A) with its count. At 5 stacks a hit still flashes the whole hero white. The antidote clears it at once; a
+   zone change keeps it while the stacks last. The first stack shows no frame spike or flicker (the band twin is
+   precached with the hero).
+3. S1 turned in: the gold toast 玛勒的苦药：最大生命 +15 / Marl's Bitter Draught: Max Life +15 for ~2.4 s, one line in
+   both locales. Talking to Marl afterwards: the combat log gets her `after.q_rf_black_blood` line, the panel the
+   core's `lineKey` (her `dialogue.0`).
+
+**P6. The Gnawed Field (35,40), M2; the Hungerbell.**
+1. At night the ringing plays over the bed; it goes on after the Hungerbell dies and stops (6 s fade) only when M2 is
+   turned in; re-entering the field afterwards stays quiet.
+2. The Hungerbell's (a Bonegorger hunt, (45,35)) Clapper Slam (circle 2) on the darkest tile, every desktop tier: the
+   crimson rim reads, the bone fill reaches the rim exactly as the clapper lands (Attack02's beat at 800 ms), then the
+   flash and the fade; the decal never hides the hero's blob shadow or ink, no z-fighting on slopes. Its supper bell
+   puffs pale dust (no violet), also when it calls during a Clapper Slam.
+3. A Gravegnawer eating a husk: ash and grit at its jaws for 2 s and the husk crumbles away; stunned mid-channel the
+   tearing stops at once; its kill plays `death.gravegnawers`.
+4. A hunt leader's kill (the Hungerbell, Dreck, Harke: drawn x1.25): the crumble dust, the expiry and a burn play on
+   the body's middle, and the dissolve eats the whole body from the top.
+
+**P7. Side quests from Knellwatch (S3 The Tag-Thief, S4 Bounty: Harke, S5, S6 Hallowed Ground).**
+1. The Tag-Thief and Oathless turn-in cards: two labelled columns, the selection highlight, the touch tap card
+   (`-abysstouch`), and their accept previews; the tracker's two-line "Bounty: Harke the Oathless"; the lore card title
+   of `lore_rf_01` in English (17.5 px).
+2. S6 turned in: its quest name and 属性点 +3 / Stat Points +3 in one line, both locales.
+
+**P8. Ashwheat (40,52), M3, and the Sheepfold (60,55): the Corpseherd.**
+1. Ashwheat: the burned bridge's smoulder (38,48) and `lore_rf_echo_02`'s figures beside it; knocking from the three
+   barred doors, attenuated and panned; the split bell (55,45) on its focus and every 35-60 s within 10 tiles; silence
+   in Ashwheat and the Sheepfold; the puzzle's answer stacks above Leave in English, sits beside it in Chinese.
+2. The Corpseherd's pre-fight Taunt loop, its lullaby and `stinger_miniboss`; it carries the Wave 2 sigil (the
+   mini-boss marker), and its boss bar has no ticks.
+3. Keen (circle 4, slow) draws its decal; on the hero it is the plain Slow cell with no number, and on Ashnumb legs
+   it tints the ash blue like the rest of the body. Call the Flock shows the violet raise mark, not a decal; stunning
+   the Corpseherd during a windup fades the decal or stops the mark, also when the stun lands in the windup's last
+   frame (no flash).
+4. Call the Flock raising a husk: the ash bursts, the footman stands up grey and the grey drains over the first ~60 %
+   of its Rise. Killing a raised footman drops no coins.
+5. Killing the Corpseherd collapses its flock into husks; its own body stays posed (no grey) through `cs_rf_herd` (its
+   bell rings at step 2), then greys; `stinger_slain` plays.
+
+**P9. The Weeping Ditch (85,18): Cinderbloats.**
+1. A Cinderbloat sheds ash flakes from its vent while it lives.
+2. Its kill: the 2.2-tile ring fills over 800 ms while it stands and swells, the burst lands on the full ring, the
+   body fades only after its 900 ms clip; it leaves a scorched puddle (about 1.4 m) with its shards in it.
+
+**P10. The Penitents' Camp (95,35) and the Broken Redoubt (75,50): zealots and rolled elites.**
+1. An oath zealot at <= 50 % life: no Roar, he surges at once (the `FX_Frenzy` breath puff and a pale ring at his
+   head), then the breath cloud before the hood every ~0.3 s, staying in front as he turns; gone on his death or when
+   he walks home.
+2. A Scorched elite's death: its decal and `elite.fire_enhanced.death`; a Gravecold elite's: the recipe only.
+3. A march elite carries the sigil level over the head at the same size on a hunt leader (x1.25) and a regular, never
+   dipping into the helm, turning slowly; an Unburied-affix elite shows its violet cracks under its feet.
+
+**P11. Deserters' Hollow (80,75) and Corran's culvert (70,65).**
+1. The Deserter Drummer's war drum: Cast01 loops at normal speed for the 2 s windup and beats dust four times, with
+   no extra pulse; its aura shows nothing yet (the art follow-up).
+2. Breaking a deserter pack (kill its leader): the leader showed the crimson champion diamond before its name; the
+   deserters run (walk / run clips, facing away); `sfx_deserter_flee` is silent until rendered. Their kills play
+   `death.living`.
+
+**P12. The Dead Ranks (30,80).**
+1. The shieldbearer wall: hits from the front spark white on the shield face with a clang (the port's `block` cue
+   until `sfx_shieldbearer_block` is rendered); the wall keeps facing its heading while swinging.
+2. The Dead Standard-Bearer's crimson aura stain (5 tiles) breathes on the ground while it lives; its Muster shows
+   the violet raise mark.
+
+**P13. Crowmarket (95,100) and the Paymaster's Wagon (108,108).** Crowmarket keeps the march kit's generic pieces
+without Knellwatch's banner; the paymaster's discovery banner wraps onto two lines; a champion ambush (when it rolls)
+shows its leader's diamond; the bonegorgers at the midden (95,90) Clapper Slam like P6.2.
+
+**P14. The Breach Rim (15,95): Valdras (M4).** One fight, in this order (re-engage after each interruption).
+1. Approach: the Rim's bed crossfades with the march bed over the region's edge; violet sparks, light scale .40, no
+   music; `lore_rf_echo_03`'s figures by the dais (the 135 deg turn is A10's open call). The Captain's progress-only
+   card while M4 runs (desktop and touch: Leave, View Story).
+2. The boss intro's Roar plays through the frozen world with his named voice. P1: no sigil over him; Banner Sweep
+   (120 deg cone 2.6) and Oath Brand (circle 1.8, then its 4 s pulsing hazard with `hazard.breach_fire`) with the boss
+   rim width and the longer urgency pulse; his boss bar carries two ticks (65 %, 30 %).
+3. P2 (65 %): the roll-call stinger; the 65 % tick dims; Breach-seep's 8-tile line decal hands over to its 1 s pulsing
+   hazard (`hazard.breach_seep`) with no gap and no double rim; the roll-call bearer shows the standard-bearer's aura;
+   a raised footman killed near him streams violet into the standard while its body drains (Feed).
+4. P3 (30 %): the no-retreat stinger; the 30 % tick dims; the ring closes 9 -> 5 tiles with its outer wash and the
+   banner-ring loop on the same radius; the standard burns violet, turning with him; the Lunge's line decal, then a
+   200 ms slide (no teleport pop). `abyss.DebugLeash 1`: his ring and the Dead Ranks' pack's. With ~10 decals up:
+   P3's frame time and `abyss.Vfx.Status` against the thresholds.
+5. Burns in P3: his Oath Brand hazard burning a husk flares violet; his Banner Sweep missing the hero (a dodge) over
+   husks flares violet, not grey; the mage's fire area over husks while the ring burns the hero flares ember.
+6. One leash reset (walk him home from P3): no stinger; the ring and its banner-ring loop go; the standing fire goes;
+   both boss-bar ticks brighten. Re-engage: P2 and P3 play again with their stingers.
+7. Teardown mid-P3 (a strike decal, an Oath Brand hazard, the ring, the standing fire, an aura and a footman kill just
+   before): `abyss.ReturnToMenu`, then `abyss.Continue 0`. The fight restarts fresh (no fight state is saved): no
+   orphan decal, ring, loop, standing fire, husk or held body anywhere, and `abyss.Vfx.Status` counts only the
+   zone's loops.
+8. The kill: `death.valdras`; his body holds through `cs_rf_marshal_falls`; `stinger_slain`.
+
+**P15. The Last Toll (M5): the Boneyard Gate (10,32) and the finale.**
+1. The siege: the bell rings by itself at `cs_rf_siege`'s step 2 and every 20-30 s while the quest is active, rippling
+   the fort's bell frame and the Boneyard Gate's bell; the gate set piece hides under the defend target (no double
+   gate, same facing) and returns when the target is gone.
+2. M5 turned in: during `cs_rf_finale` Marl stands where she was (no nameplate), the camera pans to her at her focus
+   step and her line plays; she is gone when it ends; the dawn toll at step 3; the finale's silence, then the lute.
+3. The dawn: the grade warms and dust motes replace the ashfall the moment the flag is set; the trenches respawn as
+   gravegnawers; leaving and re-entering keeps the dawn. The chaplain after M5: the log his
+   `after.q_rf_last_toll` line, the panel his `dialogue.1`. Copy `abyssfire_slot0.json` now (the fixture).
+
+**P16. The finale-seen fixture.** `abyss.Continue` the copy and turn in nothing: Marl is simply absent.
+
+### 4. Chapter 2 regressions (the east road (119,60) to the Twilight Forest)
+
+1. Leaving the march with husks lying and loops playing: no hitch; nothing of the march stays.
+2. Monsters attack and die as before: no decal, no `elite.*.death` (not even for a Scorched or Gravecold elite),
+   kills burst red with coins and fade, elites wear today's crown (no sigil), no husks.
+3. Status rows, boss bars (no ticks), hero materials, moods and ambience as before; `abyss.Vfx.Status` reports the full
+   cap as the loop ceiling and no culling.
+4. A Labyrinth floor with the volatile curse needs the Zone 6 endgame (the Abyss Rift portal; curses from floor 2),
+   which no Chapter 1 save reaches and no committed fixture holds: run it from a Chapter 5 save when one exists (no
+   decal or recipe for a cursed corpse's burst). Until then `telegraph_test` pins `curse.*` to neither.
+
+### 5. Mobile pass (an iOS device, Development; `-abyssquality=low|balanced|high`)
+
+1. Per tier: per-vertex fog, no CSM on low and balanced; Chapter 1 reads on the darkest march tile (P2.2) with every
+   Chapter 1 decal: the Clapper Slam, Valdras's four, Keen, the Cinderbloat's fuse, the arena.
+2. Low: Ashnumb is a grey multiply on the whole hero (no band), stronger with the stacks; the arena draws its rim only
+   (no outer wash); 12 husks at most, the oldest blowing away early.
+3. Valdras's P3 on low (one 18.6 m translucent quad): GPU time with the ring up within 2 ms of the same frame without
+   it; build the annulus mesh only if it is over.
+4. Valdras's P3 and the Trenches' husks on high: the frame-time threshold, `abyss.Vfx.Status` with no burst spawn
+   dropped, husks with their blob only (no CSM: AbyssCorpseRules::HuskCastsSunShadow) up to 32.
+5. Touch: the progress-only card (P14.1) and the turn-in tap card (P7.1).
 
 ## In-game autotest (`-abyssautotest`)
 
@@ -690,8 +842,17 @@ What a run does:
    false) the same points are listed in `screenshotsSkipped`.
 5. **Statistics**: wall-clock frame times while in game (avg / p50 / p95 / p99 / max, hitches > 100 ms), Error / Warning /
    Ensure lines through an `FOutputDevice` on `GLog` (lines logged before the game instance started are not seen).
-6. **Exit**: `FPlatformMisc::RequestExitWithStatus` with **0** when the scenario completed and the log has no Error and no
-   Ensure line, else **2**. Always check `report.json` too (`passed`, `result`).
+6. **Presentation probe** (2G cross-stage review X6; `Private/Framework/AbyssPresenceRules.h`, tested by
+   `PresentationTests/tests/presence_test.cpp` on a real Chapter 1 playthrough): the 2G paths degrade with a Warning
+   when their content is missing, which alone would never fail a run. The run tallies what the core announced (ground
+   strike telegraphs and hazards in a zone with a presentation theme, arenas, corpse entries, frames the hero carried
+   Ashnumb where the tier draws the band) against what was drawn (the most decals and arena rings
+   `UAbyssTelegraphSystem` drew in one frame, the most husks `UAbyssCorpseLayer` held, frames the hero's band showed).
+   At every `bossKill` milestone (the Hungerbell, the Corpseherd, Valdras, ...) and at the scenario's end, something
+   announced that nothing drew (30 Ashnumb frames for the band) fails the run: `failure` "presentation (at bossKill
+   <id>): ...". A Chapter 1 run has announced strikes, hazards, the arena and corpses by Valdras's kill.
+7. **Exit**: `FPlatformMisc::RequestExitWithStatus` with **0** when the scenario completed, the presentation probe passed
+   and the log has no Error and no Ensure line, else **2**. Always check `report.json` too (`passed`, `result`).
 
 `report.json`: `passed`, `result` (`passed` / `failed` / `timeout` / `aborted`), `exitCode`, `failure`, `scenario`,
 `class`, `seed` (a string; replay it with `-abyssseed=<seed>`, or in the core with
@@ -699,7 +860,9 @@ What a run does:
 bot's timing differ), `buildSha`, `rhi` (`GDynamicRHI->GetName()`: `Vulkan`, `Null`, ...), `screenshotsEnabled`, `renderOffScreen`,
 `nullRhi`, `engineVersion`, `platform`, `commandLine`, `durations` (`totalSec`, `bootSec`, `menuToGameSec`, `inGameSec`,
 `simPlayTimeSec`, `simNowSec`), `scenarioCompleted`, `pilot` (bot ok / failure / last checkpoint / step / frames / commands
-/ last notes), `stats` (kills, deaths, level-ups, casts, potions, loot, ...), `hero`, `milestonesReached` and
+/ last notes), `stats` (kills, deaths, level-ups, casts, potions, loot, ...), `presentation` (`strikeTelegraphs`,
+`hazards`, `arenas`, `corpses`, `ashnumbFrames`, `peakDecals`, `peakArenaDecals`, `peakHusks`, `bandFrames`, `failure`),
+`hero`, `milestonesReached` and
 `milestones` (main menu, session, zone entered, first kill, boss kills, quests accepted / completed / turned in, story
 beats, level-ups, pet, checkpoints, panel tour, scenario done — with real and sim seconds), `frames`, `log` (counts,
 first 50 Error / Ensure `messages`, first 50 `warningMessages`), `screenshots` (`file`, `tag`, `caption`, `realSec`,

@@ -41,13 +41,21 @@
 #include "abyss/quests/QuestWorld.h"
 #include "abyss/tools/AutoPilot.h"
 
+#include "Actors/AbyssCharacterActor.h"
+#include "Actors/AbyssCorpses.h"
 #include "Framework/AbyssAutoTest.h"
 #include "Framework/AbyssEventRouter.h"
 #include "Framework/AbyssGameInstance.h"
 #include "Framework/AbyssPlayerController.h"
+#include "Framework/AbyssPresenceRules.h"
 #include "Framework/AbyssText.h"
 #include "Input/AbyssInputSubsystem.h"
 #include "Input/AbyssInputTypes.h"
+#include "Platform/AbyssPlatform.h"
+#include "Vfx/AbyssTelegraphs.h"
+#include "World/AbyssThemeRules.h"
+#include "World/AbyssWorldBuilder.h"
+#include "World/AbyssWorldStateRules.h"
 
 // File-local category. Shipping builds compile logging out (NO_LOGGING): use it in UE_LOG only.
 DEFINE_LOG_CATEGORY_STATIC(LogAbyssAutoTest, Log, All);
@@ -721,6 +729,7 @@ public:
 		{
 			return;
 		}
+		TallyPresenceEvent(Event);
 		const double Now = RunSeconds();
 		if (const abyss::EvStoryBeat* Beat = std::get_if<abyss::EvStoryBeat>(&Event))
 		{
@@ -765,6 +774,7 @@ public:
 		if (Phase == EAbyssAutoTestPhase::Playing)
 		{
 			const double Now = RunSeconds();
+			SamplePresence(Snap);
 			FrameShots(Snap, Now);
 			for (int32 Guard = 0; Guard < 32 && !bPilotFinished; ++Guard)
 			{
@@ -823,6 +833,71 @@ private:
 	void HandlePilotMilestone(const abyss::AutoPilotMilestoneRecord& Record)
 	{
 		AddMilestone(AbyssText::ToFString(abyss::EnumName(Record.kind)), AbyssText::ToFString(Record.detail), RunSeconds());
+		if (Record.kind == abyss::AutoPilotMilestone::BossKill)
+		{
+			CheckPresence(TEXT("bossKill ") + AbyssText::ToFString(Record.detail));   // the Bonegorger, the Corpseherd, Valdras, ...
+		}
+	}
+
+	// ---- presentation probe (2G review X6, AbyssPresenceRules) ------------------------------------------------------
+
+	/** What the core announced that the presentation must draw (counted in a zone with a presentation theme). */
+	void TallyPresenceEvent(const abyss::Event& Event)
+	{
+		const UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
+		const abyss::DataStore* Data = GameInstance != nullptr ? GameInstance->GetData() : nullptr;
+		const abyss::Snapshot* Snap = GameInstance != nullptr ? GameInstance->GetSnapshot() : nullptr;
+		const bool bThemed = Data != nullptr && Snap != nullptr && !AbyssThemeRules::ThemeOf(Data->FindMap(Snap->zone.mapId)).empty();
+		if (const abyss::EvTelegraph* Telegraph = std::get_if<abyss::EvTelegraph>(&Event))
+		{
+			Presence.StrikeTelegraphs += AbyssPresenceRules::ExpectsDecal(Telegraph->kind, Telegraph->source, bThemed) ? 1 : 0;
+		}
+		else if (std::holds_alternative<abyss::EvHazard>(Event))
+		{
+			Presence.Hazards += bThemed ? 1 : 0;
+		}
+		else if (const abyss::EvArena* Arena = std::get_if<abyss::EvArena>(&Event))
+		{
+			Presence.Arenas += Arena->cleared ? 0 : 1;
+		}
+		else if (std::holds_alternative<abyss::EvCorpseAdded>(Event))
+		{
+			++Presence.Corpses;
+		}
+	}
+
+	/** What the presentation drew this frame (the world view synced before the router's OnFrame). */
+	void SamplePresence(const abyss::Snapshot& Snap)
+	{
+		UAbyssGameInstance* GameInstance = GetAbyssGameInstance();
+		UWorld* GameWorld = GameInstance != nullptr ? GameInstance->GetWorld() : nullptr;
+		if (GameWorld == nullptr)
+		{
+			return;
+		}
+		const UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(GameWorld);
+		const UAbyssCorpseLayer* Corpses = UAbyssCorpseLayer::Get(GameWorld);
+		const UAbyssWorldBuilder* Builder = UAbyssWorldBuilder::Get(GameWorld);
+		const AAbyssCharacterActor* Hero = Builder != nullptr ? Builder->FindCharacter(abyss::kHeroEntityId) : nullptr;
+		const EAbyssQualityTier Tier = GameInstance->GetQualityTier();
+		const int32 TierIndex = Tier == EAbyssQualityTier::Low ? 0 : (Tier == EAbyssQualityTier::High ? 2 : 1);
+		const bool bAshnumbExpected = Snap.hero.ashnumbStacks > 0 && Snap.hero.life == abyss::HeroLife::Alive && Hero != nullptr
+			&& Hero->HasArt() && AbyssWorldStateRules::BandAllowed(TierIndex, AbyssPlatform::IsMobilePlatform());
+		AbyssPresenceRules::Sample(Presence, Telegraphs != nullptr ? Telegraphs->GetDrawnDecalCount() : 0,
+			Telegraphs != nullptr ? Telegraphs->GetDrawnArenaCount() : 0, Corpses != nullptr ? Corpses->GetHuskCount() : 0,
+			bAshnumbExpected, Hero != nullptr && Hero->IsAshnumbBandShown());
+	}
+
+	/** At a named boss's kill and at the end: the first time the core announced what nothing drew, the run fails. */
+	void CheckPresence(const FString& At)
+	{
+		const std::string Missing = AbyssPresenceRules::Verdict(Presence);
+		if (Missing.empty() || !PresenceFailure.IsEmpty())
+		{
+			return;
+		}
+		PresenceFailure = FString::Printf(TEXT("presentation (at %s): %s"), *At, *AbyssText::ToFString(Missing));
+		UE_LOG(LogAbyssAutoTest, Warning, TEXT("AutoTest %s"), *PresenceFailure);
 	}
 
 	/** Commands of the bot take the input layer's path: AAbyssPlayerController::SubmitCommand (GI->Submit without one). */
@@ -1143,9 +1218,14 @@ private:
 			TArray<FAbyssAutoTestLogCapture::FLine> Ignored2;
 			LogCapture->Read(Counts, Ignored1, Ignored2);
 		}
+		CheckPresence(TEXT("the scenario's end"));
 		if (!ScenarioCompleted())
 		{
 			Finish(EAbyssAutoTestResult::Failed, FailureReason.IsEmpty() ? FString(TEXT("the scenario did not complete")) : FailureReason);
+		}
+		else if (!PresenceFailure.IsEmpty())
+		{
+			Finish(EAbyssAutoTestResult::Failed, PresenceFailure);   // 2G review X6: a presentation that drew nothing
 		}
 		else if (Counts.Errors > 0 || Counts.Ensures > 0)
 		{
@@ -1301,6 +1381,21 @@ private:
 			Int("storyBeats", static_cast<int64>(Stats.beatsEnded.size()));
 			W.EndObject();
 		}
+		// 2G review X6: what the core announced and what the presentation drew (AbyssPresenceRules).
+		W.Key("presentation");
+		W.StartObject();
+		Int("strikeTelegraphs", Presence.StrikeTelegraphs);
+		Int("hazards", Presence.Hazards);
+		Int("arenas", Presence.Arenas);
+		Int("corpses", Presence.Corpses);
+		Int("ashnumbFrames", Presence.AshnumbFrames);
+		Int("peakDecals", Presence.PeakDecals);
+		Int("peakArenaDecals", Presence.PeakArenaDecals);
+		Int("peakHusks", Presence.PeakHusks);
+		Int("bandFrames", Presence.BandFrames);
+		Str("failure", PresenceFailure);
+		W.EndObject();
+
 		if (Snap != nullptr)
 		{
 			W.Key("hero");
@@ -1529,6 +1624,9 @@ private:
 	uint32 SkillSlotsShot = 0;
 	double NextPeriodicSeconds = 0.0;
 	int32 PeriodicShots = 0;
+	/** 2G review X6: the presentation probe's tally and its first failure ("" = none). */
+	AbyssPresenceRules::FTally Presence;
+	FString PresenceFailure;
 };
 
 // =====================================================================================================================

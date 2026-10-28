@@ -38,6 +38,7 @@
 #include "Framework/AbyssText.h"
 #include "Framework/AbyssUnits.h"
 #include "Framework/AbyssWorldView.h"
+#include "Vfx/AbyssVfxBudgetRules.h"
 #include "World/AbyssAssetLibrary.h"
 
 static TAutoConsoleVariable<float> CVarAbyssCharLightGain(
@@ -49,8 +50,7 @@ static TAutoConsoleVariable<float> CVarAbyssCharLightGain(
 
 namespace AbyssVfxSystemPrivate
 {
-	constexpr int32 DesktopMaxParticles = 700;   // DECISIONS R20 (web FxEngine MAX_PARTICLES was 900)
-	constexpr int32 MobileMaxParticles = 450;    // DECISIONS R20 (art-inventory-ch1.md 1.9 had 600)
+	// The particle caps (DECISIONS R20: 700 desktop, 450 mobile) and the themed zones' loop budget: AbyssVfxBudgetRules.
 	// DECISIONS R20 density: at most this many live hit.impact bursts per target; a burst this soon after the previous one
 	// on the same target plays at half count. Smoke / dust layers spawn at half count above the live smoke cap.
 	constexpr int32 MaxLiveHitBursts = 2;
@@ -175,6 +175,18 @@ namespace AbyssVfxSystemPrivate
 	{
 		return FTransform(FQuat::Identity, FVector(0.0, 0.0, -100000.0), FVector::ZeroVector);
 	}
+
+	void ConsoleVfxStatus(const TArray<FString>& Args, UWorld* InWorld)
+	{
+		if (const UAbyssVfxSystem* System = UAbyssVfxSystem::Get(InWorld))
+		{
+			UE_LOG(LogAbyss, Display, TEXT("%s"), *System->DescribeBudget());
+		}
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs AbyssVfxStatusCommand(TEXT("abyss.Vfx.Status"),
+		TEXT("Logs the particle budget: live / peak / cap, the loop ceiling and culling of a themed zone, dropped spawns."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&ConsoleVfxStatus));
 }
 
 // =====================================================================================================================
@@ -198,7 +210,7 @@ void UAbyssVfxSystem::Initialize(FSubsystemCollectionBase& Collection)
 	Collection.InitializeDependency<UAbyssActorRegistry>();
 	Random.Initialize(0x5EEDF00Du);
 	Library.LoadAll();
-	MaxParticles = Quality.bMobile ? AbyssVfxSystemPrivate::MobileMaxParticles : AbyssVfxSystemPrivate::DesktopMaxParticles;
+	RefreshLoopBudget();
 	BindEvents();
 }
 
@@ -279,7 +291,58 @@ void UAbyssVfxSystem::UnbindEvents()
 void UAbyssVfxSystem::ApplyQuality(const FAbyssQualityProfile& Profile)
 {
 	Quality = Profile;
-	MaxParticles = Quality.bMobile ? AbyssVfxSystemPrivate::MobileMaxParticles : AbyssVfxSystemPrivate::DesktopMaxParticles;
+	RefreshLoopBudget();
+}
+
+void UAbyssVfxSystem::SetPresentationTheme(bool bThemed)
+{
+	bThemedZone = bThemed;
+	RefreshLoopBudget();
+	PeakLiveParticles = 0;
+	LoopsCulledLastFrame = 0;
+	LoopSpawnsDropped = 0;
+	BurstSpawnsDropped = 0;
+}
+
+void UAbyssVfxSystem::RefreshLoopBudget()
+{
+	// Outside a presentation theme exactly as before: the full cap, no culling, the profile's multiplier (>= .25).
+	const AbyssVfxBudgetRules::FLoopBudget Budget =
+		AbyssVfxBudgetRules::LoopBudgetFor(bThemedZone, Quality.bMobile, static_cast<double>(Quality.ParticleFrequencyMultiplier));
+	MaxParticles = Budget.MaxParticles;
+	LoopCeiling = Budget.LoopCeiling;
+	LoopCullRadiusCm = static_cast<float>(Budget.CullRadiusCm);
+	LoopFrequencyMultiplier = static_cast<float>(Budget.FrequencyMultiplier);
+}
+
+FAbyssVfxBudgetStats UAbyssVfxSystem::GetBudgetStats() const
+{
+	FAbyssVfxBudgetStats Stats;
+	Stats.LiveParticles = Particles.Num();
+	Stats.MaxParticles = MaxParticles;
+	Stats.LoopCeiling = LoopCeiling;
+	Stats.LoopCullRadiusCm = LoopCullRadiusCm;
+	Stats.LoopFrequencyMultiplier = LoopFrequencyMultiplier;
+	Stats.bThemedZone = bThemedZone;
+	Stats.PeakLiveParticles = PeakLiveParticles;
+	for (const FEmitter& Emitter : Emitters)
+	{
+		Stats.ContinuousEmitters += Emitter.bContinuous && !Emitter.bStopped ? 1 : 0;
+	}
+	Stats.LoopsCulled = LoopsCulledLastFrame;
+	Stats.LoopSpawnsDropped = LoopSpawnsDropped;
+	Stats.BurstSpawnsDropped = BurstSpawnsDropped;
+	return Stats;
+}
+
+FString UAbyssVfxSystem::DescribeBudget() const
+{
+	const FAbyssVfxBudgetStats Stats = GetBudgetStats();
+	return FString::Printf(TEXT("VFX budget: %d live (peak %d) of %d, loop ceiling %d, %s, loop frequency x%.2f, %d loops (%d culled), ")
+		TEXT("dropped since the zone build: %d loop spawns, %d burst spawns"),
+		Stats.LiveParticles, Stats.PeakLiveParticles, Stats.MaxParticles, Stats.LoopCeiling,
+		Stats.LoopCullRadiusCm > 0.f ? *FString::Printf(TEXT("loops culled beyond %.0f cm"), Stats.LoopCullRadiusCm) : TEXT("no culling"),
+		Stats.LoopFrequencyMultiplier, Stats.ContinuousEmitters, Stats.LoopsCulled, Stats.LoopSpawnsDropped, Stats.BurstSpawnsDropped);
 }
 
 void UAbyssVfxSystem::ClearAll()
@@ -939,6 +1002,7 @@ void UAbyssVfxSystem::UpdateEmitters(float DeltaMs)
 	static const FName DustSprite(TEXT("Dust"));
 	// DECISIONS R20: above the live smoke cap new smoke / dust layers spawn at half count (bursts) / half rate (loops).
 	const bool bSmokeCrowded = LiveSmokeParticles > SmokeDensityCap;
+	LoopsCulledLastFrame = 0;
 	for (int32 Index = 0; Index < Emitters.Num();)
 	{
 		FEmitter& Emitter = Emitters[Index];
@@ -973,10 +1037,19 @@ void UAbyssVfxSystem::UpdateEmitters(float DeltaMs)
 				{
 					bDone = true;
 				}
+				else if (LoopCullRadiusCm > 0.f && Anchors.IsValidIndex(Emitter.SpawnAnchor)
+					&& !AbyssVfxBudgetRules::LoopInRange(static_cast<double>(LoopCullRadiusCm),
+						FVector::DistSquared2D(Anchors[Emitter.SpawnAnchor].Current, CameraFocus)))
+				{
+					// 2G review X4: a themed zone's loop out of every view (beyond the cull radius) spawns nothing; no backlog
+					// builds up for its return.
+					Emitter.SpawnAccumulator = 0.f;
+					++LoopsCulledLastFrame;
+				}
 				else
 				{
-					// Web: emission interval x quality multiplier -> rate / multiplier.
-					const float Multiplier = FMath::Max(0.25f, Quality.ParticleFrequencyMultiplier);
+					// Web: emission interval x quality multiplier -> rate / multiplier (a themed zone's mobile floor: X4).
+					const float Multiplier = LoopFrequencyMultiplier;
 					const float Rate = Layer.Rate / Multiplier * SmokeScale;
 					Emitter.SpawnAccumulator += FMath::Min(DeltaMs, AbyssVfxSystemPrivate::MaxEmitterBacklogMs) * Rate / 1000.f;
 					const int32 Count = FMath::FloorToInt32(Emitter.SpawnAccumulator);
@@ -1014,14 +1087,19 @@ void UAbyssVfxSystem::SpawnFromEmitter(FEmitter& Emitter, int32 Count)
 	case EAbyssVfxUnit::Cm: break;
 	}
 	Emitter.FanCount = Emitter.bContinuous ? 0 : Count;   // `fan` bursts: particle i of N
+	// 2G review X4: a themed zone's loops stop at their ceiling, so a burst always finds room (elsewhere both are the cap).
+	const int32 Limit = Emitter.bContinuous ? LoopCeiling : MaxParticles;
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
-		if (Particles.Num() >= MaxParticles)
+		if (Particles.Num() >= Limit)
 		{
-			return;
+			int32& Dropped = Emitter.bContinuous ? LoopSpawnsDropped : BurstSpawnsDropped;
+			Dropped += Count - Index;
+			break;
 		}
 		SpawnParticle(Emitter, Layer, UnitScale);
 	}
+	PeakLiveParticles = FMath::Max(PeakLiveParticles, Particles.Num());
 }
 
 void UAbyssVfxSystem::SpawnParticle(FEmitter& Emitter, const FAbyssVfxLayer& Layer, float UnitScale)

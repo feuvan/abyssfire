@@ -63,8 +63,10 @@ public:
 	/** Zone teardown / session end: every decal, marker and loop handle goes (the VFX system clears its emitters). */
 	void ClearAll();
 
-	/** Decals drawn this frame (autotest / diagnostics). */
+	/** Decals drawn this frame (the in-game autotest's presentation probe, AbyssPresenceRules; diagnostics). */
 	int32 GetDrawnDecalCount() const { return DrawnDecals; }
+	/** Of those, arena rings (Valdras's closing ring). */
+	int32 GetDrawnArenaCount() const { return DrawnArenas; }
 
 protected:
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
@@ -107,6 +109,7 @@ private:
 	int32 DecalCap = 32;
 	bool bOuterWash = true;
 	int32 DrawnDecals = 0;
+	int32 DrawnArenas = 0;
 	bool bEventsBound = false;
 	bool bResourcesResolved = false;
 	bool bDecalsAvailable = false;

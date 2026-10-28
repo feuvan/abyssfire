@@ -742,6 +742,16 @@ namespace AbyssCorpseRules
 		return Tier <= 0 ? 12 : (Tier == 1 ? 20 : 32);
 	}
 
+	/**
+	 * Whether a husk (a held kill or a posed seed) casts the sun's CSM (2G review X4): on desktop as the living do; on
+	 * mobile never - it keeps its blob - so mobile high's 32 lying bodies (body, weapons, kettle helm) stay out of the
+	 * shadow depth pass, and a seed on mobile low / balanced no longer draws its blob at the under-CSM alpha with no CSM.
+	 */
+	inline bool HuskCastsSunShadow(bool bMobile)
+	{
+		return !bMobile;
+	}
+
 	struct FHuskEntry
 	{
 		uint32_t Id = 0;

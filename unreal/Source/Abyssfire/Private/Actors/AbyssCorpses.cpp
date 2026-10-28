@@ -1,8 +1,12 @@
 #include "Actors/AbyssCorpses.h"
 
 #include "Abyssfire.h"
+#include "Components/PrimitiveComponent.h"
+#include "Components/SceneComponent.h"
+#include "Engine/Level.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Materials/MaterialInterface.h"
 
 #include <algorithm>
 #include <cmath>
@@ -263,10 +267,87 @@ void UAbyssCorpseLayer::UnbindEvents()
 void UAbyssCorpseLayer::ApplyQuality(const FAbyssQualityProfile& Profile)
 {
 	HuskCap = AbyssCorpseRules::HuskCap(Profile.Tier, Profile.bMobile);
+	// 2G review X4: husks cast the sun's CSM on desktop only (the world builder's quality refresh reaches the living).
+	bHuskSunShadow = AbyssCorpseRules::HuskCastsSunShadow(Profile.bMobile);
+	if (State.IsValid())
+	{
+		for (FAbyssCorpseState::FEntry& Entry : State->Entries)
+		{
+			if (AAbyssCharacterActor* Actor = Entry.Actor.Get())
+			{
+				Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bHuskSunShadow);
+			}
+		}
+	}
+}
+
+void UAbyssCorpseLayer::WarmAshPipelines(const abyss::Snapshot& Snap)
+{
+	// 2G review X5: one hidden component per distinct body / held-item mesh of the zone's corpse-holding monsters, its
+	// toon / ink slots on the ash twins, registered now (behind the zone fade) so the twins' pipeline states precache
+	// before the first kill greys - UAbyssTelegraphSystem registers one hidden quad for M_AF_Telegraph the same way. The
+	// map's seeded husks put the twins on their own bodies at the zone entry already.
+	UWorld* OwningWorld = GetWorld();
+	UAbyssWorldBuilder* Builder = UAbyssWorldBuilder::Get(this);
+	UAbyssAssetLibrary* Assets = UAbyssAssetLibrary::Get(this);
+	if (OwningWorld == nullptr || Builder == nullptr || Assets == nullptr || !HasAshMaterials())
+	{
+		return;
+	}
+	UMaterialInterface* ToonAsh = Assets->LoadMaterial(TEXT("M_AF_Toon_Ash"));
+	UMaterialInterface* InkAsh = Assets->LoadMaterial(TEXT("M_AF_Outline_Ash"));
+	if (ToonAsh == nullptr || InkAsh == nullptr)
+	{
+		return;
+	}
+	if (WarmActor != nullptr)
+	{
+		WarmActor->Destroy();   // a rebuild without a clear: the copies are made afresh for this zone's bodies
+		WarmActor = nullptr;
+	}
+	WarmComponents.Reset();
+	{
+		FActorSpawnParameters Params;
+		Params.Name = MakeUniqueObjectName(OwningWorld->PersistentLevel.Get(), AActor::StaticClass(), FName(TEXT("AbyssAshWarm")));
+		Params.ObjectFlags |= RF_Transient;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		WarmActor = OwningWorld->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, Params);
+		if (WarmActor == nullptr)
+		{
+			return;
+		}
+		USceneComponent* Root = NewObject<USceneComponent>(WarmActor, TEXT("Root"));
+		Root->SetMobility(EComponentMobility::Movable);
+		WarmActor->SetRootComponent(Root);
+		Root->RegisterComponent();
+	}
+	TSet<const UObject*> Seen;
+	TArray<UPrimitiveComponent*> Added;
+	for (const abyss::MonsterView& Monster : Snap.monsters)
+	{
+		const AAbyssCharacterActor* Actor = Builder->FindCharacter(Monster.id);
+		if (Actor != nullptr && Actor->WillHoldCorpsePose())
+		{
+			Actor->AddAshWarmComponents(*WarmActor, ToonAsh, InkAsh, Seen, Added);
+		}
+	}
+	for (UPrimitiveComponent* Component : Added)
+	{
+		WarmComponents.Add(Component);
+	}
+	UE_LOG(LogAbyss, Log, TEXT("Corpses: %d ash pipeline warm-up components (%d meshes) registered for the zone"), Added.Num(),
+		Seen.Num());
 }
 
 void UAbyssCorpseLayer::ClearAll()
 {
+	// The zone's pipeline warm-up copies go with it (WarmAshPipelines registers the next zone's).
+	if (WarmActor != nullptr)
+	{
+		WarmActor->Destroy();
+		WarmActor = nullptr;
+	}
+	WarmComponents.Reset();
 	// The VFX system clears its own emitters with the zone; the handles held here are simply forgotten.
 	if (!State.IsValid())
 	{
@@ -455,6 +536,7 @@ bool UAbyssCorpseLayer::SpawnHusk(size_t Index)
 		return false;   // its art draws no husk (or none resolves): nothing to show
 	}
 	Entry.Block = State->BlockFor(Assets->GetManifest(), Actor->GetArtName());
+	Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bHuskSunShadow);   // 2G review X4: no CSM on mobile
 	Actor->PoseAsHusk();
 	Entry.Actor = Actor;
 	Entry.Husk = AbyssCorpseRules::MakeHusk(Entry.DeathMs, Entry.Block.HoldFromMs, /*bBornHusk*/ true, /*bStoryHeld*/ false);
@@ -513,6 +595,7 @@ void UAbyssCorpseLayer::HandleCorpseAdded(const abyss::EvCorpseAdded& Event)
 		return;   // its death did not hold (no ash twins, no corpse block): today's fade played; the entry stays undrawn
 	}
 	Actor->AdoptAsCorpse();
+	Actor->SetShadowMode(/*bBlob*/ true, /*bCastDynamic*/ bHuskSunShadow);   // 2G review X4: no CSM on mobile
 	Entry.Actor = Actor;
 	Entry.Block = State->BlockFor(Assets->GetManifest(), Actor->GetArtName());
 	const abyss::Snapshot* Snap = CurrentSnapshot();

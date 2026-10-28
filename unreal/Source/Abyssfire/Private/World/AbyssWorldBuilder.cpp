@@ -675,6 +675,17 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 		}
 	}
 	const FName ZoneTheme = PresentationThemeOf(Snap.zone.mapId);
+	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
+	{
+		// 2G review X4 (AbyssVfxBudgetRules): a themed zone's loops keep a quarter of the particle cap free for bursts, spawn
+		// nothing far off screen and emit at the balanced density at most on mobile; other zones as before.
+		Vfx->SetPresentationTheme(!ZoneTheme.IsNone());
+	}
+	if (UAbyssCorpseLayer* Corpses = !ZoneTheme.IsNone() ? UAbyssCorpseLayer::Get(this) : nullptr)
+	{
+		// 2G review X5: the ash twins' pipeline states precache behind the zone fade, not at the first kill's grey.
+		Corpses->WarmAshPipelines(Snap);
+	}
 	// Ground loot (bags, gold, potions, gems, scrolls, quest items, the reward.gold coin): loaded behind the zone fade
 	// instead of on the first kill, where the synchronous load (and, uncooked, the "Waiting on static mesh" build) was a
 	// hitch. Uncooked, the zone entry's compile wait finishes their builds before the first frame.

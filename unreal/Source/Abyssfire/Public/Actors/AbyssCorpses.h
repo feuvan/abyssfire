@@ -46,7 +46,9 @@
 
 #include "AbyssCorpses.generated.h"
 
+class AActor;
 class AAbyssCharacterActor;
+class UPrimitiveComponent;
 struct FAbyssCorpseState;
 
 UCLASS()
@@ -63,8 +65,15 @@ public:
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
 
 	// ---- driven by the world builder ----
-	/** The render tier: how many husks draw at once (overflow retires the oldest). */
+	/** The render tier: how many husks draw at once (overflow retires the oldest), whether they cast the sun's CSM. */
 	void ApplyQuality(const FAbyssQualityProfile& Profile);
+	/**
+	 * 2G review X5: at a zone build with a presentation theme, hidden components carrying the ash twins on the zone's
+	 * corpse-holding bodies and held items (one per distinct mesh), so M_AF_Toon_Ash / M_AF_Outline_Ash precache their
+	 * pipeline states with the zone (the telegraph quad's idiom) instead of at the first kill's grey. Kept for the zone.
+	 * Snap: the zone's snapshot (its monsters were spawned before the build).
+	 */
+	void WarmAshPipelines(const abyss::Snapshot& Snap);
 	/** Per frame, after the characters are placed and before the telegraphs' and the VFX system's ticks. */
 	void Tick(const FAbyssFrameInfo& Frame, const abyss::Snapshot& Snap, float VisualDeltaSec, float RealDeltaSec);
 	/** Zone teardown / session end: every husk actor goes; loop handles are forgotten (the VFX system clears them). */
@@ -121,5 +130,13 @@ private:
 
 	TSharedPtr<FAbyssCorpseState> State;
 	int32 HuskCap = 32;
+	/** AbyssCorpseRules::HuskCastsSunShadow for the render tier (2G review X4). */
+	bool bHuskSunShadow = true;
 	bool bEventsBound = false;
+
+	/** WarmAshPipelines' hidden components (one actor per world, emptied at each zone clear). */
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> WarmActor;
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UPrimitiveComponent>> WarmComponents;
 };

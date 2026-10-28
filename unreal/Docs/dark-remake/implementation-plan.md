@@ -649,7 +649,7 @@ manifest moves hit timing, so the seeds differ by manifest):
 - **Anim map (W1 part of U2's map).** `AnimAction` Roar / Taunt / Stun / Attack02 / Cast02 / Rise → the clip of the same
   name; the mini-boss Taunt hold and the Stun status loop their clip; the boss intro's Roar plays through the frozen world.
 - **Echo, brightness.** As DR12 (6) / (7); `FAbyssUserSettings::Brightness` round-trips (mock-compiled `AbyssSettings.cpp`).
-- **For the Mac.** Not compiled here (no UE): the look of the march mood / dawn / Rim blend, the crimson wind-up at 0.85,
+- **For the Mac** (merged into README *Mac playtest script*, 2G cross-stage review). Not compiled here (no UE): the look of the march mood / dawn / Rim blend, the crimson wind-up at 0.85,
   the echo figures' placement against the set pieces (the figures sit at the lore tile + A10's offsets: the dais proposal
   (15,95) is 5.8 tiles from `lore_rf_echo_03` (20,92), so U4 should stand the dais at the echo or the echo moves), and
   the brightness range (mac-look).
@@ -686,7 +686,7 @@ manifest moves hit timing, so the seeds differ by manifest):
 - **Deferred.** The dusk tolls (no day clock in W1), phase stingers / P3 roar / standard snaps (W2 `EvMonsterPhase`),
   `untilFlag` (W2 flags), the planned non-vocal cues (`plannedCues`, the next AU package). The jukebox row "赤幡原 ·
   探索" still plays the bright web recording `emerald_plains_explore` (the audio owner's call).
-- **For the Mac.** Not compiled here (mock-compiled against UE 5.6 signatures only): the Knellwatch lute on arrival
+- **For the Mac** (merged into README *Mac playtest script*, 2G cross-stage review). Not compiled here (mock-compiled against UE 5.6 signatures only): the Knellwatch lute on arrival
   after the prologue, the drones through a fight (no restart), silence in the Rim / Ashwheat / Sheepfold, the siege and
   the finale's silence → lute, the tolls (near inside the fort, far outside), the bed crossfade at the Rim edge, the
   knock / hearth attenuation and panning, encounter stinger ducks, Valdras's and the Corpseherd's named voices.
@@ -717,7 +717,7 @@ manifest moves hit timing, so the seeds differ by manifest):
   type the UI prefixes (card, log, tracker): "Escort Escort Bern to the hallowed ground" / "护送 护送伯恩去最后的圣地"
   (q_rf_hallowed_ground), less glaringly "Talk Bring the samples to Marl" and "Defend Hold the Boneyard Gate". Rephrase
   those `data.questTarget.*` strings as targets ("Bern" / "伯恩"), content lane or 1C close.
-- **For the Mac.** Not compiled here (no UE; the glue was read against the module's Slate idioms, the logic is in the
+- **For the Mac** (merged into README *Mac playtest script*, 2G cross-stage review). Not compiled here (no UE; the glue was read against the module's Slate idioms, the logic is in the
   tested helpers): the Captain's progress-only card while *The Sleepless Marshal* runs, desktop and touch (Leave, View
   Story); the Tag-Thief and Oathless turn-in cards (two labelled columns, selection highlight, the touch tap card) and
   their accept previews; the paymaster's discovery banner on two lines; the puzzle answer stacked above Leave in English,
@@ -769,7 +769,7 @@ manifest moves hit timing, so the seeds differ by manifest):
   | Hald's forge warm light (§15: warm light only at the hearth, forge, bell-frame lantern, cookfire) | a `camp.forge` / lantern recipe | A12 |
   | Crowmarket's Gleaners identity (§2: banner, salvage carts, boots strung on lines, crows on the cart rails, a cold cookfire) | meshes + `gameId`s; until then Crowmarket shows the march kit's generic pieces without Knellwatch's banner (1C review) | A10 |
   | the sealed exit's march loop (`exit.sealed@march`: smoke / ash at the barricade, breach violet beyond; no crimson ground ring) | the recipe; until then the march exit plays no loop (1C review) | A12 |
-- **For the Mac.** Not compiled here (no UE; the glue was read against the zone actor's instancing / occlusion and the
+- **For the Mac** (merged into README *Mac playtest script*, 2G cross-stage review). Not compiled here (no UE; the glue was read against the zone actor's instancing / occlusion and the
   VFX pool idioms): the 36 placements in emerald_plains (log line `Zone emerald_plains set pieces: 36 of 36 placements
   drawn`), the R1 fade of the bell frame / Name Wall / cottages / wagons / banners, the bell ripple on the dusk toll and
   the Boneyard Gate's self-ring, the knocking from the three doors, both echoes beside their pieces, the gate hidden under
@@ -1954,8 +1954,8 @@ real; every one is fixed, three with a recorded remainder (below).
   `elite.<type>.death` from the kill; raise / summon windups as `monster.raise.mark`; hazards pulsing with `hazard.*`
   until `untilMs`; Valdras's P3 arena ring closing 9 -> 5 tiles with its wash and `hazard.banner_ring` on the same
   radius; the Lunge as a 200 ms slide; Valdras's P2 / P3 stingers; ability clips with their beat on the core's contact
-  (the drummer's loop at rate 1); the Cinderbloat's Death as its 900 ms fuse; `abyss.DebugLeash`. README *Dark remake
-  telegraphs* lists the Mac look checks.
+  (the drummer's loop at rate 1); the Cinderbloat's Death as its 900 ms fuse; `abyss.DebugLeash`. README *Mac playtest script*
+  holds the Mac look checks (cross-stage review).
 - **Interpretations** (DR16): Keen keeps its crimson ring (status-only strikes still draw); Gravecold's fuse draws no
   decal (its `elite.frozen.death` is the pre-cue, DR5-slow); a line is the core's rectangle, not the contract's rounded
   end; the arena's wash is a 250 cm band outside the rim fading over its last 100 cm, dropped on mobile low (the
@@ -2001,7 +2001,7 @@ real; every one is fixed, three with a recorded remainder (below).
   `T_FX_AshNoise` plan entry; every existing master's material fingerprint unchanged). Counts: PresentationTests 129
   cases, 8549 assertions on GCC and Clang (27 of 27 hand mutations of the two rules headers caught); Scripts 135 tests;
   the strict content plan 0 errors, 0 warnings.
-- **What it presents** (README *Dark remake corpses and monster states* lists the Mac look checks). A Chapter 1 kill
+- **What it presents** (README *Mac playtest script* holds the Mac look checks). A Chapter 1 kill
   holds its Death pose where it fell, greys and crumbles into an ash husk by plates (sim clock: frozen in a cinematic),
   blows away at the TTL; the removals' looks (expire, raise with the risen body reversing the ash, consume, burn in the
   fire's colour); posed seed husks; the Corpseherd's and Valdras's bodies held through their beats; the gnawer's
@@ -2066,7 +2066,7 @@ real; every one is fixed, three with a recorded remainder (below).
   PORT_STRINGS (re-exported; the CJK subsets rebuilt for 券 / 洗). Counts: PresentationTests 152 cases, 9662 assertions on
   GCC and Clang (32 of 32 hand mutations of the new rules caught); Scripts 140 tests; the strict content plan 0 errors,
   0 warnings.
-- **What it presents** (README *Dark remake HUD and world state* lists the Mac look checks). Valdras's boss bar ticks at
+- **What it presents** (README *Mac playtest script* holds the Mac look checks). Valdras's boss bar ticks at
   65 % / 30 %, dimmed once entered; the status row's grey Ashnumb cell with its stacks (Keen reads as the plain Slow
   cell); the hero's ash band (1 stack mid-shin .. 5 the hips, an edge line; mobile low / no twin: a #8A8480 multiply at
   .25 + .05 x stacks); the gold permanent-reward toast (玛勒的苦药：最大生命 +15 / Marl's Bitter Draught: Max Life +15);
@@ -2086,14 +2086,14 @@ real; every one is fixed, three with a recorded remainder (below).
   status rows, hero materials, moods and ambience are as before (the six status colours / tints pinned by tests).
   AbyssCore untouched.
 - **Deferred (stage H).** The gore setting (no gore art; DR6 keeps it out of zh-CN builds - DR16 (39)); the arena's
-  annulus mesh and the darkest-tile decal capture (a device / Mac pass: README look check 10; the readability test
+  annulus mesh and the darkest-tile decal capture (a device / Mac pass: README *Mac playtest script* 5.1 / 5.3; the readability test
   covers the timing, not the contrast); a fade for an NPC appearing / leaving mid-zone (they pop as before); a respec UI
   for the stored tokens (no respec flow exists).
 - **Review fixes (stage H).** H-M1 pre-skinned position is vertex-shader-only in UE's HLSL translator: `M_AF_Toon_Ashnumb`
   and stage C's `M_AF_Toon_Ash` / `M_AF_Outline_Ash` read it through a `VertexInterpolator`
   (`materials._pre_skinned_position_ps`; the two ash twins rebuild once, `M_AF_Toon` and every other master keep their
   fingerprints) and `test_flow` models shader frequency (`fake_unreal.vertex_only_leaks`, shown to fail the direct
-  wire); README look checks 1 (stage C and H) ask for a clean compile. H-m1 the band sits under the toon's feedback:
+  wire); the README's Mac playtest script (1.1) asks for a clean compile. H-m1 the band sits under the toon's feedback:
   `AF_AshnumbBand` takes the split's hit flash / pain / wind-up / status inputs and gives the ash targets the same
   affine map, exactly the feedback over the banded colour (a hit flashes the ash legs white, Slow / Burn tint them;
   `test_hlsl` checks it against feedback-then-band and the real split + band chain at flash 1; 4 of 4 hand mutations
@@ -2104,6 +2104,36 @@ real; every one is fixed, three with a recorded remainder (below).
   8 of 8 hand mutations of the telegraph rules (fade-in, late spawn, fill from zero, early flash, budget, cap, look,
   window formula) caught. DR16 (40)-(42). Counts after the review: PresentationTests 154 cases, 12888 assertions on GCC
   and Clang; Scripts 143 tests; the strict content plan 0 errors, 0 warnings.
+
+**2G cross-stage review (X1-X6; 2026-10, pending review; DECISIONS DR16 (43)-(47)).**
+- **X1 (process).** The stage commits left `unreal/Audio/README.md` out: the T / C / H edits (phase stingers, the block
+  clang and flee cue, the Gnawed Field's `untilFlag`) sat in the working tree only. They are kept there for the gate's
+  commit; the gate must stage `unreal/` whole and fail when `git status --porcelain -- unreal/` is not empty after a
+  stage commit.
+- **X4 particle budget.** `Private/Vfx/AbyssVfxBudgetRules.h` + `UAbyssVfxSystem::SetPresentationTheme` (from the zone
+  build): in a themed zone continuous emitters stop at 75 % of the R20 cap, spawn nothing beyond 30 m of the camera
+  focus, and emit at most at the balanced density on mobile; elsewhere the R20 budget is unchanged. `vfxbudget_test`
+  builds every Chapter 1 fight scene from the data and keeps each under the loop ceiling per platform and tier (worst
+  455 / 525 desktop high, 303 / 337 mobile high; Valdras's P3 at 651 without the budget); it also checks the cull radius
+  against the camera's farthest visible point (1663 cm + 300 cm drift < 3000 cm). Husks cast no sun CSM on mobile
+  (`AbyssCorpseRules::HuskCastsSunShadow`). `abyss.Vfx.Status` logs the budget.
+- **X5 warm-up.** `UAbyssCorpseLayer::WarmAshPipelines` (a themed zone's build) and the hero's `BandWarm` register hidden
+  copies carrying `M_AF_Toon_Ash` / `M_AF_Outline_Ash` / `M_AF_Toon_Ashnumb`, the telegraph quad's precache idiom.
+- **X6 autotest probe.** `Private/Framework/AbyssPresenceRules.h`: the run fails at a `bossKill` or at its end when the
+  core announced strikes / hazards / arenas / corpses / Ashnumb that nothing drew; `report.json` `presentation`.
+  `presence_test` plays Chapter 1 (warrior 404): by Valdras's kill 14 strikes, 6 hazards, 1 arena, 79 corpses.
+- **X2 / X3 Mac script.** README *Mac playtest script* replaces the per-stage lists of 1C (the "For the Mac" bullets
+  above) and 2G (T, C, H): build, autotest, Chapter 1 by place, Chapter 2 regressions, a device pass, thresholds,
+  how to reach each state, and the checks the lists missed (a quit-and-continue teardown mid-P3, one leash reset that
+  checks stinger / ring / standing fire / ticks together, the Corpseherd's sigil, the family death recipes, a raised
+  body's coinless death). Not real as written: reloading a save mid-windup / mid-hazard / mid-arena (saves hold no
+  fight state: the zone restarts fresh); a zone change mid-P3 (no exit is reachable from the Rim fight; the zone change
+  is checked after M5); a Labyrinth curse floor from a Chapter 1 save (it waits for a Chapter 5 save).
+- **UE calls this pass adds** (all already made elsewhere in the module): `FAutoConsoleCommandWithWorldAndArgs`,
+  `NewObject<USkeletalMeshComponent>` / `<UStaticMeshComponent>` + `SetSkeletalMeshAsset` / `SetStaticMesh` /
+  `SetMaterial` / `SetupAttachment` / `RegisterComponent` / `SetVisibility` / `SetComponentTickEnabled` /
+  `SetUsingAbsoluteLocation|Rotation|Scale`, `SpawnActor<AActor>` with `MakeUniqueObjectName`, `AActor::Destroy`,
+  `FVector::DistSquared2D`, `UGameInstance::GetWorld`, `TSet`.
 
 ### Phase 3 — Wave 3: the descent
 

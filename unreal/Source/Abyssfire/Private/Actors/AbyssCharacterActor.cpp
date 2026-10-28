@@ -198,6 +198,33 @@ namespace AbyssCharacterPrivate
 		return BaseName == ToonName ? ToonAsh : (BaseName == OutlineName ? InkAsh : nullptr);
 	}
 
+	/**
+	 * 2G review X5: a pipeline warm-up copy (hidden once registered; the echo figures' component idiom): no collision, no
+	 * overlaps, no navigation, the caster's shadow flag (its depth-pass pipelines precache too; hidden, it draws none).
+	 */
+	void ConfigureWarmComponent(UPrimitiveComponent& Component, bool bCastShadow)
+	{
+		Component.SetMobility(EComponentMobility::Movable);
+		Component.SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Component.SetGenerateOverlapEvents(false);
+		Component.SetCanEverAffectNavigation(false);
+		Component.SetReceivesDecals(false);
+		Component.SetCastShadow(bCastShadow);
+	}
+
+	/** Finishes a warm-up copy: attached, registered (its pipeline states precache here), then hidden and not ticking. */
+	void RegisterWarmComponent(UPrimitiveComponent& Component, USceneComponent* Parent)
+	{
+		// Placed once: the parent's moves never refresh its render transform (it is never drawn).
+		Component.SetUsingAbsoluteLocation(true);
+		Component.SetUsingAbsoluteRotation(true);
+		Component.SetUsingAbsoluteScale(true);
+		Component.SetupAttachment(Parent);
+		Component.RegisterComponent();
+		Component.SetVisibility(false);
+		Component.SetComponentTickEnabled(false);
+	}
+
 	void ConfigureRimComponent(UPrimitiveComponent& Component)
 	{
 		Component.SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -423,8 +450,99 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 		SyncRimBody();
 		SyncRimWeapons();
 	}
+	// 2G review X5: the hero's band twin precaches its pipeline states with the hero, not at the first Ashnumb stack.
+	WarmAshnumbBand(Setup.bCastShadow);
 	ResetPresentation();
 	return true;
+}
+
+void AAbyssCharacterActor::WarmAshnumbBand(bool bCastShadow)
+{
+	static const FName ToonName(TEXT("M_AF_Toon"));
+	USkeletalMesh* HeroMesh = Body != nullptr ? Body->GetSkeletalMeshAsset() : nullptr;
+	if (EntityKind != abyss::EntityKind::Hero || AshnumbMaster == nullptr || HeroMesh == nullptr)
+	{
+		return;
+	}
+	const bool bCreate = BandWarm == nullptr;
+	if (bCreate)
+	{
+		BandWarm = NewObject<USkeletalMeshComponent>(this, TEXT("AshnumbWarm"));
+		AbyssCharacterPrivate::ConfigureWarmComponent(*BandWarm, bCastShadow);
+	}
+	else if (BandWarm->GetSkeletalMeshAsset() == HeroMesh)
+	{
+		return;   // already warmed for this body
+	}
+	BandWarm->SetSkeletalMeshAsset(HeroMesh);
+	// The slots UpdateAshnumbBand converts (M_AF_Toon) on the band twin; every other slot keeps the body's material.
+	const int32 NumSlots = Body->GetNumMaterials();
+	for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+	{
+		UMaterialInterface* Material = Body->GetMaterial(Slot);
+		const UMaterial* Base = Material != nullptr ? Material->GetBaseMaterial() : nullptr;
+		BandWarm->SetMaterial(Slot, Base != nullptr && Base->GetFName() == ToonName ? AshnumbMaster.Get() : Material);
+	}
+	if (bCreate)
+	{
+		AbyssCharacterPrivate::RegisterWarmComponent(*BandWarm, Body);
+	}
+}
+
+void AAbyssCharacterActor::AddAshWarmComponents(AActor& Owner, UMaterialInterface* ToonAsh, UMaterialInterface* InkAsh,
+	TSet<const UObject*>& SeenMeshes, TArray<UPrimitiveComponent*>& Out) const
+{
+	using namespace AbyssCharacterPrivate;
+	USceneComponent* Root = Owner.GetRootComponent();
+	if (!bHasArt || Body == nullptr || ToonAsh == nullptr || InkAsh == nullptr || Root == nullptr)
+	{
+		return;
+	}
+	// The body: a skeletal copy (the GPU-skin vertex factory's pipelines), toon / ink slots on the twins.
+	USkeletalMesh* BodyMesh = Body->GetSkeletalMeshAsset();
+	if (BodyMesh != nullptr && !SeenMeshes.Contains(BodyMesh))
+	{
+		SeenMeshes.Add(BodyMesh);
+		USkeletalMeshComponent* Copy = NewObject<USkeletalMeshComponent>(&Owner);
+		ConfigureWarmComponent(*Copy, bBlobUnderSunShadow);
+		Copy->SetSkeletalMeshAsset(BodyMesh);
+		const int32 NumSlots = Body->GetNumMaterials();
+		for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+		{
+			UMaterialInterface* Material = Body->GetMaterial(Slot);
+			UMaterialInterface* Twin = AshTwinFor(Material, ToonAsh, InkAsh);
+			Copy->SetMaterial(Slot, Twin != nullptr ? Twin : Material);
+		}
+		RegisterWarmComponent(*Copy, Root);
+		Out.Add(Copy);
+	}
+	// The held items (the kettle helm too): static copies (the local vertex factory's pipelines).
+	TArray<const UStaticMeshComponent*, TInlineAllocator<6>> Items = { MainHandMesh.Get(), OffHandMesh.Get() };
+	for (const UStaticMeshComponent* Item : ExtraItems)
+	{
+		Items.Add(Item);
+	}
+	for (const UStaticMeshComponent* Item : Items)
+	{
+		UStaticMesh* ItemMesh = Item != nullptr && Item->IsVisible() ? Item->GetStaticMesh() : nullptr;
+		if (ItemMesh == nullptr || SeenMeshes.Contains(ItemMesh))
+		{
+			continue;
+		}
+		SeenMeshes.Add(ItemMesh);
+		UStaticMeshComponent* Copy = NewObject<UStaticMeshComponent>(&Owner);
+		ConfigureWarmComponent(*Copy, bBlobUnderSunShadow);
+		Copy->SetStaticMesh(ItemMesh);
+		const int32 NumSlots = Item->GetNumMaterials();
+		for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+		{
+			UMaterialInterface* Material = Item->GetMaterial(Slot);
+			UMaterialInterface* Twin = AshTwinFor(Material, ToonAsh, InkAsh);
+			Copy->SetMaterial(Slot, Twin != nullptr ? Twin : Material);
+		}
+		RegisterWarmComponent(*Copy, Root);
+		Out.Add(Copy);
+	}
 }
 
 void AAbyssCharacterActor::SetShadowMode(bool bBlob, bool bCastDynamic)

@@ -965,6 +965,7 @@ void UAbyssTelegraphSystem::Tick(const FAbyssFrameInfo& Frame, const abyss::Snap
 
 	// ---- draw ----
 	DrawnDecals = 0;
+	DrawnArenas = 0;
 	for (size_t Index = 0; Index < S.Decals.size(); ++Index)
 	{
 		FAbyssTelegraphState::FDecal& D = S.Decals[Index];
@@ -1018,6 +1019,7 @@ void UAbyssTelegraphSystem::Tick(const FAbyssFrameInfo& Frame, const abyss::Snap
 			Component->SetVisibility(true);
 		}
 		++DrawnDecals;
+		DrawnArenas += D.Kind == EDecalKind::Arena ? 1 : 0;
 	}
 
 	// ---- forget what is done ----

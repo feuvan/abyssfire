@@ -16,6 +16,9 @@
 //   mobile to the camera focus, the hero halo excluded), refreshed every LightingUpdateIntervalMs.
 // * Density (DECISIONS R20): hit.impact.* at most 2 live bursts per target (half count within 120 ms), smoke layers at
 //   half count while more than 40 smoke / dust particles live; the recipe library grades the Smoke sprite layers.
+// * Loop budget (dark remake 2G review X4, AbyssVfxBudgetRules.h): in a zone with a presentation theme (Chapter 1;
+//   SetPresentationTheme from the zone build) continuous emitters stop at 75 % of the cap (bursts keep the rest), spawn
+//   nothing beyond 30 m of the camera focus, and emit at most at the balanced frequency on mobile. Other zones: as before.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -78,6 +81,26 @@ struct FAbyssVfxContext
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAbyssVfxShake, float /*DurationMs*/, float /*Intensity*/);
 
+/** The particle budget's state and counters since the last zone build (`abyss.Vfx.Status`, the in-game autotest). */
+struct FAbyssVfxBudgetStats
+{
+	int32 LiveParticles = 0;
+	int32 MaxParticles = 0;
+	/** Continuous emitters spawn only below this (MaxParticles outside a themed zone). */
+	int32 LoopCeiling = 0;
+	/** 0 = no culling. */
+	float LoopCullRadiusCm = 0.f;
+	float LoopFrequencyMultiplier = 1.f;
+	bool bThemedZone = false;
+	int32 PeakLiveParticles = 0;
+	int32 ContinuousEmitters = 0;
+	/** Continuous emitters out of the cull radius on the last frame. */
+	int32 LoopsCulled = 0;
+	/** Continuous spawns dropped at the loop ceiling, burst spawns dropped at the cap (since the zone build). */
+	int32 LoopSpawnsDropped = 0;
+	int32 BurstSpawnsDropped = 0;
+};
+
 UCLASS()
 class ABYSSFIRE_API UAbyssVfxSystem : public UWorldSubsystem
 {
@@ -94,6 +117,11 @@ public:
 	// ---- driven by the world builder ----
 	/** Budgets of the render tier (particle cap, emission frequency multiplier, light pool count). */
 	void ApplyQuality(const FAbyssQualityProfile& Profile);
+	/**
+	 * Dark remake 2G (review X4): whether the zone being built has a presentation theme; its loops then run on the themed
+	 * budget (AbyssVfxBudgetRules::LoopBudgetFor). Resets the budget counters.
+	 */
+	void SetPresentationTheme(bool bThemed);
 	/** Per frame, after the actors were placed. */
 	void Tick(float VisualDeltaSec, const FAbyssFrameInfo& Frame, const abyss::Snapshot& Snap);
 	/** Zone teardown / session end: every emitter, particle, projectile, ground effect and status loop goes. */
@@ -131,6 +159,9 @@ public:
 
 	const FAbyssVfxLibrary& GetLibrary() const { return Library; }
 	int32 GetLiveParticleCount() const { return Particles.Num(); }
+	FAbyssVfxBudgetStats GetBudgetStats() const;
+	/** One log line of GetBudgetStats (`abyss.Vfx.Status`). */
+	FString DescribeBudget() const;
 	/**
 	 * The zone's fake-light scale (DECISIONS R18, world-map-nav.md 14.1): max(0.12, ambientAlpha x (1 - luma(ambient))
 	 * x 1.4) of the zone mood - plains / ember tower / mountain / desert 0.12, forest 0.1605, abyss 0.2522. Light pools and
@@ -422,6 +453,16 @@ private:
 
 	FAbyssQualityProfile Quality;
 	int32 MaxParticles = 700;
+	/** The loop budget (RefreshLoopBudget from the quality and the zone's theme; AbyssVfxBudgetRules). */
+	void RefreshLoopBudget();
+	bool bThemedZone = false;
+	int32 LoopCeiling = 700;
+	float LoopCullRadiusCm = 0.f;
+	float LoopFrequencyMultiplier = 1.5f;
+	int32 PeakLiveParticles = 0;
+	int32 LoopsCulledLastFrame = 0;
+	int32 LoopSpawnsDropped = 0;
+	int32 BurstSpawnsDropped = 0;
 	int32 NextHandle = 1;
 	uint32 NextVisualProjectile = 1;
 	double LastShakeRealSec = -1000.0;

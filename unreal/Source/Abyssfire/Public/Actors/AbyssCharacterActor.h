@@ -217,6 +217,17 @@ public:
 	// ---- corpse layer hooks (dark remake U3, UAbyssCorpseLayer) ----
 	/** Dying with its pose held for the corpse layer (setup bCorpseHold), not yet faded by the fallback. */
 	bool HoldsCorpsePose() const { return bCorpseDeath; }
+	/** Set up to hold its death pose for the corpse layer when it dies (FAbyssCharacterSetup::bCorpseHold). */
+	bool WillHoldCorpsePose() const { return bCorpseHold; }
+	/**
+	 * 2G review X5 (UAbyssCorpseLayer::WarmAshPipelines): hidden, registered copies on Owner (under its root) of this
+	 * body's skeletal mesh and of each held item's static mesh not yet in SeenMeshes, every toon / ink slot on its ash
+	 * twin, so the twins' pipeline states precache with the zone instead of at the first grey. Appended to Out.
+	 */
+	void AddAshWarmComponents(AActor& Owner, UMaterialInterface* ToonAsh, UMaterialInterface* InkAsh,
+		TSet<const UObject*>& SeenMeshes, TArray<UPrimitiveComponent*>& Out) const;
+	/** The hero's Ashnumb band is on its toon slots (diagnostics, the in-game autotest). */
+	bool IsAshnumbBandShown() const { return bBandApplied; }
 	/** The corpse layer took the body: the pose holds for as long as the layer keeps the actor (no fallback fade). */
 	void AdoptAsCorpse();
 	/** A husk that did not die here (a map seed, a late view): the Death clip at its hold frame, frozen, no fade. */
@@ -334,6 +345,8 @@ private:
 	 */
 	bool UpdateAshnumbBand(int32 Stacks, bool bAllowed);
 	void ClearAshnumbBand();
+	/** 2G review X5: BandWarm for the hero's mesh (created once, re-pointed when the mesh changes). */
+	void WarmAshnumbBand(bool bCastShadow);
 	/** Held items beyond the two hands (AbyssMonsterLookRules::ClassifyAttachments), each on its own socket. */
 	void SetExtraItems(const TArray<TPair<UStaticMesh*, FName>>& Items);
 	void SetCpd(int32 Index, float Value);
@@ -398,6 +411,13 @@ private:
 	/** The Ashnumb band's dynamic instances (one per converted toon slot, parallel to BandSlots). */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> BandMaterials;
+
+	/**
+	 * 2G review X5: a hidden, registered, non-ticking copy of the hero's body with M_AF_Toon_Ashnumb on its toon slots, so
+	 * the band's pipeline states precache with the hero (as the telegraph quad's) instead of at the first stack.
+	 */
+	UPROPERTY(Transient)
+	TObjectPtr<USkeletalMeshComponent> BandWarm;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> AuraMesh;
