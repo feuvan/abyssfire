@@ -10,6 +10,7 @@
 
 #include "abyss/base/Enums.h"
 #include "abyss/data/DataStore.h"
+#include "abyss/data/QuestData.h"
 
 #include "Audio/AbyssAmbienceRules.h"
 #include "audio_test_data.h"
@@ -76,6 +77,8 @@ TEST_SUITE("audio")
 		CHECK(Ring.asset == "SW_AMB_GnawedFieldRinging");
 		CHECK_FALSE(Ring.replacesBed);
 		CHECK(Ring.when.monsterAlive == "hunt_hungerbell");
+		CHECK(Ring.when.untilFlag == "rf_hungerbell_silenced");   // Wave 2 (2G stage H): replaces the `while`
+		CHECK(Rim.when.untilFlag.empty());
 		CHECK(Ring.fadeInSec == 4.0);
 		CHECK(Ring.fadeOutSec == 6.0);
 		const Emitter& Knock = EmitterById("ashwheat_knock");
@@ -179,13 +182,37 @@ TEST_SUITE("audio")
 		CHECK(Tracker.IsInside(0));
 		Tracker.Update(Circles, AbyssAudioData::TileOf(15.0, 113.0));  // 18: leaves
 		CHECK_FALSE(Tracker.IsInside(0));
-		// The layer rings only while the Hungerbell lives.
+		// Wave 2: the layer rings until M2's turn-in sets rf_hungerbell_silenced, whether the Hungerbell lives or not (its
+		// untilFlag replaces Wave 1's `while`); the region bed holds always.
 		std::vector<std::string> Alive{ "hunt_hungerbell" };
+		std::vector<std::string> Flags;
 		const auto IsAlive = [&Alive](std::string_view Id) { return AbyssAudioData::Contains(Alive, Id); };
-		CHECK(AbyssAudioData::Holds(Ring.when, IsAlive));
+		const auto HasFlag = [&Flags](std::string_view Id) { return AbyssAudioData::Contains(Flags, Id); };
+		CHECK(AbyssAudioData::Holds(Ring.when, IsAlive, HasFlag));
 		Alive.clear();
-		CHECK_FALSE(AbyssAudioData::Holds(Ring.when, IsAlive));
-		CHECK(AbyssAudioData::Holds(Rim.when, IsAlive));
+		CHECK(AbyssAudioData::Holds(Ring.when, IsAlive, HasFlag));   // the hunt is dead, the field still rings
+		Flags.push_back("rf_hungerbell_silenced");
+		CHECK_FALSE(AbyssAudioData::Holds(Ring.when, IsAlive, HasFlag));
+		Alive.push_back("hunt_hungerbell");
+		CHECK_FALSE(AbyssAudioData::Holds(Ring.when, IsAlive, HasFlag));   // silenced, even with a Hungerbell about
+		CHECK(AbyssAudioData::Holds(Rim.when, IsAlive, HasFlag));
+		// The flag is the one M2 sets (a real quest's setsFlags).
+		const abyss::QuestDef* M2 = audio_test::Data().FindQuest("q_rf_gnawed_field");
+		REQUIRE(M2 != nullptr);
+		CHECK(AbyssAudioData::Contains(M2->setsFlags, Ring.when.untilFlag));
+		// Without flags (the two-argument form) an untilFlag row holds; a row without one keeps the monster rule.
+		Alive.clear();
+		CHECK(AbyssAudioData::Holds(Ring.when, IsAlive));
+		AbyssAudioData::WhileCondition W1 = Ring.when;
+		W1.untilFlag.clear();
+		CHECK_FALSE(AbyssAudioData::Holds(W1, IsAlive, HasFlag));
+		Alive.push_back("hunt_hungerbell");
+		CHECK(AbyssAudioData::Holds(W1, IsAlive, HasFlag));
+		const abyss::JsonValue Row = audio_test::Json(R"({"while": {"monsterAlive": "m"}, "untilFlag": "f"})");
+		const AbyssAudioData::WhileCondition Parsed = AbyssAudioData::ReadWhile(Row);
+		CHECK(Parsed.monsterAlive == "m");
+		CHECK(Parsed.untilFlag == "f");
+		CHECK(AbyssAudioData::ReadWhile(audio_test::Json("{}")).untilFlag.empty());
 		// Crossfade weights: in over fadeInSec, out over fadeOutSec.
 		double W = 0.0;
 		for (int I = 0; I < 30; ++I)

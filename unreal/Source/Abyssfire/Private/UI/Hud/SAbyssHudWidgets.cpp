@@ -633,6 +633,16 @@ int32 SAbyssBossBar::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGe
 	P.RoundBox(Pos - FVector2D(4.0, 4.0), Size + FVector2D(8.0, 8.0), FLinearColor::Transparent, 1.f, FAbyssUiStyle::Rgb(0xc9a45a), 2.f);
 	P.Diamond(FVector2D(Pos.X - 6.0, Center.Y), 12.f, FAbyssUiStyle::Rgb(0xc9a45a));
 	P.Diamond(FVector2D(Pos.X + Size.X + 6.0, Center.Y), 12.f, FAbyssUiStyle::Rgb(0xc9a45a));
+	// 2G stage H (K4): a tick per phase threshold of the boss's table, the entered rows dimmed (AbyssHudRules); a boss
+	// without a phase table (every boss of Chapters 2-5) has none.
+	for (const AbyssHudRules::FPhaseTick& PhaseTick : S.BossPhaseTicks)
+	{
+		const double X = Pos.X + Size.X * PhaseTick.Fraction;
+		const FLinearColor TickColor = FAbyssUiStyle::WithAlpha(PhaseTick.bPassed ? FAbyssUiStyle::Rgb(0xc9a45a)
+			: FAbyssUiStyle::Rgb(0xffe2a8), AbyssHudRules::TickAlpha(PhaseTick.bPassed));
+		P.Box(FVector2D(X - 1.0, Pos.Y - 3.0), FVector2D(2.0, Size.Y + 6.0), TickColor);
+		P.Diamond(FVector2D(X, Pos.Y - 6.0), 6.f, TickColor);
+	}
 	if (!S.BossEpithet.IsEmpty())
 	{
 		P.TextCentered(Center + FVector2D(0.0, 22.0), S.BossEpithet, Ctx->Style().Serif(12.f, false, 1), FAbyssUiStyle::Rgb(0xd9b98a));
@@ -757,24 +767,27 @@ int32 SAbyssBuffRow::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGe
 	FAbyssPainter P(AllottedGeometry, OutDrawElements, LayerId, InWidgetStyle, Ctx->Style());
 	const float Cell = S.bTouch ? 26.f : 22.f;
 	double X = 0.0;
-	// statuses (combat-feel 7): colour per status, the status name's first character as the glyph
-	static const uint32 StatusColors[6] = { 0xff6633, 0x66ccff, 0x33cc33, 0xcc2222, 0x8899cc, 0xffd84a };
-	for (int32 Index = 0; Index < 6; ++Index)
+	// statuses (combat-feel 7): colour per status, the status name's first character as the glyph; every StatusType in
+	// enum order (2G stage H: K6's Ashnumb after the web's six, with its stack count; AbyssHudRules::StatusCells)
+	AbyssHudRules::StatusCells(S.StatusMask, S.AshnumbStacks, StatusCells);
+	for (const AbyssHudRules::FStatusCell& StatusCell : StatusCells)
 	{
-		if ((S.StatusMask & (1u << Index)) == 0)
-		{
-			continue;
-		}
-		const abyss::StatusType Status = static_cast<abyss::StatusType>(Index);
-		const std::string Id(abyss::EnumName(Status));
-		FString Name = Ctx->NameOr("sys.statusEffect.name." + Id, Id);
+		const std::string Id(abyss::EnumName(StatusCell.Status));
+		FString Name = Ctx->NameOr(AbyssHudRules::StatusNameKey(StatusCell.Status), Id);
 		if (Ctx->HasKey("data.statusEffect." + Id))
 		{
 			Name = Ctx->LocStr("data.statusEffect." + Id);
 		}
-		const FLinearColor Color = FAbyssUiStyle::Rgb(StatusColors[Index]);
+		const FLinearColor Color = FAbyssUiStyle::Rgb(StatusCell.Rgb);
 		P.RoundBox(FVector2D(X, 2.0), FVector2D(Cell, Cell), FAbyssUiStyle::Darken(Color, 0.55f), 4.f, Color, 1.5f);
 		P.TextCentered(FVector2D(X + Cell * 0.5, 2.0 + Cell * 0.5), Name.Left(1), Ctx->Style().Body(Cell * 0.55f, true, 1), FLinearColor::White);
+		if (StatusCell.Stacks > 0)
+		{
+			const FString Count = FString::FromInt(StatusCell.Stacks);
+			const FSlateFontInfo CountFont = Ctx->Style().Body(Cell * 0.42f, true, 1);
+			const FVector2D CountSize = FAbyssPainter::Measure(Count, CountFont);
+			P.Text(FVector2D(X + Cell - CountSize.X - 1.0, 2.0 + Cell - CountSize.Y + 1.0), Count, CountFont, FLinearColor::White);
+		}
 		X += Cell + 4.0;
 	}
 	// buffs: gold frame (bonuses) or violet (taunt / slow), remaining-time sweep

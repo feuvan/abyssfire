@@ -364,7 +364,8 @@ characters and before `UAbyssVfxSystem::Tick`) only converts. DECISIONS DR5 (the
   outer wash: that trims the quad from 23.1 m to 18.6 m across at 9 tiles (about 35 % less area), but one translucent
   quad still spans the whole disc; its blank inside (and every decal's blank corners, a ring's hole) exits
   `AF_Telegraph` before any texture sample, so it costs rasterisation and blending, not shading. Budget the arena as an
-  18.6 m square of translucency on mobile low; an annulus mesh waits for the device profile (stage H). One hidden quad is registered as soon as the quad and material load (M_AF_Telegraph's pipeline states
+  18.6 m square of translucency on mobile low; an annulus mesh waits for the device profile (the Mac look check 10 of
+  *Dark remake HUD and world state*). One hidden quad is registered as soon as the quad and material load (M_AF_Telegraph's pipeline states
   precache before the first strike).
 * **Dash** (`EvEntityTeleported{Dash}`: Valdras's Lunge, `hasDash`): the actor slides from where it stood to `dashTo`
   over 200 ms on the dodge's offset ease (`AbyssWorldUtil::EaseOutQuad`), no blink effect.
@@ -497,10 +498,12 @@ and before the telegraphs / VFX) only converts. DECISIONS DR6 (ash mode), DR5, D
 **On the Mac, look at** (after `Scripts/build_content.sh`, which builds `/Game/Abyssfire/Materials/M_AF_Toon_Ash` and
 `M_AF_Outline_Ash` and imports `T_FX_AshNoise`; the plan warns when the noise is missing):
 
-1. The log has no `M_AF_Toon_Ash / M_AF_Outline_Ash missing` line; both masters open in the editor (`M_AF_Toon_Ash`:
-   custom nodes `AF_AshMask` and `AF_AshGrey`, scalars `Grey` / `Dissolve` / `HuskTopCm` / `EdgeWidth` /
-   `NoiseTileCm`, texture `Noise` = `T_FX_AshNoise`; previews with `Grey` 1 / `Dissolve` .38 show a grey body with
-   plates missing from the top down and a pale edge).
+1. The log has no `M_AF_Toon_Ash / M_AF_Outline_Ash missing` line; both masters open in the editor and compile without
+   errors (the build log and the material editor's stats show none; in particular no "Pre-skinned position is only
+   available in the vertex shader": `AF_AshMask` reads it through a `VertexInterpolator`, 2G review H-M1)
+   (`M_AF_Toon_Ash`: custom nodes `AF_AshMask` and `AF_AshGrey`, scalars `Grey` / `Dissolve` / `HuskTopCm` /
+   `EdgeWidth` / `NoiseTileCm`, texture `Noise` = `T_FX_AshNoise`; previews with `Grey` 1 / `Dissolve` .38 show a grey
+   body with plates missing from the top down and a pale edge).
 2. A Risen Footman kill on the darkest march tile: the Death clip plays to its end at normal speed where it fell, holds
    ~0.45 s, greys over ~0.4 s (ink stays dark, no glowing eyes), crumbles to a husk in ~0.9 s with ash dust; the blob
    shadow sits under the pelvis and fades to a faint smudge. After ~20 s the husk blows away along +X. Its kettle helm
@@ -539,6 +542,110 @@ and before the telegraphs / VFX) only converts. DECISIONS DR6 (ash mode), DR5, D
     no husk pops to a reference pose when panned back on screen); a zone change clears them without a hitch; entering
     the march shows its seeded husks lying grey at once.
 12. Chapters 2-5 and a Labyrinth floor: kills burst red with coins and fade exactly as before; no sigil, no husks.
+
+## Dark remake HUD and world state (2G U5 / K6)
+
+What the Wave 2 core's K4 boss phases and K6 world state (Ashnumb, permanent rewards, world flags, NPC lines and
+visibility) look and sound like. The decisions live in `Private/UI/Hud/AbyssHudRules.h` (boss bar ticks, the status
+row, the permanent-reward toast) and `Private/World/AbyssWorldStateRules.h` (dawn from the flag, the linear panel's
+line, the NPCs a story beat still needs, the `AshnumbTint` contract with its band and tint fallback, the character
+status tints), plus `untilFlag` in `Private/Audio/AbyssAudioDataRules.h` and the readability window in
+`Private/Vfx/AbyssTelegraphRules.h` - UE-free, header-only, tested by `PresentationTests/tests/hud_test.cpp`,
+`worldstate_test.cpp`, `readability_test.cpp`, `audio_ambience_test.cpp` and `audio_music_test.cpp` on the real
+`Data/`, the audio manifest and `vfx_recipes.json`. DECISIONS DR16 (items 28-39).
+
+* **Boss bar phase ticks** (`BossBarView::phase / phaseThresholdsPct`): a thin tick (and a small diamond over it) per
+  threshold of the boss's phase table at that share of the bar, pale gold while ahead, dimmed to .35 once its row is
+  entered; a walk home (phase 0) brightens them again. Valdras: 65 % and 30 %. Every other boss has no phase table:
+  its bar is today's.
+* **Ashnumb on the HUD** (`HeroView::ashnumbStacks`, status bit 6): the status row now walks every `StatusType` (the
+  old `Index < 6` loop skipped it): after the web's six (unchanged colours and order) a grey #8A8480 cell, glyph 麻 /
+  A (`sys.statusEffect.name.ashnumb` 麻灰 / Ashnumb), its stack count in the corner. Keen (the Corpseherd's status-only
+  ring) shows as the plain Slow cell, with no number.
+* **Ashnumb on the hero** (`vfx_recipes.json dark.materials.AshnumbTint`, art review r1): while the hero carries stacks
+  its toon slots move to `M_AF_Toon_Ashnumb` (`Scripts/abyss_content`: `M_AF_Toon`'s graph plus `AF_AshnumbBand`
+  after the split) as dynamic instances copying the slot's parameters: an ash band from the feet up to
+  min(.12 + .10 x stacks, .62) of the hero's height (`BandTop`; the art's `heightCm` as `BandHeightCm`, measured on the
+  pre-skinned object-space z, handed to the pixel shader through a `VertexInterpolator`, so the band stays on the legs
+  in every pose): 1 stack mid-shin, 3 the thighs, 5 the hips;
+  #8A8480 in the toon's lit bands, #4C4944 in its shade band and in cast shadow, at strength .85 with a .06 soft top,
+  and a #B8B2A6 line .04 tall on the top edge. The band sits under the toon's feedback (2G review H-m1): the ash targets
+  take the same hit flash / pain / wind-up / status tint as the rest of the body, so a hit flashes the banded legs white
+  and Slow or Burn tint the ash. The ink hull and the held items keep their materials; no Slow look at 5 stacks. The antidote (or the stacks running out) puts the slots back at once. Mobile low, or a content build without
+  the twin (one warning: `M_AF_Toon_Ashnumb not found`), shows the contract's StatusTint path instead: a #8A8480
+  multiply at .25 + .05 x stacks after the web's six tints (`AbyssWorldStateRules::CharacterStatusTint`, the old
+  priority kept). The `status.ashnumb` loop (ash flaking off) already played.
+* **Permanent rewards** (`EvPermanentReward`): a gold toast `<title>: <lines>`, the title the quest's
+  `data.quest.<id>.permanent` (S1: 玛勒的苦药 / Marl's Bitter Draught) else its name, one `ui.permanentReward.*` line
+  per field above 0 (最大生命 +15 / Max Life +15, 属性点 / Stat Points, 技能点 / Skill Points, 洗点券 / Respec Tokens),
+  two spaces apart. New PORT_STRINGS; the CJK subsets were rebuilt for 券 and 洗.
+* **Dawn** (`Snapshot::worldFlags`): `march_dawn` once a flag the chapter's closing quest sets (`rf_chapter_dawn`, M5) is
+  set - the flag the core's dawn spawn variants read, so the grade warms, the ashfall gives way to dust motes and the
+  trenches fill with gravegnawers together; a closing quest without flags keeps Wave 1's turn-in rule. Read every
+  frame, so `EvWorldFlag` needs no handler.
+* **The Gnawed Field's ringing** (`ambience.layers.gnawed_field_ringing`): its `untilFlag` replaces its `while`: the
+  ringing plays inside the field until M2's turn-in sets `rf_hungerbell_silenced` (Wave 1: only while the Hungerbell
+  lived), then fades out over 6 s. Music regions read flags the same way (none uses one today).
+* **NPCs a beat still needs** (K6 `visibleWhen`): the core hides Marl (`plains_herbalist`) at M5's turn-in while the
+  `cs_rf_finale` it queues focuses her and gives her a line. On `EvQuestUpdate{TurnedIn | Accepted}` the world builder
+  expects the cutscenes that quest's `quest_turned_in` / `quest_accepted` triggers queue and the NPCs they name (focus
+  targets, say speakers); an `EvEntityDespawned{Npc, Removed}` of such an NPC keeps its actor drawn where it stood, out
+  of the live world (unregistered, no nameplate or rim, not presented), until that beat ends (`EvStoryBeat{Ended}`),
+  the director is idle (`Snapshot::storyBusy` false: a beat seen before is never queued, so she goes at once), the zone
+  changes, or after a safety time (300 s waiting to begin, 900 s in all). A focus step the core resolved without a
+  target (`hasFocus` false) on such an NPC pans the camera to the kept actor over the step's length. An NPC that shows
+  again meanwhile replaces its held self.
+* **Quest-gated lines** (`DialogueView::lineKey`): the linear NPC panel shows the line the core chose at open, else the
+  web's `dialogue[1] ?? [0]`.
+* **Readability** (`AbyssTelegraphRules::ReadableWindowMs`): every Chapter 1 ground strike, hazard windup and on-death
+  fuse that draws is on screen at least 400 ms before its contact, counting the frame it waits to be drawn at 30 fps.
+  `readability_test.cpp` checks it through the stage T rules (2G review H-m2), not just the core's floors: each real
+  ability's strike played on the core's `SimClock` at 30 / 45 / 60 fps is drawn at full windup strength
+  (`StrikeState` / `PackCpd`) from its first frame to the flash (tightest 689 ms); the budget's worst scene (Valdras's
+  last phase - arena, a windup and the previous strike fading, both hazards, his affix fuse, his summons - plus the two
+  packs that can hold the most decals: the champion Muster's four elite fuses and a three-decal pack such as the
+  Cinderbloats') needs 13 of the lowest cap's 16;
+  and three AutoPilot playthroughs of Chapter 1 (warrior, mage, rogue at 30 fps) replayed through a model of
+  `UAbyssTelegraphSystem::Tick` at that cap drop no decal (peak 4 at once) and read every strike and fuse at least
+  700 ms ahead. The model mirrors the glue's arrangement of the rules; the glue itself compiles on the Mac.
+* **Not shipped**: the gore setting (no gore art; DR6 keeps it out of zh-CN builds entirely). Chapters 2-5 have no phase
+  tables, Ashnumb, permanent rewards, flags, NPC visibility or dawn mood: they look and sound as before.
+
+**On the Mac, look at** (after `Scripts/build_content.sh`, which builds `/Game/Abyssfire/Materials/M_AF_Toon_Ashnumb`):
+
+1. The log has no `M_AF_Toon_Ashnumb not found` line; the master opens in the editor and compiles without errors (the
+   build log and the material editor's stats show none; in particular no "Pre-skinned position is only available in
+   the vertex shader": `AF_AshnumbBand` reads it through a `VertexInterpolator`, 2G review H-M1) (masked, DefaultLit
+   like `M_AF_Toon`, the custom nodes `AF_ToonSplit` and `AF_AshnumbBand`; the Ashnumb group's `BandTop` /
+   `BandHeightCm`).
+2. Let Breachclots stack Ashnumb on the warrior, the mage and the rogue on the darkest march tile (`ashnumb_band.py`'s
+   previews are the reference): the band climbs from mid-shin (1) to the hips (5), the pale edge line marks its top
+   (on the warrior's steel too), the lit side greys lighter than the shade side and the band stays on the legs while
+   running and dodging; the ink and the weapons are untouched; the antidote clears it at once; a zone change keeps it
+   while the stacks last. The status row shows the grey cell with its count. At 5 stacks a hit still flashes the
+   whole hero white, legs included, and a Slow (Keen) tints the ash legs blue like the rest of the body. Mobile low: a
+   grey multiply on the whole hero instead (no band), stronger with the stacks; no hitch on the first stack (the twin
+   loads with the hero).
+3. Valdras's boss bar: two ticks (65 %, 30 %), each dimming as he crosses it; walking him home brightens them. The
+   Corpseherd's bar and every Chapter 2-5 boss bar have none.
+4. S1 (`q_rf_black_blood`) turned in: the gold toast 玛勒的苦药：最大生命 +15 / Marl's Bitter Draught: Max Life +15 for
+   ~2.4 s; S6 (`q_rf_hallowed_ground`): its quest name and 属性点 +3 / Stat Points +3. Both locales fit on one line.
+5. The Gnawed Field at night: the ringing goes on after the Hungerbell dies and stops (6 s fade) only when M2 is turned
+   in; re-entering the field afterwards stays quiet.
+6. M5 turned in: during `cs_rf_finale` Marl stands where she was (no nameplate), the camera pans to her at her focus
+   step and her line plays; she is gone when the cutscene ends. Loading a save with the finale already seen and turning
+   in nothing: she is simply absent.
+7. After M5: the march's dawn grade and dust motes replace the ashfall the moment the flag is set, and the trenches
+   respawn as gravegnawers; leaving and re-entering keeps the dawn.
+8. Talking to Marl after S1: the combat log gets her `after.q_rf_black_blood` line, the linear panel the core's
+   `lineKey` (the second line that holds: her `dialogue.0`); the chaplain after M5: the log his `after.q_rf_last_toll`
+   line, the panel his `dialogue.1` (2E's slot rule).
+9. Keen on the hero: the Slow cell, no damage number.
+10. The darkest-tile decal capture deferred by stage T: every Chapter 1 decal (Clapper Slam, Valdras's four, Keen, the
+    Cinderbloat's fuse, the arena) read on the darkest march tile on every quality tier and the mobile tiers; on mobile
+    low `stat unit` / GPU time with the arena up (one 18.6 m translucent quad) - the annulus mesh is built only if this
+    is over budget.
+11. Chapters 2-5: status rows, boss bars, hero materials and moods exactly as before.
 
 ## In-game autotest (`-abyssautotest`)
 

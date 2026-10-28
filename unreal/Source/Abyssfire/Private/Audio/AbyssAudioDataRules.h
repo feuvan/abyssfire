@@ -6,7 +6,9 @@
 // Region rule (manifest musicDirector.regionRule / ambience.regionRule): the hero's tile (col, row) is inside a circle
 // when (col - c)^2 + (row - r)^2 <= radius^2 (Euclidean tile distance, ExplorationGrid::Reveal's metric) and stays
 // inside until that distance exceeds exitRadius (hysteresis). A `while {monsterAlive: id}` must hold too: a live
-// instance of that monster id is in the zone.
+// instance of that monster id is in the zone. A row's `untilFlag` (Wave 2 world flags, 2G stage H; DECISIONS DR16)
+// replaces its `while`: the row holds until that flag is in Snapshot::worldFlags (the Gnawed Field's ringing plays
+// until M2's turn-in sets rf_hungerbell_silenced, chapter1.md 16, not only while the Hungerbell lives as in Wave 1).
 #pragma once
 
 #include <cmath>
@@ -104,24 +106,43 @@ namespace AbyssAudioData
 		return DistSq(Circle, static_cast<double>(Tile.col), static_cast<double>(Tile.row)) <= R * R;
 	}
 
-	/** A row's `while` condition; an empty monsterAlive always holds. */
+	/**
+	 * A row's `while` condition and its `untilFlag`; an empty condition always holds. With untilFlag the row holds until
+	 * that world flag is set, whatever its `while` (Wave 2 replaces Wave 1's monster rule).
+	 */
 	struct WhileCondition
 	{
 		std::string monsterAlive;
+		std::string untilFlag;
 	};
 
 	inline WhileCondition ReadWhile(const abyss::JsonValue& Row)
 	{
 		WhileCondition Out;
 		Out.monsterAlive = Str(Row.Get("while").Get("monsterAlive"));
+		Out.untilFlag = Str(Row.Get("untilFlag"));
 		return Out;
 	}
 
-	/** Whether the condition holds; IsAlive(std::string_view monsterId) -> bool (a live instance is in the zone). */
+	/**
+	 * Whether the condition holds. IsAlive(std::string_view monsterId) -> bool: a live instance is in the zone;
+	 * HasFlag(std::string_view flag) -> bool: the world flag is set (Snapshot::worldFlags).
+	 */
+	template <class IsAliveFn, class HasFlagFn>
+	bool Holds(const WhileCondition& Condition, IsAliveFn&& IsAlive, HasFlagFn&& HasFlag)
+	{
+		if (!Condition.untilFlag.empty())
+		{
+			return !HasFlag(std::string_view(Condition.untilFlag));
+		}
+		return Condition.monsterAlive.empty() || IsAlive(std::string_view(Condition.monsterAlive));
+	}
+
+	/** Holds without world flags (no flag is ever set: an untilFlag row holds). */
 	template <class IsAliveFn>
 	bool Holds(const WhileCondition& Condition, IsAliveFn&& IsAlive)
 	{
-		return Condition.monsterAlive.empty() || IsAlive(std::string_view(Condition.monsterAlive));
+		return Holds(Condition, IsAlive, [](std::string_view) { return false; });
 	}
 
 	/** Hysteresis state of a list of circles (one flag per circle, in table order). */

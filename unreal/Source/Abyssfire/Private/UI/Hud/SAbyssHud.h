@@ -56,6 +56,8 @@ private:
 	void SyncHero(const abyss::Snapshot& Snap, double Now, float DeltaSeconds);
 	void SyncTarget(const abyss::Snapshot& Snap);
 	void SyncMinimapMarkers(const abyss::Snapshot& Snap, double Now);
+	/** 2G stage H (K6): the toast of a permanent quest reward (AbyssHudRules). */
+	void ShowPermanentReward(const abyss::EvPermanentReward& Reward);
 	void PlaceTargetFrame();
 
 	TSharedPtr<FAbyssUiContext> Ctx;

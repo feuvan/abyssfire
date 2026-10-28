@@ -19,7 +19,9 @@ Contract with the runtime (Source/Abyssfire/Public/World/WorldContract.md 2.1, A
   texture scan;
 * the ash husk (dark remake U3 / 2G stage C): manifest `materials.M_AF_AshDissolve` -> the colours, edge width and noise
   tile M_AF_Toon_Ash / M_AF_Outline_Ash bake as parameter defaults (ash_contract) and the noise (T_FX_AshNoise), planned
-  even without the texture scan.
+  even without the texture scan;
+* Ashnumb on the hero (dark remake K6 / 2G stage H): Export/VFX/vfx_recipes.json `dark.materials.AshnumbTint` -> the
+  colours, band softness, strength and edge width M_AF_Toon_Ashnumb bakes as parameter defaults (ashnumb_contract).
 """
 from __future__ import annotations
 
@@ -166,6 +168,58 @@ def ash_contract(data: dict[str, Any], problems: list[Problem] | None = None) ->
     tile = re.search(r"([0-9]+(?:\.[0-9]+)?) cm", str(noise.get("map") or ""))
     if tile and float(tile.group(1)) > 0.0:
         a.noise_tile_cm = float(tile.group(1))
+    return a
+
+
+@dataclass
+class AshnumbContract:
+    """M_AF_Toon_Ashnumb's constants (Art/Export/VFX/vfx_recipes.json dark.materials.AshnumbTint; Art/blender/vfx/
+    fx_recipes_dark.py ASHNUMB, the band mock vfx/ashnumb_band.py). The defaults are the contract as shipped (the
+    runtime's AbyssWorldStateRules::FAshnumbTint keeps the same copy). The band's top (min(BandTopBase + stacks x
+    BandTopPerStack, MaxBandTop)) and the hero's height are the runtime's per-hero scalars BandTop / BandHeightCm."""
+    ash_color: str = "#8A8480"
+    ash_shade: str = "#4C4944"
+    edge_color: str = "#B8B2A6"
+    edge_width: float = 0.04
+    band_softness: float = 0.06
+    strength: float = 0.85
+    present: bool = False              # the recipes carry the contract (else these defaults)
+
+
+def load_vfx_recipes(path: Path | None = None) -> dict[str, Any]:
+    """The art lane's vfx_recipes.json ({} when it is missing or unreadable: every contract keeps its defaults)."""
+    path = path or paths.VFX_RECIPES_PATH
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def ashnumb_contract(recipes: dict[str, Any], problems: list[Problem] | None = None) -> AshnumbContract:
+    """The contract's material constants; a malformed colour is an error, a missing or out-of-range number keeps the
+    default."""
+    a = AshnumbContract()
+    raw = (((recipes.get("dark") or {}).get("materials") or {}).get("AshnumbTint"))
+    if not isinstance(raw, dict):
+        return a
+    a.present = True
+    params = raw.get("params") or {}
+    for attr, key in (("ash_color", "AshColor"), ("ash_shade", "AshShade"), ("edge_color", "EdgeColor")):
+        value = params.get(key)
+        if value is None:
+            continue
+        text = str(value)
+        if not _HEX_RE.match(text):
+            if problems is not None:
+                problems.append(Problem("error", "vfx_recipes AshnumbTint", f"params.{key}: not a #RRGGBB colour"))
+            continue
+        setattr(a, attr, text if text.startswith("#") else f"#{text}")
+    for attr, key in (("edge_width", "EdgeWidth"), ("band_softness", "BandSoftness"), ("strength", "Strength")):
+        value = params.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and 0.0 <= float(value) <= 1.0:
+            setattr(a, attr, float(value))
     return a
 
 
@@ -441,6 +495,7 @@ class Plan:
     skipped: list[str] = field(default_factory=list)  # assets dropped by the family filter or errors
     telegraph: TelegraphContract = field(default_factory=TelegraphContract)   # M_AF_Telegraph's constants
     ash: AshContract = field(default_factory=AshContract)                     # M_AF_Toon_Ash / _Outline_Ash's constants
+    ashnumb: AshnumbContract = field(default_factory=AshnumbContract)         # M_AF_Toon_Ashnumb's constants
 
     def texture(self, name: str) -> TextureEntry | None:
         for t in self.textures:
@@ -941,6 +996,8 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
     # ---- textures ----
     telegraph = telegraph_contract(data, problems)
     ash = ash_contract(data, problems)
+    # the hero's Ashnumb band (the art lane's VFX contract, next to the manifest's Export/VFX)
+    ashnumb = ashnumb_contract(load_vfx_recipes(export_dir / "VFX" / "vfx_recipes.json"), problems)
     textures = plan_textures(export_dir, palettes, data, problems, scan=scan_textures)
     # ---- painted ground: MI_AF_Terrain_<Theme> per manifest terrain section (needs the planned textures) ----
     for terrain_instance, subject in plan_terrain_instances(data, textures, problems):
@@ -951,7 +1008,7 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
 
     return Plan(manifest_path=manifest_path, export_dir=export_dir, shading=shading, palettes=palettes, assets=assets,
                 skeleton_families=families_map, textures=textures, instances=instances, slot_materials=slot_materials,
-                problems=problems, skipped=skipped, telegraph=telegraph, ash=ash)
+                problems=problems, skipped=skipped, telegraph=telegraph, ash=ash, ashnumb=ashnumb)
 
 
 def classify_texture(name: str) -> tuple[str, str, bool]:

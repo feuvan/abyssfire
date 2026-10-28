@@ -12,8 +12,8 @@ What it pins (single-line text must fit; wrapping text must stay within a line c
   columns (AbyssQuestCardRules::ChoiceColumnWidth), progress lines, the accept preview line;
 - quest log (SAbyssQuestLogPanel.cpp): the painted list row, the detail title and objective labels;
 - quest tracker (SAbyssHudWidgets.cpp): title and objective lines inside the frame padding, the one-line summary;
-- toasts and centre banners (SAbyssNotices.cpp): sealed entrance, quest accepted / turned in, quest complete, the
-  hidden-area discovery (wrapped at 720 px);
+- toasts and centre banners (SAbyssNotices.cpp): sealed entrance, quest accepted / turned in, the permanent quest
+  rewards (2G stage H), quest complete, the hidden-area discovery (wrapped at 720 px);
 - combat log (SAbyssHudWidgets.cpp SAbyssCombatLog): every Chapter 1 event / system line fits the log's room;
 - puzzle (SAbyssConversationPanels.cpp): prompt lines and the answer button (grows, then shrinks its font);
 - lore and dialogue frame titles.
@@ -342,6 +342,16 @@ class Chapter1TextFitTest(unittest.TestCase):
                 name = quest_name(s, quest)
                 toasts[f"accepted {quest['id']}"] = fill(s["sys.questCard.accepted"], name=name)
                 toasts[f"turnedIn {quest['id']}"] = fill(s["sys.questCard.turnedIn"], name=name)
+                # 2G stage H: the permanent-reward toast (SAbyssHud::ShowPermanentReward, AbyssHudRules): the quest's
+                # `permanent` name (else its name) and one line per field above 0, joined by two spaces
+                permanent = (quest.get("rewards") or {}).get("permanent") or {}
+                lines = [fill(s[f"ui.permanentReward.{field}"], n=permanent[field])
+                         for field in ("maxLife", "statPoints", "skillPoints", "respecTokens")
+                         if int(permanent.get(field, 0)) > 0]
+                if lines:
+                    title = s.get(f"data.quest.{quest['id']}.permanent", name)
+                    toasts[f"permanent {quest['id']}"] = fill(s["ui.permanentReward.toast"], title=title,
+                                                              rewards="  ".join(lines))
             for key, text in toasts.items():
                 w = width(text, "body", 15, True) + 36
                 if w > 720 * MARGIN:

@@ -149,6 +149,13 @@ const PORT_STRINGS: Record<string, { 'zh-CN': string; en: string; decision: stri
   // C14 cast target rule: a targeted skill pressed with no monster to resolve, or with its target beyond the skill's reach.
   'zone.combat.noTarget': { 'zh-CN': '没有可攻击的目标!', en: 'No target!', decision: 'C14' },
   'zone.combat.outOfRange': { 'zh-CN': '目标超出范围!', en: 'Target out of range!', decision: 'C14' },
+  // Dark remake 2G (U5 W2, DECISIONS DR16): the toast of a K6 permanent quest reward (EvPermanentReward): the quest's
+  // `permanent` name (else its name) and one line per field above 0.
+  'ui.permanentReward.toast': { 'zh-CN': '{title}：{rewards}', en: '{title}: {rewards}', decision: 'DR16' },
+  'ui.permanentReward.maxLife': { 'zh-CN': '最大生命 +{n}', en: 'Max Life +{n}', decision: 'DR16' },
+  'ui.permanentReward.statPoints': { 'zh-CN': '属性点 +{n}', en: 'Stat Points +{n}', decision: 'DR16' },
+  'ui.permanentReward.skillPoints': { 'zh-CN': '技能点 +{n}', en: 'Skill Points +{n}', decision: 'DR16' },
+  'ui.permanentReward.respecTokens': { 'zh-CN': '洗点券 +{n}', en: 'Respec Tokens +{n}', decision: 'DR16' },
 };
 
 const REMAKE_SOURCE = { zhCN: 'unreal/GameData/i18n/zh-CN.ts', en: 'unreal/GameData/i18n/en.ts' };

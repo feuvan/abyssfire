@@ -22,6 +22,7 @@
 //   `elite.<affix>.death`, the hazard chain, the arena ring) and the budget (a cap per quality tier; the arena first,
 //   then boss > elite > normal, nearest the hero first).
 // * The dash (a charge's EvEntityTeleported{Dash}): the actor slides from where it stood over DashSlideMs.
+// * Readability (2G stage H): a decal is on screen at least 400 ms before its contact (ReadableWindowMs).
 //
 // UE-free and header-only (std + AbyssCore public headers), tested in unreal/PresentationTests/tests/telegraph_test.cpp.
 #pragma once
@@ -1260,6 +1261,35 @@ namespace AbyssTelegraphRules
 		S.OffsetYCm = Dy;
 		S.DurationMs = DashSlideMs;
 		return S;
+	}
+
+	// =================================================================================================================
+	// Readability (monsters.md 1.3 fairness; 2G stage H)
+	// =================================================================================================================
+
+	/**
+	 * A decal must be on screen at least MinReadableMs before its contact. It can first be drawn on the frame after the
+	 * sim step that emitted its event: at the 30 fps floor of every tier that costs up to FirstFrameMs, so
+	 * ReadableWindowMs is a lower bound of the time StrikeState shows it before the flash. Every Chapter 1 ground strike,
+	 * on-death fuse that draws and hazard windup passes with the core's floors (600 ms, bosses 700 ms, fuses 800 ms).
+	 * PresentationTests/tests/readability_test.cpp keeps it so through these rules (2G review H-m2): each real ability's
+	 * strike played on abyss::SimClock at 30 / 45 / 60 fps (StrikeState / PackCpd at full windup strength from the first
+	 * frame to the flash), the budget's worst scene (Valdras's last phase and the two fullest packs) inside the lowest
+	 * cap, and three AutoPilot playthroughs of Chapter 1 replayed through a model of UAbyssTelegraphSystem::Tick at the
+	 * lowest cap (nothing dropped). No tier skips a strike decal to make room: the caps (DecalCap) only drop overflow.
+	 */
+	inline constexpr double MinReadableMs = 400.0;
+	inline constexpr double FirstFrameMs = 1000.0 / 30.0;
+
+	/** How long a decal whose windup starts at StartMs is on screen before its contact (sim ms). */
+	inline double ReadableWindowMs(double StartMs, double ContactMs)
+	{
+		return ContactMs - (StartMs + FirstFrameMs);
+	}
+
+	inline bool Readable(double StartMs, double ContactMs)
+	{
+		return ReadableWindowMs(StartMs, ContactMs) >= MinReadableMs;
 	}
 
 }

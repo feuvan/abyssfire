@@ -18,6 +18,10 @@
 //   toon / ink slot of the body and the held items to the M_AF_Toon_Ash / M_AF_Outline_Ash twins (dynamic instances
 //   with the slot's parameters; scalars Grey / Dissolve / HuskTopCm), and a risen body reverses it over its Rise; the
 //   elite marker can be the Wave 2 sigil (socket fx_elite, absolute scale, level float + symmetric bob + turn).
+// * Dark remake 2G stage H (K6 Ashnumb, Private/World/AbyssWorldStateRules.h): while the hero carries Ashnumb stacks its
+//   toon slots move to the M_AF_Toon_Ashnumb twin (dynamic instances with the slot's parameters; scalars BandTop /
+//   BandHeightCm): an ash band from the feet up whose top rises with the stacks; where the tier draws no band (mobile
+//   low) or the twin is missing, the status tint multiplies #8A8480 at .25 + .05 x stacks instead.
 // * The actor does not tick: UAbyssWorldBuilder calls PresentFrame once per rendered frame with the interpolated state.
 #pragma once
 
@@ -135,6 +139,10 @@ struct FAbyssCharacterFrame
 	bool bHasWindupTint = false;
 	FLinearColor WindupTint = FLinearColor::White;
 	FLinearColor WindupTintElite = FLinearColor::White;
+	/** The hero (K6): its Ashnumb stacks (HeroView::ashnumbStacks; 0 = none). */
+	int32 AshnumbStacks = 0;
+	/** The tier draws the per-stack Ashnumb band (AbyssWorldStateRules::BandAllowed: every tier but mobile low). */
+	bool bAshnumbBand = false;
 };
 
 class AAbyssCharacterActor;
@@ -319,6 +327,13 @@ private:
 	void UpdateAshRise(double RenderSimMs);
 	/** A held pose that has been drawn stops the body's tick (no pose evaluation / bone refresh); anything else resumes it. */
 	void UpdateHeldPoseTick();
+	/**
+	 * Ashnumb (K6, 2G stage H): the body's M_AF_Toon slots on M_AF_Toon_Ashnumb while Stacks > 0 and the tier draws the
+	 * band (bAllowed), BandTop following the stacks; back to the slots' own materials otherwise. True while the band shows
+	 * (else the status tint carries Ashnumb).
+	 */
+	bool UpdateAshnumbBand(int32 Stacks, bool bAllowed);
+	void ClearAshnumbBand();
 	/** Held items beyond the two hands (AbyssMonsterLookRules::ClassifyAttachments), each on its own socket. */
 	void SetExtraItems(const TArray<TPair<UStaticMesh*, FName>>& Items);
 	void SetCpd(int32 Index, float Value);
@@ -375,6 +390,14 @@ private:
 	/** The ash look's dynamic instances (one per converted slot, parallel to AshSlots). */
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> AshMaterials;
+
+	/** M_AF_Toon_Ashnumb (the hero only; loaded at InitCharacter, nullptr when the content build lacks it). */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> AshnumbMaster;
+
+	/** The Ashnumb band's dynamic instances (one per converted toon slot, parallel to BandSlots). */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> BandMaterials;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMeshComponent> AuraMesh;
@@ -541,6 +564,15 @@ private:
 	float RiseStartDissolve = 0.f;
 	double RiseStartSimMs = 0.0;
 	double RiseSpanMs = 0.0;
+
+	// Ashnumb band (K6, 2G stage H): the hero's toon slots on M_AF_Toon_Ashnumb (component, slot, the material it had)
+	TArray<FAshSlot> BandSlots;
+	bool bBandApplied = false;
+	/** No M_AF_Toon slot on the body: the band never shows (the tint carries Ashnumb). */
+	bool bBandNoSlots = false;
+	float BandTopApplied = -1.f;
+	/** The height the band measures (the art's heightCm, object space: the pre-skinned z of the feet is 0). */
+	float BandHeightCm = 176.f;
 
 	// elite
 	bool bElite = false;

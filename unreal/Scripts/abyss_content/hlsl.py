@@ -1485,6 +1485,85 @@ def ash_grey_node() -> CustomNode:
                                         "EDGE_MIX": lit(ASH_EDGE_MIX)}),
                       additional_outputs=ASH_GREY_OUTPUTS)
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Ashnumb on the hero (dark remake K6 / 2G stage H; Art/Export/VFX/vfx_recipes.json dark.materials.AshnumbTint, the art
+# lane's band mock Art/blender/vfx/ashnumb_band.py): M_AF_Toon_Ashnumb = M_AF_Toon with AF_AshnumbBand after the split.
+# Per vertex the height fraction h = z / BandHeightCm (the pre-skinned, object-space z: the feet at 0, so the band stays
+# on the legs whatever the pose); band = 1 - smoothstep(top - BandSoftness, top, h) with top = BandTop (the runtime's
+# min(.12 + .10 x stacks, .62)); the toon colour lerps by band x Strength toward AshColor where the key light is in its
+# lit bands (N.L x .5 + .5 > T_SHADE), AshShade in its shade band - and AshShade in a cast shadow (the split's shadowed
+# part); an EdgeColor line EdgeWidth tall on the band's top edge (top - EdgeWidth < h < top), at full strength. The ink
+# hull and the held items keep their materials. BandTop 0 returns Emit / Lit unchanged.
+# The band sits under the split's feedback (2G review H-m1): AF_ToonSplit ends with x -> lerp(x * painM * teleM * statM,
+# 1, HitFlash) on both the sunlit and the shadowed colour, an affine map that commutes with every lerp here, so the ash /
+# shade / edge targets take the same map and the result is exactly the feedback applied to the banded colour (the hit
+# flash is white over the ash, Slow / Burn tint it). Ghost and Highlight are left out: the hero carries neither
+# (CPD 14 is the ghost monsters', CPD 15 AAbyssPropActor's).
+# ---------------------------------------------------------------------------------------------------------------------
+ASHNUMB_BAND_INPUTS = (
+    NodeInput("Emit", "float3"),       # AF_ToonSplit's main output
+    NodeInput("Lit", "float3"),        # AF_ToonSplit's Lit
+    NodeInput("SunCol", "float4"),     # MPC SunColor (linear)
+    NodeInput("LP", "float3"),         # PreSkinnedPosition (object space, cm)
+    NodeInput("N", "float3"),          # VertexNormalWS
+    NodeInput("L", "float4"),          # MPC KeyLightDir
+    NodeInput("BandTop", "float"),     # MID scalar: the band's top as a share of the height (0 = none)
+    NodeInput("HeightCm", "float"),    # MID scalar BandHeightCm: the hero's heightCm (object space)
+    NodeInput("Softness", "float"),
+    NodeInput("Strength", "float"),
+    NodeInput("EdgeWidth", "float"),
+    NodeInput("AshColor", "float3"),   # linear
+    NodeInput("AshShade", "float3"),
+    NodeInput("EdgeColor", "float3"),
+    NodeInput("HitFlash", "float"),         # CPD 0 (AF_ToonSplit's feedback, re-applied to the targets)
+    NodeInput("PainTint", "float3"),        # CPD 1..3 (linear)
+    NodeInput("PainAmt", "float"),          # CPD 4
+    NodeInput("Telegraph", "float3"),       # CPD 5..7
+    NodeInput("TelegraphAmt", "float"),     # CPD 8
+    NodeInput("StatusTint", "float3"),      # CPD 9..11
+    NodeInput("StatusAmt", "float"),        # CPD 12
+)
+ASHNUMB_BAND_OUTPUTS = (NodeInput("BandLit", "float3"),)
+ASHNUMB_FEEDBACK_INPUTS = ("HitFlash", "PainTint", "PainAmt", "Telegraph", "TelegraphAmt", "StatusTint", "StatusAmt")
+ASHNUMB_MIN_SOFTNESS = 1e-4
+_ASHNUMB_BAND = """
+float3 sunC = max(float3(SunCol.r, SunCol.g, SunCol.b), float3(0.05, 0.05, 0.05));
+float3 cSun = Emit + Lit * sunC;
+float3 cSh = Emit;
+float on = BandTop > 0.0 ? 1.0 : 0.0;
+float top = saturate(BandTop);
+float h = LP.z / max(HeightCm, 1.0);
+float band = on * (1.0 - smoothstep(top - max(Softness, @MIN_SOFT@), top, h));
+float edge = (on > 0.5 && h > top - EdgeWidth && h < top) ? 1.0 : 0.0;
+float3 n = normalize(N);
+float3 lk = normalize(float3(L.r, L.g, L.b));
+float hl = dot(n, lk) * 0.5 + 0.5;
+float3 one = float3(1.0, 1.0, 1.0);
+float3 fbM = lerp(one, float3(PainTint.r, PainTint.g, PainTint.b), saturate(PainAmt));
+fbM = fbM * lerp(one, float3(Telegraph.r, Telegraph.g, Telegraph.b), saturate(TelegraphAmt));
+fbM = fbM * lerp(one, float3(StatusTint.r, StatusTint.g, StatusTint.b), saturate(StatusAmt));
+float fl = saturate(HitFlash);
+float3 ashC = lerp(float3(AshColor.r, AshColor.g, AshColor.b) * fbM, one, fl);
+float3 ashS = lerp(float3(AshShade.r, AshShade.g, AshShade.b) * fbM, one, fl);
+float3 aSun = hl > @T_SHADE@ ? ashC : ashS;
+float w = band * saturate(Strength);
+float3 outSun = lerp(cSun, aSun, w);
+float3 outSh = lerp(cSh, ashS, w);
+float3 edgeC = lerp(float3(EdgeColor.r, EdgeColor.g, EdgeColor.b) * fbM, one, fl);
+outSun = lerp(outSun, edgeC, edge);
+outSh = lerp(outSh, edgeC, edge);
+BandLit = max(outSun - outSh, float3(0.0, 0.0, 0.0)) / sunC;
+return outSh;
+"""
+
+
+def ashnumb_band_node(sh: Shading) -> CustomNode:
+    return CustomNode("AF_AshnumbBand", "Ashnumb: the hero's toon greyed from the feet up to BandTop (Emit; BandLit = base "
+                      "colour)", "float3", ASHNUMB_BAND_INPUTS,
+                      _fill(_ASHNUMB_BAND, {"T_SHADE": lit(sh.t_shade), "MIN_SOFT": lit(ASHNUMB_MIN_SOFTNESS)}),
+                      additional_outputs=ASHNUMB_BAND_OUTPUTS)
+
+
 def all_nodes(sh: Shading) -> list[CustomNode]:
     """Every node the build creates (tests compile them all)."""
     split = toon_split_node(sh)
@@ -1495,6 +1574,8 @@ def all_nodes(sh: Shading) -> list[CustomNode]:
              terrain_emissive_node(), telegraph_node()]
     ash_mask, ash_grey = ash_mask_node(), ash_grey_node()
     nodes += [ash_mask, ash_mask.twin("Edge"), ash_grey, ash_grey.twin("AshLit")]
+    band = ashnumb_band_node(sh)
+    nodes += [band, band.twin("BandLit")]
     nodes += list(fx_nodes().values()) + list(quad_nodes().values()) + list(water_nodes().values())
     return nodes
 

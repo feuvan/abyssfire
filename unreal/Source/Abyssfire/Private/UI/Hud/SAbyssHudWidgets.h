@@ -7,12 +7,14 @@
 #include "Widgets/SCompoundWidget.h"
 
 #include <string>
+#include <vector>
 
 #include "abyss/base/I18n.h"
 #include "abyss/sim/SimTypes.h"
 #include "abyss/sim/Snapshot.h"
 
 #include "UI/Core/AbyssUiContext.h"
+#include "UI/Hud/AbyssHudRules.h"
 #include "UI/Hud/AbyssHudState.h"
 
 class SBox;
@@ -163,7 +165,7 @@ private:
 	TSharedPtr<FAbyssHudState> State;
 };
 
-/** Hero statuses (burn .. stun) and buffs with remaining-time sweeps. */
+/** Hero statuses (burn .. stun, K6 Ashnumb with its stacks) and buffs with remaining-time sweeps. */
 class SAbyssBuffRow : public SCompoundWidget
 {
 public:
@@ -176,6 +178,8 @@ public:
 private:
 	TSharedPtr<FAbyssUiContext> Ctx;
 	TSharedPtr<FAbyssHudState> State;
+	/** The status cells of the frame being painted (reused: no allocation per paint). */
+	mutable std::vector<AbyssHudRules::FStatusCell> StatusCells;
 };
 
 /** 18.8 desktop pet medallion: active beast portrait + "P" badge; click toggles the pets panel. */

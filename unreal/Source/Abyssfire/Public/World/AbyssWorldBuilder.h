@@ -34,6 +34,10 @@
 //   UAbyssAudioSystem::SetZoneEmitterSpots (Ashwheat's knocking doors); a bell cue the audio system plays
 //   (OnCuePlayed) ripples the bell frame / the Boneyard Gate's bell; an echo a piece poses stands by that piece, turned
 //   with it; a defend target standing on a yielding piece (the Boneyard Gate) hides it and takes its facing.
+// * Dark remake 2G stage H (Private/World/AbyssWorldStateRules.h): the hero carries its Ashnumb stacks to its actor (the
+//   band, mobile low the tint); an NPC the core hides while a story beat that names it is queued or playing (Marl, hidden
+//   by M5's turn-in while cs_rf_finale focuses her) keeps its actor drawn, out of the live world, until that beat ends
+//   (the director idle, a zone change, or a safety time), and a focus step on it focuses the kept actor.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -41,6 +45,7 @@
 #include "UObject/WeakInterfacePtr.h"
 
 #include <string>
+#include <string_view>
 
 #include "abyss/sim/Events.h"
 #include "abyss/sim/Snapshot.h"
@@ -54,6 +59,8 @@
 
 class AActor;
 class AAbyssCameraRig;
+/** The NPCs a story beat still needs (Private/World/AbyssWorldBuilder.cpp over AbyssWorldStateRules::FStoryNpcHolds). */
+struct FAbyssStoryNpcHolds;
 class AAbyssCharacterActor;
 class AAbyssPropActor;
 class AAbyssZoneActor;
@@ -249,7 +256,17 @@ private:
 	void HandleRenamed(const abyss::EvMonsterRenamed& Event);
 	void HandleEmbersGained(const abyss::EvEmbersGained& Event);
 	void HandleLoreCollected(const abyss::EvLoreCollected& Event);
+	/** 2G stage H: a turn-in / an accept expects the cutscenes its story triggers queue (their NPCs are held). */
+	void HandleQuestUpdate(const abyss::EvQuestUpdate& Event);
 	void HandleSessionEnded();
+
+	// ---- NPCs a story beat still needs (2G stage H) ----
+	/** EvEntityDespawned{Npc, Removed} of an NPC a pending / playing beat names: keep its actor drawn. */
+	bool HoldNpcForStory(abyss::EntityId Id);
+	/** Releases (destroys) the held NPCs no beat needs any more; bAll: every one (zone change, session end). */
+	void ReleaseHeldNpcs(bool bAll);
+	/** The held actor of an NPC id, else nullptr. */
+	AAbyssCharacterActor* FindHeldNpc(std::string_view NpcId) const;
 	void HandleVfxShake(float DurationMs, float Intensity);
 	/** U4: a played audio cue ripples the set-piece sockets that listen for it (the bells). */
 	void HandleCuePlayed(FName CueId);
@@ -265,6 +282,10 @@ private:
 
 	UPROPERTY(Transient)
 	TMap<uint32, TObjectPtr<AAbyssPropActor>> Props;
+
+	/** 2G stage H: NPC actors the core hid while a story beat names them (out of Characters and the registry). */
+	UPROPERTY(Transient)
+	TMap<uint32, TObjectPtr<AAbyssCharacterActor>> HeldNpcs;
 
 	/** Owner of the target ring and the guide arrow. */
 	UPROPERTY(Transient)
@@ -296,6 +317,8 @@ private:
 	bool bPlayingAmbienceColor = false;
 	FLinearColor PlayingAmbienceColor = FLinearColor::White;
 	TArray<FEchoPlayback> Echoes;
+	/** 2G stage H: the beats a quest event queued and the NPCs they name (AbyssWorldStateRules::FStoryNpcHolds). */
+	TSharedPtr<FAbyssStoryNpcHolds> StoryNpcHolds;
 	/** Brightness setting as an exposure bias (EV), pushed to every zone actor. */
 	float BrightnessEv = 0.f;
 	TWeakInterfacePtr<IAbyssWorldUi> WorldUi;

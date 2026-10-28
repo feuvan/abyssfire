@@ -77,6 +77,12 @@ M_TELEGRAPH = "M_AF_Telegraph"
 # parameters, with the scalars Grey / Dissolve / HuskTopCm); no manifest slot names them.
 M_TOON_ASH = "M_AF_Toon_Ash"
 M_OUTLINE_ASH = "M_AF_Outline_Ash"
+# Ashnumb on the hero (dark remake K6 / 2G stage H; Art/Export/VFX/vfx_recipes.json dark.materials.AshnumbTint): the
+# runtime-only twin of M_AF_Toon the hero's toon slot swaps to while it carries stacks (AAbyssCharacterActor: a dynamic
+# instance copying the slot's parameters, scalars BandTop / BandHeightCm); no manifest slot names it.
+M_TOON_ASHNUMB = "M_AF_Toon_Ashnumb"
+# The art lane's VFX contract file (recipes, dark-remake materials); the content build reads AshnumbTint from it.
+VFX_RECIPES_PATH = EXPORT_DIR / "VFX" / "vfx_recipes.json"
 
 TOON_MASTERS = (M_TOON, M_TOON_FOLIAGE, M_TOON_SLIME)
 OUTLINE_MASTERS = (M_OUTLINE, M_OUTLINE_FOLIAGE)

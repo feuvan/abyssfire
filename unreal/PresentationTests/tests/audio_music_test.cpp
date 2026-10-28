@@ -536,3 +536,28 @@ TEST_SUITE("audio")
 		CHECK(D.source == Source::Core);
 	}
 }
+
+TEST_SUITE("audio")
+{
+	TEST_CASE("music regions read world flags too (2G stage H): no row has an untilFlag today; one would stop on its flag")
+	{
+		for (const Region& R : Tables().regions)
+		{
+			CHECK(R.when.untilFlag.empty());
+		}
+		World W;
+		const int Knell = RegionIndex("knellwatch");
+		REQUIRE(Knell >= 0);
+		W.tracker.Update(Tables().regionAreas, TileOf(15.0, 15.0));
+		const auto IsAlive = [&W](std::string_view Id) { return AbyssAudioData::Contains(W.alive, Id); };
+		std::vector<std::string> Flags;
+		const auto HasFlag = [&Flags](std::string_view Id) { return AbyssAudioData::Contains(Flags, Id); };
+		CHECK(PickRegion(Tables(), W.tracker, IsAlive, HasFlag) == Knell);
+		CHECK(PickRegion(Tables(), W.tracker, IsAlive) == Knell);   // without flags: as before
+		DirectorTables Gated = Tables();
+		Gated.regions[static_cast<std::size_t>(Knell)].when.untilFlag = "f";
+		CHECK(PickRegion(Gated, W.tracker, IsAlive, HasFlag) == Knell);
+		Flags.push_back("f");
+		CHECK(PickRegion(Gated, W.tracker, IsAlive, HasFlag) != Knell);
+	}
+}

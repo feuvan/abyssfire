@@ -1574,5 +1574,220 @@ class AshMathTests(unittest.TestCase):
                         self.assertAlmostEqual(got[i], emit[i], places=6)
                         self.assertAlmostEqual(got[3 + i], lit_[i], places=5)
 
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Ashnumb on the hero (dark remake K6 / 2G stage H): AF_AshnumbBand against the art lane's band mock
+# (Art/blender/vfx/ashnumb_band.py band_material: the toon colour lerped toward the ash, then the edge line)
+# ---------------------------------------------------------------------------------------------------------------------
+def ashnumb_band_reference(img: list, h: float, top: float, lit_band: bool, a, edge_c: tuple, ash: tuple,
+                           shade: tuple) -> list[float]:
+    """band_material on one linear colour: band = 1 - smoothstep(top - soft, top, h) x Strength toward AshColor (lit
+    band) / AshShade (shade band), then EdgeColor where top - EdgeWidth < h < top. top 0: unchanged."""
+    if top <= 0.0:
+        return list(img)
+    t = min(max(top, 0.0), 1.0)
+    band = 1.0 - smoothstep(t - max(a.band_softness, hlsl.ASHNUMB_MIN_SOFTNESS), t, h)
+    w = band * min(max(a.strength, 0.0), 1.0)
+    target = ash if lit_band else shade
+    out = [c + (x - c) * w for c, x in zip(img, target)]
+    edge = 1.0 if (t - a.edge_width < h < t) else 0.0
+    return [c + (e - c) * edge for c, e in zip(out, edge_c)]
+
+
+class AshnumbContractTests(unittest.TestCase):
+    def test_node_and_runtime_copy(self):
+        band = hlsl.ashnumb_band_node(manifest_shading())
+        self.assertEqual([o.name for o in band.additional_outputs], ["BandLit"])
+        self.assertIn("LP.z / max(HeightCm, 1.0)", band.code)   # object space: the feet at 0
+        self.assertIn(hlsl.lit(manifest_shading().t_shade), band.code)
+        # the runtime's contract copy (AbyssWorldStateRules::FAshnumbTint) has the same defaults as the plan's
+        rules = (HERE.parent.parent / "Source/Abyssfire/Private/World/AbyssWorldStateRules.h").read_text(encoding="utf-8")
+        from abyss_content.manifest import AshnumbContract
+        a = AshnumbContract()
+        for field, value in (("AshRgb", a.ash_color), ("ShadeRgb", a.ash_shade), ("EdgeRgb", a.edge_color)):
+            self.assertRegex(rules, rf"uint32_t {field} = 0x{value[1:]};")
+        self.assertRegex(rules, rf"double EdgeWidth = {a.edge_width:g};")
+        self.assertRegex(rules, rf"double BandSoftness = {a.band_softness:g};")
+        self.assertRegex(rules, rf"double Strength = {a.strength:g};")
+
+
+# AF_AshnumbBand's feedback inputs at rest (no flash, white tints at 0): HitFlash, PainTint, PainAmt, Telegraph,
+# TelegraphAmt, StatusTint, StatusAmt
+NO_FEEDBACK = "0.f, float3(1.f, 1.f, 1.f), 0.f, float3(1.f, 1.f, 1.f), 0.f, float3(1.f, 1.f, 1.f), 0.f"
+
+
+@unittest.skipIf(CXX is None, "no C++ compiler")
+class AshnumbMathTests(unittest.TestCase):
+    def test_band_matches_the_mock_in_sun_and_in_shadow(self):
+        """The split's two parts band so that the sunlit pixel (Emit + BandLit x sun) is what band_material makes of the
+        unshadowed toon colour, the shadowed one (Emit) what it makes with the shade ash; BandTop 0 changes nothing."""
+        from abyss_content.manifest import AshnumbContract, hex_to_linear
+        sh = manifest_shading()
+        a = AshnumbContract()
+        ash, shade, edge_c = hex_to_linear(a.ash_color), hex_to_linear(a.ash_shade), hex_to_linear(a.edge_color)
+        key = norm(sh.key_light)
+        lit_n, shade_n = key, [-x for x in key]           # N.L x .5 + .5 = 1 (lit band) / 0 (shade band)
+        height = 176.0
+        cases = []
+        for emit in ((0.30, 0.12, 0.08), (0.02, 0.02, 0.03), (0.7, 0.6, 0.9)):
+            for lit_ in ((0.25, 0.20, 0.10), (0.0, 0.0, 0.0)):
+                for sun in ((1.0, 0.95, 0.85), (0.02, 1.0, 1.0)):
+                    for top in (0.0, 0.22, 0.42, 0.62):
+                        for h in (0.0, 0.1, 0.2, 0.21, 0.4, 0.415, 0.6, 0.9):
+                            for n in (lit_n, shade_n):
+                                cases.append((emit, lit_, sun, top, h, n))
+        f3 = "float3({0!r}f, {1!r}f, {2!r}f)"
+        f4 = "float4({0!r}f, {1!r}f, {2!r}f, {3!r}f)"
+        calls = []
+        for emit, lit_, sun, top, h, n in cases:
+            calls.append(
+                f"    {{ float3 l = float3(0.f, 0.f, 0.f); float3 e = AF_AshnumbBand({f3.format(*emit)}, "
+                f"{f3.format(*lit_)}, {f4.format(*sun, 1.0)}, float3(3.f, -2.f, {h * height!r}f), {f3.format(*n)}, "
+                f"{f4.format(*key, 0.0)}, {top!r}f, {height!r}f, {a.band_softness!r}f, {a.strength!r}f, "
+                f"{a.edge_width!r}f, {f3.format(*ash)}, {f3.format(*shade)}, {f3.format(*edge_c)}, {NO_FEEDBACK}, l); "
+                f"std::printf(\"%.7f %.7f %.7f %.7f %.7f %.7f\\n\", e.x, e.y, e.z, l.x, l.y, l.z); }}")
+        main = "int main() {\n" + "\n".join(calls) + "\n    return 0;\n}"
+        out = [list(map(float, line.split())) for line in
+               compile_and_run(cpp_unit([hlsl.ashnumb_band_node(sh)], main), run=True).splitlines() if line.strip()]
+        self.assertEqual(len(out), len(cases))
+        banded = edges = 0
+        for (emit, lit_, sun, top, h, n), got in zip(cases, out):
+            with self.subTest(emit=emit, lit=lit_, sun=sun, top=top, h=h, lit_band=n is lit_n):
+                sun_c = [max(x, 0.05) for x in sun]
+                c_sun = [e + l * s for e, l, s in zip(emit, lit_, sun_c)]
+                want_sh = ashnumb_band_reference(list(emit), h, top, False, a, edge_c, ash, shade)
+                want_sun = ashnumb_band_reference(c_sun, h, top, n is lit_n, a, edge_c, ash, shade)
+                got_sun = [got[i] + got[3 + i] * sun_c[i] for i in range(3)]
+                for i in range(3):
+                    self.assertAlmostEqual(got[i], want_sh[i], places=5)
+                    self.assertAlmostEqual(got_sun[i], max(want_sun[i], want_sh[i]), places=5)
+                if top == 0.0:
+                    for i in range(3):
+                        self.assertAlmostEqual(got[i], emit[i], places=6)
+                        self.assertAlmostEqual(got[3 + i], lit_[i], places=5)
+                banded += top > 0.0 and h < top - a.band_softness
+                edges += top > 0.0 and top - a.edge_width < h < top
+        self.assertGreater(banded, 20)
+        self.assertGreater(edges, 10)
+
+    def test_band_sits_under_the_split_feedback(self):
+        """2G review H-m1: AF_ToonSplit's feedback (x -> lerp(x * pain * telegraph * status, 1, HitFlash), on the
+        sunlit and the shadowed colour alike) applied before the band gives exactly the feedback applied to the banded
+        colour: the hit flash stays white and Slow / Burn / pain tints stay on the ash legs and the edge line."""
+        from abyss_content.manifest import AshnumbContract, hex_to_linear
+        sh = manifest_shading()
+        a = AshnumbContract()
+        ash, shade, edge_c = hex_to_linear(a.ash_color), hex_to_linear(a.ash_shade), hex_to_linear(a.edge_color)
+        key = norm(sh.key_light)
+        lit_n, shade_n = key, [-x for x in key]
+        height, top = 176.0, 0.42
+        sun = (1.0, 0.94, 0.82)
+        pain, tele, status = (1.0, 0.3, 0.25), (1.0, 0.55, 0.1), (0.5, 0.8, 1.0)
+        cases = []
+        for emit0, lit0 in (((0.30, 0.12, 0.08), (0.25, 0.20, 0.10)), ((0.02, 0.02, 0.03), (0.0, 0.0, 0.0)),
+                            ((0.7, 0.6, 0.9), (0.1, 0.3, 0.2))):
+            for hf in (0.0, 0.35, 1.0):
+                for pa, ta, sa in ((0.0, 0.0, 0.0), (0.8, 0.0, 0.0), (0.0, 0.6, 0.7), (0.8, 0.6, 0.7)):
+                    for h in (0.1, 0.38, 0.4, 0.9):      # inside, softening, on the edge line, above
+                        for n in (lit_n, shade_n):
+                            cases.append((emit0, lit0, hf, pa, ta, sa, h, n))
+        calls = []
+        for emit0, lit0, hf, pa, ta, sa, h, n in cases:
+            m = [(1 + (p - 1) * pa) * (1 + (t - 1) * ta) * (1 + (q - 1) * sa) for p, t, q in zip(pain, tele, status)]
+            emit_f = [e * k + (1 - e * k) * hf for e, k in zip(emit0, m)]    # the split's output
+            lit_f = [x * k * (1 - hf) for x, k in zip(lit0, m)]
+            calls.append(
+                f"    {{ float3 l = float3(0.f, 0.f, 0.f); float3 e = AF_AshnumbBand({f3(emit_f)}, {f3(lit_f)}, "
+                f"{f4((*sun, 1.0))}, float3(3.f, -2.f, {h * height!r}f), {f3(n)}, {f4((*key, 0.0))}, {top!r}f, "
+                f"{height!r}f, {a.band_softness!r}f, {a.strength!r}f, {a.edge_width!r}f, {f3(ash)}, {f3(shade)}, "
+                f"{f3(edge_c)}, {hf!r}f, {f3(pain)}, {pa!r}f, {f3(tele)}, {ta!r}f, {f3(status)}, {sa!r}f, l); "
+                f"std::printf(\"%.7f %.7f %.7f %.7f %.7f %.7f\\n\", e.x, e.y, e.z, l.x, l.y, l.z); }}")
+        main = "int main() {\n" + "\n".join(calls) + "\n    return 0;\n}"
+        out = [list(map(float, line.split())) for line in
+               compile_and_run(cpp_unit([hlsl.ashnumb_band_node(sh)], main), run=True).splitlines() if line.strip()]
+        self.assertEqual(len(out), len(cases))
+        white = 0
+        for (emit0, lit0, hf, pa, ta, sa, h, n), got in zip(cases, out):
+            with self.subTest(emit=emit0, hf=hf, tints=(pa, ta, sa), h=h, lit_band=n is lit_n):
+                m = [(1 + (p - 1) * pa) * (1 + (t - 1) * ta) * (1 + (q - 1) * sa)
+                     for p, t, q in zip(pain, tele, status)]
+
+                def feedback(c):
+                    return [x * k + (1 - x * k) * hf for x, k in zip(c, m)]
+
+                sun_c = [max(x, 0.05) for x in sun]
+                c_sun0 = [e + l * s for e, l, s in zip(emit0, lit0, sun_c)]
+                want_sh = feedback(ashnumb_band_reference(list(emit0), h, top, False, a, edge_c, ash, shade))
+                want_sun = feedback(ashnumb_band_reference(c_sun0, h, top, n is lit_n, a, edge_c, ash, shade))
+                got_sun = [got[i] + got[3 + i] * sun_c[i] for i in range(3)]
+                for i in range(3):
+                    self.assertAlmostEqual(got[i], want_sh[i], places=5)
+                    self.assertAlmostEqual(got_sun[i], max(want_sun[i], want_sh[i]), places=5)
+                if hf == 1.0:
+                    white += 1
+                    for i in range(3):
+                        self.assertAlmostEqual(got[i], 1.0, places=6)
+                        self.assertAlmostEqual(got[3 + i], 0.0, places=6)
+        self.assertGreater(white, 50)
+
+    def test_hit_flash_through_split_and_band_is_white(self):
+        """The real chain: AF_ToonSplit with HitFlash 1 (and a status tint) into AF_AshnumbBand at 5 stacks gives pure
+        white (Emit 1, BandLit 0) inside the band and on its edge line, as M_AF_Toon does without Ashnumb."""
+        from abyss_content.manifest import AshnumbContract, hex_to_linear
+        sh = manifest_shading()
+        a = AshnumbContract()
+        split, band = hlsl.toon_split_node(sh), hlsl.ashnumb_band_node(sh)
+        top, height = 0.62, 176.0
+        feedback = {"HitFlash": "hf", "PainTint": "float3(1.f, 0.3f, 0.25f)", "PainAmt": "0.f",
+                    "Telegraph": "float3(1.f, 0.55f, 0.1f)", "TelegraphAmt": "0.f",
+                    "StatusTint": "float3(0.5f, 0.8f, 1.f)", "StatusAmt": "0.7f"}
+        band_args = {"Emit": "emit", "Lit": "lit", "SunCol": "float4(1.f, 0.94f, 0.82f, 1.f)", "LP": "lp",
+                     "N": "nrm", "L": f4((*sh.key_light, 0.0)), "BandTop": f"{top!r}f", "HeightCm": f"{height!r}f",
+                     "Softness": f"{a.band_softness!r}f", "Strength": f"{a.strength!r}f",
+                     "EdgeWidth": f"{a.edge_width!r}f", "AshColor": f3(hex_to_linear(a.ash_color)),
+                     "AshShade": f3(hex_to_linear(a.ash_shade)), "EdgeColor": f3(hex_to_linear(a.edge_color)),
+                     "BandLit": "bandLit", **feedback}
+        body = f"""
+const float3 bases[] = {{ {", ".join(ArtPassMathTests.base_lin(b) for b in ArtPassMathTests.BASES)} }};
+const float3 nrms[] = {{ {", ".join(f3(n) for n in ArtPassMathTests.NORMALS)} }};
+float off = 0.f, offLit = 0.f, ashed = 0.f; int n = 0;
+for (const float3& base : bases) for (const float3& nrm : nrms) for (float z : {{10.f, 60.f, 100.f, 105.f}})
+for (float hf : {{0.f, 1.f}}) {{
+    float3 lit, bandLit;
+    float3 lp = float3(3.f, -2.f, z);
+    float3 emit = {cpp_call(split, {"Base": "base", "N": "nrm", "Lit": "lit", "SunCol": "float4(1.f, 0.94f, 0.82f, 1.f)",
+                                    **feedback}, TOON_DEFAULTS)};
+    float3 e = {cpp_call(band, band_args)};
+    if (hf == 1.f) {{
+        off += std::fabs(e.x - 1.f) + std::fabs(e.y - 1.f) + std::fabs(e.z - 1.f);
+        offLit += std::fabs(bandLit.x) + std::fabs(bandLit.y) + std::fabs(bandLit.z);
+        ++n;
+    }} else {{
+        ashed += std::fabs(e.x - emit.x) + std::fabs(e.y - emit.y) + std::fabs(e.z - emit.z);
+    }}
+}}
+std::printf("%d %.9g %.9g %.9g\\n", n, off, offLit, ashed);"""
+        out = compile_and_run(cpp_unit([split, band], "int main() {\n" + body + "\nreturn 0; }"),
+                              run=True).split()
+        self.assertEqual(int(out[0]), len(ArtPassMathTests.BASES) * len(ArtPassMathTests.NORMALS) * 4)
+        self.assertLess(float(out[1]), 1e-5, "the hit flash is not white inside the Ashnumb band")
+        self.assertLess(float(out[2]), 1e-5, "the hit flash leaves a lit part inside the Ashnumb band")
+        self.assertGreater(float(out[3]), 1.0, "without the flash the band must ash the legs (the probe is in it)")
+
+    def test_band_tops_cover_the_legs_by_stack(self):
+        """The runtime's tops (min(.12 + .10 x stacks, .62)) leave everything above the top untouched and fully ash the
+        legs below top - softness (the mock's reading: 1 stack mid-shin, 3 the thighs, 5 the hips)."""
+        from abyss_content.manifest import AshnumbContract
+        a = AshnumbContract()
+        for stacks, top in ((1, 0.22), (3, 0.42), (5, 0.62)):
+            self.assertAlmostEqual(min(0.12 + 0.10 * stacks, 0.62), top)
+            below = ashnumb_band_reference([1.0, 1.0, 1.0], top - a.band_softness - 0.01, top, True, a, (0, 0, 0),
+                                           (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+            self.assertAlmostEqual(below[0], 1.0 - a.strength)
+            above = ashnumb_band_reference([1.0, 1.0, 1.0], top + 0.01, top, True, a, (0, 0, 0), (0.0, 0.0, 0.0),
+                                           (0.0, 0.0, 0.0))
+            self.assertEqual(above, [1.0, 1.0, 1.0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -113,21 +113,21 @@
     },
     {
       "file": "i18n_en.json",
-      "counts": {"keys": 2800},
-      "bytes": 232974,
-      "sha256": "da0bf4969be79cc345149e938c3bfab1d4064cc8a5b43ea1ef91856f250f15a4"
+      "counts": {"keys": 2805},
+      "bytes": 233476,
+      "sha256": "3c9c81e357aaaf44cb062a173d5c9004c918dff5311e68b0bca173f935bdcac4"
     },
     {
       "file": "i18n_zh-CN.json",
-      "counts": {"keys": 2799},
-      "bytes": 225141,
-      "sha256": "ae716040f14ba2c9099e1f74945df16142552bfecb62e91de659eae443857e1e"
+      "counts": {"keys": 2804},
+      "bytes": 225639,
+      "sha256": "b0475c675e25fcbc1482d222d3b35dc449544c12d82a28d6b80815abd8e96959"
     },
     {
       "file": "i18n_zh-TW.json",
-      "counts": {"keys": 2799},
-      "bytes": 225308,
-      "sha256": "d8868da8b8d2cb5499d238945e481460e9bcea5f616fdb15ee626edefff46969"
+      "counts": {"keys": 2804},
+      "bytes": 225806,
+      "sha256": "24cfbb1d8a0c87b580a5437612949176f67d3e1916161d4c3acf95842bb41c0b"
     },
     {
       "file": "item_bases.json",

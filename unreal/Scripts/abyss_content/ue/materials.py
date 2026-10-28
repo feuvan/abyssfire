@@ -18,8 +18,8 @@ from typing import Any, Callable
 import unreal
 
 from .. import hlsl, paths
-from ..manifest import (SELECT_RIM_DEFAULTS, AshContract, Asset, InstancePlan, Plan, Shading, TelegraphContract,
-                        hex_to_linear, hex_to_rgb255, srgb_to_linear1)
+from ..manifest import (SELECT_RIM_DEFAULTS, AshContract, AshnumbContract, Asset, InstancePlan, Plan, Shading,
+                        TelegraphContract, hex_to_linear, hex_to_rgb255, srgb_to_linear1)
 from ..report import BuildReport
 from .core import BuildError, Editor, linear_color, set_props, shaders_disabled
 from .graph import C, E, Graph
@@ -54,6 +54,8 @@ class Ctx:
     # the art's texture is not in the plan; a warning at plan time)
     ash: AshContract = dataclasses.field(default_factory=AshContract)
     tex_ash_noise: str = ""
+    # M_AF_Toon_Ashnumb (dark remake K6 / 2G stage H): the AshnumbTint contract's constants
+    ashnumb: AshnumbContract = dataclasses.field(default_factory=AshnumbContract)
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -238,6 +240,15 @@ def _wind(g: Graph, ctx: Ctx) -> Any:
     })
 
 
+def _pre_skinned_position_ps(g: Graph) -> Any:
+    """The pre-skinned (object-space) position for a pixel-shader input. UE's HLSL translator compiles
+    PreSkinnedPosition in the vertex shader only (FHLSLMaterialTranslator::PreSkinnedPosition: "only available in the
+    vertex shader, pass through custom interpolators if needed"), so a colour / opacity graph takes it through a
+    VertexInterpolator (2G review H-M1). Linear across a triangle, so the per-pixel value is exact. Only WPO graphs
+    (_wind) may wire it directly; tests/test_flow.py checks every master for it."""
+    return g.interpolate(g.node("MaterialExpressionPreSkinnedPosition"))
+
+
 ASH_GROUP = "Ash (per body: AAbyssCharacterActor::SetAshLook)"
 
 
@@ -248,7 +259,7 @@ def _ash_mask(g: Graph, ctx: Ctx) -> Any:
                  world_position_shader_offset=E("WorldPositionIncludedOffsets", "WPT_CAMERA_RELATIVE"))
     feet = g.node("MaterialExpressionActorPositionWS", origin_type=E("PositionOrigin", "CAMERA_RELATIVE"))
     return g.custom(hlsl.ash_mask_node(), {
-        "LP": g.node("MaterialExpressionPreSkinnedPosition"),
+        "LP": _pre_skinned_position_ps(g),
         "Pw": pos,
         "Feet": feet,
         "Dissolve": g.scalar("Dissolve", 0.0, group=ASH_GROUP),
@@ -259,10 +270,37 @@ def _ash_mask(g: Graph, ctx: Ctx) -> Any:
     })
 
 
-def build_toon(g: Graph, ctx: Ctx, variant: str, ash: bool = False) -> None:
+ASHNUMB_GROUP = "Ashnumb (the hero: AAbyssCharacterActor::UpdateAshnumbBand)"
+# The hero heights the band measures (manifest heightCm: warrior 176, mage 171, rogue 162); the runtime sets each hero's.
+ASHNUMB_DEFAULT_HEIGHT_CM = 176.0
+
+
+def _ashnumb_band(g: Graph, ctx: Ctx, toon: Any, wires: dict[str, Any]) -> Any:
+    """AF_AshnumbBand (hlsl.ashnumb_band_node) after the split: per-hero scalars BandTop / BandHeightCm, the contract's
+    look as parameter defaults, the split's hit flash / pain / telegraph / status inputs re-applied to the ash."""
+    a = ctx.ashnumb
+    return g.custom(hlsl.ashnumb_band_node(ctx.shading), {
+        "Emit": toon, "Lit": toon["Lit"], "SunCol": wires["SunCol"],
+        "LP": _pre_skinned_position_ps(g),
+        "N": wires["N"], "L": wires["L"],
+        "BandTop": g.scalar("BandTop", 0.0, group=ASHNUMB_GROUP),
+        "HeightCm": g.scalar("BandHeightCm", ASHNUMB_DEFAULT_HEIGHT_CM, group=ASHNUMB_GROUP),
+        "Softness": g.scalar("BandSoftness", a.band_softness, group=ASHNUMB_GROUP),
+        "Strength": g.scalar("BandStrength", a.strength, group=ASHNUMB_GROUP),
+        "EdgeWidth": g.scalar("BandEdgeWidth", a.edge_width, group=ASHNUMB_GROUP),
+        "AshColor": g.vector("BandAshColor", (*hex_to_linear(a.ash_color), 1.0), group=ASHNUMB_GROUP),
+        "AshShade": g.vector("BandAshShade", (*hex_to_linear(a.ash_shade), 1.0), group=ASHNUMB_GROUP),
+        "EdgeColor": g.vector("BandEdgeColor", (*hex_to_linear(a.edge_color), 1.0), group=ASHNUMB_GROUP),
+        # the split's feedback (the same custom-primitive-data parameters): the band sits under it (2G review H-m1)
+        **{name: wires[name] for name in hlsl.ASHNUMB_FEEDBACK_INPUTS},
+    })
+
+
+def build_toon(g: Graph, ctx: Ctx, variant: str, ash: bool = False, band: bool = False) -> None:
     """variant: toon | foliage (masked, dithered fade; shadow-catcher lit, DECISIONS P11 revised) | slime | fade |
     fade_foliage (translucent, blended fade; unlit AF_Toon). ash (variant toon only): M_AF_Toon_Ash, the same graph with
-    the ash dissolve after the split (_ash_mask, hlsl.ash_grey_node); without it the graph is exactly M_AF_Toon's."""
+    the ash dissolve after the split (_ash_mask, hlsl.ash_grey_node); band (variant toon only): M_AF_Toon_Ashnumb, the
+    same graph with the Ashnumb band after the split (_ashnumb_band); without either the graph is exactly M_AF_Toon's."""
     sh = ctx.shading
     slime = variant == "slime"
     blended = variant in ("slime", "fade", "fade_foliage")
@@ -336,6 +374,9 @@ def build_toon(g: Graph, ctx: Ctx, variant: str, ash: bool = False) -> None:
         })
         emit, lit_out = grey, grey["AshLit"]
         mask = g.mul(mask, keep)
+    if band:
+        ashnumb = _ashnumb_band(g, ctx, toon, wires)
+        emit, lit_out = ashnumb, ashnumb["BandLit"]
     g.output(emit, "MP_EMISSIVE_COLOR")
     g.output(lit_out, "MP_BASE_COLOR")
     g.output(g.rgb(g.mpc(ctx.mpc, "KeyLightDir")), "MP_NORMAL")
@@ -674,6 +715,8 @@ MASTERS: tuple[Master, ...] = (
     Master(paths.M_TOON_ASH, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "toon", ash=True)),
     Master(paths.M_OUTLINE_ASH, paths.MATERIALS_DIR, OUTLINE_SETTINGS,
            lambda g, c: build_outline(g, c, False, ash=True)),
+    # dark remake K6 (2G stage H): the hero's Ashnumb band twin (runtime-only; M_AF_Toon's settings)
+    Master(paths.M_TOON_ASHNUMB, paths.MATERIALS_DIR, TOON_SETTINGS, lambda g, c: build_toon(g, c, "toon", band=True)),
     Master(paths.M_OUTLINE_FOLIAGE, paths.MATERIALS_DIR, OUTLINE_SETTINGS, lambda g, c: build_outline(g, c, True)),
     Master(paths.M_SELECT_RIM, paths.MATERIALS_DIR, SELECT_RIM_SETTINGS, build_select_rim),
     Master(paths.M_TERRAIN, paths.MATERIALS_DIR, TERRAIN_SETTINGS, build_terrain),
@@ -793,6 +836,7 @@ def make_context(plan: Plan, report: BuildReport) -> Ctx:
         tex_telegraph_fill=_planned_texture(plan, plan.telegraph.fill_texture),
         ash=plan.ash,
         tex_ash_noise=_planned_texture(plan, plan.ash.noise_texture),
+        ashnumb=plan.ashnumb,
     )
 
 

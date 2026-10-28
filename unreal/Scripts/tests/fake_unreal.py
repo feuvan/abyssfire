@@ -521,6 +521,7 @@ _FIXED_WIDTH = {
     "MaterialExpressionTextureCoordinate": 2, "MaterialExpressionWorldPosition": 3,
     "MaterialExpressionVertexNormalWS": 3, "MaterialExpressionPixelNormalWS": 3, "MaterialExpressionCameraVectorWS": 3,
     "MaterialExpressionObjectPositionWS": 3, "MaterialExpressionConstant4Vector": 4,
+    "MaterialExpressionPreSkinnedPosition": 3,
 }
 _CUSTOM_WIDTH = {"CMOT_FLOAT1": 1, "CMOT_FLOAT2": 2, "CMOT_FLOAT3": 3, "CMOT_FLOAT4": 4}
 
@@ -552,6 +553,39 @@ def output_width(expr: Any, out: str) -> int | None:
             return None   # an additional output
         return _CUSTOM_WIDTH.get(str(expr.get_editor_property("output_type")).rsplit(".", 1)[-1])
     return None
+
+
+# Shader frequency (2G review H-M1): UE's HLSL translator compiles these only in the vertex shader
+# (FHLSLMaterialTranslator::PreSkinnedPosition / PreSkinnedNormal return "only available in the vertex shader, pass
+# through custom interpolators if needed" otherwise). Every material output but World Position Offset is compiled in
+# the pixel shader; a VertexInterpolator's VS input is compiled in the vertex shader.
+VERTEX_ONLY_EXPRESSIONS = frozenset({"MaterialExpressionPreSkinnedPosition", "MaterialExpressionPreSkinnedNormal"})
+VERTEX_SHADER_OUTPUTS = frozenset({"MaterialProperty.MP_WORLD_POSITION_OFFSET"})
+
+
+def vertex_only_leaks(material: Any) -> list[str]:
+    """The paths by which a vertex-shader-only expression reaches a pixel-shader output of `material` without a
+    VertexInterpolator in between ("<output>: <expr> <- ... <- <vertex-only expr>"); [] when the graph compiles."""
+    bad: list[str] = []
+    for prop, root in sorted(material._outputs.items()):
+        if prop in VERTEX_SHADER_OUTPUTS:
+            continue
+        stack = [(root, [type(root).__name__])]
+        seen: set[int] = set()
+        while stack:
+            expr, chain = stack.pop()
+            if id(expr) in seen:
+                continue
+            seen.add(id(expr))
+            cls = type(expr).__name__
+            if cls in VERTEX_ONLY_EXPRESSIONS:
+                bad.append(f"{prop}: {' <- '.join(chain)}")
+                continue
+            if cls == "MaterialExpressionVertexInterpolator":
+                continue
+            for src, _out in expr._props.get("_links", {}).values():
+                stack.append((src, chain + [type(src).__name__]))
+    return bad
 
 
 class MaterialExpression(Object):

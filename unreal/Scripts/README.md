@@ -215,7 +215,7 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 | Portraits, icons, glyphs | `/Game/Abyssfire/UI/{Portraits,Icons}/T_UI_*` | UserInterface2D, no mips |
 | FX sprites | `/Game/Abyssfire/FX/Textures/T_FX_*` | linear (masks); `T_AF_FX_DefaultGlow` is the generated fallback |
 | `MPC_AF_Lighting` | `/Game/Abyssfire/Materials` | `SunDir`, `KeyLightDir` (manifest key light), `SunColor`, `Ambient`, `RimColor`, `CameraTanHalfFovY`, `TimeSec`, `SunScale` (.55), `InkScale` (1.5), toon light slots `Light0PosR..Light7PosR` / `Light0Col..Light7Col` (0); writers in WorldContract §3.5 |
-| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Toon_Ash`, `M_AF_Outline_Ash`, `M_AF_SelectRim`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`, `M_AF_PP_AOComposite`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow`, `M_AF_Telegraph` | shader code in `abyss_content/hlsl.py` |
+| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Toon_Ash`, `M_AF_Outline_Ash`, `M_AF_Toon_Ashnumb`, `M_AF_SelectRim`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`, `M_AF_PP_AOComposite`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow`, `M_AF_Telegraph` | shader code in `abyss_content/hlsl.py` |
 | Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>`, `MI_AF_Terrain_<Theme>`, `MI_AF_SelectRim` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow. Toon instances carry their family's `CastShadowStrength` (heroes / monsters / NPCs / pets / weapons .7, pickups .8, props 1, foliage canopies .6, ground cover 1; `manifest.plan_look_parameters`), the plains ground cover `BaseSaturation` / `BaseValue` .85 / .93. `MI_AF_Terrain_<Theme>`: `M_AF_Terrain_Painted` with the manifest `terrain.<theme>` layers + detail atlas (only when all of them were exported); plains `GroundSaturation` / `GroundValue` .85 / .93. `MI_AF_SelectRim`: the hero selection rim (#FFF4DC, 2 px) |
 | Terrain textures | `/Game/Abyssfire/Textures/T_Terrain_<Theme>_*_BC`, `T_Water_<Theme>_BC` | world (sRGB, mips, wrap); the `_Details_BC` atlas BC7, clamp; imported even without the texture scan (the manifest names them) |
 | `SM_FX_Quad` | `/Game/Abyssfire/FX` | 100 × 100 cm XY quad (unless the art ships one) |
@@ -295,9 +295,27 @@ Material behaviour in short:
   (`hlsl.ash_grey_node`: the toon split's Emit / Lit to the ash colours by `Grey`). Scalars `Grey`, `Dissolve`,
   `HuskTopCm`, `EdgeWidth`, `NoiseTileCm` and the colours are plain parameters (not CPD); their defaults are the
   manifest's `materials.M_AF_AshDissolve` contract (`manifest.ash_contract`), the noise `T_FX_AshNoise` (planned even
-  without a scan; a plan without it warns). The originals' graphs are untouched (the dry-run material fingerprints match
-  the last build). `tests/test_hlsl.py` checks both nodes against the art's preview math and the runtime header's
+  without a scan; a plan without it warns). `AF_AshMask` reads the pre-skinned position through a `VertexInterpolator`
+  (`materials._pre_skinned_position_ps`: UE compiles PreSkinnedPosition in the vertex shader only; 2G review H-M1, which
+  rebuilt both twins once). The originals' graphs are untouched (the dry-run material fingerprints match the last
+  build). `tests/test_hlsl.py` checks both nodes against the art's preview math and the runtime header's
   defaults; `tests/test_flow.py` the twins' settings, outputs and parameters.
+* **`M_AF_Toon_Ashnumb`** (dark remake K6 / 2G stage H, DECISIONS DR16) — the twin the hero's toon slots move to while it
+  carries Ashnumb stacks (`AAbyssCharacterActor::UpdateAshnumbBand`, a dynamic instance per slot copying the slot's
+  parameters): built by `build_toon(..., band=True)` with `M_AF_Toon`'s settings, outputs and CPD; `AF_AshnumbBand`
+  (`hlsl.ashnumb_band_node`) after the split bands the toon from the feet up (the pre-skinned object-space z over
+  `BandHeightCm`) to `BandTop`, toward the ash in the lit bands / the shade ash in the shade band and in cast shadow,
+  with a pale line on the top edge. `BandTop` / `BandHeightCm` are the runtime's per-hero scalars; the look's defaults
+  (`BandSoftness`, `BandStrength`, `BandEdgeWidth`, `BandAshColor`, `BandAshShade`, `BandEdgeColor`) come from the art
+  lane's `Art/Export/VFX/vfx_recipes.json dark.materials.AshnumbTint` (`manifest.ashnumb_contract`; read next to the
+  manifest, the shipped values when the file is missing). Every other master's dry-run fingerprint is unchanged.
+  `tests/test_hlsl.py` checks the node against the art's band mock (`Art/blender/vfx/ashnumb_band.py`) in sun and in
+  shadow and the runtime header's defaults; `tests/test_flow.py` the twin's settings, outputs and parameters;
+  `tests/test_manifest.py` the contract. 2G review: the pre-skinned position reaches the node through a
+  `VertexInterpolator` (H-M1), and the node takes the split's `HitFlash` / `PainTint` / `PainAmt` / `Telegraph` /
+  `TelegraphAmt` / `StatusTint` / `StatusAmt` (`hlsl.ASHNUMB_FEEDBACK_INPUTS`, the same CPD parameters) and gives the ash
+  targets the same feedback, so a hit still flashes the banded legs white and status tints colour the ash (H-m1;
+  `test_hlsl` checks the band against feedback-then-band exactly and the real split + band chain at flash 1).
 
 **Art pass: one-time rebuild.** The art pass changes the graphs of `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`,
 `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`,
@@ -375,7 +393,10 @@ python3 unreal/Scripts/tests/fetch_ue_stub.py             # optional: UE Python 
   switches for a stale / missing helper library, the 5.6 Interchange API and a Custom node without additional output
   pins) and checks the results and that a second run is a no-op. Its `output_width` models the pin widths the engine
   compiles (output 0 of a vector parameter / texture sample / vertex colour is RGB; only "RGBA" is four wide), and
-  every Custom-node input of every master must get the width its `NodeInput` declares (2G review B1).
+  every Custom-node input of every master must get the width its `NodeInput` declares (2G review B1). Its
+  `vertex_only_leaks` models shader frequency: a vertex-shader-only expression (PreSkinnedPosition, PreSkinnedNormal)
+  may reach a material output other than World Position Offset only through a `VertexInterpolator` (2G review H-M1;
+  the test also proves the rule fails the direct wire).
   `test_editor_compat.py` covers those engine-version
   paths (parameter read-back, parent check and C++ fallback, the stale-binary warning, the shader check, Interchange
   replacements, the clip frame range and its fallback, the `AF_ToonSplit_Lit` twin). `test_manifest.py` covers the

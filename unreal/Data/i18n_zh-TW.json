@@ -125,9 +125,14 @@
     "ui.tooltip.inert": "C10",
     "ui.tooltip.levelReq": "I3",
     "zone.combat.noTarget": "C14",
-    "zone.combat.outOfRange": "C14"
+    "zone.combat.outOfRange": "C14",
+    "ui.permanentReward.toast": "DR16",
+    "ui.permanentReward.maxLife": "DR16",
+    "ui.permanentReward.statPoints": "DR16",
+    "ui.permanentReward.skillPoints": "DR16",
+    "ui.permanentReward.respecTokens": "DR16"
   },
-  "keyCount": 2799,
+  "keyCount": 2804,
   "strings": {
     "boot.title": "淵  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2701,6 +2706,11 @@
     "ui.tooltip.levelReq": "需要等級 {level}",
     "zone.combat.noTarget": "没有可攻擊的目標!",
     "zone.combat.outOfRange": "目標超出範圍!",
+    "ui.permanentReward.toast": "{title}：{rewards}",
+    "ui.permanentReward.maxLife": "最大生命 +{n}",
+    "ui.permanentReward.statPoints": "屬性點 +{n}",
+    "ui.permanentReward.skillPoints": "技能點 +{n}",
+    "ui.permanentReward.respecTokens": "洗點券 +{n}",
     "data.monster.breachclot": "淵血凝塊",
     "data.monster.risen_footman": "復起步卒",
     "data.monster.gravegnawer": "啃冢者",

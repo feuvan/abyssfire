@@ -125,9 +125,14 @@
     "ui.tooltip.inert": "C10",
     "ui.tooltip.levelReq": "I3",
     "zone.combat.noTarget": "C14",
-    "zone.combat.outOfRange": "C14"
+    "zone.combat.outOfRange": "C14",
+    "ui.permanentReward.toast": "DR16",
+    "ui.permanentReward.maxLife": "DR16",
+    "ui.permanentReward.statPoints": "DR16",
+    "ui.permanentReward.skillPoints": "DR16",
+    "ui.permanentReward.respecTokens": "DR16"
   },
-  "keyCount": 2799,
+  "keyCount": 2804,
   "strings": {
     "boot.title": "渊  火",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2701,6 +2706,11 @@
     "ui.tooltip.levelReq": "需要等级 {level}",
     "zone.combat.noTarget": "没有可攻击的目标!",
     "zone.combat.outOfRange": "目标超出范围!",
+    "ui.permanentReward.toast": "{title}：{rewards}",
+    "ui.permanentReward.maxLife": "最大生命 +{n}",
+    "ui.permanentReward.statPoints": "属性点 +{n}",
+    "ui.permanentReward.skillPoints": "技能点 +{n}",
+    "ui.permanentReward.respecTokens": "洗点券 +{n}",
     "data.monster.breachclot": "渊血凝块",
     "data.monster.risen_footman": "复起步卒",
     "data.monster.gravegnawer": "啃冢者",

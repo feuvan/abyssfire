@@ -59,6 +59,7 @@
 #include "World/AbyssAssetLibrary.h"
 #include "World/AbyssSetPieceRules.h"
 #include "World/AbyssThemeRules.h"
+#include "World/AbyssWorldStateRules.h"
 #include "World/AbyssZoneActor.h"
 
 static TAutoConsoleVariable<float> CVarAbyssInkScale(
@@ -68,6 +69,12 @@ static TAutoConsoleVariable<float> CVarAbyssInkScale(
 	TEXT("screen-space OutlinePx1080 x this px per 1080 rows on every tier, so at 1.5 the class widths read as px per 720 ")
 	TEXT("rows (hero / weapon / NPC 3.5, monster 3.0, interactive 2.0, decor 1.4, foliage 1.2). Applied live."),
 	ECVF_Default);
+
+/** 2G stage H: the beats a quest event queued and the NPCs they name (Public/World/AbyssWorldBuilder.h). */
+struct FAbyssStoryNpcHolds
+{
+	AbyssWorldStateRules::FStoryNpcHolds Rules;
+};
 
 namespace AbyssWorldBuilderPrivate
 {
@@ -257,6 +264,7 @@ void UAbyssWorldBuilder::Initialize(FSubsystemCollectionBase& Collection)
 	Collection.InitializeDependency<UAbyssVfxSystem>();
 	Collection.InitializeDependency<UAbyssTelegraphSystem>();
 	Collection.InitializeDependency<UAbyssCorpseLayer>();
+	StoryNpcHolds = MakeShared<FAbyssStoryNpcHolds>();
 	if (UAbyssSimDriver* Driver = Collection.InitializeDependency<UAbyssSimDriver>())
 	{
 		Driver->RegisterWorldView(this);
@@ -356,6 +364,7 @@ void UAbyssWorldBuilder::BindEvents()
 	Router.On<abyss::EvMonsterRenamed>().AddUObject(this, &UAbyssWorldBuilder::HandleRenamed);
 	Router.On<abyss::EvEmbersGained>().AddUObject(this, &UAbyssWorldBuilder::HandleEmbersGained);
 	Router.On<abyss::EvLoreCollected>().AddUObject(this, &UAbyssWorldBuilder::HandleLoreCollected);
+	Router.On<abyss::EvQuestUpdate>().AddUObject(this, &UAbyssWorldBuilder::HandleQuestUpdate);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssWorldBuilder::HandleSessionEnded);
 	SettingsHandle = GameInstance->OnSettingsChanged.AddUObject(this, &UAbyssWorldBuilder::ApplySettings);
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
@@ -916,6 +925,13 @@ const FAbyssArtAsset* UAbyssWorldBuilder::ResolveCharacterArt(abyss::EntityKind 
 
 void UAbyssWorldBuilder::SpawnEntity(const abyss::EvEntitySpawned& Event, const abyss::Snapshot& Snap)
 {
+	// 2G stage H: an NPC that shows again while its hidden self is still held for a beat (its entity id is kept): the held
+	// actor goes, the announced one takes its place.
+	TObjectPtr<AAbyssCharacterActor> HeldBefore;
+	if (Event.kind == abyss::EntityKind::Npc && HeldNpcs.RemoveAndCopyValue(Event.id, HeldBefore) && HeldBefore != nullptr)
+	{
+		HeldBefore->Destroy();
+	}
 	switch (Event.kind)
 	{
 	case abyss::EntityKind::Hero:
@@ -1474,6 +1490,10 @@ AAbyssPropActor* UAbyssWorldBuilder::SpawnProp(abyss::EntityId Id, abyss::Entity
 
 void UAbyssWorldBuilder::DespawnEntity(const abyss::EvEntityDespawned& Event)
 {
+	if (Event.kind == abyss::EntityKind::Npc && Event.reason == abyss::DespawnReason::Removed && HoldNpcForStory(Event.id))
+	{
+		return;   // 2G stage H: a queued / playing beat names it (ReleaseHeldNpcs lets it go)
+	}
 	const bool bImmediate = Event.reason == abyss::DespawnReason::ZoneUnload || Event.reason == abyss::DespawnReason::Removed;
 	RemoveEntity(Event.id, bImmediate, Event.reason);
 }
@@ -1594,6 +1614,7 @@ void UAbyssWorldBuilder::DestroyAllEntities(bool bKeepHero)
 	}
 	Leaving.Reset();
 	ReconciledProps.Reset();
+	ReleaseHeldNpcs(/*bAll*/ true);   // 2G stage H: a zone change / session end drops the holds (the queue is discarded too)
 	if (!bKeepHero)
 	{
 		Widgets.Reset();
@@ -1878,6 +1899,9 @@ void UAbyssWorldBuilder::PresentCharacters(const abyss::Snapshot& Snap, const FA
 			CharacterFrame.bMoving = Snap.hero.moving;
 			CharacterFrame.bAlive = Snap.hero.life == abyss::HeroLife::Alive;
 			CharacterFrame.StatusMask = Snap.hero.statusMask;
+			// 2G stage H (K6): the Ashnumb band (mobile low: the tint fallback; AbyssWorldStateRules).
+			CharacterFrame.AshnumbStacks = Snap.hero.ashnumbStacks;
+			CharacterFrame.bAshnumbBand = AbyssWorldStateRules::BandAllowed(Quality.Tier, Quality.bMobile);
 			break;
 		}
 		case abyss::EntityKind::Monster:
@@ -2268,6 +2292,12 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 	}
 
 	ReconcileMarkers(Snap);
+	// 2G stage H: the held NPCs no beat needs any more (the director idle, the beat over, the safety times) go.
+	if (StoryNpcHolds.IsValid() && (!StoryNpcHolds->Rules.Empty() || HeldNpcs.Num() > 0))
+	{
+		StoryNpcHolds->Rules.Update(TimeSec, Snap.storyBusy);
+		ReleaseHeldNpcs(/*bAll*/ false);
+	}
 	UpdateZoneMood(Snap);
 	// U4: a yielding set piece is hidden while a defend target of the same art stands on it.
 	if (ZoneActor != nullptr)
@@ -2630,12 +2660,25 @@ void UAbyssWorldBuilder::HandleStoryStep(const abyss::EvStoryStep& Event)
 	{
 	case abyss::StoryStepKind::Focus:
 	{
-		if (!Event.hasFocus)
-		{
-			return;
-		}
 		const UAbyssAssetLibrary* Assets = GetAssets();
 		const float FocusZ = Assets != nullptr ? Assets->GetManifest().GetShading().CameraFocusZCm : 50.f;
+		if (!Event.hasFocus)
+		{
+			// 2G stage H: the core resolved no target - an NPC it hid while this beat names it (Marl in cs_rf_finale) - and
+			// moved on; the kept actor is still drawn, so the camera pans to it over the step's own length.
+			const AAbyssCharacterActor* Held = FindHeldNpc(AbyssWorldStateRules::FocusNpc(Event.step));
+			if (Held == nullptr)
+			{
+				return;
+			}
+			const abyss::DataStore* Data = GetData();
+			const double PanMs = Event.timedMs > 0.0 ? Event.timedMs
+				: (Event.step.hasMs ? Event.step.ms : (Data != nullptr ? Data->Story().timing.focusDefaultMs : 900.0));
+			StoryFocusEntity = abyss::kNoEntity;
+			CameraRig->BeginStoryFocus(Held->GetActorLocation() + FVector(0.0, 0.0, FocusZ), static_cast<float>(PanMs / 1000.0));
+			bStoryFocusActive = true;
+			break;
+		}
 		FVector Target = GroundAt(Event.focusPos) + FVector(0.0, 0.0, FocusZ);
 		StoryFocusEntity = Event.focusEntity;
 		if (Event.focusEntity != abyss::kNoEntity)
@@ -2671,12 +2714,108 @@ void UAbyssWorldBuilder::HandleStoryStep(const abyss::EvStoryStep& Event)
 
 void UAbyssWorldBuilder::HandleStoryBeat(const abyss::EvStoryBeat& Event)
 {
+	// 2G stage H: a beat a quest event queued has begun / ended (its held NPCs go with its end).
+	if (StoryNpcHolds.IsValid())
+	{
+		if (Event.phase == abyss::EvStoryBeat::Phase::Began)
+		{
+			StoryNpcHolds->Rules.BeatBegan(Event.beatId);
+		}
+		else if (StoryNpcHolds->Rules.BeatEnded(Event.beatId))
+		{
+			ReleaseHeldNpcs(/*bAll*/ false);
+		}
+	}
 	if (Event.phase == abyss::EvStoryBeat::Phase::Ended && CameraRig != nullptr)
 	{
 		CameraRig->EndStoryFocus();
 		bStoryFocusActive = false;
 		StoryFocusEntity = abyss::kNoEntity;
 	}
+}
+
+void UAbyssWorldBuilder::HandleQuestUpdate(const abyss::EvQuestUpdate& Event)
+{
+	const abyss::DataStore* Data = GetData();
+	if (Data == nullptr || !StoryNpcHolds.IsValid())
+	{
+		return;
+	}
+	if (Event.kind == abyss::EvQuestUpdate::Kind::TurnedIn)
+	{
+		StoryNpcHolds->Rules.Expect(Data->Story(), abyss::StoryTriggerOn::QuestTurnedIn, Event.questId, TimeSec);
+	}
+	else if (Event.kind == abyss::EvQuestUpdate::Kind::Accepted)
+	{
+		StoryNpcHolds->Rules.Expect(Data->Story(), abyss::StoryTriggerOn::QuestAccepted, Event.questId, TimeSec);
+	}
+}
+
+bool UAbyssWorldBuilder::HoldNpcForStory(abyss::EntityId Id)
+{
+	if (!StoryNpcHolds.IsValid() || StoryNpcHolds->Rules.Empty())
+	{
+		return false;
+	}
+	const TObjectPtr<AAbyssCharacterActor>* Found = Characters.Find(Id);
+	AAbyssCharacterActor* Actor = Found != nullptr ? Found->Get() : nullptr;
+	if (Actor == nullptr || !Actor->HasArt() || !StoryNpcHolds->Rules.Wants(AbyssText::ToStd(Actor->GetDefId())))
+	{
+		return false;
+	}
+	// Out of the live world (no registry entry: not picked or routed; not presented; no nameplate), drawn where it stood.
+	if (UAbyssActorRegistry* Registry = UAbyssActorRegistry::Get(this))
+	{
+		Registry->Unregister(Id);
+	}
+	RemoveWidget(Id);
+	Tracks.Remove(Id);
+	RimmedCharacters.Remove(Id);
+	Actor->SetSelectionRim(EAbyssSelectionRim::None);
+	Characters.Remove(Id);
+	HeldNpcs.Add(Id, Actor);
+	UE_LOG(LogAbyss, Log, TEXT("Story: NPC %s stays drawn for the beat that names it"), *Actor->GetDefId());
+	return true;
+}
+
+void UAbyssWorldBuilder::ReleaseHeldNpcs(bool bAll)
+{
+	if (bAll && StoryNpcHolds.IsValid())
+	{
+		StoryNpcHolds->Rules.Clear();
+	}
+	for (auto It = HeldNpcs.CreateIterator(); It; ++It)
+	{
+		AAbyssCharacterActor* Actor = It.Value().Get();
+		const bool bWanted = !bAll && Actor != nullptr && StoryNpcHolds.IsValid()
+			&& StoryNpcHolds->Rules.Wants(AbyssText::ToStd(Actor->GetDefId()));
+		if (bWanted)
+		{
+			continue;
+		}
+		if (Actor != nullptr)
+		{
+			Actor->Destroy();
+		}
+		It.RemoveCurrent();
+	}
+}
+
+AAbyssCharacterActor* UAbyssWorldBuilder::FindHeldNpc(std::string_view NpcId) const
+{
+	if (NpcId.empty())
+	{
+		return nullptr;
+	}
+	for (const TPair<uint32, TObjectPtr<AAbyssCharacterActor>>& Pair : HeldNpcs)
+	{
+		AAbyssCharacterActor* Actor = Pair.Value.Get();
+		if (Actor != nullptr && AbyssText::ToStd(Actor->GetDefId()) == NpcId)
+		{
+			return Actor;
+		}
+	}
+	return nullptr;
 }
 
 void UAbyssWorldBuilder::HandleStoryDecorFocus(const abyss::EvStoryDecorFocus& Event)

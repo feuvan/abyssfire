@@ -45,6 +45,7 @@
 #include "Framework/AbyssUnits.h"
 #include "Platform/AbyssPlatform.h"
 #include "Platform/AbyssSettings.h"
+#include "World/AbyssWorldStateRules.h"
 
 namespace AbyssAudioSystemPrivate
 {
@@ -2145,8 +2146,10 @@ void UAbyssAudioSystem::TickRemake(const abyss::Snapshot& Snap, float RealDeltaS
 		if (bInDirectorZone)
 		{
 			R.MusicRegions.Update(R.Director.regionAreas, Tile);
+			const std::vector<std::string>* Flags = Snap.worldFlags;
 			R.Region = AbyssMusicRules::PickRegion(R.Director, R.MusicRegions,
-				[&R](std::string_view Id) { return R.IsAlive(Id); });
+				[&R](std::string_view Id) { return R.IsAlive(Id); },
+				[Flags](std::string_view Flag) { return AbyssWorldStateRules::HasFlag(Flags, Flag); });
 			R.Siege = AbyssMusicRules::PickQuestTrack(R.Director, R.PlayingBeat, PhaseOf);
 		}
 		else
@@ -2243,6 +2246,8 @@ void UAbyssAudioSystem::TickRemakeAmbience(const abyss::Snapshot& Snap, float Re
 		AreaLoopComponents.SetNum(static_cast<int32>(NumLoops));
 	}
 	const bool bFadingOut = NowSec < R.FadeOutUntilSec;  // the last zone's loops finish their fade-out
+	const std::vector<std::string>* Flags = Snap.worldFlags;
+	const auto HasFlag = [Flags](std::string_view Flag) { return AbyssWorldStateRules::HasFlag(Flags, Flag); };
 	double Replaced = 0.0;
 	for (size_t I = 0; I < NumLoops; ++I)
 	{
@@ -2250,8 +2255,9 @@ void UAbyssAudioSystem::TickRemakeAmbience(const abyss::Snapshot& Snap, float Re
 		const AbyssAmbienceRules::AreaLoop& Loop = bRegion ? Tables.regions[I] : Tables.layers[I - NumRegions];
 		double& Weight = bRegion ? R.RegionWeights[I] : R.LayerWeights[I - NumRegions];
 		const bool bInside = bRegion ? R.AmbienceRegions.IsInside(I) : R.AmbienceLayers.IsInside(I - NumRegions);
+		// 2G stage H: a row's untilFlag (the Gnawed Field's ringing until rf_hungerbell_silenced) replaces its `while`.
 		const bool bOn = (Loop.zone.empty() || Loop.zone == Snap.zone.mapId) && bInside &&
-			AbyssAudioData::Holds(Loop.when, [&R](std::string_view Id) { return R.IsAlive(Id); });
+			AbyssAudioData::Holds(Loop.when, [&R](std::string_view Id) { return R.IsAlive(Id); }, HasFlag);
 		Weight = AbyssAudioData::Ramp(Weight, bOn, Loop.fadeInSec, Loop.fadeOutSec, RealDeltaSec);
 		if (bRegion && Loop.replacesBed)
 		{

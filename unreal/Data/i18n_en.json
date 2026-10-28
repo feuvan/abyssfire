@@ -123,9 +123,14 @@
     "ui.tooltip.inert": "C10",
     "ui.tooltip.levelReq": "I3",
     "zone.combat.noTarget": "C14",
-    "zone.combat.outOfRange": "C14"
+    "zone.combat.outOfRange": "C14",
+    "ui.permanentReward.toast": "DR16",
+    "ui.permanentReward.maxLife": "DR16",
+    "ui.permanentReward.statPoints": "DR16",
+    "ui.permanentReward.skillPoints": "DR16",
+    "ui.permanentReward.respecTokens": "DR16"
   },
-  "keyCount": 2800,
+  "keyCount": 2805,
   "strings": {
     "boot.title": "Abyssfire",
     "boot.subtitle": "A B Y S S F I R E",
@@ -2700,6 +2705,11 @@
     "ui.tooltip.levelReq": "Requires level {level}",
     "zone.combat.noTarget": "No target!",
     "zone.combat.outOfRange": "Target out of range!",
+    "ui.permanentReward.toast": "{title}: {rewards}",
+    "ui.permanentReward.maxLife": "Max Life +{n}",
+    "ui.permanentReward.statPoints": "Stat Points +{n}",
+    "ui.permanentReward.skillPoints": "Skill Points +{n}",
+    "ui.permanentReward.respecTokens": "Respec Tokens +{n}",
     "data.monster.breachclot": "Breachclot",
     "data.monster.risen_footman": "Risen Footman",
     "data.monster.gravegnawer": "Gravegnawer",

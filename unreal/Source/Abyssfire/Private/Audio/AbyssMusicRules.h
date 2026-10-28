@@ -337,15 +337,19 @@ namespace AbyssMusicRules
 
 	// ---- per-frame selection ---------------------------------------------------------------------------------------
 
-	/** The region the hero is in now: the smallest (radius) region holding the hero whose `while` holds; -1 = none. */
-	template <class IsAliveFn>
-	int PickRegion(const DirectorTables& Tables, const AbyssAudioData::CircleTracker& Tracker, IsAliveFn&& IsAlive)
+	/**
+	 * The region the hero is in now: the smallest (radius) region holding the hero whose `while` (or `untilFlag`,
+	 * HasFlag(std::string_view) -> bool) holds; -1 = none.
+	 */
+	template <class IsAliveFn, class HasFlagFn>
+	int PickRegion(const DirectorTables& Tables, const AbyssAudioData::CircleTracker& Tracker, IsAliveFn&& IsAlive,
+		HasFlagFn&& HasFlag)
 	{
 		int Best = -1;
 		for (std::size_t I = 0; I < Tables.regions.size(); ++I)
 		{
 			const Region& R = Tables.regions[I];
-			if (!Tracker.IsInside(I) || !AbyssAudioData::Holds(R.when, IsAlive))
+			if (!Tracker.IsInside(I) || !AbyssAudioData::Holds(R.when, IsAlive, HasFlag))
 			{
 				continue;
 			}
@@ -355,6 +359,13 @@ namespace AbyssMusicRules
 			}
 		}
 		return Best;
+	}
+
+	/** PickRegion without world flags (no flag is ever set). */
+	template <class IsAliveFn>
+	int PickRegion(const DirectorTables& Tables, const AbyssAudioData::CircleTracker& Tracker, IsAliveFn&& IsAlive)
+	{
+		return PickRegion(Tables, Tracker, IsAlive, [](std::string_view) { return false; });
 	}
 
 	enum class QuestPhase : unsigned char

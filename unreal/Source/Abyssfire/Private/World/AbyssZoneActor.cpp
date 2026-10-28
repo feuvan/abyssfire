@@ -40,6 +40,7 @@
 #include "World/AbyssAssetLibrary.h"
 #include "World/AbyssSetPieces.h"
 #include "World/AbyssThemeRules.h"
+#include "World/AbyssWorldStateRules.h"
 
 static TAutoConsoleVariable<float> CVarAbyssSunScale(
 	TEXT("abyss.SunScale"),
@@ -1319,8 +1320,12 @@ void AAbyssZoneActor::UpdateMood(const abyss::Snapshot& Snap, const abyss::DataS
 	In.Map = Data.FindMap(Snap.zone.mapId);
 	In.ZoneId = Snap.zone.mapId;
 	In.GeneratorTheme = Theme;
+	// Dawn (2G stage H, AbyssWorldStateRules::ChapterDawn): a world flag the closing quest sets (rf_chapter_dawn, the flag
+	// the core's dawn spawn variants read) is set; a closing quest without flags keeps Wave 1's rule (its turn-in).
 	const std::string& ChapterQuest = Data.Monsters().ai.chapterCompleteQuest;
-	In.bChapterComplete = !ChapterQuest.empty() && Snap.quests != nullptr && Snap.quests->IsTurnedIn(ChapterQuest);
+	const abyss::QuestDef* ClosingQuest = ChapterQuest.empty() ? nullptr : Data.FindQuest(ChapterQuest);
+	const bool bClosingTurnedIn = ClosingQuest != nullptr && Snap.quests != nullptr && Snap.quests->IsTurnedIn(ChapterQuest);
+	In.bChapterComplete = AbyssWorldStateRules::ChapterDawn(ClosingQuest, Snap.worldFlags, bClosingTurnedIn);
 	In.bHasHero = true;
 	In.HeroCol = Snap.hero.pos.x;
 	In.HeroRow = Snap.hero.pos.y;

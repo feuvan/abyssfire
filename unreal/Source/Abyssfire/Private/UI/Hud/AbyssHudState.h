@@ -6,12 +6,15 @@
 #include "CoreMinimal.h"
 
 #include <string>
+#include <vector>
 
 #include "abyss/base/Enums.h"
 #include "abyss/base/Types.h"
 #include "abyss/hero/Hero.h"
 #include "abyss/sim/SimTypes.h"
 #include "abyss/sim/Snapshot.h"
+
+#include "UI/Hud/AbyssHudRules.h"
 
 struct FAbyssHudSkillSlot
 {
@@ -108,18 +111,21 @@ struct FAbyssHudState
 	double TargetHp = 0.0, TargetMaxHp = 1.0;
 	bool bTargetFound = false;
 
-	// boss bar (6.13)
+	// boss bar (6.13); 2G stage H: the K4 phase ticks (AbyssHudRules::BossPhaseTicks, kept while the bar fades out)
 	bool bBossBar = false;
 	FString BossName, BossEpithet;
 	double BossHp = 0.0, BossMaxHp = 1.0;
+	int32 BossPhase = 0;
+	std::vector<AbyssHudRules::FPhaseTick> BossPhaseTicks;
 
 	// town portal channel (W3) and the interact prompt (world 7.4)
 	bool bPortaling = false;
 	double PortalProgress = 0.0;
 	abyss::InteractKind PromptKind = abyss::InteractKind::None;
 
-	// statuses / buffs
+	// statuses / buffs (2G stage H: K6 Ashnumb's stacks for its cell's count)
 	uint32 StatusMask = 0;
+	int32 AshnumbStacks = 0;
 	TArray<FAbyssHudBuff> Buffs;
 
 	// zone / info plate

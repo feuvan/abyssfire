@@ -149,6 +149,18 @@ class LookParameterTests(unittest.TestCase):
         # the shipped defaults are the contract (the runtime keeps the same copy: AbyssCorpseRules FAshContract)
         self.assertEqual(manifest.AshContract(present=True), a)
 
+    def test_ashnumb_contract(self):
+        """M_AF_Toon_Ashnumb's constants (dark remake K6 / 2G stage H) from the art lane's vfx_recipes.json
+        dark.materials.AshnumbTint (next to the manifest's Export/VFX)."""
+        a = self.plan.ashnumb
+        self.assertTrue(a.present)
+        self.assertEqual((a.ash_color, a.ash_shade, a.edge_color), ("#8A8480", "#4C4944", "#B8B2A6"))
+        self.assertEqual((a.edge_width, a.band_softness, a.strength), (0.04, 0.06, 0.85))
+        # the shipped defaults are the contract (the runtime keeps the same copy: AbyssWorldStateRules FAshnumbTint)
+        self.assertEqual(manifest.AshnumbContract(present=True), a)
+        self.assertEqual(manifest.load_vfx_recipes(paths.VFX_RECIPES_PATH)["dark"]["materials"]["AshnumbTint"]["name"],
+                         "AshnumbTint")
+
     def test_manifest_params_win(self):
         inst = manifest.InstancePlan("MI_AF_Toon_Heroes_X", paths.M_TOON, "Heroes", scalars={"CastShadowStrength": 0.2})
         manifest.plan_look_parameters({inst.name: inst})
@@ -311,6 +323,33 @@ class SyntheticManifestTests(unittest.TestCase):
         self.assertTrue(any("T_FX_NoiseTest.png missing" in p.message and p.level == "warning" for p in plan.problems),
                         [str(p) for p in plan.problems])
         self.assertTrue(any("params.EdgeColor" in p.message for p in plan.errors), [str(p) for p in plan.problems])
+
+    def test_ashnumb_contract_fields(self):
+        data = copy.deepcopy(self.BASE)
+        path = self.make(data)
+        plan = manifest.build_plan(path, scan_textures=False)
+        self.assertFalse(plan.ashnumb.present)    # no vfx_recipes.json next to it: the shipped defaults, no problem
+        self.assertEqual(plan.ashnumb, manifest.AshnumbContract())
+        self.assertEqual(plan.errors, [])
+        (path.parent / "VFX").mkdir(parents=True, exist_ok=True)
+        recipes = {"dark": {"materials": {"AshnumbTint": {"params": {
+            "AshColor": "#102030", "AshShade": "405060", "EdgeWidth": 2.0, "BandSoftness": 0.1, "Strength": True}}}}}
+        (path.parent / "VFX" / "vfx_recipes.json").write_text(json.dumps(recipes), encoding="utf-8")
+        plan = manifest.build_plan(path, scan_textures=False)
+        a = plan.ashnumb
+        self.assertTrue(a.present)
+        self.assertEqual((a.ash_color, a.ash_shade, a.edge_color), ("#102030", "#405060", "#B8B2A6"))
+        self.assertEqual(a.edge_width, 0.04)      # out of 0..1: the default
+        self.assertEqual(a.band_softness, 0.1)
+        self.assertEqual(a.strength, 0.85)        # not a number: the default
+        self.assertEqual(plan.errors, [])
+        # a malformed colour is an error; an unreadable file keeps the defaults
+        recipes["dark"]["materials"]["AshnumbTint"]["params"]["EdgeColor"] = "pale"
+        (path.parent / "VFX" / "vfx_recipes.json").write_text(json.dumps(recipes), encoding="utf-8")
+        plan = manifest.build_plan(path, scan_textures=False)
+        self.assertTrue(any("params.EdgeColor" in p.message for p in plan.errors), [str(p) for p in plan.problems])
+        (path.parent / "VFX" / "vfx_recipes.json").write_text("{not json", encoding="utf-8")
+        self.assertEqual(manifest.build_plan(path, scan_textures=False).ashnumb, manifest.AshnumbContract())
 
     def test_conflicting_instance_definitions_are_errors(self):
         data = copy.deepcopy(self.BASE)

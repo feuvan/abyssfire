@@ -32,6 +32,7 @@
 #include "Framework/AbyssUnits.h"
 #include "Vfx/AbyssTelegraphRules.h"
 #include "World/AbyssAssetLibrary.h"
+#include "World/AbyssWorldStateRules.h"
 
 namespace AbyssCharacterPrivate
 {
@@ -75,26 +76,8 @@ namespace AbyssCharacterPrivate
 		return Index < Names.size() ? Names[Index] : FName(NAME_None);
 	}
 
-	struct FStatusTint
-	{
-		abyss::StatusType Type;
-		uint32 Rgb;
-		float Alpha;
-	};
-	// Priority order: the first status present tints the character.
-	constexpr FStatusTint StatusTints[] = {
-		{ abyss::StatusType::Freeze, 0x7FD0FF, 0.45f },
-		{ abyss::StatusType::Stun, 0x7FD0FF, 0.45f },
-		{ abyss::StatusType::Burn, 0xFF7A3A, 0.35f },
-		{ abyss::StatusType::Poison, 0x8FE04A, 0.35f },
-		{ abyss::StatusType::Bleed, 0xC8323C, 0.22f },
-		{ abyss::StatusType::Slow, 0x9FD8FF, 0.18f },
-	};
-
-	bool HasStatus(uint32 Mask, abyss::StatusType Type)
-	{
-		return (Mask & (1u << static_cast<uint32>(Type))) != 0;
-	}
+	// Status tints (R8): AbyssWorldStateRules::StatusTints (the web port's six, priority order) and, 2G stage H, Ashnumb's
+	// fallback multiply where its band is not drawn (CharacterStatusTint).
 
 	void ConfigureAttachmentMesh(UStaticMeshComponent* Mesh)
 	{
@@ -287,6 +270,8 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	SingleViewCameraYawDeg = Setup.CameraYawDeg;
 	MeshYawOffsetDeg = Assets.GetManifest().GetShading().MeshYawOffsetDeg;
 
+	ClearAshnumbBand();   // 2G stage H: a re-initialised body starts on its own materials
+	bBandNoSlots = false;
 	bHasArt = false;
 	const FAbyssArtAsset* Art = Setup.Art;
 	USkeletalMesh* Mesh = Art != nullptr ? Assets.LoadSkeletalMesh(*Art) : nullptr;
@@ -313,6 +298,18 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 	ArtClips = Art->Clips;
 	ArtFx = Art->Fx;
 	ArtName = Art->Name;
+	// Dark remake 2G stage H (K6): the hero's Ashnumb band twin, loaded with the hero (not at the first stack), and the
+	// height the band measures (the art's heightCm: the pre-skinned, object-space z of the feet is 0).
+	AshnumbMaster = nullptr;
+	if (EntityKind == abyss::EntityKind::Hero)
+	{
+		AshnumbMaster = Assets.LoadMaterial(TEXT("M_AF_Toon_Ashnumb"));
+		static bool bAshnumbLogged = false;
+		UE_CLOG(AshnumbMaster == nullptr && !bAshnumbLogged, LogAbyss, Warning,
+			TEXT("M_AF_Toon_Ashnumb not found (run Scripts/build_content.py): Ashnumb shows as the status tint"));
+		bAshnumbLogged = bAshnumbLogged || AshnumbMaster == nullptr;
+		BandHeightCm = Art->HeightCm > 1.f ? Art->HeightCm : FMath::Max(1.f, Art->GetVisualHeightCm());
+	}
 	// Dark remake U3: a death that holds its pose for the corpse layer (the world builder decided: AbyssCorpseRules).
 	bCorpseHold = Setup.bCorpseHold && EntityKind != abyss::EntityKind::Hero && Setup.CorpseHoldFromMs > 0.f;
 	CorpseHoldFromSec = Setup.CorpseHoldFromMs / 1000.f;
@@ -830,6 +827,7 @@ void AAbyssCharacterActor::ResetPresentation()
 	HuskShadowAlpha = 1.f;
 	bAshRise = false;
 	ClearAshLook();
+	ClearAshnumbBand();
 	for (float& Value : CpdValues)
 	{
 		Value = 0.f;
@@ -1547,6 +1545,93 @@ void AAbyssCharacterActor::ClearAshLook()
 	AshGrey = AshDissolve = AshTopCm = -1.f;
 }
 
+bool AAbyssCharacterActor::UpdateAshnumbBand(int32 Stacks, bool bAllowed)
+{
+	// The band on the body's toon slots only: the ink hull and the held items keep their materials (AshnumbTint). A body
+	// on the ash twins (a husk: never the hero) is left alone.
+	const double Top = AbyssWorldStateRules::BandTop(AbyssWorldStateRules::DefaultAshnumbTint(), Stacks);
+	if (!(Top > 0.0) || !bAllowed || AshnumbMaster == nullptr || Body == nullptr || !bHasArt || bAshApplied || bBandNoSlots)
+	{
+		ClearAshnumbBand();
+		return false;
+	}
+	if (!bBandApplied)
+	{
+		static const FName ToonName(TEXT("M_AF_Toon"));
+		static const FName HeightName(TEXT("BandHeightCm"));
+		BandSlots.Reset();
+		BandMaterials.Reset();
+		const int32 NumSlots = Body->GetNumMaterials();
+		for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+		{
+			UMaterialInterface* Material = Body->GetMaterial(Slot);
+			const UMaterial* Base = Material != nullptr ? Material->GetBaseMaterial() : nullptr;
+			if (Base == nullptr || Base->GetFName() != ToonName)
+			{
+				continue;
+			}
+			UMaterialInstanceDynamic* Band = UMaterialInstanceDynamic::Create(AshnumbMaster, this);
+			if (Band == nullptr)
+			{
+				continue;
+			}
+			if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Material))
+			{
+				Band->CopyParameterOverrides(Instance);   // the palette textures and the look scalars of the hero's slot
+			}
+			Band->SetScalarParameterValue(HeightName, BandHeightCm);
+			FAshSlot& Record = BandSlots.AddDefaulted_GetRef();
+			Record.Component = Body.Get();
+			Record.Slot = Slot;
+			Record.Original = Material;
+			BandMaterials.Add(Band);
+			Body->SetMaterial(Slot, Band);
+		}
+		bBandApplied = BandSlots.Num() > 0;
+		bBandNoSlots = !bBandApplied;
+		BandTopApplied = -1.f;
+		if (!bBandApplied)
+		{
+			return false;
+		}
+	}
+	const float TopValue = static_cast<float>(Top);
+	if (!FMath::IsNearlyEqual(TopValue, BandTopApplied, 0.0005f))
+	{
+		static const FName TopName(TEXT("BandTop"));
+		for (UMaterialInstanceDynamic* Band : BandMaterials)
+		{
+			if (Band != nullptr)
+			{
+				Band->SetScalarParameterValue(TopName, TopValue);
+			}
+		}
+		BandTopApplied = TopValue;
+	}
+	return true;
+}
+
+void AAbyssCharacterActor::ClearAshnumbBand()
+{
+	if (!bBandApplied && BandSlots.Num() == 0)
+	{
+		return;
+	}
+	for (const FAshSlot& Record : BandSlots)
+	{
+		UPrimitiveComponent* Component = Record.Component.Get();
+		UMaterialInterface* Original = Record.Original.Get();
+		if (Component != nullptr && Original != nullptr)
+		{
+			Component->SetMaterial(Record.Slot, Original);
+		}
+	}
+	BandSlots.Reset();
+	BandMaterials.Reset();
+	bBandApplied = false;
+	BandTopApplied = -1.f;
+}
+
 void AAbyssCharacterActor::BeginAshRise(float StartGrey, float StartDissolve, double StartSimMs, double SpanMs)
 {
 	if (!(StartGrey > 0.f) && !(StartDissolve > 0.f))
@@ -2181,17 +2266,17 @@ void AAbyssCharacterActor::UpdateMaterialFeedback(const FAbyssCharacterFrame& Fr
 	SetCpdColor(AbyssCpd::TelegraphR, WindupTint);
 	SetCpd(AbyssCpd::TelegraphAmount, Telegraph > 0.f ? FMath::Clamp(Telegraph, 0.f, 1.f) * 0.85f : 0.f);
 
-	// Status tints (R8).
+	// Status tints (R8): the first of the web's six present; K6 Ashnumb shows as the hero's band where the tier draws it
+	// (M_AF_Toon_Ashnumb), else as its fallback multiply (AbyssWorldStateRules::CharacterStatusTint).
+	const bool bAshnumbBand = UpdateAshnumbBand(Frame.AshnumbStacks, Frame.bAshnumbBand);
+	const AbyssWorldStateRules::FTintPick Pick = AbyssWorldStateRules::CharacterStatusTint(Frame.StatusMask,
+		Frame.AshnumbStacks, bAshnumbBand, AbyssWorldStateRules::DefaultAshnumbTint());
 	FLinearColor Tint = FLinearColor::Black;
 	float TintAmount = 0.f;
-	for (const FStatusTint& Status : StatusTints)
+	if (Pick.bFound)
 	{
-		if (HasStatus(Frame.StatusMask, Status.Type))
-		{
-			Tint = AbyssWorldUtil::ColorFromRgb(Status.Rgb);
-			TintAmount = Status.Alpha;
-			break;
-		}
+		Tint = AbyssWorldUtil::ColorFromRgb(Pick.Rgb);
+		TintAmount = Pick.Alpha;
 	}
 	if (TintAmount > 0.f)
 	{

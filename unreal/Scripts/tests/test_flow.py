@@ -194,11 +194,37 @@ class FlowTest(unittest.TestCase):
             self.assertIs(textures["Noise"], reg[f"{paths.FX_TEXTURES_DIR}/T_FX_AshNoise"])
         self.assertIn("Grey", {str(e.get_editor_property("parameter_name")) for e in ash_toon._expressions
                                if type(e).__name__ == "MaterialExpressionScalarParameter"})
+        # the hero's Ashnumb twin (dark remake K6 / 2G stage H): M_AF_Toon's settings and outputs, the band after the
+        # split (emissive AF_AshnumbBand, base colour its BandLit), per-hero scalars (no custom primitive data), the
+        # AshnumbTint contract's look as parameter defaults
+        band = reg[f"{paths.MATERIALS_DIR}/{paths.M_TOON_ASHNUMB}"]
+        for prop in ("blend_mode", "shading_model", "two_sided", "used_with_skeletal_mesh"):
+            self.assertEqual(band.get_editor_property(prop), toon.get_editor_property(prop), prop)
+        self.assertEqual(set(band._outputs), set(toon._outputs))
+        self.assertEqual(described(band), sorted(described(toon) + ["AF_AshnumbBand"]))
+        self.assertEqual(band._outputs["MaterialProperty.MP_EMISSIVE_COLOR"].get_editor_property("description"),
+                         "AF_AshnumbBand")
+        self.assertEqual(band._output_pins["MaterialProperty.MP_BASE_COLOR"], "BandLit")
+        band_scalars = {str(e.get_editor_property("parameter_name")): e for e in band._expressions
+                        if type(e).__name__ == "MaterialExpressionScalarParameter"}
+        for name, value in (("BandTop", 0.0), ("BandHeightCm", 176.0), ("BandSoftness", 0.06), ("BandStrength", 0.85),
+                            ("BandEdgeWidth", 0.04)):
+            self.assertIn(name, band_scalars)
+            self.assertFalse(band_scalars[name].get_editor_property("use_custom_primitive_data"), name)
+            self.assertAlmostEqual(band_scalars[name].get_editor_property("default_value"), value, places=6)
+        band_vectors = {str(e.get_editor_property("parameter_name")): e.get_editor_property("default_value")
+                        for e in band._expressions if type(e).__name__ == "MaterialExpressionVectorParameter"}
+        from abyss_content.manifest import hex_to_linear
+        for name, hexv in (("BandAshColor", "#8A8480"), ("BandAshShade", "#4C4944"), ("BandEdgeColor", "#B8B2A6")):
+            got = band_vectors[name]
+            for x, y in zip((got.r, got.g, got.b), hex_to_linear(hexv)):
+                self.assertAlmostEqual(x, y, places=6)
+        self.assertFalse({"Dissolve", "Grey", "HuskTopCm"} & set(band_scalars))
         # the originals carry none of it (chapters 2-5 keep today's materials: no rebuild, no recompile)
         for mat in (toon, outline):
-            self.assertFalse({"Dissolve", "Grey", "HuskTopCm"} & {str(e.get_editor_property("parameter_name"))
-                                                                   for e in mat._expressions
-                                                                   if type(e).__name__ == "MaterialExpressionScalarParameter"})
+            self.assertFalse({"Dissolve", "Grey", "HuskTopCm", "BandTop", "BandHeightCm"}
+                             & {str(e.get_editor_property("parameter_name")) for e in mat._expressions
+                                if type(e).__name__ == "MaterialExpressionScalarParameter"})
         # the selection rim instance and the art-pass look parameters
         rim = reg[f"{paths.INSTANCES_DIR}/{paths.MI_SELECT_RIM}"]
         self.assertIs(rim.get_editor_property("parent"), reg[f"{paths.MATERIALS_DIR}/{paths.M_SELECT_RIM}"])
@@ -251,6 +277,40 @@ class FlowTest(unittest.TestCase):
                                    f"({type(src).__name__}.{out or '<0>'}) compiles to {have} component(s)")
         self.assertEqual(bad, [], "\n".join(bad))
         self.assertGreater(checked, 100)
+
+    def test_vertex_only_expressions_reach_pixel_outputs_through_an_interpolator(self):
+        """Shader frequency (2G review H-M1): PreSkinnedPosition compiles in the vertex shader only, so a colour /
+        opacity graph (the ash dissolve's and the Ashnumb band's object-space position) takes it through a
+        VertexInterpolator; only World Position Offset (the foliage wind) may wire it directly. The rule catches the
+        direct wire the review found (fake_unreal.vertex_only_leaks)."""
+        from unittest import mock
+
+        from abyss_content.ue import materials as mats
+
+        def masters():
+            for m in mats.MASTERS:
+                yield m.name, fake_unreal.REGISTRY[f"{m.folder}/{m.name}"]
+
+        def pre_skinned_uses(mat):
+            return [e for e in mat._expressions if type(e).__name__ == "MaterialExpressionPreSkinnedPosition"]
+
+        report = self.run_build("--skip", "audio,level")
+        self.assertTrue(report.ok, "\n".join(report.errors))
+        leaks = [f"{name}: {leak}" for name, mat in masters() for leak in fake_unreal.vertex_only_leaks(mat)]
+        self.assertEqual(leaks, [], "\n".join(leaks))
+        interpolated = {name for name, mat in masters()
+                        if any(type(e).__name__ == "MaterialExpressionVertexInterpolator"
+                               and e._props["_links"]["VS"][0] in pre_skinned_uses(mat) for e in mat._expressions)}
+        self.assertEqual(interpolated, {paths.M_TOON_ASH, paths.M_OUTLINE_ASH, paths.M_TOON_ASHNUMB})
+        wind_only = {name for name, mat in masters() if pre_skinned_uses(mat)} - interpolated
+        self.assertTrue(wind_only, "no WPO-only PreSkinnedPosition (the foliage wind) left to exempt")
+        # the review's graph (the position wired straight into the Custom nodes) fails the rule on all three masters
+        with mock.patch.object(mats, "_pre_skinned_position_ps",
+                               lambda g: g.node("MaterialExpressionPreSkinnedPosition")):
+            report = self.run_build("--only", "materials", "--force-materials")
+        self.assertTrue(report.ok, "\n".join(report.errors))
+        leaked = {name for name, mat in masters() if fake_unreal.vertex_only_leaks(mat)}
+        self.assertEqual(leaked, {paths.M_TOON_ASH, paths.M_OUTLINE_ASH, paths.M_TOON_ASHNUMB})
 
     def test_force_materials_rebuilds_only_materials(self):
         self.assertTrue(self.run_build("--skip", "audio").ok)

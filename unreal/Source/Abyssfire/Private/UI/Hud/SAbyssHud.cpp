@@ -6,6 +6,7 @@
 #include "Widgets/SOverlay.h"
 
 #include <string>
+#include <string_view>
 #include <variant>
 
 #include "abyss/data/DataStore.h"
@@ -19,6 +20,7 @@
 #include "Framework/AbyssText.h"
 #include "Input/Touch/SAbyssTouchControls.h"
 #include "UI/AbyssUiStyle.h"
+#include "UI/Hud/AbyssHudRules.h"
 #include "UI/Hud/AbyssMinimapTexture.h"
 #include "UI/Hud/SAbyssHudBottom.h"
 #include "UI/Hud/SAbyssHudWidgets.h"
@@ -290,6 +292,7 @@ void SAbyssHud::SyncHero(const abyss::Snapshot& Snap, double Now, float DeltaSec
 	S.PortalProgress = Hero.portalProgress;
 	S.PromptKind = Snap.prompt.kind;
 	S.StatusMask = Hero.statusMask;
+	S.AshnumbStacks = Hero.ashnumbStacks;
 	S.Buffs.Reset();
 	if (Snap.heroBuffs != nullptr)
 	{
@@ -383,6 +386,9 @@ void SAbyssHud::SyncTarget(const abyss::Snapshot& Snap)
 		S.BossEpithet = Snap.bossBar.epithetKey.empty() ? FString() : Ctx->LocStr(Snap.bossBar.epithetKey);
 		S.BossHp = Snap.bossBar.hp;
 		S.BossMaxHp = FMath::Max(1.0, Snap.bossBar.maxHp);
+		// 2G stage H (K4): a tick per phase threshold, the entered rows dimmed; none for a boss without a phase table.
+		S.BossPhase = Snap.bossBar.phase;
+		AbyssHudRules::BossPhaseTicks(Snap.bossBar.phase, Snap.bossBar.phaseThresholdsPct, S.BossPhaseTicks);
 	}
 }
 
@@ -557,6 +563,10 @@ void SAbyssHud::HandleEvent(const abyss::Event& Event, const abyss::Snapshot* Sn
 	{
 		bTrackerDirty = true;
 	}
+	else if (const abyss::EvPermanentReward* Reward = std::get_if<abyss::EvPermanentReward>(&Event))
+	{
+		ShowPermanentReward(*Reward);
+	}
 	else if (const abyss::EvZone* Zone = std::get_if<abyss::EvZone>(&Event))
 	{
 		if (Zone->phase == abyss::EvZone::Phase::Entered)
@@ -565,4 +575,30 @@ void SAbyssHud::HandleEvent(const abyss::Event& Event, const abyss::Snapshot* Sn
 			bTrackerDirty = true;
 		}
 	}
+}
+
+void SAbyssHud::ShowPermanentReward(const abyss::EvPermanentReward& Reward)
+{
+	// 2G stage H (K6, AbyssHudRules): "<the quest's permanent name>: Max Life +15" - the title is
+	// data.quest.<id>.permanent when the locale has it, else the quest's name; one line per field above 0.
+	if (!AbyssHudRules::ShowsRewardToast(Reward))
+	{
+		return;
+	}
+	const std::string TitleKey = AbyssHudRules::PermanentRewardTitleKey(Reward.questId,
+		[this](std::string_view Key) { return Ctx->HasKey(Key); });
+	const FString Title = Ctx->NameOr(TitleKey, Reward.questId);
+	const FString Separator = AbyssText::ToFString(AbyssHudRules::RewardLineSeparator);
+	FString Rewards;
+	for (const AbyssHudRules::FRewardLine& Line : AbyssHudRules::PermanentRewardLines(Reward))
+	{
+		if (!Rewards.IsEmpty())
+		{
+			Rewards += Separator;
+		}
+		Rewards += Ctx->LocArgsOrStr(Line.Key, TEXT("+{n}"), { FAbyssUiContext::Arg("n", static_cast<int64>(Line.Amount)) });
+	}
+	const FString Text = Ctx->LocArgsOrStr("ui.permanentReward.toast", TEXT("{title}: {rewards}"),
+		{ FAbyssUiContext::Arg("title", Title), FAbyssUiContext::Arg("rewards", Rewards) });
+	Notices->ShowToast(FText::AsCultureInvariant(Text), Ctx->Style().Colors().GoldBright);
 }

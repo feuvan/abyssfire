@@ -2048,6 +2048,62 @@ real; every one is fixed, three with a recorded remainder (below).
   recorded above. Counts after the review: PresentationTests 131 cases, 8631 assertions on GCC and Clang (19 hand
   mutations of the new rules caught); CoreTests 881 cases on GCC and Clang (the burner checks in `corpses_test`; the
   K3 / K4 digests unchanged; the three playthroughs' final saves byte-identical to HEAD's).
+- **Stage H: HUD and world state (U5 W2 parts, K4 ticks, K6).** Rules in `Source/Abyssfire/Private/UI/Hud/AbyssHudRules.h`
+  (boss bar phase ticks, the status row over every `StatusType`, the permanent-reward toast) and
+  `Private/World/AbyssWorldStateRules.h` (dawn from the closing quest's world flag, the linear panel's line,
+  `FStoryNpcHolds` - the NPCs a queued / playing beat names - the `AshnumbTint` contract with its band top and tint
+  fallback, the character status tints), plus `untilFlag` in `Private/Audio/AbyssAudioDataRules.h` (and a flag-aware
+  `AbyssMusicRules::PickRegion`) and the readability window in `Private/Vfx/AbyssTelegraphRules.h`; tests
+  `PresentationTests/tests/hud_test.cpp` (8 cases), `worldstate_test.cpp` (8), `readability_test.cpp` (6 after the review), and
+  `audio_ambience_test.cpp` (extended) / `audio_music_test.cpp` (+1 case) on the real `Data/`, the audio manifest and
+  `vfx_recipes.json`. Glue: `SAbyssHud` (`ShowPermanentReward`, the boss phase / Ashnumb state), `SAbyssBossBar` and
+  `SAbyssBuffRow` (`SAbyssHudWidgets.cpp`), the dialogue panel's line (`SAbyssConversationPanels.cpp`), the character
+  actor (`UpdateAshnumbBand` / `ClearAshnumbBand`, the rules' status tints), the world builder (the hero's stacks and
+  band tier, `HoldNpcForStory` / `ReleaseHeldNpcs` / `FindHeldNpc`, `EvQuestUpdate` / `EvStoryBeat` / focus-step
+  handling), the zone actor's dawn input, the audio system's flag lambdas. Content: the twin master `M_AF_Toon_Ashnumb`
+  (`Scripts/abyss_content`: `hlsl.ashnumb_band_node`, `manifest.ashnumb_contract` from `Art/Export/VFX/vfx_recipes.json`,
+  `build_toon(band=True)`; every other master's dry-run fingerprint unchanged). Strings: five `ui.permanentReward.*`
+  PORT_STRINGS (re-exported; the CJK subsets rebuilt for 券 / 洗). Counts: PresentationTests 152 cases, 9662 assertions on
+  GCC and Clang (32 of 32 hand mutations of the new rules caught); Scripts 140 tests; the strict content plan 0 errors,
+  0 warnings.
+- **What it presents** (README *Dark remake HUD and world state* lists the Mac look checks). Valdras's boss bar ticks at
+  65 % / 30 %, dimmed once entered; the status row's grey Ashnumb cell with its stacks (Keen reads as the plain Slow
+  cell); the hero's ash band (1 stack mid-shin .. 5 the hips, an edge line; mobile low / no twin: a #8A8480 multiply at
+  .25 + .05 x stacks); the gold permanent-reward toast (玛勒的苦药：最大生命 +15 / Marl's Bitter Draught: Max Life +15);
+  `march_dawn` on `rf_chapter_dawn` (with the core's dawn spawns); the Gnawed Field ringing until
+  `rf_hungerbell_silenced`; Marl kept drawn (and focused) through `cs_rf_finale`; the core's NPC line on the linear
+  panel; every Chapter 1 decal on screen >= 400 ms before its contact (tightest 689 ms through the stage T rules at
+  30 / 45 / 60 fps; 700 ms in three AutoPilot playthroughs at 30 fps).
+- **Interpretations** (DR16 (28)-(39)): `untilFlag` replaces `while` (W2: the ringing outlives the hunt until the M2
+  turn-in; an AND would also pass the data but stop at the hunt's death, Wave 1's rule); dawn reads the closing quest's
+  `setsFlags` (no content id; a quest without flags keeps the turn-in rule; a save turned in before K6 has no flag and
+  stays in `march`, as its spawns do - no player saves exist); the NPC hold keys on the beats a quest event's triggers
+  queue and ends with the director idle; the band's top and its fallback are computed at runtime from the contract
+  (pinned by tests), the look is baked in the twin; the band measures object-space z over the art's `heightCm`; the
+  fallback multiply only where the band is not drawn, after the web's six tints; the toast is one line, a format key
+  plus per-field keys; ticks outside (0, 100) are not drawn; readability counts one 30 fps frame before the decal shows.
+- **Chapters 2-5.** No phase tables, Ashnumb, permanent rewards, world flags, NPC visibility or dawn mood: boss bars,
+  status rows, hero materials, moods and ambience are as before (the six status colours / tints pinned by tests).
+  AbyssCore untouched.
+- **Deferred (stage H).** The gore setting (no gore art; DR6 keeps it out of zh-CN builds - DR16 (39)); the arena's
+  annulus mesh and the darkest-tile decal capture (a device / Mac pass: README look check 10; the readability test
+  covers the timing, not the contrast); a fade for an NPC appearing / leaving mid-zone (they pop as before); a respec UI
+  for the stored tokens (no respec flow exists).
+- **Review fixes (stage H).** H-M1 pre-skinned position is vertex-shader-only in UE's HLSL translator: `M_AF_Toon_Ashnumb`
+  and stage C's `M_AF_Toon_Ash` / `M_AF_Outline_Ash` read it through a `VertexInterpolator`
+  (`materials._pre_skinned_position_ps`; the two ash twins rebuild once, `M_AF_Toon` and every other master keep their
+  fingerprints) and `test_flow` models shader frequency (`fake_unreal.vertex_only_leaks`, shown to fail the direct
+  wire); README look checks 1 (stage C and H) ask for a clean compile. H-m1 the band sits under the toon's feedback:
+  `AF_AshnumbBand` takes the split's hit flash / pain / wind-up / status inputs and gives the ash targets the same
+  affine map, exactly the feedback over the banded colour (a hit flashes the ash legs white, Slow / Burn tint them;
+  `test_hlsl` checks it against feedback-then-band and the real split + band chain at flash 1; 4 of 4 hand mutations
+  caught). H-m2 `readability_test` drives the stage T rules: every real strike / fuse through `StrikeState` / `PackCpd`
+  on `abyss::SimClock` at 30 / 45 / 60 fps (full windup strength from the first frame to the flash), the review's worst
+  budget scene from the data (13 of the lowest cap's 16), and three AutoPilot playthroughs replayed through a model of
+  `UAbyssTelegraphSystem::Tick` at the lowest cap (peak 4, nothing dropped, every strike / fuse read >= 700 ms ahead);
+  8 of 8 hand mutations of the telegraph rules (fade-in, late spawn, fill from zero, early flash, budget, cap, look,
+  window formula) caught. DR16 (40)-(42). Counts after the review: PresentationTests 154 cases, 12888 assertions on GCC
+  and Clang; Scripts 143 tests; the strict content plan 0 errors, 0 warnings.
 
 ### Phase 3 — Wave 3: the descent
 

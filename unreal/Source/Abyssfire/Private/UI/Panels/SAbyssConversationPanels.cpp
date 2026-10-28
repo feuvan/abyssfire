@@ -19,6 +19,7 @@
 #include "UI/AbyssUiStyle.h"
 #include "UI/Core/AbyssTextFitRules.h"
 #include "UI/Widgets/AbyssUiWidgets.h"
+#include "World/AbyssWorldStateRules.h"
 
 namespace
 {
@@ -89,17 +90,25 @@ void SAbyssDialoguePanel::Refresh(const abyss::Snapshot& Snap)
 	const bool bTouch = Ctx->IsTouch();
 	const float WrapWidth = 432.f;
 
-	// text: tree node (data.dialogue.<treeId>.<nodeId>.text) or the linear line (data.npc.<id>.dialogue.<1|0>)
+	// text: tree node (data.dialogue.<treeId>.<nodeId>.text) or the linear line: the K6 line the core chose at open
+	// (DialogueView::lineKey), else the web's data.npc.<id>.dialogue.<1|0> (AbyssWorldStateRules::LinearPanelLine)
 	FString Text;
 	const abyss::DialogueNode* Node = View.tree != nullptr ? View.tree->FindNode(View.nodeId) : nullptr;
 	if (!View.linear && View.tree != nullptr && Node != nullptr)
 	{
 		Text = Ctx->NameOr("data.dialogue." + View.tree->id + "." + Node->id + ".text", Node->text);
 	}
-	else if (Npc != nullptr && !Npc->dialogue.empty())
+	else if (Npc != nullptr)
 	{
-		const size_t Line = Npc->dialogue.size() > 1 ? 1 : 0;
-		Text = Ctx->NameOr("data.npc." + NpcId + ".dialogue." + std::to_string(Line), Npc->dialogue[Line]);
+		const AbyssWorldStateRules::FPanelLine Line = AbyssWorldStateRules::LinearPanelLine(View.lineKey, NpcId, Npc->dialogue.size());
+		if (Line.bFromLines)
+		{
+			Text = Ctx->NameOr(Line.Key, std::string());
+		}
+		else if (!Line.Key.empty() && Line.WebIndex < Npc->dialogue.size())
+		{
+			Text = Ctx->NameOr(Line.Key, Npc->dialogue[Line.WebIndex]);
+		}
 	}
 
 	// buttons from the core (7.1 step 3)
