@@ -183,7 +183,9 @@ The core decides **what** plays (`AudioDirector` / `MusicDirector` emit `EvMusic
   the drones (the remake has no combat music: a fight keeps whatever plays). Other zones: the core's requests play as
   before. Encounter stingers (`encounters`, `stingers.<id>` duck): `stinger_hunt` on a hunt's first aggro,
   `stinger_miniboss` when the Corpseherd's pre-fight lines close, `stinger_slain` on their death, on their own
-  component (music volume) with their own duck. Phase stingers wait for W2's `EvMonsterPhase`.
+  component (music volume) with their own duck. Phase stingers (2G): on `EvMonsterPhase` the event's `stinger`, else
+  `bosses.<id>.phaseStingers[phase]` (Valdras: `stinger_valdras_roll_call` at P2, `stinger_valdras_no_retreat` at P3)
+  through the same component and duck; none on a `reset` (`AbyssMusicRules::PhaseStinger`).
 * **Cue triggers (U7, `AbyssCueTriggerRules.h`; manifest `cueTriggers`)**: the prologue's last slide (ten tolls 2.8 s
   apart, stopped with the prologue), a toll at the end of cs_rf_brand / cs_rf_whisper (`bell_toll` inside the
   knellwatch region, else `bell_toll_far`), the self-ring at cs_rf_siege's step 2 and every 20-30 s while the siege
@@ -199,14 +201,18 @@ The core decides **what** plays (`AudioDirector` / `MusicDirector` emit `EvMusic
   (Valdras, the Corpseherd) and add them on beats (`anim.<action>` on EvPlayAnim, `miniboss.opened`, `story.say`); a
   named cue without a manifest row falls back to the family cue. World cues (`spatial`) get the A4 mild panning: the source's lateral offset from the hero across
   the screen × 0.25 spread becomes the azimuth of a virtual emitter 1 m from the engine's audio listener, with no
-  distance attenuation; UI cues are 2D.
+  distance attenuation; UI cues are 2D. 2G (U3, `AbyssMonsterLookRules.h`): a blocker's `EvBlock` plays
+  `sfx_shieldbearer_block` once it is rendered, else the port's `block` cue, at the blocker; a Living monster that
+  breaks (`EvMonsterFlee` start) plays `sfx_deserter_flee` (planned: silent until rendered); nothing on a flee's end
+  or for the other families. Chapters 2-5 have no blockers and no morale: they sound as before.
 * **Story** (audio.md §10.2): letterbox whoosh when a cutscene / boss intro begins; chapter-card stinger by the
   card's mood (ducks music −8 dB); boss-intro title stinger (−10 dB during the title step); whisper bed looping while
   whisper steps show (−6 dB). The prologue's music change is the core's (`PlayTrack` under the story lock).
 * **Ambience** (A7): bed by zone id, else by map theme (U7: the map's presentation theme when it has one); 2.5 s
   fade-in at a random offset, 1.5 s fade-out on zone exit, −6 dB during cinematics. U7 (`AbyssAmbienceRules.h`): the
   Breach Rim's region bed crossfades with the bed (weights over its fades, the bed scaled by 1 − weight), the Gnawed
-  Field's ringing plays over the bed while hunt_hungerbell lives, the emitters loop at their spots (Ashwheat's doors
+  Field's ringing plays over the bed until M2's turn-in sets `rf_hungerbell_silenced` (2G stage H: a row's `untilFlag`
+  replaces its `while`, read from `Snapshot::worldFlags`; Wave 1 rang only while hunt_hungerbell lived), the emitters loop at their spots (Ashwheat's doors
   from `SetZoneEmitterSpots`, else the area centre; Knellwatch's hearth at camp 1's campfire slot) with full volume
   inside `innerTiles` and linear silence over `falloffTiles`, panned like the A4 world cues.
 * **Footsteps** (A7): the hero actor's `FootL` / `FootR` anim notifies (`AAbyssCharacterActor::OnCharacterNotify`)
