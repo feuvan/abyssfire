@@ -192,6 +192,8 @@ private:
 	void HandleMiniBossDialogue(const abyss::EvMiniBossDialogue& Event);
 	void HandleRandomEvent(const abyss::EvRandomEvent& Event);
 	void HandleStoryDecorFocus(const abyss::EvStoryDecorFocus& Event);
+	/** 2G (U2): a boss phase's stinger (EvMonsterPhase: the event's id, else musicDirector.bosses.<id>.phaseStingers). */
+	void HandleMonsterPhase(const abyss::EvMonsterPhase& Event);
 
 	// ---- dark remake (U7): tables, music arbitration, ambience layers, cue triggers ----
 	/** Parses the manifest's U7 sections into the remake state (once the manifest is loaded). */
@@ -213,6 +215,12 @@ private:
 	FVector2D EntityTile(abyss::EntityId Id) const;
 	/** Encounter stingers (musicDirector.encounters): engaged once per instance, slain at its death. */
 	void PlayEncounterStinger(abyss::EntityId Entity, std::string_view DefId, bool bSlain);
+	/**
+	 * Plays a director stinger (musicDirector.stingers.<id>: its asset and duck) on the stinger component (one at a
+	 * time: a new one cuts the last) with its own duck, released when it ends (TickDuck). Encounter and boss phase
+	 * stingers share it. Plain values: this public header cannot name the private AbyssMusicRules types.
+	 */
+	void PlayStinger(FName Asset, double DuckDb, double DuckInSec, double DuckOutSec);
 
 	// ---- music ----
 	struct FMusicVoice

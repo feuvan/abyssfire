@@ -4,6 +4,7 @@
 // silence then lute, encounter stingers.
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "doctest/doctest.h"
@@ -445,6 +446,76 @@ TEST_SUITE("audio")
 		{
 			CHECK_MESSAGE(Assets.Has(S.asset), S.id);
 		}
+	}
+
+	TEST_CASE("boss phase stingers (2G): the event's id, else the manifest's row; none on a reset")
+	{
+		// The manifest's table (bosses.valdras.phaseStingers {"1", "2"}) and the core's data agree.
+		const Boss* Valdras = nullptr;
+		for (const Boss& B : Tables().bosses)
+		{
+			if (B.monster == "valdras")
+			{
+				Valdras = &B;
+			}
+		}
+		REQUIRE(Valdras != nullptr);
+		REQUIRE(Valdras->phaseStingers.size() == 2);
+		CHECK(Valdras->phaseStingers[0] == std::pair<int, std::string>(1, "stinger_valdras_roll_call"));
+		CHECK(Valdras->phaseStingers[1] == std::pair<int, std::string>(2, "stinger_valdras_no_retreat"));
+		const abyss::MonsterDef* Def = audio_test::Data().FindMonster("valdras");
+		REQUIRE(Def != nullptr);
+		REQUIRE(Def->phases.size() == 2);
+		for (std::size_t Row = 0; Row < Def->phases.size(); ++Row)
+		{
+			const int Phase = static_cast<int>(Row) + 1;   // entering row i makes MonsterInstance::phase i + 1
+			CAPTURE(Phase);
+			const Stinger* FromEvent = PhaseStinger(Tables(), "valdras", Phase, Def->phases[Row].stinger, false);
+			const Stinger* FromTable = PhaseStinger(Tables(), "valdras", Phase, "", false);
+			REQUIRE(FromEvent != nullptr);
+			REQUIRE(FromTable != nullptr);
+			CHECK(FromEvent == FromTable);
+			CHECK(FromEvent->id == Def->phases[Row].stinger);
+		}
+		const Stinger* RollCall = PhaseStinger(Tables(), "valdras", 1, "stinger_valdras_roll_call", false);
+		REQUIRE(RollCall != nullptr);
+		CHECK(RollCall->asset == "SW_STG_ValdrasRollCall");
+		CHECK(RollCall->duckDb == -6.0);
+		CHECK(RollCall->duckInSec == 0.1);
+		CHECK(PhaseStinger(Tables(), "valdras", 2, "", false)->asset == "SW_STG_ValdrasNoRetreat");
+		// A reset (the boss walked home: phase 0) and phase 0 play nothing, even with an id.
+		CHECK(PhaseStinger(Tables(), "valdras", 0, "", true) == nullptr);
+		CHECK(PhaseStinger(Tables(), "valdras", 1, "stinger_valdras_roll_call", true) == nullptr);
+		CHECK(PhaseStinger(Tables(), "valdras", 0, "stinger_valdras_roll_call", false) == nullptr);
+		// The event's id wins over the table; an id the director does not know falls back to the table.
+		CHECK(PhaseStinger(Tables(), "valdras", 1, "stinger_valdras_no_retreat", false)->id == "stinger_valdras_no_retreat");
+		CHECK(PhaseStinger(Tables(), "valdras", 1, "stinger_unknown", false)->id == "stinger_valdras_roll_call");
+		// A phase past the table, the zealot's frenzy (no stinger, no row) and an unknown monster: nothing.
+		CHECK(PhaseStinger(Tables(), "valdras", 3, "", false) == nullptr);
+		const abyss::MonsterDef* Zealot = audio_test::Data().FindMonster("oath_zealot");
+		REQUIRE(Zealot != nullptr);
+		REQUIRE(Zealot->phases.size() == 1);
+		CHECK(Zealot->phases[0].stinger.empty());
+		CHECK(PhaseStinger(Tables(), "oath_zealot", 1, Zealot->phases[0].stinger, false) == nullptr);
+		CHECK(PhaseStinger(Tables(), "demon_lord", 1, "", false) == nullptr);
+		// Every stinger a phase row names exists in the director (and has an asset).
+		for (const char* Id : { "valdras", "oath_zealot" })
+		{
+			for (const abyss::MonsterPhaseDef& Row : audio_test::Data().FindMonster(Id)->phases)
+			{
+				if (!Row.stinger.empty())
+				{
+					CHECK_MESSAGE(FindStinger(Tables(), Row.stinger) != nullptr, Row.stinger);
+				}
+			}
+		}
+		// Synthetic: a malformed phase key is skipped, a table without phaseStingers parses.
+		const DirectorTables Synthetic = Parse(audio_test::Json(R"({"stingers": {"s1": {"asset": "SW_A"}},
+			"bosses": {"b": {"track": "t", "phaseStingers": {"x": "s1", "1": "s1", "-2": "s1", "3": ""}}, "c": {"track": "t"}}})"));
+		REQUIRE(Synthetic.bosses.size() == 2);
+		CHECK(Synthetic.bosses[0].phaseStingers.size() == 1);
+		CHECK(PhaseStinger(Synthetic, "b", 1, "", false)->id == "s1");
+		CHECK(PhaseStinger(Synthetic, "c", 1, "", false) == nullptr);
 	}
 
 	TEST_CASE("a manifest without a music director changes nothing")

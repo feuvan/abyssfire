@@ -118,6 +118,23 @@ class LookParameterTests(unittest.TestCase):
         self.assertEqual(rim.vectors["RimColor"], (*manifest.hex_to_linear("#FFF4DC"), 1.0))
         self.assertEqual(manifest.SELECT_RIM_STYLES["target"], ("#FF5A3C", 1.5))
 
+    def test_telegraph_contract(self):
+        """M_AF_Telegraph's constants (dark remake U2) from materials.M_AF_Telegraph; its textures are planned."""
+        t = self.plan.telegraph
+        self.assertTrue(t.present)
+        self.assertEqual((t.fill_color, t.rim_color, t.front_color, t.flash_rim_color, t.wash_color),
+                         ("#FFE8DC", "#D11F2E", "#FFF4EE", "#FF3A48", "#D11F2E"))
+        self.assertEqual((t.fill_grain, t.fill_tile_cm, t.front_width_cm, t.rim_tile_cm, t.wash_fade_in_cm),
+                         (0.3, 160.0, 5.0, 120.0, 60.0))
+        self.assertEqual((t.rim_texture, t.fill_texture), ("T_FX_TelegraphRim", "T_FX_TelegraphFill"))
+        for name in (t.rim_texture, t.fill_texture):
+            entry = self.plan.texture(name)
+            self.assertIsNotNone(entry, name)
+            self.assertEqual(entry.folder, paths.FX_TEXTURES_DIR)
+            self.assertFalse(entry.srgb)
+        # the shipped defaults are the contract (the runtime keeps the same copy: AbyssTelegraphRules DefaultContract)
+        self.assertEqual(manifest.TelegraphContract(present=True), t)
+
     def test_manifest_params_win(self):
         inst = manifest.InstancePlan("MI_AF_Toon_Heroes_X", paths.M_TOON, "Heroes", scalars={"CastShadowStrength": 0.2})
         manifest.plan_look_parameters({inst.name: inst})
@@ -217,6 +234,41 @@ class SyntheticManifestTests(unittest.TestCase):
         self.assertEqual(plan.errors, [])
         self.assertTrue(any("T_Terrain_Test_Stone_BC" in p.message and p.level == "warning" for p in plan.problems),
                         [str(p) for p in plan.problems])
+
+    def test_telegraph_contract_fields_and_textures(self):
+        data = copy.deepcopy(self.BASE)
+        plan = manifest.build_plan(self.make(data), scan_textures=False)
+        self.assertFalse(plan.telegraph.present)      # no contract: the shipped defaults, nothing planned
+        self.assertEqual(plan.telegraph, manifest.TelegraphContract())
+        self.assertIsNone(plan.texture("T_FX_TelegraphRim"))
+        data["materials"] = {"M_AF_Telegraph": {
+            "params": {"FillColor": "#102030", "RimTileCm": 90, "FrontWidthCm": "wide"},
+            "contact": {"look": "... the rim to #FF0000, then ..."},
+            "styles": {"arena": {"outerWash": {"color": "#00FF00", "fadeInCm": 40}}},
+            "textures": {"Rim": {"texture": "T_FX_RimTest"}}}}
+        path = self.make(data)
+        (path.parent / "VFX").mkdir(parents=True, exist_ok=True)
+        pngio.write_png(path.parent / "VFX" / "T_FX_RimTest.png", 4, 2, bytes(32))
+        plan = manifest.build_plan(path, scan_textures=False)
+        t = plan.telegraph
+        self.assertTrue(t.present)
+        self.assertEqual(t.fill_color, "#102030")
+        self.assertEqual(t.rim_color, "#D11F2E")
+        self.assertEqual(t.rim_tile_cm, 90.0)
+        self.assertEqual(t.front_width_cm, 5.0)          # not a number: the default
+        self.assertEqual(t.flash_rim_color, "#FF0000")
+        self.assertEqual((t.wash_color, t.wash_fade_in_cm), ("#00FF00", 40.0))
+        self.assertEqual(t.rim_texture, "T_FX_RimTest")
+        self.assertIsNotNone(plan.texture("T_FX_RimTest"))
+        self.assertEqual(plan.texture("T_FX_RimTest").kind, "fx")
+        # the fill texture is missing: a warning (the decal draws on the default glow), no error
+        self.assertEqual(plan.errors, [])
+        self.assertTrue(any("T_FX_TelegraphFill.png missing" in p.message and p.level == "warning"
+                            for p in plan.problems), [str(p) for p in plan.problems])
+        # a malformed colour is an error
+        data["materials"]["M_AF_Telegraph"]["params"]["RimColor"] = "crimson"
+        plan = manifest.build_plan(self.make(data), scan_textures=False)
+        self.assertTrue(any("params.RimColor" in p.message for p in plan.errors), [str(p) for p in plan.problems])
 
     def test_conflicting_instance_definitions_are_errors(self):
         data = copy.deepcopy(self.BASE)

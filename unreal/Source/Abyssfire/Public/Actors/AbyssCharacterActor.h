@@ -407,6 +407,18 @@ private:
 	float DeathSpinDeg = 0.f;
 	float DeathFadeDelaySec = 0.f;
 	float DeathFadeSec = 0.f;
+	/**
+	 * Dark remake 2G: the art's death runtime (manifest `fx.fuse.runtime` / the Death clip's `runtime`,
+	 * AbyssAnimActionRules::ParseDeathRuntime): the Cinderbloat's fuse plays its Death at that rate for that long,
+	 * standing (no throw / hop / spin), and does not fade before FX_Burst. Off for every other asset.
+	 */
+	bool bDeathRuntime = false;
+	float DeathRuntimeMs = 0.f;
+	float DeathRuntimeRate = 1.f;
+	float DeathFadeNotBeforeSec = 0.f;
+	bool bDeathRuntimeThrow = true;
+	bool bDeathRuntimeHop = true;
+	bool bDeathRuntimeSpin = true;
 
 	// elite
 	bool bElite = false;

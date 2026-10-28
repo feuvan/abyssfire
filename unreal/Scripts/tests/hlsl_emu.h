@@ -134,6 +134,7 @@ template <class A, class B, class C, std::enable_if_t<std::is_arithmetic_v<A> &&
 	!(std::is_same_v<A, float> && std::is_same_v<B, float> && std::is_same_v<C, float>), int> = 0>
 inline float clamp(A v, B lo, C hi) { return clamp(static_cast<float>(v), static_cast<float>(lo), static_cast<float>(hi)); }
 
+inline float atan2(float y, float x) { return std::atan2(y, x); }
 inline float fmod(float a, float b) { return std::fmod(a, b); }
 inline float2 fmod(float2 a, float2 b) { return float2(std::fmod(a.x, b.x), std::fmod(a.y, b.y)); }
 

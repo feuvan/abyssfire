@@ -19,7 +19,8 @@
 // layer's fadeOutSec (else the entering layer's, else the core's stateFadeSec) and the layer's track fades in over its
 // fadeInSec (else the core's fadeInSec); returning to the core's track fades in over the core's fadeInSec.
 //
-// Also: the encounter stingers (`encounters`: engaged / slain per monster) and every stinger's asset and duck.
+// Also: the encounter stingers (`encounters`: engaged / slain per monster), the boss phase stingers (EvMonsterPhase:
+// the event's id, else `bosses.<id>.phaseStingers`; 2G) and every stinger's asset and duck.
 //
 // Pure helper (std + AbyssCore public headers only); tested in PresentationTests/tests/audio_music_test.cpp.
 #pragma once
@@ -27,6 +28,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "abyss/base/Json.h"
@@ -93,6 +95,8 @@ namespace AbyssMusicRules
 		std::string monster;
 		std::string track;
 		std::string victory;
+		/** 2G (U2): `phaseStingers` {"<phase>": stinger id}: EvMonsterPhase::phase (1 = the first row entered). */
+		std::vector<std::pair<int, std::string>> phaseStingers;
 	};
 
 	struct DirectorTables
@@ -195,7 +199,27 @@ namespace AbyssMusicRules
 		}
 		for (const abyss::JsonMember& Row : Director.Get("bosses").Members())
 		{
-			Out.bosses.push_back(Boss{ Row.key, Str(Row.value.Get("track")), Str(Row.value.Get("victory")) });
+			Boss B{ Row.key, Str(Row.value.Get("track")), Str(Row.value.Get("victory")), {} };
+			for (const abyss::JsonMember& Phase : Row.value.Get("phaseStingers").Members())
+			{
+				int Index = 0;
+				bool bDigits = !Phase.key.empty();
+				for (const char C : Phase.key)
+				{
+					if (C < '0' || C > '9' || Index > 100000)
+					{
+						bDigits = false;
+						break;
+					}
+					Index = Index * 10 + (C - '0');
+				}
+				const std::string Id = Str(Phase.value);
+				if (bDigits && !Id.empty())
+				{
+					B.phaseStingers.emplace_back(Index, Id);
+				}
+			}
+			Out.bosses.push_back(std::move(B));
 		}
 		Out.loaded = true;
 		return Out;
@@ -208,6 +232,39 @@ namespace AbyssMusicRules
 			if (!Id.empty() && S.id == Id)
 			{
 				return &S;
+			}
+		}
+		return nullptr;
+	}
+
+	/**
+	 * 2G (U2): the stinger of a boss phase (EvMonsterPhase): the event's own id (the core's phases[].stinger) when it is a
+	 * stinger of the director, else the manifest's bosses.<defId>.phaseStingers row for the phase; none on a reset (the
+	 * boss walked home: phase 0, no music beat) or for a monster without either (the oath zealot's frenzy).
+	 */
+	inline const Stinger* PhaseStinger(const DirectorTables& Tables, std::string_view DefId, int Phase,
+		std::string_view EventStinger, bool bReset)
+	{
+		if (bReset || Phase <= 0)
+		{
+			return nullptr;
+		}
+		if (const Stinger* Own = FindStinger(Tables, EventStinger))
+		{
+			return Own;
+		}
+		for (const Boss& B : Tables.bosses)
+		{
+			if (B.monster != DefId)
+			{
+				continue;
+			}
+			for (const std::pair<int, std::string>& Row : B.phaseStingers)
+			{
+				if (Row.first == Phase)
+				{
+					return FindStinger(Tables, Row.second);
+				}
 			}
 		}
 		return nullptr;

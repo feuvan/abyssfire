@@ -786,6 +786,21 @@ void UAbyssVfxSystem::SetHandleOrigin(int32 Handle, const FVector& Origin)
 	}
 }
 
+void UAbyssVfxSystem::SetHandleRadius(int32 Handle, float RadiusCm)
+{
+	if (Handle == 0)
+	{
+		return;
+	}
+	for (FEmitter& Emitter : Emitters)
+	{
+		if (Emitter.Handle == Handle)
+		{
+			Emitter.Context.RadiusCm = FMath::Max(1.f, RadiusCm);   // read by SpawnFromEmitter at every spawn
+		}
+	}
+}
+
 void UAbyssVfxSystem::PlayNotify(AActor* Actor, FName NotifyName)
 {
 	if (Actor == nullptr || NotifyName.IsNone())

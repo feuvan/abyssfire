@@ -13,7 +13,10 @@ Contract with the runtime (Source/Abyssfire/Public/World/WorldContract.md 2.1, A
   MI_AF_Terrain_<Theme> (parent M_AF_Terrain_Painted), which AAbyssZoneActor::BuildTerrain loads for that theme;
 * art-pass look parameters (DECISIONS P11 revised, R16, R19): every M_AF_Toon / M_AF_Toon_Foliage instance gets its
   family's CastShadowStrength, ground cover and the painted ground of a graded theme their saturation / value, and the
-  plan always holds MI_AF_SelectRim (plan_look_parameters, SELECT_RIM_DEFAULTS).
+  plan always holds MI_AF_SelectRim (plan_look_parameters, SELECT_RIM_DEFAULTS);
+* the enemy telegraph (dark remake U2 / 2G): manifest `materials.M_AF_Telegraph` -> the constants M_AF_Telegraph bakes
+  as parameter defaults (telegraph_contract) and its two textures (T_FX_TelegraphRim / _Fill), planned even without the
+  texture scan.
 """
 from __future__ import annotations
 
@@ -52,6 +55,71 @@ GROUND_GRADE_BY_THEME = {"plains": (0.85, 0.93)}
 SELECT_RIM_DEFAULTS: dict[str, Any] = {"RimColor": "#FFF4DC", "RimPx720": 2.0, "RimDepthPushCm": 30.0,
                                        "OutlinePx1080": 3.5, "BakedWidthCm": 1.8, "BodyMask": 0.0}
 SELECT_RIM_STYLES = {"hero": ("#FFF4DC", 2.0), "target": ("#FF5A3C", 1.5), "hover": ("#FFB03C", 1.5)}
+
+
+@dataclass
+class TelegraphContract:
+    """M_AF_Telegraph's constants (manifest materials.M_AF_Telegraph; Art/blender/vfx/fx_recipes_dark.py TELEGRAPH).
+
+    The defaults are the contract as shipped (the runtime's AbyssTelegraphRules::DefaultContract keeps the same copy).
+    Per decal and per frame values (shape, quad, style rim widths / inner rims, progress, alphas, flash) are custom
+    primitive data the runtime writes; only what is the same for every decal is baked here."""
+    fill_color: str = "#FFE8DC"
+    rim_color: str = "#D11F2E"
+    front_color: str = "#FFF4EE"
+    flash_rim_color: str = "#FF3A48"   # contact.look: "the rim to #FF3A48"
+    wash_color: str = "#D11F2E"        # styles.arena.outerWash.color
+    fill_grain: float = 0.3
+    fill_tile_cm: float = 160.0
+    front_width_cm: float = 5.0
+    rim_tile_cm: float = 120.0
+    wash_fade_in_cm: float = 60.0      # styles.arena.outerWash.fadeInCm
+    rim_texture: str = "T_FX_TelegraphRim"
+    fill_texture: str = "T_FX_TelegraphFill"
+    present: bool = False              # the manifest carries the contract (else these defaults)
+
+
+def telegraph_contract(data: dict[str, Any], problems: list[Problem] | None = None) -> TelegraphContract:
+    """The contract's material constants; a malformed colour is an error, a missing field keeps the default."""
+    t = TelegraphContract()
+    raw = (data.get("materials") or {}).get(paths.M_TELEGRAPH)
+    if not isinstance(raw, dict):
+        return t
+    t.present = True
+    params = raw.get("params") or {}
+
+    def colour(value: Any, default: str, subject: str) -> str:
+        if value is None:
+            return default
+        text = str(value)
+        if not _HEX_RE.match(text):
+            if problems is not None:
+                problems.append(Problem("error", f"materials {paths.M_TELEGRAPH}", f"{subject}: not a #RRGGBB colour"))
+            return default
+        return text if text.startswith("#") else f"#{text}"
+
+    t.fill_color = colour(params.get("FillColor"), t.fill_color, "params.FillColor")
+    t.rim_color = colour(params.get("RimColor"), t.rim_color, "params.RimColor")
+    t.front_color = colour(params.get("FrontColor"), t.front_color, "params.FrontColor")
+    for attr, key in (("fill_grain", "FillGrain"), ("fill_tile_cm", "FillTileCm"), ("front_width_cm", "FrontWidthCm"),
+                      ("rim_tile_cm", "RimTileCm")):
+        value = params.get(key)
+        if isinstance(value, (int, float)):
+            setattr(t, attr, float(value))
+    look = str((raw.get("contact") or {}).get("look") or "")
+    flash = re.search(r"rim to (#[0-9A-Fa-f]{6})", look)
+    if flash:
+        t.flash_rim_color = flash.group(1)
+    wash = ((raw.get("styles") or {}).get("arena") or {}).get("outerWash") or {}
+    t.wash_color = colour(wash.get("color"), t.wash_color, "styles.arena.outerWash.color")
+    if isinstance(wash.get("fadeInCm"), (int, float)):
+        t.wash_fade_in_cm = float(wash["fadeInCm"])
+    textures = raw.get("textures") or {}
+    for attr, key in (("rim_texture", "Rim"), ("fill_texture", "Fill")):
+        name = (textures.get(key) or {}).get("texture")
+        if isinstance(name, str) and _NAME_RE.match(name):
+            setattr(t, attr, name)
+    return t
 
 # Additive base pose: manifest `additiveBase.type` -> unreal.AdditiveBasePoseType member.
 ADDITIVE_BASE_TYPES = {
@@ -323,6 +391,13 @@ class Plan:
     slot_materials: dict[str, dict[int, str]]         # asset -> slot index -> material / instance name
     problems: list[Problem] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)  # assets dropped by the family filter or errors
+    telegraph: TelegraphContract = field(default_factory=TelegraphContract)   # M_AF_Telegraph's constants
+
+    def texture(self, name: str) -> TextureEntry | None:
+        for t in self.textures:
+            if t.name == name:
+                return t
+        return None
 
     @property
     def errors(self) -> list[Problem]:
@@ -815,6 +890,7 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
         slot_materials[asset.name] = mapping
 
     # ---- textures ----
+    telegraph = telegraph_contract(data, problems)
     textures = plan_textures(export_dir, palettes, data, problems, scan=scan_textures)
     # ---- painted ground: MI_AF_Terrain_<Theme> per manifest terrain section (needs the planned textures) ----
     for terrain_instance, subject in plan_terrain_instances(data, textures, problems):
@@ -825,7 +901,7 @@ def build_plan(manifest_path: Path | None = None, export_dir: Path | None = None
 
     return Plan(manifest_path=manifest_path, export_dir=export_dir, shading=shading, palettes=palettes, assets=assets,
                 skeleton_families=families_map, textures=textures, instances=instances, slot_materials=slot_materials,
-                problems=problems, skipped=skipped)
+                problems=problems, skipped=skipped, telegraph=telegraph)
 
 
 def classify_texture(name: str) -> tuple[str, str, bool]:
@@ -892,6 +968,16 @@ def plan_textures(export_dir: Path, palettes: dict[str, Palette], data: dict[str
             value = raw.get(key)
             for rel in (value if isinstance(value, list) else [value] if value else []):
                 add(export_dir / str(rel), name, True)
+    # M_AF_Telegraph's rim strip and fill grain (Art/Export/VFX), planned even without the scan: the master bakes them as
+    # its texture defaults; a missing one leaves the decal on the generated glow (warned)
+    contract = telegraph_contract(data)
+    if contract.present:
+        for name in (contract.rim_texture, contract.fill_texture):
+            path = export_dir / "VFX" / f"{name}.png"
+            if not path.is_file():
+                problems.append(Problem("warning", f"materials {paths.M_TELEGRAPH}",
+                                        f"{path.name} missing: the decal draws on the default glow texture"))
+            add(path, f"materials {paths.M_TELEGRAPH}", False)
     # the painted ground's layers and detail atlas (plan_terrain_instances binds them; a missing one is reported there)
     for theme, section in sorted((data.get("terrain") or {}).items()):
         if not isinstance(section, dict):

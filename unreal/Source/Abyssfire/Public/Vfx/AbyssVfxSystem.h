@@ -109,6 +109,11 @@ public:
 	bool IsPlaying(int32 Handle) const;
 	/** Moves the origin of a handle's emitters (fixed anchors only; actor anchors follow the actor). */
 	void SetHandleOrigin(int32 Handle, const FVector& Origin);
+	/**
+	 * Dark remake 2G: the RadiusCm a handle's emitters scale their `unit: radius` layers by from now on (particles already
+	 * spawned keep theirs): the closing arena ring's `hazard.banner_ring` follows the ring's radius.
+	 */
+	void SetHandleRadius(int32 Handle, float RadiusCm);
 	/** Named anim notify of a character (FX_HammerStrike, FX_*, Foot*): plays `notify.<Name>` / `npc.<Name>` when it exists. */
 	void PlayNotify(AActor* Actor, FName NotifyName);
 

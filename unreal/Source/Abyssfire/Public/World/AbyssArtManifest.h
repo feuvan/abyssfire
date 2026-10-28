@@ -235,6 +235,13 @@ public:
 	const abyss::JsonValue& GetMaterialsJson() const { return MaterialsJson; }
 	/** Theme variants whose footprint or blocking differs from the plain id (logged at load). */
 	const TArray<FName>& GetThemeParityMismatches() const { return ThemeParityMismatches; }
+	/**
+	 * Dark remake 2G: the raw JSON of an asset's blocks the typed parse does not cover, for the pure presentation rules
+	 * (AbyssAnimActionRules::ParseDeathRuntime; the corpse / monster-look rules): an object with the asset's `fx` (fuse,
+	 * frenzy, block, ...) and `corpse` blocks and `clips.<clip name>` holding each clip's `runtime`, `puddleDecal` and
+	 * `corpse` blocks (only the keys present). A null value for an asset without any of them or an unknown name.
+	 */
+	const abyss::JsonValue& GetAssetJson(FName AssetName) const;
 
 	static const TCHAR* ContentRoot() { return TEXT("/Game/Abyssfire"); }
 	/** /Game/Abyssfire/<Folder>/<Asset>.<Asset> */
@@ -248,6 +255,8 @@ private:
 	TMap<FName, TMap<FName, FName>> ThemedIds;
 	TArray<FName> ThemeParityMismatches;
 	abyss::JsonValue MaterialsJson;
+	/** GetAssetJson's blocks by asset name (assets that carry any). */
+	TMap<FName, abyss::JsonValue> AssetJsonByName;
 	FAbyssArtShading Shading;
 	bool bLoaded = false;
 };

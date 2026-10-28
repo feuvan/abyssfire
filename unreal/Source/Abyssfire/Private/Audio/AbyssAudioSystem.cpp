@@ -311,6 +311,8 @@ void UAbyssAudioSystem::Initialize(FSubsystemCollectionBase& Collection)
 	Router.On<abyss::EvMiniBossDialogue>().AddUObject(this, &UAbyssAudioSystem::HandleMiniBossDialogue);
 	Router.On<abyss::EvRandomEvent>().AddUObject(this, &UAbyssAudioSystem::HandleRandomEvent);
 	Router.On<abyss::EvStoryDecorFocus>().AddUObject(this, &UAbyssAudioSystem::HandleStoryDecorFocus);
+	// 2G (U2): Valdras's P2 / P3 stingers on EvMonsterPhase.
+	Router.On<abyss::EvMonsterPhase>().AddUObject(this, &UAbyssAudioSystem::HandleMonsterPhase);
 	Router.OnFrame.AddUObject(this, &UAbyssAudioSystem::HandleFrame);
 	Router.OnSessionStarted.AddUObject(this, &UAbyssAudioSystem::HandleSessionStarted);
 	Router.OnSessionEnded.AddUObject(this, &UAbyssAudioSystem::HandleSessionEnded);
@@ -2524,7 +2526,26 @@ void UAbyssAudioSystem::PlayEncounterStinger(abyss::EntityId Entity, std::string
 		}
 		R.EngagedEntities.Add(Entity);
 	}
-	const FName Asset = AbyssAudioSystemPrivate::ToName(Stinger->asset);
+	PlayStinger(AbyssAudioSystemPrivate::ToName(Stinger->asset), Stinger->duckDb, Stinger->duckInSec, Stinger->duckOutSec);
+}
+
+void UAbyssAudioSystem::HandleMonsterPhase(const abyss::EvMonsterPhase& Event)
+{
+	if (!bReady || !Remake.IsValid() || bSuspended || Event.entity == abyss::kNoEntity)
+	{
+		return;
+	}
+	const FName DefName = DefNameOfEntity(Event.entity);
+	const std::string DefId = DefName.IsNone() ? std::string() : AbyssText::ToStd(DefName.ToString());
+	if (const AbyssMusicRules::Stinger* Stinger = AbyssMusicRules::PhaseStinger(Remake->Director, DefId, Event.phase,
+			Event.stinger, Event.reset))
+	{
+		PlayStinger(AbyssAudioSystemPrivate::ToName(Stinger->asset), Stinger->duckDb, Stinger->duckInSec, Stinger->duckOutSec);
+	}
+}
+
+void UAbyssAudioSystem::PlayStinger(FName Asset, double DuckDb, double DuckInSec, double DuckOutSec)
+{
 	USoundBase* Sound = GetSound(Asset, AbyssAudioSystemPrivate::StingerFolder);
 	UWorld* AudioWorld = GetAudioWorld();
 	if (Sound == nullptr || AudioWorld == nullptr)
@@ -2551,9 +2572,9 @@ void UAbyssAudioSystem::PlayEncounterStinger(abyss::EntityId Entity, std::string
 	EncounterStingerComponent->SetVolumeMultiplier(EncounterStingerGain * MasterVolume * MusicVolume);
 	EncounterStingerComponent->Play();
 	// The stinger's own duck (musicDirector.stingers.<id>.duck), released when it ends (TickDuck).
-	EncounterDuck.Db = static_cast<float>(Stinger->duckDb);
-	EncounterDuck.InSec = static_cast<float>(FMath::Max(0.0, Stinger->duckInSec));
-	EncounterDuck.OutSec = static_cast<float>(FMath::Max(0.0, Stinger->duckOutSec));
+	EncounterDuck.Db = static_cast<float>(DuckDb);
+	EncounterDuck.InSec = static_cast<float>(FMath::Max(0.0, DuckInSec));
+	EncounterDuck.OutSec = static_cast<float>(FMath::Max(0.0, DuckOutSec));
 	bEncounterDucking = true;
 	SetDuck(EncounterDuck);
 }

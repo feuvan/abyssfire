@@ -318,6 +318,48 @@ namespace AbyssArtManifestPrivate
 		ParseFx(Fx, Out.Fx);
 	}
 
+	/**
+	 * An asset's raw blocks for GetAssetJson: `fx`, `corpse`, and `clips.<name>` with each clip's `runtime`,
+	 * `puddleDecal` and `corpse` blocks; a null value when the asset carries none of them.
+	 */
+	abyss::JsonValue AssetBlocks(const abyss::JsonValue& Json)
+	{
+		abyss::JsonValue Out;
+		for (const char* Key : { "fx", "corpse" })
+		{
+			if (const abyss::JsonValue* Block = Json.Find(Key); Block != nullptr && Block->IsObject())
+			{
+				Out.Set(Key, *Block);
+			}
+		}
+		abyss::JsonValue Clips;
+		for (const abyss::JsonValue& Clip : Json.Get("anims").Items())
+		{
+			const std::string_view ClipName = Clip.Get("name").AsString();
+			if (ClipName.empty())
+			{
+				continue;
+			}
+			abyss::JsonValue Extra;
+			for (const char* Key : { "runtime", "puddleDecal", "corpse" })
+			{
+				if (const abyss::JsonValue* Block = Clip.Find(Key); Block != nullptr && Block->IsObject())
+				{
+					Extra.Set(Key, *Block);
+				}
+			}
+			if (Extra.IsObject())
+			{
+				Clips.Set(ClipName, MoveTemp(Extra));
+			}
+		}
+		if (Clips.IsObject())
+		{
+			Out.Set("clips", MoveTemp(Clips));
+		}
+		return Out;
+	}
+
 	void ParseShading(const abyss::JsonValue& Json, const abyss::JsonValue& Units, FAbyssArtShading& Out)
 	{
 		if (!Json.IsObject())
@@ -414,6 +456,7 @@ void FAbyssArtManifest::Reset()
 	ThemedIds.Reset();
 	ThemeParityMismatches.Reset();
 	MaterialsJson = abyss::JsonValue();
+	AssetJsonByName.Reset();
 	Shading = FAbyssArtShading();
 	bLoaded = false;
 }
@@ -453,6 +496,11 @@ bool FAbyssArtManifest::LoadFromJson(std::string_view Json, FString& OutError)
 		FAbyssArtAsset& Asset = Assets.AddDefaulted_GetRef();
 		ParseAsset(AssetName, Member.value, Asset);
 		AssetsByName.Add(AssetName, Assets.Num() - 1);
+		abyss::JsonValue Blocks = AbyssArtManifestPrivate::AssetBlocks(Member.value);
+		if (Blocks.IsObject())
+		{
+			AssetJsonByName.Add(AssetName, MoveTemp(Blocks));
+		}
 	}
 
 	// Game id index: every asset's own list, then the top-level map (single asset per id).
@@ -557,6 +605,13 @@ bool FAbyssArtManifest::LoadFromProject(FString& OutError, FString& OutSourcePat
 	}
 	OutError = LastError;
 	return false;
+}
+
+const abyss::JsonValue& FAbyssArtManifest::GetAssetJson(FName AssetName) const
+{
+	static const abyss::JsonValue Missing;
+	const abyss::JsonValue* Found = AssetJsonByName.Find(AssetName);
+	return Found != nullptr ? *Found : Missing;
 }
 
 const FAbyssArtAsset* FAbyssArtManifest::FindAsset(FName AssetName) const

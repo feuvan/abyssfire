@@ -24,6 +24,7 @@
 #include "Anim/AbyssAnimInstance.h"
 #include "Framework/AbyssText.h"
 #include "Framework/AbyssUnits.h"
+#include "Vfx/AbyssTelegraphRules.h"
 #include "World/AbyssAssetLibrary.h"
 
 namespace AbyssCharacterPrivate
@@ -284,6 +285,16 @@ bool AAbyssCharacterActor::InitCharacter(const FAbyssCharacterSetup& Setup, UAby
 
 	ArtClips = Art->Clips;
 	ArtFx = Art->Fx;
+	// Dark remake 2G: a death the art times itself (the Cinderbloat's fuse; every other asset keeps today's death).
+	const AbyssAnimActionRules::FDeathRuntime Runtime =
+		AbyssAnimActionRules::ParseDeathRuntime(Assets.GetManifest().GetAssetJson(Art->Name));
+	bDeathRuntime = Runtime.bValid && EntityKind != abyss::EntityKind::Hero;
+	DeathRuntimeMs = static_cast<float>(Runtime.DeathDurationMs);
+	DeathRuntimeRate = static_cast<float>(Runtime.PlayRate);
+	DeathFadeNotBeforeSec = static_cast<float>(Runtime.BodyFadeNotBeforeMs / 1000.0);
+	bDeathRuntimeThrow = Runtime.bThrow;
+	bDeathRuntimeHop = Runtime.bHop;
+	bDeathRuntimeSpin = Runtime.bSpin;
 	Clips.Reset();
 	for (const FAbyssArtClip& Clip : ArtClips)
 	{
@@ -926,21 +937,20 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	const float ElapsedSec = static_cast<float>(FMath::Max(0.0, Frame.RenderSimMs - Event.startMs) / 1000.0);
 	const FAbyssArtClip* Clip = ResolveActionClip(Event);
 
-	float Rate = Event.playRate > 0.0 ? static_cast<float>(Event.playRate) : 1.f;
-	if (Clip != nullptr)
-	{
-		const float BeatSec = Clip->GetBeatSec();
-		if (Event.contactMs > 0.0 && BeatSec > 0.f)
-		{
-			// P5: play the clip so its authored Contact / Release lands exactly on the core's beat.
-			Rate = BeatSec / static_cast<float>(Event.contactMs / 1000.0);
-		}
-		else if (Event.durationMs > 0.0 && Clip->LengthSec > 0.f && AbyssAnimActionRules::StretchesToDuration(Event.action))
-		{
-			Rate = Clip->LengthSec / static_cast<float>(Event.durationMs / 1000.0);
-		}
-		Rate = FMath::Clamp(Rate, 0.25f, 4.f);
-	}
+	// P5: the clip plays so its authored Contact / Release lands exactly on the core's beat (clamped to [.25, 4]); a
+	// looping clip whose windup outlasts it loops at rate 1 with a beat on the contact (2G: the drummer's 2000 ms drum on
+	// its 1000 ms Cast01 loop crawled at the clamped .25); no beat: stretched to the duration where the action stretches.
+	AbyssAnimActionRules::FRateInput RateIn;
+	RateIn.Action = Event.action;
+	RateIn.bHasClip = Clip != nullptr;
+	RateIn.BeatSec = Clip != nullptr ? Clip->GetBeatSec() : -1.f;
+	RateIn.LengthSec = Clip != nullptr ? Clip->LengthSec : 0.f;
+	RateIn.bLoopClip = Clip != nullptr && Clip->bLoop;
+	RateIn.ContactMs = Event.contactMs;
+	RateIn.DurationMs = Event.durationMs;
+	RateIn.EventRate = Event.playRate;
+	const AbyssAnimActionRules::FRatePlan RatePlan = AbyssAnimActionRules::ActionPlayRate(RateIn);
+	const float Rate = RatePlan.Rate;
 
 	ActionState = FActionState();
 	// The beat the core waits for (T3 / T4): a frozen world holds the clip before it (PresentFrame).
@@ -960,7 +970,8 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	case AbyssAnimActionRules::EActionKind::None:
 	case AbyssAnimActionRules::EActionKind::Death: ActionState.Action = EAbyssCharacterAction::Cast; break;
 	}
-	float DurationSec = Event.durationMs > 0.0 ? static_cast<float>(Event.durationMs / 1000.0) : 0.f;
+	float DurationSec = RatePlan.DurationSec > 0.f ? RatePlan.DurationSec
+		: (Event.durationMs > 0.0 ? static_cast<float>(Event.durationMs / 1000.0) : 0.f);
 	if (DurationSec <= 0.f && Clip != nullptr)
 	{
 		DurationSec = Clip->LengthSec / Rate;
@@ -1001,7 +1012,8 @@ void AAbyssCharacterActor::OnPlayAnim(const abyss::EvPlayAnim& Event, const FAby
 	if (Clip != nullptr)
 	{
 		const char* State = AbyssAnimActionRules::BlendState(AbyssAnimActionRules::KindOf(Event.action));
-		PlayClip(*Clip, Rate, ElapsedSec * Rate, State, AbyssAnimActionRules::ForcesLoop(Event.action));
+		PlayClip(*Clip, Rate, AbyssAnimActionRules::PlanClipTime(RatePlan, ElapsedSec, Clip->LengthSec), State,
+			AbyssAnimActionRules::ForcesLoop(Event.action) || RatePlan.bLoopThrough);
 		LocomotionClip = NAME_None;
 	}
 }
@@ -1090,6 +1102,16 @@ void AAbyssCharacterActor::OnTeleported(const abyss::EvEntityTeleported& Event)
 		DodgeTotalSec = DodgeDurationMs / 1000.f;
 		DodgeElapsedSec = 0.f;
 	}
+	else if (Event.reason == abyss::TeleportReason::Dash)
+	{
+		// Dark remake 2G (a charge: EvTelegraph::hasDash, Valdras's Lunge): the core stands the monster at the line's end
+		// after the hit; the mesh slides there from where it struck (ease-out over AbyssTelegraphRules::DashSlideMs, the
+		// dodge's offset), never a blink.
+		const AbyssTelegraphRules::FDashSlide Slide = AbyssTelegraphRules::DashSlide(Event.from, Event.to);
+		DodgeOffset = Slide.bSlide ? FVector(Slide.OffsetXCm, Slide.OffsetYCm, 0.0) : FVector::ZeroVector;
+		DodgeTotalSec = static_cast<float>(Slide.DurationMs / 1000.0);
+		DodgeElapsedSec = Slide.bSlide ? 0.f : -1.f;
+	}
 	else
 	{
 		DodgeOffset = FVector::ZeroVector;
@@ -1169,11 +1191,16 @@ void AAbyssCharacterActor::BeginDeath(const abyss::EvPlayAnim& Event)
 	{
 		Anim->SetFrozen(false);
 	}
-	const float DurationMs = Event.durationMs > 0.0 ? static_cast<float>(Event.durationMs) : DeathDurationMs;
+	// Dark remake 2G: a death the art times (the Cinderbloat's fuse: its Death clip at rate 1 for 900 ms, so FX_Burst @800
+	// lands on the core's 800 ms burst; the rig preset's 500 ms played it at 1.8 and put FX_Burst at 444 ms).
+	const bool bArtTimed = bDeathRuntime && !bHeroDeath && DeathRuntimeMs > 0.f;
+	const float DurationMs = bArtTimed ? DeathRuntimeMs
+		: (Event.durationMs > 0.0 ? static_cast<float>(Event.durationMs) : DeathDurationMs);
 	DeathTotalSec = FMath::Max(0.001f, DurationMs / 1000.f);
 	if (const FAbyssArtClip* Death = FindArtClip(FName(TEXT("Death"))))
 	{
-		const float Rate = Death->LengthSec > 0.f ? FMath::Clamp(Death->LengthSec / (DurationMs / 1000.f), 0.5f, 2.f) : 1.f;
+		const float Rate = bArtTimed ? DeathRuntimeRate
+			: (Death->LengthSec > 0.f ? FMath::Clamp(Death->LengthSec / (DurationMs / 1000.f), 0.5f, 2.f) : 1.f);
 		PlayClip(*Death, Rate, 0.f, "death");
 		LocomotionClip = NAME_None;
 	}
@@ -1182,7 +1209,7 @@ void AAbyssCharacterActor::BeginDeath(const abyss::EvPlayAnim& Event)
 	DeathHopCm = 0.f;
 	DeathSpinDeg = 0.f;
 	DeathAirSec = 0.f;
-	if (!bHeroDeath && Event.hasFaceTarget)
+	if (!bHeroDeath && Event.hasFaceTarget && (!bArtTimed || bDeathRuntimeThrow))
 	{
 		// combat-feel.md 13.2: thrown away from the last hit source.
 		const bool bHeavy = DurationMs >= 750.f;
@@ -1191,17 +1218,22 @@ void AAbyssCharacterActor::BeginDeath(const abyss::EvPlayAnim& Event)
 		DeathThrowDir = FVector(Dir.X, Dir.Y, 0.0);
 		DeathThrowCm = (bHeavy ? 6.f : 16.f) * AbyssWorldUtil::VfxPxToCm;
 		DeathAirSec = FMath::Max(160.f, 0.35f * DurationMs) / 1000.f;
-		DeathHopCm = (bHeavy ? 3.f : 9.f) * AbyssWorldUtil::VfxPxToCm;
-		DeathSpinDeg = bHeavy ? 8.f : 22.f;
+		DeathHopCm = (bArtTimed && !bDeathRuntimeHop) ? 0.f : (bHeavy ? 3.f : 9.f) * AbyssWorldUtil::VfxPxToCm;
+		DeathSpinDeg = (bArtTimed && !bDeathRuntimeSpin) ? 0.f : (bHeavy ? 8.f : 22.f);
 		DeathFadeDelaySec = DeathAirSec + 0.12f;
 		DeathFadeSec = FMath::Max(200.f, 0.6f * DurationMs) / 1000.f;
 	}
 	else
 	{
-		// In-place sink and fade (hero; monsters killed by a DoT with no directional hit).
+		// In-place sink and fade (hero; monsters killed by a DoT with no directional hit; an art-timed death standing
+		// under its ring decal).
 		DeathThrowDir = FVector::ZeroVector;
 		DeathFadeDelaySec = 0.25f * DurationMs / 1000.f;
 		DeathFadeSec = bHeroDeath ? 0.4f : FMath::Max(200.f, 0.6f * DurationMs) / 1000.f;
+	}
+	if (bArtTimed)
+	{
+		DeathFadeDelaySec = FMath::Max(DeathFadeDelaySec, DeathFadeNotBeforeSec);   // no fade before FX_Burst
 	}
 }
 

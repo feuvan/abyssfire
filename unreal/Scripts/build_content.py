@@ -15,7 +15,7 @@ Pipeline (each step is idempotent; unchanged sources / graphs are skipped):
     mpc        MPC_AF_Lighting                                                   -> Materials/
     materials  M_AF_Toon(+_Foliage, _Slime), M_AF_Outline(+_Foliage), M_AF_Terrain(+_Painted), M_AF_Water,
                M_AF_PP_Grade, M_AF_FX_Additive / _Translucent / _Mesh, M_AF_Ghost, M_AF_LightPool, M_AF_TargetRing,
-               M_AF_AffixAura, M_AF_BlobShadow                                   -> Materials/, Materials/FX/
+               M_AF_AffixAura, M_AF_BlobShadow, M_AF_Telegraph                   -> Materials/, Materials/FX/
     instances  MI_AF_Toon_<Family>, MI_AF_Outline_<Family>_<Class>, MI_AF_Terrain_<Theme>
                                                                                  -> Materials/Instances/
     fxquad     SM_FX_Quad                                                        -> FX/

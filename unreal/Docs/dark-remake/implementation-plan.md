@@ -1935,6 +1935,55 @@ real; every one is fixed, three with a recorded remainder (below).
   `data.quest.<id>.permanent` when present. The drummer's aura (MonsterView aura fields) needs a look under the Living's
   no-glow rule. `MonsterView::leashCentre` / `leashRange` are there for a debug overlay.
 
+**2G outcomes (UE Wave 2, 2026-10; pending review; DECISIONS DR16).**
+- **Stage T: telegraphs, hazards, arenas, dash, phase stingers, ability play rates, fuse swell.** Rules in
+  `Source/Abyssfire/Private/Vfx/AbyssTelegraphRules.h` (contract parse, shape geometry and SDFs, strike / zone
+  timelines, CPD packing, decal decisions, recipe ids, budget, late views, dash slide),
+  `Private/Actors/AbyssAnimActionRules.h` (`ActionPlayRate`, `ParseDeathRuntime`) and `AbyssMusicRules::PhaseStinger`;
+  tests `PresentationTests/tests/telegraph_test.cpp` (15 cases), `anim_test.cpp` (+3), `audio_music_test.cpp` (+1) on
+  the real `Data/`, the manifest's `materials.M_AF_Telegraph` and `vfx_recipes.json` (100 cases, 6921 assertions on GCC
+  and Clang; 23 of 23 hand mutations of the rules caught). Glue: `UAbyssTelegraphSystem`
+  (`Public|Private/Vfx/AbyssTelegraphs.*`, ticked by the world builder between the characters and the VFX),
+  `UAbyssVfxSystem::SetHandleRadius`, `FAbyssArtManifest::GetAssetJson`, the character actor's play plan / dash slide /
+  death runtime, `UAbyssAudioSystem::HandleMonsterPhase`. Content: `M_AF_Telegraph` master (`Scripts/abyss_content`:
+  `hlsl.telegraph_node`, `manifest.telegraph_contract`, the two `VFX/` textures in the plan; Scripts tests 125,
+  `test_hlsl` runs the node against the art's preview port). Counts after the review fixes: below.
+- **What it presents.** Every ground strike's crimson decal with the bone fill reaching the rim on the contact frame
+  (sim clock), the style's rim / inner rim / urgency, the contact flash + `telegraph.contact*`, a cancel's fade;
+  in Chapter 1 (the themed zone) damaging on-death fuses (Cinderbloat, Scorched) as decals, affix fuses'
+  `elite.<type>.death` from the kill; raise / summon windups as `monster.raise.mark`; hazards pulsing with `hazard.*`
+  until `untilMs`; Valdras's P3 arena ring closing 9 -> 5 tiles with its wash and `hazard.banner_ring` on the same
+  radius; the Lunge as a 200 ms slide; Valdras's P2 / P3 stingers; ability clips with their beat on the core's contact
+  (the drummer's loop at rate 1); the Cinderbloat's Death as its 900 ms fuse; `abyss.DebugLeash`. README *Dark remake
+  telegraphs* lists the Mac look checks.
+- **Interpretations** (DR16): Keen keeps its crimson ring (status-only strikes still draw); Gravecold's fuse draws no
+  decal (its `elite.frozen.death` is the pre-cue, DR5-slow); a line is the core's rectangle, not the contract's rounded
+  end; the arena's wash is a 250 cm band outside the rim fading over its last 100 cm, dropped on mobile low (the
+  quad still spans the disc: budget it as an 18.6 m square of translucency there); unknown
+  on-death effects draw (fail visible); pulses run on the sim clock; the texture wrap is done in the shader (the FX
+  import clamps); sort priority -1 and an 8 cm lift; caps 24 / 32 / 32 desktop, 16 / 24 / 32 mobile (overflow only).
+- **Chapters 2-5.** No ability definitions, so no decals, stingers or rate changes; the global elite on-death fuses (2B)
+  and the Labyrinth's volatile curse go off unpresented there, as before 2G (on-death presentation needs a zone with a
+  presentation theme). Everything else is unchanged; AbyssCore untouched.
+- **Stage T review fixes** (DR16 (11)-(14)). B1: `M_AF_Telegraph`'s five CPD vectors reach `AF_Telegraph` as float4
+  (`Graph.float4`: AppendVector(RGB, A); a vector parameter's output 0 is RGB, so `.a` would not compile and no decal
+  would draw); `fake_unreal.output_width` models the engine's pin widths and `test_flow` checks every Custom-node input
+  of every master. B2: `UAbyssAudioSystem::PlayStinger` takes plain values (the public header named the private
+  `AbyssMusicRules::Stinger`: three translation units would not compile); `Scripts/tests/test_module_headers.py` fails
+  any public header that names an `Abyss*Rules::` type it does not include or declare. M1: on-death fuses are presented
+  only in a themed zone (`PresentsOnDeath`; chapters 2-5 and the Labyrinth, curse included, keep today's look). m1: a
+  cancel emitted in the step the contact timer fires (a stun at the contact) still fades the decal without the flash
+  (`CancelTimeFor`). m2: blank pixels exit `AF_Telegraph` before any texture sample (`test_hlsl` checks the exit is
+  exact on a dense grid); the mobile-low claim is corrected (the arena's quad still spans the disc). m3: the tick reuses
+  its scratch buffers (`SelectVisible` with caller buffers). m4: the CPD cache keeps what was sent per float4 group
+  (`UpdateCpdCache`). m5: the dead `DashSlideRemaining` is gone (the slide is the actor's dodge-offset ease). Counts after
+  the fixes: PresentationTests 102 cases, 7206 assertions on GCC and Clang (5 of 5 hand mutations of the new rules
+  caught); Scripts 129 tests.
+- **Deferred (stage T).** The optional additive `fx.fuse.glow` swell on top of the Death clip's own swell (the clip and
+  its `FX_Fuse` / `FX_Burst` notifies carry the read); a ghost marker at `dashTo` during the Lunge windup (the line
+  decal already points there); the darkest-tile readability capture (stage H / mac-look); EvBlock and the other U2 / U3
+  / U5 parts belong to the other 2G stages.
+
 ### Phase 3 — Wave 3: the descent
 
 | WP | Scope | Owns | Depends | Acceptance |

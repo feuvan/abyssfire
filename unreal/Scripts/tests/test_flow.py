@@ -136,6 +136,33 @@ class FlowTest(unittest.TestCase):
         self.assertEqual([str(o.get_editor_property("output_name")) for o in custom.get_editor_property(
             "additional_outputs")], ["Lit"])
         self.assertEqual(custom.get_editor_property("description"), "AF_ToonSplit")
+        # the enemy telegraph (dark remake U2): unlit translucency, the AF_Telegraph node's colour and alpha, five CPD
+        # groups in the runtime's order, the contract's textures as the texture objects' defaults
+        telegraph = reg[f"{paths.FX_MATERIALS_DIR}/{paths.M_TELEGRAPH}"]
+        self.assertEqual(telegraph.get_editor_property("blend_mode"), "BlendMode.BLEND_TRANSLUCENT")
+        self.assertEqual(telegraph.get_editor_property("shading_model"), "MaterialShadingModel.MSM_UNLIT")
+        self.assertIn("MaterialProperty.MP_EMISSIVE_COLOR", telegraph._outputs)
+        self.assertIn("MaterialProperty.MP_OPACITY", telegraph._outputs)
+        customs = [e for e in telegraph._expressions if type(e).__name__ == "MaterialExpressionCustom"]
+        self.assertEqual([c.get_editor_property("description") for c in customs], ["AF_Telegraph"])
+        cpd = {str(e.get_editor_property("parameter_name")): e.get_editor_property("primitive_data_index")
+               for e in telegraph._expressions if type(e).__name__ == "MaterialExpressionVectorParameter"
+               and e.get_editor_property("use_custom_primitive_data")}
+        self.assertEqual(cpd, {"ShapeP": 0, "QuadP": 4, "InnerP": 8, "ModeP": 12, "AlphaP": 16})
+        # each group reaches the node as a float4 (2G review B1): AppendVector(the parameter's RGB output 0, its "A")
+        links = customs[0]._props["_links"]
+        for name in cpd:
+            src, out = links[name]
+            self.assertEqual(type(src).__name__, "MaterialExpressionAppendVector", name)
+            self.assertEqual(fake_unreal.output_width(src, out), 4, name)
+            (rgb, rgb_pin), (alpha, alpha_pin) = src._props["_links"]["A"], src._props["_links"]["B"]
+            self.assertIs(rgb, alpha)
+            self.assertEqual(str(rgb.get_editor_property("parameter_name")), name)
+            self.assertEqual((rgb_pin, alpha_pin), ("", "A"))
+        textures = {str(e.get_editor_property("parameter_name")): e.get_editor_property("texture")
+                    for e in telegraph._expressions if type(e).__name__ == "MaterialExpressionTextureObjectParameter"}
+        self.assertIs(textures["Rim"], reg[f"{paths.FX_TEXTURES_DIR}/T_FX_TelegraphRim"])
+        self.assertIs(textures["Fill"], reg[f"{paths.FX_TEXTURES_DIR}/T_FX_TelegraphFill"])
         # the selection rim instance and the art-pass look parameters
         rim = reg[f"{paths.INSTANCES_DIR}/{paths.MI_SELECT_RIM}"]
         self.assertIs(rim.get_editor_property("parent"), reg[f"{paths.MATERIALS_DIR}/{paths.M_SELECT_RIM}"])
@@ -157,6 +184,37 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(fake_unreal.STATE["compiles"], compiles, "unchanged materials were rebuilt")
         actions = {e["action"] for e in report2.assets.values()}
         self.assertLessEqual(actions, {"unchanged"}, f"second run actions: {actions}")
+
+    def test_custom_node_inputs_compile_at_their_declared_width(self):
+        """Every wire into a Custom node compiles to the width its NodeInput declares (the emulator compiles the code at
+        that width). The engine types the input by the wire: a vector parameter's or texture sample's output 0 is RGB, so
+        a float4 input fed from it is a float3 in the shader and `.a` fails (2G review B1). Unmodelled sources (MPC
+        parameters, scene textures, switches) are skipped (fake_unreal.output_width)."""
+        report = self.run_build("--skip", "audio")
+        self.assertTrue(report.ok, "\n".join(report.errors))
+        from abyss_content import hlsl
+        specs = {n.key: n for n in hlsl.all_nodes(self.plan.shading)}
+        widths = {"float": 1, "float2": 2, "float3": 3, "float4": 4}
+        checked = 0
+        bad = []
+        for path, obj in sorted(fake_unreal.REGISTRY.items()):
+            for e in getattr(obj, "_expressions", None) or []:
+                if type(e).__name__ != "MaterialExpressionCustom":
+                    continue
+                spec = specs.get(e.get_editor_property("description"))
+                self.assertIsNotNone(spec, f"{path}: unknown Custom node {e.get_editor_property('description')}")
+                declared = {i.name: i.ctype for i in spec.inputs}
+                for name, (src, out) in e._props.get("_links", {}).items():
+                    need = widths.get(declared.get(name, ""))
+                    have = fake_unreal.output_width(src, out)
+                    if need is None or have is None:
+                        continue
+                    checked += 1
+                    if have != need:
+                        bad.append(f"{path}: {spec.key}.{name} is {declared[name]} but its wire "
+                                   f"({type(src).__name__}.{out or '<0>'}) compiles to {have} component(s)")
+        self.assertEqual(bad, [], "\n".join(bad))
+        self.assertGreater(checked, 100)
 
     def test_force_materials_rebuilds_only_materials(self):
         self.assertTrue(self.run_build("--skip", "audio").ok)

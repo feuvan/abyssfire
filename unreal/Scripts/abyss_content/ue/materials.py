@@ -9,6 +9,7 @@ everything else that is a toon (slime, fade ghosts), the ink, the selection rim 
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from dataclasses import dataclass
@@ -17,8 +18,8 @@ from typing import Any, Callable
 import unreal
 
 from .. import hlsl, paths
-from ..manifest import (SELECT_RIM_DEFAULTS, Asset, InstancePlan, Plan, Shading, hex_to_linear, hex_to_rgb255,
-                        srgb_to_linear1)
+from ..manifest import (SELECT_RIM_DEFAULTS, Asset, InstancePlan, Plan, Shading, TelegraphContract, hex_to_linear,
+                        hex_to_rgb255, srgb_to_linear1)
 from ..report import BuildReport
 from .core import BuildError, Editor, linear_color, set_props, shaders_disabled
 from .graph import C, E, Graph
@@ -44,6 +45,11 @@ class Ctx:
     rim_srgb: tuple[float, float, float]
     terrain_defaults: dict[str, tuple[float, float, float]]
     terrain_ranks: dict[int, float]
+    # M_AF_Telegraph (dark remake U2): the contract's constants and its two textures (the generated glow when the art's
+    # textures are not in the plan; a warning at plan time)
+    telegraph: TelegraphContract = dataclasses.field(default_factory=TelegraphContract)
+    tex_telegraph_rim: str = ""
+    tex_telegraph_fill: str = ""
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -163,6 +169,10 @@ TOON_SETTINGS = _surface("BLEND_MASKED", shading_model="MSM_DEFAULT_LIT", opacit
 # pass and write depth; the hull still casts the slime's sun shadow. Sorting (translucent sort priority): blob shadows
 # (-10) and water (-2) first, the shell at the component's default 0, VFX after it (1 / 2).
 SLIME_SETTINGS = _surface("BLEND_TRANSLUCENT", used_with_skeletal_mesh=True, used_with_instanced_static_meshes=True)
+# The enemy ground telegraph (dark remake U2, M_AF_Telegraph): unlit alpha-blended translucency on SM_FX_Quad (no depth
+# write, no depth fade; the component's sort priority -1 puts it over blob shadows / prop pools / water, under the VFX),
+# two-sided like every quad material.
+TELEGRAPH_SETTINGS = _surface("BLEND_TRANSLUCENT", two_sided=True)
 # Occlusion fade ghosts (DECISIONS R1): on tiers without temporal AA (desktop low FXAA, mobile MSAA) a faded tree / rock /
 # wall instance is hidden in its masked ISM and drawn by a translucent copy (AAbyssZoneActor, abyss.FadeGhost) with
 # these twins of M_AF_Toon / M_AF_Toon_Foliage: the same toon colour and wind, alpha 1 - PerInstanceCustomData[0],
@@ -521,6 +531,44 @@ def build_quad(g: Graph, ctx: Ctx, kind: str) -> None:
     g.output(color, "MP_EMISSIVE_COLOR")
 
 
+def build_telegraph(g: Graph, ctx: Ctx) -> None:
+    """M_AF_Telegraph (dark remake U2 / 2G; DECISIONS DR5, DR16): the crimson rim + bone fill that sweeps to the contact,
+    the hazard zone's rim, the arena's outward rim and wash (hlsl.telegraph_node). Per decal / per frame: five float4
+    custom primitive data groups (hlsl.TELEGRAPH_CPD, the runtime's AbyssTelegraphRules::Cpd); the contract's constants
+    as parameter defaults (manifest materials.M_AF_Telegraph); the rim strip and the fill grain as texture objects."""
+    t = ctx.telegraph
+    grp = "Telegraph (custom primitive data)"
+    look = "Telegraph"
+    cpd = hlsl.TELEGRAPH_CPD
+    wires: dict[str, Any] = {
+        "UV": g.texcoord(0),
+        "Pw": g.node("MaterialExpressionWorldPosition"),
+        # editor-preview defaults: a 1 m circle, the normal rim, half filled. Each group is read as a float4 (`.a`): a
+        # vector parameter's output 0 is RGB only, so its A is appended (Graph.float4; test_flow checks every Custom
+        # input's width).
+        "ShapeP": g.float4(g.vector("ShapeP", (0.0, 100.0, 0.0, 26.0), cpd=cpd["ShapeP"], group=grp)),
+        "QuadP": g.float4(g.vector("QuadP", (208.0, 208.0, 0.0, 0.0), cpd=cpd["QuadP"], group=grp)),
+        "InnerP": g.float4(g.vector("InnerP", (0.0, 0.0, 0.0, 0.0), cpd=cpd["InnerP"], group=grp)),
+        "ModeP": g.float4(g.vector("ModeP", (1.0, 0.0, 0.0, 0.5), cpd=cpd["ModeP"], group=grp)),
+        "AlphaP": g.float4(g.vector("AlphaP", (0.145, 0.85, 0.95, 0.0), cpd=cpd["AlphaP"], group=grp)),
+        "FillColor": g.vector("FillColor", (*hex_to_linear(t.fill_color), 1.0), group=look),
+        "RimColor": g.vector("RimColor", (*hex_to_linear(t.rim_color), 1.0), group=look),
+        "FrontColor": g.vector("FrontColor", (*hex_to_linear(t.front_color), 1.0), group=look),
+        "FlashRimColor": g.vector("FlashRimColor", (*hex_to_linear(t.flash_rim_color), 1.0), group=look),
+        "WashColor": g.vector("WashColor", (*hex_to_linear(t.wash_color), 1.0), group=look),
+        "FillGrain": g.scalar("FillGrain", t.fill_grain, group=look),
+        "FillTileCm": g.scalar("FillTileCm", t.fill_tile_cm, group=look),
+        "FrontWidthCm": g.scalar("FrontWidthCm", t.front_width_cm, group=look),
+        "RimTileCm": g.scalar("RimTileCm", t.rim_tile_cm, group=look),
+        "WashFadeInCm": g.scalar("WashFadeInCm", t.wash_fade_in_cm, group=look),
+        "Rim": g.texture_object("Rim", ctx.tex_telegraph_rim or ctx.tex_glow, "SAMPLERTYPE_LINEAR_COLOR"),
+        "Fill": g.texture_object("Fill", ctx.tex_telegraph_fill or ctx.tex_glow, "SAMPLERTYPE_LINEAR_COLOR"),
+    }
+    decal = g.custom(hlsl.telegraph_node(), wires)
+    g.output(g.rgb(decal), "MP_EMISSIVE_COLOR")
+    g.output(g.alpha(decal), "MP_OPACITY")
+
+
 def build_blob(g: Graph, ctx: Ctx) -> None:
     fade = g.scalar("Fade", 0.0, cpd=13, group="Feedback (custom primitive data)")
     alpha = g.custom(hlsl.blob_node(), {"UV": g.texcoord(0), "Fade": fade})
@@ -590,6 +638,7 @@ MASTERS: tuple[Master, ...] = (
     Master(paths.M_TARGET_RING, paths.FX_MATERIALS_DIR, QUAD_ADD_SETTINGS, lambda g, c: build_quad(g, c, "target_ring")),
     Master(paths.M_AFFIX_AURA, paths.FX_MATERIALS_DIR, QUAD_ADD_SETTINGS, lambda g, c: build_quad(g, c, "affix_aura")),
     Master(paths.M_BLOB_SHADOW, paths.FX_MATERIALS_DIR, BLOB_SETTINGS, build_blob),
+    Master(paths.M_TELEGRAPH, paths.FX_MATERIALS_DIR, TELEGRAPH_SETTINGS, build_telegraph),
 )
 
 
@@ -668,6 +717,12 @@ def terrain_defaults(report: BuildReport) -> tuple[dict[str, tuple[float, float,
     return out, ranks
 
 
+def _planned_texture(plan: Plan, name: str) -> str:
+    """Object path of a planned texture ("" when the plan does not import it)."""
+    entry = plan.texture(name)
+    return paths.object_path(entry.content_path) if entry is not None else ""
+
+
 def make_context(plan: Plan, report: BuildReport) -> Ctx:
     sh = plan.shading
     defaults, ranks = terrain_defaults(report)
@@ -682,6 +737,9 @@ def make_context(plan: Plan, report: BuildReport) -> Ctx:
         rim_srgb=tuple(x / 255.0 for x in hex_to_rgb255(sh.rim_color)),  # type: ignore[arg-type]
         terrain_defaults=defaults,
         terrain_ranks=ranks,
+        telegraph=plan.telegraph,
+        tex_telegraph_rim=_planned_texture(plan, plan.telegraph.rim_texture),
+        tex_telegraph_fill=_planned_texture(plan, plan.telegraph.fill_texture),
     )
 
 

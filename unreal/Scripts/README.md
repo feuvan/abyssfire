@@ -215,7 +215,7 @@ The runtime contract is `Source/Abyssfire/Public/World/WorldContract.md`; the lo
 | Portraits, icons, glyphs | `/Game/Abyssfire/UI/{Portraits,Icons}/T_UI_*` | UserInterface2D, no mips |
 | FX sprites | `/Game/Abyssfire/FX/Textures/T_FX_*` | linear (masks); `T_AF_FX_DefaultGlow` is the generated fallback |
 | `MPC_AF_Lighting` | `/Game/Abyssfire/Materials` | `SunDir`, `KeyLightDir` (manifest key light), `SunColor`, `Ambient`, `RimColor`, `CameraTanHalfFovY`, `TimeSec`, `SunScale` (.55), `InkScale` (1.5), toon light slots `Light0PosR..Light7PosR` / `Light0Col..Light7Col` (0); writers in WorldContract §3.5 |
-| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_SelectRim`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`, `M_AF_PP_AOComposite`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow` | shader code in `abyss_content/hlsl.py` |
+| Masters | `/Game/Abyssfire/Materials`: `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`, `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_SelectRim`, `M_AF_Terrain`, `M_AF_Terrain_Painted`, `M_AF_Water`, `M_AF_PP_Grade`, `M_AF_PP_AOComposite`; `/Materials/FX`: `M_AF_FX_Additive`, `M_AF_FX_Translucent`, `M_AF_FX_Mesh`, `M_AF_Ghost`, `M_AF_LightPool`, `M_AF_TargetRing`, `M_AF_AffixAura`, `M_AF_BlobShadow`, `M_AF_Telegraph` | shader code in `abyss_content/hlsl.py` |
 | Instances | `/Game/Abyssfire/Materials/Instances`: `MI_AF_Toon_<Family>`, `MI_AF_Outline_<Family>_<Class>`, `MI_AF_Terrain_<Theme>`, `MI_AF_SelectRim` | slot 0 / slot 1 of every mesh; the hull sections cast no shadow. Toon instances carry their family's `CastShadowStrength` (heroes / monsters / NPCs / pets / weapons .7, pickups .8, props 1, foliage canopies .6, ground cover 1; `manifest.plan_look_parameters`), the plains ground cover `BaseSaturation` / `BaseValue` .85 / .93. `MI_AF_Terrain_<Theme>`: `M_AF_Terrain_Painted` with the manifest `terrain.<theme>` layers + detail atlas (only when all of them were exported); plains `GroundSaturation` / `GroundValue` .85 / .93. `MI_AF_SelectRim`: the hero selection rim (#FFF4DC, 2 px) |
 | Terrain textures | `/Game/Abyssfire/Textures/T_Terrain_<Theme>_*_BC`, `T_Water_<Theme>_BC` | world (sRGB, mips, wrap); the `_Details_BC` atlas BC7, clamp; imported even without the texture scan (the manifest names them) |
 | `SM_FX_Quad` | `/Game/Abyssfire/FX` | 100 × 100 cm XY quad (unless the art ships one) |
@@ -275,6 +275,18 @@ Material behaviour in short:
   desktop balanced / high only. `M_AF_PP_Grade` (the exact web grade) is still built but no longer bound.
 * **`M_AF_Water`** (its sun term reads MPC `SunScale`), **`M_AF_FX_*`**, **`M_AF_Ghost`**, quads,
   **`M_AF_BlobShadow`** — see the docstrings in `abyss_content/ue/materials.py`.
+* **`M_AF_Telegraph`** (dark remake U2 / 2G, DECISIONS DR5 / DR16) — the enemy ground telegraph on `SM_FX_Quad`:
+  unlit translucent, two-sided; the custom node `AF_Telegraph` (`hlsl.telegraph_node`) measures the pixel against the
+  shape in five CPD groups (`hlsl.TELEGRAPH_CPD`, the runtime's `AbyssTelegraphRules::Cpd`; WorldContract §3.7) and
+  draws the crimson rim (`T_FX_TelegraphRim`), the bone fill with its front and grain (`T_FX_TelegraphFill`), the flash
+  and the arena's outward rim and wash. Colours and scalars are the manifest's `materials.M_AF_Telegraph` contract
+  (`manifest.telegraph_contract`; shipped values when a field is missing). The two textures come from `VFX/` of the
+  art export (imported as FX sprites, clamped: the shader wraps them); a plan without them warns and the material
+  falls back to `T_AF_FX_DefaultGlow`. The five CPD vectors reach the node as float4 (`Graph.float4`: AppendVector of
+  the parameter's RGB output 0 and its A; output 0 alone is RGB and `.a` would not compile). Blank pixels (a decal's
+  corners, a ring's hole, the arena's inside) return before any texture sample. `tests/test_hlsl.py` runs the node
+  through the HLSL emulation against the art's preview port and the runtime's CPD layout, and checks the early exit is
+  exact on a dense grid.
 
 **Art pass: one-time rebuild.** The art pass changes the graphs of `M_AF_Toon`, `M_AF_Toon_Foliage`, `M_AF_Toon_Slime`,
 `M_AF_Toon_Fade`, `M_AF_Toon_Foliage_Fade`, `M_AF_Outline`, `M_AF_Outline_Foliage`, `M_AF_Terrain`,
@@ -350,7 +362,10 @@ python3 unreal/Scripts/tests/fetch_ue_stub.py             # optional: UE Python 
 * `test_flow.py` runs the whole build twice against `tests/fake_unreal.py` (an in-memory `unreal` that behaves like UE
   5.8 where it matters: instance-parameter setters return False, NullRHI commandlet, 5.8's Interchange deprecations;
   switches for a stale / missing helper library, the 5.6 Interchange API and a Custom node without additional output
-  pins) and checks the results and that a second run is a no-op. `test_editor_compat.py` covers those engine-version
+  pins) and checks the results and that a second run is a no-op. Its `output_width` models the pin widths the engine
+  compiles (output 0 of a vector parameter / texture sample / vertex colour is RGB; only "RGBA" is four wide), and
+  every Custom-node input of every master must get the width its `NodeInput` declares (2G review B1).
+  `test_editor_compat.py` covers those engine-version
   paths (parameter read-back, parent check and C++ fallback, the stale-binary warning, the shader check, Interchange
   replacements, the clip frame range and its fallback, the `AF_ToonSplit_Lit` twin). `test_manifest.py` covers the
   planner (empty outline slots, clip FBX spans, the art-pass look parameters and `MI_AF_SelectRim`), `pngio` and the
@@ -360,6 +375,9 @@ python3 unreal/Scripts/tests/fetch_ue_stub.py             # optional: UE Python 
 * `test_api_names.py` also keeps the C++ helper's UFUNCTIONs, `core.CONTENT_LIB_FUNCTIONS` and the helper calls in the
   scripts in step, and checks that every renamed Interchange setting (`meshes.VERSIONED_SETTINGS`) keeps a UE 5.6
   spelling.
+* `test_module_headers.py` (2G review B2) fails any public header of `Source/Abyssfire` that names a private
+  `Abyss*Rules::` type without including that rules header or declaring its namespace (the class's .cpp and UHT's
+  .gen.cpp would not compile): public headers take plain values.
 * `test_ui_i18n_keys.py` greps `Source/Abyssfire` for every literal i18n key (Loc* / LocalizeOr / NameOr / `{ "key",
   TEXT("English") }` rows) and fails when one is missing from `Data/i18n_zh-CN.json` or `Data/i18n_en.json` (the UI
   would silently show the English fallback in the zh-CN build). New UI text goes into `PORT_STRINGS`

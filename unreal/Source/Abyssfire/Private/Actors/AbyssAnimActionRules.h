@@ -6,10 +6,18 @@
 //
 // UE-free and header-only (std + AbyssCore public headers), so the rules are unit-tested outside the engine
 // (unreal/PresentationTests, anim_test.cpp); AAbyssCharacterActor maps the kinds onto EAbyssCharacterAction and plays.
+//
+// Dark remake U2 (2G): the play rate of an action clip (ActionPlayRate: the beat on the core's contact, except a looping
+// clip whose windup outlasts it, which loops at rate 1 with a beat on the contact: the drummer's 2000 ms drum on a
+// 1000 ms Cast01 loop) and a death clip's runtime block (ParseDeathRuntime: the Cinderbloat's fuse plays its Death at
+// rate 1 for 900 ms, standing, unfaded until FX_Burst).
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <string_view>
 
+#include "abyss/base/Json.h"
 #include "abyss/sim/SimTypes.h"
 
 namespace AbyssAnimActionRules
@@ -108,6 +116,160 @@ namespace AbyssAnimActionRules
 	inline bool StretchesToDuration(abyss::AnimAction Action)
 	{
 		return Action != abyss::AnimAction::Attack && Action != abyss::AnimAction::Attack02 && !ForcesLoop(Action);
+	}
+
+	// =================================================================================================================
+	// Play rates (P5; dark remake U2)
+	// =================================================================================================================
+
+	/** The slowest and fastest an action clip plays (a beat further off is a data problem, not a reason to crawl). */
+	inline constexpr float MinPlayRate = 0.25f;
+	inline constexpr float MaxPlayRate = 4.f;
+
+	/** What OnPlayAnim knows about the clip and the event. */
+	struct FRateInput
+	{
+		abyss::AnimAction Action = abyss::AnimAction::Attack;
+		bool bHasClip = false;
+		float BeatSec = -1.f;      // FAbyssArtClip::GetBeatSec (Contact, else Release; < 0 none)
+		float LengthSec = 0.f;
+		bool bLoopClip = false;    // the clip is authored as a loop
+		double ContactMs = 0.0;    // EvPlayAnim::contactMs (the beat offset; 0 none)
+		double DurationMs = 0.0;   // EvPlayAnim::durationMs
+		double EventRate = 1.0;    // EvPlayAnim::playRate
+	};
+
+	struct FRatePlan
+	{
+		float Rate = 1.f;
+		/** Loop the clip at Rate for DurationSec (a channel on a looping clip) whatever its own loop flag. */
+		bool bLoopThrough = false;
+		/** Where the clip starts (seconds of clip time, before the event's elapsed time): puts a loop's beat on the contact. */
+		float StartPhaseSec = 0.f;
+		/** > 0: the action's length (seconds) instead of the event's durationMs. */
+		float DurationSec = 0.f;
+	};
+
+	/**
+	 * The rate an action clip plays at:
+	 * * a beat and a contact: beat / contact (the authored Contact / Release lands on the core's beat), clamped to
+	 *   [MinPlayRate, MaxPlayRate] - except a looping clip whose contact comes after its whole length (the drummer's
+	 *   war_drum: a 2000 ms windup on the 1000 ms Cast01 loop, Release 125 ms, which ComputeAbilityTiming slows to
+	 *   0.0625): it loops at rate 1, started so that a beat falls on the contact, and lasts until the contact plus the
+	 *   rest of the clip after its beat (the core's durationMs is the whole clip at the slowed rate: 16 s for the drum);
+	 * * no beat: a one-shot stretched to durationMs when the action stretches (StretchesToDuration), else the event's rate
+	 *   (Consume: rate 1, looped by its own flag for its 2000 ms channel).
+	 */
+	inline FRatePlan ActionPlayRate(const FRateInput& In)
+	{
+		FRatePlan Plan;
+		const float EventRate = In.EventRate > 0.0 ? static_cast<float>(In.EventRate) : 1.f;
+		if (!In.bHasClip)
+		{
+			Plan.Rate = EventRate;
+			return Plan;
+		}
+		const float ContactSec = static_cast<float>(In.ContactMs / 1000.0);
+		if (In.ContactMs > 0.0 && In.BeatSec > 0.f)
+		{
+			if (In.bLoopClip && In.LengthSec > 0.f && ContactSec > In.LengthSec + 1e-4f)
+			{
+				Plan.Rate = 1.f;
+				Plan.bLoopThrough = true;
+				Plan.StartPhaseSec = std::fmod(In.BeatSec - ContactSec, In.LengthSec);
+				if (Plan.StartPhaseSec < 0.f)
+				{
+					Plan.StartPhaseSec += In.LengthSec;
+				}
+				Plan.DurationSec = ContactSec + (In.LengthSec - In.BeatSec);
+				return Plan;
+			}
+			Plan.Rate = std::clamp(In.BeatSec / ContactSec, MinPlayRate, MaxPlayRate);
+			return Plan;
+		}
+		if (In.DurationMs > 0.0 && In.LengthSec > 0.f && StretchesToDuration(In.Action))
+		{
+			Plan.Rate = std::clamp(In.LengthSec / static_cast<float>(In.DurationMs / 1000.0), MinPlayRate, MaxPlayRate);
+			return Plan;
+		}
+		Plan.Rate = std::clamp(EventRate, MinPlayRate, MaxPlayRate);
+		return Plan;
+	}
+
+	/** Clip time ElapsedSec after the start (rate applied) of a plan: wrapped into the clip for a loop-through. */
+	inline float PlanClipTime(const FRatePlan& Plan, float ElapsedSec, float LengthSec)
+	{
+		float T = Plan.StartPhaseSec + ElapsedSec * Plan.Rate;
+		if (Plan.bLoopThrough && LengthSec > 0.f)
+		{
+			T = std::fmod(T, LengthSec);
+		}
+		return T;
+	}
+
+	// =================================================================================================================
+	// Death runtime (manifest: an asset's `fx.fuse.runtime`, else its Death clip's `runtime`)
+	// =================================================================================================================
+
+	/**
+	 * How a death clip plays when the art asks for it (the Cinderbloat: its Death is the fuse, FX_Fuse @0 and FX_Burst
+	 * @800 on the core's 800 ms burst): the clip's own length at PlayRate (900 ms at 1, not the rig preset's 500 ms that
+	 * put FX_Burst at 444 ms), no throw / hop / spin (it stands under its ring decal) and no body fade before
+	 * BodyFadeNotBeforeMs. Assets without the block keep today's death (every chapter but the Cinderbloat).
+	 */
+	struct FDeathRuntime
+	{
+		bool bValid = false;
+		double DeathDurationMs = 0.0;
+		double PlayRate = 1.0;
+		double BodyFadeNotBeforeMs = 0.0;
+		bool bThrow = true;
+		bool bHop = true;
+		bool bSpin = true;
+	};
+
+	/**
+	 * AssetJson: FAbyssArtManifest::GetAssetJson (`fx`, `clips.<name>.runtime`) or the manifest's asset object itself
+	 * (`fx`, `anims[]`). The block needs a positive deathDurationMs; the rest defaults to today's (rate 1, throw / hop /
+	 * spin on, no fade floor).
+	 */
+	inline FDeathRuntime ParseDeathRuntime(const abyss::JsonValue& AssetJson)
+	{
+		FDeathRuntime Out;
+		const abyss::JsonValue* Block = &AssetJson.Get("fx").Get("fuse").Get("runtime");
+		if (!Block->IsObject())
+		{
+			Block = &AssetJson.Get("clips").Get("Death").Get("runtime");
+		}
+		if (!Block->IsObject())
+		{
+			for (const abyss::JsonValue& Clip : AssetJson.Get("anims").Items())
+			{
+				if (Clip.Get("name").AsString() == "Death" && Clip.Get("runtime").IsObject())
+				{
+					Block = &Clip.Get("runtime");
+					break;
+				}
+			}
+		}
+		if (!Block->IsObject())
+		{
+			return Out;
+		}
+		const double Duration = Block->Get("deathDurationMs").AsDouble(0.0);
+		if (!(Duration > 0.0))
+		{
+			return Out;
+		}
+		Out.bValid = true;
+		Out.DeathDurationMs = Duration;
+		const double Rate = Block->Get("playRate").AsDouble(1.0);
+		Out.PlayRate = Rate > 0.0 ? Rate : 1.0;
+		Out.BodyFadeNotBeforeMs = (std::max)(0.0, Block->Get("bodyFadeNotBeforeMs").AsDouble(0.0));
+		Out.bThrow = Block->Get("deathThrow").AsBool(true);
+		Out.bHop = Block->Get("deathHop").AsBool(true);
+		Out.bSpin = Block->Get("deathSpin").AsBool(true);
+		return Out;
 	}
 
 	/** Who owns the body this frame, highest first (death > action > hold > stun > move > idle). */

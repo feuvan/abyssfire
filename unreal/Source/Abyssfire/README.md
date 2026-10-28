@@ -323,6 +323,90 @@ the real tables and art manifest); `Private/World/AbyssSetPieces.cpp` only conve
   Pilgrim), else `zone.event.rescue.fallbackName`. Chapters 2-5 keep today's unlabelled rescue prop (setpieces_test pins
   every unthemed zone to the generic labels and no rescue label).
 
+## Dark remake telegraphs, hazards, arenas (2G U2)
+
+The Wave 2 core (implementation-plan.md 2A-2E) tells every enemy ability ahead of its contact. The decisions of this
+layer live in `Private/Vfx/AbyssTelegraphRules.h` (plus the play-rate / death-runtime part of
+`Private/Actors/AbyssAnimActionRules.h` and `AbyssMusicRules::PhaseStinger`; UE-free, header-only), tested by
+`PresentationTests/tests/telegraph_test.cpp`, `anim_test.cpp`, `audio_music_test.cpp` on the real `Data/`, the art
+manifest's `materials.M_AF_Telegraph` contract and `vfx_recipes.json`. `UAbyssTelegraphSystem`
+(`Public|Private/Vfx/AbyssTelegraphs.*`, a world subsystem ticked by `UAbyssWorldBuilder::SyncFrame` after the
+characters and before `UAbyssVfxSystem::Tick`) only converts. DECISIONS DR5 (the hazard language), DR16.
+
+* **Strike decals** (`EvTelegraph`, a late view from `Snapshot::telegraphs`): one pooled `SM_FX_Quad` per decal with
+  `M_AF_Telegraph` (`Scripts/abyss_content`, unlit translucent, sort priority -1: over blob shadows / prop pools /
+  water, under the VFX; 8 cm over the ground), yawed along the shape and sized to it; the material measures each pixel
+  against the core's shape (circle, ring, cone, line = the core's rectangle) from five CPD groups (WorldContract 3.7).
+  Look: the crimson rim #D11F2E (rim strip `T_FX_TelegraphRim`), the bone fill #FFE8DC sweeping from the caster to the
+  rim on the **sim clock** (`Frame.RenderSimMs`: full on the contact frame, frozen in a cinematic) with a #FFF4EE front,
+  the fill grain `T_FX_TelegraphFill`; elite rim 30 cm + inner rim, boss 36 cm + inner rim, fill .27; the urgency pulse
+  over the last 30 % (boss 50 %); at the contact a 110 ms flash (rim #FF3A48, fill .35) then a 170 ms fade, and the
+  recipe `telegraph.contact` (`.cone`, `.line`). A cancelled windup (`EvMonsterAttackCancelled`, or a view gone before
+  its contact) fades where it stood; so does one aborted in the frame that reached its contact (a stun in the contact
+  step aborts inside the core's contact timer: `AbyssTelegraphRules::CancelTimeFor`, no flash, no contact dust). Every ground strike draws (Keen's slow ring too); raise / summon windups draw no
+  decal but the breach-violet `monster.raise.mark` recipe at the windup's origin (stopped on a cancel).
+* **On-death fuses** (`EvTelegraph` source OnDeath): presented only in a zone with a presentation theme (Chapter 1's
+  march; `AbyssTelegraphRules::PresentsOnDeath`). There a decal only when the effect damages (the Cinderbloat's
+  2.2-tile burst, the Scorched elite's burst; Gravecold's slow ring has none, DR5-slow); a fuse from an elite affix
+  plays `elite.<type>.death` from the kill. Chapters 2-5 and the Labyrinth keep today's look: their global elite fuses
+  (2B) and the Labyrinth's `curse.volatile` burst go off with neither decal nor recipe. The Cinderbloat's Death is its fuse (the art manifest's Death clip `runtime`
+  block): it plays at rate 1 for 900 ms, standing (no throw / hop / spin), not faded before 900 ms, so `FX_Burst` lands
+  on the core's 800 ms burst.
+* **Hazards** (`EvHazard`, `Snapshot::hazards`): the hazard look (no fill, rim .75 pulsing on a 1.2 s cycle) until
+  `untilMs`, then the fade; the loop `hazard.<abilityId>`, else `hazard.breach_seep` (a line) / `hazard.breach_fire`,
+  stopped at `untilMs`.
+* **Arenas** (`EvArena`, `Snapshot::arenas`): Valdras's P3 soft enrage (ringShrink 9 -> 5 tiles over 40 s, fire outside)
+  as a rim just outside the circle and an outer crimson wash (250 cm band, fading over its last 100 cm), closing with
+  `abyss::ArenaRadiusAt`; the `hazard.banner_ring` loop follows the same radius (`UAbyssVfxSystem::SetHandleRadius`).
+  Gone on `cleared`, a newer arena of the same monster, the zone change.
+* **Budget** (`ApplyQuality`): desktop 24 / 32 / 32 decals (low / balanced / high), mobile 16 / 24 / 32; the arena
+  first, then boss > elite > normal, nearest the hero first (Chapter 1 never fills it). Mobile low drops the arena's
+  outer wash: that trims the quad from 23.1 m to 18.6 m across at 9 tiles (about 35 % less area), but one translucent
+  quad still spans the whole disc; its blank inside (and every decal's blank corners, a ring's hole) exits
+  `AF_Telegraph` before any texture sample, so it costs rasterisation and blending, not shading. Budget the arena as an
+  18.6 m square of translucency on mobile low; an annulus mesh waits for the device profile (stage H). One hidden quad is registered as soon as the quad and material load (M_AF_Telegraph's pipeline states
+  precache before the first strike).
+* **Dash** (`EvEntityTeleported{Dash}`: Valdras's Lunge, `hasDash`): the actor slides from where it stood to `dashTo`
+  over 200 ms on the dodge's offset ease (`AbyssWorldUtil::EaseOutQuad`), no blink effect.
+* **Ability play rates** (`AbyssAnimActionRules::ActionPlayRate`): an ability clip plays so that its authored beat
+  (Contact, else Release) lands on the core's contact, clamped to .25..4; a looping clip the windup outlasts (the
+  drummer's 2000 ms `war_drum` on the 1000 ms Cast01 loop) loops at rate 1 with a beat on the contact.
+* **Phase stingers** (`EvMonsterPhase`): the event's `stinger`, else `bosses.<id>.phaseStingers` in the music director
+  (Valdras: `stinger_valdras_roll_call` at P2, `stinger_valdras_no_retreat` at P3) through the encounter stinger's
+  component and duck; nothing on a `reset`.
+* **Fallbacks**: without `M_AF_Telegraph` / `SM_FX_Quad` (an older content build) the decals are skipped with one
+  warning (`Telegraph decals disabled: ... missing`), the recipes and the wind-up tint still play; a missing recipe id
+  plays nothing. Chapters 2-5 have no ability definitions and no presentation theme: they (and the Labyrinth) look and
+  sound exactly as before.
+* **Debug**: `abyss.DebugLeash 1` draws every living monster's M1 leash (`MonsterView::leashCentre` / `leashRange`,
+  within 24 tiles of the hero) as a rim-only ring, last in the budget.
+
+**On the Mac, look at** (after `Scripts/build_content.sh`, which builds `/Game/Abyssfire/Materials/FX/M_AF_Telegraph`
+and imports `T_FX_TelegraphRim` / `T_FX_TelegraphFill`; the plan warns when they are missing):
+
+1. The log has no `Telegraph decals disabled` line; `M_AF_Telegraph` opens in the editor (translucent, unlit, the custom
+   node `AF_Telegraph`, preview a half-filled 1 m circle).
+2. The Bonegorger's Clapper Slam (circle 2) on the darkest march tile, every quality tier and the mobile tiers: the
+   crimson rim reads, the bone fill reaches the rim exactly as the clapper lands (Attack02's beat at 800 ms), flash,
+   fade; the decal never hides the hero's blob shadow or ink, and no z-fighting on slopes.
+3. Valdras: Banner Sweep (120° cone 2.6), Oath Brand (circle 1.8, then its 4 s pulsing hazard with
+   `hazard.breach_fire`), the boss rim width and the longer urgency pulse. P2 (65 %): the roll-call stinger,
+   Breach-seep's 8-tile line decal handing over to its 1 s pulsing hazard (`hazard.breach_seep`) with no gap or double
+   rim. P3 (30 %): the no-retreat stinger, the arena ring closing 9 -> 5 tiles with its outer wash (mobile low: rim
+   only) and the banner-ring loop on the same radius; the Lunge's line decal, then the 200 ms slide (no teleport pop).
+   Walking him home (leash reset) plays no stinger and clears the ring.
+4. The Corpseherd's Keen (circle 4, slow) draws; its Call the Flock and the Dead Standard-Bearer's Muster show the
+   violet raise mark, not a decal; stunning or killing a caster during its windup fades the decal / stops the mark,
+   also when the stun lands in the windup's last frame (no flash).
+5. A Cinderbloat kill: the 2.2-tile ring fills over 800 ms while it stands and swells, the burst on the full ring, the
+   body fading only after its 900 ms clip. A Scorched elite's death: decal + `elite.fire_enhanced.death`; a Gravecold
+   elite's: the recipe only.
+6. The Deserter Drummer's war drum: Cast01 loops at normal speed for the 2 s windup (no 16x slow-motion drum).
+7. `abyss.DebugLeash 1` near Valdras and a pack; `stat unit` with ten decals up (the cap is overflow only).
+8. Chapters 2-5 (e.g. the Twilight Forest) and a Labyrinth floor with the volatile curse: monsters attack and die as
+   before (no decal, no `elite.*.death`, not even for a Scorched / Gravecold elite or a cursed corpse).
+9. Mobile low, Valdras's P3: `stat unit` / GPU time with the arena up (one 18.6 m translucent quad) against the budget.
+
 ## In-game autotest (`-abyssautotest`)
 
 `UAbyssAutoTestSubsystem` (`Private/Framework/AbyssAutoTestSubsystem.{h,cpp}`, switches in `AbyssAutoTest.h`) plays

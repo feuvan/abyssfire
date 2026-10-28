@@ -51,6 +51,7 @@
 #include "Input/AbyssInputSubsystem.h"
 #include "Platform/AbyssPlatform.h"
 #include "Platform/AbyssSettings.h"
+#include "Vfx/AbyssTelegraphs.h"
 #include "Vfx/AbyssVfxSystem.h"
 #include "World/AbyssArtManifest.h"
 #include "World/AbyssAssetLibrary.h"
@@ -252,6 +253,7 @@ void UAbyssWorldBuilder::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 	Collection.InitializeDependency<UAbyssActorRegistry>();
 	Collection.InitializeDependency<UAbyssVfxSystem>();
+	Collection.InitializeDependency<UAbyssTelegraphSystem>();
 	if (UAbyssSimDriver* Driver = Collection.InitializeDependency<UAbyssSimDriver>())
 	{
 		Driver->RegisterWorldView(this);
@@ -497,6 +499,10 @@ void UAbyssWorldBuilder::RefreshQuality()
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
 	{
 		Vfx->ApplyQuality(Quality);
+	}
+	if (UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(this))
+	{
+		Telegraphs->ApplyQuality(Quality);   // 2G: the decal cap, the arena's outer wash (off on mobile low)
 	}
 	if (ZoneActor != nullptr)
 	{
@@ -751,6 +757,10 @@ void UAbyssWorldBuilder::BuildZone(const abyss::Snapshot& Snap)
 
 void UAbyssWorldBuilder::ClearZone()
 {
+	if (UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(this))
+	{
+		Telegraphs->ClearAll();   // 2G: decals, markers and their loop handles (the VFX clear below ends the loops)
+	}
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
 	{
 		Vfx->ClearAll();
@@ -2184,6 +2194,12 @@ void UAbyssWorldBuilder::SyncFrame(const abyss::Snapshot& Snap, const FAbyssFram
 
 	UpdateIndicators(Snap, RealDelta);
 	UpdateLightingCollection(RealDelta);
+	// Dark remake 2G (U2): the enemy telegraphs on the sim clock (decals, hazards, the arena), before the VFX tick so the
+	// contact / hazard / ring recipes they start this frame are emitted this frame.
+	if (UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(this))
+	{
+		Telegraphs->Tick(Frame, Snap);
+	}
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
 	{
 		Vfx->Tick(VisualDelta, Frame, Snap);
@@ -2592,6 +2608,10 @@ void UAbyssWorldBuilder::HandleEmbersGained(const abyss::EvEmbersGained& Event)
 
 void UAbyssWorldBuilder::HandleSessionEnded()
 {
+	if (UAbyssTelegraphSystem* Telegraphs = UAbyssTelegraphSystem::Get(this))
+	{
+		Telegraphs->ClearAll();
+	}
 	if (UAbyssVfxSystem* Vfx = UAbyssVfxSystem::Get(this))
 	{
 		Vfx->ClearAll();

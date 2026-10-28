@@ -301,6 +301,18 @@ class Graph:
         self.connect(src, n, "")
         return n
 
+    def float4(self, vec: Node) -> Node:
+        """A VectorParameter as a float4 (AppendVector(RGB, A)). Its output 0, the pin an unnamed wire takes, is RGB only
+        (mask 1,1,1,0): wired straight into a float4 Custom input it compiles as a float3 and `.a` fails (2G review B1).
+        Built from the two pins the module already wires on vector parameters (output 0 and "A")."""
+        return self.append(vec, vec["A"])
+
+    def alpha(self, src: Wire) -> Node:
+        """The fourth channel (ComponentMask A): a float4 Custom node's alpha into MP_OPACITY."""
+        n = self.node("MaterialExpressionComponentMask", r=False, g=False, b=False, a=True)
+        self.connect(src, n, "")
+        return n
+
     def interpolate(self, src: Wire) -> Node:
         """Vertex-shader value handed to the pixel shader (per-instance data is safest read in the VS on every RHI)."""
         n = self.node("MaterialExpressionVertexInterpolator")

@@ -69,6 +69,9 @@ M_PP_AO = "M_AF_PP_AOComposite"         # light SSAO composite, desktop balanced
 # instance (hero defaults) and makes per-use dynamic instances of it (AAbyssCharacterActor::SetSelectionRim).
 M_SELECT_RIM = "M_AF_SelectRim"
 MI_SELECT_RIM = "MI_AF_SelectRim"
+# The enemy ground telegraph (dark remake U2 / 2G; manifest materials.M_AF_Telegraph): one translucent unlit master on
+# SM_FX_Quad, every per-decal value custom primitive data (UAbyssTelegraphSystem, AbyssTelegraphRules.h Cpd).
+M_TELEGRAPH = "M_AF_Telegraph"
 
 TOON_MASTERS = (M_TOON, M_TOON_FOLIAGE, M_TOON_SLIME)
 OUTLINE_MASTERS = (M_OUTLINE, M_OUTLINE_FOLIAGE)

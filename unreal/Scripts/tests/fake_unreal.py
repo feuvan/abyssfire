@@ -508,6 +508,52 @@ EXPRESSION_INPUTS = {
 }
 
 
+# Output widths (float components) of the expressions the build wires into Custom nodes, as the engine compiles them:
+# output 0 of a vector parameter / texture sample / vertex colour / Constant3Vector is RGB (mask 1,1,1,0), the named
+# channel pins are one wide and only "RGBA" is four (UMaterialExpressionVectorParameter / TextureSample outputs). The
+# Custom node declares each input with the width its wire compiles to, so a float4 input fed from an RGB pin is a
+# float3 in the shader (`.a` fails to compile). None = not modelled (output_width).
+_RGB_FIRST = {"MaterialExpressionVectorParameter", "MaterialExpressionTextureSampleParameter2D",
+              "MaterialExpressionTextureSample", "MaterialExpressionVertexColor", "MaterialExpressionConstant3Vector"}
+_FIXED_WIDTH = {
+    "MaterialExpressionScalarParameter": 1, "MaterialExpressionConstant": 1, "MaterialExpressionPerInstanceCustomData": 1,
+    "MaterialExpressionTime": 1, "MaterialExpressionDepthFade": 1, "MaterialExpressionDitherTemporalAA": 1,
+    "MaterialExpressionTextureCoordinate": 2, "MaterialExpressionWorldPosition": 3,
+    "MaterialExpressionVertexNormalWS": 3, "MaterialExpressionPixelNormalWS": 3, "MaterialExpressionCameraVectorWS": 3,
+    "MaterialExpressionObjectPositionWS": 3, "MaterialExpressionConstant4Vector": 4,
+}
+_CUSTOM_WIDTH = {"CMOT_FLOAT1": 1, "CMOT_FLOAT2": 2, "CMOT_FLOAT3": 3, "CMOT_FLOAT4": 4}
+
+
+def output_width(expr: Any, out: str) -> int | None:
+    """The width an output of `expr` compiles to (see _RGB_FIRST); None when the fake does not model it."""
+    cls = type(expr).__name__
+    links = expr._props.get("_links", {})
+    if cls in _RGB_FIRST:
+        name = (out or "").upper()
+        if name in ("", "RGB"):
+            return 3
+        if name in ("R", "G", "B", "A"):
+            return 1
+        if name == "RGBA":
+            return 4
+        return None
+    if cls in _FIXED_WIDTH:
+        return _FIXED_WIDTH[cls]
+    if cls == "MaterialExpressionComponentMask":
+        return sum(1 for c in "rgba" if expr.get_editor_property(c))
+    if cls == "MaterialExpressionAppendVector":
+        a, b = (output_width(*links[k]) if k in links else None for k in ("A", "B"))
+        return a + b if a is not None and b is not None else None
+    if cls == "MaterialExpressionVertexInterpolator":
+        return output_width(*links["VS"]) if "VS" in links else None
+    if cls == "MaterialExpressionCustom":
+        if out and out.lower() not in ("return", "output"):
+            return None   # an additional output
+        return _CUSTOM_WIDTH.get(str(expr.get_editor_property("output_type")).rsplit(".", 1)[-1])
+    return None
+
+
 class MaterialExpression(Object):
     def input_names(self) -> list[str]:
         cls = type(self).__name__

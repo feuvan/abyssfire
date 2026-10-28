@@ -1233,6 +1233,156 @@ def terrain_emissive_node() -> CustomNode:
                       _fill(_TERRAIN_EMISSIVE, {}))
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Enemy telegraph decal (M_AF_Telegraph; dark remake U2 / 2G, DECISIONS DR5 / DR16). The A12 contract (manifest
+# materials.M_AF_Telegraph) as Art/blender/vfx/fx_preview_dark.py telegraph_layer emulates it per pixel, with the
+# shapes as exact signed distances (inside = the core's ShapeContains, body radius 0; the line is the core's box) and
+# the edge anti-aliased over the pixel footprint. Everything per decal / per frame is custom primitive data, in the
+# order of Source/Abyssfire/Private/Vfx/AbyssTelegraphRules.h `Cpd` (tests/test_hlsl.py reads that header):
+#   ShapeP  (0..3)   shape code (0 circle, 1 ring, 2 cone, 3 line), A (radius / length cm), B (inner radius cm / half
+#                    opening rad / half width cm), the rim width (cm)
+#   QuadP   (4..7)   the quad's size (cm) and the shape's origin in its frame (cm; SM_FX_Quad: UV (0,0) at (-50, +50))
+#   InnerP  (8..11)  inner rim alpha, its inset from the boundary (cm), its width (cm); the arena's wash band (cm)
+#   ModeP   (12..15) fill on, rim outside (arena), flash, progress
+#   AlphaP  (16..19) fill (or wash) alpha, the front band's alpha, the rim alpha (urgency / pulse / fade applied), spare
+# Constants (the contract's params, baked as parameter defaults): the colours, FillGrain, FillTileCm, FrontWidthCm,
+# RimTileCm, WashFadeInCm. Textures: Rim (T_FX_TelegraphRim, U along the boundary / RimTileCm, V = the distance into
+# the rim / RimWidthCm, clamped to the strip's first and last row centres) and Fill (T_FX_TelegraphFill on world XY /
+# FillTileCm, so the grain never swims with the progress); both sampled with explicit gradients from continuous
+# coordinates (no mip seam where the arc length wraps) and wrapped in code (FX textures import clamped).
+# Blank pixels return early (2G review m2), after the derivatives (uniform flow) and before any texture sample: past the
+# boundary of a decal drawn inward (the quad's corners, a ring's hole) and inside the arena (rim and wash outside, no
+# inner rim); the full path gives exactly float4(0) there. The quad still covers them (the arena's quad spans the whole
+# disc, 18.6 m across at 9 tiles without the wash): the early exit saves their shading, not their rasterisation or blend.
+# ---------------------------------------------------------------------------------------------------------------------
+TELEGRAPH_RIM_ROWS = 64         # T_FX_TelegraphRim is a 256 x 64 profile strip (fx_textures_dark.py)
+TELEGRAPH_WASH_FADE_OUT_CM = 100.0   # AbyssTelegraphRules::ArenaWashFadeOutCm: the band's last 100 cm fade out
+TELEGRAPH_CPD = {"ShapeP": 0, "QuadP": 4, "InnerP": 8, "ModeP": 12, "AlphaP": 16}
+TELEGRAPH_CPD_FIELDS = {        # AbyssTelegraphRules::Cpd names, in channel order
+    "ShapeP": ("Shape", "A", "B", "RimWidthCm"),
+    "QuadP": ("SizeXCm", "SizeYCm", "LocalOriginXCm", "LocalOriginYCm"),
+    "InnerP": ("InnerRimAlpha", "InnerRimInsetCm", "InnerRimWidthCm", "WashBandCm"),
+    "ModeP": ("FillOn", "RimOutside", "Flash", "Progress"),
+    "AlphaP": ("FillAlpha", "FrontAlpha", "RimAlpha", "Spare"),
+}
+TELEGRAPH_INPUTS = (
+    NodeInput("UV", "float2"), NodeInput("Pw", "float3"),
+    NodeInput("ShapeP", "float4"), NodeInput("QuadP", "float4"), NodeInput("InnerP", "float4"),
+    NodeInput("ModeP", "float4"), NodeInput("AlphaP", "float4"),
+    NodeInput("FillColor", "float3"), NodeInput("RimColor", "float3"), NodeInput("FrontColor", "float3"),
+    NodeInput("FlashRimColor", "float3"), NodeInput("WashColor", "float3"),
+    NodeInput("FillGrain", "float"), NodeInput("FillTileCm", "float"), NodeInput("FrontWidthCm", "float"),
+    NodeInput("RimTileCm", "float"), NodeInput("WashFadeInCm", "float"),
+    NodeInput("Rim", "Texture2D"), NodeInput("Fill", "Texture2D"),
+)
+_TELEGRAPH = """
+float2 p = float2((UV.x - 0.5) * QuadP.r - QuadP.b, (0.5 - UV.y) * QuadP.g - QuadP.a);
+float2 dpx = ddx(p);
+float2 dpy = ddy(p);
+float lx = length(dpx);
+float ly = length(dpy);
+float px = max(max(lx, ly), 1.0);
+float fillTile = max(FillTileCm, 1.0);
+float2 fw = float2(Pw.x, Pw.y) / fillTile;
+float2 fgx = ddx(fw);
+float2 fgy = ddy(fw);
+float shp = ShapeP.r;
+float ra = ShapeP.g;
+float rb = ShapeP.b;
+float rimW = max(ShapeP.a, 1.0);
+float rr = length(p);
+float ang = atan2(p.y, p.x);
+float w = ra - rr;
+float edgeU = ang * ra;
+float fillR = rr;
+float fillMax = ra;
+if (shp > 0.5 && shp < 1.5)
+{
+    w = min(ra - rr, rr - rb);
+    fillR = rr - rb;
+    fillMax = ra - rb;
+}
+else if (shp > 1.5 && shp < 2.5 && rb < @FULL_TURN@)
+{
+    float qx = abs(p.y);
+    float qy = p.x;
+    float cx = sin(rb);
+    float cy = cos(rb);
+    float tt = clamp(qx * cx + qy * cy, 0.0, ra);
+    float mx = qx - cx * tt;
+    float my = qy - cy * tt;
+    float md = sqrt(mx * mx + my * my);
+    float sd = cy * qx - cx * qy;
+    float sg = sd > 0.0 ? 1.0 : (sd < 0.0 ? -1.0 : 0.0);
+    w = -max(rr - ra, md * sg);
+    edgeU = (ra - rr) < md ? ang * ra : rr;
+}
+else if (shp > 2.5)
+{
+    float hl = 0.5 * ra;
+    float bx = abs(p.x - hl) - hl;
+    float by = abs(p.y) - rb;
+    float ox = max(bx, 0.0);
+    float oy = max(by, 0.0);
+    w = -(sqrt(ox * ox + oy * oy) + min(max(bx, by), 0.0));
+    float ends = min(p.x, ra - p.x);
+    float sides = rb - abs(p.y);
+    edgeU = sides < ends ? p.x : p.y;
+    fillR = p.x;
+}
+float outside = ModeP.g;
+float wr = outside > 0.5 ? -w : w;
+if (wr < -0.5 * px && (outside < 0.5 || InnerP.r <= 0.0))
+{
+    return float4(0.0, 0.0, 0.0, 0.0);
+}
+float aa = saturate(wr / px + 0.5);
+float rimTile = max(RimTileCm, 1.0);
+float2 ruv = float2(frac(edgeU / rimTile), clamp(wr / rimW, @VMIN@, @VMAX@));
+float4 rs = Rim.SampleGrad(RimSampler, ruv, float2(lx / rimTile, lx / rimW), float2(ly / rimTile, ly / rimW));
+float rimA = rs.a * AlphaP.b * aa * (wr <= rimW ? 1.0 : 0.0);
+float flash = saturate(ModeP.b);
+float3 rimC = lerp(float3(RimColor.r, RimColor.g, RimColor.b), float3(FlashRimColor.r, FlashRimColor.g, FlashRimColor.b), flash);
+float3 rimRgb = float3(rs.r * rimC.r, rs.g * rimC.g, rs.b * rimC.b);
+float di = abs(w - InnerP.g);
+float innerA = saturate(1.0 - (di - InnerP.b * 0.5) / max(1.5, px)) * InnerP.r * (w > 0.0 ? 1.0 : 0.0);
+rimA = max(rimA, innerA);
+float3 fillRgb = float3(0.0, 0.0, 0.0);
+float fillA = 0.0;
+if (outside > 0.5)
+{
+    float washBand = InnerP.a;
+    float washIn = saturate(wr / max(WashFadeInCm, 1.0));
+    float washOut = washBand > 0.0 ? saturate((washBand - wr) / @WASH_FADE_OUT@) : 0.0;
+    fillRgb = float3(WashColor.r, WashColor.g, WashColor.b);
+    fillA = AlphaP.r * washIn * washOut * (wr > 0.0 ? 1.0 : 0.0);
+}
+else if (ModeP.r > 0.5)
+{
+    float4 fs = Fill.SampleGrad(FillSampler, float2(frac(fw.x), frac(fw.y)), fgx, fgy);
+    float3 grain = (1.0 - FillGrain * (1.0 - float3(fs.r, fs.g, fs.b))) * float3(FillColor.r, FillColor.g, FillColor.b);
+    float front = saturate(ModeP.a) * fillMax;
+    float filled = (w > 0.0 && fillR <= front) ? 1.0 : 0.0;
+    float frontBand = fillR >= front - FrontWidthCm ? filled : 0.0;
+    fillRgb = lerp(grain, float3(FrontColor.r, FrontColor.g, FrontColor.b), max(frontBand, flash));
+    fillA = filled * lerp(AlphaP.r, AlphaP.g, frontBand);
+}
+float alpha = rimA + fillA * (1.0 - rimA);
+float3 rgb = (rimRgb * rimA + fillRgb * (fillA * (1.0 - rimA))) / max(alpha, 1e-6);
+return float4(rgb.r, rgb.g, rgb.b, saturate(alpha));
+"""
+
+
+def telegraph_node() -> CustomNode:
+    rows = float(TELEGRAPH_RIM_ROWS)
+    return CustomNode("AF_Telegraph", "enemy ground telegraph (rim + fill to contact; zones; the arena ring)", "float4",
+                      TELEGRAPH_INPUTS, _fill(_TELEGRAPH, {
+                          "FULL_TURN": lit(3.14159),
+                          "VMIN": lit(0.5 / rows), "VMAX": lit(1.0 - 0.5 / rows),
+                          "WASH_FADE_OUT": lit(TELEGRAPH_WASH_FADE_OUT_CM),
+                      }))
+
+
 def all_nodes(sh: Shading) -> list[CustomNode]:
     """Every node the build creates (tests compile them all)."""
     split = toon_split_node(sh)
@@ -1240,7 +1390,7 @@ def all_nodes(sh: Shading) -> list[CustomNode]:
              ink_node(sh), outline_wpo_node(sh), view_push_node(), select_rim_mask_node(), wind_node(), fx_mesh_node(sh),
              fx_mesh_mask_node(), ghost_node(), blob_node(), grade_node(), ao_composite_node(),
              terrain_node(True), terrain_node(False), terrain_painted_node(True), terrain_painted_node(False),
-             terrain_emissive_node()]
+             terrain_emissive_node(), telegraph_node()]
     nodes += list(fx_nodes().values()) + list(quad_nodes().values()) + list(water_nodes().values())
     return nodes
 

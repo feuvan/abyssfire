@@ -259,6 +259,7 @@ renders the 3D scene, it no longer imitates the web canvas.
 | (guide arrow mesh material) | `SM_FX_GuideArrow` | CPD Tint RGB (9..11), TintAmount (12) |
 | `M_AF_AffixAura` | elite affix ground aura | CPD Tint RGB + alpha |
 | `M_AF_BlobShadow` | blob shadow under every character on every tier (manifest `blobShadowRadiusCm`; 0.7 of its alpha where the sun CSM is on, DECISIONS P10 revised) | CPD Fade |
+| `M_AF_Telegraph` | enemy ground telegraphs on `SM_FX_Quad` (dark remake U2 / 2G, DECISIONS DR5 / DR16; `UAbyssTelegraphSystem`): strike / fuse decals, hazard zones, the arena ring. Unlit, translucent, two-sided; component sort priority -1, 8 cm over the ground; the quad yawed along the shape (+X = its direction) and scaled to its bounds | CPD (five float4 groups, `AbyssTelegraphRules::Cpd` = `hlsl.TELEGRAPH_CPD`; each vector parameter reaches the node as AppendVector(RGB, A), only the groups that moved since they were last sent are re-sent): `ShapeP` 0..3 (shape 0 circle / 1 ring / 2 cone / 3 line, A = radius / length cm, B = inner radius cm / half opening rad / half width cm, rim width cm), `QuadP` 4..7 (quad size cm, the shape's origin in the quad's frame cm), `InnerP` 8..11 (inner rim alpha, inset cm, width cm; arena wash band cm), `ModeP` 12..15 (fill on, rim outside, flash 0..1, progress 0..1), `AlphaP` 16..19 (fill / wash alpha, front alpha, rim alpha, spare). Vectors `FillColor` #FFE8DC, `RimColor` #D11F2E, `FrontColor` #FFF4EE, `FlashRimColor` #FF3A48, `WashColor` #D11F2E; scalars `FillGrain` .3, `FillTileCm` 160, `FrontWidthCm` 5, `RimTileCm` 120, `WashFadeInCm` 60 (manifest `materials.M_AF_Telegraph`); texture objects `Rim` (`T_FX_TelegraphRim`, 256x64 strip along the rim) and `Fill` (`T_FX_TelegraphFill`, 256² grain), wrapped in the shader (imported clamped) |
 | `M_AF_SelectRim` / `MI_AF_SelectRim` | selection rim follower (section 7; unlit, masked, skeletal usage, no shadow) | vector `RimColor` (linear, #FFF4DC); scalars `RimPx720` 2, `RimDepthPushCm` 30, `OutlinePx1080` 3.5, `BakedWidthCm` 1.8, `BodyMask` 0, `BodyOpacity` 1, `OutlineScreenSpace` 1; CPD Fade (13); MPC `InkScale` |
 | `M_AF_PP_AOComposite` | zone post-process blendable, desktop balanced / high (3.6) | scalar `AOStrength` (.25) |
 
@@ -346,6 +347,11 @@ Presets: `glow`, `flash`, `glint`, `sparks`, `streak`, `motes`, `flames`, `smoke
 | Anim notify `<N>` | `notify.<N>`, `npc.<N>` |
 | Zone dressing (world builder) | `camp.campfire`, `camp.torch`, `exit.portal`, `exit.sealed`, `ambient.<pollen / wisps / dust_motes / sparks / dust>` |
 | Props (world builder) | `prop.soul_echo`, `prop.clue`, `prop.gather`, `prop.lore` (lore colour), `prop.chest`, `prop.event` |
+| EvTelegraph (ground strike: circle / cone / line / ring / hazard windup; damaging on-death fuse in a zone with a presentation theme) | the `M_AF_Telegraph` decal (no recipe while it fills); at the contact `telegraph.contact` (`.cone`, `.line`) |
+| EvTelegraph raise / summon | `monster.raise.mark` at the windup's origin (stopped on EvMonsterAttackCancelled) |
+| EvTelegraph on-death fuse from an elite affix (`affix.<type>`) | in a themed zone, `elite.<type>.death` from the kill (Gravecold: the recipe alone, no decal); unthemed zones (chapters 2-5, the Labyrinth) present no on-death fuse, the curse's included |
+| EvHazard | the hazard decal + loop `hazard.<abilityId>`, else `hazard.breach_seep` (line) / `hazard.breach_fire`, stopped at `untilMs` |
+| EvArena (until `cleared`) | the arena decal + loop `hazard.banner_ring`, its radius following `abyss::ArenaRadiusAt` (`UAbyssVfxSystem::SetHandleRadius`) |
 
 ### 5.4 Sprites
 
@@ -365,7 +371,8 @@ Rune, ShardFrost, Skull.
 `SunColor`, DECISIONS P11 revised), `abyss.GroundAmbient` (0.55), `abyss.ExposureBias` (0.263 = log2 1.2, to be
 recalibrated for the tone curve), `abyss.Bloom` (-1 = the art manifest's hero `fx.bloom.strength`), `abyss.ShakeScale`
 (camera shake amplitude), `abyss.FadeGhost` (occlusion fade of the dressing, 3.4: 0 = dithered on every tier, 1 = auto:
-translucent ghosts without temporal AA (default), 2 = ghosts on every tier).
+translucent ghosts without temporal AA (default), 2 = ghosts on every tier), `abyss.DebugLeash` (0; 1 draws every living
+monster's M1 leash within 24 tiles of the hero as a rim-only telegraph ring, dark remake 2G).
 
 Art pass (DECISIONS P11 revised, P14, R3, R18, R20):
 

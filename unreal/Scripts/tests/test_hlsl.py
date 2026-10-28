@@ -1047,5 +1047,359 @@ class ArtPassLintTests(unittest.TestCase):
             split.twin("Nope")
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# M_AF_Telegraph (dark remake U2 / 2G)
+# ---------------------------------------------------------------------------------------------------------------------
+RULES_HEADER = HERE.parent.parent / "Source" / "Abyssfire" / "Private" / "Vfx" / "AbyssTelegraphRules.h"
+
+
+def runtime_cpd() -> dict[str, int]:
+    """AbyssTelegraphRules.h `namespace Cpd { inline constexpr int <Name> = <n>; }` (the runtime's writer)."""
+    text = RULES_HEADER.read_text(encoding="utf-8")
+    block = text[text.index("namespace Cpd"):]
+    block = block[:block.index("}")]
+    return {m.group(1): int(m.group(2)) for m in re.finditer(r"inline constexpr int (\w+) = (\d+);", block)}
+
+
+def telegraph_quad(shape: int, a: float, b: float, margin: float) -> tuple[float, float, float, float]:
+    """(SizeX, SizeY, LocalOriginX, LocalOriginY) of AbyssTelegraphRules::MakeGeometry (the shape about +X)."""
+    if shape in (0, 1):
+        lo_x, hi_x, lo_y, hi_y = -a, a, -a, a
+    elif shape == 2:
+        hi_x = a
+        lo_x = -a if b >= math.pi - 1e-12 else min(0.0, a * math.cos(b))
+        half_y = a if b >= math.pi / 2 else a * math.sin(b)
+        lo_y, hi_y = -half_y, half_y
+    else:
+        lo_x, hi_x, lo_y, hi_y = 0.0, a, -b, b
+    lo_x, hi_x, lo_y, hi_y = lo_x - margin, hi_x + margin, lo_y - margin, hi_y + margin
+    return hi_x - lo_x, hi_y - lo_y, -(lo_x + hi_x) / 2.0, -(lo_y + hi_y) / 2.0
+
+
+def telegraph_uv(quad: tuple[float, float, float, float], x: float, y: float) -> tuple[float, float]:
+    """The quad UV of shape-frame point (x along, y across; cm): SM_FX_Quad UV (0,0) at (-50, +50)."""
+    sx, sy, ox, oy = quad
+    return (x + ox) / sx + 0.5, 0.5 - (y + oy) / sy
+
+
+RIM_W, RIM_H, FILL_N = 8, 64, 4
+
+
+def rim_texel(col: int, row: int) -> tuple[float, float, float, float]:
+    """The synthetic rim strip: colour by column, alpha fading down the rows (row 0 = the boundary)."""
+    g = 0.6 + 0.05 * col
+    return g, g, g, max(0.0, 1.0 - row / (RIM_H - 1))
+
+
+def fill_texel(col: int, row: int) -> tuple[float, float, float, float]:
+    v = 0.66 + 0.02 * ((col * 3 + row * 5) % 17)
+    return v, v, v, 1.0
+
+
+def nearest(texel, w: int, h: int, u: float, v: float):
+    x = min(max(int(math.floor(u * w)), 0), w - 1)
+    y = min(max(int(math.floor(v * h)), 0), h - 1)
+    return texel(x, y)
+
+
+def telegraph_reference(shape: int, a: float, b: float, rim_w: float, x: float, y: float, inner: tuple, mode: tuple,
+                        alphas: tuple, world_xy: tuple, look: dict) -> tuple[float, float, float, float]:
+    """Art/blender/vfx/fx_preview_dark.py telegraph_layer for one pixel, with the per-frame state given as the custom
+    primitive data (the runtime's pulses / fades / flash already applied) and nearest-texel sampling (as the emulation).
+    Points are chosen where the preview's shape measure equals the exact one (inside, or well outside)."""
+    r = math.hypot(x, y)
+    if shape == 0:
+        w, u_edge, fill_r, fill_max = a - r, math.atan2(y, x) * a, r, a
+    elif shape == 1:
+        w, u_edge, fill_r, fill_max = min(a - r, r - b), math.atan2(y, x) * a, r - b, a - b
+    elif shape == 2:
+        ang = math.atan2(y, x)
+        side = min(abs(x * math.sin(b) - y * math.cos(b)), abs(x * math.sin(-b) - y * math.cos(-b)))
+        inside = abs(ang) <= b and r <= a
+        w = min(a - r, side) if inside else -1.0
+        u_edge = ang * a if a - r < side else r
+        fill_r, fill_max = r, a
+    else:
+        inside = 0 <= x <= a and abs(y) <= b
+        ends, sides = min(x, a - x), b - abs(y)
+        w = min(ends, sides) if inside else -1.0
+        u_edge = x if sides < ends else y
+        fill_r, fill_max = x, a
+    fill_on, outside, flash, prog = mode
+    fill_alpha, front_alpha, rim_alpha, _ = alphas
+    if outside > 0.5:
+        w = -w
+    v = min(max(w / rim_w, 0.0), 0.999)
+    aa = min(max(w + 0.5, 0.0), 1.0)
+    rs = nearest(rim_texel, RIM_W, RIM_H, (u_edge / look["RimTileCm"]) % 1.0, v)
+    rim_a = rs[3] * rim_alpha * aa * (1.0 if w <= rim_w else 0.0)
+    rim_c = [look["RimColor"][i] + (look["FlashRimColor"][i] - look["RimColor"][i]) * flash for i in range(3)]
+    rim_rgb = [rs[i] * rim_c[i] for i in range(3)]
+    if inner[0] > 0:
+        w_in = -w if outside > 0.5 else w
+        di = abs(w_in - inner[1])
+        rim_a = max(rim_a, min(max(1.0 - (di - inner[2] / 2) / 1.5, 0.0), 1.0) * inner[0] * (1.0 if w_in > 0 else 0.0))
+    fill_rgb, fill_a = [0.0, 0.0, 0.0], 0.0
+    if outside > 0.5:
+        band = inner[3]
+        wash_out = min(max((band - w) / 100.0, 0.0), 1.0) if band > 0 else 0.0
+        fill_rgb = list(look["WashColor"])
+        fill_a = fill_alpha * min(max(w / look["WashFadeInCm"], 0.0), 1.0) * wash_out * (1.0 if w > 0 else 0.0)
+    elif fill_on > 0.5:
+        fs = nearest(fill_texel, FILL_N, FILL_N, (world_xy[0] / look["FillTileCm"]) % 1.0,
+                     (world_xy[1] / look["FillTileCm"]) % 1.0)
+        grain = [(1.0 - look["FillGrain"] * (1.0 - fs[i])) * look["FillColor"][i] for i in range(3)]
+        front = prog * fill_max
+        filled = w > 0 and fill_r <= front
+        band = filled and fill_r >= front - look["FrontWidthCm"]
+        mix = max(1.0 if band else 0.0, flash)
+        fill_rgb = [grain[i] + (look["FrontColor"][i] - grain[i]) * mix for i in range(3)]
+        fill_a = (front_alpha if band else fill_alpha) if filled else 0.0
+    alpha = rim_a + fill_a * (1 - rim_a)
+    rgb = [(rim_rgb[i] * rim_a + fill_rgb[i] * fill_a * (1 - rim_a)) / max(alpha, 1e-6) for i in range(3)]
+    return rgb[0], rgb[1], rgb[2], min(max(alpha, 0.0), 1.0)
+
+
+class TelegraphContractTests(unittest.TestCase):
+    def test_cpd_layout_is_the_runtime_header(self):
+        cpd = runtime_cpd()
+        self.assertEqual(cpd["Count"], 20)
+        for group, start in hlsl.TELEGRAPH_CPD.items():
+            for channel, name in enumerate(hlsl.TELEGRAPH_CPD_FIELDS[group]):
+                with self.subTest(group=group, name=name):
+                    self.assertEqual(cpd[name], start + channel)
+        self.assertEqual(sorted(hlsl.TELEGRAPH_CPD.values()), [0, 4, 8, 12, 16])
+        self.assertEqual(len(set(cpd) - {"Count"}), cpd["Count"])
+        # the wash band's fade-out is the runtime's ArenaWashFadeOutCm, and its built-in contract colours are ours
+        rules = RULES_HEADER.read_text(encoding="utf-8")
+        from abyss_content.manifest import TelegraphContract
+        t = TelegraphContract()
+        for field, value in (("FillRgb", t.fill_color), ("RimRgb", t.rim_color), ("FrontRgb", t.front_color),
+                             ("FlashRimRgb", t.flash_rim_color)):
+            self.assertRegex(rules, rf"uint32_t {field} = 0x{value[1:]};")
+        self.assertRegex(rules, rf"double FillTileCm = {t.fill_tile_cm:g}\.0;")
+        self.assertRegex(rules, rf"double RimTileCm = {t.rim_tile_cm:g}\.0;")
+        self.assertRegex(rules, rf"ArenaWashFadeOutCm = {hlsl.TELEGRAPH_WASH_FADE_OUT_CM:g}\.0;")
+
+    def test_rim_strip_rows(self):
+        from abyss_content import pngio
+        from abyss_content.manifest import build_plan
+        plan = build_plan(scan_textures=False)
+        self.assertTrue(plan.telegraph.present)
+        rim = plan.texture(plan.telegraph.rim_texture)
+        fill = plan.texture(plan.telegraph.fill_texture)
+        self.assertIsNotNone(rim, "T_FX_TelegraphRim is planned even without the scan")
+        self.assertIsNotNone(fill)
+        info = pngio.read_png_info(rim.source)
+        self.assertEqual(info.height, hlsl.TELEGRAPH_RIM_ROWS)
+        self.assertEqual(rim.kind, "fx")
+        self.assertFalse(rim.srgb)
+        self.assertFalse(fill.srgb)
+
+    def test_node_shape(self):
+        node = hlsl.telegraph_node()
+        self.assertEqual(node.output, "float4")
+        self.assertIn("Rim.SampleGrad(RimSampler", node.code)
+        self.assertIn("Fill.SampleGrad(FillSampler", node.code)
+        # derivatives before the first branch (explicit gradients from continuous coordinates)
+        before = node.code.split("if (")[0]
+        for d in ("ddx(p)", "ddy(p)", "ddx(fw)", "ddy(fw)"):
+            self.assertIn(d, before)
+        self.assertIn(hlsl.lit(0.5 / hlsl.TELEGRAPH_RIM_ROWS), node.code)
+
+
+@unittest.skipIf(CXX is None, "no C++ compiler")
+class TelegraphMathTests(unittest.TestCase):
+    @staticmethod
+    def look() -> dict:
+        from abyss_content.manifest import build_plan, hex_to_linear
+        t = build_plan(scan_textures=False).telegraph
+        return {"FillColor": hex_to_linear(t.fill_color), "RimColor": hex_to_linear(t.rim_color),
+                "FrontColor": hex_to_linear(t.front_color), "FlashRimColor": hex_to_linear(t.flash_rim_color),
+                "WashColor": hex_to_linear(t.wash_color), "FillGrain": t.fill_grain, "FillTileCm": t.fill_tile_cm,
+                "FrontWidthCm": t.front_width_cm, "RimTileCm": t.rim_tile_cm, "WashFadeInCm": t.wash_fade_in_cm}
+
+    def test_telegraph_matches_the_preview(self):
+        look = self.look()
+        cases = []
+        # (shape, a, b, rim width, inner (alpha, inset, width, wash band), mode (fill, outside, flash, progress),
+        #  alphas (fill, front, rim, spare), points (x, y) in the shape frame)
+        normal = ((0.0, 0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.5), (0.145, 0.85, 0.95, 0.0))
+        circle_pts = [(0.0, 0.0), (50.0, 30.0), (98.0, 0.0), (101.0, 0.0), (0.0, 150.0), (150.0, 100.0), (215.0, 0.0),
+                      (-180.0, 60.0), (199.0, 3.0), (130.0, -140.0), (250.0, 10.0)]
+        cases.append((0, 220.0, 0.0, 26.0) + normal + (circle_pts,))
+        # the boss style: wider rim, the inner rim at .82 of the radius
+        cases.append((0, 220.0, 0.0, 36.0, (0.7, 0.18 * 220.0, 12.0, 0.0), (1.0, 0.0, 0.0, 0.75),
+                      (0.22, 0.85, 0.8, 0.0), circle_pts))
+        # the contact flash: the front colour over everything inside, the rim red
+        cases.append((0, 220.0, 0.0, 26.0, (0.0, 0.0, 0.0, 0.0), (1.0, 0.0, 1.0, 1.0), (0.35, 0.35, 0.95, 0.0),
+                      circle_pts))
+        # a ring
+        cases.append((1, 300.0, 150.0, 26.0) + normal + ([(160.0, 0.0), (225.0, 0.0), (0.0, 290.0), (100.0, 0.0),
+                                                          (-200.0, -150.0), (320.0, 0.0)],))
+        # a cone of 120 degrees (points inside, and well outside the opening)
+        cases.append((2, 260.0, math.pi / 3.0, 30.0, (0.6, 0.18 * 260.0, 10.0, 0.0), (1.0, 0.0, 0.0, 0.6),
+                      (0.16, 0.85, 0.95, 0.0), [(100.0, 0.0), (240.0, 10.0), (60.0, 90.0), (150.0, -200.0),
+                                                (20.0, 5.0), (-50.0, 0.0), (10.0, 200.0), (255.0, 0.0)]))
+        # a line (Breach-seep's windup): inside, the ends, far outside
+        cases.append((3, 800.0, 50.0, 36.0, (0.7, 0.18 * 50.0, 12.0, 0.0), (1.0, 0.0, 0.0, 0.4),
+                      (0.15, 0.85, 0.95, 0.0), [(10.0, 0.0), (400.0, 20.0), (319.0, -45.0), (790.0, 0.0), (500.0, 49.0),
+                                                (400.0, 120.0), (-60.0, 0.0), (900.0, 0.0)]))
+        # a hazard zone: rim only
+        cases.append((3, 800.0, 50.0, 26.0, (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 0.6, 0.0),
+                      [(10.0, 0.0), (400.0, 40.0), (400.0, 0.0)]))
+        # the arena: rim outward, the wash ramping in and fading out over its band
+        cases.append((0, 900.0, 0.0, 26.0, (0.0, 0.0, 0.0, 250.0), (0.0, 1.0, 0.0, 1.0), (0.1, 0.0, 0.85, 0.0),
+                      [(0.0, 0.0), (850.0, 0.0), (905.0, 0.0), (930.0, 0.0), (990.0, 0.0), (1080.0, 0.0),
+                       (1140.0, 0.0), (0.0, -1100.0)]))
+        lines = []
+        expected = []
+        world_base = (12345.0, 6789.0)
+        for case in cases:
+            shape, a, b, rim_w, inner, mode, alphas, pts = case
+            quad = telegraph_quad(shape, a, b, 300.0)
+            for (x, y) in pts:
+                u, v = telegraph_uv(quad, x, y)
+                wx, wy = world_base[0] + x, world_base[1] + y
+                args = (f"float2({u!r}f, {v!r}f), float3({wx!r}f, {wy!r}f, 0.f), "
+                        f"float4({shape}.f, {a!r}f, {b!r}f, {rim_w!r}f), "
+                        f"float4({quad[0]!r}f, {quad[1]!r}f, {quad[2]!r}f, {quad[3]!r}f), "
+                        f"float4({inner[0]!r}f, {inner[1]!r}f, {inner[2]!r}f, {inner[3]!r}f), "
+                        f"float4({mode[0]!r}f, {mode[1]!r}f, {mode[2]!r}f, {mode[3]!r}f), "
+                        f"float4({alphas[0]!r}f, {alphas[1]!r}f, {alphas[2]!r}f, {alphas[3]!r}f), "
+                        + ", ".join(f"float3({c[0]!r}f, {c[1]!r}f, {c[2]!r}f)" for c in (
+                            look["FillColor"], look["RimColor"], look["FrontColor"], look["FlashRimColor"],
+                            look["WashColor"]))
+                        + f", {look['FillGrain']!r}f, {look['FillTileCm']!r}f, {look['FrontWidthCm']!r}f, "
+                        f"{look['RimTileCm']!r}f, {look['WashFadeInCm']!r}f, rim, ss, fill, ss")
+                lines.append(f"    {{ float4 o = AF_Telegraph({args}); std::printf(\"%.6f %.6f %.6f %.6f\\n\", o.x, o.y, o.z, o.w); }}")
+                expected.append(telegraph_reference(shape, a, b, rim_w, x, y, inner, mode, alphas, (wx, wy), look))
+        rim_texels = ", ".join(
+            f"float4({c[0]!r}f, {c[1]!r}f, {c[2]!r}f, {c[3]!r}f)"
+            for c in (rim_texel(x, y) for y in range(RIM_H) for x in range(RIM_W)))
+        fill_texels = ", ".join(
+            f"float4({c[0]!r}f, {c[1]!r}f, {c[2]!r}f, {c[3]!r}f)"
+            for c in (fill_texel(x, y) for y in range(FILL_N) for x in range(FILL_N)))
+        main = ("int main() {\n"
+                f"    Texture2D rim; rim.Width = {RIM_W}; rim.Height = {RIM_H}; rim.Texels = {{ {rim_texels} }};\n"
+                f"    Texture2D fill; fill.Width = {FILL_N}; fill.Height = {FILL_N}; fill.Texels = {{ {fill_texels} }};\n"
+                "    SamplerState ss;\n" + "\n".join(lines) + "\n    return 0;\n}")
+        out = compile_and_run(cpp_unit([hlsl.telegraph_node()], main), run=True).split("\n")
+        rows = [list(map(float, line.split())) for line in out if line.strip()]
+        self.assertEqual(len(rows), len(expected))
+        drawn = 0
+        for got, want in zip(rows, expected):
+            with self.subTest(want=want):
+                self.assertAlmostEqual(got[3], want[3], places=4)
+                if want[3] > 1e-4:
+                    drawn += 1
+                    for i in range(3):
+                        self.assertAlmostEqual(got[i], want[i], places=3)
+        self.assertGreater(drawn, 20)
+        # spot checks of the look: the circle's centre is a translucent bone fill (progress .5: inside the front)
+        centre = rows[0]
+        self.assertAlmostEqual(centre[3], 0.145, places=3)
+        self.assertGreater(centre[0], 0.6)
+        # beyond the radius: nothing (no square quad edge)
+        self.assertEqual(rows[len(circle_pts) - 1][3], 0.0)
+
+    def test_telegraph_early_exit_is_exact(self):
+        """The blank-pixel early exit (2G review m2) changes no pixel: the node with and without it agree on a dense UV
+        grid for every shape and mode (the arena with and without an inner rim, a ring's hole, a zone, a boss strike),
+        and the arena's inside is blank."""
+        look = self.look()
+        node = hlsl.telegraph_node()
+        exit_block = ("if (wr < -0.5 * px && (outside < 0.5 || InnerP.r <= 0.0))\n{\n"
+                      "    return float4(0.0, 0.0, 0.0, 0.0);\n}\n")
+        self.assertEqual(node.code.count(exit_block), 1)
+        full = dataclasses.replace(node, key="AF_TelegraphNoExit", code=node.code.replace(exit_block, ""))
+        normal = ((0.0, 0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.6), (0.145, 0.85, 0.95, 0.0))
+        cases = [
+            (0, 220.0, 0.0, 36.0, (0.7, 0.18 * 220.0, 12.0, 0.0), (1.0, 0.0, 0.0, 0.75), (0.22, 0.85, 0.8, 0.0), 4.0),
+            (1, 300.0, 150.0, 26.0) + normal + (4.0,),
+            (2, 260.0, math.pi / 3.0, 30.0) + normal + (4.0,),
+            (3, 800.0, 50.0, 26.0, (0.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 0.6, 0.0), 4.0),
+            (0, 900.0, 0.0, 26.0, (0.0, 0.0, 0.0, 250.0), (0.0, 1.0, 0.0, 1.0), (0.1, 0.0, 0.85, 0.0), 284.0),
+            (0, 900.0, 0.0, 26.0, (0.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 1.0), (0.0, 0.0, 0.85, 0.0), 34.0),
+            (0, 900.0, 0.0, 26.0, (0.6, 160.0, 10.0, 250.0), (0.0, 1.0, 0.0, 1.0), (0.1, 0.0, 0.85, 0.0), 284.0),
+        ]
+        steps = 37
+        rows = []
+        for shape, a, b, rim_w, inner, mode, alphas, margin in cases:
+            quad = telegraph_quad(shape, a, b, margin)
+            rows.append("{ " + ", ".join(f"{x!r}f" for x in (float(shape), a, b, rim_w, *quad, *inner, *mode, *alphas))
+                        + " }")
+        colours = ", ".join(f"float3({c[0]!r}f, {c[1]!r}f, {c[2]!r}f)" for c in (
+            look["FillColor"], look["RimColor"], look["FrontColor"], look["FlashRimColor"], look["WashColor"]))
+        consts = (f"{look['FillGrain']!r}f, {look['FillTileCm']!r}f, {look['FrontWidthCm']!r}f, "
+                  f"{look['RimTileCm']!r}f, {look['WashFadeInCm']!r}f")
+        rim_texels = ", ".join(
+            f"float4({c[0]!r}f, {c[1]!r}f, {c[2]!r}f, {c[3]!r}f)"
+            for c in (rim_texel(x, y) for y in range(RIM_H) for x in range(RIM_W)))
+        fill_texels = ", ".join(
+            f"float4({c[0]!r}f, {c[1]!r}f, {c[2]!r}f, {c[3]!r}f)"
+            for c in (fill_texel(x, y) for y in range(FILL_N) for x in range(FILL_N)))
+        main = ("int main() {\n"
+                f"    Texture2D rim; rim.Width = {RIM_W}; rim.Height = {RIM_H}; rim.Texels = {{ {rim_texels} }};\n"
+                f"    Texture2D fill; fill.Width = {FILL_N}; fill.Height = {FILL_N}; fill.Texels = {{ {fill_texels} }};\n"
+                "    SamplerState ss;\n"
+                f"    static const float cases[{len(rows)}][20] = {{ {', '.join(rows)} }};\n"
+                f"    const int steps = {steps};\n"
+                f"    for (int c = 0; c < {len(rows)}; ++c) for (int j = 0; j < steps; ++j) for (int i = 0; i < steps; ++i) {{\n"
+                "        const float* k = cases[c];\n"
+                "        const float u = (i + 0.5f) / steps, v = (j + 0.5f) / steps;\n"
+                "        float4 o = AF_Telegraph(float2(u, v), float3(u * k[4], v * k[5], 0.f), float4(k[0], k[1], k[2], k[3]),\n"
+                "            float4(k[4], k[5], k[6], k[7]), float4(k[8], k[9], k[10], k[11]), float4(k[12], k[13], k[14], k[15]),\n"
+                f"            float4(k[16], k[17], k[18], k[19]), {colours}, {consts}, rim, ss, fill, ss);\n"
+                "        float4 f = AF_TelegraphNoExit(float2(u, v), float3(u * k[4], v * k[5], 0.f), float4(k[0], k[1], k[2], k[3]),\n"
+                "            float4(k[4], k[5], k[6], k[7]), float4(k[8], k[9], k[10], k[11]), float4(k[12], k[13], k[14], k[15]),\n"
+                f"            float4(k[16], k[17], k[18], k[19]), {colours}, {consts}, rim, ss, fill, ss);\n"
+                "        std::printf(\"%a %a %a %a | %a %a %a %a\\n\", o.x, o.y, o.z, o.w, f.x, f.y, f.z, f.w);\n"
+                "    }\n    return 0;\n}")
+        out = [line for line in compile_and_run(cpp_unit([node, full], main), run=True).splitlines() if line.strip()]
+        self.assertEqual(len(out), len(cases) * steps * steps)
+        differing = [n for n, line in enumerate(out) if line.split(" | ")[0] != line.split(" | ")[1]]
+        self.assertEqual(differing, [], f"{len(differing)} pixels differ, first: {out[differing[0]] if differing else ''}")
+        blank = sum(1 for line in out if float.fromhex(line.split(" | ")[0].split()[3]) == 0.0)
+        self.assertGreater(blank, len(out) // 3)
+        # the arena without its wash: the pixel at the centre is blank
+        arena = out[5 * steps * steps:6 * steps * steps]
+        self.assertEqual(float.fromhex(arena[(steps // 2) * steps + steps // 2].split(" | ")[0].split()[3]), 0.0)
+
+    def test_telegraph_progress_sweeps_from_the_centre(self):
+        """The fill reaches a radius exactly when progress x radius passes it (circle, ring, line); the front band is
+        FrontWidthCm wide at its edge."""
+        look = self.look()
+        node = hlsl.telegraph_node()
+        quad = telegraph_quad(0, 220.0, 0.0, 4.0)
+        calls = []
+        for prog in (0.25, 0.5, 0.75, 1.0):
+            for x in (45.0, 52.0, 57.0, 103.0, 107.0, 112.0, 158.0, 162.0, 168.0, 200.0, 217.0):   # 2+ cm off the edges
+                u, v = telegraph_uv(quad, x, 0.0)
+                calls.append((prog, x, f"AF_Telegraph(float2({u!r}f, {v!r}f), float3(0.f, 0.f, 0.f), "
+                              f"float4(0.f, 220.f, 0.f, 26.f), float4({quad[0]!r}f, {quad[1]!r}f, 0.f, 0.f), "
+                              f"float4(0.f, 0.f, 0.f, 0.f), float4(1.f, 0.f, 0.f, {prog!r}f), float4(0.1f, 0.85f, 0.f, 0.f), "
+                              "float3(1.f, 1.f, 0.f), float3(1.f, 0.f, 0.f), float3(0.f, 0.f, 1.f), float3(1.f, 0.f, 0.f), "
+                              f"float3(1.f, 0.f, 0.f), 0.f, 160.f, {look['FrontWidthCm']!r}f, 120.f, 60.f, rim, ss, fill, ss)"))
+        main = ("int main() {\n    Texture2D rim; rim.Width = 1; rim.Height = 1; rim.Texels = { float4(1.f, 1.f, 1.f, 1.f) };\n"
+                "    Texture2D fill; fill.Width = 1; fill.Height = 1; fill.Texels = { float4(1.f, 1.f, 1.f, 1.f) };\n"
+                "    SamplerState ss;\n"
+                + "\n".join(f"    {{ float4 o = {c}; std::printf(\"%.6f %.6f\\n\", o.w, o.z); }}" for _, _, c in calls)
+                + "\n    return 0;\n}")
+        out = [list(map(float, line.split())) for line in compile_and_run(cpp_unit([node], main), run=True).splitlines()
+               if line.strip()]
+        for (prog, x, _), (alpha, blue) in zip(calls, out):
+            with self.subTest(progress=prog, x=x):
+                front = prog * 220.0
+                if x > front:
+                    self.assertEqual(alpha, 0.0)          # not reached yet (the rim alpha is 0 in this call)
+                elif x >= front - look["FrontWidthCm"]:
+                    self.assertAlmostEqual(alpha, 0.85, places=5)   # the bright front band
+                    self.assertAlmostEqual(blue, 1.0, places=5)     # FrontColor (blue here)
+                else:
+                    self.assertAlmostEqual(alpha, 0.1, places=5)
+                    self.assertAlmostEqual(blue, 0.0, places=5)     # FillColor (yellow here) x grain 1
+
+
 if __name__ == "__main__":
     unittest.main()
