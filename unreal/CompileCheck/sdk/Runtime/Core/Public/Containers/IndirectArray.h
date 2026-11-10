@@ -1,6 +1,7 @@
 // Stub SDK. Real header: Engine/Source/Runtime/Core/Public/Containers/IndirectArray.h (UE 5.x source knowledge).
-// TIndirectArray<T>: an array of heap-allocated T that it owns, indexed as T&. Only counting and indexing are declared
-// (what the module does with FSkeletalMeshRenderData::LODRenderData); iteration and mutation are added when needed.
+// TIndirectArray<T>: an array of heap-allocated T that it owns, indexed as T&. Counting, indexing and the range-for
+// iterators (TDereferencingIterator over the pointer array, yielding T& / const T&) are declared; mutation is added
+// when the module needs it.
 #pragma once
 
 #include "CoreTypes.h"
@@ -25,6 +26,11 @@ public:
 	const T& operator[](int32 Index) const UE_STUB_BODY
 	/** Tests if index is in range. */
 	bool IsValidIndex(int32 Index) const UE_STUB_BODY
+	/** STL-like iterators to enable range-based for loop support (the engine's own bodies). */
+	TDereferencingIterator<ElementType, typename InternalArrayType::RangedForIteratorType> begin() { return TDereferencingIterator<ElementType, typename InternalArrayType::RangedForIteratorType>(Array.begin()); }
+	TDereferencingIterator<const ElementType, typename InternalArrayType::RangedForConstIteratorType> begin() const { return TDereferencingIterator<const ElementType, typename InternalArrayType::RangedForConstIteratorType>(Array.begin()); }
+	TDereferencingIterator<ElementType, typename InternalArrayType::RangedForIteratorType> end() { return TDereferencingIterator<ElementType, typename InternalArrayType::RangedForIteratorType>(Array.end()); }
+	TDereferencingIterator<const ElementType, typename InternalArrayType::RangedForConstIteratorType> end() const { return TDereferencingIterator<const ElementType, typename InternalArrayType::RangedForConstIteratorType>(Array.end()); }
 private:
 	InternalArrayType Array;
 };

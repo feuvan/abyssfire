@@ -37,6 +37,8 @@ python3 unreal/CompileCheck/tools/sdk_usage.py --only World --baseline Framework
 
 Needs `clang++` (18 used here; `--cxx` / `ABYSS_CC_CXX` to choose) and `python3`. Results are cached per translation
 unit (dependency files), so a re-run after an edit only recompiles what the edit reaches; `--force` ignores the cache.
+A result that stopped at a missing header is never reused (the dependency file cannot name a header that did not exist
+yet), so a file is compiled again as soon as the SDK gains the header.
 Output: per-configuration pass counts, the diagnostics merged across configurations (errors, warnings UE turns into
 errors, `-Wshadow` findings, plain warnings), a summary table by area, and `build/report.json`,
 `build/uht_report.json`, `build/compile_commands.json`.
@@ -175,6 +177,11 @@ Every diagnostic gets one of three verdicts; none is silenced.
   (`WIDECHAR` is `TCHAR` on the checked platforms; `wchar_t`, `uint16`, `uint32` are not characters here), never over
   "anything that converts to `TCHAR`". When the explicitness is not known, declare it `explicit` (the strict side) and
   note it in `API_UNCERTAIN.md`.
+- **An overload set is API too.** One overload declared where the engine has two rejects valid calls of the other (the
+  strict side), but it also ACCEPTS a call the engine finds ambiguous: a braced list, or a type that converts to both
+  parameter types. When a second overload is believed to exist and cannot be confirmed, record it in
+  `API_UNCERTAIN.md` and check that the module's calls pass the exact parameter type (as for
+  `UMaterialParameterCollectionInstance::SetVectorParameterValue`).
 - **Keep unverifiable surface small.** A member without a `UFUNCTION` / `UPROPERTY` marker cannot be cross-checked:
   declare it when the module uses it, not because the engine has it. `python3 tools/sdk_usage.py` (libclang through
   ctypes, no package needed) lists the SDK declarations a set of module files really uses, `--baseline` subtracts what
@@ -207,7 +214,8 @@ warning, UHT accepts it as `int`), `preprocessor` (no reflection macro inside `#
 `./run.sh --selftest` copies the module to `<build>/selftest`, plants one fault per kind (wrong engine argument type,
 missing include, `.h` / `.cpp` signature mismatch, a module removed from `Build.cs`, an include after the generated
 header, a `UPROPERTY` inside `#if PLATFORM_IOS`, a `bool` bitfield `UPROPERTY`, a `virtual` BlueprintImplementableEvent,
-the same anonymous-namespace helper in two files for the unity build) and requires each to be reported at the planted
+the same anonymous-namespace helper in two files for the unity build, a parameter named like a member of its class
+(`-Wshadow`), an audio component call with a wrong argument) and requires each to be reported at the planted
 place; runs `tools/stub_bodies.py` on a probe header that holds every declaration shape (it must find exactly the
 body-less templates, give them bodies and leave the rest alone, keep a `// no-body:` declaration, and report exactly
 the stub-bodied templates with an unconstrained explicit type parameter); then compiles `tests/negative_cases.cpp` once

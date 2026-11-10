@@ -329,7 +329,10 @@ class Checker:
                 with open(res, encoding='utf-8') as f:
                     cached = json.load(f)
                 deps = parse_depfile(dep) + ([pch] if pch else [])
-                if cached.get('key') == key and deps and newest_mtime(deps) <= os.path.getmtime(res):
+                # A result that stopped at a missing header is never reused: the dependency file cannot name a header
+                # that did not exist, so adding it (the usual next step) would otherwise leave the stale failure.
+                missing = any('file not found' in d.get('message', '') for d in cached.get('diagnostics', []))
+                if cached.get('key') == key and deps and not missing and newest_mtime(deps) <= os.path.getmtime(res):
                     cached['cached'] = True
                     return cached
             except (ValueError, OSError):

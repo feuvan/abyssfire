@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
 #include "Misc/CoreDelegates.h"
@@ -1262,7 +1263,8 @@ bool UAbyssAudioSystem::ComputeVirtualEmitter(const FVector2D& Tile, FVector& Ou
 	// the azimuth of an emitter VirtualDistanceCm from the listener in its own front / right plane: elevation 0, no
 	// distance loss (the attenuation only spatialises). The listener is the player controller's (the camera unless an
 	// override is set), so the panning follows whatever the engine uses.
-	const APlayerController* PC = GetListenerController();
+	// Not const: GetAudioListenerPosition is a const member only in newer engines (CompileCheck/API_UNCERTAIN.md #6).
+	APlayerController* PC = GetListenerController();
 	if (PC == nullptr)
 	{
 		return false;
@@ -2591,7 +2593,7 @@ void UAbyssAudioSystem::HandleMonsterFlee(const abyss::EvMonsterFlee& Event)
 	}
 }
 
-void UAbyssAudioSystem::PlayStinger(FName Asset, double DuckDb, double DuckInSec, double DuckOutSec)
+void UAbyssAudioSystem::PlayStinger(FName Asset, double DuckDb, double DuckFadeInSec, double DuckFadeOutSec)
 {
 	USoundBase* Sound = GetSound(Asset, AbyssAudioSystemPrivate::StingerFolder);
 	UWorld* AudioWorld = GetAudioWorld();
@@ -2620,8 +2622,8 @@ void UAbyssAudioSystem::PlayStinger(FName Asset, double DuckDb, double DuckInSec
 	EncounterStingerComponent->Play();
 	// The stinger's own duck (musicDirector.stingers.<id>.duck), released when it ends (TickDuck).
 	EncounterDuck.Db = static_cast<float>(DuckDb);
-	EncounterDuck.InSec = static_cast<float>(FMath::Max(0.0, DuckInSec));
-	EncounterDuck.OutSec = static_cast<float>(FMath::Max(0.0, DuckOutSec));
+	EncounterDuck.InSec = static_cast<float>(FMath::Max(0.0, DuckFadeInSec));
+	EncounterDuck.OutSec = static_cast<float>(FMath::Max(0.0, DuckFadeOutSec));
 	bEncounterDucking = true;
 	SetDuck(EncounterDuck);
 }

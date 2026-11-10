@@ -138,6 +138,15 @@ public:
 	virtual bool InputTouch(uint32 Handle, ETouchType::Type Type, const FVector2D& TouchLocation, float Force, FDateTime DeviceTimestamp, uint32 TouchpadIndex);
 	FString ConsoleCommand(const FString& Command, bool bWriteToLog = true);
 	virtual void GetPlayerViewPoint(FVector& Location, FRotator& Rotation) const;
+#if !(defined(UE_STUB_UNVERIFIED_NO_CONST_AUDIO_LISTENER_POSITION) && UE_STUB_UNVERIFIED_NO_CONST_AUDIO_LISTENER_POSITION)
+	// UNVERIFIED (API_UNCERTAIN.md #6): the const qualifier (believed to be the 5.x form; not reflected). The module
+	// calls it on a non-const controller (Private/Audio/AbyssAudioSystem.cpp), which is valid for both forms.
+	/** Get audio listener position and orientation. */
+	virtual void GetAudioListenerPosition(FVector& OutLocation, FVector& OutFrontDir, FVector& OutRightDir) const;
+	// end UNVERIFIED
+#else
+	virtual void GetAudioListenerPosition(FVector& OutLocation, FVector& OutFrontDir, FVector& OutRightDir);
+#endif
 	virtual bool ShouldShowMouseCursor() const;
 	virtual EMouseCursor::Type GetMouseCursor() const;
 	void SetShowMouseCursor(bool bShow);

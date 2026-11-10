@@ -121,11 +121,34 @@ FAULTS = [
         'expect': r"redefinition of 'AbyssPlantedUnityHelper'",
         'run': 'C',
     },
+    {
+        'name': 'a parameter that shadows a member (-Wshadow)',
+        'what': 'UAbyssAudioSystem::PlayStinger with a parameter named like the member DuckInSec: -Wshadow, an error with '
+                'BuildSettingsVersion.Latest (the bug CC3 found in this function)',
+        'file': 'Private/Audio/AbyssAudioSystem.cpp',
+        'find': 'void UAbyssAudioSystem::PlayStinger(FName Asset, double DuckDb, double DuckFadeInSec, double DuckFadeOutSec)\n{\n',
+        'replace': 'void UAbyssAudioSystem::PlayStinger(FName Asset, double DuckDb, double DuckInSec, double DuckFadeOutSec)\n{\n'
+                   '\tconst double DuckFadeInSec = DuckInSec;\n',
+        'expect_file': 'Private/Audio/AbyssAudioSystem.cpp',
+        'expect': r"declaration shadows a field of 'UAbyssAudioSystem'",
+        'run': 'D',
+    },
+    {
+        'name': 'wrong audio component argument',
+        'what': 'UAudioComponent::FadeOut(Duration, Level, Curve) called without the level: the curve enum is not a float',
+        'file': 'Private/Audio/AbyssAudioSystem.cpp',
+        'find': 'AmbienceComponent->FadeOut(FadeOutSec, 0.f, EAudioFaderCurve::Linear);',
+        'replace': 'AmbienceComponent->FadeOut(FadeOutSec, EAudioFaderCurve::Linear);',
+        'expect_file': 'Private/Audio/AbyssAudioSystem.cpp',
+        'expect': r"cannot initialize a parameter of type 'float' with an rvalue of type 'EAudioFaderCurve'",
+        'run': 'D',
+    },
 ]
 RUNS = {
     'A': ['Private/Input/AbyssPicking.cpp', 'Private/Anim/AbyssAnimInstance.cpp', 'Private/Framework/AbyssGameMode.cpp'],
     'B': ['Private/Input/AbyssInputConfig.cpp', 'Private/Input/AbyssInputSubsystem.cpp'],
     'C': ['Private/World/AbyssWorldTypes.cpp', 'Private/Vfx/AbyssVfxDefaults.cpp'],
+    'D': ['Private/Audio/AbyssAudioSystem.cpp'],
 }
 
 

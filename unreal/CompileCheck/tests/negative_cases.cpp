@@ -19,6 +19,7 @@
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
+#include "Components/AudioComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -38,6 +39,8 @@
 #include "RHI.h"
 #include "Rendering/SkeletalMeshLODRenderData.h"
 #include "Rendering/SkeletalMeshRenderData.h"
+#include "Sound/SoundAttenuation.h"
+#include "Sound/SoundBase.h"
 #include "Input/DragAndDrop.h"
 #include "Input/Events.h"
 #include "Kismet/GameplayStatics.h"
@@ -744,5 +747,94 @@ void NegativeWorldCases(UWorld* World, UInstancedStaticMeshComponent* Instances,
 	Skeletal->SetStaticMesh(RawMesh);
 #elif CASE == 141  // EXPECT: cannot initialize a parameter of type 'EAllowShrinking' with an rvalue of type 'bool'|no matching member function for call to 'RemoveAtSwap'
 	Floats.RemoveAtSwap(0, 1, false);                                   // the bool form is deprecated in 5.4+: EAllowShrinking::No
+#endif
+}
+
+// ---- CC3: audio (components, sounds, attenuation, the 2D / located spawn helpers), TIndirectArray iteration, -Wshadow on fields ----
+class USoundWave;   // Sound/SoundWave.h is not included: the class is incomplete here, as in a module file that forgot it
+
+class FNegativeDuck
+{
+public:
+	void SetDuck(float Db, float InSec);
+	float DuckInSec = 0.f;
+};
+#if CASE == 0
+void FNegativeDuck::SetDuck(float Db, float InSec) { DuckInSec = InSec + Db; }
+#elif CASE == 155  // EXPECT: declaration shadows a field of 'FNegativeDuck'
+void FNegativeDuck::SetDuck(float Db, float DuckInSec) { (void)Db; (void)DuckInSec; }   // a parameter named like a member: -Wshadow, an error in UE
+#endif
+
+void NegativeAudioCases(UWorld* World, UAudioComponent* Voice, const UAudioComponent* ConstVoice, USoundBase* Sound, USoundWave* Wave,
+	USoundAttenuation* Attenuation, APlayerController* Controller, USkeletalMesh* SkeletalMesh, const FSkeletalMeshRenderData* ConstRenderData)
+{
+	FVector Location, Front, Right;
+	FRotator Rotation;
+#if CASE == 0
+	// 2D and located one-shots / persistent components (UGameplayStatics), then the component's transport
+	UAudioComponent* Music = UGameplayStatics::CreateSound2D(World, Sound, 1.f, 1.f, 0.f, nullptr, /*bPersistAcrossLevelTransition*/ true, /*bAutoDestroy*/ false);
+	UAudioComponent* OneShot = UGameplayStatics::SpawnSound2D(World, Sound, 0.8f);
+	UAudioComponent* Located = UGameplayStatics::SpawnSoundAtLocation(World, Sound, Location, FRotator::ZeroRotator, 1.f, 1.f, 0.f, Attenuation, nullptr, true);
+	Music->bIsUISound = true;
+	Music->bAllowSpatialization = false;
+	Music->SetSound(Sound);
+	Music->SetVolumeMultiplier(Music->VolumeMultiplier * 0.5f);
+	Music->FadeIn(1.f, 1.f, 12.f, EAudioFaderCurve::Linear);
+	Music->FadeIn(1.f);
+	Music->FadeOut(2.f, 0.f);
+	Music->FadeOut(2.f, 0.f, EAudioFaderCurve::Logarithmic);
+	Music->Play();
+	Music->Play(3.f);
+	Music->SetPaused(true);
+	Music->Stop();
+	const bool bSounding = ConstVoice->IsPlaying() && ConstVoice->GetPlayState() != EAudioComponentPlayState::Paused;
+	Located->SetWorldLocation(Location);
+	OneShot->DestroyComponent();
+	TWeakObjectPtr<UAudioComponent> Weak = Voice;
+	TObjectPtr<UAudioComponent> Kept = Music;
+	// sounds and attenuation assets
+	const float Seconds = Sound->Duration > 0.f ? Sound->Duration : 0.f;
+	const bool bLoops = Sound->IsLooping();
+	FSoundAttenuationSettings& Settings = Attenuation->Attenuation;
+	Settings.bAttenuate = false;
+	Settings.bSpatialize = true;
+	Settings.FalloffDistance = 4000.f;
+	// the listener (callable on a non-const controller whichever constness the engine has, API_UNCERTAIN.md #6)
+	Controller->GetAudioListenerPosition(Location, Front, Right);
+	// TIndirectArray iterates as its elements (const elements through a const array)
+	for (FSkeletalMeshLODRenderData& Lod : SkeletalMesh->GetResourceForRendering()->LODRenderData) { (void)Lod.RenderSections.Num(); }
+	for (const FSkeletalMeshLODRenderData& Lod : ConstRenderData->LODRenderData) { (void)Lod.RenderSections.Num(); }
+	FNegativeDuck().SetDuck(-6.f, 0.5f);
+	(void)bSounding; (void)Weak; (void)Kept; (void)Seconds; (void)bLoops; (void)Wave; (void)Rotation;
+#elif CASE == 142  // EXPECT: binding reference of type 'FSkeletalMeshLODRenderData' to value of type 'const FSkeletalMeshLODRenderData' drops 'const' qualifier
+	for (FSkeletalMeshLODRenderData& Lod : ConstRenderData->LODRenderData) { (void)Lod; }   // a const array yields const elements
+#elif CASE == 143  // EXPECT: non-const lvalue reference to type 'FString' cannot bind to a value of unrelated type 'FSkeletalMeshLODRenderData'
+	for (FString& Lod : SkeletalMesh->GetResourceForRendering()->LODRenderData) { (void)Lod; } // the elements, not the stored pointers or anything else
+#elif CASE == 144  // EXPECT: cannot initialize a parameter of type 'float' with an rvalue of type 'EAudioFaderCurve'
+	Voice->FadeOut(1.f, EAudioFaderCurve::Linear);                      // FadeOut(Duration, TargetLevel, Curve): the level is not optional
+#elif CASE == 145  // EXPECT: too few arguments to function call
+	Voice->FadeOut(1.f);
+#elif CASE == 146  // EXPECT: cannot initialize a parameter of type 'float' with an lvalue of type 'USoundBase \*'
+	Voice->Play(Sound);                                                 // Play takes the start time: SetSound sets the sound
+#elif CASE == 147  // EXPECT: cannot initialize a parameter of type 'USoundBase \*' with an lvalue of type 'USoundAttenuation \*'
+	Voice->SetSound(Attenuation);
+#elif CASE == 148  // EXPECT: cannot initialize a parameter of type '(const )?EAudioFaderCurve' with an rvalue of type 'int'
+	Voice->FadeIn(1.f, 1.f, 0.f, 0);                                    // the curve is a scoped enum
+#elif CASE == 149  // EXPECT: no viable conversion from 'FVector2D'
+	(void)UGameplayStatics::SpawnSoundAtLocation(World, Sound, FVector2D(1.0, 2.0)); // a world location is an FVector
+#elif CASE == 150  // EXPECT: cannot initialize a parameter of type 'USoundConcurrency \*' with an lvalue of type 'USoundAttenuation \*'
+	(void)UGameplayStatics::SpawnSound2D(World, Sound, 1.f, 1.f, 0.f, Attenuation); // 2D sounds take no attenuation: the sixth argument is the concurrency
+#elif CASE == 151  // EXPECT: no member named 'bSpatialize' in 'USoundAttenuation'
+	Attenuation->bSpatialize = true;                                    // the flags live in the Attenuation settings struct
+#elif CASE == 152  // EXPECT: 'this' argument to member function 'Stop' has type 'const UAudioComponent'
+	ConstVoice->Stop();
+#elif CASE == 153  // EXPECT: cannot initialize a variable of type 'USoundBase \*' with an lvalue of type 'USoundWave \*'
+	USoundBase* AsBase = Wave;                                          // incomplete class: the derived-to-base conversion needs Sound/SoundWave.h
+#elif CASE == 154  // EXPECT: cannot bind to a value of unrelated type 'FRotator'
+	Controller->GetAudioListenerPosition(Location, Rotation, Right);    // location, front and right vectors
+#elif CASE == 156  // EXPECT: no viable conversion from 'USoundBase \*' to 'TWeakObjectPtr<UAudioComponent>'
+	TWeakObjectPtr<UAudioComponent> Weak = Sound;
+#elif CASE == 157  // EXPECT: no member named 'SetPaused' in 'USoundBase'
+	Sound->SetPaused(true);                                             // pausing is the component's
 #endif
 }

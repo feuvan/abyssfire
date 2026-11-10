@@ -16,6 +16,17 @@
 #include "Containers/AllowShrinking.h"
 #include <initializer_list>
 
+/** Iterator over an array of pointers that yields the pointees (TIndirectArray's range-for; the engine's own body). */
+template <typename ElementType, typename IteratorType>
+struct TDereferencingIterator
+{
+	explicit TDereferencingIterator(IteratorType InIter) : Iter(InIter) {}
+	ElementType& operator*() const { return *(ElementType*)*Iter; }
+	TDereferencingIterator& operator++() { ++Iter; return *this; }
+private:
+	IteratorType Iter;
+	friend bool operator!=(const TDereferencingIterator& Lhs, const TDereferencingIterator& Rhs) { return Lhs.Iter != Rhs.Iter; }
+};
 
 template <typename InElementType, typename InAllocatorType>
 class TArray

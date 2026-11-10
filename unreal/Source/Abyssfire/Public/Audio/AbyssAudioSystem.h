@@ -224,7 +224,7 @@ private:
 	 * time: a new one cuts the last) with its own duck, released when it ends (TickDuck). Encounter and boss phase
 	 * stingers share it. Plain values: this public header cannot name the private AbyssMusicRules types.
 	 */
-	void PlayStinger(FName Asset, double DuckDb, double DuckInSec, double DuckOutSec);
+	void PlayStinger(FName Asset, double DuckDb, double DuckFadeInSec, double DuckFadeOutSec);
 
 	// ---- music ----
 	struct FMusicVoice
