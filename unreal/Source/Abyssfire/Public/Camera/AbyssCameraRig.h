@@ -17,6 +17,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Math/RandomStream.h"
 
 #include "AbyssCameraRig.generated.h"
 

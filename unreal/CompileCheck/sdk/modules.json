@@ -1,0 +1,27 @@
+{
+ "_comment": "Engine modules of the stub SDK: include roots (relative to sdk/) and PUBLIC dependencies, as in each module's .Build.cs (from UE 5.x source knowledge; names without a stub in sdk/ are listed for documentation and ignored). tools/compile_check.py gives the Abyssfire module the roots of the modules its Abyssfire.Build.cs lists plus, transitively, their public dependencies - what UBT does. A header of a module outside that closure is not found.",
+ "modules": {
+  "Core": {"roots": ["Runtime/Core/Public"], "public_deps": []},
+  "CoreUObject": {"roots": ["Runtime/CoreUObject/Public"], "public_deps": ["Core"]},
+  "InputCore": {"roots": ["Runtime/InputCore/Classes"], "public_deps": ["Core", "CoreUObject"]},
+  "ApplicationCore": {"roots": ["Runtime/ApplicationCore/Public"], "public_deps": ["Core"]},
+  "SlateCore": {"roots": ["Runtime/SlateCore/Public"], "public_deps": ["Core", "CoreUObject", "InputCore", "Json", "TraceLog"]},
+  "Slate": {"roots": ["Runtime/Slate/Public"], "public_deps": ["Core", "CoreUObject", "InputCore", "Json", "SlateCore", "ImageWrapper"]},
+  "RHI": {"roots": ["Runtime/RHI/Public"], "public_deps": ["Core", "TraceLog", "ApplicationCore"]},
+  "RenderCore": {"roots": ["Runtime/RenderCore/Public"], "public_deps": ["Core", "CoreUObject", "RHI"]},
+  "DeveloperSettings": {"roots": ["Runtime/DeveloperSettings/Public"], "public_deps": ["Core", "CoreUObject"]},
+  "PhysicsCore": {"roots": ["Runtime/PhysicsCore/Public"], "public_deps": ["Core", "CoreUObject"]},
+  "AudioExtensions": {"roots": ["Runtime/AudioExtensions/Public"], "public_deps": ["Core", "CoreUObject"]},
+  "AudioMixer": {"roots": ["Runtime/AudioMixer/Public", "Runtime/AudioMixer/Classes"], "public_deps": ["Core", "CoreUObject"]},
+  "Engine": {"roots": ["Runtime/Engine/Classes", "Runtime/Engine/Public"],
+             "public_deps": ["Core", "CoreOnline", "CoreUObject", "NetCore", "ImageCore", "Json", "JsonUtilities", "SlateCore", "Slate", "InputCore",
+                             "Messaging", "MessagingCommon", "RenderCore", "AnalyticsET", "RHI", "Sockets", "AssetRegistry", "EngineMessages",
+                             "EngineSettings", "SynthBenchmark", "GameplayTags", "PacketHandler", "AudioPlatformConfiguration", "MeshDescription",
+                             "StaticMeshDescription", "SkeletalMeshDescription", "AnimationCore", "PakFile", "NetworkReplayStreaming", "PhysicsCore",
+                             "SignalProcessing", "AudioExtensions", "DeveloperSettings", "AudioLinkCore", "FieldNotification", "TypedElementFramework"]},
+  "EnhancedInput": {"roots": ["Plugins/EnhancedInput/Source/EnhancedInput/Public"],
+                    "public_deps": ["ApplicationCore", "Core", "CoreUObject", "Engine", "InputCore", "Slate", "SlateCore", "DeveloperSettings", "GameplayTags"]},
+  "ProceduralMeshComponent": {"roots": ["Plugins/Runtime/ProceduralMeshComponent/Source/ProceduralMeshComponent/Public"],
+                              "public_deps": ["Core", "CoreUObject", "Engine", "InteractiveToolsFramework", "MeshDescription", "RenderCore", "RHI", "StaticMeshDescription"]}
+ }
+}

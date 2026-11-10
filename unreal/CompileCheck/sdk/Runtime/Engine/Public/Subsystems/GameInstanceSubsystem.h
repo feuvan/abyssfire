@@ -1,0 +1,15 @@
+// Stub SDK. Real header: Engine/Source/Runtime/Engine/Public/Subsystems/GameInstanceSubsystem.h (UE 5.x source knowledge;
+// reflected class: checked against the 5.6 stub).
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Subsystems/Subsystem.h"
+
+class UGameInstance;
+
+class UGameInstanceSubsystem : public USubsystem
+{
+	UE_STUB_CLASS_BODY(UGameInstanceSubsystem, USubsystem)
+public:
+	UGameInstance* GetGameInstance() const;
+};

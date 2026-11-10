@@ -87,8 +87,10 @@ namespace
 			{
 				return false;
 			}
-			OutMin = OutMin.ComponentMin(Projected);
-			OutMax = OutMax.ComponentMax(Projected);
+			// FVector2D has no ComponentMin / ComponentMax (those are FVector / FIntPoint members): the per-component
+			// minimum / maximum of two 2D vectors are the static FVector2D::Min / Max.
+			OutMin = FVector2D::Min(OutMin, Projected);
+			OutMax = FVector2D::Max(OutMax, Projected);
 		}
 		return true;
 	}

@@ -1,0 +1,398 @@
+// Stub SDK. Real headers: Engine/Source/Runtime/Core/Public/Math/UnrealMathUtility.h and
+// GenericPlatform/GenericPlatformMath.h (FMath derives from FPlatformMath). From UE 5.x source knowledge.
+//
+// The overload shapes are the engine's, because they decide what compiles:
+//   * one-argument float functions (Sin, Cos, Sqrt, Exp, Floor*, ...) exist for float and double only: an int argument
+//     is an ambiguous call;
+//   * FloorToInt / CeilToInt / RoundToInt / TruncToInt return int32 for float and int64 for double (use the *32 forms);
+//   * Min / Max / Clamp are single-type templates; mixed arguments compile only through the engine's mixing overloads
+//     (a floating-point type with anything arithmetic, or two different SIGNED integer types). int32 with uint32 / uint8
+//     / size_t does not compile.
+#pragma once
+
+#include "CoreTypes.h"
+#include "Math/MathFwd.h"
+#include "Math/NumericLimits.h"
+#include "Containers/ContainersFwd.h"
+#include "Templates/UnrealTypeTraits.h"
+
+#undef PI
+#define UE_PI (3.1415926535897932f)
+#define UE_SMALL_NUMBER (1.e-8f)
+#define UE_KINDA_SMALL_NUMBER (1.e-4f)
+#define UE_BIG_NUMBER (3.4e+38f)
+#define UE_EULERS_NUMBER (2.71828182845904523536f)
+#define UE_GOLDEN_RATIO (1.6180339887498948482045868343656381f)
+#define UE_FLOAT_NON_FRACTIONAL (8388608.f)
+#define UE_DOUBLE_PI (3.141592653589793238462643383279502884197169399)
+#define UE_DOUBLE_SMALL_NUMBER (1.e-8)
+#define UE_DOUBLE_KINDA_SMALL_NUMBER (1.e-4)
+#define UE_DOUBLE_BIG_NUMBER (3.4e+38)
+#define UE_DOUBLE_EULERS_NUMBER (2.7182818284590452353602874713526624977572)
+#define UE_MAX_FLT (3.402823466e+38F)
+#define UE_INV_PI (0.31830988618f)
+#define UE_HALF_PI (1.57079632679f)
+#define UE_TWO_PI (6.28318530717f)
+#define UE_PI_SQUARED (9.86960440108f)
+#define UE_DOUBLE_INV_PI (0.31830988618379067154)
+#define UE_DOUBLE_HALF_PI (1.57079632679489661923)
+#define UE_DOUBLE_TWO_PI (6.28318530717958647692)
+#define UE_DOUBLE_PI_SQUARED (9.86960440108935861883)
+#define UE_SQRT_2 (1.4142135623730950488016887242097f)
+#define UE_SQRT_3 (1.7320508075688772935274463415059f)
+#define UE_INV_SQRT_2 (0.70710678118654752440084436210485f)
+#define UE_HALF_SQRT_2 (0.70710678118654752440084436210485f)
+#define UE_DOUBLE_SQRT_2 (1.4142135623730950488016887242097)
+#define UE_DELTA (0.00001f)
+#define UE_DOUBLE_DELTA (0.00001)
+#define UE_FLOAT_NORMAL_THRESH (0.0001f)
+#define UE_THRESH_POINT_ON_PLANE (0.10f)
+#define UE_THRESH_POINTS_ARE_SAME (0.00002f)
+#define UE_THRESH_POINTS_ARE_NEAR (0.015f)
+#define UE_THRESH_NORMALS_ARE_SAME (0.00002f)
+#define UE_THRESH_VECTORS_ARE_NEAR (0.0004f)
+#define UE_THRESH_VECTOR_NORMALIZED (0.01f)
+#define UE_THRESH_QUAT_NORMALIZED (0.01f)
+// Legacy names (UE_DEFINE_LEGACY_MATH_CONSTANT_MACRO_NAMES defaults to 1): any identifier spelled like these is replaced.
+#define PI UE_PI
+#define SMALL_NUMBER UE_SMALL_NUMBER
+#define KINDA_SMALL_NUMBER UE_KINDA_SMALL_NUMBER
+#define BIG_NUMBER UE_BIG_NUMBER
+#define EULERS_NUMBER UE_EULERS_NUMBER
+#define FLOAT_NON_FRACTIONAL UE_FLOAT_NON_FRACTIONAL
+#define DOUBLE_PI UE_DOUBLE_PI
+#define DOUBLE_SMALL_NUMBER UE_DOUBLE_SMALL_NUMBER
+#define DOUBLE_KINDA_SMALL_NUMBER UE_DOUBLE_KINDA_SMALL_NUMBER
+#define DOUBLE_BIG_NUMBER UE_DOUBLE_BIG_NUMBER
+#define MAX_FLT UE_MAX_FLT
+#define INV_PI UE_INV_PI
+#define HALF_PI UE_HALF_PI
+#define TWO_PI UE_TWO_PI
+#define PI_SQUARED UE_PI_SQUARED
+#define DELTA UE_DELTA
+#define FLOAT_NORMAL_THRESH UE_FLOAT_NORMAL_THRESH
+#define THRESH_POINT_ON_PLANE UE_THRESH_POINT_ON_PLANE
+#define THRESH_POINTS_ARE_SAME UE_THRESH_POINTS_ARE_SAME
+#define THRESH_POINTS_ARE_NEAR UE_THRESH_POINTS_ARE_NEAR
+#define THRESH_NORMALS_ARE_SAME UE_THRESH_NORMALS_ARE_SAME
+#define THRESH_VECTORS_ARE_NEAR UE_THRESH_VECTORS_ARE_NEAR
+#define THRESH_VECTOR_NORMALIZED UE_THRESH_VECTOR_NORMALIZED
+#define THRESH_QUAT_NORMALIZED UE_THRESH_QUAT_NORMALIZED
+
+#define UE_STUB_MIX_FLOATS_2_ARGS(Func) \
+	template <typename Arg1, typename Arg2> \
+		requires (std::is_floating_point_v<Arg1> || std::is_floating_point_v<Arg2>) && std::is_arithmetic_v<Arg1> && std::is_arithmetic_v<Arg2> && (!std::is_same_v<Arg1, Arg2>) \
+	static constexpr auto Func(Arg1 X, Arg2 Y) -> decltype(X * Y) { using ArgType = decltype(X * Y); return Func((ArgType)X, (ArgType)Y); }
+#define UE_STUB_MIX_FLOATS_3_ARGS(Func) \
+	template <typename Arg1, typename Arg2, typename Arg3> \
+		requires (std::is_floating_point_v<Arg1> || std::is_floating_point_v<Arg2> || std::is_floating_point_v<Arg3>) \
+			&& std::is_arithmetic_v<Arg1> && std::is_arithmetic_v<Arg2> && std::is_arithmetic_v<Arg3> \
+			&& (!std::is_same_v<Arg1, Arg2> || !std::is_same_v<Arg2, Arg3> || !std::is_same_v<Arg1, Arg3>) \
+	static constexpr auto Func(Arg1 X, Arg2 Y, Arg3 Z) -> decltype(X * Y * Z) { using ArgType = decltype(X * Y * Z); return Func((ArgType)X, (ArgType)Y, (ArgType)Z); }
+#define UE_STUB_MIX_SIGNED_INTS_2_ARGS(Func) \
+	template <typename Arg1, typename Arg2> \
+		requires std::is_signed_v<Arg1> && std::is_integral_v<Arg1> && std::is_signed_v<Arg2> && std::is_integral_v<Arg2> && (!std::is_same_v<Arg1, Arg2>) \
+	static constexpr auto Func(Arg1 X, Arg2 Y) -> decltype(X * Y) { using ArgType = decltype(X * Y); return Func((ArgType)X, (ArgType)Y); }
+#define UE_STUB_RESOLVE_FLOAT_AMBIGUITY_2_ARGS(Func) \
+	template <typename Arg1, typename Arg2> \
+		requires std::is_arithmetic_v<Arg1> && std::is_arithmetic_v<Arg2> && (std::is_floating_point_v<Arg1> || std::is_floating_point_v<Arg2>) && (!std::is_same_v<Arg1, Arg2>) \
+	static auto Func(Arg1 X, Arg2 Y) -> decltype(X * Y);
+#define UE_STUB_RESOLVE_FLOAT_AMBIGUITY_3_ARGS(Func) \
+	template <typename Arg1, typename Arg2, typename Arg3> \
+		requires std::is_arithmetic_v<Arg1> && std::is_arithmetic_v<Arg2> && std::is_arithmetic_v<Arg3> \
+			&& (std::is_floating_point_v<Arg1> || std::is_floating_point_v<Arg2> || std::is_floating_point_v<Arg3>) \
+			&& (!std::is_same_v<Arg1, Arg2> || !std::is_same_v<Arg2, Arg3> || !std::is_same_v<Arg1, Arg3>) \
+	static auto Func(Arg1 X, Arg2 Y, Arg3 Z) -> decltype(X * Y * Z);
+
+template <typename T> struct TCustomLerp { enum { Value = false }; };
+namespace UE::Stub
+{
+	/** What the body of FMath::Lerp(A, B, Alpha) needs: the arithmetic of the general Lerp, or a TCustomLerp type (FQuat,
+	 *  FRotator). FMath::BiLerp is a Lerp of two Lerps and every FMath::Interp* ends in Lerp<T>(A, B, float). */
+	template <typename T, typename AlphaType>
+	concept CLerpableBy = bool(TCustomLerp<T>::Value) || requires(const T& A, const T& B, const AlphaType& Alpha) { (T)(A + Alpha * (B - A)); };
+	template <typename T>
+	concept CLerpable = CLerpableBy<T, float>;
+}
+
+struct FGenericPlatformMath
+{
+	static float LoadHalf(const uint16* Ptr);
+	static void StoreHalf(uint16* Ptr, float Value);
+	static constexpr int32 TruncToInt32(float F) { return (int32)F; }
+	static constexpr int32 TruncToInt32(double F) { return (int32)F; }
+	static constexpr int64 TruncToInt64(double F) { return (int64)F; }
+	static constexpr int32 TruncToInt(float F) { return TruncToInt32(F); }
+	static constexpr int64 TruncToInt(double F) { return TruncToInt64(F); }
+	static float TruncToFloat(float F);
+	static double TruncToDouble(double F);
+	static double TruncToFloat(double F);
+	static int32 FloorToInt32(float F);
+	static int32 FloorToInt32(double F);
+	static int64 FloorToInt64(double F);
+	static int32 FloorToInt(float F);
+	static int64 FloorToInt(double F);
+	static float FloorToFloat(float F);
+	static double FloorToDouble(double F);
+	static double FloorToFloat(double F);
+	static int32 RoundToInt32(float F);
+	static int32 RoundToInt32(double F);
+	static int64 RoundToInt64(double F);
+	static int32 RoundToInt(float F);
+	static int64 RoundToInt(double F);
+	static float RoundToFloat(float F);
+	static double RoundToDouble(double F);
+	static double RoundToFloat(double F);
+	static int32 CeilToInt32(float F);
+	static int32 CeilToInt32(double F);
+	static int64 CeilToInt64(double F);
+	static int32 CeilToInt(float F);
+	static int64 CeilToInt(double F);
+	static float CeilToFloat(float F);
+	static double CeilToDouble(double F);
+	static double CeilToFloat(double F);
+	static int64 RoundToNearestTiesToEven(double F);
+	static float Fractional(float Value);
+	static double Fractional(double Value);
+	static float Frac(float Value);
+	static double Frac(double Value);
+	static float Modf(const float InValue, float* OutIntPart);
+	static double Modf(const double InValue, double* OutIntPart);
+	static float Exp(float Value);
+	static double Exp(double Value);
+	static float Exp2(float Value);
+	static double Exp2(double Value);
+	static float Loge(float Value);
+	static double Loge(double Value);
+	static float LogX(float Base, float Value);
+	static double LogX(double Base, double Value);
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_2_ARGS(LogX)
+	static float Log2(float Value);
+	static double Log2(double Value);
+	static float Fmod(float X, float Y);
+	static double Fmod(double X, double Y);
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_2_ARGS(Fmod)
+	static float Sin(float Value);
+	static double Sin(double Value);
+	static float Asin(float Value);
+	static double Asin(double Value);
+	static float Sinh(float Value);
+	static double Sinh(double Value);
+	static float Cos(float Value);
+	static double Cos(double Value);
+	static float Acos(float Value);
+	static double Acos(double Value);
+	static float Cosh(float Value);
+	static double Cosh(double Value);
+	static float Tan(float Value);
+	static double Tan(double Value);
+	static float Atan(float Value);
+	static double Atan(double Value);
+	static float Tanh(float Value);
+	static double Tanh(double Value);
+	static float Atan2(float Y, float X);
+	static double Atan2(double Y, double X);
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_2_ARGS(Atan2)
+	static float Sqrt(float Value);
+	static double Sqrt(double Value);
+	static float Pow(float A, float B);
+	static double Pow(double A, double B);
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_2_ARGS(Pow)
+	static float InvSqrt(float F);
+	static double InvSqrt(double F);
+	static float InvSqrtEst(float F);
+	static double InvSqrtEst(double F);
+	static bool IsNaN(float A);
+	static bool IsNaN(double A);
+	static bool IsFinite(float A);
+	static bool IsFinite(double A);
+	static bool IsNegativeOrNegativeZero(float A);
+	static bool IsNegativeOrNegativeZero(double A);
+	static int32 Rand();
+	static int32 Rand32();
+	static void RandInit(int32 Seed);
+	static float FRand();
+	static void SRandInit(int32 Seed);
+	static int32 GetRandSeed();
+	static float SRand();
+	static uint32 FloorLog2(uint32 Value);
+	static uint64 FloorLog2_64(uint64 Value);
+	static uint32 CountLeadingZeros(uint32 Value);
+	static uint64 CountLeadingZeros64(uint64 Value);
+	static uint32 CountTrailingZeros(uint32 Value);
+	static uint32 CeilLogTwo(uint32 Arg);
+	static uint32 RoundUpToPowerOfTwo(uint32 Arg);
+	static uint64 RoundUpToPowerOfTwo64(uint64 V);
+	static int32 CountBits(uint64 Bits);
+	static float FloatSelect(float Comparand, float ValueGEZero, float ValueLTZero);
+	static double FloatSelect(double Comparand, double ValueGEZero, double ValueLTZero);
+
+	template <class T> static constexpr T Abs(const T A) { return (A < (T)0) ? -A : A; }
+	template <class T> static constexpr T Sign(const T A) { return (A > (T)0) ? (T)1 : ((A < (T)0) ? (T)-1 : (T)0); }
+	template <class T> static constexpr T Max(const T A, const T B) { return (B < A) ? A : B; }
+	template <class T> static constexpr T Min(const T A, const T B) { return (A < B) ? A : B; }
+	UE_STUB_MIX_FLOATS_2_ARGS(Max)
+	UE_STUB_MIX_FLOATS_2_ARGS(Min)
+	UE_STUB_MIX_SIGNED_INTS_2_ARGS(Max)
+	UE_STUB_MIX_SIGNED_INTS_2_ARGS(Min)
+	template <class T> static T Min(const TArray<T>& Values, int32* MinIndex = nullptr);
+	template <class T> static T Max(const TArray<T>& Values, int32* MaxIndex = nullptr) UE_STUB_BODY
+};
+using FPlatformMath = FGenericPlatformMath;
+
+struct FMath : public FPlatformMath
+{
+	static int32 RandHelper(int32 A);
+	static int64 RandHelper64(int64 A);
+	static int32 RandRange(int32 Min, int32 Max);
+	static int64 RandRange(int64 Min, int64 Max);
+	static float RandRange(float InMin, float InMax);
+	static double RandRange(double InMin, double InMax);
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_2_ARGS(RandRange)
+	static float FRandRange(float InMin, float InMax);
+	static double FRandRange(double InMin, double InMax);
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_2_ARGS(FRandRange)
+	static bool RandBool();
+	static FVector VRand();
+	static FVector VRandCone(FVector const& Dir, float ConeHalfAngleRad);
+	static FVector VRandCone(FVector const& Dir, float HorizontalConeHalfAngleRad, float VerticalConeHalfAngleRad);
+	static FVector2D RandPointInCircle(float CircleRadius);
+	static FVector RandPointInBox(const FBox& Box);
+	static FVector GetReflectionVector(const FVector& Direction, const FVector& SurfaceNormal);
+
+	template <class T, class U> static constexpr bool IsWithin(const T& TestValue, const U& MinValue, const U& MaxValue) { return ((TestValue >= MinValue) && (TestValue < MaxValue)); }
+	template <class T, class U> static constexpr bool IsWithinInclusive(const T& TestValue, const U& MinValue, const U& MaxValue) { return ((TestValue >= MinValue) && (TestValue <= MaxValue)); }
+	static bool IsNearlyEqual(float A, float B, float ErrorTolerance = UE_SMALL_NUMBER);
+	static bool IsNearlyEqual(double A, double B, double ErrorTolerance = UE_DOUBLE_SMALL_NUMBER);
+	template <typename Arg1, typename Arg2>
+		requires std::is_arithmetic_v<Arg1> && std::is_arithmetic_v<Arg2> && (std::is_floating_point_v<Arg1> || std::is_floating_point_v<Arg2>) && (!std::is_same_v<Arg1, Arg2>)
+	static bool IsNearlyEqual(Arg1 A, Arg2 B) UE_STUB_BODY
+	template <typename Arg1, typename Arg2, typename Arg3>
+		requires std::is_arithmetic_v<Arg1> && std::is_arithmetic_v<Arg2> && std::is_arithmetic_v<Arg3>
+			&& (std::is_floating_point_v<Arg1> || std::is_floating_point_v<Arg2> || std::is_floating_point_v<Arg3>)
+			&& (!std::is_same_v<Arg1, Arg2> || !std::is_same_v<Arg2, Arg3> || !std::is_same_v<Arg1, Arg3>)
+	static bool IsNearlyEqual(Arg1 A, Arg2 B, Arg3 ErrorTolerance) UE_STUB_BODY
+	static bool IsNearlyZero(float Value, float ErrorTolerance = UE_SMALL_NUMBER);
+	static bool IsNearlyZero(double Value, double ErrorTolerance = UE_DOUBLE_SMALL_NUMBER);
+	template <typename Arg1, typename Arg2>
+		requires std::is_arithmetic_v<Arg1> && std::is_arithmetic_v<Arg2> && (std::is_floating_point_v<Arg1> || std::is_floating_point_v<Arg2>) && (!std::is_same_v<Arg1, Arg2>)
+	static bool IsNearlyZero(Arg1 Value, Arg2 ErrorTolerance) UE_STUB_BODY
+	static bool IsNearlyEqualByULP(float A, float B, int32 MaxUlps = 4);
+	static bool IsNearlyEqualByULP(double A, double B, int32 MaxUlps = 4);
+	template <typename T> static constexpr bool IsPowerOfTwo(T Value) { return ((Value & (Value - 1)) == (T)0); }
+	static float Floor(float F);
+	static double Floor(double F);
+
+	template <class T> static constexpr T Max3(const T A, const T B, const T C) { return Max(Max(A, B), C); }
+	template <class T> static constexpr T Min3(const T A, const T B, const T C) { return Min(Min(A, B), C); }
+	UE_STUB_MIX_FLOATS_3_ARGS(Max3)
+	UE_STUB_MIX_FLOATS_3_ARGS(Min3)
+	template <class T> static constexpr int32 Max3Index(const T A, const T B, const T C) { return (A > B) ? ((A > C) ? 0 : 2) : ((B > C) ? 1 : 2); }
+	template <class T> static constexpr int32 Min3Index(const T A, const T B, const T C) { return (A < B) ? ((A < C) ? 0 : 2) : ((B < C) ? 1 : 2); }
+	template <class T> static constexpr T Square(const T A) { return A * A; }
+	template <class T> static constexpr T Cube(const T A) { return A * A * A; }
+	template <class T> static constexpr T Clamp(const T X, const T MinValue, const T MaxValue) { return Max(Min(X, MaxValue), MinValue); }
+	UE_STUB_MIX_FLOATS_3_ARGS(Clamp)
+	static constexpr float Clamp(const float X, const float InMin, const float InMax) { return X < InMin ? InMin : X < InMax ? X : InMax; }
+	static constexpr double Clamp(const double X, const double InMin, const double InMax) { return X < InMin ? InMin : X < InMax ? X : InMax; }
+	static constexpr int64 Clamp(const int64 X, const int32 InMin, const int32 InMax) { return X < InMin ? InMin : X < InMax ? X : InMax; }
+	template <typename T> static constexpr T Wrap(const T X, const T Min, const T Max);
+	template <class T> static constexpr T GridSnap(T Location, T Grid);
+	UE_STUB_MIX_FLOATS_2_ARGS(GridSnap)
+	template <class T> static constexpr T DivideAndRoundUp(T Dividend, T Divisor) { return (Dividend + Divisor - 1) / Divisor; }
+	template <class T> static constexpr T DivideAndRoundDown(T Dividend, T Divisor) { return Dividend / Divisor; }
+	template <class T> static constexpr T DivideAndRoundNearest(T Dividend, T Divisor) { return (Dividend >= 0) ? (Dividend + Divisor / 2) / Divisor : (Dividend - Divisor / 2 + 1) / Divisor; }
+	static float Log2(float Value);
+	static double Log2(double Value);
+	template <typename T> static constexpr void SinCos(T* ScalarSin, T* ScalarCos, T Value) requires std::is_floating_point_v<T>;
+	static float FastAsin(float Value);
+	static double FastAsin(double Value);
+
+	template <class T> static constexpr auto RadiansToDegrees(T const& RadVal) -> decltype(RadVal * (180.f / UE_PI)) { return RadVal * (180.f / UE_PI); }
+	static constexpr float RadiansToDegrees(float const& RadVal) { return RadVal * (180.f / UE_PI); }
+	static constexpr double RadiansToDegrees(double const& RadVal) { return RadVal * (180.0 / UE_DOUBLE_PI); }
+	template <class T> static constexpr auto DegreesToRadians(T const& DegVal) -> decltype(DegVal * (UE_PI / 180.f)) { return DegVal * (UE_PI / 180.f); }
+	static constexpr float DegreesToRadians(float const& DegVal) { return DegVal * (UE_PI / 180.f); }
+	static constexpr double DegreesToRadians(double const& DegVal) { return DegVal * (UE_DOUBLE_PI / 180.0); }
+	template <typename T> static T ClampAngle(T AngleDegrees, T MinAngleDegrees, T MaxAngleDegrees) requires std::is_floating_point_v<T> UE_STUB_BODY
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_3_ARGS(ClampAngle)
+	template <typename T, typename T2> requires std::is_floating_point_v<T> || std::is_floating_point_v<T2>
+	static constexpr auto FindDeltaAngleDegrees(T A1, T2 A2) -> decltype(A1 * A2);
+	template <typename T, typename T2> requires std::is_floating_point_v<T> || std::is_floating_point_v<T2>
+	static constexpr auto FindDeltaAngleRadians(T A1, T2 A2) -> decltype(A1 * A2);
+	template <typename T> static constexpr T UnwindRadians(T A) requires std::is_floating_point_v<T>;
+	template <typename T> static constexpr T UnwindDegrees(T A) requires std::is_floating_point_v<T>;
+	static void WindRelativeAnglesDegrees(float InAngle0, float& InOutAngle1);
+	static void WindRelativeAnglesDegrees(double InAngle0, double& InOutAngle1);
+	static float FixedTurn(float InCurrent, float InDesired, float InDeltaRate);
+	// Sqrt / Atan2 / Cos / Sin of T: float or double.
+	template <typename T> requires std::is_floating_point_v<T> static void CartesianToPolar(const T X, const T Y, T& OutRad, T& OutAng) UE_STUB_BODY
+	template <typename T> requires std::is_floating_point_v<T> static void PolarToCartesian(const T Rad, const T Ang, T& OutX, T& OutY) UE_STUB_BODY
+	template <typename T, typename T2 = T> static constexpr auto GetRangePct(T MinValue, T MaxValue, T2 Value) -> decltype(MinValue * Value);
+	template <typename T, typename T2> static auto GetRangePct(UE::Math::TVector2<T> const& Range, T2 Value) -> decltype(Range.X * Value) UE_STUB_BODY
+	template <typename T, typename T2> static auto GetRangeValue(UE::Math::TVector2<T> const& Range, T2 Pct) -> decltype(Range.X * Pct) UE_STUB_BODY
+	template <typename T, typename T2> static auto GetMappedRangeValueClamped(const UE::Math::TVector2<T>& InputRange, const UE::Math::TVector2<T>& OutputRange, const T2 Value) -> decltype(InputRange.X * Value) UE_STUB_BODY
+	template <typename T, typename T2> static auto GetMappedRangeValueUnclamped(const UE::Math::TVector2<T>& InputRange, const UE::Math::TVector2<T>& OutputRange, const T2 Value) -> decltype(InputRange.X * Value) UE_STUB_BODY
+
+	template <typename T, typename U> requires (!bool(TCustomLerp<T>::Value)) && (std::is_floating_point_v<U> || std::is_same_v<T, U>) && (!std::is_same_v<T, bool>)
+	static constexpr T Lerp(const T& A, const T& B, const U& Alpha) { return (T)(A + Alpha * (B - A)); }
+	template <typename T1, typename T2, typename T3> requires (!std::is_same_v<T1, T2>) && (!bool(TCustomLerp<T1>::Value)) && (!bool(TCustomLerp<T2>::Value))
+	static auto Lerp(const T1& A, const T2& B, const T3& Alpha) -> decltype(A * B) UE_STUB_BODY
+	template <typename T, typename U> requires (bool(TCustomLerp<T>::Value))
+	static T Lerp(const T& A, const T& B, const U& Alpha) UE_STUB_BODY
+	// The constraints below are the expressions of the engine's bodies: (T)((A * (1 - Alpha)) + (B * Alpha)); a Lerp of
+	// two Lerps; Lerp<T>(A, B, float) at the end of every Interp*. CubicInterp is not declared (unused by the module).
+	template <class T> requires requires(const T& A, const T& B, double Alpha) { (T)((A * (1.0 - Alpha)) + (B * Alpha)); }
+	static T LerpStable(const T& A, const T& B, double Alpha) UE_STUB_BODY
+	template <class T> requires requires(const T& A, const T& B, float Alpha) { (T)((A * (1.0f - Alpha)) + (B * Alpha)); }
+	static T LerpStable(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T, class U> requires UE::Stub::CLerpableBy<T, U>
+	static T BiLerp(const T& P00, const T& P10, const T& P01, const T& P11, const U& FracX, const U& FracY) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpEaseIn(const T& A, const T& B, float Alpha, float Exp) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpEaseOut(const T& A, const T& B, float Alpha, float Exp) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpEaseInOut(const T& A, const T& B, float Alpha, float Exp) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpStep(const T& A, const T& B, float Alpha, int32 Steps) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpSinIn(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpSinOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpSinInOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpExpoIn(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpExpoOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpExpoInOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpCircularIn(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpCircularOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> requires UE::Stub::CLerpable<T> static T InterpCircularInOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
+	template <class T> static constexpr T SmoothStep(T A, T B, T X) requires std::is_floating_point_v<T>;
+	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_3_ARGS(SmoothStep)
+
+	static FVector VInterpNormalRotationTo(const FVector& Current, const FVector& Target, float DeltaTime, float RotationSpeedDegrees);
+	static FVector VInterpConstantTo(const FVector& Current, const FVector& Target, float DeltaTime, float InterpSpeed);
+	static FVector VInterpTo(const FVector& Current, const FVector& Target, float DeltaTime, float InterpSpeed);
+	static FVector2D Vector2DInterpConstantTo(const FVector2D& Current, const FVector2D& Target, float DeltaTime, float InterpSpeed);
+	static FVector2D Vector2DInterpTo(const FVector2D& Current, const FVector2D& Target, float DeltaTime, float InterpSpeed);
+	static FRotator RInterpConstantTo(const FRotator& Current, const FRotator& Target, float DeltaTime, float InterpSpeed);
+	static FRotator RInterpTo(const FRotator& Current, const FRotator& Target, float DeltaTime, float InterpSpeed);
+	template <typename T1, typename T2 = T1, typename T3 = T2, typename T4 = T3>
+		requires std::is_arithmetic_v<T1> && std::is_arithmetic_v<T2> && std::is_arithmetic_v<T3> && std::is_arithmetic_v<T4>
+	static auto FInterpConstantTo(T1 Current, T2 Target, T3 DeltaTime, T4 InterpSpeed) -> decltype(Current * Target * DeltaTime * InterpSpeed) UE_STUB_BODY
+	template <typename T1, typename T2 = T1, typename T3 = T2, typename T4 = T3>
+		requires std::is_arithmetic_v<T1> && std::is_arithmetic_v<T2> && std::is_arithmetic_v<T3> && std::is_arithmetic_v<T4>
+	static constexpr auto FInterpTo(T1 Current, T2 Target, T3 DeltaTime, T4 InterpSpeed) -> decltype(Current * Target * DeltaTime * InterpSpeed);
+	static FLinearColor CInterpTo(const FLinearColor& Current, const FLinearColor& Target, float DeltaTime, float InterpSpeed);
+	static float MakePulsatingValue(const double InCurrentTime, const float InPulsesPerSecond, const float InPhase = 0.0f);
+	static float PerlinNoise1D(float Value);
+	static float PerlinNoise2D(const FVector2D& Location);
+	static float PerlinNoise3D(const FVector& Location);
+	static FVector LinePlaneIntersection(const FVector& Point1, const FVector& Point2, const FVector& PlaneOrigin, const FVector& PlaneNormal);
+	static FVector LinePlaneIntersection(const FVector& Point1, const FVector& Point2, const FPlane& Plane);
+	static FVector RayPlaneIntersection(const FVector& RayOrigin, const FVector& RayDirection, const FPlane& Plane);
+	static bool SegmentPlaneIntersection(const FVector& StartPoint, const FVector& EndPoint, const FPlane& Plane, FVector& out_IntersectionPoint);
+	static bool SegmentIntersection2D(const FVector& SegmentStartA, const FVector& SegmentEndA, const FVector& SegmentStartB, const FVector& SegmentEndB, FVector& out_IntersectionPoint);
+	static FVector ClosestPointOnSegment(const FVector& Point, const FVector& StartPoint, const FVector& EndPoint);
+	static FVector2D ClosestPointOnSegment2D(const FVector2D& Point, const FVector2D& StartPoint, const FVector2D& EndPoint);
+	static FVector ClosestPointOnLine(const FVector& LineStart, const FVector& LineEnd, const FVector& Point);
+	static float PointDistToSegment(const FVector& Point, const FVector& StartPoint, const FVector& EndPoint);
+	static float PointDistToSegmentSquared(const FVector& Point, const FVector& StartPoint, const FVector& EndPoint);
+	static bool LineBoxIntersection(const FBox& Box, const FVector& Start, const FVector& End, const FVector& Direction);
+	static bool SphereAABBIntersection(const FVector& SphereCenter, const double RadiusSquared, const FBox& AABB);
+	static void ApplyScaleToFloat(float& Dst, const FVector& DeltaScale, float Magnitude = 1.0f);
+};
