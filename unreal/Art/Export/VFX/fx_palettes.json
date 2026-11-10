@@ -238,7 +238,8 @@
   "extra_strong": "#C0283A",
   "curse_aura": "#7A2A90",
   "vampiric": "#6A0F2A",
-  "frozen": "#CFE8FF"
+  "frozen": "#CFE8FF",
+  "unburied": "#D08CFF"
  },
  "spiritColors": {
   "warrior": "#FFB45C",

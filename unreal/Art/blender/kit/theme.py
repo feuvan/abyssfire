@@ -38,8 +38,29 @@ THEMES: dict[str, dict] = {
         "note": "the dark remake 焚境 · The Burning March, Chapter 1; heroes, loot, weapons and pets keep their "
                 "families (ember orange is theirs: DR5)",
     },
+    "pit": {
+        "zones": ("sub_rf_pit",),                            # 信者之坑 / the Pit of the Faithful (chapter1.md §9.2)
+        "parent": "march",                                   # the march underground: <id>@pit, <id>@march, <id>
+        "palettes": {"Monsters": "Monsters_March", "Props": "Props_March", "Foliage": "Foliage_March",
+                     "NPC": "NPC", "Heroes": "Heroes", "Pickups": "Pickups", "Weapons": "Weapons", "Pets": "Pets"},
+        "note": "A13 / 3C: the crypt under the Red Field. Its own terrain style (terrain.pit), wall tile "
+                "(outcrop_plains@pit) and stair (exit_portal@pit); everything else it shows is the march's, so its "
+                "lookups fall back to the parent theme before the plain id (implementation-plan.md 3D notes)",
+    },
 }
 BASE_THEME = "plains"
+
+
+def chain(theme: str | None) -> list[str]:
+    """The themes a zone's lookups try, nearest first: ``pit`` → ``["pit", "march"]``; the base theme / ``None`` →
+    ``[]`` (plain ids only)."""
+    out: list[str] = []
+    while theme and theme != BASE_THEME and theme not in out:
+        if theme not in THEMES:
+            raise ValueError(f"unknown presentation theme {theme!r} (kit.theme.THEMES: {', '.join(THEMES)})")
+        out.append(theme)
+        theme = THEMES[theme].get("parent")
+    return out
 
 
 def themed(game_id: str, theme: str | None) -> str:
@@ -69,10 +90,11 @@ def themed_ids(base_ids, theme: str | None) -> list[str]:
 
 
 def resolve(game_ids: dict, game_id: str, theme: str | None):
-    """The runtime lookup (U1): ``<id>@<theme>`` first, then ``<id>``. ``game_ids`` = manifest ``gameIds``."""
+    """The runtime lookup (U1): ``<id>@<theme>`` first (then its parent themes': :func:`chain`), then ``<id>``.
+    ``game_ids`` = manifest ``gameIds``."""
     base, _ = split(game_id)
-    if theme and theme != BASE_THEME:
-        hit = game_ids.get(f"{base}{SEP}{theme}")
+    for th in chain(theme):
+        hit = game_ids.get(f"{base}{SEP}{th}")
         if hit:
             return hit
     return game_ids.get(base)

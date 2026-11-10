@@ -76,7 +76,8 @@ def variant_names(game_id: str, theme: str | None = "__module__") -> list[str]:
     listing ``<game_id>`` — the runtime lookup (U1) under the presentation theme."""
     th = THEME if theme == "__module__" else theme
     assets = manifest()["assets"]
-    cands = ([f"{game_id}@{th}"] if th else []) + [game_id]
+    from kit import theme as _theme
+    cands = [f"{game_id}@{t}" for t in _theme.chain(th)] + [game_id]     # pit → @pit, @march (the parent), plain
     for gid in cands:
         names = sorted(n for n, e in assets.items() if gid in (e.get("gameIds") or []))
         if names:
@@ -237,14 +238,18 @@ def _dither_shell(mt, opacity: float):
 
 
 def _rim_override(e: dict, name: str):
-    """(colour, alpha) of a manifest slot whose instance overrides the rim (``params`` ``RimOverrideColor``, with
-    ``RimOverride`` > 0), else None — e.g. the breach-blood shells / crust (monsters/breach.py)."""
+    """(colour, alpha, shade cool) of a manifest slot whose instance overrides the rim (``params``
+    ``RimOverrideColor``, with ``RimOverride`` > 0) and / or the cool shade tint (``ShadeCool`` < 1), else None —
+    e.g. the breach-blood shells / crust (monsters/breach.py), the crypt statics (environment/crypt_pit.py)."""
     base = name.split(".")[0]                      # an imported material may come back as "<name>.001"
     for sl in e.get("materialSlots", []):
         if sl.get("name") in (name, base):
             p = sl.get("params") or {}
+            cool = float(p.get("ShadeCool", 1.0))
             if p.get("RimOverrideColor") and float(p.get("RimOverride", 1.0)) > 0:
-                return _rim_hex(p["RimOverrideColor"]), float(p.get("RimOverrideAlpha", shading.RIM_ALPHA))
+                return _rim_hex(p["RimOverrideColor"]), float(p.get("RimOverrideAlpha", shading.RIM_ALPHA)), cool
+            if cool < 1.0:
+                return shading.RIM_HEX, shading.RIM_ALPHA, cool
     return None
 
 
@@ -468,6 +473,11 @@ def ground(tiles: np.ndarray, origin: tuple[int, int], ppt: int = 64, shadows=()
         tex = TM.load_textures()
         layers = T.Layers(tex["tex"], tex["details"])
         img = TM.composite(tiles, layers, ppt=ppt, origin=origin).astype(np.float32)
+    elif THEME == "pit":
+        import terrain_pit as TP                       # the Pit's floor (A13)
+        tex = TP.load_textures()
+        layers = T.Layers(tex["tex"], tex["details"])
+        img = TP.composite(tiles, layers, ppt=ppt, origin=origin).astype(np.float32)
     else:
         tex = T.load_textures()
         layers = T.Layers(tex["tex"], tex["details"])

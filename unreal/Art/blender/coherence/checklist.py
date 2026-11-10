@@ -62,7 +62,7 @@ REMAKE_BUDGET = {"SK_Mon_RisenFootman": (7000, 3000), "SK_Mon_RisenArbalest": (7
                  "SK_Mon_DeserterDrummer": (7000, 3000), "SK_Mon_Gravegnawer": (6100, 3200),
                  "SK_Mon_Bonegorger": (9000, 3300), "SK_Mon_Corpseherd": (9000, 3400),
                  "SK_Mon_Breachclot": (2900, 1500), "SK_Mon_Cinderbloat": (2900, 1500),
-                 "SK_Mon_Valdras": (11000, 4000)}
+                 "SK_Mon_Valdras": (11000, 4000), "SK_Mon_Pitwarden": (7000, 3000)}
 R2_HEIGHT = {"SK_Hero_Warrior": (176, 2), "SK_Hero_Mage": (171, 2), "SK_Hero_Rogue": (162, 2),
              "SK_Mon_Goblin": (92, 2), "SK_Mon_GoblinChief": (117, 2), "SK_Mon_GoblinShaman": (95, 2.5),
              "SK_Mon_Slime": (43, 1.5)}
@@ -111,6 +111,17 @@ class Check:
         if self.ptheme == "plains":
             self.ptheme = None
         self.planned = self._planned_variants()
+
+    def _sub_themes(self) -> dict[str, tuple]:
+        """{theme: zones} of the presentation themes hanging off the zone's own (``kit/theme.py`` ``parent``): the
+        sub-dungeons' looks (``pit`` → ``march``: 信者之坑, A13). Loaded by path (pure Python)."""
+        if not self.ptheme:
+            return {}
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("af_kit_theme", HERE.parent / "kit" / "theme.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return {t: tuple(d.get("zones", ())) for t, d in mod.THEMES.items() if d.get("parent") == self.ptheme}
 
     def _planned_variants(self) -> dict[str, str]:
         """{base game id: planned asset} of the theme's slots (``march/march_palettes.VARIANTS``, pure Python)."""
@@ -511,7 +522,8 @@ class Check:
             miss = [f for f in files if not f or not (EXPORT / f).is_file()]
             self.row("Palettes", fam, [pe.get("material", "")], "GAP" if miss else "OK",
                      f"missing {miss}" if miss else "BC + P atlases")
-        for th in [THEME] + ([self.ptheme] if self.ptheme else []):
+        sub = self._sub_themes()
+        for th in [THEME] + ([self.ptheme] if self.ptheme else []) + sorted(sub):
             ter = self.man.get("terrain", {}).get(th)
             mi = f"MI_AF_Terrain_{pascal(th)}"
             if not ter:
@@ -524,7 +536,8 @@ class Check:
                     files.append(v["file"])
             miss = [f for f in files if not (EXPORT / f).is_file()]
             used = (f"presentation theme of {ZONE}" if th == self.ptheme else
-                    "generator theme; the presentation of zones without a theme (ember_tower)")
+                    f"presentation theme of {', '.join(sub[th])} (a sub-dungeon of {ZONE}; parent theme {self.ptheme})"
+                    if th in sub else "generator theme; the presentation of zones without a theme (ember_tower)")
             self.row("Terrain", th, [mi], "GAP" if miss else "OK",
                      f"missing {miss}" if miss else f"{len(files)} textures ({used})")
         for sp, se in sorted(recipes.get("sprites", {}).items()):

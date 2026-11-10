@@ -462,6 +462,51 @@
     }
    }
   },
+  "SK_Mon_Pitwarden": {
+   "bone": "root",
+   "posM": [
+    0.03109,
+    -0.00695,
+    2.08209
+   ],
+   "restLocCm": [
+    3.109,
+    0.695,
+    208.209
+   ],
+   "relLocCm": [
+    3.109,
+    -208.209,
+    0.695
+   ],
+   "choice": "root left -8 fwd 8 up 12",
+   "offsetCm": {
+    "left": -8,
+    "forward": 8,
+    "up": 12,
+    "frame": "from the W1 fx_overhead, Idle F0 pose, character frame"
+   },
+   "gapsPx": {
+    "base": {
+     "nw": {
+      "trough": 5.0,
+      "rest": 5.4
+     },
+     "sw": {
+      "trough": 8.0,
+      "rest": 11.0
+     },
+     "se": {
+      "trough": 10.0,
+      "rest": 13.0
+     },
+     "ne": {
+      "trough": 6.1,
+      "rest": 9.0
+     }
+    }
+   }
+  },
   "SK_Mon_RisenArbalest": {
    "bone": "root",
    "posM": [

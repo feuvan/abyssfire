@@ -61,7 +61,7 @@
    "rule": "ember",
    "subject": "enemy art (monster emissive / eye swatches, manifest fx)",
    "ok": true,
-   "detail": "117 colours checked; 0 ember"
+   "detail": "122 colours checked; 0 ember"
   }
  ],
  "sides": {
@@ -70,16 +70,16 @@
    "colours": 2132
   },
   "friendly": {
-   "recipes": 30,
-   "colours": 175
+   "recipes": 35,
+   "colours": 202
   },
   "neutral": {
-   "recipes": 22,
-   "colours": 98
+   "recipes": 24,
+   "colours": 105
   },
   "enemy": {
-   "recipes": 51,
-   "colours": 678
+   "recipes": 53,
+   "colours": 747
   }
  },
  "violations": {
@@ -1050,6 +1050,460 @@
        "sat": 0.665,
        "blend": "translucent"
       }
+     ],
+     "notify.FX_PitCollapse": [
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.9,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.765,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2B1C10",
+       "hue": 28.2,
+       "sat": 0.625,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C05",
+       "hue": 24.5,
+       "sat": 0.734,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.8,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.772,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C06",
+       "hue": 24.1,
+       "sat": 0.726,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.9,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.765,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2B1C10",
+       "hue": 28.2,
+       "sat": 0.625,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C05",
+       "hue": 24.5,
+       "sat": 0.734,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.8,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.772,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 3,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C06",
+       "hue": 24.1,
+       "sat": 0.726,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.9,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.765,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2B1C10",
+       "hue": 28.2,
+       "sat": 0.625,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C05",
+       "hue": 24.5,
+       "sat": 0.734,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.8,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.772,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 6,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C06",
+       "hue": 24.1,
+       "sat": 0.726,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.9,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.765,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2B1C10",
+       "hue": 28.2,
+       "sat": 0.625,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C05",
+       "hue": 24.5,
+       "sat": 0.734,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.8,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.772,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 9,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C06",
+       "hue": 24.1,
+       "sat": 0.726,
+       "blend": "translucent"
+      }
+     ],
+     "notify.FX_PitDig": [
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.9,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.765,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2B1C10",
+       "hue": 28.2,
+       "sat": 0.625,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C05",
+       "hue": 24.5,
+       "sat": 0.734,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#1B1008",
+       "hue": 24.8,
+       "sat": 0.695,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#0F0703",
+       "hue": 21.2,
+       "sat": 0.772,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#2D1F11",
+       "hue": 28.4,
+       "sat": 0.616,
+       "blend": "translucent"
+      },
+      {
+       "layer": 0,
+       "what": "Rock",
+       "slot": "color",
+       "source": "fixed #5A4E44 x T_FX_Rock texel",
+       "hex": "#150C06",
+       "hue": 24.1,
+       "sat": 0.726,
+       "blend": "translucent"
+      }
      ]
     },
     "art": [
@@ -1666,6 +2120,11 @@
    "prop.event",
    "prop.gather",
    "prop.lore",
+   "prop.pit_cleanse.embers",
+   "prop.pit_cleanse.mark",
+   "prop.pit_cleanse.niche",
+   "prop.pit_lamp.flame",
+   "prop.pit_lamp.light",
    "prop.soul_echo",
    "quest.pop",
    "reward.gold",
@@ -1676,6 +2135,7 @@
    "ambient.ashfall",
    "ambient.dust",
    "ambient.dust_motes",
+   "ambient.pit_embers",
    "ambient.pollen",
    "ambient.sparks",
    "ambient.wisps",
@@ -1683,6 +2143,7 @@
    "corpse.consume",
    "corpse.crumble",
    "corpse.expire",
+   "exit.portal@pit",
    "exit.sealed",
    "npc.FX_HammerStrike",
    "proj.default",
@@ -1740,6 +2201,8 @@
    "notify.FX_Fuse",
    "notify.FX_Keen",
    "notify.FX_Land",
+   "notify.FX_PitCollapse",
+   "notify.FX_PitDig",
    "notify.FX_Roar",
    "notify.FX_bell_ring",
    "proj.monster_bolt",
@@ -2249,6 +2712,46 @@
   },
   {
    "source": "manifest SK_Mon_OathZealot.fx.telegraph.normal",
+   "hex": "#FFE8DC",
+   "hue": 20.6,
+   "sat": 0.137,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Pitwarden.fx.attackTrail.color",
+   "hex": "#C8C4BC",
+   "hue": 40.0,
+   "sat": 0.06,
+   "val": 0.784,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Pitwarden.fx.eyeGlow.color",
+   "hex": "#D08CFF",
+   "hue": 275.5,
+   "sat": 0.451,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Pitwarden.fx.eyeGlow.coreColor",
+   "hex": "#F4E8FF",
+   "hue": 271.3,
+   "sat": 0.09,
+   "val": 1.0,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Pitwarden.fx.telegraph.elite",
+   "hex": "#D11F2E",
+   "hue": 354.9,
+   "sat": 0.852,
+   "val": 0.82,
+   "ember": false
+  },
+  {
+   "source": "manifest SK_Mon_Pitwarden.fx.telegraph.normal",
    "hex": "#FFE8DC",
    "hue": 20.6,
    "sat": 0.137,

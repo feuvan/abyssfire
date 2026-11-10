@@ -562,7 +562,8 @@ TOON_DEFAULTS = {
     "HitFlash": "0.f", "PainTint": "float3(1.f, 1.f, 1.f)", "PainAmt": "0.f", "Telegraph": "float3(1.f, 1.f, 1.f)",
     "TelegraphAmt": "0.f", "StatusTint": "float3(1.f, 1.f, 1.f)", "StatusAmt": "0.f", "Ghost": "0.f",
     "Highlight": "0.f", "Inst": "float2(0.f, 0.f)", "HighlightColor": "float3(1.f, 1.f, 1.f)",
-    "BaseSaturation": "1.f", "BaseValue": "1.f", "Pw": "float3(0.f, 0.f, 0.f)", "CastShadowStrength": "0.7f",
+    "BaseSaturation": "1.f", "BaseValue": "1.f", "ShadeCool": "1.f", "Pw": "float3(0.f, 0.f, 0.f)",
+    "CastShadowStrength": "0.7f",
     **{f"L{i}": "float4(0.f, 0.f, 0.f, 0.f)" for i in range(8)},
     **{f"C{i}": "float4(0.f, 0.f, 0.f, 0.f)" for i in range(8)},
 }
@@ -846,6 +847,47 @@ std::printf("%d %.9g %.9g %.9g\\n", diff, g.x, g.y, g.z);"""
         want = hlsl.sat_value_reference((112 / 255, 156 / 255, 61 / 255), 0.85, 0.93)
         for got, w in zip(out[1:], want):
             self.assertAlmostEqual(linear_to_srgb1(float(got) / (1 + sh.emissive_boost)) * 255.0, w * 255.0, delta=0.5)
+
+    def test_shade_cool_default_is_exact(self):
+        """ShadeCool 1 leaves AF_Toon / AF_ToonSplit bit-identical; a lower value takes that share of the cool
+        tint out of the shade band only (toon_split_reference), and the lit bands do not move."""
+        sh = manifest_shading()
+        toon, split = hlsl.toon_node(sh), hlsl.toon_split_node(sh)
+        gate = " * saturate(ShadeCool)"
+        old = dataclasses.replace(toon, key="AF_ToonOld", code=toon.code.replace(gate, ""))
+        self.assertEqual(toon.code.count(gate), 1)
+        self.assertEqual(split.code.count(gate), 1)
+        shade_n, lit_n = (0.6, 0.6, -0.5), tuple(sh.key_light)      # turned from the key light / facing it
+        body = f"""
+const float3 bases[] = {{ {", ".join(self.base_lin(b) for b in self.BASES)} }};
+const float3 nrms[] = {{ {", ".join(f3(n) for n in self.NORMALS)} }};
+int diff = 0;
+for (const float3& base : bases) for (const float3& nrm : nrms) {{
+    float3 a = {cpp_call(toon, {"Base": "base", "N": "nrm"}, TOON_DEFAULTS)};
+    float3 b = {cpp_call(old, {"Base": "base", "N": "nrm"}, TOON_DEFAULTS)};
+    diff += std::memcmp(&a, &b, sizeof(a)) != 0;
+}}
+float3 lit;
+float3 e = {cpp_call(split, {"Base": self.base_lin("#4A4642"), "P": "float4(0.3f, 0.16f, 0.f, 1.f)", "N": f3(shade_n),
+                             "ShadeCool": "0.3f", "CastShadowStrength": "0.f", "Lit": "lit"}, TOON_DEFAULTS)};
+float3 l1 = {cpp_call(toon, {"Base": self.base_lin("#4A4642"), "P": "float4(0.3f, 0.16f, 0.f, 1.f)", "N": f3(lit_n),
+                             "V": f3(lit_n), "ShadeCool": "0.3f"}, TOON_DEFAULTS)};
+float3 l0 = {cpp_call(toon, {"Base": self.base_lin("#4A4642"), "P": "float4(0.3f, 0.16f, 0.f, 1.f)", "N": f3(lit_n),
+                             "V": f3(lit_n)}, TOON_DEFAULTS)};
+std::printf("%d %.9g %.9g %.9g %d\\n", diff, e.x, e.y, e.z, std::memcmp(&l1, &l0, sizeof(l0)) == 0);"""
+        out = self.run_cpp([toon, old, split], body)[0].split()
+        self.assertEqual(int(out[0]), 0)
+        self.assertEqual(int(out[4]), 1)
+        srgb = (0x4A / 255, 0x46 / 255, 0x42 / 255)
+        emit, _ = hlsl.toon_split_reference(sh, srgb, (0.3, 0.16, 0.0), shade_n, (0.4545, -0.4545, 0.766),
+                                            cast_shadow=0.0, shade_cool=0.3)
+        full, _ = hlsl.toon_split_reference(sh, srgb, (0.3, 0.16, 0.0), shade_n, (0.4545, -0.4545, 0.766),
+                                            cast_shadow=0.0)
+        for got, w in zip(out[1:4], emit):
+            self.assertAlmostEqual(float(got), w, delta=2e-5)
+        # the point of the parameter: the shade keeps the stone's own hue (blue no longer leads red and green)
+        self.assertGreater(full[2], max(full[0], full[1]))
+        self.assertLess(emit[2], emit[0])
 
     def test_ink_scale(self):
         """R3 revised: InkScale 1.5 gives exactly 1.5 x the width; at 2125 cm, T.y = tan(17.5 deg) x 9 / 16, Px 3.5

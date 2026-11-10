@@ -11,6 +11,7 @@
    "l": 0.3215686274509804,
    "names": [
     "camp.charred",
+    "crypt.charred",
     "lore_march.charred",
     "lore_march.pencil",
     "setpiece.charred",
@@ -40,6 +41,7 @@
    "l": 0.23921568627450981,
    "names": [
     "camp.timber",
+    "crypt.timber",
     "setpiece.timber",
     "story.timber"
    ],
@@ -53,6 +55,7 @@
    "l": 0.2980392156862745,
    "names": [
     "camp.timber_end",
+    "crypt.timber_end",
     "setpiece.timber_end",
     "story.timber_end"
    ],
@@ -106,6 +109,7 @@
    "l": 0.23921568627450981,
    "names": [
     "camp.shield",
+    "crypt.shield",
     "setpiece.shield",
     "story.shield"
    ],
@@ -132,6 +136,7 @@
    "l": 0.4,
    "names": [
     "camp.helmet",
+    "crypt.helmet",
     "setpiece.helmet",
     "story.helmet"
    ],
@@ -145,6 +150,7 @@
    "l": 0.4,
    "names": [
     "camp.iron",
+    "crypt.iron",
     "setpiece.iron",
     "story.iron"
    ],
@@ -158,6 +164,7 @@
    "l": 0.3215686274509804,
    "names": [
     "camp.iron_dark",
+    "crypt.iron_dark",
     "setpiece.iron_dark",
     "story.iron_dark"
    ],
@@ -171,6 +178,7 @@
    "l": 0.12156862745098039,
    "names": [
     "camp.nail",
+    "crypt.nail",
     "lore_march.nail",
     "setpiece.nail",
     "story.nail",
@@ -186,6 +194,7 @@
    "l": 0.2980392156862745,
    "names": [
     "camp.rope",
+    "crypt.rope",
     "lore_march.rope",
     "setpiece.rope",
     "story.rope"
@@ -293,6 +302,7 @@
    "l": 0.23921568627450981,
    "names": [
     "camp.stone",
+    "crypt.stone",
     "setpiece.stone",
     "story.stone"
    ],
@@ -333,6 +343,7 @@
    "names": [
     "barrowmoss.earth",
     "camp.ash",
+    "crypt.ash",
     "lore_march.ash",
     "setpiece.ash",
     "story.ash"
@@ -347,6 +358,7 @@
    "l": 0.3215686274509804,
    "names": [
     "camp.soot",
+    "crypt.soot",
     "lore_march.soot",
     "setpiece.soot",
     "story.soot"
@@ -481,6 +493,7 @@
    "i": 35,
    "l": 0.4,
    "names": [
+    "crypt.tag",
     "namewall.tag",
     "setpiece.tag"
    ],
@@ -493,6 +506,7 @@
    "i": 36,
    "l": 0.3215686274509804,
    "names": [
+    "crypt.tag_dark",
     "namewall.tag_dark",
     "setpiece.tag_dark"
    ],
@@ -506,6 +520,7 @@
    "l": 0.0,
    "names": [
     "camp.ember",
+    "crypt.lamp_flame",
     "hearth.ember",
     "story.ember"
    ],
@@ -520,6 +535,7 @@
    "names": [
     "camp.ember_hot",
     "camp.lantern_glow",
+    "crypt.lamp_core",
     "hearth.ember_hot",
     "lantern.glow",
     "story.ember_hot",
@@ -633,6 +649,7 @@
    "l": 0.3215686274509804,
    "names": [
     "camp.lantern",
+    "crypt.lamp_frame",
     "lantern.frame",
     "story.lantern"
    ],
@@ -658,6 +675,7 @@
    "names": [
     "brazier.coals",
     "camp.coals",
+    "crypt.coals",
     "setpiece.coals",
     "story.coals"
    ],
@@ -759,6 +777,7 @@
    "i": 57,
    "l": 0.23921568627450981,
    "names": [
+    "crypt.pit_stone",
     "pit.stone",
     "setpiece.pit_stone"
    ],
@@ -771,6 +790,7 @@
    "i": 58,
    "l": 0.12156862745098039,
    "names": [
+    "crypt.pit_dark",
     "pit.dark",
     "setpiece.pit_dark"
    ],
@@ -783,6 +803,7 @@
    "i": 59,
    "l": 0.0,
    "names": [
+    "crypt.pit_seep",
     "pit.seep",
     "setpiece.pit_seep"
    ],
@@ -1255,6 +1276,7 @@
    "names": [
     "boulder.dark",
     "camp.dark",
+    "crypt.ground_dark",
     "ground.dark",
     "outcrop.dark",
     "rock.dark",
@@ -1560,6 +1582,7 @@
    "i": 124,
    "l": 0.4,
    "names": [
+    "crypt.chain",
     "setpiece.chain"
    ],
    "o": 0.4,
@@ -1615,6 +1638,7 @@
    "i": 129,
    "l": 0.1411764705882353,
    "names": [
+    "crypt.ash_pale",
     "setpiece.ash_pale"
    ],
    "o": 1.0,
@@ -1639,6 +1663,7 @@
    "i": 131,
    "l": 0.1411764705882353,
    "names": [
+    "crypt.char_black",
     "setpiece.char_black"
    ],
    "o": 1.0,
@@ -1717,6 +1742,7 @@
    "i": 138,
    "l": 0.23921568627450981,
    "names": [
+    "crypt.helm_iron",
     "setpiece.helm_iron"
    ],
    "o": 1.0,
@@ -1787,6 +1813,7 @@
    "i": 144,
    "l": 0.12156862745098039,
    "names": [
+    "crypt.ash_poured",
     "setpiece.ash_poured"
    ],
    "o": 1.0,
@@ -1857,6 +1884,270 @@
    ],
    "o": 1.0,
    "s": 0.3215686274509804
+  },
+  {
+   "e": 0.0,
+   "hex": "#4A4642",
+   "i": 151,
+   "l": 0.1607843137254902,
+   "names": [
+    "crypt.wall"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#36332F",
+   "i": 152,
+   "l": 0.12156862745098039,
+   "names": [
+    "crypt.wall_dark"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#5A554F",
+   "i": 153,
+   "l": 0.1607843137254902,
+   "names": [
+    "crypt.wall_lit"
+   ],
+   "o": 1.0,
+   "s": 0.3215686274509804
+  },
+  {
+   "e": 0.0,
+   "hex": "#1C1A19",
+   "i": 154,
+   "l": 0.0784313725490196,
+   "names": [
+    "crypt.joint"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#3C3935",
+   "i": 155,
+   "l": 0.1411764705882353,
+   "names": [
+    "crypt.plinth"
+   ],
+   "o": 1.0,
+   "s": 0.3215686274509804
+  },
+  {
+   "e": 0.0,
+   "hex": "#131110",
+   "i": 156,
+   "l": 0.058823529411764705,
+   "names": [
+    "crypt.top"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#4E4A45",
+   "i": 157,
+   "l": 0.10196078431372549,
+   "names": [
+    "crypt.cap"
+   ],
+   "o": 1.0,
+   "s": 0.3411764705882353
+  },
+  {
+   "e": 0.0,
+   "hex": "#666159",
+   "i": 158,
+   "l": 0.1411764705882353,
+   "names": [
+    "crypt.shrine"
+   ],
+   "o": 1.0,
+   "s": 0.1411764705882353
+  },
+  {
+   "e": 0.0,
+   "hex": "#8A847A",
+   "i": 159,
+   "l": 0.1411764705882353,
+   "names": [
+    "crypt.shrine_edge"
+   ],
+   "o": 1.0,
+   "s": 0.12156862745098039
+  },
+  {
+   "e": 0.0,
+   "hex": "#35312E",
+   "i": 160,
+   "l": 0.10196078431372549,
+   "names": [
+    "crypt.shrine_joint"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#4A4238",
+   "i": 161,
+   "l": 0.1411764705882353,
+   "names": [
+    "crypt.cord"
+   ],
+   "o": 1.0,
+   "s": 0.47843137254901963
+  },
+  {
+   "e": 0.0,
+   "hex": "#16130F",
+   "i": 162,
+   "l": 0.2980392156862745,
+   "names": [
+    "crypt.oil"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#0E0C0A",
+   "i": 163,
+   "l": 0.058823529411764705,
+   "names": [
+    "crypt.wick"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#48443F",
+   "i": 164,
+   "l": 0.1607843137254902,
+   "names": [
+    "crypt.step"
+   ],
+   "o": 1.0,
+   "s": 0.3215686274509804
+  },
+  {
+   "e": 0.0,
+   "hex": "#625D55",
+   "i": 165,
+   "l": 0.1607843137254902,
+   "names": [
+    "crypt.step_worn"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.0,
+   "hex": "#221E1B",
+   "i": 166,
+   "l": 0.10196078431372549,
+   "names": [
+    "crypt.earth"
+   ],
+   "o": 1.0,
+   "s": 0.4
+  },
+  {
+   "e": 0.0,
+   "hex": "#57534D",
+   "i": 167,
+   "l": 0.1411764705882353,
+   "names": [
+    "crypt.drift"
+   ],
+   "o": 1.0,
+   "s": 0.3607843137254902
+  },
+  {
+   "e": 0.0,
+   "hex": "#69645D",
+   "i": 168,
+   "l": 0.1411764705882353,
+   "names": [
+    "crypt.drift_pale"
+   ],
+   "o": 1.0,
+   "s": 0.3607843137254902
+  },
+  {
+   "e": 0.45098039215686275,
+   "hex": "#7A4A26",
+   "i": 169,
+   "l": 0.2,
+   "names": [
+    "lantern.wash"
+   ],
+   "o": 1.0,
+   "s": 0.2
+  },
+  {
+   "e": 0.0,
+   "hex": "#14110F",
+   "i": 170,
+   "l": 0.058823529411764705,
+   "names": [
+    "crypt.shaft"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
+  },
+  {
+   "e": 0.2196078431372549,
+   "hex": "#3E2050",
+   "i": 171,
+   "l": 0.0,
+   "names": [
+    "crypt.seep_dim"
+   ],
+   "o": 1.0,
+   "s": 0.0
+  },
+  {
+   "e": 0.10196078431372549,
+   "hex": "#22152B",
+   "i": 172,
+   "l": 0.0,
+   "names": [
+    "crypt.seep_halo"
+   ],
+   "o": 1.0,
+   "s": 0.0
+  },
+  {
+   "e": 0.0,
+   "hex": "#4B4742",
+   "i": 173,
+   "l": 0.10196078431372549,
+   "names": [
+    "crypt.drift_low"
+   ],
+   "o": 1.0,
+   "s": 0.3411764705882353
+  },
+  {
+   "e": 0.0,
+   "hex": "#3E3B37",
+   "i": 174,
+   "l": 0.058823529411764705,
+   "names": [
+    "crypt.drift_edge"
+   ],
+   "o": 1.0,
+   "s": 0.2980392156862745
   }
  ]
 }

@@ -290,6 +290,19 @@ role in the Pit's fourth room. Mechanics: a spade sweep (cone 100°, r2.2, 700 m
 the spade in: a crimson line of 4 tiles collapses after 800 ms, slow 30 %); two shieldbearers guard him. Art: a footman
 variant with an officer's sash, a gorget and a long spade (~1 task).
 
+*As built (3C, `monsters/pitwarden.py`, `SK_Mon_Pitwarden`, `monster_sub_pitwarden`):* bare-headed (the one Unburied
+without a kettle helm: the officer), a tarnished gorget, a sash over the left shoulder, a 2 m ditching spade stood
+off his right side like a staff of office, canted outward so the blade never covers the bare head (art review r1;
+`SM_MonWeapon_PitSpade` on `weapon_r`; sockets `blade_tip`, `tread`). Clips and beats: `Attack01`
+1250 ms / **Contact 620** (a chop); `Attack02` 1400 ms / **Contact 700** (the sweep: the mini-boss windup floor);
+`Cast01` 1600 ms / Plant 330 (`FX_PitDig`) / **Contact 800** (`FX_PitCollapse`: Dig); `Idle_Order` 3000 ms (he digs a
+pit that is already full, `FX_PitDig` 900); `Rise` 1300, `Death` 1000 (he folds against the planted spade), `Hurt` 320,
+`Stun` 700, `Walk` 1000, `Idle` 1600. One deviation from the A1 palette: the sash is drawn in a new swatch
+`pitwarden.sash_gold` (#7E6A3E, tarnished braid) with the A1 `pitwarden.sash` crimson (#5A1A1C) kept as its lining
+and knot — the crimson sash on the crimson tabard did not read at the W1 camera, and the sash is what tells him from
+a footman (the family marker stays the eyes; the braid is no ember: hue 41°, saturation .51 — outside the ember
+rule's 15-35° band and under its .6). His corpse is never Consumed or raised (`corpse.guard`): his fall is the cleanse's beat.
+
 ### 2.3 The Living (SKEL_Human, living palettes)
 
 The same kit as the Unburied with living palettes and no glow, so the player sees that the dead and the living wore the

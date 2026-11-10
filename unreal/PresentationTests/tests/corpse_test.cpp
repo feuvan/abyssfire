@@ -230,8 +230,9 @@ TEST_SUITE("corpse")
 				StoryBeats.insert(B.StoryBeat);
 			}
 		}
-		CHECK(Blocks == 13);
-		CHECK(Drawn == 11);
+		// Wave 3 art (3C): + SK_Mon_Pitwarden, a guarded Unburied husk (never Consumed, never raised by another monster)
+		CHECK(Blocks == 14);
+		CHECK(Drawn == 12);
 		// only the two story bodies wait for their beat, and each beat is the one their kill triggers
 		CHECK(StoryBeats == std::set<std::string>{ "cs_rf_herd", "cs_rf_marshal_falls" });
 		for (const std::string& Beat : StoryBeats)

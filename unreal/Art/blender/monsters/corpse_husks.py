@@ -31,7 +31,8 @@ presentation only (the core's corpse registry, TTL, raise / consume / burn rules
   the act boss; the guard is permanent, not only while ``holdUntil: story`` holds);
 * ``recipes`` — the A12 ids of the husk timeline; ``items`` — held items dissolve with the body (no weapon lingers);
 * ``previews`` — ``Previews/corpse_husks/<asset>/``: the death pose (+16 ms), the grey done (+830), the crumble
-  (+1280, ``corpse.crumble`` on the husk's centre) and the husk (+2130) at the W1 camera on the march ground
+  (+1280, ``corpse.crumble`` on the husk's centre) and the husk (+2130) at the W1 camera on the march ground — the
+  Pitwarden's on the Pit's dug earth (``PREVIEW_GROUND``) —
   (``M_AF_AshDissolve`` emulated per pixel as ``vfx/fx_preview_dark.py`` does; breach-blood: the death end only).
 """
 from __future__ import annotations
@@ -84,9 +85,17 @@ ROSTER = {
                           "hand on the bell (cs_rf_herd looks at it: the grey waits for the beat)"),
     "SK_Mon_Valdras": ("husk", "unburied", "Rise", "kneeling on the dais, sword point-down, the standard drooped "
                        "(cs_rf_marshal_falls looks at it: the grey waits for the beat)"),
+    "SK_Mon_Pitwarden": ("husk", "unburied", "Rise", "on his knees, folded forward against the spade he planted (the "
+                         "spade stands in the earth and dissolves with him)"),
 }
 STORY_HOLD = {"SK_Mon_Corpseherd": "cs_rf_herd", "SK_Mon_Valdras": "cs_rf_marshal_falls"}
+# bodies nothing eats or raises although no cutscene holds them (the husk timeline runs at once)
+GUARDED = {"SK_Mon_Pitwarden": "the Pit's mini-boss (Wave 3): his fall is the cleanse's beat (clear_area -> "
+                               "EvAreaCleansed) and the Tag Cellar's gnawers share his map — never Consumed, never "
+                               "raised by another monster"}
 RAISED_AS = "monster_risen_footman"     # monsters.md 2.0: a raised Unburied or Living corpse stands as the footman
+# the ground a husk's previews stand on (default the march): the Pitwarden dies in his Cut, on the Pit's dug earth
+PREVIEW_GROUND = {"SK_Mon_Pitwarden": "pit"}
 
 
 def _clip(e: dict, name: str) -> dict | None:
@@ -157,6 +166,10 @@ def block(asset: str, e: dict, husk: dict, previews: list[str]) -> dict:
             out["storyGuard"] = (f"{STORY_HOLD[asset]} looks at this body: never Consumed, never raised by another "
                                  "monster (permanent, not only while holdUntil story holds); its own rise (the "
                                  "Unburied trait) is the core's rule")
+        if asset in GUARDED:
+            out["consumable"] = False
+            out["raisable"] = False
+            out["guard"] = GUARDED[asset]
         if rise and _clip(e, rise):
             r = _clip(e, rise)
             out["rise"] = {"clip": rise, "lengthMs": float(r["lengthMs"]),
@@ -169,7 +182,8 @@ def block(asset: str, e: dict, husk: dict, previews: list[str]) -> dict:
             out["raisedNote"] = ("a raise by another monster (the Corpseherd, a standard-bearer, Valdras) stands this "
                                  "corpse up as a risen footman (monsters.md 2.0): U3 removes the husk on "
                                  "EvCorpseRemoved{raised} and the footman spawns at the corpse with its own Rise"
-                                 + ("; raisable false wins here (storyGuard)" if asset in STORY_HOLD else ""))
+                                 + ("; raisable false wins here (storyGuard)" if asset in STORY_HOLD else "")
+                                 + ("; raisable false wins here (guard)" if asset in GUARDED else ""))
     out["husk"] = husk
     if previews:
         out["previews"] = previews
@@ -217,16 +231,21 @@ def main(argv: list[str]) -> int:
     sel = [a for a in argv if not a.startswith("--")]
     assets = [a for a in ROSTER if not sel or a in sel or any(s.lower() in a.lower() for s in sel)]
     out_dir = (paths.scratch_root("w2", PREVIEW_DIR) if "--scratch" in argv else paths.preview_root() / PREVIEW_DIR)
-    stage = FD.DarkStage()
     recipes = FP.load_recipes()
     results = {}
-    for asset in assets:
-        e = stage.figure(asset)["entry"]
-        husk = measure(stage, asset)
-        prev = [] if "--no-previews" in argv else render(stage, recipes, asset, out_dir, husk)
-        results[asset] = block(asset, e, husk, prev)
-        print(f"[corpse] {asset}: {results[asset]['look']} centre {husk['centerCm']} r {husk['radiusCm']} "
-              f"top {husk['topCm']}  previews {len(prev)}", flush=True)
+    # one stage per ground (a new DarkStage resets the scene): the march's bodies, then the Pit's
+    for ground in ("march", "pit"):
+        group = [a for a in assets if PREVIEW_GROUND.get(a, "march") == ground]
+        if not group:
+            continue
+        stage = FD.DarkStage(ground)
+        for asset in group:
+            e = stage.figure(asset)["entry"]
+            husk = measure(stage, asset)
+            prev = [] if "--no-previews" in argv else render(stage, recipes, asset, out_dir, husk)
+            results[asset] = block(asset, e, husk, prev)
+            print(f"[corpse] {asset}: {results[asset]['look']} centre {husk['centerCm']} r {husk['radiusCm']} "
+                  f"top {husk['topCm']}  previews {len(prev)} ({ground} ground)", flush=True)
     if "--dry-run" in argv:
         print(json.dumps(results, indent=1, ensure_ascii=False)[:6000])
         return 0

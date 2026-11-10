@@ -193,6 +193,22 @@
    "rest": 7.2,
    "trough": 5.0
   },
+  "SK_Mon_Pitwarden:ne": {
+   "rest": 9.0,
+   "trough": 6.1
+  },
+  "SK_Mon_Pitwarden:nw": {
+   "rest": 5.4,
+   "trough": 5.0
+  },
+  "SK_Mon_Pitwarden:se": {
+   "rest": 13.0,
+   "trough": 10.0
+  },
+  "SK_Mon_Pitwarden:sw": {
+   "rest": 11.0,
+   "trough": 8.0
+  },
   "SK_Mon_RisenArbalest:ne": {
    "rest": 9.0,
    "trough": 6.0
@@ -287,7 +303,9 @@
   "sigil_over_roster_hungerbell_2.png",
   "sigil_over_roster_breachclot.png",
   "sigil_over_roster_cinderbloat.png",
-  "sigil_over_roster_corpseherd.png"
+  "sigil_over_roster_corpseherd.png",
+  "sigil_over_roster_pitwarden.png",
+  "sigil_over_roster_pitwarden_2.png"
  ],
  "widestFrontRestPx": 19.6,
  "worstTroughPx": 5.0

@@ -2144,6 +2144,118 @@ real; every one is fixed, three with a recorded remainder (below).
 | **3C Art W3** | A13 | `environment/crypt_pit.py`, `monsters/pitwarden.py` | 1D | kit, ship, coherence |
 | **3D UE W3** | U6 | `Private/World/**` | 3A, 3B | mac-content, mac-autotest (chapter route includes the Pit), mac-look |
 
+**3C outcomes (A13 as built, 2026-11; art review round 1 applied — `Art/blender/README.md` §33 *Art review (3C), round 1*).**
+- **The Pitwarden.** `monsters/pitwarden.py` → `SK_Mon_Pitwarden` (`monster_sub_pitwarden`; 6979 / 2994 toon
+  triangles, budget 7k / 3k), `SM_MonWeapon_PitSpade`, `T_UI_Portrait_Pitwarden`. Clips (ms; **the beat the core's
+  ability data must use**): `Attack01` 1250, WindupEnd 384, **Contact 620**; `Attack02` (spade sweep) 1400, WindupEnd
+  434, **Contact 700**; `Cast01` (Dig) 1600, Plant 330 + `FX_PitDig`, WindupEnd 496, **Contact 800** +
+  `FX_PitCollapse`; `Idle_Order` 3000 (`FX_PitDig` 900); `Idle` 1600, `Walk` 1000 (FootL / FootR), `Hurt` 320, `Death`
+  1000, `Rise` 1300, `Stun` 700. Manifest `abilities` names them by skill id (`spade_sweep` → Attack02 / 700, `dig` →
+  Cast01 / 330 / 800); `fx.dig.plantAtCm` is where the blade bites. He carries the spade **canted off his right
+  side** (review r1: borne upright beside the head, the blade covered a third of his bare head facing SE / E): the
+  head is clear in all eight facings and the W2 sigil's own `fx_elite` socket (solved, `fx_elite_w2.json`: 8 cm
+  right / 8 forward / 12 up of `fx_overhead`) sits over the head, not over the spade. Corpse block: an Unburied husk
+  with `guard` (never Consumed or raised). One palette deviation (`pitwarden.sash_gold`, monsters.md 2.2 *as built*).
+- **The kit.** `environment/crypt_pit.py`, family `environment.crypt_pit`, palette `Props_March` (regions `crypt.*`
+  appended), 18 static meshes with LOD1s: `SM_Pit_Wall_A/B/C` (1 × 1 × 2.0 m blocks, dressed on four faces: any 90° yaw
+  tiles; a black earth top; LOD1 keeps the bed joints: 66 toon triangles), `SM_Pit_WallPier` (the corner piece, a
+  solid capstone), `SM_Pit_HelmNiche_A/B` (a kettle helm standing in each niche **crown up, tipped back** — the helm
+  the Risen in front of the wall wear; review r1: set down upturned they read as basins on shelves), `SM_Pit_NicheLamp` /
+  `_Lit`, `SM_Pit_TagStrand_A/B/C`, `SM_Pit_TagCurtain` (13 cords, ~150 tags a tile), `SM_Pit_TagRack` (2 × 1,
+  blocking), `SM_Pit_AshSteps`, `SM_Pit_FlameNiche`, `SM_Pit_AshDrift_A/B`, and the surface's
+  `SM_Prop_March_PitMouthOpen`. **Every wall dressing is an overlay on a wall tile** (it stands proud of the plain
+  block: no wall has to be removed). Game ids are plain (`setpiece_pit_*`, `wall_pit`) plus two themed ones,
+  `outcrop_plains@pit` (the wall tile) and `exit_portal@pit` (the stair).
+- **The floor.** `environment/terrain_pit.py` → `manifest.terrain.pit` (the plains schema: ash 0 / dug earth 1 /
+  flagstone 2 / paving 5 / seep 3, `T_Terrain_Pit_*`, `T_Water_Pit_*`), with the style itself under
+  `terrain.pit.dataStyle` — **content handoff**: copy it to GameData as `terrain_styles` `themes.pit`. Median L* of a
+  field: earth 20.7 (the darkest walkable tile), flagstone 21.5, paving 22.8, ash 25.9. `coherence/darkgate.py
+  --theme=pit` gates the Pit roster on the earth: 6 / 6 pass. The floor is **not** darker than the march's (dirt 19.5):
+  a first earth at L* 12.1 hid the breach clot (a black body that reads by being darker than the ground: ΔL* 8.9),
+  so the Pit's darkness is the grade alone (item 6 below).
+- **No rim in the crypt.** The crypt statics ship on their own toon instance `MI_AF_Toon_Props_March_Crypt`
+  (`M_AF_Toon`, `RimOverride` 1, `RimOverrideAlpha` .02 in the wall's own colour: none; the content build makes it
+  from the manifest slot): the kit's
+  banded Fresnel rim turns a whole key-lit wall plane cream in the left third of the frame.
+- **A neutral shade in the crypt** (review r1). The same instance sets **`ShadeCool` .3** — a new scalar of the toon
+  masters (`Scripts/abyss_content/hlsl.py` `TOON_INPUTS`, `ue/materials.py`; default 1 = every other instance,
+  bit-identical: `test_shade_cool_default_is_exact`, `test_shade_cool_only_on_the_crypt`): the share of the cool
+  shade tint (`mix(c, #1E143C, .35 × ShadeCool)`). At 1 every wall plane turned from the key light was violet-indigo,
+  the hue the Pit keeps for enemy magic.
+- **Ash drifts are ground cover** (review r1): un-inked, three values; `SM_Pit_AshDrift_A` ships with outline class
+  `none`.
+- **VFX** (`vfx/fx_recipes_dark.py` `pit()`, `vfx_recipes.json` `dark.pit`): `prop.pit_cleanse.embers`,
+  `ambient.pit_embers`, `prop.pit_lamp.light` / `.flame`, `prop.pit_cleanse.niche` / `.mark`, `exit.portal@pit`,
+  `notify.FX_PitDig` / `notify.FX_PitCollapse`; `dark.pit` carries the light-radius numbers, the cleanse sequence
+  (lamps 420 ms apart, nearest first; the grade over 6 s) and the lamp swap.
+- **Themes.** `kit/theme.py` gains `pit` with **`parent: march`**: the Pit shows the march's art everywhere but its
+  floor, wall tile and stair, so a lookup under `pit` tries `<id>@pit`, then `<id>@march`, then `<id>`
+  (`theme.chain`; `cohkit` and the vignette resolve that way).
+- **Previews** (`environment/vignette_pit.py`, `Previews/env_vignette_pit/`): the five rooms and the cleansed Flame
+  Niche at the W1 camera under the hero's light radius (each with a `_flat` twin in the kit's own values and a
+  `_whole` sheet: the whole frame in one file), the open pit mouth on the march ground.
+- **Gates** (after review r1): crypt ship 18 / 18 (ink, pads, normals, re-import), `verify_march` 82 assets 0
+  failures, `darkgate --theme=pit` 6 / 6, checklist 0 GAP, `fx_validate` 194 recipes 0 errors, kit smoke test PASS
+  (with a `ShadeCool` conformance check), Scripts 145 tests, data re-exported (`Data/assets.json` + `index.json`
+  only; the SC font subsets rebuilt for one new glyph, 铲, from the Pitwarden's clip notes), core and presentation
+  suites green on both compilers (two manifest-driven presentation pins moved: 3D note 12). `vfx/hue_audit.py` exits 1 as it did before 3C: its one violation is the mage's
+  `arcane_torrent.impactColor` #B07CFF in `hit.impact*` (core-lane data, tracked in README §30 *Open*); 3C adds no
+  violet, ember or fill hit.
+
+**3D notes (what U6 / the core need for the kit; none of it is in the UE module yet).**
+1. **A presentation theme `pit`.** `MapTheme` (AbyssCore `Enums.h`) needs `pit` (+ the mood names `pit`,
+   `pit_cleansed`); `sub_rf_pit` gets `presentationTheme: 'pit'` with the generator theme `plains` (so its wall id is
+   `outcrop_plains`, as `emerald_plains`). `AbyssThemeRules::ExpandThemed` needs the **parent chain** (`pit` →
+   `march`): without it every `@march` id the Pit shows (the elite crown, the themed recipes, loot props) falls back
+   to the plains art.
+2. **Wall yaw.** `AAbyssZoneActor::BuildWalls` gives every wall tile a hashed 0-359° yaw; the crypt blocks abut face
+   to face, so for a themed wall whose manifest entry has `placement.yawStepDeg` (90) the yaw must be
+   `(Hash >> 8) % 4 * 90`. Variants stay `tileHash(c, r, 3) % 3`.
+3. **The exit.** `exit_portal@pit` is the stair: its pivot is the exit tile, the mesh fills the three wall tiles
+   behind it (`NearExit` already leaves them bare), **yaw = toward the floor** (item 4), so the map must put the exit
+   tile in front of a straight wall row. Its recipe is `exit.portal@pit` (resolve `exit.portal@<theme>` before
+   `exit.portal`, as `camp.torch@march`), at socket `fx_vortex`.
+4. **Overlays.** Set pieces of the crypt family stand on a **wall** tile's centre, front (mesh −Y) toward the floor
+   tile they face: for a floor neighbour at (dc, dr), `yaw = atan2(−dc, dr)` in degrees (0° faces +row). `set_pieces.json`
+   needs the tile and that yaw per piece; `SM_Pit_TagStrand_*` takes an offset of −0.45 … +0.45 m along the wall (6-10
+   to a tile). `SM_Pit_TagRack` blocks its 2 × 1 tiles: mark them in the map's collisions (set pieces do not block).
+   **Map brief (3B): the Flame Niche faces −row** — it stands on the wall whose floor lies toward −row (the floor
+   tile it faces is (c, r − 1): yaw 180, manifest `placement.yawDeg` / `floorNeighbour`), the one facing that is both
+   seen and key-lit at the W1 camera; facing −col it is seen in the shade band (paler than its wall, but the niche and
+   the five marks lose contrast), facing +row / +col it is seen from behind. The same holds, more mildly, for the
+   Helm Wall: put its long run of niches on a −row-facing wall.
+5. **Lamps and the cleanse.** `setpiece_pit_lamp` ↔ `setpiece_pit_lamp_lit` is a mesh swap at one transform; the
+   sequence, the lamp order and the grade are `vfx_recipes.json` `dark.pit.cleanse`; on an entry with `rf_pit_cleansed`
+   everything is lit at once. The lit lamp's light pool goes at its socket `light`.
+6. **The light radius — a hard acceptance item of mac-look, not an optional mask.** The toon masters are unlit and
+   the floor ships at the march's values (darkgate): the Pit's darkness is the grade alone — ambient .21 / .23 / .30
+   of the kit's values plus the hero's pool (r 5.6 tiles, power 1.5, gain .95), emissive regions and additive VFX not
+   darkened (`dark.pit.lightRadius`); `pit_cleansed`: ambient .52 / .44 / .36 and a pool per lit lamp. Without it
+   the player gets the `_flat` previews: an evenly lit mid-grey room (floor about L* 30), no darkness at all.
+   **Recommended route: in the materials** — a `GradeAmbient` vector (+ `GradeCeil`) in the parameter collection the
+   toon / terrain masters already read, the pools as R18 light slots with the recipe's falloff, the final colour ×
+   min(ambient + Σ pools, ceil) with emissive exempt; the outline masters stay ink. A post-process multiply (the
+   fallback) also darkens eyes, flames and VFX unless they are stencilled out. Pass = a W1 frame of each room matches
+   its `Previews/env_vignette_pit/<room>.png`.
+7. **The surface.** `setpiece_pit_mouth_open` replaces `setpiece_pit_mouth_sealed` on the same anchor, yaw and
+   footprint once `entrance_rf_pit` is unsealed (socket `entrance` = the `subDungeonEntrances` point).
+8. **Data handoffs (content lane).** `terrain_styles.json` `themes.pit` from `manifest.terrain.pit.dataStyle`;
+   `zone_moods` `pit` / `pit_cleansed`; the ambience `pit_embers` (the recipe is `ambient.pit_embers`); the Pitwarden's
+   ability `clip` names and beats above.
+9. **`ShadeCool`** (review r1). The toon masters have a new scalar, default 1; the content build writes .3 on
+   `MI_AF_Toon_Props_March_Crypt` from the manifest slot. Nothing in the module sets it. `WorldContract.md` §3.3
+   lists the toon scalars (`BaseSaturation` / `BaseValue` …) and is the UE lane's file: add `ShadeCool` there (the art
+   lane could not edit `Source/**` in this run).
+10. **Crypt LOD1.** `SM_Pit_Wall_*`'s LOD1 (the mobile-low mesh too) keeps the bed joints (66 toon triangles); no
+   LOD bias rule is needed for the crypt.
+11. **Ash drifts.** `setpiece_pit_ash_drift` has two variants, one of them (`SM_Pit_AshDrift_A`) with outline class
+   `none` (one material slot, no hull section): place it like ground cover.
+12. **Presentation test pins moved by the art data** (the tests read the exported manifest, `Data/assets.json`, which
+   3C re-exported): `corpse_test.cpp` counts 14 corpse blocks / 12 drawn (+ the Pitwarden's guarded husk) and
+   `theme_test.cpp` accepts the themed ids `outcrop_plains@pit` / `exit_portal@pit` next to the `@march` ones (same
+   footprint and blocking as their plain slots). The runtime rules themselves (`AbyssThemeRules`, the corpse layer)
+   were not touched: item 1's parent chain is still to do.
+
 ### Phase 4 — later chapters
 
 One content + art + audio pass per chapter when it is built in 3D (story-bible.md §7, monsters.md §6), each starting

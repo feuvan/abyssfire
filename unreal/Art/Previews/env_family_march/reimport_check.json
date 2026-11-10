@@ -108,6 +108,74 @@
    "pass": true,
    "errors": []
   },
+  "SM_Pit_AshDrift_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_AshDrift_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_AshSteps": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_FlameNiche": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_HelmNiche_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_HelmNiche_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_NicheLamp": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_NicheLamp_Lit": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_TagCurtain": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_TagRack": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_TagStrand_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_TagStrand_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_TagStrand_C": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_WallPier": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_Wall_A": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_Wall_B": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Pit_Wall_C": {
+   "pass": true,
+   "errors": []
+  },
   "SM_Prop_March_AshwheatCottage_A": {
    "pass": true,
    "errors": []
@@ -181,6 +249,10 @@
    "errors": []
   },
   "SM_Prop_March_PenitentsAltar": {
+   "pass": true,
+   "errors": []
+  },
+  "SM_Prop_March_PitMouthOpen": {
    "pass": true,
    "errors": []
   },
@@ -259,7 +331,7 @@
  },
  "themeAudit": [],
  "summary": {
-  "assets": 64,
+  "assets": 82,
   "failures": 0,
   "themeAuditProblems": 0
  }

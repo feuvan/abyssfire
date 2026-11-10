@@ -8003,6 +8003,391 @@
    "atEdge": [
     "THE CORPSEHERD (marker)"
    ]
+  },
+  "pit:earth": {
+   "roster": "every shipped monster",
+   "presentationTheme": "pit",
+   "ground": {
+    "theme": "pit",
+    "tile": "earth",
+    "selectedBy": "darkest walkable material by median L* of an 8 x 8 composited field",
+    "L50": 20.7,
+    "L10": 18.4,
+    "L90": 22.6,
+    "meanRgb": "#35302B",
+    "materials": {
+     "ash": {
+      "key": "0",
+      "L50": 25.9,
+      "L10": 21.0,
+      "L90": 27.7,
+      "meanRgb": "#3F3C37"
+     },
+     "earth": {
+      "key": "1",
+      "L50": 20.7,
+      "L10": 18.4,
+      "L90": 22.6,
+      "meanRgb": "#35302B"
+     },
+     "flagstone": {
+      "key": "2",
+      "L50": 21.5,
+      "L10": 9.4,
+      "L90": 30.4,
+      "meanRgb": "#353330"
+     },
+     "paving": {
+      "key": "5",
+      "L50": 22.8,
+      "L10": 11.9,
+      "L90": 30.7,
+      "meanRgb": "#383532"
+     }
+    }
+   },
+   "camera": {
+    "yawUE": 45.0,
+    "pitchUE": -50.0,
+    "fovH": 35.0,
+    "distance": "default (16 x 12 tiles)",
+    "res": [
+     1920,
+     1080
+    ]
+   },
+   "facing": "se",
+   "pages": 1,
+   "pass": true,
+   "failed": [],
+   "figures": [
+    {
+     "asset": "SK_Mon_Breachclot",
+     "variant": null,
+     "label": "BREACHCLOT",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 48,
+      "swatches": [
+       "clot.marker"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#9E69C2",
+      "medianL": 53.2,
+      "deltaL": 32.5,
+      "emissivePixels": 0
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 1.0,
+      "rimPxMedian": 3.6,
+      "rimPxP10": 3.4,
+      "fracDark": 1.0,
+      "hullLumP95": 11.9,
+      "edges": 289,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 3.1,
+      "inkDeltaL": 17.6,
+      "fracInkClear": 1.0
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 17.5,
+      "signedDeltaL": -17.5,
+      "litL": 3.2,
+      "groundL": 20.7,
+      "band": "light band + rim light",
+      "pixels": 2882,
+      "litP10": 2.9,
+      "litP90": 37.7,
+      "fracLitClear": 0.892,
+      "shadeL": 2.6,
+      "inkL": 3.1
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_Mon_Gravegnawer",
+     "variant": null,
+     "label": "GRAVEGNAWER",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 28,
+      "swatches": [
+       "gnawer.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#F1EAB7",
+      "medianL": 92.1,
+      "deltaL": 71.4,
+      "emissivePixels": 23
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9662,
+      "rimPxMedian": 4.37,
+      "rimPxP10": 3.36,
+      "fracDark": 1.0,
+      "hullLumP95": 28.6,
+      "edges": 296,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 6.2,
+      "inkDeltaL": 14.5,
+      "fracInkClear": 0.197
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 39.6,
+      "signedDeltaL": 39.6,
+      "litL": 60.3,
+      "groundL": 20.7,
+      "band": "light band + rim light",
+      "pixels": 541,
+      "litP10": 50.7,
+      "litP90": 72.6,
+      "fracLitClear": 0.991,
+      "shadeL": 22.5,
+      "inkL": 6.2
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_Mon_Pitwarden",
+     "variant": null,
+     "label": "THE PITWARDEN",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 2,
+      "pixels": 15,
+      "swatches": [
+       "unburied.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#F7A7FF",
+      "medianL": 78.8,
+      "deltaL": 58.1,
+      "emissivePixels": 15
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9945,
+      "rimPxMedian": 4.22,
+      "rimPxP10": 3.54,
+      "fracDark": 1.0,
+      "hullLumP95": 23.1,
+      "edges": 542,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.4,
+      "inkDeltaL": 15.3,
+      "fracInkClear": 0.536
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 45.3,
+      "signedDeltaL": 45.3,
+      "litL": 66.0,
+      "groundL": 20.7,
+      "band": "light band + rim light",
+      "pixels": 623,
+      "litP10": 39.2,
+      "litP90": 72.2,
+      "fracLitClear": 0.992,
+      "shadeL": 14.7,
+      "inkL": 5.4
+     },
+     "ok": true,
+     "atEdge": [
+      "marker"
+     ]
+    },
+    {
+     "asset": "SK_Mon_RisenArbalest",
+     "variant": null,
+     "label": "RISEN ARBALESTER",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 13,
+      "swatches": [
+       "unburied.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#F6A6FF",
+      "medianL": 78.5,
+      "deltaL": 57.8,
+      "emissivePixels": 13
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9881,
+      "rimPxMedian": 4.64,
+      "rimPxP10": 3.56,
+      "fracDark": 1.0,
+      "hullLumP95": 26.4,
+      "edges": 589,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.5,
+      "inkDeltaL": 15.2,
+      "fracInkClear": 0.509
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 42.9,
+      "signedDeltaL": 42.9,
+      "litL": 63.6,
+      "groundL": 20.7,
+      "band": "light band + rim light",
+      "pixels": 952,
+      "litP10": 39.4,
+      "litP90": 72.7,
+      "fracLitClear": 0.987,
+      "shadeL": 6.6,
+      "inkL": 5.5
+     },
+     "ok": true,
+     "atEdge": []
+    },
+    {
+     "asset": "SK_Mon_RisenFootman",
+     "variant": null,
+     "label": "RISEN FOOTMAN",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 2,
+      "pixels": 13,
+      "swatches": [
+       "unburied.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#FDAFFF",
+      "medianL": 81.2,
+      "deltaL": 60.5,
+      "emissivePixels": 13
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9874,
+      "rimPxMedian": 4.13,
+      "rimPxP10": 3.44,
+      "fracDark": 1.0,
+      "hullLumP95": 26.2,
+      "edges": 557,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 5.8,
+      "inkDeltaL": 14.9,
+      "fracInkClear": 0.472
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 42.9,
+      "signedDeltaL": 42.9,
+      "litL": 63.6,
+      "groundL": 20.7,
+      "band": "light band + rim light",
+      "pixels": 837,
+      "litP10": 39.1,
+      "litP90": 73.5,
+      "fracLitClear": 0.981,
+      "shadeL": 7.0,
+      "inkL": 5.8
+     },
+     "ok": true,
+     "atEdge": [
+      "marker"
+     ]
+    },
+    {
+     "asset": "SK_Mon_RisenShieldbearer",
+     "variant": null,
+     "label": "RISEN SHIELDBEARER",
+     "class": "monster",
+     "outlinePx1080": 3.5,
+     "facing": "se",
+     "clip": "Idle",
+     "frame": 0,
+     "marker": {
+      "ok": true,
+      "blockPx": 3,
+      "pixels": 21,
+      "swatches": [
+       "unburied.eye"
+      ],
+      "source": "manifest marker",
+      "medianRgb": "#F7A7FF",
+      "medianL": 78.8,
+      "deltaL": 58.1,
+      "emissivePixels": 21
+     },
+     "rim": {
+      "ok": true,
+      "fracRim": 0.9717,
+      "rimPxMedian": 4.15,
+      "rimPxP10": 3.44,
+      "fracDark": 1.0,
+      "hullLumP95": 20.4,
+      "edges": 707,
+      "minPx": 3.0,
+      "minFrac": 0.9,
+      "inkL": 4.8,
+      "inkDeltaL": 15.9,
+      "fracInkClear": 0.716
+     },
+     "lit": {
+      "ok": true,
+      "deltaL": 42.8,
+      "signedDeltaL": 42.8,
+      "litL": 63.5,
+      "groundL": 20.7,
+      "band": "light band + rim light",
+      "pixels": 1079,
+      "litP10": 39.1,
+      "litP90": 71.7,
+      "fracLitClear": 0.947,
+      "shadeL": 8.2,
+      "inkL": 4.8
+     },
+     "ok": true,
+     "atEdge": []
+    }
+   ],
+   "atEdge": [
+    "THE PITWARDEN (marker)",
+    "RISEN FOOTMAN (marker)"
+   ]
   }
  },
  "edgeMargins": {

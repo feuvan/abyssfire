@@ -38,6 +38,10 @@ packages; ``doc_section()`` lists every id with its event and owner, written to 
 | ``status.ashnumb`` (+ ``ASHNUMB`` contract) | 麻灰 Ashnumb on the hero: ash flaking off the limbs; the per-stack grey band is the contract (2H) | W2 |
 | ``prop.echo`` | the echo lore look (U1: the figure fades in, holds, fades out, 3 s): cold ash motes | W1 (U1) |
 | ``camp.bell_toll`` | the Knellwatch bell frame's ``bell`` socket (story tolls, set-piece audio cue) | W1 (U4 / U7) |
+| ``prop.pit_cleanse.embers`` / ``ambient.pit_embers`` / ``prop.pit_cleanse.niche`` / ``.mark`` | the Pit's cleanse (``EvAreaCleansed``): embers rising from the floor, the standing ambience, the Flame Niche's breath and its five marks (``PIT``: sequence, lamp timing, grade) | W3 (U6) |
+| ``prop.pit_lamp.light`` / ``prop.pit_lamp.flame`` | a niche lamp catching / burning (``setpiece_pit_lamp_lit`` socket ``flame``) | W3 (U6) |
+| ``exit.portal@pit`` | the Ash Steps: ash sifting down the stair (replaces the teal vortex in the Pit) | W3 (U6) |
+| ``notify.FX_PitDig`` / ``notify.FX_PitCollapse`` | the Pitwarden's spade: the bite (Cast01 Plant, Idle_Order) / the 4-tile line giving way (Cast01 Contact) | W3 |
 | ``camp.torch@march`` | the march brazier (``camp_torch@march``): a smoulder — smoke, dull sparks, ash, **no light** (env art review: ``camp.torch``'s flame + #FFB060 light at every brazier broke chapter1.md §15) | runtime (U1: themed recipe id) |
 
 And the hue-audit clean-up of today's hero recipes (DR5, ``vfx/hue_audit.py``): the rogue's ``shadow`` palette moves to
@@ -1174,6 +1178,228 @@ def world() -> dict:
     return rec
 
 
+# ── the Pit of the Faithful (A13 / 3C: chapter1.md §9.2) ─────────────────────────────────────────────────────
+# Ember orange is the hero's and the refuges' (DR5): a cleansed Pit is a refuge, so its recipes are friendly ids
+# (``prop.*`` / ``camp.*`` / ``ambient.*``) and may burn warm; the Pitwarden's own notifies stay earth and ash.
+PIT_EMBER = "#FF7A2A"                  # hearth.ember (Props_March 37)
+PIT_EMBER_HOT = "#FFB060"              # lantern.glow (Props_March 38)
+PIT_EMBER_DIM = "#B8401C"              # hearth.ember_dim
+PIT_EARTH = "#5A4E44"                  # dug grave earth, lit (clods read on the Pit's dug earth, L* 20.7)
+PIT_EARTH_DUST = "#6E655C"
+PIT_DIG_AT = [81.8, 34.0, 0.0]         # the spade's bite in the actor frame (manifest fx.dig.plantAtCm, on the ground)
+PIT_LAMP_STEP_MS = 420                 # the lamps light one by one: this far apart, nearest to the hero first
+PIT_GRADE_MS = 6000                    # the grade warms over this long from EvAreaCleansed
+PIT = {
+    "_doc": "信者之坑 / the Pit of the Faithful (sub_rf_pit): the light-radius look, the cleanse sequence and the "
+            "lamp swap the UE lane implements (U6); the recipes are in `recipes`, the meshes in manifest.json "
+            "(family environment.crypt_pit). environment/vignette_pit.py previews it with these numbers "
+            "(Previews/env_vignette_pit/*.png)",
+    "lightRadius": {
+        "what": "the hero's light radius is the main light (chapter1.md §9.2): everything is multiplied by "
+                "ambient + Σ lights, a light = color × gain × clamp(1 − d / radiusTiles)^power on the ground distance "
+                "d from its centre; emissive regions (eyes, the breach seep, lamp flames) and additive VFX are not "
+                "darkened",
+        "ambient": [0.21, 0.23, 0.30],
+        "hero": {"color": [1.0, 0.93, 0.80], "radiusTiles": 5.6, "power": 1.5, "gain": 0.95},
+        "ceil": 1.12,
+        "acceptance": "HARD acceptance item of 3D's mac-look, not an optional mask: the whole look of the Pit is "
+                      "this grade. Without it the player gets the `_flat` previews — an evenly lit mid-grey room "
+                      "(floor about L* 30), no darkness at all. Pass = a W1 frame of every room matches its "
+                      "env_vignette_pit/<room>.png: far corners near black, the hero's pool the brightest floor, "
+                      "eyes / lamp flames / the seep undimmed, and after the cleanse the warm ambient and one pool "
+                      "per lit lamp (flame_niche_cleansed.png)",
+        "implementation": "recommended — in the materials: the toon masters are unlit, so a UE light does nothing "
+                          "and a full-screen post multiply also darkens emissive pixels and additive VFX. Put the "
+                          "grade in the material parameter collection the masters already read (KeyLightDir, "
+                          "SunColor, the R18 Light<i>PosR / Light<i>Col slots): a vector `GradeAmbient` (rgb; "
+                          "1,1,1 outside the Pit) and `GradeCeil`, with the hero's pool and each lit lamp's pool "
+                          "as R18 slots whose falloff is (1 - d / r)^power on the ground distance; M_AF_Toon* / "
+                          "M_AF_Terrain* / M_AF_Water multiply their final colour by "
+                          "min(GradeAmbient + sum(pools), GradeCeil) x (1 - emissive) + emissive, the outline "
+                          "masters stay ink, the VFX masters do not read it. Fallback: zone_moods `pit` (ambient / "
+                          "fog darkness) plus a post-process multiply by a world-space radial mask round the hero "
+                          "with a custom-stencil exemption for emissive regions. Either way the floor ships at "
+                          "the march's values (the darkest walkable tile is the dug earth, L* 20.7: "
+                          "coherence/darkgate.py --theme=pit gates the Pit roster on it; a darker floor hides the "
+                          "black breach clot), so the darkness is this grade alone",
+    },
+    "cleanse": {
+        "trigger": "EvAreaCleansed (the Pitwarden dead and ≤ 5 hostiles left: clear_area) — and, without the "
+                   "sequence, any entry of sub_rf_pit with the world flag rf_pit_cleansed (the Pit stays lit)",
+        "sequence": [
+            {"atMs": 0, "do": "play prop.pit_cleanse.embers at the hero (camera volume, 6 s) and start "
+                              "ambient.pit_embers as the zone's ambience (it stays for every later visit)"},
+            {"atMs": 0, "do": f"blend the mood from pit to pit_cleansed over {PIT_GRADE_MS} ms (grade below)"},
+            {"atMs": 600, "do": "the lamps light one by one: sort every setpiece_pit_lamp by distance from the hero; "
+                                f"lamp k at 600 + k × {PIT_LAMP_STEP_MS} ms: swap its mesh for setpiece_pit_lamp_lit "
+                                "at the same transform, play prop.pit_lamp.light once at socket flame, start the "
+                                "loop prop.pit_lamp.flame at socket flame (its light pool at socket light)"},
+            {"atMs": 600, "do": "if the Flame Niche is on screen: prop.pit_cleanse.niche at its socket niche, then "
+                                "prop.pit_cleanse.mark at mark_1 … mark_5, 180 ms apart (clockwise from the top)"},
+        ],
+        "lampStepMs": PIT_LAMP_STEP_MS,
+        "grade": {
+            "from": {"mood": "pit", "ambient": [0.21, 0.23, 0.30]},
+            "to": {"mood": "pit_cleansed", "ambient": [0.52, 0.44, 0.36]},
+            "overMs": PIT_GRADE_MS,
+            "lamp": {"color": [1.0, 0.66, 0.36], "radiusTiles": 2.9, "power": 1.4, "gain": 0.85,
+                     "at": "socket light of setpiece_pit_lamp_lit (0.75 m in front of the wall, on the floor)"},
+            "note": "the grade warms: the cold quarter-ambient lifts to a warm .52 / .44 / .36, the hero's radius stays, "
+                    "every lit lamp adds its pool; no bloom or exposure change (the toon values do the rest)",
+        },
+        "persist": "on a zone entry with rf_pit_cleansed: mood pit_cleansed at once, every lamp already lit (no "
+                   "prop.pit_lamp.light), ambient.pit_embers running; no monsters respawn (K7)",
+    },
+    "lampSwap": {"unlit": "setpiece_pit_lamp (SM_Pit_NicheLamp)", "lit": "setpiece_pit_lamp_lit (SM_Pit_NicheLamp_Lit)",
+                 "how": "two meshes at one transform (the lit one carries the flame mesh, the lit oil and the warm "
+                        "wash on the niche's back as emissive regions); a visibility swap, no material parameter"},
+    "exit": "exit.portal@pit at the Ash Steps (exit_portal@pit, socket fx_vortex): ash sifting down the stair and a "
+            "faint cold daylight from above — the teal vortex and ward of exit.portal are not played (the themed "
+            "recipe replaces it: resolve exit.portal@<presentation theme> first, as camp.torch@march)",
+    "materialContract": {
+        "MI_AF_Toon_Props_March_Crypt": "the crypt statics' slot 0 (manifest materialSlots[0].name / params): "
+                                        "M_AF_Toon on the Props_March palette with RimOverride 1, RimOverrideAlpha "
+                                        ".02 in the wall's own colour — no Fresnel rim on the crypt — and ShadeCool "
+                                        ".3 (the master's scalar, default 1: the share of the cool shade tint; at 1 "
+                                        "every wall plane turned from the key light was violet-indigo, the hue "
+                                        "reserved for enemy magic in the Pit). One instance, one parameter set",
+        "MI_AF_Toon_Props_March_Wind": "the tag strands / curtain / rack: the march cloth instance (sway weights "
+                                       "0 at the peg … 0.55 at the cord's end)",
+    },
+}
+
+
+def pit() -> dict:
+    rec = {}
+    flame = FR.FLAME["camp"]
+    # the cleanse: embers lift off the floor all round the hero (a camera volume like the ambience), thick for the
+    # first seconds, then thinning; ash lifts with them; a low warm swell passes over the floor
+    rec["prop.pit_cleanse.embers"] = R("fire", [
+        lay(emitter="motes", sprite="Ember", at="camera", durationMs=6000, rate=46, spawnRadiusCm=820, height=4,
+            spawnHeightJitterCm=10, dir="up", coneDeg=14, speedCmS=[22, 58], gravityCmS2=-16, drag=0.25,
+            lifeMs=[2400, 3800], sizeCm=[5, 9], alpha=[0.95, 0], fadeIn=0.12, alphaPow=1.6, color=PIT_EMBER,
+            altEvery=3, altColor=PIT_EMBER_HOT, intensity=1.2),
+        lay(sprite="Core", orient="billboard", at="camera", durationMs=5200, rate=22, spawnRadiusCm=820, height=3,
+            spawnHeightJitterCm=6, dir="up", coneDeg=10, speedCmS=[30, 70], gravityCmS2=-10, lifeMs=[1800, 2800],
+            sizeCm=[3, 5], alpha=[0.9, 0], fadeIn=0.1, color=PIT_EMBER_HOT, intensity=1.3),
+        lay(sprite="AshFlake", randomVariants=4, orient="billboard", blend="translucent", at="camera",
+            durationMs=5200, rate=14, spawnRadiusCm=820, height=6, spawnHeightJitterCm=10, dir="up", coneDeg=30,
+            speedCmS=[14, 34], gravityCmS2=-8, drag=0.8, lifeMs=[2600, 3800], sizeCm=[7, 11], alpha=[0.7, 0],
+            fadeIn=0.15, alphaPow=1.6, spinDegS=[-70, 70], rotationDeg=[0, 360], color=ASH_LIGHT),
+        lay(emitter="glow", orient="ground", at="origin", height=3, sizeCm=520, grow=2.6, sizePow=1.2, lifeMs=2600,
+            fadeIn=0.25, alpha=[0.32, 0], color=PIT_EMBER_DIM),
+        lay(sprite="Ring", orient="ground", at="origin", height=4, sizeCm=ring_size(120), grow=7.0, sizePow=1.1,
+            lifeMs=2200, fadeIn=0.1, alpha=[0.5, 0], alphaPow=1.4, color=PIT_EMBER_HOT),
+    ], note="the Pit is cleansed (EvAreaCleansed; chapter1.md §9.2): embers rise from the floor over an 8 m disc "
+            "round the hero for 6 s (~150 alive at the peak), ash lifts with them, one warm swell runs out over the "
+            "floor from where the hero stands. No light of its own: the lamps and the grade bring it (dark.pit)")
+    # the cleansed Pit's standing ambience: a few embers still rising, for good
+    rec["ambient.pit_embers"] = R("fire", [
+        lay(emitter="motes", sprite="Ember", at="camera", durationMs=-1, rate=7, spawnRadiusCm=820, height=4,
+            spawnHeightJitterCm=10, dir="up", coneDeg=12, speedCmS=[14, 36], gravityCmS2=-10, drag=0.3,
+            lifeMs=[3000, 4600], sizeCm=[4, 7], alpha=[0.85, 0], fadeIn=0.15, alphaPow=1.8, color=PIT_EMBER,
+            altEvery=4, altColor=PIT_EMBER_HOT, intensity=1.1),
+        lay(sprite="AshFlake", randomVariants=4, orient="billboard", blend="translucent", at="camera",
+            durationMs=-1, rate=3, spawnRadiusCm=820, height=6, dir="up", coneDeg=30, speedCmS=[8, 20],
+            gravityCmS2=-5, drag=0.8, lifeMs=[3000, 4200], sizeCm=[6, 9], alpha=[0.5, 0], fadeIn=0.2, alphaPow=1.6,
+            spinDegS=[-60, 60], rotationDeg=[0, 360], color=ASH_LIGHT),
+    ], note="the cleansed Pit's ambience (zone ambience pit_embers while rf_pit_cleansed is set): ~27 embers and a "
+            "few ash flakes alive over the 8 m disc round the hero, rising slowly — the Pit stays lit")
+    # a lamp catches: a short flare at the wick, a breath of soot, sparks falling into the bowl
+    rec["prop.pit_lamp.light"] = R("fire", [
+        lay(emitter="flash", at="origin", height=0, sizeCm=26, grow=2.2, lifeMs=200, alpha=[0.9, 0],
+            color=PIT_EMBER_HOT),
+        lay(emitter="glow", at="origin", height=0, sizeCm=70, grow=1.8, lifeMs=520, fadeIn=0.2, alpha=[0.6, 0],
+            color=PIT_EMBER),
+        lay(emitter="sparks", at="origin", height=2, count=7, dir="up", coneDeg=70, speedCmS=[40, 110],
+            gravityCmS2=380, drag=0.6, lifeMs=[280, 520], sizeCm=[4, 6], color=PIT_EMBER_HOT, altEvery=2,
+            altColor=PIT_EMBER),
+        lay(emitter="smoke", sprite="Smoke", randomVariants=2, at="origin", height=10, count=2, spawnRadiusCm=3,
+            dir="up", coneDeg=20, speedCmS=[14, 26], gravityCmS2=-20, lifeMs=[700, 1000], sizeCm=[14, 20], grow=1.8,
+            alpha=[0.4, 0], fadeIn=0.2, color=SMOULDER_SMOKE_LIT, delayMs=120),
+    ], note="a niche lamp catching (once, at the swap to setpiece_pit_lamp_lit; socket flame): a flare at the wick, "
+            "sparks into the bowl, a breath of soot")
+    # the lit lamp: a small steady flame in the cresset (the mesh carries the flame's core and the wash on the niche's
+    # back; the recipe adds the living tongues, a mote now and then, the glow and the pool of light)
+    rec["prop.pit_lamp.flame"] = R("fire", [
+        FR.flames("origin", 0, flame, radius_px=1, rise=(8, 16), life=(320, 480), size=(0.32, 0.44), rate=7, h=-4),
+        lay(emitter="motes", at="origin", height=8, rate=0.6, durationMs=-1, spawnRadiusCm=3, gravityCmS2=-70,
+            lifeMs=[600, 1000], sizeCm=[3, 5], color=PIT_EMBER_HOT),
+        lay(emitter="glow", at="origin", height=2, rate=2, durationMs=-1, sizeCm=44, grow=1.15, lifeMs=600,
+            fadeIn=0.3, alpha=[0.42, 0], color=PIT_EMBER),
+    ], light_=FR.light(290, 0.34), note="the lit niche lamp's loop (socket flame of setpiece_pit_lamp_lit): small "
+       "tongues over the wick, a mote now and then, a warm glow; light = the pool on the floor (place it at socket "
+       "light: r 2.9 tiles, dark.pit.cleanse.grade.lamp)")
+    # the Flame Niche answers: a warm breath inside the empty flame (no fire comes back: the niche stays empty)
+    rec["prop.pit_cleanse.niche"] = R("fire", [
+        lay(emitter="glow", at="origin", height=0, sizeCm=110, grow=1.5, lifeMs=2600, fadeIn=0.35, alpha=[0.5, 0],
+            alphaPow=1.4, color=PIT_EMBER),
+        lay(emitter="glow", at="origin", height=0, sizeCm=46, grow=1.3, lifeMs=2200, fadeIn=0.3, alpha=[0.55, 0],
+            color=PIT_EMBER_HOT),
+        lay(emitter="motes", sprite="Ember", at="origin", height=-40, rate=9, durationMs=2400, spawnRadiusCm=16,
+            spawnHeightJitterCm=50, dir="up", coneDeg=16, speedCmS=[16, 40], gravityCmS2=-12, lifeMs=[1100, 1700],
+            sizeCm=[4, 7], alpha=[0.9, 0], fadeIn=0.15, color=PIT_EMBER, altEvery=3, altColor=PIT_EMBER_HOT),
+        lay(sprite="AshFlake", randomVariants=4, orient="billboard", blend="translucent", at="origin", height=-30,
+            count=10, spawnRadiusCm=20, spawnHeightJitterCm=60, dir="random", speedCmS=[8, 26], upCmS=[10, 40],
+            gravityCmS2=30, drag=1.0, lifeMs=[1400, 2000], sizeCm=[6, 9], alpha=[0.7, 0], alphaPow=1.5,
+            spinDegS=[-80, 80], rotationDeg=[0, 360], color=ASH_LIGHT),
+    ], note="the Flame Niche at the cleanse (socket niche of setpiece_pit_flame_niche; also the S7 turn-in beat): a "
+            "warm breath inside the empty flame for ~2.5 s, embers rising through it, old ash shaken out — the "
+            "niche stays empty")
+    rec["prop.pit_cleanse.mark"] = R("fire", [
+        lay(emitter="glow", at="origin", height=0, sizeCm=34, grow=1.4, lifeMs=1500, fadeIn=0.2, alpha=[0.6, 0],
+            alphaPow=1.5, color=PIT_EMBER),
+        lay(emitter="sparks", at="origin", height=0, count=4, dir="up", coneDeg=60, speedCmS=[20, 60],
+            gravityCmS2=120, drag=0.8, lifeMs=[500, 800], sizeCm=[3, 5], color=PIT_EMBER_HOT),
+    ], note="one of the five burn marks round the niche glowing once (sockets mark_1 … mark_5, 180 ms apart, "
+            "clockwise from the top)")
+    # the way out: ash sifting down the stair, a faint cold daylight from above — no vortex, no ward
+    rec["exit.portal@pit"] = R("ash", [
+        lay(sprite="AshFlake", randomVariants=4, orient="billboard", blend="translucent", at="origin", height=40,
+            rate=5, durationMs=-1, spawnRadiusCm=46, spawnHeightJitterCm=60, dir="down", coneDeg=24,
+            speedCmS=[10, 24], gravityCmS2=30, drag=0.9, lifeMs=[1800, 2600], sizeCm=[6, 10], alpha=[0.8, 0],
+            fadeIn=0.15, alphaPow=2.0, spinDegS=[-70, 70], rotationDeg=[0, 360], color=ASH_LIGHT),
+        lay(sprite="Core", orient="billboard", blend="translucent", at="origin", height=50, rate=6, durationMs=-1,
+            spawnRadiusCm=46, spawnHeightJitterCm=70, dir="down", coneDeg=20, speedCmS=[8, 18], gravityCmS2=20,
+            lifeMs=[2000, 2800], sizeCm=[3, 5], alpha=[0.6, 0], fadeIn=0.15, alphaPow=2.0, color=ASH_MID),
+        lay(emitter="glow", at="origin", height=30, rate=0.5, durationMs=-1, sizeCm=150, grow=1.1, lifeMs=2400,
+            fadeIn=0.45, alpha=[0.16, 0], color="#AEB6C6"),
+    ], note="the Ash Steps (exit_portal@pit, socket fx_vortex — in the stair's passage): ash sifting down from the "
+            "surface and a faint cold daylight in the passage; replaces exit.portal in the Pit (no teal vortex, no "
+            "ground ward: the way out is a stair)")
+    # the Pitwarden's spade (enemy notifies: earth and dust, never a glow)
+    rec["notify.FX_PitDig"] = R("ash", [
+        lay(sprite="Rock", randomVariants=2, orient="billboard", blend="translucent", at="origin", height=6,
+            offsetCm=PIT_DIG_AT, count=6, dir="back", coneDeg=50, speedCmS=[60, 130], upCmS=[150, 240],
+            gravityCmS2=1100, lifeMs=[340, 500], sizeCm=[10, 16], spinDegS=[-400, 400], alpha=[1, 1],
+            color=PIT_EARTH),
+        ash_dust("origin", 4, offsetCm=PIT_DIG_AT, radius=12, color=PIT_EARTH_DUST, alpha=0.6, size=(34, 50),
+                 life=(420, 640), rise=10),
+    ], note="the Pitwarden's spade biting (Cast01 Plant @330, Idle_Order @900): clods thrown back and a puff of "
+            "earth at the blade (actor frame: 82 cm ahead, 34 cm to his right); no glow")
+    line = []
+    for k in range(4):                                       # the 4-tile line gives way, tile by tile, away from him
+        x = 100.0 * (k + 0.9)
+        d = 70 * k
+        line += [
+            lay(sprite="Rock", randomVariants=2, orient="billboard", blend="translucent", at="origin", height=6,
+                offsetCm=[x, 0.0, 0.0], count=6, spawnRadiusCm=34, dir="random", speedCmS=[30, 110],
+                upCmS=[170, 300], gravityCmS2=1150, lifeMs=[380, 560], sizeCm=[11, 18], spinDegS=[-420, 420],
+                alpha=[1, 1], color=PIT_EARTH, delayMs=d),
+            ash_dust("origin", 5, offsetCm=[x, 0.0, 0.0], radius=40, color=PIT_EARTH_DUST, alpha=0.62,
+                     size=(52, 76), life=(620, 900), rise=16, delay=d),
+            lay(sprite="Crack", orient="ground", blend="translucent", at="origin", height=3,
+                offsetCm=[x, 0.0, 0.0], sizeCm=118, grow=1.05, lifeMs=1600, fadeIn=0.05, alpha=[0.75, 0],
+                alphaPow=2.2, rotationDeg=[0, 360], color="#1A1512", delayMs=d),
+        ]
+    rec["notify.FX_PitCollapse"] = R("ash", line, shake=[5, 180],
+                                     note="the Pitwarden's Dig lands (Cast01 Contact @800): the 4-tile line gives "
+                                          "way from him outward, 70 ms a tile — clods jumping, earth dust, a dark "
+                                          "crack on each tile for 1.6 s (actor frame, Blow = his facing; U2's "
+                                          "crimson line decal is the telegraph: this is the contact). No glow")
+    return rec
+
+
 # ── hue-audit fixes on today's hero recipes ───────────────────────────────────────────────────────────────
 FILL_FIXES = {
     # (recipe, sprite): new decal growth (fx_recipes.decal's g0 .85 start → grow/.85 < 1.5: no longer a fill)
@@ -1384,6 +1610,20 @@ BINDINGS = {
                        "band (dark.materials.AshnumbTint)", "W2"),
     "prop.echo": ("U1 echo lore look: at the figure, with MI_AF_Echo's 3 s", "W1"),
     "camp.bell_toll": ("U4 / U7 bell cue at SM_Prop_March_BellFrame socket bell", "W1"),
+    "prop.pit_cleanse.embers": ("U6: EvAreaCleansed in sub_rf_pit, at the hero (dark.pit.cleanse.sequence)", "W3"),
+    "ambient.pit_embers": ("U6: the zone ambience of sub_rf_pit while rf_pit_cleansed is set", "W3"),
+    "prop.pit_lamp.light": ("U6: once at a lamp's swap to setpiece_pit_lamp_lit, socket flame (the cleanse "
+                            "sequence only)", "W3"),
+    "prop.pit_lamp.flame": ("U6: loop at socket flame of every setpiece_pit_lamp_lit; its light at socket light",
+                            "W3"),
+    "prop.pit_cleanse.niche": ("U6 / U7: socket niche of setpiece_pit_flame_niche at the cleanse and at the S7 "
+                               "turn-in beat", "W3"),
+    "prop.pit_cleanse.mark": ("U6: sockets mark_1..5 of setpiece_pit_flame_niche, 180 ms apart after the niche",
+                              "W3"),
+    "exit.portal@pit": ("U6: the exit EffectSpot resolves exit.portal@<presentation theme> before exit.portal; at "
+                        "exit_portal@pit's socket fx_vortex", "W3"),
+    "notify.FX_PitDig": ("SK_Mon_Pitwarden Cast01 @330 (Plant), Idle_Order @900", "W3"),
+    "notify.FX_PitCollapse": ("SK_Mon_Pitwarden Cast01 @800 (Dig contact; Blow = his facing)", "W3"),
     "camp.torch@march": ("U1: AAbyssZoneActor::BuildCamps' EffectSpot at a torch prop resolves camp.torch@<zone "
                          "presentation theme> before camp.torch (like the decor <id>@march lookup); the march "
                          "brazier's smoulder, no light", "runtime"),
@@ -1469,7 +1709,7 @@ def normalise(recs: dict) -> None:
 def recipes() -> dict:
     FR.load_diameters()
     out = {}
-    for group in (ambience, elites, notifies, deaths, monsters, telegraphs, corpses, wave2, world):
+    for group in (ambience, elites, notifies, deaths, monsters, telegraphs, corpses, wave2, world, pit):
         out.update(group())
     normalise(out)
     return out
@@ -1505,6 +1745,7 @@ def doc_section(report: dict) -> dict:
         "bindings": {k: {"event": e, "wave": w} for k, (e, w) in sorted(BINDINGS.items())},
         "aliases": ALIASES,
         "materials": {"M_AF_Telegraph": TELEGRAPH, "M_AF_AshDissolve": ASH_DISSOLVE, "AshnumbTint": ASHNUMB},
+        "pit": PIT,
         "decisions": DECISIONS_DARK,
         "recoloured": report.get("replaced", []),
         "heroFixes": report.get("heroFixes", []),

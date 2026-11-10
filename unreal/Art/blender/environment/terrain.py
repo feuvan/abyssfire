@@ -314,8 +314,12 @@ def paint_slabs(cv: Canvas, layer, base: int, seed: int):
     g = (np.arange(res) + 0.5) / cv.k
     U, V = np.meshgrid(g, g)
     P = np.stack([U.ravel(), V.ravel()], 1)
-    d2 = ((P[:, None, :] - C[None, :, :]) ** 2).sum(2)
-    idx = np.argsort(d2, axis=1)[:, :2]
+    # the two nearest seeds per texel, in row chunks (res² x 9n² distances at once is > 10 GB for cells 3 at 1024²)
+    idx = np.empty((len(P), 2), np.int64)
+    step = max(1, (48 << 20) // max(1, len(C)))
+    for a in range(0, len(P), step):
+        d2 = ((P[a:a + step, None, :] - C[None, :, :]) ** 2).sum(2)
+        idx[a:a + step] = np.argsort(d2, axis=1)[:, :2]
     s1, s2 = C[idx[:, 0]], C[idx[:, 1]]
     e = s2 - s1
     el = np.maximum(np.linalg.norm(e, axis=1), 1e-9)

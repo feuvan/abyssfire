@@ -870,6 +870,90 @@
     }
    ]
   },
+  "ambient.pit_embers": {
+   "palette": "fire",
+   "layers": [
+    {
+     "emitter": "motes",
+     "sprite": "Ember",
+     "at": "camera",
+     "durationMs": -1,
+     "rate": 7,
+     "spawnRadiusCm": 820,
+     "height": 4,
+     "spawnHeightJitterCm": 10,
+     "dir": "up",
+     "coneDeg": 12,
+     "speedCmS": [
+      14,
+      36
+     ],
+     "gravityCmS2": -10,
+     "drag": 0.3,
+     "lifeMs": [
+      3000,
+      4600
+     ],
+     "sizeCm": [
+      4,
+      7
+     ],
+     "alpha": [
+      0.85,
+      0
+     ],
+     "fadeIn": 0.15,
+     "alphaPow": 1.8,
+     "color": "#FF7A2A",
+     "altEvery": 4,
+     "altColor": "#FFB060",
+     "intensity": 1.1
+    },
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "camera",
+     "durationMs": -1,
+     "rate": 3,
+     "spawnRadiusCm": 820,
+     "height": 6,
+     "dir": "up",
+     "coneDeg": 30,
+     "speedCmS": [
+      8,
+      20
+     ],
+     "gravityCmS2": -5,
+     "drag": 0.8,
+     "lifeMs": [
+      3000,
+      4200
+     ],
+     "sizeCm": [
+      6,
+      9
+     ],
+     "alpha": [
+      0.5,
+      0
+     ],
+     "fadeIn": 0.2,
+     "alphaPow": 1.6,
+     "spinDegS": [
+      -60,
+      60
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#B8B2A6"
+    }
+   ],
+   "note": "the cleansed Pit's ambience (zone ambience pit_embers while rf_pit_cleansed is set): ~27 embers and a few ash flakes alive over the 8 m disc round the hero, rising slowly \u2014 the Pit stays lit"
+  },
   "ambient.pollen": {
    "palette": "event",
    "layers": [
@@ -6537,6 +6621,139 @@
     "alpha": 0.3,
     "flicker": false
    }
+  },
+  "exit.portal@pit": {
+   "palette": "ash",
+   "layers": [
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 40,
+     "rate": 5,
+     "durationMs": -1,
+     "spawnRadiusCm": 46,
+     "spawnHeightJitterCm": 60,
+     "dir": "down",
+     "coneDeg": 24,
+     "speedCmS": [
+      10,
+      24
+     ],
+     "gravityCmS2": 30,
+     "drag": 0.9,
+     "lifeMs": [
+      1800,
+      2600
+     ],
+     "sizeCm": [
+      6,
+      10
+     ],
+     "alpha": [
+      0.8,
+      0
+     ],
+     "fadeIn": 0.15,
+     "alphaPow": 2.0,
+     "spinDegS": [
+      -70,
+      70
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#B8B2A6",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "sprite": "Core",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 50,
+     "rate": 6,
+     "durationMs": -1,
+     "spawnRadiusCm": 46,
+     "spawnHeightJitterCm": 70,
+     "dir": "down",
+     "coneDeg": 20,
+     "speedCmS": [
+      8,
+      18
+     ],
+     "gravityCmS2": 20,
+     "lifeMs": [
+      2000,
+      2800
+     ],
+     "sizeCm": [
+      3,
+      5
+     ],
+     "alpha": [
+      0.6,
+      0
+     ],
+     "fadeIn": 0.15,
+     "alphaPow": 2.0,
+     "color": "#8A8480",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 30,
+     "rate": 0.5,
+     "durationMs": -1,
+     "sizeCm": 150,
+     "grow": 1.1,
+     "lifeMs": 2400,
+     "fadeIn": 0.45,
+     "alpha": [
+      0.16,
+      0
+     ],
+     "color": "#AEB6C6",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ]
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 30,
+     "sizeCm": 150,
+     "grow": 1.1,
+     "lifeMs": 2400,
+     "fadeIn": 0.45,
+     "alpha": [
+      0.16,
+      0
+     ],
+     "color": "#AEB6C6",
+     "offsetCm": [
+      -18.2,
+      -18.2,
+      30.6
+     ],
+     "count": 1
+    }
+   ],
+   "note": "the Ash Steps (exit_portal@pit, socket fx_vortex \u2014 in the stair's passage): ash sifting down from the surface and a faint cold daylight in the passage; replaces exit.portal in the Pit (no teal vortex, no ground ward: the way out is a stair)"
   },
   "exit.sealed": {
    "palette": "blood",
@@ -15673,6 +15890,540 @@
    ],
    "note": "a hop landing: a dull dust pat (no colour: the clot's sparks are its own emissive)"
   },
+  "notify.FX_PitCollapse": {
+   "palette": "ash",
+   "layers": [
+    {
+     "sprite": "Rock",
+     "randomVariants": 2,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 6,
+     "offsetCm": [
+      90.0,
+      0.0,
+      0.0
+     ],
+     "count": 6,
+     "spawnRadiusCm": 34,
+     "dir": "random",
+     "speedCmS": [
+      30,
+      110
+     ],
+     "upCmS": [
+      170,
+      300
+     ],
+     "gravityCmS2": 1150,
+     "lifeMs": [
+      380,
+      560
+     ],
+     "sizeCm": [
+      11,
+      18
+     ],
+     "spinDegS": [
+      -420,
+      420
+     ],
+     "alpha": [
+      1,
+      1
+     ],
+     "color": "#5A4E44"
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "count": 5,
+     "spawnRadiusCm": 40,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      20,
+      60
+     ],
+     "gravityCmS2": -16,
+     "drag": 2.4,
+     "lifeMs": [
+      620,
+      900
+     ],
+     "sizeCm": [
+      52,
+      76
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.62,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#6E655C",
+     "offsetCm": [
+      90.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Crack",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10.0,
+     "offsetCm": [
+      90.0,
+      0.0,
+      0.0
+     ],
+     "sizeCm": 118,
+     "grow": 1.05,
+     "lifeMs": 1600,
+     "fadeIn": 0.05,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "alphaPow": 2.2,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#1A1512"
+    },
+    {
+     "sprite": "Rock",
+     "randomVariants": 2,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 6,
+     "offsetCm": [
+      190.0,
+      0.0,
+      0.0
+     ],
+     "count": 6,
+     "spawnRadiusCm": 34,
+     "dir": "random",
+     "speedCmS": [
+      30,
+      110
+     ],
+     "upCmS": [
+      170,
+      300
+     ],
+     "gravityCmS2": 1150,
+     "lifeMs": [
+      380,
+      560
+     ],
+     "sizeCm": [
+      11,
+      18
+     ],
+     "spinDegS": [
+      -420,
+      420
+     ],
+     "alpha": [
+      1,
+      1
+     ],
+     "color": "#5A4E44",
+     "delayMs": 70
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "count": 5,
+     "spawnRadiusCm": 40,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      20,
+      60
+     ],
+     "gravityCmS2": -16,
+     "drag": 2.4,
+     "lifeMs": [
+      620,
+      900
+     ],
+     "sizeCm": [
+      52,
+      76
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.62,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#6E655C",
+     "delayMs": 70,
+     "offsetCm": [
+      190.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Crack",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10.0,
+     "offsetCm": [
+      190.0,
+      0.0,
+      0.0
+     ],
+     "sizeCm": 118,
+     "grow": 1.05,
+     "lifeMs": 1600,
+     "fadeIn": 0.05,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "alphaPow": 2.2,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#1A1512",
+     "delayMs": 70
+    },
+    {
+     "sprite": "Rock",
+     "randomVariants": 2,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 6,
+     "offsetCm": [
+      290.0,
+      0.0,
+      0.0
+     ],
+     "count": 6,
+     "spawnRadiusCm": 34,
+     "dir": "random",
+     "speedCmS": [
+      30,
+      110
+     ],
+     "upCmS": [
+      170,
+      300
+     ],
+     "gravityCmS2": 1150,
+     "lifeMs": [
+      380,
+      560
+     ],
+     "sizeCm": [
+      11,
+      18
+     ],
+     "spinDegS": [
+      -420,
+      420
+     ],
+     "alpha": [
+      1,
+      1
+     ],
+     "color": "#5A4E44",
+     "delayMs": 140
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "count": 5,
+     "spawnRadiusCm": 40,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      20,
+      60
+     ],
+     "gravityCmS2": -16,
+     "drag": 2.4,
+     "lifeMs": [
+      620,
+      900
+     ],
+     "sizeCm": [
+      52,
+      76
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.62,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#6E655C",
+     "delayMs": 140,
+     "offsetCm": [
+      290.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Crack",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10.0,
+     "offsetCm": [
+      290.0,
+      0.0,
+      0.0
+     ],
+     "sizeCm": 118,
+     "grow": 1.05,
+     "lifeMs": 1600,
+     "fadeIn": 0.05,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "alphaPow": 2.2,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#1A1512",
+     "delayMs": 140
+    },
+    {
+     "sprite": "Rock",
+     "randomVariants": 2,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 6,
+     "offsetCm": [
+      390.0,
+      0.0,
+      0.0
+     ],
+     "count": 6,
+     "spawnRadiusCm": 34,
+     "dir": "random",
+     "speedCmS": [
+      30,
+      110
+     ],
+     "upCmS": [
+      170,
+      300
+     ],
+     "gravityCmS2": 1150,
+     "lifeMs": [
+      380,
+      560
+     ],
+     "sizeCm": [
+      11,
+      18
+     ],
+     "spinDegS": [
+      -420,
+      420
+     ],
+     "alpha": [
+      1,
+      1
+     ],
+     "color": "#5A4E44",
+     "delayMs": 210
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "count": 5,
+     "spawnRadiusCm": 40,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      20,
+      60
+     ],
+     "gravityCmS2": -16,
+     "drag": 2.4,
+     "lifeMs": [
+      620,
+      900
+     ],
+     "sizeCm": [
+      52,
+      76
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.62,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#6E655C",
+     "delayMs": 210,
+     "offsetCm": [
+      390.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "sprite": "Crack",
+     "orient": "ground",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 10.0,
+     "offsetCm": [
+      390.0,
+      0.0,
+      0.0
+     ],
+     "sizeCm": 118,
+     "grow": 1.05,
+     "lifeMs": 1600,
+     "fadeIn": 0.05,
+     "alpha": [
+      0.75,
+      0
+     ],
+     "alphaPow": 2.2,
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#1A1512",
+     "delayMs": 210
+    }
+   ],
+   "shake": [
+    5,
+    180
+   ],
+   "note": "the Pitwarden's Dig lands (Cast01 Contact @800): the 4-tile line gives way from him outward, 70 ms a tile \u2014 clods jumping, earth dust, a dark crack on each tile for 1.6 s (actor frame, Blow = his facing; U2's crimson line decal is the telegraph: this is the contact). No glow"
+  },
+  "notify.FX_PitDig": {
+   "palette": "ash",
+   "layers": [
+    {
+     "sprite": "Rock",
+     "randomVariants": 2,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 6,
+     "offsetCm": [
+      81.8,
+      34.0,
+      0.0
+     ],
+     "count": 6,
+     "dir": "back",
+     "coneDeg": 50,
+     "speedCmS": [
+      60,
+      130
+     ],
+     "upCmS": [
+      150,
+      240
+     ],
+     "gravityCmS2": 1100,
+     "lifeMs": [
+      340,
+      500
+     ],
+     "sizeCm": [
+      10,
+      16
+     ],
+     "spinDegS": [
+      -400,
+      400
+     ],
+     "alpha": [
+      1,
+      1
+     ],
+     "color": "#5A4E44"
+    },
+    {
+     "sprite": "Dust",
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": 8,
+     "count": 4,
+     "spawnRadiusCm": 12,
+     "onRing": true,
+     "dir": "out",
+     "speedCmS": [
+      20,
+      60
+     ],
+     "gravityCmS2": -10,
+     "drag": 2.4,
+     "lifeMs": [
+      420,
+      640
+     ],
+     "sizeCm": [
+      34,
+      50
+     ],
+     "grow": 1.45,
+     "sizePow": 1.5,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "fadeIn": 0.1,
+     "alphaPow": 1.4,
+     "color": "#6E655C",
+     "offsetCm": [
+      81.8,
+      34.0,
+      0.0
+     ]
+    }
+   ],
+   "note": "the Pitwarden's spade biting (Cast01 Plant @330, Idle_Order @900): clods thrown back and a puff of earth at the blade (actor frame: 82 cm ahead, 34 cm to his right); no glow"
+  },
   "notify.FX_Roar": {
    "palette": "breach",
    "layers": [
@@ -19195,6 +19946,514 @@
      "count": 1
     }
    ]
+  },
+  "prop.pit_cleanse.embers": {
+   "palette": "fire",
+   "layers": [
+    {
+     "emitter": "motes",
+     "sprite": "Ember",
+     "at": "camera",
+     "durationMs": 6000,
+     "rate": 46,
+     "spawnRadiusCm": 820,
+     "height": 4,
+     "spawnHeightJitterCm": 10,
+     "dir": "up",
+     "coneDeg": 14,
+     "speedCmS": [
+      22,
+      58
+     ],
+     "gravityCmS2": -16,
+     "drag": 0.25,
+     "lifeMs": [
+      2400,
+      3800
+     ],
+     "sizeCm": [
+      5,
+      9
+     ],
+     "alpha": [
+      0.95,
+      0
+     ],
+     "fadeIn": 0.12,
+     "alphaPow": 1.6,
+     "color": "#FF7A2A",
+     "altEvery": 3,
+     "altColor": "#FFB060",
+     "intensity": 1.2
+    },
+    {
+     "sprite": "Core",
+     "orient": "billboard",
+     "at": "camera",
+     "durationMs": 5200,
+     "rate": 22,
+     "spawnRadiusCm": 820,
+     "height": 3,
+     "spawnHeightJitterCm": 6,
+     "dir": "up",
+     "coneDeg": 10,
+     "speedCmS": [
+      30,
+      70
+     ],
+     "gravityCmS2": -10,
+     "lifeMs": [
+      1800,
+      2800
+     ],
+     "sizeCm": [
+      3,
+      5
+     ],
+     "alpha": [
+      0.9,
+      0
+     ],
+     "fadeIn": 0.1,
+     "color": "#FFB060",
+     "intensity": 1.3
+    },
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "camera",
+     "durationMs": 5200,
+     "rate": 14,
+     "spawnRadiusCm": 820,
+     "height": 6,
+     "spawnHeightJitterCm": 10,
+     "dir": "up",
+     "coneDeg": 30,
+     "speedCmS": [
+      14,
+      34
+     ],
+     "gravityCmS2": -8,
+     "drag": 0.8,
+     "lifeMs": [
+      2600,
+      3800
+     ],
+     "sizeCm": [
+      7,
+      11
+     ],
+     "alpha": [
+      0.7,
+      0
+     ],
+     "fadeIn": 0.15,
+     "alphaPow": 1.6,
+     "spinDegS": [
+      -70,
+      70
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#B8B2A6"
+    },
+    {
+     "emitter": "glow",
+     "orient": "ground",
+     "at": "origin",
+     "height": 10.0,
+     "sizeCm": 520,
+     "grow": 2.6,
+     "sizePow": 1.2,
+     "lifeMs": 2600,
+     "fadeIn": 0.25,
+     "alpha": [
+      0.32,
+      0
+     ],
+     "color": "#B8401C"
+    },
+    {
+     "sprite": "Ring",
+     "orient": "ground",
+     "at": "origin",
+     "height": 11.0,
+     "sizeCm": 274.3,
+     "grow": 7.0,
+     "sizePow": 1.1,
+     "lifeMs": 2200,
+     "fadeIn": 0.1,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "alphaPow": 1.4,
+     "color": "#FFB060"
+    }
+   ],
+   "note": "the Pit is cleansed (EvAreaCleansed; chapter1.md \u00a79.2): embers rise from the floor over an 8 m disc round the hero for 6 s (~150 alive at the peak), ash lifts with them, one warm swell runs out over the floor from where the hero stands. No light of its own: the lamps and the grade bring it (dark.pit)"
+  },
+  "prop.pit_cleanse.mark": {
+   "palette": "fire",
+   "layers": [
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 0,
+     "sizeCm": 34,
+     "grow": 1.4,
+     "lifeMs": 1500,
+     "fadeIn": 0.2,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "alphaPow": 1.5,
+     "color": "#FF7A2A"
+    },
+    {
+     "emitter": "sparks",
+     "at": "origin",
+     "height": 0,
+     "count": 4,
+     "dir": "up",
+     "coneDeg": 60,
+     "speedCmS": [
+      20,
+      60
+     ],
+     "gravityCmS2": 120,
+     "drag": 0.8,
+     "lifeMs": [
+      500,
+      800
+     ],
+     "sizeCm": [
+      3,
+      5
+     ],
+     "color": "#FFB060"
+    }
+   ],
+   "note": "one of the five burn marks round the niche glowing once (sockets mark_1 \u2026 mark_5, 180 ms apart, clockwise from the top)"
+  },
+  "prop.pit_cleanse.niche": {
+   "palette": "fire",
+   "layers": [
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 0,
+     "sizeCm": 110,
+     "grow": 1.5,
+     "lifeMs": 2600,
+     "fadeIn": 0.35,
+     "alpha": [
+      0.5,
+      0
+     ],
+     "alphaPow": 1.4,
+     "color": "#FF7A2A"
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 0,
+     "sizeCm": 46,
+     "grow": 1.3,
+     "lifeMs": 2200,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.55,
+      0
+     ],
+     "color": "#FFB060"
+    },
+    {
+     "emitter": "motes",
+     "sprite": "Ember",
+     "at": "origin",
+     "height": -40,
+     "rate": 9,
+     "durationMs": 2400,
+     "spawnRadiusCm": 16,
+     "spawnHeightJitterCm": 50,
+     "dir": "up",
+     "coneDeg": 16,
+     "speedCmS": [
+      16,
+      40
+     ],
+     "gravityCmS2": -12,
+     "lifeMs": [
+      1100,
+      1700
+     ],
+     "sizeCm": [
+      4,
+      7
+     ],
+     "alpha": [
+      0.9,
+      0
+     ],
+     "fadeIn": 0.15,
+     "color": "#FF7A2A",
+     "altEvery": 3,
+     "altColor": "#FFB060"
+    },
+    {
+     "sprite": "AshFlake",
+     "randomVariants": 4,
+     "orient": "billboard",
+     "blend": "translucent",
+     "at": "origin",
+     "height": -30,
+     "count": 10,
+     "spawnRadiusCm": 20,
+     "spawnHeightJitterCm": 60,
+     "dir": "random",
+     "speedCmS": [
+      8,
+      26
+     ],
+     "upCmS": [
+      10,
+      40
+     ],
+     "gravityCmS2": 30,
+     "drag": 1.0,
+     "lifeMs": [
+      1400,
+      2000
+     ],
+     "sizeCm": [
+      6,
+      9
+     ],
+     "alpha": [
+      0.7,
+      0
+     ],
+     "alphaPow": 1.5,
+     "spinDegS": [
+      -80,
+      80
+     ],
+     "rotationDeg": [
+      0,
+      360
+     ],
+     "color": "#B8B2A6"
+    }
+   ],
+   "note": "the Flame Niche at the cleanse (socket niche of setpiece_pit_flame_niche; also the S7 turn-in beat): a warm breath inside the empty flame for ~2.5 s, embers rising through it, old ash shaken out \u2014 the niche stays empty"
+  },
+  "prop.pit_lamp.flame": {
+   "palette": "fire",
+   "layers": [
+    {
+     "emitter": "flames",
+     "sprite": "Flame",
+     "variant": 7,
+     "blend": "translucent",
+     "orient": "upright",
+     "at": "origin",
+     "height": -4,
+     "spawnRadiusCm": 2.2,
+     "upCmS": [
+      17.8,
+      35.6
+     ],
+     "lifeMs": [
+      320,
+      480
+     ],
+     "sizeCm": [
+      31.4,
+      43.2
+     ],
+     "aspect": 0.5,
+     "grow": 0.72,
+     "sizePow": 2,
+     "alpha": [
+      1,
+      0
+     ],
+     "fadeIn": 0.15,
+     "alphaPow": 1.2,
+     "color": "white",
+     "intensity": 1.0,
+     "rate": 7,
+     "durationMs": -1
+    },
+    {
+     "emitter": "motes",
+     "at": "origin",
+     "height": 8,
+     "rate": 0.6,
+     "durationMs": -1,
+     "spawnRadiusCm": 3,
+     "gravityCmS2": -70,
+     "lifeMs": [
+      600,
+      1000
+     ],
+     "sizeCm": [
+      3,
+      5
+     ],
+     "color": "#FFB060"
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 2,
+     "rate": 2,
+     "durationMs": -1,
+     "sizeCm": 44,
+     "grow": 1.15,
+     "lifeMs": 600,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.42,
+      0
+     ],
+     "color": "#FF7A2A"
+    },
+    {
+     "emitter": "motes",
+     "at": "origin",
+     "height": 8,
+     "spawnRadiusCm": 3,
+     "gravityCmS2": -70,
+     "lifeMs": [
+      600,
+      1000
+     ],
+     "sizeCm": [
+      3,
+      5
+     ],
+     "color": "#FFB060",
+     "count": 1
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 2,
+     "sizeCm": 44,
+     "grow": 1.15,
+     "lifeMs": 600,
+     "fadeIn": 0.3,
+     "alpha": [
+      0.42,
+      0
+     ],
+     "color": "#FF7A2A",
+     "count": 1
+    }
+   ],
+   "light": {
+    "radiusCm": 290,
+    "alpha": 0.34,
+    "flicker": true
+   },
+   "note": "the lit niche lamp's loop (socket flame of setpiece_pit_lamp_lit): small tongues over the wick, a mote now and then, a warm glow; light = the pool on the floor (place it at socket light: r 2.9 tiles, dark.pit.cleanse.grade.lamp)"
+  },
+  "prop.pit_lamp.light": {
+   "palette": "fire",
+   "layers": [
+    {
+     "emitter": "flash",
+     "at": "origin",
+     "height": 0,
+     "sizeCm": 26,
+     "grow": 2.2,
+     "lifeMs": 200,
+     "alpha": [
+      0.9,
+      0
+     ],
+     "color": "#FFB060"
+    },
+    {
+     "emitter": "glow",
+     "at": "origin",
+     "height": 0,
+     "sizeCm": 70,
+     "grow": 1.8,
+     "lifeMs": 520,
+     "fadeIn": 0.2,
+     "alpha": [
+      0.6,
+      0
+     ],
+     "color": "#FF7A2A"
+    },
+    {
+     "emitter": "sparks",
+     "at": "origin",
+     "height": 2,
+     "count": 7,
+     "dir": "up",
+     "coneDeg": 70,
+     "speedCmS": [
+      40,
+      110
+     ],
+     "gravityCmS2": 380,
+     "drag": 0.6,
+     "lifeMs": [
+      280,
+      520
+     ],
+     "sizeCm": [
+      4,
+      6
+     ],
+     "color": "#FFB060",
+     "altEvery": 2,
+     "altColor": "#FF7A2A"
+    },
+    {
+     "emitter": "smoke",
+     "sprite": "Smoke",
+     "randomVariants": 2,
+     "at": "origin",
+     "height": 10,
+     "count": 2,
+     "spawnRadiusCm": 3,
+     "dir": "up",
+     "coneDeg": 20,
+     "speedCmS": [
+      14,
+      26
+     ],
+     "gravityCmS2": -20,
+     "lifeMs": [
+      700,
+      1000
+     ],
+     "sizeCm": [
+      14,
+      20
+     ],
+     "grow": 1.8,
+     "alpha": [
+      0.4,
+      0
+     ],
+     "fadeIn": 0.2,
+     "color": "#6A645B",
+     "delayMs": 120
+    }
+   ],
+   "note": "a niche lamp catching (once, at the swap to setpiece_pit_lamp_lit; socket flame): a flare at the wick, sparks into the bowl, a breath of soot"
   },
   "prop.soul_echo": {
    "palette": "frost",
@@ -29500,6 +30759,10 @@
     "event": "zone weather ambience ashfall (emerald_plains); Context.Color = the weather tint",
     "wave": "W1"
    },
+   "ambient.pit_embers": {
+    "event": "U6: the zone ambience of sub_rf_pit while rf_pit_cleansed is set",
+    "wave": "W3"
+   },
    "ambient.sparks": {
     "event": "ambience sparks; pass the weather tint as Context.Color (Breach Rim #B02FD0)",
     "wave": "W1"
@@ -29592,6 +30855,10 @@
     "event": "elite affix loop",
     "wave": "W1"
    },
+   "exit.portal@pit": {
+    "event": "U6: the exit EffectSpot resolves exit.portal@<presentation theme> before exit.portal; at exit_portal@pit's socket fx_vortex",
+    "wave": "W3"
+   },
    "hazard.banner_ring": {
     "event": "EvArena ring, RadiusCm = the current arena radius (with the arena-style decal)",
     "wave": "W2"
@@ -29680,6 +30947,14 @@
     "event": "Breachclot / Cinderbloat / Slime Walk",
     "wave": "W1"
    },
+   "notify.FX_PitCollapse": {
+    "event": "SK_Mon_Pitwarden Cast01 @800 (Dig contact; Blow = his facing)",
+    "wave": "W3"
+   },
+   "notify.FX_PitDig": {
+    "event": "SK_Mon_Pitwarden Cast01 @330 (Plant), Idle_Order @900",
+    "wave": "W3"
+   },
    "notify.FX_Roar": {
     "event": "SK_Mon_Valdras Roar @450 (intro, phase changes); SK_Mon_GoblinChief Roar",
     "wave": "W1"
@@ -29691,6 +30966,26 @@
    "prop.echo": {
     "event": "U1 echo lore look: at the figure, with MI_AF_Echo's 3 s",
     "wave": "W1"
+   },
+   "prop.pit_cleanse.embers": {
+    "event": "U6: EvAreaCleansed in sub_rf_pit, at the hero (dark.pit.cleanse.sequence)",
+    "wave": "W3"
+   },
+   "prop.pit_cleanse.mark": {
+    "event": "U6: sockets mark_1..5 of setpiece_pit_flame_niche, 180 ms apart after the niche",
+    "wave": "W3"
+   },
+   "prop.pit_cleanse.niche": {
+    "event": "U6 / U7: socket niche of setpiece_pit_flame_niche at the cleanse and at the S7 turn-in beat",
+    "wave": "W3"
+   },
+   "prop.pit_lamp.flame": {
+    "event": "U6: loop at socket flame of every setpiece_pit_lamp_lit; its light at socket light",
+    "wave": "W3"
+   },
+   "prop.pit_lamp.light": {
+    "event": "U6: once at a lamp's swap to setpiece_pit_lamp_lit, socket flame (the cleanse sequence only)",
+    "wave": "W3"
    },
    "status.ashnumb": {
     "event": "K6 StatusType::Ashnumb on the hero (status loop, as status.<type>) + the AshnumbTint band (dark.materials.AshnumbTint)",
@@ -29869,6 +31164,94 @@
     "readNote": "art review r1: with the r0 top (stacks x 0.12) one stack was the boots alone, hidden under the warrior's shield and legs at the W1 camera; the base lifts one stack to mid-shin. Reads clearly on the mage's robe and the rogue's leather; on the warrior's pale steel the ash reads darker and warmer (a dull band) and the EdgeColor line marks its top",
     "slowAt5": "at 5 stacks the hero is also slowed 20 %: status.slow is NOT added (the band at its top is the read; the slow's own frost look is the wrong element)",
     "owner": "A12 W2 (vfx/fx_recipes_dark.py ASHNUMB); built by the UE status presentation (2G)"
+   }
+  },
+  "pit": {
+   "_doc": "\u4fe1\u8005\u4e4b\u5751 / the Pit of the Faithful (sub_rf_pit): the light-radius look, the cleanse sequence and the lamp swap the UE lane implements (U6); the recipes are in `recipes`, the meshes in manifest.json (family environment.crypt_pit). environment/vignette_pit.py previews it with these numbers (Previews/env_vignette_pit/*.png)",
+   "lightRadius": {
+    "what": "the hero's light radius is the main light (chapter1.md \u00a79.2): everything is multiplied by ambient + \u03a3 lights, a light = color \u00d7 gain \u00d7 clamp(1 \u2212 d / radiusTiles)^power on the ground distance d from its centre; emissive regions (eyes, the breach seep, lamp flames) and additive VFX are not darkened",
+    "ambient": [
+     0.21,
+     0.23,
+     0.3
+    ],
+    "hero": {
+     "color": [
+      1.0,
+      0.93,
+      0.8
+     ],
+     "radiusTiles": 5.6,
+     "power": 1.5,
+     "gain": 0.95
+    },
+    "ceil": 1.12,
+    "acceptance": "HARD acceptance item of 3D's mac-look, not an optional mask: the whole look of the Pit is this grade. Without it the player gets the `_flat` previews \u2014 an evenly lit mid-grey room (floor about L* 30), no darkness at all. Pass = a W1 frame of every room matches its env_vignette_pit/<room>.png: far corners near black, the hero's pool the brightest floor, eyes / lamp flames / the seep undimmed, and after the cleanse the warm ambient and one pool per lit lamp (flame_niche_cleansed.png)",
+    "implementation": "recommended \u2014 in the materials: the toon masters are unlit, so a UE light does nothing and a full-screen post multiply also darkens emissive pixels and additive VFX. Put the grade in the material parameter collection the masters already read (KeyLightDir, SunColor, the R18 Light<i>PosR / Light<i>Col slots): a vector `GradeAmbient` (rgb; 1,1,1 outside the Pit) and `GradeCeil`, with the hero's pool and each lit lamp's pool as R18 slots whose falloff is (1 - d / r)^power on the ground distance; M_AF_Toon* / M_AF_Terrain* / M_AF_Water multiply their final colour by min(GradeAmbient + sum(pools), GradeCeil) x (1 - emissive) + emissive, the outline masters stay ink, the VFX masters do not read it. Fallback: zone_moods `pit` (ambient / fog darkness) plus a post-process multiply by a world-space radial mask round the hero with a custom-stencil exemption for emissive regions. Either way the floor ships at the march's values (the darkest walkable tile is the dug earth, L* 20.7: coherence/darkgate.py --theme=pit gates the Pit roster on it; a darker floor hides the black breach clot), so the darkness is this grade alone"
+   },
+   "cleanse": {
+    "trigger": "EvAreaCleansed (the Pitwarden dead and \u2264 5 hostiles left: clear_area) \u2014 and, without the sequence, any entry of sub_rf_pit with the world flag rf_pit_cleansed (the Pit stays lit)",
+    "sequence": [
+     {
+      "atMs": 0,
+      "do": "play prop.pit_cleanse.embers at the hero (camera volume, 6 s) and start ambient.pit_embers as the zone's ambience (it stays for every later visit)"
+     },
+     {
+      "atMs": 0,
+      "do": "blend the mood from pit to pit_cleansed over 6000 ms (grade below)"
+     },
+     {
+      "atMs": 600,
+      "do": "the lamps light one by one: sort every setpiece_pit_lamp by distance from the hero; lamp k at 600 + k \u00d7 420 ms: swap its mesh for setpiece_pit_lamp_lit at the same transform, play prop.pit_lamp.light once at socket flame, start the loop prop.pit_lamp.flame at socket flame (its light pool at socket light)"
+     },
+     {
+      "atMs": 600,
+      "do": "if the Flame Niche is on screen: prop.pit_cleanse.niche at its socket niche, then prop.pit_cleanse.mark at mark_1 \u2026 mark_5, 180 ms apart (clockwise from the top)"
+     }
+    ],
+    "lampStepMs": 420,
+    "grade": {
+     "from": {
+      "mood": "pit",
+      "ambient": [
+       0.21,
+       0.23,
+       0.3
+      ]
+     },
+     "to": {
+      "mood": "pit_cleansed",
+      "ambient": [
+       0.52,
+       0.44,
+       0.36
+      ]
+     },
+     "overMs": 6000,
+     "lamp": {
+      "color": [
+       1.0,
+       0.66,
+       0.36
+      ],
+      "radiusTiles": 2.9,
+      "power": 1.4,
+      "gain": 0.85,
+      "at": "socket light of setpiece_pit_lamp_lit (0.75 m in front of the wall, on the floor)"
+     },
+     "note": "the grade warms: the cold quarter-ambient lifts to a warm .52 / .44 / .36, the hero's radius stays, every lit lamp adds its pool; no bloom or exposure change (the toon values do the rest)"
+    },
+    "persist": "on a zone entry with rf_pit_cleansed: mood pit_cleansed at once, every lamp already lit (no prop.pit_lamp.light), ambient.pit_embers running; no monsters respawn (K7)"
+   },
+   "lampSwap": {
+    "unlit": "setpiece_pit_lamp (SM_Pit_NicheLamp)",
+    "lit": "setpiece_pit_lamp_lit (SM_Pit_NicheLamp_Lit)",
+    "how": "two meshes at one transform (the lit one carries the flame mesh, the lit oil and the warm wash on the niche's back as emissive regions); a visibility swap, no material parameter"
+   },
+   "exit": "exit.portal@pit at the Ash Steps (exit_portal@pit, socket fx_vortex): ash sifting down the stair and a faint cold daylight from above \u2014 the teal vortex and ward of exit.portal are not played (the themed recipe replaces it: resolve exit.portal@<presentation theme> first, as camp.torch@march)",
+   "materialContract": {
+    "MI_AF_Toon_Props_March_Crypt": "the crypt statics' slot 0 (manifest materialSlots[0].name / params): M_AF_Toon on the Props_March palette with RimOverride 1, RimOverrideAlpha .02 in the wall's own colour \u2014 no Fresnel rim on the crypt \u2014 and ShadeCool .3 (the master's scalar, default 1: the share of the cool shade tint; at 1 every wall plane turned from the key light was violet-indigo, the hue reserved for enemy magic in the Pit). One instance, one parameter set",
+    "MI_AF_Toon_Props_March_Wind": "the tag strands / curtain / rack: the march cloth instance (sway weights 0 at the peg \u2026 0.55 at the cord's end)"
    }
   },
   "decisions": {

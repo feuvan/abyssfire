@@ -166,6 +166,11 @@ TOON_INPUTS = (
     # display space before shading; 1 / 1 = the palette as painted (MI_AF_Toon_Foliage_<Theme>_Ground: grass, flowers).
     NodeInput("BaseSaturation", "float", "1.f"),
     NodeInput("BaseValue", "float", "1.f"),
+    # Dark remake 3C art review (the Pit): the share of the cool shade tint an instance keeps. 1 = the toon's shade as
+    # designed, mix(c, COOL, COOL_MIX) darkened by shadowAmt; 0 = the base colour darkened only. A wall plane turned
+    # from the key light is one big shade-band surface: at 1 the Pit's left walls were indigo, the hue reserved for
+    # enemy magic there (MI_AF_Toon_Props_March_Crypt ships SHADE_COOL_CRYPT; every other instance keeps 1).
+    NodeInput("ShadeCool", "float", "1.f"),
 )
 
 LUMA_WEIGHTS = (0.299, 0.587, 0.114)    # web tone() / ColorGradePipeline luma (display-space saturation)
@@ -194,7 +199,7 @@ float3 n = normalize(N);
 float3 lk = normalize(float3(L.r, L.g, L.b));
 float ndl = dot(n, lk);
 float hl = ndl * 0.5 + 0.5;
-float3 shadeC = lerp(lerp(c, @COOL@, @COOL_MIX@), float3(0.0, 0.0, 0.0), sAmt);
+float3 shadeC = lerp(lerp(c, @COOL@, @COOL_MIX@ * saturate(ShadeCool)), float3(0.0, 0.0, 0.0), sAmt);
 float3 lightC = lerp(c, @WARM@, lAmt);
 float3 col = lerp(shadeC, c, smoothstep(@TS0@, @TS1@, hl));
 col = lerp(col, lightC, smoothstep(@TL0@, @TL1@, hl));
@@ -281,7 +286,7 @@ float3 n = normalize(N);
 float3 lk = normalize(float3(L.r, L.g, L.b));
 float ndl = dot(n, lk);
 float hl = ndl * 0.5 + 0.5;
-float3 shadeC = lerp(lerp(c, @COOL@, @COOL_MIX@), float3(0.0, 0.0, 0.0), sAmt);
+float3 shadeC = lerp(lerp(c, @COOL@, @COOL_MIX@ * saturate(ShadeCool)), float3(0.0, 0.0, 0.0), sAmt);
 float3 lightC = lerp(c, @WARM@, lAmt);
 float gw = @GROUND_ALPHA@ * saturate(Ground) * saturate(GroundEnable);
 float3 colL = lerp(shadeC, c, smoothstep(@TS0@, @TS1@, hl));
@@ -365,7 +370,7 @@ def toon_split_node(sh: Shading) -> CustomNode:
 def toon_split_reference(sh: Shading, base_srgb: tuple[float, float, float], params: tuple[float, float, float],
                          n, v, grounding: float = 0.0, cast_shadow: float = 1.0,
                          sun_color: tuple[float, float, float] = (1.0, 1.0, 1.0), sun_tint: float = 1.0,
-                         base_saturation: float = 1.0, base_value: float = 1.0
+                         base_saturation: float = 1.0, base_value: float = 1.0, shade_cool: float = 1.0
                          ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """Python reference of AF_ToonSplit without feedback and torch slots: (Emit, Lit), linear. base_srgb is the palette
     colour in sRGB 0..1, params = (shadowAmt, lightAmt, emissive). The rendered colour under a sun-shadow term S is
@@ -395,7 +400,7 @@ def toon_split_reference(sh: Shading, base_srgb: tuple[float, float, float], par
     warm = [x / 255.0 for x in sh.warm_light]
     ground = [x / 255.0 for x in hex_to_rgb255(sh.ground_color)]
     rim_c = [x / 255.0 for x in hex_to_rgb255(sh.rim_color)]
-    shade = [x * (1.0 - s) for x in mix(c, cool, sh.cool_shade_mix)]
+    shade = [x * (1.0 - s) for x in mix(c, cool, sh.cool_shade_mix * min(max(shade_cool, 0.0), 1.0))]
     light = mix(c, warm, l)
     gw = sh.ground_alpha * min(max(grounding, 0.0), 1.0)
     col_l = mix(mix(mix(shade, c, smooth(sh.t_shade - half, sh.t_shade + half, hl)), light,

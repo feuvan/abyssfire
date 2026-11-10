@@ -53,22 +53,29 @@ FPS = 60.0
 
 
 # ── the march ground ───────────────────────────────────────────────────────────────────────────────────
-def make_march_ground():
+def make_march_ground(theme: str = "march"):
     """The shipped march terrain composited at 72 px per tile: ash grass with a trampled mud road along the screen
-    axis and a mud patch (both ground values the effects must read on)."""
+    axis and a mud patch (both ground values the effects must read on). ``theme`` ``"pit"``: the Pit's floor
+    instead (``terrain.pit``) — dug earth (tile 1, the Pitwarden's Cut: the darkest walkable tile) inside a border
+    of flagstone (2)."""
     import terrain as T
-    import terrain_march as TM
     C0, R0, C1, R1 = -9, -9, 10, 10
     rows, cols = R1 - R0, C1 - C0
     m = np.zeros((rows, cols), np.int32)
-    for r in range(rows):
-        for c in range(cols):
-            col, row = c + C0, r + R0
-            if abs((col + row) - 1) <= 1 and -7 <= col - row <= 7:
-                m[r, c] = 1
-            if (col - 4) ** 2 + (row + 5) ** 2 <= 4 or (col + 5) ** 2 + (row - 4) ** 2 <= 3:
-                m[r, c] = 1
-    cache = K.SCRATCH / "preview_ground_march.png"
+    if theme == "pit":
+        import terrain_pit as TM
+        m[:, :] = 2
+        m[3:rows - 3, 3:cols - 3] = 1
+    else:
+        import terrain_march as TM
+        for r in range(rows):
+            for c in range(cols):
+                col, row = c + C0, r + R0
+                if abs((col + row) - 1) <= 1 and -7 <= col - row <= 7:
+                    m[r, c] = 1
+                if (col - 4) ** 2 + (row + 5) ** 2 <= 4 or (col + 5) ** 2 + (row - 4) ** 2 <= 3:
+                    m[r, c] = 1
+    cache = K.SCRATCH / f"preview_ground_{theme}.png"
     K.SCRATCH.mkdir(parents=True, exist_ok=True)
     if not cache.exists():
         texs = TM.load_textures()
@@ -100,14 +107,16 @@ def make_march_ground():
 
 # ── the stage ──────────────────────────────────────────────────────────────────────────────────────────
 class DarkStage(FP.Stage):
-    """``fx_preview.Stage`` on the march ground with march figures (no goblins, heroes on demand)."""
+    """``fx_preview.Stage`` on the march ground with march figures (no goblins, heroes on demand); ``ground``
+    ``"pit"``: on the Pit's dug earth (the Pitwarden's husk falls there, not on the march)."""
 
-    def __init__(self):
+    def __init__(self, ground: str = "march"):
         import cohkit as CK
         self.CK = CK
         CK.reset()
         bpy.context.scene.view_settings.view_transform = "Standard"
-        self.ground = make_march_ground()
+        self.ground = make_march_ground(ground)
+        self.ground_label = "PIT EARTH" if ground == "pit" else "MARCH"
         self.heroes = {}
         self.hero = None
         self.gobs = []
@@ -679,7 +688,7 @@ def run(stage: DarkStage, recipes: dict, s: DScene, out_dir: Path) -> list:
     final = []
     for ms, out, _ in cells:
         o = np.ascontiguousarray(out[y0c:y1c, x0c:x1c])
-        FP.label(o, f"{s.rid}  +{int(ms)}MS  1:1 1080P  MARCH")
+        FP.label(o, f"{s.rid}  +{int(ms)}MS  1:1 1080P  {getattr(stage, 'ground_label', 'MARCH')}")
         final.append((ms, o))
     written = FP.write_effect(s.rid, final, out_dir)
     kb = sum(sz for _, sz in written) // 1024

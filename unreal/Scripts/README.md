@@ -238,7 +238,8 @@ Material behaviour in short:
   emissive regions unshaded (× 1.6), then the gameplay feedback from custom primitive data: `HitFlash` (0),
   `PainTint` (1–4), `Telegraph` (5–8), `StatusTint` (9–12), `Fade` (13), `Ghost` (14), `Highlight` (15); instanced
   dressing reads `PerInstanceCustomData` 0 Fade / 2 Highlight; `BaseSaturation` / `BaseValue` grade the palette colour
-  (ground cover, R19). `_Foliage` adds wind (WPO from the instance `Random`). `_Slime` (the jelly rim and an
+  (ground cover, R19); `ShadeCool` (default 1) is the share of the cool shade tint an instance keeps
+  (`mix(c, coolShade, coolShadeMix × ShadeCool)`: `MI_AF_Toon_Props_March_Crypt` .3 — the Pit's wall planes, DR17). `_Foliage` adds wind (WPO from the instance `Random`). `_Slime` (the jelly rim and an
   alpha-blended translucent body, `BodyOpacity` × fade, back faces culled; R12) stays **unlit** (`AF_Toon`), as do
   `M_AF_Toon_Fade` / `M_AF_Toon_Foliage_Fade`, the translucent twins of `M_AF_Toon` / `_Foliage` (alpha 1 − fade)
   for the occlusion-fade ghosts of the zone dressing on tiers without temporal AA (DECISIONS R1;

@@ -263,11 +263,13 @@ TOON_TERMS = {"rim": True, "grounding": True}     # the terms the AF_ToonCore gr
 
 def build_toon_group(l_key: Sequence[float] | None = None, rim: bool = True,
                      grounding: bool = True, rim_hex: str | None = None, rim_alpha: float | None = None,
-                     name: str = TOON_GROUP) -> bpy.types.NodeTree:
+                     name: str = TOON_GROUP, shade_cool: float = 1.0) -> bpy.types.NodeTree:
     """AF_ToonCore(Base sRGB, Params(s,l,e), Grounding) → Color (linear). ``rim`` / ``grounding`` = False leave
     that term out (review A/B cells only; every shipped preview uses the full stack). ``rim_hex`` / ``rim_alpha``
     (with another ``name``) build the core of an instance that overrides the rim — the masters' ``RimOverride`` 1 +
     ``RimOverrideColor`` / ``RimOverrideAlpha`` (same banded Fresnel on the key-lit half, another colour / alpha);
+    ``shade_cool`` (with another ``name``) is the masters' ``ShadeCool``: the share of the cool shade tint the
+    instance keeps (1 = ``mix(c, COOL_SHADE, COOL_SHADE_MIX)``, 0 = the base colour darkened only);
     see :func:`rim_override_group`."""
     lk = Vector(l_key) if l_key is not None else L_KEY
     if name == TOON_GROUP:
@@ -290,7 +292,7 @@ def build_toon_group(l_key: Sequence[float] | None = None, rim: bool = True,
     w_light = b.smooth(h, T_LIGHT - w, T_LIGHT + w)
     cool = _srgb01(color.COOL_SHADE)
     warm = _srgb01(color.WARM_LIGHT)
-    shade0 = b.mix(color.COOL_SHADE_MIX, c, b.const_vec(cool))
+    shade0 = b.mix(color.COOL_SHADE_MIX * min(max(float(shade_cool), 0.0), 1.0), c, b.const_vec(cool))
     shade = b.vmath("SCALE", shade0, scale=b.math("SUBTRACT", 1.0, s))
     light = b.mix(l, c, b.const_vec(warm))
     col = b.mix(w_base, shade, c)
@@ -311,13 +313,17 @@ def build_toon_group(l_key: Sequence[float] | None = None, rim: bool = True,
     return ng
 
 
-def rim_override_group(rim_hex: str, rim_alpha: float) -> bpy.types.NodeTree:
+def rim_override_group(rim_hex: str, rim_alpha: float, shade_cool: float = 1.0) -> bpy.types.NodeTree:
     """The toon core of a material instance with ``RimOverride`` 1 (``RimOverrideColor`` ``rim_hex``,
-    ``RimOverrideAlpha`` ``rim_alpha``): built once per colour / alpha as ``AF_ToonCore_Rim_<hex>_<alpha%>``. A
-    preview material swaps its ``GROUP`` node's tree for this one (monsters/breach.py, coherence/cohkit.py)."""
+    ``RimOverrideAlpha`` ``rim_alpha``) and, optionally, ``ShadeCool`` ``shade_cool``: built once per colour / alpha
+    (/ share) as ``AF_ToonCore_Rim_<hex>_<alpha%>[_SC<share%>]``. A preview material swaps its ``GROUP`` node's tree
+    for this one (monsters/breach.py, environment/crypt_pit.py, coherence/cohkit.py)."""
     name = f"{TOON_GROUP}_Rim_{rim_hex.lstrip('#').upper()}_{int(round(float(rim_alpha) * 100))}"
+    if abs(float(shade_cool) - 1.0) > 1e-6:
+        name += f"_SC{int(round(float(shade_cool) * 100))}"
     ng = bpy.data.node_groups.get(name)
-    return ng if ng is not None else build_toon_group(rim_hex=rim_hex, rim_alpha=rim_alpha, name=name)
+    return ng if ng is not None else build_toon_group(rim_hex=rim_hex, rim_alpha=rim_alpha, name=name,
+                                                      shade_cool=shade_cool)
 
 
 def build_outline_group() -> bpy.types.NodeTree:
@@ -513,9 +519,11 @@ def _smoothstep(e0: float, e1: float, x: float) -> float:
 
 
 def toon_reference(base_hex: str, s: float, l: float, e: float, n: Sequence[float], v: Sequence[float],
-                   grounding: float = 0.0, l_key: Sequence[float] | None = None) -> tuple[float, float, float]:
+                   grounding: float = 0.0, l_key: Sequence[float] | None = None,
+                   shade_cool: float = 1.0) -> tuple[float, float, float]:
     """Final display colour (sRGB 0..255) of M_AF_Toon for a normal ``n`` and view vector ``v`` (toward the
-    camera), Blender world axes. Equals the Cycles preview to 8-bit precision."""
+    camera), Blender world axes. Equals the Cycles preview to 8-bit precision. ``shade_cool`` = the instance's
+    ``ShadeCool`` (the share of the cool shade tint; 1 on every instance but the crypt's)."""
     lk = Vector(l_key) if l_key is not None else L_KEY
     N, V = Vector(n).normalized(), Vector(v).normalized()
     c = [x / 255.0 for x in color.hex_to_rgb(base_hex)]
@@ -531,7 +539,7 @@ def toon_reference(base_hex: str, s: float, l: float, e: float, n: Sequence[floa
     fres = (1 - max(N.dot(V), 0.0)) ** RIM_POWER
     rim = RIM_ALPHA * _smoothstep(RIM_T0, RIM_T1, fres) * _smoothstep(0.0, RIM_MASK_EDGE, ndl)
     for i in range(3):
-        shade = (c[i] + (cool[i] - c[i]) * color.COOL_SHADE_MIX) * (1 - s)
+        shade = (c[i] + (cool[i] - c[i]) * color.COOL_SHADE_MIX * min(max(shade_cool, 0.0), 1.0)) * (1 - s)
         light = c[i] + (warm[i] - c[i]) * l
         col = shade + (c[i] - shade) * wb
         col = col + (light - col) * wl

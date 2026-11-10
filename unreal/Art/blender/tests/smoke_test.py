@@ -539,6 +539,35 @@ def shader_conformance() -> None:
             worst = max(worst, d)
             print(f"    {k:8s} {label:5s} render {px.astype(int).tolist()} reference {np.round(ref).astype(int).tolist()}")
     check(worst <= 1.5, f"preview pixels equal the M_AF_Toon reference (max error {worst:.2f} / 255)")
+    # an instance with ShadeCool .3 (the crypt's: kit.shading.rim_override_group(…, shade_cool)): only the shade band
+    # moves, and by the reference's amount
+    grp = next(nd for nd in mat.node_tree.nodes if nd.type == "GROUP")
+    core = grp.node_tree
+    grp.node_tree = shading.rim_override_group(shading.RIM_HEX, shading.RIM_ALPHA, 0.3)
+    k, r = cases[1]
+    me.attributes["af_swatch"].data[0].value = b.swatch[k]
+    pal.bake_uvs(me)
+    set_af_data(me, None)
+    worst_c, moved = 0.0, {}
+    for label, n in (("base", L.orthogonal()), ("shade", -L)):
+        n = n.normalized()
+        obj.matrix_world = R.frame((0, 0, 0), n.orthogonal(), n)
+        cam = review._camera()
+        cam.data.type = "ORTHO"
+        cam.data.ortho_scale = 0.5
+        cam.matrix_world = scene.look_at_matrix(n * 3.0, Vector((0, 0, 0)))
+        review.setup_render((8, 8), 4)
+        px = review.render_array()[4, 4].astype(float)
+        ref = np.array(shading.toon_reference(r.hex, r.s, r.l, r.e, n, n, shade_cool=0.3))
+        full = np.array(shading.toon_reference(r.hex, r.s, r.l, r.e, n, n))
+        worst_c = max(worst_c, float(np.abs(px - ref).max()))
+        moved[label] = float(np.abs(ref - full).max())
+        print(f"    {k:8s} {label:5s} ShadeCool .3 render {px.astype(int).tolist()} reference "
+              f"{np.round(ref).astype(int).tolist()} (ShadeCool 1: {np.round(full).astype(int).tolist()})")
+    grp.node_tree = core
+    check(worst_c <= 1.5 and moved["base"] < 0.01 and moved["shade"] > 4.0,
+          f"ShadeCool .3 core equals the reference (max error {worst_c:.2f} / 255; the base band does not move, "
+          f"the shade band moves {moved['shade']:.1f})")
 
 
 def main() -> int:

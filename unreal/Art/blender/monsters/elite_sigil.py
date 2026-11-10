@@ -527,7 +527,8 @@ ROSTER = [("SK_Mon_RisenFootman", None, "FOOTMAN"), ("SK_Mon_RisenArbalest", Non
           ("SK_Mon_Deserter", "hunt_harke", "HARKE"), ("SK_Mon_Gravegnawer", None, "GNAWER"),
           ("SK_Mon_Bonegorger", None, "BONEGORGER"), ("SK_Mon_Bonegorger", "hunt_hungerbell", "HUNGERBELL"),
           ("SK_Mon_Breachclot", None, "BREACHCLOT"), ("SK_Mon_Cinderbloat", None, "CINDERBLOAT"),
-          ("SK_Mon_Corpseherd", None, "CORPSEHERD")]
+          ("SK_Mon_Corpseherd", None, "CORPSEHERD"),
+          ("SK_Mon_Pitwarden", None, "PITWARDEN")]           # Wave 3: the Pit's mini-boss
 
 # Wave 2 (2H, art review round 1): the sigil rides its own socket, ``fx_elite``. The roster sweep found the kit's
 # fx_overhead (crown + 25 cm on the head bone; root / body_top on the gnawers and clots) too low for the march's
@@ -552,6 +553,9 @@ CAP_FACINGS = ("se", "sw")
 ELITE_UP_CM = tuple(range(0, 64, 4))                 # over the W1 fx_overhead (posed)
 ELITE_LAT_CM = (0, 8, -8, 16, -16, 24, -24)          # + toward the character's left
 ELITE_LAT_EXTRA = {"SK_Mon_DeadStandardBearer": (32, -32, 40, -40, 48, -48)}   # wider: the banner by his head
+# (Wave 3, art review r1: the Pitwarden needed the same widening — and a grid over his blade's tip — while he bore
+# the spade upright beside his head; the sigil then floated over the spade, up to 89 px from the head. He now stands
+# it off his side, canted outward (pitwarden.CARRY_*): the plain grid over the head solves for him as for a footman)
 # the grid stays over the W1 socket (up >= 0): opened to the helm's height (up -20 .. -4, 56-64 cm to the side) the
 # nearest-on-screen pick for the standard-bearer was a sigil floating beside his helm 69 cm to his left (ne gap 51 px)
 # — in the Muster (a bearer and three footmen) it reads as a neighbour's marker; over the banner side reads as his

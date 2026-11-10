@@ -12,7 +12,8 @@ axes); every manifest socket has its ``SOCKET_<name>`` empty at ``locCm`` (±0.5
 recorded triangles; each themed game id resolves to an asset that lists it and has a base id (``kit.theme.audit``);
 footprint and blocking equal the plains base slot's (W5: the theme changes the mesh, never the slot); a plain
 ``setpiece_*`` id (``setpiece_bell_frame``, ``setpiece_hearth_dressing``: the UE set-piece layer places it; every plain
-id of the set-piece family, e.g. ``decor_defend_boneyard_gate``) only has to be mapped to the asset; **normal sanity**
+id of the set-piece family, e.g. ``decor_defend_boneyard_gate``, and of the Pit kit ``environment.crypt_pit``, e.g.
+``wall_pit``) only has to be mapped to the asset; the Pit kit's themed ids are ``@pit`` (``FAMILY_THEMES``); **normal sanity**
 (art review r1 of the set pieces): every LOD fails with more than 2 % of its toon loops > 60° off their face normal
 (:func:`normal_sanity`; families with authored normals — spherised foliage, faceted rocks — and the assets in
 :data:`AUTHORED_NORMALS_ASSETS` gate only their LOD1, against LOD0's fraction + 2 points). Writes
@@ -35,7 +36,11 @@ from kit import paths, scene, theme  # noqa: E402
 from kit.palette import GRID  # noqa: E402
 
 FAMILIES = ("environment.foliage", "environment.rocks", "environment.camp", "environment.story",
-            "environment.setpieces_march", "environment.lore_march")
+            "environment.setpieces_march", "environment.lore_march", "environment.crypt_pit")
+# families whose plain ids are placed by the UE set-piece / sub-dungeon layers (mapped is all they need), and the
+# presentation themes a family's themed ids may carry (the Pit kit: outcrop_plains@pit, exit_portal@pit — A13)
+PLAIN_ID_FAMILIES = ("environment.setpieces_march", "environment.crypt_pit")
+FAMILY_THEMES = {"environment.crypt_pit": ("pit",)}
 
 
 def _import(fbx: Path) -> list:
@@ -213,14 +218,14 @@ def check_asset(name: str, e: dict, man: dict) -> list[str]:
     for gid in e.get("gameIds", []):
         base, th = theme.split(gid)
         listed = sorted(n for n, x in man["assets"].items() if gid in x.get("gameIds", []))
-        if th is None and (gid.startswith("setpiece_") or e.get("family") == "environment.setpieces_march"):
+        if th is None and (gid.startswith("setpiece_") or e.get("family") in PLAIN_ID_FAMILIES):
             # a plain set-piece id (the UE set-piece layer places it: setpiece_bell_frame, setpiece_hearth_dressing,
             # the set pieces' setpiece_* / lore_order_post / M5's decor_defend_boneyard_gate)
             if name not in listed or gid not in gids:
                 errs.append(f"{gid} not mapped")
             continue
-        if th != "march":
-            errs.append(f"game id {gid} is not a march id")
+        if th not in FAMILY_THEMES.get(e.get("family"), ("march",)):
+            errs.append(f"game id {gid} is not a {' / '.join(FAMILY_THEMES.get(e.get('family'), ('march',)))} id")
             continue
         if name not in listed or gid not in gids:
             errs.append(f"{gid} not mapped")

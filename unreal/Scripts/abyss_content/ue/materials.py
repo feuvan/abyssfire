@@ -336,6 +336,8 @@ def build_toon(g: Graph, ctx: Ctx, variant: str, ash: bool = False, band: bool =
         # DECISIONS R19: ground cover (MI_AF_Toon_Foliage_<Theme>_Ground) compressed like the terrain
         "BaseSaturation": g.scalar("BaseSaturation", 1.0, group="Ground grade"),
         "BaseValue": g.scalar("BaseValue", 1.0, group="Ground grade"),
+        # dark remake 3C: the share of the cool shade tint (1 = as designed; the crypt instance lowers it)
+        "ShadeCool": g.scalar("ShadeCool", 1.0, group="Look"),
     }
     if blended:
         toon = g.custom(hlsl.toon_node(sh), wires)

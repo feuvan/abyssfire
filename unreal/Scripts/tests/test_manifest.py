@@ -102,6 +102,18 @@ class LookParameterTests(unittest.TestCase):
             seen.add(family)
         self.assertEqual(seen, set(want), "every family has a toon instance in the art manifest")
 
+    def test_shade_cool_only_on_the_crypt(self):
+        """ShadeCool (the share of the toon's cool shade tint) is lowered on the Pit's crypt statics alone: every
+        other instance keeps the master's default 1 (no override written)."""
+        crypt = self.plan.instances.get("MI_AF_Toon_Props_March_Crypt")
+        if crypt is None:
+            self.skipTest("the art manifest has no crypt kit")
+        self.assertEqual(crypt.parent, paths.M_TOON)
+        self.assertEqual(crypt.scalars.get("ShadeCool"), 0.3)
+        self.assertEqual(crypt.scalars.get("RimOverride"), 1.0)
+        others = [i.name for i in self.plan.instances.values() if "ShadeCool" in i.scalars and i is not crypt]
+        self.assertEqual(others, [])
+
     def test_ground_grade_on_the_plains(self):
         ground = self.plan.instances["MI_AF_Toon_Foliage_Plains_Ground"]
         self.assertEqual((ground.scalars["BaseSaturation"], ground.scalars["BaseValue"]), (0.85, 0.93))

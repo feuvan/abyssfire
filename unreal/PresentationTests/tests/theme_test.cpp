@@ -272,7 +272,9 @@ TEST_SUITE("theme")
 			}
 			++Themed;
 			CAPTURE(Id);
-			CHECK(Theme == "march");
+			// Wave 3 art (3C): the Pit's presentation theme `pit` is a child of the march (Art/blender kit/theme.py) and
+			// re-points two slots, outcrop_plains@pit and exit_portal@pit; the runtime's parent chain is 3D's.
+			CHECK((Theme == "march" || Theme == "pit"));
 			const auto Plain = Index.find(std::string(Base));
 			REQUIRE(Plain != Index.end());
 			auto Key = [&Assets](const std::string& Asset)
