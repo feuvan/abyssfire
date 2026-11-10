@@ -298,6 +298,10 @@ class Checker:
                               '#include "%s"\n#include "%s"\n' % (definitions_path, self.pch_header))
         includes = [os.path.join(MODULE_DIR, 'Public'), os.path.join(MODULE_DIR, 'Private'), self.uht_dir, CORE_PUBLIC] + roots
         cmd = [self.args.cxx] + BASE_FLAGS + WARNING_FLAGS
+        if getattr(self.args, 'stdlib', None):
+            # the C++ standard library of the real toolchains (Xcode, the Android NDK) is libc++; the default here is
+            # the system's (libstdc++ on Linux), whose headers include each other differently
+            cmd.append('-stdlib=' + self.args.stdlib)
         for inc in includes:
             cmd += ['-I', inc]
         return {'cmd': cmd, 'dir': cfg_dir, 'pch_wrapper': pch_wrapper, 'modules': order, 'missing': missing,
@@ -562,6 +566,9 @@ def main():
     parser.add_argument('--max-diagnostics', type=int, default=200, help='diagnostics printed per category (default 200)')
     parser.add_argument('--module-dir', default=os.environ.get('ABYSS_CC_MODULE', MODULE_DIR),
                         help='check this copy of Source/Abyssfire instead (used by tools/selftest.py to plant faults in a scratch copy)')
+    parser.add_argument('--stdlib', default=os.environ.get('ABYSS_CC_STDLIB') or None, metavar='NAME',
+                        help='C++ standard library to compile against: "libc++" is what Xcode and the Android NDK use (needs the '
+                             'libc++ headers of this clang, e.g. the package libc++-18-dev); default: the compiler\'s own default')
     parser.add_argument('--define', action='append', default=[], metavar='NAME[=VALUE]',
                         help='extra preprocessor definition (repeatable), e.g. to type-check against an // UNVERIFIED alternative of the SDK')
     parser.add_argument('--selftest', action='store_true', help='prove the check bites: plant known faults in a scratch copy of the module and require each to be reported')

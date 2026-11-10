@@ -10,6 +10,7 @@ compile check (configuration mac-editor unless --config). Every reference from a
 lives in sdk/ is recorded: functions, members, types, enumerators, macros are not (they are expanded before parsing).
 Use it when an area turns green: review the listed declarations against the engine (the reflected ones are already
 cross-checked by check_reflected.py; the others are source knowledge), and move anything doubtful to API_UNCERTAIN.md.
+With --json the result feeds tools/include_audit.py (how each module file reaches the SDK header of what it uses).
 """
 import argparse
 import ctypes
@@ -147,6 +148,9 @@ class Usage:
         module_dir = os.path.realpath(module_dir) + os.sep
         sdk_dir = os.path.realpath(sdk_dir) + os.sep
         lib = self.lib
+        # CXFile handles belong to the translation unit: the next one reuses the addresses for other files, so a name
+        # cached across units attributes uses (and declarations) to the wrong file
+        self.files = {}
 
         def visit(cursor, _parent, _data):
             kind = cursor.kind

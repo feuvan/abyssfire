@@ -73,6 +73,11 @@ namespace UE::Core::Private::FormatStringSan
 	void StatusInvalidFormatSpec();
 	void StatusNotEnoughArguments();
 	void StatusTooManyArguments();
+	// Not engine statuses: the opt-in width lint (`./run.sh --define UE_STUB_STRICT_FORMAT_WIDTH=1`). The engine only
+	// checks that '%d' gets an integer, so a 64-bit argument (FMath::RoundToInt(double), int64, SIZE_T) under '%d'
+	// compiles; it is still a width mismatch for C varargs. The lint lists those places; a normal run accepts them.
+	void StrictWidth_DGot64BitInteger_UseLLDOrA32BitValue();
+	void StrictWidth_LLDGot32BitInteger();
 
 	enum class EArgKind : uint8 { Integer, Floating, TCharPtr, AnsiCharPtr, WideCharPtr, OtherPtr, Other };
 	template <typename T>
@@ -97,6 +102,9 @@ namespace UE::Core::Private::FormatStringSan
 	consteval void Check(const CharType* Fmt)
 	{
 		const EArgKind Kinds[sizeof...(Ts) + 1] = { KindOf<Ts>()..., EArgKind::Other };
+#if defined(UE_STUB_STRICT_FORMAT_WIDTH) && UE_STUB_STRICT_FORMAT_WIDTH
+		const SIZE_T Sizes[sizeof...(Ts) + 1] = { sizeof(std::decay_t<Ts>)..., 0 };
+#endif
 		const int32 NumArgs = static_cast<int32>(sizeof...(Ts));
 		int32 Arg = 0;
 		for (; *Fmt != 0; ++Fmt)
@@ -128,10 +136,11 @@ namespace UE::Core::Private::FormatStringSan
 			}
 			// length
 			bool bH = false, bL = false, bIntOnly = false;
+			[[maybe_unused]] bool b64 = false;
 			if (*Fmt == CharType('h')) { bH = true; ++Fmt; if (*Fmt == CharType('h')) { bIntOnly = true; ++Fmt; } }
-			else if (*Fmt == CharType('l')) { bL = true; ++Fmt; if (*Fmt == CharType('l')) { bIntOnly = true; ++Fmt; } }
-			else if (*Fmt == CharType('z') || *Fmt == CharType('t') || *Fmt == CharType('j')) { bIntOnly = true; ++Fmt; }
-			else if (*Fmt == CharType('I') && Fmt[1] == CharType('6') && Fmt[2] == CharType('4')) { bIntOnly = true; Fmt += 3; }
+			else if (*Fmt == CharType('l')) { bL = true; ++Fmt; if (*Fmt == CharType('l')) { bIntOnly = true; b64 = true; ++Fmt; } }
+			else if (*Fmt == CharType('z') || *Fmt == CharType('t') || *Fmt == CharType('j')) { bIntOnly = true; b64 = true; ++Fmt; }
+			else if (*Fmt == CharType('I') && Fmt[1] == CharType('6') && Fmt[2] == CharType('4')) { bIntOnly = true; b64 = true; Fmt += 3; }
 			if (*Fmt == 0) { StatusIncompleteFormatSpecifierOrUnescapedPercent(); return; }
 			if (Arg >= NumArgs) { StatusNotEnoughArguments(); return; }
 			const EArgKind Kind = Kinds[Arg];
@@ -152,6 +161,10 @@ namespace UE::Core::Private::FormatStringSan
 				break;
 			case CharType('d'): case CharType('i'): case CharType('u'): case CharType('x'): case CharType('X'): case CharType('o'):
 				if (Kind != EArgKind::Integer) { StatusDNeedsIntegerArg(); }
+#if defined(UE_STUB_STRICT_FORMAT_WIDTH) && UE_STUB_STRICT_FORMAT_WIDTH
+				else if (!b64 && !bL && Sizes[Arg] > 4) { StrictWidth_DGot64BitInteger_UseLLDOrA32BitValue(); }
+				else if (b64 && Sizes[Arg] < 8) { StrictWidth_LLDGot32BitInteger(); }
+#endif
 				break;
 			case CharType('f'): case CharType('F'): case CharType('e'): case CharType('E'): case CharType('g'): case CharType('G'): case CharType('a'): case CharType('A'):
 				if (bIntOnly || bH) { StatusInvalidFormatSpec(); }

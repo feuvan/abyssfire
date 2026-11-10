@@ -549,7 +549,7 @@ void SAbyssSkillTreePanel::BuildCards(const abyss::Snapshot& Snap)
 		{
 			const int32 At = FMath::Max(1, Level);
 			Card.StatsLine = FString::Printf(TEXT("%d%%  MP%d  CD%ss  %s"),
-				FMath::RoundToInt(abyss::SkillDamageMultiplier(Rules, Skill, At) * 100.0),
+				FMath::RoundToInt32(abyss::SkillDamageMultiplier(Rules, Skill, At) * 100.0),
 				abyss::SkillManaCost(Rules, Skill, At),
 				*AbyssSkillTree_Fixed1(abyss::SkillCooldownMs(Rules, Skill, At, Cdr) / 1000.0),
 				*Ctx->DamageTypeName(Skill.damageType));
@@ -904,7 +904,7 @@ TSharedRef<SWidget> SAbyssSkillTreePanel::MakeSkillTooltip(const TSharedRef<FAby
 			if (bDelta)
 			{
 				const double Prev = abyss::SkillDamageMultiplier(Rules, Skill, At);
-				Value += FString::Printf(TEXT(" (+%d%%)"), FMath::RoundToInt((Mult - Prev) * 100.0));
+				Value += FString::Printf(TEXT(" (+%d%%)"), FMath::RoundToInt32((Mult - Prev) * 100.0));
 			}
 			AddLine(Ctx->LocArgsOrStr("ui.skillTree.tooltip.damage", TEXT("Damage: {value}% {type}"),
 				{ FAbyssUiContext::Arg("value", Value), FAbyssUiContext::Arg("type", Ctx->DamageTypeName(Skill.damageType)) }), 11.f, TypeColor);

@@ -20,7 +20,7 @@ class SCanvas : public SPanel
 {
 public:
 	/** A slot of the canvas: position, size, and the alignment of the child relative to the position. */
-	class FSlot : public TSlotBase<FSlot>, public TAlignmentWidgetSlotMixin<FSlot>
+	class FSlot : public TWidgetSlotWithAttributeSupport<FSlot>, public TAlignmentWidgetSlotMixin<FSlot>
 	{
 	public:
 		FSlot();

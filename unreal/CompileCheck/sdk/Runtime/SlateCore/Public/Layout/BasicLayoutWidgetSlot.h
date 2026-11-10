@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "Layout/Margin.h"
 #include "Misc/Attribute.h"
+#include "Layout/WidgetSlotWithAttributeSupport.h"
 #include "SlotBase.h"
 #include "Types/SlateEnums.h"
 
@@ -51,7 +52,7 @@ public:
 
 /** A slot with alignment and padding (SBoxPanel, SOverlay, SScrollBox, ... slots derive from it). */
 template <typename SlotType>
-class TBasicLayoutWidgetSlot : public TSlotBase<SlotType>, public TPaddingWidgetSlotMixin<SlotType>, public TAlignmentWidgetSlotMixin<SlotType>
+class TBasicLayoutWidgetSlot : public TWidgetSlotWithAttributeSupport<SlotType>, public TPaddingWidgetSlotMixin<SlotType>, public TAlignmentWidgetSlotMixin<SlotType>
 {
 public:
 	TBasicLayoutWidgetSlot() = default;

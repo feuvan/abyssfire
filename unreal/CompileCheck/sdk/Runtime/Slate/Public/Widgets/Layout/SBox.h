@@ -61,7 +61,6 @@ public:
 	SBox();
 	void Construct(const FArguments& InArgs);
 
-	virtual FVector2D ComputeDesiredSize(float) const override;
 	virtual FChildren* GetChildren() override;
 	virtual void OnArrangeChildren(const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren) const override;
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override;
@@ -73,4 +72,7 @@ public:
 	void SetPadding(TAttribute<FMargin> InPadding);
 	void SetWidthOverride(TAttribute<FOptionalSize> InWidthOverride);
 	void SetHeightOverride(TAttribute<FOptionalSize> InHeightOverride);
+protected:
+	// as in the engine: only SBox and its subclasses compute the size (outside code asks GetDesiredSize())
+	virtual FVector2D ComputeDesiredSize(float) const override;
 };

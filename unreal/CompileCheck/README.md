@@ -15,6 +15,7 @@ unreal/CompileCheck/
   tools/check_reflected.py  cross-checks the SDK's reflected API against the engine's Python stub (UE 5.6)
   tools/stub_bodies.py    keeps SDK templates usable with lambdas / local types, and constrained (see "Adding to the SDK")
   tools/sdk_usage.py      lists the SDK declarations a set of module files uses: what their PASS rests on
+  tools/include_audit.py  how each module file reaches the SDK headers it uses: the include edges a PASS rests on
   tools/selftest.py       plants faults in a scratch copy of the module and runs tests/negative_cases.cpp
   tests/negative_cases.cpp  code UE rejects: every case must be rejected by the SDK too
   API_UNCERTAIN.md        engine API the module uses that could not be confirmed for 5.8
@@ -33,12 +34,23 @@ unreal/CompileCheck/run.sh --notes               # compiler notes under each dia
 python3 unreal/CompileCheck/tools/check_reflected.py --show PlayerController --grep touch   # look a class up in the 5.6 stub
 python3 unreal/CompileCheck/tools/check_reflected.py --find spawn_sound                     # search reflected functions
 python3 unreal/CompileCheck/tools/sdk_usage.py --only World --baseline Framework --uses     # SDK declarations World adds
+python3 unreal/CompileCheck/tools/sdk_usage.py --only Private/UI/Panels --json u.json && \
+    python3 unreal/CompileCheck/tools/include_audit.py u.json --edges                       # SDK include edges Panels rest on
+unreal/CompileCheck/run.sh --stdlib libc++                                    # against libc++ (what Xcode / the NDK use)
+unreal/CompileCheck/run.sh --stdlib libc++ --define _LIBCPP_REMOVE_TRANSITIVE_INCLUDES=1    # ... and include-what-you-use for <std> headers
+unreal/CompileCheck/run.sh --define UE_STUB_STRICT_FORMAT_WIDTH=1 --no-unity  # lint: a 64-bit integer under '%d' (not a UE error)
 ```
 
 Needs `clang++` (18 used here; `--cxx` / `ABYSS_CC_CXX` to choose) and `python3`. Results are cached per translation
 unit (dependency files), so a re-run after an edit only recompiles what the edit reaches; `--force` ignores the cache.
 A result that stopped at a missing header is never reused (the dependency file cannot name a header that did not exist
 yet), so a file is compiled again as soon as the SDK gains the header.
+`--stdlib libc++` compiles against LLVM's libc++ instead of the system default (libstdc++ on Linux): Xcode and the
+Android NDK both use libc++, whose headers include each other differently, so a missing `<std>` include can pass with one
+library and fail with the other. It needs the libc++ headers of the clang in use (`apt-get install libc++-18-dev
+libc++abi-18-dev` for clang 18) and its own build directory; `--define _LIBCPP_REMOVE_TRANSITIVE_INCLUDES=1` adds
+libc++'s strict mode (each `<std>` header only declares its own content, where newer libc++ releases are heading). Both
+are optional extra runs: the default run does not need libc++.
 Output: per-configuration pass counts, the diagnostics merged across configurations (errors, warnings UE turns into
 errors, `-Wshadow` findings, plain warnings), a summary table by area, and `build/report.json`,
 `build/uht_report.json`, `build/compile_commands.json`.
@@ -104,7 +116,15 @@ Cannot prove:
 - **Behaviour.** No code runs. Engine semantics (GC, threading, timing, rendering) are untested; that is what
   `PresentationTests` (pure rules) and the Mac playtest are for.
 - **Other toolchains.** Apple clang / the Android NDK / MSVC differ from clang 18 in details; platform SDK headers
-  (Objective-C on iOS, JNI on Android) are not modelled.
+  (Objective-C on iOS, JNI on Android) are not modelled. Every configuration is compiled for the host triple with the
+  platform's defines (so `char` is signed and the C library is glibc everywhere). The standard library is the system's
+  unless `--stdlib libc++` is given; that run uses the libc++ of clang 18, not Apple's or the NDK's build of it.
+- **Format widths.** `FString::Printf` / `UE_LOG` are checked the way the engine checks them: `%d` wants an integer,
+  whatever its size. An `int64` under `%d` (typically `FMath::RoundToInt(double)`, which returns `int64` since 5.0)
+  compiles in UE and here, and is still a width mismatch for C varargs. The opt-in lint
+  `--define UE_STUB_STRICT_FORMAT_WIDTH=1` reports those places as errors (64-bit under `%d` / `%u` / `%x`, 32-bit
+  under `%lld`); the consteval check escalates through lambdas, so a mismatch inside a lambda is reported where the
+  lambda is called. Use `FMath::RoundToInt32` (or `%lld` with a `long long` cast) at the reported call.
 
 ## The three verdicts
 
@@ -186,13 +206,21 @@ Every diagnostic gets one of three verdicts; none is silenced.
   declare it when the module uses it, not because the engine has it. `python3 tools/sdk_usage.py` (libclang through
   ctypes, no package needed) lists the SDK declarations a set of module files really uses, `--baseline` subtracts what
   earlier areas already used: review that list when an area turns green, and move what is doubtful to
-  `API_UNCERTAIN.md`.
+  `API_UNCERTAIN.md`. Its `--json` output feeds `tools/include_audit.py`, which says for every (module file, SDK
+  header) pair whether the file includes the header itself (or through a module header), reaches it only through other
+  SDK headers (`--edges` lists those include edges: each must exist in the engine, or the file compiles here and not
+  there), only names a forward-declared type, or depends on the force-included PCH. Review the edge list with the
+  declarations: an SDK header that includes more than the engine's hides a missing include in the module.
 - **Slate widgets.** A widget header declares the engine's `SLATE_BEGIN_ARGS` list (argument names and types are the
   API a declarative call is checked against), `Construct`, the slot type with its mixins, and only the setters the
   module calls. The `FArguments` constructor keeps the engine's defaults except the style lookups
   (`FCoreStyle::Get().GetWidgetStyle<...>(...)` becomes `nullptr`): `Styling/CoreStyle.h` is not part of the SDK until
   the module itself uses it. A slot gets exactly the engine's mixins (`SCanvas::FSlot`: alignment, no padding;
-  `SScrollBox::FSlot`: padding and alignment, no size rule), so a setter borrowed from another panel fails.
+  `SScrollBox::FSlot`: padding and alignment, no size rule; `SConstraintCanvas::FSlot`: its own four attributes and
+  nothing else), so a setter borrowed from another panel fails. Slots that hold Slate attributes derive from
+  `TWidgetSlotWithAttributeSupport` (`TBasicLayoutWidgetSlot`, `SCanvas::FSlot`), a constraint canvas slot from
+  `TSlotBase`. Access levels are API too: `ComputeDesiredSize` is protected in `SBox` / `SBorder` / `SCanvas` (outside
+  code asks `GetDesiredSize()`), `OnPaint` / `ComputeDesiredSize` are private pure virtuals of `SWidget`.
 - **An engine switch is modelled as a switch.** `Types/SlateVector2.h` has both sides of
   `UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS` (the `FVector2D` bridge of Slate's float API). The default is the
   engine's (on); `./run.sh --define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=0` lists every line of the module
@@ -228,8 +256,11 @@ header, a `UPROPERTY` inside `#if PLATFORM_IOS`, a `bool` bitfield `UPROPERTY`, 
 the same anonymous-namespace helper in two files for the unity build, a parameter named like a member of its class
 (`-Wshadow`), an audio component call with a wrong argument, and in the UI: a helper used without its header, a Slate
 style argument passed by value, an `OnPaint` override with a wrong parameter type, texture mip data used without
-`TextureResource.h`) and requires each to be reported at the planted
-place; runs `tools/stub_bodies.py` on a probe header that holds every declaration shape (it must find exactly the
+`TextureResource.h`; in the panels / menu / story: a widget used through a forward declaration only, the stretch
+direction given to a scale box's stretch rule, a date formatted with an `FString`, a pointer handler overridden with
+the wrong event type; and, in a run with `UE_STUB_STRICT_FORMAT_WIDTH=1`, an `int64` under `%d`) and requires each to
+be reported at the planted place;
+runs `tools/stub_bodies.py` on a probe header that holds every declaration shape (it must find exactly the
 body-less templates, give them bodies and leave the rest alone, keep a `// no-body:` declaration, and report exactly
 the stub-bodied templates with an unconstrained explicit type parameter); then compiles `tests/negative_cases.cpp` once
 per case and

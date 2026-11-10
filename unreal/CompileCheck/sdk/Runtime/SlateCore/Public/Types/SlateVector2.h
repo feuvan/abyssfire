@@ -1,11 +1,12 @@
 // Stub SDK. Real header: Engine/Source/Runtime/SlateCore/Public/Types/SlateVector2.h (UE 5.2+; from UE 5.x source
-// knowledge). Slate moved from FVector2D (double) to FVector2f; FDeprecateSlateVector2D is the bridge type Slate uses
+// knowledge; the struct FDeprecateSlateVector2D, its base and header: reflected, checked against the 5.6 stub). Slate moved from FVector2D (double) to FVector2f; FDeprecateSlateVector2D is the bridge type Slate uses
 // for parameters and results: an FVector2f that also converts implicitly from and to FVector2D. So Slate getters can
 // initialise an FVector2D, and FVector2D arguments are accepted, but mixing the two in arithmetic needs an explicit
 // FVector2D(...) / FVector2f(...) on one side.
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/ObjectMacros.h"
 #include "Math/Vector2D.h"
 
 // As in the engine the mechanism is a switch: with UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS 0 the bridge types
@@ -18,7 +19,9 @@
 
 #if UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS
 // UNVERIFIED (API_UNCERTAIN.md #8): that 5.8 still builds with the FVector2D bridge on. The module passes FVector2D
-// arguments to Slate through it in 22 places.
+// arguments to Slate through it in 22 places. In 5.6 it is on: the Python stub reflects FDeprecateSlateVector2D as a
+// struct derived from Vector2f (checked by tools/check_reflected.py through the marker below) and types
+// FSlateBrush::ImageSize with it; with the mechanism off that property would be a plain Vector2f.
 namespace UE::Slate
 {
 	template <typename ComponentType>
@@ -26,6 +29,7 @@ namespace UE::Slate
 
 	struct FDeprecateSlateVector2D : public FVector2f
 	{
+		UE_STUB_STRUCT_BODY(FDeprecateSlateVector2D)
 		FDeprecateSlateVector2D() = default;
 		FDeprecateSlateVector2D(float InX, float InY) : FVector2f(InX, InY) {}
 		FDeprecateSlateVector2D(const FVector2f& InV) : FVector2f(InV) {}

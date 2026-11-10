@@ -810,7 +810,7 @@ void UAbyssCorpseLayer::SpawnPuddle(abyss::EntityId Entity)
 	Context.Blow = AbyssCorpsesPrivate::FacingOf(Actor);
 	Context.RadiusCm = static_cast<float>(Puddle.RadiusCm);
 	// One runtime recipe per art and drawn size (the recipe carries the size: a x1.25 body's puddle is its own).
-	const FName RecipeId(*FString::Printf(TEXT("runtime.puddle.%s.%d"), *Actor->GetArtName().ToString(), FMath::RoundToInt(Puddle.RadiusCm)));
+	const FName RecipeId(*FString::Printf(TEXT("runtime.puddle.%s.%d"), *Actor->GetArtName().ToString(), FMath::RoundToInt32(Puddle.RadiusCm)));
 	Vfx->PlayRuntimeRecipe(RecipeId, AbyssCorpseRules::PuddleRecipeJson(Puddle), Context);
 }
 

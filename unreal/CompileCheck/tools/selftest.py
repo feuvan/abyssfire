@@ -185,6 +185,58 @@ FAULTS = [
         'expect': r"incomplete type '(const )?FTexturePlatformData'|unknown type name 'FTexture2DMipMap'|incomplete type 'FTexture2DMipMap'",
         'run': 'E',
     },
+    {
+        'name': 'Panels: a widget used through a forward declaration only',
+        'what': '#include "Widgets/Layout/SScrollBox.h" removed from SAbyssAchievementsPanel.cpp: the panel header and '
+                'AbyssUiWidgets.h only forward-declare SScrollBox',
+        'file': 'Private/UI/Panels/SAbyssAchievementsPanel.cpp',
+        'find': '#include "Widgets/Layout/SScrollBox.h"\n',
+        'replace': '',
+        'expect_file': 'Private/UI/Panels/SAbyssAchievementsPanel.cpp',
+        'expect': r"incomplete type '(const )?SScrollBox'|incomplete type named in nested name specifier|unknown type name 'SScrollBox'|use of undeclared identifier 'SScrollBox'",
+        'run': 'F',
+    },
+    {
+        'name': 'Menu: the stretch direction given to the stretch rule',
+        'what': 'SScaleBox .Stretch(...) called with EStretchDirection::DownOnly (two different enums)',
+        'file': 'Private/UI/Menu/SAbyssMainMenu.cpp',
+        'find': '.Stretch(EStretch::ScaleToFit)',
+        'replace': '.Stretch(EStretchDirection::DownOnly)',
+        'expect_file': 'Private/UI/Menu/SAbyssMainMenu.cpp',
+        'expect': r"no matching member function for call to 'Stretch'",
+        'run': 'F',
+    },
+    {
+        'name': 'Menu: a date formatted with an FString',
+        'what': 'FDateTime::ToString(const TCHAR*) called with an FString (no implicit conversion: *Format)',
+        'file': 'Private/UI/Menu/SAbyssMainMenu.cpp',
+        'find': 'return Local.ToString(TEXT("%Y-%m-%d %H:%M"));',
+        'replace': 'return Local.ToString(FString(TEXT("%Y-%m-%d %H:%M")));',
+        'expect_file': 'Private/UI/Menu/SAbyssMainMenu.cpp',
+        'expect': r"no matching member function for call to 'ToString'|no viable conversion from 'FString' to 'const TCHAR \*'",
+        'run': 'F',
+    },
+    {
+        'name': 'Story: a pointer handler declared with the wrong event type',
+        'what': 'SAbyssStoryOverlay::OnMouseButtonDoubleClick declared with FKeyEvent (the engine: FPointerEvent): `override` no longer overrides',
+        'file': 'Private/UI/Story/SAbyssStoryOverlay.h',
+        'find': 'virtual FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent) override;',
+        'replace': 'virtual FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FKeyEvent& InMouseEvent) override;',
+        'expect_file': '',
+        'expect': r"'OnMouseButtonDoubleClick' marked 'override' but does not override|only virtual member functions can be marked 'override'|out-of-line definition of 'OnMouseButtonDoubleClick' does not match",
+        'run': 'F',
+    },
+    {
+        'name': "width lint: an int64 under '%d' (opt-in, UE_STUB_STRICT_FORMAT_WIDTH)",
+        'what': "FMath::RoundToInt(double) (an int64 since UE 5.0) passed to '%d' in FString::Printf: accepted by the engine's "
+                'format check, a width mismatch for C varargs (the slip CC5 found three times); the lint run must list it',
+        'file': 'Private/UI/Panels/SAbyssSkillTreePanel.cpp',
+        'find': 'FMath::RoundToInt32(abyss::SkillDamageMultiplier(Rules, Skill, At) * 100.0),',
+        'replace': 'FMath::RoundToInt(abyss::SkillDamageMultiplier(Rules, Skill, At) * 100.0),',
+        'expect_file': 'Private/UI/Panels/SAbyssSkillTreePanel.cpp',
+        'expect': r"TCheckedFormatStringPrivate<char16_t, long long, int, .*is not a constant expression",
+        'run': 'G',
+    },
 ]
 RUNS = {
     'A': ['Private/Input/AbyssPicking.cpp', 'Private/Anim/AbyssAnimInstance.cpp', 'Private/Framework/AbyssGameMode.cpp'],
@@ -193,7 +245,11 @@ RUNS = {
     'D': ['Private/Audio/AbyssAudioSystem.cpp'],
     'E': ['Private/UI/Hud/SAbyssHud.cpp', 'Private/UI/Widgets/AbyssUiWidgets.cpp', 'Private/UI/Hud/SAbyssMinimap.cpp',
           'Private/UI/Hud/AbyssMinimapTexture.cpp'],
+    'F': ['Private/UI/Panels/SAbyssAchievementsPanel.cpp', 'Private/UI/Menu/SAbyssMainMenu.cpp', 'Private/UI/Story/SAbyssStoryOverlay.cpp'],
+    'G': ['Private/UI/Panels/SAbyssSkillTreePanel.cpp'],
 }
+# extra --define of a run (the opt-in lints of the SDK)
+RUN_DEFINES = {'G': ['UE_STUB_STRICT_FORMAT_WIDTH=1']}
 
 
 # tools/stub_bodies.py must find every body-less template declaration: a miss makes module code that instantiates the
@@ -367,6 +423,8 @@ def main(args=None):
                '--config', 'mac-editor', '--force']
         for o in only:
             cmd += ['--only', o]
+        for d in RUN_DEFINES.get(run_name, []):
+            cmd += ['--define', d]
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         report_path = os.path.join(root, run_name, 'build', 'report.json')
         report = json.load(open(report_path, encoding='utf-8')) if os.path.exists(report_path) else {'configs': {}, 'uht': {'findings': []}}

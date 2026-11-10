@@ -86,6 +86,11 @@
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
+// the panels / menu / story area (cases 182 onwards)
+#include "Layout/Clipping.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/DateTime.h"
+#include "Widgets/Layout/SConstraintCanvas.h"
 
 #include <string>
 
@@ -1023,4 +1028,127 @@ void NegativeUiCases(ULocalPlayer* LocalPlayer, const FSlateFontInfo& Font, cons
 #endif
 	(void)Box; (void)TextBlock; (void)Button; (void)Scroll; (void)Canvas; (void)Texture; (void)Projection; (void)Screen; (void)Renderer;
 	(void)LocalPlayer; (void)Font; (void)Brush; (void)ButtonStyle; (void)ScrollBarStyle; (void)ItemPtr; (void)Label;
+}
+
+// ---- the panels / menu / story area: sizes, slot bases, scale box, constraint canvas, clip zones, render transforms,
+// ---- cursor replies, scroll offsets, dates, config ----
+
+/** A subclass of SBox may compute its own size: ComputeDesiredSize is protected in SBox, not private. */
+class SNegativeSizedBox : public SBox
+{
+public:
+	SLATE_BEGIN_ARGS(SNegativeSizedBox) {}
+	SLATE_END_ARGS()
+	void Construct(const FArguments& InArgs);
+protected:
+	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const override
+	{
+		return SBox::ComputeDesiredSize(LayoutScaleMultiplier) + FVector2D(4.0, 4.0);
+	}
+};
+
+/** A card that answers the cursor query (FCursorReply, not FReply) and reacts to the pointer. */
+class SNegativeCard : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SNegativeCard) {}
+	SLATE_END_ARGS()
+	void Construct(const FArguments& InArgs);
+	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override
+	{
+#if CASE != 189
+		return FCursorReply::Cursor(EMouseCursor::Hand);
+#elif CASE == 189  // EXPECT: no viable conversion from returned value of type 'FReply' to function return type 'FCursorReply'
+		return FReply::Handled();                                       // a cursor query answers with FCursorReply
+#endif
+	}
+	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
+	{
+		SCompoundWidget::OnMouseEnter(MyGeometry, MouseEvent);
+	}
+	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override
+	{
+		SCompoundWidget::OnMouseLeave(MouseEvent);
+	}
+};
+
+void NegativePanelCases(const FGeometry& Geometry, FSlateWindowElementList& Elements, const FPointerEvent& PointerEvent)
+{
+	TSharedRef<SBox> Box = SNew(SBox);
+	TSharedRef<SScrollBox> Scroll = SNew(SScrollBox);
+	TSharedRef<SCanvas> Canvas = SNew(SCanvas);
+	TSharedRef<SConstraintCanvas> Constraint = SNew(SConstraintCanvas);
+	SCanvas::FSlot* CanvasSlot = nullptr;
+	SConstraintCanvas::FSlot* ConstraintSlot = nullptr;
+	const FDateTime Utc = FDateTime::FromUnixTimestamp(1700000000);
+	FString Version;
+#if CASE == 0
+	// a size is asked through GetDesiredSize(); only a subclass reaches the protected ComputeDesiredSize
+	const FVector2D Desired(Box->GetDesiredSize());
+	TSharedRef<SWidget> Sized = SNew(SNegativeSizedBox);
+	TSharedRef<SWidget> Card = SNew(SNegativeCard);
+	// slots that hold Slate attributes (canvas, overlay, box panels, scroll box) derive from
+	// TWidgetSlotWithAttributeSupport; a constraint canvas slot is a plain TSlotBase
+	Canvas->AddSlot().Expose(CanvasSlot)[ SNullWidget::NullWidget ];
+	TWidgetSlotWithAttributeSupport<SCanvas::FSlot>* CanvasBase = CanvasSlot;
+	TSlotBase<SCanvas::FSlot>* CanvasRoot = CanvasSlot;
+	TSlotBase<SConstraintCanvas::FSlot>* ConstraintBase = ConstraintSlot;
+	// constraint canvas: anchors, offset (left, top, width, height), alignment, auto size; no HAlign / VAlign / Padding
+	Constraint->AddSlot().Anchors(FAnchors(0.5f, 0.5f)).Offset(FMargin(0.f, 0.f, 320.f, 200.f)).Alignment(FVector2D(0.5, 0.5)).AutoSize(false)
+		[ SNullWidget::NullWidget ];
+	// a clip zone is built explicitly from a child geometry; a layout transform explicitly from its translation
+	const FGeometry Band = Geometry.MakeChild(FVector2f(64.f, 8.f), FSlateLayoutTransform(FVector2f(4.f, 12.f)));
+	Elements.PushClip(FSlateClippingZone(Band));
+	Elements.PopClip();
+	// render transforms: an optional transform (unset: none), built from a float vector, with or without a scale
+	TSharedRef<SWidget> Moved = SNew(SBox)
+		.RenderTransform_Lambda([]() { return TOptional<FSlateRenderTransform>(FSlateRenderTransform(FVector2f(0.f, 24.f))); })
+		.RenderTransformPivot(FVector2D(0.5, 0.5));
+	Box->SetRenderTransform(TOptional<FSlateRenderTransform>());
+	Box->SetRenderTransform(TOptional<FSlateRenderTransform>(FSlateRenderTransform(1.5f, FVector2f(0.f, 2.f))));
+	Box->SetRenderOpacity(0.5f);
+	// scroll offsets are floats; a text block's line height is a float factor
+	const float Offset = Scroll->GetScrollOffset();
+	Scroll->SetScrollOffset(Offset + 12.f);
+	TSharedRef<STextBlock> Body = SNew(STextBlock).LineHeightPercentage(1.2f).Text_Lambda([]() { return FText::GetEmpty(); });
+	// dates: a date plus a time span, a date minus a date, a TCHAR format; config: section, key, out value, file
+	const FDateTime Local = Utc + (FDateTime::Now() - FDateTime::UtcNow());
+	const FString Stamp = Local.ToString(TEXT("%Y-%m-%d %H:%M"));
+	const bool bFound = GConfig->GetString(TEXT("/Script/EngineSettings.GeneralProjectSettings"), TEXT("ProjectVersion"), Version, GGameIni);
+	// pointer events: positions come back as Slate vectors; the geometry says whether a point is under the widget
+	const FVector2D At(PointerEvent.GetScreenSpacePosition());
+	const bool bInside = Geometry.IsUnderLocation(PointerEvent.GetScreenSpacePosition()) && PointerEvent.GetEffectingButton() == EKeys::LeftMouseButton
+		&& FVector2D::Distance(At, FVector2D::ZeroVector) <= FSlateApplication::Get().GetDragTriggerDistance() * 1.5f;
+	// a double rounded for '%d': the 32-bit form (RoundToInt(double) is an int64, '%lld')
+	const FString Percent = FString::Printf(TEXT("%d%% %lld"), FMath::RoundToInt32(0.42 * 100.0), static_cast<long long>(FMath::RoundToInt(0.42 * 100.0)));
+	(void)Desired; (void)CanvasBase; (void)CanvasRoot; (void)ConstraintBase; (void)Offset; (void)bFound; (void)bInside;
+#elif CASE == 182  // EXPECT: 'ComputeDesiredSize' is a protected member of 'SBox'
+	const FVector2D Desired = Box->ComputeDesiredSize(1.f);            // outside code asks GetDesiredSize()
+#elif CASE == 183  // EXPECT: cannot initialize a variable of type 'TWidgetSlotWithAttributeSupport<SConstraintCanvas::FSlot> \*'
+	TWidgetSlotWithAttributeSupport<SConstraintCanvas::FSlot>* Base = ConstraintSlot; // a constraint slot is a plain TSlotBase
+#elif CASE == 184  // EXPECT: no matching member function for call to 'Stretch'
+	TSharedRef<SScaleBox> Made = SNew(SScaleBox).Stretch(EStretchDirection::DownOnly); // the direction enum given to the stretch rule
+#elif CASE == 185  // EXPECT: no matching member function for call to 'Anchors'
+	Constraint->AddSlot().Anchors(FMargin(0.f))[ SNullWidget::NullWidget ]; // anchors are FAnchors; the FMargin goes to Offset
+#elif CASE == 186  // EXPECT: no member named 'HAlign' in 'TPanelChildren<SConstraintCanvas::FSlot>::FScopedWidgetSlotArguments'
+	Constraint->AddSlot().HAlign(HAlign_Fill)[ SNullWidget::NullWidget ];  // a constraint slot aligns with Alignment(FVector2D)
+#elif CASE == 187  // EXPECT: no viable conversion from 'FString' to 'const TCHAR \*'|no matching member function for call to 'ToString'
+	const FString Stamp = Utc.ToString(FString(TEXT("%Y")));              // the format is a TCHAR string: *Format
+#elif CASE == 188  // EXPECT: too few arguments to function call
+	const bool bFound = GConfig->GetString(TEXT("Section"), TEXT("Key"), Version); // the ini file name is required
+#elif CASE == 190  // EXPECT: no viable conversion from 'const FGeometry' to 'const FSlateClippingZone'
+	Elements.PushClip(Geometry);                                        // FSlateClippingZone(Geometry): the constructor is explicit
+#elif CASE == 191  // EXPECT: no viable conversion from 'FVector2f' .*to 'FSlateLayoutTransform'
+	FSlateLayoutTransform Transform = FVector2f(4.f, 12.f);             // explicit: FSlateLayoutTransform(FVector2f(...))
+#elif CASE == 192  // EXPECT: no matching member function for call to 'RenderTransform_Lambda'|no viable conversion
+	TSharedRef<SBox> Made = SNew(SBox).RenderTransform_Lambda([]() { return FVector2D(0.0, 24.0); }); // returns TOptional<FSlateRenderTransform>
+#elif CASE == 193  // EXPECT: no viable conversion from 'FVector2D' .*to 'float'
+	Scroll->SetScrollOffset(FVector2D(0.0, 12.0));                      // one float along the scroll axis
+#elif CASE == 194  // EXPECT: no matching member function for call to 'LineHeightPercentage'
+	TSharedRef<STextBlock> Made = SNew(STextBlock).LineHeightPercentage(FMargin(1.f)); // a float factor
+#elif CASE == 195  // EXPECT: no member named 'ScrollOffset' in 'SScrollBox'
+	const float Offset = Scroll->ScrollOffset;                          // GetScrollOffset()
+#endif
+	(void)Box; (void)Scroll; (void)Canvas; (void)Constraint; (void)CanvasSlot; (void)ConstraintSlot; (void)Utc; (void)Version;
+	(void)Geometry; (void)Elements; (void)PointerEvent;
 }

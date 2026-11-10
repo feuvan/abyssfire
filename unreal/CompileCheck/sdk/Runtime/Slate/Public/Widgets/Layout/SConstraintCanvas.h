@@ -1,6 +1,7 @@
 // Stub SDK. Real header: Engine/Source/Runtime/Slate/Public/Widgets/Layout/SConstraintCanvas.h (UE 5.x source knowledge).
 // Anchored canvas (what UMG's Canvas Panel wraps). Slot(): .Offset(FMargin: Left, Top, Width, Height) .Anchors(FAnchors)
-// .Alignment(FVector2D) .AutoSize(bool) .ZOrder(int32), each a TAttribute; [ child ].
+// .Alignment(FVector2D) .AutoSize(bool), each a TAttribute; [ child ]. The slot's ZOrder is not declared: the module
+// does not set it and its 5.x shape (an attribute, or SLATE_ARGUMENT(TOptional<float>, ZOrder)) is not known here.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -24,7 +25,6 @@ public:
 			SLATE_ATTRIBUTE(FAnchors, Anchors)
 			SLATE_ATTRIBUTE(FVector2D, Alignment)
 			SLATE_ATTRIBUTE(bool, AutoSize)
-			SLATE_ATTRIBUTE(float, ZOrder)
 		SLATE_SLOT_END_ARGS()
 		void Construct(const FChildren& SlotOwner, FSlotArguments&& InArgs);
 		void SetOffset(TAttribute<FMargin> InOffset);
@@ -35,8 +35,6 @@ public:
 		FVector2D GetAlignment() const;
 		void SetAutoSize(TAttribute<bool> InAutoSize);
 		bool GetAutoSize() const;
-		void SetZOrder(TAttribute<float> InZOrder);
-		float GetZOrder() const;
 	};
 
 	SLATE_BEGIN_ARGS(SConstraintCanvas)
