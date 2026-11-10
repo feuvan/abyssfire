@@ -8,8 +8,17 @@
 #include "CoreMinimal.h"
 #include "Math/Vector2D.h"
 
+// As in the engine the mechanism is a switch: with UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS 0 the bridge types
+// are plain FVector2f and every implicit FVector2D <-> Slate conversion in a module stops compiling. The engine default
+// (1) is believed unchanged through 5.x (API_UNCERTAIN.md, "Slate FVector2D bridge");
+// `./run.sh --define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=0` lists what the module would have to convert.
+#ifndef UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS
 #define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS 1
+#endif
 
+#if UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS
+// UNVERIFIED (API_UNCERTAIN.md #8): that 5.8 still builds with the FVector2D bridge on. The module passes FVector2D
+// arguments to Slate through it in 22 places.
 namespace UE::Slate
 {
 	template <typename ComponentType>
@@ -63,3 +72,14 @@ namespace UE::Slate
 	};
 	using FDeprecateOptionalVector2DParameter = FDeprecateSlateOptionalVector2D;
 }
+#else
+namespace UE::Slate
+{
+	template <typename ComponentType>
+	FVector2f CastToVector2f(const UE::Math::TVector2<ComponentType>& InValue) { return FVector2f((float)InValue.X, (float)InValue.Y); }
+	using FDeprecateSlateVector2D = FVector2f;
+	using FDeprecateVector2DParameter = FVector2f;
+	using FDeprecateVector2DResult = FVector2f;
+	using FDeprecateOptionalVector2DParameter = TOptional<FVector2f>;
+}
+#endif

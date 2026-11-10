@@ -63,6 +63,29 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SLeafWidget.h"
+// the UI area (cases 158 onwards)
+#include "Brushes/SlateColorBrush.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/LocalPlayer.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Rendering/DrawElements.h"
+#include "Rendering/SlateRenderer.h"
+#include "SceneView.h"
+#include "Styling/SlateTypes.h"
+#if CASE != 172
+#include "TextureResource.h"
+#endif
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SDPIScaler.h"
+#include "Widgets/Layout/SSafeZone.h"
+#include "Widgets/Layout/SScaleBox.h"
+#include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/SCanvas.h"
+#include "Widgets/SNullWidget.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/Text/STextBlock.h"
 
 #include <string>
 
@@ -837,4 +860,167 @@ void NegativeAudioCases(UWorld* World, UAudioComponent* Voice, const UAudioCompo
 #elif CASE == 157  // EXPECT: no member named 'SetPaused' in 'USoundBase'
 	Sound->SetPaused(true);                                             // pausing is the component's
 #endif
+}
+
+// ---- the UI area: Slate widgets and their declarative arguments, widget styles, texture mip data, projection ----
+
+/** A widget with a required SNew argument taken by const reference, an event and a default slot. */
+class SNegativeHit : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SNegativeHit) {}
+		SLATE_EVENT(FSimpleDelegate, OnPressed)
+		SLATE_DEFAULT_SLOT(FArguments, Content)
+	SLATE_END_ARGS()
+	void Construct(const FArguments& InArgs, const TSharedRef<FNegativeItem>& InItem);
+};
+
+void NegativeUiCases(ULocalPlayer* LocalPlayer, const FSlateFontInfo& Font, const FSlateBrush& Brush, const FButtonStyle& ButtonStyle,
+	const FScrollBarStyle& ScrollBarStyle, const TSharedPtr<FNegativeItem>& ItemPtr)
+{
+	const FText Label = FText::FromString(FString(TEXT("abyss")));
+	TSharedPtr<SBox> Box;
+	TSharedPtr<STextBlock> TextBlock;
+	TSharedPtr<SButton> Button;
+	TSharedRef<SScrollBox> Scroll = SNew(SScrollBox);
+	TSharedRef<SCanvas> Canvas = SNew(SCanvas);
+	UTexture2D* Texture = UTexture2D::CreateTransient(4, 4, PF_B8G8R8A8, FName(TEXT("NegativeTexture")));
+	FSceneViewProjectionData Projection;
+	FVector2D Screen;
+	FSlateRenderer* Renderer = FSlateApplication::Get().GetRenderer();
+#if CASE == 0
+	// a required SNew argument: a temporary is forwarded as an rvalue, a variable as an lvalue, both to `const T&`
+	TSharedRef<SWidget> Hit = SNew(SNegativeHit, ItemPtr.ToSharedRef()).OnPressed_Lambda([]() {})[ SNullWidget::NullWidget ];
+	TSharedRef<FNegativeItem> ItemRef = ItemPtr.ToSharedRef();
+	TSharedRef<SWidget> HitAgain = SNew(SNegativeHit, ItemRef);
+	// SBox > SButton > STextBlock, as the module nests them
+	TSharedRef<SWidget> Tree = SAssignNew(Box, SBox)
+		.WidthOverride(120.f)
+		.HeightOverride(TAttribute<FOptionalSize>::CreateLambda([]() { return FOptionalSize(32.f); }))
+		.MinDesiredHeight(8.f).MaxDesiredWidth(400.f).MaxDesiredHeight(300.f)
+		.HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(FMargin(4.f, 2.f)).Clipping(EWidgetClipping::ClipToBounds)
+		.Visibility_Lambda([]() { return EVisibility::SelfHitTestInvisible; })
+		[
+			SAssignNew(Button, SButton)
+			.ButtonStyle(&ButtonStyle).ContentPadding(FMargin(0.f)).IsFocusable(false).HAlign(HAlign_Fill).VAlign(VAlign_Fill)
+			.ClickMethod(EButtonClickMethod::MouseDown).TouchMethod(EButtonTouchMethod::PreciseTap).PressMethod(EButtonPressMethod::DownAndUp)
+			.OnClicked_Lambda([]() { return FReply::Handled(); })
+			.OnPressed_Lambda([]() {})
+			[
+				SAssignNew(TextBlock, STextBlock)
+				.Text(Label).Font(Font).ColorAndOpacity(FLinearColor::White)
+				.ShadowOffset(FVector2D(1.0, 1.0)).ShadowColorAndOpacity(FLinearColor::Black)
+				.WrapTextAt(200.f).AutoWrapText(true).LineHeightPercentage(1.1f).Justification(ETextJustify::Center)
+			]
+		];
+	Box->SetContent(SNullWidget::NullWidget);
+	Box->SetVisibility(EVisibility::Collapsed);
+	TextBlock->SetText(Label);
+	TextBlock->SetWrapTextAt(120.f);
+	TextBlock->SetAutoWrapText(false);
+	TextBlock->SetJustification(ETextJustify::Left);
+	const bool bPressed = Button->IsPressed();
+	const float PrepassScale = Box->GetPrepassLayoutScaleMultiplier();
+	// SBorder: a brush POINTER attribute, lambda attributes
+	TSharedRef<SBorder> Border = SNew(SBorder).BorderImage(&Brush)
+		.Padding_Lambda([]() { return FMargin(2.f); }).ColorAndOpacity_Lambda([]() { return FLinearColor::White; })
+		[
+			SNullWidget::NullWidget
+		];
+	// SScrollBox: style pointer, thickness as a Slate vector, slots with padding / alignment only
+	TSharedRef<SScrollBox> Styled = SNew(SScrollBox).ScrollBarStyle(&ScrollBarStyle).ScrollBarThickness(FVector2D(6.0, 6.0)).Orientation(Orient_Vertical)
+		.ScrollBarVisibility(EVisibility::Visible).ScrollBarAlwaysVisible(false).AllowOverscroll(EAllowOverscroll::No)
+		.ConsumeMouseWheel(EConsumeMouseWheel::Always);
+	Scroll->AddSlot().Padding(FMargin(0.f, 2.f)).HAlign(HAlign_Fill)[ SNullWidget::NullWidget ];
+	Scroll->SetScrollOffset(Scroll->GetScrollOffset());
+	Scroll->ClearChildren();
+	// SCanvas: position / size / alignment, no padding
+	Canvas->AddSlot().Position(FVector2D(10.0, 20.0)).Size(FVector2D(64.0, 64.0)).HAlign(HAlign_Left).VAlign(VAlign_Top)[ SNullWidget::NullWidget ];
+	Canvas->ClearChildren();
+	// the root chain: safe zone > DPI scaler > scale box
+	TSharedRef<SWidget> Root = SNew(SSafeZone).IsTitleSafe(true)
+		[
+			SNew(SDPIScaler).DPIScale(1.5f)
+			[
+				SNew(SScaleBox).Stretch(EStretch::ScaleToFit).StretchDirection(EStretchDirection::DownOnly)[ SNullWidget::NullWidget ]
+			]
+		];
+	// widget styles: builders take brushes by reference and chain
+	FButtonStyle Invisible = FButtonStyle().SetNormal(Brush).SetHovered(Brush).SetPressed(Brush).SetDisabled(Brush)
+		.SetNormalPadding(FMargin(0.f)).SetPressedPadding(FMargin(0.f));
+	FScrollBarStyle Bar = FScrollBarStyle::GetDefault();
+	Bar.SetVerticalBackgroundImage(Brush).SetHorizontalBackgroundImage(Brush).SetNormalThumbImage(Brush).SetHoveredThumbImage(Brush).SetDraggedThumbImage(Brush);
+	// a transient texture's first mip: Lock(flags) / Unlock, then UpdateResource
+	if (Texture->GetPlatformData() != nullptr && Texture->GetPlatformData()->Mips.Num() > 0)
+	{
+		FTexture2DMipMap& Mip = Texture->GetPlatformData()->Mips[0];
+		void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
+		(void)Data;
+		Mip.BulkData.Unlock();
+		Texture->UpdateResource();
+	}
+	// world -> screen with the local player's projection
+	if (LocalPlayer->GetProjectionData(LocalPlayer->ViewportClient->Viewport, Projection))
+	{
+		const FMatrix ViewProjection = Projection.ComputeViewProjectionMatrix();
+		(void)FSceneView::ProjectWorldToScreen(FVector::ZeroVector, Projection.GetConstrainedViewRect(), ViewProjection, Screen);
+	}
+	// the renderer's handle of a brush, and the application's drag threshold
+	FSlateResourceHandle Handle = Renderer->GetResourceHandle(Brush);
+	const float DragDistance = FSlateApplication::Get().GetDragTriggerDistance();
+	(void)bPressed; (void)PrepassScale; (void)Handle; (void)DragDistance; (void)Invisible;
+#elif CASE == 158  // EXPECT: no matching member function for call to 'WidthOverride'
+	TSharedRef<SBox> Made = SNew(SBox).WidthOverride(Label);            // FOptionalSize is a float, not a text
+#elif CASE == 159  // EXPECT: no matching member function for call to 'Text'
+	TSharedRef<STextBlock> Made = SNew(STextBlock).Text(FString(TEXT("x"))); // STextBlock takes FText; an FString needs FText::FromString
+#elif CASE == 160  // EXPECT: no matching (member )?function for call to '(OnClicked_Lambda|CreateLambda)'|no viable conversion
+	TSharedRef<SButton> Made = SNew(SButton).OnClicked_Lambda([]() {});  // FOnClicked returns FReply
+#elif CASE == 161  // EXPECT: no matching member function for call to 'ButtonStyle'
+	TSharedRef<SButton> Made = SNew(SButton).ButtonStyle(ButtonStyle);   // SLATE_STYLE_ARGUMENT takes a pointer (the style must outlive the widget)
+#elif CASE == 162  // EXPECT: cannot initialize a parameter of type 'EButtonClickMethod::Type' with an rvalue of type 'EButtonTouchMethod::Type'
+	TSharedRef<SButton> Made = SNew(SButton).ClickMethod(EButtonTouchMethod::PreciseTap); // the touch enum given to the click method
+#elif CASE == 163  // EXPECT: no matching member function for call to 'BorderImage'
+	TSharedRef<SBorder> Made = SNew(SBorder).BorderImage(Brush);        // the attribute is `const FSlateBrush*`
+#elif CASE == 164  // EXPECT: no matching member function for call to 'ScrollBarStyle'
+	TSharedRef<SScrollBox> Made = SNew(SScrollBox).ScrollBarStyle(&ButtonStyle); // a button style is not a scroll bar style
+#elif CASE == 165  // EXPECT: no member named 'AutoHeight' in
+	Scroll->AddSlot().AutoHeight()[ SNullWidget::NullWidget ];          // AutoHeight is SVerticalBox's slot, not SScrollBox's
+#elif CASE == 166  // EXPECT: no member named 'Padding' in
+	Canvas->AddSlot().Padding(FMargin(1.f))[ SNullWidget::NullWidget ]; // a canvas slot has position / size / alignment only
+#elif CASE == 167  // EXPECT: no matching member function for call to 'Position'
+	Canvas->AddSlot().Position(FMargin(1.f))[ SNullWidget::NullWidget ]; // Position is an FVector2D attribute
+#elif CASE == 168  // EXPECT: no member named 'SetColorAndOpacity' in 'SBox'
+	SAssignNew(Box, SBox);
+	Box->SetColorAndOpacity(FLinearColor::White);                       // SBox is an SPanel, not an SCompoundWidget
+#elif CASE == 169  // EXPECT: no viable conversion from 'const FSlateBrush \*' to 'const FSlateBrush'|non-const lvalue reference|reference to type 'const FSlateBrush' could not bind
+	FButtonStyle Style = FButtonStyle().SetNormal(&Brush);              // the style copies the brush: pass it by reference
+#elif CASE == 170  // EXPECT: no member named 'SetThumbImage' in 'FScrollBarStyle'
+	FScrollBarStyle Bar;
+	Bar.SetThumbImage(Brush);                                           // SetNormalThumbImage / SetHoveredThumbImage / SetDraggedThumbImage
+#elif CASE == 171  // EXPECT: too few arguments to function call, single argument 'LockFlags' was not specified
+	void* Data = Texture->GetPlatformData()->Mips[0].BulkData.Lock();   // Lock needs LOCK_READ_ONLY or LOCK_READ_WRITE
+#elif CASE == 172  // EXPECT: member access into incomplete type 'FTexturePlatformData'
+	const int32 MipCount = Texture->GetPlatformData()->Mips.Num();      // Engine/Texture2D.h only forward-declares it: include TextureResource.h
+#elif CASE == 173  // EXPECT: no viable conversion from 'FSceneViewProjectionData' to 'const FMatrix'
+	(void)FSceneView::ProjectWorldToScreen(FVector::ZeroVector, Projection.GetConstrainedViewRect(), Projection, Screen); // the matrix, not the data
+#elif CASE == 174  // EXPECT: 'ConstrainedViewRect' is a protected member of 'FSceneViewProjectionData'
+	const FIntRect Rect = Projection.ConstrainedViewRect;               // use GetConstrainedViewRect()
+#elif CASE == 175  // EXPECT: no matching member function for call to 'GetResourceHandle'
+	FSlateResourceHandle Handle = Renderer->GetResourceHandle(&Brush);  // by reference
+#elif CASE == 176  // EXPECT: reference to type 'const TSharedRef<FNegativeItem>' could not bind to an rvalue of type 'int'
+	TSharedRef<SWidget> Made = SNew(SNegativeHit, 3);                   // the required argument is a TSharedRef<FNegativeItem>
+#elif CASE == 177  // EXPECT: too few arguments to function call|no matching member function for call to 'Construct'
+	TSharedRef<SWidget> Made = SNew(SNegativeHit);                      // the required argument is missing
+#elif CASE == 178  // EXPECT: no matching member function for call to 'Font'
+	TSharedRef<STextBlock> Made = SNew(STextBlock).Font(12.f);          // a font is an FSlateFontInfo, not a size
+#elif CASE == 179  // EXPECT: no member named 'OnClicked_Lambda' in 'SBox::FArguments'
+	TSharedRef<SBox> Made = SNew(SBox).OnClicked_Lambda([]() { return FReply::Handled(); }); // SBox does not click: wrap an SButton
+#elif CASE == 180  // EXPECT: no matching (member )?function for call to '(ColorAndOpacity_Lambda|TFunction)'|no viable conversion
+	TSharedRef<STextBlock> Made = SNew(STextBlock).ColorAndOpacity_Lambda([]() { return FText::GetEmpty(); }); // must return a colour
+#elif CASE == 181  // EXPECT: no matching member function for call to 'SetText'|no viable conversion
+	SAssignNew(TextBlock, STextBlock);
+	TextBlock->SetText(FString(TEXT("x")));                             // FText
+#endif
+	(void)Box; (void)TextBlock; (void)Button; (void)Scroll; (void)Canvas; (void)Texture; (void)Projection; (void)Screen; (void)Renderer;
+	(void)LocalPlayer; (void)Font; (void)Brush; (void)ButtonStyle; (void)ScrollBarStyle; (void)ItemPtr; (void)Label;
 }

@@ -49,6 +49,50 @@ namespace ESelectInfo
 		Direct,
 	};
 }
+/** Enumerates different methods that a button click can be triggered. Normally, DownAndUp is appropriate. */
+UENUM(BlueprintType)
+namespace EButtonClickMethod
+{
+	enum Type : int
+	{
+		/** User must press the button, then release while over the button to trigger the click. */
+		DownAndUp,
+		/** Click will be triggered immediately on mouse down, and mouse will not be captured. */
+		MouseDown,
+		/** Click will always be triggered when mouse button is released over the button, even if the button wasn't pressed down over it. */
+		MouseUp,
+		/** Inside a list, buttons can only be clicked with precise tap: moving the pointer cancels the click. */
+		PreciseClick,
+	};
+}
+/** Ways in which touch interactions trigger a "Clicked" event. */
+UENUM(BlueprintType)
+namespace EButtonTouchMethod
+{
+	enum Type : int
+	{
+		/** Most buttons behave this way. */
+		DownAndUp,
+		/** Click will be triggered immediately on touch down, and touch will not be captured. */
+		Down,
+		/** Inside a list, buttons can only be clicked with precise tap: moving the pointer cancels the click. */
+		PreciseTap,
+	};
+}
+/** Enumerates different methods that a button can be triggered with keyboard / controller. */
+UENUM(BlueprintType)
+namespace EButtonPressMethod
+{
+	enum Type : int
+	{
+		/** User must press the button, then release while the button has focus to trigger the click. */
+		DownAndUp,
+		/** Click will be triggered immediately on button press. */
+		ButtonPress,
+		/** Click will always be triggered when a button release occurs on the focused button. */
+		ButtonRelease,
+	};
+}
 UENUM(BlueprintType)
 enum class EUINavigation : uint8
 {

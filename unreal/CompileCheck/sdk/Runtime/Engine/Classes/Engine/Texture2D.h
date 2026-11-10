@@ -1,6 +1,6 @@
 // Stub SDK. Real header: Engine/Source/Runtime/Engine/Classes/Engine/Texture2D.h (UE 5.x source knowledge;
 // UFUNCTION / UPROPERTY-marked members: checked against the 5.6 stub). FUpdateTextureRegion2D is only forward-declared
-// here, as in the engine: its definition comes with RHI.h.
+// here, as in the engine: its definition comes with RHI.h; FTexturePlatformData comes with TextureResource.h.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -9,6 +9,7 @@
 #include "Engine/TextureDefines.h"
 
 struct FUpdateTextureRegion2D;
+struct FTexturePlatformData;
 
 class UTexture2D : public UTexture
 {
@@ -20,6 +21,9 @@ public:
 	/** The addressing mode to use for the Y axis. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Texture, meta = (DisplayName = "Y-axis Tiling Method"), AssetRegistrySearchable, AdvancedDisplay)
 	TEnumAsByte<enum TextureAddress> AddressY;
+	/** The derived data for this texture on this platform (FTexturePlatformData: TextureResource.h). */
+	FTexturePlatformData* GetPlatformData();
+	const FTexturePlatformData* GetPlatformData() const;
 	int32 GetSizeX() const;
 	int32 GetSizeY() const;
 	/** Gets the X size of the texture, in pixels. */

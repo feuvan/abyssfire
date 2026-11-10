@@ -6,6 +6,7 @@
 #include "Engine/Texture2D.h"
 #include "Engine/UserInterfaceSettings.h"
 #include "Framework/Application/SlateApplication.h"
+#include "HAL/PlatformTime.h"
 
 #include <string>
 #include <utility>

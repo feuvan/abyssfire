@@ -143,12 +143,56 @@ FAULTS = [
         'expect': r"cannot initialize a parameter of type 'float' with an rvalue of type 'EAudioFaderCurve'",
         'run': 'D',
     },
+    {
+        'name': 'UI: a helper used without its header (non-unity)',
+        'what': '#include "UI/Core/AbyssUiDraw.h" removed from SAbyssHud.cpp: AbyssEase is then only visible when a unity blob '
+                'happens to include the header first (the missing include CC4 found in this file)',
+        'file': 'Private/UI/Hud/SAbyssHud.cpp',
+        'find': '#include "UI/Core/AbyssUiDraw.h"\n',
+        'replace': '',
+        'expect_file': 'Private/UI/Hud/SAbyssHud.cpp',
+        'expect': r"use of undeclared identifier 'AbyssEase'",
+        'run': 'E',
+    },
+    {
+        'name': 'UI: Slate style argument by value',
+        'what': 'SScrollBox .ScrollBarStyle(...) given the style by reference instead of its address (SLATE_STYLE_ARGUMENT is a pointer)',
+        'file': 'Private/UI/Widgets/AbyssUiWidgets.cpp',
+        'find': '.ScrollBarStyle(&Ctx.Style().ScrollBar())',
+        'replace': '.ScrollBarStyle(Ctx.Style().ScrollBar())',
+        'expect_file': 'Private/UI/Widgets/AbyssUiWidgets.cpp',
+        'expect': r"no matching member function for call to 'ScrollBarStyle'",
+        'run': 'E',
+    },
+    {
+        'name': 'UI: OnPaint override with a wrong signature',
+        'what': 'SAbyssMinimap::OnPaint declared with `uint32 LayerId` (the engine: int32): `override` no longer overrides',
+        'file': 'Private/UI/Hud/SAbyssMinimap.h',
+        'find': 'FSlateWindowElementList& OutDrawElements, int32 LayerId,',
+        'replace': 'FSlateWindowElementList& OutDrawElements, uint32 LayerId,',
+        'expect_file': '',
+        'expect': r"'OnPaint' marked 'override' but does not override|only virtual member functions can be marked 'override'|out-of-line definition of 'OnPaint' does not match",
+        'run': 'E',
+    },
+    {
+        'name': 'UI: texture mip data without TextureResource.h',
+        'what': '#include "TextureResource.h" removed from AbyssMinimapTexture.cpp: FTexturePlatformData / FTexture2DMipMap are '
+                'only forward-declared by Engine/Texture2D.h',
+        'file': 'Private/UI/Hud/AbyssMinimapTexture.cpp',
+        'find': '#include "TextureResource.h"\n',
+        'replace': '',
+        'expect_file': 'Private/UI/Hud/AbyssMinimapTexture.cpp',
+        'expect': r"incomplete type '(const )?FTexturePlatformData'|unknown type name 'FTexture2DMipMap'|incomplete type 'FTexture2DMipMap'",
+        'run': 'E',
+    },
 ]
 RUNS = {
     'A': ['Private/Input/AbyssPicking.cpp', 'Private/Anim/AbyssAnimInstance.cpp', 'Private/Framework/AbyssGameMode.cpp'],
     'B': ['Private/Input/AbyssInputConfig.cpp', 'Private/Input/AbyssInputSubsystem.cpp'],
     'C': ['Private/World/AbyssWorldTypes.cpp', 'Private/Vfx/AbyssVfxDefaults.cpp'],
     'D': ['Private/Audio/AbyssAudioSystem.cpp'],
+    'E': ['Private/UI/Hud/SAbyssHud.cpp', 'Private/UI/Widgets/AbyssUiWidgets.cpp', 'Private/UI/Hud/SAbyssMinimap.cpp',
+          'Private/UI/Hud/AbyssMinimapTexture.cpp'],
 }
 
 

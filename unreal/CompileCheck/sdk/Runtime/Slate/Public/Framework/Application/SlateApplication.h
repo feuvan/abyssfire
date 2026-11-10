@@ -67,6 +67,9 @@ public:
 	virtual UE::Slate::FDeprecateVector2DResult GetCursorSize() const override;
 	void SetCursorPos(const FVector2D& MouseCoordinate);
 	float GetCursorRadius() const;
+	/** The distance (in Slate units, already DPI scaled) the pointer must move before a press becomes a drag. */
+	float GetDragTriggerDistance() const;
+	void SetDragTriggerDistance(float ScreenPixels);
 	bool IsMouseAttached() const;
 	bool IsGamepadAttached() const;
 	const TSet<FKey>& GetPressedMouseButtons() const;

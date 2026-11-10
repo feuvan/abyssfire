@@ -187,6 +187,17 @@ Every diagnostic gets one of three verdicts; none is silenced.
   ctypes, no package needed) lists the SDK declarations a set of module files really uses, `--baseline` subtracts what
   earlier areas already used: review that list when an area turns green, and move what is doubtful to
   `API_UNCERTAIN.md`.
+- **Slate widgets.** A widget header declares the engine's `SLATE_BEGIN_ARGS` list (argument names and types are the
+  API a declarative call is checked against), `Construct`, the slot type with its mixins, and only the setters the
+  module calls. The `FArguments` constructor keeps the engine's defaults except the style lookups
+  (`FCoreStyle::Get().GetWidgetStyle<...>(...)` becomes `nullptr`): `Styling/CoreStyle.h` is not part of the SDK until
+  the module itself uses it. A slot gets exactly the engine's mixins (`SCanvas::FSlot`: alignment, no padding;
+  `SScrollBox::FSlot`: padding and alignment, no size rule), so a setter borrowed from another panel fails.
+- **An engine switch is modelled as a switch.** `Types/SlateVector2.h` has both sides of
+  `UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS` (the `FVector2D` bridge of Slate's float API). The default is the
+  engine's (on); `./run.sh --define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=0` lists every line of the module
+  that relies on the bridge (API_UNCERTAIN.md #8). Results of Slate getters are wrapped explicitly in the module
+  (`FVector2D Size(Geometry.GetLocalSize());`): keep new code that way.
 - After any SDK change: `./run.sh --selftest` and `python3 tools/check_reflected.py`.
 
 ## The fake UHT
@@ -215,7 +226,9 @@ warning, UHT accepts it as `int`), `preprocessor` (no reflection macro inside `#
 missing include, `.h` / `.cpp` signature mismatch, a module removed from `Build.cs`, an include after the generated
 header, a `UPROPERTY` inside `#if PLATFORM_IOS`, a `bool` bitfield `UPROPERTY`, a `virtual` BlueprintImplementableEvent,
 the same anonymous-namespace helper in two files for the unity build, a parameter named like a member of its class
-(`-Wshadow`), an audio component call with a wrong argument) and requires each to be reported at the planted
+(`-Wshadow`), an audio component call with a wrong argument, and in the UI: a helper used without its header, a Slate
+style argument passed by value, an `OnPaint` override with a wrong parameter type, texture mip data used without
+`TextureResource.h`) and requires each to be reported at the planted
 place; runs `tools/stub_bodies.py` on a probe header that holds every declaration shape (it must find exactly the
 body-less templates, give them bodies and leave the rest alone, keep a `// no-body:` declaration, and report exactly
 the stub-bodied templates with an unconstrained explicit type parameter); then compiles `tests/negative_cases.cpp` once

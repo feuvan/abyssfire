@@ -1052,7 +1052,7 @@ bool AAbyssPlayerController::IsAbyssCursorOverWorld() const
 	{
 		return true;
 	}
-	const FVector2D CursorPosition = SlateApp.GetCursorPos();
+	const FVector2D CursorPosition = FVector2D(SlateApp.GetCursorPos());
 	const FWidgetPath WidgetsUnderCursor = SlateApp.LocateWindowUnderMouse(CursorPosition, SlateApp.GetInteractiveTopLevelWindows());
 	if (!WidgetsUnderCursor.IsValid())
 	{

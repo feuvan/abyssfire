@@ -20,6 +20,7 @@
 #include "Framework/AbyssGameInstance.h"
 #include "Input/Touch/SAbyssTouchControls.h"
 #include "UI/AbyssUiStyle.h"
+#include "UI/Core/AbyssUiDraw.h"
 #include "UI/Hud/AbyssMinimapTexture.h"
 #include "UI/Hud/SAbyssHud.h"
 #include "UI/Hud/SAbyssHudWidgets.h"
@@ -41,6 +42,7 @@
 #include "UI/Panels/SAbyssWorldMapPanel.h"
 #include "UI/Root/SAbyssDialogs.h"
 #include "UI/Story/SAbyssStoryOverlay.h"
+#include "UI/Widgets/AbyssUiWidgets.h"
 #include "UI/World/SAbyssWorldLayer.h"
 
 namespace
@@ -189,7 +191,7 @@ void SAbyssUiRoot::Construct(const FArguments& InArgs, const TSharedRef<FAbyssUi
 							return 1.f;
 						}
 						// 7.2: touch popups x1.45, shrunk when that would not fit the screen
-						const FVector2D Desired = PopupBox->GetDesiredSize();
+						const FVector2D Desired = FVector2D(PopupBox->GetDesiredSize());
 						const FVector2D Layer = GetLayerSize();
 						float Scale = 1.45f;
 						if (Desired.X > 1.0 && Desired.Y > 1.0)
@@ -1316,7 +1318,7 @@ FMargin SAbyssUiRoot::GetTooltipOffset() const
 	{
 		Layer = FVector2D(1280.0, 720.0);
 	}
-	const FVector2D Size = TooltipScaler->GetDesiredSize();
+	const FVector2D Size = FVector2D(TooltipScaler->GetDesiredSize());
 	// 7.2: cursor + (16, -10), flipped left when it would leave the screen, clamped 4 px.
 	double X = Local.X + 16.0;
 	double Y = Local.Y - 10.0;
@@ -1364,7 +1366,7 @@ FMargin SAbyssUiRoot::GetPopupOffset() const
 	{
 		Layer = FVector2D(1280.0, 720.0);
 	}
-	const FVector2D Size = PopupScaler->GetDesiredSize();
+	const FVector2D Size = FVector2D(PopupScaler->GetDesiredSize());
 	double X = Local.X;
 	double Y = Local.Y;
 	if (Ctx->IsTouch())

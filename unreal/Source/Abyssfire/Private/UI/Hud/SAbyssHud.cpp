@@ -20,6 +20,7 @@
 #include "Framework/AbyssText.h"
 #include "Input/Touch/SAbyssTouchControls.h"
 #include "UI/AbyssUiStyle.h"
+#include "UI/Core/AbyssUiDraw.h"
 #include "UI/Hud/AbyssHudRules.h"
 #include "UI/Hud/AbyssMinimapTexture.h"
 #include "UI/Hud/SAbyssHudBottom.h"

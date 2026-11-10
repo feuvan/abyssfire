@@ -101,6 +101,8 @@ public:
 
 	void SlatePrepass();
 	void SlatePrepass(float InLayoutScaleMultiplier);
+	/** The layout scale this widget was last pre-passed with (1 before the first prepass). */
+	float GetPrepassLayoutScaleMultiplier() const;
 	UE::Slate::FDeprecateVector2DResult GetDesiredSize() const;
 	void AssignParentWidget(TSharedPtr<SWidget> InParent);
 	bool ConditionallyDetatchParentWidget(SWidget* InExpectedParent);

@@ -331,7 +331,9 @@ struct TSlateBaseNamedArgs : public FSlateBaseNamedArgs
 
 namespace RequiredArgs
 {
-	/** The positional SNew arguments, forwarded to WidgetType::Construct after the FArguments. */
+	/** The positional SNew arguments, perfectly forwarded to WidgetType::Construct after the FArguments (the engine's
+	 *  T1RequiredArgs..T5RequiredArgs: `OnWidget->Construct(WithNamedArgs, Forward<Arg0Type>(Arg0), ...)`): an lvalue
+	 *  argument arrives as an lvalue, a temporary as an rvalue. */
 	template <typename... ArgTypes>
 	struct TRequiredArgs
 	{
@@ -339,8 +341,10 @@ namespace RequiredArgs
 		template <class WidgetType>
 		void CallConstruct(WidgetType* OnWidget, const typename WidgetType::FArguments& WithNamedArgs) const
 		{
+			// The tuple is passed as an rvalue so that std::get yields ArgTypes&& (T& for an lvalue argument, T&& for
+			// a temporary); as an lvalue it would yield T& for both and a temporary could not be forwarded.
 			std::apply([&](ArgTypes&&... Unpacked) { OnWidget->Construct(WithNamedArgs, static_cast<ArgTypes&&>(Unpacked)...); },
-				const_cast<std::tuple<ArgTypes&&...>&>(Args));
+				static_cast<std::tuple<ArgTypes&&...>&&>(const_cast<std::tuple<ArgTypes&&...>&>(Args)));
 		}
 	};
 	template <typename... ArgTypes>

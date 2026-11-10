@@ -648,7 +648,7 @@ void SAbyssSkillTreePanel::BuildHotbar(const abyss::Snapshot& Snap)
 			{
 				if (const TSharedPtr<SAbyssSkillTreePanel> Panel = WeakPanel.Pin())
 				{
-					Panel->OnHotbarSlotClicked(Slot, FSlateApplication::Get().GetCursorPos(), bTouch);
+					Panel->OnHotbarSlotClicked(Slot, FVector2D(FSlateApplication::Get().GetCursorPos()), bTouch);
 				}
 			})
 			.OnRightPressed_Lambda([WeakPanel, Slot]()

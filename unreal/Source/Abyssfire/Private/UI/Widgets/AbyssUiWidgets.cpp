@@ -849,7 +849,7 @@ FReply SAbyssSlider::OnMouseButtonDown(const FGeometry& MyGeometry, const FPoint
 		return FReply::Handled();
 	}
 	bDragging = true;
-	DragValue = ValueAt(MyGeometry, MouseEvent.GetScreenSpacePosition());
+	DragValue = ValueAt(MyGeometry, FVector2D(MouseEvent.GetScreenSpacePosition()));
 	OnValueChanged.ExecuteIfBound(DragValue);
 	return FReply::Handled().CaptureMouse(SharedThis(this));
 }
@@ -858,7 +858,7 @@ FReply SAbyssSlider::OnMouseMove(const FGeometry& MyGeometry, const FPointerEven
 {
 	if (bDragging && HasMouseCapture())
 	{
-		DragValue = ValueAt(MyGeometry, MouseEvent.GetScreenSpacePosition());
+		DragValue = ValueAt(MyGeometry, FVector2D(MouseEvent.GetScreenSpacePosition()));
 		OnValueChanged.ExecuteIfBound(DragValue);
 		return FReply::Handled();
 	}

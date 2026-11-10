@@ -288,7 +288,7 @@ void SAbyssHudBottom::ShowPotionPopup(int32 Slot)
 			];
 	}
 	const TSharedPtr<SWidget> Anchor = PotionButtons[Slot];
-	FVector2D Position = FSlateApplication::Get().GetCursorPos();
+	FVector2D Position = FVector2D(FSlateApplication::Get().GetCursorPos());
 	if (Anchor.IsValid())
 	{
 		Position = FVector2D(Anchor->GetTickSpaceGeometry().GetAbsolutePosition());

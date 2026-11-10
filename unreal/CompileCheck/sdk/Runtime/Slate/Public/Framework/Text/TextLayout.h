@@ -1,5 +1,6 @@
 // Stub SDK. Real header: Engine/Source/Runtime/Slate/Public/Framework/Text/TextLayout.h (UE 5.x source knowledge;
-// reflected enums: checked against the 5.6 stub). Only the justification / flow enums; FTextLayout is not modelled.
+// reflected enums: checked against the 5.6 stub). Only the justification / flow / wrapping enums; FTextLayout is not
+// modelled.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -30,4 +31,14 @@ enum class ETextFlowDirection : uint8
 	LeftToRight,
 	RightToLeft,
 	Culture,
+};
+
+/** The different methods that can be used if a word is too long to be broken by the default line-break iterator. */
+UENUM(BlueprintType)
+enum class ETextWrappingPolicy : uint8
+{
+	/** No fallback, just use the given line-break iterator. */
+	DefaultWrapping = 0,
+	/** Fallback to per-character wrapping if a word is too long. */
+	AllowPerCharacterWrapping,
 };

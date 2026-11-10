@@ -137,6 +137,46 @@ Verdict vocabulary: see README.md ("The three verdicts").
   constness (the module has no such override).
 - **Safest form for new code**: call it on a non-const controller.
 
+### 8. The Slate `FVector2D` bridge (`UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS`)
+
+- **Where**: every place the module hands an `FVector2D` to Slate or takes one back without an explicit conversion.
+  With the bridge switched off (`./run.sh --define UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=0`) the check reports
+  22 lines in 12 files, all of them ARGUMENTS:
+  `FGeometry::AbsoluteToLocal(FVector2D)` (`Private/Input/Touch/SAbyssTouchButton.cpp:99`,
+  `SAbyssTouchControls.cpp:702`, `SAbyssVirtualJoystick.cpp:85`, `:102`, `Private/UI/Root/SAbyssUiRoot.cpp:437`, `:447`,
+  `:1315`, `:1363`, `:1401`, `Private/UI/Widgets/AbyssUiWidgets.cpp:840`), `FGeometry::IsUnderLocation(FVector2D)`
+  (`Private/UI/Panels/SAbyssSkillTreePanel.cpp:224`, `Private/UI/Widgets/AbyssUiWidgets.cpp:973`),
+  `FSlateApplication::LocateWindowUnderMouse(FVector2D, ...)` (`Private/Input/AbyssPlayerControllerInput.cpp:1056`),
+  `FSlateRect(FVector2D, FVector2D)` (`Private/Input/Touch/SAbyssTouchControls.cpp:750`),
+  `FSlateImageBrush(UObject*, FVector2D)` (`Private/UI/Core/AbyssUiContext.cpp:606`, `:628`,
+  `Private/UI/Core/AbyssUiStyle.cpp:307`) and `SScrollBox::FArguments::ScrollBarThickness(FVector2D)`
+  (`Private/UI/Widgets/AbyssUiWidgets.cpp:81` and four panels).
+- **What the code assumes**: Slate's 5.2+ float API still accepts and returns `FVector2D` implicitly through
+  `UE::Slate::FDeprecateSlateVector2D` (an `FVector2f` that converts from and to `FVector2d`), i.e. the engine is built
+  with `UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS` 1.
+- **Evidence for**: `Types/SlateVector2.h` has defined the macro as 1 (behind `#ifndef`) since the float conversion in
+  5.2 and, as far as remembered, through 5.5; `UE_REPORT_SLATE_VECTOR_DEPRECATION` (default 0) would first turn the
+  conversions into deprecation WARNINGS, which do not fail a UE build. No release note about its removal is known here.
+- **Evidence against**: it is named a deprecation mechanism, so it will go at some point; nothing here can show the
+  5.8 state (not reflected, no engine source, the API reference is not reachable).
+- **What the SDK declares**: both sides of the engine's switch in `sdk/Runtime/SlateCore/Public/Types/SlateVector2.h`:
+  on by default; with the macro 0 the bridge types are plain `FVector2f`. Which Slate functions use the bridge types
+  and which still take `FVector2D` (the `SLATE_ATTRIBUTE(FVector2D, ...)` arguments: canvas slot `Position` / `Size`,
+  `ShadowOffset`, `RenderTransformPivot`, ...) is itself from memory, so the bridge-off run is an estimate, not a
+  proof.
+- **What changed in the module**: results were already wrapped (`FVector2D X(Geometry.GetLocalSize())`) nearly
+  everywhere; the eight remaining implicit RESULT conversions now are too (`FSlateApplication::GetCursorPos()` at
+  `AbyssPlayerControllerInput.cpp:1055`, `SAbyssHudBottom.cpp:291`, `SAbyssSkillTreePanel.cpp:651`;
+  `SWidget::GetDesiredSize()` at `SAbyssUiRoot.cpp:194`, `:1321`, `:1369`; `FPointerEvent::GetScreenSpacePosition()` at
+  `AbyssUiWidgets.cpp:852`, `:861`). `FVector2D(x)` is valid whether `x` is an `FVector2D`, an `FVector2f` or the bridge
+  type. The 22 argument sites were left alone on purpose: wrapping them in `FVector2f(...)` would only be right if the
+  parameter really is a Slate float type in 5.8, and would break the build if one of them still takes `FVector2D`.
+- **Residual risk**: if 5.8 ships with the mechanism off, the 22 lines above fail to compile ("no viable conversion from
+  'TVector2<double>' to 'TVector2<float>'"), in every target.
+- **Safest alternative**: on the Mac, either add `GlobalDefinitions.Add("UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS=1")`
+  to the two `Target.cs` files (the macro is `#ifndef`-guarded) or wrap each reported argument in
+  `UE::Slate::CastToVector2f(...)` / `FVector2f(...)`.
+
 ## Resolved by changing the module
 
 ### 2. `FVector2D::ComponentMin` / `ComponentMax`
@@ -149,6 +189,22 @@ Verdict vocabulary: see README.md ("The three verdicts").
 - **Resolution**: the module now calls `FVector2D::Min(OutMin, Projected)` / `FVector2D::Max(OutMax, Projected)`,
   which exist in every UE 4 / 5 version and compute the same per-component result. Even if a later engine added the
   member forms, the static forms remain valid.
+
+### 7. `FSlateRenderer::GetResourceHandle(const FSlateBrush&, FVector2f, float)`: type of the size parameter
+
+- **Where**: `Source/Abyssfire/Private/UI/Core/AbyssUiDraw.cpp:319` (`FAbyssPainter::CustomVerts`: the resource handle
+  that `FSlateDrawElement::MakeCustomVerts` needs for the texture of a custom-vertex shape).
+- **What the code assumed**: the three-argument virtual with `FVector2f LocalSize`
+  (`Renderer->GetResourceHandle(*SourceBrush, FVector2f::ZeroVector, 1.0f)`).
+- **Evidence**: the three-argument form arrived with vector-image brushes in 5.0 taking `FVector2D LocalSize`; it is
+  believed to take `FVector2f` since the Slate float conversion (5.2). `FVector2f` does not convert implicitly to
+  `FVector2D`, so the call compiles under only one of the two. Not reflected.
+- **Resolution**: the module now calls the one-argument overload `GetResourceHandle(const FSlateBrush&)`, the form
+  `SMeshWidget` and other engine code have used since UE 4 (non-virtual since 5.0, forwarding a zero size and scale 1,
+  which only a vector image would read). Same result for a texture brush; no dependence on the parameter type.
+  `tests/negative_cases.cpp` case 175 pins the by-reference parameter.
+- **Residual risk**: none known. The SDK still declares the three-argument virtual with `FVector2f` (unused by the
+  module).
 
 ## SDK declarations made at lower confidence
 
@@ -191,7 +247,18 @@ reflected in a form the Python stub exposes.
 | `USoundBase::IsLooping() const` (`Sound/SoundBase.h`) | A public virtual, C++-only (not reflected). `GetDuration()` / `GetMaxDistance()` exist too and are not declared (unused) | `Private/Audio/AbyssAudioSystem.cpp:926` (a Verbose log when the requested loop flag and the asset disagree). If 5.8 has no such public member that one line fails: drop the log, or compare `Sound->GetDuration()` with `INDEFINITELY_LOOPING_DURATION` |
 | Public data members of the audio classes (`Sound/SoundBase.h`, `Components/AudioComponent.h`, `Sound/SoundAttenuation.h`) | `USoundBase::Duration`, `UAudioComponent::VolumeMultiplier` / `bIsUISound` / `bAllowSpatialization`, `USoundAttenuation::Attenuation` and the `FSoundAttenuationSettings` flags are written and read directly. The properties and their types are checked against the 5.6 stub; that they are `public:` in C++ is from memory (the engine's own `UGameplayStatics` sets the component's flags the same way) | If one is protected in 5.8, the reflected functions do the same job where they exist: `SetUISound(bool)`, `SetVolumeMultiplier(float)`, `AdjustAttenuation(Settings)`; `bAllowSpatialization` has none (`CreateSound2D` already clears it, so the module's writes after `CreateSound2D` could simply go) |
 | Includes of the audio headers | `Components/AudioComponent.h` includes `Sound/SoundAttenuation.h` (it holds an `FSoundAttenuationSettings` by value) and only forward-declares `USoundBase`; the engine's header is believed to include `Sound/SoundWave.h` (and through it `Sound/SoundBase.h`) as well. `Sound/SoundBase.h` and `Sound/SoundAttenuation.h` include `UObject/Object.h`; the base interfaces of `USoundBase` / `UAudioComponent` (`IInterface_AssetUserData`, `ISoundParameterControllerInterface`, `FQuartzTickableObject`) are not modelled | Strict side: using `USoundBase` members needs `Sound/SoundBase.h` here (negative case 153). `AbyssAudioSystem.cpp` includes all three headers itself |
-| `FPlatformTime` reachability (`HAL/PlatformTime.h`) | Neither the SDK's `CoreMinimal.h` nor its `Stats/Stats.h` includes `HAL/PlatformTime.h`. The engine's `Stats/Stats.h` (and so every UObject header) is believed to include it | Strict side: a module file that calls `FPlatformTime` without the include fails here and probably not on the Mac. `Private/Audio/AbyssAudioSystem.cpp` now includes it (as six other module files already did); `Private/UI/Core/AbyssUiContext.cpp:129` is the UI stage's |
+| `FPlatformTime` reachability (`HAL/PlatformTime.h`) | Neither the SDK's `CoreMinimal.h` nor its `Stats/Stats.h` includes `HAL/PlatformTime.h`. The engine's `Stats/Stats.h` (and so every UObject header) is believed to include it | Strict side: a module file that calls `FPlatformTime` without the include fails here and probably not on the Mac. `Private/Audio/AbyssAudioSystem.cpp` and (CC4) `Private/UI/Core/AbyssUiContext.cpp` now include it (as six other module files already did); `Private/UI/Core/AbyssUiContext.cpp:129` is the UI stage's |
 | `USkeletalMeshComponent::SetAnimClass` / `SetAnimInstanceClass` (`Components/SkeletalMeshComponent.h`) | Both are reflected (checked against the 5.6 stub); that `SetAnimClass` is the `virtual` one is from memory | Only an override would notice; the module overrides neither |
 | `FPostProcessSettings::bOverride_AutoExposureApplyPhysicalCameraExposure` (`Engine/Scene.h`) | Declared `uint32 : 1` while the other `bOverride_` flags are `uint8 : 1`; the engine's exact field type was not confirmed | None on what compiles (the module assigns `true`) |
+| Slate widget `FArguments` (`Widgets/Layout/SBox.h`, `SBorder.h`, `SScrollBox.h`, `SSafeZone.h`, `SDPIScaler.h`, `SScaleBox.h`, `Widgets/SCanvas.h`, `Widgets/Text/STextBlock.h`, `Widgets/Input/SButton.h`) | The argument names and types are the engine's `SLATE_ARGUMENT` / `SLATE_ATTRIBUTE` / `SLATE_EVENT` lists as remembered (unchanged since UE 4 for what the module passes). Not reflected. The style defaults (`FCoreStyle` / `FAppStyle` lookups) are replaced by `nullptr`, and `Styling/CoreStyle.h` is not included, so a module file that uses `FCoreStyle` after including only a widget header is rejected here (strict side) | A misnamed or mistyped argument makes the check accept or reject a call wrongly. The arguments the module passes are listed by `tools/sdk_usage.py --only UI --header Slate`; negative cases 158-181 pin their types |
+| `SBox::FArguments::Padding` | Only the `TAttribute<FMargin>` form. Convenience overloads `Padding(float)`, `Padding(float, float)`, `Padding(float, float, float, float)` may exist on `SBox` (they do on panel slots, `TPaddingWidgetSlotMixin`); not confirmed, so not declared | `SNew(SBox).Padding(4.f, 2.f)` is rejected here. The module always passes an `FMargin` (valid either way) |
+| `SScrollBox::FSlot` | A `TBasicLayoutWidgetSlot` (padding and alignment). Recent engines are believed to add size rules (`AutoSize()` / `FillSize()` / `MaxSize()`); not confirmed, not declared | A scroll box slot with a size rule is rejected here; the module uses padding only |
+| `SButton::SButton()` | Public (so that `SNew(SButton)`, which is `MakeShared<SButton>()`, compiles) | None for callers |
+| `SBox` / `SSafeZone` / `SDPIScaler` base classes | `SBox : SPanel` (no `ChildSlot`, no `SetColorAndOpacity`; `SetContent(const TSharedRef<SWidget>&)`), `SSafeZone : SBox`, `SDPIScaler : SPanel`, `SScaleBox` / `SBorder` / `SScrollBox : SCompoundWidget`, `SButton : SBorder`, `STextBlock : SLeafWidget` | The module only derives from `SCompoundWidget` and `SLeafWidget`; a wrong base here would only matter for members reached through it (negative case 168) |
+| Widget style structs (`Styling/SlateTypes.h`: `FButtonStyle`, `FScrollBarStyle`, `FScrollBoxStyle`, `FTextBlockStyle`) | Properties, their types and the base `FSlateWidgetStyle` are checked against the 5.6 stub. The chaining `Set*` builders and the static `GetDefault()` are C++-only: names from memory (`SetNormal`, `SetHovered`, `SetPressed`, `SetDisabled`, `SetNormalPadding`, `SetPressedPadding`; `SetHorizontalBackgroundImage`, `SetVerticalBackgroundImage`, `Set{Vertical,Horizontal}{Top,Bottom}SlotImage`, `SetNormalThumbImage`, `SetHoveredThumbImage`, `SetDraggedThumbImage`) | `Private/UI/Core/AbyssUiStyle.cpp:271-298`. If a builder is missing in 5.8, assign the property instead (`Style.Normal = Brush;`): the properties are the verified part |
+| `EAllowOverscroll` (`Framework/Layout/Overscroll.h`), `FOnClicked` (`Framework/SlateDelegates.h`), `EConsumeMouseWheel` (`Styling/SlateTypes.h`, reflected) | The headers these live in; `SScrollBox.h` / `SButton.h` include them. `SScrollBox`'s `OnUserScrolled` event and `ExternalScrollbar` need `Widgets/Layout/SScrollBar.h`, which is not in the SDK: the event is not declared, `SScrollBar` only forward-declared | The module reaches the three through the widget headers and binds no scroll event |
+| `TextureResource.h` / `Serialization/BulkData.h` | `FTexturePlatformData::Mips` is a `TIndirectArray<FTexture2DMipMap>`, `FTexture2DMipMap::BulkData` an `FByteBulkData` with `void* Lock(uint32 LockFlags)` / `void Unlock() const` and `LOCK_READ_WRITE`; `UTexture2D::GetPlatformData()` (5.0+) returns `FTexturePlatformData*` and `Engine/Texture2D.h` only forward-declares the struct (strict side) | `Private/UI/AbyssUiSubsystem.cpp:516-530`, `Private/UI/Hud/AbyssMinimapTexture.cpp:159-162`: the classic transient-texture fill; both files include `TextureResource.h` |
+| `SceneView.h` | `FSceneViewProjectionData` with public `ViewOrigin` / `ViewRotationMatrix` / `ProjectionMatrix`, protected view rectangles behind `GetViewRect()` / `GetConstrainedViewRect()`, and `ComputeViewProjectionMatrix()`; `static bool FSceneView::ProjectWorldToScreen(const FVector&, const FIntRect&, const FMatrix&, FVector2D&, bool = false)`; `ULocalPlayer::GetProjectionData(FViewport*, FSceneViewProjectionData&, int32 = INDEX_NONE) const` | `Private/UI/World/SAbyssWorldLayer.cpp:845-867`. `APlayerController::ProjectWorldLocationToScreen` (reflected, already used by the picking code) is the alternative if any of the three moved |
+| `FSlateApplication::GetDragTriggerDistance()`, `SWidget::GetPrepassLayoutScaleMultiplier()` | Public, const, return `float` | `Private/UI/Widgets/AbyssUiWidgets.cpp:972`, `Private/UI/Panels/SAbyssSkillTreePanel.cpp:224`; `Private/UI/Hud/SAbyssHudWidgets.cpp:156` |
+| `RequiredArgs` (`Widgets/DeclarativeSyntaxSupport.h`) | The positional `SNew` arguments are perfectly forwarded to `Construct` (the engine's `T1RequiredArgs`...: `Forward<Arg0Type>(Arg0)`), so a temporary binds to a `const T&` or `T&&` parameter and an lvalue to `T&` / `const T&` | CC1's version handed every argument on as an lvalue-of-rvalue-reference and rejected `SNew(SWidget, Ptr.ToSharedRef())` with a `const TSharedRef<T>&` parameter: a false error, fixed in CC4 (control case in `NegativeUiCases`, cases 176 / 177) |
 | UE clang warning set in `tools/compile_check.py` | `-Wall -Werror` minus UE's `-Wno-*` list, `-Wshadow` and `-Wundef` as errors | A warning UE disables could fail here (strict side) or the reverse |

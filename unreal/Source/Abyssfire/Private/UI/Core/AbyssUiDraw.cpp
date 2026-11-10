@@ -315,7 +315,8 @@ void FAbyssPainter::CustomVerts(const TArray<FVector2D>& LocalPoints, const TArr
 	FSlateResourceHandle Handle;
 	if (SourceBrush != nullptr)
 	{
-		Handle = Renderer->GetResourceHandle(*SourceBrush, FVector2f::ZeroVector, 1.0f);
+		// The one-argument overload (zero size, scale 1: only a vector image would use them), as SMeshWidget calls it.
+		Handle = Renderer->GetResourceHandle(*SourceBrush);
 	}
 	if (!Handle.IsValid() && TextureBrush != nullptr)
 	{

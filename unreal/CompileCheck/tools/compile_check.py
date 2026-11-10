@@ -116,16 +116,24 @@ def include_roots(build_cs, modules, target_type):
     return order, roots, missing
 
 
+# Engine preprocessor switches (not UE_STUB_* ones) that an // UNVERIFIED block of the SDK may sit behind: the engine
+# default is on, `--define NAME=0` type-checks the module against an engine built without the feature.
+ENGINE_SWITCHES = ['UE_ENABLE_SLATE_VECTOR_DEPRECATION_MECHANISMS']
+
+
 def unverified_blocks(defines):
     """The SDK declarations marked // UNVERIFIED (API_UNCERTAIN.md): [{file, line, text, switch, inverted, active}]. A
     block that sits behind `#if defined(UE_STUB_UNVERIFIED_X) && UE_STUB_UNVERIFIED_X` is active only with --define; one
     behind `#if !(defined(UE_STUB_UNVERIFIED_X) && UE_STUB_UNVERIFIED_X)` is active unless defined (the module hedges
     it: the switch type-checks its fallback); the others are declarations the module is checked against in every run."""
     enabled = set()
+    zeroed = set()
     for extra in defines:
         name, _, value = extra.partition('=')
         if value not in ('0',):
             enabled.add(name)
+        else:
+            zeroed.add(name)
     blocks = []
     for root, _dirs, files in os.walk(SDK_DIR):
         for name in sorted(files):
@@ -140,17 +148,29 @@ def unverified_blocks(defines):
                 if stripped.startswith('#if'):
                     m = re.search(r'\b(UE_STUB_UNVERIFIED_\w+)', stripped)
                     inverted = bool(m) and (stripped.startswith('#ifndef') or re.search(r'!\s*\(?\s*defined', stripped) is not None)
-                    guards.append((m.group(1), inverted) if m else None)
+                    engine = re.match(r'#if\s+(%s)\s*$' % '|'.join(ENGINE_SWITCHES), stripped)
+                    if engine:
+                        # one of the engine's own switches (`#if NAME`, on unless the build defines it as 0)
+                        guards.append((engine.group(1), 'engine'))
+                    else:
+                        guards.append((m.group(1), inverted) if m else None)
                 elif stripped.startswith('#endif') and guards:
                     guards.pop()
                 m = re.match(r'//\s*UNVERIFIED\b\s*(.*)$', stripped)
                 if m:
                     switch, inverted = next((g for g in reversed(guards) if g), (None, False))
+                    if inverted == 'engine':
+                        blocks.append({'file': os.path.relpath(path, CHECK_DIR), 'line': number, 'text': m.group(1).strip(),
+                                       'switch': switch, 'inverted': True, 'engine': True, 'active': switch not in zeroed})
+                        continue
                     blocks.append({'file': os.path.relpath(path, CHECK_DIR), 'line': number, 'text': m.group(1).strip(),
                                    'switch': switch, 'inverted': inverted,
                                    'active': switch is None or ((switch in enabled) != inverted)})
     return sorted(blocks, key=lambda b: (b['file'], b['line']))
 
+
+# clang's fatal error for an #include that does not resolve: "'Widgets/Layout/SBox.h' file not found"
+MISSING_HEADER_RE = re.compile(r"^'[^']+' file not found$")
 
 def sha(text):
     return hashlib.sha1(text.encode('utf-8')).hexdigest()[:16]
@@ -331,7 +351,9 @@ class Checker:
                 deps = parse_depfile(dep) + ([pch] if pch else [])
                 # A result that stopped at a missing header is never reused: the dependency file cannot name a header
                 # that did not exist, so adding it (the usual next step) would otherwise leave the stale failure.
-                missing = any('file not found' in d.get('message', '') for d in cached.get('diagnostics', []))
+                # (clang's wording is exactly "'<header>' file not found"; an error that merely quotes those words in
+                # other text does not match).
+                missing = any(d.get('level') == 'error' and MISSING_HEADER_RE.match(d.get('message', '')) for d in cached.get('diagnostics', []))
                 if cached.get('key') == key and deps and not missing and newest_mtime(deps) <= os.path.getmtime(res):
                     cached['cached'] = True
                     return cached
@@ -514,6 +536,8 @@ class Checker:
             for b in blocks:
                 if b['switch'] is None:
                     state = 'on'
+                elif b.get('engine'):
+                    state = 'on, --define %s=0 turns it off' % b['switch'] if b['active'] else 'off, --define %s=0' % b['switch']
                 elif b.get('inverted'):
                     state = 'on, --define %s=1 turns it off' % b['switch'] if b['active'] else 'off, --define %s' % b['switch']
                 else:
