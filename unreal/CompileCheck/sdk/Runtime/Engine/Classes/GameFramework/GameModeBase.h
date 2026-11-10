@@ -29,6 +29,8 @@ public:
 	TSubclassOf<APlayerState> PlayerStateClass;
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category = Classes, meta = (DisplayName = "HUD Class"))
 	TSubclassOf<AHUD> HUDClass;
+	UPROPERTY(Transient)
+	TObjectPtr<AGameStateBase> GameState;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Classes)
 	TSubclassOf<APawn> DefaultPawnClass;
 	UPROPERTY(EditAnywhere, NoClear, BlueprintReadOnly, Category = Classes)
@@ -55,5 +57,5 @@ public:
 	bool PlayerCanRestart(APlayerController* Player);
 	virtual bool PlayerCanRestart_Implementation(APlayerController* Player);
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer);
-	template <class T> T* GetGameState() const UE_STUB_BODY
+	template <class T> T* GetGameState() const { return Cast<T>(GameState); }
 };

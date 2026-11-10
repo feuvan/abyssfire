@@ -51,7 +51,6 @@ public:
 		static_assert(std::is_base_of_v<UGameInstanceSubsystem, TSubsystemClass>, "UGameInstance::GetSubsystem<T>: T must derive from UGameInstanceSubsystem");
 		return nullptr;
 	}
-	template <typename TSubsystemClass> const TArray<TSubsystemClass*>& GetSubsystemArray() const UE_STUB_BODY
 	virtual void ReturnToMainMenu();
 protected:
 	UPROPERTY()

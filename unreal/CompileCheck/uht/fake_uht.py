@@ -29,7 +29,7 @@ RULES = {
     'class-base': 'a UCLASS derives publicly from exactly one UObject class, listed first',
     'specifier': 'UCLASS / UPROPERTY / UFUNCTION / USTRUCT / UENUM specifiers are ones UHT knows',
     'property-type': 'UPROPERTY / UFUNCTION types are types UHT can reflect (no std::, no namespaces, no nested containers)',
-    'enum-underlying': 'a UENUM enum class names its underlying type; BlueprintType enums are uint8',
+    'enum-underlying': 'BlueprintType enums are uint8 (error); a UENUM enum class without an underlying type is a warning',
     'preprocessor': 'no reflection macro inside #if other than WITH_EDITOR / WITH_EDITORONLY_DATA',
     'raw-object-pointer': 'UObject pointer members without UPROPERTY are not seen by the garbage collector (reported)',
     'macro-in-cpp': 'reflection macros only work in headers',
@@ -369,10 +369,12 @@ class Uht:
         scoped, underlying = bool(m.group(2)), m.group(4)
         if not name.startswith('E'):
             self.report('warn', 'prefix', header, line, 'enum %s is not E-prefixed' % name)
-        if scoped and not underlying:
-            self.report('error', 'enum-underlying', header, line, 'UENUM enum class %s must name its underlying type (": uint8")' % name)
-        if 'BlueprintType' in specs and scoped and underlying and underlying != 'uint8':
-            self.report('error', 'enum-underlying', header, line, 'BlueprintType enum %s must be uint8 (is %s)' % (name, underlying))
+        # UHT: "Invalid BlueprintType enum base - currently only uint8 supported"; an enum class without an underlying
+        # type is accepted by UHT when it is not a BlueprintType (it is an int), which is rarely what a UENUM wants.
+        if 'BlueprintType' in specs and scoped and underlying != 'uint8':
+            self.report('error', 'enum-underlying', header, line, 'BlueprintType enum %s must be uint8 (is %s)' % (name, underlying or 'int, no underlying type named'))
+        elif scoped and not underlying:
+            self.report('warn', 'enum-underlying', header, line, 'UENUM enum class %s names no underlying type (UHT accepts it as int; ": uint8" is the convention)' % name)
         if underlying and underlying not in ('uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'uint64', 'int64'):
             self.report('error', 'enum-underlying', header, line, 'UENUM %s has unsupported underlying type %s' % (name, underlying))
         enum = {'name': name, 'line': line, 'scoped': scoped, 'underlying': underlying, 'header': header}
@@ -560,6 +562,9 @@ class Uht:
             self.report('error', 'uht-parse', header, line, 'UPROPERTY is not followed by a member variable: "%s"' % decl)
             return
         type_text, member = m.group(1).strip(), m.group(2)
+        if m.group(4) and re.sub(r'\bconst\b', '', type_text).strip() == 'bool':
+            # UHT: "bool bitfields are not supported." (a reflected bitfield is uint8 / uint16 / uint32 / uint64)
+            self.report('error', 'property-type', header, line, 'UPROPERTY %s::%s is a bool bitfield: UHT only reflects bitfields of an unsigned integer type ("uint8 %s : 1")' % (cls['name'], member, member))
         if re.match(r'(static|constexpr|mutable)\b', type_text):
             self.report('error', 'property-type', header, line, 'UPROPERTY %s::%s cannot be %s' % (cls['name'], member, type_text.split()[0]))
         if type_text.endswith('&'):
@@ -613,6 +618,9 @@ class Uht:
             self.report('error', 'specifier', header, macro_line, 'BlueprintPure %s::%s returns nothing' % (cls['name'], fname))
         if 'BlueprintImplementableEvent' in specs and inline_body:
             self.report('error', 'specifier', header, macro_line, 'BlueprintImplementableEvent %s::%s must not have a body' % (cls['name'], fname))
+        if 'BlueprintImplementableEvent' in specs and is_virtual:
+            # UHT: "BlueprintImplementableEvents should not be virtual. Use BlueprintNativeEvent instead."
+            self.report('error', 'specifier', header, macro_line, 'BlueprintImplementableEvent %s::%s must not be virtual (use BlueprintNativeEvent)' % (cls['name'], fname))
         cls['functions'].append({'name': fname, 'ret': ret, 'params': params, 'static': is_static, 'virtual': is_virtual,
                                  'const': bool(re.match(r'\s*const\b', tail)), 'specs': specs, 'line': line})
 

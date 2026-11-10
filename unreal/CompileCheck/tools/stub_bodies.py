@@ -14,10 +14,20 @@ any return type). It is idempotent: run it after adding or editing SDK headers.
     python3 tools/stub_bodies.py --check    # exit 1 when something would change (run.sh uses this)
 
 Not touched: non-template code, constexpr / consteval functions (they need a real body if they are evaluated), functions
-with a deduced return type and no trailing type, pure virtuals, = default / = delete, friends, deduction guides, macros.
+with a deduced return type and no trailing type, pure virtuals, = default / = delete, friends, deduction guides, macros,
+and a declaration that carries `// no-body: <why>` after its ';' (a template the engine itself only declares, such as
+StaticEnum<T>(), whose definitions are the specialisations UHT generates).
 
 A trailing requires-clause may end in a requires-expression (`... const requires requires(const T& A) { A == A; };`):
 the braces of the requires-expression are not a body, the declaration still gets one.
+
+Second rule (--check reports it, nothing rewrites it): a template that got a stub body must not have an EXPLICIT type
+parameter without a requirement. `template <class T> T* GetHUD() const UE_STUB_BODY` compiles with any T, also a
+forward-declared or unrelated one, while the engine's body (Cast<T>, T::StaticClass(), static_cast<T*>) rejects those.
+A type parameter of the function's own template head must therefore appear in the parameter list (it is deduced and
+the argument constrains it), in a requires-clause, or as a constrained parameter (`template <CConcept T>`); otherwise
+write the engine's real body or a requires-clause that states what the body needs. A deliberate exception carries
+`// explicit-ok: <why>` on the declaration's last line.
 """
 import argparse
 import os
@@ -295,6 +305,10 @@ def process(text, path, report, defined=None, collect=None):
                 if declared and (names[-1], declared) in defined:
                     verdict = 'defined-out-of-line'
             if verdict == 'function' and (has_head or template_class_scope()):
+                line_end = text.find('\n', i)
+                if 'no-body:' in text[i:len(text) if line_end < 0 else line_end]:
+                    verdict = 'declared-only-in-the-engine'   # `...; // no-body: <why>`
+            if verdict == 'function' and (has_head or template_class_scope()):
                 edits.append(i)
             elif verdict in ('constexpr', 'deduced-return') and (has_head or template_class_scope()):
                 report.append((path, text.count('\n', 0, i) + 1, verdict, ' '.join(stmt_clean.split())[:140]))
@@ -358,6 +372,126 @@ def find_block_open(mask, close_index):
     return 0
 
 
+TYPE_PARAM_RE = re.compile(r'^(?:typename|class)\b\s*(\.\.\.)?\s*(\w+)?')
+
+
+def template_head_params(stmt):
+    """The type parameters of the template heads that start stmt: [(name, constrained)], and the text after the heads.
+    A parameter introduced by a concept (`template <CThing T>`) counts as constrained; non-type parameters are skipped."""
+    params = []
+    s = stmt
+    while True:
+        m = re.match(r'\s*template\s*<', s)
+        if not m:
+            break
+        depth, paren, i = 1, 0, m.end()
+        while i < len(s) and depth > 0:
+            ch = s[i]
+            if ch in '([{':
+                paren += 1
+            elif ch in ')]}':
+                paren -= 1
+            elif paren == 0 and ch == '<':
+                depth += 1
+            elif paren == 0 and ch == '>':
+                depth -= 1
+            i += 1
+        inner = s[m.end():i - 1]
+        # split at top-level commas
+        parts, level, start = [], 0, 0
+        for k, ch in enumerate(inner):
+            if ch in '<([{':
+                level += 1
+            elif ch in '>)]}':
+                level -= 1
+            elif ch == ',' and level == 0:
+                parts.append(inner[start:k])
+                start = k + 1
+        parts.append(inner[start:])
+        for part in parts:
+            part = part.strip()
+            tm = TYPE_PARAM_RE.match(part)
+            if tm:
+                if tm.group(2):
+                    params.append((tm.group(2), False))
+                continue
+            if part.startswith('template'):
+                continue
+            # `CConcept T` / `std::integral T`: a constrained type parameter; `int32 N`, `ESPMode Mode`: a value
+            cm = re.match(r'^([\w:]+(?:<[^<>]*>)?)\s*(?:\.\.\.)?\s*(\w+)\s*(?:=.*)?$', part, re.S)
+            if cm and re.match(r'^(?:[\w:]*::)?C[A-Z]\w*|std::\w+$', cm.group(1)) and not re.match(r'^(?:u?int\d*|bool|char|ESPMode|SIZE_T|size_t|unsigned|long|short|auto|E[A-Z]\w*)$', cm.group(1)):
+                params.append((cm.group(2), True))
+        s = s[i:]
+    return params, s
+
+
+def lint_explicit_parameters(text, path, findings):
+    """Finds function templates that end with UE_STUB_BODY and have a type parameter of their own head that is neither
+    deducible from the parameter list nor named in a requires-clause (see the module docstring)."""
+    marker = 'UE_STUB_BODY'
+    mask = mask_source(text)
+    for m in re.finditer(r'\b' + marker + r'\b', mask):
+        end = m.start()
+        line_end = text.find('\n', end)
+        line_end = len(text) if line_end < 0 else line_end
+        if 'explicit-ok:' in text[end:line_end]:
+            continue
+        # walk back to the start of the statement (a '}' that closes a requires-expression belongs to it)
+        i = end - 1
+        paren = 0
+        start = 0
+        while i >= 0:
+            ch = mask[i]
+            if ch in ')]':
+                paren += 1
+            elif ch in '([':
+                paren -= 1
+                if paren < 0:
+                    start = i + 1
+                    break
+            elif paren == 0 and ch == '}':
+                opening = find_block_open(mask, i)
+                if opens_requires_expression(mask[:opening]):
+                    i = opening - 1
+                    continue
+                start = i + 1
+                break
+            elif paren == 0 and ch in ';{':
+                start = i + 1
+                break
+            elif paren == 0 and mask.startswith(marker, max(0, i - len(marker) + 1)) and i - len(marker) + 1 >= 0 and mask[i - len(marker) + 1:i + 1] == marker:
+                start = i + 1
+                break
+            i -= 1
+        stmt = re.sub(r'^\s*((public|private|protected)\s*:\s*)+', '', mask[start:end])
+        params, rest = template_head_params(stmt)
+        if not params:
+            continue
+        body = blank_braces(rest)
+        group = None
+        for open_i, close_i in top_level_groups(body):
+            if TAIL_RE.match(body[close_i + 1:]):
+                group = (open_i, close_i)
+                break
+        if group is None:
+            continue
+        open_i, close_i = group
+        before = rest[:open_i]
+        name_m = re.search(r'(operator\s*(\(\s*\)|\[\s*\]|[^\s\w(]+|\s+[\w:<>,\s\*&]+?)|~?\w+)\s*$', before.rstrip())
+        name = re.sub(r'\s+', ' ', name_m.group(1)) if name_m else '?'
+        declarator = rest[open_i:close_i + 1]
+        tail = rest[close_i + 1:]
+        head_requires = before if re.match(r'\s*requires\b', before) else ''
+        conversion = name if name.startswith('operator') else ''
+        for pname, constrained in params:
+            if constrained:
+                continue
+            word = re.compile(r'\b' + re.escape(pname) + r'\b')
+            if word.search(declarator) or word.search(tail) or word.search(head_requires) or word.search(conversion):
+                continue
+            findings.append((path, text.count('\n', 0, end) + 1, name, pname))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--check', action='store_true', help='do not write; exit 1 when a declaration lacks a body')
@@ -396,7 +530,15 @@ def main():
         for path, line, why, stmt in report:
             print('note: %s:%d: left declaration-only (%s): %s' % (path, line, why, stmt))
     print('stub_bodies: %d declaration(s) %s in %d header(s)' % (total, 'lack a body' if args.check else 'given a body', len(files)))
-    return 1 if (args.check and total) else 0
+    # second rule: no stub-bodied template with an explicit, unconstrained type parameter
+    findings = []
+    for path in sorted(files):
+        lint_explicit_parameters(open(path, encoding='utf-8').read(), os.path.relpath(path, args.sdk), findings)
+    for path, line, name, pname in findings:
+        print("%s:%d: '%s': the type parameter '%s' is explicit (not deducible from the arguments) and nothing constrains it: "
+              "write the engine's body or a requires-clause that states what the body needs" % (path, line, name, pname))
+    print('stub_bodies: %d stub-bodied template(s) with an unconstrained explicit type parameter' % len(findings))
+    return 1 if ((args.check and total) or findings) else 0
 
 
 if __name__ == '__main__':

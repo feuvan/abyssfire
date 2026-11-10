@@ -108,9 +108,9 @@ public:
 	FString& operator+=(AppendedCharType Char) UE_STUB_BODY
 	void InsertAt(int32 Index, TCHAR Character);
 	void InsertAt(int32 Index, const FString& Characters);
-	void RemoveAt(int32 Index, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes);
+	void RemoveAt(int32 Index, EAllowShrinking AllowShrinking = EAllowShrinking::Yes);
 	template <typename CountType> requires std::is_integral_v<CountType> && (!std::is_same_v<CountType, bool>)
-	void RemoveAt(int32 Index, CountType Count, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	void RemoveAt(int32 Index, CountType Count, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
 	bool RemoveFromStart(const TCHAR* InPrefix, ESearchCase::Type SearchCase = ESearchCase::IgnoreCase);
 	bool RemoveFromStart(const FString& InPrefix, ESearchCase::Type SearchCase = ESearchCase::IgnoreCase);
 	bool RemoveFromEnd(const TCHAR* InSuffix, ESearchCase::Type SearchCase = ESearchCase::IgnoreCase);
@@ -171,21 +171,21 @@ public:
 	[[nodiscard]] FString RightPad(int32 ChCount) const;
 	[[nodiscard]] FString Left(int32 Count) const&;
 	[[nodiscard]] FString Left(int32 Count) &&;
-	void LeftInline(int32 Count, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes);
+	void LeftInline(int32 Count, EAllowShrinking AllowShrinking = EAllowShrinking::Yes);
 	[[nodiscard]] FString LeftChop(int32 Count) const&;
 	[[nodiscard]] FString LeftChop(int32 Count) &&;
-	void LeftChopInline(int32 Count, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes);
+	void LeftChopInline(int32 Count, EAllowShrinking AllowShrinking = EAllowShrinking::Yes);
 	[[nodiscard]] FString Right(int32 Count) const&;
 	[[nodiscard]] FString Right(int32 Count) &&;
-	void RightInline(int32 Count, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes);
+	void RightInline(int32 Count, EAllowShrinking AllowShrinking = EAllowShrinking::Yes);
 	[[nodiscard]] FString RightChop(int32 Count) const&;
 	[[nodiscard]] FString RightChop(int32 Count) &&;
-	void RightChopInline(int32 Count, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes);
+	void RightChopInline(int32 Count, EAllowShrinking AllowShrinking = EAllowShrinking::Yes);
 	[[nodiscard]] FString Mid(int32 Start) const&;
 	[[nodiscard]] FString Mid(int32 Start) &&;
 	[[nodiscard]] FString Mid(int32 Start, int32 Count) const&;
 	[[nodiscard]] FString Mid(int32 Start, int32 Count) &&;
-	void MidInline(int32 Start, int32 Count = 0x7fffffff, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes);
+	void MidInline(int32 Start, int32 Count = 0x7fffffff, EAllowShrinking AllowShrinking = EAllowShrinking::Yes);
 	[[nodiscard]] FString TrimStartAndEnd() const&;
 	[[nodiscard]] FString TrimStartAndEnd() &&;
 	void TrimStartAndEndInline();

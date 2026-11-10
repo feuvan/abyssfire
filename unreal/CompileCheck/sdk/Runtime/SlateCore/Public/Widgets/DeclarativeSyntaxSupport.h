@@ -349,8 +349,10 @@ namespace RequiredArgs
 
 namespace UE::Stub
 {
-	/** What TWidgetAllocator does: SWidget-derived classes are created through this (their constructors may be private with SNew as friend). */
-	template <typename WidgetType> TSharedRef<WidgetType> AllocateSlateWidget() UE_STUB_BODY
+	/** TWidgetAllocator<WidgetType, false>::PrivateAllocateWidget of the engine: `return MakeShared<WidgetType>();`, so
+	 *  SNew needs an accessible default constructor (and a concrete class). SUserWidget-derived classes (allocated by
+	 *  WidgetType::New()) are not modelled. */
+	template <typename WidgetType> TSharedRef<WidgetType> AllocateSlateWidget() { return MakeShared<WidgetType>(); }
 }
 
 template <class WidgetType, typename RequiredArgsPayloadType>

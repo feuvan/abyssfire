@@ -124,6 +124,27 @@ namespace AbyssWorldUtil
 	/** Web px -> cm for VFX sizes and upright heights (combat-feel.md 0: 45 px per tile, 100 cm per tile). */
 	inline constexpr float VfxPxToCm = 100.f / 45.f;
 
+	/**
+	 * Sends the instance data an instanced mesh component changed with bMarkRenderStateDirty = false (transforms, custom
+	 * data) to the renderer: UActorComponent::MarkRenderInstancesDirty, the incremental update of the 5.4+ instance data
+	 * manager, where this engine has it; else MarkRenderStateDirty, which every engine has but which re-creates the scene
+	 * proxy (full FScene remove / add, lost velocity / TSR history). Same `if constexpr (requires ...)` hedge as the
+	 * material-resource shims: the member is not reflected, so it cannot be checked without the engine
+	 * (CompileCheck/API_UNCERTAIN.md 5). A template so that this header needs no component include.
+	 */
+	template <typename ComponentType>
+	void MarkInstancesDirty(ComponentType& Component)
+	{
+		if constexpr (requires(ComponentType& C) { C.MarkRenderInstancesDirty(); })
+		{
+			Component.MarkRenderInstancesDirty();
+		}
+		else
+		{
+			Component.MarkRenderStateDirty();
+		}
+	}
+
 	/** Frame-rate independent exponential approach: returns the blend factor for a time constant (seconds). */
 	inline float ExpBlend(float DeltaSec, float TimeConstantSec)
 	{

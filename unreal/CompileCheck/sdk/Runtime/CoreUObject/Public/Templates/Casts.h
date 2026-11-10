@@ -1,9 +1,13 @@
 // Stub SDK. Real header: Engine/Source/Runtime/CoreUObject/Public/Templates/Casts.h (from UE 5.x source knowledge).
 // Cast / CastChecked / ExactCast. The static checks are the engine's: both types must be complete, and each must be a
-// UObject class or a UINTERFACE I-class (one with a UClassType typedef). Cast<> drops constness, as in UE.
+// UObject class or a UINTERFACE I-class (one with a UClassType typedef).
+// Constness (API_UNCERTAIN.md #4): the casts return TCopyQualifiersFromTo_T<From, To>*, i.e. Cast<AActor>(ConstObject)
+// is a `const AActor*`. Recent engines are believed to declare them this way; older ones returned a plain To*
+// (constness dropped). The propagating form is the strict side: code that compiles against it compiles against both.
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/CopyQualifiersFromTo.h"
 #include "UObject/Class.h"
 #include "UObject/Object.h"
 #include "UObject/ObjectPtr.h"
@@ -27,24 +31,25 @@ namespace UE::Stub
 	}
 }
 
+// UNVERIFIED (API_UNCERTAIN.md #4): the return types propagate the constness of From (believed to be the 5.x form).
 template <typename To, typename From>
-To* Cast(From* Src) { UE::Stub::CheckCast<To, From>(); return (To*)Src; }
+TCopyQualifiersFromTo_T<From, To>* Cast(From* Src) { UE::Stub::CheckCast<To, From>(); return (TCopyQualifiersFromTo_T<From, To>*)Src; }
 template <typename To, typename From>
-To* ExactCast(From* Src) { UE::Stub::CheckCast<To, From>(); return (To*)Src; }
+TCopyQualifiersFromTo_T<From, To>* ExactCast(From* Src) { UE::Stub::CheckCast<To, From>(); return (TCopyQualifiersFromTo_T<From, To>*)Src; }
 template <typename To, typename From>
-To* CastChecked(From* Src) { UE::Stub::CheckCast<To, From>(); return (To*)Src; }
+TCopyQualifiersFromTo_T<From, To>* CastChecked(From* Src) { UE::Stub::CheckCast<To, From>(); return (TCopyQualifiersFromTo_T<From, To>*)Src; }
 template <typename To, typename From>
-To* CastChecked(From* Src, ECastCheckedType::Type CheckType) { UE::Stub::CheckCast<To, From>(); return (To*)Src; }
+TCopyQualifiersFromTo_T<From, To>* CastChecked(From* Src, ECastCheckedType::Type CheckType) { UE::Stub::CheckCast<To, From>(); return (TCopyQualifiersFromTo_T<From, To>*)Src; }
 template <typename To, typename From>
-To* Cast(const TObjectPtr<From>& Src) { return Cast<To>(Src.Get()); }
+TCopyQualifiersFromTo_T<From, To>* Cast(const TObjectPtr<From>& Src) { return Cast<To>(Src.Get()); }
 template <typename To, typename From>
-To* ExactCast(const TObjectPtr<From>& Src) { return ExactCast<To>(Src.Get()); }
+TCopyQualifiersFromTo_T<From, To>* ExactCast(const TObjectPtr<From>& Src) { return ExactCast<To>(Src.Get()); }
 template <typename To, typename From>
-To* CastChecked(const TObjectPtr<From>& Src, ECastCheckedType::Type CheckType = ECastCheckedType::NullChecked) { return CastChecked<To>(Src.Get(), CheckType); }
+TCopyQualifiersFromTo_T<From, To>* CastChecked(const TObjectPtr<From>& Src, ECastCheckedType::Type CheckType = ECastCheckedType::NullChecked) { return CastChecked<To>(Src.Get(), CheckType); }
 template <typename To, typename From>
-To* Cast(const TWeakObjectPtr<From>& Src) { return Cast<To>(Src.Get()); }
+TCopyQualifiersFromTo_T<From, To>* Cast(const TWeakObjectPtr<From>& Src) { return Cast<To>(Src.Get()); }
 template <typename To, typename From>
-To* CastChecked(const TWeakObjectPtr<From>& Src, ECastCheckedType::Type CheckType = ECastCheckedType::NullChecked) { return CastChecked<To>(Src.Get(), CheckType); }
+TCopyQualifiersFromTo_T<From, To>* CastChecked(const TWeakObjectPtr<From>& Src, ECastCheckedType::Type CheckType = ECastCheckedType::NullChecked) { return CastChecked<To>(Src.Get(), CheckType); }
 
 template <class T> bool UObject::Implements() const
 {

@@ -89,7 +89,7 @@ public:
 	ULocalPlayer* GetLocalPlayer() const;
 	UFUNCTION(BlueprintCallable, Category = "Game|Player")
 	AHUD* GetHUD() const;
-	template <class T> T* GetHUD() const UE_STUB_BODY
+	template <class T> T* GetHUD() const { return Cast<T>(GetHUD()); }
 	virtual void SetViewTarget(class AActor* NewViewTarget, FViewTargetTransitionParams TransitionParams = FViewTargetTransitionParams());
 	UFUNCTION(BlueprintCallable, Category = "Game|Player", meta = (Keywords = "Camera"))
 	virtual void SetViewTargetWithBlend(class AActor* NewViewTarget, float BlendTime = 0, enum EViewTargetBlendFunction BlendFunc = VTBlend_Linear, float BlendExp = 0, bool bLockOutgoing = false);

@@ -35,7 +35,7 @@ DEFAULT_STUB = find_stub(os.path.dirname(CHECK_DIR))
 
 def load_stub(path, cache_dir=None):
     """-> {class name: {base, module, file, methods: {name: [params]}, props: [names], enum: [members]}}"""
-    stamp = '%d:%d' % (os.path.getsize(path), int(os.path.getmtime(path)))
+    stamp = 'v4:%d:%d' % (os.path.getsize(path), int(os.path.getmtime(path)))   # v4: default arguments, parameter / property types
     cache = os.path.join(cache_dir, 'stub_index.json') if cache_dir else None
     if cache and os.path.exists(cache):
         try:
@@ -48,12 +48,12 @@ def load_stub(path, cache_dir=None):
     classes, cur = {}, None
     class_re = re.compile(r'^class (\w+)\((.*?)\):')
     def_re = re.compile(r'^    def (\w+)\((.*)\)(?: -> (.*))?:')
-    prop_re = re.compile(r'^    - ``(\w+)`` \(')
+    prop_re = re.compile(r'^    - ``(\w+)`` \((.*?)\):')
     with open(path, encoding='utf-8') as f:
         for line in f:
             m = class_re.match(line)
             if m:
-                cur = {'base': m.group(2).split(',')[0].strip(), 'module': None, 'file': None, 'methods': {}, 'props': [], 'members': []}
+                cur = {'base': m.group(2).split(',')[0].strip(), 'module': None, 'file': None, 'methods': {}, 'props': [], 'prop_types': {}, 'members': []}
                 classes[m.group(1)] = cur
                 continue
             if cur is None:
@@ -65,13 +65,24 @@ def load_stub(path, cache_dir=None):
             else:
                 m = def_re.match(line)
                 if m:
-                    params = [p.split(':')[0].split('=')[0].strip() for p in split_top(m.group(2))]
-                    params = [p for p in params if p not in ('self', 'cls')]
-                    cur['methods'][m.group(1)] = {'params': params, 'ret': (m.group(3) or '').strip()}
+                    params, defaults, types = [], {}, {}
+                    for part in split_top(m.group(2)):
+                        pname = part.split(':')[0].split('=')[0].strip()
+                        if pname in ('self', 'cls'):
+                            continue
+                        params.append(pname)
+                        # "name: type = value": the C++ default argument as UHT recorded it (CPP_Default_<Param>)
+                        annotation = part.split(':', 1)[1] if ':' in part else ''
+                        if '=' in annotation:
+                            defaults[pname] = annotation.split('=', 1)[1].strip()
+                        if annotation.split('=', 1)[0].strip():
+                            types[pname] = annotation.split('=', 1)[0].strip()
+                    cur['methods'][m.group(1)] = {'params': params, 'ret': (m.group(3) or '').strip(), 'defaults': defaults, 'types': types}
                     continue
                 m = prop_re.match(line)
                 if m:
                     cur['props'].append(m.group(1))
+                    cur['prop_types'][m.group(1)] = m.group(2).strip()
                     continue
                 m = re.match(r'^    ([A-Z][A-Z0-9_]*): \w+ = ', line)
                 if m:
@@ -119,6 +130,80 @@ def snake(name):
             out.append('_')
         out.append(ch.lower())
     return re.sub(r'__+', '_', ''.join(out))
+
+
+PY_SCALARS = {'int8': 'int', 'int16': 'int', 'int32': 'int', 'int64': 'int', 'uint8': 'int', 'uint16': 'int', 'uint32': 'int', 'uint64': 'int',
+              'int': 'int', 'float': 'float', 'double': 'float', 'bool': 'bool', 'FString': 'str', 'FName': 'Name', 'FText': 'Text', 'UClass': 'Class',
+              'FVector2f': 'Vector2f', 'FVector3f': 'Vector3f', 'FVector4f': 'Vector4f'}
+
+
+SCRIPT_NAMES = {}   # C++ enum name -> Python name, from `UENUM(..., meta = (ScriptName = "X"))` in the SDK
+
+
+def load_script_names(sdk_dir):
+    for root, _dirs, files in os.walk(sdk_dir):
+        for name in files:
+            if name.endswith('.h'):
+                with open(os.path.join(root, name), encoding='utf-8') as f:
+                    text = f.read()
+                for m in re.finditer(r'\bUENUM\s*\(([^\n]*)\)\s*(?:namespace\s+(\w+)|enum\s+(?:class\s+)?(\w+))', text):
+                    script = re.search(r'ScriptName\s*=\s*"(\w+)"', m.group(1))
+                    if script:
+                        SCRIPT_NAMES[m.group(2) or m.group(3)] = script.group(1)
+
+
+# property documentation keeps the C++ scalar ("(int32)", "(double)"): compared exactly
+PROP_SCALARS = dict(PY_SCALARS, **{k: k for k in ('int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64', 'float', 'double')})
+
+
+def python_type(cpp, scalars=None):
+    """The Python (unreal.py) spelling of a C++ parameter type: FVector -> Vector, const TArray<AActor*>& -> Array[Actor],
+    TSubclassOf<UFoo> -> Class, EFoo::Type / TEnumAsByte<EFoo> -> Foo. None when the type is not one of these shapes."""
+    t = re.sub(r'\b(const|class|struct|enum|typename)\b', ' ', cpp)
+    t = re.sub(r'\s+', '', t).rstrip('&*')
+    for wrapper in ('TObjectPtr', 'TEnumAsByte', 'TScriptInterface', 'TSoftObjectPtr', 'TWeakObjectPtr'):
+        m = re.match(r'^%s<(.*)>$' % wrapper, t)
+        if m:
+            return python_type(m.group(1), scalars)
+    if re.match(r'^(TSubclassOf|TSoftClassPtr)<.*>$', t):
+        return 'Class'
+    for container, py in (('TArray', 'Array'), ('TSet', 'Set'), ('TMap', 'Map'), ('TArrayView', 'Array')):
+        m = re.match(r'^%s<(.*)>$' % container, t)
+        if m:
+            inner = [python_type(x, scalars) for x in split_top(m.group(1))]
+            return None if None in inner else '%s[%s]' % (py, ','.join(inner))
+    t = re.sub(r'::Type$', '', t)
+    if t in SCRIPT_NAMES:
+        return SCRIPT_NAMES[t]
+    if t in (scalars or PY_SCALARS):
+        return (scalars or PY_SCALARS)[t]
+    if re.match(r'^[UAFEI][A-Z]\w*$', t):
+        return t[1:]
+    return None
+
+
+def same_type(want, have):
+    """Known spelling differences between the two sides: Python types its class parameters `Class` or `type(Class)`,
+    and wraps what may be None."""
+    have = re.sub(r'^Optional\[(.*)\]$', r'\1', have)
+    if want == have:
+        return True
+    if want == 'Class' and (have.startswith('type(') or have == 'Class'):
+        return True
+    return want.replace('type(Class)', 'Class') == have.replace('type(Class)', 'Class')
+
+
+def same_default(cpp, py):
+    """A C++ default argument against the Python one: booleans and numbers are compared, anything else (enumerators,
+    structs, names, nullptr / None) is accepted as it is spelled differently on the two sides."""
+    cpp, py = cpp.strip(), py.strip()
+    if py in ('True', 'False'):
+        return cpp in ('true', 'false') and (cpp == 'true') == (py == 'True')
+    number = re.compile(r'^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$')
+    cpp_number = re.sub(r'(?<=[\d.])[fFuUlL]+$', '', cpp)
+    if number.match(py) and number.match(cpp_number):
+        return abs(float(py) - float(cpp_number)) <= 1e-6 * max(1.0, abs(float(py)))
+    return True
 
 
 def clean(text):
@@ -174,6 +259,15 @@ class Checker:
             cls = self.stub[cls]['base']
             seen += 1
         return False
+
+    def prop_type(self, cls, name):
+        seen = 0
+        while cls in self.stub and seen < 40:
+            if name in self.stub[cls].get('prop_types', {}):
+                return self.stub[cls]['prop_types'][name]
+            cls = self.stub[cls]['base']
+            seen += 1
+        return None
 
     def lookup(self, cpp_name, header, want_enum=False):
         """The stub entry of a C++ type: by its name without the prefix, else (ScriptName renames such as
@@ -255,24 +349,66 @@ class Checker:
                     if exposed:
                         self.problem('error', path, fline, '%s::%s: no method "%s" on %s (or its bases) in the Python stub' % (name, fname, py_name, py))
                     continue
-                cpp_params = []
+                cpp_params, cpp_defaults, meta_defaults, cpp_types = [], {}, set(), {}
                 for part in split_top(decl[po + 1:pc]):
-                    part = re.sub(r'\bUPARAM\s*\([^)]*\)', '', part).split('=')[0].strip()
+                    part = re.sub(r'\bUPARAM\s*\([^)]*\)', '', part)
+                    default = part.split('=', 1)[1].strip() if '=' in part else None
+                    part = part.split('=')[0].strip()
                     if not part or part == 'void':
                         continue
                     pm = re.match(r'(.*?)([A-Za-z_]\w*)$', part)
                     ptype = pm.group(1).strip()
                     is_out = ptype.endswith('&') and not ptype.startswith('const')
-                    cpp_params.append((re.sub(r'^in_(?=.)', '', snake(pm.group(2))), is_out))
+                    pname = re.sub(r'^in_(?=.)', '', snake(pm.group(2)))
+                    cpp_params.append((pname, is_out))
+                    cpp_types[pname] = ptype
+                    if default is not None:
+                        cpp_defaults[pname] = default
+                    if re.search(r'\b%s\s*=' % re.escape(pm.group(2)), specifiers):
+                        meta_defaults.add(pname)   # meta = (Param = value): a Blueprint / Python default, not a C++ one
                 want = [p for p, is_out in cpp_params if not is_out]
                 have = method['params']
                 if want != have and [p for p, _ in cpp_params] != have:
                     self.problem('warn', path, fline, '%s::%s: parameters differ: SDK (%s) vs stub %s.%s(%s)' % (name, fname, ', '.join(p for p, _ in cpp_params), owner, py_name, ', '.join(have)))
+                else:
+                    # default arguments: which parameters have one decides which calls compile; simple values are compared
+                    self.checked['defaults'] = self.checked.get('defaults', 0) + 1
+                    stub_defaults = method.get('defaults', {})
+                    stub_types = method.get('types', {})
+                    # the return type, when no output parameter turns the Python result into a tuple
+                    if not any(is_out for _, is_out in cpp_params) and method.get('ret'):
+                        cpp_ret = re.sub(r'\b(virtual|static|inline|FORCEINLINE|constexpr|[A-Z]+_API)\b', ' ', decl[:po].rsplit(fname, 1)[0]).strip()
+                        want_ret = 'None' if cpp_ret == 'void' else python_type(cpp_ret)
+                        have_ret = method['ret'].replace(' ', '')
+                        if want_ret is not None and not same_type(want_ret, have_ret):
+                            self.problem('warn', path, fline, '%s::%s returns %s in the SDK (Python: %s) but %s in the engine (stub %s.%s)' % (
+                                name, fname, cpp_ret, want_ret, method['ret'], owner, py_name))
+                    for pname in have:
+                        # parameter types: what a call may pass. Both sides are reduced to the Python spelling.
+                        if pname in stub_types and pname in cpp_types:
+                            want_type, have_type = python_type(cpp_types[pname]), stub_types[pname].replace(' ', '')
+                            if want_type is not None and want_type != have_type and not same_type(want_type, have_type):
+                                self.problem('warn', path, fline, '%s::%s: parameter "%s" is %s in the SDK (Python: %s) but %s in the engine (stub %s.%s)' % (
+                                    name, fname, pname, cpp_types[pname], want_type, stub_types[pname], owner, py_name))
+                    for pname in have:
+                        in_sdk, in_stub = pname in cpp_defaults, pname in stub_defaults
+                        if in_sdk != in_stub and pname in meta_defaults and not in_sdk:
+                            continue
+                        if in_sdk != in_stub:
+                            # a default the engine does not have makes calls with too few arguments compile: an error
+                            self.problem('error' if in_sdk else 'warn', path, fline, '%s::%s: parameter "%s" %s in the SDK but %s in the engine (stub %s.%s: %s)' % (
+                                name, fname, pname, 'has a default argument' if in_sdk else 'has no default argument',
+                                'none' if in_sdk else 'the default ' + stub_defaults[pname], owner, py_name, ', '.join(
+                                    '%s=%s' % (q, stub_defaults[q]) if q in stub_defaults else q for q in have)))
+                        elif in_sdk and not same_default(cpp_defaults[pname], stub_defaults[pname]):
+                            self.problem('warn', path, fline, '%s::%s: default of "%s" is %s in the SDK and %s in the engine (stub %s.%s)' % (
+                                name, fname, pname, cpp_defaults[pname], stub_defaults[pname], owner, py_name))
             for pm in re.finditer(r'\bUPROPERTY\s*\(', body):
                 close = match_close(body, pm.end() - 1, '(', ')')
                 decl_end = body.find(';', close)
                 decl = ' '.join(body[close + 1:decl_end].split())
                 decl = re.sub(r'\s*(=|\{).*$', '', decl)
+                is_bitfield = re.search(r'\s*:\s*\d+$', decl) is not None
                 decl = re.sub(r'\s*:\s*\d+$', '', decl)
                 member = decl.split()[-1].lstrip('*&') if decl.split() else ''
                 self.checked['properties'] += 1
@@ -280,8 +416,16 @@ class Checker:
                     continue  # not visible to the editor / Blueprint: Python does not document it
                 if not self.has_prop(py, snake(member)):
                     self.problem('warn', path, line_of(body_open + 1 + pm.start()), '%s::%s: no editor property "%s" documented on %s in the Python stub (not Edit/Visible/Blueprint exposed, or renamed)' % (name, member, snake(member), py))
+                    continue
+                # the property's type (a bitfield is a bool to reflection)
+                cpp_type = decl[:decl.rfind(member)].strip() if member and member in decl else ''
+                want_type = 'bool' if is_bitfield else python_type(cpp_type, PROP_SCALARS)
+                have_type = (self.prop_type(py, snake(member)) or '').replace(' ', '')
+                if want_type is not None and have_type and not same_type(want_type, have_type):
+                    self.problem('warn', path, line_of(body_open + 1 + pm.start()), '%s::%s is %s in the SDK (Python: %s) but %s in the engine (stub property %s.%s)' % (
+                        name, member, cpp_type + (' : 1' if is_bitfield else ''), want_type, self.prop_type(py, snake(member)), py, snake(member)))
         # enums
-        for m in re.finditer(r'\bUENUM\s*\([^)]*\)\s*(?:namespace\s+(\w+)\s*\{\s*)?enum\s+(?:class\s+)?(\w+)\s*(?::\s*[\w:]+\s*)?\{', text):
+        for m in re.finditer(r'\bUENUM\s*\((?:[^()]|\([^()]*\))*\)\s*(?:namespace\s+(\w+)\s*\{\s*)?enum\s+(?:class\s+)?(\w+)\s*(?::\s*[\w:]+\s*)?\{', text):
             name = m.group(1) or m.group(2)
             close = match_close(text, m.end() - 1, '{', '}')
             self.checked['enums'] += 1
@@ -352,6 +496,7 @@ def main():
         return 0
     with open(os.path.join(SDK_DIR, 'modules.json'), encoding='utf-8') as f:
         modules = json.load(f)['modules']
+    load_script_names(SDK_DIR)
     checker = Checker(stub, modules)
     for root, _dirs, files in os.walk(SDK_DIR):
         for name in sorted(files):
@@ -365,7 +510,8 @@ def main():
         for level, path, line, message in checker.problems:
             if level != 'note' or args.notes:
                 print('%s:%d: %s: %s' % (path, line, level, message))
-    print('check_reflected: %(classes)d classes, %(structs)d structs, %(functions)d UFUNCTIONs, %(properties)d UPROPERTYs, %(enums)d enums checked against the Python stub' % checker.checked
+    checker.checked.setdefault('defaults', 0)
+    print('check_reflected: %(classes)d classes, %(structs)d structs, %(functions)d UFUNCTIONs (%(defaults)d with their default arguments), %(properties)d UPROPERTYs, %(enums)d enums checked against the Python stub' % checker.checked
           + '; %d errors, %d warnings, %d not in the stub (--notes lists them)' % (errors, len(checker.problems) - errors - notes, notes))
     return 1 if errors else 0
 

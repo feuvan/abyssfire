@@ -29,6 +29,8 @@ class ULevel;
 class UGameViewportClient;
 class ULocalPlayer;
 class UNetDriver;
+class UMaterialParameterCollection;
+class UMaterialParameterCollectionInstance;
 struct FCollisionQueryParams;
 struct FCollisionResponseParams;
 struct FCollisionObjectQueryParams;
@@ -146,7 +148,9 @@ public:
 		static_assert(std::is_base_of_v<UWorldSubsystem, TSubsystemClass>, "UWorld::GetSubsystem<T>: T must derive from UWorldSubsystem");
 		return nullptr;
 	}
-	template <typename TSubsystemClass> bool HasSubsystem() const UE_STUB_BODY
+	template <typename TSubsystemClass> bool HasSubsystem() const { return GetSubsystem<TSubsystemClass>() != nullptr; }
+	/** Gets this world's instance for a given collection. */
+	UMaterialParameterCollectionInstance* GetParameterCollectionInstance(const UMaterialParameterCollection* Collection) const;
 	void ForceGarbageCollection(bool bFullPurge = false);
 	bool ServerTravel(const FString& InURL, bool bAbsolute = false, bool bShouldSkipGameNotify = false);
 };

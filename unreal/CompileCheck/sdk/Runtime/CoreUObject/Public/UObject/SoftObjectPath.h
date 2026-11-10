@@ -61,6 +61,8 @@ struct FSoftClassPath : public FSoftObjectPath
 	FSoftClassPath() = default;
 	FSoftClassPath(const FString& PathString);
 	FSoftClassPath(const UClass* InClass);
-	template <typename T> UClass* TryLoadClass() const UE_STUB_BODY
+	/** The engine: `return LoadClass<T>(nullptr, *ToString(), nullptr, LOAD_None, nullptr);` */
+	template <typename T> requires UE::Stub::CUObjectClass<T>
+	UClass* TryLoadClass() const UE_STUB_BODY
 	UClass* ResolveClass() const;
 };

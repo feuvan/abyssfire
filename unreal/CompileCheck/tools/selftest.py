@@ -80,10 +80,52 @@ FAULTS = [
         'run': 'B',
         'uht': True,
     },
+    {
+        'name': 'UHT rule: bool bitfield UPROPERTY',
+        'what': 'a reflected "bool bX : 1" (UHT: bool bitfields are not supported)',
+        'file': 'Public/Input/AbyssInputConfig.h',
+        'find': '\tUPROPERTY(Transient)\n\tTObjectPtr<UInputMappingContext> GlobalContext;\n',
+        'replace': '\tUPROPERTY(Transient)\n\tTObjectPtr<UInputMappingContext> GlobalContext;\n\tUPROPERTY(Transient)\n\tbool bPlantedFlag : 1;\n',
+        'expect_file': 'Public/Input/AbyssInputConfig.h',
+        'expect': r'property-type.*bool bitfield',
+        'run': 'B',
+        'uht': True,
+    },
+    {
+        'name': 'UHT rule: virtual BlueprintImplementableEvent',
+        'what': 'a BlueprintImplementableEvent declared virtual (UHT: should not be virtual, use BlueprintNativeEvent)',
+        'file': 'Public/Input/AbyssInputConfig.h',
+        'find': '\tUPROPERTY(Transient)\n\tTObjectPtr<UInputMappingContext> MenuPadContext;\n',
+        'replace': '\tUPROPERTY(Transient)\n\tTObjectPtr<UInputMappingContext> MenuPadContext;\n\tUFUNCTION(BlueprintImplementableEvent)\n\tvirtual void PlantedEvent();\n',
+        'expect_file': 'Public/Input/AbyssInputConfig.h',
+        'expect': r'specifier.*must not be virtual',
+        'run': 'B',
+        'uht': True,
+    },
+    {
+        'name': 'unity build: the same file-scope helper in two files',
+        'what': 'two .cpp files that each compile alone define the same function in an anonymous namespace: a redefinition once UBT '
+                'puts them in one unity blob',
+        'file': 'Private/World/AbyssWorldTypes.cpp',
+        'append': '\nnamespace { int32 AbyssPlantedUnityHelper() { return 1; } }\n',
+        'expect_file': '',
+        'expect': r"redefinition of 'AbyssPlantedUnityHelper'",
+        'run': 'C',
+    },
+    {
+        'name': 'unity build: the second file of the pair',
+        'what': 'the other half of the planted pair',
+        'file': 'Private/Vfx/AbyssVfxDefaults.cpp',
+        'append': '\nnamespace { int32 AbyssPlantedUnityHelper() { return 2; } }\n',
+        'expect_file': '',
+        'expect': r"redefinition of 'AbyssPlantedUnityHelper'",
+        'run': 'C',
+    },
 ]
 RUNS = {
     'A': ['Private/Input/AbyssPicking.cpp', 'Private/Anim/AbyssAnimInstance.cpp', 'Private/Framework/AbyssGameMode.cpp'],
     'B': ['Private/Input/AbyssInputConfig.cpp', 'Private/Input/AbyssInputSubsystem.cpp'],
+    'C': ['Private/World/AbyssWorldTypes.cpp', 'Private/Vfx/AbyssVfxDefaults.cpp'],
 }
 
 
@@ -108,8 +150,26 @@ void BodiesProbeNotATemplate(int Value);
 template <typename T> void BodiesProbeAfterConstrainedBody(T Value);
 template <typename T> requires requires(const T& A) { A.Num(); }
 int BodiesProbeHeadRequires(const T& Range);
+template <typename T> T* BodiesProbeDeclaredOnly(); // no-body: only declared in the engine
+// the explicit-parameter rule: T is named by the caller and nothing says what the engine's body needs of it
+struct FBodiesProbeHolder
+{
+	template <typename T> T* ExplicitUnconstrained() const;
+	template <typename T, typename U> T* ExplicitSecond(const U& Value) const;
+	template <typename T> requires std::is_enum_v<T> T ExplicitHeadRequires() const;
+	template <typename T> T* ExplicitTrailingRequires() const requires requires { T::StaticClass(); };
+	template <std::integral T> T ExplicitConcept() const;
+	template <typename T> void Deduced(const T& Value) const;
+	template <typename T> explicit operator T*() const;
+	template <typename T> T* ExplicitAllowed() const; // explicit-ok: the probe says so
+	template <typename T> T* ExplicitWithBody() const { return static_cast<T*>(nullptr); }
+};
 '''
-BODIES_EXPECT = ['Has(', 'Sort(', 'Count(', 'Next(', 'BodiesProbeAfterConstrainedBody(', 'BodiesProbeHeadRequires(']
+BODIES_EXPECT = ['Has(', 'Sort(', 'Count(', 'Next(', 'BodiesProbeAfterConstrainedBody(', 'BodiesProbeHeadRequires(',
+                 'ExplicitUnconstrained(', 'ExplicitSecond(', 'ExplicitHeadRequires(', 'ExplicitTrailingRequires(', 'ExplicitConcept(',
+                 'Deduced(', 'operator T*(', 'ExplicitAllowed(']
+# after the bodies are added, exactly these are reported as "explicit type parameter without a requirement"
+EXPLICIT_EXPECT = [("'ExplicitUnconstrained'", "'T'"), ("'ExplicitSecond'", "'T'")]
 
 
 def run_bodies_probe(build):
@@ -125,16 +185,26 @@ def run_bodies_probe(build):
     found = re.search(r'stub_bodies: (\d+) declaration', check.stdout)
     found = int(found.group(1)) if found else -1
     subprocess.run(tool, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-    fixed = [line for line in open(header, encoding='utf-8').read().split('\n') if line.rstrip().endswith('UE_STUB_BODY')]
+    fixed = [line for line in open(header, encoding='utf-8').read().split('\n') if re.search(r'\bUE_STUB_BODY\b(\s*//.*)?$', line.rstrip())]
     wrong = [e for e in BODIES_EXPECT if sum(1 for line in fixed if e in line) != 1]
     extra = len(fixed) - 1 - len(BODIES_EXPECT)   # one UE_STUB_BODY is in the probe already
     again = subprocess.run(tool + ['--check'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
-    ok = check.returncode == 1 and found == len(BODIES_EXPECT) and not wrong and extra == 0 and again.returncode == 0
+    left = re.search(r'stub_bodies: (\d+) declaration', again.stdout)
+    left = int(left.group(1)) if left else -1
+    declared_only = 'BodiesProbeDeclaredOnly(); // no-body' in open(header, encoding='utf-8').read()
+    ok = check.returncode == 1 and found == len(BODIES_EXPECT) and not wrong and extra == 0 and left == 0 and declared_only
     detail = '%d of %d body-less template declarations found (requires-expressions, constrained heads, members), then none left' % (found, len(BODIES_EXPECT))
     if not ok:
-        detail = 'found %d (expected %d); not given a body: %s; unexpected bodies: %d; second --check exit %d' % (
-            found, len(BODIES_EXPECT), ', '.join(wrong) or '-', extra, again.returncode)
-    return ok, [('stub_bodies.py on a probe header', 'REPORTED' if ok else 'NOT DETECTED', detail)]
+        detail = 'found %d (expected %d); not given a body: %s; unexpected bodies: %d; left after the rewrite: %d; no-body kept: %s' % (
+            found, len(BODIES_EXPECT), ', '.join(wrong) or '-', extra, left, declared_only)
+    rows = [('stub_bodies.py on a probe header', 'REPORTED' if ok else 'NOT DETECTED', detail)]
+    # the explicit-parameter rule: a stub-bodied template whose explicit type parameter nothing constrains
+    flagged = re.findall(r"BodiesProbe\.h:\d+: ('[^']+'): the type parameter ('\w+') is explicit", again.stdout)
+    explicit_ok = sorted(flagged) == sorted(EXPLICIT_EXPECT) and again.returncode == 1
+    rows.append(('stub_bodies.py: explicit type parameter without a requirement', 'REPORTED' if explicit_ok else 'NOT DETECTED',
+                 '%d of %d unconstrained templates reported, %d constrained / deduced / annotated ones left alone' % (len(flagged), len(EXPLICIT_EXPECT), 7)
+                 if explicit_ok else 'reported %s, expected %s (exit %d)' % (flagged, EXPLICIT_EXPECT, again.returncode)))
+    return ok and explicit_ok, rows
 
 
 CASES_FILE = os.path.join(CHECK_DIR, 'tests', 'negative_cases.cpp')
@@ -215,6 +285,10 @@ def main(args=None):
         for fault in faults:
             path = os.path.join(scratch, fault['file'])
             text = open(path, encoding='utf-8').read()
+            if 'append' in fault:
+                open(path, 'w', encoding='utf-8').write(text + fault['append'])
+                fault['planted'] = True
+                continue
             if text.count(fault['find']) != 1:
                 rows.append((fault['name'], 'CANNOT PLANT', '%s: the text to mutate occurs %d times (update tools/selftest.py)' % (fault['file'], text.count(fault['find']))))
                 ok = False

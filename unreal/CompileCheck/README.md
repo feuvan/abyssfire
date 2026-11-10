@@ -13,7 +13,8 @@ unreal/CompileCheck/
   uht/fake_uht.py         fake UnrealHeaderTool: writes <Header>.generated.h / .gen.cpp and lints the UHT rules
   tools/compile_check.py  the driver: configurations, PCH, parallel compiles, report
   tools/check_reflected.py  cross-checks the SDK's reflected API against the engine's Python stub (UE 5.6)
-  tools/stub_bodies.py    keeps SDK templates usable with lambdas / local types (see "Adding to the SDK")
+  tools/stub_bodies.py    keeps SDK templates usable with lambdas / local types, and constrained (see "Adding to the SDK")
+  tools/sdk_usage.py      lists the SDK declarations a set of module files uses: what their PASS rests on
   tools/selftest.py       plants faults in a scratch copy of the module and runs tests/negative_cases.cpp
   tests/negative_cases.cpp  code UE rejects: every case must be rejected by the SDK too
   API_UNCERTAIN.md        engine API the module uses that could not be confirmed for 5.8
@@ -31,6 +32,7 @@ unreal/CompileCheck/run.sh --list                # the translation units
 unreal/CompileCheck/run.sh --notes               # compiler notes under each diagnostic
 python3 unreal/CompileCheck/tools/check_reflected.py --show PlayerController --grep touch   # look a class up in the 5.6 stub
 python3 unreal/CompileCheck/tools/check_reflected.py --find spawn_sound                     # search reflected functions
+python3 unreal/CompileCheck/tools/sdk_usage.py --only World --baseline Framework --uses     # SDK declarations World adds
 ```
 
 Needs `clang++` (18 used here; `--cxx` / `ABYSS_CC_CXX` to choose) and `python3`. Results are cached per translation
@@ -44,12 +46,19 @@ checkout's copy; `ABYSS_UNREAL_STUB` overrides). Without it the reflected cross-
 
 ## What a run does
 
-1. `tools/stub_bodies.py --check`: the SDK itself is well-formed for lambdas / local types.
+1. `tools/stub_bodies.py --check`: the SDK itself is well-formed for lambdas / local types, and no stub-bodied template
+   has an explicit type parameter that nothing constrains.
 2. `tools/check_reflected.py`: every class / struct / enum / UFUNCTION / exposed UPROPERTY the SDK marks as reflected
-   exists in the engine's Python stub with that base class, engine module, header file name and those parameter names.
+   exists in the engine's Python stub with that base class, engine module and header file name; each UFUNCTION with
+   those parameter names, parameter types, default arguments and return type; each property with that type (`int32`
+   against `int64`, `float` against `double`, a bitfield as `bool`); each enum with those enumerators. A default
+   argument the engine does not have is an error (it makes a call with too few arguments compile); the other
+   mismatches are warnings to resolve.
 3. `uht/fake_uht.py`: generated headers for the 25 reflected module headers, plus the UHT rule lint.
 4. For each configuration: a real clang PCH of what UBT force-includes (`Definitions.Abyssfire.h` +
-   `Private/AbyssfirePCH.h`), then `clang++ -fsyntax-only -std=c++20` over every module `.cpp` and every `.gen.cpp`.
+   `Private/AbyssfirePCH.h`), then `clang++ -fsyntax-only -std=c++20` over every module `.cpp` and every `.gen.cpp`,
+   one translation unit each, and last the **unity build**: every module `.cpp` that passed, `#include`d in path order
+   into ONE more translation unit (`--no-unity` skips it).
 
 Configurations (the module's `#if`s are `WITH_EDITOR`, `UE_BUILD_SHIPPING`, `PLATFORM_ANDROID || PLATFORM_IOS`,
 `PLATFORM_IOS`):
@@ -68,6 +77,9 @@ is force-included; `-fno-exceptions -fno-rtti`; UE's clang warning set (`-Wall -
 `-Wshadow` and `-Wundef` as errors, deprecations as warnings). There is no `-fpermissive`, `-w` or blanket suppression.
 One translation unit per file means a non-unity build: a file that only compiles because a unity blob happens to
 include a header for it fails here (UBT compiles files in your working set non-unity, so that is a real failure mode).
+The opposite failure is covered by the unity build unit: UBT builds a game module in unity blobs by default, where two
+files that each compile alone can collide (the same helper name in two anonymous namespaces, a file-scope `static`, a
+macro left defined). All passing files in one translation unit is the superset of whatever blobs UBT forms.
 
 ## What a PASS proves, and what it cannot
 
@@ -105,7 +117,10 @@ Every diagnostic gets one of three verdicts; none is silenced.
   entry to `API_UNCERTAIN.md` (file:line, what the code assumes, evidence both ways, the safest well-known
   alternative), declare it in the SDK inside a block marked `// UNVERIFIED` (off by default behind a
   `UE_STUB_UNVERIFIED_*` macro when it is an alternative to a known form; `--define NAME=1` type-checks against it),
-  and prefer changing the module to a well-known API. Every run ends its summary with the list of `// UNVERIFIED`
+  and prefer changing the module to a well-known API. When the module hedges the call itself
+  (`if constexpr (requires ...)`), guard the block the other way round,
+  `#if !(defined(UE_STUB_UNVERIFIED_NO_X) && UE_STUB_UNVERIFIED_NO_X)`: on by default, and `--define` type-checks the
+  module's fallback for an engine without the API. Every run ends its summary with the list of `// UNVERIFIED`
   blocks and whether each was compiled (`report.json`: `unverified`): a PASS rests on the ones that are on.
 
 ## Adding to the SDK
@@ -124,6 +139,8 @@ Every diagnostic gets one of three verdicts; none is silenced.
   parameters) and each editor-visible property against the Python stub. Members without a marker are source knowledge
   and unverifiable: keep them to what the module needs. Look a class up first:
   `python3 tools/check_reflected.py --show Foo`. BlueprintNativeEvents also need their `virtual ..._Implementation`.
+  Write the engine's `meta = (...)` on the marker when it carries `ScriptName` (an enum or function renamed for
+  Python) or a `Param = value` default (a Blueprint default the C++ declaration does not have): the checker reads both.
 - **Templates need bodies.** C++ forbids using an undefined function whose type involves a lambda or a local type, and
   module code instantiates engine templates with such types constantly. Every function template and every member of a
   class template therefore ends with `UE_STUB_BODY` instead of `;` (a body that calls a `[[noreturn]]` function; it
@@ -132,6 +149,15 @@ Every diagnostic gets one of three verdicts; none is silenced.
   refuses to start while any is missing). It leaves alone `constexpr` functions, deduced return types, pure virtuals,
   members defined out of line, and constructors that need a base / member initialiser must be written by hand
   (`: FBase(nullptr) UE_STUB_BODY`).
+- **An explicit type parameter needs its requirement.** `template <class T> T* GetHUD() const UE_STUB_BODY` compiles
+  with any `T`, also a forward-declared or unrelated one, while the engine's body (`Cast<T>`, `T::StaticClass()`,
+  `static_cast<T*>`) rejects those. `stub_bodies.py --check` (and so every run) fails on a stub-bodied template whose
+  own type parameter is not deducible from the arguments and appears in no requires-clause: write the engine's body
+  when it is a one-liner (`return Cast<T>(GetHUD());`), or the requires-clause that states what the body needs. A
+  deliberate exception carries `// explicit-ok: <why>` on the declaration; a template the engine itself only declares
+  (`StaticEnum<T>()`, defined by UHT's specialisations) carries `// no-body: <why>` after its `;` and stays body-less.
+  Members of a class template are not seen by this rule (the class parameter is theirs): give those the engine's body
+  too when it constrains `T` (`TSubclassOf<T>::Get`, `TSoftObjectPtr<T>::Get`).
 - **A template parameter is never a licence.** An engine template that takes "any" predicate, key, functor or
   argument pack compiles in UE only when its body does. The SDK has no bodies, so the declaration must carry what the
   body needs as a `requires` clause (a predicate is `bool(Element)`, a key needs `Element == Key`, a sort predicate goes
@@ -149,6 +175,11 @@ Every diagnostic gets one of three verdicts; none is silenced.
   (`WIDECHAR` is `TCHAR` on the checked platforms; `wchar_t`, `uint16`, `uint32` are not characters here), never over
   "anything that converts to `TCHAR`". When the explicitness is not known, declare it `explicit` (the strict side) and
   note it in `API_UNCERTAIN.md`.
+- **Keep unverifiable surface small.** A member without a `UFUNCTION` / `UPROPERTY` marker cannot be cross-checked:
+  declare it when the module uses it, not because the engine has it. `python3 tools/sdk_usage.py` (libclang through
+  ctypes, no package needed) lists the SDK declarations a set of module files really uses, `--baseline` subtracts what
+  earlier areas already used: review that list when an area turns green, and move what is doubtful to
+  `API_UNCERTAIN.md`.
 - After any SDK change: `./run.sh --selftest` and `python3 tools/check_reflected.py`.
 
 ## The fake UHT
@@ -164,8 +195,10 @@ fails), and calls each UFUNCTION as the thunk would.
 
 Lint rules (`error` fails the run, `warn` / `note` are listed): `generated-include` (present and last),
 `generated-body`, `prefix` (U / A / F / E / I), `class-base`, `specifier` (known UCLASS / UPROPERTY / UFUNCTION /
-USTRUCT / UENUM specifiers), `property-type` (types UHT can reflect; module types must themselves be reflected; engine
-types are looked up in the Python stub), `enum-underlying`, `preprocessor` (no reflection macro inside `#if` other than
+USTRUCT / UENUM specifiers; a `BlueprintImplementableEvent` has no body and is not `virtual`), `property-type` (types
+UHT can reflect; module types must themselves be reflected; engine types are looked up in the Python stub; no `bool`
+bitfield), `enum-underlying` (a `BlueprintType` enum class is `uint8`: error; an enum class without an underlying type:
+warning, UHT accepts it as `int`), `preprocessor` (no reflection macro inside `#if` other than
 `WITH_EDITOR` / `WITH_EDITORONLY_DATA`), `macro-in-cpp`, `header-name`, `interface`, `uht-parse`, and
 `raw-object-pointer` (a UObject pointer member without `UPROPERTY`: `warn` in a reflected class, `note` elsewhere).
 
@@ -173,9 +206,12 @@ types are looked up in the Python stub), `enum-underlying`, `preprocessor` (no r
 
 `./run.sh --selftest` copies the module to `<build>/selftest`, plants one fault per kind (wrong engine argument type,
 missing include, `.h` / `.cpp` signature mismatch, a module removed from `Build.cs`, an include after the generated
-header, a `UPROPERTY` inside `#if PLATFORM_IOS`) and requires each to be reported at the planted place; runs
-`tools/stub_bodies.py` on a probe header that holds every declaration shape (it must find exactly the body-less
-templates, give them bodies and leave the rest alone); then compiles `tests/negative_cases.cpp` once per case and
+header, a `UPROPERTY` inside `#if PLATFORM_IOS`, a `bool` bitfield `UPROPERTY`, a `virtual` BlueprintImplementableEvent,
+the same anonymous-namespace helper in two files for the unity build) and requires each to be reported at the planted
+place; runs `tools/stub_bodies.py` on a probe header that holds every declaration shape (it must find exactly the
+body-less templates, give them bodies and leave the rest alone, keep a `// no-body:` declaration, and report exactly
+the stub-bodied templates with an unconstrained explicit type parameter); then compiles `tests/negative_cases.cpp` once
+per case and
 requires an error matching the case's `EXPECT` pattern, while the control case (the correct twin of every case, plus
 SDK templates instantiated with anonymous-namespace and local types) must compile cleanly. A fault that is not reported
 means the SDK or the fake UHT has become too permissive: fix that before trusting a PASS.

@@ -99,7 +99,9 @@ public:
 	FName ClassConfigName;
 	UClass* GetSuperClass() const;
 	UObject* GetDefaultObject(bool bCreateIfNeeded = true) const;
-	template <class T> T* GetDefaultObject() const UE_STUB_BODY
+	/** The engine: `UObject* Ret = GetDefaultObject(); check(Ret->IsA(T::StaticClass())); return (T*)Ret;` */
+	template <class T> requires requires { { T::StaticClass() } -> std::convertible_to<const UClass*>; }
+	T* GetDefaultObject() const { return (T*)GetDefaultObject(); }
 	FName GetDefaultObjectName() const;
 	bool HasAnyClassFlags(EClassFlags FlagsToCheck) const;
 	bool HasAllClassFlags(EClassFlags FlagsToCheck) const;
@@ -113,7 +115,12 @@ public:
 	FString GetDescription() const;
 };
 
-template <typename EnumType> UEnum* StaticEnum() UE_STUB_BODY
-template <typename StructType> UScriptStruct* StaticStruct() UE_STUB_BODY
-template <typename ClassType> UClass* StaticClass() UE_STUB_BODY
-template <typename T> struct TBaseStructure { static UScriptStruct* Get() UE_STUB_BODY };
+// The engine (UObject/ReflectedTypeAccessors.h) only declares these three; UHT emits one explicit specialisation per
+// reflected type (`template<> X_API UClass* StaticClass<class UFoo>();` in UFoo's generated header, the class still
+// incomplete there). A call with a type that is not reflected compiles and fails to link, which this check cannot see.
+template <typename EnumType> UEnum* StaticEnum(); // no-body: declared only in the engine, specialised by UHT
+template <typename StructType> UScriptStruct* StaticStruct(); // no-body: declared only in the engine, specialised by UHT
+template <typename ClassType> UClass* StaticClass(); // no-body: declared only in the engine, specialised by UHT
+/** The engine's primary template is exactly this; the core math types that have no StaticStruct() (FVector, FRotator,
+ *  FTransform, FLinearColor, ...) get explicit specialisations in the engine, declared here when the module needs one. */
+template <typename T> struct TBaseStructure { static UScriptStruct* Get() { return T::StaticStruct(); } };

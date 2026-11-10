@@ -81,7 +81,7 @@ enum EObjectTypeQuery : int
 	ObjectTypeQuery25, ObjectTypeQuery26, ObjectTypeQuery27, ObjectTypeQuery28, ObjectTypeQuery29, ObjectTypeQuery30, ObjectTypeQuery31, ObjectTypeQuery32,
 	ObjectTypeQuery_MAX,
 };
-UENUM(BlueprintType)
+UENUM(BlueprintType, meta = (ScriptName = "CollisionResponseType"))
 enum ECollisionResponse : int
 {
 	ECR_Ignore,

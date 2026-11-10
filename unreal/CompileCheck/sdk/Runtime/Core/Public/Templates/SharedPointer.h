@@ -230,7 +230,10 @@ template <class CastToType, class CastFromType, ESPMode Mode>
 	return TSharedPtr<CastToType, Mode>(InSharedPtr, SharedPointerInternals::FStaticCastTag());
 }
 template <class CastToType, class CastFromType, ESPMode Mode>
-[[nodiscard]] TWeakPtr<CastToType, Mode> StaticCastWeakPtr(TWeakPtr<CastFromType, Mode> const& InWeakPtr) UE_STUB_BODY
+[[nodiscard]] TWeakPtr<CastToType, Mode> StaticCastWeakPtr(TWeakPtr<CastFromType, Mode> const& InWeakPtr)
+{
+	return StaticCastSharedPtr<CastToType>(InWeakPtr.Pin());
+}
 template <class CastToType, class CastFromType, ESPMode Mode>
 [[nodiscard]] TSharedRef<CastToType, Mode> ConstCastSharedRef(TSharedRef<CastFromType, Mode> const& InSharedRef)
 {

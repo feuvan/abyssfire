@@ -45,7 +45,7 @@ constexpr void Exchange(T& A, T& B) { Swap(A, B); }
 template <typename T, typename ArgType>
 constexpr T StaticCast(ArgType&& Arg) { return static_cast<T>(Arg); }
 template <typename T>
-std::add_rvalue_reference_t<T> DeclVal() UE_STUB_BODY
+std::add_rvalue_reference_t<T> DeclVal() UE_STUB_BODY // explicit-ok: for unevaluated contexts only, any T (never defined in the engine)
 template <typename T>
 constexpr std::add_const_t<T>& AsConst(T& Ref) { return Ref; }
 template <typename T>

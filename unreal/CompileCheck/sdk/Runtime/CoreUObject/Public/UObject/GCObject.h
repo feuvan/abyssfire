@@ -13,7 +13,13 @@ public:
 	template <class UObjectType> void AddReferencedObject(TObjectPtr<UObjectType>& Object, const UObject* ReferencingObject = nullptr, const FProperty* ReferencingProperty = nullptr) UE_STUB_BODY
 	template <class UObjectType> void AddReferencedObjects(TArray<TObjectPtr<UObjectType>>& ObjectArray, const UObject* ReferencingObject = nullptr, const FProperty* ReferencingProperty = nullptr) UE_STUB_BODY
 	template <class UObjectType> void AddReferencedObjects(TSet<TObjectPtr<UObjectType>>& ObjectSet, const UObject* ReferencingObject = nullptr, const FProperty* ReferencingProperty = nullptr) UE_STUB_BODY
-	template <typename KeyType, typename ValueType> void AddReferencedObjects(TMap<KeyType, ValueType>& Map, const UObject* ReferencingObject = nullptr, const FProperty* ReferencingProperty = nullptr) UE_STUB_BODY
+	// TMap: the key, the value or both are TObjectPtr (the engine has these three overloads over TMapBase).
+	template <typename KeyType, typename ValueType, typename Allocator, typename KeyFuncs>
+	void AddReferencedObjects(TMapBase<TObjectPtr<KeyType>, ValueType, Allocator, KeyFuncs>& Map, const UObject* ReferencingObject = nullptr, const FProperty* ReferencingProperty = nullptr) UE_STUB_BODY
+	template <typename KeyType, typename ValueType, typename Allocator, typename KeyFuncs>
+	void AddReferencedObjects(TMapBase<KeyType, TObjectPtr<ValueType>, Allocator, KeyFuncs>& Map, const UObject* ReferencingObject = nullptr, const FProperty* ReferencingProperty = nullptr) UE_STUB_BODY
+	template <typename KeyType, typename ValueType, typename Allocator, typename KeyFuncs>
+	void AddReferencedObjects(TMapBase<TObjectPtr<KeyType>, TObjectPtr<ValueType>, Allocator, KeyFuncs>& Map, const UObject* ReferencingObject = nullptr, const FProperty* ReferencingProperty = nullptr) UE_STUB_BODY
 	template <class UObjectType> void AddStableReference(TObjectPtr<UObjectType>* Object) UE_STUB_BODY
 };
 

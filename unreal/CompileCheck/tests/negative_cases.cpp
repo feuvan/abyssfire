@@ -6,23 +6,56 @@
 //
 // Format:  #elif CASE == N  // EXPECT[config]: <regex>   (config optional: mac-editor, mac-game, android-game, ios-shipping)
 #include "CoreMinimal.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimInstanceProxy.h"
+#include "Animation/AnimSequence.h"
 #include "Async/Future.h"
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
+#include "Components/PoseableMeshComponent.h"
+#include "Components/PostProcessComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/StreamableManager.h"
+#include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
+#include "ProceduralMeshComponent.h"
+#include "RHI.h"
+#include "Rendering/SkeletalMeshLODRenderData.h"
+#include "Rendering/SkeletalMeshRenderData.h"
+#include "Input/DragAndDrop.h"
 #include "Input/Events.h"
 #include "Kismet/GameplayStatics.h"
 #include "Layout/Children.h"
 #include "Materials/MaterialInterface.h"
+#include "Math/Range.h"
 #include "Math/TransformCalculus2D.h"
 #include "Misc/Attribute.h"
 #include "Rendering/SlateLayoutTransform.h"
+#include "Subsystems/EngineSubsystem.h"
+#include "Subsystems/GameInstanceSubsystem.h"
+#include "Subsystems/WorldSubsystem.h"
+#include "Templates/SubclassOf.h"
 #include "TimerManager.h"
+#include "UObject/GCObject.h"
+#include "UObject/Interface.h"
 #include "UObject/SoftObjectPath.h"
+#include "UObject/SoftObjectPtr.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
@@ -438,5 +471,278 @@ void NegativeCases(UWorld* World, AActor* Actor, APlayerController* Controller, 
 	const FString Wide(L"abyss");                                       // the same on Android
 #elif CASE == 95  // EXPECT: no viable conversion from 'const char16_t\[16\]' to 'const FSoftObjectPath'
 	const FSoftObjectPath AssetPath = TEXT("/Game/Abyss/A.A");          // only the FString constructor is implicit (5.1+)
+#endif
+}
+
+// ---- CC2: explicit-type-parameter templates carry what the engine's body requires (cases 96 onwards) ----
+class UNegativeForwardComponent;                       // a component class that is only forward-declared here
+class UNegativeInterface : public UInterface
+{
+	UE_STUB_CLASS_BODY(UNegativeInterface, UInterface)
+};
+class INegativeInterface
+{
+	UE_STUB_IINTERFACE_BODY(INegativeInterface, UNegativeInterface)
+};
+class SNegativeNoDefault : public SCompoundWidget
+{
+public:
+	SLATE_BEGIN_ARGS(SNegativeNoDefault) {}
+	SLATE_END_ARGS()
+	explicit SNegativeNoDefault(int32 InValue);        // no default constructor: MakeShared<SNegativeNoDefault>() cannot build it
+	void Construct(const FArguments& InArgs);
+};
+class FNegativeDragOp : public FDragDropOperation
+{
+public:
+	DRAG_DROP_OPERATOR_TYPE(FNegativeDragOp, FDragDropOperation)
+};
+class UNegativeAnimInstance : public UAnimInstance
+{
+public:
+	void Probe();
+};
+struct FNegativeProxy : public FAnimInstanceProxy
+{
+};
+
+void UNegativeAnimInstance::Probe()
+{
+#if CASE == 0
+	FNegativeProxy& Mine = GetProxyOnGameThread<FNegativeProxy>();
+	FAnimInstanceProxy& Base = GetProxyOnAnyThread<FAnimInstanceProxy>();
+	(void)Mine; (void)Base;
+#elif CASE == 96  // EXPECT: static_cast from 'FAnimInstanceProxy \*' to 'FNegativeListener \*'
+	(void)GetProxyOnGameThread<FNegativeListener>();                    // the proxy type must derive from FAnimInstanceProxy
+#elif CASE == 97  // EXPECT: static_cast from 'FAnimInstanceProxy \*' to 'UNegativeForwardComponent \*'
+	(void)GetProxyOnAnyThread<UNegativeForwardComponent>();             // also when it is only forward-declared
+#endif
+}
+
+void NegativeFidelityCases(UWorld* World, AActor* Actor, APlayerController* Controller, UObject* Object, AGameModeBase* GameMode,
+	const TSharedRef<SWidget>& Widget, FReferenceCollector& Collector, const FDragDropEvent& DragDropEvent,
+	const TWeakPtr<SWidget>& WeakWidget)
+{
+	const UObject* ConstObject = Object;
+	TArray<AActor*> Actors;
+	TObjectPtr<AActor> ActorPtr = Actor;
+	TRange<float> Range(0.f, 1.f);
+	TMap<FName, TObjectPtr<AActor>> ActorsByName;
+	TMap<TObjectPtr<AActor>, int32> CountByActor;
+	TMap<int32, FString> Plain;
+#if CASE == 0
+	// AActor::GetComponents: the element is a pointer (or TObjectPtr) to a complete component class
+	TArray<USceneComponent*> SceneComponents;
+	Actor->GetComponents(SceneComponents);
+	TArray<TObjectPtr<UActorComponent>> ComponentPtrs;
+	Actor->GetComponents(ComponentPtrs);
+	TInlineComponentArray<USceneComponent*> Inline(Actor);
+	// TSubclassOf: from UClass*, nullptr, TObjectPtr<UClass> and a TSubclassOf of a derived class; assignable the same way
+	TSubclassOf<AActor> ActorClass = AActor::StaticClass();
+	TSubclassOf<AActor> FromObjectPtr = TObjectPtr<UClass>();
+	TSubclassOf<AActor> FromNull = nullptr;
+	TSubclassOf<UObject> Wider = ActorClass;
+	Wider = ActorClass; Wider = AActor::StaticClass(); Wider = TObjectPtr<UClass>(); Wider = nullptr;
+	UClass* Resolved = ActorClass.Get();
+	AActor* DefaultActor = ActorClass.GetDefaultObject();
+	TSubclassOf<class UNegativeForwardDeclared> ForwardClass;           // declaring one of an incomplete class is fine
+	// the typed accessors: Cast<T> / T::StaticClass() / static_cast<T*> inside
+	AHUD* Hud = Controller->GetHUD<AHUD>();
+	AGameStateBase* GameState = GameMode->GetGameState<AGameStateBase>();
+	UEngineSubsystem* EngineSubsystem = GEngine->GetEngineSubsystem<UEngineSubsystem>();
+	const bool bHasSubsystem = World->HasSubsystem<UWorldSubsystem>();
+	AActor* ClassDefault = AActor::StaticClass()->GetDefaultObject<AActor>();
+	UScriptStruct* HitStruct = TBaseStructure<FHitResult>::Get();
+	const bool bIsActor = ActorPtr.IsA<AActor>();
+	UClass* Loaded = FSoftClassPath().TryLoadClass<AActor>();
+	INegativeInterface* Implementer = Object->GetImplementingOuter<INegativeInterface>();
+	USceneComponent* Sub = FObjectInitializer::Get().CreateDefaultSubobject<USceneComponent>(Object, FName(TEXT("Sub")));
+	TSoftObjectPtr<AActor> Soft;
+	AActor* SoftActor = Soft.Get();
+	AActor* SoftLoaded = Soft.LoadSynchronous();
+	TSoftObjectPtr<class UNegativeForwardDeclared> SoftForward;         // fine until it is dereferenced
+	Collector.AddReferencedObjects(ActorsByName);
+	Collector.AddReferencedObjects(CountByActor);
+	TSharedPtr<FTagMetaData> Tag = Widget->GetMetaData<FTagMetaData>();
+	TSharedPtr<FNegativeDragOp> DragOp = DragDropEvent.GetOperationAs<FNegativeDragOp>();
+	TWeakPtr<SCompoundWidget> Compound = StaticCastWeakPtr<SCompoundWidget>(WeakWidget);
+	const float Span = Range.Size<float>();
+	// Cast keeps the constness of what it is given (API_UNCERTAIN.md #4)
+	const AActor* ConstActor = Cast<AActor>(ConstObject);
+	const AActor* ConstChecked = CastChecked<AActor>(ConstObject);
+	AActor* MutableActor = Cast<AActor>(Object);
+	(void)Resolved; (void)DefaultActor; (void)Hud; (void)GameState; (void)EngineSubsystem; (void)bHasSubsystem; (void)ClassDefault;
+	(void)HitStruct; (void)bIsActor; (void)Loaded; (void)Implementer; (void)Sub; (void)SoftActor; (void)SoftLoaded; (void)Tag; (void)DragOp;
+	(void)Compound; (void)Span; (void)ConstActor; (void)ConstChecked; (void)MutableActor; (void)FromObjectPtr; (void)FromNull; (void)Plain;
+#elif CASE == 98  // EXPECT: must be derived from UActorComponent
+	Actor->GetComponents(Actors);                                       // an actor is not a component
+#elif CASE == 99  // EXPECT: incomplete type 'T' \(aka 'UNegativeForwardComponent'\)
+	TArray<UNegativeForwardComponent*> Forward; Actor->GetComponents(Forward); // the engine calls T::StaticClass(): include the header
+#elif CASE == 100  // EXPECT: incomplete type 'T' \(aka 'UNegativeForwardComponent'\)
+	TInlineComponentArray<UNegativeForwardComponent*> Forward(Actor);   // the same through TInlineComponentArray
+#elif CASE == 101  // EXPECT: no type named 'Type' in 'UE::Stub::TComponentPointee<TWeakObjectPtr<USceneComponent>
+	TArray<TWeakObjectPtr<USceneComponent>> Weak; Actor->GetComponents(Weak); // only T* and TObjectPtr<T> have a pointed-to type
+#elif CASE == 102  // EXPECT: no matching constructor for initialization of 'SNegativeNoDefault'
+	TSharedRef<SNegativeNoDefault> Made = SNew(SNegativeNoDefault);     // SNew is MakeShared<WidgetType>(): needs a default constructor
+#elif CASE == 103  // EXPECT: no viable conversion from 'TWeakObjectPtr<UClass>' to 'TSubclassOf<AActor>'
+	TSubclassOf<AActor> FromWeak = TWeakObjectPtr<UClass>();            // not implicitly convertible to UClass*
+#elif CASE == 104  // EXPECT: no viable conversion from 'TSubclassOf<UObject>' to 'TSubclassOf<AActor>'
+	TSubclassOf<AActor> Narrower = TSubclassOf<UObject>();              // only towards a base class
+#elif CASE == 105  // EXPECT: incomplete type 'UNegativeForwardComponent'
+	TSubclassOf<UNegativeForwardComponent> ForwardClass; (void)ForwardClass.Get(); // Get() checks IsChildOf(T::StaticClass())
+#elif CASE == 106  // EXPECT: Attempting to use Cast<> to a type that is not a UObject
+	(void)Controller->GetHUD<FNegativeListener>();                      // GetHUD<T> is Cast<T>(GetHUD())
+#elif CASE == 107  // EXPECT: Attempting to cast between incomplete types|incomplete type 'UNegativeForwardComponent'
+	(void)GameMode->GetGameState<UNegativeForwardComponent>();          // GetGameState<T> is Cast<T>(GameState)
+#elif CASE == 108  // EXPECT: TSubsystemClass must be derived from TBaseType
+	(void)GEngine->GetEngineSubsystem<UGameInstanceSubsystem>();        // not an engine subsystem
+#elif CASE == 109  // EXPECT: T must derive from UWorldSubsystem
+	(void)World->HasSubsystem<UEngineSubsystem>();                      // HasSubsystem<T> is GetSubsystem<T>() != nullptr
+#elif CASE == 110  // EXPECT: no matching member function for call to 'GetDefaultObject'
+	(void)AActor::StaticClass()->GetDefaultObject<FNegativeListener>(); // T::StaticClass() is checked
+#elif CASE == 111  // EXPECT: no member named 'StaticStruct' in 'FNegativeListener'
+	(void)TBaseStructure<FNegativeListener>::Get();                     // T::StaticStruct()
+#elif CASE == 112  // EXPECT: no member named 'StaticClass' in 'FNegativeListener'
+	(void)ActorPtr.IsA<FNegativeListener>();                            // TObjectPtr::IsA<U> is IsA(U::StaticClass())
+#elif CASE == 113  // EXPECT: no matching member function for call to 'TryLoadClass'
+	(void)FSoftClassPath().TryLoadClass<FNegativeListener>();           // LoadClass<T>
+#elif CASE == 114  // EXPECT: no matching member function for call to 'GetImplementingOuter'
+	(void)Object->GetImplementingOuter<AActor>();                       // an I-class (with UClassType), not a UObject class
+#elif CASE == 115  // EXPECT: no matching member function for call to 'CreateDefaultSubobject'
+	(void)FObjectInitializer::Get().CreateDefaultSubobject<FNegativeListener>(Object, FName(TEXT("Sub")));
+#elif CASE == 116  // EXPECT: Attempting to cast between incomplete types|incomplete type 'UNegativeForwardComponent'
+	TSoftObjectPtr<UNegativeForwardComponent> SoftForward; (void)SoftForward.Get(); // Get() is a Cast<T>
+#elif CASE == 117  // EXPECT: no matching member function for call to 'AddReferencedObjects'
+	Collector.AddReferencedObjects(Plain);                              // neither key nor value is a TObjectPtr
+#elif CASE == 118  // EXPECT: no member named 'GetTypeId' in 'FNegativeListener'
+	(void)Widget->GetMetaData<FNegativeListener>();                     // IsOfType<T> needs SLATE_METADATA_TYPE
+#elif CASE == 119  // EXPECT: no member named 'GetTypeId' in 'FNegativeListener'
+	(void)DragDropEvent.GetOperationAs<FNegativeListener>();            // needs DRAG_DROP_OPERATOR_TYPE
+#elif CASE == 120  // EXPECT: static_cast from 'SWidget \*' to 'FString \*'
+	(void)StaticCastWeakPtr<FString>(WeakWidget);                       // unrelated types
+#elif CASE == 121  // EXPECT: no matching member function for call to 'Size'
+	(void)Range.Size<FString>();                                        // Upper - Lower must convert to the difference type
+#elif CASE == 122  // EXPECT: cannot initialize a variable of type 'AActor \*' with an rvalue of type '(TCopyQualifiersFromTo_T<const UObject, AActor>|const AActor) \*'
+	AActor* Stripped = Cast<AActor>(ConstObject);                       // Cast does not strip const (API_UNCERTAIN.md #4)
+#elif CASE == 123  // EXPECT: cannot initialize a variable of type 'AActor \*'
+	AActor* Stripped = CastChecked<AActor>(ConstObject);
+#endif
+}
+
+// ---- CC2: world / actor presentation API (meshes, instancing, materials, lights, textures, streaming) ----
+void NegativeWorldCases(UWorld* World, UInstancedStaticMeshComponent* Instances, UStaticMeshComponent* StaticComponent,
+	USkeletalMeshComponent* Skeletal, UPoseableMeshComponent* Poseable, UProceduralMeshComponent* Procedural,
+	UMaterialInstanceDynamic* Dynamic, UMaterialInterface* Material, UMaterialParameterCollection* Collection, UTexture2D* Texture,
+	UDirectionalLightComponent* Sun, UExponentialHeightFogComponent* Fog, UPostProcessComponent* PostProcess, UAnimSequence* Sequence,
+	USkeletalMesh* SkeletalMesh, FStreamableManager& Streamable, USceneComponent* SceneComponent)
+{
+	const FName Parameter(TEXT("Tint"));
+	TArray<FTransform> Transforms;
+	TArray<float> Floats;
+	TArray<FVector> Vertices;
+	TArray<int32> Triangles;
+	TArray<FVector2D> UVs;
+	TArray<FLinearColor> LinearColors;
+	TArray<FColor> ByteColors;
+	TArray<FProcMeshTangent> Tangents;
+	TArray<FSoftObjectPath> Paths;
+	TObjectPtr<UStaticMesh> MeshPtr;
+	UStaticMesh* RawMesh = nullptr;
+#if CASE == 0
+	// instanced static meshes: transforms in, a row of custom floats per instance
+	Instances->SetNumCustomDataFloats(4);
+	(void)Instances->AddInstances(Transforms, /*bShouldReturnIndices*/ false, /*bWorldSpace*/ true);
+	Instances->SetCustomData(0, Floats, false);
+	Instances->SetCustomData(0, TArrayView<const float>(Floats.GetData(), Floats.Num()), false);
+	Instances->SetCustomDataValue(0, 1, 0.5f, true);
+	Instances->BatchUpdateInstancesTransforms(0, Transforms, true, false, true);
+	Instances->SetCanEverAffectNavigation(false);
+	// GetStaticMesh() is a TObjectPtr: converts to the raw pointer, compares with one, and with nullptr
+	UStaticMesh* Mesh = StaticComponent->GetStaticMesh();
+	const bool bSame = StaticComponent->GetStaticMesh() != RawMesh && MeshPtr == RawMesh && RawMesh == MeshPtr && MeshPtr != nullptr;
+	const bool bAttached = SceneComponent != TObjectPtr<USkeletalMeshComponent>(Skeletal);
+	const FBox Box = Mesh->GetBoundingBox();
+	// skeletal meshes and the single-node player
+	Skeletal->SetSkeletalMeshAsset(SkeletalMesh);
+	Skeletal->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	Skeletal->PlayAnimation(Sequence, /*bLooping*/ false);
+	Skeletal->SetPosition(0.25f, /*bFireNotifies*/ false);
+	Skeletal->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+	Poseable->SetSkinnedAssetAndUpdate(Skeletal->GetSkeletalMeshAsset(), true);
+	Poseable->CopyPoseFromSkeletalComponent(Skeletal);
+	const FSkeletalMeshRenderData* RenderData = SkeletalMesh->GetResourceForRendering();
+	const int32 FirstSlot = RenderData->LODRenderData.Num() > 0 ? RenderData->LODRenderData[0].RenderSections[0].MaterialIndex : 0;
+	// procedural mesh: FVector positions, FVector2D UVs, FLinearColor colours (the one-UV C++ shortcut)
+	Procedural->CreateMeshSection_LinearColor(0, Vertices, Triangles, Vertices, UVs, LinearColors, Tangents, /*bCreateCollision*/ false);
+	Procedural->CreateMeshSection(0, Vertices, Triangles, Vertices, UVs, ByteColors, Tangents, false);
+	// dynamic material instances and the lighting collection
+	UMaterialInstanceDynamic* Created = UMaterialInstanceDynamic::Create(Material, World);
+	Created->SetScalarParameterValue(Parameter, 1.f);
+	Created->SetVectorParameterValue(Parameter, FLinearColor::White);
+	Created->SetVectorParameterValue(Parameter, FVector(1.0, 0.0, 0.0));
+	Created->SetVectorParameterValue(Parameter, FColor(255, 0, 0));          // FColor converts to FLinearColor implicitly
+	Created->SetTextureParameterValue(Parameter, Texture);
+	Created->CopyParameterOverrides(Dynamic);
+	UMaterialParameterCollectionInstance* Lighting = World->GetParameterCollectionInstance(Collection);
+	if (Collection->GetVectorParameterByName(Parameter) != nullptr)
+	{
+		Lighting->SetVectorParameterValue(Parameter, FLinearColor::White);
+	}
+	// lights, fog, post process
+	Sun->SetLightFColor(FColor(255, 240, 220));
+	Sun->SetLightColor(FLinearColor::White);
+	Sun->SetDynamicShadowCascades(2);
+	Fog->SetFogInscatteringColor(FLinearColor::Black);
+	PostProcess->Settings.bOverride_AutoExposureMethod = true;
+	PostProcess->Settings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
+	PostProcess->Settings.ColorGain = FVector4(1.0, 1.0, 1.0, 1.0);
+	// transient textures and streaming
+	UTexture2D* Tile = UTexture2D::CreateTransient(8, 8, PF_B8G8R8A8, FName(TEXT("T")));
+	Tile->Filter = TF_Nearest;
+	Tile->AddressX = TA_Clamp;
+	FUpdateTextureRegion2D* Region = new FUpdateTextureRegion2D(0, 0, 0, 0, 8u, 8u);
+	Tile->UpdateTextureRegions(0, 1, Region, 32u, 4u, nullptr, [](uint8* SrcData, const FUpdateTextureRegion2D* Regions) { delete[] SrcData; delete Regions; });
+	TSharedPtr<FStreamableHandle> Handle = Streamable.RequestAsyncLoad(MoveTemp(Paths));
+	Handle->ReleaseHandle();
+	// EAllowShrinking is a scoped enum
+	const EAllowShrinking Shrink = EAllowShrinking::No;
+	Floats.RemoveAtSwap(0, 1, Shrink);
+	(void)bSame; (void)bAttached; (void)Box; (void)FirstSlot;
+#elif CASE == 124  // EXPECT: no viable conversion from 'float' to 'TArrayView<const float>'
+	Instances->SetCustomData(0, 1.f, false);                            // the whole row: SetCustomDataValue sets one float
+#elif CASE == 125  // EXPECT: no viable conversion|cannot initialize|reference to type 'const TArray<FTransform>'
+	(void)Instances->AddInstances(Transforms[0], false);                // AddInstances takes the array: AddInstance takes one
+#elif CASE == 126  // EXPECT: no matching member function for call to 'SetVectorParameterValue'
+	Dynamic->SetVectorParameterValue(Parameter, 1.f);                   // a float is not a colour: SetScalarParameterValue
+#elif CASE == 127  // EXPECT: cannot initialize a parameter of type 'class UTexture \*' with an lvalue of type 'UMaterialInterface \*'
+	Dynamic->SetTextureParameterValue(Parameter, Material);             // a material is not a texture
+#elif CASE == 128  // EXPECT: no matching function for call to 'Create'
+	(void)UMaterialInstanceDynamic::Create(Texture, World);             // the parent is a material
+#elif CASE == 129  // EXPECT: no matching member function for call to 'CreateMeshSection_LinearColor'
+	Procedural->CreateMeshSection_LinearColor(0, Vertices, Triangles, Vertices, UVs, ByteColors, Tangents, false); // FColor colours go to CreateMeshSection
+#elif CASE == 130  // EXPECT: no viable conversion|no matching|cannot initialize
+	Texture->UpdateTextureRegions(0, 1, nullptr, 32u, 4u, nullptr, [](uint8* SrcData) { delete[] SrcData; }); // the cleanup gets the data and the regions
+#elif CASE == 131  // EXPECT: no matching member function for call to 'RequestAsyncLoad'
+	(void)Streamable.RequestAsyncLoad(42);                              // soft object paths
+#elif CASE == 132  // EXPECT: cannot initialize a parameter of type 'EAnimationMode::Type' with an rvalue of type 'int'
+	Skeletal->SetAnimationMode(1);                                      // an int does not convert to the enum
+#elif CASE == 133  // EXPECT: cannot initialize a parameter of type 'class UAnimationAsset \*' with an lvalue of type 'USkeletalMesh \*'
+	Skeletal->PlayAnimation(SkeletalMesh, true);                        // a mesh is not an animation asset
+#elif CASE == 134  // EXPECT: cannot initialize a parameter of type 'USkeletalMeshComponent \*' with an lvalue of type 'UStaticMeshComponent \*'
+	Poseable->CopyPoseFromSkeletalComponent(StaticComponent);
+#elif CASE == 135  // EXPECT: no viable conversion from 'const FLinearColor' to 'FColor'
+	Sun->SetLightFColor(FLinearColor::White);                           // FLinearColor -> FColor is ToFColor(bSRGB), never implicit
+#elif CASE == 136  // EXPECT: no viable overloaded '='
+	PostProcess->Settings.AutoExposureMethod = 2;                       // TEnumAsByte assigns from the enum only
+#elif CASE == 137  // EXPECT: cannot initialize a parameter of type 'const UMaterialParameterCollection \*'
+	(void)World->GetParameterCollectionInstance(Dynamic);               // a material is not a parameter collection
+#elif CASE == 138  // EXPECT: comparison of distinct pointer types|invalid operands to binary expression
+	const bool bMixed = MeshPtr == SceneComponent;                      // unrelated classes do not compare
+#elif CASE == 139  // EXPECT: no member named 'SetSkeletalMeshAsset' in 'UPoseableMeshComponent'
+	Poseable->SetSkeletalMeshAsset(SkeletalMesh);                       // that is USkeletalMeshComponent's: no members on the wrong class
+#elif CASE == 140  // EXPECT: no member named 'SetStaticMesh' in 'USkeletalMeshComponent'
+	Skeletal->SetStaticMesh(RawMesh);
+#elif CASE == 141  // EXPECT: cannot initialize a parameter of type 'EAllowShrinking' with an rvalue of type 'bool'|no matching member function for call to 'RemoveAtSwap'
+	Floats.RemoveAtSwap(0, 1, false);                                   // the bool form is deprecated in 5.4+: EAllowShrinking::No
 #endif
 }

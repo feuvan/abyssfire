@@ -164,7 +164,19 @@ public:
 	virtual FString GetReadableLocation() const;
 	FName GetCreatedInLocation() const;
 	virtual FName GetTag() const;
-	template <typename MetaDataType> TSharedPtr<MetaDataType> GetMetaData() const UE_STUB_BODY
+	/** Get the metadata of the type provided (the engine's body). */
+	template <typename MetaDataType>
+	TSharedPtr<MetaDataType> GetMetaData() const
+	{
+		for (const auto& MetaDataEntry : MetaData)
+		{
+			if (MetaDataEntry->IsOfType<MetaDataType>())
+			{
+				return StaticCastSharedRef<MetaDataType>(MetaDataEntry);
+			}
+		}
+		return TSharedPtr<MetaDataType>();
+	}
 	void AddMetadata(const TSharedRef<ISlateMetaData>& AddMe);
 	uint64 GetId() const;
 	bool IsConstructed() const;
@@ -186,6 +198,7 @@ protected:
 	uint8 bClippingProxy : 1;
 
 private:
+	TArray<TSharedRef<ISlateMetaData>> MetaData;
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const = 0;
 	virtual FVector2D ComputeDesiredSize(float LayoutScaleMultiplier) const = 0;
 	virtual void OnArrangeChildren(const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren) const = 0;

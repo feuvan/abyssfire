@@ -102,6 +102,24 @@ struct FPostProcessSettings
 	uint8 bOverride_DepthOfFieldFstop : 1;
 	UPROPERTY(BlueprintReadWrite, Category = Overrides)
 	uint8 bOverride_SceneFringeIntensity : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_ColorOffsetShadows : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_ColorOffsetHighlights : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_BlueCorrection : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_ExpandGamut : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_ToneCurveAmount : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_LocalExposureHighlightContrastScale : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_LocalExposureShadowContrastScale : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint8 bOverride_AmbientOcclusionQuality : 1;
+	UPROPERTY(BlueprintReadWrite, Category = Overrides)
+	uint32 bOverride_AutoExposureApplyPhysicalCameraExposure : 1;
 	UPROPERTY(interp, BlueprintReadWrite, Category = "Color Grading|Temperature")
 	float WhiteTemp;
 	UPROPERTY(interp, BlueprintReadWrite, Category = "Color Grading|Temperature")
@@ -158,6 +176,29 @@ struct FPostProcessSettings
 	float DepthOfFieldFstop;
 	UPROPERTY(interp, BlueprintReadWrite, Category = "Lens|Chromatic Aberration")
 	float SceneFringeIntensity;
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Color Grading|Shadows")
+	FVector4 ColorOffsetShadows;
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Color Grading|Highlights")
+	FVector4 ColorOffsetHighlights;
+	/** Correct for artifacts with "electric" blues due to the ACEScg color space. */
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Color Grading|Misc")
+	float BlueCorrection;
+	/** Expand bright saturated colors outside the sRGB gamut to fake wide gamut rendering. */
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Color Grading|Misc")
+	float ExpandGamut;
+	/** Allow effect of Tone Curve to be reduced (ToneCurveAmount and ExpandGamut at 0.0 fully disable the tone curve). */
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Color Grading|Misc")
+	float ToneCurveAmount;
+	/** Enables physical camera exposure using ShutterSpeed/ISO/Aperture. */
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Lens|Exposure")
+	uint32 AutoExposureApplyPhysicalCameraExposure : 1;
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Lens|Local Exposure")
+	float LocalExposureHighlightContrastScale;
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Lens|Local Exposure")
+	float LocalExposureShadowContrastScale;
+	/** 0=lowest quality..100=maximum quality, only a few quality levels are implemented, no soft transition. */
+	UPROPERTY(interp, BlueprintReadWrite, Category = "Rendering Features|Ambient Occlusion", AdvancedDisplay)
+	float AmbientOcclusionQuality;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Rendering Features")
 	FWeightedBlendables WeightedBlendables;
 	FPostProcessSettings();

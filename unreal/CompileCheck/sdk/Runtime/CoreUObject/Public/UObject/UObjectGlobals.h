@@ -50,6 +50,12 @@ public:
 	FVTableHelper();
 };
 
+namespace UE::Stub
+{
+	/** NewObject / FindObject / LoadObject need the complete class (they call T::StaticClass()). */
+	template <typename T> concept CUObjectClass = requires { sizeof(T); T::StaticClass(); } && std::is_base_of_v<UObject, T>;
+}
+
 class FObjectInitializer
 {
 public:
@@ -59,20 +65,21 @@ public:
 	UObject* GetArchetype() const;
 	UObject* GetObj() const;
 	UClass* GetClass() const;
-	template <class TReturnType> TReturnType* CreateDefaultSubobject(UObject* Outer, FName SubobjectName, bool bTransient = false) const UE_STUB_BODY
-	template <class TReturnType> TReturnType* CreateOptionalDefaultSubobject(UObject* Outer, FName SubobjectName, bool bTransient = false) const UE_STUB_BODY
-	template <class TReturnType, class TClassToConstructByDefault> TReturnType* CreateDefaultSubobject(UObject* Outer, FName SubobjectName, bool bTransient = false) const UE_STUB_BODY
-	template <class T> const FObjectInitializer& SetDefaultSubobjectClass(FName SubobjectName) const UE_STUB_BODY
-	template <class T> const FObjectInitializer& SetDefaultSubobjectClass(const TCHAR* SubobjectName) const UE_STUB_BODY
+	// The engine's bodies call TReturnType::StaticClass() (and TClassToConstructByDefault::StaticClass()) and
+	// static_cast the created UObject* to TReturnType*: complete UObject classes.
+	template <class TReturnType> requires UE::Stub::CUObjectClass<TReturnType>
+	TReturnType* CreateDefaultSubobject(UObject* Outer, FName SubobjectName, bool bTransient = false) const UE_STUB_BODY
+	template <class TReturnType> requires UE::Stub::CUObjectClass<TReturnType>
+	TReturnType* CreateOptionalDefaultSubobject(UObject* Outer, FName SubobjectName, bool bTransient = false) const UE_STUB_BODY
+	template <class TReturnType, class TClassToConstructByDefault> requires UE::Stub::CUObjectClass<TReturnType> && UE::Stub::CUObjectClass<TClassToConstructByDefault>
+	TReturnType* CreateDefaultSubobject(UObject* Outer, FName SubobjectName, bool bTransient = false) const UE_STUB_BODY
+	template <class T> requires UE::Stub::CUObjectClass<T>
+	const FObjectInitializer& SetDefaultSubobjectClass(FName SubobjectName) const UE_STUB_BODY
+	template <class T> requires UE::Stub::CUObjectClass<T>
+	const FObjectInitializer& SetDefaultSubobjectClass(const TCHAR* SubobjectName) const UE_STUB_BODY
 	const FObjectInitializer& DoNotCreateDefaultSubobject(FName SubobjectName) const;
 	const FObjectInitializer& DoNotCreateDefaultSubobject(const TCHAR* SubobjectName) const;
 };
-
-namespace UE::Stub
-{
-	/** NewObject / FindObject / LoadObject need the complete class (they call T::StaticClass()). */
-	template <typename T> concept CUObjectClass = requires { sizeof(T); T::StaticClass(); } && std::is_base_of_v<UObject, T>;
-}
 
 template <class T> requires UE::Stub::CUObjectClass<T>
 T* NewObject(UObject* Outer, const UClass* Class, FName Name = NAME_None, EObjectFlags Flags = RF_NoFlags, UObject* Template = nullptr,

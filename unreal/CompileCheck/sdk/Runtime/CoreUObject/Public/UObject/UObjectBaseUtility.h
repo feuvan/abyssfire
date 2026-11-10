@@ -37,7 +37,9 @@ public:
 	bool IsTemplate(EObjectFlags TemplateTypes = (EObjectFlags)(RF_ArchetypeObject | RF_ClassDefaultObject)) const;
 	UObject* GetTypedOuter(UClass* Target) const;
 	template <typename T> T* GetTypedOuter() const { return (T*)GetTypedOuter(T::StaticClass()); }
-	template <typename InterfaceClassType> InterfaceClassType* GetImplementingOuter() const UE_STUB_BODY
+	/** The engine: `return Cast<InterfaceClassType>(GetImplementingOuterObject(InterfaceClassType::UClassType::StaticClass()));` */
+	template <typename InterfaceClassType> requires requires { InterfaceClassType::UClassType::StaticClass(); }
+	InterfaceClassType* GetImplementingOuter() const UE_STUB_BODY
 	bool IsIn(const UObject* SomeOuter) const;
 	bool IsIn(const UPackage* SomePackage) const;
 	bool IsInOuter(const UObject* SomeOuter) const;

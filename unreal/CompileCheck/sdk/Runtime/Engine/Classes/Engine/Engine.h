@@ -76,5 +76,13 @@ public:
 	static UFont* GetSmallFont();
 	static UFont* GetMediumFont();
 	static UFont* GetLargeFont();
-	template <typename TSubsystemClass> TSubsystemClass* GetEngineSubsystem() const UE_STUB_BODY
+	/** The engine: `return EngineSubsystemCollection.GetSubsystem<TSubsystemClass>(TSubsystemClass::StaticClass());`, whose
+	 *  body static_asserts that TSubsystemClass derives from UEngineSubsystem. */
+	template <typename TSubsystemClass>
+	TSubsystemClass* GetEngineSubsystem() const
+	{
+		static_assert(std::is_base_of_v<UEngineSubsystem, TSubsystemClass>, "TSubsystemClass must be derived from TBaseType");
+		(void)TSubsystemClass::StaticClass();
+		return nullptr;
+	}
 };

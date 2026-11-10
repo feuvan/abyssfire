@@ -296,15 +296,65 @@ struct FMath : public FPlatformMath
 	static constexpr float Clamp(const float X, const float InMin, const float InMax) { return X < InMin ? InMin : X < InMax ? X : InMax; }
 	static constexpr double Clamp(const double X, const double InMin, const double InMax) { return X < InMin ? InMin : X < InMax ? X : InMax; }
 	static constexpr int64 Clamp(const int64 X, const int32 InMin, const int32 InMax) { return X < InMin ? InMin : X < InMax ? X : InMax; }
-	template <typename T> static constexpr T Wrap(const T X, const T Min, const T Max);
-	template <class T> static constexpr T GridSnap(T Location, T Grid);
+	/** Wraps X to be between Min and Max, inclusive (the engine's body, without its unsigned-size refinement for integers). */
+	template <typename T> static constexpr T Wrap(const T X, const T Min, const T Max)
+	{
+		T Size = Max - Min;
+		if (Size == 0)
+		{
+			return Max;
+		}
+		T EndVal = X;
+		while (EndVal < Min) { EndVal += Size; }
+		while (EndVal > Max) { EndVal -= Size; }
+		return EndVal;
+	}
+	/** Snaps a value to the nearest grid multiple. */
+	template <class T> static constexpr T GridSnap(T Location, T Grid)
+	{
+		return (Grid == T{}) ? Location : (Floor((Location + (Grid / (T)2)) / Grid) * Grid);
+	}
 	UE_STUB_MIX_FLOATS_2_ARGS(GridSnap)
 	template <class T> static constexpr T DivideAndRoundUp(T Dividend, T Divisor) { return (Dividend + Divisor - 1) / Divisor; }
 	template <class T> static constexpr T DivideAndRoundDown(T Dividend, T Divisor) { return Dividend / Divisor; }
 	template <class T> static constexpr T DivideAndRoundNearest(T Dividend, T Divisor) { return (Dividend >= 0) ? (Dividend + Divisor / 2) / Divisor : (Dividend - Divisor / 2 + 1) / Divisor; }
 	static float Log2(float Value);
 	static double Log2(double Value);
-	template <typename T> static constexpr void SinCos(T* ScalarSin, T* ScalarCos, T Value) requires std::is_floating_point_v<T>;
+	/** Computes the sine and cosine of a scalar value (the engine's minimax approximation; the constants only matter at run time). */
+	template <typename T> static constexpr void SinCos(T* ScalarSin, T* ScalarCos, T Value) requires std::is_floating_point_v<T>
+	{
+		// Map Value to y in [-pi,pi], x = 2*pi*quotient + remainder.
+		T quotient = (UE_INV_PI * 0.5f) * Value;
+		if (Value >= 0.0f)
+		{
+			quotient = (T)((int64)(quotient + 0.5f));
+		}
+		else
+		{
+			quotient = (T)((int64)(quotient - 0.5f));
+		}
+		T y = Value - UE_TWO_PI * quotient;
+		// Map y to [-pi/2,pi/2] with sin(y) = sin(Value).
+		T sign;
+		if (y > UE_HALF_PI)
+		{
+			y = UE_PI - y;
+			sign = -1.0f;
+		}
+		else if (y < -UE_HALF_PI)
+		{
+			y = -UE_PI - y;
+			sign = -1.0f;
+		}
+		else
+		{
+			sign = +1.0f;
+		}
+		T y2 = y * y;
+		*ScalarSin = (((((-2.3889859e-08f * y2 + 2.7525562e-06f) * y2 - 0.00019840874f) * y2 + 0.0083333310f) * y2 - 0.16666667f) * y2 + 1.0f) * y;
+		T p = ((((-2.6051615e-07f * y2 + 2.4760495e-05f) * y2 - 0.0013888378f) * y2 + 0.041666638f) * y2 - 0.5f) * y2 + 1.0f;
+		*ScalarCos = sign * p;
+	}
 	static float FastAsin(float Value);
 	static double FastAsin(double Value);
 
@@ -316,19 +366,68 @@ struct FMath : public FPlatformMath
 	static constexpr double DegreesToRadians(double const& DegVal) { return DegVal * (UE_DOUBLE_PI / 180.0); }
 	template <typename T> static T ClampAngle(T AngleDegrees, T MinAngleDegrees, T MaxAngleDegrees) requires std::is_floating_point_v<T> UE_STUB_BODY
 	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_3_ARGS(ClampAngle)
+	/** Find the smallest angle between two headings (in degrees): the result is in [-180, 180]. The engine's body. */
 	template <typename T, typename T2> requires std::is_floating_point_v<T> || std::is_floating_point_v<T2>
-	static constexpr auto FindDeltaAngleDegrees(T A1, T2 A2) -> decltype(A1 * A2);
+	static constexpr auto FindDeltaAngleDegrees(T A1, T2 A2) -> decltype(A1 * A2)
+	{
+		auto Delta = A2 - A1;
+		if (Delta > 180.0f)
+		{
+			Delta = Delta - 360.0f;
+		}
+		else if (Delta < -180.0f)
+		{
+			Delta = Delta + 360.0f;
+		}
+		return Delta;
+	}
+	/** Find the smallest angle between two headings (in radians). */
 	template <typename T, typename T2> requires std::is_floating_point_v<T> || std::is_floating_point_v<T2>
-	static constexpr auto FindDeltaAngleRadians(T A1, T2 A2) -> decltype(A1 * A2);
-	template <typename T> static constexpr T UnwindRadians(T A) requires std::is_floating_point_v<T>;
-	template <typename T> static constexpr T UnwindDegrees(T A) requires std::is_floating_point_v<T>;
+	static constexpr auto FindDeltaAngleRadians(T A1, T2 A2) -> decltype(A1 * A2)
+	{
+		auto Delta = A2 - A1;
+		if (Delta > UE_PI)
+		{
+			Delta = Delta - UE_TWO_PI;
+		}
+		else if (Delta < -UE_PI)
+		{
+			Delta = Delta + UE_TWO_PI;
+		}
+		return Delta;
+	}
+	/** Given a heading which may be outside the +/- PI range, 'unwind' it back into that range. */
+	template <typename T> static constexpr T UnwindRadians(T A) requires std::is_floating_point_v<T>
+	{
+		while (A > UE_PI) { A -= UE_TWO_PI; }
+		while (A < -UE_PI) { A += UE_TWO_PI; }
+		return A;
+	}
+	/** Utility to ensure angle is between +/- 180 degrees by unwinding. */
+	template <typename T> static constexpr T UnwindDegrees(T A) requires std::is_floating_point_v<T>
+	{
+		while (A > 180.f) { A -= 360.f; }
+		while (A < -180.f) { A += 360.f; }
+		return A;
+	}
 	static void WindRelativeAnglesDegrees(float InAngle0, float& InOutAngle1);
 	static void WindRelativeAnglesDegrees(double InAngle0, double& InOutAngle1);
 	static float FixedTurn(float InCurrent, float InDesired, float InDeltaRate);
 	// Sqrt / Atan2 / Cos / Sin of T: float or double.
 	template <typename T> requires std::is_floating_point_v<T> static void CartesianToPolar(const T X, const T Y, T& OutRad, T& OutAng) UE_STUB_BODY
 	template <typename T> requires std::is_floating_point_v<T> static void PolarToCartesian(const T Rad, const T Ang, T& OutX, T& OutY) UE_STUB_BODY
-	template <typename T, typename T2 = T> static constexpr auto GetRangePct(T MinValue, T MaxValue, T2 Value) -> decltype(MinValue * Value);
+	/** Calculates the percentage along a line from MinValue to MaxValue that Value is (the engine's body). */
+	template <typename T, typename T2 = T> static constexpr auto GetRangePct(T MinValue, T MaxValue, T2 Value) -> decltype(MinValue * Value)
+	{
+		using RetType = decltype(MinValue * Value);
+		// Avoid Divide by Zero. But also if our range is a point, output whether Value is before or after.
+		const T Divisor = MaxValue - MinValue;
+		if (FMath::IsNearlyZero(Divisor))
+		{
+			return (Value >= MaxValue) ? (RetType)1 : (RetType)0;
+		}
+		return (RetType)((Value - MinValue) / Divisor);
+	}
 	template <typename T, typename T2> static auto GetRangePct(UE::Math::TVector2<T> const& Range, T2 Value) -> decltype(Range.X * Value) UE_STUB_BODY
 	template <typename T, typename T2> static auto GetRangeValue(UE::Math::TVector2<T> const& Range, T2 Pct) -> decltype(Range.X * Pct) UE_STUB_BODY
 	template <typename T, typename T2> static auto GetMappedRangeValueClamped(const UE::Math::TVector2<T>& InputRange, const UE::Math::TVector2<T>& OutputRange, const T2 Value) -> decltype(InputRange.X * Value) UE_STUB_BODY
@@ -361,7 +460,20 @@ struct FMath : public FPlatformMath
 	template <class T> requires UE::Stub::CLerpable<T> static T InterpCircularIn(const T& A, const T& B, float Alpha) UE_STUB_BODY
 	template <class T> requires UE::Stub::CLerpable<T> static T InterpCircularOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
 	template <class T> requires UE::Stub::CLerpable<T> static T InterpCircularInOut(const T& A, const T& B, float Alpha) UE_STUB_BODY
-	template <class T> static constexpr T SmoothStep(T A, T B, T X) requires std::is_floating_point_v<T>;
+	/** Returns a smooth Hermite interpolation between 0 and 1 for the value X (where X ranges between A and B). */
+	template <class T> static constexpr T SmoothStep(T A, T B, T X) requires std::is_floating_point_v<T>
+	{
+		if (X < A)
+		{
+			return 0;
+		}
+		else if (X >= B)
+		{
+			return 1;
+		}
+		const T InterpFraction = (X - A) / (B - A);
+		return InterpFraction * InterpFraction * (3.0f - 2.0f * InterpFraction);
+	}
 	UE_STUB_RESOLVE_FLOAT_AMBIGUITY_3_ARGS(SmoothStep)
 
 	static FVector VInterpNormalRotationTo(const FVector& Current, const FVector& Target, float DeltaTime, float RotationSpeedDegrees);
@@ -376,7 +488,26 @@ struct FMath : public FPlatformMath
 	static auto FInterpConstantTo(T1 Current, T2 Target, T3 DeltaTime, T4 InterpSpeed) -> decltype(Current * Target * DeltaTime * InterpSpeed) UE_STUB_BODY
 	template <typename T1, typename T2 = T1, typename T3 = T2, typename T4 = T3>
 		requires std::is_arithmetic_v<T1> && std::is_arithmetic_v<T2> && std::is_arithmetic_v<T3> && std::is_arithmetic_v<T4>
-	static constexpr auto FInterpTo(T1 Current, T2 Target, T3 DeltaTime, T4 InterpSpeed) -> decltype(Current * Target * DeltaTime * InterpSpeed);
+	static constexpr auto FInterpTo(T1 Current, T2 Target, T3 DeltaTime, T4 InterpSpeed) -> decltype(Current * Target * DeltaTime * InterpSpeed)
+	{
+		using RetType = decltype(Current * Target * DeltaTime * InterpSpeed);
+		// If no interp speed, jump to target value
+		if (InterpSpeed <= 0.f)
+		{
+			return static_cast<RetType>(Target);
+		}
+		// Distance to reach
+		const RetType Dist = Target - Current;
+		// If distance is too small, just set the desired location
+		if (Dist * Dist < UE_SMALL_NUMBER)
+		{
+			return static_cast<RetType>(Target);
+		}
+		// Delta Move, Clamp so we do not over shoot.
+		const RetType Alpha = static_cast<RetType>(DeltaTime * InterpSpeed);
+		const RetType DeltaMove = Dist * (Alpha < 0 ? static_cast<RetType>(0) : (Alpha > 1 ? static_cast<RetType>(1) : Alpha));
+		return Current + DeltaMove;
+	}
 	static FLinearColor CInterpTo(const FLinearColor& Current, const FLinearColor& Target, float DeltaTime, float InterpSpeed);
 	static float MakePulsatingValue(const double InCurrentTime, const float InPulsesPerSecond, const float InPhase = 0.0f);
 	static float PerlinNoise1D(float Value);

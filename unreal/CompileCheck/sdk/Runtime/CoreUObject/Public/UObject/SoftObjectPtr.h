@@ -42,10 +42,12 @@ public:
 	TSoftObjectPtr& operator=(TObjectPtr<T> Object) UE_STUB_BODY
 	TSoftObjectPtr& operator=(FSoftObjectPath ObjectPath) UE_STUB_BODY
 	TSoftObjectPtr& operator=(TYPE_OF_NULLPTR) UE_STUB_BODY
-	T* Get() const UE_STUB_BODY
-	T& operator*() const UE_STUB_BODY
-	T* operator->() const UE_STUB_BODY
-	T* LoadSynchronous() const UE_STUB_BODY
+	// The engine's bodies are `dynamic_cast<T*>(SoftObjectPtr.Get())` (UE's dynamic_cast is Cast<T> for UObject classes):
+	// T must be a complete UObject class where these are used.
+	T* Get() const { return Cast<T>(SoftObjectPtr.Get()); }
+	T& operator*() const { return *Get(); }
+	T* operator->() const { return Get(); }
+	T* LoadSynchronous() const { return Cast<T>(SoftObjectPtr.LoadSynchronous()); }
 	bool IsValid() const UE_STUB_BODY
 	bool IsPending() const UE_STUB_BODY
 	bool IsNull() const UE_STUB_BODY
@@ -56,6 +58,8 @@ public:
 	explicit operator bool() const UE_STUB_BODY
 	bool operator==(const TSoftObjectPtr& Rhs) const UE_STUB_BODY
 	bool operator==(TYPE_OF_NULLPTR) const UE_STUB_BODY
+private:
+	FSoftObjectPtr SoftObjectPtr;
 };
 template <class T> uint32 GetTypeHash(const TSoftObjectPtr<T>& Ptr) UE_STUB_BODY
 template <class TClass = UObject>

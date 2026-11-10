@@ -13,9 +13,9 @@
 #include "Templates/TypeHash.h"
 #include "Templates/Less.h"
 #include "Templates/Sorting.h"
+#include "Containers/AllowShrinking.h"
 #include <initializer_list>
 
-namespace EAllowShrinking { enum Type : uint8 { No, Yes }; }
 
 template <typename InElementType, typename InAllocatorType>
 class TArray
@@ -69,7 +69,7 @@ public:
 	SizeType Max() const UE_STUB_BODY
 	ElementType& operator[](SizeType Index) UE_LIFETIMEBOUND UE_STUB_BODY
 	const ElementType& operator[](SizeType Index) const UE_LIFETIMEBOUND UE_STUB_BODY
-	ElementType Pop(EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	ElementType Pop(EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
 	void Push(ElementType&& Item) UE_STUB_BODY
 	void Push(const ElementType& Item) UE_STUB_BODY
 	ElementType& Top() UE_LIFETIMEBOUND UE_STUB_BODY
@@ -113,17 +113,17 @@ public:
 	SizeType Insert(const ElementType& Item, SizeType Index) requires std::is_copy_constructible_v<InElementType> UE_STUB_BODY
 	ElementType& Insert_GetRef(ElementType&& Item, SizeType Index) UE_LIFETIMEBOUND UE_STUB_BODY
 	ElementType& Insert_GetRef(const ElementType& Item, SizeType Index) UE_LIFETIMEBOUND UE_STUB_BODY
-	void RemoveAt(SizeType Index, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	void RemoveAt(SizeType Index, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
 	template <typename CountType> requires std::is_integral_v<CountType> && (!std::is_same_v<CountType, bool>)
-	void RemoveAt(SizeType Index, CountType Count, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
-	void RemoveAtSwap(SizeType Index, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	void RemoveAt(SizeType Index, CountType Count, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	void RemoveAtSwap(SizeType Index, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
 	template <typename CountType> requires std::is_integral_v<CountType> && (!std::is_same_v<CountType, bool>)
-	void RemoveAtSwap(SizeType Index, CountType Count, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	void RemoveAtSwap(SizeType Index, CountType Count, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
 	void Reset(SizeType NewSize = 0) UE_STUB_BODY
 	void Empty(SizeType Slack = 0) UE_STUB_BODY
-	void SetNum(SizeType NewNum, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) requires std::is_default_constructible_v<InElementType> UE_STUB_BODY
-	void SetNumZeroed(SizeType NewNum, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
-	void SetNumUninitialized(SizeType NewNum, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	void SetNum(SizeType NewNum, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires std::is_default_constructible_v<InElementType> UE_STUB_BODY
+	void SetNumZeroed(SizeType NewNum, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
+	void SetNumUninitialized(SizeType NewNum, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) UE_STUB_BODY
 	void SetNumUnsafeInternal(SizeType NewNum) UE_STUB_BODY
 	template <typename OtherElementType, typename OtherAllocatorType> requires std::is_constructible_v<InElementType, const OtherElementType&>
 	void Append(const TArray<OtherElementType, OtherAllocatorType>& Source) UE_STUB_BODY
@@ -162,9 +162,9 @@ public:
 	SizeType RemoveSingle(const ElementType& Item) requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
 	SizeType Remove(const ElementType& Item) requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
 	template <class PREDICATE_CLASS> SizeType RemoveAll(const PREDICATE_CLASS& Predicate) requires std::is_invocable_r_v<bool, const PREDICATE_CLASS&, ElementType&> UE_STUB_BODY
-	template <class PREDICATE_CLASS> SizeType RemoveAllSwap(const PREDICATE_CLASS& Predicate, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) requires std::is_invocable_r_v<bool, const PREDICATE_CLASS&, ElementType&> UE_STUB_BODY
-	SizeType RemoveSingleSwap(const ElementType& Item, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
-	SizeType RemoveSwap(const ElementType& Item, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
+	template <class PREDICATE_CLASS> SizeType RemoveAllSwap(const PREDICATE_CLASS& Predicate, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires std::is_invocable_r_v<bool, const PREDICATE_CLASS&, ElementType&> UE_STUB_BODY
+	SizeType RemoveSingleSwap(const ElementType& Item, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
+	SizeType RemoveSwap(const ElementType& Item, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires requires(const ElementType& A, const ElementType& B) { { A == B } -> std::convertible_to<bool>; } UE_STUB_BODY
 	void SwapMemory(SizeType FirstIndexToSwap, SizeType SecondIndexToSwap) UE_STUB_BODY
 	void Swap(SizeType FirstIndexToSwap, SizeType SecondIndexToSwap) UE_STUB_BODY
 	template <typename SearchType> bool FindItemByClass(SearchType** Item = nullptr, SizeType* ItemIndex = nullptr, SizeType StartIndex = 0) const UE_STUB_BODY
@@ -188,8 +188,8 @@ public:
 	template <class PREDICATE_CLASS> SizeType HeapPush(const ElementType& InItem, const PREDICATE_CLASS& Predicate) requires UE::Stub::CSortPredicate<PREDICATE_CLASS, InElementType> UE_STUB_BODY
 	SizeType HeapPush(ElementType&& InItem) requires UE::Stub::CHeapOrdered<InElementType> UE_STUB_BODY
 	SizeType HeapPush(const ElementType& InItem) requires UE::Stub::CHeapOrdered<InElementType> UE_STUB_BODY
-	template <class PREDICATE_CLASS> void HeapPop(ElementType& OutItem, const PREDICATE_CLASS& Predicate, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) requires UE::Stub::CSortPredicate<PREDICATE_CLASS, InElementType> UE_STUB_BODY
-	void HeapPop(ElementType& OutItem, EAllowShrinking::Type AllowShrinking = EAllowShrinking::Yes) requires UE::Stub::CHeapOrdered<InElementType> UE_STUB_BODY
+	template <class PREDICATE_CLASS> void HeapPop(ElementType& OutItem, const PREDICATE_CLASS& Predicate, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires UE::Stub::CSortPredicate<PREDICATE_CLASS, InElementType> UE_STUB_BODY
+	void HeapPop(ElementType& OutItem, EAllowShrinking AllowShrinking = EAllowShrinking::Yes) requires UE::Stub::CHeapOrdered<InElementType> UE_STUB_BODY
 	const ElementType& HeapTop() const UE_LIFETIMEBOUND UE_STUB_BODY
 	ElementType& HeapTop() UE_LIFETIMEBOUND UE_STUB_BODY
 };

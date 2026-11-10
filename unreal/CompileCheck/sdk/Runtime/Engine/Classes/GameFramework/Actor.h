@@ -23,6 +23,14 @@ class UInputComponent;
 class APlayerController;
 class UPrimitiveComponent;
 
+namespace UE::Stub
+{
+	/** TPointedToType of the engine, for what AActor::GetComponents accepts: T* and TObjectPtr<T>. No Type otherwise. */
+	template <typename PointerType> struct TComponentPointee {};
+	template <typename T> struct TComponentPointee<T*> { using Type = T; };
+	template <typename T> struct TComponentPointee<TObjectPtr<T>> { using Type = T; };
+}
+
 /** TArray with inline storage for a typical component count; the constructor from an actor fills it (GetComponents). */
 template <class T, uint32 NumElements = 24>
 class TInlineComponentArray : public TArray<T, TInlineAllocator<NumElements>>
@@ -157,11 +165,17 @@ public:
 		return (T*)FindComponentByClass(T::StaticClass());
 	}
 	template <class T> T* GetComponentByClass() const { return FindComponentByClass<T>(); }
+	/** The engine's body is `typedef TPointedToType<ComponentType> T; ... ForEachComponent_Internal<T>(T::StaticClass(), ...)`,
+	 *  and ForEachComponent_Internal static_asserts that T derives from UActorComponent: the element is a T* or a
+	 *  TObjectPtr<T> (nothing else has a pointed-to type), T is complete, a component class, and has StaticClass(). */
 	template <class ComponentType, class AllocatorType>
 	void GetComponents(TArray<ComponentType, AllocatorType>& OutComponents, bool bIncludeFromChildActors = false) const
 	{
-		static_assert(std::is_pointer_v<ComponentType> || TIsWeakPointerType<ComponentType>::Value || requires { typename ComponentType::ElementType; },
-			"GetComponents: the array element must be a component pointer");
+		typedef typename UE::Stub::TComponentPointee<ComponentType>::Type T;
+		static_assert(sizeof(T) > 0, "GetComponents: the component class is incomplete here (include its header)");
+		static_assert(std::is_convertible_v<T*, const UActorComponent*>, "'ComponentType' template parameter to ForEachComponent must be derived from UActorComponent");
+		(void)T::StaticClass();
+		OutComponents.Reset();
 	}
 	void GetComponents(TSubclassOf<UActorComponent> ComponentClass, TArray<UActorComponent*>& OutComponents, bool bIncludeFromChildActors = false) const;
 	const TSet<UActorComponent*>& GetComponents() const;

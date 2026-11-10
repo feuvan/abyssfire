@@ -1759,7 +1759,7 @@ void AAbyssZoneActor::UpdateOcclusion(TConstArrayView<FVector> Targets, TConstAr
 	// proxy every frame of a fade (and reset its TSR history).
 	for (const int32 ComponentIndex : Dirty)
 	{
-		DecorInstanceComponents[ComponentIndex]->MarkRenderInstancesDirty();
+		AbyssWorldUtil::MarkInstancesDirty(*DecorInstanceComponents[ComponentIndex]);
 	}
 	for (const int32 ComponentIndex : DirtyGhosts)
 	{
@@ -1963,7 +1963,7 @@ void AAbyssZoneActor::UpdateFadeGhost(int32 ComponentIndex)
 		Data[AbyssDecorIcd::Highlight] = bFocused ? 1.f : 0.f;
 		Ghost->SetCustomData(Slot, TArrayView<const float>(Data, AbyssDecorIcd::Count), /*bMarkRenderStateDirty*/ false);
 	}
-	Ghost->MarkRenderInstancesDirty();
+	AbyssWorldUtil::MarkInstancesDirty(*Ghost);
 }
 
 void AAbyssZoneActor::SetStoryFocus(FName DecorId)

@@ -74,14 +74,14 @@ protected:
 	mutable FAnimInstanceProxy* AnimInstanceProxy;
 	/** Access the proxy but block if a task is currently in progress as it wouldn't be safe to access it (game thread only). */
 	template <typename T /*= FAnimInstanceProxy*/>
-	T& GetProxyOnGameThread() UE_STUB_BODY
+	T& GetProxyOnGameThread() { return *static_cast<T*>(AnimInstanceProxy); }
 	template <typename T /*= FAnimInstanceProxy*/>
-	const T& GetProxyOnGameThread() const UE_STUB_BODY
+	const T& GetProxyOnGameThread() const { return *static_cast<const T*>(AnimInstanceProxy); }
 	/** Access the proxy but block if a task is currently in progress (and we are on the game thread) as it wouldn't be safe to access it. */
 	template <typename T /*= FAnimInstanceProxy*/>
-	T& GetProxyOnAnyThread() UE_STUB_BODY
+	T& GetProxyOnAnyThread() { return *static_cast<T*>(AnimInstanceProxy); }
 	template <typename T /*= FAnimInstanceProxy*/>
-	const T& GetProxyOnAnyThread() const UE_STUB_BODY
+	const T& GetProxyOnAnyThread() const { return *static_cast<const T*>(AnimInstanceProxy); }
 	/** Override point for derived classes to create their own proxy objects (allows custom allocation). */
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy();
 	/** Override point for derived classes to destroy their own proxy objects (allows custom allocation). */

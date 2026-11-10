@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Engine/StreamableRenderAsset.h"
 #include "Engine/TextureDefines.h"
+#include "PixelFormat.h"
 
 class FTextureResource;
 
@@ -20,8 +21,7 @@ public:
 	TEnumAsByte<enum TextureCompressionSettings> CompressionSettings;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = LevelOfDetail)
 	TEnumAsByte<enum TextureGroup> LODGroup;
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = LevelOfDetail)
-	uint8 NeverStream : 1;
+	// NeverStream is UStreamableRenderAsset's.
 	virtual FTextureResource* CreateResource() PURE_VIRTUAL(UTexture::CreateResource, return nullptr;);
 	virtual void UpdateResource();
 	FTextureResource* GetResource();

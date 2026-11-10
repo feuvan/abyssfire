@@ -43,7 +43,8 @@ public:
 	bool IsDegenerate() const UE_STUB_BODY
 	bool IsEmpty() const UE_STUB_BODY
 	bool Overlaps(const TRange& Other) const UE_STUB_BODY
-	template <typename DifferenceType> DifferenceType Size() const UE_STUB_BODY
+	/** The engine: `return (UpperBound.GetValue() - LowerBound.GetValue());` */
+	template <typename DifferenceType> DifferenceType Size() const requires requires(ElementValueOrConstRef A) { { A - A } -> std::convertible_to<DifferenceType>; } UE_STUB_BODY
 	TArray<TRange> Split(ElementValueOrConstRef Element) const UE_STUB_BODY
 	static TArray<TRange> Difference(const TRange& X, const TRange& Y) UE_STUB_BODY
 	static TRange Hull(const TRange& X, const TRange& Y) UE_STUB_BODY

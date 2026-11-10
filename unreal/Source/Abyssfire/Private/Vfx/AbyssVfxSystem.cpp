@@ -379,7 +379,7 @@ void UAbyssVfxSystem::ClearAll()
 			// update at the end of the frame (MarkRenderInstancesDirty is the explicit, lightweight request for it).
 			Component->BatchUpdateInstancesTransforms(0, Pool.Transforms, /*bWorldSpace*/ false, /*bMarkRenderStateDirty*/ false,
 				/*bTeleport*/ true);
-			Component->MarkRenderInstancesDirty();
+			AbyssWorldUtil::MarkInstancesDirty(*Component);
 		}
 		Pool.UsedLastFrame = 0;
 	}
@@ -1577,7 +1577,7 @@ void UAbyssVfxSystem::Render()
 		// Incremental instance update (FPrimitiveInstanceDataManager, 5.4+), never MarkRenderStateDirty: that would destroy
 		// and re-create the scene proxy of every active pool every frame (full FScene remove / add, instance re-upload,
 		// lost velocity / TSR history).
-		Component->MarkRenderInstancesDirty();
+		AbyssWorldUtil::MarkInstancesDirty(*Component);
 		Pool.UsedLastFrame = Used;
 	}
 }

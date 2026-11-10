@@ -319,7 +319,7 @@ void AAbyssZoneActor::SetSetPieceHidden(FName Key, bool bHidden)
 	{
 		if (UInstancedStaticMeshComponent* DirtyComponent = DecorInstanceComponents[ComponentIndex].Get())
 		{
-			DirtyComponent->MarkRenderInstancesDirty();
+			AbyssWorldUtil::MarkInstancesDirty(*DirtyComponent);
 		}
 	}
 	for (const int32 ComponentIndex : DirtyGhosts)

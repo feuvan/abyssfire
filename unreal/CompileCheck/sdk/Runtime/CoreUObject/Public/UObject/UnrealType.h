@@ -21,7 +21,7 @@ public:
 	int32 ElementSize;
 	FString GetNameCPP() const;
 	bool HasAnyPropertyFlags(uint64 FlagsToCheck) const;
-	template <typename ValueType> ValueType* ContainerPtrToValuePtr(UObject* ContainerPtr, int32 ArrayIndex = 0) const UE_STUB_BODY
+	template <typename ValueType> ValueType* ContainerPtrToValuePtr(UObject* ContainerPtr, int32 ArrayIndex = 0) const UE_STUB_BODY // explicit-ok: the engine C-casts a void* to ValueType*, any object type
 };
 namespace EPropertyChangeType { typedef uint32 Type; inline constexpr Type Unspecified = 1 << 0; inline constexpr Type ArrayAdd = 1 << 1; inline constexpr Type ValueSet = 1 << 4; inline constexpr Type Interactive = 1 << 5; }
 struct FPropertyChangedEvent

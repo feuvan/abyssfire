@@ -6,6 +6,7 @@
 #   ./run.sh --only Framework --only Input    a subset (directory, file or header; see --help)
 #   ./run.sh --config mac-editor              one configuration (mac-editor, mac-game, android-game, ios-shipping)
 #   ./run.sh -j 3 --notes --force             jobs (default 3), compiler notes, ignore the result cache
+#   ./run.sh --no-unity                       skip the extra unity translation unit (all passing files together)
 #   ABYSS_CC_BUILD=/some/dir ./run.sh         build output elsewhere (default: CompileCheck/build, git-ignored)
 # Report: <build>/report.json (machine readable), <build>/uht_report.json, <build>/compile_commands.json.
 set -euo pipefail

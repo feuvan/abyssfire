@@ -13,7 +13,9 @@ Verdict vocabulary: see README.md ("The three verdicts").
 ### 1. `UMaterialInterface::GetMaterialResource`: feature level or shader platform
 
 - **Where**: `Source/Abyssfire/Private/ContentBuild/AbyssContentBuildLibrary.cpp:22-33` (`AbyssEditorMaterialResource`),
-  used by `GetMaterialCompileErrors` (`:162`, the call is at `:170`). Editor only (`#if WITH_EDITOR`).
+  used by `GetMaterialCompileErrors` (`:162`, the call is at `:170`), and the same hedge in
+  `Source/Abyssfire/Private/World/AbyssZoneActor.cpp:284-296` (`ShaderGateResource`, the zone's shader gate, which also
+  hedges `FMaterial::IsCompilationFinished()` at `:313-325`). Editor only (`#if WITH_EDITOR`).
 - **What the code assumes**: one of `GetMaterialResource(EShaderPlatform)` or
   `GetMaterialResource(ERHIFeatureLevel::Type)` exists and returns `FMaterialResource*`, with
   `FMaterial::FinishCompilation()` and `FMaterial::GetCompileErrors()` on the result. The module already hedges with
@@ -26,7 +28,7 @@ Verdict vocabulary: see README.md ("The three verdicts").
 - **What the SDK declares**: the feature-level overloads. The shader-platform overloads are in a block marked
   `// UNVERIFIED` in `sdk/Runtime/Engine/Classes/Materials/MaterialInterface.h`, compiled only with
   `UE_STUB_UNVERIFIED_MATERIAL_RESOURCE_BY_SHADER_PLATFORM=1`. Both branches of the module's hedge type-check:
-  `./run.sh --config mac-editor --only ContentBuild` (fallback branch) and the same with
+  `./run.sh --config mac-editor --only ContentBuild --only World` (fallback branch) and the same with
   `--define UE_STUB_UNVERIFIED_MATERIAL_RESOURCE_BY_SHADER_PLATFORM=1` (first branch).
 - **Residual risk**: 5.8 could have removed the feature-level overload and given the other one a different shape, or
   moved `FinishCompilation` / `GetCompileErrors`. Then `GetMaterialCompileErrors` fails to compile in the editor target
@@ -60,6 +62,58 @@ Verdict vocabulary: see README.md ("The three verdicts").
   module does not depend on the callback for correctness (the save that counts runs on
   `ApplicationWillEnterBackgroundDelegate`; terminate may never fire on mobile), so if both forms fail on the Mac the
   two lines can be dropped without losing a save.
+
+### 4. `Cast` / `CastChecked` / `ExactCast`: does the result keep the constness of the argument
+
+- **Where**: every `Cast<T>(X)` / `CastChecked<T>(X)` of the module (61 calls when this was recorded); the SDK
+  declaration is `sdk/Runtime/CoreUObject/Public/Templates/Casts.h`.
+- **What is in doubt**: the return type. Older engines declare `To* Cast(From* Src)`: constness is dropped, so
+  `AActor* A = Cast<AActor>(ConstObject)` compiles. Recent engines are believed to declare
+  `TCopyQualifiersFromTo_T<From, To>* Cast(From* Src)` (and the same for `ExactCast`, `CastChecked` and the
+  `TObjectPtr` overloads): the result of casting a `const UObject*` is a `const AActor*` and the line above is an error.
+- **Evidence for the propagating form**: memory of the 5.x `Templates/Casts.h` (the `TCopyQualifiersFromTo_T` return
+  type and the `Templates/CopyQualifiersFromTo.h` header that exists for it). **Against**: nothing found; not reflected,
+  so the Python stub cannot settle it, and there is no engine source here.
+- **What the SDK declares**: the const-propagating form, in a block marked `// UNVERIFIED` (always on). It is the strict
+  side: code that compiles against it also compiles against the const-dropping form, so a PASS holds for either engine.
+  The `TWeakObjectPtr` overloads propagate too (the engine's own are believed to return a plain `T*`; a
+  `TWeakObjectPtr<const U>` argument is the only case that differs, and the module has none).
+- **State of the module**: it compiles against the propagating form in every checked file (no cast of a const object
+  into a mutable pointer). `tests/negative_cases.cpp` cases 122 and 123 pin the strict behaviour, the control case its
+  correct twin (`const AActor* A = Cast<AActor>(ConstObject)`).
+- **Residual risk**: none for the build (the strict form was chosen). If 5.8 drops constness, case 122 / 123 describe
+  code the engine accepts; that only makes this check stricter than the engine.
+- **Safest alternative for new code**: keep the result as const as the argument, or cast a mutable pointer.
+
+### 5. `UActorComponent::MarkRenderInstancesDirty()` (hedged in the module)
+
+- **Where**: `AbyssWorldUtil::MarkInstancesDirty` (`Source/Abyssfire/Public/World/AbyssWorldTypes.h:127-146`), called
+  on `UInstancedStaticMeshComponent` from `Private/World/AbyssZoneActor.cpp:1762`, `:1966`,
+  `Private/World/AbyssSetPieces.cpp:322` and the VFX pools (`Private/Vfx/AbyssVfxSystem.cpp:382`, `:1580`). Before CC2
+  these five places called `Component->MarkRenderInstancesDirty()` directly.
+- **What the code assumes**: after a batch of `SetCustomDataValue` / `SetCustomData` / `BatchUpdateInstancesTransforms`
+  calls made with `bMarkRenderStateDirty = false`, one `MarkRenderInstancesDirty()` sends the changed instance data to
+  the renderer at the end of the frame, without re-creating the render state.
+- **Evidence for**: memory of `Components/ActorComponent.h` since the 5.4 instance-data manager: `bRenderInstancesDirty`,
+  `void MarkRenderInstancesDirty();` ("marks the instances as dirty - changes to instance transforms / custom data will
+  be sent to the rendering thread at the end of the frame") and `SendRenderInstanceData_Concurrent()`, with the ISM
+  setters calling it when `bMarkRenderStateDirty` is true. **Against**: nothing found, but it is not reflected (the 5.6
+  Python stub has no `mark_render_*` at all), and its access level (public on `UActorComponent`) is from memory.
+- **What changed in the module**: the five calls go through one helper with the module's usual hedge,
+  `if constexpr (requires(ComponentType& C) { C.MarkRenderInstancesDirty(); })`: the incremental update where the engine
+  has the member (and it is accessible), else `MarkRenderStateDirty()`, which every engine has. Behaviour is unchanged
+  on an engine with the member.
+- **What the SDK declares**: `void MarkRenderInstancesDirty();` on `UActorComponent`
+  (`sdk/Runtime/Engine/Classes/Components/ActorComponent.h`), in a block marked `// UNVERIFIED`, on by default;
+  `--define UE_STUB_UNVERIFIED_NO_MARK_RENDER_INSTANCES_DIRTY=1` removes it. Both branches of the hedge type-check in
+  every configuration: `./run.sh --only World --only Actors --only Vfx` and the same with that `--define`.
+- **Residual risk**: no compile risk either way. If 5.8 lacks the member, the fallback re-creates the scene proxy of
+  every touched instanced component on each update (the occlusion fade and the VFX pools do that every frame): correct
+  picture, a frame-time cost to look for in the first Mac profile. `stat scenerendering` / a missing
+  `MarkRenderInstancesDirty` in the engine header tells which branch was compiled.
+- **Safest alternative if the fallback cost shows**: pass `bMarkRenderStateDirty = true` to the LAST update call of a
+  batch (`SetCustomDataValue`, `SetCustomData` and `BatchUpdateInstancesTransforms` all take the flag); the engine then
+  picks its own cheapest path.
 
 ## Resolved by changing the module
 
@@ -100,4 +154,16 @@ reflected in a form the Python stub exposes.
 | `FText::FormatNamed` / `FormatOrdered` (`Internationalization/Text.h`) | `FormatNamed` takes at least one Name / Value pair, names construct an `FString`, values an `FFormatArgumentValue`; `FormatOrdered` takes at least one value (the engine's `TextFormatUtil` helpers have no overload for an empty pack) | A call with only the format is rejected here; `FText::Format(Fmt, FFormatNamedArguments())` is valid either way. The module calls neither |
 | `FSoftObjectPath` constructors (`UObject/SoftObjectPath.h`) | Since 5.1 only the `FString` constructor is implicit; the `const TCHAR*`, string-view and `nullptr` constructors are `explicit`; `operator=` takes `FString` and `const TCHAR*` | If one of them is implicit in 5.8, `FSoftObjectPath P = TEXT("...")` or passing a literal / `nullptr` for an `FSoftObjectPath` parameter is rejected here although valid. The module always writes `FSoftObjectPath(...)` |
 | `TTuple` / `TPair` forwarding constructor (`Templates/Tuple.h`) | Implicit when every element converts implicitly, `explicit` otherwise (so `TPair<FName, int32> P = { Id, 1 };` compiles). UE 4 had it plainly `explicit`; the 5.x form is from memory | If it is plainly `explicit` in 5.8, a braced pair passed where a `TPair` is expected (`Array.Add({ A, B })`, `return { A, B };`) compiles here and not on the Mac; `MakeTuple(A, B)` / `TPair<K, V>(A, B)` / `Emplace(A, B)` are valid either way |
+| `UInstancedStaticMeshComponent::SetCustomData(int32, TArrayView<const float>, bool)` | The array-view parameter (5.1+; 5.0 took `const TArray<float>&`). Not reflected | `Private/World/AbyssZoneActor.cpp:883`, `:1964` pass an explicit `TArrayView<const float>`: an error only if 5.8 went back to `TArray` |
+| `UStaticMeshComponent::GetStaticMesh()` | Returns `TObjectPtr<UStaticMesh>` (5.x), not a raw pointer | The module assigns it to `UStaticMesh*` / compares it with one, valid for both |
+| `TObjectPtr` comparison (`UObject/ObjectPtr.h`) | `operator==(const TObjectPtr<U>&)`, `operator==(nullptr)` and a generic `operator==(const U&)` over what converts to `const T*` or has `Get()` (the engine's `ObjectPtr_Private::CoerceToPointer`); `!=` and the reversed forms come from C++20 | `Ptr == RawPointer` resolves to the member (exact match) instead of being ambiguous with the built-in comparison. A pointer to a BASE of `T` compares through `operator T*()` |
+| `FStreamableManager::RequestAsyncLoad` / `RequestSyncLoad` (`Engine/StreamableManager.h`) | The four long-standing overloads (path array or single path; `FStreamableDelegate` or `TFunction<void()>&&`). 5.5+ are believed to fold them into templates with an extra source-location parameter | `Private/World/AbyssAssetLibrary.cpp:480` passes only a moved `TArray<FSoftObjectPath>`: valid for both shapes |
+| `Rendering/SkeletalMeshRenderData.h` | Only forward-declares `FSkeletalMeshLODRenderData` (strict side); `LODRenderData` is a `TIndirectArray` with `Num()` / `operator[]` / `IsValidIndex()` only | The module includes `Rendering/SkeletalMeshLODRenderData.h` itself and only counts and indexes. A range-`for` over `LODRenderData` is rejected here although the engine allows it |
+| `UMaterialParameterCollectionInstance` (`Materials/MaterialParameterCollectionInstance.h`) | Not exposed to Python. `SetScalarParameterValue(FName, float)` and `SetVectorParameterValue(FName, const FLinearColor&)` only; an `FVector4` overload may exist | The module passes `float` and `FLinearColor` |
+| `ULightComponent::SetLightFColor(FColor)` | The C++-only twin of the reflected `SetLightColor(FLinearColor, bool)` | `Private/World/AbyssZoneActor.cpp:1415`; `SetLightColor(FLinearColor(Bytes), true)` is the reflected alternative |
+| `UActorComponent::SetCanEverAffectNavigation(bool)` | Public, C++-only (the property `bCanEverAffectNavigation` is reflected) | Ten calls in the actors and the zone actor |
+| `StaticEnum<T>()` / `StaticStruct<T>()` / `StaticClass<T>()` (`UObject/Class.h`) | Declared without a body, as in the engine (`UObject/ReflectedTypeAccessors.h`); the fake UHT emits the `StaticClass<UFoo>` specialisation per module class | A call with a type UHT did not reflect compiles here and in UE, and fails to LINK in UE: invisible to this check. The module calls none |
+| `SNew` / `SAssignNew` allocation | `MakeShared<WidgetType>()` (the engine's `TWidgetAllocator`), so the widget needs an accessible default constructor. `SUserWidget`-derived widgets (allocated by `WidgetType::New()`) are not modelled | `SNew` of an `SUserWidget` subclass with a private constructor is rejected here; the module has none |
+| `EAllowShrinking` (`Containers/AllowShrinking.h`) | `enum class EAllowShrinking : uint8 { No, Yes, Default = Yes }` (5.4+); the deprecated `bool` overloads of `RemoveAt` / `RemoveAtSwap` / `Pop` / `SetNum` are not declared | `Array.RemoveAtSwap(I, 1, false)` is rejected here (a deprecation warning in 5.4+); the module passes `EAllowShrinking::No` |
+| `FMath` constexpr helpers (`Math/UnrealMathUtility.h`) | `FindDeltaAngleDegrees` / `Radians`, `UnwindDegrees` / `Radians`, `Wrap`, `GridSnap`, `SinCos`, `GetRangePct`, `SmoothStep`, `FInterpTo` have the engine's bodies as remembered (a `constexpr` template cannot be stub-bodied) | Only the signatures decide what compiles; the bodies never run |
 | UE clang warning set in `tools/compile_check.py` | `-Wall -Werror` minus UE's `-Wno-*` list, `-Wshadow` and `-Wundef` as errors | A warning UE disables could fail here (strict side) or the reverse |

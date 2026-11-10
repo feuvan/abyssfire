@@ -72,6 +72,16 @@ public:
 	void MarkRenderStateDirty();
 	void MarkRenderDynamicDataDirty();
 	void MarkRenderTransformDirty();
+#if !(defined(UE_STUB_UNVERIFIED_NO_MARK_RENDER_INSTANCES_DIRTY) && UE_STUB_UNVERIFIED_NO_MARK_RENDER_INSTANCES_DIRTY)
+	// UNVERIFIED (API_UNCERTAIN.md #5): believed to be on UActorComponent since the 5.4 instance-data manager ("marks the
+	// instances as dirty - changes to instance transforms / custom data are sent to the rendering thread at the end of
+	// the frame"). Not reflected, so the 5.6 Python stub cannot confirm it. The module reaches it through a hedge
+	// (AbyssWorldUtil::MarkInstancesDirty): define the macro to type-check the fallback of an engine without it.
+	void MarkRenderInstancesDirty();
+#endif
+	/** Set value of bCanEverAffectNavigation flag and update navigation octree if needed. */
+	void SetCanEverAffectNavigation(bool bRelevant);
+	bool CanEverAffectNavigation() const;
 	void RecreateRenderState_Concurrent();
 	bool IsRenderStateCreated() const;
 	virtual void SetIsReplicated(bool ShouldReplicate);
